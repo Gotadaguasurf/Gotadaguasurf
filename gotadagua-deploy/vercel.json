@@ -1,0 +1,9 @@
+{
+  "rewrites": [
+    { "source": "/", "destination": "/public/platform-preview.html" },
+    { "source": "/camp-hub", "destination": "/public/camp-hub-srilanka.html" },
+    { "source": "/partners", "destination": "/public/partners.html" },
+    { "source": "/instructors", "destination": "/public/instructors.html" },
+    { "source": "/supabase-config.js", "destination": "/public/supabase-config.js" }
+  ]
+}
