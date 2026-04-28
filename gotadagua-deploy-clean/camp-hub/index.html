@@ -279,6 +279,32 @@ td.r{text-align:right;font-family:'DM Mono',monospace;font-size:12px}
 .exp-recurring-sub{font-size:11px;color:var(--muted);margin-top:3px;line-height:1.45}
 .exp-recurring-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
 .exp-recurring-empty{padding:18px;border:1px dashed var(--border);border-radius:11px;color:var(--muted);font-size:12px;text-align:center;background:var(--bg)}
+.exp-recurring-block{margin-top:18px;padding-top:18px;border-top:1px solid var(--border)}
+.exp-recurring-block:first-of-type{margin-top:0;padding-top:0;border-top:none}
+.exp-recurring-block-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.exp-recurring-block-title{font-family:'DM Serif Display',serif;font-size:17px;color:var(--navy)}
+.exp-recurring-block-sub{font-size:12px;color:var(--muted);margin-top:3px;line-height:1.55;max-width:760px}
+.exp-recurring-toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.exp-mode-toggle{display:flex;gap:6px;flex-wrap:wrap}
+.exp-recurring-form{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-bottom:14px}
+.exp-recurring-form-actions{display:flex;justify-content:flex-end;gap:8px;grid-column:1/-1}
+.exp-salary-grid{display:grid;gap:10px}
+.exp-salary-item{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:13px 14px;border:1px solid var(--border);border-radius:11px;background:var(--bg)}
+.exp-salary-main{min-width:0;flex:1}
+.exp-salary-name{font-size:13px;font-weight:700;color:var(--navy)}
+.exp-salary-sub{font-size:11px;color:var(--muted);margin-top:3px;line-height:1.5}
+.exp-salary-amt{font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy);line-height:1}
+.exp-salary-badges{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.exp-salary-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.exp-inline-note{font-size:11px;color:var(--muted);margin-top:4px;line-height:1.45}
+@media (max-width:1080px){
+  .exp-recurring-form{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (max-width:760px){
+  .exp-recurring-form{grid-template-columns:1fr}
+  .exp-salary-item,.exp-recurring-item{flex-direction:column;align-items:flex-start}
+  .exp-salary-actions,.exp-recurring-actions{justify-content:flex-start}
+}
 .exp-period-btn{padding:6px 12px;border-radius:18px;border:1.5px solid var(--border);background:#fff;color:var(--muted);font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;transition:all .18s}
 .exp-period-btn.active{background:var(--navy);border-color:var(--navy);color:#fff}
 .exp-filters{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
@@ -517,10 +543,70 @@ td.r{text-align:right;font-family:'DM Mono',monospace;font-size:12px}
       <div class="exp-recurring-head">
         <div>
           <div style="font-family:'DM Serif Display',serif;font-size:16px;color:var(--navy)">Monthly recurring</div>
-          <div style="font-size:12px;color:var(--muted);margin-top:2px">Use this for rents, salaries, and other fixed end-of-month entries. They auto-create when the month closes.</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">Separate staff salaries from fixed monthly costs so month-end stays clean and easy to control.</div>
         </div>
       </div>
-      <div id="recurringList"></div>
+      <div class="exp-recurring-block">
+        <div class="exp-recurring-block-head">
+          <div>
+            <div class="exp-recurring-block-title">Staff salaries</div>
+            <div class="exp-recurring-block-sub">Keep the team here with season and off-season amounts. At month end the app adds everyone automatically using the salary mode you choose.</div>
+          </div>
+          <div class="exp-recurring-toolbar">
+            <div class="exp-inline-note">Salary month mode</div>
+            <div class="exp-mode-toggle">
+              <button class="btn btn-s" id="salaryModeSeasonBtn" onclick="setSalaryMode('season')">Season</button>
+              <button class="btn btn-s" id="salaryModeOffBtn" onclick="setSalaryMode('off')">Off-season</button>
+            </div>
+          </div>
+        </div>
+        <div class="exp-recurring-form" id="salaryForm">
+          <div class="mfield" style="margin-bottom:0">
+            <label>Name</label>
+            <input id="salary_name" placeholder="Ashan Dilruk">
+          </div>
+          <div class="mfield" style="margin-bottom:0">
+            <label>Type</label>
+            <select id="salary_type" onchange="toggleSalaryTypeFields()">
+              <option value="seasonal">Seasonal</option>
+              <option value="fixed">Fixed</option>
+            </select>
+          </div>
+          <div class="mfield" style="margin-bottom:0" id="salary_season_wrap">
+            <label>Season (LKR)</label>
+            <input type="number" id="salary_season" min="0" step="0.01" placeholder="120000">
+          </div>
+          <div class="mfield" style="margin-bottom:0" id="salary_off_wrap">
+            <label>Off-season (LKR)</label>
+            <input type="number" id="salary_off" min="0" step="0.01" placeholder="30000">
+          </div>
+          <div class="mfield" style="margin-bottom:0;display:none" id="salary_fixed_wrap">
+            <label>Fixed monthly (LKR)</label>
+            <input type="number" id="salary_fixed" min="0" step="0.01" placeholder="35000">
+          </div>
+          <div class="mfield" style="margin-bottom:0">
+            <label>Paid via</label>
+            <select id="salary_pay">
+              <option value="Bank Transfer">Bank Transfer</option>
+              <option value="Cash">Cash</option>
+            </select>
+          </div>
+          <div class="exp-recurring-form-actions">
+            <button class="btn btn-s" onclick="resetSalaryForm()">Clear</button>
+            <button class="btn btn-p" id="salarySaveBtn" onclick="saveSalaryProfile()">Save salary</button>
+          </div>
+        </div>
+        <div id="salaryProfilesList"></div>
+      </div>
+      <div class="exp-recurring-block">
+        <div class="exp-recurring-block-head">
+          <div>
+            <div class="exp-recurring-block-title">Fixed monthly costs</div>
+            <div class="exp-recurring-block-sub">Use Quick Add plus <strong>Save as monthly</strong> for rent, pool maintenance, utilities, and other non-salary payments.</div>
+          </div>
+        </div>
+        <div id="recurringList"></div>
+      </div>
     </div>
 
     <div class="exp-filters">
@@ -872,8 +958,28 @@ const CAMPTAB_MENU_KEY='camptab_menu_v2';
 const CAMPTAB_STAFF_KEY='camptab_staff_v3';
 const CAMPTAB_TOUR_MENU_VERSION_KEY='camptab_tours_menu_version_v1';
 const CAMPTAB_MERCH_MENU_VERSION_KEY='camptab_merch_menu_version_v2';
+const RECURRING_DEFAULTS_VERSION_KEY='camphub_recurring_defaults_v1';
 const DEFAULT_LKR_PER_EUR=parseFloat(localStorage.getItem(FX_KEY)||'330')||330;
-function defS(){return{weeks:[],ledger:[],recurring:[]};}
+const FIXED_MONTHLY_DEFAULTS=[
+  {name:'Staff House Rent',type:'expense',category:'Rent',businessArea:'Utilities',paymentMethod:'Bank Transfer',amountLocal:150000,description:'Staff house rent',enabled:true},
+  {name:'Surf Camp Rent',type:'expense',category:'Rent',businessArea:'Utilities',paymentMethod:'Bank Transfer',amountLocal:500000,description:'Surf camp rent',enabled:true},
+  {name:'Pool Maintenance',type:'expense',category:'Services',businessArea:'Utilities',paymentMethod:'Cash',amountLocal:10000,description:'Pool maintenance',enabled:true}
+];
+const SALARY_PROFILE_DEFAULTS=[
+  {name:'Ashan Dilruk',type:'seasonal',seasonAmount:120000,offSeasonAmount:30000,paymentMethod:'Bank Transfer',enabled:true},
+  {name:'Dilshan de Silva',type:'seasonal',seasonAmount:120000,offSeasonAmount:30000,paymentMethod:'Bank Transfer',enabled:true},
+  {name:'Vihamga Sandeepa',type:'seasonal',seasonAmount:30000,offSeasonAmount:10000,paymentMethod:'Bank Transfer',enabled:true},
+  {name:'Michael Sampath',type:'seasonal',seasonAmount:110000,offSeasonAmount:75000,paymentMethod:'Bank Transfer',enabled:true},
+  {name:'Anushka Botheju',type:'seasonal',seasonAmount:60000,offSeasonAmount:40000,paymentMethod:'Bank Transfer',enabled:true},
+  {name:'Chinthaka Ramanayaka',type:'seasonal',seasonAmount:60000,offSeasonAmount:40000,paymentMethod:'Bank Transfer',enabled:true},
+  {name:'Bar - Jude Rohan',type:'seasonal',seasonAmount:60000,offSeasonAmount:40000,paymentMethod:'Bank Transfer',enabled:true},
+  {name:'Nadith',type:'seasonal',seasonAmount:100000,offSeasonAmount:75000,paymentMethod:'Bank Transfer',enabled:true},
+  {name:'Dilip Kumara',type:'seasonal',seasonAmount:60000,offSeasonAmount:40000,paymentMethod:'Bank Transfer',enabled:true},
+  {name:'Sahan Wellage',type:'seasonal',seasonAmount:50000,offSeasonAmount:40000,paymentMethod:'Bank Transfer',enabled:true},
+  {name:'Shenal de Almeida',type:'fixed',fixedAmount:35000,paymentMethod:'Bank Transfer',enabled:true},
+  {name:'Francisco Guimarães',type:'fixed',fixedAmount:155000,paymentMethod:'Bank Transfer',enabled:true}
+];
+function defS(){return{weeks:[],ledger:[],recurring:[],salaryProfiles:[],salaryMode:'season'};}
 function inferArea(type,category,linkedItem=''){
   if(type==='transfer') return 'General';
   if(type==='income'){
@@ -963,18 +1069,53 @@ function normalizeRecurringRule(rule){
     updatedAt:rule.updatedAt||new Date().toISOString()
   };
 }
+function normalizeSalaryProfile(profile){
+  if(!profile||typeof profile!=='object') return null;
+  const type=profile.type==='fixed'?'fixed':'seasonal';
+  return {
+    id:profile.id||('sp'+Date.now()+Math.random().toString(36).slice(2,5)),
+    name:(profile.name||'').trim(),
+    type,
+    seasonAmount:Number(profile.seasonAmount||0),
+    offSeasonAmount:Number(profile.offSeasonAmount||0),
+    fixedAmount:Number(profile.fixedAmount||0),
+    paymentMethod:profile.paymentMethod||'Bank Transfer',
+    enabled:profile.enabled!==false,
+    lastAppliedMonth:profile.lastAppliedMonth||'',
+    updatedAt:profile.updatedAt||new Date().toISOString()
+  };
+}
 function normalizeState(raw){
   const base=raw&&typeof raw==='object'?raw:defS();
   return {
     weeks:Array.isArray(base.weeks)?base.weeks:[],
     ledger:(Array.isArray(base.ledger)?base.ledger:[]).map(normalizeLedgerEntry).filter(Boolean),
-    recurring:(Array.isArray(base.recurring)?base.recurring:[]).map(normalizeRecurringRule).filter(Boolean)
+    recurring:(Array.isArray(base.recurring)?base.recurring:[]).map(normalizeRecurringRule).filter(Boolean),
+    salaryProfiles:(Array.isArray(base.salaryProfiles)?base.salaryProfiles:[]).map(normalizeSalaryProfile).filter(profile=>profile&&profile.name),
+    salaryMode:base.salaryMode==='off'?'off':'season'
   };
 }
 function loadS(){try{return normalizeState(JSON.parse(localStorage.getItem(SK)||'null'));}catch(e){return defS();}}
 let S=loadS();
 const save=()=>{S=normalizeState(S);(S.weeks||[]).forEach(syncWeekSettlement);localStorage.setItem(SK,JSON.stringify(S));};
+ensureRecurringDefaults();
 function refreshStateFromStorage(){S=loadS();}
+function ensureRecurringDefaults(){
+  if(localStorage.getItem(RECURRING_DEFAULTS_VERSION_KEY)==='2026-04-sri-lanka-recurring-v1') return;
+  const existingRecurringNames=new Set((S.recurring||[]).map(rule=>String(rule.name||'').trim().toLowerCase()));
+  FIXED_MONTHLY_DEFAULTS.forEach(rule=>{
+    if(existingRecurringNames.has(rule.name.toLowerCase())) return;
+    S.recurring.push(normalizeRecurringRule(rule));
+  });
+  const existingSalaryNames=new Set((S.salaryProfiles||[]).map(profile=>String(profile.name||'').trim().toLowerCase()));
+  SALARY_PROFILE_DEFAULTS.forEach(profile=>{
+    if(existingSalaryNames.has(profile.name.toLowerCase())) return;
+    S.salaryProfiles.push(normalizeSalaryProfile(profile));
+  });
+  if(!S.salaryMode) S.salaryMode='season';
+  save();
+  localStorage.setItem(RECURRING_DEFAULTS_VERSION_KEY,'2026-04-sri-lanka-recurring-v1');
+}
 function migrateCampTabToursMenu(){
   const existingMenu=readJsonStorage(CAMPTAB_MENU_KEY,{})||{};
   const hasExistingTours=Array.isArray(existingMenu.Tours)&&existingMenu.Tours.length>0;
@@ -2759,6 +2900,172 @@ function refreshRecurringButton(){
   if(!btn) return;
   btn.textContent=editingRecurringId?'Update monthly':'Save as monthly';
 }
+let editingSalaryProfileId=null;
+function salaryAmountFor(profile){
+  if(!profile) return 0;
+  if(profile.type==='fixed') return Number(profile.fixedAmount||0);
+  return S.salaryMode==='off' ? Number(profile.offSeasonAmount||0) : Number(profile.seasonAmount||0);
+}
+function salaryModeLabel(){return S.salaryMode==='off'?'Off-season':'Season';}
+function salaryProfileSub(profile){
+  if(profile.type==='fixed') return `Fixed monthly · ${profile.paymentMethod}`;
+  return `Season ${lkr(profile.seasonAmount||0)} · Off-season ${lkr(profile.offSeasonAmount||0)} · ${profile.paymentMethod}`;
+}
+function refreshSalaryModeButtons(){
+  const seasonBtn=document.getElementById('salaryModeSeasonBtn');
+  const offBtn=document.getElementById('salaryModeOffBtn');
+  if(seasonBtn) seasonBtn.className=`btn ${S.salaryMode==='season'?'btn-p':'btn-s'}`;
+  if(offBtn) offBtn.className=`btn ${S.salaryMode==='off'?'btn-p':'btn-s'}`;
+}
+function refreshSalarySaveButton(){
+  const btn=document.getElementById('salarySaveBtn');
+  if(!btn) return;
+  btn.textContent=editingSalaryProfileId?'Update salary':'Save salary';
+}
+function toggleSalaryTypeFields(){
+  const type=document.getElementById('salary_type')?.value||'seasonal';
+  const seasonWrap=document.getElementById('salary_season_wrap');
+  const offWrap=document.getElementById('salary_off_wrap');
+  const fixedWrap=document.getElementById('salary_fixed_wrap');
+  if(seasonWrap) seasonWrap.style.display=type==='fixed'?'none':'block';
+  if(offWrap) offWrap.style.display=type==='fixed'?'none':'block';
+  if(fixedWrap) fixedWrap.style.display=type==='fixed'?'block':'none';
+}
+function resetSalaryForm(){
+  editingSalaryProfileId=null;
+  document.getElementById('salary_name').value='';
+  document.getElementById('salary_type').value='seasonal';
+  document.getElementById('salary_season').value='';
+  document.getElementById('salary_off').value='';
+  document.getElementById('salary_fixed').value='';
+  document.getElementById('salary_pay').value='Bank Transfer';
+  toggleSalaryTypeFields();
+  refreshSalarySaveButton();
+}
+function salaryProfileFromForm(){
+  const type=document.getElementById('salary_type')?.value||'seasonal';
+  const name=(document.getElementById('salary_name')?.value||'').trim();
+  if(!name) return null;
+  const profile=normalizeSalaryProfile({
+    id:editingSalaryProfileId||undefined,
+    name,
+    type,
+    seasonAmount:Number(document.getElementById('salary_season')?.value||0),
+    offSeasonAmount:Number(document.getElementById('salary_off')?.value||0),
+    fixedAmount:Number(document.getElementById('salary_fixed')?.value||0),
+    paymentMethod:document.getElementById('salary_pay')?.value||'Bank Transfer',
+    enabled:true
+  });
+  if(type==='fixed' && !(profile.fixedAmount>0)) return null;
+  if(type!=='fixed' && !(profile.seasonAmount>0 || profile.offSeasonAmount>0)) return null;
+  return profile;
+}
+function saveSalaryProfile(){
+  const profile=salaryProfileFromForm();
+  if(!profile){toast('Add a salary name and amount first');return;}
+  const idx=(S.salaryProfiles||[]).findIndex(row=>row.id===profile.id);
+  if(idx>=0){
+    const prev=S.salaryProfiles[idx];
+    S.salaryProfiles[idx]={...prev,...profile,updatedAt:new Date().toISOString()};
+  }else{
+    S.salaryProfiles.push({...profile,updatedAt:new Date().toISOString()});
+  }
+  save();
+  resetSalaryForm();
+  renderSalaryProfiles();
+  toast(idx>=0?'Salary updated ✓':'Salary saved ✓');
+}
+function editSalaryProfile(id){
+  const profile=(S.salaryProfiles||[]).find(row=>row.id===id);
+  if(!profile) return;
+  editingSalaryProfileId=id;
+  document.getElementById('salary_name').value=profile.name||'';
+  document.getElementById('salary_type').value=profile.type||'seasonal';
+  document.getElementById('salary_season').value=profile.seasonAmount?String(profile.seasonAmount):'';
+  document.getElementById('salary_off').value=profile.offSeasonAmount?String(profile.offSeasonAmount):'';
+  document.getElementById('salary_fixed').value=profile.fixedAmount?String(profile.fixedAmount):'';
+  document.getElementById('salary_pay').value=profile.paymentMethod||'Bank Transfer';
+  toggleSalaryTypeFields();
+  refreshSalarySaveButton();
+  toast('Salary loaded for editing');
+}
+function toggleSalaryProfile(id){
+  const profile=(S.salaryProfiles||[]).find(row=>row.id===id);
+  if(!profile) return;
+  profile.enabled=!profile.enabled;
+  save();
+  renderSalaryProfiles();
+  toast(profile.enabled?'Salary enabled':'Salary paused');
+}
+function deleteSalaryProfile(id){
+  S.salaryProfiles=(S.salaryProfiles||[]).filter(row=>row.id!==id);
+  if(editingSalaryProfileId===id) resetSalaryForm();
+  save();
+  renderSalaryProfiles();
+  toast('Salary deleted');
+}
+function runSalaryNow(id){
+  const profile=(S.salaryProfiles||[]).find(row=>row.id===id);
+  if(!profile) return;
+  const month=monthKey(today());
+  S.ledger.push(normalizeLedgerEntry({
+    id:'salary_manual_'+id+'_'+Date.now(),
+    date:today(),
+    type:'expense',
+    category:'Salary',
+    businessArea:'Salaries',
+    paymentMethod:profile.paymentMethod||'Bank Transfer',
+    quantity:1,
+    description:profile.name,
+    amountLocal:salaryAmountFor(profile),
+    currency:'LKR',
+    fxRate:DEFAULT_LKR_PER_EUR,
+    recurringSourceId:profile.id,
+    recurringMonth:month
+  }));
+  save();
+  renderExpenses();renderOverview();renderWeeklyPL();
+  toast('Salary entry added now ✓');
+}
+function setSalaryMode(mode){
+  S.salaryMode=mode==='off'?'off':'season';
+  save();
+  refreshSalaryModeButtons();
+  renderSalaryProfiles();
+  toast(`Salary mode set to ${salaryModeLabel()}`);
+}
+function renderSalaryProfiles(){
+  refreshSalaryModeButtons();
+  refreshSalarySaveButton();
+  toggleSalaryTypeFields();
+  const el=document.getElementById('salaryProfilesList');
+  if(!el) return;
+  const rows=(S.salaryProfiles||[]).slice().sort((a,b)=>String(a.name).localeCompare(String(b.name)));
+  if(!rows.length){
+    el.innerHTML='<div class="exp-recurring-empty">No staff salaries yet. Add your team here and the month-end payroll will build automatically.</div>';
+    return;
+  }
+  el.innerHTML=`<div class="exp-salary-grid">${rows.map(profile=>`
+    <div class="exp-salary-item">
+      <div class="exp-salary-main">
+        <div class="exp-salary-name">${profile.name}</div>
+        <div class="exp-salary-sub">${salaryProfileSub(profile)}</div>
+        <div class="exp-salary-badges">
+          <span class="badge badge-blue">${profile.type==='fixed'?'Fixed monthly':salaryModeLabel()}</span>
+          <span class="badge ${profile.enabled?'badge-green':'badge-amber'}">${profile.enabled?'Active':'Paused'}</span>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:10px;min-width:220px">
+        <div class="exp-salary-amt">${lkr(salaryAmountFor(profile))}</div>
+        <div class="exp-salary-actions">
+          <button class="btn btn-s" onclick="editSalaryProfile('${profile.id}')">Adjust</button>
+          <button class="btn btn-s" onclick="runSalaryNow('${profile.id}')">Run now</button>
+          <button class="btn ${profile.enabled?'btn-a':'btn-g'}" onclick="toggleSalaryProfile('${profile.id}')">${profile.enabled?'Pause':'Enable'}</button>
+          <button class="btn btn-r" onclick="deleteSalaryProfile('${profile.id}')">Delete</button>
+        </div>
+      </div>
+    </div>`).join('')}</div>`;
+}
 function recurringRuleFromQuickAdd(){
   const type=document.getElementById('qe_type')?.value||'expense';
   const payload=buildLedgerPayload('qe',type,editingRecurringId||undefined);
@@ -2781,6 +3088,11 @@ function recurringRuleFromQuickAdd(){
   });
 }
 function saveQuickRecurring(){
+  const category=document.getElementById('qe_cat')?.value||'';
+  if(category==='Salary'){
+    toast('Use the Staff salaries area for payroll. Keep salaries separate from fixed monthly costs.');
+    return;
+  }
   const rule=recurringRuleFromQuickAdd();
   if(!rule){
     toast('Date and amount required before saving monthly');
@@ -2889,6 +3201,30 @@ function applyRecurringEntries(){
     }
     rule.lastAppliedMonth=month;
   });
+  (S.salaryProfiles||[]).forEach(profile=>{
+    if(!profile.enabled) return;
+    if(profile.lastAppliedMonth===month) return;
+    const exists=S.ledger.some(entry=>entry.recurringSourceId===profile.id&&entry.recurringMonth===month);
+    if(!exists){
+      S.ledger.push(normalizeLedgerEntry({
+        id:'salary_'+profile.id+'_'+month,
+        date:dueDate,
+        type:'expense',
+        category:'Salary',
+        businessArea:'Salaries',
+        paymentMethod:profile.paymentMethod||'Bank Transfer',
+        quantity:1,
+        description:profile.name,
+        amountLocal:salaryAmountFor(profile),
+        currency:'LKR',
+        fxRate:DEFAULT_LKR_PER_EUR,
+        recurringSourceId:profile.id,
+        recurringMonth:month
+      }));
+      changed=true;
+    }
+    profile.lastAppliedMonth=month;
+  });
   if(changed) save();
   return changed;
 }
@@ -2896,9 +3232,10 @@ function renderRecurringEntries(){
   const el=document.getElementById('recurringList');
   if(!el) return;
   refreshRecurringButton();
+  renderSalaryProfiles();
   const rules=(S.recurring||[]).slice().sort((a,b)=>String(a.name).localeCompare(String(b.name)));
   if(!rules.length){
-    el.innerHTML='<div class="exp-recurring-empty">No monthly rules yet. Fill Quick Add and click <strong>Save as monthly</strong> for things like rent or salaries.</div>';
+    el.innerHTML='<div class="exp-recurring-empty">No fixed monthly costs yet. Fill Quick Add and click <strong>Save as monthly</strong> for rent, pool maintenance, utilities, or other non-salary costs.</div>';
     return;
   }
   el.innerHTML=`<div class="exp-recurring-list">${rules.map(rule=>`

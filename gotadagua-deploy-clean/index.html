@@ -530,7 +530,34 @@
         <input type="password" id="loginPassword" placeholder="demo" autocomplete="current-password">
       </div>
       <button class="login-btn" onclick="doLogin()">Enter platform</button>
+      <div class="inline-actions" style="margin-top:10px">
+        <button class="action-btn secondary" type="button" onclick="sendPasswordReset()">Forgot password</button>
+      </div>
       <div class="login-note">Sign in with your Gota d'Agua account.</div>
+      <div id="passwordFlowBox" class="settings-card" style="display:none;margin-top:18px;text-align:left;padding:18px">
+        <div class="section-title" id="passwordFlowTitle" style="font-size:18px">Set your password</div>
+        <div class="section-sub" id="passwordFlowCopy" style="margin-top:6px;line-height:1.6">Finish your account setup.</div>
+        <div class="settings-form" style="margin-top:14px">
+          <div class="settings-field">
+            <label>Full Name</label>
+            <input id="passwordFlowName" type="text" placeholder="Your name" autocomplete="name">
+          </div>
+          <div class="field-row">
+            <div class="settings-field">
+              <label>New Password</label>
+              <input id="passwordFlowPassword" type="password" placeholder="Minimum 8 characters" autocomplete="new-password">
+            </div>
+            <div class="settings-field">
+              <label>Confirm Password</label>
+              <input id="passwordFlowPassword2" type="password" placeholder="Repeat password" autocomplete="new-password">
+            </div>
+          </div>
+          <div class="inline-actions">
+            <button class="action-btn primary" type="button" onclick="completePasswordFlow()">Save password</button>
+            <button class="action-btn secondary" type="button" onclick="hidePasswordFlow()">Close</button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -606,6 +633,10 @@
             <div class="settings-form">
               <div class="field-row">
                 <div class="settings-field">
+                  <label>Full Name</label>
+                  <input id="accessFullName" type="text" placeholder="Maria Santos">
+                </div>
+                <div class="settings-field">
                   <label>Email</label>
                   <input id="accessEmail" type="email" placeholder="manager@gotadaguasurf.com">
                 </div>
@@ -636,6 +667,25 @@
             <div class="section-title" style="font-size:20px">Pending Invites</div>
             <div class="section-sub" style="margin-top:8px;line-height:1.7">These invites are waiting for people to finish setup and choose their password.</div>
             <div class="invite-list" id="inviteList"></div>
+          </div>
+          <div class="settings-card">
+            <div class="section-title" style="font-size:20px">Account Security</div>
+            <div class="section-sub" style="margin-top:8px;line-height:1.7">Change your own password after logging in.</div>
+            <div class="settings-form">
+              <div class="field-row">
+                <div class="settings-field">
+                  <label>New Password</label>
+                  <input id="accountNewPassword" type="password" placeholder="Minimum 8 characters" autocomplete="new-password">
+                </div>
+                <div class="settings-field">
+                  <label>Confirm Password</label>
+                  <input id="accountNewPassword2" type="password" placeholder="Repeat password" autocomplete="new-password">
+                </div>
+              </div>
+              <div class="inline-actions">
+                <button class="action-btn primary" onclick="changeOwnPassword()">Update password</button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -808,6 +858,34 @@
       return Boolean(user && user.areas.includes(key));
     }
 
+    function getAuthParams(){
+      return new URLSearchParams(window.location.search);
+    }
+
+    function getPasswordFlowMode(){
+      const params = getAuthParams();
+      if(params.get('reset') === '1') return 'reset';
+      if(params.get('invite') === '1') return 'invite';
+      return '';
+    }
+
+    function getInviteEmailParam(){
+      return getAuthParams().get('email') || '';
+    }
+
+    function clearAuthParams(){
+      const hash = window.location.hash || '';
+      window.history.replaceState({ page:'hub' }, '', `${window.location.pathname}${hash}`);
+    }
+
+    function titleCaseWords(value){
+      return String(value || '')
+        .split(/[\s_-]+/)
+        .filter(Boolean)
+        .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(' ');
+    }
+
     function renderWorkspaceCard(item){
       const allowed = canAccessWorkspace(item.key);
       return `
@@ -875,7 +953,7 @@
         <div class="access-user">
           <div class="access-email">${invite.email}</div>
           <div class="access-role">${invite.role}</div>
-          <div class="access-meta">Status: ${invite.status}${invite.expiresAt ? ` · Expires ${invite.expiresAt}` : ''}</div>
+          <div class="access-meta">${invite.fullName ? `${invite.fullName} · ` : ''}Status: ${invite.status}${invite.expiresAt ? ` · Expires ${invite.expiresAt}` : ''}</div>
           <div class="access-tags">
             ${invite.areas.map(areaKey=>{
               const match = ACCESS_AREAS.find(area=>area.key===areaKey);
@@ -912,6 +990,7 @@
     }
 
     function resetAccessForm(){
+      document.getElementById('accessFullName').value = '';
       document.getElementById('accessEmail').value = '';
       document.getElementById('accessRole').value = 'Location Manager';
       window.__draftAreas = ['sri-lanka'];
@@ -940,6 +1019,7 @@
     }
 
     async function addAccessUser(){
+      const fullName = document.getElementById('accessFullName').value.trim();
       const email = document.getElementById('accessEmail').value.trim().toLowerCase();
       const roleLabel = document.getElementById('accessRole').value;
       const areas = Array.from(new Set((window.__draftAreas || []).filter(Boolean)));
@@ -962,6 +1042,7 @@
           .from('workspace_invitations')
           .insert({
             email,
+            full_name: fullName || null,
             platform_role: role,
             invited_by: __currentProfile?.id || null
           })
@@ -983,16 +1064,26 @@
           const { error: accessError } = await client.from('invitation_workspace_access').insert(accessRows);
           if(accessError) throw accessError;
         }
+        const inviteLink = `${window.location.origin}${window.location.pathname}?invite=1&email=${encodeURIComponent(email)}`;
+        const otpRes = await client.auth.signInWithOtp({
+          email,
+          options: {
+            shouldCreateUser: true,
+            emailRedirectTo: inviteLink
+          }
+        });
+        if(otpRes.error) throw otpRes.error;
         pendingInvites.unshift({
           email,
-          role: roleLabel,
-          status: 'pending',
+          fullName,
+          role: titleCaseWords(role.replaceAll('_',' ')),
+          status: 'sent',
           expiresAt: formatDateShort(inviteRow.expires_at),
           areas
         });
         renderAccessSettings();
         resetAccessForm();
-        showToast(`Invite created for ${email}. Next step is email delivery + password setup flow.`);
+        showToast(`Invite email sent to ${email}.`);
       }catch(error){
         showToast(error?.message || 'Could not create the invite.');
       }
@@ -1042,6 +1133,186 @@
       showToast._timer=setTimeout(()=>{el.style.display='none';},2400);
     }
 
+    function showPasswordFlow(mode='invite', presetName=''){
+      window.__passwordFlowMode = mode;
+      document.getElementById('passwordFlowBox').style.display='block';
+      document.getElementById('passwordFlowTitle').textContent = mode === 'reset' ? 'Choose a new password' : 'Finish your account setup';
+      document.getElementById('passwordFlowCopy').textContent = mode === 'reset'
+        ? 'Set a new password for your account.'
+        : 'Choose your password now so you can use the platform normally.';
+      const nameField = document.getElementById('passwordFlowName');
+      nameField.value = presetName || '';
+      nameField.closest('.settings-field').style.display = mode === 'reset' ? 'none' : 'block';
+    }
+
+    function hidePasswordFlow(){
+      document.getElementById('passwordFlowBox').style.display='none';
+      document.getElementById('passwordFlowName').value = '';
+      document.getElementById('passwordFlowPassword').value = '';
+      document.getElementById('passwordFlowPassword2').value = '';
+    }
+
+    async function preparePasswordFlow(session, suggestedName=''){
+      const mode = getPasswordFlowMode();
+      if(!mode || !session?.user) return false;
+      let presetName = suggestedName || session.user.user_metadata?.full_name || '';
+      if(!presetName && mode === 'invite'){
+        try{
+          const client = getSupabaseClient();
+          const { data } = await client
+            .from('workspace_invitations')
+            .select('full_name')
+            .eq('email', session.user.email || '')
+            .in('status',['pending','sent','accepted'])
+            .order('created_at',{ascending:false})
+            .limit(1)
+            .maybeSingle();
+          if(data?.full_name) presetName = data.full_name;
+        }catch(_error){}
+      }
+      document.getElementById('loginEmail').value = session.user.email || getInviteEmailParam() || '';
+      document.getElementById('loginPassword').value = '';
+      document.getElementById('loginScreen').style.display='flex';
+      document.getElementById('appShell').style.display='none';
+      document.getElementById('appShell').classList.remove('visible');
+      showPasswordFlow(mode, presetName);
+      return true;
+    }
+
+    async function completePasswordFlow(){
+      const client = getSupabaseClient();
+      const fullName = document.getElementById('passwordFlowName').value.trim();
+      const password = document.getElementById('passwordFlowPassword').value;
+      const password2 = document.getElementById('passwordFlowPassword2').value;
+      if(!password || password.length < 8){
+        showToast('Use a password with at least 8 characters.');
+        return;
+      }
+      if(password !== password2){
+        showToast('Passwords do not match.');
+        return;
+      }
+      try{
+        const { data: sessionData } = await client.auth.getSession();
+        const userId = sessionData?.session?.user?.id;
+        const payload = { password };
+        if(fullName && window.__passwordFlowMode !== 'reset') payload.data = { full_name: fullName };
+        const { error } = await client.auth.updateUser(payload);
+        if(error) throw error;
+        if(userId && fullName){
+          await client.from(__accessModel === 'workspace-v2' ? 'platform_profiles' : 'user_profiles')
+            .update(__accessModel === 'workspace-v2' ? { full_name: fullName, updated_at: new Date().toISOString() } : { full_name: fullName, updated_at: new Date().toISOString() })
+            .eq('id', userId);
+        }
+        hidePasswordFlow();
+        clearAuthParams();
+        showToast(window.__passwordFlowMode === 'reset' ? 'Password updated.' : 'Account ready.');
+        await hydrateFromSession();
+      }catch(error){
+        showToast(error?.message || 'Could not update password.');
+      }
+    }
+
+    async function sendPasswordReset(){
+      const email = document.getElementById('loginEmail').value.trim().toLowerCase();
+      if(!email){
+        showToast('Add your email first.');
+        return;
+      }
+      try{
+        const client = getSupabaseClient();
+        const { error } = await client.auth.resetPasswordForEmail(email, {
+          redirectTo: `${window.location.origin}${window.location.pathname}?reset=1`
+        });
+        if(error) throw error;
+        showToast(`Reset email sent to ${email}.`);
+      }catch(error){
+        showToast(error?.message || 'Could not send reset email.');
+      }
+    }
+
+    async function changeOwnPassword(){
+      const password = document.getElementById('accountNewPassword').value;
+      const password2 = document.getElementById('accountNewPassword2').value;
+      if(!password || password.length < 8){
+        showToast('Use a password with at least 8 characters.');
+        return;
+      }
+      if(password !== password2){
+        showToast('Passwords do not match.');
+        return;
+      }
+      try{
+        const client = getSupabaseClient();
+        const { error } = await client.auth.updateUser({ password });
+        if(error) throw error;
+        document.getElementById('accountNewPassword').value = '';
+        document.getElementById('accountNewPassword2').value = '';
+        showToast('Password updated.');
+      }catch(error){
+        showToast(error?.message || 'Could not update password.');
+      }
+    }
+
+    async function acceptPendingInviteForCurrentUser(user){
+      if(__accessModel !== 'workspace-v2' || !user?.id || !user?.email) return;
+      const client = getSupabaseClient();
+      const { data: invite, error: inviteError } = await client
+        .from('workspace_invitations')
+        .select('id, full_name, platform_role')
+        .eq('email', user.email)
+        .in('status',['pending','sent'])
+        .gt('expires_at', new Date().toISOString())
+        .order('created_at',{ascending:false})
+        .limit(1)
+        .maybeSingle();
+      if(inviteError) throw inviteError;
+      if(!invite?.id) return;
+      const { data: inviteAccessRows, error: accessError } = await client
+        .from('invitation_workspace_access')
+        .select('workspace_id, member_role, can_view, can_edit, can_manage_team, can_manage_finance')
+        .eq('invitation_id', invite.id);
+      if(accessError) throw accessError;
+      const profilePayload = {
+        id: user.id,
+        email: user.email,
+        full_name: invite.full_name || user.user_metadata?.full_name || '',
+        platform_role: invite.platform_role || 'viewer',
+        active: true,
+        updated_at: new Date().toISOString()
+      };
+      const { error: profileError } = await client
+        .from('platform_profiles')
+        .upsert(profilePayload, { onConflict:'id' });
+      if(profileError) throw profileError;
+      const membershipRows = (inviteAccessRows || []).map(row => ({
+        user_id: user.id,
+        workspace_id: row.workspace_id,
+        member_role: row.member_role,
+        can_view: row.can_view,
+        can_edit: row.can_edit,
+        can_manage_team: row.can_manage_team,
+        can_manage_finance: row.can_manage_finance,
+        active: true,
+        updated_at: new Date().toISOString()
+      }));
+      if(membershipRows.length){
+        const { error: membershipError } = await client
+          .from('workspace_memberships')
+          .upsert(membershipRows, { onConflict:'user_id,workspace_id' });
+        if(membershipError) throw membershipError;
+      }
+      const { error: inviteUpdateError } = await client
+        .from('workspace_invitations')
+        .update({
+          status:'accepted',
+          accepted_at:new Date().toISOString(),
+          updated_at:new Date().toISOString()
+        })
+        .eq('id', invite.id);
+      if(inviteUpdateError) throw inviteUpdateError;
+    }
+
     async function doLogin(){
       const email = document.getElementById('loginEmail').value.trim().toLowerCase();
       const pw = document.getElementById('loginPassword').value;
@@ -1074,6 +1345,7 @@
       document.getElementById('loginEmail').value='';
       document.getElementById('loginPassword').value='';
       document.getElementById('userName').textContent='Miguel';
+      hidePasswordFlow();
       window.history.replaceState({}, '', window.location.pathname);
     }
 
@@ -1087,6 +1359,12 @@
       }
       const userId = session.user.id;
       const email = session.user.email || '';
+      __accessModel = 'workspace-v2';
+      try{
+        await acceptPendingInviteForCurrentUser(session.user);
+      }catch(_error){
+        __accessModel = 'legacy';
+      }
       const [platformProfileRes, membershipRes, workspaceRes] = await Promise.all([
         client.from('platform_profiles').select('*').eq('id', userId).maybeSingle(),
         client.from('workspace_memberships').select('workspace_id, member_role, can_view').eq('user_id', userId).eq('active', true),
@@ -1139,7 +1417,8 @@
         });
         pendingInvites = (invitesRes.data || []).map(invite => ({
           email: invite.email,
-          role: invite.platform_role || 'viewer',
+          fullName: invite.full_name || '',
+          role: titleCaseWords((invite.platform_role || 'viewer').replaceAll('_',' ')),
           status: invite.status,
           expiresAt: formatDateShort(invite.expires_at),
           areas: inviteAreaMap.get(invite.id) || []
@@ -1183,6 +1462,9 @@
         }];
         pendingInvites = [];
       }
+      if(await preparePasswordFlow(session, __currentProfile?.full_name || '')){
+        return;
+      }
       document.getElementById('userName').textContent = __currentProfile.full_name || email.split('@')[0] || 'User';
       document.getElementById('loginScreen').style.display='none';
       document.getElementById('appShell').style.display='block';
@@ -1196,6 +1478,8 @@
     document.addEventListener('DOMContentLoaded',()=>{
       renderStaticIcons();
       window.__draftAreas = ['sri-lanka'];
+      const inviteEmail = getInviteEmailParam();
+      if(inviteEmail) document.getElementById('loginEmail').value = inviteEmail;
       renderHub();
       renderAccessSettings();
       const initialPage = window.location.hash === '#settings' ? 'settings' : 'hub';
