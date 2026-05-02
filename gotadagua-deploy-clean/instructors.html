@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Instructors — Gota d'Água</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="/supabase-config.js"></script>
+<style>
+:root{
+  --navy:#28394b;--ocean:#1e6fa8;--ocean-light:#3b9dd4;--ocean-soft:#dcecf8;
+  --foam:#edf5fb;--bg:#f0f5fa;--card:#fff;--ink:#0d1b2a;--muted:#6b8099;
+  --border:#d4e3f0;--green:#15803d;--green-bg:#ecfdf3;--green-border:#b9efd0;
+  --red:#b91c1c;--red-bg:#fef2f2;--amber:#9a6f00;--amber-bg:#fef9e7;
+  --shadow:0 2px 16px rgba(40,57,75,.08);--shadow-lg:0 12px 40px rgba(40,57,75,.18);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{min-height:100%;font-family:'Outfit',sans-serif;background:var(--bg);color:var(--ink)}
+button,input,select,textarea{font:inherit}
+.topbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 20px;height:56px;background:rgba(40,57,75,.97);backdrop-filter:blur(12px);border-bottom:1px solid rgba(255,255,255,.07);box-shadow:0 2px 16px rgba(0,0,0,.22)}
+.tb-logo{display:flex;align-items:center;gap:8px;border:none;background:none;cursor:pointer;padding:0}
+.tb-logo svg{height:26px;width:auto}
+.tb-sub{font-size:9px;color:#7aabcc;letter-spacing:.14em;text-transform:uppercase;font-weight:700}
+.ghost-btn{display:inline-flex;align-items:center;gap:6px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.08);color:#fff;border-radius:999px;padding:7px 13px;font-size:12px;font-weight:700;cursor:pointer;transition:all .18s}
+.ghost-btn:hover{background:rgba(255,255,255,.16)}
+.container{max-width:1280px;margin:0 auto;padding:24px 20px 48px}
+.section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:16px;flex-wrap:wrap}
+.section-title{font-family:'DM Serif Display',serif;font-size:26px;color:var(--navy)}
+.section-sub{font-size:13px;color:var(--muted);margin-top:3px}
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px}
+.kpi-card{background:var(--card);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow);padding:18px 20px}
+.kpi-label{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700;margin-bottom:8px}
+.kpi-value{font-family:'DM Serif Display',serif;font-size:28px;color:var(--navy)}
+.kpi-value.red{color:var(--red)}
+.data-table{width:100%;border-collapse:collapse;background:var(--card);border-radius:14px;overflow:hidden;box-shadow:var(--shadow)}
+.data-table th{background:var(--bg);padding:10px 14px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);text-align:left;border-bottom:1px solid var(--border)}
+.data-table td{padding:11px 14px;font-size:13px;border-bottom:1px solid rgba(212,227,240,.5);vertical-align:middle}
+.data-table tr:last-child td{border-bottom:none}
+.data-table tr:hover td{background:var(--foam)}
+.mono{font-family:'DM Mono',monospace;font-size:12px}
+.badge{display:inline-flex;align-items:center;padding:3px 9px;border-radius:20px;font-size:10px;font-weight:700}
+.badge.green{background:var(--green-bg);color:var(--green);border:1px solid var(--green-border)}
+.badge.red{background:var(--red-bg);color:var(--red);border:1px solid #fca5a5}
+.badge.muted{background:var(--bg);color:var(--muted);border:1px solid var(--border)}
+.btn{border:none;border-radius:9px;padding:9px 16px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;transition:all .18s;display:inline-flex;align-items:center;gap:6px}
+.btn-primary{background:var(--ocean);color:#fff}.btn-primary:hover{background:var(--ocean-light)}
+.btn-secondary{background:#fff;color:var(--muted);border:1.5px solid var(--border)}.btn-secondary:hover{border-color:var(--navy);color:var(--navy)}
+.btn-danger{background:var(--red-bg);color:var(--red);border:1.5px solid #fca5a5}.btn-danger:hover{background:#fee2e2}
+.btn-green{background:var(--green-bg);color:var(--green);border:1.5px solid var(--green-border)}.btn-green:hover{background:#d1fae5}
+.btn-sm{padding:6px 11px;font-size:11px;border-radius:7px}
+.field{margin-bottom:12px}
+.field label{display:block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:5px}
+.field input,.field select{width:100%;border:1.5px solid var(--border);border-radius:9px;padding:8px 12px;font-size:13px;font-family:'Outfit',sans-serif;color:var(--ink);outline:none;background:#fff;transition:border-color .18s}
+.field input:focus,.field select:focus{border-color:var(--ocean)}
+.form-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px}
+.overlay{display:none;position:fixed;inset:0;background:rgba(20,30,45,.6);backdrop-filter:blur(4px);z-index:200;align-items:center;justify-content:center;padding:20px}
+.overlay.open{display:flex}
+.modal{background:#fff;border-radius:16px;width:100%;max-width:560px;box-shadow:var(--shadow-lg);animation:mIn .22s cubic-bezier(.34,1.56,.64,1);overflow:hidden;max-height:92vh;overflow-y:auto}
+@keyframes mIn{from{opacity:0;transform:scale(.94) translateY(8px)}to{opacity:1;transform:scale(1)}}
+.modal-head{background:var(--navy);padding:16px 20px 14px}
+.modal-title{font-family:'DM Serif Display',serif;font-size:19px;color:#fff}
+.modal-body{padding:18px 20px}
+.modal-foot{padding:0 20px 18px;display:flex;justify-content:flex-end;gap:8px}
+.filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;align-items:center}
+.filter-pill{padding:6px 13px;border-radius:20px;border:1.5px solid var(--border);background:#fff;color:var(--muted);font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;transition:all .18s}
+.filter-pill:hover{border-color:var(--ocean);color:var(--ocean)}
+.filter-pill.active{background:var(--navy);color:#fff;border-color:var(--navy)}
+#toast{position:fixed;bottom:18px;right:18px;z-index:999;background:var(--navy);color:#fff;border-radius:10px;padding:10px 16px;font-size:13px;font-weight:700;box-shadow:var(--shadow-lg);display:none;max-width:300px}
+#toast.show{display:block}
+#loadingOverlay{position:fixed;inset:0;background:rgba(240,245,250,.92);backdrop-filter:blur(6px);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px}
+.spinner{width:34px;height:34px;border:3px solid var(--border);border-top-color:var(--ocean);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px 24px;color:var(--muted);text-align:center;gap:10px}
+::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+@media(max-width:900px){.kpi-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:600px){.kpi-grid{grid-template-columns:1fr};.form-row{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<div id="loadingOverlay">
+  <div class="spinner"></div>
+  <div style="font-size:13px;color:var(--muted);font-weight:600">Loading Instructors…</div>
+</div>
+
+<div class="topbar">
+  <div style="display:flex;align-items:center;gap:12px">
+    <button class="tb-logo" onclick="window.location.href='/'">
+      <svg viewBox="0 0 197.4 91" xmlns="http://www.w3.org/2000/svg">
+        <path fill="#fff4d5" d="M61.7,51.9c-.4-9-5.5-16.5-9.7-24.1-2.9-4.8-5.3-9.8-9.3-13.9-3.9-4.4-6.5-9.8-10.8-13.9C19.2,16.6-.5,39.9,0,61.9c9.4-7.9,20.1-17.7,33.1-17.8,3,0,7.2,0,9.5,2.2,1.7,1.7,3.2,4.2,2,6.5-.3.5-1.9,2.7-2.3,2.9-12.9,7.4-20.3,18.6-16.5,33.7,3.1,1.3,8,1,11.1-.3,2.7-.3,5.1-1.3,7.5-2.5,8.7-2.9,14.5-11.1,15.5-20.1,1.2-4.7,2.1-9.7,1.8-14.6z"/>
+        <path fill="#fff4d5" d="M69.7,90.6l-.3-1.9c-.7-5.9-.5-11.9-.4-17.9,0-6.7-.3-13.7,0-20.3v-2.3c.5,0,1.1,0,1.7,0,3.3-.3,6.9-.3,10.2,0,.7,0,1.7,0,2.4,0,1.5.3,4,2.2,5,3.3,2.2,2.7,4.9,8.2,5.5,11.7,1.1,7.7-1.8,18.8-6.7,24.8-.4.5-1.4,1.9-1.7,2.1-.2,0-1.5.4-1.9.4-3.3.5-13.7,0-13.7,0z"/>
+      </svg>
+      <div class="tb-sub">Instructors</div>
+    </button>
+    <div style="font-size:11px;color:#7aabcc;background:rgba(255,255,255,.08);border-radius:6px;padding:3px 10px;border:1px solid rgba(255,255,255,.1)">All locations</div>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px">
+    <span style="font-size:12px;color:#c8d8e6;font-weight:600" id="userNameEl"></span>
+    <button class="ghost-btn" onclick="window.location.href='/'">← Hub</button>
+  </div>
+</div>
+
+<div class="container">
+  <div class="section-head">
+    <div>
+      <div class="section-title">Instructor Control</div>
+      <div class="section-sub">Lesson log, payroll and payment status across all locations</div>
+    </div>
+    <button class="btn btn-primary" onclick="openModal()">+ Log lesson</button>
+  </div>
+
+  <!-- KPIs -->
+  <div class="kpi-grid">
+    <div class="kpi-card"><div class="kpi-label">Total lessons</div><div class="kpi-value" id="kpiLessons">—</div></div>
+    <div class="kpi-card"><div class="kpi-label">Total cost</div><div class="kpi-value" id="kpiCost">—</div></div>
+    <div class="kpi-card"><div class="kpi-label">Unpaid</div><div class="kpi-value red" id="kpiUnpaid">—</div></div>
+    <div class="kpi-card"><div class="kpi-label">Instructors active</div><div class="kpi-value" id="kpiInstructors">—</div></div>
+  </div>
+
+  <!-- Filters -->
+  <div class="filters">
+    <select id="monthFilter" onchange="load()" style="border:1.5px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;font-family:'Outfit',sans-serif;background:#fff;color:var(--ink);outline:none;cursor:pointer"></select>
+    <select id="locationFilter" onchange="load()" style="border:1.5px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;font-family:'Outfit',sans-serif;background:#fff;color:var(--ink);outline:none;cursor:pointer">
+      <option value="">All locations</option>
+    </select>
+    <select id="nameFilter" onchange="load()" style="border:1.5px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;font-family:'Outfit',sans-serif;background:#fff;color:var(--ink);outline:none;cursor:pointer">
+      <option value="">All instructors</option>
+    </select>
+    <button class="filter-pill" id="unpaidOnlyBtn" onclick="toggleUnpaid()">Unpaid only</button>
+  </div>
+
+  <div id="tableWrap"></div>
+</div>
+
+<!-- LESSON MODAL -->
+<div class="overlay" id="lessonModal">
+  <div class="modal">
+    <div class="modal-head"><div class="modal-title" id="modalTitle">Log lesson</div></div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="field">
+          <label>Instructor</label>
+          <input type="text" id="iName" placeholder="Name" list="iNameList">
+          <datalist id="iNameList"></datalist>
+        </div>
+        <div class="field">
+          <label>Location</label>
+          <select id="iLocation"></select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="field">
+          <label>Date</label>
+          <input type="date" id="iDate">
+        </div>
+        <div class="field">
+          <label>Category</label>
+          <input type="text" id="iCategory" placeholder="Surf lesson, Yoga…" list="iCatList">
+          <datalist id="iCatList">
+            <option value="Surf lesson">
+            <option value="Yoga">
+            <option value="Meditation">
+            <option value="Surf guiding">
+            <option value="Bodyboard lesson">
+            <option value="SUP lesson">
+          </datalist>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="field"><label>No. of lessons</label><input type="number" id="iNum" min="1" step="1" value="1"></div>
+        <div class="field"><label>Price per lesson (LKR)</label><input type="number" id="iPrice" min="0" step="0.01" placeholder="0.00"></div>
+      </div>
+      <div class="form-row">
+        <div class="field">
+          <label>Payment type</label>
+          <select id="iPayment"><option value="Cash">Cash</option><option value="Bank Transfer">Bank Transfer</option><option value="Monthly">Monthly</option></select>
+        </div>
+        <div class="field"><label>Notes</label><input type="text" id="iNotes" placeholder="Optional"></div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveLesson()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+let SB = null;
+let editId = null;
+let unpaidOnly = false;
+let locations = [];
+
+function getSB(){
+  if(SB) return SB;
+  const cfg = window.__SUPABASE_CONFIG;
+  SB = window.supabase.createClient(cfg.url, cfg.anonKey);
+  return SB;
+}
+
+const lkr = n => new Intl.NumberFormat('en-LK',{style:'currency',currency:'LKR',maximumFractionDigits:0}).format(Number(n||0));
+const fmtDate = d => d ? new Date(d+'T00:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short'}) : '—';
+const isoToday = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
+const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+function toast(msg,dur=2400){const el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(()=>el.classList.remove('show'),dur);}
+function closeModal(){document.getElementById('lessonModal').classList.remove('open')}
+function openModal(data=null){
+  editId = data?.id||null;
+  document.getElementById('modalTitle').textContent = data ? 'Edit lesson' : 'Log lesson';
+  document.getElementById('iName').value = data?.instructor_name||'';
+  document.getElementById('iDate').value = data?.lesson_date||isoToday();
+  document.getElementById('iCategory').value = data?.lesson_category||'';
+  document.getElementById('iNum').value = data?.num_lessons||1;
+  document.getElementById('iPrice').value = data?.price_unit||'';
+  document.getElementById('iPayment').value = data?.payment_type||'Cash';
+  document.getElementById('iNotes').value = data?.notes||'';
+  // Set location
+  const locSel = document.getElementById('iLocation');
+  if(data?.location_id) locSel.value = data.location_id;
+  document.getElementById('lessonModal').classList.add('open');
+}
+document.getElementById('lessonModal').addEventListener('click',e=>{if(e.target===document.getElementById('lessonModal'))closeModal()});
+
+function buildMonthOptions(){
+  const sel = document.getElementById('monthFilter');
+  const now = new Date();
+  const months = [];
+  for(let i=0;i<18;i++){
+    const d = new Date(now.getFullYear(),now.getMonth()-i,1);
+    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    months.push({key, label: d.toLocaleDateString('en-GB',{month:'long',year:'numeric'})});
+  }
+  sel.innerHTML = months.map(m=>`<option value="${m.key}">${m.label}</option>`).join('');
+}
+
+function monthRange(k){
+  const [y,m]=k.split('-').map(Number);
+  return {start:`${y}-${String(m).padStart(2,'0')}-01`,end:new Date(y,m,0).toISOString().slice(0,10)};
+}
+
+function toggleUnpaid(){
+  unpaidOnly=!unpaidOnly;
+  const btn=document.getElementById('unpaidOnlyBtn');
+  btn.classList.toggle('active',unpaidOnly);
+  load();
+}
+
+async function load(){
+  try{
+    const sb=getSB();
+    const monthKey = document.getElementById('monthFilter').value;
+    const {start,end} = monthRange(monthKey);
+    const locationId = document.getElementById('locationFilter').value;
+    const instrName = document.getElementById('nameFilter').value;
+
+    let q = sb.from('instructor_lessons').select('*, locations(name)').gte('lesson_date',start).lte('lesson_date',end).order('lesson_date',{ascending:false}).order('instructor_name',{ascending:true});
+    if(locationId) q = q.eq('location_id',locationId);
+    if(instrName) q = q.eq('instructor_name',instrName);
+    if(unpaidOnly) q = q.eq('paid',false);
+
+    const {data,error} = await q;
+    if(error) throw error;
+    const lessons = data||[];
+
+    // Refresh name filter dropdown
+    const {data:allNames} = await sb.from('instructor_lessons').select('instructor_name').order('instructor_name',{ascending:true});
+    const names = [...new Set((allNames||[]).map(r=>r.instructor_name))].sort();
+    const nameFilter = document.getElementById('nameFilter');
+    const curName = nameFilter.value;
+    nameFilter.innerHTML = `<option value="">All instructors</option>`+names.map(n=>`<option value="${esc(n)}" ${n===curName?'selected':''}>${esc(n)}</option>`).join('');
+    document.getElementById('iNameList').innerHTML = names.map(n=>`<option value="${esc(n)}">`).join('');
+
+    // KPIs
+    const totalLessons = lessons.reduce((s,l)=>s+Number(l.num_lessons||0),0);
+    const totalCost = lessons.reduce((s,l)=>s+Number(l.total||0),0);
+    const unpaid = lessons.filter(l=>!l.paid).reduce((s,l)=>s+Number(l.total||0),0);
+    const activeInstructors = new Set(lessons.map(l=>l.instructor_name)).size;
+    document.getElementById('kpiLessons').textContent = totalLessons;
+    document.getElementById('kpiCost').textContent = lkr(totalCost);
+    document.getElementById('kpiUnpaid').textContent = lkr(unpaid);
+    document.getElementById('kpiInstructors').textContent = activeInstructors;
+
+    // Table
+    const wrap = document.getElementById('tableWrap');
+    if(!lessons.length){
+      wrap.innerHTML=`<div class="empty-state"><div style="font-size:36px;opacity:.25">🏄</div><div>No lessons for this period.</div><button class="btn btn-primary" onclick="openModal()" style="margin-top:12px">+ Log lesson</button></div>`;
+      return;
+    }
+    const rows = lessons.map(l=>`<tr>
+      <td class="mono" style="font-size:11px;white-space:nowrap">${fmtDate(l.lesson_date)}</td>
+      <td style="font-weight:700">${esc(l.instructor_name)}</td>
+      <td style="font-size:12px;color:var(--muted)">${esc(l.locations?.name||'')}</td>
+      <td>${esc(l.lesson_category)}</td>
+      <td style="text-align:center">${l.num_lessons}</td>
+      <td class="mono">${lkr(l.price_unit)}</td>
+      <td class="mono" style="font-weight:700">${lkr(l.total)}</td>
+      <td><span class="badge muted">${esc(l.payment_type||'')}</span></td>
+      <td>
+        <button class="btn btn-sm ${l.paid?'btn-green':'btn-secondary'}" onclick="togglePaid('${esc(l.id)}',${l.paid})">${l.paid?'Paid':'Mark paid'}</button>
+      </td>
+      <td style="text-align:right;white-space:nowrap">
+        <button class="btn btn-secondary btn-sm" onclick="editLesson('${esc(l.id)}')">Edit</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteLesson('${esc(l.id)}')">Del</button>
+      </td>
+    </tr>`).join('');
+    wrap.innerHTML=`<div style="overflow-x:auto"><table class="data-table" style="min-width:860px"><thead><tr><th>Date</th><th>Instructor</th><th>Location</th><th>Category</th><th style="text-align:center">Lessons</th><th>Unit price</th><th>Total</th><th>Payment</th><th></th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  } catch(e){
+    console.error(e);
+    toast('Error: '+e.message);
+  }
+}
+
+async function saveLesson(){
+  try{
+    const instructor_name = document.getElementById('iName').value.trim();
+    const location_id = document.getElementById('iLocation').value;
+    const lesson_date = document.getElementById('iDate').value;
+    const lesson_category = document.getElementById('iCategory').value.trim();
+    const num_lessons = parseInt(document.getElementById('iNum').value)||1;
+    const price_unit = parseFloat(document.getElementById('iPrice').value)||0;
+    const payment_type = document.getElementById('iPayment').value;
+    const notes = document.getElementById('iNotes').value.trim()||null;
+    if(!instructor_name||!lesson_date||!lesson_category||!location_id){ toast('All fields required'); return; }
+    const payload = {location_id,instructor_name,lesson_date,lesson_category,num_lessons,price_unit,payment_type,notes};
+    const sb=getSB();
+    if(editId){
+      const {error}=await sb.from('instructor_lessons').update(payload).eq('id',editId);
+      if(error) throw error;
+      toast('Lesson updated');
+    } else {
+      const {error}=await sb.from('instructor_lessons').insert(payload);
+      if(error) throw error;
+      toast('Lesson saved');
+    }
+    closeModal();
+    load();
+  } catch(e){ toast('Error: '+e.message); }
+}
+
+async function editLesson(id){
+  try{
+    const {data,error}=await getSB().from('instructor_lessons').select('*').eq('id',id).maybeSingle();
+    if(error||!data) throw new Error('Could not load lesson');
+    openModal(data);
+  } catch(e){ toast('Error: '+e.message); }
+}
+
+async function deleteLesson(id){
+  if(!confirm('Delete this lesson?')) return;
+  try{
+    const {error}=await getSB().from('instructor_lessons').delete().eq('id',id);
+    if(error) throw error;
+    toast('Deleted');
+    load();
+  } catch(e){ toast('Error: '+e.message); }
+}
+
+async function togglePaid(id,currentlyPaid){
+  try{
+    const {error}=await getSB().from('instructor_lessons').update({paid:!currentlyPaid}).eq('id',id);
+    if(error) throw error;
+    toast(!currentlyPaid?'Marked as paid':'Marked as unpaid');
+    load();
+  } catch(e){ toast('Error: '+e.message); }
+}
+
+async function boot(){
+  try{
+    const sb=getSB();
+    const {data:{session}}=await sb.auth.getSession();
+    if(!session?.user){ window.location.href='/'; return; }
+    document.getElementById('userNameEl').textContent=session.user.email?.split('@')[0]||'';
+
+    buildMonthOptions();
+
+    // Load locations
+    const {data:locs}=await sb.from('locations').select('id,name,slug').eq('active',true).order('name',{ascending:true});
+    locations = locs||[];
+    const locSel = document.getElementById('iLocation');
+    locSel.innerHTML = locations.map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('');
+    const filterLoc = document.getElementById('locationFilter');
+    filterLoc.innerHTML = `<option value="">All locations</option>`+locations.map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('');
+
+    await load();
+  } catch(e){
+    toast('Error: '+e.message);
+  } finally {
+    document.getElementById('loadingOverlay').style.display='none';
+  }
+}
+boot();
+</script>
+</body>
+</html>
