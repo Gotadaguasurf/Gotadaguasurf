@@ -1,0 +1,2303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gota Dagua — Camp Hub v2</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="/supabase-config.js"></script>
+  <style>
+    :root{
+      --navy:#28394b;--ocean:#1e6fa8;--ocean-light:#3b9dd4;--foam:#e8f4fd;--sand:#f5f0e8;
+      --ink:#0d1b2a;--muted:#6b8099;--border:#d4e3f0;--bg:#f0f5fa;--card:#ffffff;
+      --green:#1a7a40;--green-bg:#eafaf1;--green-border:#a3e6c0;
+      --red:#b91c1c;--red-bg:#fdecea;--red-border:#f0a0a0;
+      --amber:#9a6f00;--amber-bg:#fef9e7;--amber-border:#f0d060;
+      --radius:14px;--shadow:0 10px 30px rgba(40,57,75,.08);
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--ink);min-height:100vh}
+    nav{height:64px;background:var(--navy);display:flex;align-items:center;justify-content:space-between;padding:0 24px;position:sticky;top:0;z-index:20}
+    .nav-left{display:flex;align-items:center;gap:18px}
+    .brand{display:flex;align-items:center;gap:14px;color:#fff}
+    .brand-mark{font-family:'DM Serif Display',serif;font-size:22px;line-height:1}
+    .brand-sub{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#7aabcc;font-weight:700}
+    .nav-tabs{display:flex;gap:6px}
+    .nav-tab{padding:8px 14px;border-radius:10px;border:none;background:transparent;color:#7aabcc;font-weight:700;font-size:12px;cursor:pointer}
+    .nav-tab.active{background:var(--ocean);color:#fff}
+    .nav-action{display:inline-flex;align-items:center;gap:8px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.08);color:#fff;border-radius:999px;padding:9px 16px;font-weight:700;font-size:12px}
+    main{max-width:1320px;margin:0 auto;padding:24px}
+    .hero{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;margin-bottom:18px}
+    .hero h1{font-family:'DM Serif Display',serif;font-size:38px;color:var(--navy);line-height:1}
+    .hero p{margin-top:6px;color:var(--muted);font-size:14px;max-width:760px}
+    .status-pill{display:inline-flex;align-items:center;gap:8px;padding:10px 14px;border-radius:999px;border:1px solid var(--border);background:#fff;color:var(--navy);font-size:12px;font-weight:700}
+    .dot{width:8px;height:8px;border-radius:50%;background:var(--green)}
+    .kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:16px}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow)}
+    .kpi{padding:18px}
+    .kpi-label{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700;margin-bottom:6px}
+    .kpi-value{font-family:'DM Serif Display',serif;font-size:32px;line-height:1}
+    .kpi-value.green{color:var(--green)}
+    .kpi-value.red{color:var(--red)}
+    .kpi-value.amber{color:var(--amber)}
+    .kpi-sub{margin-top:6px;color:var(--muted);font-size:12px}
+    .toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+    .toolbar-left{display:flex;gap:8px;flex-wrap:wrap}
+    .chip{display:inline-flex;align-items:center;padding:9px 14px;border-radius:12px;border:1px solid var(--border);background:#fff;color:var(--navy);font-size:12px;font-weight:700}
+    .chip.active{background:var(--navy);color:#fff;border-color:var(--navy)}
+    .section-head{display:flex;justify-content:space-between;align-items:flex-end;gap:18px;margin:22px 0 14px}
+    .section-head h2{font-family:'DM Serif Display',serif;font-size:30px;color:var(--navy);line-height:1}
+    .section-head p{color:var(--muted);font-size:13px;max-width:760px}
+    .overview-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:18px}
+    .overview-card{padding:18px}
+    .overview-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:14px}
+    .overview-name{font-family:'DM Serif Display',serif;font-size:28px;color:var(--navy);line-height:1}
+    .overview-net{display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;border:1px solid var(--border);font-size:12px;font-weight:700;background:#fff}
+    .overview-net.green{color:var(--green);border-color:var(--green-border);background:var(--green-bg)}
+    .overview-net.red{color:var(--red);border-color:var(--red-border);background:var(--red-bg)}
+    .overview-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+    .overview-stat{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:12px}
+    .overview-stat-label{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700;margin-bottom:6px}
+    .overview-stat-value{font-family:'DM Serif Display',serif;font-size:24px;line-height:1}
+    .overview-stat-value.green{color:var(--green)}
+    .overview-stat-value.red{color:var(--red)}
+    .overview-stat-value.amber{color:var(--amber)}
+    .overview-empty{padding:32px 18px;text-align:center;color:var(--muted);font-size:14px}
+    .ledger-layout{display:grid;grid-template-columns:minmax(320px,420px) 1fr;gap:16px}
+    .panel{padding:18px}
+    .panel h2{font-family:'DM Serif Display',serif;font-size:30px;color:var(--navy);line-height:1}
+    .panel-sub{margin-top:6px;color:var(--muted);font-size:13px}
+    .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px}
+    .field.full{grid-column:1/-1}
+    .field label{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700;margin-bottom:6px}
+    .field input,.field select,.field textarea{
+      width:100%;border:1.5px solid var(--border);border-radius:12px;padding:12px 14px;font-family:'Outfit',sans-serif;font-size:14px;color:var(--ink);background:#fff;outline:none
+    }
+    .field textarea{min-height:90px;resize:vertical}
+    .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--ocean);box-shadow:0 0 0 4px rgba(30,111,168,.1)}
+    .actions{display:flex;gap:10px;justify-content:flex-end;margin-top:16px}
+    .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:none;border-radius:12px;padding:12px 16px;font-weight:700;font-size:13px;font-family:'Outfit',sans-serif;cursor:pointer}
+    .btn.primary{background:var(--ocean);color:#fff}
+    .btn.secondary{background:#fff;color:var(--muted);border:1.5px solid var(--border)}
+    .btn.danger{background:var(--red-bg);color:var(--red);border:1.5px solid var(--red-border)}
+    .table-wrap{overflow:auto;margin-top:18px}
+    table{width:100%;border-collapse:collapse}
+    thead{background:var(--navy)}
+    th{padding:11px 12px;font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:#7aabcc;text-align:left}
+    td{padding:12px;border-bottom:1px solid var(--border);font-size:13px;vertical-align:middle}
+    tbody tr:hover{background:var(--foam)}
+    td.amount{text-align:right;font-family:'DM Mono',monospace;font-weight:700}
+    .badge{display:inline-flex;align-items:center;padding:3px 10px;border-radius:999px;font-size:10px;font-weight:700}
+    .badge.expense{background:var(--red-bg);color:var(--red);border:1px solid var(--red-border)}
+    .badge.revenue{background:var(--green-bg);color:var(--green);border:1px solid var(--green-border)}
+    .badge.money_sent{background:var(--amber-bg);color:var(--amber);border:1px solid var(--amber-border)}
+    .empty{padding:34px 18px;text-align:center;color:var(--muted);font-size:14px}
+    .toast{position:fixed;right:18px;bottom:18px;background:var(--navy);color:#fff;padding:14px 16px;border-radius:14px;box-shadow:var(--shadow);font-size:13px;opacity:0;transform:translateY(10px);transition:all .2s;pointer-events:none;max-width:320px}
+    .toast.show{opacity:1;transform:translateY(0)}
+    .overlay{position:fixed;inset:0;background:rgba(17,31,45,.48);display:none;align-items:center;justify-content:center;padding:20px;z-index:40}
+    .overlay.show{display:flex}
+    .modal{width:min(1080px,100%);max-height:90vh;overflow:auto;background:#fff;border:1px solid var(--border);border-radius:24px;box-shadow:var(--shadow)}
+    .modal-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding:22px 24px;border-bottom:1px solid var(--border)}
+    .modal-title{font-family:'Cormorant Garamond',serif;font-size:38px;line-height:1;color:var(--navy)}
+    .modal-sub{margin-top:8px;color:var(--muted);font-size:14px;line-height:1.5}
+    .modal-body{padding:22px 24px}
+    .monthly-shell{display:grid;gap:18px}
+    .monthly-topbar{display:flex;justify-content:space-between;align-items:end;gap:16px;flex-wrap:wrap}
+    .monthly-target-note{color:var(--muted);font-size:12px}
+    .monthly-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+    .monthly-panel{padding:18px}
+    .monthly-list{display:flex;flex-direction:column;gap:12px;margin-top:14px}
+    .monthly-row{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;padding:14px;border:1px solid var(--border);border-radius:16px;background:#fff}
+    .monthly-row-name{font-weight:700;color:var(--navy);font-size:15px}
+    .monthly-row-sub{margin-top:4px;color:var(--muted);font-size:12px;line-height:1.5}
+    .monthly-row-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+    .monthly-empty{padding:16px;border:1px dashed var(--border);border-radius:14px;color:var(--muted);font-size:13px;background:#fbfdff}
+    .muted-module{padding:18px;border:1px dashed var(--border);border-radius:14px;background:rgba(255,255,255,.65);color:var(--muted);font-size:13px}
+    .page{display:none}
+    .page.active{display:block}
+    .camp-layout{display:grid;grid-template-columns:260px 1fr 310px;gap:16px;align-items:start}
+    .camp-col{padding:18px}
+    .col-title{font-family:'DM Serif Display',serif;font-size:28px;color:var(--navy);line-height:1}
+    .col-sub{margin-top:6px;color:var(--muted);font-size:13px}
+    .stack{display:flex;flex-direction:column;gap:10px;margin-top:16px}
+    .guest-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px;border:1px solid var(--border);border-radius:12px;background:#fff;cursor:pointer}
+    .guest-row.active{border-color:var(--ocean);background:var(--foam)}
+    .guest-name{font-weight:700;color:var(--navy);font-size:14px}
+    .guest-meta{margin-top:2px;color:var(--muted);font-size:11px}
+    .guest-total{font-family:'DM Mono',monospace;font-size:12px;color:var(--ink)}
+    .menu-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
+    .menu-tab{padding:9px 12px;border-radius:12px;border:1px solid var(--border);background:#fff;color:var(--navy);font-size:12px;font-weight:700;cursor:pointer}
+    .menu-tab.active{background:var(--navy);color:#fff;border-color:var(--navy)}
+    .item-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-top:16px}
+    .item-card{border:1px solid var(--border);border-radius:12px;background:#fff;padding:14px;cursor:pointer}
+    .item-card:hover{border-color:var(--ocean);box-shadow:0 6px 20px rgba(30,111,168,.08)}
+    .item-card.disabled,.item-card:disabled{opacity:.55;cursor:not-allowed;box-shadow:none}
+    .item-name{font-weight:700;color:var(--navy);font-size:14px;line-height:1.3}
+    .item-price{margin-top:8px;font-family:'DM Mono',monospace;font-size:13px;color:var(--ocean)}
+    .item-meta{margin-top:6px;color:var(--muted);font-size:11px}
+    .tab-items{display:flex;flex-direction:column;gap:8px;margin-top:16px}
+    .tab-item{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:12px;border:1px solid var(--border);border-radius:12px;background:#fff}
+    .tab-item-name{font-weight:700;color:var(--navy);font-size:14px}
+    .tab-item-meta{margin-top:2px;color:var(--muted);font-size:11px}
+    .tab-item-price{font-family:'DM Mono',monospace;font-size:12px;color:var(--ink)}
+    .camp-secondary-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:18px}
+    .camp-summary-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:14px}
+    .camp-summary-stat{padding:14px;border:1px solid var(--border);border-radius:14px;background:#fff}
+    .camp-summary-label{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#7a8ea6;font-weight:700}
+    .camp-summary-value{margin-top:8px;font-family:'DM Serif Display',serif;font-size:26px;line-height:1;color:var(--navy)}
+    .seller-list{display:flex;flex-direction:column;gap:10px;margin-top:14px}
+    .seller-row{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;padding:12px;border:1px solid var(--border);border-radius:14px;background:#fff}
+    .seller-name{font-weight:700;color:var(--navy);font-size:14px}
+    .seller-sub{margin-top:2px;color:var(--muted);font-size:11px}
+    .history-list{display:flex;flex-direction:column;gap:12px;margin-top:18px}
+    .history-card{padding:18px}
+    .history-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px}
+    .history-title{font-family:'DM Serif Display',serif;font-size:26px;color:var(--navy);line-height:1}
+    .history-sub{margin-top:5px;color:var(--muted);font-size:12px}
+    .history-total{font-family:'DM Serif Display',serif;font-size:28px;color:var(--green);line-height:1}
+    .history-head-actions{display:flex;align-items:center;gap:10px}
+    .history-guest{margin-top:14px;padding-top:14px;border-top:1px solid var(--border)}
+    .history-guest-head{display:flex;justify-content:space-between;gap:14px;align-items:flex-start}
+    .history-guest-name{font-weight:700;color:var(--navy);font-size:14px}
+    .history-guest-sub{margin-top:2px;color:var(--muted);font-size:11px}
+    .history-item-line{display:flex;justify-content:space-between;gap:14px;padding:6px 0;font-size:12px;border-bottom:1px solid rgba(40,57,75,.06)}
+    .history-item-line:last-child{border-bottom:none}
+    .camp-empty{padding:36px 18px;text-align:center;color:var(--muted);font-size:14px}
+    .weekly-wrap{display:grid;gap:16px}
+    .weekly-card{padding:18px}
+    .weekly-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
+    .weekly-title{font-family:'DM Serif Display',serif;font-size:30px;color:var(--navy);line-height:1}
+    .weekly-sub{margin-top:6px;color:var(--muted);font-size:12px}
+    .weekly-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:16px}
+    .weekly-stat{padding:14px;border:1px solid var(--border);border-radius:14px;background:#fff}
+    .weekly-stat-label{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#7a8ea6;font-weight:700}
+    .weekly-stat-value{margin-top:8px;font-family:'DM Serif Display',serif;font-size:28px;line-height:1;color:var(--navy)}
+    .weekly-stat-value.green{color:var(--green)}
+    .weekly-stat-value.red{color:var(--red)}
+    .weekly-stat-value.amber{color:var(--amber)}
+    @media (max-width:1100px){
+      .kpis{grid-template-columns:repeat(2,1fr)}
+      .overview-grid{grid-template-columns:1fr 1fr}
+      .ledger-layout{grid-template-columns:1fr}
+      .camp-layout{grid-template-columns:1fr}
+      .camp-secondary-grid{grid-template-columns:1fr}
+      .camp-summary-grid{grid-template-columns:repeat(2,1fr)}
+      .weekly-grid{grid-template-columns:repeat(2,1fr)}
+    }
+    @media (max-width:720px){
+      main{padding:18px}
+      .hero{flex-direction:column;align-items:flex-start}
+      .kpis{grid-template-columns:1fr}
+      .overview-grid{grid-template-columns:1fr}
+      .overview-stats{grid-template-columns:1fr}
+      .form-grid{grid-template-columns:1fr}
+      .camp-summary-grid{grid-template-columns:1fr}
+      .monthly-grid{grid-template-columns:1fr}
+      .weekly-grid{grid-template-columns:1fr}
+    }
+  </style>
+</head>
+<body>
+  <nav>
+    <div class="nav-left">
+      <div class="brand">
+        <div class="brand-mark">GOTA<br>DAGUA</div>
+        <div class="brand-sub">Camp Hub v2</div>
+      </div>
+      <div class="nav-tabs">
+        <button class="nav-tab active" data-page="overview">Overview</button>
+        <button class="nav-tab" data-page="ledger">Operations Ledger</button>
+        <button class="nav-tab" data-page="camp">Camp Tab</button>
+        <button class="nav-tab" data-page="weekly">Weekly P&amp;L</button>
+      </div>
+    </div>
+    <button class="nav-action" id="logoutBtn">Log out</button>
+  </nav>
+
+  <main>
+    <section class="page active" id="pageOverview">
+    <section class="hero">
+      <div>
+        <h1>Sri Lanka Hub</h1>
+        <p>This is the new Camp Hub v2 foundation. It is Supabase-first, server-driven, and designed to stay live and consistent across computers.</p>
+      </div>
+      <div class="status-pill"><span class="dot"></span><span id="realtimeStatus">Realtime connecting...</span></div>
+    </section>
+
+    <section class="kpis">
+      <article class="card kpi">
+        <div class="kpi-label">Entries</div>
+        <div class="kpi-value" id="kpiEntries">0</div>
+        <div class="kpi-sub">Visible rows</div>
+      </article>
+      <article class="card kpi">
+        <div class="kpi-label">Camp Spend</div>
+        <div class="kpi-value red" id="kpiSpend">LKR 0</div>
+        <div class="kpi-sub">Expense rows</div>
+      </article>
+      <article class="card kpi">
+        <div class="kpi-label">Revenue</div>
+        <div class="kpi-value green" id="kpiRevenue">LKR 0</div>
+        <div class="kpi-sub">Revenue rows</div>
+      </article>
+      <article class="card kpi">
+        <div class="kpi-label">Money Sent</div>
+        <div class="kpi-value amber" id="kpiSent">LKR 0</div>
+        <div class="kpi-sub">Cash sent entries</div>
+      </article>
+      <article class="card kpi">
+        <div class="kpi-label">Cash Left</div>
+        <div class="kpi-value" id="kpiCashLeft">LKR 0</div>
+        <div class="kpi-sub">Revenue - spend - money sent</div>
+      </article>
+    </section>
+
+    <section class="toolbar">
+      <div class="toolbar-left">
+        <button class="chip active" data-filter="all">All</button>
+        <button class="chip" data-filter="expense">Expenses</button>
+        <button class="chip" data-filter="revenue">Revenue</button>
+        <button class="chip" data-filter="money_sent">Money sent</button>
+      </div>
+      <div class="chip" id="locationNameChip">Loading location...</div>
+    </section>
+
+    <section class="section-head">
+      <div>
+        <h2>Overview</h2>
+        <p>These cards are derived directly from the online ledger, so what you save in the ledger is what you see here.</p>
+      </div>
+    </section>
+
+    <section class="overview-grid" id="overviewGrid">
+      <div class="card overview-empty">Loading overview...</div>
+    </section>
+
+    </section>
+
+    <section class="page" id="pageLedger">
+    <section class="hero">
+      <div>
+        <h1>Operations Ledger</h1>
+        <p>Every entry is written to Supabase first. No local storage, no fake save.</p>
+      </div>
+      <div class="chip" id="locationNameChip">Loading location...</div>
+    </section>
+
+    <section class="ledger-layout">
+      <article class="card panel">
+        <h2>Quick Add</h2>
+        <div class="panel-sub">Every entry is written to Supabase first. No local storage, no fake save.</div>
+        <form id="entryForm">
+          <div class="form-grid">
+            <div class="field">
+              <label for="entryType">Type</label>
+              <select id="entryType" required>
+                <option value="expense">Expense</option>
+                <option value="revenue">Revenue</option>
+                <option value="money_sent">Money sent</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="entryDate">Date</label>
+              <input id="entryDate" type="date" required />
+            </div>
+            <div class="field">
+              <label for="entryCategory">Category</label>
+              <select id="entryCategory" required>
+                <option>Food</option>
+                <option>Setup</option>
+                <option>Services</option>
+                <option>Tours</option>
+                <option>Cleaning Supplies</option>
+                <option>Bar</option>
+                <option>Transport</option>
+                <option>Salary</option>
+                <option>Rent</option>
+                <option>Special</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="entryAmount">Amount (LKR)</label>
+              <input id="entryAmount" type="number" min="0" step="0.01" placeholder="0.00" required />
+            </div>
+            <div class="field">
+              <label for="entryPaymentMethod">Paid via</label>
+              <select id="entryPaymentMethod">
+                <option>Cash</option>
+                <option>Bank Transfer</option>
+                <option>Card</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="entryLinkedItem">Linked item</label>
+              <input id="entryLinkedItem" type="text" placeholder="Optional item or tour name" />
+            </div>
+            <div class="field full">
+              <label for="entryDescription">Description</label>
+              <textarea id="entryDescription" placeholder="What is this for?"></textarea>
+            </div>
+          </div>
+          <div class="actions">
+            <button class="btn secondary" type="button" id="resetFormBtn">Clear</button>
+            <button class="btn primary" type="submit" id="saveEntryBtn">Save entry</button>
+          </div>
+        </form>
+      </article>
+
+      <article class="card panel">
+        <h2>Modules</h2>
+        <div class="panel-sub">We are rebuilding one block at a time, keeping the visual language but replacing the old state architecture.</div>
+        <div class="form-grid" style="margin-top:16px">
+          <div class="muted-module">Overview v2 comes next, derived from the ledger and other Supabase tables only.</div>
+          <div class="muted-module">Camp Tab v2 will be rebuilt with weeks, guests, items, and close-week flow all online first.</div>
+          <div class="muted-module">Weekly P&amp;L v2 will read from ledger and closed week data, without duplicated local mirrors.</div>
+          <div class="muted-module">Monthly Expenses v2 will write directly into the ledger with target-month support.</div>
+        </div>
+        <div class="actions" style="margin-top:16px">
+          <button class="btn primary" type="button" id="openMonthlyExpensesBtn">Monthly Expenses</button>
+        </div>
+      </article>
+    </section>
+
+    <section class="card panel table-wrap" style="margin-top:16px">
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Type</th>
+            <th>Category</th>
+            <th>Paid via</th>
+            <th>Linked item</th>
+            <th>Description</th>
+            <th class="amount">Local</th>
+            <th class="amount">EUR</th>
+            <th style="width:88px;text-align:center">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="ledgerTableBody">
+          <tr><td colspan="9" class="empty">Loading ledger...</td></tr>
+        </tbody>
+      </table>
+    </section>
+    </section>
+
+    <section class="page" id="pageCamp">
+      <section class="hero">
+        <div>
+          <h1>Camp Tab</h1>
+          <p>This is the new online-first Camp Tab core: open week, guests, items, and paid status, all driven from Supabase.</p>
+        </div>
+      </section>
+
+      <section class="camp-layout">
+        <article class="card camp-col">
+          <div class="col-title">Guests</div>
+          <div class="col-sub" id="campWeekLabel">Loading active week...</div>
+          <form id="newWeekForm" class="stack">
+            <div class="field">
+              <label for="weekStartDate">Week start</label>
+              <input id="weekStartDate" type="date" />
+            </div>
+            <button class="btn primary" type="submit">Create week</button>
+          </form>
+          <form id="guestForm" class="stack" style="display:none">
+            <div class="field">
+              <label for="guestName">Guest name</label>
+              <input id="guestName" type="text" placeholder="Add guest" />
+            </div>
+            <button class="btn primary" type="submit">Add guest</button>
+          </form>
+          <div class="stack" id="guestList"></div>
+        </article>
+
+        <article class="card camp-col">
+          <div class="col-title">Charge</div>
+          <div class="col-sub">Select a guest, then add items from the live location menu.</div>
+          <div class="menu-tabs" id="menuTabs"></div>
+          <div class="item-grid" id="menuGrid"></div>
+        </article>
+
+        <article class="card camp-col">
+          <div class="col-title">Current tab</div>
+          <div class="col-sub" id="selectedGuestLabel">No guest selected</div>
+          <div class="tab-items" id="selectedGuestItems"></div>
+          <div class="actions" style="margin-top:18px">
+            <button class="btn primary" type="button" id="closeWeekBtn">Close week</button>
+            <button class="btn secondary" type="button" id="markPaidBtn">Mark paid</button>
+          </div>
+        </article>
+      </section>
+
+      <section class="camp-secondary-grid">
+        <article class="card panel">
+          <h2>This week</h2>
+          <div class="panel-sub">Live summary of the current open week, based only on online guests and items.</div>
+          <div class="camp-summary-grid" id="campWeekSummary">
+            <div class="camp-summary-stat">
+              <div class="camp-summary-label">Guests</div>
+              <div class="camp-summary-value">0</div>
+            </div>
+          </div>
+        </article>
+
+        <article class="card panel">
+          <h2>Top sellers</h2>
+          <div class="panel-sub">Best-selling items in the current open week.</div>
+          <div class="seller-list" id="topSellersList">
+            <div class="monthly-empty">No sales yet in this week.</div>
+          </div>
+        </article>
+      </section>
+
+      <section class="section-head" style="margin-top:22px">
+        <div>
+          <h2>History</h2>
+          <p>Closed weeks are loaded online from Supabase. The history is not a browser-only copy.</p>
+        </div>
+      </section>
+
+      <section class="history-list" id="historyList">
+        <div class="card overview-empty">Loading history...</div>
+      </section>
+    </section>
+
+    <section class="page" id="pageWeekly">
+      <section class="hero">
+        <div>
+          <h1>Weekly P&amp;L</h1>
+          <p>Each closed week reads revenue and costs straight from Supabase, using the week rows and ledger rows already online.</p>
+        </div>
+      </section>
+
+      <section class="weekly-wrap" id="weeklyPnlList">
+        <div class="card overview-empty">Loading weekly P&amp;L...</div>
+      </section>
+    </section>
+  </main>
+
+  <div class="toast" id="toast"></div>
+
+  <div class="overlay" id="monthlyExpensesOverlay">
+    <div class="modal">
+      <div class="modal-head">
+        <div>
+          <div class="modal-title">Monthly Expenses</div>
+          <div class="modal-sub">Staff salaries, international salaries, and fixed monthly costs. Everything posts online first into the ledger for the month you choose.</div>
+        </div>
+        <button class="btn secondary" type="button" id="closeMonthlyExpensesBtn">Close</button>
+      </div>
+      <div class="modal-body">
+        <div class="monthly-shell">
+          <div class="monthly-topbar">
+            <div class="field" style="min-width:220px">
+              <label for="monthlyTargetMonth">Target month</label>
+              <input id="monthlyTargetMonth" type="month" />
+            </div>
+            <div class="monthly-target-note" id="monthlyTargetHint">Entries will use that month's last day.</div>
+            <button class="btn primary" type="button" id="monthlyAddAllBtn">Add all now</button>
+          </div>
+
+          <div class="monthly-grid">
+            <article class="card monthly-panel">
+              <h2>Local salaries</h2>
+              <div class="panel-sub">Keep Sri Lanka salaries in LKR. Seasonal salaries use the mode you choose here.</div>
+              <div class="form-grid" style="margin-top:14px">
+                <div class="field">
+                  <label for="salaryMonthMode">Salary month mode</label>
+                  <select id="salaryMonthMode">
+                    <option value="season">Season</option>
+                    <option value="off_season">Off-season</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="salaryName">Name</label>
+                  <input id="salaryName" type="text" placeholder="Staff member" />
+                </div>
+                <div class="field">
+                  <label for="salaryType">Type</label>
+                  <select id="salaryType">
+                    <option value="seasonal">Seasonal</option>
+                    <option value="fixed">Fixed</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="salarySeasonAmount">Season (LKR)</label>
+                  <input id="salarySeasonAmount" type="number" min="0" step="0.01" placeholder="0" />
+                </div>
+                <div class="field">
+                  <label for="salaryOffSeasonAmount">Off-season (LKR)</label>
+                  <input id="salaryOffSeasonAmount" type="number" min="0" step="0.01" placeholder="0" />
+                </div>
+                <div class="field">
+                  <label for="salaryFixedAmount">Fixed monthly (LKR)</label>
+                  <input id="salaryFixedAmount" type="number" min="0" step="0.01" placeholder="0" />
+                </div>
+                <div class="field">
+                  <label for="salaryPaymentMethod">Paid via</label>
+                  <select id="salaryPaymentMethod">
+                    <option>Bank Transfer</option>
+                    <option>Cash</option>
+                    <option>Card</option>
+                  </select>
+                </div>
+              </div>
+              <div class="actions" style="margin-top:14px">
+                <button class="btn secondary" type="button" id="clearSalaryBtn">Clear</button>
+                <button class="btn primary" type="button" id="saveSalaryBtn">Save salary</button>
+              </div>
+              <div class="monthly-list" id="salaryProfilesList"></div>
+            </article>
+
+            <article class="card monthly-panel">
+              <h2>International salaries</h2>
+              <div class="panel-sub">Keep EUR salaries here. When posted, they convert to real LKR using that month's day rate.</div>
+              <div class="form-grid" style="margin-top:14px">
+                <div class="field">
+                  <label for="internationalSalaryName">Name</label>
+                  <input id="internationalSalaryName" type="text" placeholder="Team member" />
+                </div>
+                <div class="field">
+                  <label for="internationalSalaryAmountEur">Monthly (EUR)</label>
+                  <input id="internationalSalaryAmountEur" type="number" min="0" step="0.01" placeholder="0" />
+                </div>
+              </div>
+              <div class="actions" style="margin-top:14px">
+                <button class="btn secondary" type="button" id="clearInternationalSalaryBtn">Clear</button>
+                <button class="btn primary" type="button" id="saveInternationalSalaryBtn">Save international salary</button>
+              </div>
+              <div class="monthly-list" id="internationalSalaryProfilesList"></div>
+            </article>
+
+            <article class="card monthly-panel" style="grid-column:1 / -1">
+              <h2>Fixed monthly costs</h2>
+              <div class="panel-sub">Keep rents and recurring costs here. Post them manually into any target month, without duplicating the same month twice.</div>
+              <div class="form-grid" style="margin-top:14px">
+                <div class="field">
+                  <label for="fixedCostName">Name</label>
+                  <input id="fixedCostName" type="text" placeholder="Rent / utility / service" />
+                </div>
+                <div class="field">
+                  <label for="fixedCostCategory">Category</label>
+                  <select id="fixedCostCategory">
+                    <option>Rent</option>
+                    <option>Services</option>
+                    <option>Transport</option>
+                    <option>Food</option>
+                    <option>Setup</option>
+                    <option>Cleaning Supplies</option>
+                    <option>Special</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="fixedCostAmount">Amount (LKR)</label>
+                  <input id="fixedCostAmount" type="number" min="0" step="0.01" placeholder="0" />
+                </div>
+                <div class="field">
+                  <label for="fixedCostPaymentMethod">Paid via</label>
+                  <select id="fixedCostPaymentMethod">
+                    <option>Bank Transfer</option>
+                    <option>Cash</option>
+                    <option>Card</option>
+                  </select>
+                </div>
+                <div class="field full">
+                  <label for="fixedCostDescription">Note</label>
+                  <textarea id="fixedCostDescription" placeholder="Optional note"></textarea>
+                </div>
+              </div>
+              <div class="actions" style="margin-top:14px">
+                <button class="btn secondary" type="button" id="clearFixedCostBtn">Clear</button>
+                <button class="btn primary" type="button" id="saveFixedCostBtn">Save fixed cost</button>
+              </div>
+              <div class="monthly-list" id="fixedCostProfilesList"></div>
+            </article>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const { createClient } = window.supabase;
+    const SUPABASE = window.__SUPABASE_CONFIG || {};
+    const supabase = createClient(SUPABASE.url, SUPABASE.anonKey);
+
+    const state = {
+      session: null,
+      location: null,
+      ledger: [],
+      filter: 'all',
+      overviewAreas: ['Food','Bar','Tours','Transport','Salary','Rent'],
+      realtimeChannel: null,
+      campRealtimeChannel: null,
+      activePage: 'overview',
+      campWeek: null,
+      campGuests: [],
+      campItems: [],
+      campHistory: [],
+      menuRows: [],
+      selectedGuestId: '',
+      selectedCategory: '',
+      monthlyProfiles: [],
+      editingSalaryId: '',
+      editingInternationalSalaryId: '',
+      editingFixedCostId: '',
+      defaultFxRate: 330,
+      loadingLedger: false,
+      pendingLedgerReload: false,
+      loadingCampTab: false,
+      pendingCampTabReload: false,
+      loadingMonthlyProfiles: false,
+      pendingMonthlyProfilesReload: false
+    };
+
+    const todayIso = () => new Date().toISOString().slice(0, 10);
+    const lkr = n => `LKR ${Number(n || 0).toLocaleString('en-GB', { maximumFractionDigits: 2 })}`;
+    const eur = n => `€${Number(n || 0).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const fmtDate = iso => iso ? new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+    const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[char]));
+
+    function toast(message){
+      const el = document.getElementById('toast');
+      el.textContent = message;
+      el.classList.add('show');
+      clearTimeout(el._timer);
+      el._timer = setTimeout(() => el.classList.remove('show'), 2200);
+    }
+
+    function getLocationSlug(){
+      const url = new URL(window.location.href);
+      return url.searchParams.get('location') || 'sri-lanka';
+    }
+
+    function monthKey(date){
+      return String(date || '').slice(0, 7);
+    }
+
+    function getTargetMonth(){
+      return document.getElementById('monthlyTargetMonth').value || monthKey(todayIso());
+    }
+
+    function lastDayOfMonth(month){
+      const [year, mon] = String(month).split('-').map(Number);
+      return new Date(year, mon, 0).toISOString().slice(0, 10);
+    }
+
+    function monthLabelFromKey(month){
+      const [year, mon] = String(month).split('-').map(Number);
+      return new Date(year, mon - 1, 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+    }
+
+    function getFilteredLedger(){
+      if(state.filter === 'all') return state.ledger;
+      return state.ledger.filter(row => row.type === state.filter);
+    }
+
+    function isInternationalProfile(profile){
+      return profile.profile_type === 'salary' && String(profile.metadata?.currency || '').toUpperCase() === 'EUR';
+    }
+
+    function isFixedSalaryProfile(profile){
+      return profile.profile_type === 'salary' && String(profile.metadata?.currency || 'LKR').toUpperCase() === 'LKR' && Number(profile.fixed_amount || 0) > 0;
+    }
+
+    function salaryAmountForProfile(profile){
+      if(isInternationalProfile(profile)) return Number(profile.fixed_amount || 0);
+      if(isFixedSalaryProfile(profile)) return Number(profile.fixed_amount || 0);
+      return document.getElementById('salaryMonthMode').value === 'off_season'
+        ? Number(profile.off_season_amount || 0)
+        : Number(profile.season_amount || 0);
+    }
+
+    function getMonthlyProfilesByType(){
+      return {
+        localSalaries: state.monthlyProfiles.filter(profile => profile.profile_type === 'salary' && !isInternationalProfile(profile)),
+        internationalSalaries: state.monthlyProfiles.filter(profile => isInternationalProfile(profile)),
+        fixedCosts: state.monthlyProfiles.filter(profile => profile.profile_type === 'fixed_cost')
+      };
+    }
+
+    async function readFxRate(date){
+      const { data, error } = await supabase
+        .from('daily_fx_rates')
+        .select('rate')
+        .eq('rate_date', date)
+        .eq('base_currency', 'EUR')
+        .eq('quote_currency', 'LKR')
+        .maybeSingle();
+      if(error) throw error;
+      return Number(data?.rate || state.defaultFxRate || 330) || 330;
+    }
+
+    async function loadMonthlyProfiles(){
+      if(!state.location?.id) return;
+      if(state.loadingMonthlyProfiles){
+        state.pendingMonthlyProfilesReload = true;
+        return;
+      }
+      state.loadingMonthlyProfiles = true;
+      try{
+        const { data, error } = await supabase
+          .from('monthly_cost_profiles')
+          .select('*')
+          .eq('location_id', state.location.id)
+          .order('profile_type', { ascending: true })
+          .order('name', { ascending: true });
+        if(error) throw error;
+        state.monthlyProfiles = data || [];
+        renderMonthlyProfiles();
+      } finally {
+        state.loadingMonthlyProfiles = false;
+        if(state.pendingMonthlyProfilesReload){
+          state.pendingMonthlyProfilesReload = false;
+          await loadMonthlyProfiles();
+        }
+      }
+    }
+
+    async function upsertMonthlyProfile(row){
+      const payload = { ...row, location_id: state.location.id, auto_apply: true, apply_rule: 'last_day_of_month' };
+      if(payload.id){
+        const { error } = await supabase.from('monthly_cost_profiles').update(payload).eq('id', payload.id);
+        if(error) throw error;
+        return;
+      }
+      const { error } = await supabase.from('monthly_cost_profiles').insert(payload);
+      if(error) throw error;
+    }
+
+    async function deleteMonthlyProfile(id){
+      const { error } = await supabase.from('monthly_cost_profiles').delete().eq('id', id);
+      if(error) throw error;
+    }
+
+    async function toggleMonthlyProfile(id, active){
+      const { error } = await supabase.from('monthly_cost_profiles').update({ active }).eq('id', id);
+      if(error) throw error;
+    }
+
+    function resetSalaryForm(){
+      state.editingSalaryId = '';
+      document.getElementById('salaryName').value = '';
+      document.getElementById('salaryType').value = 'seasonal';
+      document.getElementById('salarySeasonAmount').value = '';
+      document.getElementById('salaryOffSeasonAmount').value = '';
+      document.getElementById('salaryFixedAmount').value = '';
+      document.getElementById('salaryPaymentMethod').value = 'Bank Transfer';
+      document.getElementById('saveSalaryBtn').textContent = 'Save salary';
+    }
+
+    function resetInternationalSalaryForm(){
+      state.editingInternationalSalaryId = '';
+      document.getElementById('internationalSalaryName').value = '';
+      document.getElementById('internationalSalaryAmountEur').value = '';
+      document.getElementById('saveInternationalSalaryBtn').textContent = 'Save international salary';
+    }
+
+    function resetFixedCostForm(){
+      state.editingFixedCostId = '';
+      document.getElementById('fixedCostName').value = '';
+      document.getElementById('fixedCostCategory').value = 'Rent';
+      document.getElementById('fixedCostAmount').value = '';
+      document.getElementById('fixedCostPaymentMethod').value = 'Bank Transfer';
+      document.getElementById('fixedCostDescription').value = '';
+      document.getElementById('saveFixedCostBtn').textContent = 'Save fixed cost';
+    }
+
+    function validateLocalSalaryForm(){
+      const name = document.getElementById('salaryName').value.trim();
+      const type = document.getElementById('salaryType').value;
+      const seasonAmount = Number(document.getElementById('salarySeasonAmount').value || 0);
+      const offSeasonAmount = Number(document.getElementById('salaryOffSeasonAmount').value || 0);
+      const fixedAmount = Number(document.getElementById('salaryFixedAmount').value || 0);
+      if(!name) throw new Error('Salary name is required');
+      if(type === 'fixed' && fixedAmount <= 0) throw new Error('Fixed salary must be greater than zero');
+      if(type === 'seasonal' && seasonAmount <= 0 && offSeasonAmount <= 0) throw new Error('Add at least one seasonal salary amount');
+    }
+
+    function validateInternationalSalaryForm(){
+      const name = document.getElementById('internationalSalaryName').value.trim();
+      const amount = Number(document.getElementById('internationalSalaryAmountEur').value || 0);
+      if(!name) throw new Error('International salary name is required');
+      if(amount <= 0) throw new Error('International salary must be greater than zero');
+    }
+
+    function validateFixedCostForm(){
+      const name = document.getElementById('fixedCostName').value.trim();
+      const amount = Number(document.getElementById('fixedCostAmount').value || 0);
+      if(!name) throw new Error('Fixed cost name is required');
+      if(amount <= 0) throw new Error('Fixed cost amount must be greater than zero');
+    }
+
+    function renderMonthlyTargetHint(){
+      const month = getTargetMonth();
+      document.getElementById('monthlyTargetHint').textContent = `Entries for ${monthLabelFromKey(month)} will use ${fmtDate(lastDayOfMonth(month))}.`;
+    }
+
+    function monthlyProfileMeta(profile){
+      if(profile.profile_type === 'fixed_cost'){
+        return `${profile.category || 'Rent'} · ${profile.payment_method || 'Bank Transfer'} · ${lkr(profile.fixed_amount || 0)}`;
+      }
+      if(isInternationalProfile(profile)){
+        return `International salary · ${eur(profile.fixed_amount || 0)} · converted using that month's FX`;
+      }
+      if(isFixedSalaryProfile(profile)){
+        return `Fixed salary · ${lkr(profile.fixed_amount || 0)} · ${profile.payment_method || 'Bank Transfer'}`;
+      }
+      return `Season ${lkr(profile.season_amount || 0)} · Off-season ${lkr(profile.off_season_amount || 0)} · ${profile.payment_method || 'Bank Transfer'}`;
+    }
+
+    function renderMonthlyProfiles(){
+      const { localSalaries, internationalSalaries, fixedCosts } = getMonthlyProfilesByType();
+      const renderList = (elId, rows, actionsBuilder, emptyText) => {
+        const el = document.getElementById(elId);
+        if(!rows.length){
+          el.innerHTML = `<div class="monthly-empty">${esc(emptyText)}</div>`;
+          return;
+        }
+        el.innerHTML = rows.map(profile => `
+          <div class="monthly-row">
+            <div>
+              <div class="monthly-row-name">${esc(profile.name)}</div>
+              <div class="monthly-row-sub">${esc(monthlyProfileMeta(profile))}</div>
+            </div>
+            <div class="monthly-row-actions">
+              ${actionsBuilder(profile)}
+            </div>
+          </div>
+        `).join('');
+      };
+      renderList('salaryProfilesList', localSalaries, profile => `
+        <button class="btn secondary" type="button" data-edit-salary="${esc(profile.id)}">Edit</button>
+        <button class="btn primary" type="button" data-add-profile="${esc(profile.id)}">Add now</button>
+        <button class="btn secondary" type="button" data-toggle-profile="${esc(profile.id)}" data-next="${profile.active === false ? 'true' : 'false'}">${profile.active === false ? 'Enable' : 'Pause'}</button>
+        <button class="btn danger" type="button" data-delete-profile="${esc(profile.id)}">Delete</button>
+      `, 'No local salaries yet.');
+      renderList('internationalSalaryProfilesList', internationalSalaries, profile => `
+        <button class="btn secondary" type="button" data-edit-international-salary="${esc(profile.id)}">Edit</button>
+        <button class="btn primary" type="button" data-add-profile="${esc(profile.id)}">Add now</button>
+        <button class="btn secondary" type="button" data-toggle-profile="${esc(profile.id)}" data-next="${profile.active === false ? 'true' : 'false'}">${profile.active === false ? 'Enable' : 'Pause'}</button>
+        <button class="btn danger" type="button" data-delete-profile="${esc(profile.id)}">Delete</button>
+      `, 'No international salaries yet.');
+      renderList('fixedCostProfilesList', fixedCosts, profile => `
+        <button class="btn secondary" type="button" data-edit-fixed-cost="${esc(profile.id)}">Edit</button>
+        <button class="btn primary" type="button" data-add-profile="${esc(profile.id)}">Add now</button>
+        <button class="btn secondary" type="button" data-toggle-profile="${esc(profile.id)}" data-next="${profile.active === false ? 'true' : 'false'}">${profile.active === false ? 'Enable' : 'Pause'}</button>
+        <button class="btn danger" type="button" data-delete-profile="${esc(profile.id)}">Delete</button>
+      `, 'No fixed monthly costs yet.');
+      renderMonthlyTargetHint();
+    }
+
+    function openMonthlyExpenses(){
+      document.getElementById('monthlyExpensesOverlay').classList.add('show');
+      document.getElementById('monthlyTargetMonth').value = getTargetMonth();
+      renderMonthlyTargetHint();
+      loadMonthlyProfiles().catch(error => {
+        console.error(error);
+        toast('Could not load monthly profiles');
+      });
+    }
+
+    function closeMonthlyExpenses(){
+      document.getElementById('monthlyExpensesOverlay').classList.remove('show');
+    }
+
+    async function buildMonthlyLedgerEntry(profile, targetMonth){
+      const dueDate = lastDayOfMonth(targetMonth);
+      const recurringMonth = targetMonth;
+      if(isInternationalProfile(profile)){
+        const fxRate = await readFxRate(dueDate);
+        const amountEur = Number(profile.fixed_amount || 0);
+        const amountLocal = Number((amountEur * fxRate).toFixed(0));
+        return {
+          location_id: state.location.id,
+          type: 'expense',
+          category: 'Salary',
+          linked_item: null,
+          description: `${profile.name} · International salary (${eur(amountEur)})`,
+          payment_method: profile.payment_method || 'Bank Transfer',
+          amount_local: amountLocal,
+          amount_eur: amountEur,
+          fx_rate: fxRate,
+          currency: 'LKR',
+          entry_date: dueDate,
+          recurring_source_id: profile.id,
+          recurring_month: recurringMonth,
+          source_kind: 'monthly_automation'
+        };
+      }
+      return {
+        location_id: state.location.id,
+        type: 'expense',
+        category: profile.profile_type === 'fixed_cost' ? (profile.category || 'Rent') : 'Salary',
+        linked_item: null,
+        description: profile.profile_type === 'fixed_cost' ? (profile.description || profile.name) : profile.name,
+        payment_method: profile.payment_method || 'Bank Transfer',
+        amount_local: Number(salaryAmountForProfile(profile) || profile.fixed_amount || 0),
+        currency: 'LKR',
+        entry_date: dueDate,
+        recurring_source_id: profile.id,
+        recurring_month: recurringMonth,
+        source_kind: 'monthly_automation'
+      };
+    }
+
+    async function addMonthlyProfileNow(profileId){
+      const profile = state.monthlyProfiles.find(row => row.id === profileId);
+      if(!profile) throw new Error('Monthly profile not found');
+      const targetMonth = getTargetMonth();
+      const { data: existing, error: existingError } = await supabase
+        .from('ledger_entries')
+        .select('id')
+        .eq('location_id', state.location.id)
+        .eq('recurring_source_id', profileId)
+        .eq('recurring_month', targetMonth)
+        .limit(1);
+      if(existingError) throw existingError;
+      if(existing?.length) throw new Error(`This profile is already added for ${monthLabelFromKey(targetMonth)}`);
+      const payload = await buildMonthlyLedgerEntry(profile, targetMonth);
+      await saveEntry(payload);
+    }
+
+    async function addAllMonthlyNow(){
+      const activeProfiles = state.monthlyProfiles.filter(profile => profile.active !== false);
+      if(!activeProfiles.length) throw new Error('No active monthly profiles yet');
+      for(const profile of activeProfiles){
+        const { data: existing, error: existingError } = await supabase
+          .from('ledger_entries')
+          .select('id')
+          .eq('location_id', state.location.id)
+          .eq('recurring_source_id', profile.id)
+          .eq('recurring_month', getTargetMonth())
+          .limit(1);
+        if(existingError) throw existingError;
+        if(existing?.length) continue;
+        const payload = await buildMonthlyLedgerEntry(profile, getTargetMonth());
+        await saveEntry(payload);
+      }
+    }
+
+    function renderKpis(){
+      const rows = getFilteredLedger();
+      const spend = rows.filter(row => row.type === 'expense').reduce((sum, row) => sum + Number(row.amount_local || 0), 0);
+      const revenue = rows.filter(row => row.type === 'revenue').reduce((sum, row) => sum + Number(row.amount_local || 0), 0);
+      const moneySent = rows.filter(row => row.type === 'money_sent').reduce((sum, row) => sum + Number(row.amount_local || 0), 0);
+      const cashLeft = revenue - spend - moneySent;
+      document.getElementById('kpiEntries').textContent = String(rows.length);
+      document.getElementById('kpiSpend').textContent = lkr(spend);
+      document.getElementById('kpiRevenue').textContent = lkr(revenue);
+      document.getElementById('kpiSent').textContent = lkr(moneySent);
+      document.getElementById('kpiCashLeft').textContent = lkr(cashLeft);
+      document.getElementById('kpiCashLeft').className = `kpi-value ${cashLeft < 0 ? 'red' : cashLeft > 0 ? 'green' : ''}`;
+    }
+
+    function ledgerAreaForRow(row){
+      if(row?.business_area) return String(row.business_area).trim();
+      const category = String(row?.category || '').trim();
+      if(state.overviewAreas.includes(category)) return category;
+      if(['Cleaning Supplies','Setup','Services','Special'].includes(category)) return 'Operations';
+      return category || 'Other';
+    }
+
+    function businessAreaForCategory(category){
+      const value = String(category || '').trim();
+      if(['Food','Bar','Tours','Transport','Salary','Rent'].includes(value)) return value;
+      if(['Cleaning Supplies','Setup','Services','Special'].includes(value)) return 'Operations';
+      if(value === 'Drinks') return 'Bar';
+      if(value === 'Merchandise') return 'Merch';
+      return value || 'Operations';
+    }
+
+    async function enrichLedgerPayload(payload){
+      const entryDate = payload.entry_date || todayIso();
+      let fxRate = Number(payload.fx_rate || 0);
+      if(!fxRate){
+        fxRate = await readFxRate(entryDate);
+      }
+      fxRate = Number(fxRate || state.defaultFxRate || 330) || 330;
+      const amountLocal = Number(payload.amount_local || 0);
+      const amountEur = payload.amount_eur != null
+        ? Number(payload.amount_eur || 0)
+        : Number((amountLocal / fxRate).toFixed(2));
+      return {
+        ...payload,
+        business_area: payload.business_area || businessAreaForCategory(payload.category),
+        fx_rate: fxRate,
+        amount_eur: amountEur
+      };
+    }
+
+    function buildOverviewSummary(){
+      const grouped = new Map();
+      [...state.overviewAreas, 'Operations'].forEach(area => {
+        grouped.set(area, { name: area, revenue: 0, expense: 0, moneySent: 0, entries: 0 });
+      });
+      state.ledger.forEach(row => {
+        const area = ledgerAreaForRow(row);
+        if(!grouped.has(area)){
+          grouped.set(area, { name: area, revenue: 0, expense: 0, moneySent: 0, entries: 0 });
+        }
+        const bucket = grouped.get(area);
+        const amount = Number(row.amount_local || 0);
+        if(row.type === 'revenue') bucket.revenue += amount;
+        else if(row.type === 'expense') bucket.expense += amount;
+        else if(row.type === 'money_sent') bucket.moneySent += amount;
+        bucket.entries += 1;
+      });
+      return [...grouped.values()].filter(area => area.entries > 0 || state.overviewAreas.includes(area.name));
+    }
+
+    function renderOverview(){
+      const grid = document.getElementById('overviewGrid');
+      const rows = buildOverviewSummary();
+      if(!rows.length){
+        grid.innerHTML = '<div class="card overview-empty">No overview data yet.</div>';
+        return;
+      }
+      grid.innerHTML = rows.map(area => {
+        const net = area.revenue - area.expense - area.moneySent;
+        const netClass = net < 0 ? 'red' : 'green';
+        return `
+          <article class="card overview-card">
+            <div class="overview-top">
+              <div class="overview-name">${esc(area.name)}</div>
+              <div class="overview-net ${netClass}">${net >= 0 ? '+' : ''}${esc(lkr(net))}</div>
+            </div>
+            <div class="overview-stats">
+              <div class="overview-stat">
+                <div class="overview-stat-label">Revenue</div>
+                <div class="overview-stat-value green">${esc(lkr(area.revenue))}</div>
+              </div>
+              <div class="overview-stat">
+                <div class="overview-stat-label">Direct Cost</div>
+                <div class="overview-stat-value red">${esc(lkr(area.expense))}</div>
+              </div>
+              <div class="overview-stat">
+                <div class="overview-stat-label">Entries</div>
+                <div class="overview-stat-value amber">${esc(String(area.entries))}</div>
+              </div>
+            </div>
+          </article>
+        `;
+      }).join('');
+    }
+
+    function addDays(iso, days){
+      const date = new Date(`${iso}T00:00:00`);
+      date.setDate(date.getDate() + days);
+      return date.toISOString().slice(0, 10);
+    }
+
+    function weekLabel(startDate){
+      return `${fmtDate(startDate)} to ${fmtDate(addDays(startDate, 6))}`;
+    }
+
+    function isDateWithinWeek(dateIso, week){
+      if(!dateIso || !week?.start_date || !week?.end_date) return false;
+      return dateIso >= week.start_date && dateIso <= week.end_date;
+    }
+
+    function revenueCategoryForCampItem(item){
+      if(item.category === 'Drinks') return 'Drinks';
+      if(item.category === 'Merch') return 'Merchandise';
+      if(item.category === 'Tours') return item.item_name || 'Tours';
+      return item.category || 'Other Revenue';
+    }
+
+    function renderLedger(){
+      const rows = getFilteredLedger().slice().sort((a, b) => {
+        const aCreated = new Date(a.created_at || a.entry_date).getTime();
+        const bCreated = new Date(b.created_at || b.entry_date).getTime();
+        return bCreated - aCreated;
+      });
+      const tbody = document.getElementById('ledgerTableBody');
+      if(!rows.length){
+        tbody.innerHTML = '<tr><td colspan="9" class="empty">No entries yet in this filter.</td></tr>';
+        renderKpis();
+        renderOverview();
+        return;
+      }
+      tbody.innerHTML = rows.map(row => `
+        <tr>
+          <td>${fmtDate(row.entry_date)}</td>
+          <td><span class="badge ${esc(row.type)}">${esc(row.type === 'money_sent' ? 'Money sent' : row.type.charAt(0).toUpperCase() + row.type.slice(1))}</span></td>
+          <td><strong>${esc(row.category)}</strong></td>
+          <td>${esc(row.payment_method || '—')}</td>
+          <td>${esc(row.linked_item || '—')}</td>
+          <td>${esc(row.description || '—')}</td>
+          <td class="amount">${lkr(row.amount_local)}</td>
+          <td class="amount">${esc(eur(row.amount_eur || 0))}</td>
+          <td style="text-align:center"><button class="btn danger" type="button" data-delete="${esc(row.id)}" style="padding:8px 10px;font-size:11px">Delete</button></td>
+        </tr>
+      `).join('');
+      renderKpis();
+      renderOverview();
+    }
+
+    function campGuestTotal(guestId){
+      return state.campItems
+        .filter(item => item.guest_id === guestId)
+        .reduce((sum, item) => sum + Number(item.price_local || 0) * Number(item.qty || 1), 0);
+    }
+
+    function currentMenuCategories(){
+      return [...new Set(state.menuRows.map(row => row.category).filter(Boolean))];
+    }
+
+    function buildCampWeekSummary(){
+      const guests = state.campGuests.length;
+      const paidGuests = state.campGuests.filter(guest => guest.paid).length;
+      const items = state.campItems.reduce((sum, item) => sum + Number(item.qty || 1), 0);
+      const revenue = state.campItems.reduce((sum, item) => sum + Number(item.price_local || 0) * Number(item.qty || 1), 0);
+      return { guests, paidGuests, items, revenue };
+    }
+
+    function buildTopSellers(){
+      const grouped = new Map();
+      state.campItems.forEach(item => {
+        const key = `${item.category}::${item.item_name}`;
+        if(!grouped.has(key)){
+          grouped.set(key, { category: item.category, item_name: item.item_name, qty: 0, revenue: 0 });
+        }
+        const bucket = grouped.get(key);
+        bucket.qty += Number(item.qty || 1);
+        bucket.revenue += Number(item.price_local || 0) * Number(item.qty || 1);
+      });
+      return [...grouped.values()]
+        .sort((a, b) => (b.qty - a.qty) || (b.revenue - a.revenue))
+        .slice(0, 8);
+    }
+
+    function renderCampExtras(){
+      const summaryEl = document.getElementById('campWeekSummary');
+      const topSellersEl = document.getElementById('topSellersList');
+      if(!state.campWeek){
+        summaryEl.innerHTML = '<div class="monthly-empty">No active week yet.</div>';
+        topSellersEl.innerHTML = '<div class="monthly-empty">No sales yet in this week.</div>';
+        return;
+      }
+      const summary = buildCampWeekSummary();
+      summaryEl.innerHTML = `
+        <div class="camp-summary-stat">
+          <div class="camp-summary-label">Guests</div>
+          <div class="camp-summary-value">${esc(String(summary.guests))}</div>
+        </div>
+        <div class="camp-summary-stat">
+          <div class="camp-summary-label">Paid</div>
+          <div class="camp-summary-value">${esc(String(summary.paidGuests))}</div>
+        </div>
+        <div class="camp-summary-stat">
+          <div class="camp-summary-label">Items</div>
+          <div class="camp-summary-value">${esc(String(summary.items))}</div>
+        </div>
+        <div class="camp-summary-stat">
+          <div class="camp-summary-label">Tab Revenue</div>
+          <div class="camp-summary-value">${esc(lkr(summary.revenue))}</div>
+        </div>
+      `;
+      const topSellers = buildTopSellers();
+      if(!topSellers.length){
+        topSellersEl.innerHTML = '<div class="monthly-empty">No sales yet in this week.</div>';
+        return;
+      }
+      topSellersEl.innerHTML = topSellers.map(item => `
+        <div class="seller-row">
+          <div>
+            <div class="seller-name">${esc(item.item_name)}</div>
+            <div class="seller-sub">${esc(item.category)} · qty ${esc(String(item.qty))}</div>
+          </div>
+          <div class="tab-item-price">${esc(lkr(item.revenue))}</div>
+        </div>
+      `).join('');
+    }
+
+    function normalizeMerchStockName(name){
+      const raw = String(name || '').trim();
+      const tshirtMatch = raw.match(/^T-Shirt(?: Offer| Staff)?\s+(.+)$/i);
+      if(tshirtMatch) return `T-Shirt ${tshirtMatch[1].trim()}`;
+      return raw;
+    }
+
+    function resolveMerchStockRowFromMenu(menuRow){
+      if(!menuRow || menuRow.category !== 'Merch') return null;
+      const canonicalName = normalizeMerchStockName(menuRow.item_name);
+      const matchingRows = state.menuRows.filter(row => row.category === 'Merch' && normalizeMerchStockName(row.item_name) === canonicalName);
+      return matchingRows.find(row => row.item_name === canonicalName) || matchingRows[0] || menuRow;
+    }
+
+    function resolveMerchStockRowFromItem(item){
+      if(!item || item.category !== 'Merch') return null;
+      const canonicalName = normalizeMerchStockName(item.item_name);
+      const matchingRows = state.menuRows.filter(row => row.category === 'Merch' && normalizeMerchStockName(row.item_name) === canonicalName);
+      return matchingRows.find(row => row.item_name === canonicalName) || matchingRows[0] || null;
+    }
+
+    function historyRevenueMatchesItem(item, row){
+      if(!item || !row) return false;
+      if(item.category === 'Tours'){
+        return (row.linked_item && row.linked_item === item.item_name) || row.category === item.item_name;
+      }
+      if(item.category === 'Merch'){
+        return row.category === 'Merchandise';
+      }
+      return row.category === item.category;
+    }
+
+    function buildHistoryEntry(week, guests, items, revenues){
+      const revenueRows = (revenues || []).filter(row => row.type === 'revenue');
+      if(!revenueRows.length) return null;
+      const paidGuests = (guests || []).filter(guest => guest.paid);
+      const visibleItems = (items || []).filter(item => revenueRows.some(row => historyRevenueMatchesItem(item, row)));
+      const visibleGuests = paidGuests
+        .map(guest => ({
+          ...guest,
+          visibleItems: visibleItems.filter(item => item.guest_id === guest.id)
+        }))
+        .filter(guest => guest.visibleItems.length);
+      if(!visibleGuests.length) return null;
+      return {
+        week,
+        guests: visibleGuests,
+        items: visibleItems,
+        revenues: revenueRows
+      };
+    }
+
+    function renderCampTab(){
+      const weekLabelEl = document.getElementById('campWeekLabel');
+      const guestForm = document.getElementById('guestForm');
+      const weekForm = document.getElementById('newWeekForm');
+      const guestList = document.getElementById('guestList');
+      const menuTabs = document.getElementById('menuTabs');
+      const menuGrid = document.getElementById('menuGrid');
+      const selectedGuestLabel = document.getElementById('selectedGuestLabel');
+      const selectedGuestItems = document.getElementById('selectedGuestItems');
+      const markPaidBtn = document.getElementById('markPaidBtn');
+      const closeWeekBtn = document.getElementById('closeWeekBtn');
+
+      if(!state.campWeek){
+        weekLabelEl.textContent = 'No active week yet';
+        guestForm.style.display = 'none';
+        weekForm.style.display = '';
+        guestList.innerHTML = '<div class="camp-empty">Create the first open week for this location.</div>';
+        menuTabs.innerHTML = '';
+        menuGrid.innerHTML = '<div class="camp-empty">Menu will appear after the week exists.</div>';
+        selectedGuestLabel.textContent = 'No guest selected';
+        selectedGuestItems.innerHTML = '<div class="camp-empty">Add a week and a guest first.</div>';
+        markPaidBtn.disabled = true;
+        closeWeekBtn.disabled = true;
+        renderCampExtras();
+        return;
+      }
+
+      weekForm.style.display = 'none';
+      guestForm.style.display = '';
+      weekLabelEl.textContent = `Active week · ${weekLabel(state.campWeek.start_date)}`;
+
+      if(!state.selectedGuestId && state.campGuests.length){
+        state.selectedGuestId = state.campGuests[0].id;
+      }
+
+      guestList.innerHTML = state.campGuests.length ? state.campGuests.map(guest => `
+        <button class="guest-row ${guest.id === state.selectedGuestId ? 'active' : ''}" type="button" data-guest="${esc(guest.id)}">
+          <div>
+            <div class="guest-name">${esc(guest.name)}</div>
+            <div class="guest-meta">${guest.paid ? 'Paid' : 'Open tab'}</div>
+          </div>
+          <div class="guest-total">${esc(lkr(campGuestTotal(guest.id)))}</div>
+        </button>
+      `).join('') : '<div class="camp-empty">No guests in this week yet.</div>';
+
+      const categories = currentMenuCategories();
+      if(!state.selectedCategory && categories.length){
+        state.selectedCategory = categories[0];
+      }
+      menuTabs.innerHTML = categories.length ? categories.map(category => `
+        <button class="menu-tab ${category === state.selectedCategory ? 'active' : ''}" type="button" data-category="${esc(category)}">${esc(category)}</button>
+      `).join('') : '<div class="camp-empty">No menu loaded for this location.</div>';
+
+      const menuRows = state.menuRows.filter(row => row.category === state.selectedCategory);
+      menuGrid.innerHTML = menuRows.length ? menuRows.map(row => `
+        <button class="item-card ${row.category === 'Merch' && Number((resolveMerchStockRowFromMenu(row) || row).stock_qty || 0) <= 0 ? 'disabled' : ''}" type="button" data-menu="${esc(row.id)}" ${row.category === 'Merch' && Number((resolveMerchStockRowFromMenu(row) || row).stock_qty || 0) <= 0 ? 'disabled' : ''}>
+          <div class="item-name">${esc(row.item_name)}</div>
+          <div class="item-price">${esc(lkr(row.price_local))}</div>
+          ${row.category === 'Merch' ? `<div class="item-meta">${esc(`${Number((resolveMerchStockRowFromMenu(row) || row).stock_qty || 0)} left`)}</div>` : ''}
+        </button>
+      `).join('') : '<div class="camp-empty">No items in this category yet.</div>';
+
+      const selectedGuest = state.campGuests.find(guest => guest.id === state.selectedGuestId) || null;
+      selectedGuestLabel.textContent = selectedGuest ? `${selectedGuest.name} · ${selectedGuest.paid ? 'Paid' : 'Open tab'}` : 'No guest selected';
+      const guestItems = selectedGuest ? state.campItems.filter(item => item.guest_id === selectedGuest.id) : [];
+      selectedGuestItems.innerHTML = guestItems.length ? guestItems.map(item => `
+        <div class="tab-item">
+          <div>
+            <div class="tab-item-name">${esc(item.item_name)}</div>
+            <div class="tab-item-meta">${esc(item.category)} · qty ${esc(String(item.qty || 1))}</div>
+          </div>
+          <div style="display:flex;align-items:flex-start;gap:10px">
+            <div class="tab-item-price">${esc(lkr(Number(item.price_local || 0) * Number(item.qty || 1)))}</div>
+            <button class="btn danger" type="button" data-delete-item="${esc(item.id)}" style="padding:8px 10px;font-size:11px">Delete</button>
+          </div>
+        </div>
+      `).join('') : '<div class="camp-empty">This guest has no items yet.</div>';
+      markPaidBtn.disabled = !selectedGuest || selectedGuest.paid || guestItems.length === 0;
+      closeWeekBtn.disabled = !state.campGuests.length || state.campGuests.some(guest => !guest.paid);
+      renderCampExtras();
+    }
+
+    function renderCampHistory(){
+      const list = document.getElementById('historyList');
+      if(!state.campHistory.length){
+        list.innerHTML = '<div class="card overview-empty">No closed weeks yet.</div>';
+        renderWeeklyPnl();
+        return;
+      }
+      list.innerHTML = state.campHistory.map(entry => {
+        const week = entry.week;
+        const paidGuests = entry.guests;
+        const total = paidGuests.reduce((sum, guest) => sum + guest.visibleItems.reduce((guestSum, item) => guestSum + Number(item.price_local || 0) * Number(item.qty || 1), 0), 0);
+        return `
+          <article class="card history-card">
+            <div class="history-head">
+              <div>
+                <div class="history-title">${esc(weekLabel(week.start_date))}</div>
+                <div class="history-sub">${esc(String(paidGuests.length))} paid guests · closed ${esc(fmtDate(week.end_date))}</div>
+              </div>
+              <div class="history-head-actions">
+                <button class="btn danger" type="button" data-delete-week="${esc(week.id)}" style="padding:9px 12px;font-size:11px">Delete week</button>
+                <div class="history-total">${esc(lkr(total))}</div>
+              </div>
+            </div>
+            ${paidGuests.map(guest => {
+              const guestItems = guest.visibleItems;
+              const guestTotal = guestItems.reduce((sum, item) => sum + Number(item.price_local || 0) * Number(item.qty || 1), 0);
+              return `
+                <div class="history-guest">
+                  <div class="history-guest-head">
+                    <div>
+                      <div class="history-guest-name">${esc(guest.name)}</div>
+                      <div class="history-guest-sub">${esc(String(guestItems.length))} items · paid</div>
+                    </div>
+                    <div class="tab-item-price">${esc(lkr(guestTotal))}</div>
+                  </div>
+                  <div style="margin-top:10px">
+                    ${guestItems.map(item => `
+                      <div class="history-item-line">
+                        <span>${esc(item.item_name)}</span>
+                        <span class="tab-item-price">${esc(lkr(Number(item.price_local || 0) * Number(item.qty || 1)))}</span>
+                      </div>
+                    `).join('')}
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </article>
+        `;
+      }).join('');
+      renderWeeklyPnl();
+    }
+
+    function renderWeeklyPnl(){
+      const list = document.getElementById('weeklyPnlList');
+      if(!state.campHistory.length){
+        list.innerHTML = '<div class="card overview-empty">No closed weeks yet.</div>';
+        return;
+      }
+      list.innerHTML = state.campHistory.map(entry => {
+        const week = entry.week;
+        const revenueRows = state.ledger.filter(row => row.type === 'revenue' && row.week_id === week.id);
+        const expenseRows = state.ledger.filter(row => row.type === 'expense' && isDateWithinWeek(row.entry_date, week));
+        const moneySentRows = state.ledger.filter(row => row.type === 'money_sent' && isDateWithinWeek(row.entry_date, week));
+        const revenue = revenueRows.reduce((sum, row) => sum + Number(row.amount_local || 0), 0);
+        const expenses = expenseRows.reduce((sum, row) => sum + Number(row.amount_local || 0), 0);
+        const moneySent = moneySentRows.reduce((sum, row) => sum + Number(row.amount_local || 0), 0);
+        const net = revenue - expenses - moneySent;
+        const paidGuests = entry.guests.length;
+        const items = entry.items.length;
+        return `
+          <article class="card weekly-card">
+            <div class="weekly-head">
+              <div>
+                <div class="weekly-title">${esc(weekLabel(week.start_date))}</div>
+                <div class="weekly-sub">${esc(String(paidGuests))} paid guests · ${esc(String(items))} visible items · closed ${esc(fmtDate(week.end_date))}</div>
+              </div>
+              <div class="weekly-stat-value ${net < 0 ? 'red' : 'green'}">${esc(lkr(net))}</div>
+            </div>
+            <div class="weekly-grid">
+              <div class="weekly-stat">
+                <div class="weekly-stat-label">Revenue</div>
+                <div class="weekly-stat-value green">${esc(lkr(revenue))}</div>
+              </div>
+              <div class="weekly-stat">
+                <div class="weekly-stat-label">Expenses</div>
+                <div class="weekly-stat-value red">${esc(lkr(expenses))}</div>
+              </div>
+              <div class="weekly-stat">
+                <div class="weekly-stat-label">Money Sent</div>
+                <div class="weekly-stat-value amber">${esc(lkr(moneySent))}</div>
+              </div>
+              <div class="weekly-stat">
+                <div class="weekly-stat-label">Net</div>
+                <div class="weekly-stat-value ${net < 0 ? 'red' : 'green'}">${esc(lkr(net))}</div>
+              </div>
+            </div>
+            <div class="weekly-sub" style="margin-top:14px">
+              ${esc(String(revenueRows.length))} revenue rows · ${esc(String(expenseRows.length))} expense rows · ${esc(String(moneySentRows.length))} money sent rows
+            </div>
+          </article>
+        `;
+      }).join('');
+    }
+
+    async function loadClosedCampHistory(){
+      if(!state.location?.id) return;
+      const { data: closedWeeks, error: closedWeeksError } = await supabase
+        .from('camp_weeks')
+        .select('*')
+        .eq('location_id', state.location.id)
+        .eq('status', 'closed')
+        .order('start_date', { ascending: false })
+        .limit(12);
+      if(closedWeeksError) throw closedWeeksError;
+      if(closedWeeks?.length){
+        const closedWeekIds = closedWeeks.map(week => week.id);
+        const [{ data: closedGuests, error: closedGuestsError }, { data: closedItems, error: closedItemsError }, { data: closedRevenues, error: closedRevenuesError }] = await Promise.all([
+          supabase.from('camp_guests').select('*').in('week_id', closedWeekIds).order('created_at', { ascending: true }),
+          supabase.from('camp_tab_items').select('*').in('week_id', closedWeekIds).order('added_at', { ascending: true }),
+          supabase.from('ledger_entries').select('*').in('week_id', closedWeekIds).eq('type', 'revenue').order('created_at', { ascending: true })
+        ]);
+        if(closedGuestsError) throw closedGuestsError;
+        if(closedItemsError) throw closedItemsError;
+        if(closedRevenuesError) throw closedRevenuesError;
+        state.campHistory = closedWeeks
+          .map(week => buildHistoryEntry(
+            week,
+            (closedGuests || []).filter(guest => guest.week_id === week.id),
+            (closedItems || []).filter(item => item.week_id === week.id),
+            (closedRevenues || []).filter(row => row.week_id === week.id)
+          ))
+          .filter(Boolean);
+      } else {
+        state.campHistory = [];
+      }
+      renderCampHistory();
+    }
+
+    async function loadCampTabData(){
+      if(!state.location?.id) return;
+      if(state.loadingCampTab){
+        state.pendingCampTabReload = true;
+        return;
+      }
+      state.loadingCampTab = true;
+      try{
+        const [{ data: weekData, error: weekError }, { data: menuData, error: menuError }] = await Promise.all([
+          supabase
+            .from('camp_weeks')
+            .select('*')
+            .eq('location_id', state.location.id)
+            .eq('status', 'open')
+            .order('start_date', { ascending: false })
+            .limit(1),
+          supabase
+            .from('location_menus')
+            .select('*')
+            .eq('location_id', state.location.id)
+            .eq('active', true)
+            .order('category', { ascending: true })
+            .order('item_name', { ascending: true })
+        ]);
+        if(weekError) throw weekError;
+        if(menuError) throw menuError;
+        state.campWeek = weekData?.[0] || null;
+        state.menuRows = menuData || [];
+
+        if(!state.campWeek){
+          state.campGuests = [];
+          state.campItems = [];
+          state.selectedGuestId = '';
+          renderCampTab();
+          loadClosedCampHistory().catch(error => {
+            console.error(error);
+            toast('Could not refresh Camp Tab history');
+          });
+          return;
+        }
+
+        const [{ data: guestData, error: guestError }, { data: itemData, error: itemError }] = await Promise.all([
+          supabase.from('camp_guests').select('*').eq('week_id', state.campWeek.id).order('created_at', { ascending: true }),
+          supabase.from('camp_tab_items').select('*').eq('week_id', state.campWeek.id).order('added_at', { ascending: true })
+        ]);
+        if(guestError) throw guestError;
+        if(itemError) throw itemError;
+        state.campGuests = guestData || [];
+        state.campItems = itemData || [];
+        if(state.selectedGuestId && !state.campGuests.some(guest => guest.id === state.selectedGuestId)){
+          state.selectedGuestId = state.campGuests[0]?.id || '';
+        }
+        renderCampTab();
+        loadClosedCampHistory().catch(error => {
+          console.error(error);
+          toast('Could not refresh Camp Tab history');
+        });
+      } finally {
+        state.loadingCampTab = false;
+        if(state.pendingCampTabReload){
+          state.pendingCampTabReload = false;
+          await loadCampTabData();
+        }
+      }
+    }
+
+    async function createCampWeek(startDate){
+      const payload = {
+        location_id: state.location.id,
+        start_date: startDate,
+        end_date: addDays(startDate, 6),
+        status: 'open'
+      };
+      const { error } = await supabase.from('camp_weeks').insert(payload);
+      if(error) throw error;
+      await loadCampTabData();
+    }
+
+    async function createCampGuest(name){
+      if(!state.campWeek?.id) throw new Error('No active week');
+      const { error } = await supabase.from('camp_guests').insert({
+        week_id: state.campWeek.id,
+        location_id: state.location.id,
+        name
+      });
+      if(error) throw error;
+      await loadCampTabData();
+    }
+
+    async function addCampItem(menuId){
+      if(!state.selectedGuestId) throw new Error('Select a guest first');
+      const menuRow = state.menuRows.find(row => row.id === menuId);
+      if(!menuRow) throw new Error('Menu item not found');
+      let stockRow = null;
+      if(menuRow.category === 'Merch'){
+        stockRow = resolveMerchStockRowFromMenu(menuRow);
+        const currentStock = Number(stockRow?.stock_qty || 0);
+        if(currentStock <= 0) throw new Error('This merch item is out of stock');
+        const { data: updatedStockRow, error: stockError } = await supabase
+          .from('location_menus')
+          .update({ stock_qty: currentStock - 1 })
+          .eq('id', stockRow.id)
+          .eq('stock_qty', currentStock)
+          .select('id, stock_qty')
+          .maybeSingle();
+        if(stockError) throw stockError;
+        if(!updatedStockRow) throw new Error('Stock changed on another computer. Try again.');
+      }
+      const { error } = await supabase.from('camp_tab_items').insert({
+        guest_id: state.selectedGuestId,
+        week_id: state.campWeek.id,
+        location_id: state.location.id,
+        category: menuRow.category,
+        item_name: menuRow.item_name,
+        qty: 1,
+        price_local: Number(menuRow.price_local || 0),
+        currency: 'LKR'
+      });
+      if(error){
+        if(stockRow){
+          const currentStock = Number(stockRow.stock_qty || 0);
+          await supabase
+            .from('location_menus')
+            .update({ stock_qty: currentStock })
+            .eq('id', stockRow.id);
+        }
+        throw error;
+      }
+      await loadCampTabData();
+    }
+
+    async function deleteCampItem(itemId){
+      const item = state.campItems.find(entry => entry.id === itemId) || null;
+      const { error } = await supabase.from('camp_tab_items').delete().eq('id', itemId);
+      if(error) throw error;
+      if(item?.category === 'Merch'){
+        const stockRow = resolveMerchStockRowFromItem(item);
+        if(stockRow){
+          const currentStock = Number(stockRow.stock_qty || 0);
+          const qty = Number(item.qty || 1);
+          const { error: stockError } = await supabase
+            .from('location_menus')
+            .update({ stock_qty: currentStock + qty })
+            .eq('id', stockRow.id);
+          if(stockError) throw stockError;
+        }
+      }
+      await loadCampTabData();
+    }
+
+    async function markGuestPaid(){
+      if(!state.selectedGuestId) return;
+      const { error } = await supabase
+        .from('camp_guests')
+        .update({ paid: true, paid_at: new Date().toISOString() })
+        .eq('id', state.selectedGuestId);
+      if(error) throw error;
+      await loadCampTabData();
+    }
+
+    function buildClosedWeekLedgerRows(){
+      if(!state.campWeek?.id) return [];
+      const paidGuestIds = state.campGuests.filter(guest => guest.paid).map(guest => guest.id);
+      const paidItems = state.campItems.filter(item => paidGuestIds.includes(item.guest_id));
+      const grouped = new Map();
+      paidItems.forEach(item => {
+        const category = revenueCategoryForCampItem(item);
+        const linkedItem = item.category === 'Tours' ? item.item_name : null;
+        const key = `${category}::${linkedItem || 'general'}`;
+        if(!grouped.has(key)){
+          grouped.set(key, { category, linked_item: linkedItem, total: 0 });
+        }
+        grouped.get(key).total += Number(item.price_local || 0) * Number(item.qty || 1);
+      });
+      return [...grouped.values()].map(group => ({
+        location_id: state.location.id,
+        week_id: state.campWeek.id,
+        type: 'revenue',
+        category: group.category,
+        business_area: businessAreaForCategory(group.category),
+        linked_item: group.linked_item,
+        description: `Camp Tab revenue ${weekLabel(state.campWeek.start_date)}`,
+        payment_method: 'Cash',
+        amount_local: Number(group.total.toFixed(2)),
+        currency: 'LKR',
+        entry_date: state.campWeek.end_date
+      }));
+    }
+
+    async function closeCampWeek(){
+      if(!state.campWeek?.id) throw new Error('No active week');
+      if(state.campGuests.some(guest => !guest.paid)) throw new Error('All guests must be paid first');
+      const ledgerRows = buildClosedWeekLedgerRows();
+      if(ledgerRows.length){
+        const { error: ledgerError } = await supabase.from('ledger_entries').insert(ledgerRows);
+        if(ledgerError) throw ledgerError;
+      }
+      const { error: weekError } = await supabase
+        .from('camp_weeks')
+        .update({ status: 'closed' })
+        .eq('id', state.campWeek.id);
+      if(weekError){
+        if(ledgerRows.length){
+          await supabase.from('ledger_entries')
+            .delete()
+            .eq('week_id', state.campWeek.id)
+            .eq('description', `Camp Tab revenue ${weekLabel(state.campWeek.start_date)}`);
+        }
+        throw weekError;
+      }
+      await loadLedger();
+      await loadCampTabData();
+    }
+
+    async function cleanupClosedWeekIfOrphaned(weekId){
+      if(!weekId) return false;
+      const { data: remainingRevenueRows, error: revenueError } = await supabase
+        .from('ledger_entries')
+        .select('id')
+        .eq('week_id', weekId)
+        .eq('type', 'revenue')
+        .limit(1);
+      if(revenueError) throw revenueError;
+      if(remainingRevenueRows?.length) return false;
+
+      const { error: itemsError } = await supabase
+        .from('camp_tab_items')
+        .delete()
+        .eq('week_id', weekId);
+      if(itemsError) throw itemsError;
+
+      const { error: guestsError } = await supabase
+        .from('camp_guests')
+        .delete()
+        .eq('week_id', weekId);
+      if(guestsError) throw guestsError;
+
+      const { error: weekError } = await supabase
+        .from('camp_weeks')
+        .delete()
+        .eq('id', weekId)
+        .eq('status', 'closed');
+      if(weekError) throw weekError;
+      return true;
+    }
+
+    async function deleteClosedWeekCompletely(weekId){
+      if(!weekId) throw new Error('Week not found');
+      const { error: ledgerError } = await supabase
+        .from('ledger_entries')
+        .delete()
+        .eq('week_id', weekId);
+      if(ledgerError) throw ledgerError;
+
+      const { error: itemsError } = await supabase
+        .from('camp_tab_items')
+        .delete()
+        .eq('week_id', weekId);
+      if(itemsError) throw itemsError;
+
+      const { error: guestsError } = await supabase
+        .from('camp_guests')
+        .delete()
+        .eq('week_id', weekId);
+      if(guestsError) throw guestsError;
+
+      const { error: weekError } = await supabase
+        .from('camp_weeks')
+        .delete()
+        .eq('id', weekId)
+        .eq('status', 'closed');
+      if(weekError) throw weekError;
+    }
+
+    async function loadLocation(){
+      const slug = getLocationSlug();
+      const exactQuery = await supabase
+        .from('locations')
+        .select('id, slug, name, active, created_at')
+        .eq('slug', slug)
+        .order('active', { ascending: false })
+        .order('created_at', { ascending: true })
+        .limit(1);
+      if(exactQuery.error) throw exactQuery.error;
+      let location = exactQuery.data?.[0] || null;
+
+      if(!location){
+        const fallbackQuery = await supabase
+          .from('locations')
+          .select('id, slug, name, active, created_at')
+          .eq('active', true)
+          .order('created_at', { ascending: true })
+          .limit(1);
+        if(fallbackQuery.error) throw fallbackQuery.error;
+        location = fallbackQuery.data?.[0] || null;
+      }
+
+      if(!location){
+        throw new Error(`Could not find a location for slug "${slug}"`);
+      }
+
+      state.location = {
+        id: location.id,
+        slug: location.slug,
+        name: location.name
+      };
+      document.getElementById('locationNameChip').textContent = state.location.name;
+      return state.location;
+    }
+
+    async function loadLedger(){
+      if(!state.location?.id) return;
+      if(state.loadingLedger){
+        state.pendingLedgerReload = true;
+        return;
+      }
+      state.loadingLedger = true;
+      try{
+        const { data, error } = await supabase
+          .from('ledger_entries')
+          .select('*')
+          .eq('location_id', state.location.id)
+          .order('entry_date', { ascending: false })
+          .order('created_at', { ascending: false });
+        if(error) throw error;
+        state.ledger = data || [];
+        renderLedger();
+        renderWeeklyPnl();
+      } finally {
+        state.loadingLedger = false;
+        if(state.pendingLedgerReload){
+          state.pendingLedgerReload = false;
+          await loadLedger();
+        }
+      }
+    }
+
+    async function saveEntry(payload){
+      const enriched = await enrichLedgerPayload(payload);
+      const { data, error } = await supabase
+        .from('ledger_entries')
+        .insert(enriched)
+        .select('*')
+        .single();
+      if(error) throw error;
+      state.ledger = [data, ...state.ledger.filter(row => row.id !== data.id)];
+      renderLedger();
+      return data;
+    }
+
+    async function deleteEntry(id){
+      const row = state.ledger.find(entry => entry.id === id) || null;
+      const { error } = await supabase
+        .from('ledger_entries')
+        .delete()
+        .eq('id', id);
+      if(error) throw error;
+      if(row?.type === 'revenue' && row?.week_id){
+        await cleanupClosedWeekIfOrphaned(row.week_id);
+      }
+      state.ledger = state.ledger.filter(row => row.id !== id);
+      renderLedger();
+      await loadCampTabData();
+    }
+
+    async function ensureSession(){
+      const { data } = await supabase.auth.getSession();
+      if(!data?.session){
+        window.location.href = '/';
+        return null;
+      }
+      state.session = data.session;
+      return data.session;
+    }
+
+    async function connectRealtime(){
+      if(state.realtimeChannel){
+        await supabase.removeChannel(state.realtimeChannel);
+      }
+      state.realtimeChannel = supabase
+        .channel(`camp-hub-v2-ledger-${state.location.id}`)
+        .on('postgres_changes', {
+          event: '*',
+          schema: 'public',
+          table: 'ledger_entries',
+          filter: `location_id=eq.${state.location.id}`
+        }, async () => {
+          await loadLedger();
+          await loadClosedCampHistory();
+        })
+        .on('postgres_changes', {
+          event: '*',
+          schema: 'public',
+          table: 'monthly_cost_profiles',
+          filter: `location_id=eq.${state.location.id}`
+        }, async () => {
+          await loadMonthlyProfiles();
+        })
+        .subscribe(status => {
+          document.getElementById('realtimeStatus').textContent = status === 'SUBSCRIBED' ? 'Realtime live' : 'Realtime connecting...';
+        });
+    }
+
+    async function connectCampRealtime(){
+      if(!state.location?.id) return;
+      if(state.campRealtimeChannel){
+        await supabase.removeChannel(state.campRealtimeChannel);
+      }
+      state.campRealtimeChannel = supabase
+        .channel(`camp-hub-v2-camp-${state.location.id}`)
+        .on('postgres_changes', { event:'*', schema:'public', table:'camp_weeks', filter:`location_id=eq.${state.location.id}` }, async()=>{ await loadCampTabData(); })
+        .on('postgres_changes', { event:'*', schema:'public', table:'camp_guests', filter:`location_id=eq.${state.location.id}` }, async()=>{ await loadCampTabData(); })
+        .on('postgres_changes', { event:'*', schema:'public', table:'camp_tab_items', filter:`location_id=eq.${state.location.id}` }, async()=>{ await loadCampTabData(); })
+        .on('postgres_changes', { event:'*', schema:'public', table:'location_menus', filter:`location_id=eq.${state.location.id}` }, async()=>{ await loadCampTabData(); })
+        .subscribe();
+    }
+
+    function bindUi(){
+      document.getElementById('entryDate').value = todayIso();
+      document.getElementById('resetFormBtn').addEventListener('click', () => {
+        document.getElementById('entryForm').reset();
+        document.getElementById('entryDate').value = todayIso();
+      });
+      document.getElementById('entryForm').addEventListener('submit', async event => {
+        event.preventDefault();
+        const saveBtn = document.getElementById('saveEntryBtn');
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving...';
+        try{
+          await saveEntry({
+            location_id: state.location.id,
+            type: document.getElementById('entryType').value,
+            category: document.getElementById('entryCategory').value,
+            linked_item: document.getElementById('entryLinkedItem').value.trim() || null,
+            description: document.getElementById('entryDescription').value.trim() || null,
+            payment_method: document.getElementById('entryPaymentMethod').value,
+            amount_local: Number(document.getElementById('entryAmount').value || 0),
+            currency: 'LKR',
+            entry_date: document.getElementById('entryDate').value
+          });
+          document.getElementById('entryForm').reset();
+          document.getElementById('entryDate').value = todayIso();
+          toast('Entry saved online');
+        }catch(error){
+          console.error(error);
+          toast('Could not save this entry online');
+        }finally{
+          saveBtn.disabled = false;
+          saveBtn.textContent = 'Save entry';
+        }
+      });
+      document.getElementById('ledgerTableBody').addEventListener('click', async event => {
+        const deleteId = event.target?.dataset?.delete;
+        if(!deleteId) return;
+        if(!confirm('Delete this ledger entry?')) return;
+        try{
+          await deleteEntry(deleteId);
+          toast('Entry deleted online');
+        }catch(error){
+          console.error(error);
+          toast('Could not delete this entry online');
+        }
+      });
+      document.querySelectorAll('[data-filter]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          state.filter = btn.dataset.filter;
+          document.querySelectorAll('[data-filter]').forEach(other => other.classList.toggle('active', other === btn));
+          renderLedger();
+        });
+      });
+      document.querySelectorAll('[data-page]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          state.activePage = btn.dataset.page;
+          document.querySelectorAll('[data-page]').forEach(other => other.classList.toggle('active', other === btn));
+          document.getElementById('pageOverview').classList.toggle('active', state.activePage === 'overview');
+          document.getElementById('pageLedger').classList.toggle('active', state.activePage === 'ledger');
+          document.getElementById('pageCamp').classList.toggle('active', state.activePage === 'camp');
+          document.getElementById('pageWeekly').classList.toggle('active', state.activePage === 'weekly');
+          if(state.activePage === 'camp'){
+            try{
+              await loadCampTabData();
+            }catch(error){
+              console.error(error);
+              toast('Could not load Camp Tab v2');
+            }
+          }else if(state.activePage === 'weekly'){
+            renderWeeklyPnl();
+          }else if(state.activePage === 'overview'){
+            renderOverview();
+          }
+        });
+      });
+      document.getElementById('newWeekForm').addEventListener('submit', async event => {
+        event.preventDefault();
+        try{
+          const startDate = document.getElementById('weekStartDate').value || todayIso();
+          await createCampWeek(startDate);
+          toast('Week created online');
+        }catch(error){
+          console.error(error);
+          toast('Could not create this week online');
+        }
+      });
+      document.getElementById('guestForm').addEventListener('submit', async event => {
+        event.preventDefault();
+        const guestNameInput = document.getElementById('guestName');
+        const name = guestNameInput.value.trim();
+        if(!name) return;
+        try{
+          await createCampGuest(name);
+          guestNameInput.value = '';
+          toast('Guest added online');
+        }catch(error){
+          console.error(error);
+          toast('Could not add this guest online');
+        }
+      });
+      document.getElementById('guestList').addEventListener('click', event => {
+        const guestId = event.target.closest('[data-guest]')?.dataset?.guest;
+        if(!guestId) return;
+        state.selectedGuestId = guestId;
+        renderCampTab();
+      });
+      document.getElementById('menuTabs').addEventListener('click', event => {
+        const category = event.target.closest('[data-category]')?.dataset?.category;
+        if(!category) return;
+        state.selectedCategory = category;
+        renderCampTab();
+      });
+      document.getElementById('menuGrid').addEventListener('click', async event => {
+        const menuId = event.target.closest('[data-menu]')?.dataset?.menu;
+        if(!menuId) return;
+        try{
+          await addCampItem(menuId);
+          toast('Item added online');
+        }catch(error){
+          console.error(error);
+          toast(error?.message || 'Could not add this item online');
+        }
+      });
+      document.getElementById('selectedGuestItems').addEventListener('click', async event => {
+        const itemId = event.target.closest('[data-delete-item]')?.dataset?.deleteItem;
+        if(!itemId) return;
+        try{
+          await deleteCampItem(itemId);
+          toast('Item deleted online');
+        }catch(error){
+          console.error(error);
+          toast('Could not delete this item online');
+        }
+      });
+      document.getElementById('markPaidBtn').addEventListener('click', async () => {
+        try{
+          await markGuestPaid();
+          toast('Guest marked paid');
+        }catch(error){
+          console.error(error);
+          toast('Could not mark this guest as paid');
+        }
+      });
+      document.getElementById('closeWeekBtn').addEventListener('click', async () => {
+        if(!confirm('Close this week and push its revenue to the ledger?')) return;
+        try{
+          await closeCampWeek();
+          toast('Week closed online');
+        }catch(error){
+          console.error(error);
+          toast(error?.message || 'Could not close this week online');
+        }
+      });
+      document.getElementById('logoutBtn').addEventListener('click', async () => {
+        await supabase.auth.signOut();
+        window.location.href = '/';
+      });
+      document.getElementById('openMonthlyExpensesBtn').addEventListener('click', openMonthlyExpenses);
+      document.getElementById('closeMonthlyExpensesBtn').addEventListener('click', closeMonthlyExpenses);
+      document.getElementById('monthlyTargetMonth').addEventListener('change', renderMonthlyTargetHint);
+      document.getElementById('salaryMonthMode').addEventListener('change', renderMonthlyProfiles);
+      document.getElementById('clearSalaryBtn').addEventListener('click', resetSalaryForm);
+      document.getElementById('clearInternationalSalaryBtn').addEventListener('click', resetInternationalSalaryForm);
+      document.getElementById('clearFixedCostBtn').addEventListener('click', resetFixedCostForm);
+      document.getElementById('saveSalaryBtn').addEventListener('click', async () => {
+        const btn = document.getElementById('saveSalaryBtn');
+        btn.disabled = true;
+        btn.textContent = 'Saving...';
+        try{
+          validateLocalSalaryForm();
+          await upsertMonthlyProfile({
+            id: state.editingSalaryId || undefined,
+            profile_type: 'salary',
+            name: document.getElementById('salaryName').value.trim(),
+            category: 'Salary',
+            business_area: 'Salary',
+            season_amount: document.getElementById('salaryType').value === 'seasonal' ? Number(document.getElementById('salarySeasonAmount').value || 0) : null,
+            off_season_amount: document.getElementById('salaryType').value === 'seasonal' ? Number(document.getElementById('salaryOffSeasonAmount').value || 0) : null,
+            fixed_amount: document.getElementById('salaryType').value === 'fixed' ? Number(document.getElementById('salaryFixedAmount').value || 0) : null,
+            payment_method: document.getElementById('salaryPaymentMethod').value,
+            description: document.getElementById('salaryType').value === 'fixed' ? 'Fixed salary' : 'Seasonal salary',
+            active: true,
+            metadata: { currency: 'LKR', local_type: document.getElementById('salaryType').value }
+          });
+          await loadMonthlyProfiles();
+          resetSalaryForm();
+          toast('Salary profile saved online');
+        }catch(error){
+          console.error(error);
+          toast(error?.message || 'Could not save salary profile');
+        } finally {
+          btn.disabled = false;
+          btn.textContent = state.editingSalaryId ? 'Update salary' : 'Save salary';
+        }
+      });
+      document.getElementById('saveInternationalSalaryBtn').addEventListener('click', async () => {
+        const btn = document.getElementById('saveInternationalSalaryBtn');
+        btn.disabled = true;
+        btn.textContent = 'Saving...';
+        try{
+          validateInternationalSalaryForm();
+          await upsertMonthlyProfile({
+            id: state.editingInternationalSalaryId || undefined,
+            profile_type: 'salary',
+            name: document.getElementById('internationalSalaryName').value.trim(),
+            category: 'Salary',
+            business_area: 'Salary',
+            fixed_amount: Number(document.getElementById('internationalSalaryAmountEur').value || 0),
+            payment_method: 'Bank Transfer',
+            description: 'International salary',
+            active: true,
+            metadata: { currency: 'EUR', local_type: 'fixed' }
+          });
+          await loadMonthlyProfiles();
+          resetInternationalSalaryForm();
+          toast('International salary saved online');
+        }catch(error){
+          console.error(error);
+          toast(error?.message || 'Could not save international salary');
+        } finally {
+          btn.disabled = false;
+          btn.textContent = state.editingInternationalSalaryId ? 'Update international salary' : 'Save international salary';
+        }
+      });
+      document.getElementById('saveFixedCostBtn').addEventListener('click', async () => {
+        const btn = document.getElementById('saveFixedCostBtn');
+        btn.disabled = true;
+        btn.textContent = 'Saving...';
+        try{
+          validateFixedCostForm();
+          await upsertMonthlyProfile({
+            id: state.editingFixedCostId || undefined,
+            profile_type: 'fixed_cost',
+            name: document.getElementById('fixedCostName').value.trim(),
+            category: document.getElementById('fixedCostCategory').value,
+            business_area: document.getElementById('fixedCostCategory').value,
+            fixed_amount: Number(document.getElementById('fixedCostAmount').value || 0),
+            payment_method: document.getElementById('fixedCostPaymentMethod').value,
+            description: document.getElementById('fixedCostDescription').value.trim() || null,
+            active: true,
+            metadata: { local_type: 'fixed_cost' }
+          });
+          await loadMonthlyProfiles();
+          resetFixedCostForm();
+          toast('Fixed monthly cost saved online');
+        }catch(error){
+          console.error(error);
+          toast(error?.message || 'Could not save fixed monthly cost');
+        } finally {
+          btn.disabled = false;
+          btn.textContent = state.editingFixedCostId ? 'Update fixed cost' : 'Save fixed cost';
+        }
+      });
+      document.getElementById('monthlyAddAllBtn').addEventListener('click', async () => {
+        const btn = document.getElementById('monthlyAddAllBtn');
+        btn.disabled = true;
+        const originalLabel = btn.textContent;
+        btn.textContent = 'Adding...';
+        try{
+          await addAllMonthlyNow();
+          toast(`Monthly entries added for ${monthLabelFromKey(getTargetMonth())}`);
+        }catch(error){
+          console.error(error);
+          toast(error?.message || 'Could not add monthly entries');
+        } finally {
+          btn.disabled = false;
+          btn.textContent = originalLabel;
+        }
+      });
+      document.getElementById('salaryProfilesList').addEventListener('click', async event => {
+        const addId = event.target.closest('[data-add-profile]')?.dataset?.addProfile;
+        const editId = event.target.closest('[data-edit-salary]')?.dataset?.editSalary;
+        const toggleId = event.target.closest('[data-toggle-profile]')?.dataset?.toggleProfile;
+        const nextActive = event.target.closest('[data-toggle-profile]')?.dataset?.next;
+        const deleteId = event.target.closest('[data-delete-profile]')?.dataset?.deleteProfile;
+        try{
+          if(addId) await addMonthlyProfileNow(addId);
+          else if(editId){
+            const profile = state.monthlyProfiles.find(row => row.id === editId);
+            if(!profile) return;
+            state.editingSalaryId = profile.id;
+            document.getElementById('salaryName').value = profile.name || '';
+            document.getElementById('salaryType').value = isFixedSalaryProfile(profile) ? 'fixed' : 'seasonal';
+            document.getElementById('salarySeasonAmount').value = profile.season_amount || '';
+            document.getElementById('salaryOffSeasonAmount').value = profile.off_season_amount || '';
+            document.getElementById('salaryFixedAmount').value = profile.fixed_amount || '';
+            document.getElementById('salaryPaymentMethod').value = profile.payment_method || 'Bank Transfer';
+            document.getElementById('saveSalaryBtn').textContent = 'Update salary';
+          }else if(toggleId){
+            await toggleMonthlyProfile(toggleId, nextActive === 'true');
+          }else if(deleteId){
+            await deleteMonthlyProfile(deleteId);
+          }
+          await loadMonthlyProfiles();
+          if(addId) toast('Monthly entry added online');
+        }catch(error){
+          console.error(error);
+          toast(error?.message || 'Could not update monthly salary');
+        }
+      });
+      document.getElementById('internationalSalaryProfilesList').addEventListener('click', async event => {
+        const addId = event.target.closest('[data-add-profile]')?.dataset?.addProfile;
+        const editId = event.target.closest('[data-edit-international-salary]')?.dataset?.editInternationalSalary;
+        const toggleId = event.target.closest('[data-toggle-profile]')?.dataset?.toggleProfile;
+        const nextActive = event.target.closest('[data-toggle-profile]')?.dataset?.next;
+        const deleteId = event.target.closest('[data-delete-profile]')?.dataset?.deleteProfile;
+        try{
+          if(addId) await addMonthlyProfileNow(addId);
+          else if(editId){
+            const profile = state.monthlyProfiles.find(row => row.id === editId);
+            if(!profile) return;
+            state.editingInternationalSalaryId = profile.id;
+            document.getElementById('internationalSalaryName').value = profile.name || '';
+            document.getElementById('internationalSalaryAmountEur').value = profile.fixed_amount || '';
+            document.getElementById('saveInternationalSalaryBtn').textContent = 'Update international salary';
+          }else if(toggleId){
+            await toggleMonthlyProfile(toggleId, nextActive === 'true');
+          }else if(deleteId){
+            await deleteMonthlyProfile(deleteId);
+          }
+          await loadMonthlyProfiles();
+          if(addId) toast('Monthly entry added online');
+        }catch(error){
+          console.error(error);
+          toast(error?.message || 'Could not update international salary');
+        }
+      });
+      document.getElementById('fixedCostProfilesList').addEventListener('click', async event => {
+        const addId = event.target.closest('[data-add-profile]')?.dataset?.addProfile;
+        const editId = event.target.closest('[data-edit-fixed-cost]')?.dataset?.editFixedCost;
+        const toggleId = event.target.closest('[data-toggle-profile]')?.dataset?.toggleProfile;
+        const nextActive = event.target.closest('[data-toggle-profile]')?.dataset?.next;
+        const deleteId = event.target.closest('[data-delete-profile]')?.dataset?.deleteProfile;
+        try{
+          if(addId) await addMonthlyProfileNow(addId);
+          else if(editId){
+            const profile = state.monthlyProfiles.find(row => row.id === editId);
+            if(!profile) return;
+            state.editingFixedCostId = profile.id;
+            document.getElementById('fixedCostName').value = profile.name || '';
+            document.getElementById('fixedCostCategory').value = profile.category || 'Rent';
+            document.getElementById('fixedCostAmount').value = profile.fixed_amount || '';
+            document.getElementById('fixedCostPaymentMethod').value = profile.payment_method || 'Bank Transfer';
+            document.getElementById('fixedCostDescription').value = profile.description || '';
+            document.getElementById('saveFixedCostBtn').textContent = 'Update fixed cost';
+          }else if(toggleId){
+            await toggleMonthlyProfile(toggleId, nextActive === 'true');
+          }else if(deleteId){
+            await deleteMonthlyProfile(deleteId);
+          }
+          await loadMonthlyProfiles();
+          if(addId) toast('Monthly entry added online');
+        }catch(error){
+          console.error(error);
+          toast(error?.message || 'Could not update fixed monthly cost');
+        }
+      });
+      document.getElementById('historyList').addEventListener('click', async event => {
+        const weekId = event.target.closest('[data-delete-week]')?.dataset?.deleteWeek;
+        if(!weekId) return;
+        if(!confirm('Delete this closed week and all its linked online records?')) return;
+        try{
+          await deleteClosedWeekCompletely(weekId);
+          await loadLedger();
+          await loadCampTabData();
+          toast('Closed week deleted online');
+        }catch(error){
+          console.error(error);
+          toast(error?.message || 'Could not delete this closed week');
+        }
+      });
+    }
+
+    async function boot(){
+      bindUi();
+      try{
+        await ensureSession();
+        await loadLocation();
+        await loadLedger();
+        await connectRealtime();
+        await loadCampTabData();
+        await loadMonthlyProfiles();
+        await connectCampRealtime();
+        document.getElementById('weekStartDate').value = todayIso();
+        document.getElementById('monthlyTargetMonth').value = monthKey(todayIso());
+        renderMonthlyTargetHint();
+      }catch(error){
+        console.error(error);
+        document.getElementById('ledgerTableBody').innerHTML = '<tr><td colspan="9" class="empty">Could not load Camp Hub v2.</td></tr>';
+        toast(error?.message || 'Could not load Camp Hub v2');
+      }
+    }
+
+    boot();
+  </script>
+</body>
+</html>
