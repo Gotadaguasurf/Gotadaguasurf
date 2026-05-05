@@ -1,0 +1,2567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Camp Tab — Gota d'Água</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="/supabase-config.js"></script>
+<style>
+:root{
+  --navy:#28394b;--ocean:#1e6fa8;--ocean-light:#3b9dd4;
+  --foam:#e8f4fd;--ink:#0d1b2a;--muted:#6b8099;--border:#d4e3f0;--bg:#f0f5fa;
+  --green-bg:#eafaf1;--green:#1a7a40;--green-border:#a3e6c0;
+  --red-bg:#fdecea;--red:#b91c1c;
+  --amber-bg:#fef9e7;--amber:#9a6f00;--amber-border:#f0d060;
+  --sh:0 2px 16px rgba(40,57,75,.08);--sh-lg:0 12px 40px rgba(40,57,75,.18)
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;background:var(--bg);color:var(--ink)}
+
+/* ── HEADER ── */
+header{display:none}
+.hlogo{display:flex;align-items:center;gap:10px}
+.hlogo-sub{font-size:9px;color:#7aabcc;letter-spacing:.12em;text-transform:uppercase;margin-top:1px}
+.hweek{font-size:11px;color:#7aabcc;background:rgba(255,255,255,.08);border-radius:6px;padding:3px 10px;border:1px solid rgba(255,255,255,.1)}
+
+/* ── SUB-NAV ── */
+.subnav{background:#fff;border-bottom:1px solid var(--border);display:flex;padding:0 20px;height:46px;align-items:stretch;flex-shrink:0;box-shadow:0 1px 8px rgba(40,57,75,.06)}
+.snav-btn{display:flex;align-items:center;gap:6px;padding:0 16px;font-size:13px;font-weight:700;color:var(--muted);border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;font-family:'Outfit',sans-serif;transition:all .15s;white-space:nowrap}
+.snav-btn:hover{color:var(--navy)}
+.snav-btn.active{color:var(--ocean);border-bottom-color:var(--ocean)}
+
+/* ── LAYOUT ── */
+.app{display:flex;height:calc(100vh - 46px);overflow:hidden}
+.subpage{display:none;flex:1;overflow:hidden}
+.subpage.active{display:flex}
+
+/* ════════════════════════════════ CHARGE ════════════════════════════════ */
+/* Sidebar */
+.c-sidebar{width:220px;flex-shrink:0;background:#fff;border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+.c-sb-head{padding:10px 12px;border-bottom:1px solid var(--border);flex-shrink:0}
+.c-sb-actions{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px}
+.c-sb-title{font-family:'DM Serif Display',serif;font-size:14px;color:var(--navy);margin-bottom:6px}
+.c-sb-search{width:100%;border:1.5px solid var(--border);border-radius:7px;padding:6px 10px;font-size:12px;font-family:'Outfit',sans-serif;color:var(--ink);outline:none}
+.c-sb-search:focus{border-color:var(--ocean)}
+.c-sb-list{flex:1;overflow-y:auto;padding:5px}
+.c-guest{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border-radius:9px;cursor:pointer;margin-bottom:2px;transition:all .14s;gap:5px}
+.c-guest:hover{background:var(--foam)}
+.c-guest.active{background:var(--ocean)}
+.c-guest-name{font-size:12px;font-weight:700;color:var(--navy);line-height:1.2}
+.c-guest-amt{font-family:'DM Mono',monospace;font-size:10px;color:var(--muted)}
+.c-guest.active .c-guest-name,.c-guest.active .c-guest-amt{color:#fff}
+.c-gpaid{width:6px;height:6px;border-radius:50%;background:var(--green);flex-shrink:0}
+/* Center */
+.c-center{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.c-center-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:var(--muted);padding:32px}
+.c-cats{display:flex;gap:6px;padding:10px 14px;flex-shrink:0;background:#fff;border-bottom:1px solid var(--border);overflow-x:auto}
+.c-cat{padding:6px 14px;border-radius:18px;border:1.5px solid var(--border);background:#fff;color:var(--muted);font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:'Outfit',sans-serif;transition:all .18s}
+.c-cat:hover{border-color:var(--ocean);color:var(--ocean)}
+.c-cat.active{background:var(--navy);color:#fff;border-color:var(--navy)}
+.c-cat-manage{background:var(--foam);color:var(--ocean);border-color:#bfdcf2}
+.c-items{flex:1;overflow-y:auto;padding:10px 14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:7px;align-content:start}
+.c-item{background:#fff;border:1.5px solid var(--border);border-radius:10px;padding:10px 9px;cursor:pointer;text-align:left;font-family:'Outfit',sans-serif;display:flex;flex-direction:column;gap:2px;transition:all .16s}
+.c-item:hover{border-color:var(--ocean);transform:translateY(-1px);box-shadow:0 4px 12px rgba(30,111,168,.1)}
+.c-item:active{transform:scale(.96)}
+.c-item.out,.c-item:disabled{opacity:.58;cursor:not-allowed;transform:none;box-shadow:none}
+.c-item.out:hover,.c-item:disabled:hover{border-color:var(--border);transform:none;box-shadow:none}
+.c-item.flash{background:var(--ocean);border-color:var(--ocean)}
+.c-item.flash .ci-name,.c-item.flash .ci-desc,.c-item.flash .ci-price{color:#fff}
+.c-item-empty{grid-column:1/-1;background:#fff;border:1.5px dashed var(--border);border-radius:12px;padding:22px 18px;text-align:center;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:10px}
+.ci-name{font-size:12px;font-weight:700;color:var(--navy);line-height:1.25}
+.ci-desc{font-size:10px;color:var(--muted);line-height:1.3;margin-top:1px}
+.ci-price{font-family:'DM Mono',monospace;font-size:13px;color:var(--ocean);margin-top:3px}
+/* Right panel */
+.c-right{width:260px;flex-shrink:0;background:#fff;border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+.c-right-head{padding:11px 13px;border-bottom:1px solid var(--border);flex-shrink:0}
+.c-right-title{font-family:'DM Serif Display',serif;font-size:15px;color:var(--navy)}
+.c-right-meta{font-size:10px;color:var(--muted);margin-top:2px}
+.c-tab-list{flex:1;overflow-y:auto;padding:6px 8px}
+.c-tab-row{display:flex;justify-content:space-between;align-items:flex-start;padding:6px 7px;border-radius:7px;gap:6px;transition:background .12s}
+.c-tab-row:hover{background:var(--bg)}
+.ctr-name{font-size:11px;font-weight:600;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ctr-time{font-size:9px;color:var(--muted);margin-top:1px}
+.ctr-price{font-family:'DM Mono',monospace;font-size:11px;color:var(--ink);white-space:nowrap}
+.ctr-del{border:none;background:none;cursor:pointer;color:var(--muted);font-size:14px;padding:1px 4px;border-radius:4px;line-height:1;transition:all .12s;flex-shrink:0}
+.ctr-del:hover{background:var(--red-bg);color:var(--red)}
+.c-right-foot{border-top:1px solid var(--border);padding:11px 13px;flex-shrink:0}
+.c-total-row{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px}
+.c-total-val{font-family:'DM Serif Display',serif;font-size:24px;color:var(--navy)}
+.c-btns{display:flex;gap:6px}
+.c-btn{flex:1;border:none;border-radius:7px;padding:9px 4px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;transition:all .18s}
+.c-btn-bill{background:var(--ocean);color:#fff}.c-btn-bill:hover{background:var(--ocean-light)}
+.c-btn-pay{background:var(--green-bg);color:var(--green);border:1.5px solid var(--green-border)}.c-btn-pay:hover{background:#d1fae5}
+
+/* ════════════════════════════════ THIS WEEK ════════════════════════════ */
+.tw-wrap{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.tw-header{padding:16px 20px 12px;flex-shrink:0;display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px}
+.tw-header-main{display:flex;flex-direction:column;gap:10px;min-width:280px;flex:1}
+.tw-week-kicker{font-size:10px;color:#7aabcc;text-transform:uppercase;letter-spacing:.12em;font-weight:700}
+.tw-week-date-line{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap}
+.tw-week-date-main{font-family:'DM Serif Display',serif;font-size:31px;line-height:1;color:var(--navy)}
+.tw-week-date-end{font-size:14px;color:var(--muted);font-weight:700;padding-bottom:3px}
+.tw-week-note{font-size:12px;color:var(--muted)}
+.tw-search{width:min(340px,100%);border:1.5px solid var(--border);border-radius:9px;padding:8px 12px;font-size:12px;font-family:'Outfit',sans-serif;color:var(--ink);outline:none;background:#fff}
+.tw-search:focus{border-color:var(--ocean)}
+.tw-stats{display:flex;gap:16px;flex-wrap:wrap}
+.tw-stat{text-align:center}
+.tw-stat-val{font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy)}
+.tw-stat-val.green{color:var(--green)}
+.tw-stat-val.red{color:var(--red)}
+.tw-stat-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-top:2px}
+.tw-list{flex:1;overflow-y:auto;padding:0 16px 16px}
+.tw-card{background:#fff;border:1px solid var(--border);border-radius:11px;margin-bottom:8px;overflow:hidden;box-shadow:var(--sh)}
+.tw-card-head{display:flex;justify-content:space-between;align-items:center;padding:11px 14px;cursor:pointer;gap:10px}
+.tw-card-name{font-size:14px;font-weight:700;color:var(--navy)}
+.tw-guest-meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
+.tw-chip{display:inline-flex;align-items:center;padding:3px 9px;border-radius:999px;font-size:10px;font-weight:700;border:1px solid var(--border);background:var(--bg);color:var(--muted)}
+.tw-chip.next{background:#eef6ff;border-color:#bfdcf2;color:var(--ocean)}
+.tw-chip.stay{background:#f8fafc;border-color:var(--border);color:var(--muted)}
+.tw-card-right{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.tw-card-total{font-family:'DM Mono',monospace;font-size:13px;color:var(--ink)}
+.tw-card-body{padding:0 14px 12px;border-top:1px solid var(--border)}
+.tw-item-row{display:flex;justify-content:space-between;padding:5px 0;font-size:12px;border-bottom:1px solid rgba(0,0,0,.04)}
+.tw-item-row:last-child{border-bottom:none}
+.tw-item-main{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:1;min-width:0}
+.tw-item-del{border:none;background:none;cursor:pointer;color:var(--muted);font-size:14px;padding:1px 4px;border-radius:4px;line-height:1;transition:all .12s;flex-shrink:0}
+.tw-item-del:hover{background:var(--red-bg);color:var(--red)}
+.tw-actions{display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-top:10px}
+.tw-btn{border:none;border-radius:8px;padding:8px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;transition:all .18s}
+.tw-btn-pay{background:var(--ocean);color:#fff;min-width:92px;box-shadow:0 8px 18px rgba(30,111,168,.15)}.tw-btn-pay:hover{background:var(--ocean-light)}
+.tw-btn-paid{background:var(--amber-bg);color:var(--amber);border:1.5px solid var(--amber-border);min-width:92px}.tw-btn-paid:hover{background:#fff1bf}
+.tw-btn-bill{background:#fff;color:var(--muted);border:1.5px solid var(--border);padding:7px 10px}.tw-btn-bill:hover{border-color:var(--ocean);color:var(--ocean)}
+.tw-btn-delete{background:#fff;color:var(--muted);border:1.5px solid var(--border);padding:7px 10px}.tw-btn-delete:hover{border-color:#f0a0a0;color:var(--red);background:var(--red-bg)}
+.tw-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;color:var(--muted);gap:10px;padding:40px;text-align:center}
+.tw-close-bar{padding:10px 20px;border-top:1px solid var(--border);background:#fff;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;flex-wrap:wrap;gap:8px}
+.tw-close-btn{border:none;border-radius:8px;padding:8px 18px;font-size:12px;font-weight:700;font-family:'Outfit',sans-serif;border:1.5px solid var(--border)}
+.tw-close-btn.ready{background:var(--green-bg);color:var(--green);border-color:var(--green-border);cursor:pointer}
+.tw-close-btn.ready:hover{background:#d1fae5}
+.tw-close-btn.locked{background:var(--bg);color:var(--muted);cursor:not-allowed}
+.tw-next-week-bar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;background:#eef6ff;border:1px solid #bfdcf2;border-radius:10px;padding:10px 12px;margin-top:10px}
+
+/* ════════════════════════════════ HISTORY ═══════════════════════════════ */
+.hist-wrap{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.hist-list{flex:1;overflow-y:auto;padding:16px}
+.hist-week{background:#fff;border:1px solid var(--border);border-radius:11px;margin-bottom:10px;overflow:hidden;box-shadow:var(--sh)}
+.hist-week-head{display:flex;justify-content:space-between;align-items:center;padding:13px 16px;cursor:pointer;gap:10px;transition:background .12s}
+.hist-week-head:hover{background:var(--foam)}
+.hw-left{}
+.hw-title{font-family:'DM Serif Display',serif;font-size:16px;color:var(--navy)}
+.hw-sub{font-size:11px;color:var(--muted);margin-top:2px}
+.hw-right{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.hw-total{font-family:'DM Serif Display',serif;font-size:18px;color:var(--green)}
+.hw-badge{font-size:10px;font-weight:700;padding:3px 9px;border-radius:20px;background:var(--bg);color:var(--muted);border:1px solid var(--border)}
+.hw-chevron{font-size:12px;color:var(--muted);transition:transform .2s}
+.hist-week.open .hw-chevron{transform:rotate(90deg)}
+.hist-week-body{display:none;border-top:1px solid var(--border)}
+.hist-week.open .hist-week-body{display:block}
+.hw-guest-row{display:flex;justify-content:space-between;align-items:center;padding:9px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s}
+.hw-guest-row:hover{background:var(--foam)}
+.hw-guest-row:last-child{border-bottom:none}
+.hw-guest-name{font-size:13px;font-weight:600;color:var(--navy)}
+.hw-guest-items{font-size:11px;color:var(--muted);margin-top:1px}
+.hw-guest-total{font-family:'DM Mono',monospace;font-size:12px;color:var(--ink)}
+.hw-items-detail{background:var(--bg);padding:10px 16px;border-top:1px solid var(--border)}
+.hw-item-line{display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid rgba(0,0,0,.05)}
+.hw-item-line:last-child{border-bottom:none}
+.hw-mini-actions{display:flex;gap:6px}
+.hw-mini-btn{border:none;background:#fff;border:1.5px solid var(--border);border-radius:999px;padding:4px 8px;font-size:10px;font-weight:700;color:var(--muted);cursor:pointer;font-family:'Outfit',sans-serif;transition:all .15s}
+.hw-mini-btn:hover{border-color:var(--ocean);color:var(--ocean)}
+.hw-mini-btn.danger:hover{border-color:#f0a0a0;color:var(--red);background:var(--red-bg)}
+.hist-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;color:var(--muted);gap:10px;padding:40px;text-align:center}
+
+/* ════════════════════════════════ TOP SELLERS ═══════════════════════════ */
+.ts-wrap{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.ts-header{padding:14px 20px 10px;flex-shrink:0;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.ts-cat-btn{padding:6px 14px;border-radius:18px;border:1.5px solid var(--border);background:#fff;color:var(--muted);font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:'Outfit',sans-serif;transition:all .18s}
+.ts-cat-btn:hover{border-color:var(--ocean);color:var(--ocean)}
+.ts-cat-btn.active{background:var(--navy);color:#fff;border-color:var(--navy)}
+.ts-body{flex:1;overflow-y:auto;padding:0 20px 20px}
+.ts-item{display:flex;align-items:center;gap:12px;padding:11px 14px;background:#fff;border:1px solid var(--border);border-radius:10px;margin-bottom:7px}
+.ts-rank{font-family:'DM Serif Display',serif;font-size:20px;color:var(--border);min-width:28px;text-align:center}
+.ts-info{flex:1;min-width:0}
+.ts-name{font-size:13px;font-weight:700;color:var(--navy)}
+.ts-cat-label{font-size:10px;color:var(--muted);margin-top:1px}
+.ts-bar-wrap{flex:1;background:var(--bg);border-radius:4px;height:6px;overflow:hidden;min-width:60px}
+.ts-bar{height:100%;border-radius:4px;background:var(--ocean);transition:width .4s}
+.ts-qty{font-family:'DM Mono',monospace;font-size:12px;color:var(--muted);min-width:30px;text-align:right}
+.ts-rev{font-family:'DM Mono',monospace;font-size:12px;font-weight:700;color:var(--navy);min-width:60px;text-align:right}
+
+/* ── MODALS ── */
+.overlay{display:none;position:fixed;inset:0;background:rgba(20,30,45,.6);backdrop-filter:blur(4px);z-index:200;align-items:center;justify-content:center;padding:20px}
+.overlay.open{display:flex}
+.modal{background:#fff;border-radius:14px;width:100%;box-shadow:var(--sh-lg);animation:mIn .22s cubic-bezier(.34,1.56,.64,1);overflow:hidden;max-height:92vh;overflow-y:auto}
+@keyframes mIn{from{opacity:0;transform:scale(.94) translateY(8px)}to{opacity:1;transform:scale(1) translateY(0)}}
+.mhdr{background:var(--navy);padding:15px 20px 13px}
+.mhdr-title{font-family:'DM Serif Display',serif;font-size:19px;color:#fff}
+.mhdr-sub{font-size:11px;color:#7aabcc;margin-top:2px}
+.mbody{padding:16px 20px}
+.mfooter{padding:0 20px 16px;display:flex;justify-content:flex-end;gap:8px}
+.mfield{margin-bottom:12px}
+.mfield label{display:block;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px}
+.mfield input,.mfield select,.mfield textarea{width:100%;border:1.5px solid var(--border);border-radius:9px;padding:8px 11px;font-size:13px;font-family:'Outfit',sans-serif;color:var(--ink);outline:none;transition:border-color .18s;background:#fff}
+.mfield input:focus,.mfield select:focus,.mfield textarea:focus{border-color:var(--ocean)}
+.mbtn{border:none;border-radius:8px;padding:9px 17px;font-size:13px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;transition:all .18s}
+.mbtn-p{background:var(--ocean);color:#fff}.mbtn-p:hover{background:var(--ocean-light)}
+.mbtn-s{background:#fff;color:var(--muted);border:1.5px solid var(--border)}.mbtn-s:hover{border-color:var(--navy);color:var(--navy)}
+.mbtn-r{background:var(--red-bg);color:var(--red);border:1.5px solid #f0a0a0}.mbtn-r:hover{background:#fee2e2}
+.mbtn-g{background:var(--green-bg);color:var(--green);border:1.5px solid var(--green-border)}.mbtn-g:hover{background:#d1fae5}
+.menu-shell{display:grid;grid-template-columns:240px 1fr;gap:14px}
+.menu-side,.menu-main{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:14px}
+.menu-side-title,.menu-main-title{font-family:'DM Serif Display',serif;font-size:17px;color:var(--navy);margin-bottom:10px}
+.menu-cat-list{display:flex;flex-direction:column;gap:6px;margin-bottom:12px;max-height:280px;overflow:auto}
+.menu-cat-chip{display:flex;justify-content:space-between;align-items:center;gap:8px;border:none;background:#fff;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-size:12px;font-weight:700;color:var(--navy);cursor:pointer;text-align:left;font-family:'Outfit',sans-serif}
+.menu-cat-chip.active{border-color:var(--navy);background:var(--navy);color:#fff}
+.menu-inline-actions{display:flex;gap:8px;flex-wrap:wrap}
+.menu-item-list{display:flex;flex-direction:column;gap:8px;margin-bottom:14px;max-height:280px;overflow:auto}
+.menu-item-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;background:#fff;border:1px solid var(--border);border-radius:11px;padding:10px 12px}
+.menu-item-name{font-size:13px;font-weight:700;color:var(--navy)}
+.menu-item-desc{font-size:11px;color:var(--muted);margin-top:2px}
+.menu-item-price{font-family:'DM Mono',monospace;font-size:12px;color:var(--ocean);margin-top:4px}
+.menu-item-actions{display:flex;gap:6px}
+.menu-mini-btn{border:none;background:#fff;border:1.5px solid var(--border);border-radius:8px;padding:6px 10px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;color:var(--muted)}
+.menu-mini-btn:hover{border-color:var(--ocean);color:var(--ocean)}
+.menu-mini-btn.danger:hover{border-color:#f0a0a0;color:var(--red);background:var(--red-bg)}
+.menu-grid{display:grid;grid-template-columns:1.2fr .7fr;gap:10px}
+.menu-empty{background:#fff;border:1.5px dashed var(--border);border-radius:11px;padding:18px;text-align:center;color:var(--muted);font-size:12px}
+
+/* ── BILL PRINT ── */
+@media print{body>*{display:none!important}#billOv{display:block!important;position:static!important;background:none!important;backdrop-filter:none!important;padding:0!important}.modal{box-shadow:none!important;max-height:none!important;border-radius:0!important;width:100%!important;animation:none!important}.mhdr{background:var(--navy)!important;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}.mfooter{display:none!important}.bill-total-box{background:var(--navy)!important;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}@page{margin:1.2cm}}
+
+/* ── TOAST ── */
+.toast{position:fixed;bottom:18px;right:18px;z-index:999;background:var(--navy);color:#fff;border-radius:9px;padding:9px 16px;font-size:12px;font-weight:700;box-shadow:var(--sh-lg);animation:mIn .2s ease;display:none;max-width:260px}
+.toast.show{display:block}
+::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+@media(max-width:800px){.c-right{display:none}.c-sidebar{width:190px}}
+@media(max-width:700px){.menu-shell{grid-template-columns:1fr}.menu-grid{grid-template-columns:1fr}}
+@media(max-width:600px){.c-sidebar{display:none}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="hlogo">
+    <svg style="height:26px;width:auto" viewBox="0 0 197.4 91" xmlns="http://www.w3.org/2000/svg">
+      <path style="fill:#fff4d5" d="M61.7,51.9c-.4-9-5.5-16.5-9.7-24.1-2.9-4.8-5.3-9.8-9.3-13.9-3.9-4.4-6.5-9.8-10.8-13.9C19.2,16.6-.5,39.9,0,61.9c9.4-7.9,20.1-17.7,33.1-17.8,3,0,7.2,0,9.5,2.2,1.7,1.7,3.2,4.2,2,6.5-.3.5-1.9,2.7-2.3,2.9-12.9,7.4-20.3,18.6-16.5,33.7,3.1,1.3,8,1,11.1-.3,2.7-.3,5.1-1.3,7.5-2.5,8.7-2.9,14.5-11.1,15.5-20.1,1.2-4.7,2.1-9.7,1.8-14.6z"/>
+      <path style="fill:#fff4d5" d="M69.7,90.6l-.3-1.9c-.7-5.9-.5-11.9-.4-17.9,0-6.7-.3-13.7,0-20.3v-2.3c.5,0,1.1,0,1.7,0,3.3-.3,6.9-.3,10.2,0,.7,0,1.7,0,2.4,0,1.5.3,4,2.2,5,3.3,2.2,2.7,4.9,8.2,5.5,11.7,1.1,7.7-1.8,18.8-6.7,24.8-.4.5-1.4,1.9-1.7,2.1-.2,0-1.5.4-1.9.4-3.3.5-13.7,0-13.7,0z M77.2,61.3v.8c.4,4.6,0,9.3.3,13.9,0,.9-.3,1.7.9,1.8,2.2.3,4.1-.4,5.3-2.3,2.4-3.5,2.3-5.9,1.4-9.9-.3-1.1-1-2.6-1.7-3.5-.8-1-1.4-.8-2.5-.9-.2,0-.3,0-.6,0-1.1,0-2.1,0-3.3,0z"/>
+    </svg>
+    <div><div class="hlogo-sub">Camp Tab</div></div>
+  </div>
+  <div class="hweek" id="hWeekLabel">No active week</div>
+  <div style="width:100px"></div>
+</header>
+
+<div class="subnav">
+  <button class="snav-btn active" data-sub="charge" onclick="showSub('charge')">Charge</button>
+  <button class="snav-btn" data-sub="week" onclick="showSub('week')">This week</button>
+  <button class="snav-btn" data-sub="history" onclick="showSub('history')">History</button>
+  <button class="snav-btn" data-sub="sellers" onclick="showSub('sellers')">Top sellers</button>
+</div>
+
+<div class="app">
+
+<!-- ═══════════════ CHARGE ═══════════════ -->
+<div class="subpage active" id="sub-charge">
+  <div class="c-sidebar">
+    <div class="c-sb-head">
+      <div class="c-sb-actions">
+        <div class="c-sb-title" style="margin-bottom:0" id="consumerTitle">Guests</div>
+        <button onclick="openAddGuest()" id="addConsumerBtn" style="border:none;background:var(--ocean);color:#fff;border-radius:7px;padding:6px 10px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">+ Guest</button>
+      </div>
+      <div style="display:flex;gap:6px;margin-bottom:8px">
+        <button class="ts-cat-btn active" id="rosterGuestsBtn" onclick="setRoster('guests')" style="flex:1">Guests</button>
+        <button class="ts-cat-btn" id="rosterStaffBtn" onclick="setRoster('staff')" style="flex:1">Staff</button>
+      </div>
+      <input class="c-sb-search" id="gsearch" placeholder="Search" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" oninput="renderGuestList()">
+    </div>
+    <div class="c-sb-list" id="glist"></div>
+  </div>
+
+  <div class="c-center">
+    <div class="c-center-empty" id="chargeEmpty">
+      <div style="font-family:'DM Serif Display',serif;font-size:18px">Select a guest</div>
+      <div style="font-size:12px;max-width:180px;line-height:1.6">Pick someone from the left to start adding items to their tab.</div>
+    </div>
+    <div id="chargeActive" style="display:none;flex-direction:column;height:100%;overflow:hidden">
+      <div style="padding:10px 14px 8px;border-bottom:1px solid var(--border);background:#fff;flex-shrink:0">
+        <div style="font-family:'DM Serif Display',serif;font-size:18px;color:var(--navy)" id="chargeGuestName"></div>
+        <div style="font-size:11px;color:var(--muted);margin-top:1px" id="chargeGuestMeta"></div>
+      </div>
+      <div class="c-cats" id="catTabs"></div>
+      <div class="c-items" id="itemGrid"></div>
+    </div>
+  </div>
+
+  <div class="c-right">
+    <div class="c-right-head">
+      <div class="c-right-title">Current tab</div>
+      <div class="c-right-meta" id="tabMeta">Select a guest</div>
+    </div>
+    <div class="c-tab-list" id="tabList">
+      <div style="padding:14px;text-align:center;font-size:12px;color:var(--muted)">No items yet.</div>
+    </div>
+    <div class="c-right-foot" id="tabFoot" style="display:none">
+      <div class="c-total-row">
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-weight:700">Total</div>
+        <div class="c-total-val" id="tabTotal">€0.00</div>
+      </div>
+      <div class="c-btns">
+        <button class="c-btn c-btn-bill" onclick="openBill()">Bill</button>
+        <button class="c-btn c-btn-pay" id="payBtn" onclick="togglePaid()">Paid</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ THIS WEEK ═══════════════ -->
+<div class="subpage" id="sub-week">
+  <div class="tw-wrap">
+    <div class="tw-header" id="twHeader">
+      <div style="font-family:'DM Serif Display',serif;font-size:20px;color:var(--navy)">This week</div>
+    </div>
+    <div class="tw-list" id="twList"></div>
+    <div class="tw-close-bar" id="twCloseBar"></div>
+  </div>
+</div>
+
+<!-- ═══════════════ HISTORY ═══════════════ -->
+<div class="subpage" id="sub-history">
+  <div class="hist-wrap">
+    <div class="hist-list" id="histList"></div>
+  </div>
+</div>
+
+<!-- ═══════════════ TOP SELLERS ═══════════════ -->
+<div class="subpage" id="sub-sellers">
+  <div class="ts-wrap">
+    <div class="ts-header">
+      <div style="font-family:'DM Serif Display',serif;font-size:18px;color:var(--navy);margin-right:6px">Top sellers</div>
+      <div id="tsCatRow" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+    </div>
+    <div class="ts-body" id="tsBody"></div>
+  </div>
+</div>
+
+</div><!-- .app -->
+
+<!-- ══════════ MODALS ══════════ -->
+
+<!-- ADD WEEK -->
+<div class="overlay" id="addWeekOv">
+  <div class="modal" style="max-width:420px">
+    <div class="mhdr"><div class="mhdr-title">New week</div><div class="mhdr-sub">Saturday to Saturday · Add all guests at once</div></div>
+    <div class="mbody">
+      <div class="mfield"><label>Week start (Saturday)</label><input type="date" id="nwDate"></div>
+      <div class="mfield">
+        <label>Guest names — one per line</label>
+        <textarea style="width:100%;min-height:120px;border:1.5px solid var(--border);border-radius:9px;padding:8px 11px;font-size:13px;font-family:'Outfit',sans-serif;resize:vertical;outline:none;line-height:1.75;transition:border-color .18s" id="nwNames" placeholder="Emma Foster&#10;Noah Bennett&#10;Lina Costa&#10;Thomas Müller&#10;..."></textarea>
+      </div>
+      <div style="font-size:12px;color:var(--muted);background:var(--bg);border-radius:8px;padding:9px 11px">You can add more guests later using the <strong style="color:var(--navy)">+ Guest</strong> button in the Charge tab.</div>
+    </div>
+    <div class="mfooter">
+      <button class="mbtn mbtn-s" onclick="closeOv('addWeekOv')">Cancel</button>
+      <button class="mbtn mbtn-p" onclick="saveNewWeek()">Create week</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADD GUEST -->
+<div class="overlay" id="addGuestOv">
+  <div class="modal" style="max-width:420px">
+    <div class="mhdr"><div class="mhdr-title">Add guests</div><div class="mhdr-sub" id="addGuestSub"></div></div>
+    <div class="mbody">
+      <div class="mfield">
+        <label>Names</label>
+        <textarea style="width:100%;min-height:120px;border:1.5px solid var(--border);border-radius:9px;padding:8px 11px;font-size:13px;font-family:'Outfit',sans-serif;resize:vertical;outline:none;line-height:1.75;transition:border-color .18s" id="newGuestName" placeholder="One name per line&#10;Ana Costa&#10;Miguel Pereira&#10;Joao Silva"></textarea>
+      </div>
+    </div>
+    <div class="mfooter">
+      <button class="mbtn mbtn-s" onclick="closeOv('addGuestOv')">Cancel</button>
+      <button class="mbtn mbtn-p" onclick="saveNewGuest()">Add</button>
+    </div>
+  </div>
+</div>
+
+<!-- BILL -->
+<div class="overlay" id="billOv">
+  <div class="modal" style="max-width:560px">
+    <div class="mhdr"><div class="mhdr-title" id="billName">Bill</div><div class="mhdr-sub" id="billMeta"></div></div>
+    <div class="mbody" id="billBody"></div>
+    <div class="mfooter">
+      <button class="mbtn mbtn-s" onclick="closeOv('billOv')">Close</button>
+      <button class="mbtn mbtn-g" id="billPayBtn">Mark paid</button>
+      <button class="mbtn mbtn-p" onclick="window.print()">Print</button>
+    </div>
+  </div>
+</div>
+
+<!-- CLOSE WEEK CONFIRM -->
+<div class="overlay" id="closeWeekOv">
+  <div class="modal" style="max-width:440px">
+    <div class="mhdr"><div class="mhdr-title">Close this week?</div><div class="mhdr-sub">Week moves to History. No further changes allowed.</div></div>
+    <div class="mbody" id="closeWeekBody"></div>
+    <div class="mfooter">
+      <button class="mbtn mbtn-s" onclick="closeOv('closeWeekOv')">Cancel</button>
+      <button class="mbtn mbtn-r" onclick="confirmClose()">Close week</button>
+    </div>
+  </div>
+</div>
+
+<!-- MENU SETTINGS -->
+<div class="overlay" id="menuOv">
+  <div class="modal" style="max-width:960px">
+    <div class="mhdr"><div class="mhdr-title">Menu settings</div><div class="mhdr-sub">Edit the category tabs and the items shown in the charge grid.</div></div>
+    <div class="mbody">
+      <div class="menu-shell">
+        <div class="menu-side">
+          <div class="menu-side-title">Categories</div>
+          <div class="menu-cat-list" id="menuCatList"></div>
+          <div class="mfield">
+            <label>Category name</label>
+            <input type="text" id="menuCatName" placeholder="Drinks, Food, Spa...">
+          </div>
+          <div class="menu-inline-actions">
+            <button class="mbtn mbtn-p" onclick="addMenuCategory()">Add</button>
+            <button class="mbtn mbtn-s" onclick="renameMenuCategory()">Rename</button>
+            <button class="mbtn mbtn-r" onclick="deleteMenuCategory()">Delete</button>
+          </div>
+        </div>
+        <div class="menu-main">
+          <div class="menu-main-title" id="menuMainTitle">Items</div>
+          <div class="menu-item-list" id="menuItemList"></div>
+          <div class="menu-grid">
+            <div class="mfield">
+              <label>Item name</label>
+              <input type="text" id="menuItemName" placeholder="Cappuccino">
+            </div>
+            <div class="mfield">
+              <label>Regular price (LKR)</label>
+              <input type="number" id="menuItemPrice" min="0" step="0.1" placeholder="0.00">
+            </div>
+            <div class="mfield">
+              <label>Staff price (LKR)</label>
+              <input type="number" id="menuItemStaffPrice" min="0" step="0.1" placeholder="Optional">
+            </div>
+            <div class="mfield">
+              <label>Stock qty</label>
+              <input type="number" id="menuItemStock" min="0" step="1" placeholder="Optional">
+            </div>
+          </div>
+          <div class="mfield">
+            <label>Description</label>
+            <input type="text" id="menuItemDesc" placeholder="Optional short note">
+          </div>
+          <div class="menu-inline-actions">
+            <button class="mbtn mbtn-p" id="menuItemSaveBtn" onclick="saveMenuItem()">Add item</button>
+            <button class="mbtn mbtn-s" onclick="clearMenuItemForm()">Clear</button>
+            <button class="mbtn mbtn-r" onclick="resetMenuDefaults()">Reset default menu</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="mfooter">
+      <button class="mbtn mbtn-s" onclick="closeOv('menuOv')">Close</button>
+    </div>
+  </div>
+</div>
+
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ════════════════════════════════════════════════════════════
+//  MENU
+// ════════════════════════════════════════════════════════════
+const DEFAULT_MENU={
+  Drinks:[
+    {n:"Espresso",p:550},{n:"Americano",p:650},{n:"Cappuccino",p:950},{n:"Flat White",p:980},
+    {n:"Iced Coffee",p:1200},{n:"Iced Latte",p:1350},{n:"Tea",p:450},{n:"Fresh Juice",p:1400},
+    {n:"King Coconut",p:500},{n:"Water 0.5L",p:300},{n:"Water 1.5L",p:550},
+    {n:"Coca-Cola",p:650},{n:"Sprite",p:650},{n:"Soda with Lime",p:700},
+    {n:"Lion Lager",p:1200},{n:"Lion Strong",p:1350},{n:"Corona 0.33cl",p:1400},{n:"Somersby 0.33cl",p:900},
+    {n:"Aperol Spritz",p:2500},{n:"Arrack & Coke",p:2200},{n:"Gin & Tonic",p:2400},{n:"Moscow Mule",p:2500},
+    {n:"Mojito",p:2500},{n:"Caipirinha",p:2500},{n:"Passionfruit Spritz",p:2600},{n:"Sunset Cocktail",p:2800}
+  ],
+  Merch:[
+    {n:"T-Shirt S",p:6500,stk:0,d:"Sri Lanka tee · size S"},
+    {n:"T-Shirt M",p:6500,stk:0,d:"Sri Lanka tee · size M"},
+    {n:"T-Shirt L",p:6500,stk:0,d:"Sri Lanka tee · size L"},
+    {n:"T-Shirt XL",p:6500,stk:0,d:"Sri Lanka tee · size XL"},
+    {n:"T-Shirt Offer S",p:0,stk:0,d:"Offer tee · size S"},
+    {n:"T-Shirt Offer M",p:0,stk:0,d:"Offer tee · size M"},
+    {n:"T-Shirt Offer L",p:0,stk:0,d:"Offer tee · size L"},
+    {n:"T-Shirt Offer XL",p:0,stk:0,d:"Offer tee · size XL"},
+    {n:"T-Shirt Staff S",p:3250,stk:0,d:"Staff tee · size S"},
+    {n:"T-Shirt Staff M",p:3250,stk:0,d:"Staff tee · size M"},
+    {n:"T-Shirt Staff L",p:3250,stk:0,d:"Staff tee · size L"},
+    {n:"T-Shirt Staff XL",p:3250,stk:0,d:"Staff tee · size XL"}
+  ],
+  Tours:[
+    {n:"Cooking Class",p:6000},
+    {n:"Tea Plantation Visit",p:2500},
+    {n:"River Safari",p:6000},
+    {n:"Ice Bath",p:3000},
+    {n:"Safari Yala",p:0,d:"Set the price per booking before charging"},
+    {n:"Airport Transfer",p:18000},
+    {n:"Blue Lagoon Transfer",p:7000},
+    {n:"Temple Run Tuk Tuk",p:6500},
+    {n:"Transport Padel in Unawatuna",p:4000},
+    {n:"Board Rental",p:2500}
+  ]
+};
+const TOUR_MENU_ITEMS=[
+  {n:"Cooking Class",p:6000},
+  {n:"Tea Plantation Visit",p:2500},
+  {n:"River Safari",p:6000},
+  {n:"Ice Bath",p:3000},
+  {n:"Safari Yala",p:0,d:"Set the price per booking before charging"}
+];
+const DRINK_MENU_ITEMS=[
+  {n:"Espresso",p:550},{n:"Americano",p:650},{n:"Cappuccino",p:950},{n:"Flat White",p:980},
+  {n:"Iced Coffee",p:1200},{n:"Iced Latte",p:1350},{n:"Tea",p:450},{n:"Fresh Juice",p:1400},
+  {n:"King Coconut",p:500},{n:"Water 0.5L",p:300},{n:"Water 1.5L",p:550},
+  {n:"Coca-Cola",p:650},{n:"Sprite",p:650},{n:"Soda with Lime",p:700},
+  {n:"Lion Lager",p:1200},{n:"Lion Strong",p:1350},{n:"Corona 0.33cl",p:1400},{n:"Somersby 0.33cl",p:900},
+  {n:"Aperol Spritz",p:2500},{n:"Arrack & Coke",p:2200},{n:"Gin & Tonic",p:2400},{n:"Moscow Mule",p:2500},
+  {n:"Mojito",p:2500},{n:"Caipirinha",p:2500},{n:"Passionfruit Spritz",p:2600},{n:"Sunset Cocktail",p:2800}
+];
+const MERCH_MENU_ITEMS=[
+  {n:"T-Shirt S",p:6500,stk:0,d:"Sri Lanka tee · size S"},
+  {n:"T-Shirt M",p:6500,stk:0,d:"Sri Lanka tee · size M"},
+  {n:"T-Shirt L",p:6500,stk:0,d:"Sri Lanka tee · size L"},
+  {n:"T-Shirt XL",p:6500,stk:0,d:"Sri Lanka tee · size XL"},
+  {n:"T-Shirt Offer S",p:0,stk:0,d:"Offer tee · size S"},
+  {n:"T-Shirt Offer M",p:0,stk:0,d:"Offer tee · size M"},
+  {n:"T-Shirt Offer L",p:0,stk:0,d:"Offer tee · size L"},
+  {n:"T-Shirt Offer XL",p:0,stk:0,d:"Offer tee · size XL"},
+  {n:"T-Shirt Staff S",p:3250,stk:0,d:"Staff tee · size S"},
+  {n:"T-Shirt Staff M",p:3250,stk:0,d:"Staff tee · size M"},
+  {n:"T-Shirt Staff L",p:3250,stk:0,d:"Staff tee · size L"},
+  {n:"T-Shirt Staff XL",p:3250,stk:0,d:"Staff tee · size XL"}
+];
+DEFAULT_MENU.Tours=TOUR_MENU_ITEMS.map(item=>({...item}));
+DEFAULT_MENU.Merch=MERCH_MENU_ITEMS.map(item=>({...item}));
+const MK='camptab_menu_v2';
+const STK='camptab_staff_v3';
+const TOUR_MENU_VERSION_KEY='camptab_tours_menu_version_v1';
+const MERCH_MENU_VERSION_KEY='camptab_merch_menu_version_v2';
+const STAFF_PRICE_FACTOR=0.5;
+const clone=v=>JSON.parse(JSON.stringify(v));
+function normalizeMenu(menu){
+  const cleaned={};
+  if(menu&&typeof menu==='object'){
+    Object.entries(menu).forEach(([cat,items])=>{
+      const catName=String(cat||'').trim();
+      if(!catName) return;
+      const safeItems=(Array.isArray(items)?items:[]).map(item=>({
+        id:isUuid(item?.id)?item.id:undefined,
+        n:String(item?.n||'').trim(),
+        p:Number(item?.p||0),
+        sp:item?.sp===''||item?.sp==null?null:Number(item?.sp),
+        d:String(item?.d||'').trim(),
+        stk:item?.stk===''||item?.stk==null?null:Number(item?.stk),
+        sortOrder:Number.isFinite(Number(item?.sortOrder))?Number(item.sortOrder):undefined
+      })).filter(item=>item.n&&Number.isFinite(item.p));
+      cleaned[catName]=safeItems.map(item=>({
+        ...(item.id?{id:item.id}:{}),
+        n:item.n,
+        p:item.p,
+        ...(Number.isFinite(item.sp)&&item.sp>0?{sp:item.sp}:{}),
+        ...(item.d?{d:item.d}:{}),
+        ...(Number.isFinite(item.stk)&&item.stk>=0?{stk:Math.max(0,Math.round(item.stk))}:{}),
+        ...(item.sortOrder?{sortOrder:item.sortOrder}:{})
+      }));
+    });
+  }
+  return Object.keys(cleaned).length?cleaned:clone(DEFAULT_MENU);
+}
+function loadMenu(){return clone(DEFAULT_MENU);}
+let MENU=loadMenu();
+function ensureToursMenu(){
+  const hasExistingTours=Array.isArray(MENU.Tours)&&MENU.Tours.length>0;
+  if(hasExistingTours) return;
+  MENU={...MENU,Tours:TOUR_MENU_ITEMS.map(item=>({...item}))};
+}
+ensureToursMenu();
+function ensureDrinksMenu(){
+  const existing=Array.isArray(MENU.Drinks)?MENU.Drinks:[];
+  const names=new Set(existing.map(item=>String(item?.n||'').trim().toLowerCase()).filter(Boolean));
+  const additions=DRINK_MENU_ITEMS.filter(item=>!names.has(item.n.toLowerCase()));
+  if(!additions.length) return;
+  MENU={...MENU,Drinks:[...existing,...additions.map(item=>({...item}))]};
+}
+ensureDrinksMenu();
+function migrateMerchMenu(){
+  const existing=Array.isArray(MENU.Merch)?MENU.Merch:[];
+  const byName=new Map(existing.map(item=>[String(item?.n||'').trim().toLowerCase(),item]));
+  MENU={
+    ...MENU,
+    Merch:MERCH_MENU_ITEMS.map((item,idx)=>{
+      const current=byName.get(String(item.n||'').trim().toLowerCase());
+      return {
+        ...(current?.id?{id:current.id}:{}),
+        ...item,
+        ...(current?.d?{d:current.d}:item.d?{d:item.d}:{}),
+        ...(Number.isFinite(Number(current?.sp))&&Number(current.sp)>0?{sp:Number(current.sp)}:(Number.isFinite(Number(item?.sp))&&Number(item.sp)>0?{sp:Number(item.sp)}:{})),
+        ...(Number.isFinite(Number(current?.stk))?{stk:Math.max(0,Math.round(Number(current.stk)))}:(Number.isFinite(Number(item?.stk))?{stk:Math.max(0,Math.round(Number(item.stk)))}:{})),
+        sortOrder:Number.isFinite(Number(current?.sortOrder))?Number(current.sortOrder):(idx+1)*10
+      };
+    })
+  };
+}
+migrateMerchMenu();
+const DEFAULT_STAFF=[];
+const CAMP_TAB_LOCATION_SLUG='sri-lanka';
+let CAMP_SB=null;
+let CAMP_LOCATION_ID=null;
+let CAMP_PARENT_SESSION=null;
+let campTabSyncTimer=null;
+let campMenuSyncTimer=null;
+let campStaffSyncTimer=null;
+let campTabBootstrapped=false;
+let suppressRemoteSync=false;
+
+function isUuid(value){
+  return typeof value==='string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+function makeUuid(){
+  if(globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  const seed=`${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  return `00000000-0000-4000-8000-${seed.padEnd(12,'0').slice(0,12)}`;
+}
+function simpleStableUuid(seed=''){
+  const input=String(seed||'camp-tab').trim()||'camp-tab';
+  let hash=2166136261;
+  for(let i=0;i<input.length;i++){
+    hash^=input.charCodeAt(i);
+    hash=Math.imul(hash,16777619);
+  }
+  const hex=(hash>>>0).toString(16).padStart(8,'0');
+  const fill=(hex.repeat(4)).slice(0,32);
+  return `${fill.slice(0,8)}-${fill.slice(8,12)}-4${fill.slice(13,16)}-a${fill.slice(17,20)}-${fill.slice(20,32)}`;
+}
+function campConfig(){
+  return window.__SUPABASE_CONFIG || window.parent?.__SUPABASE_CONFIG || null;
+}
+function campSupabaseGlobal(){
+  return window.supabase || window.parent?.supabase || null;
+}
+function getCampTabSupabaseClient(){
+  if(CAMP_SB) return CAMP_SB;
+  const cfg=campConfig();
+  const lib=campSupabaseGlobal();
+  if(!cfg?.url || !cfg?.anonKey || !lib?.createClient) return null;
+  CAMP_SB=lib.createClient(cfg.url,cfg.anonKey);
+  return CAMP_SB;
+}
+async function ensureCampTabSession(){
+  const client=getCampTabSupabaseClient();
+  if(!client) return false;
+  try{
+    const { data } = await client.auth.getSession();
+    if(data?.session) return true;
+  }catch(_error){}
+  if(!CAMP_PARENT_SESSION?.access_token || !CAMP_PARENT_SESSION?.refresh_token) return false;
+  const { error } = await client.auth.setSession({
+    access_token:CAMP_PARENT_SESSION.access_token,
+    refresh_token:CAMP_PARENT_SESSION.refresh_token
+  });
+  if(error){
+    console.warn('Camp Tab session bridge failed',error);
+    return false;
+  }
+  return true;
+}
+async function ensureCampTabLocationId(){
+  if(CAMP_LOCATION_ID) return CAMP_LOCATION_ID;
+  const client=getCampTabSupabaseClient();
+  if(!client) return null;
+  await ensureCampTabSession();
+  const { data, error } = await client
+    .from('locations')
+    .select('id')
+    .eq('slug',CAMP_TAB_LOCATION_SLUG)
+    .maybeSingle();
+  if(error){
+    console.warn('Camp Tab location lookup failed',error);
+    return null;
+  }
+  CAMP_LOCATION_ID=data?.id||null;
+  return CAMP_LOCATION_ID;
+}
+function queueCampTabSync(){
+  if(suppressRemoteSync) return;
+  clearTimeout(campTabSyncTimer);
+  campTabSyncTimer=setTimeout(()=>{syncCampTabStateToSupabase().catch(err=>console.warn('Camp Tab state sync failed',err));},250);
+}
+function queueMenuSync(){
+  if(suppressRemoteSync) return;
+  clearTimeout(campMenuSyncTimer);
+  campMenuSyncTimer=setTimeout(()=>{syncCampTabMenuToSupabase().catch(err=>console.warn('Camp Tab menu sync failed',err));},250);
+}
+function queueStaffSync(){
+  if(suppressRemoteSync) return;
+  clearTimeout(campStaffSyncTimer);
+  campStaffSyncTimer=setTimeout(()=>{syncCampTabStaffToSupabase().catch(err=>console.warn('Camp Tab staff sync failed',err));},250);
+}
+function normalizeItemRows(items){
+  return (Array.isArray(items)?items:[]).map((item,idx)=>({
+    id:isUuid(item?.id)?item.id:makeUuid(),
+    n:String(item?.n||'').trim(),
+    p:Number(item?.p||0),
+    c:String(item?.c||'Other').trim()||'Other',
+    t:String(item?.t||'').trim(),
+    ...(item?.s?{s:String(item.s).trim()}:{}),
+    ...(item?.priceType?{priceType:String(item.priceType).trim()}:{}),
+    sortOrder:Number.isFinite(Number(item?.sortOrder))?Number(item.sortOrder):(idx+1)*10
+  })).filter(item=>item.n&&Number.isFinite(item.p));
+}
+function normalizeStaff(list){
+  const rows=(Array.isArray(list)?list:DEFAULT_STAFF).map((staff,idx)=>({
+    id:isUuid(staff?.id)?staff.id:makeUuid(),
+    name:String(staff?.name||'').trim()
+  })).filter(staff=>staff.name);
+  return rows;
+}
+function loadStaff(){return [];}
+let STAFF=loadStaff();
+let activeStaffId=STAFF[0]?.id||'';
+let editingStaffId=null;
+function cloneCampTabPayload(value){
+  return JSON.parse(JSON.stringify(value));
+}
+function notifyParentStateChanged(){
+  try{
+    window.parent?.postMessage({
+      type:'camp-tab-state-changed',
+      state:cloneCampTabPayload(S),
+      menu:cloneCampTabPayload(MENU),
+      staff:cloneCampTabPayload(STAFF)
+    },'*');
+  }catch(_){}
+}
+const saveStaffState=()=>{queueStaffSync();notifyParentStateChanged();};
+function activeStaff(){return STAFF.find(s=>s.id===activeStaffId)||STAFF[0]||null;}
+
+// ════════════════════════════════════════════════════════════
+//  STATE
+//  S.activeWeek = {id,start,guests:[{name,items,paid}]}  (current open week)
+//  S.history    = [{id,start,guests,closedAt}]           (closed weeks)
+// ════════════════════════════════════════════════════════════
+const SK='camptab_live_v2';
+const FX_KEY='camphub_lkr_per_eur_v2';
+const DEFAULT_LKR_PER_EUR=330;
+function loadS(){return defS();}
+function defS(){return{activeWeek:null,nextWeek:null,history:[]};}
+let S=loadS();
+const save=()=>{queueCampTabSync();notifyParentStateChanged();};
+const saveMenu=()=>{queueMenuSync();notifyParentStateChanged();};
+
+async function commitCampTabStateOnline({
+  mutate,
+  successMessage='',
+  errorMessage='Could not save this change online.'
+}={}){
+  if(typeof mutate!=='function') return false;
+  const previousState=cloneCampTabPayload(S);
+  const previousGuest=AG;
+  try{
+    const result=await mutate();
+    await syncCampTabStateToSupabase();
+    notifyParentStateChanged();
+    renderAllCampTabViews();
+    if(successMessage) toast(successMessage);
+    return result===undefined ? true : result;
+  }catch(error){
+    console.warn('Camp Tab online save failed',error);
+    applyCampTabStateSnapshot(previousState);
+    AG=previousGuest;
+    renderAllCampTabViews();
+    toast(errorMessage);
+    return false;
+  }
+}
+
+let AG=null, AC='Drinks', tsCat='All', currentRoster='guests';
+let expandedGuest=null; // for history detail
+let menuEditCat='';
+let menuEditIndex=null;
+
+function normalizeConsumerRows(rows){
+  return (Array.isArray(rows)?rows:[]).map(row=>({
+    id:isUuid(row?.id)?row.id:simpleStableUuid([
+      row?.id||'',
+      row?.bookingRef||'',
+      row?.name||''
+    ].join('|')),
+    name:String(row?.name||'').trim(),
+    items:normalizeItemRows(row?.items),
+    paid:!!row?.paid,
+    ...(row?.paidAt?{paidAt:String(row.paidAt)}:{}),
+    ...(row?.bookingRef?{bookingRef:String(row.bookingRef).trim()}:{}),
+    ...(row?.bookingCi?{bookingCi:Number(row.bookingCi)}:{}),
+    ...(row?.bookingCo?{bookingCo:Number(row.bookingCo)}:{}),
+    ...(row?.bookingPax?{bookingPax:Math.max(1,parseInt(row.bookingPax,10)||1)}:{})
+  })).filter(row=>row.name);
+}
+function ensureWeekShape(wk){
+  if(!wk||typeof wk!=='object') return wk;
+  if(!isUuid(wk.id)) wk.id=simpleStableUuid([wk.id||'',wk.start||'',wk.label||''].join('|'));
+  wk.guests=normalizeConsumerRows(wk.guests);
+  wk.staff=normalizeConsumerRows(wk.staff);
+  return wk;
+}
+function nextWeekDraft(){
+  const wk=ensureWeekShape(S.nextWeek);
+  if(wk) wk.draftKind='next';
+  return wk;
+}
+function currentWeek(){
+  return ensureWeekShape(S.activeWeek);
+}
+function campTabStateHasData(state){
+  if(!state||typeof state!=='object') return false;
+  return !!(state.activeWeek||state.nextWeek||(Array.isArray(state.history)&&state.history.length));
+}
+function applyCampTabStateSnapshot(snapshot){
+  if(!snapshot||typeof snapshot!=='object') return false;
+  S={
+    activeWeek:snapshot.activeWeek?ensureWeekShape(cloneCampTabPayload(snapshot.activeWeek)):null,
+    nextWeek:snapshot.nextWeek?ensureWeekShape(cloneCampTabPayload(snapshot.nextWeek)):null,
+    history:(Array.isArray(snapshot.history)?snapshot.history:[]).map(week=>ensureWeekShape(cloneCampTabPayload(week))).filter(Boolean)
+  };
+  return campTabStateHasData(S);
+}
+function rosterRows(wk=currentWeek(), roster=currentRoster){
+  if(!wk) return [];
+  wk[roster]=normalizeConsumerRows(wk[roster]);
+  return wk[roster];
+}
+function allConsumers(wk){
+  wk=ensureWeekShape(wk);
+  return [...(wk?.guests||[]),...(wk?.staff||[])];
+}
+function weekStatusOf(wk){
+  if(wk?.closedAt) return 'closed';
+  if(wk?.draftKind==='next') return 'draft';
+  return 'open';
+}
+function menuRowsToState(rows){
+  const grouped={};
+  (Array.isArray(rows)?rows:[]).forEach((row)=>{
+    const cat=String(row.category||'').trim();
+    const name=String(row.item_name||'').trim();
+    if(!cat||!name) return;
+    grouped[cat]=grouped[cat]||[];
+    grouped[cat].push({
+      id:row.id,
+      n:name,
+      p:Number(row.price_local||0),
+      ...(row.staff_price_local!=null&&Number(row.staff_price_local)>0?{sp:Number(row.staff_price_local)}:{}),
+      ...(row.description?{d:String(row.description)}:{}),
+      ...(row.stock_qty!=null?{stk:Number(row.stock_qty)}:{}),
+      sortOrder:Number(row.sort_order||0)
+    });
+  });
+  Object.keys(grouped).forEach((cat)=>{
+    grouped[cat].sort((a,b)=>(a.sortOrder||0)-(b.sortOrder||0));
+    grouped[cat]=grouped[cat].map(({sortOrder,...item})=>item);
+  });
+  return normalizeMenu(grouped);
+}
+function menuStateToRows(locationId){
+  return getCats().flatMap((cat,catIndex)=>(MENU[cat]||[]).map((item,itemIndex)=>({
+    id:isUuid(item?.id)?item.id:makeUuid(),
+    location_id:locationId,
+    category:cat,
+    item_name:item.n,
+    price_local:Number(item.p||0),
+    stock_qty:Number.isFinite(Number(item.stk))?Number(item.stk):null,
+    description:item.d||null,
+    staff_price_local:Number.isFinite(Number(item.sp))&&Number(item.sp)>0?Number(item.sp):null,
+    sort_order:(catIndex+1)*1000 + (itemIndex+1)*10,
+    active:true
+  })));
+}
+function serializeGuestMeta(row){
+  return {
+    bookingCi:row?.bookingCi||null,
+    bookingCo:row?.bookingCo||null,
+    bookingPax:row?.bookingPax||1
+  };
+}
+function parseJsonMeta(value){
+  if(!value) return {};
+  if(typeof value==='object') return value;
+  try{return JSON.parse(value);}catch(e){return {};}
+}
+function hydrateWeekStateFromRows(weekRows,guestRows,itemRows){
+  const itemsByGuest={};
+  (Array.isArray(itemRows)?itemRows:[]).forEach((item)=>{
+    const guestId=item.guest_id;
+    if(!guestId) return;
+    itemsByGuest[guestId]=itemsByGuest[guestId]||[];
+    const meta=parseJsonMeta(item.meta);
+    itemsByGuest[guestId].push({
+      id:item.id,
+      n:item.item_name,
+      p:Number(item.price_local||0),
+      c:item.category,
+      t:meta.time||new Date(item.added_at||Date.now()).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}),
+      ...(meta.staffNote?{s:meta.staffNote}:{}),
+      ...(item.price_type?{priceType:item.price_type}:{}),
+      sortOrder:Number(item.sort_order||0)
+    });
+  });
+  Object.values(itemsByGuest).forEach((rows)=>rows.sort((a,b)=>(a.sortOrder||0)-(b.sortOrder||0)));
+  const guestsByWeek={};
+  (Array.isArray(guestRows)?guestRows:[]).forEach((guest)=>{
+    const meta=parseJsonMeta(guest.meta);
+    const wkId=guest.week_id;
+    if(!wkId) return;
+    guestsByWeek[wkId]=guestsByWeek[wkId]||{guests:[],staff:[]};
+    const payload={
+      id:guest.id,
+      name:guest.name,
+      items:(itemsByGuest[guest.id]||[]).map(({sortOrder,...item})=>item),
+      paid:!!guest.paid,
+      ...(guest.paid_at?{paidAt:guest.paid_at}:{}),
+      ...(guest.booking_ref?{bookingRef:guest.booking_ref}:{}),
+      ...(guest.checkin?{bookingCi:new Date(guest.checkin+'T00:00:00').getTime()}:{}),
+      ...(guest.checkout?{bookingCo:new Date(guest.checkout+'T00:00:00').getTime()}:{}),
+      ...(guest.pax?{bookingPax:guest.pax}:{}),
+      ...(meta.staffNote?{staffNote:meta.staffNote}:{}),
+      sortOrder:Number(guest.sort_order||0)
+    };
+    guestsByWeek[wkId][guest.is_staff?'staff':'guests'].push(payload);
+  });
+  Object.values(guestsByWeek).forEach((bucket)=>{
+    bucket.guests.sort((a,b)=>(a.sortOrder||0)-(b.sortOrder||0));
+    bucket.staff.sort((a,b)=>(a.sortOrder||0)-(b.sortOrder||0));
+  });
+  const state={activeWeek:null,nextWeek:null,history:[]};
+  (Array.isArray(weekRows)?weekRows:[]).sort((a,b)=>String(a.start_date).localeCompare(String(b.start_date))).forEach((week)=>{
+    const meta=parseJsonMeta(week.meta);
+    const bucket=guestsByWeek[week.id]||{guests:[],staff:[]};
+    const wk={
+      id:week.id,
+      start:week.start_date,
+      guests:bucket.guests.map(({sortOrder,...row})=>row),
+      staff:bucket.staff.map(({sortOrder,...row})=>row),
+      ...(week.closed_at?{closedAt:week.closed_at}:{}),
+      ...(week.draft_kind?{draftKind:week.draft_kind}:{}),
+      ...(meta.label?{label:meta.label}:{}),
+      ...(meta.source?{source:meta.source}:{}),
+    };
+    if(week.status==='closed') state.history.push(wk);
+    else if(week.status==='draft' || week.draft_kind==='next') state.nextWeek=wk;
+    else state.activeWeek=wk;
+  });
+  return state;
+}
+async function hydrateCampTabMenuFromSupabase({mergeLocal=false}={}){
+  const client=getCampTabSupabaseClient();
+  const locationId=await ensureCampTabLocationId();
+  if(!client||!locationId) return false;
+  await ensureCampTabSession();
+  const { data, error } = await client
+    .from('location_menus')
+    .select('id,category,item_name,price_local,stock_qty,description,staff_price_local,sort_order')
+    .eq('location_id',locationId)
+    .eq('active',true)
+    .order('sort_order',{ascending:true});
+  if(error){
+    console.warn('Camp Tab menu hydrate failed',error);
+    return false;
+  }
+  if(data?.length){
+    suppressRemoteSync=true;
+    MENU=menuRowsToState(data);
+    suppressRemoteSync=false;
+    return true;
+  }
+  if(mergeLocal && getCats().length){
+    await syncCampTabMenuToSupabase();
+  }
+  return false;
+}
+async function syncCampTabMenuToSupabase(){
+  const client=getCampTabSupabaseClient();
+  const locationId=await ensureCampTabLocationId();
+  if(!client||!locationId) return false;
+  await ensureCampTabSession();
+  const rows=menuStateToRows(locationId);
+  const { error: deleteError } = await client.from('location_menus').delete().eq('location_id',locationId);
+  if(deleteError) throw deleteError;
+  if(rows.length){
+    const { error } = await client.from('location_menus').insert(rows);
+    if(error) throw error;
+  }
+  return true;
+}
+async function hydrateCampTabStaffFromSupabase({mergeLocal=false}={}){
+  const client=getCampTabSupabaseClient();
+  const locationId=await ensureCampTabLocationId();
+  if(!client||!locationId) return false;
+  await ensureCampTabSession();
+  const { data, error } = await client
+    .from('camp_staff_directory')
+    .select('id,name,sort_order,active')
+    .eq('location_id',locationId)
+    .eq('active',true)
+    .order('sort_order',{ascending:true});
+  if(error){
+    console.warn('Camp Tab staff hydrate failed',error);
+    return false;
+  }
+  if(data?.length){
+    suppressRemoteSync=true;
+    STAFF=normalizeStaff(data.map((row)=>({id:row.id,name:row.name})));
+    activeStaffId=STAFF[0]?.id||'';
+    suppressRemoteSync=false;
+    return true;
+  }
+  if(mergeLocal && STAFF.length){
+    await syncCampTabStaffToSupabase();
+  }
+  return false;
+}
+async function syncCampTabStaffToSupabase(){
+  const client=getCampTabSupabaseClient();
+  const locationId=await ensureCampTabLocationId();
+  if(!client||!locationId) return false;
+  await ensureCampTabSession();
+  const rows=normalizeStaff(STAFF).map((staff,idx)=>({
+    id:isUuid(staff.id)?staff.id:makeUuid(),
+    location_id:locationId,
+    name:staff.name,
+    active:true,
+    sort_order:(idx+1)*10
+  }));
+  const { error: deleteError } = await client.from('camp_staff_directory').delete().eq('location_id',locationId);
+  if(deleteError) throw deleteError;
+  if(rows.length){
+    const { error } = await client.from('camp_staff_directory').insert(rows);
+    if(error) throw error;
+  }
+  return true;
+}
+async function hydrateCampTabStateFromSupabase({mergeLocal=false}={}){
+  const client=getCampTabSupabaseClient();
+  const locationId=await ensureCampTabLocationId();
+  if(!client||!locationId) return false;
+  await ensureCampTabSession();
+  const [{data:weekRows,error:weeksError},{data:guestRows,error:guestsError},{data:itemRows,error:itemsError}] = await Promise.all([
+    client.from('camp_weeks').select('id,start_date,end_date,status,closed_at,draft_kind,meta').eq('location_id',locationId).order('start_date',{ascending:true}),
+    client.from('camp_guests').select('id,week_id,name,booking_ref,is_staff,paid,paid_at,checkin,checkout,pax,sort_order,meta').eq('location_id',locationId).order('sort_order',{ascending:true}),
+    client.from('camp_tab_items').select('id,guest_id,week_id,category,item_name,price_local,price_type,added_at,sort_order,meta').eq('location_id',locationId).order('sort_order',{ascending:true})
+  ]);
+  if(weeksError||guestsError||itemsError){
+    console.warn('Camp Tab state hydrate failed',weeksError||guestsError||itemsError);
+    return false;
+  }
+  if((weekRows?.length||0) || (guestRows?.length||0) || (itemRows?.length||0)){
+    suppressRemoteSync=true;
+    S=hydrateWeekStateFromRows(weekRows,guestRows,itemRows);
+    suppressRemoteSync=false;
+    return true;
+  }
+  if(mergeLocal && (S.activeWeek || S.nextWeek || (S.history||[]).length)){
+    await syncCampTabStateToSupabase();
+  }
+  return false;
+}
+function weeksSnapshot(){
+  const rows=[];
+  if(S.activeWeek) rows.push(ensureWeekShape(S.activeWeek));
+  if(S.nextWeek) rows.push(ensureWeekShape(S.nextWeek));
+  rows.push(...(Array.isArray(S.history)?S.history.map(ensureWeekShape):[]));
+  return rows.filter(Boolean);
+}
+async function syncCampTabStateToSupabase(){
+  const client=getCampTabSupabaseClient();
+  const locationId=await ensureCampTabLocationId();
+  if(!client||!locationId) return false;
+  const sessionReady=await ensureCampTabSession();
+  if(!sessionReady) throw new Error('Camp Tab session is not ready');
+  const weeks=weeksSnapshot();
+  const weekRows=[];
+  const guestRows=[];
+  const itemRows=[];
+  weeks.forEach((wk)=>{
+    ensureWeekShape(wk);
+    const weekId=isUuid(wk.id)?wk.id:makeUuid();
+    wk.id=weekId;
+    const status=weekStatusOf(wk);
+    weekRows.push({
+      id:weekId,
+      location_id:locationId,
+      start_date:wk.start,
+      end_date:addDays(wk.start,6),
+      status,
+      closed_at:wk.closedAt||null,
+      draft_kind:wk.draftKind||null,
+      meta:{label:wk.label||null,source:wk.source||null}
+    });
+    [['guests',false],['staff',true]].forEach(([rosterName,isStaff])=>{
+      (wk[rosterName]||[]).forEach((row,guestIndex)=>{
+        row.id=isUuid(row.id)?row.id:makeUuid();
+        guestRows.push({
+          id:row.id,
+          week_id:weekId,
+          location_id:locationId,
+          name:row.name,
+          booking_ref:row.bookingRef||null,
+          is_staff:isStaff,
+          paid:!!row.paid,
+          paid_at:row.paid? (row.paidAt||new Date().toISOString()) : null,
+          checkin:row.bookingCi?isoLocal(new Date(row.bookingCi)):null,
+          checkout:row.bookingCo?isoLocal(new Date(row.bookingCo)):null,
+          pax:row.bookingPax||1,
+          sort_order:(guestIndex+1)*10,
+          meta:{staffNote:row.staffNote||null}
+        });
+        normalizeItemRows(row.items).forEach((item,itemIndex)=>{
+          const itemId=isUuid(item.id)?item.id:makeUuid();
+          item.id=itemId;
+          itemRows.push({
+            id:itemId,
+            guest_id:row.id,
+            week_id:weekId,
+            location_id:locationId,
+            category:item.c||'Other',
+            item_name:item.n,
+            qty:1,
+            price_local:Number(item.p||0),
+            currency:'LKR',
+            added_at:new Date().toISOString(),
+            price_type:item.priceType||null,
+            sort_order:(itemIndex+1)*10,
+            meta:{time:item.t||'',staffNote:item.s||null}
+          });
+        });
+      });
+    });
+  });
+  const [existingWeeksRes,existingGuestsRes,existingItemsRes]=await Promise.all([
+    client.from('camp_weeks').select('id').eq('location_id',locationId),
+    client.from('camp_guests').select('id').eq('location_id',locationId),
+    client.from('camp_tab_items').select('id').eq('location_id',locationId)
+  ]);
+  if(existingWeeksRes.error) throw existingWeeksRes.error;
+  if(existingGuestsRes.error) throw existingGuestsRes.error;
+  if(existingItemsRes.error) throw existingItemsRes.error;
+  if(weekRows.length){
+    const { error: upsertWeeksError } = await client.from('camp_weeks').upsert(weekRows,{onConflict:'id'});
+    if(upsertWeeksError) throw upsertWeeksError;
+  }
+  if(guestRows.length){
+    const { error: upsertGuestsError } = await client.from('camp_guests').upsert(guestRows,{onConflict:'id'});
+    if(upsertGuestsError) throw upsertGuestsError;
+  }
+  if(itemRows.length){
+    const { error: upsertItemsError } = await client.from('camp_tab_items').upsert(itemRows,{onConflict:'id'});
+    if(upsertItemsError) throw upsertItemsError;
+  }
+  const staleItemIds=(existingItemsRes.data||[]).map(row=>row.id).filter(id=>!itemRows.some(row=>row.id===id));
+  const staleGuestIds=(existingGuestsRes.data||[]).map(row=>row.id).filter(id=>!guestRows.some(row=>row.id===id));
+  const staleWeekIds=(existingWeeksRes.data||[]).map(row=>row.id).filter(id=>!weekRows.some(row=>row.id===id));
+  if(staleItemIds.length){
+    const { error: deleteItemsError } = await client.from('camp_tab_items').delete().in('id',staleItemIds);
+    if(deleteItemsError) throw deleteItemsError;
+  }
+  if(staleGuestIds.length){
+    const { error: deleteGuestsError } = await client.from('camp_guests').delete().in('id',staleGuestIds);
+    if(deleteGuestsError) throw deleteGuestsError;
+  }
+  if(staleWeekIds.length){
+    const { error: deleteWeeksError } = await client.from('camp_weeks').delete().in('id',staleWeekIds);
+    if(deleteWeeksError) throw deleteWeeksError;
+  }
+  return true;
+}
+async function applyIncomingBookingsToCampTab(payload){
+  const weekStart=String(payload?.weekStart||'').trim();
+  const bookings=Array.isArray(payload?.bookings)?payload.bookings:[];
+  if(!weekStart||!bookings.length) return { ok:false, added:0, reason:'missing-data' };
+  if(S.activeWeek&&S.activeWeek.start!==weekStart) return { ok:false, added:0, reason:'different-active-week' };
+  if(!S.activeWeek){
+    S.activeWeek={id:makeUuid(),start:weekStart,guests:[],staff:[]};
+  }
+  ensureWeekShape(S.activeWeek);
+  S.activeWeek.guests=Array.isArray(S.activeWeek.guests)?S.activeWeek.guests:[];
+  const existingByRef=new Map(S.activeWeek.guests.map(g=>[String(g.bookingRef||'').trim(),g]).filter(([ref])=>ref));
+  const existingNames=new Set(S.activeWeek.guests.map(g=>String(g.name||'').toLowerCase()));
+  let added=0;
+  bookings.forEach((booking)=>{
+    const bookingRef=String(booking.ref||'').trim();
+    if(bookingRef&&existingByRef.has(bookingRef)){
+      const existing=existingByRef.get(bookingRef);
+      existing.bookingCi=booking.ci;
+      existing.bookingCo=booking.co;
+      existing.bookingPax=booking.pax||1;
+      return;
+    }
+    const baseName=booking.pax>1?`${booking.name} (${booking.pax} pax)`:booking.name;
+    let candidate=baseName;
+    let n=2;
+    while(existingNames.has(candidate.toLowerCase())) candidate=`${baseName} ${n++}`;
+    existingNames.add(candidate.toLowerCase());
+    const guest={
+      id:makeUuid(),
+      name:candidate,
+      items:[],
+      paid:false,
+      bookingRef:bookingRef||'',
+      bookingCi:booking.ci,
+      bookingCo:booking.co,
+      bookingPax:booking.pax||1
+    };
+    S.activeWeek.guests.push(guest);
+    if(bookingRef) existingByRef.set(bookingRef,guest);
+    added++;
+  });
+  save();
+  await syncCampTabStateToSupabase();
+  renderAllCampTabViews();
+  return { ok:true, added };
+}
+function rosterLabel(kind=currentRoster){return kind==='staff'?'Staff':'Guest';}
+function rosterTitle(kind=currentRoster){return kind==='staff'?'Staff':'Guests';}
+function findConsumer(value, kind=currentRoster, wk=currentWeek()){
+  return rosterRows(wk,kind).find(row=>row.id===value || row.name===value);
+}
+function staffPriceFor(item){
+  if(Number.isFinite(Number(item?.sp))&&Number(item.sp)>0) return Number(item.sp);
+  return Math.round((Number(item?.p||0)*STAFF_PRICE_FACTOR)/50)*50;
+}
+function displayPriceFor(item){
+  return currentRoster==='staff'?staffPriceFor(item):Number(item.p||0);
+}
+function currentMerchMenu(){
+  return Array.isArray(MENU.Merch)?MENU.Merch:[];
+}
+function merchSoldCounts(){
+  const counts={};
+  const weeks=[...((Array.isArray(S.history)?S.history:[]))];
+  if(S.activeWeek) weeks.push(S.activeWeek);
+  weeks.forEach(wk=>{
+    allConsumers(wk).forEach(row=>{
+      (Array.isArray(row.items)?row.items:[]).forEach(item=>{
+        if(item?.c!=='Merch'||!item?.n) return;
+        counts[item.n]=(counts[item.n]||0)+1;
+      });
+    });
+  });
+  return counts;
+}
+function merchStockKey(name=''){
+  const match=String(name||'').match(/(S|M|L|XL)$/i);
+  return match?match[1].toUpperCase():'';
+}
+function merchStockLeft(item){
+  if(!item) return null;
+  const sizeKey=merchStockKey(item.n);
+  const soldCounts=merchSoldCounts();
+  const merchItems=currentMerchMenu();
+  const sizeItems=sizeKey?merchItems.filter(row=>merchStockKey(row.n)===sizeKey):[item];
+  const baseItem=sizeItems.find(row=>/^T-Shirt (S|M|L|XL)$/i.test(row.n))||item;
+  if(!Number.isFinite(Number(baseItem.stk))) return null;
+  const sold=sizeItems.reduce((sum,row)=>sum+(soldCounts[row.n]||0),0);
+  return Math.max(0,Math.round(Number(baseItem.stk))-sold);
+}
+
+// ════════════════════════════════════════════════════════════
+//  SEED DEMO DATA (if empty)
+// ════════════════════════════════════════════════════════════
+function seedDemoIfEmpty(){
+  if(S.activeWeek||S.history.length) return;
+
+  const h1guests=[
+    {name:'Emma Foster',paid:true,items:[
+      {n:'Cappuccino',p:950,c:'Drinks',t:'08:20'},{n:'Lion Lager',p:1200,c:'Drinks',t:'18:45'},
+      {n:'Lion Lager',p:1200,c:'Drinks',t:'20:10'},{n:'Camp T-Shirt M',p:6500,c:'Merch',t:'11:20'}
+    ]},
+    {name:'Noah Bennett',paid:true,items:[
+      {n:'Surf Guiding',p:12000,c:'Tours',t:'09:00'},{n:'Water 1.5L',p:550,c:'Drinks',t:'09:05'},
+      {n:'Sunset Cocktail',p:2800,c:'Drinks',t:'19:30'}
+    ]},
+    {name:'Lina Costa',paid:true,items:[
+      {n:'Fresh Juice',p:1400,c:'Drinks',t:'10:10'},{n:'Ice Bath',p:3500,c:'Tours',t:'17:00'},
+      {n:'Sticker Pack',p:900,c:'Merch',t:'17:10'}
+    ]},
+    {name:'Thomas Muller',paid:true,items:[
+      {n:'Airport Transfer',p:18000,c:'Tours',t:'06:30'},{n:'Water 0.5L',p:300,c:'Drinks',t:'06:35'}
+    ]},
+    {name:'Sofia Andrade',paid:false,items:[
+      {n:'Passionfruit Spritz',p:2600,c:'Drinks',t:'20:20'},{n:'Passionfruit Spritz',p:2600,c:'Drinks',t:'21:05'}
+    ]},
+    {name:'Pedro Matos',paid:true,items:[
+      {n:'Lagoon Safari',p:9000,c:'Tours',t:'08:30'},{n:'King Coconut',p:500,c:'Drinks',t:'11:30'},
+      {n:'Cap',p:4500,c:'Merch',t:'17:00'}
+    ]},
+    {name:'Clara Moreau',paid:true,items:[
+      {n:'Iced Latte',p:1350,c:'Drinks',t:'09:10'},{n:'Blue Lagoon Transfer',p:7000,c:'Tours',t:'13:00'}
+    ]}
+  ];
+  S.history.push({id:'h1',start:'2026-03-08',closedAt:'2026-03-14T10:00:00',guests:h1guests});
+
+  const h2guests=[
+    {name:'Amelie Dubois',paid:true,items:[
+      {n:'Blue Lagoon Transfer',p:7000,c:'Tours',t:'11:00'},{n:'Coca-Cola',p:650,c:'Drinks',t:'13:10'}
+    ]},
+    {name:'Kai Fischer',paid:true,items:[
+      {n:'Lagoon Safari',p:9000,c:'Tours',t:'08:30'},{n:'Gin & Tonic',p:2400,c:'Drinks',t:'19:40'},
+      {n:'Camp T-Shirt L',p:6500,c:'Merch',t:'20:15'}
+    ]},
+    {name:'Sara Nunes',paid:true,items:[
+      {n:'Iced Coffee',p:1200,c:'Drinks',t:'09:00'},{n:'Tea Plantation Tour',p:14000,c:'Tours',t:'13:00'}
+    ]},
+    {name:'Luca Bianchi',paid:false,items:[
+      {n:'Lion Strong',p:1350,c:'Drinks',t:'18:10'},{n:'Lion Strong',p:1350,c:'Drinks',t:'21:00'}
+    ]},
+    {name:'Hannah Schmidt',paid:true,items:[
+      {n:'Cap',p:4500,c:'Merch',t:'10:30'},{n:'King Coconut',p:500,c:'Drinks',t:'11:00'}
+    ]},
+    {name:'Nico Helm',paid:true,items:[
+      {n:'Temple Run Tuk Tuk',p:6500,c:'Tours',t:'15:00'},{n:'Lion Lager',p:1200,c:'Drinks',t:'19:10'}
+    ]},
+    {name:'Rita Campos',paid:false,items:[
+      {n:'Passionfruit Spritz',p:2600,c:'Drinks',t:'20:40'}
+    ]}
+  ];
+  S.history.push({id:'h2',start:'2026-03-15',closedAt:'2026-03-21T10:00:00',guests:h2guests});
+
+  const h3guests=[
+    {name:'Jack Reynolds',paid:true,items:[
+      {n:'Yala Safari',p:26000,c:'Tours',t:'04:30'},{n:'Water 1.5L',p:550,c:'Drinks',t:'04:35'}
+    ]},
+    {name:'Mila Steiner',paid:true,items:[
+      {n:'Board Rental',p:2500,c:'Tours',t:'09:30'},{n:'Board Rental',p:2500,c:'Tours',t:'14:30'},
+      {n:'Fresh Juice',p:1400,c:'Drinks',t:'16:00'}
+    ]},
+    {name:'Tomas Nunes',paid:true,items:[
+      {n:'Arrack & Coke',p:2200,c:'Drinks',t:'20:10'},{n:'Arrack & Coke',p:2200,c:'Drinks',t:'21:15'},
+      {n:'Sticker Pack',p:900,c:'Merch',t:'21:20'}
+    ]},
+    {name:'Lea Martin',paid:false,items:[
+      {n:'Espresso',p:550,c:'Drinks',t:'08:00'},{n:'Blue Lagoon Transfer',p:7000,c:'Tours',t:'10:00'}
+    ]},
+    {name:'Jonas Berg',paid:true,items:[
+      {n:'Temple Run Tuk Tuk',p:6500,c:'Tours',t:'15:00'},{n:'Sprite',p:650,c:'Drinks',t:'15:05'}
+    ]},
+    {name:'Elsa Vieira',paid:true,items:[
+      {n:'Board Rental',p:2500,c:'Tours',t:'10:10'},{n:'Board Rental',p:2500,c:'Tours',t:'14:10'},
+      {n:'Fresh Juice',p:1400,c:'Drinks',t:'16:30'}
+    ]},
+    {name:'Marta Alves',paid:false,items:[
+      {n:'Cappuccino',p:950,c:'Drinks',t:'08:20'},{n:'Cap',p:4500,c:'Merch',t:'17:10'}
+    ]}
+  ];
+  S.history.push({id:'h3',start:'2026-03-22',closedAt:'2026-03-28T10:00:00',guests:h3guests});
+
+  const h4guests=[
+    {name:'Gabriela Volfova',paid:true,items:[
+      {n:'Mojito',p:2500,c:'Drinks',t:'19:00'},{n:'Mojito',p:2500,c:'Drinks',t:'20:15'},
+      {n:'Rash Guard',p:8500,c:'Merch',t:'16:40'}
+    ]},
+    {name:'Greta Rohleder',paid:true,items:[
+      {n:'Airport Transfer',p:18000,c:'Tours',t:'06:00'},{n:'Water 0.5L',p:300,c:'Drinks',t:'06:10'}
+    ]},
+    {name:'Chloe Pepin',paid:true,items:[
+      {n:'Fresh Juice',p:1400,c:'Drinks',t:'10:00'},{n:'Ice Bath',p:3500,c:'Tours',t:'17:30'}
+    ]},
+    {name:'Franco Catarina',paid:false,items:[
+      {n:'Sunset Cocktail',p:2800,c:'Drinks',t:'18:50'},{n:'Cap',p:4500,c:'Merch',t:'19:00'}
+    ]},
+    {name:'Markus Vogt',paid:true,items:[
+      {n:'Surf Guiding',p:12000,c:'Tours',t:'08:15'},{n:'King Coconut',p:500,c:'Drinks',t:'12:20'}
+    ]},
+    {name:'Bianca Lopes',paid:true,items:[
+      {n:'Tea Plantation Tour',p:14000,c:'Tours',t:'12:40'},{n:'Fresh Juice',p:1400,c:'Drinks',t:'16:10'}
+    ]},
+    {name:'Eva Mueller',paid:false,items:[
+      {n:'Iced Coffee',p:1200,c:'Drinks',t:'10:30'},{n:'Sticker Pack',p:900,c:'Merch',t:'17:20'}
+    ]}
+  ];
+  S.history.push({id:'h4',start:'2026-03-29',closedAt:'2026-04-04T10:00:00',guests:h4guests});
+
+  S.activeWeek={
+    id:'w1',start:'2026-04-05',
+    guests:[
+      {name:'Bianca Lopes',paid:false,items:[
+        {n:'Cappuccino',p:950,c:'Drinks',t:'08:30'},{n:'Blue Lagoon Transfer',p:7000,c:'Tours',t:'14:00'}
+      ]},
+      {name:'Ruben Duarte',paid:true,items:[
+        {n:'Lion Lager',p:1200,c:'Drinks',t:'18:30'},{n:'Lion Lager',p:1200,c:'Drinks',t:'20:05'},
+        {n:'Camp T-Shirt L',p:6500,c:'Merch',t:'17:10'}
+      ]},
+      {name:'Marta Alves',paid:false,items:[
+        {n:'Tea Plantation Tour',p:14000,c:'Tours',t:'12:30'},{n:'Fresh Juice',p:1400,c:'Drinks',t:'16:00'}
+      ]},
+      {name:'Jonas Keller',paid:false,items:[
+        {n:'Board Rental',p:2500,c:'Tours',t:'10:00'},{n:'Board Rental',p:2500,c:'Tours',t:'14:00'},
+        {n:'Water 1.5L',p:550,c:'Drinks',t:'14:10'}
+      ]},
+      {name:'Laura Stutz',paid:true,items:[
+        {n:'Passionfruit Spritz',p:2600,c:'Drinks',t:'19:20'},{n:'Cap',p:4500,c:'Merch',t:'19:35'}
+      ]},
+      {name:'Daniel Meyer',paid:false,items:[
+        {n:'Airport Transfer',p:18000,c:'Tours',t:'05:45'},{n:'Water 0.5L',p:300,c:'Drinks',t:'05:50'}
+      ]},
+      {name:'Sanne Verhoeven',paid:false,items:[]},
+      {name:'Lucie Bernard',paid:true,items:[
+        {n:'Mojito',p:2500,c:'Drinks',t:'20:40'},{n:'Mojito',p:2500,c:'Drinks',t:'21:30'},
+        {n:'Camp T-Shirt M',p:6500,c:'Merch',t:'16:50'}
+      ]},
+      {name:'Matteo Riva',paid:false,items:[
+        {n:'Lagoon Safari',p:9000,c:'Tours',t:'08:40'},{n:'Lion Strong',p:1350,c:'Drinks',t:'19:00'}
+      ]},
+      {name:'Paula Costa',paid:true,items:[
+        {n:'Board Rental',p:2500,c:'Tours',t:'10:00'},{n:'Fresh Juice',p:1400,c:'Drinks',t:'15:20'},
+        {n:'Sticker Pack',p:900,c:'Merch',t:'17:10'}
+      ]},
+      {name:'Bruno Silva',paid:false,items:[
+        {n:'Sunset Cocktail',p:2800,c:'Drinks',t:'19:10'},{n:'Sunset Cocktail',p:2800,c:'Drinks',t:'20:15'},
+        {n:'King Coconut',p:500,c:'Drinks',t:'12:00'}
+      ]}
+    ]
+  };
+  save();
+}
+if(false) seedDemoIfEmpty();
+
+// ════════════════════════════════════════════════════════════
+//  HELPERS
+// ════════════════════════════════════════════════════════════
+const money=n=>new Intl.NumberFormat('en-LK',{style:'currency',currency:'LKR',maximumFractionDigits:0}).format(Number(n||0));
+const euro=money;
+const tnow=()=>new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+const fmtd=d=>d?new Date(d+'T00:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}):'—';
+const isoLocal=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const today=()=>isoLocal(new Date());
+const weekStartSat=iso=>{const d=new Date(iso+'T00:00:00');const day=d.getDay();const diff=day===6?0:day+1;d.setDate(d.getDate()-diff);return isoLocal(d);};
+const addDays=(iso,n)=>{const d=new Date(iso+'T00:00:00');d.setDate(d.getDate()+n);return isoLocal(d);};
+const weekSpan=ws=>fmtd(ws)+' to '+fmtd(addDays(ws,6));
+const gtot=g=>g.items.reduce((s,i)=>s+Number(i.p),0);
+const esc=s=>String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+const getCats=()=>Object.keys(MENU);
+function stayMeta(row){
+  if(!row?.bookingCi||!row?.bookingCo) return '';
+  return `${fmtd(isoLocal(new Date(row.bookingCi)))} → ${fmtd(isoLocal(new Date(row.bookingCo)))} · ${row.bookingPax||1} pax`;
+}
+function ensureNextWeekDraft(){
+  if(!S.activeWeek) return null;
+  const nextStart=addDays(S.activeWeek.start,7);
+  if(!S.nextWeek||S.nextWeek.start!==nextStart){
+    S.nextWeek={id:makeUuid(),start:nextStart,guests:[],staff:[],draftKind:'next'};
+  }
+  S.nextWeek.draftKind='next';
+  return ensureWeekShape(S.nextWeek);
+}
+function isQueuedForNextWeek(name, roster='guests'){
+  const wk=nextWeekDraft();
+  if(!wk) return false;
+  return rosterRows(wk,roster).some(row=>row.name===name);
+}
+function shouldCarryConsumer(row,nextWeekStart){
+  if(!row?.bookingCo) return false;
+  return Number(row.bookingCo)>new Date(nextWeekStart+'T00:00:00').getTime();
+}
+function carryConsumerToNextWeek(row){
+  const carried={
+    name:row.name,
+    items:Array.isArray(row.items)?row.items.map(item=>({...item})):[],
+    paid:!!row.paid,
+    ...(row.bookingRef?{bookingRef:row.bookingRef}:{}),
+    ...(row.bookingCi?{bookingCi:row.bookingCi}:{}),
+    ...(row.bookingCo?{bookingCo:row.bookingCo}:{}),
+    ...(row.bookingPax?{bookingPax:row.bookingPax}:{}),
+  };
+  if(row.paid){
+    carried.items=[];
+    carried.paid=false;
+  }
+  return carried;
+}
+function getCatColor(cat){
+  const palette=['var(--ocean)','var(--green)','var(--amber)','#8b5cf6','#ec4899','#14b8a6','#f97316'];
+  const idx=Math.max(0,getCats().indexOf(cat));
+  return palette[idx%palette.length];
+}
+function ensureMenuState(){
+  if(!getCats().length){MENU={General:[]};saveMenu();}
+  const cats=getCats();
+  if(!cats.includes(AC)) AC=cats[0];
+  if(tsCat!=='All'&&!cats.includes(tsCat)) tsCat='All';
+  if(!cats.includes(menuEditCat)) menuEditCat=cats[0]||'';
+}
+
+// ════════════════════════════════════════════════════════════
+//  SUB-NAV
+// ════════════════════════════════════════════════════════════
+let activeSub='charge';
+function showSub(sub){
+  activeSub=sub;
+  document.querySelectorAll('.subpage').forEach(el=>el.classList.remove('active'));
+  document.getElementById('sub-'+sub).classList.add('active');
+  document.querySelectorAll('.snav-btn').forEach(btn=>btn.classList.toggle('active',btn.dataset.sub===sub));
+  if(sub==='charge') renderCharge();
+  else if(sub==='week') renderThisWeek();
+  else if(sub==='history') renderHistory();
+  else if(sub==='sellers') renderSellers();
+}
+
+function setRoster(roster){
+  currentRoster=roster==='staff'?'staff':'guests';
+  const guestBtn=document.getElementById('rosterGuestsBtn');
+  const staffBtn=document.getElementById('rosterStaffBtn');
+  if(guestBtn) guestBtn.classList.toggle('active',currentRoster==='guests');
+  if(staffBtn) staffBtn.classList.toggle('active',currentRoster==='staff');
+  const title=document.getElementById('consumerTitle');
+  const addBtn=document.getElementById('addConsumerBtn');
+  if(title) title.textContent=rosterTitle();
+  if(addBtn) addBtn.textContent=currentRoster==='staff'?'+ Staff':'+ Guest';
+  if(!findConsumer(AG,currentRoster)) AG=null;
+  renderCharge();
+  if(activeSub==='week') renderThisWeek();
+}
+
+// ════════════════════════════════════════════════════════════
+//  HEADER
+// ════════════════════════════════════════════════════════════
+function renderHeader(){
+  const el=document.getElementById('hWeekLabel');
+  if(S.activeWeek){
+    const queued=(nextWeekDraft()?.guests||[]).length;
+    el.textContent=weekSpan(S.activeWeek.start)+(queued?` / next week ${queued}`:'');
+  }
+  else el.textContent='No active week';
+}
+
+// ════════════════════════════════════════════════════════════
+//  CHARGE PAGE
+// ════════════════════════════════════════════════════════════
+function renderCharge(){
+  renderHeader();
+  currentWeek();
+  renderGuestList();
+  renderStaffSelect();
+  renderCatTabs();
+  renderItemGrid();
+  renderTabPanel();
+  const wk=currentWeek();
+  const weekLabel=wk?weekSpan(wk.start):'No active week';
+  const activeMeta=document.getElementById('chargeGuestMeta');
+  const empty=document.getElementById('chargeEmpty');
+  if(activeMeta && AG){
+    const g=findConsumer(AG,currentRoster);
+    if(g){
+      activeMeta.textContent=weekLabel+' — '+(currentRoster==='staff'?'Staff tab':'Guest tab')+' — '+(g.paid?'Paid / '+euro(gtot(g)):g.items.length+' items / '+euro(gtot(g)));
+    }
+  }
+  if(empty){
+    const metaId='chargeWeekMeta';
+    let meta=document.getElementById(metaId);
+    if(!meta){
+      meta=document.createElement('div');
+      meta.id=metaId;
+      meta.style.fontSize='11px';
+      meta.style.color='var(--muted)';
+      meta.style.marginTop='6px';
+      empty.appendChild(meta);
+    }
+    meta.textContent=weekLabel;
+  }
+}
+
+function renderStaffSelect(){
+  const el=document.getElementById('activeStaffSel');
+  if(!el) return;
+  STAFF=normalizeStaff(STAFF);
+  if(!STAFF.find(s=>s.id===activeStaffId)) activeStaffId=STAFF[0]?.id||'';
+  el.innerHTML=STAFF.map(staff=>`<option value="${staff.id}">${staff.name}</option>`).join('');
+  if(activeStaffId) el.value=activeStaffId;
+}
+
+function setActiveStaff(id){
+  activeStaffId=id;
+  renderStaffSelect();
+}
+
+function renderGuestList(){
+  const el=document.getElementById('glist');
+  if(!el)return;
+  const searchEl=document.getElementById('gsearch');
+  const wk=currentWeek();
+  if(!wk){
+    el.innerHTML=`<div style="padding:16px 10px;text-align:center;font-size:12px;color:var(--muted);line-height:1.7">No active week.<br><button onclick="openAddWeek()" style="margin-top:8px;border:none;background:var(--ocean);color:#fff;border-radius:7px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">+ New week</button></div>`;
+    return;
+  }
+  const term=(searchEl?.value||'').toLowerCase();
+  const rows=rosterRows(wk,currentRoster).filter(g=>g.name.toLowerCase().includes(term));
+  if(!rows.length){el.innerHTML=`<div style="padding:12px;text-align:center;font-size:12px;color:var(--muted)">${currentRoster==='staff'?'No staff match.':'No match.'}</div>`;return;}
+  el.innerHTML=rows.map(g=>`<div class="c-guest ${AG===g.id?'active':''}" onclick="selGuest('${esc(g.id)}')">
+    <div style="min-width:0">
+      <div class="c-guest-name">${g.name}</div>
+      <div class="c-guest-amt">${gtot(g)>0?euro(gtot(g)):'no charges'}${currentRoster==='guests'&&isQueuedForNextWeek(g.name)?' / queued next week':''}</div>
+    </div>
+    ${g.paid?'<div class="c-gpaid"></div>':''}
+  </div>`).join('');
+  if(searchEl&&document.activeElement!==searchEl&&term){
+    searchEl.focus({preventScroll:true});
+    const len=searchEl.value.length;
+    searchEl.setSelectionRange(len,len);
+  }
+}
+
+function renderCatTabs(){
+  const el=document.getElementById('catTabs');
+  if(!el)return;
+  ensureMenuState();
+  el.innerHTML=getCats().map(c=>`<button class="c-cat ${AC===c?'active':''}" onclick="setCat('${esc(c)}')">${c}</button>`).join('')+
+    `<button class="c-cat c-cat-manage" onclick="openMenuSettings()">Edit menu</button>`;
+}
+
+function renderItemGrid(){
+  const el=document.getElementById('itemGrid');
+  if(!el||!AG)return;
+  const items=MENU[AC]||[];
+  if(!items.length){
+    el.innerHTML=`<div class="c-item-empty">
+      <div style="font-size:28px;opacity:.2">Menu</div>
+      <div style="font-weight:700;color:var(--navy)">No items in ${AC}</div>
+      <div style="max-width:240px;line-height:1.6">Open menu settings to add products for this location.</div>
+      <button class="mbtn mbtn-p" onclick="openMenuSettings()">Add items</button>
+    </div>`;
+    return;
+  }
+  el.innerHTML=items.map((item,i)=>{
+    const stockLeft=AC==='Merch'?merchStockLeft(item):null;
+    const outOfStock=stockLeft!==null&&stockLeft<=0;
+    const stockLabel=stockLeft!==null?`<div class="ci-desc" style="color:${outOfStock?'var(--red)':'var(--green)'};font-weight:700">${outOfStock?'Out of stock':stockLeft+' left'}</div>`:'';
+    return `<button class="c-item${outOfStock?' out':''}" id="ci${i}" onclick="addItemById('${esc(item.id||'')}', '${esc(item.n)}', this)" ${outOfStock?'disabled':''}>
+    <div class="ci-name">${item.n}</div>
+    ${item.d?`<div class="ci-desc">${item.d}</div>`:''}
+    ${stockLabel}
+    <div class="ci-price">${euro(displayPriceFor(item))}${currentRoster==='staff'?` <span style="font-size:10px;color:var(--muted)">staff</span>`:''}</div>
+  </button>`;
+  }).join('');
+}
+
+function renderTabPanel(){
+  const g=findConsumer(AG,currentRoster);
+  const empty=document.getElementById('chargeEmpty');
+  const active=document.getElementById('chargeActive');
+  const foot=document.getElementById('tabFoot');
+  const wk=currentWeek();
+  const weekLabel=wk?weekSpan(wk.start):'No active week';
+  if(!empty)return;
+
+  if(!g){
+    empty.style.display='flex';active.style.display='none';
+    document.getElementById('tabList').innerHTML='<div style="padding:14px;text-align:center;font-size:12px;color:var(--muted)">No items yet.</div>';
+    if(foot)foot.style.display='none';
+    document.getElementById('tabMeta').textContent=S.activeWeek?weekLabel+' — Select a guest':'No active week';
+    return;
+  }
+  empty.style.display='none';active.style.display='flex';
+  document.getElementById('chargeGuestName').textContent=g.name;
+  document.getElementById('chargeGuestMeta').textContent=weekSpan(wk.start)+' — '+(currentRoster==='staff'?'Staff tab':'Guest tab')+' — '+(g.paid?'Paid / '+euro(gtot(g)):g.items.length+' items / '+euro(gtot(g)));
+  document.getElementById('tabMeta').textContent=weekLabel+' — '+(g.paid?'Paid':g.items.length+' items');
+  document.getElementById('payBtn').textContent=g.paid?'Paid':'Pay';
+
+  if(!g.items.length){
+    document.getElementById('tabList').innerHTML='<div style="padding:14px;text-align:center;font-size:12px;color:var(--muted)">No items yet.</div>';
+    if(foot)foot.style.display='none'; return;
+  }
+  document.getElementById('tabList').innerHTML=[...g.items].reverse().map((item,ri)=>{
+    const idx=g.items.length-1-ri;
+    return `<div class="c-tab-row">
+      <div style="flex:1;min-width:0"><div class="ctr-name">${item.n}</div><div class="ctr-time">${item.c} · ${item.t}${item.s?' · '+item.s:''}</div></div>
+      <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
+        <div class="ctr-price">${euro(item.p)}</div>
+        <button class="ctr-del" onclick="delItem(${idx})">x</button>
+      </div>
+    </div>`;
+  }).join('');
+  document.getElementById('tabTotal').textContent=euro(gtot(g));
+  if(foot)foot.style.display='block';
+}
+
+function selGuest(id){AG=id;renderGuestList();renderItemGrid();renderTabPanel();}
+function setCat(c){AC=c;renderCatTabs();renderItemGrid();}
+
+function addItem(i,btn){
+  if(!AG||!S.activeWeek){toast('Select a guest first!');return;}
+  const item=MENU[AC][i];
+  if(!item){toast('Item not found');return;}
+  return addResolvedItem(item, btn);
+}
+function addItemByName(name,btn){
+  if(!AG||!S.activeWeek){toast('Select a guest first!');return;}
+  const item=(MENU[AC]||[]).find(row=>String(row?.n||'')===String(name||''));
+  if(!item){toast('Item not found');return;}
+  return addResolvedItem(item, btn);
+}
+function addItemById(id,name,btn){
+  if(!AG||!S.activeWeek){toast('Select a guest first!');return;}
+  const item=(MENU[AC]||[]).find(row=>row?.id===id) || (MENU[AC]||[]).find(row=>String(row?.n||'')===String(name||''));
+  if(!item){toast('Item not found');return;}
+  return addResolvedItem(item, btn);
+}
+async function addResolvedItem(item,btn){
+  if(!AG||!S.activeWeek){toast('Select a guest first!');return;}
+  const wk=currentWeek();
+  const rows=rosterRows(wk,currentRoster);
+  const rowIndex=rows.findIndex(row=>row.id===AG || row.name===AG);
+  const g=rowIndex>=0?rows[rowIndex]:null;
+  if(!g)return;
+  if(AC==='Merch'){
+    const stockLeft=merchStockLeft(item);
+    if(stockLeft!==null&&stockLeft<=0){toast(item.n+' is out of stock');return;}
+  }
+  const price=displayPriceFor(item);
+  const nextItem={id:makeUuid(),menuItemId:item.id||'',n:item.n,p:price,c:AC,t:tnow(),priceType:currentRoster==='staff'?'staff':'regular'};
+  const saved=await commitCampTabStateOnline({
+    mutate:()=>{
+      g.items=[...normalizeItemRows(g.items),nextItem];
+      rows[rowIndex]=g;
+      wk[currentRoster]=rows;
+      AG=g.id;
+    },
+    successMessage:item.n+' added to '+g.name,
+    errorMessage:'Could not save this item online. Nothing was added.'
+  });
+  if(saved&&btn){btn.classList.add('flash');setTimeout(()=>btn.classList.remove('flash'),260);}
+}
+async function delItem(idx){
+  const g=findConsumer(AG,currentRoster);
+  if(!g)return;
+  const itemName=g.items?.[idx]?.n||'Item';
+  await commitCampTabStateOnline({
+    mutate:()=>{
+      g.items.splice(idx,1);
+    },
+    successMessage:itemName+' removed',
+    errorMessage:'Could not remove this item online.'
+  });
+}
+async function togglePaid(){
+  const g=findConsumer(AG,currentRoster);
+  if(!g)return;
+  const nextPaid=!g.paid;
+  await commitCampTabStateOnline({
+    mutate:()=>{
+      g.paid=nextPaid;
+      if(nextPaid) g.paidAt=new Date().toISOString();
+      else delete g.paidAt;
+    },
+    successMessage:g.name+(nextPaid?' paid':' unpaid'),
+    errorMessage:'Could not update payment status online.'
+  });
+}
+
+// ════════════════════════════════════════════════════════════
+//  BILL
+// ════════════════════════════════════════════════════════════
+function openBill(guestId){
+  const src=guestId||AG;
+  const g=findConsumer(src,currentRoster);
+  if(!g||!g.items.length){toast('No items on this tab.');return;}
+  document.getElementById('billName').textContent=g.name;
+  document.getElementById('billMeta').textContent=g.items.length+' items — '+weekSpan(S.activeWeek.start)+(stayMeta(g)?` — ${stayMeta(g)}`:'');
+  const byCat={};g.items.forEach(i=>{if(!byCat[i.c])byCat[i.c]=[];byCat[i.c].push(i);});
+  let html='';
+  Object.keys(byCat).forEach(cat=>{
+    html+=`<div style="margin-bottom:14px"><div style="font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--border)">${cat}</div>`;
+    byCat[cat].forEach(i=>{html+=`<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:13px;border-bottom:1px solid rgba(0,0,0,.04)"><span>${i.n}${i.s?` <span style="font-size:10px;color:var(--muted)">· ${i.s}</span>`:''}</span><span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted)">${euro(i.p)}</span></div>`;});
+    html+=`</div>`;
+  });
+  html+=`<div class="bill-total-box" style="background:var(--navy);border-radius:10px;padding:14px 16px;display:flex;justify-content:space-between;align-items:center;margin-top:12px"><div><div style="font-size:9px;color:#7aabcc;text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:3px">Total to pay</div><div style="font-family:'DM Serif Display',serif;font-size:28px;color:#fff">${euro(gtot(g))}</div></div><div style="text-align:right;font-size:11px;color:#7aabcc">${g.items.length} items<br>${fmtd(S.activeWeek.start)} week</div></div>`;
+  document.getElementById('billBody').innerHTML=html;
+  document.getElementById('billPayBtn').onclick=async()=>{
+    const saved=await commitCampTabStateOnline({
+      mutate:()=>{
+        g.paid=true;
+        g.paidAt=new Date().toISOString();
+        AG=g.id||src;
+      },
+      successMessage:g.name+' paid',
+      errorMessage:'Could not mark this tab as paid online.'
+    });
+    if(saved) closeOv('billOv');
+  };
+  openOv('billOv');
+}
+
+// ════════════════════════════════════════════════════════════
+//  THIS WEEK
+// ════════════════════════════════════════════════════════════
+let twExpanded=null;
+let twSearch='';
+function renderThisWeek(){
+  renderHeader();
+  currentWeek();
+  const twEl=document.getElementById('twList');
+  const twHdr=document.getElementById('twHeader');
+  const twBar=document.getElementById('twCloseBar');
+  if(!twEl)return;
+
+  if(!S.activeWeek){
+    twEl.innerHTML='';
+    twHdr.innerHTML=`<div style="font-family:'DM Serif Display',serif;font-size:20px;color:var(--navy)">This week</div>
+      <button onclick="openAddWeek()" style="border:none;background:var(--ocean);color:#fff;border-radius:8px;padding:8px 16px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">+ New week</button>`;
+    twBar.innerHTML='';
+    return;
+  }
+
+  const guests=rosterRows(S.activeWeek,currentRoster);
+  const paid=guests.filter(g=>g.paid);
+  const unpaid=guests.filter(g=>!g.paid);
+  const term=twSearch.trim().toLowerCase();
+  const totalCollected=paid.reduce((s,g)=>s+gtot(g),0);
+  const totalOutstanding=unpaid.reduce((s,g)=>s+gtot(g),0);
+  const chargeableUnpaid=unpaid.filter(g=>gtot(g)>0);
+  const allPaid=guests.length>0&&chargeableUnpaid.length===0;
+  const nextDraft=nextWeekDraft();
+  const nextStart=nextDraft?.start||addDays(S.activeWeek.start,7);
+
+  twHdr.innerHTML=`
+    <div class="tw-header-main">
+      <div>
+      <div class="tw-week-kicker">Active week</div>
+      <div class="tw-week-date-line">
+        <div class="tw-week-date-main">${fmtd(S.activeWeek.start)}</div>
+        <div class="tw-week-date-end">to ${fmtd(addDays(S.activeWeek.start,6))}</div>
+      </div>
+      <div class="tw-week-note">${guests.length} ${currentRoster} / ${paid.length} paid / ${unpaid.length} unpaid${currentRoster==='guests'&&nextDraft?.guests?.length?` / ${nextDraft.guests.length} queued for next week`:''}</div>
+      ${currentRoster==='guests'?`<div class="tw-next-week-bar">
+        <div>
+          <div style="font-size:10px;color:var(--ocean);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:2px">Next Week</div>
+          <div style="font-weight:700;color:var(--navy)">${weekSpan(nextStart)}</div>
+        </div>
+        <div style="font-size:11px;color:var(--muted)">${nextDraft?.guests?.length?`${nextDraft.guests.length} guest${nextDraft.guests.length!==1?'s':''} ready to continue`:'No guests queued yet'}</div>
+      </div>`:''}
+      </div>
+      <input class="tw-search" id="twSearch" placeholder="Search ${currentRoster==='staff'?'staff':'guest'}..." value="${esc(twSearch)}" oninput="setTwSearch(this.value)">
+    </div>
+    <div class="tw-stats" style="align-items:center">
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="ts-cat-btn ${currentRoster==='guests'?'active':''}" onclick="setRoster('guests')">Guests</button>
+        <button class="ts-cat-btn ${currentRoster==='staff'?'active':''}" onclick="setRoster('staff')">Staff</button>
+      </div>
+      <div class="tw-stat">
+        <div class="tw-stat-val green">${euro(totalCollected)}</div>
+        <div class="tw-stat-label">Collected</div>
+      </div>
+      ${totalOutstanding>0?`<div class="tw-stat">
+        <div class="tw-stat-val red">${euro(totalOutstanding)}</div>
+        <div class="tw-stat-label">Outstanding</div>
+      </div>`:''}
+    </div>
+  `;
+
+  if(!guests.length){
+    twEl.innerHTML=`<div class="tw-empty"><div>No ${currentRoster} yet.</div></div>`;
+  } else {
+    // Sort: unpaid first
+    const sorted=[...unpaid,...paid].filter(g=>!term||g.name.toLowerCase().includes(term));
+    if(!sorted.length){
+      twEl.innerHTML=`<div class="tw-empty"><div>No guests match your search.</div></div>`;
+    } else {
+    twEl.innerHTML=sorted.map(g=>{
+      const tot=gtot(g);
+      const exp=twExpanded===g.id;
+      return `<div class="tw-card">
+        <div class="tw-card-head" onclick="toggleTwExpand('${esc(g.id)}')">
+        <div style="flex:1;min-width:0">
+          <div class="tw-card-name">${g.name}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">${g.items.length} item${g.items.length!==1?'s':''}</div>
+          ${(stayMeta(g)||isQueuedForNextWeek(g.name))?`<div class="tw-guest-meta">
+            ${stayMeta(g)?`<span class="tw-chip stay">${stayMeta(g)}</span>`:''}
+            ${isQueuedForNextWeek(g.name)?`<span class="tw-chip next">Continues ${weekSpan(nextStart)}</span>`:''}
+          </div>`:''}
+        </div>
+          <div class="tw-card-right">
+            <div class="tw-card-total">${tot>0?euro(tot):'—'}</div>
+            <span style="display:inline-flex;padding:3px 9px;border-radius:20px;font-size:10px;font-weight:700;background:${g.paid?'var(--green-bg)':'var(--red-bg)'};color:${g.paid?'var(--green)':'var(--red)'}";border:1px solid ${g.paid?'var(--green-border)':'#f0a0a0'}">${g.paid?'Paid':'Unpaid'}</span>
+            <div style="font-size:11px;color:var(--muted)">${exp?'Hide':'Open'}</div>
+          </div>
+        </div>
+        ${exp?`<div class="tw-card-body">
+          ${g.items.length?g.items.map((i,idx)=>`<div class="tw-item-row">
+            <div class="tw-item-main">
+              <span>${i.n}${i.s?` <span style="font-size:10px;color:var(--muted)">· ${i.s}</span>`:''}</span>
+              <span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted)">${euro(i.p)}</span>
+            </div>
+            <button class="tw-item-del" onclick="deleteGuestItem('${esc(g.id)}',${idx});event.stopPropagation()" title="Delete item">x</button>
+          </div>`).join(''):'<div style="font-size:12px;color:var(--muted);padding:8px 0">No items yet.</div>'}
+          <div class="tw-actions">
+            <button class="tw-btn ${g.paid?'tw-btn-paid':'tw-btn-pay'}" onclick="toggleGuestPaid('${esc(g.id)}')">${g.paid?'Paid':'Pay'}</button>
+            <button class="tw-btn tw-btn-delete" onclick="deleteGuest('${esc(g.id)}')">Delete ${rosterLabel().toLowerCase()}</button>
+            ${currentRoster==='guests'?`<button class="tw-btn tw-btn-bill" onclick="passGuestToNextWeek('${esc(g.id)}')">${isQueuedForNextWeek(g.name)?'Update next week':'Continue next week'}</button>`:''}
+            ${!g.paid&&tot>0?`<button class="tw-btn tw-btn-bill" onclick="openBill('${esc(g.id)}')">Bill</button>`:''}
+          </div>
+        </div>`:''}
+      </div>`;
+    }).join('');
+    }
+  }
+
+  // Bottom bar
+  twBar.innerHTML=`
+    <div></div>
+    <button class="tw-close-btn ${allPaid?'ready':'locked'}" ${allPaid?'onclick="openCloseWeek()"':'disabled'}>
+      ${allPaid?'Pay week':'Finish payments first'}
+    </button>
+  `;
+}
+
+function setTwSearch(value){
+  twSearch=value||'';
+  renderThisWeek();
+}
+function toggleTwExpand(id){
+  twExpanded=twExpanded===id?null:id;
+  renderThisWeek();
+}
+function toggleGuestPaid(id){
+  const g=findConsumer(id,currentRoster);
+  if(!g)return;
+  g.paid=!g.paid;
+  if(g.paid && twExpanded===g.id) twExpanded=null;
+  save();renderThisWeek();
+  if(AG===g.id)renderTabPanel();renderGuestList();
+  toast(g.name+(g.paid?' paid':' unpaid'));
+}
+function deleteGuestItem(id,idx){
+  const g=findConsumer(id,currentRoster);
+  if(!g||idx<0||idx>=g.items.length)return;
+  const [removed]=g.items.splice(idx,1);
+  save();
+  renderThisWeek();
+  if(AG===g.id){
+    renderTabPanel();
+    renderGuestList();
+  }
+  toast((removed?.n||'Item')+' deleted');
+}
+function deleteGuest(id){
+  if(!S.activeWeek) return;
+  const rows=rosterRows(S.activeWeek,currentRoster);
+  const g=rows.find(x=>x.id===id);
+  if(!g) return;
+  if(!confirm('Delete '+g.name+' from this week?')) return;
+  S.activeWeek[currentRoster]=rows.filter(x=>x.id!==id);
+  if(AG===g.id) AG=null;
+  if(twExpanded===g.id) twExpanded=null;
+  save();
+  renderGuestList();
+  renderTabPanel();
+  renderThisWeek();
+  toast(g.name+' deleted');
+}
+function passGuestToNextWeek(id){
+  if(!S.activeWeek) return;
+  const rows=rosterRows(S.activeWeek,'guests');
+  const guest=rows.find(row=>row.id===id);
+  if(!guest){toast('Guest not found');return;}
+  const draft=ensureNextWeekDraft();
+  draft.guests=normalizeConsumerRows(draft.guests);
+  const bookingRef=String(guest.bookingRef||'').trim();
+  const exists=draft.guests.find(row=>
+    (bookingRef&&String(row.bookingRef||'').trim()===bookingRef) ||
+    row.name.toLowerCase()===guest.name.toLowerCase()
+  );
+  if(exists){
+    Object.assign(exists,carryConsumerToNextWeek(guest));
+    S.activeWeek.guests=rows.filter(row=>row.id!==id);
+    if(AG===guest.id) AG=null;
+    if(twExpanded===guest.id) twExpanded=null;
+    save();
+    renderHeader();renderCharge();renderThisWeek();
+    toast(guest.name+' moved to '+weekSpan(draft.start));
+    return;
+  }
+  draft.guests.push(carryConsumerToNextWeek(guest));
+  S.activeWeek.guests=rows.filter(row=>row.id!==id);
+  if(AG===guest.id) AG=null;
+  if(twExpanded===guest.id) twExpanded=null;
+  save();
+  renderHeader();renderCharge();renderThisWeek();
+  toast(guest.name+' moved to '+weekSpan(draft.start));
+}
+
+function closedWeekLedgerPrefix(wk){
+  return `campclose_${wk.id||wk.start}_`.replace(/\s+/g,'_');
+}
+
+function removeClosedWeekFromHubLedger(wk){
+  if(!wk) return;
+  try{window.parent?.postMessage({type:'camp-tab-history-deleted',weekId:wk.id||wk.start,weekStart:wk.start},'*');}catch(e){}
+}
+
+function deleteHistoryWeek(id){
+  const idx=S.history.findIndex(w=>w.id===id);
+  if(idx<0) return;
+  const wk=S.history[idx];
+  if(!confirm('Delete closed week '+weekSpan(wk.start)+'?')) return;
+  removeClosedWeekFromHubLedger(wk);
+  S.history.splice(idx,1);
+  if(histOpenWeek===id) histOpenWeek=null;
+  histOpenGuest=null;
+  save();
+  renderHistory();
+  toast('Closed week deleted');
+}
+
+// ════════════════════════════════════════════════════════════
+//  HISTORY
+// ════════════════════════════════════════════════════════════
+let histOpenWeek=null, histOpenGuest=null;
+function renderHistory(){
+  const el=document.getElementById('histList');
+  if(!el)return;
+  if(!S.history.length){
+    el.innerHTML=`<div class="hist-empty"><div style="font-family:'DM Serif Display',serif;font-size:18px">No history yet</div><div style="font-size:13px;max-width:220px;line-height:1.6">Closed weeks will appear here. All guest tabs stay visible.</div></div>`;
+    return;
+  }
+  el.innerHTML=[...S.history].reverse().map(wk=>{
+    const guests=allConsumers(wk);
+    const total=guests.filter(g=>g.paid).reduce((s,g)=>s+gtot(g),0);
+    const paidCount=guests.filter(g=>g.paid).length;
+    const isOpen=histOpenWeek===wk.id;
+    return `<div class="hist-week ${isOpen?'open':''}">
+      <div class="hist-week-head" onclick="toggleHistWeek('${wk.id}')">
+        <div class="hw-left">
+          <div class="hw-title">${weekSpan(wk.start)}</div>
+          <div class="hw-sub">${guests.length} guests · closed ${new Date(wk.closedAt).toLocaleDateString('en-GB',{day:'numeric',month:'short'})}</div>
+        </div>
+        <div class="hw-right">
+          <div class="hw-mini-actions">
+            <button class="hw-mini-btn danger" onclick="event.stopPropagation();deleteHistoryWeek('${wk.id}')">Delete</button>
+          </div>
+          <div class="hw-total">${euro(total)}</div>
+          <div class="hw-badge">${paidCount}/${guests.length} paid</div>
+          <div class="hw-chevron">${isOpen?'Hide':'Open'}</div>
+        </div>
+      </div>
+      ${isOpen?`<div class="hist-week-body">
+        ${guests.map(g=>{
+          const gt=gtot(g);
+          const isGOpen=histOpenGuest===wk.id+':'+g.name;
+          return `<div>
+            <div class="hw-guest-row" onclick="toggleHistGuest('${wk.id}','${esc(g.name)}')">
+              <div>
+                <div class="hw-guest-name">${g.name}</div>
+                <div class="hw-guest-items">${g.items.length} item${g.items.length!==1?'s':''}</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px">
+                <div class="hw-guest-total">${gt>0?euro(gt):'—'}</div>
+                <span style="display:inline-flex;padding:2px 8px;border-radius:20px;font-size:9px;font-weight:700;background:${g.paid?'var(--green-bg)':'var(--red-bg)'};color:${g.paid?'var(--green)':'var(--red)'}">${g.paid?'Paid':'Unpaid'}</span>
+                <div style="font-size:10px;color:var(--muted)">${isGOpen?'Hide':'Open'}</div>
+              </div>
+            </div>
+            ${isGOpen&&g.items.length?`<div class="hw-items-detail">
+              ${g.items.map(i=>`<div class="hw-item-line"><span>${i.n}${i.s?` <span style="font-size:10px;color:var(--muted)">· ${i.s}</span>`:''}</span><span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted)">${euro(i.p)}</span></div>`).join('')}
+              <div style="display:flex;justify-content:space-between;padding:7px 0 0;border-top:1px solid var(--border);margin-top:4px;font-weight:700;font-size:13px">
+                <span>Total</span><span style="font-family:'DM Mono',monospace">${euro(gt)}</span>
+              </div>
+            </div>`:''}
+          </div>`;
+        }).join('')}
+      </div>`:''}
+    </div>`;
+  }).join('');
+}
+
+function toggleHistWeek(id){histOpenWeek=histOpenWeek===id?null:id;histOpenGuest=null;renderHistory();}
+function toggleHistGuest(wid,name){const key=wid+':'+name;histOpenGuest=histOpenGuest===key?null:key;renderHistory();}
+
+// ════════════════════════════════════════════════════════════
+//  TOP SELLERS
+// ════════════════════════════════════════════════════════════
+function renderSellers(){
+  renderSellerTabs();
+  // Collect all items from all weeks (active + history)
+  const allItems=[];
+  const allWeeks=[...(S.history||[])];
+  if(S.activeWeek) allWeeks.push(S.activeWeek);
+  allWeeks.forEach(wk=>{
+    allConsumers(wk).forEach(g=>{
+      g.items.forEach(i=>allItems.push(i));
+    });
+  });
+
+  const filtered=tsCat==='All'?allItems:allItems.filter(i=>i.c===tsCat);
+  const counts={};
+  filtered.forEach(i=>{
+    if(!counts[i.n])counts[i.n]={n:i.n,cat:i.c,qty:0,rev:0};
+    counts[i.n].qty++;counts[i.n].rev+=Number(i.p);
+  });
+  const sorted=Object.values(counts).sort((a,b)=>b.qty-a.qty).slice(0,20);
+  const maxQty=sorted.length?sorted[0].qty:1;
+
+  const el=document.getElementById('tsBody');
+  if(!el)return;
+  if(!sorted.length){el.innerHTML='<div style="color:var(--muted);text-align:center;padding:40px;font-size:13px">No sales data yet.</div>';return;}
+  el.innerHTML=sorted.map((item,i)=>`<div class="ts-item">
+    <div class="ts-rank" style="color:${i<3?getCatColor(item.cat):'var(--border)'}">${i+1}</div>
+    <div class="ts-info">
+      <div class="ts-name">${item.n}</div>
+      <div class="ts-cat-label" style="color:${getCatColor(item.cat)}">${item.cat}</div>
+    </div>
+    <div class="ts-bar-wrap"><div class="ts-bar" style="width:${(item.qty/maxQty)*100}%;background:${getCatColor(item.cat)}"></div></div>
+    <div class="ts-qty">${item.qty}x</div>
+    <div class="ts-rev">${euro(item.rev)}</div>
+  </div>`).join('');
+}
+
+function setTsCat(cat){
+  tsCat=cat;
+  document.querySelectorAll('.ts-cat-btn').forEach(btn=>btn.classList.toggle('active',btn.dataset.tscat===cat));
+  renderSellers();
+}
+
+function renderSellerTabs(){
+  ensureMenuState();
+  const el=document.getElementById('tsCatRow');
+  if(!el) return;
+  el.innerHTML=['All',...getCats()].map(cat=>`<button class="ts-cat-btn ${tsCat===cat?'active':''}" data-tscat="${cat}" onclick="setTsCat('${esc(cat)}')">${cat}</button>`).join('');
+}
+
+// ════════════════════════════════════════════════════════════
+//  MENU SETTINGS
+// ════════════════════════════════════════════════════════════
+function openMenuSettings(){
+  ensureMenuState();
+  menuEditCat=getCats().includes(AC)?AC:getCats()[0];
+  menuEditIndex=null;
+  renderMenuSettings();
+  clearMenuItemForm();
+  openOv('menuOv');
+}
+
+function renderMenuSettings(){
+  ensureMenuState();
+  const cats=getCats();
+  const catList=document.getElementById('menuCatList');
+  const catName=document.getElementById('menuCatName');
+  const title=document.getElementById('menuMainTitle');
+  const itemList=document.getElementById('menuItemList');
+  if(catList){
+    catList.innerHTML=cats.map(cat=>`<button class="menu-cat-chip ${menuEditCat===cat?'active':''}" onclick="pickMenuCategory('${esc(cat)}')">
+      <span>${cat}</span><span style="font-size:10px;opacity:.7">${(MENU[cat]||[]).length}</span>
+    </button>`).join('');
+  }
+  if(catName) catName.value=menuEditCat||'';
+  if(title) title.textContent=(menuEditCat||'Menu')+' items';
+  const items=MENU[menuEditCat]||[];
+  if(itemList){
+    itemList.innerHTML=items.length?items.map((item,idx)=>`<div class="menu-item-row">
+      <div>
+        <div class="menu-item-name">${item.n}</div>
+      ${item.d?`<div class="menu-item-desc">${item.d}</div>`:''}
+      <div class="menu-item-price">${euro(item.p)}${item.sp?` <span style="font-size:10px;color:var(--muted)">· staff ${euro(item.sp)}</span>`:''}${Number.isFinite(Number(item.stk))?` <span style="font-size:10px;color:var(--muted)">· stock ${item.stk}</span>`:''}</div>
+      </div>
+      <div class="menu-item-actions">
+        <button class="menu-mini-btn" onclick="editMenuItem(${idx})">Edit</button>
+        <button class="menu-mini-btn danger" onclick="deleteMenuItem(${idx})">Delete</button>
+      </div>
+    </div>`).join(''):'<div class="menu-empty">No items yet in this category.</div>';
+  }
+}
+
+function pickMenuCategory(cat){
+  menuEditCat=cat;
+  menuEditIndex=null;
+  renderMenuSettings();
+  clearMenuItemForm();
+}
+
+function refreshMenuViews(){
+  ensureMenuState();
+  renderCatTabs();
+  renderItemGrid();
+  renderSellers();
+}
+
+function addMenuCategory(){
+  const input=document.getElementById('menuCatName');
+  const name=input?.value.trim();
+  if(!name){toast('Enter a category name');return;}
+  if(getCats().some(cat=>cat.toLowerCase()===name.toLowerCase())){toast('Category already exists');return;}
+  MENU[name]=[];
+  menuEditCat=name;
+  AC=name;
+  saveMenu();
+  renderMenuSettings();
+  refreshMenuViews();
+  clearMenuItemForm();
+  toast(name+' added');
+}
+
+function renameMenuCategory(){
+  const input=document.getElementById('menuCatName');
+  const next=input?.value.trim();
+  if(!menuEditCat||!next){toast('Enter a category name');return;}
+  if(next!==menuEditCat&&getCats().some(cat=>cat.toLowerCase()===next.toLowerCase())){toast('Category already exists');return;}
+  if(next===menuEditCat){toast('No change to save');return;}
+  const old=menuEditCat;
+  MENU[next]=MENU[old];
+  delete MENU[old];
+  if(AC===old) AC=next;
+  if(tsCat===old) tsCat=next;
+  menuEditCat=next;
+  saveMenu();
+  renderMenuSettings();
+  refreshMenuViews();
+  toast('Category renamed');
+}
+
+function deleteMenuCategory(){
+  if(!menuEditCat) return;
+  if(getCats().length===1){toast('Keep at least one category');return;}
+  if(!confirm('Delete "'+menuEditCat+'" and its items?')) return;
+  const removed=menuEditCat;
+  delete MENU[removed];
+  ensureMenuState();
+  menuEditCat=getCats()[0];
+  saveMenu();
+  renderMenuSettings();
+  clearMenuItemForm();
+  refreshMenuViews();
+  toast('Category deleted');
+}
+
+function clearMenuItemForm(){
+  const name=document.getElementById('menuItemName');
+  const price=document.getElementById('menuItemPrice');
+  const staffPrice=document.getElementById('menuItemStaffPrice');
+  const stock=document.getElementById('menuItemStock');
+  const desc=document.getElementById('menuItemDesc');
+  const btn=document.getElementById('menuItemSaveBtn');
+  menuEditIndex=null;
+  if(name) name.value='';
+  if(price) price.value='';
+  if(staffPrice) staffPrice.value='';
+  if(stock) stock.value='';
+  if(desc) desc.value='';
+  if(btn) btn.textContent='Add item';
+}
+
+function editMenuItem(idx){
+  const item=(MENU[menuEditCat]||[])[idx];
+  if(!item) return;
+  menuEditIndex=idx;
+  document.getElementById('menuItemName').value=item.n||'';
+  document.getElementById('menuItemPrice').value=item.p;
+  document.getElementById('menuItemStaffPrice').value=item.sp||'';
+  document.getElementById('menuItemStock').value=Number.isFinite(Number(item.stk))?item.stk:'';
+  document.getElementById('menuItemDesc').value=item.d||'';
+  document.getElementById('menuItemSaveBtn').textContent='Save item';
+}
+
+function saveMenuItem(){
+  if(!menuEditCat){toast('Pick a category');return;}
+  const name=document.getElementById('menuItemName').value.trim();
+  const price=parseFloat(document.getElementById('menuItemPrice').value||'0');
+  const staffPrice=parseFloat(document.getElementById('menuItemStaffPrice').value||'0');
+  const stockValue=document.getElementById('menuItemStock').value;
+  const stock=stockValue===''?null:Math.max(0,parseInt(stockValue,10)||0);
+  const desc=document.getElementById('menuItemDesc').value.trim();
+  if(!name||!price){toast('Name and price are required');return;}
+  const payload={n:name,p:price,...(staffPrice>0?{sp:staffPrice}:{}),...(desc?{d:desc}:{}),...(Number.isFinite(stock)?{stk:stock}:{})};
+  const isNew=menuEditIndex===null;
+  if(isNew) MENU[menuEditCat].push(payload);
+  else MENU[menuEditCat][menuEditIndex]=payload;
+  saveMenu();
+  renderMenuSettings();
+  clearMenuItemForm();
+  refreshMenuViews();
+  toast(isNew?name+' added':'Item updated');
+}
+
+function deleteMenuItem(idx){
+  const items=MENU[menuEditCat]||[];
+  const item=items[idx];
+  if(!item) return;
+  items.splice(idx,1);
+  saveMenu();
+  renderMenuSettings();
+  clearMenuItemForm();
+  refreshMenuViews();
+  toast(item.n+' deleted');
+}
+
+function resetMenuDefaults(){
+  if(!confirm('Reset the menu to the default categories and products?')) return;
+  MENU=clone(DEFAULT_MENU);
+  ensureMenuState();
+  menuEditCat=getCats()[0];
+  AC=getCats()[0];
+  tsCat='All';
+  saveMenu();
+  renderMenuSettings();
+  clearMenuItemForm();
+  refreshMenuViews();
+  toast('Default menu restored');
+}
+
+// ════════════════════════════════════════════════════════════
+//  WEEK MANAGEMENT
+// ════════════════════════════════════════════════════════════
+function openAddWeek(){
+  const d=new Date();const day=d.getDay();
+  const diff=day===6?0:day+1;
+  const sat=new Date(d);sat.setDate(d.getDate()-diff);
+  document.getElementById('nwDate').value=addDays(isoLocal(sat),7); // next saturday
+  document.getElementById('nwNames').value='';
+  openOv('addWeekOv');
+}
+function saveNewWeek(){
+  const raw=document.getElementById('nwDate').value;
+  if(!raw){toast('Pick a date');return;}
+  const ws=weekStartSat(raw);
+  const names=document.getElementById('nwNames').value.split('\n').map(s=>s.trim()).filter(Boolean);
+  S.activeWeek={id:'w'+Date.now(),start:ws,guests:names.map(n=>({name:n,items:[],paid:false})),staff:STAFF.map(s=>({name:s.name,items:[],paid:false}))};
+  AG=null;save();closeOv('addWeekOv');
+  renderHeader();renderCharge();renderThisWeek();
+  toast('Week created'+(names.length?' with '+names.length+' guests':''));
+}
+
+function openAddGuest(){
+  if(!S.activeWeek){toast('No active week.');return;}
+  document.getElementById('addGuestSub').textContent=weekSpan(S.activeWeek.start);
+  document.querySelector('#addGuestOv .mhdr-title').textContent=currentRoster==='staff'?'Add staff':'Add guests';
+  document.getElementById('newGuestName').value='';
+  openOv('addGuestOv');
+}
+function saveNewGuest(){
+  const raw=document.getElementById('newGuestName').value;
+  const names=raw.split('\n').map(s=>s.trim()).filter(Boolean);
+  if(!names.length){toast('Enter at least one name');return;}
+  if(!S.activeWeek)return;
+  const rows=rosterRows(S.activeWeek,currentRoster);
+  const existing=new Set(rows.map(g=>g.name.toLowerCase()));
+  const toAdd=names.filter(name=>!existing.has(name.toLowerCase()));
+  if(!toAdd.length){toast('Already in this week');return;}
+  const created=[];
+  toAdd.forEach(name=>{
+    const row={id:makeUuid(),name,items:[],paid:false};
+    rows.push(row);
+    created.push(row);
+  });
+  AG=created[created.length-1]?.id||null;
+  twExpanded=AG;
+  save();closeOv('addGuestOv');
+  renderCharge();
+  renderThisWeek();
+  toast(toAdd.length===1?toAdd[0]+' added':toAdd.length+' added');
+}
+
+function openCloseWeek(){
+  if(!S.activeWeek){toast('No active week.');return;}
+  const guests=allConsumers(S.activeWeek);
+  const unpaid=guests.filter(g=>!g.paid&&gtot(g)>0);
+  if(unpaid.length){
+    toast('Finish every unpaid tab before paying the week');
+    return;
+  }
+  const collected=guests.filter(g=>g.paid).reduce((s,g)=>s+gtot(g),0);
+  const outstanding=unpaid.reduce((s,g)=>s+gtot(g),0);
+
+  document.getElementById('closeWeekBody').innerHTML=`
+    <div style="background:var(--bg);border-radius:10px;padding:14px;margin-bottom:12px">
+      <div style="font-family:'DM Serif Display',serif;font-size:15px;color:var(--navy);margin-bottom:10px">${weekSpan(S.activeWeek.start)}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;text-align:center">
+        <div><div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy)">${guests.length}</div><div style="font-size:10px;color:var(--muted);margin-top:2px;text-transform:uppercase;letter-spacing:.06em">Guests</div></div>
+        <div><div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--green)">${euro(collected)}</div><div style="font-size:10px;color:var(--muted);margin-top:2px;text-transform:uppercase;letter-spacing:.06em">Collected</div></div>
+        <div><div style="font-family:'DM Serif Display',serif;font-size:22px;color:${outstanding>0?'var(--red)':'var(--green)'}">${outstanding>0?euro(outstanding):'All paid'}</div><div style="font-size:10px;color:var(--muted);margin-top:2px;text-transform:uppercase;letter-spacing:.06em">${outstanding>0?'Outstanding':'Status'}</div></div>
+      </div>
+    </div>
+    ${unpaid.length?`<div style="background:var(--red-bg);border-radius:9px;padding:11px 13px;margin-bottom:12px;font-size:13px;color:var(--red)">Still unpaid: <strong>${unpaid.map(g=>g.name).join(', ')}</strong></div>`:''}
+    <div style="font-size:13px;color:var(--muted);line-height:1.6">After closing, this week moves to <strong style="color:var(--navy)">History</strong>. You can still view all guest tabs and totals there.</div>
+  `;
+  openOv('closeWeekOv');
+}
+
+async function confirmClose(){
+  if(!S.activeWeek)return;
+  const unpaid=allConsumers(S.activeWeek).filter(g=>!g.paid&&gtot(g)>0);
+  if(unpaid.length){
+    toast('This week still has unpaid tabs');
+    return;
+  }
+  const closedWeek={...S.activeWeek,closedAt:new Date().toISOString()};
+  const nextWeekStart=addDays(S.activeWeek.start,7);
+  const autoCarryGuests=normalizeConsumerRows(S.activeWeek.guests).filter(row=>shouldCarryConsumer(row,nextWeekStart)).map(carryConsumerToNextWeek);
+  const queuedGuests=(nextWeekDraft()?.start===nextWeekStart)?normalizeConsumerRows(nextWeekDraft().guests):[];
+  const mergedGuests=[];
+  const seenRefs=new Set();
+  const seenNames=new Set();
+  [...queuedGuests,...autoCarryGuests].forEach(row=>{
+    const ref=String(row.bookingRef||'').trim();
+    const name=row.name.toLowerCase();
+    if((ref&&seenRefs.has(ref))||seenNames.has(name)) return;
+    if(ref) seenRefs.add(ref);
+    seenNames.add(name);
+    mergedGuests.push(row);
+  });
+  const saved=await commitCampTabStateOnline({
+    mutate:()=>{
+      S.history.push(closedWeek);
+      S.activeWeek=mergedGuests.length?{id:'w'+Date.now(),start:nextWeekStart,guests:mergedGuests,staff:[]} : null;
+      S.nextWeek=null;
+      AG=null;
+    },
+    errorMessage:'Could not close this week online. Nothing changed.'
+  });
+  if(!saved) return;
+  syncClosedWeekToHubLedger(closedWeek);
+  closeOv('closeWeekOv');
+  if(S.activeWeek){
+    showSub('charge');
+    renderHeader();renderCharge();renderThisWeek();
+    toast(`Week closed. ${mergedGuests.length} guest${mergedGuests.length!==1?'s':''} ready in ${weekSpan(nextWeekStart)}`);
+  }else{
+    showSub('history');
+    renderHeader();renderGuestList();
+    toast('Week closed to history');
+  }
+}
+
+function mapRevenueCategory(item){
+  if(item.c==='Drinks') return 'Drinks';
+  if(item.c==='Merch') return 'Merchandise';
+  if(item.c==='Tours') return item.n||'Tours';
+  return 'Other Revenue';
+}
+
+function syncClosedWeekToHubLedger(wk){
+  if(!wk) return;
+  const paidItems=allConsumers(wk).filter(g=>g.paid).flatMap(g=>g.items||[]);
+  if(!paidItems.length) return;
+  const grouped={};
+  paidItems.forEach(item=>{
+    const category=mapRevenueCategory(item);
+    const linkedItem=item.c==='Tours'?item.n:'';
+    const key=[category,linkedItem].join('::');
+    grouped[key]=grouped[key]||{category,linkedItem,total:0};
+    grouped[key].total+=Number(item.p||0);
+  });
+  const entries=Object.values(grouped).map(group=>({
+    id:`campclose_${wk.id||wk.start}_${group.category}_${group.linkedItem||'general'}`.replace(/\s+/g,'_'),
+    date:wk.start||today(),
+    type:'income',
+    category:group.category,
+    businessArea:group.category==='Drinks'
+      ?'Bar'
+      :group.category==='Merchandise'
+        ?'Merch'
+        :['Airport Transfer','Blue Lagoon Transfer','Temple Run Tuk Tuk','Transport Padel in Unawatuna'].includes(group.category)
+          ?'Transport'
+          :group.linkedItem
+            ?'Tours'
+            :'General',
+    paymentMethod:'Cash',
+    paidBy:'Camp',
+    linkedItem:group.linkedItem,
+    description:'Camp Tab revenue '+weekSpan(wk.start),
+    vendor:'Camp Tab',
+    sourceKind:'camp_tab',
+    currency:'LKR',
+    fxRate:DEFAULT_LKR_PER_EUR,
+    amountLocal:Number(group.total.toFixed(2)),
+    amount:Number((group.total/(DEFAULT_LKR_PER_EUR||1)).toFixed(2))
+  }));
+  try{window.parent?.postMessage({type:'camp-tab-week-closed',weekId:wk.id||wk.start,entry:entries},'*');}catch(e){}
+}
+
+// ════════════════════════════════════════════════════════════
+//  UTILS
+// ════════════════════════════════════════════════════════════
+function openOv(id){document.getElementById(id).classList.add('open');}
+function closeOv(id){document.getElementById(id).classList.remove('open');}
+function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2200);}
+['addWeekOv','addGuestOv','billOv','closeWeekOv','menuOv'].forEach(id=>{
+  document.getElementById(id).addEventListener('click',e=>{if(e.target.id===id)closeOv(id);});
+});
+window.addEventListener('message',async e=>{
+  if(e.data?.type==='camp-tab-parent-bootstrap'){
+    let changed=false;
+    if(e.data?.session?.access_token && e.data?.session?.refresh_token){
+      CAMP_PARENT_SESSION=cloneCampTabPayload(e.data.session);
+      try{await ensureCampTabSession();}catch(_sessionError){}
+    }
+    if(!campTabStateHasData(S) && campTabStateHasData(e.data?.state)){
+      changed=applyCampTabStateSnapshot(e.data.state)||changed;
+    }
+    if((!Array.isArray(MENU.Merch)||!MENU.Merch.length) && e.data?.menu && typeof e.data.menu==='object'){
+      MENU=normalizeMenu(cloneCampTabPayload(e.data.menu));
+      migrateMerchMenu();
+      changed=true;
+    }
+    if((!Array.isArray(STAFF)||!STAFF.length) && Array.isArray(e.data?.staff) && e.data.staff.length){
+      STAFF=normalizeStaff(cloneCampTabPayload(e.data.staff));
+      activeStaffId=STAFF[0]?.id||'';
+      changed=true;
+    }
+    if(changed){
+      renderAllCampTabViews();
+      notifyParentStateChanged();
+    }
+    return;
+  }
+  if(e.data?.type!=='camp-tab-sync-bookings') return;
+  try{
+    const result=await applyIncomingBookingsToCampTab(e.data);
+    try{window.parent?.postMessage({type:'camp-tab-bookings-synced',...result,weekStart:e.data?.weekStart||''},'*');}catch(_){}
+    if(result.ok&&result.added){
+      toast(result.added===1?'1 booking synced to Camp Tab':`${result.added} bookings synced to Camp Tab`);
+    }else if(result.reason==='different-active-week'){
+      toast('Camp Tab already has another active week open');
+    }
+  }catch(error){
+    console.warn('Camp Tab booking sync failed',error);
+    try{window.parent?.postMessage({type:'camp-tab-bookings-synced',ok:false,added:0,reason:'error',message:error instanceof Error?error.message:'Unknown error'},'*');}catch(_){}
+  }
+});
+
+function renderAllCampTabViews(){
+  renderHeader();
+  renderCharge();
+  if(activeSub==='week') renderThisWeek();
+  if(activeSub==='history') renderHistory();
+  if(activeSub==='sellers') renderSellers();
+}
+
+async function bootstrapCampTabFromSupabase(){
+  if(campTabBootstrapped) return;
+  campTabBootstrapped=true;
+  try{
+    const client=getCampTabSupabaseClient();
+    if(!client) return;
+    const { data: sessionData } = await client.auth.getSession();
+    if(!sessionData?.session) return;
+    await hydrateCampTabMenuFromSupabase({mergeLocal:false});
+    await hydrateCampTabStaffFromSupabase({mergeLocal:false});
+    await hydrateCampTabStateFromSupabase({mergeLocal:false});
+    renderAllCampTabViews();
+    notifyParentStateChanged();
+  }catch(error){
+    console.warn('Camp Tab bootstrap failed',error);
+  }
+}
+
+// INIT
+ensureMenuState();
+setRoster('guests');
+renderHeader();
+renderCharge();
+bootstrapCampTabFromSupabase();
+</script>
+</body>
+</html>
