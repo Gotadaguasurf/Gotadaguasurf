@@ -2539,6 +2539,8 @@ async function removeClosedWeekIncome(payload={}){
   });
   if(!rows.length) return false;
   S.ledger=S.ledger.filter(row=>!rows.some(rem=>rem.id===row.id));
+  // Mark as permanently deleted so reconcile never re-adds them
+  rows.forEach(row=>{ if(String(row.id||'').startsWith('campclose_')) markCampcloseDeleted(row.id); });
   save();
   renderExpenses();renderOverview();renderWeeklyPL();
   HUB_SUPPRESS_RT=true;

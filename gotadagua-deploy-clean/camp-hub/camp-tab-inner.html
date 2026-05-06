@@ -2523,7 +2523,12 @@ function subscribeCampTabRealtime(locationId){
     clearTimeout(campTabRehydrateTimer);
     campTabRehydrateTimer=setTimeout(async()=>{
       if(suppressRemoteSync){
-        // Suppress still active — reschedule instead of dropping the rehydrate
+        scheduleRehydrate();
+        return;
+      }
+      if(_campPendingSave){
+        // User has unsaved local changes — hydrating now would overwrite them.
+        // Defer until the sync completes and _campPendingSave clears.
         scheduleRehydrate();
         return;
       }
