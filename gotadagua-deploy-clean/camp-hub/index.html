@@ -2332,6 +2332,40 @@ async function reconcileClosedWeeksWithLedger(history){
   }
 }
 
+// Removes ledger entries for closed weeks that no longer exist in the camp tab history.
+// This keeps Computer B in sync when a history week is deleted on Computer A.
+async function removeOrphanedClosedWeekEntries(history){
+  if(!Array.isArray(history)) return;
+  // Build lookup sets from current authoritative history
+  const knownWeekIds=new Set(history.map(wk=>String(wk.id||'')).filter(Boolean));
+  const knownWeekStarts=new Set(history.map(wk=>String(wk.start||'')).filter(Boolean));
+  const UUID_RE=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  const DATE_RE=/^\d{4}-\d{2}-\d{2}$/;
+  const orphaned=S.ledger.filter(entry=>{
+    const id=String(entry?.id||'');
+    if(!id.startsWith('campclose_')) return false;
+    // ID format: campclose_{weekId or weekStart}_{Category}_{linkedItem}
+    // Week IDs are UUIDs (hyphens only) or date strings — never contain underscores.
+    // We only mark as orphan if we can positively identify the weekRef format
+    // (UUID or date). Old 'w{timestamp}' IDs are skipped to avoid false deletions.
+    const withoutPrefix=id.slice('campclose_'.length);
+    const firstUnderscore=withoutPrefix.indexOf('_');
+    if(firstUnderscore<0) return false;
+    const weekRef=withoutPrefix.slice(0,firstUnderscore);
+    // Only check entries whose weekRef is a UUID or a date — skip ambiguous old formats
+    if(!UUID_RE.test(weekRef)&&!DATE_RE.test(weekRef)) return false;
+    return !knownWeekIds.has(weekRef)&&!knownWeekStarts.has(weekRef);
+  });
+  if(!orphaned.length) return;
+  S.ledger=S.ledger.filter(e=>!orphaned.some(o=>o.id===e.id));
+  save();
+  for(const entry of orphaned){
+    try{ await deleteLedgerEntryFromSupabase(entry.id); }
+    catch(e){ console.warn('[Hub] orphan ledger delete failed',entry.id,e); }
+  }
+  renderExpenses();renderOverview();renderWeeklyPL();
+}
+
 function mapCampTabRevenueCategory(item){
   if(item.c==='Drinks') return 'Drinks';
   if(item.c==='Merch') return 'Merchandise';
@@ -4559,12 +4593,17 @@ window.addEventListener('message',e=>{
     if(e.data.state) writeJsonStorage(CAMPTAB_KEY,e.data.state);
     if(e.data.menu) writeJsonStorage(CAMPTAB_MENU_KEY,e.data.menu);
     if(e.data.staff) writeJsonStorage(CAMPTAB_STAFF_KEY,e.data.staff);
-    // Reconcile: ensure any closed weeks the camp tab knows about are in the ledger
-    if(Array.isArray(e.data.state?.history)&&e.data.state.history.length){
-      reconcileClosedWeeksWithLedger(e.data.state.history).catch(err=>
+    const incomingHistory=Array.isArray(e.data.state?.history)?e.data.state.history:[];
+    // Add any missing closed-week revenue entries
+    if(incomingHistory.length){
+      reconcileClosedWeeksWithLedger(incomingHistory).catch(err=>
         console.warn('[Hub] reconcile on state-changed failed',err)
       );
     }
+    // Remove ledger entries for weeks that no longer exist in history (deleted on another computer)
+    removeOrphanedClosedWeekEntries(incomingHistory).catch(err=>
+      console.warn('[Hub] orphan cleanup on state-changed failed',err)
+    );
     rerenderActivePageData();
     return;
   }
