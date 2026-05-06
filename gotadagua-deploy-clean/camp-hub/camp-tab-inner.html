@@ -1972,7 +1972,10 @@ function closedWeekLedgerPrefix(wk){
 
 function removeClosedWeekFromHubLedger(wk){
   if(!wk) return;
-  try{window.parent?.postMessage({type:'camp-tab-history-deleted',weekId:wk.id||wk.start,weekStart:wk.start},'*');}catch(e){}
+  // Build the exact campclose entry IDs so the hub can delete by ID (not guessing by prefix/description)
+  const entries=buildClosedWeekRevenueEntries(wk)||[];
+  const campcloseIds=entries.map(e=>e.id).filter(Boolean);
+  try{window.parent?.postMessage({type:'camp-tab-history-deleted',weekId:wk.id||wk.start,weekStart:wk.start,campcloseIds},'*');}catch(e){}
 }
 
 function deleteHistoryWeek(id){

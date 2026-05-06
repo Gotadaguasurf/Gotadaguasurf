@@ -2547,20 +2547,24 @@ async function upsertClosedWeekIncome(entry){
 async function removeClosedWeekIncome(payload={}){
   const weekId=String(payload?.weekId||'').trim();
   const weekStart=String(payload?.weekStart||'').trim();
+  const explicitIds=Array.isArray(payload?.campcloseIds)?new Set(payload.campcloseIds):null;
   const prefix=weekId?`campclose_${weekId}_`:'';
   const startPrefix=weekStart?`campclose_${weekStart}_`:'';
+  // weekLabel uses "→" but camp-tab-inner's weekSpan uses "to" — check both
   const weekText=weekStart?weekLabel(weekStart):'';
+  const weekTextAlt=weekStart?`${fmtd(weekStart)} to ${fmtd(addDays(weekStart,6))}`:'';
   const rows=S.ledger.filter(row=>{
     const rowId=String(row?.id||'');
     const desc=String(row?.description||'');
     const vendor=String(row?.vendor||'').trim().toLowerCase();
     const sourceKind=String(row?.sourceKind||'').trim().toLowerCase();
     const descLooksLikeCampTab=desc.includes('Camp Tab revenue') || desc.includes('Closed week revenue from Camp Tab');
-    const sameWeekLabel=weekText ? desc.includes(weekText) : false;
+    const sameWeekLabel=weekText ? (desc.includes(weekText)||desc.includes(weekTextAlt)) : false;
+    // Explicit IDs from camp-tab-inner (most reliable — no format guessing needed)
+    if(explicitIds&&explicitIds.has(rowId)) return true;
     return (prefix && rowId.startsWith(prefix))
       || (startPrefix && rowId.startsWith(startPrefix))
-      || (sameWeekLabel && descLooksLikeCampTab)
-      || ((vendor==='camp tab' || sourceKind==='camp_tab') && weekStart && String(row?.date||'').slice(0,10)>=weekStart && descLooksLikeCampTab);
+      || (sameWeekLabel && descLooksLikeCampTab);
   });
   if(!rows.length) return false;
   S.ledger=S.ledger.filter(row=>!rows.some(rem=>rem.id===row.id));
