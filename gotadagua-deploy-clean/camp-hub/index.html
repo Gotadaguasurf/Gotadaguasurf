@@ -1045,6 +1045,7 @@ const CAMPTAB_MERCH_MENU_VERSION_KEY='camptab_merch_menu_version_v2';
 const RECURRING_DEFAULTS_VERSION_KEY='camphub_recurring_defaults_v1';
 const DELETED_CAMPCLOSE_KEY='hub_deleted_campclose_ids';
 let deletedCampcloseIds=new Set();
+let everInLedgerIds=new Set(); // tracks every campclose ID ever fetched from Supabase this session
 const DEFAULT_LKR_PER_EUR=parseFloat(localStorage.getItem(FX_KEY)||'330')||330;
 const FIXED_MONTHLY_DEFAULTS=[
   {name:'Staff House Rent',type:'expense',category:'Rent',businessArea:'Utilities',paymentMethod:'Bank Transfer',amountLocal:150000,description:'Staff house rent',enabled:true},
@@ -1692,6 +1693,8 @@ async function hydrateLedgerFromSupabase({mergeLocal=true}={}){
       .order('created_at',{ascending:false});
     if(error) throw error;
     S.ledger=(data||[]).map(dbRowToLedgerEntry).filter(Boolean);
+    // Track every campclose ID ever seen from Supabase so reconcile can detect intentional deletions
+    (data||[]).forEach(row=>{ if(String(row.id||'').startsWith('campclose_')) everInLedgerIds.add(row.id); });
     save_mem(); // only persist locally — don't re-trigger location_state_store write
     HUB_LEDGER_HYDRATED=true;
     return true;
@@ -2338,14 +2341,14 @@ function addMoreDemoExpensesIfSparse(){
 addMoreDemoExpensesIfSparse();
 
 async function syncClosedWeekIncome(){
-  // Legacy: reads from in-memory storage written by camp-tab-state-changed messages.
-  // Works only if camp tab has already sent its state this session.
+  // Reads from in-memory storage written by camp-tab-state-changed messages.
+  // Called after Supabase hydration so deletedCampcloseIds + everInLedgerIds are populated.
   let campTabState=null;
   try{campTabState=JSON.parse(localStorage.getItem(CAMPTAB_KEY)||'null');}catch(e){campTabState=null;}
   if(!campTabState?.history?.length) return;
   await reconcileClosedWeeksWithLedger(campTabState.history);
 }
-syncClosedWeekIncome();
+// NOTE: syncClosedWeekIncome() is called inside requirePlatformSession() after Supabase hydration
 
 // Called whenever camp tab sends its state (on startup, on every change).
 // Adds any missing closed-week revenue entries to the Operations Ledger.
@@ -2364,6 +2367,11 @@ async function reconcileClosedWeeksWithLedger(history){
     for(const entry of (entries||[])){
       if(!entry?.id) continue;
       if(deletedCampcloseIds.has(entry.id)) continue; // manually deleted — never re-add
+      if(HUB_LEDGER_HYDRATED && everInLedgerIds.has(entry.id) && !existingIds.has(entry.id)){
+        // Was in Supabase before but now missing — intentionally deleted. Auto-mark so it stays gone.
+        markCampcloseDeleted(entry.id);
+        continue;
+      }
       if(existingIds.has(entry.id)){
         // Canonical ID already present — skip
         continue;
@@ -4439,7 +4447,11 @@ function renderExpenses(){
   if(catF!=='all')rows=rows.filter(x=>x.category===catF);
   if(weekF!=='all')rows=rows.filter(x=>weekStartSat(x.date)===weekF);
   if(search)rows=rows.filter(x=>[x.category,x.businessArea,x.linkedItem,x.description,x.vendor,x.paymentMethod].join(' ').toLowerCase().includes(search));
-  rows.sort((a,b)=>b.date.localeCompare(a.date));
+  rows.sort((a,b)=>{
+    const d=b.date.localeCompare(a.date);
+    if(d!==0) return d;
+    return String(a.id||'').localeCompare(String(b.id||'')); // stable secondary sort by id
+  });
   const visibleExpenses=rows.filter(x=>x.type==='expense');
   const campSpendLocal=sum(visibleExpenses.filter(x=>x.paymentMethod==='Cash'),x=>entryLocalDisplayAmount(x));
   const campSpendEur=sum(visibleExpenses.filter(x=>x.paymentMethod==='Cash'),x=>entryEurAmount(x));
@@ -4706,11 +4718,14 @@ window.addEventListener('message',e=>{
     if(e.data.menu) writeJsonStorage(CAMPTAB_MENU_KEY,e.data.menu);
     if(e.data.staff) writeJsonStorage(CAMPTAB_STAFF_KEY,e.data.staff);
     const incomingHistory=Array.isArray(e.data.state?.history)?e.data.state.history:[];
-    // Add any missing closed-week revenue entries
+    // Add any missing closed-week revenue entries — delayed 400ms so deletedCampcloseIds
+    // RT updates from another computer have time to arrive before reconcile runs
     if(incomingHistory.length){
-      reconcileClosedWeeksWithLedger(incomingHistory).catch(err=>
-        console.warn('[Hub] reconcile on state-changed failed',err)
-      );
+      setTimeout(()=>{
+        reconcileClosedWeeksWithLedger(incomingHistory).catch(err=>
+          console.warn('[Hub] reconcile on state-changed failed',err)
+        );
+      },400);
     }
     // Remove ledger entries for weeks that no longer exist in history (deleted on another computer)
     removeOrphanedClosedWeekEntries(incomingHistory).catch(err=>
@@ -4808,6 +4823,8 @@ async function requirePlatformSession(){
     renderExpenses();renderOverview();renderWeeklyPL();
     renderSalaryProfiles();renderRecurringEntries();
     subscribeHubRealtime();
+    // Run after hydration so deletedCampcloseIds + everInLedgerIds are populated
+    syncClosedWeekIncome().catch(e=>console.warn('[Hub] syncClosedWeekIncome failed',e));
   }catch(error){
     handleLedgerSupabaseError('session hydration failed',error);
   }
