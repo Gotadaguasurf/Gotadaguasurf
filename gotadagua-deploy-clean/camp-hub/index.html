@@ -2306,21 +2306,58 @@ syncClosedWeekIncome();
 
 // Called whenever camp tab sends its state (on startup, on every change).
 // Adds any missing closed-week revenue entries to the Operations Ledger.
+// Also removes old-format duplicate entries (e.g. campclose_w{timestamp}_...)
+// that were created before UUIDs were used for week IDs.
 async function reconcileClosedWeeksWithLedger(history){
   if(!Array.isArray(history)||!history.length) return;
   const existingIds=new Set(S.ledger.map(x=>x.id));
   const missing=[];
+  const toRemove=[];
   for(const wk of history){
     if(!wk?.start) continue;
     const entries=buildClosedWeekRevenueEntries(wk);
+    const weekStart=wk.start;
+    const weekEnd=addDays(weekStart,6);
     for(const entry of (entries||[])){
-      if(entry&&entry.id&&!existingIds.has(entry.id)){
-        missing.push(entry);
-        existingIds.add(entry.id); // prevent duplicates within same call
+      if(!entry?.id) continue;
+      if(existingIds.has(entry.id)){
+        // Canonical ID already present — skip
+        continue;
       }
+      // Check for an old-format duplicate: same camp-tab category+linkedItem+week but different ID
+      const oldDupe=S.ledger.find(e=>{
+        const eid=String(e.id||'');
+        if(!eid.startsWith('campclose_')) return false;
+        if(eid===entry.id) return false;
+        if(e.category!==entry.category) return false;
+        if((e.linkedItem||'')!==(entry.linkedItem||'')) return false;
+        const isCampTab=String(e.sourceKind||'').toLowerCase()==='camp_tab'
+          ||String(e.vendor||'').toLowerCase()==='camp tab';
+        if(!isCampTab) return false;
+        const eDate=String(e.date||'').slice(0,10);
+        // Entry date must fall on weekStart OR within the same week window
+        return eDate===weekStart||(eDate>=weekStart&&eDate<=weekEnd);
+      });
+      if(oldDupe&&!toRemove.some(r=>r.id===oldDupe.id)){
+        toRemove.push(oldDupe);
+        existingIds.delete(oldDupe.id);
+      }
+      missing.push(entry);
+      existingIds.add(entry.id);
     }
   }
-  if(!missing.length) return;
+  // Delete old-format duplicates from ledger + Supabase
+  if(toRemove.length){
+    S.ledger=S.ledger.filter(e=>!toRemove.some(r=>r.id===e.id));
+    for(const entry of toRemove){
+      try{await deleteLedgerEntryFromSupabase(entry.id);}
+      catch(e){console.warn('[Hub] old-format duplicate delete failed',entry.id,e);}
+    }
+  }
+  if(!missing.length){
+    if(toRemove.length){save();renderExpenses();renderOverview();renderWeeklyPL();}
+    return;
+  }
   try{
     const enriched=await Promise.all(missing.map(enrichLedgerEntryFx));
     S.ledger.push(...enriched);

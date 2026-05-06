@@ -2422,9 +2422,12 @@ function syncClosedWeekToHubLedger(wk){
     grouped[key]=grouped[key]||{category,linkedItem,total:0};
     grouped[key].total+=Number(item.p||0);
   });
+  // Use same ID format, date, and description as buildClosedWeekRevenueEntries in the hub
+  // so upsertClosedWeekIncome and reconcileClosedWeeksWithLedger never create duplicates.
+  const revenueDate=(wk.closedAt&&String(wk.closedAt).slice(0,10))||wk.start||today();
   const entries=Object.values(grouped).map(group=>({
     id:`campclose_${wk.id||wk.start}_${group.category}_${group.linkedItem||'general'}`.replace(/\s+/g,'_'),
-    date:wk.start||today(),
+    date:revenueDate,
     type:'income',
     category:group.category,
     businessArea:group.category==='Drinks'
@@ -2439,7 +2442,7 @@ function syncClosedWeekToHubLedger(wk){
     paymentMethod:'Cash',
     paidBy:'Camp',
     linkedItem:group.linkedItem,
-    description:'Camp Tab revenue '+weekSpan(wk.start),
+    description:`Closed week revenue from Camp Tab · ${weekSpan(wk.start)}`,
     vendor:'Camp Tab',
     sourceKind:'camp_tab',
     currency:'LKR',
