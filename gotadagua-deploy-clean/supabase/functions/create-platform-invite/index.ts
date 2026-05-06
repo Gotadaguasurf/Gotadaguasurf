@@ -26,15 +26,18 @@ Deno.serve(async (req) => {
       { auth: { autoRefreshToken: false, persistSession: false } }
     );
 
-    // Verify the calling user is authenticated and is owner/admin
+    // Verify the calling user is authenticated and is owner/admin.
+    // IMPORTANT: auth.getUser() does NOT read the Authorization header from `global.headers`
+    // (that's only used for PostgREST queries). The JWT must be passed as an explicit argument.
+    const jwt = authHeader.replace(/^Bearer\s+/i, '').trim();
     const callerClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: authHeader } } }
+      { auth: { autoRefreshToken: false, persistSession: false } }
     );
-    const { data: { user: caller }, error: callerError } = await callerClient.auth.getUser();
+    const { data: { user: caller }, error: callerError } = await callerClient.auth.getUser(jwt);
     if (callerError || !caller) {
-      return new Response(JSON.stringify({ ok: false, error: 'Not authenticated' }), {
+      return new Response(JSON.stringify({ ok: false, error: callerError?.message || 'Not authenticated' }), {
         status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
