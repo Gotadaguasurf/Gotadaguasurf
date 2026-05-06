@@ -2014,6 +2014,15 @@
         latestInvite = await getLatestInvitationForEmail(email);
       }catch(_error){}
       const hasPendingInvite = !!(latestInvite?.status && ['pending','sent'].includes(latestInvite.status));
+      // If the user has a pending invitation, route them to the mandatory password screen
+      // BEFORE checking workspace_memberships. A freshly-invited user has a platform_profiles
+      // row (auto-created by trigger) but no memberships yet, so the membership check below
+      // would otherwise treat them as "removed" and block them.
+      if(hasPendingInvite){
+        if(await preparePasswordFlow(session, latestInvite?.full_name || session.user.user_metadata?.full_name || '')){
+          return;
+        }
+      }
       if(mode !== 'invite' && !hasPendingInvite){
         try{
           await acceptPendingInviteForCurrentUser(session.user);
