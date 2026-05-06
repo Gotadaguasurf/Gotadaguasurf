@@ -1652,7 +1652,7 @@ async function hydrateLedgerFromSupabase({mergeLocal=true}={}){
       .order('created_at',{ascending:false});
     if(error) throw error;
     S.ledger=(data||[]).map(dbRowToLedgerEntry).filter(Boolean);
-    save();
+    save_mem(); // only persist locally — don't re-trigger location_state_store write
     HUB_LEDGER_HYDRATED=true;
     return true;
   })();
@@ -1675,10 +1675,13 @@ async function enrichLedgerEntryFx(entry){
   });
 }
 async function syncLedgerEntriesToSupabase(entries,context='ledger sync'){
+  HUB_SUPPRESS_RT=true;
   try{
     await pushLedgerEntriesToSupabase(entries);
   }catch(error){
     handleLedgerSupabaseError(context,error);
+  }finally{
+    setTimeout(()=>{ HUB_SUPPRESS_RT=false; },600);
   }
 }
 function monthlyProfileKey(profileType,name=''){
@@ -2349,10 +2352,12 @@ async function reconcileClosedWeeksWithLedger(history){
   // Delete old-format duplicates from ledger + Supabase
   if(toRemove.length){
     S.ledger=S.ledger.filter(e=>!toRemove.some(r=>r.id===e.id));
+    HUB_SUPPRESS_RT=true;
     for(const entry of toRemove){
       try{await deleteLedgerEntryFromSupabase(entry.id);}
       catch(e){console.warn('[Hub] old-format duplicate delete failed',entry.id,e);}
     }
+    setTimeout(()=>{ HUB_SUPPRESS_RT=false; },600);
   }
   if(!missing.length){
     if(toRemove.length){save();renderExpenses();renderOverview();renderWeeklyPL();}
@@ -2396,10 +2401,12 @@ async function removeOrphanedClosedWeekEntries(history){
   if(!orphaned.length) return;
   S.ledger=S.ledger.filter(e=>!orphaned.some(o=>o.id===e.id));
   save();
+  HUB_SUPPRESS_RT=true;
   for(const entry of orphaned){
     try{ await deleteLedgerEntryFromSupabase(entry.id); }
     catch(e){ console.warn('[Hub] orphan ledger delete failed',entry.id,e); }
   }
+  setTimeout(()=>{ HUB_SUPPRESS_RT=false; },600);
   renderExpenses();renderOverview();renderWeeklyPL();
 }
 
@@ -3075,7 +3082,7 @@ function renderOverview(){
         ${dualCurrencyLocal(campCashBalanceLocal,campCashBalanceEur,true)}
         <div style="font-size:10px;color:#7aabcc;margin-top:1px">Cash float + revenue − camp-paid spend</div>
       </div>
-      <span class="badge ${campCashBalance>=0?'badge-green':'badge-red'}">${campCashBalance>=0?'In control':'Needs review'}</span>
+      <span class="badge ${campCashBalanceLocal>=0?'badge-green':'badge-red'}">${campCashBalanceLocal>=0?'In control':'Needs review'}</span>
     </div>
     <div style="display:flex;flex-direction:column;gap:6px">
       ${cashRow('Cash float sent from HQ',moneyPairLocal(totalSentLocal,totalSentEur),'var(--amber)')}
@@ -3338,6 +3345,17 @@ function deleteGuestItem(name,idx){
   if(AG===name)renderTab();
   renderThisWeek();renderSellers();renderOverview();renderWeeklyPL();
   toast((removed?.n||'Item')+' deleted');
+}
+function deleteGuest(name){
+  const wk=activeWeek();if(!wk)return;
+  const idx=(wk.guests||[]).findIndex(g=>g.name===name);
+  if(idx<0)return;
+  wk.guests.splice(idx,1);
+  if(AG===name)AG=null;
+  if(twExpanded===name)twExpanded=null;
+  save();
+  renderGuestList();renderTab();renderThisWeek();renderSellers();renderOverview();renderWeeklyPL();
+  toast(name+' removed');
 }
 
 function openBill(guestName){
@@ -4421,14 +4439,23 @@ function renderExpenses(){
 }
 
 async function delLedger(id){
+  // Optimistic: remove locally immediately for snappy UI
+  const backup=S.ledger.find(x=>x.id===id);
   S.ledger=S.ledger.filter(x=>x.id!==id);
   save();
   renderExpenses();renderOverview();renderWeeklyPL();
   toast('Deleted.');
+  HUB_SUPPRESS_RT=true; // suppress our own RT echo from the delete
   try{
     await deleteLedgerEntryFromSupabase(id);
   }catch(error){
+    // Rollback on failure so state stays consistent
+    if(backup) S.ledger=[...S.ledger,backup];
+    save();
+    renderExpenses();renderOverview();renderWeeklyPL();
     handleLedgerSupabaseError('ledger delete failed',error);
+  }finally{
+    setTimeout(()=>{ HUB_SUPPRESS_RT=false; },600);
   }
 }
 
