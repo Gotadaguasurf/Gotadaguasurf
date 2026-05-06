@@ -2480,6 +2480,21 @@ function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t
   document.getElementById(id).addEventListener('click',e=>{if(e.target.id===id)closeOv(id);});
 });
 window.addEventListener('message',async e=>{
+  if(e.data?.type==='hub-campclose-week-delete'){
+    // Hub deleted a campclose entry from Operations Ledger.
+    // Cascade: remove the corresponding week from S.history (and propagate to Supabase + other computer).
+    const weekRef=String(e.data?.weekRef||'').trim();
+    if(!weekRef) return;
+    const idx=S.history.findIndex(w=>String(w?.id||'')===weekRef||String(w?.start||'')===weekRef);
+    if(idx<0) return; // already gone
+    const wk=S.history[idx];
+    S.history.splice(idx,1);
+    if(histOpenWeek===wk.id) histOpenWeek=null;
+    histOpenGuest=null;
+    save();
+    renderHistory();
+    return;
+  }
   if(e.data?.type==='camp-tab-parent-bootstrap'){
     let changed=false;
     if(!campTabStateHasData(S) && campTabStateHasData(e.data?.state)){

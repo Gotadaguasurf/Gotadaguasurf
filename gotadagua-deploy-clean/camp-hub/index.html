@@ -1530,6 +1530,14 @@ function subscribeHubRealtime(){
       if(loc&&loc!==HUB_SB_LOCATION_ID) return;
       scheduleHubLedgerRehydrate(); // never drop — retries if suppressed
     })
+    .on('postgres_changes',{event:'*',schema:'public',table:'monthly_cost_profiles'},(payload)=>{
+      // Client-side location filter — keep recurring/salary rules live across computers
+      const loc=payload.new?.location_id||payload.old?.location_id;
+      if(loc&&loc!==HUB_SB_LOCATION_ID) return;
+      hydrateMonthlyProfilesFromSupabase({mergeLocal:false}).then(()=>{
+        renderRecurringEntries();renderSalaryProfiles();
+      }).catch(e=>console.warn('[Hub] monthly_cost_profiles RT hydrate failed',e));
+    })
     .subscribe((status)=>{
       if(status==='SUBSCRIBED') console.log('[Hub] Realtime connected');
     });
@@ -4526,13 +4534,32 @@ function renderExpenses(){
   </table></div>`;
 }
 
+function notifyCampTabRemoveHistoryWeek(weekRef){
+  // Tell the camp tab iframe to remove the corresponding week from S.history.
+  // This cascades: deleting a campclose entry in Operations Ledger removes the week from camp tab history.
+  if(!weekRef) return;
+  const frame=document.getElementById('campTabFrame');
+  try{ frame?.contentWindow?.postMessage({type:'hub-campclose-week-delete',weekRef},'*'); }catch(e){}
+}
+function extractWeekRefFromCampcloseId(id){
+  const s=String(id||'');
+  if(!s.startsWith('campclose_')) return '';
+  const rest=s.slice('campclose_'.length);
+  const i=rest.indexOf('_');
+  return i>0?rest.slice(0,i):'';
+}
 async function delLedger(id){
   HUB_SUPPRESS_LEDGER_RT=true; // set BEFORE any state_store writes so own echoes are reliably suppressed
   // Optimistic: remove locally immediately for snappy UI
   const backup=S.ledger.find(x=>x.id===id);
   S.ledger=S.ledger.filter(x=>x.id!==id);
-  // Mark campclose entries as intentionally deleted so reconcile never re-adds them
-  if(String(id).startsWith('campclose_')) markCampcloseDeleted(id);
+  // Mark campclose entries as intentionally deleted so reconcile never re-adds them,
+  // and cascade-delete the corresponding week from camp tab history.
+  if(String(id).startsWith('campclose_')){
+    markCampcloseDeleted(id);
+    const weekRef=extractWeekRefFromCampcloseId(id);
+    if(weekRef) notifyCampTabRemoveHistoryWeek(weekRef);
+  }
   save();
   renderExpenses();renderOverview();renderWeeklyPL();
   toast('Deleted.');

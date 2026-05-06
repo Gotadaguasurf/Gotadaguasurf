@@ -42,7 +42,8 @@ declare
     'camp_guests',
     'camp_tab_items',
     'location_menus',
-    'camp_staff_directory'
+    'camp_staff_directory',
+    'monthly_cost_profiles'
   ];
 begin
   foreach t in array tables loop
