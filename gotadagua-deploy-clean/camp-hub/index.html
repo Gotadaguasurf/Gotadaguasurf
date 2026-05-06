@@ -1043,6 +1043,8 @@ const CAMPTAB_STAFF_KEY='camptab_staff_v3';
 const CAMPTAB_TOUR_MENU_VERSION_KEY='camptab_tours_menu_version_v1';
 const CAMPTAB_MERCH_MENU_VERSION_KEY='camptab_merch_menu_version_v2';
 const RECURRING_DEFAULTS_VERSION_KEY='camphub_recurring_defaults_v1';
+const DELETED_CAMPCLOSE_KEY='hub_deleted_campclose_ids';
+let deletedCampcloseIds=new Set();
 const DEFAULT_LKR_PER_EUR=parseFloat(localStorage.getItem(FX_KEY)||'330')||330;
 const FIXED_MONTHLY_DEFAULTS=[
   {name:'Staff House Rent',type:'expense',category:'Rent',businessArea:'Utilities',paymentMethod:'Bank Transfer',amountLocal:150000,description:'Staff house rent',enabled:true},
@@ -1431,6 +1433,23 @@ function retrySave(){
   if(!_pendingWeeksSave) return;
   saveStateStore(SK,{weeks:S.weeks,salaryMode:S.salaryMode}).catch(()=>{});
 }
+function markCampcloseDeleted(id){
+  deletedCampcloseIds.add(id);
+  // Save cross-computer via state_store (fire and forget — in-memory update is immediate)
+  const client=getHubSupabaseClient();
+  ensureHubLocationId().then(locationId=>{
+    if(!client||!locationId) return;
+    client.from('location_state_store')
+      .upsert({location_id:locationId,state_key:DELETED_CAMPCLOSE_KEY,state_json:[...deletedCampcloseIds],updated_at:new Date().toISOString()},{onConflict:'location_id,state_key'})
+      .then(({error})=>{ if(error) console.warn('[Hub] failed to save deleted campclose ids',error); });
+  }).catch(()=>{});
+}
+async function loadDeletedCampcloseIds(){
+  try{
+    const data=await loadStateStore(DELETED_CAMPCLOSE_KEY);
+    if(Array.isArray(data)) deletedCampcloseIds=new Set(data);
+  }catch(e){console.warn('[Hub] loadDeletedCampcloseIds failed',e);}
+}
 let HUB_REALTIME_CHANNEL=null;
 let HUB_SUPPRESS_RT=false;
 function subscribeHubRealtime(){
@@ -1453,6 +1472,16 @@ function subscribeHubRealtime(){
       } else if(key===OV_CSV_KEY&&Array.isArray(json)){
         ovBookings=json;
         rerenderActivePageData();
+      } else if(key===DELETED_CAMPCLOSE_KEY&&Array.isArray(json)){
+        deletedCampcloseIds=new Set(json);
+        // Remove any entries that snuck back in before this update arrived
+        const snuckBack=S.ledger.filter(e=>deletedCampcloseIds.has(String(e.id||'')));
+        if(snuckBack.length){
+          S.ledger=S.ledger.filter(e=>!deletedCampcloseIds.has(String(e.id||'')));
+          save_mem();
+          snuckBack.forEach(e=>deleteLedgerEntryFromSupabase(e.id).catch(()=>{}));
+          renderExpenses();renderOverview();renderWeeklyPL();
+        }
       }
     })
     .on('postgres_changes',{event:'*',schema:'public',table:'ledger_entries'},(payload)=>{
@@ -2325,6 +2354,7 @@ async function reconcileClosedWeeksWithLedger(history){
     const weekEnd=addDays(weekStart,6);
     for(const entry of (entries||[])){
       if(!entry?.id) continue;
+      if(deletedCampcloseIds.has(entry.id)) continue; // manually deleted — never re-add
       if(existingIds.has(entry.id)){
         // Canonical ID already present — skip
         continue;
@@ -4444,6 +4474,8 @@ async function delLedger(id){
   // Optimistic: remove locally immediately for snappy UI
   const backup=S.ledger.find(x=>x.id===id);
   S.ledger=S.ledger.filter(x=>x.id!==id);
+  // Mark campclose entries as intentionally deleted so reconcile never re-adds them
+  if(String(id).startsWith('campclose_')) markCampcloseDeleted(id);
   save();
   renderExpenses();renderOverview();renderWeeklyPL();
   toast('Deleted.');
@@ -4747,7 +4779,8 @@ async function requirePlatformSession(){
       loadStateStore(SK),
       loadStateStore(OV_CSV_KEY),
       hydrateLedgerFromSupabase({mergeLocal:true}),
-      hydrateMonthlyProfilesFromSupabase({mergeLocal:true})
+      hydrateMonthlyProfilesFromSupabase({mergeLocal:true}),
+      loadDeletedCampcloseIds()
     ]);
     if(weeksJson&&typeof weeksJson==='object'){
       if(Array.isArray(weeksJson.weeks)&&weeksJson.weeks.length){
