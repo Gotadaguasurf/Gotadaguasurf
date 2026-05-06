@@ -1815,8 +1815,11 @@ function monthlyCostRowToLocal(row){
 }
 function salaryProfileToMonthlyCostRow(profile,locationId){
   const normalized=normalizeSalaryProfile(profile);
+  // Always send a real UUID — monthly_cost_profiles.id is NOT NULL with no default,
+  // so undefined would arrive as null and fail. Stable seed prevents duplicates on re-runs.
+  const id=isUuid(normalized.id)?normalized.id:stableUuidFromSeed('salary|'+(normalized.name||'')+'|'+locationId);
   return {
-    id:isUuid(normalized.id)?normalized.id:undefined,
+    id,
     location_id:locationId,
     profile_type:'salary',
     name:normalized.name,
@@ -1835,8 +1838,10 @@ function salaryProfileToMonthlyCostRow(profile,locationId){
 }
 function recurringRuleToMonthlyCostRow(rule,locationId){
   const normalized=normalizeRecurringRule(rule);
+  // Always send a real UUID — monthly_cost_profiles.id is NOT NULL with no default.
+  const id=isUuid(normalized.id)?normalized.id:stableUuidFromSeed('fixed_cost|'+(normalized.name||'')+'|'+locationId);
   return {
-    id:isUuid(normalized.id)?normalized.id:undefined,
+    id,
     location_id:locationId,
     profile_type:'fixed_cost',
     name:normalized.name,
