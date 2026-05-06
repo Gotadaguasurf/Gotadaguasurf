@@ -1044,6 +1044,7 @@ const CAMPTAB_TOUR_MENU_VERSION_KEY='camptab_tours_menu_version_v1';
 const CAMPTAB_MERCH_MENU_VERSION_KEY='camptab_merch_menu_version_v2';
 const RECURRING_DEFAULTS_VERSION_KEY='camphub_recurring_defaults_v1';
 const DELETED_CAMPCLOSE_KEY='hub_deleted_campclose_ids';
+const HUB_LEDGER_TS_KEY='hub_ledger_ts';
 let deletedCampcloseIds=new Set();
 let everInLedgerIds=new Set(); // tracks every campclose ID ever fetched from Supabase this session
 const DEFAULT_LKR_PER_EUR=parseFloat(localStorage.getItem(FX_KEY)||'330')||330;
@@ -1449,6 +1450,8 @@ function retrySave(){
 }
 function markCampcloseDeleted(id){
   deletedCampcloseIds.add(id);
+  // Fast local backup — survives page refresh even if Supabase is slow
+  try{ localStorage.setItem('hub_deleted_campclose_local',JSON.stringify([...deletedCampcloseIds])); }catch(e){}
   // Save cross-computer via state_store (fire and forget — in-memory update is immediate)
   const client=getHubSupabaseClient();
   ensureHubLocationId().then(locationId=>{
@@ -1463,6 +1466,23 @@ async function loadDeletedCampcloseIds(){
     const data=await loadStateStore(DELETED_CAMPCLOSE_KEY);
     if(Array.isArray(data)) deletedCampcloseIds=new Set(data);
   }catch(e){console.warn('[Hub] loadDeletedCampcloseIds failed',e);}
+  // Also load from localStorage as fast fallback (survives page refresh before Supabase responds)
+  try{
+    const local=localStorage.getItem('hub_deleted_campclose_local');
+    if(local){
+      const arr=JSON.parse(local);
+      if(Array.isArray(arr)) arr.forEach(id=>deletedCampcloseIds.add(id));
+    }
+  }catch(e){}
+}
+function notifyLedgerChanged(){
+  const client=getHubSupabaseClient();
+  ensureHubLocationId().then(locationId=>{
+    if(!client||!locationId) return;
+    client.from('location_state_store')
+      .upsert({location_id:locationId,state_key:HUB_LEDGER_TS_KEY,state_json:{ts:Date.now()},updated_at:new Date().toISOString()},{onConflict:'location_id,state_key'})
+      .then(({error})=>{ if(error) console.warn('[Hub] notifyLedgerChanged failed',error); });
+  }).catch(()=>{});
 }
 let HUB_REALTIME_CHANNEL=null;
 let HUB_SUPPRESS_RT=false;
@@ -1496,6 +1516,9 @@ function subscribeHubRealtime(){
           snuckBack.forEach(e=>deleteLedgerEntryFromSupabase(e.id).catch(()=>{}));
           renderExpenses();renderOverview();renderWeeklyPL();
         }
+      } else if(key===HUB_LEDGER_TS_KEY){
+        // Another computer wrote to the ledger — rehydrate
+        scheduleHubLedgerRehydrate();
       }
     })
     .on('postgres_changes',{event:'*',schema:'public',table:'ledger_entries'},(payload)=>{
@@ -1670,6 +1693,7 @@ async function deleteLedgerEntryFromSupabase(id){
   if(!client||!id) return false;
   const { error } = await client.from('ledger_entries').delete().eq('id',id);
   if(error) throw error;
+  notifyLedgerChanged();
   return true;
 }
 async function hydrateLedgerFromSupabase({mergeLocal=true}={}){
@@ -1721,6 +1745,7 @@ async function syncLedgerEntriesToSupabase(entries,context='ledger sync'){
   HUB_SUPPRESS_RT=true;
   try{
     await pushLedgerEntriesToSupabase(entries);
+    notifyLedgerChanged();
   }catch(error){
     handleLedgerSupabaseError(context,error);
   }finally{
