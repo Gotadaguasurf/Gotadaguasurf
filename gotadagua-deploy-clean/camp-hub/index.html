@@ -2490,9 +2490,7 @@ async function removeOrphanedClosedWeekEntries(history){
 function mapCampTabRevenueCategory(item){
   if(item.c==='Drinks') return 'Drinks';
   if(item.c==='Merch') return 'Merchandise';
-  if(item.c==='Tours'){
-    if(item.n) return item.n;
-  }
+  if(item.c==='Tours') return item.n||'Tours'; // match camp-tab-inner exactly to avoid reconcile duplicates
   return 'Other Revenue';
 }
 
@@ -4529,6 +4527,7 @@ function renderExpenses(){
 }
 
 async function delLedger(id){
+  HUB_SUPPRESS_LEDGER_RT=true; // set BEFORE any state_store writes so own echoes are reliably suppressed
   // Optimistic: remove locally immediately for snappy UI
   const backup=S.ledger.find(x=>x.id===id);
   S.ledger=S.ledger.filter(x=>x.id!==id);
@@ -4537,7 +4536,6 @@ async function delLedger(id){
   save();
   renderExpenses();renderOverview();renderWeeklyPL();
   toast('Deleted.');
-  HUB_SUPPRESS_LEDGER_RT=true; // suppress our own RT echo from the delete
   try{
     await deleteLedgerEntryFromSupabase(id);
   }catch(error){
