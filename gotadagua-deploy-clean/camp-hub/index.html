@@ -1605,10 +1605,15 @@ function mapLedgerTypeFromDb(type='expense'){
   return 'expense';
 }
 function handleLedgerSupabaseError(context,error){
-  console.warn(`[Camp Hub] ${context}`,error);
+  // Stash the most recent error globally so it's easy to inspect from the console
+  // (window.__hubLastSyncError) without having to hunt through warnings.
+  try{ window.__hubLastSyncError={context,error,when:new Date().toISOString()}; }catch(_){}
+  const msg=error?.message||error?.error_description||(typeof error==='string'?error:'')||'unknown';
+  console.warn(`[Camp Hub] ${context}:`,msg,error);
   if(HUB_LEDGER_SYNC_ERROR_SHOWN) return;
   HUB_LEDGER_SYNC_ERROR_SHOWN=true;
-  toast('Supabase sync needs attention. Local save kept working.');
+  // Show the actual error so problems are diagnosable instead of silent.
+  toast('Sync failed: '+context+' — '+msg.slice(0,90));
 }
 function ledgerEntryToDbRow(entry,locationId){
   const normalized=normalizeLedgerEntry(entry);
