@@ -1360,6 +1360,19 @@ let HUB_SB=null;
 let HUB_SB_LOCATION_ID=null;
 let HUB_LEDGER_HYDRATED=false;
 let HUB_LEDGER_HYDRATE_PROMISE=null;
+let HUB_LEDGER_RT_TIMER=null;
+function scheduleHubLedgerRehydrate(){
+  // Never drop — retry after 500ms, deferring if HUB_SUPPRESS_RT is active
+  clearTimeout(HUB_LEDGER_RT_TIMER);
+  HUB_LEDGER_RT_TIMER=setTimeout(async()=>{
+    if(HUB_SUPPRESS_RT){ scheduleHubLedgerRehydrate(); return; }
+    HUB_LEDGER_HYDRATE_PROMISE=null;
+    try{
+      await hydrateLedgerFromSupabase({mergeLocal:false});
+      renderExpenses();renderOverview();renderWeeklyPL();
+    }catch(e){console.warn('[Hub] RT ledger hydrate failed',e);}
+  },500);
+}
 let HUB_LEDGER_SYNC_ERROR_SHOWN=false;
 
 // ═══════════════════════════════════════════════════════════
@@ -1485,14 +1498,10 @@ function subscribeHubRealtime(){
       }
     })
     .on('postgres_changes',{event:'*',schema:'public',table:'ledger_entries'},(payload)=>{
-      // Client-side location filter — works for all event types including DELETE
+      // Client-side location filter — works for INSERT, UPDATE, and DELETE
       const loc=payload.new?.location_id||payload.old?.location_id;
       if(loc&&loc!==HUB_SB_LOCATION_ID) return;
-      if(HUB_SUPPRESS_RT) return;
-      HUB_LEDGER_HYDRATE_PROMISE=null;
-      hydrateLedgerFromSupabase({mergeLocal:false})
-        .then(()=>{renderExpenses();renderOverview();renderWeeklyPL();})
-        .catch(e=>console.warn('[Hub] RT ledger hydrate failed',e));
+      scheduleHubLedgerRehydrate(); // never drop — retries if suppressed
     })
     .subscribe((status)=>{
       if(status==='SUBSCRIBED') console.log('[Hub] Realtime connected');
@@ -2523,6 +2532,8 @@ async function removeClosedWeekIncome(payload={}){
   if(!rows.length) return false;
   S.ledger=S.ledger.filter(row=>!rows.some(rem=>rem.id===row.id));
   save();
+  renderExpenses();renderOverview();renderWeeklyPL();
+  HUB_SUPPRESS_RT=true;
   for(const row of rows){
     try{
       await deleteLedgerEntryFromSupabase(row.id);
@@ -2530,6 +2541,7 @@ async function removeClosedWeekIncome(payload={}){
       handleLedgerSupabaseError('closed week ledger delete failed',error);
     }
   }
+  setTimeout(()=>{ HUB_SUPPRESS_RT=false; },600);
   return true;
 }
 
