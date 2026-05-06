@@ -2030,13 +2030,14 @@
         console.log('[Invite-Debug] preparePasswordFlow returned', shown);
         if(shown) return;
       }
-      // Fallback signal: Supabase invitations populate user_metadata.invitation_id.
-      // If the workspace_invitations lookup failed (RLS, race, missing row), we can still
-      // detect the user just clicked an invite link and force the password screen.
+      // Fallback: if the workspace_invitations lookup found NOTHING (null) but
+      // user_metadata says they were just invited, force the password screen.
+      // Critical: we check `!latestInvite` (no row at all), NOT `!hasPendingInvite`
+      // — because once they've set their password the invite row exists with
+      // status='accepted' and we must NOT loop them back to the password screen.
       const metaInviteId = session.user.user_metadata?.invitation_id;
-      if(!hasPendingInvite && metaInviteId){
-        console.log('[Invite-Debug] No DB invite but user_metadata.invitation_id present, forcing password screen', metaInviteId);
-        // Stamp the URL so getPasswordFlowMode() reports 'invite' even after refresh
+      if(!latestInvite && metaInviteId){
+        console.log('[Invite-Debug] DB invite row missing but user_metadata.invitation_id present, forcing password screen', metaInviteId);
         try{
           const u=new URL(window.location.href);
           u.searchParams.set('invite','1');
