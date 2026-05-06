@@ -1187,6 +1187,13 @@ function normalizeState(raw){
 }
 function loadS(){try{return normalizeState(JSON.parse(localStorage.getItem(SK)||'null'));}catch(e){return defS();}}
 let S=loadS();
+// These suppress flags MUST be declared before any code that can transitively call saveStateStore.
+// ensureRecurringDefaults() runs at module load (line ~1201) and can call save() → saveStateStore(),
+// which references both flags. Declaring them here avoids a temporal-dead-zone ReferenceError on
+// a fresh session (incognito or first-load), which previously broke the entire weeks save path
+// and prevented camp data from ever reaching Supabase.
+let HUB_SUPPRESS_WEEKS_RT=false;  // suppresses our own weeks/state write echoes only
+let HUB_SUPPRESS_LEDGER_RT=false; // suppresses our own ledger write echoes only
 const save_mem=()=>{S=normalizeState(S);(S.weeks||[]).forEach(syncWeekSettlement);localStorage.setItem(SK,JSON.stringify(S));};
 const save=()=>{
   save_mem();
@@ -1409,11 +1416,6 @@ async function loadStateStore(stateKey){
   }catch(e){console.warn('[Hub] loadStateStore failed',e);return null;}
 }
 let _pendingWeeksSave=false;
-// Suppress flags must be declared BEFORE saveStateStore — ensureRecurringDefaults runs at module
-// load time and can call save() → saveStateStore() before later `let` declarations are initialized
-// (temporal dead zone). Hoisting them up here prevents ReferenceError on a fresh session/incognito.
-let HUB_SUPPRESS_WEEKS_RT=false;  // suppresses our own weeks/state write echoes only
-let HUB_SUPPRESS_LEDGER_RT=false; // suppresses our own ledger write echoes only
 function setSavePill(state,txt){
   const pill=document.getElementById('savePill');
   const label=document.getElementById('savePillTxt');
