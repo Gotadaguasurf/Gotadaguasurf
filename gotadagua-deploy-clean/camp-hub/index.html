@@ -1409,6 +1409,11 @@ async function loadStateStore(stateKey){
   }catch(e){console.warn('[Hub] loadStateStore failed',e);return null;}
 }
 let _pendingWeeksSave=false;
+// Suppress flags must be declared BEFORE saveStateStore — ensureRecurringDefaults runs at module
+// load time and can call save() → saveStateStore() before later `let` declarations are initialized
+// (temporal dead zone). Hoisting them up here prevents ReferenceError on a fresh session/incognito.
+let HUB_SUPPRESS_WEEKS_RT=false;  // suppresses our own weeks/state write echoes only
+let HUB_SUPPRESS_LEDGER_RT=false; // suppresses our own ledger write echoes only
 function setSavePill(state,txt){
   const pill=document.getElementById('savePill');
   const label=document.getElementById('savePillTxt');
@@ -1485,8 +1490,8 @@ function notifyLedgerChanged(){
   }).catch(()=>{});
 }
 let HUB_REALTIME_CHANNEL=null;
-let HUB_SUPPRESS_WEEKS_RT=false;  // suppresses our own weeks/state write echoes only
-let HUB_SUPPRESS_LEDGER_RT=false; // suppresses our own ledger write echoes only
+// HUB_SUPPRESS_WEEKS_RT / HUB_SUPPRESS_LEDGER_RT are declared earlier in the file
+// (above saveStateStore) to avoid temporal-dead-zone errors during init.
 function subscribeHubRealtime(){
   const client=getHubSupabaseClient();
   if(!client||!HUB_SB_LOCATION_ID||HUB_REALTIME_CHANNEL) return;
