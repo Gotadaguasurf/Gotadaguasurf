@@ -1455,13 +1455,15 @@ function subscribeHubRealtime(){
         rerenderActivePageData();
       }
     })
-    .on('postgres_changes',{event:'*',schema:'public',table:'ledger_entries',filter:`location_id=eq.${HUB_SB_LOCATION_ID}`},async()=>{
+    .on('postgres_changes',{event:'*',schema:'public',table:'ledger_entries'},(payload)=>{
+      // Client-side location filter — works for all event types including DELETE
+      const loc=payload.new?.location_id||payload.old?.location_id;
+      if(loc&&loc!==HUB_SB_LOCATION_ID) return;
       if(HUB_SUPPRESS_RT) return;
       HUB_LEDGER_HYDRATE_PROMISE=null;
-      try{
-        await hydrateLedgerFromSupabase({mergeLocal:false});
-        renderExpenses();renderOverview();renderWeeklyPL();
-      }catch(e){console.warn('[Hub] RT ledger hydrate failed',e);}
+      hydrateLedgerFromSupabase({mergeLocal:false})
+        .then(()=>{renderExpenses();renderOverview();renderWeeklyPL();})
+        .catch(e=>console.warn('[Hub] RT ledger hydrate failed',e));
     })
     .subscribe((status)=>{
       if(status==='SUBSCRIBED') console.log('[Hub] Realtime connected');
