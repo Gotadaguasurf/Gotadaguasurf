@@ -2416,19 +2416,20 @@ function buildClosedWeekRevenueEntries(wk){
   if(!wk) return null;
   const paidItems=[...(wk.guests||[]),...(wk.staff||[])].filter(g=>g.paid).flatMap(g=>g.items||[]);
   if(!paidItems.length) return [];
-  const fallbackDate=(wk.closedAt&&String(wk.closedAt).slice(0,10))||addDays(wk.start,6)||today();
+  const revenueDate=(wk.closedAt&&String(wk.closedAt).slice(0,10))||addDays(wk.start,6)||today();
   const grouped={};
   paidItems.forEach(item=>{
     const category=mapCampTabRevenueCategory(item);
     const linkedItem=item.c==='Tours'?item.n:'';
-    const itemDate=item.d||fallbackDate; // use the day the item was registered in Camp Tab
-    const key=[itemDate,category,linkedItem].join('::');
-    grouped[key]=grouped[key]||{date:itemDate,category,linkedItem,total:0};
+    const key=[category,linkedItem].join('::');
+    grouped[key]=grouped[key]||{category,linkedItem,total:0};
     grouped[key].total+=Number(item.p||0);
   });
+  // One entry per product per week — clean ledger overview.
+  // Date = when the week was closed (closedAt).
   return Object.values(grouped).map(group=>normalizeLedgerEntry({
-    id:`campclose_${wk.id||wk.start}_${group.date}_${group.category}_${group.linkedItem||'general'}`.replace(/\s+/g,'_'),
-    date:group.date,
+    id:`campclose_${wk.id||wk.start}_${group.category}_${group.linkedItem||'general'}`.replace(/\s+/g,'_'),
+    date:revenueDate,
     type:'income',
     category:group.category,
     businessArea:inferArea('income',group.category,group.linkedItem),
