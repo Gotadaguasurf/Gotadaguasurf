@@ -899,6 +899,7 @@ function hydrateWeekStateFromRows(weekRows,guestRows,itemRows){
       p:Number(item.price_local||0),
       c:item.category,
       t:meta.time||new Date(item.added_at||Date.now()).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}),
+      d:item.added_at?String(item.added_at).slice(0,10):null, // date added — used for per-day revenue grouping
       ...(meta.staffNote?{s:meta.staffNote}:{}),
       ...(item.price_type?{priceType:item.price_type}:{}),
       sortOrder:Number(item.sort_order||0)
@@ -1129,7 +1130,7 @@ async function syncCampTabStateToSupabase(){
             qty:1,
             price_local:Number(item.p||0),
             currency:'LKR',
-            added_at:new Date().toISOString(),
+            added_at:item.d?(item.d+'T'+(item.t||'12:00')+':00.000Z'):new Date().toISOString(),
             price_type:item.priceType||null,
             sort_order:(itemIndex+1)*10,
             meta:{time:item.t||'',staffNote:item.s||null}
@@ -1723,7 +1724,7 @@ function addResolvedItem(item,btn){
     if(stockLeft!==null&&stockLeft<=0){toast(item.n+' is out of stock');return;}
   }
   const price=displayPriceFor(item);
-  const nextItem={id:makeUuid(),menuItemId:item.id||'',n:item.n,p:price,c:AC,t:tnow(),priceType:currentRoster==='staff'?'staff':'regular'};
+  const nextItem={id:makeUuid(),menuItemId:item.id||'',n:item.n,p:price,c:AC,t:tnow(),d:today(),priceType:currentRoster==='staff'?'staff':'regular'};
   g.items=[...normalizeItemRows(g.items),nextItem];
   rows[rowIndex]=g;
   wk[currentRoster]=rows;
@@ -2415,19 +2416,21 @@ function syncClosedWeekToHubLedger(wk){
   const paidItems=allConsumers(wk).filter(g=>g.paid).flatMap(g=>g.items||[]);
   if(!paidItems.length) return;
   const grouped={};
+  const fallbackDate=(wk.closedAt&&String(wk.closedAt).slice(0,10))||wk.start||today();
   paidItems.forEach(item=>{
     const category=mapRevenueCategory(item);
     const linkedItem=item.c==='Tours'?item.n:'';
-    const key=[category,linkedItem].join('::');
-    grouped[key]=grouped[key]||{category,linkedItem,total:0};
+    const itemDate=item.d||fallbackDate; // use the day the item was registered
+    const key=[itemDate,category,linkedItem].join('::');
+    grouped[key]=grouped[key]||{date:itemDate,category,linkedItem,total:0};
     grouped[key].total+=Number(item.p||0);
   });
-  // Use same ID format, date, and description as buildClosedWeekRevenueEntries in the hub
-  // so upsertClosedWeekIncome and reconcileClosedWeeksWithLedger never create duplicates.
-  const revenueDate=(wk.closedAt&&String(wk.closedAt).slice(0,10))||wk.start||today();
+  // Use same ID + date format as buildClosedWeekRevenueEntries in the hub.
+  // Group by (itemDate, category, linkedItem) so each day's revenue has its own entry
+  // with the correct date (when the item was actually registered in the Camp Tab).
   const entries=Object.values(grouped).map(group=>({
-    id:`campclose_${wk.id||wk.start}_${group.category}_${group.linkedItem||'general'}`.replace(/\s+/g,'_'),
-    date:revenueDate,
+    id:`campclose_${wk.id||wk.start}_${group.date}_${group.category}_${group.linkedItem||'general'}`.replace(/\s+/g,'_'),
+    date:group.date,
     type:'income',
     category:group.category,
     businessArea:group.category==='Drinks'
