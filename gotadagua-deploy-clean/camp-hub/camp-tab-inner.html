@@ -1970,11 +1970,24 @@ function closedWeekLedgerPrefix(wk){
   return `campclose_${wk.id||wk.start}_`.replace(/\s+/g,'_');
 }
 
+function buildCampcloseIdsForWeek(wk){
+  if(!wk) return [];
+  const paidItems=allConsumers(wk).filter(g=>g.paid).flatMap(g=>g.items||[]);
+  const seen=new Set();
+  const ids=[];
+  paidItems.forEach(item=>{
+    const category=mapRevenueCategory(item);
+    const linkedItem=item.c==='Tours'?item.n:'';
+    const key=category+'::'+linkedItem;
+    if(seen.has(key)) return;
+    seen.add(key);
+    ids.push(`campclose_${wk.id||wk.start}_${category}_${linkedItem||'general'}`.replace(/\s+/g,'_'));
+  });
+  return ids;
+}
 function removeClosedWeekFromHubLedger(wk){
   if(!wk) return;
-  // Build the exact campclose entry IDs so the hub can delete by ID (not guessing by prefix/description)
-  const entries=buildClosedWeekRevenueEntries(wk)||[];
-  const campcloseIds=entries.map(e=>e.id).filter(Boolean);
+  const campcloseIds=buildCampcloseIdsForWeek(wk);
   try{window.parent?.postMessage({type:'camp-tab-history-deleted',weekId:wk.id||wk.start,weekStart:wk.start,campcloseIds},'*');}catch(e){}
 }
 
