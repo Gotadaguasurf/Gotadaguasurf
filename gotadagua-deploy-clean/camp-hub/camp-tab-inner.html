@@ -686,18 +686,31 @@ async function withRetry(fn,label,retries=3){
   return false;
 }
 function queueCampTabSync(){
-  if(suppressRemoteSync) return;
   _campPendingSave=true;
+  if(suppressRemoteSync){
+    // defer instead of drop — retry after suppress window clears
+    clearTimeout(campTabSyncTimer);
+    campTabSyncTimer=setTimeout(queueCampTabSync,900);
+    return;
+  }
   clearTimeout(campTabSyncTimer);
   campTabSyncTimer=setTimeout(()=>{withRetry(()=>syncCampTabStateToSupabase(),'state sync');},100);
 }
 function queueMenuSync(){
-  if(suppressRemoteSync) return;
+  if(suppressRemoteSync){
+    clearTimeout(campMenuSyncTimer);
+    campMenuSyncTimer=setTimeout(queueMenuSync,900);
+    return;
+  }
   clearTimeout(campMenuSyncTimer);
   campMenuSyncTimer=setTimeout(()=>{withRetry(()=>syncCampTabMenuToSupabase(),'menu sync');},100);
 }
 function queueStaffSync(){
-  if(suppressRemoteSync) return;
+  if(suppressRemoteSync){
+    clearTimeout(campStaffSyncTimer);
+    campStaffSyncTimer=setTimeout(queueStaffSync,900);
+    return;
+  }
   clearTimeout(campStaffSyncTimer);
   campStaffSyncTimer=setTimeout(()=>{withRetry(()=>syncCampTabStaffToSupabase(),'staff sync');},100);
 }
@@ -952,9 +965,7 @@ async function hydrateCampTabMenuFromSupabase({mergeLocal=false}={}){
     return false;
   }
   if(data?.length){
-    suppressRemoteSync=true;
     MENU=menuRowsToState(data);
-    suppressRemoteSync=false;
     return true;
   }
   if(mergeLocal && getCats().length){
@@ -966,14 +977,20 @@ async function syncCampTabMenuToSupabase(){
   const client=getCampTabSupabaseClient();
   const locationId=await ensureCampTabLocationId();
   if(!client||!locationId) return false;
-  const rows=menuStateToRows(locationId);
-  const { error: deleteError } = await client.from('location_menus').delete().eq('location_id',locationId);
-  if(deleteError) throw deleteError;
-  if(rows.length){
-    const { error } = await client.from('location_menus').insert(rows);
-    if(error) throw error;
+  const _gen=++_suppressGeneration;
+  suppressRemoteSync=true;
+  try{
+    const rows=menuStateToRows(locationId);
+    const { error: deleteError } = await client.from('location_menus').delete().eq('location_id',locationId);
+    if(deleteError) throw deleteError;
+    if(rows.length){
+      const { error } = await client.from('location_menus').insert(rows);
+      if(error) throw error;
+    }
+    return true;
+  }finally{
+    setTimeout(()=>{ if(_suppressGeneration===_gen) suppressRemoteSync=false; },800);
   }
-  return true;
 }
 async function hydrateCampTabStaffFromSupabase({mergeLocal=false}={}){
   const client=getCampTabSupabaseClient();
@@ -990,10 +1007,8 @@ async function hydrateCampTabStaffFromSupabase({mergeLocal=false}={}){
     return false;
   }
   if(data?.length){
-    suppressRemoteSync=true;
     STAFF=normalizeStaff(data.map((row)=>({id:row.id,name:row.name})));
     activeStaffId=STAFF[0]?.id||'';
-    suppressRemoteSync=false;
     return true;
   }
   if(mergeLocal && STAFF.length){
@@ -1005,20 +1020,26 @@ async function syncCampTabStaffToSupabase(){
   const client=getCampTabSupabaseClient();
   const locationId=await ensureCampTabLocationId();
   if(!client||!locationId) return false;
-  const rows=normalizeStaff(STAFF).map((staff,idx)=>({
-    id:isUuid(staff.id)?staff.id:makeUuid(),
-    location_id:locationId,
-    name:staff.name,
-    active:true,
-    sort_order:(idx+1)*10
-  }));
-  const { error: deleteError } = await client.from('camp_staff_directory').delete().eq('location_id',locationId);
-  if(deleteError) throw deleteError;
-  if(rows.length){
-    const { error } = await client.from('camp_staff_directory').insert(rows);
-    if(error) throw error;
+  const _gen=++_suppressGeneration;
+  suppressRemoteSync=true;
+  try{
+    const rows=normalizeStaff(STAFF).map((staff,idx)=>({
+      id:isUuid(staff.id)?staff.id:makeUuid(),
+      location_id:locationId,
+      name:staff.name,
+      active:true,
+      sort_order:(idx+1)*10
+    }));
+    const { error: deleteError } = await client.from('camp_staff_directory').delete().eq('location_id',locationId);
+    if(deleteError) throw deleteError;
+    if(rows.length){
+      const { error } = await client.from('camp_staff_directory').insert(rows);
+      if(error) throw error;
+    }
+    return true;
+  }finally{
+    setTimeout(()=>{ if(_suppressGeneration===_gen) suppressRemoteSync=false; },800);
   }
-  return true;
 }
 async function hydrateCampTabStateFromSupabase({mergeLocal=false}={}){
   const client=getCampTabSupabaseClient();
@@ -1034,9 +1055,7 @@ async function hydrateCampTabStateFromSupabase({mergeLocal=false}={}){
     return false;
   }
   if((weekRows?.length||0) || (guestRows?.length||0) || (itemRows?.length||0)){
-    suppressRemoteSync=true;
     S=hydrateWeekStateFromRows(weekRows,guestRows,itemRows);
-    suppressRemoteSync=false;
     return true;
   }
   if(mergeLocal && (S.activeWeek || S.nextWeek || (S.history||[]).length)){
@@ -2370,7 +2389,7 @@ function confirmClose(){
   });
   S.history.push(closedWeek);
   syncClosedWeekToHubLedger(closedWeek);
-  S.activeWeek=mergedGuests.length?{id:'w'+Date.now(),start:nextWeekStart,guests:mergedGuests,staff:[]} : null;
+  S.activeWeek=mergedGuests.length?{id:makeUuid(),start:nextWeekStart,guests:mergedGuests,staff:[]} : null;
   S.nextWeek=null;
   AG=null;save();closeOv('closeWeekOv');
   if(S.activeWeek){
@@ -2494,21 +2513,26 @@ function subscribeCampTabRealtime(locationId){
   if(!client||!locationId||CAMP_RT_CHANNEL) return;
   const stateFilter=`location_id=eq.${locationId}`;
   function scheduleRehydrate(){
-    if(suppressRemoteSync) return;
+    // NOTE: no outer suppressRemoteSync guard here — we always schedule the timer
+    // so RT events are never permanently lost. The inner check handles the case
+    // where suppress is still active when the timer fires (retries after 1000ms).
     clearTimeout(campTabRehydrateTimer);
     campTabRehydrateTimer=setTimeout(async()=>{
-      if(suppressRemoteSync) return; // double-check: a sync may have started while we waited
-      const _rGen=++_suppressGeneration; // claim a new generation slot
+      if(suppressRemoteSync){
+        // Suppress still active — reschedule instead of dropping the rehydrate
+        scheduleRehydrate();
+        return;
+      }
+      const _rGen=++_suppressGeneration;
       suppressRemoteSync=true;
       try{
         await hydrateCampTabStateFromSupabase({mergeLocal:false});
         renderAllCampTabViews();
         notifyParentStateChanged();
       }catch(e){console.warn('Camp Tab RT rehydrate failed',e);}finally{
-        // Only release if no newer sync/rehydrate has started
         if(_suppressGeneration===_rGen) suppressRemoteSync=false;
       }
-    },600); // longer delay so our own sync writes settle first
+    },1000); // 1000ms > 800ms cooldown so suppress has cleared before we check
   }
   CAMP_RT_CHANNEL=client.channel('camp-tab-rt-'+locationId)
     .on('postgres_changes',{event:'*',schema:'public',table:'camp_weeks',filter:stateFilter},scheduleRehydrate)
@@ -2519,6 +2543,7 @@ function subscribeCampTabRealtime(locationId){
       try{
         await hydrateCampTabMenuFromSupabase({mergeLocal:false});
         renderAllCampTabViews();
+        notifyParentStateChanged();
       }catch(e){console.warn('Camp Tab RT menu failed',e);}
     })
     .on('postgres_changes',{event:'*',schema:'public',table:'camp_staff_directory',filter:stateFilter},async()=>{
@@ -2526,6 +2551,7 @@ function subscribeCampTabRealtime(locationId){
       try{
         await hydrateCampTabStaffFromSupabase({mergeLocal:false});
         renderAllCampTabViews();
+        notifyParentStateChanged();
       }catch(e){console.warn('Camp Tab RT staff failed',e);}
     })
     .subscribe((status)=>{
