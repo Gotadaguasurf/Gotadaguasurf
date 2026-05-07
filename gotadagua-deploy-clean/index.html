@@ -2461,10 +2461,56 @@
         okLocations += 1;
         parts.push(`<div style="color:#0a6b32">✅ <b>${bookings.length}</b> booking${bookings.length===1?'':'s'} → <b>${locName}</b></div>`);
       }
+      // ALSO upsert every row into the global `bookings` table so the
+      // partners app picks them up automatically (it reads from that table).
+      const bookingRows = rows.map(r => {
+        const partnerName = (r.partner && r.partner !== 'Direct Bookings') ? r.partner : null;
+        const checkinIso = r.checkinMs ? new Date(r.checkinMs).toISOString().slice(0,10) : null;
+        const grossAmount = Number(r.gross || 0);
+        const commissionPct = Number(r.commissionPct || 0);
+        const commissionAmount = partnerName ? Number((grossAmount * commissionPct / 100).toFixed(2)) : 0;
+        const netAmount = Number((grossAmount - commissionAmount).toFixed(2));
+        return {
+          booking_ref: r.ref,
+          booker: r.guest || '',
+          check_in_on: checkinIso,
+          month_key: checkinIso ? checkinIso.slice(0,7) : null,
+          total: grossAmount,
+          pax: Number(r.pax || 1),
+          location: CSV_LOC_CODE_TO_NAME[r.locationCode] || r.locationCode || 'Unknown',
+          package: r.package || '',
+          partner_name: partnerName,
+          booking_type: partnerName ? 'surfcamp' : 'direct',
+          partner_commission_pct: commissionPct,
+          commission_amount: commissionAmount,
+          net_amount: netAmount,
+          raw_payload: { ...r, source: 'global-csv-import' }
+        };
+      });
+      let partnerSyncOk = 0;
+      let partnerSyncErrs = [];
+      const CHUNK = 500;
+      for(let i = 0; i < bookingRows.length; i += CHUNK){
+        const chunk = bookingRows.slice(i, i + CHUNK);
+        try{
+          const { error: bkErr } = await client.from('bookings').upsert(chunk, { onConflict: 'booking_ref' });
+          if(bkErr) partnerSyncErrs.push(bkErr.message);
+          else partnerSyncOk += chunk.length;
+        }catch(e){
+          partnerSyncErrs.push(e?.message || 'unknown error');
+        }
+      }
+      if(partnerSyncOk){
+        parts.push(`<div style="color:#0a6b32">📋 <b>${partnerSyncOk}</b> booking${partnerSyncOk===1?'':'s'} synced into the partners view</div>`);
+      }
+      if(partnerSyncErrs.length){
+        parts.push(`<div style="color:#c43c3c">⚠ Partners sync had ${partnerSyncErrs.length} chunk error${partnerSyncErrs.length===1?'':'s'}: ${partnerSyncErrs[0].slice(0,140)}</div>`);
+      }
+
       summaryEl.innerHTML = `
-        <div style="font-weight:700;margin-bottom:10px;font-size:14px">${okBookings} booking${okBookings===1?'':'s'} imported across ${okLocations} location${okLocations===1?'':'s'}</div>
+        <div style="font-weight:700;margin-bottom:10px;font-size:14px">${okBookings} booking${okBookings===1?'':'s'} imported across ${okLocations} camp hub${okLocations===1?'':'s'}</div>
         ${parts.join('')}
-        <div style="margin-top:14px;font-size:12px;color:#6b7a8c">Camp hubs read this immediately on next refresh. Partners support coming next.</div>
+        <div style="margin-top:14px;font-size:12px;color:#6b7a8c">Camp hubs and the partners app read this on next refresh. Re-importing the same file is safe — duplicates are upserted by booking ref.</div>
       `;
       try{ showToast(`Imported ${okBookings} bookings across ${okLocations} location${okLocations===1?'':'s'}`); }catch(_){}
       // Reset the file input so re-selecting the same file fires onchange again
