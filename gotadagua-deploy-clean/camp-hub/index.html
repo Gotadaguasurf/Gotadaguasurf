@@ -1008,7 +1008,8 @@ MENU.Tours=TOUR_MENU_ITEMS.map(item=>({...item}));
 MENU.Merch=MERCH_MENU_ITEMS.map(item=>({...item}));
 const CATS=Object.keys(MENU);
 const EXP_CATS=['Utilities','Rent','Setup','Salary','Services','Food','Tours','Transport','Cleaning Supplies','Bar','Merchandising','Taxes','Special'];
-const TRANSPORT_LINKED_ITEMS=['Airport','Tuk Tuk Lesson','Tuk Tuk River Safari','Tuk Tuk Tea Plantation'];
+const TRANSPORT_LINKED_ITEMS=['Airport','Tuk Tuk Lesson','Tuk Tuk River Safari','Tuk Tuk Tea Plantation','Petrol Motorbike'];
+const UTILITIES_LINKED_ITEMS=['Electricity','Water','Internet','Gas'];
 const TRANSPORT_TOUR_COST_MAP={
   'Tuk Tuk River Safari':'River Safari',
   'Tuk Tuk Tea Plantation':'Tea Plantation Visit'
@@ -3014,6 +3015,20 @@ function renderOverview(){
       entries:rows.length
     };
   }).filter(row=>row.spendLocal>0||row.revenueLocal>0);
+  // Utilities breakdown by sub-category (Electricity / Water / Internet / Gas)
+  const utilityRows=UTILITIES_LINKED_ITEMS.map(name=>{
+    const rows=expenses.filter(x=>x.category==='Utilities'&&(x.linkedItem||'')===name);
+    return {
+      name,
+      spendLocal:sum(rows,x=>entryLocalDisplayAmount(x)),
+      spendEur:sum(rows,x=>entryEurAmount(x)),
+      campLocal:sum(rows.filter(x=>x.paymentMethod==='Cash'),x=>entryLocalDisplayAmount(x)),
+      campEur:sum(rows.filter(x=>x.paymentMethod==='Cash'),x=>entryEurAmount(x)),
+      hqLocal:sum(rows.filter(x=>x.paymentMethod==='Bank Transfer'),x=>entryLocalDisplayAmount(x)),
+      hqEur:sum(rows.filter(x=>x.paymentMethod==='Bank Transfer'),x=>entryEurAmount(x)),
+      entries:rows.length
+    };
+  }).filter(row=>row.spendLocal>0);
   const transportCardsMarkup=transportRows.length?`
     <div class="card card-pad" style="grid-column:1 / -1">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;gap:12px;flex-wrap:wrap">
@@ -3258,6 +3273,16 @@ function renderOverview(){
       <thead><tr><th>Transport line</th><th>Connected to</th><th class="r">Spend</th><th class="r">Camp-paid</th><th class="r">HQ-paid</th><th class="r">Revenue</th><th class="r">Entries</th></tr></thead>
       <tbody>
         ${transportRows.length?transportRows.map(r=>`<tr><td style="font-weight:600">${r.name}</td><td style="color:var(--muted)">${r.linkedTour||'Direct transport / lessons'}</td><td class="r" style="color:var(--red)">${moneyPairLocal(r.spendLocal,r.spendEur)}</td><td class="r">${r.campLocal?moneyPairLocal(r.campLocal,r.campEur):'—'}</td><td class="r">${r.hqLocal?moneyPairLocal(r.hqLocal,r.hqEur):'—'}</td><td class="r" style="color:var(--green)">${r.revenueLocal?moneyPairLocal(r.revenueLocal,r.revenueEur):'—'}</td><td class="r">${r.entries||'—'}</td></tr>`).join(''):'<tr class="empty-row"><td colspan="7">No transport lines logged yet.</td></tr>'}
+      </tbody>
+    </table></div>
+    <div class="card-pad" style="border-top:1px solid var(--border);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+      <div style="font-family:'DM Serif Display',serif;font-size:17px;color:var(--navy)">Utilities control</div>
+      <div style="font-size:11px;color:var(--muted)">Electricity, water, internet, and gas spend</div>
+    </div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Utility</th><th class="r">Spend</th><th class="r">Camp-paid</th><th class="r">HQ-paid</th><th class="r">Entries</th></tr></thead>
+      <tbody>
+        ${utilityRows.length?utilityRows.map(r=>`<tr><td style="font-weight:600">${r.name}</td><td class="r" style="color:var(--red)">${moneyPairLocal(r.spendLocal,r.spendEur)}</td><td class="r">${r.campLocal?moneyPairLocal(r.campLocal,r.campEur):'—'}</td><td class="r">${r.hqLocal?moneyPairLocal(r.hqLocal,r.hqEur):'—'}</td><td class="r">${r.entries||'—'}</td></tr>`).join(''):'<tr class="empty-row"><td colspan="5">No utility entries yet — pick a utility type when adding a Utilities expense.</td></tr>'}
       </tbody>
     </table></div>
     <div class="card-pad" style="border-top:1px solid var(--border);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
@@ -3723,6 +3748,7 @@ function linkedItemOptionsFor(type,area,category=''){
   if(type==='income'&&category==='Transport') return [''].concat(currentTransportItems());
   if(type==='expense'&&category==='Tours') return [''].concat(currentTourItems());
   if(type==='expense'&&category==='Transport') return [''].concat(currentTransportItems());
+  if(type==='expense'&&category==='Utilities') return [''].concat(UTILITIES_LINKED_ITEMS);
   const items=AREA_CONFIG[area]?.linkedItems||[];
   return [''].concat(items);
 }
@@ -3778,7 +3804,7 @@ function toggleEntryUi(prefix,type){
   const categoryValue=document.getElementById(prefix+'_cat')?.value||'';
   const showLinked=type==='income'
     ? ['Tours','Transport'].includes(categoryValue)
-    : type==='expense'&&['Tours','Transport'].includes(categoryValue);
+    : type==='expense'&&['Tours','Transport','Utilities'].includes(categoryValue);
   const showQty=type==='income'&&['Tours','Transport'].includes(categoryValue);
   const categoryWrap=document.getElementById(prefix+'_cat_wrap');
   const payWrap=document.getElementById(prefix+'_pay_wrap');
@@ -3797,7 +3823,17 @@ function toggleEntryUi(prefix,type){
   if(eurWrap) eurWrap.style.display='none';
   if(lkrWrap) lkrWrap.style.display='none';
   if(vendorWrap) vendorWrap.style.display='none';
-  if(linkedWrap) linkedWrap.style.display=showLinked?'':'none';
+  if(linkedWrap){
+    linkedWrap.style.display=showLinked?'':'none';
+    // Dynamically label the sub-category dropdown based on the category chosen
+    const linkedLabel=linkedWrap.querySelector('label');
+    if(linkedLabel){
+      if(categoryValue==='Utilities') linkedLabel.textContent='Utility type';
+      else if(categoryValue==='Transport') linkedLabel.textContent='Transport item';
+      else if(categoryValue==='Tours') linkedLabel.textContent='Tour item';
+      else linkedLabel.textContent='Sub-category';
+    }
+  }
   if(qtyWrap) qtyWrap.style.display=showQty?'':'none';
   if(descWrap) descWrap.style.display=showDesc?'':'none';
 }
