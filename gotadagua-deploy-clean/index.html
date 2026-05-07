@@ -800,6 +800,9 @@
           <select id="csvManageLoc" onchange="renderCsvManageTable()" style="padding:8px 12px;border:1px solid #d6dde6;border-radius:10px;font-size:12px;color:#0d1e34;background:#fff">
             <option value="all">All locations</option>
           </select>
+          <select id="csvManageStatusF" onchange="renderCsvManageTable()" style="padding:8px 12px;border:1px solid #d6dde6;border-radius:10px;font-size:12px;color:#0d1e34;background:#fff">
+            <option value="all">All statuses</option>
+          </select>
           <button onclick="loadCsvManageData()" style="padding:8px 14px;border:1px solid #d6dde6;border-radius:10px;font-size:12px;color:#0d1e34;background:#fff;cursor:pointer;font-weight:700">Refresh</button>
           <div id="csvManageStatus" style="font-size:12px;color:#6b7a8c;margin-left:auto"></div>
         </div>
@@ -2338,23 +2341,32 @@
       const client = getSupabaseClient();
       if(!client){ status.textContent='Supabase not connected'; return; }
       try{
-        // Pull lightweight columns only — we aggregate client-side.
+        // raw_payload included so we can read the real Bookinglayer status (paid/confirmed/
+        // deposit_paid/draft/etc.) without needing a schema change.
         const { data, error } = await client
           .from('bookings')
-          .select('booking_ref,booker,check_in_on,month_key,total,location,partner_name,booking_type')
+          .select('booking_ref,booker,check_in_on,month_key,total,location,partner_name,booking_type,raw_payload')
           .order('check_in_on',{ascending:false})
           .limit(20000);
         if(error) throw error;
-        __csvManageRows = data || [];
+        __csvManageRows = (data || []).map(r => ({
+          ...r,
+          status: (r.raw_payload && r.raw_payload.status) || 'unknown'
+        }));
         window.__csvManageLoaded = true;
         // Populate filters
         const months = [...new Set(__csvManageRows.map(r=>r.month_key).filter(Boolean))].sort().reverse();
         const locs = [...new Set(__csvManageRows.map(r=>r.location||'Unknown').filter(Boolean))].sort();
+        const statuses = [...new Set(__csvManageRows.map(r=>r.status).filter(Boolean))].sort();
         const monthSel=document.getElementById('csvManageMonth');
         const locSel=document.getElementById('csvManageLoc');
-        const curMonth=monthSel.value, curLoc=locSel.value;
+        const statusSel=document.getElementById('csvManageStatusF');
+        const curMonth=monthSel.value, curLoc=locSel.value, curStatus=statusSel?.value||'all';
         monthSel.innerHTML='<option value="all">All months</option>'+months.map(m=>`<option value="${m}" ${curMonth===m?'selected':''}>${m}</option>`).join('');
         locSel.innerHTML='<option value="all">All locations</option>'+locs.map(l=>`<option value="${escapeAttr(l)}" ${curLoc===l?'selected':''}>${escapeHtml(l)}</option>`).join('');
+        if(statusSel){
+          statusSel.innerHTML='<option value="all">All statuses</option>'+statuses.map(s=>`<option value="${escapeAttr(s)}" ${curStatus===s?'selected':''}>${escapeHtml(s)}</option>`).join('');
+        }
         status.textContent = `${__csvManageRows.length} booking${__csvManageRows.length===1?'':'s'} in DB`;
         renderCsvManageTable();
       }catch(e){
@@ -2370,9 +2382,11 @@
       const wrap=document.getElementById('csvManageTableWrap');
       const monthFilter=document.getElementById('csvManageMonth').value;
       const locFilter=document.getElementById('csvManageLoc').value;
+      const statusFilter=document.getElementById('csvManageStatusF')?.value||'all';
       const filtered = __csvManageRows.filter(r=>{
         if(monthFilter!=='all' && r.month_key!==monthFilter) return false;
         if(locFilter!=='all' && (r.location||'Unknown')!==locFilter) return false;
+        if(statusFilter!=='all' && r.status!==statusFilter) return false;
         return true;
       });
       // Group by (month_key, location) — these are the deletable buckets
@@ -2381,11 +2395,13 @@
         const m=r.month_key||'(no date)';
         const l=r.location||'Unknown';
         const key=m+'||'+l;
-        if(!groups[key]) groups[key]={month:m,location:l,count:0,revenue:0,partnerCount:0,directCount:0};
+        if(!groups[key]) groups[key]={month:m,location:l,count:0,revenue:0,partnerCount:0,directCount:0,statusCounts:{}};
         groups[key].count++;
         groups[key].revenue += Number(r.total||0);
         if(r.partner_name && r.booking_type!=='direct') groups[key].partnerCount++;
         else groups[key].directCount++;
+        const s = r.status || 'unknown';
+        groups[key].statusCounts[s] = (groups[key].statusCounts[s] || 0) + 1;
       });
       const rows = Object.values(groups).sort((a,b)=>{
         if(a.month!==b.month) return b.month.localeCompare(a.month);
@@ -2396,6 +2412,21 @@
         return;
       }
       const totals = rows.reduce((acc,r)=>({count:acc.count+r.count,revenue:acc.revenue+r.revenue}),{count:0,revenue:0});
+      // Status badge color helper
+      const statusColor = s => ({
+        paid: { bg:'#d3f4dd', fg:'#0a6b32' },
+        confirmed: { bg:'#d8e6fb', fg:'#1c4b8a' },
+        deposit_paid: { bg:'#fff1c2', fg:'#7a5e00' },
+        draft: { bg:'#e6e6e6', fg:'#555555' },
+        cancelled: { bg:'#f5d3d3', fg:'#8a1c1c' }
+      }[s] || { bg:'#eaeaea', fg:'#444' });
+      const renderStatusCounts = sc => {
+        const entries = Object.entries(sc).sort((a,b)=>b[1]-a[1]);
+        return entries.map(([s,n])=>{
+          const c = statusColor(s);
+          return `<span style="display:inline-block;background:${c.bg};color:${c.fg};border-radius:6px;padding:2px 6px;margin:0 2px;font-size:11px;font-weight:700">${n} ${escapeHtml(s)}</span>`;
+        }).join('');
+      };
       wrap.innerHTML = `
         <table style="width:100%;border-collapse:collapse;font-size:13px">
           <thead style="background:#f4f6fa;color:#0d1e34">
@@ -2403,6 +2434,7 @@
               <th style="text-align:left;padding:10px 14px;font-weight:700">Month</th>
               <th style="text-align:left;padding:10px 14px;font-weight:700">Location</th>
               <th style="text-align:right;padding:10px 14px;font-weight:700">Bookings</th>
+              <th style="text-align:left;padding:10px 14px;font-weight:700">Status</th>
               <th style="text-align:right;padding:10px 14px;font-weight:700">Partner / Direct</th>
               <th style="text-align:right;padding:10px 14px;font-weight:700">Revenue</th>
               <th style="text-align:right;padding:10px 14px;font-weight:700;min-width:280px">Delete from…</th>
@@ -2414,6 +2446,7 @@
                 <td style="padding:10px 14px;font-family:'DM Mono',monospace">${escapeHtml(r.month)}</td>
                 <td style="padding:10px 14px;font-weight:600">${escapeHtml(r.location)}</td>
                 <td style="padding:10px 14px;text-align:right">${r.count}</td>
+                <td style="padding:10px 14px">${renderStatusCounts(r.statusCounts)}</td>
                 <td style="padding:10px 14px;text-align:right;color:#6b7a8c;font-size:12px">${r.partnerCount} / ${r.directCount}</td>
                 <td style="padding:10px 14px;text-align:right;font-family:'DM Mono',monospace">€${r.revenue.toLocaleString('en-GB',{maximumFractionDigits:2})}</td>
                 <td style="padding:10px 14px;text-align:right">
@@ -2428,6 +2461,7 @@
             <tr style="border-top:2px solid #0d1e34;background:#f4f6fa;font-weight:700">
               <td colspan="2" style="padding:10px 14px">Total (${rows.length} group${rows.length===1?'':'s'})</td>
               <td style="padding:10px 14px;text-align:right">${totals.count}</td>
+              <td></td>
               <td></td>
               <td style="padding:10px 14px;text-align:right;font-family:'DM Mono',monospace">€${totals.revenue.toLocaleString('en-GB',{maximumFractionDigits:2})}</td>
               <td></td>
@@ -2645,11 +2679,13 @@
           continue;
         }
         const locationId = locRow.id;
-        // Build the camp-hub-compatible array (matches the shape `ovBookings` expects)
+        // Build the camp-hub-compatible array (matches the shape `ovBookings` expects).
+        // Preserve the real Bookinglayer status (paid / confirmed / deposit_paid / draft / etc.)
+        // so the Manage tab can break it down — never lose information by coercing.
         const newOvBookings = bookings.map(r => ({
           ref: r.ref,
           name: r.guest || ('Booking ' + r.ref),
-          status: ['paid','confirmed'].includes(r.status) ? r.status : 'confirmed',
+          status: r.status || 'unknown',
           ci: r.checkinMs,
           co: r.checkoutMs,
           pax: r.pax,
