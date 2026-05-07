@@ -1939,11 +1939,21 @@ const isSurfSchoolPartner = p => getPartnerType(p) === 'surfschool';
 // false = we collect from guest → we owe them Commission
 const partnerCollectsFromGuest = p => partnerCollects[p] !== false; // default true
 
-// Recalculate commission amounts for a booking based on current rates
+// Recalculate commission amounts for a booking based on current rates.
+// Bookings whose Bookinglayer status isn't realized (paid / confirmed / deposit_paid)
+// keep com_amt=0 so they don't pollute partner totals — they remain visible in the
+// list with their gross/pax/etc. and a "draft" badge. When the booking moves to a
+// realized status (next CSV import upserts the same booking_ref), commission counts
+// automatically.
 function recalcBooking(b) {
   if(b.partner === DIRECT_LABEL) { b.com_pct=0; b.com_amt=0; b.net=b.gross; return b; }
   const rate = getRate(b.partner);
   b.com_pct = rate;
+  if(b.isRealized === false){
+    b.com_amt = 0;
+    b.net = b.gross;
+    return b;
+  }
   b.com_amt = +(b.gross * rate / 100).toFixed(2);
   b.net = +(b.gross - b.com_amt).toFixed(2);
   return b;
@@ -2295,7 +2305,7 @@ function buildStatementPdfMarkup(ctx) {
       const rows = chunk.map((b, idx) => `
       <tr>
         <td style="padding:9px 10px;border-bottom:1px solid #d4e3f0;">${(chunkIndex * 7) + idx + 1}</td>
-        <td style="padding:9px 10px;border-bottom:1px solid #d4e3f0;font-weight:600;">${b.guest || 'Guest'}</td>
+        <td style="padding:9px 10px;border-bottom:1px solid #d4e3f0;font-weight:600;">${b.guest || 'Guest'}${b.isRealized === false && b.status ? ` <span style="display:inline-block;background:#e6e6e6;color:#555;border-radius:5px;padding:1px 6px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-left:4px;vertical-align:middle">${b.status.replace(/_/g,' ')}</span>` : ''}</td>
         <td style="padding:9px 10px;border-bottom:1px solid #d4e3f0;font-family:'DM Mono',monospace;font-size:10px;">${b.ref || ''}</td>
         <td style="padding:9px 10px;border-bottom:1px solid #d4e3f0;">${new Date(b.checkin+'T00:00:00').toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}</td>
         <td style="padding:9px 10px;border-bottom:1px solid #d4e3f0;">${b.location || '—'}</td>
@@ -2501,7 +2511,7 @@ window.openStatement = function(partner, month, locationFilter) {
       Object.keys(byLoc).sort().forEach(loc=>{
         const lbs=byLoc[loc];
         const rows=lbs.map((b,i)=>`<tr>
-          <td>${i+1}</td><td>${b.guest}</td>
+          <td>${i+1}</td><td>${b.guest}${b.isRealized === false && b.status ? ` <span style="display:inline-block;background:#e6e6e6;color:#555;border-radius:5px;padding:1px 6px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-left:4px;vertical-align:middle">${b.status.replace(/_/g,' ')}</span>` : ''}</td>
           <td style="font-family:'DM Mono',monospace;font-size:10px">${b.ref}</td>
           <td>${new Date(b.checkin+'T00:00:00').toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}</td>
           <td style="text-align:center">${b.pax}</td>
@@ -2526,7 +2536,7 @@ window.openStatement = function(partner, month, locationFilter) {
       </div>`;
     } else {
       const rows=bs.map((b,i)=>`<tr>
-        <td>${i+1}</td><td>${b.guest}</td>
+        <td>${i+1}</td><td>${b.guest}${b.isRealized === false && b.status ? ` <span style="display:inline-block;background:#e6e6e6;color:#555;border-radius:5px;padding:1px 6px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-left:4px;vertical-align:middle">${b.status.replace(/_/g,' ')}</span>` : ''}</td>
         <td style="font-family:'DM Mono',monospace;font-size:10px">${b.ref}</td>
         <td>${new Date(b.checkin+'T00:00:00').toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}</td>
         <td>${b.location}</td>
@@ -3226,8 +3236,21 @@ function normalizeStatusRows(rows) {
   });
   return map;
 }
+// Statuses that count for partner commission totals.
+// Anything else (draft, pending, cancelled, etc.) is still visible in the
+// bookings list with a status badge, but contributes 0 to commission until
+// the booking moves into one of these statuses (next CSV import upserts
+// the row with the new status, so commission then counts automatically).
+const REALIZED_BOOKING_STATUSES = new Set(['paid','confirmed','deposit_paid']);
+
 function mapBookingRowToApp(row) {
   const partner = row.partner_name && row.partner_name.trim() ? row.partner_name.trim() : DIRECT_LABEL;
+  const status = (row.raw_payload && row.raw_payload.status) ? String(row.raw_payload.status).toLowerCase() : '';
+  const isRealized = !status || REALIZED_BOOKING_STATUSES.has(status); // empty status = legacy data, treat as realized
+  const gross = Number(row.total || 0);
+  const com_pct = Number(row.partner_commission_pct || 0);
+  const com_amt_full = Number(row.commission_amount || 0);
+  const net_full = Number(row.net_amount || 0);
   return {
     partner,
     guest: row.booker || '',
@@ -3236,10 +3259,13 @@ function mapBookingRowToApp(row) {
     location: row.location || 'Unknown',
     pax: Number(row.pax || 1),
     package: row.package || '',
-    gross: Number(row.total || 0),
-    com_pct: Number(row.partner_commission_pct || 0),
-    com_amt: Number(row.commission_amount || 0),
-    net: Number(row.net_amount || 0)
+    gross,
+    com_pct,
+    // Zero-out commission for non-realized bookings so totals/balances ignore them
+    com_amt: isRealized ? com_amt_full : 0,
+    net: isRealized ? net_full : gross,
+    status,
+    isRealized
   };
 }
 function buildPartnerRowsFromState() {
