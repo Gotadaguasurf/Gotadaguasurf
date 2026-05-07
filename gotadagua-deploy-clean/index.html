@@ -2646,7 +2646,7 @@
         }
         const locationId = locRow.id;
         // Build the camp-hub-compatible array (matches the shape `ovBookings` expects)
-        const ovBookings = bookings.map(r => ({
+        const newOvBookings = bookings.map(r => ({
           ref: r.ref,
           name: r.guest || ('Booking ' + r.ref),
           status: ['paid','confirmed'].includes(r.status) ? r.status : 'confirmed',
@@ -2662,10 +2662,22 @@
           location_code: code,
           location_name: locName
         }));
+        // MERGE by booking ref — never duplicate the same ref. Re-importing the same
+        // booking replaces the previous version (latest wins). Other months stay intact.
+        const { data: existingRow } = await client.from('location_state_store')
+          .select('state_json')
+          .eq('location_id', locationId)
+          .eq('state_key', 'camphub_ov_bookings_v3')
+          .maybeSingle();
+        const existingArr = Array.isArray(existingRow?.state_json) ? existingRow.state_json : [];
+        const newRefs = new Set(newOvBookings.map(b => b.ref).filter(Boolean));
+        const kept = existingArr.filter(b => !newRefs.has(b && b.ref));
+        const replacedCount = existingArr.length - kept.length;
+        const merged = kept.concat(newOvBookings);
         const { error: writeErr } = await client.from('location_state_store').upsert({
           location_id: locationId,
           state_key: 'camphub_ov_bookings_v3',
-          state_json: ovBookings,
+          state_json: merged,
           updated_at: new Date().toISOString()
         }, { onConflict: 'location_id,state_key' });
         if(writeErr){
@@ -2674,7 +2686,9 @@
         }
         okBookings += bookings.length;
         okLocations += 1;
-        parts.push(`<div style="color:#0a6b32">✅ <b>${bookings.length}</b> booking${bookings.length===1?'':'s'} → <b>${locName}</b></div>`);
+        const newOnes = bookings.length - replacedCount;
+        const detail = replacedCount>0 ? ` (<b>${newOnes}</b> new + <b>${replacedCount}</b> updated)` : '';
+        parts.push(`<div style="color:#0a6b32">✅ <b>${bookings.length}</b> booking${bookings.length===1?'':'s'} → <b>${locName}</b>${detail}</div>`);
       }
       // ALSO upsert every row into the global `bookings` table so the
       // partners app picks them up automatically (it reads from that table).
