@@ -768,21 +768,44 @@
 
   <!-- ═══════════════ Global CSV Import overlay ═══════════════ -->
   <div id="globalCsvOv" style="display:none;position:fixed;inset:0;background:rgba(13,30,52,.55);backdrop-filter:blur(4px);z-index:9999;align-items:center;justify-content:center;padding:20px">
-    <div style="background:#fff;border-radius:18px;max-width:680px;width:100%;max-height:90vh;overflow:auto;box-shadow:0 24px 64px rgba(13,30,52,.35)">
+    <div style="background:#fff;border-radius:18px;max-width:920px;width:100%;max-height:90vh;overflow:auto;box-shadow:0 24px 64px rgba(13,30,52,.35)">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;padding:22px 24px;border-bottom:1px solid #e6ecf2">
         <div>
-          <div style="font-family:'DM Serif Display',serif;font-size:22px;color:#0d1e34">Import bookings CSV</div>
-          <div style="font-size:13px;color:#6b7a8c;margin-top:4px;line-height:1.5;max-width:520px">Bookinglayer export. Rows are split by location code (LK, MA, PT, JUN, COL, CKC, SC) and fed into each camp hub and the partners view.</div>
+          <div style="font-family:'DM Serif Display',serif;font-size:22px;color:#0d1e34">Bookings imports</div>
+          <div style="font-size:13px;color:#6b7a8c;margin-top:4px;line-height:1.5;max-width:560px">Upload Bookinglayer exports — rows are split by location code (LK, MA, PT, JUN, SC, COL, CKC) and feed every camp hub + the partners view. Manage what's already in the system below.</div>
         </div>
         <button onclick="closeGlobalCsvImport()" style="background:none;border:none;font-size:22px;color:#6b7a8c;cursor:pointer;padding:0;line-height:1">×</button>
       </div>
-      <div style="padding:20px 24px">
+      <div style="display:flex;border-bottom:1px solid #e6ecf2;padding:0 24px;gap:6px">
+        <button id="csvTabUploadBtn" onclick="switchGlobalCsvTab('upload')" style="background:none;border:none;padding:14px 14px 12px;font-size:13px;font-weight:700;color:#0d1e34;cursor:pointer;border-bottom:2px solid #0d1e34;font-family:inherit">Upload</button>
+        <button id="csvTabManageBtn" onclick="switchGlobalCsvTab('manage')" style="background:none;border:none;padding:14px 14px 12px;font-size:13px;font-weight:700;color:#6b7a8c;cursor:pointer;border-bottom:2px solid transparent;font-family:inherit">Manage imports</button>
+      </div>
+
+      <!-- Upload tab -->
+      <div id="csvTabUpload" style="padding:20px 24px">
         <label style="display:inline-flex;align-items:center;gap:10px;padding:12px 18px;background:#0d1e34;color:#fff;border-radius:12px;cursor:pointer;font-weight:700;font-size:13px">
           <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 14V4"/><path d="m6.5 7.5 3.5-3.5 3.5 3.5"/><path d="M4 16h12"/></svg>
           <span>Choose CSV file</span>
           <input type="file" accept=".csv" style="display:none" onchange="handleGlobalCsvImport(this)">
         </label>
         <div id="globalCsvSummary" style="margin-top:16px;font-size:13px;color:#0d1e34;line-height:1.7"></div>
+      </div>
+
+      <!-- Manage tab -->
+      <div id="csvTabManage" style="display:none;padding:20px 24px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+          <select id="csvManageMonth" onchange="renderCsvManageTable()" style="padding:8px 12px;border:1px solid #d6dde6;border-radius:10px;font-size:12px;color:#0d1e34;background:#fff">
+            <option value="all">All months</option>
+          </select>
+          <select id="csvManageLoc" onchange="renderCsvManageTable()" style="padding:8px 12px;border:1px solid #d6dde6;border-radius:10px;font-size:12px;color:#0d1e34;background:#fff">
+            <option value="all">All locations</option>
+          </select>
+          <button onclick="loadCsvManageData()" style="padding:8px 14px;border:1px solid #d6dde6;border-radius:10px;font-size:12px;color:#0d1e34;background:#fff;cursor:pointer;font-weight:700">Refresh</button>
+          <div id="csvManageStatus" style="font-size:12px;color:#6b7a8c;margin-left:auto"></div>
+        </div>
+        <div id="csvManageTableWrap" style="border:1px solid #e6ecf2;border-radius:12px;overflow:hidden">
+          <div style="padding:24px;text-align:center;color:#6b7a8c;font-size:13px">Click <b>Refresh</b> to load.</div>
+        </div>
       </div>
     </div>
   </div>
@@ -2284,9 +2307,177 @@
     function openGlobalCsvImport(){
       document.getElementById('globalCsvSummary').innerHTML = '';
       document.getElementById('globalCsvOv').style.display = 'flex';
+      switchGlobalCsvTab('upload');
     }
     function closeGlobalCsvImport(){
       document.getElementById('globalCsvOv').style.display = 'none';
+    }
+    function switchGlobalCsvTab(tab){
+      const upBtn=document.getElementById('csvTabUploadBtn');
+      const mgBtn=document.getElementById('csvTabManageBtn');
+      const upPane=document.getElementById('csvTabUpload');
+      const mgPane=document.getElementById('csvTabManage');
+      const isUp = tab==='upload';
+      upPane.style.display = isUp ? '' : 'none';
+      mgPane.style.display = isUp ? 'none' : '';
+      upBtn.style.color = isUp ? '#0d1e34' : '#6b7a8c';
+      upBtn.style.borderBottom = isUp ? '2px solid #0d1e34' : '2px solid transparent';
+      mgBtn.style.color = isUp ? '#6b7a8c' : '#0d1e34';
+      mgBtn.style.borderBottom = isUp ? '2px solid transparent' : '2px solid #0d1e34';
+      if(!isUp && !window.__csvManageLoaded) loadCsvManageData();
+    }
+
+    // ── Manage imports: list + filters + delete ──
+    let __csvManageRows = [];
+
+    async function loadCsvManageData(){
+      const status=document.getElementById('csvManageStatus');
+      const wrap=document.getElementById('csvManageTableWrap');
+      status.textContent = 'Loading…';
+      wrap.innerHTML = '<div style="padding:24px;text-align:center;color:#6b7a8c;font-size:13px">Loading bookings…</div>';
+      const client = getSupabaseClient();
+      if(!client){ status.textContent='Supabase not connected'; return; }
+      try{
+        // Pull lightweight columns only — we aggregate client-side.
+        const { data, error } = await client
+          .from('bookings')
+          .select('booking_ref,booker,check_in_on,month_key,total,location,partner_name,booking_type')
+          .order('check_in_on',{ascending:false})
+          .limit(20000);
+        if(error) throw error;
+        __csvManageRows = data || [];
+        window.__csvManageLoaded = true;
+        // Populate filters
+        const months = [...new Set(__csvManageRows.map(r=>r.month_key).filter(Boolean))].sort().reverse();
+        const locs = [...new Set(__csvManageRows.map(r=>r.location||'Unknown').filter(Boolean))].sort();
+        const monthSel=document.getElementById('csvManageMonth');
+        const locSel=document.getElementById('csvManageLoc');
+        const curMonth=monthSel.value, curLoc=locSel.value;
+        monthSel.innerHTML='<option value="all">All months</option>'+months.map(m=>`<option value="${m}" ${curMonth===m?'selected':''}>${m}</option>`).join('');
+        locSel.innerHTML='<option value="all">All locations</option>'+locs.map(l=>`<option value="${escapeAttr(l)}" ${curLoc===l?'selected':''}>${escapeHtml(l)}</option>`).join('');
+        status.textContent = `${__csvManageRows.length} booking${__csvManageRows.length===1?'':'s'} in DB`;
+        renderCsvManageTable();
+      }catch(e){
+        wrap.innerHTML = `<div style="padding:20px;color:#c43c3c;font-size:13px">Could not load: ${escapeHtml(e?.message||'unknown')}</div>`;
+        status.textContent='';
+      }
+    }
+
+    function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+    function escapeAttr(s){ return escapeHtml(s).replace(/"/g,'&quot;'); }
+
+    function renderCsvManageTable(){
+      const wrap=document.getElementById('csvManageTableWrap');
+      const monthFilter=document.getElementById('csvManageMonth').value;
+      const locFilter=document.getElementById('csvManageLoc').value;
+      const filtered = __csvManageRows.filter(r=>{
+        if(monthFilter!=='all' && r.month_key!==monthFilter) return false;
+        if(locFilter!=='all' && (r.location||'Unknown')!==locFilter) return false;
+        return true;
+      });
+      // Group by (month_key, location) — these are the deletable buckets
+      const groups = {};
+      filtered.forEach(r=>{
+        const m=r.month_key||'(no date)';
+        const l=r.location||'Unknown';
+        const key=m+'||'+l;
+        if(!groups[key]) groups[key]={month:m,location:l,count:0,revenue:0,partnerCount:0,directCount:0};
+        groups[key].count++;
+        groups[key].revenue += Number(r.total||0);
+        if(r.partner_name && r.booking_type!=='direct') groups[key].partnerCount++;
+        else groups[key].directCount++;
+      });
+      const rows = Object.values(groups).sort((a,b)=>{
+        if(a.month!==b.month) return b.month.localeCompare(a.month);
+        return a.location.localeCompare(b.location);
+      });
+      if(!rows.length){
+        wrap.innerHTML='<div style="padding:24px;text-align:center;color:#6b7a8c;font-size:13px">No bookings match this filter.</div>';
+        return;
+      }
+      const totals = rows.reduce((acc,r)=>({count:acc.count+r.count,revenue:acc.revenue+r.revenue}),{count:0,revenue:0});
+      wrap.innerHTML = `
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead style="background:#f4f6fa;color:#0d1e34">
+            <tr>
+              <th style="text-align:left;padding:10px 14px;font-weight:700">Month</th>
+              <th style="text-align:left;padding:10px 14px;font-weight:700">Location</th>
+              <th style="text-align:right;padding:10px 14px;font-weight:700">Bookings</th>
+              <th style="text-align:right;padding:10px 14px;font-weight:700">Partner / Direct</th>
+              <th style="text-align:right;padding:10px 14px;font-weight:700">Revenue</th>
+              <th style="text-align:right;padding:10px 14px;font-weight:700">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map(r=>`
+              <tr style="border-top:1px solid #e6ecf2">
+                <td style="padding:10px 14px;font-family:'DM Mono',monospace">${escapeHtml(r.month)}</td>
+                <td style="padding:10px 14px;font-weight:600">${escapeHtml(r.location)}</td>
+                <td style="padding:10px 14px;text-align:right">${r.count}</td>
+                <td style="padding:10px 14px;text-align:right;color:#6b7a8c;font-size:12px">${r.partnerCount} / ${r.directCount}</td>
+                <td style="padding:10px 14px;text-align:right;font-family:'DM Mono',monospace">€${r.revenue.toLocaleString('en-GB',{maximumFractionDigits:2})}</td>
+                <td style="padding:10px 14px;text-align:right">
+                  <button onclick="deleteCsvBucket('${escapeAttr(r.month)}','${escapeAttr(r.location)}',${r.count})" style="padding:6px 10px;background:#fff;border:1px solid #c43c3c;color:#c43c3c;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Delete</button>
+                </td>
+              </tr>
+            `).join('')}
+            <tr style="border-top:2px solid #0d1e34;background:#f4f6fa;font-weight:700">
+              <td colspan="2" style="padding:10px 14px">Total (${rows.length} group${rows.length===1?'':'s'})</td>
+              <td style="padding:10px 14px;text-align:right">${totals.count}</td>
+              <td></td>
+              <td style="padding:10px 14px;text-align:right;font-family:'DM Mono',monospace">€${totals.revenue.toLocaleString('en-GB',{maximumFractionDigits:2})}</td>
+              <td></td>
+            </tr>
+          </tbody>
+        </table>
+      `;
+    }
+
+    async function deleteCsvBucket(month, location, count){
+      if(!confirm(`Delete ${count} booking${count===1?'':'s'} for ${location} in ${month}?\n\nThis removes them from the partners view AND from the matching camp hub overview. The CSV file itself is not changed — you can re-import any time.`)) return;
+      const status=document.getElementById('csvManageStatus');
+      status.textContent = 'Deleting…';
+      const client = getSupabaseClient();
+      if(!client){ status.textContent='Supabase not connected'; return; }
+      try{
+        // Delete from the global bookings table (partners view)
+        let q = client.from('bookings').delete();
+        if(month==='(no date)'){ q = q.is('month_key', null); }
+        else { q = q.eq('month_key', month); }
+        if(location==='Unknown'){ q = q.is('location', null); }
+        else { q = q.eq('location', location); }
+        const { error } = await q;
+        if(error) throw error;
+        // ALSO clean the matching camp hub state_store entries.
+        // We don't know the location_id, so we look up by slug from the display name (reverse-map).
+        const slugFromName = Object.entries(CSV_LOC_CODE_TO_NAME).reduce((acc,[code,name])=>{ if(CSV_LOC_CODE_TO_SLUG[code]) acc[name]=CSV_LOC_CODE_TO_SLUG[code]; return acc; },{});
+        const slug = slugFromName[location];
+        if(slug){
+          // Pull current state, filter out the deleted month, write back.
+          const { data: locRow } = await client.from('locations').select('id').eq('slug', slug).maybeSingle();
+          if(locRow?.id){
+            const { data: ssRow } = await client.from('location_state_store').select('state_json').eq('location_id', locRow.id).eq('state_key','camphub_ov_bookings_v3').maybeSingle();
+            if(Array.isArray(ssRow?.state_json)){
+              const kept = ssRow.state_json.filter(b=>{
+                const ci = b.ci ? new Date(b.ci) : null;
+                const monthKey = ci ? ci.toISOString().slice(0,7) : '(no date)';
+                return monthKey !== month;
+              });
+              await client.from('location_state_store').upsert({
+                location_id: locRow.id,
+                state_key: 'camphub_ov_bookings_v3',
+                state_json: kept,
+                updated_at: new Date().toISOString()
+              }, { onConflict: 'location_id,state_key' });
+            }
+          }
+        }
+        status.textContent = `Deleted ${count} booking${count===1?'':'s'}.`;
+        // Reload the manage view
+        await loadCsvManageData();
+      }catch(e){
+        status.textContent = 'Delete failed: '+(e?.message||'unknown');
+      }
     }
 
     // Quote-aware CSV row splitter
@@ -2310,11 +2501,24 @@
       return result;
     }
 
+    const _MONTH_NAME_MAP = {
+      jan:0, feb:1, mar:2, apr:3, may:4, jun:5,
+      jul:6, aug:7, sep:8, oct:9, nov:10, dec:11
+    };
     function parseFlexibleDate(str){
       if(!str) return null;
       str = String(str).trim();
+      // Bookinglayer format: "Thu 30 Apr 2026 10:00:00"
+      let m = str.match(/^[A-Za-z]{3,}\s+(\d{1,2})\s+([A-Za-z]{3,})\s+(\d{4})(?:\s+(\d{1,2}):(\d{1,2}):(\d{1,2}))?/);
+      if(m){
+        const day = +m[1];
+        const monIdx = _MONTH_NAME_MAP[m[2].slice(0,3).toLowerCase()];
+        const year = +m[3];
+        const hh = m[4]? +m[4] : 0, mm = m[5]? +m[5] : 0, ss = m[6]? +m[6] : 0;
+        if(monIdx !== undefined) return new Date(Date.UTC(year, monIdx, day, hh, mm, ss));
+      }
       // ISO YYYY-MM-DD
-      let m = str.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+      m = str.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
       if(m) return new Date(Date.UTC(+m[1], +m[2]-1, +m[3]));
       // DD/MM/YYYY or DD-MM-YYYY
       m = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
