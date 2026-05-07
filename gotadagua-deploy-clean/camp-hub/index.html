@@ -417,13 +417,8 @@ td.r{text-align:right;font-family:'DM Mono',monospace;font-size:12px}
         <select class="fsel" id="ovWeekSel" onchange="renderOverview()"><option value="all">All weeks</option></select>
         <div style="font-size:12px;color:var(--muted)" id="ovWeekInfo"></div>
       </div>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <label class="btn btn-s" style="cursor:pointer;font-size:11px" title="Import Bookinglayer CSV to calculate guest-days automatically">
-          <span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M10 14V4"/><path d="m6.5 7.5 3.5-3.5 3.5 3.5"/><path d="M4 16h12"/></svg></span><span>Import bookings CSV</span></span>
-          <input type="file" accept=".csv" onchange="ovLoadCSV(this)" style="display:none">
-        </label>
-        <span id="ovCsvLabel" style="font-size:11px;color:var(--muted)"></span>
-      </div>
+      <!-- Import bookings CSV button removed (will be replaced by a global, app-wide importer) -->
+      <span id="ovCsvLabel" style="display:none"></span>
     </div>
 
     <!-- KPI row -->
