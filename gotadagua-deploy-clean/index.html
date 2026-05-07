@@ -658,6 +658,7 @@
       </div>
       <div class="topbar-center"></div>
       <div class="topbar-right">
+        <button class="ghost-btn" type="button" onclick="openGlobalCsvImport()" title="Import a Bookinglayer CSV — splits rows by location and feeds every camp hub + partners">Import CSV</button>
         <button class="ghost-btn" type="button" onclick="doSignOut()">Log out</button>
         <div class="user-meta">
           <div class="user-name" id="userName">Miguel</div>
@@ -761,6 +762,27 @@
             </div>
           </div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ Global CSV Import overlay ═══════════════ -->
+  <div id="globalCsvOv" style="display:none;position:fixed;inset:0;background:rgba(13,30,52,.55);backdrop-filter:blur(4px);z-index:9999;align-items:center;justify-content:center;padding:20px">
+    <div style="background:#fff;border-radius:18px;max-width:680px;width:100%;max-height:90vh;overflow:auto;box-shadow:0 24px 64px rgba(13,30,52,.35)">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;padding:22px 24px;border-bottom:1px solid #e6ecf2">
+        <div>
+          <div style="font-family:'DM Serif Display',serif;font-size:22px;color:#0d1e34">Import bookings CSV</div>
+          <div style="font-size:13px;color:#6b7a8c;margin-top:4px;line-height:1.5;max-width:520px">Bookinglayer export. Rows are split by location code (LK, MA, PT, JUN, COL, CKC, SC) and fed into each camp hub and the partners view.</div>
+        </div>
+        <button onclick="closeGlobalCsvImport()" style="background:none;border:none;font-size:22px;color:#6b7a8c;cursor:pointer;padding:0;line-height:1">×</button>
+      </div>
+      <div style="padding:20px 24px">
+        <label style="display:inline-flex;align-items:center;gap:10px;padding:12px 18px;background:#0d1e34;color:#fff;border-radius:12px;cursor:pointer;font-weight:700;font-size:13px">
+          <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 14V4"/><path d="m6.5 7.5 3.5-3.5 3.5 3.5"/><path d="M4 16h12"/></svg>
+          <span>Choose CSV file</span>
+          <input type="file" accept=".csv" style="display:none" onchange="handleGlobalCsvImport(this)">
+        </label>
+        <div id="globalCsvSummary" style="margin-top:16px;font-size:13px;color:#0d1e34;line-height:1.7"></div>
       </div>
     </div>
   </div>
@@ -2236,6 +2258,218 @@
         document.getElementById('loginPassword').focus();
       });
     });
+
+    // ═══════════════════════════════════════════════════════════════
+    //  GLOBAL CSV IMPORT — feeds every camp hub + partners app
+    // ═══════════════════════════════════════════════════════════════
+    // Bookinglayer location code → camp-hub slug (must exist in `locations` table)
+    const CSV_LOC_CODE_TO_SLUG = {
+      'LK': 'sri-lanka',
+      'MA': 'morocco',
+      'PT': 'portugal',
+      'JUN': 'junior-camp'
+    };
+    // Display name per code (matches existing partners app `LOCATION_NAMES`)
+    const CSV_LOC_CODE_TO_NAME = {
+      'LK': 'Surf Camp Ahangama',
+      'MA': 'Tamraght Camp',
+      'PT': 'Surf Camp Portugal',
+      'JUN': 'Junior Camp Caparica',
+      'COL': 'Coliving Portugal Caparica',
+      'COLON': 'Kids Camp Caparica',
+      'CKC': 'Kids Camp Caparica',
+      'SC': 'Surf School Caparica'
+    };
+
+    function openGlobalCsvImport(){
+      document.getElementById('globalCsvSummary').innerHTML = '';
+      document.getElementById('globalCsvOv').style.display = 'flex';
+    }
+    function closeGlobalCsvImport(){
+      document.getElementById('globalCsvOv').style.display = 'none';
+    }
+
+    // Quote-aware CSV row splitter
+    function csvSplitRow(line){
+      const result = [];
+      let cur = '';
+      let inQuote = false;
+      for(let i = 0; i < line.length; i++){
+        const c = line[i];
+        if(c === '"'){
+          if(inQuote && line[i+1] === '"'){ cur += '"'; i++; }
+          else inQuote = !inQuote;
+        } else if(c === ',' && !inQuote){
+          result.push(cur);
+          cur = '';
+        } else {
+          cur += c;
+        }
+      }
+      result.push(cur);
+      return result;
+    }
+
+    function parseFlexibleDate(str){
+      if(!str) return null;
+      str = String(str).trim();
+      // ISO YYYY-MM-DD
+      let m = str.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+      if(m) return new Date(Date.UTC(+m[1], +m[2]-1, +m[3]));
+      // DD/MM/YYYY or DD-MM-YYYY
+      m = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+      if(m) return new Date(Date.UTC(+m[3], +m[2]-1, +m[1]));
+      // Excel serial (number)
+      if(/^\d+(\.\d+)?$/.test(str)){
+        const days = parseFloat(str) - 25569;
+        return new Date(days * 86400000);
+      }
+      // Last resort
+      const t = Date.parse(str);
+      return isNaN(t) ? null : new Date(t);
+    }
+
+    function parseGlobalCsv(text){
+      text = String(text || '').replace(/^﻿/, '');
+      const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
+      if(lines.length < 2) return [];
+      const header = csvSplitRow(lines[0]).map(s => s.trim().toLowerCase());
+      const findCol = (...names) => {
+        for(const n of names){
+          const idx = header.indexOf(n.toLowerCase());
+          if(idx >= 0) return idx;
+        }
+        return -1;
+      };
+      const idx = {
+        ref: findCol('booking #','booking','booking ref','booking reference','booking number','reference','reservation reference','booking id','id'),
+        guest: findCol('booker','guest','customer','guest name','customer name','lead guest','main guest','name'),
+        checkin: findCol('check-in on','check in on','check-in','check in','arrival date','arrival','check-in date','start date'),
+        checkout: findCol('check-out on','check out on','check-out','check out','departure date','departure','check-out date','end date'),
+        status: findCol('status','booking status'),
+        pax: findCol('pax','guests','persons','number of guests','total guests'),
+        location: findCol('location','location code'),
+        partner: findCol('partner','agent','affiliate'),
+        commission: findCol('partner commission %','partner commission','commission %','commission'),
+        package: findCol('package','accommodation','room','product','product name','product code','package code'),
+        total: findCol('total','total price','price total','amount','gross')
+      };
+      const rows = [];
+      for(let i = 1; i < lines.length; i++){
+        const cells = csvSplitRow(lines[i]);
+        if(!cells.length) continue;
+        const get = (n) => idx[n] >= 0 ? (cells[idx[n]] || '').trim() : '';
+        const ref = get('ref'); if(!ref) continue;
+        const ci = parseFlexibleDate(get('checkin'));
+        const co = parseFlexibleDate(get('checkout'));
+        const ciMs = ci ? ci.getTime() : null;
+        const coMs = co ? co.getTime() : null;
+        const nights = (ciMs && coMs) ? Math.max(1, Math.round((coMs - ciMs) / 86400000)) : 7;
+        const locCell = get('location');
+        const locationCode = (locCell.split(',')[0] || '').trim().toUpperCase();
+        rows.push({
+          ref,
+          guest: get('guest'),
+          status: (get('status') || 'confirmed').toLowerCase(),
+          checkinMs: ciMs,
+          checkoutMs: coMs,
+          nights,
+          pax: parseInt(get('pax'), 10) || 1,
+          locationCode,
+          partner: get('partner') || 'Direct Bookings',
+          commissionPct: parseFloat(String(get('commission')).replace(',','.')) || 0,
+          package: get('package'),
+          gross: parseFloat(String(get('total')).replace(/[^\d.\-]/g,'')) || 0
+        });
+      }
+      return rows;
+    }
+
+    async function handleGlobalCsvImport(input){
+      const file = input.files && input.files[0];
+      if(!file) return;
+      const summaryEl = document.getElementById('globalCsvSummary');
+      summaryEl.innerHTML = '<div style="color:#6b7a8c">Reading file…</div>';
+      let text = '';
+      try{ text = await file.text(); }catch(e){
+        summaryEl.innerHTML = '<div style="color:#c43c3c">Could not read the file.</div>';
+        return;
+      }
+      const rows = parseGlobalCsv(text);
+      if(!rows.length){
+        summaryEl.innerHTML = '<div style="color:#c43c3c">No bookings found in the CSV. Check the column headers.</div>';
+        return;
+      }
+      // Group by location code
+      const byCode = {};
+      rows.forEach(r => {
+        const code = r.locationCode || 'UNKNOWN';
+        if(!byCode[code]) byCode[code] = [];
+        byCode[code].push(r);
+      });
+      const client = getSupabaseClient();
+      if(!client){
+        summaryEl.innerHTML = '<div style="color:#c43c3c">Supabase not connected — cannot save.</div>';
+        return;
+      }
+      const parts = [];
+      let okBookings = 0;
+      let okLocations = 0;
+      for(const code of Object.keys(byCode)){
+        const bookings = byCode[code];
+        const locName = CSV_LOC_CODE_TO_NAME[code] || code;
+        const slug = CSV_LOC_CODE_TO_SLUG[code];
+        if(!slug){
+          parts.push(`<div>⚠ <b>${bookings.length}</b> booking${bookings.length===1?'':'s'} for <b>${locName}</b> (${code}) — no camp hub yet, kept for partners only</div>`);
+          continue;
+        }
+        // Resolve location_id from slug
+        const { data: locRow, error: locErr } = await client.from('locations').select('id').eq('slug', slug).maybeSingle();
+        if(locErr || !locRow){
+          parts.push(`<div>⚠ <b>${bookings.length}</b> booking${bookings.length===1?'':'s'} for <b>${locName}</b> — location "${slug}" not found in Supabase</div>`);
+          continue;
+        }
+        const locationId = locRow.id;
+        // Build the camp-hub-compatible array (matches the shape `ovBookings` expects)
+        const ovBookings = bookings.map(r => ({
+          ref: r.ref,
+          name: r.guest || ('Booking ' + r.ref),
+          status: ['paid','confirmed'].includes(r.status) ? r.status : 'confirmed',
+          ci: r.checkinMs,
+          co: r.checkoutMs,
+          pax: r.pax,
+          accommodation: r.package || '',
+          nights: r.nights,
+          // Extra fields used by the partners view + future analytics
+          partner: r.partner,
+          commission_pct: r.commissionPct,
+          gross: r.gross,
+          location_code: code,
+          location_name: locName
+        }));
+        const { error: writeErr } = await client.from('location_state_store').upsert({
+          location_id: locationId,
+          state_key: 'camphub_ov_bookings_v3',
+          state_json: ovBookings,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'location_id,state_key' });
+        if(writeErr){
+          parts.push(`<div style="color:#c43c3c">❌ <b>${bookings.length}</b> booking${bookings.length===1?'':'s'} for <b>${locName}</b> — write failed: ${writeErr.message}</div>`);
+          continue;
+        }
+        okBookings += bookings.length;
+        okLocations += 1;
+        parts.push(`<div style="color:#0a6b32">✅ <b>${bookings.length}</b> booking${bookings.length===1?'':'s'} → <b>${locName}</b></div>`);
+      }
+      summaryEl.innerHTML = `
+        <div style="font-weight:700;margin-bottom:10px;font-size:14px">${okBookings} booking${okBookings===1?'':'s'} imported across ${okLocations} location${okLocations===1?'':'s'}</div>
+        ${parts.join('')}
+        <div style="margin-top:14px;font-size:12px;color:#6b7a8c">Camp hubs read this immediately on next refresh. Partners support coming next.</div>
+      `;
+      try{ showToast(`Imported ${okBookings} bookings across ${okLocations} location${okLocations===1?'':'s'}`); }catch(_){}
+      // Reset the file input so re-selecting the same file fires onchange again
+      input.value = '';
+    }
   </script>
 </body>
 </html>
