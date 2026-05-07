@@ -2824,9 +2824,15 @@ function syncSelectedBookingsToCampTab(){
   },'*');
   toast('Sending bookings to Camp Tab...');
 }
-function renderOverviewBookingsPanel(weeks,selectedWeekValue){
+function renderOverviewBookingsPanel(weeks,selectedWeekValue,allLedger){
   const panel=document.getElementById('ovBookingsPanel');
   if(!panel) return;
+  // Default to S.ledger filtered by selection (same as renderOverview does); panel is also called
+  // standalone from elsewhere occasionally — keeping the fallback safe.
+  if(!Array.isArray(allLedger)){
+    const selectedMonth=document.getElementById('ovMonthSel')?.value||'all';
+    allLedger=selectedMonth==='all'?S.ledger:S.ledger.filter(x=>monthKey(x.date)===selectedMonth);
+  }
   if(!ovBookings.length){
     panel.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
       <div>
@@ -2839,16 +2845,47 @@ function renderOverviewBookingsPanel(weeks,selectedWeekValue){
   }
   const bookings=ovBookingsForWeeks(weeks);
   const canSync=selectedWeekValue&&selectedWeekValue!=='all';
+  const totalGuestDays=sum(bookings,b=>ovBookingOverlapNights(b,weeks)*(b.pax||1));
+  // Bookinglayer revenue summary (uses the `gross` field stamped by the global import)
+  const blGross=sum(bookings,b=>Number(b.gross||0));
+  const blPartnerGross=sum(bookings.filter(b=>b.partner&&b.partner!=='Direct Bookings'),b=>Number(b.gross||0));
+  const blDirectGross=blGross-blPartnerGross;
+  const blPartnerCount=bookings.filter(b=>b.partner&&b.partner!=='Direct Bookings').length;
+  const blDirectCount=bookings.length-blPartnerCount;
+  const foodExp=sum(allLedger.filter(x=>x.type==='expense'&&x.businessArea==='Food'),x=>entryLocalDisplayAmount(x));
+  const foodPerDay=totalGuestDays>0?Math.round(foodExp/totalGuestDays):0;
   panel.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px">
     <div>
       <div style="font-family:'DM Serif Display',serif;font-size:18px;color:var(--navy)">Imported bookings</div>
       <div style="font-size:12px;color:var(--muted);margin-top:3px">${bookings.length} bookings · ${ovBookingGuestCount(bookings)} guests · real arrival/departure visibility</div>
     </div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-      <span class="badge badge-blue">${sum(bookings,b=>ovBookingOverlapNights(b,weeks)*(b.pax||1))} guest-days</span>
+      <span class="badge badge-blue">${totalGuestDays} guest-days</span>
       ${canSync?`<button class="btn btn-s" onclick="syncSelectedBookingsToCampTab()">Sync selected week to Camp Tab</button>`:''}
     </div>
-  </div>`;
+  </div>
+  ${blGross>0?`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin-bottom:14px">
+    <div style="background:var(--bg);border-radius:10px;padding:10px 12px">
+      <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin-bottom:4px">Bookinglayer revenue</div>
+      <div style="font-family:'DM Serif Display',serif;font-size:20px;color:var(--green)">${euro(blGross)}</div>
+      <div style="font-size:10px;color:var(--muted);margin-top:2px">${bookings.length} booking${bookings.length===1?'':'s'} in selection</div>
+    </div>
+    <div style="background:var(--bg);border-radius:10px;padding:10px 12px">
+      <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin-bottom:4px">Partner bookings</div>
+      <div style="font-family:'DM Serif Display',serif;font-size:18px;color:var(--navy)">${euro(blPartnerGross)}</div>
+      <div style="font-size:10px;color:var(--muted);margin-top:2px">${blPartnerCount} via partners</div>
+    </div>
+    <div style="background:var(--bg);border-radius:10px;padding:10px 12px">
+      <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin-bottom:4px">Direct bookings</div>
+      <div style="font-family:'DM Serif Display',serif;font-size:18px;color:var(--navy)">${euro(blDirectGross)}</div>
+      <div style="font-size:10px;color:var(--muted);margin-top:2px">${blDirectCount} direct</div>
+    </div>
+    <div style="background:var(--navy);border-radius:10px;padding:10px 12px">
+      <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:#7aabcc;font-weight:700;margin-bottom:4px">Food cost / guest-day</div>
+      <div style="font-family:'DM Serif Display',serif;font-size:20px;color:#fff">${foodPerDay>0?lkr(foodPerDay):'—'}</div>
+      <div style="font-size:10px;color:#7aabcc;margin-top:2px">${totalGuestDays>0?`${lkr(Math.round(foodExp))} ÷ ${totalGuestDays} g-d`:'No guest-days yet'}</div>
+    </div>
+  </div>`:''}`;
   if(!bookings.length){
     panel.innerHTML+=`<div style="font-size:12px;color:var(--muted)">No imported bookings overlap this selection.</div>`;
     return;
@@ -3144,7 +3181,7 @@ function renderOverview(){
     ${kpi('Guest-days',gdSource,guestDays>0?guestDays+'d':'—','kv-ocean')}
     ${kpi('Gross Profit','Revenue − all expenses',lkr(grossProfitLocal),grossProfitLocal>=0?'kv-green':'kv-red',euro(grossProfitEur))}
   `;
-  renderOverviewBookingsPanel(weeks,selectedWid);
+  renderOverviewBookingsPanel(weeks,selectedWid,allLedger);
 
   document.getElementById('ovCatPanels').style.gridTemplateColumns='1fr 1fr';
   document.getElementById('ovCatPanels').innerHTML=`

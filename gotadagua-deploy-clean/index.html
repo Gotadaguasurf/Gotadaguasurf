@@ -2405,7 +2405,7 @@
               <th style="text-align:right;padding:10px 14px;font-weight:700">Bookings</th>
               <th style="text-align:right;padding:10px 14px;font-weight:700">Partner / Direct</th>
               <th style="text-align:right;padding:10px 14px;font-weight:700">Revenue</th>
-              <th style="text-align:right;padding:10px 14px;font-weight:700">Action</th>
+              <th style="text-align:right;padding:10px 14px;font-weight:700;min-width:280px">Delete from…</th>
             </tr>
           </thead>
           <tbody>
@@ -2417,7 +2417,11 @@
                 <td style="padding:10px 14px;text-align:right;color:#6b7a8c;font-size:12px">${r.partnerCount} / ${r.directCount}</td>
                 <td style="padding:10px 14px;text-align:right;font-family:'DM Mono',monospace">€${r.revenue.toLocaleString('en-GB',{maximumFractionDigits:2})}</td>
                 <td style="padding:10px 14px;text-align:right">
-                  <button onclick="deleteCsvBucket('${escapeAttr(r.month)}','${escapeAttr(r.location)}',${r.count})" style="padding:6px 10px;background:#fff;border:1px solid #c43c3c;color:#c43c3c;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Delete</button>
+                  <div style="display:inline-flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
+                    <button onclick="deleteCsvBucket('${escapeAttr(r.month)}','${escapeAttr(r.location)}',${r.count},'all')" title="Remove from both partners (bookings table) and camp hub (location_state_store)" style="padding:6px 10px;background:#c43c3c;border:1px solid #c43c3c;color:#fff;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">All</button>
+                    <button onclick="deleteCsvBucket('${escapeAttr(r.month)}','${escapeAttr(r.location)}',${r.count},'partners')" title="Remove only from the partners view (bookings table). Camp hub keeps its data." style="padding:6px 10px;background:#fff;border:1px solid #c43c3c;color:#c43c3c;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Partners</button>
+                    <button onclick="deleteCsvBucket('${escapeAttr(r.month)}','${escapeAttr(r.location)}',${r.count},'camphub')" title="Remove only from the camp hub overview. Partners keeps its data." style="padding:6px 10px;background:#fff;border:1px solid #c43c3c;color:#c43c3c;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Camp hub</button>
+                  </div>
                 </td>
               </tr>
             `).join('')}
@@ -2433,46 +2437,53 @@
       `;
     }
 
-    async function deleteCsvBucket(month, location, count){
-      if(!confirm(`Delete ${count} booking${count===1?'':'s'} for ${location} in ${month}?\n\nThis removes them from the partners view AND from the matching camp hub overview. The CSV file itself is not changed — you can re-import any time.`)) return;
+    async function deleteCsvBucket(month, location, count, scope){
+      scope = scope || 'all';
+      const scopeLabel = scope==='all' ? 'partners view AND camp hub overview'
+                       : scope==='partners' ? 'partners view only (camp hub keeps the data)'
+                       : 'camp hub overview only (partners keeps the data)';
+      if(!confirm(`Delete ${count} booking${count===1?'':'s'} for ${location} in ${month}?\n\nScope: ${scopeLabel}.\nThe CSV file itself is not changed — you can re-import any time.`)) return;
       const status=document.getElementById('csvManageStatus');
       status.textContent = 'Deleting…';
       const client = getSupabaseClient();
       if(!client){ status.textContent='Supabase not connected'; return; }
       try{
-        // Delete from the global bookings table (partners view)
-        let q = client.from('bookings').delete();
-        if(month==='(no date)'){ q = q.is('month_key', null); }
-        else { q = q.eq('month_key', month); }
-        if(location==='Unknown'){ q = q.is('location', null); }
-        else { q = q.eq('location', location); }
-        const { error } = await q;
-        if(error) throw error;
-        // ALSO clean the matching camp hub state_store entries.
-        // We don't know the location_id, so we look up by slug from the display name (reverse-map).
-        const slugFromName = Object.entries(CSV_LOC_CODE_TO_NAME).reduce((acc,[code,name])=>{ if(CSV_LOC_CODE_TO_SLUG[code]) acc[name]=CSV_LOC_CODE_TO_SLUG[code]; return acc; },{});
-        const slug = slugFromName[location];
-        if(slug){
-          // Pull current state, filter out the deleted month, write back.
-          const { data: locRow } = await client.from('locations').select('id').eq('slug', slug).maybeSingle();
-          if(locRow?.id){
-            const { data: ssRow } = await client.from('location_state_store').select('state_json').eq('location_id', locRow.id).eq('state_key','camphub_ov_bookings_v3').maybeSingle();
-            if(Array.isArray(ssRow?.state_json)){
-              const kept = ssRow.state_json.filter(b=>{
-                const ci = b.ci ? new Date(b.ci) : null;
-                const monthKey = ci ? ci.toISOString().slice(0,7) : '(no date)';
-                return monthKey !== month;
-              });
-              await client.from('location_state_store').upsert({
-                location_id: locRow.id,
-                state_key: 'camphub_ov_bookings_v3',
-                state_json: kept,
-                updated_at: new Date().toISOString()
-              }, { onConflict: 'location_id,state_key' });
+        // 1) Delete from global bookings (partners view) when scope includes partners
+        if(scope==='all' || scope==='partners'){
+          let q = client.from('bookings').delete();
+          if(month==='(no date)'){ q = q.is('month_key', null); }
+          else { q = q.eq('month_key', month); }
+          if(location==='Unknown'){ q = q.is('location', null); }
+          else { q = q.eq('location', location); }
+          const { error } = await q;
+          if(error) throw error;
+        }
+        // 2) Clean matching camp hub state_store entries when scope includes camphub
+        if(scope==='all' || scope==='camphub'){
+          // Reverse-map display name → camp hub slug to find the right location row
+          const slugFromName = Object.entries(CSV_LOC_CODE_TO_NAME).reduce((acc,[code,name])=>{ if(CSV_LOC_CODE_TO_SLUG[code]) acc[name]=CSV_LOC_CODE_TO_SLUG[code]; return acc; },{});
+          const slug = slugFromName[location];
+          if(slug){
+            const { data: locRow } = await client.from('locations').select('id').eq('slug', slug).maybeSingle();
+            if(locRow?.id){
+              const { data: ssRow } = await client.from('location_state_store').select('state_json').eq('location_id', locRow.id).eq('state_key','camphub_ov_bookings_v3').maybeSingle();
+              if(Array.isArray(ssRow?.state_json)){
+                const kept = ssRow.state_json.filter(b=>{
+                  const ci = b.ci ? new Date(b.ci) : null;
+                  const monthKey = ci ? ci.toISOString().slice(0,7) : '(no date)';
+                  return monthKey !== month;
+                });
+                await client.from('location_state_store').upsert({
+                  location_id: locRow.id,
+                  state_key: 'camphub_ov_bookings_v3',
+                  state_json: kept,
+                  updated_at: new Date().toISOString()
+                }, { onConflict: 'location_id,state_key' });
+              }
             }
           }
         }
-        status.textContent = `Deleted ${count} booking${count===1?'':'s'}.`;
+        status.textContent = `Deleted ${count} booking${count===1?'':'s'} (${scope}).`;
         // Reload the manage view
         await loadCsvManageData();
       }catch(e){
