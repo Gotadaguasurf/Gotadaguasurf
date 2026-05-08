@@ -8,6 +8,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="/supabase-config.js"></script>
+<script src="/error-monitor.js"></script>
 <style>
 :root{
   --navy:#28394b;--ocean:#1e6fa8;--ocean-light:#3b9dd4;
@@ -4626,6 +4627,15 @@ function extractWeekRefFromCampcloseId(id){
   return i>0?rest.slice(0,i):'';
 }
 async function delLedger(id){
+  // Explicit confirmation — every delete is logged in audit_log on Supabase but
+  // the user still gets a clear preview before any destructive action.
+  const entry = S.ledger.find(x=>x.id===id);
+  if(!entry) return;
+  const typeLbl = entry.type==='income' ? 'revenue' : entry.type==='transfer' ? 'transfer' : 'expense';
+  const amount = entry.amountLocal ? ('LKR '+Number(entry.amountLocal).toLocaleString('en-GB',{maximumFractionDigits:2})) : ('€'+Number(entry.amount||0).toFixed(2));
+  const note = entry.description ? ` "${String(entry.description).slice(0,60)}"` : '';
+  const date = entry.date || '';
+  if(!confirm(`Delete ${typeLbl} of ${amount}${note} on ${date}?\n\nThis is permanent and removes it from every other device in real-time.\n(All deletes are recorded in the audit log.)`)) return;
   HUB_SUPPRESS_LEDGER_RT=true; // set BEFORE any state_store writes so own echoes are reliably suppressed
   // Optimistic: remove locally immediately for snappy UI
   const backup=S.ledger.find(x=>x.id===id);
