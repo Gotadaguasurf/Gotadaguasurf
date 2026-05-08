@@ -1886,6 +1886,10 @@ function saveState() {
 }
 
 // ── INIT STATE ───────────────────────────────────────────────────────────────
+// Set to false in production so a fresh install starts with empty state.
+// Supabase data is loaded a moment later by loadFromSupabase() and replaces these.
+// Set to true ONLY for local demos / screenshots without a Supabase connection.
+const LOAD_PARTNERS_DEMO = false;
 let allBookings, partnerEmails, partnerContacts, partnerRates, partnerCollects, partnerTypes, statusStore;
 const saved = loadState();
 if (saved && (saved.version === 2 || saved.version === 3 || saved.version === 4 || saved.version === 5)) {
@@ -1898,7 +1902,7 @@ if (saved && (saved.version === 2 || saved.version === 3 || saved.version === 4 
   statusStore = saved.statuses || {};
   refreshPartnerTypesFromBookings();
   document.getElementById('storageNotice').style.display = 'flex';
-} else {
+} else if (LOAD_PARTNERS_DEMO) {
   allBookings = SEED_BOOKINGS.map(b=>({...b}));
   partnerEmails = {...SEED_EMAILS};
   partnerContacts = {...SEED_CONTACTS};
@@ -1907,6 +1911,15 @@ if (saved && (saved.version === 2 || saved.version === 3 || saved.version === 4 
   partnerTypes = {...SEED_TYPES};
   statusStore = {};
   refreshPartnerTypesFromBookings();
+} else {
+  // Production fresh-install path: empty until Supabase loads
+  allBookings = [];
+  partnerEmails = {};
+  partnerContacts = {};
+  partnerRates = {};
+  partnerCollects = {};
+  partnerTypes = {};
+  statusStore = {};
   saveState();
 }
 
