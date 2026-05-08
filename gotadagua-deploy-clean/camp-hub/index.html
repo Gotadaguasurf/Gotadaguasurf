@@ -2893,20 +2893,10 @@ function renderOverviewBookingsPanel(weeks,selectedWeekValue,allLedger){
     panel.innerHTML+=`<div style="font-size:12px;color:var(--muted)">No imported bookings overlap this selection.</div>`;
     return;
   }
-  panel.innerHTML+=`<div style="overflow:auto"><table>
-    <thead><tr><th>Guest</th><th>Arrival</th><th>Departure</th><th class="r">Nights in selection</th><th class="r">Pax</th><th>Ref</th></tr></thead>
-    <tbody>
-      ${bookings.slice(0,24).map(b=>`<tr>
-        <td><div style="font-weight:700;color:var(--navy)">${b.name}</div><div style="font-size:11px;color:var(--muted);margin-top:2px">${ovBookingDateMeta(b)}${b.accommodation?` · ${b.accommodation}`:''}</div></td>
-        <td>${ovBookingLabel(b.ci)}</td>
-        <td>${ovBookingLabel(b.co)}</td>
-        <td class="r">${ovBookingOverlapNights(b,weeks)}</td>
-        <td class="r">${b.pax}</td>
-        <td style="font-size:11px;color:var(--muted)">${b.ref||'—'}</td>
-      </tr>`).join('')}
-    </tbody>
-  </table></div>
-  ${bookings.length>24?`<div style="font-size:11px;color:var(--muted);margin-top:10px">Showing first 24 bookings for this selection.</div>`:''}`;
+  // Per-guest detail moved to Live Workspace → Import CSV → Manage tab.
+  // The Overview keeps only aggregate KPI cards (revenue / partner / direct /
+  // food cost per guest-day). Showing 800+ guest names here was noise, not signal.
+  panel.innerHTML+=`<div style="font-size:11px;color:var(--muted);padding:8px 0">Need to inspect individual bookings? Open <b>Live Workspace → Import CSV → Manage</b> for the per-(month × location) breakdown with status, partner and revenue.</div>`;
 }
 
 function fallbackGuestDaysForWeeks(weeks){
