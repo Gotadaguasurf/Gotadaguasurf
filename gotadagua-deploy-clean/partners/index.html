@@ -29,10 +29,12 @@ header{background:var(--navy);padding:0 24px;display:flex;align-items:center;jus
 .nav-tab{padding:7px 14px;font-size:12px;font-weight:700;color:#7aabcc;cursor:pointer;border:none;border-radius:8px;background:transparent;transition:all .2s;font-family:'Outfit',sans-serif}
 .nav-tab:hover{color:#fff;background:rgba(255,255,255,.08)}.nav-tab.active{color:#fff;background:var(--ocean)}
 main{max-width:1400px;margin:0 auto;padding:32px 48px}
-.kpi-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:28px}
-.kpi{background:#fff;border-radius:var(--r);padding:20px 22px;border:1px solid var(--border);box-shadow:var(--sh);transition:transform .2s}.kpi:hover{transform:translateY(-2px)}
+.kpi-strip{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:28px}
+@media (max-width: 1280px){ .kpi-strip{grid-template-columns:repeat(2,1fr)} }
+@media (min-width: 1281px) and (max-width: 1599px){ .kpi-strip{grid-template-columns:repeat(3,1fr)} }
+.kpi{background:#fff;border-radius:var(--r);padding:18px 18px;border:1px solid var(--border);box-shadow:var(--sh);transition:transform .2s}.kpi:hover{transform:translateY(-2px)}
 .kpi-label{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:600;margin-bottom:6px}
-.kpi-value{font-family:'DM Serif Display',serif;font-size:26px;color:var(--navy)}.kpi-value.accent{color:var(--ocean)}
+.kpi-value{font-family:'DM Serif Display',serif;font-size:23px;color:var(--navy);line-height:1.15}.kpi-value.accent{color:var(--ocean)}
 .kpi-sub{font-size:11px;color:var(--muted);margin-top:3px}
 .section-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
 .section-title{font-family:'DM Serif Display',serif;font-size:21px;color:var(--navy)}
@@ -218,7 +220,7 @@ td{padding:13px 16px;font-size:13px;vertical-align:middle}td.r{text-align:right;
   <div class="header-right">
     <span class="data-badge" id="dataBadge">455 bookings · January–March 2026</span>
     <button class="settings-btn" onclick="openSettings()">Partners &amp; Rates</button>
-    <!-- Import CSV button removed (will be replaced by a global, app-wide importer) -->
+    <button class="settings-btn" onclick="openGlobalImportFromPartners()" title="Open the global Bookinglayer CSV import / manage in the Live Workspace">Manage / Import bookings</button>
   </div>
 </header>
 
@@ -2774,6 +2776,15 @@ window.showPage = page => {
     (page==='partners'&&i===0)||(page==='direct'&&i===1)||(page==='overview'&&i===2)));
   if(page==='overview')renderOverviewPage();
   if(page==='direct')renderDirectPage();
+};
+
+// ── GLOBAL IMPORT SHORTCUT ───────────────────────────────────────────────────
+// The CSV import lives at the Live Workspace level (/) because it feeds every
+// camp hub plus the partners view. This shortcut redirects there with a query
+// param that auto-opens the import modal.
+window.openGlobalImportFromPartners = () => {
+  // Same origin redirect — Live Workspace at "/" picks up ?openImport=1 and opens the modal
+  window.location.href = '/?openImport=1';
 };
 
 // ── SETTINGS MODAL ───────────────────────────────────────────────────────────

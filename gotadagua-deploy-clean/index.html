@@ -2232,6 +2232,19 @@
       showPage(targetPage, { pushHistory:false });
       const nextHash = targetPage === 'hub' ? '' : `#${targetPage}`;
       window.history.replaceState({ page:targetPage }, '', `${window.location.pathname}${nextHash}`);
+      // Auto-open the global CSV import modal when arriving with ?openImport=1
+      // (used by the "Manage / Import bookings" shortcut in the partners app).
+      // Strip the query param afterwards so a refresh doesn't reopen it.
+      try{
+        const sp = new URLSearchParams(window.__initialAuthSearch || window.location.search || '');
+        if(sp.get('openImport') === '1' && typeof openGlobalCsvImport === 'function'){
+          openGlobalCsvImport();
+          // Default to the Manage tab since the shortcut is named "Manage / Import bookings"
+          if(typeof switchGlobalCsvTab === 'function') switchGlobalCsvTab('manage');
+          window.__initialAuthSearch = '';
+          window.history.replaceState({ page:targetPage }, '', `${window.location.pathname}${nextHash}`);
+        }
+      }catch(_e){}
     }
 
     document.addEventListener('DOMContentLoaded',()=>{
