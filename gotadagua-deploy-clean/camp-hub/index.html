@@ -2853,7 +2853,9 @@ function renderOverviewBookingsPanel(weeks,selectedWeekValue,allLedger){
   const blPartnerCount=bookings.filter(b=>b.partner&&b.partner!=='Direct Bookings').length;
   const blDirectCount=bookings.length-blPartnerCount;
   const foodExp=sum(allLedger.filter(x=>x.type==='expense'&&x.businessArea==='Food'),x=>entryLocalDisplayAmount(x));
+  const foodExpEur=sum(allLedger.filter(x=>x.type==='expense'&&x.businessArea==='Food'),x=>entryEurAmount(x));
   const foodPerDay=totalGuestDays>0?Math.round(foodExp/totalGuestDays):0;
+  const foodPerDayEur=totalGuestDays>0?Number((foodExpEur/totalGuestDays).toFixed(2)):0;
   panel.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px">
     <div>
       <div style="font-family:'DM Serif Display',serif;font-size:18px;color:var(--navy)">Imported bookings</div>
@@ -2882,7 +2884,8 @@ function renderOverviewBookingsPanel(weeks,selectedWeekValue,allLedger){
     </div>
     <div style="background:var(--navy);border-radius:10px;padding:10px 12px">
       <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:#7aabcc;font-weight:700;margin-bottom:4px">Food cost / guest-day</div>
-      <div style="font-family:'DM Serif Display',serif;font-size:20px;color:#fff">${foodPerDay>0?lkr(foodPerDay):'—'}</div>
+      <div style="font-family:'DM Serif Display',serif;font-size:20px;color:#fff;line-height:1.15">${foodPerDay>0?lkr(foodPerDay):'—'}</div>
+      <div style="font-size:11px;color:#cfe1f0;margin-top:1px;font-weight:600">${foodPerDayEur>0?euro(foodPerDayEur):''}</div>
       <div style="font-size:10px;color:#7aabcc;margin-top:2px">${totalGuestDays>0?`${lkr(Math.round(foodExp))} ÷ ${totalGuestDays} g-d`:'No guest-days yet'}</div>
     </div>
   </div>`:''}`;
