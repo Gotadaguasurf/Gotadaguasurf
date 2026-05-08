@@ -2345,6 +2345,12 @@
 
     // ── Manage imports: list + filters + delete ──
     let __csvManageRows = [];
+    let __csvManageExpanded = new Set(); // keys = "month||location" of buckets currently expanded
+    function toggleCsvBucketExpanded(key){
+      if(__csvManageExpanded.has(key)) __csvManageExpanded.delete(key);
+      else __csvManageExpanded.add(key);
+      renderCsvManageTable();
+    }
 
     async function loadCsvManageData(){
       const status=document.getElementById('csvManageStatus');
@@ -2440,6 +2446,49 @@
           return `<span style="display:inline-block;background:${c.bg};color:${c.fg};border-radius:6px;padding:2px 6px;margin:0 2px;font-size:11px;font-weight:700">${n} ${escapeHtml(s)}</span>`;
         }).join('');
       };
+      // Render the per-bucket detail rows when a row is expanded
+      const renderExpandedDetail = (bucket) => {
+        const matches = __csvManageRows.filter(r =>
+          (r.month_key||'(no date)') === bucket.month &&
+          (r.location||'Unknown') === bucket.location &&
+          (statusFilter==='all' || r.status===statusFilter)
+        ).sort((a,b)=> (a.check_in_on||'').localeCompare(b.check_in_on||''));
+        if(!matches.length){
+          return `<tr><td colspan="7" style="padding:14px 24px;background:#fafbfd;color:#6b7a8c;font-size:12px">No bookings match the current filters in this bucket.</td></tr>`;
+        }
+        const detailRows = matches.map(b=>{
+          const c = statusColor(b.status);
+          const partnerLabel = b.partner_name || '<span style="color:#9aa6b3">— direct —</span>';
+          return `<tr>
+            <td style="padding:7px 14px;font-family:'DM Mono',monospace;font-size:11px;color:#6b7a8c">${escapeHtml(b.booking_ref||'')}</td>
+            <td style="padding:7px 14px;font-weight:600">${escapeHtml(b.booker||'')}</td>
+            <td style="padding:7px 14px;font-size:12px;color:#6b7a8c">${escapeHtml(b.check_in_on||'')}</td>
+            <td style="padding:7px 14px;font-size:12px;color:#6b7a8c">${escapeHtml((b.raw_payload && b.raw_payload.checkoutMs ? new Date(b.raw_payload.checkoutMs).toISOString().slice(0,10) : '') || (b.raw_payload && b.raw_payload.checkout) || '—')}</td>
+            <td style="padding:7px 14px"><span style="display:inline-block;background:${c.bg};color:${c.fg};border-radius:5px;padding:1px 6px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em">${escapeHtml(b.status||'unknown')}</span></td>
+            <td style="padding:7px 14px;font-size:12px">${partnerLabel}</td>
+            <td style="padding:7px 14px;text-align:right;font-family:'DM Mono',monospace">€${Number(b.total||0).toLocaleString('en-GB',{maximumFractionDigits:2})}</td>
+          </tr>`;
+        }).join('');
+        return `<tr><td colspan="7" style="padding:0;background:#fafbfd">
+          <div style="padding:10px 24px 18px">
+            <div style="font-size:11px;color:#6b7a8c;margin-bottom:6px">Showing ${matches.length} booking${matches.length===1?'':'s'} in this bucket</div>
+            <table style="width:100%;border-collapse:collapse;font-size:12px;background:#fff;border-radius:8px;overflow:hidden;border:1px solid #e6ecf2">
+              <thead style="background:#eef2f7;color:#0d1e34">
+                <tr>
+                  <th style="text-align:left;padding:8px 14px;font-weight:700">Ref</th>
+                  <th style="text-align:left;padding:8px 14px;font-weight:700">Guest</th>
+                  <th style="text-align:left;padding:8px 14px;font-weight:700">Check-in</th>
+                  <th style="text-align:left;padding:8px 14px;font-weight:700">Check-out</th>
+                  <th style="text-align:left;padding:8px 14px;font-weight:700">Status</th>
+                  <th style="text-align:left;padding:8px 14px;font-weight:700">Partner</th>
+                  <th style="text-align:right;padding:8px 14px;font-weight:700">Total</th>
+                </tr>
+              </thead>
+              <tbody>${detailRows}</tbody>
+            </table>
+          </div>
+        </td></tr>`;
+      };
       wrap.innerHTML = `
         <table style="width:100%;border-collapse:collapse;font-size:13px">
           <thead style="background:#f4f6fa;color:#0d1e34">
@@ -2454,23 +2503,28 @@
             </tr>
           </thead>
           <tbody>
-            ${rows.map(r=>`
-              <tr style="border-top:1px solid #e6ecf2">
-                <td style="padding:10px 14px;font-family:'DM Mono',monospace">${escapeHtml(r.month)}</td>
+            ${rows.map(r=>{
+              const key = r.month + '||' + r.location;
+              const isExpanded = __csvManageExpanded.has(key);
+              const chev = isExpanded ? '▼' : '▶';
+              return `
+              <tr style="border-top:1px solid #e6ecf2;cursor:pointer;${isExpanded?'background:#fafbfd;':''}" onclick="toggleCsvBucketExpanded('${escapeAttr(key)}')" title="Click to ${isExpanded?'collapse':'expand'} the booking list">
+                <td style="padding:10px 14px;font-family:'DM Mono',monospace"><span style="display:inline-block;width:14px;color:#6b7a8c;font-size:10px;margin-right:4px">${chev}</span>${escapeHtml(r.month)}</td>
                 <td style="padding:10px 14px;font-weight:600">${escapeHtml(r.location)}</td>
                 <td style="padding:10px 14px;text-align:right">${r.count}</td>
                 <td style="padding:10px 14px">${renderStatusCounts(r.statusCounts)}</td>
                 <td style="padding:10px 14px;text-align:right;color:#6b7a8c;font-size:12px">${r.partnerCount} / ${r.directCount}</td>
                 <td style="padding:10px 14px;text-align:right;font-family:'DM Mono',monospace">€${r.revenue.toLocaleString('en-GB',{maximumFractionDigits:2})}</td>
-                <td style="padding:10px 14px;text-align:right">
+                <td style="padding:10px 14px;text-align:right" onclick="event.stopPropagation()">
                   <div style="display:inline-flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
-                    <button onclick="deleteCsvBucket('${escapeAttr(r.month)}','${escapeAttr(r.location)}',${r.count},'all')" title="Remove from both partners (bookings table) and camp hub (location_state_store)" style="padding:6px 10px;background:#c43c3c;border:1px solid #c43c3c;color:#fff;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">All</button>
-                    <button onclick="deleteCsvBucket('${escapeAttr(r.month)}','${escapeAttr(r.location)}',${r.count},'partners')" title="Remove only from the partners view (bookings table). Camp hub keeps its data." style="padding:6px 10px;background:#fff;border:1px solid #c43c3c;color:#c43c3c;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Partners</button>
-                    <button onclick="deleteCsvBucket('${escapeAttr(r.month)}','${escapeAttr(r.location)}',${r.count},'camphub')" title="Remove only from the camp hub overview. Partners keeps its data." style="padding:6px 10px;background:#fff;border:1px solid #c43c3c;color:#c43c3c;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Camp hub</button>
+                    <button onclick="event.stopPropagation();deleteCsvBucket('${escapeAttr(r.month)}','${escapeAttr(r.location)}',${r.count},'all')" title="Remove from both partners (bookings table) and camp hub (location_state_store)" style="padding:6px 10px;background:#c43c3c;border:1px solid #c43c3c;color:#fff;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">All</button>
+                    <button onclick="event.stopPropagation();deleteCsvBucket('${escapeAttr(r.month)}','${escapeAttr(r.location)}',${r.count},'partners')" title="Remove only from the partners view (bookings table). Camp hub keeps its data." style="padding:6px 10px;background:#fff;border:1px solid #c43c3c;color:#c43c3c;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Partners</button>
+                    <button onclick="event.stopPropagation();deleteCsvBucket('${escapeAttr(r.month)}','${escapeAttr(r.location)}',${r.count},'camphub')" title="Remove only from the camp hub overview. Partners keeps its data." style="padding:6px 10px;background:#fff;border:1px solid #c43c3c;color:#c43c3c;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Camp hub</button>
                   </div>
                 </td>
               </tr>
-            `).join('')}
+              ${isExpanded ? renderExpandedDetail(r) : ''}
+            `;}).join('')}
             <tr style="border-top:2px solid #0d1e34;background:#f4f6fa;font-weight:700">
               <td colspan="2" style="padding:10px 14px">Total (${rows.length} group${rows.length===1?'':'s'})</td>
               <td style="padding:10px 14px;text-align:right">${totals.count}</td>
@@ -2765,6 +2819,37 @@
           raw_payload: { ...r, source: 'global-csv-import' }
         };
       });
+      // Ensure every partner referenced by these bookings exists in the partners
+      // table. Without this, the partners app's "Set status" + statement features
+      // fail because they look up partner_id by name and get null. Defaults are
+      // conservative (commission_pct: 20, is_active: true) — the user can refine
+      // each in Partners & Rates afterwards. ON CONFLICT name keeps any existing
+      // commission rate / email / type / etc. intact.
+      const uniquePartnerNames = [...new Set(
+        bookingRows.map(b => b.partner_name).filter(Boolean)
+      )];
+      let partnerCreatedOk = 0;
+      if(uniquePartnerNames.length){
+        try{
+          const partnerUpsertRows = uniquePartnerNames.map(name => ({
+            name,
+            commission_pct: 20,
+            collects_from_guest: true,
+            partner_type: 'surfcamp',
+            is_active: true
+          }));
+          // ignoreDuplicates:true means existing partners with the same name keep their
+          // configured commission_pct / email / etc.; we only insert new ones.
+          const { error: pErr } = await client.from('partners').upsert(
+            partnerUpsertRows,
+            { onConflict: 'name', ignoreDuplicates: true }
+          );
+          if(!pErr) partnerCreatedOk = uniquePartnerNames.length;
+          else parts.push(`<div style="color:#c43c3c">⚠ Could not register partners in partners table: ${pErr.message.slice(0,140)}</div>`);
+        }catch(e){
+          parts.push(`<div style="color:#c43c3c">⚠ Could not register partners: ${e?.message||'unknown'}</div>`);
+        }
+      }
       let partnerSyncOk = 0;
       let partnerSyncErrs = [];
       const CHUNK = 500;
@@ -2777,6 +2862,9 @@
         }catch(e){
           partnerSyncErrs.push(e?.message || 'unknown error');
         }
+      }
+      if(partnerCreatedOk){
+        parts.push(`<div style="color:#0a6b32">👥 <b>${partnerCreatedOk}</b> partner${partnerCreatedOk===1?'':'s'} registered (existing rates preserved)</div>`);
       }
       if(partnerSyncOk){
         parts.push(`<div style="color:#0a6b32">📋 <b>${partnerSyncOk}</b> booking${partnerSyncOk===1?'':'s'} synced into the partners view</div>`);
