@@ -2047,12 +2047,15 @@ function renderKPIs(id) {
     ? allBookings.filter(b=>b.partner===DIRECT_LABEL)
     : allBookings.filter(b=>b.partner===DIRECT_LABEL && getMonth(b)===activeMonth);
   const directTotal = directBks.reduce((s,b)=>s+b.gross,0);
-  const totalRevenue = tN + directTotal; // net from partners + 100% from direct
+  const grossTotal = tG + directTotal; // partner gross + direct = matches Bookinglayer "Total"
+  const totalRevenue = tN + directTotal; // net from partners + 100% from direct = your real take-home
+  const commissionPaid = grossTotal - totalRevenue;
   document.getElementById(id).innerHTML=`
+    <div class="kpi" style="border:2px dashed var(--muted,#9aa6b3)"><div class="kpi-label">Total Gross (Bookinglayer)</div><div class="kpi-value">${eur(grossTotal)}</div><div class="kpi-sub">Partner gross + direct · matches Bookinglayer</div></div>
     <div class="kpi"><div class="kpi-label">Partner Gross Revenue</div><div class="kpi-value">${eur(tG)}</div><div class="kpi-sub">${activeMonth==='all'?'All months':monthLabel(activeMonth)}</div></div>
-    <div class="kpi"><div class="kpi-label">Net from Partners</div><div class="kpi-value accent">${eur(tN)}</div><div class="kpi-sub">After commissions</div></div>
+    <div class="kpi"><div class="kpi-label">Net from Partners</div><div class="kpi-value accent">${eur(tN)}</div><div class="kpi-sub">After commissions (−${eur(commissionPaid)})</div></div>
     <div class="kpi"><div class="kpi-label">Direct Bookings</div><div class="kpi-value accent">${eur(directTotal)}</div><div class="kpi-sub">${directBks.length} booking${directBks.length!==1?'s':''} · 100% ours</div></div>
-    <div class="kpi" style="border:2px solid var(--ocean)"><div class="kpi-label">Total Revenue GotaDagua</div><div class="kpi-value" style="color:var(--ocean)">${eur(totalRevenue)}</div><div class="kpi-sub">Partners net + direct</div></div>`;
+    <div class="kpi" style="border:2px solid var(--ocean)"><div class="kpi-label">Total Revenue GotaDagua</div><div class="kpi-value" style="color:var(--ocean)">${eur(totalRevenue)}</div><div class="kpi-sub">Your real take-home (partners net + direct)</div></div>`;
 }
 
 // ── MONTH TABS ─────────────────────────────────────────────────────────────────
