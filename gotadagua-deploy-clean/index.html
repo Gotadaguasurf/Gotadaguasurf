@@ -2101,7 +2101,40 @@
       ]);
       if(!platformProfileRes.error && !membershipRes.error && !workspaceRes.error && platformProfileRes.data){
         __accessModel = 'workspace-v2';
-        if(platformProfileRes.data.active === false || !(membershipRes.data || []).length){
+        // Fallback: if no active memberships, derive access from the user's
+        // pending invitation_workspace_access rows. This way a freshly-clicked
+        // invite always grants access even if the server-side membership
+        // pre-create step hasn't completed yet, or if RLS prevented the
+        // client-side fallback write. The user can always come back through
+        // proper memberships on the next sign-in.
+        let effectiveAccessRows = membershipRes.data || [];
+        if(!effectiveAccessRows.length){
+          try{
+            const { data: pendingInv } = await client
+              .from('workspace_invitations')
+              .select('id')
+              .eq('email', email)
+              .in('status',['pending','sent','accepted'])
+              .order('created_at',{ascending:false})
+              .limit(1)
+              .maybeSingle();
+            if(pendingInv?.id){
+              const { data: fallbackAccess } = await client
+                .from('invitation_workspace_access')
+                .select('workspace_id, member_role, can_view, can_edit')
+                .eq('invitation_id', pendingInv.id);
+              if(fallbackAccess?.length){
+                effectiveAccessRows = fallbackAccess.map(r => ({
+                  workspace_id: r.workspace_id,
+                  member_role: r.member_role,
+                  can_view: r.can_view,
+                  can_edit: r.can_edit
+                }));
+              }
+            }
+          }catch(_e){}
+        }
+        if(platformProfileRes.data.active === false || !effectiveAccessRows.length){
           await blockRemovedAccess(email);
           return;
         }
@@ -2110,7 +2143,7 @@
           role: platformProfileRes.data.platform_role,
           id: platformProfileRes.data.id
         };
-        __currentAccessRows = membershipRes.data || [];
+        __currentAccessRows = effectiveAccessRows;
         __workspaceRows = workspaceRes.data || [];
         const workspaceMap = Object.fromEntries(__workspaceRows.map(row => [row.id, row.slug]));
         const areas = new Set(['settings']);
