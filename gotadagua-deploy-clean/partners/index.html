@@ -2635,19 +2635,20 @@ async function generateStatementPdfBlob(){
   doc.text(`${bookings.length} booking${bookings.length===1?'':'s'}`, pageW - margin, y, { align:'right' });
   y += 4;
 
-  // Column layout (mm). Total = 176mm, leaving 6mm breathing room inside
-  // the 182mm available between the page margins so the NET header and
-  // total amount can never clip on the right edge.
+  // Column layout (mm). Total = 182mm = full width between the page
+  // margins, so the right edge of the table aligns with the right edge
+  // of the section title ("5 bookings"). Width-aware text fitting keeps
+  // long guest names from clipping into Ref.
   const cols = [
     { key:'#',     w: 6,  align:'left'   },
     { key:'Guest', w: 44, align:'left'   },
-    { key:'Ref',   w: 20, align:'left'   },
+    { key:'Ref',   w: 22, align:'left'   },
     { key:'Date',  w: 19, align:'left'   },
     { key:'Pax',   w: 9,  align:'center' },
-    { key:'Gross', w: 21, align:'right'  },
-    { key:'Rate',  w: 10, align:'right'  },
-    { key:'Comm.', w: 21, align:'right'  },
-    { key:'Net',   w: 26, align:'right'  }
+    { key:'Gross', w: 22, align:'right'  },
+    { key:'Rate',  w: 11, align:'right'  },
+    { key:'Comm.', w: 22, align:'right'  },
+    { key:'Net',   w: 27, align:'right'  }
   ];
   const tableW = cols.reduce((s,c)=>s+c.w, 0);
 
