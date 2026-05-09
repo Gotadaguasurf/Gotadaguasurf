@@ -2458,22 +2458,20 @@ async function generateStatementPdfBlob(){
 
   const wrap = createStatementPdfWrap({...ctx, periodLabel: period});
 
-  // Hide the wrap from the user during render without breaking html2canvas:
-  // a 1x1 fixed container with overflow:hidden lets the wrap render at full
-  // size internally (so the canvas captures everything) while the user only
-  // sees a 1px speck in the corner — easier than fighting opacity/visibility
-  // tricks that html2canvas optimizes away.
-  const stage = document.createElement('div');
-  stage.style.position = 'fixed';
-  stage.style.top = '0';
-  stage.style.left = '0';
-  stage.style.width = '1px';
-  stage.style.height = '1px';
-  stage.style.overflow = 'hidden';
-  stage.style.pointerEvents = 'none';
-  stage.style.zIndex = '-1';
-  stage.appendChild(wrap);
-  document.body.appendChild(stage);
+  // Render the wrap at the top-left of the document, behind every other
+  // element via negative z-index. The wrap keeps its full 794px width and
+  // natural height (no overflow clipping that confused html2canvas), and
+  // html2canvas can read it directly. The user only sees a brief 1-2s
+  // overlap behind the existing app while the canvas is captured.
+  wrap.style.position = 'absolute';
+  wrap.style.top = '0';
+  wrap.style.left = '0';
+  wrap.style.zIndex = '-9999';
+  wrap.style.pointerEvents = 'none';
+  document.body.appendChild(wrap);
+
+  // Make sure layout has settled before html2canvas measures.
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
 
   const opt = {
     margin: [8, 8, 8, 8],
@@ -2483,9 +2481,14 @@ async function generateStatementPdfBlob(){
       scale: 2,
       useCORS: true,
       backgroundColor: '#ffffff',
+      // Match html2canvas's internal viewport to the wrap so it doesn't
+      // measure anything outside our element.
+      width: 794,
+      height: wrap.scrollHeight,
       windowWidth: 794,
+      windowHeight: wrap.scrollHeight,
       scrollX: 0,
-      scrollY: 0
+      scrollY: -window.scrollY
     },
     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait', compress: true },
     pagebreak: { mode: ['css', 'legacy'] }
@@ -2496,7 +2499,7 @@ async function generateStatementPdfBlob(){
     if (!blob) throw new Error('Empty PDF blob');
     return { blob, filename };
   } finally {
-    stage.remove();
+    wrap.remove();
   }
 }
 
