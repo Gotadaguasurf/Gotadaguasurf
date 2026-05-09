@@ -2055,28 +2055,25 @@
       const mode = getPasswordFlowMode();
       const inviteEmail = getInviteEmailParam().trim().toLowerCase();
       const currentEmail = (session.user.email || '').trim().toLowerCase();
-      if(hasIncomingAuthLink() && !window.__authLinkConsumed){
+      // Mismatch warning: only fires when the URL says "this link is for X"
+      // AND the active session is NOT X. We can't rely on the old
+      // __authLinkConsumed flag here because Supabase JS auto-consumes the
+      // URL hash on createClient(), before our consumeHashSessionIfPresent
+      // gets a chance to set the flag — that was the bug that sent invitees
+      // to the login page with a misleading warning instead of the password
+      // screen. The session itself is the source of truth: if Supabase
+      // accepted the invite tokens, session.user.email already matches the
+      // invitee.
+      if(mode && inviteEmail && currentEmail && inviteEmail !== currentEmail){
         const mismatchText = mode === 'reset'
           ? `A reset link was opened while this browser is still signed in as ${currentEmail}. Log out first or open the link in a private window to safely choose the new password.`
-          : `This secure link belongs to another account flow, but this browser is still signed in as ${currentEmail}. Log out first or open the link in a private window to safely continue.`;
-        document.getElementById('loginEmail').value = inviteEmail || currentEmail || '';
-        document.getElementById('loginPassword').value = '';
-        showLoggedOutUI();
-        hidePasswordFlow();
-        setLoginState('invite-mismatch', {
-          inviteEmail: inviteEmail || 'another account',
-          currentEmail
-        });
-        setAuthMessage('warning', mismatchText);
-        return;
-      }
-      if(mode === 'invite' && inviteEmail && currentEmail && inviteEmail !== currentEmail){
+          : `This invite link is for ${inviteEmail}, but this browser is still signed in as ${currentEmail}. Log out first or open the link in a private window to continue.`;
         document.getElementById('loginEmail').value = inviteEmail;
         document.getElementById('loginPassword').value = '';
         showLoggedOutUI();
         hidePasswordFlow();
         setLoginState('invite-mismatch', { inviteEmail, currentEmail });
-        setAuthMessage('warning', `This browser is still signed in as ${currentEmail}. Log out first or open the invite link in a private window to safely create the new password.`);
+        setAuthMessage('warning', mismatchText);
         return;
       }
       const userId = session.user.id;
