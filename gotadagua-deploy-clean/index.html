@@ -1831,7 +1831,22 @@
         const payload = { password };
         if(fullName && window.__passwordFlowMode !== 'reset') payload.data = { full_name: fullName };
         const { error } = await client.auth.updateUser(payload);
-        if(error) throw error;
+        if(error){
+          // Zombie session: the JWT references a user_id that no longer
+          // exists (someone hard-deleted them while this browser still had
+          // the token). Sign out so the login screen resolves cleanly
+          // instead of looping the password screen.
+          if(/sub claim|does not exist|user not found/i.test(error.message || '')){
+            try{ await client.auth.signOut(); }catch(_e){}
+            hidePasswordFlow();
+            clearAuthParams();
+            showLoggedOutUI();
+            setLoginState('login');
+            setAuthMessage('warning', 'This invite link is no longer valid. Ask the admin to send a fresh one.');
+            return;
+          }
+          throw error;
+        }
         // Stamp password_set_at FIRST so the password gate never re-fires
         // even if anything below this throws. This is the only step we
         // truly cannot afford to lose — without the stamp, the user gets
@@ -2053,14 +2068,32 @@
       // legacy account the migration left without a stamp.
       // Reading platform_profiles for the SELF row is allowed by RLS.
       let selfProfile = null;
+      let selfReadFailed = false;
       try{
         const selfRes = await client
           .from('platform_profiles')
           .select('id, email, full_name, platform_role, active, password_set_at')
           .eq('id', userId)
           .maybeSingle();
-        if(!selfRes.error) selfProfile = selfRes.data;
-      }catch(_error){}
+        if(selfRes.error) selfReadFailed = true;
+        else selfProfile = selfRes.data;
+      }catch(_error){
+        selfReadFailed = true;
+      }
+      // Zombie-session detection: if the JWT's user_id no longer exists in
+      // platform_profiles (the user was hard-deleted while the browser still
+      // held a session), the only way out is to force a sign-out. Otherwise
+      // every Supabase call below 401s with "User from sub claim in JWT does
+      // not exist" and the user gets stranded on the password screen forever.
+      if(!selfProfile && !selfReadFailed){
+        try{ await client.auth.signOut(); }catch(_e){}
+        showLoggedOutUI();
+        hidePasswordFlow();
+        clearAuthParams();
+        setLoginState('login');
+        setAuthMessage('warning', 'This account no longer exists. Ask the admin to send a fresh invite.');
+        return;
+      }
 
       const passwordSet = !!selfProfile?.password_set_at;
       // Show the password screen when:
