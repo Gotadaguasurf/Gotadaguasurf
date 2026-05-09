@@ -2535,42 +2535,38 @@ async function generateStatementPdfBlob(){
   };
 
   // ── 1. HEADER BAR ────────────────────────────────────────────────────────
+  // Brand logo on the left, partner identity on the right — vertically
+  // centered against each other so the bar reads as a clean letterhead.
   setFill('#28394b');
-  doc.rect(0, 0, pageW, 46, 'F');
+  doc.rect(0, 0, pageW, 38, 'F');
   setFill('#344d63');
-  doc.rect(0, 44, pageW, 2, 'F');
+  doc.rect(0, 36, pageW, 2, 'F');
 
-  // Brand logo (top-left) — bigger, more prominent.
   const logoDataUrl = await getPdfLogoDataUrl().catch(()=>null);
   if (logoDataUrl) {
-    // 197.4:91 aspect — 32mm wide ≈ 14.7mm tall.
-    doc.addImage(logoDataUrl, 'PNG', margin, 7, 32, 14.7);
+    // 197.4:91 aspect — 32mm wide ≈ 14.7mm tall, centered vertically in the
+    // 38mm header.
+    doc.addImage(logoDataUrl, 'PNG', margin, 11, 32, 14.7);
   } else {
     setText('#fff4d5');
     doc.setFont('helvetica','bold');
-    doc.setFontSize(13);
-    doc.text('GOTA DAGUA', margin, 16);
+    doc.setFontSize(14);
+    doc.text('GOTA DAGUA', margin, 22);
   }
 
-  // Partner name + period (left column, below the logo).
+  // Right column — partner name + period subtitle.
   setText('#ffffff');
   doc.setFont('helvetica','bold');
   doc.setFontSize(20);
-  doc.text(truncate(partner, 40), margin, 31);
+  doc.text(truncate(partner, 40), pageW - margin, 19, { align:'right' });
 
   setText('#d4e8f6');
   doc.setFont('helvetica','normal');
   doc.setFontSize(10);
-  doc.text(`Monthly partner statement  •  ${period}`, margin, 38);
-
-  // Right column — just the date, clean and minimal.
-  setText('#ffffff');
-  doc.setFont('helvetica','bold');
-  doc.setFontSize(13);
-  doc.text(new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'}), pageW - margin, 18, { align:'right' });
+  doc.text(`Monthly partner statement  •  ${period}`, pageW - margin, 27, { align:'right' });
 
   // ── 2. SUMMARY CARDS ─────────────────────────────────────────────────────
-  const cardY = 54, cardH = 24;
+  const cardY = 46, cardH = 24;
   const cardW = (pageW - margin*2 - 8) / 3;
 
   // Card 1: Period summary
