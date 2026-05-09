@@ -2450,11 +2450,44 @@ function createStatementPdfWrap(ctx){
   return wrap;
 }
 
+// Render the brand SVG logo to a PNG data URL once, lazily, then cache it
+// so every subsequent PDF reuses the same image without re-rasterizing.
+// We grab the SVG directly from the live header in the DOM so it stays in
+// sync if the brand mark ever changes.
+let __pdfLogoDataUrl = null;
+async function getPdfLogoDataUrl(){
+  if (__pdfLogoDataUrl) return __pdfLogoDataUrl;
+  const svgEl = document.querySelector('.brand-logo svg');
+  if (!svgEl) return null;
+  // Clone so we don't mutate the on-screen logo. Force the cream stroke to
+  // match what the cream-on-navy header expects.
+  const svgClone = svgEl.cloneNode(true);
+  svgClone.setAttribute('xmlns','http://www.w3.org/2000/svg');
+  const xml = new XMLSerializer().serializeToString(svgClone);
+  const svg64 = btoa(unescape(encodeURIComponent(xml)));
+  const url = `data:image/svg+xml;base64,${svg64}`;
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  await new Promise((resolve, reject)=>{
+    img.onload = resolve;
+    img.onerror = reject;
+    img.src = url;
+  });
+  // Rasterize at 4x density so it stays crisp at print resolution.
+  const targetW = 800, targetH = Math.round(800 * (img.height || 91) / (img.width || 197.4));
+  const canvas = document.createElement('canvas');
+  canvas.width = targetW;
+  canvas.height = targetH;
+  const cx = canvas.getContext('2d');
+  cx.drawImage(img, 0, 0, targetW, targetH);
+  __pdfLogoDataUrl = canvas.toDataURL('image/png');
+  return __pdfLogoDataUrl;
+}
+
 // Native jsPDF generator — draws the statement with text/rect primitives
 // instead of trying to capture HTML. No html2canvas, no positioning quirks,
 // no clipping. Produces a clean professional layout that's reliable on
-// every browser. The jsPDF constructor is bundled inside html2pdf.bundle.js
-// at window.jspdf.jsPDF.
+// every browser.
 async function generateStatementPdfBlob(){
   const jsPDF = (window.jspdf && window.jspdf.jsPDF) || (window.html2pdf && window.html2pdf.jsPDF);
   if (!jsPDF) throw new Error('PDF generator not available.');
@@ -2487,42 +2520,53 @@ async function generateStatementPdfBlob(){
   const truncate = (s, max)=>{ s = String(s||''); return s.length<=max ? s : s.slice(0,max-1)+'…'; };
 
   // ── 1. HEADER BAR ────────────────────────────────────────────────────────
+  // Subtle gradient via two stacked rects so the dark navy doesn't feel flat.
   setFill('#28394b');
-  doc.rect(0, 0, pageW, 42, 'F');
+  doc.rect(0, 0, pageW, 46, 'F');
+  setFill('#344d63');
+  doc.rect(0, 44, pageW, 2, 'F');
 
-  setText('#9fc5df');
-  doc.setFont('helvetica','bold');
-  doc.setFontSize(9);
-  doc.text('GOTA DAGUA SURF', margin, 13);
+  // Brand logo (top-left) — embedded from the live SVG.
+  const logoDataUrl = await getPdfLogoDataUrl().catch(()=>null);
+  if (logoDataUrl) {
+    // 197.4:91 aspect — render at 24mm wide ≈ 11mm tall.
+    doc.addImage(logoDataUrl, 'PNG', margin, 8, 24, 11);
+  } else {
+    setText('#fff4d5');
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(11);
+    doc.text('GOTA DAGUA', margin, 14);
+  }
 
+  // Partner name + period (left column, below the logo).
   setText('#ffffff');
   doc.setFont('helvetica','bold');
-  doc.setFontSize(22);
-  doc.text(truncate(partner, 40), margin, 24);
+  doc.setFontSize(20);
+  doc.text(truncate(partner, 40), margin, 28);
 
   setText('#d4e8f6');
   doc.setFont('helvetica','normal');
-  doc.setFontSize(11);
-  doc.text(`Monthly partner statement • ${period}`, margin, 32);
+  doc.setFontSize(10);
+  doc.text(`Monthly partner statement  •  ${period}`, margin, 35);
 
   // Right column of header
   setText('#9fc5df');
   doc.setFont('helvetica','bold');
-  doc.setFontSize(8);
-  doc.text('GENERATED', pageW - margin, 13, { align:'right' });
+  doc.setFontSize(7.5);
+  doc.text('GENERATED', pageW - margin, 14, { align:'right' });
   setText('#ffffff');
   doc.setFont('helvetica','bold');
   doc.setFontSize(11);
-  doc.text(new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'}), pageW - margin, 19, { align:'right' });
+  doc.text(new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'}), pageW - margin, 20, { align:'right' });
   if (email) {
     setText('#d4e8f6');
     doc.setFont('helvetica','normal');
     doc.setFontSize(9);
-    doc.text(truncate(email, 35), pageW - margin, 26, { align:'right' });
+    doc.text(truncate(email, 38), pageW - margin, 27, { align:'right' });
   }
 
   // ── 2. SUMMARY CARDS ─────────────────────────────────────────────────────
-  const cardY = 50, cardH = 24;
+  const cardY = 54, cardH = 24;
   const cardW = (pageW - margin*2 - 8) / 3;
 
   // Card 1: Period summary
@@ -2574,56 +2618,72 @@ async function generateStatementPdfBlob(){
   doc.text(fmtEUR(outstanding), card3X + 4, cardY + 19);
 
   // ── 3. BOOKINGS TABLE ────────────────────────────────────────────────────
-  let y = cardY + cardH + 10;
+  let y = cardY + cardH + 12;
+
+  // Section title above the table
+  setText('#28394b');
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(11);
+  doc.text(`Bookings  •  ${period}`, margin, y);
+  setText('#6b8099');
+  doc.setFont('helvetica','normal');
+  doc.setFontSize(9);
+  doc.text(`${bookings.length} booking${bookings.length===1?'':'s'}`, pageW - margin, y, { align:'right' });
+  y += 4;
 
   // Column layout (mm widths summing to ~182)
   const cols = [
-    { key:'#',     w: 8,  align:'left'   },
-    { key:'Guest', w: 38, align:'left'   },
-    { key:'Ref',   w: 26, align:'left'   },
-    { key:'Date',  w: 18, align:'left'   },
+    { key:'#',     w: 7,  align:'left'   },
+    { key:'Guest', w: 40, align:'left'   },
+    { key:'Ref',   w: 24, align:'left'   },
+    { key:'Date',  w: 20, align:'left'   },
     { key:'Pax',   w: 10, align:'center' },
     { key:'Gross', w: 24, align:'right'  },
     { key:'Rate',  w: 12, align:'right'  },
     { key:'Comm.', w: 22, align:'right'  },
-    { key:'Net',   w: 24, align:'right'  }
+    { key:'Net',   w: 23, align:'right'  }
   ];
+  const tableW = cols.reduce((s,c)=>s+c.w, 0);
 
-  // Header row
+  // Header row — subtle, refined
   setFill('#28394b');
-  doc.rect(margin, y, pageW - margin*2, 9, 'F');
-  setText('#d4e8f6');
+  doc.rect(margin, y, tableW, 8.5, 'F');
+  setText('#9fc5df');
   doc.setFont('helvetica','bold');
-  doc.setFontSize(8);
-  let xCursor = margin + 2;
+  doc.setFontSize(7.5);
+  let xCursor = margin + 2.5;
   cols.forEach(c=>{
     const tx = c.align === 'right' ? xCursor + c.w - 2 :
                c.align === 'center' ? xCursor + c.w / 2 :
                xCursor;
-    doc.text(c.key.toUpperCase(), tx, y + 6, { align: c.align === 'left' ? undefined : c.align });
+    doc.text(c.key.toUpperCase(), tx, y + 5.5, { align: c.align === 'left' ? undefined : c.align });
     xCursor += c.w;
   });
-  y += 9;
+  y += 8.5;
 
   // Body rows
-  doc.setFont('helvetica','normal');
   doc.setFontSize(9);
-  const rowH = 7;
+  const rowH = 8;
   bookings.forEach((b, idx)=>{
-    if (y + rowH > pageH - 25) {
+    if (y + rowH > pageH - 32) {
       doc.addPage();
       y = margin;
     }
+    // Zebra striping with a soft tint
     if (idx % 2 === 0) {
-      setFill('#f5f8fb');
-      doc.rect(margin, y, pageW - margin*2, rowH, 'F');
+      setFill('#f7faff');
+      doc.rect(margin, y, tableW, rowH, 'F');
     }
-    setText('#28394b');
-    let cx = margin + 2;
+    // Hairline separator between rows
+    setStroke('#eaf0f7');
+    doc.setLineWidth(0.1);
+    doc.line(margin, y + rowH, margin + tableW, y + rowH);
+
+    let cx = margin + 2.5;
     const cells = [
       String(idx + 1),
-      truncate(b.guest || 'Guest', 22),
-      truncate(b.ref || '', 14),
+      truncate(b.guest || 'Guest', 24),
+      truncate(b.ref || '', 13),
       b.checkin || '',
       String(b.pax || 1),
       fmtEUR(b.gross),
@@ -2637,24 +2697,45 @@ async function generateStatementPdfBlob(){
                  c.align === 'center' ? cx + c.w / 2 :
                  cx;
       const opts = c.align === 'left' ? undefined : { align: c.align };
-      if (i === 1) doc.setFont('helvetica','bold');
-      else doc.setFont('helvetica','normal');
-      doc.text(val, tx, y + 4.8, opts);
+      // Visual emphasis: # in muted gray, Guest bold, Net bold ocean blue,
+      // Comm. bold navy, everything else normal.
+      if (i === 0) {                       // #
+        setText('#9aa6b3');
+        doc.setFont('helvetica','normal');
+      } else if (i === 1) {                // Guest
+        setText('#28394b');
+        doc.setFont('helvetica','bold');
+      } else if (i === 2) {                // Ref (mono-ish look via slight gray)
+        setText('#6b8099');
+        doc.setFont('helvetica','normal');
+      } else if (i === 7) {                // Commission
+        setText('#28394b');
+        doc.setFont('helvetica','bold');
+      } else if (i === 8) {                // Net — accent
+        setText('#1e6fa8');
+        doc.setFont('helvetica','bold');
+      } else {
+        setText('#28394b');
+        doc.setFont('helvetica','normal');
+      }
+      doc.text(val, tx, y + 5.4, opts);
       cx += c.w;
     });
     y += rowH;
   });
 
-  // Total row
-  setFill('#fff8e6');
-  setStroke('#e8d29a');
-  doc.rect(margin, y, pageW - margin*2, 9, 'FD');
-  setText('#28394b');
-  doc.setFont('helvetica','bold');
+  // Total row — refined: thin top divider + navy text on cream tint
+  setFill('#fdf6e3');
+  doc.rect(margin, y, tableW, 10, 'F');
+  setStroke('#28394b');
+  doc.setLineWidth(0.4);
+  doc.line(margin, y, margin + tableW, y);
+  doc.setLineWidth(0.1);
+
+  let cx = margin + 2.5;
   doc.setFontSize(9);
-  let cx = margin + 2;
   const totalCells = [
-    '', 'Total', '', '', '',
+    '', 'TOTAL', '', '', '',
     fmtEUR(totalGross), '', fmtEUR(totalCom), fmtEUR(totalNet)
   ];
   totalCells.forEach((val, i)=>{
@@ -2663,10 +2744,25 @@ async function generateStatementPdfBlob(){
                c.align === 'center' ? cx + c.w / 2 :
                cx;
     const opts = c.align === 'left' ? undefined : { align: c.align };
-    doc.text(val, tx, y + 6, opts);
+    if (i === 1) {
+      setText('#6b8099');
+      doc.setFont('helvetica','bold');
+      doc.setFontSize(8);
+      doc.text(val, tx, y + 6.4, opts);
+    } else if (i === 8) {
+      setText('#1e6fa8');
+      doc.setFont('helvetica','bold');
+      doc.setFontSize(11);
+      doc.text(val, tx, y + 6.4, opts);
+    } else if (i === 5 || i === 7) {
+      setText('#28394b');
+      doc.setFont('helvetica','bold');
+      doc.setFontSize(10);
+      doc.text(val, tx, y + 6.4, opts);
+    }
     cx += c.w;
   });
-  y += 16;
+  y += 18;
 
   // ── 4. FOOTER ────────────────────────────────────────────────────────────
   if (y < pageH - 20) y = pageH - 20;
