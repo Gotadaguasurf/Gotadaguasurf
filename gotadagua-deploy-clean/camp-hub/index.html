@@ -2067,6 +2067,8 @@ function cachedFxRateForDate(date){
 }
 async function fetchFxRateForDate(date){
   if(!date) return 0;
+  // EUR locations don't need conversion — rate is always 1.
+  if (LOCAL_CURRENCY === 'EUR') return 1;
   const cached=cachedFxRateForDate(date);
   if(cached>0) return cached;
   const serverRate=await readSupabaseFxRate(date);
@@ -2076,7 +2078,9 @@ async function fetchFxRateForDate(date){
     return serverRate;
   }
   try{
-    const url=`https://api.frankfurter.dev/v2/rate/EUR/LKR?date=${date}`;
+    // Frankfurter is a free, no-key, ECB-backed FX API. EUR/{LKR|MAD|...}
+    // — the path is dynamic so Morocco gets MAD, Sri Lanka LKR, etc.
+    const url=`https://api.frankfurter.dev/v2/rate/EUR/${LOCAL_CURRENCY}?date=${date}`;
     const res=await fetch(url,{headers:{accept:'application/json'}});
     if(!res.ok) throw new Error('FX request failed');
     const data=await res.json();
