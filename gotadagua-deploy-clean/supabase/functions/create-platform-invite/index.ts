@@ -51,9 +51,9 @@ Deno.serve(async (req) => {
       .select('platform_role, active')
       .eq('id', caller.id)
       .maybeSingle();
-    const role = callerProfile?.platform_role ?? '';
+    const callerRole = callerProfile?.platform_role ?? '';
     const isActive = callerProfile?.active === true;
-    const hasPrivilegedRole = isActive && ['super_admin', 'owner', 'admin'].includes(role);
+    const hasPrivilegedRole = isActive && ['super_admin', 'owner', 'admin'].includes(callerRole);
     let canManageTeam = false;
     if (!hasPrivilegedRole) {
       const { data: mgmtRows } = await supabaseAdmin
