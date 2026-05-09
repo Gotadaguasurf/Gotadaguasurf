@@ -2449,51 +2449,237 @@ function createStatementPdfWrap(ctx){
   return wrap;
 }
 
+// Native jsPDF generator — draws the statement with text/rect primitives
+// instead of trying to capture HTML. No html2canvas, no positioning quirks,
+// no clipping. Produces a clean professional layout that's reliable on
+// every browser. The jsPDF constructor is bundled inside html2pdf.bundle.js
+// at window.jspdf.jsPDF.
 async function generateStatementPdfBlob(){
-  if (!window.html2pdf) throw new Error('PDF generator not available.');
+  const jsPDF = (window.jspdf && window.jspdf.jsPDF) || (window.html2pdf && window.html2pdf.jsPDF);
+  if (!jsPDF) throw new Error('PDF generator not available.');
+
   const ctx = window.currentStatementContext || {};
   const period = ctx.periodLabel || (ctx.month ? monthLabel(ctx.month) : 'All Months');
-  const safePartner = (ctx.partner || 'statement').replace(/[^a-z0-9]+/gi,'-').replace(/^-+|-+$/g,'');
+  const partner = ctx.partner || 'Partner';
+  const email = ctx.email || '';
+  const bookings = (ctx.bookings || []).slice().sort((a,b)=>(a.checkin||'').localeCompare(b.checkin||''));
+  const totalGross = bookings.reduce((s,b)=>s+(b.gross||0),0);
+  const totalCom   = bookings.reduce((s,b)=>s+(b.com_amt||0),0);
+  const totalNet   = bookings.reduce((s,b)=>s+(b.net||0),0);
+  const summary    = summarizePartnerBalances(partner, bookings);
+  const outstanding = summary.outstanding || 0;
+  const collects = partnerCollectsFromGuest(partner);
+  const owedLabel = collects ? 'OUTSTANDING DUE TO GOTA DAGUA SURF' : 'OUTSTANDING WE OWE TO PARTNER';
+
+  const safePartner = (partner || 'statement').replace(/[^a-z0-9]+/gi,'-').replace(/^-+|-+$/g,'');
   const filename = `${safePartner || 'statement'}-${period.replace(/[^a-z0-9]+/gi,'-')}.pdf`;
 
-  const wrap = createStatementPdfWrap({...ctx, periodLabel: period});
+  const doc = new jsPDF({ unit:'mm', format:'a4', orientation:'portrait', compress:true });
+  const pageW = 210, pageH = 297;
+  const margin = 14;
 
-  // position:fixed pins the wrap to the viewport (0,0) regardless of body
-  // padding/margin/transform — that was the cause of every previous attempt
-  // capturing only the right half of the content. zIndex puts it behind
-  // every other element so the user doesn't see the temporary render.
-  wrap.style.position = 'fixed';
-  wrap.style.top = '0';
-  wrap.style.left = '0';
-  wrap.style.zIndex = '-9999';
-  wrap.style.pointerEvents = 'none';
-  document.body.appendChild(wrap);
+  // Helpers -----------------------------------------------------------------
+  const setFill = (hex)=>{ const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16); doc.setFillColor(r,g,b); };
+  const setText = (hex)=>{ const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16); doc.setTextColor(r,g,b); };
+  const setStroke = (hex)=>{ const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16); doc.setDrawColor(r,g,b); };
+  const fmtEUR = (n)=>'EUR ' + Number(n||0).toLocaleString('en-IE',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const truncate = (s, max)=>{ s = String(s||''); return s.length<=max ? s : s.slice(0,max-1)+'…'; };
 
-  // Let layout settle before html2canvas measures.
-  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  // ── 1. HEADER BAR ────────────────────────────────────────────────────────
+  setFill('#28394b');
+  doc.rect(0, 0, pageW, 42, 'F');
 
-  const opt = {
-    margin: [8, 8, 8, 8],
-    filename,
-    image: { type: 'jpeg', quality: 0.98 },
-    // Default html2canvas options — no explicit width/height/scrollX so the
-    // library reads the wrap's bounding box correctly.
-    html2canvas: {
-      scale: 2,
-      useCORS: true,
-      backgroundColor: '#ffffff'
-    },
-    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait', compress: true },
-    pagebreak: { mode: ['css', 'legacy'] }
-  };
+  setText('#9fc5df');
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(9);
+  doc.text('GOTA DAGUA SURF', margin, 13);
 
-  try {
-    const blob = await html2pdf().set(opt).from(wrap).outputPdf('blob');
-    if (!blob) throw new Error('Empty PDF blob');
-    return { blob, filename };
-  } finally {
-    wrap.remove();
+  setText('#ffffff');
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(22);
+  doc.text(truncate(partner, 40), margin, 24);
+
+  setText('#d4e8f6');
+  doc.setFont('helvetica','normal');
+  doc.setFontSize(11);
+  doc.text(`Monthly partner statement • ${period}`, margin, 32);
+
+  // Right column of header
+  setText('#9fc5df');
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(8);
+  doc.text('GENERATED', pageW - margin, 13, { align:'right' });
+  setText('#ffffff');
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(11);
+  doc.text(new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'}), pageW - margin, 19, { align:'right' });
+  if (email) {
+    setText('#d4e8f6');
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(9);
+    doc.text(truncate(email, 35), pageW - margin, 26, { align:'right' });
   }
+
+  // ── 2. SUMMARY CARDS ─────────────────────────────────────────────────────
+  const cardY = 50, cardH = 24;
+  const cardW = (pageW - margin*2 - 8) / 3;
+
+  // Card 1: Period summary
+  setFill('#f5f8fb');
+  setStroke('#d4e3f0');
+  doc.roundedRect(margin, cardY, cardW, cardH, 2, 2, 'FD');
+  setText('#6b8099');
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(7);
+  doc.text('SUMMARY', margin + 4, cardY + 6);
+  setText('#28394b');
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(13);
+  doc.text(period, margin + 4, cardY + 13);
+  setText('#6b8099');
+  doc.setFont('helvetica','normal');
+  doc.setFontSize(8);
+  doc.text(`${bookings.length} booking${bookings.length===1?'':'s'}`, margin + 4, cardY + 19);
+
+  // Card 2: Partner commission
+  const card2X = margin + cardW + 4;
+  setFill('#f5f8fb');
+  doc.roundedRect(card2X, cardY, cardW, cardH, 2, 2, 'FD');
+  setText('#6b8099');
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(7);
+  doc.text('PARTNER COMMISSION', card2X + 4, cardY + 6);
+  setText('#28394b');
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(13);
+  doc.text(fmtEUR(totalCom), card2X + 4, cardY + 13);
+  setText('#6b8099');
+  doc.setFont('helvetica','normal');
+  doc.setFontSize(8);
+  doc.text(`Gross revenue ${fmtEUR(totalGross)}`, card2X + 4, cardY + 19);
+
+  // Card 3: Outstanding (highlighted)
+  const card3X = card2X + cardW + 4;
+  setFill('#28394b');
+  doc.roundedRect(card3X, cardY, cardW, cardH, 2, 2, 'F');
+  setText('#9fc5df');
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(7);
+  const labelLines = doc.splitTextToSize(owedLabel, cardW - 8);
+  doc.text(labelLines, card3X + 4, cardY + 6);
+  setText('#ffffff');
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(13);
+  doc.text(fmtEUR(outstanding), card3X + 4, cardY + 19);
+
+  // ── 3. BOOKINGS TABLE ────────────────────────────────────────────────────
+  let y = cardY + cardH + 10;
+
+  // Column layout (mm widths summing to ~182)
+  const cols = [
+    { key:'#',     w: 8,  align:'left'   },
+    { key:'Guest', w: 38, align:'left'   },
+    { key:'Ref',   w: 26, align:'left'   },
+    { key:'Date',  w: 18, align:'left'   },
+    { key:'Pax',   w: 10, align:'center' },
+    { key:'Gross', w: 24, align:'right'  },
+    { key:'Rate',  w: 12, align:'right'  },
+    { key:'Comm.', w: 22, align:'right'  },
+    { key:'Net',   w: 24, align:'right'  }
+  ];
+
+  // Header row
+  setFill('#28394b');
+  doc.rect(margin, y, pageW - margin*2, 9, 'F');
+  setText('#d4e8f6');
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(8);
+  let xCursor = margin + 2;
+  cols.forEach(c=>{
+    const tx = c.align === 'right' ? xCursor + c.w - 2 :
+               c.align === 'center' ? xCursor + c.w / 2 :
+               xCursor;
+    doc.text(c.key.toUpperCase(), tx, y + 6, { align: c.align === 'left' ? undefined : c.align });
+    xCursor += c.w;
+  });
+  y += 9;
+
+  // Body rows
+  doc.setFont('helvetica','normal');
+  doc.setFontSize(9);
+  const rowH = 7;
+  bookings.forEach((b, idx)=>{
+    if (y + rowH > pageH - 25) {
+      doc.addPage();
+      y = margin;
+    }
+    if (idx % 2 === 0) {
+      setFill('#f5f8fb');
+      doc.rect(margin, y, pageW - margin*2, rowH, 'F');
+    }
+    setText('#28394b');
+    let cx = margin + 2;
+    const cells = [
+      String(idx + 1),
+      truncate(b.guest || 'Guest', 22),
+      truncate(b.ref || '', 14),
+      b.checkin || '',
+      String(b.pax || 1),
+      fmtEUR(b.gross),
+      `${Number(b.com_pct || 0)}%`,
+      fmtEUR(b.com_amt),
+      fmtEUR(b.net)
+    ];
+    cells.forEach((val, i)=>{
+      const c = cols[i];
+      const tx = c.align === 'right' ? cx + c.w - 2 :
+                 c.align === 'center' ? cx + c.w / 2 :
+                 cx;
+      const opts = c.align === 'left' ? undefined : { align: c.align };
+      if (i === 1) doc.setFont('helvetica','bold');
+      else doc.setFont('helvetica','normal');
+      doc.text(val, tx, y + 4.8, opts);
+      cx += c.w;
+    });
+    y += rowH;
+  });
+
+  // Total row
+  setFill('#fff8e6');
+  setStroke('#e8d29a');
+  doc.rect(margin, y, pageW - margin*2, 9, 'FD');
+  setText('#28394b');
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(9);
+  let cx = margin + 2;
+  const totalCells = [
+    '', 'Total', '', '', '',
+    fmtEUR(totalGross), '', fmtEUR(totalCom), fmtEUR(totalNet)
+  ];
+  totalCells.forEach((val, i)=>{
+    const c = cols[i];
+    const tx = c.align === 'right' ? cx + c.w - 2 :
+               c.align === 'center' ? cx + c.w / 2 :
+               cx;
+    const opts = c.align === 'left' ? undefined : { align: c.align };
+    doc.text(val, tx, y + 6, opts);
+    cx += c.w;
+  });
+  y += 16;
+
+  // ── 4. FOOTER ────────────────────────────────────────────────────────────
+  if (y < pageH - 20) y = pageH - 20;
+  setStroke('#d4e3f0');
+  doc.line(margin, y, pageW - margin, y);
+  setText('#6b8099');
+  doc.setFont('helvetica','normal');
+  doc.setFontSize(8);
+  doc.text('Gota Dagua Surf • Monthly partner statement', margin, y + 6);
+  doc.text(`Generated ${new Date().toLocaleDateString('en-GB')}`, pageW - margin, y + 6, { align:'right' });
+
+  const blob = doc.output('blob');
+  if (!blob) throw new Error('Empty PDF blob');
+  return { blob, filename };
 }
 
 function downloadBlob(blob, filename){
