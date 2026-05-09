@@ -1043,7 +1043,12 @@ const DELETED_CAMPCLOSE_KEY='hub_deleted_campclose_ids';
 const HUB_LEDGER_TS_KEY='hub_ledger_ts';
 let deletedCampcloseIds=new Set();
 let everInLedgerIds=new Set(); // tracks every campclose ID ever fetched from Supabase this session
-const DEFAULT_LKR_PER_EUR=parseFloat(localStorage.getItem(FX_KEY)||'330')||330;
+// Local currency + default FX rate are set per location. They start with the
+// Sri Lanka defaults so existing call sites keep working unchanged, then get
+// overwritten by applyLocationCurrency() after the location row is fetched.
+let LOCAL_CURRENCY='LKR';
+let LOCAL_PER_EUR=parseFloat(localStorage.getItem(FX_KEY)||'330')||330;
+let DEFAULT_LKR_PER_EUR=LOCAL_PER_EUR;
 const FIXED_MONTHLY_DEFAULTS=[
   {name:'Staff House Rent',type:'expense',category:'Rent',businessArea:'Utilities',paymentMethod:'Bank Transfer',amountLocal:150000,description:'Staff house rent',enabled:true},
   {name:'Surf Camp Rent',type:'expense',category:'Rent',businessArea:'Utilities',paymentMethod:'Bank Transfer',amountLocal:500000,description:'Surf camp rent',enabled:true},
@@ -1384,9 +1389,54 @@ let HUB_LEDGER_SYNC_ERROR_SHOWN=false;
 //  HELPERS
 // ═══════════════════════════════════════════════════════════
 const euro=n=>new Intl.NumberFormat('en-IE',{style:'currency',currency:'EUR'}).format(Number(n||0));
-const lkr=n=>new Intl.NumberFormat('en-LK',{style:'currency',currency:'LKR',maximumFractionDigits:0}).format(Number(n||0));
+// Local-currency formatter. Uses LOCAL_CURRENCY (LKR / MAD / EUR) which is
+// set from the active location row. Function name kept as `lkr` for
+// backwards compatibility with the hundreds of existing call sites — the
+// actual currency code is dynamic.
+const lkr=n=>{
+  try {
+    const fractionDigits = LOCAL_CURRENCY === 'EUR' ? 2 : 0;
+    return new Intl.NumberFormat('en-IE',{style:'currency',currency:LOCAL_CURRENCY,maximumFractionDigits:fractionDigits}).format(Number(n||0));
+  } catch(_e) {
+    return `${LOCAL_CURRENCY} ${Number(n||0).toFixed(0)}`;
+  }
+};
 const tnow=()=>new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
-const toLkr=n=>Number((Number(n||0)*DEFAULT_LKR_PER_EUR).toFixed(0));
+const toLkr=n=>Number((Number(n||0)*LOCAL_PER_EUR).toFixed(LOCAL_CURRENCY==='EUR'?2:0));
+
+// Apply the active location's currency code + default FX rate to every
+// hardcoded "LKR" / "330" reference in the DOM (labels, option values, FX
+// input placeholders). Runs once at boot after the location is loaded — the
+// JS module variables (LOCAL_CURRENCY, LOCAL_PER_EUR) are the source of
+// truth for any computation; this function just keeps the visible text in
+// sync.
+function applyLocationCurrencyToDom(){
+  const cur = LOCAL_CURRENCY;
+  const fx  = LOCAL_PER_EUR;
+  // Labels and small bits of static text — replace whole-word LKR.
+  document.querySelectorAll('label, .ledger-hint, .mfield > div, option, h1, h2, h3, p, span, button, div').forEach(el => {
+    if (!el.children.length) {
+      const txt = el.textContent;
+      if (txt && /\bLKR\b/.test(txt)) {
+        el.textContent = txt.replace(/\bLKR\b/g, cur);
+      }
+    }
+  });
+  // Option values that are hardcoded to "LKR".
+  document.querySelectorAll('option[value="LKR"]').forEach(opt => {
+    opt.value = cur;
+    if (opt.textContent === 'LKR') opt.textContent = cur;
+  });
+  // FX input placeholders that were hardcoded to "330".
+  document.querySelectorAll('input[placeholder="330"]').forEach(inp => {
+    inp.placeholder = String(fx);
+  });
+  // Update the document title for the active location.
+  if (LEDGER_LOCATION_SLUG && LEDGER_LOCATION_SLUG !== 'sri-lanka') {
+    const loc = LEDGER_LOCATION_SLUG.replace(/-/g,' ').replace(/\b\w/g,m=>m.toUpperCase());
+    document.title = `${loc} — Camp Hub`;
+  }
+}
 function getFxDailyCache(){
   return readJsonStorage(FX_DAILY_KEY,{})||{};
 }
@@ -1590,11 +1640,22 @@ async function ensureHubLocationId(){
   if(!client) return '';
   const { data,error } = await client
     .from('locations')
-    .select('id,slug')
+    .select('id,slug,currency,default_fx_to_eur')
     .eq('slug',LEDGER_LOCATION_SLUG)
     .maybeSingle();
   if(error) throw error;
   HUB_SB_LOCATION_ID=data?.id||'';
+  // Pick up per-location currency + default FX rate from the row. Falls
+  // back silently to the LKR defaults if the columns aren't there yet
+  // (i.e. setup-locations-currency.sql hasn't been run).
+  if (data?.currency) {
+    LOCAL_CURRENCY = data.currency;
+    if (data.default_fx_to_eur) {
+      LOCAL_PER_EUR = Number(data.default_fx_to_eur) || LOCAL_PER_EUR;
+      DEFAULT_LKR_PER_EUR = LOCAL_PER_EUR;
+    }
+    try { applyLocationCurrencyToDom(); } catch(_e){}
+  }
   return HUB_SB_LOCATION_ID;
 }
 function mapLedgerTypeToDb(type='expense'){
