@@ -64,31 +64,42 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { targetUserId } = await req.json();
+    const { targetUserId, targetEmail } = await req.json();
     if (!targetUserId) {
       return new Response(JSON.stringify({ ok: false, error: 'Missing targetUserId' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
-    // Cannot remove yourself
     if (targetUserId === caller.id) {
       return new Response(JSON.stringify({ ok: false, error: 'Cannot remove your own account' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
-    // Deactivate profile and all memberships
-    await supabaseAdmin
+    // 1. Look up the email so we can also clean any invitation rows.
+    //    The frontend passes targetEmail too but we resolve from the DB so a
+    //    bad/stale UI value doesn't leave invitations dangling.
+    const { data: profileRow } = await supabaseAdmin
       .from('platform_profiles')
-      .update({ active: false, updated_at: new Date().toISOString() })
-      .eq('id', targetUserId);
+      .select('email')
+      .eq('id', targetUserId)
+      .maybeSingle();
+    const emailLower = (profileRow?.email || targetEmail || '').toLowerCase();
 
-    await supabaseAdmin
-      .from('workspace_memberships')
-      .update({ active: false, updated_at: new Date().toISOString() })
-      .eq('user_id', targetUserId);
+    // 2. Delete invitation rows for this email. invitation_workspace_access
+    //    cascades from workspace_invitations.id, so it goes too.
+    if (emailLower) {
+      await supabaseAdmin
+        .from('workspace_invitations')
+        .delete()
+        .eq('email', emailLower);
+    }
 
-    // Delete the auth user so they cannot log in at all
+    // 3. Delete the auth.users row. The schema has:
+    //      platform_profiles.id  → auth.users(id)            on delete cascade
+    //      workspace_memberships → platform_profiles(id)     on delete cascade
+    //    so platform_profiles + workspace_memberships rows are wiped
+    //    automatically by Postgres. No "active=false" soft-delete needed.
     const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(targetUserId);
     if (deleteError) throw deleteError;
 
