@@ -41,19 +41,21 @@ Deno.serve(async (req) => {
         status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
-    // Caller must be a super_admin OR have a workspace_membership with
-    // can_manage_team=true on at least one workspace. After Phase 5, the
-    // 'owner'/'admin' platform_role labels carry no privileges of their own
-    // — access is enforced by memberships, and super_admin is the global
-    // bypass set only via SQL.
+    // Caller authorization. Accept any of:
+    //   - platform_role in (super_admin, owner, admin) — covers fresh DBs
+    //     and DBs where Phase 5 hasn't yet promoted Miguel.
+    //   - workspace_membership with can_manage_team=true.
+    // Always requires active=true.
     const { data: callerProfile } = await supabaseAdmin
       .from('platform_profiles')
       .select('platform_role, active')
       .eq('id', caller.id)
       .maybeSingle();
-    const isSuperAdmin = callerProfile?.platform_role === 'super_admin' && callerProfile?.active === true;
+    const role = callerProfile?.platform_role ?? '';
+    const isActive = callerProfile?.active === true;
+    const hasPrivilegedRole = isActive && ['super_admin', 'owner', 'admin'].includes(role);
     let canManageTeam = false;
-    if (!isSuperAdmin) {
+    if (!hasPrivilegedRole) {
       const { data: mgmtRows } = await supabaseAdmin
         .from('workspace_memberships')
         .select('id')
@@ -63,7 +65,7 @@ Deno.serve(async (req) => {
         .limit(1);
       canManageTeam = (mgmtRows?.length ?? 0) > 0;
     }
-    if (!isSuperAdmin && !canManageTeam) {
+    if (!hasPrivilegedRole && !canManageTeam) {
       return new Response(JSON.stringify({ ok: false, error: 'Insufficient permissions' }), {
         status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
