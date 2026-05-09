@@ -36,12 +36,29 @@ Deno.serve(async (req) => {
         status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
+    // Caller authorization: super_admin / owner / admin platform role, or
+    // can_manage_team=true on at least one workspace. Mirrors the gate used
+    // by create-platform-invite so the two functions are interchangeable.
     const { data: callerProfile } = await supabaseAdmin
       .from('platform_profiles')
-      .select('platform_role')
+      .select('platform_role, active')
       .eq('id', caller.id)
       .maybeSingle();
-    if (!['owner', 'admin'].includes(callerProfile?.platform_role ?? '')) {
+    const callerRole = callerProfile?.platform_role ?? '';
+    const isActive = callerProfile?.active === true;
+    const hasPrivilegedRole = isActive && ['super_admin', 'owner', 'admin'].includes(callerRole);
+    let canManageTeam = false;
+    if (!hasPrivilegedRole) {
+      const { data: mgmtRows } = await supabaseAdmin
+        .from('workspace_memberships')
+        .select('id')
+        .eq('user_id', caller.id)
+        .eq('active', true)
+        .eq('can_manage_team', true)
+        .limit(1);
+      canManageTeam = (mgmtRows?.length ?? 0) > 0;
+    }
+    if (!hasPrivilegedRole && !canManageTeam) {
       return new Response(JSON.stringify({ ok: false, error: 'Insufficient permissions' }), {
         status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });

@@ -85,17 +85,18 @@ create trigger trg_platform_profiles_no_self_escalate
   before update on public.platform_profiles
   for each row execute procedure public.fn_platform_profiles_no_self_escalate();
 
--- ── 2. handle_new_auth_user: default to viewer, never bootstrap admin ─────
+-- ── 2. handle_new_auth_user: default to viewer, never bootstrap super_admin ─
+-- After Phase 5, only platform_role='super_admin' grants any privilege. The
+-- 'owner'/'admin'/etc. roles are pure labels — access is enforced entirely
+-- by workspace_memberships. So we let those through (so the Settings page
+-- displays the invited role correctly), and only sanitize 'super_admin'.
 create or replace function public.handle_new_auth_user()
 returns trigger language plpgsql security definer as $$
 declare
   meta_role text;
 begin
   meta_role := coalesce(new.raw_user_meta_data->>'platform_role', 'viewer');
-  -- A self-signing user can NEVER promote themselves into a privileged role
-  -- via raw_user_meta_data. The Edge Function still uses inviteUserByEmail
-  -- which sets metadata, but we sanitize here as defense in depth.
-  if meta_role in ('super_admin','owner','admin') then
+  if meta_role = 'super_admin' then
     meta_role := 'viewer';
   end if;
   insert into public.platform_profiles (id, email, full_name, platform_role, active)
