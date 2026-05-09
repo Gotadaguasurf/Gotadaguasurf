@@ -190,8 +190,13 @@ Deno.serve(async (req) => {
       if (accessError) throw accessError;
     }
 
-    // Send the Supabase invite email — user clicks link → lands on app → sets password
-    const { error: inviteEmailError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
+    // Send the Supabase invite email. inviteUserByEmail creates the auth.users
+    // row (if it doesn't already exist) and emails the secure link. We capture
+    // the returned user_id so we can pre-create memberships below — that way
+    // the invitee has access the moment they finish the password screen, with
+    // no client-side RLS dance required during invite acceptance.
+    let invitedUserId: string | null = null;
+    const { data: inviteData, error: inviteEmailError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
       email.toLowerCase(),
       {
         redirectTo: redirectTo || Deno.env.get('SITE_URL') || '',
@@ -203,15 +208,56 @@ Deno.serve(async (req) => {
       }
     );
     if (inviteEmailError) {
-      // If user already exists, update their access instead of failing
       if (!inviteEmailError.message?.includes('already been registered')) {
         throw inviteEmailError;
       }
+    } else {
+      invitedUserId = inviteData?.user?.id ?? null;
+    }
+    // If "already registered", look the user up via platform_profiles
+    // (the on_auth_user_created trigger guarantees a row exists for any
+    // auth.users entry).
+    if (!invitedUserId) {
+      const { data: existingProfile } = await supabaseAdmin
+        .from('platform_profiles')
+        .select('id')
+        .eq('email', lowerEmail)
+        .maybeSingle();
+      invitedUserId = existingProfile?.id ?? null;
+    }
+
+    // Pre-create the workspace_memberships rows so the invitee enters the app
+    // with the right access immediately after setting their password. Service
+    // role bypasses Phase 4 RLS, which is what makes this reliable. Idempotent
+    // via onConflict: a re-invite to the same email refreshes the rows.
+    if (invitedUserId && Array.isArray(accessRows) && accessRows.length) {
+      const membershipRows = accessRows.map((row: Record<string, unknown>) => ({
+        user_id: invitedUserId,
+        workspace_id: row.workspace_id,
+        member_role: row.member_role || role,
+        can_view: row.can_view ?? true,
+        can_edit: row.can_edit ?? false,
+        can_manage_team: row.can_manage_team ?? false,
+        can_manage_finance: row.can_manage_finance ?? false,
+        active: true,
+        updated_at: new Date().toISOString(),
+      }));
+      const { error: membershipError } = await supabaseAdmin
+        .from('workspace_memberships')
+        .upsert(membershipRows, { onConflict: 'user_id,workspace_id' });
+      if (membershipError) throw membershipError;
+
+      // Also align the platform_profiles row to the invited role so the
+      // Settings UI shows the right label.
+      await supabaseAdmin
+        .from('platform_profiles')
+        .update({ platform_role: role, full_name: fullName || undefined, active: true, updated_at: new Date().toISOString() })
+        .eq('id', invitedUserId);
     }
 
     return new Response(JSON.stringify({
       ok: true,
-      invite: { id: invite.id, expires_at: expiresAt }
+      invite: { id: invite.id, expires_at: expiresAt, user_id: invitedUserId }
     }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }

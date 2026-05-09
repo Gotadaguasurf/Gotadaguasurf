@@ -1832,27 +1832,35 @@
         if(fullName && window.__passwordFlowMode !== 'reset') payload.data = { full_name: fullName };
         const { error } = await client.auth.updateUser(payload);
         if(error) throw error;
-        const currentUser = sessionData?.session?.user || null;
-        if(flowMode === 'invite' && currentUser){
-          await acceptPendingInviteForCurrentUser({
-            ...currentUser,
-            user_metadata: {
-              ...(currentUser.user_metadata || {}),
-              ...(fullName ? { full_name: fullName } : {})
-            }
-          });
-        }
+        // Stamp password_set_at FIRST so the password gate never re-fires
+        // even if anything below this throws. This is the only step we
+        // truly cannot afford to lose — without the stamp, the user gets
+        // stuck on the password screen on every refresh.
         if(userId){
-          // Stamp password_set_at — single source of truth that lets future
-          // sign-ins skip the mandatory password screen. Safe to overwrite
-          // (covers both first invite and "I just changed my password").
           const profileUpdate = __accessModel === 'workspace-v2'
             ? { password_set_at: new Date().toISOString(), updated_at: new Date().toISOString() }
             : { updated_at: new Date().toISOString() };
           if(fullName) profileUpdate.full_name = fullName;
-          await client.from(__accessModel === 'workspace-v2' ? 'platform_profiles' : 'user_profiles')
-            .update(profileUpdate)
-            .eq('id', userId);
+          try{
+            await client.from(__accessModel === 'workspace-v2' ? 'platform_profiles' : 'user_profiles')
+              .update(profileUpdate)
+              .eq('id', userId);
+          }catch(_e){}
+        }
+        // Best-effort invite-status flip. The Edge Function already created
+        // the membership rows at invite-send time, so this is purely
+        // cosmetic (clears the row from "Pending Invites" in Settings).
+        const currentUser = sessionData?.session?.user || null;
+        if(flowMode === 'invite' && currentUser){
+          try{
+            await acceptPendingInviteForCurrentUser({
+              ...currentUser,
+              user_metadata: {
+                ...(currentUser.user_metadata || {}),
+                ...(fullName ? { full_name: fullName } : {})
+              }
+            });
+          }catch(_e){}
         }
         hidePasswordFlow();
         clearAuthParams();
@@ -1907,72 +1915,38 @@
       }
     }
 
+    // Mark the invite as accepted (the Edge Function already pre-created the
+    // workspace_memberships at invite-send time, so the invitee already has
+    // the right access — we just need to flip the invitation status so it
+    // disappears from "Pending Invites" in the Settings UI). The Phase 5
+    // self-accept RLS policy lets the user update their own invitation row.
     async function acceptPendingInviteForCurrentUser(user){
       if(__accessModel !== 'workspace-v2' || !user?.id || !user?.email) return;
       const client = getSupabaseClient();
-      const { data: invite, error: inviteError } = await client
-        .from('workspace_invitations')
-        .select('id, full_name, platform_role')
-        .eq('email', user.email)
-        .in('status',['pending','sent'])
-        .gt('expires_at', new Date().toISOString())
-        .order('created_at',{ascending:false})
-        .limit(1)
-        .maybeSingle();
-      if(inviteError) throw inviteError;
-      if(!invite?.id) return;
-      const { data: inviteAccessRows, error: accessError } = await client
-        .from('invitation_workspace_access')
-        .select('workspace_id, member_role, can_view, can_edit, can_manage_team, can_manage_finance')
-        .eq('invitation_id', invite.id);
-      if(accessError) throw accessError;
-      // Profile upsert. Note: we do NOT bump platform_role on conflict because
-      // the trigger sanitizes it to 'viewer' for non-super_admin self-edits;
-      // the invite role is a label and access is enforced by memberships only.
-      const profilePayload = {
-        id: user.id,
-        email: user.email,
-        full_name: invite.full_name || user.user_metadata?.full_name || '',
-        platform_role: invite.platform_role || 'viewer',
-        active: true,
-        updated_at: new Date().toISOString()
-      };
-      const { error: profileError } = await client
-        .from('platform_profiles')
-        .upsert(profilePayload, { onConflict:'id' });
-      if(profileError) throw profileError;
-      // Insert the invited memberships. Use ignoreDuplicates so we never
-      // attempt an UPDATE on a conflicting row — Phase 4 RLS blocks non-admin
-      // users from UPDATEing workspace_memberships, and the invitee isn't an
-      // admin yet at this point. ignoreDuplicates is safe because Phase 5
-      // dropped the auto-grant trigger, so a fresh invitee has no
-      // pre-existing membership rows to conflict with.
-      const membershipRows = (inviteAccessRows || []).map(row => ({
-        user_id: user.id,
-        workspace_id: row.workspace_id,
-        member_role: row.member_role,
-        can_view: row.can_view,
-        can_edit: row.can_edit,
-        can_manage_team: row.can_manage_team,
-        can_manage_finance: row.can_manage_finance,
-        active: true,
-        updated_at: new Date().toISOString()
-      }));
-      if(membershipRows.length){
-        const { error: membershipError } = await client
-          .from('workspace_memberships')
-          .upsert(membershipRows, { onConflict:'user_id,workspace_id', ignoreDuplicates:true });
-        if(membershipError) throw membershipError;
+      try{
+        const { data: invite } = await client
+          .from('workspace_invitations')
+          .select('id')
+          .eq('email', user.email)
+          .in('status',['pending','sent'])
+          .order('created_at',{ascending:false})
+          .limit(1)
+          .maybeSingle();
+        if(invite?.id){
+          await client
+            .from('workspace_invitations')
+            .update({
+              status:'accepted',
+              accepted_at:new Date().toISOString(),
+              updated_at:new Date().toISOString()
+            })
+            .eq('id', invite.id);
+        }
+      }catch(_e){
+        // Non-fatal: stale invitation rows don't block app entry. The
+        // workspace_memberships rows are the real source of truth for
+        // access, and those are written server-side at invite-send time.
       }
-      const { error: inviteUpdateError } = await client
-        .from('workspace_invitations')
-        .update({
-          status:'accepted',
-          accepted_at:new Date().toISOString(),
-          updated_at:new Date().toISOString()
-        })
-        .eq('id', invite.id);
-      if(inviteUpdateError) throw inviteUpdateError;
     }
 
     async function doLogin(){
