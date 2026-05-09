@@ -2416,8 +2416,17 @@ function buildStatementPdfMarkup(ctx) {
 
 function createStatementPdfWrap(ctx){
   const wrap = document.createElement('div');
-  wrap.style.background = '#ffffff';
+  // Pin to the top-left of the viewport, off-screen, with all spacing reset
+  // so html2canvas captures starting at the wrap's content (no inherited
+  // page padding/flex offset that would otherwise push everything down and
+  // create huge whitespace at the top of the rendered PDF).
+  wrap.style.position = 'absolute';
+  wrap.style.top = '0';
+  wrap.style.left = '-10000px';
+  wrap.style.margin = '0';
   wrap.style.padding = '0';
+  wrap.style.boxSizing = 'border-box';
+  wrap.style.background = '#ffffff';
   wrap.style.color = '#0d1b2a';
   wrap.style.fontFamily = "'Outfit', sans-serif";
   wrap.style.width = '794px';
@@ -2454,11 +2463,21 @@ async function generateStatementPdfBlob(){
   document.body.appendChild(wrap);
 
   const opt = {
-    margin: [0, 0, 0, 0],
+    // Small margins so the dark header doesn't bleed against the page edge.
+    margin: [8, 8, 8, 8],
     filename,
     image: { type: 'jpeg', quality: 0.98 },
-    html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
-    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+    html2canvas: {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: '#ffffff',
+      // Snap the canvas to the wrap's actual size so html2pdf doesn't
+      // measure beyond the content and create blank trailing pages.
+      windowWidth: 794,
+      scrollX: 0,
+      scrollY: 0
+    },
+    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait', compress: true },
     pagebreak: { mode: ['css', 'legacy'] }
   };
 
