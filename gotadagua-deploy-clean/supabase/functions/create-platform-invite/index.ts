@@ -41,13 +41,29 @@ Deno.serve(async (req) => {
         status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
-    // Check caller has owner or admin role
+    // Caller must be a super_admin OR have a workspace_membership with
+    // can_manage_team=true on at least one workspace. After Phase 5, the
+    // 'owner'/'admin' platform_role labels carry no privileges of their own
+    // — access is enforced by memberships, and super_admin is the global
+    // bypass set only via SQL.
     const { data: callerProfile } = await supabaseAdmin
       .from('platform_profiles')
-      .select('platform_role')
+      .select('platform_role, active')
       .eq('id', caller.id)
       .maybeSingle();
-    if (!['owner', 'admin'].includes(callerProfile?.platform_role ?? '')) {
+    const isSuperAdmin = callerProfile?.platform_role === 'super_admin' && callerProfile?.active === true;
+    let canManageTeam = false;
+    if (!isSuperAdmin) {
+      const { data: mgmtRows } = await supabaseAdmin
+        .from('workspace_memberships')
+        .select('id')
+        .eq('user_id', caller.id)
+        .eq('active', true)
+        .eq('can_manage_team', true)
+        .limit(1);
+      canManageTeam = (mgmtRows?.length ?? 0) > 0;
+    }
+    if (!isSuperAdmin && !canManageTeam) {
       return new Response(JSON.stringify({ ok: false, error: 'Insufficient permissions' }), {
         status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
@@ -56,6 +72,15 @@ Deno.serve(async (req) => {
     const { email, fullName, role, accessRows, redirectTo } = await req.json();
     if (!email || !role) {
       return new Response(JSON.stringify({ ok: false, error: 'Missing email or role' }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+    // super_admin is the ONLY role that bypasses workspace_memberships
+    // (see is_global_admin in tighten-rls-phase5). It must never be settable
+    // via the invite UI — promotion to super_admin happens only by an
+    // operator running SQL directly against the database.
+    if (role === 'super_admin') {
+      return new Response(JSON.stringify({ ok: false, error: 'super_admin is not an invitable role' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }

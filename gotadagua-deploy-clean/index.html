@@ -1842,9 +1842,16 @@
             }
           });
         }
-        if(userId && fullName){
+        if(userId){
+          // Stamp password_set_at — single source of truth that lets future
+          // sign-ins skip the mandatory password screen. Safe to overwrite
+          // (covers both first invite and "I just changed my password").
+          const profileUpdate = __accessModel === 'workspace-v2'
+            ? { password_set_at: new Date().toISOString(), updated_at: new Date().toISOString() }
+            : { updated_at: new Date().toISOString() };
+          if(fullName) profileUpdate.full_name = fullName;
           await client.from(__accessModel === 'workspace-v2' ? 'platform_profiles' : 'user_profiles')
-            .update(__accessModel === 'workspace-v2' ? { full_name: fullName, updated_at: new Date().toISOString() } : { full_name: fullName, updated_at: new Date().toISOString() })
+            .update(profileUpdate)
             .eq('id', userId);
         }
         hidePasswordFlow();
@@ -1919,6 +1926,9 @@
         .select('workspace_id, member_role, can_view, can_edit, can_manage_team, can_manage_finance')
         .eq('invitation_id', invite.id);
       if(accessError) throw accessError;
+      // Profile upsert. Note: we do NOT bump platform_role on conflict because
+      // the trigger sanitizes it to 'viewer' for non-super_admin self-edits;
+      // the invite role is a label and access is enforced by memberships only.
       const profilePayload = {
         id: user.id,
         email: user.email,
@@ -1931,6 +1941,20 @@
         .from('platform_profiles')
         .upsert(profilePayload, { onConflict:'id' });
       if(profileError) throw profileError;
+      // Defensive: deactivate any stale memberships first. Old schema-v2
+      // auto-grant trigger could have given this user memberships on every
+      // workspace; with the trigger removed (Phase 5) we still want to ensure
+      // legacy rows from prior tests don't leak access beyond the invited pills.
+      const invitedWorkspaceIds = (inviteAccessRows || []).map(row => row.workspace_id);
+      const deactivateQuery = client
+        .from('workspace_memberships')
+        .update({ active:false, updated_at:new Date().toISOString() })
+        .eq('user_id', user.id);
+      if(invitedWorkspaceIds.length){
+        deactivateQuery.not('workspace_id', 'in', `(${invitedWorkspaceIds.join(',')})`);
+      }
+      const { error: deactivateError } = await deactivateQuery;
+      if(deactivateError) throw deactivateError;
       const membershipRows = (inviteAccessRows || []).map(row => ({
         user_id: user.id,
         workspace_id: row.workspace_id,
@@ -2058,50 +2082,54 @@
       const userId = session.user.id;
       const email = session.user.email || '';
       __accessModel = 'workspace-v2';
-      let latestInvite = null;
+
+      // ── MANDATORY PASSWORD GATE ────────────────────────────────────────
+      // Single source of truth: platform_profiles.password_set_at.
+      // If null → the user has never finished the password screen, so we
+      // force them through it. Works for both first-time invites AND any
+      // legacy account the migration left without a stamp.
+      // Reading platform_profiles for the SELF row is allowed by RLS.
+      let selfProfile = null;
       try{
-        latestInvite = await getLatestInvitationForEmail(email);
+        const selfRes = await client
+          .from('platform_profiles')
+          .select('id, email, full_name, platform_role, active, password_set_at')
+          .eq('id', userId)
+          .maybeSingle();
+        if(!selfRes.error) selfProfile = selfRes.data;
       }catch(_error){}
-      const hasPendingInvite = !!(latestInvite?.status && ['pending','sent'].includes(latestInvite.status));
-      console.log('[Invite-Debug] hydrateFromSession', {
-        email,
-        latestInvite,
-        hasPendingInvite,
-        urlSearch: window.location.search,
-        urlHash: window.location.hash,
-        mode
-      });
-      // If the user has a pending invitation, route them to the mandatory password screen
-      // BEFORE checking workspace_memberships.
-      if(hasPendingInvite){
-        console.log('[Invite-Debug] hasPendingInvite=true, calling preparePasswordFlow');
-        const shown = await preparePasswordFlow(session, latestInvite?.full_name || session.user.user_metadata?.full_name || '');
-        console.log('[Invite-Debug] preparePasswordFlow returned', shown);
+
+      const passwordSet = !!selfProfile?.password_set_at;
+      // Show the password screen when:
+      //   - the user has never set a password (first invite-link sign-in), OR
+      //   - they came in via an explicit recovery/invite URL.
+      // Either of those is a strong signal the password screen must appear.
+      if(!passwordSet || mode === 'invite' || mode === 'reset'){
+        // Guarantee preparePasswordFlow takes the invite branch even if URL
+        // params are clean (Supabase JS auto-consumes the hash on createClient).
+        try{
+          const u = new URL(window.location.href);
+          if(!u.searchParams.get('invite') && !u.searchParams.get('reset')){
+            u.searchParams.set('invite','1');
+            if(email) u.searchParams.set('email', email);
+            window.history.replaceState({ page:'hub' }, '', u.toString());
+            window.__initialAuthSearch = u.search;
+          }
+        }catch(_e){}
+        const presetName = selfProfile?.full_name
+          || session.user.user_metadata?.full_name
+          || '';
+        const shown = await preparePasswordFlow(session, presetName);
         if(shown) return;
       }
-      // Fallback: if the workspace_invitations lookup found NOTHING (null) but
-      // user_metadata says they were just invited, force the password screen.
-      // Critical: we check `!latestInvite` (no row at all), NOT `!hasPendingInvite`
-      // — because once they've set their password the invite row exists with
-      // status='accepted' and we must NOT loop them back to the password screen.
-      const metaInviteId = session.user.user_metadata?.invitation_id;
-      if(!latestInvite && metaInviteId){
-        console.log('[Invite-Debug] DB invite row missing but user_metadata.invitation_id present, forcing password screen', metaInviteId);
-        try{
-          const u=new URL(window.location.href);
-          u.searchParams.set('invite','1');
-          if(email) u.searchParams.set('email',email);
-          window.history.replaceState({page:'hub'},'',u.toString());
-          window.__initialAuthSearch=u.search;
-        }catch(_e){}
-        if(await preparePasswordFlow(session, session.user.user_metadata?.full_name || '')) return;
-      }
-      if(mode !== 'invite' && !hasPendingInvite){
-        try{
-          await acceptPendingInviteForCurrentUser(session.user);
-        }catch(_error){
-          __accessModel = 'legacy';
-        }
+
+      // After we've decided no password gate is needed, accept any pending
+      // invitation linked to this email. Safe to skip silently if there is none.
+      try{
+        await acceptPendingInviteForCurrentUser(session.user);
+      }catch(_error){
+        // Non-fatal: invitation may already be accepted, or RLS may block —
+        // either way, the membership rows below are the source of truth.
       }
       const [platformProfileRes, membershipRes, workspaceRes] = await Promise.all([
         client.from('platform_profiles').select('*').eq('id', userId).maybeSingle(),
@@ -2219,9 +2247,9 @@
         }];
         pendingInvites = [];
       }
-      if(await preparePasswordFlow(session, __currentProfile?.full_name || '')){
-        return;
-      }
+      // Password gate already handled at the top of hydrateFromSession via
+      // platform_profiles.password_set_at. We don't need a second call here —
+      // it would just race with the URL having ?reset=1 still in the bar.
       document.getElementById('userName').textContent = __currentProfile.full_name || email.split('@')[0] || 'User';
       showLoggedInUI();
       setAuthMessage();
