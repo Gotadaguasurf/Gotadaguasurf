@@ -3304,12 +3304,21 @@ function renderOverview(){
       <div style="font-family:'DM Serif Display',serif;font-size:17px;color:var(--navy)">Utilities control</div>
       <div style="font-size:11px;color:var(--muted)">Electricity, water, internet, and gas spend</div>
     </div>
-    <div class="tbl-wrap"><table>
-      <thead><tr><th>Utility</th><th class="r">Spend</th><th class="r">Camp-paid</th><th class="r">HQ-paid</th><th class="r">Entries</th></tr></thead>
-      <tbody>
-        ${utilityRows.length?utilityRows.map(r=>`<tr><td style="font-weight:600">${r.name}</td><td class="r" style="color:var(--red)">${moneyPairLocal(r.spendLocal,r.spendEur)}</td><td class="r">${r.campLocal?moneyPairLocal(r.campLocal,r.campEur):'—'}</td><td class="r">${r.hqLocal?moneyPairLocal(r.hqLocal,r.hqEur):'—'}</td><td class="r">${r.entries||'—'}</td></tr>`).join(''):'<tr class="empty-row"><td colspan="5">No utility entries yet — pick a utility type when adding a Utilities expense.</td></tr>'}
-      </tbody>
-    </table></div>
+    <div class="card-pad" style="padding:16px 20px 20px">
+      ${utilityRows.length
+        ? `<div class="g4">${utilityRows.map(r=>`
+          <div style="background:var(--foam);border:1px solid var(--border);border-radius:10px;padding:14px 16px">
+            <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">${r.name}</div>
+            <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--red);margin-top:6px;line-height:1.1">${moneyPairLocal(r.spendLocal,r.spendEur)}</div>
+            <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:10px;gap:8px">
+              <span>Camp-paid: <span style="color:var(--navy);font-weight:600">${r.campLocal?moneyPairLocal(r.campLocal,r.campEur):'—'}</span></span>
+              <span>HQ-paid: <span style="color:var(--navy);font-weight:600">${r.hqLocal?moneyPairLocal(r.hqLocal,r.hqEur):'—'}</span></span>
+            </div>
+            <div style="font-size:11px;color:var(--muted);margin-top:6px">${r.entries||0} entr${(r.entries||0)===1?'y':'ies'}</div>
+          </div>`).join('')}</div>`
+        : `<div style="color:var(--muted);font-size:13px;padding:12px 0">No utility entries yet — pick a utility type when adding a Utilities expense.</div>`
+      }
+    </div>
     <div class="card-pad" style="border-top:1px solid var(--border);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
       <div style="font-family:'DM Serif Display',serif;font-size:17px;color:var(--navy)">Tour performance</div>
       <div style="font-size:11px;color:var(--muted)">Revenue, cost, and profit by product</div>
