@@ -1941,20 +1941,12 @@
         .from('platform_profiles')
         .upsert(profilePayload, { onConflict:'id' });
       if(profileError) throw profileError;
-      // Defensive: deactivate any stale memberships first. Old schema-v2
-      // auto-grant trigger could have given this user memberships on every
-      // workspace; with the trigger removed (Phase 5) we still want to ensure
-      // legacy rows from prior tests don't leak access beyond the invited pills.
-      const invitedWorkspaceIds = (inviteAccessRows || []).map(row => row.workspace_id);
-      const deactivateQuery = client
-        .from('workspace_memberships')
-        .update({ active:false, updated_at:new Date().toISOString() })
-        .eq('user_id', user.id);
-      if(invitedWorkspaceIds.length){
-        deactivateQuery.not('workspace_id', 'in', `(${invitedWorkspaceIds.join(',')})`);
-      }
-      const { error: deactivateError } = await deactivateQuery;
-      if(deactivateError) throw deactivateError;
+      // Insert the invited memberships. Use ignoreDuplicates so we never
+      // attempt an UPDATE on a conflicting row — Phase 4 RLS blocks non-admin
+      // users from UPDATEing workspace_memberships, and the invitee isn't an
+      // admin yet at this point. ignoreDuplicates is safe because Phase 5
+      // dropped the auto-grant trigger, so a fresh invitee has no
+      // pre-existing membership rows to conflict with.
       const membershipRows = (inviteAccessRows || []).map(row => ({
         user_id: user.id,
         workspace_id: row.workspace_id,
@@ -1969,7 +1961,7 @@
       if(membershipRows.length){
         const { error: membershipError } = await client
           .from('workspace_memberships')
-          .upsert(membershipRows, { onConflict:'user_id,workspace_id' });
+          .upsert(membershipRows, { onConflict:'user_id,workspace_id', ignoreDuplicates:true });
         if(membershipError) throw membershipError;
       }
       const { error: inviteUpdateError } = await client
