@@ -60,6 +60,77 @@ Deno.serve(async (req) => {
       });
     }
 
+    // ── RATE LIMITING ────────────────────────────────────────────────────────
+    // Three guards, in order of strictness:
+    //
+    //   A) Global burst:    no more than 20 invites in the last 5 minutes
+    //                       (across all admins) — catches scripted spam.
+    //   B) Daily cap:       no more than 100 invites in the last 24 hours
+    //                       (across all admins) — sane upper bound for normal
+    //                       onboarding.
+    //   C) Per-email cool:  the same email can't be invited twice within the
+    //                       last 5 minutes — catches accidental double-clicks
+    //                       and typo retries.
+    //
+    // Any breach returns HTTP 429 with a Retry-After header so the client can
+    // back off cleanly.
+    const now = Date.now();
+    const FIVE_MIN_AGO  = new Date(now - 5  * 60 * 1000).toISOString();
+    const ONE_DAY_AGO   = new Date(now - 24 * 60 * 60 * 1000).toISOString();
+    const lowerEmail    = email.toLowerCase();
+
+    // (A) Burst window
+    const { count: burstCount, error: burstErr } = await supabaseAdmin
+      .from('workspace_invitations')
+      .select('id', { count: 'exact', head: true })
+      .gte('created_at', FIVE_MIN_AGO);
+    if (burstErr) throw burstErr;
+    if ((burstCount ?? 0) >= 20) {
+      return new Response(JSON.stringify({
+        ok: false,
+        error: 'Too many invites sent in the last 5 minutes. Please wait a moment and try again.',
+        rate_limit: 'burst'
+      }), {
+        status: 429,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Retry-After': '300' }
+      });
+    }
+
+    // (B) Daily window
+    const { count: dailyCount, error: dailyErr } = await supabaseAdmin
+      .from('workspace_invitations')
+      .select('id', { count: 'exact', head: true })
+      .gte('created_at', ONE_DAY_AGO);
+    if (dailyErr) throw dailyErr;
+    if ((dailyCount ?? 0) >= 100) {
+      return new Response(JSON.stringify({
+        ok: false,
+        error: 'Daily invite limit reached (100 in 24h). Try again tomorrow.',
+        rate_limit: 'daily'
+      }), {
+        status: 429,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Retry-After': '3600' }
+      });
+    }
+
+    // (C) Same-email cooldown
+    const { count: dupeCount, error: dupeErr } = await supabaseAdmin
+      .from('workspace_invitations')
+      .select('id', { count: 'exact', head: true })
+      .eq('email', lowerEmail)
+      .gte('created_at', FIVE_MIN_AGO);
+    if (dupeErr) throw dupeErr;
+    if ((dupeCount ?? 0) >= 1) {
+      return new Response(JSON.stringify({
+        ok: false,
+        error: 'This email was just invited a moment ago — wait 5 minutes before re-sending.',
+        rate_limit: 'duplicate_email'
+      }), {
+        status: 429,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Retry-After': '300' }
+      });
+    }
+
     // Create invitation record first
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
     const { data: invite, error: inviteError } = await supabaseAdmin
