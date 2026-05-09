@@ -2417,24 +2417,16 @@ function buildStatementPdfMarkup(ctx) {
 
 function createStatementPdfWrap(ctx){
   const wrap = document.createElement('div');
-  // Pin to the top-left of the page so html2canvas captures from a known
-  // origin (no inherited flex/padding offset). Stays in the visible
-  // document tree — pushing it off-screen with negative left makes
-  // html2canvas render an empty canvas. We hide it with z-index/opacity
-  // so the user doesn't see the temporary render.
-  wrap.style.position = 'fixed';
-  wrap.style.top = '0';
-  wrap.style.left = '0';
-  wrap.style.zIndex = '-1';
-  wrap.style.opacity = '0';
-  wrap.style.pointerEvents = 'none';
-  wrap.style.margin = '0';
-  wrap.style.padding = '0';
-  wrap.style.boxSizing = 'border-box';
+  // Render the wrap inside a fixed-position 1x1 clipped frame so html2canvas
+  // can render it (it skips elements with opacity:0 / display:none / off-
+  // screen positioning) but the user doesn't see it on the live page.
   wrap.style.background = '#ffffff';
   wrap.style.color = '#0d1b2a';
   wrap.style.fontFamily = "'Outfit', sans-serif";
   wrap.style.width = '794px';
+  wrap.style.margin = '0';
+  wrap.style.padding = '0';
+  wrap.style.boxSizing = 'border-box';
   wrap.innerHTML = `
     <div style="background:#ffffff;color:#0d1b2a;width:794px;">
       <div style="background:linear-gradient(135deg,#28394b 0%,#344d63 100%);color:#fff;padding:34px 42px 28px;">
@@ -2465,10 +2457,25 @@ async function generateStatementPdfBlob(){
   const filename = `${safePartner || 'statement'}-${period.replace(/[^a-z0-9]+/gi,'-')}.pdf`;
 
   const wrap = createStatementPdfWrap({...ctx, periodLabel: period});
-  document.body.appendChild(wrap);
+
+  // Hide the wrap from the user during render without breaking html2canvas:
+  // a 1x1 fixed container with overflow:hidden lets the wrap render at full
+  // size internally (so the canvas captures everything) while the user only
+  // sees a 1px speck in the corner — easier than fighting opacity/visibility
+  // tricks that html2canvas optimizes away.
+  const stage = document.createElement('div');
+  stage.style.position = 'fixed';
+  stage.style.top = '0';
+  stage.style.left = '0';
+  stage.style.width = '1px';
+  stage.style.height = '1px';
+  stage.style.overflow = 'hidden';
+  stage.style.pointerEvents = 'none';
+  stage.style.zIndex = '-1';
+  stage.appendChild(wrap);
+  document.body.appendChild(stage);
 
   const opt = {
-    // Small margins so the dark header doesn't bleed against the page edge.
     margin: [8, 8, 8, 8],
     filename,
     image: { type: 'jpeg', quality: 0.98 },
@@ -2476,8 +2483,6 @@ async function generateStatementPdfBlob(){
       scale: 2,
       useCORS: true,
       backgroundColor: '#ffffff',
-      // Snap the canvas to the wrap's actual size so html2pdf doesn't
-      // measure beyond the content and create blank trailing pages.
       windowWidth: 794,
       scrollX: 0,
       scrollY: 0
@@ -2491,7 +2496,7 @@ async function generateStatementPdfBlob(){
     if (!blob) throw new Error('Empty PDF blob');
     return { blob, filename };
   } finally {
-    wrap.remove();
+    stage.remove();
   }
 }
 
