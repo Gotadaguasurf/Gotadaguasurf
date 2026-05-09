@@ -2458,37 +2458,30 @@ async function generateStatementPdfBlob(){
 
   const wrap = createStatementPdfWrap({...ctx, periodLabel: period});
 
-  // Render the wrap at the top-left of the document, behind every other
-  // element via negative z-index. The wrap keeps its full 794px width and
-  // natural height (no overflow clipping that confused html2canvas), and
-  // html2canvas can read it directly. The user only sees a brief 1-2s
-  // overlap behind the existing app while the canvas is captured.
-  wrap.style.position = 'absolute';
+  // position:fixed pins the wrap to the viewport (0,0) regardless of body
+  // padding/margin/transform — that was the cause of every previous attempt
+  // capturing only the right half of the content. zIndex puts it behind
+  // every other element so the user doesn't see the temporary render.
+  wrap.style.position = 'fixed';
   wrap.style.top = '0';
   wrap.style.left = '0';
   wrap.style.zIndex = '-9999';
   wrap.style.pointerEvents = 'none';
   document.body.appendChild(wrap);
 
-  // Make sure layout has settled before html2canvas measures.
+  // Let layout settle before html2canvas measures.
   await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
 
   const opt = {
     margin: [8, 8, 8, 8],
     filename,
     image: { type: 'jpeg', quality: 0.98 },
+    // Default html2canvas options — no explicit width/height/scrollX so the
+    // library reads the wrap's bounding box correctly.
     html2canvas: {
       scale: 2,
       useCORS: true,
-      backgroundColor: '#ffffff',
-      // Match html2canvas's internal viewport to the wrap so it doesn't
-      // measure anything outside our element.
-      width: 794,
-      height: wrap.scrollHeight,
-      windowWidth: 794,
-      windowHeight: wrap.scrollHeight,
-      scrollX: 0,
-      scrollY: -window.scrollY
+      backgroundColor: '#ffffff'
     },
     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait', compress: true },
     pagebreak: { mode: ['css', 'legacy'] }
