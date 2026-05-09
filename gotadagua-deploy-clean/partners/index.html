@@ -2417,13 +2417,17 @@ function buildStatementPdfMarkup(ctx) {
 
 function createStatementPdfWrap(ctx){
   const wrap = document.createElement('div');
-  // Pin to the top-left of the viewport, off-screen, with all spacing reset
-  // so html2canvas captures starting at the wrap's content (no inherited
-  // page padding/flex offset that would otherwise push everything down and
-  // create huge whitespace at the top of the rendered PDF).
-  wrap.style.position = 'absolute';
+  // Pin to the top-left of the page so html2canvas captures from a known
+  // origin (no inherited flex/padding offset). Stays in the visible
+  // document tree — pushing it off-screen with negative left makes
+  // html2canvas render an empty canvas. We hide it with z-index/opacity
+  // so the user doesn't see the temporary render.
+  wrap.style.position = 'fixed';
   wrap.style.top = '0';
-  wrap.style.left = '-10000px';
+  wrap.style.left = '0';
+  wrap.style.zIndex = '-1';
+  wrap.style.opacity = '0';
+  wrap.style.pointerEvents = 'none';
   wrap.style.margin = '0';
   wrap.style.padding = '0';
   wrap.style.boxSizing = 'border-box';
