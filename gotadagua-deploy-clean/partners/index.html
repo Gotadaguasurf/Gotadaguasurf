@@ -30,8 +30,9 @@ header{background:var(--navy);padding:0 24px;display:flex;align-items:center;jus
 .nav-tab:hover{color:#fff;background:rgba(255,255,255,.08)}.nav-tab.active{color:#fff;background:var(--ocean)}
 main{max-width:1400px;margin:0 auto;padding:32px 48px}
 .kpi-strip{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:28px}
-@media (max-width: 1280px){ .kpi-strip{grid-template-columns:repeat(2,1fr)} }
-@media (min-width: 1281px) and (max-width: 1599px){ .kpi-strip{grid-template-columns:repeat(3,1fr)} }
+/* Keep all 5 KPIs on a single row at every desktop width. Only collapse on
+   true mobile, where horizontal scrolling would be awkward. */
+@media (max-width: 720px){ .kpi-strip{grid-template-columns:repeat(2,1fr)} }
 .kpi{background:#fff;border-radius:var(--r);padding:18px 18px;border:1px solid var(--border);box-shadow:var(--sh);transition:transform .2s}.kpi:hover{transform:translateY(-2px)}
 .kpi-label{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:600;margin-bottom:6px}
 .kpi-value{font-family:'DM Serif Display',serif;font-size:23px;color:var(--navy);line-height:1.15}.kpi-value.accent{color:var(--ocean)}
