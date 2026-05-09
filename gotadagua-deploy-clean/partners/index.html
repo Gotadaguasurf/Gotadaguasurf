@@ -2520,50 +2520,39 @@ async function generateStatementPdfBlob(){
   const truncate = (s, max)=>{ s = String(s||''); return s.length<=max ? s : s.slice(0,max-1)+'…'; };
 
   // ── 1. HEADER BAR ────────────────────────────────────────────────────────
-  // Subtle gradient via two stacked rects so the dark navy doesn't feel flat.
   setFill('#28394b');
   doc.rect(0, 0, pageW, 46, 'F');
   setFill('#344d63');
   doc.rect(0, 44, pageW, 2, 'F');
 
-  // Brand logo (top-left) — embedded from the live SVG.
+  // Brand logo (top-left) — bigger, more prominent.
   const logoDataUrl = await getPdfLogoDataUrl().catch(()=>null);
   if (logoDataUrl) {
-    // 197.4:91 aspect — render at 24mm wide ≈ 11mm tall.
-    doc.addImage(logoDataUrl, 'PNG', margin, 8, 24, 11);
+    // 197.4:91 aspect — 32mm wide ≈ 14.7mm tall.
+    doc.addImage(logoDataUrl, 'PNG', margin, 7, 32, 14.7);
   } else {
     setText('#fff4d5');
     doc.setFont('helvetica','bold');
-    doc.setFontSize(11);
-    doc.text('GOTA DAGUA', margin, 14);
+    doc.setFontSize(13);
+    doc.text('GOTA DAGUA', margin, 16);
   }
 
   // Partner name + period (left column, below the logo).
   setText('#ffffff');
   doc.setFont('helvetica','bold');
   doc.setFontSize(20);
-  doc.text(truncate(partner, 40), margin, 28);
+  doc.text(truncate(partner, 40), margin, 31);
 
   setText('#d4e8f6');
   doc.setFont('helvetica','normal');
   doc.setFontSize(10);
-  doc.text(`Monthly partner statement  •  ${period}`, margin, 35);
+  doc.text(`Monthly partner statement  •  ${period}`, margin, 38);
 
-  // Right column of header
-  setText('#9fc5df');
-  doc.setFont('helvetica','bold');
-  doc.setFontSize(7.5);
-  doc.text('GENERATED', pageW - margin, 14, { align:'right' });
+  // Right column — just the date, clean and minimal.
   setText('#ffffff');
   doc.setFont('helvetica','bold');
-  doc.setFontSize(11);
-  doc.text(new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'}), pageW - margin, 20, { align:'right' });
-  if (email) {
-    setText('#d4e8f6');
-    doc.setFont('helvetica','normal');
-    doc.setFontSize(9);
-    doc.text(truncate(email, 38), pageW - margin, 27, { align:'right' });
-  }
+  doc.setFontSize(13);
+  doc.text(new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'}), pageW - margin, 18, { align:'right' });
 
   // ── 2. SUMMARY CARDS ─────────────────────────────────────────────────────
   const cardY = 54, cardH = 24;
@@ -2631,17 +2620,19 @@ async function generateStatementPdfBlob(){
   doc.text(`${bookings.length} booking${bookings.length===1?'':'s'}`, pageW - margin, y, { align:'right' });
   y += 4;
 
-  // Column layout (mm widths summing to ~182)
+  // Column layout (mm). Total = 178mm, leaving 4mm breathing room inside
+  // the 182mm available between the page margins so nothing clips on the
+  // right edge.
   const cols = [
-    { key:'#',     w: 7,  align:'left'   },
-    { key:'Guest', w: 40, align:'left'   },
-    { key:'Ref',   w: 24, align:'left'   },
-    { key:'Date',  w: 20, align:'left'   },
-    { key:'Pax',   w: 10, align:'center' },
-    { key:'Gross', w: 24, align:'right'  },
-    { key:'Rate',  w: 12, align:'right'  },
+    { key:'#',     w: 6,  align:'left'   },
+    { key:'Guest', w: 38, align:'left'   },
+    { key:'Ref',   w: 22, align:'left'   },
+    { key:'Date',  w: 19, align:'left'   },
+    { key:'Pax',   w: 9,  align:'center' },
+    { key:'Gross', w: 22, align:'right'  },
+    { key:'Rate',  w: 11, align:'right'  },
     { key:'Comm.', w: 22, align:'right'  },
-    { key:'Net',   w: 23, align:'right'  }
+    { key:'Net',   w: 29, align:'right'  }
   ];
   const tableW = cols.reduce((s,c)=>s+c.w, 0);
 
@@ -2752,12 +2743,12 @@ async function generateStatementPdfBlob(){
     } else if (i === 8) {
       setText('#1e6fa8');
       doc.setFont('helvetica','bold');
-      doc.setFontSize(11);
+      doc.setFontSize(10);
       doc.text(val, tx, y + 6.4, opts);
     } else if (i === 5 || i === 7) {
       setText('#28394b');
       doc.setFont('helvetica','bold');
-      doc.setFontSize(10);
+      doc.setFontSize(9.5);
       doc.text(val, tx, y + 6.4, opts);
     }
     cx += c.w;
