@@ -1559,7 +1559,7 @@ function retrySave(){
 function markCampcloseDeleted(id){
   deletedCampcloseIds.add(id);
   // Fast local backup — survives page refresh even if Supabase is slow
-  try{ localStorage.setItem('hub_deleted_campclose_local',JSON.stringify([...deletedCampcloseIds])); }catch(e){}
+  try{ localStorage.setItem('hub_deleted_campclose_local'+__HUB_LOC_SUFFIX,JSON.stringify([...deletedCampcloseIds])); }catch(e){}
   // Save cross-computer via state_store (fire and forget — in-memory update is immediate)
   const client=getHubSupabaseClient();
   ensureHubLocationId().then(locationId=>{
@@ -1576,10 +1576,24 @@ async function loadDeletedCampcloseIds(){
   }catch(e){console.warn('[Hub] loadDeletedCampcloseIds failed',e);}
   // Also load from localStorage as fast fallback (survives page refresh before Supabase responds)
   try{
-    const local=localStorage.getItem('hub_deleted_campclose_local');
+    const local=localStorage.getItem('hub_deleted_campclose_local'+__HUB_LOC_SUFFIX);
     if(local){
       const arr=JSON.parse(local);
       if(Array.isArray(arr)) arr.forEach(id=>deletedCampcloseIds.add(id));
+    }
+    // Sri Lanka one-time migration: legacy unscoped key. For other locations,
+    // never read it — pre-multi-location data was Sri Lanka only.
+    if(__HUB_LOCATION_SLUG==='sri-lanka'){
+      const legacy=localStorage.getItem('hub_deleted_campclose_local');
+      if(legacy){
+        try{
+          const arr=JSON.parse(legacy);
+          if(Array.isArray(arr)) arr.forEach(id=>deletedCampcloseIds.add(id));
+        }catch(_e){}
+        localStorage.removeItem('hub_deleted_campclose_local');
+      }
+    } else {
+      localStorage.removeItem('hub_deleted_campclose_local');
     }
   }catch(e){}
 }
@@ -1756,7 +1770,7 @@ function ledgerEntryToDbRow(entry,locationId){
     payment_method:normalized.paymentMethod||null,
     qty:Number(normalized.quantity||1),
     amount_local:Number(normalized.amountLocal||0),
-    currency:normalized.currency||'LKR',
+    currency:normalized.currency||LOCAL_CURRENCY||'LKR',
     entry_date:normalized.date,
     business_area:normalized.businessArea||inferArea(normalized.type,normalized.category,normalized.linkedItem||''),
     fx_rate:Number(normalized.fxRate||DEFAULT_LKR_PER_EUR),
@@ -1975,7 +1989,7 @@ function salaryProfileToMonthlyCostRow(profile,locationId){
     // Currency is stored in metadata.currency so we don't need a schema
     // migration on monthly_cost_profiles. local_type is preserved for the
     // existing seasonal/fixed round-trip.
-    metadata:{ local_type:normalized.type||'seasonal', currency:normalized.currency||'LKR' }
+    metadata:{ local_type:normalized.type||'seasonal', currency:normalized.currency||LOCAL_CURRENCY||'LKR' }
   };
 }
 function recurringRuleToMonthlyCostRow(rule,locationId){
@@ -2855,9 +2869,28 @@ function showPosSub(sub){
 // ═══════════════════════════════════════════════════════════
 //  OVERVIEW — CSV guest-day loader
 // ═══════════════════════════════════════════════════════════
-const OV_CSV_KEY='camphub_ov_bookings_v3';
+const OV_CSV_KEY='camphub_ov_bookings_v3'+__HUB_LOC_SUFFIX;
+const OV_CSV_KEY_LEGACY='camphub_ov_bookings_v3';
 let ovBookings=[];
-try{const s=localStorage.getItem(OV_CSV_KEY);if(s)ovBookings=JSON.parse(s);}catch(e){}
+try{
+  const s=localStorage.getItem(OV_CSV_KEY);
+  if(s) ovBookings=JSON.parse(s);
+  else if(__HUB_LOCATION_SLUG==='sri-lanka'){
+    // One-time migration: pre-multi-location, this key was unscoped and held
+    // Sri Lanka's bookings. Move them under the scoped key so Morocco doesn't
+    // inherit them on first visit.
+    const legacy=localStorage.getItem(OV_CSV_KEY_LEGACY);
+    if(legacy){
+      ovBookings=JSON.parse(legacy);
+      localStorage.setItem(OV_CSV_KEY,legacy);
+      localStorage.removeItem(OV_CSV_KEY_LEGACY);
+    }
+  } else {
+    // Other locations should never read the legacy unscoped key — clear any
+    // leftover from a prior visit so it can't leak again.
+    localStorage.removeItem(OV_CSV_KEY_LEGACY);
+  }
+}catch(e){}
 
 function ovParseCsvRows(text){
   const rows=[];let row=[];let cur='';let inQ=false;
