@@ -1538,14 +1538,32 @@
           // still uses the full destructive replace below.
           const isSelfEdit = !!(__currentProfile?.id && existingUser.userId === __currentProfile.id);
           if (isSelfEdit) {
-            const { error: profileError } = await client
+            // Use .select() so PostgREST returns the updated row — that
+            // way we can verify the write actually changed something
+            // instead of trusting a 204 No Content with 0 rows affected.
+            const { data: updated, error: profileError } = await client
               .from('platform_profiles')
               .update({ full_name: fullName || null, updated_at: new Date().toISOString() })
-              .eq('id', existingUser.userId);
-            if (profileError) throw profileError;
+              .eq('id', existingUser.userId)
+              .select('id, full_name')
+              .maybeSingle();
+            if (profileError) {
+              console.error('[Settings] self-edit name update failed', profileError);
+              throw profileError;
+            }
+            if (!updated) {
+              throw new Error('The name update did not affect any row. Check that your account is still active.');
+            }
+            // Optimistic local-state patch so the row in the team list
+            // shows the new name immediately, even if the realtime hydrate
+            // takes a moment.
+            if (__currentProfile) __currentProfile.full_name = updated.full_name || '';
+            const me = accessUsers.find(u => u.email === __editingAccessEmail);
+            if (me) me.meta = updated.full_name || '';
+            renderAccessSettings();
             await hydrateFromSession();
             resetAccessForm();
-            showToast(`Name updated.`);
+            showToast(`Name updated to ${updated.full_name || '(blank)'}.`);
             return;
           }
           const profilePayload = {
