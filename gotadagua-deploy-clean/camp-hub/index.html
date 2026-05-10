@@ -484,7 +484,7 @@ td.r{text-align:right;font-family:'DM Mono',monospace;font-size:12px}
         <div class="ov-section-title">Performance</div>
         <div class="ov-section-sub">Headline numbers for the current selection</div>
       </div>
-      <div id="ovKpis"></div>
+      <div class="g4" id="ovKpis"></div>
     </section>
 
     <!-- Hidden — kept so legacy renderers don't break if they target the ID. -->
@@ -3524,45 +3524,14 @@ function renderOverview(){
       </div>
     </div>`:'';
 
-  // Hero + KPI grid layout: the gross profit is the headline figure, the
-  // other three KPIs sit next to it as a denser grid. On narrow screens
-  // the hero takes the full width and the KPIs reflow below it.
-  const profitTrendTag = grossProfitLocal>0
-    ? `<span class="ov-hero-tag">In profit</span>`
-    : grossProfitLocal<0
-      ? `<span class="ov-hero-tag" style="background:rgba(185,28,28,.2);border-color:rgba(255,150,150,.3)">Loss</span>`
-      : `<span class="ov-hero-tag">Break-even</span>`;
+  // Original 4-card KPI strip — user prefers all four side-by-side with
+  // colored values (green/amber/ocean/green-or-red) over the hero+grid
+  // hybrid. The g4 container handles the equal-width layout.
   document.getElementById('ovKpis').innerHTML=`
-    <div style="display:grid;grid-template-columns:minmax(280px,1fr) minmax(420px,1.5fr);gap:16px;align-items:stretch">
-      <div class="ov-hero">
-        <div class="ov-hero-eyebrow">Gross Profit · selection</div>
-        <div class="ov-hero-value">${lkr(grossProfitLocal)}</div>
-        <div class="ov-hero-sub">${euro(grossProfitEur)} · Revenue minus every expense</div>
-        ${profitTrendTag}
-      </div>
-      <div class="ov-kpi-grid">
-        <div class="ov-kpi">
-          <div class="ov-kpi-label">Camp Cash</div>
-          <div class="ov-kpi-value">${lkr(campCashBalanceLocal)}</div>
-          <div class="ov-kpi-sub">${euro(campCashBalanceEur)}</div>
-        </div>
-        <div class="ov-kpi">
-          <div class="ov-kpi-label">HQ Paid</div>
-          <div class="ov-kpi-value">${lkr(hqSpendLocal)}</div>
-          <div class="ov-kpi-sub">${euro(hqSpendEur)}</div>
-        </div>
-        <div class="ov-kpi">
-          <div class="ov-kpi-label">Guest-days</div>
-          <div class="ov-kpi-value">${guestDays>0?guestDays:'—'}</div>
-          <div class="ov-kpi-sub">${gdSource}</div>
-        </div>
-        <div class="ov-kpi">
-          <div class="ov-kpi-label">Tabs paid</div>
-          <div class="ov-kpi-value">${lkr(tabRevenueLocal)}</div>
-          <div class="ov-kpi-sub">${euro(tabRevenueEur)}</div>
-        </div>
-      </div>
-    </div>
+    ${kpi('Camp Cash','Float + revenue − camp-paid costs',lkr(campCashBalanceLocal),campCashBalanceLocal>=0?'kv-green':'kv-red',euro(campCashBalanceEur))}
+    ${kpi('HQ Paid','Direct HQ-covered expenses',lkr(hqSpendLocal),'kv-amber',euro(hqSpendEur))}
+    ${kpi('Guest-days',gdSource,guestDays>0?guestDays+'d':'—','kv-ocean')}
+    ${kpi('Gross Profit','Revenue − all expenses',lkr(grossProfitLocal),grossProfitLocal>=0?'kv-green':'kv-red',euro(grossProfitEur))}
   `;
   renderOverviewBookingsPanel(weeks,selectedWid,allLedger);
   const foodControlHtml=buildFoodControlCardHtml(weeks,allLedger);
