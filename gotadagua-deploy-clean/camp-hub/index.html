@@ -976,13 +976,37 @@ const MENU={
     {n:"Ice Bath",p:3000},{n:"Safari Yala",p:0},
   ]
 };
-const TOUR_MENU_ITEMS=[
-  {n:"Cooking Class",p:6000},
-  {n:"Tea Plantation Visit",p:2500},
-  {n:"River Safari",p:6000},
-  {n:"Ice Bath",p:3000},
-  {n:"Safari Yala",p:0,d:"Set the price per booking before charging"}
-];
+// Per-location tour menus. Determined from ?location=<slug> at module load
+// so the operations ledger quick-add, the camp tab Tours category, and the
+// Overview tour-performance board all see the right list for the active
+// location. Prices are in the location's local currency.
+const __HUB_LOCATION_SLUG=(new URLSearchParams(window.location.search).get('location')||'sri-lanka').trim().toLowerCase();
+const TOUR_MENU_BY_LOCATION={
+  'sri-lanka':[
+    {n:"Cooking Class",p:6000},
+    {n:"Tea Plantation Visit",p:2500},
+    {n:"River Safari",p:6000},
+    {n:"Ice Bath",p:3000},
+    {n:"Safari Yala",p:0,d:"Set the price per booking before charging"}
+  ],
+  // Morocco — Souk + Paradise Valley + Dunes (Quad Bike or Camel Ride, with
+  // or without transport). Prices below are the MAD equivalent of the EUR
+  // ticket prices (15€/25€/45€/40€/25€/20€) at the seeded MAD/EUR rate of
+  // 10.8 — easy to edit later in the menu editor if rates drift.
+  morocco:[
+    {n:"Souk Tour",p:162,d:"Transport + guide · 4 pax min · 15€"},
+    {n:"Paradise Valley",p:270,d:"Transport + guide · 4 pax min · 25€"},
+    {n:"Dunes — Quad Bike (with transport)",p:486,d:"Quad Bike + sandboard + tea + bonfire + transport · 4 pax min · 45€"},
+    {n:"Dunes — Camel Ride (with transport)",p:432,d:"Camel Ride + sandboard + tea + bonfire + transport · 4 pax min · 40€"},
+    {n:"Dunes — Quad Bike (activity only)",p:270,d:"Quad Bike + sandboard + tea + bonfire · 25€"},
+    {n:"Dunes — Camel Ride (activity only)",p:216,d:"Camel Ride + sandboard + tea + bonfire · 20€"}
+  ],
+  // Portugal & Junior Camp don't have a fixed tour list yet — start with an
+  // empty array so the Tours UI exists but the menu is editable in-app.
+  portugal:[],
+  'junior-camp':[]
+};
+const TOUR_MENU_ITEMS = (TOUR_MENU_BY_LOCATION[__HUB_LOCATION_SLUG] || TOUR_MENU_BY_LOCATION['sri-lanka']).map(t=>({...t}));
 const DRINK_MENU_ITEMS=[
   {n:"Espresso",p:550},{n:"Americano",p:650},{n:"Cappuccino",p:950},{n:"Flat White",p:980},
   {n:"Iced Coffee",p:1200},{n:"Iced Latte",p:1350},{n:"Tea",p:450},{n:"Fresh Juice",p:1400},
@@ -1006,6 +1030,9 @@ const MERCH_MENU_ITEMS=[
   {n:"T-Shirt Staff L",p:3250,stk:0,d:"Staff tee · size L"},
   {n:"T-Shirt Staff XL",p:3250,stk:0,d:"Staff tee · size XL"}
 ];
+// Camp tab Tours category mirrors TOUR_MENU_ITEMS so a brand-new install
+// in Morocco starts with Souk / Paradise Valley / Dunes instead of the
+// Sri Lanka defaults from the literal MENU above.
 MENU.Tours=TOUR_MENU_ITEMS.map(item=>({...item}));
 MENU.Merch=MERCH_MENU_ITEMS.map(item=>({...item}));
 const CATS=Object.keys(MENU);
