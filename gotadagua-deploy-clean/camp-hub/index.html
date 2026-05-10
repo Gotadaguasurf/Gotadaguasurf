@@ -1384,7 +1384,7 @@ function exportBackup(){
       campTabMenu:CAMPTAB_MENU_KEY,
       campTabStaff:CAMPTAB_STAFF_KEY,
       fx:FX_KEY,
-      bookings:OV_CSV_KEY
+      bookings:OV_CSV_LOCAL_KEY
     },
     hubState:normalizeState(S),
     campTabState:readJsonStorage(CAMPTAB_KEY,{}),
@@ -1617,7 +1617,7 @@ function subscribeHubRealtime(){
       const key=payload.new?.state_key;
       const json=payload.new?.state_json;
       // Each key checks only its own suppress flag — weeks writes never block ledger notifications
-      if((key===SK||key===OV_CSV_KEY)&&HUB_SUPPRESS_WEEKS_RT) return;
+      if((key===SK||key===OV_CSV_REMOTE_KEY)&&HUB_SUPPRESS_WEEKS_RT) return;
       if((key===DELETED_CAMPCLOSE_KEY||key===HUB_LEDGER_TS_KEY)&&HUB_SUPPRESS_LEDGER_RT) return;
       if(key===SK&&json&&typeof json==='object'){
         const incoming=normalizeState({weeks:json.weeks,salaryMode:json.salaryMode});
@@ -1628,8 +1628,9 @@ function subscribeHubRealtime(){
           rerenderActivePageData();
           toast('Semana atualizada por outro computador ✓');
         }
-      } else if(key===OV_CSV_KEY&&Array.isArray(json)){
+      } else if(key===OV_CSV_REMOTE_KEY&&Array.isArray(json)){
         ovBookings=json;
+        try{ localStorage.setItem(OV_CSV_LOCAL_KEY,JSON.stringify(json)); }catch(_e){}
         rerenderActivePageData();
       } else if(key===DELETED_CAMPCLOSE_KEY&&Array.isArray(json)){
         deletedCampcloseIds=new Set(json);
@@ -2869,26 +2870,27 @@ function showPosSub(sub){
 // ═══════════════════════════════════════════════════════════
 //  OVERVIEW — CSV guest-day loader
 // ═══════════════════════════════════════════════════════════
-const OV_CSV_KEY='camphub_ov_bookings_v3'+__HUB_LOC_SUFFIX;
-const OV_CSV_KEY_LEGACY='camphub_ov_bookings_v3';
+// Split keys: localStorage needs a per-location key (the browser doesn't know
+// about location_id), but the Supabase state_store row is already isolated by
+// (location_id, state_key) so the remote key stays unscoped — that's also the
+// key existing rows were stored under, so renaming it would orphan that data.
+const OV_CSV_LOCAL_KEY='camphub_ov_bookings_v3'+__HUB_LOC_SUFFIX;
+const OV_CSV_REMOTE_KEY='camphub_ov_bookings_v3';
 let ovBookings=[];
 try{
-  const s=localStorage.getItem(OV_CSV_KEY);
+  const s=localStorage.getItem(OV_CSV_LOCAL_KEY);
   if(s) ovBookings=JSON.parse(s);
   else if(__HUB_LOCATION_SLUG==='sri-lanka'){
-    // One-time migration: pre-multi-location, this key was unscoped and held
-    // Sri Lanka's bookings. Move them under the scoped key so Morocco doesn't
-    // inherit them on first visit.
-    const legacy=localStorage.getItem(OV_CSV_KEY_LEGACY);
+    // One-time migration of the legacy unscoped localStorage key (Sri Lanka
+    // is the only location that wrote to it pre-multi-location).
+    const legacy=localStorage.getItem(OV_CSV_REMOTE_KEY);
     if(legacy){
       ovBookings=JSON.parse(legacy);
-      localStorage.setItem(OV_CSV_KEY,legacy);
-      localStorage.removeItem(OV_CSV_KEY_LEGACY);
+      localStorage.setItem(OV_CSV_LOCAL_KEY,legacy);
+      localStorage.removeItem(OV_CSV_REMOTE_KEY);
     }
   } else {
-    // Other locations should never read the legacy unscoped key — clear any
-    // leftover from a prior visit so it can't leak again.
-    localStorage.removeItem(OV_CSV_KEY_LEGACY);
+    localStorage.removeItem(OV_CSV_REMOTE_KEY);
   }
 }catch(e){}
 
@@ -2984,8 +2986,8 @@ function ovLoadCSV(input){
   const r=new FileReader();
   r.onload=ev=>{
     ovBookings=ovParseCSV(ev.target.result);
-    localStorage.setItem(OV_CSV_KEY,JSON.stringify(ovBookings));
-    saveStateStore(OV_CSV_KEY,ovBookings).catch(e=>console.warn('[Hub] ovBookings save failed',e));
+    localStorage.setItem(OV_CSV_LOCAL_KEY,JSON.stringify(ovBookings));
+    saveStateStore(OV_CSV_REMOTE_KEY,ovBookings).catch(e=>console.warn('[Hub] ovBookings save failed',e));
     const lbl=document.getElementById('ovCsvLabel');
     if(lbl)lbl.textContent=f.name+' ('+ovBookings.length+' bookings)';
     renderOverview();toast('CSV imported: '+ovBookings.length+' active bookings ✓');
@@ -5305,7 +5307,7 @@ async function requirePlatformSession(){
   try{
     const [weeksJson,ovJson]=await Promise.all([
       loadStateStore(SK),
-      loadStateStore(OV_CSV_KEY),
+      loadStateStore(OV_CSV_REMOTE_KEY),
       hydrateLedgerFromSupabase({mergeLocal:true}),
       // mergeLocal=false here: trust Supabase as the single source of truth
       // for monthly cost profiles. With mergeLocal=true, deleting a salary
