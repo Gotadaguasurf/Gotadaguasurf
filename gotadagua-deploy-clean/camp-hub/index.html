@@ -17,8 +17,67 @@
   --green-bg:#eafaf1;--green:#1a7a40;--green-border:#a3e6c0;
   --red-bg:#fdecea;--red:#b91c1c;
   --amber-bg:#fef9e7;--amber:#9a6f00;--amber-border:#f0d060;
-  --r:12px;--sh:0 4px 24px rgba(40,57,75,.08);--sh-lg:0 12px 48px rgba(40,57,75,.18)
+  --r:12px;--sh:0 4px 24px rgba(40,57,75,.08);--sh-lg:0 12px 48px rgba(40,57,75,.18);
+  /* Overview redesign tokens — layered shadows for a softer card, section
+     spacing units, accent that's distinct from the navy chrome. */
+  --sh-soft:0 1px 2px rgba(40,57,75,.04),0 8px 24px rgba(40,57,75,.06);
+  --section-gap:36px;--card-pad-lg:24px;
+  --accent:var(--ocean);--accent-soft:#dfeefa
 }
+/* ──────── Overview redesign — section + metric system ──────── */
+.ov-section{margin:0 0 var(--section-gap) 0}
+.ov-section-head{display:flex;align-items:baseline;justify-content:space-between;gap:14px;flex-wrap:wrap;margin:0 0 14px 4px}
+.ov-section-title{font-family:'DM Serif Display',serif;font-size:24px;color:var(--navy);letter-spacing:-.01em;line-height:1}
+.ov-section-sub{font-size:12px;color:var(--muted);letter-spacing:.02em}
+.ov-card{background:#fff;border-radius:14px;box-shadow:var(--sh-soft);padding:var(--card-pad-lg);border:1px solid transparent;transition:box-shadow .15s}
+.ov-card:hover{box-shadow:0 2px 4px rgba(40,57,75,.06),0 12px 36px rgba(40,57,75,.09)}
+.ov-card-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:14px}
+.ov-card-title{font-size:13px;font-weight:600;color:var(--navy);letter-spacing:.01em}
+.ov-card-eyebrow{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700}
+.ov-metric{display:flex;flex-direction:column;gap:2px}
+.ov-metric-value{font-family:'DM Serif Display',serif;font-size:30px;color:var(--navy);line-height:1.05;letter-spacing:-.01em}
+.ov-metric-sub{font-size:11px;color:var(--muted);font-weight:500}
+.ov-metric-trend{font-size:11px;color:var(--muted);font-weight:600;display:inline-flex;align-items:center;gap:4px}
+/* The hero — one figure that dominates the page */
+.ov-hero{background:linear-gradient(135deg,var(--navy) 0%,#1f2c3b 100%);color:#fff;border-radius:16px;padding:28px 28px 26px;box-shadow:var(--sh-soft);position:relative;overflow:hidden}
+.ov-hero::before{content:'';position:absolute;top:-40%;right:-15%;width:300px;height:300px;background:radial-gradient(circle,rgba(59,157,212,.25) 0%,transparent 70%);pointer-events:none}
+.ov-hero-eyebrow{font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:#7aabcc;font-weight:700;margin-bottom:8px;position:relative}
+.ov-hero-value{font-family:'DM Serif Display',serif;font-size:46px;color:#fff;line-height:1;letter-spacing:-.02em;position:relative}
+.ov-hero-sub{font-size:13px;color:#cfe1f0;margin-top:6px;position:relative}
+.ov-hero-tag{display:inline-flex;align-items:center;gap:5px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:999px;padding:4px 10px;font-size:11px;font-weight:600;margin-top:12px;position:relative}
+/* KPI row that sits next to the hero */
+.ov-kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}
+.ov-kpi{background:#fff;border-radius:12px;padding:16px 18px;box-shadow:var(--sh-soft);transition:box-shadow .15s}
+.ov-kpi:hover{box-shadow:0 2px 6px rgba(40,57,75,.08),0 10px 28px rgba(40,57,75,.1)}
+.ov-kpi-label{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700;margin-bottom:6px}
+.ov-kpi-value{font-family:'DM Serif Display',serif;font-size:24px;color:var(--navy);line-height:1.05;letter-spacing:-.01em}
+.ov-kpi-sub{font-size:11px;color:var(--muted);margin-top:3px}
+/* Area card — a per-business-area block (Bar, Merch, Tours…) */
+.ov-area-card{background:#fff;border-radius:14px;padding:20px 22px;box-shadow:var(--sh-soft);transition:transform .15s,box-shadow .15s}
+.ov-area-card:hover{transform:translateY(-1px);box-shadow:0 2px 6px rgba(40,57,75,.08),0 16px 40px rgba(40,57,75,.1)}
+.ov-area-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;gap:10px}
+.ov-area-title{font-family:'DM Serif Display',serif;font-size:18px;color:var(--navy);display:flex;align-items:center;gap:8px;line-height:1}
+.ov-area-margin{font-family:'DM Mono',monospace;font-size:13px;font-weight:700;padding:4px 10px;border-radius:999px}
+.ov-area-margin.pos{background:var(--green-bg);color:var(--green)}
+.ov-area-margin.neg{background:var(--red-bg);color:var(--red)}
+.ov-area-margin.zero{background:var(--accent-soft);color:var(--ocean)}
+.ov-area-body{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+.ov-area-cell{display:flex;flex-direction:column;gap:2px}
+.ov-area-cell-label{font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700}
+.ov-area-cell-value{font-family:'DM Mono',monospace;font-size:15px;font-weight:600;color:var(--navy);line-height:1.2}
+.ov-area-cell-sub{font-size:10px;color:var(--muted)}
+/* Compact breakdown chip (used in Utilities / Payroll / Transport sub-grids) */
+.ov-chip{background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px 16px;transition:border-color .15s,box-shadow .15s}
+.ov-chip:hover{border-color:var(--accent);box-shadow:0 2px 12px rgba(30,111,168,.08)}
+.ov-chip-label{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700;margin-bottom:6px}
+.ov-chip-value{font-family:'DM Serif Display',serif;font-size:20px;color:var(--navy);line-height:1.1;letter-spacing:-.005em}
+.ov-chip-sub{font-size:10px;color:var(--muted);margin-top:6px}
+.ov-chip-meta{display:flex;justify-content:space-between;gap:8px;font-size:10px;color:var(--muted);margin-top:8px}
+.ov-chip-meta b{color:var(--navy);font-weight:600;font-family:'DM Mono',monospace}
+/* Subtle filter pill — used at the very top */
+.ov-filters{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:#fff;border-radius:12px;padding:10px 14px;box-shadow:var(--sh-soft);margin-bottom:24px}
+.ov-filters .fsel{background:transparent;border:1px solid var(--border)}
+.ov-filters .ov-week-info{font-size:12px;color:var(--muted);margin-left:auto;padding-left:8px}
 *{box-sizing:border-box;margin:0;padding:0}
 html{scroll-behavior:smooth;min-height:100%;background:var(--bg)}
 body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--ink);min-height:100vh;min-height:100dvh}
@@ -411,34 +470,49 @@ td.r{text-align:right;font-family:'DM Mono',monospace;font-size:12px}
 <div class="page" id="page-overview">
   <div class="container">
 
-    <!-- top bar: week filter + CSV import -->
-    <div style="display:flex;gap:10px;align-items:center;margin-bottom:18px;flex-wrap:wrap;justify-content:space-between">
-      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-        <select class="fsel" id="ovMonthSel" onchange="renderOverview()"><option value="all">All months</option></select>
-        <select class="fsel" id="ovWeekSel" onchange="renderOverview()"><option value="all">All weeks</option></select>
-        <div style="font-size:12px;color:var(--muted)" id="ovWeekInfo"></div>
-      </div>
-      <!-- Import bookings CSV button removed (will be replaced by a global, app-wide importer) -->
+    <!-- Compact filter bar — sits above everything as a single light pill. -->
+    <div class="ov-filters">
+      <select class="fsel" id="ovMonthSel" onchange="renderOverview()"><option value="all">All months</option></select>
+      <select class="fsel" id="ovWeekSel" onchange="renderOverview()"><option value="all">All weeks</option></select>
+      <div class="ov-week-info" id="ovWeekInfo"></div>
       <span id="ovCsvLabel" style="display:none"></span>
     </div>
 
-    <!-- KPI row -->
-    <div class="g4" id="ovKpis" style="margin-bottom:16px"></div>
+    <!-- ────── Performance ────── -->
+    <section class="ov-section">
+      <div class="ov-section-head">
+        <div class="ov-section-title">Performance</div>
+        <div class="ov-section-sub">Headline numbers for the current selection</div>
+      </div>
+      <div id="ovKpis"></div>
+    </section>
 
-    <div class="card card-pad" id="ovBookingsPanel" style="margin-bottom:16px"></div>
+    <!-- Hidden — kept so legacy renderers don't break if they target the ID. -->
+    <div class="card card-pad" id="ovBookingsPanel" style="display:none"></div>
 
-    <!-- Category P&L panels: Food, Bar, Merch, Tours -->
-    <div class="g2" style="margin-bottom:16px" id="ovCatPanels"></div>
+    <!-- ────── Revenue & Food ────── -->
+    <section class="ov-section">
+      <div class="ov-section-head">
+        <div class="ov-section-title">Revenue centers</div>
+        <div class="ov-section-sub">Profit per business area</div>
+      </div>
+      <div class="g2" id="ovCatPanels"></div>
+    </section>
 
-    <!-- Cash overview + charts row -->
-    <div class="g2" style="margin-bottom:16px">
-      <div class="card card-pad" id="ovCashCard"></div>
-      <div class="card card-pad" id="ovRevChart"></div>
+    <!-- Hidden remnants of the old cash + chart row -->
+    <div style="display:none">
+      <div id="ovCashCard"></div>
+      <div id="ovRevChart"></div>
     </div>
 
-    <!-- Stock + Utilities control: each section is its own card so they
-         visually separate, like the per-area cards above. -->
-    <div id="ovCatCard" style="display:flex;flex-direction:column;gap:16px"></div>
+    <!-- ────── Costs & Stock ────── -->
+    <section class="ov-section">
+      <div class="ov-section-head">
+        <div class="ov-section-title">Costs &amp; stock</div>
+        <div class="ov-section-sub">Payroll, utilities, transport, and inventory</div>
+      </div>
+      <div id="ovCatCard" style="display:flex;flex-direction:column;gap:16px"></div>
+    </section>
 
   </div>
 </div>
@@ -3129,29 +3203,28 @@ function buildFoodControlCardHtml(weeks,allLedger){
   const foodExpEur=sum(allLedger.filter(x=>x.type==='expense'&&x.businessArea==='Food'),x=>entryEurAmount(x));
   const foodPerDay=totalGuestDays>0?Math.round(foodExp/totalGuestDays):0;
   const foodPerDayEur=totalGuestDays>0?Number((foodExpEur/totalGuestDays).toFixed(2)):0;
-  // Returns a card sized to match the business-area cards next to it, so the
-  // Overview grid reads as a single 2×2 block: Food control / Bar above,
-  // Merch / Transport below.
-  return `<div class="card card-pad">
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
-      <div style="font-family:'DM Serif Display',serif;font-size:17px;color:var(--navy);display:flex;align-items:center;gap:8px">${uiIcon('food')}<span>Food control</span></div>
-      ${ovBookings.length?`<span class="badge badge-blue">${totalGuestDays} guest-days</span>`:`<span class="badge">No CSV loaded</span>`}
+  // Same outer shape as ov-area-card so it lines up cleanly in the 2×2
+  // grid next to Bar / Merch / Tours / Transport.
+  return `<div class="ov-area-card">
+    <div class="ov-area-head">
+      <div class="ov-area-title">${uiIcon('food')}<span>Food control</span></div>
+      ${ovBookings.length?`<span class="ov-area-margin zero">${totalGuestDays} g-d</span>`:`<span class="ov-area-margin zero" style="background:#f3f4f6;color:var(--muted)">No CSV</span>`}
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
-      <div style="background:var(--bg);border-radius:8px;padding:10px">
-        <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin-bottom:4px">Food cost</div>
-        <div style="font-family:'DM Serif Display',serif;font-size:18px;color:var(--red)">${foodExp>0?lkr(Math.round(foodExp)):'—'}</div>
-        <div style="font-size:10px;color:var(--muted);margin-top:2px">${foodExpEur>0?euro(foodExpEur):''}</div>
+    <div class="ov-area-body">
+      <div class="ov-area-cell">
+        <div class="ov-area-cell-label">Food spend</div>
+        <div class="ov-area-cell-value" style="color:${foodExp>0?'var(--red)':'var(--navy)'}">${foodExp>0?lkr(Math.round(foodExp)):'—'}</div>
+        <div class="ov-area-cell-sub">${foodExpEur>0?euro(foodExpEur):'no Food expenses yet'}</div>
       </div>
-      <div style="background:var(--bg);border-radius:8px;padding:10px">
-        <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin-bottom:4px">Guest-days</div>
-        <div style="font-family:'DM Serif Display',serif;font-size:18px;color:var(--navy)">${totalGuestDays>0?totalGuestDays:'—'}</div>
-        <div style="font-size:10px;color:var(--muted);margin-top:2px">${ovBookings.length?bookings.length+' booking'+(bookings.length===1?'':'s'):'No CSV loaded'}</div>
+      <div class="ov-area-cell">
+        <div class="ov-area-cell-label">Guest-days</div>
+        <div class="ov-area-cell-value">${totalGuestDays>0?totalGuestDays:'—'}</div>
+        <div class="ov-area-cell-sub">${ovBookings.length?bookings.length+' booking'+(bookings.length===1?'':'s'):'No CSV loaded'}</div>
       </div>
-      <div style="background:var(--navy);border-radius:8px;padding:10px">
-        <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:#7aabcc;font-weight:700;margin-bottom:4px">Per guest-day</div>
-        <div style="font-family:'DM Serif Display',serif;font-size:18px;color:#fff">${foodPerDay>0?lkr(foodPerDay):'—'}</div>
-        <div style="font-size:10px;color:#cfe1f0;margin-top:2px;font-weight:600">${foodPerDayEur>0?euro(foodPerDayEur):''}</div>
+      <div class="ov-area-cell">
+        <div class="ov-area-cell-label">Per guest-day</div>
+        <div class="ov-area-cell-value">${foodPerDay>0?lkr(foodPerDay):'—'}</div>
+        <div class="ov-area-cell-sub">${foodPerDayEur>0?euro(foodPerDayEur):''}</div>
       </div>
     </div>
   </div>`;
@@ -3451,11 +3524,45 @@ function renderOverview(){
       </div>
     </div>`:'';
 
+  // Hero + KPI grid layout: the gross profit is the headline figure, the
+  // other three KPIs sit next to it as a denser grid. On narrow screens
+  // the hero takes the full width and the KPIs reflow below it.
+  const profitTrendTag = grossProfitLocal>0
+    ? `<span class="ov-hero-tag">In profit</span>`
+    : grossProfitLocal<0
+      ? `<span class="ov-hero-tag" style="background:rgba(185,28,28,.2);border-color:rgba(255,150,150,.3)">Loss</span>`
+      : `<span class="ov-hero-tag">Break-even</span>`;
   document.getElementById('ovKpis').innerHTML=`
-    ${kpi('Camp Cash','Float + revenue − camp-paid costs',lkr(campCashBalanceLocal),campCashBalanceLocal>=0?'kv-green':'kv-red',euro(campCashBalanceEur))}
-    ${kpi('HQ Paid','Direct HQ-covered expenses',lkr(hqSpendLocal),'kv-amber',euro(hqSpendEur))}
-    ${kpi('Guest-days',gdSource,guestDays>0?guestDays+'d':'—','kv-ocean')}
-    ${kpi('Gross Profit','Revenue − all expenses',lkr(grossProfitLocal),grossProfitLocal>=0?'kv-green':'kv-red',euro(grossProfitEur))}
+    <div style="display:grid;grid-template-columns:minmax(280px,1fr) minmax(420px,1.5fr);gap:16px;align-items:stretch">
+      <div class="ov-hero">
+        <div class="ov-hero-eyebrow">Gross Profit · selection</div>
+        <div class="ov-hero-value">${lkr(grossProfitLocal)}</div>
+        <div class="ov-hero-sub">${euro(grossProfitEur)} · Revenue minus every expense</div>
+        ${profitTrendTag}
+      </div>
+      <div class="ov-kpi-grid">
+        <div class="ov-kpi">
+          <div class="ov-kpi-label">Camp Cash</div>
+          <div class="ov-kpi-value">${lkr(campCashBalanceLocal)}</div>
+          <div class="ov-kpi-sub">${euro(campCashBalanceEur)}</div>
+        </div>
+        <div class="ov-kpi">
+          <div class="ov-kpi-label">HQ Paid</div>
+          <div class="ov-kpi-value">${lkr(hqSpendLocal)}</div>
+          <div class="ov-kpi-sub">${euro(hqSpendEur)}</div>
+        </div>
+        <div class="ov-kpi">
+          <div class="ov-kpi-label">Guest-days</div>
+          <div class="ov-kpi-value">${guestDays>0?guestDays:'—'}</div>
+          <div class="ov-kpi-sub">${gdSource}</div>
+        </div>
+        <div class="ov-kpi">
+          <div class="ov-kpi-label">Tabs paid</div>
+          <div class="ov-kpi-value">${lkr(tabRevenueLocal)}</div>
+          <div class="ov-kpi-sub">${euro(tabRevenueEur)}</div>
+        </div>
+      </div>
+    </div>
   `;
   renderOverviewBookingsPanel(weeks,selectedWid,allLedger);
   const foodControlHtml=buildFoodControlCardHtml(weeks,allLedger);
@@ -3470,15 +3577,28 @@ function renderOverview(){
       const marginLocal=p.revenueLocal-p.costLocal;
       const marginEur=p.revenueEur-p.costEur;
       const pct=p.revenueLocal>0?((marginLocal/p.revenueLocal)*100).toFixed(0):'—';
-      return `<div class="card card-pad">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
-          <div style="font-family:'DM Serif Display',serif;font-size:17px;color:var(--navy);display:flex;align-items:center;gap:8px">${uiIcon(p.icon)}<span>${p.name}</span></div>
-          <span class="badge ${marginLocal>=0?'badge-green':'badge-red'}">${marginLocal>=0?'+':''}${lkr(marginLocal)}</span>
+      const marginCls=marginLocal>0?'pos':marginLocal<0?'neg':'zero';
+      return `<div class="ov-area-card">
+        <div class="ov-area-head">
+          <div class="ov-area-title">${uiIcon(p.icon)}<span>${p.name}</span></div>
+          <span class="ov-area-margin ${marginCls}">${marginLocal>=0?'+':''}${lkr(marginLocal)}</span>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
-          <div style="background:var(--bg);border-radius:8px;padding:10px"><div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin-bottom:4px">Revenue</div><div style="font-family:'DM Serif Display',serif;font-size:18px;color:var(--green)">${lkr(p.revenueLocal)}</div><div style="font-size:10px;color:var(--muted);margin-top:2px">${euro(p.revenueEur)}</div></div>
-          <div style="background:var(--bg);border-radius:8px;padding:10px"><div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin-bottom:4px">Direct cost</div><div style="font-family:'DM Serif Display',serif;font-size:18px;color:var(--red)">${lkr(p.costLocal)}</div><div style="font-size:10px;color:var(--muted);margin-top:2px">${euro(p.costEur)}</div></div>
-          <div style="background:var(--bg);border-radius:8px;padding:10px"><div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin-bottom:4px">Margin %</div><div style="font-family:'DM Serif Display',serif;font-size:18px;color:${marginLocal>=0?'var(--green)':'var(--red)'}">${pct==='—'?'—':pct+'%'}</div></div>
+        <div class="ov-area-body">
+          <div class="ov-area-cell">
+            <div class="ov-area-cell-label">Revenue</div>
+            <div class="ov-area-cell-value" style="color:${p.revenueLocal>0?'var(--green)':'var(--navy)'}">${lkr(p.revenueLocal)}</div>
+            <div class="ov-area-cell-sub">${p.revenueEur>0?euro(p.revenueEur):'—'}</div>
+          </div>
+          <div class="ov-area-cell">
+            <div class="ov-area-cell-label">Direct cost</div>
+            <div class="ov-area-cell-value" style="color:${p.costLocal>0?'var(--red)':'var(--navy)'}">${lkr(p.costLocal)}</div>
+            <div class="ov-area-cell-sub">${p.costEur>0?euro(p.costEur):'—'}</div>
+          </div>
+          <div class="ov-area-cell">
+            <div class="ov-area-cell-label">Margin</div>
+            <div class="ov-area-cell-value" style="color:${marginLocal>0?'var(--green)':marginLocal<0?'var(--red)':'var(--navy)'}">${pct==='—'?'—':pct+'%'}</div>
+            <div class="ov-area-cell-sub">${p.revenueLocal>0?'of revenue':'no revenue'}</div>
+          </div>
         </div>
       </div>`;
     }).join('')}
@@ -3542,7 +3662,7 @@ function renderOverview(){
       <div class="card-pad" style="padding:16px 20px 20px">
         ${utilityRows.length
           ? `<div class="g4">${utilityRows.map(r=>`
-            <div style="background:var(--foam);border:1px solid var(--border);border-radius:10px;padding:14px 16px">
+            <div class="ov-chip">
               <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">${r.name}</div>
               <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--red);margin-top:6px;line-height:1.1">${moneyPairLocal(r.spendLocal,r.spendEur)}</div>
               <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:10px;gap:8px">
@@ -3566,7 +3686,7 @@ function renderOverview(){
       <div class="card-pad" style="padding:16px 20px 20px">
         ${payrollRows.length
           ? `<div class="g4">${payrollRows.map(r=>`
-            <div style="background:var(--foam);border:1px solid var(--border);border-radius:10px;padding:14px 16px">
+            <div class="ov-chip">
               <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">${r.name}</div>
               <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--red);margin-top:6px;line-height:1.1">${moneyPairLocal(r.spendLocal,r.spendEur)}</div>
               <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:10px;gap:8px">
@@ -3590,7 +3710,7 @@ function renderOverview(){
       <div class="card-pad" style="padding:16px 20px 20px">
         ${transportRows.length
           ? `<div class="g4">${transportRows.map(r=>`
-            <div style="background:var(--foam);border:1px solid var(--border);border-radius:10px;padding:14px 16px">
+            <div class="ov-chip">
               <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">${r.name}</div>
               <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--red);margin-top:6px;line-height:1.1">${moneyPairLocal(r.spendLocal,r.spendEur)}</div>
               ${r.linkedTour?`<div style="font-size:10px;color:var(--ocean);margin-top:2px;font-weight:600">↳ ${r.linkedTour}</div>`:''}
