@@ -1400,7 +1400,9 @@
       document.getElementById('accessFullName').value = '';
       document.getElementById('accessEmail').value = '';
       document.getElementById('accessEmail').readOnly = false;
-      document.getElementById('accessRole').value = 'Location Manager';
+      const roleEl = document.getElementById('accessRole');
+      roleEl.disabled = false;
+      roleEl.value = 'Location Manager';
       window.__draftAreas = ['sri-lanka'];
       const primary = document.querySelector('#page-settings .settings-card .inline-actions .action-btn.primary');
       const secondary = document.querySelector('#page-settings .settings-card .inline-actions .action-btn.secondary');
@@ -1413,18 +1415,30 @@
       const user = accessUsers.find(entry => entry.email === email);
       if(!user) return;
       __editingAccessEmail = email;
+      const isSelfEdit = !!(__currentProfile?.email && email === __currentProfile.email);
       document.getElementById('accessFullName').value = user.meta || '';
       document.getElementById('accessEmail').value = user.email;
       document.getElementById('accessEmail').readOnly = true;
-      document.getElementById('accessRole').value = user.role || 'Viewer';
-      window.__draftAreas = [...(user.areas || [])];
+      const roleEl = document.getElementById('accessRole');
+      // Self-edit lock: you cannot change your own role or pills from the
+      // Settings page. The form is name-only for self. Editing other team
+      // members still allows full role + areas.
+      if (isSelfEdit) {
+        roleEl.value = user.role || 'Viewer';
+        roleEl.disabled = true;
+        window.__draftAreas = [...(user.areas || [])];
+      } else {
+        roleEl.disabled = false;
+        roleEl.value = user.role || 'Viewer';
+        window.__draftAreas = [...(user.areas || [])];
+      }
       const primary = document.querySelector('#page-settings .settings-card .inline-actions .action-btn.primary');
       const secondary = document.querySelector('#page-settings .settings-card .inline-actions .action-btn.secondary');
-      if(primary) primary.textContent = 'Save access';
+      if(primary) primary.textContent = isSelfEdit ? 'Save name' : 'Save access';
       if(secondary) secondary.textContent = 'Cancel';
       renderAreaPills();
       document.getElementById('accessFullName').scrollIntoView({ behavior:'smooth', block:'center' });
-      showToast(`Editing access for ${email}`);
+      showToast(isSelfEdit ? 'Editing your name (role and areas locked for self-edits)' : `Editing access for ${email}`);
     }
 
     function roleLabelToPlatformRole(value){
@@ -1513,6 +1527,26 @@
           const existingUser = accessUsers.find(entry => entry.email === __editingAccessEmail);
           if(!existingUser?.userId){
             throw new Error('Could not find this user to update.');
+          }
+          // Self-edit guard: editing YOUR OWN row only updates the
+          // displayed name. Role and memberships are intentionally NOT
+          // touched. Without this guard, a super_admin opening their own
+          // edit form would have their role silently overwritten to
+          // 'owner' (the default option in the dropdown — Super Admin
+          // isn't selectable), losing global access AND failing the
+          // subsequent membership writes via RLS. Editing other users
+          // still uses the full destructive replace below.
+          const isSelfEdit = !!(__currentProfile?.id && existingUser.userId === __currentProfile.id);
+          if (isSelfEdit) {
+            const { error: profileError } = await client
+              .from('platform_profiles')
+              .update({ full_name: fullName || null, updated_at: new Date().toISOString() })
+              .eq('id', existingUser.userId);
+            if (profileError) throw profileError;
+            await hydrateFromSession();
+            resetAccessForm();
+            showToast(`Name updated.`);
+            return;
           }
           const profilePayload = {
             id: existingUser.userId,
