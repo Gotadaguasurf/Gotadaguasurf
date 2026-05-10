@@ -1825,7 +1825,17 @@ async function pushLedgerEntriesToSupabase(entries){
 async function deleteLedgerEntryFromSupabase(id){
   const client=getHubSupabaseClient();
   if(!client||!id) return false;
-  const { error } = await client.from('ledger_entries').delete().eq('id',id);
+  // Defense-in-depth: scope the delete to the active location_id even
+  // though RLS already enforces it. If a Sri Lanka entry id ever ended
+  // up cached in the Morocco hub, this prevents the cross-location
+  // delete from ever reaching Supabase.
+  const locationId=await ensureHubLocationId();
+  if(!locationId) return false;
+  const { error } = await client
+    .from('ledger_entries')
+    .delete()
+    .eq('id',id)
+    .eq('location_id',locationId);
   if(error) throw error;
   notifyLedgerChanged();
   return true;
@@ -2062,8 +2072,17 @@ async function updateMonthlyCostRow(id,patch,context='monthly profile update fai
 async function deleteMonthlyCostRow(id,context='monthly profile delete failed'){
   const client=getHubSupabaseClient();
   if(!client||!id) return false;
+  // Defense-in-depth: scope the delete to the active location_id even
+  // though RLS already enforces it. Sri Lanka salary profile ids cached
+  // anywhere in the Morocco hub can never reach Supabase from here.
+  const locationId=await ensureHubLocationId();
+  if(!locationId) return false;
   try{
-    const { error } = await client.from('monthly_cost_profiles').delete().eq('id',id);
+    const { error } = await client
+      .from('monthly_cost_profiles')
+      .delete()
+      .eq('id',id)
+      .eq('location_id',locationId);
     if(error) throw error;
     return true;
   }catch(error){
