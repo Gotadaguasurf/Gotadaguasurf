@@ -4301,8 +4301,11 @@ function buildLedgerPayload(prefix,type,id=null){
   const qty=Math.max(1,parseInt(document.getElementById(prefix+'_qty')?.value||'1',10)||1);
   const linkedItem=selectedLinked||defaultLinkedItem(type,inferArea(type,category,selectedLinked),category);
   const area=inferArea(type,category,linkedItem);
-  const currency='LKR';
-  const fxRate=Number(document.getElementById(prefix+'_fx')?.value||DEFAULT_LKR_PER_EUR)||DEFAULT_LKR_PER_EUR;
+  // Currency comes from the form's selector when present, else the active
+  // location's currency. Hardcoding 'LKR' here was the bug that tagged
+  // Morocco Quick Add entries as LKR even when the label said MAD.
+  const currency=(document.getElementById(prefix+'_currency')?.value||LOCAL_CURRENCY||'LKR').toUpperCase();
+  const fxRate=Number(document.getElementById(prefix+'_fx')?.value||LOCAL_PER_EUR||DEFAULT_LKR_PER_EUR)||LOCAL_PER_EUR||DEFAULT_LKR_PER_EUR;
   const amount=getConvertedEur(prefix);
   const paymentMethod=type==='expense'
     ?(document.getElementById(prefix+'_pay')?.value||defaultPaymentMethod(type,area))
@@ -4317,7 +4320,9 @@ function buildLedgerPayload(prefix,type,id=null){
     paidBy:type==='transfer'?'HQ':type==='expense'&&paymentMethod==='Bank Transfer'?'HQ':'Camp',
     currency,
     fxRate,
-    amountLocal:currency==='LKR'?amountInput:amount,
+    // Local-currency input is already in the local unit (LKR/MAD/etc).
+    // EUR input is the EUR figure; amountLocal mirrors it for that branch.
+    amountLocal:currency!=='EUR'?amountInput:amount,
     quantity:qty,
     linkedItem,
     description:(document.getElementById(prefix+'_desc')?.value||'').trim()||((type==='income'&&linkedItem&&qty>1)?`${qty} x ${linkedItem}`:'')||(type==='transfer'?'Cash sent to camp':''),
