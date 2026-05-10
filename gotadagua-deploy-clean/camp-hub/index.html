@@ -3098,52 +3098,49 @@ function syncSelectedBookingsToCampTab(){
   },'*');
   toast('Sending bookings to Camp Tab...');
 }
-function renderOverviewBookingsPanel(weeks,selectedWeekValue,allLedger){
-  const panel=document.getElementById('ovBookingsPanel');
-  if(!panel) return;
-  // Default to S.ledger filtered by selection (same as renderOverview does); panel is also called
-  // standalone from elsewhere occasionally — keeping the fallback safe.
+function buildFoodControlCardHtml(weeks,allLedger){
   if(!Array.isArray(allLedger)){
     const selectedMonth=document.getElementById('ovMonthSel')?.value||'all';
     allLedger=selectedMonth==='all'?S.ledger:S.ledger.filter(x=>monthKey(x.date)===selectedMonth);
   }
-  // Render only the Food cost / guest-day card. The wider "Imported bookings"
-  // panel (Bookinglayer revenue, Partner, Direct, plus the inspect-bookings
-  // footer) was hidden by request — those numbers were duplicating what the
-  // Live Workspace → Import CSV → Manage tab already shows.
   const bookings=ovBookings.length?ovBookingsForWeeks(weeks):[];
   const totalGuestDays=sum(bookings,b=>ovBookingOverlapNights(b,weeks)*(b.pax||1));
   const foodExp=sum(allLedger.filter(x=>x.type==='expense'&&x.businessArea==='Food'),x=>entryLocalDisplayAmount(x));
   const foodExpEur=sum(allLedger.filter(x=>x.type==='expense'&&x.businessArea==='Food'),x=>entryEurAmount(x));
   const foodPerDay=totalGuestDays>0?Math.round(foodExp/totalGuestDays):0;
   const foodPerDayEur=totalGuestDays>0?Number((foodExpEur/totalGuestDays).toFixed(2)):0;
-  // Wrap the three food tiles in a "Food control" card so the section reads
-  // as its own block (header + icon), matching the visual weight of the
-  // business-area cards (Bar / Merch / Transport / Tours) below.
-  panel.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
+  // Returns a card sized to match the business-area cards next to it, so the
+  // Overview grid reads as a single 2×2 block: Food control / Bar above,
+  // Merch / Transport below.
+  return `<div class="card card-pad">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
       <div style="font-family:'DM Serif Display',serif;font-size:17px;color:var(--navy);display:flex;align-items:center;gap:8px">${uiIcon('food')}<span>Food control</span></div>
       ${ovBookings.length?`<span class="badge badge-blue">${totalGuestDays} guest-days</span>`:`<span class="badge">No CSV loaded</span>`}
     </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px">
-    <div style="background:var(--bg);border-radius:10px;padding:12px 14px">
-      <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin-bottom:4px">Food cost</div>
-      <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--red);line-height:1.15">${foodExp>0?lkr(Math.round(foodExp)):'—'}</div>
-      <div style="font-size:11px;color:var(--muted);margin-top:1px;font-weight:600">${foodExpEur>0?euro(foodExpEur):''}</div>
-      <div style="font-size:10px;color:var(--muted);margin-top:4px">Total food spend in selection</div>
-    </div>
-    <div style="background:var(--bg);border-radius:10px;padding:12px 14px">
-      <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin-bottom:4px">Guest-days</div>
-      <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy);line-height:1.15">${totalGuestDays>0?totalGuestDays:'—'}</div>
-      <div style="font-size:11px;color:var(--muted);margin-top:1px;font-weight:600">${ovBookings.length?bookings.length+' booking'+(bookings.length===1?'':'s'):''}</div>
-      <div style="font-size:10px;color:var(--muted);margin-top:4px">${ovBookings.length?'From imported CSV':'No CSV loaded'}</div>
-    </div>
-    <div style="background:var(--navy);border-radius:10px;padding:12px 14px">
-      <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:#7aabcc;font-weight:700;margin-bottom:4px">Food cost / guest-day</div>
-      <div style="font-family:'DM Serif Display',serif;font-size:22px;color:#fff;line-height:1.15">${foodPerDay>0?lkr(foodPerDay):'—'}</div>
-      <div style="font-size:11px;color:#cfe1f0;margin-top:1px;font-weight:600">${foodPerDayEur>0?euro(foodPerDayEur):''}</div>
-      <div style="font-size:10px;color:#7aabcc;margin-top:4px">${totalGuestDays>0?`${lkr(Math.round(foodExp))} ÷ ${totalGuestDays} g-d`:(ovBookings.length?'No guest-days in selection':'No CSV loaded')}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+      <div style="background:var(--bg);border-radius:8px;padding:10px">
+        <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin-bottom:4px">Food cost</div>
+        <div style="font-family:'DM Serif Display',serif;font-size:18px;color:var(--red)">${foodExp>0?lkr(Math.round(foodExp)):'—'}</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:2px">${foodExpEur>0?euro(foodExpEur):''}</div>
+      </div>
+      <div style="background:var(--bg);border-radius:8px;padding:10px">
+        <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin-bottom:4px">Guest-days</div>
+        <div style="font-family:'DM Serif Display',serif;font-size:18px;color:var(--navy)">${totalGuestDays>0?totalGuestDays:'—'}</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:2px">${ovBookings.length?bookings.length+' booking'+(bookings.length===1?'':'s'):'No CSV loaded'}</div>
+      </div>
+      <div style="background:var(--navy);border-radius:8px;padding:10px">
+        <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:#7aabcc;font-weight:700;margin-bottom:4px">Per guest-day</div>
+        <div style="font-family:'DM Serif Display',serif;font-size:18px;color:#fff">${foodPerDay>0?lkr(foodPerDay):'—'}</div>
+        <div style="font-size:10px;color:#cfe1f0;margin-top:2px;font-weight:600">${foodPerDayEur>0?euro(foodPerDayEur):''}</div>
+      </div>
     </div>
   </div>`;
+}
+function renderOverviewBookingsPanel(weeks,selectedWeekValue,allLedger){
+  // Standalone panel is now empty — the Food control card moved into
+  // ovCatPanels so it sits next to Bar / Merch / Transport in the 2×2 grid.
+  const panel=document.getElementById('ovBookingsPanel');
+  if(panel){ panel.style.display='none'; panel.innerHTML=''; }
 }
 
 function fallbackGuestDaysForWeeks(weeks){
@@ -3422,12 +3419,14 @@ function renderOverview(){
     ${kpi('Gross Profit','Revenue − all expenses',lkr(grossProfitLocal),grossProfitLocal>=0?'kv-green':'kv-red',euro(grossProfitEur))}
   `;
   renderOverviewBookingsPanel(weeks,selectedWid,allLedger);
+  const foodControlHtml=buildFoodControlCardHtml(weeks,allLedger);
 
-  // 2-column grid: business-area cards (Bar / Merch / Transport / Tours)
-  // sit two per row. Odd counts leave a hanging card on the last row, which
-  // the user prefers over the auto-fit alternative.
+  // 2-column grid: Food control sits in the first cell, then Bar / Merch /
+  // Transport / Tours follow in reading order — Food next to Bar in row 1,
+  // Merch next to Transport in row 2.
   document.getElementById('ovCatPanels').style.gridTemplateColumns='1fr 1fr';
   document.getElementById('ovCatPanels').innerHTML=`
+    ${foodControlHtml}
     ${profitAreas.map(p=>{
       const marginLocal=p.revenueLocal-p.costLocal;
       const marginEur=p.revenueEur-p.costEur;
