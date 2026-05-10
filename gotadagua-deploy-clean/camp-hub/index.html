@@ -3416,7 +3416,10 @@ function renderOverview(){
   `;
   renderOverviewBookingsPanel(weeks,selectedWid,allLedger);
 
-  document.getElementById('ovCatPanels').style.gridTemplateColumns='1fr 1fr';
+  // Responsive auto-fit grid: cards (Bar / Merch / Transport / Tours / etc.)
+  // line up evenly on wide screens and reflow on narrow ones, instead of the
+  // old fixed 2-column layout that left a half-empty bottom row.
+  document.getElementById('ovCatPanels').style.gridTemplateColumns='repeat(auto-fit,minmax(320px,1fr))';
   document.getElementById('ovCatPanels').innerHTML=`
     ${profitAreas.map(p=>{
       const marginLocal=p.revenueLocal-p.costLocal;
