@@ -436,8 +436,9 @@ td.r{text-align:right;font-family:'DM Mono',monospace;font-size:12px}
       <div class="card card-pad" id="ovRevChart"></div>
     </div>
 
-    <!-- Expense breakdown table -->
-    <div class="card" id="ovCatCard"></div>
+    <!-- Stock + Utilities control: each section is its own card so they
+         visually separate, like the per-area cards above. -->
+    <div id="ovCatCard" style="display:flex;flex-direction:column;gap:16px"></div>
 
   </div>
 </div>
@@ -3502,34 +3503,38 @@ function renderOverview(){
   // live anywhere else. T-shirt stock also stays — it's the only place
   // that shows remaining Merch inventory.
   document.getElementById('ovCatCard').innerHTML=`
-    <div class="card-pad" style="border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
-      <div style="font-family:'DM Serif Display',serif;font-size:17px;color:var(--navy)">T-shirt stock</div>
-      <div style="font-size:11px;color:var(--muted)">Sizes and remaining units</div>
+    <div class="card">
+      <div class="card-pad" style="border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+        <div style="font-family:'DM Serif Display',serif;font-size:17px;color:var(--navy)">T-shirt stock</div>
+        <div style="font-size:11px;color:var(--muted)">Sizes and remaining units</div>
+      </div>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Size</th><th class="r">Starting</th><th class="r">Sold</th><th class="r">Left</th></tr></thead>
+        <tbody>
+          ${merchRows.length?merchRows.map(r=>`<tr><td style="font-weight:600">${r.name}</td><td class="r">${r.starting===null?'—':r.starting}</td><td class="r">${r.sold||0}</td><td class="r" style="color:${r.left===0?'var(--red)':'var(--green)'}">${r.left===null?'Set stock in Camp Tab':r.left}</td></tr>`).join(''):'<tr class="empty-row"><td colspan="4">No T-shirt stock configured yet.</td></tr>'}
+        </tbody>
+      </table></div>
     </div>
-    <div class="tbl-wrap"><table>
-      <thead><tr><th>Size</th><th class="r">Starting</th><th class="r">Sold</th><th class="r">Left</th></tr></thead>
-      <tbody>
-        ${merchRows.length?merchRows.map(r=>`<tr><td style="font-weight:600">${r.name}</td><td class="r">${r.starting===null?'—':r.starting}</td><td class="r">${r.sold||0}</td><td class="r" style="color:${r.left===0?'var(--red)':'var(--green)'}">${r.left===null?'Set stock in Camp Tab':r.left}</td></tr>`).join(''):'<tr class="empty-row"><td colspan="4">No T-shirt stock configured yet.</td></tr>'}
-      </tbody>
-    </table></div>
-    <div class="card-pad" style="border-top:1px solid var(--border);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
-      <div style="font-family:'DM Serif Display',serif;font-size:17px;color:var(--navy)">Utilities control</div>
-      <div style="font-size:11px;color:var(--muted)">Electricity, water, internet, and gas spend</div>
-    </div>
-    <div class="card-pad" style="padding:16px 20px 20px">
-      ${utilityRows.length
-        ? `<div class="g4">${utilityRows.map(r=>`
-          <div style="background:var(--foam);border:1px solid var(--border);border-radius:10px;padding:14px 16px">
-            <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">${r.name}</div>
-            <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--red);margin-top:6px;line-height:1.1">${moneyPairLocal(r.spendLocal,r.spendEur)}</div>
-            <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:10px;gap:8px">
-              <span>Camp-paid: <span style="color:var(--navy);font-weight:600">${r.campLocal?moneyPairLocal(r.campLocal,r.campEur):'—'}</span></span>
-              <span>HQ-paid: <span style="color:var(--navy);font-weight:600">${r.hqLocal?moneyPairLocal(r.hqLocal,r.hqEur):'—'}</span></span>
-            </div>
-            <div style="font-size:11px;color:var(--muted);margin-top:6px">${r.entries||0} entr${(r.entries||0)===1?'y':'ies'}</div>
-          </div>`).join('')}</div>`
-        : `<div style="color:var(--muted);font-size:13px;padding:12px 0">No utility entries yet — pick a utility type when adding a Utilities expense.</div>`
-      }
+    <div class="card">
+      <div class="card-pad" style="border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+        <div style="font-family:'DM Serif Display',serif;font-size:17px;color:var(--navy)">Utilities control</div>
+        <div style="font-size:11px;color:var(--muted)">Electricity, water, internet, and gas spend</div>
+      </div>
+      <div class="card-pad" style="padding:16px 20px 20px">
+        ${utilityRows.length
+          ? `<div class="g4">${utilityRows.map(r=>`
+            <div style="background:var(--foam);border:1px solid var(--border);border-radius:10px;padding:14px 16px">
+              <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">${r.name}</div>
+              <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--red);margin-top:6px;line-height:1.1">${moneyPairLocal(r.spendLocal,r.spendEur)}</div>
+              <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:10px;gap:8px">
+                <span>Camp-paid: <span style="color:var(--navy);font-weight:600">${r.campLocal?moneyPairLocal(r.campLocal,r.campEur):'—'}</span></span>
+                <span>HQ-paid: <span style="color:var(--navy);font-weight:600">${r.hqLocal?moneyPairLocal(r.hqLocal,r.hqEur):'—'}</span></span>
+              </div>
+              <div style="font-size:11px;color:var(--muted);margin-top:6px">${r.entries||0} entr${(r.entries||0)===1?'y':'ies'}</div>
+            </div>`).join('')}</div>`
+          : `<div style="color:var(--muted);font-size:13px;padding:12px 0">No utility entries yet — pick a utility type when adding a Utilities expense.</div>`
+        }
+      </div>
     </div>
   `;
 }
