@@ -392,7 +392,7 @@ td.r{text-align:right;font-family:'DM Mono',monospace;font-size:12px}
       <path style="fill:#fff4d5;stroke-width:0" d="M142.8,61.3h-6.9c-.2-.5-.1-1-.2-1.4-.1-.5-1.3-2.4-1.5-2.8-.5-.7-1.5-1.5-2.3-1.5-1.3,0-3.2,0-4.3.8-.5.3-1.2,2.1-1.4,2.7-1.1,3.3-1.3,6.7-1.5,10.1,0,3.6.2,8.1,1.7,11.5,0,.3.5.9.6,1.1.2.3,1.7,1.1,2,1.1.9,0,2.5,0,3.5-.3.4,0,1.7-1,2-1.3.6-.7,1.3-3.3,1.3-4.3s-.3-1.9-.4-2l-4.5-.2c-.3-1.9-.1-3.9.1-5.8v-.2c.9,0,6.9.3,9.1.5h2.2c0,.7.2,1.3.3,2.1.5,3.1.4,5.2.1,8.3-.3,3.1-.5,6.5-3.1,8.6-1.1.9-1.8,1.5-3.3,1.9-1.9.6-2.8.6-4.7.7-1.3,0-2.3,0-3.6-.2-3.9-.8-6.3-2.8-7.5-6.6-2.7-8.9-3.1-18.9-.9-27.9.8-3.1,1.3-4.7,3.9-6.5,2.1-1.5,7.1-2.3,9.5-1.6,2.7.8,6.6,2.7,8.1,4.4.7.8,1.5,2.8,1.7,3.8.2,1.3,0,5,0,5h0Z"></path>
     </svg>
     </div>
-    <div class="nav-title-stack"><div class="nav-sub">Sri Lanka Hub</div></div>
+    <div class="nav-title-stack"><div class="nav-sub" id="hubNavSubLabel">Sri Lanka Hub</div></div>
     </a>
   </div>
   <div class="nav-tabs">
@@ -1431,9 +1431,11 @@ function applyLocationCurrencyToDom(){
   document.querySelectorAll('input[placeholder="330"]').forEach(inp => {
     inp.placeholder = String(fx);
   });
-  // Update the document title for the active location.
-  if (LEDGER_LOCATION_SLUG && LEDGER_LOCATION_SLUG !== 'sri-lanka') {
+  // Update the in-page nav label and document title for the active location.
+  if (LEDGER_LOCATION_SLUG) {
     const loc = LEDGER_LOCATION_SLUG.replace(/-/g,' ').replace(/\b\w/g,m=>m.toUpperCase());
+    const navSub = document.getElementById('hubNavSubLabel');
+    if (navSub) navSub.textContent = `${loc} Hub`;
     document.title = `${loc} — Camp Hub`;
   }
 }
