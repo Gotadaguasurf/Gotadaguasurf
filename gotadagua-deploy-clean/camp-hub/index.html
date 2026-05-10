@@ -592,11 +592,18 @@ td.r{text-align:right;font-family:'DM Mono',monospace;font-size:12px}
             <label>Name</label>
             <input id="salary_name" placeholder="Name">
           </div>
-          <div class="mfield" style="margin-bottom:0">
+          <div class="mfield" style="margin-bottom:0" id="salary_type_wrap">
             <label>Type</label>
             <select id="salary_type" onchange="toggleSalaryTypeFields()">
               <option value="seasonal">Seasonal</option>
               <option value="fixed">Fixed</option>
+            </select>
+          </div>
+          <div class="mfield" style="margin-bottom:0">
+            <label>Currency</label>
+            <select id="salary_currency" onchange="toggleSalaryTypeFields()">
+              <option value="LKR" id="salary_currency_local">LKR</option>
+              <option value="EUR">EUR</option>
             </select>
           </div>
           <div class="mfield" style="margin-bottom:0" id="salary_season_wrap">
@@ -1163,10 +1170,15 @@ function normalizeRecurringRule(rule){
 function normalizeSalaryProfile(profile){
   if(!profile||typeof profile!=='object') return null;
   const type=profile.type==='fixed'?'fixed':'seasonal';
+  // Currency defaults to the active location's local currency, or LKR for
+  // legacy rows that pre-date this field. Only LKR / MAD / EUR are valid.
+  const cur=String(profile.currency||LOCAL_CURRENCY||'LKR').toUpperCase();
+  const validCur=['LKR','MAD','EUR'].includes(cur)?cur:(LOCAL_CURRENCY||'LKR');
   return {
     id:profile.id||('sp'+Date.now()+Math.random().toString(36).slice(2,5)),
     name:(profile.name||'').trim(),
     type,
+    currency:validCur,
     seasonAmount:Number(profile.seasonAmount||0),
     offSeasonAmount:Number(profile.offSeasonAmount||0),
     fixedAmount:Number(profile.fixedAmount||0),
@@ -1840,12 +1852,16 @@ function monthlyProfileKey(profileType,name=''){
 function monthlyCostRowToLocal(row){
   if(!row) return null;
   if(row.profile_type==='salary'){
+    const md=row.metadata||{};
     return {
       kind:'salary',
       profile:normalizeSalaryProfile({
         id:row.id,
         name:row.name,
         type:row.fixed_amount&&Number(row.fixed_amount)>0?'fixed':'seasonal',
+        // Currency comes from metadata.currency (set on save). Falls back to
+        // LOCAL_CURRENCY for legacy rows that pre-date the currency field.
+        currency:md.currency||LOCAL_CURRENCY||'LKR',
         seasonAmount:Number(row.season_amount||0),
         offSeasonAmount:Number(row.off_season_amount||0),
         fixedAmount:Number(row.fixed_amount||0),
@@ -1892,7 +1908,10 @@ function salaryProfileToMonthlyCostRow(profile,locationId){
     active:normalized.enabled!==false,
     auto_apply:true,
     apply_rule:'last_day_of_month',
-    metadata:{ local_type:normalized.type||'seasonal' }
+    // Currency is stored in metadata.currency so we don't need a schema
+    // migration on monthly_cost_profiles. local_type is preserved for the
+    // existing seasonal/fixed round-trip.
+    metadata:{ local_type:normalized.type||'seasonal', currency:normalized.currency||'LKR' }
   };
 }
 function recurringRuleToMonthlyCostRow(rule,locationId){
@@ -4110,11 +4129,14 @@ function hasMonthlyEntryFor(sourceId,month){
   return S.ledger.some(entry=>entry.recurringSourceId===sourceId&&entry.recurringMonth===month);
 }
 function buildMonthlyLedgerEntry(sourceId,dueDate,fields){
+  // Default currency to whatever the active location uses, but let `fields`
+  // override (e.g. an EUR-paid international salary on a LKR location).
+  const cur=(fields&&fields.currency)||LOCAL_CURRENCY||'LKR';
   return normalizeLedgerEntry({
     id:(fields.idPrefix||'monthly')+'_'+sourceId+'_'+Date.now()+Math.random().toString(36).slice(2,5),
     date:dueDate,
-    currency:'LKR',
-    fxRate:getBestFxRateForDate(dueDate),
+    currency:cur,
+    fxRate: cur==='EUR' ? 1 : getBestFxRateForDate(dueDate),
     recurringSourceId:sourceId,
     recurringMonth:monthKey(dueDate),
     ...fields
@@ -4163,18 +4185,55 @@ function refreshSalarySaveButton(){
   btn.textContent=editingSalaryProfileId?'Update salary':'Save salary';
 }
 function toggleSalaryTypeFields(){
-  const type=document.getElementById('salary_type')?.value||'seasonal';
+  const typeSel=document.getElementById('salary_type');
+  const typeWrap=document.getElementById('salary_type_wrap');
+  // Outside Sri Lanka the seasonal/off-season pattern doesn't exist — only
+  // Fixed monthly salaries. Force the type to 'fixed' and hide the type
+  // selector so the user isn't tempted to set a seasonal one.
+  if (LOCAL_CURRENCY !== 'LKR') {
+    if (typeSel) typeSel.value = 'fixed';
+    if (typeWrap) typeWrap.style.display = 'none';
+  } else if (typeWrap) {
+    typeWrap.style.display = '';
+  }
+  const type=typeSel?.value||'seasonal';
   const seasonWrap=document.getElementById('salary_season_wrap');
   const offWrap=document.getElementById('salary_off_wrap');
   const fixedWrap=document.getElementById('salary_fixed_wrap');
   if(seasonWrap) seasonWrap.style.display=type==='fixed'?'none':'block';
   if(offWrap) offWrap.style.display=type==='fixed'?'none':'block';
   if(fixedWrap) fixedWrap.style.display=type==='fixed'?'block':'none';
+
+  // Update the (LKR) suffix in the labels to match the selected currency
+  // so an EUR salary shows "Fixed monthly (EUR)".
+  const curSel=document.getElementById('salary_currency');
+  const cur=(curSel?.value||LOCAL_CURRENCY||'LKR').toUpperCase();
+  const setLabel=(wrapId, base)=>{
+    const wrap=document.getElementById(wrapId);
+    if(!wrap) return;
+    const label=wrap.querySelector('label');
+    if(label) label.textContent=`${base} (${cur})`;
+  };
+  setLabel('salary_season_wrap','Season');
+  setLabel('salary_off_wrap','Off-season');
+  setLabel('salary_fixed_wrap','Fixed monthly');
+
+  // Also keep the local-currency option label in sync (e.g. show 'MAD' on
+  // Morocco's hub instead of 'LKR').
+  const localOpt=document.getElementById('salary_currency_local');
+  if(localOpt && LOCAL_CURRENCY && localOpt.value !== LOCAL_CURRENCY){
+    localOpt.value = LOCAL_CURRENCY;
+    localOpt.textContent = LOCAL_CURRENCY;
+  }
 }
 function resetSalaryForm(){
   editingSalaryProfileId=null;
   document.getElementById('salary_name').value='';
-  document.getElementById('salary_type').value='seasonal';
+  // Outside Sri Lanka there's no low/high season — default to Fixed.
+  document.getElementById('salary_type').value=(LOCAL_CURRENCY==='LKR')?'seasonal':'fixed';
+  // Default currency to whatever the location uses (LKR / MAD / EUR).
+  const curEl=document.getElementById('salary_currency');
+  if(curEl) curEl.value=LOCAL_CURRENCY||'LKR';
   document.getElementById('salary_season').value='';
   document.getElementById('salary_off').value='';
   document.getElementById('salary_fixed').value='';
@@ -4185,10 +4244,12 @@ function salaryProfileFromForm(){
   const type=document.getElementById('salary_type')?.value||'seasonal';
   const name=(document.getElementById('salary_name')?.value||'').trim();
   if(!name) return null;
+  const currency=(document.getElementById('salary_currency')?.value||LOCAL_CURRENCY||'LKR').toUpperCase();
   const profile=normalizeSalaryProfile({
     id:editingSalaryProfileId||undefined,
     name,
     type,
+    currency,
     seasonAmount:Number(document.getElementById('salary_season')?.value||0),
     offSeasonAmount:Number(document.getElementById('salary_off')?.value||0),
     fixedAmount:Number(document.getElementById('salary_fixed')?.value||0),
@@ -4221,6 +4282,8 @@ function editSalaryProfile(id){
   editingSalaryProfileId=id;
   document.getElementById('salary_name').value=profile.name||'';
   document.getElementById('salary_type').value=profile.type||'seasonal';
+  const curEl=document.getElementById('salary_currency');
+  if(curEl) curEl.value=(profile.currency||LOCAL_CURRENCY||'LKR').toUpperCase();
   document.getElementById('salary_season').value=profile.seasonAmount?String(profile.seasonAmount):'';
   document.getElementById('salary_off').value=profile.offSeasonAmount?String(profile.offSeasonAmount):'';
   document.getElementById('salary_fixed').value=profile.fixedAmount?String(profile.fixedAmount):'';
@@ -4265,6 +4328,9 @@ async function runSalaryNow(id){
     paymentMethod:profile.paymentMethod||'Bank Transfer',
     quantity:1,
     description:profile.name,
+    // Honor the salary's own currency — an international staff member can
+    // be paid in EUR even when the camp's local currency is LKR/MAD.
+    currency:profile.currency||LOCAL_CURRENCY||'LKR',
     amountLocal:salaryAmountFor(profile)
   });
   try{
@@ -4296,18 +4362,30 @@ function renderSalaryProfiles(){
     el.innerHTML='<div class="exp-recurring-empty">No staff salaries yet. Add your team here and the month-end payroll will build automatically.</div>';
     return;
   }
-  el.innerHTML=`<div class="exp-salary-grid">${rows.map(profile=>`
+  el.innerHTML=`<div class="exp-salary-grid">${rows.map(profile=>{
+    const profCur=(profile.currency||LOCAL_CURRENCY||'LKR').toUpperCase();
+    // Format the amount in the salary's own currency, not the location's
+    // local one — an EUR salary on a Sri Lanka camp shows "EUR 1,500".
+    const fmtAmt=(n)=>{
+      try {
+        const fd = profCur==='EUR' ? 2 : 0;
+        return new Intl.NumberFormat('en-IE',{style:'currency',currency:profCur,maximumFractionDigits:fd}).format(Number(n||0));
+      } catch(_e){ return `${profCur} ${Number(n||0).toFixed(0)}`; }
+    };
+    const showForeign = profCur !== (LOCAL_CURRENCY||'LKR');
+    return `
     <div class="exp-salary-item">
       <div class="exp-salary-main">
         <div class="exp-salary-name">${profile.name}</div>
         <div class="exp-salary-sub">${salaryProfileSub(profile)}</div>
         <div class="exp-salary-badges">
           <span class="badge badge-blue">${profile.type==='fixed'?'Fixed monthly':salaryModeLabel()}</span>
+          ${showForeign?`<span class="badge badge-amber">${profCur}</span>`:''}
           <span class="badge ${profile.enabled?'badge-green':'badge-amber'}">${profile.enabled?'Active':'Paused'}</span>
         </div>
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:10px;min-width:220px">
-        <div class="exp-salary-amt">${lkr(salaryAmountFor(profile))}</div>
+        <div class="exp-salary-amt">${fmtAmt(salaryAmountFor(profile))}</div>
         <div class="exp-salary-actions">
           <button class="btn btn-s" onclick="editSalaryProfile('${profile.id}')">Edit</button>
           <button class="btn btn-s" onclick="runSalaryNow('${profile.id}')">Add now</button>
@@ -4315,7 +4393,8 @@ function renderSalaryProfiles(){
           <button class="btn btn-r" onclick="deleteSalaryProfile('${profile.id}')">Delete</button>
         </div>
       </div>
-    </div>`).join('')}</div>`;
+    </div>`;
+  }).join('')}</div>`;
 }
 function refreshRecurringSaveButton(){
   const btn=document.getElementById('recurringSaveBtn');
@@ -4464,6 +4543,7 @@ async function addAllMonthlyNow(){
       paymentMethod:profile.paymentMethod||'Bank Transfer',
       quantity:1,
       description:profile.name,
+      currency:profile.currency||LOCAL_CURRENCY||'LKR',
       amountLocal:salaryAmountFor(profile)
     }));
   });
@@ -4538,6 +4618,7 @@ function applyRecurringEntries(){
     if(profile.lastAppliedMonth===month) return;
     const exists=hasMonthlyEntryFor(profile.id,month);
     if(!exists){
+      const salCurrency=profile.currency||LOCAL_CURRENCY||'LKR';
       const entry=normalizeLedgerEntry({
         id:'salary_'+profile.id+'_'+month,
         date:dueDate,
@@ -4548,8 +4629,9 @@ function applyRecurringEntries(){
         quantity:1,
         description:profile.name,
         amountLocal:salaryAmountFor(profile),
-        currency:'LKR',
-        fxRate:dueFxRate,
+        currency:salCurrency,
+        // EUR-paid salaries don't need an FX conversion (rate=1).
+        fxRate: salCurrency==='EUR' ? 1 : dueFxRate,
         recurringSourceId:profile.id,
         recurringMonth:month
       });
