@@ -3317,6 +3317,25 @@ function renderOverview(){
       entries:rows.length
     };
   }).filter(row=>row.spendLocal>0);
+  // Payroll breakdown: every salary expense in the selection, grouped by the
+  // staff member (vendor / linkedItem fall back to description if neither is
+  // set). Hub also lists every salary profile that didn't fire yet this
+  // period so the user sees who's missing payroll.
+  const salaryExpenses=expenses.filter(x=>x.businessArea==='Salaries'||x.category==='Salary');
+  const payrollGroups={};
+  salaryExpenses.forEach(x=>{
+    const key=(x.vendor||x.linkedItem||x.description||'Unnamed').trim()||'Unnamed';
+    if(!payrollGroups[key]) payrollGroups[key]={name:key,spendLocal:0,spendEur:0,campLocal:0,campEur:0,hqLocal:0,hqEur:0,entries:0};
+    const g=payrollGroups[key];
+    g.spendLocal+=entryLocalDisplayAmount(x);
+    g.spendEur+=entryEurAmount(x);
+    if(x.paymentMethod==='Cash'){ g.campLocal+=entryLocalDisplayAmount(x); g.campEur+=entryEurAmount(x); }
+    if(x.paymentMethod==='Bank Transfer'){ g.hqLocal+=entryLocalDisplayAmount(x); g.hqEur+=entryEurAmount(x); }
+    g.entries+=1;
+  });
+  const payrollRows=Object.values(payrollGroups).sort((a,b)=>b.spendLocal-a.spendLocal);
+  const payrollTotalLocal=sum(payrollRows,r=>r.spendLocal);
+  const payrollTotalEur=sum(payrollRows,r=>r.spendEur);
   const transportCardsMarkup=transportRows.length?`
     <div class="card card-pad" style="grid-column:1 / -1">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;gap:12px;flex-wrap:wrap">
@@ -3533,6 +3552,55 @@ function renderOverview(){
               <div style="font-size:11px;color:var(--muted);margin-top:6px">${r.entries||0} entr${(r.entries||0)===1?'y':'ies'}</div>
             </div>`).join('')}</div>`
           : `<div style="color:var(--muted);font-size:13px;padding:12px 0">No utility entries yet — pick a utility type when adding a Utilities expense.</div>`
+        }
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-pad" style="border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+        <div style="font-family:'DM Serif Display',serif;font-size:17px;color:var(--navy)">Payroll</div>
+        <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+          <div style="font-size:11px;color:var(--muted)">${payrollRows.length} staff · ${salaryExpenses.length} payment${salaryExpenses.length===1?'':'s'}</div>
+          <div style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:var(--red)">${payrollTotalLocal?moneyPairLocal(payrollTotalLocal,payrollTotalEur):'—'}</div>
+        </div>
+      </div>
+      <div class="card-pad" style="padding:16px 20px 20px">
+        ${payrollRows.length
+          ? `<div class="g4">${payrollRows.map(r=>`
+            <div style="background:var(--foam);border:1px solid var(--border);border-radius:10px;padding:14px 16px">
+              <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">${r.name}</div>
+              <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--red);margin-top:6px;line-height:1.1">${moneyPairLocal(r.spendLocal,r.spendEur)}</div>
+              <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:10px;gap:8px">
+                <span>Camp-paid: <span style="color:var(--navy);font-weight:600">${r.campLocal?moneyPairLocal(r.campLocal,r.campEur):'—'}</span></span>
+                <span>HQ-paid: <span style="color:var(--navy);font-weight:600">${r.hqLocal?moneyPairLocal(r.hqLocal,r.hqEur):'—'}</span></span>
+              </div>
+              <div style="font-size:11px;color:var(--muted);margin-top:6px">${r.entries||0} payment${r.entries===1?'':'s'}</div>
+            </div>`).join('')}</div>`
+          : `<div style="color:var(--muted);font-size:13px;padding:12px 0">No payroll entries yet — add salary expenses to see them grouped by staff.</div>`
+        }
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-pad" style="border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+        <div style="font-family:'DM Serif Display',serif;font-size:17px;color:var(--navy)">Transport control</div>
+        <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+          <div style="font-size:11px;color:var(--muted)">${transportRows.length} line${transportRows.length===1?'':'s'} with spend</div>
+          <div style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:var(--red)">${transportRows.length?moneyPairLocal(sum(transportRows,r=>r.spendLocal),sum(transportRows,r=>r.spendEur)):'—'}</div>
+        </div>
+      </div>
+      <div class="card-pad" style="padding:16px 20px 20px">
+        ${transportRows.length
+          ? `<div class="g4">${transportRows.map(r=>`
+            <div style="background:var(--foam);border:1px solid var(--border);border-radius:10px;padding:14px 16px">
+              <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">${r.name}</div>
+              <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--red);margin-top:6px;line-height:1.1">${moneyPairLocal(r.spendLocal,r.spendEur)}</div>
+              ${r.linkedTour?`<div style="font-size:10px;color:var(--ocean);margin-top:2px;font-weight:600">↳ ${r.linkedTour}</div>`:''}
+              <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:10px;gap:8px">
+                <span>Camp-paid: <span style="color:var(--navy);font-weight:600">${r.campLocal?moneyPairLocal(r.campLocal,r.campEur):'—'}</span></span>
+                <span>HQ-paid: <span style="color:var(--navy);font-weight:600">${r.hqLocal?moneyPairLocal(r.hqLocal,r.hqEur):'—'}</span></span>
+              </div>
+              <div style="font-size:11px;color:var(--muted);margin-top:6px">${r.entries||0} ${(r.entries||0)===1?'entry':'entries'}${r.revenueLocal?` · revenue ${moneyPairLocal(r.revenueLocal,r.revenueEur)}`:''}</div>
+            </div>`).join('')}</div>`
+          : `<div style="color:var(--muted);font-size:13px;padding:12px 0">No transport spend yet — log Transport expenses (Airport, Surf Lesson, or a tour with transport) to see them broken down here.</div>`
         }
       </div>
     </div>
