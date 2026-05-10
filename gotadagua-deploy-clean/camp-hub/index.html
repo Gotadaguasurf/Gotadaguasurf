@@ -3512,35 +3512,21 @@ function renderOverview(){
   }).filter(r=>r.totalLocal>0);
   const merchRows=merchStockRows();
 
+  // Area control / Transport control / Tour performance tables were removed
+  // by request — the numbers are already in the business-area cards above
+  // (Bar / Merch / Transport / Tours profit blocks). Only Utilities control
+  // stays here because it has its own sub-category breakdown that doesn't
+  // live anywhere else. T-shirt stock also stays — it's the only place
+  // that shows remaining Merch inventory.
   document.getElementById('ovCatCard').innerHTML=`
     <div class="card-pad" style="border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
-      <div style="font-family:'DM Serif Display',serif;font-size:17px;color:var(--navy)">Area control</div>
-      <div style="font-size:11px;color:var(--muted)">${areaRows.length} cost areas · ${tourRows.length} tour lines</div>
-    </div>
-    <div class="tbl-wrap"><table>
-      <thead><tr><th>Area</th><th class="r">Total spend</th><th class="r">Camp-paid</th><th class="r">HQ-paid</th><th class="r">Entries</th></tr></thead>
-      <tbody>
-        ${areaRows.length?areaRows.map(r=>`<tr><td style="font-weight:600">${r.area}</td><td class="r" style="color:var(--red)">${moneyPairLocal(r.totalLocal,r.totalEur)}</td><td class="r">${moneyPairLocal(r.campLocal,r.campEur)}</td><td class="r">${moneyPairLocal(r.hqLocal,r.hqEur)}</td><td class="r">${r.entries}</td></tr>`).join(''):'<tr class="empty-row"><td colspan="5">No costs logged yet.</td></tr>'}
-      </tbody>
-    </table></div>
-    <div class="card-pad" style="border-top:1px solid var(--border);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
       <div style="font-family:'DM Serif Display',serif;font-size:17px;color:var(--navy)">T-shirt stock</div>
-      <div style="font-size:11px;color:var(--muted)">Sri Lanka sizes and remaining units</div>
+      <div style="font-size:11px;color:var(--muted)">Sizes and remaining units</div>
     </div>
     <div class="tbl-wrap"><table>
       <thead><tr><th>Size</th><th class="r">Starting</th><th class="r">Sold</th><th class="r">Left</th></tr></thead>
       <tbody>
         ${merchRows.length?merchRows.map(r=>`<tr><td style="font-weight:600">${r.name}</td><td class="r">${r.starting===null?'—':r.starting}</td><td class="r">${r.sold||0}</td><td class="r" style="color:${r.left===0?'var(--red)':'var(--green)'}">${r.left===null?'Set stock in Camp Tab':r.left}</td></tr>`).join(''):'<tr class="empty-row"><td colspan="4">No T-shirt stock configured yet.</td></tr>'}
-      </tbody>
-    </table></div>
-    <div class="card-pad" style="border-top:1px solid var(--border);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
-      <div style="font-family:'DM Serif Display',serif;font-size:17px;color:var(--navy)">Transport control</div>
-      <div style="font-size:11px;color:var(--muted)">Airport, lesson tuk tuks, and tour-related transport</div>
-    </div>
-    <div class="tbl-wrap"><table>
-      <thead><tr><th>Transport line</th><th>Connected to</th><th class="r">Spend</th><th class="r">Camp-paid</th><th class="r">HQ-paid</th><th class="r">Revenue</th><th class="r">Entries</th></tr></thead>
-      <tbody>
-        ${transportRows.length?transportRows.map(r=>`<tr><td style="font-weight:600">${r.name}</td><td style="color:var(--muted)">${r.linkedTour||'Direct transport / lessons'}</td><td class="r" style="color:var(--red)">${moneyPairLocal(r.spendLocal,r.spendEur)}</td><td class="r">${r.campLocal?moneyPairLocal(r.campLocal,r.campEur):'—'}</td><td class="r">${r.hqLocal?moneyPairLocal(r.hqLocal,r.hqEur):'—'}</td><td class="r" style="color:var(--green)">${r.revenueLocal?moneyPairLocal(r.revenueLocal,r.revenueEur):'—'}</td><td class="r">${r.entries||'—'}</td></tr>`).join(''):'<tr class="empty-row"><td colspan="7">No transport lines logged yet.</td></tr>'}
       </tbody>
     </table></div>
     <div class="card-pad" style="border-top:1px solid var(--border);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
@@ -3562,16 +3548,6 @@ function renderOverview(){
         : `<div style="color:var(--muted);font-size:13px;padding:12px 0">No utility entries yet — pick a utility type when adding a Utilities expense.</div>`
       }
     </div>
-    <div class="card-pad" style="border-top:1px solid var(--border);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
-      <div style="font-family:'DM Serif Display',serif;font-size:17px;color:var(--navy)">Tour performance</div>
-      <div style="font-size:11px;color:var(--muted)">Revenue, cost, and profit by product</div>
-    </div>
-    <div class="tbl-wrap"><table>
-      <thead><tr><th>Tour / activity</th><th class="r">Paid guests</th><th class="r">Revenue</th><th class="r">Cost</th><th class="r">Profit</th></tr></thead>
-      <tbody>
-        ${tourRows.length?tourRows.map(r=>`<tr><td style="font-weight:600">${r.name}</td><td class="r">${r.qty||'—'}</td><td class="r" style="color:var(--green)">${moneyPairLocal(r.revenueLocal,r.revenueEur)}</td><td class="r" style="color:var(--red)">${r.costLocal?moneyPairLocal(r.costLocal,r.costEur):'—'}</td><td class="r" style="color:${r.revenueLocal-r.costLocal>=0?'var(--green)':'var(--red)'}">${moneyPairLocal(r.revenueLocal-r.costLocal,r.revenueEur-r.costEur)}</td></tr>`).join(''):'<tr class="empty-row"><td colspan="5">No tour data yet.</td></tr>'}
-      </tbody>
-    </table></div>
   `;
 }
 
