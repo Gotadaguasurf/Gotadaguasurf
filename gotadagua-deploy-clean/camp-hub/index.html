@@ -1064,17 +1064,25 @@ const AREA_CONFIG={
 //  S.weeks = [{id, start, label, guests:[{name,items,paid}]}]
 //  S.ledger = [{id, date, type, category, description, vendor, amount}]
 // ═══════════════════════════════════════════════════════════
-const SK='camphub_v2';
-const FX_KEY='camphub_lkr_per_eur_v2';
-const FX_DAILY_KEY='camphub_lkr_daily_fx_v1';
-const CAMPTAB_KEY='camptab_live_v2';
-const CAMPTAB_MENU_KEY='camptab_menu_v2';
-const CAMPTAB_STAFF_KEY='camptab_staff_v3';
-const CAMPTAB_TOUR_MENU_VERSION_KEY='camptab_tours_menu_version_v1';
-const CAMPTAB_MERCH_MENU_VERSION_KEY='camptab_merch_menu_version_v2';
-const RECURRING_DEFAULTS_VERSION_KEY='camphub_recurring_defaults_v1';
-const DELETED_CAMPCLOSE_KEY='hub_deleted_campclose_ids';
-const HUB_LEDGER_TS_KEY='hub_ledger_ts';
+// CRITICAL: every localStorage key here is suffixed with the active
+// location slug. Without this, the browser cache of weeks / ledger / camp
+// tab state / menu / FX rate / per-location version flags would bleed
+// between Sri Lanka, Morocco, Portugal, and Junior Camp — opening one
+// hub right after another would show the previous hub's data until the
+// Supabase hydrate finished. With the suffix, each hub gets its own
+// isolated cache namespace and a fresh Supabase load fills the right one.
+const __HUB_LOC_SUFFIX='_'+__HUB_LOCATION_SLUG;
+const SK='camphub_v2'+__HUB_LOC_SUFFIX;
+const FX_KEY='camphub_local_per_eur_v2'+__HUB_LOC_SUFFIX;
+const FX_DAILY_KEY='camphub_local_daily_fx_v1'+__HUB_LOC_SUFFIX;
+const CAMPTAB_KEY='camptab_live_v2'+__HUB_LOC_SUFFIX;
+const CAMPTAB_MENU_KEY='camptab_menu_v2'+__HUB_LOC_SUFFIX;
+const CAMPTAB_STAFF_KEY='camptab_staff_v3'+__HUB_LOC_SUFFIX;
+const CAMPTAB_TOUR_MENU_VERSION_KEY='camptab_tours_menu_version_v1'+__HUB_LOC_SUFFIX;
+const CAMPTAB_MERCH_MENU_VERSION_KEY='camptab_merch_menu_version_v2'+__HUB_LOC_SUFFIX;
+const RECURRING_DEFAULTS_VERSION_KEY='camphub_recurring_defaults_v1'+__HUB_LOC_SUFFIX;
+const DELETED_CAMPCLOSE_KEY='hub_deleted_campclose_ids'+__HUB_LOC_SUFFIX;
+const HUB_LEDGER_TS_KEY='hub_ledger_ts'+__HUB_LOC_SUFFIX;
 let deletedCampcloseIds=new Set();
 let everInLedgerIds=new Set(); // tracks every campclose ID ever fetched from Supabase this session
 // Local currency + default FX rate are set per location. They start with the
