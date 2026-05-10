@@ -572,7 +572,12 @@ function normalizeMenu(menu){
         sp:item?.sp===''||item?.sp==null?null:Number(item?.sp),
         d:String(item?.d||'').trim(),
         stk:item?.stk===''||item?.stk==null?null:Number(item?.stk),
-        sortOrder:Number.isFinite(Number(item?.sortOrder))?Number(item.sortOrder):undefined
+        sortOrder:Number.isFinite(Number(item?.sortOrder))?Number(item.sortOrder):undefined,
+        // Carry-through fields that the normalizer used to strip. hasTransport
+        // is the "this tour includes a transport leg" toggle from the menu
+        // editor — it has to survive the normalize pass or it gets lost on
+        // every save/hydrate roundtrip.
+        hasTransport:!!item?.hasTransport
       })).filter(item=>item.n&&Number.isFinite(item.p));
       cleaned[catName]=safeItems.map(item=>({
         ...(item.id?{id:item.id}:{}),
@@ -581,7 +586,8 @@ function normalizeMenu(menu){
         ...(Number.isFinite(item.sp)&&item.sp>0?{sp:item.sp}:{}),
         ...(item.d?{d:item.d}:{}),
         ...(Number.isFinite(item.stk)&&item.stk>=0?{stk:Math.max(0,Math.round(item.stk))}:{}),
-        ...(item.sortOrder?{sortOrder:item.sortOrder}:{})
+        ...(item.sortOrder?{sortOrder:item.sortOrder}:{}),
+        ...(item.hasTransport?{hasTransport:true}:{})
       }));
     });
   }
