@@ -2199,30 +2199,38 @@ function dualCurrency(amount,large='eur',onDark=false){
 function moneyPair(amount){
   return `${lkr(toLkr(amount))} <span style="font-size:11px;color:var(--muted);font-weight:500">${euro(amount)}</span>`;
 }
+// Treat any non-EUR ledger entry as already in the active local currency.
+// Old check was `entry.currency==='LKR'` which broke Morocco (MAD entries
+// fell to the else branch and were incorrectly re-converted via toLkr,
+// inflating the displayed local amount).
 function entryLocalDisplayAmount(entry){
   if(!entry) return 0;
-  if(entry.currency==='LKR') return Number(entry.amountLocal||0);
+  if(entry.currency && entry.currency !== 'EUR') return Number(entry.amountLocal||0);
+  // EUR-recorded entry: convert to local for display.
   return Number(toLkr(entry.amount||0)||0);
 }
 function entryEurAmount(entry){
   if(!entry) return 0;
   if(entry.amount!=null&&entry.amount!=='') return Number(entry.amount||0);
-  if(entry.currency==='LKR'){
-    const fx=Number(entry.fxRate||DEFAULT_LKR_PER_EUR||1)||1;
+  if(entry.currency && entry.currency !== 'EUR'){
+    const fx=Number(entry.fxRate||LOCAL_PER_EUR||1)||1;
     return Number((Number(entry.amountLocal||0)/fx).toFixed(2));
   }
   return Number(entry.amountLocal||0);
 }
 function moneyPairLocal(localAmount,eurAmount=null){
   const local=Number(localAmount||0);
-  const eurVal=eurAmount==null ? Number((local/(DEFAULT_LKR_PER_EUR||1)).toFixed(2)) : Number(eurAmount||0);
+  // When the EUR equivalent isn't passed in, derive it from the active
+  // location's FX rate (LOCAL_PER_EUR) — using the hardcoded LKR rate
+  // would silently underweight Morocco's MAD numbers.
+  const eurVal=eurAmount==null ? Number((local/(LOCAL_PER_EUR||1)).toFixed(2)) : Number(eurAmount||0);
   return `${lkr(local)} <span style="font-size:11px;color:var(--muted);font-weight:500">${euro(eurVal)}</span>`;
 }
 function dualCurrencyLocal(localAmount,eurAmount=null,onDark=false){
   const mainCol=onDark?'#fff':'inherit';
   const subCol=onDark?'rgba(255,255,255,.75)':'inherit';
   const local=Number(localAmount||0);
-  const eurVal=eurAmount==null ? Number((local/(DEFAULT_LKR_PER_EUR||1)).toFixed(2)) : Number(eurAmount||0);
+  const eurVal=eurAmount==null ? Number((local/(LOCAL_PER_EUR||1)).toFixed(2)) : Number(eurAmount||0);
   return `<div style="font-family:'DM Serif Display',serif;font-size:26px;color:${mainCol};line-height:1.05">${lkr(local)}</div><div style="font-size:11px;color:${subCol};margin-top:4px">${euro(eurVal)}</div>`;
 }
 function currentCampTabMenu(){
@@ -3942,28 +3950,39 @@ function paymentOptionsFor(type){
   if(type==='income') return ['Cash'];
   return PAYMENT_METHODS;
 }
+// CRITICAL: this function is called by updateCurrencyUi() on every keystroke
+// in the Quick Add amount field, so anything it returns clobbers the static
+// HTML label. Use the active LOCAL_CURRENCY (LKR / MAD / EUR) instead of a
+// hardcoded 'Amount (LKR)' string. EUR locations show the special-cased
+// label so the user knows they're entering euros directly.
 function amountLabelForCurrency(currency){
-  return 'Amount (LKR)';
+  const cur = currency || LOCAL_CURRENCY || 'LKR';
+  return `Amount (${cur})`;
 }
 function formatLkrValue(n){
-  return n>0?'LKR '+Number(n).toLocaleString('en-GB',{maximumFractionDigits:2}):'';
+  return n>0 ? `${LOCAL_CURRENCY} ` + Number(n).toLocaleString('en-GB',{maximumFractionDigits:2}) : '';
 }
+// Currency conversion helpers. Compare against LOCAL_CURRENCY (the active
+// location's currency code) instead of the literal 'LKR' so Morocco hubs
+// correctly treat MAD as the local-currency-needs-FX-to-EUR case.
 function getConvertedEur(prefix){
-  const currency=document.getElementById(prefix+'_currency')?.value||'LKR';
+  const currency=document.getElementById(prefix+'_currency')?.value||LOCAL_CURRENCY||'LKR';
   const amount=Number(document.getElementById(prefix+'_amount')?.value||0);
-  const fx=Number(document.getElementById(prefix+'_fx')?.value||DEFAULT_LKR_PER_EUR)||DEFAULT_LKR_PER_EUR;
-  if(currency==='LKR'){
+  const fx=Number(document.getElementById(prefix+'_fx')?.value||LOCAL_PER_EUR)||LOCAL_PER_EUR;
+  // Local-currency input → divide by FX to get EUR. EUR input → already EUR.
+  if(currency!=='EUR'){
     localStorage.setItem(FX_KEY,String(fx));
     return amount>0?Number((amount/fx).toFixed(2)):0;
   }
   return Number(amount.toFixed(2));
 }
 function getConvertedLkr(prefix){
-  const currency=document.getElementById(prefix+'_currency')?.value||'LKR';
+  const currency=document.getElementById(prefix+'_currency')?.value||LOCAL_CURRENCY||'LKR';
   const amount=Number(document.getElementById(prefix+'_amount')?.value||0);
-  const fx=Number(document.getElementById(prefix+'_fx')?.value||DEFAULT_LKR_PER_EUR)||DEFAULT_LKR_PER_EUR;
+  const fx=Number(document.getElementById(prefix+'_fx')?.value||LOCAL_PER_EUR)||LOCAL_PER_EUR;
   localStorage.setItem(FX_KEY,String(fx));
-  if(currency==='LKR') return amount>0?Number(amount.toFixed(2)):0;
+  // Local input → already local. EUR input → multiply by FX to express in local.
+  if(currency!=='EUR') return amount>0?Number(amount.toFixed(2)):0;
   return amount>0?Number((amount*fx).toFixed(2)):0;
 }
 function updateCurrencyUi(prefix,type){
@@ -3973,14 +3992,16 @@ function updateCurrencyUi(prefix,type){
   const lkrField=document.getElementById(prefix+'_lkr');
   const amountWrap=document.getElementById(prefix+'_amount_wrap');
   const fxField=document.getElementById(prefix+'_fx');
-  const currency=currencyEl?.value||'LKR';
+  const currency=currencyEl?.value||LOCAL_CURRENCY||'LKR';
   if(amountWrap) amountWrap.querySelector('label').textContent=amountLabelForCurrency(currency);
   if(fxWrap) fxWrap.style.display='none';
   const converted=getConvertedEur(prefix);
   const convertedLkr=getConvertedLkr(prefix);
   if(eurField) eurField.value=converted?euro(converted):'';
   if(lkrField) lkrField.value=formatLkrValue(convertedLkr);
-  if(fxField&&!fxField.value) fxField.value=String(DEFAULT_LKR_PER_EUR);
+  // Default the FX rate placeholder to whatever the active location uses
+  // (~10.8 for Morocco, ~330 for Sri Lanka, ~1 for Portugal/Junior Camp).
+  if(fxField&&!fxField.value) fxField.value=String(LOCAL_PER_EUR||DEFAULT_LKR_PER_EUR);
 }
 function toggleEntryUi(prefix,type){
   const showCategory=type!=='transfer';
