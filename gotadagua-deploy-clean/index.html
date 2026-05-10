@@ -2025,6 +2025,38 @@
       setAuthMessage('warning', 'This account no longer has access to the platform. Ask the admin to restore access if needed.');
     }
 
+    // Multi-device live sync for the Settings / Team Access page. Subscribes
+    // to every platform-level table so an invite sent / accepted / a
+    // membership added or removed on one admin's window updates every other
+    // open window automatically. Debounced — many DB writes in quick
+    // succession (e.g. an admin saving a multi-pill invite) collapse into
+    // one re-hydrate.
+    let __PLATFORM_RT_CHANNEL = null;
+    let __PLATFORM_RT_TIMER = null;
+    function schedulePlatformRehydrate(){
+      clearTimeout(__PLATFORM_RT_TIMER);
+      __PLATFORM_RT_TIMER = setTimeout(()=>{
+        hydrateFromSession().catch(error =>
+          console.warn('[Live Workspace] live-sync rehydrate failed', error?.message || error)
+        );
+      }, 300);
+    }
+    function subscribePlatformRealtime(){
+      try{
+        const client = getSupabaseClient();
+        if(!client) return;
+        if(__PLATFORM_RT_CHANNEL) client.removeChannel(__PLATFORM_RT_CHANNEL);
+        __PLATFORM_RT_CHANNEL = client.channel('platform-rt')
+          .on('postgres_changes', { event:'*', schema:'public', table:'platform_profiles' },          schedulePlatformRehydrate)
+          .on('postgres_changes', { event:'*', schema:'public', table:'workspace_memberships' },      schedulePlatformRehydrate)
+          .on('postgres_changes', { event:'*', schema:'public', table:'workspace_invitations' },      schedulePlatformRehydrate)
+          .on('postgres_changes', { event:'*', schema:'public', table:'invitation_workspace_access' }, schedulePlatformRehydrate)
+          .subscribe();
+      }catch(error){
+        console.warn('[Live Workspace] could not subscribe to realtime', error?.message || error);
+      }
+    }
+
     async function hydrateFromSession(){
       const client = getSupabaseClient();
       const { data: { session } } = await client.auth.getSession();
@@ -2286,6 +2318,10 @@
       renderAccessSettings();
       renderTeamAccessModeNotice();
       renderHub();
+      // Wire up live multi-device sync for the Settings/Team page so an
+      // invite sent / accepted / a member removed on one admin's browser
+      // updates every other admin's open window without manual refresh.
+      try{ subscribePlatformRealtime(); }catch(_e){}
       const targetPage = getDesiredAppPage();
       showPage(targetPage, { pushHistory:false });
       const nextHash = targetPage === 'hub' ? '' : `#${targetPage}`;

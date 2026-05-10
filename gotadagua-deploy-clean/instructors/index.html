@@ -472,6 +472,36 @@ async function requirePlatformSession(){
   const { data } = await client.auth.getSession();
   if (!data.session) window.location.href = '/';
 }
+// Multi-device live sync. Subscribes to instructor_lessons and
+// instructor_directory and re-hydrates the page whenever any client (or
+// the same user on another tab/device) writes to either table. Filtered
+// by location_id so a Sri Lanka write doesn't trigger a Morocco refetch.
+let __INSTRUCTOR_RT_CHANNEL=null;
+let __INSTRUCTOR_RT_TIMER=null;
+let __INSTRUCTOR_RT_SUPPRESS=false;
+function scheduleInstructorRehydrate(){
+  if (__INSTRUCTOR_RT_SUPPRESS) return;
+  clearTimeout(__INSTRUCTOR_RT_TIMER);
+  __INSTRUCTOR_RT_TIMER=setTimeout(async()=>{
+    try{ await loadInstructorData(); render(); }
+    catch(e){ console.warn('[Instructors] live-sync rehydrate failed', e); }
+  }, 250);
+}
+async function subscribeInstructorRealtime(){
+  try{
+    const client=await getSupabaseClient();
+    const locationId=await ensureInstructorLocation();
+    if(!client || !locationId) return;
+    if(__INSTRUCTOR_RT_CHANNEL) client.removeChannel(__INSTRUCTOR_RT_CHANNEL);
+    const filter=`location_id=eq.${locationId}`;
+    __INSTRUCTOR_RT_CHANNEL=client.channel('instructors-rt-'+locationId)
+      .on('postgres_changes', { event:'*', schema:'public', table:'instructor_lessons',   filter }, scheduleInstructorRehydrate)
+      .on('postgres_changes', { event:'*', schema:'public', table:'instructor_directory', filter }, scheduleInstructorRehydrate)
+      .subscribe();
+  }catch(e){
+    console.warn('[Instructors] could not subscribe to realtime', e);
+  }
+}
 async function bootstrapInstructors(){
   try{
     await requirePlatformSession();
@@ -480,6 +510,9 @@ async function bootstrapInstructors(){
     document.title=`Instructor Control · ${locationDisplayName(INSTRUCTOR_LOCATION_SLUG)}`;
     await loadInstructorData();
     render();
+    // Wire up live sync after the first paint so the user always sees
+    // their own data first, then keeps it fresh from other devices.
+    subscribeInstructorRealtime();
   }catch(error){
     showError(error instanceof Error?error.message:"Could not load instructor data.");
   }
