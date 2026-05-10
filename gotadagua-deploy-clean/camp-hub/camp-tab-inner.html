@@ -436,11 +436,11 @@ header{display:none}
               <input type="text" id="menuItemName" placeholder="Cappuccino">
             </div>
             <div class="mfield">
-              <label>Regular price (LKR)</label>
+              <label id="menuItemPriceLabel">Regular price (LKR)</label>
               <input type="number" id="menuItemPrice" min="0" step="0.1" placeholder="0.00">
             </div>
             <div class="mfield">
-              <label>Staff price (LKR)</label>
+              <label id="menuItemStaffPriceLabel">Staff price (LKR)</label>
               <input type="number" id="menuItemStaffPrice" min="0" step="0.1" placeholder="Optional">
             </div>
             <div class="mfield">
@@ -484,10 +484,10 @@ const DEFAULT_MENU={
     {n:"Mojito",p:2500},{n:"Caipirinha",p:2500},{n:"Passionfruit Spritz",p:2600},{n:"Sunset Cocktail",p:2800}
   ],
   Merch:[
-    {n:"T-Shirt S",p:6500,stk:0,d:"Sri Lanka tee · size S"},
-    {n:"T-Shirt M",p:6500,stk:0,d:"Sri Lanka tee · size M"},
-    {n:"T-Shirt L",p:6500,stk:0,d:"Sri Lanka tee · size L"},
-    {n:"T-Shirt XL",p:6500,stk:0,d:"Sri Lanka tee · size XL"},
+    {n:"T-Shirt S",p:6500,stk:0,d:"Camp tee · size S"},
+    {n:"T-Shirt M",p:6500,stk:0,d:"Camp tee · size M"},
+    {n:"T-Shirt L",p:6500,stk:0,d:"Camp tee · size L"},
+    {n:"T-Shirt XL",p:6500,stk:0,d:"Camp tee · size XL"},
     {n:"T-Shirt Offer S",p:0,stk:0,d:"Offer tee · size S"},
     {n:"T-Shirt Offer M",p:0,stk:0,d:"Offer tee · size M"},
     {n:"T-Shirt Offer L",p:0,stk:0,d:"Offer tee · size L"},
@@ -711,6 +711,13 @@ function applyLocationCurrencyToCampTabDom(){
     if (opt.textContent==='LKR') opt.textContent=cur;
   });
   document.querySelectorAll('input[placeholder="330"]').forEach(inp => { inp.placeholder=String(fx); });
+  // Targeted fixes for menu-editor labels that the broad selector above
+  // sometimes misses (timing / shadow-style nesting). Using explicit IDs
+  // makes this 100% deterministic.
+  const priceLbl=document.getElementById('menuItemPriceLabel');
+  if (priceLbl) priceLbl.textContent=`Regular price (${cur})`;
+  const staffLbl=document.getElementById('menuItemStaffPriceLabel');
+  if (staffLbl) staffLbl.textContent=`Staff price (${cur})`;
 }
 let _campPendingSave=false;
 async function withRetry(fn,label,retries=3){
