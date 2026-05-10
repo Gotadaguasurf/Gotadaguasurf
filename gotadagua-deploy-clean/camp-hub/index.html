@@ -1150,7 +1150,8 @@ function normalizeLedgerEntry(entry){
   const currency=entry.currency||'EUR';
   const fxRate=Number(entry.fxRate||DEFAULT_LKR_PER_EUR);
   const rawAmount=Number(entry.amountLocal??entry.amount??0);
-  const amount=currency==='LKR' ? Number((rawAmount/(fxRate||1)).toFixed(2)) : Number((Number(entry.amount??rawAmount)||0).toFixed(2));
+  const isLocalCurrency=currency!=='EUR';
+  const amount=isLocalCurrency ? Number((rawAmount/(fxRate||1)).toFixed(2)) : Number((Number(entry.amount??rawAmount)||0).toFixed(2));
   let paymentMethod=entry.paymentMethod||defaultPaymentMethod(type,area);
   if(type==='expense'&&paymentMethod==='Camp Cash') paymentMethod='Cash';
   if(type==='expense'&&paymentMethod==='HQ Transfer') paymentMethod='Bank Transfer';
@@ -1167,7 +1168,7 @@ function normalizeLedgerEntry(entry){
     paidBy,
     currency,
     fxRate,
-    amountLocal:currency==='LKR'?rawAmount:amount,
+    amountLocal:isLocalCurrency?rawAmount:amount,
     quantity:Math.max(1,parseInt(entry.quantity||'1',10)||1),
     linkedItem:linkedItem||defaultLinkedItem(type,area,entry.category||''),
     description:entry.description||'',
@@ -2581,7 +2582,22 @@ async function reconcileClosedWeeksWithLedger(history){
         continue;
       }
       if(existingIds.has(entry.id)){
-        // Canonical ID already present — skip
+        // Canonical ID already present — heal if currency or amountLocal drifted
+        // (e.g., legacy rows written before per-location currency was added).
+        const existing=S.ledger.find(x=>x.id===entry.id);
+        if(existing){
+          const curMismatch=String(existing.currency||'')!==String(entry.currency||'');
+          const amtMismatch=Math.abs(Number(existing.amountLocal||0)-Number(entry.amountLocal||0))>0.01;
+          if(curMismatch||amtMismatch){
+            Object.assign(existing,{
+              currency:entry.currency,
+              fxRate:entry.fxRate,
+              amountLocal:entry.amountLocal,
+              amount:Number((Number(entry.amountLocal||0)/(Number(entry.fxRate)||1)).toFixed(2))
+            });
+            missing.push(existing);
+          }
+        }
         continue;
       }
       // Check for an old-format duplicate: same camp-tab category+linkedItem+week but different ID
@@ -2701,7 +2717,7 @@ function buildClosedWeekRevenueEntries(wk){
     description:`Closed week revenue from Camp Tab · ${weekLabel(wk.start)}`,
     vendor:'Camp Tab',
     sourceKind:'camp_tab',
-    currency:'LKR',
+    currency:LOCAL_CURRENCY||'LKR',
     fxRate:getBestFxRateForDate(revenueDate),
     amountLocal:Number(group.total.toFixed(2))
   }));
@@ -4848,7 +4864,7 @@ function renderExpenses(){
         <td style="color:var(--muted);font-size:12px">${r.linkedItem||'—'}</td>
         <td style="color:var(--muted)">${r.description||'—'}</td>
         <td style="color:var(--muted);font-size:12px">${r.vendor||'—'}</td>
-        <td class="r" style="font-weight:700">${r.currency==='LKR'?'LKR '+Number(r.amountLocal||0).toLocaleString('en-GB',{maximumFractionDigits:2}):euro(r.amountLocal||r.amount)}</td>
+        <td class="r" style="font-weight:700">${r.currency&&r.currency!=='EUR'?`${r.currency} `+Number(r.amountLocal||0).toLocaleString('en-GB',{maximumFractionDigits:2}):euro(r.amountLocal||r.amount)}</td>
         <td class="r" style="font-weight:700">${euro(r.amount)}</td>
         <td><div class="exp-table-actions"><button class="icon-btn" onclick="openEditLedger('${r.id}')" title="Edit">✎</button><button class="icon-btn danger" onclick="delLedger('${r.id}')" title="Delete">✕</button></div></td>
       </tr>`).join(''):'<tr class="empty-row"><td colspan="10">No entries for this filter.</td></tr>'}
@@ -4876,7 +4892,7 @@ async function delLedger(id){
   const entry = S.ledger.find(x=>x.id===id);
   if(!entry) return;
   const typeLbl = entry.type==='income' ? 'revenue' : entry.type==='transfer' ? 'transfer' : 'expense';
-  const amount = entry.amountLocal ? ('LKR '+Number(entry.amountLocal).toLocaleString('en-GB',{maximumFractionDigits:2})) : ('€'+Number(entry.amount||0).toFixed(2));
+  const amount = entry.amountLocal && entry.currency && entry.currency!=='EUR' ? (`${entry.currency} `+Number(entry.amountLocal).toLocaleString('en-GB',{maximumFractionDigits:2})) : ('€'+Number(entry.amount||0).toFixed(2));
   const note = entry.description ? ` "${String(entry.description).slice(0,60)}"` : '';
   const date = entry.date || '';
   if(!confirm(`Delete ${typeLbl} of ${amount}${note} on ${date}?\n\nThis is permanent and removes it from every other device in real-time.\n(All deletes are recorded in the audit log.)`)) return;
