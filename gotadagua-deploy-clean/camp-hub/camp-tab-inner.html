@@ -544,8 +544,12 @@ DEFAULT_MENU.Tours=TOUR_MENU_ITEMS.map(item=>({...item}));
 DEFAULT_MENU.Merch=MERCH_MENU_ITEMS.map(item=>({...item}));
 const MK='camptab_menu_v2';
 const STK='camptab_staff_v3';
-const TOUR_MENU_VERSION_KEY='camptab_tours_menu_version_v1';
-const MERCH_MENU_VERSION_KEY='camptab_merch_menu_version_v2';
+// Per-location localStorage namespacing. Without the suffix the camp tab
+// version flags (and any cached state below) would bleed across locations
+// the same way the hub's main keys did before being scoped.
+const __CT_SLUG=(new URLSearchParams(window.location.search).get('location')||'sri-lanka').trim().toLowerCase();
+const TOUR_MENU_VERSION_KEY='camptab_tours_menu_version_v1_'+__CT_SLUG;
+const MERCH_MENU_VERSION_KEY='camptab_merch_menu_version_v2_'+__CT_SLUG;
 const STAFF_PRICE_FACTOR=0.5;
 const clone=v=>JSON.parse(JSON.stringify(v));
 function normalizeMenu(menu){
@@ -612,7 +616,13 @@ function migrateMerchMenu(){
 }
 migrateMerchMenu();
 const DEFAULT_STAFF=[];
-const CAMP_TAB_LOCATION_SLUG='sri-lanka';
+// CRITICAL: read the location slug from the iframe's own URL (the parent
+// hub appends ?location=<slug> when mounting this iframe). Hardcoding it
+// to 'sri-lanka' was the cause of Morocco's camp tab loading and writing
+// Sri Lanka's menu / guests / items — all camp tab DB queries below pass
+// this slug through ensureCampTabLocationId(), so getting it right here
+// is what isolates the two locations.
+const CAMP_TAB_LOCATION_SLUG=(new URLSearchParams(window.location.search).get('location')||'sri-lanka').trim().toLowerCase();
 let CAMP_SB=null;
 let CAMP_LOCATION_ID=null;
 let campTabSyncTimer=null;

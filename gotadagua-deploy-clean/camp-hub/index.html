@@ -5046,7 +5046,10 @@ function mountCampTabFrame(){
     return;
   }
   frame.onload=()=>{sendCampTabBootstrap();};
-  frame.src='/camp-hub/camp-tab-inner.html';
+  // Pass the active hub's location to the iframe so its CAMP_TAB_LOCATION_SLUG
+  // resolves to the right location (Sri Lanka / Morocco / etc.) instead of
+  // the previously hardcoded 'sri-lanka'.
+  frame.src='/camp-hub/camp-tab-inner.html?location='+encodeURIComponent(__HUB_LOCATION_SLUG);
   frame.dataset.loaded='1';
 }
 function reloadCampTabFrame(){
