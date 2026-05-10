@@ -3466,36 +3466,19 @@ function renderOverview(){
     ${transportCardsMarkup}
   `;
 
-  document.getElementById('ovCashCard').innerHTML=`
-    <div style="font-family:'DM Serif Display',serif;font-size:17px;color:var(--navy);margin-bottom:12px;display:flex;align-items:center;gap:8px">${uiIcon('money')}<span>Operations cash</span></div>
-    <div style="background:var(--navy);border-radius:10px;padding:14px 16px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center">
-      <div>
-        <div style="font-size:9px;color:#7aabcc;text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:3px">Estimated cash available at camp</div>
-        ${dualCurrencyLocal(campCashBalanceLocal,campCashBalanceEur,true)}
-        <div style="font-size:10px;color:#7aabcc;margin-top:1px">Cash float + revenue − camp-paid spend</div>
-      </div>
-      <span class="badge ${campCashBalanceLocal>=0?'badge-green':'badge-red'}">${campCashBalanceLocal>=0?'In control':'Needs review'}</span>
-    </div>
-    <div style="display:flex;flex-direction:column;gap:6px">
-      ${cashRow('Cash float sent from HQ',moneyPairLocal(totalSentLocal,totalSentEur),'var(--amber)')}
-      ${cashRow('Revenue at camp (tabs + ledger)',moneyPairLocal(totalRevenueLocal,totalRevenueEur),'var(--green)')}
-      ${cashRow('Camp-paid expenses',moneyPairLocal(campSpendLocal,campSpendEur),'var(--red)')}
-      ${cashRow('HQ direct-paid expenses',moneyPairLocal(hqSpendLocal,hqSpendEur),'var(--amber)')}
-    </div>
-  `;
-
-  const profitChartData=profitAreas.filter(p=>p.revenueLocal||p.costLocal).map(p=>({l:p.name,v:Math.max(p.revenueLocal-p.costLocal,0)}));
-  document.getElementById('ovRevChart').innerHTML=`
-    <div style="font-family:'DM Serif Display',serif;font-size:15px;color:var(--navy);margin-bottom:2px">Profit center snapshot</div>
-    <div style="font-size:11px;color:var(--muted);margin-bottom:6px">Positive contribution after direct costs</div>
-    ${barChart(profitChartData,'var(--green)')}
-    <div style="display:flex;flex-direction:column;gap:6px;margin-top:12px">
-      ${cashRow('Paid guest tabs',moneyPairLocal(tabRevenueLocal,tabRevenueEur),'var(--green)')}
-      ${cashRow('Manual revenue',moneyPairLocal(extraRevenueLocal,extraRevenueEur),'var(--green)')}
-      ${cashRow('All expenses',moneyPairLocal(totalExpLocal,totalExpEur),'var(--red)')}
-      ${cashRow('Gross profit',moneyPairLocal(grossProfitLocal,grossProfitEur),grossProfitLocal>=0?'var(--green)':'var(--red)')}
-    </div>
-  `;
+  // Operations cash + Profit center snapshot removed by request — the KPI
+  // strip at the top of the Overview already shows the headline cash and
+  // gross-profit figures, and the per-area cards (Bar / Merch / Tours /
+  // Transport) carry the same revenue/cost/margin breakdown the snapshot
+  // was duplicating. Hide both cards and skip the innerHTML work.
+  const ovCashCard=document.getElementById('ovCashCard');
+  if(ovCashCard){ ovCashCard.style.display='none'; ovCashCard.innerHTML=''; }
+  const ovRevChart=document.getElementById('ovRevChart');
+  if(ovRevChart){ ovRevChart.style.display='none'; ovRevChart.innerHTML=''; }
+  // Their wrapper is the next-sibling .g2 grid above ovCatCard. Hide it so
+  // the layout doesn't leave a phantom margin where the cards used to be.
+  const ovCashWrap=ovCashCard?.parentElement;
+  if(ovCashWrap) ovCashWrap.style.display='none';
 
   const areaRows=AREA_ORDER.map(area=>{
     const rows=expenses.filter(x=>x.businessArea===area);
