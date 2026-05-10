@@ -672,7 +672,7 @@ async function ensureCampTabLocationId(){
   if(!client) return null;
   const { data, error } = await client
     .from('locations')
-    .select('id')
+    .select('id,currency,default_fx_to_eur')
     .eq('slug',CAMP_TAB_LOCATION_SLUG)
     .maybeSingle();
   if(error){
@@ -680,7 +680,37 @@ async function ensureCampTabLocationId(){
     return null;
   }
   CAMP_LOCATION_ID=data?.id||null;
+  // Pull the active location's currency code + default FX rate from the
+  // same row so every label / formatter / FX conversion in the camp tab
+  // reacts to the location automatically. Falls back silently to the
+  // Sri Lanka defaults if the columns aren't present yet.
+  if(data?.currency){
+    LOCAL_CURRENCY=data.currency;
+    if(data.default_fx_to_eur){
+      LOCAL_PER_EUR=Number(data.default_fx_to_eur)||LOCAL_PER_EUR;
+      DEFAULT_LKR_PER_EUR=LOCAL_PER_EUR;
+    }
+    try { applyLocationCurrencyToCampTabDom(); } catch(_e){}
+  }
   return CAMP_LOCATION_ID;
+}
+
+// Walks every static "(LKR)" / option value / "330" reference in the camp
+// tab DOM and rewrites them to the active location's currency / FX rate.
+function applyLocationCurrencyToCampTabDom(){
+  const cur=LOCAL_CURRENCY;
+  const fx=LOCAL_PER_EUR;
+  document.querySelectorAll('label, span, div, button, h1, h2, h3, p').forEach(el => {
+    if (!el.children.length) {
+      const txt=el.textContent;
+      if (txt && /\bLKR\b/.test(txt)) el.textContent=txt.replace(/\bLKR\b/g, cur);
+    }
+  });
+  document.querySelectorAll('option[value="LKR"]').forEach(opt => {
+    opt.value=cur;
+    if (opt.textContent==='LKR') opt.textContent=cur;
+  });
+  document.querySelectorAll('input[placeholder="330"]').forEach(inp => { inp.placeholder=String(fx); });
 }
 let _campPendingSave=false;
 async function withRetry(fn,label,retries=3){
@@ -776,7 +806,14 @@ function activeStaff(){return STAFF.find(s=>s.id===activeStaffId)||STAFF[0]||nul
 // ════════════════════════════════════════════════════════════
 const SK='camptab_live_v2';
 const FX_KEY='camphub_lkr_per_eur_v2';
-const DEFAULT_LKR_PER_EUR=330;
+// Local currency + default FX rate for the active location. Overwritten
+// at module load by ensureCampTabLocationId() which reads the values from
+// public.locations (currency / default_fx_to_eur). Defaults to Sri Lanka
+// values so existing call sites keep behaving correctly until the lookup
+// resolves.
+let LOCAL_CURRENCY='LKR';
+let LOCAL_PER_EUR=330;
+let DEFAULT_LKR_PER_EUR=330;
 function loadS(){return defS();}
 function defS(){return{activeWeek:null,nextWeek:null,history:[]};}
 let S=loadS();
@@ -1446,7 +1483,15 @@ if(false) seedDemoIfEmpty();
 // ════════════════════════════════════════════════════════════
 //  HELPERS
 // ════════════════════════════════════════════════════════════
-const money=n=>new Intl.NumberFormat('en-LK',{style:'currency',currency:'LKR',maximumFractionDigits:0}).format(Number(n||0));
+// Format a number in the active location's local currency (LKR/MAD/EUR).
+// EUR shows two decimals; LKR/MAD show none. Falls back to plain "<CUR> 999"
+// if Intl can't render the code on a given browser.
+const money=n=>{
+  try {
+    const fd=LOCAL_CURRENCY==='EUR'?2:0;
+    return new Intl.NumberFormat('en-IE',{style:'currency',currency:LOCAL_CURRENCY,maximumFractionDigits:fd}).format(Number(n||0));
+  } catch(_e){ return `${LOCAL_CURRENCY} ${Number(n||0).toFixed(0)}`; }
+};
 const euro=money;
 const tnow=()=>new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
 const fmtd=d=>d?new Date(d+'T00:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}):'—';
@@ -2472,10 +2517,10 @@ function syncClosedWeekToHubLedger(wk){
     description:`Closed week revenue from Camp Tab · ${weekSpan(wk.start)}`,
     vendor:'Camp Tab',
     sourceKind:'camp_tab',
-    currency:'LKR',
-    fxRate:DEFAULT_LKR_PER_EUR,
+    currency:LOCAL_CURRENCY,
+    fxRate:LOCAL_PER_EUR,
     amountLocal:Number(group.total.toFixed(2)),
-    amount:Number((group.total/(DEFAULT_LKR_PER_EUR||1)).toFixed(2))
+    amount:Number((group.total/(LOCAL_PER_EUR||1)).toFixed(2))
   }));
   try{window.parent?.postMessage({type:'camp-tab-week-closed',weekId:wk.id||wk.start,entry:entries},'*');}catch(e){}
 }
