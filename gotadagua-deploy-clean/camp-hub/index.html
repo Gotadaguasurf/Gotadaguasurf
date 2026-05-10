@@ -1256,6 +1256,11 @@ window.addEventListener('beforeunload',e=>{
 ensureRecurringDefaults();
 function refreshStateFromStorage(){S=loadS();}
 function ensureRecurringDefaults(){
+  // Sri Lanka is the only location these defaults belong to (the rents and
+  // staff names are Sri-Lanka-specific). Skip seeding entirely on every
+  // other location so Morocco / Portugal / Junior Camp start clean and
+  // pull their real data from Supabase only.
+  if(__HUB_LOCATION_SLUG !== 'sri-lanka') return;
   if(localStorage.getItem(RECURRING_DEFAULTS_VERSION_KEY)==='2026-04-sri-lanka-recurring-v1') return;
   const existingRecurringNames=new Set((S.recurring||[]).map(rule=>String(rule.name||'').trim().toLowerCase()));
   FIXED_MONTHLY_DEFAULTS.forEach(rule=>{
@@ -5151,7 +5156,14 @@ async function requirePlatformSession(){
       loadStateStore(SK),
       loadStateStore(OV_CSV_KEY),
       hydrateLedgerFromSupabase({mergeLocal:true}),
-      hydrateMonthlyProfilesFromSupabase({mergeLocal:true}),
+      // mergeLocal=false here: trust Supabase as the single source of truth
+      // for monthly cost profiles. With mergeLocal=true, deleting a salary
+      // and refreshing would re-push the still-cached local copy back into
+      // the DB, undoing the delete. The form's saveSalaryProfile() flow
+      // upserts to Supabase directly, so the only reason we ever hydrated
+      // 'with merge' was to seed brand-new installs — that's a worse bug
+      // than letting fresh users add salaries through the form.
+      hydrateMonthlyProfilesFromSupabase({mergeLocal:false}),
       loadDeletedCampcloseIds()
     ]);
     if(weeksJson&&typeof weeksJson==='object'){
