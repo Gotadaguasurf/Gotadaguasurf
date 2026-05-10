@@ -2307,14 +2307,29 @@ const isTransportRevenueName=name=>TRANSPORT_REVENUE_CATS.includes(name);
 // (TOUR_REVENUE_CATS) is no longer consulted at runtime — it only
 // pre-populates a fresh-install MENU for first boot.
 const isTourRevenueName=name=>menuItemNames('Tours').includes(name);
+function toursWithTransport(){
+  // Tours flagged "with transport" in the camp tab menu editor — they appear
+  // as pickable linked items in the Transport quick-add so transport costs
+  // for those tours show up against the tour's margin AND in the general
+  // Transport breakdown.
+  const tours=currentCampTabMenu()?.Tours||[];
+  return tours.filter(t=>t&&t.hasTransport).map(t=>String(t.n||'')).filter(Boolean);
+}
 function currentTransportItems(){
-  return TRANSPORT_LINKED_ITEMS.slice();
+  // Static base + every tour that's flagged with transport. The static
+  // entries (Airport, Transport Surf Lesson) cover transport that isn't
+  // attached to a tour menu item.
+  return TRANSPORT_LINKED_ITEMS.concat(toursWithTransport());
 }
 function currentTourItems(){
   return menuItemNames('Tours').filter(name=>!isTransportRevenueName(name));
 }
 function linkedTransportTour(name){
-  return TRANSPORT_TOUR_COST_MAP[name]||'';
+  // Legacy hardcoded map first (for backwards compat); then the new model
+  // where a transport linkedItem IS the tour name itself.
+  if(TRANSPORT_TOUR_COST_MAP[name]) return TRANSPORT_TOUR_COST_MAP[name];
+  if(toursWithTransport().includes(name)) return name;
+  return '';
 }
 function linkedItemPrice(name){
   if(!name) return 0;
