@@ -2207,12 +2207,18 @@ function merchStockKey(name=''){
   return match?match[1].toUpperCase():'';
 }
 const isTransportRevenueName=name=>TRANSPORT_REVENUE_CATS.includes(name);
-const isTourRevenueName=name=>menuItemNames('Tours').includes(name)||TOUR_REVENUE_CATS.includes(name);
+// The camp tab Tours menu is the single source of truth for what the
+// operations ledger quick-add shows under "Tours". Whatever the user
+// adds / removes / renames in the camp tab Tours category appears /
+// disappears in the quick-add immediately. The static seed
+// (TOUR_REVENUE_CATS) is no longer consulted at runtime — it only
+// pre-populates a fresh-install MENU for first boot.
+const isTourRevenueName=name=>menuItemNames('Tours').includes(name);
 function currentTransportItems(){
   return TRANSPORT_LINKED_ITEMS.slice();
 }
 function currentTourItems(){
-  return [...new Set(menuItemNames('Tours').filter(name=>!isTransportRevenueName(name)).concat(TOUR_REVENUE_CATS))];
+  return menuItemNames('Tours').filter(name=>!isTransportRevenueName(name));
 }
 function linkedTransportTour(name){
   return TRANSPORT_TOUR_COST_MAP[name]||'';
