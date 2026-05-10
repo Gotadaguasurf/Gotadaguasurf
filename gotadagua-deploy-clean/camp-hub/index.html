@@ -3418,30 +3418,6 @@ function renderOverview(){
 
   document.getElementById('ovCatPanels').style.gridTemplateColumns='1fr 1fr';
   document.getElementById('ovCatPanels').innerHTML=`
-    <div class="card card-pad">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
-        <div style="font-family:'DM Serif Display',serif;font-size:17px;color:var(--navy);display:flex;align-items:center;gap:8px">${uiIcon('food')}<span>Food control</span></div>
-        <span class="badge badge-blue">${guestDays} guest-days</span>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-        <div style="background:var(--bg);border-radius:8px;padding:10px">
-          <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin-bottom:4px">Selected spend</div>
-          <div style="font-family:'DM Serif Display',serif;font-size:18px;color:var(--red)">${lkr(sum(expenses.filter(x=>x.businessArea==='Food'),x=>entryLocalDisplayAmount(x)))}</div>
-          <div style="font-size:10px;color:var(--muted);margin-top:2px">${euro(sum(expenses.filter(x=>x.businessArea==='Food'),x=>entryEurAmount(x)))}</div>
-          <div style="font-size:10px;color:var(--muted);margin-top:1px">Cost only, no food revenue</div>
-        </div>
-        <div style="background:var(--bg);border-radius:8px;padding:10px">
-          <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin-bottom:4px">Selected avg / guest-day</div>
-          <div style="font-family:'DM Serif Display',serif;font-size:18px;color:var(--navy)">${perGuestDayMetric(sum(expenses.filter(x=>x.businessArea==='Food'),x=>x.amount),guestDays)}</div>
-          <div style="font-size:10px;color:var(--muted);margin-top:1px">${guestDayData.source==='csv'?'Using imported CSV':'Using estimate from weeks'}</div>
-        </div>
-      </div>
-      <div style="background:var(--navy);border-radius:8px;padding:10px 14px;display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:8px">
-        <div><div style="font-size:9px;color:#7aabcc;text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:2px">This week avg</div><div style="font-family:'DM Serif Display',serif;font-size:18px;color:#fff">${perGuestDayMetric(foodWeekExpense,weekGuestDays)}</div></div>
-        <div><div style="font-size:9px;color:#7aabcc;text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:2px">This month avg</div><div style="font-family:'DM Serif Display',serif;font-size:18px;color:#fff">${perGuestDayMetric(foodMonthExpense,monthGuestDays)}</div></div>
-        <div><div style="font-size:9px;color:#7aabcc;text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:2px">All-time avg</div><div style="font-family:'DM Serif Display',serif;font-size:18px;color:#fff">${perGuestDayMetric(foodAllExpense,allTimeGuestDays)}</div></div>
-      </div>
-    </div>
     ${profitAreas.map(p=>{
       const marginLocal=p.revenueLocal-p.costLocal;
       const marginEur=p.revenueEur-p.costEur;
