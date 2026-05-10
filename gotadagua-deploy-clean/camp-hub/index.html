@@ -1708,6 +1708,15 @@ async function ensureHubLocationId(){
     if (data.default_fx_to_eur) {
       LOCAL_PER_EUR = Number(data.default_fx_to_eur) || LOCAL_PER_EUR;
       DEFAULT_LKR_PER_EUR = LOCAL_PER_EUR;
+      // Detect cache poisoning: if a previous bug cached a wildly wrong rate
+      // under this location's FX keys (e.g., LKR ~330 cached for Morocco
+      // because readSupabaseFxRate used to be hardcoded to LKR), wipe it so
+      // the next fetch repopulates with the correct rate for this currency.
+      const cachedRate = parseFloat(localStorage.getItem(FX_KEY)||'0')||0;
+      if (cachedRate>0 && Math.abs(cachedRate-LOCAL_PER_EUR)/LOCAL_PER_EUR > 0.5) {
+        localStorage.setItem(FX_KEY, String(LOCAL_PER_EUR));
+        localStorage.removeItem(FX_DAILY_KEY);
+      }
     }
     try { applyLocationCurrencyToDom(); } catch(_e){}
   }
@@ -1778,16 +1787,18 @@ function dbRowToLedgerEntry(row){
     sourceKind:row.source_kind||'manual'
   });
 }
-async function readSupabaseFxRate(date){
+async function readSupabaseFxRate(date,quoteCurrency){
   const client=getHubSupabaseClient();
   if(!client||!date) return 0;
+  const quote=String(quoteCurrency||LOCAL_CURRENCY||'LKR').toUpperCase();
+  if(quote==='EUR') return 1;
   try{
     const { data,error } = await client
       .from('daily_fx_rates')
       .select('rate')
       .eq('rate_date',date)
       .eq('base_currency','EUR')
-      .eq('quote_currency','LKR')
+      .eq('quote_currency',quote)
       .maybeSingle();
     if(error) throw error;
     return Number(data?.rate||0)||0;
@@ -1796,16 +1807,18 @@ async function readSupabaseFxRate(date){
     return 0;
   }
 }
-async function writeSupabaseFxRate(date,rate,source='frankfurter'){
+async function writeSupabaseFxRate(date,rate,source='frankfurter',quoteCurrency){
   const client=getHubSupabaseClient();
   if(!client||!date||!(rate>0)) return;
+  const quote=String(quoteCurrency||LOCAL_CURRENCY||'LKR').toUpperCase();
+  if(quote==='EUR') return;
   try{
     await client
       .from('daily_fx_rates')
       .upsert({
         rate_date:date,
         base_currency:'EUR',
-        quote_currency:'LKR',
+        quote_currency:quote,
         rate:Number(rate),
         source
       },{onConflict:'rate_date,base_currency,quote_currency'});
@@ -2152,7 +2165,7 @@ async function fetchFxRateForDate(date){
   if (LOCAL_CURRENCY === 'EUR') return 1;
   const cached=cachedFxRateForDate(date);
   if(cached>0) return cached;
-  const serverRate=await readSupabaseFxRate(date);
+  const serverRate=await readSupabaseFxRate(date,LOCAL_CURRENCY);
   if(serverRate>0){
     setFxDailyRate(date,serverRate);
     localStorage.setItem(FX_KEY,String(serverRate));
@@ -2169,7 +2182,7 @@ async function fetchFxRateForDate(date){
     if(rate>0){
       setFxDailyRate(date,rate);
       localStorage.setItem(FX_KEY,String(rate));
-      writeSupabaseFxRate(date,rate,'frankfurter');
+      writeSupabaseFxRate(date,rate,'frankfurter',LOCAL_CURRENCY);
       return rate;
     }
   }catch(_error){}
@@ -2567,6 +2580,7 @@ async function reconcileClosedWeeksWithLedger(history){
   if(!Array.isArray(history)||!history.length) return;
   const existingIds=new Set(S.ledger.map(x=>x.id));
   const missing=[];
+  const healed=[];
   const toRemove=[];
   for(const wk of history){
     if(!wk?.start) continue;
@@ -2588,14 +2602,16 @@ async function reconcileClosedWeeksWithLedger(history){
         if(existing){
           const curMismatch=String(existing.currency||'')!==String(entry.currency||'');
           const amtMismatch=Math.abs(Number(existing.amountLocal||0)-Number(entry.amountLocal||0))>0.01;
-          if(curMismatch||amtMismatch){
+          const fxMismatch=Number(entry.fxRate||0)>0
+            && Math.abs(Number(existing.fxRate||0)-Number(entry.fxRate||0))/Number(entry.fxRate||1) > 0.1;
+          if(curMismatch||amtMismatch||fxMismatch){
             Object.assign(existing,{
               currency:entry.currency,
               fxRate:entry.fxRate,
               amountLocal:entry.amountLocal,
               amount:Number((Number(entry.amountLocal||0)/(Number(entry.fxRate)||1)).toFixed(2))
             });
-            missing.push(existing);
+            healed.push(existing);
           }
         }
         continue;
@@ -2632,15 +2648,16 @@ async function reconcileClosedWeeksWithLedger(history){
     }
     setTimeout(()=>{ HUB_SUPPRESS_LEDGER_RT=false; },600);
   }
-  if(!missing.length){
+  if(!missing.length&&!healed.length){
     if(toRemove.length){save();renderExpenses();renderOverview();renderWeeklyPL();}
     return;
   }
   try{
-    const enriched=await Promise.all(missing.map(enrichLedgerEntryFx));
-    S.ledger.push(...enriched);
+    const enriched=missing.length?await Promise.all(missing.map(enrichLedgerEntryFx)):[];
+    if(enriched.length) S.ledger.push(...enriched);
     save();
-    await syncLedgerEntriesToSupabase(enriched,'closed week recovery sync');
+    if(enriched.length) await syncLedgerEntriesToSupabase(enriched,'closed week recovery sync');
+    if(healed.length) await syncLedgerEntriesToSupabase(healed,'closed week heal sync');
     renderExpenses();renderOverview();renderWeeklyPL();
   }catch(e){
     console.warn('[Hub] reconcileClosedWeeksWithLedger failed',e);
@@ -4899,19 +4916,35 @@ async function delLedger(id){
   HUB_SUPPRESS_LEDGER_RT=true; // set BEFORE any state_store writes so own echoes are reliably suppressed
   // Optimistic: remove locally immediately for snappy UI
   const backup=S.ledger.find(x=>x.id===id);
-  S.ledger=S.ledger.filter(x=>x.id!==id);
+  // For campclose entries, sweep all siblings from the same closed week so the
+  // user doesn't have to delete each tour/drink row one by one. The cascade
+  // postMessage already removes the camp-tab week, so the siblings are about
+  // to become orphans anyway.
+  let siblingIds=[];
+  if(String(id).startsWith('campclose_')){
+    const weekRef=extractWeekRefFromCampcloseId(id);
+    if(weekRef){
+      const prefix='campclose_'+weekRef+'_';
+      siblingIds=S.ledger.filter(x=>String(x.id||'').startsWith(prefix)&&x.id!==id).map(x=>x.id);
+    }
+  }
+  const allIds=[id,...siblingIds];
+  S.ledger=S.ledger.filter(x=>!allIds.includes(x.id));
   // Mark campclose entries as intentionally deleted so reconcile never re-adds them,
   // and cascade-delete the corresponding week from camp tab history.
   if(String(id).startsWith('campclose_')){
-    markCampcloseDeleted(id);
+    allIds.forEach(markCampcloseDeleted);
     const weekRef=extractWeekRefFromCampcloseId(id);
     if(weekRef) notifyCampTabRemoveHistoryWeek(weekRef);
   }
   save();
   renderExpenses();renderOverview();renderWeeklyPL();
-  toast('Deleted.');
+  toast(siblingIds.length?`Deleted ${allIds.length} entries.`:'Deleted.');
   try{
-    await deleteLedgerEntryFromSupabase(id);
+    for(const x of allIds){
+      try{ await deleteLedgerEntryFromSupabase(x); }
+      catch(err){ console.warn('[Hub] sibling ledger delete failed',x,err); }
+    }
   }catch(error){
     // Rollback on failure so state stays consistent
     if(backup) S.ledger=[...S.ledger,backup];
