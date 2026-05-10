@@ -2688,7 +2688,19 @@ async function removeOrphanedClosedWeekEntries(history){
     if(!UUID_RE.test(weekRef)&&!DATE_RE.test(weekRef)) return false;
     return !knownWeekIds.has(weekRef)&&!knownWeekStarts.has(weekRef);
   });
+  // Diagnostic: surface what was scanned so we can debug stuck orphans.
+  window.__hubLastOrphanScan={
+    historySize:history.length,
+    knownWeekIds:[...knownWeekIds],
+    knownWeekStarts:[...knownWeekStarts],
+    ledgerCampcloseCount:S.ledger.filter(r=>String(r.id||'').startsWith('campclose_')).length,
+    orphanedCount:orphaned.length,
+    orphanedIds:orphaned.map(o=>o.id),
+    skippedSamples:S.ledger.filter(r=>String(r.id||'').startsWith('campclose_')&&!orphaned.includes(r)).slice(0,5).map(r=>r.id),
+    at:new Date().toISOString()
+  };
   if(!orphaned.length) return;
+  console.log('[Hub] removeOrphanedClosedWeekEntries deleting',orphaned.length,window.__hubLastOrphanScan);
   S.ledger=S.ledger.filter(e=>!orphaned.some(o=>o.id===e.id));
   save();
   HUB_SUPPRESS_LEDGER_RT=true;
@@ -2780,7 +2792,21 @@ async function removeClosedWeekIncome(payload={}){
       || (startPrefix && rowId.startsWith(startPrefix))
       || (sameWeekLabel && descLooksLikeCampTab);
   });
-  if(!rows.length) return false;
+  // Diagnostic: surface what was attempted so the user can inspect via
+  // window.__hubLastRemoveClosedWeek if rows aren't being cleaned up.
+  window.__hubLastRemoveClosedWeek={
+    payload,
+    weekId,weekStart,
+    explicitIdsList:explicitIds?[...explicitIds]:null,
+    matchedCount:rows.length,
+    matchedIds:rows.map(r=>r.id),
+    sampleLedgerCampcloseIds:S.ledger.filter(r=>String(r.id||'').startsWith('campclose_')).slice(0,10).map(r=>r.id),
+    at:new Date().toISOString()
+  };
+  if(!rows.length){
+    console.warn('[Hub] removeClosedWeekIncome found no matching rows',window.__hubLastRemoveClosedWeek);
+    return false;
+  }
   S.ledger=S.ledger.filter(row=>!rows.some(rem=>rem.id===row.id));
   // Mark as permanently deleted so reconcile never re-adds them
   rows.forEach(row=>{ if(String(row.id||'').startsWith('campclose_')) markCampcloseDeleted(row.id); });

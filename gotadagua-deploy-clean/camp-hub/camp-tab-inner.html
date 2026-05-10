@@ -2050,6 +2050,14 @@ function buildCampcloseIdsForWeek(wk){
 function removeClosedWeekFromHubLedger(wk){
   if(!wk) return;
   const campcloseIds=buildCampcloseIdsForWeek(wk);
+  // Diagnostic so the user can compare the IDs the iframe sent against the
+  // IDs the hub has in S.ledger when delete fails to propagate.
+  window.__campTabLastDeleteCascade={
+    weekId:wk.id||wk.start,
+    weekStart:wk.start,
+    campcloseIds,
+    at:new Date().toISOString()
+  };
   try{window.parent?.postMessage({type:'camp-tab-history-deleted',weekId:wk.id||wk.start,weekStart:wk.start,campcloseIds},'*');}catch(e){}
 }
 
