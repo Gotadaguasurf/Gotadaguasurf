@@ -4899,7 +4899,7 @@ function renderTourCostChips(){
       const cost=Number(tourCostPresets[name]||0);
       const subtitle=cost>0
         ? `<div class="tq-chip-price">${cur} ${Number(cost).toLocaleString('en-GB')} / guest</div>`
-        : `<div class="tq-chip-price" style="color:var(--muted);font-style:italic">No cost set</div>`;
+        : `<div class="tq-chip-price" style="color:var(--green);font-weight:700">Free</div>`;
       return `<button class="tq-chip" onclick="pickTcPreset('${escapeAttr(name)}')">
         <div class="tq-chip-name">${escapeHtml(name)}</div>
         ${subtitle}
