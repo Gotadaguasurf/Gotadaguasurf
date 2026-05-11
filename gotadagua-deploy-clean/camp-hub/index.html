@@ -1370,7 +1370,27 @@ function normalizeLedgerEntry(entry){
   const linkedItem=entry.linkedItem||'';
   const area=entry.businessArea||inferArea(type,normalizedCategory,linkedItem);
   const currency=entry.currency||'EUR';
-  const fxRate=Number(entry.fxRate||DEFAULT_LKR_PER_EUR);
+  let fxRate=Number(entry.fxRate||DEFAULT_LKR_PER_EUR);
+  // ── Defensive sanity check on FX rate ──────────────────────────────
+  // If this entry's currency matches the active location's currency and
+  // the supplied fxRate is wildly off (>50% from LOCAL_PER_EUR), force
+  // it to LOCAL_PER_EUR. Catches every path that might write a stale or
+  // poisoned rate (cached Frankfurter response, leftover LKR rate in
+  // FX_DAILY_KEY for Morocco, recurring auto-apply with the wrong fx
+  // at month-end, etc.). EUR entries are never touched. Entries whose
+  // currency differs from the location (e.g. an LKR row viewed from
+  // Morocco) are left alone — they're historical / cross-location and
+  // we have no authoritative rate to substitute.
+  try{
+    if(currency && currency!=='EUR'
+       && typeof LOCAL_CURRENCY!=='undefined' && currency===LOCAL_CURRENCY
+       && Number(LOCAL_PER_EUR||0)>0
+       && Number(fxRate||0)>0
+       && Math.abs(fxRate-LOCAL_PER_EUR)/LOCAL_PER_EUR > 0.5){
+      console.warn('[Hub] normalizeLedgerEntry rescued bad fxRate',{id:normalizedId,was:fxRate,now:LOCAL_PER_EUR,currency});
+      fxRate=Number(LOCAL_PER_EUR);
+    }
+  }catch(_e){}
   const rawAmount=Number(entry.amountLocal??entry.amount??0);
   const isLocalCurrency=currency!=='EUR';
   const amount=isLocalCurrency ? Number((rawAmount/(fxRate||1)).toFixed(2)) : Number((Number(entry.amount??rawAmount)||0).toFixed(2));
