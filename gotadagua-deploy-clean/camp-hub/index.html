@@ -2144,9 +2144,16 @@ async function hydrateLedgerFromSupabase({mergeLocal=true}={}){
 }
 async function enrichLedgerEntryFx(entry){
   const normalized=normalizeLedgerEntry(entry);
-  if(!normalized||normalized.currency!=='LKR') return normalized;
+  if(!normalized) return normalized;
+  // EUR entries never need FX enrichment — they're already in the report
+  // currency. Every other currency (LKR, MAD, future others) should hit
+  // the daily FX lookup so the entry uses the right rate for its date.
+  // The old check `currency!=='LKR'` early-returned for MAD, which left
+  // Morocco entries with whatever rate was on the entry at creation
+  // time — exactly the bug that produced MAD 100 / €0.26 rows.
+  if(normalized.currency==='EUR') return normalized;
   const exactRate=await fetchFxRateForDate(normalized.date);
-  const fxRate=Number(exactRate||normalized.fxRate||DEFAULT_LKR_PER_EUR)||DEFAULT_LKR_PER_EUR;
+  const fxRate=Number(exactRate||normalized.fxRate||LOCAL_PER_EUR||DEFAULT_LKR_PER_EUR)||LOCAL_PER_EUR||DEFAULT_LKR_PER_EUR;
   return normalizeLedgerEntry({
     ...normalized,
     fxRate,
@@ -5510,6 +5517,12 @@ function applyRecurringEntries(){
     if(rule.lastAppliedMonth===month) return;
     const exists=hasMonthlyEntryFor(rule.id,month);
     if(!exists){
+      // Currency must respect the active location — hardcoding 'LKR' here
+      // tagged every Morocco auto-applied rent / monthly cost as LKR even
+      // though it's in MAD, leaving the cost converted with the LKR rate
+      // on every month-end. Salary profiles below already do this right;
+      // matching the same pattern.
+      const ruleCurrency=rule.currency||LOCAL_CURRENCY||'LKR';
       const entry=normalizeLedgerEntry({
         id:'recurring_'+rule.id+'_'+month,
         date:dueDate,
@@ -5521,8 +5534,8 @@ function applyRecurringEntries(){
         quantity:rule.quantity,
         description:rule.description,
         amountLocal:rule.amountLocal,
-        currency:'LKR',
-        fxRate:dueFxRate,
+        currency:ruleCurrency,
+        fxRate: ruleCurrency==='EUR' ? 1 : dueFxRate,
         recurringSourceId:rule.id,
         recurringMonth:month
       });
