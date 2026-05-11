@@ -4169,6 +4169,29 @@ const TRANSPORT_PRESETS_KEY='transport_presets_v1';
 const DEFAULT_TRANSPORT_PRESETS_BY_LOCATION={
   'sri-lanka':{
     airport:[
+      // Vehicle-picker style — same UX as Morocco's airport presets. Each
+      // direction is a destination with Car / Minivan / Large Van pricing.
+      {
+        id:stableUuidFromSeed('tq|sri-lanka|airport|CMB-to-Surfcamp'),
+        name:'CMB → Surfcamp',sortOrder:5,linkedTour:'',
+        vehicles:[
+          {id:stableUuidFromSeed('tq|sri-lanka|airport|CMB-to-Surfcamp|Car'),label:'Car',capacity:4,price:21500,sortOrder:10},
+          {id:stableUuidFromSeed('tq|sri-lanka|airport|CMB-to-Surfcamp|Minivan'),label:'Minivan',capacity:8,price:26500,sortOrder:20},
+          {id:stableUuidFromSeed('tq|sri-lanka|airport|CMB-to-Surfcamp|LargeVan'),label:'Large Van',capacity:12,price:29500,sortOrder:30}
+        ]
+      },
+      {
+        id:stableUuidFromSeed('tq|sri-lanka|airport|Surfcamp-to-CMB'),
+        name:'Surfcamp → CMB',sortOrder:6,linkedTour:'',
+        vehicles:[
+          {id:stableUuidFromSeed('tq|sri-lanka|airport|Surfcamp-to-CMB|Car'),label:'Car',capacity:4,price:20000,sortOrder:10},
+          {id:stableUuidFromSeed('tq|sri-lanka|airport|Surfcamp-to-CMB|Minivan'),label:'Minivan',capacity:8,price:25000,sortOrder:20},
+          {id:stableUuidFromSeed('tq|sri-lanka|airport|Surfcamp-to-CMB|LargeVan'),label:'Large Van',capacity:12,price:28000,sortOrder:30}
+        ]
+      },
+      // Legacy single-price presets — kept for backward compat. User can
+      // delete them via the modal's edit mode if they prefer the new
+      // hierarchical chips only.
       {id:stableUuidFromSeed('tq|sri-lanka|airport|Car-Airport'),name:'Car-Airport',unitPrice:20500,sortOrder:10},
       {id:stableUuidFromSeed('tq|sri-lanka|airport|BV-Airport'),name:'BV-Airport',unitPrice:32000,sortOrder:20},
       {id:stableUuidFromSeed('tq|sri-lanka|airport|SV-Airport'),name:'SV-Airport',unitPrice:25500,sortOrder:30}
@@ -5467,14 +5490,16 @@ function renderEntryCategorySelection(prefix){
 }
 function tourCostPerGuest(tourName){
   if(!tourName) return 0;
-  // Source of truth: camp tab menu (set via the menu editor's
-  // "Cost per guest" field). Falls back to the legacy
-  // location_state_store row that the removed Tour-costs modal used,
-  // so historical configurations keep working until the user moves
-  // them over to the menu editor.
+  // Source of truth: the camp-tab menu (set via the menu editor's
+  // "Cost per guest" field). If the tour IS in the menu, trust it
+  // completely — a missing/0 value there means the user marked it as
+  // free and we must NOT fall back to the legacy presets map (which
+  // might still hold an old value the user just cleared).
   const tours=currentCampTabMenu()?.Tours||[];
   const match=tours.find(t=>String(t?.n||'')===String(tourName));
-  if(match && Number(match.costPerGuest||0)>0) return Number(match.costPerGuest);
+  if(match) return Number(match.costPerGuest||0)||0;
+  // Legacy fallback: only fires when the tour isn't in the menu at all
+  // (e.g. renamed / deleted tour whose old cost was still in the map).
   if(typeof tourCostPresets!=='undefined' && tourCostPresets && Number(tourCostPresets[tourName]||0)>0){
     return Number(tourCostPresets[tourName]);
   }
