@@ -5459,6 +5459,13 @@ async function requirePlatformSession(){
   const {data}=await client.auth.getSession();
   if(!data.session){window.location.href='/';return;}
   try{
+    // CRITICAL ORDER: loadDeletedCampcloseIds() MUST finish before
+    // hydrateLedgerFromSupabase(), otherwise the ghost filter inside
+    // hydrate runs with an empty deletedCampcloseIds Set and the
+    // user's just-deleted closed-week revenue rows come back on the
+    // very next page refresh. Hydrate scheduling these in Promise.all
+    // was a race that fired on every fresh-tab test.
+    await loadDeletedCampcloseIds();
     const [weeksJson,ovJson]=await Promise.all([
       loadStateStore(SK),
       loadStateStore(OV_CSV_REMOTE_KEY),
@@ -5470,8 +5477,7 @@ async function requirePlatformSession(){
       // upserts to Supabase directly, so the only reason we ever hydrated
       // 'with merge' was to seed brand-new installs — that's a worse bug
       // than letting fresh users add salaries through the form.
-      hydrateMonthlyProfilesFromSupabase({mergeLocal:false}),
-      loadDeletedCampcloseIds()
+      hydrateMonthlyProfilesFromSupabase({mergeLocal:false})
     ]);
     if(weeksJson&&typeof weeksJson==='object'){
       if(Array.isArray(weeksJson.weeks)&&weeksJson.weeks.length){
