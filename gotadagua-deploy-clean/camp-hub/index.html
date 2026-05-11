@@ -4959,7 +4959,12 @@ async function submitTourCostEntry(){
     id:'tc'+Date.now()+Math.random().toString(36).slice(2,6),
     date,
     type:'expense',
-    category:'Tours',
+    // category = tour name (matches what Camp Tab revenue uses for the
+    // same tour, so the Operations Ledger Category column reads the
+    // same on both rows). businessArea is set explicitly to 'Tours' so
+    // the inferArea fallback (which expects category='Tours' for the
+    // expense path) doesn't kick in and send this to 'General'.
+    category:tcSelectedTourName,
     linkedItem:tcSelectedTourName,
     businessArea:'Tours',
     paymentMethod:paidVia,
