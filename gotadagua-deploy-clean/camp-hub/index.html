@@ -78,6 +78,44 @@
 .ov-filters{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:#fff;border-radius:12px;padding:10px 14px;box-shadow:var(--sh-soft);margin-bottom:24px}
 .ov-filters .fsel{background:transparent;border:1px solid var(--border)}
 .ov-filters .ov-week-info{font-size:12px;color:var(--muted);margin-left:auto;padding-left:8px}
+
+/* ──────── Transport quick-add modal ──────── */
+.tq-tabs{display:flex;gap:6px;align-items:center;border-bottom:1px solid var(--border);margin-bottom:14px;padding-bottom:0}
+.tq-tab{background:transparent;border:none;padding:10px 16px;font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;transition:color .15s,border-color .15s;margin-bottom:-1px}
+.tq-tab:hover{color:var(--navy)}
+.tq-tab-active{color:var(--navy);border-bottom-color:var(--ocean)}
+.tq-edit-toggle{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer;padding:6px 10px;border-radius:8px;transition:background .12s}
+.tq-edit-toggle:hover{background:var(--bg)}
+.tq-edit-toggle input{cursor:pointer;width:14px;height:14px}
+.tq-chips-wrap{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:18px}
+.tq-chip{background:#fff;border:1.5px solid var(--border);border-radius:12px;padding:12px 14px;cursor:pointer;text-align:left;transition:border-color .15s,box-shadow .15s,transform .1s;display:flex;flex-direction:column;gap:4px;font-family:'Outfit',sans-serif}
+.tq-chip:hover{border-color:var(--ocean);box-shadow:0 4px 14px rgba(30,111,168,.12);transform:translateY(-1px)}
+.tq-chip-name{font-weight:700;font-size:14px;color:var(--navy);line-height:1.2}
+.tq-chip-price{font-family:'DM Mono',monospace;font-size:12px;color:var(--ocean);font-weight:600}
+.tq-chip-custom{border-style:dashed;border-color:var(--ocean);background:var(--foam);color:var(--ocean);align-items:center;justify-content:center;text-align:center;font-weight:700;font-size:13px}
+.tq-chip-edit{border:1.5px dashed var(--border);padding:10px 12px}
+.tq-chip-edit input{width:100%;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-family:'Outfit',sans-serif;font-size:13px;margin-bottom:6px}
+.tq-chip-edit input[type=number]{font-family:'DM Mono',monospace}
+.tq-chip-edit-actions{display:flex;gap:6px;margin-top:4px}
+.tq-chip-edit-actions button{flex:1;border:none;border-radius:6px;padding:5px 8px;font-size:11px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif}
+.tq-chip-edit-actions .save{background:var(--green);color:#fff}
+.tq-chip-edit-actions .del{background:var(--red-bg);color:var(--red);border:1px solid #f0a0a0}
+.tq-chip-add{border:1.5px dashed var(--ocean);background:transparent;color:var(--ocean);font-weight:700;cursor:pointer;font-size:13px;font-family:'Outfit',sans-serif;border-radius:12px;padding:14px}
+.tq-chip-add:hover{background:var(--foam)}
+
+.tq-form{background:var(--foam);border:1px solid var(--border);border-radius:12px;padding:18px;margin-top:10px}
+.tq-form-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;gap:10px;flex-wrap:wrap}
+.tq-form-label{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700}
+.tq-form-name{font-family:'DM Serif Display',serif;font-size:20px;color:var(--navy);margin-top:2px}
+.tq-form-back{background:transparent;border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:11px;font-weight:600;color:var(--ocean);cursor:pointer;font-family:'Outfit',sans-serif}
+.tq-form-back:hover{background:#fff;border-color:var(--ocean)}
+.tq-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:14px}
+.tq-grid .mfield{margin-bottom:0}
+.tq-total-row{display:flex;justify-content:space-between;align-items:center;background:#fff;border-radius:10px;padding:14px 18px;border:1px solid var(--border)}
+.tq-total-label{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700}
+.tq-total-value{font-family:'DM Serif Display',serif;font-size:24px;color:var(--navy);line-height:1;margin-top:4px}
+.tq-total-sub{font-size:11px;color:var(--muted);margin-top:3px}
+.tq-empty{padding:24px;text-align:center;color:var(--muted);font-size:13px;background:var(--bg);border-radius:10px;border:1px dashed var(--border)}
 *{box-sizing:border-box;margin:0;padding:0}
 html{scroll-behavior:smooth;min-height:100%;background:var(--bg)}
 body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--ink);min-height:100vh;min-height:100dvh}
@@ -533,6 +571,7 @@ td.r{text-align:right;font-family:'DM Mono',monospace;font-size:12px}
         <div style="font-size:12px;color:var(--muted);margin-top:2px">Faster daily logging in LKR. Category drives the reporting area automatically.</div>
       </div>
       <div class="exp-top-actions">
+        <button class="btn btn-s" id="quickTransportBtn" onclick="openTransportQuickAdd()" style="display:none"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M3 13h14"/><path d="M5 13v-3a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v3"/><circle cx="7" cy="15" r="1.5"/><circle cx="13" cy="15" r="1.5"/></svg></span><span>Transport</span></span></button>
         <button class="btn btn-s" onclick="openMonthlyExpensesModal()"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M6 3h8l3 3v11H6z"/><path d="M14 3v4h4"/><path d="M9 10h5"/><path d="M9 13h5"/></svg></span><span>Monthly Expenses</span></span></button>
       </div>
     </div>
@@ -758,6 +797,83 @@ td.r{text-align:right;font-family:'DM Mono',monospace;font-size:12px}
         </div>
         <div class="mfooter">
           <button class="btn btn-s" onclick="closeOv('monthlyExpensesOv')">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════ TRANSPORT QUICK ADD MODAL (Sri Lanka) ═══════════ -->
+    <div class="overlay" id="transportQuickOv">
+      <div class="mdialog" style="max-width:720px">
+        <div class="mhdr">
+          <div>
+            <div class="mhdr-title">Transport quick add</div>
+            <div class="mhdr-sub">Tap a preset to log a trip. Toggle Edit to add, rename or remove presets.</div>
+          </div>
+          <button class="mclose" onclick="closeOv('transportQuickOv')">×</button>
+        </div>
+        <div class="mbody">
+          <div class="tq-tabs">
+            <button class="tq-tab tq-tab-active" data-tqtab="airport" onclick="pickTqTab('airport')">Airport</button>
+            <button class="tq-tab" data-tqtab="tuktuk" onclick="pickTqTab('tuktuk')">Tuk Tuk</button>
+            <div style="flex:1"></div>
+            <label class="tq-edit-toggle"><input type="checkbox" id="tqEditMode" onchange="renderTransportChips()"> <span>Edit presets</span></label>
+          </div>
+
+          <div id="tqChipsWrap" class="tq-chips-wrap"></div>
+
+          <!-- Mini-form (hidden until a preset is picked) -->
+          <div id="tqForm" class="tq-form" style="display:none">
+            <div class="tq-form-head">
+              <div>
+                <div class="tq-form-label">Logging:</div>
+                <div class="tq-form-name" id="tqFormName">—</div>
+              </div>
+              <button class="tq-form-back" onclick="cancelTqForm()">← Pick another</button>
+            </div>
+            <div class="tq-grid">
+              <div class="mfield">
+                <label>Date</label>
+                <input type="date" id="tqDate">
+              </div>
+              <div class="mfield">
+                <label>Amount (trips)</label>
+                <input type="number" id="tqAmount" min="1" step="1" value="1">
+              </div>
+              <div class="mfield">
+                <label>One way / Two way</label>
+                <select id="tqOwTw" onchange="renderTqTotal()">
+                  <option value="OW">One Way</option>
+                  <option value="TW">Two Way (×2)</option>
+                </select>
+              </div>
+              <div class="mfield">
+                <label>Unit price (LKR)</label>
+                <input type="number" id="tqUnitPrice" min="0" step="100" oninput="renderTqTotal()">
+              </div>
+              <div class="mfield">
+                <label>Paid via</label>
+                <select id="tqPaidVia">
+                  <option value="Cash">Cash (camp-paid)</option>
+                  <option value="Bank Transfer">Bank Transfer (HQ-paid)</option>
+                </select>
+              </div>
+              <div class="mfield">
+                <label>Description (optional)</label>
+                <input type="text" id="tqDesc" placeholder="optional note">
+              </div>
+            </div>
+            <div class="tq-total-row">
+              <div>
+                <div class="tq-total-label">Total</div>
+                <div class="tq-total-value" id="tqTotalLkr">LKR 0</div>
+                <div class="tq-total-sub" id="tqTotalEur">€0.00</div>
+              </div>
+              <button class="btn btn-p" onclick="submitTransportEntry()">Add to ledger</button>
+            </div>
+          </div>
+        </div>
+        <div class="mfooter">
+          <button class="btn btn-s" onclick="closeOv('transportQuickOv')">Close</button>
         </div>
       </div>
     </div>
@@ -1335,6 +1451,12 @@ let S=loadS();
 // and prevented camp data from ever reaching Supabase.
 let HUB_SUPPRESS_WEEKS_RT=false;  // suppresses our own weeks/state write echoes only
 let HUB_SUPPRESS_LEDGER_RT=false; // suppresses our own ledger write echoes only
+// Transport quick-add presets. Declared early so that transportPresetNames(),
+// called from currentTransportItems() during any render, never trips TDZ. The
+// real load happens in loadTransportPresets() at bootstrap.
+let transportPresets={airport:[],tuktuk:[]};
+let tqActiveTab='airport';
+let tqSelectedPresetId=null;
 const save_mem=()=>{S=normalizeState(S);(S.weeks||[]).forEach(syncWeekSettlement);localStorage.setItem(SK,JSON.stringify(S));};
 const save=()=>{
   save_mem();
@@ -1737,6 +1859,15 @@ function subscribeHubRealtime(){
       } else if(key===HUB_LEDGER_TS_KEY){
         // Another computer wrote to the ledger — rehydrate
         scheduleHubLedgerRehydrate();
+      } else if(key===TRANSPORT_PRESETS_KEY && json && typeof json==='object'){
+        // Another computer edited the Transport quick-add presets. Pull
+        // the new payload in and re-render the modal (if open) and any
+        // downstream view (Operations Ledger picker, Overview breakdown).
+        transportPresets=normalizeTransportPresetsPayload(json);
+        if(document.getElementById('transportQuickOv')?.classList.contains('open')){
+          renderTransportChips();
+        }
+        rerenderActivePageData();
       }
     })
     .on('postgres_changes',{event:'*',schema:'public',table:'ledger_entries'},(payload)=>{
@@ -2403,11 +2534,23 @@ function toursWithTransport(){
   const tours=currentCampTabMenu()?.Tours||[];
   return tours.filter(t=>t&&t.hasTransport).map(t=>String(t.n||'')).filter(Boolean);
 }
+function transportPresetNames(){
+  // Names of every saved Transport quick-add preset (Airport + Tuk Tuk).
+  // These get folded into the Transport linked-item picker so the
+  // Transport breakdown card aggregates spend by preset.
+  const p=transportPresets||{airport:[],tuktuk:[]};
+  return [...(p.airport||[]),...(p.tuktuk||[])].map(x=>String(x?.name||'').trim()).filter(Boolean);
+}
 function currentTransportItems(){
-  // Static base + every tour that's flagged with transport. The static
-  // entries (Airport, Transport Surf Lesson) cover transport that isn't
-  // attached to a tour menu item.
-  return TRANSPORT_LINKED_ITEMS.concat(toursWithTransport());
+  // Static base + every tour that's flagged with transport + Transport
+  // quick-add presets. The static entries (Airport, Transport Surf Lesson)
+  // cover transport that isn't attached to a tour menu item.
+  const names=new Set([
+    ...TRANSPORT_LINKED_ITEMS,
+    ...toursWithTransport(),
+    ...transportPresetNames()
+  ]);
+  return [...names];
 }
 function currentTourItems(){
   return menuItemNames('Tours').filter(name=>!isTransportRevenueName(name));
@@ -3755,6 +3898,261 @@ function renderOverview(){
       </div>
     </div>
   `;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  TRANSPORT QUICK ADD — Sri Lanka only
+//  Presets stored per-location in location_state_store (key:
+//  transport_presets_v1). Realtime: piggybacks on the existing
+//  state_store RT channel — every computer subscribes to the same
+//  row, so edits propagate live. Submits create regular ledger
+//  entries (category=Transport), so they flow into the Operations
+//  Ledger / Overview / Transport breakdown like any other expense.
+// ═══════════════════════════════════════════════════════════
+const TRANSPORT_PRESETS_KEY='transport_presets_v1';
+const DEFAULT_TRANSPORT_PRESETS_SRI_LANKA={
+  airport:[
+    {id:stableUuidFromSeed('tq|airport|Car-Airport'),name:'Car-Airport',unitPrice:20500,sortOrder:10},
+    {id:stableUuidFromSeed('tq|airport|BV-Airport'),name:'BV-Airport',unitPrice:32000,sortOrder:20},
+    {id:stableUuidFromSeed('tq|airport|SV-Airport'),name:'SV-Airport',unitPrice:25500,sortOrder:30}
+  ],
+  tuktuk:[
+    {id:stableUuidFromSeed('tq|tuktuk|Ahangama'),name:'Ahangama',unitPrice:500,sortOrder:10},
+    {id:stableUuidFromSeed('tq|tuktuk|Weligama'),name:'Weligama',unitPrice:1500,sortOrder:20},
+    {id:stableUuidFromSeed('tq|tuktuk|Ice Bath'),name:'Ice Bath',unitPrice:1500,sortOrder:30},
+    {id:stableUuidFromSeed('tq|tuktuk|River Cruise'),name:'River Cruise',unitPrice:1000,sortOrder:40},
+    {id:stableUuidFromSeed('tq|tuktuk|Tea Plantation'),name:'Tea Plantation',unitPrice:1500,sortOrder:50},
+    {id:stableUuidFromSeed('tq|tuktuk|South Beach'),name:'South Beach',unitPrice:500,sortOrder:60}
+  ]
+};
+// (transportPresets / tqActiveTab / tqSelectedPresetId are declared near the
+//  top of the file with the other module-level lets to avoid TDZ.)
+
+function normalizeTransportPresetsPayload(raw){
+  const safeArr=arr=>(Array.isArray(arr)?arr:[]).map((p,i)=>({
+    id:String(p?.id||stableUuidFromSeed('tq|fallback|'+i+'|'+(p?.name||''))),
+    name:String(p?.name||'').trim(),
+    unitPrice:Number(p?.unitPrice||0),
+    sortOrder:Number.isFinite(Number(p?.sortOrder))?Number(p.sortOrder):(i+1)*10
+  })).filter(p=>p.name).sort((a,b)=>a.sortOrder-b.sortOrder);
+  return {
+    airport:safeArr(raw?.airport),
+    tuktuk:safeArr(raw?.tuktuk)
+  };
+}
+
+async function loadTransportPresets(){
+  // Only Sri Lanka uses Transport quick-add for now. Other locations get
+  // an empty struct so the button doesn't render and the linked-item
+  // picker doesn't pollute with Sri Lanka names.
+  if(__HUB_LOCATION_SLUG!=='sri-lanka'){
+    transportPresets={airport:[],tuktuk:[]};
+    return;
+  }
+  try{
+    const data=await loadStateStore(TRANSPORT_PRESETS_KEY);
+    if(data && typeof data==='object'){
+      transportPresets=normalizeTransportPresetsPayload(data);
+      // Empty payload (first-time visit OR cleared) → seed with defaults
+      if(!transportPresets.airport.length && !transportPresets.tuktuk.length){
+        transportPresets=normalizeTransportPresetsPayload(DEFAULT_TRANSPORT_PRESETS_SRI_LANKA);
+        await saveTransportPresets({skipRender:true});
+      }
+    } else {
+      // No row yet → seed defaults
+      transportPresets=normalizeTransportPresetsPayload(DEFAULT_TRANSPORT_PRESETS_SRI_LANKA);
+      await saveTransportPresets({skipRender:true});
+    }
+  }catch(e){
+    console.warn('[Hub] loadTransportPresets failed',e);
+    transportPresets=normalizeTransportPresetsPayload(DEFAULT_TRANSPORT_PRESETS_SRI_LANKA);
+  }
+  // Show the button only on Sri Lanka
+  const btn=document.getElementById('quickTransportBtn');
+  if(btn) btn.style.display='inline-flex';
+}
+
+async function saveTransportPresets({skipRender=false}={}){
+  if(__HUB_LOCATION_SLUG!=='sri-lanka') return;
+  try{
+    await saveStateStore(TRANSPORT_PRESETS_KEY,transportPresets);
+  }catch(e){
+    console.warn('[Hub] saveTransportPresets failed',e);
+    toast('Transport presets save failed — see console');
+    return;
+  }
+  if(!skipRender){
+    renderTransportChips();
+    renderExpenses();renderOverview();
+  }
+}
+
+function openTransportQuickAdd(){
+  if(__HUB_LOCATION_SLUG!=='sri-lanka') return;
+  tqSelectedPresetId=null;
+  document.getElementById('tqForm').style.display='none';
+  const editBox=document.getElementById('tqEditMode');
+  if(editBox) editBox.checked=false;
+  renderTransportChips();
+  openOv('transportQuickOv');
+}
+
+function pickTqTab(tab){
+  tqActiveTab=tab==='tuktuk'?'tuktuk':'airport';
+  document.querySelectorAll('.tq-tab').forEach(btn=>{
+    btn.classList.toggle('tq-tab-active',btn.dataset.tqtab===tqActiveTab);
+  });
+  tqSelectedPresetId=null;
+  document.getElementById('tqForm').style.display='none';
+  renderTransportChips();
+}
+
+function renderTransportChips(){
+  const wrap=document.getElementById('tqChipsWrap');
+  if(!wrap) return;
+  const editMode=!!document.getElementById('tqEditMode')?.checked;
+  const list=(transportPresets[tqActiveTab]||[]).slice().sort((a,b)=>a.sortOrder-b.sortOrder);
+  let html='';
+  if(editMode){
+    html=list.map(p=>`<div class="tq-chip-edit" data-id="${p.id}">
+      <input type="text" value="${escapeAttr(p.name)}" oninput="updateTqPresetField('${p.id}','name',this.value)" placeholder="Name">
+      <input type="number" min="0" step="100" value="${p.unitPrice}" oninput="updateTqPresetField('${p.id}','unitPrice',this.value)" placeholder="Unit price (LKR)">
+      <div class="tq-chip-edit-actions">
+        <button class="del" onclick="deleteTqPreset('${p.id}')">Delete</button>
+      </div>
+    </div>`).join('');
+    html+=`<button class="tq-chip-add" onclick="addTqPreset()">+ Add preset</button>`;
+  } else {
+    html=list.map(p=>`<button class="tq-chip" onclick="pickTqPreset('${p.id}')">
+      <div class="tq-chip-name">${escapeHtml(p.name)}</div>
+      <div class="tq-chip-price">LKR ${Number(p.unitPrice||0).toLocaleString('en-GB')}</div>
+    </button>`).join('');
+    html+=`<button class="tq-chip tq-chip-custom" onclick="pickTqCustom()">+ Custom</button>`;
+    if(!list.length){
+      html=`<div class="tq-empty">No presets yet. Toggle Edit and add some.</div>`;
+    }
+  }
+  wrap.innerHTML=html;
+}
+
+function updateTqPresetField(id,field,value){
+  const list=transportPresets[tqActiveTab]||[];
+  const item=list.find(p=>p.id===id);
+  if(!item) return;
+  if(field==='name') item.name=String(value||'').trim();
+  else if(field==='unitPrice') item.unitPrice=Number(value)||0;
+  // Debounced save: throttle to avoid hammering Supabase on every keystroke
+  clearTimeout(window.__tqSaveTimer);
+  window.__tqSaveTimer=setTimeout(()=>saveTransportPresets({skipRender:true}),700);
+}
+
+async function addTqPreset(){
+  const tab=tqActiveTab;
+  const list=transportPresets[tab]=transportPresets[tab]||[];
+  const maxSort=list.reduce((m,p)=>Math.max(m,Number(p.sortOrder||0)),0);
+  list.push({
+    id:stableUuidFromSeed('tq|'+tab+'|new|'+Date.now()+'|'+Math.random()),
+    name:'',
+    unitPrice:0,
+    sortOrder:maxSort+10
+  });
+  renderTransportChips();
+  await saveTransportPresets({skipRender:true});
+}
+
+async function deleteTqPreset(id){
+  if(!confirm('Delete this preset? It won\'t affect any existing ledger entries logged under its name.')) return;
+  const tab=tqActiveTab;
+  transportPresets[tab]=(transportPresets[tab]||[]).filter(p=>p.id!==id);
+  renderTransportChips();
+  await saveTransportPresets();
+}
+
+function pickTqPreset(id){
+  const list=transportPresets[tqActiveTab]||[];
+  const item=list.find(p=>p.id===id);
+  if(!item) return;
+  tqSelectedPresetId=id;
+  document.getElementById('tqFormName').textContent=item.name||'Preset';
+  document.getElementById('tqUnitPrice').value=item.unitPrice;
+  document.getElementById('tqDate').value=today();
+  document.getElementById('tqAmount').value=1;
+  document.getElementById('tqOwTw').value='OW';
+  document.getElementById('tqPaidVia').value='Cash';
+  document.getElementById('tqDesc').value='';
+  document.getElementById('tqForm').style.display='block';
+  renderTqTotal();
+}
+function pickTqCustom(){
+  tqSelectedPresetId='__custom__';
+  document.getElementById('tqFormName').textContent='Custom ('+(tqActiveTab==='airport'?'Airport':'Tuk Tuk')+')';
+  document.getElementById('tqUnitPrice').value=0;
+  document.getElementById('tqDate').value=today();
+  document.getElementById('tqAmount').value=1;
+  document.getElementById('tqOwTw').value='OW';
+  document.getElementById('tqPaidVia').value='Cash';
+  document.getElementById('tqDesc').value='';
+  document.getElementById('tqForm').style.display='block';
+  renderTqTotal();
+}
+function cancelTqForm(){
+  tqSelectedPresetId=null;
+  document.getElementById('tqForm').style.display='none';
+}
+function renderTqTotal(){
+  const amount=Number(document.getElementById('tqAmount')?.value||0)||0;
+  const unit=Number(document.getElementById('tqUnitPrice')?.value||0)||0;
+  const tw=document.getElementById('tqOwTw')?.value==='TW';
+  const total=amount*unit*(tw?2:1);
+  const fx=Number(LOCAL_PER_EUR||DEFAULT_LKR_PER_EUR)||330;
+  document.getElementById('tqTotalLkr').textContent=`LKR ${Number(total).toLocaleString('en-GB')}`;
+  document.getElementById('tqTotalEur').textContent=euro(total/fx);
+}
+async function submitTransportEntry(){
+  const date=document.getElementById('tqDate')?.value;
+  const amount=Number(document.getElementById('tqAmount')?.value||0)||0;
+  const unit=Number(document.getElementById('tqUnitPrice')?.value||0)||0;
+  const tw=document.getElementById('tqOwTw')?.value==='TW';
+  const paidVia=document.getElementById('tqPaidVia')?.value||'Cash';
+  const userDesc=(document.getElementById('tqDesc')?.value||'').trim();
+  if(!date){toast('Pick a date');return;}
+  if(!amount||amount<1){toast('Amount must be ≥ 1');return;}
+  if(!unit||unit<=0){toast('Unit price must be > 0');return;}
+  let name='Custom';
+  if(tqSelectedPresetId && tqSelectedPresetId!=='__custom__'){
+    const list=transportPresets[tqActiveTab]||[];
+    const item=list.find(p=>p.id===tqSelectedPresetId);
+    if(item) name=item.name||'Custom';
+  }
+  const total=amount*unit*(tw?2:1);
+  const fx=Number(LOCAL_PER_EUR||DEFAULT_LKR_PER_EUR)||330;
+  const desc=userDesc||`${amount}× ${name} (${tw?'Two Way':'One Way'})`;
+  const payload=normalizeLedgerEntry({
+    id:'tq'+Date.now()+Math.random().toString(36).slice(2,6),
+    date,
+    type:'expense',
+    category:'Transport',
+    linkedItem:name,
+    businessArea:'Transport',
+    paymentMethod:paidVia,
+    paidBy:paidVia==='Bank Transfer'?'HQ':'Camp',
+    currency:LOCAL_CURRENCY||'LKR',
+    fxRate:fx,
+    amountLocal:total,
+    quantity:1,
+    description:desc,
+    vendor:tqActiveTab==='airport'?'Airport Transfer':'Tuk Tuk',
+    sourceKind:'transport_quick',
+    amount:Number((total/fx).toFixed(2))
+  });
+  S.ledger.push(payload);
+  save();
+  try{
+    await syncLedgerEntriesToSupabase([payload],'transport quick save failed');
+  }catch(e){ /* handleLedgerSupabaseError already toasts */ }
+  renderExpenses();renderOverview();renderWeeklyPL();
+  toast(`Added: ${desc}`);
+  cancelTqForm();
 }
 
 function kpi(label,sub,val,cls,secondary=''){
@@ -5453,7 +5851,7 @@ mountCampTabFrame();
 function openOv(id){document.getElementById(id).classList.add('open');}
 function closeOv(id){document.getElementById(id).classList.remove('open');}
 function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2200);}
-['addWeekOv','addGuestOv','customOv','expOv','billOv','monthlyExpensesOv'].forEach(id=>{
+['addWeekOv','addGuestOv','customOv','expOv','billOv','monthlyExpensesOv','transportQuickOv'].forEach(id=>{
   document.getElementById(id).addEventListener('click',e=>{if(e.target.id===id)closeOv(id);});
 });
 
@@ -5502,6 +5900,10 @@ async function requirePlatformSession(){
     // very next page refresh. Hydrate scheduling these in Promise.all
     // was a race that fired on every fresh-tab test.
     await loadDeletedCampcloseIds();
+    // Transport quick-add presets (Sri Lanka only). Loaded early so the
+    // button appears immediately and currentTransportItems() includes
+    // preset names by the time renderOverview / renderExpenses run.
+    loadTransportPresets().catch(e=>console.warn('[Hub] loadTransportPresets failed',e));
     const [weeksJson,ovJson]=await Promise.all([
       loadStateStore(SK),
       loadStateStore(OV_CSV_REMOTE_KEY),
