@@ -844,7 +844,7 @@ td.r{text-align:right;font-family:'DM Mono',monospace;font-size:12px}
                 </select>
               </div>
               <div class="mfield">
-                <label>Unit price (LKR)</label>
+                <label id="tqUnitPriceLabel">Unit price (LKR)</label>
                 <input type="number" id="tqUnitPrice" min="0" step="100" oninput="renderTqTotal()">
               </div>
               <div class="mfield">
@@ -4037,21 +4037,46 @@ function renderOverview(){
 //  Ledger / Overview / Transport breakdown like any other expense.
 // ═══════════════════════════════════════════════════════════
 const TRANSPORT_PRESETS_KEY='transport_presets_v1';
-const DEFAULT_TRANSPORT_PRESETS_SRI_LANKA={
-  airport:[
-    {id:stableUuidFromSeed('tq|airport|Car-Airport'),name:'Car-Airport',unitPrice:20500,sortOrder:10},
-    {id:stableUuidFromSeed('tq|airport|BV-Airport'),name:'BV-Airport',unitPrice:32000,sortOrder:20},
-    {id:stableUuidFromSeed('tq|airport|SV-Airport'),name:'SV-Airport',unitPrice:25500,sortOrder:30}
-  ],
-  tuktuk:[
-    {id:stableUuidFromSeed('tq|tuktuk|Ahangama'),name:'Ahangama',unitPrice:500,sortOrder:10},
-    {id:stableUuidFromSeed('tq|tuktuk|Weligama'),name:'Weligama',unitPrice:1500,sortOrder:20},
-    {id:stableUuidFromSeed('tq|tuktuk|Ice Bath'),name:'Ice Bath',unitPrice:1500,sortOrder:30},
-    {id:stableUuidFromSeed('tq|tuktuk|River Cruise'),name:'River Cruise',unitPrice:1000,sortOrder:40},
-    {id:stableUuidFromSeed('tq|tuktuk|Tea Plantation'),name:'Tea Plantation',unitPrice:1500,sortOrder:50},
-    {id:stableUuidFromSeed('tq|tuktuk|South Beach'),name:'South Beach',unitPrice:500,sortOrder:60}
-  ]
+// Seeds are per-location so a new Morocco / future-location browser starts
+// with a sensible set of chips (or empty, to be filled in by the user).
+// Each location's data lives in its OWN Supabase row (the state_store is
+// keyed by (location_id, state_key)), so Sri Lanka's presets are completely
+// independent from Morocco's even though they share this constant lookup.
+const DEFAULT_TRANSPORT_PRESETS_BY_LOCATION={
+  'sri-lanka':{
+    airport:[
+      {id:stableUuidFromSeed('tq|sri-lanka|airport|Car-Airport'),name:'Car-Airport',unitPrice:20500,sortOrder:10},
+      {id:stableUuidFromSeed('tq|sri-lanka|airport|BV-Airport'),name:'BV-Airport',unitPrice:32000,sortOrder:20},
+      {id:stableUuidFromSeed('tq|sri-lanka|airport|SV-Airport'),name:'SV-Airport',unitPrice:25500,sortOrder:30}
+    ],
+    tuktuk:[
+      {id:stableUuidFromSeed('tq|sri-lanka|tuktuk|Ahangama'),name:'Ahangama',unitPrice:500,sortOrder:10},
+      {id:stableUuidFromSeed('tq|sri-lanka|tuktuk|Weligama'),name:'Weligama',unitPrice:1500,sortOrder:20},
+      {id:stableUuidFromSeed('tq|sri-lanka|tuktuk|Ice Bath'),name:'Ice Bath',unitPrice:1500,sortOrder:30},
+      {id:stableUuidFromSeed('tq|sri-lanka|tuktuk|River Cruise'),name:'River Cruise',unitPrice:1000,sortOrder:40},
+      {id:stableUuidFromSeed('tq|sri-lanka|tuktuk|Tea Plantation'),name:'Tea Plantation',unitPrice:1500,sortOrder:50},
+      {id:stableUuidFromSeed('tq|sri-lanka|tuktuk|South Beach'),name:'South Beach',unitPrice:500,sortOrder:60}
+    ]
+  },
+  'morocco':{
+    // Empty defaults — Morocco user fills the chips themselves via the
+    // edit-mode UI. Keeps us from baking in incorrect MAD prices.
+    airport:[],
+    tuktuk:[]
+  }
 };
+// Tab labels per location — internal keys stay 'airport'/'tuktuk' so the
+// same render code works for every location. Morocco uses "Tours & Surf"
+// as the second tab since the operational transport runs there are mostly
+// surf lessons and the in-town tour transfers.
+const TRANSPORT_TAB_LABELS_BY_LOCATION={
+  'sri-lanka':{airport:'Airport',tuktuk:'Tuk Tuk'},
+  'morocco':{airport:'Airport',tuktuk:'Tours & Surf'}
+};
+function tqTabLabel(tabKey){
+  const map=TRANSPORT_TAB_LABELS_BY_LOCATION[__HUB_LOCATION_SLUG]||{};
+  return map[tabKey] || (tabKey==='airport'?'Airport':'Tuk Tuk');
+}
 // (transportPresets / tqActiveTab / tqSelectedPresetId are declared near the
 //  top of the file with the other module-level lets to avoid TDZ.)
 function escapeHtml(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
@@ -4075,39 +4100,61 @@ function normalizeTransportPresetsPayload(raw){
   };
 }
 
+// Locations the Transport quick-add feature is enabled for. Each location's
+// data lives in a separate Supabase row (state_store filters by location_id),
+// so the two camps never see each other's chips.
+const TRANSPORT_ENABLED_LOCATIONS=new Set(['sri-lanka','morocco']);
+
 async function loadTransportPresets(){
-  // Only Sri Lanka uses Transport quick-add for now. Other locations get
-  // an empty struct so the button doesn't render and the linked-item
-  // picker doesn't pollute with Sri Lanka names.
-  if(__HUB_LOCATION_SLUG!=='sri-lanka'){
+  if(!TRANSPORT_ENABLED_LOCATIONS.has(__HUB_LOCATION_SLUG)){
     transportPresets={airport:[],tuktuk:[]};
     return;
   }
+  const seed=DEFAULT_TRANSPORT_PRESETS_BY_LOCATION[__HUB_LOCATION_SLUG]||{airport:[],tuktuk:[]};
+  const hasSeed=(seed.airport?.length||0)+(seed.tuktuk?.length||0)>0;
   try{
     const data=await loadStateStore(TRANSPORT_PRESETS_KEY);
     if(data && typeof data==='object'){
       transportPresets=normalizeTransportPresetsPayload(data);
-      // Empty payload (first-time visit OR cleared) → seed with defaults
-      if(!transportPresets.airport.length && !transportPresets.tuktuk.length){
-        transportPresets=normalizeTransportPresetsPayload(DEFAULT_TRANSPORT_PRESETS_SRI_LANKA);
+      // Empty payload + we HAVE seed data for this location → seed it.
+      // For Morocco the seed is empty by design — leave the lists empty
+      // so the user starts fresh from the edit-mode UI.
+      if(hasSeed && !transportPresets.airport.length && !transportPresets.tuktuk.length){
+        transportPresets=normalizeTransportPresetsPayload(seed);
         await saveTransportPresets({skipRender:true});
       }
     } else {
-      // No row yet → seed defaults
-      transportPresets=normalizeTransportPresetsPayload(DEFAULT_TRANSPORT_PRESETS_SRI_LANKA);
-      await saveTransportPresets({skipRender:true});
+      // No row yet
+      if(hasSeed){
+        transportPresets=normalizeTransportPresetsPayload(seed);
+        await saveTransportPresets({skipRender:true});
+      } else {
+        transportPresets={airport:[],tuktuk:[]};
+      }
     }
   }catch(e){
     console.warn('[Hub] loadTransportPresets failed',e);
-    transportPresets=normalizeTransportPresetsPayload(DEFAULT_TRANSPORT_PRESETS_SRI_LANKA);
+    transportPresets=normalizeTransportPresetsPayload(seed);
   }
-  // Show the button only on Sri Lanka
+  // Surface the button now that data is loaded
   const btn=document.getElementById('quickTransportBtn');
   if(btn) btn.style.display='inline-flex';
+  // Make sure the modal tab labels reflect this location.
+  applyTransportTabLabels();
+}
+
+function applyTransportTabLabels(){
+  document.querySelectorAll('.tq-tab').forEach(btn=>{
+    const tab=btn.dataset.tqtab;
+    if(tab) btn.textContent=tqTabLabel(tab);
+  });
+  // Unit-price label tracks the active currency (LKR / MAD / EUR).
+  const lbl=document.getElementById('tqUnitPriceLabel');
+  if(lbl) lbl.textContent=`Unit price (${LOCAL_CURRENCY||'LKR'})`;
 }
 
 async function saveTransportPresets({skipRender=false}={}){
-  if(__HUB_LOCATION_SLUG!=='sri-lanka') return;
+  if(!TRANSPORT_ENABLED_LOCATIONS.has(__HUB_LOCATION_SLUG)) return;
   try{
     await saveStateStore(TRANSPORT_PRESETS_KEY,transportPresets);
   }catch(e){
@@ -4122,11 +4169,12 @@ async function saveTransportPresets({skipRender=false}={}){
 }
 
 function openTransportQuickAdd(){
-  if(__HUB_LOCATION_SLUG!=='sri-lanka') return;
+  if(!TRANSPORT_ENABLED_LOCATIONS.has(__HUB_LOCATION_SLUG)) return;
   tqSelectedPresetId=null;
   document.getElementById('tqForm').style.display='none';
   const editBox=document.getElementById('tqEditMode');
   if(editBox) editBox.checked=false;
+  applyTransportTabLabels();
   renderTransportChips();
   openOv('transportQuickOv');
 }
@@ -4169,7 +4217,7 @@ function renderTransportChips(){
       const tourOptions=`<option value="">(No link — Transport only)</option>${specialOpts}${tours.length?`<option disabled>──── Tours ────</option>${tourOpts}`:''}`;
       return `<div class="tq-chip-edit" data-id="${p.id}">
         <input type="text" value="${escapeAttr(p.name)}" oninput="updateTqPresetField('${p.id}','name',this.value)" placeholder="Name">
-        <input type="number" min="0" step="100" value="${p.unitPrice}" oninput="updateTqPresetField('${p.id}','unitPrice',this.value)" placeholder="Unit price (LKR)">
+        <input type="number" min="0" step="100" value="${p.unitPrice}" oninput="updateTqPresetField('${p.id}','unitPrice',this.value)" placeholder="Unit price (${LOCAL_CURRENCY||'LKR'})">
         <select onchange="updateTqPresetField('${p.id}','linkedTour',this.value)" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-family:'Outfit',sans-serif;font-size:12px;margin-bottom:6px;background:#fff">${tourOptions}</select>
         <div class="tq-chip-edit-actions">
           <button class="del" onclick="deleteTqPreset('${p.id}')">Delete</button>
@@ -4178,9 +4226,10 @@ function renderTransportChips(){
     }).join('');
     html+=`<button class="tq-chip-add" onclick="addTqPreset()">+ Add preset</button>`;
   } else {
+    const curLabel=LOCAL_CURRENCY||'LKR';
     html=list.map(p=>`<button class="tq-chip" onclick="pickTqPreset('${p.id}')">
       <div class="tq-chip-name">${escapeHtml(p.name)}${p.linkedTour?` <span style="font-size:11px;color:var(--ocean);font-weight:600">· ${escapeHtml(p.linkedTour)}</span>`:''}</div>
-      <div class="tq-chip-price">LKR ${Number(p.unitPrice||0).toLocaleString('en-GB')}</div>
+      <div class="tq-chip-price">${curLabel} ${Number(p.unitPrice||0).toLocaleString('en-GB')}</div>
     </button>`).join('');
     html+=`<button class="tq-chip tq-chip-custom" onclick="pickTqCustom()">+ Custom</button>`;
     if(!list.length){
@@ -4256,7 +4305,7 @@ function pickTqPreset(id){
 }
 function pickTqCustom(){
   tqSelectedPresetId='__custom__';
-  document.getElementById('tqFormName').textContent='Custom ('+(tqActiveTab==='airport'?'Airport':'Tuk Tuk')+')';
+  document.getElementById('tqFormName').textContent='Custom ('+tqTabLabel(tqActiveTab)+')';
   document.getElementById('tqUnitPrice').value=0;
   document.getElementById('tqDate').value=today();
   document.getElementById('tqAmount').value=1;
@@ -4276,8 +4325,12 @@ function renderTqTotal(){
   const tw=document.getElementById('tqOwTw')?.value==='TW';
   const total=amount*unit*(tw?2:1);
   const fx=Number(LOCAL_PER_EUR||DEFAULT_LKR_PER_EUR)||330;
-  document.getElementById('tqTotalLkr').textContent=`LKR ${Number(total).toLocaleString('en-GB')}`;
-  document.getElementById('tqTotalEur').textContent=euro(total/fx);
+  const cur=LOCAL_CURRENCY||'LKR';
+  // Total is in the active local currency. The element id stays
+  // 'tqTotalLkr' for backwards compat — it just holds whatever local
+  // currency text is right.
+  document.getElementById('tqTotalLkr').textContent=`${cur} ${Number(total).toLocaleString('en-GB')}`;
+  document.getElementById('tqTotalEur').textContent=cur==='EUR'?'':euro(total/fx);
 }
 async function submitTransportEntry(){
   const date=document.getElementById('tqDate')?.value;
