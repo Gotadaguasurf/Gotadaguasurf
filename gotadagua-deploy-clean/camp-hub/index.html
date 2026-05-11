@@ -4544,55 +4544,54 @@ function renderTransportChips(){
   const tours=currentTourItems();
   let html='';
   if(editMode){
+    // Unified edit UI: every preset renders with the same structure
+    // (name, linked tour, vehicles list, +Vehicle, Delete) regardless of
+    // whether it currently has vehicles[] (hierarchical, Morocco-style) or
+    // just a unitPrice (legacy flat, Sri Lanka tuk-tuk style). When a
+    // preset has no vehicles but has unitPrice > 0, an extra "Single
+    // price" input is shown so the user can still edit the flat price
+    // without converting. Clicking "+ Vehicle" on such a preset migrates
+    // the unitPrice into the first vehicle, switching it permanently to
+    // hierarchical pricing — see addTqVehicle for the migration logic.
+    const cur=LOCAL_CURRENCY||'LKR';
     html=list.map(p=>{
       const hasVehicles=Array.isArray(p.vehicles)&&p.vehicles.length>0;
       const specialOpts=TRANSPORT_NON_TOUR_LABELS.map(label=>`<option value="${escapeAttr(label)}" ${p.linkedTour===label?'selected':''}>${escapeHtml(label)}</option>`).join('');
       const tourOpts=tours.map(t=>`<option value="${escapeAttr(t)}" ${p.linkedTour===t?'selected':''}>${escapeHtml(t)}</option>`).join('');
       const tourOptions=`<option value="">(No link — Transport only)</option>${specialOpts}${tours.length?`<option disabled>──── Tours ────</option>${tourOpts}`:''}`;
-      if(hasVehicles){
-        // Hierarchical preset: destination + list of vehicles. Used by
-        // Morocco where each destination offers Car / Minivan / Big Van
-        // at different prices. Layout per vehicle:
-        //   Row 1: [ label input ............. ] [ × ]
-        //   Row 2: [PAX] [40px] [ PRICE MAD ........... ]
-        // Pax stays narrow (2-3 digits max: 4, 8, 15) and Price gets all
-        // remaining width — ~85px content area — so 4-5-digit MAD prices
-        // like 1200 / 22000 are fully visible without scrolling.
-        const cur=LOCAL_CURRENCY||'LKR';
-        const vehRows=p.vehicles.map(v=>`<div style="border:1px solid var(--border);border-radius:8px;padding:6px;margin-bottom:6px;background:#fafbfc">
-          <div style="display:flex;gap:5px;align-items:center;margin-bottom:5px">
-            <input type="text" value="${escapeAttr(v.label||'')}" oninput="updateTqVehicleField('${p.id}','${v.id}','label',this.value)" placeholder="Car / Minivan / Big Van" style="flex:1;min-width:0;border:1px solid var(--border);border-radius:6px;padding:5px 7px;font-family:'Outfit',sans-serif;font-size:12px;font-weight:600;box-sizing:border-box">
-            <button onclick="deleteTqVehicle('${p.id}','${v.id}')" title="Remove vehicle" style="background:var(--red-bg);color:var(--red);border:1px solid #f0a0a0;border-radius:6px;width:24px;height:24px;cursor:pointer;font-size:13px;font-weight:700;line-height:1;flex-shrink:0">×</button>
+      const vehRows=hasVehicles ? p.vehicles.map(v=>`<div style="border:1px solid var(--border);border-radius:8px;padding:6px;margin-bottom:6px;background:#fafbfc">
+        <div style="display:flex;gap:5px;align-items:center;margin-bottom:5px">
+          <input type="text" value="${escapeAttr(v.label||'')}" oninput="updateTqVehicleField('${p.id}','${v.id}','label',this.value)" placeholder="Car / Minivan / Big Van" style="flex:1;min-width:0;border:1px solid var(--border);border-radius:6px;padding:5px 7px;font-family:'Outfit',sans-serif;font-size:12px;font-weight:600;box-sizing:border-box">
+          <button onclick="deleteTqVehicle('${p.id}','${v.id}')" title="Remove vehicle" style="background:var(--red-bg);color:var(--red);border:1px solid #f0a0a0;border-radius:6px;width:24px;height:24px;cursor:pointer;font-size:13px;font-weight:700;line-height:1;flex-shrink:0">×</button>
+        </div>
+        <div style="display:grid;grid-template-columns:46px 1fr;gap:6px;align-items:end">
+          <div>
+            <div style="font-size:8px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700;margin-bottom:2px">Pax</div>
+            <input type="number" min="0" step="1" value="${v.capacity!=null?v.capacity:''}" oninput="updateTqVehicleField('${p.id}','${v.id}','capacity',this.value)" placeholder="0" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:4px 4px;font-family:'DM Mono',monospace;font-size:12px;text-align:center;box-sizing:border-box">
           </div>
-          <div style="display:grid;grid-template-columns:46px 1fr;gap:6px;align-items:end">
-            <div>
-              <div style="font-size:8px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700;margin-bottom:2px">Pax</div>
-              <input type="number" min="0" step="1" value="${v.capacity!=null?v.capacity:''}" oninput="updateTqVehicleField('${p.id}','${v.id}','capacity',this.value)" placeholder="0" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:4px 4px;font-family:'DM Mono',monospace;font-size:12px;text-align:center;box-sizing:border-box">
-            </div>
-            <div>
-              <div style="font-size:8px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700;margin-bottom:2px">Price ${escapeHtml(cur)}</div>
-              <input type="number" min="0" step="50" value="${v.price||0}" oninput="updateTqVehicleField('${p.id}','${v.id}','price',this.value)" placeholder="0" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:4px 7px;font-family:'DM Mono',monospace;font-size:12px;text-align:right;box-sizing:border-box">
-            </div>
+          <div>
+            <div style="font-size:8px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700;margin-bottom:2px">Price ${escapeHtml(cur)}</div>
+            <input type="number" min="0" step="50" value="${v.price||0}" oninput="updateTqVehicleField('${p.id}','${v.id}','price',this.value)" placeholder="0" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:4px 7px;font-family:'DM Mono',monospace;font-size:12px;text-align:right;box-sizing:border-box">
           </div>
-        </div>`).join('');
-        return `<div class="tq-chip-edit" data-id="${p.id}">
-          <input type="text" value="${escapeAttr(p.name)}" oninput="updateTqPresetField('${p.id}','name',this.value)" placeholder="Destination" style="font-weight:700">
-          <select onchange="updateTqPresetField('${p.id}','linkedTour',this.value)" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-family:'Outfit',sans-serif;font-size:12px;margin-bottom:8px;background:#fff">${tourOptions}</select>
-          <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin-bottom:4px">Vehicles · ${escapeHtml(cur)}</div>
-          ${vehRows}
-          <button onclick="addTqVehicle('${p.id}')" style="width:100%;background:transparent;border:1px dashed var(--ocean);color:var(--ocean);border-radius:6px;padding:6px;cursor:pointer;font-size:11px;font-weight:700;margin-top:4px">+ Vehicle</button>
-          <div class="tq-chip-edit-actions" style="margin-top:8px">
-            <button class="del" onclick="deleteTqPreset('${p.id}')">Delete preset</button>
-          </div>
-        </div>`;
-      }
-      // Legacy single-price preset (Sri Lanka style — unchanged).
+        </div>
+      </div>`).join('') : '';
+      // For flat presets, expose a "Single price" input below the link-tour
+      // select. This stays editable while the preset has no vehicles —
+      // adding a vehicle migrates the value over and hides this field.
+      const singlePriceBlock=!hasVehicles ? `
+        <div style="background:#fafbfc;border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:8px">
+          <div style="font-size:8px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700;margin-bottom:4px">Single price ${escapeHtml(cur)}</div>
+          <input type="number" min="0" step="100" value="${p.unitPrice||0}" oninput="updateTqPresetField('${p.id}','unitPrice',this.value)" placeholder="0" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:5px 7px;font-family:'DM Mono',monospace;font-size:13px;text-align:right;box-sizing:border-box">
+        </div>` : '';
       return `<div class="tq-chip-edit" data-id="${p.id}">
-        <input type="text" value="${escapeAttr(p.name)}" oninput="updateTqPresetField('${p.id}','name',this.value)" placeholder="Name">
-        <input type="number" min="0" step="100" value="${p.unitPrice}" oninput="updateTqPresetField('${p.id}','unitPrice',this.value)" placeholder="Unit price (${LOCAL_CURRENCY||'LKR'})">
-        <select onchange="updateTqPresetField('${p.id}','linkedTour',this.value)" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-family:'Outfit',sans-serif;font-size:12px;margin-bottom:6px;background:#fff">${tourOptions}</select>
-        <div class="tq-chip-edit-actions">
-          <button class="del" onclick="deleteTqPreset('${p.id}')">Delete</button>
+        <input type="text" value="${escapeAttr(p.name)}" oninput="updateTqPresetField('${p.id}','name',this.value)" placeholder="Destination" style="font-weight:700">
+        <select onchange="updateTqPresetField('${p.id}','linkedTour',this.value)" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-family:'Outfit',sans-serif;font-size:12px;margin-bottom:8px;background:#fff">${tourOptions}</select>
+        ${singlePriceBlock}
+        ${hasVehicles ? `<div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin-bottom:4px">Vehicles · ${escapeHtml(cur)}</div>` : ''}
+        ${vehRows}
+        <button onclick="addTqVehicle('${p.id}')" style="width:100%;background:transparent;border:1px dashed var(--ocean);color:var(--ocean);border-radius:6px;padding:6px;cursor:pointer;font-size:11px;font-weight:700;margin-top:4px">+ Vehicle</button>
+        <div class="tq-chip-edit-actions" style="margin-top:8px">
+          <button class="del" onclick="deleteTqPreset('${p.id}')">Delete preset</button>
         </div>
       </div>`;
     }).join('');
@@ -4779,6 +4778,23 @@ function addTqVehicle(presetId){
   const preset=list.find(p=>p.id===presetId);
   if(!preset) return;
   preset.vehicles=Array.isArray(preset.vehicles)?preset.vehicles:[];
+  // Flat-preset migration: if this is the first vehicle being added to a
+  // legacy single-price preset (Sri Lanka tuk-tuk style), bring the
+  // existing unitPrice across as the first vehicle's price so the user
+  // doesn't lose their pricing data. The user can rename the label and
+  // set capacity in the input that opens focused. Without this, clicking
+  // "+ Vehicle" on Ahangama (LKR 500) would create a vehicle priced at 0
+  // and the LKR 500 would silently disappear from the picker.
+  if(preset.vehicles.length===0 && Number(preset.unitPrice||0)>0){
+    preset.vehicles.push({
+      id:stableUuidFromSeed('tq|'+presetId+'|veh|migrated|'+Date.now()),
+      label:'Standard',
+      capacity:null,
+      price:Number(preset.unitPrice||0),
+      sortOrder:10
+    });
+    preset.unitPrice=0; // hierarchical takes over; clear to avoid double-counting
+  }
   const maxSort=preset.vehicles.reduce((m,v)=>Math.max(m,Number(v.sortOrder||0)),0);
   // Give the new vehicle a placeholder label so normalizeTransportPresetsPayload
   // doesn't filter it out on echo (filter at normalize is "label||price>0").
