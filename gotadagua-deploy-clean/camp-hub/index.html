@@ -2553,9 +2553,16 @@ function currentTourItems(){
   return menuItemNames('Tours').filter(name=>!isTransportRevenueName(name));
 }
 function linkedTransportTour(name){
-  // Legacy hardcoded map first (for backwards compat); then the new model
-  // where a transport linkedItem IS the tour name itself.
+  // Resolves a Transport linkedItem to the tour it should attribute cost to,
+  // in priority order:
+  //   1. Legacy hardcoded TRANSPORT_TOUR_COST_MAP (kept for backwards compat).
+  //   2. Transport quick-add preset with an explicit `linkedTour` set.
+  //   3. The new "tour with transport" model where the linkedItem IS the tour
+  //      name itself (because the tour menu flag enabled that route).
   if(TRANSPORT_TOUR_COST_MAP[name]) return TRANSPORT_TOUR_COST_MAP[name];
+  const all=[...(transportPresets?.airport||[]),...(transportPresets?.tuktuk||[])];
+  const preset=all.find(p=>String(p?.name||'')===String(name||''));
+  if(preset && preset.linkedTour) return preset.linkedTour;
   if(toursWithTransport().includes(name)) return name;
   return '';
 }
@@ -3932,7 +3939,12 @@ function normalizeTransportPresetsPayload(raw){
     id:String(p?.id||stableUuidFromSeed('tq|fallback|'+i+'|'+(p?.name||''))),
     name:String(p?.name||'').trim(),
     unitPrice:Number(p?.unitPrice||0),
-    sortOrder:Number.isFinite(Number(p?.sortOrder))?Number(p.sortOrder):(i+1)*10
+    sortOrder:Number.isFinite(Number(p?.sortOrder))?Number(p.sortOrder):(i+1)*10,
+    // Optional: name of a tour this transport is "for". When set, every
+    // expense logged under this preset gets attributed to that tour in
+    // the Overview's Tours area (via linkedTransportTour). Empty string
+    // means the spend stays in Transport area only.
+    linkedTour:String(p?.linkedTour||'').trim()
   })).filter(p=>p.name).sort((a,b)=>a.sortOrder-b.sortOrder);
   return {
     airport:safeArr(raw?.airport),
@@ -4011,20 +4023,31 @@ function renderTransportChips(){
   if(!wrap) return;
   const editMode=!!document.getElementById('tqEditMode')?.checked;
   const list=(transportPresets[tqActiveTab]||[]).slice().sort((a,b)=>a.sortOrder-b.sortOrder);
+  // Pool of tours the user can attach a preset to. Pulls every Tours menu
+  // item from the active location's camp-tab — so the dropdown stays in
+  // sync with whatever the user has in the menu editor.
+  const tours=currentTourItems();
   let html='';
   if(editMode){
-    html=list.map(p=>`<div class="tq-chip-edit" data-id="${p.id}">
-      <input type="text" value="${escapeAttr(p.name)}" oninput="updateTqPresetField('${p.id}','name',this.value)" placeholder="Name">
-      <input type="number" min="0" step="100" value="${p.unitPrice}" oninput="updateTqPresetField('${p.id}','unitPrice',this.value)" placeholder="Unit price (LKR)">
-      <div class="tq-chip-edit-actions">
-        <button class="del" onclick="deleteTqPreset('${p.id}')">Delete</button>
-      </div>
-    </div>`).join('');
+    html=list.map(p=>{
+      const tourOptions=['<option value="">(No tour — Transport only)</option>']
+        .concat(tours.map(t=>`<option value="${escapeAttr(t)}" ${p.linkedTour===t?'selected':''}>${escapeHtml(t)}</option>`))
+        .join('');
+      return `<div class="tq-chip-edit" data-id="${p.id}">
+        <input type="text" value="${escapeAttr(p.name)}" oninput="updateTqPresetField('${p.id}','name',this.value)" placeholder="Name">
+        <input type="number" min="0" step="100" value="${p.unitPrice}" oninput="updateTqPresetField('${p.id}','unitPrice',this.value)" placeholder="Unit price (LKR)">
+        <select onchange="updateTqPresetField('${p.id}','linkedTour',this.value)" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-family:'Outfit',sans-serif;font-size:12px;margin-bottom:6px;background:#fff">${tourOptions}</select>
+        <div class="tq-chip-edit-actions">
+          <button class="del" onclick="deleteTqPreset('${p.id}')">Delete</button>
+        </div>
+      </div>`;
+    }).join('');
     html+=`<button class="tq-chip-add" onclick="addTqPreset()">+ Add preset</button>`;
   } else {
     html=list.map(p=>`<button class="tq-chip" onclick="pickTqPreset('${p.id}')">
       <div class="tq-chip-name">${escapeHtml(p.name)}</div>
       <div class="tq-chip-price">LKR ${Number(p.unitPrice||0).toLocaleString('en-GB')}</div>
+      ${p.linkedTour?`<div style="font-size:10px;color:var(--ocean);font-weight:600;margin-top:2px">↳ ${escapeHtml(p.linkedTour)}</div>`:''}
     </button>`).join('');
     html+=`<button class="tq-chip tq-chip-custom" onclick="pickTqCustom()">+ Custom</button>`;
     if(!list.length){
@@ -4040,9 +4063,12 @@ function updateTqPresetField(id,field,value){
   if(!item) return;
   if(field==='name') item.name=String(value||'').trim();
   else if(field==='unitPrice') item.unitPrice=Number(value)||0;
-  // Debounced save: throttle to avoid hammering Supabase on every keystroke
+  else if(field==='linkedTour') item.linkedTour=String(value||'').trim();
+  // Debounced save: throttle to avoid hammering Supabase on every keystroke.
+  // linkedTour also re-renders chips so the ↳ badge appears immediately when
+  // user toggles back out of edit mode.
   clearTimeout(window.__tqSaveTimer);
-  window.__tqSaveTimer=setTimeout(()=>saveTransportPresets({skipRender:true}),700);
+  window.__tqSaveTimer=setTimeout(()=>saveTransportPresets({skipRender:field==='linkedTour'?false:true}),700);
 }
 
 async function addTqPreset(){
@@ -4072,7 +4098,11 @@ function pickTqPreset(id){
   const item=list.find(p=>p.id===id);
   if(!item) return;
   tqSelectedPresetId=id;
-  document.getElementById('tqFormName').textContent=item.name||'Preset';
+  // Show the preset name + (if any) the tour it attributes cost to. The
+  // ↳ Tour annotation makes it visible at submit time that this expense
+  // will count against the tour's margin in the Overview Tours area.
+  const nameEl=document.getElementById('tqFormName');
+  nameEl.innerHTML=escapeHtml(item.name||'Preset')+(item.linkedTour?`<div style="font-size:11px;color:var(--ocean);font-weight:600;margin-top:2px">↳ Counts toward Tour: ${escapeHtml(item.linkedTour)}</div>`:'');
   document.getElementById('tqUnitPrice').value=item.unitPrice;
   document.getElementById('tqDate').value=today();
   document.getElementById('tqAmount').value=1;
