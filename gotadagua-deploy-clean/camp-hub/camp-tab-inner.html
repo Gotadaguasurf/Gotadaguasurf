@@ -452,6 +452,11 @@ header{display:none}
             <label>Description</label>
             <input type="text" id="menuItemDesc" placeholder="Optional short note">
           </div>
+          <div class="mfield" id="menuItemCostPerGuestWrap" style="display:none">
+            <label id="menuItemCostPerGuestLabel">Cost per guest (LKR)</label>
+            <input type="number" id="menuItemCostPerGuest" min="0" step="10" placeholder="0 (free entrance)">
+            <div style="font-size:11px;color:var(--muted);margin-top:4px">What you pay the operator per guest (camels rental, guide, equipment…). Leave 0 if the tour has free entrance and you only pay transport.</div>
+          </div>
           <div class="mfield" id="menuItemHasTransportWrap" style="display:none">
             <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600">
               <input type="checkbox" id="menuItemHasTransport" style="width:16px;height:16px;cursor:pointer">
@@ -573,11 +578,13 @@ function normalizeMenu(menu){
         d:String(item?.d||'').trim(),
         stk:item?.stk===''||item?.stk==null?null:Number(item?.stk),
         sortOrder:Number.isFinite(Number(item?.sortOrder))?Number(item.sortOrder):undefined,
-        // Carry-through fields that the normalizer used to strip. hasTransport
-        // is the "this tour includes a transport leg" toggle from the menu
-        // editor — it has to survive the normalize pass or it gets lost on
-        // every save/hydrate roundtrip.
-        hasTransport:!!item?.hasTransport
+        // Carry-through fields that the normalizer used to strip:
+        //  - hasTransport: "this tour includes a transport leg" flag
+        //  - costPerGuest: what we pay the operator per guest
+        // Both must survive the normalize pass or they're lost on every
+        // save/hydrate roundtrip.
+        hasTransport:!!item?.hasTransport,
+        costPerGuest:Number(item?.costPerGuest||0)||0
       })).filter(item=>item.n&&Number.isFinite(item.p));
       cleaned[catName]=safeItems.map(item=>({
         ...(item.id?{id:item.id}:{}),
@@ -587,7 +594,8 @@ function normalizeMenu(menu){
         ...(item.d?{d:item.d}:{}),
         ...(Number.isFinite(item.stk)&&item.stk>=0?{stk:Math.max(0,Math.round(item.stk))}:{}),
         ...(item.sortOrder?{sortOrder:item.sortOrder}:{}),
-        ...(item.hasTransport?{hasTransport:true}:{})
+        ...(item.hasTransport?{hasTransport:true}:{}),
+        ...(item.costPerGuest>0?{costPerGuest:item.costPerGuest}:{})
       }));
     });
   }
@@ -911,9 +919,9 @@ function menuRowsToState(rows){
     const name=String(row.item_name||'').trim();
     if(!cat||!name) return;
     grouped[cat]=grouped[cat]||[];
-    // Description carries an optional [TRANSPORT] marker for Tours that
-    // include a transport leg. decodeMenuDescription strips the marker and
-    // returns the clean description + the boolean flag.
+    // Description carries optional [TRANSPORT] / [COST:N] markers for Tours.
+    // decodeMenuDescription strips them and returns the clean description
+    // plus the parsed values.
     const decoded=decodeMenuDescription(row.description);
     grouped[cat].push({
       id:row.id,
@@ -922,6 +930,7 @@ function menuRowsToState(rows){
       ...(row.staff_price_local!=null&&Number(row.staff_price_local)>0?{sp:Number(row.staff_price_local)}:{}),
       ...(decoded.d?{d:decoded.d}:{}),
       ...(decoded.hasTransport?{hasTransport:true}:{}),
+      ...(decoded.costPerGuest>0?{costPerGuest:decoded.costPerGuest}:{}),
       ...(row.stock_qty!=null?{stk:Number(row.stock_qty)}:{}),
       sortOrder:Number(row.sort_order||0)
     });
@@ -932,26 +941,47 @@ function menuRowsToState(rows){
   });
   return normalizeMenu(grouped);
 }
-// Tours can carry a `hasTransport` flag (the menu editor lets you mark them).
-// The shared location_menus table has no boolean column for it, so we encode
-// it into the description with a `[TRANSPORT]` marker. encode/decode below
-// keep that detail out of the rest of the menu code and the UI.
+// Tours can carry extra fields (hasTransport, costPerGuest) that don't fit
+// the shared location_menus schema. Encode them into the description with
+// inline markers. encode/decode below keep that detail out of the rest of
+// the menu code and the UI.
+//   [TRANSPORT]      → hasTransport flag (presence = true)
+//   [COST:N]         → costPerGuest number
+// Both can coexist; they're stripped before the user-typed description.
 const TRANSPORT_DESC_MARKER='[TRANSPORT]';
+const COST_DESC_MARKER_RE=/\[COST:([0-9.]+)\]/;
 function encodeMenuDescription(item){
   const userDesc=String(item?.d||'').trim();
-  if(item?.hasTransport){
-    return userDesc?`${TRANSPORT_DESC_MARKER} ${userDesc}`:TRANSPORT_DESC_MARKER;
-  }
-  return userDesc||null;
+  const markers=[];
+  if(item?.hasTransport) markers.push(TRANSPORT_DESC_MARKER);
+  const cost=Number(item?.costPerGuest||0);
+  if(cost>0) markers.push(`[COST:${cost}]`);
+  if(!markers.length) return userDesc||null;
+  return userDesc?`${markers.join(' ')} ${userDesc}`:markers.join(' ');
 }
 function decodeMenuDescription(raw){
-  const s=String(raw||'');
-  if(!s) return {d:null,hasTransport:false};
-  if(s.startsWith(TRANSPORT_DESC_MARKER)){
-    const rest=s.slice(TRANSPORT_DESC_MARKER.length).trim();
-    return {d:rest||null,hasTransport:true};
+  let s=String(raw||'');
+  if(!s) return {d:null,hasTransport:false,costPerGuest:0};
+  let hasTransport=false;
+  let costPerGuest=0;
+  // Strip markers from the start in any order; stop at the first chunk
+  // that isn't a known marker.
+  while(true){
+    const trimmed=s.trimStart();
+    if(trimmed.startsWith(TRANSPORT_DESC_MARKER)){
+      hasTransport=true;
+      s=trimmed.slice(TRANSPORT_DESC_MARKER.length);
+      continue;
+    }
+    const costMatch=trimmed.match(/^\[COST:([0-9.]+)\]/);
+    if(costMatch){
+      costPerGuest=Number(costMatch[1])||0;
+      s=trimmed.slice(costMatch[0].length);
+      continue;
+    }
+    break;
   }
-  return {d:s,hasTransport:false};
+  return {d:s.trim()||null,hasTransport,costPerGuest};
 }
 function menuStateToRows(locationId){
   return getCats().flatMap((cat,catIndex)=>(MENU[cat]||[]).map((item,itemIndex)=>({
@@ -2259,7 +2289,7 @@ function renderMenuSettings(){
   if(itemList){
     itemList.innerHTML=items.length?items.map((item,idx)=>`<div class="menu-item-row">
       <div>
-        <div class="menu-item-name">${item.n}${item.hasTransport?` <span style="font-size:10px;color:var(--ocean);background:#e3f2fd;padding:2px 6px;border-radius:6px;margin-left:4px;font-weight:600">🚐 transport</span>`:''}</div>
+        <div class="menu-item-name">${item.n}${item.hasTransport?` <span style="font-size:10px;color:var(--ocean);background:#e3f2fd;padding:2px 6px;border-radius:6px;margin-left:4px;font-weight:600">🚐 transport</span>`:''}${Number(item.costPerGuest||0)>0?` <span style="font-size:10px;color:#b46c00;background:#fff4d5;padding:2px 6px;border-radius:6px;margin-left:4px;font-weight:600">cost ${LOCAL_CURRENCY||'LKR'} ${Number(item.costPerGuest).toLocaleString('en-GB')}/g</span>`:''}</div>
       ${item.d?`<div class="menu-item-desc">${item.d}</div>`:''}
       <div class="menu-item-price">${euro(item.p)}${item.sp?` <span style="font-size:10px;color:var(--muted)">· staff ${euro(item.sp)}</span>`:''}${Number.isFinite(Number(item.stk))?` <span style="font-size:10px;color:var(--muted)">· stock ${item.stk}</span>`:''}</div>
       </div>
@@ -2335,11 +2365,15 @@ function deleteMenuCategory(){
 }
 
 function refreshMenuItemTransportToggle(){
-  // The "has transport" checkbox only makes sense for Tours. Hide it for
-  // every other category so the Drinks / Merch / Food forms stay clean.
+  // The "has transport" checkbox + cost-per-guest field only make sense
+  // for Tours. Hide them for every other category so the Drinks / Merch
+  // / Food forms stay clean.
   const wrap=document.getElementById('menuItemHasTransportWrap');
-  if(!wrap) return;
-  wrap.style.display=menuEditCat==='Tours'?'block':'none';
+  if(wrap) wrap.style.display=menuEditCat==='Tours'?'block':'none';
+  const costWrap=document.getElementById('menuItemCostPerGuestWrap');
+  if(costWrap) costWrap.style.display=menuEditCat==='Tours'?'block':'none';
+  const costLbl=document.getElementById('menuItemCostPerGuestLabel');
+  if(costLbl) costLbl.textContent=`Cost per guest (${LOCAL_CURRENCY||'LKR'})`;
 }
 
 function clearMenuItemForm(){
@@ -2350,6 +2384,7 @@ function clearMenuItemForm(){
   const desc=document.getElementById('menuItemDesc');
   const btn=document.getElementById('menuItemSaveBtn');
   const hasTransport=document.getElementById('menuItemHasTransport');
+  const costPerGuest=document.getElementById('menuItemCostPerGuest');
   menuEditIndex=null;
   if(name) name.value='';
   if(price) price.value='';
@@ -2357,6 +2392,7 @@ function clearMenuItemForm(){
   if(stock) stock.value='';
   if(desc) desc.value='';
   if(hasTransport) hasTransport.checked=false;
+  if(costPerGuest) costPerGuest.value='';
   if(btn) btn.textContent='Add item';
   refreshMenuItemTransportToggle();
 }
@@ -2372,6 +2408,8 @@ function editMenuItem(idx){
   document.getElementById('menuItemDesc').value=item.d||'';
   const hasTransport=document.getElementById('menuItemHasTransport');
   if(hasTransport) hasTransport.checked=!!item.hasTransport;
+  const costPerGuest=document.getElementById('menuItemCostPerGuest');
+  if(costPerGuest) costPerGuest.value=Number(item.costPerGuest||0)||'';
   refreshMenuItemTransportToggle();
   document.getElementById('menuItemSaveBtn').textContent='Save item';
 }
@@ -2385,8 +2423,11 @@ function saveMenuItem(){
   const stock=stockValue===''?null:Math.max(0,parseInt(stockValue,10)||0);
   const desc=document.getElementById('menuItemDesc').value.trim();
   const hasTransport=menuEditCat==='Tours' && !!document.getElementById('menuItemHasTransport')?.checked;
+  const costPerGuest=menuEditCat==='Tours'
+    ? (parseFloat(document.getElementById('menuItemCostPerGuest')?.value||'0')||0)
+    : 0;
   if(!name||!price){toast('Name and price are required');return;}
-  const payload={n:name,p:price,...(staffPrice>0?{sp:staffPrice}:{}),...(desc?{d:desc}:{}),...(Number.isFinite(stock)?{stk:stock}:{}),...(hasTransport?{hasTransport:true}:{})};
+  const payload={n:name,p:price,...(staffPrice>0?{sp:staffPrice}:{}),...(desc?{d:desc}:{}),...(Number.isFinite(stock)?{stk:stock}:{}),...(hasTransport?{hasTransport:true}:{}),...(costPerGuest>0?{costPerGuest}:{})};
   const isNew=menuEditIndex===null;
   if(isNew) MENU[menuEditCat].push(payload);
   else MENU[menuEditCat][menuEditIndex]=payload;

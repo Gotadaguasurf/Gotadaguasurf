@@ -583,7 +583,6 @@ td.r{text-align:right;font-family:'DM Mono',monospace;font-size:12px}
       </div>
       <div class="exp-top-actions">
         <button class="btn btn-s" id="quickTransportBtn" onclick="openTransportQuickAdd()" style="display:none"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M3 13h14"/><path d="M5 13v-3a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v3"/><circle cx="7" cy="15" r="1.5"/><circle cx="13" cy="15" r="1.5"/></svg></span><span>Transport</span></span></button>
-        <button class="btn btn-s" id="tourCostsBtn" onclick="openTourCostsQuickAdd()" style="display:none"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M10 3l2.5 5 5.5.8-4 3.9.9 5.5L10 15.5 5.1 18.2l.9-5.5-4-3.9 5.5-.8L10 3z"/></svg></span><span>Tour costs</span></span></button>
         <button class="btn btn-s" onclick="openMonthlyExpensesModal()"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M6 3h8l3 3v11H6z"/><path d="M14 3v4h4"/><path d="M9 10h5"/><path d="M9 13h5"/></svg></span><span>Monthly Expenses</span></span></button>
       </div>
     </div>
@@ -889,70 +888,6 @@ td.r{text-align:right;font-family:'DM Mono',monospace;font-size:12px}
         </div>
         <div class="mfooter">
           <button class="btn btn-s" onclick="closeOv('transportQuickOv')">Close</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- ═══════════ TOUR COSTS QUICK ADD MODAL ═══════════ -->
-    <div class="overlay" id="tourCostsQuickOv">
-      <div class="modal" style="max-width:720px">
-        <div class="mhdr">
-          <div class="mhdr-title">Tour costs quick-add</div>
-          <div class="mhdr-sub">Tap a tour to log its activity cost (camels rental, guide, equipment…). The chip list mirrors your camp tab Tours menu.</div>
-        </div>
-        <div class="mbody">
-          <div class="tq-tabs" style="border-bottom:1px solid var(--border);margin-bottom:14px">
-            <div style="font-size:13px;font-weight:600;color:var(--navy);padding:10px 0;flex:1">Tours</div>
-            <label class="tq-edit-toggle"><input type="checkbox" id="tcEditMode" onchange="renderTourCostChips()"> <span>Edit costs</span></label>
-          </div>
-
-          <div id="tcChipsWrap" class="tq-chips-wrap"></div>
-
-          <div id="tcForm" class="tq-form" style="display:none">
-            <div class="tq-form-head">
-              <div>
-                <div class="tq-form-label">Logging:</div>
-                <div class="tq-form-name" id="tcFormName">—</div>
-              </div>
-              <button class="tq-form-back" onclick="cancelTcForm()">← Pick another</button>
-            </div>
-            <div class="tq-grid">
-              <div class="mfield">
-                <label>Date</label>
-                <input type="date" id="tcDate">
-              </div>
-              <div class="mfield">
-                <label>Guests</label>
-                <input type="number" id="tcGuests" min="1" step="1" value="1" oninput="renderTcTotal()">
-              </div>
-              <div class="mfield">
-                <label id="tcUnitCostLabel">Cost per guest (LKR)</label>
-                <input type="number" id="tcUnitCost" min="0" step="10" oninput="renderTcTotal()">
-              </div>
-              <div class="mfield">
-                <label>Paid via</label>
-                <select id="tcPaidVia">
-                  <option value="Cash">Cash (camp-paid)</option>
-                  <option value="Bank Transfer">Bank Transfer (HQ-paid)</option>
-                </select>
-              </div>
-              <div class="mfield" style="grid-column:1 / -1">
-                <label>Description (optional)</label>
-                <input type="text" id="tcDesc" placeholder="optional note">
-              </div>
-            </div>
-            <div class="tq-total-row">
-              <div>
-                <div class="tq-total-label">Total</div>
-                <div class="tq-total-value" id="tcTotalLkr">LKR 0</div>
-                <div class="tq-total-sub" id="tcTotalEur">€0.00</div>
-              </div>
-              <button class="btn btn-p" onclick="submitTourCostEntry()">Add to ledger</button>
-            </div>
-          </div>
-        </div>
-        <div class="mfooter">
-          <button class="btn btn-s" onclick="closeOv('tourCostsQuickOv')">Close</button>
         </div>
       </div>
     </div>
@@ -1958,11 +1893,11 @@ function subscribeHubRealtime(){
         }
         rerenderActivePageData();
       } else if(key===TOUR_COST_PRESETS_KEY && json){
-        // Another computer edited the tour-cost presets — sync in.
+        // Sync the legacy tour-cost map (kept for fallback while the new
+        // per-menu-item costPerGuest field rolls out). No modal to
+        // re-render — the value just becomes available to applyLinkedPrice
+        // via tourCostPerGuest() on the next Quick Add interaction.
         tourCostPresets=normalizeTourCostPresets(json);
-        if(document.getElementById('tourCostsQuickOv')?.classList.contains('open')){
-          renderTourCostChips();
-        }
       }
     })
     .on('postgres_changes',{event:'*',schema:'public',table:'ledger_entries'},(payload)=>{
@@ -4876,154 +4811,23 @@ async function loadTourCostPresets(){
         added=true;
       }
     });
-    if(added) await saveTourCostPresets({skipRender:true});
+    if(added){
+      try{ await saveStateStore(TOUR_COST_PRESETS_KEY,tourCostPresets); }catch(_e){}
+    }
   }catch(e){
     console.warn('[Hub] loadTourCostPresets failed',e);
     tourCostPresets=normalizeTourCostPresets(seed);
   }
-  const btn=document.getElementById('tourCostsBtn');
-  if(btn) btn.style.display='inline-flex';
+  // No standalone button to surface — Quick Add reads tourCostPerGuest()
+  // directly when the user picks a tour.
 }
 
-async function saveTourCostPresets({skipRender=false}={}){
-  if(!TOUR_COSTS_ENABLED_LOCATIONS.has(__HUB_LOCATION_SLUG)) return;
-  try{
-    await saveStateStore(TOUR_COST_PRESETS_KEY,tourCostPresets);
-  }catch(e){
-    console.warn('[Hub] saveTourCostPresets failed',e);
-    toast('Tour cost presets save failed — see console');
-    return;
-  }
-  if(!skipRender) renderTourCostChips();
-}
-
-function openTourCostsQuickAdd(){
-  if(!TOUR_COSTS_ENABLED_LOCATIONS.has(__HUB_LOCATION_SLUG)) return;
-  tcSelectedTourName=null;
-  document.getElementById('tcForm').style.display='none';
-  const editBox=document.getElementById('tcEditMode');
-  if(editBox) editBox.checked=false;
-  const lbl=document.getElementById('tcUnitCostLabel');
-  if(lbl) lbl.textContent=`Cost per guest (${LOCAL_CURRENCY||'LKR'})`;
-  renderTourCostChips();
-  openOv('tourCostsQuickOv');
-}
-
-function renderTourCostChips(){
-  const wrap=document.getElementById('tcChipsWrap');
-  if(!wrap) return;
-  const editMode=!!document.getElementById('tcEditMode')?.checked;
-  // Tours come from the live camp-tab menu so adds/renames there appear
-  // here automatically. Filter out anything that's also a transport
-  // revenue name (Airport transfers, etc.) to avoid duplicates.
-  const tours=currentTourItems();
-  const cur=LOCAL_CURRENCY||'LKR';
-  if(!tours.length){
-    wrap.innerHTML=`<div class="tq-empty">No tours in the camp tab menu yet. Add some under Camp Tab → Menu → Tours and they'll appear here.</div>`;
-    return;
-  }
-  if(editMode){
-    wrap.innerHTML=tours.map(name=>{
-      const cost=Number(tourCostPresets[name]||0);
-      return `<div class="tq-chip-edit">
-        <div style="font-weight:700;color:var(--navy);margin-bottom:6px">${escapeHtml(name)}</div>
-        <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin-bottom:4px">Cost per guest · ${cur}</div>
-        <input type="number" min="0" step="10" value="${cost}" oninput="updateTcCost('${escapeAttr(name)}',this.value)" placeholder="0">
-      </div>`;
-    }).join('');
-  } else {
-    wrap.innerHTML=tours.map(name=>{
-      const cost=Number(tourCostPresets[name]||0);
-      const subtitle=cost>0
-        ? `<div class="tq-chip-price">${cur} ${Number(cost).toLocaleString('en-GB')} / guest</div>`
-        : `<div class="tq-chip-price" style="color:var(--green);font-weight:700">Free</div>`;
-      return `<button class="tq-chip" onclick="pickTcPreset('${escapeAttr(name)}')">
-        <div class="tq-chip-name">${escapeHtml(name)}</div>
-        ${subtitle}
-      </button>`;
-    }).join('');
-  }
-}
-
-function updateTcCost(tourName,value){
-  const n=Number(value)||0;
-  if(n>0) tourCostPresets[tourName]=n;
-  else delete tourCostPresets[tourName];
-  clearTimeout(window.__tcSaveTimer);
-  window.__tcSaveTimer=setTimeout(()=>saveTourCostPresets({skipRender:true}),700);
-}
-
-function pickTcPreset(tourName){
-  tcSelectedTourName=tourName;
-  document.getElementById('tcFormName').textContent=tourName;
-  document.getElementById('tcUnitCost').value=Number(tourCostPresets[tourName]||0);
-  document.getElementById('tcDate').value=today();
-  document.getElementById('tcGuests').value=1;
-  document.getElementById('tcPaidVia').value='Cash';
-  document.getElementById('tcDesc').value='';
-  const lbl=document.getElementById('tcUnitCostLabel');
-  if(lbl) lbl.textContent=`Cost per guest (${LOCAL_CURRENCY||'LKR'})`;
-  document.getElementById('tcForm').style.display='block';
-  renderTcTotal();
-}
-function cancelTcForm(){
-  tcSelectedTourName=null;
-  document.getElementById('tcForm').style.display='none';
-}
-function renderTcTotal(){
-  const guests=Number(document.getElementById('tcGuests')?.value||0)||0;
-  const unit=Number(document.getElementById('tcUnitCost')?.value||0)||0;
-  const total=guests*unit;
-  const fx=Number(LOCAL_PER_EUR||DEFAULT_LKR_PER_EUR)||330;
-  const cur=LOCAL_CURRENCY||'LKR';
-  document.getElementById('tcTotalLkr').textContent=`${cur} ${Number(total).toLocaleString('en-GB')}`;
-  document.getElementById('tcTotalEur').textContent=cur==='EUR'?'':euro(total/fx);
-}
-async function submitTourCostEntry(){
-  const date=document.getElementById('tcDate')?.value;
-  const guests=Number(document.getElementById('tcGuests')?.value||0)||0;
-  const unit=Number(document.getElementById('tcUnitCost')?.value||0)||0;
-  const paidVia=document.getElementById('tcPaidVia')?.value||'Cash';
-  const userDesc=(document.getElementById('tcDesc')?.value||'').trim();
-  if(!date){toast('Pick a date');return;}
-  if(!guests||guests<1){toast('Guests must be ≥ 1');return;}
-  if(!unit||unit<=0){toast('Cost per guest must be > 0');return;}
-  if(!tcSelectedTourName){toast('Pick a tour');return;}
-  const total=guests*unit;
-  const fx=Number(LOCAL_PER_EUR||DEFAULT_LKR_PER_EUR)||330;
-  const desc=userDesc||`${guests} guest${guests===1?'':'s'} × ${tcSelectedTourName}`;
-  const payload=normalizeLedgerEntry({
-    id:'tc'+Date.now()+Math.random().toString(36).slice(2,6),
-    date,
-    type:'expense',
-    // category = tour name (matches what Camp Tab revenue uses for the
-    // same tour, so the Operations Ledger Category column reads the
-    // same on both rows). businessArea is set explicitly to 'Tours' so
-    // the inferArea fallback (which expects category='Tours' for the
-    // expense path) doesn't kick in and send this to 'General'.
-    category:tcSelectedTourName,
-    linkedItem:tcSelectedTourName,
-    businessArea:'Tours',
-    paymentMethod:paidVia,
-    paidBy:paidVia==='Bank Transfer'?'HQ':'Camp',
-    currency:LOCAL_CURRENCY||'LKR',
-    fxRate:fx,
-    amountLocal:total,
-    quantity:guests,
-    description:desc,
-    vendor:'Tour Operator',
-    sourceKind:'tour_cost_quick',
-    amount:Number((total/fx).toFixed(2))
-  });
-  S.ledger.push(payload);
-  save();
-  try{
-    await syncLedgerEntriesToSupabase([payload],'tour cost quick save failed');
-  }catch(e){ /* handleLedgerSupabaseError already toasts */ }
-  renderExpenses();renderOverview();renderWeeklyPL();
-  toast(`Added: ${desc}`);
-  cancelTcForm();
-}
+// (The standalone "Tour costs" modal was removed — tour-cost logging now
+//  lives in the Quick Add form. The cost-per-guest is configured in the
+//  camp-tab Tours menu editor, and tourCostPerGuest() below resolves the
+//  value from there. tourCostPresets is kept around purely as a migration
+//  fallback so users who configured costs via the old modal don't lose
+//  them until they re-enter them in the new menu editor field.)
 
 function kpi(label,sub,val,cls,secondary=''){
   return `<div class="card kpi"><div class="kpi-label">${label}</div><div class="kpi-value ${cls}">${val}</div>${secondary?`<div class="kpi-sub" style="margin-top:4px">${secondary}</div>`:''}<div class="kpi-sub">${sub}</div></div>`;
@@ -5545,7 +5349,11 @@ function toggleEntryUi(prefix,type){
   const showLinked=type==='income'
     ? ['Tours','Transport'].includes(categoryValue)
     : type==='expense'&&['Tours','Transport','Utilities'].includes(categoryValue);
-  const showQty=type==='income'&&['Tours','Transport'].includes(categoryValue);
+  // Income on Tours/Transport keeps the qty field (existing). Expense on
+  // Tours also gets a qty field so the user can enter Guests and let
+  // applyLinkedPrice auto-fill Amount from the tour's cost-per-guest.
+  const showQty=(type==='income'&&['Tours','Transport'].includes(categoryValue))
+              ||(type==='expense'&&categoryValue==='Tours');
   const categoryWrap=document.getElementById(prefix+'_cat_wrap');
   const payWrap=document.getElementById(prefix+'_pay_wrap');
   const currencyWrap=document.getElementById(prefix+'_currency_wrap');
@@ -5574,7 +5382,15 @@ function toggleEntryUi(prefix,type){
       else linkedLabel.textContent='Sub-category';
     }
   }
-  if(qtyWrap) qtyWrap.style.display=showQty?'':'none';
+  if(qtyWrap){
+    qtyWrap.style.display=showQty?'':'none';
+    // Label changes by context: "Guests" reads better than "Qty" when the
+    // multiplier represents how many guests went on a tour.
+    const qtyLabel=qtyWrap.querySelector('label');
+    if(qtyLabel){
+      qtyLabel.textContent=(type==='expense' && categoryValue==='Tours') ? 'Guests' : 'Qty';
+    }
+  }
   if(descWrap) descWrap.style.display=showDesc?'':'none';
 }
 function fillEntryFields(prefix,type,preset=null,entry=null){
@@ -5613,19 +5429,48 @@ function renderEntryCategorySelection(prefix){
   const linked=document.getElementById(prefix+'_linked')?.value||'';
   fillEntryFields(prefix,type,{category,paymentMethod:pay,linkedItem:linked});
 }
+function tourCostPerGuest(tourName){
+  if(!tourName) return 0;
+  // Source of truth: camp tab menu (set via the menu editor's
+  // "Cost per guest" field). Falls back to the legacy
+  // location_state_store row that the removed Tour-costs modal used,
+  // so historical configurations keep working until the user moves
+  // them over to the menu editor.
+  const tours=currentCampTabMenu()?.Tours||[];
+  const match=tours.find(t=>String(t?.n||'')===String(tourName));
+  if(match && Number(match.costPerGuest||0)>0) return Number(match.costPerGuest);
+  if(typeof tourCostPresets!=='undefined' && tourCostPresets && Number(tourCostPresets[tourName]||0)>0){
+    return Number(tourCostPresets[tourName]);
+  }
+  return 0;
+}
+
 function applyLinkedPrice(prefix){
   const type=document.getElementById(prefix+'_type')?.value||(prefix==='em'?expModalType:'expense');
   const category=document.getElementById(prefix+'_cat')?.value||'';
-  if(type!=='income'||!['Tours','Transport'].includes(category)) return;
   const linked=(document.getElementById(prefix+'_linked')?.value||'').trim();
   if(!linked) return;
   const qtyEl=document.getElementById(prefix+'_qty');
   const amountEl=document.getElementById(prefix+'_amount');
   const qty=Math.max(1,parseInt(qtyEl?.value||'1',10)||1);
   if(qtyEl) qtyEl.value=String(qty);
-  const unitPrice=linkedItemPrice(linked);
-  if(amountEl&&unitPrice>0) amountEl.value=String(unitPrice*qty);
-  updateCurrencyUi(prefix,type);
+  // Income on Tours/Transport: auto-fill from the menu's public price
+  // (existing behaviour).
+  if(type==='income' && ['Tours','Transport'].includes(category)){
+    const unitPrice=linkedItemPrice(linked);
+    if(amountEl&&unitPrice>0) amountEl.value=String(unitPrice*qty);
+    updateCurrencyUi(prefix,type);
+    return;
+  }
+  // Expense on Tours: auto-fill from the tour's cost-per-guest (configured
+  // in the camp tab menu editor). Free-entrance tours have cost 0 and we
+  // don't touch the amount — user types it manually.
+  if(type==='expense' && category==='Tours'){
+    const costPerGuest=tourCostPerGuest(linked);
+    if(amountEl && costPerGuest>0) amountEl.value=String(costPerGuest*qty);
+    updateCurrencyUi(prefix,type);
+    return;
+  }
 }
 function startQuickExpense(type,preset=null){
   const typeEl=document.getElementById('qe_type');
@@ -6727,7 +6572,7 @@ mountCampTabFrame();
 function openOv(id){document.getElementById(id).classList.add('open');}
 function closeOv(id){document.getElementById(id).classList.remove('open');}
 function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2200);}
-['addWeekOv','addGuestOv','customOv','expOv','billOv','monthlyExpensesOv','transportQuickOv','tourCostsQuickOv'].forEach(id=>{
+['addWeekOv','addGuestOv','customOv','expOv','billOv','monthlyExpensesOv','transportQuickOv'].forEach(id=>{
   document.getElementById(id).addEventListener('click',e=>{if(e.target.id===id)closeOv(id);});
 });
 
