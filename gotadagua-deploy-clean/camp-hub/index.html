@@ -844,7 +844,7 @@ td.r{text-align:right;font-family:'DM Mono',monospace;font-size:12px}
                 <label>Date</label>
                 <input type="date" id="tqDate">
               </div>
-              <div class="mfield">
+              <div class="mfield" id="tqAmountWrap">
                 <label>Amount (trips)</label>
                 <input type="number" id="tqAmount" min="1" step="1" value="1" oninput="renderTqTotal()">
               </div>
@@ -4469,13 +4469,20 @@ function pickTqPreset(id){
   const hasVehicles=Array.isArray(item.vehicles)&&item.vehicles.length>0;
   const vehWrap=document.getElementById('tqVehicleWrap');
   const unitPriceWrap=document.getElementById('tqUnitPriceWrap');
+  const amountWrap=document.getElementById('tqAmountWrap');
   if(hasVehicles){
     if(vehWrap){ vehWrap.style.display='block'; }
     if(unitPriceWrap){ unitPriceWrap.style.display='none'; }
+    // With per-vehicle quantities the trip count is implicit (1 submit
+    // = 1 trip). The legacy "Amount (trips)" multiplier is hidden so
+    // the form doesn't double-charge the user when they fill in
+    // vehicle quantities thinking that already covers the trip.
+    if(amountWrap){ amountWrap.style.display='none'; }
     renderTqVehicleQuantities();
   } else {
     if(vehWrap){ vehWrap.style.display='none'; vehWrap.innerHTML=''; }
     if(unitPriceWrap){ unitPriceWrap.style.display=''; }
+    if(amountWrap){ amountWrap.style.display=''; }
     document.getElementById('tqUnitPrice').value=item.unitPrice;
   }
   document.getElementById('tqDate').value=today();
@@ -4585,20 +4592,23 @@ function cancelTqForm(){
   document.getElementById('tqForm').style.display='none';
 }
 function renderTqTotal(){
-  const amount=Number(document.getElementById('tqAmount')?.value||0)||0;
   const tw=document.getElementById('tqOwTw')?.value==='TW';
   let baseUnitPrice=0;
+  let amount=1;
   const list=transportPresets[tqActiveTab]||[];
   const preset=list.find(p=>p.id===tqSelectedPresetId);
   const hasVehicles=preset && Array.isArray(preset.vehicles) && preset.vehicles.length>0;
   if(hasVehicles){
-    // Multi-vehicle: sum (qty × price) for each selected vehicle.
+    // Multi-vehicle: sum (qty × price) for each selected vehicle. Trip
+    // count is implicit (1 submit = 1 trip), so the Amount field stays
+    // hidden and out of the calculation.
     baseUnitPrice=(preset.vehicles||[]).reduce((sum,v)=>{
       const q=Number(tqVehicleQuantities[v.id]||0);
       return sum + q*Number(v.price||0);
     },0);
   } else {
     baseUnitPrice=Number(document.getElementById('tqUnitPrice')?.value||0)||0;
+    amount=Number(document.getElementById('tqAmount')?.value||0)||0;
   }
   const total=amount*baseUnitPrice*(tw?2:1);
   const fx=Number(LOCAL_PER_EUR||DEFAULT_LKR_PER_EUR)||330;
@@ -4608,14 +4618,12 @@ function renderTqTotal(){
 }
 async function submitTransportEntry(){
   const date=document.getElementById('tqDate')?.value;
-  const amount=Number(document.getElementById('tqAmount')?.value||0)||0;
   const tw=document.getElementById('tqOwTw')?.value==='TW';
   const paidVia=document.getElementById('tqPaidVia')?.value||'Cash';
   const userDesc=(document.getElementById('tqDesc')?.value||'').trim();
   // Per-submission linked-tour override. Empty string = no link.
   const linkedTourOverride=document.getElementById('tqLinkedTourOverride')?.value||'';
   if(!date){toast('Pick a date');return;}
-  if(!amount||amount<1){toast('Trips must be ≥ 1');return;}
   let name='Custom';
   let presetItem=null;
   if(tqSelectedPresetId && tqSelectedPresetId!=='__custom__'){
@@ -4627,6 +4635,7 @@ async function submitTransportEntry(){
   // Compute baseUnitPrice + a human-readable vehicle breakdown.
   let baseUnitPrice=0;
   let vehicleBreakdown='';
+  let amount=1; // hierarchical: each submit = one trip; multiplier implicit
   if(hasVehicles){
     const picked=presetItem.vehicles
       .map(v=>({v,qty:Number(tqVehicleQuantities[v.id]||0)}))
@@ -4636,6 +4645,8 @@ async function submitTransportEntry(){
     vehicleBreakdown=picked.map(x=>`${x.qty}× ${x.v.label||'Vehicle'}`).join(' + ');
   } else {
     baseUnitPrice=Number(document.getElementById('tqUnitPrice')?.value||0)||0;
+    amount=Number(document.getElementById('tqAmount')?.value||0)||0;
+    if(!amount||amount<1){toast('Trips must be ≥ 1');return;}
     if(!baseUnitPrice||baseUnitPrice<=0){toast('Unit price must be > 0');return;}
   }
   const total=amount*baseUnitPrice*(tw?2:1);
@@ -4643,8 +4654,10 @@ async function submitTransportEntry(){
   // linkedItem stays the destination name only — Transport breakdown card
   // aggregates by destination, not per destination × vehicle.
   // Description folds in vehicle quantities + trip type for audit clarity.
+  // For hierarchical presets the leading "Nx" is dropped since trips=1.
   const vehiclePart=vehicleBreakdown?` — ${vehicleBreakdown}`:'';
-  const desc=userDesc||`${amount}× ${name}${vehiclePart} (${tw?'Two Way':'One Way'})`;
+  const tripPrefix=hasVehicles?'':`${amount}× `;
+  const desc=userDesc||`${tripPrefix}${name}${vehiclePart} (${tw?'Two Way':'One Way'})`;
   // The override dropdown lets the user override which tour this expense
   // attributes to (e.g. on a Dunes trip, mark this run as "Camel Ride" or
   // "Quad Bike"). If empty, the preset's default linkedTour wins via
