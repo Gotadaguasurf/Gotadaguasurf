@@ -4091,7 +4091,12 @@ function updateTqPresetField(id,field,value){
   window.__tqSaveTimer=setTimeout(()=>saveTransportPresets({skipRender:field==='linkedTour'?false:true}),700);
 }
 
-async function addTqPreset(){
+function addTqPreset(){
+  // Don't persist immediately — an empty preset (no name) would get
+  // filtered by normalizeTransportPresetsPayload on the next RT echo,
+  // and the user's freshly-added blank chip would vanish before they
+  // could type into it. The first field update triggers a 700ms
+  // debounced save once there's a real name to persist.
   const tab=tqActiveTab;
   const list=transportPresets[tab]=transportPresets[tab]||[];
   const maxSort=list.reduce((m,p)=>Math.max(m,Number(p.sortOrder||0)),0);
@@ -4099,10 +4104,14 @@ async function addTqPreset(){
     id:stableUuidFromSeed('tq|'+tab+'|new|'+Date.now()+'|'+Math.random()),
     name:'',
     unitPrice:0,
-    sortOrder:maxSort+10
+    sortOrder:maxSort+10,
+    linkedTour:''
   });
   renderTransportChips();
-  await saveTransportPresets({skipRender:true});
+  // Move focus to the new name input so the user can start typing.
+  const all=document.querySelectorAll('.tq-chip-edit input[type=text]');
+  const lastInput=all[all.length-1];
+  if(lastInput) lastInput.focus();
 }
 
 async function deleteTqPreset(id){
