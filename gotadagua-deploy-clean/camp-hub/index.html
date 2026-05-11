@@ -1978,13 +1978,35 @@ async function ensureHubLocationId(){
       DEFAULT_LKR_PER_EUR = LOCAL_PER_EUR;
       // Detect cache poisoning: if a previous bug cached a wildly wrong rate
       // under this location's FX keys (e.g., LKR ~330 cached for Morocco
-      // because readSupabaseFxRate used to be hardcoded to LKR), wipe it so
-      // the next fetch repopulates with the correct rate for this currency.
+      // because readSupabaseFxRate used to be hardcoded to LKR), wipe it
+      // so the next fetch repopulates with the correct rate for this
+      // currency. Two layers:
+      //   1) FX_KEY: single "current" rate; if it's >50% off, reset it.
+      //   2) FX_DAILY_KEY: per-date cache; sweep every entry and drop the
+      //      ones >50% off — leaves correct entries intact and forces a
+      //      refetch only for the bad ones.
       const cachedRate = parseFloat(localStorage.getItem(FX_KEY)||'0')||0;
-      if (cachedRate>0 && Math.abs(cachedRate-LOCAL_PER_EUR)/LOCAL_PER_EUR > 0.5) {
+      const isOff = r=>r>0 && Math.abs(r-LOCAL_PER_EUR)/LOCAL_PER_EUR > 0.5;
+      if (isOff(cachedRate)) {
         localStorage.setItem(FX_KEY, String(LOCAL_PER_EUR));
-        localStorage.removeItem(FX_DAILY_KEY);
       }
+      try{
+        const cacheRaw=localStorage.getItem(FX_DAILY_KEY);
+        if(cacheRaw){
+          const cache=JSON.parse(cacheRaw)||{};
+          const cleaned={};
+          let touched=false;
+          Object.keys(cache).forEach(date=>{
+            const r=Number(cache[date]||0);
+            if(isOff(r)){ touched=true; return; }
+            cleaned[date]=r;
+          });
+          if(touched){
+            localStorage.setItem(FX_DAILY_KEY,JSON.stringify(cleaned));
+            console.warn('[Hub] cleaned poisoned FX_DAILY_KEY entries');
+          }
+        }
+      }catch(_e){}
     }
     try { applyLocationCurrencyToDom(); } catch(_e){}
   }
@@ -2206,16 +2228,14 @@ async function syncLedgerEntriesToSupabase(entries,context='ledger sync'){
   }
 }
 
-// One-time auto-migration for Morocco entries that were stamped with the
-// LKR fx rate (~330–380) before the per-location FX rollout. Detects rows
-// where currency='MAD' but fxRate is implausibly high for MAD (>20, vs
-// the real-world MAD/EUR rate of ~10.7), recomputes fxRate and amount
-// using LOCAL_PER_EUR, then upserts the fix. Versioned so it only runs
-// once per browser; Sri Lanka is skipped entirely.
-const MAD_FX_HEAL_VERSION_KEY='hub_mad_fx_heal_v1'+__HUB_LOC_SUFFIX;
+// Continuous auto-migration for Morocco entries stamped with the LKR fx
+// rate (~330–380). Runs on every page load now — was versioned, but new
+// entries can still slip through (cached FX_DAILY_KEY poisoning, edge
+// cases) so the heal needs to be a self-healing safety net rather than a
+// one-shot. No-op when there's nothing to fix, so re-running is cheap.
+// Sri Lanka is skipped entirely.
 async function autoHealMadEntriesIfNeeded(){
   if(__HUB_LOCATION_SLUG!=='morocco') return;
-  if(localStorage.getItem(MAD_FX_HEAL_VERSION_KEY)==='done') return;
   // Only run after LOCAL_PER_EUR has been refreshed from the Supabase
   // locations row, otherwise we'd be "fixing" with whatever stale rate
   // the module-load default left.
@@ -2226,10 +2246,7 @@ async function autoHealMadEntriesIfNeeded(){
     const f=Number(e.fxRate||0);
     return f>20; // anything above ~20 for MAD is wrong (LKR-style rate)
   });
-  if(!wrong.length){
-    try{ localStorage.setItem(MAD_FX_HEAL_VERSION_KEY,'done'); }catch(_e){}
-    return;
-  }
+  if(!wrong.length) return;
   console.log('[Hub] auto-healing',wrong.length,'MAD ledger rows with stale LKR fxRate');
   const fixed=wrong.map(e=>{
     const local=Number(e.amountLocal||0);
@@ -2241,7 +2258,6 @@ async function autoHealMadEntriesIfNeeded(){
   save();
   try{
     await syncLedgerEntriesToSupabase(fixed,'MAD fxRate heal');
-    localStorage.setItem(MAD_FX_HEAL_VERSION_KEY,'done');
     window.__hubMadFxHeal={count:wrong.length,fx,at:new Date().toISOString(),sample:fixed.slice(0,5).map(e=>({id:e.id,desc:e.description,local:e.amountLocal,fx:e.fxRate,eur:e.amount}))};
     toast(`Fixed ${wrong.length} MAD entr${wrong.length===1?'y':'ies'} with stale LKR rate`);
     renderExpenses();renderOverview();renderWeeklyPL();
