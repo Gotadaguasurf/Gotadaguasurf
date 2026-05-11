@@ -2608,12 +2608,31 @@ async function fetchFxRateForDate(date){
   if(!date) return 0;
   // EUR locations don't need conversion — rate is always 1.
   if (LOCAL_CURRENCY === 'EUR') return 1;
+  // When the requested date IS today, the result is the authoritative
+  // live rate for the current session and must update LOCAL_PER_EUR.
+  // Without this assignment the runtime variable stays at the
+  // localStorage-bootstrap value (typically the previous day's rate or
+  // the static DB default, e.g. 330 LKR/EUR even when today's ECB rate
+  // is 378). Every new ledger entry written in the same session then
+  // gets stamped with the stale rate. Updating LOCAL_PER_EUR here
+  // closes that gap — backdated lookups (different date) just return
+  // the rate without touching the session variable.
+  const isToday=(date===today());
+  const applyIfToday=(rate)=>{
+    if(isToday && Number(rate)>0){
+      LOCAL_PER_EUR=Number(rate);
+    }
+  };
   const cached=cachedFxRateForDate(date);
-  if(cached>0) return cached;
+  if(cached>0){
+    applyIfToday(cached);
+    return cached;
+  }
   const serverRate=await readSupabaseFxRate(date,LOCAL_CURRENCY);
   if(serverRate>0){
     setFxDailyRate(date,serverRate);
     localStorage.setItem(FX_KEY,String(serverRate));
+    applyIfToday(serverRate);
     return serverRate;
   }
   try{
@@ -2628,6 +2647,7 @@ async function fetchFxRateForDate(date){
       setFxDailyRate(date,rate);
       localStorage.setItem(FX_KEY,String(rate));
       writeSupabaseFxRate(date,rate,'frankfurter',LOCAL_CURRENCY);
+      applyIfToday(rate);
       return rate;
     }
   }catch(_error){}
