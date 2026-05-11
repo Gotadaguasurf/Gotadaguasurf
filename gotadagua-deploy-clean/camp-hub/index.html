@@ -2731,16 +2731,24 @@ async function reconcileClosedWeeksWithLedger(history){
     const weekEnd=addDays(weekStart,6);
     for(const entry of (entries||[])){
       if(!entry?.id) continue;
-      if(deletedCampcloseIds.has(entry.id)) continue; // manually deleted — never re-add
-      if(HUB_LEDGER_HYDRATED && everInLedgerIds.has(entry.id) && !existingIds.has(entry.id)){
-        // Was in Supabase before but now missing — intentionally deleted. Auto-mark so it stays gone.
+      // Check the Set against BOTH the pre-normalize seed (entry.id, the
+      // `campclose_<weekRef>_<category>_<linkedItem>` string this builder
+      // emits) AND the post-normalize id that ensureLedgerEntryId would
+      // produce — that's the UUID actually stored in S.ledger / Supabase,
+      // and the form that ends up in deletedCampcloseIds when the user
+      // clicks ✕ on the rendered row.
+      const normalizedId=ensureLedgerEntryId(entry);
+      if(deletedCampcloseIds.has(entry.id) || deletedCampcloseIds.has(normalizedId)) continue;
+      if(HUB_LEDGER_HYDRATED && (everInLedgerIds.has(entry.id) || everInLedgerIds.has(normalizedId)) && !existingIds.has(entry.id) && !existingIds.has(normalizedId)){
+        // Was in Supabase before but now missing — intentionally deleted. Mark both forms.
         markCampcloseDeleted(entry.id);
+        markCampcloseDeleted(normalizedId);
         continue;
       }
-      if(existingIds.has(entry.id)){
+      if(existingIds.has(entry.id) || existingIds.has(normalizedId)){
         // Canonical ID already present — heal if currency or amountLocal drifted
         // (e.g., legacy rows written before per-location currency was added).
-        const existing=S.ledger.find(x=>x.id===entry.id);
+        const existing=S.ledger.find(x=>x.id===entry.id||x.id===normalizedId);
         if(existing){
           const curMismatch=String(existing.currency||'')!==String(entry.currency||'');
           const amtMismatch=Math.abs(Number(existing.amountLocal||0)-Number(entry.amountLocal||0))>0.01;
@@ -5145,16 +5153,44 @@ async function delLedger(id){
   if(!confirm(`Delete ${typeLbl} of ${amount}${note} on ${date}?\n\nThis is permanent and removes it from every other device in real-time.\n(All deletes are recorded in the audit log.)`)) return;
   HUB_SUPPRESS_LEDGER_RT=true; // set BEFORE any state_store writes so own echoes are reliably suppressed
   // Optimistic: remove locally immediately for snappy UI.
-  // Granular delete: one click = one row gone. For campclose entries, we
-  // mark the ID in deletedCampcloseIds so reconcile never re-adds *this
-  // one* — the other rows of the same closed week stay because the week
-  // is still in the camp tab history. To delete the entire week (and all
-  // its revenue rows at once), the user removes the week from Camp Tab →
-  // History, which triggers removeClosedWeekIncome via postMessage.
+  // Granular delete: one click = one row gone. For campclose entries we
+  // mark BOTH the stored id (the UUID derived via stableUuidFromSeed) AND
+  // the original campclose_<weekRef>_<category>_<linkedItem> seed string
+  // — because reconcile builds entries with the seed and only normalizes
+  // afterwards, so a Set containing only the UUID never matches and the
+  // row resurrects on every state-changed.
   const backup=S.ledger.find(x=>x.id===id);
   S.ledger=S.ledger.filter(x=>x.id!==id);
-  if(String(id).startsWith('campclose_')){
+  // Campclose detection: id literal starts with campclose_, OR the entry
+  // has sourceKind/vendor that mark it as camp-tab revenue. The string
+  // form check still catches pre-normalize ids that may exist in some
+  // legacy code paths.
+  const isCampclose = String(id||'').startsWith('campclose_')
+    || String(entry?.sourceKind||'').toLowerCase()==='camp_tab'
+    || String(entry?.vendor||'').toLowerCase()==='camp tab';
+  if(isCampclose){
     markCampcloseDeleted(id);
+    // Re-derive the seed string from the week & category/linkedItem so we
+    // also block the pre-normalize id that reconcile will try to add.
+    try{
+      const weekStart=entry?.date||'';
+      const seedWeekRef=weekStart; // matches campclose_${wk.start}_… fallback
+      const category=String(entry?.category||'');
+      const linkedItem=String(entry?.linkedItem||'')||'general';
+      if(category){
+        const seed=`campclose_${seedWeekRef}_${category}_${linkedItem}`.replace(/\s+/g,'_');
+        markCampcloseDeleted(seed);
+      }
+      // Also try the UUID weekRef form by scanning S.weeks/history if known
+      // — this catches the wk.id-based seed too.
+      const camp=currentCampTabState?.();
+      const history=Array.isArray(camp?.history)?camp.history:[];
+      const matchWeek=history.find(w=>String(w?.start||'')===weekStart);
+      if(matchWeek?.id && category){
+        const seed=`campclose_${matchWeek.id}_${category}_${linkedItem}`.replace(/\s+/g,'_');
+        markCampcloseDeleted(seed);
+      }
+    }catch(_e){}
   }
   save();
   renderExpenses();renderOverview();renderWeeklyPL();
