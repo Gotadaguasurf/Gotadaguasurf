@@ -1115,8 +1115,20 @@ const EXP_CATS=['Utilities','Rent','Setup','Salary','Services','Food','Tours','T
 // Manually-loggable transport lines. The Tuk-Tuk lines were removed because
 // from now on tours that include transport should attach their transport
 // portion automatically via the tour menu's "with transport" flag — they
-// shouldn't appear as standalone pick-list items here.
-const TRANSPORT_LINKED_ITEMS=['Airport','Transport Surf Lesson'];
+// shouldn't appear as standalone pick-list items here. A small per-location
+// extras list keeps Sri Lanka's operational runs (food / laundry tuk-tuks)
+// separate from Morocco's setup.
+const TRANSPORT_LINKED_ITEMS_BASE=['Airport','Transport Surf Lesson'];
+const TRANSPORT_LINKED_ITEMS_BY_LOCATION={
+  'sri-lanka':['Food Supply','Laundry'],
+  'morocco':[],
+  'portugal':[],
+  'junior-camp':[]
+};
+const TRANSPORT_LINKED_ITEMS=[
+  ...TRANSPORT_LINKED_ITEMS_BASE,
+  ...(TRANSPORT_LINKED_ITEMS_BY_LOCATION[__HUB_LOCATION_SLUG]||[])
+];
 const UTILITIES_LINKED_ITEMS=['Electricity','Water','Internet','Gas','Electricity Staff House','Water Staff House'];
 const TRANSPORT_TOUR_COST_MAP={
   'Tuk Tuk River Safari':'River Safari',
