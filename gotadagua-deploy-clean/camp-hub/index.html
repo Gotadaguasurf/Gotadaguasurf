@@ -3927,6 +3927,8 @@ const DEFAULT_TRANSPORT_PRESETS_SRI_LANKA={
 };
 // (transportPresets / tqActiveTab / tqSelectedPresetId are declared near the
 //  top of the file with the other module-level lets to avoid TDZ.)
+function escapeHtml(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function escapeAttr(s){return escapeHtml(s).replace(/`/g,'&#96;');}
 
 function normalizeTransportPresetsPayload(raw){
   const safeArr=arr=>(Array.isArray(arr)?arr:[]).map((p,i)=>({
