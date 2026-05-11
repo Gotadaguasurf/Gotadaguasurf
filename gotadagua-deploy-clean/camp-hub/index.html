@@ -4785,6 +4785,17 @@ async function submitTransportEntry(){
 // ═══════════════════════════════════════════════════════════
 const TOUR_COST_PRESETS_KEY='tour_cost_presets_v1';
 const TOUR_COSTS_ENABLED_LOCATIONS=new Set(['sri-lanka','morocco']);
+// Default cost-per-guest seeds. Each location's row in state_store is
+// independent (location_id-scoped) so seeds never cross locations.
+// Top-up migration in loadTourCostPresets fills in any missing keys
+// from this map without overwriting values the user already set.
+const DEFAULT_TOUR_COST_PRESETS_BY_LOCATION={
+  'sri-lanka':{},
+  'morocco':{
+    'Dunes — Camel Ride':150,
+    'Dunes — Quad Bike':200
+  }
+};
 
 function normalizeTourCostPresets(raw){
   if(!raw||typeof raw!=='object') return {};
@@ -4814,12 +4825,24 @@ async function loadTourCostPresets(){
     tourCostPresets={};
     return;
   }
+  const seed=DEFAULT_TOUR_COST_PRESETS_BY_LOCATION[__HUB_LOCATION_SLUG]||{};
   try{
     const data=await loadStateStore(TOUR_COST_PRESETS_KEY);
     tourCostPresets=normalizeTourCostPresets(data);
+    // Top-up: add any seed entries the stored payload doesn't have yet.
+    // Existing user-set values WIN over the seed (we never overwrite a
+    // non-zero existing entry).
+    let added=false;
+    Object.keys(seed).forEach(name=>{
+      if(!(name in tourCostPresets) || !tourCostPresets[name]){
+        tourCostPresets[name]=Number(seed[name])||0;
+        added=true;
+      }
+    });
+    if(added) await saveTourCostPresets({skipRender:true});
   }catch(e){
     console.warn('[Hub] loadTourCostPresets failed',e);
-    tourCostPresets={};
+    tourCostPresets=normalizeTourCostPresets(seed);
   }
   const btn=document.getElementById('tourCostsBtn');
   if(btn) btn.style.display='inline-flex';
