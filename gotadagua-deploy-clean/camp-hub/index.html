@@ -4087,6 +4087,15 @@ const DEFAULT_TRANSPORT_PRESETS_BY_LOCATION={
     ],
     tuktuk:[
       {
+        id:stableUuidFromSeed('tq|morocco|toursurf|Surf'),
+        name:'Surf',sortOrder:5,linkedTour:'Surf Lessons',
+        vehicles:[
+          {id:stableUuidFromSeed('tq|morocco|toursurf|Surf|Car'),label:'Car',capacity:4,price:700,sortOrder:10},
+          {id:stableUuidFromSeed('tq|morocco|toursurf|Surf|Minivan'),label:'Minivan',capacity:8,price:800,sortOrder:20},
+          {id:stableUuidFromSeed('tq|morocco|toursurf|Surf|BigVan'),label:'Big Van',capacity:15,price:900,sortOrder:30}
+        ]
+      },
+      {
         id:stableUuidFromSeed('tq|morocco|toursurf|Souk'),
         name:'Souk',sortOrder:10,linkedTour:'',
         vehicles:[
@@ -4197,6 +4206,26 @@ async function loadTransportPresets(){
       if(hasSeed && !transportPresets.airport.length && !transportPresets.tuktuk.length){
         transportPresets=normalizeTransportPresetsPayload(seed);
         await saveTransportPresets({skipRender:true});
+      } else {
+        // Top-up migration: add any seed preset that's missing from the
+        // stored payload (matched by name, case-insensitive). Lets us
+        // ship a new chip in code (e.g. "Surf") and have it appear in
+        // every existing Morocco install without the user re-seeding.
+        let added=false;
+        ['airport','tuktuk'].forEach(tab=>{
+          const present=new Set((transportPresets[tab]||[]).map(p=>String(p?.name||'').trim().toLowerCase()));
+          (seed[tab]||[]).forEach(seedPreset=>{
+            const key=String(seedPreset?.name||'').trim().toLowerCase();
+            if(key && !present.has(key)){
+              transportPresets[tab]=[...(transportPresets[tab]||[]),seedPreset];
+              added=true;
+            }
+          });
+        });
+        if(added){
+          transportPresets=normalizeTransportPresetsPayload(transportPresets);
+          await saveTransportPresets({skipRender:true});
+        }
       }
     } else {
       // No row yet
