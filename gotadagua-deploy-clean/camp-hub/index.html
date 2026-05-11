@@ -2165,6 +2165,50 @@ async function syncLedgerEntriesToSupabase(entries,context='ledger sync'){
     setTimeout(()=>{ HUB_SUPPRESS_LEDGER_RT=false; },600);
   }
 }
+
+// One-time auto-migration for Morocco entries that were stamped with the
+// LKR fx rate (~330–380) before the per-location FX rollout. Detects rows
+// where currency='MAD' but fxRate is implausibly high for MAD (>20, vs
+// the real-world MAD/EUR rate of ~10.7), recomputes fxRate and amount
+// using LOCAL_PER_EUR, then upserts the fix. Versioned so it only runs
+// once per browser; Sri Lanka is skipped entirely.
+const MAD_FX_HEAL_VERSION_KEY='hub_mad_fx_heal_v1'+__HUB_LOC_SUFFIX;
+async function autoHealMadEntriesIfNeeded(){
+  if(__HUB_LOCATION_SLUG!=='morocco') return;
+  if(localStorage.getItem(MAD_FX_HEAL_VERSION_KEY)==='done') return;
+  // Only run after LOCAL_PER_EUR has been refreshed from the Supabase
+  // locations row, otherwise we'd be "fixing" with whatever stale rate
+  // the module-load default left.
+  const fx=Number(LOCAL_PER_EUR||0);
+  if(!fx||fx>20) return; // sanity: MAD/EUR should be ~10.7; never run if we don't have a real rate
+  const wrong=S.ledger.filter(e=>{
+    if(!e||String(e.currency||'').toUpperCase()!=='MAD') return false;
+    const f=Number(e.fxRate||0);
+    return f>20; // anything above ~20 for MAD is wrong (LKR-style rate)
+  });
+  if(!wrong.length){
+    try{ localStorage.setItem(MAD_FX_HEAL_VERSION_KEY,'done'); }catch(_e){}
+    return;
+  }
+  console.log('[Hub] auto-healing',wrong.length,'MAD ledger rows with stale LKR fxRate');
+  const fixed=wrong.map(e=>{
+    const local=Number(e.amountLocal||0);
+    return {...e, fxRate:fx, amount:Number((local/fx).toFixed(2))};
+  });
+  // Replace in S.ledger
+  const byId=new Map(fixed.map(e=>[e.id,e]));
+  S.ledger=S.ledger.map(e=>byId.has(e.id)?byId.get(e.id):e);
+  save();
+  try{
+    await syncLedgerEntriesToSupabase(fixed,'MAD fxRate heal');
+    localStorage.setItem(MAD_FX_HEAL_VERSION_KEY,'done');
+    window.__hubMadFxHeal={count:wrong.length,fx,at:new Date().toISOString(),sample:fixed.slice(0,5).map(e=>({id:e.id,desc:e.description,local:e.amountLocal,fx:e.fxRate,eur:e.amount}))};
+    toast(`Fixed ${wrong.length} MAD entr${wrong.length===1?'y':'ies'} with stale LKR rate`);
+    renderExpenses();renderOverview();renderWeeklyPL();
+  }catch(e){
+    console.warn('[Hub] MAD fxRate heal sync failed',e);
+  }
+}
 function monthlyProfileKey(profileType,name=''){
   return `${profileType}|${String(name||'').trim().toLowerCase()}`;
 }
@@ -6053,6 +6097,9 @@ async function requirePlatformSession(){
     subscribeHubRealtime();
     // Run after hydration so deletedCampcloseIds + everInLedgerIds are populated
     syncClosedWeekIncome().catch(e=>console.warn('[Hub] syncClosedWeekIncome failed',e));
+    // One-time heal: recompute fxRate/amount on Morocco MAD rows that were
+    // stamped with the cached LKR rate before the per-location FX rollout.
+    autoHealMadEntriesIfNeeded().catch(e=>console.warn('[Hub] autoHealMadEntries failed',e));
   }catch(error){
     handleLedgerSupabaseError('session hydration failed',error);
   }
