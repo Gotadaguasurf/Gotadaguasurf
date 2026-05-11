@@ -7027,8 +7027,30 @@ if(S.weeks.length) AW=mostRecentWeek()?.id||S.weeks[S.weeks.length-1].id;
 resetQuickExpense();
 document.getElementById('qe_date')?.addEventListener('change',()=>syncFxRateForPrefix('qe'));
 document.getElementById('em_date')?.addEventListener('change',()=>syncFxRateForPrefix('em'));
-fetchFxRateForDate(today());
-fetchFxRateForDate(monthEndDate(monthKey(today())));
+// Wait for the location bootstrap before kicking off the FX fetches.
+// If we don't, fetchFxRateForDate reads LOCAL_CURRENCY at call time
+// — which is still the module default 'LKR' until ensureHubLocationId
+// finishes — and stamps the wrong currency into the URL on Morocco.
+// Gating on the ensure call closes the cold-load FX-fetch race
+// completely (separate from the user-write race that requireHubReady
+// already covers).
+ensureHubLocationId().then(()=>{
+  fetchFxRateForDate(today());
+  fetchFxRateForDate(monthEndDate(monthKey(today())));
+}).catch(e=>console.warn('[Hub] FX bootstrap deferred',e));
+
+// Daily-rollover refresh. If the user leaves the hub open across
+// midnight (very common — the camp owner doesn't reload every day),
+// LOCAL_PER_EUR stays at yesterday's rate until the first write
+// awaits a fresh fetchFxRateForDate. Stamps are always correct (each
+// write awaits the per-entry rate) but the live EUR preview in
+// modals would show stale numbers. Re-fetch every 30 minutes — cheap
+// (cache hit most of the time) and guarantees that within half an
+// hour of midnight the in-memory rate has rolled forward.
+setInterval(()=>{
+  if(!HUB_SB_LOCATION_ID) return; // not ready yet
+  fetchFxRateForDate(today()).catch(()=>{});
+}, 30*60*1000);
 if(CAMP_TAB_ONLY_MODE){
   applyCampTabOnlyMode();
 } else {
