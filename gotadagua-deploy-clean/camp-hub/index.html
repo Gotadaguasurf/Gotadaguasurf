@@ -2386,6 +2386,51 @@ async function fetchMonthlyProfilesFromSupabase(){
   if(error) throw error;
   return data||[];
 }
+// One-shot migration: pushes any S.recurring / S.salaryProfiles entries that
+// exist locally (e.g. from ensureRecurringDefaults seeding on a previous
+// load) but are MISSING from monthly_cost_profiles in Supabase. Without
+// this, bootstrap's hydrate({mergeLocal:false}) wipes them every refresh
+// because Supabase has never seen them. Runs once per browser (versioned
+// flag) so a future delete by the user doesn't get undone.
+const MONTHLY_PROFILES_PUSH_VERSION_KEY='camphub_monthly_profiles_push_v1'+__HUB_LOC_SUFFIX;
+async function backfillLocalMonthlyProfilesToSupabase(){
+  if(localStorage.getItem(MONTHLY_PROFILES_PUSH_VERSION_KEY)==='done') return;
+  const client=getHubSupabaseClient();
+  const locationId=await ensureHubLocationId();
+  if(!client||!locationId){
+    // Try again next bootstrap; don't burn the version flag.
+    return;
+  }
+  try{
+    const existing=await fetchMonthlyProfilesFromSupabase();
+    const existingKeys=new Set(existing.map(row=>monthlyProfileKey(row.profile_type,row.name)));
+    const inserts=[];
+    (S.salaryProfiles||[]).forEach(profile=>{
+      if(!profile?.name) return;
+      const key=monthlyProfileKey('salary',profile.name);
+      if(existingKeys.has(key)) return;
+      inserts.push(salaryProfileToMonthlyCostRow(profile,locationId));
+    });
+    (S.recurring||[]).forEach(rule=>{
+      if(!rule?.name) return;
+      const key=monthlyProfileKey('fixed_cost',rule.name);
+      if(existingKeys.has(key)) return;
+      inserts.push(recurringRuleToMonthlyCostRow(rule,locationId));
+    });
+    if(inserts.length){
+      console.log('[Hub] backfilling',inserts.length,'monthly profiles that exist locally but not in Supabase');
+      const { error } = await client.from('monthly_cost_profiles').insert(inserts);
+      if(error) throw error;
+      window.__hubMonthlyBackfill={count:inserts.length,names:inserts.map(r=>r.name),at:new Date().toISOString()};
+      toast(`Synced ${inserts.length} fixed cost${inserts.length===1?'':'s'} / salar${inserts.length===1?'y':'ies'} to Supabase`);
+    }
+    localStorage.setItem(MONTHLY_PROFILES_PUSH_VERSION_KEY,'done');
+  }catch(e){
+    console.warn('[Hub] backfillLocalMonthlyProfilesToSupabase failed',e);
+    // Don't set the flag — let the next bootstrap retry.
+  }
+}
+
 async function hydrateMonthlyProfilesFromSupabase({mergeLocal=true}={}){
   const client=getHubSupabaseClient();
   const locationId=await ensureHubLocationId();
@@ -6689,6 +6734,12 @@ async function requirePlatformSession(){
     // Tour cost presets — both Sri Lanka and Morocco. Each location keeps
     // its own row in state_store so the two camps stay isolated.
     loadTourCostPresets().catch(e=>console.warn('[Hub] loadTourCostPresets failed',e));
+    // CRITICAL: backfill any local-only monthly profiles (recurring rules /
+    // salary profiles seeded by ensureRecurringDefaults but never pushed
+    // to monthly_cost_profiles) BEFORE hydrate runs and wipes them. Runs
+    // once per browser via a version flag — future user-deletes never
+    // get undone.
+    await backfillLocalMonthlyProfilesToSupabase();
     const [weeksJson,ovJson]=await Promise.all([
       loadStateStore(SK),
       loadStateStore(OV_CSV_REMOTE_KEY),
