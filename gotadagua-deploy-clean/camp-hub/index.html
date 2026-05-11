@@ -2013,6 +2013,31 @@ function ensureLedgerEntryId(entry={}){
   if(raw&&isUuid(raw)) return raw.toLowerCase();
   return stableUuidFromSeed(raw||ledgerEntrySeed(entry));
 }
+// Cold-load gate for user-driven writes. The module-level defaults are
+// LOCAL_CURRENCY='LKR' and LOCAL_PER_EUR=330 (set at parse time, before
+// any Supabase call). ensureHubLocationId() is what reads the locations
+// row and rewrites both to the location's real values. If the user
+// clicks Add Transport / Quick Expense / Save before that async call
+// resolves, the entry gets stamped with the wrong currency + rate on
+// Morocco. Every user-driven add now awaits this gate at the top so
+// LOCAL_CURRENCY / LOCAL_PER_EUR are guaranteed to be the location's
+// real values before any payload is built. Returns true if ready,
+// false if the location couldn't be resolved (offline / no client) —
+// callers toast and abort in that case.
+async function requireHubReady(){
+  try{
+    const id=await ensureHubLocationId();
+    if(!id){
+      toast('Cannot save — not connected to the location yet. Refresh and try again.');
+      return false;
+    }
+    return true;
+  }catch(e){
+    console.warn('[Hub] requireHubReady failed',e);
+    toast('Cannot save — connection error. Refresh and try again.');
+    return false;
+  }
+}
 async function ensureHubLocationId(){
   if(HUB_SB_LOCATION_ID) return HUB_SB_LOCATION_ID;
   const client=getHubSupabaseClient();
@@ -3376,6 +3401,12 @@ function buildClosedWeekRevenueEntries(wk){
 }
 
 async function upsertClosedWeekIncome(entry){
+  // Camp Tab week-close fires this for each generated revenue row.
+  // Make sure the hub's location bootstrap is complete before we
+  // start building rows — otherwise LOCAL_CURRENCY / LOCAL_PER_EUR
+  // could still be the module defaults and the FX enrichment would
+  // hit a stale rate.
+  if(!await requireHubReady()) return false;
   const entries=Array.isArray(entry)?entry:[entry];
   let changed=false;
   const enriched=[];
@@ -3394,14 +3425,33 @@ async function upsertClosedWeekIncome(entry){
       const uuid=String(normalized?.id||'');
       if(uuid && deletedCampcloseIds.has(uuid)) unmarkCampcloseDeleted(uuid);
     }catch(_e){}
-    const idx=S.ledger.findIndex(x=>x.id===item.id||x.id===normalized.id);
-    if(idx>=0) S.ledger[idx]={...S.ledger[idx],...normalized};
-    else S.ledger.push(normalized);
     enriched.push(normalized);
     changed=true;
   }
   if(!changed) return false;
-  save();
+  // Supabase-first: push the batch BEFORE mutating S.ledger. If the
+  // upsert succeeds, merge into local state and notify renders. If it
+  // fails, leave S.ledger untouched — reconcile on next state-changed
+  // will retry (the camp_weeks row already records the close).
+  try{
+    HUB_SUPPRESS_LEDGER_RT=true;
+    setSavePill('saving','Saving…');
+    await pushLedgerEntriesToSupabase(enriched);
+    enriched.forEach(normalized=>{
+      const idx=S.ledger.findIndex(x=>x.id===normalized.id);
+      if(idx>=0) S.ledger[idx]={...S.ledger[idx],...normalized};
+      else S.ledger.push(normalized);
+    });
+    save();
+    notifyLedgerChanged();
+    setSavePill('saved','Saved ✓');
+  }catch(error){
+    setSavePill('failed','⚠ Save failed — close-week revenue will retry on reload');
+    handleLedgerSupabaseError('camp tab ledger sync',error);
+    return false;
+  }finally{
+    setTimeout(()=>{ HUB_SUPPRESS_LEDGER_RT=false; },600);
+  }
   // Diagnostic — surface what we just upserted so the user can inspect
   // window.__hubLastUpsertClosedWeek if revenue rows don't appear.
   try{
@@ -3413,7 +3463,6 @@ async function upsertClosedWeekIncome(entry){
       at:new Date().toISOString()
     };
   }catch(_e){}
-  await syncLedgerEntriesToSupabase(enriched,'camp tab ledger sync failed');
   return true;
 }
 function unmarkCampcloseDeleted(id){
@@ -4953,6 +5002,7 @@ function renderTqTotal(){
   document.getElementById('tqTotalEur').textContent=cur==='EUR'?'':euro(total/fx);
 }
 async function submitTransportEntry(){
+  if(!await requireHubReady()) return;
   const date=document.getElementById('tqDate')?.value;
   const tw=document.getElementById('tqOwTw')?.value==='TW';
   const paidVia=document.getElementById('tqPaidVia')?.value||'Cash';
@@ -5790,7 +5840,14 @@ function startQuickExpense(type,preset=null){
   if(dateEl) dateEl.value=today();
   if(amountEl) amountEl.value='';
   if(qtyEl) qtyEl.value=String(preset?.qty||1);
-  if(currencyEl) currencyEl.value='LKR';
+  if(currencyEl){
+    // Rebuild the option from LOCAL_CURRENCY in case applyLocationCurrencyToDom
+    // hasn't run yet — the static HTML has option value="LKR" which on a fast
+    // cold-load Morocco visit would otherwise leak through.
+    const _c=LOCAL_CURRENCY||'LKR';
+    currencyEl.innerHTML=`<option value="${_c}" selected>${_c}</option>`;
+    currencyEl.value=preset?.currency||_c;
+  }
   if(fxEl) fxEl.value=String(preset?.fxRate||getBestFxRateForDate(dateEl?.value||today()));
   if(vendorEl) vendorEl.value=preset?.vendor||'';
   if(descEl) descEl.value=preset?.description||'';
@@ -5850,7 +5907,11 @@ function resetQuickExpense(){
   fillEntryFields('qe','expense');
   if(date) date.value=today();
   if(amount) amount.value='';
-  if(currency) currency.value='LKR';
+  if(currency){
+    const _c=LOCAL_CURRENCY||'LKR';
+    currency.innerHTML=`<option value="${_c}" selected>${_c}</option>`;
+    currency.value=_c;
+  }
   if(fx) fx.value=String(getBestFxRateForDate(date?.value||today()));
   if(vendor) vendor.value='';
   if(desc) desc.value='';
@@ -5917,6 +5978,7 @@ function buildMonthlyLedgerEntry(sourceId,dueDate,fields){
   });
 }
 async function saveQuickExpense(){
+  if(!await requireHubReady()) return;
   const type=document.getElementById('qe_type')?.value||'expense';
   const category=document.getElementById('qe_cat')?.value||'';
   if(type==='income'&&['Tours','Transport'].includes(category)&&!(document.getElementById('qe_linked')?.value||'').trim()){
@@ -6088,6 +6150,7 @@ async function deleteSalaryProfile(id){
   toast('Salary deleted');
 }
 async function runSalaryNow(id){
+  if(!await requireHubReady()) return;
   const profile=(S.salaryProfiles||[]).find(row=>row.id===id);
   if(!profile) return;
   const dueDate=getMonthlyTargetDate();
@@ -6273,6 +6336,7 @@ async function deleteRecurringRule(id){
   toast('Monthly rule deleted');
 }
 async function runRecurringNow(id){
+  if(!await requireHubReady()) return;
   const rule=S.recurring.find(r=>r.id===id);
   if(!rule) return;
   const dueDate=getMonthlyTargetDate();
@@ -6302,6 +6366,7 @@ async function runRecurringNow(id){
   }
 }
 async function addAllMonthlyNow(){
+  if(!await requireHubReady()) return;
   const dueDate=getMonthlyTargetDate();
   const month=monthKey(dueDate);
   const entries=[];
@@ -6366,10 +6431,18 @@ async function applyRecurringEntries(){
   let dueFxRate=0;
   try{ dueFxRate=await fetchFxRateForDate(dueDate); }catch(_e){}
   if(!(dueFxRate>0)) dueFxRate=getBestFxRateForDate(dueDate);
+  // Build the list of entries to write first, but DO NOT mutate S.ledger
+  // or rule.lastAppliedMonth yet — we commit to Supabase first so an
+  // outage doesn't mark a rule "applied" with only a local-only row to
+  // show for it. The rule-/profile-to-apply pairs are tracked so we can
+  // flip lastAppliedMonth in lockstep after a successful upsert.
   const newEntries=[];
+  const pendingRules=[];
+  const pendingProfiles=[];
   (S.recurring||[]).forEach(rule=>{
     if(!rule.enabled||rule.frequency!=='monthly_end') return;
     if(rule.lastAppliedMonth===month) return;
+    pendingRules.push(rule);
     const exists=hasMonthlyEntryFor(rule.id,month);
     if(!exists){
       // Currency must respect the active location — hardcoding 'LKR' here
@@ -6394,15 +6467,13 @@ async function applyRecurringEntries(){
         recurringSourceId:rule.id,
         recurringMonth:month
       });
-      S.ledger.push(entry);
       newEntries.push(entry);
-      changed=true;
     }
-    rule.lastAppliedMonth=month;
   });
   (S.salaryProfiles||[]).forEach(profile=>{
     if(!profile.enabled) return;
     if(profile.lastAppliedMonth===month) return;
+    pendingProfiles.push(profile);
     const exists=hasMonthlyEntryFor(profile.id,month);
     if(!exists){
       const salCurrency=profile.currency||LOCAL_CURRENCY||'LKR';
@@ -6422,18 +6493,25 @@ async function applyRecurringEntries(){
         recurringSourceId:profile.id,
         recurringMonth:month
       });
-      S.ledger.push(entry);
       newEntries.push(entry);
-      changed=true;
     }
-    profile.lastAppliedMonth=month;
   });
-  if(changed){
+  if(!newEntries.length && !pendingRules.length && !pendingProfiles.length) return false;
+  // Supabase-first commit, then flip lastAppliedMonth atomically. On
+  // failure, both the local state and the rule flags are untouched so
+  // the next bootstrap re-tries cleanly.
+  try{
+    if(newEntries.length){
+      await commitLedgerEntries(newEntries,'monthly auto-apply');
+    }
+    pendingRules.forEach(r=>{ r.lastAppliedMonth=month; });
+    pendingProfiles.forEach(p=>{ p.lastAppliedMonth=month; });
     save();
-    // Persist to Supabase asynchronously (fire-and-forget with error logging)
-    syncLedgerEntriesToSupabase(newEntries,'monthly auto-apply').catch(e=>
-      console.warn('[Hub] monthly auto-apply Supabase sync failed',e)
-    );
+    changed=true;
+  }catch(e){
+    console.warn('[Hub] monthly auto-apply Supabase sync failed',e);
+    // Don't set lastAppliedMonth — next reload retries.
+    return false;
   }
   return changed;
 }
@@ -6674,6 +6752,7 @@ function openEditLedger(id){const entry=S.ledger.find(x=>x.id===id);if(entry)ope
 function deleteEditingLedger(){if(!editingLedgerId)return;const id=editingLedgerId;editingLedgerId=null;closeOv('expOv');delLedger(id);}
 
 async function saveExpense(){
+  if(!await requireHubReady()) return;
   const category=document.getElementById('em_cat')?.value||'';
   if(expModalType==='income'&&['Tours','Transport'].includes(category)&&!(document.getElementById('em_linked')?.value||'').trim()){
     toast(`Choose which ${category==='Tours'?'tour':'transport item'} this is for`);
