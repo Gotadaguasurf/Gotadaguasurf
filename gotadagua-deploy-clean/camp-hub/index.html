@@ -87,7 +87,7 @@
 .tq-edit-toggle{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer;padding:6px 10px;border-radius:8px;transition:background .12s}
 .tq-edit-toggle:hover{background:var(--bg)}
 .tq-edit-toggle input{cursor:pointer;width:14px;height:14px}
-.tq-chips-wrap{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:18px}
+.tq-chips-wrap{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-bottom:18px}
 .tq-chip{background:#fff;border:1.5px solid var(--border);border-radius:12px;padding:12px 14px;cursor:pointer;text-align:left;transition:border-color .15s,box-shadow .15s,transform .1s;display:flex;flex-direction:column;gap:4px;font-family:'Outfit',sans-serif}
 .tq-chip:hover{border-color:var(--ocean);box-shadow:0 4px 14px rgba(30,111,168,.12);transform:translateY(-1px)}
 .tq-chip-name{font-weight:700;font-size:14px;color:var(--navy);line-height:1.2}
@@ -1485,6 +1485,7 @@ let S=loadS();
 // and prevented camp data from ever reaching Supabase.
 let HUB_SUPPRESS_WEEKS_RT=false;  // suppresses our own weeks/state write echoes only
 let HUB_SUPPRESS_LEDGER_RT=false; // suppresses our own ledger write echoes only
+let HUB_SUPPRESS_TRANSPORT_RT=false; // suppresses our own transport_presets write echoes only
 // Transport quick-add presets. Declared early so that transportPresetNames(),
 // called from currentTransportItems() during any render, never trips TDZ. The
 // real load happens in loadTransportPresets() at bootstrap.
@@ -1877,6 +1878,7 @@ function subscribeHubRealtime(){
       // Each key checks only its own suppress flag — weeks writes never block ledger notifications
       if((key===SK||key===OV_CSV_REMOTE_KEY)&&HUB_SUPPRESS_WEEKS_RT) return;
       if((key===DELETED_CAMPCLOSE_KEY||key===HUB_LEDGER_TS_KEY)&&HUB_SUPPRESS_LEDGER_RT) return;
+      if(key===TRANSPORT_PRESETS_KEY&&HUB_SUPPRESS_TRANSPORT_RT) return;
       if(key===SK&&json&&typeof json==='object'){
         const incoming=normalizeState({weeks:json.weeks,salaryMode:json.salaryMode});
         if(JSON.stringify(incoming.weeks)!==JSON.stringify(S.weeks)){
@@ -1907,9 +1909,32 @@ function subscribeHubRealtime(){
         // Another computer edited the Transport quick-add presets. Pull
         // the new payload in and re-render the modal (if open) and any
         // downstream view (Operations Ledger picker, Overview breakdown).
+        //
+        // Caveat: if the user has focus inside the chips area right now
+        // (mid-typing a destination name, vehicle label, or price),
+        // re-rendering the grid would blow away the caret position and
+        // any in-progress empty chip the user just added. Delay the
+        // re-render until the user clicks elsewhere — at that point a
+        // blur runs and the next interaction picks up the new state.
+        // Note: this only triggers when the user has the modal open AND
+        // is actively focused inside it. Idle viewers still re-render
+        // immediately so cross-computer sync stays live.
         transportPresets=normalizeTransportPresetsPayload(json);
-        if(document.getElementById('transportQuickOv')?.classList.contains('open')){
+        const modalOpen=document.getElementById('transportQuickOv')?.classList.contains('open');
+        const userTypingInModal=modalOpen && document.activeElement && document.getElementById('tqChipsWrap')?.contains(document.activeElement);
+        if(modalOpen && !userTypingInModal){
           renderTransportChips();
+        } else if(userTypingInModal){
+          // Re-render once the user finishes editing the focused input.
+          const focused=document.activeElement;
+          const onBlur=()=>{
+            focused.removeEventListener('blur',onBlur);
+            // Re-check the modal is still open — the user might have closed it.
+            if(document.getElementById('transportQuickOv')?.classList.contains('open')){
+              renderTransportChips();
+            }
+          };
+          focused.addEventListener('blur',onBlur,{once:true});
         }
         rerenderActivePageData();
       } else if(key===TOUR_COST_PRESETS_KEY && json){
@@ -4449,13 +4474,27 @@ function applyTransportTabLabels(){
 
 async function saveTransportPresets({skipRender=false}={}){
   if(!TRANSPORT_ENABLED_LOCATIONS.has(__HUB_LOCATION_SLUG)) return;
+  // Suppress our own RT echo for ~1s. Without this, the upsert at
+  // saveStateStore bounces back as a postgres_changes event on the
+  // other end of the same socket — the listener then re-runs
+  // normalizeTransportPresetsPayload (which strips unnamed presets and
+  // empty vehicles) and calls renderTransportChips() while the user is
+  // mid-typing. That kills the input caret position and can wipe a
+  // freshly-added blank chip before the user finishes its name.
+  HUB_SUPPRESS_TRANSPORT_RT=true;
   try{
     await saveStateStore(TRANSPORT_PRESETS_KEY,transportPresets);
   }catch(e){
     console.warn('[Hub] saveTransportPresets failed',e);
     toast('Transport presets save failed — see console');
+    setTimeout(()=>{ HUB_SUPPRESS_TRANSPORT_RT=false; },800);
     return;
   }
+  // The echo typically lands within ~200-400ms; 1000ms gives a safe margin
+  // before re-enabling. Other-computer writes during this window are still
+  // received (they go through a different broadcast and don't get suppressed
+  // for the receiving end — only the sender suppresses).
+  setTimeout(()=>{ HUB_SUPPRESS_TRANSPORT_RT=false; },1000);
   if(!skipRender){
     renderTransportChips();
     renderExpenses();renderOverview();
@@ -4595,11 +4634,6 @@ function updateTqPresetField(id,field,value){
 }
 
 function addTqPreset(){
-  // Don't persist immediately — an empty preset (no name) would get
-  // filtered by normalizeTransportPresetsPayload on the next RT echo,
-  // and the user's freshly-added blank chip would vanish before they
-  // could type into it. The first field update triggers a 700ms
-  // debounced save once there's a real name to persist.
   const tab=tqActiveTab;
   const list=transportPresets[tab]=transportPresets[tab]||[];
   const maxSort=list.reduce((m,p)=>Math.max(m,Number(p.sortOrder||0)),0);
@@ -4609,9 +4643,13 @@ function addTqPreset(){
   // consistent. Otherwise fall back to the legacy flat preset.
   const template=list.find(p=>Array.isArray(p.vehicles)&&p.vehicles.length>0);
   const newId=stableUuidFromSeed('tq|'+tab+'|new|'+Date.now()+'|'+Math.random());
+  // Placeholder name keeps the new preset visible across RT echoes
+  // (normalizeTransportPresetsPayload filters out unnamed presets). The
+  // input opens with this text selected, so the user types the real
+  // destination and the placeholder is replaced on the first keystroke.
   const newPreset={
     id:newId,
-    name:'',
+    name:'New preset',
     unitPrice:0,
     sortOrder:maxSort+10,
     linkedTour:''
@@ -4627,10 +4665,18 @@ function addTqPreset(){
   }
   list.push(newPreset);
   renderTransportChips();
-  // Move focus to the new name input so the user can start typing.
-  const all=document.querySelectorAll('.tq-chip-edit input[type=text]');
-  const lastInput=all[all.length-1];
-  if(lastInput) lastInput.focus();
+  // Persist immediately. Suppress flag in saveTransportPresets stops the
+  // echo from clobbering the user's caret in the input we're about to
+  // focus. skipRender keeps the chips grid stable.
+  saveTransportPresets({skipRender:true});
+  // Find the new chip's name input by data-id (more reliable than
+  // "last input in DOM" which depends on render order). Select all so
+  // the placeholder text gets replaced on first keystroke.
+  setTimeout(()=>{
+    const chip=document.querySelector(`.tq-chip-edit[data-id="${newId}"]`);
+    const input=chip?.querySelector('input[type=text]');
+    if(input){ input.focus(); input.select(); }
+  },0);
 }
 
 async function deleteTqPreset(id){
@@ -4727,14 +4773,23 @@ function addTqVehicle(presetId){
   if(!preset) return;
   preset.vehicles=Array.isArray(preset.vehicles)?preset.vehicles:[];
   const maxSort=preset.vehicles.reduce((m,v)=>Math.max(m,Number(v.sortOrder||0)),0);
+  // Give the new vehicle a placeholder label so normalizeTransportPresetsPayload
+  // doesn't filter it out on echo (filter at normalize is "label||price>0").
+  // The user replaces this in the input that opens with focus. Without the
+  // placeholder, any RT echo arriving before the user types one character
+  // would wipe the row.
   preset.vehicles.push({
     id:stableUuidFromSeed('tq|'+presetId+'|veh|'+Date.now()+'|'+Math.random()),
-    label:'',
+    label:'New vehicle',
     capacity:null,
     price:0,
     sortOrder:maxSort+10
   });
   renderTransportChips();
+  // Persist now — the suppress flag in saveTransportPresets prevents the
+  // echo from re-rendering and blowing away focus. skipRender keeps the
+  // chips grid stable so the user can immediately type into the new row.
+  saveTransportPresets({skipRender:true});
 }
 function updateTqVehicleField(presetId,vehId,field,value){
   const list=transportPresets[tqActiveTab]||[];
