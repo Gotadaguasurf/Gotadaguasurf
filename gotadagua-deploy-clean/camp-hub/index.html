@@ -848,12 +848,19 @@ td.r{text-align:right;font-family:'DM Mono',monospace;font-size:12px}
                 <label>Amount (trips)</label>
                 <input type="number" id="tqAmount" min="1" step="1" value="1" oninput="renderTqTotal()">
               </div>
-              <div class="mfield">
+              <div class="mfield" id="tqOwTwWrap">
                 <label>One way / Two way</label>
                 <select id="tqOwTw" onchange="renderTqTotal()">
                   <option value="OW">One Way</option>
                   <option value="TW">Two Way (×2)</option>
                 </select>
+              </div>
+              <div class="mfield" id="tqRoundTripNote" style="display:none">
+                <label>&nbsp;</label>
+                <div style="background:var(--foam);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:12px;color:var(--ocean);font-weight:600;display:flex;align-items:center;gap:6px">
+                  <span style="font-size:14px">↺</span>
+                  <span>Round trip — both ways included</span>
+                </div>
               </div>
               <div class="mfield" id="tqUnitPriceWrap">
                 <label id="tqUnitPriceLabel">Unit price (LKR)</label>
@@ -4653,6 +4660,18 @@ function pickTqTab(tab){
 // aggregator skips them (because they aren't real tour menu items).
 const TRANSPORT_NON_TOUR_LABELS=['Surf Lessons'];
 
+// Morocco's Tours & Surf transport (the tuktuk tab in code, labeled
+// "Tours & Surf" in the UI) prices are ALWAYS round-trip — the camp
+// drives the guests out to Souk/Paradise Valley/Dunes/Imsouane/the
+// surf spot and brings them back. There's no one-way variant. We
+// hide the OW/TW dropdown for that tab and skip the ×2 multiplier
+// in the total (the seeded price is already the round-trip cost).
+// Airport transfers stay OW/TW because pickups and drop-offs are
+// charged independently.
+function isRoundTripOnlyTab(){
+  return __HUB_LOCATION_SLUG==='morocco' && tqActiveTab==='tuktuk';
+}
+
 function renderTransportChips(){
   const wrap=document.getElementById('tqChipsWrap');
   if(!wrap) return;
@@ -4849,6 +4868,18 @@ function pickTqPreset(id){
   document.getElementById('tqOwTw').value='OW';
   document.getElementById('tqPaidVia').value='Cash';
   document.getElementById('tqDesc').value='';
+  // Round-trip-only tabs (Morocco Tours & Surf): swap the OW/TW
+  // selector for a static "Round trip — both ways included" note so
+  // the user knows the seeded price already covers the return leg.
+  const owTwWrap=document.getElementById('tqOwTwWrap');
+  const rtNote=document.getElementById('tqRoundTripNote');
+  if(isRoundTripOnlyTab()){
+    if(owTwWrap) owTwWrap.style.display='none';
+    if(rtNote) rtNote.style.display='';
+  } else {
+    if(owTwWrap) owTwWrap.style.display='';
+    if(rtNote) rtNote.style.display='none';
+  }
   // Linked-tour override defaults to whatever the preset has set, with the
   // empty option, all special non-tour labels, and every camp-tab tour as
   // selectable values — so the user can override per-submit for cases like
@@ -4977,7 +5008,11 @@ function cancelTqForm(){
   document.getElementById('tqForm').style.display='none';
 }
 function renderTqTotal(){
-  const tw=document.getElementById('tqOwTw')?.value==='TW';
+  // Round-trip-only tabs (Morocco Tours & Surf) skip the ×2 multiplier
+  // entirely because the seeded vehicle price already represents the
+  // full round-trip cost. The OW/TW dropdown is hidden in that case.
+  const rtOnly=isRoundTripOnlyTab();
+  const tw=!rtOnly && document.getElementById('tqOwTw')?.value==='TW';
   let baseUnitPrice=0;
   let amount=1;
   const list=transportPresets[tqActiveTab]||[];
@@ -5004,7 +5039,11 @@ function renderTqTotal(){
 async function submitTransportEntry(){
   if(!await requireHubReady()) return;
   const date=document.getElementById('tqDate')?.value;
-  const tw=document.getElementById('tqOwTw')?.value==='TW';
+  // Round-trip-only tabs (Morocco Tours & Surf): skip the ×2
+  // multiplier and tag the description as "Round trip" instead of
+  // OW/TW. The seeded price already covers both legs.
+  const rtOnly=isRoundTripOnlyTab();
+  const tw=!rtOnly && document.getElementById('tqOwTw')?.value==='TW';
   const paidVia=document.getElementById('tqPaidVia')?.value||'Cash';
   const userDesc=(document.getElementById('tqDesc')?.value||'').trim();
   // Per-submission linked-tour override. Empty string = no link.
@@ -5054,7 +5093,11 @@ async function submitTransportEntry(){
   // For hierarchical presets the leading "Nx" is dropped since trips=1.
   const vehiclePart=vehicleBreakdown?` — ${vehicleBreakdown}`:'';
   const tripPrefix=hasVehicles?'':`${amount}× `;
-  const desc=userDesc||`${tripPrefix}${name}${vehiclePart} (${tw?'Two Way':'One Way'})`;
+  // Description tag: Round trip for round-trip-only tabs (Morocco Tours
+  // & Surf — price already includes both ways), otherwise the user's
+  // OW/TW selection.
+  const tripTag=rtOnly?'Round Trip':(tw?'Two Way':'One Way');
+  const desc=userDesc||`${tripPrefix}${name}${vehiclePart} (${tripTag})`;
   // The override dropdown lets the user override which tour this expense
   // attributes to (e.g. on a Dunes trip, mark this run as "Camel Ride" or
   // "Quad Bike"). If empty, the preset's default linkedTour wins via
