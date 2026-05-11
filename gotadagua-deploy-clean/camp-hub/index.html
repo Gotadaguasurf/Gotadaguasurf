@@ -1111,7 +1111,7 @@ const MERCH_MENU_ITEMS=[
 MENU.Tours=TOUR_MENU_ITEMS.map(item=>({...item}));
 MENU.Merch=MERCH_MENU_ITEMS.map(item=>({...item}));
 const CATS=Object.keys(MENU);
-const EXP_CATS=['Utilities','Rent','Setup','Salary','Services','Food','Tours','Transport','Cleaning Supplies','Bar','Merchandising','Taxes','Special'];
+const EXP_CATS=['Utilities','Rent','Setup','Salary','Services','Food','Tours','Transport','Cleaning Supplies','Laundry','Bar','Merchandising','Taxes','Special'];
 // Manually-loggable transport lines. The Tuk-Tuk lines were removed because
 // from now on tours that include transport should attach their transport
 // portion automatically via the tour menu's "with transport" flag — they
@@ -1125,7 +1125,7 @@ const TRANSPORT_TOUR_COST_MAP={
 const TRANSPORT_REVENUE_CATS=TRANSPORT_LINKED_ITEMS.slice();
 const TOUR_REVENUE_CATS=TOUR_MENU_ITEMS.map(item=>item.n);
 const REVENUE_CATS=['Drinks','Merchandise','Tours','Transport','Other Revenue'];
-const AREA_ORDER=['Food','Bar','Transport','Utilities','Salaries','Merch','Tours','General'];
+const AREA_ORDER=['Food','Bar','Transport','Utilities','Laundry','Salaries','Merch','Tours','General'];
 const PAYMENT_METHODS=['Cash','Bank Transfer'];
 const AREA_CONFIG={
   Food:{expenseCats:['Food'],incomeCats:[],linkedItems:[]},
@@ -1203,6 +1203,7 @@ function inferArea(type,category,linkedItem=''){
   if(category==='Food') return 'Food';
   if(category==='Bar') return 'Bar';
   if(category==='Transport') return 'Transport';
+  if(category==='Laundry') return 'Laundry';
   if(['Utilities','Services','Rent','Setup','Cleaning Supplies','Repairs','Supplies'].includes(category)) return 'Utilities';
   if(['Taxes','Special'].includes(category)) return 'Utilities';
   if(category==='Salary') return 'Salaries';
@@ -3409,6 +3410,15 @@ function renderOverview(){
   const payrollRows=Object.values(payrollGroups).sort((a,b)=>b.spendLocal-a.spendLocal);
   const payrollTotalLocal=sum(payrollRows,r=>r.spendLocal);
   const payrollTotalEur=sum(payrollRows,r=>r.spendEur);
+  // Laundry breakdown: every expense tagged category='Laundry' in the
+  // selection, with camp-paid vs HQ-paid split.
+  const laundryExpenses=expenses.filter(x=>x.category==='Laundry');
+  const laundryTotalLocal=sum(laundryExpenses,x=>entryLocalDisplayAmount(x));
+  const laundryTotalEur=sum(laundryExpenses,x=>entryEurAmount(x));
+  const laundryCampLocal=sum(laundryExpenses.filter(x=>x.paymentMethod==='Cash'),x=>entryLocalDisplayAmount(x));
+  const laundryCampEur=sum(laundryExpenses.filter(x=>x.paymentMethod==='Cash'),x=>entryEurAmount(x));
+  const laundryHqLocal=sum(laundryExpenses.filter(x=>x.paymentMethod==='Bank Transfer'),x=>entryLocalDisplayAmount(x));
+  const laundryHqEur=sum(laundryExpenses.filter(x=>x.paymentMethod==='Bank Transfer'),x=>entryEurAmount(x));
   const transportCardsMarkup=transportRows.length?`
     <div class="card card-pad" style="grid-column:1 / -1">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;gap:12px;flex-wrap:wrap">
@@ -3690,6 +3700,37 @@ function renderOverview(){
               <div style="font-size:11px;color:var(--muted);margin-top:6px">${r.entries||0} ${(r.entries||0)===1?'entry':'entries'}${r.revenueLocal?` · revenue ${moneyPairLocal(r.revenueLocal,r.revenueEur)}`:''}</div>
             </div>`).join('')}</div>`
           : `<div style="color:var(--muted);font-size:13px;padding:12px 0">No transport spend yet — log Transport expenses (Airport, Surf Lesson, or a tour with transport) to see them broken down here.</div>`
+        }
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-pad" style="border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+        <div style="font-family:'DM Serif Display',serif;font-size:17px;color:var(--navy)">Laundry</div>
+        <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+          <div style="font-size:11px;color:var(--muted)">${laundryExpenses.length} entr${laundryExpenses.length===1?'y':'ies'}</div>
+          <div style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:var(--red)">${laundryTotalLocal?moneyPairLocal(laundryTotalLocal,laundryTotalEur):'—'}</div>
+        </div>
+      </div>
+      <div class="card-pad" style="padding:16px 20px 20px">
+        ${laundryExpenses.length
+          ? `<div class="g4">
+              <div class="ov-chip">
+                <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">Total spend</div>
+                <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--red);margin-top:6px;line-height:1.1">${moneyPairLocal(laundryTotalLocal,laundryTotalEur)}</div>
+                <div style="font-size:11px;color:var(--muted);margin-top:6px">${laundryExpenses.length} payment${laundryExpenses.length===1?'':'s'}</div>
+              </div>
+              <div class="ov-chip">
+                <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">Camp-paid (cash)</div>
+                <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy);margin-top:6px;line-height:1.1">${laundryCampLocal?moneyPairLocal(laundryCampLocal,laundryCampEur):'—'}</div>
+                <div style="font-size:11px;color:var(--muted);margin-top:6px">Paid from on-site cash</div>
+              </div>
+              <div class="ov-chip">
+                <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">HQ-paid (bank)</div>
+                <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy);margin-top:6px;line-height:1.1">${laundryHqLocal?moneyPairLocal(laundryHqLocal,laundryHqEur):'—'}</div>
+                <div style="font-size:11px;color:var(--muted);margin-top:6px">Direct HQ-covered</div>
+              </div>
+            </div>`
+          : `<div style="color:var(--muted);font-size:13px;padding:12px 0">No laundry spend yet — pick the Laundry category when adding an expense to track it here.</div>`
         }
       </div>
     </div>
