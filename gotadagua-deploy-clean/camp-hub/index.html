@@ -3249,7 +3249,19 @@ async function upsertClosedWeekIncome(entry){
   for(const item of entries.filter(Boolean)){
     if(!item?.id) continue;
     const normalized=await enrichLedgerEntryFx(item);
-    const idx=S.ledger.findIndex(x=>x.id===item.id);
+    // The user is closing a week NOW — these IDs are live again. If the
+    // user (or a previous instance of the same week) had deleted them
+    // before, deletedCampcloseIds still contains those IDs and the
+    // hydrate ghost filter would re-delete every new row as it lands.
+    // Un-mark BOTH the original seed id AND the post-normalize UUID so
+    // the rebirth sticks.
+    try{
+      const seed=String(item.id||'');
+      if(seed && deletedCampcloseIds.has(seed)) unmarkCampcloseDeleted(seed);
+      const uuid=String(normalized?.id||'');
+      if(uuid && deletedCampcloseIds.has(uuid)) unmarkCampcloseDeleted(uuid);
+    }catch(_e){}
+    const idx=S.ledger.findIndex(x=>x.id===item.id||x.id===normalized.id);
     if(idx>=0) S.ledger[idx]={...S.ledger[idx],...normalized};
     else S.ledger.push(normalized);
     enriched.push(normalized);
@@ -3257,8 +3269,33 @@ async function upsertClosedWeekIncome(entry){
   }
   if(!changed) return false;
   save();
+  // Diagnostic — surface what we just upserted so the user can inspect
+  // window.__hubLastUpsertClosedWeek if revenue rows don't appear.
+  try{
+    window.__hubLastUpsertClosedWeek={
+      receivedIds:entries.filter(Boolean).map(x=>x.id),
+      enrichedIds:enriched.map(x=>x?.id),
+      ledgerCampcloseCount:S.ledger.filter(r=>String(r?.sourceKind||'').toLowerCase()==='camp_tab').length,
+      deletedCampcloseIdsCount:deletedCampcloseIds.size,
+      at:new Date().toISOString()
+    };
+  }catch(_e){}
   await syncLedgerEntriesToSupabase(enriched,'camp tab ledger sync failed');
   return true;
+}
+function unmarkCampcloseDeleted(id){
+  if(!id) return;
+  if(!deletedCampcloseIds.has(id)) return;
+  deletedCampcloseIds.delete(id);
+  try{ localStorage.setItem('hub_deleted_campclose_local'+__HUB_LOC_SUFFIX,JSON.stringify([...deletedCampcloseIds])); }catch(_e){}
+  // Persist the cleared list cross-computer
+  const client=getHubSupabaseClient();
+  ensureHubLocationId().then(locationId=>{
+    if(!client||!locationId) return;
+    client.from('location_state_store')
+      .upsert({location_id:locationId,state_key:DELETED_CAMPCLOSE_KEY,state_json:[...deletedCampcloseIds],updated_at:new Date().toISOString()},{onConflict:'location_id,state_key'})
+      .then(({error})=>{ if(error) console.warn('[Hub] failed to save unmarked campclose ids',error); });
+  }).catch(()=>{});
 }
 async function removeClosedWeekIncome(payload={}){
   const weekId=String(payload?.weekId||'').trim();
