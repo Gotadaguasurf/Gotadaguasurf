@@ -1373,22 +1373,33 @@ function normalizeLedgerEntry(entry){
   let fxRate=Number(entry.fxRate||DEFAULT_LKR_PER_EUR);
   // ── Defensive sanity check on FX rate ──────────────────────────────
   // If this entry's currency matches the active location's currency and
-  // the supplied fxRate is wildly off (>50% from LOCAL_PER_EUR), force
-  // it to LOCAL_PER_EUR. Catches every path that might write a stale or
-  // poisoned rate (cached Frankfurter response, leftover LKR rate in
-  // FX_DAILY_KEY for Morocco, recurring auto-apply with the wrong fx
-  // at month-end, etc.). EUR entries are never touched. Entries whose
-  // currency differs from the location (e.g. an LKR row viewed from
-  // Morocco) are left alone — they're historical / cross-location and
-  // we have no authoritative rate to substitute.
+  // the supplied fxRate diverges from LOCAL_PER_EUR, force it to
+  // LOCAL_PER_EUR. The threshold depends on the entry's date:
+  //
+  //   • Today's entry  → 10% drift triggers a heal. Real-world same-day
+  //     FX drift is well under 5% for stable pairs (EUR/LKR, EUR/MAD),
+  //     so 10% catches the common bug of a session that bootstrapped
+  //     with last week's rate and never refreshed (330 vs today's 378).
+  //   • Older entries → keep the loose 50% threshold so legitimate
+  //     historical rates (which CAN diverge from today's by 20-30% over
+  //     months) are preserved, but obvious cross-currency poisoning
+  //     (e.g. ~330 stamped on a MAD entry, ~3000% off) is still healed.
+  //
+  // EUR entries are never touched. Cross-location entries (LKR row
+  // viewed in Morocco) are left alone — they're historical and we have
+  // no authoritative substitute rate.
   try{
     if(currency && currency!=='EUR'
        && typeof LOCAL_CURRENCY!=='undefined' && currency===LOCAL_CURRENCY
        && Number(LOCAL_PER_EUR||0)>0
-       && Number(fxRate||0)>0
-       && Math.abs(fxRate-LOCAL_PER_EUR)/LOCAL_PER_EUR > 0.5){
-      console.warn('[Hub] normalizeLedgerEntry rescued bad fxRate',{id:normalizedId,was:fxRate,now:LOCAL_PER_EUR,currency});
-      fxRate=Number(LOCAL_PER_EUR);
+       && Number(fxRate||0)>0){
+      const drift=Math.abs(fxRate-LOCAL_PER_EUR)/LOCAL_PER_EUR;
+      const entryIsToday=(entry.date===today());
+      const threshold=entryIsToday?0.10:0.5;
+      if(drift>threshold){
+        console.warn('[Hub] normalizeLedgerEntry rescued bad fxRate',{id:normalizedId,was:fxRate,now:LOCAL_PER_EUR,currency,date:entry.date,drift:(drift*100).toFixed(1)+'%'});
+        fxRate=Number(LOCAL_PER_EUR);
+      }
     }
   }catch(_e){}
   const rawAmount=Number(entry.amountLocal??entry.amount??0);
@@ -2657,10 +2668,14 @@ function getBestFxRateForDate(date){
   return cachedFxRateForDate(date)||parseFloat(localStorage.getItem(FX_KEY)||String(DEFAULT_LKR_PER_EUR))||DEFAULT_LKR_PER_EUR;
 }
 async function syncFxRateForPrefix(prefix,{silent=true}={}){
-  const currency=document.getElementById(prefix+'_currency')?.value||'LKR';
+  const currency=document.getElementById(prefix+'_currency')?.value||LOCAL_CURRENCY||'LKR';
   const date=document.getElementById(prefix+'_date')?.value||'';
   const fxField=document.getElementById(prefix+'_fx');
-  if(currency!=='LKR'||!date||!fxField) return;
+  // Only EUR (no conversion needed) or unset fields are skipped. The
+  // previous "currency!=='LKR'" check was a regression from when this
+  // app was Sri Lanka-only — it stopped firing for Morocco MAD entries
+  // so the form's FX field never refreshed to today's live rate.
+  if(currency==='EUR'||!currency||!date||!fxField) return;
   const rate=await fetchFxRateForDate(date);
   if(rate>0){
     fxField.value=String(rate);
@@ -4914,7 +4929,18 @@ async function submitTransportEntry(){
     if(!baseUnitPrice||baseUnitPrice<=0){toast('Unit price must be > 0');return;}
   }
   const total=amount*baseUnitPrice*(tw?2:1);
-  const fx=Number(LOCAL_PER_EUR||DEFAULT_LKR_PER_EUR)||330;
+  // Pull today's authoritative live rate before stamping. Previously this
+  // read LOCAL_PER_EUR directly, which on a freshly-loaded session is the
+  // localStorage-bootstrap value (yesterday's rate or the static DB
+  // default). When fetchFxRateForDate(today()) hadn't fired yet — or had
+  // fired but its async result hadn't returned — Transport entries got
+  // stamped with the stale rate. Awaiting here forces the live rate and
+  // updates LOCAL_PER_EUR as a side effect (see fetchFxRateForDate's
+  // applyIfToday helper) so subsequent stamps in this session are also
+  // correct.
+  let fx=0;
+  try{ fx=await fetchFxRateForDate(date); }catch(_e){}
+  if(!(fx>0)) fx=Number(LOCAL_PER_EUR||DEFAULT_LKR_PER_EUR)||330;
   // linkedItem stays the destination name only — Transport breakdown card
   // aggregates by destination, not per destination × vehicle.
   // Description folds in vehicle quantities + trip type for audit clarity.
@@ -6265,14 +6291,22 @@ async function addAllMonthlyNow(){
     handleLedgerSupabaseError('monthly batch FX failed',error);
   }
 }
-function applyRecurringEntries(){
+async function applyRecurringEntries(){
   // NOTE: previously guarded with "if(getHubSupabaseClient()) return false" which
   // prevented auto-apply entirely when Supabase is connected. Removed that guard.
   const month=monthKey(today());
   const dueDate=monthEndDate(month);
   if(!isOnOrAfter(today(),dueDate)) return false;
   let changed=false;
-  const dueFxRate=getBestFxRateForDate(dueDate);
+  // Resolve the month-end rate via the live fetch path (cache → Supabase
+  // → Frankfurter). getBestFxRateForDate only reads cache+localStorage,
+  // which on a session that hasn't yet hit Frankfurter is the stale
+  // bootstrap value — month-end auto-applies then stamped recurring
+  // entries (Rent, Salary, Utilities) with last week's rate. Awaiting
+  // here also updates LOCAL_PER_EUR if dueDate happens to be today.
+  let dueFxRate=0;
+  try{ dueFxRate=await fetchFxRateForDate(dueDate); }catch(_e){}
+  if(!(dueFxRate>0)) dueFxRate=getBestFxRateForDate(dueDate);
   const newEntries=[];
   (S.recurring||[]).forEach(rule=>{
     if(!rule.enabled||rule.frequency!=='monthly_end') return;
@@ -6553,7 +6587,19 @@ function openExpModal(type,id=null,preset=null){
   const entry=id?S.ledger.find(x=>x.id===id):null;
   document.getElementById('em_date').value=entry?.date||today();
   document.getElementById('em_amount').value=entry?.amountLocal||entry?.amount||'';
-  document.getElementById('em_currency').value='LKR';
+  // The currency dropdown must reflect the active location, not a fixed
+  // LKR. applyLocationCurrencyToDom rewrites the static option at load
+  // time but races against fast modal opens — and previously this line
+  // forced LKR back unconditionally, which stamped every Morocco
+  // Expense/Money Sent modal entry with currency='LKR'. Rebuild the
+  // option list from LOCAL_CURRENCY here so the modal always reflects
+  // the location regardless of bootstrap timing.
+  const _emCurSel=document.getElementById('em_currency');
+  if(_emCurSel){
+    const _cur=LOCAL_CURRENCY||'LKR';
+    _emCurSel.innerHTML=`<option value="${_cur}" selected>${_cur}</option>`;
+    _emCurSel.value=entry?.currency||_cur;
+  }
   document.getElementById('em_fx').value=String(entry?.fxRate||preset?.fxRate||getBestFxRateForDate(entry?.date||today()));
   document.getElementById('em_vendor').value=entry?.vendor||'';
   document.getElementById('em_desc').value=entry?.description||preset?.description||'';
