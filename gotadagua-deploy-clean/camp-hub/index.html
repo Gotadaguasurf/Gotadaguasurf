@@ -3647,9 +3647,19 @@ function renderOverview(){
     tourMap[key].costLocal+=entryLocalDisplayAmount(x);
     tourMap[key].costEur+=entryEurAmount(x);
   });
+  // Only roll up Transport-area spend into the Tours-by-product card if the
+  // linked label is an actual tour (camp-tab menu item OR a tour that
+  // already has revenue/expenses in this period). Non-tour display labels
+  // like "Surf Lessons" stay tagged on the Transport line but don't create
+  // a phantom tour row with cost-only / zero revenue.
+  const knownTourNames=new Set([
+    ...currentTourItems(),
+    ...Object.keys(tourMap)
+  ]);
   expenses.filter(x=>x.businessArea==='Transport').forEach(x=>{
     const mappedTour=linkedTransportTour(x.linkedItem||'');
     if(!mappedTour) return;
+    if(!knownTourNames.has(mappedTour)) return;
     tourMap[mappedTour]=tourMap[mappedTour]||{name:mappedTour,qty:0,revenueLocal:0,revenueEur:0,costLocal:0,costEur:0};
     tourMap[mappedTour].costLocal+=entryLocalDisplayAmount(x);
     tourMap[mappedTour].costEur+=entryEurAmount(x);
@@ -4018,6 +4028,14 @@ function pickTqTab(tab){
   renderTransportChips();
 }
 
+// Labels the user can attach to a Transport preset that aren't camp-tab
+// tours but are still useful to see on the Overview ("↳ Surf Lessons"
+// on the Ahangama / Weligama tuk-tuk lines, for example). These are
+// display-only — linkedTransportTour returns them, the Transport
+// breakdown shows them as the connected tag, but the Tours-by-product
+// aggregator skips them (because they aren't real tour menu items).
+const TRANSPORT_NON_TOUR_LABELS=['Surf Lessons'];
+
 function renderTransportChips(){
   const wrap=document.getElementById('tqChipsWrap');
   if(!wrap) return;
@@ -4025,14 +4043,17 @@ function renderTransportChips(){
   const list=(transportPresets[tqActiveTab]||[]).slice().sort((a,b)=>a.sortOrder-b.sortOrder);
   // Pool of tours the user can attach a preset to. Pulls every Tours menu
   // item from the active location's camp-tab — so the dropdown stays in
-  // sync with whatever the user has in the menu editor.
+  // sync with whatever the user has in the menu editor. Special non-tour
+  // labels (Surf Lessons, etc.) appear at the top of the list above a
+  // separator so the user can still tag transport runs that don't belong
+  // to a specific tour.
   const tours=currentTourItems();
   let html='';
   if(editMode){
     html=list.map(p=>{
-      const tourOptions=['<option value="">(No tour — Transport only)</option>']
-        .concat(tours.map(t=>`<option value="${escapeAttr(t)}" ${p.linkedTour===t?'selected':''}>${escapeHtml(t)}</option>`))
-        .join('');
+      const specialOpts=TRANSPORT_NON_TOUR_LABELS.map(label=>`<option value="${escapeAttr(label)}" ${p.linkedTour===label?'selected':''}>${escapeHtml(label)}</option>`).join('');
+      const tourOpts=tours.map(t=>`<option value="${escapeAttr(t)}" ${p.linkedTour===t?'selected':''}>${escapeHtml(t)}</option>`).join('');
+      const tourOptions=`<option value="">(No link — Transport only)</option>${specialOpts}${tours.length?`<option disabled>──── Tours ────</option>${tourOpts}`:''}`;
       return `<div class="tq-chip-edit" data-id="${p.id}">
         <input type="text" value="${escapeAttr(p.name)}" oninput="updateTqPresetField('${p.id}','name',this.value)" placeholder="Name">
         <input type="number" min="0" step="100" value="${p.unitPrice}" oninput="updateTqPresetField('${p.id}','unitPrice',this.value)" placeholder="Unit price (LKR)">
