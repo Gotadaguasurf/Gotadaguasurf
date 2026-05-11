@@ -4375,6 +4375,7 @@ function normalizeTransportPresetsPayload(raw){
 // so the two camps never see each other's chips.
 const TRANSPORT_ENABLED_LOCATIONS=new Set(['sri-lanka','morocco']);
 
+const TRANSPORT_TOP_UP_VERSION_KEY='camphub_transport_topup_v1'+__HUB_LOC_SUFFIX;
 async function loadTransportPresets(){
   if(!TRANSPORT_ENABLED_LOCATIONS.has(__HUB_LOCATION_SLUG)){
     transportPresets={airport:[],tuktuk:[]};
@@ -4392,11 +4393,13 @@ async function loadTransportPresets(){
       if(hasSeed && !transportPresets.airport.length && !transportPresets.tuktuk.length){
         transportPresets=normalizeTransportPresetsPayload(seed);
         await saveTransportPresets({skipRender:true});
-      } else {
-        // Top-up migration: add any seed preset that's missing from the
-        // stored payload (matched by name, case-insensitive). Lets us
-        // ship a new chip in code (e.g. "Surf") and have it appear in
-        // every existing Morocco install without the user re-seeding.
+      } else if(localStorage.getItem(TRANSPORT_TOP_UP_VERSION_KEY)!=='done'){
+        // One-shot top-up: add any seed preset the stored payload is
+        // missing (matched by name, case-insensitive). Lets us ship a
+        // new chip in code (e.g. "Surf", "CMB → Surfcamp") and have it
+        // appear once for existing installs. Version-flagged so a
+        // future user-delete of a seed entry isn't undone on every
+        // refresh — top-up only runs the first time.
         let added=false;
         ['airport','tuktuk'].forEach(tab=>{
           const present=new Set((transportPresets[tab]||[]).map(p=>String(p?.name||'').trim().toLowerCase()));
@@ -4412,6 +4415,7 @@ async function loadTransportPresets(){
           transportPresets=normalizeTransportPresetsPayload(transportPresets);
           await saveTransportPresets({skipRender:true});
         }
+        try{ localStorage.setItem(TRANSPORT_TOP_UP_VERSION_KEY,'done'); }catch(_e){}
       }
     } else {
       // No row yet
