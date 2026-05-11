@@ -2284,6 +2284,63 @@ async function syncLedgerEntriesToSupabase(entries,context='ledger sync'){
   }
 }
 
+// ── Supabase-first write helpers ─────────────────────────────────────
+// The legacy syncLedgerEntriesToSupabase above is the "local-first"
+// pattern: caller pushes to S.ledger, then fires syncLedger... which
+// SWALLOWS errors (toast only). If Supabase rejects the write the
+// entry stays as a local-only ghost and disappears on the next
+// rehydrate. That's the bug source for "I added something and it's
+// gone on the other PC."
+//
+// commitLedgerEntry / commitLedgerEntries flip the order: try Supabase
+// FIRST, only mutate S.ledger after a successful upsert. On failure
+// the function re-throws so the caller can show an error without
+// leaving local state inconsistent. Use these for every USER-DRIVEN
+// add (transport, expense modal, quick expense, manual salary/rent).
+// Auto-applied / heal paths can keep the legacy local-first sync
+// because they re-run idempotently every load.
+async function commitLedgerEntry(payload,context='entry'){
+  if(!payload) throw new Error('commitLedgerEntry: empty payload');
+  setSavePill('saving','Saving…');
+  HUB_SUPPRESS_LEDGER_RT=true;
+  try{
+    await pushLedgerEntriesToSupabase([payload]);
+    // Only AFTER Supabase confirms, commit to local state and notify
+    // the realtime channel — the order is what makes the two PCs
+    // converge on the same set of entries.
+    S.ledger.push(payload);
+    save();
+    notifyLedgerChanged();
+    setSavePill('saved','Saved ✓');
+    return true;
+  }catch(error){
+    setSavePill('failed','⚠ Save failed — click to retry');
+    handleLedgerSupabaseError(context,error);
+    throw error; // re-throw so the caller skips its render/toast success path
+  }finally{
+    setTimeout(()=>{ HUB_SUPPRESS_LEDGER_RT=false; },600);
+  }
+}
+async function commitLedgerEntries(entries,context='batch'){
+  if(!Array.isArray(entries)||!entries.length) return false;
+  setSavePill('saving','Saving…');
+  HUB_SUPPRESS_LEDGER_RT=true;
+  try{
+    await pushLedgerEntriesToSupabase(entries);
+    S.ledger.push(...entries);
+    save();
+    notifyLedgerChanged();
+    setSavePill('saved','Saved ✓');
+    return true;
+  }catch(error){
+    setSavePill('failed','⚠ Save failed — click to retry');
+    handleLedgerSupabaseError(context,error);
+    throw error;
+  }finally{
+    setTimeout(()=>{ HUB_SUPPRESS_LEDGER_RT=false; },600);
+  }
+}
+
 // Continuous auto-migration for Morocco entries stamped with the LKR fx
 // rate (~330–380). Runs on every page load now — was versioned, but new
 // entries can still slip through (cached FX_DAILY_KEY poisoning, edge
@@ -4978,11 +5035,14 @@ async function submitTransportEntry(){
     sourceKind:'transport_quick',
     amount:Number((total/fx).toFixed(2))
   });
-  S.ledger.push(payload);
-  save();
+  // Supabase-first: only show the entry locally after Supabase
+  // confirms the write. If it fails we don't touch S.ledger so there's
+  // no ghost row to confuse the user. Error already toasted by helper.
   try{
-    await syncLedgerEntriesToSupabase([payload],'transport quick save failed');
-  }catch(e){ /* handleLedgerSupabaseError already toasts */ }
+    await commitLedgerEntry(payload,'transport quick save');
+  }catch(_e){
+    return; // helper already toasted; abort the success path
+  }
   renderExpenses();renderOverview();renderWeeklyPL();
   toast(`Added: ${desc}`);
   cancelTqForm();
@@ -5867,9 +5927,11 @@ async function saveQuickExpense(){
   let payload=buildLedgerPayload('qe',type,'qe'+Date.now()+Math.random().toString(36).slice(2,5));
   if(!payload){toast('Date and amount required');return;}
   payload=await enrichLedgerEntryFx(payload);
-  S.ledger.push(payload);
-  save();
-  await syncLedgerEntriesToSupabase([payload],'quick ledger save failed');
+  try{
+    await commitLedgerEntry(payload,'quick ledger save');
+  }catch(_e){
+    return; // helper toasted the failure; keep the form open so user can retry
+  }
   resetQuickExpense();
   renderExpenses();renderOverview();renderWeeklyPL();
   toast('Entry added ✓');
@@ -6049,13 +6111,12 @@ async function runSalaryNow(id){
   });
   try{
     const normalized=await enrichLedgerEntryFx(entry);
-    S.ledger.push(normalized);
-    save();
-    await syncLedgerEntriesToSupabase([normalized],'manual salary sync failed');
+    // Supabase-first commit. If the write fails, no local ghost.
+    await commitLedgerEntry(normalized,'manual salary save');
     renderExpenses();renderOverview();renderWeeklyPL();
     toast(`Salary added for ${month} ✓`);
   }catch(error){
-    handleLedgerSupabaseError('manual salary FX failed',error);
+    // FX enrichment OR commitLedgerEntry already toasted; nothing more to do.
   }
 }
 function setSalaryMode(mode){
@@ -6233,13 +6294,11 @@ async function runRecurringNow(id){
   });
   try{
     const normalized=await enrichLedgerEntryFx(entry);
-    S.ledger.push(normalized);
-    save();
-    await syncLedgerEntriesToSupabase([normalized],'manual fixed cost sync failed');
+    await commitLedgerEntry(normalized,'manual fixed cost save');
     renderExpenses();renderOverview();renderWeeklyPL();
     toast(`Fixed cost added for ${month} ✓`);
   }catch(error){
-    handleLedgerSupabaseError('manual fixed cost FX failed',error);
+    // Already toasted by commitLedgerEntry or enrichLedgerEntryFx.
   }
 }
 async function addAllMonthlyNow(){
@@ -6282,13 +6341,13 @@ async function addAllMonthlyNow(){
   }
   try{
     const normalized=await Promise.all(entries.map(entry=>enrichLedgerEntryFx(entry)));
-    S.ledger.push(...normalized);
-    save();
-    await syncLedgerEntriesToSupabase(normalized,'monthly batch sync failed');
+    // Batch commit — if Supabase rejects any of them the whole batch
+    // is rolled back (no partial S.ledger inserts).
+    await commitLedgerEntries(normalized,'monthly batch save');
     renderExpenses();renderOverview();renderWeeklyPL();
     toast(`Added ${normalized.length} monthly entries for ${month} ✓`);
   }catch(error){
-    handleLedgerSupabaseError('monthly batch FX failed',error);
+    // Already toasted by commitLedgerEntries or enrichLedgerEntryFx.
   }
 }
 async function applyRecurringEntries(){
@@ -6624,10 +6683,35 @@ async function saveExpense(){
   let payload=buildLedgerPayload('em',expModalType,editingLedgerId||('e'+Date.now()+Math.random().toString(36).slice(2,6)));
   if(!payload){toast('Date and amount required');return;}
   payload=await enrichLedgerEntryFx(payload);
-  if(editingLedgerId) S.ledger=S.ledger.map(x=>x.id===editingLedgerId?payload:x);
-  else S.ledger.push(payload);
-  save();
-  await syncLedgerEntriesToSupabase([payload],'ledger modal save failed');
+  // Supabase-first: write to Supabase BEFORE mutating S.ledger. For
+  // edits, capture the old entry first so we can restore it if the
+  // upsert fails (since "edit" replaces in-place we'd otherwise lose
+  // the previous state on failure).
+  if(editingLedgerId){
+    // Direct upsert — same id, so Supabase replaces. On success,
+    // mutate local; on failure, leave local untouched.
+    setSavePill('saving','Saving…');
+    HUB_SUPPRESS_LEDGER_RT=true;
+    try{
+      await pushLedgerEntriesToSupabase([payload]);
+      S.ledger=S.ledger.map(x=>x.id===editingLedgerId?payload:x);
+      save();
+      notifyLedgerChanged();
+      setSavePill('saved','Saved ✓');
+    }catch(error){
+      setSavePill('failed','⚠ Save failed — click to retry');
+      handleLedgerSupabaseError('ledger modal edit',error);
+      setTimeout(()=>{ HUB_SUPPRESS_LEDGER_RT=false; },600);
+      return;
+    }
+    setTimeout(()=>{ HUB_SUPPRESS_LEDGER_RT=false; },600);
+  } else {
+    try{
+      await commitLedgerEntry(payload,'ledger modal save');
+    }catch(_e){
+      return; // keep modal open so user can retry / fix
+    }
+  }
   editingLedgerId=null;closeOv('expOv');renderExpenses();renderOverview();renderWeeklyPL();toast('Saved ✓');
 }
 
