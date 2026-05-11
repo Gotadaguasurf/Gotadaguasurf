@@ -5144,39 +5144,24 @@ async function delLedger(id){
   const date = entry.date || '';
   if(!confirm(`Delete ${typeLbl} of ${amount}${note} on ${date}?\n\nThis is permanent and removes it from every other device in real-time.\n(All deletes are recorded in the audit log.)`)) return;
   HUB_SUPPRESS_LEDGER_RT=true; // set BEFORE any state_store writes so own echoes are reliably suppressed
-  // Optimistic: remove locally immediately for snappy UI
+  // Optimistic: remove locally immediately for snappy UI.
+  // Granular delete: one click = one row gone. For campclose entries, we
+  // mark the ID in deletedCampcloseIds so reconcile never re-adds *this
+  // one* — the other rows of the same closed week stay because the week
+  // is still in the camp tab history. To delete the entire week (and all
+  // its revenue rows at once), the user removes the week from Camp Tab →
+  // History, which triggers removeClosedWeekIncome via postMessage.
   const backup=S.ledger.find(x=>x.id===id);
-  // For campclose entries, sweep all siblings from the same closed week so the
-  // user doesn't have to delete each tour/drink row one by one. The cascade
-  // postMessage already removes the camp-tab week, so the siblings are about
-  // to become orphans anyway.
-  let siblingIds=[];
+  S.ledger=S.ledger.filter(x=>x.id!==id);
   if(String(id).startsWith('campclose_')){
-    const weekRef=extractWeekRefFromCampcloseId(id);
-    if(weekRef){
-      const prefix='campclose_'+weekRef+'_';
-      siblingIds=S.ledger.filter(x=>String(x.id||'').startsWith(prefix)&&x.id!==id).map(x=>x.id);
-    }
-  }
-  const allIds=[id,...siblingIds];
-  S.ledger=S.ledger.filter(x=>!allIds.includes(x.id));
-  // Mark campclose entries as intentionally deleted so reconcile never re-adds them,
-  // and cascade-delete the corresponding week from camp tab history.
-  if(String(id).startsWith('campclose_')){
-    allIds.forEach(markCampcloseDeleted);
-    const weekRef=extractWeekRefFromCampcloseId(id);
-    if(weekRef) notifyCampTabRemoveHistoryWeek(weekRef);
+    markCampcloseDeleted(id);
   }
   save();
   renderExpenses();renderOverview();renderWeeklyPL();
-  toast(siblingIds.length?`Deleted ${allIds.length} entries.`:'Deleted.');
+  toast('Deleted.');
   try{
-    for(const x of allIds){
-      try{ await deleteLedgerEntryFromSupabase(x); }
-      catch(err){ console.warn('[Hub] sibling ledger delete failed',x,err); }
-    }
+    await deleteLedgerEntryFromSupabase(id);
   }catch(error){
-    // Rollback on failure so state stays consistent
     if(backup) S.ledger=[...S.ledger,backup];
     save();
     renderExpenses();renderOverview();renderWeeklyPL();
