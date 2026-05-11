@@ -2968,22 +2968,52 @@ async function removeOrphanedClosedWeekEntries(history){
   // Build lookup sets from current authoritative history
   const knownWeekIds=new Set(history.map(wk=>String(wk.id||'')).filter(Boolean));
   const knownWeekStarts=new Set(history.map(wk=>String(wk.start||'')).filter(Boolean));
+  // Build the set of description labels that match the current history.
+  // Camp tab uses "X to Y", hub uses "X → Y". A row is "owned" by history
+  // if its description contains one of these for any known week.
+  const knownDescLabels=new Set();
+  history.forEach(wk=>{
+    const s=String(wk?.start||'');
+    if(!s) return;
+    try{ knownDescLabels.add(weekLabel(s)); }catch(_){}
+    try{ knownDescLabels.add(`${fmtd(s)} to ${fmtd(addDays(s,6))}`); }catch(_){}
+  });
   const UUID_RE=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   const DATE_RE=/^\d{4}-\d{2}-\d{2}$/;
   const orphaned=S.ledger.filter(entry=>{
     const id=String(entry?.id||'');
-    if(!id.startsWith('campclose_')) return false;
-    // ID format: campclose_{weekId or weekStart}_{Category}_{linkedItem}
-    // Week IDs are UUIDs (hyphens only) or date strings — never contain underscores.
-    // We only mark as orphan if we can positively identify the weekRef format
-    // (UUID or date). Old 'w{timestamp}' IDs are skipped to avoid false deletions.
-    const withoutPrefix=id.slice('campclose_'.length);
-    const firstUnderscore=withoutPrefix.indexOf('_');
-    if(firstUnderscore<0) return false;
-    const weekRef=withoutPrefix.slice(0,firstUnderscore);
-    // Only check entries whose weekRef is a UUID or a date — skip ambiguous old formats
-    if(!UUID_RE.test(weekRef)&&!DATE_RE.test(weekRef)) return false;
-    return !knownWeekIds.has(weekRef)&&!knownWeekStarts.has(weekRef);
+    const sourceKind=String(entry?.sourceKind||'').toLowerCase();
+    const vendor=String(entry?.vendor||'').trim().toLowerCase();
+    const desc=String(entry?.description||'');
+    // Only consider camp-tab-originated rows. Anything else is left alone.
+    const isCampTabRow=id.startsWith('campclose_')
+      || sourceKind==='camp_tab'
+      || vendor==='camp tab'
+      || desc.includes('Closed week revenue from Camp Tab');
+    if(!isCampTabRow) return false;
+    // Path A: legacy id `campclose_<weekRef>_…`. Trust the id if weekRef
+    // is a UUID or date — judge by whether that weekRef is in history.
+    if(id.startsWith('campclose_')){
+      const withoutPrefix=id.slice('campclose_'.length);
+      const firstUnderscore=withoutPrefix.indexOf('_');
+      if(firstUnderscore>0){
+        const weekRef=withoutPrefix.slice(0,firstUnderscore);
+        if(UUID_RE.test(weekRef)||DATE_RE.test(weekRef)){
+          return !knownWeekIds.has(weekRef)&&!knownWeekStarts.has(weekRef);
+        }
+      }
+    }
+    // Path B: normalized UUID id (or no campclose_ prefix). Use the
+    // description's "X → Y" / "X to Y" label to identify the week.
+    // If the label doesn't match any current history week, it's an orphan.
+    // Refuse to judge rows without that label — better to leave them
+    // alone than risk wiping an unrelated row.
+    const labelMatch=[...knownDescLabels].some(label=>label && desc.includes(label));
+    if(labelMatch) return false;
+    // The description references a Camp Tab close but no current history
+    // week's label is in it → that week was deleted.
+    if(desc.includes('Closed week revenue from Camp Tab')) return true;
+    return false;
   });
   // Diagnostic: surface what was scanned so we can debug stuck orphans.
   window.__hubLastOrphanScan={
@@ -3070,7 +3100,21 @@ async function upsertClosedWeekIncome(entry){
 async function removeClosedWeekIncome(payload={}){
   const weekId=String(payload?.weekId||'').trim();
   const weekStart=String(payload?.weekStart||'').trim();
-  const explicitIds=Array.isArray(payload?.campcloseIds)?new Set(payload.campcloseIds):null;
+  const weekEnd=weekStart?addDays(weekStart,6):'';
+  const rawExplicit=Array.isArray(payload?.campcloseIds)?payload.campcloseIds:[];
+  // CRITICAL: the iframe sends seed strings like
+  // 'campclose_<weekRef>_<Category>_<linkedItem>' but the rows in S.ledger
+  // and Supabase are stored under the NORMALIZED form — stableUuidFromSeed
+  // of that seed, because the ledger_entries.id column is a UUID. So we
+  // expand the explicit-ID set to include both forms, otherwise the match
+  // never fires and the cascade silently leaves every row behind.
+  const explicitIds=new Set();
+  for(const seed of rawExplicit){
+    if(!seed) continue;
+    const s=String(seed);
+    explicitIds.add(s);
+    try{ explicitIds.add(stableUuidFromSeed(s)); }catch(_e){}
+  }
   const prefix=weekId?`campclose_${weekId}_`:'';
   const startPrefix=weekStart?`campclose_${weekStart}_`:'';
   // weekLabel uses "→" but camp-tab-inner's weekSpan uses "to" — check both
@@ -3081,23 +3125,39 @@ async function removeClosedWeekIncome(payload={}){
     const desc=String(row?.description||'');
     const vendor=String(row?.vendor||'').trim().toLowerCase();
     const sourceKind=String(row?.sourceKind||'').trim().toLowerCase();
+    const isCampTabSource=sourceKind==='camp_tab'||vendor==='camp tab';
     const descLooksLikeCampTab=desc.includes('Camp Tab revenue') || desc.includes('Closed week revenue from Camp Tab');
     const sameWeekLabel=weekText ? (desc.includes(weekText)||desc.includes(weekTextAlt)) : false;
-    // Explicit IDs from camp-tab-inner (most reliable — no format guessing needed)
-    if(explicitIds&&explicitIds.has(rowId)) return true;
-    return (prefix && rowId.startsWith(prefix))
-      || (startPrefix && rowId.startsWith(startPrefix))
-      || (sameWeekLabel && descLooksLikeCampTab);
+    // Explicit IDs (both seed AND normalized UUID form) — most reliable.
+    if(explicitIds.size && explicitIds.has(rowId)) return true;
+    // Seed-prefix match (legacy ids that didn't get normalized).
+    if((prefix && rowId.startsWith(prefix))||(startPrefix && rowId.startsWith(startPrefix))) return true;
+    // Description + week-label match (works for normalized UUIDs).
+    if(sameWeekLabel && descLooksLikeCampTab) return true;
+    // Last resort: sourceKind says camp_tab AND the entry's date falls in
+    // the deleted week's range. Catches any campclose row that survived
+    // earlier id-format migrations.
+    if(isCampTabSource && weekStart && weekEnd){
+      const eDate=String(row?.date||'').slice(0,10);
+      if(eDate>=weekStart && eDate<=weekEnd) return true;
+      // Also accept a closedAt within the range (some entries are dated
+      // on the close day, not on a day inside the stay window).
+      if(row?.closedAt){
+        const cDate=String(row.closedAt).slice(0,10);
+        if(cDate>=weekStart && cDate<=weekEnd) return true;
+      }
+    }
+    return false;
   });
   // Diagnostic: surface what was attempted so the user can inspect via
   // window.__hubLastRemoveClosedWeek if rows aren't being cleaned up.
   window.__hubLastRemoveClosedWeek={
     payload,
-    weekId,weekStart,
-    explicitIdsList:explicitIds?[...explicitIds]:null,
+    weekId,weekStart,weekEnd,
+    explicitIdsList:[...explicitIds],
     matchedCount:rows.length,
     matchedIds:rows.map(r=>r.id),
-    sampleLedgerCampcloseIds:S.ledger.filter(r=>String(r.id||'').startsWith('campclose_')).slice(0,10).map(r=>r.id),
+    sampleLedgerCampTab:S.ledger.filter(r=>String(r?.sourceKind||'').toLowerCase()==='camp_tab').slice(0,10).map(r=>({id:r.id,desc:r.description,date:r.date})),
     at:new Date().toISOString()
   };
   if(!rows.length){
@@ -3105,8 +3165,11 @@ async function removeClosedWeekIncome(payload={}){
     return false;
   }
   S.ledger=S.ledger.filter(row=>!rows.some(rem=>rem.id===row.id));
-  // Mark as permanently deleted so reconcile never re-adds them
-  rows.forEach(row=>{ if(String(row.id||'').startsWith('campclose_')) markCampcloseDeleted(row.id); });
+  // Mark BOTH forms (the actual stored id AND every seed the iframe sent)
+  // as permanently deleted, so reconcile / hydrate ghost filter recognise
+  // this row regardless of which id form they encounter.
+  rows.forEach(row=>{ if(row?.id) markCampcloseDeleted(String(row.id)); });
+  rawExplicit.forEach(seed=>{ if(seed) markCampcloseDeleted(String(seed)); });
   save();
   renderExpenses();renderOverview();renderWeeklyPL();
   HUB_SUPPRESS_LEDGER_RT=true;
