@@ -4066,9 +4066,8 @@ function renderTransportChips(){
     html+=`<button class="tq-chip-add" onclick="addTqPreset()">+ Add preset</button>`;
   } else {
     html=list.map(p=>`<button class="tq-chip" onclick="pickTqPreset('${p.id}')">
-      <div class="tq-chip-name">${escapeHtml(p.name)}</div>
+      <div class="tq-chip-name">${escapeHtml(p.name)}${p.linkedTour?` <span style="font-size:11px;color:var(--ocean);font-weight:600">· ${escapeHtml(p.linkedTour)}</span>`:''}</div>
       <div class="tq-chip-price">LKR ${Number(p.unitPrice||0).toLocaleString('en-GB')}</div>
-      ${p.linkedTour?`<div style="font-size:10px;color:var(--ocean);font-weight:600;margin-top:2px">↳ ${escapeHtml(p.linkedTour)}</div>`:''}
     </button>`).join('');
     html+=`<button class="tq-chip tq-chip-custom" onclick="pickTqCustom()">+ Custom</button>`;
     if(!list.length){
@@ -4119,11 +4118,11 @@ function pickTqPreset(id){
   const item=list.find(p=>p.id===id);
   if(!item) return;
   tqSelectedPresetId=id;
-  // Show the preset name + (if any) the tour it attributes cost to. The
-  // ↳ Tour annotation makes it visible at submit time that this expense
-  // will count against the tour's margin in the Overview Tours area.
+  // Show the preset name with its connected label inline (matching the
+  // chip style). e.g. "Ahangama · Surf Lessons" — makes it obvious at
+  // submit time what this transport is for.
   const nameEl=document.getElementById('tqFormName');
-  nameEl.innerHTML=escapeHtml(item.name||'Preset')+(item.linkedTour?`<div style="font-size:11px;color:var(--ocean);font-weight:600;margin-top:2px">↳ Counts toward Tour: ${escapeHtml(item.linkedTour)}</div>`:'');
+  nameEl.innerHTML=escapeHtml(item.name||'Preset')+(item.linkedTour?` <span style="font-size:13px;color:var(--ocean);font-weight:600">· ${escapeHtml(item.linkedTour)}</span>`:'');
   document.getElementById('tqUnitPrice').value=item.unitPrice;
   document.getElementById('tqDate').value=today();
   document.getElementById('tqAmount').value=1;
