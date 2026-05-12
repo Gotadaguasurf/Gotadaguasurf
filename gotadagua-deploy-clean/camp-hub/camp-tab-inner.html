@@ -61,8 +61,14 @@ header{display:none}
 .c-guest.active .c-guest-del{color:#9fc5df}
 .c-guest.active .c-guest-del:hover{background:rgba(255,255,255,.18);color:#fff}
 /* Center */
-.c-center{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.c-center{flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0}
 .c-center-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:var(--muted);padding:32px}
+/* Sticky week banner at the top of the center column. Visible whenever
+   there's an active week so the user always knows which week they're
+   charging into, even with no guest selected. */
+.c-week-banner{flex-shrink:0;padding:10px 18px;background:linear-gradient(90deg,var(--navy) 0%,#36506a 100%);color:#fff;display:flex;justify-content:space-between;align-items:center;gap:14px;border-bottom:1px solid var(--border)}
+.c-week-banner-label{font-size:10px;text-transform:uppercase;letter-spacing:.14em;color:#9fc5df;font-weight:700}
+.c-week-banner-range{font-family:'DM Serif Display',serif;font-size:20px;letter-spacing:.01em;line-height:1}
 .c-cats{display:flex;gap:6px;padding:10px 14px;flex-shrink:0;background:#fff;border-bottom:1px solid var(--border);overflow-x:auto}
 .c-cat{padding:6px 14px;border-radius:18px;border:1.5px solid var(--border);background:#fff;color:var(--muted);font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:'Outfit',sans-serif;transition:all .18s}
 .c-cat:hover{border-color:var(--ocean);color:var(--ocean)}
@@ -287,22 +293,22 @@ header{display:none}
   </div>
 
   <div class="c-center">
+    <!-- Top-of-center week banner. Always visible whenever an active
+         week exists — user no longer has to remember which week they're
+         charging into. Hidden only when there's no active week (the
+         empty / new-week prompt takes over). -->
+    <div class="c-week-banner" id="weekBanner" style="display:none">
+      <div class="c-week-banner-label">Active week</div>
+      <div class="c-week-banner-range" id="weekBannerRange">—</div>
+    </div>
     <div class="c-center-empty" id="chargeEmpty">
       <div style="font-family:'DM Serif Display',serif;font-size:18px">Select a guest</div>
       <div style="font-size:12px;max-width:180px;line-height:1.6">Pick someone from the left to start adding items to their tab.</div>
     </div>
-    <div id="chargeActive" style="display:none;flex-direction:column;height:100%;overflow:hidden">
-      <div style="padding:12px 14px 10px;border-bottom:1px solid var(--border);background:#fff;flex-shrink:0">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
-          <div style="min-width:0;flex:1">
-            <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy);line-height:1.1" id="chargeGuestName"></div>
-            <div style="font-size:11px;color:var(--muted);margin-top:4px" id="chargeGuestMeta"></div>
-          </div>
-          <div style="text-align:right;flex-shrink:0">
-            <div style="font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700">Week</div>
-            <div style="font-family:'DM Mono',monospace;font-size:13px;color:var(--ocean);font-weight:700;margin-top:2px" id="chargeWeekLabel"></div>
-          </div>
-        </div>
+    <div id="chargeActive" style="display:none;flex-direction:column;flex:1;min-height:0;overflow:hidden">
+      <div style="padding:10px 14px;border-bottom:1px solid var(--border);background:#fff;flex-shrink:0">
+        <div style="font-family:'DM Serif Display',serif;font-size:17px;color:var(--navy);line-height:1.15" id="chargeGuestName"></div>
+        <div style="font-size:11px;color:var(--muted);margin-top:3px" id="chargeGuestMeta"></div>
       </div>
       <div class="c-cats" id="catTabs"></div>
       <div class="c-items" id="itemGrid"></div>
@@ -1701,26 +1707,28 @@ function renderCharge(){
   renderTabPanel();
   const wk=currentWeek();
   const weekLabel=wk?weekSpan(wk.start):'No active week';
+  // Top-of-center week banner — single source of truth for "which week
+  // are we charging into?". Visible whenever an active week exists,
+  // regardless of whether a guest has been picked yet, so the user
+  // never has to wonder.
+  const banner=document.getElementById('weekBanner');
+  const bannerRange=document.getElementById('weekBannerRange');
+  if(banner && bannerRange){
+    if(wk){
+      banner.style.display='flex';
+      bannerRange.textContent=weekSpan(wk.start);
+    } else {
+      banner.style.display='none';
+    }
+  }
   const activeMeta=document.getElementById('chargeGuestMeta');
-  const empty=document.getElementById('chargeEmpty');
   if(activeMeta && AG){
     const g=findConsumer(AG,currentRoster);
     if(g){
-      activeMeta.textContent=weekLabel+' — '+(currentRoster==='staff'?'Staff tab':'Guest tab')+' — '+(g.paid?'Paid / '+euro(gtot(g)):g.items.length+' items / '+euro(gtot(g)));
+      // The guest sub-line no longer repeats the week — it's already
+      // in the banner above. Stays focused on tab status.
+      activeMeta.textContent=(currentRoster==='staff'?'Staff tab':'Guest tab')+' — '+(g.paid?'Paid / '+euro(gtot(g)):g.items.length+' item'+(g.items.length===1?'':'s')+' / '+euro(gtot(g)));
     }
-  }
-  if(empty){
-    const metaId='chargeWeekMeta';
-    let meta=document.getElementById(metaId);
-    if(!meta){
-      meta=document.createElement('div');
-      meta.id=metaId;
-      meta.style.fontSize='11px';
-      meta.style.color='var(--muted)';
-      meta.style.marginTop='6px';
-      empty.appendChild(meta);
-    }
-    meta.textContent=weekLabel;
   }
 }
 
@@ -1817,12 +1825,10 @@ function renderTabPanel(){
   }
   empty.style.display='none';active.style.display='flex';
   document.getElementById('chargeGuestName').textContent=g.name;
-  // The week now has its own prominent display (top-right of the header)
-  // so the meta sub-line no longer needs to repeat it — focus on the
-  // tab status (Guest/Staff · paid/N items / total).
+  // Week is shown by the always-visible #weekBanner above this header
+  // (see renderCharge), so the meta sub-line stays focused on the tab
+  // status. Avoids duplicating the date in two places.
   document.getElementById('chargeGuestMeta').textContent=(currentRoster==='staff'?'Staff tab':'Guest tab')+' — '+(g.paid?'Paid / '+euro(gtot(g)):g.items.length+' item'+(g.items.length===1?'':'s')+' / '+euro(gtot(g)));
-  const weekLabelEl=document.getElementById('chargeWeekLabel');
-  if(weekLabelEl) weekLabelEl.textContent=weekSpan(wk.start);
   document.getElementById('tabMeta').textContent=weekLabel+' — '+(g.paid?'Paid':g.items.length+' items');
   document.getElementById('payBtn').textContent=g.paid?'Paid':'Pay';
 
