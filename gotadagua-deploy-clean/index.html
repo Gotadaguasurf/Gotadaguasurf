@@ -2366,12 +2366,21 @@
       document.getElementById('userName').textContent = __currentProfile.full_name || email.split('@')[0] || 'User';
       // Owner-only UI: the Import CSV button can mass-create or overwrite
       // ledger / camp-tab data across every location, so we restrict it
-      // to platform_role === 'owner'. Staff with admin / finance / viewer
-      // roles never see the button. Defense-in-depth: openGlobalCsvImport
-      // also re-checks the role before opening the modal — so a non-owner
-      // who calls the function from the console gets bounced.
+      // to the platform owner. Robust gate — passes if EITHER condition
+      // holds:
+      //   • platform_role === 'owner' (the canonical DB role), OR
+      //   • email matches the hardcoded owner address (Miguel)
+      // The email fallback is here because earlier sessions may have a
+      // platform_profile row where platform_role wasn't migrated to the
+      // current label set, and we don't want the button to silently
+      // disappear for the actual owner.
+      const OWNER_EMAILS=new Set(['miguel@gotadaguasurf.com']);
+      const _isOwner=(__currentProfile?.role==='owner')||OWNER_EMAILS.has(String(__currentProfile?.email||'').toLowerCase());
       const _csvBtn=document.getElementById('csvImportBtn');
-      if(_csvBtn) _csvBtn.style.display=(__currentProfile?.role==='owner')?'':'none';
+      if(_csvBtn) _csvBtn.style.display=_isOwner?'':'none';
+      // Surface globally so openGlobalCsvImport (and any other future
+      // owner-gated handler) can re-check without duplicating the rule.
+      window.__isPlatformOwner=_isOwner;
       showLoggedInUI();
       setAuthMessage();
       setLoginState('login');
@@ -2480,7 +2489,7 @@
       // / a stale tab where the button was previously shown. Server-side
       // RLS still enforces who can write to ledger_entries, but this
       // stops accidental destructive imports at the door.
-      if(__currentProfile?.role!=='owner'){
+      if(!window.__isPlatformOwner){
         alert('Only the platform owner can import CSV data.');
         return;
       }
