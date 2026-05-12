@@ -2376,27 +2376,54 @@ function buildStatementEmailPayload(partner, periodLabel, bookings){
     ? `Amount due to Gota Dagua: ${eur(dueTotal)}`
     : `Amount that Gota Dagua owes the partner: ${eur(dueTotal)}`;
 
+  // Optional per-booking external reference (e.g., KILROY's own SE/NO
+  // numbers that travel with each customer). Stored on the booking's
+  // raw_payload.external_ref so the user can set it via the console
+  // helper window.setBookingExternalRef(ref, externalRef) or via SQL.
+  // When set, gets appended to the email line as "  //<ref>".
+  const externalRefFor = (r) => {
+    const fromTop = r && (r.external_ref || r.externalRef);
+    const fromRaw = r && r.raw_payload && (r.raw_payload.external_ref || r.raw_payload.externalRef);
+    return String(fromTop || fromRaw || '').trim();
+  };
   // Format helper used by both branches below.
   const formatBookingLine = (r)=>{
     const d = r.checkin ? new Date(r.checkin) : null;
     const ds = d && !isNaN(d) ? d.toLocaleDateString('en-GB') : '';
-    return `- ${ds} | ${r.guest||'Guest'} | ${r.ref||''} | ${r.location||''} | ${eur(r.gross||0)}`;
+    const ext = externalRefFor(r);
+    const tail = ext ? `  //${ext}` : '';
+    return `- ${ds} | ${r.guest||'Guest'} | ${r.ref||''} | ${r.location||''} | ${eur(r.gross||0)}${tail}`;
   };
-  // Country grouping is opt-in per partner via partnerBillsByCountry()
-  // — currently KILROY only, which invoices Sweden / Norway separately.
-  // Every other partner keeps the original flat booking list with no
-  // visual change to existing emails.
+  // Country grouping (KILROY only). Other partners keep the flat list.
+  // When grouping is on, we ALSO build per-country totals (booking count,
+  // gross, commission, due) inline so the email shows each country as a
+  // standalone section that the KILROY rep can paste into their invoice
+  // tooling. The trailing "Total bookings / Gross / Commission / Due"
+  // block at the very end of the body is suppressed for KILROY since
+  // those numbers are already broken down per country.
   let bookingLines;
+  let suppressGrandTotals = false;
   if(partnerBillsByCountry(partner)){
+    suppressGrandTotals = true;
     const countryGroups = groupBookingsByCountry(bookings);
     bookingLines = [];
-    countryGroups.forEach(([country, group])=>{
+    countryGroups.forEach(([country, group], i)=>{
       const g_gross = group.reduce((s,b)=>s+(+b.gross||0),0);
       const g_com = group.reduce((s,b)=>s+(+b.com_amt||0),0);
-      bookingLines.push(`── ${country} (${group.length} booking${group.length!==1?'s':''}) ──`);
+      const g_net = group.reduce((s,b)=>s+(+b.net||0),0);
+      const g_due = collects ? g_net : g_com;
+      // Spacer line between countries (skipped before the first one).
+      if(i>0) bookingLines.push('');
+      bookingLines.push(`${country}:`);
       group.slice().sort((a,b)=>(a.checkin||'').localeCompare(b.checkin||''))
         .forEach(r=>bookingLines.push(formatBookingLine(r)));
-      bookingLines.push(`${country} total: ${eur(g_gross)} gross / ${eur(g_com)} commission`,'');
+      bookingLines.push('');
+      bookingLines.push(`Total bookings: ${group.length}`);
+      bookingLines.push(`Gross total: ${eur(g_gross)}`);
+      bookingLines.push(`Commission total: ${eur(g_com)}`);
+      // Same currency direction logic as the grand "dueLineEn" below:
+      // when the partner collects from the guest, they owe us net.
+      bookingLines.push(`${collects?'Amount due to Gota Dagua':'Amount that Gota Dagua owes the partner'}: ${eur(g_due)}`);
     });
   } else {
     bookingLines = bookings.map(formatBookingLine);
@@ -2421,6 +2448,16 @@ function buildStatementEmailPayload(partner, periodLabel, bookings){
     };
   }
 
+  // For KILROY (country-grouped) the per-country totals already cover
+  // gross / commission / due, so we skip the grand-total block at the
+  // bottom — keeps the email clean and avoids the rep having to figure
+  // out which set of numbers to use.
+  const trailingTotals = suppressGrandTotals ? [] : [
+    `Total bookings: ${bookings.length}`,
+    `Gross total: ${eur(grossTotal)}`,
+    `Commission total: ${eur(commissionTotal)}`,
+    dueLineEn
+  ];
   return {
     subject: `Bookings for ${periodLabel} — confirmation`,
     body: [
@@ -2428,11 +2465,9 @@ function buildStatementEmailPayload(partner, periodLabel, bookings){
       `Please find below the booking overview for ${periodLabel}.`,'',
       'Please review the bookings below and confirm that everything is correct.','',
       'Booking overview:','',
-      ...bookingLines,'',
-      `Total bookings: ${bookings.length}`,
-      `Gross total: ${eur(grossTotal)}`,
-      `Commission total: ${eur(commissionTotal)}`,
-      dueLineEn,'',
+      ...bookingLines,
+      ...(trailingTotals.length ? ['', ...trailingTotals] : []),
+      '',
       'Best regards,',
       "Gota Dagua Surf Camp"
     ].join('\n')
@@ -3929,9 +3964,40 @@ function mapBookingRowToApp(row) {
     net: isRealized ? net_full : gross,
     status,
     isRealized,
-    country: row.country || ''
+    country: row.country || '',
+    // KILROY-style external reference (SE…/NO… etc.). Stored on
+    // raw_payload so we don't need a dedicated column. Read here so
+    // the in-memory booking object exposes it directly to the email
+    // builder; populated via window.setBookingExternalRef().
+    external_ref: (row.raw_payload && (row.raw_payload.external_ref || row.raw_payload.externalRef)) || ''
   };
 }
+
+// Console helper to populate the KILROY-style external reference on a
+// booking. Persists to Supabase via the normal sync path so the value
+// survives refresh and propagates across devices.
+//
+//   window.setBookingExternalRef('2026-1162', 'SE1552030');
+//
+// Returns true on success, false if the booking_ref isn't in local
+// state. Bulk-set example:
+//
+//   const map = {'2026-1162':'SE1552030', '2026-0214':'SE1534998'};
+//   Object.entries(map).forEach(([ref,ext])=>window.setBookingExternalRef(ref,ext));
+window.setBookingExternalRef = async function(bookingRef, externalRef){
+  const b = allBookings.find(x=>String(x.ref||'')===String(bookingRef||''));
+  if(!b){ console.warn('[Partners] no booking with ref', bookingRef); return false; }
+  b.external_ref = String(externalRef||'').trim();
+  saveState();
+  try{
+    await persistBookingsToSupabase();
+    console.log(`[Partners] external_ref "${b.external_ref}" set for ${bookingRef}`);
+    return true;
+  }catch(e){
+    console.warn('[Partners] external_ref save failed', e);
+    return false;
+  }
+};
 function buildPartnerRowsFromState() {
   const names = [...new Set([
     ...Object.keys(partnerRates || {}),
