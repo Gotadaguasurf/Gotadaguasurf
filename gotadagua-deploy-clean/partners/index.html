@@ -2414,7 +2414,10 @@ function buildStatementEmailPayload(partner, periodLabel, bookings){
       const g_due = collects ? g_net : g_com;
       // Spacer line between countries (skipped before the first one).
       if(i>0) bookingLines.push('');
-      bookingLines.push(`${country}:`);
+      // Gmail compose URL strips formatting from the body= param, so
+      // bold/HTML isn't an option here. UPPERCASE is the plain-text
+      // equivalent and reads as the section header at a glance.
+      bookingLines.push(`${country.toUpperCase()}:`);
       group.slice().sort((a,b)=>(a.checkin||'').localeCompare(b.checkin||''))
         .forEach(r=>bookingLines.push(formatBookingLine(r)));
       bookingLines.push('');
