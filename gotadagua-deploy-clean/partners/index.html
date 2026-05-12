@@ -1957,15 +1957,29 @@ const isSurfSchoolPartner = p => getPartnerType(p) === 'surfschool';
 // false = we collect from guest → we owe them Commission
 const partnerCollectsFromGuest = p => partnerCollects[p] !== false; // default true
 
-// Recalculate commission amounts for a booking based on current rates.
-// Bookings whose Bookinglayer status isn't realized (paid / confirmed / deposit_paid)
-// keep com_amt=0 so they don't pollute partner totals — they remain visible in the
-// list with their gross/pax/etc. and a "draft" badge. When the booking moves to a
-// realized status (next CSV import upserts the same booking_ref), commission counts
-// automatically.
+// Recalculate commission amounts for a booking based on its stamped rate.
+//
+// Historical-rate preservation: each booking carries its own com_pct
+// (stamped at CSV import time using the partner's rate then in effect).
+// Changing a partner's rate later must NOT retroactively rewrite past
+// bookings — that would falsify invoices already sent. So recalcBooking
+// TRUSTS b.com_pct if it's a finite number; only when it's missing
+// (e.g., a malformed booking row) do we fall back to the partner's
+// current rate via getRate().
+//
+// To update a partner's rate from now on, the user edits in Settings
+// → the change is saved to partnerRates → all NEW CSV imports get the
+// new rate stamped on their bookings. Old bookings stay at their
+// original com_pct.
+//
+// Bookings whose Bookinglayer status isn't realized (paid / confirmed /
+// deposit_paid) keep com_amt=0 so they don't pollute partner totals.
+// When the booking moves to a realized status (next CSV import upserts
+// the same booking_ref), commission counts automatically.
 function recalcBooking(b) {
   if(b.partner === DIRECT_LABEL) { b.com_pct=0; b.com_amt=0; b.net=b.gross; return b; }
-  const rate = getRate(b.partner);
+  const stamped = Number.isFinite(b.com_pct) ? b.com_pct : null;
+  const rate = stamped !== null ? stamped : getRate(b.partner);
   b.com_pct = rate;
   if(b.isRealized === false){
     b.com_amt = 0;
