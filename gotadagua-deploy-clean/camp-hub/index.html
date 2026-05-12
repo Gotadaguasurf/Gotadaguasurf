@@ -4192,7 +4192,36 @@ function renderOverview(){
       tourMap[t].costEur += shareEur;
     });
   });
-  const tourRows=Object.values(tourMap).sort((a,b)=>b.revenueLocal-a.revenueLocal);
+  // Consolidate sub-tour cards by activity. Tours whose names follow the
+  // pattern "<Activity> — <Variant>" (em-dash or " - ") are merged into a
+  // single card keyed by the activity name. So "Dunes — Quad Bike (with
+  // transport)", "Dunes — Camel Ride (with transport)", and the
+  // activity-only variants all roll up into one "Dunes" card showing the
+  // combined revenue, cost, and margin — same physical activity, the
+  // variant is just guest choice. Tours without a separator (Souk Tour,
+  // Paradise Valley, Ice Bath, etc.) keep their own name.
+  function tourDisplayGroup(name){
+    const s = String(name||'').trim();
+    if(!s) return name;
+    const sep = s.indexOf(' — ') !== -1 ? ' — ' : (s.indexOf(' - ') !== -1 ? ' - ' : null);
+    if(!sep) return s;
+    return s.slice(0, s.indexOf(sep)).trim() || s;
+  }
+  const groupedTourMap = {};
+  Object.values(tourMap).forEach(r => {
+    const groupKey = tourDisplayGroup(r.name);
+    if(!groupedTourMap[groupKey]){
+      groupedTourMap[groupKey] = {name:groupKey,qty:0,revenueLocal:0,revenueEur:0,costLocal:0,costEur:0,variants:[]};
+    }
+    const g = groupedTourMap[groupKey];
+    g.qty += r.qty;
+    g.revenueLocal += r.revenueLocal;
+    g.revenueEur += r.revenueEur;
+    g.costLocal += r.costLocal;
+    g.costEur += r.costEur;
+    if(r.name !== groupKey) g.variants.push(r.name);
+  });
+  const tourRows=Object.values(groupedTourMap).sort((a,b)=>b.revenueLocal-a.revenueLocal);
   const profitAreas=[
     {icon:'cup',name:'Bar',revenueLocal:areaRevenues.Bar.local,revenueEur:areaRevenues.Bar.eur,costLocal:areaCosts.Bar.local,costEur:areaCosts.Bar.eur},
     {icon:'shirt',name:'Merch',revenueLocal:areaRevenues.Merch.local,revenueEur:areaRevenues.Merch.eur,costLocal:areaCosts.Merch.local,costEur:areaCosts.Merch.eur},
@@ -4213,7 +4242,7 @@ function renderOverview(){
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:10px">
               <div>
                 <div style="font-weight:700;color:var(--navy)">${r.name}</div>
-                <div style="font-size:11px;color:var(--muted);margin-top:2px">${r.qty||0} paid guest${r.qty===1?'':'s'}</div>
+                <div style="font-size:11px;color:var(--muted);margin-top:2px">${r.qty||0} paid guest${r.qty===1?'':'s'}${(r.variants&&r.variants.length>1)?` · ${r.variants.length} variants`:''}</div>
               </div>
               <span class="badge ${profitLocal>=0?'badge-green':'badge-red'}">${profitLocal>=0?'+':''}${lkr(profitLocal)}</span>
             </div>
