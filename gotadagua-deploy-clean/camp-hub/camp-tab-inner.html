@@ -52,6 +52,14 @@ header{display:none}
 .c-guest-amt{font-family:'DM Mono',monospace;font-size:10px;color:var(--muted)}
 .c-guest.active .c-guest-name,.c-guest.active .c-guest-amt{color:#fff}
 .c-gpaid{width:6px;height:6px;border-radius:50%;background:var(--green);flex-shrink:0}
+/* Per-row delete button. Hidden until row hover so it doesn't visually
+   compete with the guest name while the user is just scanning the list,
+   but always one quick click away when needed (typed-the-wrong-name fix). */
+.c-guest-del{flex-shrink:0;background:transparent;border:none;color:var(--muted);font-size:16px;line-height:1;width:20px;height:20px;border-radius:5px;cursor:pointer;opacity:0;transition:opacity .12s,background .12s,color .12s;padding:0;font-family:'Outfit',sans-serif;font-weight:700}
+.c-guest:hover .c-guest-del{opacity:.55}
+.c-guest-del:hover{opacity:1!important;background:var(--red-bg);color:var(--red)}
+.c-guest.active .c-guest-del{color:#9fc5df}
+.c-guest.active .c-guest-del:hover{background:rgba(255,255,255,.18);color:#fff}
 /* Center */
 .c-center{flex:1;display:flex;flex-direction:column;overflow:hidden}
 .c-center-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:var(--muted);padding:32px}
@@ -284,9 +292,17 @@ header{display:none}
       <div style="font-size:12px;max-width:180px;line-height:1.6">Pick someone from the left to start adding items to their tab.</div>
     </div>
     <div id="chargeActive" style="display:none;flex-direction:column;height:100%;overflow:hidden">
-      <div style="padding:10px 14px 8px;border-bottom:1px solid var(--border);background:#fff;flex-shrink:0">
-        <div style="font-family:'DM Serif Display',serif;font-size:18px;color:var(--navy)" id="chargeGuestName"></div>
-        <div style="font-size:11px;color:var(--muted);margin-top:1px" id="chargeGuestMeta"></div>
+      <div style="padding:12px 14px 10px;border-bottom:1px solid var(--border);background:#fff;flex-shrink:0">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+          <div style="min-width:0;flex:1">
+            <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy);line-height:1.1" id="chargeGuestName"></div>
+            <div style="font-size:11px;color:var(--muted);margin-top:4px" id="chargeGuestMeta"></div>
+          </div>
+          <div style="text-align:right;flex-shrink:0">
+            <div style="font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700">Week</div>
+            <div style="font-family:'DM Mono',monospace;font-size:13px;color:var(--ocean);font-weight:700;margin-top:2px" id="chargeWeekLabel"></div>
+          </div>
+        </div>
       </div>
       <div class="c-cats" id="catTabs"></div>
       <div class="c-items" id="itemGrid"></div>
@@ -1735,11 +1751,12 @@ function renderGuestList(){
   const rows=rosterRows(wk,currentRoster).filter(g=>g.name.toLowerCase().includes(term));
   if(!rows.length){el.innerHTML=`<div style="padding:12px;text-align:center;font-size:12px;color:var(--muted)">${currentRoster==='staff'?'No staff match.':'No match.'}</div>`;return;}
   el.innerHTML=rows.map(g=>`<div class="c-guest ${AG===g.id?'active':''}" onclick="selGuest('${esc(g.id)}')">
-    <div style="min-width:0">
+    <div style="min-width:0;flex:1">
       <div class="c-guest-name">${g.name}</div>
       <div class="c-guest-amt">${gtot(g)>0?euro(gtot(g)):'no charges'}${currentRoster==='guests'&&isQueuedForNextWeek(g.name)?' / queued next week':''}</div>
     </div>
     ${g.paid?'<div class="c-gpaid"></div>':''}
+    <button class="c-guest-del" onclick="event.stopPropagation();delGuestRow('${esc(g.id)}')" title="Remove from this week">×</button>
   </div>`).join('');
   if(searchEl&&document.activeElement!==searchEl&&term){
     searchEl.focus({preventScroll:true});
@@ -1800,7 +1817,12 @@ function renderTabPanel(){
   }
   empty.style.display='none';active.style.display='flex';
   document.getElementById('chargeGuestName').textContent=g.name;
-  document.getElementById('chargeGuestMeta').textContent=weekSpan(wk.start)+' — '+(currentRoster==='staff'?'Staff tab':'Guest tab')+' — '+(g.paid?'Paid / '+euro(gtot(g)):g.items.length+' items / '+euro(gtot(g)));
+  // The week now has its own prominent display (top-right of the header)
+  // so the meta sub-line no longer needs to repeat it — focus on the
+  // tab status (Guest/Staff · paid/N items / total).
+  document.getElementById('chargeGuestMeta').textContent=(currentRoster==='staff'?'Staff tab':'Guest tab')+' — '+(g.paid?'Paid / '+euro(gtot(g)):g.items.length+' item'+(g.items.length===1?'':'s')+' / '+euro(gtot(g)));
+  const weekLabelEl=document.getElementById('chargeWeekLabel');
+  if(weekLabelEl) weekLabelEl.textContent=weekSpan(wk.start);
   document.getElementById('tabMeta').textContent=weekLabel+' — '+(g.paid?'Paid':g.items.length+' items');
   document.getElementById('payBtn').textContent=g.paid?'Paid':'Pay';
 
@@ -1823,6 +1845,41 @@ function renderTabPanel(){
 }
 
 function selGuest(id){AG=id;renderGuestList();renderItemGrid();renderTabPanel();}
+
+// Remove a guest from the active week's roster. Triggered by the × on
+// each row in the guest list — typically when the user typed the wrong
+// name and wants to start over. Confirms first if the guest already has
+// items charged (those items would be lost). The Supabase camp_guests
+// row is cleaned by the existing reconcile step on the next state
+// sync; we don't need to delete it inline.
+window.delGuestRow=function(id){
+  const wk=currentWeek();
+  if(!wk||!id) return;
+  const list=currentRoster==='staff'?(wk.staff||[]):(wk.guests||[]);
+  const g=list.find(x=>String(x.id)===String(id));
+  if(!g) return;
+  const totalCharged=gtot(g);
+  const itemCount=Array.isArray(g.items)?g.items.length:0;
+  // Strong confirm only when there's data at risk. A guest with no
+  // charges is almost certainly a typo → drop with a light confirm.
+  const warn = totalCharged>0 || itemCount>0
+    ? `Delete ${g.name} from this week?\n\n${itemCount} item${itemCount===1?'':'s'} (${euro(totalCharged)}) will be lost.\n\nThis can't be undone.`
+    : `Delete ${g.name} from this week?`;
+  if(!confirm(warn)) return;
+  if(currentRoster==='staff'){
+    wk.staff=(wk.staff||[]).filter(x=>String(x.id)!==String(id));
+  } else {
+    wk.guests=(wk.guests||[]).filter(x=>String(x.id)!==String(id));
+  }
+  // If the deleted guest was the active one, clear the selection so
+  // the right pane returns to the "Select a guest" empty state.
+  if(AG===id) AG=null;
+  save();
+  renderGuestList();
+  renderItemGrid();
+  renderTabPanel();
+  toast(`${g.name} removed from week`);
+};
 function setCat(c){AC=c;renderCatTabs();renderItemGrid();}
 
 function addItem(i,btn){
