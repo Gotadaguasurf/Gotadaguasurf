@@ -3406,7 +3406,17 @@ function processFile(file) {
         if(!checkin||!ref){ ignored++; return; }
 
         const csvRateRaw = getRowValue(r, ['Partner commission %','Partner commission','Commission %','Commission']).toString().replace('%','').trim();
-        const csvRate    = parseFloat(csvRateRaw||0) || 0;
+        // csvRate must distinguish three states:
+        //   • CSV explicitly says a number (including 0) → use that
+        //   • CSV column missing / blank / non-numeric → null (caller
+        //     falls back to partnerRates → SEED_RATES → 20%)
+        // Previous code collapsed all three to 0 via parseFloat('') || 0,
+        // which combined with the Number.isFinite-based 0%-preservation
+        // fix meant a missing-column CSV would silently zero out
+        // commissions for unknown partners. The null sentinel restores
+        // the original fallback intent.
+        const _csvParsed = parseFloat(csvRateRaw);
+        const csvRate = (csvRateRaw !== '' && Number.isFinite(_csvParsed)) ? _csvParsed : null;
         const rawPartner = getRowValue(r, ['Partner','Agent','Affiliate']);
         const partnerName = normalizePartnerName(rawPartner);
         const locCode    = getRowValue(r, ['Location','Location code']).split(',')[0].trim();
