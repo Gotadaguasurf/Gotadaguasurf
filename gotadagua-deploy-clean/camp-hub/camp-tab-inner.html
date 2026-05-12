@@ -63,12 +63,13 @@ header{display:none}
 /* Center */
 .c-center{flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0}
 .c-center-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:var(--muted);padding:32px}
-/* Sticky week banner at the top of the center column. Visible whenever
-   there's an active week so the user always knows which week they're
-   charging into, even with no guest selected. */
-.c-week-banner{flex-shrink:0;padding:10px 18px;background:linear-gradient(90deg,var(--navy) 0%,#36506a 100%);color:#fff;display:flex;justify-content:space-between;align-items:center;gap:14px;border-bottom:1px solid var(--border)}
-.c-week-banner-label{font-size:10px;text-transform:uppercase;letter-spacing:.14em;color:#9fc5df;font-weight:700}
-.c-week-banner-range{font-family:'DM Serif Display',serif;font-size:20px;letter-spacing:.01em;line-height:1}
+/* Full-width week banner. Lives ABOVE the 3-column layout so it
+   stretches edge-to-edge of the window — gives the active week the
+   same visual weight as the page header. Cream/sand tone instead of
+   navy so it reads as informational rather than as another nav bar. */
+.c-week-banner{flex-shrink:0;padding:10px 22px;background:#f5efe1;color:var(--navy);display:flex;justify-content:center;align-items:center;gap:14px;border-bottom:1px solid #e8dfc8}
+.c-week-banner-label{font-size:10px;text-transform:uppercase;letter-spacing:.14em;color:#8a7a52;font-weight:700}
+.c-week-banner-range{font-family:'DM Serif Display',serif;font-size:20px;letter-spacing:.01em;line-height:1;color:var(--navy)}
 .c-cats{display:flex;gap:6px;padding:10px 14px;flex-shrink:0;background:#fff;border-bottom:1px solid var(--border);overflow-x:auto}
 .c-cat{padding:6px 14px;border-radius:18px;border:1.5px solid var(--border);background:#fff;color:var(--muted);font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:'Outfit',sans-serif;transition:all .18s}
 .c-cat:hover{border-color:var(--ocean);color:var(--ocean)}
@@ -276,7 +277,16 @@ header{display:none}
 <div class="app">
 
 <!-- ═══════════════ CHARGE ═══════════════ -->
-<div class="subpage active" id="sub-charge">
+<div class="subpage active" id="sub-charge" style="flex-direction:column">
+  <!-- Full-width week banner. Sits above the 3-column layout so the
+       active week is always visible across the whole window. Hidden
+       when there's no active week (the new-week prompt takes over). -->
+  <div class="c-week-banner" id="weekBanner" style="display:none">
+    <div class="c-week-banner-label">Active week</div>
+    <div class="c-week-banner-range" id="weekBannerRange">—</div>
+  </div>
+  <!-- 3-column row inside the column-flexed subpage -->
+  <div style="flex:1;display:flex;min-height:0;overflow:hidden">
   <div class="c-sidebar">
     <div class="c-sb-head">
       <div class="c-sb-actions">
@@ -293,14 +303,6 @@ header{display:none}
   </div>
 
   <div class="c-center">
-    <!-- Top-of-center week banner. Always visible whenever an active
-         week exists — user no longer has to remember which week they're
-         charging into. Hidden only when there's no active week (the
-         empty / new-week prompt takes over). -->
-    <div class="c-week-banner" id="weekBanner" style="display:none">
-      <div class="c-week-banner-label">Active week</div>
-      <div class="c-week-banner-range" id="weekBannerRange">—</div>
-    </div>
     <div class="c-center-empty" id="chargeEmpty">
       <div style="font-family:'DM Serif Display',serif;font-size:18px">Select a guest</div>
       <div style="font-size:12px;max-width:180px;line-height:1.6">Pick someone from the left to start adding items to their tab.</div>
@@ -334,6 +336,7 @@ header{display:none}
       </div>
     </div>
   </div>
+  </div><!-- /3-column row wrapper -->
 </div>
 
 <!-- ═══════════════ THIS WEEK ═══════════════ -->
