@@ -1839,7 +1839,7 @@ const SEED_EMAILS = {"AASHA":"amit@aashalanka.com","Adekua":"tony@groupe-adekua.
 const SEED_CONTACTS = {};
 
 // Default commission rates per partner (the "correct" rates)
-const SEED_RATES = {"AASHA":20,"Adekua":18,"SURFWISE":18,"Dbpadventures":18,"AWAVE Travel":20,"Ocean Adventure":20,"Surfawhile":20,"The Surf Tribe":20,"FEEL FREE TRAVEL UK":15,"Sant Jordi Hostels Lisbon":20,"LISBOA CENTRAL HOSTEL":20,"WOT HOSTELS":20,"Surfwise Travel":20};
+const SEED_RATES = {"AASHA":20,"Adekua":18,"SURFWISE":18,"Dbpadventures":18,"AWAVE Travel":20,"Ocean Adventure":20,"Surfawhile":20,"The Surf Tribe":20,"FEEL FREE TRAVEL UK":15,"Sant Jordi Hostels Lisbon":20,"LISBOA CENTRAL HOSTEL":20,"WOT HOSTELS":20,"Surfwise Travel":20,"Enjoy Surf":0,"Surfer Girls Power":0,"Surf Stories Poland":0};
 
 // Who collects from guest: true = partner collects (they owe us Net), false = we collect (we owe them Commission)
 // Default: partner collects (most common model)
@@ -3410,9 +3410,18 @@ function processFile(file) {
           if(gross > 0 && b.gross !== gross){ b.gross = gross; changed = true; }
 
           if(hasPartnerInfo && (b.partner === DIRECT_LABEL || !b.partner || b.com_pct === 0)){
-            if(partnerRates[partnerName] === undefined) partnerRates[partnerName] = csvRate || 20;
+            // `csvRate || 20` would treat a legitimate 0% commission as
+            // falsy and override it to 20% — wrong for partners like
+            // Enjoy Surf / Surfer Girls Power / Surf Stories Poland that
+            // run on zero commission. Use Number.isFinite + SEED_RATES
+            // as the fallback chain so 0 is preserved when the CSV (or
+            // the seeded default) explicitly says 0.
+            const _seed=SEED_RATES[partnerName];
+            const _fallback=Number.isFinite(_seed)?_seed:20;
+            const _csvOrSeed=Number.isFinite(csvRate)?csvRate:_fallback;
+            if(partnerRates[partnerName] === undefined) partnerRates[partnerName] = _csvOrSeed;
             partnerTypes[partnerName] = inferBookingTypeFromRow({location, package:pkgCode});
-            const useRate = partnerRates[partnerName] !== undefined ? partnerRates[partnerName] : (csvRate || 20);
+            const useRate = partnerRates[partnerName] !== undefined ? partnerRates[partnerName] : _csvOrSeed;
             if(partnerRates[partnerName] !== undefined && csvRate > 0){
               const csvComAmt = +(gross * csvRate / 100).toFixed(2);
               const calcComAmt = +(gross * useRate / 100).toFixed(2);
@@ -3425,9 +3434,16 @@ function processFile(file) {
             changed = true;
           } else if(!shouldBeDirect && hasPartnerInfo) {
             const canonPartner = partnerName;
-            if(partnerRates[canonPartner] === undefined) partnerRates[canonPartner] = csvRate || b.com_pct || 20;
+            // Same 0%-preservation fix as the previous branch. The
+            // priority chain is: explicit csvRate (if finite, including
+            // 0) → existing b.com_pct (if finite, including 0) →
+            // SEED_RATES entry → 20% default.
+            const _seed=SEED_RATES[canonPartner];
+            const _fallback=Number.isFinite(_seed)?_seed:20;
+            const _chain=Number.isFinite(csvRate)?csvRate:(Number.isFinite(b.com_pct)?b.com_pct:_fallback);
+            if(partnerRates[canonPartner] === undefined) partnerRates[canonPartner] = _chain;
             partnerTypes[canonPartner] = inferBookingTypeFromRow({location, package:pkgCode});
-            const useRate = partnerRates[canonPartner] !== undefined ? partnerRates[canonPartner] : (csvRate || b.com_pct || 20);
+            const useRate = partnerRates[canonPartner] !== undefined ? partnerRates[canonPartner] : _chain;
             if(b.partner !== canonPartner){ b.partner = canonPartner; changed = true; }
             const newComAmt = +(gross * useRate / 100).toFixed(2);
             const newNet = +(gross - newComAmt).toFixed(2);
@@ -3462,9 +3478,16 @@ function processFile(file) {
           bookingByRef.set(ref, { booking: b, index: allBookings.length - 1 });
           addedDirect++;
         } else {
-          if(partnerRates[partnerName] === undefined) partnerRates[partnerName] = csvRate || 20;
+          // Same 0%-preservation fix as the existing-booking branches
+          // above — see the comment there. Number.isFinite respects 0
+          // as a valid rate; SEED_RATES is the last fallback before
+          // the 20% default so partners seeded at 0 stay at 0.
+          const _seed=SEED_RATES[partnerName];
+          const _fallback=Number.isFinite(_seed)?_seed:20;
+          const _csvOrSeed=Number.isFinite(csvRate)?csvRate:_fallback;
+          if(partnerRates[partnerName] === undefined) partnerRates[partnerName] = _csvOrSeed;
           partnerTypes[partnerName] = inferBookingTypeFromRow({location, package:pkgCode});
-          const useRate  = partnerRates[partnerName] !== undefined ? partnerRates[partnerName] : (csvRate || 20);
+          const useRate  = partnerRates[partnerName] !== undefined ? partnerRates[partnerName] : _csvOrSeed;
           const comAmt   = +(gross * useRate / 100).toFixed(2);
           const csvComAmt = +(gross * csvRate / 100).toFixed(2);
           if(csvRate > 0 && Math.abs(comAmt - csvComAmt) > 0.01) corrected++;
