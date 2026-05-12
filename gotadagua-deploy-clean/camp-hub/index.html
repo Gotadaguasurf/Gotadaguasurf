@@ -2884,38 +2884,46 @@ function currentTransportItems(){
 function currentTourItems(){
   return menuItemNames('Tours').filter(name=>!isTransportRevenueName(name));
 }
-function linkedTransportTour(name){
-  // Resolves a Transport linkedItem to the tour it should attribute cost to,
-  // in priority order:
-  //   1. Legacy hardcoded TRANSPORT_TOUR_COST_MAP (kept for backwards compat).
-  //   2. Transport quick-add preset with an explicit `linkedTour` set.
-  //   3. The new "tour with transport" model where the linkedItem IS the tour
-  //      name itself (because the tour menu flag enabled that route).
-  //   4. Prefix-match fallback — if exactly one menu tour starts with this
-  //      transport name (e.g., transport "Dunes" → tour "Dunes — Quad Bike
-  //      (with transport)" when that's the only Dunes-prefixed tour),
-  //      auto-link. Ambiguous prefixes (two tours, e.g. Quad + Camel) skip
-  //      the auto-link and fall back to '' so the user is forced to pick
-  //      via the per-entry override at submit time.
-  if(TRANSPORT_TOUR_COST_MAP[name]) return TRANSPORT_TOUR_COST_MAP[name];
+// Returns ALL tours a Transport linkedItem contributes cost to. Most
+// transports map to exactly one tour, but a shared van serving two
+// parallel sub-tours (Dunes — Camel Ride + Dunes — Quad Bike share
+// the same physical transport) maps to multiple. Callers that need a
+// single tour name for display use linkedTransportTour(); the
+// Overview aggregator uses this plural version to split the transport
+// cost across all matching sub-tours.
+function linkedTransportTours(name){
+  if(TRANSPORT_TOUR_COST_MAP[name]) return [TRANSPORT_TOUR_COST_MAP[name]];
   const all=[...(transportPresets?.airport||[]),...(transportPresets?.tuktuk||[])];
   const preset=all.find(p=>String(p?.name||'')===String(name||''));
-  if(preset && preset.linkedTour) return preset.linkedTour;
-  if(toursWithTransport().includes(name)) return name;
+  if(preset && preset.linkedTour) return [preset.linkedTour];
+  if(toursWithTransport().includes(name)) return [name];
   try{
     const trimmed=String(name||'').trim();
     if(trimmed){
       const lc=trimmed.toLowerCase();
-      // Try the exact form "<name> — …" (em-dash with spaces) first so
-      // "Dunes" matches "Dunes — Quad Bike" but NOT "Dunesomething".
+      // Prefix match: every menu tour starting with "<name> — " (em-dash
+      // with spaces). The em-dash boundary prevents "Dunes" from
+      // accidentally matching "Dunesomething", while keeping all four
+      // Dunes sub-tours (Quad / Camel × with / activity-only) as
+      // candidates so the same physical van splits its cost across
+      // every Dunes tour that actually ran this period.
       const candidates=(currentTourItems()||[]).filter(t=>{
         const tl=String(t||'').toLowerCase();
         return tl.startsWith(lc+' — ') || tl.startsWith(lc+' - ') || tl===lc;
       });
-      if(candidates.length===1) return candidates[0];
+      if(candidates.length>0) return candidates;
     }
   }catch(_e){}
-  return '';
+  return [];
+}
+
+function linkedTransportTour(name){
+  // Display-side convenience: returns just the first matched tour
+  // (empty string if none). The Overview aggregator uses
+  // linkedTransportTours() instead so shared transports split costs
+  // across every sub-tour they served.
+  const arr = linkedTransportTours(name);
+  return arr[0] || '';
 }
 // Parse the [TT:<tour>] marker out of an entry's description. submitTransport
 // Entry writes it on Morocco runs where the user picks a per-submission
@@ -4154,15 +4162,35 @@ function renderOverview(){
   ]);
   expenses.filter(x=>x.businessArea==='Transport').forEach(x=>{
     // Per-entry override (set via the Transport quick-add form's linked-tour
-    // dropdown) wins over the preset's default linkedTour. Useful for shared
-    // destinations like Dunes where individual trips serve different tours.
+    // dropdown) wins over the preset's default linkedTour. Useful when a
+    // shared destination's van served only one sub-tour and you want to
+    // attribute the full cost manually.
     const override=transportEntryTourOverride(x);
-    const mappedTour=override||linkedTransportTour(x.linkedItem||'');
-    if(!mappedTour) return;
-    if(!knownTourNames.has(mappedTour)) return;
-    tourMap[mappedTour]=tourMap[mappedTour]||{name:mappedTour,qty:0,revenueLocal:0,revenueEur:0,costLocal:0,costEur:0};
-    tourMap[mappedTour].costLocal+=entryLocalDisplayAmount(x);
-    tourMap[mappedTour].costEur+=entryEurAmount(x);
+    const candidates = override
+      ? [override]
+      : linkedTransportTours(x.linkedItem||'');
+    // Filter to tours that are either (a) in the menu, or (b) already
+    // accumulating data in tourMap from revenue/cost in this period.
+    // Then narrow to those that actually had guests this period (qty>0)
+    // so the transport cost only splits across sub-tours that really
+    // ran. If none of the candidates ran this period (no revenue),
+    // fall back to attributing the full cost to the first menu match
+    // — keeps the cost visible somewhere instead of vanishing.
+    const validInMenuOrTourMap = candidates.filter(t => t && knownTourNames.has(t));
+    if(!validInMenuOrTourMap.length) return;
+    const ranThisPeriod = validInMenuOrTourMap.filter(t => (tourMap[t]?.qty||0) > 0);
+    const targets = ranThisPeriod.length ? ranThisPeriod : [validInMenuOrTourMap[0]];
+    // Split the transport cost equally across all targets. With one
+    // target the full cost lands there (single-tour van). With multiple
+    // the cost divides — e.g., a Dunes van shared by Camel Ride + Quad
+    // Bike gives each tour half the transport cost.
+    const shareLocal = entryLocalDisplayAmount(x) / targets.length;
+    const shareEur = entryEurAmount(x) / targets.length;
+    targets.forEach(t => {
+      tourMap[t] = tourMap[t] || {name:t,qty:0,revenueLocal:0,revenueEur:0,costLocal:0,costEur:0};
+      tourMap[t].costLocal += shareLocal;
+      tourMap[t].costEur += shareEur;
+    });
   });
   const tourRows=Object.values(tourMap).sort((a,b)=>b.revenueLocal-a.revenueLocal);
   const profitAreas=[
