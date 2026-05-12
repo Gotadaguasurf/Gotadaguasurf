@@ -2069,11 +2069,33 @@ function recalcBooking(b) {
   return b;
 }
 
+// Returns a canonical "display name" for a partner. When two partners
+// only differ by case (e.g., "The Surf Tribe" vs "THE SURF TRIBE"),
+// the version registered in partnerRates wins; otherwise the input is
+// returned trimmed. Used by partnerGroups + openStatement so the UI
+// folds the duplicates into one card regardless of which casing the
+// underlying booking_name carries.
+function canonicalPartnerName(name){
+  const raw = String(name||'').trim();
+  if(!raw) return raw;
+  const lc = raw.toLowerCase();
+  const inRates = Object.keys(partnerRates||{}).find(p => String(p).trim().toLowerCase() === lc);
+  if(inRates) return inRates;
+  return raw;
+}
+
 function partnerGroups(bks) {
+  // Group case-insensitively so "The Surf Tribe" and "THE SURF TRIBE"
+  // (the same KILROY-style partner imported under two casings) collapse
+  // into one card. Display name = the canonical version registered in
+  // partnerRates, falling back to the first variant seen in the bookings.
   const m={};
   bks.forEach(b=>{
-    if(!m[b.partner])m[b.partner]={partner:b.partner,gross:0,com:0,net:0,count:0,bookings:[]};
-    m[b.partner].gross+=b.gross;m[b.partner].com+=b.com_amt;m[b.partner].net+=b.net;m[b.partner].count++;m[b.partner].bookings.push(b);
+    const display = canonicalPartnerName(b.partner||'');
+    const key = display.toLowerCase();
+    if(!key) return;
+    if(!m[key]) m[key]={partner:display,gross:0,com:0,net:0,count:0,bookings:[]};
+    m[key].gross+=b.gross;m[key].com+=b.com_amt;m[key].net+=b.net;m[key].count++;m[key].bookings.push(b);
   });
   return Object.values(m).sort((a,b)=>b.com-a.com);
 }
@@ -3074,7 +3096,11 @@ window.openStatement = function(partner, month, locationFilter) {
   const locLabel = locationFilter ? ` · ${locationFilter}` : '';
   document.getElementById('stmtPartner').textContent=partner;
   document.getElementById('stmtMeta').textContent=(em?em+' · ':'')+(month?monthLabel(month):'All Months')+locLabel+' · Generated '+new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'});
-  let bks=allBookings.filter(b=>b.partner===partner);
+  // Case-insensitive partner match so a statement built from the
+  // canonical name (e.g., "The Surf Tribe") includes bookings stored
+  // under any casing variant ("THE SURF TRIBE", etc.).
+  const partnerLc = String(partner||'').trim().toLowerCase();
+  let bks=allBookings.filter(b=>String(b.partner||'').trim().toLowerCase()===partnerLc);
   if(month)bks=bks.filter(b=>getMonth(b)===month);
   if(locationFilter)bks=bks.filter(b=>b.location===locationFilter);
   bks.sort((a,b)=>a.checkin.localeCompare(b.checkin));
