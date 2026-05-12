@@ -3386,6 +3386,12 @@ function processFile(file) {
       const rows=parseCSV(e.target.result);
       validateCsvHeaders(rows);
       let added=0, addedDirect=0, updated=0, corrected=0, ignored=0;
+      // Bookings imported without a commission % in the CSV. Per user
+      // intent: stamp them at 0% (the safe "we don't know" default —
+      // 20% would silently undercount the partner's invoice) and
+      // surface the list in the import summary so the user can decide
+      // whether to leave them at 0 or edit each one to the correct rate.
+      const noRateBookings=[];
 
       const normalizePartnerName = (name) => {
         const raw = (name || '').trim().replace(/\s+/g,' ');
@@ -3459,15 +3465,21 @@ function processFile(file) {
             : (partnerRates[partnerName] !== undefined ? partnerRates[partnerName] : _fallback);
 
           if(hasPartnerInfo && (b.partner === DIRECT_LABEL || !b.partner || !Number.isFinite(b.com_pct))){
-            // First stamp on this booking. Use CSV rate (top priority),
-            // else partnerRates, else SEED_RATES, else 20%.
-            if(partnerRates[partnerName] === undefined) partnerRates[partnerName] = _firstStampRate;
-            // Track the latest CSV rate seen for this partner so Settings
-            // UI mirrors what Bookinglayer is currently sending. Settings
-            // remains the manual override path; CSV is the auto path.
-            else if(Number.isFinite(csvRate)) partnerRates[partnerName] = csvRate;
+            // First stamp on this booking. CSV rate has top priority.
+            // If CSV is silent we stamp 0% (the explicit "unknown" rate)
+            // and surface the booking in the import warning list so the
+            // user can edit it manually. Stamping 20% silently here
+            // would be guesswork that ends up on a partner invoice —
+            // worse than 0% + a visible warning.
+            const useRate = Number.isFinite(csvRate) ? csvRate : 0;
+            if(!Number.isFinite(csvRate)){
+              noRateBookings.push({ref, partner:partnerName, gross});
+            }
+            // Keep partnerRates in sync with CSV when available so the
+            // Settings UI mirrors current Bookinglayer values.
+            if(Number.isFinite(csvRate)) partnerRates[partnerName] = csvRate;
+            else if(partnerRates[partnerName] === undefined) partnerRates[partnerName] = _firstStampRate;
             partnerTypes[partnerName] = inferBookingTypeFromRow({location, package:pkgCode});
-            const useRate = _firstStampRate;
             b.partner = partnerName;
             b.com_pct = useRate;
             b.com_amt = +(gross * useRate / 100).toFixed(2);
@@ -3524,19 +3536,26 @@ function processFile(file) {
           bookingByRef.set(ref, { booking: b, index: allBookings.length - 1 });
           addedDirect++;
         } else {
-          // Same 0%-preservation fix as the existing-booking branches
-          // above — see the comment there. Number.isFinite respects 0
-          // as a valid rate; SEED_RATES is the last fallback before
-          // the 20% default so partners seeded at 0 stay at 0.
-          const _seed=SEED_RATES[partnerName];
-          const _fallback=Number.isFinite(_seed)?_seed:20;
-          const _csvOrSeed=Number.isFinite(csvRate)?csvRate:_fallback;
-          if(partnerRates[partnerName] === undefined) partnerRates[partnerName] = _csvOrSeed;
+          // Brand-new booking with partner info. CSV rate has top
+          // priority. When CSV is silent we stamp 0% and add the
+          // booking to noRateBookings — the import summary will warn
+          // the user so they can decide whether to keep 0% or edit
+          // each one manually. Stamping 20% silently here would put
+          // false numbers on partner invoices.
+          const useRate = Number.isFinite(csvRate) ? csvRate : 0;
+          if(!Number.isFinite(csvRate)){
+            noRateBookings.push({ref, partner:partnerName, gross});
+          }
+          // Keep partnerRates synced to the latest CSV value for the
+          // Settings UI; only fall back when CSV is silent AND the
+          // partner is brand-new in the system.
+          if(Number.isFinite(csvRate)) partnerRates[partnerName] = csvRate;
+          else if(partnerRates[partnerName] === undefined){
+            const _seed=SEED_RATES[partnerName];
+            partnerRates[partnerName] = Number.isFinite(_seed)?_seed:20;
+          }
           partnerTypes[partnerName] = inferBookingTypeFromRow({location, package:pkgCode});
-          const useRate  = partnerRates[partnerName] !== undefined ? partnerRates[partnerName] : _csvOrSeed;
           const comAmt   = +(gross * useRate / 100).toFixed(2);
-          const csvComAmt = +(gross * csvRate / 100).toFixed(2);
-          if(csvRate > 0 && Math.abs(comAmt - csvComAmt) > 0.01) corrected++;
           const b={partner:partnerName,guest,ref,checkin,location,pax,package:pkgCode,gross,com_pct:useRate,com_amt:comAmt,net:+(gross-comAmt).toFixed(2)};
           allBookings.push(b);
           bookingByRef.set(ref, { booking: b, index: allBookings.length - 1 });
@@ -3557,6 +3576,16 @@ ${updated} existing booking${updated!==1?'s':''} updated.`;
 ${ignored} invalid row${ignored!==1?'s':''} ignored.`;
       if(corrected>0) msg+=`
 ⚠️ ${corrected} commission rate${corrected!==1?'s':''} corrected to your stored partner rates.`;
+      if(noRateBookings.length>0){
+        // Show up to 10 examples then a "…and N more" tail so the
+        // alert stays readable even on big imports. The user can
+        // open Settings or the bookings list to edit each one.
+        const preview=noRateBookings.slice(0,10).map(b=>`  • ${b.ref} — ${b.partner} (${eur(b.gross)})`).join('\n');
+        const tail=noRateBookings.length>10?`\n  …and ${noRateBookings.length-10} more`:'';
+        msg+=`\n\n⚠️ ${noRateBookings.length} booking${noRateBookings.length!==1?'s':''} had no commission % in the CSV — stamped at 0%.\nEdit each manually if you need a different rate:\n${preview}${tail}`;
+        // Stash for later inspection from the console (window.__lastNoRateBookings).
+        try{ window.__lastNoRateBookings = noRateBookings.slice(); }catch(_){}
+      }
       alert(msg);
     } catch(err){
       console.error(err);
