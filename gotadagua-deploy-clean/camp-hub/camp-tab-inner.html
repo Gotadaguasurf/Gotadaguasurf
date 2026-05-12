@@ -110,7 +110,7 @@ header{display:none}
 
 /* ════════════════════════════════ THIS WEEK ════════════════════════════ */
 .tw-wrap{flex:1;display:flex;flex-direction:column;overflow:hidden}
-.tw-header{padding:16px 20px 12px;flex-shrink:0;display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px}
+.tw-header{padding:14px 20px 10px;flex-shrink:0;display:flex;flex-direction:column;gap:10px}
 .tw-header-main{display:flex;flex-direction:column;gap:10px;min-width:280px;flex:1}
 .tw-week-kicker{font-size:10px;color:#7aabcc;text-transform:uppercase;letter-spacing:.12em;font-weight:700}
 .tw-week-date-line{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap}
@@ -2017,35 +2017,31 @@ function renderThisWeek(){
   const nextDraft=nextWeekDraft();
   const nextStart=nextDraft?.start||addDays(S.activeWeek.start,7);
 
+  // Compact header: the "Active week + dates + paid/unpaid counts"
+  // block was removed — it duplicated the navy banner already sitting
+  // above this subpage. Next-Week bar still gets its own row when on
+  // the Guests roster (it's actionable info, not duplication). Search
+  // input, Guests/Staff toggle, and the Collected/Outstanding stats
+  // share a single row below for compact scanning.
   twHdr.innerHTML=`
-    <div class="tw-header-main">
+    ${currentRoster==='guests'?`<div class="tw-next-week-bar" style="width:100%">
       <div>
-      <div class="tw-week-kicker">Active week</div>
-      <div class="tw-week-date-line">
-        <div class="tw-week-date-main">${fmtd(S.activeWeek.start)}</div>
-        <div class="tw-week-date-end">to ${fmtd(addDays(S.activeWeek.start,6))}</div>
+        <div style="font-size:10px;color:var(--ocean);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:2px">Next Week</div>
+        <div style="font-weight:700;color:var(--navy)">${weekSpan(nextStart)}</div>
       </div>
-      <div class="tw-week-note">${guests.length} ${currentRoster} / ${paid.length} paid / ${unpaid.length} unpaid${currentRoster==='guests'&&nextDraft?.guests?.length?` / ${nextDraft.guests.length} queued for next week`:''}</div>
-      ${currentRoster==='guests'?`<div class="tw-next-week-bar">
-        <div>
-          <div style="font-size:10px;color:var(--ocean);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:2px">Next Week</div>
-          <div style="font-weight:700;color:var(--navy)">${weekSpan(nextStart)}</div>
-        </div>
-        <div style="font-size:11px;color:var(--muted)">${nextDraft?.guests?.length?`${nextDraft.guests.length} guest${nextDraft.guests.length!==1?'s':''} ready to continue`:'No guests queued yet'}</div>
-      </div>`:''}
-      </div>
-      <input class="tw-search" id="twSearch" placeholder="Search ${currentRoster==='staff'?'staff':'guest'}..." value="${esc(twSearch)}" oninput="setTwSearch(this.value)">
-    </div>
-    <div class="tw-stats" style="align-items:center">
-      <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <div style="font-size:11px;color:var(--muted)">${nextDraft?.guests?.length?`${nextDraft.guests.length} guest${nextDraft.guests.length!==1?'s':''} ready to continue`:'No guests queued yet'}</div>
+    </div>`:''}
+    <div class="tw-header-row" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;width:100%">
+      <input class="tw-search" id="twSearch" placeholder="Search ${currentRoster==='staff'?'staff':'guest'}..." value="${esc(twSearch)}" oninput="setTwSearch(this.value)" style="flex:1;min-width:200px;margin:0">
+      <div style="display:flex;gap:6px;flex-shrink:0">
         <button class="ts-cat-btn ${currentRoster==='guests'?'active':''}" onclick="setRoster('guests')">Guests</button>
         <button class="ts-cat-btn ${currentRoster==='staff'?'active':''}" onclick="setRoster('staff')">Staff</button>
       </div>
-      <div class="tw-stat">
+      <div class="tw-stat" style="flex-shrink:0">
         <div class="tw-stat-val green">${euro(totalCollected)}</div>
         <div class="tw-stat-label">Collected</div>
       </div>
-      ${totalOutstanding>0?`<div class="tw-stat">
+      ${totalOutstanding>0?`<div class="tw-stat" style="flex-shrink:0">
         <div class="tw-stat-val red">${euro(totalOutstanding)}</div>
         <div class="tw-stat-label">Outstanding</div>
       </div>`:''}
