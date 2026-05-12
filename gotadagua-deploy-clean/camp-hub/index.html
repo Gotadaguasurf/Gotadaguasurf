@@ -6151,7 +6151,11 @@ async function saveSalaryProfile(){
     'salary profile save failed'
   );
   if(!saved) return;
-  await hydrateMonthlyProfilesFromSupabase({mergeLocal:false});
+  // mergeLocal:true so any local-only profiles (e.g., seeded by
+  // ensureRecurringDefaults but never pushed to Supabase because the
+  // one-shot backfill didn't fire on this browser) get inserted first.
+  // Otherwise replacing local with Supabase contents would wipe them.
+  await hydrateMonthlyProfilesFromSupabase({mergeLocal:true});
   save();
   resetSalaryForm();
   renderSalaryProfiles();
@@ -6330,7 +6334,14 @@ async function saveRecurringRule(){
     'fixed monthly cost save failed'
   );
   if(!saved) return;
-  await hydrateMonthlyProfilesFromSupabase({mergeLocal:false});
+  // mergeLocal:true preserves locally-seeded rules that haven't yet
+  // been pushed to Supabase (e.g., Surf Camp Rent from
+  // ensureRecurringDefaults on a session where the one-shot backfill
+  // flag was set but the rule never reached Supabase). Without this,
+  // saving a new rule would wipe Surf Camp Rent from local because
+  // the hydrate would replace S.recurring with whatever Supabase
+  // currently has — and Supabase wouldn't have the local-only rule.
+  await hydrateMonthlyProfilesFromSupabase({mergeLocal:true});
   save();
   resetRecurringForm();
   renderRecurringEntries();
