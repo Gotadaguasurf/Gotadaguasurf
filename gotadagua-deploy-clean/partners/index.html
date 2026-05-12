@@ -3276,7 +3276,14 @@ window.saveSettings = async () => {
     const contact = contactEl ? contactEl.value.trim() : '';
     const email = emailEl ? emailEl.value.trim() : '';
     const type = typeEl ? typeEl.value : 'surfcamp';
-    const rate = parseFloat(rateEl ? rateEl.value : 20) || 20;
+    // parseFloat('0') || 20 → 20 (the JS falsy trap that bit the
+    // importer earlier). Use Number.isFinite so the user can save a
+    // legitimate 0% partner rate (Enjoy Surf Project, Surfer Girls
+    // Power, Surf Stories Poland — partners that run on zero
+    // commission). The 20 default is only used when the field is
+    // empty / non-numeric.
+    const _parsed = parseFloat(rateEl ? rateEl.value : '');
+    const rate = Number.isFinite(_parsed) ? _parsed : 20;
     const collects = collectsEl ? collectsEl.value === 'true' : true;
     if(!name) return;
     newRates[name] = rate;
