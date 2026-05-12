@@ -2241,6 +2241,32 @@ window.setExpandedLocation = (partner, loc) => {
   renderTable();
 };
 
+// Only KILROY bills by country (Sweden / Norway / etc. invoiced
+// separately). Every other partner keeps the standard flat statement
+// layout. Centralised here so the email and PDF builders agree on
+// who gets the country-grouped variant.
+function partnerBillsByCountry(name){
+  return String(name||'').trim().toUpperCase()==='KILROY';
+}
+
+// Group bookings by Country (Sweden / Norway / …). Empty / missing
+// country goes into a single 'No country' bucket, always sorted last
+// so the explicit countries lead the list alphabetically. Returns an
+// array of [countryName, bookingsArray] pairs.
+function groupBookingsByCountry(bookings){
+  const groups=new Map();
+  (bookings||[]).forEach(b=>{
+    const c=(b.country||'').toString().trim()||'No country';
+    if(!groups.has(c)) groups.set(c,[]);
+    groups.get(c).push(b);
+  });
+  return [...groups.entries()].sort(([a],[b])=>{
+    if(a==='No country') return 1;
+    if(b==='No country') return -1;
+    return a.localeCompare(b);
+  });
+}
+
 function buildStatementEmailPayload(partner, periodLabel, bookings){
   const isSchool = isSurfSchoolPartner(partner);
   const collects = partnerCollectsFromGuest(partner);
@@ -2258,11 +2284,31 @@ function buildStatementEmailPayload(partner, periodLabel, bookings){
     ? `Amount due to Gota Dagua: ${eur(dueTotal)}`
     : `Amount that Gota Dagua owes the partner: ${eur(dueTotal)}`;
 
-  const bookingLines = bookings.map(r => {
+  // Format helper used by both branches below.
+  const formatBookingLine = (r)=>{
     const d = r.checkin ? new Date(r.checkin) : null;
     const ds = d && !isNaN(d) ? d.toLocaleDateString('en-GB') : '';
     return `- ${ds} | ${r.guest||'Guest'} | ${r.ref||''} | ${r.location||''} | ${eur(r.gross||0)}`;
-  });
+  };
+  // Country grouping is opt-in per partner via partnerBillsByCountry()
+  // — currently KILROY only, which invoices Sweden / Norway separately.
+  // Every other partner keeps the original flat booking list with no
+  // visual change to existing emails.
+  let bookingLines;
+  if(partnerBillsByCountry(partner)){
+    const countryGroups = groupBookingsByCountry(bookings);
+    bookingLines = [];
+    countryGroups.forEach(([country, group])=>{
+      const g_gross = group.reduce((s,b)=>s+(+b.gross||0),0);
+      const g_com = group.reduce((s,b)=>s+(+b.com_amt||0),0);
+      bookingLines.push(`── ${country} (${group.length} booking${group.length!==1?'s':''}) ──`);
+      group.slice().sort((a,b)=>(a.checkin||'').localeCompare(b.checkin||''))
+        .forEach(r=>bookingLines.push(formatBookingLine(r)));
+      bookingLines.push(`${country} total: ${eur(g_gross)} gross / ${eur(g_com)} commission`,'');
+    });
+  } else {
+    bookingLines = bookings.map(formatBookingLine);
+  }
 
   if (isSchool) {
     return {
@@ -2332,29 +2378,33 @@ function buildStatementPdfMarkup(ctx) {
     return chunks;
   }
 
-  const monthBlocks = activeMonths.map(monthKey => {
-    const items = byMonth[monthKey] || [];
-    const monthGross = items.reduce((s,b)=>s+b.gross,0);
-    const monthCom = items.reduce((s,b)=>s+b.com_amt,0);
-    const monthNet = items.reduce((s,b)=>s+b.net,0);
-    const tableHeader = `
-      <thead>
-        <tr style="background:#28394b;color:#d4e8f6;">
-          <th style="padding:9px 10px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.08em;">#</th>
-          <th style="padding:9px 10px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.08em;">Guest</th>
-          <th style="padding:9px 10px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.08em;">Ref</th>
-          <th style="padding:9px 10px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.08em;">Check-in</th>
-          <th style="padding:9px 10px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.08em;">Location</th>
-          <th style="padding:9px 10px;text-align:center;font-size:9px;text-transform:uppercase;letter-spacing:.08em;">Pax</th>
-          <th style="padding:9px 10px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.08em;">Package</th>
-          <th style="padding:9px 10px;text-align:right;font-size:9px;text-transform:uppercase;letter-spacing:.08em;">Gross</th>
-          <th style="padding:9px 10px;text-align:right;font-size:9px;text-transform:uppercase;letter-spacing:.08em;">Rate</th>
-          <th style="padding:9px 10px;text-align:right;font-size:9px;text-transform:uppercase;letter-spacing:.08em;">Commission</th>
-          <th style="padding:9px 10px;text-align:right;font-size:9px;text-transform:uppercase;letter-spacing:.08em;">Net</th>
-        </tr>
-      </thead>
-    `;
-    const tables = chunkRows(items).map((chunk, chunkIndex, allChunks) => {
+  const tableHeader = `
+    <thead>
+      <tr style="background:#28394b;color:#d4e8f6;">
+        <th style="padding:9px 10px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.08em;">#</th>
+        <th style="padding:9px 10px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.08em;">Guest</th>
+        <th style="padding:9px 10px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.08em;">Ref</th>
+        <th style="padding:9px 10px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.08em;">Check-in</th>
+        <th style="padding:9px 10px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.08em;">Location</th>
+        <th style="padding:9px 10px;text-align:center;font-size:9px;text-transform:uppercase;letter-spacing:.08em;">Pax</th>
+        <th style="padding:9px 10px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.08em;">Package</th>
+        <th style="padding:9px 10px;text-align:right;font-size:9px;text-transform:uppercase;letter-spacing:.08em;">Gross</th>
+        <th style="padding:9px 10px;text-align:right;font-size:9px;text-transform:uppercase;letter-spacing:.08em;">Rate</th>
+        <th style="padding:9px 10px;text-align:right;font-size:9px;text-transform:uppercase;letter-spacing:.08em;">Commission</th>
+        <th style="padding:9px 10px;text-align:right;font-size:9px;text-transform:uppercase;letter-spacing:.08em;">Net</th>
+      </tr>
+    </thead>
+  `;
+
+  // Render a chunked set of bookings as one or more tables with the
+  // subtotal pinned to the last chunk's tfoot. Extracted as a helper
+  // because the country-grouped layout for KILROY needs to render
+  // multiple of these (one per country) within a single month section.
+  function renderBookingTables(items, subtotalLabel){
+    const sGross = items.reduce((s,b)=>s+b.gross,0);
+    const sCom = items.reduce((s,b)=>s+b.com_amt,0);
+    const sNet = items.reduce((s,b)=>s+b.net,0);
+    return chunkRows(items).map((chunk, chunkIndex, allChunks) => {
       const rows = chunk.map((b, idx) => `
       <tr>
         <td style="padding:9px 10px;border-bottom:1px solid #d4e3f0;">${(chunkIndex * 7) + idx + 1}</td>
@@ -2373,11 +2423,11 @@ function buildStatementPdfMarkup(ctx) {
       const subtotal = chunkIndex === allChunks.length - 1 ? `
         <tfoot>
           <tr style="background:#f5f0e8;font-weight:700;">
-            <td colspan="7" style="padding:10px 10px;text-align:right;border-top:2px solid #e8dfc8;">${monthLabel(monthKey)} subtotal</td>
-            <td style="padding:10px 10px;text-align:right;border-top:2px solid #e8dfc8;font-family:'DM Mono',monospace;">${eur(monthGross)}</td>
+            <td colspan="7" style="padding:10px 10px;text-align:right;border-top:2px solid #e8dfc8;">${subtotalLabel}</td>
+            <td style="padding:10px 10px;text-align:right;border-top:2px solid #e8dfc8;font-family:'DM Mono',monospace;">${eur(sGross)}</td>
             <td style="padding:10px 10px;border-top:2px solid #e8dfc8;"></td>
-            <td style="padding:10px 10px;text-align:right;border-top:2px solid #e8dfc8;font-family:'DM Mono',monospace;color:#1e6fa8;">${eur(monthCom)}</td>
-            <td style="padding:10px 10px;text-align:right;border-top:2px solid #e8dfc8;font-family:'DM Mono',monospace;">${eur(monthNet)}</td>
+            <td style="padding:10px 10px;text-align:right;border-top:2px solid #e8dfc8;font-family:'DM Mono',monospace;color:#1e6fa8;">${eur(sCom)}</td>
+            <td style="padding:10px 10px;text-align:right;border-top:2px solid #e8dfc8;font-family:'DM Mono',monospace;">${eur(sNet)}</td>
           </tr>
         </tfoot>
       ` : '';
@@ -2389,6 +2439,43 @@ function buildStatementPdfMarkup(ctx) {
         </table>
       `;
     }).join('');
+  }
+
+  // Country-grouped statement (KILROY only) splits each month's
+  // bookings into per-country tables with a country subtotal, then
+  // closes with a month-total band if more than one country was
+  // present. Every other partner keeps the original single-table
+  // monthly layout via the else branch below.
+  const groupByCountry = partnerBillsByCountry(partner);
+
+  const monthBlocks = activeMonths.map(monthKey => {
+    const items = byMonth[monthKey] || [];
+    const monthGross = items.reduce((s,b)=>s+b.gross,0);
+    const monthCom = items.reduce((s,b)=>s+b.com_amt,0);
+    const monthNet = items.reduce((s,b)=>s+b.net,0);
+
+    let bodyHtml;
+    if(groupByCountry){
+      const countryGroups = groupBookingsByCountry(items);
+      const countrySections = countryGroups.map(([country, cItems])=>`
+        <div style="margin-top:14px;page-break-inside:avoid">
+          <div style="font-family:'DM Serif Display',serif;font-size:15px;color:#1e6fa8;margin-bottom:6px;padding:6px 12px;background:#eaf3fb;border-left:4px solid #1e6fa8;border-radius:4px;display:flex;justify-content:space-between;align-items:center">
+            <span>${country}</span>
+            <span style="font-size:11px;color:#6b8099;font-weight:normal;font-family:'Outfit',sans-serif">${cItems.length} booking${cItems.length!==1?'s':''}</span>
+          </div>
+          ${renderBookingTables(cItems, country+' subtotal')}
+        </div>
+      `).join('');
+      const monthTotalBand = countryGroups.length > 1 ? `
+        <div style="margin-top:14px;padding:10px 16px;background:#28394b;color:#fff;border-radius:8px;display:flex;justify-content:space-between;align-items:center;font-family:'Outfit',sans-serif">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:.1em;font-weight:700">${monthLabel(monthKey)} total</div>
+          <div style="font-family:'DM Mono',monospace;font-size:12px">Gross ${eur(monthGross)} · Commission ${eur(monthCom)} · Net ${eur(monthNet)}</div>
+        </div>
+      ` : '';
+      bodyHtml = countrySections + monthTotalBand;
+    } else {
+      bodyHtml = renderBookingTables(items, monthLabel(monthKey)+' subtotal');
+    }
 
     return `
       <section style="margin-top:22px;page-break-inside:avoid;">
@@ -2396,7 +2483,7 @@ function buildStatementPdfMarkup(ctx) {
           <div style="font-family:'DM Serif Display',serif;font-size:22px;color:#28394b;">${monthLabel(monthKey)}</div>
           <div style="font-size:12px;color:#6b8099;">${items.length} booking${items.length!==1?'s':''}</div>
         </div>
-        ${tables}
+        ${bodyHtml}
       </section>
     `;
   }).join('');
@@ -3411,6 +3498,11 @@ function processFile(file) {
         const checkin = parseCheckin(getRowValue(r, ['Check-in on','Check in on','Check-in','Check in','Arrival date'])||'');
         if(!checkin||!ref){ ignored++; return; }
 
+        // Country is captured per booking so partner statements can
+        // group by country (KILROY bills Sweden / Norway separately).
+        // Empty string when the column is missing or blank — the
+        // statement renderer maps that to a "No country" bucket.
+        const country = getRowValue(r, ['Country','Booker country','Guest country','Nationality']).toString().trim();
         const csvRateRaw = getRowValue(r, ['Partner commission %','Partner commission','Commission %','Commission']).toString().replace('%','').trim();
         // csvRate must distinguish three states:
         //   • CSV explicitly says a number (including 0) → use that
@@ -3445,6 +3537,9 @@ function processFile(file) {
           if(pkgCode && b.package !== pkgCode){ b.package = pkgCode; changed = true; }
           if(Number.isFinite(pax) && b.pax !== pax){ b.pax = pax; changed = true; }
           if(gross > 0 && b.gross !== gross){ b.gross = gross; changed = true; }
+          // country is informational and can be back-filled from later
+          // CSV imports — overwrite when the new value is non-empty.
+          if(country && b.country !== country){ b.country = country; changed = true; }
 
           // ── Existing-booking commission policy ──────────────────────
           // CSV is the source of truth for the FIRST stamp on a booking.
@@ -3531,7 +3626,7 @@ function processFile(file) {
 
         if(shouldBeDirect) {
           if(!gross) return;
-          const b={partner:DIRECT_LABEL,guest,ref,checkin,location,pax,package:pkgCode,gross,com_pct:0,com_amt:0,net:gross};
+          const b={partner:DIRECT_LABEL,guest,ref,checkin,location,pax,package:pkgCode,gross,com_pct:0,com_amt:0,net:gross,country};
           allBookings.push(b);
           bookingByRef.set(ref, { booking: b, index: allBookings.length - 1 });
           addedDirect++;
@@ -3556,7 +3651,7 @@ function processFile(file) {
           }
           partnerTypes[partnerName] = inferBookingTypeFromRow({location, package:pkgCode});
           const comAmt   = +(gross * useRate / 100).toFixed(2);
-          const b={partner:partnerName,guest,ref,checkin,location,pax,package:pkgCode,gross,com_pct:useRate,com_amt:comAmt,net:+(gross-comAmt).toFixed(2)};
+          const b={partner:partnerName,guest,ref,checkin,location,pax,package:pkgCode,gross,com_pct:useRate,com_amt:comAmt,net:+(gross-comAmt).toFixed(2),country};
           allBookings.push(b);
           bookingByRef.set(ref, { booking: b, index: allBookings.length - 1 });
           added++;
@@ -3729,7 +3824,8 @@ function mapBookingRowToApp(row) {
     com_amt: isRealized ? com_amt_full : 0,
     net: isRealized ? net_full : gross,
     status,
-    isRealized
+    isRealized,
+    country: row.country || ''
   };
 }
 function buildPartnerRowsFromState() {
@@ -3869,6 +3965,10 @@ async function persistBookingsToSupabase() {
       partner_commission_pct: Number(b.com_pct || 0),
       commission_amount: Number(b.com_amt || 0),
       net_amount: Number(b.net || 0),
+      // Country lives in its own column (added via add-bookings-country.sql)
+      // so partner statements can group rows by Sweden / Norway / etc.
+      // Stored as NULL when blank so the partial index stays small.
+      country: (b.country && String(b.country).trim()) || null,
       raw_payload: b
     };
   });
