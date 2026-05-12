@@ -340,8 +340,15 @@ header{display:none}
 </div>
 
 <!-- ═══════════════ THIS WEEK ═══════════════ -->
-<div class="subpage" id="sub-week">
-  <div class="tw-wrap">
+<div class="subpage" id="sub-week" style="flex-direction:column">
+  <!-- Same full-width navy banner as the Charge subpage. Keeps the
+       active week visible across every Camp Tab sub-page so the user
+       never has to switch back to confirm which week they're on. -->
+  <div class="c-week-banner" id="weekBannerTw" style="display:none">
+    <div class="c-week-banner-label">Active week</div>
+    <div class="c-week-banner-range" id="weekBannerRangeTw">—</div>
+  </div>
+  <div class="tw-wrap" style="flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column">
     <div class="tw-header" id="twHeader">
       <div style="font-family:'DM Serif Display',serif;font-size:20px;color:var(--navy)">This week</div>
     </div>
@@ -1972,11 +1979,24 @@ let twExpanded=null;
 let twSearch='';
 function renderThisWeek(){
   renderHeader();
-  currentWeek();
+  const wkBanner=currentWeek();
   const twEl=document.getElementById('twList');
   const twHdr=document.getElementById('twHeader');
   const twBar=document.getElementById('twCloseBar');
   if(!twEl)return;
+
+  // Top-of-page banner mirrors the one on the Charge subpage so the
+  // active week is visible across every Camp Tab sub-screen.
+  const banner=document.getElementById('weekBannerTw');
+  const bannerRange=document.getElementById('weekBannerRangeTw');
+  if(banner && bannerRange){
+    if(wkBanner){
+      banner.style.display='flex';
+      bannerRange.textContent=weekSpan(wkBanner.start);
+    } else {
+      banner.style.display='none';
+    }
+  }
 
   if(!S.activeWeek){
     twEl.innerHTML='';
