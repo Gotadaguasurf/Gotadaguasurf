@@ -2891,11 +2891,30 @@ function linkedTransportTour(name){
   //   2. Transport quick-add preset with an explicit `linkedTour` set.
   //   3. The new "tour with transport" model where the linkedItem IS the tour
   //      name itself (because the tour menu flag enabled that route).
+  //   4. Prefix-match fallback — if exactly one menu tour starts with this
+  //      transport name (e.g., transport "Dunes" → tour "Dunes — Quad Bike
+  //      (with transport)" when that's the only Dunes-prefixed tour),
+  //      auto-link. Ambiguous prefixes (two tours, e.g. Quad + Camel) skip
+  //      the auto-link and fall back to '' so the user is forced to pick
+  //      via the per-entry override at submit time.
   if(TRANSPORT_TOUR_COST_MAP[name]) return TRANSPORT_TOUR_COST_MAP[name];
   const all=[...(transportPresets?.airport||[]),...(transportPresets?.tuktuk||[])];
   const preset=all.find(p=>String(p?.name||'')===String(name||''));
   if(preset && preset.linkedTour) return preset.linkedTour;
   if(toursWithTransport().includes(name)) return name;
+  try{
+    const trimmed=String(name||'').trim();
+    if(trimmed){
+      const lc=trimmed.toLowerCase();
+      // Try the exact form "<name> — …" (em-dash with spaces) first so
+      // "Dunes" matches "Dunes — Quad Bike" but NOT "Dunesomething".
+      const candidates=(currentTourItems()||[]).filter(t=>{
+        const tl=String(t||'').toLowerCase();
+        return tl.startsWith(lc+' — ') || tl.startsWith(lc+' - ') || tl===lc;
+      });
+      if(candidates.length===1) return candidates[0];
+    }
+  }catch(_e){}
   return '';
 }
 // Parse the [TT:<tour>] marker out of an entry's description. submitTransport
