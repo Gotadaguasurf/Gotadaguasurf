@@ -2046,6 +2046,24 @@ window.handleStatusChange = async function(partner, month, el) {
   try {
     await syncStatusToSupabase(partner, normalizedMonth, el.value);
   } catch (err) {
+    // upsert_partner_month_status raises "Partner not found: X" when
+    // the partner isn't in the Supabase partners table yet. That can
+    // happen if the partner was added to the local state after the
+    // last full settings save — the booking sync registers names but
+    // doesn't always run for every newly-seen partner. Auto-recover:
+    // push the partners list to Supabase and retry the RPC once.
+    const msg=String(err?.message||'');
+    if(/Partner not found/i.test(msg)){
+      try{
+        console.log('[Partners] auto-registering missing partner before retry:', partner);
+        await persistPartnersToSupabase();
+        await syncStatusToSupabase(partner, normalizedMonth, el.value);
+        return; // success on retry — keep optimistic UI
+      }catch(retryErr){
+        console.error('[Partners] auto-register + retry failed', retryErr);
+        // fall through to revert + alert below
+      }
+    }
     console.error(err);
     setStatus(partner, normalizedMonth, previous);
     el.value = previous;
