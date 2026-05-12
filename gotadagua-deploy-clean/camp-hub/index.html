@@ -1275,7 +1275,18 @@ const TRANSPORT_REVENUE_CATS=TRANSPORT_LINKED_ITEMS.slice();
 const TOUR_REVENUE_CATS=TOUR_MENU_ITEMS.map(item=>item.n);
 const REVENUE_CATS=['Drinks','Merchandise','Tours','Transport','Other Revenue'];
 const AREA_ORDER=['Food','Bar','Transport','Utilities','Laundry','Salaries','Merch','Tours','General'];
-const PAYMENT_METHODS=['Cash','Bank Transfer'];
+// Operational payment channels for expenses. All three deduct from
+// the camp's operating balance (money sent by HQ + revenue collected).
+// They differ only in HOW the money left the operating account:
+//   • Cash         → physical cash on hand
+//   • Card         → camp's debit/credit card (paid from camp bank)
+//   • Bank Transfer → wire/SEPA from camp bank
+// New conceptual model: there is no "HQ-paid" category for ordinary
+// expenses anymore — once HQ sends money to the location, it lives
+// in the operating pool and whichever channel spends it deducts the
+// same way. paidBy='HQ' is reserved for the type='transfer' entries
+// (HQ → camp top-ups) and nothing else.
+const PAYMENT_METHODS=['Cash','Card','Bank Transfer'];
 const AREA_CONFIG={
   Food:{expenseCats:['Food'],incomeCats:[],linkedItems:[]},
   Bar:{expenseCats:['Bar'],incomeCats:['Drinks'],linkedItems:MENU.Drinks.map(i=>i.n)},
@@ -1417,7 +1428,14 @@ function normalizeLedgerEntry(entry){
   if(type==='expense'&&paymentMethod==='HQ Transfer') paymentMethod='Bank Transfer';
   if(type==='income'&&paymentMethod!=='Cash') paymentMethod='Cash';
   if(type==='transfer') paymentMethod='HQ Transfer';
-  const paidBy=entry.paidBy||(type==='expense'&&paymentMethod==='Bank Transfer'?'HQ':type==='transfer'?'HQ':'Camp');
+  // New model: only top-up transfers (type='transfer') count as
+  // paidBy='HQ'. Every ordinary expense — Cash, Card, or Bank
+  // Transfer — is paid from the camp's operating pool, so paidBy
+  // defaults to 'Camp' regardless of channel. Legacy entries that
+  // carry an explicit paidBy='HQ' on a Bank-Transfer expense are
+  // respected (entry.paidBy overrides), but new entries no longer
+  // get auto-stamped 'HQ' just for using a bank channel.
+  const paidBy=entry.paidBy||(type==='transfer'?'HQ':'Camp');
   return {
     id:normalizedId,
     date:entry.date||today(),
@@ -3942,14 +3960,21 @@ function renderOverview(){
   const totalExpEur=sum(expenses,x=>entryEurAmount(x));
   const campSpendLocal=sum(expenses.filter(x=>x.paymentMethod==='Cash'),x=>entryLocalDisplayAmount(x));
   const campSpendEur=sum(expenses.filter(x=>x.paymentMethod==='Cash'),x=>entryEurAmount(x));
+  const cardSpendLocal=sum(expenses.filter(x=>x.paymentMethod==='Card'),x=>entryLocalDisplayAmount(x));
+  const cardSpendEur=sum(expenses.filter(x=>x.paymentMethod==='Card'),x=>entryEurAmount(x));
   const hqSpendLocal=sum(expenses.filter(x=>x.paymentMethod==='Bank Transfer'),x=>entryLocalDisplayAmount(x));
   const hqSpendEur=sum(expenses.filter(x=>x.paymentMethod==='Bank Transfer'),x=>entryEurAmount(x));
   const totalSentLocal=sum(transfers,x=>entryLocalDisplayAmount(x));
   const totalSentEur=sum(transfers,x=>entryEurAmount(x));
   const grossProfitLocal=totalRevenueLocal-totalExpLocal;
   const grossProfitEur=totalRevenueEur-totalExpEur;
-  const campCashBalanceLocal=totalSentLocal+totalRevenueLocal-campSpendLocal;
-  const campCashBalanceEur=totalSentEur+totalRevenueEur-campSpendEur;
+  // Operating balance = money sent + revenue collected − everything
+  // spent (Cash + Card + Bank Transfer). All three channels eat from
+  // the same pool — see PAYMENT_METHODS comment.
+  const opSpendLocal=campSpendLocal+cardSpendLocal+hqSpendLocal;
+  const opSpendEur=campSpendEur+cardSpendEur+hqSpendEur;
+  const campCashBalanceLocal=totalSentLocal+totalRevenueLocal-opSpendLocal;
+  const campCashBalanceEur=totalSentEur+totalRevenueEur-opSpendEur;
 
   const guestCount=sum(weeks,w=>(w.guests||[]).length);
   const paidCount=sum(weeks,w=>(w.guests||[]).filter(g=>g.paid).length);
@@ -4171,8 +4196,8 @@ function renderOverview(){
   // colored values (green/amber/ocean/green-or-red) over the hero+grid
   // hybrid. The g4 container handles the equal-width layout.
   document.getElementById('ovKpis').innerHTML=`
-    ${kpi('Camp Cash','Float + revenue − camp-paid costs',lkr(campCashBalanceLocal),campCashBalanceLocal>=0?'kv-green':'kv-red',euro(campCashBalanceEur))}
-    ${kpi('HQ Paid','Direct HQ-covered expenses',lkr(hqSpendLocal),'kv-amber',euro(hqSpendEur))}
+    ${kpi('Operating Cash','Money sent + revenue − all operating spend',lkr(campCashBalanceLocal),campCashBalanceLocal>=0?'kv-green':'kv-red',euro(campCashBalanceEur))}
+    ${kpi('Bank Transfer','Operating spend paid from camp bank',lkr(hqSpendLocal),'kv-amber',euro(hqSpendEur))}
     ${kpi('Guest-days',gdSource,guestDays>0?guestDays+'d':'—','kv-ocean')}
     ${kpi('Gross Profit','Revenue − all expenses',lkr(grossProfitLocal),grossProfitLocal>=0?'kv-green':'kv-red',euro(grossProfitEur))}
   `;
@@ -5118,7 +5143,7 @@ async function submitTransportEntry(){
     linkedItem:name,
     businessArea:'Transport',
     paymentMethod:paidVia,
-    paidBy:paidVia==='Bank Transfer'?'HQ':'Camp',
+    paidBy:'Camp',  // Transport expense — always paid from operating pool, regardless of channel (Cash / Card / Bank Transfer)
     currency:LOCAL_CURRENCY||'LKR',
     fxRate:fx,
     amountLocal:total,
@@ -5990,7 +6015,7 @@ function buildLedgerPayload(prefix,type,id=null){
     category,
     businessArea:area,
     paymentMethod,
-    paidBy:type==='transfer'?'HQ':type==='expense'&&paymentMethod==='Bank Transfer'?'HQ':'Camp',
+    paidBy:type==='transfer'?'HQ':'Camp',  // Only HQ top-ups are 'HQ'; all ordinary expense channels are 'Camp'
     currency,
     fxRate,
     // Local-currency input is already in the local unit (LKR/MAD/etc).
@@ -6650,21 +6675,28 @@ function renderExpenses(){
   const visibleExpenses=rows.filter(x=>x.type==='expense');
   const campSpendLocal=sum(visibleExpenses.filter(x=>x.paymentMethod==='Cash'),x=>entryLocalDisplayAmount(x));
   const campSpendEur=sum(visibleExpenses.filter(x=>x.paymentMethod==='Cash'),x=>entryEurAmount(x));
+  const cardSpendLocal=sum(visibleExpenses.filter(x=>x.paymentMethod==='Card'),x=>entryLocalDisplayAmount(x));
+  const cardSpendEur=sum(visibleExpenses.filter(x=>x.paymentMethod==='Card'),x=>entryEurAmount(x));
   const hqSpendLocal=sum(visibleExpenses.filter(x=>x.paymentMethod==='Bank Transfer'),x=>entryLocalDisplayAmount(x));
   const hqSpendEur=sum(visibleExpenses.filter(x=>x.paymentMethod==='Bank Transfer'),x=>entryEurAmount(x));
   const moneySentLocal=sum(rows.filter(x=>x.type==='transfer'),x=>entryLocalDisplayAmount(x));
   const moneySentEur=sum(rows.filter(x=>x.type==='transfer'),x=>entryEurAmount(x));
   const revenueLocal=sum(rows.filter(x=>x.type==='income'),x=>entryLocalDisplayAmount(x));
   const revenueEur=sum(rows.filter(x=>x.type==='income'),x=>entryEurAmount(x));
-  const cashLeftLocal=moneySentLocal+revenueLocal-campSpendLocal;
-  const cashLeftEur=moneySentEur+revenueEur-campSpendEur;
+  // Cash left = money sent + revenue − everything spent (Cash + Card +
+  // Bank Transfer). All three eat from the same operating pool.
+  const opSpendLocal=campSpendLocal+cardSpendLocal+hqSpendLocal;
+  const opSpendEur=campSpendEur+cardSpendEur+hqSpendEur;
+  const cashLeftLocal=moneySentLocal+revenueLocal-opSpendLocal;
+  const cashLeftEur=moneySentEur+revenueEur-opSpendEur;
 
   document.getElementById('expKpis').innerHTML=`
-    ${kpi('Cash Left','Money sent + revenue - camp spend',lkr(cashLeftLocal),cashLeftLocal>=0?'kv-green':'kv-red',euro(cashLeftEur))}
+    ${kpi('Cash Left','Money sent + revenue − all operating spend',lkr(cashLeftLocal),cashLeftLocal>=0?'kv-green':'kv-red',euro(cashLeftEur))}
     ${kpi('Entries','Visible rows',String(rows.length),'kv-ocean')}
-    ${kpi('Camp Spend','Paid from on-site cash',lkr(campSpendLocal),'kv-red',euro(campSpendEur))}
-    ${kpi('HQ Paid','Directly covered by HQ',lkr(hqSpendLocal),'kv-amber',euro(hqSpendEur))}
-    ${kpi('Money Sent','Cash float to camp',lkr(moneySentLocal),'kv-ocean',euro(moneySentEur))}
+    ${kpi('Cash Spend','Paid from on-site cash',lkr(campSpendLocal),'kv-red',euro(campSpendEur))}
+    ${kpi('Card Spend','Paid with the camp card',lkr(cardSpendLocal),'kv-amber',euro(cardSpendEur))}
+    ${kpi('Bank Transfer','Paid from camp bank',lkr(hqSpendLocal),'kv-amber',euro(hqSpendEur))}
+    ${kpi('Money Sent','HQ top-ups to camp',lkr(moneySentLocal),'kv-ocean',euro(moneySentEur))}
     ${kpi('Revenue','Incoming cash logged in ledger',lkr(revenueLocal),'kv-green',euro(revenueEur))}
   `;
 
@@ -6871,12 +6903,16 @@ function renderWeeklyPL(){
     const ledger=ledgerForWeek(ws);
     const sent=sum(ledger.filter(x=>x.type==='transfer'),x=>x.amount);
     const campSpend=sum(ledger.filter(x=>x.type==='expense'&&x.paymentMethod==='Cash'),x=>x.amount);
+    const cardSpend=sum(ledger.filter(x=>x.type==='expense'&&x.paymentMethod==='Card'),x=>x.amount);
     const hqSpend=sum(ledger.filter(x=>x.type==='expense'&&x.paymentMethod==='Bank Transfer'),x=>x.amount);
     const manualRevenue=sum(ledger.filter(x=>x.type==='income'),x=>x.amount);
     const foodExp=sum(ledger.filter(x=>x.type==='expense'&&x.businessArea==='Food'),x=>x.amount);
     const tabRevenue=wk?weekRevenue(wk):0;
     const totalRevenue=tabRevenue+manualRevenue;
-    const cash=sent+totalRevenue-campSpend;
+    // Operating balance — every spend channel (Cash + Card + Bank
+    // Transfer) draws from the same pool funded by HQ top-ups +
+    // collected revenue.
+    const cash=sent+totalRevenue-(campSpend+cardSpend+hqSpend);
     const guests=wk?(wk.guests||[]).length:0;
     const paidGuests=wk?(wk.guests||[]).filter(g=>g.paid).length:0;
     const guestDays=wk?guestDaysForWeeks([wk]).value:(ovBookings.length?ovGuestDaysForWeek(ws):0);
@@ -6886,15 +6922,15 @@ function renderWeeklyPL(){
       Tours:(wk?sum((wk.guests||[]).filter(g=>g.paid).flatMap(g=>g.items).filter(i=>i.c==='Tours'&&!TRANSPORT_REVENUE_CATS.includes(i.n)),i=>Number(i.p)):0)+sum(ledger.filter(x=>x.type==='income'&&x.businessArea==='Tours'),x=>x.amount),
       Transport:(wk?sum((wk.guests||[]).filter(g=>g.paid).flatMap(g=>g.items).filter(i=>TRANSPORT_REVENUE_CATS.includes(i.n)),i=>Number(i.p)):0)+sum(ledger.filter(x=>x.type==='income'&&x.businessArea==='Transport'),x=>x.amount)
     };
-    return{ws,sent,campSpend,hqSpend,foodExp,tabRevenue,totalRevenue,cash,guests,paidGuests,guestDays,drinksSales:areaRevenue.Bar,merchSales:areaRevenue.Merch,tourSales:areaRevenue.Tours,transportSales:areaRevenue.Transport};
+    return{ws,sent,campSpend,cardSpend,hqSpend,foodExp,tabRevenue,totalRevenue,cash,guests,paidGuests,guestDays,drinksSales:areaRevenue.Bar,merchSales:areaRevenue.Merch,tourSales:areaRevenue.Tours,transportSales:areaRevenue.Transport};
   });
 
   const totals=rows.reduce((t,r)=>({
-    sent:t.sent+r.sent,campSpend:t.campSpend+r.campSpend,hqSpend:t.hqSpend+r.hqSpend,
+    sent:t.sent+r.sent,campSpend:t.campSpend+r.campSpend,cardSpend:t.cardSpend+(r.cardSpend||0),hqSpend:t.hqSpend+r.hqSpend,
     foodExp:t.foodExp+r.foodExp,tabRevenue:t.tabRevenue+r.tabRevenue,totalRevenue:t.totalRevenue+r.totalRevenue,
     cash:t.cash+r.cash,guests:t.guests+r.guests,paidGuests:t.paidGuests+r.paidGuests,guestDays:t.guestDays+r.guestDays,
     drinksSales:t.drinksSales+r.drinksSales,merchSales:t.merchSales+r.merchSales,tourSales:t.tourSales+r.tourSales,transportSales:t.transportSales+r.transportSales
-  }),{sent:0,campSpend:0,hqSpend:0,foodExp:0,tabRevenue:0,totalRevenue:0,cash:0,guests:0,paidGuests:0,guestDays:0,drinksSales:0,merchSales:0,tourSales:0,transportSales:0});
+  }),{sent:0,campSpend:0,cardSpend:0,hqSpend:0,foodExp:0,tabRevenue:0,totalRevenue:0,cash:0,guests:0,paidGuests:0,guestDays:0,drinksSales:0,merchSales:0,tourSales:0,transportSales:0});
 
   el.innerHTML=`<div class="card">
     <div class="card-pad" style="border-bottom:1px solid var(--border)">
@@ -6907,13 +6943,13 @@ function renderWeeklyPL(){
         <th class="r">Guests</th>
         <th class="r">Food / guest-day</th>
         <th class="r">Cash Float In</th>
-        <th class="r">Camp Spend</th>
-        <th class="r">HQ Paid</th>
+        <th class="r">Cash Spend</th>
+        <th class="r">Card Spend</th>
+        <th class="r">Bank Transfer</th>
         <th class="r">Drinks</th>
         <th class="r">Merch</th>
         <th class="r">Tours</th>
-        <th class="r">Transport</th>
-        <th class="r">Camp Cash</th>
+        <th class="r">Operating Cash</th>
       </tr></thead>
       <tbody>
         ${rows.map(r=>`<tr style="cursor:pointer" onclick="jumpToWeek('${r.ws}')">
@@ -6922,6 +6958,7 @@ function renderWeeklyPL(){
           <td class="r" style="color:var(--red)">${r.guestDays?perGuestDayMetric(r.foodExp,r.guestDays):'—'}</td>
           <td class="r" style="color:var(--amber)">${euro(r.sent)}</td>
           <td class="r" style="color:var(--red)">${euro(r.campSpend)}</td>
+          <td class="r" style="color:var(--red)">${euro(r.cardSpend||0)}</td>
           <td class="r" style="color:var(--amber)">${euro(r.hqSpend)}</td>
           <td class="r" style="font-weight:700;color:var(--green)">${euro(r.drinksSales)}</td>
           <td class="r" style="font-weight:700;color:var(--green)">${euro(r.merchSales)}</td>
@@ -6937,6 +6974,7 @@ function renderWeeklyPL(){
           <td class="r" style="padding:10px 13px;font-weight:700;color:var(--red)">${perGuestDayMetric(totals.foodExp,totals.guestDays)}</td>
           <td class="r" style="padding:10px 13px;font-weight:700;color:var(--amber)">${euro(totals.sent)}</td>
           <td class="r" style="padding:10px 13px;font-weight:700;color:var(--red)">${euro(totals.campSpend)}</td>
+          <td class="r" style="padding:10px 13px;font-weight:700;color:var(--red)">${euro(totals.cardSpend)}</td>
           <td class="r" style="padding:10px 13px;font-weight:700;color:var(--amber)">${euro(totals.hqSpend)}</td>
           <td class="r" style="padding:10px 13px;font-weight:700;color:var(--green)">${euro(totals.drinksSales)}</td>
           <td class="r" style="padding:10px 13px;font-weight:700;color:var(--green)">${euro(totals.merchSales)}</td>
