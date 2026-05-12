@@ -3440,53 +3440,68 @@ function processFile(file) {
           if(Number.isFinite(pax) && b.pax !== pax){ b.pax = pax; changed = true; }
           if(gross > 0 && b.gross !== gross){ b.gross = gross; changed = true; }
 
-          if(hasPartnerInfo && (b.partner === DIRECT_LABEL || !b.partner || b.com_pct === 0)){
-            // `csvRate || 20` would treat a legitimate 0% commission as
-            // falsy and override it to 20% — wrong for partners like
-            // Enjoy Surf / Surfer Girls Power / Surf Stories Poland that
-            // run on zero commission. Use Number.isFinite + SEED_RATES
-            // as the fallback chain so 0 is preserved when the CSV (or
-            // the seeded default) explicitly says 0.
-            const _seed=SEED_RATES[partnerName];
-            const _fallback=Number.isFinite(_seed)?_seed:20;
-            const _csvOrSeed=Number.isFinite(csvRate)?csvRate:_fallback;
-            if(partnerRates[partnerName] === undefined) partnerRates[partnerName] = _csvOrSeed;
+          // ── Existing-booking commission policy ──────────────────────
+          // CSV is the source of truth for the FIRST stamp on a booking.
+          // Once a booking has a finite com_pct stamped (i.e. it's been
+          // imported before), the stamp is permanent — re-importing the
+          // same booking_ref with a different rate does NOT rewrite the
+          // commission. This matches "if a partner changes rate in the
+          // future, only new bookings get the new rate" — old bookings
+          // (and their invoices already issued) stay accurate.
+          //
+          // The exception is the first branch below: a booking that
+          // existed as "direct" / no-partner / no-stamp is treated as a
+          // fresh assignment, so it gets the CSV rate stamped on it.
+          const _seed = SEED_RATES[partnerName];
+          const _fallback = Number.isFinite(_seed) ? _seed : 20;
+          const _firstStampRate = Number.isFinite(csvRate)
+            ? csvRate
+            : (partnerRates[partnerName] !== undefined ? partnerRates[partnerName] : _fallback);
+
+          if(hasPartnerInfo && (b.partner === DIRECT_LABEL || !b.partner || !Number.isFinite(b.com_pct))){
+            // First stamp on this booking. Use CSV rate (top priority),
+            // else partnerRates, else SEED_RATES, else 20%.
+            if(partnerRates[partnerName] === undefined) partnerRates[partnerName] = _firstStampRate;
+            // Track the latest CSV rate seen for this partner so Settings
+            // UI mirrors what Bookinglayer is currently sending. Settings
+            // remains the manual override path; CSV is the auto path.
+            else if(Number.isFinite(csvRate)) partnerRates[partnerName] = csvRate;
             partnerTypes[partnerName] = inferBookingTypeFromRow({location, package:pkgCode});
-            const useRate = partnerRates[partnerName] !== undefined ? partnerRates[partnerName] : _csvOrSeed;
-            if(partnerRates[partnerName] !== undefined && csvRate > 0){
-              const csvComAmt = +(gross * csvRate / 100).toFixed(2);
-              const calcComAmt = +(gross * useRate / 100).toFixed(2);
-              if(Math.abs(calcComAmt - csvComAmt) > 0.01) corrected++;
-            }
+            const useRate = _firstStampRate;
             b.partner = partnerName;
             b.com_pct = useRate;
             b.com_amt = +(gross * useRate / 100).toFixed(2);
             b.net = +(gross - b.com_amt).toFixed(2);
             changed = true;
           } else if(!shouldBeDirect && hasPartnerInfo) {
+            // Existing booking with a partner stamp already in place.
+            // PRESERVE b.com_pct — don't recompute from csvRate even if
+            // it differs. Only refresh com_amt / net if gross changed
+            // (which the gross update above already captured). Update
+            // partnerName if it's been corrected (e.g. casing fixup),
+            // and keep partnerRates in sync with the latest CSV value
+            // so the Settings UI reflects the partner's current rate.
             const canonPartner = partnerName;
-            // Same 0%-preservation fix as the previous branch. The
-            // priority chain is: explicit csvRate (if finite, including
-            // 0) → existing b.com_pct (if finite, including 0) →
-            // SEED_RATES entry → 20% default.
-            const _seed=SEED_RATES[canonPartner];
-            const _fallback=Number.isFinite(_seed)?_seed:20;
-            const _chain=Number.isFinite(csvRate)?csvRate:(Number.isFinite(b.com_pct)?b.com_pct:_fallback);
-            if(partnerRates[canonPartner] === undefined) partnerRates[canonPartner] = _chain;
+            if(partnerRates[canonPartner] === undefined) partnerRates[canonPartner] = _firstStampRate;
+            else if(Number.isFinite(csvRate)) partnerRates[canonPartner] = csvRate;
             partnerTypes[canonPartner] = inferBookingTypeFromRow({location, package:pkgCode});
-            const useRate = partnerRates[canonPartner] !== undefined ? partnerRates[canonPartner] : _chain;
             if(b.partner !== canonPartner){ b.partner = canonPartner; changed = true; }
-            const newComAmt = +(gross * useRate / 100).toFixed(2);
+            // Recompute amounts from the booking's OWN stamped rate
+            // (not from partnerRates / CSV) — so gross-only updates
+            // flow through without retroactively changing commission.
+            const stampedRate = b.com_pct;
+            const newComAmt = +(gross * stampedRate / 100).toFixed(2);
             const newNet = +(gross - newComAmt).toFixed(2);
-            if(b.com_pct !== useRate || b.com_amt !== newComAmt || b.net !== newNet){
-              if(csvRate > 0){
-                const csvComAmt = +(gross * csvRate / 100).toFixed(2);
-                if(Math.abs(newComAmt - csvComAmt) > 0.01) corrected++;
-              }
-              b.com_pct = useRate;
+            if(b.com_amt !== newComAmt || b.net !== newNet){
               b.com_amt = newComAmt;
               b.net = newNet;
               changed = true;
+            }
+            // Telemetry: count CSV-vs-stamped drift so the user can see
+            // how many bookings preserved their original rate vs the
+            // current CSV rate. Doesn't change the booking.
+            if(Number.isFinite(csvRate) && Math.abs(csvRate - stampedRate) > 0.01){
+              corrected++;
             }
           } else if(shouldBeDirect && b.partner === DIRECT_LABEL) {
             const newNet = gross;
