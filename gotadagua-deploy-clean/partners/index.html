@@ -472,6 +472,32 @@ td{padding:13px 16px;font-size:13px;vertical-align:middle}td.r{text-align:right;
     </tr></tbody>
       </table>
     </div>
+
+    <!-- Junior Surf Camp Partners (location code: JUN) -->
+    <div class="section-hdr" style="margin-top:18px"><div class="section-title" style="font-size:17px">Junior Surf Camp Partners</div><div class="section-hint" id="juniorCountHint"></div></div>
+    <div class="table-wrap" style="margin-bottom:22px">
+      <table>
+        <thead id="partnerTableHeadJunior"><tr>
+          <th style="width:28px"></th><th>Partner</th>
+          <th class="r">Bookings</th><th class="r">Gross Revenue</th>
+          <th class="r">Commission</th><th class="r">Outstanding</th>
+        </tr></thead>
+        <tbody id="partnerTableBodyJunior"></tbody>
+      </table>
+    </div>
+
+    <!-- Kids Camp Caparica Partners (location code: Colon) -->
+    <div class="section-hdr" style="margin-top:4px"><div class="section-title" style="font-size:17px">Kids Camp Caparica Partners</div><div class="section-hint" id="kidsCountHint"></div></div>
+    <div class="table-wrap">
+      <table>
+        <thead id="partnerTableHeadKids"><tr>
+          <th style="width:28px"></th><th>Partner</th>
+          <th class="r">Bookings</th><th class="r">Gross Revenue</th>
+          <th class="r">Commission</th><th class="r">Outstanding</th>
+        </tr></thead>
+        <tbody id="partnerTableBodyKids"></tbody>
+      </table>
+    </div>
   </div>
 
   <!-- DIRECT BOOKING ENGINE PAGE -->
@@ -1851,22 +1877,74 @@ const SEED_TYPES = {};
 // Label used for direct (non-partner) bookings
 const DIRECT_LABEL = 'Direct Booking Engine';
 
+// Partner type taxonomy + the location-code → type map used to slot a
+// new partner into the right section the first time it shows up in a
+// CSV. Adding a code (e.g., a new Bookinglayer location for "FR") is
+// the only place that needs updating to expand the taxonomy.
+const PARTNER_TYPES = ['surfcamp','surfschool','junior_surfcamp','kids_camp'];
+const PARTNER_TYPE_LABELS = {
+  'surfcamp':'Surf Camp',
+  'surfschool':'Surf School',
+  'junior_surfcamp':'Junior Surf Camp',
+  'kids_camp':'Kids Camp Caparica'
+};
+const LOCATION_CODE_TO_TYPE = {
+  'LK':'surfcamp',
+  'PT':'surfcamp',
+  'MA':'surfcamp',
+  'SC':'surfschool',
+  'JUN':'junior_surfcamp',
+  'Colon':'kids_camp'
+};
+function partnerTypeFromLocationCode(locCode){
+  if(!locCode) return null;
+  const direct = LOCATION_CODE_TO_TYPE[locCode];
+  if(direct) return direct;
+  // Case-insensitive fallback so 'colon' / 'jun' still match.
+  const found = Object.keys(LOCATION_CODE_TO_TYPE).find(k => k.toLowerCase() === String(locCode).toLowerCase());
+  return found ? LOCATION_CODE_TO_TYPE[found] : null;
+}
+
 function inferBookingTypeFromRow(row){
+  // Preferred path: the CSV row's location code maps deterministically
+  // to a partner type via LOCATION_CODE_TO_TYPE. Falls back to the
+  // legacy "look at location name / package" detection only if no
+  // recognisable code is provided — keeps backwards-compat with rows
+  // that bypass the import normaliser (e.g., legacy local-storage
+  // entries that pre-date the locCode field).
+  const fromCode = partnerTypeFromLocationCode(row.locCode);
+  if(fromCode) return fromCode;
   const loc = (row.location || '').toLowerCase();
   const pkg = (row.package || '').toLowerCase();
+  if(loc.includes('junior')) return 'junior_surfcamp';
+  if(loc.includes('kids')) return 'kids_camp';
   if (loc.includes('surf school') || loc.includes('caparica') && pkg === 'less' || pkg === 'less') return 'surfschool';
   return 'surfcamp';
 }
 function refreshPartnerTypesFromBookings(){
+  // Tally per-type for every partner so a partner straddling multiple
+  // locations (e.g., bookings in both LK and SC) still resolves to the
+  // type they have the most of. Ties break toward the more specialised
+  // type — junior_surfcamp / kids_camp / surfschool win over the
+  // generic surfcamp default, since the latter is the catch-all.
   const grouped = {};
   allBookings.forEach(b=>{
     const p = (b.partner||'').trim();
     if(!p || p===DIRECT_LABEL) return;
-    if(!grouped[p]) grouped[p] = {surfcamp:0, surfschool:0};
-    grouped[p][inferBookingTypeFromRow(b)]++;
+    if(!grouped[p]) grouped[p] = Object.fromEntries(PARTNER_TYPES.map(t=>[t,0]));
+    const t = inferBookingTypeFromRow(b);
+    if(grouped[p][t]!==undefined) grouped[p][t]++;
   });
+  const PRIORITY = ['kids_camp','junior_surfcamp','surfschool','surfcamp'];
   Object.entries(grouped).forEach(([p, counts])=>{
-    partnerTypes[p] = counts.surfschool > counts.surfcamp ? 'surfschool' : (counts.surfschool > 0 && counts.surfcamp === 0 ? 'surfschool' : 'surfcamp');
+    let best = null;
+    let bestCount = -1;
+    PARTNER_TYPES.forEach(t=>{
+      const c = counts[t] || 0;
+      const tieBreak = c === bestCount ? (PRIORITY.indexOf(t) < PRIORITY.indexOf(best||'surfcamp')) : false;
+      if(c > bestCount || tieBreak){ bestCount = c; best = t; }
+    });
+    partnerTypes[p] = best || 'surfcamp';
   });
 }
 
@@ -2172,10 +2250,24 @@ function renderPartnerRows(groups, tbodyId, headId, hintId, emptyLabel) {
 
 function renderTable() {
   const groups=partnerGroups(filtered());
-  const campGroups = groups.filter(p=>getPartnerType(p.partner)!=='surfschool');
-  const schoolGroups = groups.filter(p=>getPartnerType(p.partner)==='surfschool');
-  renderPartnerRows(campGroups, 'partnerTableBodyCamp', 'partnerTableHeadCamp', 'surfCampCountHint', 'No surf camp partners for this period');
-  renderPartnerRows(schoolGroups, 'partnerTableBodySchool', 'partnerTableHeadSchool', 'surfSchoolCountHint', 'No surf school partners for this period');
+  // Split into the four partner-type buckets. Surf Camp now means
+  // strictly surfcamp — junior_surfcamp and kids_camp render in their
+  // own dedicated sections instead of falling into "anything that
+  // isn't surfschool" as before.
+  const bySection = {
+    surfcamp: groups.filter(p=>getPartnerType(p.partner)==='surfcamp'),
+    surfschool: groups.filter(p=>getPartnerType(p.partner)==='surfschool'),
+    junior_surfcamp: groups.filter(p=>getPartnerType(p.partner)==='junior_surfcamp'),
+    kids_camp: groups.filter(p=>getPartnerType(p.partner)==='kids_camp')
+  };
+  renderPartnerRows(bySection.surfcamp, 'partnerTableBodyCamp', 'partnerTableHeadCamp', 'surfCampCountHint', 'No surf camp partners for this period');
+  renderPartnerRows(bySection.surfschool, 'partnerTableBodySchool', 'partnerTableHeadSchool', 'surfSchoolCountHint', 'No surf school partners for this period');
+  if(document.getElementById('partnerTableBodyJunior')){
+    renderPartnerRows(bySection.junior_surfcamp, 'partnerTableBodyJunior', 'partnerTableHeadJunior', 'juniorCountHint', 'No junior surf camp partners for this period');
+  }
+  if(document.getElementById('partnerTableBodyKids')){
+    renderPartnerRows(bySection.kids_camp, 'partnerTableBodyKids', 'partnerTableHeadKids', 'kidsCountHint', 'No kids camp partners for this period');
+  }
 }
 
 function renderOverview(p) {
@@ -3289,6 +3381,8 @@ function renderSettingsModal() {
       <select id="ptype_${rowId}" style="border:1.5px solid var(--border);border-radius:8px;padding:7px 10px;font-size:12px;font-family:'Outfit',sans-serif;background:#fff;color:var(--ink)">
         <option value="surfcamp" ${type==='surfcamp'?'selected':''}>Surf Camp</option>
         <option value="surfschool" ${type==='surfschool'?'selected':''}>Escola de Surf</option>
+        <option value="junior_surfcamp" ${type==='junior_surfcamp'?'selected':''}>Junior Surf Camp</option>
+        <option value="kids_camp" ${type==='kids_camp'?'selected':''}>Kids Camp Caparica</option>
       </select>
       <div class="com-input-wrap">
         <input type="number" min="0" max="100" step="0.5" value="${getRate(p)}" id="prate_${rowId}" style="width:70px;text-align:right">
@@ -3310,6 +3404,14 @@ function renderSettingsModal() {
   ratesHTML += `<div style="font-family:'DM Serif Display',serif;font-size:16px;color:var(--navy);margin:0 0 10px 2px">Parceiros Escola de Surf</div>`;
   ratesHTML += renderHeader();
   ratesHTML += renderRows('surfschool') || `<div style="font-size:12px;color:var(--muted);padding:10px 12px 18px">No surf school partners yet.</div>`;
+  ratesHTML += `<div style="height:18px"></div>`;
+  ratesHTML += `<div style="font-family:'DM Serif Display',serif;font-size:16px;color:var(--navy);margin:0 0 10px 2px">Junior Surf Camp Partners</div>`;
+  ratesHTML += renderHeader();
+  ratesHTML += renderRows('junior_surfcamp') || `<div style="font-size:12px;color:var(--muted);padding:10px 12px 18px">No junior surf camp partners yet.</div>`;
+  ratesHTML += `<div style="height:18px"></div>`;
+  ratesHTML += `<div style="font-family:'DM Serif Display',serif;font-size:16px;color:var(--navy);margin:0 0 10px 2px">Kids Camp Caparica Partners</div>`;
+  ratesHTML += renderHeader();
+  ratesHTML += renderRows('kids_camp') || `<div style="font-size:12px;color:var(--muted);padding:10px 12px 18px">No kids camp partners yet.</div>`;
 
   document.getElementById('partnerRatesList').innerHTML = ratesHTML;
   document.getElementById('saveNotice').classList.remove('show');
@@ -3329,6 +3431,8 @@ window.addPartnerRow = (type='surfcamp') => {
     <select id="ptype_${id}" style="border:1.5px solid var(--border);border-radius:8px;padding:7px 10px;font-size:12px;font-family:'Outfit',sans-serif;background:#fff;color:var(--ink)">
       <option value="surfcamp" ${type==='surfcamp'?'selected':''}>Surf Camp</option>
       <option value="surfschool" ${type==='surfschool'?'selected':''}>Escola de Surf</option>
+      <option value="junior_surfcamp" ${type==='junior_surfcamp'?'selected':''}>Junior Surf Camp</option>
+      <option value="kids_camp" ${type==='kids_camp'?'selected':''}>Kids Camp Caparica</option>
     </select>
     <div class="com-input-wrap">
       <input type="number" min="0" max="100" step="0.5" value="20" id="prate_${id}" style="width:70px;text-align:right">
@@ -3574,7 +3678,7 @@ function processFile(file) {
             // Settings UI mirrors current Bookinglayer values.
             if(Number.isFinite(csvRate)) partnerRates[partnerName] = csvRate;
             else if(partnerRates[partnerName] === undefined) partnerRates[partnerName] = _firstStampRate;
-            partnerTypes[partnerName] = inferBookingTypeFromRow({location, package:pkgCode});
+            partnerTypes[partnerName] = inferBookingTypeFromRow({location, package:pkgCode, locCode});
             b.partner = partnerName;
             b.com_pct = useRate;
             b.com_amt = +(gross * useRate / 100).toFixed(2);
@@ -3591,7 +3695,7 @@ function processFile(file) {
             const canonPartner = partnerName;
             if(partnerRates[canonPartner] === undefined) partnerRates[canonPartner] = _firstStampRate;
             else if(Number.isFinite(csvRate)) partnerRates[canonPartner] = csvRate;
-            partnerTypes[canonPartner] = inferBookingTypeFromRow({location, package:pkgCode});
+            partnerTypes[canonPartner] = inferBookingTypeFromRow({location, package:pkgCode, locCode});
             if(b.partner !== canonPartner){ b.partner = canonPartner; changed = true; }
             // Recompute amounts from the booking's OWN stamped rate
             // (not from partnerRates / CSV) — so gross-only updates
@@ -3649,7 +3753,7 @@ function processFile(file) {
             const _seed=SEED_RATES[partnerName];
             partnerRates[partnerName] = Number.isFinite(_seed)?_seed:20;
           }
-          partnerTypes[partnerName] = inferBookingTypeFromRow({location, package:pkgCode});
+          partnerTypes[partnerName] = inferBookingTypeFromRow({location, package:pkgCode, locCode});
           const comAmt   = +(gross * useRate / 100).toFixed(2);
           const b={partner:partnerName,guest,ref,checkin,location,pax,package:pkgCode,gross,com_pct:useRate,com_amt:comAmt,net:+(gross-comAmt).toFixed(2),country};
           allBookings.push(b);
