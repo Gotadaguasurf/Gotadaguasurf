@@ -65,12 +65,10 @@ header{display:none}
 .c-center-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:var(--muted);padding:32px}
 /* Full-width week banner. Lives ABOVE the 3-column layout so it
    stretches edge-to-edge of the window — gives the active week the
-   same visual weight as the page header. Muted slate-gray tone:
-   neutral (no blue, no yellow), slightly darker than the cream/sand
-   it replaces, but lighter than the navy nav bar so it doesn't
-   compete with the brand header. */
-.c-week-banner{flex-shrink:0;padding:10px 22px;background:#5e6b7a;color:#fff;display:flex;justify-content:center;align-items:center;gap:14px;border-bottom:1px solid #4a5563}
-.c-week-banner-label{font-size:10px;text-transform:uppercase;letter-spacing:.14em;color:#c5ccd4;font-weight:700}
+   same visual weight as the page header. Brand navy on solid (no
+   gradient) so it sits clean against the rest of the layout. */
+.c-week-banner{flex-shrink:0;padding:10px 22px;background:var(--navy);color:#fff;display:flex;justify-content:center;align-items:center;gap:14px;border-bottom:1px solid #1d2a39}
+.c-week-banner-label{font-size:10px;text-transform:uppercase;letter-spacing:.14em;color:#9fc5df;font-weight:700}
 .c-week-banner-range{font-family:'DM Serif Display',serif;font-size:20px;letter-spacing:.01em;line-height:1;color:#fff}
 .c-cats{display:flex;gap:6px;padding:10px 14px;flex-shrink:0;background:#fff;border-bottom:1px solid var(--border);overflow-x:auto}
 .c-cat{padding:6px 14px;border-radius:18px;border:1.5px solid var(--border);background:#fff;color:var(--muted);font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:'Outfit',sans-serif;transition:all .18s}
