@@ -6558,7 +6558,13 @@ async function runRecurringNow(id){
     linkedItem:rule.linkedItem,
     quantity:rule.quantity,
     description:rule.description,
-    amountLocal:rule.amountLocal
+    amountLocal:rule.amountLocal,
+    // CRUCIAL: pass the rule's currency through. Without this the
+    // entry falls back to LOCAL_CURRENCY and a EUR-denominated rent
+    // (e.g., Surf Camp Rent €4,600) gets re-labeled as MAD 4,600 in
+    // the ledger. buildMonthlyLedgerEntry stamps the entry's currency
+    // and lets enrichLedgerEntryFx pick fxRate=1 when currency==='EUR'.
+    currency:rule.currency
   });
   try{
     const normalized=await enrichLedgerEntryFx(entry);
@@ -6601,7 +6607,11 @@ async function addAllMonthlyNow(){
       linkedItem:rule.linkedItem,
       quantity:rule.quantity,
       description:rule.description,
-      amountLocal:rule.amountLocal
+      amountLocal:rule.amountLocal,
+      // Pass the rule's currency so EUR-denominated fixed costs land
+      // in the ledger with currency='EUR' and fxRate=1, not silently
+      // converted to the location's local currency.
+      currency:rule.currency
     }));
   });
   if(!entries.length){
