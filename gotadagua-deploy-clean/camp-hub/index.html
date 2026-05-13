@@ -4928,20 +4928,12 @@ function updateTqPresetField(id,field,value){
   window.__tqSaveTimer=setTimeout(()=>saveTransportPresets({skipRender:field==='linkedTour'?false:true}),700);
 }
 
-function addTqPreset(){
+async function addTqPreset(){
   const tab=tqActiveTab;
   const list=transportPresets[tab]=transportPresets[tab]||[];
   const maxSort=list.reduce((m,p)=>Math.max(m,Number(p.sortOrder||0)),0);
-  // Look at existing presets in the same tab. If any have a vehicles[]
-  // list, inherit the vehicle template (labels + capacity, zero prices)
-  // for the new chip — keeps Morocco / hierarchical Sri Lanka tabs
-  // consistent. Otherwise fall back to the legacy flat preset.
   const template=list.find(p=>Array.isArray(p.vehicles)&&p.vehicles.length>0);
   const newId=stableUuidFromSeed('tq|'+tab+'|new|'+Date.now()+'|'+Math.random());
-  // Placeholder name keeps the new preset visible across RT echoes
-  // (normalizeTransportPresetsPayload filters out unnamed presets). The
-  // input opens with this text selected, so the user types the real
-  // destination and the placeholder is replaced on the first keystroke.
   const newPreset={
     id:newId,
     name:'New preset',
@@ -4958,15 +4950,17 @@ function addTqPreset(){
       sortOrder:Number.isFinite(Number(v.sortOrder))?Number(v.sortOrder):(i+1)*10
     }));
   }
-  list.push(newPreset);
+  // Supabase-first commit: build candidate state, try to persist, only
+  // mutate transportPresets + render if the save succeeds. On failure
+  // the user sees a toast and nothing was added — they can retry.
+  const candidate={
+    airport:[...(transportPresets.airport||[])],
+    tuktuk:[...(transportPresets.tuktuk||[])]
+  };
+  candidate[tab]=[...(candidate[tab]||[]),newPreset];
+  const ok=await saveTransportStateOrRollback(candidate);
+  if(!ok) return;
   renderTransportChips();
-  // Persist immediately. Suppress flag in saveTransportPresets stops the
-  // echo from clobbering the user's caret in the input we're about to
-  // focus. skipRender keeps the chips grid stable.
-  saveTransportPresets({skipRender:true});
-  // Find the new chip's name input by data-id (more reliable than
-  // "last input in DOM" which depends on render order). Select all so
-  // the placeholder text gets replaced on first keystroke.
   setTimeout(()=>{
     const chip=document.querySelector(`.tq-chip-edit[data-id="${newId}"]`);
     const input=chip?.querySelector('input[type=text]');
@@ -4974,12 +4968,48 @@ function addTqPreset(){
   },0);
 }
 
+// Supabase-first state commit for click-driven transport edits.
+// Writes the candidate payload to state_store FIRST; only on success
+// replaces the in-memory transportPresets. On failure transportPresets
+// is untouched and the user sees a toast. Used by addTqPreset /
+// deleteTqPreset / addTqVehicle / deleteTqVehicle so no click action
+// can leave local + Supabase out of sync.
+async function saveTransportStateOrRollback(candidatePresets){
+  if(!TRANSPORT_ENABLED_LOCATIONS.has(__HUB_LOCATION_SLUG)) return false;
+  HUB_SUPPRESS_TRANSPORT_RT=true;
+  window.__transportSavePending=true;
+  setSavePill('saving','Saving…');
+  try{
+    await saveStateStore(TRANSPORT_PRESETS_KEY,candidatePresets);
+    transportPresets=candidatePresets;
+    window.__transportSavePending=false;
+    setSavePill('saved','Saved ✓');
+    notifyLedgerChanged();
+    return true;
+  }catch(e){
+    console.warn('[Hub] saveTransportStateOrRollback failed',e);
+    setSavePill('failed','⚠ Save failed — try again');
+    toast('Could not save transport change to Supabase — try again');
+    return false;
+  }finally{
+    setTimeout(()=>{ HUB_SUPPRESS_TRANSPORT_RT=false; },1000);
+  }
+}
+
 async function deleteTqPreset(id){
   if(!confirm('Delete this preset? It won\'t affect any existing ledger entries logged under its name.')) return;
   const tab=tqActiveTab;
-  transportPresets[tab]=(transportPresets[tab]||[]).filter(p=>p.id!==id);
+  // Supabase-first: build the candidate WITHOUT this preset, save it,
+  // and only commit + re-render on success. If Supabase says no the
+  // chip stays exactly where it was.
+  const candidate={
+    airport:[...(transportPresets.airport||[])],
+    tuktuk:[...(transportPresets.tuktuk||[])]
+  };
+  candidate[tab]=candidate[tab].filter(p=>p.id!==id);
+  const ok=await saveTransportStateOrRollback(candidate);
+  if(!ok) return;
   renderTransportChips();
-  await saveTransportPresets();
 }
 
 function pickTqPreset(id){
@@ -5074,18 +5104,20 @@ function populateTqLinkedTourOverride(currentValue){
   const tourOpts=tours.map(t=>`<option value="${escapeAttr(t)}" ${currentValue===t?'selected':''}>${escapeHtml(t)}</option>`).join('');
   sel.innerHTML=`<option value="">(No link — Transport only)</option>${specialOpts}${tours.length?`<option disabled>──── Tours ────</option>${tourOpts}`:''}`;
 }
-function addTqVehicle(presetId){
-  const list=transportPresets[tqActiveTab]||[];
-  const preset=list.find(p=>p.id===presetId);
+async function addTqVehicle(presetId){
+  // Supabase-first: build a deep copy of the state with the new
+  // vehicle appended, persist it, and only commit + render on success.
+  // No transportPresets mutation happens before Supabase confirms.
+  const candidate={
+    airport:(transportPresets.airport||[]).map(p=>({...p,vehicles:Array.isArray(p.vehicles)?p.vehicles.slice():[]})),
+    tuktuk:(transportPresets.tuktuk||[]).map(p=>({...p,vehicles:Array.isArray(p.vehicles)?p.vehicles.slice():[]}))
+  };
+  const tab=tqActiveTab;
+  const preset=candidate[tab].find(p=>p.id===presetId);
   if(!preset) return;
-  preset.vehicles=Array.isArray(preset.vehicles)?preset.vehicles:[];
-  // Flat-preset migration: if this is the first vehicle being added to a
-  // legacy single-price preset (Sri Lanka tuk-tuk style), bring the
-  // existing unitPrice across as the first vehicle's price so the user
-  // doesn't lose their pricing data. The user can rename the label and
-  // set capacity in the input that opens focused. Without this, clicking
-  // "+ Vehicle" on Ahangama (LKR 500) would create a vehicle priced at 0
-  // and the LKR 500 would silently disappear from the picker.
+  // Flat-preset migration: if this is the first vehicle on a legacy
+  // single-price preset, migrate the unitPrice into a "Standard" first
+  // vehicle so the user doesn't lose their pricing.
   if(preset.vehicles.length===0 && Number(preset.unitPrice||0)>0){
     preset.vehicles.push({
       id:stableUuidFromSeed('tq|'+presetId+'|veh|migrated|'+Date.now()),
@@ -5094,14 +5126,9 @@ function addTqVehicle(presetId){
       price:Number(preset.unitPrice||0),
       sortOrder:10
     });
-    preset.unitPrice=0; // hierarchical takes over; clear to avoid double-counting
+    preset.unitPrice=0;
   }
   const maxSort=preset.vehicles.reduce((m,v)=>Math.max(m,Number(v.sortOrder||0)),0);
-  // Give the new vehicle a placeholder label so normalizeTransportPresetsPayload
-  // doesn't filter it out on echo (filter at normalize is "label||price>0").
-  // The user replaces this in the input that opens with focus. Without the
-  // placeholder, any RT echo arriving before the user types one character
-  // would wipe the row.
   preset.vehicles.push({
     id:stableUuidFromSeed('tq|'+presetId+'|veh|'+Date.now()+'|'+Math.random()),
     label:'New vehicle',
@@ -5109,11 +5136,9 @@ function addTqVehicle(presetId){
     price:0,
     sortOrder:maxSort+10
   });
+  const ok=await saveTransportStateOrRollback(candidate);
+  if(!ok) return;
   renderTransportChips();
-  // Persist now — the suppress flag in saveTransportPresets prevents the
-  // echo from re-rendering and blowing away focus. skipRender keeps the
-  // chips grid stable so the user can immediately type into the new row.
-  saveTransportPresets({skipRender:true});
 }
 function updateTqVehicleField(presetId,vehId,field,value){
   const list=transportPresets[tqActiveTab]||[];
@@ -5132,12 +5157,19 @@ function updateTqVehicleField(presetId,vehId,field,value){
   window.__tqSaveTimer=setTimeout(()=>saveTransportPresets({skipRender:true}),700);
 }
 async function deleteTqVehicle(presetId,vehId){
-  const list=transportPresets[tqActiveTab]||[];
-  const preset=list.find(p=>p.id===presetId);
+  // Supabase-first: build deep copy without this vehicle, persist,
+  // commit + render on success.
+  const candidate={
+    airport:(transportPresets.airport||[]).map(p=>({...p,vehicles:Array.isArray(p.vehicles)?p.vehicles.slice():[]})),
+    tuktuk:(transportPresets.tuktuk||[]).map(p=>({...p,vehicles:Array.isArray(p.vehicles)?p.vehicles.slice():[]}))
+  };
+  const tab=tqActiveTab;
+  const preset=candidate[tab].find(p=>p.id===presetId);
   if(!preset||!Array.isArray(preset.vehicles)) return;
   preset.vehicles=preset.vehicles.filter(v=>v.id!==vehId);
+  const ok=await saveTransportStateOrRollback(candidate);
+  if(!ok) return;
   renderTransportChips();
-  await saveTransportPresets({skipRender:true});
 }
 function pickTqCustom(){
   tqSelectedPresetId='__custom__';
