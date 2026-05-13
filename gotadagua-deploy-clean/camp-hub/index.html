@@ -6848,7 +6848,7 @@ function renderExpenses(){
         <td style="color:var(--muted);font-size:12px">${r.linkedItem||'—'}${transportEntryTourOverride(r)?`<div style="font-size:10px;color:var(--ocean);font-weight:600;margin-top:2px">↳ ${escapeHtml(transportEntryTourOverride(r))}</div>`:''}</td>
         <td style="color:var(--muted)">${escapeHtml(strippedTransportDescription(r))||'—'}</td>
         <td style="color:var(--muted);font-size:12px">${r.vendor||'—'}</td>
-        <td class="r" style="font-weight:700">${r.currency&&r.currency!=='EUR'?`${r.currency} `+Number(r.amountLocal||0).toLocaleString('en-GB',{maximumFractionDigits:2}):'<span style="color:var(--muted);font-weight:500" title="Paid in EUR — no local-currency equivalent">—</span>'}</td>
+        <td class="r" style="font-weight:700">${r.currency&&r.currency!=='EUR'?`${r.currency} `+Number(r.amountLocal||0).toLocaleString('en-GB',{maximumFractionDigits:2}):`${LOCAL_CURRENCY||'LKR'} `+Number((Number(r.amount||0)*(LOCAL_PER_EUR||1))).toLocaleString('en-GB',{maximumFractionDigits:0})}</td>
         <td class="r" style="font-weight:700">${euro(r.amount)}</td>
         <td><div class="exp-table-actions"><button class="icon-btn" onclick="openEditLedger('${r.id}')" title="Edit">✎</button><button class="icon-btn danger" onclick="delLedger('${r.id}')" title="Delete">✕</button></div></td>
       </tr>`).join(''):'<tr class="empty-row"><td colspan="10">No entries for this filter.</td></tr>'}
