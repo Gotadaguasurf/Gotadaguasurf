@@ -2448,8 +2448,12 @@ function monthlyProfileKey(profileType,name=''){
 }
 function monthlyCostRowToLocal(row){
   if(!row) return null;
+  // Pull metadata once at the top so BOTH branches can read it.
+  // Previously `md` was scoped inside the salary branch, so the
+  // fixed_cost branch's md.currency reference crashed with
+  // "md is not defined" the moment a fixed_cost row was hydrated.
+  const md=row.metadata||{};
   if(row.profile_type==='salary'){
-    const md=row.metadata||{};
     return {
       kind:'salary',
       profile:normalizeSalaryProfile({
