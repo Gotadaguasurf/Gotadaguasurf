@@ -3548,28 +3548,39 @@ window.saveSettings = async () => {
     if(contact) newContacts[name] = contact;
   });
 
+  // Supabase-first: snapshot the previous state so we can rollback if
+  // Supabase rejects the save. Only commit the new state to memory
+  // AFTER the cloud upsert succeeds.
+  const prev = {
+    rates: {...partnerRates},
+    emails: {...partnerEmails},
+    contacts: {...partnerContacts},
+    collects: {...partnerCollects},
+    types: {...partnerTypes},
+    bookings: allBookings.map(b=>({...b}))   // shallow per-row clone
+  };
+
+  // Apply tentatively (so persistAllToSupabase reads the new state),
+  // then await Supabase. On failure restore from snapshot.
   Object.keys(partnerRates).forEach(k=>delete partnerRates[k]);
   Object.assign(partnerRates, newRates);
-
   Object.keys(partnerEmails).forEach(k=>delete partnerEmails[k]);
   Object.assign(partnerEmails, newEmails);
-
   Object.keys(partnerContacts).forEach(k=>delete partnerContacts[k]);
   Object.assign(partnerContacts, newContacts);
-
   Object.keys(partnerCollects).forEach(k=>delete partnerCollects[k]);
   Object.assign(partnerCollects, newCollects);
-
   Object.keys(partnerTypes).forEach(k=>delete partnerTypes[k]);
   Object.assign(partnerTypes, newTypes);
-
   allBookings.forEach(b=>recalcBooking(b));
-  saveState();
-  renderPartnersPage();
-  renderSettingsModal();
 
   try {
     const synced = await persistAllToSupabase({syncBookings:true, syncPartners:true, syncStatuses:false});
+    // Only NOW commit to localStorage + re-render. Until this point
+    // a failure rolls back cleanly via the snapshot below.
+    saveState();
+    renderPartnersPage();
+    renderSettingsModal();
     const notice = document.getElementById('saveNotice');
     notice.textContent = synced ? 'Saved to Supabase' : 'Saved locally in this browser';
     notice.classList.add('show');
@@ -3579,6 +3590,23 @@ window.saveSettings = async () => {
     }, 2500);
   } catch (err) {
     console.error(err);
+    // ROLLBACK — restore the pre-save state so local and Supabase
+    // stay in lockstep. Without this the user sees "saved" UI but
+    // a refresh would wipe the change (Supabase has the old version).
+    Object.keys(partnerRates).forEach(k=>delete partnerRates[k]);
+    Object.assign(partnerRates, prev.rates);
+    Object.keys(partnerEmails).forEach(k=>delete partnerEmails[k]);
+    Object.assign(partnerEmails, prev.emails);
+    Object.keys(partnerContacts).forEach(k=>delete partnerContacts[k]);
+    Object.assign(partnerContacts, prev.contacts);
+    Object.keys(partnerCollects).forEach(k=>delete partnerCollects[k]);
+    Object.assign(partnerCollects, prev.collects);
+    Object.keys(partnerTypes).forEach(k=>delete partnerTypes[k]);
+    Object.assign(partnerTypes, prev.types);
+    allBookings.length = 0;
+    Array.prototype.push.apply(allBookings, prev.bookings);
+    renderPartnersPage();
+    renderSettingsModal();
     alert('Could not save partner settings. ' + (err?.message || ''));
   }
 };
