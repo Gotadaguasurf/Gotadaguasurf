@@ -782,13 +782,21 @@ td.r{text-align:right;font-family:'DM Mono',monospace;font-size:12px}
             </select>
           </div>
           <div class="mfield" style="margin-bottom:0">
-            <label>Amount (LKR)</label>
+            <label>Amount</label>
             <input type="number" id="recurring_amount" min="0" step="0.01" placeholder="000">
+          </div>
+          <div class="mfield" style="margin-bottom:0">
+            <label>Currency</label>
+            <select id="recurring_currency">
+              <option value="LKR" selected>LKR</option>
+              <option value="EUR">EUR</option>
+            </select>
           </div>
           <div class="mfield" style="margin-bottom:0">
             <label>Paid via</label>
             <select id="recurring_payment">
               <option value="Bank Transfer">Bank Transfer</option>
+              <option value="Card">Card</option>
               <option value="Cash">Cash</option>
             </select>
           </div>
@@ -1464,6 +1472,12 @@ function normalizeRecurringRule(rule){
   const linkedItem=(rule.linkedItem||'').trim();
   const area=rule.businessArea||inferArea(type,category,linkedItem);
   const amountLocal=Number(rule.amountLocal||0);
+  // Currency defaults to the active location's local currency. Same
+  // contract as normalizeSalaryProfile: only LKR/MAD/EUR are valid.
+  // Lets the user log a fixed monthly cost in EUR (e.g., software
+  // subscriptions, EUR-denominated rents) without re-converting.
+  const cur=String(rule.currency||LOCAL_CURRENCY||'LKR').toUpperCase();
+  const validCur=['LKR','MAD','EUR'].includes(cur)?cur:(LOCAL_CURRENCY||'LKR');
   return {
     id:rule.id||('r'+Date.now()+Math.random().toString(36).slice(2,5)),
     name:(rule.name||rule.description||category||'Recurring entry').trim(),
@@ -1475,6 +1489,7 @@ function normalizeRecurringRule(rule){
     linkedItem,
     quantity:Math.max(1,parseInt(rule.quantity||'1',10)||1),
     amountLocal,
+    currency:validCur,
     description:(rule.description||'').trim(),
     enabled:rule.enabled!==false,
     lastAppliedMonth:rule.lastAppliedMonth||'',
@@ -2464,6 +2479,10 @@ function monthlyCostRowToLocal(row){
       businessArea:row.business_area||inferArea('expense',row.category||'Rent',''),
       paymentMethod:row.payment_method||'Bank Transfer',
       amountLocal:Number(row.fixed_amount||0),
+      // Same pattern as the salary branch above — currency is stored in
+      // metadata.currency to avoid a schema change. Legacy rows without
+      // metadata fall back to the active location's currency.
+      currency:md.currency||LOCAL_CURRENCY||'LKR',
       description:row.description||'',
       enabled:row.active!==false,
       updatedAt:row.updated_at||new Date().toISOString()
@@ -2513,7 +2532,9 @@ function recurringRuleToMonthlyCostRow(rule,locationId){
     active:normalized.enabled!==false,
     auto_apply:true,
     apply_rule:'last_day_of_month',
-    metadata:{ local_type:'fixed_cost' }
+    // Currency stored in metadata.currency — no schema change needed.
+    // Mirrors the salaryProfileToMonthlyCostRow pattern.
+    metadata:{ local_type:'fixed_cost', currency:normalized.currency||LOCAL_CURRENCY||'LKR' }
   };
 }
 async function fetchMonthlyProfilesFromSupabase(){
@@ -3027,7 +3048,14 @@ function syncWeekSettlement(wk){
 function recurringRuleSub(rule){
   const timing=rule.frequency==='monthly_end'?'Auto at month end':'Recurring';
   const mode=rule.type==='transfer'?'Money Sent':rule.type==='income'?'Revenue':'Expense';
-  return plainJoin([timing,mode,rule.category,rule.paymentMethod,lkr(rule.amountLocal||0)]);
+  // Amount display: show in the rule's own currency. EUR-denominated
+  // rules (e.g., software subscriptions) display as €X.XX; local-
+  // currency rules go through lkr() which formats with the active
+  // location's symbol.
+  const amtLabel = (rule.currency==='EUR')
+    ? euro(rule.amountLocal||0)
+    : lkr(rule.amountLocal||0);
+  return plainJoin([timing,mode,rule.category,rule.paymentMethod,amtLabel]);
 }
 function getWeek(id){return S.weeks.find(w=>w.id===id);}
 function activeWeek(){return getWeek(AW);}
@@ -6393,6 +6421,14 @@ function resetRecurringForm(){
   document.getElementById('recurring_name').value='';
   document.getElementById('recurring_category').value='Rent';
   document.getElementById('recurring_amount').value='';
+  // Currency dropdown was rebuilt by applyLocationCurrencyToDom at
+  // bootstrap so option[value="LKR"] is now LOCAL_CURRENCY in Morocco.
+  // Reset to the local default — user toggles to EUR if needed.
+  const curSel=document.getElementById('recurring_currency');
+  if(curSel){
+    // The first option is the location-local currency, the second is EUR.
+    curSel.value=LOCAL_CURRENCY||'LKR';
+  }
   document.getElementById('recurring_payment').value='Bank Transfer';
   document.getElementById('recurring_description').value='';
   refreshRecurringSaveButton();
@@ -6402,6 +6438,12 @@ function recurringRuleFromForm(){
   const amountLocal=Number(document.getElementById('recurring_amount')?.value||0);
   const name=(document.getElementById('recurring_name')?.value||'').trim()||category;
   if(!(amountLocal>0)) return null;
+  // Currency is captured straight from the dropdown (LOCAL_CURRENCY or
+  // EUR). When the user picks EUR the rule's amountLocal is treated
+  // as a EUR amount and applyRecurringEntries stamps fxRate=1 — see
+  // the salaryProfile/recurring entry build code that already
+  // branches on currency==='EUR'.
+  const currency=document.getElementById('recurring_currency')?.value||LOCAL_CURRENCY||'LKR';
   return normalizeRecurringRule({
     id:editingRecurringId||undefined,
     name,
@@ -6413,6 +6455,7 @@ function recurringRuleFromForm(){
     linkedItem:'',
     quantity:1,
     amountLocal,
+    currency,
     description:(document.getElementById('recurring_description')?.value||'').trim(),
     enabled:true,
     lastAppliedMonth:''
@@ -6458,6 +6501,8 @@ async function loadRecurringIntoMonthlyForm(id){
   document.getElementById('recurring_name').value=rule.name||'';
   document.getElementById('recurring_category').value=rule.category||'Rent';
   document.getElementById('recurring_amount').value=rule.amountLocal?String(rule.amountLocal):'';
+  const curSel=document.getElementById('recurring_currency');
+  if(curSel) curSel.value=rule.currency||LOCAL_CURRENCY||'LKR';
   document.getElementById('recurring_payment').value=rule.paymentMethod||'Bank Transfer';
   document.getElementById('recurring_description').value=rule.description||'';
   refreshRecurringSaveButton();
