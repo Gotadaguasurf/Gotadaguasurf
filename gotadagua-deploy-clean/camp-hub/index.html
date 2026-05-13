@@ -1559,7 +1559,12 @@ const save=()=>{
   saveStateStore(SK,{weeks:S.weeks,salaryMode:S.salaryMode}).catch(e=>console.warn('[Hub] weeks save failed',e));
 };
 window.addEventListener('beforeunload',e=>{
-  if(_pendingWeeksSave){
+  // Block the close when ANY persistence path has an unsaved edit in
+  // flight. _pendingWeeksSave covers the SK/state_store write retry
+  // queue, __transportSavePending covers the 700ms transport-presets
+  // debounce + active save. Both must clear for the user to leave
+  // without warning.
+  if(_pendingWeeksSave || window.__transportSavePending){
     e.preventDefault();
     e.returnValue='Há alterações ainda a guardar. Tem a certeza?';
   }
@@ -4745,11 +4750,16 @@ async function saveTransportPresets({skipRender=false}={}){
   // mid-typing. That kills the input caret position and can wipe a
   // freshly-added blank chip before the user finishes its name.
   HUB_SUPPRESS_TRANSPORT_RT=true;
+  window.__transportSavePending=true;
   try{
     await saveStateStore(TRANSPORT_PRESETS_KEY,transportPresets);
+    window.__transportSavePending=false;
   }catch(e){
     console.warn('[Hub] saveTransportPresets failed',e);
     toast('Transport presets save failed — see console');
+    // Keep the pending flag true so beforeunload still warns the user
+    // — saveStateStore itself does 3 retries; if all fail the user
+    // should know before closing.
     setTimeout(()=>{ HUB_SUPPRESS_TRANSPORT_RT=false; },800);
     return;
   }
@@ -4911,6 +4921,10 @@ function updateTqPresetField(id,field,value){
   // linkedTour also re-renders chips so the ↳ badge appears immediately when
   // user toggles back out of edit mode.
   clearTimeout(window.__tqSaveTimer);
+  // Mark pending so beforeunload can warn if the user closes the browser
+  // inside the debounce window — without this the last keystrokes silently
+  // vanish on close because saveTransportPresets hasn't fired yet.
+  window.__transportSavePending=true;
   window.__tqSaveTimer=setTimeout(()=>saveTransportPresets({skipRender:field==='linkedTour'?false:true}),700);
 }
 
@@ -5114,6 +5128,7 @@ function updateTqVehicleField(presetId,vehId,field,value){
     veh.capacity=Number.isFinite(n)?n:null;
   }
   clearTimeout(window.__tqSaveTimer);
+  window.__transportSavePending=true;
   window.__tqSaveTimer=setTimeout(()=>saveTransportPresets({skipRender:true}),700);
 }
 async function deleteTqVehicle(presetId,vehId){

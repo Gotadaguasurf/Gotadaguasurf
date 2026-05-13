@@ -797,6 +797,11 @@ function queueCampTabSync(){
   campTabSyncTimer=setTimeout(()=>{withRetry(()=>syncCampTabStateToSupabase(),'state sync');},100);
 }
 function queueMenuSync(){
+  // Mark pending so the beforeunload prompt below blocks the close
+  // while a menu edit is still inside the 100ms debounce or the
+  // suppressRemoteSync 900ms re-queue. Without this, editing a menu
+  // item and immediately closing the tab silently dropped the change.
+  _campPendingSave=true;
   if(suppressRemoteSync){
     clearTimeout(campMenuSyncTimer);
     campMenuSyncTimer=setTimeout(queueMenuSync,900);
@@ -806,6 +811,9 @@ function queueMenuSync(){
   campMenuSyncTimer=setTimeout(()=>{withRetry(()=>syncCampTabMenuToSupabase(),'menu sync');},100);
 }
 function queueStaffSync(){
+  // Same beforeunload protection as queueMenuSync — staff edits also
+  // need to block close while in the debounce window.
+  _campPendingSave=true;
   if(suppressRemoteSync){
     clearTimeout(campStaffSyncTimer);
     campStaffSyncTimer=setTimeout(queueStaffSync,900);
