@@ -11,6 +11,18 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Pricing Catalog — Gota Dagua</title>
+<!-- ULTRA-EARLY canary: if JS is running at all, this script fires before
+     anything else on the page. We change the document title so the user
+     can verify from the browser tab alone whether JavaScript is executing.
+     If after loading the page the tab still says "Pricing Catalog — Gota
+     Dagua" instead of "[JS-OK] …", JavaScript is being blocked entirely
+     (NoScript / extreme privacy extension / browser setting). -->
+<script>
+  try {
+    document.title = '[JS-OK] ' + document.title;
+    window.__JS_CANARY_FIRED = true;
+  } catch(e) {}
+</script>
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <!-- Load supabase-js + the project config the same way every other working
      page in this app loads them: as plain <script src> tags. The dynamic
