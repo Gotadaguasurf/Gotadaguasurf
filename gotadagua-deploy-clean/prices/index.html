@@ -1019,12 +1019,6 @@ $('emSave').addEventListener('click', async ()=>{
     // still write it as 'airport' so realtime listeners that filter on
     // picker_tab never see NULL — null breaks the Hub's tab routing.
     picker_tab: (cat === 'Transport') ? ($('em_picker_tab').value || 'airport') : 'airport',
-    // Phase 6: capacity drives the per-guest cost calculation when this
-    // Transport is linked to a Tour. NULL/0 means "per-trip pricing" —
-    // the cost is used as-is. Only meaningful for Transport rows.
-    capacity: (cat === 'Transport' && Number($('em_capacity').value) > 0)
-      ? Math.max(1, Math.round(Number($('em_capacity').value)))
-      : null,
     // Linked-tour for a Transport → store in linked_camp_tab_id field
     // (text column already in the schema; accepts the linked row's UUID).
     // Linked-transport for a Tour → store in linked_transport_preset_id.
@@ -1034,6 +1028,19 @@ $('emSave').addEventListener('click', async ()=>{
     linked_camp_tab_id:        (cat === 'Transport') ? ($('em_linked_tour').value || null) : undefined,
     linked_transport_preset_id:(cat === 'Tour')      ? ($('em_linked_transport').value || null) : undefined
   };
+  // Phase 6: capacity is a new column; only include it in the payload
+  // when the user actually filled it for a Transport row. Omitting the
+  // field entirely (vs sending null) means a Supabase project that has
+  // not yet run pricing-catalog-add-capacity.sql still accepts Tour /
+  // Surf Pack / etc. saves — only Transport-with-capacity will surface
+  // the "column not found" error, which directly tells the owner to run
+  // the SQL.
+  if (cat === 'Transport') {
+    const capRaw = Number($('em_capacity').value || 0);
+    if (capRaw > 0) {
+      payload.capacity = Math.max(1, Math.round(capRaw));
+    }
+  }
   // Drop undefined keys so we don't blow away pre-existing values on edit
   // for categories that don't expose those fields.
   Object.keys(payload).forEach(k=>{ if (payload[k] === undefined) delete payload[k]; });
