@@ -287,6 +287,13 @@ tbody td.c{text-align:center}
       <!-- ───── Connections (transport-only & tour-only fields) ───── -->
       <div class="msection" id="em_connections_section">
         <div class="msection-title">Connections</div>
+        <!-- Live "effective cost" preview — updates as the user picks
+             a linked transport so they SEE the bundle math without having
+             to do it in their head. Hidden until something's selected. -->
+        <div id="em_total_preview" style="display:none;background:var(--foam);border:1px solid var(--border);border-radius:9px;padding:10px 12px;margin-bottom:12px;font-size:12px">
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin-bottom:4px">Effective cost per guest</div>
+          <div id="em_total_preview_body" style="font-family:'DM Mono',monospace;color:var(--ink)"></div>
+        </div>
 
         <!-- Transport-specific: which tab in the Hub picker -->
         <div class="mfield" id="em_picker_tab_row" style="display:none">
@@ -672,19 +679,65 @@ function renderTable(){
     ${canEdit ? '<th class="c">Actions</th>' : ''}
   </tr></thead>`;
 
+  // Build a fast lookup so we can show linkage info on every row without
+  // walking the full catalog per render. Maps UUID → row.
+  const byId = new Map(catalog.map(c=>[c.id, c]));
+
   const body = rows.map(r=>{
-    const sellTxt = r.sell_price ? money(r.sell_price, r.currency) : '<span style="color:var(--muted)">—</span>';
-    const costTxt = r.cost_per_guest ? money(r.cost_per_guest, r.currency) : '<span style="color:var(--muted)">—</span>';
-    const margin = (Number(r.sell_price||0) - Number(r.cost_per_guest||0));
-    const marginPct = Number(r.sell_price||0) > 0 ? Math.round(margin / Number(r.sell_price) * 100) : null;
-    const marginTxt = Number(r.sell_price||0) > 0
+    const sellNum = Number(r.sell_price||0);
+    const ownCost = Number(r.cost_per_guest||0);
+
+    // Effective cost: a Tour's true cost is its own cost_per_guest PLUS the
+    // cost_per_guest of any linked Transport row. So users see at a glance
+    // "total cost incl. transport" rather than having to mental-arithmetic.
+    let linkedExtra = 0;
+    let linkedNameForRow = '';
+    if (r.category === 'Tour' && r.linked_transport_preset_id) {
+      const linked = byId.get(r.linked_transport_preset_id);
+      if (linked) {
+        linkedExtra = Number(linked.cost_per_guest||0);
+        linkedNameForRow = linked.name || '';
+      }
+    } else if (r.category === 'Transport' && r.linked_camp_tab_id) {
+      const linked = byId.get(r.linked_camp_tab_id);
+      if (linked) {
+        linkedNameForRow = linked.name || '';
+      }
+    }
+    const totalCost = ownCost + linkedExtra;
+    const margin = sellNum - totalCost;
+    const marginPct = sellNum > 0 ? Math.round((margin / sellNum) * 100) : null;
+
+    const sellTxt = sellNum > 0 ? money(sellNum, r.currency) : '<span style="color:var(--muted)">—</span>';
+    // Cost column shows the total when a linked transport contributes, with
+    // the own + linked split underneath as a small grey hint.
+    let costTxt;
+    if (totalCost > 0) {
+      if (linkedExtra > 0) {
+        costTxt = `${money(totalCost, r.currency)}` +
+          `<div style="font-size:10px;color:var(--muted);margin-top:2px;font-family:'Outfit',sans-serif">${money(ownCost, r.currency)} + ${money(linkedExtra, r.currency)} transport</div>`;
+      } else {
+        costTxt = money(totalCost, r.currency);
+      }
+    } else {
+      costTxt = '<span style="color:var(--muted)">—</span>';
+    }
+    const marginTxt = sellNum > 0
       ? `<span style="color:${margin>=0?'var(--green)':'var(--red)'};font-weight:700">${marginPct}%</span>`
       : '<span style="color:var(--muted)">—</span>';
+
     const audBadge = r.audience === 'group' ? '<span class="badge badge-group">Group</span>' : '';
+    // Visible linkage badge — small chip under the name that reads
+    // "↔ Souk Tour" so the user sees the connection at a glance and knows
+    // the row is part of a bundle. Empty when no linkage is set.
+    const linkBadge = linkedNameForRow
+      ? `<div style="display:inline-flex;align-items:center;gap:4px;font-size:10px;color:var(--ocean);font-weight:600;background:var(--foam);border-radius:6px;padding:2px 6px;margin-top:4px"><span style="font-size:11px">↔</span><span>${escapeHtml(linkedNameForRow)}</span></div>`
+      : '';
     return `<tr>
       <td data-label="Name">
         <div style="font-weight:600">${escapeHtml(r.name||'')}${audBadge}</div>
         ${r.notes ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">${escapeHtml(r.notes)}</div>` : ''}
+        ${linkBadge}
       </td>
       <td data-label="Category">${categoryBadge(r.category)}</td>
       <td class="r" data-label="Sell">${sellTxt}</td>
@@ -770,7 +823,49 @@ window.onCategoryChange = ()=>{
   // Hide Connections section entirely for categories with no linkages
   const showConnections = (cat === 'Tour' || cat === 'Transport');
   $('em_connections_section').style.display = showConnections ? '' : 'none';
+  updateEffectiveCostPreview();
 };
+
+function updateEffectiveCostPreview(){
+  const cat = $('em_category').value;
+  const ownCost = Number($('em_cost').value || 0);
+  const cur = $('em_currency').value;
+  const fmt = (n)=>money(n, cur);
+
+  let linkedId = '';
+  let linkedLabel = '';
+  if (cat === 'Tour') {
+    linkedId = $('em_linked_transport').value || '';
+    linkedLabel = 'Transport';
+  } else if (cat === 'Transport') {
+    linkedId = $('em_linked_tour').value || '';
+    linkedLabel = 'Tour';
+  }
+
+  if (!linkedId) {
+    $('em_total_preview').style.display = 'none';
+    return;
+  }
+  const linked = catalog.find(r=>r.id === linkedId);
+  if (!linked) {
+    $('em_total_preview').style.display = 'none';
+    return;
+  }
+  const linkedCost = Number(linked.cost_per_guest||0);
+  // For Tour: total = ownCost + linkedTransport.cost
+  // For Transport: just show the linkage; tour-side cost belongs to that row
+  if (cat === 'Tour') {
+    const total = ownCost + linkedCost;
+    $('em_total_preview_body').innerHTML =
+      `<span style="font-weight:700">${fmt(total)}</span>` +
+      `<span style="color:var(--muted);margin-left:8px">= ${fmt(ownCost)} this tour + ${fmt(linkedCost)} ${escapeHtml(linked.name)}</span>`;
+  } else {
+    $('em_total_preview_body').innerHTML =
+      `<span style="font-weight:700">${fmt(ownCost)}</span>` +
+      `<span style="color:var(--muted);margin-left:8px">spend logged here will be attributed to ${escapeHtml(linked.name)} in reports</span>`;
+  }
+  $('em_total_preview').style.display = '';
+}
 
 window.openNew = ()=>{
   editingId = null;
@@ -814,6 +909,15 @@ window.openEdit = (id)=>{
 };
 
 $('emCancel').addEventListener('click', ()=>$('editOv').classList.remove('open'));
+
+// Live recompute of the effective-cost preview when any input that
+// contributes to it changes. Bound once at script init; the modal reuses
+// the same DOM nodes on every open.
+['em_cost','em_linked_tour','em_linked_transport','em_currency','em_category'].forEach(id=>{
+  const el = $(id);
+  if (el) el.addEventListener('input', updateEffectiveCostPreview);
+  if (el && el.tagName === 'SELECT') el.addEventListener('change', updateEffectiveCostPreview);
+});
 
 // ── Save: Supabase-first ──────────────────────────────────────────────────
 $('emSave').addEventListener('click', async ()=>{

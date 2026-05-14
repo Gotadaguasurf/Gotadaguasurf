@@ -4802,7 +4802,7 @@ const TRANSPORT_ENABLED_LOCATIONS=new Set(['sri-lanka','morocco']);
 //  redirect the chip Edit UI to /prices to make this explicit.
 let __transportFromCatalog=false;
 
-function groupCatalogIntoPresets(rows){
+function groupCatalogIntoPresets(rows, tourIdToName){
   // Catalog Transport rows have names like:
   //   "Surfcamp → Airport — Car"   → preset "Surfcamp → Airport" with a Car vehicle
   //   "Ahangama"                    → single-price preset with unitPrice
@@ -4832,13 +4832,23 @@ function groupCatalogIntoPresets(rows){
     }
     const destKey=tab+'|'+destName;
     if(!byDest.has(destKey)){
+      // linked_camp_tab_id on a Transport row points at the LINKED tour
+      // (catalog UUID). The Hub's aggregator (linkedTransportTours +
+      // knownTourNames lookup) expects a tour NAME, so translate UUID
+      // → name here. If the UUID isn't in the map (e.g. catalog row
+      // was deleted), fall back to whatever string is stored — preserves
+      // legacy data where linkedTour was already a name.
+      const rawLinked=r.linked_camp_tab_id||'';
+      const resolvedLinked=(tourIdToName && rawLinked && tourIdToName.has(rawLinked))
+        ? tourIdToName.get(rawLinked)
+        : rawLinked;
       byDest.set(destKey,{
         id:r.linked_transport_preset_id||('cat|'+r.id),
         name:destName,
         tab,
         unitPrice:0,
         sortOrder:Number.isFinite(Number(r.sort_order))?Number(r.sort_order):100,
-        linkedTour:r.linked_camp_tab_id||'',
+        linkedTour:resolvedLinked,
         vehicles:[]
       });
     }
@@ -4890,7 +4900,23 @@ async function loadTransportPresetsFromCatalog(){
       .order('sort_order',{ascending:true});
     if(error) throw error;
     if(!Array.isArray(data)||!data.length) return null;
-    return groupCatalogIntoPresets(data);
+    // Pull the location's Tours too so we can translate the Transport rows'
+    // linked_camp_tab_id (a tour UUID) into the tour NAME that the Hub
+    // aggregator expects in preset.linkedTour. Failure here is non-fatal —
+    // unresolved UUIDs just fall through as-is.
+    let tourIdToName=null;
+    try{
+      const tRes=await client
+        .from('pricing_catalog')
+        .select('id,name')
+        .eq('location_id',locId)
+        .eq('category','Tour')
+        .eq('active',true);
+      if(!tRes.error && Array.isArray(tRes.data)){
+        tourIdToName=new Map(tRes.data.map(t=>[t.id,String(t.name||'')]));
+      }
+    }catch(_e){}
+    return groupCatalogIntoPresets(data, tourIdToName);
   }catch(e){
     console.warn('[Hub] loadTransportPresetsFromCatalog failed',e);
     return null;
