@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Pricing Catalog — Gota Dagua</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer onerror="window.__SUPABASE_CDN_FAILED=true"></script>
 <script src="/supabase-config.js" onerror="window.__SUPABASE_CFG_FAILED=true"></script>
 <style>
 :root{
@@ -358,15 +357,44 @@ function withTimeout(promise, ms, label){
 
 // ── Bootstrap ──────────────────────────────────────────────────────────────
 
-// Wait for the deferred supabase-js script to finish loading. Up to 8 s.
-async function waitForSupabaseSdk(){
-  const start = Date.now();
-  while (Date.now() - start < 8000) {
-    if (window.__SUPABASE_CDN_FAILED) throw new Error('supabase-js CDN failed to load (blocked by network or ad-blocker?)');
-    if (window.supabase && typeof window.supabase.createClient === 'function') return;
-    await new Promise(r=>setTimeout(r, 80));
+// Load supabase-js dynamically with CDN fallback. Tries jsdelivr → unpkg →
+// esm.sh in order, each with a 5 s timeout, so a blocked CDN doesn't kill
+// the page. Updates the boot log with which CDN we're trying so the user
+// can see what's happening.
+function loadScript(src, timeoutMs){
+  return new Promise((resolve, reject)=>{
+    const s = document.createElement('script');
+    s.src = src; s.async = false;
+    let done = false;
+    const t = setTimeout(()=>{ if (done) return; done = true; s.remove(); reject(new Error('timeout')); }, timeoutMs);
+    s.onload = ()=>{ if (done) return; done = true; clearTimeout(t); resolve(); };
+    s.onerror = ()=>{ if (done) return; done = true; clearTimeout(t); reject(new Error('script error')); };
+    document.head.appendChild(s);
+  });
+}
+
+async function loadSupabaseSdk(){
+  const cdns = [
+    { name:'jsdelivr', src:'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js' },
+    { name:'unpkg',    src:'https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.min.js' },
+    { name:'esm.sh',   src:'https://esm.sh/@supabase/supabase-js@2.39.7/dist/umd/supabase.min.js' }
+  ];
+  const errors = [];
+  for (const cdn of cdns) {
+    markStep('step-client','pending','Loading supabase-js from '+cdn.name+'…');
+    try {
+      await loadScript(cdn.src, 5000);
+      if (window.supabase && typeof window.supabase.createClient === 'function') {
+        console.log('[Prices] supabase-js loaded via', cdn.name);
+        return cdn.name;
+      }
+      errors.push(cdn.name+': loaded but window.supabase not set');
+    } catch (e) {
+      errors.push(cdn.name+': '+(e?.message||e));
+      console.warn('[Prices] CDN '+cdn.name+' failed:', e?.message||e);
+    }
   }
-  throw new Error('Timed out after 8s waiting for supabase-js to load');
+  throw new Error('All CDNs failed: '+errors.join(' · '));
 }
 
 (async function init(){
@@ -385,19 +413,19 @@ async function waitForSupabaseSdk(){
   }
   markStep('step-config','ok','Config found');
 
-  // 2. Wait for the deferred supabase-js bundle to finish loading
-  markStep('step-client','pending','Waiting for supabase-js bundle…');
+  // 2. Load supabase-js with CDN fallback (jsdelivr → unpkg → esm.sh)
+  let cdnUsed;
   try {
-    await waitForSupabaseSdk();
+    cdnUsed = await loadSupabaseSdk();
   } catch (err) {
-    console.error('[Prices] supabase-js load failed', err);
-    markStep('step-client','err','supabase-js load failed — '+(err?.message||err));
+    console.error('[Prices] all CDNs failed', err);
+    markStep('step-client','err','All CDNs failed — '+(err?.message||err));
     renderNoAccess('Supabase SDK unavailable',
-      'The Supabase JavaScript bundle could not be loaded from jsdelivr.net. If you have an ad-blocker (uBlock / Brave shields / Pi-hole), disable it for this domain and refresh.');
+      'The Supabase JavaScript bundle could not be loaded from any of our 3 CDNs (jsdelivr, unpkg, esm.sh). Most likely cause: an ad-blocker (uBlock / Brave Shields / Pi-hole) or a corporate firewall is blocking CDN domains. Disable it for this site and refresh.');
     return;
   }
   supabase = window.supabase.createClient(window.__SUPABASE_CONFIG.url, window.__SUPABASE_CONFIG.anonKey);
-  markStep('step-client','ok','Client ready');
+  markStep('step-client','ok','Client ready (via '+cdnUsed+')');
 
   // 3. Session
   markStep('step-session','pending','Reading your session…');
