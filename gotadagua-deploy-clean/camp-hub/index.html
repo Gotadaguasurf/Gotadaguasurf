@@ -2015,6 +2015,22 @@ function subscribeHubRealtime(){
         renderRecurringEntries();renderSalaryProfiles();
       }).catch(e=>console.warn('[Hub] monthly_cost_profiles RT hydrate failed',e));
     })
+    .on('postgres_changes',{event:'*',schema:'public',table:'pricing_catalog',filter:`location_id=eq.${HUB_SB_LOCATION_ID}`},(payload)=>{
+      // Phase 3: catalog edits in /prices propagate live to the Hub's
+      // Transport picker. Only Transport rows with show_in_transport_picker
+      // matter for this view, but the filter on category/flag has to live
+      // here (realtime filters only support equality on indexed columns
+      // and we already pin to location_id). Cheap to re-run the full load
+      // — it's a single SELECT.
+      if(!TRANSPORT_ENABLED_LOCATIONS.has(__HUB_LOCATION_SLUG)) return;
+      loadTransportPresets().then(()=>{
+        const modalOpen=document.getElementById('transportQuickOv')?.classList.contains('open');
+        const userTypingInModal=modalOpen && document.activeElement && document.getElementById('tqChipsWrap')?.contains(document.activeElement);
+        if(modalOpen && !userTypingInModal && typeof renderTransportChips==='function'){
+          renderTransportChips();
+        }
+      }).catch(e=>console.warn('[Hub] pricing_catalog RT reload failed',e));
+    })
     .subscribe((status)=>{
       if(status==='SUBSCRIBED') console.log('[Hub] Realtime connected');
     });
@@ -4686,11 +4702,126 @@ function normalizeTransportPresetsPayload(raw){
 // so the two camps never see each other's chips.
 const TRANSPORT_ENABLED_LOCATIONS=new Set(['sri-lanka','morocco']);
 
+// ── Phase 3: Pricing Catalog as master source for Transport picker ──────────
+//
+//  When the /prices catalog has Transport rows flagged
+//  show_in_transport_picker=true for this location, the Hub Transport picker
+//  reads from there instead of location_state_store. This way pricing edits
+//  made in /prices propagate live to every Hub session.
+//
+//  If the catalog has zero matching rows (fresh install / location without
+//  catalog data), we fall back to the legacy state_store load path so
+//  nothing breaks for installs that haven't populated the catalog yet.
+//
+//  The Hub's local Add/Edit/Delete chips still write to state_store as
+//  before; those edits won't survive a refresh once the catalog is master
+//  (the catalog read overwrites the in-memory presets). The user is
+//  expected to edit prices in /prices going forward. A future phase will
+//  redirect the chip Edit UI to /prices to make this explicit.
+let __transportFromCatalog=false;
+
+function groupCatalogIntoPresets(rows){
+  // Catalog Transport rows have names like:
+  //   "Surfcamp → Airport — Car"   → preset "Surfcamp → Airport" with a Car vehicle
+  //   "Ahangama"                    → single-price preset with unitPrice
+  // Group by the prefix before the LAST " — " (so destination names that
+  // contain " — " elsewhere — like "Dunes — Sandboarding" — still split
+  // correctly at the vehicle boundary).
+  const byDest=new Map();
+  for(const r of rows){
+    const fullName=String(r.name||'').trim();
+    if(!fullName) continue;
+    const splitIdx=fullName.lastIndexOf(' — ');
+    let destName,vehicleLabel;
+    if(splitIdx>0){
+      destName=fullName.slice(0,splitIdx).trim();
+      vehicleLabel=fullName.slice(splitIdx+3).trim();
+    } else {
+      destName=fullName;
+      vehicleLabel='';
+    }
+    if(!byDest.has(destName)){
+      byDest.set(destName,{
+        id:r.linked_transport_preset_id||('cat|'+r.id),
+        name:destName,
+        unitPrice:0,
+        sortOrder:Number.isFinite(Number(r.sort_order))?Number(r.sort_order):100,
+        linkedTour:r.linked_camp_tab_id||'',
+        vehicles:[]
+      });
+    }
+    const preset=byDest.get(destName);
+    if(vehicleLabel){
+      let capacity=null;
+      const m=String(r.notes||'').match(/capacity\s*(\d+)/i);
+      if(m) capacity=Number(m[1]);
+      preset.vehicles.push({
+        id:'cat|'+r.id,
+        label:vehicleLabel,
+        capacity,
+        price:Number(r.cost_per_guest||0),
+        sortOrder:Number.isFinite(Number(r.sort_order))?Number(r.sort_order):100
+      });
+    } else {
+      // No vehicle suffix → single-price preset
+      preset.unitPrice=Number(r.cost_per_guest||0);
+    }
+  }
+  const all=Array.from(byDest.values()).sort((a,b)=>a.sortOrder-b.sortOrder);
+  // Sort each preset's vehicles by sortOrder, then by label
+  for(const p of all){
+    p.vehicles.sort((a,b)=>a.sortOrder-b.sortOrder||(a.label||'').localeCompare(b.label||''));
+  }
+  // All catalog-sourced presets land in the 'airport' tab for now. The
+  // tuktuk tab keeps its state_store data for backwards compat; if a
+  // future phase adds a "tab" column to pricing_catalog we'll split here.
+  return {airport:all,tuktuk:[]};
+}
+
+async function loadTransportPresetsFromCatalog(){
+  // Returns {airport,tuktuk} grouped from pricing_catalog, or null if
+  // the catalog has no Transport rows flagged for this location's
+  // Transport picker. null tells the caller to fall back.
+  try{
+    const client=getHubSupabaseClient();
+    const locId=await ensureHubLocationId();
+    if(!client||!locId) return null;
+    const {data,error}=await client
+      .from('pricing_catalog')
+      .select('id,name,cost_per_guest,currency,notes,linked_transport_preset_id,linked_camp_tab_id,sort_order')
+      .eq('location_id',locId)
+      .eq('category','Transport')
+      .eq('show_in_transport_picker',true)
+      .eq('active',true)
+      .order('sort_order',{ascending:true});
+    if(error) throw error;
+    if(!Array.isArray(data)||!data.length) return null;
+    return groupCatalogIntoPresets(data);
+  }catch(e){
+    console.warn('[Hub] loadTransportPresetsFromCatalog failed',e);
+    return null;
+  }
+}
+
 async function loadTransportPresets(){
   if(!TRANSPORT_ENABLED_LOCATIONS.has(__HUB_LOCATION_SLUG)){
     transportPresets={airport:[],tuktuk:[]};
     return;
   }
+  // Phase 3: try the pricing_catalog first. If it has Transport rows
+  // for this location, use them as the master source.
+  const fromCatalog=await loadTransportPresetsFromCatalog();
+  if(fromCatalog && (fromCatalog.airport.length||fromCatalog.tuktuk.length)){
+    transportPresets=normalizeTransportPresetsPayload(fromCatalog);
+    __transportFromCatalog=true;
+    const btn=document.getElementById('quickTransportBtn');
+    if(btn) btn.style.display='inline-flex';
+    applyTransportTabLabels();
+    console.log('[Hub] Transport picker loaded from pricing_catalog —',
+      (fromCatalog.airport.length+fromCatalog.tuktuk.length),'destination(s)');
+    return;
+  }
+  __transportFromCatalog=false;
   const seed=DEFAULT_TRANSPORT_PRESETS_BY_LOCATION[__HUB_LOCATION_SLUG]||{airport:[],tuktuk:[]};
   const hasSeed=(seed.airport?.length||0)+(seed.tuktuk?.length||0)>0;
   try{
