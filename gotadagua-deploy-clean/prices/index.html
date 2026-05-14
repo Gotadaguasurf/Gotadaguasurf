@@ -11,6 +11,18 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Pricing Catalog — Gota Dagua</title>
+<!-- ULTRA-EARLY canary: if JS is running at all, this script fires before
+     anything else on the page. We change the document title so the user
+     can verify from the browser tab alone whether JavaScript is executing.
+     If after loading the page the tab still says "Pricing Catalog — Gota
+     Dagua" instead of "[JS-OK] …", JavaScript is being blocked entirely
+     (NoScript / extreme privacy extension / browser setting). -->
+<script>
+  try {
+    document.title = '[JS-OK] ' + document.title;
+    window.__JS_CANARY_FIRED = true;
+  } catch(e) {}
+</script>
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <!-- Load supabase-js + the project config the same way every other working
      page in this app loads them: as plain <script src> tags. The dynamic
@@ -280,7 +292,10 @@ const LOCATION_CURRENCY = {
   'junior-camp':'EUR'
 };
 
-let supabase = null;
+// NB: we can't use the name `supabase` here because the UMD bundle declares
+// `var supabase = ...` at global scope, which would collide with a `let
+// supabase` in this script (SyntaxError: Identifier already declared).
+let sbClient = null;
 let session = null;
 let currentEmail = '';
 let isOwner = false;
@@ -404,14 +419,14 @@ function withTimeout(promise, ms, label){
       'The Supabase JavaScript bundle loaded but did not register the global. Try a hard refresh (Cmd+Shift+R) or open in incognito.');
     return;
   }
-  supabase = window.supabase.createClient(window.__SUPABASE_CONFIG.url, window.__SUPABASE_CONFIG.anonKey);
+  sbClient = window.supabase.createClient(window.__SUPABASE_CONFIG.url, window.__SUPABASE_CONFIG.anonKey);
   markStep('step-client','ok','Client ready (self-hosted)');
 
   // 3. Session
   markStep('step-session','pending','Reading your session…');
   let sessionRes;
   try {
-    const res = await withTimeout(supabase.auth.getSession(), 8000, 'reading the auth session');
+    const res = await withTimeout(sbClient.auth.getSession(), 8000, 'reading the auth session');
     sessionRes = res?.data;
   } catch (err) {
     console.error('[Prices] session lookup failed', err);
@@ -437,7 +452,7 @@ function withTimeout(promise, ms, label){
   let locRow, locErr;
   try {
     const res = await withTimeout(
-      supabase.from('locations').select('id,slug,name').eq('slug', LOCATION_SLUG).maybeSingle(),
+      sbClient.from('locations').select('id,slug,name').eq('slug', LOCATION_SLUG).maybeSingle(),
       8000, 'looking up the location row'
     );
     locRow = res?.data; locErr = res?.error;
@@ -503,7 +518,7 @@ function withTimeout(promise, ms, label){
 });
 
 async function loadCatalog(){
-  const { data, error } = await supabase
+  const { data, error } = await sbClient
     .from('pricing_catalog')
     .select('*')
     .eq('location_id', locationId)
@@ -519,7 +534,7 @@ async function loadCatalog(){
 // (which can also clobber an open modal's input focus).
 let __suppressRt = false;
 function subscribeRealtime(){
-  supabase
+  sbClient
     .channel('pricing-catalog-'+locationId)
     .on('postgres_changes', { event:'*', schema:'public', table:'pricing_catalog', filter:`location_id=eq.${locationId}` }, async ()=>{
       if (__suppressRt) return;
@@ -698,7 +713,7 @@ $('emSave').addEventListener('click', async ()=>{
   try {
     let saved;
     if (editingId) {
-      const { data, error } = await supabase
+      const { data, error } = await sbClient
         .from('pricing_catalog').update(payload).eq('id', editingId).select().single();
       if (error) throw error;
       saved = data;
@@ -706,7 +721,7 @@ $('emSave').addEventListener('click', async ()=>{
       const idx = catalog.findIndex(x=>x.id === editingId);
       if (idx >= 0) catalog[idx] = saved; else catalog.push(saved);
     } else {
-      const { data, error } = await supabase
+      const { data, error } = await sbClient
         .from('pricing_catalog').insert(payload).select().single();
       if (error) throw error;
       saved = data;
@@ -735,7 +750,7 @@ window.onDelete = async (id)=>{
   __suppressRt = true;
   setSavePill('saving','Deleting…');
   try {
-    const { error } = await supabase.from('pricing_catalog').delete().eq('id', id);
+    const { error } = await sbClient.from('pricing_catalog').delete().eq('id', id);
     if (error) throw error;
     catalog = catalog.filter(x=>x.id !== id);
     setSavePill('saved','Deleted ✓');
