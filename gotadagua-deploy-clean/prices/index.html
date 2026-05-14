@@ -323,6 +323,19 @@ body.view-list .accom-price:hover{background:transparent}
   .accom-season-table tbody td{padding:6px 4px;font-size:12px}
 }
 
+/* Drag-and-drop reorder — a 24-px grab handle at the start of each row
+   lets the user shuffle items inside their category. Visual feedback:
+   the dragged row dims, the drop target gets a thin ocean-blue line.
+   Persists via a batch UPDATE of sort_order on every row in the affected
+   area, spaced at 100 so future inserts have room. */
+.drag-handle{cursor:grab;color:#bbb;font-size:16px;line-height:1;user-select:none;padding:4px 6px;border-radius:4px;transition:color .12s,background .12s}
+.drag-handle:hover{color:var(--ink);background:#fafaf9}
+.drag-handle:active{cursor:grabbing}
+tr.dragging,.tf-table tr.dragging{opacity:.4}
+tr.drag-over-top   td{box-shadow:inset 0 2px 0 0 var(--ocean)}
+tr.drag-over-bottom td{box-shadow:inset 0 -2px 0 0 var(--ocean)}
+body.view-list .drag-handle{display:none}
+
 .no-access{padding:64px 24px;text-align:center;color:var(--muted);max-width:560px;margin:0 auto}
 .no-access h2{font-family:'DM Serif Display',serif;color:var(--navy);font-size:22px;margin-bottom:8px}
 .no-access p{font-size:13px;line-height:1.55}
@@ -1062,6 +1075,7 @@ function renderTable(){
   }
 
   const head = `<thead><tr>
+    ${canEdit ? '<th style="width:30px"></th>' : ''}
     <th>Name</th>
     <th>Category</th>
     <th class="r">Sell</th>
@@ -1091,7 +1105,8 @@ function renderTable(){
       : '<span style="color:var(--muted)">—</span>';
 
     const audBadge = r.audience === 'group' ? '<span class="badge badge-group">Group</span>' : '';
-    return `<tr>
+    return `<tr draggable="${canEdit}" data-row-id="${r.id}" ondragstart="onRowDragStart(event,'${r.id}')" ondragover="onRowDragOver(event)" ondragleave="onRowDragLeave(event)" ondrop="onRowDrop(event,'${r.id}')" ondragend="onRowDragEnd(event)">
+      ${canEdit ? `<td class="c"><span class="drag-handle" title="Drag to reorder">⋮⋮</span></td>` : ''}
       <td data-label="Name">
         <div style="font-weight:600">${escapeHtml(r.name||'')}${audBadge}</div>
         ${r.notes ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">${escapeHtml(r.notes)}</div>` : ''}
@@ -1464,6 +1479,124 @@ window.onAccomEditCell = (el, packId, seasonId, roomId, occupancy)=>{
 // ── Search / filter ───────────────────────────────────────────────────────
 window.onSearch = (v)=>{ filterSearch = v; renderTable(); };
 window.onAreaTab = (key)=>{ filterArea = key; renderTable(); };
+
+// ── Drag-and-drop reorder ────────────────────────────────────────────────
+// Lets the user reorder rows inside a category by grabbing the ⋮⋮ handle
+// at the start of each row. On drop we re-number every row in the
+// affected category at 100, 200, 300 … so the relative order is preserved
+// and future inserts (via openNew → max+1) keep landing at the end.
+//
+// One persisted update per moved row — typically the dragged row + a
+// handful of neighbours. We fire them as parallel single-row UPDATEs to
+// keep the realtime feed reactive without overshooting per-row latency.
+
+let __dragId = null;
+let __dragOverEl = null;
+
+window.onRowDragStart = (e, id)=>{
+  if (!canEdit) return;
+  __dragId = id;
+  e.dataTransfer.effectAllowed = 'move';
+  // Some browsers refuse to start the drag without a payload set.
+  try { e.dataTransfer.setData('text/plain', id); } catch(_e) {}
+  e.currentTarget.classList.add('dragging');
+};
+
+window.onRowDragOver = (e)=>{
+  if (!__dragId) return;
+  e.preventDefault(); // required to allow drop
+  e.dataTransfer.dropEffect = 'move';
+  const tr = e.currentTarget;
+  if (!tr || tr.getAttribute('data-row-id') === __dragId) return;
+  // Visual hint: line above or below depending on cursor position.
+  const rect = tr.getBoundingClientRect();
+  const isAbove = (e.clientY - rect.top) < rect.height / 2;
+  tr.classList.remove('drag-over-top','drag-over-bottom');
+  tr.classList.add(isAbove ? 'drag-over-top' : 'drag-over-bottom');
+  if (__dragOverEl && __dragOverEl !== tr) {
+    __dragOverEl.classList.remove('drag-over-top','drag-over-bottom');
+  }
+  __dragOverEl = tr;
+};
+
+window.onRowDragLeave = (e)=>{
+  // Don't clear immediately — dragover on a child element fires leave on
+  // the parent. We rely on the next dragover or drop to swap the marker.
+};
+
+window.onRowDragEnd = (e)=>{
+  document.querySelectorAll('tr.dragging').forEach(el => el.classList.remove('dragging'));
+  document.querySelectorAll('tr.drag-over-top,tr.drag-over-bottom').forEach(el => {
+    el.classList.remove('drag-over-top','drag-over-bottom');
+  });
+  __dragId = null;
+  __dragOverEl = null;
+};
+
+window.onRowDrop = async (e, targetId)=>{
+  e.preventDefault();
+  if (!__dragId || __dragId === targetId) { onRowDragEnd(e); return; }
+  const tr = e.currentTarget;
+  const rect = tr.getBoundingClientRect();
+  const insertBefore = (e.clientY - rect.top) < rect.height / 2;
+  const dragged = catalog.find(r => r.id === __dragId);
+  const target  = catalog.find(r => r.id === targetId);
+  onRowDragEnd(e); // clear visual state right away
+  if (!dragged || !target) return;
+  // Only allow reordering inside the same category — moving a Tour into the
+  // Surf area would change its category, which isn't what the drag implies.
+  if (dragged.category !== target.category) {
+    alert("You can only reorder items inside the same category. To move it to another area, edit the entry and change its Category.");
+    return;
+  }
+  await reorderWithinCategory(dragged, targetId, insertBefore);
+};
+
+async function reorderWithinCategory(dragged, targetId, insertBefore){
+  const rows = catalog
+    .filter(r => r.category === dragged.category)
+    .sort((a,b)=>(a.sort_order||0) - (b.sort_order||0));
+  const without = rows.filter(r => r.id !== dragged.id);
+  const tIdx = without.findIndex(r => r.id === targetId);
+  if (tIdx < 0) return;
+  const insertAt = insertBefore ? tIdx : tIdx + 1;
+  without.splice(insertAt, 0, dragged);
+
+  // Renumber 100, 200, 300… and only persist rows whose sort_order
+  // actually changed (cheap diff — avoids 50 updates when 2 moved).
+  setSavePill('saving','Reordering…');
+  __pendingSave = true;
+  __suppressRt = true;
+  try {
+    const updates = [];
+    without.forEach((r, i) => {
+      const newOrder = (i + 1) * 100;
+      if (Number(r.sort_order||0) !== newOrder) {
+        updates.push({ id: r.id, sort_order: newOrder });
+      }
+    });
+    // Parallel single-row UPDATEs — Supabase's anon path doesn't accept a
+    // batched upsert with partial columns, and the volume is small.
+    await Promise.all(updates.map(u =>
+      sbClient.from('pricing_catalog').update({ sort_order: u.sort_order }).eq('id', u.id)
+    ));
+    // Mirror locally so we don't wait for the realtime echo
+    for (const u of updates) {
+      const idx = catalog.findIndex(r => r.id === u.id);
+      if (idx >= 0) catalog[idx].sort_order = u.sort_order;
+    }
+    setSavePill('saved','Order saved ✓');
+    setTimeout(clearSavePill, 1500);
+    renderTable();
+  } catch (err) {
+    console.error('[Prices] reorder failed', err);
+    setSavePill('failed','⚠ Reorder failed');
+    alert('Could not save new order: ' + (err?.message || 'unknown error'));
+  } finally {
+    __pendingSave = false;
+    setTimeout(()=>{ __suppressRt = false; }, 1000);
+  }
+}
 window.onViewMode = (mode)=>{
   if (mode !== 'edit' && mode !== 'list') return;
   if (viewMode === mode) return;
@@ -1569,6 +1702,7 @@ function renderTransfersEdit(){
         <table class="tf-table">
           <thead>
             <tr>
+              ${canEdit ? '<th style="width:30px"></th>' : ''}
               <th>Vehicle</th>
               <th>Pax</th>
               <th class="r">Cost (per trip)</th>
@@ -1582,10 +1716,6 @@ function renderTransfersEdit(){
               const r = it.row;
               const cost = Number(r.cost_per_guest || 0);
               const sell = Number(r.sell_price || 0);
-              // Cost currency = the row's `currency` (local money — MAD/LKR).
-              // Sell currency = `sell_currency` when set, else falls back to
-              // the row's currency (for in-camp rows like Souk Tour where
-              // cost & price share MAD).
               const costCcy = r.currency || 'EUR';
               const sellCcy = r.sell_currency || r.currency || 'EUR';
               const costCell  = cost > 0 ? money(cost, costCcy) : '<span class="tf-cell-empty">— add</span>';
@@ -1597,7 +1727,8 @@ function renderTransfersEdit(){
                 : 'Hidden from Hub Transport picker · click to add';
               const picker = `<span class="tf-picker-toggle ${pickerCls}" onclick="onTfTogglePicker('${r.id}')" title="${pickerTitle}"><span class="dot"></span>${pickerLabel}</span>`;
               return `
-                <tr>
+                <tr draggable="${canEdit}" data-row-id="${r.id}" ondragstart="onRowDragStart(event,'${r.id}')" ondragover="onRowDragOver(event)" ondragleave="onRowDragLeave(event)" ondrop="onRowDrop(event,'${r.id}')" ondragend="onRowDragEnd(event)">
+                  ${canEdit ? `<td class="c"><span class="drag-handle" title="Drag to reorder within ${escapeHtml(g.route)}">⋮⋮</span></td>` : ''}
                   <td>${escapeHtml(it.vehicle || '—')}</td>
                   <td class="muted">${it.paxRange || '—'}</td>
                   <td class="r"><span class="tf-cell-edit tf-cost" data-tf-id="${r.id}" data-tf-field="cost_per_guest" onclick="onTfEditCell(this)">${costCell}</span></td>
