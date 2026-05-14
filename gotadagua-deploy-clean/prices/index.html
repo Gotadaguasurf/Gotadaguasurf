@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Pricing Catalog — Gota Dagua</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="/supabase-config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer onerror="window.__SUPABASE_CDN_FAILED=true"></script>
+<script src="/supabase-config.js" onerror="window.__SUPABASE_CFG_FAILED=true"></script>
 <style>
 :root{
   --navy:#28394b;--navy-mid:#344d63;--ocean:#1e6fa8;--ocean-light:#3b9dd4;
@@ -297,6 +297,38 @@ function setSavePill(state, text){
 }
 function clearSavePill(){ $('savePill').className = 'save-pill'; }
 
+// ════════════════════════════════════════════════════════════════════════════
+//  EARLY "JS is alive" marker — first thing the inline script does.
+//  If the user sees step-config still in "pending" state, it means this
+//  inline <script> block never executed at all (CSP / parse error / etc.).
+// ════════════════════════════════════════════════════════════════════════════
+try {
+  console.log('[Prices] inline script entered');
+  const _earlyEl = document.getElementById('step-config');
+  if (_earlyEl) {
+    _earlyEl.innerHTML = '<span class="boot-spin"></span>JS started — checking Supabase config…';
+    _earlyEl.setAttribute('data-js-alive','1');
+  }
+} catch(_e){ /* swallow */ }
+
+// ── Watchdog: if init() hasn't ticked step-config to OK/ERR within 3s,
+//    something blocked execution before the IIFE. Tell the user how to
+//    diagnose instead of letting the spinner hang forever.
+setTimeout(function(){
+  const el = document.getElementById('step-config');
+  if (el && el.classList.contains('pending')) {
+    el.classList.remove('pending'); el.classList.add('err');
+    el.innerHTML = '✗ JS did not reach init() within 3 s';
+    const log = document.getElementById('bootLog');
+    if (log) {
+      const hint = document.createElement('div');
+      hint.className = 'line err';
+      hint.innerHTML = '✗ Likely cause: supabase-js@2 CDN is blocked (ad-blocker?) or the browser cached an old broken script. Try: hard refresh (Cmd+Shift+R), disable ad-blocker for this site, or open DevTools (Cmd+Option+I) → Console tab and send a screenshot.';
+      log.appendChild(hint);
+    }
+  }
+}, 3000);
+
 // ── Bootstrap diagnostics ─────────────────────────────────────────────────
 // We render each init step into a visible log line so when something
 // hangs the user (and any teammate looking at the console) sees exactly
@@ -326,10 +358,26 @@ function withTimeout(promise, ms, label){
 
 // ── Bootstrap ──────────────────────────────────────────────────────────────
 
+// Wait for the deferred supabase-js script to finish loading. Up to 8 s.
+async function waitForSupabaseSdk(){
+  const start = Date.now();
+  while (Date.now() - start < 8000) {
+    if (window.__SUPABASE_CDN_FAILED) throw new Error('supabase-js CDN failed to load (blocked by network or ad-blocker?)');
+    if (window.supabase && typeof window.supabase.createClient === 'function') return;
+    await new Promise(r=>setTimeout(r, 80));
+  }
+  throw new Error('Timed out after 8s waiting for supabase-js to load');
+}
+
 (async function init(){
   console.log('[Prices] init starting — location slug:', LOCATION_SLUG);
 
   // 1. Supabase config
+  if (window.__SUPABASE_CFG_FAILED) {
+    markStep('step-config','err','/supabase-config.js failed to load (404 or network)');
+    renderNoAccess('Config missing','The /supabase-config.js file failed to load. Check your deployment.');
+    return;
+  }
   if (!window.__SUPABASE_CONFIG?.url || !window.__SUPABASE_CONFIG?.anonKey) {
     markStep('step-config','err','Supabase config missing (/supabase-config.js)');
     renderNoAccess('Supabase config missing','The pricing catalog needs Supabase to work. Make sure /supabase-config.js is reachable from this domain.');
@@ -337,13 +385,17 @@ function withTimeout(promise, ms, label){
   }
   markStep('step-config','ok','Config found');
 
-  // 2. Supabase client
-  if (!window.supabase || typeof window.supabase.createClient !== 'function') {
-    markStep('step-client','err','supabase-js@2 failed to load from CDN');
-    renderNoAccess('Supabase SDK missing','The Supabase JavaScript SDK did not load. Check your network connection or any ad-blocker that might be blocking jsdelivr.');
+  // 2. Wait for the deferred supabase-js bundle to finish loading
+  markStep('step-client','pending','Waiting for supabase-js bundle…');
+  try {
+    await waitForSupabaseSdk();
+  } catch (err) {
+    console.error('[Prices] supabase-js load failed', err);
+    markStep('step-client','err','supabase-js load failed — '+(err?.message||err));
+    renderNoAccess('Supabase SDK unavailable',
+      'The Supabase JavaScript bundle could not be loaded from jsdelivr.net. If you have an ad-blocker (uBlock / Brave shields / Pi-hole), disable it for this domain and refresh.');
     return;
   }
-  markStep('step-client','pending','Creating Supabase client…');
   supabase = window.supabase.createClient(window.__SUPABASE_CONFIG.url, window.__SUPABASE_CONFIG.anonKey);
   markStep('step-client','ok','Client ready');
 
