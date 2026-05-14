@@ -365,6 +365,23 @@
     .settings-field input:focus,.settings-field select:focus{border-color:var(--ocean);box-shadow:0 0 0 4px rgba(30,111,168,.10)}
     .area-pills{
       display:flex;
+      flex-direction:column;
+      gap:12px;
+    }
+    .area-group{
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+    }
+    .area-group-label{
+      font-size:10px;
+      text-transform:uppercase;
+      letter-spacing:.1em;
+      font-weight:700;
+      color:var(--muted);
+    }
+    .area-group-chips{
+      display:flex;
       flex-wrap:wrap;
       gap:8px;
     }
@@ -996,18 +1013,35 @@
       }
     ];
 
+    // Allowed areas grouped by purpose so the invite UI reads as
+    // "what surfaces can this person see" rather than a flat blob of
+    // chips. Three buckets:
+    //   • Surf Camps   — the Hub for each location + the Camp Tab POS
+    //                    sub-surface for that location.
+    //   • Prices       — the Pricing Catalog for each location. Granted
+    //                    independently so partners can be invited to
+    //                    Morocco prices only, for example.
+    //   • Management   — cross-camp tools (Partners, Instructors,
+    //                    Settings itself).
     const ACCESS_AREAS = [
-      { key:'sri-lanka', label:'Sri Lanka' },
-      { key:'sri-lanka-camp-tab', label:'Sri Lanka - Camp Tab' },
-      { key:'portugal', label:'Portugal' },
-      { key:'portugal-camp-tab', label:'Portugal - Camp Tab' },
-      { key:'junior', label:'Junior Camp' },
-      { key:'junior-camp-tab', label:'Junior Camp - Camp Tab' },
-      { key:'morocco', label:'Morocco' },
-      { key:'morocco-camp-tab', label:'Morocco - Camp Tab' },
-      { key:'partners', label:'Partners' },
-      { key:'instructors', label:'Instructors' },
-      { key:'settings', label:'Settings' }
+      // Surf Camps
+      { key:'sri-lanka',          label:'Sri Lanka',           group:'Surf Camps' },
+      { key:'sri-lanka-camp-tab', label:'Sri Lanka · Camp Tab',group:'Surf Camps' },
+      { key:'morocco',            label:'Morocco',             group:'Surf Camps' },
+      { key:'morocco-camp-tab',   label:'Morocco · Camp Tab',  group:'Surf Camps' },
+      { key:'portugal',           label:'Portugal',            group:'Surf Camps' },
+      { key:'portugal-camp-tab',  label:'Portugal · Camp Tab', group:'Surf Camps' },
+      { key:'junior',             label:'Junior Camp',         group:'Surf Camps' },
+      { key:'junior-camp-tab',    label:'Junior Camp · Camp Tab', group:'Surf Camps' },
+      // Prices (Pricing Catalog per camp — Phase 4 access-control)
+      { key:'prices-sri-lanka',   label:'Sri Lanka prices',    group:'Prices' },
+      { key:'prices-morocco',     label:'Morocco prices',      group:'Prices' },
+      { key:'prices-portugal',    label:'Portugal prices',     group:'Prices' },
+      { key:'prices-junior',      label:'Junior Camp prices',  group:'Prices' },
+      // Management
+      { key:'partners',           label:'Partners',            group:'Management' },
+      { key:'instructors',        label:'Instructors',         group:'Management' },
+      { key:'settings',           label:'Settings',            group:'Management' }
     ];
 
     let accessUsers = [];
@@ -1058,12 +1092,13 @@
     }
 
     function canAccessWorkspace(key){
-      // Pricing-Catalog cards (key `prices-<slug>`) are always
-      // navigable from the workspace home. The actual access control
-      // lives inside /prices/index.html, which checks the owner email
-      // (Phase 1) and will consult pricing_access per-email in Phase 4.
-      // Non-owners landing there see a "Restricted area" splash.
-      if(typeof key === 'string' && key.startsWith('prices-')) return true;
+      // Pricing-Catalog cards (key `prices-<slug>`) used to be always
+      // navigable so the owner could reach the page during Phase 1, but
+      // now Settings exposes per-camp prices toggles ("Sri Lanka prices",
+      // "Morocco prices", …) so the access list is the source of truth.
+      // The /prices page itself still gates owner vs. partner access
+      // internally (Phase 4 pricing_access table), so a partner who has
+      // the chip but isn't whitelisted there still sees the splash.
       const user = accessUsers.find(entry=>entry.email===currentPreviewUser);
       return Boolean(
         user && (
@@ -1373,11 +1408,28 @@
 
     function renderAreaPills(){
       const selected = new Set((window.__draftAreas || ['sri-lanka']).filter(Boolean));
-      document.getElementById('areaPills').innerHTML = ACCESS_AREAS.map(area=>`
-        <label class="area-pill ${selected.has(area.key) ? 'active' : ''}">
-          <input type="checkbox" value="${area.key}" ${selected.has(area.key) ? 'checked' : ''} onchange="toggleDraftArea('${area.key}', this.checked)">
-          <span>${area.label}</span>
-        </label>
+      // Bucket the flat list into ordered group sections — preserves the
+      // ACCESS_AREAS ordering inside each group while keeping the three
+      // labelled clusters visually distinct.
+      const byGroup = new Map();
+      const groupOrder = [];
+      for (const area of ACCESS_AREAS) {
+        const g = area.group || 'Other';
+        if (!byGroup.has(g)) { byGroup.set(g, []); groupOrder.push(g); }
+        byGroup.get(g).push(area);
+      }
+      document.getElementById('areaPills').innerHTML = groupOrder.map(groupName => `
+        <div class="area-group">
+          <div class="area-group-label">${groupName}</div>
+          <div class="area-group-chips">
+            ${byGroup.get(groupName).map(area => `
+              <label class="area-pill ${selected.has(area.key) ? 'active' : ''}">
+                <input type="checkbox" value="${area.key}" ${selected.has(area.key) ? 'checked' : ''} onchange="toggleDraftArea('${area.key}', this.checked)">
+                <span>${area.label}</span>
+              </label>
+            `).join('')}
+          </div>
+        </div>
       `).join('');
     }
 
