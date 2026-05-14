@@ -1099,6 +1099,22 @@
       // The /prices page itself still gates owner vs. partner access
       // internally (Phase 4 pricing_access table), so a partner who has
       // the chip but isn't whitelisted there still sees the splash.
+      //
+      // Platform-owner bypass: when the signed-in user is the platform
+      // owner (or super_admin) AND they're previewing as themselves, every
+      // workspace is visible regardless of the area pills. The self-edit
+      // form locks the owner out of toggling their own pills, so without
+      // this bypass any newly-added area (e.g. the four prices-* entries)
+      // would be invisible to the owner. When previewing AS another user,
+      // we still honor that user's pills — so the preview tool keeps
+      // working for testing partner accounts.
+      const OWNER_EMAILS = new Set(['miguel@gotadaguasurf.com']);
+      const myEmail = String(__currentProfile?.email || '').toLowerCase();
+      const previewIsSelf = currentPreviewUser && currentPreviewUser.toLowerCase() === myEmail;
+      const role = String(__currentProfile?.role || '').toLowerCase();
+      if (previewIsSelf && (role === 'owner' || role === 'super_admin' || OWNER_EMAILS.has(myEmail))) {
+        return true;
+      }
       const user = accessUsers.find(entry=>entry.email===currentPreviewUser);
       return Boolean(
         user && (
