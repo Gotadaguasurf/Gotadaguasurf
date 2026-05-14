@@ -2195,6 +2195,13 @@ $('emSave').addEventListener('click', async ()=>{
       const idx = catalog.findIndex(x=>x.id === editingId);
       if (idx >= 0) catalog[idx] = saved; else catalog.push(saved);
     } else {
+      // Auto-place new rows at the end of their category — keeps the list
+      // visually stable when the user adds a tour mid-conversation. Without
+      // this, new entries fall back to the schema default sort_order=100
+      // and jump to the top of legacy imports that have 101+.
+      const sameCategoryRows = catalog.filter(r => r.category === payload.category);
+      const maxSort = sameCategoryRows.reduce((m, r) => Math.max(m, Number(r.sort_order || 0)), 100);
+      payload.sort_order = maxSort + 1;
       const { data, error } = await sbClient
         .from('pricing_catalog').insert(payload).select().single();
       if (error) throw error;
