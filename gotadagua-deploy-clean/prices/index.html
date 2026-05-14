@@ -119,7 +119,11 @@ tbody td.c{text-align:center}
 .mhdr{background:var(--navy);color:#fff;padding:16px 20px;border-radius:16px 16px 0 0}
 .mhdr-title{font-family:'DM Serif Display',serif;font-size:18px}
 .mhdr-sub{font-size:11px;color:#9fc5df;margin-top:2px}
-.mbody{padding:20px}
+.mbody{padding:18px 20px;max-height:calc(92vh - 130px);overflow-y:auto}
+.msection{padding:14px 0;border-bottom:1px solid var(--border)}
+.msection:first-child{padding-top:0}
+.msection:last-child{padding-bottom:0;border-bottom:0}
+.msection-title{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700;margin-bottom:10px}
 .mfield{margin-bottom:14px}
 .mfield label{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin-bottom:6px}
 .mfield input,.mfield select,.mfield textarea{width:100%;border:1.5px solid var(--border);border-radius:9px;padding:9px 12px;font-size:13px;font-family:'Outfit',sans-serif;background:#fff;color:var(--ink)}
@@ -191,7 +195,11 @@ tbody td.c{text-align:center}
   </div>
 </main>
 
-<!-- Edit modal -->
+<!-- Edit modal — reorganised into clear sections (General / Pricing /
+     Visibility / Connections). Visibility and Connections sections show
+     category-aware fields: Transport gets picker tab + linked tour,
+     Tour gets linked transport. Keeps the modal fluid without dumping
+     every option on the user. -->
 <div class="overlay" id="editOv">
   <div class="modal">
     <div class="mhdr">
@@ -199,62 +207,115 @@ tbody td.c{text-align:center}
       <div class="mhdr-sub" id="modalSub">Add an item to the pricing catalog</div>
     </div>
     <div class="mbody">
-      <div class="mfield">
-        <label>Name *</label>
-        <input type="text" id="em_name" placeholder="e.g., Souk Tour" autocomplete="off">
-      </div>
-      <div class="mgrid">
+
+      <!-- ───── General ───── -->
+      <div class="msection">
+        <div class="msection-title">General</div>
         <div class="mfield">
-          <label>Category *</label>
-          <select id="em_category">
-            <option value="Tour">Tour</option>
-            <option value="Transport">Transport</option>
-            <option value="Surf Pack">Surf Pack</option>
-            <option value="Accommodation">Accommodation</option>
-            <option value="Per Night">Per Night</option>
-            <option value="Lesson">Lesson</option>
-            <option value="Other Service">Other Service</option>
+          <label>Name *</label>
+          <input type="text" id="em_name" placeholder="e.g., Souk Tour" autocomplete="off">
+        </div>
+        <div class="mgrid">
+          <div class="mfield">
+            <label>Category *</label>
+            <select id="em_category" onchange="onCategoryChange()">
+              <option value="Tour">Tour</option>
+              <option value="Transport">Transport</option>
+              <option value="Surf Pack">Surf Pack</option>
+              <option value="Accommodation">Accommodation</option>
+              <option value="Per Night">Per Night</option>
+              <option value="Lesson">Lesson</option>
+              <option value="Other Service">Other Service</option>
+            </select>
+          </div>
+          <div class="mfield">
+            <label>Audience</label>
+            <select id="em_audience">
+              <option value="general">General (per-guest)</option>
+              <option value="group">Group (fixed per booking)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- ───── Pricing ───── -->
+      <div class="msection">
+        <div class="msection-title">Pricing</div>
+        <div class="mgrid">
+          <div class="mfield">
+            <label>Sell price</label>
+            <input type="number" id="em_sell" min="0" step="0.01" placeholder="0.00">
+          </div>
+          <div class="mfield">
+            <label>Cost per guest</label>
+            <input type="number" id="em_cost" min="0" step="0.01" placeholder="0.00">
+          </div>
+        </div>
+        <div class="mgrid">
+          <div class="mfield">
+            <label>Currency</label>
+            <select id="em_currency">
+              <option value="LKR">LKR</option>
+              <option value="MAD">MAD</option>
+              <option value="EUR">EUR</option>
+            </select>
+          </div>
+          <div class="mfield">
+            <label>Notes</label>
+            <input type="text" id="em_notes" placeholder="Optional short note" autocomplete="off">
+          </div>
+        </div>
+      </div>
+
+      <!-- ───── Visibility ───── -->
+      <div class="msection">
+        <div class="msection-title">Visibility</div>
+        <label class="mtoggle" id="em_show_ct_row">
+          <input type="checkbox" id="em_show_ct">
+          <span class="label">Show in Camp Tab POS
+            <br><span style="font-size:10px;color:var(--muted);font-weight:400">Guests can charge this item to their tab.</span>
+          </span>
+        </label>
+        <label class="mtoggle" id="em_show_tp_row" style="margin-top:8px">
+          <input type="checkbox" id="em_show_tp">
+          <span class="label">Show in Hub Transport picker
+            <br><span style="font-size:10px;color:var(--muted);font-weight:400">Appears as a chip when logging Transport expenses.</span>
+          </span>
+        </label>
+      </div>
+
+      <!-- ───── Connections (transport-only & tour-only fields) ───── -->
+      <div class="msection" id="em_connections_section">
+        <div class="msection-title">Connections</div>
+
+        <!-- Transport-specific: which tab in the Hub picker -->
+        <div class="mfield" id="em_picker_tab_row" style="display:none">
+          <label>Hub picker tab</label>
+          <select id="em_picker_tab">
+            <option value="airport">Airport</option>
+            <option value="tuktuk">Tuk Tuk / Local</option>
           </select>
+          <div class="help">Which tab this destination appears under inside the Hub's Transport quick-add modal.</div>
         </div>
-        <div class="mfield">
-          <label>Audience</label>
-          <select id="em_audience">
-            <option value="general">General (per-guest)</option>
-            <option value="group">Group (fixed per booking)</option>
+
+        <!-- Transport-specific: link to a tour so cost flows to that tour's P&L -->
+        <div class="mfield" id="em_linked_tour_row" style="display:none">
+          <label>Linked tour (optional)</label>
+          <select id="em_linked_tour">
+            <option value="">— Not linked —</option>
           </select>
+          <div class="help">When set, transport spend for this destination is attributed to the chosen tour in reports.</div>
+        </div>
+
+        <!-- Tour-specific: link to the transport used for this tour -->
+        <div class="mfield" id="em_linked_transport_row" style="display:none">
+          <label>Linked transport (optional)</label>
+          <select id="em_linked_transport">
+            <option value="">— Not linked —</option>
+          </select>
+          <div class="help">When set, the linked transport's cost is treated as part of this tour's cost calculation.</div>
         </div>
       </div>
-      <div class="mgrid">
-        <div class="mfield">
-          <label>Sell price</label>
-          <input type="number" id="em_sell" min="0" step="0.01" placeholder="0.00">
-        </div>
-        <div class="mfield">
-          <label>Cost per guest</label>
-          <input type="number" id="em_cost" min="0" step="0.01" placeholder="0.00">
-        </div>
-      </div>
-      <div class="mfield">
-        <label>Currency</label>
-        <select id="em_currency">
-          <option value="LKR">LKR</option>
-          <option value="MAD">MAD</option>
-          <option value="EUR">EUR</option>
-        </select>
-        <div class="help">Defaults to the location's currency. Use EUR for cross-camp items.</div>
-      </div>
-      <div class="mfield">
-        <label>Notes</label>
-        <textarea id="em_notes" rows="2" placeholder="Optional"></textarea>
-      </div>
-      <label class="mtoggle" style="margin-bottom:10px">
-        <input type="checkbox" id="em_show_ct">
-        <span class="label">Show in Camp Tab POS<br><span style="font-size:10px;color:var(--muted);font-weight:400">Guests see + pay this price (only Tour category)</span></span>
-      </label>
-      <label class="mtoggle">
-        <input type="checkbox" id="em_show_tp">
-        <span class="label">Show in Transport quick-add picker<br><span style="font-size:10px;color:var(--muted);font-weight:400">Appears when logging Transport expenses (only Transport category)</span></span>
-      </label>
     </div>
     <div class="mfooter">
       <button class="btn btn-s" id="emCancel">Cancel</button>
@@ -649,6 +710,68 @@ window.onSearch = (v)=>{ filterSearch = v; renderTable(); };
 window.onCategoryFilter = (v)=>{ filterCategory = v; renderTable(); };
 
 // ── Modal: New / Edit ─────────────────────────────────────────────────────
+// Category-aware field visibility + smart defaults. Transport rows expose
+// the picker_tab dropdown (Airport / Tuk Tuk) and an optional "linked tour"
+// so transport spend can flow to a tour's P&L. Tour rows expose an optional
+// "linked transport" so the tour's cost calculation can include transport.
+
+function populateLinkedSelects(currentRow){
+  // Build the linked-tour and linked-transport dropdowns from the
+  // catalog rows for THIS location. Skip the row currently being edited
+  // (can't link to itself) and inactive rows. Pre-select whatever the
+  // editing row already has stored.
+  const tourSel = $('em_linked_tour');
+  const transSel = $('em_linked_transport');
+  const skipId = currentRow?.id || '';
+
+  // Tours for "linked tour" dropdown (used when editing a Transport)
+  const tourRows = catalog
+    .filter(r=>r.category==='Tour' && r.active && r.id !== skipId)
+    .sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  tourSel.innerHTML = '<option value="">— Not linked —</option>' +
+    tourRows.map(r=>`<option value="${r.id}">${escapeHtml(r.name)}</option>`).join('');
+
+  // Transports for "linked transport" dropdown (used when editing a Tour)
+  const transRows = catalog
+    .filter(r=>r.category==='Transport' && r.active && r.id !== skipId)
+    .sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  transSel.innerHTML = '<option value="">— Not linked —</option>' +
+    transRows.map(r=>`<option value="${r.id}">${escapeHtml(r.name)}</option>`).join('');
+
+  // Pre-select what's already on the row. We use linked_camp_tab_id for
+  // Transport→Tour linkage and linked_transport_preset_id for Tour→Transport
+  // linkage. These fields exist in the schema already from Phase 2 and
+  // accept any text, so we store the catalog UUID directly.
+  if (currentRow) {
+    if (currentRow.category === 'Transport' && currentRow.linked_camp_tab_id) {
+      tourSel.value = currentRow.linked_camp_tab_id;
+    }
+    if (currentRow.category === 'Tour' && currentRow.linked_transport_preset_id) {
+      transSel.value = currentRow.linked_transport_preset_id;
+    }
+  }
+}
+
+window.onCategoryChange = ()=>{
+  const cat = $('em_category').value;
+  // picker_tab + linked_tour ONLY show for Transport
+  $('em_picker_tab_row').style.display = (cat === 'Transport') ? '' : 'none';
+  $('em_linked_tour_row').style.display = (cat === 'Transport') ? '' : 'none';
+  // linked_transport ONLY shows for Tour
+  $('em_linked_transport_row').style.display = (cat === 'Tour') ? '' : 'none';
+  // Smart defaults for visibility toggles when category changes
+  if (cat === 'Tour' && !editingId) {
+    $('em_show_ct').checked = true;
+    $('em_show_tp').checked = false;
+  } else if (cat === 'Transport' && !editingId) {
+    $('em_show_ct').checked = false;
+    $('em_show_tp').checked = true;
+  }
+  // Hide Connections section entirely for categories with no linkages
+  const showConnections = (cat === 'Tour' || cat === 'Transport');
+  $('em_connections_section').style.display = showConnections ? '' : 'none';
+};
+
 window.openNew = ()=>{
   editingId = null;
   $('modalTitle').textContent = 'New entry';
@@ -660,8 +783,11 @@ window.openNew = ()=>{
   $('em_cost').value = '';
   $('em_currency').value = LOCATION_CURRENCY[LOCATION_SLUG] || 'EUR';
   $('em_notes').value = '';
-  $('em_show_ct').checked = false;
+  $('em_show_ct').checked = true;   // Tour default
   $('em_show_tp').checked = false;
+  $('em_picker_tab').value = 'airport';
+  populateLinkedSelects(null);
+  onCategoryChange();
   $('editOv').classList.add('open');
   setTimeout(()=>$('em_name').focus(), 60);
 };
@@ -681,6 +807,9 @@ window.openEdit = (id)=>{
   $('em_notes').value = r.notes || '';
   $('em_show_ct').checked = !!r.show_in_camp_tab;
   $('em_show_tp').checked = !!r.show_in_transport_picker;
+  $('em_picker_tab').value = r.picker_tab || 'airport';
+  populateLinkedSelects(r);
+  onCategoryChange();
   $('editOv').classList.add('open');
 };
 
@@ -693,10 +822,11 @@ $('emSave').addEventListener('click', async ()=>{
     alert('Name is required');
     return;
   }
+  const cat = $('em_category').value;
   const payload = {
     location_id: locationId,
     name,
-    category: $('em_category').value,
+    category: cat,
     audience: $('em_audience').value,
     sell_price: Number($('em_sell').value || 0),
     cost_per_guest: Number($('em_cost').value || 0),
@@ -704,8 +834,24 @@ $('emSave').addEventListener('click', async ()=>{
     notes: $('em_notes').value.trim() || null,
     show_in_camp_tab: $('em_show_ct').checked,
     show_in_transport_picker: $('em_show_tp').checked,
-    active: true
+    active: true,
+    // Phase 5: picker_tab is meaningful for Transport rows; default to
+    // 'airport' if the user didn't pick one. For non-Transport rows we
+    // still write it as 'airport' so realtime listeners that filter on
+    // picker_tab never see NULL — null breaks the Hub's tab routing.
+    picker_tab: (cat === 'Transport') ? ($('em_picker_tab').value || 'airport') : 'airport',
+    // Linked-tour for a Transport → store in linked_camp_tab_id field
+    // (text column already in the schema; accepts the linked row's UUID).
+    // Linked-transport for a Tour → store in linked_transport_preset_id.
+    // Other categories don't surface a linkage UI but we preserve any
+    // existing value on edit (we only overwrite when the relevant select
+    // is visible).
+    linked_camp_tab_id:        (cat === 'Transport') ? ($('em_linked_tour').value || null) : undefined,
+    linked_transport_preset_id:(cat === 'Tour')      ? ($('em_linked_transport').value || null) : undefined
   };
+  // Drop undefined keys so we don't blow away pre-existing values on edit
+  // for categories that don't expose those fields.
+  Object.keys(payload).forEach(k=>{ if (payload[k] === undefined) delete payload[k]; });
 
   __pendingSave = true;
   __suppressRt = true;

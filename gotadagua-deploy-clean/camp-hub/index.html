@@ -2035,11 +2035,14 @@ function subscribeHubRealtime(){
           }
         }).catch(e=>console.warn('[Hub] pricing_catalog RT transport reload failed',e));
       }
-      // Tours → refresh Camp Tab Tours menu + re-bootstrap iframe
+      // Tours → refresh Camp Tab Tours menu + push tours-update to iframe.
+      // The dedicated tours-update message bypasses the iframe's "only
+      // accept menu on first bootstrap" safety check, so catalog edits
+      // in /prices reach the POS live.
       if(!cat || cat==='Tour'){
         refreshCatalogCampTabTours().then(changed=>{
-          if(changed && typeof sendCampTabBootstrap==='function'){
-            try{ sendCampTabBootstrap(); }catch(_e){}
+          if(changed && typeof sendCampTabToursUpdate==='function'){
+            try{ sendCampTabToursUpdate(); }catch(_e){}
           }
         }).catch(e=>console.warn('[Hub] pricing_catalog RT tour reload failed',e));
       }
@@ -7429,6 +7432,25 @@ function sendCampTabBootstrap(){
       menu:currentCampTabMenu(),
       staff:readJsonStorage(CAMPTAB_STAFF_KEY,[])
     },'*');
+  }catch(_error){}
+  // Phase 5: also push a dedicated tours-update so the iframe adopts the
+  // catalog-sourced Tours even on subsequent bootstraps (the bootstrap
+  // handler itself only ingests menu the first time).
+  try{ sendCampTabToursUpdate(); }catch(_e){}
+}
+
+// Phase 5: live Tours-only update — bypasses the iframe's first-bootstrap
+// safety check so catalog edits in /prices reach the POS without a reload.
+// Falls back gracefully when the cache hasn't loaded yet (sends an empty
+// array, the iframe ignores anything that doesn't differ from its current
+// MENU.Tours).
+function sendCampTabToursUpdate(){
+  const frame=document.getElementById('campTabFrame');
+  if(!frame?.contentWindow) return;
+  const menu=currentCampTabMenu();
+  const tours=Array.isArray(menu?.Tours)?menu.Tours:[];
+  try{
+    frame.contentWindow.postMessage({type:'camp-tab-tours-update',tours},'*');
   }catch(_error){}
 }
 function mountCampTabFrame(){
