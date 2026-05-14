@@ -121,6 +121,14 @@ main{max-width:1100px;margin:0 auto;padding:32px 24px}
 .tf-margin-pos{background:#e8f5e8;color:#2d7a2d;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:600}
 .tf-margin-neg{background:#fdecea;color:#c0392b;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:600}
 .tf-margin-zero{color:#bbb;font-size:12px}
+/* Picker toggle — click to add/remove the route from the Hub Transport
+   quick-add modal without opening the full Edit form. Mirrors the
+   visibility logic the user already understands from the row pencil. */
+.tf-picker{display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;padding:2px 10px;border-radius:99px;cursor:pointer;border:1px solid transparent;transition:all .12s}
+.tf-picker.on {background:#eef1ff;color:#3a5acd;border-color:#d8def5}
+.tf-picker.off{color:#bbb;border-color:#f0f0ee}
+.tf-picker:hover{filter:brightness(.97)}
+body.view-list .tf-picker{cursor:default;pointer-events:none}
 .tf-na{color:#ddd;font-size:12px;font-weight:400}
 /* Inline editable cells in the Transfers table — same affordance as the
    accommodation grid: hover hints clickability, the saving and failed
@@ -1549,7 +1557,7 @@ function renderTransfersEdit(){
               <th>Pax</th>
               <th class="r">Cost (per trip)</th>
               <th class="r">Price (per trip)</th>
-              <th class="r">Margin</th>
+              <th class="c">In Hub picker</th>
               <th class="c">Actions</th>
             </tr>
           </thead>
@@ -1558,20 +1566,24 @@ function renderTransfersEdit(){
               const r = it.row;
               const cost = Number(r.cost_per_guest || 0);
               const sell = Number(r.sell_price || 0);
-              const margin = sell - cost;
-              const marginPct = sell > 0 ? Math.round(margin / sell * 100) : null;
-              const marginHtml = (sell > 0)
-                ? `<span class="${margin >= 0 ? 'tf-margin-pos' : 'tf-margin-neg'}">${marginPct}%</span>`
-                : '<span class="tf-margin-zero">—</span>';
-              const costCell  = cost > 0 ? money(cost, r.currency) : '<span class="tf-cell-empty">— add</span>';
-              const priceCell = sell > 0 ? money(sell, r.currency) : '<span class="tf-cell-empty">— add</span>';
+              // Cost currency = the row's `currency` (local money — MAD/LKR).
+              // Sell currency = `sell_currency` when set, else falls back to
+              // the row's currency (for in-camp rows like Souk Tour where
+              // cost & price share MAD).
+              const costCcy = r.currency || 'EUR';
+              const sellCcy = r.sell_currency || r.currency || 'EUR';
+              const costCell  = cost > 0 ? money(cost, costCcy) : '<span class="tf-cell-empty">— add</span>';
+              const priceCell = sell > 0 ? money(sell, sellCcy) : '<span class="tf-cell-empty">— add</span>';
+              const picker = r.show_in_transport_picker
+                ? '<span class="tf-picker on" onclick="onTfTogglePicker(\''+r.id+'\')" title="In the Hub Transport picker · click to remove">✓ Picker</span>'
+                : '<span class="tf-picker off" onclick="onTfTogglePicker(\''+r.id+'\')" title="Hidden from Hub Transport picker · click to add">○ Add</span>';
               return `
                 <tr>
                   <td>${escapeHtml(it.vehicle || '—')}</td>
                   <td class="muted">${it.paxRange || '—'}</td>
                   <td class="r"><span class="tf-cell-edit tf-cost" data-tf-id="${r.id}" data-tf-field="cost_per_guest" onclick="onTfEditCell(this)">${costCell}</span></td>
                   <td class="r"><span class="tf-cell-edit tf-price" data-tf-id="${r.id}" data-tf-field="sell_price" onclick="onTfEditCell(this)">${priceCell}</span></td>
-                  <td class="r">${marginHtml}</td>
+                  <td class="c">${picker}</td>
                   <td class="c"><div class="tf-row-actions">
                     <button class="tf-icon-btn" title="More options" onclick="openEdit('${r.id}')">⋯</button>
                     <button class="tf-icon-btn danger" title="Delete" onclick="onDelete('${r.id}')">×</button>
@@ -1585,6 +1597,34 @@ function renderTransfersEdit(){
     `;
   }).join('');
 }
+
+// Inline Picker toggle. Flips show_in_transport_picker and saves to
+// Supabase. The Hub picks the change up via the existing
+// pricing_catalog realtime subscription (no extra wiring needed) — the
+// row appears or disappears in the Hub's Transport quick-add modal in
+// the next ~1s.
+window.onTfTogglePicker = async (id)=>{
+  if (!canEdit || viewMode === 'list') return;
+  const row = catalog.find(r => r.id === id);
+  if (!row) return;
+  const newVal = !row.show_in_transport_picker;
+  __pendingSave = true;
+  try {
+    const { data, error } = await sbClient
+      .from('pricing_catalog')
+      .update({ show_in_transport_picker: newVal })
+      .eq('id', id).select().single();
+    if (error) throw error;
+    const idx = catalog.findIndex(r => r.id === id);
+    if (idx >= 0) catalog[idx] = { ...catalog[idx], ...data };
+    renderTable();
+  } catch (err) {
+    console.error('[Prices] picker toggle failed', err);
+    alert('Could not save: ' + (err?.message || 'unknown error'));
+  } finally {
+    __pendingSave = false;
+  }
+};
 
 // Inline click-to-edit for the Cost / Price cells of the Transfers table.
 // Mirrors onAccomEditCell: click → input with current value → Enter/blur
@@ -1600,7 +1640,12 @@ window.onTfEditCell = (el)=>{
   if (!id || !field) return;
   const row   = catalog.find(r => r.id === id);
   if (!row) return;
-  const cur   = row.currency || 'EUR';
+  // Cost is formatted in `currency` (local money). Sell is in
+  // `sell_currency` (often EUR for airport transfers). Picking the right
+  // one per-field keeps the input pre-fill in the right currency.
+  const cur = (field === 'sell_price')
+    ? (row.sell_currency || row.currency || 'EUR')
+    : (row.currency || 'EUR');
   const start = Number(row[field] || 0);
 
   const input = document.createElement('input');
@@ -1705,11 +1750,12 @@ function renderTransfersPriceList(){
             <tbody>
               ${g.items.map(it => {
                 const r = it.row;
+                const sellCcy = r.sell_currency || r.currency || 'EUR';
                 return `
                   <tr>
                     <td>${escapeHtml(it.vehicle || '—')}</td>
                     <td class="muted">${it.paxRange || '—'}</td>
-                    <td class="r"><span class="tf-price">${money(Number(r.sell_price||0), r.currency)}</span></td>
+                    <td class="r"><span class="tf-price">${money(Number(r.sell_price||0), sellCcy)}</span></td>
                   </tr>
                 `;
               }).join('')}
