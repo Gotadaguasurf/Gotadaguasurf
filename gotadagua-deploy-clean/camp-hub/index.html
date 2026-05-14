@@ -4727,10 +4727,18 @@ function groupCatalogIntoPresets(rows){
   // Group by the prefix before the LAST " — " (so destination names that
   // contain " — " elsewhere — like "Dunes — Sandboarding" — still split
   // correctly at the vehicle boundary).
+  //
+  // picker_tab on each catalog row drives which Hub tab the preset lands
+  // in ('airport' | 'tuktuk'). Rows without picker_tab (NULL) default to
+  // 'airport'. The same destination name appearing under both tabs (rare,
+  // not currently a use case) would be deduplicated to whichever tab the
+  // first matching row landed in — that's fine, we don't want destination
+  // names splitting across tabs by accident.
   const byDest=new Map();
   for(const r of rows){
     const fullName=String(r.name||'').trim();
     if(!fullName) continue;
+    const tab=(r.picker_tab==='tuktuk')?'tuktuk':'airport';
     const splitIdx=fullName.lastIndexOf(' — ');
     let destName,vehicleLabel;
     if(splitIdx>0){
@@ -4740,17 +4748,19 @@ function groupCatalogIntoPresets(rows){
       destName=fullName;
       vehicleLabel='';
     }
-    if(!byDest.has(destName)){
-      byDest.set(destName,{
+    const destKey=tab+'|'+destName;
+    if(!byDest.has(destKey)){
+      byDest.set(destKey,{
         id:r.linked_transport_preset_id||('cat|'+r.id),
         name:destName,
+        tab,
         unitPrice:0,
         sortOrder:Number.isFinite(Number(r.sort_order))?Number(r.sort_order):100,
         linkedTour:r.linked_camp_tab_id||'',
         vehicles:[]
       });
     }
-    const preset=byDest.get(destName);
+    const preset=byDest.get(destKey);
     if(vehicleLabel){
       let capacity=null;
       const m=String(r.notes||'').match(/capacity\s*(\d+)/i);
@@ -4772,10 +4782,12 @@ function groupCatalogIntoPresets(rows){
   for(const p of all){
     p.vehicles.sort((a,b)=>a.sortOrder-b.sortOrder||(a.label||'').localeCompare(b.label||''));
   }
-  // All catalog-sourced presets land in the 'airport' tab for now. The
-  // tuktuk tab keeps its state_store data for backwards compat; if a
-  // future phase adds a "tab" column to pricing_catalog we'll split here.
-  return {airport:all,tuktuk:[]};
+  // Split into the two Hub tabs
+  const result={airport:[],tuktuk:[]};
+  for(const p of all){
+    (p.tab==='tuktuk'?result.tuktuk:result.airport).push(p);
+  }
+  return result;
 }
 
 async function loadTransportPresetsFromCatalog(){
@@ -4788,7 +4800,7 @@ async function loadTransportPresetsFromCatalog(){
     if(!client||!locId) return null;
     const {data,error}=await client
       .from('pricing_catalog')
-      .select('id,name,cost_per_guest,currency,notes,linked_transport_preset_id,linked_camp_tab_id,sort_order')
+      .select('id,name,cost_per_guest,currency,notes,linked_transport_preset_id,linked_camp_tab_id,picker_tab,sort_order')
       .eq('location_id',locId)
       .eq('category','Transport')
       .eq('show_in_transport_picker',true)
