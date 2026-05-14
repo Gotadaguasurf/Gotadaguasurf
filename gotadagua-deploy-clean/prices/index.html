@@ -374,10 +374,14 @@ function loadScript(src, timeoutMs){
 }
 
 async function loadSupabaseSdk(){
+  // Try self-hosted copy first — same origin as the page, so it bypasses
+  // ad-blockers, Brave Shields, corporate firewalls, and regional CDN
+  // blocks. Falls back to public CDNs only if the local file is missing.
   const cdns = [
-    { name:'jsdelivr', src:'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js' },
-    { name:'unpkg',    src:'https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.min.js' },
-    { name:'esm.sh',   src:'https://esm.sh/@supabase/supabase-js@2.39.7/dist/umd/supabase.min.js' }
+    { name:'self-hosted', src:'/lib/supabase.min.js' },
+    { name:'jsdelivr',    src:'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2' },
+    { name:'unpkg',       src:'https://unpkg.com/@supabase/supabase-js@2' },
+    { name:'esm.sh',      src:'https://esm.sh/@supabase/supabase-js@2' }
   ];
   const errors = [];
   for (const cdn of cdns) {
