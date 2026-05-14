@@ -1105,8 +1105,8 @@ function renderTable(){
       : '<span style="color:var(--muted)">—</span>';
 
     const audBadge = r.audience === 'group' ? '<span class="badge badge-group">Group</span>' : '';
-    return `<tr draggable="${canEdit}" data-row-id="${r.id}" ondragstart="onRowDragStart(event,'${r.id}')" ondragover="onRowDragOver(event)" ondragleave="onRowDragLeave(event)" ondrop="onRowDrop(event,'${r.id}')" ondragend="onRowDragEnd(event)">
-      ${canEdit ? `<td class="c"><span class="drag-handle" title="Drag to reorder">⋮⋮</span></td>` : ''}
+    return `<tr data-row-id="${r.id}" ondragover="onRowDragOver(event)" ondragleave="onRowDragLeave(event)" ondrop="onRowDrop(event,'${r.id}')">
+      ${canEdit ? `<td class="c"><span class="drag-handle" draggable="true" title="Drag to reorder" ondragstart="onRowDragStart(event,'${r.id}')" ondragend="onRowDragEnd(event)">⋮⋮</span></td>` : ''}
       <td data-label="Name">
         <div style="font-weight:600">${escapeHtml(r.name||'')}${audBadge}</div>
         ${r.notes ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">${escapeHtml(r.notes)}</div>` : ''}
@@ -1499,7 +1499,11 @@ window.onRowDragStart = (e, id)=>{
   e.dataTransfer.effectAllowed = 'move';
   // Some browsers refuse to start the drag without a payload set.
   try { e.dataTransfer.setData('text/plain', id); } catch(_e) {}
-  e.currentTarget.classList.add('dragging');
+  // The dragstart fires on the handle <span>, not the row, so we have to
+  // walk up to the <tr> to apply the "dragging" dim. closest() handles
+  // both layout flavours (legacy row table and Transfers tf-table).
+  const tr = e.currentTarget.closest('tr');
+  if (tr) tr.classList.add('dragging');
 };
 
 window.onRowDragOver = (e)=>{
@@ -1727,8 +1731,8 @@ function renderTransfersEdit(){
                 : 'Hidden from Hub Transport picker · click to add';
               const picker = `<span class="tf-picker-toggle ${pickerCls}" onclick="onTfTogglePicker('${r.id}')" title="${pickerTitle}"><span class="dot"></span>${pickerLabel}</span>`;
               return `
-                <tr draggable="${canEdit}" data-row-id="${r.id}" ondragstart="onRowDragStart(event,'${r.id}')" ondragover="onRowDragOver(event)" ondragleave="onRowDragLeave(event)" ondrop="onRowDrop(event,'${r.id}')" ondragend="onRowDragEnd(event)">
-                  ${canEdit ? `<td class="c"><span class="drag-handle" title="Drag to reorder within ${escapeHtml(g.route)}">⋮⋮</span></td>` : ''}
+                <tr data-row-id="${r.id}" ondragover="onRowDragOver(event)" ondragleave="onRowDragLeave(event)" ondrop="onRowDrop(event,'${r.id}')">
+                  ${canEdit ? `<td class="c"><span class="drag-handle" draggable="true" title="Drag to reorder within ${escapeHtml(g.route)}" ondragstart="onRowDragStart(event,'${r.id}')" ondragend="onRowDragEnd(event)">⋮⋮</span></td>` : ''}
                   <td>${escapeHtml(it.vehicle || '—')}</td>
                   <td class="muted">${it.paxRange || '—'}</td>
                   <td class="r"><span class="tf-cell-edit tf-cost" data-tf-id="${r.id}" data-tf-field="cost_per_guest" onclick="onTfEditCell(this)">${costCell}</span></td>
