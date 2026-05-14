@@ -3,9 +3,16 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- Aggressively bust browser cache for this page — the boot log + CDN
+     loader has gone through several quick iterations and stale HTML in
+     the browser can mask deployed fixes. The page itself is small;
+     re-fetching on every visit costs nothing. -->
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>Pricing Catalog — Gota Dagua</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-<script src="/supabase-config.js" onerror="window.__SUPABASE_CFG_FAILED=true"></script>
+<script src="/supabase-config.js?v=5" onerror="window.__SUPABASE_CFG_FAILED=true"></script>
 <style>
 :root{
   --navy:#28394b;--navy-mid:#344d63;--ocean:#1e6fa8;--ocean-light:#3b9dd4;
@@ -378,7 +385,7 @@ async function loadSupabaseSdk(){
   // ad-blockers, Brave Shields, corporate firewalls, and regional CDN
   // blocks. Falls back to public CDNs only if the local file is missing.
   const cdns = [
-    { name:'self-hosted', src:'/lib/supabase.min.js' },
+    { name:'self-hosted', src:'/lib/supabase.min.js?v=5' },
     { name:'jsdelivr',    src:'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2' },
     { name:'unpkg',       src:'https://unpkg.com/@supabase/supabase-js@2' },
     { name:'esm.sh',      src:'https://esm.sh/@supabase/supabase-js@2' }
