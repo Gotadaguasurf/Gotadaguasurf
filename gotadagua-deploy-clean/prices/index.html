@@ -148,6 +148,34 @@ tbody td.c{text-align:center}
 .area-tab:not(.active) .count{background:var(--bg);color:var(--muted)}
 .area-tab .ico{font-size:14px;line-height:1}
 
+/* Accommodation grid editor — pack tabs + matrix of rooms × season×occupancy */
+.accom-pack-tabs{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
+.accom-pack-tab{display:inline-flex;align-items:center;gap:8px;background:#fff;border:1.5px solid var(--border);color:var(--navy);padding:9px 16px;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif}
+.accom-pack-tab:hover{border-color:var(--ocean);color:var(--ocean)}
+.accom-pack-tab.active{background:var(--navy);color:#fff;border-color:var(--navy)}
+.accom-pack-desc{font-size:12px;color:var(--muted);margin:0 4px 14px;line-height:1.5}
+.accom-grid-wrap{background:#fff;border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--sh);overflow:auto}
+.accom-grid{width:100%;border-collapse:collapse;min-width:680px}
+.accom-grid thead th{background:var(--navy);color:#fff;font-size:10px;text-transform:uppercase;letter-spacing:.08em;padding:10px;font-weight:700;text-align:center;border-right:1px solid rgba(255,255,255,.08)}
+.accom-grid thead th:first-child{text-align:left;background:var(--navy-mid)}
+.accom-grid thead th .season-key{display:block;font-size:9px;font-weight:600;letter-spacing:.06em;opacity:.8;margin-bottom:2px}
+.accom-grid thead th .season-low{color:#a3e6c0}
+.accom-grid thead th .season-mid{color:#f0d060}
+.accom-grid thead th .season-high{color:#f0a0a0}
+.accom-grid thead th.occ{font-size:10px;font-weight:600;text-transform:none;letter-spacing:normal;padding:6px 4px}
+.accom-grid tbody td{border-bottom:1px solid var(--border);padding:10px;text-align:center;font-family:'DM Mono',monospace;font-size:13px;color:var(--ink);vertical-align:middle}
+.accom-grid tbody td:first-child{text-align:left;font-family:'Outfit',sans-serif;font-weight:600;color:var(--navy);background:#f7fafc;border-right:1px solid var(--border);min-width:200px}
+.accom-grid tbody td:first-child .room-desc{display:block;font-size:11px;color:var(--muted);font-weight:400;margin-top:2px}
+.accom-cell{cursor:pointer;border-radius:6px;padding:6px 8px;display:inline-block;min-width:60px;transition:background .12s}
+.accom-cell:hover{background:var(--foam)}
+.accom-cell.empty{color:var(--muted)}
+.accom-cell.saving{background:rgba(58,200,120,.15);color:var(--green)}
+.accom-cell.failed{background:var(--red-bg);color:var(--red)}
+.accom-cell-input{font-family:'DM Mono',monospace;font-size:13px;width:80px;border:1.5px solid var(--ocean);border-radius:6px;padding:5px 8px;text-align:center;background:#fff;color:var(--ink)}
+.accom-cell-input:focus{outline:none;box-shadow:0 0 0 3px rgba(30,111,168,.15)}
+.accom-season-pills{display:flex;flex-wrap:wrap;gap:6px;font-size:10px;color:var(--muted);margin:6px 0 0}
+.accom-season-pills b{font-weight:700;letter-spacing:.06em}
+
 .no-access{padding:64px 24px;text-align:center;color:var(--muted);max-width:560px;margin:0 auto}
 .no-access h2{font-family:'DM Serif Display',serif;color:var(--navy);font-size:22px;margin-bottom:8px}
 .no-access p{font-size:13px;line-height:1.55}
@@ -623,6 +651,12 @@ function withTimeout(promise, ms, label){
   markStep('step-realtime','pending','Subscribing to live updates…');
   try {
     subscribeRealtime();
+    // Accommodation tables ride on their own channel — separate
+    // postgres_changes filters per table, so it's cleaner than mixing
+    // them with pricing_catalog. Subscribe lazily on success of the
+    // main one to keep the boot fast.
+    try { subscribeAccommodationRealtime(); }
+    catch(e){ console.warn('[Prices] accommodation realtime failed (non-fatal)', e); }
     markStep('step-realtime','ok','Live updates active');
   } catch (err) {
     console.warn('[Prices] realtime subscription failed (non-fatal)', err);
@@ -637,6 +671,69 @@ function withTimeout(promise, ms, label){
   console.error('[Prices] init failed', err);
   renderNoAccess('Loading error', String(err?.message||err)+' — open DevTools console for the full stack.');
 });
+
+// ── Accommodation (Phase B) ───────────────────────────────────────────────
+// Separate tables back the Accommodation tab. We load them lazily the
+// first time the user opens that tab — keeps the initial /prices boot
+// fast and avoids paying for tables the user may never look at.
+let accomData = null;          // { packs:[], seasons:[], rooms:[], prices:[] } | null when not loaded yet
+let accomActivePackId = '';    // currently visible pack tab inside the Accommodation surface
+let __accomLoading = false;
+let __accomSavingCell = null;  // 'pack-season-room-occ' key being saved → drives the cell pill state
+
+async function loadAccommodation(){
+  if (__accomLoading) return accomData;
+  __accomLoading = true;
+  try {
+    const [packsR, seasonsR, roomsR, pricesR] = await Promise.all([
+      sbClient.from('accommodation_packs').select('*').eq('location_id', locationId).eq('active', true).order('sort_order', { ascending:true }),
+      sbClient.from('accommodation_seasons').select('*').eq('location_id', locationId).eq('active', true).order('sort_order', { ascending:true }),
+      sbClient.from('accommodation_room_types').select('*').eq('location_id', locationId).eq('active', true).order('sort_order', { ascending:true }),
+      sbClient.from('accommodation_prices').select('*').eq('location_id', locationId)
+    ]);
+    const firstError = [packsR.error, seasonsR.error, roomsR.error, pricesR.error].find(Boolean);
+    if (firstError) throw firstError;
+    accomData = {
+      packs:   packsR.data   || [],
+      seasons: seasonsR.data || [],
+      rooms:   roomsR.data   || [],
+      prices:  pricesR.data  || []
+    };
+    if (accomData.packs.length && !accomActivePackId) {
+      accomActivePackId = accomData.packs[0].id;
+    }
+  } finally {
+    __accomLoading = false;
+  }
+  return accomData;
+}
+
+function subscribeAccommodationRealtime(){
+  // Single channel, four tables — saves on websocket overhead and keeps
+  // all accommodation reactivity in one place. Every event re-fetches
+  // (cheap; 4 small SELECTs) and re-renders if the Accommodation tab is
+  // currently visible.
+  sbClient
+    .channel('accommodation-'+locationId)
+    .on('postgres_changes', { event:'*', schema:'public', table:'accommodation_packs',      filter:`location_id=eq.${locationId}` }, ()=>refreshAccommodation())
+    .on('postgres_changes', { event:'*', schema:'public', table:'accommodation_seasons',    filter:`location_id=eq.${locationId}` }, ()=>refreshAccommodation())
+    .on('postgres_changes', { event:'*', schema:'public', table:'accommodation_room_types', filter:`location_id=eq.${locationId}` }, ()=>refreshAccommodation())
+    .on('postgres_changes', { event:'*', schema:'public', table:'accommodation_prices',     filter:`location_id=eq.${locationId}` }, ()=>refreshAccommodation())
+    .subscribe();
+}
+
+async function refreshAccommodation(){
+  // Suppress our own write-echoes — when the user edits a cell we set
+  // __accomSavingCell, and the realtime event that arrives ~200 ms later
+  // would otherwise repaint while the user is still typing.
+  if (__accomSavingCell) return;
+  if (filterArea !== 'accommodation') {
+    accomData = null;   // invalidate so next open re-fetches
+    return;
+  }
+  await loadAccommodation();
+  renderAccommodation();
+}
 
 async function loadCatalog(){
   const { data, error } = await sbClient
@@ -720,9 +817,17 @@ function renderTable(){
   renderAreaTabs();
   // Costs tab is a placeholder — no schema-backed rows yet, so the
   // "+ New entry" CTA would be confusing here. Hide it on that tab and
-  // bring it back everywhere else.
+  // bring it back everywhere else. Same goes for Accommodation: it has
+  // its own structured grid editor (renderAccommodation) and the modal
+  // CRUD flow doesn't fit the pack × season × room matrix.
   const newBtn = $('newEntryBtn');
-  if (newBtn) newBtn.style.display = (filterArea === 'costs') ? 'none' : '';
+  if (newBtn) newBtn.style.display = (filterArea === 'costs' || filterArea === 'accommodation') ? 'none' : '';
+
+  // Accommodation has its own dedicated UI — kick over to that and bail.
+  if (filterArea === 'accommodation') {
+    renderAccommodation();
+    return;
+  }
   const wrap = $('tableWrap');
   if (!wrap) return;
   let rows = catalog.slice();
@@ -801,6 +906,229 @@ function renderTable(){
 function renderNoAccess(title, text){
   $('mainContent').innerHTML = `<div class="no-access"><h2>${escapeHtml(title)}</h2><p>${escapeHtml(text)}</p></div>`;
 }
+
+// ── Accommodation grid editor ────────────────────────────────────────────
+function fmtDateRange(rng){
+  // Returns "27 Sep – 31 Oct 2026" given {start:'2026-09-27', end:'2026-10-31'}
+  if (!rng?.start || !rng?.end) return '';
+  const fmt = (s,sameYear)=>{
+    const d = new Date(s+'T00:00:00');
+    const m = d.toLocaleString('en-GB', { month:'short' });
+    const day = d.getDate();
+    return sameYear ? `${day} ${m}` : `${day} ${m} ${d.getFullYear()}`;
+  };
+  const a = new Date(rng.start+'T00:00:00');
+  const b = new Date(rng.end  +'T00:00:00');
+  const sameYear = a.getFullYear() === b.getFullYear();
+  return `${fmt(rng.start, sameYear)} – ${fmt(rng.end, false)}`;
+}
+
+async function renderAccommodation(){
+  const wrap = $('tableWrap');
+  if (!wrap) return;
+
+  // Lazy-load + subscribe on first open
+  if (!accomData) {
+    wrap.innerHTML = `<div class="empty"><div class="empty-icon">🛏️</div><div style="font-size:13px;color:var(--muted)">Loading accommodation prices…</div></div>`;
+    try {
+      await loadAccommodation();
+    } catch (err) {
+      console.error('[Prices] loadAccommodation failed', err);
+      const msg = String(err?.message || err);
+      let hint = '';
+      if (/relation .* does not exist|accommodation_/i.test(msg)) {
+        hint = ' Run supabase/accommodation-schema.sql in the Supabase SQL Editor first, then refresh this page.';
+      }
+      wrap.innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div><div style="font-size:13px;color:var(--red)">Could not load accommodation: ${escapeHtml(msg)}${hint}</div></div>`;
+      return;
+    }
+  }
+
+  const { packs, seasons, rooms, prices } = accomData;
+  if (!packs.length || !seasons.length || !rooms.length) {
+    wrap.innerHTML = `<div class="empty">
+      <div class="empty-icon">🛏️</div>
+      <div style="font-family:'DM Serif Display',serif;font-size:18px;color:var(--navy);margin-bottom:4px">Accommodation not set up yet</div>
+      <div style="font-size:13px">Run <code>supabase/accommodation-schema.sql</code> in the Supabase SQL Editor to seed packs, seasons, and room types for this location.</div>
+    </div>`;
+    return;
+  }
+  if (!accomActivePackId || !packs.find(p=>p.id === accomActivePackId)) {
+    accomActivePackId = packs[0].id;
+  }
+  const activePack = packs.find(p=>p.id === accomActivePackId);
+
+  // Pack tabs
+  const packTabsHtml = packs.map(p=>`
+    <button class="accom-pack-tab ${p.id===accomActivePackId?'active':''}" onclick="onAccomPickPack('${p.id}')">${escapeHtml(p.label)}</button>
+  `).join('');
+
+  // Date-range pills under the grid (low/mid/high labels are already in
+  // the column header; the pills make the actual date ranges visible)
+  const rangePills = seasons.map(s=>{
+    const ranges = Array.isArray(s.date_ranges) ? s.date_ranges : [];
+    const txt = ranges.map(fmtDateRange).filter(Boolean).join(' · ') || '—';
+    return `<div><b style="color:var(--navy)">${escapeHtml(s.label)}:</b> ${escapeHtml(txt)}</div>`;
+  }).join('');
+
+  // Build the price lookup map for O(1) cell access
+  // Key = packId|seasonId|roomId|occupancy
+  const priceByKey = new Map();
+  for (const pr of prices) {
+    if (pr.pack_id !== accomActivePackId) continue;
+    priceByKey.set(`${pr.season_id}|${pr.room_type_id}|${pr.occupancy}`, pr);
+  }
+  const cur = packs[0].currency || 'EUR'; // accommodation is always EUR for now
+
+  // Column groups: one per season, each containing 1p and 2p
+  const headRow1 = ['<th rowspan="2">Room type</th>']
+    .concat(seasons.map(s=>{
+      const cls = `season-${s.season_key}`;
+      return `<th colspan="2"><span class="season-key ${cls}">${escapeHtml(s.season_key.toUpperCase())}</span>${escapeHtml(s.label.replace(/SEASON/i,'').trim())}</th>`;
+    })).join('');
+  const headRow2 = seasons.map(s=>`<th class="occ">1 Person</th><th class="occ">2 People</th>`).join('');
+
+  const bodyRows = rooms.map(r=>{
+    let row = `<td><div>${escapeHtml(r.label)}</div>${r.description?`<span class="room-desc">${escapeHtml(r.description)}</span>`:''}</td>`;
+    for (const s of seasons) {
+      for (const occ of [1,2]) {
+        const k = `${s.id}|${r.id}|${occ}`;
+        const cellId = `accomcell_${accomActivePackId}_${s.id}_${r.id}_${occ}`;
+        const existing = priceByKey.get(k);
+        const val = existing ? Number(existing.sell_price||0) : null;
+        const display = (val && val > 0)
+          ? money(val, cur).replace(/\.00$/, '')
+          : '—';
+        const cls = (val && val > 0) ? 'accom-cell' : 'accom-cell empty';
+        row += `<td><span id="${cellId}" class="${cls}" onclick="onAccomEditCell(this,'${accomActivePackId}','${s.id}','${r.id}',${occ})">${display}</span></td>`;
+      }
+    }
+    return `<tr>${row}</tr>`;
+  }).join('');
+
+  wrap.innerHTML = `
+    <div class="accom-pack-tabs">${packTabsHtml}</div>
+    ${activePack?.description ? `<div class="accom-pack-desc">${escapeHtml(activePack.description)}</div>` : ''}
+    <div class="accom-grid-wrap">
+      <table class="accom-grid">
+        <thead>
+          <tr>${headRow1}</tr>
+          <tr><th style="background:var(--navy-mid)"></th>${headRow2}</tr>
+        </thead>
+        <tbody>${bodyRows}</tbody>
+      </table>
+    </div>
+    <div class="accom-season-pills">${rangePills}</div>
+    <div style="font-size:11px;color:var(--muted);margin-top:8px">Click any cell to edit. Empty cells (—) mean no price set; click and type to add one.</div>
+  `;
+}
+
+window.onAccomPickPack = (packId)=>{
+  accomActivePackId = packId;
+  renderAccommodation();
+};
+
+window.onAccomEditCell = (el, packId, seasonId, roomId, occupancy)=>{
+  if (!canEdit) return;
+  // Already editing? Skip — clicking another cell while one is being
+  // edited is rare; let blur commit the previous one first.
+  if (el.querySelector('input')) return;
+
+  const cur = (packs => packs?.[0]?.currency || 'EUR')(accomData?.packs);
+  const existing = (accomData?.prices||[]).find(p=>
+    p.pack_id===packId && p.season_id===seasonId && p.room_type_id===roomId && p.occupancy===occupancy
+  );
+  const startVal = existing ? Number(existing.sell_price||0) : '';
+
+  const input = document.createElement('input');
+  input.type = 'number';
+  input.min = '0';
+  input.step = '0.01';
+  input.className = 'accom-cell-input';
+  input.value = startVal || '';
+  input.placeholder = '0';
+
+  el.classList.remove('empty','failed');
+  el.innerHTML = '';
+  el.appendChild(input);
+  input.focus();
+  input.select();
+
+  let committed = false;
+  const commit = async ()=>{
+    if (committed) return; // guard against blur firing twice
+    committed = true;
+    const raw = input.value.trim();
+    const num = raw === '' ? 0 : Number(raw);
+    if (!Number.isFinite(num) || num < 0) {
+      el.textContent = startVal ? money(startVal, cur).replace(/\.00$/,'') : '—';
+      el.classList.toggle('empty', !startVal);
+      return;
+    }
+    if (Number(startVal||0) === num) {
+      // No change — restore display, skip save
+      el.textContent = num > 0 ? money(num, cur).replace(/\.00$/,'') : '—';
+      el.classList.toggle('empty', !num);
+      return;
+    }
+    el.classList.add('saving');
+    el.textContent = num > 0 ? money(num, cur).replace(/\.00$/,'') : '—';
+    const cellKey = `${packId}|${seasonId}|${roomId}|${occupancy}`;
+    __accomSavingCell = cellKey;
+    __pendingSave = true;
+    try {
+      if (existing && num === 0) {
+        // Setting to 0 deletes the row — clean grid, no "0 €" cells.
+        const { error } = await sbClient.from('accommodation_prices').delete().eq('id', existing.id);
+        if (error) throw error;
+        accomData.prices = accomData.prices.filter(p=>p.id !== existing.id);
+      } else if (existing) {
+        const { data, error } = await sbClient
+          .from('accommodation_prices')
+          .update({ sell_price: num })
+          .eq('id', existing.id).select().single();
+        if (error) throw error;
+        const idx = accomData.prices.findIndex(p=>p.id === existing.id);
+        if (idx >= 0) accomData.prices[idx] = data;
+      } else if (num > 0) {
+        const { data, error } = await sbClient
+          .from('accommodation_prices')
+          .insert({
+            location_id: locationId,
+            pack_id: packId,
+            season_id: seasonId,
+            room_type_id: roomId,
+            occupancy,
+            sell_price: num,
+            currency: cur
+          }).select().single();
+        if (error) throw error;
+        accomData.prices.push(data);
+      }
+      el.classList.remove('saving');
+      el.classList.toggle('empty', !num);
+    } catch (err) {
+      console.error('[Prices] accommodation cell save failed', err);
+      el.classList.remove('saving');
+      el.classList.add('failed');
+      el.textContent = startVal ? money(startVal, cur).replace(/\.00$/,'') : '—';
+      alert('Could not save: ' + (err?.message || 'unknown error'));
+    } finally {
+      __pendingSave = false;
+      setTimeout(()=>{ __accomSavingCell = null; }, 800);
+    }
+  };
+
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', e=>{
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    else if (e.key === 'Escape') {
+      committed = true; // skip commit
+      el.textContent = startVal ? money(startVal, cur).replace(/\.00$/,'') : '—';
+      el.classList.toggle('empty', !startVal);
+    }
+  });
+};
 
 // ── Search / filter ───────────────────────────────────────────────────────
 window.onSearch = (v)=>{ filterSearch = v; renderTable(); };
