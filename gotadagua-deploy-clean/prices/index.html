@@ -65,6 +65,33 @@ main{max-width:1400px;margin:0 auto;padding:28px 32px}
 .page-title{font-family:'DM Serif Display',serif;font-size:30px;color:var(--navy);line-height:1.1}
 .page-sub{font-size:13px;color:var(--muted);margin-top:4px}
 
+/* Edit ↔ Price List view toggle — segmented control inspired by the user's
+   price docs. Keeps both modes one click away on the same URL so the
+   owner can flip between editing prices and previewing what partners /
+   guests will see, without losing scroll or selection. */
+.view-toggle{display:inline-flex;background:#fff;border:1px solid #e0e0de;border-radius:10px;padding:4px;gap:4px}
+.view-btn{padding:7px 18px;border-radius:7px;border:none;font-size:13px;font-weight:500;cursor:pointer;color:#888;background:transparent;font-family:'Outfit',sans-serif;transition:all .15s}
+.view-btn:hover{color:var(--ink)}
+.view-btn.active{background:var(--ink);color:#fff}
+
+/* Price-List view — clean, share-ready sections per area (Surf, Tours,
+   Transfers, Add-ons). Mirrors the Accommodation card styling so the
+   whole page reads as one document. */
+.pv-section-title{font-size:18px;font-weight:700;color:var(--ink);letter-spacing:-0.01em;margin:24px 0 14px;padding-bottom:10px;border-bottom:2px solid #f0f0ee}
+.pv-section-title:first-child{margin-top:0}
+.pv-card{background:#fff;border:1px solid #e8e8e6;border-radius:14px;padding:22px 26px;margin-bottom:14px}
+.pv-table{width:100%;border-collapse:collapse;font-size:13px}
+.pv-table thead th{text-align:left;padding:6px 10px;color:#bbb;font-weight:500;font-size:11px;border-bottom:1px solid #f0f0ee;text-transform:uppercase;letter-spacing:.06em}
+.pv-table thead th.r{text-align:right}
+.pv-table tbody td{padding:11px 10px;border-bottom:1px solid #f8f8f7;vertical-align:middle;color:var(--ink)}
+.pv-table tbody td.r{text-align:right}
+.pv-table tbody td.muted{color:#aaa;font-size:12px}
+.pv-table tbody tr:last-child td{border-bottom:0}
+.pv-table .pv-price{font-weight:700;font-size:14px;color:var(--ink)}
+.pv-table .pv-na{color:#ddd;font-size:12px;font-weight:400}
+.pv-table .pv-desc{font-size:12px;color:#888;line-height:1.4;max-width:480px}
+.pv-empty{padding:24px 8px;text-align:center;color:#bbb;font-size:13px}
+
 .toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:18px}
 .toolbar input[type=text],.toolbar select{border:1.5px solid var(--border);border-radius:10px;padding:9px 12px;font-size:13px;font-family:'Outfit',sans-serif;background:#fff;color:var(--ink);min-width:140px}
 .toolbar input[type=text]:focus,.toolbar select:focus{outline:none;border-color:var(--ocean)}
@@ -196,6 +223,9 @@ tbody td.c{text-align:center}
 
 .accom-price{display:inline-block;font-weight:600;color:var(--ink);font-size:14px;cursor:pointer;padding:4px 8px;border-radius:6px;transition:background .12s}
 .accom-price:hover{background:#fafaf9}
+/* In Price-List mode the cells aren't clickable — drop the affordances. */
+body.view-list .accom-price{cursor:default}
+body.view-list .accom-price:hover{background:transparent}
 .accom-price.empty{color:#ddd;font-weight:400;font-size:12px}
 .accom-price.saving{background:#e8f5e8;color:#2d7a2d}
 .accom-price.failed{background:#fdecea;color:#c0392b}
@@ -488,10 +518,11 @@ let canEdit = false;
 let canViewCosts = false;
 let locationId = '';
 let catalog = [];           // in-memory copy
-let filterArea = 'tours';   // active area tab (one of AREAS keys)
+let filterArea = 'accommodation';   // active area tab — default to the first one users want to land on
 let filterSearch = '';
 let editingId = null;
 let __pendingSave = false;
+let viewMode = 'edit';      // 'edit' (owner-facing) | 'list' (clean Price-List view, share-friendly)
 
 // ── Business-area taxonomy ─────────────────────────────────────────────────
 // Catalog rows live with fine-grained categories (Tour, Per Night, Surf
@@ -830,7 +861,11 @@ function renderShell(){
     <div class="page-head">
       <div>
         <div class="page-title">${escapeHtml(LOCATION_LABELS[LOCATION_SLUG] || LOCATION_SLUG)} prices</div>
-        <div class="page-sub">Master catalog for tours, transports, surf packs, accommodation and other services. Changes here propagate to the Camp Tab POS and the Transport picker (when those items are flagged).</div>
+        <div class="page-sub" id="pageSub">Master catalog for tours, transports, surf packs, accommodation and other services. Changes here propagate to the Camp Tab POS and the Transport picker (when those items are flagged).</div>
+      </div>
+      <div class="view-toggle" id="viewToggle">
+        <button class="view-btn ${viewMode==='edit'?'active':''}" onclick="onViewMode('edit')">📝 Edit</button>
+        <button class="view-btn ${viewMode==='list'?'active':''}" onclick="onViewMode('list')">📋 Price List</button>
       </div>
     </div>
     <div class="area-tabs" id="areaTabs"></div>
@@ -856,14 +891,21 @@ function renderAreaTabs(){
   if (!tabs) return;
   // Per-area row count drives the badge so the user sees at a glance how
   // many entries live in each surface. The Costs tab has no DB categories
-  // yet (placeholder for a future operational-costs view).
+  // yet (placeholder for a future operational-costs view). In Price List
+  // mode we hide the Costs tab entirely — it's owner-internal.
+  const visibleAreas = AREAS.filter(a => !(viewMode === 'list' && a.key === 'costs'));
   const counts = {};
-  for (const a of AREAS) {
+  for (const a of visibleAreas) {
     counts[a.key] = a.cats.length
       ? catalog.filter(r => a.cats.includes(r.category)).length
       : 0;
   }
-  tabs.innerHTML = AREAS.map(a => `
+  // If the user is in List mode and somehow on the Costs tab, bounce them
+  // to the first visible area.
+  if (viewMode === 'list' && filterArea === 'costs') {
+    filterArea = 'accommodation';
+  }
+  tabs.innerHTML = visibleAreas.map(a => `
     <button class="area-tab ${filterArea === a.key ? 'active' : ''}"
             onclick="onAreaTab('${a.key}')">
       <span class="ico">${a.icon}</span>
@@ -880,8 +922,17 @@ function renderTable(){
   // bring it back everywhere else. Same goes for Accommodation: it has
   // its own structured grid editor (renderAccommodation) and the modal
   // CRUD flow doesn't fit the pack × season × room matrix.
+  // In Price List view all editing UIs are hidden — partners shouldn't
+  // see the "+ New entry" button.
   const newBtn = $('newEntryBtn');
-  if (newBtn) newBtn.style.display = (filterArea === 'costs' || filterArea === 'accommodation') ? 'none' : '';
+  if (newBtn) newBtn.style.display = (viewMode === 'list' || filterArea === 'costs' || filterArea === 'accommodation') ? 'none' : '';
+
+  // Price List view has its own dedicated renderer that lays out every
+  // area's items as clean cards, matching the user's pricing docs.
+  if (viewMode === 'list') {
+    renderPriceListView();
+    return;
+  }
 
   // Accommodation has its own dedicated UI — kick over to that and bail.
   if (filterArea === 'accommodation') {
@@ -1200,6 +1251,9 @@ window.onAccomPickNights = (n)=>{
 
 window.onAccomEditCell = (el, packId, seasonId, roomId, occupancy)=>{
   if (!canEdit) return;
+  // Price List mode is read-only — clicking a cell does nothing so the
+  // partner can't accidentally surface an input.
+  if (viewMode === 'list') return;
   if (el.querySelector('input')) return;
 
   const pack = (accomData?.packs||[]).find(p=>p.id === packId);
@@ -1305,6 +1359,136 @@ window.onAccomEditCell = (el, packId, seasonId, roomId, occupancy)=>{
 // ── Search / filter ───────────────────────────────────────────────────────
 window.onSearch = (v)=>{ filterSearch = v; renderTable(); };
 window.onAreaTab = (key)=>{ filterArea = key; renderTable(); };
+window.onViewMode = (mode)=>{
+  if (mode !== 'edit' && mode !== 'list') return;
+  if (viewMode === mode) return;
+  viewMode = mode;
+  // Body-level class lets us tweak hover / cursor styles globally for
+  // read-only mode without threading state through every render call.
+  document.body.classList.toggle('view-list', mode === 'list');
+  // Update the page subtitle so the user sees what they're in.
+  const sub = $('pageSub');
+  if (sub) {
+    sub.textContent = (mode === 'list')
+      ? 'Read-only view — what guests and partners see. Click Edit to change anything.'
+      : 'Master catalog. Changes here propagate to the Camp Tab POS and the Transport picker (when those items are flagged).';
+  }
+  // Sync the toggle pill states.
+  document.querySelectorAll('#viewToggle .view-btn').forEach((btn, i)=>{
+    btn.classList.toggle('active', (i === 0) === (mode === 'edit'));
+  });
+  // Re-render the body — main entry point that decides between Edit and List.
+  renderTable();
+};
+
+// ── Price-List (share-ready) view ─────────────────────────────────────────
+// One section per business area, each laid out per its natural shape:
+//   • Accommodation reuses renderAccommodation (already doc-styled, with
+//     editing disabled when viewMode==='list' — see the click guard
+//     inside onAccomEditCell).
+//   • Tours / Surf / Transfers / Add-ons each get a labelled card with
+//     a 3-column table: Name / Description / Price per person. No costs,
+//     no margin, no toggles, no action buttons.
+//   • Costs stays an empty placeholder.
+// The footer at the bottom is intentionally bare — partners don't need
+// the operational metadata that the edit view exposes.
+
+function pvAreaItems(areaKey){
+  const cats = categoriesForArea(areaKey);
+  return catalog
+    .filter(r => cats.includes(r.category) && r.active && Number(r.sell_price||0) > 0)
+    .sort((a,b)=>{
+      const so = (a.sort_order||100) - (b.sort_order||100);
+      if (so) return so;
+      return (a.name||'').localeCompare(b.name||'');
+    });
+}
+
+function pvTable(headerCols, rows, emptyMsg){
+  if (!rows.length) return `<div class="pv-empty">${escapeHtml(emptyMsg)}</div>`;
+  const head = `<thead><tr>${headerCols.map(h=>`<th${h.right?' class="r"':''}>${escapeHtml(h.label)}</th>`).join('')}</tr></thead>`;
+  const body = `<tbody>${rows}</tbody>`;
+  return `<table class="pv-table">${head}${body}</table>`;
+}
+
+function renderPriceListView(){
+  const wrap = $('tableWrap');
+  if (!wrap) return;
+
+  // Accommodation has its own renderer; defer to it for the section.
+  let accommodationHtml = '';
+  // Lazy-load on the first List-mode open if needed
+  if (filterArea === 'accommodation') {
+    // When the area tab is Accommodation, the dedicated grid renders
+    // (the user sees the rich pack/season/room view). We DON'T also
+    // append the other-area sections here — that view stays focused.
+    renderAccommodation();
+    return;
+  }
+
+  // Single-area focused view — show ONLY the active area in Price List.
+  // The area tabs above still let the partner switch sections.
+  const area = AREA_BY_KEY[filterArea];
+  const items = pvAreaItems(filterArea);
+
+  let bodyHtml;
+  if (filterArea === 'costs') {
+    bodyHtml = `<div class="pv-card"><div class="pv-empty">No public costs section.</div></div>`;
+  } else if (filterArea === 'tours') {
+    const rows = items.map(r => `
+      <tr>
+        <td>${escapeHtml(r.name)}</td>
+        <td><div class="pv-desc">${escapeHtml(r.notes || '')}</div></td>
+        <td class="r"><span class="pv-price">${money(Number(r.sell_price||0), r.currency)}</span></td>
+      </tr>
+    `).join('');
+    bodyHtml = `<div class="pv-card">${pvTable(
+      [{label:'Activity'},{label:'Includes'},{label:'Price/person',right:true}],
+      rows, 'No tours published yet.'
+    )}</div>`;
+  } else if (filterArea === 'surf') {
+    const rows = items.map(r => `
+      <tr>
+        <td>${escapeHtml(r.name)}</td>
+        <td><div class="pv-desc">${escapeHtml(r.notes || '')}</div></td>
+        <td class="r"><span class="pv-price">${money(Number(r.sell_price||0), r.currency)}</span></td>
+      </tr>
+    `).join('');
+    bodyHtml = `<div class="pv-card">${pvTable(
+      [{label:'Pack'},{label:'Includes'},{label:'Price/person',right:true}],
+      rows, 'No surf packs published yet.'
+    )}</div>`;
+  } else if (filterArea === 'transfers') {
+    const rows = items.map(r => `
+      <tr>
+        <td>${escapeHtml(r.name)}</td>
+        <td><div class="pv-desc">${escapeHtml(r.notes || '')}</div></td>
+        <td class="r"><span class="pv-price">${money(Number(r.sell_price > 0 ? r.sell_price : r.cost_per_guest||0), r.currency)}</span></td>
+      </tr>
+    `).join('');
+    bodyHtml = `<div class="pv-card">${pvTable(
+      [{label:'Route / Vehicle'},{label:'Notes'},{label:'Price per way',right:true}],
+      rows, 'No transfers published yet.'
+    )}</div>`;
+  } else { // addons + fallback
+    const rows = items.map(r => `
+      <tr>
+        <td>${escapeHtml(r.name)}</td>
+        <td><div class="pv-desc">${escapeHtml(r.notes || '')}</div></td>
+        <td class="r"><span class="pv-price">${money(Number(r.sell_price||0), r.currency)}</span></td>
+      </tr>
+    `).join('');
+    bodyHtml = `<div class="pv-card">${pvTable(
+      [{label:'Item'},{label:'Description'},{label:'Price',right:true}],
+      rows, 'Nothing in this area yet.'
+    )}</div>`;
+  }
+
+  wrap.innerHTML = `
+    <div class="pv-section-title">${escapeHtml(area?.label || 'Items')}</div>
+    ${bodyHtml}
+  `;
+}
 
 // ── Modal: New / Edit ─────────────────────────────────────────────────────
 // Category-aware field visibility + smart defaults. Transport rows expose
