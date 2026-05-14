@@ -2738,12 +2738,16 @@ function syncClosedWeekToHubLedger(wk){
     const category=mapRevenueCategory(item);
     const linkedItem=item.c==='Tours'?item.n:'';
     const key=[category,linkedItem].join('::');
-    grouped[key]=grouped[key]||{category,linkedItem,total:0};
+    grouped[key]=grouped[key]||{category,linkedItem,total:0,qty:0};
     grouped[key].total+=Number(item.p||0);
+    // Each charge in Camp Tab is one item entry (4 Dunes = 4 entries).
+    // qty accumulates so the auto-cost expense further down knows how
+    // many guests to multiply the cost_per_guest by.
+    grouped[key].qty+=1;
   });
   // One entry per product per week — clean ledger overview.
   // Date = when the week was closed (closedAt).
-  const entries=Object.values(grouped).map(group=>({
+  const incomeEntries=Object.values(grouped).map(group=>({
     id:`campclose_${wk.id||wk.start}_${group.category}_${group.linkedItem||'general'}`.replace(/\s+/g,'_'),
     date:revenueDate,
     type:'income',
@@ -2768,6 +2772,49 @@ function syncClosedWeekToHubLedger(wk){
     amountLocal:Number(group.total.toFixed(2)),
     amount:Number((group.total/(LOCAL_PER_EUR||1)).toFixed(2))
   }));
+  // ── Phase 7: auto-create the TOUR COST expense entries ────────────────
+  //
+  //  When the user closes a week with N guests on a tour that has a
+  //  cost_per_guest set in /prices (catalog → MENU.Tours.costPerGuest),
+  //  also push an expense for N × cost_per_guest. The transport portion
+  //  is logged separately by the user via the Hub's Transport quick-add
+  //  during the week — we don't synthesise transport here, only the
+  //  ticket / entrance / direct tour cost.
+  //
+  //  Only Tours-category groups participate; only when the linked menu
+  //  item carries a positive costPerGuest. Otherwise the tour is "free"
+  //  (no ticket) and there's nothing to log. Each entry is keyed with
+  //  an idempotent ID so re-closing the same week (rare but possible)
+  //  doesn't double up.
+  const tourMenu=Array.isArray(MENU.Tours)?MENU.Tours:[];
+  const costEntries=Object.values(grouped)
+    .filter(g=>g.category!=='Drinks' && g.category!=='Merchandise' && g.linkedItem)
+    .map(group=>{
+      const menuItem=tourMenu.find(t=>String(t?.n||'').trim()===String(group.linkedItem||'').trim());
+      const costPerGuest=Number(menuItem?.costPerGuest||0);
+      if(!(costPerGuest>0)) return null;
+      const totalLocal=Number((costPerGuest*group.qty).toFixed(2));
+      const totalEur=Number((totalLocal/(LOCAL_PER_EUR||1)).toFixed(2));
+      return {
+        id:`campclose_${wk.id||wk.start}_${group.category}_${group.linkedItem||'general'}_cost`.replace(/\s+/g,'_'),
+        date:revenueDate,
+        type:'expense',
+        category:'Tours',
+        businessArea:'Tours',
+        paymentMethod:'Cash',
+        paidBy:'Camp',
+        linkedItem:group.linkedItem,
+        description:`${group.qty}× ${group.linkedItem} cost @ ${LOCAL_CURRENCY||''} ${costPerGuest.toLocaleString('en-GB')}/guest · ${weekSpan(wk.start)}`,
+        vendor:'Camp Tab (auto)',
+        sourceKind:'camp_tab',
+        currency:LOCAL_CURRENCY,
+        fxRate:LOCAL_PER_EUR,
+        amountLocal:totalLocal,
+        amount:totalEur
+      };
+    })
+    .filter(Boolean);
+  const entries=[...incomeEntries,...costEntries];
   try{window.parent?.postMessage({type:'camp-tab-week-closed',weekId:wk.id||wk.start,entry:entries},'*');}catch(e){}
 }
 
