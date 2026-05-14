@@ -121,14 +121,16 @@ main{max-width:1100px;margin:0 auto;padding:32px 24px}
 .tf-margin-pos{background:#e8f5e8;color:#2d7a2d;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:600}
 .tf-margin-neg{background:#fdecea;color:#c0392b;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:600}
 .tf-margin-zero{color:#bbb;font-size:12px}
-/* Picker toggle — click to add/remove the route from the Hub Transport
-   quick-add modal without opening the full Edit form. Mirrors the
-   visibility logic the user already understands from the row pencil. */
-.tf-picker{display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;padding:2px 10px;border-radius:99px;cursor:pointer;border:1px solid transparent;transition:all .12s}
-.tf-picker.on {background:#eef1ff;color:#3a5acd;border-color:#d8def5}
-.tf-picker.off{color:#bbb;border-color:#f0f0ee}
-.tf-picker:hover{filter:brightness(.97)}
-body.view-list .tf-picker{cursor:default;pointer-events:none}
+/* Picker toggle in the Transfers table — uses the same green-dot On /
+   grey-dot Off chip as the Camp Tab / Transport Picker columns in the
+   row table elsewhere on the page. Consistency: every boolean toggle
+   in the catalog looks and behaves the same way. */
+.tf-picker-toggle{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#888;cursor:pointer;padding:2px 4px;border-radius:6px;transition:background .12s}
+.tf-picker-toggle .dot{width:8px;height:8px;border-radius:50%;background:#d4dce5}
+.tf-picker-toggle.on{color:#2d7a2d;font-weight:600}
+.tf-picker-toggle.on .dot{background:#2d7a2d}
+.tf-picker-toggle:hover{background:#fafaf9}
+body.view-list .tf-picker-toggle{cursor:default;pointer-events:none}
 .tf-na{color:#ddd;font-size:12px;font-weight:400}
 /* Inline editable cells in the Transfers table — same affordance as the
    accommodation grid: hover hints clickability, the saving and failed
@@ -423,7 +425,12 @@ body.view-list .accom-price:hover{background:transparent}
         </div>
       </div>
 
-      <!-- ───── Pricing ───── -->
+      <!-- ───── Pricing ─────
+           Two separate currencies: cost stays in the location's local
+           money (MAD/LKR — what we pay drivers / suppliers); sell can be
+           in EUR (what we charge the client). For most rows the two are
+           identical and pre-selected to the local currency, but
+           airport-transfer rows expose the mismatch clearly. -->
       <div class="msection">
         <div class="msection-title">Pricing</div>
         <div class="mgrid">
@@ -432,22 +439,27 @@ body.view-list .accom-price:hover{background:transparent}
             <input type="number" id="em_sell" min="0" step="0.01" placeholder="0.00">
           </div>
           <div class="mfield">
-            <label>Cost per guest</label>
-            <input type="number" id="em_cost" min="0" step="0.01" placeholder="0.00">
+            <label>Sell currency</label>
+            <select id="em_sell_currency">
+              <!-- options populated at openNew / openEdit -->
+            </select>
           </div>
         </div>
         <div class="mgrid">
           <div class="mfield">
-            <label>Currency</label>
-            <select id="em_currency">
-              <!-- options populated at openNew / openEdit so the list
-                   shows only the currencies valid for this location -->
-            </select>
+            <label>Cost per guest</label>
+            <input type="number" id="em_cost" min="0" step="0.01" placeholder="0.00">
           </div>
           <div class="mfield">
-            <label>Notes</label>
-            <input type="text" id="em_notes" placeholder="Optional short note" autocomplete="off">
+            <label>Cost currency</label>
+            <select id="em_currency">
+              <!-- options populated at openNew / openEdit -->
+            </select>
           </div>
+        </div>
+        <div class="mfield">
+          <label>Notes</label>
+          <input type="text" id="em_notes" placeholder="Optional short note" autocomplete="off">
         </div>
       </div>
 
@@ -1557,7 +1569,7 @@ function renderTransfersEdit(){
               <th>Pax</th>
               <th class="r">Cost (per trip)</th>
               <th class="r">Price (per trip)</th>
-              <th class="c">In Hub picker</th>
+              <th class="c">Transport Picker</th>
               <th class="c">Actions</th>
             </tr>
           </thead>
@@ -1574,9 +1586,12 @@ function renderTransfersEdit(){
               const sellCcy = r.sell_currency || r.currency || 'EUR';
               const costCell  = cost > 0 ? money(cost, costCcy) : '<span class="tf-cell-empty">— add</span>';
               const priceCell = sell > 0 ? money(sell, sellCcy) : '<span class="tf-cell-empty">— add</span>';
-              const picker = r.show_in_transport_picker
-                ? '<span class="tf-picker on" onclick="onTfTogglePicker(\''+r.id+'\')" title="In the Hub Transport picker · click to remove">✓ Picker</span>'
-                : '<span class="tf-picker off" onclick="onTfTogglePicker(\''+r.id+'\')" title="Hidden from Hub Transport picker · click to add">○ Add</span>';
+              const pickerCls = r.show_in_transport_picker ? 'on' : '';
+              const pickerLabel = r.show_in_transport_picker ? 'On' : 'Off';
+              const pickerTitle = r.show_in_transport_picker
+                ? 'In the Hub Transport picker · click to remove'
+                : 'Hidden from Hub Transport picker · click to add';
+              const picker = `<span class="tf-picker-toggle ${pickerCls}" onclick="onTfTogglePicker('${r.id}')" title="${pickerTitle}"><span class="dot"></span>${pickerLabel}</span>`;
               return `
                 <tr>
                   <td>${escapeHtml(it.vehicle || '—')}</td>
@@ -1864,22 +1879,30 @@ function renderPriceListView(){
 // so transport spend can flow to a tour's P&L. Tour rows expose an optional
 // "linked transport" so the tour's cost calculation can include transport.
 
-function populateCurrencyOptions(preselect){
-  // Only show the currencies that make sense for this location. EUR is
-  // always available (cross-camp items, EU-priced packages); the local
-  // currency is the default. Anything stored on the row (e.g. an old
-  // import in a different currency) gets added at the end so editing
-  // doesn't silently change the saved currency.
+function populateCurrencyOptions(costPreselect, sellPreselect){
+  // Populate BOTH dropdowns with the same allowed-currency set for this
+  // location. Cost defaults to the location's local money; Sell mirrors
+  // it unless explicitly different (airport-transfer rows store
+  // sell_currency = 'EUR' to keep the client price in EUR).
   const allowed = LOCATION_CURRENCIES_ALLOWED[LOCATION_SLUG] || ['EUR'];
-  const opts = new Set(allowed);
-  if (preselect) opts.add(preselect);
-  const sel = $('em_currency');
-  sel.innerHTML = Array.from(opts).map(c=>{
-    const label = CURRENCY_LABEL[c] || c;
-    return `<option value="${c}">${label}</option>`;
-  }).join('');
-  if (preselect && opts.has(preselect)) sel.value = preselect;
-  else sel.value = allowed[0];
+  const buildOptions = (pre)=>{
+    const opts = new Set(allowed);
+    if (pre) opts.add(pre);
+    return Array.from(opts).map(c=>{
+      const label = CURRENCY_LABEL[c] || c;
+      return `<option value="${c}">${label}</option>`;
+    }).join('');
+  };
+  const costSel = $('em_currency');
+  const sellSel = $('em_sell_currency');
+  if (costSel) {
+    costSel.innerHTML = buildOptions(costPreselect);
+    costSel.value = (costPreselect && allowed.concat([costPreselect]).includes(costPreselect)) ? costPreselect : allowed[0];
+  }
+  if (sellSel) {
+    sellSel.innerHTML = buildOptions(sellPreselect);
+    sellSel.value = (sellPreselect && allowed.concat([sellPreselect]).includes(sellPreselect)) ? sellPreselect : (costPreselect || allowed[0]);
+  }
 }
 
 function populateLinkedSelects(currentRow){
@@ -1995,7 +2018,10 @@ window.openNew = ()=>{
   $('em_audience').value = 'general';
   $('em_sell').value = '';
   $('em_cost').value = '';
-  populateCurrencyOptions(LOCATION_CURRENCY[LOCATION_SLUG] || 'EUR');
+  // Both currencies default to the location's local money for new entries.
+  // User can switch the Sell to EUR if they're priced for cross-camp /
+  // airport-transfer style.
+  populateCurrencyOptions(LOCATION_CURRENCY[LOCATION_SLUG] || 'EUR', LOCATION_CURRENCY[LOCATION_SLUG] || 'EUR');
   $('em_notes').value = '';
   $('em_show_ct').checked = true;   // Tour default
   $('em_show_tp').checked = false;
@@ -2018,7 +2044,13 @@ window.openEdit = (id)=>{
   $('em_audience').value = r.audience || 'general';
   $('em_sell').value = r.sell_price || '';
   $('em_cost').value = r.cost_per_guest || '';
-  populateCurrencyOptions(r.currency || LOCATION_CURRENCY[LOCATION_SLUG] || 'EUR');
+  // Cost currency = the row's `currency` (always local money for the cost
+  // side). Sell currency = `sell_currency` if set, else falls back to
+  // currency so legacy rows behave unchanged.
+  populateCurrencyOptions(
+    r.currency || LOCATION_CURRENCY[LOCATION_SLUG] || 'EUR',
+    r.sell_currency || r.currency || LOCATION_CURRENCY[LOCATION_SLUG] || 'EUR'
+  );
   $('em_notes').value = r.notes || '';
   $('em_show_ct').checked = !!r.show_in_camp_tab;
   $('em_show_tp').checked = !!r.show_in_transport_picker;
@@ -2056,6 +2088,11 @@ $('emSave').addEventListener('click', async ()=>{
     sell_price: Number($('em_sell').value || 0),
     cost_per_guest: Number($('em_cost').value || 0),
     currency: $('em_currency').value,
+    // sell_currency is the new optional column added in
+    // airport-prices-fix-currencies.sql. Default to the cost currency
+    // when the user hasn't picked a different one — keeps behaviour
+    // identical to the old single-currency model for everyday rows.
+    sell_currency: $('em_sell_currency')?.value || $('em_currency').value,
     notes: $('em_notes').value.trim() || null,
     show_in_camp_tab: $('em_show_ct').checked,
     show_in_transport_picker: $('em_show_tp').checked,
