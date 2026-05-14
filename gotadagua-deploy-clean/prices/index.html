@@ -122,6 +122,18 @@ main{max-width:1100px;margin:0 auto;padding:32px 24px}
 .tf-margin-neg{background:#fdecea;color:#c0392b;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:600}
 .tf-margin-zero{color:#bbb;font-size:12px}
 .tf-na{color:#ddd;font-size:12px;font-weight:400}
+/* Inline editable cells in the Transfers table — same affordance as the
+   accommodation grid: hover hints clickability, the saving and failed
+   states use the green/red palette consistent with the doc design. */
+.tf-cell-edit{display:inline-block;padding:4px 8px;border-radius:6px;cursor:pointer;transition:background .12s}
+.tf-cell-edit:hover{background:#fafaf9}
+.tf-cell-edit.saving{background:#e8f5e8;color:#2d7a2d}
+.tf-cell-edit.failed{background:#fdecea;color:#c0392b}
+.tf-cell-input{font-family:'Outfit',sans-serif;font-weight:600;font-size:13px;width:90px;border:1px solid #888;border-radius:6px;padding:4px 8px;text-align:right;background:#fff;color:var(--ink)}
+.tf-cell-input:focus{outline:none;border-color:var(--ink)}
+.tf-cell-empty{color:#bbb;font-size:12px;font-weight:400}
+body.view-list .tf-cell-edit{cursor:default}
+body.view-list .tf-cell-edit:hover{background:transparent}
 .tf-row-actions{display:inline-flex;gap:6px}
 .tf-icon-btn{background:transparent;border:1px solid #e0e0de;border-radius:6px;width:26px;height:26px;font-size:12px;color:#888;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
 .tf-icon-btn:hover{border-color:#1a1a1a;color:#1a1a1a}
@@ -1551,15 +1563,17 @@ function renderTransfersEdit(){
               const marginHtml = (sell > 0)
                 ? `<span class="${margin >= 0 ? 'tf-margin-pos' : 'tf-margin-neg'}">${marginPct}%</span>`
                 : '<span class="tf-margin-zero">—</span>';
+              const costCell  = cost > 0 ? money(cost, r.currency) : '<span class="tf-cell-empty">— add</span>';
+              const priceCell = sell > 0 ? money(sell, r.currency) : '<span class="tf-cell-empty">— add</span>';
               return `
                 <tr>
                   <td>${escapeHtml(it.vehicle || '—')}</td>
                   <td class="muted">${it.paxRange || '—'}</td>
-                  <td class="r"><span class="tf-cost">${cost > 0 ? money(cost, r.currency) : '<span class="tf-na">—</span>'}</span></td>
-                  <td class="r"><span class="tf-price">${sell > 0 ? money(sell, r.currency) : '<span class="tf-na">— click ✎</span>'}</span></td>
+                  <td class="r"><span class="tf-cell-edit tf-cost" data-tf-id="${r.id}" data-tf-field="cost_per_guest" onclick="onTfEditCell(this)">${costCell}</span></td>
+                  <td class="r"><span class="tf-cell-edit tf-price" data-tf-id="${r.id}" data-tf-field="sell_price" onclick="onTfEditCell(this)">${priceCell}</span></td>
                   <td class="r">${marginHtml}</td>
                   <td class="c"><div class="tf-row-actions">
-                    <button class="tf-icon-btn" title="Edit" onclick="openEdit('${r.id}')">✎</button>
+                    <button class="tf-icon-btn" title="More options" onclick="openEdit('${r.id}')">⋯</button>
                     <button class="tf-icon-btn danger" title="Delete" onclick="onDelete('${r.id}')">×</button>
                   </div></td>
                 </tr>
@@ -1571,6 +1585,88 @@ function renderTransfersEdit(){
     `;
   }).join('');
 }
+
+// Inline click-to-edit for the Cost / Price cells of the Transfers table.
+// Mirrors onAccomEditCell: click → input with current value → Enter/blur
+// saves → Escape cancels. Saves are Supabase-first, with the row in
+// `catalog` mutated only after the update resolves.
+let __tfSavingId = null;
+
+window.onTfEditCell = (el)=>{
+  if (!canEdit || viewMode === 'list') return;
+  if (el.querySelector('input')) return;
+  const id    = el.getAttribute('data-tf-id');
+  const field = el.getAttribute('data-tf-field');
+  if (!id || !field) return;
+  const row   = catalog.find(r => r.id === id);
+  if (!row) return;
+  const cur   = row.currency || 'EUR';
+  const start = Number(row[field] || 0);
+
+  const input = document.createElement('input');
+  input.type = 'number';
+  input.min = '0';
+  input.step = '0.01';
+  input.className = 'tf-cell-input';
+  input.value = start || '';
+  input.placeholder = '0';
+
+  el.classList.remove('failed');
+  el.innerHTML = '';
+  el.appendChild(input);
+  input.focus();
+  input.select();
+
+  const restore = (val)=>{
+    el.textContent = val > 0 ? money(val, cur) : '— add';
+    if (val > 0) el.classList.remove('tf-cell-empty');
+    else { /* keep readable hint */ }
+  };
+
+  let committed = false;
+  const commit = async ()=>{
+    if (committed) return;
+    committed = true;
+    const raw = input.value.trim();
+    const num = raw === '' ? 0 : Number(raw);
+    if (!Number.isFinite(num) || num < 0) { restore(start); return; }
+    if (Math.abs(num - start) < 0.005)    { restore(start); return; }
+
+    el.classList.add('saving');
+    el.textContent = num > 0 ? money(num, cur) : '— add';
+    __tfSavingId = id;
+    __pendingSave = true;
+    try {
+      const payload = { [field]: num };
+      const { data, error } = await sbClient
+        .from('pricing_catalog').update(payload).eq('id', id).select().single();
+      if (error) throw error;
+      // Mirror the change locally so the next render shows correct margin
+      // without needing a full reload. Realtime echo is suppressed via
+      // __suppressRt set by the wrapping ledger writer pattern.
+      const idx = catalog.findIndex(r => r.id === id);
+      if (idx >= 0) catalog[idx] = { ...catalog[idx], ...data };
+      el.classList.remove('saving');
+      // Re-render so margin / pill colour reflect the new value.
+      renderTable();
+    } catch (err) {
+      console.error('[Prices] transfer cell save failed', err);
+      el.classList.remove('saving');
+      el.classList.add('failed');
+      restore(start);
+      alert('Could not save: ' + (err?.message || 'unknown error'));
+    } finally {
+      __pendingSave = false;
+      setTimeout(()=>{ __tfSavingId = null; }, 800);
+    }
+  };
+
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', e=>{
+    if (e.key === 'Enter')      { e.preventDefault(); input.blur(); }
+    else if (e.key === 'Escape'){ committed = true; restore(start); }
+  });
+};
 
 function renderTransfersPriceList(){
   const wrap = $('tableWrap');
