@@ -851,15 +851,20 @@ async function fetchTransportPresets(){
 
 function readCampTabMenuFromLocalStorage(){
   // The Hub uses CAMPTAB_MENU_KEY = 'camptab_menu_v2' + '_' + slug for
-  // EVERY location (including sri-lanka). Try the canonical key first,
-  // then fall back to the legacy bare key (no suffix) for very old data,
-  // and finally to camp-tab-inner's own key. Whichever has a non-empty
-  // Tours array wins.
+  // EVERY location (including sri-lanka). Try the canonical key first.
+  //
+  // The bare 'camptab_menu_v2' key is the legacy default, which only ever
+  // held Sri Lanka data (Sri Lanka was the original location before the
+  // multi-location refactor). So we fall back to it ONLY for sri-lanka —
+  // for morocco/portugal/etc. that bare key contains the wrong location's
+  // tours, which would cross-contaminate the catalog if imported.
   const candidates = [
     'camptab_menu_v2_' + LOCATION_SLUG,
-    'camptab_menu_v2',              // legacy default
     'camptab_menu_v2-' + LOCATION_SLUG // defensive — in case anyone used hyphen
   ];
+  if (LOCATION_SLUG === 'sri-lanka') {
+    candidates.push('camptab_menu_v2'); // legacy bare key — Sri Lanka only
+  }
   for (const key of candidates) {
     try {
       const raw = localStorage.getItem(key);
