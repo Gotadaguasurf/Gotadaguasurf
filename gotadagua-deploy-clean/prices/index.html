@@ -148,62 +148,86 @@ tbody td.c{text-align:center}
 .area-tab:not(.active) .count{background:var(--bg);color:var(--muted)}
 .area-tab .ico{font-size:14px;line-height:1}
 
-/* Accommodation — light, card-based layout matching the user's mockup.
-   Pack tabs at top, then one card per pack containing a description and
-   per-season tables. Replaces the previous dark-navy-header grid which
-   was harder to read and didn't fit the rest of the site's aesthetic. */
-.accom-pack-tabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
-.accom-pack-tab{display:inline-flex;align-items:center;gap:8px;background:#fff;border:1.5px solid var(--border);color:var(--navy);padding:9px 16px;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif;transition:background .12s,color .12s,border-color .12s}
-.accom-pack-tab:hover{border-color:var(--ocean);color:var(--ocean)}
-.accom-pack-tab.active{background:var(--ink);color:#fff;border-color:var(--ink)}
+/* ── Accommodation — light & clean, matching the user's price-list docs ──
+   The previous design used heavy navy headers; this revision moves to the
+   docs' lighter, card-based aesthetic (white panels, soft grey borders,
+   muted muted labels, ink-black prices). The page chrome (header, area
+   tabs) stays navy; the Accommodation content area below uses this palette. */
 
-.accom-card{background:#fff;border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--sh);padding:24px 28px;margin-bottom:0}
-.accom-card-eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);font-weight:700;margin-bottom:4px}
-.accom-card-desc{font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:18px;max-width:920px}
+.accom-section-title{font-size:18px;font-weight:700;color:var(--ink);letter-spacing:-0.01em;margin:6px 0 14px;padding-bottom:10px;border-bottom:2px solid #f0f0ee}
+.accom-section-title:first-child{margin-top:0}
+
+.accom-pack-tabs{display:inline-flex;gap:0;margin-bottom:18px;background:#f5f5f3;border-radius:10px;padding:4px;width:fit-content}
+.accom-pack-tab{padding:8px 18px;border-radius:7px;border:none;font-size:13px;font-weight:500;cursor:pointer;color:#888;background:transparent;font-family:'Outfit',sans-serif;transition:all .15s}
+.accom-pack-tab:hover{color:var(--ink)}
+.accom-pack-tab.active{background:#fff;color:var(--ink);box-shadow:0 1px 4px rgba(0,0,0,0.08);font-weight:600}
+
+.accom-card{background:#fff;border:1px solid #e8e8e6;border-radius:14px;padding:22px 26px;margin-bottom:14px}
+.accom-card-label{font-size:13px;font-weight:700;color:var(--ink);letter-spacing:-0.01em;margin-bottom:5px}
+.accom-card-desc{font-size:12px;color:#aaa;margin-bottom:18px;line-height:1.6}
 
 /* Nights selector (Flexible Pack only) */
-.accom-nights{display:flex;align-items:center;gap:10px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin-bottom:20px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
-.accom-nights-label{font-weight:600;color:var(--ink)}
+.accom-nights{display:flex;align-items:center;gap:10px;background:#fafaf9;border:1px solid #f0f0ee;border-radius:8px;padding:10px 14px;margin-bottom:18px;flex-wrap:wrap;font-size:12px;color:#888}
+.accom-nights-label{font-weight:500;color:var(--ink)}
 .accom-nights-btns{display:inline-flex;gap:4px}
-.accom-nights-btn{width:32px;height:32px;border-radius:8px;border:1.5px solid var(--border);background:#fff;color:var(--navy);font-weight:700;font-family:'Outfit',sans-serif;cursor:pointer;transition:background .12s,color .12s,border-color .12s}
-.accom-nights-btn:hover{border-color:var(--ocean);color:var(--ocean)}
+.accom-nights-btn{width:32px;height:32px;border-radius:7px;border:1px solid #e0e0de;background:#fff;color:#555;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer;font-size:13px;transition:all .15s}
+.accom-nights-btn:hover{border-color:#888;color:var(--ink)}
 .accom-nights-btn.active{background:var(--ink);color:#fff;border-color:var(--ink)}
-.accom-nights-summary{color:var(--muted);font-size:12px}
-.accom-nights-summary b{color:var(--navy)}
+.accom-nights-summary{color:#aaa;font-size:12px}
+.accom-nights-summary b{color:var(--ink);font-weight:600}
 
 /* Per-season block */
-.accom-season-block{padding:18px 0;border-top:1px solid var(--border)}
-.accom-season-block:first-of-type{padding-top:6px;border-top:0}
-.accom-season-head{display:flex;align-items:center;gap:14px;margin-bottom:14px;flex-wrap:wrap}
-.accom-season-pill{display:inline-flex;align-items:center;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:6px 14px;border-radius:999px}
-.accom-season-pill.low    {background:#e8f7ed;color:#1a7a40;border:1px solid #c0e6cd}
-.accom-season-pill.mid    {background:#fef4dd;color:#9a6f00;border:1px solid #f0d68a}
-.accom-season-pill.high   {background:#fde8e3;color:#b8401a;border:1px solid #f0bca8}
-.accom-season-pill.special{background:#fde0d0;color:#b85a1c;border:1px solid #f0c0a0}
-.accom-season-dates{font-size:13px;color:var(--muted)}
+.accom-season-block{padding:14px 0}
+.accom-season-block + .accom-season-block{border-top:1px solid #f0f0ee;margin-top:6px;padding-top:18px}
+.accom-season-head{display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap}
+.accom-season-pill{display:inline-flex;align-items:center;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:4px 12px;border-radius:99px}
+.accom-season-pill.low    {background:#e8f5e8;color:#2d7a2d}
+.accom-season-pill.mid    {background:#fff3e0;color:#b45309}
+.accom-season-pill.high   {background:#fdecea;color:#c0392b}
+.accom-season-pill.special{background:#fde0d0;color:#b85a1c}
+.accom-season-dates{font-size:12px;color:#aaa}
 
 .accom-season-table{width:100%;border-collapse:collapse}
-.accom-season-table thead th{font-size:13px;font-weight:500;color:var(--muted);text-align:right;padding:10px 0;border-bottom:1px solid var(--border)}
+.accom-season-table thead th{font-size:11px;font-weight:500;color:#bbb;text-align:right;padding:6px 10px;border-bottom:1px solid #f0f0ee}
 .accom-season-table thead th:first-child{text-align:left;font-weight:500}
-.accom-season-table tbody td{padding:14px 0;border-bottom:1px solid var(--border);font-size:14px;color:var(--ink);text-align:right;vertical-align:middle}
-.accom-season-table tbody td:first-child{text-align:left;font-weight:600;color:var(--ink)}
+.accom-season-table tbody td{padding:9px 10px;border-bottom:1px solid #f8f8f7;font-size:13px;color:var(--ink);text-align:right;vertical-align:middle}
+.accom-season-table tbody td:first-child{text-align:left;font-weight:500;color:var(--ink)}
 .accom-season-table tbody tr:last-child td{border-bottom:0}
 
-.accom-price{display:inline-block;font-weight:700;color:var(--ink);font-size:15px;cursor:pointer;padding:6px 10px;border-radius:6px;transition:background .12s}
-.accom-price:hover{background:var(--foam)}
-.accom-price.empty{color:var(--muted);font-weight:400;font-size:14px}
-.accom-price.saving{background:#e8f7ed;color:#1a7a40}
-.accom-price.failed{background:var(--red-bg);color:var(--red)}
-.accom-price-input{font-family:'Outfit',sans-serif;font-size:15px;font-weight:700;width:90px;border:1.5px solid var(--ocean);border-radius:6px;padding:5px 8px;text-align:right;background:#fff;color:var(--ink)}
-.accom-price-input:focus{outline:none;box-shadow:0 0 0 3px rgba(30,111,168,.15)}
+.accom-price{display:inline-block;font-weight:600;color:var(--ink);font-size:14px;cursor:pointer;padding:4px 8px;border-radius:6px;transition:background .12s}
+.accom-price:hover{background:#fafaf9}
+.accom-price.empty{color:#ddd;font-weight:400;font-size:12px}
+.accom-price.saving{background:#e8f5e8;color:#2d7a2d}
+.accom-price.failed{background:#fdecea;color:#c0392b}
+.accom-price-input{font-family:'Outfit',sans-serif;font-size:14px;font-weight:600;width:90px;border:1px solid #888;border-radius:6px;padding:4px 8px;text-align:right;background:#fff;color:var(--ink)}
+.accom-price-input:focus{outline:none;border-color:var(--ink)}
 
-.accom-footer{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin-top:18px;font-size:13px;color:var(--muted);line-height:1.5}
-.accom-footer b{color:var(--ink);font-weight:700}
+.accom-note{background:#fafaf9;border:1px solid #f0f0ee;border-radius:8px;padding:10px 14px;margin-top:14px;font-size:12px;color:#888;line-height:1.6}
+.accom-note b{color:var(--ink);font-weight:600}
+
+/* ── Our Rooms inventory ── */
+.accom-floor-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#bbb;margin:20px 0 10px}
+.accom-floor-label:first-child{margin-top:0}
+.accom-rooms-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.accom-room{background:#fafaf9;border:1px solid #efefed;border-radius:10px;padding:13px 15px;position:relative;transition:background .12s}
+.accom-room:hover{background:#fff}
+.accom-room.shared{border-left:3px solid #3a5acd}
+.accom-room.superior{border-left:3px solid #e8a020}
+.accom-room.rv{border-left:3px solid #e8a020}
+.accom-room-name{font-size:12px;font-weight:600;color:#555;margin-bottom:4px}
+.accom-room-config{font-size:12px;color:#888;margin-bottom:6px;line-height:1.4}
+.accom-room-tags{display:flex;gap:5px;flex-wrap:wrap}
+.accom-tag{font-size:10px;font-weight:600;padding:2px 8px;border-radius:99px}
+.accom-tag-shared{background:#eef1ff;color:#3a5acd}
+.accom-tag-bath  {background:#e8f5e8;color:#2d7a2d}
+.accom-tag-ac    {background:#eef1ff;color:#3a5acd}
+.accom-tag-ocean {background:#fff3e0;color:#b45309}
+.accom-tag-rv    {background:#fff3e0;color:#b45309}
 
 @media (max-width: 720px){
   .accom-card{padding:18px}
   .accom-season-table thead th,
-  .accom-season-table tbody td{padding:8px 4px;font-size:12px}
+  .accom-season-table tbody td{padding:6px 4px;font-size:12px}
 }
 
 .no-access{padding:64px 24px;text-align:center;color:var(--muted);max-width:560px;margin:0 auto}
@@ -715,19 +739,24 @@ async function loadAccommodation(){
   if (__accomLoading) return accomData;
   __accomLoading = true;
   try {
-    const [packsR, seasonsR, roomsR, pricesR] = await Promise.all([
+    const [packsR, seasonsR, roomTypesR, pricesR, inventoryR] = await Promise.all([
       sbClient.from('accommodation_packs').select('*').eq('location_id', locationId).eq('active', true).order('sort_order', { ascending:true }),
       sbClient.from('accommodation_seasons').select('*').eq('location_id', locationId).eq('active', true).order('sort_order', { ascending:true }),
       sbClient.from('accommodation_room_types').select('*').eq('location_id', locationId).eq('active', true).order('sort_order', { ascending:true }),
-      sbClient.from('accommodation_prices').select('*').eq('location_id', locationId)
+      sbClient.from('accommodation_prices').select('*').eq('location_id', locationId),
+      // accommodation_rooms is the physical-room inventory used by the
+      // "Our Rooms" section. Failure here is non-fatal — the schema may
+      // not be applied yet on older Supabase projects.
+      sbClient.from('accommodation_rooms').select('*').eq('location_id', locationId).eq('active', true).order('sort_order', { ascending:true })
     ]);
-    const firstError = [packsR.error, seasonsR.error, roomsR.error, pricesR.error].find(Boolean);
+    const firstError = [packsR.error, seasonsR.error, roomTypesR.error, pricesR.error].find(Boolean);
     if (firstError) throw firstError;
     accomData = {
-      packs:   packsR.data   || [],
-      seasons: seasonsR.data || [],
-      rooms:   roomsR.data   || [],
-      prices:  pricesR.data  || []
+      packs:     packsR.data     || [],
+      seasons:   seasonsR.data   || [],
+      rooms:     roomTypesR.data || [],  // pricing categories
+      prices:    pricesR.data    || [],
+      inventory: (inventoryR.error ? [] : (inventoryR.data || []))  // physical rooms
     };
     if (accomData.packs.length && !accomActivePackId) {
       accomActivePackId = accomData.packs[0].id;
@@ -739,9 +768,9 @@ async function loadAccommodation(){
 }
 
 function subscribeAccommodationRealtime(){
-  // Single channel, four tables — saves on websocket overhead and keeps
+  // Single channel, five tables — saves on websocket overhead and keeps
   // all accommodation reactivity in one place. Every event re-fetches
-  // (cheap; 4 small SELECTs) and re-renders if the Accommodation tab is
+  // (cheap; small SELECTs) and re-renders if the Accommodation tab is
   // currently visible.
   sbClient
     .channel('accommodation-'+locationId)
@@ -749,6 +778,7 @@ function subscribeAccommodationRealtime(){
     .on('postgres_changes', { event:'*', schema:'public', table:'accommodation_seasons',    filter:`location_id=eq.${locationId}` }, ()=>refreshAccommodation())
     .on('postgres_changes', { event:'*', schema:'public', table:'accommodation_room_types', filter:`location_id=eq.${locationId}` }, ()=>refreshAccommodation())
     .on('postgres_changes', { event:'*', schema:'public', table:'accommodation_prices',     filter:`location_id=eq.${locationId}` }, ()=>refreshAccommodation())
+    .on('postgres_changes', { event:'*', schema:'public', table:'accommodation_rooms',      filter:`location_id=eq.${locationId}` }, ()=>refreshAccommodation())
     .subscribe();
 }
 
@@ -1071,13 +1101,86 @@ async function renderAccommodation(){
     : '<b>Prices are per person</b> for the full pack. The column depends on how many people share the room. A solo traveller in a double room pays the 1 Person rate.';
 
   wrap.innerHTML = `
+    ${renderRoomsInventory()}
+    <div class="accom-section-title">Accommodation Pricing</div>
     <div class="accom-pack-tabs">${packTabsHtml}</div>
     <div class="accom-card">
-      <div class="accom-card-eyebrow">${escapeHtml(activePack.label)}</div>
+      <div class="accom-card-label">${escapeHtml(activePack.label)}</div>
       ${activePack.description ? `<div class="accom-card-desc">${escapeHtml(activePack.description)}</div>` : ''}
       ${nightsSelectorHtml}
       ${seasonBlocksHtml}
-      <div class="accom-footer">${footerNote}</div>
+      <div class="accom-note">${footerNote}</div>
+    </div>
+  `;
+}
+
+// "Our Rooms" inventory — physical rooms with floor groupings, tags, and
+// colour-coded left borders (shared / superior / riad-view). Sources from
+// accommodation_rooms; when that table is empty (schema not yet applied)
+// the section is omitted entirely so older Supabase projects keep working.
+function renderRoomsInventory(){
+  const inv = accomData?.inventory || [];
+  if (!inv.length) return '';
+
+  // Group by floor (NULL floor → single un-grouped "Rooms" block, used by
+  // Sri Lanka which has no floor labels in the source doc).
+  const byFloor = new Map();
+  for (const r of inv) {
+    const key = r.floor || '';
+    if (!byFloor.has(key)) byFloor.set(key, []);
+    byFloor.get(key).push(r);
+  }
+
+  // Build a short intro line based on which tags are present in the
+  // inventory — keeps the description honest about what the rooms include
+  // without hardcoding per-location copy.
+  const allTags = new Set();
+  for (const r of inv) (r.tags || []).forEach(t => allTags.add(t));
+  const introBits = [];
+  if (allTags.has('bath')) introBits.push('<strong>private ensuite bathroom</strong>');
+  if (allTags.has('ac'))   introBits.push('<strong>air conditioning</strong>');
+  const introTxt = introBits.length
+    ? `All rooms have ${introBits.join(' and ')}.`
+    : 'Room inventory below.';
+
+  // Floor labels keep their natural order from the data: NULL first
+  // (Sri Lanka), then Ground / 1st / 2nd / etc.
+  const floorBlocks = Array.from(byFloor.entries()).map(([floor, rooms]) => {
+    const label = floor ? `${escapeHtml(floor)} Floor` : '';
+    const cards = rooms.map(r => {
+      const variantCls = r.variant && r.variant !== 'standard' ? r.variant : '';
+      const tagsHtml = (r.tags || []).map(t => {
+        const labelMap = {
+          shared:'Shared Dorm', bath:'Private Bathroom', ac:'AC',
+          ocean:'Ocean/Jungle View', rv:'Riad View'
+        };
+        const clsMap = {
+          shared:'accom-tag-shared', bath:'accom-tag-bath', ac:'accom-tag-ac',
+          ocean:'accom-tag-ocean',   rv:'accom-tag-rv'
+        };
+        const lab = labelMap[t] || t;
+        const cls = clsMap[t] || 'accom-tag-bath';
+        return `<span class="accom-tag ${cls}">${escapeHtml(lab)}</span>`;
+      }).join('');
+      return `
+        <div class="accom-room ${variantCls}">
+          <div class="accom-room-name">${escapeHtml(r.name || '')}</div>
+          ${r.config_text ? `<div class="accom-room-config">${escapeHtml(r.config_text)}</div>` : ''}
+          <div class="accom-room-tags">${tagsHtml}</div>
+        </div>
+      `;
+    }).join('');
+    return `
+      ${label ? `<div class="accom-floor-label">${label}</div>` : ''}
+      <div class="accom-rooms-grid">${cards}</div>
+    `;
+  }).join('');
+
+  return `
+    <div class="accom-section-title">Our Rooms</div>
+    <div class="accom-card">
+      <div class="accom-card-desc">${introTxt}</div>
+      ${floorBlocks}
     </div>
   `;
 }
