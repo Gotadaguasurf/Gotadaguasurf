@@ -148,34 +148,63 @@ tbody td.c{text-align:center}
 .area-tab:not(.active) .count{background:var(--bg);color:var(--muted)}
 .area-tab .ico{font-size:14px;line-height:1}
 
-/* Accommodation grid editor — pack tabs + matrix of rooms × season×occupancy */
-.accom-pack-tabs{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
-.accom-pack-tab{display:inline-flex;align-items:center;gap:8px;background:#fff;border:1.5px solid var(--border);color:var(--navy);padding:9px 16px;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif}
+/* Accommodation — light, card-based layout matching the user's mockup.
+   Pack tabs at top, then one card per pack containing a description and
+   per-season tables. Replaces the previous dark-navy-header grid which
+   was harder to read and didn't fit the rest of the site's aesthetic. */
+.accom-pack-tabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
+.accom-pack-tab{display:inline-flex;align-items:center;gap:8px;background:#fff;border:1.5px solid var(--border);color:var(--navy);padding:9px 16px;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif;transition:background .12s,color .12s,border-color .12s}
 .accom-pack-tab:hover{border-color:var(--ocean);color:var(--ocean)}
-.accom-pack-tab.active{background:var(--navy);color:#fff;border-color:var(--navy)}
-.accom-pack-desc{font-size:12px;color:var(--muted);margin:0 4px 14px;line-height:1.5}
-.accom-grid-wrap{background:#fff;border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--sh);overflow:auto}
-.accom-grid{width:100%;border-collapse:collapse;min-width:680px}
-.accom-grid thead th{background:var(--navy);color:#fff;font-size:10px;text-transform:uppercase;letter-spacing:.08em;padding:10px;font-weight:700;text-align:center;border-right:1px solid rgba(255,255,255,.08)}
-.accom-grid thead th:first-child{text-align:left;background:var(--navy-mid)}
-.accom-grid thead th .season-key{display:block;font-size:9px;font-weight:600;letter-spacing:.06em;opacity:.8;margin-bottom:2px}
-.accom-grid thead th .season-low{color:#a3e6c0}
-.accom-grid thead th .season-mid{color:#f0d060}
-.accom-grid thead th .season-high{color:#f0a0a0}
-.accom-grid thead th .season-special{color:#f0c0a0}
-.accom-grid thead th.occ{font-size:10px;font-weight:600;text-transform:none;letter-spacing:normal;padding:6px 4px}
-.accom-grid tbody td{border-bottom:1px solid var(--border);padding:10px;text-align:center;font-family:'DM Mono',monospace;font-size:13px;color:var(--ink);vertical-align:middle}
-.accom-grid tbody td:first-child{text-align:left;font-family:'Outfit',sans-serif;font-weight:600;color:var(--navy);background:#f7fafc;border-right:1px solid var(--border);min-width:200px}
-.accom-grid tbody td:first-child .room-desc{display:block;font-size:11px;color:var(--muted);font-weight:400;margin-top:2px}
-.accom-cell{cursor:pointer;border-radius:6px;padding:6px 8px;display:inline-block;min-width:60px;transition:background .12s}
-.accom-cell:hover{background:var(--foam)}
-.accom-cell.empty{color:var(--muted)}
-.accom-cell.saving{background:rgba(58,200,120,.15);color:var(--green)}
-.accom-cell.failed{background:var(--red-bg);color:var(--red)}
-.accom-cell-input{font-family:'DM Mono',monospace;font-size:13px;width:80px;border:1.5px solid var(--ocean);border-radius:6px;padding:5px 8px;text-align:center;background:#fff;color:var(--ink)}
-.accom-cell-input:focus{outline:none;box-shadow:0 0 0 3px rgba(30,111,168,.15)}
-.accom-season-pills{display:flex;flex-wrap:wrap;gap:6px;font-size:10px;color:var(--muted);margin:6px 0 0}
-.accom-season-pills b{font-weight:700;letter-spacing:.06em}
+.accom-pack-tab.active{background:var(--ink);color:#fff;border-color:var(--ink)}
+
+.accom-card{background:#fff;border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--sh);padding:24px 28px;margin-bottom:0}
+.accom-card-eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);font-weight:700;margin-bottom:4px}
+.accom-card-desc{font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:18px;max-width:920px}
+
+/* Nights selector (Flexible Pack only) */
+.accom-nights{display:flex;align-items:center;gap:10px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin-bottom:20px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+.accom-nights-label{font-weight:600;color:var(--ink)}
+.accom-nights-btns{display:inline-flex;gap:4px}
+.accom-nights-btn{width:32px;height:32px;border-radius:8px;border:1.5px solid var(--border);background:#fff;color:var(--navy);font-weight:700;font-family:'Outfit',sans-serif;cursor:pointer;transition:background .12s,color .12s,border-color .12s}
+.accom-nights-btn:hover{border-color:var(--ocean);color:var(--ocean)}
+.accom-nights-btn.active{background:var(--ink);color:#fff;border-color:var(--ink)}
+.accom-nights-summary{color:var(--muted);font-size:12px}
+.accom-nights-summary b{color:var(--navy)}
+
+/* Per-season block */
+.accom-season-block{padding:18px 0;border-top:1px solid var(--border)}
+.accom-season-block:first-of-type{padding-top:6px;border-top:0}
+.accom-season-head{display:flex;align-items:center;gap:14px;margin-bottom:14px;flex-wrap:wrap}
+.accom-season-pill{display:inline-flex;align-items:center;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:6px 14px;border-radius:999px}
+.accom-season-pill.low    {background:#e8f7ed;color:#1a7a40;border:1px solid #c0e6cd}
+.accom-season-pill.mid    {background:#fef4dd;color:#9a6f00;border:1px solid #f0d68a}
+.accom-season-pill.high   {background:#fde8e3;color:#b8401a;border:1px solid #f0bca8}
+.accom-season-pill.special{background:#fde0d0;color:#b85a1c;border:1px solid #f0c0a0}
+.accom-season-dates{font-size:13px;color:var(--muted)}
+
+.accom-season-table{width:100%;border-collapse:collapse}
+.accom-season-table thead th{font-size:13px;font-weight:500;color:var(--muted);text-align:right;padding:10px 0;border-bottom:1px solid var(--border)}
+.accom-season-table thead th:first-child{text-align:left;font-weight:500}
+.accom-season-table tbody td{padding:14px 0;border-bottom:1px solid var(--border);font-size:14px;color:var(--ink);text-align:right;vertical-align:middle}
+.accom-season-table tbody td:first-child{text-align:left;font-weight:600;color:var(--ink)}
+.accom-season-table tbody tr:last-child td{border-bottom:0}
+
+.accom-price{display:inline-block;font-weight:700;color:var(--ink);font-size:15px;cursor:pointer;padding:6px 10px;border-radius:6px;transition:background .12s}
+.accom-price:hover{background:var(--foam)}
+.accom-price.empty{color:var(--muted);font-weight:400;font-size:14px}
+.accom-price.saving{background:#e8f7ed;color:#1a7a40}
+.accom-price.failed{background:var(--red-bg);color:var(--red)}
+.accom-price-input{font-family:'Outfit',sans-serif;font-size:15px;font-weight:700;width:90px;border:1.5px solid var(--ocean);border-radius:6px;padding:5px 8px;text-align:right;background:#fff;color:var(--ink)}
+.accom-price-input:focus{outline:none;box-shadow:0 0 0 3px rgba(30,111,168,.15)}
+
+.accom-footer{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin-top:18px;font-size:13px;color:var(--muted);line-height:1.5}
+.accom-footer b{color:var(--ink);font-weight:700}
+
+@media (max-width: 720px){
+  .accom-card{padding:18px}
+  .accom-season-table thead th,
+  .accom-season-table tbody td{padding:8px 4px;font-size:12px}
+}
 
 .no-access{padding:64px 24px;text-align:center;color:var(--muted);max-width:560px;margin:0 auto}
 .no-access h2{font-family:'DM Serif Display',serif;color:var(--navy);font-size:22px;margin-bottom:8px}
@@ -924,6 +953,12 @@ function fmtDateRange(rng){
   return `${fmt(rng.start, sameYear)} – ${fmt(rng.end, false)}`;
 }
 
+// Flexible-pack night selector state. Per-night base prices live in the DB;
+// the selector multiplies them for display only. Editing a cell while
+// nights > 1 divides the user's input by the active night count so the
+// stored value stays the per-night base.
+let __accomFlexNights = 1;
+
 async function renderAccommodation(){
   const wrap = $('tableWrap');
   if (!wrap) return;
@@ -958,106 +993,133 @@ async function renderAccommodation(){
     accomActivePackId = packs[0].id;
   }
   const activePack = packs.find(p=>p.id === accomActivePackId);
+  const isFlex = activePack?.price_basis === 'per_person_per_night';
+  const nightsMultiplier = isFlex ? Math.max(1, __accomFlexNights) : 1;
+
+  // Compute occupancy range from THIS pack's data (Sri Lanka → 1-2, Morocco → 1-4)
+  const priceByKey = new Map();
+  let maxOccupancy = 2;
+  for (const pr of prices) {
+    if (pr.pack_id !== accomActivePackId) continue;
+    priceByKey.set(`${pr.season_id}|${pr.room_type_id}|${pr.occupancy}`, pr);
+    if (pr.occupancy > maxOccupancy) maxOccupancy = pr.occupancy;
+  }
+  if (maxOccupancy > 6) maxOccupancy = 6;
+  const occupancies = [];
+  for (let i = 1; i <= maxOccupancy; i++) occupancies.push(i);
+  const cur = activePack.currency || 'EUR';
+  const occLabel = (n) => n === 1 ? '1 Person' : `${n} People`;
 
   // Pack tabs
   const packTabsHtml = packs.map(p=>`
     <button class="accom-pack-tab ${p.id===accomActivePackId?'active':''}" onclick="onAccomPickPack('${p.id}')">${escapeHtml(p.label)}</button>
   `).join('');
 
-  // Date-range pills under the grid (low/mid/high labels are already in
-  // the column header; the pills make the actual date ranges visible)
-  const rangePills = seasons.map(s=>{
+  // Nights selector — Flexible Pack only
+  const nightsSelectorHtml = isFlex ? `
+    <div class="accom-nights">
+      <span class="accom-nights-label">Number of nights:</span>
+      <div class="accom-nights-btns">
+        ${[1,2,3,4,5,6].map(n => `
+          <button class="accom-nights-btn ${n===nightsMultiplier?'active':''}" onclick="onAccomPickNights(${n})">${n}</button>
+        `).join('')}
+      </div>
+      <span class="accom-nights-summary">nights selected: <b>${nightsMultiplier}</b></span>
+    </div>
+  ` : '';
+
+  // Per-season blocks
+  const seasonBlocksHtml = seasons.map(s => {
     const ranges = Array.isArray(s.date_ranges) ? s.date_ranges : [];
-    const txt = ranges.map(fmtDateRange).filter(Boolean).join(' · ') || '—';
-    return `<div><b style="color:var(--navy)">${escapeHtml(s.label)}:</b> ${escapeHtml(txt)}</div>`;
-  }).join('');
-
-  // Build the price lookup map for O(1) cell access
-  // Key = packId|seasonId|roomId|occupancy
-  const priceByKey = new Map();
-  let maxOccupancy = 2; // sensible floor — even Sri Lanka has 1p + 2p
-  for (const pr of prices) {
-    if (pr.pack_id !== accomActivePackId) continue;
-    priceByKey.set(`${pr.season_id}|${pr.room_type_id}|${pr.occupancy}`, pr);
-    if (pr.occupancy > maxOccupancy) maxOccupancy = pr.occupancy;
-  }
-  // Cap at 6 to keep the grid sane; locations needing more should be the
-  // exception, not the rule. Sri Lanka → 2 cols, Morocco → 4 cols.
-  if (maxOccupancy > 6) maxOccupancy = 6;
-  const occupancies = [];
-  for (let i = 1; i <= maxOccupancy; i++) occupancies.push(i);
-  const cur = packs[0].currency || 'EUR'; // accommodation is always EUR for now
-
-  const occLabel = (n) => n === 1 ? '1 Person' : `${n} People`;
-
-  // Column groups: one per season, each spans the location's occupancy range
-  const headRow1 = ['<th rowspan="2">Room type</th>']
-    .concat(seasons.map(s=>{
-      const cls = `season-${s.season_key}`;
-      return `<th colspan="${occupancies.length}"><span class="season-key ${cls}">${escapeHtml(s.season_key.toUpperCase())}</span>${escapeHtml(s.label.replace(/SEASON/i,'').trim())}</th>`;
-    })).join('');
-  const headRow2 = seasons.map(s =>
-    occupancies.map(occ => `<th class="occ">${occLabel(occ)}</th>`).join('')
-  ).join('');
-
-  const bodyRows = rooms.map(r=>{
-    let row = `<td><div>${escapeHtml(r.label)}</div>${r.description?`<span class="room-desc">${escapeHtml(r.description)}</span>`:''}</td>`;
-    for (const s of seasons) {
+    const datesTxt = ranges.map(fmtDateRange).filter(Boolean).join(' · ') || '';
+    const headCells = ['<th>Room Type</th>'].concat(occupancies.map(o => `<th>${occLabel(o)}</th>`)).join('');
+    const bodyRows = rooms.map(r => {
+      let row = `<td>${escapeHtml(r.label)}</td>`;
       for (const occ of occupancies) {
         const k = `${s.id}|${r.id}|${occ}`;
         const cellId = `accomcell_${accomActivePackId}_${s.id}_${r.id}_${occ}`;
         const existing = priceByKey.get(k);
-        const val = existing ? Number(existing.sell_price||0) : null;
-        const display = (val && val > 0)
-          ? money(val, cur).replace(/\.00$/, '')
+        const baseVal = existing ? Number(existing.sell_price||0) : null;
+        const displayVal = (baseVal && baseVal > 0) ? (baseVal * nightsMultiplier) : null;
+        const display = displayVal
+          ? money(displayVal, cur).replace(/\.00$/, '')
           : '—';
-        const cls = (val && val > 0) ? 'accom-cell' : 'accom-cell empty';
+        const cls = displayVal ? 'accom-price' : 'accom-price empty';
         row += `<td><span id="${cellId}" class="${cls}" onclick="onAccomEditCell(this,'${accomActivePackId}','${s.id}','${r.id}',${occ})">${display}</span></td>`;
       }
-    }
-    return `<tr>${row}</tr>`;
+      return `<tr>${row}</tr>`;
+    }).join('');
+    return `
+      <div class="accom-season-block">
+        <div class="accom-season-head">
+          <span class="accom-season-pill ${s.season_key}">${escapeHtml(s.label)}</span>
+          ${datesTxt ? `<span class="accom-season-dates">${escapeHtml(datesTxt)}</span>` : ''}
+        </div>
+        <table class="accom-season-table">
+          <thead><tr>${headCells}</tr></thead>
+          <tbody>${bodyRows}</tbody>
+        </table>
+      </div>
+    `;
   }).join('');
+
+  // Footer note — different for Weekly vs Flexible
+  const footerNote = isFlex
+    ? (nightsMultiplier === 1
+        ? '<b>Prices are per person per night.</b> Click any cell to edit. Empty cells (—) mean no price set yet.'
+        : `<b>Prices shown are total per person for ${nightsMultiplier} nights.</b> Click any cell and the input will divide by ${nightsMultiplier} so the per-night base stays consistent.`)
+    : '<b>Prices are per person</b> for the full pack. The column depends on how many people share the room. A solo traveller in a double room pays the 1 Person rate.';
 
   wrap.innerHTML = `
     <div class="accom-pack-tabs">${packTabsHtml}</div>
-    ${activePack?.description ? `<div class="accom-pack-desc">${escapeHtml(activePack.description)}</div>` : ''}
-    <div class="accom-grid-wrap">
-      <table class="accom-grid">
-        <thead>
-          <tr>${headRow1}</tr>
-          <tr><th style="background:var(--navy-mid)"></th>${headRow2}</tr>
-        </thead>
-        <tbody>${bodyRows}</tbody>
-      </table>
+    <div class="accom-card">
+      <div class="accom-card-eyebrow">${escapeHtml(activePack.label)}</div>
+      ${activePack.description ? `<div class="accom-card-desc">${escapeHtml(activePack.description)}</div>` : ''}
+      ${nightsSelectorHtml}
+      ${seasonBlocksHtml}
+      <div class="accom-footer">${footerNote}</div>
     </div>
-    <div class="accom-season-pills">${rangePills}</div>
-    <div style="font-size:11px;color:var(--muted);margin-top:8px">Click any cell to edit. Empty cells (—) mean no price set; click and type to add one.</div>
   `;
 }
 
 window.onAccomPickPack = (packId)=>{
   accomActivePackId = packId;
+  // Reset nights to 1 whenever we switch packs so the weekly view doesn't
+  // accidentally show "multiplied" data from a previous flexible session.
+  __accomFlexNights = 1;
+  renderAccommodation();
+};
+
+window.onAccomPickNights = (n)=>{
+  __accomFlexNights = Math.max(1, Math.min(60, Number(n) || 1));
   renderAccommodation();
 };
 
 window.onAccomEditCell = (el, packId, seasonId, roomId, occupancy)=>{
   if (!canEdit) return;
-  // Already editing? Skip — clicking another cell while one is being
-  // edited is rare; let blur commit the previous one first.
   if (el.querySelector('input')) return;
 
-  const cur = (packs => packs?.[0]?.currency || 'EUR')(accomData?.packs);
+  const pack = (accomData?.packs||[]).find(p=>p.id === packId);
+  const isFlex = pack?.price_basis === 'per_person_per_night';
+  const nights = isFlex ? Math.max(1, __accomFlexNights) : 1;
+  const cur = pack?.currency || 'EUR';
   const existing = (accomData?.prices||[]).find(p=>
     p.pack_id===packId && p.season_id===seasonId && p.room_type_id===roomId && p.occupancy===occupancy
   );
-  const startVal = existing ? Number(existing.sell_price||0) : '';
+  // The DB stores the per-night (or per-pack) base price. The cell displays
+  // base × nights. When the user clicks to edit, the input shows the
+  // DISPLAYED value — what they see is what they edit. We divide back by
+  // nights before saving so the base is consistent.
+  const baseVal = existing ? Number(existing.sell_price||0) : 0;
+  const displayedVal = baseVal * nights;
+  const startDisplay = displayedVal || '';
 
   const input = document.createElement('input');
   input.type = 'number';
   input.min = '0';
   input.step = '0.01';
-  input.className = 'accom-cell-input';
-  input.value = startVal || '';
+  input.className = 'accom-price-input';
+  input.value = startDisplay || '';
   input.placeholder = '0';
 
   el.classList.remove('empty','failed');
@@ -1066,43 +1128,42 @@ window.onAccomEditCell = (el, packId, seasonId, roomId, occupancy)=>{
   input.focus();
   input.select();
 
+  const restoreDisplay = ()=>{
+    el.textContent = displayedVal > 0 ? money(displayedVal, cur).replace(/\.00$/,'') : '—';
+    el.classList.toggle('empty', !displayedVal);
+  };
+
   let committed = false;
   const commit = async ()=>{
-    if (committed) return; // guard against blur firing twice
+    if (committed) return;
     committed = true;
     const raw = input.value.trim();
-    const num = raw === '' ? 0 : Number(raw);
-    if (!Number.isFinite(num) || num < 0) {
-      el.textContent = startVal ? money(startVal, cur).replace(/\.00$/,'') : '—';
-      el.classList.toggle('empty', !startVal);
-      return;
-    }
-    if (Number(startVal||0) === num) {
-      // No change — restore display, skip save
-      el.textContent = num > 0 ? money(num, cur).replace(/\.00$/,'') : '—';
-      el.classList.toggle('empty', !num);
-      return;
-    }
+    const displayNum = raw === '' ? 0 : Number(raw);
+    if (!Number.isFinite(displayNum) || displayNum < 0) { restoreDisplay(); return; }
+    // Divide back to the per-night (or per-pack) base before saving.
+    const baseNum = Number((displayNum / nights).toFixed(2));
+    if (Math.abs(baseVal - baseNum) < 0.005) { restoreDisplay(); return; } // no change
+
     el.classList.add('saving');
-    el.textContent = num > 0 ? money(num, cur).replace(/\.00$/,'') : '—';
+    const newDisplay = baseNum * nights;
+    el.textContent = newDisplay > 0 ? money(newDisplay, cur).replace(/\.00$/,'') : '—';
     const cellKey = `${packId}|${seasonId}|${roomId}|${occupancy}`;
     __accomSavingCell = cellKey;
     __pendingSave = true;
     try {
-      if (existing && num === 0) {
-        // Setting to 0 deletes the row — clean grid, no "0 €" cells.
+      if (existing && baseNum === 0) {
         const { error } = await sbClient.from('accommodation_prices').delete().eq('id', existing.id);
         if (error) throw error;
         accomData.prices = accomData.prices.filter(p=>p.id !== existing.id);
       } else if (existing) {
         const { data, error } = await sbClient
           .from('accommodation_prices')
-          .update({ sell_price: num })
+          .update({ sell_price: baseNum })
           .eq('id', existing.id).select().single();
         if (error) throw error;
         const idx = accomData.prices.findIndex(p=>p.id === existing.id);
         if (idx >= 0) accomData.prices[idx] = data;
-      } else if (num > 0) {
+      } else if (baseNum > 0) {
         const { data, error } = await sbClient
           .from('accommodation_prices')
           .insert({
@@ -1111,19 +1172,19 @@ window.onAccomEditCell = (el, packId, seasonId, roomId, occupancy)=>{
             season_id: seasonId,
             room_type_id: roomId,
             occupancy,
-            sell_price: num,
+            sell_price: baseNum,
             currency: cur
           }).select().single();
         if (error) throw error;
         accomData.prices.push(data);
       }
       el.classList.remove('saving');
-      el.classList.toggle('empty', !num);
+      el.classList.toggle('empty', !newDisplay);
     } catch (err) {
       console.error('[Prices] accommodation cell save failed', err);
       el.classList.remove('saving');
       el.classList.add('failed');
-      el.textContent = startVal ? money(startVal, cur).replace(/\.00$/,'') : '—';
+      restoreDisplay();
       alert('Could not save: ' + (err?.message || 'unknown error'));
     } finally {
       __pendingSave = false;
@@ -1134,11 +1195,7 @@ window.onAccomEditCell = (el, packId, seasonId, roomId, occupancy)=>{
   input.addEventListener('blur', commit);
   input.addEventListener('keydown', e=>{
     if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
-    else if (e.key === 'Escape') {
-      committed = true; // skip commit
-      el.textContent = startVal ? money(startVal, cur).replace(/\.00$/,'') : '—';
-      el.classList.toggle('empty', !startVal);
-    }
+    else if (e.key === 'Escape') { committed = true; restoreDisplay(); }
   });
 };
 
