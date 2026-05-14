@@ -136,6 +136,18 @@ tbody td.c{text-align:center}
 .mtoggle .label{font-size:12px;color:var(--ink);font-weight:600;flex:1}
 .mfooter{padding:14px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end}
 
+/* Area tabs replace the legacy category dropdown. Each tab pins one
+   business area (Accommodation, Surf, Tours, Transfers, Add-ons, Costs)
+   so the user sees only the rows relevant to that area, with a count
+   chip on each tab showing how many entries live there. */
+.area-tabs{display:flex;gap:4px;flex-wrap:wrap;background:#fff;border:1px solid var(--border);border-radius:14px;padding:5px;margin-bottom:16px;box-shadow:var(--sh)}
+.area-tab{display:inline-flex;align-items:center;gap:8px;border:none;background:transparent;color:var(--muted);padding:9px 14px;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif;transition:background .12s,color .12s}
+.area-tab:hover{color:var(--navy);background:var(--bg)}
+.area-tab.active{background:var(--navy);color:#fff}
+.area-tab .count{font-size:11px;font-family:'DM Mono',monospace;background:rgba(255,255,255,.18);color:inherit;padding:1px 6px;border-radius:6px;min-width:18px;text-align:center}
+.area-tab:not(.active) .count{background:var(--bg);color:var(--muted)}
+.area-tab .ico{font-size:14px;line-height:1}
+
 .no-access{padding:64px 24px;text-align:center;color:var(--muted);max-width:560px;margin:0 auto}
 .no-access h2{font-family:'DM Serif Display',serif;color:var(--navy);font-size:22px;margin-bottom:8px}
 .no-access p{font-size:13px;line-height:1.55}
@@ -394,10 +406,28 @@ let canEdit = false;
 let canViewCosts = false;
 let locationId = '';
 let catalog = [];           // in-memory copy
-let filterCategory = 'all';
+let filterArea = 'tours';   // active area tab (one of AREAS keys)
 let filterSearch = '';
 let editingId = null;
 let __pendingSave = false;
+
+// ── Business-area taxonomy ─────────────────────────────────────────────────
+// Catalog rows live with fine-grained categories (Tour, Per Night, Surf
+// Pack, Lesson, etc.); the user-facing area tabs collapse those into the
+// six surfaces the user reasons about. Mapping is the single source of
+// truth — moving a category between tabs is a one-line change here.
+//
+// defaultCategory drives the "+ New entry" preset when the tab is active.
+const AREAS = [
+  { key:'accommodation', label:'Accommodation', icon:'🛏️', cats:['Accommodation','Per Night'], defaultCategory:'Accommodation' },
+  { key:'surf',          label:'Surf',          icon:'🏄', cats:['Surf Pack','Lesson'],         defaultCategory:'Surf Pack'     },
+  { key:'tours',         label:'Tours',         icon:'🌴', cats:['Tour'],                        defaultCategory:'Tour'          },
+  { key:'transfers',     label:'Transfers',     icon:'🚐', cats:['Transport'],                   defaultCategory:'Transport'     },
+  { key:'addons',        label:'Add-ons',       icon:'➕', cats:['Other Service'],               defaultCategory:'Other Service' },
+  { key:'costs',         label:'Costs',         icon:'💰', cats:[],                              defaultCategory:'Other Service' }
+];
+const AREA_BY_KEY = Object.fromEntries(AREAS.map(a=>[a.key,a]));
+function categoriesForArea(key){ return AREA_BY_KEY[key]?.cats || []; }
 
 const $ = (id)=>document.getElementById(id);
 const eur = (n)=>'€'+Number(n||0).toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -646,19 +676,10 @@ function renderShell(){
         <div class="page-sub">Master catalog for tours, transports, surf packs, accommodation and other services. Changes here propagate to the Camp Tab POS and the Transport picker (when those items are flagged).</div>
       </div>
     </div>
+    <div class="area-tabs" id="areaTabs"></div>
     <div class="toolbar">
       <input type="text" class="search" id="searchInput" placeholder="Search by name…" oninput="onSearch(this.value)">
-      <select id="categorySelect" onchange="onCategoryFilter(this.value)">
-        <option value="all">All categories</option>
-        <option value="Tour">Tour</option>
-        <option value="Transport">Transport</option>
-        <option value="Surf Pack">Surf Pack</option>
-        <option value="Accommodation">Accommodation</option>
-        <option value="Per Night">Per Night</option>
-        <option value="Lesson">Lesson</option>
-        <option value="Other Service">Other Service</option>
-      </select>
-      ${canEdit ? `<button class="btn btn-p" onclick="openNew()">+ New entry</button>` : ''}
+      ${canEdit ? `<button class="btn btn-p" id="newEntryBtn" onclick="openNew()">+ New entry</button>` : ''}
     </div>
     <div class="table-wrap" id="tableWrap"></div>
   `;
@@ -673,21 +694,56 @@ function categoryBadge(cat){
   return `<span class="badge ${map[cat]||'badge-other'}">${escapeHtml(cat||'')}</span>`;
 }
 
+function renderAreaTabs(){
+  const tabs = $('areaTabs');
+  if (!tabs) return;
+  // Per-area row count drives the badge so the user sees at a glance how
+  // many entries live in each surface. The Costs tab has no DB categories
+  // yet (placeholder for a future operational-costs view).
+  const counts = {};
+  for (const a of AREAS) {
+    counts[a.key] = a.cats.length
+      ? catalog.filter(r => a.cats.includes(r.category)).length
+      : 0;
+  }
+  tabs.innerHTML = AREAS.map(a => `
+    <button class="area-tab ${filterArea === a.key ? 'active' : ''}"
+            onclick="onAreaTab('${a.key}')">
+      <span class="ico">${a.icon}</span>
+      <span>${a.label}</span>
+      <span class="count">${counts[a.key]}</span>
+    </button>
+  `).join('');
+}
+
 function renderTable(){
+  renderAreaTabs();
+  // Costs tab is a placeholder — no schema-backed rows yet, so the
+  // "+ New entry" CTA would be confusing here. Hide it on that tab and
+  // bring it back everywhere else.
+  const newBtn = $('newEntryBtn');
+  if (newBtn) newBtn.style.display = (filterArea === 'costs') ? 'none' : '';
   const wrap = $('tableWrap');
   if (!wrap) return;
   let rows = catalog.slice();
-  if (filterCategory !== 'all') rows = rows.filter(r=>r.category === filterCategory);
+  const allowedCats = categoriesForArea(filterArea);
+  rows = rows.filter(r => allowedCats.includes(r.category));
   if (filterSearch) {
     const q = filterSearch.toLowerCase();
     rows = rows.filter(r=> (r.name||'').toLowerCase().includes(q) || (r.notes||'').toLowerCase().includes(q));
   }
 
   if (!rows.length) {
+    const area = AREA_BY_KEY[filterArea];
+    const isCosts = filterArea === 'costs';
     wrap.innerHTML = `<div class="empty">
-      <div class="empty-icon">💰</div>
-      <div style="font-family:'DM Serif Display',serif;font-size:18px;color:var(--navy);margin-bottom:4px">No entries yet</div>
-      <div style="font-size:13px">${canEdit ? 'Click "+ New entry" to add tours, transports, surf packs, accommodation, etc.' : 'No prices have been added for this location yet.'}</div>
+      <div class="empty-icon">${area?.icon || '💰'}</div>
+      <div style="font-family:'DM Serif Display',serif;font-size:18px;color:var(--navy);margin-bottom:4px">${isCosts ? 'Costs view — coming soon' : 'No '+(area?.label||'entries')+' yet'}</div>
+      <div style="font-size:13px">${
+        isCosts
+          ? 'A dedicated operational-costs surface will live here. For now, costs are entered alongside each item in the other tabs (Cost per guest).'
+          : (canEdit ? `Click "+ New entry" to add a ${area?.label.toLowerCase()||'entry'}.` : 'No prices have been added for this area yet.')
+      }</div>
     </div>`;
     return;
   }
@@ -748,7 +804,7 @@ function renderNoAccess(title, text){
 
 // ── Search / filter ───────────────────────────────────────────────────────
 window.onSearch = (v)=>{ filterSearch = v; renderTable(); };
-window.onCategoryFilter = (v)=>{ filterCategory = v; renderTable(); };
+window.onAreaTab = (key)=>{ filterArea = key; renderTable(); };
 
 // ── Modal: New / Edit ─────────────────────────────────────────────────────
 // Category-aware field visibility + smart defaults. Transport rows expose
@@ -879,7 +935,11 @@ window.openNew = ()=>{
   $('modalTitle').textContent = 'New entry';
   $('modalSub').textContent = 'Add an item to the pricing catalog';
   $('em_name').value = '';
-  $('em_category').value = 'Tour';
+  // Seed the category to whatever the active tab represents so the user
+  // doesn't have to pick it again. They can still change it via the
+  // dropdown (it'll just file the row under a different tab).
+  const area = AREA_BY_KEY[filterArea];
+  $('em_category').value = area?.defaultCategory || 'Tour';
   $('em_audience').value = 'general';
   $('em_sell').value = '';
   $('em_cost').value = '';
