@@ -132,6 +132,25 @@ tbody td.c{text-align:center}
 .mtoggle .label{font-size:12px;color:var(--ink);font-weight:600;flex:1}
 .mfooter{padding:14px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end}
 
+.import-modal{max-width:760px}
+.import-section{padding:0 20px 16px}
+.import-section-title{font-family:'DM Serif Display',serif;font-size:16px;color:var(--navy);margin:14px 0 4px;display:flex;align-items:center;gap:10px}
+.import-section-title .count{font-family:'Outfit',sans-serif;font-size:11px;color:var(--muted);font-weight:600}
+.import-section-hint{font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.45}
+.import-list{border:1px solid var(--border);border-radius:10px;max-height:260px;overflow-y:auto;background:#fff}
+.import-row{display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--border);cursor:pointer;user-select:none;font-size:12.5px}
+.import-row:last-child{border-bottom:0}
+.import-row:hover{background:var(--foam)}
+.import-row input{width:15px;height:15px;cursor:pointer;flex-shrink:0}
+.import-row .name{flex:1;min-width:0}
+.import-row .name b{display:block;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.import-row .name span{font-size:10px;color:var(--muted)}
+.import-row .price{font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);white-space:nowrap}
+.import-empty{padding:18px;text-align:center;color:var(--muted);font-size:12px}
+.import-toolbar{display:flex;justify-content:space-between;align-items:center;padding:6px 0;font-size:11px;color:var(--muted)}
+.import-toolbar a{color:var(--ocean);cursor:pointer;text-decoration:none;font-weight:600}
+.import-toolbar a:hover{text-decoration:underline}
+
 .no-access{padding:64px 24px;text-align:center;color:var(--muted);max-width:560px;margin:0 auto}
 .no-access h2{font-family:'DM Serif Display',serif;color:var(--navy);font-size:22px;margin-bottom:8px}
 .no-access p{font-size:13px;line-height:1.55}
@@ -259,6 +278,23 @@ tbody td.c{text-align:center}
     <div class="mfooter">
       <button class="btn btn-s" id="emCancel">Cancel</button>
       <button class="btn btn-p" id="emSave">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Import modal: pull existing tours/transports into the catalog -->
+<div class="overlay" id="importOv">
+  <div class="modal import-modal">
+    <div class="mhdr">
+      <div class="mhdr-title">Import existing items</div>
+      <div class="mhdr-sub" id="importSub">Pick which tours and transport destinations to bring into the catalog</div>
+    </div>
+    <div class="mbody" id="importBody">
+      <div class="empty">Loading existing items…</div>
+    </div>
+    <div class="mfooter">
+      <button class="btn btn-s" id="importCancel">Cancel</button>
+      <button class="btn btn-p" id="importConfirm">Import 0 items</button>
     </div>
   </div>
 </div>
@@ -567,6 +603,7 @@ function renderShell(){
         <option value="Lesson">Lesson</option>
         <option value="Other Service">Other Service</option>
       </select>
+      ${canEdit ? `<button class="btn btn-s" onclick="openImport()" title="Pull existing tours from Camp Tab and transport destinations from the Hub into the catalog">⬇ Import existing</button>` : ''}
       ${canEdit ? `<button class="btn btn-p" onclick="openNew()">+ New entry</button>` : ''}
     </div>
     <div class="table-wrap" id="tableWrap"></div>
@@ -764,6 +801,288 @@ window.onDelete = async (id)=>{
     setTimeout(()=>{ __suppressRt = false; }, 1000);
   }
 };
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Phase 2 — Import existing items from Camp Tab + Transport presets
+//
+//  Sources:
+//    • Transport presets — Supabase location_state_store, key
+//      "transport_presets_v1". One catalog row per (destination × vehicle)
+//      for Morocco-style multi-vehicle presets, one per destination for
+//      Sri Lanka-style single-price presets. cost_per_guest = vehicle.price
+//      (this is what we pay the driver). sell_price stays 0 — user fills
+//      that in afterwards.
+//
+//    • Camp Tab tours — browser localStorage, key "camptab_menu_v2_<slug>".
+//      Only available if the Hub has been opened on this PC for this
+//      location. We read tour items (.Tours array) and map sell_price
+//      from item.sp. cost_per_guest stays 0.
+//
+//  Behaviour:
+//    • Already-imported items (name + category match, case-insensitive)
+//      are filtered out of the modal — no duplicates.
+//    • Single batch insert at the end. Supabase-first: the in-memory
+//      catalog is only mutated after the insert returns.
+//    • Each imported row is auto-flagged show_in_camp_tab=true /
+//      show_in_transport_picker=true so existing surfaces keep their
+//      items visible after migration.
+// ════════════════════════════════════════════════════════════════════════════
+
+let __importCandidates = []; // [{ key, name, category, sell_price, cost_per_guest, ... }]
+
+async function fetchTransportPresets(){
+  try {
+    const { data, error } = await sbClient
+      .from('location_state_store')
+      .select('value')
+      .eq('location_id', locationId)
+      .eq('key', 'transport_presets_v1')
+      .maybeSingle();
+    if (error) { console.warn('[Prices] transport presets fetch error', error); return null; }
+    return data?.value || null;
+  } catch (e) {
+    console.warn('[Prices] transport presets fetch threw', e);
+    return null;
+  }
+}
+
+function readCampTabMenuFromLocalStorage(){
+  // The Hub uses CAMPTAB_MENU_KEY = 'camptab_menu_v2' + suffix where the
+  // suffix is '' for sri-lanka (legacy default) and '_<slug>' otherwise.
+  const suffix = (LOCATION_SLUG === 'sri-lanka') ? '' : ('_' + LOCATION_SLUG);
+  const key = 'camptab_menu_v2' + suffix;
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch (e) {
+    console.warn('[Prices] camptab menu parse failed', e);
+    return null;
+  }
+}
+
+function buildImportCandidates(transportPresets, campTabMenu){
+  const candidates = [];
+  const cur = LOCATION_CURRENCY[LOCATION_SLUG] || 'EUR';
+
+  // Already-in-catalog lookup (case-insensitive name + category)
+  const existing = new Set(catalog.map(r => (r.category||'').toLowerCase()+'::'+(r.name||'').trim().toLowerCase()));
+  const seen = new Set();
+  const pushUnique = (cand)=>{
+    const k = cand.category.toLowerCase()+'::'+cand.name.trim().toLowerCase();
+    if (existing.has(k) || seen.has(k)) return;
+    seen.add(k);
+    candidates.push(cand);
+  };
+
+  // 1. Transport presets → Transport rows
+  if (transportPresets) {
+    const allPresets = [...(transportPresets.airport||[]), ...(transportPresets.tuktuk||[])];
+    for (const p of allPresets) {
+      if (!p?.name) continue;
+      if (Array.isArray(p.vehicles) && p.vehicles.length) {
+        // Morocco-style: one row per vehicle
+        for (const v of p.vehicles) {
+          const vehLabel = String(v?.label || '').trim();
+          if (!vehLabel) continue;
+          pushUnique({
+            source: 'transport',
+            name: p.name + ' — ' + vehLabel,
+            category: 'Transport',
+            audience: 'general',
+            sell_price: 0,
+            cost_per_guest: Number(v.price || 0),
+            currency: cur,
+            notes: 'Imported from Hub Transport presets (' + vehLabel + ', capacity ' + (v.capacity||'?') + ')',
+            show_in_transport_picker: true,
+            show_in_camp_tab: false,
+            linked_transport_preset_id: String(p.id || '')
+          });
+        }
+      } else {
+        // Sri Lanka-style: single price preset
+        const price = Number(p.unitPrice || 0);
+        pushUnique({
+          source: 'transport',
+          name: p.name,
+          category: 'Transport',
+          audience: 'general',
+          sell_price: 0,
+          cost_per_guest: price,
+          currency: cur,
+          notes: 'Imported from Hub Transport presets',
+          show_in_transport_picker: true,
+          show_in_camp_tab: false,
+          linked_transport_preset_id: String(p.id || ''),
+          linked_camp_tab_id: p.linkedTour ? String(p.linkedTour) : null
+        });
+      }
+    }
+  }
+
+  // 2. Camp Tab Tours → Tour rows
+  if (campTabMenu && Array.isArray(campTabMenu.Tours)) {
+    for (const t of campTabMenu.Tours) {
+      const name = String(t?.n || '').trim();
+      if (!name) continue;
+      pushUnique({
+        source: 'campTab',
+        name,
+        category: 'Tour',
+        audience: 'general',
+        sell_price: Number(t?.sp || 0),
+        cost_per_guest: 0,
+        currency: cur,
+        notes: t?.d ? String(t.d) : 'Imported from Camp Tab Tours',
+        show_in_camp_tab: true,
+        show_in_transport_picker: false,
+        linked_camp_tab_id: String(t?.id || name)
+      });
+    }
+  }
+
+  return candidates;
+}
+
+function renderImportModal(){
+  const body = $('importBody');
+  const transport = __importCandidates.filter(c=>c.source === 'transport');
+  const tours = __importCandidates.filter(c=>c.source === 'campTab');
+
+  const sectionHtml = (title, hint, items, prefix)=>{
+    if (!items.length) return `
+      <div class="import-section">
+        <div class="import-section-title">${title}</div>
+        <div class="import-empty">${hint}</div>
+      </div>`;
+    return `
+      <div class="import-section">
+        <div class="import-section-title">${title} <span class="count">${items.length} available</span></div>
+        <div class="import-toolbar">
+          <span>Tick what you want to bring in. Sell prices and cost prices stay editable in the catalog afterwards.</span>
+          <span><a onclick="toggleImportSection('${prefix}', true)">Select all</a> · <a onclick="toggleImportSection('${prefix}', false)">Clear</a></span>
+        </div>
+        <div class="import-list">
+          ${items.map((c, i)=>{
+            const idx = __importCandidates.indexOf(c);
+            const priceTxt = c.sell_price > 0
+              ? 'Sell ' + money(c.sell_price, c.currency)
+              : (c.cost_per_guest > 0 ? 'Cost ' + money(c.cost_per_guest, c.currency) : '—');
+            return `<label class="import-row">
+              <input type="checkbox" data-import-idx="${idx}" data-import-prefix="${prefix}" checked onchange="updateImportCount()">
+              <div class="name"><b>${escapeHtml(c.name)}</b><span>${escapeHtml(c.notes||'')}</span></div>
+              <div class="price">${priceTxt}</div>
+            </label>`;
+          }).join('')}
+        </div>
+      </div>`;
+  };
+
+  body.innerHTML = `
+    ${sectionHtml(
+      '🚐 Transport destinations',
+      'No transport presets found for this location. Add some in the Hub → Transport tab first.',
+      transport, 'transport'
+    )}
+    ${sectionHtml(
+      '🏝️ Camp Tab tours',
+      'No Camp Tab tour menu found in this browser. Open the Hub on the same PC where you set up tours, then reload this page.',
+      tours, 'campTab'
+    )}
+  `;
+  updateImportCount();
+}
+
+window.toggleImportSection = (prefix, checked)=>{
+  document.querySelectorAll(`#importBody input[data-import-prefix="${prefix}"]`).forEach(cb=>{
+    cb.checked = checked;
+  });
+  updateImportCount();
+};
+
+window.updateImportCount = ()=>{
+  const n = document.querySelectorAll('#importBody input[type=checkbox]:checked').length;
+  $('importConfirm').textContent = 'Import ' + n + ' item' + (n===1?'':'s');
+  $('importConfirm').disabled = n === 0;
+};
+
+window.openImport = async ()=>{
+  $('importBody').innerHTML = '<div class="empty">Loading existing items…</div>';
+  $('importConfirm').textContent = 'Import 0 items';
+  $('importConfirm').disabled = true;
+  $('importOv').classList.add('open');
+
+  const [transport, campTab] = await Promise.all([
+    fetchTransportPresets(),
+    Promise.resolve(readCampTabMenuFromLocalStorage())
+  ]);
+  __importCandidates = buildImportCandidates(transport, campTab);
+
+  if (!__importCandidates.length) {
+    $('importBody').innerHTML = `
+      <div class="empty" style="padding:32px 16px">
+        <div style="font-family:'DM Serif Display',serif;font-size:18px;color:var(--navy);margin-bottom:6px">Nothing new to import</div>
+        <div style="font-size:12px">Either there are no transport presets / Camp Tab tours for this location, or everything is already in the catalog.</div>
+      </div>`;
+    return;
+  }
+  renderImportModal();
+};
+
+$('importCancel').addEventListener('click', ()=>$('importOv').classList.remove('open'));
+
+$('importConfirm').addEventListener('click', async ()=>{
+  const picked = [];
+  document.querySelectorAll('#importBody input[type=checkbox]:checked').forEach(cb=>{
+    const idx = Number(cb.getAttribute('data-import-idx'));
+    const c = __importCandidates[idx];
+    if (c) picked.push(c);
+  });
+  if (!picked.length) return;
+
+  const rows = picked.map((c, i)=>({
+    location_id: locationId,
+    name: c.name,
+    category: c.category,
+    audience: c.audience || 'general',
+    sell_price: c.sell_price || 0,
+    cost_per_guest: c.cost_per_guest || 0,
+    currency: c.currency,
+    notes: c.notes || null,
+    show_in_camp_tab: !!c.show_in_camp_tab,
+    show_in_transport_picker: !!c.show_in_transport_picker,
+    linked_camp_tab_id: c.linked_camp_tab_id || null,
+    linked_transport_preset_id: c.linked_transport_preset_id || null,
+    active: true,
+    sort_order: 100 + i
+  }));
+
+  __pendingSave = true;
+  __suppressRt = true;
+  setSavePill('saving','Importing '+rows.length+'…');
+  $('importConfirm').disabled = true;
+  $('importConfirm').textContent = 'Importing…';
+  try {
+    const { data, error } = await sbClient
+      .from('pricing_catalog').insert(rows).select();
+    if (error) throw error;
+    for (const r of (data || [])) catalog.push(r);
+    __pendingSave = false;
+    setSavePill('saved','Imported '+(data?.length||0)+' ✓');
+    setTimeout(clearSavePill, 2000);
+    $('importOv').classList.remove('open');
+    renderTable();
+  } catch (err) {
+    console.error('[Prices] import failed', err);
+    __pendingSave = false;
+    setSavePill('failed','⚠ Import failed');
+    $('importConfirm').disabled = false;
+    $('importConfirm').textContent = 'Import '+picked.length+' items';
+    alert('Could not import: ' + (err?.message || 'unknown error') + '\n\nNothing was saved. Try again or import in smaller batches.');
+  } finally {
+    setTimeout(()=>{ __suppressRt = false; }, 1500);
+  }
+});
 
 // ── Before-unload guard ────────────────────────────────────────────────────
 window.addEventListener('beforeunload', e=>{
