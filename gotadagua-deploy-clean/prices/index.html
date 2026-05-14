@@ -850,18 +850,38 @@ async function fetchTransportPresets(){
 }
 
 function readCampTabMenuFromLocalStorage(){
-  // The Hub uses CAMPTAB_MENU_KEY = 'camptab_menu_v2' + suffix where the
-  // suffix is '' for sri-lanka (legacy default) and '_<slug>' otherwise.
-  const suffix = (LOCATION_SLUG === 'sri-lanka') ? '' : ('_' + LOCATION_SLUG);
-  const key = 'camptab_menu_v2' + suffix;
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return null;
-    return JSON.parse(raw);
-  } catch (e) {
-    console.warn('[Prices] camptab menu parse failed', e);
-    return null;
+  // The Hub uses CAMPTAB_MENU_KEY = 'camptab_menu_v2' + '_' + slug for
+  // EVERY location (including sri-lanka). Try the canonical key first,
+  // then fall back to the legacy bare key (no suffix) for very old data,
+  // and finally to camp-tab-inner's own key. Whichever has a non-empty
+  // Tours array wins.
+  const candidates = [
+    'camptab_menu_v2_' + LOCATION_SLUG,
+    'camptab_menu_v2',              // legacy default
+    'camptab_menu_v2-' + LOCATION_SLUG // defensive — in case anyone used hyphen
+  ];
+  for (const key of candidates) {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+      const parsed = JSON.parse(raw);
+      if (parsed && Array.isArray(parsed.Tours) && parsed.Tours.length) {
+        console.log('[Prices] camp-tab menu loaded from localStorage key:', key, '— '+parsed.Tours.length+' tours');
+        return parsed;
+      }
+    } catch (e) {
+      console.warn('[Prices] camptab menu parse failed for key', key, e);
+    }
   }
+  // Last resort: enumerate any 'camptab_menu_v2*' keys present (helps
+  // diagnose key-naming drift)
+  const all = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith('camptab_menu_v2')) all.push(k);
+  }
+  console.log('[Prices] no usable camp-tab menu found. Keys present matching camptab_menu_v2*:', all);
+  return null;
 }
 
 function buildImportCandidates(transportPresets, campTabMenu){
@@ -994,7 +1014,7 @@ function renderImportModal(){
     )}
     ${sectionHtml(
       '🏝️ Camp Tab tours',
-      'No Camp Tab tour menu found in this browser. Open the Hub on the same PC where you set up tours, then reload this page.',
+      'No Camp Tab tour menu found in this browser. Open <a href="/camp-hub?location='+LOCATION_SLUG+'" target="_blank" style="color:var(--ocean);font-weight:600">the Hub for this location</a> in a new tab, navigate to Camp Tab → Menu settings so the tour list loads, then come back here and click Import again.',
       tours, 'campTab'
     )}
   `;
