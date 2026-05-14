@@ -12,7 +12,13 @@
 <meta http-equiv="Expires" content="0">
 <title>Pricing Catalog — Gota Dagua</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-<script src="/supabase-config.js?v=5" onerror="window.__SUPABASE_CFG_FAILED=true"></script>
+<!-- Load supabase-js + the project config the same way every other working
+     page in this app loads them: as plain <script src> tags. The dynamic
+     loader we tried earlier was too clever and didn't reliably register
+     window.supabase in every browser. /partners and /camp-hub have run
+     this pattern without issue for months. -->
+<script src="/lib/supabase.min.js?v=6" onerror="window.__SUPABASE_SDK_FAILED=true"></script>
+<script src="/supabase-config.js?v=6" onerror="window.__SUPABASE_CFG_FAILED=true"></script>
 <style>
 :root{
   --navy:#28394b;--navy-mid:#344d63;--ocean:#1e6fa8;--ocean-light:#3b9dd4;
@@ -364,49 +370,10 @@ function withTimeout(promise, ms, label){
 
 // ── Bootstrap ──────────────────────────────────────────────────────────────
 
-// Load supabase-js dynamically with CDN fallback. Tries jsdelivr → unpkg →
-// esm.sh in order, each with a 5 s timeout, so a blocked CDN doesn't kill
-// the page. Updates the boot log with which CDN we're trying so the user
-// can see what's happening.
-function loadScript(src, timeoutMs){
-  return new Promise((resolve, reject)=>{
-    const s = document.createElement('script');
-    s.src = src; s.async = false;
-    let done = false;
-    const t = setTimeout(()=>{ if (done) return; done = true; s.remove(); reject(new Error('timeout')); }, timeoutMs);
-    s.onload = ()=>{ if (done) return; done = true; clearTimeout(t); resolve(); };
-    s.onerror = ()=>{ if (done) return; done = true; clearTimeout(t); reject(new Error('script error')); };
-    document.head.appendChild(s);
-  });
-}
-
-async function loadSupabaseSdk(){
-  // Try self-hosted copy first — same origin as the page, so it bypasses
-  // ad-blockers, Brave Shields, corporate firewalls, and regional CDN
-  // blocks. Falls back to public CDNs only if the local file is missing.
-  const cdns = [
-    { name:'self-hosted', src:'/lib/supabase.min.js?v=5' },
-    { name:'jsdelivr',    src:'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2' },
-    { name:'unpkg',       src:'https://unpkg.com/@supabase/supabase-js@2' },
-    { name:'esm.sh',      src:'https://esm.sh/@supabase/supabase-js@2' }
-  ];
-  const errors = [];
-  for (const cdn of cdns) {
-    markStep('step-client','pending','Loading supabase-js from '+cdn.name+'…');
-    try {
-      await loadScript(cdn.src, 5000);
-      if (window.supabase && typeof window.supabase.createClient === 'function') {
-        console.log('[Prices] supabase-js loaded via', cdn.name);
-        return cdn.name;
-      }
-      errors.push(cdn.name+': loaded but window.supabase not set');
-    } catch (e) {
-      errors.push(cdn.name+': '+(e?.message||e));
-      console.warn('[Prices] CDN '+cdn.name+' failed:', e?.message||e);
-    }
-  }
-  throw new Error('All CDNs failed: '+errors.join(' · '));
-}
+// supabase-js is loaded via a plain <script> tag in <head> alongside
+// supabase-config.js — same pattern as /partners and /camp-hub. By the
+// time init() runs (inline script at end of body), window.supabase is
+// already set. We only verify here.
 
 (async function init(){
   console.log('[Prices] init starting — location slug:', LOCATION_SLUG);
@@ -424,19 +391,21 @@ async function loadSupabaseSdk(){
   }
   markStep('step-config','ok','Config found');
 
-  // 2. Load supabase-js with CDN fallback (jsdelivr → unpkg → esm.sh)
-  let cdnUsed;
-  try {
-    cdnUsed = await loadSupabaseSdk();
-  } catch (err) {
-    console.error('[Prices] all CDNs failed', err);
-    markStep('step-client','err','All CDNs failed — '+(err?.message||err));
-    renderNoAccess('Supabase SDK unavailable',
-      'The Supabase JavaScript bundle could not be loaded from any of our 3 CDNs (jsdelivr, unpkg, esm.sh). Most likely cause: an ad-blocker (uBlock / Brave Shields / Pi-hole) or a corporate firewall is blocking CDN domains. Disable it for this site and refresh.');
+  // 2. Verify supabase-js loaded (from the static <script> tag in <head>)
+  if (window.__SUPABASE_SDK_FAILED) {
+    markStep('step-client','err','/lib/supabase.min.js failed to load (404 or blocked)');
+    renderNoAccess('Supabase SDK missing',
+      'The /lib/supabase.min.js file failed to load from this domain. Open the Network tab in DevTools and check if it returned 200.');
+    return;
+  }
+  if (!window.supabase || typeof window.supabase.createClient !== 'function') {
+    markStep('step-client','err','window.supabase not set (script loaded but global missing)');
+    renderNoAccess('Supabase SDK broken',
+      'The Supabase JavaScript bundle loaded but did not register the global. Try a hard refresh (Cmd+Shift+R) or open in incognito.');
     return;
   }
   supabase = window.supabase.createClient(window.__SUPABASE_CONFIG.url, window.__SUPABASE_CONFIG.anonKey);
-  markStep('step-client','ok','Client ready (via '+cdnUsed+')');
+  markStep('step-client','ok','Client ready (self-hosted)');
 
   // 3. Session
   markStep('step-session','pending','Reading your session…');
