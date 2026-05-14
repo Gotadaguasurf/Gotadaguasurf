@@ -85,8 +85,8 @@ main{max-width:1100px;margin:0 auto;padding:32px 24px}
 /* Price-List view — clean, share-ready sections per area (Surf, Tours,
    Transfers, Add-ons). Mirrors the Accommodation card styling so the
    whole page reads as one document. */
-.pv-section-title{font-size:18px;font-weight:700;color:var(--ink);letter-spacing:-0.01em;margin:24px 0 14px;padding-bottom:10px;border-bottom:2px solid #f0f0ee}
-.pv-section-title:first-child{margin-top:0}
+.pv-section-title{font-size:18px;font-weight:700;color:var(--ink);letter-spacing:-0.01em;margin:32px 0 16px;padding-bottom:12px;border-bottom:2px solid #f0f0ee}
+.pv-section-title:first-of-type{margin-top:8px}
 .pv-card{background:#fff;border:1px solid #e8e8e6;border-radius:14px;padding:22px 26px;margin-bottom:14px}
 .pv-table{width:100%;border-collapse:collapse;font-size:13px}
 .pv-table thead th{text-align:left;padding:6px 10px;color:#bbb;font-weight:500;font-size:11px;border-bottom:1px solid #f0f0ee;text-transform:uppercase;letter-spacing:.06em}
@@ -239,8 +239,8 @@ tbody td.c{text-align:center}
    muted muted labels, ink-black prices). The page chrome (header, area
    tabs) stays navy; the Accommodation content area below uses this palette. */
 
-.accom-section-title{font-size:18px;font-weight:700;color:var(--ink);letter-spacing:-0.01em;margin:6px 0 14px;padding-bottom:10px;border-bottom:2px solid #f0f0ee}
-.accom-section-title:first-child{margin-top:0}
+.accom-section-title{font-size:18px;font-weight:700;color:var(--ink);letter-spacing:-0.01em;margin:32px 0 16px;padding-bottom:12px;border-bottom:2px solid #f0f0ee}
+.accom-section-title:first-of-type{margin-top:8px}
 
 .accom-pack-tabs{display:inline-flex;gap:0;margin-bottom:18px;background:#f5f5f3;border-radius:10px;padding:4px;width:fit-content}
 .accom-pack-tab{padding:8px 18px;border-radius:7px;border:none;font-size:13px;font-weight:500;cursor:pointer;color:#888;background:transparent;font-family:'Outfit',sans-serif;transition:all .15s}
@@ -519,13 +519,17 @@ body.view-list .accom-price:hover{background:transparent}
           <div class="help">When set, transport spend for this destination is attributed to the chosen tour in reports.</div>
         </div>
 
-        <!-- Tour-specific: link to the transport used for this tour -->
+        <!-- Tour-specific: link to the transport ROUTE used for this tour.
+             A tour uses whichever vehicle fits the group size — Car for 4,
+             Big Van for 12 — so the linkage is to the route ("Souk"), not
+             a specific vehicle. The Overview attributes any vehicle from
+             that route to this tour's P&L. -->
         <div class="mfield" id="em_linked_transport_row" style="display:none">
-          <label>Linked transport (optional)</label>
+          <label>Linked transport route (optional)</label>
           <select id="em_linked_transport">
             <option value="">— Not linked —</option>
           </select>
-          <div class="help">When set, the linked transport's cost is treated as part of this tour's cost calculation.</div>
+          <div class="help">Pick the route, not a specific vehicle. The Overview attributes every vehicle from that route (Car / Minivan / Van) to this tour's profit.</div>
         </div>
       </div>
     </div>
@@ -1914,30 +1918,58 @@ function populateLinkedSelects(currentRow){
   const transSel = $('em_linked_transport');
   const skipId = currentRow?.id || '';
 
-  // Tours for "linked tour" dropdown (used when editing a Transport)
+  // Tours for "linked tour" dropdown (used when editing a Transport).
+  // Tours stay one-row entities so the dropdown lists them as-is.
   const tourRows = catalog
     .filter(r=>r.category==='Tour' && r.active && r.id !== skipId)
     .sort((a,b)=>(a.name||'').localeCompare(b.name||''));
   tourSel.innerHTML = '<option value="">— Not linked —</option>' +
     tourRows.map(r=>`<option value="${r.id}">${escapeHtml(r.name)}</option>`).join('');
 
-  // Transports for "linked transport" dropdown (used when editing a Tour)
-  const transRows = catalog
-    .filter(r=>r.category==='Transport' && r.active && r.id !== skipId)
-    .sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  // ── Linked transport dropdown — route GROUPS, not individual vehicles ──
+  // Tours don't pick a specific vehicle to link to. A tour party of 4 may
+  // need a Car; the same tour with 12 guests needs a Big Van. The link
+  // belongs to the ROUTE ("Souk") so the Overview attributes spend
+  // regardless of which vehicle was actually used.
+  //
+  // Stored format: "route:<RouteName>" in linked_transport_preset_id.
+  // On save, every Transport row whose name prefix matches the route
+  // also gets its linked_camp_tab_id set to this Tour's UUID (handled
+  // in the emSave handler). The Hub aggregator then sees ANY vehicle
+  // expense for that route attribute to this Tour.
+  const transRoutes = new Set();
+  for (const r of catalog) {
+    if (r.category !== 'Transport' || !r.active) continue;
+    if (r.id === skipId) continue;
+    const i = String(r.name || '').lastIndexOf(' — ');
+    const route = (i > 0 ? r.name.slice(0, i) : r.name).trim();
+    if (route) transRoutes.add(route);
+  }
+  const sortedRoutes = Array.from(transRoutes).sort();
   transSel.innerHTML = '<option value="">— Not linked —</option>' +
-    transRows.map(r=>`<option value="${r.id}">${escapeHtml(r.name)}</option>`).join('');
+    sortedRoutes.map(g=>`<option value="route:${escapeHtml(g)}">${escapeHtml(g)}</option>`).join('');
 
-  // Pre-select what's already on the row. We use linked_camp_tab_id for
-  // Transport→Tour linkage and linked_transport_preset_id for Tour→Transport
-  // linkage. These fields exist in the schema already from Phase 2 and
-  // accept any text, so we store the catalog UUID directly.
+  // Pre-select what's already on the row.
   if (currentRow) {
     if (currentRow.category === 'Transport' && currentRow.linked_camp_tab_id) {
       tourSel.value = currentRow.linked_camp_tab_id;
     }
     if (currentRow.category === 'Tour' && currentRow.linked_transport_preset_id) {
-      transSel.value = currentRow.linked_transport_preset_id;
+      const stored = currentRow.linked_transport_preset_id;
+      if (stored.startsWith('route:')) {
+        // New format — direct match
+        transSel.value = stored;
+      } else {
+        // Legacy format — UUID pointing at a specific vehicle. Resolve
+        // back to its route prefix so the route-group dropdown can
+        // surface the right option.
+        const legacy = catalog.find(r => r.id === stored);
+        if (legacy) {
+          const i = String(legacy.name || '').lastIndexOf(' — ');
+          const route = (i > 0 ? legacy.name.slice(0, i) : legacy.name).trim();
+          if (route) transSel.value = `route:${route}`;
+        }
+      }
     }
   }
 }
@@ -1984,16 +2016,37 @@ function updateEffectiveCostPreview(){
     $('em_total_preview').style.display = 'none';
     return;
   }
+  // Tour-side linkage now stores a route group ("route:Souk") rather than
+  // a specific vehicle UUID. Detect that prefix and show how many
+  // vehicles the group covers so the user understands the linkage is
+  // any-vehicle, not a fixed pick.
+  if (cat === 'Tour' && linkedId.startsWith('route:')) {
+    const routeName = linkedId.slice(6);
+    const groupRows = catalog.filter(r => {
+      if (r.category !== 'Transport' || !r.active) return false;
+      const i = String(r.name || '').lastIndexOf(' — ');
+      const route = (i > 0 ? r.name.slice(0, i) : r.name).trim();
+      return route === routeName;
+    });
+    const vehicleCount = groupRows.length;
+    const costs = groupRows.map(r => Number(r.cost_per_guest||0)).filter(n => n > 0);
+    const ccy = groupRows[0]?.currency || 'EUR';
+    const costSummary = costs.length
+      ? `${vehicleCount} vehicle${vehicleCount===1?'':'s'} · cost ${money(Math.min(...costs), ccy)}–${money(Math.max(...costs), ccy)} per trip`
+      : `${vehicleCount} vehicle${vehicleCount===1?'':'s'}`;
+    $('em_total_preview_body').innerHTML =
+      `<span style="font-weight:700">${escapeHtml(routeName)}</span>` +
+      `<span style="color:var(--muted);margin-left:8px">· ${costSummary} · Overview attributes any vehicle from this route to this tour</span>`;
+    $('em_total_preview').style.display = '';
+    return;
+  }
+
+  // Single-row linkage (Transport → Tour). Look up the specific row.
   const linked = catalog.find(r=>r.id === linkedId);
   if (!linked) {
     $('em_total_preview').style.display = 'none';
     return;
   }
-  // Preview is purely informational now — shows what the row is linked to
-  // and reminds the user that the linkage is for Overview attribution,
-  // not catalog arithmetic. No per-guest math, no combined totals — the
-  // user explicitly rejected that direction.
-  const linkLabel = (cat === 'Tour') ? 'Transport linked to this tour' : 'Tour this transport is for';
   const linkedSell = Number(linked.sell_price||0);
   const linkedCost = Number(linked.cost_per_guest||0);
   const detail = (cat === 'Tour')
@@ -2001,7 +2054,7 @@ function updateEffectiveCostPreview(){
     : (linkedSell > 0 ? `sells for ${fmt(linkedSell)}` : 'no sell price set');
   $('em_total_preview_body').innerHTML =
     `<span style="font-weight:700">${escapeHtml(linked.name)}</span>` +
-    `<span style="color:var(--muted);margin-left:8px">· ${detail} · used in the Overview to attribute spend, not for catalog math</span>`;
+    `<span style="color:var(--muted);margin-left:8px">· ${detail} · used in the Overview to attribute spend</span>`;
   $('em_total_preview').style.display = '';
 }
 
@@ -2148,6 +2201,55 @@ $('emSave').addEventListener('click', async ()=>{
       saved = data;
       catalog.push(saved);
     }
+
+    // ── Tour → route-group linkage propagation ──
+    // When saving a Tour with a route-group linkage ("route:Souk"), set
+    // linked_camp_tab_id = thisTourId on EVERY active Transport row in
+    // that route. That's what makes "any vehicle from this route
+    // attributes to this tour" work end-to-end in the Hub's Overview.
+    // Also clear the linkage from transports in OTHER routes that were
+    // previously linked to this tour (e.g. when the user switched the
+    // tour from Souk → Dunes).
+    if (cat === 'Tour' && saved?.id) {
+      const linkedValue = payload.linked_transport_preset_id || '';
+      const targetRoute = linkedValue.startsWith('route:') ? linkedValue.slice(6).trim() : '';
+      const matchingTransportIds = [];
+      const orphanTransportIds   = [];
+      for (const r of catalog) {
+        if (r.category !== 'Transport' || !r.active) continue;
+        const i = String(r.name || '').lastIndexOf(' — ');
+        const route = (i > 0 ? r.name.slice(0, i) : r.name).trim();
+        if (targetRoute && route === targetRoute) {
+          if (r.linked_camp_tab_id !== saved.id) matchingTransportIds.push(r.id);
+        } else if (r.linked_camp_tab_id === saved.id) {
+          orphanTransportIds.push(r.id);
+        }
+      }
+      if (matchingTransportIds.length) {
+        const { error: linkErr } = await sbClient
+          .from('pricing_catalog')
+          .update({ linked_camp_tab_id: saved.id })
+          .in('id', matchingTransportIds);
+        if (linkErr) console.warn('[Prices] route linkage propagation failed', linkErr);
+        // Mirror into local catalog so the next render reflects the new state
+        for (const id of matchingTransportIds) {
+          const idx = catalog.findIndex(r => r.id === id);
+          if (idx >= 0) catalog[idx] = { ...catalog[idx], linked_camp_tab_id: saved.id };
+        }
+      }
+      if (orphanTransportIds.length) {
+        const { error: orphErr } = await sbClient
+          .from('pricing_catalog')
+          .update({ linked_camp_tab_id: null })
+          .in('id', orphanTransportIds);
+        if (orphErr) console.warn('[Prices] route linkage cleanup failed', orphErr);
+        for (const id of orphanTransportIds) {
+          const idx = catalog.findIndex(r => r.id === id);
+          if (idx >= 0) catalog[idx] = { ...catalog[idx], linked_camp_tab_id: null };
+        }
+      }
+    }
+
     __pendingSave = false;
     setSavePill('saved','Saved ✓');
     setTimeout(clearSavePill, 1500);
