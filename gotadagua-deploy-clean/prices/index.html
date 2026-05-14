@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pricing Catalog — Gota Dagua</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="/supabase-config.js"></script>
+<style>
+:root{
+  --navy:#28394b;--navy-mid:#344d63;--ocean:#1e6fa8;--ocean-light:#3b9dd4;
+  --foam:#e8f4fd;--sand:#f5f0e8;--sand-dark:#e8dfc8;
+  --ink:#0d1b2a;--muted:#6b8099;--border:#d4e3f0;--bg:#f0f5fa;
+  --green-bg:#eafaf1;--green:#1a7a40;
+  --amber-bg:#fef9e7;--amber:#9a6f00;
+  --red-bg:#fdecea;--red:#b91c1c;
+  --r:12px;--sh:0 4px 24px rgba(40,57,75,.10);--sh-lg:0 12px 48px rgba(40,57,75,.18)
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--ink);min-height:100vh}
+header{background:var(--navy);padding:0 24px;display:flex;align-items:center;justify-content:space-between;height:60px;position:sticky;top:0;z-index:100;box-shadow:0 2px 20px rgba(0,0,0,.25);gap:20px}
+.brand{display:flex;align-items:center;gap:10px;color:#fff;text-decoration:none;font-family:'DM Serif Display',serif;font-size:18px}
+.brand a{color:#fff;text-decoration:none}
+.back-btn{display:inline-flex;align-items:center;gap:6px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.08);color:#fff;border-radius:999px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;text-decoration:none;font-family:'Outfit',sans-serif}
+.back-btn:hover{background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.28)}
+.location-pill{display:inline-flex;align-items:center;gap:8px;background:rgba(255,255,255,.1);color:#fff;border-radius:999px;padding:6px 14px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.save-pill{font-size:11px;font-weight:700;padding:5px 12px;border-radius:999px;display:none}
+.save-pill.show{display:inline-flex}
+.save-pill.saving{background:rgba(255,255,255,.1);color:#fff}
+.save-pill.saved{background:rgba(58,200,120,.2);color:#7eebac}
+.save-pill.failed{background:rgba(255,100,100,.2);color:#ffb0b0;cursor:pointer}
+
+main{max-width:1400px;margin:0 auto;padding:28px 32px}
+.page-head{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:14px;margin-bottom:22px}
+.page-title{font-family:'DM Serif Display',serif;font-size:30px;color:var(--navy);line-height:1.1}
+.page-sub{font-size:13px;color:var(--muted);margin-top:4px}
+
+.toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:18px}
+.toolbar input[type=text],.toolbar select{border:1.5px solid var(--border);border-radius:10px;padding:9px 12px;font-size:13px;font-family:'Outfit',sans-serif;background:#fff;color:var(--ink);min-width:140px}
+.toolbar input[type=text]:focus,.toolbar select:focus{outline:none;border-color:var(--ocean)}
+.toolbar .search{flex:1;min-width:200px}
+.btn{border:none;border-radius:10px;padding:9px 16px;font-size:13px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;transition:transform .1s,box-shadow .12s}
+.btn:active{transform:translateY(1px)}
+.btn-p{background:var(--ocean);color:#fff}
+.btn-p:hover{background:var(--navy)}
+.btn-s{background:#fff;border:1.5px solid var(--border);color:var(--navy)}
+.btn-s:hover{border-color:var(--ocean);color:var(--ocean)}
+.btn-r{background:var(--red-bg);color:var(--red);border:1px solid #f0a0a0}
+.btn-g{background:var(--green-bg);color:var(--green);border:1px solid #a3e6c0}
+
+.table-wrap{background:#fff;border-radius:var(--r);border:1px solid var(--border);box-shadow:var(--sh);overflow:hidden}
+table{width:100%;border-collapse:collapse}
+thead{background:var(--navy)}
+thead th{padding:12px 14px;font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:#7aabcc;font-weight:600;text-align:left;white-space:nowrap}
+thead th.r{text-align:right}
+thead th.c{text-align:center}
+tbody tr{border-bottom:1px solid var(--border);transition:background .12s}
+tbody tr:hover{background:var(--foam)}
+tbody td{padding:11px 14px;font-size:13px;color:var(--ink);vertical-align:middle}
+tbody td.r{text-align:right;font-family:'DM Mono',monospace}
+tbody td.c{text-align:center}
+.row-actions{display:inline-flex;gap:6px;flex-shrink:0}
+.icon-btn{background:transparent;border:1px solid var(--border);border-radius:6px;width:28px;height:28px;font-size:13px;color:var(--muted);cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+.icon-btn:hover{border-color:var(--ocean);color:var(--ocean)}
+.icon-btn.danger:hover{border-color:#f0a0a0;color:var(--red);background:var(--red-bg)}
+
+.empty{padding:48px 24px;text-align:center;color:var(--muted)}
+.empty-icon{font-size:32px;margin-bottom:8px;opacity:.4}
+
+.badge{display:inline-flex;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em}
+.badge-tour{background:#e8f4fd;color:var(--ocean)}
+.badge-transport{background:#fef9e7;color:#9a6f00}
+.badge-pack{background:#f5e8fd;color:#7a3ba0}
+.badge-accom{background:#e8fde9;color:#1a7a40}
+.badge-night{background:#fde8f1;color:#a02a5e}
+.badge-lesson{background:#fdf2e8;color:#a05a1a}
+.badge-other{background:#eee;color:#555}
+.badge-group{background:#fef0e6;color:#c05400;margin-left:4px}
+
+.row-toggle{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--muted)}
+.row-toggle .dot{width:8px;height:8px;border-radius:50%;background:#d4dce5}
+.row-toggle.on .dot{background:var(--green)}
+.row-toggle.on{color:var(--green);font-weight:700}
+
+.overlay{display:none;position:fixed;inset:0;background:rgba(20,30,45,.6);backdrop-filter:blur(4px);z-index:200;align-items:center;justify-content:center;padding:20px}
+.overlay.open{display:flex}
+.modal{background:#fff;border-radius:16px;max-width:540px;width:100%;max-height:92vh;overflow-y:auto;box-shadow:var(--sh-lg);animation:mIn .25s cubic-bezier(.34,1.56,.64,1)}
+@keyframes mIn{from{opacity:0;transform:translateY(20px) scale(.95)}to{opacity:1;transform:translateY(0) scale(1)}}
+.mhdr{background:var(--navy);color:#fff;padding:16px 20px;border-radius:16px 16px 0 0}
+.mhdr-title{font-family:'DM Serif Display',serif;font-size:18px}
+.mhdr-sub{font-size:11px;color:#9fc5df;margin-top:2px}
+.mbody{padding:20px}
+.mfield{margin-bottom:14px}
+.mfield label{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin-bottom:6px}
+.mfield input,.mfield select,.mfield textarea{width:100%;border:1.5px solid var(--border);border-radius:9px;padding:9px 12px;font-size:13px;font-family:'Outfit',sans-serif;background:#fff;color:var(--ink)}
+.mfield input[type=number]{font-family:'DM Mono',monospace}
+.mfield input:focus,.mfield select:focus,.mfield textarea:focus{outline:none;border-color:var(--ocean)}
+.mfield .help{font-size:11px;color:var(--muted);margin-top:4px}
+.mgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.mtoggle{display:flex;align-items:center;gap:8px;padding:9px 12px;border:1.5px solid var(--border);border-radius:9px;background:#fff;cursor:pointer;user-select:none}
+.mtoggle input{width:16px;height:16px;cursor:pointer}
+.mtoggle .label{font-size:12px;color:var(--ink);font-weight:600;flex:1}
+.mfooter{padding:14px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end}
+
+.no-access{padding:64px 24px;text-align:center;color:var(--muted)}
+.no-access h2{font-family:'DM Serif Display',serif;color:var(--navy);font-size:22px;margin-bottom:8px}
+
+@media (max-width: 820px){
+  main{padding:18px}
+  thead{display:none}
+  tbody tr{display:block;padding:12px;border-bottom:1px solid var(--border)}
+  tbody td{display:flex;justify-content:space-between;padding:6px 0;font-size:12px}
+  tbody td::before{content:attr(data-label);color:var(--muted);font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.06em}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <a href="/" class="brand-home">Gota Dagua</a>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px">
+    <span id="locPill" class="location-pill">—</span>
+    <span id="savePill" class="save-pill"></span>
+  </div>
+  <a href="/" class="back-btn">← Workspace</a>
+</header>
+
+<main id="mainContent">
+  <div class="no-access" id="loadingMsg">
+    <h2>Loading…</h2>
+    <p>Connecting to Supabase</p>
+  </div>
+</main>
+
+<!-- Edit modal -->
+<div class="overlay" id="editOv">
+  <div class="modal">
+    <div class="mhdr">
+      <div class="mhdr-title" id="modalTitle">New entry</div>
+      <div class="mhdr-sub" id="modalSub">Add an item to the pricing catalog</div>
+    </div>
+    <div class="mbody">
+      <div class="mfield">
+        <label>Name *</label>
+        <input type="text" id="em_name" placeholder="e.g., Souk Tour" autocomplete="off">
+      </div>
+      <div class="mgrid">
+        <div class="mfield">
+          <label>Category *</label>
+          <select id="em_category">
+            <option value="Tour">Tour</option>
+            <option value="Transport">Transport</option>
+            <option value="Surf Pack">Surf Pack</option>
+            <option value="Accommodation">Accommodation</option>
+            <option value="Per Night">Per Night</option>
+            <option value="Lesson">Lesson</option>
+            <option value="Other Service">Other Service</option>
+          </select>
+        </div>
+        <div class="mfield">
+          <label>Audience</label>
+          <select id="em_audience">
+            <option value="general">General (per-guest)</option>
+            <option value="group">Group (fixed per booking)</option>
+          </select>
+        </div>
+      </div>
+      <div class="mgrid">
+        <div class="mfield">
+          <label>Sell price</label>
+          <input type="number" id="em_sell" min="0" step="0.01" placeholder="0.00">
+        </div>
+        <div class="mfield">
+          <label>Cost per guest</label>
+          <input type="number" id="em_cost" min="0" step="0.01" placeholder="0.00">
+        </div>
+      </div>
+      <div class="mfield">
+        <label>Currency</label>
+        <select id="em_currency">
+          <option value="LKR">LKR</option>
+          <option value="MAD">MAD</option>
+          <option value="EUR">EUR</option>
+        </select>
+        <div class="help">Defaults to the location's currency. Use EUR for cross-camp items.</div>
+      </div>
+      <div class="mfield">
+        <label>Notes</label>
+        <textarea id="em_notes" rows="2" placeholder="Optional"></textarea>
+      </div>
+      <label class="mtoggle" style="margin-bottom:10px">
+        <input type="checkbox" id="em_show_ct">
+        <span class="label">Show in Camp Tab POS<br><span style="font-size:10px;color:var(--muted);font-weight:400">Guests see + pay this price (only Tour category)</span></span>
+      </label>
+      <label class="mtoggle">
+        <input type="checkbox" id="em_show_tp">
+        <span class="label">Show in Transport quick-add picker<br><span style="font-size:10px;color:var(--muted);font-weight:400">Appears when logging Transport expenses (only Transport category)</span></span>
+      </label>
+    </div>
+    <div class="mfooter">
+      <button class="btn btn-s" id="emCancel">Cancel</button>
+      <button class="btn btn-p" id="emSave">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════════════════════════
+//  Pricing Catalog — Phase 1
+//  Standalone page. Reads ?location=<slug> from URL. Owner-only access
+//  (per-email pricing_access table comes in Phase 4). Supabase-first
+//  writes: every add/edit/delete awaits the cloud upsert before
+//  mutating the in-memory list, so local and Supabase never drift.
+//  Realtime subscription keeps two browsers in sync.
+// ════════════════════════════════════════════════════════════════════════════
+
+const OWNER_EMAILS = new Set(['miguel@gotadaguasurf.com']);
+
+const url = new URL(window.location.href);
+const LOCATION_SLUG = (url.searchParams.get('location') || 'sri-lanka').trim().toLowerCase();
+const LOCATION_LABELS = {
+  'sri-lanka':  'Sri Lanka',
+  'morocco':    'Morocco',
+  'portugal':   'Portugal',
+  'junior':     'Junior Camp',
+  'junior-camp':'Junior Camp'
+};
+const LOCATION_CURRENCY = {
+  'sri-lanka':'LKR',
+  'morocco':'MAD',
+  'portugal':'EUR',
+  'junior':'EUR',
+  'junior-camp':'EUR'
+};
+
+let supabase = null;
+let session = null;
+let currentEmail = '';
+let isOwner = false;
+let canEdit = false;
+let canViewCosts = false;
+let locationId = '';
+let catalog = [];           // in-memory copy
+let filterCategory = 'all';
+let filterSearch = '';
+let editingId = null;
+let __pendingSave = false;
+
+const $ = (id)=>document.getElementById(id);
+const eur = (n)=>'€'+Number(n||0).toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2});
+const money = (amt, cur)=>{
+  const n = Number(amt||0);
+  if (cur === 'EUR') return eur(n);
+  return (cur||'') + ' ' + n.toLocaleString('en-GB',{maximumFractionDigits:n>=10?0:2});
+};
+const escapeHtml = (s)=>String(s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function setSavePill(state, text){
+  const el = $('savePill');
+  el.className = 'save-pill show ' + state;
+  el.textContent = text;
+}
+function clearSavePill(){ $('savePill').className = 'save-pill'; }
+
+// ── Bootstrap ──────────────────────────────────────────────────────────────
+
+(async function init(){
+  // 1. Supabase client + session
+  if (!window.__SUPABASE_CONFIG?.url || !window.__SUPABASE_CONFIG?.anonKey) {
+    renderNoAccess('Supabase config missing','The pricing catalog needs Supabase to work. Make sure /supabase-config.js is loaded.');
+    return;
+  }
+  supabase = window.supabase.createClient(window.__SUPABASE_CONFIG.url, window.__SUPABASE_CONFIG.anonKey);
+  const { data: sessionRes } = await supabase.auth.getSession();
+  session = sessionRes?.session || null;
+  if (!session?.user) {
+    renderNoAccess('Not signed in','Sign in from the workspace home first, then come back here.');
+    return;
+  }
+  currentEmail = String(session.user.email || '').toLowerCase();
+  isOwner = OWNER_EMAILS.has(currentEmail);
+  canEdit = isOwner;
+  canViewCosts = isOwner;
+
+  // 2. Resolve location_id
+  const { data: locRow, error: locErr } = await supabase
+    .from('locations').select('id,slug,name')
+    .eq('slug', LOCATION_SLUG).maybeSingle();
+  if (locErr || !locRow) {
+    renderNoAccess('Unknown location',`No location with slug "${LOCATION_SLUG}".`);
+    return;
+  }
+  locationId = locRow.id;
+  $('locPill').textContent = (LOCATION_LABELS[LOCATION_SLUG] || locRow.name || LOCATION_SLUG);
+
+  // 3. (Phase 1) Phase 4 will replace this owner-only gate with the
+  //    pricing_access table lookup. For now, only the owner sees the
+  //    catalog. Everyone else sees the "no access" splash.
+  if (!isOwner) {
+    renderNoAccess('Restricted area','The pricing catalog is currently visible to the platform owner only. Per-email access comes in a follow-up release.');
+    return;
+  }
+
+  // 4. Load catalog rows
+  await loadCatalog();
+
+  // 5. Subscribe to realtime changes
+  subscribeRealtime();
+
+  // 6. Initial render
+  renderShell();
+  renderTable();
+})().catch(err=>{
+  console.error('[Prices] init failed', err);
+  renderNoAccess('Loading error', String(err?.message||err));
+});
+
+async function loadCatalog(){
+  const { data, error } = await supabase
+    .from('pricing_catalog')
+    .select('*')
+    .eq('location_id', locationId)
+    .order('category', { ascending:true })
+    .order('sort_order', { ascending:true })
+    .order('name', { ascending:true });
+  if (error) throw error;
+  catalog = data || [];
+}
+
+// Suppress own RT echo for ~1s after a local write so the upsert that
+// comes back from Supabase doesn't trigger a redundant re-render
+// (which can also clobber an open modal's input focus).
+let __suppressRt = false;
+function subscribeRealtime(){
+  supabase
+    .channel('pricing-catalog-'+locationId)
+    .on('postgres_changes', { event:'*', schema:'public', table:'pricing_catalog', filter:`location_id=eq.${locationId}` }, async ()=>{
+      if (__suppressRt) return;
+      await loadCatalog();
+      renderTable();
+    })
+    .subscribe();
+}
+
+// ── Rendering ──────────────────────────────────────────────────────────────
+
+function renderShell(){
+  const mainEl = $('mainContent');
+  mainEl.innerHTML = `
+    <div class="page-head">
+      <div>
+        <div class="page-title">${escapeHtml(LOCATION_LABELS[LOCATION_SLUG] || LOCATION_SLUG)} prices</div>
+        <div class="page-sub">Master catalog for tours, transports, surf packs, accommodation and other services. Changes here propagate to the Camp Tab POS and the Transport picker (when those items are flagged).</div>
+      </div>
+    </div>
+    <div class="toolbar">
+      <input type="text" class="search" id="searchInput" placeholder="Search by name…" oninput="onSearch(this.value)">
+      <select id="categorySelect" onchange="onCategoryFilter(this.value)">
+        <option value="all">All categories</option>
+        <option value="Tour">Tour</option>
+        <option value="Transport">Transport</option>
+        <option value="Surf Pack">Surf Pack</option>
+        <option value="Accommodation">Accommodation</option>
+        <option value="Per Night">Per Night</option>
+        <option value="Lesson">Lesson</option>
+        <option value="Other Service">Other Service</option>
+      </select>
+      ${canEdit ? `<button class="btn btn-p" onclick="openNew()">+ New entry</button>` : ''}
+    </div>
+    <div class="table-wrap" id="tableWrap"></div>
+  `;
+}
+
+function categoryBadge(cat){
+  const map = {
+    'Tour':'badge-tour','Transport':'badge-transport','Surf Pack':'badge-pack',
+    'Accommodation':'badge-accom','Per Night':'badge-night','Lesson':'badge-lesson',
+    'Other Service':'badge-other'
+  };
+  return `<span class="badge ${map[cat]||'badge-other'}">${escapeHtml(cat||'')}</span>`;
+}
+
+function renderTable(){
+  const wrap = $('tableWrap');
+  if (!wrap) return;
+  let rows = catalog.slice();
+  if (filterCategory !== 'all') rows = rows.filter(r=>r.category === filterCategory);
+  if (filterSearch) {
+    const q = filterSearch.toLowerCase();
+    rows = rows.filter(r=> (r.name||'').toLowerCase().includes(q) || (r.notes||'').toLowerCase().includes(q));
+  }
+
+  if (!rows.length) {
+    wrap.innerHTML = `<div class="empty">
+      <div class="empty-icon">💰</div>
+      <div style="font-family:'DM Serif Display',serif;font-size:18px;color:var(--navy);margin-bottom:4px">No entries yet</div>
+      <div style="font-size:13px">${canEdit ? 'Click "+ New entry" to add tours, transports, surf packs, accommodation, etc.' : 'No prices have been added for this location yet.'}</div>
+    </div>`;
+    return;
+  }
+
+  const head = `<thead><tr>
+    <th>Name</th>
+    <th>Category</th>
+    <th class="r">Sell</th>
+    ${canViewCosts ? '<th class="r">Cost</th><th class="r">Margin</th>' : ''}
+    <th class="c">Camp Tab</th>
+    <th class="c">Transport picker</th>
+    ${canEdit ? '<th class="c">Actions</th>' : ''}
+  </tr></thead>`;
+
+  const body = rows.map(r=>{
+    const sellTxt = r.sell_price ? money(r.sell_price, r.currency) : '<span style="color:var(--muted)">—</span>';
+    const costTxt = r.cost_per_guest ? money(r.cost_per_guest, r.currency) : '<span style="color:var(--muted)">—</span>';
+    const margin = (Number(r.sell_price||0) - Number(r.cost_per_guest||0));
+    const marginPct = Number(r.sell_price||0) > 0 ? Math.round(margin / Number(r.sell_price) * 100) : null;
+    const marginTxt = Number(r.sell_price||0) > 0
+      ? `<span style="color:${margin>=0?'var(--green)':'var(--red)'};font-weight:700">${marginPct}%</span>`
+      : '<span style="color:var(--muted)">—</span>';
+    const audBadge = r.audience === 'group' ? '<span class="badge badge-group">Group</span>' : '';
+    return `<tr>
+      <td data-label="Name">
+        <div style="font-weight:600">${escapeHtml(r.name||'')}${audBadge}</div>
+        ${r.notes ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">${escapeHtml(r.notes)}</div>` : ''}
+      </td>
+      <td data-label="Category">${categoryBadge(r.category)}</td>
+      <td class="r" data-label="Sell">${sellTxt}</td>
+      ${canViewCosts ? `<td class="r" data-label="Cost">${costTxt}</td><td class="r" data-label="Margin">${marginTxt}</td>` : ''}
+      <td class="c" data-label="Camp Tab"><span class="row-toggle ${r.show_in_camp_tab?'on':''}"><span class="dot"></span>${r.show_in_camp_tab?'On':'Off'}</span></td>
+      <td class="c" data-label="Transport picker"><span class="row-toggle ${r.show_in_transport_picker?'on':''}"><span class="dot"></span>${r.show_in_transport_picker?'On':'Off'}</span></td>
+      ${canEdit ? `<td class="c" data-label="Actions"><div class="row-actions">
+        <button class="icon-btn" title="Edit" onclick="openEdit('${r.id}')">✎</button>
+        <button class="icon-btn danger" title="Delete" onclick="onDelete('${r.id}')">×</button>
+      </div></td>` : ''}
+    </tr>`;
+  }).join('');
+
+  wrap.innerHTML = `<table>${head}<tbody>${body}</tbody></table>`;
+}
+
+function renderNoAccess(title, text){
+  $('mainContent').innerHTML = `<div class="no-access"><h2>${escapeHtml(title)}</h2><p>${escapeHtml(text)}</p></div>`;
+}
+
+// ── Search / filter ───────────────────────────────────────────────────────
+window.onSearch = (v)=>{ filterSearch = v; renderTable(); };
+window.onCategoryFilter = (v)=>{ filterCategory = v; renderTable(); };
+
+// ── Modal: New / Edit ─────────────────────────────────────────────────────
+window.openNew = ()=>{
+  editingId = null;
+  $('modalTitle').textContent = 'New entry';
+  $('modalSub').textContent = 'Add an item to the pricing catalog';
+  $('em_name').value = '';
+  $('em_category').value = 'Tour';
+  $('em_audience').value = 'general';
+  $('em_sell').value = '';
+  $('em_cost').value = '';
+  $('em_currency').value = LOCATION_CURRENCY[LOCATION_SLUG] || 'EUR';
+  $('em_notes').value = '';
+  $('em_show_ct').checked = false;
+  $('em_show_tp').checked = false;
+  $('editOv').classList.add('open');
+  setTimeout(()=>$('em_name').focus(), 60);
+};
+
+window.openEdit = (id)=>{
+  const r = catalog.find(x=>x.id === id);
+  if (!r) return;
+  editingId = id;
+  $('modalTitle').textContent = 'Edit entry';
+  $('modalSub').textContent = r.name || '';
+  $('em_name').value = r.name || '';
+  $('em_category').value = r.category || 'Tour';
+  $('em_audience').value = r.audience || 'general';
+  $('em_sell').value = r.sell_price || '';
+  $('em_cost').value = r.cost_per_guest || '';
+  $('em_currency').value = r.currency || (LOCATION_CURRENCY[LOCATION_SLUG] || 'EUR');
+  $('em_notes').value = r.notes || '';
+  $('em_show_ct').checked = !!r.show_in_camp_tab;
+  $('em_show_tp').checked = !!r.show_in_transport_picker;
+  $('editOv').classList.add('open');
+};
+
+$('emCancel').addEventListener('click', ()=>$('editOv').classList.remove('open'));
+
+// ── Save: Supabase-first ──────────────────────────────────────────────────
+$('emSave').addEventListener('click', async ()=>{
+  const name = $('em_name').value.trim();
+  if (!name) {
+    alert('Name is required');
+    return;
+  }
+  const payload = {
+    location_id: locationId,
+    name,
+    category: $('em_category').value,
+    audience: $('em_audience').value,
+    sell_price: Number($('em_sell').value || 0),
+    cost_per_guest: Number($('em_cost').value || 0),
+    currency: $('em_currency').value,
+    notes: $('em_notes').value.trim() || null,
+    show_in_camp_tab: $('em_show_ct').checked,
+    show_in_transport_picker: $('em_show_tp').checked,
+    active: true
+  };
+
+  __pendingSave = true;
+  __suppressRt = true;
+  setSavePill('saving','Saving…');
+  try {
+    let saved;
+    if (editingId) {
+      const { data, error } = await supabase
+        .from('pricing_catalog').update(payload).eq('id', editingId).select().single();
+      if (error) throw error;
+      saved = data;
+      // Replace in local catalog
+      const idx = catalog.findIndex(x=>x.id === editingId);
+      if (idx >= 0) catalog[idx] = saved; else catalog.push(saved);
+    } else {
+      const { data, error } = await supabase
+        .from('pricing_catalog').insert(payload).select().single();
+      if (error) throw error;
+      saved = data;
+      catalog.push(saved);
+    }
+    __pendingSave = false;
+    setSavePill('saved','Saved ✓');
+    setTimeout(clearSavePill, 1500);
+    $('editOv').classList.remove('open');
+    renderTable();
+  } catch (err) {
+    console.error('[Prices] save failed', err);
+    __pendingSave = false;
+    setSavePill('failed','⚠ Save failed — try again');
+    alert('Could not save: ' + (err?.message || 'unknown error'));
+  } finally {
+    setTimeout(()=>{ __suppressRt = false; }, 1000);
+  }
+});
+
+// ── Delete: Supabase-first ────────────────────────────────────────────────
+window.onDelete = async (id)=>{
+  const r = catalog.find(x=>x.id === id);
+  if (!r) return;
+  if (!confirm(`Delete "${r.name}"?\n\nThis can't be undone.`)) return;
+  __suppressRt = true;
+  setSavePill('saving','Deleting…');
+  try {
+    const { error } = await supabase.from('pricing_catalog').delete().eq('id', id);
+    if (error) throw error;
+    catalog = catalog.filter(x=>x.id !== id);
+    setSavePill('saved','Deleted ✓');
+    setTimeout(clearSavePill, 1500);
+    renderTable();
+  } catch (err) {
+    console.error('[Prices] delete failed', err);
+    setSavePill('failed','⚠ Delete failed');
+    alert('Could not delete: ' + (err?.message || 'unknown error'));
+  } finally {
+    setTimeout(()=>{ __suppressRt = false; }, 1000);
+  }
+};
+
+// ── Before-unload guard ────────────────────────────────────────────────────
+window.addEventListener('beforeunload', e=>{
+  if (__pendingSave) {
+    e.preventDefault();
+    e.returnValue = 'A save is still in progress. Are you sure you want to leave?';
+  }
+});
+</script>
+
+</body>
+</html>
