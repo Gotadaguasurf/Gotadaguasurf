@@ -832,7 +832,8 @@ td.r{text-align:right;font-family:'DM Mono',monospace;font-size:12px}
             <button class="tq-tab tq-tab-active" data-tqtab="airport" onclick="pickTqTab('airport')">Airport</button>
             <button class="tq-tab" data-tqtab="tuktuk" onclick="pickTqTab('tuktuk')">Tuk Tuk</button>
             <div style="flex:1"></div>
-            <label class="tq-edit-toggle"><input type="checkbox" id="tqEditMode" onchange="renderTransportChips()"> <span>Edit presets</span></label>
+            <label class="tq-edit-toggle" id="tqEditModeWrap"><input type="checkbox" id="tqEditMode" onchange="renderTransportChips()"> <span>Edit presets</span></label>
+            <a id="tqCatalogHint" href="/prices?location=__SLUG__" target="_blank" style="display:none;font-size:11px;color:var(--ocean);font-weight:600;text-decoration:none;padding:6px 10px;border-radius:8px;background:var(--foam)">↗ Edit in /prices</a>
           </div>
 
           <div id="tqChipsWrap" class="tq-chips-wrap"></div>
@@ -4882,6 +4883,28 @@ function groupCatalogIntoPresets(rows, tourIdToName){
   return result;
 }
 
+// Phase 6: when catalog is master, hide the Hub's "Edit presets" toggle and
+// surface a link that points at /prices for the current location. The user
+// asked to see fewer ways to edit prices — there should be one source of
+// truth, and the Hub's local edit UI was confusing them.
+function applyTransportEditLock(){
+  const wrap=document.getElementById('tqEditModeWrap');
+  const hint=document.getElementById('tqCatalogHint');
+  if(__transportFromCatalog){
+    if(wrap) wrap.style.display='none';
+    // Force any leftover edit-mode off so chips render in read-only form
+    const cb=document.getElementById('tqEditMode');
+    if(cb && cb.checked){ cb.checked=false; try{ renderTransportChips(); }catch(_e){} }
+    if(hint){
+      hint.href='/prices?location='+encodeURIComponent(__HUB_LOCATION_SLUG);
+      hint.style.display='inline-flex';
+    }
+  } else {
+    if(wrap) wrap.style.display='';
+    if(hint) hint.style.display='none';
+  }
+}
+
 async function loadTransportPresetsFromCatalog(){
   // Returns {airport,tuktuk} grouped from pricing_catalog, or null if
   // the catalog has no Transport rows flagged for this location's
@@ -4937,11 +4960,13 @@ async function loadTransportPresets(){
     const btn=document.getElementById('quickTransportBtn');
     if(btn) btn.style.display='inline-flex';
     applyTransportTabLabels();
+    applyTransportEditLock();
     console.log('[Hub] Transport picker loaded from pricing_catalog —',
       (fromCatalog.airport.length+fromCatalog.tuktuk.length),'destination(s)');
     return;
   }
   __transportFromCatalog=false;
+  applyTransportEditLock();
   const seed=DEFAULT_TRANSPORT_PRESETS_BY_LOCATION[__HUB_LOCATION_SLUG]||{airport:[],tuktuk:[]};
   const hasSeed=(seed.airport?.length||0)+(seed.tuktuk?.length||0)>0;
   try{

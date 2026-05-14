@@ -640,6 +640,13 @@ let MENU=loadMenu();
 // user may have renamed Tours → Activities at some point in the Menu editor;
 // that breaks the Hub→iframe sync because the parent sends MENU.Tours and
 // the iframe was looking for MENU.Activities.
+// Phase 6: when the parent Hub sends a non-empty tours array via either the
+// bootstrap or the tours-update message, treat the Tours category as
+// catalog-managed (read-only inside Camp Tab). The menu editor adds a
+// banner pointing at /prices and hides the Edit / Delete / Add buttons for
+// that category. Drinks / Food / Merch stay editable as before.
+let __toursCatalogManaged=false;
+
 function migrateActivitiesToTours(){
   if(Array.isArray(MENU.Activities) && MENU.Activities.length){
     const existingTours=Array.isArray(MENU.Tours)?MENU.Tours:[];
@@ -2387,27 +2394,46 @@ function renderMenuSettings(){
   const catName=document.getElementById('menuCatName');
   const title=document.getElementById('menuMainTitle');
   const itemList=document.getElementById('menuItemList');
+  // Phase 6: Tours category is read-only when catalog is the master source.
+  const isLockedCat=__toursCatalogManaged && menuEditCat==='Tours';
   if(catList){
-    catList.innerHTML=cats.map(cat=>`<button class="menu-cat-chip ${menuEditCat===cat?'active':''}" onclick="pickMenuCategory('${esc(cat)}')">
-      <span>${cat}</span><span style="font-size:10px;opacity:.7">${(MENU[cat]||[]).length}</span>
-    </button>`).join('');
+    catList.innerHTML=cats.map(cat=>{
+      const locked=__toursCatalogManaged && cat==='Tours';
+      const lockIcon=locked?' <span style="font-size:10px;opacity:.6" title="Managed in /prices">🔒</span>':'';
+      return `<button class="menu-cat-chip ${menuEditCat===cat?'active':''}" onclick="pickMenuCategory('${esc(cat)}')">
+        <span>${cat}${lockIcon}</span><span style="font-size:10px;opacity:.7">${(MENU[cat]||[]).length}</span>
+      </button>`;
+    }).join('');
   }
-  if(catName) catName.value=menuEditCat||'';
+  if(catName){
+    catName.value=menuEditCat||'';
+    catName.disabled=isLockedCat;
+  }
   if(title) title.textContent=(menuEditCat||'Menu')+' items';
   const items=MENU[menuEditCat]||[];
   if(itemList){
-    itemList.innerHTML=items.length?items.map((item,idx)=>`<div class="menu-item-row">
+    const lockBanner=isLockedCat?`<div style="background:var(--foam);border:1px solid var(--border);border-radius:9px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:var(--navy);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+      <span><span style="opacity:.6">🔒</span> <strong>Tours are managed in the Pricing Catalog.</strong> Edits made here don't sync.</span>
+      <a href="/prices?location=${esc(typeof CAMP_TAB_LOCATION_SLUG!=='undefined'?CAMP_TAB_LOCATION_SLUG:'')}" target="_blank" style="color:var(--ocean);font-weight:600;text-decoration:none">↗ Open Pricing Catalog</a>
+    </div>`:'';
+    const rows=items.length?items.map((item,idx)=>`<div class="menu-item-row">
       <div>
         <div class="menu-item-name">${item.n}${item.hasTransport?` <span style="font-size:10px;color:var(--ocean);background:#e3f2fd;padding:2px 6px;border-radius:6px;margin-left:4px;font-weight:600">🚐 transport</span>`:''}${Number(item.costPerGuest||0)>0?` <span style="font-size:10px;color:#b46c00;background:#fff4d5;padding:2px 6px;border-radius:6px;margin-left:4px;font-weight:600">cost ${LOCAL_CURRENCY||'LKR'} ${Number(item.costPerGuest).toLocaleString('en-GB')}/g</span>`:''}</div>
       ${item.d?`<div class="menu-item-desc">${item.d}</div>`:''}
       <div class="menu-item-price">${euro(item.p)}${item.sp?` <span style="font-size:10px;color:var(--muted)">· staff ${euro(item.sp)}</span>`:''}${Number.isFinite(Number(item.stk))?` <span style="font-size:10px;color:var(--muted)">· stock ${item.stk}</span>`:''}</div>
       </div>
-      <div class="menu-item-actions">
+      ${isLockedCat?'':`<div class="menu-item-actions">
         <button class="menu-mini-btn" onclick="editMenuItem(${idx})">Edit</button>
         <button class="menu-mini-btn danger" onclick="deleteMenuItem(${idx})">Delete</button>
-      </div>
+      </div>`}
     </div>`).join(''):'<div class="menu-empty">No items yet in this category.</div>';
+    itemList.innerHTML=lockBanner+rows;
   }
+  // Hide the add-item form when the active category is locked. Search up
+  // the DOM for the form wrapper that holds the inputs + save button.
+  const addForm=document.getElementById('menuItemForm') ||
+                document.querySelector('.menu-item-form');
+  if(addForm) addForm.style.display=isLockedCat?'none':'';
 }
 
 function pickMenuCategory(cat){
@@ -2794,6 +2820,7 @@ window.addEventListener('message',async e=>{
     // from the master catalog.
     if(e.data?.menu && Array.isArray(e.data.menu.Tours)){
       const incoming=cloneCampTabPayload(e.data.menu.Tours);
+      if(incoming.length) __toursCatalogManaged=true;
       const sameLen=Array.isArray(MENU.Tours) && MENU.Tours.length===incoming.length;
       const sameJson=sameLen && JSON.stringify(MENU.Tours)===JSON.stringify(incoming);
       if(!sameJson){
@@ -2818,6 +2845,9 @@ window.addEventListener('message',async e=>{
   // the catalog says.
   if(e.data?.type==='camp-tab-tours-update' && Array.isArray(e.data?.tours)){
     const incoming=cloneCampTabPayload(e.data.tours);
+    // Catalog is master once we receive a non-empty tours array — the menu
+    // editor switches to read-only for Tours.
+    if(incoming.length) __toursCatalogManaged=true;
     const sameJson=Array.isArray(MENU.Tours) && JSON.stringify(MENU.Tours)===JSON.stringify(incoming);
     if(!sameJson){
       MENU={...MENU,Tours:incoming};
@@ -2826,6 +2856,9 @@ window.addEventListener('message',async e=>{
       renderAllCampTabViews();
       notifyParentStateChanged();
       queueMenuSync();
+    } else if(document.getElementById('menuOv')?.classList.contains('open')){
+      // Same data but menu open → re-render so the lock state shows up
+      renderMenuSettings();
     }
     return;
   }
