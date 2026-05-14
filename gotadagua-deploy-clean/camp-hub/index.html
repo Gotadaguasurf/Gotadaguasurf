@@ -2016,20 +2016,33 @@ function subscribeHubRealtime(){
       }).catch(e=>console.warn('[Hub] monthly_cost_profiles RT hydrate failed',e));
     })
     .on('postgres_changes',{event:'*',schema:'public',table:'pricing_catalog',filter:`location_id=eq.${HUB_SB_LOCATION_ID}`},(payload)=>{
-      // Phase 3: catalog edits in /prices propagate live to the Hub's
-      // Transport picker. Only Transport rows with show_in_transport_picker
-      // matter for this view, but the filter on category/flag has to live
-      // here (realtime filters only support equality on indexed columns
-      // and we already pin to location_id). Cheap to re-run the full load
-      // — it's a single SELECT.
-      if(!TRANSPORT_ENABLED_LOCATIONS.has(__HUB_LOCATION_SLUG)) return;
-      loadTransportPresets().then(()=>{
-        const modalOpen=document.getElementById('transportQuickOv')?.classList.contains('open');
-        const userTypingInModal=modalOpen && document.activeElement && document.getElementById('tqChipsWrap')?.contains(document.activeElement);
-        if(modalOpen && !userTypingInModal && typeof renderTransportChips==='function'){
-          renderTransportChips();
-        }
-      }).catch(e=>console.warn('[Hub] pricing_catalog RT reload failed',e));
+      // Phases 3 & 4: catalog edits in /prices propagate live to both
+      // surfaces the Hub exposes the catalog through —
+      //   - Transport picker (Phase 3) → loadTransportPresets
+      //   - Camp Tab Tours menu (Phase 4) → refreshCatalogCampTabTours
+      //   + re-bootstrap iframe if mounted
+      // Realtime filters only support equality on indexed columns so we
+      // pin to location_id here and decide per-row in the handler.
+      const row=payload.new||payload.old||{};
+      const cat=row.category;
+      // Transports → refresh picker
+      if((!cat||cat==='Transport') && TRANSPORT_ENABLED_LOCATIONS.has(__HUB_LOCATION_SLUG)){
+        loadTransportPresets().then(()=>{
+          const modalOpen=document.getElementById('transportQuickOv')?.classList.contains('open');
+          const userTypingInModal=modalOpen && document.activeElement && document.getElementById('tqChipsWrap')?.contains(document.activeElement);
+          if(modalOpen && !userTypingInModal && typeof renderTransportChips==='function'){
+            renderTransportChips();
+          }
+        }).catch(e=>console.warn('[Hub] pricing_catalog RT transport reload failed',e));
+      }
+      // Tours → refresh Camp Tab Tours menu + re-bootstrap iframe
+      if(!cat || cat==='Tour'){
+        refreshCatalogCampTabTours().then(changed=>{
+          if(changed && typeof sendCampTabBootstrap==='function'){
+            try{ sendCampTabBootstrap(); }catch(_e){}
+          }
+        }).catch(e=>console.warn('[Hub] pricing_catalog RT tour reload failed',e));
+      }
     })
     .subscribe((status)=>{
       if(status==='SUBSCRIBED') console.log('[Hub] Realtime connected');
@@ -2880,10 +2893,76 @@ function dualCurrencyLocal(localAmount,eurAmount=null,onDark=false){
   const eurVal=eurAmount==null ? Number((local/(LOCAL_PER_EUR||1)).toFixed(2)) : Number(eurAmount||0);
   return `<div style="font-family:'DM Serif Display',serif;font-size:26px;color:${mainCol};line-height:1.05">${lkr(local)}</div><div style="font-size:11px;color:${subCol};margin-top:4px">${euro(eurVal)}</div>`;
 }
+// ── Phase 4: pricing_catalog as master for Camp Tab Tours menu ──────────────
+//
+//  The Camp Tab iframe receives its full menu (Drinks / Food / Merch / Tours /
+//  Staff) from the Hub via postMessage on bootstrap. When the pricing_catalog
+//  has Tour rows flagged show_in_camp_tab=true for this location, we replace
+//  the localStorage-sourced Tours[] with catalog-sourced items so price edits
+//  in /prices propagate to the POS automatically.
+//
+//  Cache is populated on Hub init by loadCampTabToursFromCatalog(); the
+//  pricing_catalog realtime subscription refreshes it on any change and
+//  re-bootstraps the iframe (if mounted) so the POS UI redraws live.
+let __catalogCampTabTours=null; // null = not yet loaded, [] = loaded but empty
+
 function currentCampTabMenu(){
   const stored=readJsonStorage(CAMPTAB_MENU_KEY,null);
-  if(stored&&typeof stored==='object') return stored;
-  return MENU;
+  const base=(stored && typeof stored==='object') ? stored : MENU;
+  if(Array.isArray(__catalogCampTabTours) && __catalogCampTabTours.length){
+    // Catalog is master for Tours — preserve everything else (Drinks,
+    // Food, Merch, etc.) from localStorage / defaults.
+    return {...base, Tours: __catalogCampTabTours.map(t=>({...t}))};
+  }
+  return base;
+}
+
+async function loadCampTabToursFromCatalog(){
+  // Reads Tour rows from pricing_catalog flagged for Camp Tab visibility,
+  // maps them to the menu item shape the Camp Tab iframe expects:
+  //   { id, n: name, p: sell price, d: notes, costPerGuest, sortOrder }
+  // Returns the array (possibly empty) or null on error so the caller
+  // can decide whether to fall back to localStorage.
+  try{
+    const client=getHubSupabaseClient();
+    const locId=await ensureHubLocationId();
+    if(!client||!locId) return null;
+    const {data,error}=await client
+      .from('pricing_catalog')
+      .select('id,name,sell_price,cost_per_guest,notes,linked_camp_tab_id,sort_order')
+      .eq('location_id',locId)
+      .eq('category','Tour')
+      .eq('show_in_camp_tab',true)
+      .eq('active',true)
+      .order('sort_order',{ascending:true});
+    if(error) throw error;
+    if(!Array.isArray(data)) return null;
+    return data.map(r=>({
+      id: r.linked_camp_tab_id || ('cat|tour|'+r.id),
+      n: String(r.name||'').trim(),
+      p: Number(r.sell_price||0),
+      d: r.notes ? String(r.notes) : '',
+      costPerGuest: Number(r.cost_per_guest||0),
+      sortOrder: Number.isFinite(Number(r.sort_order)) ? Number(r.sort_order) : 100
+    })).filter(t=>t.n);
+  }catch(e){
+    console.warn('[Hub] loadCampTabToursFromCatalog failed',e);
+    return null;
+  }
+}
+
+async function refreshCatalogCampTabTours(){
+  // Reloads the cache. Returns true if the cache actually changed so the
+  // caller knows whether to re-bootstrap the iframe.
+  const next=await loadCampTabToursFromCatalog();
+  if(next===null) return false;
+  const prevJson=JSON.stringify(__catalogCampTabTours||[]);
+  const nextJson=JSON.stringify(next);
+  __catalogCampTabTours=next;
+  if(next.length){
+    console.log('[Hub] Camp Tab Tours loaded from pricing_catalog — '+next.length+' tour(s)');
+  }
+  return prevJson!==nextJson;
 }
 function currentCampTabState(){
   return readJsonStorage(CAMPTAB_KEY,{activeWeek:null,history:[]})||{activeWeek:null,history:[]};
@@ -7502,6 +7581,16 @@ async function requirePlatformSession(){
     // button appears immediately and currentTransportItems() includes
     // preset names by the time renderOverview / renderExpenses run.
     loadTransportPresets().catch(e=>console.warn('[Hub] loadTransportPresets failed',e));
+    // Phase 4: Camp Tab Tours from pricing_catalog. Populates the in-
+    // memory cache before the Camp Tab iframe bootstraps so the POS sees
+    // catalog-sourced Tours from the very first render. Re-bootstraps
+    // the iframe if it's already mounted (the user might have already
+    // navigated to Camp Tab by the time this resolves).
+    refreshCatalogCampTabTours().then(changed=>{
+      if(changed && typeof sendCampTabBootstrap==='function' && document.getElementById('campTabFrame')){
+        try{ sendCampTabBootstrap(); }catch(_e){}
+      }
+    }).catch(e=>console.warn('[Hub] refreshCatalogCampTabTours failed',e));
     // Tour cost presets — both Sri Lanka and Morocco. Each location keeps
     // its own row in state_store so the two camps stay isolated.
     loadTourCostPresets().catch(e=>console.warn('[Hub] loadTourCostPresets failed',e));
