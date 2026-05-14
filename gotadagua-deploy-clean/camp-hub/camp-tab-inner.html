@@ -1821,8 +1821,14 @@ function renderCatTabs(){
   const el=document.getElementById('catTabs');
   if(!el)return;
   ensureMenuState();
+  // Phase 7: hide the "Edit menu" button entirely when the catalog is the
+  // master source for Tours. The owner is meant to edit prices in /prices,
+  // not from inside the POS — keeping the button there suggested two
+  // sources of truth. Drinks and Merch will get their own /prices areas
+  // in a follow-up; for now they piggy-back on the same hidden state.
+  const showEdit = !__toursCatalogManaged;
   el.innerHTML=getCats().map(c=>`<button class="c-cat ${AC===c?'active':''}" onclick="setCat('${esc(c)}')">${c}</button>`).join('')+
-    `<button class="c-cat c-cat-manage" onclick="openMenuSettings()">Edit menu</button>`;
+    (showEdit ? `<button class="c-cat c-cat-manage" onclick="openMenuSettings()">Edit menu</button>` : '');
 }
 
 function renderItemGrid(){
