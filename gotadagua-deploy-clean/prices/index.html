@@ -831,15 +831,18 @@ window.onDelete = async (id)=>{
 let __importCandidates = []; // [{ key, name, category, sell_price, cost_per_guest, ... }]
 
 async function fetchTransportPresets(){
+  // NB: the Hub stores presets in column `state_json` keyed by `state_key`
+  // (NOT `value` / `key` — that was the bug in v1 of this import flow).
+  // Schema confirmed in camp-hub/index.html loadStateStore().
   try {
     const { data, error } = await sbClient
       .from('location_state_store')
-      .select('value')
+      .select('state_json')
       .eq('location_id', locationId)
-      .eq('key', 'transport_presets_v1')
+      .eq('state_key', 'transport_presets_v1')
       .maybeSingle();
     if (error) { console.warn('[Prices] transport presets fetch error', error); return null; }
-    return data?.value || null;
+    return data?.state_json || null;
   } catch (e) {
     console.warn('[Prices] transport presets fetch threw', e);
     return null;
@@ -921,16 +924,21 @@ function buildImportCandidates(transportPresets, campTabMenu){
   }
 
   // 2. Camp Tab Tours → Tour rows
+  // NB: TOUR_MENU_BY_LOCATION uses `p` for the sell price (e.g.
+  // {n:"Cooking Class", p:6000}), not `sp`. The Hub's merch menu uses
+  // `sp` though, so we accept either. Falls back to 0 only when both
+  // are missing; user can edit afterwards in the catalog.
   if (campTabMenu && Array.isArray(campTabMenu.Tours)) {
     for (const t of campTabMenu.Tours) {
       const name = String(t?.n || '').trim();
       if (!name) continue;
+      const sellPrice = Number(t?.sp ?? t?.p ?? 0);
       pushUnique({
         source: 'campTab',
         name,
         category: 'Tour',
         audience: 'general',
-        sell_price: Number(t?.sp || 0),
+        sell_price: sellPrice,
         cost_per_guest: 0,
         currency: cur,
         notes: t?.d ? String(t.d) : 'Imported from Camp Tab Tours',
