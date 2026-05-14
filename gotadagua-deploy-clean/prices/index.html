@@ -290,8 +290,8 @@ tbody td.c{text-align:center}
              a linked transport so they SEE the bundle math without having
              to do it in their head. Hidden until something's selected. -->
         <div id="em_total_preview" style="display:none;background:var(--foam);border:1px solid var(--border);border-radius:9px;padding:10px 12px;margin-bottom:12px;font-size:12px">
-          <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin-bottom:4px">Effective cost per guest</div>
-          <div id="em_total_preview_body" style="font-family:'DM Mono',monospace;color:var(--ink)"></div>
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin-bottom:4px">Linked item</div>
+          <div id="em_total_preview_body" style="color:var(--ink)"></div>
         </div>
 
         <!-- Transport-specific: which tab in the Hub picker -->
@@ -702,83 +702,30 @@ function renderTable(){
     ${canEdit ? '<th class="c">Actions</th>' : ''}
   </tr></thead>`;
 
-  // Build a fast lookup so we can show linkage info on every row without
-  // walking the full catalog per render. Maps UUID → row.
-  const byId = new Map(catalog.map(c=>[c.id, c]));
-
+  // Catalog table: each row shows ONLY its own sell / cost / margin.
+  // Linkage between a Tour and a Transport stays in the database so the
+  // Hub Overview can attribute spend correctly, but we do NOT surface it
+  // here as combined-cost arithmetic — the user explicitly doesn't want
+  // "tour = X + transport per guest" in the catalog view. Per-pax
+  // breakdowns (capacity ÷ guest) are likewise hidden — vehicles can run
+  // half-empty, so a fixed-pax math is misleading.
   const body = rows.map(r=>{
     const sellNum = Number(r.sell_price||0);
     const ownCost = Number(r.cost_per_guest||0);
-
-    // Effective cost: a Tour's true cost is its own cost_per_guest PLUS the
-    // PER-GUEST share of the linked Transport's vehicle cost. When the
-    // transport has a capacity (e.g. Car/Minivan/Van) we divide the raw
-    // cost by capacity to get the per-guest amount. NULL/0 capacity = the
-    // transport is priced per-trip (tuk-tuk, single taxi); we use it as is.
-    let linkedExtra = 0;
-    let linkedNameForRow = '';
-    let linkedCapacity = 0;
-    let linkedRawCost = 0;
-    if (r.category === 'Tour' && r.linked_transport_preset_id) {
-      const linked = byId.get(r.linked_transport_preset_id);
-      if (linked) {
-        linkedRawCost = Number(linked.cost_per_guest||0);
-        linkedCapacity = Number(linked.capacity||0);
-        linkedExtra = (linkedCapacity > 0) ? (linkedRawCost / linkedCapacity) : linkedRawCost;
-        linkedNameForRow = linked.name || '';
-      }
-    } else if (r.category === 'Transport' && r.linked_camp_tab_id) {
-      const linked = byId.get(r.linked_camp_tab_id);
-      if (linked) {
-        linkedNameForRow = linked.name || '';
-      }
-    }
-    const totalCost = ownCost + linkedExtra;
-    const margin = sellNum - totalCost;
+    const margin = sellNum - ownCost;
     const marginPct = sellNum > 0 ? Math.round((margin / sellNum) * 100) : null;
 
     const sellTxt = sellNum > 0 ? money(sellNum, r.currency) : '<span style="color:var(--muted)">—</span>';
-    // Cost column shows the total when a linked transport contributes, with
-    // the own + linked split underneath as a small grey hint. When capacity
-    // divides the raw cost, the hint shows e.g. "200 ÷ 4 pax = 50 transport".
-    let costTxt;
-    if (totalCost > 0) {
-      if (linkedExtra > 0) {
-        const transportLine = (linkedCapacity > 0)
-          ? `${money(linkedRawCost, r.currency)} ÷ ${linkedCapacity} pax = ${money(linkedExtra, r.currency)} transport/guest`
-          : `${money(linkedExtra, r.currency)} transport`;
-        costTxt = `${money(totalCost, r.currency)}` +
-          `<div style="font-size:10px;color:var(--muted);margin-top:2px;font-family:'Outfit',sans-serif">${money(ownCost, r.currency)} + ${transportLine}</div>`;
-      } else {
-        // For Transport rows, show the capacity hint inline so the user
-        // can confirm at a glance whether this is per-vehicle or per-trip.
-        if (r.category === 'Transport' && Number(r.capacity||0) > 0) {
-          const perGuest = ownCost / Number(r.capacity);
-          costTxt = `${money(ownCost, r.currency)}` +
-            `<div style="font-size:10px;color:var(--muted);margin-top:2px;font-family:'Outfit',sans-serif">${money(perGuest, r.currency)}/guest (${r.capacity} pax)</div>`;
-        } else {
-          costTxt = money(totalCost, r.currency);
-        }
-      }
-    } else {
-      costTxt = '<span style="color:var(--muted)">—</span>';
-    }
+    const costTxt = ownCost > 0 ? money(ownCost, r.currency) : '<span style="color:var(--muted)">—</span>';
     const marginTxt = sellNum > 0
       ? `<span style="color:${margin>=0?'var(--green)':'var(--red)'};font-weight:700">${marginPct}%</span>`
       : '<span style="color:var(--muted)">—</span>';
 
     const audBadge = r.audience === 'group' ? '<span class="badge badge-group">Group</span>' : '';
-    // Visible linkage badge — small chip under the name that reads
-    // "↔ Souk Tour" so the user sees the connection at a glance and knows
-    // the row is part of a bundle. Empty when no linkage is set.
-    const linkBadge = linkedNameForRow
-      ? `<div style="display:inline-flex;align-items:center;gap:4px;font-size:10px;color:var(--ocean);font-weight:600;background:var(--foam);border-radius:6px;padding:2px 6px;margin-top:4px"><span style="font-size:11px">↔</span><span>${escapeHtml(linkedNameForRow)}</span></div>`
-      : '';
     return `<tr>
       <td data-label="Name">
         <div style="font-weight:600">${escapeHtml(r.name||'')}${audBadge}</div>
         ${r.notes ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">${escapeHtml(r.notes)}</div>` : ''}
-        ${linkBadge}
       </td>
       <td data-label="Category">${categoryBadge(r.category)}</td>
       <td class="r" data-label="Sell">${sellTxt}</td>
@@ -911,32 +858,19 @@ function updateEffectiveCostPreview(){
     $('em_total_preview').style.display = 'none';
     return;
   }
-  const linkedRaw = Number(linked.cost_per_guest||0);
-  const linkedCap = Number(linked.capacity||0);
-  // Per-guest share: divide by capacity for per-vehicle transports, use raw
-  // amount for per-trip / no-capacity transports.
-  const linkedPerGuest = (linkedCap > 0) ? (linkedRaw / linkedCap) : linkedRaw;
-  if (cat === 'Tour') {
-    const total = ownCost + linkedPerGuest;
-    const capHint = (linkedCap > 0)
-      ? ` (${fmt(linkedRaw)} ÷ ${linkedCap} pax)`
-      : '';
-    $('em_total_preview_body').innerHTML =
-      `<span style="font-weight:700">${fmt(total)}</span>` +
-      `<span style="color:var(--muted);margin-left:8px">= ${fmt(ownCost)} this tour + ${fmt(linkedPerGuest)} ${escapeHtml(linked.name)}${capHint}</span>`;
-  } else {
-    // Transport rows: show what the user is configuring (per-trip or
-    // per-vehicle with capacity). The linked tour just receives spend
-    // attribution from this preset.
-    const ownCap = Number($('em_capacity').value || 0);
-    const ownPerGuest = (ownCap > 0) ? (ownCost / ownCap) : ownCost;
-    const capLine = (ownCap > 0)
-      ? `${fmt(ownCost)} per vehicle ÷ ${ownCap} pax = ${fmt(ownPerGuest)}/guest`
-      : `${fmt(ownCost)} per trip`;
-    $('em_total_preview_body').innerHTML =
-      `<span style="font-weight:700">${capLine}</span>` +
-      `<span style="color:var(--muted);margin-left:8px">spend logged here will be attributed to ${escapeHtml(linked.name)}</span>`;
-  }
+  // Preview is purely informational now — shows what the row is linked to
+  // and reminds the user that the linkage is for Overview attribution,
+  // not catalog arithmetic. No per-guest math, no combined totals — the
+  // user explicitly rejected that direction.
+  const linkLabel = (cat === 'Tour') ? 'Transport linked to this tour' : 'Tour this transport is for';
+  const linkedSell = Number(linked.sell_price||0);
+  const linkedCost = Number(linked.cost_per_guest||0);
+  const detail = (cat === 'Tour')
+    ? (linkedCost > 0 ? `cost ${fmt(linkedCost)}` : 'no cost set')
+    : (linkedSell > 0 ? `sells for ${fmt(linkedSell)}` : 'no sell price set');
+  $('em_total_preview_body').innerHTML =
+    `<span style="font-weight:700">${escapeHtml(linked.name)}</span>` +
+    `<span style="color:var(--muted);margin-left:8px">· ${detail} · used in the Overview to attribute spend, not for catalog math</span>`;
   $('em_total_preview').style.display = '';
 }
 
