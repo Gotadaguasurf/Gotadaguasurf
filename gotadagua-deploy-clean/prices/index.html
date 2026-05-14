@@ -162,6 +162,7 @@ tbody td.c{text-align:center}
 .accom-grid thead th .season-low{color:#a3e6c0}
 .accom-grid thead th .season-mid{color:#f0d060}
 .accom-grid thead th .season-high{color:#f0a0a0}
+.accom-grid thead th .season-special{color:#f0c0a0}
 .accom-grid thead th.occ{font-size:10px;font-weight:600;text-transform:none;letter-spacing:normal;padding:6px 4px}
 .accom-grid tbody td{border-bottom:1px solid var(--border);padding:10px;text-align:center;font-family:'DM Mono',monospace;font-size:13px;color:var(--ink);vertical-align:middle}
 .accom-grid tbody td:first-child{text-align:left;font-family:'Outfit',sans-serif;font-weight:600;color:var(--navy);background:#f7fafc;border-right:1px solid var(--border);min-width:200px}
@@ -974,24 +975,35 @@ async function renderAccommodation(){
   // Build the price lookup map for O(1) cell access
   // Key = packId|seasonId|roomId|occupancy
   const priceByKey = new Map();
+  let maxOccupancy = 2; // sensible floor — even Sri Lanka has 1p + 2p
   for (const pr of prices) {
     if (pr.pack_id !== accomActivePackId) continue;
     priceByKey.set(`${pr.season_id}|${pr.room_type_id}|${pr.occupancy}`, pr);
+    if (pr.occupancy > maxOccupancy) maxOccupancy = pr.occupancy;
   }
+  // Cap at 6 to keep the grid sane; locations needing more should be the
+  // exception, not the rule. Sri Lanka → 2 cols, Morocco → 4 cols.
+  if (maxOccupancy > 6) maxOccupancy = 6;
+  const occupancies = [];
+  for (let i = 1; i <= maxOccupancy; i++) occupancies.push(i);
   const cur = packs[0].currency || 'EUR'; // accommodation is always EUR for now
 
-  // Column groups: one per season, each containing 1p and 2p
+  const occLabel = (n) => n === 1 ? '1 Person' : `${n} People`;
+
+  // Column groups: one per season, each spans the location's occupancy range
   const headRow1 = ['<th rowspan="2">Room type</th>']
     .concat(seasons.map(s=>{
       const cls = `season-${s.season_key}`;
-      return `<th colspan="2"><span class="season-key ${cls}">${escapeHtml(s.season_key.toUpperCase())}</span>${escapeHtml(s.label.replace(/SEASON/i,'').trim())}</th>`;
+      return `<th colspan="${occupancies.length}"><span class="season-key ${cls}">${escapeHtml(s.season_key.toUpperCase())}</span>${escapeHtml(s.label.replace(/SEASON/i,'').trim())}</th>`;
     })).join('');
-  const headRow2 = seasons.map(s=>`<th class="occ">1 Person</th><th class="occ">2 People</th>`).join('');
+  const headRow2 = seasons.map(s =>
+    occupancies.map(occ => `<th class="occ">${occLabel(occ)}</th>`).join('')
+  ).join('');
 
   const bodyRows = rooms.map(r=>{
     let row = `<td><div>${escapeHtml(r.label)}</div>${r.description?`<span class="room-desc">${escapeHtml(r.description)}</span>`:''}</td>`;
     for (const s of seasons) {
-      for (const occ of [1,2]) {
+      for (const occ of occupancies) {
         const k = `${s.id}|${r.id}|${occ}`;
         const cellId = `accomcell_${accomActivePackId}_${s.id}_${r.id}_${occ}`;
         const existing = priceByKey.get(k);
