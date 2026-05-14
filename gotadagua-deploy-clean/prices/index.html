@@ -85,7 +85,7 @@ main{max-width:1100px;margin:0 auto;padding:32px 24px}
 /* Price-List view — clean, share-ready sections per area (Surf, Tours,
    Transfers, Add-ons). Mirrors the Accommodation card styling so the
    whole page reads as one document. */
-.pv-section-title{font-size:18px;font-weight:700;color:var(--ink);letter-spacing:-0.01em;margin:32px 0 16px;padding-bottom:12px;border-bottom:2px solid #f0f0ee}
+.pv-section-title{font-size:18px;font-weight:700;color:var(--ink);letter-spacing:-0.01em;margin:32px 0 16px;padding:0 6px 12px;border-bottom:2px solid #f0f0ee}
 .pv-section-title:first-of-type{margin-top:8px}
 .pv-card{background:#fff;border:1px solid #e8e8e6;border-radius:14px;padding:22px 26px;margin-bottom:14px}
 .pv-table{width:100%;border-collapse:collapse;font-size:13px}
@@ -239,7 +239,7 @@ tbody td.c{text-align:center}
    muted muted labels, ink-black prices). The page chrome (header, area
    tabs) stays navy; the Accommodation content area below uses this palette. */
 
-.accom-section-title{font-size:18px;font-weight:700;color:var(--ink);letter-spacing:-0.01em;margin:32px 0 16px;padding-bottom:12px;border-bottom:2px solid #f0f0ee}
+.accom-section-title{font-size:18px;font-weight:700;color:var(--ink);letter-spacing:-0.01em;margin:32px 0 16px;padding:0 6px 12px;border-bottom:2px solid #f0f0ee}
 .accom-section-title:first-of-type{margin-top:8px}
 
 .accom-pack-tabs{display:inline-flex;gap:0;margin-bottom:18px;background:#f5f5f3;border-radius:10px;padding:4px;width:fit-content}
@@ -1058,6 +1058,15 @@ function renderTable(){
     const q = filterSearch.toLowerCase();
     rows = rows.filter(r=> (r.name||'').toLowerCase().includes(q) || (r.notes||'').toLowerCase().includes(q));
   }
+  // Sort by user-controlled sort_order so drag-reorder (which updates the
+  // sort_order field in-place on `catalog`) shows the new order immediately
+  // instead of waiting for a refresh. Fall back to alphabetical so two rows
+  // with the same sort_order stay stable.
+  rows.sort((a, b) => {
+    const so = (Number(a.sort_order) || 100) - (Number(b.sort_order) || 100);
+    if (so) return so;
+    return (a.name || '').localeCompare(b.name || '');
+  });
 
   if (!rows.length) {
     const area = AREA_BY_KEY[filterArea];
@@ -1657,12 +1666,12 @@ function transferRouteGroups(){
   }
   const result = [];
   for (const [route, items] of groups) {
-    // Sort by capacity (ascending); 0-capacity items go last alphabetically.
+    // First pass — sort by capacity to compute pax ranges (small van handles
+    // smaller groups than big van regardless of user's manual drag order).
     items.sort((a, b) => {
       if (a.capacity !== b.capacity) return a.capacity - b.capacity;
       return (a.vehicle || '').localeCompare(b.vehicle || '');
     });
-    // Pax range: min = previous_max+1, max = this capacity. 0-capacity = blank.
     let prevMax = 0;
     items.forEach(it => {
       if (it.capacity > 0) {
@@ -1671,6 +1680,12 @@ function transferRouteGroups(){
       } else {
         it.paxRange = '';
       }
+    });
+    // Second pass — re-sort by sort_order so drag-to-reorder is honored live.
+    items.sort((a, b) => {
+      const so = (Number(a.row?.sort_order) || 100) - (Number(b.row?.sort_order) || 100);
+      if (so) return so;
+      return a.capacity - b.capacity;
     });
     result.push({ route, items });
   }
