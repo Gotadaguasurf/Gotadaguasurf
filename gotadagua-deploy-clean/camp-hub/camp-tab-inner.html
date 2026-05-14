@@ -635,6 +635,25 @@ function normalizeMenu(menu){
 }
 function loadMenu(){return clone(DEFAULT_MENU);}
 let MENU=loadMenu();
+// Phase 5: rename any legacy "Activities" category back to "Tours" so the
+// catalog-driven Tours menu (from /prices) lands in the right bucket. The
+// user may have renamed Tours → Activities at some point in the Menu editor;
+// that breaks the Hub→iframe sync because the parent sends MENU.Tours and
+// the iframe was looking for MENU.Activities.
+function migrateActivitiesToTours(){
+  if(Array.isArray(MENU.Activities) && MENU.Activities.length){
+    const existingTours=Array.isArray(MENU.Tours)?MENU.Tours:[];
+    const byName=new Map(existingTours.map(t=>[String(t?.n||'').trim().toLowerCase(),t]));
+    for(const item of MENU.Activities){
+      const key=String(item?.n||'').trim().toLowerCase();
+      if(key && !byName.has(key)) byName.set(key,item);
+    }
+    MENU={...MENU,Tours:Array.from(byName.values())};
+    delete MENU.Activities;
+  }
+}
+migrateActivitiesToTours();
+
 function ensureToursMenu(){
   const hasExistingTours=Array.isArray(MENU.Tours)&&MENU.Tours.length>0;
   if(hasExistingTours) return;
@@ -2758,6 +2777,7 @@ window.addEventListener('message',async e=>{
     }
     if((!Array.isArray(MENU.Merch)||!MENU.Merch.length) && e.data?.menu && typeof e.data.menu==='object'){
       MENU=normalizeMenu(cloneCampTabPayload(e.data.menu));
+      migrateActivitiesToTours();
       migrateMerchMenu();
       changed=true;
     }
@@ -2766,12 +2786,46 @@ window.addEventListener('message',async e=>{
       activeStaffId=STAFF[0]?.id||'';
       changed=true;
     }
+    // Phase 5: the parent bootstrap message now carries the catalog-driven
+    // Tours menu in e.data.menu.Tours regardless of whether MENU.Merch was
+    // empty. Even after first bootstrap (i.e. on a re-bootstrap because the
+    // catalog changed), we ALWAYS adopt the parent's Tours[] when present.
+    // Drinks/Food/Merch keep their write-once safety; only Tours flow live
+    // from the master catalog.
+    if(e.data?.menu && Array.isArray(e.data.menu.Tours)){
+      const incoming=cloneCampTabPayload(e.data.menu.Tours);
+      const sameLen=Array.isArray(MENU.Tours) && MENU.Tours.length===incoming.length;
+      const sameJson=sameLen && JSON.stringify(MENU.Tours)===JSON.stringify(incoming);
+      if(!sameJson){
+        MENU={...MENU,Tours:incoming};
+        migrateActivitiesToTours();
+        changed=true;
+      }
+    }
     if(changed){
       renderAllCampTabViews();
       notifyParentStateChanged();
       queueMenuSync();
       queueStaffSync();
       queueCampTabSync();
+    }
+    return;
+  }
+  // Phase 5: live Tours-only update from the parent Hub (fired on every
+  // pricing_catalog Tour change while the iframe is mounted). Unlike the
+  // bootstrap message this never guards on "is the iframe empty" — Tours
+  // are master-driven from /prices, so the iframe just adopts whatever
+  // the catalog says.
+  if(e.data?.type==='camp-tab-tours-update' && Array.isArray(e.data?.tours)){
+    const incoming=cloneCampTabPayload(e.data.tours);
+    const sameJson=Array.isArray(MENU.Tours) && JSON.stringify(MENU.Tours)===JSON.stringify(incoming);
+    if(!sameJson){
+      MENU={...MENU,Tours:incoming};
+      migrateActivitiesToTours();
+      saveMenu();
+      renderAllCampTabViews();
+      notifyParentStateChanged();
+      queueMenuSync();
     }
     return;
   }
