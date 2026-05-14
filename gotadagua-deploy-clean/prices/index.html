@@ -100,6 +100,33 @@ main{max-width:1100px;margin:0 auto;padding:32px 24px}
 .pv-table .pv-desc{font-size:12px;color:#888;line-height:1.4;max-width:480px}
 .pv-empty{padding:24px 8px;text-align:center;color:#bbb;font-size:13px}
 
+/* ── Transfers (route-grouped) ──
+   Each route (e.g. "Agadir Airport ↔ Surfcamp") gets its own card with
+   vehicles as rows. Uses the same light palette as Accommodation so the
+   page reads as one consistent document. */
+.tf-card{background:#fff;border:1px solid #e8e8e6;border-radius:14px;padding:20px 24px;margin-bottom:12px}
+.tf-card-eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:#aaa;font-weight:700;margin-bottom:14px}
+.tf-card-sub{font-size:11px;color:#bbb;font-weight:500;margin-left:8px;text-transform:none;letter-spacing:0}
+.tf-table{width:100%;border-collapse:collapse;font-size:13px}
+.tf-table thead th{font-size:11px;font-weight:500;color:#bbb;text-align:left;padding:6px 10px;border-bottom:1px solid #f0f0ee;text-transform:none;letter-spacing:0;background:transparent;white-space:normal}
+.tf-table thead th.r{text-align:right}
+.tf-table thead th.c{text-align:center}
+.tf-table tbody td{padding:11px 10px;border-bottom:1px solid #f8f8f7;color:var(--ink);font-size:13px;vertical-align:middle}
+.tf-table tbody td.r{text-align:right}
+.tf-table tbody td.c{text-align:center}
+.tf-table tbody td.muted{color:#aaa;font-size:12px}
+.tf-table tbody tr:last-child td{border-bottom:0}
+.tf-price{font-weight:700;font-size:14px;color:var(--ink)}
+.tf-cost{font-weight:600;font-size:13px;color:var(--ink)}
+.tf-margin-pos{background:#e8f5e8;color:#2d7a2d;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:600}
+.tf-margin-neg{background:#fdecea;color:#c0392b;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:600}
+.tf-margin-zero{color:#bbb;font-size:12px}
+.tf-na{color:#ddd;font-size:12px;font-weight:400}
+.tf-row-actions{display:inline-flex;gap:6px}
+.tf-icon-btn{background:transparent;border:1px solid #e0e0de;border-radius:6px;width:26px;height:26px;font-size:12px;color:#888;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+.tf-icon-btn:hover{border-color:#1a1a1a;color:#1a1a1a}
+.tf-icon-btn.danger:hover{border-color:#c0392b;color:#c0392b;background:#fdecea}
+
 .toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:18px}
 .toolbar input[type=text],.toolbar select{border:1.5px solid var(--border);border-radius:10px;padding:9px 12px;font-size:13px;font-family:'Outfit',sans-serif;background:#fff;color:var(--ink);min-width:140px}
 .toolbar input[type=text]:focus,.toolbar select:focus{outline:none;border-color:var(--ocean)}
@@ -965,6 +992,14 @@ function renderTable(){
     renderAccommodation();
     return;
   }
+
+  // Transfers gets the route-grouped layout (one card per route, vehicles
+  // as rows). Much cleaner than the flat row table for users browsing
+  // 21+ vehicle-per-destination entries.
+  if (filterArea === 'transfers') {
+    renderTransfersEdit();
+    return;
+  }
   const wrap = $('tableWrap');
   if (!wrap) return;
   let rows = catalog.slice();
@@ -1427,6 +1462,169 @@ window.onViewMode = (mode)=>{
 // The footer at the bottom is intentionally bare — partners don't need
 // the operational metadata that the edit view exposes.
 
+// ── Transfers: route-grouped rendering ────────────────────────────────────
+//
+// Names like "Agadir Airport — Car" / "Agadir Airport — Minivan" share a
+// route prefix split on the last " — ". Vehicles are ordered by capacity,
+// pax ranges are computed as [previous_max+1 ... this_capacity]
+// (so Car=4 → 1-4, Minivan=8 → 5-8, Big Van=15 → 9-15). Single-price
+// presets without a "—" suffix (Sri Lanka tuk-tuks like Ahangama,
+// Weligama) are rendered as one-row routes.
+
+function transferRouteGroups(){
+  const transfers = catalog.filter(r => r.category === 'Transport' && r.active);
+  const groups = new Map();
+  for (const r of transfers) {
+    const splitIdx = String(r.name || '').lastIndexOf(' — ');
+    const route = (splitIdx > 0) ? r.name.slice(0, splitIdx).trim() : (r.name || '').trim();
+    const vehicle = (splitIdx > 0) ? r.name.slice(splitIdx + 3).trim() : '';
+    if (!route) continue;
+    if (!groups.has(route)) groups.set(route, []);
+    groups.get(route).push({ row: r, vehicle, capacity: Number(r.capacity || 0) });
+  }
+  const result = [];
+  for (const [route, items] of groups) {
+    // Sort by capacity (ascending); 0-capacity items go last alphabetically.
+    items.sort((a, b) => {
+      if (a.capacity !== b.capacity) return a.capacity - b.capacity;
+      return (a.vehicle || '').localeCompare(b.vehicle || '');
+    });
+    // Pax range: min = previous_max+1, max = this capacity. 0-capacity = blank.
+    let prevMax = 0;
+    items.forEach(it => {
+      if (it.capacity > 0) {
+        it.paxRange = `${prevMax + 1}–${it.capacity}`;
+        prevMax = it.capacity;
+      } else {
+        it.paxRange = '';
+      }
+    });
+    result.push({ route, items });
+  }
+  // Sort routes: airports first (they're typically the client-facing high-margin
+  // routes), then everything else alphabetical.
+  result.sort((a, b) => {
+    const aAir = /airport/i.test(a.route) ? 0 : 1;
+    const bAir = /airport/i.test(b.route) ? 0 : 1;
+    if (aAir !== bAir) return aAir - bAir;
+    return a.route.localeCompare(b.route);
+  });
+  return result;
+}
+
+function renderTransfersEdit(){
+  const wrap = $('tableWrap');
+  if (!wrap) return;
+  const groups = transferRouteGroups();
+  if (!groups.length) {
+    wrap.innerHTML = `<div class="empty">
+      <div class="empty-icon">🚐</div>
+      <div style="font-family:'DM Serif Display',serif;font-size:18px;color:var(--ink);margin-bottom:4px">No transfers yet</div>
+      <div style="font-size:13px">Click "+ New entry" to add a transfer destination.</div>
+    </div>`;
+    return;
+  }
+  wrap.innerHTML = groups.map(g => {
+    const isAirport = /airport/i.test(g.route);
+    const eyebrow = isAirport ? `Airport transfer · ${g.route}` : g.route;
+    return `
+      <div class="tf-card">
+        <div class="tf-card-eyebrow">${escapeHtml(eyebrow)}</div>
+        <table class="tf-table">
+          <thead>
+            <tr>
+              <th>Vehicle</th>
+              <th>Pax</th>
+              <th class="r">Cost (per trip)</th>
+              <th class="r">Price (per trip)</th>
+              <th class="r">Margin</th>
+              <th class="c">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${g.items.map(it => {
+              const r = it.row;
+              const cost = Number(r.cost_per_guest || 0);
+              const sell = Number(r.sell_price || 0);
+              const margin = sell - cost;
+              const marginPct = sell > 0 ? Math.round(margin / sell * 100) : null;
+              const marginHtml = (sell > 0)
+                ? `<span class="${margin >= 0 ? 'tf-margin-pos' : 'tf-margin-neg'}">${marginPct}%</span>`
+                : '<span class="tf-margin-zero">—</span>';
+              return `
+                <tr>
+                  <td>${escapeHtml(it.vehicle || '—')}</td>
+                  <td class="muted">${it.paxRange || '—'}</td>
+                  <td class="r"><span class="tf-cost">${cost > 0 ? money(cost, r.currency) : '<span class="tf-na">—</span>'}</span></td>
+                  <td class="r"><span class="tf-price">${sell > 0 ? money(sell, r.currency) : '<span class="tf-na">— click ✎</span>'}</span></td>
+                  <td class="r">${marginHtml}</td>
+                  <td class="c"><div class="tf-row-actions">
+                    <button class="tf-icon-btn" title="Edit" onclick="openEdit('${r.id}')">✎</button>
+                    <button class="tf-icon-btn danger" title="Delete" onclick="onDelete('${r.id}')">×</button>
+                  </div></td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderTransfersPriceList(){
+  const wrap = $('tableWrap');
+  if (!wrap) return;
+  const groups = transferRouteGroups();
+  // Only show routes with at least one sellable item (sell_price > 0).
+  // A partner doesn't care about routes that have no client price yet.
+  const sellable = groups
+    .map(g => ({ ...g, items: g.items.filter(it => Number(it.row.sell_price || 0) > 0) }))
+    .filter(g => g.items.length);
+  if (!sellable.length) {
+    wrap.innerHTML = `
+      <div class="pv-section-title">Transfers</div>
+      <div class="pv-card"><div class="pv-empty">No transfers published yet. Add a client price in Edit mode to publish a route.</div></div>
+    `;
+    return;
+  }
+  wrap.innerHTML = `
+    <div class="pv-section-title">Transfers</div>
+    ${sellable.map(g => {
+      const isAirport = /airport/i.test(g.route);
+      const eyebrow = isAirport
+        ? `Airport transfer · ${g.route} <span class="tf-card-sub">Selling prices</span>`
+        : `${g.route} <span class="tf-card-sub">Selling prices</span>`;
+      return `
+        <div class="tf-card">
+          <div class="tf-card-eyebrow">${eyebrow}</div>
+          <table class="tf-table">
+            <thead>
+              <tr>
+                <th>Vehicle</th>
+                <th>Pax</th>
+                <th class="r">Client price (per way)</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${g.items.map(it => {
+                const r = it.row;
+                return `
+                  <tr>
+                    <td>${escapeHtml(it.vehicle || '—')}</td>
+                    <td class="muted">${it.paxRange || '—'}</td>
+                    <td class="r"><span class="tf-price">${money(Number(r.sell_price||0), r.currency)}</span></td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }).join('')}
+  `;
+}
+
 function pvAreaItems(areaKey){
   const cats = categoriesForArea(areaKey);
   return catalog
@@ -1493,17 +1691,11 @@ function renderPriceListView(){
       rows, 'No surf packs published yet.'
     )}</div>`;
   } else if (filterArea === 'transfers') {
-    const rows = items.map(r => `
-      <tr>
-        <td>${escapeHtml(r.name)}</td>
-        <td><div class="pv-desc">${escapeHtml(r.notes || '')}</div></td>
-        <td class="r"><span class="pv-price">${money(Number(r.sell_price > 0 ? r.sell_price : r.cost_per_guest||0), r.currency)}</span></td>
-      </tr>
-    `).join('');
-    bodyHtml = `<div class="pv-card">${pvTable(
-      [{label:'Route / Vehicle'},{label:'Notes'},{label:'Price per way',right:true}],
-      rows, 'No transfers published yet.'
-    )}</div>`;
+    // Transfers in Price List mode get the same route-grouped layout as
+    // edit, minus the cost / margin / actions columns. Each card is one
+    // route, vehicles as rows.
+    renderTransfersPriceList();
+    return;
   } else { // addons + fallback
     const rows = items.map(r => `
       <tr>
