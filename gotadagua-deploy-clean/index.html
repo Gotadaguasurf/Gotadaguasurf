@@ -1683,32 +1683,32 @@
           // still uses the full destructive replace below.
           const isSelfEdit = !!(__currentProfile?.id && existingUser.userId === __currentProfile.id);
           if (isSelfEdit) {
-            // Use .select() so PostgREST returns the updated row — that
-            // way we can verify the write actually changed something
-            // instead of trusting a 204 No Content with 0 rows affected.
-            const { data: updated, error: profileError } = await client
+            // Name-only update. We DON'T touch platform_role or memberships
+            // here — the fn_platform_profiles_no_self_escalate trigger on
+            // the DB is the real guard against role self-escalation, so the
+            // frontend just needs to send the name change. We rely on the
+            // PostgREST error channel for failure detection; the earlier
+            // .maybeSingle() check was hitting false-positive zero-rows
+            // results under some RLS combinations and blocking legit saves.
+            const nextName = fullName || null;
+            const { error: profileError } = await client
               .from('platform_profiles')
-              .update({ full_name: fullName || null, updated_at: new Date().toISOString() })
-              .eq('id', existingUser.userId)
-              .select('id, full_name')
-              .maybeSingle();
+              .update({ full_name: nextName, updated_at: new Date().toISOString() })
+              .eq('id', existingUser.userId);
             if (profileError) {
               console.error('[Settings] self-edit name update failed', profileError);
               throw profileError;
             }
-            if (!updated) {
-              throw new Error('The name update did not affect any row. Check that your account is still active.');
-            }
             // Optimistic local-state patch so the row in the team list
             // shows the new name immediately, even if the realtime hydrate
             // takes a moment.
-            if (__currentProfile) __currentProfile.full_name = updated.full_name || '';
+            if (__currentProfile) __currentProfile.full_name = nextName || '';
             const me = accessUsers.find(u => u.email === __editingAccessEmail);
-            if (me) me.meta = updated.full_name || '';
+            if (me) me.meta = nextName || '';
             renderAccessSettings();
             await hydrateFromSession();
             resetAccessForm();
-            showToast(`Name updated to ${updated.full_name || '(blank)'}.`);
+            showToast(`Name updated to ${nextName || '(blank)'}.`);
             return;
           }
           const profilePayload = {
