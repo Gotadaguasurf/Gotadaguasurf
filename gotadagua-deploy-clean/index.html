@@ -1670,8 +1670,29 @@
         const role = roleLabelToPlatformRole(roleLabel);
         if(__editingAccessEmail){
           const existingUser = accessUsers.find(entry => entry.email === __editingAccessEmail);
-          if(!existingUser?.userId){
-            throw new Error('Could not find this user to update.');
+          if(!existingUser){
+            throw new Error(`No local row for ${__editingAccessEmail}. Cancel and reopen the form so we can re-fetch the team list.`);
+          }
+          // accessUsers entries are built from the workspace_memberships →
+          // platform_profiles join (see hydrateFromSession). If the join
+          // didn't resolve (orphaned membership row, or the user has no
+          // active memberships yet) the entry can land without a userId.
+          // Fall back to a direct platform_profiles lookup by email so the
+          // save still proceeds rather than dead-ending in a toast.
+          if(!existingUser.userId){
+            const { data: profileLookup, error: lookupErr } = await client
+              .from('platform_profiles')
+              .select('id')
+              .eq('email', __editingAccessEmail)
+              .maybeSingle();
+            if(lookupErr){
+              console.error('[Settings] userId fallback lookup failed', lookupErr);
+              throw lookupErr;
+            }
+            if(!profileLookup?.id){
+              throw new Error(`No platform_profiles row found for ${__editingAccessEmail}. The user may have been deleted — try inviting them again.`);
+            }
+            existingUser.userId = profileLookup.id;
           }
           // Self-edit guard: editing YOUR OWN row only updates the
           // displayed name. Role and memberships are intentionally NOT
