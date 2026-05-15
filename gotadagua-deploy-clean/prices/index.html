@@ -2825,23 +2825,24 @@ async function downloadPriceListPDF(){
 
     const docDef = {
       pageSize: { width: PDF_PAGE_W, height: PDF_PAGE_H },
-      pageMargins: [40, 100, 40, 60],
+      pageMargins: [40, 80, 40, 60],
       defaultStyle: { font: 'Helvetica', color: PDF_INK },
-      background: () => ({
-        canvas: [
-          { type:'rect', x:0, y:0, w:PDF_PAGE_W, h:PDF_PAGE_H, color:'#E8EAEA' }
-        ]
-      }),
+      // Simple text header — the SVG-embed approach kept silently failing
+      // in pdfmake's renderer for some users. A text wordmark is rock-
+      // solid and still on-brand.
       header: () => ({
-        stack: [
-          { svg: BRAND_SVG_NAVY, width: 150, alignment:'center', margin:[0, 22, 0, 0] }
-        ]
+        text: 'GOTA DAGUA',
+        alignment: 'center',
+        bold: true,
+        fontSize: 22,
+        color: PDF_INK,
+        margin: [0, 28, 0, 0]
       }),
       footer: () => ({
         margin: [40, 14, 40, 0],
         columns: [
-          { text: '☎  +351 924 689 580', alignment:'left', color:PDF_INK, fontSize:9.5, bold:true },
-          { text: '✉  INFO@GOTADAGUASURF.COM', alignment:'right', color:PDF_INK, fontSize:9.5, bold:true }
+          { text: '+351 924 689 580', alignment:'left', color:PDF_INK, fontSize:9.5, bold:true },
+          { text: 'INFO@GOTADAGUASURF.COM', alignment:'right', color:PDF_INK, fontSize:9.5, bold:true }
         ]
       }),
       content
@@ -2850,8 +2851,27 @@ async function downloadPriceListPDF(){
     const dateStr = new Date().toISOString().slice(0,10);
     const filename = `gota-prices-${LOCATION_SLUG || 'sri-lanka'}-${dateStr}.pdf`;
     console.log('[PDF] calling createPdf, sections:', content.length, 'filename:', filename);
-    pdfMake.createPdf(docDef).download(filename, () => {
-      console.log('[PDF] download triggered:', filename);
+    // Use getBlob + manual anchor click. pdfMake.createPdf().download() can
+    // fail silently in browsers that block downloads after async awaits
+    // (the user gesture chain is broken by `await loadPdfMake()`). Building
+    // the blob explicitly and triggering an anchor click sidesteps that.
+    pdfMake.createPdf(docDef).getBlob((blob) => {
+      try {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        }, 100);
+        console.log('[PDF] blob downloaded:', filename, 'size:', blob.size, 'bytes');
+      } catch (e) {
+        console.error('[PDF] blob download failed', e);
+        alert(`PDF was generated (${blob.size} bytes) but the download failed: ${e.message}`);
+      }
     });
   } catch (err) {
     console.error('[Prices] PDF export failed', err);
