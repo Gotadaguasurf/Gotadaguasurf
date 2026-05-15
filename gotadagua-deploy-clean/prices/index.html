@@ -56,14 +56,12 @@ header{background:var(--navy);padding:0 24px;display:flex;align-items:center;jus
 .header-sub{font-size:10px;color:#7aabcc;font-weight:700;letter-spacing:.1em;text-transform:uppercase;white-space:nowrap}
 .header-right{display:flex;align-items:center;gap:12px;flex-shrink:0;justify-content:flex-end;min-width:220px}
 .back-btn{display:inline-flex;align-items:center;gap:6px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.08);color:#fff;border-radius:999px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;text-decoration:none;font-family:'Outfit',sans-serif}
-/* Download PDF — sits on the dark header, matches the .view-btn ghost-on-dark
-   pattern but with an inverted treatment (filled ocean by default to read
-   as a primary action; hover bumps the lightness). */
-.dl-btn{display:inline-flex;align-items:center;gap:8px;border:none;background:var(--ocean);color:#fff;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;transition:all .2s;white-space:nowrap}
-.dl-btn:hover{background:#2685c4}
+/* Download PDF — matches the Import CSV ghost-pill style used on the
+   workspace home, so the platform shares one button language across
+   header actions. White-text-on-translucent, pill-shaped, no icon. */
+.dl-btn{display:inline-flex;align-items:center;gap:8px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.08);color:#fff;border-radius:999px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;transition:all .18s;white-space:nowrap}
+.dl-btn:hover{background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.28)}
 .dl-btn:disabled{opacity:.5;cursor:wait}
-.dl-btn .ui-ic{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;flex-shrink:0}
-.dl-btn .ui-ic svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .back-btn:hover{background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.28)}
 .save-pill{font-size:11px;font-weight:700;padding:5px 12px;border-radius:999px;display:none}
 .save-pill.show{display:inline-flex}
@@ -269,7 +267,10 @@ tbody td.c{text-align:center}
   .accom-section-sub{display:block}
 }
 
-.accom-pack-tabs{display:inline-flex;gap:0;margin-bottom:18px;background:#f5f5f3;border-radius:10px;padding:4px;width:fit-content}
+.accom-pack-tabs{display:inline-flex;gap:0;margin:0 0 18px 26px;background:#f5f5f3;border-radius:10px;padding:4px;width:fit-content}
+@media (max-width: 720px){
+  .accom-pack-tabs{margin-left:18px}
+}
 .accom-pack-tab{padding:8px 18px;border-radius:7px;border:none;font-size:13px;font-weight:500;cursor:pointer;color:#888;background:transparent;font-family:'Outfit',sans-serif;transition:all .15s}
 .accom-pack-tab:hover{color:var(--ink)}
 .accom-pack-tab.active{background:#fff;color:var(--ink);box-shadow:0 1px 4px rgba(0,0,0,0.08);font-weight:600}
@@ -403,10 +404,7 @@ body.view-list .drag-handle{display:none}
   </div>
   <div class="header-right">
     <span id="savePill" class="save-pill"></span>
-    <button class="dl-btn" id="dlPdfBtn" onclick="downloadPriceListPDF()" title="Download a PDF of the current price list">
-      <span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M10 4v9"/><path d="m6 9 4 4 4-4"/><path d="M4 17h12"/></svg></span>
-      <span>Download PDF</span>
-    </button>
+    <button class="dl-btn" id="dlPdfBtn" onclick="downloadPriceListPDF()" title="Download a PDF of the current price list">Download PDF</button>
   </div>
 </header>
 
@@ -2522,34 +2520,38 @@ window.addEventListener('beforeunload', e=>{
 // the navy ink so it reads on the cream/grey PDF page.
 const BRAND_SVG_NAVY = `<svg viewBox="0 0 197.4 91" xmlns="http://www.w3.org/2000/svg"><path fill="#1A2B3D" d="M61.7,51.9c-.4-9-5.5-16.5-9.7-24.1-2.9-4.8-5.3-9.8-9.3-13.9-3.9-4.4-6.5-9.8-10.8-13.9C19.2,16.6-.5,39.9,0,61.9c9.4-7.9,20.1-17.7,33.1-17.8,3,0,7.2,0,9.5,2.2,1.7,1.7,3.2,4.2,2,6.5-.3.5-1.9,2.7-2.3,2.9-12.9,7.4-20.3,18.6-16.5,33.7,3.1,1.3,8,1,11.1-.3,2.7-.3,5.1-1.3,7.5-2.5,8.7-2.9,14.5-11.1,15.5-20.1,1.2-4.7,2.1-9.7,1.8-14.6h0Z"/><path fill="#1A2B3D" d="M69.7,90.6l-.3-1.9c-.7-5.9-.5-11.9-.4-17.9,0-6.7-.3-13.7,0-20.3v-2.3c.5,0,1.1,0,1.7,0,3.3-.3,6.9-.3,10.2,0,.7,0,1.7,0,2.4,0,1.5.3,4,2.2,5,3.3,2.2,2.7,4.9,8.2,5.5,11.7,1.1,7.7-1.8,18.8-6.7,24.8-.4.5-1.4,1.9-1.7,2.1-.2,0-1.5.4-1.9.4-3.3.5-13.7,0-13.7,0h0v.2ZM77.2,61.3v.8c.4,4.6,0,9.3.3,13.9,0,.9-.3,1.7.9,1.8,2.2.3,4.1-.4,5.3-2.3,2.4-3.5,2.3-5.9,1.4-9.9-.3-1.1-1-2.6-1.7-3.5-.8-1-1.4-.8-2.5-.9-.2,0-.3,0-.6,0-1.1,0-2.1,0-3.3,0h.2Z"/><path fill="#1A2B3D" d="M124.1.2c2.7,0,4.5.8,7,1.9,6.3,2.9,4.6,10.5,5.1,16.2.5,6.7.9,13.3-1.7,19.7-.9,2.1-3.1,4.1-5.4,4.5-3.5.5-6.3,1-9.8.3-5.6-1.2-7.1-5.7-7.5-10.9-.3-3.7-.4-7.5-.7-11.3-.3-3.5.3-9.2,1.1-12.7,1.5-6.5,6.1-7.6,12.1-7.7h-.2ZM124.1,8.4c-1.4.1-2.7.7-3.7,1.7-.9.8-2.1,3.8-2.4,5-1.1,4.5-.7,9.9.4,14.5.5,2.3,1.9,5.4,4.6,5.7,1.5,0,2.7-.3,3.9-1.1,2-1.4,2-4.9,2.1-7.1.1-1.4.2-2.7.3-4.1,0-1.7,0-3.5-.1-5.1-.3-2.5-.9-7.1-3.1-8.6-.5-.3-1.3-.7-1.9-.7h0v-.2Z"/><path fill="#1A2B3D" d="M163.1,48.3c.2-.3,4.1-.3,4.3-.3h3.1v10.8c-.1,5.1-.9,10.1-.7,15.2.1,3.2-.2,5.8-1.1,8.9-.8,2.9-1.7,5.4-4.6,6.8-4.5,2.3-10,1.4-14.4-.9-1.1-.6-2.5-2.7-3-3.8-1.9-4.6-1.2-9.7-1-14.4.1-3.2.4-12.1.4-13.7s.1-6.4.1-8.5,1.5-.3,1.8-.2c.3,0,3.4,0,4.5,0,.2,0,.3,0,.3.2v6.1c-.1,5.9-.1,11.9.1,17.9.1,2.4.3,7.4,1.9,9.3.2.2.6.7.8.7.3,0,1.8.3,2.2.3s2.5-1,2.8-1.3c.1,0,.7-1.6.8-1.9.9-2.8.7-5.9.8-8.7.1-4,.1-7.9.4-11.9.1-1.9.3-9.5.3-10.5h0l.2-.2Z"/><path fill="#1A2B3D" d="M176.3.4c.3,1.1.2,2.4.5,3.5.3,1.6.9,3.2,1.2,4.8.9,4.1,1.3,8.3,2.3,12.3.5,2.2,1.3,4.5,1.9,6.7,1.3,4.6,2.3,9.3,3.4,13.9.1.7.3,1,.5,1.6h-8.5c-.1-1.3-.5-2.6-.9-3.9-.3-1.3-.5-2.8-.9-4.1-.3-.9-.5-1.4-.7-2.5,0,0-4.1,0-5.3,0h-.2c-.2,1.2-.4,2.2-.6,3.3-.3,1.5-.7,3.1-1.1,4.7-.1.7-.3,1.7-.4,2.5-1,0-8.3-.2-9,0-.1-.5,5.7-24.6,8.4-36.2.5-2.2.9-4.4,1.4-6.6,0,0,3.5.1,3.7.1h4.3v-.2ZM172.4,11.8q-.3,0-.3.2c-.2.9-.5,1.9-.7,2.8-.5,2.5-.9,5.3-1.3,7.9-.1.9-.3,1.8-.3,2.7,1.6,0,3.2,0,4.7-.3.1-.9-.2-1.7-.3-2.5-.3-2.4-.5-5-1-7.3-.2-1.1-.7-2.3-.9-3.4h.1Z"/><path fill="#1A2B3D" d="M162.6,8.9h-.8c-.9.1-2,.3-2.9.4h-4.3c-.3,1.2-.1,2.5-.1,3.7-.3,8.1,0,16.5-.3,24.6,0,1.7.1,3.3.1,4.9s0,.3.1.5c0,.3-7.8,0-8.5,0,0-.9-.3-4.9-.3-6.1-.4-6.9.5-14.1-.3-21,0-.8-.4-1.8-.5-2.6-.1-1.4,0-2.9,0-4.3v-.2c-.8-.1-1.5,0-2.3,0s-.5-.1-.7-.1c-1.5,0-2.9.1-4.4.1V.5h1.3c3.8-.3,7.5.1,11.3,0,3.5,0,6.5.2,10,.4.5,0,2.4-.1,2.6.1.2.3,0,.6,0,.9,0,1,0,2.1-.1,3.1,0,1.3.3,2.5.1,3.9h0Z"/><path fill="#1A2B3D" d="M109.8,48c.3,1.1.2,2.4.5,3.5.3,1.6.9,3.2,1.2,4.8.9,4.1,1.3,8.3,2.3,12.3.5,2.2,1.3,4.5,1.9,6.7,1.3,4.6,2.3,9.3,3.4,13.9,0,.7.3,1,.5,1.6h-8.5c0-1.3-.5-2.6-.9-3.9-.3-1.3-.5-2.8-.9-4.1-.3-.9-.5-1.4-.7-2.5,0,0-4.1,0-5.3,0h-.2c-.2,1.2-.4,2.2-.6,3.3-.3,1.5-.7,3.1-1.1,4.7,0,.7-.3,1.7-.4,2.5-1,0-8.3-.2-9,0,0-.5,5.7-24.6,8.4-36.2.5-2.2.9-4.4,1.4-6.6,0,0,3.5,0,3.7,0h4.3v-.2ZM105.9,59.5q-.3,0-.3.2c-.2.9-.5,1.9-.7,2.8-.5,2.5-.9,5.3-1.3,7.9,0,.9-.3,1.8-.3,2.7,1.6,0,3.2,0,4.7-.3,0-.9-.2-1.7-.3-2.5-.3-2.4-.5-5-1-7.3-.2-1.1-.7-2.3-.9-3.4h.1Z"/><path fill="#1A2B3D" d="M187.6,48c.3,1.1.2,2.4.5,3.5.3,1.6.9,3.2,1.2,4.8.9,4.1,1.3,8.3,2.3,12.3.5,2.2,1.3,4.5,1.9,6.7,1.3,4.6,2.3,9.3,3.4,13.9.1.7.3,1,.5,1.6h-8.5c-.1-1.3-.5-2.6-.9-3.9-.3-1.3-.5-2.8-.9-4.1-.3-.9-.5-1.4-.7-2.5,0,0-4.1,0-5.3,0h-.2c-.2,1.2-.4,2.2-.6,3.3-.3,1.5-.7,3.1-1.1,4.7-.1.7-.3,1.7-.4,2.5-1,0-8.3-.2-9,0-.1-.5,5.7-24.6,8.4-36.2.5-2.2.9-4.4,1.4-6.6,0,0,3.5,0,3.7,0h4.3v-.2ZM183.7,59.5q-.3,0-.3.2c-.2.9-.5,1.9-.7,2.8-.5,2.5-.9,5.3-1.3,7.9-.1.9-.3,1.8-.3,2.7,1.6,0,3.2,0,4.7-.3.1-.9-.2-1.7-.3-2.5-.3-2.4-.5-5-1-7.3-.2-1.1-.7-2.3-.9-3.4h.1Z"/><path fill="#1A2B3D" d="M108.3,13.8h-6.9c-.2-.5,0-1-.2-1.4,0-.5-1.3-2.3-1.5-2.8-.5-.7-1.4-1.5-2.3-1.5-1.3-.1-3.2,0-4.3.8-.5.3-1.1,2.1-1.4,2.7-1.1,3.3-1.3,6.6-1.5,10.1,0,3.6.2,8.1,1.7,11.4,0,.3.5.9.6,1.1.2.3,1.7,1.1,2,1.1.9,0,2.5,0,3.4-.3.3,0,1.7-1,2-1.3.6-.6,1.3-3.3,1.3-4.2s-.3-1.9-.4-2l-4.5-.2c-.3-1.9,0-3.9,0-5.8v-.2c.9,0,6.9.3,9.1.5h2.2c0,.7.2,1.3.3,2,.4,3.1.4,5.2,0,8.3s-.5,6.5-3.1,8.5c-1.1.9-1.8,1.5-3.3,1.9-1.9.6-2.8.6-4.7.7-1.3,0-2.3,0-3.6-.2-3.9-.8-6.3-2.8-7.5-6.5-2.7-8.8-3.1-18.8-.9-27.8.7-3,1.3-4.6,3.9-6.5,2.1-1.5,7-2.3,9.4-1.6,2.7.8,6.6,2.7,8.1,4.4.7.8,1.5,2.7,1.7,3.8.2,1.2,0,5,0,5h.2Z"/><path fill="#1A2B3D" d="M142.8,61.3h-6.9c-.2-.5-.1-1-.2-1.4-.1-.5-1.3-2.4-1.5-2.8-.5-.7-1.5-1.5-2.3-1.5-1.3,0-3.2,0-4.3.8-.5.3-1.2,2.1-1.4,2.7-1.1,3.3-1.3,6.7-1.5,10.1,0,3.6.2,8.1,1.7,11.5,0,.3.5.9.6,1.1.2.3,1.7,1.1,2,1.1.9,0,2.5,0,3.5-.3.4,0,1.7-1,2-1.3.6-.7,1.3-3.3,1.3-4.3s-.3-1.9-.4-2l-4.5-.2c-.3-1.9-.1-3.9.1-5.8v-.2c.9,0,6.9.3,9.1.5h2.2c0,.7.2,1.3.3,2.1.5,3.1.4,5.2.1,8.3-.3,3.1-.5,6.5-3.1,8.6-1.1.9-1.8,1.5-3.3,1.9-1.9.6-2.8.6-4.7.7-1.3,0-2.3,0-3.6-.2-3.9-.8-6.3-2.8-7.5-6.6-2.7-8.9-3.1-18.9-.9-27.9.8-3.1,1.3-4.7,3.9-6.5,2.1-1.5,7.1-2.3,9.5-1.6,2.7.8,6.6,2.7,8.1,4.4.7.8,1.5,2.8,1.7,3.8.2,1.3,0,5,0,5h0Z"/></svg>`;
 
-// Lazy-load pdfmake from CDN on first PDF request. Cached afterwards so the
-// network hit only happens once per session. We DON'T load vfs_fonts.js
-// because we configure pdfmake to use the four built-in PDF fonts
-// (Helvetica family) — saves ~600KB and matches the geometric-sans look
-// of the printed reference better than Roboto.
+// Lazy-load pdfmake + vfs_fonts on first PDF request.
+//
+// We use the DEFAULT Roboto family that ships in vfs_fonts.js. An earlier
+// attempt overrode pdfMake.fonts to use built-in PDF Helvetica, which threw
+// "File 'data/Helvetica-Bold.afm' not found in virtual file system" — the
+// web build of pdfmake requires AFM (Adobe Font Metrics) files to be in
+// its virtual FS, and vfs_fonts.js only ships the Roboto AFMs. Sticking
+// with Roboto keeps everything in-bundle and is actually closer to the
+// Outfit-style geometric sans the brand uses on the website.
 let __pdfmakePromise = null;
-function loadPdfMake(){
-  if (__pdfmakePromise) return __pdfmakePromise;
-  __pdfmakePromise = new Promise((resolve, reject) => {
-    if (window.pdfMake) { resolve(window.pdfMake); return; }
+function _loadScript(url){
+  return new Promise((resolve, reject) => {
     const s = document.createElement('script');
-    s.src = 'https://cdn.jsdelivr.net/npm/pdfmake@0.2.10/build/pdfmake.min.js';
+    s.src = url;
     s.async = true;
-    s.onload = () => {
-      // Use built-in PDF fonts so no font bundle is needed.
-      window.pdfMake.fonts = {
-        Helvetica: {
-          normal: 'Helvetica',
-          bold: 'Helvetica-Bold',
-          italics: 'Helvetica-Oblique',
-          bolditalics: 'Helvetica-BoldOblique'
-        }
-      };
-      resolve(window.pdfMake);
-    };
-    s.onerror = () => reject(new Error('Could not load pdfmake from CDN'));
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error(`Could not load ${url}`));
     document.head.appendChild(s);
   });
+}
+function loadPdfMake(){
+  if (__pdfmakePromise) return __pdfmakePromise;
+  __pdfmakePromise = (async () => {
+    if (!window.pdfMake) {
+      await _loadScript('https://cdn.jsdelivr.net/npm/pdfmake@0.2.10/build/pdfmake.min.js');
+    }
+    if (!window.pdfMake) throw new Error('pdfmake loaded but window.pdfMake is undefined.');
+    if (!window.pdfMake.vfs) {
+      await _loadScript('https://cdn.jsdelivr.net/npm/pdfmake@0.2.10/build/vfs_fonts.js');
+    }
+    return window.pdfMake;
+  })();
   return __pdfmakePromise;
 }
 
@@ -2681,8 +2683,10 @@ function pdfMoneyEUR(n){ return `${Math.round(Number(n||0))}€`; }
 async function downloadPriceListPDF(){
   const btn = document.getElementById('dlPdfBtn');
   if (btn) btn.disabled = true;
+  console.log('[PDF] download started');
   try {
     const pdfMake = await loadPdfMake();
+    console.log('[PDF] pdfmake ready, building doc');
 
     const locLabel = (LOCATION_LABELS[LOCATION_SLUG] || LOCATION_SLUG || 'Sri Lanka');
     const year     = new Date().getFullYear();
@@ -2808,23 +2812,24 @@ async function downloadPriceListPDF(){
 
     const docDef = {
       pageSize: { width: PDF_PAGE_W, height: PDF_PAGE_H },
-      pageMargins: [40, 100, 40, 60],
-      defaultStyle: { font: 'Helvetica', color: PDF_INK },
-      background: () => ({
-        canvas: [
-          { type:'rect', x:0, y:0, w:PDF_PAGE_W, h:PDF_PAGE_H, color:'#E8EAEA' }
-        ]
-      }),
+      pageMargins: [40, 80, 40, 60],
+      defaultStyle: { color: PDF_INK },
+      // Simple text header — the SVG-embed approach kept silently failing
+      // in pdfmake's renderer for some users. A text wordmark is rock-
+      // solid and still on-brand.
       header: () => ({
-        stack: [
-          { svg: BRAND_SVG_NAVY, width: 150, alignment:'center', margin:[0, 22, 0, 0] }
-        ]
+        text: 'GOTA DAGUA',
+        alignment: 'center',
+        bold: true,
+        fontSize: 22,
+        color: PDF_INK,
+        margin: [0, 28, 0, 0]
       }),
       footer: () => ({
         margin: [40, 14, 40, 0],
         columns: [
-          { text: '☎  +351 924 689 580', alignment:'left', color:PDF_INK, fontSize:9.5, bold:true },
-          { text: '✉  INFO@GOTADAGUASURF.COM', alignment:'right', color:PDF_INK, fontSize:9.5, bold:true }
+          { text: '+351 924 689 580', alignment:'left', color:PDF_INK, fontSize:9.5, bold:true },
+          { text: 'INFO@GOTADAGUASURF.COM', alignment:'right', color:PDF_INK, fontSize:9.5, bold:true }
         ]
       }),
       content
@@ -2832,10 +2837,37 @@ async function downloadPriceListPDF(){
 
     const dateStr = new Date().toISOString().slice(0,10);
     const filename = `gota-prices-${LOCATION_SLUG || 'sri-lanka'}-${dateStr}.pdf`;
-    pdfMake.createPdf(docDef).download(filename);
+    console.log('[PDF] calling createPdf, sections:', content.length, 'filename:', filename);
+    // Use getBlob + manual anchor click. pdfMake.createPdf().download() can
+    // fail silently in browsers that block downloads after async awaits
+    // (the user gesture chain is broken by `await loadPdfMake()`). Building
+    // the blob explicitly and triggering an anchor click sidesteps that.
+    pdfMake.createPdf(docDef).getBlob((blob) => {
+      try {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        }, 100);
+        console.log('[PDF] blob downloaded:', filename, 'size:', blob.size, 'bytes');
+      } catch (e) {
+        console.error('[PDF] blob download failed', e);
+        alert(`PDF was generated (${blob.size} bytes) but the download failed: ${e.message}`);
+      }
+    });
   } catch (err) {
     console.error('[Prices] PDF export failed', err);
-    showToast(`Could not build the PDF: ${err.message || err}`);
+    // Surface the error two ways — toast for normal users, alert as a
+    // belt-and-suspenders fallback so the user sees SOMETHING if the
+    // toast container is missing or hidden.
+    const msg = err && err.message ? err.message : String(err);
+    try { showToast(`Could not build the PDF: ${msg}`); } catch(_) {}
+    alert(`PDF export failed:\n\n${msg}\n\nCheck the browser console (⌥⌘I → Console) for the full stack.`);
   } finally {
     if (btn) btn.disabled = false;
   }
