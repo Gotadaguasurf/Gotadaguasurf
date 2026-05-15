@@ -1683,24 +1683,26 @@
           // still uses the full destructive replace below.
           const isSelfEdit = !!(__currentProfile?.id && existingUser.userId === __currentProfile.id);
           if (isSelfEdit) {
-            // Name-only update. We DON'T touch platform_role or memberships
-            // here — the fn_platform_profiles_no_self_escalate trigger on
-            // the DB is the real guard against role self-escalation, so the
-            // frontend just needs to send the name change. The area pills
-            // for self-edits are intentionally ignored on save (the form
-            // shows them so the user can see their own access, but the
-            // platform-owner bypass in canAccessWorkspace already grants
-            // visibility to every workspace — toggling pills on your own
-            // row has no effect for the owner).
+            // Self-edit saves BOTH name and area memberships, but never the
+            // platform_role (the DB trigger fn_platform_profiles_no_self_escalate
+            // would refuse it anyway).
+            //
+            // Self-lockout guard: we always force 'settings' into the area
+            // list before saving. Otherwise an owner who accidentally
+            // deselected the Settings pill would lose the only door back to
+            // this form — and since the platform_role can't be changed
+            // here, only another admin could restore it manually in SQL.
             //
             // Reject blank names: an earlier version accepted "" and
             // persisted null, which wiped the user's own display name to
-            // (blank) and confused the toast. The form already prefills
-            // with the current name, so requiring non-empty here is safe.
+            // (blank). The form already prefills with the current name, so
+            // requiring non-empty here is safe.
             if (!fullName) {
               showToast('Name cannot be empty. Type your name or click Cancel.');
               return;
             }
+            const selfAreas = Array.from(new Set([...(areas || []), 'settings']));
+            // 1) Name update.
             const { error: profileError } = await client
               .from('platform_profiles')
               .update({ full_name: fullName, updated_at: new Date().toISOString() })
@@ -1709,16 +1711,45 @@
               console.error('[Settings] self-edit name update failed', profileError);
               throw profileError;
             }
+            // 2) Replace memberships: deactivate every existing row, then
+            // upsert the new set. We use the user's CURRENT platform_role
+            // (from __currentProfile) as the member_role on each new row
+            // since the form's role dropdown is disabled for self-edits.
+            const selfRole = String(__currentProfile?.role || existingUser.role || 'viewer').toLowerCase();
+            const { error: deactivateError } = await client
+              .from('workspace_memberships')
+              .update({ active:false, updated_at:new Date().toISOString() })
+              .eq('user_id', existingUser.userId);
+            if (deactivateError) {
+              console.error('[Settings] self-edit deactivate memberships failed', deactivateError);
+              throw deactivateError;
+            }
+            const rows = buildWorkspaceAccessRows(selfRole, selfAreas).map(row => ({
+              user_id: existingUser.userId,
+              ...row
+            }));
+            if (rows.length) {
+              const { error: membershipError } = await client
+                .from('workspace_memberships')
+                .upsert(rows, { onConflict: 'user_id,workspace_id' });
+              if (membershipError) {
+                console.error('[Settings] self-edit memberships upsert failed', membershipError);
+                throw membershipError;
+              }
+            }
             // Optimistic local-state patch so the row in the team list
-            // shows the new name immediately, even if the realtime hydrate
-            // takes a moment.
+            // shows the new name + tags immediately, even if the realtime
+            // hydrate takes a moment.
             if (__currentProfile) __currentProfile.full_name = fullName;
             const me = accessUsers.find(u => u.email === __editingAccessEmail);
-            if (me) me.meta = fullName;
+            if (me) {
+              me.meta = fullName;
+              me.areas = selfAreas;
+            }
             renderAccessSettings();
             await hydrateFromSession();
             resetAccessForm();
-            showToast(`Name updated to ${fullName}. (Area pills aren't saved on your own row — as platform owner you already see every workspace.)`);
+            showToast(`Saved — name and ${rows.length} area${rows.length === 1 ? '' : 's'} updated.`);
             return;
           }
           const profilePayload = {
