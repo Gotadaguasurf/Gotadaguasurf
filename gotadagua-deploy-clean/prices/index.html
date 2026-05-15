@@ -57,7 +57,6 @@ header{background:var(--navy);padding:0 24px;display:flex;align-items:center;jus
 .header-right{display:flex;align-items:center;gap:12px;flex-shrink:0;justify-content:flex-end;min-width:220px}
 .back-btn{display:inline-flex;align-items:center;gap:6px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.08);color:#fff;border-radius:999px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;text-decoration:none;font-family:'Outfit',sans-serif}
 .back-btn:hover{background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.28)}
-.location-pill{display:inline-flex;align-items:center;gap:8px;background:rgba(255,255,255,.1);color:#fff;border-radius:999px;padding:6px 14px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
 .save-pill{font-size:11px;font-weight:700;padding:5px 12px;border-radius:999px;display:none}
 .save-pill.show{display:inline-flex}
 .save-pill.saving{background:rgba(255,255,255,.1);color:#fff}
@@ -77,8 +76,8 @@ main{max-width:1100px;margin:0 auto;padding:32px 24px}
    price docs. Keeps both modes one click away on the same URL so the
    owner can flip between editing prices and previewing what partners /
    guests will see, without losing scroll or selection. */
-.view-toggle{display:inline-flex;background:#fff;border:1px solid #e0e0de;border-radius:10px;padding:4px;gap:4px}
-.view-btn{padding:7px 18px;border-radius:7px;border:none;font-size:13px;font-weight:500;cursor:pointer;color:#888;background:transparent;font-family:'Outfit',sans-serif;transition:all .15s}
+.view-toggle{display:inline-flex;background:#fff;border:1px solid #e0e0de;border-radius:9px;padding:3px;gap:3px}
+.view-btn{padding:5px 14px;border-radius:6px;border:none;font-size:12px;font-weight:500;cursor:pointer;color:#888;background:transparent;font-family:'Outfit',sans-serif;transition:all .15s;white-space:nowrap}
 .view-btn:hover{color:var(--ink)}
 .view-btn.active{background:var(--ink);color:#fff}
 
@@ -366,16 +365,16 @@ body.view-list .drag-handle{display:none}
         <div class="brand-logo">
           <svg viewBox="0 0 197.4 91" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path fill="#fff4d5" d="M61.7,51.9c-.4-9-5.5-16.5-9.7-24.1-2.9-4.8-5.3-9.8-9.3-13.9-3.9-4.4-6.5-9.8-10.8-13.9C19.2,16.6-.5,39.9,0,61.9c9.4-7.9,20.1-17.7,33.1-17.8,3,0,7.2,0,9.5,2.2,1.7,1.7,3.2,4.2,2,6.5-.3.5-1.9,2.7-2.3,2.9-12.9,7.4-20.3,18.6-16.5,33.7,3.1,1.3,8,1,11.1-.3,2.7-.3,5.1-1.3,7.5-2.5,8.7-2.9,14.5-11.1,15.5-20.1,1.2-4.7,2.1-9.7,1.8-14.6h0Z"/><path fill="#fff4d5" d="M69.7,90.6l-.3-1.9c-.7-5.9-.5-11.9-.4-17.9,0-6.7-.3-13.7,0-20.3v-2.3c.5,0,1.1,0,1.7,0,3.3-.3,6.9-.3,10.2,0,.7,0,1.7,0,2.4,0,1.5.3,4,2.2,5,3.3,2.2,2.7,4.9,8.2,5.5,11.7,1.1,7.7-1.8,18.8-6.7,24.8-.4.5-1.4,1.9-1.7,2.1-.2,0-1.5.4-1.9.4-3.3.5-13.7,0-13.7,0h0v.2ZM77.2,61.3v.8c.4,4.6,0,9.3.3,13.9,0,.9-.3,1.7.9,1.8,2.2.3,4.1-.4,5.3-2.3,2.4-3.5,2.3-5.9,1.4-9.9-.3-1.1-1-2.6-1.7-3.5-.8-1-1.4-.8-2.5-.9-.2,0-.3,0-.6,0-1.1,0-2.1,0-3.3,0h.2Z"/><path fill="#fff4d5" d="M124.1.2c2.7,0,4.5.8,7,1.9,6.3,2.9,4.6,10.5,5.1,16.2.5,6.7.9,13.3-1.7,19.7-.9,2.1-3.1,4.1-5.4,4.5-3.5.5-6.3,1-9.8.3-5.6-1.2-7.1-5.7-7.5-10.9-.3-3.7-.4-7.5-.7-11.3-.3-3.5.3-9.2,1.1-12.7,1.5-6.5,6.1-7.6,12.1-7.7h-.2ZM124.1,8.4c-1.4.1-2.7.7-3.7,1.7-.9.8-2.1,3.8-2.4,5-1.1,4.5-.7,9.9.4,14.5.5,2.3,1.9,5.4,4.6,5.7,1.5,0,2.7-.3,3.9-1.1,2-1.4,2-4.9,2.1-7.1.1-1.4.2-2.7.3-4.1,0-1.7,0-3.5-.1-5.1-.3-2.5-.9-7.1-3.1-8.6-.5-.3-1.3-.7-1.9-.7h0v-.2Z"/><path fill="#fff4d5" d="M163.1,48.3c.2-.3,4.1-.3,4.3-.3h3.1v10.8c-.1,5.1-.9,10.1-.7,15.2.1,3.2-.2,5.8-1.1,8.9-.8,2.9-1.7,5.4-4.6,6.8-4.5,2.3-10,1.4-14.4-.9-1.1-.6-2.5-2.7-3-3.8-1.9-4.6-1.2-9.7-1-14.4.1-3.2.4-12.1.4-13.7s.1-6.4.1-8.5,1.5-.3,1.8-.2c.3,0,3.4,0,4.5,0,.2,0,.3,0,.3.2v6.1c-.1,5.9-.1,11.9.1,17.9.1,2.4.3,7.4,1.9,9.3.2.2.6.7.8.7.3,0,1.8.3,2.2.3s2.5-1,2.8-1.3c.1,0,.7-1.6.8-1.9.9-2.8.7-5.9.8-8.7.1-4,.1-7.9.4-11.9.1-1.9.3-9.5.3-10.5h0l.2-.2Z"/><path fill="#fff4d5" d="M176.3.4c.3,1.1.2,2.4.5,3.5.3,1.6.9,3.2,1.2,4.8.9,4.1,1.3,8.3,2.3,12.3.5,2.2,1.3,4.5,1.9,6.7,1.3,4.6,2.3,9.3,3.4,13.9.1.7.3,1,.5,1.6h-8.5c-.1-1.3-.5-2.6-.9-3.9-.3-1.3-.5-2.8-.9-4.1-.3-.9-.5-1.4-.7-2.5,0,0-4.1,0-5.3,0h-.2c-.2,1.2-.4,2.2-.6,3.3-.3,1.5-.7,3.1-1.1,4.7-.1.7-.3,1.7-.4,2.5-1,0-8.3-.2-9,0-.1-.5,5.7-24.6,8.4-36.2.5-2.2.9-4.4,1.4-6.6,0,0,3.5.1,3.7.1h4.3v-.2ZM172.4,11.8q-.3,0-.3.2c-.2.9-.5,1.9-.7,2.8-.5,2.5-.9,5.3-1.3,7.9-.1.9-.3,1.8-.3,2.7,1.6,0,3.2,0,4.7-.3.1-.9-.2-1.7-.3-2.5-.3-2.4-.5-5-1-7.3-.2-1.1-.7-2.3-.9-3.4h.1Z"/><path fill="#fff4d5" d="M162.6,8.9h-.8c-.9.1-2,.3-2.9.4h-4.3c-.3,1.2-.1,2.5-.1,3.7-.3,8.1,0,16.5-.3,24.6,0,1.7.1,3.3.1,4.9s0,.3.1.5c0,.3-7.8,0-8.5,0,0-.9-.3-4.9-.3-6.1-.4-6.9.5-14.1-.3-21,0-.8-.4-1.8-.5-2.6-.1-1.4,0-2.9,0-4.3v-.2c-.8-.1-1.5,0-2.3,0s-.5-.1-.7-.1c-1.5,0-2.9.1-4.4.1V.5h1.3c3.8-.3,7.5.1,11.3,0,3.5,0,6.5.2,10,.4.5,0,2.4-.1,2.6.1.2.3,0,.6,0,.9,0,1,0,2.1-.1,3.1,0,1.3.3,2.5.1,3.9h0Z"/><path fill="#fff4d5" d="M109.8,48c.3,1.1.2,2.4.5,3.5.3,1.6.9,3.2,1.2,4.8.9,4.1,1.3,8.3,2.3,12.3.5,2.2,1.3,4.5,1.9,6.7,1.3,4.6,2.3,9.3,3.4,13.9,0,.7.3,1,.5,1.6h-8.5c0-1.3-.5-2.6-.9-3.9-.3-1.3-.5-2.8-.9-4.1-.3-.9-.5-1.4-.7-2.5,0,0-4.1,0-5.3,0h-.2c-.2,1.2-.4,2.2-.6,3.3-.3,1.5-.7,3.1-1.1,4.7,0,.7-.3,1.7-.4,2.5-1,0-8.3-.2-9,0,0-.5,5.7-24.6,8.4-36.2.5-2.2.9-4.4,1.4-6.6,0,0,3.5,0,3.7,0h4.3v-.2ZM105.9,59.5q-.3,0-.3.2c-.2.9-.5,1.9-.7,2.8-.5,2.5-.9,5.3-1.3,7.9,0,.9-.3,1.8-.3,2.7,1.6,0,3.2,0,4.7-.3,0-.9-.2-1.7-.3-2.5-.3-2.4-.5-5-1-7.3-.2-1.1-.7-2.3-.9-3.4h.1Z"/><path fill="#fff4d5" d="M187.6,48c.3,1.1.2,2.4.5,3.5.3,1.6.9,3.2,1.2,4.8.9,4.1,1.3,8.3,2.3,12.3.5,2.2,1.3,4.5,1.9,6.7,1.3,4.6,2.3,9.3,3.4,13.9.1.7.3,1,.5,1.6h-8.5c-.1-1.3-.5-2.6-.9-3.9-.3-1.3-.5-2.8-.9-4.1-.3-.9-.5-1.4-.7-2.5,0,0-4.1,0-5.3,0h-.2c-.2,1.2-.4,2.2-.6,3.3-.3,1.5-.7,3.1-1.1,4.7-.1.7-.3,1.7-.4,2.5-1,0-8.3-.2-9,0-.1-.5,5.7-24.6,8.4-36.2.5-2.2.9-4.4,1.4-6.6,0,0,3.5,0,3.7,0h4.3v-.2ZM183.7,59.5q-.3,0-.3.2c-.2.9-.5,1.9-.7,2.8-.5,2.5-.9,5.3-1.3,7.9-.1.9-.3,1.8-.3,2.7,1.6,0,3.2,0,4.7-.3.1-.9-.2-1.7-.3-2.5-.3-2.4-.5-5-1-7.3-.2-1.1-.7-2.3-.9-3.4h.1Z"/><path fill="#fff4d5" d="M108.3,13.8h-6.9c-.2-.5,0-1-.2-1.4,0-.5-1.3-2.3-1.5-2.8-.5-.7-1.4-1.5-2.3-1.5-1.3-.1-3.2,0-4.3.8-.5.3-1.1,2.1-1.4,2.7-1.1,3.3-1.3,6.6-1.5,10.1,0,3.6.2,8.1,1.7,11.4,0,.3.5.9.6,1.1.2.3,1.7,1.1,2,1.1.9,0,2.5,0,3.4-.3.3,0,1.7-1,2-1.3.6-.6,1.3-3.3,1.3-4.2s-.3-1.9-.4-2l-4.5-.2c-.3-1.9,0-3.9,0-5.8v-.2c.9,0,6.9.3,9.1.5h2.2c0,.7.2,1.3.3,2,.4,3.1.4,5.2,0,8.3s-.5,6.5-3.1,8.5c-1.1.9-1.8,1.5-3.3,1.9-1.9.6-2.8.6-4.7.7-1.3,0-2.3,0-3.6-.2-3.9-.8-6.3-2.8-7.5-6.5-2.7-8.8-3.1-18.8-.9-27.8.7-3,1.3-4.6,3.9-6.5,2.1-1.5,7-2.3,9.4-1.6,2.7.8,6.6,2.7,8.1,4.4.7.8,1.5,2.7,1.7,3.8.2,1.2,0,5,0,5h.2Z"/><path fill="#fff4d5" d="M142.8,61.3h-6.9c-.2-.5-.1-1-.2-1.4-.1-.5-1.3-2.4-1.5-2.8-.5-.7-1.5-1.5-2.3-1.5-1.3,0-3.2,0-4.3.8-.5.3-1.2,2.1-1.4,2.7-1.1,3.3-1.3,6.7-1.5,10.1,0,3.6.2,8.1,1.7,11.5,0,.3.5.9.6,1.1.2.3,1.7,1.1,2,1.1.9,0,2.5,0,3.5-.3.4,0,1.7-1,2-1.3.6-.7,1.3-3.3,1.3-4.3s-.3-1.9-.4-2l-4.5-.2c-.3-1.9-.1-3.9.1-5.8v-.2c.9,0,6.9.3,9.1.5h2.2c0,.7.2,1.3.3,2.1.5,3.1.4,5.2.1,8.3-.3,3.1-.5,6.5-3.1,8.6-1.1.9-1.8,1.5-3.3,1.9-1.9.6-2.8.6-4.7.7-1.3,0-2.3,0-3.6-.2-3.9-.8-6.3-2.8-7.5-6.6-2.7-8.9-3.1-18.9-.9-27.9.8-3.1,1.3-4.7,3.9-6.5,2.1-1.5,7.1-2.3,9.5-1.6,2.7.8,6.6,2.7,8.1,4.4.7.8,1.5,2.8,1.7,3.8.2,1.3,0,5,0,5h0Z"/></svg>
         </div>
-        <div class="header-sub">Pricing Catalog</div>
+        <div class="header-sub" id="headerSub">Pricing Catalog</div>
       </div>
     </a>
-  </div>
-  <div style="display:flex;align-items:center;gap:10px">
-    <span id="locPill" class="location-pill">—</span>
     <span id="savePill" class="save-pill"></span>
   </div>
   <div class="header-right">
-    <a href="/" class="back-btn">← Workspace</a>
+    <div class="view-toggle" id="viewToggle">
+      <button class="view-btn active" onclick="onViewMode('edit')">📝 Edit</button>
+      <button class="view-btn" onclick="onViewMode('list')">📋 Price List</button>
+    </div>
   </div>
 </header>
 
@@ -804,7 +803,12 @@ function withTimeout(promise, ms, label){
     return;
   }
   locationId = locRow.id;
-  $('locPill').textContent = (LOCATION_LABELS[LOCATION_SLUG] || locRow.name || LOCATION_SLUG);
+  // Header sub-label reads e.g. "Pricing Catalog · Morocco" so users always
+  // see which camp they're editing. Replaces the old centered location pill.
+  const _locLabel = (LOCATION_LABELS[LOCATION_SLUG] || locRow.name || LOCATION_SLUG);
+  const _hs = $('headerSub');
+  if (_hs) _hs.textContent = `Pricing Catalog · ${_locLabel}`;
+  document.title = `${_locLabel} prices · Gota d'Água`;
   markStep('step-location','ok','Location: '+(LOCATION_LABELS[LOCATION_SLUG] || locRow.name));
 
   // 5. Owner-only gate (Phase 4 replaces this with pricing_access lookup)
@@ -964,10 +968,6 @@ function renderShell(){
       <div>
         <div class="page-title">${escapeHtml(LOCATION_LABELS[LOCATION_SLUG] || LOCATION_SLUG)} prices</div>
         <div class="page-sub" id="pageSub">Master catalog for tours, transports, surf packs, accommodation and other services. Changes here propagate to the Camp Tab POS and the Transport picker (when those items are flagged).</div>
-      </div>
-      <div class="view-toggle" id="viewToggle">
-        <button class="view-btn ${viewMode==='edit'?'active':''}" onclick="onViewMode('edit')">📝 Edit</button>
-        <button class="view-btn ${viewMode==='list'?'active':''}" onclick="onViewMode('list')">📋 Price List</button>
       </div>
     </div>
     <div class="area-tabs" id="areaTabs"></div>
