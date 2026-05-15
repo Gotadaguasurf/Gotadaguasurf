@@ -66,7 +66,7 @@ header{background:var(--navy);padding:0 24px;display:flex;align-items:center;jus
 main{max-width:1100px;margin:0 auto;padding:32px 24px}
 .page-head{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:14px;margin-bottom:22px}
 .page-title{font-family:'DM Serif Display',serif;font-size:26px;color:var(--ink);line-height:1.15;letter-spacing:-0.01em}
-.page-sub{font-size:13px;color:#888;margin-top:4px;max-width:640px;line-height:1.5}
+.page-sub{font-size:13px;color:#888;margin-top:4px;line-height:1.5}
 @media (min-width: 900px){
   main{padding:36px 28px}
   .page-title{font-size:30px}
@@ -373,13 +373,13 @@ body.view-list .drag-handle{display:none}
         <div class="header-sub" id="headerSub">Pricing Catalog</div>
       </div>
     </a>
-    <span id="savePill" class="save-pill"></span>
+  </div>
+  <div class="view-toggle" id="viewToggle">
+    <button class="view-btn active" onclick="onViewMode('edit')"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M14 3l3 3-9 9H5v-3z"/><path d="M12 5l3 3"/></svg></span><span>Edit</span></button>
+    <button class="view-btn" onclick="onViewMode('list')"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M6 3h8l3 3v11H6z"/><path d="M14 3v4h4"/><path d="M9 10h5"/><path d="M9 13h5"/></svg></span><span>Price List</span></button>
   </div>
   <div class="header-right">
-    <div class="view-toggle" id="viewToggle">
-      <button class="view-btn active" onclick="onViewMode('edit')"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M14 3l3 3-9 9H5v-3z"/><path d="M12 5l3 3"/></svg></span><span>Edit</span></button>
-      <button class="view-btn" onclick="onViewMode('list')"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M6 3h8l3 3v11H6z"/><path d="M14 3v4h4"/><path d="M9 10h5"/><path d="M9 13h5"/></svg></span><span>Price List</span></button>
-    </div>
+    <span id="savePill" class="save-pill"></span>
   </div>
 </header>
 
@@ -1012,12 +1012,17 @@ function renderAreaTabs(){
   if (viewMode === 'list' && filterArea === 'costs') {
     filterArea = 'accommodation';
   }
+  // Row-count badges are useful in Edit mode (quick health-check on how
+  // many entries each area carries) but distracting on the share-friendly
+  // Price List view — the user wants the tabs to read as clean section
+  // labels there. So we drop the count chip when viewMode === 'list'.
+  const showCounts = viewMode === 'edit';
   tabs.innerHTML = visibleAreas.map(a => `
     <button class="area-tab ${filterArea === a.key ? 'active' : ''}"
             onclick="onAreaTab('${a.key}')">
       <span class="ico">${AREA_ICONS[a.key] || ''}</span>
       <span>${a.label}</span>
-      <span class="count">${counts[a.key]}</span>
+      ${showCounts ? `<span class="count">${counts[a.key]}</span>` : ''}
     </button>
   `).join('');
 }
@@ -1633,6 +1638,9 @@ window.onViewMode = (mode)=>{
   document.querySelectorAll('#viewToggle .view-btn').forEach((btn, i)=>{
     btn.classList.toggle('active', (i === 0) === (mode === 'edit'));
   });
+  // Re-render the area tabs so the row-count badges appear/disappear with
+  // the mode switch (counts are hidden in Price List for a cleaner look).
+  renderAreaTabs();
   // Re-render the body — main entry point that decides between Edit and List.
   renderTable();
 };
