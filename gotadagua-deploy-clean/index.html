@@ -1670,8 +1670,29 @@
         const role = roleLabelToPlatformRole(roleLabel);
         if(__editingAccessEmail){
           const existingUser = accessUsers.find(entry => entry.email === __editingAccessEmail);
-          if(!existingUser?.userId){
-            throw new Error('Could not find this user to update.');
+          if(!existingUser){
+            throw new Error(`No local row for ${__editingAccessEmail}. Cancel and reopen the form so we can re-fetch the team list.`);
+          }
+          // accessUsers entries are built from the workspace_memberships →
+          // platform_profiles join (see hydrateFromSession). If the join
+          // didn't resolve (orphaned membership row, or the user has no
+          // active memberships yet) the entry can land without a userId.
+          // Fall back to a direct platform_profiles lookup by email so the
+          // save still proceeds rather than dead-ending in a toast.
+          if(!existingUser.userId){
+            const { data: profileLookup, error: lookupErr } = await client
+              .from('platform_profiles')
+              .select('id')
+              .eq('email', __editingAccessEmail)
+              .maybeSingle();
+            if(lookupErr){
+              console.error('[Settings] userId fallback lookup failed', lookupErr);
+              throw lookupErr;
+            }
+            if(!profileLookup?.id){
+              throw new Error(`No platform_profiles row found for ${__editingAccessEmail}. The user may have been deleted — try inviting them again.`);
+            }
+            existingUser.userId = profileLookup.id;
           }
           // Self-edit guard: editing YOUR OWN row only updates the
           // displayed name. Role and memberships are intentionally NOT
@@ -1711,19 +1732,14 @@
               console.error('[Settings] self-edit name update failed', profileError);
               throw profileError;
             }
-            // 2) Replace memberships: deactivate every existing row, then
-            // upsert the new set. We use the user's CURRENT platform_role
-            // (from __currentProfile) as the member_role on each new row
-            // since the form's role dropdown is disabled for self-edits.
+            // 2) Sync memberships with a delta update — UPSERT new rows
+            // first, THEN deactivate only the ones no longer wanted. This
+            // ordering is critical: an earlier version deactivated every
+            // existing row and then upserted, so any RLS failure on the
+            // upsert step left the user with zero active memberships and
+            // dropped them out of the team list entirely. With upsert-first,
+            // a failure leaves the user's previous access untouched.
             const selfRole = String(__currentProfile?.role || existingUser.role || 'viewer').toLowerCase();
-            const { error: deactivateError } = await client
-              .from('workspace_memberships')
-              .update({ active:false, updated_at:new Date().toISOString() })
-              .eq('user_id', existingUser.userId);
-            if (deactivateError) {
-              console.error('[Settings] self-edit deactivate memberships failed', deactivateError);
-              throw deactivateError;
-            }
             const rows = buildWorkspaceAccessRows(selfRole, selfAreas).map(row => ({
               user_id: existingUser.userId,
               ...row
@@ -1735,6 +1751,31 @@
               if (membershipError) {
                 console.error('[Settings] self-edit memberships upsert failed', membershipError);
                 throw membershipError;
+              }
+            }
+            // Deactivate any rows whose workspace_id is NOT in the new set.
+            const keepIds = new Set(rows.map(r => r.workspace_id));
+            const { data: existingActive, error: readErr } = await client
+              .from('workspace_memberships')
+              .select('workspace_id')
+              .eq('user_id', existingUser.userId)
+              .eq('active', true);
+            if (readErr) {
+              console.error('[Settings] self-edit existing-rows read failed', readErr);
+              throw readErr;
+            }
+            const dropIds = (existingActive || [])
+              .map(r => r.workspace_id)
+              .filter(id => !keepIds.has(id));
+            if (dropIds.length) {
+              const { error: deactivateError } = await client
+                .from('workspace_memberships')
+                .update({ active: false, updated_at: new Date().toISOString() })
+                .eq('user_id', existingUser.userId)
+                .in('workspace_id', dropIds);
+              if (deactivateError) {
+                console.error('[Settings] self-edit deactivate-diff failed', deactivateError);
+                throw deactivateError;
               }
             }
             // Optimistic local-state patch so the row in the team list
@@ -1764,11 +1805,11 @@
             .from('platform_profiles')
             .upsert(profilePayload, { onConflict:'id' });
           if(profileError) throw profileError;
-          const { error: deactivateError } = await client
-            .from('workspace_memberships')
-            .update({ active:false, updated_at:new Date().toISOString() })
-            .eq('user_id', existingUser.userId);
-          if(deactivateError) throw deactivateError;
+          // Membership sync — UPSERT first, deactivate diff after. The
+          // earlier "deactivate-then-upsert" ordering left users with zero
+          // active memberships (and invisible in the team list) whenever
+          // the upsert hit an RLS denial. Upsert-first means a mid-flow
+          // failure preserves the user's previous access intact.
           const rows = buildWorkspaceAccessRows(role, areas).map(row => ({
               user_id: existingUser.userId,
               ...row
@@ -1778,6 +1819,24 @@
               .from('workspace_memberships')
               .upsert(rows, { onConflict:'user_id,workspace_id' });
             if(membershipError) throw membershipError;
+          }
+          const keepIds = new Set(rows.map(r => r.workspace_id));
+          const { data: existingActive, error: readErr } = await client
+            .from('workspace_memberships')
+            .select('workspace_id')
+            .eq('user_id', existingUser.userId)
+            .eq('active', true);
+          if(readErr) throw readErr;
+          const dropIds = (existingActive || [])
+            .map(r => r.workspace_id)
+            .filter(id => !keepIds.has(id));
+          if(dropIds.length){
+            const { error: deactivateError } = await client
+              .from('workspace_memberships')
+              .update({ active:false, updated_at:new Date().toISOString() })
+              .eq('user_id', existingUser.userId)
+              .in('workspace_id', dropIds);
+            if(deactivateError) throw deactivateError;
           }
           await hydrateFromSession();
           resetAccessForm();
