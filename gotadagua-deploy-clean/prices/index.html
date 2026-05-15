@@ -76,10 +76,15 @@ main{max-width:1100px;margin:0 auto;padding:32px 24px}
    price docs. Keeps both modes one click away on the same URL so the
    owner can flip between editing prices and previewing what partners /
    guests will see, without losing scroll or selection. */
-.view-toggle{display:inline-flex;background:#fff;border:1px solid #e0e0de;border-radius:9px;padding:3px;gap:3px}
-.view-btn{padding:5px 14px;border-radius:6px;border:none;font-size:12px;font-weight:500;cursor:pointer;color:#888;background:transparent;font-family:'Outfit',sans-serif;transition:all .15s;white-space:nowrap}
-.view-btn:hover{color:var(--ink)}
-.view-btn.active{background:var(--ink);color:#fff}
+/* View toggle — matches the .ntab style used in camp-hub / partners nav so
+   the whole app shares one button language. Ghost on the dark header by
+   default, solid ocean-blue when active. */
+.view-toggle{display:inline-flex;gap:3px}
+.view-btn{padding:7px 14px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;border:none;font-family:'Outfit',sans-serif;transition:all .2s;color:#7aabcc;background:transparent;display:inline-flex;align-items:center;gap:8px;white-space:nowrap}
+.view-btn:hover{color:#fff;background:rgba(255,255,255,.08)}
+.view-btn.active{background:var(--ocean);color:#fff}
+.view-btn .ui-ic{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;flex-shrink:0}
+.view-btn .ui-ic svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 
 /* Price-List view — clean, share-ready sections per area (Surf, Tours,
    Transfers, Add-ons). Mirrors the Accommodation card styling so the
@@ -372,8 +377,8 @@ body.view-list .drag-handle{display:none}
   </div>
   <div class="header-right">
     <div class="view-toggle" id="viewToggle">
-      <button class="view-btn active" onclick="onViewMode('edit')">📝 Edit</button>
-      <button class="view-btn" onclick="onViewMode('list')">📋 Price List</button>
+      <button class="view-btn active" onclick="onViewMode('edit')"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M14 3l3 3-9 9H5v-3z"/><path d="M12 5l3 3"/></svg></span><span>Edit</span></button>
+      <button class="view-btn" onclick="onViewMode('list')"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M6 3h8l3 3v11H6z"/><path d="M14 3v4h4"/><path d="M9 10h5"/><path d="M9 13h5"/></svg></span><span>Price List</span></button>
     </div>
   </div>
 </header>
