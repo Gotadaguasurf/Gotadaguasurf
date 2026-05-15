@@ -56,14 +56,12 @@ header{background:var(--navy);padding:0 24px;display:flex;align-items:center;jus
 .header-sub{font-size:10px;color:#7aabcc;font-weight:700;letter-spacing:.1em;text-transform:uppercase;white-space:nowrap}
 .header-right{display:flex;align-items:center;gap:12px;flex-shrink:0;justify-content:flex-end;min-width:220px}
 .back-btn{display:inline-flex;align-items:center;gap:6px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.08);color:#fff;border-radius:999px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;text-decoration:none;font-family:'Outfit',sans-serif}
-/* Download PDF — sits on the dark header, matches the .view-btn ghost-on-dark
-   pattern but with an inverted treatment (filled ocean by default to read
-   as a primary action; hover bumps the lightness). */
-.dl-btn{display:inline-flex;align-items:center;gap:8px;border:none;background:var(--ocean);color:#fff;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;transition:all .2s;white-space:nowrap}
-.dl-btn:hover{background:#2685c4}
+/* Download PDF — matches the Import CSV ghost-pill style used on the
+   workspace home, so the platform shares one button language across
+   header actions. White-text-on-translucent, pill-shaped, no icon. */
+.dl-btn{display:inline-flex;align-items:center;gap:8px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.08);color:#fff;border-radius:999px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;transition:all .18s;white-space:nowrap}
+.dl-btn:hover{background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.28)}
 .dl-btn:disabled{opacity:.5;cursor:wait}
-.dl-btn .ui-ic{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;flex-shrink:0}
-.dl-btn .ui-ic svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .back-btn:hover{background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.28)}
 .save-pill{font-size:11px;font-weight:700;padding:5px 12px;border-radius:999px;display:none}
 .save-pill.show{display:inline-flex}
@@ -406,10 +404,7 @@ body.view-list .drag-handle{display:none}
   </div>
   <div class="header-right">
     <span id="savePill" class="save-pill"></span>
-    <button class="dl-btn" id="dlPdfBtn" onclick="downloadPriceListPDF()" title="Download a PDF of the current price list">
-      <span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M10 4v9"/><path d="m6 9 4 4 4-4"/><path d="M4 17h12"/></svg></span>
-      <span>Download PDF</span>
-    </button>
+    <button class="dl-btn" id="dlPdfBtn" onclick="downloadPriceListPDF()" title="Download a PDF of the current price list">Download PDF</button>
   </div>
 </header>
 
