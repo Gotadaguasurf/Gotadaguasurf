@@ -841,13 +841,54 @@ function withTimeout(promise, ms, label){
   document.title = `${_locLabel} prices · Gota d'Água`;
   markStep('step-location','ok','Location: '+(LOCATION_LABELS[LOCATION_SLUG] || locRow.name));
 
-  // 5. Owner-only gate (Phase 4 replaces this with pricing_access lookup)
+  // 5. Access gate — owner gets full edit; everyone else needs the
+  // "prices-<location>" pill (= an active workspace_memberships row on
+  // that workspace). The pill carries can_view + can_edit flags; we
+  // honour them so the same gate can grant view-only access to partners
+  // in the future without code changes.
   if (!isOwner) {
-    markStep('step-access','err','Owner-only for now');
-    renderNoAccess('Restricted area','The pricing catalog is currently visible to the platform owner only. Per-email access comes in a follow-up release.');
-    return;
+    markStep('step-access','pending','Checking team access…');
+    try {
+      const { data: priceWs, error: wsErr } = await sbClient
+        .from('workspaces')
+        .select('id')
+        .eq('slug', `prices-${LOCATION_SLUG}`)
+        .maybeSingle();
+      if (wsErr) throw wsErr;
+      if (!priceWs?.id) {
+        markStep('step-access','err',`prices-${LOCATION_SLUG} workspace missing`);
+        renderNoAccess('Setup pending',
+          `The "prices-${LOCATION_SLUG}" workspace doesn't exist yet. Ask the platform owner to run supabase/workspaces-add-prices-rows.sql in Supabase.`);
+        return;
+      }
+      const { data: mem, error: memErr } = await sbClient
+        .from('workspace_memberships')
+        .select('can_view, can_edit')
+        .eq('user_id', session.user.id)
+        .eq('workspace_id', priceWs.id)
+        .eq('active', true)
+        .maybeSingle();
+      if (memErr) throw memErr;
+      if (!mem || mem.can_view === false) {
+        markStep('step-access','err','No prices-* membership');
+        renderNoAccess('Restricted area',
+          `You don't have access to the ${_locLabel} pricing catalog yet. Ask the platform owner in Settings → Team Access to enable the "${_locLabel} prices" pill on your account.`);
+        return;
+      }
+      canEdit = !!mem.can_edit;
+      // Partners with view-only access shouldn't see cost columns — the
+      // owner's negotiated rates are sensitive.
+      canViewCosts = canEdit;
+      markStep('step-access','ok',`Team access — canEdit=${canEdit}`);
+    } catch (err) {
+      console.error('[Prices] access check failed', err);
+      markStep('step-access','err','Access check failed — '+(err?.message||err));
+      renderNoAccess('Access check failed', String(err?.message || err));
+      return;
+    }
+  } else {
+    markStep('step-access','ok','Owner access granted');
   }
-  markStep('step-access','ok','Owner access granted');
 
   // 6. Load catalog rows — this is the most likely failure point if the
   //    pricing_catalog table hasn't been created yet in Supabase. The
