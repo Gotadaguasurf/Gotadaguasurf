@@ -1183,7 +1183,12 @@ function renderTable(){
     const margin = sellNum - ownCost;
     const marginPct = sellNum > 0 ? Math.round((margin / sellNum) * 100) : null;
 
-    const sellTxt = sellNum > 0 ? money(sellNum, r.currency) : '<span style="color:var(--muted)">—</span>';
+    // SELL price uses sell_currency (what we charge guests — usually EUR).
+    // COST uses currency (what we pay suppliers — local: MAD, LKR, etc.).
+    // When sell_currency is null we fall back to currency so single-currency
+    // rows (e.g. simple add-ons priced and costed in EUR) keep working.
+    const sellCcy = r.sell_currency || r.currency || 'EUR';
+    const sellTxt = sellNum > 0 ? money(sellNum, sellCcy) : '<span style="color:var(--muted)">—</span>';
     const costTxt = ownCost > 0 ? money(ownCost, r.currency) : '<span style="color:var(--muted)">—</span>';
     const marginTxt = sellNum > 0
       ? `<span style="color:${margin>=0?'var(--green)':'var(--red)'};font-weight:700">${marginPct}%</span>`
@@ -2061,25 +2066,29 @@ function renderPriceListView(){
   if (filterArea === 'costs') {
     bodyHtml = `<div class="pv-card"><div class="pv-empty">No public costs section.</div></div>`;
   } else if (filterArea === 'tours') {
-    const rows = items.map(r => `
+    const rows = items.map(r => {
+      const ccy = r.sell_currency || r.currency || 'EUR';
+      return `
       <tr>
         <td>${escapeHtml(r.name)}</td>
         <td><div class="pv-desc">${escapeHtml(r.notes || '')}</div></td>
-        <td class="r"><span class="pv-price">${money(Number(r.sell_price||0), r.currency)}</span></td>
+        <td class="r"><span class="pv-price">${money(Number(r.sell_price||0), ccy)}</span></td>
       </tr>
-    `).join('');
+    `;}).join('');
     bodyHtml = `<div class="pv-card">${pvTable(
       [{label:'Activity'},{label:'Includes'},{label:'Price/person',right:true}],
       rows, 'No tours published yet.'
     )}</div>`;
   } else if (filterArea === 'surf') {
-    const rows = items.map(r => `
+    const rows = items.map(r => {
+      const ccy = r.sell_currency || r.currency || 'EUR';
+      return `
       <tr>
         <td>${escapeHtml(r.name)}</td>
         <td><div class="pv-desc">${escapeHtml(r.notes || '')}</div></td>
-        <td class="r"><span class="pv-price">${money(Number(r.sell_price||0), r.currency)}</span></td>
+        <td class="r"><span class="pv-price">${money(Number(r.sell_price||0), ccy)}</span></td>
       </tr>
-    `).join('');
+    `;}).join('');
     bodyHtml = `<div class="pv-card">${pvTable(
       [{label:'Pack'},{label:'Includes'},{label:'Price/person',right:true}],
       rows, 'No surf packs published yet.'
@@ -2091,13 +2100,15 @@ function renderPriceListView(){
     renderTransfersPriceList();
     return;
   } else { // addons + fallback
-    const rows = items.map(r => `
+    const rows = items.map(r => {
+      const ccy = r.sell_currency || r.currency || 'EUR';
+      return `
       <tr>
         <td>${escapeHtml(r.name)}</td>
         <td><div class="pv-desc">${escapeHtml(r.notes || '')}</div></td>
-        <td class="r"><span class="pv-price">${money(Number(r.sell_price||0), r.currency)}</span></td>
+        <td class="r"><span class="pv-price">${money(Number(r.sell_price||0), ccy)}</span></td>
       </tr>
-    `).join('');
+    `;}).join('');
     bodyHtml = `<div class="pv-card">${pvTable(
       [{label:'Item'},{label:'Description'},{label:'Price',right:true}],
       rows, 'Nothing in this area yet.'
