@@ -7361,31 +7361,66 @@ function renderExpenses(){
     return String(a.id||'').localeCompare(String(b.id||'')); // stable secondary sort by id
   });
   const visibleExpenses=rows.filter(x=>x.type==='expense');
+  // ── FILTERED totals (reflect the current search / type / payment / week filter) ──
   const campSpendLocal=sum(visibleExpenses.filter(x=>x.paymentMethod==='Cash'),x=>entryLocalDisplayAmount(x));
   const campSpendEur=sum(visibleExpenses.filter(x=>x.paymentMethod==='Cash'),x=>entryEurAmount(x));
   const cardSpendLocal=sum(visibleExpenses.filter(x=>x.paymentMethod==='Card'),x=>entryLocalDisplayAmount(x));
   const cardSpendEur=sum(visibleExpenses.filter(x=>x.paymentMethod==='Card'),x=>entryEurAmount(x));
   const hqSpendLocal=sum(visibleExpenses.filter(x=>x.paymentMethod==='Bank Transfer'),x=>entryLocalDisplayAmount(x));
   const hqSpendEur=sum(visibleExpenses.filter(x=>x.paymentMethod==='Bank Transfer'),x=>entryEurAmount(x));
-  const moneySentLocal=sum(rows.filter(x=>x.type==='transfer'),x=>entryLocalDisplayAmount(x));
-  const moneySentEur=sum(rows.filter(x=>x.type==='transfer'),x=>entryEurAmount(x));
+  const moneySentLocal=sum(rows.filter(x=>x.type==='transfer'&&x.paymentMethod==='HQ Transfer'),x=>entryLocalDisplayAmount(x));
+  const moneySentEur=sum(rows.filter(x=>x.type==='transfer'&&x.paymentMethod==='HQ Transfer'),x=>entryEurAmount(x));
   const revenueLocal=sum(rows.filter(x=>x.type==='income'),x=>entryLocalDisplayAmount(x));
   const revenueEur=sum(rows.filter(x=>x.type==='income'),x=>entryEurAmount(x));
-  // Cash left = money sent + revenue − everything spent (Cash + Card +
-  // Bank Transfer). All three eat from the same operating pool.
-  const opSpendLocal=campSpendLocal+cardSpendLocal+hqSpendLocal;
-  const opSpendEur=campSpendEur+cardSpendEur+hqSpendEur;
-  const cashLeftLocal=moneySentLocal+revenueLocal-opSpendLocal;
-  const cashLeftEur=moneySentEur+revenueEur-opSpendEur;
+
+  // ── ALL-TIME balances (NOT filtered — "what's in the wallet right now") ──
+  // The user explicitly asked for these: "saber os saldos ... cash e no banco
+  // ... fácil de perceber". Filtering the ledger shouldn't change the live
+  // balance — it always reflects everything ever logged for this location.
+  const allLedgerRows = S.ledger || [];
+  const aExp = allLedgerRows.filter(x=>x.type==='expense');
+  const aInc = allLedgerRows.filter(x=>x.type==='income');
+  const aTrans = allLedgerRows.filter(x=>x.type==='transfer');
+  const sumL = (arr,f) => sum(arr, f);
+  const aCash    = sumL(aExp.filter(x=>x.paymentMethod==='Cash'),         x=>entryLocalDisplayAmount(x));
+  const aCard    = sumL(aExp.filter(x=>x.paymentMethod==='Card'),         x=>entryLocalDisplayAmount(x));
+  const aBankXfer= sumL(aExp.filter(x=>x.paymentMethod==='Bank Transfer'),x=>entryLocalDisplayAmount(x));
+  const aHQ      = sumL(aTrans.filter(x=>x.paymentMethod==='HQ Transfer'),x=>entryLocalDisplayAmount(x));
+  const aATM     = sumL(aTrans.filter(x=>x.paymentMethod==='ATM Withdrawal'),x=>entryLocalDisplayAmount(x));
+  const aDeposit = sumL(aTrans.filter(x=>x.paymentMethod==='Cash Deposit'),x=>entryLocalDisplayAmount(x));
+  const aRev     = sumL(aInc, x=>entryLocalDisplayAmount(x));
+  // Same in EUR
+  const aCashE    = sumL(aExp.filter(x=>x.paymentMethod==='Cash'),         x=>entryEurAmount(x));
+  const aCardE    = sumL(aExp.filter(x=>x.paymentMethod==='Card'),         x=>entryEurAmount(x));
+  const aBankXferE= sumL(aExp.filter(x=>x.paymentMethod==='Bank Transfer'),x=>entryEurAmount(x));
+  const aHQE      = sumL(aTrans.filter(x=>x.paymentMethod==='HQ Transfer'),x=>entryEurAmount(x));
+  const aATME     = sumL(aTrans.filter(x=>x.paymentMethod==='ATM Withdrawal'),x=>entryEurAmount(x));
+  const aDepositE = sumL(aTrans.filter(x=>x.paymentMethod==='Cash Deposit'),x=>entryEurAmount(x));
+  const aRevE     = sumL(aInc, x=>entryEurAmount(x));
+  // Bank drawer = HQ transfers in + cash deposits in − card spend − bank
+  // transfer spend − ATM withdrawals out.
+  const bankBalLocal = aHQ + aDeposit - aCard - aBankXfer - aATM;
+  const bankBalEur   = aHQE + aDepositE - aCardE - aBankXferE - aATME;
+  // Cash drawer = ATM withdrawals in + revenue in − cash spend − cash
+  // deposits out.
+  const cashBalLocal = aATM + aRev - aCash - aDeposit;
+  const cashBalEur   = aATME + aRevE - aCashE - aDeposit;
+  const totalBalLocal = bankBalLocal + cashBalLocal;
+  const totalBalEur   = bankBalEur + cashBalEur;
 
   document.getElementById('expKpis').innerHTML=`
-    ${kpi('Cash Left','Money sent + revenue − all operating spend',lkr(cashLeftLocal),cashLeftLocal>=0?'kv-green':'kv-red',euro(cashLeftEur))}
-    ${kpi('Entries','Visible rows',String(rows.length),'kv-ocean')}
-    ${kpi('Cash Spend','Paid from on-site cash',lkr(campSpendLocal),'kv-red',euro(campSpendEur))}
-    ${kpi('Card Spend','Paid with the camp card',lkr(cardSpendLocal),'kv-amber',euro(cardSpendEur))}
-    ${kpi('Bank Transfer','Paid from camp bank',lkr(hqSpendLocal),'kv-amber',euro(hqSpendEur))}
-    ${kpi('Money Sent','HQ top-ups to camp',lkr(moneySentLocal),'kv-ocean',euro(moneySentEur))}
-    ${kpi('Revenue','Incoming cash logged in ledger',lkr(revenueLocal),'kv-green',euro(revenueEur))}
+    <div class="g4">
+      ${kpi('Total Balance','Bank + Cash · all time',lkr(totalBalLocal),totalBalLocal>=0?'kv-green':'kv-red',euro(totalBalEur))}
+      ${kpi('Bank','HQ in − card/bank spend − ATM out',lkr(bankBalLocal),bankBalLocal>=0?'kv-ocean':'kv-red',euro(bankBalEur))}
+      ${kpi('Cash','ATM in + revenue − cash spend',lkr(cashBalLocal),cashBalLocal>=0?'kv-amber':'kv-red',euro(cashBalEur))}
+      ${kpi('Entries','Visible rows (filtered)',String(rows.length),'kv-ocean')}
+    </div>
+    <div class="g4" style="margin-top:12px">
+      ${kpi('Cash Spend','Filtered · paid from on-site cash',lkr(campSpendLocal),'kv-red',euro(campSpendEur))}
+      ${kpi('Card Spend','Filtered · paid with the camp card',lkr(cardSpendLocal),'kv-amber',euro(cardSpendEur))}
+      ${kpi('Bank Transfer','Filtered · paid from camp bank',lkr(hqSpendLocal),'kv-amber',euro(hqSpendEur))}
+      ${kpi('Money Sent · Revenue','Filtered · HQ top-ups + revenue logged',lkr(moneySentLocal+revenueLocal),'kv-green',euro(moneySentEur+revenueEur))}
+    </div>
   `;
 
   const el=document.getElementById('expTable');
