@@ -1443,30 +1443,29 @@ function normalizeLedgerEntry(entry){
   // ALWAYS belong to the active local currency by construction.
   try{
     if(currency !== 'EUR'){
-      // Heal goal: stamp the entry with the rate that was current on the
-      // entry's OWN date (not today's). That way historical reports don't
-      // shift retroactively when today's rate moves.
-      //   1) Check the per-date cache (Frankfurter/Supabase populated it
-      //      the first time anyone logged an entry on this date).
-      //   2) Fall back to LOCAL_PER_EUR (today's live rate) if no cache.
-      //   3) Final fallback: the per-location constant.
-      const dateRate = cachedFxRateForDate(entry.date)
-                     || Number(LOCAL_PER_EUR||0)
-                     || FX_FALLBACK_THIS_LOC;
+      // Heal goal: stamp the entry with the rate appropriate for THIS
+      // location's currency. We deliberately DO NOT use cachedFxRateForDate
+      // here — the daily cache is keyed by date only (not by currency), so
+      // running the bulk-heal across both Sri Lanka and Morocco pollutes
+      // it: a 2026-05-21 LKR rate of 389 can overwrite (or be overwritten
+      // by) the MAD rate of 10.72 for the same date. Using that cache
+      // would put a 389 stamp on a MAD entry → MAD 87 displays as €0.22.
+      //
+      // Source of truth instead: LOCAL_PER_EUR, which is set once on
+      // boot from a Frankfurter EUR/{location's currency} call. It's
+      // ALWAYS the right rate for the active location's currency.
+      const safeRate = Number(LOCAL_PER_EUR||0) || FX_FALLBACK_THIS_LOC;
       if(currency !== LOCAL_CURRENCY){
-        // Currency stamp is from a different location's session. Replace
-        // with this location's locked currency and the rate for the entry's date.
-        console.warn('[Hub] healed stale currency stamp', {id:normalizedId, was:currency, now:LOCAL_CURRENCY, fxWas:fxRate, fxNow:dateRate, amountLocal:Number(entry.amountLocal??entry.amount??0), entryDate:entry.date});
+        console.warn('[Hub] healed stale currency stamp', {id:normalizedId, was:currency, now:LOCAL_CURRENCY, fxWas:fxRate, fxNow:safeRate, amountLocal:Number(entry.amountLocal??entry.amount??0), entryDate:entry.date});
         currency = LOCAL_CURRENCY;
-        fxRate = dateRate;
-      } else if (dateRate>0 && Number(fxRate||0)>0) {
-        const drift=Math.abs(fxRate-dateRate)/dateRate;
-        // Same currency. Only heal egregious drift (>50%) — small daily
-        // variations are legitimate and we want each entry to keep the
-        // rate it was actually stamped with.
+        fxRate = safeRate;
+      } else if (safeRate>0 && Number(fxRate||0)>0) {
+        const drift=Math.abs(fxRate-safeRate)/safeRate;
+        // Same currency: only heal egregious drift (>50%) so legitimate
+        // historical rates (a few % off today's) survive.
         if(drift>0.5){
-          console.warn('[Hub] healed grossly drifted fxRate', {id:normalizedId,was:fxRate,now:dateRate,currency,date:entry.date,drift:(drift*100).toFixed(1)+'%'});
-          fxRate=Number(dateRate);
+          console.warn('[Hub] healed grossly drifted fxRate', {id:normalizedId,was:fxRate,now:safeRate,currency,date:entry.date,drift:(drift*100).toFixed(1)+'%'});
+          fxRate=Number(safeRate);
         }
       }
     }
@@ -2959,8 +2958,14 @@ async function healAllFxRatesToLive({dryRun=true, throttleMs=120}={}){
       failed+=rows.length;
       continue;
     }
-    // Side-effect: populate the per-date cache so future renders use it.
-    setFxDailyRate(date,rate);
+    // NOTE: deliberately do NOT call setFxDailyRate here. The daily cache
+    // is keyed by date only (not by currency), so writing both Sri Lanka
+    // LKR rates AND Morocco MAD rates into it during the same heal run
+    // would race-condition the cache — whichever currency was processed
+    // last would win for shared dates, and the wrong rate could leak into
+    // the other location's heal-on-load. Updates to ledger_entries (next
+    // block) are what we actually care about; the cache will repopulate
+    // correctly from the per-location boot fetch.
     for(const r of rows){
       const newEur=Math.round((Number(r.amount_local||0)/rate)*100)/100;
       const oldRate=Number(r.fx_rate||0);
@@ -2995,6 +3000,18 @@ async function healAllFxRatesToLive({dryRun=true, throttleMs=120}={}){
   return { touched:dryReport.length, updated, skipped, failed, sample:dryReport.slice(0,20) };
 }
 if(typeof window!=='undefined') window.healAllFxRatesToLive=healAllFxRatesToLive;
+
+// Diagnostic helper — wipe the per-date FX cache for the CURRENT location.
+// Useful if cache got poisoned by a cross-currency write. After clearing,
+// the next page render uses LOCAL_PER_EUR (Frankfurter live for this
+// location's currency) instead of the cached value.
+function clearLocalFxCache(){
+  localStorage.removeItem(FX_DAILY_KEY);
+  localStorage.removeItem(FX_KEY);
+  console.log('[FxCache] cleared for', __HUB_LOCATION_SLUG, '(', FX_DAILY_KEY, ',', FX_KEY, ')');
+  console.log('[FxCache] reload the page to pick up a fresh Frankfurter rate.');
+}
+if(typeof window!=='undefined') window.clearLocalFxCache=clearLocalFxCache;
 async function syncFxRateForPrefix(prefix,{silent=true}={}){
   const currency=document.getElementById(prefix+'_currency')?.value||LOCAL_CURRENCY||'LKR';
   const date=document.getElementById(prefix+'_date')?.value||'';
