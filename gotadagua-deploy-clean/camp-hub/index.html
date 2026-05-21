@@ -1336,6 +1336,12 @@ let everInLedgerIds=new Set(); // tracks every campclose ID ever fetched from Su
 // Local currency + default FX rate are set per location. They start with the
 // Sri Lanka defaults so existing call sites keep working unchanged, then get
 // overwritten by applyLocationCurrency() after the location row is fetched.
+// ── LOCKED currency per location ──────────────────────────────────────────
+//
+// This is the "code lock" the user asked for: the active currency for each
+// location is hard-coded in JS, so the front-end CANNOT accidentally stamp
+// a Morocco entry as LKR (the bug that put fx_rate~388 on MAD amounts).
+// Adding a new location? Add it here too.
 const LOCAL_CURRENCY_PINNED = {
   'sri-lanka': 'LKR',
   'morocco':   'MAD',
@@ -1343,26 +1349,23 @@ const LOCAL_CURRENCY_PINNED = {
   'junior':    'EUR'
 };
 let LOCAL_CURRENCY = LOCAL_CURRENCY_PINNED[__HUB_LOCATION_SLUG] || 'LKR';
-// ── LOCKED per-location FX rates ──────────────────────────────────────────
+// ── FX rate fallbacks (NOT a lock) ────────────────────────────────────────
 //
-// Source of truth for "what's the right rate for THIS location". The user
-// explicitly asked to LOCK these so the EUR conversion doesn't drift
-// mid-session (it used to read from localStorage / locations.default_fx_to_eur
-// and silently stamp the WRONG rate on Morocco entries — the LKR ~388 instead
-// of the MAD ~10.5 — leading to MAD 87 displaying as €0.22 instead of €8.29).
-//
-// These values are also the only thing normalizeLedgerEntry trusts when
-// healing stale stamps. Update here when needed (rates do drift over years),
-// then re-run the heal migration to refresh historical rows.
-const FX_PINNED_PER_EUR = {
+// These are only used as a last-resort fallback when the live Frankfurter
+// fetch fails AND there's no cached daily rate available. The real source
+// of truth is fetchFxRateForDate() which hits Frankfurter (ECB-backed)
+// for today's rate, falling through to the per-date local cache and
+// Supabase cache. The cache means every entry is stamped with the rate
+// that was current on its OWN date — historical entries don't get
+// retroactively revalued.
+const FX_FALLBACK_PER_EUR = {
   'sri-lanka': 330,
   'morocco':   10.5,
   'portugal':  1,
   'junior':    1
 };
-const FX_PIN_THIS_LOCATION = FX_PINNED_PER_EUR[__HUB_LOCATION_SLUG] ?? null;
-let LOCAL_PER_EUR = (FX_PIN_THIS_LOCATION
-  ?? (parseFloat(localStorage.getItem(FX_KEY)||'330') || 330));
+const FX_FALLBACK_THIS_LOC = FX_FALLBACK_PER_EUR[__HUB_LOCATION_SLUG] ?? 330;
+let LOCAL_PER_EUR = (parseFloat(localStorage.getItem(FX_KEY)||'') || FX_FALLBACK_THIS_LOC);
 let DEFAULT_LKR_PER_EUR=LOCAL_PER_EUR;
 const FIXED_MONTHLY_DEFAULTS=[
   {name:'Staff House Rent',type:'expense',category:'Rent',businessArea:'Utilities',paymentMethod:'Bank Transfer',amountLocal:150000,description:'Staff house rent',enabled:true},
@@ -1440,18 +1443,30 @@ function normalizeLedgerEntry(entry){
   // ALWAYS belong to the active local currency by construction.
   try{
     if(currency !== 'EUR'){
+      // Heal goal: stamp the entry with the rate that was current on the
+      // entry's OWN date (not today's). That way historical reports don't
+      // shift retroactively when today's rate moves.
+      //   1) Check the per-date cache (Frankfurter/Supabase populated it
+      //      the first time anyone logged an entry on this date).
+      //   2) Fall back to LOCAL_PER_EUR (today's live rate) if no cache.
+      //   3) Final fallback: the per-location constant.
+      const dateRate = cachedFxRateForDate(entry.date)
+                     || Number(LOCAL_PER_EUR||0)
+                     || FX_FALLBACK_THIS_LOC;
       if(currency !== LOCAL_CURRENCY){
-        // Currency stamp is from a different location's session. Replace.
-        console.warn('[Hub] healed stale currency stamp', {id:normalizedId, was:currency, now:LOCAL_CURRENCY, fxWas:fxRate, fxNow:LOCAL_PER_EUR, amountLocal:Number(entry.amountLocal??entry.amount??0)});
+        // Currency stamp is from a different location's session. Replace
+        // with this location's locked currency and the rate for the entry's date.
+        console.warn('[Hub] healed stale currency stamp', {id:normalizedId, was:currency, now:LOCAL_CURRENCY, fxWas:fxRate, fxNow:dateRate, amountLocal:Number(entry.amountLocal??entry.amount??0), entryDate:entry.date});
         currency = LOCAL_CURRENCY;
-        fxRate = LOCAL_PER_EUR;
-      } else if (Number(LOCAL_PER_EUR||0)>0 && Number(fxRate||0)>0) {
-        const drift=Math.abs(fxRate-LOCAL_PER_EUR)/LOCAL_PER_EUR;
-        const entryIsToday=(entry.date===today());
-        const threshold=entryIsToday?0.10:0.5;
-        if(drift>threshold){
-          console.warn('[Hub] healed drifted fxRate', {id:normalizedId,was:fxRate,now:LOCAL_PER_EUR,currency,date:entry.date,drift:(drift*100).toFixed(1)+'%'});
-          fxRate=Number(LOCAL_PER_EUR);
+        fxRate = dateRate;
+      } else if (dateRate>0 && Number(fxRate||0)>0) {
+        const drift=Math.abs(fxRate-dateRate)/dateRate;
+        // Same currency. Only heal egregious drift (>50%) — small daily
+        // variations are legitimate and we want each entry to keep the
+        // rate it was actually stamped with.
+        if(drift>0.5){
+          console.warn('[Hub] healed grossly drifted fxRate', {id:normalizedId,was:fxRate,now:dateRate,currency,date:entry.date,drift:(drift*100).toFixed(1)+'%'});
+          fxRate=Number(dateRate);
         }
       }
     }
@@ -2161,14 +2176,21 @@ async function ensureHubLocationId(){
   // back silently to the LKR defaults if the columns aren't there yet
   // (i.e. setup-locations-currency.sql hasn't been run).
   if (data?.currency) {
-    // Pinned JS constants are the source of truth — DB values are used only
-    // as a fallback for locations we don't have a pin for. This is the lock
-    // the user asked for: Morocco never reads anything other than MAD 10.5,
-    // Sri Lanka never anything other than LKR 330, etc.
+    // Currency: ALWAYS use the JS-locked value. Even if Supabase
+    // accidentally has the wrong currency code in the locations row,
+    // the front-end uses the right one. This is the bug-prevention lock.
     LOCAL_CURRENCY = LOCAL_CURRENCY_PINNED[__HUB_LOCATION_SLUG] || data.currency;
+    // FX rate: kick off a live Frankfurter fetch for TODAY's rate. While
+    // that's in flight LOCAL_PER_EUR keeps the DB default (or fallback
+    // constant for a brand-new session). Once the fetch resolves
+    // applyIfToday inside fetchFxRateForDate updates LOCAL_PER_EUR in
+    // place, so any entry created after that lands with today's rate.
     if (data.default_fx_to_eur) {
-      LOCAL_PER_EUR = FX_PIN_THIS_LOCATION ?? Number(data.default_fx_to_eur) ?? LOCAL_PER_EUR;
+      LOCAL_PER_EUR = Number(data.default_fx_to_eur) || LOCAL_PER_EUR;
       DEFAULT_LKR_PER_EUR = LOCAL_PER_EUR;
+      // Trigger background refresh — fetchFxRateForDate caches the result
+      // and updates LOCAL_PER_EUR if the requested date is today.
+      try { fetchFxRateForDate(today()); } catch(_e){}
       // Detect cache poisoning: if a previous bug cached a wildly wrong rate
       // under this location's FX keys (e.g., LKR ~330 cached for Morocco
       // because readSupabaseFxRate used to be hardcoded to LKR), wipe it
