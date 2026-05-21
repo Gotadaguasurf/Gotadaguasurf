@@ -2893,6 +2893,98 @@ async function fetchFxRateForDate(date){
 function getBestFxRateForDate(date){
   return cachedFxRateForDate(date)||parseFloat(localStorage.getItem(FX_KEY)||String(DEFAULT_LKR_PER_EUR))||DEFAULT_LKR_PER_EUR;
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Bulk FX heal — refresh historical ledger entries with the REAL daily rate
+//  from Frankfurter (EUR/{currency}?date={YYYY-MM-DD}). amount_local is the
+//  source of truth and NEVER touched; only fx_rate and amount_eur get rewritten.
+//
+//  Run from DevTools console:
+//      await window.healAllFxRatesToLive()                // dry-run (default)
+//      await window.healAllFxRatesToLive({dryRun:false})  // actually update
+//
+//  Defaults to dry-run for safety so you can review the diff first.
+// ════════════════════════════════════════════════════════════════════════════
+async function healAllFxRatesToLive({dryRun=true, throttleMs=120}={}){
+  const client=getHubSupabaseClient();
+  if(!client){ console.error('[HealFx] no supabase client'); return; }
+  console.log('[HealFx] starting', dryRun?'(DRY-RUN — no writes)':'(WILL WRITE)');
+  // 1) Read every non-EUR ledger entry across all locations.
+  const {data: entries, error}=await client
+    .from('ledger_entries')
+    .select('id,location_id,entry_date,currency,amount_local,fx_rate,amount_eur');
+  if(error){ console.error('[HealFx] read failed', error); return; }
+  const nonEur=(entries||[]).filter(e=>e.currency && e.currency!=='EUR' && Number(e.amount_local||0)>0 && e.entry_date);
+  console.log(`[HealFx] ${nonEur.length} non-EUR entries to consider (${entries?.length||0} total)`);
+  if(!nonEur.length){ console.log('[HealFx] nothing to do'); return; }
+  // 2) Group by (currency, date) — one Frankfurter call per unique combo.
+  const byKey=new Map();
+  for(const e of nonEur){
+    const k=`${e.currency}|${e.entry_date}`;
+    if(!byKey.has(k)) byKey.set(k,[]);
+    byKey.get(k).push(e);
+  }
+  console.log(`[HealFx] ${byKey.size} unique (currency,date) combos → ${byKey.size} Frankfurter calls`);
+  // 3) For each unique (currency, date), fetch the real rate and apply.
+  let updated=0, skipped=0, failed=0;
+  const dryReport=[];
+  let i=0;
+  for(const [k,rows] of byKey){
+    i++;
+    const [currency,date]=k.split('|');
+    let rate=0;
+    try{
+      const url=`https://api.frankfurter.dev/v2/rate/EUR/${currency}?date=${date}`;
+      const res=await fetch(url,{headers:{accept:'application/json'}});
+      if(!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json=await res.json();
+      rate=Number(json?.rate||0);
+    }catch(err){
+      console.warn(`[HealFx] (${i}/${byKey.size}) ${k} fetch failed`, err);
+      failed+=rows.length;
+      continue;
+    }
+    if(!(rate>0)){
+      console.warn(`[HealFx] (${i}/${byKey.size}) ${k} no rate returned`);
+      failed+=rows.length;
+      continue;
+    }
+    // Side-effect: populate the per-date cache so future renders use it.
+    setFxDailyRate(date,rate);
+    for(const r of rows){
+      const newEur=Math.round((Number(r.amount_local||0)/rate)*100)/100;
+      const oldRate=Number(r.fx_rate||0);
+      const oldEur=Number(r.amount_eur||0);
+      // Skip rows already accurate (within 0.5% on rate AND within 1 cent on eur).
+      const rateOk=oldRate>0 && Math.abs(oldRate-rate)/rate<0.005;
+      const eurOk=Math.abs(oldEur-newEur)<0.01;
+      if(rateOk && eurOk){ skipped++; continue; }
+      dryReport.push({id:r.id, date:r.entry_date, currency, amount_local:r.amount_local, oldRate, newRate:rate, oldEur, newEur});
+      if(!dryRun){
+        const {error: updErr}=await client
+          .from('ledger_entries')
+          .update({fx_rate:rate, amount_eur:newEur})
+          .eq('id',r.id);
+        if(updErr){
+          console.error(`[HealFx] update failed for ${r.id}`, updErr);
+          failed++;
+          continue;
+        }
+        updated++;
+      }
+      if(throttleMs>0) await new Promise(rs=>setTimeout(rs,throttleMs));
+    }
+    console.log(`[HealFx] (${i}/${byKey.size}) ${currency} ${date} rate=${rate.toFixed(4)} rows=${rows.length}`);
+  }
+  console.log('[HealFx] DONE.', {touched:dryReport.length, updated, skipped, failed});
+  if(dryRun){
+    console.log('[HealFx] Dry-run sample (first 10 changes):');
+    console.table(dryReport.slice(0,10));
+    console.log('[HealFx] To actually apply: await window.healAllFxRatesToLive({dryRun:false})');
+  }
+  return { touched:dryReport.length, updated, skipped, failed, sample:dryReport.slice(0,20) };
+}
+if(typeof window!=='undefined') window.healAllFxRatesToLive=healAllFxRatesToLive;
 async function syncFxRateForPrefix(prefix,{silent=true}={}){
   const currency=document.getElementById(prefix+'_currency')?.value||LOCAL_CURRENCY||'LKR';
   const date=document.getElementById(prefix+'_date')?.value||'';
