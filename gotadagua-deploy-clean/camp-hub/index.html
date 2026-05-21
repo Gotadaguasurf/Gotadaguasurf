@@ -1336,8 +1336,33 @@ let everInLedgerIds=new Set(); // tracks every campclose ID ever fetched from Su
 // Local currency + default FX rate are set per location. They start with the
 // Sri Lanka defaults so existing call sites keep working unchanged, then get
 // overwritten by applyLocationCurrency() after the location row is fetched.
-let LOCAL_CURRENCY='LKR';
-let LOCAL_PER_EUR=parseFloat(localStorage.getItem(FX_KEY)||'330')||330;
+const LOCAL_CURRENCY_PINNED = {
+  'sri-lanka': 'LKR',
+  'morocco':   'MAD',
+  'portugal':  'EUR',
+  'junior':    'EUR'
+};
+let LOCAL_CURRENCY = LOCAL_CURRENCY_PINNED[__HUB_LOCATION_SLUG] || 'LKR';
+// ── LOCKED per-location FX rates ──────────────────────────────────────────
+//
+// Source of truth for "what's the right rate for THIS location". The user
+// explicitly asked to LOCK these so the EUR conversion doesn't drift
+// mid-session (it used to read from localStorage / locations.default_fx_to_eur
+// and silently stamp the WRONG rate on Morocco entries — the LKR ~388 instead
+// of the MAD ~10.5 — leading to MAD 87 displaying as €0.22 instead of €8.29).
+//
+// These values are also the only thing normalizeLedgerEntry trusts when
+// healing stale stamps. Update here when needed (rates do drift over years),
+// then re-run the heal migration to refresh historical rows.
+const FX_PINNED_PER_EUR = {
+  'sri-lanka': 330,
+  'morocco':   10.5,
+  'portugal':  1,
+  'junior':    1
+};
+const FX_PIN_THIS_LOCATION = FX_PINNED_PER_EUR[__HUB_LOCATION_SLUG] ?? null;
+let LOCAL_PER_EUR = (FX_PIN_THIS_LOCATION
+  ?? (parseFloat(localStorage.getItem(FX_KEY)||'330') || 330));
 let DEFAULT_LKR_PER_EUR=LOCAL_PER_EUR;
 const FIXED_MONTHLY_DEFAULTS=[
   {name:'Staff House Rent',type:'expense',category:'Rent',businessArea:'Utilities',paymentMethod:'Bank Transfer',amountLocal:150000,description:'Staff house rent',enabled:true},
@@ -1396,41 +1421,46 @@ function normalizeLedgerEntry(entry){
   const normalizedCategory=type==='expense'&&entry.category==='Activities'?'Tours':entry.category;
   const linkedItem=entry.linkedItem||'';
   const area=entry.businessArea||inferArea(type,normalizedCategory,linkedItem);
-  const currency=entry.currency||'EUR';
+  let currency=entry.currency||'EUR';
   let fxRate=Number(entry.fxRate||DEFAULT_LKR_PER_EUR);
-  // ── Defensive sanity check on FX rate ──────────────────────────────
-  // If this entry's currency matches the active location's currency and
-  // the supplied fxRate diverges from LOCAL_PER_EUR, force it to
-  // LOCAL_PER_EUR. The threshold depends on the entry's date:
+  // ── Aggressive currency + fxRate heal ────────────────────────────────────
+  // Every entry the hub renders is filtered by location_id at the DB query —
+  // so any entry that gets here was logged for THIS location. amountLocal is
+  // the user's typed number (source of truth, untouched). currency and
+  // fxRate are metadata stamped at entry-creation time and can be wrong:
   //
-  //   • Today's entry  → 10% drift triggers a heal. Real-world same-day
-  //     FX drift is well under 5% for stable pairs (EUR/LKR, EUR/MAD),
-  //     so 10% catches the common bug of a session that bootstrapped
-  //     with last week's rate and never refreshed (330 vs today's 378).
-  //   • Older entries → keep the loose 50% threshold so legitimate
-  //     historical rates (which CAN diverge from today's by 20-30% over
-  //     months) are preserved, but obvious cross-currency poisoning
-  //     (e.g. ~330 stamped on a MAD entry, ~3000% off) is still healed.
+  //   • currency stamped 'LKR' on a Morocco entry because the session that
+  //     created it had LOCAL_CURRENCY='LKR' before the location switch.
+  //   • fxRate ~388 stamped on a MAD entry that should be 10.5 (3700% off).
   //
-  // EUR entries are never touched. Cross-location entries (LKR row
-  // viewed in Morocco) are left alone — they're historical and we have
-  // no authoritative substitute rate.
+  // Both bugs make the displayed EUR equivalent garbage (MAD 87 → €0.22
+  // instead of €8.29). Fix: if the entry's currency doesn't match this
+  // location's LOCKED currency, force-replace currency + fxRate. The user
+  // never types EUR amounts in the local-currency field, so non-EUR entries
+  // ALWAYS belong to the active local currency by construction.
   try{
-    if(currency && currency!=='EUR'
-       && typeof LOCAL_CURRENCY!=='undefined' && currency===LOCAL_CURRENCY
-       && Number(LOCAL_PER_EUR||0)>0
-       && Number(fxRate||0)>0){
-      const drift=Math.abs(fxRate-LOCAL_PER_EUR)/LOCAL_PER_EUR;
-      const entryIsToday=(entry.date===today());
-      const threshold=entryIsToday?0.10:0.5;
-      if(drift>threshold){
-        console.warn('[Hub] normalizeLedgerEntry rescued bad fxRate',{id:normalizedId,was:fxRate,now:LOCAL_PER_EUR,currency,date:entry.date,drift:(drift*100).toFixed(1)+'%'});
-        fxRate=Number(LOCAL_PER_EUR);
+    if(currency !== 'EUR'){
+      if(currency !== LOCAL_CURRENCY){
+        // Currency stamp is from a different location's session. Replace.
+        console.warn('[Hub] healed stale currency stamp', {id:normalizedId, was:currency, now:LOCAL_CURRENCY, fxWas:fxRate, fxNow:LOCAL_PER_EUR, amountLocal:Number(entry.amountLocal??entry.amount??0)});
+        currency = LOCAL_CURRENCY;
+        fxRate = LOCAL_PER_EUR;
+      } else if (Number(LOCAL_PER_EUR||0)>0 && Number(fxRate||0)>0) {
+        const drift=Math.abs(fxRate-LOCAL_PER_EUR)/LOCAL_PER_EUR;
+        const entryIsToday=(entry.date===today());
+        const threshold=entryIsToday?0.10:0.5;
+        if(drift>threshold){
+          console.warn('[Hub] healed drifted fxRate', {id:normalizedId,was:fxRate,now:LOCAL_PER_EUR,currency,date:entry.date,drift:(drift*100).toFixed(1)+'%'});
+          fxRate=Number(LOCAL_PER_EUR);
+        }
       }
     }
   }catch(_e){}
   const rawAmount=Number(entry.amountLocal??entry.amount??0);
   const isLocalCurrency=currency!=='EUR';
+  // EUR equivalent is ALWAYS recomputed from the healed fxRate. Never trust
+  // the pre-computed entry.amount on non-EUR rows — that's the field that
+  // carried the wrong number from the original stale stamp.
   const amount=isLocalCurrency ? Number((rawAmount/(fxRate||1)).toFixed(2)) : Number((Number(entry.amount??rawAmount)||0).toFixed(2));
   let paymentMethod=entry.paymentMethod||defaultPaymentMethod(type,area);
   if(type==='expense'&&paymentMethod==='Camp Cash') paymentMethod='Cash';
@@ -2131,9 +2161,13 @@ async function ensureHubLocationId(){
   // back silently to the LKR defaults if the columns aren't there yet
   // (i.e. setup-locations-currency.sql hasn't been run).
   if (data?.currency) {
-    LOCAL_CURRENCY = data.currency;
+    // Pinned JS constants are the source of truth — DB values are used only
+    // as a fallback for locations we don't have a pin for. This is the lock
+    // the user asked for: Morocco never reads anything other than MAD 10.5,
+    // Sri Lanka never anything other than LKR 330, etc.
+    LOCAL_CURRENCY = LOCAL_CURRENCY_PINNED[__HUB_LOCATION_SLUG] || data.currency;
     if (data.default_fx_to_eur) {
-      LOCAL_PER_EUR = Number(data.default_fx_to_eur) || LOCAL_PER_EUR;
+      LOCAL_PER_EUR = FX_PIN_THIS_LOCATION ?? Number(data.default_fx_to_eur) ?? LOCAL_PER_EUR;
       DEFAULT_LKR_PER_EUR = LOCAL_PER_EUR;
       // Detect cache poisoning: if a previous bug cached a wildly wrong rate
       // under this location's FX keys (e.g., LKR ~330 cached for Morocco
