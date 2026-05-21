@@ -1481,7 +1481,17 @@ function normalizeLedgerEntry(entry){
   if(type==='expense'&&paymentMethod==='Camp Cash') paymentMethod='Cash';
   if(type==='expense'&&paymentMethod==='HQ Transfer') paymentMethod='Bank Transfer';
   if(type==='income'&&paymentMethod!=='Cash') paymentMethod='Cash';
-  if(type==='transfer') paymentMethod='HQ Transfer';
+  // Transfers can be one of three kinds, distinguished by paymentMethod:
+  //   • 'HQ Transfer'    — money sent from HQ to the camp BANK account.
+  //   • 'ATM Withdrawal' — owner withdraws cash from the bank ATM; moves
+  //                        funds from the BANK to the CASH drawer.
+  //   • 'Cash Deposit'   — owner deposits physical cash back into the
+  //                        bank; moves funds from CASH to BANK.
+  // Default to 'HQ Transfer' for back-compat with legacy entries that
+  // didn't carry an explicit kind.
+  if(type==='transfer' && !['HQ Transfer','ATM Withdrawal','Cash Deposit'].includes(paymentMethod)){
+    paymentMethod='HQ Transfer';
+  }
   // New model: only top-up transfers (type='transfer') count as
   // paidBy='HQ'. Every ordinary expense — Cash, Card, or Bank
   // Transfer — is paid from the camp's operating pool, so paidBy
@@ -3023,11 +3033,24 @@ function entryLocalDisplayAmount(entry){
 }
 function entryEurAmount(entry){
   if(!entry) return 0;
-  if(entry.amount!=null&&entry.amount!=='') return Number(entry.amount||0);
+  // Non-EUR entries: ALWAYS recompute EUR from amountLocal ÷ fxRate. Never
+  // trust the pre-stamped entry.amount on non-EUR rows — that's the field
+  // that carried the wrong number on legacy entries where a stale LKR
+  // fxRate (~388) was stamped on what is now a MAD row. Recomputing here
+  // is idempotent: healthy rows produce the same number; broken rows get
+  // the right number on every render.
   if(entry.currency && entry.currency !== 'EUR'){
-    const fx=Number(entry.fxRate||LOCAL_PER_EUR||1)||1;
+    // Prefer the cached daily rate for the entry's date over the row's
+    // stamped fxRate so a wrong stamp can't poison the display. Falls
+    // through to entry.fxRate, then to LOCAL_PER_EUR, then to 1.
+    const fx = (typeof cachedFxRateForDate==='function' ? cachedFxRateForDate(entry.date) : 0)
+             || Number(entry.fxRate||0)
+             || Number(LOCAL_PER_EUR||0)
+             || 1;
     return Number((Number(entry.amountLocal||0)/fx).toFixed(2));
   }
+  // EUR entries: stored entry.amount is authoritative.
+  if(entry.amount!=null&&entry.amount!=='') return Number(entry.amount||0);
   return Number(entry.amountLocal||0);
 }
 function moneyPairLocal(localAmount,eurAmount=null){
@@ -4275,13 +4298,41 @@ function renderOverview(){
   const cardSpendEur=sum(expenses.filter(x=>x.paymentMethod==='Card'),x=>entryEurAmount(x));
   const hqSpendLocal=sum(expenses.filter(x=>x.paymentMethod==='Bank Transfer'),x=>entryLocalDisplayAmount(x));
   const hqSpendEur=sum(expenses.filter(x=>x.paymentMethod==='Bank Transfer'),x=>entryEurAmount(x));
+  // Split transfers by their kind so we can compute Bank vs Cash drawers.
+  const moneySentLocal=sum(transfers.filter(x=>x.paymentMethod==='HQ Transfer'),x=>entryLocalDisplayAmount(x));
+  const moneySentEur  =sum(transfers.filter(x=>x.paymentMethod==='HQ Transfer'),x=>entryEurAmount(x));
+  const atmWithdrawnLocal=sum(transfers.filter(x=>x.paymentMethod==='ATM Withdrawal'),x=>entryLocalDisplayAmount(x));
+  const atmWithdrawnEur  =sum(transfers.filter(x=>x.paymentMethod==='ATM Withdrawal'),x=>entryEurAmount(x));
+  const cashDepositedLocal=sum(transfers.filter(x=>x.paymentMethod==='Cash Deposit'),x=>entryLocalDisplayAmount(x));
+  const cashDepositedEur  =sum(transfers.filter(x=>x.paymentMethod==='Cash Deposit'),x=>entryEurAmount(x));
+  // Keep totalSent as the legacy "all transfers" pool — used by other
+  // surfaces (e.g. Weekly P&L) that pre-date the split.
   const totalSentLocal=sum(transfers,x=>entryLocalDisplayAmount(x));
   const totalSentEur=sum(transfers,x=>entryEurAmount(x));
   const grossProfitLocal=totalRevenueLocal-totalExpLocal;
   const grossProfitEur=totalRevenueEur-totalExpEur;
-  // Operating balance = money sent + revenue collected − everything
-  // spent (Cash + Card + Bank Transfer). All three channels eat from
-  // the same pool — see PAYMENT_METHODS comment.
+  // ── Bank drawer ──────────────────────────────────────────────────────────
+  //   IN:  HQ transfers (money sent) + cash deposits back into bank
+  //   OUT: card spend + bank-transfer spend + ATM withdrawals
+  const bankBalanceLocal = moneySentLocal + cashDepositedLocal
+                         - cardSpendLocal - hqSpendLocal - atmWithdrawnLocal;
+  const bankBalanceEur   = moneySentEur   + cashDepositedEur
+                         - cardSpendEur   - hqSpendEur   - atmWithdrawnEur;
+  // ── Cash drawer ──────────────────────────────────────────────────────────
+  //   IN:  ATM withdrawals + all revenue (camp tab + extra) — guests pay
+  //        cash by default; if you ever take card revenue, refine this
+  //        to filter revenueEntries by paymentMethod.
+  //   OUT: cash spend + cash deposits back into bank
+  const cashBalanceLocal = atmWithdrawnLocal + totalRevenueLocal
+                         - campSpendLocal   - cashDepositedLocal;
+  const cashBalanceEur   = atmWithdrawnEur   + totalRevenueEur
+                         - campSpendEur     - cashDepositedEur;
+  // Total wallet = Bank + Cash. Mathematically equal to the legacy
+  // campCashBalance below (kept for back-compat with older surfaces).
+  const totalBalanceLocal = bankBalanceLocal + cashBalanceLocal;
+  const totalBalanceEur   = bankBalanceEur   + cashBalanceEur;
+  // Legacy "Operating Cash" still computed for any reader that hasn't
+  // migrated to the Bank/Cash split yet.
   const opSpendLocal=campSpendLocal+cardSpendLocal+hqSpendLocal;
   const opSpendEur=campSpendEur+cardSpendEur+hqSpendEur;
   const campCashBalanceLocal=totalSentLocal+totalRevenueLocal-opSpendLocal;
@@ -4552,13 +4603,13 @@ function renderOverview(){
       </div>
     </div>`:'';
 
-  // Original 4-card KPI strip — user prefers all four side-by-side with
-  // colored values (green/amber/ocean/green-or-red) over the hero+grid
-  // hybrid. The g4 container handles the equal-width layout.
+  // KPI strip — Total wallet split into Bank and Cash drawers so the
+  // owner sees at a glance where the money actually is. Gross Profit
+  // stays as the fourth tile (independent of wallet split).
   document.getElementById('ovKpis').innerHTML=`
-    ${kpi('Operating Cash','Money sent + revenue − all operating spend',lkr(campCashBalanceLocal),campCashBalanceLocal>=0?'kv-green':'kv-red',euro(campCashBalanceEur))}
-    ${kpi('Bank Transfer','Operating spend paid from camp bank',lkr(hqSpendLocal),'kv-amber',euro(hqSpendEur))}
-    ${kpi('Guest-days',gdSource,guestDays>0?guestDays+'d':'—','kv-ocean')}
+    ${kpi('Total Balance','Bank + Cash drawers combined',lkr(totalBalanceLocal),totalBalanceLocal>=0?'kv-green':'kv-red',euro(totalBalanceEur))}
+    ${kpi('Bank','HQ transfers − card/bank spend − ATM withdrawals',lkr(bankBalanceLocal),bankBalanceLocal>=0?'kv-ocean':'kv-red',euro(bankBalanceEur))}
+    ${kpi('Cash','ATM withdrawals + revenue − cash spend',lkr(cashBalanceLocal),cashBalanceLocal>=0?'kv-amber':'kv-red',euro(cashBalanceEur))}
     ${kpi('Gross Profit','Revenue − all expenses',lkr(grossProfitLocal),grossProfitLocal>=0?'kv-green':'kv-red',euro(grossProfitEur))}
   `;
   renderOverviewBookingsPanel(weeks,selectedWid,allLedger);
@@ -6294,7 +6345,14 @@ function linkedItemOptionsFor(type,area,category=''){
   return [''].concat(items);
 }
 function paymentOptionsFor(type){
-  if(type==='transfer') return ['HQ Transfer'];
+  if(type==='transfer'){
+    // Three transfer kinds — chosen via the "Paid via" select on the
+    // Add Entry form when type=Transfer:
+    //   HQ Transfer    = HQ → Camp Bank   (money sent to camp)
+    //   ATM Withdrawal = Bank → Cash       (cash withdrawn from ATM)
+    //   Cash Deposit   = Cash → Bank       (cash deposited into bank)
+    return ['HQ Transfer','ATM Withdrawal','Cash Deposit'];
+  }
   if(type==='income') return ['Cash'];
   return PAYMENT_METHODS;
 }
@@ -6595,9 +6653,22 @@ function buildLedgerPayload(prefix,type,id=null){
   const currency=(document.getElementById(prefix+'_currency')?.value||LOCAL_CURRENCY||'LKR').toUpperCase();
   const fxRate=Number(document.getElementById(prefix+'_fx')?.value||LOCAL_PER_EUR||DEFAULT_LKR_PER_EUR)||LOCAL_PER_EUR||DEFAULT_LKR_PER_EUR;
   const amount=getConvertedEur(prefix);
-  const paymentMethod=type==='expense'
+  // Read the paymentMethod from the form for both expenses AND transfers —
+  // transfers now have three kinds (HQ Transfer / ATM Withdrawal / Cash
+  // Deposit) and the user picks one from the same select.
+  const paymentMethod=(type==='expense'||type==='transfer')
     ?(document.getElementById(prefix+'_pay')?.value||defaultPaymentMethod(type,area))
     :defaultPaymentMethod(type,area);
+  // paidBy: only HQ Transfer is sourced from HQ. ATM Withdrawal and Cash
+  // Deposit are internal camp movements between the bank and cash drawer.
+  const paidBy = (type==='transfer' && paymentMethod==='HQ Transfer') ? 'HQ' : 'Camp';
+  // Default description per transfer kind so the ledger row is self-
+  // explanatory at a glance.
+  const transferDescDefault = paymentMethod==='ATM Withdrawal'
+    ? 'ATM withdrawal — bank to cash'
+    : paymentMethod==='Cash Deposit'
+      ? 'Cash deposit — cash to bank'
+      : 'Cash sent to camp';
   return normalizeLedgerEntry({
     id:id||('e'+Date.now()+Math.random().toString(36).slice(2,6)),
     date,
@@ -6605,7 +6676,7 @@ function buildLedgerPayload(prefix,type,id=null){
     category,
     businessArea:area,
     paymentMethod,
-    paidBy:type==='transfer'?'HQ':'Camp',  // Only HQ top-ups are 'HQ'; all ordinary expense channels are 'Camp'
+    paidBy,
     currency,
     fxRate,
     // Local-currency input is already in the local unit (LKR/MAD/etc).
@@ -6613,7 +6684,7 @@ function buildLedgerPayload(prefix,type,id=null){
     amountLocal:currency!=='EUR'?amountInput:amount,
     quantity:qty,
     linkedItem,
-    description:(document.getElementById(prefix+'_desc')?.value||'').trim()||((type==='income'&&linkedItem&&qty>1)?`${qty} x ${linkedItem}`:'')||(type==='transfer'?'Cash sent to camp':''),
+    description:(document.getElementById(prefix+'_desc')?.value||'').trim()||((type==='income'&&linkedItem&&qty>1)?`${qty} x ${linkedItem}`:'')||(type==='transfer'?transferDescDefault:''),
     vendor:'',
     amount
   });
