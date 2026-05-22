@@ -7454,9 +7454,11 @@ function renderExpenses(){
   const cashBreakdown = campSpendLocal > 0
     ? `<div class="kpi-breakdown">Spent from cash · ${lkr(campSpendLocal).replace(/\.00$/,'')} <span style="color:var(--muted)">(filtered)</span></div>`
     : `<div class="kpi-breakdown" style="color:var(--muted)">No cash spend in filter</div>`;
-  const cashHint = cashBalLocal < 0
-    ? `<button class="kpi-action-btn" onclick="openExpModal('transfer',null,{paymentMethod:'ATM Withdrawal'})">+ Record ATM Withdrawal</button>`
-    : '';
+  // ATM Withdrawal shortcut — always visible. Used to only appear when
+  // cashBalLocal<0 (treating it as a corrective hint), but the user needs
+  // this as a regular daily action: walk to the ATM, withdraw 500 MAD,
+  // log it. Button is permanent so it's never more than one click away.
+  const cashHint = `<button class="kpi-action-btn" onclick="openExpModal('transfer',null,{paymentMethod:'ATM Withdrawal'})">+ Record ATM Withdrawal</button>`;
   expKpisEl.innerHTML=`
     <div class="card kpi">
       <div class="kpi-label">Total Balance</div>
