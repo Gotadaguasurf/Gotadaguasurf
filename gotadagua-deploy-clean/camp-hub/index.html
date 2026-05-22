@@ -167,6 +167,14 @@ nav{background:var(--navy);height:60px;display:flex;align-items:center;justify-c
 .kpi-label{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700;margin-bottom:5px}
 .kpi-value{font-family:'DM Serif Display',serif;font-size:26px;color:var(--navy);line-height:1}
 .kpi-sub{font-size:11px;color:var(--muted);margin-top:3px}
+/* Breakdown line inside a KPI tile — shows the filtered spend that
+   feeds the balance number above. Smaller than the main number,
+   gets ink color so it stands out vs. the muted .kpi-sub line. */
+.kpi-breakdown{font-size:11px;color:var(--navy);font-weight:600;margin-top:10px;padding-top:8px;border-top:1px solid var(--border);line-height:1.4}
+/* Action button inside a KPI tile — used by the Cash tile to surface
+   the "Record ATM Withdrawal" shortcut when the balance is negative. */
+.kpi-action-btn{margin-top:10px;padding:7px 12px;font-size:11px;font-weight:700;border:none;border-radius:8px;background:var(--ocean);color:#fff;cursor:pointer;font-family:'Outfit',sans-serif;width:100%}
+.kpi-action-btn:hover{background:var(--navy)}
 .kv-green{color:var(--green)}.kv-red{color:var(--red)}.kv-amber{color:var(--amber)}.kv-ocean{color:var(--ocean)}
 
 .tbl-wrap{overflow-x:auto}
@@ -7425,25 +7433,51 @@ function renderExpenses(){
   const totalBalLocal = bankBalLocal + cashBalLocal;
   const totalBalEur   = bankBalEur + cashBalEur;
 
-  // Two visual rows: balances on top (always all-time), filtered spend below.
-  // We override the parent .exp-kpis grid (which expects 7 inline tiles) to
-  // a vertical flex column so the two .g4 rows render side-by-side cleanly.
+  // Four consolidated tiles. Each Bank/Cash tile now carries its own
+  // breakdown so the user doesn't have to scan a second row to see what
+  // was spent through that channel. The Cash tile sprouts an ATM
+  // Withdrawal button when the balance is negative — that's the
+  // canonical signal that the owner spent cash without recording a
+  // withdrawal from the bank to refill the drawer.
   const expKpisEl=document.getElementById('expKpis');
-  expKpisEl.style.display='flex';
-  expKpisEl.style.flexDirection='column';
+  expKpisEl.style.display='grid';
+  expKpisEl.style.gridTemplateColumns='repeat(4, minmax(0, 1fr))';
   expKpisEl.style.gap='12px';
+  const bankBreakdownLocal = cardSpendLocal + hqSpendLocal;
+  const bankBreakdown = bankBreakdownLocal > 0
+    ? `<div class="kpi-breakdown">Card ${lkr(cardSpendLocal).replace(/\.00$/,'')} · Bank ${lkr(hqSpendLocal).replace(/\.00$/,'')} <span style="color:var(--muted)">(filtered)</span></div>`
+    : `<div class="kpi-breakdown" style="color:var(--muted)">No card / bank spend in filter</div>`;
+  const cashBreakdown = campSpendLocal > 0
+    ? `<div class="kpi-breakdown">Spent ${lkr(campSpendLocal).replace(/\.00$/,'')} <span style="color:var(--muted)">(filtered)</span></div>`
+    : `<div class="kpi-breakdown" style="color:var(--muted)">No cash spend in filter</div>`;
+  const cashHint = cashBalLocal < 0
+    ? `<button class="kpi-action-btn" onclick="openExpModal('transfer',null,{paymentMethod:'ATM Withdrawal'})">+ Record ATM Withdrawal</button>`
+    : '';
   expKpisEl.innerHTML=`
-    <div class="g4">
-      ${kpi('Total Balance','Bank + Cash · all time',lkr(totalBalLocal),totalBalLocal>=0?'kv-green':'kv-red',euro(totalBalEur))}
-      ${kpi('Bank','HQ in − card/bank spend − ATM out',lkr(bankBalLocal),bankBalLocal>=0?'kv-ocean':'kv-red',euro(bankBalEur))}
-      ${kpi('Cash','ATM in + revenue − cash spend',lkr(cashBalLocal),cashBalLocal>=0?'kv-amber':'kv-red',euro(cashBalEur))}
-      ${kpi('Entries','Visible rows (filtered)',String(rows.length),'kv-ocean')}
+    <div class="card kpi">
+      <div class="kpi-label">Total Balance</div>
+      <div class="kpi-value ${totalBalLocal>=0?'kv-green':'kv-red'}">${lkr(totalBalLocal)}</div>
+      <div class="kpi-sub" style="margin-top:4px">${euro(totalBalEur)}</div>
+      <div class="kpi-sub">Bank + Cash · all time</div>
     </div>
-    <div class="g4">
-      ${kpi('Cash Spend','Filtered · paid from on-site cash',lkr(campSpendLocal),'kv-red',euro(campSpendEur))}
-      ${kpi('Card Spend','Filtered · paid with the camp card',lkr(cardSpendLocal),'kv-amber',euro(cardSpendEur))}
-      ${kpi('Bank Transfer','Filtered · paid from camp bank',lkr(hqSpendLocal),'kv-amber',euro(hqSpendEur))}
-      ${kpi('Money Sent · Revenue','Filtered · HQ top-ups + revenue logged',lkr(moneySentLocal+revenueLocal),'kv-green',euro(moneySentEur+revenueEur))}
+    <div class="card kpi">
+      <div class="kpi-label">Bank</div>
+      <div class="kpi-value ${bankBalLocal>=0?'kv-ocean':'kv-red'}">${lkr(bankBalLocal)}</div>
+      <div class="kpi-sub" style="margin-top:4px">${euro(bankBalEur)}</div>
+      ${bankBreakdown}
+    </div>
+    <div class="card kpi">
+      <div class="kpi-label">Cash</div>
+      <div class="kpi-value ${cashBalLocal>=0?'kv-amber':'kv-red'}">${lkr(cashBalLocal)}</div>
+      <div class="kpi-sub" style="margin-top:4px">${euro(cashBalEur)}</div>
+      ${cashBreakdown}
+      ${cashHint}
+    </div>
+    <div class="card kpi">
+      <div class="kpi-label">Money Sent · Revenue</div>
+      <div class="kpi-value kv-green">${lkr(moneySentLocal+revenueLocal)}</div>
+      <div class="kpi-sub" style="margin-top:4px">${euro(moneySentEur+revenueEur)}</div>
+      <div class="kpi-breakdown" style="color:var(--muted)">HQ top-ups + revenue · filtered</div>
     </div>
   `;
 
