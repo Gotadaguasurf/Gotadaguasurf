@@ -24,6 +24,13 @@
 --  How to run: paste into Supabase SQL Editor → Run.
 -- ════════════════════════════════════════════════════════════════════════════
 
+-- NOTE about table columns:
+--   * type column: the JS layer uses 'income' but the DB stores 'revenue'
+--     (see mapLedgerTypeToDb in camp-hub/index.html). The SQL must match
+--     the DB value → 'revenue'.
+--   * ledger_entries has NO updated_at column (only created_at), so we
+--     don't set one here. Realtime still fires on the UPDATE regardless.
+
 -- ── 1. Preview the rows that will be touched ──────────────────────────────
 select
   l.slug                                  as location,
@@ -36,7 +43,7 @@ select
   le.description
 from public.ledger_entries le
 join public.locations       l on l.id = le.location_id
-where le.type = 'income'
+where le.type = 'revenue'
   and le.description like 'Closed week revenue from Camp Tab%'
   and le.linked_item is not null
   and trim(le.linked_item) <> ''
@@ -45,15 +52,14 @@ order by l.slug, le.entry_date desc, le.id;
 
 -- ── 2. Apply the heal ─────────────────────────────────────────────────────
 update public.ledger_entries
-   set category = 'Tours',
-       updated_at = now()
- where type = 'income'
+   set category = 'Tours'
+ where type = 'revenue'
    and description like 'Closed week revenue from Camp Tab%'
    and linked_item is not null
    and trim(linked_item) <> ''
    and category = linked_item;
 
--- ── 3. Verify — same query, should now show category='Tours' for all ──────
+-- ── 3. Verify — should now show category='Tours' for all tour rows ────────
 select
   l.slug,
   le.entry_date,
@@ -63,7 +69,7 @@ select
   le.currency
 from public.ledger_entries le
 join public.locations       l on l.id = le.location_id
-where le.type = 'income'
+where le.type = 'revenue'
   and le.description like 'Closed week revenue from Camp Tab%'
   and le.linked_item is not null
   and trim(le.linked_item) <> ''
