@@ -1351,6 +1351,28 @@ async function syncCampTabStateToSupabase(){
   const staleItemIds=(existingItemsRes.data||[]).map(row=>row.id).filter(id=>!itemRows.some(row=>row.id===id));
   const staleGuestIds=(existingGuestsRes.data||[]).map(row=>row.id).filter(id=>!guestRows.some(row=>row.id===id));
   const staleWeekIds=(existingWeeksRes.data||[]).map(row=>row.id).filter(id=>!weekRows.some(row=>row.id===id));
+  // ── DATA-LOSS GUARD ─────────────────────────────────────────────────────
+  // Refuse to delete EVERYTHING when the local state is suspiciously empty.
+  // Without this guard, a Camp Tab session that boots with S.weeks=[] (a
+  // race during hydration, or a brand-new tab that hasn't seen any data
+  // yet) was wiping the entire Morocco camp_weeks/camp_guests tables —
+  // they user lost guests/weeks history because of this exact path.
+  //
+  // The rule: if we're about to delete ALL existing rows of a table AND
+  // our local replacement set is empty, abort and surface a console
+  // warning. Legitimate "delete everything" operations should go through
+  // an explicit clear-table flow, not the diff sync.
+  const wouldDeleteAllWeeks  = staleWeekIds.length>0  && weekRows.length===0  && (existingWeeksRes.data||[]).length>0;
+  const wouldDeleteAllGuests = staleGuestIds.length>0 && guestRows.length===0 && (existingGuestsRes.data||[]).length>0;
+  const wouldDeleteAllItems  = staleItemIds.length>0  && itemRows.length===0  && (existingItemsRes.data||[]).length>0;
+  if (wouldDeleteAllWeeks || wouldDeleteAllGuests || wouldDeleteAllItems) {
+    console.error('[CampTab] DATA-LOSS GUARD triggered — refusing destructive sync.',{
+      wouldDeleteAllWeeks, existingWeeks:(existingWeeksRes.data||[]).length, localWeeks:weekRows.length,
+      wouldDeleteAllGuests,existingGuests:(existingGuestsRes.data||[]).length,localGuests:guestRows.length,
+      wouldDeleteAllItems, existingItems:(existingItemsRes.data||[]).length, localItems:itemRows.length
+    });
+    return false;
+  }
   if(staleItemIds.length){
     const { error: deleteItemsError } = await client.from('camp_tab_items').delete().in('id',staleItemIds);
     if(deleteItemsError) throw deleteItemsError;
