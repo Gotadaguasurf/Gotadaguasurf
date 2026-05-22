@@ -3747,7 +3747,7 @@ async function removeOrphanedClosedWeekEntries(history){
 function mapCampTabRevenueCategory(item){
   if(item.c==='Drinks') return 'Drinks';
   if(item.c==='Merch') return 'Merchandise';
-  if(item.c==='Tours') return item.n||'Tours'; // match camp-tab-inner exactly to avoid reconcile duplicates
+  if(item.c==='Tours') return 'Tours';
   return 'Other Revenue';
 }
 
@@ -3760,14 +3760,21 @@ function buildClosedWeekRevenueEntries(wk){
   paidItems.forEach(item=>{
     const category=mapCampTabRevenueCategory(item);
     const linkedItem=item.c==='Tours'?item.n:'';
-    const key=[category,linkedItem].join('::');
-    grouped[key]=grouped[key]||{category,linkedItem,total:0};
+    // ID-stability trick: the legacy code used the tour name as the
+    // category, so existing campclose_* ids look like
+    // `campclose_<wk>_Ice_Bath_Ice_Bath`. We keep generating the SAME
+    // id with the legacy seed so we don't insert a second copy when
+    // a closed week is re-synced. The displayed category is the clean
+    // 'Tours' value above; the legacy seed lives ONLY in the id.
+    const legacyIdSeed = item.c==='Tours' ? (item.n||'Tours') : category;
+    const key=[legacyIdSeed,linkedItem].join('::');
+    grouped[key]=grouped[key]||{category,legacyIdSeed,linkedItem,total:0};
     grouped[key].total+=Number(item.p||0);
   });
   // One entry per product per week — clean ledger overview.
   // Date = when the week was closed (closedAt).
   return Object.values(grouped).map(group=>normalizeLedgerEntry({
-    id:`campclose_${wk.id||wk.start}_${group.category}_${group.linkedItem||'general'}`.replace(/\s+/g,'_'),
+    id:`campclose_${wk.id||wk.start}_${group.legacyIdSeed}_${group.linkedItem||'general'}`.replace(/\s+/g,'_'),
     date:revenueDate,
     type:'income',
     category:group.category,
