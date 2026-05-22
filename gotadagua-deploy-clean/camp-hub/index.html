@@ -7443,12 +7443,16 @@ function renderExpenses(){
   expKpisEl.style.display='grid';
   expKpisEl.style.gridTemplateColumns='repeat(4, minmax(0, 1fr))';
   expKpisEl.style.gap='12px';
+  // Bank breakdown: card spend + bank-transfer spend collapsed into one
+  // number. The user pointed out the split was noise — from the bank's
+  // perspective it's all "money out of the bank", regardless of whether
+  // the channel was a card swipe or a wire. Same shape as the Cash tile.
   const bankBreakdownLocal = cardSpendLocal + hqSpendLocal;
   const bankBreakdown = bankBreakdownLocal > 0
-    ? `<div class="kpi-breakdown">Card ${lkr(cardSpendLocal).replace(/\.00$/,'')} · Bank ${lkr(hqSpendLocal).replace(/\.00$/,'')} <span style="color:var(--muted)">(filtered)</span></div>`
-    : `<div class="kpi-breakdown" style="color:var(--muted)">No card / bank spend in filter</div>`;
+    ? `<div class="kpi-breakdown">Spent from bank · ${lkr(bankBreakdownLocal).replace(/\.00$/,'')} <span style="color:var(--muted)">(filtered)</span></div>`
+    : `<div class="kpi-breakdown" style="color:var(--muted)">No bank spend in filter</div>`;
   const cashBreakdown = campSpendLocal > 0
-    ? `<div class="kpi-breakdown">Spent ${lkr(campSpendLocal).replace(/\.00$/,'')} <span style="color:var(--muted)">(filtered)</span></div>`
+    ? `<div class="kpi-breakdown">Spent from cash · ${lkr(campSpendLocal).replace(/\.00$/,'')} <span style="color:var(--muted)">(filtered)</span></div>`
     : `<div class="kpi-breakdown" style="color:var(--muted)">No cash spend in filter</div>`;
   const cashHint = cashBalLocal < 0
     ? `<button class="kpi-action-btn" onclick="openExpModal('transfer',null,{paymentMethod:'ATM Withdrawal'})">+ Record ATM Withdrawal</button>`
