@@ -7425,14 +7425,21 @@ function renderExpenses(){
   const totalBalLocal = bankBalLocal + cashBalLocal;
   const totalBalEur   = bankBalEur + cashBalEur;
 
-  document.getElementById('expKpis').innerHTML=`
+  // Two visual rows: balances on top (always all-time), filtered spend below.
+  // We override the parent .exp-kpis grid (which expects 7 inline tiles) to
+  // a vertical flex column so the two .g4 rows render side-by-side cleanly.
+  const expKpisEl=document.getElementById('expKpis');
+  expKpisEl.style.display='flex';
+  expKpisEl.style.flexDirection='column';
+  expKpisEl.style.gap='12px';
+  expKpisEl.innerHTML=`
     <div class="g4">
       ${kpi('Total Balance','Bank + Cash · all time',lkr(totalBalLocal),totalBalLocal>=0?'kv-green':'kv-red',euro(totalBalEur))}
       ${kpi('Bank','HQ in − card/bank spend − ATM out',lkr(bankBalLocal),bankBalLocal>=0?'kv-ocean':'kv-red',euro(bankBalEur))}
       ${kpi('Cash','ATM in + revenue − cash spend',lkr(cashBalLocal),cashBalLocal>=0?'kv-amber':'kv-red',euro(cashBalEur))}
       ${kpi('Entries','Visible rows (filtered)',String(rows.length),'kv-ocean')}
     </div>
-    <div class="g4" style="margin-top:12px">
+    <div class="g4">
       ${kpi('Cash Spend','Filtered · paid from on-site cash',lkr(campSpendLocal),'kv-red',euro(campSpendEur))}
       ${kpi('Card Spend','Filtered · paid with the camp card',lkr(cardSpendLocal),'kv-amber',euro(cardSpendEur))}
       ${kpi('Bank Transfer','Filtered · paid from camp bank',lkr(hqSpendLocal),'kv-amber',euro(hqSpendEur))}
