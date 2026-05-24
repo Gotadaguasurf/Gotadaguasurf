@@ -1,0 +1,104 @@
+name: Supabase Backup
+
+# Daily pg_dump of the Supabase Postgres → uploaded as a workflow artifact
+# (kept 90 days). Also runs on demand via the Actions tab → "Run workflow".
+#
+# Cost: $0. GitHub Actions free tier gives 2,000 minutes/month for private
+# repos and unlimited for public. This workflow runs in ~2 minutes.
+#
+# Restore: download the .sql.gz artifact, `gunzip`, then `psql <DB_URL> -f
+# backup.sql` against either the same project or a fresh one.
+#
+# Secret required: SUPABASE_DB_URL — see backup-readme.md in this folder.
+
+on:
+  schedule:
+    # 03:00 UTC daily (~04:00 Portugal summer / 03:00 winter)
+    - cron: '0 3 * * *'
+  workflow_dispatch:  # Manual "Run workflow" button on Actions tab
+
+# Cancel any duplicate runs that pile up (e.g. cron + manual back-to-back)
+concurrency:
+  group: supabase-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Build timestamp
+        id: ts
+        run: |
+          echo "STAMP=$(date -u +'%Y-%m-%d_%H%M')" >> "$GITHUB_OUTPUT"
+          echo "DOW=$(date -u +'%u')"   >> "$GITHUB_OUTPUT"  # 1=Mon..7=Sun
+          echo "DOM=$(date -u +'%d')"   >> "$GITHUB_OUTPUT"  # 01..31
+          echo "WEEKLY=$([ "$(date -u +'%u')" = "7" ] && echo "yes" || echo "no")" >> "$GITHUB_OUTPUT"
+          echo "MONTHLY=$([ "$(date -u +'%d')" = "01" ] && echo "yes" || echo "no")" >> "$GITHUB_OUTPUT"
+
+      - name: Run pg_dump (postgres:16 image — version-safe against Supabase pg15)
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "::error::SUPABASE_DB_URL secret is missing. See backup-readme.md."
+            exit 1
+          fi
+          docker run --rm -e PGPASSWORD --network host postgres:16 \
+            pg_dump \
+              --no-owner \
+              --no-privileges \
+              --format=plain \
+              --quote-all-identifiers \
+              "$SUPABASE_DB_URL" \
+            | gzip -9 > "supabase-backup-${{ steps.ts.outputs.STAMP }}.sql.gz"
+
+      - name: Sanity-check size
+        run: |
+          F="supabase-backup-${{ steps.ts.outputs.STAMP }}.sql.gz"
+          SIZE=$(stat -c%s "$F")
+          echo "Backup size: $SIZE bytes"
+          if [ "$SIZE" -lt 5000 ]; then
+            echo "::error::Backup file is suspiciously small (<5 KB). Likely a pg_dump failure."
+            head -50 "$F" || true
+            exit 1
+          fi
+          ls -lh "$F"
+
+      # ── Daily artifact: 30 days retention (rolling 30-day window) ────────
+      - name: Upload daily artifact (30-day retention)
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-${{ steps.ts.outputs.STAMP }}
+          path: supabase-backup-*.sql.gz
+          retention-days: 30
+          if-no-files-found: error
+
+      # ── Weekly snapshot every Sunday: 120 days (~17 weeks) ───────────────
+      - name: Upload weekly snapshot (120-day retention)
+        if: steps.ts.outputs.WEEKLY == 'yes'
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-${{ steps.ts.outputs.STAMP }}
+          path: supabase-backup-*.sql.gz
+          retention-days: 120
+
+      # ── Monthly snapshot on the 1st: 365 days ────────────────────────────
+      - name: Upload monthly snapshot (365-day retention)
+        if: steps.ts.outputs.MONTHLY == 'yes'
+        uses: actions/upload-artifact@v4
+        with:
+          name: monthly-${{ steps.ts.outputs.STAMP }}
+          path: supabase-backup-*.sql.gz
+          retention-days: 365
+
+      - name: Summary
+        run: |
+          echo "### Backup summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Timestamp: \`${{ steps.ts.outputs.STAMP }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Daily artifact uploaded: ✅" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Weekly snapshot: ${{ steps.ts.outputs.WEEKLY == 'yes' && '✅' || '—' }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Monthly snapshot: ${{ steps.ts.outputs.MONTHLY == 'yes' && '✅' || '—' }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Restore: download the artifact, \`gunzip backup.sql.gz\`, then \`psql \$DB_URL -f backup.sql\`." >> "$GITHUB_STEP_SUMMARY"
