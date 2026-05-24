@@ -1,23 +1,26 @@
 name: Supabase Backup
 
-# Daily pg_dump of the Supabase Postgres → uploaded as a workflow artifact
-# (kept 90 days). Also runs on demand via the Actions tab → "Run workflow".
+# Daily pg_dump of the Supabase Postgres. Primary destination is the
+# Gota d'Água company Google Drive folder (via rclone). Secondary copy
+# stays as a GitHub Actions artifact so we always have two independent
+# locations.
 #
-# Cost: $0. GitHub Actions free tier gives 2,000 minutes/month for private
-# repos and unlimited for public. This workflow runs in ~2 minutes.
+# Cost: $0. GitHub Actions free tier (2,000 min/month private) covers
+# many years of daily runs at ~2 min each.
 #
-# Restore: download the .sql.gz artifact, `gunzip`, then `psql <DB_URL> -f
-# backup.sql` against either the same project or a fresh one.
-#
-# Secret required: SUPABASE_DB_URL — see backup-readme.md in this folder.
+# Secrets required (one-time setup, see backup-readme.md):
+#   • SUPABASE_DB_URL    — the Postgres URI from Supabase → Settings → Database
+#   • RCLONE_CONFIG      — contents of ~/.config/rclone/rclone.conf after
+#                          `rclone config` on your Mac, with a 'gdrive'
+#                          remote pointing at the company Drive folder
+#                          (root_folder_id = 1C0qj0rW8ThDt5RSepzJLD5ziwQExLc5J).
 
 on:
   schedule:
     # 03:00 UTC daily (~04:00 Portugal summer / 03:00 winter)
     - cron: '0 3 * * *'
-  workflow_dispatch:  # Manual "Run workflow" button on Actions tab
+  workflow_dispatch:
 
-# Cancel any duplicate runs that pile up (e.g. cron + manual back-to-back)
 concurrency:
   group: supabase-backup
   cancel-in-progress: false
@@ -27,16 +30,25 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - name: Build timestamp
+      - name: Build timestamp + kind (daily/weekly/monthly)
         id: ts
         run: |
-          echo "STAMP=$(date -u +'%Y-%m-%d_%H%M')" >> "$GITHUB_OUTPUT"
-          echo "DOW=$(date -u +'%u')"   >> "$GITHUB_OUTPUT"  # 1=Mon..7=Sun
-          echo "DOM=$(date -u +'%d')"   >> "$GITHUB_OUTPUT"  # 01..31
-          echo "WEEKLY=$([ "$(date -u +'%u')" = "7" ] && echo "yes" || echo "no")" >> "$GITHUB_OUTPUT"
-          echo "MONTHLY=$([ "$(date -u +'%d')" = "01" ] && echo "yes" || echo "no")" >> "$GITHUB_OUTPUT"
+          STAMP=$(date -u +'%Y-%m-%d_%H%M')
+          DOM=$(date -u +'%d')
+          DOW=$(date -u +'%u')   # 1=Mon..7=Sun
+          KIND="daily"
+          if [ "$DOM" = "01" ]; then
+            KIND="monthly"
+          elif [ "$DOW" = "7" ]; then
+            KIND="weekly"
+          fi
+          FILENAME="${KIND}-${STAMP}.sql.gz"
+          echo "STAMP=$STAMP"       >> "$GITHUB_OUTPUT"
+          echo "KIND=$KIND"         >> "$GITHUB_OUTPUT"
+          echo "FILENAME=$FILENAME" >> "$GITHUB_OUTPUT"
+          echo "Building backup: $FILENAME (kind=$KIND)"
 
-      - name: Run pg_dump (postgres:16 image — version-safe against Supabase pg15)
+      - name: Run pg_dump (postgres:16 image, version-safe against Supabase pg15)
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
@@ -44,18 +56,18 @@ jobs:
             echo "::error::SUPABASE_DB_URL secret is missing. See backup-readme.md."
             exit 1
           fi
-          docker run --rm -e PGPASSWORD --network host postgres:16 \
+          docker run --rm -i postgres:16 \
             pg_dump \
               --no-owner \
               --no-privileges \
               --format=plain \
               --quote-all-identifiers \
               "$SUPABASE_DB_URL" \
-            | gzip -9 > "supabase-backup-${{ steps.ts.outputs.STAMP }}.sql.gz"
+            | gzip -9 > "${{ steps.ts.outputs.FILENAME }}"
 
       - name: Sanity-check size
         run: |
-          F="supabase-backup-${{ steps.ts.outputs.STAMP }}.sql.gz"
+          F="${{ steps.ts.outputs.FILENAME }}"
           SIZE=$(stat -c%s "$F")
           echo "Backup size: $SIZE bytes"
           if [ "$SIZE" -lt 5000 ]; then
@@ -65,40 +77,81 @@ jobs:
           fi
           ls -lh "$F"
 
-      # ── Daily artifact: 30 days retention (rolling 30-day window) ────────
-      - name: Upload daily artifact (30-day retention)
+      - name: Install rclone
+        run: |
+          curl https://rclone.org/install.sh | sudo bash
+
+      - name: Write rclone config from secret
+        env:
+          RCLONE_CONFIG_CONTENT: ${{ secrets.RCLONE_CONFIG }}
+        run: |
+          if [ -z "$RCLONE_CONFIG_CONTENT" ]; then
+            echo "::error::RCLONE_CONFIG secret is missing. See backup-readme.md."
+            exit 1
+          fi
+          mkdir -p ~/.config/rclone
+          echo "$RCLONE_CONFIG_CONTENT" > ~/.config/rclone/rclone.conf
+          chmod 600 ~/.config/rclone/rclone.conf
+          # Quick sanity check — list the root of the remote
+          rclone lsd gdrive: --max-depth 1 || {
+            echo "::error::Could not list rclone remote 'gdrive:'. Check the RCLONE_CONFIG secret."
+            exit 1
+          }
+
+      - name: Upload backup to Google Drive (gdrive: → company backups folder)
+        run: |
+          rclone copy "${{ steps.ts.outputs.FILENAME }}" gdrive: \
+            --progress \
+            --transfers 1 \
+            --drive-chunk-size 32M
+          echo "Uploaded ${{ steps.ts.outputs.FILENAME }} to Google Drive."
+
+      - name: Rotate old backups in Google Drive
+        run: |
+          # Retention policy:
+          #   • daily-*    older than  30d → deleted
+          #   • weekly-*   older than 120d → deleted
+          #   • monthly-*  older than 365d → kept (manually managed for now)
+          echo "── Deleting daily-* older than 30 days ──"
+          rclone delete gdrive: \
+            --include 'daily-*.sql.gz' \
+            --min-age 30d \
+            --verbose
+          echo "── Deleting weekly-* older than 120 days ──"
+          rclone delete gdrive: \
+            --include 'weekly-*.sql.gz' \
+            --min-age 120d \
+            --verbose
+          echo "── Keeping all monthly-* indefinitely (or delete >1 year) ──"
+          rclone delete gdrive: \
+            --include 'monthly-*.sql.gz' \
+            --min-age 365d \
+            --verbose
+
+      - name: Show current backup inventory on Drive
+        run: |
+          echo "── Current backups on Drive ──"
+          rclone lsl gdrive: --include '*.sql.gz' | sort
+
+      # ── Secondary copy as a GitHub Artifact (belt-and-suspenders) ────────
+      - name: Upload also as GitHub Artifact (30-day retention)
         uses: actions/upload-artifact@v4
         with:
-          name: daily-${{ steps.ts.outputs.STAMP }}
-          path: supabase-backup-*.sql.gz
+          name: ${{ steps.ts.outputs.FILENAME }}
+          path: ${{ steps.ts.outputs.FILENAME }}
           retention-days: 30
           if-no-files-found: error
 
-      # ── Weekly snapshot every Sunday: 120 days (~17 weeks) ───────────────
-      - name: Upload weekly snapshot (120-day retention)
-        if: steps.ts.outputs.WEEKLY == 'yes'
-        uses: actions/upload-artifact@v4
-        with:
-          name: weekly-${{ steps.ts.outputs.STAMP }}
-          path: supabase-backup-*.sql.gz
-          retention-days: 120
-
-      # ── Monthly snapshot on the 1st: 365 days ────────────────────────────
-      - name: Upload monthly snapshot (365-day retention)
-        if: steps.ts.outputs.MONTHLY == 'yes'
-        uses: actions/upload-artifact@v4
-        with:
-          name: monthly-${{ steps.ts.outputs.STAMP }}
-          path: supabase-backup-*.sql.gz
-          retention-days: 365
-
       - name: Summary
         run: |
-          echo "### Backup summary" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Timestamp: \`${{ steps.ts.outputs.STAMP }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Daily artifact uploaded: ✅" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Weekly snapshot: ${{ steps.ts.outputs.WEEKLY == 'yes' && '✅' || '—' }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Monthly snapshot: ${{ steps.ts.outputs.MONTHLY == 'yes' && '✅' || '—' }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "Restore: download the artifact, \`gunzip backup.sql.gz\`, then \`psql \$DB_URL -f backup.sql\`." >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "### Backup uploaded"
+            echo ""
+            echo "- File: \`${{ steps.ts.outputs.FILENAME }}\`"
+            echo "- Kind: **${{ steps.ts.outputs.KIND }}**"
+            echo "- Primary: Google Drive · Gota d'Água company folder"
+            echo "- Secondary: GitHub Artifact (30d retention)"
+            echo ""
+            echo "Restore: download from Drive, \`gunzip\`, then"
+            echo "\`psql \$DB_URL -f backup.sql\` against a fresh project."
+          } >> "$GITHUB_STEP_SUMMARY"
