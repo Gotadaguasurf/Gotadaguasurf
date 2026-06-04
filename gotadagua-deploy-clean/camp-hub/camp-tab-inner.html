@@ -967,6 +967,34 @@ function nextWeekDraft(){
 function currentWeek(){
   return ensureWeekShape(S.activeWeek);
 }
+// ── per_guest mode: invisible container week ──────────────────────────────
+// Morocco has no "week" concept in the UI — guests come and go on irregular
+// dates and revenue lands in the ledger the moment a guest is marked paid.
+// But the underlying data model still needs SOMETHING to attach guests to
+// (camp_weeks → camp_guests → camp_tab_items). So in per_guest mode we
+// silently keep a single, never-closed container week. The user never sees
+// it referenced anywhere: no banner, no "+ New week" button, no "No active
+// week" copy. It's pure plumbing.
+//
+// Returns true if a new week was created (so callers can re-render).
+// No-op for weekly mode (Sri Lanka) and when a week already exists.
+function ensurePerGuestWeek(){
+  if (CAMP_TAB_MODE !== 'per_guest') return false;
+  if (S.activeWeek) return false;
+  S.activeWeek = {
+    id: makeUuid(),
+    start: today(),
+    guests: [],
+    staff: STAFF.map(s => ({
+      id: isUuid(s?.id) ? s.id : makeUuid(),
+      name: String(s?.name || '').trim(),
+      items: [],
+      paid: false
+    })).filter(s => s.name)
+  };
+  save();
+  return true;
+}
 function campTabStateHasData(state){
   if(!state||typeof state!=='object') return false;
   return !!(state.activeWeek||state.nextWeek||(Array.isArray(state.history)&&state.history.length));
@@ -1785,6 +1813,14 @@ function setRoster(roster){
 // ════════════════════════════════════════════════════════════
 function renderHeader(){
   const el=document.getElementById('hWeekLabel');
+  if(!el) return;
+  // per_guest mode (Morocco): hide the week pill entirely — no week concept.
+  if(CAMP_TAB_MODE==='per_guest'){
+    el.style.display='none';
+    el.textContent='';
+    return;
+  }
+  el.style.display='';
   if(S.activeWeek){
     const queued=(nextWeekDraft()?.guests||[]).length;
     el.textContent=weekSpan(S.activeWeek.start)+(queued?` / next week ${queued}`:'');
@@ -1856,6 +1892,13 @@ function renderGuestList(){
   const searchEl=document.getElementById('gsearch');
   const wk=currentWeek();
   if(!wk){
+    // per_guest mode (Morocco): no week concept. Show an empty-roster hint
+    // instead of the Sri Lanka "+ New week" CTA — the container week is
+    // auto-created the moment the user clicks "+ Guest" (see openAddGuest).
+    if(CAMP_TAB_MODE==='per_guest'){
+      el.innerHTML=`<div style="padding:16px 10px;text-align:center;font-size:12px;color:var(--muted);line-height:1.7">No guests yet.<br>Click <strong>+ Guest</strong> above to start.</div>`;
+      return;
+    }
     el.innerHTML=`<div style="padding:16px 10px;text-align:center;font-size:12px;color:var(--muted);line-height:1.7">No active week.<br><button onclick="openAddWeek()" style="margin-top:8px;border:none;background:var(--ocean);color:#fff;border-radius:7px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">+ New week</button></div>`;
     return;
   }
@@ -1930,7 +1973,12 @@ function renderTabPanel(){
     empty.style.display='flex';active.style.display='none';
     document.getElementById('tabList').innerHTML='<div style="padding:14px;text-align:center;font-size:12px;color:var(--muted)">No items yet.</div>';
     if(foot)foot.style.display='none';
-    document.getElementById('tabMeta').textContent=S.activeWeek?weekLabel+' — Select a guest':'No active week';
+    // per_guest mode: no week label — just the empty-guest prompt.
+    if(CAMP_TAB_MODE==='per_guest'){
+      document.getElementById('tabMeta').textContent='Select a guest';
+    } else {
+      document.getElementById('tabMeta').textContent=S.activeWeek?weekLabel+' — Select a guest':'No active week';
+    }
     return;
   }
   empty.style.display='none';active.style.display='flex';
@@ -1939,7 +1987,9 @@ function renderTabPanel(){
   // (see renderCharge), so the meta sub-line stays focused on the tab
   // status. Avoids duplicating the date in two places.
   document.getElementById('chargeGuestMeta').textContent=(currentRoster==='staff'?'Staff tab':'Guest tab')+' — '+(g.paid?'Paid / '+euro(gtot(g)):g.items.length+' item'+(g.items.length===1?'':'s')+' / '+euro(gtot(g)));
-  document.getElementById('tabMeta').textContent=weekLabel+' — '+(g.paid?'Paid':g.items.length+' items');
+  // per_guest mode: drop the week prefix from the tab status line.
+  const tabMetaLeft = CAMP_TAB_MODE==='per_guest' ? g.name : weekLabel;
+  document.getElementById('tabMeta').textContent=tabMetaLeft+' — '+(g.paid?'Paid':g.items.length+' items');
   document.getElementById('payBtn').textContent=g.paid?'Paid':'Pay';
   // Show the Close-guest button only in per_guest mode. Disabled until
   // the guest is paid (so the user can't accidentally close a guest
@@ -2179,8 +2229,16 @@ function renderThisWeek(){
 
   if(!S.activeWeek){
     twEl.innerHTML='';
-    twHdr.innerHTML=`<div style="font-family:'DM Serif Display',serif;font-size:20px;color:var(--navy)">This week</div>
-      <button onclick="openAddWeek()" style="border:none;background:var(--ocean);color:#fff;border-radius:8px;padding:8px 16px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">+ New week</button>`;
+    // per_guest mode: no week concept. Title becomes a neutral roster header
+    // and the "+ New week" CTA is dropped (the container week is created
+    // automatically when the user adds their first guest).
+    if(CAMP_TAB_MODE==='per_guest'){
+      twHdr.innerHTML=`<div style="font-family:'DM Serif Display',serif;font-size:20px;color:var(--navy)">Guests</div>
+        <button onclick="openAddGuest()" style="border:none;background:var(--ocean);color:#fff;border-radius:8px;padding:8px 16px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">+ Guest</button>`;
+    } else {
+      twHdr.innerHTML=`<div style="font-family:'DM Serif Display',serif;font-size:20px;color:var(--navy)">This week</div>
+        <button onclick="openAddWeek()" style="border:none;background:var(--ocean);color:#fff;border-radius:8px;padding:8px 16px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">+ New week</button>`;
+    }
     twBar.innerHTML='';
     return;
   }
@@ -2787,8 +2845,11 @@ function saveNewWeek(){
 }
 
 function openAddGuest(){
+  // per_guest mode (Morocco): auto-create the invisible container week so
+  // the user can add guests without ever seeing the week concept.
+  if(CAMP_TAB_MODE==='per_guest') ensurePerGuestWeek();
   if(!S.activeWeek){toast('No active week.');return;}
-  document.getElementById('addGuestSub').textContent=weekSpan(S.activeWeek.start);
+  document.getElementById('addGuestSub').textContent=CAMP_TAB_MODE==='per_guest'?'':weekSpan(S.activeWeek.start);
   document.querySelector('#addGuestOv .mhdr-title').textContent=currentRoster==='staff'?'Add staff':'Add guests';
   document.getElementById('newGuestName').value='';
   openOv('addGuestOv');
@@ -3075,6 +3136,9 @@ function subscribeCampTabRealtime(locationId){
       suppressRemoteSync=true;
       try{
         await hydrateCampTabStateFromSupabase({mergeLocal:false});
+        // Re-ensure the per_guest container after every rehydrate so the
+        // week never vanishes for Morocco even if Supabase returned empty.
+        ensurePerGuestWeek();
         renderAllCampTabViews();
         notifyParentStateChanged();
       }catch(e){console.warn('Camp Tab RT rehydrate failed',e);}finally{
@@ -3117,6 +3181,9 @@ async function bootstrapCampTabFromSupabase(){
     await hydrateCampTabMenuFromSupabase({mergeLocal:true});
     await hydrateCampTabStaffFromSupabase({mergeLocal:true});
     await hydrateCampTabStateFromSupabase({mergeLocal:true});
+    // per_guest mode: if Supabase came back with no activeWeek, spin up the
+    // invisible container week now so the UI never shows "No active week".
+    ensurePerGuestWeek();
     renderAllCampTabViews();
     notifyParentStateChanged();
     const locationId=await ensureCampTabLocationId();
@@ -3129,6 +3196,11 @@ async function bootstrapCampTabFromSupabase(){
 // INIT
 ensureMenuState();
 setRoster('guests');
+// per_guest mode: create the invisible container week immediately on first
+// paint so the UI never flashes "No active week" before bootstrap hydrates.
+// If Supabase has its own week, the bootstrap hydrate replaces this one;
+// otherwise this local one gets persisted up on the first save().
+ensurePerGuestWeek();
 renderHeader();
 renderCharge();
 bootstrapCampTabFromSupabase();
