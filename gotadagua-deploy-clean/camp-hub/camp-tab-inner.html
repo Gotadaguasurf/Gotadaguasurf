@@ -1018,14 +1018,28 @@ function applyCampTabStateSnapshot(snapshot){
 function rosterRows(wk=currentWeek(), roster=currentRoster){
   if(!wk) return [];
   wk[roster]=normalizeConsumerRows(wk[roster]);
-  // In per_guest mode (Morocco), guests can be individually closed
-  // via the Close Guest button. Closed guests stay in the underlying
-  // state with a closedAt timestamp (so history is preserved and
-  // the data isn't lost) but are filtered out of every active list.
-  if (CAMP_TAB_MODE === 'per_guest') {
-    return wk[roster].filter(g => !g?.closedAt && !g?.closed_at);
-  }
+  // IMPORTANT: this returns the UNDERLYING array reference, never a
+  // filtered copy. Mutation callsites (saveNewGuest, addResolvedItem,
+  // deleteGuest) rely on push() / index writes / array assignment
+  // landing back on S.activeWeek[roster].
+  //
+  // Filtering closed guests in per_guest mode happens at the DISPLAY
+  // sites (renderGuestList, renderThisWeek) via `visibleRoster()` —
+  // never here. An earlier version returned `.filter(...)` directly,
+  // which silently dropped guest writes AND deleted closed guests
+  // from Supabase as a side-effect of `wk[roster]=rows`.
   return wk[roster];
+}
+// Display-only view of the roster. Hides per_guest closed guests
+// (they stay in the underlying state with closedAt set, so history
+// and Supabase rows are preserved). Sri Lanka mode returns the full
+// roster as before.
+function visibleRoster(wk=currentWeek(), roster=currentRoster){
+  const all=rosterRows(wk,roster);
+  if(CAMP_TAB_MODE === 'per_guest'){
+    return all.filter(g => !g?.closedAt && !g?.closed_at);
+  }
+  return all;
 }
 function allConsumers(wk){
   wk=ensureWeekShape(wk);
@@ -1918,7 +1932,10 @@ function renderGuestList(){
     return;
   }
   const term=(searchEl?.value||'').toLowerCase();
-  const rows=rosterRows(wk,currentRoster).filter(g=>g.name.toLowerCase().includes(term));
+  // Display-only: hide per_guest closed guests via visibleRoster. The
+  // underlying state (rosterRows) still has them so close/re-open can
+  // restore them later without losing their item history.
+  const rows=visibleRoster(wk,currentRoster).filter(g=>g.name.toLowerCase().includes(term));
   if(!rows.length){el.innerHTML=`<div style="padding:12px;text-align:center;font-size:12px;color:var(--muted)">${currentRoster==='staff'?'No staff match.':'No match.'}</div>`;return;}
   el.innerHTML=rows.map(g=>`<div class="c-guest ${AG===g.id?'active':''}" onclick="selGuest('${esc(g.id)}')">
     <div style="min-width:0;flex:1">
@@ -2334,7 +2351,9 @@ function renderThisWeek(){
     return;
   }
 
-  const guests=rosterRows(S.activeWeek,currentRoster);
+  // Display-only — closed per_guest guests are hidden from the This week
+  // grid the same way they're hidden from the Charge sidebar.
+  const guests=visibleRoster(S.activeWeek,currentRoster);
   const paid=guests.filter(g=>g.paid);
   const unpaid=guests.filter(g=>!g.paid);
   const term=twSearch.trim().toLowerCase();
