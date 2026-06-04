@@ -1799,6 +1799,11 @@ const LEDGER_LOCATION_SLUG=(HUB_QUERY.get('location')||'sri-lanka').trim().toLow
 const LEDGER_DB_SELECT='id,location_id,week_id,type,category,linked_item,description,payment_method,qty,amount_local,currency,entry_date,business_area,fx_rate,amount_eur,recurring_source_id,recurring_month,source_kind,created_at';
 let HUB_SB=null;
 let HUB_SB_LOCATION_ID=null;
+// Camp Tab mode for this location. Set by ensureHubLocationId from
+// locations.camp_tab_mode. Possible values: 'weekly' (Sri Lanka style,
+// default) or 'per_guest' (Morocco). Passed to the camp tab iframe via
+// URL so the inner page can branch its rendering and payment flow.
+let HUB_CAMP_TAB_MODE='weekly';
 let HUB_LEDGER_HYDRATED=false;
 let HUB_LEDGER_HYDRATE_PROMISE=null;
 let HUB_LEDGER_RT_TIMER=null;
@@ -2184,11 +2189,16 @@ async function ensureHubLocationId(){
   if(!client) return '';
   const { data,error } = await client
     .from('locations')
-    .select('id,slug,currency,default_fx_to_eur')
+    .select('id,slug,currency,default_fx_to_eur,camp_tab_mode')
     .eq('slug',LEDGER_LOCATION_SLUG)
     .maybeSingle();
   if(error) throw error;
   HUB_SB_LOCATION_ID=data?.id||'';
+  // Pick up the Camp Tab operating mode for this location. Defaults to
+  // 'weekly' (Sri Lanka behaviour) for any row missing the column or
+  // value. Morocco runs in 'per_guest' mode — see
+  // docs/morocco-camp-tab-per-guest-spec.md.
+  HUB_CAMP_TAB_MODE = (data?.camp_tab_mode === 'per_guest') ? 'per_guest' : 'weekly';
   // Pick up per-location currency + default FX rate from the row. Falls
   // back silently to the LKR defaults if the columns aren't there yet
   // (i.e. setup-locations-currency.sql hasn't been run).
@@ -3793,6 +3803,52 @@ function buildClosedWeekRevenueEntries(wk){
     currency:LOCAL_CURRENCY||'LKR',
     fxRate:getBestFxRateForDate(revenueDate),
     amountLocal:Number(group.total.toFixed(2))
+  }));
+}
+
+// ── Morocco per_guest mode helper ──────────────────────────────────────────
+// Build ledger revenue entries for a SINGLE guest's paid items, dated to
+// the day the guest was paid (today by default). Mirrors
+// buildClosedWeekRevenueEntries but scoped to one guest and freed from the
+// week-Friday date. Each (category × linkedItem) gets one row. Re-marking
+// the same guest paid on the same day for the same (category × linkedItem)
+// updates the existing row in place — the id is deterministic.
+function buildPaidGuestRevenueEntries(guest, opts={}){
+  if(!guest || !Array.isArray(guest.items) || !guest.items.length) return [];
+  const paidItems = guest.items.filter(i => Number(i?.p||0) > 0);
+  if(!paidItems.length) return [];
+  const revenueDate = (opts.date && String(opts.date).slice(0,10)) || today();
+  const grouped = {};
+  paidItems.forEach(item => {
+    const category = mapCampTabRevenueCategory(item);
+    const linkedItem = item.c === 'Tours' ? item.n : '';
+    // Same id-stability trick as closed-week revenue — use the legacy
+    // tour-name-as-category seed so we never collide with the weekly
+    // close path's ids.
+    const legacyIdSeed = item.c === 'Tours' ? (item.n || 'Tours') : category;
+    const key = [legacyIdSeed, linkedItem].join('::');
+    grouped[key] = grouped[key] || { category, legacyIdSeed, linkedItem, total: 0 };
+    grouped[key].total += Number(item.p || 0);
+  });
+  const guestId = String(guest.id || guest.name || 'guest').replace(/\s+/g,'_');
+  return Object.values(grouped).map(group => normalizeLedgerEntry({
+    // ID scope: guest + date + (category × linked-item). One row per
+    // (guest, day, category) — re-paying on the same day updates in place,
+    // re-paying on a different day creates a new row.
+    id: `campguest_${guestId}_${revenueDate}_${group.legacyIdSeed}_${group.linkedItem || 'general'}`.replace(/\s+/g, '_'),
+    date: revenueDate,
+    type: 'income',
+    category: group.category,
+    businessArea: inferArea('income', group.category, group.linkedItem),
+    paymentMethod: 'Cash',
+    paidBy: 'Camp',
+    linkedItem: group.linkedItem,
+    description: `Camp Tab revenue · ${guest.name || 'guest'}`,
+    vendor: 'Camp Tab',
+    sourceKind: 'camp_tab_per_guest',
+    currency: LOCAL_CURRENCY || 'LKR',
+    fxRate: getBestFxRateForDate(revenueDate),
+    amountLocal: Number(group.total.toFixed(2))
   }));
 }
 
@@ -7857,7 +7913,11 @@ function mountCampTabFrame(){
   // Pass the active hub's location to the iframe so its CAMP_TAB_LOCATION_SLUG
   // resolves to the right location (Sri Lanka / Morocco / etc.) instead of
   // the previously hardcoded 'sri-lanka'.
-  frame.src='/camp-hub/camp-tab-inner.html?location='+encodeURIComponent(__HUB_LOCATION_SLUG);
+  // Pass the camp tab mode to the iframe so it can switch between weekly
+  // (Sri Lanka) and per_guest (Morocco) rendering. Falls through silently
+  // if HUB_CAMP_TAB_MODE hasn't been resolved yet — the inner page treats
+  // anything other than 'per_guest' as weekly.
+  frame.src='/camp-hub/camp-tab-inner.html?location='+encodeURIComponent(__HUB_LOCATION_SLUG)+'&mode='+encodeURIComponent(HUB_CAMP_TAB_MODE||'weekly');
   frame.dataset.loaded='1';
 }
 function reloadCampTabFrame(){
@@ -7871,6 +7931,22 @@ function reloadCampTabFrame(){
 window.addEventListener('message',e=>{
   if(e.data?.type==='camp-tab-week-closed'){
     if(e.data.entry) upsertClosedWeekIncome(e.data.entry);
+    rerenderActivePageData();
+    return;
+  }
+  // Morocco per_guest mode: camp tab fires this when a guest is marked
+  // paid (or re-marked paid after new items were added). We build one
+  // ledger row per (category × linked-item) for that guest, dated to the
+  // payment day (today), and upsert. Re-payment on the same day updates
+  // in place because buildPaidGuestRevenueEntries generates a stable id.
+  if(e.data?.type==='camp-tab-guest-paid'){
+    try{
+      const guest=e.data.guest;
+      if(guest){
+        const entries=buildPaidGuestRevenueEntries(guest,{date:e.data.date});
+        if(entries.length) upsertClosedWeekIncome(entries);
+      }
+    }catch(err){ console.warn('[Hub] guest-paid handler failed',err); }
     rerenderActivePageData();
     return;
   }
