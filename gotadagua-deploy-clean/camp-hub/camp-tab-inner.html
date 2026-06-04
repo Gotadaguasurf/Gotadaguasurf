@@ -2066,20 +2066,37 @@ function renderTabPanel(){
   }
   document.getElementById('tabList').innerHTML=[...g.items].reverse().map((item,ri)=>{
     const idx=g.items.length-1-ri;
-    // per_guest mode: each item gets its own Pay / Paid pill. Tapping
-    // an unpaid one stamps paidAt locally and posts camp-tab-item-paid
-    // to the hub so a single ledger row lands dated to today.
+    // per_guest mode (Morocco):
+    //  - Each item gets its own Pay / Paid pill. Tapping an unpaid one
+    //    stamps paidAt locally and posts camp-tab-item-paid to the hub
+    //    so a single ledger row lands dated to today.
+    //  - When paid, the row goes "quiet": the green PAID pill is the
+    //    only adornment, and we drop the × delete button. Books should
+    //    reflect the actual payment event; deleting a paid item after
+    //    the fact would create a phantom ledger row and orphan the
+    //    payment. If the user genuinely needs to reverse, they edit
+    //    the ledger entry directly. The whole-row turning green is
+    //    what the user asked for: "be green if was paid".
+    const isPaid = CAMP_TAB_MODE==='per_guest' && !!item.paidAt;
     const perItemPay = CAMP_TAB_MODE==='per_guest'
-      ? (item.paidAt
+      ? (isPaid
           ? `<span class="ctr-paid-pill" title="Paid ${String(item.paidAt).slice(0,10)}" style="font-size:10px;font-weight:700;background:var(--green-bg,#dff5e2);color:var(--green,#1c8c3f);border:1px solid var(--green-border,#a8dfb3);border-radius:20px;padding:3px 9px;letter-spacing:.04em;text-transform:uppercase">Paid</span>`
           : `<button class="ctr-pay-btn" onclick="event.stopPropagation();payItem(${idx})" title="Pay this item now" style="font-size:11px;font-weight:700;background:var(--ocean,#1668c0);color:#fff;border:none;border-radius:20px;padding:4px 12px;cursor:pointer;font-family:'Outfit',sans-serif">Pay</button>`)
       : '';
-    return `<div class="c-tab-row">
+    // Row style turns subtly green when paid — matches "just be green
+    // if was paid" — and the × delete affordance is dropped.
+    const rowStyle = isPaid
+      ? 'background:var(--green-bg,#eafbef);border-left:3px solid var(--green,#1c8c3f);padding-left:9px'
+      : '';
+    const delBtn = isPaid
+      ? ''
+      : `<button class="ctr-del" onclick="delItem(${idx})">x</button>`;
+    return `<div class="c-tab-row" style="${rowStyle}">
       <div style="flex:1;min-width:0"><div class="ctr-name">${item.n}</div><div class="ctr-time">${item.c} · ${item.t}${item.s?' · '+item.s:''}</div></div>
       <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
         <div class="ctr-price">${euro(item.p)}</div>
         ${perItemPay}
-        <button class="ctr-del" onclick="delItem(${idx})">x</button>
+        ${delBtn}
       </div>
     </div>`;
   }).join('');
@@ -2218,23 +2235,21 @@ function isGuestFullyPaid(g){
   return items.every(i => !!i?.paidAt) || !!g.paid;
 }
 
-// per_guest mode only — mark a single item on the active guest as paid
-// and fire the new camp-tab-item-paid message so the hub writes ONE
-// ledger row for that item, dated to today. Re-clicking is a no-op
-// (idempotent on the local stamp; the hub upsert is keyed by item id +
-// date so a repeat message just updates in place).
-function payItem(idx){
-  if(CAMP_TAB_MODE !== 'per_guest') return;
-  const g=findConsumer(AG,currentRoster);
-  if(!g) return;
+// per_guest mode only — mark a single item on a SPECIFIC guest as
+// paid and fire camp-tab-item-paid so the hub writes ONE ledger row
+// dated to today. Re-clicking is a no-op (local stamp idempotent; the
+// hub upsert is keyed by item id + date so repeats just update in
+// place). Used by both the Charge sidebar (payItem) and the This week
+// expanded card (payItemOnGuest).
+function payItemOnGuest(g, idx){
+  if(CAMP_TAB_MODE !== 'per_guest') return false;
+  if(!g) return false;
   const item=g.items?.[idx];
-  if(!item) return;
-  if(item.paidAt){ toast('Item already paid'); return; }
-  if(!(Number(item.p)>0)){ toast('Item has no price'); return; }
+  if(!item) return false;
+  if(item.paidAt){ toast('Item already paid'); return false; }
+  if(!(Number(item.p)>0)){ toast('Item has no price'); return false; }
   const nowIso=new Date().toISOString();
   item.paidAt=nowIso;
-  // If this was the last unpaid item, also bubble g.paid so the
-  // Close-guest button enables without needing a redundant Pay All.
   if(g.items.every(i => !!i.paidAt)){
     g.paid=true;
     g.paidAt = g.paidAt || nowIso;
@@ -2244,7 +2259,6 @@ function payItem(idx){
   try{
     window.parent.postMessage({
       type:'camp-tab-item-paid',
-      // Hub uses guest.id + item.id + date for stable ledger row id.
       guest:{ id:g.id||g.name, name:g.name },
       item:{ id:item.id, c:item.c, n:item.n, p:Number(item.p||0) },
       date: nowIso.slice(0,10)
@@ -2253,6 +2267,37 @@ function payItem(idx){
     console.warn('[CampTab] failed to send item-paid message',err);
   }
   toast(`${item.n} paid`);
+  return true;
+}
+// Charge sidebar — pays an item on the currently-active guest (AG).
+function payItem(idx){
+  if(CAMP_TAB_MODE !== 'per_guest') return;
+  const g=findConsumer(AG,currentRoster);
+  payItemOnGuest(g, idx);
+}
+// This week expanded card — pays an item on the named guest.
+function payItemForGuestId(guestId, idx){
+  if(CAMP_TAB_MODE !== 'per_guest') return;
+  const g=findConsumer(guestId,currentRoster);
+  payItemOnGuest(g, idx);
+}
+// This week expanded card — closes a guest by id (per_guest only).
+// Same gate as the Charge "Close guest" button: every item paid OR
+// tab is empty.
+function closeGuestById(guestId){
+  if(CAMP_TAB_MODE !== 'per_guest') return;
+  const g=findConsumer(guestId,currentRoster);
+  if(!g) return;
+  if(!isGuestFullyPaid(g) && gtot(g) > 0){
+    toast('Settle the tab before closing the guest');
+    return;
+  }
+  g.closedAt = new Date().toISOString();
+  if(AG===g.id) AG=null;
+  if(twExpanded===g.id) twExpanded=null;
+  save();
+  renderAllCampTabViews();
+  toast(`${g.name} closed`);
 }
 
 function togglePaid(){
@@ -2371,7 +2416,7 @@ function renderThisWeek(){
   // input, Guests/Staff toggle, and the Collected/Outstanding stats
   // share a single row below for compact scanning.
   twHdr.innerHTML=`
-    ${currentRoster==='guests'?`<div class="tw-next-week-bar" style="width:100%">
+    ${currentRoster==='guests' && CAMP_TAB_MODE!=='per_guest' ?`<div class="tw-next-week-bar" style="width:100%">
       <div>
         <div style="font-size:10px;color:var(--ocean);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:2px">Next Week</div>
         <div style="font-weight:700;color:var(--navy)">${weekSpan(nextStart)}</div>
@@ -2406,6 +2451,10 @@ function renderThisWeek(){
     twEl.innerHTML=sorted.map(g=>{
       const tot=gtot(g);
       const exp=twExpanded===g.id;
+      // per_guest: status badge reads from items (isGuestFullyPaid),
+      // not the legacy whole-guest g.paid flag.
+      const isFullyPaid = isGuestFullyPaid(g);
+      const closeReady = isFullyPaid || tot===0;
       return `<div class="tw-card">
         <div class="tw-card-head" onclick="toggleTwExpand('${esc(g.id)}')">
         <div style="flex:1;min-width:0">
@@ -2418,23 +2467,46 @@ function renderThisWeek(){
         </div>
           <div class="tw-card-right">
             <div class="tw-card-total">${tot>0?euro(tot):'—'}</div>
-            <span style="display:inline-flex;padding:3px 9px;border-radius:20px;font-size:10px;font-weight:700;background:${g.paid?'var(--green-bg)':'var(--red-bg)'};color:${g.paid?'var(--green)':'var(--red)'}";border:1px solid ${g.paid?'var(--green-border)':'#f0a0a0'}">${g.paid?'Paid':'Unpaid'}</span>
+            <span style="display:inline-flex;padding:3px 9px;border-radius:20px;font-size:10px;font-weight:700;background:${isFullyPaid?'var(--green-bg)':'var(--red-bg)'};color:${isFullyPaid?'var(--green)':'var(--red)'}";border:1px solid ${isFullyPaid?'var(--green-border)':'#f0a0a0'}">${isFullyPaid?'Paid':'Unpaid'}</span>
             <div style="font-size:11px;color:var(--muted)">${exp?'Hide':'Open'}</div>
           </div>
         </div>
         ${exp?`<div class="tw-card-body">
-          ${g.items.length?g.items.map((i,idx)=>`<div class="tw-item-row">
-            <div class="tw-item-main">
-              <span>${i.n}${i.s?` <span style="font-size:10px;color:var(--muted)">· ${i.s}</span>`:''}</span>
-              <span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted)">${euro(i.p)}</span>
-            </div>
-            <button class="tw-item-del" onclick="deleteGuestItem('${esc(g.id)}',${idx});event.stopPropagation()" title="Delete item">x</button>
-          </div>`).join(''):'<div style="font-size:12px;color:var(--muted);padding:8px 0">No items yet.</div>'}
+          ${g.items.length?g.items.map((i,idx)=>{
+            // per_guest mode: each item gets its own Pay / Paid pill,
+            // same affordance as the Charge sidebar. When paid we drop
+            // the × delete (the row is "frozen" — ledger row exists).
+            const itemPaid = CAMP_TAB_MODE==='per_guest' && !!i.paidAt;
+            const itemRowStyle = itemPaid
+              ? 'background:var(--green-bg,#eafbef);border-left:3px solid var(--green,#1c8c3f);padding-left:9px;border-radius:6px'
+              : '';
+            const perItemPay = CAMP_TAB_MODE==='per_guest'
+              ? (itemPaid
+                  ? `<span style="font-size:10px;font-weight:700;background:var(--green-bg,#dff5e2);color:var(--green,#1c8c3f);border:1px solid var(--green-border,#a8dfb3);border-radius:20px;padding:3px 9px;letter-spacing:.04em;text-transform:uppercase;margin-right:6px">Paid</span>`
+                  : `<button onclick="event.stopPropagation();payItemForGuestId('${esc(g.id)}',${idx})" title="Pay this item now" style="font-size:11px;font-weight:700;background:var(--ocean,#1668c0);color:#fff;border:none;border-radius:20px;padding:4px 12px;cursor:pointer;font-family:'Outfit',sans-serif;margin-right:6px">Pay</button>`)
+              : '';
+            const delBtn = itemPaid
+              ? ''
+              : `<button class="tw-item-del" onclick="deleteGuestItem('${esc(g.id)}',${idx});event.stopPropagation()" title="Delete item">x</button>`;
+            return `<div class="tw-item-row" style="${itemRowStyle}">
+              <div class="tw-item-main">
+                <span>${i.n}${i.s?` <span style="font-size:10px;color:var(--muted)">· ${i.s}</span>`:''}</span>
+                <span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted)">${euro(i.p)}</span>
+              </div>
+              ${perItemPay}
+              ${delBtn}
+            </div>`;
+          }).join(''):'<div style="font-size:12px;color:var(--muted);padding:8px 0">No items yet.</div>'}
           <div class="tw-actions">
-            <button class="tw-btn ${g.paid?'tw-btn-paid':'tw-btn-pay'}" onclick="toggleGuestPaid('${esc(g.id)}')">${g.paid?'Paid':'Pay'}</button>
-            <button class="tw-btn tw-btn-delete" onclick="deleteGuest('${esc(g.id)}')">Delete ${rosterLabel().toLowerCase()}</button>
-            ${currentRoster==='guests'?`<button class="tw-btn tw-btn-bill" onclick="passGuestToNextWeek('${esc(g.id)}')">${isQueuedForNextWeek(g.name)?'Update next week':'Continue next week'}</button>`:''}
-            ${!g.paid&&tot>0?`<button class="tw-btn tw-btn-bill" onclick="openBill('${esc(g.id)}')">Bill</button>`:''}
+            ${CAMP_TAB_MODE==='per_guest'
+              ? `<button class="tw-btn ${closeReady?'tw-btn-paid':'tw-btn-pay'}" ${closeReady?`onclick="closeGuestById('${esc(g.id)}')"`:'disabled'} title="${closeReady?'Remove guest from active list':'Pay every item first'}">Close guest</button>
+                 <button class="tw-btn tw-btn-delete" onclick="deleteGuest('${esc(g.id)}')">Delete ${rosterLabel().toLowerCase()}</button>
+                 ${!isFullyPaid&&tot>0?`<button class="tw-btn tw-btn-bill" onclick="openBill('${esc(g.id)}')">Bill</button>`:''}`
+              : `<button class="tw-btn ${g.paid?'tw-btn-paid':'tw-btn-pay'}" onclick="toggleGuestPaid('${esc(g.id)}')">${g.paid?'Paid':'Pay'}</button>
+                 <button class="tw-btn tw-btn-delete" onclick="deleteGuest('${esc(g.id)}')">Delete ${rosterLabel().toLowerCase()}</button>
+                 ${currentRoster==='guests'?`<button class="tw-btn tw-btn-bill" onclick="passGuestToNextWeek('${esc(g.id)}')">${isQueuedForNextWeek(g.name)?'Update next week':'Continue next week'}</button>`:''}
+                 ${!g.paid&&tot>0?`<button class="tw-btn tw-btn-bill" onclick="openBill('${esc(g.id)}')">Bill</button>`:''}`
+            }
           </div>
         </div>`:''}
       </div>`;
