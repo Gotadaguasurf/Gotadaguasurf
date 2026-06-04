@@ -3755,7 +3755,12 @@ function buildClosedWeekRevenueEntries(wk){
   if(!wk) return null;
   const paidItems=[...(wk.guests||[]),...(wk.staff||[])].filter(g=>g.paid).flatMap(g=>g.items||[]);
   if(!paidItems.length) return [];
-  const revenueDate=(wk.closedAt&&String(wk.closedAt).slice(0,10))||addDays(wk.start,6)||today();
+  // Revenue is always dated to the LAST DAY of the camp week — i.e. the
+  // Friday that closes the Sat→Fri cycle. Previously this used closedAt
+  // (when the user clicked "Close week"), so a week closed on Sunday or
+  // Monday stamped the revenue with that date instead of the operational
+  // Friday. addDays(wk.start, 6) — Saturday + 6 days = Friday.
+  const revenueDate=addDays(wk.start,6)||(wk.closedAt&&String(wk.closedAt).slice(0,10))||today();
   const grouped={};
   paidItems.forEach(item=>{
     const category=mapCampTabRevenueCategory(item);
@@ -7448,7 +7453,13 @@ function renderExpenses(){
   // withdrawal from the bank to refill the drawer.
   const expKpisEl=document.getElementById('expKpis');
   expKpisEl.style.display='grid';
-  expKpisEl.style.gridTemplateColumns='repeat(4, minmax(0, 1fr))';
+  // 3 tiles now (was 4) — Money Sent · Revenue tile removed per user
+  // request. The underlying transfer + income ledger rows are untouched
+  // so nothing is lost; only the KPI tile is gone. The two big amounts
+  // it summarised (HQ top-ups + revenue) are already captured by Bank
+  // (HQ in) and Cash (revenue in) tiles, so the standalone tile was
+  // duplicating information.
+  expKpisEl.style.gridTemplateColumns='repeat(3, minmax(0, 1fr))';
   expKpisEl.style.gap='12px';
   // Bank breakdown: card spend + bank-transfer spend collapsed into one
   // number. The user pointed out the split was noise — from the bank's
@@ -7485,12 +7496,6 @@ function renderExpenses(){
       <div class="kpi-sub" style="margin-top:4px">${euro(cashBalEur)}</div>
       ${cashBreakdown}
       ${cashHint}
-    </div>
-    <div class="card kpi">
-      <div class="kpi-label">Money Sent · Revenue</div>
-      <div class="kpi-value kv-green">${lkr(moneySentLocal+revenueLocal)}</div>
-      <div class="kpi-sub" style="margin-top:4px">${euro(moneySentEur+revenueEur)}</div>
-      <div class="kpi-breakdown" style="color:var(--muted)">HQ top-ups + revenue · filtered</div>
     </div>
   `;
 
