@@ -333,6 +333,10 @@ header{display:none}
       <div class="c-btns">
         <button class="c-btn c-btn-bill" onclick="openBill()">Bill</button>
         <button class="c-btn c-btn-pay" id="payBtn" onclick="togglePaid()">Paid</button>
+        <!-- Per-guest mode only: closes the guest so they leave the active list.
+             Hidden in weekly mode (Sri Lanka) where 'Close week' handles batch
+             closing. Shown via JS when CAMP_TAB_MODE === 'per_guest'. -->
+        <button class="c-btn c-btn-close-guest" id="closeGuestBtn" onclick="closeActiveGuest()" style="display:none;background:var(--navy);color:#fff">Close guest</button>
       </div>
     </div>
   </div>
@@ -937,6 +941,11 @@ function normalizeConsumerRows(rows){
     items:normalizeItemRows(row?.items),
     paid:!!row?.paid,
     ...(row?.paidAt?{paidAt:String(row.paidAt)}:{}),
+    // Per_guest mode (Morocco) — closedAt is stamped by closeActiveGuest.
+    // Accept either casing on the incoming row so a hydrate from a Supabase
+    // snake_case column (closed_at) or a local cache (camelCase closedAt)
+    // both round-trip cleanly.
+    ...((row?.closedAt||row?.closed_at)?{closedAt:String(row.closedAt||row.closed_at)}:{}),
     ...(row?.bookingRef?{bookingRef:String(row.bookingRef).trim()}:{}),
     ...(row?.bookingCi?{bookingCi:Number(row.bookingCi)}:{}),
     ...(row?.bookingCo?{bookingCo:Number(row.bookingCo)}:{}),
@@ -974,6 +983,13 @@ function applyCampTabStateSnapshot(snapshot){
 function rosterRows(wk=currentWeek(), roster=currentRoster){
   if(!wk) return [];
   wk[roster]=normalizeConsumerRows(wk[roster]);
+  // In per_guest mode (Morocco), guests can be individually closed
+  // via the Close Guest button. Closed guests stay in the underlying
+  // state with a closedAt timestamp (so history is preserved and
+  // the data isn't lost) but are filtered out of every active list.
+  if (CAMP_TAB_MODE === 'per_guest') {
+    return wk[roster].filter(g => !g?.closedAt && !g?.closed_at);
+  }
   return wk[roster];
 }
 function allConsumers(wk){
@@ -1114,6 +1130,10 @@ function hydrateWeekStateFromRows(weekRows,guestRows,itemRows){
       items:(itemsByGuest[guest.id]||[]).map(({sortOrder,...item})=>item),
       paid:!!guest.paid,
       ...(guest.paid_at?{paidAt:guest.paid_at}:{}),
+      // Hydrate the per_guest closedAt marker from the DB snake_case
+      // column so a guest closed on one device shows as closed on every
+      // other device after the next hydrate.
+      ...(guest.closed_at?{closedAt:guest.closed_at}:{}),
       ...(guest.booking_ref?{bookingRef:guest.booking_ref}:{}),
       ...(guest.checkin?{bookingCi:new Date(guest.checkin+'T00:00:00').getTime()}:{}),
       ...(guest.checkout?{bookingCo:new Date(guest.checkout+'T00:00:00').getTime()}:{}),
@@ -1244,7 +1264,7 @@ async function hydrateCampTabStateFromSupabase({mergeLocal=false}={}){
   if(!client||!locationId) return false;
   const [{data:weekRows,error:weeksError},{data:guestRows,error:guestsError},{data:itemRows,error:itemsError}] = await Promise.all([
     client.from('camp_weeks').select('id,start_date,end_date,status,closed_at,draft_kind,meta').eq('location_id',locationId).order('start_date',{ascending:true}),
-    client.from('camp_guests').select('id,week_id,name,booking_ref,is_staff,paid,paid_at,checkin,checkout,pax,sort_order,meta').eq('location_id',locationId).order('sort_order',{ascending:true}),
+    client.from('camp_guests').select('id,week_id,name,booking_ref,is_staff,paid,paid_at,closed_at,checkin,checkout,pax,sort_order,meta').eq('location_id',locationId).order('sort_order',{ascending:true}),
     client.from('camp_tab_items').select('id,guest_id,week_id,category,item_name,price_local,price_type,added_at,sort_order,meta').eq('location_id',locationId).order('sort_order',{ascending:true})
   ]);
   if(weeksError||guestsError||itemsError){
@@ -1307,6 +1327,11 @@ async function syncCampTabStateToSupabase(){
           is_staff:isStaff,
           paid:!!row.paid,
           paid_at:row.paid? (row.paidAt||new Date().toISOString()) : null,
+          // Per_guest closed timestamp — null when the guest is still
+          // active. Set by closeActiveGuest in per_guest mode (Morocco).
+          // Weekly mode never sets this field, so it stays null forever
+          // on Sri Lanka guests.
+          closed_at:row.closedAt||row.closed_at||null,
           checkin:row.bookingCi?isoLocal(new Date(row.bookingCi)):null,
           checkout:row.bookingCo?isoLocal(new Date(row.bookingCo)):null,
           pax:row.bookingPax||1,
@@ -1787,7 +1812,13 @@ function renderCharge(){
   const banner=document.getElementById('weekBanner');
   const bannerRange=document.getElementById('weekBannerRange');
   if(banner && bannerRange){
-    if(wk){
+    // Hide the active-week banner entirely in per_guest mode (Morocco).
+    // The whole concept of a "current week" doesn't apply — guests are
+    // tracked individually and close when they leave, not on a Sat→Fri
+    // cycle.
+    if(CAMP_TAB_MODE==='per_guest'){
+      banner.style.display='none';
+    } else if(wk){
       banner.style.display='flex';
       bannerRange.textContent=weekSpan(wk.start);
     } else {
@@ -1910,6 +1941,23 @@ function renderTabPanel(){
   document.getElementById('chargeGuestMeta').textContent=(currentRoster==='staff'?'Staff tab':'Guest tab')+' — '+(g.paid?'Paid / '+euro(gtot(g)):g.items.length+' item'+(g.items.length===1?'':'s')+' / '+euro(gtot(g)));
   document.getElementById('tabMeta').textContent=weekLabel+' — '+(g.paid?'Paid':g.items.length+' items');
   document.getElementById('payBtn').textContent=g.paid?'Paid':'Pay';
+  // Show the Close-guest button only in per_guest mode. Disabled until
+  // the guest is paid (so the user can't accidentally close a guest
+  // with unsettled items — the per_guest contract is "pay first, then
+  // remove from the active list").
+  const closeGuestBtn=document.getElementById('closeGuestBtn');
+  if(closeGuestBtn){
+    if(CAMP_TAB_MODE==='per_guest'){
+      closeGuestBtn.style.display='';
+      const ready = g.paid || gtot(g)===0;
+      closeGuestBtn.disabled = !ready;
+      closeGuestBtn.style.opacity = ready ? '1' : '0.5';
+      closeGuestBtn.style.cursor  = ready ? 'pointer' : 'not-allowed';
+      closeGuestBtn.title = ready ? 'Remove this guest from the active list' : 'Pay the tab before closing the guest';
+    } else {
+      closeGuestBtn.style.display='none';
+    }
+  }
 
   if(!g.items.length){
     document.getElementById('tabList').innerHTML='<div style="padding:14px;text-align:center;font-size:12px;color:var(--muted)">No items yet.</div>';
@@ -2012,15 +2060,40 @@ function delItem(idx){
   if(!g)return;
   g.items.splice(idx,1);save();renderAllCampTabViews();
 }
+// Per_guest mode only — close the currently-active guest. Stamps a
+// closed_at timestamp on the underlying consumer row. The data is
+// NEVER deleted; rosterRows just filters closed guests out of the
+// active list. They survive in the database with full item history
+// and can be inspected (and re-opened, if we add that affordance
+// later) by clearing closed_at.
+function closeActiveGuest(){
+  if (CAMP_TAB_MODE !== 'per_guest') return;
+  const g=findConsumer(AG,currentRoster);
+  if(!g) return;
+  if (!g.paid && gtot(g) > 0) {
+    toast('Settle the tab before closing the guest');
+    return;
+  }
+  g.closedAt = new Date().toISOString();
+  // Drop the active selection so the next render shows the empty
+  // "Select a guest" state instead of the now-hidden card.
+  AG = null;
+  save();
+  renderAllCampTabViews();
+  toast(`${g.name} closed`);
+}
+
 function togglePaid(){
   const g=findConsumer(AG,currentRoster);
   if(!g)return;
   g.paid=!g.paid;
   // Stamp the paid-at date the moment the toggle goes on so the per_guest
   // mode revenue lands on the correct day even if the user opens this
-  // again hours later.
+  // again hours later. Convention is camelCase locally (matches
+  // normalizeConsumerRows); the snake_case DB column is mapped at the
+  // Supabase boundary.
   if (g.paid) {
-    g.paid_at = g.paid_at || new Date().toISOString();
+    g.paidAt = g.paidAt || new Date().toISOString();
   }
   save();renderAllCampTabViews();
   // Morocco per_guest mode: fire a message to the hub so it writes the
@@ -2042,7 +2115,7 @@ function togglePaid(){
             c: i.c, n: i.n, p: Number(i.p || 0)
           })) : []
         },
-        date: (g.paid_at || new Date().toISOString()).slice(0, 10)
+        date: (g.paidAt || new Date().toISOString()).slice(0, 10)
       };
       window.parent.postMessage(payload, '*');
     } catch (err) {
@@ -2092,7 +2165,11 @@ function renderThisWeek(){
   const banner=document.getElementById('weekBannerTw');
   const bannerRange=document.getElementById('weekBannerRangeTw');
   if(banner && bannerRange){
-    if(wkBanner){
+    // Same per_guest mode rule as the Charge tab: hide the active-week
+    // banner entirely. Morocco has no week concept.
+    if(CAMP_TAB_MODE==='per_guest'){
+      banner.style.display='none';
+    } else if(wkBanner){
       banner.style.display='flex';
       bannerRange.textContent=weekSpan(wkBanner.start);
     } else {
