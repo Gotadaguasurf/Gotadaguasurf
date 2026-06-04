@@ -7626,6 +7626,18 @@ function openExpModal(type,id=null,preset=null){
   document.getElementById('em_vendor').value=entry?.vendor||'';
   document.getElementById('em_desc').value=entry?.description||preset?.description||'';
   fillEntryFields('em',type,preset,entry);
+  // ── Edit-mode amount restore ────────────────────────────────────────────
+  // fillEntryFields → applyLinkedPrice auto-fills the amount with
+  // unitPrice × qty whenever type=income and category=Tours/Transport.
+  // That's useful for NEW entries (user picks a tour → amount fills in),
+  // but disastrous when editing an EXISTING entry: closed-week revenue
+  // rows often hold a multi-guest total (e.g. 3 guests × 300 = 900 MAD)
+  // without an explicit quantity stamp, so the auto-fill clobbers 900
+  // back down to 300. The stored amountLocal is the authoritative total
+  // — restore it after the fill when we're editing.
+  if (entry) {
+    document.getElementById('em_amount').value = entry.amountLocal || entry.amount || '';
+  }
   updateCurrencyUi('em',type);
   syncFxRateForPrefix('em');
   document.getElementById('expDeleteBtn').style.display=id?'inline-flex':'none';
