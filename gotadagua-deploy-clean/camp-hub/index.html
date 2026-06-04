@@ -3813,6 +3813,47 @@ function buildClosedWeekRevenueEntries(wk){
 // week-Friday date. Each (category × linkedItem) gets one row. Re-marking
 // the same guest paid on the same day for the same (category × linkedItem)
 // updates the existing row in place — the id is deterministic.
+// Morocco per_guest, per-item granularity.
+//
+// Each item paid on a guest's tab fires its own camp-tab-item-paid
+// message; this builds ONE ledger row for THAT item, dated to today,
+// with an id stable per (guest, item, date) so a repeat message just
+// upserts in place.
+//
+// Coexists with buildPaidGuestRevenueEntries (which groups by category
+// × linked-item across the whole guest) — the IDs use different prefixes
+// (`campitem_…` vs `campguest_…`) so they will NEVER collide, even on
+// the same day. Sri Lanka never calls this — it goes through Close Week.
+function buildPaidItemRevenueEntry(guest, item, opts={}){
+  if(!guest || !item) return null;
+  const amount = Number(item?.p||0);
+  if(!(amount>0)) return null;
+  const revenueDate = (opts.date && String(opts.date).slice(0,10)) || today();
+  const category = mapCampTabRevenueCategory(item);
+  const linkedItem = item.c === 'Tours' ? (item.n || '') : '';
+  const guestKey = String(guest.id || guest.name || 'guest').replace(/\s+/g,'_');
+  const itemKey  = String(item.id || item.n || 'item').replace(/\s+/g,'_');
+  return normalizeLedgerEntry({
+    // ID scope: ONE row per (guest, item, day). Re-paying on the same
+    // day is a no-op (upsert in place); paying the same physical item
+    // on a different day creates a new row.
+    id: `campitem_${guestKey}_${itemKey}_${revenueDate}`,
+    date: revenueDate,
+    type: 'income',
+    category,
+    businessArea: inferArea('income', category, linkedItem),
+    paymentMethod: 'Cash',
+    paidBy: 'Camp',
+    linkedItem,
+    description: `Camp Tab · ${guest.name || 'guest'} · ${item.n || ''}`.trim(),
+    vendor: 'Camp Tab',
+    sourceKind: 'camp_tab_per_item',
+    currency: LOCAL_CURRENCY || 'LKR',
+    fxRate: getBestFxRateForDate(revenueDate),
+    amountLocal: Number(amount.toFixed(2))
+  });
+}
+
 function buildPaidGuestRevenueEntries(guest, opts={}){
   if(!guest || !Array.isArray(guest.items) || !guest.items.length) return [];
   const paidItems = guest.items.filter(i => Number(i?.p||0) > 0);
@@ -7947,6 +7988,21 @@ window.addEventListener('message',e=>{
         if(entries.length) upsertClosedWeekIncome(entries);
       }
     }catch(err){ console.warn('[Hub] guest-paid handler failed',err); }
+    rerenderActivePageData();
+    return;
+  }
+  // Morocco per_guest, per-item: one item just got paid → write a single
+  // ledger row dated to that item's payment day. Re-firing for the same
+  // (guest, item, day) is idempotent (upsert by stable id), so a retry or
+  // double-click won't duplicate revenue.
+  if(e.data?.type==='camp-tab-item-paid'){
+    try{
+      const {guest,item,date}=e.data;
+      if(guest && item){
+        const entry=buildPaidItemRevenueEntry(guest,item,{date});
+        if(entry) upsertClosedWeekIncome([entry]);
+      }
+    }catch(err){ console.warn('[Hub] item-paid handler failed',err); }
     rerenderActivePageData();
     return;
   }

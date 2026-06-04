@@ -872,8 +872,15 @@ function normalizeItemRows(items){
     p:Number(item?.p||0),
     c:String(item?.c||'Other').trim()||'Other',
     t:String(item?.t||'').trim(),
+    // d = date the item was added (YYYY-MM-DD), preserved for per-day grouping
+    ...(item?.d?{d:String(item.d).slice(0,10)}:{}),
     ...(item?.s?{s:String(item.s).trim()}:{}),
     ...(item?.priceType?{priceType:String(item.priceType).trim()}:{}),
+    // per_guest mode (Morocco) — paidAt stamps the moment the user
+    // marked THIS item paid. One ledger row per paid item, dated to
+    // paidAt's day. Accept both casings so hydrate from snake_case
+    // (paid_at) and from local cache (paidAt) round-trip cleanly.
+    ...((item?.paidAt||item?.paid_at)?{paidAt:String(item.paidAt||item.paid_at)}:{}),
     sortOrder:Number.isFinite(Number(item?.sortOrder))?Number(item.sortOrder):(idx+1)*10
   })).filter(item=>item.n&&Number.isFinite(item.p));
 }
@@ -1140,6 +1147,10 @@ function hydrateWeekStateFromRows(weekRows,guestRows,itemRows){
       c:item.category,
       t:meta.time||new Date(item.added_at||Date.now()).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}),
       d:item.added_at?String(item.added_at).slice(0,10):null, // date added — used for per-day revenue grouping
+      // per_guest mode (Morocco) — hydrate the camelCase paidAt marker
+      // from the DB snake_case column so an item paid on one device shows
+      // as paid on every other device after the next hydrate.
+      ...(item.paid_at?{paidAt:item.paid_at}:{}),
       ...(meta.staffNote?{s:meta.staffNote}:{}),
       ...(item.price_type?{priceType:item.price_type}:{}),
       sortOrder:Number(item.sort_order||0)
@@ -1293,7 +1304,7 @@ async function hydrateCampTabStateFromSupabase({mergeLocal=false}={}){
   const [{data:weekRows,error:weeksError},{data:guestRows,error:guestsError},{data:itemRows,error:itemsError}] = await Promise.all([
     client.from('camp_weeks').select('id,start_date,end_date,status,closed_at,draft_kind,meta').eq('location_id',locationId).order('start_date',{ascending:true}),
     client.from('camp_guests').select('id,week_id,name,booking_ref,is_staff,paid,paid_at,closed_at,checkin,checkout,pax,sort_order,meta').eq('location_id',locationId).order('sort_order',{ascending:true}),
-    client.from('camp_tab_items').select('id,guest_id,week_id,category,item_name,price_local,price_type,added_at,sort_order,meta').eq('location_id',locationId).order('sort_order',{ascending:true})
+    client.from('camp_tab_items').select('id,guest_id,week_id,category,item_name,price_local,price_type,added_at,paid_at,sort_order,meta').eq('location_id',locationId).order('sort_order',{ascending:true})
   ]);
   if(weeksError||guestsError||itemsError){
     console.warn('Camp Tab state hydrate failed',weeksError||guestsError||itemsError);
@@ -1380,6 +1391,10 @@ async function syncCampTabStateToSupabase(){
             price_local:Number(item.p||0),
             currency:'LKR',
             added_at:item.d?(item.d+'T'+(item.t||'12:00')+':00.000Z'):new Date().toISOString(),
+            // per_guest mode (Morocco) — persist the item's individual paid
+            // timestamp. Sri Lanka items never set paidAt so this stays
+            // null and the column is effectively unused there.
+            paid_at:item.paidAt||null,
             price_type:item.priceType||null,
             sort_order:(itemIndex+1)*10,
             meta:{time:item.t||'',staffNote:item.s||null}
@@ -1910,7 +1925,7 @@ function renderGuestList(){
       <div class="c-guest-name">${g.name}</div>
       <div class="c-guest-amt">${gtot(g)>0?euro(gtot(g)):'no charges'}${currentRoster==='guests'&&isQueuedForNextWeek(g.name)?' / queued next week':''}</div>
     </div>
-    ${g.paid?'<div class="c-gpaid"></div>':''}
+    ${isGuestFullyPaid(g)?'<div class="c-gpaid"></div>':''}
     <button class="c-guest-del" onclick="event.stopPropagation();delGuestRow('${esc(g.id)}')" title="Remove from this week">×</button>
   </div>`).join('');
   if(searchEl&&document.activeElement!==searchEl&&term){
@@ -1986,20 +2001,39 @@ function renderTabPanel(){
   // Week is shown by the always-visible #weekBanner above this header
   // (see renderCharge), so the meta sub-line stays focused on the tab
   // status. Avoids duplicating the date in two places.
-  document.getElementById('chargeGuestMeta').textContent=(currentRoster==='staff'?'Staff tab':'Guest tab')+' — '+(g.paid?'Paid / '+euro(gtot(g)):g.items.length+' item'+(g.items.length===1?'':'s')+' / '+euro(gtot(g)));
+  // per_guest mode summary uses isGuestFullyPaid so "Paid" reflects
+  // every item being individually settled, not just the legacy whole-
+  // guest g.paid flag.
+  const fullyPaid = isGuestFullyPaid(g);
+  const unpaidCount = (g.items||[]).filter(i=>!i?.paidAt && Number(i?.p||0)>0).length;
+  document.getElementById('chargeGuestMeta').textContent=(currentRoster==='staff'?'Staff tab':'Guest tab')+' — '+(fullyPaid?'Paid / '+euro(gtot(g)):g.items.length+' item'+(g.items.length===1?'':'s')+' / '+euro(gtot(g)));
   // per_guest mode: drop the week prefix from the tab status line.
   const tabMetaLeft = CAMP_TAB_MODE==='per_guest' ? g.name : weekLabel;
-  document.getElementById('tabMeta').textContent=tabMetaLeft+' — '+(g.paid?'Paid':g.items.length+' items');
-  document.getElementById('payBtn').textContent=g.paid?'Paid':'Pay';
+  document.getElementById('tabMeta').textContent=tabMetaLeft+' — '+(fullyPaid?'Paid':g.items.length+' items');
+  // Bottom button label: in per_guest mode it's a "Pay all" bulk action
+  // that loops payItem over every unpaid item. In Sri Lanka it stays
+  // the original whole-guest Paid/Pay toggle.
+  const payBtn=document.getElementById('payBtn');
+  if(payBtn){
+    if(CAMP_TAB_MODE==='per_guest'){
+      payBtn.textContent = fullyPaid ? 'Paid' : (unpaidCount>1 ? `Pay all (${unpaidCount})` : 'Pay');
+      payBtn.disabled = fullyPaid || unpaidCount===0;
+      payBtn.style.opacity = payBtn.disabled ? '0.5' : '1';
+      payBtn.style.cursor  = payBtn.disabled ? 'not-allowed' : 'pointer';
+    } else {
+      payBtn.textContent = g.paid ? 'Paid' : 'Pay';
+      payBtn.disabled = false;
+      payBtn.style.opacity = '1';
+      payBtn.style.cursor = 'pointer';
+    }
+  }
   // Show the Close-guest button only in per_guest mode. Disabled until
-  // the guest is paid (so the user can't accidentally close a guest
-  // with unsettled items — the per_guest contract is "pay first, then
-  // remove from the active list").
+  // every item is paid (per-item) or there's nothing to charge.
   const closeGuestBtn=document.getElementById('closeGuestBtn');
   if(closeGuestBtn){
     if(CAMP_TAB_MODE==='per_guest'){
       closeGuestBtn.style.display='';
-      const ready = g.paid || gtot(g)===0;
+      const ready = fullyPaid || gtot(g)===0;
       closeGuestBtn.disabled = !ready;
       closeGuestBtn.style.opacity = ready ? '1' : '0.5';
       closeGuestBtn.style.cursor  = ready ? 'pointer' : 'not-allowed';
@@ -2015,10 +2049,19 @@ function renderTabPanel(){
   }
   document.getElementById('tabList').innerHTML=[...g.items].reverse().map((item,ri)=>{
     const idx=g.items.length-1-ri;
+    // per_guest mode: each item gets its own Pay / Paid pill. Tapping
+    // an unpaid one stamps paidAt locally and posts camp-tab-item-paid
+    // to the hub so a single ledger row lands dated to today.
+    const perItemPay = CAMP_TAB_MODE==='per_guest'
+      ? (item.paidAt
+          ? `<span class="ctr-paid-pill" title="Paid ${String(item.paidAt).slice(0,10)}" style="font-size:10px;font-weight:700;background:var(--green-bg,#dff5e2);color:var(--green,#1c8c3f);border:1px solid var(--green-border,#a8dfb3);border-radius:20px;padding:3px 9px;letter-spacing:.04em;text-transform:uppercase">Paid</span>`
+          : `<button class="ctr-pay-btn" onclick="event.stopPropagation();payItem(${idx})" title="Pay this item now" style="font-size:11px;font-weight:700;background:var(--ocean,#1668c0);color:#fff;border:none;border-radius:20px;padding:4px 12px;cursor:pointer;font-family:'Outfit',sans-serif">Pay</button>`)
+      : '';
     return `<div class="c-tab-row">
       <div style="flex:1;min-width:0"><div class="ctr-name">${item.n}</div><div class="ctr-time">${item.c} · ${item.t}${item.s?' · '+item.s:''}</div></div>
-      <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
+      <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
         <div class="ctr-price">${euro(item.p)}</div>
+        ${perItemPay}
         <button class="ctr-del" onclick="delItem(${idx})">x</button>
       </div>
     </div>`;
@@ -2097,6 +2140,14 @@ function addResolvedItem(item,btn){
   const price=displayPriceFor(item);
   const nextItem={id:makeUuid(),menuItemId:item.id||'',n:item.n,p:price,c:AC,t:tnow(),d:today(),priceType:currentRoster==='staff'?'staff':'regular'};
   g.items=[...normalizeItemRows(g.items),nextItem];
+  // per_guest mode: adding a NEW unpaid item must reset the guest's
+  // bulk "paid" flag, otherwise isGuestFullyPaid (which falls back to
+  // g.paid for legacy-paid guests) would still report Paid and the
+  // Close button would incorrectly enable.
+  if(CAMP_TAB_MODE==='per_guest' && g.paid){
+    g.paid=false;
+    delete g.paidAt;
+  }
   rows[rowIndex]=g;
   wk[currentRoster]=rows;
   AG=g.id;
@@ -2120,7 +2171,11 @@ function closeActiveGuest(){
   if (CAMP_TAB_MODE !== 'per_guest') return;
   const g=findConsumer(AG,currentRoster);
   if(!g) return;
-  if (!g.paid && gtot(g) > 0) {
+  // Allow close if (a) every item has paidAt, (b) legacy whole-guest
+  // g.paid flag is set, or (c) there's nothing to charge in the first
+  // place. Otherwise the user has unpaid items and must settle them
+  // (per-item Pay buttons, or the bottom Pay-all button) before close.
+  if (!isGuestFullyPaid(g) && gtot(g) > 0) {
     toast('Settle the tab before closing the guest');
     return;
   }
@@ -2133,45 +2188,81 @@ function closeActiveGuest(){
   toast(`${g.name} closed`);
 }
 
+// per_guest mode: is the guest fully settled? Derived from item-level
+// paidAt stamps — true only when every item has been individually paid.
+// Empty-items guests are NOT considered "fully paid" by this helper; the
+// Close-guest button has its own gtot===0 escape hatch for the "added by
+// mistake / nothing charged" path.
+function isGuestFullyPaid(g){
+  if(!g) return false;
+  if(CAMP_TAB_MODE !== 'per_guest') return !!g.paid;
+  const items = Array.isArray(g.items) ? g.items : [];
+  if(!items.length) return !!g.paid;
+  return items.every(i => !!i?.paidAt) || !!g.paid;
+}
+
+// per_guest mode only — mark a single item on the active guest as paid
+// and fire the new camp-tab-item-paid message so the hub writes ONE
+// ledger row for that item, dated to today. Re-clicking is a no-op
+// (idempotent on the local stamp; the hub upsert is keyed by item id +
+// date so a repeat message just updates in place).
+function payItem(idx){
+  if(CAMP_TAB_MODE !== 'per_guest') return;
+  const g=findConsumer(AG,currentRoster);
+  if(!g) return;
+  const item=g.items?.[idx];
+  if(!item) return;
+  if(item.paidAt){ toast('Item already paid'); return; }
+  if(!(Number(item.p)>0)){ toast('Item has no price'); return; }
+  const nowIso=new Date().toISOString();
+  item.paidAt=nowIso;
+  // If this was the last unpaid item, also bubble g.paid so the
+  // Close-guest button enables without needing a redundant Pay All.
+  if(g.items.every(i => !!i.paidAt)){
+    g.paid=true;
+    g.paidAt = g.paidAt || nowIso;
+  }
+  save();
+  renderAllCampTabViews();
+  try{
+    window.parent.postMessage({
+      type:'camp-tab-item-paid',
+      // Hub uses guest.id + item.id + date for stable ledger row id.
+      guest:{ id:g.id||g.name, name:g.name },
+      item:{ id:item.id, c:item.c, n:item.n, p:Number(item.p||0) },
+      date: nowIso.slice(0,10)
+    },'*');
+  }catch(err){
+    console.warn('[CampTab] failed to send item-paid message',err);
+  }
+  toast(`${item.n} paid`);
+}
+
 function togglePaid(){
   const g=findConsumer(AG,currentRoster);
   if(!g)return;
+  // per_guest mode: the bottom button is now "Pay all" — settle every
+  // unpaid item in one click (each generates its own ledger row dated
+  // to today). Un-toggling does NOT un-pay individual items: the books
+  // reflect actual payment events and reversals must be done manually.
+  if (CAMP_TAB_MODE === 'per_guest') {
+    if (isGuestFullyPaid(g)) {
+      toast('Already paid');
+      return;
+    }
+    const unpaidIndexes = (g.items||[])
+      .map((it,idx) => (!it?.paidAt && Number(it?.p||0)>0) ? idx : -1)
+      .filter(idx => idx>=0);
+    if (!unpaidIndexes.length) { toast('Nothing to pay'); return; }
+    unpaidIndexes.forEach(payItem);
+    return;
+  }
+  // Sri Lanka (weekly mode) — original whole-guest toggle. Untouched.
   g.paid=!g.paid;
-  // Stamp the paid-at date the moment the toggle goes on so the per_guest
-  // mode revenue lands on the correct day even if the user opens this
-  // again hours later. Convention is camelCase locally (matches
-  // normalizeConsumerRows); the snake_case DB column is mapped at the
-  // Supabase boundary.
   if (g.paid) {
     g.paidAt = g.paidAt || new Date().toISOString();
   }
   save();renderAllCampTabViews();
-  // Morocco per_guest mode: fire a message to the hub so it writes the
-  // guest's paid items to the ledger IMMEDIATELY, dated to today. Sri
-  // Lanka (weekly mode) waits for week close as before — no message sent.
-  // We only fire when transitioning to paid=true; un-paying does NOT
-  // remove the ledger row (the user can edit/delete it manually if
-  // needed) so the books reflect the actual payment event.
-  if (CAMP_TAB_MODE === 'per_guest' && g.paid) {
-    try {
-      const payload = {
-        type: 'camp-tab-guest-paid',
-        // The hub builds revenue from this snapshot, so include only the
-        // fields buildPaidGuestRevenueEntries reads.
-        guest: {
-          id: g.id || g.name,
-          name: g.name,
-          items: Array.isArray(g.items) ? g.items.map(i => ({
-            c: i.c, n: i.n, p: Number(i.p || 0)
-          })) : []
-        },
-        date: (g.paidAt || new Date().toISOString()).slice(0, 10)
-      };
-      window.parent.postMessage(payload, '*');
-    } catch (err) {
-      console.warn('[CampTab] failed to send guest-paid message', err);
-    }
-  }
   toast(g.name+(g.paid?' paid':' unpaid'));
 }
 
