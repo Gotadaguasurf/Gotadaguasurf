@@ -702,6 +702,13 @@ const DEFAULT_STAFF=[];
 // this slug through ensureCampTabLocationId(), so getting it right here
 // is what isolates the two locations.
 const CAMP_TAB_LOCATION_SLUG=(new URLSearchParams(window.location.search).get('location')||'sri-lanka').trim().toLowerCase();
+// Operating mode passed in by the hub via URL. 'weekly' is the default
+// Sri Lanka behaviour (Sat→Fri close week generates revenue). 'per_guest'
+// is the Morocco behaviour — marking a guest paid writes revenue to the
+// hub ledger IMMEDIATELY, dated today, instead of waiting for week close.
+// Anything other than 'per_guest' is treated as weekly so the camp tab
+// behaves safely on legacy iframe URLs that don't pass the parameter.
+const CAMP_TAB_MODE=(new URLSearchParams(window.location.search).get('mode')||'weekly').trim().toLowerCase()==='per_guest'?'per_guest':'weekly';
 let CAMP_SB=null;
 let CAMP_LOCATION_ID=null;
 let campTabSyncTimer=null;
@@ -2008,7 +2015,40 @@ function delItem(idx){
 function togglePaid(){
   const g=findConsumer(AG,currentRoster);
   if(!g)return;
-  g.paid=!g.paid;save();renderAllCampTabViews();
+  g.paid=!g.paid;
+  // Stamp the paid-at date the moment the toggle goes on so the per_guest
+  // mode revenue lands on the correct day even if the user opens this
+  // again hours later.
+  if (g.paid) {
+    g.paid_at = g.paid_at || new Date().toISOString();
+  }
+  save();renderAllCampTabViews();
+  // Morocco per_guest mode: fire a message to the hub so it writes the
+  // guest's paid items to the ledger IMMEDIATELY, dated to today. Sri
+  // Lanka (weekly mode) waits for week close as before — no message sent.
+  // We only fire when transitioning to paid=true; un-paying does NOT
+  // remove the ledger row (the user can edit/delete it manually if
+  // needed) so the books reflect the actual payment event.
+  if (CAMP_TAB_MODE === 'per_guest' && g.paid) {
+    try {
+      const payload = {
+        type: 'camp-tab-guest-paid',
+        // The hub builds revenue from this snapshot, so include only the
+        // fields buildPaidGuestRevenueEntries reads.
+        guest: {
+          id: g.id || g.name,
+          name: g.name,
+          items: Array.isArray(g.items) ? g.items.map(i => ({
+            c: i.c, n: i.n, p: Number(i.p || 0)
+          })) : []
+        },
+        date: (g.paid_at || new Date().toISOString()).slice(0, 10)
+      };
+      window.parent.postMessage(payload, '*');
+    } catch (err) {
+      console.warn('[CampTab] failed to send guest-paid message', err);
+    }
+  }
   toast(g.name+(g.paid?' paid':' unpaid'));
 }
 
@@ -2158,6 +2198,20 @@ function renderThisWeek(){
   }
 
   // Bottom bar
+  // Morocco per_guest mode: there is no week close. Revenue lands in the
+  // ledger the moment each guest is marked paid (see togglePaid). The
+  // close-week button would generate duplicate ledger rows AND doesn't
+  // match the daily flow, so we hide it entirely in this mode. A small
+  // notice replaces it so the user knows the difference is intentional.
+  if (CAMP_TAB_MODE === 'per_guest') {
+    twBar.innerHTML = `
+      <div></div>
+      <div style="font-size:12px;color:var(--muted);padding:8px 14px;text-align:right;line-height:1.4">
+        Per-guest mode · revenue lands in the<br>ledger when a guest is paid.
+      </div>
+    `;
+    return;
+  }
   twBar.innerHTML=`
     <div></div>
     <button class="tw-close-btn ${allPaid?'ready':'locked'}" ${allPaid?'onclick="openCloseWeek()"':'disabled'}>
