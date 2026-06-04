@@ -7943,28 +7943,44 @@ function sendCampTabToursUpdate(){
     frame.contentWindow.postMessage({type:'camp-tab-tours-update',tours},'*');
   }catch(_error){}
 }
-function mountCampTabFrame(){
+async function mountCampTabFrame(){
   const frame=document.getElementById('campTabFrame');
   if(!frame) return;
-  if(frame.dataset.loaded==='1'){
+  // RACE FIX: the iframe URL embeds HUB_CAMP_TAB_MODE, but
+  // ensureHubLocationId() (which resolves the mode from
+  // locations.camp_tab_mode) is async. Before this await, the very first
+  // mount at INIT was firing BEFORE the mode was resolved, so the iframe
+  // got locked into the default 'weekly' — Morocco then stayed in Sri
+  // Lanka UI for the whole session (visible week banner, "+ New week"
+  // button, "No active week" label, etc.). We now block until the
+  // location row has been read so the mode is correct on first paint.
+  // ensureHubLocationId is memoised on HUB_SB_LOCATION_ID so this is
+  // a no-op after the first call.
+  try { await ensureHubLocationId(); } catch(_) { /* offline / no client */ }
+  const targetMode = HUB_CAMP_TAB_MODE || 'weekly';
+  // If the iframe is already loaded with the same mode, just re-bootstrap.
+  // If the mode changed since the last mount (rare — only happens if the
+  // location row was updated mid-session), force a re-mount so the inner
+  // page picks the new mode up.
+  if(frame.dataset.loaded==='1' && frame.dataset.mode === targetMode){
     sendCampTabBootstrap();
     return;
   }
   frame.onload=()=>{sendCampTabBootstrap();};
-  // Pass the active hub's location to the iframe so its CAMP_TAB_LOCATION_SLUG
-  // resolves to the right location (Sri Lanka / Morocco / etc.) instead of
-  // the previously hardcoded 'sri-lanka'.
-  // Pass the camp tab mode to the iframe so it can switch between weekly
-  // (Sri Lanka) and per_guest (Morocco) rendering. Falls through silently
-  // if HUB_CAMP_TAB_MODE hasn't been resolved yet — the inner page treats
-  // anything other than 'per_guest' as weekly.
-  frame.src='/camp-hub/camp-tab-inner.html?location='+encodeURIComponent(__HUB_LOCATION_SLUG)+'&mode='+encodeURIComponent(HUB_CAMP_TAB_MODE||'weekly');
+  // Pass the active hub's location AND the resolved camp_tab_mode so the
+  // inner page knows whether to render weekly (Sri Lanka) or per_guest
+  // (Morocco) on first paint.
+  frame.src='/camp-hub/camp-tab-inner.html?location='+encodeURIComponent(__HUB_LOCATION_SLUG)+'&mode='+encodeURIComponent(targetMode);
   frame.dataset.loaded='1';
+  frame.dataset.mode=targetMode;
 }
 function reloadCampTabFrame(){
   const frame=document.getElementById('campTabFrame');
   if(!frame) return;
   frame.dataset.loaded='0';
+  // Clear the cached mode so the next mountCampTabFrame re-reads from
+  // HUB_CAMP_TAB_MODE rather than short-circuiting on a stale dataset.
+  delete frame.dataset.mode;
   frame.removeAttribute('src');
   mountCampTabFrame();
 }
