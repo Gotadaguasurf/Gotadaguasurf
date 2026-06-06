@@ -2156,17 +2156,22 @@ function renderTabPanel(){
       payBtn.style.cursor = 'pointer';
     }
   }
-  // Show the Close-guest button only in per_guest mode. Disabled until
-  // every item is paid (per-item) or there's nothing to charge.
+  // Show the Close-guest button only in per_guest mode. Always enabled —
+  // closeActiveGuest itself surfaces a confirmation when there are
+  // unpaid items so the user can choose to leave them as an "unpaid"
+  // record in history (e.g. guest skipped without paying, or owner
+  // wants to write it off without creating a ledger entry).
   const closeGuestBtn=document.getElementById('closeGuestBtn');
   if(closeGuestBtn){
     if(CAMP_TAB_MODE==='per_guest'){
       closeGuestBtn.style.display='';
-      const ready = fullyPaid || gtot(g)===0;
-      closeGuestBtn.disabled = !ready;
-      closeGuestBtn.style.opacity = ready ? '1' : '0.5';
-      closeGuestBtn.style.cursor  = ready ? 'pointer' : 'not-allowed';
-      closeGuestBtn.title = ready ? 'Remove this guest from the active list' : 'Pay the tab before closing the guest';
+      closeGuestBtn.disabled = false;
+      closeGuestBtn.style.opacity = '1';
+      closeGuestBtn.style.cursor  = 'pointer';
+      const hasUnpaid = (g.items||[]).some(i => !i?.paidAt && Number(i?.p||0)>0);
+      closeGuestBtn.title = hasUnpaid
+        ? 'Close — unpaid items will stay as an unpaid record in history'
+        : 'Remove this guest from the active list';
     } else {
       closeGuestBtn.style.display='none';
     }
@@ -2331,13 +2336,17 @@ function closeActiveGuest(){
   if (CAMP_TAB_MODE !== 'per_guest') return;
   const g=findConsumer(AG,currentRoster);
   if(!g) return;
-  // Allow close if (a) every item has paidAt, (b) legacy whole-guest
-  // g.paid flag is set, or (c) there's nothing to charge in the first
-  // place. Otherwise the user has unpaid items and must settle them
-  // (per-item Pay buttons, or the bottom Pay-all button) before close.
-  if (!isGuestFullyPaid(g) && gtot(g) > 0) {
-    toast('Settle the tab before closing the guest');
-    return;
+  // Close is now always available. If the guest has unpaid items we
+  // surface a stronger confirmation that spells out what's about to
+  // happen — the items stay in history as UNPAID so the books reflect
+  // reality (e.g. guest left without paying, owner decided to comp it).
+  const items = Array.isArray(g.items) ? g.items : [];
+  const unpaid = items.filter(i => !i?.paidAt && Number(i?.p||0) > 0);
+  if(unpaid.length){
+    const totalUnpaid = unpaid.reduce((s,i)=>s+Number(i.p||0),0);
+    if(!confirm(`Close ${g.name} with ${unpaid.length} unpaid item${unpaid.length===1?'':'s'} (${euro(totalUnpaid)})?\n\nThe unpaid items stay in history as a record — no ledger entries are written for them.\n\nYou can re-open the guest later from History if needed.`)){
+      return;
+    }
   }
   g.closedAt = new Date().toISOString();
   // Drop the active selection so the next render shows the empty
@@ -2452,15 +2461,20 @@ function unpayItemForGuestId(guestId, idx){
   unpayItemOnGuest(g, idx);
 }
 // This week expanded card — closes a guest by id (per_guest only).
-// Same gate as the Charge "Close guest" button: every item paid OR
-// tab is empty.
+// Same behaviour as the Charge "Close guest" button: always available,
+// unpaid-items case asks for a stronger confirmation but lets the user
+// proceed (the items stay in history as a record of what happened).
 function closeGuestById(guestId){
   if(CAMP_TAB_MODE !== 'per_guest') return;
   const g=findConsumer(guestId,currentRoster);
   if(!g) return;
-  if(!isGuestFullyPaid(g) && gtot(g) > 0){
-    toast('Settle the tab before closing the guest');
-    return;
+  const items = Array.isArray(g.items) ? g.items : [];
+  const unpaid = items.filter(i => !i?.paidAt && Number(i?.p||0) > 0);
+  if(unpaid.length){
+    const totalUnpaid = unpaid.reduce((s,i)=>s+Number(i.p||0),0);
+    if(!confirm(`Close ${g.name} with ${unpaid.length} unpaid item${unpaid.length===1?'':'s'} (${euro(totalUnpaid)})?\n\nThe unpaid items stay in history as a record — no ledger entries are written for them.\n\nYou can re-open the guest later from History if needed.`)){
+      return;
+    }
   }
   g.closedAt = new Date().toISOString();
   if(AG===g.id) AG=null;
@@ -2624,7 +2638,11 @@ function renderThisWeek(){
       // per_guest: status badge reads from items (isGuestFullyPaid),
       // not the legacy whole-guest g.paid flag.
       const isFullyPaid = isGuestFullyPaid(g);
+      // Close button is always enabled in per_guest now — closeGuestById
+      // handles the unpaid-items confirmation. Variable kept for the
+      // "paid/cta" colour state below.
       const closeReady = isFullyPaid || tot===0;
+      const hasUnpaidItems = (g.items||[]).some(i => !i?.paidAt && Number(i?.p||0)>0);
       return `<div class="tw-card">
         <div class="tw-card-head" onclick="toggleTwExpand('${esc(g.id)}')">
         <div style="flex:1;min-width:0">
@@ -2666,7 +2684,7 @@ function renderThisWeek(){
           }).join(''):'<div style="font-size:12px;color:var(--muted);padding:8px 0">No items yet.</div>'}
           <div class="tw-actions">
             ${CAMP_TAB_MODE==='per_guest'
-              ? `<button class="tw-btn ${closeReady?'tw-btn-paid':'tw-btn-pay'}" ${closeReady?`onclick="closeGuestById('${esc(g.id)}')"`:'disabled'} title="${closeReady?'Remove guest from active list':'Pay every item first'}">Close guest</button>
+              ? `<button class="tw-btn ${closeReady?'tw-btn-paid':'tw-btn-pay'}" onclick="closeGuestById('${esc(g.id)}')" title="${hasUnpaidItems?'Close — unpaid items will stay as an unpaid record in history':'Remove guest from active list'}">Close guest</button>
                  <button class="tw-btn tw-btn-delete" onclick="deleteGuest('${esc(g.id)}')">Delete ${rosterLabel().toLowerCase()}</button>
                  ${!isFullyPaid&&tot>0?`<button class="tw-btn tw-btn-bill" onclick="openBill('${esc(g.id)}')">Bill</button>`:''}`
               : `<button class="tw-btn ${g.paid?'tw-btn-paid':'tw-btn-pay'}" onclick="toggleGuestPaid('${esc(g.id)}')">${g.paid?'Paid':'Pay'}</button>
@@ -3648,41 +3666,72 @@ window.addEventListener('message',async e=>{
       // Strict format: "Camp Tab · <guest> · <item>". If the delimiter
       // isn't there we bail rather than fuzzy-matching the wrong line.
       const parts = desc.split(' · ');
-      if(parts.length >= 3 && parts[0]==='Camp Tab'){
-        const guestName = parts[1].trim();
-        const itemName  = parts.slice(2).join(' · ').trim();
-        const wk = currentWeek();
-        const allGuests = wk ? [...(wk.guests||[]), ...(wk.staff||[])] : [];
-        let cleared = false;
+      if(!(parts.length >= 3 && parts[0]==='Camp Tab')){
+        console.warn('[CampTab] ledger-deleted: unrecognised description shape', desc);
+        return;
+      }
+      const guestName = parts[1].trim();
+      const itemName  = parts.slice(2).join(' · ').trim();
+      const wk = currentWeek();
+      // Walk EVERY guest on the container week — active AND closed
+      // (closed guests live here with closedAt set; rosterRows returns
+      // the underlying array so closed ones are present).
+      const allGuests = wk ? [...(wk.guests||[]), ...(wk.staff||[])] : [];
+      let cleared = false;
+      let clearedGuest = null;
+      // Pass 1: strict match (name + date + item-name + amount). This
+      // is the happy path — every field lines up with the ledger row.
+      for(const g of allGuests){
+        if(String(g?.name||'').trim().toLowerCase() !== guestName.toLowerCase()) continue;
+        if(!Array.isArray(g.items)) continue;
+        for(const it of g.items){
+          if(!it?.paidAt) continue;
+          const itDate = String(it.paidAt).slice(0,10);
+          const itName = String(it.n||'').trim();
+          const itPrice = Number(it.p||0);
+          if(itDate===date && itName===itemName && Math.abs(itPrice-amount) < 0.01){
+            delete it.paidAt;
+            cleared = true;
+            clearedGuest = g;
+            break;
+          }
+        }
+        if(cleared) break;
+      }
+      // Pass 2: fallback for closed guests / hydrated rows where the
+      // paidAt timestamp may have drifted by a day (timezone edge) or
+      // the entry's date was manually edited on the ledger. Drop the
+      // date strictness; match by guest + item-name + amount only.
+      // Scoped to paid items so we never wrongly clear an unpaid line.
+      if(!cleared){
         for(const g of allGuests){
           if(String(g?.name||'').trim().toLowerCase() !== guestName.toLowerCase()) continue;
           if(!Array.isArray(g.items)) continue;
           for(const it of g.items){
             if(!it?.paidAt) continue;
-            const itDate = String(it.paidAt).slice(0,10);
             const itName = String(it.n||'').trim();
             const itPrice = Number(it.p||0);
-            if(itDate===date && itName===itemName && Math.abs(itPrice-amount) < 0.01){
+            if(itName===itemName && Math.abs(itPrice-amount) < 0.01){
               delete it.paidAt;
               cleared = true;
+              clearedGuest = g;
               break;
             }
           }
-          if(cleared){
-            // If we just un-paid the last paid item AND the bulk g.paid
-            // flag was bubbled up by payItemOnGuest, drop it too — same
-            // logic the manual unpay path applies.
-            if(g.paid){
-              g.paid = false;
-              delete g.paidAt;
-            }
-            break;
-          }
+          if(cleared) break;
         }
-        if(cleared){
-          save();
-          renderAllCampTabViews();
+      }
+      if(cleared){
+        // If the bulk g.paid flag was bubbled up by payItemOnGuest, drop
+        // it too — same logic the manual unpay path applies.
+        if(clearedGuest?.paid){
+          clearedGuest.paid = false;
+          delete clearedGuest.paidAt;
         }
+        save();
+        renderAllCampTabViews();
+      } else {
+        console.warn('[CampTab] ledger-deleted: no matching item',{guestName,itemName,date,amount});
       }
     }catch(err){
       console.warn('[CampTab] ledger-deleted handler failed', err);
