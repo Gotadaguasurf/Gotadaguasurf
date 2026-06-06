@@ -136,9 +136,9 @@ header{display:none}
 .tw-card-right{display:flex;align-items:center;gap:8px;flex-shrink:0}
 .tw-card-total{font-family:'DM Mono',monospace;font-size:13px;color:var(--ink)}
 .tw-card-body{padding:0 14px 12px;border-top:1px solid var(--border)}
-.tw-item-row{display:flex;justify-content:space-between;padding:5px 0;font-size:12px;border-bottom:1px solid rgba(0,0,0,.04)}
+.tw-item-row{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:6px 0;font-size:12px;border-bottom:1px solid rgba(0,0,0,.04)}
 .tw-item-row:last-child{border-bottom:none}
-.tw-item-main{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:1;min-width:0}
+.tw-item-main{display:flex;align-items:center;justify-content:space-between;gap:18px;flex:1;min-width:0;padding-right:6px}
 .tw-item-del{border:none;background:none;cursor:pointer;color:var(--muted);font-size:14px;padding:1px 4px;border-radius:4px;line-height:1;transition:all .12s;flex-shrink:0}
 .tw-item-del:hover{background:var(--red-bg);color:var(--red)}
 
@@ -2598,8 +2598,8 @@ function renderThisWeek(){
             const itemPaid = CAMP_TAB_MODE==='per_guest' && !!i.paidAt;
             const perItemPay = CAMP_TAB_MODE==='per_guest'
               ? (itemPaid
-                  ? `<button class="ct-paid-pill" style="margin-right:8px" onclick="event.stopPropagation();unpayItemForGuestId('${esc(g.id)}',${idx})" title="Paid ${esc(String(i.paidAt).slice(0,10))} — click to mark unpaid">Paid</button>`
-                  : `<button class="ct-pay-btn" style="margin-right:8px" onclick="event.stopPropagation();payItemForGuestId('${esc(g.id)}',${idx})" title="Pay this item now">Pay</button>`)
+                  ? `<button class="ct-paid-pill" onclick="event.stopPropagation();unpayItemForGuestId('${esc(g.id)}',${idx})" title="Paid ${esc(String(i.paidAt).slice(0,10))} — click to mark unpaid">Paid</button>`
+                  : `<button class="ct-pay-btn" onclick="event.stopPropagation();payItemForGuestId('${esc(g.id)}',${idx})" title="Pay this item now">Pay</button>`)
               : '';
             const delBtn = itemPaid
               ? ''
