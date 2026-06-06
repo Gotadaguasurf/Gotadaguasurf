@@ -455,6 +455,7 @@ body.view-list .drag-handle{display:none}
               <option value="Per Night">Per Night</option>
               <option value="Lesson">Lesson</option>
               <option value="Merch">Merch</option>
+              <option value="Drinks">Drinks</option>
               <option value="Other Service">Other Service</option>
             </select>
           </div>
@@ -685,6 +686,8 @@ const AREA_ICONS = {
   // Merch icon: a t-shirt outline. Stays monochrome via currentColor so
   // it inherits the active/inactive tab text colour like the rest.
   merch:        '<svg viewBox="0 0 24 24"><path d="M9 4l-5 3 2 4 2-1v10h8V10l2 1 2-4-5-3-2 2c-.5.5-1.5.5-2 0L9 4z"/></svg>',
+  // Drinks icon: a simple cup/glass outline. Same line-art style.
+  drinks:       '<svg viewBox="0 0 24 24"><path d="M6 4h12l-1 16a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L6 4zM7 9h10"/></svg>',
   addons:       '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
   costs:        '<svg viewBox="0 0 24 24"><path d="M3 20h18M5 20V10M10 20V6M15 20v-9M20 20v-4"/></svg>'
 };
@@ -693,10 +696,11 @@ const AREAS = [
   { key:'surf',          label:'Surf',          cats:['Surf Pack','Lesson'],         defaultCategory:'Surf Pack'     },
   { key:'tours',         label:'Tours',         cats:['Tour'],                        defaultCategory:'Tour'          },
   { key:'transfers',     label:'Transfers',     cats:['Transport'],                   defaultCategory:'Transport'     },
-  // Merch — T-Shirts, hats, etc. Same single-currency / per-row shape
-  // as Tours but adds a stock_qty field. show_in_camp_tab routes the row
-  // to the Camp Tab POS Merch tab (Phase B will wire this end-to-end).
+  // Merch — T-Shirts, hats, etc. stock_qty + alt_price (Offer) live here.
   { key:'merch',         label:'Merch',         cats:['Merch'],                       defaultCategory:'Merch'         },
+  // Drinks — beers, sodas, water. Same shape as Merch (stock + optional
+  // alt price for happy hour). show_in_camp_tab routes to the POS.
+  { key:'drinks',        label:'Drinks',        cats:['Drinks'],                      defaultCategory:'Drinks'        },
   { key:'addons',        label:'Add-ons',       cats:['Other Service'],               defaultCategory:'Other Service' },
   { key:'costs',         label:'Costs',         cats:[],                              defaultCategory:'Other Service' }
 ];
@@ -926,6 +930,9 @@ function withTimeout(promise, ms, label){
   markStep('step-catalog','pending','Loading catalog rows…');
   try {
     await withTimeout(loadCatalog(), 10000, 'loading the catalog rows');
+    // Sold counts are best-effort — the catalog renders even if this
+    // bails (RLS, network). Don't await with the strict timeout.
+    loadMerchSoldCounts().then(()=>renderTable()).catch(()=>{});
   } catch (err) {
     console.error('[Prices] loadCatalog failed', err);
     const msg = String(err?.message || err);
@@ -1045,6 +1052,39 @@ async function loadCatalog(){
   catalog = data || [];
 }
 
+// Lifetime sold counts per Merch / Drinks item, keyed by item_name.
+// Populated lazily on first catalog load and refreshed alongside it.
+// Used by renderTable to show a "X sold" badge next to the stock chip
+// so the owner can see how each line is moving without leaving /prices.
+//
+// Why aggregate client-side: Supabase JS doesn't expose GROUP BY in the
+// REST builder. The cardinality here is small (one row per item charged
+// to a guest's tab over the camp's lifetime) so pulling + grouping in
+// JS is cheap and avoids the complexity of an RPC function.
+let merchSoldByName = {};
+async function loadMerchSoldCounts(){
+  try{
+    const { data, error } = await sbClient
+      .from('camp_tab_items')
+      .select('item_name,category')
+      .eq('location_id', locationId)
+      .in('category', ['Merch','Drinks']);
+    if (error) throw error;
+    const counts = {};
+    (data || []).forEach(row => {
+      const n = String(row?.item_name || '').trim();
+      if (!n) return;
+      counts[n] = (counts[n] || 0) + 1;
+    });
+    merchSoldByName = counts;
+  }catch(e){
+    // Non-fatal — catalog page must keep working even if camp_tab_items
+    // query fails (RLS, network, etc.). Fall back to empty map.
+    console.warn('[Prices] loadMerchSoldCounts failed', e);
+    merchSoldByName = {};
+  }
+}
+
 // Suppress own RT echo for ~1s after a local write so the upsert that
 // comes back from Supabase doesn't trigger a redundant re-render
 // (which can also clobber an open modal's input focus).
@@ -1055,7 +1095,9 @@ function subscribeRealtime(){
     .on('postgres_changes', { event:'*', schema:'public', table:'pricing_catalog', filter:`location_id=eq.${locationId}` }, async ()=>{
       if (__suppressRt) return;
       await loadCatalog();
-      renderTable();
+      // Refresh sold counts when the catalog changes — cheap and keeps
+      // the badges in sync after every edit, including a remote one.
+      loadMerchSoldCounts().then(()=>renderTable()).catch(()=>renderTable());
     })
     .subscribe();
 }
@@ -1228,19 +1270,26 @@ function renderTable(){
     // Merch stock badge: green pill with count, red "Out of stock" when 0,
     // nothing at all when stock_qty is null (tracking disabled). Keeps
     // every other category visually unchanged.
-    const stockBadge = (r.category === 'Merch' && r.stock_qty !== null && r.stock_qty !== undefined)
+    const stockBadge = (['Merch','Drinks'].includes(r.category) && r.stock_qty !== null && r.stock_qty !== undefined)
       ? `<span style="font-size:10px;font-weight:700;background:${Number(r.stock_qty)>0?'var(--green-bg)':'var(--red-bg)'};color:${Number(r.stock_qty)>0?'var(--green)':'var(--red)'};border:1px solid ${Number(r.stock_qty)>0?'var(--green-border)':'#f0a0a0'};border-radius:20px;padding:2px 9px;margin-left:8px;letter-spacing:.04em">${Number(r.stock_qty)>0?`${r.stock_qty} in stock`:'Out of stock'}</span>`
       : '';
     // Alt-price badge for Merch — shown only when set. Same pill style
     // as stockBadge but in ocean blue so the eye registers it as a
     // pricing variation rather than a stock indicator.
-    const altBadge = (r.category === 'Merch' && r.alt_price !== null && r.alt_price !== undefined)
+    const altBadge = (['Merch','Drinks'].includes(r.category) && r.alt_price !== null && r.alt_price !== undefined)
       ? `<span style="font-size:10px;font-weight:700;background:#eef6ff;color:var(--ocean);border:1px solid #bfdcf2;border-radius:20px;padding:2px 9px;margin-left:6px;letter-spacing:.04em">${escapeHtml(r.alt_label || 'Offer')} · ${money(Number(r.alt_price), sellCcy)}</span>`
+      : '';
+    // Lifetime sold badge — Merch + Drinks only. Subdued navy chip so it
+    // reads as a metric, not an action. Hidden when 0 to keep the row
+    // visually quiet for fresh items.
+    const soldCount = (['Merch','Drinks'].includes(r.category)) ? Number(merchSoldByName[r.name] || 0) : 0;
+    const soldBadge = soldCount > 0
+      ? `<span style="font-size:10px;font-weight:700;background:#eef4f9;color:var(--navy);border:1px solid var(--border);border-radius:20px;padding:2px 9px;margin-left:6px;letter-spacing:.04em">${soldCount} sold</span>`
       : '';
     return `<tr data-row-id="${r.id}" ondragover="onRowDragOver(event)" ondragleave="onRowDragLeave(event)" ondrop="onRowDrop(event,'${r.id}')">
       ${canEdit ? `<td class="c"><span class="drag-handle" draggable="true" title="Drag to reorder" ondragstart="onRowDragStart(event,'${r.id}')" ondragend="onRowDragEnd(event)">⋮⋮</span></td>` : ''}
       <td data-label="Name">
-        <div style="font-weight:600">${escapeHtml(r.name||'')}${audBadge}${stockBadge}${altBadge}</div>
+        <div style="font-weight:600">${escapeHtml(r.name||'')}${audBadge}${stockBadge}${altBadge}${soldBadge}</div>
         ${r.notes ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">${escapeHtml(r.notes)}</div>` : ''}
       </td>
       <td data-label="Category">${categoryBadge(r.category)}</td>
@@ -2271,9 +2320,9 @@ window.onCategoryChange = ()=>{
   // Stock on hand + alt price ONLY show for Merch — every other
   // category leaves those columns NULL forever.
   const stockRow = $('em_stock_row');
-  if (stockRow) stockRow.style.display = (cat === 'Merch') ? '' : 'none';
+  if (stockRow) stockRow.style.display = (['Merch','Drinks'].includes(cat)) ? '' : 'none';
   const altRow = $('em_alt_row');
-  if (altRow) altRow.style.display = (cat === 'Merch') ? '' : 'none';
+  if (altRow) altRow.style.display = (['Merch','Drinks'].includes(cat)) ? '' : 'none';
   // Smart defaults for visibility toggles when category changes
   if (cat === 'Tour' && !editingId) {
     $('em_show_ct').checked = true;
@@ -2281,7 +2330,7 @@ window.onCategoryChange = ()=>{
   } else if (cat === 'Transport' && !editingId) {
     $('em_show_ct').checked = false;
     $('em_show_tp').checked = true;
-  } else if (cat === 'Merch' && !editingId) {
+  } else if (['Merch','Drinks'].includes(cat) && !editingId) {
     // Merch defaults to "yes, show in Camp Tab POS" so the owner doesn't
     // have to remember the toggle on every new T-Shirt row.
     $('em_show_ct').checked = true;
@@ -2499,7 +2548,7 @@ $('emSave').addEventListener('click', async ()=>{
   // add-pricing-catalog-alt-price.sql not run), Tour / Transport / etc.
   // saves still succeed and only Merch surfaces the "column not found"
   // error pointing at the SQL.
-  if (cat === 'Merch') {
+  if (['Merch','Drinks'].includes(cat)) {
     const rawStock = $('em_stock')?.value ?? '';
     payload.stock_qty = (rawStock === '' || rawStock === null) ? null : Math.max(0, Math.round(Number(rawStock)));
     const rawAlt = $('em_alt_price')?.value ?? '';
