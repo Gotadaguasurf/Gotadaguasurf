@@ -1756,6 +1756,20 @@ const weekSpan=ws=>fmtd(ws)+' to '+fmtd(addDays(ws,6));
 const gtot=g=>g.items.reduce((s,i)=>s+Number(i.p),0);
 const esc=s=>String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
 const getCats=()=>Object.keys(MENU);
+// Per-location category visibility for the Camp Tab POS surface.
+// Drinks are not used by Morocco's Camp Tab — guests pay for tours
+// and merch only — so the Drinks tab is hidden from the category bar
+// AND the Top Sellers filter in per_guest mode. The data is NOT
+// deleted: MENU.Drinks rows survive untouched in location_menus
+// (and on Supabase) in case the location ever needs them back; this
+// is a pure display filter. Sri Lanka sees every category as before.
+function visibleCats(){
+  const all=getCats();
+  if(CAMP_TAB_MODE==='per_guest'){
+    return all.filter(c => String(c||'').toLowerCase()!=='drinks');
+  }
+  return all;
+}
 function stayMeta(row){
   if(!row?.bookingCi||!row?.bookingCo) return '';
   return `${fmtd(isoLocal(new Date(row.bookingCi)))} → ${fmtd(isoLocal(new Date(row.bookingCo)))} · ${row.bookingPax||1} pax`;
@@ -1802,7 +1816,14 @@ function getCatColor(cat){
 function ensureMenuState(){
   if(!getCats().length){MENU={General:[]};saveMenu();}
   const cats=getCats();
-  if(!cats.includes(AC)) AC=cats[0];
+  // AC must be a category that's actually shown in the Charge tabs —
+  // otherwise per_guest mode could end up on hidden 'Drinks' and the
+  // item grid would render an empty page with no obvious way back.
+  // menuEditCat (Edit menu modal) and tsCat (Top sellers filter) work
+  // off the full cats list since they're admin/historical surfaces.
+  const visible=(typeof visibleCats==='function')?visibleCats():cats;
+  const acPool=visible.length?visible:cats;
+  if(!acPool.includes(AC)) AC=acPool[0];
   if(tsCat!=='All'&&!cats.includes(tsCat)) tsCat='All';
   if(!cats.includes(menuEditCat)) menuEditCat=cats[0]||'';
 }
@@ -1956,14 +1977,13 @@ function renderCatTabs(){
   const el=document.getElementById('catTabs');
   if(!el)return;
   ensureMenuState();
-  // Phase 7: hide the "Edit menu" button entirely when the catalog is the
-  // master source for Tours. The owner is meant to edit prices in /prices,
-  // not from inside the POS — keeping the button there suggested two
-  // sources of truth. Drinks and Merch will get their own /prices areas
-  // in a follow-up; for now they piggy-back on the same hidden state.
-  const showEdit = !__toursCatalogManaged;
-  el.innerHTML=getCats().map(c=>`<button class="c-cat ${AC===c?'active':''}" onclick="setCat('${esc(c)}')">${c}</button>`).join('')+
-    (showEdit ? `<button class="c-cat c-cat-manage" onclick="openMenuSettings()">Edit menu</button>` : '');
+  // Edit menu button stays available for every location so the user can
+  // manage Drinks / Merch (prices, stock, descriptions). Tours are still
+  // catalog-managed inside the modal — renderMenuSettings shows a 🔒 on
+  // the Tours category and hides the edit form there — so editing the
+  // wrong source of truth isn't possible.
+  el.innerHTML=visibleCats().map(c=>`<button class="c-cat ${AC===c?'active':''}" onclick="setCat('${esc(c)}')">${c}</button>`).join('')+
+    `<button class="c-cat c-cat-manage" onclick="openMenuSettings()">Edit menu</button>`;
 }
 
 function renderItemGrid(){
@@ -1993,7 +2013,17 @@ function renderItemGrid(){
 }
 
 function renderTabPanel(){
-  const g=findConsumer(AG,currentRoster);
+  let g=findConsumer(AG,currentRoster);
+  // per_guest defensive guard: rosterRows now returns the UNFILTERED
+  // underlying array (so guest writes land), which means findConsumer
+  // CAN return a guest with closedAt set — e.g. AG still points at
+  // Lizzy after a hydrate brought her back closed. The Current tab
+  // sidebar would then keep showing her items forever. Force-clear
+  // AG so the empty state renders instead.
+  if(g && CAMP_TAB_MODE==='per_guest' && (g.closedAt || g.closed_at)){
+    AG=null;
+    g=null;
+  }
   const empty=document.getElementById('chargeEmpty');
   const active=document.getElementById('chargeActive');
   const foot=document.getElementById('tabFoot');
