@@ -701,6 +701,12 @@ let MENU=loadMenu();
 // banner pointing at /prices and hides the Edit / Delete / Add buttons for
 // that category. Drinks / Food / Merch stay editable as before.
 let __toursCatalogManaged=false;
+// Phase B (Merch): same lock semantics as Tours. Flips to true the moment
+// the hub pushes a Merch catalog snapshot to the iframe. Once managed:
+//   - The Edit menu modal renders Merch as read-only (🔒 chip + no form).
+//   - The category bar still shows Merch (so the user can browse + add to
+//     a guest's tab) but edits land in /prices, not here.
+let __merchCatalogManaged=false;
 
 function migrateActivitiesToTours(){
   if(Array.isArray(MENU.Activities) && MENU.Activities.length){
@@ -2054,6 +2060,26 @@ function renderItemGrid(){
     const stockLeft=AC==='Merch'?merchStockLeft(item):null;
     const outOfStock=stockLeft!==null&&stockLeft<=0;
     const stockLabel=stockLeft!==null?`<div class="ci-desc" style="color:${outOfStock?'var(--red)':'var(--green)'};font-weight:700">${outOfStock?'Out of stock':stockLeft+' left'}</div>`:'';
+    // Merch with an alt price gets a stacked layout: main button is the
+    // regular sale, and a small ocean-pill below offers the alt price.
+    // Other categories (and Merch without alt) keep the original single-
+    // button layout — minimum visual change.
+    const hasAlt = AC==='Merch' && Number(item.altPrice||0)>0;
+    if(hasAlt){
+      const altLabel = String(item.altLabel || 'Offer');
+      return `<div class="c-item-card${outOfStock?' out':''}" id="ci${i}" style="background:#fff;border:1.5px solid var(--border);border-radius:11px;padding:12px;display:flex;flex-direction:column;gap:8px;${outOfStock?'opacity:.5':''}">
+        <button class="c-item-main" onclick="addItemById('${esc(item.id||'')}', '${esc(item.n)}', this)" ${outOfStock?'disabled':''} style="background:none;border:none;text-align:left;cursor:${outOfStock?'not-allowed':'pointer'};padding:0;font-family:inherit;color:inherit;display:flex;flex-direction:column;gap:4px">
+          <div class="ci-name">${item.n}</div>
+          ${item.d?`<div class="ci-desc">${item.d}</div>`:''}
+          ${stockLabel}
+          <div class="ci-price" style="margin-top:4px">${euro(displayPriceFor(item))}${currentRoster==='staff'?` <span style="font-size:10px;color:var(--muted)">staff</span>`:''}</div>
+        </button>
+        <button onclick="event.stopPropagation();addItemAtAltPrice('${esc(item.id||'')}', '${esc(item.n)}', this)" ${outOfStock?'disabled':''} style="font-size:11px;font-weight:700;background:#eef6ff;color:var(--ocean);border:1.5px solid #bfdcf2;border-radius:999px;padding:6px 14px;cursor:${outOfStock?'not-allowed':'pointer'};font-family:inherit;display:flex;align-items:center;justify-content:space-between;gap:8px;transition:background .12s ease,transform .12s ease" onmouseenter="this.style.background='#e0eefc';this.style.transform='translateY(-1px)'" onmouseleave="this.style.background='#eef6ff';this.style.transform='translateY(0)'">
+          <span style="text-transform:uppercase;letter-spacing:.06em">${esc(altLabel)}</span>
+          <span style="font-family:'DM Mono',monospace">${euro(Number(item.altPrice||0))}</span>
+        </button>
+      </div>`;
+    }
     return `<button class="c-item${outOfStock?' out':''}" id="ci${i}" onclick="addItemById('${esc(item.id||'')}', '${esc(item.n)}', this)" ${outOfStock?'disabled':''}>
     <div class="ci-name">${item.n}</div>
     ${item.d?`<div class="ci-desc">${item.d}</div>`:''}
@@ -2235,6 +2261,19 @@ function addItemById(id,name,btn){
   if(!item){toast('Item not found');return;}
   return addResolvedItem(item, btn);
 }
+// Merch alt-price tap path. Same as addItemById except the line is
+// stamped with the alt price + an `altUsed:true` flag and priceType set
+// to the alt label so it's distinguishable in history / bills. Stock
+// still decrements the SAME row, so this is purely a price variant — no
+// separate inventory accounting needed.
+function addItemAtAltPrice(id,name,btn){
+  if(!AG||!S.activeWeek){toast('Select a guest first!');return;}
+  const item=(MENU[AC]||[]).find(row=>row?.id===id) || (MENU[AC]||[]).find(row=>String(row?.n||'')===String(name||''));
+  if(!item){toast('Item not found');return;}
+  const altPrice=Number(item.altPrice||0);
+  if(!(altPrice>0)){ toast('No alt price on this item'); return; }
+  return addResolvedItem({...item, p: altPrice, sp: altPrice, _altUsed:true, _altLabel: item.altLabel||'Offer'}, btn);
+}
 function addResolvedItem(item,btn){
   if(!AG||!S.activeWeek){toast('Select a guest first!');return;}
   const wk=currentWeek();
@@ -2247,7 +2286,14 @@ function addResolvedItem(item,btn){
     if(stockLeft!==null&&stockLeft<=0){toast(item.n+' is out of stock');return;}
   }
   const price=displayPriceFor(item);
-  const nextItem={id:makeUuid(),menuItemId:item.id||'',n:item.n,p:price,c:AC,t:tnow(),d:today(),priceType:currentRoster==='staff'?'staff':'regular'};
+  // Alt-price taps stamp the line with a descriptive priceType (the
+  // alt label, e.g. "Offer") + a small `s` annotation that surfaces in
+  // bills / history so the user can tell at a glance which sale used
+  // the discount. Staff stays 'staff', regular stays 'regular'.
+  const altUsed=!!item._altUsed;
+  const priceType = altUsed ? String(item._altLabel||'Offer') : (currentRoster==='staff'?'staff':'regular');
+  const altStaffNote = altUsed ? String(item._altLabel||'Offer') : null;
+  const nextItem={id:makeUuid(),menuItemId:item.id||'',n:item.n,p:price,c:AC,t:tnow(),d:today(),priceType,...(altStaffNote?{s:altStaffNote}:{})};
   g.items=[...normalizeItemRows(g.items),nextItem];
   // per_guest mode: adding a NEW unpaid item must reset the guest's
   // bulk "paid" flag, otherwise isGuestFullyPaid (which falls back to
@@ -2909,11 +2955,14 @@ function renderMenuSettings(){
   const catName=document.getElementById('menuCatName');
   const title=document.getElementById('menuMainTitle');
   const itemList=document.getElementById('menuItemList');
-  // Phase 6: Tours category is read-only when catalog is the master source.
-  const isLockedCat=__toursCatalogManaged && menuEditCat==='Tours';
+  // Phase 6 + B: Tours AND Merch are read-only when their respective
+  // catalog locks are on (both managed in /prices once their catalog row
+  // arrives). Other categories stay editable inside the modal.
+  const isCatLocked=(c)=> (c==='Tours' && __toursCatalogManaged) || (c==='Merch' && __merchCatalogManaged);
+  const isLockedCat=isCatLocked(menuEditCat);
   if(catList){
     catList.innerHTML=cats.map(cat=>{
-      const locked=__toursCatalogManaged && cat==='Tours';
+      const locked=isCatLocked(cat);
       const lockIcon=locked?' <span style="font-size:10px;opacity:.6" title="Managed in /prices">🔒</span>':'';
       return `<button class="menu-cat-chip ${menuEditCat===cat?'active':''}" onclick="pickMenuCategory('${esc(cat)}')">
         <span>${cat}${lockIcon}</span><span style="font-size:10px;opacity:.7">${(MENU[cat]||[]).length}</span>
@@ -2928,7 +2977,7 @@ function renderMenuSettings(){
   const items=MENU[menuEditCat]||[];
   if(itemList){
     const lockBanner=isLockedCat?`<div style="background:var(--foam);border:1px solid var(--border);border-radius:9px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:var(--navy);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
-      <span><span style="opacity:.6">🔒</span> <strong>Tours are managed in the Pricing Catalog.</strong> Edits made here don't sync.</span>
+      <span><span style="opacity:.6">🔒</span> <strong>${esc(menuEditCat)} are managed in the Pricing Catalog.</strong> Edits made here don't sync.</span>
       <a href="/prices?location=${esc(typeof CAMP_TAB_LOCATION_SLUG!=='undefined'?CAMP_TAB_LOCATION_SLUG:'')}" target="_blank" style="color:var(--ocean);font-weight:600;text-decoration:none">↗ Open Pricing Catalog</a>
     </div>`:'';
     const rows=items.length?items.map((item,idx)=>`<div class="menu-item-row">
@@ -3382,6 +3431,27 @@ window.addEventListener('message',async e=>{
       queueMenuSync();
     } else if(document.getElementById('menuOv')?.classList.contains('open')){
       // Same data but menu open → re-render so the lock state shows up
+      renderMenuSettings();
+    }
+    return;
+  }
+  // Phase B: live Merch update — mirror of the tours-update handler.
+  // The Hub pushes the full catalog-sourced Merch array on every
+  // pricing_catalog change; the iframe locks Merch and adopts the new
+  // list. Unlike Tours we flip the lock even on an EMPTY incoming array
+  // so stale Sri Lanka tees stop showing in Morocco the moment the
+  // catalog is empty.
+  if(e.data?.type==='camp-tab-merch-update' && Array.isArray(e.data?.merch)){
+    const incoming=cloneCampTabPayload(e.data.merch);
+    __merchCatalogManaged=true;
+    const sameJson=Array.isArray(MENU.Merch) && JSON.stringify(MENU.Merch)===JSON.stringify(incoming);
+    if(!sameJson){
+      MENU={...MENU,Merch:incoming};
+      saveMenu();
+      renderAllCampTabViews();
+      notifyParentStateChanged();
+      queueMenuSync();
+    } else if(document.getElementById('menuOv')?.classList.contains('open')){
       renderMenuSettings();
     }
     return;

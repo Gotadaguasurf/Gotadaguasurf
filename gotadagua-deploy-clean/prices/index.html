@@ -504,14 +504,27 @@ body.view-list .drag-handle{display:none}
           <label>Notes</label>
           <input type="text" id="em_notes" placeholder="Optional short note" autocomplete="off">
         </div>
-        <!-- ───── Stock (Merch-only) ───── -->
-        <!-- Wrapper row shown / hidden by onCategoryChange. Lives inside
-             the Pricing section so it sits next to Sell price visually —
-             stock is the natural sibling of "how much do you charge". -->
+        <!-- ───── Stock + alt price (Merch-only) ───── -->
+        <!-- Wrappers shown / hidden by onCategoryChange. Live inside the
+             Pricing section so they sit next to Sell price visually. The
+             alt-price block lets the owner offer a promotional / discount
+             price on top of the regular Sell — same physical stock. -->
         <div class="mfield" id="em_stock_row" style="display:none">
           <label>Stock on hand</label>
           <input type="number" id="em_stock" min="0" step="1" placeholder="e.g., 12" autocomplete="off">
-          <div style="font-size:10px;color:var(--muted);margin-top:4px">Number of units left. Leave empty to disable stock tracking on this item.</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:4px">Number of units left. Leave empty to disable stock tracking. <strong>The same stock is shared by the regular price AND the alt price below</strong> — selling either decrements the same counter.</div>
+        </div>
+        <div class="mgrid" id="em_alt_row" style="display:none">
+          <div class="mfield">
+            <label>Alt price (optional)</label>
+            <input type="number" id="em_alt_price" min="0" step="0.01" placeholder="0.00">
+            <div style="font-size:10px;color:var(--muted);margin-top:4px">Promotional / discounted price. Currency matches the sell price.</div>
+          </div>
+          <div class="mfield">
+            <label>Alt label</label>
+            <input type="text" id="em_alt_label" placeholder="Offer" autocomplete="off" maxlength="20">
+            <div style="font-size:10px;color:var(--muted);margin-top:4px">Short text shown next to the alt price in the POS (e.g., Offer · Discount · Bulk · Staff).</div>
+          </div>
         </div>
       </div>
 
@@ -1218,10 +1231,16 @@ function renderTable(){
     const stockBadge = (r.category === 'Merch' && r.stock_qty !== null && r.stock_qty !== undefined)
       ? `<span style="font-size:10px;font-weight:700;background:${Number(r.stock_qty)>0?'var(--green-bg)':'var(--red-bg)'};color:${Number(r.stock_qty)>0?'var(--green)':'var(--red)'};border:1px solid ${Number(r.stock_qty)>0?'var(--green-border)':'#f0a0a0'};border-radius:20px;padding:2px 9px;margin-left:8px;letter-spacing:.04em">${Number(r.stock_qty)>0?`${r.stock_qty} in stock`:'Out of stock'}</span>`
       : '';
+    // Alt-price badge for Merch — shown only when set. Same pill style
+    // as stockBadge but in ocean blue so the eye registers it as a
+    // pricing variation rather than a stock indicator.
+    const altBadge = (r.category === 'Merch' && r.alt_price !== null && r.alt_price !== undefined)
+      ? `<span style="font-size:10px;font-weight:700;background:#eef6ff;color:var(--ocean);border:1px solid #bfdcf2;border-radius:20px;padding:2px 9px;margin-left:6px;letter-spacing:.04em">${escapeHtml(r.alt_label || 'Offer')} · ${money(Number(r.alt_price), sellCcy)}</span>`
+      : '';
     return `<tr data-row-id="${r.id}" ondragover="onRowDragOver(event)" ondragleave="onRowDragLeave(event)" ondrop="onRowDrop(event,'${r.id}')">
       ${canEdit ? `<td class="c"><span class="drag-handle" draggable="true" title="Drag to reorder" ondragstart="onRowDragStart(event,'${r.id}')" ondragend="onRowDragEnd(event)">⋮⋮</span></td>` : ''}
       <td data-label="Name">
-        <div style="font-weight:600">${escapeHtml(r.name||'')}${audBadge}${stockBadge}</div>
+        <div style="font-weight:600">${escapeHtml(r.name||'')}${audBadge}${stockBadge}${altBadge}</div>
         ${r.notes ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">${escapeHtml(r.notes)}</div>` : ''}
       </td>
       <td data-label="Category">${categoryBadge(r.category)}</td>
@@ -2249,10 +2268,12 @@ window.onCategoryChange = ()=>{
   $('em_capacity_row').style.display   = (cat === 'Transport') ? '' : 'none';
   // linked_transport ONLY shows for Tour
   $('em_linked_transport_row').style.display = (cat === 'Tour') ? '' : 'none';
-  // Stock on hand ONLY shows for Merch — every other category leaves
-  // stock_qty NULL forever.
+  // Stock on hand + alt price ONLY show for Merch — every other
+  // category leaves those columns NULL forever.
   const stockRow = $('em_stock_row');
   if (stockRow) stockRow.style.display = (cat === 'Merch') ? '' : 'none';
+  const altRow = $('em_alt_row');
+  if (altRow) altRow.style.display = (cat === 'Merch') ? '' : 'none';
   // Smart defaults for visibility toggles when category changes
   if (cat === 'Tour' && !editingId) {
     $('em_show_ct').checked = true;
@@ -2352,11 +2373,13 @@ window.openNew = ()=>{
   // airport-transfer style.
   populateCurrencyOptions(LOCATION_CURRENCY[LOCATION_SLUG] || 'EUR', LOCATION_CURRENCY[LOCATION_SLUG] || 'EUR');
   $('em_notes').value = '';
-  // Stock starts empty on a new entry. onCategoryChange decides whether
-  // the field is visible based on the seeded category — so opening
-  // "+ New entry" from the Merch tab will show it, every other tab hides
-  // it (and the value stays null → no stock tracking).
-  if ($('em_stock')) $('em_stock').value = '';
+  // Stock + alt fields start empty on a new entry. onCategoryChange
+  // decides whether they're visible based on the seeded category — so
+  // opening "+ New entry" from the Merch tab will show them, every
+  // other tab hides them (and the values stay null).
+  if ($('em_stock'))     $('em_stock').value     = '';
+  if ($('em_alt_price')) $('em_alt_price').value = '';
+  if ($('em_alt_label')) $('em_alt_label').value = '';
   $('em_show_ct').checked = true;   // Tour default
   $('em_show_tp').checked = false;
   $('em_picker_tab').value = 'airport';
@@ -2386,9 +2409,15 @@ window.openEdit = (id)=>{
     r.sell_currency || r.currency || LOCATION_CURRENCY[LOCATION_SLUG] || 'EUR'
   );
   $('em_notes').value = r.notes || '';
-  // Stock load: null / undefined → empty input (no tracking). 0+ → render.
+  // Stock + alt fields — null / undefined → empty input (means "not set").
   if ($('em_stock')) {
     $('em_stock').value = (r.stock_qty===null || r.stock_qty===undefined) ? '' : r.stock_qty;
+  }
+  if ($('em_alt_price')) {
+    $('em_alt_price').value = (r.alt_price===null || r.alt_price===undefined) ? '' : r.alt_price;
+  }
+  if ($('em_alt_label')) {
+    $('em_alt_label').value = r.alt_label || '';
   }
   $('em_show_ct').checked = !!r.show_in_camp_tab;
   $('em_show_tp').checked = !!r.show_in_transport_picker;
@@ -2462,15 +2491,25 @@ $('emSave').addEventListener('click', async ()=>{
       payload.capacity = Math.max(1, Math.round(capRaw));
     }
   }
-  // Merch stock — same "only send when category needs it" pattern as
-  // capacity. Empty input → stock_qty: null (stock tracking disabled).
-  // 0+ → integer. Negative is impossible because the input is min=0.
-  // If the column doesn't exist yet (add-pricing-catalog-stock-qty.sql
-  // not run), Tour / Transport / etc. saves still succeed and only Merch
-  // surfaces the "column not found" error pointing at the SQL.
+  // Merch stock + alt price — same "only send when category needs it"
+  // pattern as capacity. Empty inputs → null (feature disabled). The
+  // alt label defaults to 'Offer' when alt_price is set but the label
+  // field is blank — gives the POS button a sensible default name. If
+  // the columns don't exist yet (add-pricing-catalog-stock-qty.sql or
+  // add-pricing-catalog-alt-price.sql not run), Tour / Transport / etc.
+  // saves still succeed and only Merch surfaces the "column not found"
+  // error pointing at the SQL.
   if (cat === 'Merch') {
-    const raw = $('em_stock')?.value ?? '';
-    payload.stock_qty = (raw === '' || raw === null) ? null : Math.max(0, Math.round(Number(raw)));
+    const rawStock = $('em_stock')?.value ?? '';
+    payload.stock_qty = (rawStock === '' || rawStock === null) ? null : Math.max(0, Math.round(Number(rawStock)));
+    const rawAlt = $('em_alt_price')?.value ?? '';
+    const altPrice = (rawAlt === '' || rawAlt === null) ? null : Math.max(0, Number(rawAlt));
+    payload.alt_price = altPrice;
+    // Only persist a label when there's an alt price; clear it otherwise
+    // so the catalog doesn't end up with phantom 'Offer' labels on rows
+    // that have no alt price.
+    const rawLabel = ($('em_alt_label')?.value || '').trim();
+    payload.alt_label = (altPrice !== null) ? (rawLabel || 'Offer') : null;
   }
   // Drop undefined keys so we don't blow away pre-existing values on edit
   // for categories that don't expose those fields.
