@@ -2833,6 +2833,14 @@ let histOpenWeek=null, histOpenGuest=null;
 function renderHistory(){
   const el=document.getElementById('histList');
   if(!el)return;
+  // per_guest mode (Morocco): History re-frames as "Closed guests".
+  // There are no weeks to display historically — the unit IS the guest.
+  // Lists every guest with closedAt set, expandable to see their item
+  // history, with a Re-open button so the user can pull a returning
+  // guest back into the active list without losing items.
+  if (CAMP_TAB_MODE === 'per_guest') {
+    return renderHistoryPerGuest(el);
+  }
   if(!S.history.length){
     el.innerHTML=`<div class="hist-empty"><div style="font-family:'DM Serif Display',serif;font-size:18px">No history yet</div><div style="font-size:13px;max-width:220px;line-height:1.6">Closed weeks will appear here. All guest tabs stay visible.</div></div>`;
     return;
@@ -2888,6 +2896,106 @@ function renderHistory(){
 
 function toggleHistWeek(id){histOpenWeek=histOpenWeek===id?null:id;histOpenGuest=null;renderHistory();}
 function toggleHistGuest(wid,name){const key=wid+':'+name;histOpenGuest=histOpenGuest===key?null:key;renderHistory();}
+
+// per_guest mode — Closed guests view. Lists every guest with a
+// closedAt timestamp across the active container week (per_guest has
+// no historical weeks; the week is permanent plumbing). Search box
+// trims to matching names. Each row expands to show the guest's
+// items + payment status; "Re-open" clears closedAt so the guest
+// returns to the active list with full item history intact.
+let histPerGuestSearch='';
+let histPerGuestOpen=null;
+function renderHistoryPerGuest(el){
+  const wk=currentWeek();
+  // Search box header. Keeps the same shell the weekly History uses
+  // so the layout stays familiar — only the body changes.
+  const all=Array.isArray(wk?.guests)?wk.guests:[];
+  const closed=all.filter(g=>g?.closedAt||g?.closed_at);
+  // Total collected across closed guests (paid items only). Surfaces
+  // a quick "how much have we made from these closed guests" stat.
+  const allItemsClosed=closed.flatMap(g=>Array.isArray(g.items)?g.items:[]);
+  const totalCollected=allItemsClosed.filter(i=>!!i?.paidAt).reduce((s,i)=>s+Number(i?.p||0),0);
+  const term=histPerGuestSearch.trim().toLowerCase();
+  const filtered=term?closed.filter(g=>String(g.name||'').toLowerCase().includes(term)):closed;
+
+  if(!closed.length){
+    el.innerHTML=`<div class="hist-empty">
+      <div style="font-family:'DM Serif Display',serif;font-size:18px">No closed guests yet</div>
+      <div style="font-size:13px;max-width:280px;line-height:1.6">Guests you close from the Charge or This week tabs land here. Their items + payment history stay intact, and you can re-open them if they come back.</div>
+    </div>`;
+    return;
+  }
+
+  el.innerHTML=`
+    <div style="padding:14px 20px 6px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+      <input class="tw-search" placeholder="Search closed guest..." value="${esc(histPerGuestSearch)}" oninput="setHistPerGuestSearch(this.value)" style="flex:1;min-width:220px">
+      <div class="tw-stat" style="flex-shrink:0">
+        <div class="tw-stat-val green">${euro(totalCollected)}</div>
+        <div class="tw-stat-label">Lifetime collected</div>
+      </div>
+      <div class="tw-stat" style="flex-shrink:0">
+        <div class="tw-stat-val">${closed.length}</div>
+        <div class="tw-stat-label">Closed guests</div>
+      </div>
+    </div>
+    <div style="padding:6px 16px 16px">
+      ${filtered.length?filtered.map(g=>{
+        const isOpen=histPerGuestOpen===g.id;
+        const items=Array.isArray(g.items)?g.items:[];
+        const paid=items.filter(i=>!!i?.paidAt);
+        const totalPaid=paid.reduce((s,i)=>s+Number(i?.p||0),0);
+        const closedDate=String(g.closedAt||g.closed_at||'').slice(0,10);
+        return `<div class="hist-week ${isOpen?'open':''}">
+          <div class="hist-week-head" onclick="toggleHistPerGuest('${esc(g.id)}')">
+            <div class="hw-left">
+              <div class="hw-title">${esc(g.name)}</div>
+              <div class="hw-sub">${paid.length} paid item${paid.length===1?'':'s'} · closed ${closedDate||'—'}</div>
+            </div>
+            <div class="hw-right">
+              <div class="hw-mini-actions">
+                <button class="hw-mini-btn" onclick="event.stopPropagation();reopenGuestById('${esc(g.id)}')" title="Bring this guest back to the active list">Re-open</button>
+              </div>
+              <div class="hw-total">${euro(totalPaid)}</div>
+              <div class="hw-chevron">${isOpen?'Hide':'Open'}</div>
+            </div>
+          </div>
+          ${isOpen?`<div class="hist-week-body">
+            ${items.length?`<div class="hw-items-detail">
+              ${items.map(i=>`<div class="hw-item-line" style="${i.paidAt?'opacity:.9':''}">
+                <span>${esc(i.n||'')}${i.paidAt?` <span style="font-size:9px;font-weight:700;background:var(--green-bg);color:var(--green);border:1px solid var(--green-border);border-radius:20px;padding:1px 7px;margin-left:6px;letter-spacing:.04em;text-transform:uppercase">Paid</span>`:''}</span>
+                <span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted)">${euro(Number(i.p||0))}</span>
+              </div>`).join('')}
+              <div style="display:flex;justify-content:space-between;padding:7px 0 0;border-top:1px solid var(--border);margin-top:4px;font-weight:700;font-size:13px">
+                <span>Collected</span><span style="font-family:'DM Mono',monospace">${euro(totalPaid)}</span>
+              </div>
+            </div>`:'<div style="font-size:12px;color:var(--muted);padding:10px 0">No items on this guest.</div>'}
+          </div>`:''}
+        </div>`;
+      }).join(''):`<div class="hist-empty"><div style="font-size:13px">No closed guests match your search.</div></div>`}
+    </div>
+  `;
+}
+function setHistPerGuestSearch(value){
+  histPerGuestSearch=value||'';
+  renderHistory();
+}
+function toggleHistPerGuest(id){
+  histPerGuestOpen=histPerGuestOpen===id?null:id;
+  renderHistory();
+}
+// Re-open a closed guest by clearing closedAt. The guest returns to the
+// active roster with their full item history intact (paid items keep
+// their paidAt stamps; previously-paid ledger rows stay where they are).
+function reopenGuestById(id){
+  if(CAMP_TAB_MODE !== 'per_guest') return;
+  const g=findConsumer(id,'guests') || findConsumer(id,'staff');
+  if(!g) return;
+  delete g.closedAt;
+  delete g.closed_at;
+  save();
+  renderAllCampTabViews();
+  toast(`${g.name} re-opened`);
+}
 
 // ════════════════════════════════════════════════════════════
 //  TOP SELLERS
