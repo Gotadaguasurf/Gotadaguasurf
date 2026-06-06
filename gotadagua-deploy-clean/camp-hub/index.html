@@ -8122,20 +8122,55 @@ window.addEventListener('message',e=>{
       if(guest && item && date){
         const guestKey = String(guest.id||guest.name||'guest').replace(/\s+/g,'_');
         const itemKey  = String(item.id||item.n||'item').replace(/\s+/g,'_');
-        const ledgerId = `campitem_${guestKey}_${itemKey}_${String(date).slice(0,10)}`;
-        // Local state first so the UI updates immediately.
-        const sizeBefore = S.ledger.length;
-        S.ledger = S.ledger.filter(row => String(row?.id||'') !== ledgerId);
+        const dateStr  = String(date).slice(0,10);
+        const seed     = `campitem_${guestKey}_${itemKey}_${dateStr}`;
+        // ── Primary delete target: the deterministic UUID ─────────────
+        // buildPaidItemRevenueEntry runs the seed through
+        // normalizeLedgerEntry → ensureLedgerEntryId → stableUuidFromSeed,
+        // so the actual row id in S.ledger / Supabase is a UUID, NOT
+        // the raw seed. Hash it the same way to match.
+        const ledgerUuid = stableUuidFromSeed(seed);
+        const idsToRemove = new Set([seed, ledgerUuid]);
+        // ── Fallback sweep by (sourceKind + description + date + amount) ──
+        // The seed-derived UUID is correct in the happy path, but if
+        // anything in the seed differs between pay-time and unpay-time
+        // (a UUID regenerated on a hydrate round-trip, a stray space
+        // in the name, a date-boundary timezone edge) the primary
+        // match silently misses and the row stays in the ledger.
+        // To make unpay always-works, we also sweep for any per-item
+        // ledger row whose description + date + amount uniquely
+        // identify this sale. Scoped to sourceKind='camp_tab_per_item'
+        // so unrelated rows can never be hit by accident.
+        const targetDesc   = `Camp Tab · ${String(guest.name||'guest').trim()} · ${String(item.n||'').trim()}`.trim();
+        const targetAmount = Number(item.p||0);
+        const matchedIds   = [];
+        const sizeBefore   = S.ledger.length;
+        S.ledger = S.ledger.filter(row => {
+          if(idsToRemove.has(String(row?.id||''))) return false;
+          if(String(row?.sourceKind||'') !== 'camp_tab_per_item') return true;
+          const sameDate   = String(row?.date||'').slice(0,10) === dateStr;
+          const sameDesc   = String(row?.description||'').trim() === targetDesc;
+          const sameAmount = Math.abs(Number(row?.amountLocal||0) - targetAmount) < 0.01;
+          if(sameDate && sameDesc && sameAmount){
+            matchedIds.push(String(row.id));
+            return false;
+          }
+          return true;
+        });
         if(S.ledger.length !== sizeBefore){
           save();
           notifyLedgerChanged();
         }
-        // Supabase delete is fire-and-forget; if it fails, RT will
-        // re-add the row on next hydrate and the user can retry the
-        // unpay. We log the error so it's visible in DevTools.
-        deleteLedgerEntryFromSupabase(ledgerId).catch(err =>
-          console.warn('[Hub] failed to delete unpaid item ledger row',ledgerId,err)
-        );
+        // Supabase delete: every id we removed locally goes out.
+        // Each is fire-and-forget; on failure RT re-adds the row on
+        // next hydrate and the user can retry.
+        const supabaseTargets = new Set([ledgerUuid, ...matchedIds]);
+        supabaseTargets.forEach(id => {
+          if(!id) return;
+          deleteLedgerEntryFromSupabase(id).catch(err =>
+            console.warn('[Hub] failed to delete unpaid item ledger row',id,err)
+          );
+        });
       }
     }catch(err){ console.warn('[Hub] item-unpaid handler failed',err); }
     rerenderActivePageData();
