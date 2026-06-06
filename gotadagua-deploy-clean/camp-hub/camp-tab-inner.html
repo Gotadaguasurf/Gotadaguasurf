@@ -141,6 +141,57 @@ header{display:none}
 .tw-item-main{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:1;min-width:0}
 .tw-item-del{border:none;background:none;cursor:pointer;color:var(--muted);font-size:14px;padding:1px 4px;border-radius:4px;line-height:1;transition:all .12s;flex-shrink:0}
 .tw-item-del:hover{background:var(--red-bg);color:var(--red)}
+
+/* ── per_guest (Morocco) per-item paid state ────────────────────────────
+   The Pay / Paid / Unpaid lifecycle lives on each line. Paid rows get a
+   soft green wash + a thin green accent so the user can scan settled
+   items at a glance; the PAID pill is itself the un-pay button, with a
+   hover state that subtly shifts to amber-flagged "↶" to signal reversal.
+   This styling is reused by both the Charge sidebar and the This week
+   expanded card so the whole experience feels consistent. */
+.c-tab-row.paid,
+.tw-item-row.paid{
+  background:linear-gradient(90deg, rgba(160,220,180,.20) 0%, rgba(160,220,180,.06) 65%, transparent 100%);
+  border-left:3px solid var(--green);
+  padding-left:10px;
+  border-radius:0 8px 8px 0;
+}
+.tw-item-row.paid{padding:6px 0 6px 10px;margin:3px 0;border-bottom:none}
+.c-tab-row.paid .ctr-name,
+.tw-item-row.paid .tw-item-main > span:first-child{color:#0f5132}
+.c-tab-row.paid .ctr-price,
+.tw-item-row.paid .tw-item-main > span:last-child{color:var(--green);font-weight:700}
+
+.ct-paid-pill{
+  display:inline-flex;align-items:center;gap:5px;
+  font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;
+  background:var(--green-bg);color:var(--green);
+  border:1.5px solid var(--green-border);
+  border-radius:999px;padding:4px 12px 4px 9px;cursor:pointer;
+  font-family:'Outfit',sans-serif;
+  transition:background .15s ease, color .15s ease, border-color .15s ease, transform .12s ease;
+  user-select:none;
+  line-height:1;
+}
+.ct-paid-pill::before{content:'✓';font-size:11px;line-height:1;display:inline-block}
+.ct-paid-pill:hover{
+  background:#fff8e6;color:#a96400;border-color:#f0c878;
+  transform:translateY(-1px);
+}
+.ct-paid-pill:hover::before{content:'↶'}
+.ct-paid-pill:active{transform:translateY(0)}
+
+.ct-pay-btn{
+  font-size:11px;font-weight:700;
+  background:var(--ocean);color:#fff;
+  border:none;border-radius:999px;padding:5px 16px;cursor:pointer;
+  font-family:'Outfit',sans-serif;
+  transition:background .15s ease, transform .12s ease, box-shadow .15s ease;
+  box-shadow:0 4px 10px rgba(30,111,168,.16);
+  line-height:1.2;
+}
+.ct-pay-btn:hover{background:var(--ocean-light);transform:translateY(-1px);box-shadow:0 6px 14px rgba(30,111,168,.22)}
+.ct-pay-btn:active{transform:translateY(0)}
 .tw-actions{display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-top:10px}
 .tw-btn{border:none;border-radius:8px;padding:8px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;transition:all .18s}
 .tw-btn-pay{background:var(--ocean);color:#fff;min-width:92px;box-shadow:0 8px 18px rgba(30,111,168,.15)}.tw-btn-pay:hover{background:var(--ocean-light)}
@@ -2097,33 +2148,27 @@ function renderTabPanel(){
   document.getElementById('tabList').innerHTML=[...g.items].reverse().map((item,ri)=>{
     const idx=g.items.length-1-ri;
     // per_guest mode (Morocco):
-    //  - Each item gets its own Pay / Paid pill. Tapping an unpaid one
-    //    stamps paidAt locally and posts camp-tab-item-paid to the hub
-    //    so a single ledger row lands dated to today.
-    //  - When paid, the row goes "quiet": the green PAID pill is the
-    //    only adornment, and we drop the × delete button. Books should
-    //    reflect the actual payment event; deleting a paid item after
-    //    the fact would create a phantom ledger row and orphan the
-    //    payment. If the user genuinely needs to reverse, they edit
-    //    the ledger entry directly. The whole-row turning green is
-    //    what the user asked for: "be green if was paid".
+    //  - Each item gets its own Pay / Paid pill. Tapping Pay stamps
+    //    paidAt + posts camp-tab-item-paid → one ledger row lands today.
+    //  - Tapping PAID asks "mark unpaid?" and (on confirm) clears paidAt
+    //    + posts camp-tab-item-unpaid → the hub deletes the matching
+    //    ledger row. The pill itself is the toggle; we don't expose a
+    //    separate "undo" affordance because most rows stay paid.
+    //  - When paid we also drop the × delete: settled rows are frozen
+    //    visually, and any reversal goes through the pill so the books
+    //    stay reconciled.
     const isPaid = CAMP_TAB_MODE==='per_guest' && !!item.paidAt;
     const perItemPay = CAMP_TAB_MODE==='per_guest'
       ? (isPaid
-          ? `<span class="ctr-paid-pill" title="Paid ${String(item.paidAt).slice(0,10)}" style="font-size:10px;font-weight:700;background:var(--green-bg,#dff5e2);color:var(--green,#1c8c3f);border:1px solid var(--green-border,#a8dfb3);border-radius:20px;padding:3px 9px;letter-spacing:.04em;text-transform:uppercase">Paid</span>`
-          : `<button class="ctr-pay-btn" onclick="event.stopPropagation();payItem(${idx})" title="Pay this item now" style="font-size:11px;font-weight:700;background:var(--ocean,#1668c0);color:#fff;border:none;border-radius:20px;padding:4px 12px;cursor:pointer;font-family:'Outfit',sans-serif">Pay</button>`)
-      : '';
-    // Row style turns subtly green when paid — matches "just be green
-    // if was paid" — and the × delete affordance is dropped.
-    const rowStyle = isPaid
-      ? 'background:var(--green-bg,#eafbef);border-left:3px solid var(--green,#1c8c3f);padding-left:9px'
+          ? `<button class="ct-paid-pill" onclick="event.stopPropagation();unpayItem(${idx})" title="Paid ${esc(String(item.paidAt).slice(0,10))} — click to mark unpaid">Paid</button>`
+          : `<button class="ct-pay-btn" onclick="event.stopPropagation();payItem(${idx})" title="Pay this item now">Pay</button>`)
       : '';
     const delBtn = isPaid
       ? ''
-      : `<button class="ctr-del" onclick="delItem(${idx})">x</button>`;
-    return `<div class="c-tab-row" style="${rowStyle}">
+      : `<button class="ctr-del" onclick="delItem(${idx})" title="Remove from tab">×</button>`;
+    return `<div class="c-tab-row${isPaid?' paid':''}">
       <div style="flex:1;min-width:0"><div class="ctr-name">${item.n}</div><div class="ctr-time">${item.c} · ${item.t}${item.s?' · '+item.s:''}</div></div>
-      <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+      <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
         <div class="ctr-price">${euro(item.p)}</div>
         ${perItemPay}
         ${delBtn}
@@ -2310,6 +2355,50 @@ function payItemForGuestId(guestId, idx){
   if(CAMP_TAB_MODE !== 'per_guest') return;
   const g=findConsumer(guestId,currentRoster);
   payItemOnGuest(g, idx);
+}
+
+// per_guest mode — reverse a single paid item. Clears paidAt locally,
+// drops the bubbled-up g.paid flag, and posts camp-tab-item-unpaid so
+// the hub removes the matching ledger row (id format
+// campitem_{guest}_{item}_{date}). Confirmed because it touches the
+// real Operations Ledger.
+function unpayItemOnGuest(g, idx){
+  if(CAMP_TAB_MODE !== 'per_guest') return false;
+  if(!g) return false;
+  const item=g.items?.[idx];
+  if(!item) return false;
+  if(!item.paidAt){ toast('Item is not paid'); return false; }
+  const paidDate=String(item.paidAt).slice(0,10);
+  if(!confirm(`Mark "${item.n}" as unpaid?\n\nThis removes the ${euro(Number(item.p||0))} entry from the Operations Ledger.`)) return false;
+  delete item.paidAt;
+  if(g.paid){
+    g.paid=false;
+    delete g.paidAt;
+  }
+  save();
+  renderAllCampTabViews();
+  try{
+    window.parent.postMessage({
+      type:'camp-tab-item-unpaid',
+      guest:{ id:g.id||g.name, name:g.name },
+      item:{ id:item.id, c:item.c, n:item.n, p:Number(item.p||0) },
+      date: paidDate
+    },'*');
+  }catch(err){
+    console.warn('[CampTab] failed to send item-unpaid message',err);
+  }
+  toast(`${item.n} marked unpaid`);
+  return true;
+}
+function unpayItem(idx){
+  if(CAMP_TAB_MODE !== 'per_guest') return;
+  const g=findConsumer(AG,currentRoster);
+  unpayItemOnGuest(g, idx);
+}
+function unpayItemForGuestId(guestId, idx){
+  if(CAMP_TAB_MODE !== 'per_guest') return;
+  const g=findConsumer(guestId,currentRoster);
+  unpayItemOnGuest(g, idx);
 }
 // This week expanded card — closes a guest by id (per_guest only).
 // Same gate as the Charge "Close guest" button: every item paid OR
@@ -2503,22 +2592,19 @@ function renderThisWeek(){
         </div>
         ${exp?`<div class="tw-card-body">
           ${g.items.length?g.items.map((i,idx)=>{
-            // per_guest mode: each item gets its own Pay / Paid pill,
-            // same affordance as the Charge sidebar. When paid we drop
-            // the × delete (the row is "frozen" — ledger row exists).
+            // per_guest mode: each line gets its own Pay / Paid pill
+            // (with click-to-unpay). Same CSS classes as the Charge
+            // sidebar so the visual language is one and the same.
             const itemPaid = CAMP_TAB_MODE==='per_guest' && !!i.paidAt;
-            const itemRowStyle = itemPaid
-              ? 'background:var(--green-bg,#eafbef);border-left:3px solid var(--green,#1c8c3f);padding-left:9px;border-radius:6px'
-              : '';
             const perItemPay = CAMP_TAB_MODE==='per_guest'
               ? (itemPaid
-                  ? `<span style="font-size:10px;font-weight:700;background:var(--green-bg,#dff5e2);color:var(--green,#1c8c3f);border:1px solid var(--green-border,#a8dfb3);border-radius:20px;padding:3px 9px;letter-spacing:.04em;text-transform:uppercase;margin-right:6px">Paid</span>`
-                  : `<button onclick="event.stopPropagation();payItemForGuestId('${esc(g.id)}',${idx})" title="Pay this item now" style="font-size:11px;font-weight:700;background:var(--ocean,#1668c0);color:#fff;border:none;border-radius:20px;padding:4px 12px;cursor:pointer;font-family:'Outfit',sans-serif;margin-right:6px">Pay</button>`)
+                  ? `<button class="ct-paid-pill" style="margin-right:8px" onclick="event.stopPropagation();unpayItemForGuestId('${esc(g.id)}',${idx})" title="Paid ${esc(String(i.paidAt).slice(0,10))} — click to mark unpaid">Paid</button>`
+                  : `<button class="ct-pay-btn" style="margin-right:8px" onclick="event.stopPropagation();payItemForGuestId('${esc(g.id)}',${idx})" title="Pay this item now">Pay</button>`)
               : '';
             const delBtn = itemPaid
               ? ''
-              : `<button class="tw-item-del" onclick="deleteGuestItem('${esc(g.id)}',${idx});event.stopPropagation()" title="Delete item">x</button>`;
-            return `<div class="tw-item-row" style="${itemRowStyle}">
+              : `<button class="tw-item-del" onclick="deleteGuestItem('${esc(g.id)}',${idx});event.stopPropagation()" title="Delete item">×</button>`;
+            return `<div class="tw-item-row${itemPaid?' paid':''}">
               <div class="tw-item-main">
                 <span>${i.n}${i.s?` <span style="font-size:10px;color:var(--muted)">· ${i.s}</span>`:''}</span>
                 <span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted)">${euro(i.p)}</span>
