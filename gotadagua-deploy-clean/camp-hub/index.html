@@ -8022,6 +8022,36 @@ window.addEventListener('message',e=>{
     rerenderActivePageData();
     return;
   }
+  // Morocco per_guest, per-item: the user reversed a Paid pill. Rebuild
+  // the deterministic id (campitem_{guest}_{item}_{date}) and pull the
+  // ledger row out of local state + Supabase. The id is stable so we
+  // can compute it from the same fields used to create it — no lookup
+  // needed.
+  if(e.data?.type==='camp-tab-item-unpaid'){
+    try{
+      const {guest,item,date}=e.data;
+      if(guest && item && date){
+        const guestKey = String(guest.id||guest.name||'guest').replace(/\s+/g,'_');
+        const itemKey  = String(item.id||item.n||'item').replace(/\s+/g,'_');
+        const ledgerId = `campitem_${guestKey}_${itemKey}_${String(date).slice(0,10)}`;
+        // Local state first so the UI updates immediately.
+        const sizeBefore = S.ledger.length;
+        S.ledger = S.ledger.filter(row => String(row?.id||'') !== ledgerId);
+        if(S.ledger.length !== sizeBefore){
+          save();
+          notifyLedgerChanged();
+        }
+        // Supabase delete is fire-and-forget; if it fails, RT will
+        // re-add the row on next hydrate and the user can retry the
+        // unpay. We log the error so it's visible in DevTools.
+        deleteLedgerEntryFromSupabase(ledgerId).catch(err =>
+          console.warn('[Hub] failed to delete unpaid item ledger row',ledgerId,err)
+        );
+      }
+    }catch(err){ console.warn('[Hub] item-unpaid handler failed',err); }
+    rerenderActivePageData();
+    return;
+  }
   if(e.data?.type==='camp-tab-state-changed'){
     if(e.data.state) writeJsonStorage(CAMPTAB_KEY,e.data.state);
     if(e.data.menu) writeJsonStorage(CAMPTAB_MENU_KEY,e.data.menu);
