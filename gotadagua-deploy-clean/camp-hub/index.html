@@ -8033,19 +8033,28 @@ window.addEventListener('message',e=>{
       if(guest && item && date){
         const guestKey = String(guest.id||guest.name||'guest').replace(/\s+/g,'_');
         const itemKey  = String(item.id||item.n||'item').replace(/\s+/g,'_');
-        const ledgerId = `campitem_${guestKey}_${itemKey}_${String(date).slice(0,10)}`;
-        // Local state first so the UI updates immediately.
+        // The build path runs the seed through normalizeLedgerEntry →
+        // ensureLedgerEntryId → stableUuidFromSeed, so the row that
+        // actually lives in S.ledger / Supabase has a UUID, NOT the
+        // raw seed string. To match it we have to run the SAME hash
+        // here. Filtering on the raw seed silently matched nothing
+        // and left the row in the ledger.
+        const seed = `campitem_${guestKey}_${itemKey}_${String(date).slice(0,10)}`;
+        const ledgerUuid = stableUuidFromSeed(seed);
+        // Defensive: also match the raw seed in case an older entry
+        // landed before normalization was wired in. Cheap and harmless.
+        const idsToRemove = new Set([seed, ledgerUuid]);
         const sizeBefore = S.ledger.length;
-        S.ledger = S.ledger.filter(row => String(row?.id||'') !== ledgerId);
+        S.ledger = S.ledger.filter(row => !idsToRemove.has(String(row?.id||'')));
         if(S.ledger.length !== sizeBefore){
           save();
           notifyLedgerChanged();
         }
-        // Supabase delete is fire-and-forget; if it fails, RT will
-        // re-add the row on next hydrate and the user can retry the
-        // unpay. We log the error so it's visible in DevTools.
-        deleteLedgerEntryFromSupabase(ledgerId).catch(err =>
-          console.warn('[Hub] failed to delete unpaid item ledger row',ledgerId,err)
+        // Supabase delete uses the UUID — that's what the row's
+        // primary key is. Fire-and-forget; on failure RT will re-add
+        // the row on next hydrate and the user can retry the unpay.
+        deleteLedgerEntryFromSupabase(ledgerUuid).catch(err =>
+          console.warn('[Hub] failed to delete unpaid item ledger row',ledgerUuid,err)
         );
       }
     }catch(err){ console.warn('[Hub] item-unpaid handler failed',err); }
