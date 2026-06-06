@@ -454,6 +454,7 @@ body.view-list .drag-handle{display:none}
               <option value="Accommodation">Accommodation</option>
               <option value="Per Night">Per Night</option>
               <option value="Lesson">Lesson</option>
+              <option value="Merch">Merch</option>
               <option value="Other Service">Other Service</option>
             </select>
           </div>
@@ -502,6 +503,15 @@ body.view-list .drag-handle{display:none}
         <div class="mfield">
           <label>Notes</label>
           <input type="text" id="em_notes" placeholder="Optional short note" autocomplete="off">
+        </div>
+        <!-- ───── Stock (Merch-only) ───── -->
+        <!-- Wrapper row shown / hidden by onCategoryChange. Lives inside
+             the Pricing section so it sits next to Sell price visually —
+             stock is the natural sibling of "how much do you charge". -->
+        <div class="mfield" id="em_stock_row" style="display:none">
+          <label>Stock on hand</label>
+          <input type="number" id="em_stock" min="0" step="1" placeholder="e.g., 12" autocomplete="off">
+          <div style="font-size:10px;color:var(--muted);margin-top:4px">Number of units left. Leave empty to disable stock tracking on this item.</div>
         </div>
       </div>
 
@@ -659,6 +669,9 @@ const AREA_ICONS = {
   surf:         '<svg viewBox="0 0 24 24"><path d="M3 11c2.5-3 5-3 7.5 0s5 3 7.5 0M3 16c2.5-3 5-3 7.5 0s5 3 7.5 0M5 7.5c4-2.5 8-2.5 14 0"/></svg>',
   tours:        '<svg viewBox="0 0 24 24"><path d="M12 21s-7-7-7-12a7 7 0 1 1 14 0c0 5-7 12-7 12z"/><circle cx="12" cy="9" r="2.5"/></svg>',
   transfers:    '<svg viewBox="0 0 24 24"><path d="M3 17v-5l2-5h11l3 5v5"/><path d="M3 17h2M19 17h2M8 17h8"/><circle cx="7" cy="17" r="1.5"/><circle cx="17" cy="17" r="1.5"/></svg>',
+  // Merch icon: a t-shirt outline. Stays monochrome via currentColor so
+  // it inherits the active/inactive tab text colour like the rest.
+  merch:        '<svg viewBox="0 0 24 24"><path d="M9 4l-5 3 2 4 2-1v10h8V10l2 1 2-4-5-3-2 2c-.5.5-1.5.5-2 0L9 4z"/></svg>',
   addons:       '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
   costs:        '<svg viewBox="0 0 24 24"><path d="M3 20h18M5 20V10M10 20V6M15 20v-9M20 20v-4"/></svg>'
 };
@@ -667,6 +680,10 @@ const AREAS = [
   { key:'surf',          label:'Surf',          cats:['Surf Pack','Lesson'],         defaultCategory:'Surf Pack'     },
   { key:'tours',         label:'Tours',         cats:['Tour'],                        defaultCategory:'Tour'          },
   { key:'transfers',     label:'Transfers',     cats:['Transport'],                   defaultCategory:'Transport'     },
+  // Merch — T-Shirts, hats, etc. Same single-currency / per-row shape
+  // as Tours but adds a stock_qty field. show_in_camp_tab routes the row
+  // to the Camp Tab POS Merch tab (Phase B will wire this end-to-end).
+  { key:'merch',         label:'Merch',         cats:['Merch'],                       defaultCategory:'Merch'         },
   { key:'addons',        label:'Add-ons',       cats:['Other Service'],               defaultCategory:'Other Service' },
   { key:'costs',         label:'Costs',         cats:[],                              defaultCategory:'Other Service' }
 ];
@@ -1195,10 +1212,16 @@ function renderTable(){
       : '<span style="color:var(--muted)">—</span>';
 
     const audBadge = r.audience === 'group' ? '<span class="badge badge-group">Group</span>' : '';
+    // Merch stock badge: green pill with count, red "Out of stock" when 0,
+    // nothing at all when stock_qty is null (tracking disabled). Keeps
+    // every other category visually unchanged.
+    const stockBadge = (r.category === 'Merch' && r.stock_qty !== null && r.stock_qty !== undefined)
+      ? `<span style="font-size:10px;font-weight:700;background:${Number(r.stock_qty)>0?'var(--green-bg)':'var(--red-bg)'};color:${Number(r.stock_qty)>0?'var(--green)':'var(--red)'};border:1px solid ${Number(r.stock_qty)>0?'var(--green-border)':'#f0a0a0'};border-radius:20px;padding:2px 9px;margin-left:8px;letter-spacing:.04em">${Number(r.stock_qty)>0?`${r.stock_qty} in stock`:'Out of stock'}</span>`
+      : '';
     return `<tr data-row-id="${r.id}" ondragover="onRowDragOver(event)" ondragleave="onRowDragLeave(event)" ondrop="onRowDrop(event,'${r.id}')">
       ${canEdit ? `<td class="c"><span class="drag-handle" draggable="true" title="Drag to reorder" ondragstart="onRowDragStart(event,'${r.id}')" ondragend="onRowDragEnd(event)">⋮⋮</span></td>` : ''}
       <td data-label="Name">
-        <div style="font-weight:600">${escapeHtml(r.name||'')}${audBadge}</div>
+        <div style="font-weight:600">${escapeHtml(r.name||'')}${audBadge}${stockBadge}</div>
         ${r.notes ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">${escapeHtml(r.notes)}</div>` : ''}
       </td>
       <td data-label="Category">${categoryBadge(r.category)}</td>
@@ -2226,6 +2249,10 @@ window.onCategoryChange = ()=>{
   $('em_capacity_row').style.display   = (cat === 'Transport') ? '' : 'none';
   // linked_transport ONLY shows for Tour
   $('em_linked_transport_row').style.display = (cat === 'Tour') ? '' : 'none';
+  // Stock on hand ONLY shows for Merch — every other category leaves
+  // stock_qty NULL forever.
+  const stockRow = $('em_stock_row');
+  if (stockRow) stockRow.style.display = (cat === 'Merch') ? '' : 'none';
   // Smart defaults for visibility toggles when category changes
   if (cat === 'Tour' && !editingId) {
     $('em_show_ct').checked = true;
@@ -2233,6 +2260,11 @@ window.onCategoryChange = ()=>{
   } else if (cat === 'Transport' && !editingId) {
     $('em_show_ct').checked = false;
     $('em_show_tp').checked = true;
+  } else if (cat === 'Merch' && !editingId) {
+    // Merch defaults to "yes, show in Camp Tab POS" so the owner doesn't
+    // have to remember the toggle on every new T-Shirt row.
+    $('em_show_ct').checked = true;
+    $('em_show_tp').checked = false;
   }
   // Hide Connections section entirely for categories with no linkages
   const showConnections = (cat === 'Tour' || cat === 'Transport');
@@ -2320,6 +2352,11 @@ window.openNew = ()=>{
   // airport-transfer style.
   populateCurrencyOptions(LOCATION_CURRENCY[LOCATION_SLUG] || 'EUR', LOCATION_CURRENCY[LOCATION_SLUG] || 'EUR');
   $('em_notes').value = '';
+  // Stock starts empty on a new entry. onCategoryChange decides whether
+  // the field is visible based on the seeded category — so opening
+  // "+ New entry" from the Merch tab will show it, every other tab hides
+  // it (and the value stays null → no stock tracking).
+  if ($('em_stock')) $('em_stock').value = '';
   $('em_show_ct').checked = true;   // Tour default
   $('em_show_tp').checked = false;
   $('em_picker_tab').value = 'airport';
@@ -2349,6 +2386,10 @@ window.openEdit = (id)=>{
     r.sell_currency || r.currency || LOCATION_CURRENCY[LOCATION_SLUG] || 'EUR'
   );
   $('em_notes').value = r.notes || '';
+  // Stock load: null / undefined → empty input (no tracking). 0+ → render.
+  if ($('em_stock')) {
+    $('em_stock').value = (r.stock_qty===null || r.stock_qty===undefined) ? '' : r.stock_qty;
+  }
   $('em_show_ct').checked = !!r.show_in_camp_tab;
   $('em_show_tp').checked = !!r.show_in_transport_picker;
   $('em_picker_tab').value = r.picker_tab || 'airport';
@@ -2420,6 +2461,16 @@ $('emSave').addEventListener('click', async ()=>{
     if (capRaw > 0) {
       payload.capacity = Math.max(1, Math.round(capRaw));
     }
+  }
+  // Merch stock — same "only send when category needs it" pattern as
+  // capacity. Empty input → stock_qty: null (stock tracking disabled).
+  // 0+ → integer. Negative is impossible because the input is min=0.
+  // If the column doesn't exist yet (add-pricing-catalog-stock-qty.sql
+  // not run), Tour / Transport / etc. saves still succeed and only Merch
+  // surfaces the "column not found" error pointing at the SQL.
+  if (cat === 'Merch') {
+    const raw = $('em_stock')?.value ?? '';
+    payload.stock_qty = (raw === '' || raw === null) ? null : Math.max(0, Math.round(Number(raw)));
   }
   // Drop undefined keys so we don't blow away pre-existing values on edit
   // for categories that don't expose those fields.
