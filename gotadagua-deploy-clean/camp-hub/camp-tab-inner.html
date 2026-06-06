@@ -2954,6 +2954,7 @@ function renderHistoryPerGuest(el){
             <div class="hw-right">
               <div class="hw-mini-actions">
                 <button class="hw-mini-btn" onclick="event.stopPropagation();reopenGuestById('${esc(g.id)}')" title="Bring this guest back to the active list">Re-open</button>
+                <button class="hw-mini-btn danger" onclick="event.stopPropagation();deleteClosedGuest('${esc(g.id)}')" title="Delete this guest AND remove their ledger entries">Delete</button>
               </div>
               <div class="hw-total">${euro(totalPaid)}</div>
               <div class="hw-chevron">${isOpen?'Hide':'Open'}</div>
@@ -2995,6 +2996,66 @@ function reopenGuestById(id){
   save();
   renderAllCampTabViews();
   toast(`${g.name} re-opened`);
+}
+
+// Delete a closed guest from history AND remove every ledger row their
+// paid items produced. The user asked for "if i delete there also
+// delete" — this is the destructive twin of Re-open: when a guest
+// shouldn't be in the books at all, both sides go.
+//
+// Implementation:
+//   1. Confirm with item count + total Collected so the user sees
+//      exactly what disappears.
+//   2. Fire camp-tab-item-unpaid for each paid item — the hub handler
+//      already does the right thing (UUID delete + description-based
+//      fallback sweep), so we reuse that path instead of re-implementing
+//      ledger deletion here.
+//   3. Remove the guest row from S.activeWeek state entirely.
+//   4. Save + render.
+function deleteClosedGuest(id){
+  if(CAMP_TAB_MODE !== 'per_guest') return;
+  // Look in BOTH rosters because per_guest staff also live in the
+  // container week and could in theory have been closed.
+  const guestList = currentWeek()?.guests || [];
+  const staffList = currentWeek()?.staff  || [];
+  const inGuests  = guestList.find(x=>x.id===id);
+  const inStaff   = staffList.find(x=>x.id===id);
+  const g         = inGuests || inStaff;
+  if(!g) return;
+  const roster = inGuests ? 'guests' : 'staff';
+  const items  = Array.isArray(g.items) ? g.items : [];
+  const paidItems   = items.filter(i=>!!i?.paidAt);
+  const totalPaid   = paidItems.reduce((s,i)=>s+Number(i?.p||0),0);
+  const msg = paidItems.length
+    ? `Delete ${g.name} from history?\n\nThis also removes ${paidItems.length} ledger entr${paidItems.length===1?'y':'ies'} (${euro(totalPaid)}) from the Operations Ledger.\n\nCan't be undone.`
+    : `Delete ${g.name} from history?\n\nNo ledger entries to remove.\n\nCan't be undone.`;
+  if(!confirm(msg)) return;
+  // Fire one item-unpaid per paid item so the hub cleans the ledger
+  // rows the same way it does for a manual Paid-pill click. We do this
+  // BEFORE removing the guest from state so g.id and item ids are still
+  // valid in the message payloads.
+  paidItems.forEach(item => {
+    try{
+      window.parent.postMessage({
+        type:'camp-tab-item-unpaid',
+        guest:{ id:g.id||g.name, name:g.name },
+        item:{ id:item.id, c:item.c, n:item.n, p:Number(item.p||0) },
+        date: String(item.paidAt).slice(0,10)
+      },'*');
+    }catch(err){
+      console.warn('[CampTab] failed to send item-unpaid during deleteClosedGuest', err);
+    }
+  });
+  // Drop the guest from the roster. Data is genuinely gone here — this
+  // is the explicit "remove from history" path, opposite of closeGuest
+  // (which only stamps closedAt and preserves the row).
+  const wk = currentWeek();
+  if(wk) wk[roster] = (wk[roster]||[]).filter(x=>x.id !== id);
+  // If for any reason this guest was the active one, drop the selection.
+  if(AG === id) AG = null;
+  save();
+  renderAllCampTabViews();
+  toast(`${g.name} deleted${paidItems.length?` · ${paidItems.length} ledger row${paidItems.length===1?'':'s'} removed`:''}`);
 }
 
 // ════════════════════════════════════════════════════════════
@@ -3566,6 +3627,65 @@ window.addEventListener('message',async e=>{
       queueMenuSync();
     } else if(document.getElementById('menuOv')?.classList.contains('open')){
       renderMenuSettings();
+    }
+    return;
+  }
+  // Hub deleted a Camp Tab per-item revenue row → clear paidAt on the
+  // matching item so the two surfaces agree. This is the "ledger-side
+  // half" of the two-way unpay sync the user asked for.
+  // Payload:
+  //   description: "Camp Tab · <guest> · <item>"   ← canonical format from buildPaidItemRevenueEntry
+  //   date:        YYYY-MM-DD
+  //   amountLocal: number
+  // We parse guest + item out of description, then walk every guest
+  // (active + closed) looking for an item that matches by name + date
+  // + amount AND currently has paidAt set. First match wins.
+  if(e.data?.type==='camp-tab-ledger-deleted'){
+    try{
+      const desc = String(e.data.description||'').trim();
+      const date = String(e.data.date||'').slice(0,10);
+      const amount = Number(e.data.amountLocal||0);
+      // Strict format: "Camp Tab · <guest> · <item>". If the delimiter
+      // isn't there we bail rather than fuzzy-matching the wrong line.
+      const parts = desc.split(' · ');
+      if(parts.length >= 3 && parts[0]==='Camp Tab'){
+        const guestName = parts[1].trim();
+        const itemName  = parts.slice(2).join(' · ').trim();
+        const wk = currentWeek();
+        const allGuests = wk ? [...(wk.guests||[]), ...(wk.staff||[])] : [];
+        let cleared = false;
+        for(const g of allGuests){
+          if(String(g?.name||'').trim().toLowerCase() !== guestName.toLowerCase()) continue;
+          if(!Array.isArray(g.items)) continue;
+          for(const it of g.items){
+            if(!it?.paidAt) continue;
+            const itDate = String(it.paidAt).slice(0,10);
+            const itName = String(it.n||'').trim();
+            const itPrice = Number(it.p||0);
+            if(itDate===date && itName===itemName && Math.abs(itPrice-amount) < 0.01){
+              delete it.paidAt;
+              cleared = true;
+              break;
+            }
+          }
+          if(cleared){
+            // If we just un-paid the last paid item AND the bulk g.paid
+            // flag was bubbled up by payItemOnGuest, drop it too — same
+            // logic the manual unpay path applies.
+            if(g.paid){
+              g.paid = false;
+              delete g.paidAt;
+            }
+            break;
+          }
+        }
+        if(cleared){
+          save();
+          renderAllCampTabViews();
+        }
+      }
+    }catch(err){
+      console.warn('[CampTab] ledger-deleted handler failed', err);
     }
     return;
   }

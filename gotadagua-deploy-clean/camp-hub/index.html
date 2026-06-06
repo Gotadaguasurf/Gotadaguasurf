@@ -7758,6 +7758,34 @@ async function delLedger(id){
   save();
   renderExpenses();renderOverview();renderWeeklyPL();
   toast('Deleted.');
+  // ── Notify Camp Tab when a per-item revenue row is deleted ──────────────
+  // Closes the loop the user reported: deleting the revenue row from
+  // Operations Ledger should mark the originating item as no-longer-paid
+  // in the Camp Tab guest history — otherwise the two surfaces disagree
+  // (ledger says €0, Camp Tab still shows green PAID pill).
+  //
+  // We detect a Camp Tab per-item row by sourceKind. The iframe parses
+  // the description "Camp Tab · <guest> · <item>" + the date + amount to
+  // find the matching guest+item in its local state and clears item.paidAt.
+  // This is purely cosmetic on the Camp Tab side — no ledger writes go
+  // back the other direction (already deleted here), no infinite loop.
+  try{
+    const isPerItem = String(entry?.sourceKind||'')==='camp_tab_per_item'
+      || String(entry?.id||'').startsWith('campitem_');
+    if(isPerItem){
+      const frame=document.getElementById('campTabFrame');
+      if(frame?.contentWindow){
+        frame.contentWindow.postMessage({
+          type:'camp-tab-ledger-deleted',
+          // Best-effort payload — iframe matches on whichever fields it can
+          // resolve. description follows "Camp Tab · <guest> · <item>".
+          description: entry?.description||'',
+          date:        entry?.date||'',
+          amountLocal: Number(entry?.amountLocal||0)
+        },'*');
+      }
+    }
+  }catch(_e){}
   try{
     await deleteLedgerEntryFromSupabase(id);
   }catch(error){
