@@ -2114,6 +2114,16 @@ function subscribeHubRealtime(){
           }
         }).catch(e=>console.warn('[Hub] pricing_catalog RT tour reload failed',e));
       }
+      // Merch — same live-propagate pattern. Catalog edits in /prices
+      // (new T-Shirt, stock adjustment, alt price added) reach the POS
+      // without a reload.
+      if(!cat || cat==='Merch'){
+        refreshCatalogCampTabMerch().then(changed=>{
+          if(changed && typeof sendCampTabMerchUpdate==='function'){
+            try{ sendCampTabMerchUpdate(); }catch(_e){}
+          }
+        }).catch(e=>console.warn('[Hub] pricing_catalog RT merch reload failed',e));
+      }
     })
     .subscribe((status)=>{
       if(status==='SUBSCRIBED') console.log('[Hub] Realtime connected');
@@ -3115,16 +3125,24 @@ function dualCurrencyLocal(localAmount,eurAmount=null,onDark=false){
 //  pricing_catalog realtime subscription refreshes it on any change and
 //  re-bootstraps the iframe (if mounted) so the POS UI redraws live.
 let __catalogCampTabTours=null; // null = not yet loaded, [] = loaded but empty
+let __catalogCampTabMerch=null; // mirror cache for Merch
 
 function currentCampTabMenu(){
   const stored=readJsonStorage(CAMPTAB_MENU_KEY,null);
   const base=(stored && typeof stored==='object') ? stored : MENU;
+  let next=base;
   if(Array.isArray(__catalogCampTabTours) && __catalogCampTabTours.length){
-    // Catalog is master for Tours — preserve everything else (Drinks,
-    // Food, Merch, etc.) from localStorage / defaults.
-    return {...base, Tours: __catalogCampTabTours.map(t=>({...t}))};
+    next={...next, Tours: __catalogCampTabTours.map(t=>({...t}))};
   }
-  return base;
+  if(Array.isArray(__catalogCampTabMerch)){
+    // Merch is treated as "catalog wins as soon as loaded" — even an
+    // empty array replaces local MENU.Merch so stale Sri Lanka tees
+    // stop leaking into Morocco's POS. Tours kept the "only override
+    // when non-empty" rule because the Sri Lanka tour menu was correct
+    // out of the box; for Merch the historical state is the bug.
+    next={...next, Merch: __catalogCampTabMerch.map(m=>({...m}))};
+  }
+  return next;
 }
 
 async function loadCampTabToursFromCatalog(){
@@ -3171,6 +3189,61 @@ async function refreshCatalogCampTabTours(){
   __catalogCampTabTours=next;
   if(next.length){
     console.log('[Hub] Camp Tab Tours loaded from pricing_catalog — '+next.length+' tour(s)');
+  }
+  return prevJson!==nextJson;
+}
+
+// ── Merch (mirror of Tours pattern) ────────────────────────────────────────
+// pricing_catalog rows with category='Merch' and show_in_camp_tab=true
+// become the Camp Tab POS Merch menu. Each row may also carry an alt_price
+// + alt_label that surfaces as a second pricing option on the POS card —
+// stock is shared (same row, same stock_qty), so a sale at either price
+// decrements the same counter on the Hub side later.
+async function loadCampTabMerchFromCatalog(){
+  try{
+    const client=getHubSupabaseClient();
+    const locId=await ensureHubLocationId();
+    if(!client||!locId) return null;
+    const {data,error}=await client
+      .from('pricing_catalog')
+      .select('id,name,sell_price,cost_per_guest,notes,sort_order,stock_qty,alt_price,alt_label')
+      .eq('location_id',locId)
+      .eq('category','Merch')
+      .eq('show_in_camp_tab',true)
+      .eq('active',true)
+      .order('sort_order',{ascending:true});
+    if(error) throw error;
+    if(!Array.isArray(data)) return null;
+    // Map to the Camp Tab menu item shape, extended with the new fields
+    // the POS uses (stock + alt-price). The inner page knows to render
+    // an extra button when altPrice is present.
+    return data.map(r=>({
+      id: 'cat|merch|'+r.id,
+      n: String(r.name||'').trim(),
+      p: Number(r.sell_price||0),
+      d: r.notes ? String(r.notes) : '',
+      costPerGuest: Number(r.cost_per_guest||0),
+      sortOrder: Number.isFinite(Number(r.sort_order)) ? Number(r.sort_order) : 100,
+      // Stock — null means "tracking disabled on this row" (the POS
+      // hides the stock chip and never blocks add for these).
+      stk: (r.stock_qty===null || r.stock_qty===undefined) ? null : Number(r.stock_qty),
+      // Alt price + label — null means "no alternative price configured".
+      altPrice: (r.alt_price===null || r.alt_price===undefined) ? null : Number(r.alt_price),
+      altLabel: r.alt_label || null
+    })).filter(m=>m.n);
+  }catch(e){
+    console.warn('[Hub] loadCampTabMerchFromCatalog failed',e);
+    return null;
+  }
+}
+async function refreshCatalogCampTabMerch(){
+  const next=await loadCampTabMerchFromCatalog();
+  if(next===null) return false;
+  const prevJson=JSON.stringify(__catalogCampTabMerch||[]);
+  const nextJson=JSON.stringify(next);
+  __catalogCampTabMerch=next;
+  if(next.length){
+    console.log('[Hub] Camp Tab Merch loaded from pricing_catalog — '+next.length+' item(s)');
   }
   return prevJson!==nextJson;
 }
@@ -7927,6 +8000,9 @@ function sendCampTabBootstrap(){
   // catalog-sourced Tours even on subsequent bootstraps (the bootstrap
   // handler itself only ingests menu the first time).
   try{ sendCampTabToursUpdate(); }catch(_e){}
+  // Phase B (Merch): same pattern for Merch. The iframe locks Merch
+  // editing once it receives this so the user only edits in /prices.
+  try{ sendCampTabMerchUpdate(); }catch(_e){}
 }
 
 // Phase 5: live Tours-only update — bypasses the iframe's first-bootstrap
@@ -7941,6 +8017,19 @@ function sendCampTabToursUpdate(){
   const tours=Array.isArray(menu?.Tours)?menu.Tours:[];
   try{
     frame.contentWindow.postMessage({type:'camp-tab-tours-update',tours},'*');
+  }catch(_error){}
+}
+// Mirror of sendCampTabToursUpdate for Merch. Posts the full Merch array
+// from currentCampTabMenu() to the iframe; the inner page treats this as
+// the master copy when received (sets __merchCatalogManaged=true and
+// replaces MENU.Merch).
+function sendCampTabMerchUpdate(){
+  const frame=document.getElementById('campTabFrame');
+  if(!frame?.contentWindow) return;
+  const menu=currentCampTabMenu();
+  const merch=Array.isArray(menu?.Merch)?menu.Merch:[];
+  try{
+    frame.contentWindow.postMessage({type:'camp-tab-merch-update',merch},'*');
   }catch(_error){}
 }
 async function mountCampTabFrame(){
@@ -8184,6 +8273,13 @@ async function requirePlatformSession(){
         try{ sendCampTabBootstrap(); }catch(_e){}
       }
     }).catch(e=>console.warn('[Hub] refreshCatalogCampTabTours failed',e));
+    // Phase B (Merch): same warm-up so the POS shows catalog-sourced
+    // Merch from the first render. Re-bootstraps the iframe if mounted.
+    refreshCatalogCampTabMerch().then(changed=>{
+      if(changed && typeof sendCampTabBootstrap==='function' && document.getElementById('campTabFrame')){
+        try{ sendCampTabBootstrap(); }catch(_e){}
+      }
+    }).catch(e=>console.warn('[Hub] refreshCatalogCampTabMerch failed',e));
     // Tour cost presets — both Sri Lanka and Morocco. Each location keeps
     // its own row in state_store so the two camps stay isolated.
     loadTourCostPresets().catch(e=>console.warn('[Hub] loadTourCostPresets failed',e));
