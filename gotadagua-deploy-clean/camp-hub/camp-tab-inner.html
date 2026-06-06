@@ -2034,13 +2034,11 @@ function renderCatTabs(){
   const el=document.getElementById('catTabs');
   if(!el)return;
   ensureMenuState();
-  // Edit menu button stays available for every location so the user can
-  // manage Drinks / Merch (prices, stock, descriptions). Tours are still
-  // catalog-managed inside the modal — renderMenuSettings shows a 🔒 on
-  // the Tours category and hides the edit form there — so editing the
-  // wrong source of truth isn't possible.
-  el.innerHTML=visibleCats().map(c=>`<button class="c-cat ${AC===c?'active':''}" onclick="setCat('${esc(c)}')">${c}</button>`).join('')+
-    `<button class="c-cat c-cat-manage" onclick="openMenuSettings()">Edit menu</button>`;
+  // Edit menu was retired: with Tours AND Merch master-managed in
+  // /prices — and Drinks heading the same way — there's no editable
+  // category left to surface from the POS. The catalog is the single
+  // source of truth, so the button would only invite confusion.
+  el.innerHTML=visibleCats().map(c=>`<button class="c-cat ${AC===c?'active':''}" onclick="setCat('${esc(c)}')">${c}</button>`).join('');
 }
 
 function renderItemGrid(){
@@ -2056,10 +2054,17 @@ function renderItemGrid(){
     </div>`;
     return;
   }
+  // Pre-compute sold counts once per render so the per-item lookup is O(1).
+  // Counts span every week (active + history) so the chip reads as
+  // "all-time sold for this line" — what the owner wants to glance at.
+  const soldByName = AC==='Merch' ? merchSoldCounts() : null;
   el.innerHTML=items.map((item,i)=>{
     const stockLeft=AC==='Merch'?merchStockLeft(item):null;
     const outOfStock=stockLeft!==null&&stockLeft<=0;
-    const stockLabel=stockLeft!==null?`<div class="ci-desc" style="color:${outOfStock?'var(--red)':'var(--green)'};font-weight:700">${outOfStock?'Out of stock':stockLeft+' left'}</div>`:'';
+    const sold=soldByName?Number(soldByName[item.n]||0):0;
+    const stockLabel=stockLeft!==null
+      ? `<div class="ci-desc" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="color:${outOfStock?'var(--red)':'var(--green)'};font-weight:700">${outOfStock?'Out of stock':stockLeft+' left'}</span>${sold>0?`<span style="color:var(--muted);font-weight:600">· ${sold} sold</span>`:''}</div>`
+      : (sold>0?`<div class="ci-desc" style="color:var(--muted);font-weight:600">${sold} sold</div>`:'');
     // Merch with an alt price gets a stacked layout: main button is the
     // regular sale, and a small ocean-pill below offers the alt price.
     // Other categories (and Merch without alt) keep the original single-
