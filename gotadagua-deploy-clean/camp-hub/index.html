@@ -4568,12 +4568,24 @@ function renderOverview(){
   const tabMerchRevenue=sum(paidItems.filter(i=>i.category==='Merch'),i=>i.revenue);
   const tabTransportRevenue=sum(paidItems.filter(i=>i.category==='Tours'&&isTransportRevenueName(i.name)),i=>i.revenue);
   const tabTourRevenue=sum(paidItems.filter(i=>i.category==='Tours'&&!isTransportRevenueName(i.name)),i=>i.revenue);
+  // tabRevenue is kept for the per-category breakdown tiles below
+  // (Bar / Merch / Transport / Tours) — useful as a visual split of
+  // what's been charged on g.paid guests. It does NOT feed
+  // totalRevenue (used by the Bank/Cash drawer): doing so would
+  // double-count every per-guest item because each per-item Pay also
+  // lands a `camp_tab_per_item` ledger row that's already in
+  // extraRevenue. Sri Lanka's legacy weekly close has the same shape:
+  // close-week writes campclose_* ledger entries AND leaves g.paid
+  // = true on the guests. extraRevenue (= ledger income entries) is
+  // the single source of truth; tabRevenue is display-only.
   const tabRevenueLocal=sum(paidItems,x=>x.revenue);
   const tabRevenueEur=Number((tabRevenueLocal/(DEFAULT_LKR_PER_EUR||1)).toFixed(2));
   const extraRevenueLocal=sum(revenueEntries,x=>entryLocalDisplayAmount(x));
   const extraRevenueEur=sum(revenueEntries,x=>entryEurAmount(x));
-  const totalRevenueLocal=tabRevenueLocal+extraRevenueLocal;
-  const totalRevenueEur=tabRevenueEur+extraRevenueEur;
+  // Single source of truth: ledger only. Matches the Operations Ledger
+  // drawer KPIs exactly so the numbers reconcile between pages.
+  const totalRevenueLocal=extraRevenueLocal;
+  const totalRevenueEur=extraRevenueEur;
   const totalExpLocal=sum(expenses,x=>entryLocalDisplayAmount(x));
   const totalExpEur=sum(expenses,x=>entryEurAmount(x));
   const campSpendLocal=sum(expenses.filter(x=>x.paymentMethod==='Cash'),x=>entryLocalDisplayAmount(x));
