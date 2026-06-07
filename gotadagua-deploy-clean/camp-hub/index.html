@@ -2143,6 +2143,14 @@ function subscribeHubRealtime(){
           }
         }).catch(e=>console.warn('[Hub] pricing_catalog RT drinks reload failed',e));
       }
+      // Extras — same.
+      if(!cat || cat==='Extras'){
+        refreshCatalogCampTabExtras().then(changed=>{
+          if(changed && typeof sendCampTabExtrasUpdate==='function'){
+            try{ sendCampTabExtrasUpdate(); }catch(_e){}
+          }
+        }).catch(e=>console.warn('[Hub] pricing_catalog RT extras reload failed',e));
+      }
     })
     .subscribe((status)=>{
       if(status==='SUBSCRIBED') console.log('[Hub] Realtime connected');
@@ -3151,6 +3159,7 @@ function dualCurrencyLocal(localAmount,eurAmount=null,onDark=false){
 let __catalogCampTabTours=null; // null = not yet loaded, [] = loaded but empty
 let __catalogCampTabMerch=null; // mirror cache for Merch
 let __catalogCampTabDrinks=null; // mirror cache for Drinks
+let __catalogCampTabExtras=null; // mirror cache for Extras (Portugal: sunglasses, surf stick, after sun, sun shield)
 
 function currentCampTabMenu(){
   const stored=readJsonStorage(CAMPTAB_MENU_KEY,null);
@@ -3170,6 +3179,12 @@ function currentCampTabMenu(){
   }
   if(Array.isArray(__catalogCampTabDrinks)){
     next={...next, Drinks: __catalogCampTabDrinks.map(d=>({...d}))};
+  }
+  if(Array.isArray(__catalogCampTabExtras)){
+    // Extras only shows up as a tab when the location's catalog has rows;
+    // locations without Extras leave MENU.Extras as an empty array and
+    // visibleCats filters the tab out.
+    next={...next, Extras: __catalogCampTabExtras.map(e=>({...e}))};
   }
   return next;
 }
@@ -3321,6 +3336,53 @@ async function refreshCatalogCampTabDrinks(){
   __catalogCampTabDrinks=next;
   if(next.length){
     console.log('[Hub] Camp Tab Drinks loaded from pricing_catalog — '+next.length+' item(s)');
+  }
+  return prevJson!==nextJson;
+}
+
+// ── Extras (mirror of Drinks/Merch pattern) ────────────────────────────────
+// Portugal-specific POS surface for unsized accessory items (sunglasses,
+// surf stick, after sun, sun shield). Same alt_price + stock support as
+// Merch so future seasonal promos work out of the box.
+async function loadCampTabExtrasFromCatalog(){
+  try{
+    const client=getHubSupabaseClient();
+    const locId=await ensureHubLocationId();
+    if(!client||!locId) return null;
+    const {data,error}=await client
+      .from('pricing_catalog')
+      .select('id,name,sell_price,cost_per_guest,notes,sort_order,stock_qty,alt_price,alt_label')
+      .eq('location_id',locId)
+      .eq('category','Extras')
+      .eq('show_in_camp_tab',true)
+      .eq('active',true)
+      .order('sort_order',{ascending:true});
+    if(error) throw error;
+    if(!Array.isArray(data)) return null;
+    return data.map(r=>({
+      id: 'cat|extras|'+r.id,
+      n: String(r.name||'').trim(),
+      p: Number(r.sell_price||0),
+      d: r.notes ? String(r.notes) : '',
+      costPerGuest: Number(r.cost_per_guest||0),
+      sortOrder: Number.isFinite(Number(r.sort_order)) ? Number(r.sort_order) : 100,
+      stk: (r.stock_qty===null || r.stock_qty===undefined) ? null : Number(r.stock_qty),
+      altPrice: (r.alt_price===null || r.alt_price===undefined) ? null : Number(r.alt_price),
+      altLabel: r.alt_label || null
+    })).filter(e=>e.n);
+  }catch(e){
+    console.warn('[Hub] loadCampTabExtrasFromCatalog failed',e);
+    return null;
+  }
+}
+async function refreshCatalogCampTabExtras(){
+  const next=await loadCampTabExtrasFromCatalog();
+  if(next===null) return false;
+  const prevJson=JSON.stringify(__catalogCampTabExtras||[]);
+  const nextJson=JSON.stringify(next);
+  __catalogCampTabExtras=next;
+  if(next.length){
+    console.log('[Hub] Camp Tab Extras loaded from pricing_catalog — '+next.length+' item(s)');
   }
   return prevJson!==nextJson;
 }
@@ -8222,6 +8284,10 @@ function sendCampTabBootstrap(){
   // empty and the empty array hides the Drinks tab via the data-driven
   // visibleCats filter in the inner page.
   try{ sendCampTabDrinksUpdate(); }catch(_e){}
+  // Extras mirror — Portugal-only for now (sunglasses, surf stick,
+  // after sun, sun shield). Empty array on other locations hides the
+  // Extras tab via visibleCats.
+  try{ sendCampTabExtrasUpdate(); }catch(_e){}
 }
 
 // Phase 5: live Tours-only update — bypasses the iframe's first-bootstrap
@@ -8260,6 +8326,18 @@ function sendCampTabDrinksUpdate(){
   const drinks=Array.isArray(menu?.Drinks)?menu.Drinks:[];
   try{
     frame.contentWindow.postMessage({type:'camp-tab-drinks-update',drinks},'*');
+  }catch(_error){}
+}
+// Same shape for Extras. Inner page sets __extrasCatalogManaged=true on
+// receipt and replaces MENU.Extras with the catalog-sourced list. Empty
+// array → visibleCats hides the Extras tab.
+function sendCampTabExtrasUpdate(){
+  const frame=document.getElementById('campTabFrame');
+  if(!frame?.contentWindow) return;
+  const menu=currentCampTabMenu();
+  const extras=Array.isArray(menu?.Extras)?menu.Extras:[];
+  try{
+    frame.contentWindow.postMessage({type:'camp-tab-extras-update',extras},'*');
   }catch(_error){}
 }
 async function mountCampTabFrame(){
@@ -8596,6 +8674,11 @@ async function requirePlatformSession(){
         try{ sendCampTabBootstrap(); }catch(_e){}
       }
     }).catch(e=>console.warn('[Hub] refreshCatalogCampTabDrinks failed',e));
+    refreshCatalogCampTabExtras().then(changed=>{
+      if(changed && typeof sendCampTabBootstrap==='function' && document.getElementById('campTabFrame')){
+        try{ sendCampTabBootstrap(); }catch(_e){}
+      }
+    }).catch(e=>console.warn('[Hub] refreshCatalogCampTabExtras failed',e));
     // Tour cost presets — both Sri Lanka and Morocco. Each location keeps
     // its own row in state_store so the two camps stay isolated.
     loadTourCostPresets().catch(e=>console.warn('[Hub] loadTourCostPresets failed',e));
