@@ -2642,7 +2642,12 @@ function salaryProfileToMonthlyCostRow(profile,locationId){
     season_amount:normalized.type==='fixed'?null:Number(normalized.seasonAmount||0),
     off_season_amount:normalized.type==='fixed'?null:Number(normalized.offSeasonAmount||0),
     fixed_amount:normalized.type==='fixed'?Number(normalized.fixedAmount||0):null,
-    payment_method:'Bank Transfer',
+    // payment_method was hardcoded to 'Bank Transfer' here, which silently
+    // overrode whatever the salary form's Paid-via dropdown picked — so
+    // every Cash salary round-tripped back as Bank Transfer on save.
+    // Honor the normalized profile's choice; default to Bank Transfer
+    // only as a fallback for legacy rows that never had the column.
+    payment_method:normalized.paymentMethod||'Bank Transfer',
     description:normalized.type==='fixed'?'Fixed salary':'Seasonal salary',
     active:normalized.enabled!==false,
     auto_apply:true,
