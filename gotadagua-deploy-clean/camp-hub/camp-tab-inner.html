@@ -2324,6 +2324,25 @@ function addResolvedItem(item,btn){
 function delItem(idx){
   const g=findConsumer(AG,currentRoster);
   if(!g)return;
+  const item=g.items?.[idx];
+  // per_guest cascade: if the line was paid we also remove the
+  // matching ledger row before dropping the item locally. Without
+  // this the books would keep showing revenue for a line that no
+  // longer exists in the guest's tab — same disagreement the unpay
+  // pill avoids. Fire-and-forget; hub's item-unpaid handler does the
+  // UUID delete + description-sweep fallback for us.
+  if(item && CAMP_TAB_MODE==='per_guest' && item.paidAt){
+    try{
+      window.parent.postMessage({
+        type:'camp-tab-item-unpaid',
+        guest:{ id:g.id||g.name, name:g.name },
+        item:{ id:item.id, c:item.c, n:item.n, p:Number(item.p||0) },
+        date: String(item.paidAt).slice(0,10)
+      },'*');
+    }catch(err){
+      console.warn('[CampTab] delItem cascade failed', err);
+    }
+  }
   g.items.splice(idx,1);save();renderAllCampTabViews();
 }
 // Per_guest mode only — close the currently-active guest. Stamps a
@@ -2742,6 +2761,21 @@ function toggleGuestPaid(id){
 function deleteGuestItem(id,idx){
   const g=findConsumer(id,currentRoster);
   if(!g||idx<0||idx>=g.items.length)return;
+  const target = g.items[idx];
+  // per_guest cascade: paid line → drop the ledger row too. Same
+  // contract as delItem so all "remove an item" paths stay consistent.
+  if(target && CAMP_TAB_MODE==='per_guest' && target.paidAt){
+    try{
+      window.parent.postMessage({
+        type:'camp-tab-item-unpaid',
+        guest:{ id:g.id||g.name, name:g.name },
+        item:{ id:target.id, c:target.c, n:target.n, p:Number(target.p||0) },
+        date: String(target.paidAt).slice(0,10)
+      },'*');
+    }catch(err){
+      console.warn('[CampTab] deleteGuestItem cascade failed', err);
+    }
+  }
   const [removed]=g.items.splice(idx,1);
   save();
   renderThisWeek();
@@ -2756,7 +2790,30 @@ function deleteGuest(id){
   const rows=rosterRows(S.activeWeek,currentRoster);
   const g=rows.find(x=>x.id===id);
   if(!g) return;
-  if(!confirm('Delete '+g.name+' from this week?')) return;
+  // per_guest: warn about ledger fallout and cascade-sweep via the
+  // bulk guest-deleted message so every paid line's ledger row goes
+  // with the guest. Sri Lanka path keeps its tiny confirm because
+  // ledger entries don't land per-guest there (they land at week close).
+  const items     = Array.isArray(g.items) ? g.items : [];
+  const paidItems = CAMP_TAB_MODE==='per_guest' ? items.filter(i => !!i?.paidAt) : [];
+  const totalPaid = paidItems.reduce((s,i)=>s+Number(i?.p||0),0);
+  const confirmMsg = (CAMP_TAB_MODE==='per_guest' && paidItems.length)
+    ? `Delete ${g.name} from this week?\n\nThis also removes ${paidItems.length} ledger entr${paidItems.length===1?'y':'ies'} (${euro(totalPaid)}) from the Operations Ledger.\n\nCan't be undone.`
+    : 'Delete '+g.name+' from this week?';
+  if(!confirm(confirmMsg)) return;
+  if(CAMP_TAB_MODE==='per_guest' && paidItems.length){
+    try{
+      window.parent.postMessage({
+        type:'camp-tab-guest-deleted',
+        guest:{ id:g.id||g.name, name:g.name },
+        items: paidItems.map(i => ({
+          id: i.id, n: i.n, p: Number(i.p||0), date: String(i.paidAt).slice(0,10)
+        }))
+      },'*');
+    }catch(err){
+      console.warn('[CampTab] deleteGuest cascade failed', err);
+    }
+  }
   S.activeWeek[currentRoster]=rows.filter(x=>x.id!==id);
   if(AG===g.id) AG=null;
   if(twExpanded===g.id) twExpanded=null;
@@ -2764,7 +2821,7 @@ function deleteGuest(id){
   renderGuestList();
   renderTabPanel();
   renderThisWeek();
-  toast(g.name+' deleted');
+  toast(g.name+' deleted'+(paidItems.length?` · ${paidItems.length} ledger row${paidItems.length===1?'':'s'} removed`:''));
 }
 function passGuestToNextWeek(id){
   if(!S.activeWeek) return;
@@ -3048,28 +3105,32 @@ function deleteClosedGuest(id){
     ? `Delete ${g.name} from history?\n\nThis also removes ${paidItems.length} ledger entr${paidItems.length===1?'y':'ies'} (${euro(totalPaid)}) from the Operations Ledger.\n\nCan't be undone.`
     : `Delete ${g.name} from history?\n\nNo ledger entries to remove.\n\nCan't be undone.`;
   if(!confirm(msg)) return;
-  // Fire one item-unpaid per paid item so the hub cleans the ledger
-  // rows the same way it does for a manual Paid-pill click. We do this
-  // BEFORE removing the guest from state so g.id and item ids are still
-  // valid in the message payloads.
-  paidItems.forEach(item => {
-    try{
-      window.parent.postMessage({
-        type:'camp-tab-item-unpaid',
-        guest:{ id:g.id||g.name, name:g.name },
-        item:{ id:item.id, c:item.c, n:item.n, p:Number(item.p||0) },
-        date: String(item.paidAt).slice(0,10)
-      },'*');
-    }catch(err){
-      console.warn('[CampTab] failed to send item-unpaid during deleteClosedGuest', err);
-    }
-  });
+  // Single "guest is gone — sweep their ledger rows" message.
+  // The earlier approach fired one item-unpaid per paid item, which is
+  // brittle: any per-item date / amount mismatch silently skipped the
+  // row. The new contract is a bulk sweep on the hub side keyed by
+  // guest name + sourceKind, so every campitem row tied to this guest
+  // gets deleted regardless of when or how it was created.
+  try{
+    window.parent.postMessage({
+      type:'camp-tab-guest-deleted',
+      guest:{ id:g.id||g.name, name:g.name },
+      // Provide the item-level details too — the hub also tries to
+      // delete by the deterministic UUID for each paid item, so the
+      // sweep PLUS the per-id deletes cover every angle (legacy ids
+      // that don't match the prefix, etc.).
+      items: paidItems.map(i => ({
+        id: i.id, n: i.n, p: Number(i.p||0), date: String(i.paidAt).slice(0,10)
+      }))
+    },'*');
+  }catch(err){
+    console.warn('[CampTab] failed to send guest-deleted', err);
+  }
   // Drop the guest from the roster. Data is genuinely gone here — this
   // is the explicit "remove from history" path, opposite of closeGuest
   // (which only stamps closedAt and preserves the row).
   const wk = currentWeek();
   if(wk) wk[roster] = (wk[roster]||[]).filter(x=>x.id !== id);
-  // If for any reason this guest was the active one, drop the selection.
   if(AG === id) AG = null;
   save();
   renderAllCampTabViews();
