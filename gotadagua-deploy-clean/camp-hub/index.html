@@ -2127,6 +2127,14 @@ function subscribeHubRealtime(){
           }
         }).catch(e=>console.warn('[Hub] pricing_catalog RT merch reload failed',e));
       }
+      // Drinks — same.
+      if(!cat || cat==='Drinks'){
+        refreshCatalogCampTabDrinks().then(changed=>{
+          if(changed && typeof sendCampTabDrinksUpdate==='function'){
+            try{ sendCampTabDrinksUpdate(); }catch(_e){}
+          }
+        }).catch(e=>console.warn('[Hub] pricing_catalog RT drinks reload failed',e));
+      }
     })
     .subscribe((status)=>{
       if(status==='SUBSCRIBED') console.log('[Hub] Realtime connected');
@@ -3134,6 +3142,7 @@ function dualCurrencyLocal(localAmount,eurAmount=null,onDark=false){
 //  re-bootstraps the iframe (if mounted) so the POS UI redraws live.
 let __catalogCampTabTours=null; // null = not yet loaded, [] = loaded but empty
 let __catalogCampTabMerch=null; // mirror cache for Merch
+let __catalogCampTabDrinks=null; // mirror cache for Drinks
 
 function currentCampTabMenu(){
   const stored=readJsonStorage(CAMPTAB_MENU_KEY,null);
@@ -3143,12 +3152,16 @@ function currentCampTabMenu(){
     next={...next, Tours: __catalogCampTabTours.map(t=>({...t}))};
   }
   if(Array.isArray(__catalogCampTabMerch)){
-    // Merch is treated as "catalog wins as soon as loaded" — even an
-    // empty array replaces local MENU.Merch so stale Sri Lanka tees
-    // stop leaking into Morocco's POS. Tours kept the "only override
-    // when non-empty" rule because the Sri Lanka tour menu was correct
-    // out of the box; for Merch the historical state is the bug.
+    // Merch + Drinks both use "catalog wins as soon as loaded" — even
+    // an empty array replaces the local MENU entry so stale legacy
+    // items can't leak through. Tours kept the "only override when
+    // non-empty" rule because its first iteration shipped with seed
+    // data that was correct; for Merch / Drinks the historical state
+    // was the bug.
     next={...next, Merch: __catalogCampTabMerch.map(m=>({...m}))};
+  }
+  if(Array.isArray(__catalogCampTabDrinks)){
+    next={...next, Drinks: __catalogCampTabDrinks.map(d=>({...d}))};
   }
   return next;
 }
@@ -3252,6 +3265,54 @@ async function refreshCatalogCampTabMerch(){
   __catalogCampTabMerch=next;
   if(next.length){
     console.log('[Hub] Camp Tab Merch loaded from pricing_catalog — '+next.length+' item(s)');
+  }
+  return prevJson!==nextJson;
+}
+
+// ── Drinks (mirror of Merch pattern) ───────────────────────────────────────
+// Same column shape so Drinks rows can carry stock_qty + alt_price + alt_label
+// the moment the catalog learns about them. The Camp Tab Drinks tab renders
+// these the same way Merch does (regular price button + optional ocean
+// alt-price pill).
+async function loadCampTabDrinksFromCatalog(){
+  try{
+    const client=getHubSupabaseClient();
+    const locId=await ensureHubLocationId();
+    if(!client||!locId) return null;
+    const {data,error}=await client
+      .from('pricing_catalog')
+      .select('id,name,sell_price,cost_per_guest,notes,sort_order,stock_qty,alt_price,alt_label')
+      .eq('location_id',locId)
+      .eq('category','Drinks')
+      .eq('show_in_camp_tab',true)
+      .eq('active',true)
+      .order('sort_order',{ascending:true});
+    if(error) throw error;
+    if(!Array.isArray(data)) return null;
+    return data.map(r=>({
+      id: 'cat|drinks|'+r.id,
+      n: String(r.name||'').trim(),
+      p: Number(r.sell_price||0),
+      d: r.notes ? String(r.notes) : '',
+      costPerGuest: Number(r.cost_per_guest||0),
+      sortOrder: Number.isFinite(Number(r.sort_order)) ? Number(r.sort_order) : 100,
+      stk: (r.stock_qty===null || r.stock_qty===undefined) ? null : Number(r.stock_qty),
+      altPrice: (r.alt_price===null || r.alt_price===undefined) ? null : Number(r.alt_price),
+      altLabel: r.alt_label || null
+    })).filter(d=>d.n);
+  }catch(e){
+    console.warn('[Hub] loadCampTabDrinksFromCatalog failed',e);
+    return null;
+  }
+}
+async function refreshCatalogCampTabDrinks(){
+  const next=await loadCampTabDrinksFromCatalog();
+  if(next===null) return false;
+  const prevJson=JSON.stringify(__catalogCampTabDrinks||[]);
+  const nextJson=JSON.stringify(next);
+  __catalogCampTabDrinks=next;
+  if(next.length){
+    console.log('[Hub] Camp Tab Drinks loaded from pricing_catalog — '+next.length+' item(s)');
   }
   return prevJson!==nextJson;
 }
@@ -8054,6 +8115,10 @@ function sendCampTabBootstrap(){
   // Phase B (Merch): same pattern for Merch. The iframe locks Merch
   // editing once it receives this so the user only edits in /prices.
   try{ sendCampTabMerchUpdate(); }catch(_e){}
+  // Drinks mirror — Sri Lanka uses this most; Morocco's catalog stays
+  // empty and the empty array hides the Drinks tab via the data-driven
+  // visibleCats filter in the inner page.
+  try{ sendCampTabDrinksUpdate(); }catch(_e){}
 }
 
 // Phase 5: live Tours-only update — bypasses the iframe's first-bootstrap
@@ -8081,6 +8146,17 @@ function sendCampTabMerchUpdate(){
   const merch=Array.isArray(menu?.Merch)?menu.Merch:[];
   try{
     frame.contentWindow.postMessage({type:'camp-tab-merch-update',merch},'*');
+  }catch(_error){}
+}
+// Same shape for Drinks. Inner page sets __drinksCatalogManaged=true on
+// receipt and replaces MENU.Drinks with the catalog-sourced list.
+function sendCampTabDrinksUpdate(){
+  const frame=document.getElementById('campTabFrame');
+  if(!frame?.contentWindow) return;
+  const menu=currentCampTabMenu();
+  const drinks=Array.isArray(menu?.Drinks)?menu.Drinks:[];
+  try{
+    frame.contentWindow.postMessage({type:'camp-tab-drinks-update',drinks},'*');
   }catch(_error){}
 }
 async function mountCampTabFrame(){
@@ -8412,6 +8488,11 @@ async function requirePlatformSession(){
         try{ sendCampTabBootstrap(); }catch(_e){}
       }
     }).catch(e=>console.warn('[Hub] refreshCatalogCampTabMerch failed',e));
+    refreshCatalogCampTabDrinks().then(changed=>{
+      if(changed && typeof sendCampTabBootstrap==='function' && document.getElementById('campTabFrame')){
+        try{ sendCampTabBootstrap(); }catch(_e){}
+      }
+    }).catch(e=>console.warn('[Hub] refreshCatalogCampTabDrinks failed',e));
     // Tour cost presets — both Sri Lanka and Morocco. Each location keeps
     // its own row in state_store so the two camps stay isolated.
     loadTourCostPresets().catch(e=>console.warn('[Hub] loadTourCostPresets failed',e));
