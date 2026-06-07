@@ -4649,11 +4649,15 @@ function renderOverview(){
   const foodMonthExpense=sum(S.ledger.filter(x=>x.type==='expense'&&x.businessArea==='Food'&&monthKey(x.date)===monthKey(today())),x=>entryLocalDisplayAmount(x));
   const foodAllExpense=sum(S.ledger.filter(x=>x.type==='expense'&&x.businessArea==='Food'),x=>entryLocalDisplayAmount(x));
 
+  // Per-area revenue tiles: ledger only — same single-source-of-truth
+  // rule the drawer KPIs now follow. Adding tabBarRevenue / tabMerchRev
+  // / etc. would double-count because every paid item already lands a
+  // ledger entry with the matching businessArea (Bar/Merch/Tours/Transport).
   const areaRevenues={
-    Bar:{local:tabBarRevenue+sum(revenueEntries.filter(x=>x.businessArea==='Bar'),x=>entryLocalDisplayAmount(x)),eur:Number((tabBarRevenue/(DEFAULT_LKR_PER_EUR||1)).toFixed(2))+sum(revenueEntries.filter(x=>x.businessArea==='Bar'),x=>entryEurAmount(x))},
-    Merch:{local:tabMerchRevenue+sum(revenueEntries.filter(x=>x.businessArea==='Merch'),x=>entryLocalDisplayAmount(x)),eur:Number((tabMerchRevenue/(DEFAULT_LKR_PER_EUR||1)).toFixed(2))+sum(revenueEntries.filter(x=>x.businessArea==='Merch'),x=>entryEurAmount(x))},
-    Tours:{local:tabTourRevenue+sum(revenueEntries.filter(x=>x.businessArea==='Tours'),x=>entryLocalDisplayAmount(x)),eur:Number((tabTourRevenue/(DEFAULT_LKR_PER_EUR||1)).toFixed(2))+sum(revenueEntries.filter(x=>x.businessArea==='Tours'),x=>entryEurAmount(x))},
-    Transport:{local:tabTransportRevenue+sum(revenueEntries.filter(x=>x.businessArea==='Transport'),x=>entryLocalDisplayAmount(x)),eur:Number((tabTransportRevenue/(DEFAULT_LKR_PER_EUR||1)).toFixed(2))+sum(revenueEntries.filter(x=>x.businessArea==='Transport'),x=>entryEurAmount(x))}
+    Bar:{local:sum(revenueEntries.filter(x=>x.businessArea==='Bar'),x=>entryLocalDisplayAmount(x)),eur:sum(revenueEntries.filter(x=>x.businessArea==='Bar'),x=>entryEurAmount(x))},
+    Merch:{local:sum(revenueEntries.filter(x=>x.businessArea==='Merch'),x=>entryLocalDisplayAmount(x)),eur:sum(revenueEntries.filter(x=>x.businessArea==='Merch'),x=>entryEurAmount(x))},
+    Tours:{local:sum(revenueEntries.filter(x=>x.businessArea==='Tours'),x=>entryLocalDisplayAmount(x)),eur:sum(revenueEntries.filter(x=>x.businessArea==='Tours'),x=>entryEurAmount(x))},
+    Transport:{local:sum(revenueEntries.filter(x=>x.businessArea==='Transport'),x=>entryLocalDisplayAmount(x)),eur:sum(revenueEntries.filter(x=>x.businessArea==='Transport'),x=>entryEurAmount(x))}
   };
   const areaCosts={
     Bar:{local:sum(expenses.filter(x=>x.businessArea==='Bar'),x=>entryLocalDisplayAmount(x)),eur:sum(expenses.filter(x=>x.businessArea==='Bar'),x=>entryEurAmount(x))},
@@ -7715,7 +7719,11 @@ function renderExpenses(){
   // Cash drawer = ATM withdrawals in + revenue in − cash spend − cash
   // deposits out.
   const cashBalLocal = aATM + aRev - aCash - aDeposit;
-  const cashBalEur   = aATME + aRevE - aCashE - aDeposit;
+  // BUG FIX: was subtracting `aDeposit` (LKR/MAD value) from a EUR sum,
+  // which made the Cash drawer's EUR figure wildly off whenever a
+  // Cash Deposit existed (e.g. depositing MAD 1000 deducted 1000 from
+  // the EUR balance instead of ~€94). Now uses aDepositE.
+  const cashBalEur   = aATME + aRevE - aCashE - aDepositE;
   const totalBalLocal = bankBalLocal + cashBalLocal;
   const totalBalEur   = bankBalEur + cashBalEur;
 
@@ -8021,7 +8029,13 @@ function renderWeeklyPL(){
     const manualRevenue=sum(ledger.filter(x=>x.type==='income'),x=>x.amount);
     const foodExp=sum(ledger.filter(x=>x.type==='expense'&&x.businessArea==='Food'),x=>x.amount);
     const tabRevenue=wk?weekRevenue(wk):0;
-    const totalRevenue=tabRevenue+manualRevenue;
+    // Same fix as Overview's double-count: every per_guest item Pay AND
+    // every Sri Lanka legacy close-week writes campitem_* / campclose_*
+    // ledger entries. tabRevenue (from g.paid items) is the SAME money
+    // already in manualRevenue. Use ledger only as the single source of
+    // truth; tabRevenue stays in scope as display metadata so any
+    // surface that wants the "Camp Tab snapshot" can still read it.
+    const totalRevenue=manualRevenue;
     // Operating balance — every spend channel (Cash + Card + Bank
     // Transfer) draws from the same pool funded by HQ top-ups +
     // collected revenue.
@@ -8029,11 +8043,18 @@ function renderWeeklyPL(){
     const guests=wk?(wk.guests||[]).length:0;
     const paidGuests=wk?(wk.guests||[]).filter(g=>g.paid).length:0;
     const guestDays=wk?guestDaysForWeeks([wk]).value:(ovBookings.length?ovGuestDaysForWeek(ws):0);
+    // Per-area split: ledger-only too. The businessArea on each ledger
+    // entry already encodes which bucket (Bar / Merch / Tours / Transport)
+    // the money belongs to — buildPaidItemRevenueEntry → inferArea
+    // handles the mapping at creation time. Combining tab items here
+    // again would just duplicate. Drinks items become businessArea='Bar';
+    // Merch becomes 'Merch'; Tours/Transport split inside Tours via
+    // isTransportRevenueName when the entry is built.
     const areaRevenue={
-      Bar:(wk?sum((wk.guests||[]).filter(g=>g.paid).flatMap(g=>g.items).filter(i=>i.c==='Drinks'),i=>Number(i.p)):0)+sum(ledger.filter(x=>x.type==='income'&&x.businessArea==='Bar'),x=>x.amount),
-      Merch:(wk?sum((wk.guests||[]).filter(g=>g.paid).flatMap(g=>g.items).filter(i=>i.c==='Merch'),i=>Number(i.p)):0)+sum(ledger.filter(x=>x.type==='income'&&x.businessArea==='Merch'),x=>x.amount),
-      Tours:(wk?sum((wk.guests||[]).filter(g=>g.paid).flatMap(g=>g.items).filter(i=>i.c==='Tours'&&!TRANSPORT_REVENUE_CATS.includes(i.n)),i=>Number(i.p)):0)+sum(ledger.filter(x=>x.type==='income'&&x.businessArea==='Tours'),x=>x.amount),
-      Transport:(wk?sum((wk.guests||[]).filter(g=>g.paid).flatMap(g=>g.items).filter(i=>TRANSPORT_REVENUE_CATS.includes(i.n)),i=>Number(i.p)):0)+sum(ledger.filter(x=>x.type==='income'&&x.businessArea==='Transport'),x=>x.amount)
+      Bar:sum(ledger.filter(x=>x.type==='income'&&x.businessArea==='Bar'),x=>x.amount),
+      Merch:sum(ledger.filter(x=>x.type==='income'&&x.businessArea==='Merch'),x=>x.amount),
+      Tours:sum(ledger.filter(x=>x.type==='income'&&x.businessArea==='Tours'),x=>x.amount),
+      Transport:sum(ledger.filter(x=>x.type==='income'&&x.businessArea==='Transport'),x=>x.amount)
     };
     return{ws,sent,campSpend,cardSpend,hqSpend,foodExp,tabRevenue,totalRevenue,cash,guests,paidGuests,guestDays,drinksSales:areaRevenue.Bar,merchSales:areaRevenue.Merch,tourSales:areaRevenue.Tours,transportSales:areaRevenue.Transport};
   });
