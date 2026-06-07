@@ -1354,10 +1354,16 @@ let everInLedgerIds=new Set(); // tracks every campclose ID ever fetched from Su
 // a Morocco entry as LKR (the bug that put fx_rate~388 on MAD amounts).
 // Adding a new location? Add it here too.
 const LOCAL_CURRENCY_PINNED = {
-  'sri-lanka': 'LKR',
-  'morocco':   'MAD',
-  'portugal':  'EUR',
-  'junior':    'EUR'
+  'sri-lanka':   'LKR',
+  'morocco':     'MAD',
+  'portugal':    'EUR',
+  // The actual slug in locations.slug is 'junior-camp' (see
+  // setup-locations-currency.sql). The old 'junior' key never matched
+  // anything in the DB, so junior would fall through to the LKR
+  // default — wrong currency stamped on every entry. Keep both for
+  // back-compat with anything that might still reference the short form.
+  'junior-camp': 'EUR',
+  'junior':      'EUR'
 };
 let LOCAL_CURRENCY = LOCAL_CURRENCY_PINNED[__HUB_LOCATION_SLUG] || 'LKR';
 // ── FX rate fallbacks (NOT a lock) ────────────────────────────────────────
@@ -1370,10 +1376,12 @@ let LOCAL_CURRENCY = LOCAL_CURRENCY_PINNED[__HUB_LOCATION_SLUG] || 'LKR';
 // that was current on its OWN date — historical entries don't get
 // retroactively revalued.
 const FX_FALLBACK_PER_EUR = {
-  'sri-lanka': 330,
-  'morocco':   10.5,
-  'portugal':  1,
-  'junior':    1
+  'sri-lanka':   330,
+  'morocco':     10.5,
+  'portugal':    1,
+  // Both forms — see LOCAL_CURRENCY_PINNED note.
+  'junior-camp': 1,
+  'junior':      1
 };
 const FX_FALLBACK_THIS_LOC = FX_FALLBACK_PER_EUR[__HUB_LOCATION_SLUG] ?? 330;
 let LOCAL_PER_EUR = (parseFloat(localStorage.getItem(FX_KEY)||'') || FX_FALLBACK_THIS_LOC);
