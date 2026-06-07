@@ -1620,15 +1620,46 @@ function merchStockKey(name=''){
   const match=String(name||'').match(/(S|M|L|XL)$/i);
   return match?match[1].toUpperCase():'';
 }
+// Extract the product family from a merch item name. Naming convention:
+//   "{Product} [Offer|Staff|Sale|Promo|Discount] {Size}"
+// Examples:
+//   "T-Shirt S"           → "T-Shirt"
+//   "T-Shirt Offer S"     → "T-Shirt"
+//   "T-Shirt Staff XL"    → "T-Shirt"
+//   "Hoodie M"            → "Hoodie"
+//   "Hoodie Offer M"      → "Hoodie"
+//   "Hoodie Staff XL"     → "Hoodie"
+// The earlier merchStockLeft used a T-Shirt-only regex, which meant
+// adding Hoodies caused Hoodie stock to silently borrow from T-Shirt
+// stock of the same size. This helper + the updated merchStockLeft
+// below group strictly by (product family, size), so each family
+// keeps its own stock counter.
+function merchProductType(name=''){
+  const s=String(name||'').trim();
+  const m=s.match(/^(.+?)\s+(?:Offer|Staff|Sale|Promo|Discount)?\s*(?:S|M|L|XL)$/i);
+  return m?m[1].trim():'';
+}
 function merchStockLeft(item){
   if(!item) return null;
   const sizeKey=merchStockKey(item.n);
+  const typeKey=merchProductType(item.n);
+  // No size suffix (e.g. legacy "Sticker" without sizing) → no shared
+  // stock pool; treat the item as standalone.
+  if(!sizeKey || !typeKey) return null;
   const soldCounts=merchSoldCounts();
   const merchItems=currentMerchMenu();
-  const sizeItems=sizeKey?merchItems.filter(row=>merchStockKey(row.n)===sizeKey):[item];
-  const baseItem=sizeItems.find(row=>/^T-Shirt (S|M|L|XL)$/i.test(row.n))||item;
+  // Items sharing the same (product, size) pool — base + Offer + Staff
+  // variants of the same product family in the same size.
+  const groupItems=merchItems.filter(row =>
+    merchStockKey(row.n)===sizeKey && merchProductType(row.n)===typeKey
+  );
+  // The base row is the one literally named `${type} ${size}`
+  // ("T-Shirt M", "Hoodie L", …). It's the only row that carries the
+  // stock counter; the Offer / Staff variants leave stk null and borrow.
+  const baseName=`${typeKey} ${sizeKey}`.toLowerCase();
+  const baseItem=groupItems.find(row=>String(row.n).trim().toLowerCase()===baseName)||item;
   if(!Number.isFinite(Number(baseItem.stk))) return null;
-  const sold=sizeItems.reduce((sum,row)=>sum+(soldCounts[row.n]||0),0);
+  const sold=groupItems.reduce((sum,row)=>sum+(soldCounts[row.n]||0),0);
   return Math.max(0,Math.round(Number(baseItem.stk))-sold);
 }
 
