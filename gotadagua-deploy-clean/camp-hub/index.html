@@ -5005,15 +5005,27 @@ function renderOverview(){
       </div>
     </div>`:'';
 
-  // KPI strip — Total wallet split into Bank and Cash drawers so the
-  // owner sees at a glance where the money actually is. Gross Profit
-  // stays as the fourth tile (independent of wallet split).
-  document.getElementById('ovKpis').innerHTML=`
-    ${kpi('Total Balance','Bank + Cash drawers combined',lkr(totalBalanceLocal),totalBalanceLocal>=0?'kv-green':'kv-red',euro(totalBalanceEur))}
-    ${kpi('Bank','HQ transfers − card/bank spend − ATM withdrawals',lkr(bankBalanceLocal),bankBalanceLocal>=0?'kv-ocean':'kv-red',euro(bankBalanceEur))}
-    ${kpi('Cash','ATM withdrawals + revenue − cash spend',lkr(cashBalanceLocal),cashBalanceLocal>=0?'kv-amber':'kv-red',euro(cashBalanceEur))}
-    ${kpi('Gross Profit','Revenue − all expenses',lkr(grossProfitLocal),grossProfitLocal>=0?'kv-green':'kv-red',euro(grossProfitEur))}
-  `;
+  // Portugal is HQ — no HQ Transfer top-ups, no Bank/Cash drawer split
+  // needed. Simplified 3-tile view: Spent · Earned · Net. Every other
+  // location keeps the full Bank/Cash breakdown.
+  const IS_PORTUGAL_HQ = (typeof __HUB_LOCATION_SLUG !== 'undefined') && __HUB_LOCATION_SLUG === 'portugal';
+  if (IS_PORTUGAL_HQ) {
+    const netLocal = totalRevenueLocal - totalExpLocal;
+    const netEur   = totalRevenueEur   - totalExpEur;
+    document.getElementById('ovKpis').innerHTML = `
+      ${kpi('Total Expenses','Tudo o que saiu',           lkr(totalExpLocal),    'kv-red',                              euro(totalExpEur))}
+      ${kpi('Total Revenue', 'Tudo o que entrou no camp', lkr(totalRevenueLocal),'kv-green',                            euro(totalRevenueEur))}
+      ${kpi('Net',           'Revenue − Expenses',        lkr(netLocal),         netLocal>=0?'kv-green':'kv-red',       euro(netEur))}
+    `;
+  } else {
+    // Other locations: full Bank + Cash drawer split.
+    document.getElementById('ovKpis').innerHTML=`
+      ${kpi('Total Balance','Bank + Cash drawers combined',lkr(totalBalanceLocal),totalBalanceLocal>=0?'kv-green':'kv-red',euro(totalBalanceEur))}
+      ${kpi('Bank','HQ transfers − card/bank spend − ATM withdrawals',lkr(bankBalanceLocal),bankBalanceLocal>=0?'kv-ocean':'kv-red',euro(bankBalanceEur))}
+      ${kpi('Cash','ATM withdrawals + revenue − cash spend',lkr(cashBalanceLocal),cashBalanceLocal>=0?'kv-amber':'kv-red',euro(cashBalanceEur))}
+      ${kpi('Gross Profit','Revenue − all expenses',lkr(grossProfitLocal),grossProfitLocal>=0?'kv-green':'kv-red',euro(grossProfitEur))}
+    `;
+  }
   renderOverviewBookingsPanel(weeks,selectedWid,allLedger);
   const foodControlHtml=buildFoodControlCardHtml(weeks,allLedger);
 
@@ -7883,27 +7895,61 @@ function renderExpenses(){
   // this as a regular daily action: walk to the ATM, withdraw 500 MAD,
   // log it. Button is permanent so it's never more than one click away.
   const cashHint = `<button class="kpi-action-btn" onclick="openExpModal('transfer',null,{paymentMethod:'ATM Withdrawal'})">+ Record ATM Withdrawal</button>`;
-  expKpisEl.innerHTML=`
-    <div class="card kpi">
-      <div class="kpi-label">Total Balance</div>
-      <div class="kpi-value ${totalBalLocal>=0?'kv-green':'kv-red'}">${lkr(totalBalLocal)}</div>
-      <div class="kpi-sub" style="margin-top:4px">${euro(totalBalEur)}</div>
-      <div class="kpi-sub">Bank + Cash · all time</div>
-    </div>
-    <div class="card kpi">
-      <div class="kpi-label">Bank</div>
-      <div class="kpi-value ${bankBalLocal>=0?'kv-ocean':'kv-red'}">${lkr(bankBalLocal)}</div>
-      <div class="kpi-sub" style="margin-top:4px">${euro(bankBalEur)}</div>
-      ${bankBreakdown}
-    </div>
-    <div class="card kpi">
-      <div class="kpi-label">Cash</div>
-      <div class="kpi-value ${cashBalLocal>=0?'kv-amber':'kv-red'}">${lkr(cashBalLocal)}</div>
-      <div class="kpi-sub" style="margin-top:4px">${euro(cashBalEur)}</div>
-      ${cashBreakdown}
-      ${cashHint}
-    </div>
-  `;
+  // Portugal is HQ — no HQ Transfer top-ups arrive, the camp account IS
+  // the main account. Simplify the KPI strip to 3 tiles: Spent · Earned ·
+  // Net. ATM Withdrawal shortcut is dropped too (irrelevant without a
+  // separate HQ account funneling cash to a drawer).
+  const IS_PORTUGAL_HQ = (typeof __HUB_LOCATION_SLUG !== 'undefined') && __HUB_LOCATION_SLUG === 'portugal';
+  if(IS_PORTUGAL_HQ){
+    const totalSpentLocal  = aCash + aCard + aBankXfer;
+    const totalSpentEur    = aCashE + aCardE + aBankXferE;
+    const earnedLocal      = aRev;
+    const earnedEur        = aRevE;
+    const netLocal         = earnedLocal - totalSpentLocal;
+    const netEur           = earnedEur   - totalSpentEur;
+    expKpisEl.innerHTML=`
+      <div class="card kpi">
+        <div class="kpi-label">Total Expenses</div>
+        <div class="kpi-value kv-red">${lkr(totalSpentLocal)}</div>
+        <div class="kpi-sub" style="margin-top:4px">${euro(totalSpentEur)}</div>
+        <div class="kpi-sub">Cash + Card + Bank Transfer</div>
+      </div>
+      <div class="card kpi">
+        <div class="kpi-label">Total Revenue</div>
+        <div class="kpi-value kv-green">${lkr(earnedLocal)}</div>
+        <div class="kpi-sub" style="margin-top:4px">${euro(earnedEur)}</div>
+        <div class="kpi-sub">Tudo que entrou no camp</div>
+      </div>
+      <div class="card kpi">
+        <div class="kpi-label">Net</div>
+        <div class="kpi-value ${netLocal>=0?'kv-green':'kv-red'}">${lkr(netLocal)}</div>
+        <div class="kpi-sub" style="margin-top:4px">${euro(netEur)}</div>
+        <div class="kpi-sub">Revenue − Expenses</div>
+      </div>
+    `;
+  } else {
+    expKpisEl.innerHTML=`
+      <div class="card kpi">
+        <div class="kpi-label">Total Balance</div>
+        <div class="kpi-value ${totalBalLocal>=0?'kv-green':'kv-red'}">${lkr(totalBalLocal)}</div>
+        <div class="kpi-sub" style="margin-top:4px">${euro(totalBalEur)}</div>
+        <div class="kpi-sub">Bank + Cash · all time</div>
+      </div>
+      <div class="card kpi">
+        <div class="kpi-label">Bank</div>
+        <div class="kpi-value ${bankBalLocal>=0?'kv-ocean':'kv-red'}">${lkr(bankBalLocal)}</div>
+        <div class="kpi-sub" style="margin-top:4px">${euro(bankBalEur)}</div>
+        ${bankBreakdown}
+      </div>
+      <div class="card kpi">
+        <div class="kpi-label">Cash</div>
+        <div class="kpi-value ${cashBalLocal>=0?'kv-amber':'kv-red'}">${lkr(cashBalLocal)}</div>
+        <div class="kpi-sub" style="margin-top:4px">${euro(cashBalEur)}</div>
+        ${cashBreakdown}
+        ${cashHint}
+      </div>
+    `;
+  }
 
   const el=document.getElementById('expTable');
   if(!el)return;
@@ -8634,6 +8680,35 @@ if(CAMP_TAB_ONLY_MODE){
 } else {
   showPage('overview');
 }
+
+// Portugal-HQ simplification: hide "Money Sent" from every type
+// selector (Quick Add, Operations Ledger filter, expense modal).
+// Portugal IS the HQ — there are no HQ → camp transfers in this model;
+// money lives in one account and Expense / Revenue is enough. ATM
+// Withdrawal + Cash Deposit are also dropped from the modal flow
+// because the simplified KPI strip merges Bank + Cash into a single
+// "Account" view.
+(function applyPortugalHQOptions(){
+  if((typeof __HUB_LOCATION_SLUG === 'undefined') || __HUB_LOCATION_SLUG !== 'portugal') return;
+  const hideTransferOptions = ()=>{
+    ['qe_type','expTypeF'].forEach(id=>{
+      const sel=document.getElementById(id);
+      if(!sel) return;
+      [...sel.options].forEach(o=>{
+        if(o.value==='transfer') o.style.display='none';
+      });
+      // If transfer was selected for some reason, snap back to expense.
+      if(sel.value==='transfer') sel.value='expense';
+    });
+  };
+  hideTransferOptions();
+  // Re-apply after every page change in case renders rebuild markup.
+  document.addEventListener('click', e=>{
+    if(e.target && e.target.matches && e.target.matches('.ntab,.ntab *')){
+      setTimeout(hideTransferOptions, 50);
+    }
+  });
+})();
 
 async function requirePlatformSession(){
   const client=getHubSupabaseClient();
