@@ -753,7 +753,10 @@ td.r{text-align:right;font-family:'DM Mono',monospace;font-size:12px}
           </div>
           <div class="mfield" style="margin-bottom:0">
             <label>Paid via</label>
-            <input value="Bank Transfer" disabled>
+            <select id="salary_payment">
+              <option value="Bank Transfer">Bank Transfer</option>
+              <option value="Cash">Cash</option>
+            </select>
           </div>
           <div class="exp-recurring-form-actions">
             <button class="btn btn-s" onclick="resetSalaryForm()">Clear</button>
@@ -7011,6 +7014,10 @@ function resetSalaryForm(){
   document.getElementById('salary_season').value='';
   document.getElementById('salary_off').value='';
   document.getElementById('salary_fixed').value='';
+  // Default new salaries to Bank Transfer — most are bank-paid in
+  // practice; user can flip to Cash per row when needed.
+  const payEl=document.getElementById('salary_payment');
+  if(payEl) payEl.value='Bank Transfer';
   toggleSalaryTypeFields();
   refreshSalarySaveButton();
 }
@@ -7019,6 +7026,12 @@ function salaryProfileFromForm(){
   const name=(document.getElementById('salary_name')?.value||'').trim();
   if(!name) return null;
   const currency=(document.getElementById('salary_currency')?.value||LOCAL_CURRENCY||'LKR').toUpperCase();
+  // paymentMethod was previously hardcoded to 'Bank Transfer'. Now the
+  // user picks Cash or Bank Transfer per salary — same shape the fixed-
+  // monthly-costs form already uses. Default to Bank Transfer if the
+  // select is missing (defensive against an older partial DOM).
+  const payRaw=(document.getElementById('salary_payment')?.value||'Bank Transfer');
+  const paymentMethod=payRaw==='Cash'?'Cash':'Bank Transfer';
   const profile=normalizeSalaryProfile({
     id:editingSalaryProfileId||undefined,
     name,
@@ -7027,7 +7040,7 @@ function salaryProfileFromForm(){
     seasonAmount:Number(document.getElementById('salary_season')?.value||0),
     offSeasonAmount:Number(document.getElementById('salary_off')?.value||0),
     fixedAmount:Number(document.getElementById('salary_fixed')?.value||0),
-    paymentMethod:'Bank Transfer',
+    paymentMethod,
     enabled:true
   });
   if(type==='fixed' && !(profile.fixedAmount>0)) return null;
@@ -7065,6 +7078,10 @@ function editSalaryProfile(id){
   document.getElementById('salary_season').value=profile.seasonAmount?String(profile.seasonAmount):'';
   document.getElementById('salary_off').value=profile.offSeasonAmount?String(profile.offSeasonAmount):'';
   document.getElementById('salary_fixed').value=profile.fixedAmount?String(profile.fixedAmount):'';
+  // Pick up the saved payment method — legacy profiles default to Bank
+  // Transfer (the only option that existed before).
+  const payEl=document.getElementById('salary_payment');
+  if(payEl) payEl.value=(profile.paymentMethod==='Cash')?'Cash':'Bank Transfer';
   toggleSalaryTypeFields();
   refreshSalarySaveButton();
   toast('Salary loaded for editing');
@@ -7159,6 +7176,7 @@ function renderSalaryProfiles(){
         <div class="exp-salary-badges">
           <span class="badge badge-blue">${profile.type==='fixed'?'Fixed monthly':salaryModeLabel()}</span>
           ${showForeign?`<span class="badge badge-amber">${profCur}</span>`:''}
+          <span class="badge ${profile.paymentMethod==='Cash'?'badge-amber':'badge-blue'}">${profile.paymentMethod==='Cash'?'Cash':'Bank Transfer'}</span>
           <span class="badge ${profile.enabled?'badge-green':'badge-amber'}">${profile.enabled?'Active':'Paused'}</span>
         </div>
       </div>
