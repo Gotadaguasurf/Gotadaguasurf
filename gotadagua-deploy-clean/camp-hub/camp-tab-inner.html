@@ -707,6 +707,8 @@ let __toursCatalogManaged=false;
 //   - The category bar still shows Merch (so the user can browse + add to
 //     a guest's tab) but edits land in /prices, not here.
 let __merchCatalogManaged=false;
+// Drinks mirror — flips on first camp-tab-drinks-update.
+let __drinksCatalogManaged=false;
 
 function migrateActivitiesToTours(){
   if(Array.isArray(MENU.Activities) && MENU.Activities.length){
@@ -1813,19 +1815,17 @@ const weekSpan=ws=>fmtd(ws)+' to '+fmtd(addDays(ws,6));
 const gtot=g=>g.items.reduce((s,i)=>s+Number(i.p),0);
 const esc=s=>String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
 const getCats=()=>Object.keys(MENU);
-// Per-location category visibility for the Camp Tab POS surface.
-// Drinks are not used by Morocco's Camp Tab — guests pay for tours
-// and merch only — so the Drinks tab is hidden from the category bar
-// AND the Top Sellers filter in per_guest mode. The data is NOT
-// deleted: MENU.Drinks rows survive untouched in location_menus
-// (and on Supabase) in case the location ever needs them back; this
-// is a pure display filter. Sri Lanka sees every category as before.
+// Category visibility is data-driven: every category that has items in
+// the menu (catalog-sourced or local) shows; empty categories drop out.
+//
+// Why this is the right policy now: Tours, Merch, and Drinks are all
+// master-managed in /prices. An empty MENU.Drinks means the location's
+// catalog has no Drinks rows → no reason to render the tab. Morocco
+// ends up with "Tours · Merch" automatically because its Drinks
+// catalog is empty; Sri Lanka shows "Drinks · Tours · Merch" because
+// it has rows in all three. No hardcoded per-location filter needed.
 function visibleCats(){
-  const all=getCats();
-  if(CAMP_TAB_MODE==='per_guest'){
-    return all.filter(c => String(c||'').toLowerCase()!=='drinks');
-  }
-  return all;
+  return getCats().filter(c => Array.isArray(MENU[c]) && MENU[c].length > 0);
 }
 function stayMeta(row){
   if(!row?.bookingCi||!row?.bookingCo) return '';
@@ -3217,7 +3217,7 @@ function renderMenuSettings(){
   // Phase 6 + B: Tours AND Merch are read-only when their respective
   // catalog locks are on (both managed in /prices once their catalog row
   // arrives). Other categories stay editable inside the modal.
-  const isCatLocked=(c)=> (c==='Tours' && __toursCatalogManaged) || (c==='Merch' && __merchCatalogManaged);
+  const isCatLocked=(c)=> (c==='Tours' && __toursCatalogManaged) || (c==='Merch' && __merchCatalogManaged) || (c==='Drinks' && __drinksCatalogManaged);
   const isLockedCat=isCatLocked(menuEditCat);
   if(catList){
     catList.innerHTML=cats.map(cat=>{
@@ -3706,6 +3706,24 @@ window.addEventListener('message',async e=>{
     const sameJson=Array.isArray(MENU.Merch) && JSON.stringify(MENU.Merch)===JSON.stringify(incoming);
     if(!sameJson){
       MENU={...MENU,Merch:incoming};
+      saveMenu();
+      renderAllCampTabViews();
+      notifyParentStateChanged();
+      queueMenuSync();
+    } else if(document.getElementById('menuOv')?.classList.contains('open')){
+      renderMenuSettings();
+    }
+    return;
+  }
+  // Drinks mirror — same flow, same semantics. Lock flips on any
+  // incoming array (including empty) so Drinks falls out of the
+  // category bar via visibleCats when the catalog has no rows.
+  if(e.data?.type==='camp-tab-drinks-update' && Array.isArray(e.data?.drinks)){
+    const incoming=cloneCampTabPayload(e.data.drinks);
+    __drinksCatalogManaged=true;
+    const sameJson=Array.isArray(MENU.Drinks) && JSON.stringify(MENU.Drinks)===JSON.stringify(incoming);
+    if(!sameJson){
+      MENU={...MENU,Drinks:incoming};
       saveMenu();
       renderAllCampTabViews();
       notifyParentStateChanged();
