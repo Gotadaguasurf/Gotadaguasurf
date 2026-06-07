@@ -3332,6 +3332,17 @@ function merchStockKey(name=''){
   const match=String(name||'').match(/(S|M|L|XL)$/i);
   return match?match[1].toUpperCase():'';
 }
+// Product family from a sized merch name. Same contract as the
+// helper in camp-tab-inner.html: "{Product} [Offer|Staff|...] {Size}"
+// "T-Shirt M"          → "T-Shirt"
+// "Hoodie Staff XL"    → "Hoodie"
+// "Cap Offer S"        → "Cap"
+// Anything that doesn't end in a known size returns ''.
+function merchProductType(name=''){
+  const s=String(name||'').trim();
+  const m=s.match(/^(.+?)\s+(?:Offer|Staff|Sale|Promo|Discount)?\s*(?:S|M|L|XL)$/i);
+  return m?m[1].trim():'';
+}
 const isTransportRevenueName=name=>TRANSPORT_REVENUE_CATS.includes(name);
 // The camp tab Tours menu is the single source of truth for what the
 // operations ledger quick-add shows under "Tours". Whatever the user
@@ -3430,6 +3441,14 @@ function linkedItemPrice(name){
   const match=tours.find(item=>item.n===name);
   return Number(match?.p||0);
 }
+// Returns grouped merch stock — one entry per product family
+// (T-Shirt, Hoodie, future Cap, …). Each group has its 4 sizes
+// (S/M/L/XL) with starting / sold / left. Sold counts roll up every
+// variant of the same (product, size) — base + Offer + Staff — so the
+// numbers reflect actual inventory movement regardless of which price
+// tier the guest paid. Empty groups (no stock configured AND no sales)
+// are filtered out so locations that don't carry hoodies don't see a
+// phantom "Hoodie stock" card.
 function merchStockRows(){
   const menuItems=Array.isArray(currentCampTabMenu()?.Merch)?currentCampTabMenu().Merch:[];
   const campState=currentCampTabState();
@@ -3444,15 +3463,36 @@ function merchStockRows(){
       });
     });
   });
-  const baseItems=menuItems.filter(item=>/^T-Shirt (S|M|L|XL)$/i.test(item.n));
-  return baseItems.map(item=>{
+  // Base items are the ones literally named `${product} ${size}` —
+  // e.g. "T-Shirt M", "Hoodie L". They're the only rows that carry a
+  // stock counter; Offer / Staff variants leave stk null and share.
+  const baseItems=menuItems.filter(item=>{
+    const type=merchProductType(item?.n);
+    const size=merchStockKey(item?.n);
+    if(!type || !size) return false;
+    return String(item.n||'').trim().toLowerCase() === `${type} ${size}`.toLowerCase();
+  });
+  // Group by product type so the Costs & stock panel can render one
+  // table per family. Preserve appearance order from the catalog.
+  const groupOrder=[];
+  const groups={};
+  baseItems.forEach(item=>{
+    const type=merchProductType(item.n);
+    if(!groups[type]){ groups[type]={type,sizes:[]}; groupOrder.push(type); }
     const sizeKey=merchStockKey(item.n);
-    const variants=menuItems.filter(row=>merchStockKey(row.n)===sizeKey);
+    // All variants of the same (product, size) — base + Offer + Staff.
+    const variants=menuItems.filter(row=>
+      merchStockKey(row.n)===sizeKey && merchProductType(row.n)===type
+    );
     const starting=Number.isFinite(Number(item?.stk))?Math.max(0,Math.round(Number(item.stk))):null;
     const sold=variants.reduce((sum,row)=>sum+(counts[row.n]||0),0);
     const left=starting===null?null:Math.max(0,starting-sold);
-    return {name:item.n.replace('T-Shirt ','Size '),starting,sold,left};
-  }).filter(row=>row.starting!==null||row.sold>0);
+    groups[type].sizes.push({name:`Size ${sizeKey}`,starting,sold,left});
+  });
+  return groupOrder
+    .map(type=>({type, sizes:groups[type].sizes}))
+    .map(g=>({...g, sizes:g.sizes.filter(r=>r.starting!==null||r.sold>0)}))
+    .filter(g=>g.sizes.length>0);
 }
 function uiIcon(name,cls=''){
   const icons={
@@ -4988,19 +5028,41 @@ function renderOverview(){
   // stays here because it has its own sub-category breakdown that doesn't
   // live anywhere else. T-shirt stock also stays — it's the only place
   // that shows remaining Merch inventory.
-  document.getElementById('ovCatCard').innerHTML=`
-    <div class="card">
-      <div class="card-pad" style="border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
-        <div style="font-family:'DM Serif Display',serif;font-size:17px;color:var(--navy)">T-shirt stock</div>
-        <div style="font-size:11px;color:var(--muted)">Sizes and remaining units</div>
+  // One stock card per merch family — T-shirts on top, Hoodies under,
+  // any future product (Cap, Tote, …) auto-appears the moment a base
+  // row like "Cap S" is added to the catalog. Empty list ⇒ a single
+  // neutral card so the layout doesn't collapse.
+  const merchStockCards = merchRows.length
+    ? merchRows.map(group=>`
+      <div class="card">
+        <div class="card-pad" style="border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+          <div style="font-family:'DM Serif Display',serif;font-size:17px;color:var(--navy)">${group.type} stock</div>
+          <div style="font-size:11px;color:var(--muted)">Sizes and remaining units</div>
+        </div>
+        <div class="tbl-wrap"><table>
+          <thead><tr><th>Size</th><th class="r">Starting</th><th class="r">Sold</th><th class="r">Left</th></tr></thead>
+          <tbody>
+            ${group.sizes.map(r=>`<tr><td style="font-weight:600">${r.name}</td><td class="r">${r.starting===null?'—':r.starting}</td><td class="r">${r.sold||0}</td><td class="r" style="color:${r.left===0?'var(--red)':'var(--green)'}">${r.left===null?'Set stock in /prices':r.left}</td></tr>`).join('')}
+          </tbody>
+        </table></div>
       </div>
-      <div class="tbl-wrap"><table>
-        <thead><tr><th>Size</th><th class="r">Starting</th><th class="r">Sold</th><th class="r">Left</th></tr></thead>
-        <tbody>
-          ${merchRows.length?merchRows.map(r=>`<tr><td style="font-weight:600">${r.name}</td><td class="r">${r.starting===null?'—':r.starting}</td><td class="r">${r.sold||0}</td><td class="r" style="color:${r.left===0?'var(--red)':'var(--green)'}">${r.left===null?'Set stock in Camp Tab':r.left}</td></tr>`).join(''):'<tr class="empty-row"><td colspan="4">No T-shirt stock configured yet.</td></tr>'}
-        </tbody>
-      </table></div>
-    </div>
+    `).join('')
+    : `
+      <div class="card">
+        <div class="card-pad" style="border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+          <div style="font-family:'DM Serif Display',serif;font-size:17px;color:var(--navy)">Merch stock</div>
+          <div style="font-size:11px;color:var(--muted)">Sizes and remaining units</div>
+        </div>
+        <div class="tbl-wrap"><table>
+          <thead><tr><th>Size</th><th class="r">Starting</th><th class="r">Sold</th><th class="r">Left</th></tr></thead>
+          <tbody>
+            <tr class="empty-row"><td colspan="4">No merch stock configured yet — set sizes in /prices.</td></tr>
+          </tbody>
+        </table></div>
+      </div>
+    `;
+  document.getElementById('ovCatCard').innerHTML=`
+    ${merchStockCards}
     <div class="card">
       <div class="card-pad" style="border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
         <div style="font-family:'DM Serif Display',serif;font-size:17px;color:var(--navy)">Utilities control</div>
