@@ -8144,6 +8144,52 @@ window.addEventListener('message',e=>{
   // ledger row out of local state + Supabase. The id is stable so we
   // can compute it from the same fields used to create it — no lookup
   // needed.
+  // Bulk sweep: a guest was deleted from Camp Tab (active or history).
+  // We remove every camp_tab_per_item ledger row whose description
+  // starts with "Camp Tab · <guestName> ·" — bypasses the per-item id
+  // lookup entirely so timezone edges / regenerated ids / drift never
+  // leave orphaned rows behind. Also belt-and-braces deletes each
+  // paid-item by its deterministic UUID + fallback so legacy rows with
+  // a different description format still go.
+  if(e.data?.type==='camp-tab-guest-deleted'){
+    try{
+      const guestName = String(e.data?.guest?.name||'').trim();
+      if(!guestName){ rerenderActivePageData(); return; }
+      const expectedPrefix = `Camp Tab · ${guestName} · `;
+      const matched = [];
+      const sizeBefore = S.ledger.length;
+      S.ledger = S.ledger.filter(row => {
+        if(String(row?.sourceKind||'') !== 'camp_tab_per_item') return true;
+        if(!String(row?.description||'').startsWith(expectedPrefix)) return true;
+        matched.push(String(row?.id||''));
+        return false;
+      });
+      // Per-item UUID deletes — covers any row that survived the prefix
+      // sweep (legacy description, manually edited). Items array carries
+      // {id, n, p, date} for each paid line.
+      const guestKey = String(e.data?.guest?.id||guestName||'guest').replace(/\s+/g,'_');
+      (Array.isArray(e.data?.items) ? e.data.items : []).forEach(item => {
+        const itemKey = String(item?.id||item?.n||'item').replace(/\s+/g,'_');
+        const seed    = `campitem_${guestKey}_${itemKey}_${String(item?.date||'').slice(0,10)}`;
+        const uuid    = stableUuidFromSeed(seed);
+        matched.push(seed, uuid);
+      });
+      if(S.ledger.length !== sizeBefore){
+        save();
+        notifyLedgerChanged();
+      }
+      // Send every collected id off to Supabase as a fire-and-forget
+      // delete. Duplicates are harmless (delete-by-id on a missing
+      // row returns no error, no effect).
+      new Set(matched.filter(Boolean)).forEach(id => {
+        deleteLedgerEntryFromSupabase(id).catch(err =>
+          console.warn('[Hub] guest-deleted ledger delete failed',id,err)
+        );
+      });
+    }catch(err){ console.warn('[Hub] guest-deleted handler failed',err); }
+    rerenderActivePageData();
+    return;
+  }
   if(e.data?.type==='camp-tab-item-unpaid'){
     try{
       const {guest,item,date}=e.data;
