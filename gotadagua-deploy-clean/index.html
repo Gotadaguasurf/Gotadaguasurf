@@ -3180,7 +3180,12 @@
         const locName = CSV_LOC_CODE_TO_NAME[code] || code;
         const slug = CSV_LOC_CODE_TO_SLUG[code];
         if(!slug){
-          parts.push(`<div>⚠ <b>${bookings.length}</b> booking${bookings.length===1?'':'s'} for <b>${locName}</b> (${code}) — no camp hub yet, kept for partners only</div>`);
+          // These bookings DO get saved — they just bypass the camp-hub
+          // per-location panel because this location code doesn't have a
+          // dedicated Camp Hub. The full set still lands in the global
+          // `bookings` table at the bottom of this flow (used by the
+          // Partners app and the workspace Bookings views).
+          parts.push(`<div style="color:#0a6b32">✅ <b>${bookings.length}</b> booking${bookings.length===1?'':'s'} for <b>${locName}</b> (${code}) — saved to Partners app (no dedicated Camp Hub for this code)</div>`);
           continue;
         }
         // Resolve location_id from slug
