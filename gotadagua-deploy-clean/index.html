@@ -3261,6 +3261,15 @@
           location: CSV_LOC_CODE_TO_NAME[r.locationCode] || r.locationCode || 'Unknown',
           package: r.package || '',
           partner_name: partnerName,
+          // Country was being parsed from the CSV into r.country and then
+          // dropped on the floor — only making it into raw_payload, NEVER
+          // into the dedicated `country` column added by
+          // add-bookings-country.sql. Partners app reads row.country (the
+          // column, not the JSONB blob), so KILROY's per-country grouping
+          // had nothing to group on. Now persists explicitly. Empty
+          // strings collapse to null so partial-index idx_bookings_country
+          // (where country is not null) stays efficient.
+          country: (r.country && String(r.country).trim()) || null,
           booking_type: partnerName ? 'surfcamp' : 'direct',
           partner_commission_pct: commissionPct,
           commission_amount: commissionAmount,
