@@ -4085,31 +4085,53 @@ async function loadFromSupabase() {
   __loadingFromSupabase = true;
   try {
     const client = getAuthClient();
-    const [partnersRes, bookingsRes, statusesRes] = await Promise.all([
+    // Supabase has a hard 1000-row default on .select() — without
+    // pagination the partners view silently truncated to the first
+    // 1000 bookings ordered by check_in_on ASCENDING (= oldest first).
+    // The moment cumulative imports pushed total > 1000, every recent
+    // month was lost from the UI even though the rows were in the DB.
+    // fetchAllBookings pages through in 1000-row batches until done.
+    async function fetchAllBookings(){
+      const PAGE_SIZE = 1000;
+      let all = [];
+      let from = 0;
+      for(;;){
+        const { data, error } = await client
+          .from('bookings')
+          .select('*')
+          .order('check_in_on', { ascending: true })
+          .range(from, from + PAGE_SIZE - 1);
+        if(error) throw error;
+        if(!data || data.length === 0) break;
+        all = all.concat(data);
+        if(data.length < PAGE_SIZE) break;
+        from += PAGE_SIZE;
+      }
+      return all;
+    }
+    const [partnersRes, bookingsAll, statusesRes] = await Promise.all([
       client.from('partners').select('*').eq('is_active', true).order('name'),
-      client.from('bookings').select('*').order('check_in_on', { ascending: true }),
+      fetchAllBookings(),
       client.from('partner_month_status').select('month_key,status,partner_id,partners(name)').order('month_key', { ascending: true })
     ]);
     if (partnersRes.error) throw partnersRes.error;
-    if (bookingsRes.error) throw bookingsRes.error;
     if (statusesRes.error) throw statusesRes.error;
 
     let partnerRows = partnersRes.data || [];
-    let bookingRows = bookingsRes.data || [];
+    let bookingRows = bookingsAll || [];
     let statusRows = statusesRes.data || [];
 
     if (!bookingRows.length) {
       await bootstrapSeedDataIfNeeded();
-      const [partnersReload, bookingsReload, statusesReload] = await Promise.all([
+      const [partnersReload, bookingsAllReload, statusesReload] = await Promise.all([
         client.from('partners').select('*').eq('is_active', true).order('name'),
-        client.from('bookings').select('*').order('check_in_on', { ascending: true }),
+        fetchAllBookings(),
         client.from('partner_month_status').select('month_key,status,partner_id,partners(name)').order('month_key', { ascending: true })
       ]);
       if (partnersReload.error) throw partnersReload.error;
-      if (bookingsReload.error) throw bookingsReload.error;
       if (statusesReload.error) throw statusesReload.error;
       partnerRows = partnersReload.data || [];
-      bookingRows = bookingsReload.data || [];
+      bookingRows = bookingsAllReload || [];
       statusRows = statusesReload.data || [];
     }
 
