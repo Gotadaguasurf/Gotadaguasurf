@@ -2363,6 +2363,14 @@ function partnerBillsByCountry(name){
   return String(name||'').trim().toUpperCase()==='KILROY';
 }
 
+// The Surf Tribe bills per camp location (Ahangama / Tamraght /
+// Portugal / etc.) — they collect from the guest and issue a separate
+// invoice per camp the guest stays at. Same shape as the KILROY
+// per-country split, just keyed on b.location instead of b.country.
+function partnerBillsByLocation(name){
+  return String(name||'').trim().toLowerCase()==='the surf tribe';
+}
+
 // Group bookings by Country (Sweden / Norway / …). Empty / missing
 // country goes into a single 'No country' bucket, always sorted last
 // so the explicit countries lead the list alphabetically. Returns an
@@ -2377,6 +2385,23 @@ function groupBookingsByCountry(bookings){
   return [...groups.entries()].sort(([a],[b])=>{
     if(a==='No country') return 1;
     if(b==='No country') return -1;
+    return a.localeCompare(b);
+  });
+}
+
+// Same shape as groupBookingsByCountry but keyed on b.location.
+// Used by The Surf Tribe statement (one invoice block per camp).
+// 'Unknown' goes last so the camps come first alphabetically.
+function groupBookingsByLocation(bookings){
+  const groups=new Map();
+  (bookings||[]).forEach(b=>{
+    const c=(b.location||'').toString().trim()||'Unknown';
+    if(!groups.has(c)) groups.set(c,[]);
+    groups.get(c).push(b);
+  });
+  return [...groups.entries()].sort(([a],[b])=>{
+    if(a==='Unknown') return 1;
+    if(b==='Unknown') return -1;
     return a.localeCompare(b);
   });
 }
@@ -2416,30 +2441,41 @@ function buildStatementEmailPayload(partner, periodLabel, bookings){
     const tail = ext ? `  //${ext}` : '';
     return `- ${ds} | ${r.guest||'Guest'} | ${r.ref||''} | ${r.location||''} | ${eur(r.gross||0)}${tail}`;
   };
-  // Country grouping (KILROY only). Other partners keep the flat list.
-  // When grouping is on, we ALSO build per-country totals (booking count,
-  // gross, commission, due) inline so the email shows each country as a
-  // standalone section that the KILROY rep can paste into their invoice
-  // tooling. The trailing "Total bookings / Gross / Commission / Due"
-  // block at the very end of the body is suppressed for KILROY since
-  // those numbers are already broken down per country.
+  // KILROY → group by country (Sweden / Norway / …)
+  // The Surf Tribe → group by camp location (Ahangama / Tamraght / Portugal …)
+  // Every other partner → flat list, no grouping.
+  //
+  // When grouping is on, we ALSO build per-group totals (booking count,
+  // gross, commission, due) inline so the email shows each section as a
+  // standalone block the partner rep can paste into their invoice tool.
+  // The trailing "Total bookings / Gross / Commission / Due" block at
+  // the very end is suppressed because those numbers are already broken
+  // down per group — otherwise we'd be double-presenting the same money.
   let bookingLines;
   let suppressGrandTotals = false;
+  // groupsForStatement: [[label, bookings[]], …] in render order, or null
+  // when no grouping applies. Centralises the country-vs-location branch
+  // so the formatter below stays one code path.
+  let groupsForStatement = null;
   if(partnerBillsByCountry(partner)){
+    groupsForStatement = groupBookingsByCountry(bookings);
+  } else if(partnerBillsByLocation(partner)){
+    groupsForStatement = groupBookingsByLocation(bookings);
+  }
+  if(groupsForStatement){
     suppressGrandTotals = true;
-    const countryGroups = groupBookingsByCountry(bookings);
     bookingLines = [];
-    countryGroups.forEach(([country, group], i)=>{
+    groupsForStatement.forEach(([groupLabel, group], i)=>{
       const g_gross = group.reduce((s,b)=>s+(+b.gross||0),0);
       const g_com = group.reduce((s,b)=>s+(+b.com_amt||0),0);
       const g_net = group.reduce((s,b)=>s+(+b.net||0),0);
       const g_due = collects ? g_net : g_com;
-      // Spacer line between countries (skipped before the first one).
+      // Spacer line between groups (skipped before the first one).
       if(i>0) bookingLines.push('');
       // Gmail compose URL strips formatting from the body= param, so
       // bold/HTML isn't an option here. UPPERCASE is the plain-text
       // equivalent and reads as the section header at a glance.
-      bookingLines.push(`${country.toUpperCase()}:`);
+      bookingLines.push(`${groupLabel.toUpperCase()}:`);
       group.slice().sort((a,b)=>(a.checkin||'').localeCompare(b.checkin||''))
         .forEach(r=>bookingLines.push(formatBookingLine(r)));
       bookingLines.push('');
