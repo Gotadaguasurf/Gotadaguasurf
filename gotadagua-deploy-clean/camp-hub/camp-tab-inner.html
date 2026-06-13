@@ -3561,6 +3561,17 @@ function saveNewGuest(){
 }
 
 function openCloseWeek(){
+  // per_guest mode: there are no weeks to close — the container week
+  // is permanent and revenue is recognised per item as it's paid. This
+  // function is normally unreachable in this mode (button hidden) but
+  // staying defensive in case stale UI / a keyboard shortcut / a stale
+  // browser tab fires it. User reported losing guests overnight in
+  // Morocco that I couldn't reproduce; gating here removes the most
+  // dangerous path that could have caused it.
+  if(CAMP_TAB_MODE === 'per_guest'){
+    console.warn('[CampTab] openCloseWeek() called in per_guest mode — ignored');
+    return;
+  }
   if(!S.activeWeek){toast('No active week.');return;}
   const guests=allConsumers(S.activeWeek);
   const unpaid=guests.filter(g=>!g.paid&&gtot(g)>0);
@@ -3587,6 +3598,17 @@ function openCloseWeek(){
 }
 
 function confirmClose(){
+  // Second line of defence — even if openCloseWeek's guard is somehow
+  // bypassed (programmatic call, restored stale modal), refuse to
+  // archive the container week in per_guest mode. Without this gate, a
+  // single confirmClose() call wipes every guest that doesn't have a
+  // future bookingCo timestamp (shouldCarryConsumer returns false for
+  // manual guests) and creates an empty next-week — exactly the
+  // "guests disappeared overnight" symptom the user reported.
+  if(CAMP_TAB_MODE === 'per_guest'){
+    console.warn('[CampTab] confirmClose() called in per_guest mode — ignored');
+    return;
+  }
   if(!S.activeWeek)return;
   const unpaid=allConsumers(S.activeWeek).filter(g=>!g.paid&&gtot(g)>0);
   if(unpaid.length){
