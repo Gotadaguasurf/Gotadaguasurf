@@ -1346,7 +1346,28 @@ function hydrateWeekStateFromRows(weekRows,guestRows,itemRows){
     };
     if(week.status==='closed') state.history.push(wk);
     else if(week.status==='draft' || week.draft_kind==='next') state.nextWeek=wk;
-    else state.activeWeek=wk;
+    else if (state.activeWeek) {
+      // ── DUPLICATE-OPEN-WEEK GUARD ─────────────────────────────────────────
+      // Multiple OPEN weeks for the same location violates the invariant
+      // (per_guest mode: 1 container per location; weekly mode: 1 active
+      // week at a time). It happens when stranded duplicate camp_weeks
+      // rows exist from before the duplicate-creation fix landed. The
+      // old code silently overwrote state.activeWeek on each loop iteration,
+      // dropping the previous one's guests from the UI — depending on row
+      // order, the guest you just added could vanish. We instead MERGE the
+      // duplicate's guests into the primary so nothing is lost; the next
+      // sync rewrites their week_id to the primary id, naturally
+      // consolidating them. Run the dedup-weeks SQL to clean up the empty
+      // shells afterwards.
+      state.activeWeek.guests.push(...wk.guests);
+      state.activeWeek.staff.push(...wk.staff);
+      console.warn('[CampTab] hydrate: merged duplicate open week into primary',{
+        primaryWeekId:state.activeWeek.id,
+        duplicateWeekId:wk.id,
+        mergedGuests:wk.guests.length,
+        mergedStaff:wk.staff.length
+      });
+    } else state.activeWeek=wk;
   });
   return state;
 }
