@@ -1072,12 +1072,52 @@ function currentWeek(){
 //
 // Returns true if a new week was created (so callers can re-render).
 // No-op for weekly mode (Sri Lanka) and when a week already exists.
-function ensurePerGuestWeek(){
+async function ensurePerGuestWeek(){
   if (CAMP_TAB_MODE !== 'per_guest') return false;
   if (S.activeWeek) return false;
+  // ── DUPLICATE-WEEK GUARD ─────────────────────────────────────────────────
+  // Before creating a new container week locally, ask Supabase if an open
+  // one already exists for this location. Without this lookup, every
+  // browser session/device generated a fresh random UUID and the sync
+  // upserted it as a NEW row — accumulating duplicate (location_id,
+  // start_date) entries. The UI then picked one of them arbitrarily, and
+  // guests added to the others became invisible. Logged 2026-06-18 across
+  // all per_guest locations after the local-diff sync fix exposed the
+  // duplicates the old DB-diff sync had been silently masking by deletion.
+  let weekId = null;
+  let weekStart = today();
+  let locationIdForSeed = null;
+  try {
+    const client = getCampTabSupabaseClient();
+    const locationId = await ensureCampTabLocationId();
+    locationIdForSeed = locationId;
+    if (client && locationId) {
+      const { data, error } = await client.from('camp_weeks')
+        .select('id,start_date')
+        .eq('location_id', locationId)
+        .is('closed_at', null)
+        .order('start_date', { ascending: false })
+        .limit(1);
+      if (!error && data && data.length > 0) {
+        weekId = data[0].id;
+        weekStart = data[0].start_date;
+      }
+    }
+  } catch (lookupError) {
+    console.warn('[CampTab] ensurePerGuestWeek lookup failed', lookupError);
+  }
+  if (!weekId) {
+    // No existing open week — use a DETERMINISTIC UUID seeded by location +
+    // today. Two devices hitting this path concurrently will compute the
+    // SAME id, so upsert dedupes them by primary key instead of creating
+    // duplicate rows.
+    weekId = locationIdForSeed
+      ? simpleStableUuid(`camp-week|${locationIdForSeed}|${weekStart}`)
+      : makeUuid();
+  }
   S.activeWeek = {
-    id: makeUuid(),
-    start: today(),
+    id: weekId,
+    start: weekStart,
     guests: [],
     staff: STAFF.map(s => ({
       id: isUuid(s?.id) ? s.id : makeUuid(),
@@ -1086,7 +1126,10 @@ function ensurePerGuestWeek(){
       paid: false
     })).filter(s => s.name)
   };
-  save();
+  // Don't persist the empty shell. Persistence happens when the user does
+  // something (add guest, mark item paid, etc.). By then hydrate has
+  // typically completed and S.activeWeek already points to the canonical
+  // week's id — avoiding the "empty shell syncs as a duplicate row" race.
   return true;
 }
 function campTabStateHasData(state){
@@ -3545,10 +3588,13 @@ function saveNewWeek(){
   toast('Week created'+(names.length?' with '+names.length+' guests':''));
 }
 
-function openAddGuest(){
+async function openAddGuest(){
   // per_guest mode (Morocco): auto-create the invisible container week so
-  // the user can add guests without ever seeing the week concept.
-  if(CAMP_TAB_MODE==='per_guest') ensurePerGuestWeek();
+  // the user can add guests without ever seeing the week concept. Awaited
+  // because the Supabase existence-check is async — if we don't wait, the
+  // first add-guest click after a fresh tab can race ensurePerGuestWeek and
+  // land on a stale placeholder id, creating a duplicate week row.
+  if(CAMP_TAB_MODE==='per_guest') await ensurePerGuestWeek();
   if(!S.activeWeek){toast('No active week.');return;}
   document.getElementById('addGuestSub').textContent=CAMP_TAB_MODE==='per_guest'?'':weekSpan(S.activeWeek.start);
   document.querySelector('#addGuestOv .mhdr-title').textContent=currentRoster==='staff'?'Add staff':'Add guests';
@@ -4054,7 +4100,10 @@ async function bootstrapCampTabFromSupabase(){
     await hydrateCampTabStateFromSupabase({mergeLocal:true});
     // per_guest mode: if Supabase came back with no activeWeek, spin up the
     // invisible container week now so the UI never shows "No active week".
-    ensurePerGuestWeek();
+    // Awaited so the Supabase existence-check completes before we render
+    // (otherwise the initial render uses the in-memory placeholder id and
+    // the next save creates a duplicate row).
+    await ensurePerGuestWeek();
     renderAllCampTabViews();
     notifyParentStateChanged();
     const locationId=await ensureCampTabLocationId();
