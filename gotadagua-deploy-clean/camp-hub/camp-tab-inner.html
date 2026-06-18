@@ -784,6 +784,31 @@ let campTabBootstrapped=false;
 let suppressRemoteSync=false;
 let campTabRehydrateTimer=null; // module-level so syncCampTabStateToSupabase can cancel it
 let _suppressGeneration=0; // incremented on each sync so stale timeouts don't clear a new suppress
+// LOCAL-DIFF DELETION TRACKING. Holds the IDs present in the local S after the
+// last successful hydrate or sync. The next sync compares this to the current
+// S to determine what was LOCALLY removed — that, and only that, is what gets
+// deleted from Supabase. We never derive deletions by comparing local S to the
+// DB directly, because in a multi-device setup another device's newly-added
+// guest looks like a "stale" DB row if we haven't rehydrated yet → silent data
+// loss. (Root cause of recurring guest disappearances logged 2026-06-17.)
+let _lastLocalSnapshot={weeks:new Set(),guests:new Set(),items:new Set()};
+function captureLocalSnapshotIds(){
+  const weeks=new Set(),guests=new Set(),items=new Set();
+  const allWeeks=[];
+  if(S?.activeWeek) allWeeks.push(S.activeWeek);
+  if(S?.nextWeek) allWeeks.push(S.nextWeek);
+  if(Array.isArray(S?.history)) allWeeks.push(...S.history);
+  allWeeks.forEach(wk=>{
+    if(wk?.id) weeks.add(wk.id);
+    ['guests','staff'].forEach(rosterName=>{
+      (wk?.[rosterName]||[]).forEach(g=>{
+        if(g?.id) guests.add(g.id);
+        (g?.items||[]).forEach(it=>{ if(it?.id) items.add(it.id); });
+      });
+    });
+  });
+  return {weeks,guests,items};
+}
 
 function isUuid(value){
   return typeof value==='string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
@@ -1388,6 +1413,9 @@ async function hydrateCampTabStateFromSupabase({mergeLocal=false}={}){
   }
   if((weekRows?.length||0) || (guestRows?.length||0) || (itemRows?.length||0)){
     S=hydrateWeekStateFromRows(weekRows,guestRows,itemRows);
+    // After hydrate, sync's "what to delete" baseline is whatever we just loaded.
+    // Anything the user removes AFTER this point becomes a legitimate delete.
+    _lastLocalSnapshot=captureLocalSnapshotIds();
     return true;
   }
   if(mergeLocal && (S.activeWeek || S.nextWeek || (S.history||[]).length)){
@@ -1479,14 +1507,9 @@ async function syncCampTabStateToSupabase(){
       });
     });
   });
-  const [existingWeeksRes,existingGuestsRes,existingItemsRes]=await Promise.all([
-    client.from('camp_weeks').select('id').eq('location_id',locationId),
-    client.from('camp_guests').select('id').eq('location_id',locationId),
-    client.from('camp_tab_items').select('id').eq('location_id',locationId)
-  ]);
-  if(existingWeeksRes.error) throw existingWeeksRes.error;
-  if(existingGuestsRes.error) throw existingGuestsRes.error;
-  if(existingItemsRes.error) throw existingItemsRes.error;
+  // UPSERT everything in the local snapshot. New guests/items/weeks added on
+  // this device land here; anything modified locally (paid_at, closed_at, …)
+  // overwrites the DB row by id.
   if(weekRows.length){
     const { error: upsertWeeksError } = await client.from('camp_weeks').upsert(weekRows,{onConflict:'id'});
     if(upsertWeeksError) throw upsertWeeksError;
@@ -1499,43 +1522,38 @@ async function syncCampTabStateToSupabase(){
     const { error: upsertItemsError } = await client.from('camp_tab_items').upsert(itemRows,{onConflict:'id'});
     if(upsertItemsError) throw upsertItemsError;
   }
-  const staleItemIds=(existingItemsRes.data||[]).map(row=>row.id).filter(id=>!itemRows.some(row=>row.id===id));
-  const staleGuestIds=(existingGuestsRes.data||[]).map(row=>row.id).filter(id=>!guestRows.some(row=>row.id===id));
-  const staleWeekIds=(existingWeeksRes.data||[]).map(row=>row.id).filter(id=>!weekRows.some(row=>row.id===id));
-  // ── DATA-LOSS GUARD ─────────────────────────────────────────────────────
-  // Refuse to delete EVERYTHING when the local state is suspiciously empty.
-  // Without this guard, a Camp Tab session that boots with S.weeks=[] (a
-  // race during hydration, or a brand-new tab that hasn't seen any data
-  // yet) was wiping the entire Morocco camp_weeks/camp_guests tables —
-  // they user lost guests/weeks history because of this exact path.
+  // ── DELETE DIFF: LOCAL-vs-LOCAL (not local-vs-DB) ─────────────────────────
+  // Compute deletions by comparing the previous local snapshot to the current
+  // one. Anything that disappeared from local state is something the user
+  // explicitly removed (via deleteClosedGuest, void-item, splice history, …)
+  // and SHOULD be deleted from Supabase. Anything in the DB but not in either
+  // local snapshot is OUTSIDE our knowledge (another device added it, history
+  // not yet hydrated, …) and MUST NOT be touched.
   //
-  // The rule: if we're about to delete ALL existing rows of a table AND
-  // our local replacement set is empty, abort and surface a console
-  // warning. Legitimate "delete everything" operations should go through
-  // an explicit clear-table flow, not the diff sync.
-  const wouldDeleteAllWeeks  = staleWeekIds.length>0  && weekRows.length===0  && (existingWeeksRes.data||[]).length>0;
-  const wouldDeleteAllGuests = staleGuestIds.length>0 && guestRows.length===0 && (existingGuestsRes.data||[]).length>0;
-  const wouldDeleteAllItems  = staleItemIds.length>0  && itemRows.length===0  && (existingItemsRes.data||[]).length>0;
-  if (wouldDeleteAllWeeks || wouldDeleteAllGuests || wouldDeleteAllItems) {
-    console.error('[CampTab] DATA-LOSS GUARD triggered — refusing destructive sync.',{
-      wouldDeleteAllWeeks, existingWeeks:(existingWeeksRes.data||[]).length, localWeeks:weekRows.length,
-      wouldDeleteAllGuests,existingGuests:(existingGuestsRes.data||[]).length,localGuests:guestRows.length,
-      wouldDeleteAllItems, existingItems:(existingItemsRes.data||[]).length, localItems:itemRows.length
-    });
-    return false;
-  }
-  if(staleItemIds.length){
-    const { error: deleteItemsError } = await client.from('camp_tab_items').delete().in('id',staleItemIds);
+  // This replaces the previous diff that compared local rows to ALL DB rows
+  // for the location, which silently deleted guests added on other devices
+  // every time a partial-view tab synced. See module-level _lastLocalSnapshot
+  // comment for the full incident write-up.
+  const currentSnap=captureLocalSnapshotIds();
+  const removedWeekIds=Array.from(_lastLocalSnapshot.weeks).filter(id=>!currentSnap.weeks.has(id));
+  const removedGuestIds=Array.from(_lastLocalSnapshot.guests).filter(id=>!currentSnap.guests.has(id));
+  const removedItemIds=Array.from(_lastLocalSnapshot.items).filter(id=>!currentSnap.items.has(id));
+  if(removedItemIds.length){
+    const { error: deleteItemsError } = await client.from('camp_tab_items').delete().in('id',removedItemIds);
     if(deleteItemsError) throw deleteItemsError;
   }
-  if(staleGuestIds.length){
-    const { error: deleteGuestsError } = await client.from('camp_guests').delete().in('id',staleGuestIds);
+  if(removedGuestIds.length){
+    const { error: deleteGuestsError } = await client.from('camp_guests').delete().in('id',removedGuestIds);
     if(deleteGuestsError) throw deleteGuestsError;
   }
-  if(staleWeekIds.length){
-    const { error: deleteWeeksError } = await client.from('camp_weeks').delete().in('id',staleWeekIds);
+  if(removedWeekIds.length){
+    const { error: deleteWeeksError } = await client.from('camp_weeks').delete().in('id',removedWeekIds);
     if(deleteWeeksError) throw deleteWeeksError;
   }
+  // Commit the new baseline — only after every upsert/delete succeeded so a
+  // mid-sync failure doesn't strand us with a stale snapshot that re-deletes
+  // on retry.
+  _lastLocalSnapshot=currentSnap;
   return true;
   }finally{
     // Release the RT lock after a brief cooldown so our own delete-triggered RT events
