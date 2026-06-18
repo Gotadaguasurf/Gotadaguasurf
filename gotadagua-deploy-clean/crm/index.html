@@ -158,6 +158,40 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
 .editor-hint{font-size:11px;color:var(--muted);margin-top:4px}
 .editor-hint code{font-family:'DM Mono',monospace;background:var(--foam);padding:1px 5px;border-radius:4px;color:var(--ocean);font-size:11px}
 
+/* ── HERO TODAY ───────────────────────────────────────────────────── */
+.hero-today{background:linear-gradient(135deg,var(--navy) 0%,var(--navy-mid) 100%);border-radius:var(--r-lg);padding:0;margin-bottom:24px;box-shadow:var(--sh-lg);overflow:hidden;position:relative}
+.hero-today::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 90% 20%,rgba(30,111,168,.35),transparent 50%);pointer-events:none}
+.hero-today-inner{padding:26px 30px;position:relative;z-index:1}
+.hero-today-eyebrow{font-size:11px;letter-spacing:.15em;text-transform:uppercase;font-weight:700;color:#7aabcc;margin-bottom:8px}
+.hero-today-title{font-family:'DM Serif Display',serif;font-size:30px;color:#fff;line-height:1.15;margin-bottom:6px}
+.hero-today-sub{font-size:13.5px;color:#bdd4e8;margin-bottom:18px;font-weight:500}
+.hero-today-list{display:grid;gap:8px}
+.hero-task{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer;transition:all .18s}
+.hero-task:hover{background:rgba(255,255,255,.13);border-color:rgba(255,255,255,.25);transform:translateY(-1px)}
+.hero-task-left{display:flex;align-items:center;gap:10px;flex:1;min-width:0}
+.hero-task-icon{font-size:18px;flex-shrink:0}
+.hero-task-text{min-width:0}
+.hero-task-name{font-weight:700;color:#fff;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hero-task-meta{font-size:11px;color:#9bbed9;margin-top:1px}
+.hero-task-action{font-size:11px;font-weight:700;color:#fff;background:var(--ocean);padding:5px 12px;border-radius:999px;white-space:nowrap;flex-shrink:0;text-transform:uppercase;letter-spacing:.04em}
+.hero-task-action.overdue{background:#dc2626}
+.hero-task-action.first{background:#8b5cf6}
+.hero-empty{padding:18px 22px;color:#9bbed9;font-size:13px;text-align:center;background:rgba(255,255,255,.05);border-radius:10px}
+
+/* ── PRESET FILTER CHIPS ──────────────────────────────────────────── */
+.preset-chips{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.chip{padding:7px 14px;border-radius:999px;border:1.5px solid var(--border);background:#fff;font-size:12px;font-weight:700;color:var(--muted);cursor:pointer;transition:all .18s;font-family:'Outfit',sans-serif;display:inline-flex;align-items:center;gap:6px}
+.chip:hover{border-color:var(--ocean);color:var(--ocean)}
+.chip.active{background:var(--navy);color:#fff;border-color:var(--navy)}
+.chip-count{background:rgba(255,255,255,.18);padding:1px 7px;border-radius:999px;font-size:10.5px;font-weight:800}
+.chip:not(.active) .chip-count{background:var(--foam);color:var(--ocean)}
+
+/* ── DAYS SINCE BADGE ─────────────────────────────────────────────── */
+.since-badge{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:6px;background:#f0f4f8;color:var(--muted);font-family:'DM Mono',monospace}
+.since-badge.hot{background:#fee2e2;color:#b91c1c}
+.since-badge.warm{background:#fef3c7;color:#92400e}
+.since-badge.cold{background:#e0e7ff;color:#3730a3}
+
 /* ── DASHBOARD ────────────────────────────────────────────────────── */
 .dash-row{display:grid;grid-template-columns:1.4fr 1fr;gap:18px;margin-bottom:18px}
 @media (max-width:840px){.dash-row{grid-template-columns:1fr}}
@@ -242,26 +276,42 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
 <main>
   <!-- ─── DASHBOARD TAB ─── -->
   <div id="page-dashboard">
+    <!-- Hero: today's tasks - the "what to do RIGHT NOW" surface. -->
+    <div class="hero-today" id="heroToday">
+      <div class="hero-today-inner">
+        <div class="hero-today-eyebrow">Today · <span id="todayDate"></span></div>
+        <div class="hero-today-title" id="heroTodayTitle">Loading…</div>
+        <div class="hero-today-sub" id="heroTodaySub"></div>
+        <div class="hero-today-list" id="heroTodayList"></div>
+      </div>
+    </div>
+
     <div class="section-hdr">
-      <div class="section-title">Outreach overview</div>
-      <div class="section-hint">Live counts pulled from <code>outreach_contacts</code></div>
+      <div class="section-title">Pipeline overview</div>
+      <div class="section-hint">Live counts from <code>outreach_contacts</code></div>
     </div>
     <div class="kpi-strip" id="kpiStrip"></div>
 
     <div class="dash-row">
       <div class="dash-card">
-        <div class="dash-card-title">Follow-ups due</div>
+        <div class="dash-card-title">📅  Upcoming follow-ups (next 7 days)</div>
         <div id="followupsList"></div>
       </div>
       <div class="dash-card">
-        <div class="dash-card-title">Pipeline funnel</div>
+        <div class="dash-card-title">📊  Pipeline funnel</div>
         <div id="funnelChart"></div>
       </div>
     </div>
 
-    <div class="dash-card">
-      <div class="dash-card-title">No reply > 14 days</div>
-      <div id="noReplyList"></div>
+    <div class="dash-row">
+      <div class="dash-card">
+        <div class="dash-card-title">😴  No reply > 14 days</div>
+        <div id="noReplyList"></div>
+      </div>
+      <div class="dash-card">
+        <div class="dash-card-title">🎉  Recently closed (last 30 days)</div>
+        <div id="recentClosedList"></div>
+      </div>
     </div>
   </div>
 
@@ -270,6 +320,17 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
     <div class="section-hdr">
       <div class="section-title">Contacts</div>
       <div class="section-hint">Click a row to open the contact</div>
+    </div>
+
+    <!-- Preset filters: clicking one sets the underlying selects so the user can refine further. -->
+    <div class="preset-chips" id="presetChips">
+      <button class="chip active" data-preset="all">All <span class="chip-count" id="cn-all">0</span></button>
+      <button class="chip" data-preset="today">📅 Today's tasks <span class="chip-count" id="cn-today">0</span></button>
+      <button class="chip" data-preset="overdue">🔥 Overdue <span class="chip-count" id="cn-overdue">0</span></button>
+      <button class="chip" data-preset="hot">💬 Hot (Replied/Meeting) <span class="chip-count" id="cn-hot">0</span></button>
+      <button class="chip" data-preset="first-touch">✨ Needs first touch <span class="chip-count" id="cn-first">0</span></button>
+      <button class="chip" data-preset="stale">😴 Stale (>14d silent) <span class="chip-count" id="cn-stale">0</span></button>
+      <button class="chip" data-preset="closed">🏆 Closed <span class="chip-count" id="cn-closed">0</span></button>
     </div>
 
     <div class="filter-bar">
@@ -363,6 +424,33 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
     <div class="compose-footer">
       <button class="action-btn ghost" id="composeCancel">Cancel</button>
       <button class="action-btn primary" id="composeOpen" style="grid-column:auto">Open in Gmail →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── FOLLOW-UP PROMPT MODAL (fires after sending email) ─── -->
+<div class="compose-modal" id="followupModal">
+  <div class="compose-card" style="max-width:480px">
+    <div class="compose-header">
+      <div class="compose-title">📅 Schedule follow-up</div>
+      <button class="detail-close" id="followupSkip" aria-label="Skip">×</button>
+    </div>
+    <div class="compose-body">
+      <p style="font-size:14px;color:var(--muted);margin-bottom:18px">When do you want to follow up with <b style="color:var(--navy)" id="followupContactName"></b> if they don't reply?</p>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px">
+        <button class="action-btn ghost" data-days="3" style="grid-column:auto">3 days</button>
+        <button class="action-btn ghost" data-days="7" style="grid-column:auto">7 days</button>
+        <button class="action-btn ghost" data-days="14" style="grid-column:auto">14 days</button>
+        <button class="action-btn ghost" data-days="30" style="grid-column:auto">30 days</button>
+      </div>
+      <div class="editor-field" style="margin-top:14px">
+        <label>Or pick a custom date</label>
+        <input type="date" id="followupCustomDate">
+      </div>
+    </div>
+    <div class="compose-footer">
+      <button class="action-btn ghost" id="followupSkipBtn">Skip</button>
+      <button class="action-btn primary" id="followupSaveBtn" style="grid-column:auto">Save follow-up</button>
     </div>
   </div>
 </div>
@@ -516,41 +604,98 @@ document.querySelectorAll('.nav-tab').forEach(t=>{
 //  DASHBOARD
 // ════════════════════════════════════════════════════════════════════════
 function renderDashboard(){
-  // KPI counts
+  const today = new Date().toISOString().slice(0,10);
+  document.getElementById('todayDate').textContent =
+    new Date().toLocaleDateString('en-GB', { weekday:'long', day:'2-digit', month:'long' });
+
+  // ── HERO: today's tasks ──────────────────────────────────────────────
+  // Tasks that need user action TODAY, prioritised in this order:
+  //   1. Overdue follow-ups (most urgent — past their date)
+  //   2. Follow-ups due today
+  //   3. Stale sent emails (>14d silent — opportunity to nudge)
+  //   4. Random "needs first touch" if nothing else (so user always has work)
+  const overdueFollowups = CONTACTS
+    .filter(c => c.follow_up_at && c.follow_up_at < today)
+    .sort((a,b)=>a.follow_up_at.localeCompare(b.follow_up_at));
+  const todayFollowups = CONTACTS
+    .filter(c => c.follow_up_at === today);
+  const stale = CONTACTS
+    .filter(c => c.status === 'sent' && c.last_contacted_at && c.last_contacted_at.slice(0,10) < addDays(today,-14))
+    .sort((a,b)=>(a.last_contacted_at||'').localeCompare(b.last_contacted_at||''));
+
+  const tasks = [];
+  overdueFollowups.forEach(c => tasks.push({c, kind:'overdue', icon:'🔥', actionLabel:`${Math.abs(daysBetween(today,c.follow_up_at))}d overdue`, actionClass:'overdue', meta:`Follow up — was due ${fmtDate(c.follow_up_at)}`}));
+  todayFollowups.forEach(c => tasks.push({c, kind:'today', icon:'📅', actionLabel:'Today', actionClass:'', meta:'Follow up today'}));
+  stale.slice(0, 5).forEach(c => tasks.push({c, kind:'stale', icon:'😴', actionLabel:`${daysBetween(c.last_contacted_at.slice(0,10), today)}d silent`, actionClass:'', meta:`No reply since ${fmtDate(c.last_contacted_at)}`}));
+
+  // Fall back to "needs first touch" if nothing urgent today.
+  if(tasks.length === 0){
+    const firstTouch = CONTACTS.filter(c=>c.status==='not_started' && c.email).slice(0,3);
+    firstTouch.forEach(c => tasks.push({c, kind:'first-touch', icon:'✨', actionLabel:'Send intro', actionClass:'first', meta:`${c.country||''}${c.city?' · '+c.city:''} · ${c.segment||''}`}));
+  }
+
+  const hero = document.getElementById('heroToday');
+  const heroTitle = document.getElementById('heroTodayTitle');
+  const heroSub = document.getElementById('heroTodaySub');
+  const heroList = document.getElementById('heroTodayList');
+
+  if(overdueFollowups.length + todayFollowups.length > 0){
+    heroTitle.textContent = `You have ${overdueFollowups.length + todayFollowups.length} follow-up${overdueFollowups.length+todayFollowups.length>1?'s':''} to handle today`;
+    heroSub.textContent = `${overdueFollowups.length} overdue · ${todayFollowups.length} due today · ${stale.length} more silent for 14+ days`;
+  } else if(stale.length > 0){
+    heroTitle.textContent = `Nothing scheduled today — but ${stale.length} contact${stale.length>1?'s':''} ${stale.length>1?'have':'has'} gone silent`;
+    heroSub.textContent = 'Quick nudge today could turn one of these into a reply';
+  } else {
+    const remaining = CONTACTS.filter(c=>c.status==='not_started' && c.email).length;
+    heroTitle.textContent = remaining > 0 ? `Nothing pending — start outreach to a fresh contact` : `All caught up! 🎉`;
+    heroSub.textContent = remaining > 0 ? `${remaining} contacts still need a first email` : 'Every contact has been touched at least once';
+  }
+
+  heroList.innerHTML = tasks.slice(0, 6).map(t => `
+    <div class="hero-task" data-id="${t.c.id}">
+      <div class="hero-task-left">
+        <div class="hero-task-icon">${t.icon}</div>
+        <div class="hero-task-text">
+          <div class="hero-task-name">${escHtml(t.c.company)}</div>
+          <div class="hero-task-meta">${escHtml(t.meta)}</div>
+        </div>
+      </div>
+      <div class="hero-task-action ${t.actionClass}">${t.actionLabel}</div>
+    </div>
+  `).join('') || '<div class="hero-empty">Nothing pending right now.</div>';
+  heroList.querySelectorAll('.hero-task').forEach(el => {
+    el.addEventListener('click', ()=>openContact(el.dataset.id));
+  });
+
+  // ── KPI strip ─────────────────────────────────────────────────────────
   const byStatus = {};
   STATUS_ORDER.forEach(s=>byStatus[s]=0);
   CONTACTS.forEach(c=>{ byStatus[c.status] = (byStatus[c.status]||0)+1; });
-  const total = CONTACTS.length;
-  const sent = byStatus.sent||0;
-  const replied = byStatus.replied||0;
-  const meeting = byStatus.meeting||0;
+  const sent = byStatus.sent||0, replied = byStatus.replied||0, meeting = byStatus.meeting||0;
   const replyRate = sent>0 ? Math.round((replied/sent)*100) : 0;
 
-  const strip = document.getElementById('kpiStrip');
-  strip.innerHTML = `
-    <div class="kpi"><div class="kpi-label">Total contacts</div><div class="kpi-value">${total}</div><div class="kpi-sub">${CONTACTS.filter(c=>c.email).length} with email</div></div>
+  document.getElementById('kpiStrip').innerHTML = `
+    <div class="kpi"><div class="kpi-label">Total contacts</div><div class="kpi-value">${CONTACTS.length}</div><div class="kpi-sub">${CONTACTS.filter(c=>c.email).length} with email</div></div>
     <div class="kpi"><div class="kpi-label">Sent</div><div class="kpi-value accent">${sent}</div><div class="kpi-sub">awaiting response</div></div>
     <div class="kpi"><div class="kpi-label">Replied</div><div class="kpi-value green">${replied}</div><div class="kpi-sub">${replyRate}% reply rate</div></div>
     <div class="kpi"><div class="kpi-label">Meetings</div><div class="kpi-value">${meeting}</div><div class="kpi-sub">in discussion</div></div>
     <div class="kpi"><div class="kpi-label">Closed Won</div><div class="kpi-value green">${byStatus.closed_won||0}</div><div class="kpi-sub">${byStatus.closed_lost||0} lost</div></div>
   `;
 
-  // Follow-ups
-  const today = new Date().toISOString().slice(0,10);
-  const followups = CONTACTS.filter(c=>c.follow_up_at).sort((a,b)=>a.follow_up_at.localeCompare(b.follow_up_at));
-  const due = followups.filter(c=>c.follow_up_at <= addDays(today,7));
+  // ── Upcoming follow-ups (next 7 days, excluding overdue which are in hero) ──
+  const upcoming = CONTACTS
+    .filter(c => c.follow_up_at && c.follow_up_at >= today && c.follow_up_at <= addDays(today,7))
+    .sort((a,b)=>a.follow_up_at.localeCompare(b.follow_up_at));
   const fEl = document.getElementById('followupsList');
-  fEl.innerHTML = due.length ? due.map(c=>{
+  fEl.innerHTML = upcoming.length ? upcoming.map(c=>{
     const diff = daysBetween(today, c.follow_up_at);
-    const cls = diff < 0 ? 'overdue' : diff===0 ? 'today' : 'soon';
-    const label = diff < 0 ? `${Math.abs(diff)}d overdue` : diff===0 ? 'today' : `in ${diff}d`;
+    const cls = diff===0 ? 'today' : 'soon';
+    const label = diff===0 ? 'today' : `in ${diff}d`;
     return `<div class="followup-item"><div class="fi-name" data-id="${c.id}">${escHtml(c.company)}</div><div class="fi-due ${cls}">${label}</div></div>`;
-  }).join('') : '<div class="empty-state">No follow-ups due in the next 7 days.</div>';
-  fEl.querySelectorAll('.fi-name').forEach(el=>{
-    el.addEventListener('click', ()=>openContact(el.dataset.id));
-  });
+  }).join('') : '<div class="empty-state">No follow-ups in the next 7 days.</div>';
+  fEl.querySelectorAll('.fi-name').forEach(el=>el.addEventListener('click', ()=>openContact(el.dataset.id)));
 
-  // Funnel
+  // ── Funnel ──────────────────────────────────────────────────────────
   const fchart = document.getElementById('funnelChart');
   const maxCount = Math.max(1, ...Object.values(byStatus));
   fchart.innerHTML = STATUS_ORDER.map(s=>{
@@ -559,19 +704,25 @@ function renderDashboard(){
     return `<div class="funnel-bar"><div class="funnel-label">${STATUS_LABELS[s]}</div><div class="funnel-track"><div class="funnel-fill" style="width:${pct}%"></div></div><div class="funnel-count">${n}</div></div>`;
   }).join('');
 
-  // No reply > 14 days
-  const cutoff = addDays(today, -14);
-  const stale = CONTACTS
-    .filter(c => c.status === 'sent' && c.last_contacted_at && c.last_contacted_at.slice(0,10) < cutoff)
-    .sort((a,b)=>(a.last_contacted_at||'').localeCompare(b.last_contacted_at||''));
+  // ── Stale (no reply > 14 days, sent status) ────────────────────────
   const nEl = document.getElementById('noReplyList');
-  nEl.innerHTML = stale.length ? stale.slice(0,20).map(c=>{
+  nEl.innerHTML = stale.length ? stale.slice(0,15).map(c=>{
     const days = daysBetween(c.last_contacted_at.slice(0,10), today);
     return `<div class="followup-item"><div class="fi-name" data-id="${c.id}">${escHtml(c.company)}</div><div class="fi-due overdue">${days}d silent</div></div>`;
-  }).join('') + (stale.length>20 ? `<div class="empty-state" style="padding:14px">+ ${stale.length-20} more</div>` : '') : '<div class="empty-state">All sent emails are within the 14-day window.</div>';
-  nEl.querySelectorAll('.fi-name').forEach(el=>{
-    el.addEventListener('click', ()=>openContact(el.dataset.id));
-  });
+  }).join('') + (stale.length>15 ? `<div class="empty-state" style="padding:10px">+ ${stale.length-15} more</div>` : '') : '<div class="empty-state">All sent emails within the 14-day window. 🎉</div>';
+  nEl.querySelectorAll('.fi-name').forEach(el=>el.addEventListener('click', ()=>openContact(el.dataset.id)));
+
+  // ── Recently closed ──────────────────────────────────────────────────
+  const cutoff30 = addDays(today, -30);
+  const recentClosed = CONTACTS
+    .filter(c => (c.status==='closed_won' || c.status==='closed_lost') && c.updated_at && c.updated_at.slice(0,10) >= cutoff30)
+    .sort((a,b)=>(b.updated_at||'').localeCompare(a.updated_at||''));
+  const rcEl = document.getElementById('recentClosedList');
+  rcEl.innerHTML = recentClosed.length ? recentClosed.slice(0,15).map(c=>{
+    const won = c.status==='closed_won';
+    return `<div class="followup-item"><div class="fi-name" data-id="${c.id}">${escHtml(c.company)}</div><div class="fi-due" style="background:${won?'var(--green-bg)':'var(--red-bg)'};color:${won?'var(--green-text)':'var(--red-text)'}">${won?'✅ Won':'✗ Lost'} · ${fmtDate(c.updated_at)}</div></div>`;
+  }).join('') : '<div class="empty-state">No deals closed in the last 30 days.</div>';
+  rcEl.querySelectorAll('.fi-name').forEach(el=>el.addEventListener('click', ()=>openContact(el.dataset.id)));
 }
 
 function addDays(iso, n){
@@ -596,17 +747,73 @@ function populateFilters(){
   fs.innerHTML = '<option value="">All segments</option>' + segments.map(s=>`<option value="${escAttr(s)}">${escHtml(s)}</option>`).join('');
 }
 
+let CURRENT_PRESET = 'all';
+
 ['filterStatus','filterCountry','filterSegment','filterSearch'].forEach(id=>{
   document.getElementById(id).addEventListener('input', renderContacts);
 });
 
+document.querySelectorAll('#presetChips .chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    CURRENT_PRESET = chip.dataset.preset;
+    document.querySelectorAll('#presetChips .chip').forEach(c => c.classList.toggle('active', c===chip));
+    renderContacts();
+  });
+});
+
+// Match a contact against a preset. Each preset is independent of the
+// dropdown filters (which apply on top), so user can e.g. select "Today's
+// tasks" then narrow by country.
+function matchesPreset(c, preset, today){
+  switch(preset){
+    case 'all': return true;
+    case 'today':
+      return (c.follow_up_at && c.follow_up_at <= today)
+          || (c.status==='sent' && c.last_contacted_at && c.last_contacted_at.slice(0,10) < addDays(today,-14));
+    case 'overdue':
+      return c.follow_up_at && c.follow_up_at < today;
+    case 'hot':
+      return c.status==='replied' || c.status==='meeting';
+    case 'first-touch':
+      return c.status==='not_started' && c.email;
+    case 'stale':
+      return c.status==='sent' && c.last_contacted_at && c.last_contacted_at.slice(0,10) < addDays(today,-14);
+    case 'closed':
+      return c.status==='closed_won' || c.status==='closed_lost';
+  }
+  return true;
+}
+
+function updatePresetCounts(){
+  const today = new Date().toISOString().slice(0,10);
+  const counts = { all:CONTACTS.length, today:0, overdue:0, hot:0, 'first-touch':0, stale:0, closed:0 };
+  CONTACTS.forEach(c=>{
+    if(matchesPreset(c,'today',today)) counts.today++;
+    if(matchesPreset(c,'overdue',today)) counts.overdue++;
+    if(matchesPreset(c,'hot',today)) counts.hot++;
+    if(matchesPreset(c,'first-touch',today)) counts['first-touch']++;
+    if(matchesPreset(c,'stale',today)) counts.stale++;
+    if(matchesPreset(c,'closed',today)) counts.closed++;
+  });
+  document.getElementById('cn-all').textContent = counts.all;
+  document.getElementById('cn-today').textContent = counts.today;
+  document.getElementById('cn-overdue').textContent = counts.overdue;
+  document.getElementById('cn-hot').textContent = counts.hot;
+  document.getElementById('cn-first').textContent = counts['first-touch'];
+  document.getElementById('cn-stale').textContent = counts.stale;
+  document.getElementById('cn-closed').textContent = counts.closed;
+}
+
 function renderContacts(){
+  updatePresetCounts();
+  const today = new Date().toISOString().slice(0,10);
   const fStat = document.getElementById('filterStatus').value;
   const fCty = document.getElementById('filterCountry').value;
   const fSeg = document.getElementById('filterSegment').value;
   const fQ = document.getElementById('filterSearch').value.toLowerCase().trim();
 
   const filtered = CONTACTS.filter(c=>{
+    if(!matchesPreset(c, CURRENT_PRESET, today)) return false;
     if(fStat && c.status !== fStat) return false;
     if(fCty && c.country !== fCty) return false;
     if(fSeg && c.segment !== fSeg) return false;
@@ -620,19 +827,8 @@ function renderContacts(){
   document.getElementById('filterCount').textContent = `${filtered.length} / ${CONTACTS.length}`;
 
   const body = document.getElementById('contactsBody');
-  body.innerHTML = filtered.length ? filtered.slice(0,500).map(c=>`
-    <tr data-id="${c.id}">
-      <td>
-        <div class="cname">${escHtml(c.company)}</div>
-        <div class="cmeta">${escHtml(c.email||'')}${c.email?'':'<span style="color:var(--red-text)">no email</span>'}</div>
-      </td>
-      <td>${escHtml(c.country||'')} ${c.city?'· '+escHtml(c.city):''}</td>
-      <td>${escHtml(c.segment||'')}</td>
-      <td><span class="status-pill s-${c.status}">${STATUS_LABELS[c.status]||c.status}</span></td>
-      <td>${c.last_contacted_at ? fmtDate(c.last_contacted_at) : '—'}</td>
-      <td>${c.follow_up_at ? fmtDate(c.follow_up_at) : '—'}</td>
-    </tr>
-  `).join('') : '<tr><td colspan="6" class="empty-state">No contacts match these filters.</td></tr>';
+  body.innerHTML = filtered.length ? filtered.slice(0,500).map(c => renderContactRow(c, today)).join('')
+    : '<tr><td colspan="6" class="empty-state">No contacts match these filters.</td></tr>';
 
   body.querySelectorAll('tr[data-id]').forEach(tr=>{
     tr.addEventListener('click', ()=>openContact(tr.dataset.id));
@@ -641,6 +837,37 @@ function renderContacts(){
   if(filtered.length > 500){
     body.insertAdjacentHTML('beforeend', `<tr><td colspan="6" class="empty-state">Showing first 500 of ${filtered.length} — refine filters to see more.</td></tr>`);
   }
+}
+
+// Render one row. Adds a "days since last contact" badge to make recency
+// visible at a glance: red ≤ 3d (hot), amber ≤ 14d (warm), blue > 14d (cold).
+function renderContactRow(c, today){
+  let sinceBadge = '';
+  if(c.last_contacted_at){
+    const days = daysBetween(c.last_contacted_at.slice(0,10), today);
+    const cls = days <= 3 ? 'hot' : days <= 14 ? 'warm' : 'cold';
+    sinceBadge = `<span class="since-badge ${cls}">${days}d</span>`;
+  }
+  let followCell = '—';
+  if(c.follow_up_at){
+    const diff = daysBetween(today, c.follow_up_at);
+    if(diff < 0) followCell = `<span style="color:var(--red-text);font-weight:700">${fmtDate(c.follow_up_at)} (${Math.abs(diff)}d overdue)</span>`;
+    else if(diff === 0) followCell = `<span style="color:var(--amber-text);font-weight:700">Today</span>`;
+    else followCell = `${fmtDate(c.follow_up_at)} (in ${diff}d)`;
+  }
+  return `
+    <tr data-id="${c.id}">
+      <td>
+        <div class="cname">${escHtml(c.company)}</div>
+        <div class="cmeta">${c.email?escHtml(c.email):'<span style="color:var(--red-text)">no email</span>'}</div>
+      </td>
+      <td>${escHtml(c.country||'')}${c.city?' · '+escHtml(c.city):''}</td>
+      <td>${escHtml(c.segment||'')}</td>
+      <td><span class="status-pill s-${c.status}">${STATUS_LABELS[c.status]||c.status}</span></td>
+      <td>${c.last_contacted_at ? fmtDate(c.last_contacted_at)+' '+sinceBadge : '—'}</td>
+      <td>${followCell}</td>
+    </tr>
+  `;
 }
 
 function fmtDate(iso){
@@ -863,9 +1090,58 @@ document.getElementById('composeOpen').addEventListener('click', async ()=>{
   c.last_contacted_at = patch.last_contacted_at;
   toast('Gmail opened — click Send there');
   closeCompose();
-  // Refresh detail panel
-  openContact(c.id);
+  // Open follow-up prompt so the user schedules the next touch immediately
+  // — this is the most important habit for outreach hygiene.
+  openFollowupPrompt(c);
 });
+
+// ════════════════════════════════════════════════════════════════════════
+//  FOLLOW-UP PROMPT (fires after sending email)
+// ════════════════════════════════════════════════════════════════════════
+function openFollowupPrompt(c){
+  document.getElementById('followupContactName').textContent = c.company;
+  document.getElementById('followupCustomDate').value = '';
+  // Pre-select 7 days as the sensible default for B2B outreach cadence.
+  document.querySelectorAll('#followupModal [data-days]').forEach(b=>{
+    b.style.background = '#fff';
+    b.style.color = 'var(--navy)';
+    b.style.borderColor = 'var(--border)';
+  });
+  document.getElementById('followupModal').classList.add('open');
+}
+function closeFollowupPrompt(){
+  document.getElementById('followupModal').classList.remove('open');
+  // Refresh detail panel & dashboard to reflect any new follow-up
+  if(CURRENT_CONTACT) openContact(CURRENT_CONTACT.id);
+  if(CURRENT_TAB==='dashboard') renderDashboard();
+}
+
+document.querySelectorAll('#followupModal [data-days]').forEach(btn=>{
+  btn.addEventListener('click', async ()=>{
+    if(!CURRENT_CONTACT) return;
+    const days = parseInt(btn.dataset.days, 10);
+    const date = addDays(new Date().toISOString().slice(0,10), days);
+    await updateContact(CURRENT_CONTACT.id, { follow_up_at: date });
+    await logActivity(CURRENT_CONTACT.id, 'follow_up_set', CURRENT_CONTACT.follow_up_at, date, { auto:true, after:'email_sent' });
+    CURRENT_CONTACT.follow_up_at = date;
+    toast(`Follow-up set for ${fmtDate(date)}`);
+    closeFollowupPrompt();
+  });
+});
+
+document.getElementById('followupSaveBtn').addEventListener('click', async ()=>{
+  if(!CURRENT_CONTACT) return;
+  const date = document.getElementById('followupCustomDate').value;
+  if(!date){ toast('Pick a date or click a preset'); return; }
+  await updateContact(CURRENT_CONTACT.id, { follow_up_at: date });
+  await logActivity(CURRENT_CONTACT.id, 'follow_up_set', CURRENT_CONTACT.follow_up_at, date, { auto:true, after:'email_sent' });
+  CURRENT_CONTACT.follow_up_at = date;
+  toast(`Follow-up set for ${fmtDate(date)}`);
+  closeFollowupPrompt();
+});
+
+document.getElementById('followupSkip').addEventListener('click', closeFollowupPrompt);
+document.getElementById('followupSkipBtn').addEventListener('click', closeFollowupPrompt);
 
 function closeCompose(){
   document.getElementById('composeModal').classList.remove('open');
