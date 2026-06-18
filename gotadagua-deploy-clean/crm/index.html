@@ -1,0 +1,986 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gota Dagua — CRM</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="/supabase-config.js"></script>
+<style>
+:root{
+  --navy:#28394b;--navy-mid:#344d63;--navy-deep:#1c2b3a;
+  --ocean:#1e6fa8;--ocean-light:#3b9dd4;--foam:#e8f4fd;
+  --sand:#fff4d5;--ink:#0d1b2a;--muted:#6b8099;--border:#d4e3f0;
+  --bg:#f0f5fa;--card:#fff;
+  --green-bg:#eafaf1;--green-text:#1a7a40;
+  --amber-bg:#fef9e7;--amber-text:#9a6f00;
+  --orange-bg:#fef0e6;--orange-text:#c05400;
+  --red-bg:#fdecea;--red-text:#b91c1c;
+  --purple-bg:#f0e8ff;--purple-text:#5a2ba0;
+  --r:12px;--r-lg:18px;
+  --sh:0 4px 24px rgba(40,57,75,.10);
+  --sh-lg:0 12px 48px rgba(40,57,75,.18);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--ink);min-height:100vh}
+.hidden{display:none!important}
+
+/* ── HEADER ───────────────────────────────────────────────────────── */
+header{background:var(--navy);padding:0 24px;display:flex;align-items:center;justify-content:space-between;height:60px;position:sticky;top:0;z-index:100;box-shadow:0 2px 20px rgba(0,0,0,.25);gap:20px}
+.header-left{display:flex;align-items:center;gap:16px;min-width:220px}
+.brand-home{display:flex;align-items:center;gap:10px;color:inherit;text-decoration:none}
+.brand-logo{display:flex;align-items:center;width:134px;height:30px;flex-shrink:0}
+.brand-logo svg{height:30px;width:auto;display:block}
+.header-sub{font-size:10px;color:#7aabcc;font-weight:700;letter-spacing:.1em;text-transform:uppercase;white-space:nowrap}
+.header-center{display:flex;align-items:center;justify-content:center;gap:4px;flex:1}
+.header-right{display:flex;align-items:center;gap:12px;flex-shrink:0;justify-content:flex-end;min-width:220px}
+.nav-tab{padding:7px 14px;font-size:12px;font-weight:700;color:#7aabcc;cursor:pointer;border:none;border-radius:8px;background:transparent;transition:all .2s;font-family:'Outfit',sans-serif}
+.nav-tab:hover{color:#fff;background:rgba(255,255,255,.08)}
+.nav-tab.active{color:#fff;background:var(--ocean)}
+.header-btn{display:inline-flex;align-items:center;gap:8px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.08);color:#fff;border-radius:999px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;transition:all .18s;font-family:'Outfit',sans-serif}
+.header-btn:hover{background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.28)}
+.header-btn.primary{background:var(--ocean);border-color:var(--ocean)}
+.header-btn.primary:hover{background:#1a5a8a}
+
+/* ── LOGIN ────────────────────────────────────────────────────────── */
+#loginScreen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:radial-gradient(circle at top left, rgba(49,121,190,.12), transparent 28%),radial-gradient(circle at bottom right, rgba(255,244,213,.72), transparent 30%),linear-gradient(180deg, #f4f8fc 0%, #edf4fa 100%)}
+.login-card{width:100%;max-width:460px;background:rgba(255,255,255,.98);border-radius:30px;box-shadow:var(--sh-lg);padding:34px}
+.login-title{font-family:'DM Serif Display',serif;font-size:30px;color:var(--navy);text-align:center;margin-bottom:8px}
+.login-sub{font-size:13px;color:var(--muted);text-align:center;margin-bottom:24px}
+.field{margin-bottom:14px}
+.field label{display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:6px}
+.field input{width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;font-family:'Outfit',sans-serif;background:#fff;transition:border-color .18s}
+.field input:focus{outline:none;border-color:var(--ocean);box-shadow:0 0 0 4px rgba(30,111,168,.10)}
+.login-submit{width:100%;padding:12px;background:var(--navy);color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;transition:background .18s;font-family:'Outfit',sans-serif}
+.login-submit:hover{background:var(--navy-mid)}
+.login-error{font-size:12px;color:var(--red-text);text-align:center;margin-top:10px;min-height:16px}
+
+/* ── MAIN LAYOUT ──────────────────────────────────────────────────── */
+main{max-width:1400px;margin:0 auto;padding:28px 32px}
+.section-hdr{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px;gap:16px;flex-wrap:wrap}
+.section-title{font-family:'DM Serif Display',serif;font-size:24px;color:var(--navy)}
+.section-hint{font-size:11px;color:var(--muted)}
+
+/* ── KPI STRIP ────────────────────────────────────────────────────── */
+.kpi-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin-bottom:28px}
+.kpi{background:#fff;border-radius:var(--r);padding:18px;border:1px solid var(--border);box-shadow:var(--sh);transition:transform .2s}
+.kpi:hover{transform:translateY(-2px)}
+.kpi-label{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:600;margin-bottom:6px}
+.kpi-value{font-family:'DM Serif Display',serif;font-size:30px;color:var(--navy);line-height:1.15}
+.kpi-value.accent{color:var(--ocean)}
+.kpi-value.green{color:var(--green-text)}
+.kpi-value.amber{color:var(--amber-text)}
+.kpi-sub{font-size:11px;color:var(--muted);margin-top:4px}
+
+/* ── FILTERS ──────────────────────────────────────────────────────── */
+.filter-bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;background:#fff;border:1px solid var(--border);border-radius:var(--r);padding:12px 14px;margin-bottom:16px;box-shadow:var(--sh)}
+.filter-select{appearance:none;-webkit-appearance:none;border:1.5px solid var(--border);border-radius:10px;padding:8px 32px 8px 12px;font-size:12px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer;background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 14 14'%3E%3Cpath fill='%236b8099' d='M3.2 5.2a.75.75 0 0 1 1.06 0L7 7.94 9.74 5.2a.75.75 0 1 1 1.06 1.06l-3.27 3.27a.75.75 0 0 1-1.06 0L3.2 6.26a.75.75 0 0 1 0-1.06Z'/%3E%3C/svg%3E") no-repeat right 10px center;min-width:130px}
+.filter-search{flex:1;min-width:180px;border:1.5px solid var(--border);border-radius:10px;padding:8px 12px;font-size:12px;font-family:'Outfit',sans-serif}
+.filter-search:focus{outline:none;border-color:var(--ocean)}
+.filter-count{font-size:11px;color:var(--muted);margin-left:auto;font-weight:600}
+
+/* ── TABLE ────────────────────────────────────────────────────────── */
+.table-wrap{background:#fff;border-radius:var(--r);border:1px solid var(--border);box-shadow:var(--sh);overflow:hidden}
+table{width:100%;border-collapse:collapse}
+thead{background:var(--navy);position:sticky;top:60px;z-index:5}
+thead th{padding:11px 14px;font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:#7aabcc;font-weight:600;text-align:left;white-space:nowrap}
+tbody tr{border-bottom:1px solid var(--border);transition:background .15s;cursor:pointer}
+tbody tr:last-child{border-bottom:none}
+tbody tr:hover{background:var(--foam)}
+tbody tr.selected{background:var(--foam)}
+td{padding:11px 14px;font-size:13px;vertical-align:middle}
+.cname{font-weight:700;color:var(--navy);font-size:13.5px}
+.cmeta{font-size:11px;color:var(--muted);margin-top:1px}
+
+/* ── STATUS PILL ──────────────────────────────────────────────────── */
+.status-pill{display:inline-block;padding:4px 10px;border-radius:999px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap}
+.s-not_started{background:#f0f4f8;color:var(--muted)}
+.s-sent{background:var(--amber-bg);color:var(--amber-text)}
+.s-replied{background:var(--green-bg);color:var(--green-text)}
+.s-meeting{background:var(--purple-bg);color:var(--purple-text)}
+.s-closed_won{background:#dcfce7;color:#166534}
+.s-closed_lost{background:var(--red-bg);color:var(--red-text)}
+.s-no_reply{background:#f5f5f5;color:#525252}
+
+/* ── DETAIL PANEL ─────────────────────────────────────────────────── */
+.detail-overlay{position:fixed;inset:0;background:rgba(28,43,58,.5);z-index:200;opacity:0;pointer-events:none;transition:opacity .25s}
+.detail-overlay.open{opacity:1;pointer-events:auto}
+.detail-panel{position:fixed;right:0;top:0;bottom:0;width:min(520px,100%);background:#fff;z-index:201;transform:translateX(100%);transition:transform .3s cubic-bezier(.22,.61,.36,1);box-shadow:var(--sh-lg);display:flex;flex-direction:column;overflow:hidden}
+.detail-panel.open{transform:translateX(0)}
+.detail-header{padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-shrink:0}
+.detail-title{font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy);line-height:1.15}
+.detail-close{background:transparent;border:none;cursor:pointer;font-size:22px;color:var(--muted);padding:4px 8px;border-radius:6px}
+.detail-close:hover{background:var(--foam);color:var(--navy)}
+.detail-body{flex:1;overflow-y:auto;padding:22px}
+.detail-section{margin-bottom:24px}
+.detail-section-title{font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);font-weight:700;margin-bottom:10px}
+.detail-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #eef3f8;font-size:13px;gap:10px}
+.detail-row:last-child{border-bottom:none}
+.detail-row .label{color:var(--muted);font-weight:600;flex-shrink:0}
+.detail-row .value{color:var(--ink);text-align:right;word-break:break-word}
+.detail-row .value a{color:var(--ocean);text-decoration:none;font-weight:600}
+.detail-row .value a:hover{text-decoration:underline}
+.notes-area{width:100%;min-height:100px;padding:12px;border:1.5px solid var(--border);border-radius:10px;font-family:'Outfit',sans-serif;font-size:13px;resize:vertical;background:#fafdff}
+.notes-area:focus{outline:none;border-color:var(--ocean)}
+.activity-item{padding:10px 12px;border-left:3px solid var(--border);margin-bottom:8px;background:#fafdff;border-radius:0 8px 8px 0;font-size:12px}
+.activity-item.email_sent{border-left-color:var(--ocean)}
+.activity-item.status_changed{border-left-color:var(--amber-text)}
+.activity-item.replied_marked{border-left-color:var(--green-text)}
+.activity-action{font-weight:700;color:var(--navy)}
+.activity-time{font-size:10.5px;color:var(--muted);margin-top:2px}
+.activity-meta{font-size:11.5px;color:var(--ink);margin-top:4px}
+.detail-actions{padding:18px 22px;border-top:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr;gap:8px;background:#fafdff;flex-shrink:0}
+.action-btn{padding:11px 14px;border:none;border-radius:10px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;transition:all .18s}
+.action-btn.primary{background:var(--navy);color:#fff;grid-column:1/-1}
+.action-btn.primary:hover{background:var(--navy-mid)}
+.action-btn.ghost{background:#fff;color:var(--navy);border:1.5px solid var(--border)}
+.action-btn.ghost:hover{border-color:var(--ocean);color:var(--ocean)}
+.action-btn.green{background:var(--green-bg);color:var(--green-text);border:1.5px solid #a3e6c0}
+.action-btn.green:hover{background:#d1f4e0}
+
+/* ── TEMPLATES ────────────────────────────────────────────────────── */
+.template-grid{display:grid;grid-template-columns:300px 1fr;gap:18px}
+@media (max-width:760px){.template-grid{grid-template-columns:1fr}}
+.template-list{background:#fff;border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--sh);overflow:hidden}
+.template-item{padding:14px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s}
+.template-item:last-child{border-bottom:none}
+.template-item:hover{background:var(--foam)}
+.template-item.selected{background:var(--foam);border-left:3px solid var(--ocean);padding-left:13px}
+.template-name{font-weight:700;color:var(--navy);font-size:13.5px}
+.template-meta{font-size:11px;color:var(--muted);margin-top:2px}
+.template-editor{background:#fff;border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--sh);padding:20px}
+.editor-field{margin-bottom:14px}
+.editor-field label{display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:6px}
+.editor-field input,.editor-field textarea,.editor-field select{width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;font-family:'Outfit',sans-serif;background:#fff}
+.editor-field textarea{min-height:220px;resize:vertical;font-family:'DM Mono',monospace;font-size:12.5px;line-height:1.6}
+.editor-field input:focus,.editor-field textarea:focus,.editor-field select:focus{outline:none;border-color:var(--ocean)}
+.editor-hint{font-size:11px;color:var(--muted);margin-top:4px}
+.editor-hint code{font-family:'DM Mono',monospace;background:var(--foam);padding:1px 5px;border-radius:4px;color:var(--ocean);font-size:11px}
+
+/* ── DASHBOARD ────────────────────────────────────────────────────── */
+.dash-row{display:grid;grid-template-columns:1.4fr 1fr;gap:18px;margin-bottom:18px}
+@media (max-width:840px){.dash-row{grid-template-columns:1fr}}
+.dash-card{background:#fff;border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--sh);padding:20px}
+.dash-card-title{font-family:'DM Serif Display',serif;font-size:18px;color:var(--navy);margin-bottom:14px}
+.followup-item{display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-bottom:1px solid #eef3f8;gap:10px}
+.followup-item:last-child{border-bottom:none}
+.fi-name{font-weight:700;color:var(--navy);font-size:13.5px;flex:1;cursor:pointer}
+.fi-name:hover{color:var(--ocean)}
+.fi-due{font-size:11.5px;font-weight:700;padding:3px 8px;border-radius:6px;white-space:nowrap}
+.fi-due.overdue{background:var(--red-bg);color:var(--red-text)}
+.fi-due.today{background:var(--amber-bg);color:var(--amber-text)}
+.fi-due.soon{background:var(--foam);color:var(--ocean)}
+.funnel-bar{display:flex;align-items:center;margin-bottom:8px;gap:10px}
+.funnel-label{width:110px;font-size:12px;color:var(--muted);font-weight:600;flex-shrink:0}
+.funnel-track{flex:1;background:#eef3f8;border-radius:6px;height:18px;overflow:hidden;position:relative}
+.funnel-fill{height:100%;background:linear-gradient(90deg,var(--ocean),var(--ocean-light));border-radius:6px;transition:width .4s}
+.funnel-count{font-size:12px;color:var(--navy);font-weight:700;width:36px;text-align:right;flex-shrink:0;font-family:'DM Mono',monospace}
+.empty-state{text-align:center;padding:30px 18px;color:var(--muted);font-size:13px}
+
+/* ── COMPOSE MODAL ────────────────────────────────────────────────── */
+.compose-modal{position:fixed;inset:0;background:rgba(28,43,58,.6);z-index:300;display:flex;align-items:center;justify-content:center;padding:20px;opacity:0;pointer-events:none;transition:opacity .25s}
+.compose-modal.open{opacity:1;pointer-events:auto}
+.compose-card{background:#fff;border-radius:var(--r-lg);max-width:660px;width:100%;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:var(--sh-lg);transform:scale(.95);transition:transform .25s}
+.compose-modal.open .compose-card{transform:scale(1)}
+.compose-header{padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.compose-title{font-family:'DM Serif Display',serif;font-size:20px;color:var(--navy)}
+.compose-body{padding:20px 22px;overflow-y:auto;flex:1}
+.compose-footer{padding:14px 22px;border-top:1px solid var(--border);display:flex;justify-content:space-between;gap:10px;background:#fafdff}
+.compose-preview{background:#fafdff;border:1px solid var(--border);border-radius:10px;padding:14px;font-family:'DM Mono',monospace;font-size:12.5px;line-height:1.6;white-space:pre-wrap;color:var(--ink);max-height:280px;overflow-y:auto}
+
+/* ── TOAST ────────────────────────────────────────────────────────── */
+#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--navy);color:#fff;padding:12px 22px;border-radius:999px;font-size:13px;font-weight:600;box-shadow:var(--sh-lg);opacity:0;pointer-events:none;transition:all .25s;z-index:500}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+
+<!-- ─────────────────────────── LOGIN SCREEN ─────────────────────────── -->
+<div id="loginScreen">
+  <div class="login-card">
+    <div class="login-title">Gota d'Água · CRM</div>
+    <div class="login-sub">Sign in with your team account</div>
+    <form id="loginForm">
+      <div class="field">
+        <label>Email</label>
+        <input type="email" id="loginEmail" required autocomplete="email">
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input type="password" id="loginPassword" required autocomplete="current-password">
+      </div>
+      <button class="login-submit" type="submit">Sign in</button>
+      <div class="login-error" id="loginError"></div>
+    </form>
+  </div>
+</div>
+
+<!-- ─────────────────────────── MAIN APP ─────────────────────────────── -->
+<div id="app" class="hidden">
+<header>
+  <div class="header-left">
+    <a class="brand-home" href="/">
+      <div class="brand-logo">
+        <svg viewBox="0 0 220 40" xmlns="http://www.w3.org/2000/svg">
+          <text x="0" y="28" font-family="DM Serif Display, serif" font-size="22" fill="#fff" font-style="italic">Gota d'Água</text>
+        </svg>
+      </div>
+      <span class="header-sub">CRM</span>
+    </a>
+  </div>
+  <div class="header-center">
+    <button class="nav-tab active" data-tab="dashboard">Dashboard</button>
+    <button class="nav-tab" data-tab="contacts">Contacts</button>
+    <button class="nav-tab" data-tab="templates">Templates</button>
+  </div>
+  <div class="header-right">
+    <button class="header-btn" id="signOutBtn">Sign out</button>
+  </div>
+</header>
+
+<main>
+  <!-- ─── DASHBOARD TAB ─── -->
+  <div id="page-dashboard">
+    <div class="section-hdr">
+      <div class="section-title">Outreach overview</div>
+      <div class="section-hint">Live counts pulled from <code>outreach_contacts</code></div>
+    </div>
+    <div class="kpi-strip" id="kpiStrip"></div>
+
+    <div class="dash-row">
+      <div class="dash-card">
+        <div class="dash-card-title">Follow-ups due</div>
+        <div id="followupsList"></div>
+      </div>
+      <div class="dash-card">
+        <div class="dash-card-title">Pipeline funnel</div>
+        <div id="funnelChart"></div>
+      </div>
+    </div>
+
+    <div class="dash-card">
+      <div class="dash-card-title">No reply > 14 days</div>
+      <div id="noReplyList"></div>
+    </div>
+  </div>
+
+  <!-- ─── CONTACTS TAB ─── -->
+  <div id="page-contacts" class="hidden">
+    <div class="section-hdr">
+      <div class="section-title">Contacts</div>
+      <div class="section-hint">Click a row to open the contact</div>
+    </div>
+
+    <div class="filter-bar">
+      <select class="filter-select" id="filterStatus">
+        <option value="">All statuses</option>
+        <option value="not_started">Not started</option>
+        <option value="sent">Sent</option>
+        <option value="replied">Replied</option>
+        <option value="meeting">Meeting</option>
+        <option value="closed_won">Closed Won</option>
+        <option value="closed_lost">Closed Lost</option>
+        <option value="no_reply">No reply</option>
+      </select>
+      <select class="filter-select" id="filterCountry">
+        <option value="">All countries</option>
+      </select>
+      <select class="filter-select" id="filterSegment">
+        <option value="">All segments</option>
+      </select>
+      <input class="filter-search" id="filterSearch" type="text" placeholder="Search company, city, email…">
+      <span class="filter-count" id="filterCount"></span>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>Company</th>
+          <th>Country / City</th>
+          <th>Segment</th>
+          <th>Status</th>
+          <th>Last contacted</th>
+          <th>Follow-up</th>
+        </tr></thead>
+        <tbody id="contactsBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ─── TEMPLATES TAB ─── -->
+  <div id="page-templates" class="hidden">
+    <div class="section-hdr">
+      <div class="section-title">Email templates</div>
+      <button class="header-btn primary" id="newTemplateBtn" style="background:var(--ocean);border:none">+ New template</button>
+    </div>
+    <div class="template-grid">
+      <div class="template-list" id="templateList"></div>
+      <div class="template-editor" id="templateEditor">
+        <div class="empty-state">Select a template on the left, or create a new one.</div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- ─── DETAIL PANEL (slides in from right) ─── -->
+<div class="detail-overlay" id="detailOverlay"></div>
+<aside class="detail-panel" id="detailPanel">
+  <div class="detail-header">
+    <div class="detail-title" id="detailTitle">—</div>
+    <button class="detail-close" id="detailClose" aria-label="Close">×</button>
+  </div>
+  <div class="detail-body" id="detailBody"></div>
+  <div class="detail-actions">
+    <button class="action-btn primary" id="composeBtn">📧  Compose email</button>
+    <button class="action-btn green" id="markRepliedBtn">✓ Mark replied</button>
+    <button class="action-btn ghost" id="setFollowupBtn">📅 Follow-up date</button>
+  </div>
+</aside>
+
+<!-- ─── COMPOSE MODAL ─── -->
+<div class="compose-modal" id="composeModal">
+  <div class="compose-card">
+    <div class="compose-header">
+      <div class="compose-title">Compose email</div>
+      <button class="detail-close" id="composeClose" aria-label="Close">×</button>
+    </div>
+    <div class="compose-body">
+      <div class="editor-field">
+        <label>Template</label>
+        <select id="composeTemplate"></select>
+      </div>
+      <div class="editor-field">
+        <label>Subject</label>
+        <input type="text" id="composeSubject" readonly>
+      </div>
+      <div class="editor-field">
+        <label>Body preview</label>
+        <div class="compose-preview" id="composePreview"></div>
+      </div>
+      <div class="editor-hint">Clicking <b>Open in Gmail</b> opens a new tab with everything pre-filled. You click <b>Send</b> there from your own Gmail account.</div>
+    </div>
+    <div class="compose-footer">
+      <button class="action-btn ghost" id="composeCancel">Cancel</button>
+      <button class="action-btn primary" id="composeOpen" style="grid-column:auto">Open in Gmail →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── TOAST ─── -->
+<div id="toast"></div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════════════════════
+//  STATE + SUPABASE
+// ════════════════════════════════════════════════════════════════════════
+let supa = null;
+let session = null;
+let CONTACTS = [];
+let TEMPLATES = [];
+let CURRENT_CONTACT = null;
+let CURRENT_TEMPLATE = null;
+let CURRENT_TAB = 'dashboard';
+
+const STATUS_LABELS = {
+  not_started:'Not started', sent:'Sent', replied:'Replied',
+  meeting:'Meeting', closed_won:'Closed Won', closed_lost:'Closed Lost',
+  no_reply:'No reply'
+};
+const STATUS_ORDER = ['not_started','sent','replied','meeting','closed_won','closed_lost','no_reply'];
+
+function toast(msg){
+  const el=document.getElementById('toast');
+  el.textContent=msg; el.classList.add('show');
+  setTimeout(()=>el.classList.remove('show'), 2400);
+}
+
+function getClient(){
+  if(supa) return supa;
+  if(!window.__SUPABASE_CONFIG?.url) throw new Error('Supabase config missing');
+  supa = window.supabase.createClient(window.__SUPABASE_CONFIG.url, window.__SUPABASE_CONFIG.anonKey);
+  return supa;
+}
+
+// ════════════════════════════════════════════════════════════════════════
+//  AUTH
+// ════════════════════════════════════════════════════════════════════════
+async function checkSession(){
+  try {
+    const c = getClient();
+    const { data } = await c.auth.getSession();
+    if(data?.session){ session = data.session; showApp(); return; }
+  } catch(e){ console.error(e); }
+  showLogin();
+}
+
+function showLogin(){
+  document.getElementById('loginScreen').classList.remove('hidden');
+  document.getElementById('app').classList.add('hidden');
+}
+function showApp(){
+  document.getElementById('loginScreen').classList.add('hidden');
+  document.getElementById('app').classList.remove('hidden');
+  loadAll();
+}
+
+document.getElementById('loginForm').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const errEl = document.getElementById('loginError');
+  errEl.textContent = '';
+  try {
+    const c = getClient();
+    const { data, error } = await c.auth.signInWithPassword({ email, password });
+    if(error){ errEl.textContent = error.message; return; }
+    session = data.session; showApp();
+  } catch(e){ errEl.textContent = e.message || 'Login failed'; }
+});
+
+document.getElementById('signOutBtn').addEventListener('click', async ()=>{
+  try { await getClient().auth.signOut(); } catch(e){}
+  session = null; CONTACTS = []; TEMPLATES = []; showLogin();
+});
+
+// ════════════════════════════════════════════════════════════════════════
+//  DATA LOADING
+// ════════════════════════════════════════════════════════════════════════
+async function loadAll(){
+  await Promise.all([loadContacts(), loadTemplates()]);
+  populateFilters();
+  renderDashboard();
+  renderContacts();
+  renderTemplateList();
+}
+
+async function loadContacts(){
+  const c = getClient();
+  // Paginate to defeat Supabase's 1000-row default limit.
+  let all = [], from = 0, page = 1000;
+  while (true){
+    const { data, error } = await c.from('outreach_contacts')
+      .select('*').range(from, from+page-1).order('company');
+    if(error){ toast('Load contacts failed: '+error.message); return; }
+    all.push(...data);
+    if(data.length < page) break;
+    from += page;
+  }
+  CONTACTS = all;
+}
+
+async function loadTemplates(){
+  const c = getClient();
+  const { data, error } = await c.from('outreach_templates')
+    .select('*').order('sort_order');
+  if(error){ toast('Load templates failed: '+error.message); return; }
+  TEMPLATES = data;
+}
+
+async function loadActivity(contactId){
+  const c = getClient();
+  const { data, error } = await c.from('outreach_activity')
+    .select('*').eq('contact_id', contactId).order('created_at', { ascending: false }).limit(50);
+  if(error) return [];
+  return data;
+}
+
+async function logActivity(contactId, action, oldVal, newVal, meta){
+  const c = getClient();
+  await c.from('outreach_activity').insert({
+    contact_id: contactId, action,
+    old_value: oldVal || null, new_value: newVal || null,
+    meta: meta || {},
+    created_by: session?.user?.email || null
+  });
+}
+
+// ════════════════════════════════════════════════════════════════════════
+//  TAB SWITCHING
+// ════════════════════════════════════════════════════════════════════════
+document.querySelectorAll('.nav-tab').forEach(t=>{
+  t.addEventListener('click', ()=>{
+    CURRENT_TAB = t.dataset.tab;
+    document.querySelectorAll('.nav-tab').forEach(x=>x.classList.toggle('active', x===t));
+    ['dashboard','contacts','templates'].forEach(p=>{
+      document.getElementById('page-'+p).classList.toggle('hidden', p!==CURRENT_TAB);
+    });
+    if(CURRENT_TAB==='dashboard') renderDashboard();
+    if(CURRENT_TAB==='contacts') renderContacts();
+    if(CURRENT_TAB==='templates') renderTemplateList();
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════
+//  DASHBOARD
+// ════════════════════════════════════════════════════════════════════════
+function renderDashboard(){
+  // KPI counts
+  const byStatus = {};
+  STATUS_ORDER.forEach(s=>byStatus[s]=0);
+  CONTACTS.forEach(c=>{ byStatus[c.status] = (byStatus[c.status]||0)+1; });
+  const total = CONTACTS.length;
+  const sent = byStatus.sent||0;
+  const replied = byStatus.replied||0;
+  const meeting = byStatus.meeting||0;
+  const replyRate = sent>0 ? Math.round((replied/sent)*100) : 0;
+
+  const strip = document.getElementById('kpiStrip');
+  strip.innerHTML = `
+    <div class="kpi"><div class="kpi-label">Total contacts</div><div class="kpi-value">${total}</div><div class="kpi-sub">${CONTACTS.filter(c=>c.email).length} with email</div></div>
+    <div class="kpi"><div class="kpi-label">Sent</div><div class="kpi-value accent">${sent}</div><div class="kpi-sub">awaiting response</div></div>
+    <div class="kpi"><div class="kpi-label">Replied</div><div class="kpi-value green">${replied}</div><div class="kpi-sub">${replyRate}% reply rate</div></div>
+    <div class="kpi"><div class="kpi-label">Meetings</div><div class="kpi-value">${meeting}</div><div class="kpi-sub">in discussion</div></div>
+    <div class="kpi"><div class="kpi-label">Closed Won</div><div class="kpi-value green">${byStatus.closed_won||0}</div><div class="kpi-sub">${byStatus.closed_lost||0} lost</div></div>
+  `;
+
+  // Follow-ups
+  const today = new Date().toISOString().slice(0,10);
+  const followups = CONTACTS.filter(c=>c.follow_up_at).sort((a,b)=>a.follow_up_at.localeCompare(b.follow_up_at));
+  const due = followups.filter(c=>c.follow_up_at <= addDays(today,7));
+  const fEl = document.getElementById('followupsList');
+  fEl.innerHTML = due.length ? due.map(c=>{
+    const diff = daysBetween(today, c.follow_up_at);
+    const cls = diff < 0 ? 'overdue' : diff===0 ? 'today' : 'soon';
+    const label = diff < 0 ? `${Math.abs(diff)}d overdue` : diff===0 ? 'today' : `in ${diff}d`;
+    return `<div class="followup-item"><div class="fi-name" data-id="${c.id}">${escHtml(c.company)}</div><div class="fi-due ${cls}">${label}</div></div>`;
+  }).join('') : '<div class="empty-state">No follow-ups due in the next 7 days.</div>';
+  fEl.querySelectorAll('.fi-name').forEach(el=>{
+    el.addEventListener('click', ()=>openContact(el.dataset.id));
+  });
+
+  // Funnel
+  const fchart = document.getElementById('funnelChart');
+  const maxCount = Math.max(1, ...Object.values(byStatus));
+  fchart.innerHTML = STATUS_ORDER.map(s=>{
+    const n = byStatus[s] || 0;
+    const pct = (n / maxCount) * 100;
+    return `<div class="funnel-bar"><div class="funnel-label">${STATUS_LABELS[s]}</div><div class="funnel-track"><div class="funnel-fill" style="width:${pct}%"></div></div><div class="funnel-count">${n}</div></div>`;
+  }).join('');
+
+  // No reply > 14 days
+  const cutoff = addDays(today, -14);
+  const stale = CONTACTS
+    .filter(c => c.status === 'sent' && c.last_contacted_at && c.last_contacted_at.slice(0,10) < cutoff)
+    .sort((a,b)=>(a.last_contacted_at||'').localeCompare(b.last_contacted_at||''));
+  const nEl = document.getElementById('noReplyList');
+  nEl.innerHTML = stale.length ? stale.slice(0,20).map(c=>{
+    const days = daysBetween(c.last_contacted_at.slice(0,10), today);
+    return `<div class="followup-item"><div class="fi-name" data-id="${c.id}">${escHtml(c.company)}</div><div class="fi-due overdue">${days}d silent</div></div>`;
+  }).join('') + (stale.length>20 ? `<div class="empty-state" style="padding:14px">+ ${stale.length-20} more</div>` : '') : '<div class="empty-state">All sent emails are within the 14-day window.</div>';
+  nEl.querySelectorAll('.fi-name').forEach(el=>{
+    el.addEventListener('click', ()=>openContact(el.dataset.id));
+  });
+}
+
+function addDays(iso, n){
+  const d = new Date(iso);
+  d.setDate(d.getDate()+n);
+  return d.toISOString().slice(0,10);
+}
+function daysBetween(a, b){
+  const da = new Date(a), db = new Date(b);
+  return Math.round((db - da) / 86400000);
+}
+
+// ════════════════════════════════════════════════════════════════════════
+//  CONTACTS LIST
+// ════════════════════════════════════════════════════════════════════════
+function populateFilters(){
+  const countries = [...new Set(CONTACTS.map(c=>c.country).filter(Boolean))].sort();
+  const segments = [...new Set(CONTACTS.map(c=>c.segment).filter(Boolean))].sort();
+  const fc = document.getElementById('filterCountry');
+  const fs = document.getElementById('filterSegment');
+  fc.innerHTML = '<option value="">All countries</option>' + countries.map(c=>`<option value="${escAttr(c)}">${escHtml(c)}</option>`).join('');
+  fs.innerHTML = '<option value="">All segments</option>' + segments.map(s=>`<option value="${escAttr(s)}">${escHtml(s)}</option>`).join('');
+}
+
+['filterStatus','filterCountry','filterSegment','filterSearch'].forEach(id=>{
+  document.getElementById(id).addEventListener('input', renderContacts);
+});
+
+function renderContacts(){
+  const fStat = document.getElementById('filterStatus').value;
+  const fCty = document.getElementById('filterCountry').value;
+  const fSeg = document.getElementById('filterSegment').value;
+  const fQ = document.getElementById('filterSearch').value.toLowerCase().trim();
+
+  const filtered = CONTACTS.filter(c=>{
+    if(fStat && c.status !== fStat) return false;
+    if(fCty && c.country !== fCty) return false;
+    if(fSeg && c.segment !== fSeg) return false;
+    if(fQ){
+      const blob = `${c.company||''} ${c.city||''} ${c.email||''} ${c.notes||''}`.toLowerCase();
+      if(!blob.includes(fQ)) return false;
+    }
+    return true;
+  });
+
+  document.getElementById('filterCount').textContent = `${filtered.length} / ${CONTACTS.length}`;
+
+  const body = document.getElementById('contactsBody');
+  body.innerHTML = filtered.length ? filtered.slice(0,500).map(c=>`
+    <tr data-id="${c.id}">
+      <td>
+        <div class="cname">${escHtml(c.company)}</div>
+        <div class="cmeta">${escHtml(c.email||'')}${c.email?'':'<span style="color:var(--red-text)">no email</span>'}</div>
+      </td>
+      <td>${escHtml(c.country||'')} ${c.city?'· '+escHtml(c.city):''}</td>
+      <td>${escHtml(c.segment||'')}</td>
+      <td><span class="status-pill s-${c.status}">${STATUS_LABELS[c.status]||c.status}</span></td>
+      <td>${c.last_contacted_at ? fmtDate(c.last_contacted_at) : '—'}</td>
+      <td>${c.follow_up_at ? fmtDate(c.follow_up_at) : '—'}</td>
+    </tr>
+  `).join('') : '<tr><td colspan="6" class="empty-state">No contacts match these filters.</td></tr>';
+
+  body.querySelectorAll('tr[data-id]').forEach(tr=>{
+    tr.addEventListener('click', ()=>openContact(tr.dataset.id));
+  });
+
+  if(filtered.length > 500){
+    body.insertAdjacentHTML('beforeend', `<tr><td colspan="6" class="empty-state">Showing first 500 of ${filtered.length} — refine filters to see more.</td></tr>`);
+  }
+}
+
+function fmtDate(iso){
+  if(!iso) return '—';
+  const d = new Date(iso);
+  return d.toLocaleDateString('en-GB', { day:'2-digit', month:'short' });
+}
+
+// ════════════════════════════════════════════════════════════════════════
+//  CONTACT DETAIL PANEL
+// ════════════════════════════════════════════════════════════════════════
+async function openContact(id){
+  const c = CONTACTS.find(x=>x.id===id);
+  if(!c) return;
+  CURRENT_CONTACT = c;
+  document.getElementById('detailTitle').textContent = c.company;
+  const body = document.getElementById('detailBody');
+  const activity = await loadActivity(id);
+  body.innerHTML = `
+    <div class="detail-section">
+      <div class="detail-section-title">Contact</div>
+      <div class="detail-row"><span class="label">Status</span><span class="value">
+        <select class="status-pill s-${c.status}" id="statusSelect" style="border:none;padding:4px 28px 4px 10px;cursor:pointer;font:inherit">
+          ${STATUS_ORDER.map(s=>`<option value="${s}" ${s===c.status?'selected':''}>${STATUS_LABELS[s]}</option>`).join('')}
+        </select>
+      </span></div>
+      <div class="detail-row"><span class="label">Segment</span><span class="value">${escHtml(c.segment||'—')}</span></div>
+      <div class="detail-row"><span class="label">Country</span><span class="value">${escHtml(c.country||'—')}</span></div>
+      <div class="detail-row"><span class="label">City</span><span class="value">${escHtml(c.city||'—')}</span></div>
+      <div class="detail-row"><span class="label">Email</span><span class="value">${c.email?`<a href="mailto:${escAttr(c.email)}">${escHtml(c.email)}</a>`:'—'}</span></div>
+      <div class="detail-row"><span class="label">Phone</span><span class="value">${c.phone?`<a href="tel:${escAttr(c.phone)}">${escHtml(c.phone)}</a>`:'—'}</span></div>
+      <div class="detail-row"><span class="label">Website</span><span class="value">${c.website?`<a href="${escAttr(/^https?:/.test(c.website)?c.website:'https://'+c.website)}" target="_blank">${escHtml(c.website)}</a>`:'—'}</span></div>
+      <div class="detail-row"><span class="label">Language</span><span class="value">
+        <select id="langSelect" style="border:1px solid var(--border);border-radius:8px;padding:4px 8px;font:inherit">
+          <option value="en" ${c.language==='en'?'selected':''}>English</option>
+          <option value="pt" ${c.language==='pt'?'selected':''}>Português</option>
+        </select>
+      </span></div>
+      <div class="detail-row"><span class="label">Last contacted</span><span class="value">${c.last_contacted_at?fmtDateTime(c.last_contacted_at):'—'}</span></div>
+      <div class="detail-row"><span class="label">Follow-up</span><span class="value"><input type="date" id="followupInput" value="${c.follow_up_at||''}" style="border:1px solid var(--border);border-radius:8px;padding:4px 8px;font:inherit"></span></div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-section-title">Notes</div>
+      <textarea class="notes-area" id="notesArea" placeholder="Add notes…">${escHtml(c.notes||'')}</textarea>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-section-title">Activity</div>
+      <div id="activityList">
+        ${activity.length ? activity.map(a=>{
+          const label = activityLabel(a);
+          return `<div class="activity-item ${a.action}"><div class="activity-action">${label}</div>${a.meta?.note?`<div class="activity-meta">${escHtml(a.meta.note)}</div>`:''}<div class="activity-time">${fmtDateTime(a.created_at)}${a.created_by?' · '+escHtml(a.created_by):''}</div></div>`;
+        }).join('') : '<div class="empty-state" style="padding:12px;text-align:left">No activity yet.</div>'}
+      </div>
+    </div>
+  `;
+
+  // Wire up status select
+  document.getElementById('statusSelect').addEventListener('change', async (e)=>{
+    const newStatus = e.target.value;
+    const oldStatus = c.status;
+    await updateContact(c.id, { status: newStatus });
+    await logActivity(c.id, 'status_changed', oldStatus, newStatus);
+    c.status = newStatus;
+    e.target.className = `status-pill s-${newStatus}`;
+    e.target.style.cssText='border:none;padding:4px 28px 4px 10px;cursor:pointer;font:inherit';
+    toast(`Status → ${STATUS_LABELS[newStatus]}`);
+    if(CURRENT_TAB==='dashboard') renderDashboard();
+    if(CURRENT_TAB==='contacts') renderContacts();
+  });
+
+  // Language select
+  document.getElementById('langSelect').addEventListener('change', async (e)=>{
+    await updateContact(c.id, { language: e.target.value });
+    c.language = e.target.value;
+    toast('Language updated');
+  });
+
+  // Notes auto-save on blur
+  document.getElementById('notesArea').addEventListener('blur', async (e)=>{
+    if(e.target.value === (c.notes||'')) return;
+    await updateContact(c.id, { notes: e.target.value });
+    c.notes = e.target.value;
+    toast('Notes saved');
+  });
+
+  // Follow-up date
+  document.getElementById('followupInput').addEventListener('change', async (e)=>{
+    const val = e.target.value || null;
+    await updateContact(c.id, { follow_up_at: val });
+    await logActivity(c.id, 'follow_up_set', c.follow_up_at, val);
+    c.follow_up_at = val;
+    toast(val?`Follow-up set to ${fmtDate(val)}`:'Follow-up cleared');
+    if(CURRENT_TAB==='dashboard') renderDashboard();
+    if(CURRENT_TAB==='contacts') renderContacts();
+  });
+
+  // Show panel
+  document.getElementById('detailOverlay').classList.add('open');
+  document.getElementById('detailPanel').classList.add('open');
+}
+
+function closeDetail(){
+  document.getElementById('detailOverlay').classList.remove('open');
+  document.getElementById('detailPanel').classList.remove('open');
+  CURRENT_CONTACT = null;
+}
+document.getElementById('detailClose').addEventListener('click', closeDetail);
+document.getElementById('detailOverlay').addEventListener('click', closeDetail);
+
+function activityLabel(a){
+  switch(a.action){
+    case 'status_changed': return `Status: ${STATUS_LABELS[a.old_value]||a.old_value||'—'} → ${STATUS_LABELS[a.new_value]||a.new_value||'—'}`;
+    case 'email_sent': return `📧 Sent "${a.meta?.template_name||'email'}"`;
+    case 'replied_marked': return `✓ Marked as replied`;
+    case 'follow_up_set': return `📅 Follow-up: ${a.new_value||'cleared'}`;
+    case 'note_added': return `📝 Note added`;
+    case 'imported': return `Imported from xlsx`;
+    default: return a.action;
+  }
+}
+
+document.getElementById('markRepliedBtn').addEventListener('click', async ()=>{
+  if(!CURRENT_CONTACT) return;
+  await updateContact(CURRENT_CONTACT.id, { status: 'replied', replied: true });
+  await logActivity(CURRENT_CONTACT.id, 'replied_marked', null, null);
+  CURRENT_CONTACT.status = 'replied';
+  CURRENT_CONTACT.replied = true;
+  toast('Marked as replied');
+  openContact(CURRENT_CONTACT.id);
+  if(CURRENT_TAB==='dashboard') renderDashboard();
+  if(CURRENT_TAB==='contacts') renderContacts();
+});
+
+document.getElementById('setFollowupBtn').addEventListener('click', ()=>{
+  document.getElementById('followupInput')?.focus();
+  document.getElementById('followupInput')?.showPicker?.();
+});
+
+async function updateContact(id, patch){
+  const c = getClient();
+  const { error } = await c.from('outreach_contacts').update(patch).eq('id', id);
+  if(error){ toast('Save failed: '+error.message); return false; }
+  return true;
+}
+
+// ════════════════════════════════════════════════════════════════════════
+//  COMPOSE EMAIL
+// ════════════════════════════════════════════════════════════════════════
+document.getElementById('composeBtn').addEventListener('click', ()=>{
+  if(!CURRENT_CONTACT) return;
+  if(!CURRENT_CONTACT.email){ toast('No email on this contact'); return; }
+  openCompose();
+});
+
+function openCompose(){
+  const c = CURRENT_CONTACT;
+  const lang = c.language || 'en';
+  const tplSelect = document.getElementById('composeTemplate');
+  const langTemplates = TEMPLATES.filter(t=>t.language===lang);
+  const fallback = TEMPLATES.filter(t=>t.language!==lang); // show other lang as fallback
+  const opts = [...langTemplates.map(t=>`<option value="${t.id}">${escHtml(t.name)} (${t.language})</option>`),
+                ...fallback.map(t=>`<option value="${t.id}">${escHtml(t.name)} (${t.language})</option>`)];
+  if(!opts.length){
+    toast('No templates yet — create one in the Templates tab first');
+    return;
+  }
+  tplSelect.innerHTML = opts.join('');
+  tplSelect.value = langTemplates[0]?.id || TEMPLATES[0]?.id;
+  refreshComposePreview();
+  document.getElementById('composeModal').classList.add('open');
+}
+
+function refreshComposePreview(){
+  const tplId = document.getElementById('composeTemplate').value;
+  const tpl = TEMPLATES.find(t=>t.id===tplId);
+  if(!tpl) return;
+  const c = CURRENT_CONTACT;
+  const subj = renderTemplate(tpl.subject, c);
+  const body = renderTemplate(tpl.body, c);
+  document.getElementById('composeSubject').value = subj;
+  document.getElementById('composePreview').textContent = body;
+}
+
+function renderTemplate(text, c){
+  const firstName = (c.company || '').split(/[\s/]/)[0]; // crude: first word as fallback
+  return text
+    .replace(/\{\{company\}\}/g, c.company||'')
+    .replace(/\{\{first_name\}\}/g, firstName)
+    .replace(/\{\{country\}\}/g, c.country||'')
+    .replace(/\{\{city\}\}/g, c.city||'');
+}
+
+document.getElementById('composeTemplate').addEventListener('change', refreshComposePreview);
+
+document.getElementById('composeOpen').addEventListener('click', async ()=>{
+  const tplId = document.getElementById('composeTemplate').value;
+  const tpl = TEMPLATES.find(t=>t.id===tplId);
+  if(!tpl || !CURRENT_CONTACT) return;
+  const c = CURRENT_CONTACT;
+  const subj = renderTemplate(tpl.subject, c);
+  const body = renderTemplate(tpl.body, c);
+  const gmailUrl = 'https://mail.google.com/mail/?view=cm&fs=1&authuser=accounting@gotadaguasurf.com&to='
+    + encodeURIComponent(c.email)
+    + '&su=' + encodeURIComponent(subj)
+    + '&body=' + encodeURIComponent(body);
+  window.open(gmailUrl, '_blank');
+
+  // Log and update status to 'sent' if currently 'not_started'
+  const newStatus = c.status === 'not_started' ? 'sent' : c.status;
+  const patch = { last_contacted_at: new Date().toISOString() };
+  if(newStatus !== c.status) patch.status = newStatus;
+  await updateContact(c.id, patch);
+  await logActivity(c.id, 'email_sent', null, null, { template_id: tpl.id, template_name: tpl.name, subject: subj });
+  if(newStatus !== c.status){
+    await logActivity(c.id, 'status_changed', c.status, newStatus, { auto: true });
+    c.status = newStatus;
+  }
+  c.last_contacted_at = patch.last_contacted_at;
+  toast('Gmail opened — click Send there');
+  closeCompose();
+  // Refresh detail panel
+  openContact(c.id);
+});
+
+function closeCompose(){
+  document.getElementById('composeModal').classList.remove('open');
+}
+document.getElementById('composeClose').addEventListener('click', closeCompose);
+document.getElementById('composeCancel').addEventListener('click', closeCompose);
+
+// ════════════════════════════════════════════════════════════════════════
+//  TEMPLATES
+// ════════════════════════════════════════════════════════════════════════
+function renderTemplateList(){
+  const list = document.getElementById('templateList');
+  list.innerHTML = TEMPLATES.length ? TEMPLATES.map(t=>`
+    <div class="template-item ${CURRENT_TEMPLATE?.id===t.id?'selected':''}" data-id="${t.id}">
+      <div class="template-name">${escHtml(t.name)}</div>
+      <div class="template-meta">${t.language.toUpperCase()} · ${escHtml(t.subject.slice(0,40))}${t.subject.length>40?'…':''}</div>
+    </div>
+  `).join('') : '<div class="empty-state">No templates yet. Click "+ New template" to create one.</div>';
+  list.querySelectorAll('.template-item').forEach(el=>{
+    el.addEventListener('click', ()=>selectTemplate(el.dataset.id));
+  });
+  if(CURRENT_TEMPLATE) selectTemplate(CURRENT_TEMPLATE.id);
+}
+
+function selectTemplate(id){
+  CURRENT_TEMPLATE = TEMPLATES.find(t=>t.id===id);
+  if(!CURRENT_TEMPLATE) return;
+  document.querySelectorAll('.template-item').forEach(el=>{
+    el.classList.toggle('selected', el.dataset.id===id);
+  });
+  renderTemplateEditor();
+}
+
+function renderTemplateEditor(){
+  const t = CURRENT_TEMPLATE;
+  const ed = document.getElementById('templateEditor');
+  ed.innerHTML = `
+    <div class="editor-field"><label>Name</label><input id="tplName" value="${escAttr(t.name)}"></div>
+    <div class="editor-field"><label>Language</label><select id="tplLang">
+      <option value="en" ${t.language==='en'?'selected':''}>English</option>
+      <option value="pt" ${t.language==='pt'?'selected':''}>Português</option>
+    </select></div>
+    <div class="editor-field"><label>Subject</label><input id="tplSubject" value="${escAttr(t.subject)}"></div>
+    <div class="editor-field"><label>Body</label><textarea id="tplBody">${escHtml(t.body)}</textarea>
+    <div class="editor-hint">Variables: <code>{{company}}</code> <code>{{first_name}}</code> <code>{{country}}</code> <code>{{city}}</code></div></div>
+    <div style="display:flex;gap:10px;margin-top:18px">
+      <button class="action-btn primary" id="tplSave" style="grid-column:auto">Save changes</button>
+      <button class="action-btn ghost" id="tplDelete" style="color:var(--red-text);border-color:#f0a0a0">Delete</button>
+    </div>
+  `;
+  document.getElementById('tplSave').addEventListener('click', saveTemplate);
+  document.getElementById('tplDelete').addEventListener('click', deleteTemplate);
+}
+
+async function saveTemplate(){
+  const t = CURRENT_TEMPLATE;
+  const patch = {
+    name: document.getElementById('tplName').value.trim(),
+    language: document.getElementById('tplLang').value,
+    subject: document.getElementById('tplSubject').value.trim(),
+    body: document.getElementById('tplBody').value
+  };
+  const c = getClient();
+  const { error } = await c.from('outreach_templates').update(patch).eq('id', t.id);
+  if(error){ toast('Save failed: '+error.message); return; }
+  Object.assign(t, patch);
+  toast('Template saved');
+  renderTemplateList();
+}
+
+async function deleteTemplate(){
+  const t = CURRENT_TEMPLATE;
+  if(!confirm(`Delete template "${t.name}"?`)) return;
+  const c = getClient();
+  const { error } = await c.from('outreach_templates').delete().eq('id', t.id);
+  if(error){ toast('Delete failed: '+error.message); return; }
+  TEMPLATES = TEMPLATES.filter(x=>x.id!==t.id);
+  CURRENT_TEMPLATE = null;
+  document.getElementById('templateEditor').innerHTML = '<div class="empty-state">Select a template on the left, or create a new one.</div>';
+  renderTemplateList();
+  toast('Template deleted');
+}
+
+document.getElementById('newTemplateBtn').addEventListener('click', async ()=>{
+  const c = getClient();
+  const { data, error } = await c.from('outreach_templates').insert({
+    name: 'New template',
+    subject: 'Subject here',
+    body: 'Hi {{first_name}},\n\n…\n\nBest,\nMiguel',
+    language: 'en',
+    sort_order: (TEMPLATES.length+1)*10
+  }).select().single();
+  if(error){ toast('Create failed: '+error.message); return; }
+  TEMPLATES.push(data);
+  CURRENT_TEMPLATE = data;
+  renderTemplateList();
+  selectTemplate(data.id);
+  toast('Template created');
+});
+
+// ════════════════════════════════════════════════════════════════════════
+//  UTILITIES
+// ════════════════════════════════════════════════════════════════════════
+function escHtml(s){ return String(s||'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function escAttr(s){ return escHtml(s).replace(/'/g, '&#39;'); }
+function fmtDateTime(iso){
+  if(!iso) return '—';
+  const d = new Date(iso);
+  return d.toLocaleString('en-GB', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
+}
+
+// ════════════════════════════════════════════════════════════════════════
+//  BOOT
+// ════════════════════════════════════════════════════════════════════════
+checkSession();
+</script>
+</body>
+</html>
