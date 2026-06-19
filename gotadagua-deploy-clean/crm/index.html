@@ -109,6 +109,23 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
 /* Native select replacing the pill in edit mode. Width fixed to match the
    pill so the row doesn't shift while the user picks a value. */
 .status-inline-select{appearance:none;-webkit-appearance:none;border:1.5px solid var(--ocean);border-radius:999px;padding:4px 24px 4px 10px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;font-family:'Outfit',sans-serif;cursor:pointer;background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 14 14'%3E%3Cpath fill='%231e6fa8' d='M3.2 5.2a.75.75 0 0 1 1.06 0L7 7.94 9.74 5.2a.75.75 0 1 1 1.06 1.06l-3.27 3.27a.75.75 0 0 1-1.06 0L3.2 6.26a.75.75 0 0 1 0-1.06Z'/%3E%3C/svg%3E") no-repeat right 6px center;background-size:12px}
+/* ── Group cards (Partner → Groups) ─────────────────────────────────── */
+.group-card{background:#fafdff;border:1px solid var(--border);border-left:4px solid var(--ocean);border-radius:10px;padding:12px 14px;margin-bottom:8px;display:grid;grid-template-columns:1fr auto;gap:10px}
+.group-card.stage-possibility{border-left-color:#94a3b8}
+.group-card.stage-request{border-left-color:#f59e0b}
+.group-card.stage-hold{border-left-color:#fbbf24}
+.group-card.stage-deposit_paid{border-left-color:#3b82f6}
+.group-card.stage-confirmed{border-left-color:#22c55e;background:#f0fdf4}
+.group-card.stage-completed{border-left-color:#16a34a;background:#f0fdf4;opacity:.85}
+.group-card.stage-cancelled{border-left-color:#ef4444;opacity:.6}
+.group-title{font-weight:700;color:var(--navy);font-size:13.5px;line-height:1.2;margin-bottom:3px}
+.group-meta{font-size:11.5px;color:var(--muted);display:flex;gap:8px;flex-wrap:wrap}
+.group-meta span{white-space:nowrap}
+.group-stage-select{appearance:none;-webkit-appearance:none;border:1.5px solid var(--border);border-radius:999px;padding:3px 22px 3px 9px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;font-family:'Outfit',sans-serif;cursor:pointer;background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 14 14'%3E%3Cpath fill='%236b8099' d='M3.2 5.2a.75.75 0 0 1 1.06 0L7 7.94 9.74 5.2a.75.75 0 1 1 1.06 1.06l-3.27 3.27a.75.75 0 0 1-1.06 0L3.2 6.26a.75.75 0 0 1 0-1.06Z'/%3E%3C/svg%3E") no-repeat right 6px center;background-size:11px}
+.group-actions{display:flex;gap:6px;align-items:flex-start;justify-self:end}
+.group-icon-btn{width:24px;height:24px;display:flex;align-items:center;justify-content:center;background:transparent;border:1px solid transparent;border-radius:6px;cursor:pointer;color:var(--muted);transition:all .15s;font-size:13px}
+.group-icon-btn:hover{background:var(--foam);color:var(--navy);border-color:var(--border)}
+.group-icon-btn.delete:hover{background:var(--red-bg);color:var(--red-text);border-color:#f0a0a0}
 /* ── Bulk action bar ─────────────────────────────────────────────────── */
 .bulk-bar{position:sticky;top:60px;z-index:55;display:flex;gap:10px;align-items:center;background:linear-gradient(135deg,var(--navy),var(--navy-mid));color:#fff;border-radius:12px;padding:10px 14px;margin-bottom:12px;box-shadow:0 8px 24px rgba(40,57,75,.22)}
 .bulk-bar.hidden{display:none}
@@ -118,6 +135,16 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
 .row-check{cursor:pointer;accent-color:var(--ocean);width:16px;height:16px}
 tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),transparent);box-shadow:inset 3px 0 0 var(--ocean)}
 .s-not_started{background:#f0f4f8;color:var(--muted)}
+/* New 9-stage pipeline. Warm-to-green progression through the pipe so the
+   colour itself communicates how far down the funnel a contact is. */
+.s-first_email{background:#fef3c7;color:#92400e}
+.s-follow_up{background:#fde68a;color:#854d0e}
+.s-in_conversation{background:var(--green-bg);color:var(--green-text)}
+.s-proposal_sent{background:#bae6fd;color:#075985}
+.s-active_partner{background:#dcfce7;color:#166534;font-weight:800}
+.s-lost{background:var(--red-bg);color:var(--red-text)}
+/* Legacy classes kept so any cached/stale payload still renders sensibly
+   until the DB migration normalises every row. */
 .s-sent{background:var(--amber-bg);color:var(--amber-text)}
 .s-replied{background:var(--green-bg);color:var(--green-text)}
 .s-meeting{background:var(--purple-bg);color:var(--purple-text)}
@@ -371,22 +398,25 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
       <button class="chip active" data-preset="all">All <span class="chip-count" id="cn-all">0</span></button>
       <button class="chip" data-preset="today">📅 Today's tasks <span class="chip-count" id="cn-today">0</span></button>
       <button class="chip" data-preset="overdue">🔥 Overdue <span class="chip-count" id="cn-overdue">0</span></button>
-      <button class="chip" data-preset="hot">💬 Hot (Replied/Meeting) <span class="chip-count" id="cn-hot">0</span></button>
+      <button class="chip" data-preset="hot">💬 Hot (In convo · Meeting · Proposal) <span class="chip-count" id="cn-hot">0</span></button>
       <button class="chip" data-preset="first-touch">✨ Needs first touch <span class="chip-count" id="cn-first">0</span></button>
       <button class="chip" data-preset="stale">😴 Stale (>14d silent) <span class="chip-count" id="cn-stale">0</span></button>
-      <button class="chip" data-preset="closed">🏆 Closed <span class="chip-count" id="cn-closed">0</span></button>
+      <button class="chip" data-preset="active">🤝 Active partners <span class="chip-count" id="cn-active">0</span></button>
+      <button class="chip" data-preset="closed">🏁 Closed (won + lost) <span class="chip-count" id="cn-closed">0</span></button>
     </div>
 
     <div class="filter-bar">
       <select class="filter-select" id="filterStatus">
         <option value="">All statuses</option>
         <option value="not_started">Not started</option>
-        <option value="sent">Sent</option>
-        <option value="replied">Replied</option>
+        <option value="first_email">1st email</option>
+        <option value="follow_up">Follow-up</option>
+        <option value="in_conversation">In conversation</option>
         <option value="meeting">Meeting</option>
-        <option value="closed_won">Closed Won</option>
-        <option value="closed_lost">Closed Lost</option>
+        <option value="proposal_sent">Proposal sent</option>
+        <option value="active_partner">Active partner</option>
         <option value="no_reply">No reply</option>
+        <option value="lost">Lost</option>
       </select>
       <select class="filter-select" id="filterCountry">
         <option value="">All countries</option>
@@ -405,12 +435,14 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
       <select id="bulkStatus" class="filter-select">
         <option value="">Set status…</option>
         <option value="not_started">Not started</option>
-        <option value="sent">Sent</option>
-        <option value="replied">Replied</option>
+        <option value="first_email">1st email</option>
+        <option value="follow_up">Follow-up</option>
+        <option value="in_conversation">In conversation</option>
         <option value="meeting">Meeting</option>
-        <option value="closed_won">Closed Won</option>
-        <option value="closed_lost">Closed Lost</option>
+        <option value="proposal_sent">Proposal sent</option>
+        <option value="active_partner">Active partner</option>
         <option value="no_reply">No reply</option>
+        <option value="lost">Lost</option>
       </select>
       <input type="date" id="bulkFollowup" class="filter-search" style="max-width:180px" placeholder="Set follow-up date">
       <button class="header-btn" id="bulkClear" style="background:transparent;color:var(--muted);border:1px solid var(--border)">Clear selection</button>
@@ -658,6 +690,80 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
   </div>
 </div>
 
+<!-- ─── GROUP MODAL (create / edit) ────────────────────────────────────── -->
+<div class="compose-modal" id="groupModal">
+  <div class="compose-card" style="max-width:560px">
+    <div class="compose-header">
+      <div class="compose-title" id="groupModalTitle">+ New group</div>
+      <button class="detail-close" id="groupModalClose" aria-label="Close">×</button>
+    </div>
+    <div class="compose-body">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="editor-field" style="grid-column:1 / -1">
+          <label>Title *</label>
+          <input type="text" id="grTitle" required placeholder="e.g. Bristol Uni Oct 2026">
+        </div>
+        <div class="editor-field">
+          <label>Destination</label>
+          <select id="grDestination">
+            <option value="">—</option>
+            <option value="Portugal">Portugal</option>
+            <option value="Marrocos">Marrocos</option>
+            <option value="Sri Lanka">Sri Lanka</option>
+            <option value="Flexible">Flexible</option>
+          </select>
+        </div>
+        <div class="editor-field">
+          <label>Stage</label>
+          <select id="grStage">
+            <option value="possibility">Possibility</option>
+            <option value="request">Request</option>
+            <option value="hold">Hold</option>
+            <option value="deposit_paid">Deposit paid</option>
+            <option value="confirmed">Confirmed</option>
+            <option value="completed">Completed</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+        </div>
+        <div class="editor-field">
+          <label>Start date</label>
+          <input type="date" id="grStart">
+        </div>
+        <div class="editor-field">
+          <label>End date</label>
+          <input type="date" id="grEnd">
+        </div>
+        <div class="editor-field">
+          <label>Pax</label>
+          <input type="number" id="grPax" min="0" step="1" placeholder="18">
+        </div>
+        <div class="editor-field">
+          <label>Value (€)</label>
+          <input type="number" id="grValue" min="0" step="100" placeholder="9000">
+        </div>
+        <div class="editor-field">
+          <label>Balance due</label>
+          <input type="date" id="grBalanceDue">
+        </div>
+        <div class="editor-field" style="display:flex;align-items:flex-end">
+          <label style="display:flex;gap:8px;align-items:center;cursor:pointer;font-size:13px;color:var(--ink);text-transform:none;letter-spacing:0;font-weight:600">
+            <input type="checkbox" id="grDeposit" style="accent-color:var(--ocean);width:16px;height:16px"> Deposit paid
+          </label>
+        </div>
+        <div class="editor-field" style="grid-column:1 / -1">
+          <label>Notes</label>
+          <textarea id="grNotes" style="min-height:60px" placeholder="Anything worth remembering for this group…"></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="compose-footer">
+      <button class="action-btn ghost" id="groupDeleteBtn" style="margin-right:auto;color:var(--red-text);border-color:#f0a0a0;display:none">Delete</button>
+      <button class="action-btn ghost" id="groupCancelBtn">Cancel</button>
+      <button class="action-btn primary" id="groupSaveBtn" style="grid-column:auto">Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- ─── TOAST ─── -->
 <div id="toast"></div>
 </div>
@@ -669,23 +775,75 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
 let supa = null;
 let session = null;
 let CONTACTS = [];
+let GROUPS = [];     // outreach_groups — Partner→Groups model
 let TEMPLATES = [];
 let SAVED_VIEWS = [];
 let CURRENT_CONTACT = null;
 let CURRENT_TEMPLATE = null;
 let CURRENT_TAB = 'dashboard';
 let CHARTS = {}; // Chart.js instances, destroyed on re-render to free memory
+
+// ── Groups model ─────────────────────────────────────────────────────────
+// Stage flow (per the brief):
+//   possibility → request → hold → deposit_paid → confirmed → completed / cancelled
+const GROUP_STAGES = ['possibility','request','hold','deposit_paid','confirmed','completed','cancelled'];
+const GROUP_STAGE_LABELS = {
+  possibility:'Possibility', request:'Request', hold:'Hold',
+  deposit_paid:'Deposit paid', confirmed:'Confirmed',
+  completed:'Completed', cancelled:'Cancelled'
+};
+const GROUP_DESTINATIONS = ['Portugal','Marrocos','Sri Lanka','Flexible'];
+
+// Group KPIs for the dashboard. Confirmed = future bookings to actually
+// run. Possibilities = pipeline of groups that may or may not happen.
+function computeGroupKpis(){
+  let confirmed = 0, confirmedPax = 0, confirmedValue = 0;
+  let possibilities = 0, possibilityPax = 0;
+  GROUPS.forEach(g => {
+    if(g.stage === 'confirmed' || g.stage === 'deposit_paid'){
+      confirmed++;
+      confirmedPax += Number(g.pax||0);
+      confirmedValue += Number(g.value||0);
+    }
+    if(g.stage === 'possibility' || g.stage === 'request' || g.stage === 'hold'){
+      possibilities++;
+      possibilityPax += Number(g.pax||0);
+    }
+  });
+  return { confirmed, confirmedPax, confirmedValue, possibilities, possibilityPax };
+}
 // Set of contact ids currently selected for bulk actions. Survives a
 // re-render of the contacts list, so toggling a filter doesn't blow away
 // the user's selection.
 const SELECTED = new Set();
 
+// Richer partnership pipeline — 9 stages instead of 7.
+// Order matters: it drives the funnel sort, the analytics doughnut, the
+// preset filters, and the Kanban columns (next session).
 const STATUS_LABELS = {
-  not_started:'Not started', sent:'Sent', replied:'Replied',
-  meeting:'Meeting', closed_won:'Closed Won', closed_lost:'Closed Lost',
-  no_reply:'No reply'
+  not_started:    'Not started',
+  first_email:    '1st email',
+  follow_up:      'Follow-up',
+  in_conversation:'In conversation',
+  meeting:        'Meeting',
+  proposal_sent:  'Proposal sent',
+  active_partner: 'Active partner',
+  no_reply:       'No reply',
+  lost:           'Lost'
 };
-const STATUS_ORDER = ['not_started','sent','replied','meeting','closed_won','closed_lost','no_reply'];
+const STATUS_ORDER = [
+  'not_started','first_email','follow_up','in_conversation',
+  'meeting','proposal_sent','active_partner','no_reply','lost'
+];
+// Legacy → new status mapping for any client-side payload still using the
+// old keys (Compose used to set status='sent', etc.). Used wherever we
+// receive a payload from Supabase to keep the UI consistent during the
+// transition window.
+const LEGACY_STATUS = {
+  sent:'first_email', replied:'in_conversation',
+  closed_won:'active_partner', closed_lost:'lost'
+};
+function normalizeStatus(s){ return LEGACY_STATUS[s] || s; }
 
 function toast(msg){
   const el=document.getElementById('toast');
@@ -737,20 +895,105 @@ document.getElementById('loginForm').addEventListener('submit', async (e)=>{
 });
 
 document.getElementById('signOutBtn').addEventListener('click', async ()=>{
+  unsubscribeRealtime();
   try { await getClient().auth.signOut(); } catch(e){}
   session = null; CONTACTS = []; TEMPLATES = []; showLogin();
 });
 
 // ════════════════════════════════════════════════════════════════════════
+//  REALTIME SYNC (multi-device)
+// ════════════════════════════════════════════════════════════════════════
+// Subscribed once after sign-in; tears down on sign-out. Each event is
+// debounced so a bulk update (50 rows in <1s) doesn't trigger 50 renders.
+// Requires the tables to be in the supabase_realtime publication — see
+// the SQL the user pastes once into the Supabase editor.
+let RT_CHANNEL = null;
+let _rtRenderTimer = null;
+let _rtRefreshTimer = null;
+let _rtRefreshId = null;
+
+function scheduleRtRender(){
+  clearTimeout(_rtRenderTimer);
+  _rtRenderTimer = setTimeout(()=>{
+    if(CURRENT_TAB === 'contacts') renderContacts();
+    if(CURRENT_TAB === 'dashboard') renderDashboard();
+    if(CURRENT_TAB === 'analytics') renderAnalytics();
+  }, 250);
+}
+
+function scheduleRtPanelRefresh(contactId){
+  if(!CURRENT_CONTACT || CURRENT_CONTACT.id !== contactId) return;
+  _rtRefreshId = contactId;
+  clearTimeout(_rtRefreshTimer);
+  _rtRefreshTimer = setTimeout(()=>{
+    if(CURRENT_CONTACT?.id === _rtRefreshId) openContact(_rtRefreshId);
+  }, 400);
+}
+
+function subscribeRealtime(){
+  if(RT_CHANNEL) return;
+  const c = getClient();
+  RT_CHANNEL = c.channel('crm-realtime')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'outreach_contacts' }, (payload)=>{
+      const { eventType, new: nw, old: ol } = payload;
+      if(eventType === 'INSERT'){
+        if(!CONTACTS.find(x=>x.id===nw.id)) CONTACTS.unshift(nw);
+      } else if(eventType === 'UPDATE'){
+        const idx = CONTACTS.findIndex(x=>x.id===nw.id);
+        if(idx >= 0) Object.assign(CONTACTS[idx], nw);
+        scheduleRtPanelRefresh(nw.id);
+      } else if(eventType === 'DELETE'){
+        const idx = CONTACTS.findIndex(x=>x.id===ol.id);
+        if(idx >= 0) CONTACTS.splice(idx, 1);
+        if(CURRENT_CONTACT?.id === ol.id) closeDetail();
+      }
+      scheduleRtRender();
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'outreach_activity' }, (payload)=>{
+      const contactId = payload.new?.contact_id || payload.old?.contact_id;
+      if(contactId) scheduleRtPanelRefresh(contactId);
+    })
+    .subscribe();
+}
+
+function unsubscribeRealtime(){
+  if(!RT_CHANNEL) return;
+  try { getClient().removeChannel(RT_CHANNEL); } catch(e){}
+  RT_CHANNEL = null;
+}
+
+// ════════════════════════════════════════════════════════════════════════
 //  DATA LOADING
 // ════════════════════════════════════════════════════════════════════════
 async function loadAll(){
-  await Promise.all([loadContacts(), loadTemplates(), loadSavedViews()]);
+  await Promise.all([loadContacts(), loadTemplates(), loadSavedViews(), loadGroups()]);
   populateFilters();
   populateSavedViewsDropdown();
   renderDashboard();
   renderContacts();
   renderTemplateList();
+  // Kick off realtime AFTER the initial render so the first paint doesn't
+  // race with incoming events. Re-callable; subscribeRealtime() no-ops if
+  // already subscribed (so re-login doesn't double-bind).
+  subscribeRealtime();
+
+}
+
+// Loads all outreach_groups in one pass (small enough to keep in memory
+// alongside the 628 contacts — each contact only renders the rows that
+// match its id, so the per-detail-panel cost is O(N)).
+async function loadGroups(){
+  const c = getClient();
+  const { data, error } = await c.from('outreach_groups').select('*').order('start_date', { ascending: true, nullsFirst: false });
+  if(error){
+    // outreach_groups may not exist yet — silent fail so the rest of the
+    // app keeps working until the user runs the migration SQL.
+    if(!/relation .* does not exist/i.test(error.message||'')){
+      console.warn('loadGroups failed', error);
+    }
+    GROUPS = []; return;
+  }
+  GROUPS = data || [];
 }
 
 async function loadSavedViews(){
@@ -849,7 +1092,7 @@ function renderDashboard(){
   const todayFollowups = CONTACTS
     .filter(c => c.follow_up_at === today);
   const stale = CONTACTS
-    .filter(c => c.status === 'sent' && c.last_contacted_at && c.last_contacted_at.slice(0,10) < addDays(today,-14))
+    .filter(c => (c.status === 'first_email' || c.status === 'follow_up') && c.last_contacted_at && c.last_contacted_at.slice(0,10) < addDays(today,-14))
     .sort((a,b)=>(a.last_contacted_at||'').localeCompare(b.last_contacted_at||''));
 
   const tasks = [];
@@ -896,10 +1139,11 @@ function renderDashboard(){
     el.addEventListener('click', ()=>openContact(el.dataset.id));
   });
 
-  // ── Stale snooze banner: contacts in 'sent' status silent for 30+ days ──
-  // Lower threshold than the "stale (>14d)" card to avoid nagging too soon.
+  // ── Stale snooze banner: contacts awaiting reply for 30+ days ──
+  // first_email + follow_up both count as awaiting reply. Lower threshold
+  // than the "stale (>14d)" card to avoid nagging too soon.
   const veryStale = CONTACTS.filter(c =>
-    c.status === 'sent' && c.last_contacted_at &&
+    (c.status === 'first_email' || c.status === 'follow_up') && c.last_contacted_at &&
     c.last_contacted_at.slice(0,10) < addDays(today, -30)
   );
   const snoozeBanner = document.getElementById('snoozeBanner');
@@ -914,30 +1158,42 @@ function renderDashboard(){
   const byStatus = {};
   STATUS_ORDER.forEach(s=>byStatus[s]=0);
   CONTACTS.forEach(c=>{ byStatus[c.status] = (byStatus[c.status]||0)+1; });
-  const sent = byStatus.sent||0, replied = byStatus.replied||0, meeting = byStatus.meeting||0;
-  const replyRate = sent>0 ? Math.round((replied/sent)*100) : 0;
+  // Reach = anything past not_started (we've touched them at least once).
+  const reached = (byStatus.first_email||0) + (byStatus.follow_up||0)
+                + (byStatus.in_conversation||0) + (byStatus.meeting||0)
+                + (byStatus.proposal_sent||0) + (byStatus.active_partner||0)
+                + (byStatus.no_reply||0) + (byStatus.lost||0);
+  const replied = (byStatus.in_conversation||0) + (byStatus.meeting||0)
+                + (byStatus.proposal_sent||0) + (byStatus.active_partner||0);
+  // Reply rate: replies / things we sent (i.e. anything reached + no_reply).
+  const sentish = reached;
+  const replyRate = sentish>0 ? Math.round((replied/sentish)*100) : 0;
+  const inDiscussion = (byStatus.in_conversation||0) + (byStatus.meeting||0) + (byStatus.proposal_sent||0);
+  const activePartners = byStatus.active_partner || 0;
 
   // Pipeline weighted value = Σ (deal_value × probability/100) across open deals
-  const openDeals = CONTACTS.filter(c => !['closed_won','closed_lost','no_reply'].includes(c.status));
+  const openDeals = CONTACTS.filter(c => !['active_partner','lost','no_reply'].includes(c.status));
   const weightedValue = openDeals.reduce((sum,c) => sum + (Number(c.deal_value||0) * Number(c.probability||0)/100), 0);
   const totalValue = openDeals.reduce((sum,c) => sum + Number(c.deal_value||0), 0);
-  const wonValue = CONTACTS.filter(c=>c.status==='closed_won').reduce((s,c)=>s+Number(c.deal_value||0),0);
+  const wonValue = CONTACTS.filter(c=>c.status==='active_partner').reduce((s,c)=>s+Number(c.deal_value||0),0);
   // Hide the financial cards while nobody has filled in a deal_value yet.
   // Showing five €0 KPIs is depressing and reads as "app is broken".
   const hasAnyDealValue = CONTACTS.some(c => Number(c.deal_value||0) > 0);
   const moneyKpis = hasAnyDealValue ? `
     <div class="kpi"><div class="kpi-label">Pipeline value</div><div class="kpi-value accent">€${fmtMoney(totalValue)}</div><div class="kpi-sub">weighted €${fmtMoney(weightedValue)}</div></div>
-    <div class="kpi"><div class="kpi-label">Won (€)</div><div class="kpi-value green">€${fmtMoney(wonValue)}</div><div class="kpi-sub">${byStatus.closed_won||0} closed · ${byStatus.closed_lost||0} lost</div></div>
+    <div class="kpi"><div class="kpi-label">Won (€)</div><div class="kpi-value green">€${fmtMoney(wonValue)}</div><div class="kpi-sub">${activePartners} active partners · ${byStatus.lost||0} lost</div></div>
   ` : `
-    <div class="kpi"><div class="kpi-label">Closed Won</div><div class="kpi-value green">${byStatus.closed_won||0}</div><div class="kpi-sub">${byStatus.closed_lost||0} lost</div></div>
+    <div class="kpi"><div class="kpi-label">Active partners</div><div class="kpi-value green">${activePartners}</div><div class="kpi-sub">${byStatus.lost||0} lost</div></div>
   `;
 
+  // ── Group-focused KPIs (replace the old €0 cards) ──
+  const groupKpis = computeGroupKpis();
   document.getElementById('kpiStrip').innerHTML = `
     <div class="kpi"><div class="kpi-label">Total contacts</div><div class="kpi-value">${CONTACTS.length}</div><div class="kpi-sub">${CONTACTS.filter(c=>c.email).length} with email</div></div>
-    <div class="kpi"><div class="kpi-label">Sent</div><div class="kpi-value accent">${sent}</div><div class="kpi-sub">awaiting response</div></div>
-    <div class="kpi"><div class="kpi-label">Replied</div><div class="kpi-value green">${replied}</div><div class="kpi-sub">${replyRate}% reply rate</div></div>
-    <div class="kpi"><div class="kpi-label">In discussion</div><div class="kpi-value">${meeting}</div><div class="kpi-sub">meeting stage</div></div>
-    ${moneyKpis}
+    <div class="kpi"><div class="kpi-label">Reached</div><div class="kpi-value accent">${reached}</div><div class="kpi-sub">at least one touch</div></div>
+    <div class="kpi"><div class="kpi-label">In discussion</div><div class="kpi-value green">${inDiscussion}</div><div class="kpi-sub">${replyRate}% reply rate</div></div>
+    <div class="kpi"><div class="kpi-label">Confirmed groups</div><div class="kpi-value">${groupKpis.confirmed}</div><div class="kpi-sub">${groupKpis.confirmedPax} pax${groupKpis.confirmedValue?' · €'+fmtMoney(groupKpis.confirmedValue):''}</div></div>
+    <div class="kpi"><div class="kpi-label">Possibilities</div><div class="kpi-value" style="color:var(--ocean)">${groupKpis.possibilities}</div><div class="kpi-sub">${groupKpis.possibilityPax} pax in pipeline</div></div>
   `;
 
   // ── Upcoming follow-ups (next 7 days, excluding overdue which are in hero) ──
@@ -973,11 +1229,11 @@ function renderDashboard(){
   // ── Recently closed ──────────────────────────────────────────────────
   const cutoff30 = addDays(today, -30);
   const recentClosed = CONTACTS
-    .filter(c => (c.status==='closed_won' || c.status==='closed_lost') && c.updated_at && c.updated_at.slice(0,10) >= cutoff30)
+    .filter(c => (c.status==='active_partner' || c.status==='lost') && c.updated_at && c.updated_at.slice(0,10) >= cutoff30)
     .sort((a,b)=>(b.updated_at||'').localeCompare(a.updated_at||''));
   const rcEl = document.getElementById('recentClosedList');
   rcEl.innerHTML = recentClosed.length ? recentClosed.slice(0,15).map(c=>{
-    const won = c.status==='closed_won';
+    const won = c.status==='active_partner';
     return `<div class="followup-item"><div class="fi-name" data-id="${c.id}">${escHtml(c.company)}</div><div class="fi-due" style="background:${won?'var(--green-bg)':'var(--red-bg)'};color:${won?'var(--green-text)':'var(--red-text)'}">${won?'✅ Won':'✗ Lost'} · ${fmtDate(c.updated_at)}</div></div>`;
   }).join('') : '<div class="empty-state">No deals closed in the last 30 days.</div>';
   rcEl.querySelectorAll('.fi-name').forEach(el=>el.addEventListener('click', ()=>openContact(el.dataset.id)));
@@ -1032,34 +1288,42 @@ document.querySelectorAll('#presetChips .chip').forEach(chip => {
 // dropdown filters (which apply on top), so user can e.g. select "Today's
 // tasks" then narrow by country.
 function matchesPreset(c, preset, today){
+  // Helpers — what counts as "we've sent something but haven't heard back".
+  // The pipeline distinguishes first_email from follow_up, so both qualify
+  // as "awaiting reply" for the today/stale presets.
+  const awaitingReply = (s) => s === 'first_email' || s === 'follow_up';
   switch(preset){
     case 'all': return true;
     case 'today':
       return (c.follow_up_at && c.follow_up_at <= today)
-          || (c.status==='sent' && c.last_contacted_at && c.last_contacted_at.slice(0,10) < addDays(today,-14));
+          || (awaitingReply(c.status) && c.last_contacted_at && c.last_contacted_at.slice(0,10) < addDays(today,-14));
     case 'overdue':
       return c.follow_up_at && c.follow_up_at < today;
     case 'hot':
-      return c.status==='replied' || c.status==='meeting';
+      // "Hot" widened: any active engagement past the first reply.
+      return c.status==='in_conversation' || c.status==='meeting' || c.status==='proposal_sent';
     case 'first-touch':
       return c.status==='not_started' && c.email;
     case 'stale':
-      return c.status==='sent' && c.last_contacted_at && c.last_contacted_at.slice(0,10) < addDays(today,-14);
+      return awaitingReply(c.status) && c.last_contacted_at && c.last_contacted_at.slice(0,10) < addDays(today,-14);
+    case 'active':
+      return c.status==='active_partner';
     case 'closed':
-      return c.status==='closed_won' || c.status==='closed_lost';
+      return c.status==='active_partner' || c.status==='lost';
   }
   return true;
 }
 
 function updatePresetCounts(){
   const today = new Date().toISOString().slice(0,10);
-  const counts = { all:CONTACTS.length, today:0, overdue:0, hot:0, 'first-touch':0, stale:0, closed:0 };
+  const counts = { all:CONTACTS.length, today:0, overdue:0, hot:0, 'first-touch':0, stale:0, active:0, closed:0 };
   CONTACTS.forEach(c=>{
     if(matchesPreset(c,'today',today)) counts.today++;
     if(matchesPreset(c,'overdue',today)) counts.overdue++;
     if(matchesPreset(c,'hot',today)) counts.hot++;
     if(matchesPreset(c,'first-touch',today)) counts['first-touch']++;
     if(matchesPreset(c,'stale',today)) counts.stale++;
+    if(matchesPreset(c,'active',today)) counts.active++;
     if(matchesPreset(c,'closed',today)) counts.closed++;
   });
   document.getElementById('cn-all').textContent = counts.all;
@@ -1068,6 +1332,7 @@ function updatePresetCounts(){
   document.getElementById('cn-hot').textContent = counts.hot;
   document.getElementById('cn-first').textContent = counts['first-touch'];
   document.getElementById('cn-stale').textContent = counts.stale;
+  const activeEl = document.getElementById('cn-active'); if(activeEl) activeEl.textContent = counts.active;
   document.getElementById('cn-closed').textContent = counts.closed;
 }
 
@@ -1345,9 +1610,17 @@ async function openContact(id){
       <div class="detail-row"><span class="label">Expected close</span><span class="value">
         <input type="date" id="closeDateInput" value="${c.expected_close_date||''}" style="border:1px solid var(--border);border-radius:8px;padding:4px 8px;font:inherit">
       </span></div>
-      ${c.status==='closed_lost' ? `<div class="detail-row"><span class="label">Lost reason</span><span class="value">
+      ${c.status==='lost' ? `<div class="detail-row"><span class="label">Lost reason</span><span class="value">
         <input type="text" id="lostReasonInput" value="${escAttr(c.lost_reason||'')}" placeholder="Why did we lose?" style="width:180px;border:1px solid var(--border);border-radius:8px;padding:4px 8px;font:inherit">
       </span></div>` : ''}
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-section-title" style="display:flex;justify-content:space-between;align-items:center">
+        <span>Groups &amp; possibilities</span>
+        <button type="button" id="addGroupBtn" style="background:var(--ocean);color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">+ Group</button>
+      </div>
+      <div id="groupsList"></div>
     </div>
 
     <div class="detail-section">
@@ -1410,10 +1683,13 @@ async function openContact(id){
     if(CURRENT_TAB==='contacts') renderContacts();
   });
 
-  // Wire the delete button on each activity item. Re-opening the panel
-  // after delete keeps the code simple — all child handlers re-bind
-  // automatically. The scroll position is reset (acceptable given how
-  // rare delete is) and the rest of the panel reflects any side effects.
+  // Wire the delete button on each activity item. After delete, if it was
+  // an email_sent entry, recompute c.last_contacted_at from the remaining
+  // email_sent activities — otherwise the timeline says "no activity" while
+  // the panel still claims "Last contacted 19 Jun". Same idea for
+  // status_changed: if the LAST status change is the one we delete, revert
+  // c.status to that activity's old_value so the pill in the row matches
+  // the new (shorter) timeline.
   document.querySelectorAll('#activityList .activity-del').forEach(btn=>{
     btn.addEventListener('mouseenter', ()=>{ btn.style.background='var(--red-bg)'; btn.style.color='var(--red-text)'; });
     btn.addEventListener('mouseleave', ()=>{ btn.style.background='transparent'; btn.style.color='var(--muted)'; });
@@ -1421,12 +1697,47 @@ async function openContact(id){
       e.stopPropagation();
       if(!confirm('Delete this activity entry? This cannot be undone.')) return;
       const supa = getClient();
+      const item = btn.closest('.activity-item');
+      const wasEmailSent = item.classList.contains('email_sent');
+      const wasStatusChanged = item.classList.contains('status_changed');
+      // Fetch the row first so we know its old_value (needed if we revert status).
+      const { data: actRow } = await supa.from('outreach_activity')
+        .select('old_value,new_value,created_at').eq('id', btn.dataset.act).single();
       const { error } = await supa.from('outreach_activity').delete().eq('id', btn.dataset.act);
       if(error){ toast('Delete failed: '+error.message); return; }
+      const patch = {};
+      if(wasEmailSent){
+        // Recompute the contact's last_contacted_at from the most recent
+        // remaining email_sent activity (NULL if there are none left).
+        const { data: latest } = await supa.from('outreach_activity')
+          .select('created_at').eq('contact_id', c.id).eq('action','email_sent')
+          .order('created_at', { ascending:false }).limit(1);
+        patch.last_contacted_at = latest?.[0]?.created_at || null;
+      }
+      if(wasStatusChanged && actRow){
+        // Only revert if this was the LATEST status change. Otherwise a
+        // later change already overrides this one, and reverting would
+        // contradict the current row.
+        const { data: latestStatus } = await supa.from('outreach_activity')
+          .select('id').eq('contact_id', c.id).eq('action','status_changed')
+          .order('created_at', { ascending:false }).limit(1);
+        const noNewerStatusChange = !latestStatus?.length;
+        if(noNewerStatusChange && actRow.old_value) patch.status = actRow.old_value;
+      }
+      if(Object.keys(patch).length){
+        const { error: upErr } = await supa.from('outreach_contacts').update(patch).eq('id', c.id);
+        if(!upErr) Object.assign(c, patch);
+      }
       toast('Activity deleted');
       openContact(c.id);
+      if(CURRENT_TAB==='contacts') renderContacts();
+      if(CURRENT_TAB==='dashboard') renderDashboard();
     });
   });
+
+  // ── Groups & possibilities ──────────────────────────────────────────
+  renderGroupsList(c.id);
+  document.getElementById('addGroupBtn').addEventListener('click', ()=>openGroupModal(c.id, null));
 
   // Show panel
   document.getElementById('detailOverlay').classList.add('open');
@@ -1449,6 +1760,9 @@ function activityLabel(a){
     case 'follow_up_set': return `📅 Follow-up: ${a.new_value||'cleared'}`;
     case 'note_added': return `📝 Note added`;
     case 'imported': return `Imported from xlsx`;
+    case 'group_added': return `👥 Group added: "${a.meta?.title||'untitled'}"${a.meta?.stage?` (${GROUP_STAGE_LABELS[a.meta.stage]||a.meta.stage})`:''}`;
+    case 'group_updated': return `👥 Group updated: "${a.meta?.title||'untitled'}"`;
+    case 'group_stage': return `👥 Group stage: ${GROUP_STAGE_LABELS[a.old_value]||a.old_value||'—'} → ${GROUP_STAGE_LABELS[a.new_value]||a.new_value||'—'}${a.meta?.title?` (${a.meta.title})`:''}`;
     default: return a.action;
   }
 }
@@ -1554,8 +1868,14 @@ document.getElementById('composeOpen').addEventListener('click', async ()=>{
     + '&body=' + encodeURIComponent(body);
   window.open(gmailUrl, '_blank');
 
-  // Log and update status to 'sent' if currently 'not_started'
-  const newStatus = c.status === 'not_started' ? 'sent' : c.status;
+  // Auto-advance the pipeline on send:
+  //   not_started → first_email (this is the moment of first touch)
+  //   first_email → follow_up (subsequent send to the same contact)
+  // Anything past first_email or follow_up stays put — sending a proposal
+  // doesn't demote a "meeting" stage back to "follow_up".
+  let newStatus = c.status;
+  if(c.status === 'not_started') newStatus = 'first_email';
+  else if(c.status === 'first_email') newStatus = 'follow_up';
   const patch = { last_contacted_at: new Date().toISOString() };
   if(newStatus !== c.status) patch.status = newStatus;
   await updateContact(c.id, patch);
@@ -1865,7 +2185,7 @@ document.getElementById('snoozeReviewBtn').addEventListener('click', ()=>{
 document.getElementById('snoozeAllBtn').addEventListener('click', async ()=>{
   const today = new Date().toISOString().slice(0,10);
   const veryStale = CONTACTS.filter(c =>
-    c.status === 'sent' && c.last_contacted_at &&
+    (c.status === 'first_email' || c.status === 'follow_up') && c.last_contacted_at &&
     c.last_contacted_at.slice(0,10) < addDays(today, -30)
   );
   if(!veryStale.length) return;
@@ -1875,9 +2195,10 @@ document.getElementById('snoozeAllBtn').addEventListener('click', async ()=>{
   const { error } = await c.from('outreach_contacts').update({ status:'no_reply' }).in('id', ids);
   if(error){ toast('Bulk update failed: '+error.message); return; }
   for(const x of veryStale){
+    const oldStatus = x.status;
     x.status = 'no_reply';
     // Fire-and-forget activity logs (don't await each — would be slow for big batches)
-    logActivity(x.id, 'status_changed', 'sent', 'no_reply', { auto:true, batch:'snooze-stale' });
+    logActivity(x.id, 'status_changed', oldStatus, 'no_reply', { auto:true, batch:'snooze-stale' });
   }
   toast(`${ids.length} contacts moved to No reply`);
   renderDashboard();
@@ -1894,11 +2215,11 @@ function renderAnalytics(){
   CONTACTS.forEach(c=>{ byStatus[c.status] = (byStatus[c.status]||0)+1; });
 
   // Pipeline value KPIs (more detailed than the dashboard strip)
-  const openDeals = CONTACTS.filter(c => !['closed_won','closed_lost','no_reply'].includes(c.status));
+  const openDeals = CONTACTS.filter(c => !['active_partner','lost','no_reply'].includes(c.status));
   const totalValue = openDeals.reduce((s,c)=>s+Number(c.deal_value||0),0);
   const weighted = openDeals.reduce((s,c)=>s+(Number(c.deal_value||0)*Number(c.probability||0)/100),0);
-  const wonValue = CONTACTS.filter(c=>c.status==='closed_won').reduce((s,c)=>s+Number(c.deal_value||0),0);
-  const lostValue = CONTACTS.filter(c=>c.status==='closed_lost').reduce((s,c)=>s+Number(c.deal_value||0),0);
+  const wonValue = CONTACTS.filter(c=>c.status==='active_partner').reduce((s,c)=>s+Number(c.deal_value||0),0);
+  const lostValue = CONTACTS.filter(c=>c.status==='lost').reduce((s,c)=>s+Number(c.deal_value||0),0);
   const withDealValue = CONTACTS.filter(c=>c.deal_value).length;
   // Replace the five-€0-cards strip with a single non-financial summary
   // while the user hasn't started filling in deal values. Avoids the
@@ -1915,27 +2236,32 @@ function renderAnalytics(){
     const byStat = {};
     STATUS_ORDER.forEach(s=>byStat[s]=0);
     CONTACTS.forEach(c=>{ byStat[c.status]=(byStat[c.status]||0)+1; });
+    const contacted = (byStat.first_email||0)+(byStat.follow_up||0)+(byStat.in_conversation||0)+(byStat.meeting||0)+(byStat.proposal_sent||0)+(byStat.active_partner||0)+(byStat.no_reply||0)+(byStat.lost||0);
+    const replied = (byStat.in_conversation||0)+(byStat.meeting||0)+(byStat.proposal_sent||0)+(byStat.active_partner||0);
+    const inDiscussion = (byStat.in_conversation||0)+(byStat.meeting||0)+(byStat.proposal_sent||0);
     document.getElementById('pipelineKpis').innerHTML = `
       <div class="kpi"><div class="kpi-label">Total contacts</div><div class="kpi-value">${CONTACTS.length}</div><div class="kpi-sub">${CONTACTS.filter(c=>c.email).length} with email</div></div>
-      <div class="kpi"><div class="kpi-label">Contacted</div><div class="kpi-value accent">${(byStat.sent||0)+(byStat.replied||0)+(byStat.meeting||0)+(byStat.closed_won||0)+(byStat.closed_lost||0)+(byStat.no_reply||0)}</div><div class="kpi-sub">of ${CONTACTS.length}</div></div>
-      <div class="kpi"><div class="kpi-label">Replied</div><div class="kpi-value green">${byStat.replied||0}</div><div class="kpi-sub">${(byStat.sent||0) > 0 ? Math.round(((byStat.replied||0)/(byStat.sent||0))*100) : 0}% reply rate</div></div>
-      <div class="kpi"><div class="kpi-label">In discussion</div><div class="kpi-value">${byStat.meeting||0}</div><div class="kpi-sub">meeting stage</div></div>
-      <div class="kpi"><div class="kpi-label">Closed Won</div><div class="kpi-value green">${byStat.closed_won||0}</div><div class="kpi-sub">${byStat.closed_lost||0} lost</div></div>
+      <div class="kpi"><div class="kpi-label">Contacted</div><div class="kpi-value accent">${contacted}</div><div class="kpi-sub">of ${CONTACTS.length}</div></div>
+      <div class="kpi"><div class="kpi-label">Replied</div><div class="kpi-value green">${replied}</div><div class="kpi-sub">${contacted > 0 ? Math.round((replied/contacted)*100) : 0}% reply rate</div></div>
+      <div class="kpi"><div class="kpi-label">In discussion</div><div class="kpi-value">${inDiscussion}</div><div class="kpi-sub">in convo · meeting · proposal</div></div>
+      <div class="kpi"><div class="kpi-label">Active partners</div><div class="kpi-value green">${byStat.active_partner||0}</div><div class="kpi-sub">${byStat.lost||0} lost</div></div>
     `;
   }
 
-  // Group contacts by country & by segment, count statuses inside each
+  // Group contacts by country & by segment, count engagement levels
+  const RESPONDED = ['in_conversation','meeting','proposal_sent','active_partner'];
+  const AWAITING = ['first_email','follow_up'];
   const byCountry = {}, bySegment = {};
   CONTACTS.forEach(c=>{
     const cy = c.country || 'Unknown';
     const sg = c.segment || 'Unknown';
     byCountry[cy] = (byCountry[cy]||{total:0, replied:0, sent:0});
     byCountry[cy].total++;
-    if(c.status==='replied' || c.status==='meeting' || c.status==='closed_won') byCountry[cy].replied++;
-    if(c.status==='sent') byCountry[cy].sent++;
+    if(RESPONDED.includes(c.status)) byCountry[cy].replied++;
+    if(AWAITING.includes(c.status)) byCountry[cy].sent++;
     bySegment[sg] = (bySegment[sg]||{total:0, replied:0});
     bySegment[sg].total++;
-    if(c.status==='replied' || c.status==='meeting' || c.status==='closed_won') bySegment[sg].replied++;
+    if(RESPONDED.includes(c.status)) bySegment[sg].replied++;
   });
 
   // Top 10 countries by contact count
@@ -2246,6 +2572,167 @@ document.addEventListener('keydown', (e)=>{
   if(CURRENT_TAB !== 'contacts') return;
   e.preventDefault();
   openAddContact();
+});
+
+// ════════════════════════════════════════════════════════════════════════
+//  GROUPS (Partner → Groups)
+// ════════════════════════════════════════════════════════════════════════
+// Render the list of groups for a given contact inside #groupsList. Each
+// card shows title + dates + pax + value + inline stage select + edit/del.
+function renderGroupsList(contactId){
+  const list = document.getElementById('groupsList');
+  if(!list) return;
+  const items = GROUPS.filter(g => g.contact_id === contactId)
+    .sort((a,b)=> (a.start_date||'9999').localeCompare(b.start_date||'9999'));
+  if(items.length === 0){
+    list.innerHTML = '<div class="empty-state" style="padding:14px;text-align:left;background:#fafdff;border:1px dashed var(--border);border-radius:10px">No groups yet. Click <b>+ Group</b> to add a possibility, a request, or a confirmed booking.</div>';
+    return;
+  }
+  list.innerHTML = items.map(g => {
+    const dates = g.start_date && g.end_date
+      ? `${fmtDate(g.start_date)} → ${fmtDate(g.end_date)}`
+      : (g.start_date ? `${fmtDate(g.start_date)}` : '');
+    const stageOpts = GROUP_STAGES.map(s =>
+      `<option value="${s}" ${s===g.stage?'selected':''}>${GROUP_STAGE_LABELS[s]}</option>`
+    ).join('');
+    return `
+      <div class="group-card stage-${g.stage}" data-id="${g.id}">
+        <div>
+          <div class="group-title">${escHtml(g.title)}</div>
+          <div class="group-meta">
+            ${dates ? `<span>📅 ${dates}</span>` : ''}
+            ${g.pax ? `<span>👥 ${g.pax} pax</span>` : ''}
+            ${g.value ? `<span>💶 €${fmtMoney(g.value)}</span>` : ''}
+            ${g.destination ? `<span>📍 ${escHtml(g.destination)}</span>` : ''}
+            ${g.deposit_paid ? `<span style="color:var(--green-text);font-weight:700">✓ deposit</span>` : ''}
+          </div>
+        </div>
+        <div class="group-actions">
+          <select class="group-stage-select s-${g.stage}" data-stage-id="${g.id}">${stageOpts}</select>
+          <button class="group-icon-btn" data-edit-id="${g.id}" title="Edit" aria-label="Edit">✎</button>
+          <button class="group-icon-btn delete" data-del-id="${g.id}" title="Delete" aria-label="Delete">×</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  // Wire stage selects (inline edit).
+  list.querySelectorAll('.group-stage-select').forEach(sel => {
+    sel.addEventListener('change', async () => {
+      const id = sel.dataset.stageId;
+      const newStage = sel.value;
+      const g = GROUPS.find(x=>x.id===id);
+      const oldStage = g?.stage;
+      const supa = getClient();
+      const { error } = await supa.from('outreach_groups').update({ stage: newStage }).eq('id', id);
+      if(error){ toast('Stage update failed: '+error.message); sel.value = oldStage; return; }
+      if(g){ g.stage = newStage; }
+      toast(`Stage → ${GROUP_STAGE_LABELS[newStage]}`);
+      logActivity(contactId, 'group_stage', oldStage, newStage, { group_id: id, title: g?.title });
+      renderGroupsList(contactId);
+      if(CURRENT_TAB==='dashboard') renderDashboard();
+    });
+  });
+
+  // Wire edit + delete buttons.
+  list.querySelectorAll('[data-edit-id]').forEach(btn => {
+    btn.addEventListener('click', () => openGroupModal(contactId, btn.dataset.editId));
+  });
+  list.querySelectorAll('[data-del-id]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.delId;
+      const g = GROUPS.find(x=>x.id===id);
+      if(!confirm(`Delete group "${g?.title}"? This cannot be undone.`)) return;
+      const supa = getClient();
+      const { error } = await supa.from('outreach_groups').delete().eq('id', id);
+      if(error){ toast('Delete failed: '+error.message); return; }
+      GROUPS = GROUPS.filter(x=>x.id!==id);
+      toast('Group deleted');
+      renderGroupsList(contactId);
+      if(CURRENT_TAB==='dashboard') renderDashboard();
+    });
+  });
+}
+
+let _editingGroupId = null;
+let _editingGroupContactId = null;
+
+function openGroupModal(contactId, groupId){
+  _editingGroupId = groupId;
+  _editingGroupContactId = contactId;
+  const editing = !!groupId;
+  document.getElementById('groupModalTitle').textContent = editing ? 'Edit group' : '+ New group';
+  document.getElementById('groupDeleteBtn').style.display = editing ? 'inline-flex' : 'none';
+  const g = editing ? GROUPS.find(x=>x.id===groupId) : null;
+  document.getElementById('grTitle').value = g?.title || '';
+  document.getElementById('grDestination').value = g?.destination || '';
+  document.getElementById('grStage').value = g?.stage || 'possibility';
+  document.getElementById('grStart').value = g?.start_date || '';
+  document.getElementById('grEnd').value = g?.end_date || '';
+  document.getElementById('grPax').value = g?.pax || '';
+  document.getElementById('grValue').value = g?.value || '';
+  document.getElementById('grBalanceDue').value = g?.balance_due_date || '';
+  document.getElementById('grDeposit').checked = !!g?.deposit_paid;
+  document.getElementById('grNotes').value = g?.notes || '';
+  document.getElementById('groupModal').classList.add('open');
+  setTimeout(()=>document.getElementById('grTitle').focus(), 100);
+}
+function closeGroupModal(){
+  document.getElementById('groupModal').classList.remove('open');
+  _editingGroupId = null;
+  _editingGroupContactId = null;
+}
+document.getElementById('groupModalClose').addEventListener('click', closeGroupModal);
+document.getElementById('groupCancelBtn').addEventListener('click', closeGroupModal);
+
+document.getElementById('groupSaveBtn').addEventListener('click', async ()=>{
+  const title = document.getElementById('grTitle').value.trim();
+  if(!title){ toast('Title is required'); return; }
+  const payload = {
+    contact_id: _editingGroupContactId,
+    title,
+    destination: document.getElementById('grDestination').value || null,
+    stage: document.getElementById('grStage').value,
+    start_date: document.getElementById('grStart').value || null,
+    end_date: document.getElementById('grEnd').value || null,
+    pax: parseInt(document.getElementById('grPax').value, 10) || 0,
+    value: parseFloat(document.getElementById('grValue').value) || 0,
+    balance_due_date: document.getElementById('grBalanceDue').value || null,
+    deposit_paid: document.getElementById('grDeposit').checked,
+    notes: document.getElementById('grNotes').value.trim() || null
+  };
+  const supa = getClient();
+  if(_editingGroupId){
+    const { data, error } = await supa.from('outreach_groups').update(payload).eq('id', _editingGroupId).select().single();
+    if(error){ toast('Save failed: '+error.message); return; }
+    const idx = GROUPS.findIndex(x=>x.id===_editingGroupId);
+    if(idx>=0) GROUPS[idx] = data;
+    toast('Group updated');
+    logActivity(_editingGroupContactId, 'group_updated', null, null, { group_id: data.id, title: data.title });
+  } else {
+    const { data, error } = await supa.from('outreach_groups').insert(payload).select().single();
+    if(error){ toast('Add failed: '+error.message); return; }
+    GROUPS.push(data);
+    toast(`Group added: ${data.title}`);
+    logActivity(_editingGroupContactId, 'group_added', null, null, { group_id: data.id, title: data.title, stage: data.stage });
+  }
+  renderGroupsList(_editingGroupContactId);
+  closeGroupModal();
+  if(CURRENT_TAB==='dashboard') renderDashboard();
+});
+
+document.getElementById('groupDeleteBtn').addEventListener('click', async ()=>{
+  if(!_editingGroupId) return;
+  const g = GROUPS.find(x=>x.id===_editingGroupId);
+  if(!confirm(`Delete group "${g?.title}"?`)) return;
+  const supa = getClient();
+  const { error } = await supa.from('outreach_groups').delete().eq('id', _editingGroupId);
+  if(error){ toast('Delete failed: '+error.message); return; }
+  GROUPS = GROUPS.filter(x=>x.id!==_editingGroupId);
+  toast('Group deleted');
+  renderGroupsList(_editingGroupContactId);
+  closeGroupModal();
+  if(CURRENT_TAB==='dashboard') renderDashboard();
 });
 
 // ════════════════════════════════════════════════════════════════════════
