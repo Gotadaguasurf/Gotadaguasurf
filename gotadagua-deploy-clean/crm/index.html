@@ -737,9 +737,72 @@ document.getElementById('loginForm').addEventListener('submit', async (e)=>{
 });
 
 document.getElementById('signOutBtn').addEventListener('click', async ()=>{
+  unsubscribeRealtime();
   try { await getClient().auth.signOut(); } catch(e){}
   session = null; CONTACTS = []; TEMPLATES = []; showLogin();
 });
+
+// ════════════════════════════════════════════════════════════════════════
+//  REALTIME SYNC (multi-device)
+// ════════════════════════════════════════════════════════════════════════
+// Subscribed once after sign-in; tears down on sign-out. Each event is
+// debounced so a bulk update (50 rows in <1s) doesn't trigger 50 renders.
+// Requires the tables to be in the supabase_realtime publication — see
+// the SQL the user pastes once into the Supabase editor.
+let RT_CHANNEL = null;
+let _rtRenderTimer = null;
+let _rtRefreshTimer = null;
+let _rtRefreshId = null;
+
+function scheduleRtRender(){
+  clearTimeout(_rtRenderTimer);
+  _rtRenderTimer = setTimeout(()=>{
+    if(CURRENT_TAB === 'contacts') renderContacts();
+    if(CURRENT_TAB === 'dashboard') renderDashboard();
+    if(CURRENT_TAB === 'analytics') renderAnalytics();
+  }, 250);
+}
+
+function scheduleRtPanelRefresh(contactId){
+  if(!CURRENT_CONTACT || CURRENT_CONTACT.id !== contactId) return;
+  _rtRefreshId = contactId;
+  clearTimeout(_rtRefreshTimer);
+  _rtRefreshTimer = setTimeout(()=>{
+    if(CURRENT_CONTACT?.id === _rtRefreshId) openContact(_rtRefreshId);
+  }, 400);
+}
+
+function subscribeRealtime(){
+  if(RT_CHANNEL) return;
+  const c = getClient();
+  RT_CHANNEL = c.channel('crm-realtime')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'outreach_contacts' }, (payload)=>{
+      const { eventType, new: nw, old: ol } = payload;
+      if(eventType === 'INSERT'){
+        if(!CONTACTS.find(x=>x.id===nw.id)) CONTACTS.unshift(nw);
+      } else if(eventType === 'UPDATE'){
+        const idx = CONTACTS.findIndex(x=>x.id===nw.id);
+        if(idx >= 0) Object.assign(CONTACTS[idx], nw);
+        scheduleRtPanelRefresh(nw.id);
+      } else if(eventType === 'DELETE'){
+        const idx = CONTACTS.findIndex(x=>x.id===ol.id);
+        if(idx >= 0) CONTACTS.splice(idx, 1);
+        if(CURRENT_CONTACT?.id === ol.id) closeDetail();
+      }
+      scheduleRtRender();
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'outreach_activity' }, (payload)=>{
+      const contactId = payload.new?.contact_id || payload.old?.contact_id;
+      if(contactId) scheduleRtPanelRefresh(contactId);
+    })
+    .subscribe();
+}
+
+function unsubscribeRealtime(){
+  if(!RT_CHANNEL) return;
+  try { getClient().removeChannel(RT_CHANNEL); } catch(e){}
+  RT_CHANNEL = null;
+}
 
 // ════════════════════════════════════════════════════════════════════════
 //  DATA LOADING
@@ -751,6 +814,10 @@ async function loadAll(){
   renderDashboard();
   renderContacts();
   renderTemplateList();
+  // Kick off realtime AFTER the initial render so the first paint doesn't
+  // race with incoming events. Re-callable; subscribeRealtime() no-ops if
+  // already subscribed (so re-login doesn't double-bind).
+  subscribeRealtime();
 }
 
 async function loadSavedViews(){
@@ -1410,10 +1477,13 @@ async function openContact(id){
     if(CURRENT_TAB==='contacts') renderContacts();
   });
 
-  // Wire the delete button on each activity item. Re-opening the panel
-  // after delete keeps the code simple — all child handlers re-bind
-  // automatically. The scroll position is reset (acceptable given how
-  // rare delete is) and the rest of the panel reflects any side effects.
+  // Wire the delete button on each activity item. After delete, if it was
+  // an email_sent entry, recompute c.last_contacted_at from the remaining
+  // email_sent activities — otherwise the timeline says "no activity" while
+  // the panel still claims "Last contacted 19 Jun". Same idea for
+  // status_changed: if the LAST status change is the one we delete, revert
+  // c.status to that activity's old_value so the pill in the row matches
+  // the new (shorter) timeline.
   document.querySelectorAll('#activityList .activity-del').forEach(btn=>{
     btn.addEventListener('mouseenter', ()=>{ btn.style.background='var(--red-bg)'; btn.style.color='var(--red-text)'; });
     btn.addEventListener('mouseleave', ()=>{ btn.style.background='transparent'; btn.style.color='var(--muted)'; });
@@ -1421,10 +1491,41 @@ async function openContact(id){
       e.stopPropagation();
       if(!confirm('Delete this activity entry? This cannot be undone.')) return;
       const supa = getClient();
+      const item = btn.closest('.activity-item');
+      const wasEmailSent = item.classList.contains('email_sent');
+      const wasStatusChanged = item.classList.contains('status_changed');
+      // Fetch the row first so we know its old_value (needed if we revert status).
+      const { data: actRow } = await supa.from('outreach_activity')
+        .select('old_value,new_value,created_at').eq('id', btn.dataset.act).single();
       const { error } = await supa.from('outreach_activity').delete().eq('id', btn.dataset.act);
       if(error){ toast('Delete failed: '+error.message); return; }
+      const patch = {};
+      if(wasEmailSent){
+        // Recompute the contact's last_contacted_at from the most recent
+        // remaining email_sent activity (NULL if there are none left).
+        const { data: latest } = await supa.from('outreach_activity')
+          .select('created_at').eq('contact_id', c.id).eq('action','email_sent')
+          .order('created_at', { ascending:false }).limit(1);
+        patch.last_contacted_at = latest?.[0]?.created_at || null;
+      }
+      if(wasStatusChanged && actRow){
+        // Only revert if this was the LATEST status change. Otherwise a
+        // later change already overrides this one, and reverting would
+        // contradict the current row.
+        const { data: latestStatus } = await supa.from('outreach_activity')
+          .select('id').eq('contact_id', c.id).eq('action','status_changed')
+          .order('created_at', { ascending:false }).limit(1);
+        const noNewerStatusChange = !latestStatus?.length;
+        if(noNewerStatusChange && actRow.old_value) patch.status = actRow.old_value;
+      }
+      if(Object.keys(patch).length){
+        const { error: upErr } = await supa.from('outreach_contacts').update(patch).eq('id', c.id);
+        if(!upErr) Object.assign(c, patch);
+      }
       toast('Activity deleted');
       openContact(c.id);
+      if(CURRENT_TAB==='contacts') renderContacts();
+      if(CURRENT_TAB==='dashboard') renderDashboard();
     });
   });
 
