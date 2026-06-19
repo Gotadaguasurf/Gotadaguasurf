@@ -82,9 +82,14 @@ main{max-width:1400px;margin:0 auto;padding:28px 32px}
 .filter-count{font-size:11px;color:var(--muted);margin-left:auto;font-weight:600}
 
 /* ── TABLE ────────────────────────────────────────────────────────── */
-.table-wrap{background:#fff;border-radius:var(--r);border:1px solid var(--border);box-shadow:var(--sh);overflow:hidden}
-table{width:100%;border-collapse:collapse}
-thead{background:var(--navy);position:sticky;top:60px;z-index:5}
+.table-wrap{background:#fff;border-radius:var(--r);border:1px solid var(--border);box-shadow:var(--sh);overflow:visible}
+table{width:100%;border-collapse:separate;border-spacing:0}
+/* z-index 50 keeps the column header above all tbody rows and above the
+   filter chips above the table — without it, a scrolling row could be seen
+   bleeding through the header area. Solid background already; explicit
+   shadow on the bottom edge to crisp the separation when row content
+   approaches the sticky band. */
+thead{background:var(--navy);position:sticky;top:60px;z-index:50;box-shadow:0 4px 0 -1px var(--navy), 0 6px 16px rgba(40,57,75,.18)}
 thead th{padding:11px 14px;font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:#7aabcc;font-weight:600;text-align:left;white-space:nowrap}
 tbody tr{border-bottom:1px solid var(--border);transition:background .15s;cursor:pointer}
 tbody tr:last-child{border-bottom:none}
@@ -1162,12 +1167,27 @@ function refreshComposePreview(){
 }
 
 function renderTemplate(text, c){
-  const firstName = (c.company || '').split(/[\s/]/)[0]; // crude: first word as fallback
+  // {{first_name}} was previously falling back to the first WORD of the
+  // company name when no real contact name existed — i.e. the email to
+  // "360 Surf Travel" began "Hi 360," and "7th Wave Surf School" got
+  // "Hi 7th,". Killed credibility on the first line. Now {{first_name}}
+  // is left BLANK when there is no real first name, and a {{greeting}}
+  // variable is provided as a safe default: "{{first_name}}" if we have
+  // one, otherwise "the {{company}} team". Templates should prefer
+  // {{greeting}} or {{company}}; {{first_name}} stays for future use
+  // once contact_name lands in the schema.
+  const firstName = '';
+  const greeting = firstName || `the ${c.company || 'team'} team`;
   return text
     .replace(/\{\{company\}\}/g, c.company||'')
     .replace(/\{\{first_name\}\}/g, firstName)
+    .replace(/\{\{greeting\}\}/g, greeting)
     .replace(/\{\{country\}\}/g, c.country||'')
-    .replace(/\{\{city\}\}/g, c.city||'');
+    .replace(/\{\{city\}\}/g, c.city||'')
+    // Collapse the leftover "Hi ," / "Olá ," when {{first_name}} resolved
+    // empty, so the email still reads naturally instead of having a stray
+    // comma after the salutation.
+    .replace(/^(Hi|Hello|Olá|Ola)\s*,/m, '$1 there,');
 }
 
 document.getElementById('composeTemplate').addEventListener('change', refreshComposePreview);
@@ -1294,7 +1314,7 @@ function renderTemplateEditor(){
     </select></div>
     <div class="editor-field"><label>Subject</label><input id="tplSubject" value="${escAttr(t.subject)}"></div>
     <div class="editor-field"><label>Body</label><textarea id="tplBody">${escHtml(t.body)}</textarea>
-    <div class="editor-hint">Variables: <code>{{company}}</code> <code>{{first_name}}</code> <code>{{country}}</code> <code>{{city}}</code></div></div>
+    <div class="editor-hint">Variables: <code>{{company}}</code> <code>{{greeting}}</code> (safe salutation) <code>{{country}}</code> <code>{{city}}</code> · avoid <code>{{first_name}}</code> until contact names are filled in (it now renders blank instead of guessing).</div></div>
     <div style="display:flex;gap:10px;margin-top:18px">
       <button class="action-btn primary" id="tplSave" style="grid-column:auto">Save changes</button>
       <button class="action-btn ghost" id="tplDelete" style="color:var(--red-text);border-color:#f0a0a0">Delete</button>
@@ -1338,7 +1358,7 @@ document.getElementById('newTemplateBtn').addEventListener('click', async ()=>{
   const { data, error } = await c.from('outreach_templates').insert({
     name: 'New template',
     subject: 'Subject here',
-    body: 'Hi {{first_name}},\n\n…\n\nBest,\nMiguel',
+    body: 'Hi {{greeting}},\n\n…\n\nBest,\nMiguel',
     language: 'en',
     sort_order: (TEMPLATES.length+1)*10
   }).select().single();
