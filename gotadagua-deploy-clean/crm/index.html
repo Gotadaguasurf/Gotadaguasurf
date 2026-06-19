@@ -100,7 +100,23 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
 .cmeta{font-size:11px;color:var(--muted);margin-top:1px}
 
 /* ── STATUS PILL ──────────────────────────────────────────────────── */
-.status-pill{display:inline-block;padding:4px 10px;border-radius:999px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap}
+/* Pill keeps the same visual but is now an interactive button (click to
+   open an inline select). Cursor + slight hover lift signal it's editable
+   from the row without opening the detail panel. */
+.status-pill{display:inline-block;padding:4px 10px;border-radius:999px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;border:none;cursor:pointer;font-family:'Outfit',sans-serif;transition:transform .12s, box-shadow .12s}
+.status-pill:hover{transform:translateY(-1px);box-shadow:0 4px 10px rgba(40,57,75,.16)}
+.status-pill.editing{outline:2px solid var(--ocean);outline-offset:2px}
+/* Native select replacing the pill in edit mode. Width fixed to match the
+   pill so the row doesn't shift while the user picks a value. */
+.status-inline-select{appearance:none;-webkit-appearance:none;border:1.5px solid var(--ocean);border-radius:999px;padding:4px 24px 4px 10px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;font-family:'Outfit',sans-serif;cursor:pointer;background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 14 14'%3E%3Cpath fill='%231e6fa8' d='M3.2 5.2a.75.75 0 0 1 1.06 0L7 7.94 9.74 5.2a.75.75 0 1 1 1.06 1.06l-3.27 3.27a.75.75 0 0 1-1.06 0L3.2 6.26a.75.75 0 0 1 0-1.06Z'/%3E%3C/svg%3E") no-repeat right 6px center;background-size:12px}
+/* ── Bulk action bar ─────────────────────────────────────────────────── */
+.bulk-bar{position:sticky;top:60px;z-index:55;display:flex;gap:10px;align-items:center;background:linear-gradient(135deg,var(--navy),var(--navy-mid));color:#fff;border-radius:12px;padding:10px 14px;margin-bottom:12px;box-shadow:0 8px 24px rgba(40,57,75,.22)}
+.bulk-bar.hidden{display:none}
+.bulk-count{font-weight:700;font-size:13px;color:#fff;margin-right:auto}
+.bulk-bar .filter-select,.bulk-bar .filter-search{background:rgba(255,255,255,.12);color:#fff;border-color:rgba(255,255,255,.25)}
+.bulk-bar .filter-select option{color:var(--ink)}
+.row-check{cursor:pointer;accent-color:var(--ocean);width:16px;height:16px}
+tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),transparent);box-shadow:inset 3px 0 0 var(--ocean)}
 .s-not_started{background:#f0f4f8;color:var(--muted)}
 .s-sent{background:var(--amber-bg);color:var(--amber-text)}
 .s-replied{background:var(--green-bg);color:var(--green-text)}
@@ -380,9 +396,28 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
       <span class="filter-count" id="filterCount"></span>
     </div>
 
+    <!-- Bulk action bar — hidden until ≥1 contact is selected. Sticks below
+         the page header so it never scrolls out of reach during a sweep. -->
+    <div id="bulkBar" class="bulk-bar hidden">
+      <div class="bulk-count"><span id="bulkCount">0</span> selected</div>
+      <select id="bulkStatus" class="filter-select">
+        <option value="">Set status…</option>
+        <option value="not_started">Not started</option>
+        <option value="sent">Sent</option>
+        <option value="replied">Replied</option>
+        <option value="meeting">Meeting</option>
+        <option value="closed_won">Closed Won</option>
+        <option value="closed_lost">Closed Lost</option>
+        <option value="no_reply">No reply</option>
+      </select>
+      <input type="date" id="bulkFollowup" class="filter-search" style="max-width:180px" placeholder="Set follow-up date">
+      <button class="header-btn" id="bulkClear" style="background:transparent;color:var(--muted);border:1px solid var(--border)">Clear selection</button>
+    </div>
+
     <div class="table-wrap">
       <table>
         <thead><tr>
+          <th style="width:34px;padding-right:0"><input type="checkbox" id="selectAll" style="cursor:pointer;accent-color:var(--ocean)" aria-label="Select all on this page"></th>
           <th>Company</th>
           <th>Country / City</th>
           <th>Segment</th>
@@ -536,6 +571,10 @@ let CURRENT_CONTACT = null;
 let CURRENT_TEMPLATE = null;
 let CURRENT_TAB = 'dashboard';
 let CHARTS = {}; // Chart.js instances, destroyed on re-render to free memory
+// Set of contact ids currently selected for bulk actions. Survives a
+// re-render of the contacts list, so toggling a filter doesn't blow away
+// the user's selection.
+const SELECTED = new Set();
 
 const STATUS_LABELS = {
   not_started:'Not started', sent:'Sent', replied:'Replied',
@@ -650,12 +689,23 @@ async function loadActivity(contactId){
 
 async function logActivity(contactId, action, oldVal, newVal, meta){
   const c = getClient();
-  await c.from('outreach_activity').insert({
+  // Was failing silently — the await wrapped a Promise whose error was
+  // swallowed, so a Compose flow could update status while the activity
+  // row for it never landed. Now any insert error surfaces in the
+  // console + a toast, so a broken RLS policy or missing column shows
+  // up as a visible failure instead of a "No activity yet" panel.
+  const { error } = await c.from('outreach_activity').insert({
     contact_id: contactId, action,
     old_value: oldVal || null, new_value: newVal || null,
     meta: meta || {},
     created_by: session?.user?.email || null
   });
+  if(error){
+    console.error('[CRM] logActivity failed', { contactId, action, error });
+    toast('Activity log failed: ' + error.message);
+    return false;
+  }
+  return true;
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -833,8 +883,17 @@ function daysBetween(a, b){
 // ════════════════════════════════════════════════════════════════════════
 //  CONTACTS LIST
 // ════════════════════════════════════════════════════════════════════════
+// Primary country extractor — "Germany/France" / "Germany/EU" / "Germany, EU"
+// all collapse to "Germany" so the filter dropdown isn't polluted with N
+// near-duplicates. Used by populateFilters() to build the option list AND
+// by the row filter so selecting "Germany" still matches a "Germany/France"
+// contact (handled inside renderContacts via primaryCountry()).
+function primaryCountry(country){
+  if(!country) return '';
+  return String(country).split(/[\/,;]/)[0].trim();
+}
 function populateFilters(){
-  const countries = [...new Set(CONTACTS.map(c=>c.country).filter(Boolean))].sort();
+  const countries = [...new Set(CONTACTS.map(c=>primaryCountry(c.country)).filter(Boolean))].sort();
   const segments = [...new Set(CONTACTS.map(c=>c.segment).filter(Boolean))].sort();
   const fc = document.getElementById('filterCountry');
   const fs = document.getElementById('filterSegment');
@@ -910,7 +969,9 @@ function renderContacts(){
   const filtered = CONTACTS.filter(c=>{
     if(!matchesPreset(c, CURRENT_PRESET, today)) return false;
     if(fStat && c.status !== fStat) return false;
-    if(fCty && c.country !== fCty) return false;
+    // Match against the contact's PRIMARY country, so selecting "Germany"
+    // still keeps a "Germany/France" record in view.
+    if(fCty && primaryCountry(c.country) !== fCty) return false;
     if(fSeg && c.segment !== fSeg) return false;
     if(fQ){
       const blob = `${c.company||''} ${c.city||''} ${c.email||''} ${c.notes||''}`.toLowerCase();
@@ -923,14 +984,40 @@ function renderContacts(){
 
   const body = document.getElementById('contactsBody');
   body.innerHTML = filtered.length ? filtered.slice(0,500).map(c => renderContactRow(c, today)).join('')
-    : '<tr><td colspan="6" class="empty-state">No contacts match these filters.</td></tr>';
+    : '<tr><td colspan="7" class="empty-state">No contacts match these filters.</td></tr>';
 
+  // Row interactions — three behaviours per row:
+  //   • click on the checkbox → toggle selection (stop propagation)
+  //   • click on the status pill → flip into an inline <select> (stop propagation)
+  //   • click anywhere else → open the detail panel
   body.querySelectorAll('tr[data-id]').forEach(tr=>{
-    tr.addEventListener('click', ()=>openContact(tr.dataset.id));
+    tr.addEventListener('click', (e)=>{
+      const target = e.target;
+      if(target.closest('.row-check') || target.closest('.status-pill') || target.closest('.status-inline-select')) return;
+      openContact(tr.dataset.id);
+    });
+    const check = tr.querySelector('.row-check');
+    if(check) check.addEventListener('change', ()=>toggleSelected(tr.dataset.id, check.checked));
+    const pill = tr.querySelector('.status-pill');
+    if(pill) pill.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      openInlineStatus(pill, tr.dataset.id);
+    });
   });
 
+  // Restore visual state for any pre-selected ids that are still on screen.
+  SELECTED.forEach(id=>{
+    const tr = body.querySelector(`tr[data-id="${id}"]`);
+    if(tr){
+      tr.classList.add('row-selected');
+      const check = tr.querySelector('.row-check');
+      if(check) check.checked = true;
+    }
+  });
+  updateBulkBar();
+
   if(filtered.length > 500){
-    body.insertAdjacentHTML('beforeend', `<tr><td colspan="6" class="empty-state">Showing first 500 of ${filtered.length} — refine filters to see more.</td></tr>`);
+    body.insertAdjacentHTML('beforeend', `<tr><td colspan="7" class="empty-state">Showing first 500 of ${filtered.length} — refine filters to see more.</td></tr>`);
   }
 }
 
@@ -952,13 +1039,14 @@ function renderContactRow(c, today){
   }
   return `
     <tr data-id="${c.id}">
+      <td style="padding-right:0"><input type="checkbox" class="row-check" aria-label="Select ${escAttr(c.company)}"></td>
       <td>
         <div class="cname">${escHtml(c.company)}</div>
         <div class="cmeta">${c.email?escHtml(c.email):'<span style="color:var(--red-text)">no email</span>'}</div>
       </td>
       <td>${escHtml(c.country||'')}${c.city?' · '+escHtml(c.city):''}</td>
       <td>${escHtml(c.segment||'')}</td>
-      <td><span class="status-pill s-${c.status}">${STATUS_LABELS[c.status]||c.status}</span></td>
+      <td><button type="button" class="status-pill s-${c.status}" title="Click to change status">${STATUS_LABELS[c.status]||c.status}</button></td>
       <td>${c.last_contacted_at ? fmtDate(c.last_contacted_at)+' '+sinceBadge : '—'}</td>
       <td>${followCell}</td>
     </tr>
@@ -970,6 +1058,132 @@ function fmtDate(iso){
   const d = new Date(iso);
   return d.toLocaleDateString('en-GB', { day:'2-digit', month:'short' });
 }
+
+// ════════════════════════════════════════════════════════════════════════
+//  INLINE STATUS EDIT (click pill in row → select to change)
+// ════════════════════════════════════════════════════════════════════════
+function openInlineStatus(pill, contactId){
+  const c = CONTACTS.find(x=>x.id===contactId);
+  if(!c || pill.classList.contains('editing')) return;
+  pill.classList.add('editing');
+  // Replace the pill with a sibling <select>, restore on commit/blur.
+  const sel = document.createElement('select');
+  sel.className = 'status-inline-select s-' + c.status;
+  STATUS_ORDER.forEach(s=>{
+    const o = document.createElement('option');
+    o.value = s; o.textContent = STATUS_LABELS[s];
+    if(s===c.status) o.selected = true;
+    sel.appendChild(o);
+  });
+  pill.style.display = 'none';
+  pill.insertAdjacentElement('afterend', sel);
+  sel.focus();
+  // Avoid bubbling to the row click handler (which would open the panel).
+  sel.addEventListener('click', e=>e.stopPropagation());
+  const cleanup = (apply)=>{
+    if(apply && sel.value !== c.status){
+      const oldStatus = c.status;
+      c.status = sel.value;
+      pill.className = 'status-pill s-' + c.status;
+      pill.textContent = STATUS_LABELS[c.status] || c.status;
+      updateContact(c.id, { status: c.status }).then(ok=>{
+        if(!ok){ c.status = oldStatus; pill.className = 'status-pill s-'+oldStatus; pill.textContent = STATUS_LABELS[oldStatus]||oldStatus; return; }
+        logActivity(c.id, 'status_changed', oldStatus, c.status);
+        toast('Status → ' + STATUS_LABELS[c.status]);
+        if(CURRENT_TAB==='dashboard') renderDashboard();
+        renderContacts();
+      });
+    }
+    sel.remove();
+    pill.style.display = '';
+    pill.classList.remove('editing');
+  };
+  sel.addEventListener('change', ()=>cleanup(true));
+  sel.addEventListener('blur', ()=>cleanup(false), { once:true });
+  sel.addEventListener('keydown', (e)=>{
+    if(e.key === 'Escape') cleanup(false);
+  });
+}
+
+// ════════════════════════════════════════════════════════════════════════
+//  BULK SELECTION + ACTIONS
+// ════════════════════════════════════════════════════════════════════════
+function toggleSelected(id, on){
+  if(on) SELECTED.add(id); else SELECTED.delete(id);
+  const tr = document.querySelector(`#contactsBody tr[data-id="${id}"]`);
+  if(tr) tr.classList.toggle('row-selected', on);
+  updateBulkBar();
+}
+function clearSelection(){
+  SELECTED.clear();
+  document.querySelectorAll('#contactsBody tr.row-selected').forEach(tr=>tr.classList.remove('row-selected'));
+  document.querySelectorAll('#contactsBody .row-check:checked').forEach(c=>c.checked=false);
+  const all = document.getElementById('selectAll'); if(all) all.checked = false;
+  updateBulkBar();
+}
+function updateBulkBar(){
+  const bar = document.getElementById('bulkBar');
+  const count = SELECTED.size;
+  document.getElementById('bulkCount').textContent = count;
+  bar.classList.toggle('hidden', count === 0);
+}
+document.getElementById('selectAll').addEventListener('change', (e)=>{
+  const on = e.target.checked;
+  document.querySelectorAll('#contactsBody tr[data-id]').forEach(tr=>{
+    const id = tr.dataset.id;
+    if(on) SELECTED.add(id); else SELECTED.delete(id);
+    tr.classList.toggle('row-selected', on);
+    const check = tr.querySelector('.row-check'); if(check) check.checked = on;
+  });
+  updateBulkBar();
+});
+document.getElementById('bulkClear').addEventListener('click', clearSelection);
+
+document.getElementById('bulkStatus').addEventListener('change', async (e)=>{
+  const newStatus = e.target.value;
+  if(!newStatus || SELECTED.size === 0){ e.target.value=''; return; }
+  if(!confirm(`Set status to "${STATUS_LABELS[newStatus]}" on ${SELECTED.size} contacts?`)){ e.target.value=''; return; }
+  const ids = Array.from(SELECTED);
+  const supa = getClient();
+  const { error } = await supa.from('outreach_contacts').update({ status: newStatus }).in('id', ids);
+  if(error){ toast('Bulk update failed: ' + error.message); e.target.value=''; return; }
+  ids.forEach(id=>{
+    const c = CONTACTS.find(x=>x.id===id);
+    if(!c) return;
+    const oldStatus = c.status;
+    c.status = newStatus;
+    // Best-effort activity logs — don't await each, would lock the UI.
+    logActivity(id, 'status_changed', oldStatus, newStatus, { bulk:true });
+  });
+  toast(`${ids.length} contacts → ${STATUS_LABELS[newStatus]}`);
+  e.target.value = '';
+  clearSelection();
+  renderContacts();
+  if(CURRENT_TAB==='dashboard') renderDashboard();
+});
+
+document.getElementById('bulkFollowup').addEventListener('change', async (e)=>{
+  const date = e.target.value;
+  if(!date || SELECTED.size === 0){ e.target.value=''; return; }
+  if(!confirm(`Set follow-up to ${fmtDate(date)} on ${SELECTED.size} contacts?`)){ e.target.value=''; return; }
+  const ids = Array.from(SELECTED);
+  const supa = getClient();
+  const { error } = await supa.from('outreach_contacts').update({ follow_up_at: date }).in('id', ids);
+  if(error){ toast('Bulk update failed: ' + error.message); e.target.value=''; return; }
+  ids.forEach(id=>{
+    const c = CONTACTS.find(x=>x.id===id);
+    if(c){
+      const old = c.follow_up_at;
+      c.follow_up_at = date;
+      logActivity(id, 'follow_up_set', old, date, { bulk:true });
+    }
+  });
+  toast(`Follow-up set on ${ids.length} contacts`);
+  e.target.value = '';
+  clearSelection();
+  renderContacts();
+  if(CURRENT_TAB==='dashboard') renderDashboard();
+});
 
 // ════════════════════════════════════════════════════════════════════════
 //  CONTACT DETAIL PANEL
