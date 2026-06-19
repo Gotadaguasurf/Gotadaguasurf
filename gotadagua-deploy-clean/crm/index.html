@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Gota Dagua — CRM</title>
+<title>Gota d'Água — CRM</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -1364,7 +1364,11 @@ async function openContact(id){
       <div id="activityList">
         ${activity.length ? activity.map(a=>{
           const label = activityLabel(a);
-          return `<div class="activity-item ${a.action}"><div class="activity-action">${label}</div>${a.meta?.note?`<div class="activity-meta">${escHtml(a.meta.note)}</div>`:''}<div class="activity-time">${fmtDateTime(a.created_at)}${a.created_by?' · '+escHtml(a.created_by):''}</div></div>`;
+          // Delete button (×) per item — outreach is messy, the user
+          // mis-clicks status, mis-fires a Compose, etc. The log is
+          // append-only at the data layer but the UI lets you trim
+          // mistakes so the timeline stays honest.
+          return `<div class="activity-item ${a.action}" style="position:relative;padding-right:34px"><button type="button" class="activity-del" data-act="${a.id}" aria-label="Delete this activity" title="Delete activity" style="position:absolute;top:6px;right:6px;width:22px;height:22px;border:none;background:transparent;color:var(--muted);border-radius:6px;cursor:pointer;font-size:14px;line-height:1;display:flex;align-items:center;justify-content:center;transition:background .15s,color .15s">×</button><div class="activity-action">${label}</div>${a.meta?.note?`<div class="activity-meta">${escHtml(a.meta.note)}</div>`:''}<div class="activity-time">${fmtDateTime(a.created_at)}${a.created_by?' · '+escHtml(a.created_by):''}</div></div>`;
         }).join('') : '<div class="empty-state" style="padding:12px;text-align:left">No activity yet.</div>'}
       </div>
     </div>
@@ -1408,6 +1412,24 @@ async function openContact(id){
     toast(val?`Follow-up set to ${fmtDate(val)}`:'Follow-up cleared');
     if(CURRENT_TAB==='dashboard') renderDashboard();
     if(CURRENT_TAB==='contacts') renderContacts();
+  });
+
+  // Wire the delete button on each activity item. Re-opening the panel
+  // after delete keeps the code simple — all child handlers re-bind
+  // automatically. The scroll position is reset (acceptable given how
+  // rare delete is) and the rest of the panel reflects any side effects.
+  document.querySelectorAll('#activityList .activity-del').forEach(btn=>{
+    btn.addEventListener('mouseenter', ()=>{ btn.style.background='var(--red-bg)'; btn.style.color='var(--red-text)'; });
+    btn.addEventListener('mouseleave', ()=>{ btn.style.background='transparent'; btn.style.color='var(--muted)'; });
+    btn.addEventListener('click', async (e)=>{
+      e.stopPropagation();
+      if(!confirm('Delete this activity entry? This cannot be undone.')) return;
+      const supa = getClient();
+      const { error } = await supa.from('outreach_activity').delete().eq('id', btn.dataset.act);
+      if(error){ toast('Delete failed: '+error.message); return; }
+      toast('Activity deleted');
+      openContact(c.id);
+    });
   });
 
   // Show panel
