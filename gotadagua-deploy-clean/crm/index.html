@@ -355,11 +355,13 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
   <div id="page-contacts" class="hidden">
     <div class="section-hdr">
       <div class="section-title">Contacts</div>
-      <div style="display:flex;gap:10px;align-items:center">
-        <select id="savedViewSelect" class="filter-select" style="min-width:200px">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <button class="header-btn primary" id="addContactBtn" style="background:var(--navy);border:none;color:#fff">+ New contact</button>
+        <button class="header-btn" id="importCsvBtn" style="background:transparent;color:var(--navy);border:1.5px solid var(--border)">📥 Import CSV</button>
+        <select id="savedViewSelect" class="filter-select" style="min-width:180px">
           <option value="">— Saved views —</option>
         </select>
-        <button class="header-btn" id="saveViewBtn" style="background:var(--ocean);color:#fff;border:none">💾 Save current view</button>
+        <button class="header-btn" id="saveViewBtn" style="background:var(--ocean);color:#fff;border:none">💾 Save view</button>
         <button class="header-btn" id="deleteViewBtn" style="background:transparent;color:var(--red-text);border:1px solid var(--border);display:none">Delete view</button>
       </div>
     </div>
@@ -550,6 +552,112 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
     <div class="compose-footer">
       <button class="action-btn ghost" id="followupSkipBtn">Skip</button>
       <button class="action-btn primary" id="followupSaveBtn" style="grid-column:auto">Save follow-up</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── ADD CONTACT MODAL ─────────────────────────────────────────────── -->
+<div class="compose-modal" id="addContactModal">
+  <div class="compose-card" style="max-width:560px">
+    <div class="compose-header">
+      <div class="compose-title">+ New contact</div>
+      <button class="detail-close" id="addContactClose" aria-label="Close">×</button>
+    </div>
+    <div class="compose-body">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="editor-field" style="grid-column:1 / -1">
+          <label>Company name *</label>
+          <input type="text" id="acName" required placeholder="e.g. Bristol Uni Surf Club" autofocus>
+        </div>
+        <div class="editor-field">
+          <label>Segment</label>
+          <select id="acSegment">
+            <option value="">—</option>
+            <option value="Surf school">Surf school</option>
+            <option value="Surf camp">Surf camp</option>
+            <option value="Surf travel agency">Surf travel agency</option>
+            <option value="DMC / tour operator">DMC / tour operator</option>
+            <option value="University surf club">University surf club</option>
+            <option value="Corporate / retreat">Corporate / retreat</option>
+            <option value="Student network">Student network</option>
+            <option value="Running camps">Running camps</option>
+            <option value="Outdoor adventure">Outdoor adventure</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+        <div class="editor-field">
+          <label>Language</label>
+          <select id="acLang">
+            <option value="en">English</option>
+            <option value="pt">Português</option>
+          </select>
+        </div>
+        <div class="editor-field">
+          <label>Country</label>
+          <input type="text" id="acCountry" placeholder="UK">
+        </div>
+        <div class="editor-field">
+          <label>City / Region</label>
+          <input type="text" id="acCity" placeholder="Bristol">
+        </div>
+        <div class="editor-field" style="grid-column:1 / -1">
+          <label>Email</label>
+          <input type="email" id="acEmail" placeholder="contact@example.com">
+        </div>
+        <div class="editor-field">
+          <label>Phone</label>
+          <input type="text" id="acPhone" placeholder="+44 …">
+        </div>
+        <div class="editor-field">
+          <label>Website</label>
+          <input type="text" id="acWebsite" placeholder="example.com">
+        </div>
+        <div class="editor-field" style="grid-column:1 / -1">
+          <label>Source <span style="color:var(--muted);font-weight:400">(where you found this lead)</span></label>
+          <input type="text" id="acSource" placeholder="Apollo / Instagram / recommendation / …">
+        </div>
+        <div class="editor-field" style="grid-column:1 / -1">
+          <label>Notes</label>
+          <textarea id="acNotes" style="min-height:60px" placeholder="Anything worth remembering — interests, group sizes, season…"></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="compose-footer">
+      <button class="action-btn ghost" id="addContactCancel">Cancel</button>
+      <button class="action-btn primary" id="addContactSave" style="grid-column:auto">Add contact</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── IMPORT CSV MODAL ───────────────────────────────────────────────── -->
+<div class="compose-modal" id="importCsvModal">
+  <div class="compose-card" style="max-width:760px">
+    <div class="compose-header">
+      <div class="compose-title">📥 Import CSV</div>
+      <button class="detail-close" id="importCsvClose" aria-label="Close">×</button>
+    </div>
+    <div class="compose-body">
+      <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Paste a CSV below. <b>First row must be a header.</b> Recognised columns (any order, extras ignored):
+        <code style="font-family:'DM Mono',monospace;font-size:11.5px;background:var(--foam);padding:2px 6px;border-radius:4px">company</code>
+        <code style="font-family:'DM Mono',monospace;font-size:11.5px;background:var(--foam);padding:2px 6px;border-radius:4px">email</code>
+        <code style="font-family:'DM Mono',monospace;font-size:11.5px;background:var(--foam);padding:2px 6px;border-radius:4px">phone</code>
+        <code style="font-family:'DM Mono',monospace;font-size:11.5px;background:var(--foam);padding:2px 6px;border-radius:4px">website</code>
+        <code style="font-family:'DM Mono',monospace;font-size:11.5px;background:var(--foam);padding:2px 6px;border-radius:4px">segment</code>
+        <code style="font-family:'DM Mono',monospace;font-size:11.5px;background:var(--foam);padding:2px 6px;border-radius:4px">country</code>
+        <code style="font-family:'DM Mono',monospace;font-size:11.5px;background:var(--foam);padding:2px 6px;border-radius:4px">city</code>
+        <code style="font-family:'DM Mono',monospace;font-size:11.5px;background:var(--foam);padding:2px 6px;border-radius:4px">notes</code>
+        — <b>company</b> is required.
+      </p>
+      <div class="editor-field">
+        <label>CSV content</label>
+        <textarea id="csvPaste" style="min-height:180px;font-family:'DM Mono',monospace;font-size:12px" placeholder="company,email,country,segment&#10;Bristol Uni Surf Club,surf@bris.ac.uk,UK,University surf club"></textarea>
+      </div>
+      <button class="action-btn ghost" id="csvPreviewBtn" style="grid-column:auto;width:auto">Parse & preview</button>
+      <div id="csvPreview" style="margin-top:14px"></div>
+    </div>
+    <div class="compose-footer">
+      <button class="action-btn ghost" id="importCsvCancel">Cancel</button>
+      <button class="action-btn primary" id="csvImportBtn" disabled style="grid-column:auto;opacity:.5">Import</button>
     </div>
   </div>
 </div>
@@ -818,13 +926,22 @@ function renderDashboard(){
   const weightedValue = openDeals.reduce((sum,c) => sum + (Number(c.deal_value||0) * Number(c.probability||0)/100), 0);
   const totalValue = openDeals.reduce((sum,c) => sum + Number(c.deal_value||0), 0);
   const wonValue = CONTACTS.filter(c=>c.status==='closed_won').reduce((s,c)=>s+Number(c.deal_value||0),0);
+  // Hide the financial cards while nobody has filled in a deal_value yet.
+  // Showing five €0 KPIs is depressing and reads as "app is broken".
+  const hasAnyDealValue = CONTACTS.some(c => Number(c.deal_value||0) > 0);
+  const moneyKpis = hasAnyDealValue ? `
+    <div class="kpi"><div class="kpi-label">Pipeline value</div><div class="kpi-value accent">€${fmtMoney(totalValue)}</div><div class="kpi-sub">weighted €${fmtMoney(weightedValue)}</div></div>
+    <div class="kpi"><div class="kpi-label">Won (€)</div><div class="kpi-value green">€${fmtMoney(wonValue)}</div><div class="kpi-sub">${byStatus.closed_won||0} closed · ${byStatus.closed_lost||0} lost</div></div>
+  ` : `
+    <div class="kpi"><div class="kpi-label">Closed Won</div><div class="kpi-value green">${byStatus.closed_won||0}</div><div class="kpi-sub">${byStatus.closed_lost||0} lost</div></div>
+  `;
 
   document.getElementById('kpiStrip').innerHTML = `
     <div class="kpi"><div class="kpi-label">Total contacts</div><div class="kpi-value">${CONTACTS.length}</div><div class="kpi-sub">${CONTACTS.filter(c=>c.email).length} with email</div></div>
-    <div class="kpi"><div class="kpi-label">Pipeline value</div><div class="kpi-value accent">€${fmtMoney(totalValue)}</div><div class="kpi-sub">weighted €${fmtMoney(weightedValue)}</div></div>
-    <div class="kpi"><div class="kpi-label">Replied</div><div class="kpi-value green">${replied}</div><div class="kpi-sub">${replyRate}% reply rate (${sent} sent)</div></div>
+    <div class="kpi"><div class="kpi-label">Sent</div><div class="kpi-value accent">${sent}</div><div class="kpi-sub">awaiting response</div></div>
+    <div class="kpi"><div class="kpi-label">Replied</div><div class="kpi-value green">${replied}</div><div class="kpi-sub">${replyRate}% reply rate</div></div>
     <div class="kpi"><div class="kpi-label">In discussion</div><div class="kpi-value">${meeting}</div><div class="kpi-sub">meeting stage</div></div>
-    <div class="kpi"><div class="kpi-label">Won (€)</div><div class="kpi-value green">€${fmtMoney(wonValue)}</div><div class="kpi-sub">${byStatus.closed_won||0} closed · ${byStatus.closed_lost||0} lost</div></div>
+    ${moneyKpis}
   `;
 
   // ── Upcoming follow-ups (next 7 days, excluding overdue which are in hero) ──
@@ -1753,6 +1870,11 @@ document.getElementById('snoozeAllBtn').addEventListener('click', async ()=>{
 //  ANALYTICS
 // ════════════════════════════════════════════════════════════════════════
 function renderAnalytics(){
+  // Status counts — reused by the empty-pipeline fallback view below.
+  const byStatus = {};
+  STATUS_ORDER.forEach(s=>byStatus[s]=0);
+  CONTACTS.forEach(c=>{ byStatus[c.status] = (byStatus[c.status]||0)+1; });
+
   // Pipeline value KPIs (more detailed than the dashboard strip)
   const openDeals = CONTACTS.filter(c => !['closed_won','closed_lost','no_reply'].includes(c.status));
   const totalValue = openDeals.reduce((s,c)=>s+Number(c.deal_value||0),0);
@@ -1760,13 +1882,29 @@ function renderAnalytics(){
   const wonValue = CONTACTS.filter(c=>c.status==='closed_won').reduce((s,c)=>s+Number(c.deal_value||0),0);
   const lostValue = CONTACTS.filter(c=>c.status==='closed_lost').reduce((s,c)=>s+Number(c.deal_value||0),0);
   const withDealValue = CONTACTS.filter(c=>c.deal_value).length;
-  document.getElementById('pipelineKpis').innerHTML = `
-    <div class="kpi"><div class="kpi-label">Open pipeline (€)</div><div class="kpi-value accent">€${fmtMoney(totalValue)}</div><div class="kpi-sub">${openDeals.filter(c=>c.deal_value).length} valued / ${openDeals.length} open</div></div>
-    <div class="kpi"><div class="kpi-label">Weighted (€)</div><div class="kpi-value">€${fmtMoney(weighted)}</div><div class="kpi-sub">probability × value</div></div>
-    <div class="kpi"><div class="kpi-label">Won (€)</div><div class="kpi-value green">€${fmtMoney(wonValue)}</div><div class="kpi-sub">all-time</div></div>
-    <div class="kpi"><div class="kpi-label">Lost (€)</div><div class="kpi-value" style="color:var(--red-text)">€${fmtMoney(lostValue)}</div><div class="kpi-sub">all-time</div></div>
-    <div class="kpi"><div class="kpi-label">Deal coverage</div><div class="kpi-value">${withDealValue}</div><div class="kpi-sub">/ ${CONTACTS.length} have a value</div></div>
-  `;
+  // Replace the five-€0-cards strip with a single non-financial summary
+  // while the user hasn't started filling in deal values. Avoids the
+  // "app looks broken" effect the reviewer flagged.
+  if(withDealValue > 0){
+    document.getElementById('pipelineKpis').innerHTML = `
+      <div class="kpi"><div class="kpi-label">Open pipeline (€)</div><div class="kpi-value accent">€${fmtMoney(totalValue)}</div><div class="kpi-sub">${openDeals.filter(c=>c.deal_value).length} valued / ${openDeals.length} open</div></div>
+      <div class="kpi"><div class="kpi-label">Weighted (€)</div><div class="kpi-value">€${fmtMoney(weighted)}</div><div class="kpi-sub">probability × value</div></div>
+      <div class="kpi"><div class="kpi-label">Won (€)</div><div class="kpi-value green">€${fmtMoney(wonValue)}</div><div class="kpi-sub">all-time</div></div>
+      <div class="kpi"><div class="kpi-label">Lost (€)</div><div class="kpi-value" style="color:var(--red-text)">€${fmtMoney(lostValue)}</div><div class="kpi-sub">all-time</div></div>
+      <div class="kpi"><div class="kpi-label">Deal coverage</div><div class="kpi-value">${withDealValue}</div><div class="kpi-sub">/ ${CONTACTS.length} have a value</div></div>
+    `;
+  } else {
+    const byStat = {};
+    STATUS_ORDER.forEach(s=>byStat[s]=0);
+    CONTACTS.forEach(c=>{ byStat[c.status]=(byStat[c.status]||0)+1; });
+    document.getElementById('pipelineKpis').innerHTML = `
+      <div class="kpi"><div class="kpi-label">Total contacts</div><div class="kpi-value">${CONTACTS.length}</div><div class="kpi-sub">${CONTACTS.filter(c=>c.email).length} with email</div></div>
+      <div class="kpi"><div class="kpi-label">Contacted</div><div class="kpi-value accent">${(byStat.sent||0)+(byStat.replied||0)+(byStat.meeting||0)+(byStat.closed_won||0)+(byStat.closed_lost||0)+(byStat.no_reply||0)}</div><div class="kpi-sub">of ${CONTACTS.length}</div></div>
+      <div class="kpi"><div class="kpi-label">Replied</div><div class="kpi-value green">${byStat.replied||0}</div><div class="kpi-sub">${(byStat.sent||0) > 0 ? Math.round(((byStat.replied||0)/(byStat.sent||0))*100) : 0}% reply rate</div></div>
+      <div class="kpi"><div class="kpi-label">In discussion</div><div class="kpi-value">${byStat.meeting||0}</div><div class="kpi-sub">meeting stage</div></div>
+      <div class="kpi"><div class="kpi-label">Closed Won</div><div class="kpi-value green">${byStat.closed_won||0}</div><div class="kpi-sub">${byStat.closed_lost||0} lost</div></div>
+    `;
+  }
 
   // Group contacts by country & by segment, count statuses inside each
   const byCountry = {}, bySegment = {};
@@ -1826,16 +1964,28 @@ function renderAnalytics(){
     options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, indexAxis:'y', scales:{x:{beginAtZero:true}} }
   });
 
-  // Pipeline value by status (open deals only)
+  // Pipeline value by status (open deals only). If nobody has set a
+  // deal_value yet, swap the empty doughnut for a Status-by-count chart
+  // so the card still shows something useful instead of "no data".
   const valueByStatus = {};
   STATUS_ORDER.forEach(s=>valueByStatus[s]=0);
   openDeals.forEach(c=>{ valueByStatus[c.status] = (valueByStatus[c.status]||0) + Number(c.deal_value||0); });
+  const hasValueData = STATUS_ORDER.some(s=>valueByStatus[s]>0);
+  // Update the card title accordingly so the chart legend matches reality.
+  const pipelineValueTitle = document.querySelector('#page-analytics .dash-row:nth-of-type(2) .dash-card:last-child .dash-card-title');
+  if(pipelineValueTitle) pipelineValueTitle.textContent = hasValueData ? 'Pipeline value by status' : 'Contacts by status';
+  const labels = hasValueData
+    ? STATUS_ORDER.filter(s=>valueByStatus[s]>0).map(s=>STATUS_LABELS[s])
+    : STATUS_ORDER.filter(s=>byStatus[s]>0).map(s=>STATUS_LABELS[s]);
+  const dataValues = hasValueData
+    ? STATUS_ORDER.filter(s=>valueByStatus[s]>0).map(s=>valueByStatus[s])
+    : STATUS_ORDER.filter(s=>byStatus[s]>0).map(s=>byStatus[s]);
   CHARTS.pipelineValue = new Chart(document.getElementById('chartPipelineValue'), {
     type: 'doughnut',
     data: {
-      labels: STATUS_ORDER.filter(s=>valueByStatus[s]>0).map(s=>STATUS_LABELS[s]),
+      labels,
       datasets: [{
-        data: STATUS_ORDER.filter(s=>valueByStatus[s]>0).map(s=>valueByStatus[s]),
+        data: dataValues,
         backgroundColor: ['#94a3b8',amber,green,'#8b5cf6','#22c55e','#ef4444','#737373']
       }]
     },
@@ -1861,6 +2011,224 @@ function renderAnalytics(){
     return `<div><span style="color:var(--muted);display:inline-block;width:160px">${label}</span><span style="color:var(--ocean)">${bar}</span> <span style="color:var(--navy)">${n} (${pct}%)</span></div>`;
   }).join('');
 }
+
+// ════════════════════════════════════════════════════════════════════════
+//  ADD CONTACT (manual entry)
+// ════════════════════════════════════════════════════════════════════════
+// Reset the form to defaults so the next "+ New contact" doesn't show
+// whatever was typed before.
+function resetAddContact(){
+  ['acName','acCountry','acCity','acEmail','acPhone','acWebsite','acSource','acNotes'].forEach(id=>{
+    const el = document.getElementById(id); if(el) el.value='';
+  });
+  document.getElementById('acSegment').value = '';
+  document.getElementById('acLang').value = 'en';
+}
+function openAddContact(){
+  resetAddContact();
+  document.getElementById('addContactModal').classList.add('open');
+  setTimeout(()=>document.getElementById('acName').focus(), 100);
+}
+function closeAddContact(){
+  document.getElementById('addContactModal').classList.remove('open');
+}
+document.getElementById('addContactBtn').addEventListener('click', openAddContact);
+document.getElementById('addContactClose').addEventListener('click', closeAddContact);
+document.getElementById('addContactCancel').addEventListener('click', closeAddContact);
+
+document.getElementById('addContactSave').addEventListener('click', async ()=>{
+  const name = document.getElementById('acName').value.trim();
+  if(!name){ toast('Company name is required'); document.getElementById('acName').focus(); return; }
+  // Soft dedup: if a contact with this name (case-insensitive) already
+  // exists, ask before creating a duplicate. The user can override —
+  // sometimes two distinct outfits share a name.
+  const dupe = CONTACTS.find(x => (x.company||'').trim().toLowerCase() === name.toLowerCase());
+  if(dupe && !confirm(`A contact called "${dupe.company}" already exists. Add another anyway?`)) return;
+  const payload = {
+    company: name,
+    segment: document.getElementById('acSegment').value || null,
+    country: document.getElementById('acCountry').value.trim() || null,
+    city: document.getElementById('acCity').value.trim() || null,
+    email: document.getElementById('acEmail').value.trim() || null,
+    phone: document.getElementById('acPhone').value.trim() || null,
+    website: document.getElementById('acWebsite').value.trim() || null,
+    email_source: document.getElementById('acSource').value.trim() || null,
+    notes: document.getElementById('acNotes').value.trim() || null,
+    language: document.getElementById('acLang').value || 'en',
+    status: 'not_started'
+  };
+  const supa = getClient();
+  const { data, error } = await supa.from('outreach_contacts').insert(payload).select().single();
+  if(error){ toast('Add failed: ' + error.message); return; }
+  CONTACTS.unshift(data);
+  populateFilters();
+  toast(`Added: ${data.company}`);
+  closeAddContact();
+  // Open the new contact's detail so the user can start filling in extra
+  // fields right away (deal value, follow-up date, …).
+  openContact(data.id);
+  if(CURRENT_TAB==='contacts') renderContacts();
+  if(CURRENT_TAB==='dashboard') renderDashboard();
+});
+
+// ════════════════════════════════════════════════════════════════════════
+//  CSV IMPORT
+// ════════════════════════════════════════════════════════════════════════
+// Stateful: parsed rows live here until the user clicks Import or cancels.
+let CSV_PARSED = [];
+function closeCsvImport(){
+  document.getElementById('importCsvModal').classList.remove('open');
+  document.getElementById('csvPaste').value = '';
+  document.getElementById('csvPreview').innerHTML = '';
+  CSV_PARSED = [];
+  const btn = document.getElementById('csvImportBtn');
+  btn.disabled = true; btn.style.opacity = .5;
+}
+document.getElementById('importCsvBtn').addEventListener('click', ()=>{
+  document.getElementById('importCsvModal').classList.add('open');
+});
+document.getElementById('importCsvClose').addEventListener('click', closeCsvImport);
+document.getElementById('importCsvCancel').addEventListener('click', closeCsvImport);
+
+// Minimal CSV parser: handles double-quoted fields with commas inside, and
+// "" as an embedded quote. No dependency on a library. Good enough for the
+// CSV exports the user has been pasting (Google Sheets, Excel).
+function parseCsv(text){
+  const rows = [];
+  let row = [], field = '', inQuotes = false, i = 0;
+  while(i < text.length){
+    const ch = text[i];
+    if(inQuotes){
+      if(ch === '"'){
+        if(text[i+1] === '"'){ field += '"'; i += 2; continue; }
+        inQuotes = false; i++; continue;
+      }
+      field += ch; i++; continue;
+    }
+    if(ch === '"'){ inQuotes = true; i++; continue; }
+    if(ch === ','){ row.push(field); field = ''; i++; continue; }
+    if(ch === '\n' || ch === '\r'){
+      // Commit the row on \n; eat \r\n as one terminator.
+      if(ch === '\r' && text[i+1] === '\n') i++;
+      row.push(field); field = '';
+      if(row.length > 1 || (row.length === 1 && row[0] !== '')) rows.push(row);
+      row = []; i++; continue;
+    }
+    field += ch; i++;
+  }
+  if(field.length || row.length){ row.push(field); rows.push(row); }
+  return rows;
+}
+
+document.getElementById('csvPreviewBtn').addEventListener('click', ()=>{
+  const text = document.getElementById('csvPaste').value.trim();
+  if(!text){ toast('Paste a CSV first'); return; }
+  const rows = parseCsv(text);
+  if(rows.length < 2){ toast('Need at least a header row + one data row'); return; }
+  const headers = rows[0].map(h => h.trim().toLowerCase());
+  const requiredIdx = headers.indexOf('company');
+  if(requiredIdx === -1){ toast('CSV must include a "company" column'); return; }
+  // Map every recognised column.
+  const colMap = {
+    company: headers.indexOf('company'),
+    email: headers.indexOf('email'),
+    phone: headers.indexOf('phone'),
+    website: headers.indexOf('website'),
+    segment: headers.indexOf('segment'),
+    country: headers.indexOf('country'),
+    city: headers.indexOf('city'),
+    notes: headers.indexOf('notes')
+  };
+  // Build records; dedup against existing CONTACTS by case-insensitive name.
+  const existing = new Set(CONTACTS.map(c => (c.company||'').trim().toLowerCase()));
+  const parsed = [];
+  const seenInBatch = new Set();
+  rows.slice(1).forEach((r, idx) => {
+    const get = (key) => colMap[key] >= 0 ? (r[colMap[key]] || '').trim() : '';
+    const company = get('company');
+    if(!company) return;
+    const key = company.toLowerCase();
+    const isDupe = existing.has(key) || seenInBatch.has(key);
+    seenInBatch.add(key);
+    parsed.push({
+      row: idx + 2,                            // 1-indexed including header
+      company,
+      email: get('email') || null,
+      phone: get('phone') || null,
+      website: get('website') || null,
+      segment: get('segment') || null,
+      country: get('country') || null,
+      city: get('city') || null,
+      notes: get('notes') || null,
+      isDupe
+    });
+  });
+  if(parsed.length === 0){ toast('No valid rows found'); return; }
+  CSV_PARSED = parsed;
+  const newCount = parsed.filter(p => !p.isDupe).length;
+  const dupeCount = parsed.length - newCount;
+  const preview = parsed.slice(0, 8).map(p =>
+    `<tr style="${p.isDupe?'opacity:.5':''}"><td style="padding:6px 10px">${p.isDupe?'⚠':'✓'}</td><td style="padding:6px 10px;font-weight:700">${escHtml(p.company)}</td><td style="padding:6px 10px">${escHtml(p.country||'')}</td><td style="padding:6px 10px">${escHtml(p.email||'')}</td></tr>`
+  ).join('');
+  document.getElementById('csvPreview').innerHTML = `
+    <div style="display:flex;gap:14px;font-size:12.5px;font-weight:700;margin-bottom:10px">
+      <span style="color:var(--green-text)">✓ ${newCount} new</span>
+      <span style="color:var(--amber-text)">⚠ ${dupeCount} duplicate${dupeCount===1?'':'s'} (will be skipped)</span>
+    </div>
+    <table style="width:100%;border-collapse:collapse;border:1px solid var(--border);border-radius:8px;overflow:hidden">
+      <thead style="background:var(--foam)"><tr><th style="padding:8px 10px;text-align:left;width:30px"></th><th style="padding:8px 10px;text-align:left">Company</th><th style="padding:8px 10px;text-align:left">Country</th><th style="padding:8px 10px;text-align:left">Email</th></tr></thead>
+      <tbody>${preview}</tbody>
+    </table>
+    ${parsed.length > 8 ? `<div style="font-size:11px;color:var(--muted);margin-top:6px">Showing first 8 of ${parsed.length}</div>` : ''}
+  `;
+  const btn = document.getElementById('csvImportBtn');
+  btn.disabled = newCount === 0;
+  btn.style.opacity = newCount === 0 ? .5 : 1;
+  btn.textContent = `Import ${newCount} new`;
+});
+
+document.getElementById('csvImportBtn').addEventListener('click', async ()=>{
+  const toInsert = CSV_PARSED.filter(p => !p.isDupe).map(p => ({
+    company: p.company,
+    email: p.email, phone: p.phone, website: p.website,
+    segment: p.segment, country: p.country, city: p.city,
+    notes: p.notes,
+    status: 'not_started',
+    language: 'en'
+  }));
+  if(!toInsert.length){ toast('Nothing to import'); return; }
+  if(!confirm(`Import ${toInsert.length} new contacts?`)) return;
+  const supa = getClient();
+  // Insert in chunks of 200 so we don't hit any URL/payload limits on big
+  // pastes.
+  let added = 0;
+  for(let i = 0; i < toInsert.length; i += 200){
+    const chunk = toInsert.slice(i, i + 200);
+    const { data, error } = await supa.from('outreach_contacts').insert(chunk).select();
+    if(error){ toast(`Import stopped after ${added} (chunk ${i}): ${error.message}`); break; }
+    CONTACTS.push(...data);
+    added += data.length;
+  }
+  populateFilters();
+  toast(`✓ Imported ${added} contacts`);
+  closeCsvImport();
+  if(CURRENT_TAB==='contacts') renderContacts();
+  if(CURRENT_TAB==='dashboard') renderDashboard();
+});
+
+// ════════════════════════════════════════════════════════════════════════
+//  KEYBOARD SHORTCUT — "n" opens Add Contact when no input is focused.
+// ════════════════════════════════════════════════════════════════════════
+document.addEventListener('keydown', (e)=>{
+  if(e.key !== 'n' && e.key !== 'N') return;
+  if(e.metaKey || e.ctrlKey || e.altKey) return;
+  const t = e.target;
+  if(t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT') return;
+  if(document.querySelector('.compose-modal.open')) return;
+  if(CURRENT_TAB !== 'contacts') return;
+  e.preventDefault();
+  openAddContact();
+});
 
 // ════════════════════════════════════════════════════════════════════════
 //  BOOT
