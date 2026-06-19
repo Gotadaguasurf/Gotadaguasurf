@@ -6,6 +6,7 @@
 <title>Gota Dagua — CRM</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="/supabase-config.js"></script>
 <style>
 :root{
@@ -266,6 +267,7 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
   <div class="header-center">
     <button class="nav-tab active" data-tab="dashboard">Dashboard</button>
     <button class="nav-tab" data-tab="contacts">Contacts</button>
+    <button class="nav-tab" data-tab="analytics">Analytics</button>
     <button class="nav-tab" data-tab="templates">Templates</button>
   </div>
   <div class="header-right">
@@ -276,6 +278,19 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
 <main>
   <!-- ─── DASHBOARD TAB ─── -->
   <div id="page-dashboard">
+    <!-- Snooze suggestion: shows up when there are sent-but-silent contacts >30d.
+         Lets the user bulk-mark them as 'no_reply' to clean the pipeline. -->
+    <div id="snoozeBanner" class="hidden" style="background:linear-gradient(135deg,#fef9e7,#fef0e6);border:1.5px solid #f0c060;border-radius:var(--r-lg);padding:18px 22px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">
+      <div style="flex:1;min-width:240px">
+        <div style="font-family:'DM Serif Display',serif;font-size:18px;color:var(--navy);margin-bottom:4px">😴  <span id="snoozeCount">0</span> contacts have gone silent for 30+ days</div>
+        <div style="font-size:12.5px;color:var(--muted)">Clean your pipeline — mark them as "No reply" so they stop counting as active leads.</div>
+      </div>
+      <div style="display:flex;gap:8px;flex-shrink:0">
+        <button class="action-btn ghost" id="snoozeReviewBtn" style="grid-column:auto">Review them</button>
+        <button class="action-btn primary" id="snoozeAllBtn" style="grid-column:auto">Mark all as No reply</button>
+      </div>
+    </div>
+
     <!-- Hero: today's tasks - the "what to do RIGHT NOW" surface. -->
     <div class="hero-today" id="heroToday">
       <div class="hero-today-inner">
@@ -319,7 +334,13 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
   <div id="page-contacts" class="hidden">
     <div class="section-hdr">
       <div class="section-title">Contacts</div>
-      <div class="section-hint">Click a row to open the contact</div>
+      <div style="display:flex;gap:10px;align-items:center">
+        <select id="savedViewSelect" class="filter-select" style="min-width:200px">
+          <option value="">— Saved views —</option>
+        </select>
+        <button class="header-btn" id="saveViewBtn" style="background:var(--ocean);color:#fff;border:none">💾 Save current view</button>
+        <button class="header-btn" id="deleteViewBtn" style="background:transparent;color:var(--red-text);border:1px solid var(--border);display:none">Delete view</button>
+      </div>
     </div>
 
     <!-- Preset filters: clicking one sets the underlying selects so the user can refine further. -->
@@ -366,6 +387,44 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
         </tr></thead>
         <tbody id="contactsBody"></tbody>
       </table>
+    </div>
+  </div>
+
+  <!-- ─── ANALYTICS TAB ─── -->
+  <div id="page-analytics" class="hidden">
+    <div class="section-hdr">
+      <div class="section-title">Analytics</div>
+      <div class="section-hint">Conversion + breakdown by country and segment</div>
+    </div>
+
+    <!-- Pipeline value KPI strip -->
+    <div class="kpi-strip" id="pipelineKpis"></div>
+
+    <div class="dash-row">
+      <div class="dash-card">
+        <div class="dash-card-title">Contacts by country</div>
+        <div style="position:relative;height:280px"><canvas id="chartCountry"></canvas></div>
+      </div>
+      <div class="dash-card">
+        <div class="dash-card-title">Reply rate by country</div>
+        <div style="position:relative;height:280px"><canvas id="chartReplyRate"></canvas></div>
+      </div>
+    </div>
+
+    <div class="dash-row">
+      <div class="dash-card">
+        <div class="dash-card-title">Contacts by segment</div>
+        <div style="position:relative;height:280px"><canvas id="chartSegment"></canvas></div>
+      </div>
+      <div class="dash-card">
+        <div class="dash-card-title">Pipeline value by status</div>
+        <div style="position:relative;height:280px"><canvas id="chartPipelineValue"></canvas></div>
+      </div>
+    </div>
+
+    <div class="dash-card">
+      <div class="dash-card-title">Funnel conversion</div>
+      <div id="conversionTable" style="font-family:'DM Mono',monospace;font-size:13px;line-height:1.8"></div>
     </div>
   </div>
 
@@ -467,9 +526,11 @@ let supa = null;
 let session = null;
 let CONTACTS = [];
 let TEMPLATES = [];
+let SAVED_VIEWS = [];
 let CURRENT_CONTACT = null;
 let CURRENT_TEMPLATE = null;
 let CURRENT_TAB = 'dashboard';
+let CHARTS = {}; // Chart.js instances, destroyed on re-render to free memory
 
 const STATUS_LABELS = {
   not_started:'Not started', sent:'Sent', replied:'Replied',
@@ -536,11 +597,19 @@ document.getElementById('signOutBtn').addEventListener('click', async ()=>{
 //  DATA LOADING
 // ════════════════════════════════════════════════════════════════════════
 async function loadAll(){
-  await Promise.all([loadContacts(), loadTemplates()]);
+  await Promise.all([loadContacts(), loadTemplates(), loadSavedViews()]);
   populateFilters();
+  populateSavedViewsDropdown();
   renderDashboard();
   renderContacts();
   renderTemplateList();
+}
+
+async function loadSavedViews(){
+  const c = getClient();
+  const { data, error } = await c.from('outreach_saved_views').select('*').order('name');
+  if(error){ console.warn('Load saved views failed', error); return; }
+  SAVED_VIEWS = data || [];
 }
 
 async function loadContacts(){
@@ -591,11 +660,12 @@ document.querySelectorAll('.nav-tab').forEach(t=>{
   t.addEventListener('click', ()=>{
     CURRENT_TAB = t.dataset.tab;
     document.querySelectorAll('.nav-tab').forEach(x=>x.classList.toggle('active', x===t));
-    ['dashboard','contacts','templates'].forEach(p=>{
+    ['dashboard','contacts','analytics','templates'].forEach(p=>{
       document.getElementById('page-'+p).classList.toggle('hidden', p!==CURRENT_TAB);
     });
     if(CURRENT_TAB==='dashboard') renderDashboard();
     if(CURRENT_TAB==='contacts') renderContacts();
+    if(CURRENT_TAB==='analytics') renderAnalytics();
     if(CURRENT_TAB==='templates') renderTemplateList();
   });
 });
@@ -667,6 +737,20 @@ function renderDashboard(){
     el.addEventListener('click', ()=>openContact(el.dataset.id));
   });
 
+  // ── Stale snooze banner: contacts in 'sent' status silent for 30+ days ──
+  // Lower threshold than the "stale (>14d)" card to avoid nagging too soon.
+  const veryStale = CONTACTS.filter(c =>
+    c.status === 'sent' && c.last_contacted_at &&
+    c.last_contacted_at.slice(0,10) < addDays(today, -30)
+  );
+  const snoozeBanner = document.getElementById('snoozeBanner');
+  if(veryStale.length >= 3){
+    document.getElementById('snoozeCount').textContent = veryStale.length;
+    snoozeBanner.classList.remove('hidden');
+  } else {
+    snoozeBanner.classList.add('hidden');
+  }
+
   // ── KPI strip ─────────────────────────────────────────────────────────
   const byStatus = {};
   STATUS_ORDER.forEach(s=>byStatus[s]=0);
@@ -674,12 +758,18 @@ function renderDashboard(){
   const sent = byStatus.sent||0, replied = byStatus.replied||0, meeting = byStatus.meeting||0;
   const replyRate = sent>0 ? Math.round((replied/sent)*100) : 0;
 
+  // Pipeline weighted value = Σ (deal_value × probability/100) across open deals
+  const openDeals = CONTACTS.filter(c => !['closed_won','closed_lost','no_reply'].includes(c.status));
+  const weightedValue = openDeals.reduce((sum,c) => sum + (Number(c.deal_value||0) * Number(c.probability||0)/100), 0);
+  const totalValue = openDeals.reduce((sum,c) => sum + Number(c.deal_value||0), 0);
+  const wonValue = CONTACTS.filter(c=>c.status==='closed_won').reduce((s,c)=>s+Number(c.deal_value||0),0);
+
   document.getElementById('kpiStrip').innerHTML = `
     <div class="kpi"><div class="kpi-label">Total contacts</div><div class="kpi-value">${CONTACTS.length}</div><div class="kpi-sub">${CONTACTS.filter(c=>c.email).length} with email</div></div>
-    <div class="kpi"><div class="kpi-label">Sent</div><div class="kpi-value accent">${sent}</div><div class="kpi-sub">awaiting response</div></div>
-    <div class="kpi"><div class="kpi-label">Replied</div><div class="kpi-value green">${replied}</div><div class="kpi-sub">${replyRate}% reply rate</div></div>
-    <div class="kpi"><div class="kpi-label">Meetings</div><div class="kpi-value">${meeting}</div><div class="kpi-sub">in discussion</div></div>
-    <div class="kpi"><div class="kpi-label">Closed Won</div><div class="kpi-value green">${byStatus.closed_won||0}</div><div class="kpi-sub">${byStatus.closed_lost||0} lost</div></div>
+    <div class="kpi"><div class="kpi-label">Pipeline value</div><div class="kpi-value accent">€${fmtMoney(totalValue)}</div><div class="kpi-sub">weighted €${fmtMoney(weightedValue)}</div></div>
+    <div class="kpi"><div class="kpi-label">Replied</div><div class="kpi-value green">${replied}</div><div class="kpi-sub">${replyRate}% reply rate (${sent} sent)</div></div>
+    <div class="kpi"><div class="kpi-label">In discussion</div><div class="kpi-value">${meeting}</div><div class="kpi-sub">meeting stage</div></div>
+    <div class="kpi"><div class="kpi-label">Won (€)</div><div class="kpi-value green">€${fmtMoney(wonValue)}</div><div class="kpi-sub">${byStatus.closed_won||0} closed · ${byStatus.closed_lost||0} lost</div></div>
   `;
 
   // ── Upcoming follow-ups (next 7 days, excluding overdue which are in hero) ──
@@ -908,6 +998,24 @@ async function openContact(id){
       </span></div>
       <div class="detail-row"><span class="label">Last contacted</span><span class="value">${c.last_contacted_at?fmtDateTime(c.last_contacted_at):'—'}</span></div>
       <div class="detail-row"><span class="label">Follow-up</span><span class="value"><input type="date" id="followupInput" value="${c.follow_up_at||''}" style="border:1px solid var(--border);border-radius:8px;padding:4px 8px;font:inherit"></span></div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-section-title">Deal</div>
+      <div class="detail-row"><span class="label">Value (€)</span><span class="value">
+        <input type="number" id="dealValueInput" value="${c.deal_value||''}" placeholder="0" min="0" step="100" style="width:120px;text-align:right;border:1px solid var(--border);border-radius:8px;padding:4px 8px;font:inherit;font-family:'DM Mono',monospace">
+      </span></div>
+      <div class="detail-row"><span class="label">Probability</span><span class="value">
+        <input type="number" id="probInput" value="${c.probability??''}" placeholder="0" min="0" max="100" style="width:80px;text-align:right;border:1px solid var(--border);border-radius:8px;padding:4px 8px;font:inherit;font-family:'DM Mono',monospace">
+        <span style="color:var(--muted);margin-left:4px">%</span>
+      </span></div>
+      <div class="detail-row"><span class="label">Weighted value</span><span class="value" id="weightedValueDisplay" style="font-family:'DM Mono',monospace;font-weight:700;color:var(--ocean)">€ ${calcWeighted(c.deal_value, c.probability)}</span></div>
+      <div class="detail-row"><span class="label">Expected close</span><span class="value">
+        <input type="date" id="closeDateInput" value="${c.expected_close_date||''}" style="border:1px solid var(--border);border-radius:8px;padding:4px 8px;font:inherit">
+      </span></div>
+      ${c.status==='closed_lost' ? `<div class="detail-row"><span class="label">Lost reason</span><span class="value">
+        <input type="text" id="lostReasonInput" value="${escAttr(c.lost_reason||'')}" placeholder="Why did we lose?" style="width:180px;border:1px solid var(--border);border-radius:8px;padding:4px 8px;font:inherit">
+      </span></div>` : ''}
     </div>
 
     <div class="detail-section">
@@ -1251,6 +1359,273 @@ function fmtDateTime(iso){
   if(!iso) return '—';
   const d = new Date(iso);
   return d.toLocaleString('en-GB', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
+}
+
+// ════════════════════════════════════════════════════════════════════════
+//  DEAL VALUE handlers (wired up inside openContact after the deal section)
+// ════════════════════════════════════════════════════════════════════════
+function calcWeighted(value, prob){
+  const v = Number(value||0), p = Number(prob||0);
+  if(!v || !p) return '0';
+  return fmtMoney(v * p / 100);
+}
+function fmtMoney(n){
+  const num = Number(n||0);
+  if(num === 0) return '0';
+  return num.toLocaleString('en-GB', { maximumFractionDigits: 0 });
+}
+function wireDealInputs(){
+  const c = CURRENT_CONTACT;
+  if(!c) return;
+  const refresh = ()=>{
+    document.getElementById('weightedValueDisplay').textContent = '€ '+calcWeighted(
+      document.getElementById('dealValueInput').value,
+      document.getElementById('probInput').value
+    );
+  };
+  ['dealValueInput','probInput'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(!el) return;
+    el.addEventListener('input', refresh);
+    el.addEventListener('change', async ()=>{
+      const patch = {
+        deal_value: document.getElementById('dealValueInput').value ? Number(document.getElementById('dealValueInput').value) : null,
+        probability: document.getElementById('probInput').value ? Number(document.getElementById('probInput').value) : null
+      };
+      await updateContact(c.id, patch);
+      Object.assign(c, patch);
+      toast('Deal saved');
+      if(CURRENT_TAB==='dashboard') renderDashboard();
+    });
+  });
+  const closeDate = document.getElementById('closeDateInput');
+  if(closeDate){
+    closeDate.addEventListener('change', async ()=>{
+      const val = closeDate.value || null;
+      await updateContact(c.id, { expected_close_date: val });
+      c.expected_close_date = val;
+      toast('Expected close updated');
+    });
+  }
+  const lostReason = document.getElementById('lostReasonInput');
+  if(lostReason){
+    lostReason.addEventListener('blur', async ()=>{
+      if(lostReason.value === (c.lost_reason||'')) return;
+      await updateContact(c.id, { lost_reason: lostReason.value });
+      c.lost_reason = lostReason.value;
+      toast('Lost reason saved');
+    });
+  }
+}
+// Patch openContact to call wireDealInputs after rendering. We do this by
+// hooking into the detailPanel render lifecycle: after openContact runs,
+// the panel exists in DOM and wireDealInputs can find the elements.
+const _origOpenContact = openContact;
+openContact = async function(id){
+  await _origOpenContact(id);
+  wireDealInputs();
+};
+
+// ════════════════════════════════════════════════════════════════════════
+//  SAVED VIEWS
+// ════════════════════════════════════════════════════════════════════════
+function populateSavedViewsDropdown(){
+  const sel = document.getElementById('savedViewSelect');
+  sel.innerHTML = '<option value="">— Saved views —</option>' +
+    SAVED_VIEWS.map(v=>`<option value="${v.id}">${escHtml(v.name)}</option>`).join('');
+}
+document.getElementById('savedViewSelect').addEventListener('change', (e)=>{
+  const id = e.target.value;
+  document.getElementById('deleteViewBtn').style.display = id ? 'inline-flex' : 'none';
+  if(!id){ return; }
+  const v = SAVED_VIEWS.find(x=>x.id===id);
+  if(!v) return;
+  const f = v.filters || {};
+  CURRENT_PRESET = f.preset || 'all';
+  document.querySelectorAll('#presetChips .chip').forEach(c=>c.classList.toggle('active', c.dataset.preset===CURRENT_PRESET));
+  document.getElementById('filterStatus').value = f.status || '';
+  document.getElementById('filterCountry').value = f.country || '';
+  document.getElementById('filterSegment').value = f.segment || '';
+  document.getElementById('filterSearch').value = f.search || '';
+  renderContacts();
+  toast(`Loaded: ${v.name}`);
+});
+document.getElementById('saveViewBtn').addEventListener('click', async ()=>{
+  const name = prompt('Name this view:');
+  if(!name) return;
+  const filters = {
+    preset: CURRENT_PRESET,
+    status: document.getElementById('filterStatus').value,
+    country: document.getElementById('filterCountry').value,
+    segment: document.getElementById('filterSegment').value,
+    search: document.getElementById('filterSearch').value
+  };
+  const c = getClient();
+  const { data, error } = await c.from('outreach_saved_views')
+    .insert({ name, filters, created_by: session?.user?.email||null })
+    .select().single();
+  if(error){ toast('Save failed: '+error.message); return; }
+  SAVED_VIEWS.push(data);
+  populateSavedViewsDropdown();
+  document.getElementById('savedViewSelect').value = data.id;
+  document.getElementById('deleteViewBtn').style.display = 'inline-flex';
+  toast(`View saved: ${name}`);
+});
+document.getElementById('deleteViewBtn').addEventListener('click', async ()=>{
+  const id = document.getElementById('savedViewSelect').value;
+  if(!id) return;
+  const v = SAVED_VIEWS.find(x=>x.id===id);
+  if(!confirm(`Delete view "${v.name}"?`)) return;
+  const c = getClient();
+  const { error } = await c.from('outreach_saved_views').delete().eq('id', id);
+  if(error){ toast('Delete failed: '+error.message); return; }
+  SAVED_VIEWS = SAVED_VIEWS.filter(x=>x.id!==id);
+  populateSavedViewsDropdown();
+  document.getElementById('deleteViewBtn').style.display = 'none';
+  toast('View deleted');
+});
+
+// ════════════════════════════════════════════════════════════════════════
+//  STALE SNOOZE
+// ════════════════════════════════════════════════════════════════════════
+document.getElementById('snoozeReviewBtn').addEventListener('click', ()=>{
+  // Switch to Contacts tab with "stale" preset (also catches 30d+ since stale = 14d+)
+  document.querySelector('.nav-tab[data-tab="contacts"]').click();
+  document.querySelector('#presetChips .chip[data-preset="stale"]').click();
+});
+document.getElementById('snoozeAllBtn').addEventListener('click', async ()=>{
+  const today = new Date().toISOString().slice(0,10);
+  const veryStale = CONTACTS.filter(c =>
+    c.status === 'sent' && c.last_contacted_at &&
+    c.last_contacted_at.slice(0,10) < addDays(today, -30)
+  );
+  if(!veryStale.length) return;
+  if(!confirm(`Mark ${veryStale.length} contacts as "No reply"?\n\nThey'll still be in the DB — you can re-engage later.`)) return;
+  const c = getClient();
+  const ids = veryStale.map(x=>x.id);
+  const { error } = await c.from('outreach_contacts').update({ status:'no_reply' }).in('id', ids);
+  if(error){ toast('Bulk update failed: '+error.message); return; }
+  for(const x of veryStale){
+    x.status = 'no_reply';
+    // Fire-and-forget activity logs (don't await each — would be slow for big batches)
+    logActivity(x.id, 'status_changed', 'sent', 'no_reply', { auto:true, batch:'snooze-stale' });
+  }
+  toast(`${ids.length} contacts moved to No reply`);
+  renderDashboard();
+  if(CURRENT_TAB==='contacts') renderContacts();
+});
+
+// ════════════════════════════════════════════════════════════════════════
+//  ANALYTICS
+// ════════════════════════════════════════════════════════════════════════
+function renderAnalytics(){
+  // Pipeline value KPIs (more detailed than the dashboard strip)
+  const openDeals = CONTACTS.filter(c => !['closed_won','closed_lost','no_reply'].includes(c.status));
+  const totalValue = openDeals.reduce((s,c)=>s+Number(c.deal_value||0),0);
+  const weighted = openDeals.reduce((s,c)=>s+(Number(c.deal_value||0)*Number(c.probability||0)/100),0);
+  const wonValue = CONTACTS.filter(c=>c.status==='closed_won').reduce((s,c)=>s+Number(c.deal_value||0),0);
+  const lostValue = CONTACTS.filter(c=>c.status==='closed_lost').reduce((s,c)=>s+Number(c.deal_value||0),0);
+  const withDealValue = CONTACTS.filter(c=>c.deal_value).length;
+  document.getElementById('pipelineKpis').innerHTML = `
+    <div class="kpi"><div class="kpi-label">Open pipeline (€)</div><div class="kpi-value accent">€${fmtMoney(totalValue)}</div><div class="kpi-sub">${openDeals.filter(c=>c.deal_value).length} valued / ${openDeals.length} open</div></div>
+    <div class="kpi"><div class="kpi-label">Weighted (€)</div><div class="kpi-value">€${fmtMoney(weighted)}</div><div class="kpi-sub">probability × value</div></div>
+    <div class="kpi"><div class="kpi-label">Won (€)</div><div class="kpi-value green">€${fmtMoney(wonValue)}</div><div class="kpi-sub">all-time</div></div>
+    <div class="kpi"><div class="kpi-label">Lost (€)</div><div class="kpi-value" style="color:var(--red-text)">€${fmtMoney(lostValue)}</div><div class="kpi-sub">all-time</div></div>
+    <div class="kpi"><div class="kpi-label">Deal coverage</div><div class="kpi-value">${withDealValue}</div><div class="kpi-sub">/ ${CONTACTS.length} have a value</div></div>
+  `;
+
+  // Group contacts by country & by segment, count statuses inside each
+  const byCountry = {}, bySegment = {};
+  CONTACTS.forEach(c=>{
+    const cy = c.country || 'Unknown';
+    const sg = c.segment || 'Unknown';
+    byCountry[cy] = (byCountry[cy]||{total:0, replied:0, sent:0});
+    byCountry[cy].total++;
+    if(c.status==='replied' || c.status==='meeting' || c.status==='closed_won') byCountry[cy].replied++;
+    if(c.status==='sent') byCountry[cy].sent++;
+    bySegment[sg] = (bySegment[sg]||{total:0, replied:0});
+    bySegment[sg].total++;
+    if(c.status==='replied' || c.status==='meeting' || c.status==='closed_won') bySegment[sg].replied++;
+  });
+
+  // Top 10 countries by contact count
+  const topCountries = Object.entries(byCountry).sort((a,b)=>b[1].total-a[1].total).slice(0,10);
+  const topSegments = Object.entries(bySegment).sort((a,b)=>b[1].total-a[1].total).slice(0,10);
+
+  // Destroy existing charts before re-rendering (Chart.js requires this)
+  Object.values(CHARTS).forEach(ch=>{ try { ch.destroy(); } catch(e){} });
+  CHARTS = {};
+
+  const ocean = '#1e6fa8', oceanLight = '#3b9dd4', green = '#15803d', amber = '#9a6f00';
+
+  CHARTS.country = new Chart(document.getElementById('chartCountry'), {
+    type: 'bar',
+    data: {
+      labels: topCountries.map(([k])=>k),
+      datasets: [{ label:'Contacts', data: topCountries.map(([,v])=>v.total), backgroundColor: ocean, borderRadius: 6 }]
+    },
+    options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true}} }
+  });
+
+  CHARTS.replyRate = new Chart(document.getElementById('chartReplyRate'), {
+    type: 'bar',
+    data: {
+      labels: topCountries.map(([k])=>k),
+      datasets: [{
+        label: 'Reply rate %',
+        data: topCountries.map(([,v]) => {
+          const denom = v.sent + v.replied; // active outreach attempts
+          return denom > 0 ? Math.round((v.replied/denom)*100) : 0;
+        }),
+        backgroundColor: green, borderRadius: 6
+      }]
+    },
+    options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true,max:100,ticks:{callback:v=>v+'%'}}} }
+  });
+
+  CHARTS.segment = new Chart(document.getElementById('chartSegment'), {
+    type: 'bar',
+    data: {
+      labels: topSegments.map(([k])=>k),
+      datasets: [{ label:'Contacts', data: topSegments.map(([,v])=>v.total), backgroundColor: oceanLight, borderRadius: 6 }]
+    },
+    options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, indexAxis:'y', scales:{x:{beginAtZero:true}} }
+  });
+
+  // Pipeline value by status (open deals only)
+  const valueByStatus = {};
+  STATUS_ORDER.forEach(s=>valueByStatus[s]=0);
+  openDeals.forEach(c=>{ valueByStatus[c.status] = (valueByStatus[c.status]||0) + Number(c.deal_value||0); });
+  CHARTS.pipelineValue = new Chart(document.getElementById('chartPipelineValue'), {
+    type: 'doughnut',
+    data: {
+      labels: STATUS_ORDER.filter(s=>valueByStatus[s]>0).map(s=>STATUS_LABELS[s]),
+      datasets: [{
+        data: STATUS_ORDER.filter(s=>valueByStatus[s]>0).map(s=>valueByStatus[s]),
+        backgroundColor: ['#94a3b8',amber,green,'#8b5cf6','#22c55e','#ef4444','#737373']
+      }]
+    },
+    options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'right',labels:{font:{size:11}}}} }
+  });
+
+  // Conversion funnel (% of total at each stage)
+  const total = CONTACTS.length;
+  const byStat = {};
+  STATUS_ORDER.forEach(s=>byStat[s]=0);
+  CONTACTS.forEach(c=>{ byStat[c.status]=(byStat[c.status]||0)+1; });
+  const stages = [
+    ['not_started', 'Not started'],
+    ['sent', 'Sent (first touch)'],
+    ['replied', 'Replied'],
+    ['meeting', 'Meeting booked'],
+    ['closed_won', 'Closed Won']
+  ];
+  document.getElementById('conversionTable').innerHTML = stages.map(([s,label])=>{
+    const n = byStat[s]||0;
+    const pct = total>0 ? ((n/total)*100).toFixed(1) : '0.0';
+    const bar = '█'.repeat(Math.max(1, Math.round(pct/2)));
+    return `<div><span style="color:var(--muted);display:inline-block;width:160px">${label}</span><span style="color:var(--ocean)">${bar}</span> <span style="color:var(--navy)">${n} (${pct}%)</span></div>`;
+  }).join('');
 }
 
 // ════════════════════════════════════════════════════════════════════════
