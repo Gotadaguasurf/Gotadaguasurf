@@ -277,6 +277,74 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
 .since-badge.warm{background:#fef3c7;color:#92400e}
 .since-badge.cold{background:#e0e7ff;color:#3730a3}
 
+/* ── Mobile: flip the contacts table into a stack of cards ───────────────
+   Below 720px the wide table stops fitting and the user is scrolling left
+   and right to read each row. We flip <tr>/<td> to block boxes and use
+   ::before labels on the cells that need context ("Last contacted: …").
+   The status pill stays in the corner so inline-edit keeps working.
+*/
+@media (max-width:720px){
+  /* Lift the table card framing so each row can become its own card. */
+  .table-wrap{background:transparent;border:none;box-shadow:none;border-radius:0;padding:0}
+  table{display:block}
+  thead{display:none}
+  tbody{display:block}
+  tbody tr[data-id]{
+    display:grid;
+    grid-template-columns:auto 1fr auto;
+    grid-template-areas:
+      "check  name    status"
+      "check  meta    meta"
+      "check  bottom  bottom";
+    column-gap:10px;
+    row-gap:4px;
+    background:#fff;
+    border:1px solid var(--border);
+    border-radius:12px;
+    box-shadow:var(--sh);
+    padding:12px 14px;
+    margin-bottom:10px;
+    cursor:pointer;
+  }
+  tbody tr[data-id]:hover{background:#fff}     /* override desktop foam hover */
+  tbody tr[data-id] td{display:block;padding:0;font-size:13px;border:none}
+  /* First TD = checkbox cell — sticks to the left column across all rows. */
+  tbody tr[data-id] td:nth-child(1){grid-area:check;align-self:center}
+  /* Company name + email row stays the headline. */
+  tbody tr[data-id] td:nth-child(2){grid-area:name;min-width:0}
+  tbody tr[data-id] td:nth-child(2) .cname{font-size:14.5px}
+  /* Status pill goes in the top-right of the card. */
+  tbody tr[data-id] td:nth-child(5){grid-area:status;justify-self:end;align-self:center}
+  /* Country/segment join into one meta line right under the name. */
+  tbody tr[data-id] td:nth-child(3),
+  tbody tr[data-id] td:nth-child(4){
+    grid-area:meta; display:inline; font-size:11.5px; color:var(--muted)
+  }
+  tbody tr[data-id] td:nth-child(3):empty,
+  tbody tr[data-id] td:nth-child(4):empty{display:none}
+  tbody tr[data-id] td:nth-child(3)::after{content:" · "; color:#bcc8d3}
+  tbody tr[data-id] td:nth-child(3):empty::after{content:""}
+  /* Last contacted + Follow-up share the bottom row with small inline labels. */
+  tbody tr[data-id] td:nth-child(6){grid-area:bottom;font-size:11.5px;color:var(--muted);margin-top:4px;padding-top:6px;border-top:1px dashed #eef3f8}
+  tbody tr[data-id] td:nth-child(6)::before{content:"Last contacted "; color:#94a3b8; font-weight:700; font-size:10px; text-transform:uppercase; letter-spacing:.06em; margin-right:4px}
+  tbody tr[data-id] td:nth-child(7){display:none}     /* Follow-up gets folded into the badge in name area below */
+  /* Render the Follow-up date next to "Last contacted" by promoting it via JS
+     instead of hiding — easier to keep it: append a span inside td(6) at JS
+     time. For now we hide it on mobile to avoid layout jank when a follow-up
+     is overdue and the cell wraps. Power users can open the detail. */
+  /* Selected row gets an accent. */
+  tbody tr.row-selected{box-shadow:inset 3px 0 0 var(--ocean), var(--sh) !important}
+
+  /* Tighter section header on mobile + button row wraps. */
+  .section-hdr{flex-direction:column;align-items:flex-start;gap:10px}
+  .filter-bar{padding:10px}
+  .preset-chips{gap:6px}
+  .preset-chips .chip{font-size:11px;padding:6px 11px}
+
+  /* The detail panel covers full width on phones. */
+  .detail-panel{width:100%}
+}
+
 /* ── DASHBOARD ────────────────────────────────────────────────────── */
 .dash-row{display:grid;grid-template-columns:1.4fr 1fr;gap:18px;margin-bottom:18px}
 @media (max-width:840px){.dash-row{grid-template-columns:1fr}}
