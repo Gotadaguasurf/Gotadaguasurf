@@ -2413,21 +2413,37 @@ window.delGuestRow=function(id){
 };
 function setCat(c){AC=c;renderCatTabs();renderItemGrid();}
 
+// Resolve the actual item array for a given (possibly synthetic) category.
+// "Merch Special" is a synthetic tab — there's no MENU['Merch Special'].
+// The items live in MENU.Merch and are filtered by name pattern at render
+// time. The four addItem* paths below all looked them up via MENU[AC],
+// which returned undefined for the synthetic tab → "Item not found"
+// every time the user clicked an Offer/Staff card. This helper closes
+// the gap by mirroring the same filter used in renderItemGrid.
+function menuSourceFor(cat){
+  const merch = Array.isArray(MENU.Merch) ? MENU.Merch : [];
+  if (cat === 'Merch Special') return merch.filter(i => isSpecialMerchName(i?.n));
+  if (cat === 'Merch')         return merch.filter(i => !isSpecialMerchName(i?.n));
+  return Array.isArray(MENU[cat]) ? MENU[cat] : [];
+}
+
 function addItem(i,btn){
   if(!AG||!S.activeWeek){toast('Select a guest first!');return;}
-  const item=MENU[AC][i];
+  const item=menuSourceFor(AC)[i];
   if(!item){toast('Item not found');return;}
   return addResolvedItem(item, btn);
 }
 function addItemByName(name,btn){
   if(!AG||!S.activeWeek){toast('Select a guest first!');return;}
-  const item=(MENU[AC]||[]).find(row=>String(row?.n||'')===String(name||''));
+  const source=menuSourceFor(AC);
+  const item=source.find(row=>String(row?.n||'')===String(name||''));
   if(!item){toast('Item not found');return;}
   return addResolvedItem(item, btn);
 }
 function addItemById(id,name,btn){
   if(!AG||!S.activeWeek){toast('Select a guest first!');return;}
-  const item=(MENU[AC]||[]).find(row=>row?.id===id) || (MENU[AC]||[]).find(row=>String(row?.n||'')===String(name||''));
+  const source=menuSourceFor(AC);
+  const item=source.find(row=>row?.id===id) || source.find(row=>String(row?.n||'')===String(name||''));
   if(!item){toast('Item not found');return;}
   return addResolvedItem(item, btn);
 }
@@ -2438,7 +2454,8 @@ function addItemById(id,name,btn){
 // separate inventory accounting needed.
 function addItemAtAltPrice(id,name,btn){
   if(!AG||!S.activeWeek){toast('Select a guest first!');return;}
-  const item=(MENU[AC]||[]).find(row=>row?.id===id) || (MENU[AC]||[]).find(row=>String(row?.n||'')===String(name||''));
+  const source=menuSourceFor(AC);
+  const item=source.find(row=>row?.id===id) || source.find(row=>String(row?.n||'')===String(name||''));
   if(!item){toast('Item not found');return;}
   const altPrice=Number(item.altPrice||0);
   if(!(altPrice>0)){ toast('No alt price on this item'); return; }
@@ -2451,7 +2468,11 @@ function addResolvedItem(item,btn){
   const rowIndex=rows.findIndex(row=>row.id===AG || row.name===AG);
   const g=rowIndex>=0?rows[rowIndex]:null;
   if(!g)return;
-  if(AC==='Merch'){
+  // Merch + Merch Special share the same physical stock (Offer M and
+  // Staff M decrement the same counter as the base M). Without including
+  // Merch Special here, a stockout could be silently bypassed by selling
+  // a Staff/Offer variant.
+  if(AC==='Merch' || AC==='Merch Special'){
     const stockLeft=merchStockLeft(item);
     if(stockLeft!==null&&stockLeft<=0){toast(item.n+' is out of stock');return;}
   }
