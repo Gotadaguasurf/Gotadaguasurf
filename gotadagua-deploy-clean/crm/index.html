@@ -263,6 +263,14 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
 .hero-task-action.first{background:#8b5cf6}
 .hero-empty{padding:18px 22px;color:#9bbed9;font-size:13px;text-align:center;background:rgba(255,255,255,.05);border-radius:10px}
 
+/* ── Flat icons — same stroke-based system as the management hub ────── */
+.ui-ic{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;vertical-align:middle;flex-shrink:0}
+.ui-ic svg{width:14px;height:14px;stroke:currentColor;stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.ui-ic.lg{width:18px;height:18px}
+.ui-ic.lg svg{width:18px;height:18px}
+.ui-ic.xl{width:22px;height:22px}
+.ui-ic.xl svg{width:22px;height:22px}
+
 /* ── PRESET FILTER CHIPS ──────────────────────────────────────────── */
 .preset-chips{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
 .chip{padding:7px 14px;border-radius:999px;border:1.5px solid var(--border);background:#fff;font-size:12px;font-weight:700;color:var(--muted);cursor:pointer;transition:all .18s;font-family:'Outfit',sans-serif;display:inline-flex;align-items:center;gap:6px}
@@ -371,7 +379,7 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
 .compose-card{background:#fff;border-radius:var(--r-lg);max-width:660px;width:100%;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:var(--sh-lg);transform:scale(.95);transition:transform .25s}
 .compose-modal.open .compose-card{transform:scale(1)}
 .compose-header{padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
-.compose-title{font-family:'DM Serif Display',serif;font-size:20px;color:var(--navy)}
+.compose-title{font-family:'DM Serif Display',serif;font-size:20px;color:var(--navy);display:inline-flex;align-items:center;gap:8px}
 .compose-body{padding:20px 22px;overflow-y:auto;flex:1}
 .compose-footer{padding:14px 22px;border-top:1px solid var(--border);display:flex;justify-content:space-between;gap:10px;background:#fafdff}
 .compose-preview{background:#fafdff;border:1px solid var(--border);border-radius:10px;padding:14px;font-family:'DM Mono',monospace;font-size:12.5px;line-height:1.6;white-space:pre-wrap;color:var(--ink);max-height:280px;overflow-y:auto}
@@ -435,7 +443,7 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
          Lets the user bulk-mark them as 'no_reply' to clean the pipeline. -->
     <div id="snoozeBanner" class="hidden" style="background:linear-gradient(135deg,#fef9e7,#fef0e6);border:1.5px solid #f0c060;border-radius:var(--r-lg);padding:18px 22px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">
       <div style="flex:1;min-width:240px">
-        <div style="font-family:'DM Serif Display',serif;font-size:18px;color:var(--navy);margin-bottom:4px">😴  <span id="snoozeCount">0</span> contacts have gone silent for 30+ days</div>
+        <div style="font-family:'DM Serif Display',serif;font-size:18px;color:var(--navy);margin-bottom:4px"><span class="ui-ic lg">__ICN_MOON__</span>  <span id="snoozeCount">0</span> contacts have gone silent for 30+ days</div>
         <div style="font-size:12.5px;color:var(--muted)">Clean your pipeline — mark them as "No reply" so they stop counting as active leads.</div>
       </div>
       <div style="display:flex;gap:8px;flex-shrink:0">
@@ -462,22 +470,22 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
 
     <div class="dash-row">
       <div class="dash-card">
-        <div class="dash-card-title">📅  Upcoming follow-ups (next 7 days)</div>
+        <div class="dash-card-title"><span class="ui-ic lg">__ICN_CALENDAR__</span>  Upcoming follow-ups (next 7 days)</div>
         <div id="followupsList"></div>
       </div>
       <div class="dash-card">
-        <div class="dash-card-title">📊  Pipeline funnel</div>
+        <div class="dash-card-title"><span class="ui-ic lg">__ICN_CHART__</span>  Pipeline funnel</div>
         <div id="funnelChart"></div>
       </div>
     </div>
 
     <div class="dash-row">
       <div class="dash-card">
-        <div class="dash-card-title">😴  No reply > 14 days</div>
+        <div class="dash-card-title"><span class="ui-ic lg">__ICN_MOON__</span>  No reply > 14 days</div>
         <div id="noReplyList"></div>
       </div>
       <div class="dash-card">
-        <div class="dash-card-title">🎉  Recently closed (last 30 days)</div>
+        <div class="dash-card-title"><span class="ui-ic lg">__ICN_PARTY__</span>  Recently closed (last 30 days)</div>
         <div id="recentClosedList"></div>
       </div>
     </div>
@@ -489,7 +497,7 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
       <div class="section-title">Contacts</div>
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
         <button class="header-btn primary" id="addContactBtn" style="background:var(--navy);border:none;color:#fff">+ New contact</button>
-        <button class="header-btn" id="importCsvBtn" style="background:transparent;color:var(--navy);border:1.5px solid var(--border)">📥 Import CSV</button>
+        <button class="header-btn" id="importCsvBtn" style="background:transparent;color:var(--navy);border:1.5px solid var(--border)"><span class="ui-ic">__ICN_DOWNLOAD__</span> Import CSV</button>
         <select id="savedViewSelect" class="filter-select" style="min-width:180px">
           <option value="">— Saved views —</option>
         </select>
@@ -501,13 +509,13 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
     <!-- Preset filters: clicking one sets the underlying selects so the user can refine further. -->
     <div class="preset-chips" id="presetChips">
       <button class="chip active" data-preset="all">All <span class="chip-count" id="cn-all">0</span></button>
-      <button class="chip" data-preset="today">📅 Today's tasks <span class="chip-count" id="cn-today">0</span></button>
-      <button class="chip" data-preset="overdue">🔥 Overdue <span class="chip-count" id="cn-overdue">0</span></button>
-      <button class="chip" data-preset="hot">💬 Hot (In convo · Meeting · Proposal) <span class="chip-count" id="cn-hot">0</span></button>
-      <button class="chip" data-preset="first-touch">✨ Needs first touch <span class="chip-count" id="cn-first">0</span></button>
-      <button class="chip" data-preset="stale">😴 Stale (>14d silent) <span class="chip-count" id="cn-stale">0</span></button>
-      <button class="chip" data-preset="active">🤝 Active partners <span class="chip-count" id="cn-active">0</span></button>
-      <button class="chip" data-preset="closed">🏁 Closed (won + lost) <span class="chip-count" id="cn-closed">0</span></button>
+      <button class="chip" data-preset="today"><span class="ui-ic">__ICN_CALENDAR__</span> Today's tasks <span class="chip-count" id="cn-today">0</span></button>
+      <button class="chip" data-preset="overdue"><span class="ui-ic">__ICN_FIRE__</span> Overdue <span class="chip-count" id="cn-overdue">0</span></button>
+      <button class="chip" data-preset="hot"><span class="ui-ic">__ICN_CHAT__</span> Hot (In convo · Meeting · Proposal) <span class="chip-count" id="cn-hot">0</span></button>
+      <button class="chip" data-preset="first-touch"><span class="ui-ic">__ICN_SPARKLES__</span> Needs first touch <span class="chip-count" id="cn-first">0</span></button>
+      <button class="chip" data-preset="stale"><span class="ui-ic">__ICN_MOON__</span> Stale (>14d silent) <span class="chip-count" id="cn-stale">0</span></button>
+      <button class="chip" data-preset="active"><span class="ui-ic">__ICN_HANDSHAKE__</span> Active partners <span class="chip-count" id="cn-active">0</span></button>
+      <button class="chip" data-preset="closed"><span class="ui-ic">__ICN_FLAG__</span> Closed (won + lost) <span class="chip-count" id="cn-closed">0</span></button>
     </div>
 
     <div class="filter-bar">
@@ -551,7 +559,7 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
       </select>
       <input type="date" id="bulkFollowup" class="filter-search" style="max-width:180px" placeholder="Set follow-up date">
       <button class="header-btn" id="bulkClear" style="background:transparent;color:var(--muted);border:1px solid var(--border)">Clear selection</button>
-      <button class="header-btn" id="bulkDelete" style="background:transparent;color:#fca5a5;border:1px solid rgba(252,165,165,.4)">🗑️ Delete selected</button>
+      <button class="header-btn" id="bulkDelete" style="background:transparent;color:#fca5a5;border:1px solid rgba(252,165,165,.4)"><span class="ui-ic">__ICN_TRASH__</span> Delete selected</button>
     </div>
 
     <div class="table-wrap">
@@ -643,13 +651,13 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
   </div>
   <div class="detail-body" id="detailBody"></div>
   <div class="detail-actions">
-    <button class="action-btn primary" id="composeBtn">📧  Compose email</button>
-    <button class="action-btn green" id="markRepliedBtn">✓ Mark replied</button>
-    <button class="action-btn ghost" id="setFollowupBtn">📅 Follow-up date</button>
+    <button class="action-btn primary" id="composeBtn"><span class="ui-ic">__ICN_MAIL__</span>  Compose email</button>
+    <button class="action-btn green" id="markRepliedBtn"><span class="ui-ic">__ICN_CHECK__</span>  Mark replied</button>
+    <button class="action-btn ghost" id="setFollowupBtn"><span class="ui-ic">__ICN_CALENDAR__</span>  Follow-up date</button>
     <!-- Delete is intentionally last + styled red so it's hard to hit by
          accident. Two-confirm flow (confirm + retype) before the DB
          delete actually fires. -->
-    <button class="action-btn" id="deleteContactBtn" style="grid-column:1/-1;background:transparent;color:var(--red-text);border:1.5px solid #f0a0a0;margin-top:4px">🗑️  Delete this contact</button>
+    <button class="action-btn" id="deleteContactBtn" style="grid-column:1/-1;background:transparent;color:var(--red-text);border:1.5px solid #f0a0a0;margin-top:4px"><span class="ui-ic">__ICN_TRASH__</span>  Delete this contact</button>
   </div>
 </aside>
 
@@ -686,7 +694,7 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
 <div class="compose-modal" id="followupModal">
   <div class="compose-card" style="max-width:480px">
     <div class="compose-header">
-      <div class="compose-title">📅 Schedule follow-up</div>
+      <div class="compose-title"><span class="ui-ic xl">__ICN_CALENDAR__</span> Schedule follow-up</div>
       <button class="detail-close" id="followupSkip" aria-label="Skip">×</button>
     </div>
     <div class="compose-body">
@@ -787,7 +795,7 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
 <div class="compose-modal" id="importCsvModal">
   <div class="compose-card" style="max-width:760px">
     <div class="compose-header">
-      <div class="compose-title">📥 Import CSV</div>
+      <div class="compose-title"><span class="ui-ic xl">__ICN_DOWNLOAD__</span> Import CSV</div>
       <button class="detail-close" id="importCsvClose" aria-label="Close">×</button>
     </div>
     <div class="compose-body">
@@ -944,6 +952,57 @@ function computeGroupKpis(){
 const SELECTED = new Set();
 
 // Richer partnership pipeline — 9 stages instead of 7.
+// Flat icon library — same style as the management hub (stroke 1.8,
+// viewBox 0 0 20 20). Kept inline so a fresh page hit needs zero icon-
+// font / sprite fetch. uiIcon('name') wraps the SVG in the .ui-ic span
+// the CSS uses; uiIcon('name','lg') bumps the size.
+const ICONS = {
+  mail:      '<svg viewBox="0 0 20 20"><rect x="3" y="5" width="14" height="10" rx="1.5"/><path d="m3.5 6 6.5 5 6.5-5"/></svg>',
+  calendar:  '<svg viewBox="0 0 20 20"><rect x="3" y="5" width="14" height="12" rx="1.5"/><path d="M3 9h14"/><path d="M7 3v4"/><path d="M13 3v4"/></svg>',
+  check:     '<svg viewBox="0 0 20 20"><path d="m4 11 4 4 8-9"/></svg>',
+  trash:     '<svg viewBox="0 0 20 20"><path d="M4 6h12"/><path d="M7 6V4h6v2"/><path d="M5.5 6 6 17h8l.5-11"/><path d="M9 9v5"/><path d="M11 9v5"/></svg>',
+  sparkles:  '<svg viewBox="0 0 20 20"><path d="m10 3 1.2 3.8L15 8l-3.8 1.2L10 13l-1.2-3.8L5 8l3.8-1.2L10 3Z"/><path d="m15.5 13 .5 1.5L17.5 15l-1.5.5-.5 1.5-.5-1.5L13.5 15l1.5-.5.5-1.5Z"/></svg>',
+  fire:      '<svg viewBox="0 0 20 20"><path d="M10 17c3 0 5-2 5-5 0-3-2-4-3-6 0 2-2 3-2 5 0-1.5-1-2-1-3 0 2-3 3-3 7 0 2 2 4 4 4Z"/></svg>',
+  moon:      '<svg viewBox="0 0 20 20"><path d="M16 12.5A6.5 6.5 0 0 1 7.5 4a6.5 6.5 0 1 0 8.5 8.5Z"/></svg>',
+  chat:      '<svg viewBox="0 0 20 20"><path d="M4 5h12a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H9l-4 3v-3H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Z"/></svg>',
+  handshake: '<svg viewBox="0 0 20 20"><path d="M3 8.5 6 5.5h3l1.5 1.5L12 5.5h2.5l2.5 3"/><path d="M3.5 11.5l1.8 1.8 2.6-2.6"/><path d="M16.5 11.5l-1.8 1.8L11 16l-1.5-1.5L7 16l-1.6-1.6"/></svg>',
+  flag:      '<svg viewBox="0 0 20 20"><path d="M5 17V3"/><path d="M5 3h10l-2 4 2 4H5"/></svg>',
+  download:  '<svg viewBox="0 0 20 20"><path d="M10 3v9"/><path d="m6 8 4 4 4-4"/><path d="M4 16h12"/></svg>',
+  chart:     '<svg viewBox="0 0 20 20"><path d="M4 16V9"/><path d="M10 16V5"/><path d="M16 16V11"/><path d="M3 16h14"/></svg>',
+  people:    '<svg viewBox="0 0 20 20"><circle cx="7" cy="7" r="2.2"/><circle cx="13.4" cy="6.4" r="1.8"/><path d="M3.8 15c.6-2.2 2-3.5 4.2-3.5s3.5 1.2 4.1 3.5"/><path d="M12 14.7c.3-1.6 1.3-2.7 3.1-3.1"/></svg>',
+  warning:   '<svg viewBox="0 0 20 20"><path d="m10 3.5 7.5 13H2.5L10 3.5Z"/><path d="M10 9v3.5"/><path d="M10 14.5h.01"/></svg>',
+  party:     '<svg viewBox="0 0 20 20"><path d="m4 16 3.5-10 7 7L4 16Z"/><path d="m7 13 3 3"/><path d="M13 5V3"/><path d="M16.5 7.5 18 6"/><path d="M15 10h2"/></svg>',
+  note:      '<svg viewBox="0 0 20 20"><path d="M5 3.5h7l3 3V17H5z"/><path d="M12 3.5v3h3"/><path d="M7 10h6"/><path d="M7 13h6"/></svg>',
+  plus:      '<svg viewBox="0 0 20 20"><path d="M10 4v12"/><path d="M4 10h12"/></svg>',
+  pin:       '<svg viewBox="0 0 20 20"><path d="M10 16.5s4.5-4.5 4.5-8A4.5 4.5 0 1 0 5.5 8.5c0 3.5 4.5 8 4.5 8Z"/><circle cx="10" cy="8.5" r="1.5"/></svg>',
+  save:      '<svg viewBox="0 0 20 20"><path d="M4 4h11l3 3v9H4z"/><path d="M6 4v4h7V4"/><path d="M6 16v-5h8v5"/></svg>',
+  edit:      '<svg viewBox="0 0 20 20"><path d="M4 16h3l9-9-3-3-9 9v3Z"/><path d="m12 5 3 3"/></svg>',
+  search:    '<svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5"/><path d="m13 13 4 4"/></svg>',
+};
+function uiIcon(name, size=''){
+  return `<span class="ui-ic${size?' '+size:''}">${ICONS[name]||ICONS.note}</span>`;
+}
+// Static-HTML icon expander: any element with text content `__ICN_NAME__`
+// gets its content swapped for the matching SVG. Lets us write
+// `<span class="ui-ic">__ICN_MAIL__</span>` in the markup without
+// pasting the full SVG string inline every time. Run once after DOM ready
+// AND any time we re-render a region that pulled in fresh placeholders.
+function expandIconPlaceholders(root=document){
+  root.querySelectorAll('.ui-ic').forEach(el => {
+    const m = (el.textContent||'').match(/^__ICN_([A-Z_]+)__$/);
+    if(!m) return;
+    const key = m[1].toLowerCase();
+    const svg = ICONS[key];
+    if(svg) el.innerHTML = svg;
+  });
+}
+// First-paint expansion. Re-rendered regions call this again themselves.
+if(document.readyState === 'loading'){
+  document.addEventListener('DOMContentLoaded', () => expandIconPlaceholders());
+} else {
+  expandIconPlaceholders();
+}
+
 // Order matters: it drives the funnel sort, the analytics doughnut, the
 // preset filters, and the Kanban columns (next session).
 const STATUS_LABELS = {
@@ -1224,14 +1283,14 @@ function renderDashboard(){
     .sort((a,b)=>(a.last_contacted_at||'').localeCompare(b.last_contacted_at||''));
 
   const tasks = [];
-  overdueFollowups.forEach(c => tasks.push({c, kind:'overdue', icon:'🔥', actionLabel:`${Math.abs(daysBetween(today,c.follow_up_at))}d overdue`, actionClass:'overdue', meta:`Follow up — was due ${fmtDate(c.follow_up_at)}`}));
-  todayFollowups.forEach(c => tasks.push({c, kind:'today', icon:'📅', actionLabel:'Today', actionClass:'', meta:'Follow up today'}));
-  stale.slice(0, 5).forEach(c => tasks.push({c, kind:'stale', icon:'😴', actionLabel:`${daysBetween(c.last_contacted_at.slice(0,10), today)}d silent`, actionClass:'', meta:`No reply since ${fmtDate(c.last_contacted_at)}`}));
+  overdueFollowups.forEach(c => tasks.push({c, kind:'overdue', icon:'fire', actionLabel:`${Math.abs(daysBetween(today,c.follow_up_at))}d overdue`, actionClass:'overdue', meta:`Follow up — was due ${fmtDate(c.follow_up_at)}`}));
+  todayFollowups.forEach(c => tasks.push({c, kind:'today', icon:'calendar', actionLabel:'Today', actionClass:'', meta:'Follow up today'}));
+  stale.slice(0, 5).forEach(c => tasks.push({c, kind:'stale', icon:'moon', actionLabel:`${daysBetween(c.last_contacted_at.slice(0,10), today)}d silent`, actionClass:'', meta:`No reply since ${fmtDate(c.last_contacted_at)}`}));
 
   // Fall back to "needs first touch" if nothing urgent today.
   if(tasks.length === 0){
     const firstTouch = CONTACTS.filter(c=>c.status==='not_started' && c.email).slice(0,3);
-    firstTouch.forEach(c => tasks.push({c, kind:'first-touch', icon:'✨', actionLabel:'Send intro', actionClass:'first', meta:`${c.country||''}${c.city?' · '+c.city:''} · ${c.segment||''}`}));
+    firstTouch.forEach(c => tasks.push({c, kind:'first-touch', icon:'sparkles', actionLabel:'Send intro', actionClass:'first', meta:`${c.country||''}${c.city?' · '+c.city:''} · ${c.segment||''}`}));
   }
 
   const hero = document.getElementById('heroToday');
@@ -1254,7 +1313,7 @@ function renderDashboard(){
   heroList.innerHTML = tasks.slice(0, 6).map(t => `
     <div class="hero-task" data-id="${t.c.id}">
       <div class="hero-task-left">
-        <div class="hero-task-icon">${t.icon}</div>
+        <div class="hero-task-icon" style="color:#bdd4e8">${uiIcon(t.icon, 'lg')}</div>
         <div class="hero-task-text">
           <div class="hero-task-name">${escHtml(t.c.company)}</div>
           <div class="hero-task-meta">${escHtml(t.meta)}</div>
@@ -1910,14 +1969,14 @@ document.getElementById('detailOverlay').addEventListener('click', closeDetail);
 function activityLabel(a){
   switch(a.action){
     case 'status_changed': return `Status: ${STATUS_LABELS[a.old_value]||a.old_value||'—'} → ${STATUS_LABELS[a.new_value]||a.new_value||'—'}`;
-    case 'email_sent': return `📧 Sent "${a.meta?.template_name||'email'}"`;
-    case 'replied_marked': return `✓ Marked as replied`;
-    case 'follow_up_set': return `📅 Follow-up: ${a.new_value||'cleared'}`;
-    case 'note_added': return `📝 Note added`;
+    case 'email_sent': return `${uiIcon('mail')} Sent "${a.meta?.template_name||'email'}"`;
+    case 'replied_marked': return `${uiIcon('check')} Marked as replied`;
+    case 'follow_up_set': return `${uiIcon('calendar')} Follow-up: ${a.new_value||'cleared'}`;
+    case 'note_added': return `${uiIcon('note')} Note added`;
     case 'imported': return `Imported from xlsx`;
-    case 'group_added': return `👥 Group added: "${a.meta?.title||'untitled'}"${a.meta?.stage?` (${GROUP_STAGE_LABELS[a.meta.stage]||a.meta.stage})`:''}`;
-    case 'group_updated': return `👥 Group updated: "${a.meta?.title||'untitled'}"`;
-    case 'group_stage': return `👥 Group stage: ${GROUP_STAGE_LABELS[a.old_value]||a.old_value||'—'} → ${GROUP_STAGE_LABELS[a.new_value]||a.new_value||'—'}${a.meta?.title?` (${a.meta.title})`:''}`;
+    case 'group_added': return `${uiIcon('people')} Group added: "${a.meta?.title||'untitled'}"${a.meta?.stage?` (${GROUP_STAGE_LABELS[a.meta.stage]||a.meta.stage})`:''}`;
+    case 'group_updated': return `${uiIcon('people')} Group updated: "${a.meta?.title||'untitled'}"`;
+    case 'group_stage': return `${uiIcon('people')} Group stage: ${GROUP_STAGE_LABELS[a.old_value]||a.old_value||'—'} → ${GROUP_STAGE_LABELS[a.new_value]||a.new_value||'—'}${a.meta?.title?` (${a.meta.title})`:''}`;
     default: return a.action;
   }
 }
@@ -2694,7 +2753,7 @@ document.getElementById('csvPreviewBtn').addEventListener('click', ()=>{
   const newCount = parsed.filter(p => !p.isDupe).length;
   const dupeCount = parsed.length - newCount;
   const preview = parsed.slice(0, 8).map(p =>
-    `<tr style="${p.isDupe?'opacity:.5':''}"><td style="padding:6px 10px">${p.isDupe?'⚠':'✓'}</td><td style="padding:6px 10px;font-weight:700">${escHtml(p.company)}</td><td style="padding:6px 10px">${escHtml(p.country||'')}</td><td style="padding:6px 10px">${escHtml(p.email||'')}</td></tr>`
+    `<tr style="${p.isDupe?'opacity:.5':''}"><td style="padding:6px 10px;color:${p.isDupe?'var(--amber-text)':'var(--green-text)'}">${p.isDupe?uiIcon('warning'):uiIcon('check')}</td><td style="padding:6px 10px;font-weight:700">${escHtml(p.company)}</td><td style="padding:6px 10px">${escHtml(p.country||'')}</td><td style="padding:6px 10px">${escHtml(p.email||'')}</td></tr>`
   ).join('');
   document.getElementById('csvPreview').innerHTML = `
     <div style="display:flex;gap:14px;font-size:12.5px;font-weight:700;margin-bottom:10px">
@@ -2782,11 +2841,11 @@ function renderGroupsList(contactId){
         <div>
           <div class="group-title">${escHtml(g.title)}</div>
           <div class="group-meta">
-            ${dates ? `<span>📅 ${dates}</span>` : ''}
-            ${g.pax ? `<span>👥 ${g.pax} pax</span>` : ''}
-            ${g.value ? `<span>💶 €${fmtMoney(g.value)}</span>` : ''}
-            ${g.destination ? `<span>📍 ${escHtml(g.destination)}</span>` : ''}
-            ${g.deposit_paid ? `<span style="color:var(--green-text);font-weight:700">✓ deposit</span>` : ''}
+            ${dates ? `<span>${uiIcon('calendar')} ${dates}</span>` : ''}
+            ${g.pax ? `<span>${uiIcon('people')} ${g.pax} pax</span>` : ''}
+            ${g.value ? `<span>€${fmtMoney(g.value)}</span>` : ''}
+            ${g.destination ? `<span>${uiIcon('pin')} ${escHtml(g.destination)}</span>` : ''}
+            ${g.deposit_paid ? `<span style="color:var(--green-text);font-weight:700">${uiIcon('check')} deposit</span>` : ''}
           </div>
         </div>
         <div class="group-actions">
@@ -2942,7 +3001,7 @@ function pipelineCardHtml(c){
     const label = `${groups.length} ${groups.length===1?'group':'groups'}`
       + (confirmed?` · ${confirmed} ✓`:'')
       + (possibilities?` · ${possibilities} ?`:'');
-    meta.push(`<span class="kc-groups">👥 ${label}</span>`);
+    meta.push(`<span class="kc-groups">${uiIcon('people')} ${label}</span>`);
   }
   return `
     <div class="kanban-card" draggable="true" data-id="${c.id}">
