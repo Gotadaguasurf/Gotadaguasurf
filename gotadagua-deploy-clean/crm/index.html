@@ -2560,6 +2560,13 @@ document.getElementById('importCsvCancel').addEventListener('click', closeCsvImp
 // "" as an embedded quote. No dependency on a library. Good enough for the
 // CSV exports the user has been pasting (Google Sheets, Excel).
 function parseCsv(text){
+  // Auto-detect the column delimiter from the first non-empty line. Excel
+  // and Google Sheets put TABS on the clipboard when you copy a range,
+  // not commas — the user pastes that and the comma-only parser sees one
+  // huge field per line and rejects with "must include company". Pick
+  // whichever delimiter has more occurrences in the header.
+  const firstLine = (text.split(/\r?\n/).find(l => l.trim()) || '');
+  const DELIM = (firstLine.match(/\t/g)||[]).length > (firstLine.match(/,/g)||[]).length ? '\t' : ',';
   const rows = [];
   let row = [], field = '', inQuotes = false, i = 0;
   while(i < text.length){
@@ -2572,7 +2579,7 @@ function parseCsv(text){
       field += ch; i++; continue;
     }
     if(ch === '"'){ inQuotes = true; i++; continue; }
-    if(ch === ','){ row.push(field); field = ''; i++; continue; }
+    if(ch === DELIM){ row.push(field); field = ''; i++; continue; }
     if(ch === '\n' || ch === '\r'){
       // Commit the row on \n; eat \r\n as one terminator.
       if(ch === '\r' && text[i+1] === '\n') i++;
