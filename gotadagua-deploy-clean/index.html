@@ -1641,16 +1641,28 @@
     function buildWorkspaceAccessRows(role, areas){
       const targetByWorkspace = new Map();
       const allAreas = Array.from(new Set((areas || []).filter(Boolean)));
+      // Track silently-dropped area keys so we can surface them in the
+      // console + a toast. Without this, a checkbox could be ticked,
+      // "saved", and yield no DB row — the exact bug behind the CRM and
+      // prices-* pills not persisting because their workspaces rows didn't
+      // exist. Visible warning forces us to notice next time.
+      const dropped = [];
       allAreas.forEach(areaKey => {
         const workspaceSlug = areaKey.endsWith('-camp-tab') ? areaKey.replace(/-camp-tab$/,'') : areaKey;
         const workspace = __workspaceRows.find(row => row.slug === workspaceSlug);
-        if(!workspace) return;
+        if(!workspace){ dropped.push(areaKey); return; }
         const scope = areaKey.endsWith('-camp-tab') ? 'camp-tab' : 'full';
         const existing = targetByWorkspace.get(workspace.id);
         if(!existing || scope === 'full'){
           targetByWorkspace.set(workspace.id,{ workspace, scope, areaKey });
         }
       });
+      if(dropped.length){
+        console.warn('[Settings] buildWorkspaceAccessRows dropped areas with no matching workspaces row:', dropped);
+        if(typeof showToast === 'function'){
+          showToast(`Heads up: these areas can't be granted yet (no workspaces row): ${dropped.join(', ')}. Run the matching seed SQL in Supabase.`);
+        }
+      }
       return Array.from(targetByWorkspace.values()).map(({ workspace, scope }) => ({
         workspace_id: workspace.id,
         member_role: role,
