@@ -551,6 +551,7 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
       </select>
       <input type="date" id="bulkFollowup" class="filter-search" style="max-width:180px" placeholder="Set follow-up date">
       <button class="header-btn" id="bulkClear" style="background:transparent;color:var(--muted);border:1px solid var(--border)">Clear selection</button>
+      <button class="header-btn" id="bulkDelete" style="background:transparent;color:#fca5a5;border:1px solid rgba(252,165,165,.4)">🗑️ Delete selected</button>
     </div>
 
     <div class="table-wrap">
@@ -645,6 +646,10 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
     <button class="action-btn primary" id="composeBtn">📧  Compose email</button>
     <button class="action-btn green" id="markRepliedBtn">✓ Mark replied</button>
     <button class="action-btn ghost" id="setFollowupBtn">📅 Follow-up date</button>
+    <!-- Delete is intentionally last + styled red so it's hard to hit by
+         accident. Two-confirm flow (confirm + retype) before the DB
+         delete actually fires. -->
+    <button class="action-btn" id="deleteContactBtn" style="grid-column:1/-1;background:transparent;color:var(--red-text);border:1.5px solid #f0a0a0;margin-top:4px">🗑️  Delete this contact</button>
   </div>
 </aside>
 
@@ -1639,6 +1644,33 @@ document.getElementById('selectAll').addEventListener('change', (e)=>{
 });
 document.getElementById('bulkClear').addEventListener('click', clearSelection);
 
+// Bulk delete — destructive, so requires confirming the COUNT by typing it.
+// Catches "I clicked the wrong button" much better than a yes/no prompt
+// for a destructive multi-row operation.
+document.getElementById('bulkDelete').addEventListener('click', async ()=>{
+  if(SELECTED.size === 0) return;
+  const ids = Array.from(SELECTED);
+  const sample = ids.slice(0, 3).map(id => {
+    const c = CONTACTS.find(x => x.id === id);
+    return c ? c.company : id;
+  }).join(', ');
+  const more = ids.length > 3 ? ` and ${ids.length - 3} more` : '';
+  const typed = prompt(`Delete ${ids.length} contacts (${sample}${more})?\n\nThis cannot be undone — all their activity and groups will be removed too.\n\nType the number ${ids.length} to confirm:`);
+  if(typed === null) return;             // user hit Cancel
+  if(String(typed).trim() !== String(ids.length)){ toast('Number didn\'t match, nothing deleted'); return; }
+  const supa = getClient();
+  const { error } = await supa.from('outreach_contacts').delete().in('id', ids);
+  if(error){ toast('Bulk delete failed: ' + error.message); return; }
+  CONTACTS = CONTACTS.filter(x => !SELECTED.has(x.id));
+  // If the open detail panel was one of the deleted rows, close it.
+  if(CURRENT_CONTACT && SELECTED.has(CURRENT_CONTACT.id)) closeDetail();
+  toast(`Deleted ${ids.length} contacts`);
+  clearSelection();
+  renderContacts();
+  if(CURRENT_TAB==='dashboard') renderDashboard();
+  if(CURRENT_TAB==='pipeline') renderPipeline();
+});
+
 document.getElementById('bulkStatus').addEventListener('change', async (e)=>{
   const newStatus = e.target.value;
   if(!newStatus || SELECTED.size === 0){ e.target.value=''; return; }
@@ -1904,6 +1936,26 @@ document.getElementById('markRepliedBtn').addEventListener('click', async ()=>{
 document.getElementById('setFollowupBtn').addEventListener('click', ()=>{
   document.getElementById('followupInput')?.focus();
   document.getElementById('followupInput')?.showPicker?.();
+});
+
+// Delete a single contact from the detail panel. Double-confirm because
+// it's irreversible — cascade-deletes the contact's activity and groups
+// via the FK constraints we set up.
+document.getElementById('deleteContactBtn').addEventListener('click', async ()=>{
+  if(!CURRENT_CONTACT) return;
+  const c = CURRENT_CONTACT;
+  if(!confirm(`Delete "${c.company}"?\n\nThis will also remove all activity history and groups for this contact. This cannot be undone.`)) return;
+  const supa = getClient();
+  const { error } = await supa.from('outreach_contacts').delete().eq('id', c.id);
+  if(error){ toast('Delete failed: ' + error.message); return; }
+  // Drop it from local state, close the panel, refresh views.
+  CONTACTS = CONTACTS.filter(x => x.id !== c.id);
+  SELECTED.delete(c.id);
+  toast(`Deleted ${c.company}`);
+  closeDetail();
+  if(CURRENT_TAB==='contacts') renderContacts();
+  if(CURRENT_TAB==='dashboard') renderDashboard();
+  if(CURRENT_TAB==='pipeline') renderPipeline();
 });
 
 async function updateContact(id, patch){
