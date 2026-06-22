@@ -1994,7 +1994,8 @@ async function openContact(id){
           <option value="pt" ${c.language==='pt'?'selected':''}>Português</option>
         </select>
       </span></div>
-      <div class="detail-row"><span class="label">Last contacted</span><span class="value">${c.last_contacted_at?fmtDateTime(c.last_contacted_at):'—'}</span></div>
+      <div class="detail-row"><span class="label">Last contacted</span><span class="value" title="Last time we sent them an email">${c.last_contacted_at?fmtDateTime(c.last_contacted_at):'—'}</span></div>
+      <div class="detail-row"><span class="label">Last interaction</span><span class="value" title="Any movement: email, task, status change, group, person">${c.last_interaction_at?fmtDateTime(c.last_interaction_at):'—'}</span></div>
       <div class="detail-row"><span class="label">Follow-up</span><span class="value"><input type="date" id="followupInput" value="${c.follow_up_at||''}" style="border:1px solid var(--border);border-radius:8px;padding:4px 8px;font:inherit"></span></div>
     </div>
 
