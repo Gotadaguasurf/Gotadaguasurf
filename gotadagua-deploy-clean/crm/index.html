@@ -3131,6 +3131,12 @@ function renderTasksList(companyId){
   const list = document.getElementById('tasksList');
   if(!list) return;
   const today = new Date().toISOString().slice(0,10);
+  // Preset chip row — always at the top, regardless of whether the list
+  // is empty. One click = instant create, no modal trip. Stamped into
+  // the list HTML below; wired after innerHTML assignment.
+  const presetChips = `<div class="task-presets" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">${
+    TASK_PRESETS.map((p,i)=>`<button type="button" data-preset-idx="${i}" title="${escAttr(p.title)} (due in ${p.daysOut}d)" style="background:#fff;border:1px solid var(--border);border-radius:999px;padding:5px 11px;font-size:11px;font-weight:600;color:var(--ink);cursor:pointer;font-family:'Outfit',sans-serif;transition:all .15s">${escHtml(p.label)}</button>`).join('')
+  }</div>`;
   // Open tasks first (sorted by due, undated last), then completed tasks
   // (most recently completed first, limited to last 5 to keep the panel
   // tight).
@@ -3141,7 +3147,8 @@ function renderTasksList(companyId){
     .sort((a,b) => (b.done_at||'').localeCompare(a.done_at||''))
     .slice(0, 5);
   if(open.length + done.length === 0){
-    list.innerHTML = '<div class="empty-state" style="padding:14px;text-align:left;background:#fafdff;border:1px dashed var(--border);border-radius:10px">No tasks yet. Click <b>+ Task</b> to add a concrete TODO ("Call Joana", "Send proposal", "Send invoice"…).</div>';
+    list.innerHTML = presetChips + '<div class="empty-state" style="padding:14px;text-align:left;background:#fafdff;border:1px dashed var(--border);border-radius:10px">No tasks yet. Click a chip above for a one-click preset, or <b>+ Task</b> for a custom one.</div>';
+    wirePresetChips(list, companyId);
     return;
   }
   const renderTask = (t, isDone) => {
@@ -3172,10 +3179,11 @@ function renderTasksList(companyId){
       </div>
     `;
   };
-  list.innerHTML =
+  list.innerHTML = presetChips +
     open.map(t => renderTask(t, false)).join('') +
     (done.length ? `<div style="margin:12px 0 6px;font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);font-weight:700">Recently completed</div>` : '') +
     done.map(t => renderTask(t, true)).join('');
+  wirePresetChips(list, companyId);
 
   list.querySelectorAll('[data-tk-toggle]').forEach(cb => {
     cb.addEventListener('change', async () => {
@@ -3319,6 +3327,55 @@ document.getElementById('taskDeleteBtn').addEventListener('click', async ()=>{
   if(CURRENT_TAB === 'tasks') renderTasksTab();
   updateNavTasksCount();
 });
+
+// Task presets — one-click templates for the most common TODOs so the
+// user doesn't have to open the modal for a routine "follow up" or
+// "call tomorrow" entry. Rendered as chips above the per-company list.
+// Each preset's daysOut is added to today to compute due_at. Title is
+// fixed — user can rename later via the edit button.
+const TASK_PRESETS = [
+  { label:'Call tomorrow',    type:'call',      daysOut:1, title:'Call back' },
+  { label:'Follow up +3d',    type:'follow_up', daysOut:3, title:'Follow up' },
+  { label:'Follow up +7d',    type:'follow_up', daysOut:7, title:'Follow up' },
+  { label:'Send proposal',    type:'email',     daysOut:1, title:'Send proposal' },
+];
+
+// Wires the preset chip click handlers + hover affordance. Called after
+// every renderTasksList innerHTML write since the chips get re-stamped.
+function wirePresetChips(root, companyId){
+  root.querySelectorAll('[data-preset-idx]').forEach(btn => {
+    const preset = TASK_PRESETS[Number(btn.dataset.presetIdx)];
+    btn.addEventListener('mouseenter', () => {
+      btn.style.borderColor = 'var(--ocean)';
+      btn.style.color = 'var(--ocean)';
+    });
+    btn.addEventListener('mouseleave', () => {
+      btn.style.borderColor = 'var(--border)';
+      btn.style.color = 'var(--ink)';
+    });
+    btn.addEventListener('click', () => quickAddTask(companyId, preset));
+  });
+}
+
+async function quickAddTask(companyId, preset){
+  const due = addDays(new Date().toISOString().slice(0,10), preset.daysOut);
+  const payload = {
+    company_id: companyId,
+    title: preset.title,
+    type:  preset.type,
+    due_at: new Date(due + 'T00:00:00Z').toISOString(),
+    notes: null,
+  };
+  const supa = getClient();
+  const { data, error } = await supa.from('tasks').insert(payload).select().single();
+  if(error){ toast('Quick task failed: '+error.message); return; }
+  TASKS.push(data);
+  toast(`Added: ${preset.title} (${fmtDate(due)})`);
+  renderTasksList(companyId);
+  updateNavTasksCount();
+  if(CURRENT_TAB === 'dashboard') renderDashboard();
+  if(CURRENT_TAB === 'tasks') renderTasksTab();
+}
 
 // ── TASKS TAB (cross-company view of every open TODO) ──────────────────
 // State for the tab's filter. Persists across renders so flipping in
