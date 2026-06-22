@@ -427,6 +427,7 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
   <div class="header-center">
     <button class="nav-tab active" data-tab="dashboard">Dashboard</button>
     <button class="nav-tab" data-tab="contacts">Contacts</button>
+    <button class="nav-tab" data-tab="tasks">Tasks <span id="navTasksCount" style="margin-left:6px;font-size:10px;background:#dc2626;color:#fff;padding:2px 7px;border-radius:999px;font-weight:700;display:none">0</span></button>
     <button class="nav-tab" data-tab="pipeline">Pipeline</button>
     <button class="nav-tab" data-tab="analytics">Analytics</button>
     <button class="nav-tab" data-tab="templates">Templates</button>
@@ -583,6 +584,19 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
         <tbody id="contactsBody"></tbody>
       </table>
     </div>
+  </div>
+
+  <!-- ─── TASKS TAB ─── -->
+  <div id="page-tasks" class="hidden">
+    <div class="section-hdr">
+      <div class="section-title">Tasks</div>
+      <div class="section-hint">Every open TODO across the whole pipeline. Add a task from any company's detail panel.</div>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
+      <div id="tasksTabFilters" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+      <div style="margin-left:auto;font-family:'DM Mono',monospace;font-size:12px;color:var(--muted)" id="tasksTabCount">—</div>
+    </div>
+    <div id="tasksTabList" style="background:#fff;border:1px solid var(--border);border-radius:var(--r-md);overflow:hidden"></div>
   </div>
 
   <!-- ─── PIPELINE (KANBAN) TAB ─── -->
@@ -1196,8 +1210,10 @@ function scheduleRtRender(){
   _rtRenderTimer = setTimeout(()=>{
     if(CURRENT_TAB === 'contacts') renderContacts();
     if(CURRENT_TAB === 'dashboard') renderDashboard();
+    if(CURRENT_TAB === 'tasks') renderTasksTab();
     if(CURRENT_TAB === 'pipeline') renderPipeline();
     if(CURRENT_TAB === 'analytics') renderAnalytics();
+    updateNavTasksCount();
   }, 250);
 }
 
@@ -1281,6 +1297,7 @@ async function loadAll(){
   renderDashboard();
   renderContacts();
   renderTemplateList();
+  updateNavTasksCount();
   // Kick off realtime AFTER the initial render so the first paint doesn't
   // race with incoming events. Re-callable; subscribeRealtime() no-ops if
   // already subscribed (so re-login doesn't double-bind).
@@ -1415,11 +1432,12 @@ document.querySelectorAll('.nav-tab').forEach(t=>{
   t.addEventListener('click', ()=>{
     CURRENT_TAB = t.dataset.tab;
     document.querySelectorAll('.nav-tab').forEach(x=>x.classList.toggle('active', x===t));
-    ['dashboard','contacts','pipeline','analytics','templates'].forEach(p=>{
+    ['dashboard','contacts','tasks','pipeline','analytics','templates'].forEach(p=>{
       document.getElementById('page-'+p).classList.toggle('hidden', p!==CURRENT_TAB);
     });
     if(CURRENT_TAB==='dashboard') renderDashboard();
     if(CURRENT_TAB==='contacts') renderContacts();
+    if(CURRENT_TAB==='tasks') renderTasksTab();
     if(CURRENT_TAB==='pipeline') renderPipeline();
     if(CURRENT_TAB==='analytics') renderAnalytics();
     if(CURRENT_TAB==='templates') renderTemplateList();
@@ -3252,6 +3270,126 @@ document.getElementById('taskDeleteBtn').addEventListener('click', async ()=>{
   closeTaskModal();
   if(CURRENT_TAB === 'dashboard') renderDashboard();
 });
+
+// ── TASKS TAB (cross-company view of every open TODO) ──────────────────
+// State for the tab's filter. Persists across renders so flipping in
+// and out of the tab keeps your filter selection.
+let TASKS_TAB_FILTER = 'open';
+const TASKS_TAB_FILTERS = [
+  { key:'overdue', label:'Overdue' },
+  { key:'today',   label:'Today' },
+  { key:'week',    label:'This week' },
+  { key:'open',    label:'All open' },
+  { key:'done',    label:'Done (recent)' },
+];
+
+// Updates the red count pill in the top nav. Counts OVERDUE open tasks
+// only — the most actionable signal. Hidden when zero.
+function updateNavTasksCount(){
+  const el = document.getElementById('navTasksCount');
+  if(!el) return;
+  const today = new Date().toISOString().slice(0,10);
+  const n = TASKS.filter(t => !t.done_at && t.due_at && t.due_at.slice(0,10) < today).length;
+  if(n > 0){ el.textContent = n; el.style.display = ''; }
+  else { el.style.display = 'none'; }
+}
+
+function renderTasksTab(){
+  const today = new Date().toISOString().slice(0,10);
+  const weekEnd = addDays(today, 7);
+
+  // Filter pill rendering (active pill is the ocean colour).
+  const filterEl = document.getElementById('tasksTabFilters');
+  filterEl.innerHTML = TASKS_TAB_FILTERS.map(f => `
+    <button data-tf="${f.key}" style="padding:6px 14px;font-size:12px;font-weight:700;border-radius:999px;border:1px solid ${TASKS_TAB_FILTER===f.key?'var(--ocean)':'var(--border)'};background:${TASKS_TAB_FILTER===f.key?'var(--ocean)':'#fff'};color:${TASKS_TAB_FILTER===f.key?'#fff':'var(--ink)'};cursor:pointer;font-family:'Outfit',sans-serif">${f.label}</button>
+  `).join('');
+  filterEl.querySelectorAll('[data-tf]').forEach(b => {
+    b.addEventListener('click', () => {
+      TASKS_TAB_FILTER = b.dataset.tf;
+      renderTasksTab();
+    });
+  });
+
+  // Apply the active filter to the full tasks list.
+  let rows = TASKS.filter(t => {
+    if(TASKS_TAB_FILTER === 'done') return !!t.done_at;
+    if(t.done_at) return false;
+    const due = t.due_at ? t.due_at.slice(0,10) : null;
+    if(TASKS_TAB_FILTER === 'overdue') return due && due < today;
+    if(TASKS_TAB_FILTER === 'today')   return due === today;
+    if(TASKS_TAB_FILTER === 'week')    return due && due >= today && due <= weekEnd;
+    return true; // 'open' — everything not done
+  });
+  // Sort: overdue first by due asc, then dated by due asc, undated last.
+  // Done filter sorts most-recently-completed first.
+  rows.sort((a,b) => {
+    if(TASKS_TAB_FILTER === 'done') return (b.done_at||'').localeCompare(a.done_at||'');
+    const ad = a.due_at || '9999';
+    const bd = b.due_at || '9999';
+    return ad.localeCompare(bd);
+  });
+
+  document.getElementById('tasksTabCount').textContent =
+    `${rows.length} task${rows.length===1?'':'s'}`;
+
+  const listEl = document.getElementById('tasksTabList');
+  if(rows.length === 0){
+    listEl.innerHTML = `<div class="empty-state" style="padding:40px;text-align:center">${TASKS_TAB_FILTER==='done' ? 'Nothing completed recently.' : 'No tasks matching this filter.'}</div>`;
+    return;
+  }
+  listEl.innerHTML = rows.map((t, i) => {
+    const c = CONTACTS.find(x => x.id === t.company_id);
+    const companyName = c ? c.company : '(unknown company)';
+    const due = t.due_at ? t.due_at.slice(0,10) : null;
+    const isOverdue = !t.done_at && due && due < today;
+    const isToday = !t.done_at && due === today;
+    const dueLabel = due
+      ? (isOverdue ? `<span style="color:var(--red-text);font-weight:700">${fmtDate(due)} · ${Math.abs(daysBetween(today, due))}d overdue</span>`
+        : (isToday ? `<span style="color:var(--ocean);font-weight:700">Today</span>`
+        : fmtDate(due)))
+      : '<span style="color:var(--muted)">no due</span>';
+    const typeIcon = TASK_TYPE_ICONS[t.type] || 'calendar';
+    const rowBorder = i === rows.length-1 ? '' : 'border-bottom:1px solid var(--border)';
+    return `
+      <div class="tasks-tab-row" data-task-id="${t.id}" data-company-id="${t.company_id}" style="display:grid;grid-template-columns:auto 1fr 1.2fr auto auto auto;gap:14px;align-items:center;padding:12px 16px;${rowBorder};${t.done_at?'opacity:.55':''};cursor:default">
+        <input type="checkbox" data-tk-tab-toggle="${t.id}" ${t.done_at?'checked':''} style="width:18px;height:18px;accent-color:var(--ocean);cursor:pointer">
+        <div style="min-width:0">
+          <div style="font-weight:700;color:var(--ink);font-size:13.5px;${t.done_at?'text-decoration:line-through':''};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(t.title)}</div>
+          ${t.notes ? `<div style="font-size:11.5px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(t.notes)}</div>` : ''}
+        </div>
+        <div data-jump-company="${t.company_id}" style="font-size:12.5px;color:var(--ocean);font-weight:600;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="Open ${escAttr(companyName)}">${escHtml(companyName)}</div>
+        <div style="font-size:11.5px;color:var(--muted);display:flex;gap:5px;align-items:center;white-space:nowrap">${uiIcon(typeIcon)} ${TASK_TYPE_LABELS[t.type]||t.type||'—'}</div>
+        <div style="font-size:12px;white-space:nowrap">${dueLabel}</div>
+        <button data-tk-tab-edit="${t.id}" data-company-id="${t.company_id}" title="Edit" aria-label="Edit" style="background:transparent;border:1px solid var(--border);border-radius:6px;width:26px;height:26px;cursor:pointer;color:var(--muted);font-size:14px">✎</button>
+      </div>
+    `;
+  }).join('');
+
+  // Wire the done checkboxes (same as the per-company list).
+  listEl.querySelectorAll('[data-tk-tab-toggle]').forEach(cb => {
+    cb.addEventListener('change', async () => {
+      const id = cb.dataset.tkTabToggle;
+      const t = TASKS.find(x => x.id === id);
+      const newDoneAt = cb.checked ? new Date().toISOString() : null;
+      const supa = getClient();
+      const { error } = await supa.from('tasks').update({ done_at: newDoneAt }).eq('id', id);
+      if(error){ toast('Update failed: '+error.message); cb.checked = !cb.checked; return; }
+      if(t) t.done_at = newDoneAt;
+      toast(newDoneAt ? 'Task completed' : 'Task reopened');
+      renderTasksTab();
+      updateNavTasksCount();
+    });
+  });
+  // Click company name → open detail panel.
+  listEl.querySelectorAll('[data-jump-company]').forEach(el => {
+    el.addEventListener('click', () => openContact(el.dataset.jumpCompany));
+  });
+  // Edit button reuses the existing modal — needs the company id so the
+  // save handler updates the right parent.
+  listEl.querySelectorAll('[data-tk-tab-edit]').forEach(btn => {
+    btn.addEventListener('click', () => openTaskModal(btn.dataset.companyId, btn.dataset.tkTabEdit));
+  });
+}
 
 // ════════════════════════════════════════════════════════════════════════
 //  PEOPLE (multi-contact roster — CRM v2 contacts table)
