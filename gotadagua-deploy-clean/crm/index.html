@@ -489,6 +489,13 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
         <div id="recentClosedList"></div>
       </div>
     </div>
+
+    <div class="dash-row" style="grid-template-columns:1fr">
+      <div class="dash-card">
+        <div class="dash-card-title"><span class="ui-ic lg">__ICN_MOON__</span>  Cold accounts — no movement in 60+ days</div>
+        <div id="coldList"></div>
+      </div>
+    </div>
   </div>
 
   <!-- ─── CONTACTS TAB ─── -->
@@ -1611,6 +1618,27 @@ function renderDashboard(){
     return `<div class="followup-item"><div class="fi-name" data-id="${c.id}">${escHtml(c.company)}</div><div class="fi-due" style="background:${won?'var(--green-bg)':'var(--red-bg)'};color:${won?'var(--green-text)':'var(--red-text)'}">${won?'✅ Won':'✗ Lost'} · ${fmtDate(c.updated_at)}</div></div>`;
   }).join('') : '<div class="empty-state">No deals closed in the last 30 days.</div>';
   rcEl.querySelectorAll('.fi-name').forEach(el=>el.addEventListener('click', ()=>openContact(el.dataset.id)));
+
+  // ── Cold accounts (no movement 60+ days) ─────────────────────────────
+  // Uses last_interaction_at (any movement: outbound, status change,
+  // task done, person added, etc.) — broader than last_contacted_at
+  // which is outbound-only. Limited to statuses where coldness actually
+  // matters: skip not_started (those are "never started", a different
+  // bucket already handled by the hero), and skip lost/no_reply (already
+  // closed). active_partner DOES count — a partner with no movement in
+  // 60d may be churning.
+  const cutoff60 = addDays(today, -60);
+  const COLD_STATUSES = new Set(['first_email','follow_up','in_conversation','meeting','proposal_sent','active_partner']);
+  const cold = CONTACTS
+    .filter(c => COLD_STATUSES.has(c.status) && c.last_interaction_at && c.last_interaction_at.slice(0,10) < cutoff60)
+    .sort((a,b) => (a.last_interaction_at||'').localeCompare(b.last_interaction_at||''));
+  const coldEl = document.getElementById('coldList');
+  coldEl.innerHTML = cold.length ? cold.slice(0,20).map(c=>{
+    const days = daysBetween(c.last_interaction_at.slice(0,10), today);
+    const isPartner = c.status === 'active_partner';
+    return `<div class="followup-item" style="display:flex;justify-content:space-between;align-items:center;gap:10px"><div class="fi-name" data-id="${c.id}" style="flex:1">${escHtml(c.company)}</div><span class="status-pill s-${c.status}" style="font-size:10px;padding:2px 8px;flex-shrink:0">${STATUS_LABELS[c.status]||c.status}</span><div class="fi-due ${isPartner?'overdue':''}" style="flex-shrink:0">${days}d cold</div></div>`;
+  }).join('') + (cold.length>20 ? `<div class="empty-state" style="padding:10px">+ ${cold.length-20} more</div>` : '') : '<div class="empty-state">No cold accounts — every active deal had movement in the last 60 days. 🎉</div>';
+  coldEl.querySelectorAll('.fi-name').forEach(el=>el.addEventListener('click', ()=>openContact(el.dataset.id)));
 }
 
 function addDays(iso, n){
