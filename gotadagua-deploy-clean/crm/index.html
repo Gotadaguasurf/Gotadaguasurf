@@ -676,6 +676,7 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
     <button class="action-btn primary" id="composeBtn"><span class="ui-ic">__ICN_MAIL__</span>  Compose email</button>
     <button class="action-btn green" id="markRepliedBtn"><span class="ui-ic">__ICN_CHECK__</span>  Mark replied</button>
     <button class="action-btn ghost" id="setFollowupBtn"><span class="ui-ic">__ICN_CALENDAR__</span>  Follow-up date</button>
+    <button class="action-btn ghost" id="checkGmailBtn" title="Open Gmail filtered by every email address linked to this company"><span class="ui-ic">__ICN_SEARCH__</span>  Check Gmail</button>
     <!-- Delete is intentionally last + styled red so it's hard to hit by
          accident. Two-confirm flow (confirm + retype) before the DB
          delete actually fires. -->
@@ -2306,6 +2307,31 @@ document.getElementById('composeBtn').addEventListener('click', ()=>{
     return;
   }
   openCompose();
+});
+
+// Open Gmail filtered to every email address we know for this company:
+// the company-level email (typically info@/bookings@) PLUS each person
+// in the People roster. Wraps them in `(from:X OR to:X OR from:Y OR …)`
+// and scopes to newer_than:90d so old threads don't drown the view.
+// Saves the manual search step when checking for inbound replies.
+document.getElementById('checkGmailBtn').addEventListener('click', ()=>{
+  if(!CURRENT_CONTACT) return;
+  const c = CURRENT_CONTACT;
+  const emails = new Set();
+  if(c.email) emails.add(c.email.trim().toLowerCase());
+  PEOPLE.filter(p => p.company_id === c.id && p.email).forEach(p => emails.add(p.email.trim().toLowerCase()));
+  if(emails.size === 0){
+    toast('No email addresses on this contact — add one to the company or to a person first');
+    return;
+  }
+  // Gmail's URL search syntax: parens around the OR group, plus a
+  // newer_than scope keeps the result list focused on recent traffic.
+  const clauses = [];
+  emails.forEach(e => { clauses.push(`from:${e}`); clauses.push(`to:${e}`); });
+  const query = `(${clauses.join(' OR ')}) newer_than:90d`;
+  const url = 'https://mail.google.com/mail/?authuser=accounting@gotadaguasurf.com#search/' + encodeURIComponent(query);
+  window.open(url, '_blank');
+  toast(`Opening Gmail · ${emails.size} address${emails.size>1?'es':''}`);
 });
 
 function openCompose(){
