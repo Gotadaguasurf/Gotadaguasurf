@@ -595,6 +595,7 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
     <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
       <div id="tasksTabFilters" style="display:flex;gap:6px;flex-wrap:wrap"></div>
       <div style="margin-left:auto;font-family:'DM Mono',monospace;font-size:12px;color:var(--muted)" id="tasksTabCount">—</div>
+      <button type="button" id="tasksTabAddBtn" style="background:var(--ocean);color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">+ Task</button>
     </div>
     <div id="tasksTabList" style="background:#fff;border:1px solid var(--border);border-radius:var(--r-md);overflow:hidden"></div>
   </div>
@@ -928,6 +929,15 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
     </div>
     <div class="compose-body">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <!-- Company picker — hidden when the modal is opened from a
+             company's detail panel (the company is already known). Shown
+             when opened from the global Tasks tab "+ Task" button so the
+             user can pick which company the task belongs to. -->
+        <div class="editor-field" id="tkCompanyField" style="grid-column:1 / -1;display:none">
+          <label>Company *</label>
+          <input type="text" id="tkCompanyInput" list="tkCompanyList" placeholder="Start typing company name…" autocomplete="off">
+          <datalist id="tkCompanyList"></datalist>
+        </div>
         <div class="editor-field" style="grid-column:1 / -1">
           <label>Task *</label>
           <input type="text" id="tkTitle" required placeholder="Call Joana about Bristol Sept booking">
@@ -3214,8 +3224,29 @@ function openTaskModal(companyId, taskId){
   document.getElementById('tkType').value  = t?.type || 'follow_up';
   document.getElementById('tkDue').value   = t?.due_at ? t.due_at.slice(0,10) : '';
   document.getElementById('tkNotes').value = t?.notes || '';
+  // Company picker: shown only when the modal opens without a known
+  // company (Tasks-tab quick-add). When editing, also resolve and
+  // display the current company so the user sees what they're editing.
+  const companyField = document.getElementById('tkCompanyField');
+  const companyInput = document.getElementById('tkCompanyInput');
+  const companyList = document.getElementById('tkCompanyList');
+  if(!companyId){
+    companyField.style.display = '';
+    // Refresh the datalist each time — CONTACTS may have grown via
+    // realtime since last open. Browser handles substring matching.
+    companyList.innerHTML = CONTACTS
+      .slice()
+      .sort((a,b) => (a.company||'').localeCompare(b.company||''))
+      .map(c => `<option value="${escAttr(c.company||'')}">${escAttr(c.country?` · ${c.country}`:'')}</option>`)
+      .join('');
+    companyInput.value = '';
+  } else {
+    companyField.style.display = 'none';
+    companyInput.value = '';
+  }
   document.getElementById('taskModal').classList.add('open');
-  setTimeout(()=>document.getElementById('tkTitle').focus(), 100);
+  // Focus the company picker first when we need one, otherwise the title.
+  setTimeout(()=>document.getElementById(companyId ? 'tkTitle' : 'tkCompanyInput').focus(), 100);
 }
 function closeTaskModal(){
   document.getElementById('taskModal').classList.remove('open');
@@ -3228,12 +3259,26 @@ document.getElementById('taskCancelBtn').addEventListener('click', closeTaskModa
 document.getElementById('taskSaveBtn').addEventListener('click', async ()=>{
   const title = document.getElementById('tkTitle').value.trim();
   if(!title){ toast('Title is required'); return; }
+  // Resolve the company. When the modal was opened from a company's
+  // detail panel _editingTaskCompanyId is already set. When opened from
+  // the Tasks tab's "+ Task" button, the user types the company name
+  // into the picker — resolve it back to an id by case-insensitive
+  // exact match against CONTACTS.company. Refuse to save if no match.
+  let companyId = _editingTaskCompanyId;
+  if(!companyId){
+    const typed = document.getElementById('tkCompanyInput').value.trim();
+    if(!typed){ toast('Pick a company'); return; }
+    const match = CONTACTS.find(c => (c.company||'').toLowerCase() === typed.toLowerCase());
+    if(!match){ toast(`No company matches "${typed}" — pick one from the suggestions`); return; }
+    companyId = match.id;
+    _editingTaskCompanyId = companyId;
+  }
   // Store due_at as midnight UTC of the chosen day — Postgres stamps the
   // missing time component and the sort/overdue logic only compares date
   // prefixes anyway.
   const due = document.getElementById('tkDue').value;
   const payload = {
-    company_id: _editingTaskCompanyId,
+    company_id: companyId,
     title,
     type:   document.getElementById('tkType').value,
     due_at: due ? new Date(due + 'T00:00:00Z').toISOString() : null,
@@ -3255,6 +3300,8 @@ document.getElementById('taskSaveBtn').addEventListener('click', async ()=>{
   renderTasksList(_editingTaskCompanyId);
   closeTaskModal();
   if(CURRENT_TAB === 'dashboard') renderDashboard();
+  if(CURRENT_TAB === 'tasks') renderTasksTab();
+  updateNavTasksCount();
 });
 
 document.getElementById('taskDeleteBtn').addEventListener('click', async ()=>{
@@ -3269,6 +3316,8 @@ document.getElementById('taskDeleteBtn').addEventListener('click', async ()=>{
   renderTasksList(_editingTaskCompanyId);
   closeTaskModal();
   if(CURRENT_TAB === 'dashboard') renderDashboard();
+  if(CURRENT_TAB === 'tasks') renderTasksTab();
+  updateNavTasksCount();
 });
 
 // ── TASKS TAB (cross-company view of every open TODO) ──────────────────
@@ -3297,6 +3346,14 @@ function updateNavTasksCount(){
 function renderTasksTab(){
   const today = new Date().toISOString().slice(0,10);
   const weekEnd = addDays(today, 7);
+
+  // Quick-add button — opens the task modal in "global" mode (null
+  // companyId triggers the company picker field inside the modal).
+  // Re-wire on every render so removeEventListener bookkeeping is moot.
+  const addBtn = document.getElementById('tasksTabAddBtn');
+  if(addBtn){
+    addBtn.onclick = () => openTaskModal(null, null);
+  }
 
   // Filter pill rendering (active pill is the ocean colour).
   const filterEl = document.getElementById('tasksTabFilters');
