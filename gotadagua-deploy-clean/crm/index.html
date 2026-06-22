@@ -2123,7 +2123,13 @@ async function updateContact(id, patch){
 // ════════════════════════════════════════════════════════════════════════
 document.getElementById('composeBtn').addEventListener('click', ()=>{
   if(!CURRENT_CONTACT) return;
-  if(!CURRENT_CONTACT.email){ toast('No email on this contact'); return; }
+  // Either the company-level email OR a primary person's email is enough.
+  // Primary takes precedence when both exist (set in composeOpen handler).
+  const primary = primaryPersonFor(CURRENT_CONTACT.id);
+  if(!CURRENT_CONTACT.email && !primary?.email){
+    toast('No email on this contact (add one to the company, or to a primary person under People)');
+    return;
+  }
   openCompose();
 });
 
@@ -2156,17 +2162,32 @@ function refreshComposePreview(){
   document.getElementById('composePreview').textContent = body;
 }
 
+// Returns the primary contact (PEOPLE row) for a given company, or null.
+// "Primary" is the one row per company with is_primary = true (DB-enforced
+// by a partial unique index).
+function primaryPersonFor(companyId){
+  return PEOPLE.find(p => p.company_id === companyId && p.is_primary) || null;
+}
+
+// First word of the primary's name, used for {{first_name}} in templates.
+// "Tom Harris" → "Tom". Empty string if no primary or no name yet — the
+// renderTemplate fallback then collapses "Hi ," to "Hi there,".
+function firstNameForCompany(companyId){
+  const p = primaryPersonFor(companyId);
+  if(!p || !p.name) return '';
+  return p.name.trim().split(/\s+/)[0] || '';
+}
+
 function renderTemplate(text, c){
   // {{first_name}} was previously falling back to the first WORD of the
   // company name when no real contact name existed — i.e. the email to
   // "360 Surf Travel" began "Hi 360," and "7th Wave Surf School" got
-  // "Hi 7th,". Killed credibility on the first line. Now {{first_name}}
-  // is left BLANK when there is no real first name, and a {{greeting}}
-  // variable is provided as a safe default: "{{first_name}}" if we have
-  // one, otherwise "the {{company}} team". Templates should prefer
-  // {{greeting}} or {{company}}; {{first_name}} stays for future use
-  // once contact_name lands in the schema.
-  const firstName = '';
+  // "Hi 7th,". Now it reads the primary person from the CRM v2 contacts
+  // table (added via the People section in the detail panel). If no
+  // primary exists, {{first_name}} stays BLANK and {{greeting}} falls
+  // back to "the {{company}} team". The "Hi ," collapse below catches
+  // any leftover stray comma from a templated salutation.
+  const firstName = firstNameForCompany(c.id);
   const greeting = firstName || `the ${c.company || 'team'} team`;
   return text
     .replace(/\{\{company\}\}/g, c.company||'')
@@ -2189,8 +2210,14 @@ document.getElementById('composeOpen').addEventListener('click', async ()=>{
   const c = CURRENT_CONTACT;
   const subj = renderTemplate(tpl.subject, c);
   const body = renderTemplate(tpl.body, c);
+  // Prefer the primary person's email when they have one — that's the
+  // named human you've decided to talk to. Falls back to the company-
+  // level email (typically the generic info@/bookings@) when no primary
+  // is set or the primary has no email yet.
+  const primary = primaryPersonFor(c.id);
+  const recipient = (primary?.email) || c.email;
   const gmailUrl = 'https://mail.google.com/mail/?view=cm&fs=1&authuser=accounting@gotadaguasurf.com&to='
-    + encodeURIComponent(c.email)
+    + encodeURIComponent(recipient)
     + '&su=' + encodeURIComponent(subj)
     + '&body=' + encodeURIComponent(body);
   window.open(gmailUrl, '_blank');
