@@ -898,6 +898,47 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
   </div>
 </div>
 
+<!-- ─── TASK MODAL ─── -->
+<div class="compose-modal" id="taskModal">
+  <div class="compose-card" style="max-width:480px">
+    <div class="compose-header">
+      <div class="compose-title" id="taskModalTitle">+ New task</div>
+      <button class="detail-close" id="taskModalClose" aria-label="Close">×</button>
+    </div>
+    <div class="compose-body">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="editor-field" style="grid-column:1 / -1">
+          <label>Task *</label>
+          <input type="text" id="tkTitle" required placeholder="Call Joana about Bristol Sept booking">
+        </div>
+        <div class="editor-field">
+          <label>Type</label>
+          <select id="tkType">
+            <option value="follow_up">Follow-up</option>
+            <option value="call">Call</option>
+            <option value="email">Email</option>
+            <option value="meeting">Meeting</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+        <div class="editor-field">
+          <label>Due date</label>
+          <input type="date" id="tkDue">
+        </div>
+        <div class="editor-field" style="grid-column:1 / -1">
+          <label>Notes</label>
+          <textarea id="tkNotes" style="min-height:60px" placeholder="Anything that helps when you sit down to do it…"></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="compose-footer">
+      <button class="action-btn ghost" id="taskDeleteBtn" style="margin-right:auto;color:var(--red-text);border-color:#f0a0a0;display:none">Delete</button>
+      <button class="action-btn ghost" id="taskCancelBtn">Cancel</button>
+      <button class="action-btn primary" id="taskSaveBtn" style="grid-column:auto">Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- ─── PEOPLE MODAL ─── -->
 <div class="compose-modal" id="peopleModal">
   <div class="compose-card" style="max-width:480px">
@@ -955,6 +996,7 @@ let session = null;
 let CONTACTS = [];
 let GROUPS = [];     // outreach_groups — Partner→Groups model
 let PEOPLE = [];     // contacts — multiple humans per company (CRM v2)
+let TASKS = [];      // tasks — to-do items per company (CRM v2)
 let TEMPLATES = [];
 let SAVED_VIEWS = [];
 let CURRENT_CONTACT = null;
@@ -1127,7 +1169,7 @@ document.getElementById('loginForm').addEventListener('submit', async (e)=>{
 document.getElementById('signOutBtn').addEventListener('click', async ()=>{
   unsubscribeRealtime();
   try { await getClient().auth.signOut(); } catch(e){}
-  session = null; CONTACTS = []; PEOPLE = []; TEMPLATES = []; showLogin();
+  session = null; CONTACTS = []; PEOPLE = []; TASKS = []; TEMPLATES = []; showLogin();
 });
 
 // ════════════════════════════════════════════════════════════════════════
@@ -1198,6 +1240,21 @@ function subscribeRealtime(){
       const companyId = nw?.company_id || ol?.company_id;
       if(CURRENT_CONTACT?.id === companyId) renderPeopleList(companyId);
     })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, (payload)=>{
+      const { eventType, new: nw, old: ol } = payload;
+      if(eventType === 'INSERT'){
+        if(!TASKS.find(x=>x.id===nw.id)) TASKS.push(nw);
+      } else if(eventType === 'UPDATE'){
+        const idx = TASKS.findIndex(x=>x.id===nw.id);
+        if(idx >= 0) Object.assign(TASKS[idx], nw);
+      } else if(eventType === 'DELETE'){
+        const idx = TASKS.findIndex(x=>x.id===ol.id);
+        if(idx >= 0) TASKS.splice(idx, 1);
+      }
+      const companyId = nw?.company_id || ol?.company_id;
+      if(CURRENT_CONTACT?.id === companyId) renderTasksList(companyId);
+      if(CURRENT_TAB === 'dashboard') scheduleRtRender();
+    })
     .subscribe();
 }
 
@@ -1211,7 +1268,7 @@ function unsubscribeRealtime(){
 //  DATA LOADING
 // ════════════════════════════════════════════════════════════════════════
 async function loadAll(){
-  await Promise.all([loadContacts(), loadTemplates(), loadSavedViews(), loadGroups(), loadPeople()]);
+  await Promise.all([loadContacts(), loadTemplates(), loadSavedViews(), loadGroups(), loadPeople(), loadTasks()]);
   populateFilters();
   populateSavedViewsDropdown();
   renderDashboard();
@@ -1261,6 +1318,28 @@ async function loadPeople(){
     from += page;
   }
   PEOPLE = all;
+}
+
+// Loads all to-do items in `tasks`. Same memory pattern as PEOPLE — kept
+// in RAM and filtered client-side per company and for the dashboard
+// "today" widget. Silent fail if the table doesn't exist yet.
+async function loadTasks(){
+  const c = getClient();
+  let all = [], from = 0, page = 1000;
+  while (true){
+    const { data, error } = await c.from('tasks')
+      .select('*').range(from, from+page-1).order('due_at', { ascending:true, nullsFirst:false });
+    if(error){
+      if(!/relation .* does not exist/i.test(error.message||'')){
+        console.warn('loadTasks failed', error);
+      }
+      TASKS = []; return;
+    }
+    all.push(...data);
+    if(data.length < page) break;
+    from += page;
+  }
+  TASKS = all;
 }
 
 async function loadSavedViews(){
@@ -1350,10 +1429,18 @@ function renderDashboard(){
 
   // ── HERO: today's tasks ──────────────────────────────────────────────
   // Tasks that need user action TODAY, prioritised in this order:
-  //   1. Overdue follow-ups (most urgent — past their date)
-  //   2. Follow-ups due today
-  //   3. Stale sent emails (>14d silent — opportunity to nudge)
-  //   4. Random "needs first touch" if nothing else (so user always has work)
+  //   1. Explicit user TODOs from the `tasks` table (overdue + due today)
+  //      — these are the highest signal because the user wrote them.
+  //   2. Overdue follow-ups (the company-level follow_up_at date)
+  //   3. Follow-ups due today
+  //   4. Stale sent emails (>14d silent — opportunity to nudge)
+  //   5. Random "needs first touch" if nothing else (always have work)
+  const openTasks = TASKS.filter(t => !t.done_at);
+  const overdueTaskRows = openTasks
+    .filter(t => t.due_at && t.due_at.slice(0,10) < today)
+    .sort((a,b) => a.due_at.localeCompare(b.due_at));
+  const todayTaskRows = openTasks
+    .filter(t => t.due_at && t.due_at.slice(0,10) === today);
   const overdueFollowups = CONTACTS
     .filter(c => c.follow_up_at && c.follow_up_at < today)
     .sort((a,b)=>a.follow_up_at.localeCompare(b.follow_up_at));
@@ -1364,6 +1451,17 @@ function renderDashboard(){
     .sort((a,b)=>(a.last_contacted_at||'').localeCompare(b.last_contacted_at||''));
 
   const tasks = [];
+  // Explicit user TODOs first — they win over derived signals.
+  overdueTaskRows.forEach(t => {
+    const c = CONTACTS.find(x => x.id === t.company_id);
+    if(!c) return;
+    tasks.push({c, kind:'task-overdue', icon: TASK_TYPE_ICONS[t.type]||'fire', actionLabel:`${Math.abs(daysBetween(today,t.due_at.slice(0,10)))}d overdue`, actionClass:'overdue', meta: t.title});
+  });
+  todayTaskRows.forEach(t => {
+    const c = CONTACTS.find(x => x.id === t.company_id);
+    if(!c) return;
+    tasks.push({c, kind:'task-today', icon: TASK_TYPE_ICONS[t.type]||'calendar', actionLabel:'Today', actionClass:'', meta: t.title});
+  });
   overdueFollowups.forEach(c => tasks.push({c, kind:'overdue', icon:'fire', actionLabel:`${Math.abs(daysBetween(today,c.follow_up_at))}d overdue`, actionClass:'overdue', meta:`Follow up — was due ${fmtDate(c.follow_up_at)}`}));
   todayFollowups.forEach(c => tasks.push({c, kind:'today', icon:'calendar', actionLabel:'Today', actionClass:'', meta:'Follow up today'}));
   stale.slice(0, 5).forEach(c => tasks.push({c, kind:'stale', icon:'moon', actionLabel:`${daysBetween(c.last_contacted_at.slice(0,10), today)}d silent`, actionClass:'', meta:`No reply since ${fmtDate(c.last_contacted_at)}`}));
@@ -1379,9 +1477,17 @@ function renderDashboard(){
   const heroSub = document.getElementById('heroTodaySub');
   const heroList = document.getElementById('heroTodayList');
 
-  if(overdueFollowups.length + todayFollowups.length > 0){
-    heroTitle.textContent = `You have ${overdueFollowups.length + todayFollowups.length} follow-up${overdueFollowups.length+todayFollowups.length>1?'s':''} to handle today`;
-    heroSub.textContent = `${overdueFollowups.length} overdue · ${todayFollowups.length} due today · ${stale.length} more silent for 14+ days`;
+  const explicitTodos = overdueTaskRows.length + todayTaskRows.length;
+  const totalUrgent = explicitTodos + overdueFollowups.length + todayFollowups.length;
+  if(totalUrgent > 0){
+    heroTitle.textContent = `You have ${totalUrgent} thing${totalUrgent>1?'s':''} to handle today`;
+    const parts = [];
+    if(overdueTaskRows.length) parts.push(`${overdueTaskRows.length} overdue task${overdueTaskRows.length>1?'s':''}`);
+    if(todayTaskRows.length)   parts.push(`${todayTaskRows.length} task${todayTaskRows.length>1?'s':''} due today`);
+    if(overdueFollowups.length) parts.push(`${overdueFollowups.length} overdue follow-up${overdueFollowups.length>1?'s':''}`);
+    if(todayFollowups.length)   parts.push(`${todayFollowups.length} follow-up${todayFollowups.length>1?'s':''} today`);
+    if(stale.length)            parts.push(`${stale.length} silent 14d+`);
+    heroSub.textContent = parts.join(' · ');
   } else if(stale.length > 0){
     heroTitle.textContent = `Nothing scheduled today — but ${stale.length} contact${stale.length>1?'s':''} ${stale.length>1?'have':'has'} gone silent`;
     heroSub.textContent = 'Quick nudge today could turn one of these into a reply';
@@ -1901,6 +2007,14 @@ async function openContact(id){
     </div>
 
     <div class="detail-section">
+      <div class="detail-section-title" style="display:flex;justify-content:space-between;align-items:center">
+        <span>Tasks</span>
+        <button type="button" id="addTaskBtn" style="background:var(--ocean);color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">+ Task</button>
+      </div>
+      <div id="tasksList"></div>
+    </div>
+
+    <div class="detail-section">
       <div class="detail-section-title">Deal</div>
       <div class="detail-row"><span class="label">Value (€)</span><span class="value">
         <input type="number" id="dealValueInput" value="${c.deal_value||''}" placeholder="0" min="0" step="100" style="width:120px;text-align:right;border:1px solid var(--border);border-radius:8px;padding:4px 8px;font:inherit;font-family:'DM Mono',monospace">
@@ -2041,6 +2155,10 @@ async function openContact(id){
   // ── People (CRM v2 multi-contact roster) ────────────────────────────
   renderPeopleList(c.id);
   document.getElementById('addPersonBtn').addEventListener('click', ()=>openPeopleModal(c.id, null));
+
+  // ── Tasks (CRM v2 to-do items) ──────────────────────────────────────
+  renderTasksList(c.id);
+  document.getElementById('addTaskBtn').addEventListener('click', ()=>openTaskModal(c.id, null));
 
   // ── Groups & possibilities ──────────────────────────────────────────
   renderGroupsList(c.id);
@@ -2933,6 +3051,177 @@ document.addEventListener('keydown', (e)=>{
   if(CURRENT_TAB !== 'contacts') return;
   e.preventDefault();
   openAddContact();
+});
+
+// ════════════════════════════════════════════════════════════════════════
+//  TASKS (to-do items per company — CRM v2 tasks table)
+// ════════════════════════════════════════════════════════════════════════
+// Tasks are explicit user TODOs ("Call Joana about Bristol Sept") tied to
+// a company. Distinct from follow_up_at on the company row, which is
+// just a date. A task has a title, type, due date, notes, and a done_at
+// timestamp. Marking done sets done_at = now (the partial index on
+// owner_id+due_at WHERE done_at IS NULL keeps open-task lookups fast).
+const TASK_TYPE_LABELS = {
+  follow_up:'Follow-up', call:'Call', email:'Email', meeting:'Meeting', admin:'Admin'
+};
+// Map task types to icons that actually exist in the ICONS sprite —
+// `chat` for call (no phone glyph), `note` for admin (no gear glyph).
+const TASK_TYPE_ICONS = {
+  follow_up:'calendar', call:'chat', email:'mail', meeting:'people', admin:'note'
+};
+
+function renderTasksList(companyId){
+  const list = document.getElementById('tasksList');
+  if(!list) return;
+  const today = new Date().toISOString().slice(0,10);
+  // Open tasks first (sorted by due, undated last), then completed tasks
+  // (most recently completed first, limited to last 5 to keep the panel
+  // tight).
+  const all = TASKS.filter(t => t.company_id === companyId);
+  const open = all.filter(t => !t.done_at)
+    .sort((a,b) => (a.due_at||'9999').localeCompare(b.due_at||'9999'));
+  const done = all.filter(t => t.done_at)
+    .sort((a,b) => (b.done_at||'').localeCompare(a.done_at||''))
+    .slice(0, 5);
+  if(open.length + done.length === 0){
+    list.innerHTML = '<div class="empty-state" style="padding:14px;text-align:left;background:#fafdff;border:1px dashed var(--border);border-radius:10px">No tasks yet. Click <b>+ Task</b> to add a concrete TODO ("Call Joana", "Send proposal", "Send invoice"…).</div>';
+    return;
+  }
+  const renderTask = (t, isDone) => {
+    const overdue = !isDone && t.due_at && t.due_at < today;
+    const dueLabel = t.due_at
+      ? (overdue ? `<span style="color:var(--red-text);font-weight:700">${fmtDate(t.due_at)} · ${Math.abs(daysBetween(today, t.due_at))}d overdue</span>` : fmtDate(t.due_at))
+      : '<span style="color:var(--muted)">no due date</span>';
+    const typeIcon = TASK_TYPE_ICONS[t.type] || 'calendar';
+    return `
+      <div class="group-card" data-id="${t.id}" style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:12px;background:${isDone?'#f6f9fc':'#fff'};border:1px solid var(--border);border-radius:10px;margin-bottom:8px;${isDone?'opacity:.6':''}">
+        <div style="display:flex;gap:10px;align-items:flex-start;flex:1;min-width:0">
+          <input type="checkbox" data-tk-toggle="${t.id}" ${isDone?'checked':''} title="${isDone?'Mark not done':'Mark done'}" style="margin-top:2px;width:18px;height:18px;accent-color:var(--ocean);cursor:pointer;flex-shrink:0">
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:700;color:var(--ink);font-size:14px;${isDone?'text-decoration:line-through':''}">${escHtml(t.title)}</div>
+            <div style="margin-top:4px;font-size:12px;color:var(--muted);display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+              <span>${uiIcon(typeIcon)} ${TASK_TYPE_LABELS[t.type]||t.type||'—'}</span>
+              <span style="opacity:.4">·</span>
+              <span>${dueLabel}</span>
+              ${isDone ? `<span style="opacity:.4">·</span><span style="color:var(--green-text)">done ${fmtDate(t.done_at)}</span>` : ''}
+            </div>
+            ${t.notes ? `<div style="margin-top:4px;font-size:12px;color:var(--muted)">${escHtml(t.notes)}</div>` : ''}
+          </div>
+        </div>
+        <div class="group-actions" style="display:flex;gap:4px;flex-shrink:0">
+          <button class="group-icon-btn" data-tk-edit-id="${t.id}" title="Edit" aria-label="Edit" style="background:transparent;border:1px solid var(--border);border-radius:6px;width:26px;height:26px;cursor:pointer;color:var(--muted);font-size:14px">✎</button>
+          <button class="group-icon-btn delete" data-tk-del-id="${t.id}" title="Delete" aria-label="Delete" style="background:transparent;border:1px solid var(--border);border-radius:6px;width:26px;height:26px;cursor:pointer;color:var(--red-text);font-size:16px">×</button>
+        </div>
+      </div>
+    `;
+  };
+  list.innerHTML =
+    open.map(t => renderTask(t, false)).join('') +
+    (done.length ? `<div style="margin:12px 0 6px;font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);font-weight:700">Recently completed</div>` : '') +
+    done.map(t => renderTask(t, true)).join('');
+
+  list.querySelectorAll('[data-tk-toggle]').forEach(cb => {
+    cb.addEventListener('change', async () => {
+      const id = cb.dataset.tkToggle;
+      const t = TASKS.find(x => x.id === id);
+      const newDoneAt = cb.checked ? new Date().toISOString() : null;
+      const supa = getClient();
+      const { error } = await supa.from('tasks').update({ done_at: newDoneAt }).eq('id', id);
+      if(error){ toast('Update failed: '+error.message); cb.checked = !cb.checked; return; }
+      if(t) t.done_at = newDoneAt;
+      toast(newDoneAt ? 'Task completed' : 'Task reopened');
+      renderTasksList(companyId);
+      if(CURRENT_TAB === 'dashboard') renderDashboard();
+    });
+  });
+  list.querySelectorAll('[data-tk-edit-id]').forEach(btn => {
+    btn.addEventListener('click', () => openTaskModal(companyId, btn.dataset.tkEditId));
+  });
+  list.querySelectorAll('[data-tk-del-id]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.tkDelId;
+      const t = TASKS.find(x => x.id === id);
+      if(!confirm(`Delete task "${t?.title||''}"?`)) return;
+      const supa = getClient();
+      const { error } = await supa.from('tasks').delete().eq('id', id);
+      if(error){ toast('Delete failed: '+error.message); return; }
+      TASKS = TASKS.filter(x => x.id !== id);
+      toast('Task deleted');
+      renderTasksList(companyId);
+      if(CURRENT_TAB === 'dashboard') renderDashboard();
+    });
+  });
+}
+
+let _editingTaskId = null;
+let _editingTaskCompanyId = null;
+
+function openTaskModal(companyId, taskId){
+  _editingTaskId = taskId;
+  _editingTaskCompanyId = companyId;
+  const editing = !!taskId;
+  document.getElementById('taskModalTitle').textContent = editing ? 'Edit task' : '+ New task';
+  document.getElementById('taskDeleteBtn').style.display = editing ? 'inline-flex' : 'none';
+  const t = editing ? TASKS.find(x => x.id === taskId) : null;
+  document.getElementById('tkTitle').value = t?.title || '';
+  document.getElementById('tkType').value  = t?.type || 'follow_up';
+  document.getElementById('tkDue').value   = t?.due_at ? t.due_at.slice(0,10) : '';
+  document.getElementById('tkNotes').value = t?.notes || '';
+  document.getElementById('taskModal').classList.add('open');
+  setTimeout(()=>document.getElementById('tkTitle').focus(), 100);
+}
+function closeTaskModal(){
+  document.getElementById('taskModal').classList.remove('open');
+  _editingTaskId = null;
+  _editingTaskCompanyId = null;
+}
+document.getElementById('taskModalClose').addEventListener('click', closeTaskModal);
+document.getElementById('taskCancelBtn').addEventListener('click', closeTaskModal);
+
+document.getElementById('taskSaveBtn').addEventListener('click', async ()=>{
+  const title = document.getElementById('tkTitle').value.trim();
+  if(!title){ toast('Title is required'); return; }
+  // Store due_at as midnight UTC of the chosen day — Postgres stamps the
+  // missing time component and the sort/overdue logic only compares date
+  // prefixes anyway.
+  const due = document.getElementById('tkDue').value;
+  const payload = {
+    company_id: _editingTaskCompanyId,
+    title,
+    type:   document.getElementById('tkType').value,
+    due_at: due ? new Date(due + 'T00:00:00Z').toISOString() : null,
+    notes:  document.getElementById('tkNotes').value.trim() || null
+  };
+  const supa = getClient();
+  if(_editingTaskId){
+    const { data, error } = await supa.from('tasks').update(payload).eq('id', _editingTaskId).select().single();
+    if(error){ toast('Save failed: '+error.message); return; }
+    const idx = TASKS.findIndex(x => x.id === _editingTaskId);
+    if(idx >= 0) TASKS[idx] = data;
+    toast('Task updated');
+  } else {
+    const { data, error } = await supa.from('tasks').insert(payload).select().single();
+    if(error){ toast('Add failed: '+error.message); return; }
+    TASKS.push(data);
+    toast(`Added: ${data.title}`);
+  }
+  renderTasksList(_editingTaskCompanyId);
+  closeTaskModal();
+  if(CURRENT_TAB === 'dashboard') renderDashboard();
+});
+
+document.getElementById('taskDeleteBtn').addEventListener('click', async ()=>{
+  if(!_editingTaskId) return;
+  const t = TASKS.find(x => x.id === _editingTaskId);
+  if(!confirm(`Delete task "${t?.title||''}"?`)) return;
+  const supa = getClient();
+  const { error } = await supa.from('tasks').delete().eq('id', _editingTaskId);
+  if(error){ toast('Delete failed: '+error.message); return; }
+  TASKS = TASKS.filter(x => x.id !== _editingTaskId);
+  toast('Task deleted');
+  renderTasksList(_editingTaskCompanyId);
+  closeTaskModal();
+  if(CURRENT_TAB === 'dashboard') renderDashboard();
 });
 
 // ════════════════════════════════════════════════════════════════════════
