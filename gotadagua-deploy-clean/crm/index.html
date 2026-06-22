@@ -898,6 +898,50 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
   </div>
 </div>
 
+<!-- ─── PEOPLE MODAL ─── -->
+<div class="compose-modal" id="peopleModal">
+  <div class="compose-card" style="max-width:480px">
+    <div class="compose-header">
+      <div class="compose-title" id="peopleModalTitle">+ New person</div>
+      <button class="detail-close" id="peopleModalClose" aria-label="Close">×</button>
+    </div>
+    <div class="compose-body">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="editor-field" style="grid-column:1 / -1">
+          <label>Name *</label>
+          <input type="text" id="peName" required placeholder="Joana Silva">
+        </div>
+        <div class="editor-field">
+          <label>Role</label>
+          <input type="text" id="peRole" placeholder="Owner / Bookings / Ops">
+        </div>
+        <div class="editor-field">
+          <label>Email</label>
+          <input type="email" id="peEmail" placeholder="joana@surfschool.pt">
+        </div>
+        <div class="editor-field">
+          <label>Phone</label>
+          <input type="tel" id="pePhone" placeholder="+351 …">
+        </div>
+        <div class="editor-field">
+          <label>LinkedIn</label>
+          <input type="url" id="peLinkedin" placeholder="linkedin.com/in/…">
+        </div>
+        <div class="editor-field" style="grid-column:1 / -1;display:flex;align-items:flex-end">
+          <label style="display:flex;gap:8px;align-items:center;cursor:pointer;font-size:13px;color:var(--ink);text-transform:none;letter-spacing:0;font-weight:600">
+            <input type="checkbox" id="pePrimary" style="accent-color:var(--ocean);width:16px;height:16px"> Primary contact (only one per company)
+          </label>
+        </div>
+      </div>
+    </div>
+    <div class="compose-footer">
+      <button class="action-btn ghost" id="peopleDeleteBtn" style="margin-right:auto;color:var(--red-text);border-color:#f0a0a0;display:none">Delete</button>
+      <button class="action-btn ghost" id="peopleCancelBtn">Cancel</button>
+      <button class="action-btn primary" id="peopleSaveBtn" style="grid-column:auto">Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- ─── TOAST ─── -->
 <div id="toast"></div>
 </div>
@@ -910,6 +954,7 @@ let supa = null;
 let session = null;
 let CONTACTS = [];
 let GROUPS = [];     // outreach_groups — Partner→Groups model
+let PEOPLE = [];     // contacts — multiple humans per company (CRM v2)
 let TEMPLATES = [];
 let SAVED_VIEWS = [];
 let CURRENT_CONTACT = null;
@@ -1082,7 +1127,7 @@ document.getElementById('loginForm').addEventListener('submit', async (e)=>{
 document.getElementById('signOutBtn').addEventListener('click', async ()=>{
   unsubscribeRealtime();
   try { await getClient().auth.signOut(); } catch(e){}
-  session = null; CONTACTS = []; TEMPLATES = []; showLogin();
+  session = null; CONTACTS = []; PEOPLE = []; TEMPLATES = []; showLogin();
 });
 
 // ════════════════════════════════════════════════════════════════════════
@@ -1139,6 +1184,20 @@ function subscribeRealtime(){
       const contactId = payload.new?.contact_id || payload.old?.contact_id;
       if(contactId) scheduleRtPanelRefresh(contactId);
     })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'contacts' }, (payload)=>{
+      const { eventType, new: nw, old: ol } = payload;
+      if(eventType === 'INSERT'){
+        if(!PEOPLE.find(x=>x.id===nw.id)) PEOPLE.push(nw);
+      } else if(eventType === 'UPDATE'){
+        const idx = PEOPLE.findIndex(x=>x.id===nw.id);
+        if(idx >= 0) Object.assign(PEOPLE[idx], nw);
+      } else if(eventType === 'DELETE'){
+        const idx = PEOPLE.findIndex(x=>x.id===ol.id);
+        if(idx >= 0) PEOPLE.splice(idx, 1);
+      }
+      const companyId = nw?.company_id || ol?.company_id;
+      if(CURRENT_CONTACT?.id === companyId) renderPeopleList(companyId);
+    })
     .subscribe();
 }
 
@@ -1152,7 +1211,7 @@ function unsubscribeRealtime(){
 //  DATA LOADING
 // ════════════════════════════════════════════════════════════════════════
 async function loadAll(){
-  await Promise.all([loadContacts(), loadTemplates(), loadSavedViews(), loadGroups()]);
+  await Promise.all([loadContacts(), loadTemplates(), loadSavedViews(), loadGroups(), loadPeople()]);
   populateFilters();
   populateSavedViewsDropdown();
   renderDashboard();
@@ -1180,6 +1239,28 @@ async function loadGroups(){
     GROUPS = []; return;
   }
   GROUPS = data || [];
+}
+
+// Loads all people in `contacts`. Same memory pattern as GROUPS — small
+// enough to keep in RAM and filter client-side per company. Silent fail
+// if the table doesn't exist yet (pre-migration).
+async function loadPeople(){
+  const c = getClient();
+  let all = [], from = 0, page = 1000;
+  while (true){
+    const { data, error } = await c.from('contacts')
+      .select('*').range(from, from+page-1).order('is_primary', { ascending:false }).order('name');
+    if(error){
+      if(!/relation .* does not exist/i.test(error.message||'')){
+        console.warn('loadPeople failed', error);
+      }
+      PEOPLE = []; return;
+    }
+    all.push(...data);
+    if(data.length < page) break;
+    from += page;
+  }
+  PEOPLE = all;
 }
 
 async function loadSavedViews(){
@@ -1812,6 +1893,14 @@ async function openContact(id){
     </div>
 
     <div class="detail-section">
+      <div class="detail-section-title" style="display:flex;justify-content:space-between;align-items:center">
+        <span>People</span>
+        <button type="button" id="addPersonBtn" style="background:var(--ocean);color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">+ Person</button>
+      </div>
+      <div id="peopleList"></div>
+    </div>
+
+    <div class="detail-section">
       <div class="detail-section-title">Deal</div>
       <div class="detail-row"><span class="label">Value (€)</span><span class="value">
         <input type="number" id="dealValueInput" value="${c.deal_value||''}" placeholder="0" min="0" step="100" style="width:120px;text-align:right;border:1px solid var(--border);border-radius:8px;padding:4px 8px;font:inherit;font-family:'DM Mono',monospace">
@@ -1948,6 +2037,10 @@ async function openContact(id){
       if(CURRENT_TAB==='dashboard') renderDashboard();
     });
   });
+
+  // ── People (CRM v2 multi-contact roster) ────────────────────────────
+  renderPeopleList(c.id);
+  document.getElementById('addPersonBtn').addEventListener('click', ()=>openPeopleModal(c.id, null));
 
   // ── Groups & possibilities ──────────────────────────────────────────
   renderGroupsList(c.id);
@@ -2813,6 +2906,163 @@ document.addEventListener('keydown', (e)=>{
   if(CURRENT_TAB !== 'contacts') return;
   e.preventDefault();
   openAddContact();
+});
+
+// ════════════════════════════════════════════════════════════════════════
+//  PEOPLE (multi-contact roster — CRM v2 contacts table)
+// ════════════════════════════════════════════════════════════════════════
+// One company can have several humans (owner, bookings, ops). The DB has
+// a partial unique index so only one person per company can be primary —
+// setPrimary() clears any other primary on the same company first to
+// avoid the 23505 unique violation.
+function renderPeopleList(companyId){
+  const list = document.getElementById('peopleList');
+  if(!list) return;
+  const items = PEOPLE.filter(p => p.company_id === companyId)
+    .sort((a,b) => (b.is_primary?1:0) - (a.is_primary?1:0) || (a.name||'').localeCompare(b.name||''));
+  if(items.length === 0){
+    list.innerHTML = '<div class="empty-state" style="padding:14px;text-align:left;background:#fafdff;border:1px dashed var(--border);border-radius:10px">No people yet. Click <b>+ Person</b> to add the owner, bookings, ops — anyone you talk to.</div>';
+    return;
+  }
+  list.innerHTML = items.map(p => {
+    const bits = [];
+    if(p.role)  bits.push(escHtml(p.role));
+    if(p.email) bits.push(`<a href="mailto:${escAttr(p.email)}" style="color:var(--ocean);text-decoration:none;font-weight:600">${escHtml(p.email)}</a>`);
+    if(p.phone) bits.push(`<a href="tel:${escAttr(p.phone)}" style="color:var(--ocean);text-decoration:none;font-weight:600">${escHtml(p.phone)}</a>`);
+    if(p.linkedin) bits.push(`<a href="${escAttr(/^https?:/.test(p.linkedin)?p.linkedin:'https://'+p.linkedin)}" target="_blank" style="color:var(--ocean);text-decoration:none;font-weight:600">LinkedIn</a>`);
+    return `
+      <div class="group-card${p.is_primary?' stage-confirmed':''}" data-id="${p.id}" style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:12px;background:#fff;border:1px solid var(--border);border-radius:10px;margin-bottom:8px">
+        <div style="flex:1;min-width:0">
+          <div class="group-title" style="font-weight:700;color:var(--ink);font-size:14px">
+            ${escHtml(p.name||'(no name)')}
+            ${p.is_primary?'<span title="Primary contact" style="margin-left:6px;font-size:10px;color:var(--green-text);background:var(--green-bg);padding:2px 6px;border-radius:6px;font-weight:700;letter-spacing:.04em">PRIMARY</span>':''}
+          </div>
+          ${bits.length ? `<div class="group-meta" style="margin-top:4px;font-size:12px;color:var(--muted);display:flex;flex-wrap:wrap;gap:8px">${bits.join('<span style="opacity:.4">·</span>')}</div>` : ''}
+        </div>
+        <div class="group-actions" style="display:flex;gap:4px;flex-shrink:0">
+          ${p.is_primary ? '' : `<button class="group-icon-btn" data-primary-id="${p.id}" title="Make primary" aria-label="Make primary" style="background:transparent;border:1px solid var(--border);border-radius:6px;width:26px;height:26px;cursor:pointer;color:var(--muted);font-size:14px">★</button>`}
+          <button class="group-icon-btn" data-pe-edit-id="${p.id}" title="Edit" aria-label="Edit" style="background:transparent;border:1px solid var(--border);border-radius:6px;width:26px;height:26px;cursor:pointer;color:var(--muted);font-size:14px">✎</button>
+          <button class="group-icon-btn delete" data-pe-del-id="${p.id}" title="Delete" aria-label="Delete" style="background:transparent;border:1px solid var(--border);border-radius:6px;width:26px;height:26px;cursor:pointer;color:var(--red-text);font-size:16px">×</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  list.querySelectorAll('[data-pe-edit-id]').forEach(btn => {
+    btn.addEventListener('click', () => openPeopleModal(companyId, btn.dataset.peEditId));
+  });
+  list.querySelectorAll('[data-pe-del-id]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.peDelId;
+      const p = PEOPLE.find(x=>x.id===id);
+      if(!confirm(`Delete person "${p?.name||''}"?`)) return;
+      const supa = getClient();
+      const { error } = await supa.from('contacts').delete().eq('id', id);
+      if(error){ toast('Delete failed: '+error.message); return; }
+      PEOPLE = PEOPLE.filter(x=>x.id!==id);
+      toast('Person deleted');
+      renderPeopleList(companyId);
+    });
+  });
+  list.querySelectorAll('[data-primary-id]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.primaryId;
+      const supa = getClient();
+      // Clear any existing primary on this company first — the partial
+      // unique index would otherwise reject the second is_primary=true.
+      const { error: clrErr } = await supa.from('contacts')
+        .update({ is_primary:false }).eq('company_id', companyId).eq('is_primary', true);
+      if(clrErr){ toast('Could not clear primary: '+clrErr.message); return; }
+      const { error } = await supa.from('contacts').update({ is_primary:true }).eq('id', id);
+      if(error){ toast('Set primary failed: '+error.message); return; }
+      PEOPLE.forEach(x => { if(x.company_id===companyId) x.is_primary = (x.id === id); });
+      toast('Primary contact updated');
+      renderPeopleList(companyId);
+    });
+  });
+}
+
+let _editingPersonId = null;
+let _editingPersonCompanyId = null;
+
+function openPeopleModal(companyId, personId){
+  _editingPersonId = personId;
+  _editingPersonCompanyId = companyId;
+  const editing = !!personId;
+  document.getElementById('peopleModalTitle').textContent = editing ? 'Edit person' : '+ New person';
+  document.getElementById('peopleDeleteBtn').style.display = editing ? 'inline-flex' : 'none';
+  const p = editing ? PEOPLE.find(x=>x.id===personId) : null;
+  document.getElementById('peName').value     = p?.name || '';
+  document.getElementById('peRole').value     = p?.role || '';
+  document.getElementById('peEmail').value    = p?.email || '';
+  document.getElementById('pePhone').value    = p?.phone || '';
+  document.getElementById('peLinkedin').value = p?.linkedin || '';
+  // Default new person to primary if the company has no primary yet —
+  // saves a click on the common "I just added the only contact" case.
+  const hasPrimary = PEOPLE.some(x => x.company_id === companyId && x.is_primary);
+  document.getElementById('pePrimary').checked = editing ? !!p?.is_primary : !hasPrimary;
+  document.getElementById('peopleModal').classList.add('open');
+  setTimeout(()=>document.getElementById('peName').focus(), 100);
+}
+function closePeopleModal(){
+  document.getElementById('peopleModal').classList.remove('open');
+  _editingPersonId = null;
+  _editingPersonCompanyId = null;
+}
+document.getElementById('peopleModalClose').addEventListener('click', closePeopleModal);
+document.getElementById('peopleCancelBtn').addEventListener('click', closePeopleModal);
+
+document.getElementById('peopleSaveBtn').addEventListener('click', async ()=>{
+  const name = document.getElementById('peName').value.trim();
+  if(!name){ toast('Name is required'); return; }
+  const wantsPrimary = document.getElementById('pePrimary').checked;
+  const payload = {
+    company_id: _editingPersonCompanyId,
+    name,
+    role:     document.getElementById('peRole').value.trim() || null,
+    email:    document.getElementById('peEmail').value.trim() || null,
+    phone:    document.getElementById('pePhone').value.trim() || null,
+    linkedin: document.getElementById('peLinkedin').value.trim() || null,
+    is_primary: wantsPrimary
+  };
+  const supa = getClient();
+  // If we're flipping this person to primary, demote any other primary on
+  // the same company first — the partial unique index doesn't allow two.
+  if(wantsPrimary){
+    const { error: clrErr } = await supa.from('contacts')
+      .update({ is_primary:false })
+      .eq('company_id', _editingPersonCompanyId).eq('is_primary', true)
+      .neq('id', _editingPersonId || '00000000-0000-0000-0000-000000000000');
+    if(clrErr){ toast('Could not clear previous primary: '+clrErr.message); return; }
+    PEOPLE.forEach(x => { if(x.company_id===_editingPersonCompanyId && x.id !== _editingPersonId) x.is_primary = false; });
+  }
+  if(_editingPersonId){
+    const { data, error } = await supa.from('contacts').update(payload).eq('id', _editingPersonId).select().single();
+    if(error){ toast('Save failed: '+error.message); return; }
+    const idx = PEOPLE.findIndex(x=>x.id===_editingPersonId);
+    if(idx>=0) PEOPLE[idx] = data;
+    toast('Person updated');
+  } else {
+    const { data, error } = await supa.from('contacts').insert(payload).select().single();
+    if(error){ toast('Add failed: '+error.message); return; }
+    PEOPLE.push(data);
+    toast(`Added: ${data.name}`);
+  }
+  renderPeopleList(_editingPersonCompanyId);
+  closePeopleModal();
+});
+
+document.getElementById('peopleDeleteBtn').addEventListener('click', async ()=>{
+  if(!_editingPersonId) return;
+  const p = PEOPLE.find(x=>x.id===_editingPersonId);
+  if(!confirm(`Delete person "${p?.name||''}"?`)) return;
+  const supa = getClient();
+  const { error } = await supa.from('contacts').delete().eq('id', _editingPersonId);
+  if(error){ toast('Delete failed: '+error.message); return; }
+  PEOPLE = PEOPLE.filter(x=>x.id!==_editingPersonId);
+  toast('Person deleted');
+  renderPeopleList(_editingPersonCompanyId);
+  closePeopleModal();
 });
 
 // ════════════════════════════════════════════════════════════════════════
