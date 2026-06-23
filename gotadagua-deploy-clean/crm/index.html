@@ -1990,7 +1990,14 @@ function renderDashboard(){
           <div class="fi-name" data-id="${c.id}" style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(c.company)}</div>
           ${comm}
           <div class="fi-due" style="flex-shrink:0;background:${expired?'var(--red-bg)':(days<=14?'#fef0e6':'#eef3f8')};color:${expired?'var(--red-text)':'var(--ink)'}">${label}</div>
-          <button data-renew-now-id="${c.id}" title="Already negotiated — shift contract dates +12 months" style="background:var(--green-bg);color:var(--green-text);border:1px solid #a7d8b9;border-radius:6px;padding:3px 9px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;white-space:nowrap;flex-shrink:0">Renew +12mo</button>
+          <span style="position:relative;flex-shrink:0;white-space:nowrap" data-renew-wrap="${c.id}">
+            <button data-renew-toggle="${c.id}" title="Already negotiated — pick a renewal length" style="background:var(--green-bg);color:var(--green-text);border:1px solid #a7d8b9;border-radius:6px;padding:3px 9px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">Renew ▾</button>
+            <span data-renew-menu="${c.id}" class="hidden" style="position:absolute;top:calc(100% + 4px);right:0;background:#fff;border:1px solid var(--border);border-radius:8px;box-shadow:0 6px 24px rgba(40,57,75,.18);padding:4px;z-index:10;display:flex;flex-direction:column;gap:2px;min-width:96px">
+              <button data-renew-now-id="${c.id}" data-renew-months="6" style="background:transparent;border:none;text-align:left;padding:6px 10px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif;border-radius:6px;color:var(--ink)">+6 months</button>
+              <button data-renew-now-id="${c.id}" data-renew-months="12" style="background:transparent;border:none;text-align:left;padding:6px 10px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif;border-radius:6px;color:var(--ink)">+12 months</button>
+              <button data-renew-now-id="${c.id}" data-renew-months="24" style="background:transparent;border:none;text-align:left;padding:6px 10px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif;border-radius:6px;color:var(--ink)">+24 months</button>
+            </span>
+          </span>
           ${renewBtn}
         </div>`;
       }).join('') + (expiring.length>15 ? `<div class="empty-state" style="padding:10px">+ ${expiring.length-15} more</div>` : '') :
@@ -2000,46 +2007,51 @@ function renderDashboard(){
       // has time to negotiate; if the contract already expired, due
       // tomorrow so the user catches up immediately. Same disable-
       // and-… pattern the other inline buttons use.
-      // Renew now — fast path for "we already agreed, just shift the
-      // dates". new_start = max(today, old_end + 1d) so a still-future
-      // contract continues without a gap; an already-expired one
-      // starts fresh today. new_end = new_start + 12 months
-      // (calendar-aware via Date.setMonth, handles 29 Feb edge case).
+      // Renew now — toggle reveals a 3-option menu (+6/+12/+24).
+      // Click anywhere else closes any open menu so they don't pile up.
+      expEl.querySelectorAll('[data-renew-toggle]').forEach(toggle => {
+        toggle.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const id = toggle.dataset.renewToggle;
+          // Close any other open menu first.
+          expEl.querySelectorAll('[data-renew-menu]').forEach(m => {
+            if(m.dataset.renewMenu !== id) m.classList.add('hidden');
+          });
+          const menu = expEl.querySelector(`[data-renew-menu="${id}"]`);
+          if(menu) menu.classList.toggle('hidden');
+        });
+      });
+      // Outside-click closes any open menu — one listener wired per
+      // render is fine since the next render re-attaches.
+      document.addEventListener('click', () => {
+        expEl.querySelectorAll('[data-renew-menu]').forEach(m => m.classList.add('hidden'));
+      }, { once: true });
+      // Pick a length — same date logic for all three.
       expEl.querySelectorAll('[data-renew-now-id]').forEach(btn => {
         btn.addEventListener('click', async (e) => {
           e.stopPropagation();
           const companyId = btn.dataset.renewNowId;
+          const months = Number(btn.dataset.renewMonths || 12);
           const company = CONTACTS.find(x => x.id === companyId);
           if(!company) return;
-          if(!confirm(`Renew contract for ${company.company} by +12 months?`)) return;
-          btn.disabled = true; btn.style.opacity = '.5'; btn.textContent = '…';
+          if(!confirm(`Renew contract for ${company.company} by +${months} months?`)) return;
+          btn.disabled = true; btn.style.opacity = '.5';
           const oldEnd = company.contract_end;
-          // Pick the start: if the contract was still in the future,
-          // continue from the day AFTER the old end (no gap); otherwise
-          // restart today.
-          let newStartISO;
-          if(oldEnd && oldEnd > today){
-            newStartISO = addDays(oldEnd, 1);
-          } else {
-            newStartISO = today;
-          }
-          // +12 months — let JS handle calendar maths (28/29 Feb, etc.).
+          const newStartISO = (oldEnd && oldEnd > today) ? addDays(oldEnd, 1) : today;
           const d = new Date(newStartISO + 'T12:00:00Z');
-          d.setUTCMonth(d.getUTCMonth() + 12);
+          d.setUTCMonth(d.getUTCMonth() + months);
           const newEndISO = d.toISOString().slice(0,10);
           const supa = getClient();
           const { error } = await supa.from('outreach_contacts')
             .update({ contract_start: newStartISO, contract_end: newEndISO }).eq('id', companyId);
           if(error){
             toast('Renewal failed: '+error.message);
-            btn.disabled = false; btn.style.opacity = ''; btn.textContent = 'Renew +12mo';
+            btn.disabled = false; btn.style.opacity = '';
             return;
           }
           company.contract_start = newStartISO;
           company.contract_end = newEndISO;
           toast(`${company.company} → renewed until ${fmtDate(newEndISO)}`);
-          // Row will drop off the expiring list on next render since
-          // new end is 12mo away (well outside the 60d window).
           renderDashboard();
           if(CURRENT_CONTACT?.id === companyId) openContact(companyId);
         });
