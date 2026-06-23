@@ -2579,15 +2579,24 @@ document.getElementById('checkInboxBtn').addEventListener('click', () => {
   const totalEntries = domainList.length + personalList.length;
   const totalAvailable = domains.size + fullEmails.length;
 
+  // Gmail tightens domain matching when the address part is prefixed
+  // with @ — from:@bristolsurf.com only matches actual addresses at
+  // that domain, while from:bristolsurf.com is a broader string
+  // contains-match against the From header. The @ form is what we
+  // want.
   const clauses = [
-    ...domainList.map(d => `from:${d}`),
+    ...domainList.map(d => `from:@${d}`),
     ...personalList.map(e => `from:${e}`),
   ];
-  const query = `(${clauses.join(' OR ')}) newer_than:7d`;
+  // 30-day window — wide enough that "I had a slow week" doesn't
+  // come up empty, narrow enough that the Gmail UI stays responsive.
+  // Per-company Check Gmail uses 90d for history; this global view
+  // is a recent-activity scan, so 30 is the sweet spot.
+  const query = `(${clauses.join(' OR ')}) newer_than:30d`;
   const url = `https://mail.google.com/mail/?authuser=${GMAIL_AUTHUSER}#search/` + encodeURIComponent(query);
   window.open(url, '_blank');
   const truncated = totalEntries < totalAvailable;
-  toast(`Opening Gmail · ${totalEntries} source${totalEntries>1?'s':''}${truncated?` (capped from ${totalAvailable})`:''} · last 7d`);
+  toast(`Opening Gmail · ${totalEntries} source${totalEntries>1?'s':''}${truncated?` (capped from ${totalAvailable})`:''} · last 30d`);
 });
 
 // Open Gmail filtered to every email address we know for this company:
