@@ -2601,7 +2601,10 @@ async function openContact(id){
     </div>
 
     <div class="detail-section">
-      <div class="detail-section-title">Activity</div>
+      <div class="detail-section-title" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <span>Activity</span>
+        ${activity.length > 5 ? `<input type="search" id="activitySearch" placeholder="Filter…" style="border:1px solid var(--border);border-radius:6px;padding:3px 8px;font-size:11px;font-family:'Outfit',sans-serif;font-weight:600;width:140px">` : ''}
+      </div>
       <div id="activityList">
         ${activity.length ? activity.map(a=>{
           const label = activityLabel(a);
@@ -2609,7 +2612,11 @@ async function openContact(id){
           // mis-clicks status, mis-fires a Compose, etc. The log is
           // append-only at the data layer but the UI lets you trim
           // mistakes so the timeline stays honest.
-          return `<div class="activity-item ${a.action}" style="position:relative;padding-right:34px"><button type="button" class="activity-del" data-act="${a.id}" aria-label="Delete this activity" title="Delete activity" style="position:absolute;top:6px;right:6px;width:22px;height:22px;border:none;background:transparent;color:var(--muted);border-radius:6px;cursor:pointer;font-size:14px;line-height:1;display:flex;align-items:center;justify-content:center;transition:background .15s,color .15s">×</button><div class="activity-action">${label}</div>${a.meta?.note?`<div class="activity-meta">${escHtml(a.meta.note)}</div>`:''}<div class="activity-time">${fmtDateTime(a.created_at)}${a.created_by?' · '+escHtml(a.created_by):''}</div></div>`;
+          // data-blob is a flattened searchable string used by the
+          // inline activity filter input above; case-insensitive
+          // substring match.
+          const blob = `${label.replace(/<[^>]+>/g, '')} ${a.meta?.note||''} ${a.meta?.template_name||''} ${a.meta?.subject||''} ${a.meta?.title||''} ${a.created_by||''}`.toLowerCase();
+          return `<div class="activity-item ${a.action}" data-act-blob="${escAttr(blob)}" style="position:relative;padding-right:34px"><button type="button" class="activity-del" data-act="${a.id}" aria-label="Delete this activity" title="Delete activity" style="position:absolute;top:6px;right:6px;width:22px;height:22px;border:none;background:transparent;color:var(--muted);border-radius:6px;cursor:pointer;font-size:14px;line-height:1;display:flex;align-items:center;justify-content:center;transition:background .15s,color .15s">×</button><div class="activity-action">${label}</div>${a.meta?.note?`<div class="activity-meta">${escHtml(a.meta.note)}</div>`:''}<div class="activity-time">${fmtDateTime(a.created_at)}${a.created_by?' · '+escHtml(a.created_by):''}</div></div>`;
         }).join('') : '<div class="empty-state" style="padding:12px;text-align:left">No activity yet.</div>'}
       </div>
     </div>
@@ -2723,6 +2730,19 @@ async function openContact(id){
   // status_changed: if the LAST status change is the one we delete, revert
   // c.status to that activity's old_value so the pill in the row matches
   // the new (shorter) timeline.
+  // Activity search — case-insensitive substring filter against the
+  // pre-computed data-act-blob on each row. Hidden rows are display:
+  // none so the per-row delete handlers still bind cleanly.
+  const actSearchEl = document.getElementById('activitySearch');
+  if(actSearchEl){
+    actSearchEl.addEventListener('input', () => {
+      const q = actSearchEl.value.trim().toLowerCase();
+      document.querySelectorAll('#activityList .activity-item').forEach(row => {
+        const blob = row.dataset.actBlob || '';
+        row.style.display = (!q || blob.includes(q)) ? '' : 'none';
+      });
+    });
+  }
   document.querySelectorAll('#activityList .activity-del').forEach(btn=>{
     btn.addEventListener('mouseenter', ()=>{ btn.style.background='var(--red-bg)'; btn.style.color='var(--red-text)'; });
     btn.addEventListener('mouseleave', ()=>{ btn.style.background='transparent'; btn.style.color='var(--muted)'; });
