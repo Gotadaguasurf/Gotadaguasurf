@@ -615,9 +615,17 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
 
   <!-- ─── PIPELINE (KANBAN) TAB ─── -->
   <div id="page-pipeline" class="hidden">
-    <div class="section-hdr">
-      <div class="section-title">Pipeline</div>
-      <div class="section-hint">Drag a card between columns to update its status — change syncs to other devices in real time.</div>
+    <div class="section-hdr" style="display:flex;justify-content:space-between;align-items:flex-end;gap:14px;flex-wrap:wrap">
+      <div>
+        <div class="section-title">Pipeline</div>
+        <div class="section-hint">Drag a card between columns to update its stage — change syncs to other devices in real time.</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <label style="font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700">View</label>
+        <select id="pipelineViewSelect" style="border:1px solid var(--border);border-radius:8px;padding:6px 10px;font:inherit;font-size:13px;font-family:'Outfit',sans-serif;font-weight:600">
+          <option value="status">Status (legacy)</option>
+        </select>
+      </div>
     </div>
     <div class="kanban-wrap">
       <div class="kanban" id="kanban"></div>
@@ -1059,6 +1067,12 @@ let CONTACTS = [];
 let GROUPS = [];     // outreach_groups — Partner→Groups model
 let PEOPLE = [];     // contacts — multiple humans per company (CRM v2)
 let TASKS = [];      // tasks — to-do items per company (CRM v2)
+let PIPELINES = [];          // pipelines table — Sales / Account Mgmt / Partnerships
+let PIPELINE_STAGES = [];    // pipeline_stages table — N rows per pipeline
+let CONTACT_PIPELINE = [];   // contact_pipeline table — company ↔ pipeline assignments
+// Which Kanban view is active. 'status' = the legacy single-pipeline
+// view that drives c.status; otherwise a pipeline id from PIPELINES.
+let CURRENT_PIPELINE_VIEW = 'status';
 let TEMPLATES = [];
 
 // Gmail account used by Compose + Check-Gmail buttons (authuser query
@@ -1236,7 +1250,7 @@ document.getElementById('loginForm').addEventListener('submit', async (e)=>{
 document.getElementById('signOutBtn').addEventListener('click', async ()=>{
   unsubscribeRealtime();
   try { await getClient().auth.signOut(); } catch(e){}
-  session = null; CONTACTS = []; PEOPLE = []; TASKS = []; TEMPLATES = []; showLogin();
+  session = null; CONTACTS = []; PEOPLE = []; TASKS = []; PIPELINES = []; PIPELINE_STAGES = []; CONTACT_PIPELINE = []; TEMPLATES = []; showLogin();
 });
 
 // ════════════════════════════════════════════════════════════════════════
@@ -1309,6 +1323,21 @@ function subscribeRealtime(){
       const companyId = nw?.company_id || ol?.company_id;
       if(CURRENT_CONTACT?.id === companyId) renderPeopleList(companyId);
     })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'contact_pipeline' }, (payload)=>{
+      const { eventType, new: nw, old: ol } = payload;
+      if(eventType === 'INSERT'){
+        if(!CONTACT_PIPELINE.find(x=>x.id===nw.id)) CONTACT_PIPELINE.push(nw);
+      } else if(eventType === 'UPDATE'){
+        const idx = CONTACT_PIPELINE.findIndex(x=>x.id===nw.id);
+        if(idx >= 0) Object.assign(CONTACT_PIPELINE[idx], nw);
+      } else if(eventType === 'DELETE'){
+        const idx = CONTACT_PIPELINE.findIndex(x=>x.id===ol.id);
+        if(idx >= 0) CONTACT_PIPELINE.splice(idx, 1);
+      }
+      const companyId = nw?.company_id || ol?.company_id;
+      if(CURRENT_CONTACT?.id === companyId) renderPipelinesSection(companyId);
+      if(CURRENT_TAB === 'pipeline' && CURRENT_PIPELINE_VIEW !== 'status') renderPipeline();
+    })
     .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, (payload)=>{
       const { eventType, new: nw, old: ol } = payload;
       if(eventType === 'INSERT'){
@@ -1337,7 +1366,7 @@ function unsubscribeRealtime(){
 //  DATA LOADING
 // ════════════════════════════════════════════════════════════════════════
 async function loadAll(){
-  await Promise.all([loadContacts(), loadTemplates(), loadSavedViews(), loadGroups(), loadPeople(), loadTasks()]);
+  await Promise.all([loadContacts(), loadTemplates(), loadSavedViews(), loadGroups(), loadPeople(), loadTasks(), loadPipelines()]);
   populateFilters();
   populateSavedViewsDropdown();
   renderDashboard();
@@ -1411,6 +1440,28 @@ async function loadTasks(){
     from += page;
   }
   TASKS = all;
+}
+
+// Loads the 3 pipelines + their stages + every contact_pipeline row in
+// one trio of parallel queries. Small datasets (≤10 pipelines, ≤100
+// stages, ≤thousands of assignments) so no pagination needed yet —
+// add .range() if either grows past 1000.
+async function loadPipelines(){
+  const c = getClient();
+  const [pr, sr, cpr] = await Promise.all([
+    c.from('pipelines').select('*').order('sort_order'),
+    c.from('pipeline_stages').select('*').order('sort_order'),
+    c.from('contact_pipeline').select('*'),
+  ]);
+  // Silent fail if any of these tables don't exist yet — keeps the rest
+  // of the app working until the v2 schema SQL has been run.
+  if(pr.error){
+    if(!/relation .* does not exist/i.test(pr.error.message||'')) console.warn('loadPipelines failed', pr.error);
+    PIPELINES = []; PIPELINE_STAGES = []; CONTACT_PIPELINE = []; return;
+  }
+  PIPELINES = pr.data || [];
+  PIPELINE_STAGES = sr.data || [];
+  CONTACT_PIPELINE = cpr.data || [];
 }
 
 async function loadSavedViews(){
@@ -2217,6 +2268,13 @@ async function openContact(id){
     </div>
 
     <div class="detail-section">
+      <div class="detail-section-title">
+        <span>Pipelines</span>
+      </div>
+      <div id="pipelinesSection"></div>
+    </div>
+
+    <div class="detail-section">
       <div class="detail-section-title" style="display:flex;justify-content:space-between;align-items:center">
         <span>Tasks</span>
         <button type="button" id="addTaskBtn" style="background:var(--ocean);color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">+ Task</button>
@@ -2365,6 +2423,9 @@ async function openContact(id){
   // ── People (CRM v2 multi-contact roster) ────────────────────────────
   renderPeopleList(c.id);
   document.getElementById('addPersonBtn').addEventListener('click', ()=>openPeopleModal(c.id, null));
+
+  // ── Pipelines (CRM v2 multi-pipeline assignments) ───────────────────
+  renderPipelinesSection(c.id);
 
   // ── Tasks (CRM v2 to-do items) ──────────────────────────────────────
   renderTasksList(c.id);
@@ -3933,6 +3994,133 @@ document.getElementById('tasksTabBulkClear').addEventListener('click', () => {
 });
 
 // ════════════════════════════════════════════════════════════════════════
+//  PIPELINES — multi-pipeline assignments per company (CRM v2)
+// ════════════════════════════════════════════════════════════════════════
+// A company can sit in several pipelines at once (Sales while we close
+// the deal, Account Management once they're a partner). Each row in
+// contact_pipeline is one assignment with its own stage_id and owner.
+// The DB has UNIQUE (company_id, pipeline_id) so the picker only ever
+// offers pipelines this company isn't already in.
+function stagesForPipeline(pipelineId){
+  return PIPELINE_STAGES
+    .filter(s => s.pipeline_id === pipelineId)
+    .sort((a,b) => (a.sort_order||0) - (b.sort_order||0));
+}
+
+// Visual cue per stage type. Won = green, lost = red, else gray — so
+// the user can scan a Kanban column header and immediately know which
+// columns are terminal vs in-flight without reading the label.
+function stageDotColor(stage){
+  if(!stage) return '#94a3b8';
+  if(stage.is_won)  return '#16a34a';
+  if(stage.is_lost) return '#ef4444';
+  return '#94a3b8';
+}
+
+function renderPipelinesSection(companyId){
+  const root = document.getElementById('pipelinesSection');
+  if(!root) return;
+  // No pipelines seeded yet → quietly show nothing (the v2 SQL might
+  // not have been run).
+  if(PIPELINES.length === 0){
+    root.innerHTML = '<div class="empty-state" style="padding:14px;text-align:left;background:#fafdff;border:1px dashed var(--border);border-radius:10px">No pipelines configured. Run the CRM v2 schema SQL to seed Sales / Account Management / Partnerships.</div>';
+    return;
+  }
+  const assignments = CONTACT_PIPELINE.filter(cp => cp.company_id === companyId);
+  const assignedIds = new Set(assignments.map(a => a.pipeline_id));
+  const available = PIPELINES.filter(p => !assignedIds.has(p.id))
+    .sort((a,b) => (a.sort_order||0) - (b.sort_order||0));
+
+  const cards = assignments.map(a => {
+    const pipeline = PIPELINES.find(p => p.id === a.pipeline_id);
+    const stages = stagesForPipeline(a.pipeline_id);
+    const currentStage = PIPELINE_STAGES.find(s => s.id === a.stage_id);
+    const stageOpts = stages.map(s =>
+      `<option value="${s.id}" ${s.id===a.stage_id?'selected':''}>${escHtml(s.name)}${s.is_won?' ✓':s.is_lost?' ✗':''}</option>`
+    ).join('');
+    return `
+      <div class="group-card" style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;background:#fff;border:1px solid var(--border);border-radius:10px;margin-bottom:8px">
+        <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
+          <span style="display:inline-block;width:8px;height:8px;border-radius:999px;background:${stageDotColor(currentStage)};flex-shrink:0"></span>
+          <div style="font-weight:700;color:var(--ink);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(pipeline?.name || '(unknown pipeline)')}</div>
+        </div>
+        <select data-pl-stage="${a.id}" style="border:1px solid var(--border);border-radius:6px;padding:4px 8px;font:inherit;font-size:12px">${stageOpts}</select>
+        <button data-pl-remove="${a.id}" title="Remove from pipeline" aria-label="Remove" style="background:transparent;border:1px solid var(--border);border-radius:6px;width:26px;height:26px;cursor:pointer;color:var(--red-text);font-size:16px">×</button>
+      </div>
+    `;
+  }).join('');
+
+  const addPicker = available.length ? `
+    <div style="display:flex;gap:6px;margin-top:${assignments.length?'6px':'0'}">
+      <select id="pl-add-select" style="flex:1;border:1px solid var(--border);border-radius:8px;padding:6px 8px;font:inherit;font-size:12px">
+        ${available.map(p => `<option value="${p.id}">${escHtml(p.name)}</option>`).join('')}
+      </select>
+      <button id="pl-add-btn" style="background:var(--ocean);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">+ Add</button>
+    </div>
+  ` : (assignments.length ? '' : '<div class="empty-state" style="padding:14px;text-align:left;background:#fafdff;border:1px dashed var(--border);border-radius:10px">Not in any pipeline yet.</div>');
+
+  root.innerHTML = cards + addPicker;
+
+  // Stage select inline edit — change the stage_id on contact_pipeline.
+  // entered_stage_at gets bumped too so "time in current stage" reports
+  // are honest.
+  root.querySelectorAll('[data-pl-stage]').forEach(sel => {
+    sel.addEventListener('change', async () => {
+      const id = sel.dataset.plStage;
+      const newStageId = sel.value;
+      const supa = getClient();
+      const { error } = await supa.from('contact_pipeline')
+        .update({ stage_id: newStageId, entered_stage_at: new Date().toISOString() }).eq('id', id);
+      if(error){ toast('Stage update failed: '+error.message); return; }
+      const row = CONTACT_PIPELINE.find(x => x.id === id);
+      if(row){ row.stage_id = newStageId; row.entered_stage_at = new Date().toISOString(); }
+      toast('Stage updated');
+      renderPipelinesSection(companyId);
+      if(CURRENT_TAB === 'pipeline' && CURRENT_PIPELINE_VIEW !== 'status') renderPipeline();
+    });
+  });
+  // Remove the assignment entirely (company leaves the pipeline).
+  root.querySelectorAll('[data-pl-remove]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.plRemove;
+      const row = CONTACT_PIPELINE.find(x => x.id === id);
+      const pipeline = PIPELINES.find(p => p.id === row?.pipeline_id);
+      if(!confirm(`Remove this company from "${pipeline?.name || 'pipeline'}"?`)) return;
+      const supa = getClient();
+      const { error } = await supa.from('contact_pipeline').delete().eq('id', id);
+      if(error){ toast('Remove failed: '+error.message); return; }
+      CONTACT_PIPELINE = CONTACT_PIPELINE.filter(x => x.id !== id);
+      toast('Removed from pipeline');
+      renderPipelinesSection(companyId);
+      if(CURRENT_TAB === 'pipeline' && CURRENT_PIPELINE_VIEW !== 'status') renderPipeline();
+    });
+  });
+  // Add to pipeline — picks the first stage by sort_order automatically
+  // so the user doesn't need a second click to land somewhere.
+  const addBtn = document.getElementById('pl-add-btn');
+  if(addBtn){
+    addBtn.addEventListener('click', async () => {
+      const sel = document.getElementById('pl-add-select');
+      const pipelineId = sel.value;
+      const firstStage = stagesForPipeline(pipelineId)[0];
+      const payload = {
+        company_id: companyId,
+        pipeline_id: pipelineId,
+        stage_id: firstStage?.id || null,
+      };
+      const supa = getClient();
+      const { data, error } = await supa.from('contact_pipeline').insert(payload).select().single();
+      if(error){ toast('Add failed: '+error.message); return; }
+      CONTACT_PIPELINE.push(data);
+      const pipeline = PIPELINES.find(p => p.id === pipelineId);
+      toast(`Added to ${pipeline?.name || 'pipeline'}`);
+      renderPipelinesSection(companyId);
+      if(CURRENT_TAB === 'pipeline' && CURRENT_PIPELINE_VIEW !== 'status') renderPipeline();
+    });
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════
 //  PEOPLE (multi-contact roster — CRM v2 contacts table)
 // ════════════════════════════════════════════════════════════════════════
 // One company can have several humans (owner, bookings, ops). The DB has
@@ -4289,10 +4477,30 @@ function pipelineCardHtml(c){
 }
 
 function renderPipeline(){
+  // Refresh the dropdown options each call so a newly seeded pipeline
+  // shows up without a page reload.
+  const sel = document.getElementById('pipelineViewSelect');
+  if(sel){
+    const desired = CURRENT_PIPELINE_VIEW;
+    sel.innerHTML = `<option value="status">Status (legacy)</option>` +
+      PIPELINES.sort((a,b)=>(a.sort_order||0)-(b.sort_order||0))
+        .map(p => `<option value="${p.id}">${escHtml(p.name)}</option>`).join('');
+    sel.value = (desired === 'status' || PIPELINES.find(p => p.id === desired)) ? desired : 'status';
+    sel.onchange = () => {
+      CURRENT_PIPELINE_VIEW = sel.value;
+      renderPipeline();
+    };
+  }
+  if(CURRENT_PIPELINE_VIEW === 'status'){
+    renderPipelineByStatus();
+  } else {
+    renderPipelineByPipeline(CURRENT_PIPELINE_VIEW);
+  }
+}
+
+// Legacy view — Kanban driven by outreach_contacts.status.
+function renderPipelineByStatus(){
   const board = document.getElementById('kanban');
-  // Build one column per status in pipeline order. Showing every column even
-  // when empty keeps the layout stable (and gives the user an obvious drop
-  // target to move a contact into a brand-new stage).
   board.innerHTML = STATUS_ORDER.map(stage => {
     const inStage = CONTACTS.filter(c => (c.status || 'not_started') === stage);
     const cards = inStage.length
@@ -4308,12 +4516,67 @@ function renderPipeline(){
       </div>
     `;
   }).join('');
+  wireKanbanInteractions(board, 'status');
+}
 
-  // Card → click opens the detail panel (so the kanban isn't read-only).
+// New view — Kanban driven by contact_pipeline.stage_id for the picked
+// pipeline. Empty column at the front to "remove from pipeline" (when
+// dropped, the row is deleted from contact_pipeline rather than just
+// re-staged) — but for now we skip that and keep removal in the detail
+// panel. The cards are companies WITH an assignment in this pipeline.
+function renderPipelineByPipeline(pipelineId){
+  const board = document.getElementById('kanban');
+  const stages = stagesForPipeline(pipelineId);
+  if(stages.length === 0){
+    board.innerHTML = '<div class="empty-state" style="padding:40px;text-align:center;width:100%">This pipeline has no stages configured.</div>';
+    return;
+  }
+  const rowsByStage = new Map(stages.map(s => [s.id, []]));
+  const assignmentByCompany = new Map();
+  CONTACT_PIPELINE.filter(cp => cp.pipeline_id === pipelineId).forEach(cp => {
+    if(!cp.stage_id) return;
+    const c = CONTACTS.find(x => x.id === cp.company_id);
+    if(!c) return;
+    rowsByStage.get(cp.stage_id)?.push(c);
+    assignmentByCompany.set(c.id, cp);
+  });
+  board.innerHTML = stages.map(s => {
+    const cards = (rowsByStage.get(s.id) || []).map(pipelineCardHtml).join('') ||
+      '<div class="kanban-empty">drop a card here</div>';
+    // Inline dot since stage CSS keys are hardcoded to legacy status —
+    // the dynamic stages need an inline color (green/red/gray).
+    const dot = `<span style="display:inline-block;width:8px;height:8px;border-radius:999px;background:${stageDotColor(s)};margin-right:6px"></span>`;
+    return `
+      <div class="kanban-col" data-stage="pipeline-${s.id}">
+        <div class="kanban-col-header">
+          <div class="kanban-col-title" style="--no-before:1"><span style="display:inline-flex;align-items:center">${dot}${escHtml(s.name)}</span></div>
+          <div class="kanban-col-count">${(rowsByStage.get(s.id)||[]).length}</div>
+        </div>
+        <div class="kanban-list" data-drop-stage="${s.id}">${cards}</div>
+      </div>
+    `;
+  }).join('');
+  // Hide the ::before dot on pipeline columns (it would render on top
+  // of our inline dot for legacy stages). Cheap inline override.
+  board.querySelectorAll('.kanban-col[data-stage^="pipeline-"] .kanban-col-title').forEach(el => {
+    el.style.setProperty('--none', '1');
+    // Inject one-shot style to neutralise the ::before for these cols.
+    if(!document.getElementById('pipeline-mode-dot-fix')){
+      const st = document.createElement('style');
+      st.id = 'pipeline-mode-dot-fix';
+      st.textContent = '.kanban-col[data-stage^="pipeline-"] .kanban-col-title::before{display:none !important}';
+      document.head.appendChild(st);
+    }
+  });
+  wireKanbanInteractions(board, 'pipeline', { pipelineId, assignmentByCompany });
+}
+
+// Single drag-drop wirer reused by both modes. mode='status' updates
+// outreach_contacts.status; mode='pipeline' updates the matching
+// contact_pipeline row's stage_id.
+function wireKanbanInteractions(board, mode, ctx = {}){
   board.querySelectorAll('.kanban-card').forEach(card => {
     card.addEventListener('click', e => {
-      // A drag-end on the same element fires a click too — ignore if we
-      // were just dragging.
       if(card.classList.contains('dragging')) return;
       openContact(card.dataset.id);
     });
@@ -4321,7 +4584,6 @@ function renderPipeline(){
       _dragContactId = card.dataset.id;
       card.classList.add('dragging');
       e.dataTransfer.effectAllowed = 'move';
-      // Some browsers (Firefox) require setData to start the drag at all.
       e.dataTransfer.setData('text/plain', _dragContactId);
     });
     card.addEventListener('dragend', () => {
@@ -4331,10 +4593,9 @@ function renderPipeline(){
     });
   });
 
-  // Columns are drop targets.
   board.querySelectorAll('.kanban-list').forEach(list => {
     list.addEventListener('dragover', e => {
-      e.preventDefault();                    // required to allow drop
+      e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
       list.classList.add('drop-active');
     });
@@ -4346,26 +4607,40 @@ function renderPipeline(){
       const newStage = list.dataset.dropStage;
       if(!id || !newStage) return;
       const c = CONTACTS.find(x => x.id === id);
-      if(!c || c.status === newStage) return;
-      const oldStage = c.status;
-      // Optimistic local update so the card jumps immediately.
-      c.status = newStage;
-      renderPipeline();
-      // Persist + log.
+      if(!c) return;
       const supa = getClient();
-      const { error } = await supa.from('outreach_contacts').update({ status: newStage }).eq('id', id);
-      if(error){
-        c.status = oldStage;
+      if(mode === 'status'){
+        if(c.status === newStage) return;
+        const oldStage = c.status;
+        c.status = newStage;
         renderPipeline();
-        toast('Update failed: ' + error.message);
-        return;
+        const { error } = await supa.from('outreach_contacts').update({ status: newStage }).eq('id', id);
+        if(error){ c.status = oldStage; renderPipeline(); toast('Update failed: '+error.message); return; }
+        logActivity(id, 'status_changed', oldStage, newStage, { via: 'kanban' });
+        toast(`${c.company} → ${STATUS_LABELS[newStage]}`);
+        if(CURRENT_CONTACT?.id === id) openContact(id);
+        if(CURRENT_TAB === 'dashboard') renderDashboard();
+      } else {
+        // Pipeline mode — newStage is a pipeline_stages.id; update the
+        // assignment for this company in the active pipeline.
+        const assignment = ctx.assignmentByCompany.get(id);
+        if(!assignment || assignment.stage_id === newStage) return;
+        const oldStageId = assignment.stage_id;
+        assignment.stage_id = newStage;
+        assignment.entered_stage_at = new Date().toISOString();
+        renderPipeline();
+        const { error } = await supa.from('contact_pipeline')
+          .update({ stage_id: newStage, entered_stage_at: assignment.entered_stage_at }).eq('id', assignment.id);
+        if(error){
+          assignment.stage_id = oldStageId;
+          renderPipeline();
+          toast('Stage update failed: '+error.message);
+          return;
+        }
+        const stage = PIPELINE_STAGES.find(s => s.id === newStage);
+        toast(`${c.company} → ${stage?.name || 'stage'}`);
+        if(CURRENT_CONTACT?.id === id) renderPipelinesSection(id);
       }
-      logActivity(id, 'status_changed', oldStage, newStage, { via: 'kanban' });
-      toast(`${c.company} → ${STATUS_LABELS[newStage]}`);
-      if(CURRENT_CONTACT?.id === id) openContact(id);
-      // Refresh dashboard counters in the background so the user can flip
-      // back to it without a stale view.
-      if(CURRENT_TAB === 'dashboard') renderDashboard();
     });
   });
 }
