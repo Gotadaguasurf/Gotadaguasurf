@@ -2584,6 +2584,15 @@ async function openContact(id){
         <span class="label" style="text-align:left">Terms</span>
         <textarea id="contractTermsInput" class="notes-area" placeholder="Net 30, deposit before season, …">${escHtml(c.contract_terms||'')}</textarea>
       </div>
+      <!-- Inline renew shortcuts — same fast-path the dashboard
+           Contracts expiring card carries, available from inside the
+           detail panel too so the user doesn't have to go back. -->
+      <div class="detail-row" style="justify-content:flex-end;gap:6px">
+        <span class="label" style="text-align:left;align-self:center;margin-right:auto">Quick renew</span>
+        <button data-renew-detail="6"  style="background:var(--green-bg);color:var(--green-text);border:1px solid #a7d8b9;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">+6mo</button>
+        <button data-renew-detail="12" style="background:var(--green-bg);color:var(--green-text);border:1px solid #a7d8b9;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">+12mo</button>
+        <button data-renew-detail="24" style="background:var(--green-bg);color:var(--green-text);border:1px solid #a7d8b9;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">+24mo</button>
+      </div>
     </div>
 
     <div class="detail-section">
@@ -2668,6 +2677,31 @@ async function openContact(id){
       await updateContact(c.id, { contract_terms: v });
       c.contract_terms = v;
       toast('Terms saved');
+    });
+    // Quick renew chips — same date logic as the dashboard's Renew ▾
+    // (new_start = max(today, old_end + 1d); new_end = +N months via
+    // Date.setMonth). Re-open the detail panel after to show the
+    // updated dates without a stale view.
+    document.querySelectorAll('[data-renew-detail]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const months = Number(btn.dataset.renewDetail);
+        if(!confirm(`Renew contract for ${c.company} by +${months} months?`)) return;
+        const todayISO = new Date().toISOString().slice(0,10);
+        const oldEnd = c.contract_end;
+        const newStartISO = (oldEnd && oldEnd > todayISO) ? addDays(oldEnd, 1) : todayISO;
+        const d = new Date(newStartISO + 'T12:00:00Z');
+        d.setUTCMonth(d.getUTCMonth() + months);
+        const newEndISO = d.toISOString().slice(0,10);
+        const supa = getClient();
+        const { error } = await supa.from('outreach_contacts')
+          .update({ contract_start: newStartISO, contract_end: newEndISO }).eq('id', c.id);
+        if(error){ toast('Renewal failed: '+error.message); return; }
+        c.contract_start = newStartISO;
+        c.contract_end = newEndISO;
+        toast(`Renewed until ${fmtDate(newEndISO)}`);
+        openContact(c.id);
+        if(CURRENT_TAB === 'dashboard') renderDashboard();
+      });
     });
   }
 
