@@ -1038,6 +1038,11 @@ let GROUPS = [];     // outreach_groups — Partner→Groups model
 let PEOPLE = [];     // contacts — multiple humans per company (CRM v2)
 let TASKS = [];      // tasks — to-do items per company (CRM v2)
 let TEMPLATES = [];
+
+// Gmail account used by Compose + Check-Gmail buttons (authuser query
+// param on every mail.google.com URL we generate). Single source of
+// truth — change here, both surfaces update.
+const GMAIL_AUTHUSER = 'groups@gotadaguasurf.com';
 let SAVED_VIEWS = [];
 let CURRENT_CONTACT = null;
 let CURRENT_TEMPLATE = null;
@@ -2337,7 +2342,7 @@ document.getElementById('checkGmailBtn').addEventListener('click', ()=>{
   const clauses = [];
   emails.forEach(e => { clauses.push(`from:${e}`); clauses.push(`to:${e}`); });
   const query = `(${clauses.join(' OR ')}) newer_than:90d`;
-  const url = 'https://mail.google.com/mail/?authuser=accounting@gotadaguasurf.com#search/' + encodeURIComponent(query);
+  const url = `https://mail.google.com/mail/?authuser=${GMAIL_AUTHUSER}#search/` + encodeURIComponent(query);
   window.open(url, '_blank');
   toast(`Opening Gmail · ${emails.size} address${emails.size>1?'es':''}`);
 });
@@ -2425,7 +2430,7 @@ document.getElementById('composeOpen').addEventListener('click', async ()=>{
   // is set or the primary has no email yet.
   const primary = primaryPersonFor(c.id);
   const recipient = (primary?.email) || c.email;
-  const gmailUrl = 'https://mail.google.com/mail/?view=cm&fs=1&authuser=accounting@gotadaguasurf.com&to='
+  const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&authuser=${GMAIL_AUTHUSER}&to=`
     + encodeURIComponent(recipient)
     + '&su=' + encodeURIComponent(subj)
     + '&body=' + encodeURIComponent(body);
