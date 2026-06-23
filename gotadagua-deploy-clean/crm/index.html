@@ -610,6 +610,7 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
     <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
       <div id="tasksTabFilters" style="display:flex;gap:6px;flex-wrap:wrap"></div>
       <div style="margin-left:auto;font-family:'DM Mono',monospace;font-size:12px;color:var(--muted)" id="tasksTabCount">—</div>
+      <button type="button" id="tasksTabExportBtn" title="Download the current filtered view as CSV" style="background:transparent;color:var(--ocean);border:1px solid var(--ocean);border-radius:8px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">Export CSV</button>
       <button type="button" id="tasksTabAddBtn" style="background:var(--ocean);color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">+ Task</button>
     </div>
     <!-- Bulk action bar — hidden when nothing selected. Appears above
@@ -3996,6 +3997,65 @@ async function quickAddTask(companyId, preset){
   if(CURRENT_TAB === 'tasks') renderTasksTab();
 }
 
+// Computes the same filtered + sorted set as renderTasksTab and
+// downloads it as CSV. Same logic duplicated on purpose — the
+// renderer mutates DOM, and tying them together via a shared helper
+// would force a return shape that complicates the render path.
+function exportTasksCsv(){
+  const today = new Date().toISOString().slice(0,10);
+  const weekEnd = addDays(today, 7);
+  let rows = TASKS.filter(t => {
+    if(TASKS_TAB_FILTER === 'done') return !!t.done_at;
+    if(t.done_at) return false;
+    const due = t.due_at ? t.due_at.slice(0,10) : null;
+    if(TASKS_TAB_FILTER === 'overdue') return due && due < today;
+    if(TASKS_TAB_FILTER === 'today')   return due === today;
+    if(TASKS_TAB_FILTER === 'week')    return due && due >= today && due <= weekEnd;
+    return true;
+  });
+  rows.sort((a,b) => {
+    if(TASKS_TAB_FILTER === 'done') return (b.done_at||'').localeCompare(a.done_at||'');
+    return (a.due_at || '9999').localeCompare(b.due_at || '9999');
+  });
+  if(rows.length === 0){ toast('Nothing to export — current filter is empty'); return; }
+  // RFC 4180 — wrap every field in quotes, double-quote any embedded
+  // quotes, replace newlines with spaces. Belt-and-suspenders against
+  // Excel's loose CSV parser.
+  const esc = (v) => {
+    if(v == null) return '""';
+    const s = String(v).replace(/"/g, '""').replace(/\r?\n/g, ' ');
+    return `"${s}"`;
+  };
+  const header = ['Title','Type','Due','Done','Company','Notes','Created'];
+  const lines = [header.map(esc).join(',')];
+  rows.forEach(t => {
+    const c = CONTACTS.find(x => x.id === t.company_id);
+    lines.push([
+      t.title || '',
+      TASK_TYPE_LABELS[t.type] || t.type || '',
+      t.due_at ? t.due_at.slice(0,10) : '',
+      t.done_at ? t.done_at.slice(0,10) : '',
+      c?.company || '',
+      t.notes || '',
+      t.created_at ? t.created_at.slice(0,10) : '',
+    ].map(esc).join(','));
+  });
+  // BOM so Excel auto-detects UTF-8 (accented company / task names
+  // were otherwise rendered as garbage).
+  const csv = '﻿' + lines.join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = new Date().toISOString().slice(0,10);
+  a.href = url;
+  a.download = `crm-tasks-${TASKS_TAB_FILTER}-${stamp}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  toast(`Exported ${rows.length} task${rows.length===1?'':'s'} · ${TASKS_TAB_FILTER}`);
+}
+
 // ── MY-DAY DIGEST ────────────────────────────────────────────────────
 // Fires once at the first sign-in of each calendar day, IF there's
 // anything worth surfacing. Gated by a localStorage key so multiple
@@ -4087,6 +4147,12 @@ function renderTasksTab(){
   const addBtn = document.getElementById('tasksTabAddBtn');
   if(addBtn){
     addBtn.onclick = () => openTaskModal(null, null);
+  }
+  // Export — downloads the currently filtered rows as CSV. Rebinds
+  // every render so the closure captures the active filter set.
+  const exportBtn = document.getElementById('tasksTabExportBtn');
+  if(exportBtn){
+    exportBtn.onclick = () => exportTasksCsv();
   }
 
   // Filter pill rendering (active pill is the ocean colour).
@@ -4799,7 +4865,24 @@ function shouldShowContractSection(companyId){
   return !!(stage && !stage.is_lost);
 }
 
-function pipelineCardHtml(c, daysInStage, nextStage, cpId){
+// Maps each non-terminal status to its natural next step. Used in
+// legacy status mode by the per-card → push button so the user can
+// advance without dragging. active_partner is terminal positive (no
+// next); no_reply / lost are terminal negative (no next).
+const STATUS_NEXT = {
+  not_started:     'first_email',
+  first_email:     'follow_up',
+  follow_up:       'in_conversation',
+  in_conversation: 'meeting',
+  meeting:         'proposal_sent',
+  proposal_sent:   'active_partner',
+};
+
+// pushOpts shape:
+//   { mode:'pipeline', stageId, stageName, cpId }
+//   { mode:'status', statusKey, statusLabel, companyId }
+//   undefined — no push button
+function pipelineCardHtml(c, daysInStage, pushOpts){
   // How many groups does this partner have, and how many possibilities?
   const groups = GROUPS.filter(g => g.contact_id === c.id);
   const possibilities = groups.filter(g => ['possibility','request','hold'].includes(g.stage)).length;
@@ -4824,12 +4907,15 @@ function pipelineCardHtml(c, daysInStage, nextStage, cpId){
     else if(daysInStage >= 14){ bg = 'var(--amber-bg)'; col = 'var(--amber-text)'; }
     stageBadge = `<span style="background:${bg};color:${col};padding:2px 7px;border-radius:999px;font-size:10px;font-weight:700;font-family:'DM Mono',monospace">${daysInStage}d</span>`;
   }
-  // → push button — pipeline mode only. Tiny chevron in the bottom-
-  // right that advances to the next non-lost stage. Touch-friendly
-  // alternative to drag-and-drop. Won-target gates on a confirm.
-  const pushBtn = nextStage && cpId
-    ? `<button class="kc-push" data-push-cp="${cpId}" data-push-stage="${nextStage.id}" data-push-name="${escAttr(nextStage.name)}" title="Move to ${escAttr(nextStage.name)}" aria-label="Push to next stage" style="background:transparent;border:1px solid var(--border);border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700;color:var(--ocean);cursor:pointer;font-family:'Outfit',sans-serif">→ ${escHtml(nextStage.name)}</button>`
-    : '';
+  // → push button — works in both modes. Tiny chevron in the bottom-
+  // right that advances to the next non-terminal stage / status. Touch-
+  // friendly alternative to drag-and-drop. Won-target gates on confirm.
+  let pushBtn = '';
+  if(pushOpts?.mode === 'pipeline' && pushOpts.stageId){
+    pushBtn = `<button class="kc-push" data-push-mode="pipeline" data-push-cp="${pushOpts.cpId}" data-push-stage="${pushOpts.stageId}" data-push-name="${escAttr(pushOpts.stageName)}" title="Move to ${escAttr(pushOpts.stageName)}" aria-label="Push to next stage" style="background:transparent;border:1px solid var(--border);border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700;color:var(--ocean);cursor:pointer;font-family:'Outfit',sans-serif">→ ${escHtml(pushOpts.stageName)}</button>`;
+  } else if(pushOpts?.mode === 'status' && pushOpts.statusKey){
+    pushBtn = `<button class="kc-push" data-push-mode="status" data-push-id="${pushOpts.companyId}" data-push-status="${pushOpts.statusKey}" data-push-name="${escAttr(pushOpts.statusLabel)}" title="Move to ${escAttr(pushOpts.statusLabel)}" aria-label="Push to next stage" style="background:transparent;border:1px solid var(--border);border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700;color:var(--ocean);cursor:pointer;font-family:'Outfit',sans-serif">→ ${escHtml(pushOpts.statusLabel)}</button>`;
+  }
   return `
     <div class="kanban-card" draggable="true" data-id="${c.id}">
       <div class="kc-name" style="display:flex;justify-content:space-between;align-items:center;gap:6px">
@@ -5093,8 +5179,17 @@ function renderPipelineByStatus(){
   updatePipelineFilterCount(visibleContacts.length, CONTACTS.length);
   board.innerHTML = STATUS_ORDER.map(stage => {
     const inStage = visibleContacts.filter(c => (c.status || 'not_started') === stage);
+    // Same → push button concept as pipeline mode, driven by the
+    // hand-curated STATUS_NEXT mapping above. Terminal statuses
+    // (active_partner / no_reply / lost) get no button.
+    const nextStatusKey = STATUS_NEXT[stage];
+    const nextStatusLabel = nextStatusKey ? (STATUS_LABELS[nextStatusKey] || nextStatusKey) : null;
     const cards = inStage.length
-      ? inStage.map(pipelineCardHtml).join('')
+      ? inStage.map(c => pipelineCardHtml(
+          c,
+          undefined,
+          nextStatusKey ? { mode:'status', statusKey: nextStatusKey, statusLabel: nextStatusLabel, companyId: c.id } : undefined
+        )).join('')
       : '<div class="kanban-empty">drop a card here</div>';
     return `
       <div class="kanban-col" data-stage="${stage}">
@@ -5173,7 +5268,8 @@ function renderPipelineByPipeline(pipelineId){
       const enteredDate = cp?.entered_stage_at ? cp.entered_stage_at.slice(0,10) : null;
       const daysInStage = enteredDate ? daysBetween(enteredDate, today) : undefined;
       const next = nextStageByCurrentId.get(s.id);
-      return pipelineCardHtml(c, daysInStage, next, cp?.id);
+      const pushOpts = (next && cp?.id) ? { mode:'pipeline', stageId:next.id, stageName:next.name, cpId:cp.id } : undefined;
+      return pipelineCardHtml(c, daysInStage, pushOpts);
     }).join('') ||
       '<div class="kanban-empty">drop a card here</div>';
     // Inline dot since stage CSS keys are hardcoded to legacy status —
@@ -5229,35 +5325,62 @@ function wireKanbanInteractions(board, mode, ctx = {}){
     });
   });
 
-  // Per-card → push (pipeline mode only — the markup only renders
-  // when nextStage is supplied). Same advance logic as the Stuck
-  // deals dashboard card; confirm gate on is_won targets.
+  // Per-card → push. Branches on data-push-mode so the same button
+  // class works in both pipeline mode (updates contact_pipeline.stage_id)
+  // and legacy status mode (updates outreach_contacts.status). Won
+  // target gates on a confirm regardless of mode.
   board.querySelectorAll('.kc-push').forEach(btn => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
-      const cpId = btn.dataset.pushCp;
-      const newStageId = btn.dataset.pushStage;
-      const newStageName = btn.dataset.pushName;
-      const row = CONTACT_PIPELINE.find(x => x.id === cpId);
-      if(!row) return;
-      const newStage = PIPELINE_STAGES.find(s => s.id === newStageId);
-      if(newStage?.is_won && !confirm(`Mark this deal as ${newStage.name}? This is a terminal positive close.`)) return;
-      btn.disabled = true; btn.style.opacity = '.5'; btn.textContent = '…';
       const supa = getClient();
-      const nowIso = new Date().toISOString();
-      const { error } = await supa.from('contact_pipeline')
-        .update({ stage_id: newStageId, entered_stage_at: nowIso }).eq('id', cpId);
-      if(error){
-        toast('Push failed: '+error.message);
-        btn.disabled = false; btn.style.opacity = ''; btn.textContent = `→ ${newStageName}`;
-        return;
+      const mode = btn.dataset.pushMode || 'pipeline';
+      const newName = btn.dataset.pushName;
+      if(mode === 'pipeline'){
+        const cpId = btn.dataset.pushCp;
+        const newStageId = btn.dataset.pushStage;
+        const row = CONTACT_PIPELINE.find(x => x.id === cpId);
+        if(!row) return;
+        const newStage = PIPELINE_STAGES.find(s => s.id === newStageId);
+        if(newStage?.is_won && !confirm(`Mark this deal as ${newStage.name}? This is a terminal positive close.`)) return;
+        btn.disabled = true; btn.style.opacity = '.5'; btn.textContent = '…';
+        const nowIso = new Date().toISOString();
+        const { error } = await supa.from('contact_pipeline')
+          .update({ stage_id: newStageId, entered_stage_at: nowIso }).eq('id', cpId);
+        if(error){
+          toast('Push failed: '+error.message);
+          btn.disabled = false; btn.style.opacity = ''; btn.textContent = `→ ${newName}`;
+          return;
+        }
+        row.stage_id = newStageId;
+        row.entered_stage_at = nowIso;
+        const company = CONTACTS.find(c => c.id === row.company_id);
+        toast(`${company?.company || 'Deal'} → ${newName}`);
+        renderPipeline();
+        if(CURRENT_CONTACT?.id === row.company_id) renderPipelinesSection(row.company_id);
+      } else {
+        // status mode — same logic as Kanban drag-drop in legacy view
+        // (update outreach_contacts.status + log activity), just
+        // triggered by a click on the card's → button instead.
+        const id = btn.dataset.pushId;
+        const newStatus = btn.dataset.pushStatus;
+        const c = CONTACTS.find(x => x.id === id);
+        if(!c || c.status === newStatus) return;
+        if(newStatus === 'active_partner' && !confirm(`Mark this deal as ${newName}? This is a terminal positive close.`)) return;
+        btn.disabled = true; btn.style.opacity = '.5'; btn.textContent = '…';
+        const oldStatus = c.status;
+        const { error } = await supa.from('outreach_contacts').update({ status: newStatus }).eq('id', id);
+        if(error){
+          toast('Push failed: '+error.message);
+          btn.disabled = false; btn.style.opacity = ''; btn.textContent = `→ ${newName}`;
+          return;
+        }
+        c.status = newStatus;
+        logActivity(id, 'status_changed', oldStatus, newStatus, { via: 'card-push' });
+        toast(`${c.company} → ${newName}`);
+        renderPipeline();
+        if(CURRENT_CONTACT?.id === id) openContact(id);
+        if(CURRENT_TAB === 'dashboard') renderDashboard();
       }
-      row.stage_id = newStageId;
-      row.entered_stage_at = nowIso;
-      const company = CONTACTS.find(c => c.id === row.company_id);
-      toast(`${company?.company || 'Deal'} → ${newStageName}`);
-      renderPipeline();
-      if(CURRENT_CONTACT?.id === row.company_id) renderPipelinesSection(row.company_id);
     });
   });
 
