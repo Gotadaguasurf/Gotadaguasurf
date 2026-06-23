@@ -647,6 +647,9 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
       <button id="pipelineFilterClear" type="button" style="background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font:inherit;font-size:12px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif">Clear</button>
       <div id="pipelineFilterCount" style="margin-left:auto;font-family:'DM Mono',monospace;font-size:12px;color:var(--muted)"></div>
     </div>
+    <!-- Pipeline summary strip — populated by renderPipelineSummary,
+         hidden in legacy status mode. -->
+    <div id="pipelineSummary" class="hidden" style="display:flex;gap:14px;flex-wrap:wrap;padding:14px 18px;background:linear-gradient(135deg,var(--navy),#1e3a52);color:#fff;border-radius:var(--r-md);margin-bottom:14px"></div>
     <div class="kanban-wrap">
       <div class="kanban" id="kanban"></div>
     </div>
@@ -4743,10 +4746,72 @@ function renderPipeline(){
     };
   }
   if(CURRENT_PIPELINE_VIEW === 'status'){
+    document.getElementById('pipelineSummary')?.classList.add('hidden');
     renderPipelineByStatus();
   } else {
     renderPipelineByPipeline(CURRENT_PIPELINE_VIEW);
+    renderPipelineSummary(CURRENT_PIPELINE_VIEW);
   }
+}
+
+// Strip of KPIs above the Kanban when a real pipeline is selected.
+// Respects the active filter so the numbers match what's on screen.
+// Skipped in legacy status mode — the dashboard already carries the
+// equivalent breakdown for status, and showing both would feel
+// redundant.
+function renderPipelineSummary(pipelineId){
+  const el = document.getElementById('pipelineSummary');
+  if(!el) return;
+  el.classList.remove('hidden');
+  const stages = stagesForPipeline(pipelineId);
+  if(stages.length === 0){ el.classList.add('hidden'); return; }
+  const visibleSet = new Set(filteredContactsForPipeline().map(c => c.id));
+  // Collect every assignment in this pipeline that survives the
+  // filter, then partition by stage role (won / lost / in-flight).
+  let inFlight = 0, won = 0, lost = 0;
+  let inFlightValue = 0, weighted = 0, wonValue = 0;
+  CONTACT_PIPELINE.filter(cp => cp.pipeline_id === pipelineId).forEach(cp => {
+    const c = CONTACTS.find(x => x.id === cp.company_id);
+    if(!c || !visibleSet.has(c.id)) return;
+    const stage = PIPELINE_STAGES.find(s => s.id === cp.stage_id);
+    if(!stage) return;
+    const dv = Number(c.deal_value || 0);
+    const pr = Number(c.probability || 0);
+    if(stage.is_won){
+      won++;
+      wonValue += dv;
+    } else if(stage.is_lost){
+      lost++;
+    } else {
+      inFlight++;
+      inFlightValue += dv;
+      weighted += dv * (pr / 100);
+    }
+  });
+  const closed = won + lost;
+  const convPct = closed > 0 ? Math.round((won / closed) * 100) : null;
+  const fmtMoneyShort = (n) => n >= 10000 ? `€${Math.round(n/1000)}k` : `€${Math.round(n).toLocaleString('en-GB')}`;
+  const pipeline = PIPELINES.find(p => p.id === pipelineId);
+  const tile = (label, value, sub) => `
+    <div style="flex:1;min-width:120px">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:#9bbed9;font-weight:700">${label}</div>
+      <div style="font-family:'DM Mono',monospace;font-size:22px;font-weight:700;color:#fff;margin-top:2px">${value}</div>
+      ${sub ? `<div style="font-size:11px;color:#bdd4e8;margin-top:1px">${sub}</div>` : ''}
+    </div>
+  `;
+  el.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;padding-right:14px;border-right:1px solid rgba(255,255,255,.15)">
+      <div>
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:#9bbed9;font-weight:700">Pipeline</div>
+        <div style="font-family:'DM Serif Display',serif;font-size:20px;color:#fff;margin-top:2px">${escHtml(pipeline?.name || '')}</div>
+      </div>
+    </div>
+    ${tile('In flight', inFlight, inFlightValue ? fmtMoneyShort(inFlightValue) + ' total' : null)}
+    ${tile('Weighted', inFlightValue ? fmtMoneyShort(weighted) : '—', inFlightValue ? 'by probability' : null)}
+    ${tile('Won', won, wonValue ? fmtMoneyShort(wonValue) + ' closed' : null)}
+    ${tile('Lost', lost, null)}
+    ${tile('Conversion', convPct !== null ? `${convPct}%` : '—', closed ? `${won} of ${closed} closed` : 'no closes yet')}
+  `;
 }
 
 // Legacy view — Kanban driven by outreach_contacts.status.
