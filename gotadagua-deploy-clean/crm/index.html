@@ -603,6 +603,11 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
       <span style="font-family:'DM Mono',monospace;font-size:12.5px"><span id="tasksTabBulkCount">0</span> selected</span>
       <button type="button" id="tasksTabBulkDone" style="background:var(--ocean);color:#fff;border:none;border-radius:8px;padding:6px 12px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">Mark done</button>
       <button type="button" id="tasksTabBulkReopen" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:8px;padding:6px 12px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">Reopen</button>
+      <span style="width:1px;height:18px;background:rgba(255,255,255,.2)"></span>
+      <span style="font-size:11px;color:#bdd4e8;font-weight:600">Snooze</span>
+      <button type="button" data-snooze-days="1" class="tk-snooze-btn" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:8px;padding:6px 10px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">+1d</button>
+      <button type="button" data-snooze-days="3" class="tk-snooze-btn" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:8px;padding:6px 10px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">+3d</button>
+      <button type="button" data-snooze-days="7" class="tk-snooze-btn" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:8px;padding:6px 10px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">+1w</button>
       <button type="button" id="tasksTabBulkClear" style="margin-left:auto;background:transparent;color:#bdd4e8;border:none;font-size:11.5px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif">Clear</button>
     </div>
     <div id="tasksTabList" style="background:#fff;border:1px solid var(--border);border-radius:var(--r-md);overflow:hidden"></div>
@@ -3633,10 +3638,49 @@ async function tasksTabBulkSetDone(makeDone){
   updateNavTasksCount();
 }
 
+// Bulk snooze: shifts due_at forward by N days for every selected
+// task. Base is the existing due_at when present, otherwise today —
+// so an undated task picks up "today + N" rather than staying undated.
+// One UPDATE per task because each row has a different base; the
+// dataset is small enough (<50 typical) that the round-trip cost is
+// negligible vs. writing a stored procedure.
+async function tasksTabBulkSnooze(days){
+  const ids = Array.from(TASKS_TAB_SELECTED);
+  if(ids.length === 0) return;
+  const today = new Date().toISOString().slice(0,10);
+  const supa = getClient();
+  const updates = ids.map(id => {
+    const t = TASKS.find(x => x.id === id);
+    const base = t?.due_at ? t.due_at.slice(0,10) : today;
+    const newDue = addDays(base, days);
+    return supa.from('tasks')
+      .update({ due_at: new Date(newDue + 'T00:00:00Z').toISOString() })
+      .eq('id', id)
+      .then(({ error }) => ({ id, newDue, error }));
+  });
+  const results = await Promise.all(updates);
+  const failures = results.filter(r => r.error);
+  if(failures.length){
+    toast(`Snooze failed on ${failures.length}/${ids.length}: ${failures[0].error.message}`);
+    return;
+  }
+  results.forEach(r => {
+    const t = TASKS.find(x => x.id === r.id);
+    if(t) t.due_at = new Date(r.newDue + 'T00:00:00Z').toISOString();
+  });
+  toast(`${ids.length} task${ids.length>1?'s':''} snoozed +${days}d`);
+  TASKS_TAB_SELECTED.clear();
+  renderTasksTab();
+  updateNavTasksCount();
+}
+
 // Wire the bulk-bar buttons once at script-load time — they live in
 // fixed markup and don't get re-stamped per render.
 document.getElementById('tasksTabBulkDone').addEventListener('click', () => tasksTabBulkSetDone(true));
 document.getElementById('tasksTabBulkReopen').addEventListener('click', () => tasksTabBulkSetDone(false));
+document.querySelectorAll('.tk-snooze-btn').forEach(btn => {
+  btn.addEventListener('click', () => tasksTabBulkSnooze(Number(btn.dataset.snoozeDays)));
+});
 document.getElementById('tasksTabBulkClear').addEventListener('click', () => {
   TASKS_TAB_SELECTED.clear();
   renderTasksTab();
