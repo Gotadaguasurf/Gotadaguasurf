@@ -1346,6 +1346,28 @@ function matchSenderToCompany(fromHeader){
 // activity. Dedup is via the email_messages.provider_msg_id index
 // (we read the existing ids once before insert so the DB doesn't
 // reject the batch on conflict).
+// Reply-detected status advancement. Moves a company into
+// in_conversation when they were in an outbound stage or had been
+// flagged no_reply (a revival). Skips when already past
+// in_conversation (don't regress meeting / proposal / active) or
+// when terminal (lost stays lost — getting a reply doesn't
+// auto-reopen a deliberate close).
+// Returns true when a status change was actually written.
+const STATUSES_THAT_ADVANCE_ON_REPLY = new Set(['not_started','first_email','follow_up','no_reply']);
+async function advanceToInConversation(companyId, viaTag){
+  const c = CONTACTS.find(x => x.id === companyId);
+  if(!c) return false;
+  const old = c.status || 'not_started';
+  if(!STATUSES_THAT_ADVANCE_ON_REPLY.has(old)) return false;
+  const supa = getClient();
+  const { error } = await supa.from('outreach_contacts')
+    .update({ status: 'in_conversation' }).eq('id', companyId);
+  if(error){ console.warn('advanceToInConversation failed', error); return false; }
+  c.status = 'in_conversation';
+  await logActivity(companyId, 'status_changed', old, 'in_conversation', { via: viaTag });
+  return true;
+}
+
 async function syncGmailInbox(){
   if(!gmailIsConnected()){ toast('Connect Gmail first'); return; }
   const token = gmailToken();
@@ -1410,13 +1432,19 @@ async function syncGmailInbox(){
     // 5. One bulk insert.
     const { error } = await supa.from('email_messages').insert(inserts);
     if(error){ toast('Sync insert failed: '+error.message); return; }
-    // 6. One replied_marked activity row per touched company so the
-    //    timeline shows the reply landed. Done sequentially so each
-    //    activity insert fires the last_interaction_at trigger.
+    // 6. Per touched company: log replied_marked + advance status to
+    //    in_conversation if currently in an outbound stage (or
+    //    revived from no_reply). Skip rows that are already past
+    //    in_conversation or in a terminal state — receiving a reply
+    //    shouldn't regress meeting/proposal back to in_conversation,
+    //    and shouldn't auto-reopen lost.
+    let advanced = 0;
     for(const companyId of touchedCompanies){
       await logActivity(companyId, 'replied_marked', null, null, { via: 'gmail-sync' });
+      if(await advanceToInConversation(companyId, 'gmail-sync')) advanced++;
     }
-    toast(`Sync complete · ${inserts.length} new repl${inserts.length===1?'y':'ies'} across ${touchedCompanies.size} compan${touchedCompanies.size===1?'y':'ies'}`);
+    const advNote = advanced ? ` · ${advanced} moved to In conversation` : '';
+    toast(`Sync complete · ${inserts.length} new repl${inserts.length===1?'y':'ies'} across ${touchedCompanies.size} compan${touchedCompanies.size===1?'y':'ies'}${advNote}`);
   } catch(err){
     toast('Sync error: ' + err.message);
   } finally {
@@ -3382,11 +3410,15 @@ function activityLabel(a){
 
 document.getElementById('markRepliedBtn').addEventListener('click', async ()=>{
   if(!CURRENT_CONTACT) return;
-  await updateContact(CURRENT_CONTACT.id, { status: 'replied', replied: true });
+  // Old code wrote status:'replied' + replied:true. 'replied' is not
+  // in STATUS_ORDER (the schema's nine canonical statuses), so the
+  // status pill was rendering as a broken s-replied class and the
+  // pipeline funnel never counted these. Fix: log replied_marked
+  // (timeline gets the green tick) + advance status to
+  // in_conversation when appropriate (same rule as Gmail sync).
   await logActivity(CURRENT_CONTACT.id, 'replied_marked', null, null);
-  CURRENT_CONTACT.status = 'replied';
-  CURRENT_CONTACT.replied = true;
-  toast('Marked as replied');
+  const moved = await advanceToInConversation(CURRENT_CONTACT.id, 'manual');
+  toast(moved ? 'Marked as replied · status → In conversation' : 'Marked as replied');
   openContact(CURRENT_CONTACT.id);
   if(CURRENT_TAB==='dashboard') renderDashboard();
   if(CURRENT_TAB==='contacts') renderContacts();
