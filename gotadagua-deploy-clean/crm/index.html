@@ -505,6 +505,13 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
         <div id="stuckList"></div>
       </div>
     </div>
+
+    <div class="dash-row" style="grid-template-columns:1fr">
+      <div class="dash-card">
+        <div class="dash-card-title"><span class="ui-ic lg">__ICN_CALENDAR__</span>  Contracts expiring (next 60 days)</div>
+        <div id="expiringList"></div>
+      </div>
+    </div>
   </div>
 
   <!-- ─── CONTACTS TAB ─── -->
@@ -1948,6 +1955,35 @@ function renderDashboard(){
     }).join('') + (stuck.length>15 ? `<div class="empty-state" style="padding:10px">+ ${stuck.length-15} more</div>` : '') :
       '<div class="empty-state">Nothing stuck — every active deal moved within the last 30 days. 🎉</div>';
     stuckEl.querySelectorAll('.fi-name').forEach(el => el.addEventListener('click', () => openContact(el.dataset.id)));
+
+    // ── Contracts expiring (next 60 days) ─────────────────────────────
+    // Picks any company with a contract_end inside the window, regardless
+    // of whether they're still flagged active_partner — the date is the
+    // truth. Already-expired contracts (end < today) ALSO show, in red,
+    // so the user sees missed renewals. Sorted soonest-first.
+    const cutoffEnd = addDays(today, 60);
+    const expiring = CONTACTS
+      .filter(c => c.contract_end && c.contract_end <= cutoffEnd)
+      .sort((a,b) => a.contract_end.localeCompare(b.contract_end));
+    const expEl = document.getElementById('expiringList');
+    if(expEl){
+      expEl.innerHTML = expiring.length ? expiring.slice(0,15).map(c => {
+        const days = daysBetween(today, c.contract_end);
+        const expired = days < 0;
+        const label = expired
+          ? `<span style="color:var(--red-text);font-weight:700">expired ${Math.abs(days)}d ago</span>`
+          : `<span style="color:${days<=14?'var(--red-text)':'var(--muted)'};font-weight:${days<=14?700:600}">in ${days}d · ${fmtDate(c.contract_end)}</span>`;
+        const comm = c.commission_pct != null ? `<span style="font-size:11px;color:var(--muted);white-space:nowrap;flex-shrink:0">${c.commission_pct}%</span>` : '';
+        return `<div class="followup-item" style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+          <div class="fi-name" data-id="${c.id}" style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(c.company)}</div>
+          ${comm}
+          <div class="fi-due" style="flex-shrink:0;background:${expired?'var(--red-bg)':(days<=14?'#fef0e6':'#eef3f8')};color:${expired?'var(--red-text)':'var(--ink)'}">${label}</div>
+        </div>`;
+      }).join('') + (expiring.length>15 ? `<div class="empty-state" style="padding:10px">+ ${expiring.length-15} more</div>` : '') :
+        '<div class="empty-state">No contracts ending in the next 60 days.</div>';
+      expEl.querySelectorAll('.fi-name').forEach(el => el.addEventListener('click', () => openContact(el.dataset.id)));
+    }
+
     // + Push wiring: update the contact_pipeline row's stage_id to the
     // next non-lost stage and bump entered_stage_at to now() so the
     // "days in stage" counter resets. Row drops off the stuck list on
@@ -2420,6 +2456,27 @@ async function openContact(id){
       <div id="groupsList"></div>
     </div>
 
+    <!-- Contract — auto-shown when this company is an active partner
+         (lifecycle flag OR Account Mgmt assignment). Otherwise hidden
+         since contract fields are noise for prospects. -->
+    <div class="detail-section${shouldShowContractSection(c.id) ? '' : ' hidden'}" id="contractSection">
+      <div class="detail-section-title">Contract</div>
+      <div class="detail-row"><span class="label">Start</span><span class="value">
+        <input type="date" id="contractStartInput" value="${c.contract_start||''}" style="border:1px solid var(--border);border-radius:8px;padding:4px 8px;font:inherit">
+      </span></div>
+      <div class="detail-row"><span class="label">End</span><span class="value">
+        <input type="date" id="contractEndInput" value="${c.contract_end||''}" style="border:1px solid var(--border);border-radius:8px;padding:4px 8px;font:inherit">
+      </span></div>
+      <div class="detail-row"><span class="label">Commission</span><span class="value">
+        <input type="number" id="contractCommissionInput" value="${c.commission_pct??''}" min="0" max="100" step="0.5" placeholder="0" style="width:80px;text-align:right;border:1px solid var(--border);border-radius:8px;padding:4px 8px;font:inherit;font-family:'DM Mono',monospace">
+        <span style="color:var(--muted);margin-left:4px">%</span>
+      </span></div>
+      <div class="detail-row" style="flex-direction:column;align-items:stretch;gap:6px">
+        <span class="label" style="text-align:left">Terms</span>
+        <textarea id="contractTermsInput" class="notes-area" placeholder="Net 30, deposit before season, …">${escHtml(c.contract_terms||'')}</textarea>
+      </div>
+    </div>
+
     <div class="detail-section">
       <div class="detail-section-title">Notes</div>
       <textarea class="notes-area" id="notesArea" placeholder="Add notes…">${escHtml(c.notes||'')}</textarea>
@@ -2468,6 +2525,42 @@ async function openContact(id){
     c.notes = e.target.value;
     toast('Notes saved');
   });
+
+  // Contract fields — save on change/blur, only wired when the
+  // section is actually rendered (hidden for non-partners). Each
+  // mirrors the local CONTACTS row so the dashboard "Contracts
+  // expiring" card updates without waiting for the realtime echo.
+  const contractStart = document.getElementById('contractStartInput');
+  if(contractStart){
+    contractStart.addEventListener('change', async (e) => {
+      const v = e.target.value || null;
+      await updateContact(c.id, { contract_start: v });
+      c.contract_start = v;
+      toast('Contract start saved');
+    });
+    document.getElementById('contractEndInput').addEventListener('change', async (e) => {
+      const v = e.target.value || null;
+      await updateContact(c.id, { contract_end: v });
+      c.contract_end = v;
+      toast('Contract end saved');
+      if(CURRENT_TAB === 'dashboard') renderDashboard();
+    });
+    document.getElementById('contractCommissionInput').addEventListener('blur', async (e) => {
+      const raw = e.target.value.trim();
+      const v = raw === '' ? null : Number(raw);
+      if(v === (c.commission_pct ?? null)) return;
+      await updateContact(c.id, { commission_pct: v });
+      c.commission_pct = v;
+      toast('Commission saved');
+    });
+    document.getElementById('contractTermsInput').addEventListener('blur', async (e) => {
+      if(e.target.value === (c.contract_terms || '')) return;
+      const v = e.target.value || null;
+      await updateContact(c.id, { contract_terms: v });
+      c.contract_terms = v;
+      toast('Terms saved');
+    });
+  }
 
   // Follow-up date
   document.getElementById('followupInput').addEventListener('change', async (e)=>{
@@ -4641,6 +4734,24 @@ let _dragContactId = null;
 // daysInStage is optional — only meaningful in pipeline mode where
 // contact_pipeline.entered_stage_at gives an honest stamp. In legacy
 // status mode it's undefined and the badge stays hidden.
+// A company "is partner-y" if its lifecycle flag says so OR it sits in
+// any non-terminal Account Management stage. Either condition surfaces
+// the Contract subsection in the detail panel — for everyone else
+// contract fields are noise.
+function shouldShowContractSection(companyId){
+  const c = CONTACTS.find(x => x.id === companyId);
+  if(!c) return false;
+  if(c.lifecycle === 'active_partner') return true;
+  const acctMgmt = PIPELINES.find(p => p.key === 'account_mgmt');
+  if(!acctMgmt) return false;
+  const cp = CONTACT_PIPELINE.find(x => x.company_id === companyId && x.pipeline_id === acctMgmt.id);
+  if(!cp) return false;
+  // Hidden if they're in Account Mgmt but already churned — the
+  // contract has ended at that point; archived data is fine to omit.
+  const stage = PIPELINE_STAGES.find(s => s.id === cp.stage_id);
+  return !!(stage && !stage.is_lost);
+}
+
 function pipelineCardHtml(c, daysInStage){
   // How many groups does this partner have, and how many possibilities?
   const groups = GROUPS.filter(g => g.contact_id === c.id);
