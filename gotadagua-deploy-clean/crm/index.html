@@ -1198,6 +1198,7 @@ const GMAIL_AUTHUSER = 'groups@gotadaguasurf.com';
 const GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send';
 const GMAIL_LS_CLIENT_ID = 'crmGmailClientId';
 const GMAIL_LS_TOKEN     = 'crmGmailToken';     // { access_token, expires_at }
+const GMAIL_LS_LAST_SYNC = 'crmGmailLastSync';  // ISO timestamp of last successful syncGmailInbox
 let _gmailTokenClient = null;                   // initialised on demand
 function gmailClientId(){ return localStorage.getItem(GMAIL_LS_CLIENT_ID) || ''; }
 function gmailToken(){
@@ -1220,7 +1221,25 @@ function refreshGmailUi(){
   const connectBtn = document.getElementById('gmailConnectBtn');
   const syncBtn    = document.getElementById('gmailSyncBtn');
   if(connectBtn) connectBtn.style.display = (hasClientId && !connected) ? '' : 'none';
-  if(syncBtn)    syncBtn.style.display    = connected ? '' : 'none';
+  if(syncBtn){
+    syncBtn.style.display = connected ? '' : 'none';
+    // Tag the button with "Xm ago" / "Xh ago" using the last
+    // successful-sync stamp. Pure read of localStorage — re-renders
+    // every time refreshGmailUi runs, which fires after each sync.
+    const last = localStorage.getItem(GMAIL_LS_LAST_SYNC);
+    if(connected && last){
+      const minsAgo = Math.max(0, Math.round((Date.now() - new Date(last).getTime()) / 60000));
+      const label = minsAgo < 1   ? 'just now'
+                  : minsAgo < 60  ? `${minsAgo}m ago`
+                  : minsAgo < 1440 ? `${Math.round(minsAgo/60)}h ago`
+                  : `${Math.round(minsAgo/1440)}d ago`;
+      syncBtn.textContent = `Sync inbox · ${label}`;
+      syncBtn.title = `Last sync: ${new Date(last).toLocaleString('en-GB')}`;
+    } else if(connected){
+      syncBtn.textContent = 'Sync inbox';
+      syncBtn.title = 'Pull new inbound replies from Gmail into the CRM';
+    }
+  }
   const status = document.getElementById('settingsGmailStatus');
   const disconnectBtn = document.getElementById('settingsDisconnectBtn');
   if(status){
@@ -1387,14 +1406,14 @@ async function syncGmailInbox(){
     }
     const listData = await listResp.json();
     const ids = (listData.messages || []).map(m => m.id);
-    if(ids.length === 0){ toast('Sync complete · 0 new replies'); return; }
+    if(ids.length === 0){ localStorage.setItem(GMAIL_LS_LAST_SYNC, new Date().toISOString()); refreshGmailUi(); toast('Sync complete · 0 new replies'); return; }
     // 2. Dedup against existing rows (one query).
     const supa = getClient();
     const { data: existing } = await supa.from('email_messages')
       .select('provider_msg_id').in('provider_msg_id', ids);
     const seenIds = new Set((existing || []).map(r => r.provider_msg_id));
     const newIds = ids.filter(id => !seenIds.has(id));
-    if(newIds.length === 0){ toast(`Sync complete · 0 new (already had ${ids.length})`); return; }
+    if(newIds.length === 0){ localStorage.setItem(GMAIL_LS_LAST_SYNC, new Date().toISOString()); refreshGmailUi(); toast(`Sync complete · 0 new (already had ${ids.length})`); return; }
     // 3. Fetch metadata for each new message in parallel (small N,
     //    no batching needed). format=metadata avoids transferring
     //    the full body, which we'd ignore anyway.
@@ -1428,7 +1447,7 @@ async function syncGmailInbox(){
       });
       touchedCompanies.add(match.companyId);
     });
-    if(inserts.length === 0){ toast(`Sync complete · ${ids.length} fetched, none matched a contact`); return; }
+    if(inserts.length === 0){ localStorage.setItem(GMAIL_LS_LAST_SYNC, new Date().toISOString()); refreshGmailUi(); toast(`Sync complete · ${ids.length} fetched, none matched a contact`); return; }
     // 5. One bulk insert.
     const { error } = await supa.from('email_messages').insert(inserts);
     if(error){ toast('Sync insert failed: '+error.message); return; }
@@ -1445,6 +1464,11 @@ async function syncGmailInbox(){
     }
     const advNote = advanced ? ` · ${advanced} moved to In conversation` : '';
     toast(`Sync complete · ${inserts.length} new repl${inserts.length===1?'y':'ies'} across ${touchedCompanies.size} compan${touchedCompanies.size===1?'y':'ies'}${advNote}`);
+    // Stamp last-successful-sync so the button can render "Xm ago".
+    // Only on a successful (non-throw) path that actually wrote rows
+    // or confirmed 0 new — the failure paths above all return early.
+    localStorage.setItem(GMAIL_LS_LAST_SYNC, new Date().toISOString());
+    refreshGmailUi();
   } catch(err){
     toast('Sync error: ' + err.message);
   } finally {
@@ -2111,12 +2135,38 @@ async function loadTemplates(){
   TEMPLATES = data;
 }
 
+// Merged timeline: outreach_activity rows + email_messages rows
+// (mostly inbound replies pulled by the Gmail sync) interleaved by
+// timestamp. Email rows get a synthetic action='email_inbound' or
+// 'email_outbound' so activityLabel renders them with the subject +
+// snippet inline, not just "Marked as replied".
 async function loadActivity(contactId){
   const c = getClient();
-  const { data, error } = await c.from('outreach_activity')
-    .select('*').eq('contact_id', contactId).order('created_at', { ascending: false }).limit(50);
-  if(error) return [];
-  return data;
+  const [actR, emailR] = await Promise.all([
+    c.from('outreach_activity').select('*').eq('contact_id', contactId)
+      .order('created_at', { ascending: false }).limit(50),
+    c.from('email_messages').select('*').eq('company_id', contactId)
+      .order('sent_at', { ascending: false, nullsFirst: false }).limit(50),
+  ]);
+  if(actR.error) return [];
+  const activity = actR.data || [];
+  // Map every email row into the same shape as an activity row so
+  // the renderer doesn't have to branch on source. created_at uses
+  // sent_at (real send time) falling back to created_at (when we
+  // inserted the row) so old emails with no sent_at don't fall to
+  // the bottom.
+  const emails = (emailR.data || []).map(m => ({
+    id:          `em_${m.id}`,        // distinct id so the delete handler can't collide
+    contact_id:  m.company_id,
+    action:      m.direction === 'inbound' ? 'email_inbound' : 'email_outbound',
+    old_value:   null,
+    new_value:   null,
+    meta:        { subject: m.subject, from: m.from_addr, snippet: m.body, thread_id: m.thread_id },
+    created_at:  m.sent_at || m.created_at,
+    created_by:  m.direction === 'inbound' ? (m.from_addr || null) : null,
+    _email:      true,                  // flag so the renderer knows not to show the delete button
+  }));
+  return [...activity, ...emails].sort((a,b) => (b.created_at||'').localeCompare(a.created_at||''));
 }
 
 async function logActivity(contactId, action, oldVal, newVal, meta){
@@ -3192,8 +3242,13 @@ async function openContact(id){
           // data-blob is a flattened searchable string used by the
           // inline activity filter input above; case-insensitive
           // substring match.
-          const blob = `${label.replace(/<[^>]+>/g, '')} ${a.meta?.note||''} ${a.meta?.template_name||''} ${a.meta?.subject||''} ${a.meta?.title||''} ${a.created_by||''}`.toLowerCase();
-          return `<div class="activity-item ${a.action}" data-act-blob="${escAttr(blob)}" style="position:relative;padding-right:34px"><button type="button" class="activity-del" data-act="${a.id}" aria-label="Delete this activity" title="Delete activity" style="position:absolute;top:6px;right:6px;width:22px;height:22px;border:none;background:transparent;color:var(--muted);border-radius:6px;cursor:pointer;font-size:14px;line-height:1;display:flex;align-items:center;justify-content:center;transition:background .15s,color .15s">×</button><div class="activity-action">${label}</div>${a.meta?.note?`<div class="activity-meta">${escHtml(a.meta.note)}</div>`:''}<div class="activity-time">${fmtDateTime(a.created_at)}${a.created_by?' · '+escHtml(a.created_by):''}</div></div>`;
+          const blob = `${label.replace(/<[^>]+>/g, '')} ${a.meta?.note||''} ${a.meta?.template_name||''} ${a.meta?.subject||''} ${a.meta?.snippet||''} ${a.meta?.from||''} ${a.meta?.title||''} ${a.created_by||''}`.toLowerCase();
+          // Email rows live in email_messages (not outreach_activity)
+          // so the existing delete-by-id handler can't address them.
+          // Hide the × button on those; users can still archive in
+          // Gmail itself if needed.
+          const delBtn = a._email ? '' : `<button type="button" class="activity-del" data-act="${a.id}" aria-label="Delete this activity" title="Delete activity" style="position:absolute;top:6px;right:6px;width:22px;height:22px;border:none;background:transparent;color:var(--muted);border-radius:6px;cursor:pointer;font-size:14px;line-height:1;display:flex;align-items:center;justify-content:center;transition:background .15s,color .15s">×</button>`;
+          return `<div class="activity-item ${a.action}" data-act-blob="${escAttr(blob)}" style="position:relative;padding-right:34px">${delBtn}<div class="activity-action">${label}</div>${a.meta?.note?`<div class="activity-meta">${escHtml(a.meta.note)}</div>`:''}<div class="activity-time">${fmtDateTime(a.created_at)}${a.created_by?' · '+escHtml(a.created_by):''}</div></div>`;
         }).join('') : '<div class="empty-state" style="padding:12px;text-align:left">No activity yet.</div>'}
       </div>
     </div>
@@ -3398,6 +3453,16 @@ function activityLabel(a){
     case 'status_changed': return `Status: ${STATUS_LABELS[a.old_value]||a.old_value||'—'} → ${STATUS_LABELS[a.new_value]||a.new_value||'—'}`;
     case 'email_sent': return `${uiIcon('mail')} Sent "${a.meta?.template_name||'email'}"`;
     case 'replied_marked': return `${uiIcon('check')} Marked as replied`;
+    case 'email_inbound': {
+      const subj = a.meta?.subject || '(no subject)';
+      const from = a.meta?.from ? ` · <span style="color:var(--muted);font-weight:400">from ${escHtml(a.meta.from)}</span>` : '';
+      const snip = a.meta?.snippet ? `<div class="activity-meta" style="margin-top:4px;color:var(--muted);font-size:11.5px;font-style:italic">${escHtml(String(a.meta.snippet).slice(0,180))}${(a.meta.snippet||'').length > 180 ? '…' : ''}</div>` : '';
+      return `${uiIcon('mail')} <b>Reply received:</b> "${escHtml(subj)}"${from}${snip}`;
+    }
+    case 'email_outbound': {
+      const subj = a.meta?.subject || '(no subject)';
+      return `${uiIcon('mail')} Sent: "${escHtml(subj)}"`;
+    }
     case 'follow_up_set': return `${uiIcon('calendar')} Follow-up: ${a.new_value||'cleared'}`;
     case 'note_added': return `${uiIcon('note')} Note added`;
     case 'imported': return `Imported from xlsx`;
