@@ -1701,9 +1701,52 @@ function renderDashboard(){
   coldEl.innerHTML = cold.length ? cold.slice(0,20).map(c=>{
     const days = daysBetween(c.last_interaction_at.slice(0,10), today);
     const isPartner = c.status === 'active_partner';
-    return `<div class="followup-item" style="display:flex;justify-content:space-between;align-items:center;gap:10px"><div class="fi-name" data-id="${c.id}" style="flex:1">${escHtml(c.company)}</div><span class="status-pill s-${c.status}" style="font-size:10px;padding:2px 8px;flex-shrink:0">${STATUS_LABELS[c.status]||c.status}</span><div class="fi-due ${isPartner?'overdue':''}" style="flex-shrink:0">${days}d cold</div></div>`;
+    // "+ Re-engage" inline button — creates a follow-up task due
+    // tomorrow titled "Re-engage [company]". The same trigger that
+    // bumped last_interaction_at when the task lands removes the row
+    // from this list automatically on the next render.
+    return `<div class="followup-item" style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+      <div class="fi-name" data-id="${c.id}" style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(c.company)}</div>
+      <span class="status-pill s-${c.status}" style="font-size:10px;padding:2px 8px;flex-shrink:0">${STATUS_LABELS[c.status]||c.status}</span>
+      <div class="fi-due ${isPartner?'overdue':''}" style="flex-shrink:0">${days}d cold</div>
+      <button data-reengage-id="${c.id}" title="Add a 'Re-engage' task due tomorrow" style="background:transparent;color:var(--ocean);border:1px solid var(--ocean);border-radius:6px;padding:3px 9px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;white-space:nowrap;flex-shrink:0">+ Re-engage</button>
+    </div>`;
   }).join('') + (cold.length>20 ? `<div class="empty-state" style="padding:10px">+ ${cold.length-20} more</div>` : '') : '<div class="empty-state">No cold accounts — every active deal had movement in the last 60 days. 🎉</div>';
   coldEl.querySelectorAll('.fi-name').forEach(el=>el.addEventListener('click', ()=>openContact(el.dataset.id)));
+  coldEl.querySelectorAll('[data-reengage-id]').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const companyId = btn.dataset.reengageId;
+      const company = CONTACTS.find(x => x.id === companyId);
+      // Disable the button immediately to prevent double-clicks.
+      btn.disabled = true; btn.style.opacity = '.5'; btn.textContent = '…';
+      const tomorrow = addDays(today, 1);
+      const payload = {
+        company_id: companyId,
+        title: `Re-engage ${company?.company || ''}`.trim(),
+        type:  'follow_up',
+        due_at: new Date(tomorrow + 'T00:00:00Z').toISOString(),
+        notes: null,
+      };
+      const supa = getClient();
+      const { data, error } = await supa.from('tasks').insert(payload).select().single();
+      if(error){
+        toast('Re-engage task failed: '+error.message);
+        btn.disabled = false; btn.style.opacity = ''; btn.textContent = '+ Re-engage';
+        return;
+      }
+      TASKS.push(data);
+      // The DB trigger just bumped last_interaction_at to now() on the
+      // parent row, but the realtime channel won't echo that back for
+      // ~250ms. Mirror it locally so the synchronous re-render below
+      // already drops the row from the cold list — no awkward delay
+      // between click and row disappearing.
+      if(company) company.last_interaction_at = new Date().toISOString();
+      toast(`Re-engage scheduled for ${fmtDate(tomorrow)} · ${company?.company || ''}`);
+      renderDashboard();
+      updateNavTasksCount();
+    });
+  });
 }
 
 function addDays(iso, n){
