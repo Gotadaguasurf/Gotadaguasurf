@@ -1668,9 +1668,53 @@ function renderDashboard(){
   const nEl = document.getElementById('noReplyList');
   nEl.innerHTML = stale.length ? stale.slice(0,15).map(c=>{
     const days = daysBetween(c.last_contacted_at.slice(0,10), today);
-    return `<div class="followup-item"><div class="fi-name" data-id="${c.id}">${escHtml(c.company)}</div><div class="fi-due overdue">${days}d silent</div></div>`;
+    return `<div class="followup-item" style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+      <div class="fi-name" data-id="${c.id}" style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(c.company)}</div>
+      <div class="fi-due overdue" style="flex-shrink:0">${days}d silent</div>
+      <button data-followup-id="${c.id}" title="Add a 'Follow up' task due tomorrow" style="background:transparent;color:var(--ocean);border:1px solid var(--ocean);border-radius:6px;padding:3px 9px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;white-space:nowrap;flex-shrink:0">+ Follow-up</button>
+    </div>`;
   }).join('') + (stale.length>15 ? `<div class="empty-state" style="padding:10px">+ ${stale.length-15} more</div>` : '') : '<div class="empty-state">All sent emails within the 14-day window. 🎉</div>';
   nEl.querySelectorAll('.fi-name').forEach(el=>el.addEventListener('click', ()=>openContact(el.dataset.id)));
+  // + Follow-up: identical flow to the cold-accounts re-engage, but
+  // the trigger here is "they didn't reply to OUR outbound", so the
+  // task title reflects that. last_contacted_at is unchanged on
+  // purpose — we still HAVEN'T sent another email; once we do, the
+  // existing compose flow updates it. The follow-up task just lands
+  // on tomorrow's to-do list.
+  nEl.querySelectorAll('[data-followup-id]').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const companyId = btn.dataset.followupId;
+      const company = CONTACTS.find(x => x.id === companyId);
+      btn.disabled = true; btn.style.opacity = '.5'; btn.textContent = '…';
+      const tomorrow = addDays(today, 1);
+      const payload = {
+        company_id: companyId,
+        title: `Follow up with ${company?.company || ''}`.trim(),
+        type:  'follow_up',
+        due_at: new Date(tomorrow + 'T00:00:00Z').toISOString(),
+        notes: null,
+      };
+      const supa = getClient();
+      const { data, error } = await supa.from('tasks').insert(payload).select().single();
+      if(error){
+        toast('Follow-up task failed: '+error.message);
+        btn.disabled = false; btn.style.opacity = ''; btn.textContent = '+ Follow-up';
+        return;
+      }
+      TASKS.push(data);
+      // Local mirror of last_interaction_at — task insert bumps it
+      // via trigger; reflect immediately so other dashboard cards
+      // (Cold accounts) stay consistent without waiting for realtime.
+      if(company) company.last_interaction_at = new Date().toISOString();
+      toast(`Follow-up scheduled for ${fmtDate(tomorrow)} · ${company?.company || ''}`);
+      // Card stays as-is on purpose — the company is still "no reply"
+      // until WE send the next email. Other cards (Cold, hero, nav)
+      // refresh via the broader renderDashboard + updateNavTasksCount.
+      renderDashboard();
+      updateNavTasksCount();
+    });
+  });
 
   // ── Recently closed ──────────────────────────────────────────────────
   const cutoff30 = addDays(today, -30);
