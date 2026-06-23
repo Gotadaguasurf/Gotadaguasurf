@@ -521,6 +521,7 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
         <button class="header-btn primary" id="addContactBtn" style="background:var(--navy);border:none;color:#fff">+ New contact</button>
         <button class="header-btn" id="importCsvBtn" style="background:transparent;color:var(--navy);border:1.5px solid var(--border)"><span class="ui-ic">__ICN_DOWNLOAD__</span> Import CSV</button>
+        <button class="header-btn" id="exportContactsBtn" title="Download the current filtered list as CSV" style="background:transparent;color:var(--ocean);border:1.5px solid var(--ocean)">Export CSV</button>
         <select id="savedViewSelect" class="filter-select" style="min-width:180px">
           <option value="">— Saved views —</option>
         </select>
@@ -3475,6 +3476,7 @@ function closeAddContact(){
   document.getElementById('addContactModal').classList.remove('open');
 }
 document.getElementById('addContactBtn').addEventListener('click', openAddContact);
+document.getElementById('exportContactsBtn').addEventListener('click', exportContactsCsv);
 document.getElementById('addContactClose').addEventListener('click', closeAddContact);
 document.getElementById('addContactCancel').addEventListener('click', closeAddContact);
 
@@ -3996,6 +3998,71 @@ async function quickAddTask(companyId, preset){
   updateNavTasksCount();
   if(CURRENT_TAB === 'dashboard') renderDashboard();
   if(CURRENT_TAB === 'tasks') renderTasksTab();
+}
+
+// Contacts-tab CSV export. Replicates the same filter chain that
+// renderContacts applies — preset + status + country + segment +
+// search text — so the export always matches what's on screen.
+function exportContactsCsv(){
+  const today = new Date().toISOString().slice(0,10);
+  const fStat = document.getElementById('filterStatus').value;
+  const fCty  = document.getElementById('filterCountry').value;
+  const fSeg  = document.getElementById('filterSegment').value;
+  const fQ    = document.getElementById('filterSearch').value.toLowerCase().trim();
+  const rows = CONTACTS.filter(c => {
+    if(!matchesPreset(c, CURRENT_PRESET, today)) return false;
+    if(fStat && c.status !== fStat) return false;
+    if(fCty && primaryCountry(c.country) !== fCty) return false;
+    if(fSeg && c.segment !== fSeg) return false;
+    if(fQ){
+      const blob = `${c.company||''} ${c.city||''} ${c.email||''} ${c.notes||''}`.toLowerCase();
+      if(!blob.includes(fQ)) return false;
+    }
+    return true;
+  });
+  if(rows.length === 0){ toast('Nothing to export — current filter is empty'); return; }
+  const esc = (v) => {
+    if(v == null) return '""';
+    const s = String(v).replace(/"/g, '""').replace(/\r?\n/g, ' ');
+    return `"${s}"`;
+  };
+  const header = ['Company','Status','Segment','Country','City','Email','Phone','Website','Language','Last contacted','Last interaction','Follow-up','Deal value','Probability','Lifecycle','Contract end','Commission %','Notes'];
+  const lines = [header.map(esc).join(',')];
+  rows.forEach(c => {
+    lines.push([
+      c.company || '',
+      STATUS_LABELS[c.status] || c.status || '',
+      c.segment || '',
+      c.country || '',
+      c.city || '',
+      c.email || '',
+      c.phone || '',
+      c.website || '',
+      c.language || '',
+      c.last_contacted_at ? c.last_contacted_at.slice(0,10) : '',
+      c.last_interaction_at ? c.last_interaction_at.slice(0,10) : '',
+      c.follow_up_at || '',
+      c.deal_value ?? '',
+      c.probability ?? '',
+      c.lifecycle || '',
+      c.contract_end || '',
+      c.commission_pct ?? '',
+      c.notes || '',
+    ].map(esc).join(','));
+  });
+  const csv = '﻿' + lines.join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = new Date().toISOString().slice(0,10);
+  const slug = CURRENT_PRESET !== 'all' ? `-${CURRENT_PRESET}` : '';
+  a.href = url;
+  a.download = `crm-contacts${slug}-${stamp}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  toast(`Exported ${rows.length} contact${rows.length===1?'':'s'}`);
 }
 
 // Computes the same filtered + sorted set as renderTasksTab and
