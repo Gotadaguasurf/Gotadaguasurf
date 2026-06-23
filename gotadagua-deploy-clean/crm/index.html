@@ -1198,6 +1198,7 @@ const GMAIL_AUTHUSER = 'groups@gotadaguasurf.com';
 const GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send';
 const GMAIL_LS_CLIENT_ID = 'crmGmailClientId';
 const GMAIL_LS_TOKEN     = 'crmGmailToken';     // { access_token, expires_at }
+const GMAIL_LS_LAST_SYNC = 'crmGmailLastSync';  // ISO timestamp of last successful syncGmailInbox
 let _gmailTokenClient = null;                   // initialised on demand
 function gmailClientId(){ return localStorage.getItem(GMAIL_LS_CLIENT_ID) || ''; }
 function gmailToken(){
@@ -1220,7 +1221,25 @@ function refreshGmailUi(){
   const connectBtn = document.getElementById('gmailConnectBtn');
   const syncBtn    = document.getElementById('gmailSyncBtn');
   if(connectBtn) connectBtn.style.display = (hasClientId && !connected) ? '' : 'none';
-  if(syncBtn)    syncBtn.style.display    = connected ? '' : 'none';
+  if(syncBtn){
+    syncBtn.style.display = connected ? '' : 'none';
+    // Tag the button with "Xm ago" / "Xh ago" using the last
+    // successful-sync stamp. Pure read of localStorage — re-renders
+    // every time refreshGmailUi runs, which fires after each sync.
+    const last = localStorage.getItem(GMAIL_LS_LAST_SYNC);
+    if(connected && last){
+      const minsAgo = Math.max(0, Math.round((Date.now() - new Date(last).getTime()) / 60000));
+      const label = minsAgo < 1   ? 'just now'
+                  : minsAgo < 60  ? `${minsAgo}m ago`
+                  : minsAgo < 1440 ? `${Math.round(minsAgo/60)}h ago`
+                  : `${Math.round(minsAgo/1440)}d ago`;
+      syncBtn.textContent = `Sync inbox · ${label}`;
+      syncBtn.title = `Last sync: ${new Date(last).toLocaleString('en-GB')}`;
+    } else if(connected){
+      syncBtn.textContent = 'Sync inbox';
+      syncBtn.title = 'Pull new inbound replies from Gmail into the CRM';
+    }
+  }
   const status = document.getElementById('settingsGmailStatus');
   const disconnectBtn = document.getElementById('settingsDisconnectBtn');
   if(status){
@@ -1387,14 +1406,14 @@ async function syncGmailInbox(){
     }
     const listData = await listResp.json();
     const ids = (listData.messages || []).map(m => m.id);
-    if(ids.length === 0){ toast('Sync complete · 0 new replies'); return; }
+    if(ids.length === 0){ localStorage.setItem(GMAIL_LS_LAST_SYNC, new Date().toISOString()); refreshGmailUi(); toast('Sync complete · 0 new replies'); return; }
     // 2. Dedup against existing rows (one query).
     const supa = getClient();
     const { data: existing } = await supa.from('email_messages')
       .select('provider_msg_id').in('provider_msg_id', ids);
     const seenIds = new Set((existing || []).map(r => r.provider_msg_id));
     const newIds = ids.filter(id => !seenIds.has(id));
-    if(newIds.length === 0){ toast(`Sync complete · 0 new (already had ${ids.length})`); return; }
+    if(newIds.length === 0){ localStorage.setItem(GMAIL_LS_LAST_SYNC, new Date().toISOString()); refreshGmailUi(); toast(`Sync complete · 0 new (already had ${ids.length})`); return; }
     // 3. Fetch metadata for each new message in parallel (small N,
     //    no batching needed). format=metadata avoids transferring
     //    the full body, which we'd ignore anyway.
@@ -1428,7 +1447,7 @@ async function syncGmailInbox(){
       });
       touchedCompanies.add(match.companyId);
     });
-    if(inserts.length === 0){ toast(`Sync complete · ${ids.length} fetched, none matched a contact`); return; }
+    if(inserts.length === 0){ localStorage.setItem(GMAIL_LS_LAST_SYNC, new Date().toISOString()); refreshGmailUi(); toast(`Sync complete · ${ids.length} fetched, none matched a contact`); return; }
     // 5. One bulk insert.
     const { error } = await supa.from('email_messages').insert(inserts);
     if(error){ toast('Sync insert failed: '+error.message); return; }
@@ -1445,6 +1464,11 @@ async function syncGmailInbox(){
     }
     const advNote = advanced ? ` · ${advanced} moved to In conversation` : '';
     toast(`Sync complete · ${inserts.length} new repl${inserts.length===1?'y':'ies'} across ${touchedCompanies.size} compan${touchedCompanies.size===1?'y':'ies'}${advNote}`);
+    // Stamp last-successful-sync so the button can render "Xm ago".
+    // Only on a successful (non-throw) path that actually wrote rows
+    // or confirmed 0 new — the failure paths above all return early.
+    localStorage.setItem(GMAIL_LS_LAST_SYNC, new Date().toISOString());
+    refreshGmailUi();
   } catch(err){
     toast('Sync error: ' + err.message);
   } finally {
