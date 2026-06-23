@@ -1025,9 +1025,12 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
         <label style="display:flex;justify-content:space-between;align-items:center"><span>Recipients</span><span id="batchRecipientCount" style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);font-weight:600"></span></label>
         <div id="batchRecipientList" style="max-height:240px;overflow:auto;border:1px solid var(--border);border-radius:8px"></div>
       </div>
-      <div class="editor-hint" style="display:flex;justify-content:space-between;align-items:center;gap:10px">
-        <span>Throttle: <b>1 email / sec</b> to avoid spam filters. Per-message status updates below as each lands.</span>
-        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap"><input type="checkbox" id="batchDryRun" style="accent-color:var(--ocean)"> Dry-run (don't actually send)</label>
+      <div class="editor-hint" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <span>Throttle: <b>1 email / sec</b> to avoid spam filters.</span>
+        <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap"><input type="checkbox" id="batchSkipRecent" checked style="accent-color:var(--ocean)"> Skip if contacted &lt; 24h</label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap"><input type="checkbox" id="batchDryRun" style="accent-color:var(--ocean)"> Dry-run (don't actually send)</label>
+        </div>
       </div>
     </div>
     <div class="compose-footer">
@@ -1199,6 +1202,38 @@ const GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly https://www.
 const GMAIL_LS_CLIENT_ID = 'crmGmailClientId';
 const GMAIL_LS_TOKEN     = 'crmGmailToken';     // { access_token, expires_at }
 const GMAIL_LS_LAST_SYNC = 'crmGmailLastSync';  // ISO timestamp of last successful syncGmailInbox
+// Background poll cadence. 10 min is below the Gmail API per-user
+// rate cap (~1 quota unit per call, 250 units/sec/user budget) by
+// many orders of magnitude. Larger interval would feel stale; smaller
+// burns through quota for no real-time benefit.
+const GMAIL_POLL_MS = 10 * 60 * 1000;
+let _gmailPollTimer = null;
+
+// Starts (or restarts) the background poll. Pauses automatically when
+// the tab is hidden so we don't burn Gmail quota while the user is
+// elsewhere — comes back the moment they return.
+function startGmailAutoPoll(){
+  stopGmailAutoPoll();
+  if(!gmailIsConnected()) return;
+  _gmailPollTimer = setInterval(() => {
+    if(document.hidden) return;
+    if(!gmailIsConnected()){ stopGmailAutoPoll(); return; }
+    // Fire and forget — errors surface via the per-sync toast logic
+    // when it's a real failure (401, etc.).
+    syncGmailInbox({ silent: true });
+  }, GMAIL_POLL_MS);
+}
+function stopGmailAutoPoll(){
+  if(_gmailPollTimer){ clearInterval(_gmailPollTimer); _gmailPollTimer = null; }
+}
+// Resume on tab focus so a long-idle tab doesn't wait the full
+// interval after the user comes back.
+document.addEventListener('visibilitychange', () => {
+  if(!document.hidden && gmailIsConnected()){
+    const last = Number(localStorage.getItem(GMAIL_LS_LAST_SYNC) ? new Date(localStorage.getItem(GMAIL_LS_LAST_SYNC)).getTime() : 0);
+    if(Date.now() - last > GMAIL_POLL_MS) syncGmailInbox({ silent: true });
+  }
+});
 let _gmailTokenClient = null;                   // initialised on demand
 function gmailClientId(){ return localStorage.getItem(GMAIL_LS_CLIENT_ID) || ''; }
 function gmailToken(){
@@ -1281,6 +1316,7 @@ function ensureGmailTokenClient(){
       }));
       toast('Gmail connected');
       refreshGmailUi();
+      startGmailAutoPoll();
     },
   });
   return _gmailTokenClient;
@@ -1295,6 +1331,7 @@ function connectGmail(){
 }
 
 function disconnectGmail(){
+  stopGmailAutoPoll();
   localStorage.removeItem(GMAIL_LS_TOKEN);
   // Best-effort revoke server-side so the token can't be replayed.
   const t = gmailToken() || JSON.parse(localStorage.getItem(GMAIL_LS_TOKEN) || 'null');
@@ -1387,13 +1424,18 @@ async function advanceToInConversation(companyId, viaTag){
   return true;
 }
 
-async function syncGmailInbox(){
-  if(!gmailIsConnected()){ toast('Connect Gmail first'); return; }
+async function syncGmailInbox(opts = {}){
+  const silent = !!opts.silent;
+  // Silent mode: toast only on errors and on "new replies actually
+  // landed" events. Zero-result polls stay quiet so the user isn't
+  // pinged every 10 minutes for nothing.
+  const t = (msg) => { if(!silent) toast(msg); };
+  if(!gmailIsConnected()){ t('Connect Gmail first'); return; }
   const token = gmailToken();
   const query = buildGmailSyncQuery(7);
-  if(!query){ toast('No CRM contacts have emails to match against'); return; }
+  if(!query){ t('No CRM contacts have emails to match against'); return; }
   const syncBtn = document.getElementById('gmailSyncBtn');
-  if(syncBtn){ syncBtn.disabled = true; syncBtn.textContent = 'Syncing…'; }
+  if(syncBtn && !silent){ syncBtn.disabled = true; syncBtn.textContent = 'Syncing…'; }
   try {
     // 1. List candidate message ids.
     const listResp = await fetch(
@@ -1406,14 +1448,14 @@ async function syncGmailInbox(){
     }
     const listData = await listResp.json();
     const ids = (listData.messages || []).map(m => m.id);
-    if(ids.length === 0){ localStorage.setItem(GMAIL_LS_LAST_SYNC, new Date().toISOString()); refreshGmailUi(); toast('Sync complete · 0 new replies'); return; }
+    if(ids.length === 0){ localStorage.setItem(GMAIL_LS_LAST_SYNC, new Date().toISOString()); refreshGmailUi(); t('Sync complete · 0 new replies'); return; }
     // 2. Dedup against existing rows (one query).
     const supa = getClient();
     const { data: existing } = await supa.from('email_messages')
       .select('provider_msg_id').in('provider_msg_id', ids);
     const seenIds = new Set((existing || []).map(r => r.provider_msg_id));
     const newIds = ids.filter(id => !seenIds.has(id));
-    if(newIds.length === 0){ localStorage.setItem(GMAIL_LS_LAST_SYNC, new Date().toISOString()); refreshGmailUi(); toast(`Sync complete · 0 new (already had ${ids.length})`); return; }
+    if(newIds.length === 0){ localStorage.setItem(GMAIL_LS_LAST_SYNC, new Date().toISOString()); refreshGmailUi(); t(`Sync complete · 0 new (already had ${ids.length})`); return; }
     // 3. Fetch metadata for each new message in parallel (small N,
     //    no batching needed). format=metadata avoids transferring
     //    the full body, which we'd ignore anyway.
@@ -1447,7 +1489,7 @@ async function syncGmailInbox(){
       });
       touchedCompanies.add(match.companyId);
     });
-    if(inserts.length === 0){ localStorage.setItem(GMAIL_LS_LAST_SYNC, new Date().toISOString()); refreshGmailUi(); toast(`Sync complete · ${ids.length} fetched, none matched a contact`); return; }
+    if(inserts.length === 0){ localStorage.setItem(GMAIL_LS_LAST_SYNC, new Date().toISOString()); refreshGmailUi(); t(`Sync complete · ${ids.length} fetched, none matched a contact`); return; }
     // 5. One bulk insert.
     const { error } = await supa.from('email_messages').insert(inserts);
     if(error){ toast('Sync insert failed: '+error.message); return; }
@@ -1470,9 +1512,11 @@ async function syncGmailInbox(){
     localStorage.setItem(GMAIL_LS_LAST_SYNC, new Date().toISOString());
     refreshGmailUi();
   } catch(err){
-    toast('Sync error: ' + err.message);
+    toast('Sync error: ' + err.message);  // errors always loud
   } finally {
-    if(syncBtn){ syncBtn.disabled = false; syncBtn.textContent = 'Sync inbox'; }
+    // Only restore the button if we changed it; refreshGmailUi will
+    // re-render the "Xm ago" label from the freshly-stamped LS key.
+    if(syncBtn && !silent){ syncBtn.disabled = false; refreshGmailUi(); }
   }
 }
 
@@ -1539,16 +1583,27 @@ function openBatchSendModal(){
   if(!gmailIsConnected()){ toast('Connect Gmail first (⚙ → Connect Gmail)'); return; }
   // Refresh PEOPLE in case primary picks updated since last render.
   const ids = Array.from(SELECTED);
+  // Skip-recent default: if last_contacted_at is within 24h, the row
+  // starts unticked. User can still tick manually to override. Toggle
+  // also re-applies via batchApplySkipRecent (wired below).
+  const skipRecentMs = 24 * 60 * 60 * 1000;
+  const nowMs = Date.now();
   BATCH_STATE.recipients = ids
     .map(id => CONTACTS.find(c => c.id === id))
     .filter(Boolean)
-    .map(c => ({
-      contact: c,
-      email: recipientEmailFor(c),
-      include: !!recipientEmailFor(c),  // skipped by default when no email
-      status: 'pending',                 // pending → sending → sent → failed
-      message: '',
-    }));
+    .map(c => {
+      const email = recipientEmailFor(c);
+      const lastMs = c.last_contacted_at ? new Date(c.last_contacted_at).getTime() : 0;
+      const recentlyContacted = lastMs && (nowMs - lastMs) < skipRecentMs;
+      return {
+        contact: c,
+        email,
+        include: !!email && !recentlyContacted,
+        recentlyContacted,
+        status: 'pending',                 // pending → sending → sent → failed
+        message: '',
+      };
+    });
   const withoutEmail = BATCH_STATE.recipients.filter(r => !r.email).length;
   if(BATCH_STATE.recipients.length - withoutEmail === 0){
     toast('None of the selected contacts have an email');
@@ -1603,6 +1658,12 @@ function renderBatchRecipientList(){
       if(r.status === 'sending') return `<span style="color:var(--ocean);font-size:11px;font-weight:700">sending…</span>`;
       if(r.status === 'sent')    return `<span style="color:var(--green-text);background:var(--green-bg);padding:2px 7px;border-radius:6px;font-size:11px;font-weight:700">sent</span>`;
       if(r.status === 'failed')  return `<span style="color:var(--red-text);background:var(--red-bg);padding:2px 7px;border-radius:6px;font-size:11px;font-weight:700" title="${escAttr(r.message||'')}">failed</span>`;
+      // Show the recently-contacted hint when the row would normally
+      // be skipped by the toggle but the user hasn't actively
+      // included it. Doesn't fire on rows the user explicitly ticked
+      // back on (include === true and recentlyContacted is just
+      // informational then).
+      if(r.recentlyContacted && !r.include) return `<span title="last_contacted_at is within 24h" style="color:var(--amber-text);background:var(--amber-bg);padding:2px 7px;border-radius:6px;font-size:11px;font-weight:700">recent</span>`;
       return '';
     })();
     const border = i === list.length-1 ? '' : 'border-bottom:1px solid var(--border)';
@@ -1697,6 +1758,21 @@ document.getElementById('batchSendClose').addEventListener('click', closeBatchSe
 document.getElementById('batchSendCancel').addEventListener('click', closeBatchSendModal);
 document.getElementById('batchSendStart').addEventListener('click', runBatchSend);
 document.getElementById('batchTemplate').addEventListener('change', refreshBatchPreview);
+// Re-apply the skip-recent rule when the toggle flips. Off → tick
+// every row that has an email (ignore the recent flag). On → untick
+// every recently-contacted row. Doesn't override the user's manual
+// include of a "recent" row in the same modal session — once they
+// explicitly say "yes include this", flipping the toggle off and
+// back on respects that.
+document.getElementById('batchSkipRecent').addEventListener('change', (e) => {
+  const skip = e.target.checked;
+  BATCH_STATE.recipients.forEach(r => {
+    if(!r.email) return;
+    r.include = skip ? !r.recentlyContacted : true;
+  });
+  renderBatchRecipientList();
+  refreshBatchPreview();
+});
 
 // Wire the header buttons + Settings modal once at script-load time.
 document.getElementById('gmailConnectBtn').addEventListener('click', connectGmail);
@@ -1718,8 +1794,11 @@ document.getElementById('settingsSaveBtn').addEventListener('click', () => {
 });
 document.getElementById('settingsDisconnectBtn').addEventListener('click', disconnectGmail);
 // First render after the buttons exist — sets visibility from
-// whatever's in localStorage.
+// whatever's in localStorage. Also kicks off the background poll
+// when the page loads with an already-valid token (page reload
+// shouldn't have to re-click Connect to resume auto-sync).
 refreshGmailUi();
+if(gmailIsConnected()) startGmailAutoPoll();
 let SAVED_VIEWS = [];
 let CURRENT_CONTACT = null;
 let CURRENT_TEMPLATE = null;
@@ -1978,6 +2057,18 @@ function subscribeRealtime(){
       const companyId = nw?.company_id || ol?.company_id;
       if(CURRENT_CONTACT?.id === companyId) renderPipelinesSection(companyId);
       if(CURRENT_TAB === 'pipeline' && CURRENT_PIPELINE_VIEW !== 'status') renderPipeline();
+    })
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'email_messages' }, (payload)=>{
+      // Auto-poll inserts inbound replies into email_messages. When
+      // a row lands for the company currently open in the detail
+      // panel, refresh the activity log so the new reply renders
+      // inline without a manual reload. Other tabs (dashboard /
+      // contacts) re-render via scheduleRtRender below.
+      const companyId = payload.new?.company_id;
+      if(companyId && CURRENT_CONTACT?.id === companyId){
+        scheduleRtPanelRefresh(companyId);
+      }
+      scheduleRtRender();
     })
     .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, (payload)=>{
       const { eventType, new: nw, old: ol } = payload;
