@@ -644,6 +644,7 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
       <select id="pipelineFilterSegment" style="border:1px solid var(--border);border-radius:8px;padding:7px 10px;font:inherit;font-size:13px">
         <option value="">All segments</option>
       </select>
+      <button id="pipelineFilterStuck" type="button" title="Show only cards 30+ days in current stage (pipeline mode)" style="background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:999px;padding:7px 12px;font:inherit;font-size:12px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">Stuck only</button>
       <button id="pipelineFilterClear" type="button" style="background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font:inherit;font-size:12px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif">Clear</button>
       <div id="pipelineFilterCount" style="margin-left:auto;font-family:'DM Mono',monospace;font-size:12px;color:var(--muted)"></div>
     </div>
@@ -1100,7 +1101,7 @@ let CONTACT_PIPELINE = [];   // contact_pipeline table — company ↔ pipeline 
 let CURRENT_PIPELINE_VIEW = 'status';
 // Pipeline tab filter state — persists across tab switches so the
 // user can flip away and come back without losing their narrowing.
-let PIPELINE_FILTER = { text: '', country: '', segment: '' };
+let PIPELINE_FILTER = { text: '', country: '', segment: '', stuckOnly: false };
 let TEMPLATES = [];
 
 // Gmail account used by Compose + Check-Gmail buttons (authuser query
@@ -4742,8 +4743,39 @@ function renderPipeline(){
   const clearBtn = document.getElementById('pipelineFilterClear');
   if(clearBtn){
     clearBtn.onclick = () => {
-      PIPELINE_FILTER = { text:'', country:'', segment:'' };
+      PIPELINE_FILTER = { text:'', country:'', segment:'', stuckOnly:false };
       if(tEl) tEl.value = '';
+      renderPipeline();
+    };
+  }
+  // Stuck-only toggle — chip styled pill that flips active state on
+  // click. Only meaningful in pipeline mode (legacy status has no
+  // entered_stage_at stamp); shown but disabled in legacy.
+  const stuckBtn = document.getElementById('pipelineFilterStuck');
+  if(stuckBtn){
+    const pipelineMode = CURRENT_PIPELINE_VIEW !== 'status';
+    stuckBtn.disabled = !pipelineMode;
+    if(!pipelineMode){
+      stuckBtn.style.opacity = '.4';
+      stuckBtn.style.cursor = 'not-allowed';
+      stuckBtn.title = 'Pipeline mode only — switch View to Sales / Account Mgmt / Partnerships';
+    } else {
+      stuckBtn.style.opacity = '';
+      stuckBtn.style.cursor = 'pointer';
+      stuckBtn.title = 'Show only cards 30+ days in current stage';
+    }
+    if(PIPELINE_FILTER.stuckOnly){
+      stuckBtn.style.background = 'var(--red-bg)';
+      stuckBtn.style.color = 'var(--red-text)';
+      stuckBtn.style.borderColor = '#f0a0a0';
+    } else {
+      stuckBtn.style.background = '';
+      stuckBtn.style.color = pipelineMode ? '' : '';
+      stuckBtn.style.borderColor = '';
+    }
+    stuckBtn.onclick = () => {
+      if(stuckBtn.disabled) return;
+      PIPELINE_FILTER.stuckOnly = !PIPELINE_FILTER.stuckOnly;
       renderPipeline();
     };
   }
@@ -4911,6 +4943,7 @@ function renderPipelineByPipeline(pipelineId){
   // Filter happens at the company level so the count badge reflects
   // companies in the pipeline that pass the filter — not all 600+.
   const visibleSet = new Set(filteredContactsForPipeline().map(c => c.id));
+  const todayStr = new Date().toISOString().slice(0,10);
   const rowsByStage = new Map(stages.map(s => [s.id, []]));
   const assignmentByCompany = new Map();
   let totalInPipeline = 0, visibleInPipeline = 0;
@@ -4920,6 +4953,16 @@ function renderPipelineByPipeline(pipelineId){
     if(!c) return;
     totalInPipeline++;
     if(!visibleSet.has(c.id)) return;
+    // Stuck-only filter — exclude cards <30 days in stage. Won/lost
+    // stages are also excluded (they're terminal; "stuck on Won" is
+    // nonsense). Skips rows with no entered_stage_at since we can't
+    // judge them.
+    if(PIPELINE_FILTER.stuckOnly){
+      const stage = PIPELINE_STAGES.find(s => s.id === cp.stage_id);
+      if(!stage || stage.is_won || stage.is_lost) return;
+      if(!cp.entered_stage_at) return;
+      if(daysBetween(cp.entered_stage_at.slice(0,10), todayStr) < 30) return;
+    }
     visibleInPipeline++;
     rowsByStage.get(cp.stage_id)?.push(c);
     assignmentByCompany.set(c.id, cp);
