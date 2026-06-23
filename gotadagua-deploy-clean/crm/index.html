@@ -628,6 +628,18 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
         </select>
       </div>
     </div>
+    <!-- Filter row — narrows the Kanban so 500+ cards become manageable. -->
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
+      <input type="search" id="pipelineFilterText" placeholder="Search company / city / email…" style="flex:1;min-width:200px;border:1px solid var(--border);border-radius:8px;padding:7px 10px;font:inherit;font-size:13px">
+      <select id="pipelineFilterCountry" style="border:1px solid var(--border);border-radius:8px;padding:7px 10px;font:inherit;font-size:13px">
+        <option value="">All countries</option>
+      </select>
+      <select id="pipelineFilterSegment" style="border:1px solid var(--border);border-radius:8px;padding:7px 10px;font:inherit;font-size:13px">
+        <option value="">All segments</option>
+      </select>
+      <button id="pipelineFilterClear" type="button" style="background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font:inherit;font-size:12px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif">Clear</button>
+      <div id="pipelineFilterCount" style="margin-left:auto;font-family:'DM Mono',monospace;font-size:12px;color:var(--muted)"></div>
+    </div>
     <div class="kanban-wrap">
       <div class="kanban" id="kanban"></div>
     </div>
@@ -1074,6 +1086,9 @@ let CONTACT_PIPELINE = [];   // contact_pipeline table — company ↔ pipeline 
 // Which Kanban view is active. 'status' = the legacy single-pipeline
 // view that drives c.status; otherwise a pipeline id from PIPELINES.
 let CURRENT_PIPELINE_VIEW = 'status';
+// Pipeline tab filter state — persists across tab switches so the
+// user can flip away and come back without losing their narrowing.
+let PIPELINE_FILTER = { text: '', country: '', segment: '' };
 let TEMPLATES = [];
 
 // Gmail account used by Compose + Check-Gmail buttons (authuser query
@@ -4553,6 +4568,32 @@ function pipelineCardHtml(c){
   `;
 }
 
+// Updates the small "showing X of Y" line on the right of the filter
+// row so the user knows whether the filter is narrowing things or
+// the view is genuinely full. "All" if no narrowing.
+function updatePipelineFilterCount(visible, total){
+  const el = document.getElementById('pipelineFilterCount');
+  if(!el) return;
+  if(visible === total) el.textContent = `${total} card${total===1?'':'s'}`;
+  else                  el.textContent = `${visible} of ${total}`;
+}
+
+// Returns the subset of CONTACTS matching the current Pipeline tab
+// filter (text + country + segment). Reused by both Kanban modes so
+// filtering behaves consistently across views.
+function filteredContactsForPipeline(){
+  const text = (PIPELINE_FILTER.text || '').trim().toLowerCase();
+  return CONTACTS.filter(c => {
+    if(PIPELINE_FILTER.country && primaryCountry(c.country) !== PIPELINE_FILTER.country) return false;
+    if(PIPELINE_FILTER.segment && c.segment !== PIPELINE_FILTER.segment) return false;
+    if(text){
+      const blob = `${c.company||''} ${c.city||''} ${c.country||''} ${c.email||''}`.toLowerCase();
+      if(!blob.includes(text)) return false;
+    }
+    return true;
+  });
+}
+
 function renderPipeline(){
   // Refresh the dropdown options each call so a newly seeded pipeline
   // shows up without a page reload.
@@ -4568,6 +4609,36 @@ function renderPipeline(){
       renderPipeline();
     };
   }
+  // Repopulate the country/segment dropdowns from the current CONTACTS
+  // set so a newly imported country shows up without a reload.
+  const cEl = document.getElementById('pipelineFilterCountry');
+  const sEl = document.getElementById('pipelineFilterSegment');
+  const tEl = document.getElementById('pipelineFilterText');
+  if(cEl){
+    const countries = [...new Set(CONTACTS.map(c=>primaryCountry(c.country)).filter(Boolean))].sort();
+    cEl.innerHTML = '<option value="">All countries</option>' +
+      countries.map(v => `<option value="${escAttr(v)}" ${v===PIPELINE_FILTER.country?'selected':''}>${escHtml(v)}</option>`).join('');
+    cEl.onchange = () => { PIPELINE_FILTER.country = cEl.value; renderPipeline(); };
+  }
+  if(sEl){
+    const segments = [...new Set(CONTACTS.map(c=>c.segment).filter(Boolean))].sort();
+    sEl.innerHTML = '<option value="">All segments</option>' +
+      segments.map(v => `<option value="${escAttr(v)}" ${v===PIPELINE_FILTER.segment?'selected':''}>${escHtml(v)}</option>`).join('');
+    sEl.onchange = () => { PIPELINE_FILTER.segment = sEl.value; renderPipeline(); };
+  }
+  if(tEl){
+    if(tEl.value !== PIPELINE_FILTER.text) tEl.value = PIPELINE_FILTER.text;
+    // oninput rebinds on every render — cheap.
+    tEl.oninput = () => { PIPELINE_FILTER.text = tEl.value; renderPipeline(); };
+  }
+  const clearBtn = document.getElementById('pipelineFilterClear');
+  if(clearBtn){
+    clearBtn.onclick = () => {
+      PIPELINE_FILTER = { text:'', country:'', segment:'' };
+      if(tEl) tEl.value = '';
+      renderPipeline();
+    };
+  }
   if(CURRENT_PIPELINE_VIEW === 'status'){
     renderPipelineByStatus();
   } else {
@@ -4578,8 +4649,10 @@ function renderPipeline(){
 // Legacy view — Kanban driven by outreach_contacts.status.
 function renderPipelineByStatus(){
   const board = document.getElementById('kanban');
+  const visibleContacts = filteredContactsForPipeline();
+  updatePipelineFilterCount(visibleContacts.length, CONTACTS.length);
   board.innerHTML = STATUS_ORDER.map(stage => {
-    const inStage = CONTACTS.filter(c => (c.status || 'not_started') === stage);
+    const inStage = visibleContacts.filter(c => (c.status || 'not_started') === stage);
     const cards = inStage.length
       ? inStage.map(pipelineCardHtml).join('')
       : '<div class="kanban-empty">drop a card here</div>';
@@ -4606,17 +4679,26 @@ function renderPipelineByPipeline(pipelineId){
   const stages = stagesForPipeline(pipelineId);
   if(stages.length === 0){
     board.innerHTML = '<div class="empty-state" style="padding:40px;text-align:center;width:100%">This pipeline has no stages configured.</div>';
+    updatePipelineFilterCount(0, 0);
     return;
   }
+  // Filter happens at the company level so the count badge reflects
+  // companies in the pipeline that pass the filter — not all 600+.
+  const visibleSet = new Set(filteredContactsForPipeline().map(c => c.id));
   const rowsByStage = new Map(stages.map(s => [s.id, []]));
   const assignmentByCompany = new Map();
+  let totalInPipeline = 0, visibleInPipeline = 0;
   CONTACT_PIPELINE.filter(cp => cp.pipeline_id === pipelineId).forEach(cp => {
     if(!cp.stage_id) return;
     const c = CONTACTS.find(x => x.id === cp.company_id);
     if(!c) return;
+    totalInPipeline++;
+    if(!visibleSet.has(c.id)) return;
+    visibleInPipeline++;
     rowsByStage.get(cp.stage_id)?.push(c);
     assignmentByCompany.set(c.id, cp);
   });
+  updatePipelineFilterCount(visibleInPipeline, totalInPipeline);
   board.innerHTML = stages.map(s => {
     const cards = (rowsByStage.get(s.id) || []).map(pipelineCardHtml).join('') ||
       '<div class="kanban-empty">drop a card here</div>';
