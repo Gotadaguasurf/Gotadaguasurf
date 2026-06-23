@@ -934,6 +934,23 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
   </div>
 </div>
 
+<!-- ─── MY-DAY DIGEST MODAL ─── -->
+<div class="compose-modal" id="myDayModal">
+  <div class="compose-card" style="max-width:440px">
+    <div class="compose-header">
+      <div class="compose-title" id="myDayTitle">Good morning</div>
+      <button class="detail-close" id="myDayCloseX" aria-label="Close">×</button>
+    </div>
+    <div class="compose-body">
+      <div id="myDayBody" style="font-size:14px;color:var(--ink);line-height:1.55"></div>
+    </div>
+    <div class="compose-footer">
+      <button class="action-btn ghost" id="myDayDismiss">Já vi, obrigado</button>
+      <button class="action-btn primary" id="myDayGo" style="grid-column:auto">Open Tasks tab →</button>
+    </div>
+  </div>
+</div>
+
 <!-- ─── TASK MODAL ─── -->
 <div class="compose-modal" id="taskModal">
   <div class="compose-card" style="max-width:480px">
@@ -1327,6 +1344,7 @@ async function loadAll(){
   renderContacts();
   renderTemplateList();
   updateNavTasksCount();
+  maybeShowMyDayDigest();
   // Kick off realtime AFTER the initial render so the first paint doesn't
   // race with incoming events. Re-callable; subscribeRealtime() no-ops if
   // already subscribed (so re-login doesn't double-bind).
@@ -3420,6 +3438,61 @@ async function quickAddTask(companyId, preset){
   if(CURRENT_TAB === 'dashboard') renderDashboard();
   if(CURRENT_TAB === 'tasks') renderTasksTab();
 }
+
+// ── MY-DAY DIGEST ────────────────────────────────────────────────────
+// Fires once at the first sign-in of each calendar day, IF there's
+// anything worth surfacing. Gated by a localStorage key so multiple
+// page refreshes / tab opens on the same day don't pile up popups.
+// User can dismiss to close, or "Open Tasks tab" to jump straight to
+// the today filter.
+const MY_DAY_LS_KEY = 'crmMyDayLastShown';
+
+function maybeShowMyDayDigest(){
+  const today = new Date().toISOString().slice(0,10);
+  if(localStorage.getItem(MY_DAY_LS_KEY) === today) return;
+  const overdueTasks = TASKS.filter(t => !t.done_at && t.due_at && t.due_at.slice(0,10) < today);
+  const todayTasks   = TASKS.filter(t => !t.done_at && t.due_at && t.due_at.slice(0,10) === today);
+  const overdueFollowups = CONTACTS.filter(c => c.follow_up_at && c.follow_up_at < today);
+  const todayFollowups   = CONTACTS.filter(c => c.follow_up_at === today);
+  const total = overdueTasks.length + todayTasks.length + overdueFollowups.length + todayFollowups.length;
+  // Quiet days don't get a popup — nothing more annoying than a
+  // modal interrupting you to say "you have 0 things to do".
+  if(total === 0){
+    localStorage.setItem(MY_DAY_LS_KEY, today);
+    return;
+  }
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Good morning' : (hour < 18 ? 'Good afternoon' : 'Good evening');
+  document.getElementById('myDayTitle').textContent =
+    `${greeting}, ${total} thing${total>1?'s':''} for today`;
+  const lines = [];
+  if(overdueTasks.length)
+    lines.push(`<div style="color:var(--red-text);font-weight:700">${uiIcon('fire')} ${overdueTasks.length} overdue task${overdueTasks.length>1?'s':''}</div>`);
+  if(todayTasks.length)
+    lines.push(`<div>${uiIcon('calendar')} ${todayTasks.length} task${todayTasks.length>1?'s':''} due today</div>`);
+  if(overdueFollowups.length)
+    lines.push(`<div style="color:var(--red-text);font-weight:700">${uiIcon('fire')} ${overdueFollowups.length} overdue follow-up${overdueFollowups.length>1?'s':''}</div>`);
+  if(todayFollowups.length)
+    lines.push(`<div>${uiIcon('calendar')} ${todayFollowups.length} follow-up${todayFollowups.length>1?'s':''} today</div>`);
+  document.getElementById('myDayBody').innerHTML = lines.join('');
+  document.getElementById('myDayModal').classList.add('open');
+}
+
+function closeMyDayDigest(){
+  document.getElementById('myDayModal').classList.remove('open');
+  localStorage.setItem(MY_DAY_LS_KEY, new Date().toISOString().slice(0,10));
+}
+
+document.getElementById('myDayDismiss').addEventListener('click', closeMyDayDigest);
+document.getElementById('myDayCloseX').addEventListener('click', closeMyDayDigest);
+document.getElementById('myDayGo').addEventListener('click', () => {
+  closeMyDayDigest();
+  // Switch to the Tasks tab with the "today" filter pre-applied so
+  // the user lands exactly on the rows the digest was telling them
+  // about. The tab switcher itself fires renderTasksTab.
+  TASKS_TAB_FILTER = 'today';
+  document.querySelector('.nav-tab[data-tab="tasks"]').click();
+});
 
 // ── TASKS TAB (cross-company view of every open TODO) ──────────────────
 // State for the tab's filter. Persists across renders so flipping in
