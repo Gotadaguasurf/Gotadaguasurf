@@ -130,6 +130,8 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
 .kanban-list{flex:1;overflow-y:auto;padding:2px;min-height:60px;display:flex;flex-direction:column;gap:8px}
 .kanban-list.drop-active{background:rgba(30,111,168,.06);border-radius:10px;outline:2px dashed var(--ocean);outline-offset:-4px}
 .kanban-card{background:#fff;border:1px solid var(--border);border-radius:10px;padding:10px 12px;cursor:grab;transition:box-shadow .15s,transform .15s;user-select:none}
+.kanban-card.just-moved{animation:kanban-flash .9s ease-out 1}
+@keyframes kanban-flash{0%{background:var(--green-bg);box-shadow:0 0 0 3px var(--green-text)}100%{background:#fff;box-shadow:none}}
 .kanban-card:hover{box-shadow:0 6px 16px rgba(40,57,75,.12);transform:translateY(-1px)}
 .kanban-card:active,.kanban-card.dragging{cursor:grabbing;opacity:.6}
 .kc-name{font-weight:700;color:var(--navy);font-size:13px;line-height:1.25;margin-bottom:3px;display:flex;justify-content:space-between;gap:6px;align-items:flex-start}
@@ -1779,6 +1781,40 @@ function closeBatchSendModal(){
   document.getElementById('batchSendModal').classList.remove('open');
 }
 
+// Contacts-tab cursor — same pattern as the Tasks tab. Reset on
+// renderContacts so a filter change can't leave it pointing past
+// the end.
+let CONTACTS_TAB_KB_INDEX = -1;
+document.addEventListener('keydown', (e) => {
+  if(CURRENT_TAB !== 'contacts') return;
+  const tag = (e.target.tagName || '').toLowerCase();
+  if(tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable) return;
+  const rows = Array.from(document.querySelectorAll('#contactsBody tr[data-id]'));
+  if(rows.length === 0) return;
+  const moveTo = (idx) => {
+    CONTACTS_TAB_KB_INDEX = Math.max(0, Math.min(rows.length - 1, idx));
+    rows.forEach((r, i) => {
+      r.style.outline = i === CONTACTS_TAB_KB_INDEX ? '2px solid var(--ocean)' : '';
+      r.style.outlineOffset = i === CONTACTS_TAB_KB_INDEX ? '-2px' : '';
+    });
+    rows[CONTACTS_TAB_KB_INDEX]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  };
+  if(e.key === 'j' || e.key === 'ArrowDown'){
+    e.preventDefault();
+    moveTo(CONTACTS_TAB_KB_INDEX < 0 ? 0 : CONTACTS_TAB_KB_INDEX + 1);
+  } else if(e.key === 'k' || e.key === 'ArrowUp'){
+    e.preventDefault();
+    moveTo(CONTACTS_TAB_KB_INDEX < 0 ? 0 : CONTACTS_TAB_KB_INDEX - 1);
+  } else if((e.key === 'Enter' || e.key === ' ') && CONTACTS_TAB_KB_INDEX >= 0){
+    e.preventDefault();
+    const id = rows[CONTACTS_TAB_KB_INDEX]?.dataset.id;
+    if(id) openContact(id);
+  } else if(e.key === '/'){
+    e.preventDefault();
+    document.getElementById('filterSearch')?.focus();
+  }
+});
+
 // Tasks-tab keyboard shortcuts: J/K navigate visible rows, Space
 // toggles done on the focused row, Enter opens the company detail
 // panel for that row. Ignored when the user is typing in a form
@@ -2217,6 +2253,12 @@ async function loadPeople(){
 // Loads all to-do items in `tasks`. Same memory pattern as PEOPLE — kept
 // in RAM and filtered client-side per company and for the dashboard
 // "today" widget. Silent fail if the table doesn't exist yet.
+//
+// Done-task pruning: tasks completed more than 30 days ago are
+// dropped from the local cache. The DB row stays — this is a UI
+// hygiene cut, not data deletion — so re-loading after a span
+// boundary surfaces them again. Keeps the "Done" filter and the
+// per-company recently-completed strip focused on recent activity.
 async function loadTasks(){
   const c = getClient();
   let all = [], from = 0, page = 1000;
@@ -2233,7 +2275,8 @@ async function loadTasks(){
     if(data.length < page) break;
     from += page;
   }
-  TASKS = all;
+  const cutoff = addDays(new Date().toISOString().slice(0,10), -30);
+  TASKS = all.filter(t => !t.done_at || t.done_at.slice(0,10) >= cutoff);
 }
 
 // Loads the 3 pipelines + their stages + every contact_pipeline row in
@@ -5519,7 +5562,7 @@ function renderPipelinesSection(companyId){
       <div class="group-card" style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;background:#fff;border:1px solid var(--border);border-radius:10px;margin-bottom:8px">
         <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
           <span style="display:inline-block;width:8px;height:8px;border-radius:999px;background:${stageDotColor(currentStage)};flex-shrink:0"></span>
-          <div style="font-weight:700;color:var(--ink);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(pipeline?.name || '(unknown pipeline)')}</div>
+          <div data-pl-jump="${a.pipeline_id}" title="Open Pipeline tab in this view" style="font-weight:700;color:var(--ocean);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer">${escHtml(pipeline?.name || '(unknown pipeline)')}</div>
         </div>
         <select data-pl-stage="${a.id}" style="border:1px solid var(--border);border-radius:6px;padding:4px 8px;font:inherit;font-size:12px">${stageOpts}</select>
         <button data-pl-remove="${a.id}" title="Remove from pipeline" aria-label="Remove" style="background:transparent;border:1px solid var(--border);border-radius:6px;width:26px;height:26px;cursor:pointer;color:var(--red-text);font-size:16px">×</button>
@@ -5541,6 +5584,18 @@ function renderPipelinesSection(companyId){
   // Stage select inline edit — change the stage_id on contact_pipeline.
   // entered_stage_at gets bumped too so "time in current stage" reports
   // are honest.
+  // Jump-to-pipeline: clicking the pipeline name in the assignment
+  // card switches the Pipeline tab to that view (sets CURRENT_
+  // PIPELINE_VIEW + persists + clicks the nav tab). Saves the
+  // "now go to Pipeline tab and pick this from the dropdown" trip.
+  root.querySelectorAll('[data-pl-jump]').forEach(el => {
+    el.addEventListener('click', () => {
+      const pid = el.dataset.plJump;
+      CURRENT_PIPELINE_VIEW = pid;
+      localStorage.setItem('crmPipelineView', pid);
+      document.querySelector('.nav-tab[data-tab="pipeline"]').click();
+    });
+  });
   root.querySelectorAll('[data-pl-stage]').forEach(sel => {
     sel.addEventListener('change', async () => {
       const id = sel.dataset.plStage;
@@ -6514,10 +6569,79 @@ function renderPipelineByPipeline(pipelineId){
   wireKanbanInteractions(board, 'pipeline', { pipelineId, assignmentByCompany });
 }
 
+// Track the contact id whose card should flash after the next render
+// (drop-success confirmation). Cleared once consumed.
+let _kanbanFlashId = null;
+
+// Lazy-create the singleton hover popover once. Repositioned and
+// re-filled for each card. Hidden by default.
+let _kanbanHoverEl = null;
+let _kanbanHoverTimer = null;
+function ensureKanbanHover(){
+  if(_kanbanHoverEl) return _kanbanHoverEl;
+  const el = document.createElement('div');
+  el.id = 'kanbanHover';
+  el.style.cssText = 'position:fixed;display:none;z-index:1000;background:#fff;border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 32px rgba(40,57,75,.22);padding:12px 14px;min-width:240px;max-width:320px;font-size:12px;color:var(--ink);pointer-events:none';
+  document.body.appendChild(el);
+  _kanbanHoverEl = el;
+  return el;
+}
+function showKanbanHover(card, c){
+  const el = ensureKanbanHover();
+  const primary = primaryPersonFor(c.id);
+  const openTasks = TASKS.filter(t => t.company_id === c.id && !t.done_at).length;
+  const lines = [];
+  lines.push(`<div style="font-weight:700;color:var(--navy);font-size:13.5px;margin-bottom:4px">${escHtml(c.company || '')}</div>`);
+  const meta1 = [c.segment, c.country].filter(Boolean).map(escHtml).join(' · ');
+  if(meta1) lines.push(`<div style="color:var(--muted);margin-bottom:6px">${meta1}</div>`);
+  if(primary?.email || c.email){
+    const e = primary?.email || c.email;
+    const name = primary?.name ? `${escHtml(primary.name)} · ` : '';
+    lines.push(`<div style="margin-bottom:3px"><span style="color:var(--muted)">Primary</span> ${name}${escHtml(e)}</div>`);
+  }
+  if(c.last_contacted_at){
+    lines.push(`<div style="margin-bottom:3px"><span style="color:var(--muted)">Last contacted</span> ${fmtDate(c.last_contacted_at)}</div>`);
+  }
+  if(c.last_interaction_at){
+    lines.push(`<div style="margin-bottom:3px"><span style="color:var(--muted)">Last interaction</span> ${fmtDate(c.last_interaction_at)}</div>`);
+  }
+  if(openTasks > 0){
+    lines.push(`<div style="margin-top:6px;color:var(--ocean);font-weight:700">${openTasks} open task${openTasks>1?'s':''}</div>`);
+  }
+  el.innerHTML = lines.join('');
+  // Position: above the card by default, flip below if hits top.
+  const r = card.getBoundingClientRect();
+  el.style.display = 'block';
+  // After display so width is measurable.
+  const popW = el.offsetWidth;
+  const popH = el.offsetHeight;
+  let left = r.left + r.width/2 - popW/2;
+  left = Math.max(8, Math.min(window.innerWidth - popW - 8, left));
+  let top = r.top - popH - 8;
+  if(top < 8) top = r.bottom + 8;
+  el.style.left = left + 'px';
+  el.style.top = top + 'px';
+}
+function hideKanbanHover(){
+  if(_kanbanHoverEl) _kanbanHoverEl.style.display = 'none';
+  clearTimeout(_kanbanHoverTimer);
+}
+
 // Single drag-drop wirer reused by both modes. mode='status' updates
 // outreach_contacts.status; mode='pipeline' updates the matching
 // contact_pipeline row's stage_id.
 function wireKanbanInteractions(board, mode, ctx = {}){
+  // Consume the flash-after-render request set by a drop/push above.
+  // Only the most recently-moved card flashes; older ids get cleared
+  // by the next render naturally.
+  if(_kanbanFlashId){
+    const justMoved = board.querySelector(`.kanban-card[data-id="${_kanbanFlashId}"]`);
+    if(justMoved){
+      justMoved.classList.add('just-moved');
+      setTimeout(() => justMoved.classList.remove('just-moved'), 1000);
+    }
+    _kanbanFlashId = null;
+  }
   board.querySelectorAll('.kanban-card').forEach(card => {
     card.addEventListener('click', e => {
       if(card.classList.contains('dragging')) return;
@@ -6526,6 +6650,18 @@ function wireKanbanInteractions(board, mode, ctx = {}){
       if(e.target.closest('.kc-push')) return;
       openContact(card.dataset.id);
     });
+    // Hover preview — 400ms delay so the popover doesn't flash while
+    // the user is scanning the column. Suppressed during drag so
+    // the popover doesn't follow the cursor mid-rearrange.
+    card.addEventListener('mouseenter', () => {
+      clearTimeout(_kanbanHoverTimer);
+      _kanbanHoverTimer = setTimeout(() => {
+        if(card.classList.contains('dragging')) return;
+        const c = CONTACTS.find(x => x.id === card.dataset.id);
+        if(c) showKanbanHover(card, c);
+      }, 400);
+    });
+    card.addEventListener('mouseleave', hideKanbanHover);
     card.addEventListener('dragstart', e => {
       _dragContactId = card.dataset.id;
       card.classList.add('dragging');
@@ -6569,6 +6705,7 @@ function wireKanbanInteractions(board, mode, ctx = {}){
         row.entered_stage_at = nowIso;
         const company = CONTACTS.find(c => c.id === row.company_id);
         toast(`${company?.company || 'Deal'} → ${newName}`);
+        _kanbanFlashId = row.company_id;
         renderPipeline();
         if(CURRENT_CONTACT?.id === row.company_id) renderPipelinesSection(row.company_id);
       } else {
@@ -6591,6 +6728,7 @@ function wireKanbanInteractions(board, mode, ctx = {}){
         c.status = newStatus;
         logActivity(id, 'status_changed', oldStatus, newStatus, { via: 'card-push' });
         toast(`${c.company} → ${newName}`);
+        _kanbanFlashId = id;
         renderPipeline();
         if(CURRENT_CONTACT?.id === id) openContact(id);
         if(CURRENT_TAB === 'dashboard') renderDashboard();
@@ -6618,6 +6756,7 @@ function wireKanbanInteractions(board, mode, ctx = {}){
         if(c.status === newStage) return;
         const oldStage = c.status;
         c.status = newStage;
+        _kanbanFlashId = id;
         renderPipeline();
         const { error } = await supa.from('outreach_contacts').update({ status: newStage }).eq('id', id);
         if(error){ c.status = oldStage; renderPipeline(); toast('Update failed: '+error.message); return; }
@@ -6633,6 +6772,7 @@ function wireKanbanInteractions(board, mode, ctx = {}){
         const oldStageId = assignment.stage_id;
         assignment.stage_id = newStage;
         assignment.entered_stage_at = new Date().toISOString();
+        _kanbanFlashId = id;
         renderPipeline();
         const { error } = await supa.from('contact_pipeline')
           .update({ stage_id: newStage, entered_stage_at: assignment.entered_stage_at }).eq('id', assignment.id);
