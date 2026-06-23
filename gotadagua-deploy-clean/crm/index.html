@@ -1710,6 +1710,7 @@ function renderDashboard(){
       <span class="status-pill s-${c.status}" style="font-size:10px;padding:2px 8px;flex-shrink:0">${STATUS_LABELS[c.status]||c.status}</span>
       <div class="fi-due ${isPartner?'overdue':''}" style="flex-shrink:0">${days}d cold</div>
       <button data-reengage-id="${c.id}" title="Add a 'Re-engage' task due tomorrow" style="background:transparent;color:var(--ocean);border:1px solid var(--ocean);border-radius:6px;padding:3px 9px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;white-space:nowrap;flex-shrink:0">+ Re-engage</button>
+      <button data-snooze-id="${c.id}" title="Hide for 30 days — reappears here if still untouched then" style="background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:6px;padding:3px 9px;font-size:11px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif;white-space:nowrap;flex-shrink:0">Snooze 30d</button>
     </div>`;
   }).join('') + (cold.length>20 ? `<div class="empty-state" style="padding:10px">+ ${cold.length-20} more</div>` : '') : '<div class="empty-state">No cold accounts — every active deal had movement in the last 60 days. 🎉</div>';
   coldEl.querySelectorAll('.fi-name').forEach(el=>el.addEventListener('click', ()=>openContact(el.dataset.id)));
@@ -1745,6 +1746,34 @@ function renderDashboard(){
       toast(`Re-engage scheduled for ${fmtDate(tomorrow)} · ${company?.company || ''}`);
       renderDashboard();
       updateNavTasksCount();
+    });
+  });
+  // Snooze: defer this cold account for 30 days without creating a
+  // task. Sets last_interaction_at to today-30d so the row drops off
+  // the cold list (which filters < today-60d) but reappears in 30
+  // days if STILL untouched. Any real activity in between fires the
+  // child-table triggers, which bump last_interaction_at to now() and
+  // override the snooze — exactly what we want.
+  coldEl.querySelectorAll('[data-snooze-id]').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const companyId = btn.dataset.snoozeId;
+      const company = CONTACTS.find(x => x.id === companyId);
+      btn.disabled = true; btn.style.opacity = '.5'; btn.textContent = '…';
+      // today-30d, midnight UTC for consistency with the cutoff math.
+      const snoozedDate = addDays(today, -30);
+      const snoozedIso = new Date(snoozedDate + 'T12:00:00Z').toISOString();
+      const supa = getClient();
+      const { error } = await supa.from('outreach_contacts')
+        .update({ last_interaction_at: snoozedIso }).eq('id', companyId);
+      if(error){
+        toast('Snooze failed: '+error.message);
+        btn.disabled = false; btn.style.opacity = ''; btn.textContent = 'Snooze 30d';
+        return;
+      }
+      if(company) company.last_interaction_at = snoozedIso;
+      toast(`Snoozed for 30 days · ${company?.company || ''}`);
+      renderDashboard();
     });
   });
 }
