@@ -3234,7 +3234,8 @@ function renderTasksList(companyId){
             ${t.notes ? `<div style="margin-top:4px;font-size:12px;color:var(--muted)">${escHtml(t.notes)}</div>` : ''}
           </div>
         </div>
-        <div class="group-actions" style="display:flex;gap:4px;flex-shrink:0">
+        <div class="group-actions" style="display:flex;gap:4px;flex-shrink:0;align-items:center">
+          ${isDone ? '' : snoozeChipsHtml(t.id)}
           <button class="group-icon-btn" data-tk-edit-id="${t.id}" title="Edit" aria-label="Edit" style="background:transparent;border:1px solid var(--border);border-radius:6px;width:26px;height:26px;cursor:pointer;color:var(--muted);font-size:14px">✎</button>
           <button class="group-icon-btn delete" data-tk-del-id="${t.id}" title="Delete" aria-label="Delete" style="background:transparent;border:1px solid var(--border);border-radius:6px;width:26px;height:26px;cursor:pointer;color:var(--red-text);font-size:16px">×</button>
         </div>
@@ -3246,6 +3247,7 @@ function renderTasksList(companyId){
     (done.length ? `<div style="margin:12px 0 6px;font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);font-weight:700">Recently completed</div>` : '') +
     done.map(t => renderTask(t, true)).join('');
   wirePresetChips(list, companyId);
+  wireSnoozeChips(list);
 
   list.querySelectorAll('[data-tk-toggle]').forEach(cb => {
     cb.addEventListener('change', async () => {
@@ -3416,6 +3418,56 @@ function wirePresetChips(root, companyId){
       btn.style.color = 'var(--ink)';
     });
     btn.addEventListener('click', () => quickAddTask(companyId, preset));
+  });
+}
+
+// Returns the HTML for 3 mini snooze buttons (+1d/+3d/+1w). Click is
+// wired via delegation in wireSnoozeChips() so each row's chips work
+// the same way in both the per-company list and the Tasks tab.
+function snoozeChipsHtml(taskId){
+  return `
+    <button class="tk-snooze-chip" data-tk-snooze-id="${taskId}" data-tk-snooze-d="1" title="Snooze +1 day" style="background:transparent;border:1px solid var(--border);border-radius:6px;padding:0 6px;height:22px;font-size:10.5px;font-weight:600;color:var(--muted);cursor:pointer;font-family:'Outfit',sans-serif">1d</button>
+    <button class="tk-snooze-chip" data-tk-snooze-id="${taskId}" data-tk-snooze-d="3" title="Snooze +3 days" style="background:transparent;border:1px solid var(--border);border-radius:6px;padding:0 6px;height:22px;font-size:10.5px;font-weight:600;color:var(--muted);cursor:pointer;font-family:'Outfit',sans-serif">3d</button>
+    <button class="tk-snooze-chip" data-tk-snooze-id="${taskId}" data-tk-snooze-d="7" title="Snooze +1 week" style="background:transparent;border:1px solid var(--border);border-radius:6px;padding:0 6px;height:22px;font-size:10.5px;font-weight:600;color:var(--muted);cursor:pointer;font-family:'Outfit',sans-serif">1w</button>
+  `;
+}
+
+// Single-task snooze. Base is the task's existing due_at when present,
+// otherwise today — same rule as the bulk snooze for consistency.
+async function snoozeTask(taskId, days){
+  const t = TASKS.find(x => x.id === taskId);
+  if(!t) return;
+  const today = new Date().toISOString().slice(0,10);
+  const base = t.due_at ? t.due_at.slice(0,10) : today;
+  const newDue = addDays(base, days);
+  const supa = getClient();
+  const { error } = await supa.from('tasks')
+    .update({ due_at: new Date(newDue + 'T00:00:00Z').toISOString() }).eq('id', taskId);
+  if(error){ toast('Snooze failed: '+error.message); return; }
+  t.due_at = new Date(newDue + 'T00:00:00Z').toISOString();
+  toast(`Snoozed +${days}d → ${fmtDate(newDue)}`);
+  if(CURRENT_CONTACT?.id === t.company_id) renderTasksList(t.company_id);
+  if(CURRENT_TAB === 'tasks') renderTasksTab();
+  if(CURRENT_TAB === 'dashboard') renderDashboard();
+  updateNavTasksCount();
+}
+
+// Wires every .tk-snooze-chip inside the given root. Idempotent —
+// safe to call after every innerHTML write that includes chips.
+function wireSnoozeChips(root){
+  root.querySelectorAll('.tk-snooze-chip').forEach(btn => {
+    btn.addEventListener('mouseenter', () => {
+      btn.style.borderColor = 'var(--ocean)';
+      btn.style.color = 'var(--ocean)';
+    });
+    btn.addEventListener('mouseleave', () => {
+      btn.style.borderColor = 'var(--border)';
+      btn.style.color = 'var(--muted)';
+    });
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      snoozeTask(btn.dataset.tkSnoozeId, Number(btn.dataset.tkSnoozeD));
+    });
   });
 }
 
@@ -3624,7 +3676,10 @@ function renderTasksTab(){
         <div data-jump-company="${t.company_id}" style="font-size:12.5px;color:var(--ocean);font-weight:600;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="Open ${escAttr(companyName)}">${escHtml(companyName)}</div>
         <div style="font-size:11.5px;color:var(--muted);display:flex;gap:5px;align-items:center;white-space:nowrap">${uiIcon(typeIcon)} ${TASK_TYPE_LABELS[t.type]||t.type||'—'}</div>
         <div style="font-size:12px;white-space:nowrap">${dueLabel}</div>
-        <button data-tk-tab-edit="${t.id}" data-company-id="${t.company_id}" title="Edit" aria-label="Edit" style="background:transparent;border:1px solid var(--border);border-radius:6px;width:26px;height:26px;cursor:pointer;color:var(--muted);font-size:14px">✎</button>
+        <div style="display:flex;gap:4px;align-items:center;justify-content:flex-end">
+          ${t.done_at ? '' : snoozeChipsHtml(t.id)}
+          <button data-tk-tab-edit="${t.id}" data-company-id="${t.company_id}" title="Edit" aria-label="Edit" style="background:transparent;border:1px solid var(--border);border-radius:6px;width:26px;height:26px;cursor:pointer;color:var(--muted);font-size:14px">✎</button>
+        </div>
       </div>
     `;
   }).join('');
@@ -3678,6 +3733,8 @@ function renderTasksTab(){
   listEl.querySelectorAll('[data-tk-tab-edit]').forEach(btn => {
     btn.addEventListener('click', () => openTaskModal(btn.dataset.companyId, btn.dataset.tkTabEdit));
   });
+  // Per-row snooze chips.
+  wireSnoozeChips(listEl);
 }
 
 // Shows / hides the bulk action bar and refreshes its count. Called
