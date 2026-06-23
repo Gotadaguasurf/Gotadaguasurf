@@ -654,6 +654,7 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
       </select>
       <button id="pipelineFilterStuck" type="button" title="Show only cards 30+ days in current stage (pipeline mode)" style="background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:999px;padding:7px 12px;font:inherit;font-size:12px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">Stuck only</button>
       <button id="pipelineFilterClear" type="button" style="background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font:inherit;font-size:12px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif">Clear</button>
+      <button id="pipelineExportBtn" type="button" title="Download the current filtered Kanban as CSV" style="background:transparent;color:var(--ocean);border:1px solid var(--ocean);border-radius:8px;padding:7px 12px;font:inherit;font-size:12px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">Export CSV</button>
       <div id="pipelineFilterCount" style="margin-left:auto;font-family:'DM Mono',monospace;font-size:12px;color:var(--muted)"></div>
     </div>
     <!-- Pipeline summary strip — populated by renderPipelineSummary,
@@ -4938,6 +4939,103 @@ function updatePipelineFilterCount(visible, total){
   else                  el.textContent = `${visible} of ${total}`;
 }
 
+// Pipeline-tab CSV export. Mirrors the Kanban renderer's filter
+// chain (text / country / segment / stuckOnly / stageId) so the
+// export always matches what's on screen — including the active
+// View (status vs each pipeline). Same RFC 4180 + UTF-8 BOM rules
+// as the Tasks export.
+function exportPipelineCsv(){
+  const todayStr = new Date().toISOString().slice(0,10);
+  const baseFiltered = filteredContactsForPipeline();
+  const baseIds = new Set(baseFiltered.map(c => c.id));
+  let rows = [];
+  let viewLabel = '';
+  if(CURRENT_PIPELINE_VIEW === 'status'){
+    viewLabel = 'status';
+    STATUS_ORDER.forEach(stage => {
+      baseFiltered.filter(c => (c.status || 'not_started') === stage).forEach(c => {
+        rows.push({
+          company: c,
+          viewName: 'Status',
+          stageName: STATUS_LABELS[stage] || stage,
+          daysInStage: '',          // legacy status has no honest stamp
+          enteredAt: '',
+        });
+      });
+    });
+  } else {
+    const pipeline = PIPELINES.find(p => p.id === CURRENT_PIPELINE_VIEW);
+    viewLabel = (pipeline?.key || pipeline?.name || 'pipeline').toLowerCase().replace(/[^a-z0-9]+/g,'-');
+    const stages = stagesForPipeline(CURRENT_PIPELINE_VIEW);
+    const visibleStages = PIPELINE_FILTER.stageId
+      ? stages.filter(s => s.id === PIPELINE_FILTER.stageId)
+      : stages;
+    visibleStages.forEach(stage => {
+      CONTACT_PIPELINE
+        .filter(cp => cp.pipeline_id === CURRENT_PIPELINE_VIEW && cp.stage_id === stage.id)
+        .forEach(cp => {
+          const c = CONTACTS.find(x => x.id === cp.company_id);
+          if(!c || !baseIds.has(c.id)) return;
+          // Apply stuck-only the same way the Kanban does.
+          if(PIPELINE_FILTER.stuckOnly){
+            if(stage.is_won || stage.is_lost) return;
+            if(!cp.entered_stage_at) return;
+            if(daysBetween(cp.entered_stage_at.slice(0,10), todayStr) < 30) return;
+          }
+          const days = cp.entered_stage_at
+            ? daysBetween(cp.entered_stage_at.slice(0,10), todayStr)
+            : '';
+          rows.push({
+            company: c,
+            viewName: pipeline?.name || '',
+            stageName: stage.name,
+            daysInStage: days,
+            enteredAt: cp.entered_stage_at ? cp.entered_stage_at.slice(0,10) : '',
+          });
+        });
+    });
+  }
+  if(rows.length === 0){ toast('Nothing to export — current filter is empty'); return; }
+  const esc = (v) => {
+    if(v == null) return '""';
+    const s = String(v).replace(/"/g, '""').replace(/\r?\n/g, ' ');
+    return `"${s}"`;
+  };
+  const header = ['Company','Pipeline','Stage','Days in stage','Entered stage','Country','City','Segment','Email','Phone','Deal value','Probability','Last contacted','Last interaction'];
+  const lines = [header.map(esc).join(',')];
+  rows.forEach(r => {
+    const c = r.company;
+    lines.push([
+      c.company || '',
+      r.viewName,
+      r.stageName,
+      r.daysInStage,
+      r.enteredAt,
+      c.country || '',
+      c.city || '',
+      c.segment || '',
+      c.email || '',
+      c.phone || '',
+      c.deal_value ?? '',
+      c.probability ?? '',
+      c.last_contacted_at ? c.last_contacted_at.slice(0,10) : '',
+      c.last_interaction_at ? c.last_interaction_at.slice(0,10) : '',
+    ].map(esc).join(','));
+  });
+  const csv = '﻿' + lines.join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = new Date().toISOString().slice(0,10);
+  a.href = url;
+  a.download = `crm-pipeline-${viewLabel}-${stamp}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  toast(`Exported ${rows.length} card${rows.length===1?'':'s'} · ${viewLabel}`);
+}
+
 // Returns the subset of CONTACTS matching the current Pipeline tab
 // filter (text + country + segment). Reused by both Kanban modes so
 // filtering behaves consistently across views.
@@ -4998,6 +5096,12 @@ function renderPipeline(){
       if(tEl) tEl.value = '';
       renderPipeline();
     };
+  }
+  // Export — rebinds each render so the handler closes over the
+  // current filter + view-mode snapshot.
+  const expBtn = document.getElementById('pipelineExportBtn');
+  if(expBtn){
+    expBtn.onclick = () => exportPipelineCsv();
   }
   // Stuck-only toggle — chip styled pill that flips active state on
   // click. Only meaningful in pipeline mode (legacy status has no
