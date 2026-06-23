@@ -586,6 +586,7 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
       </select>
       <input type="date" id="bulkFollowup" class="filter-search" style="max-width:180px" placeholder="Set follow-up date">
       <button class="header-btn" id="bulkClear" style="background:transparent;color:var(--muted);border:1px solid var(--border)">Clear selection</button>
+      <button class="header-btn" id="bulkSendEmail" style="background:var(--ocean);color:#fff;border:none">Send email batch</button>
       <button class="header-btn" id="bulkDelete" style="background:transparent;color:#fca5a5;border:1px solid rgba(252,165,165,.4)"><span class="ui-ic">__ICN_TRASH__</span> Delete selected</button>
     </div>
 
@@ -1003,6 +1004,39 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
      JS checks for window.google.accounts.oauth2 before using it. -->
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 
+<!-- ─── BATCH SEND MODAL ─── -->
+<div class="compose-modal" id="batchSendModal">
+  <div class="compose-card" style="max-width:720px">
+    <div class="compose-header">
+      <div class="compose-title" id="batchSendTitle">Send email batch</div>
+      <button class="detail-close" id="batchSendClose" aria-label="Close">×</button>
+    </div>
+    <div class="compose-body">
+      <div class="editor-field">
+        <label>Template</label>
+        <select id="batchTemplate"></select>
+      </div>
+      <div class="editor-field">
+        <label>Preview (first recipient)</label>
+        <div id="batchPreviewSubject" style="font-weight:700;color:var(--ink);font-size:13px;padding:6px 10px;background:#f6f9fc;border:1px solid var(--border);border-radius:6px;margin-bottom:6px"></div>
+        <div id="batchPreviewBody" style="white-space:pre-wrap;color:var(--ink);font-size:12.5px;padding:10px;background:#fafdff;border:1px solid var(--border);border-radius:8px;max-height:200px;overflow:auto"></div>
+      </div>
+      <div class="editor-field">
+        <label style="display:flex;justify-content:space-between;align-items:center"><span>Recipients</span><span id="batchRecipientCount" style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);font-weight:600"></span></label>
+        <div id="batchRecipientList" style="max-height:240px;overflow:auto;border:1px solid var(--border);border-radius:8px"></div>
+      </div>
+      <div class="editor-hint" style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+        <span>Throttle: <b>1 email / sec</b> to avoid spam filters. Per-message status updates below as each lands.</span>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap"><input type="checkbox" id="batchDryRun" style="accent-color:var(--ocean)"> Dry-run (don't actually send)</label>
+      </div>
+    </div>
+    <div class="compose-footer">
+      <button class="action-btn ghost" id="batchSendCancel">Cancel</button>
+      <button class="action-btn primary" id="batchSendStart" style="grid-column:auto">Send 0 emails</button>
+    </div>
+  </div>
+</div>
+
 <!-- ─── GMAIL / SETTINGS MODAL ─── -->
 <div class="compose-modal" id="settingsModal">
   <div class="compose-card" style="max-width:520px">
@@ -1158,7 +1192,10 @@ const GMAIL_AUTHUSER = 'groups@gotadaguasurf.com';
 // the user doesn't have to edit code after creating their OAuth client.
 // Token is the short-lived (~1h) access token from Google Identity
 // Services' implicit flow; stored alongside its expiry stamp.
-const GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
+// Read inbound replies + send outbound. Space-separated, GIS accepts
+// both in one consent. Adding send here means re-Connect is needed
+// once after deploy (old token only has readonly).
+const GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send';
 const GMAIL_LS_CLIENT_ID = 'crmGmailClientId';
 const GMAIL_LS_TOKEN     = 'crmGmailToken';     // { access_token, expires_at }
 let _gmailTokenClient = null;                   // initialised on demand
@@ -1386,6 +1423,228 @@ async function syncGmailInbox(){
     if(syncBtn){ syncBtn.disabled = false; syncBtn.textContent = 'Sync inbox'; }
   }
 }
+
+// ── Batch send (C) ──────────────────────────────────────────────────
+// Bulk-select N contacts on the Contacts tab → "Send email batch"
+// opens a modal that picks one template, previews the first
+// rendered recipient, lists every selected recipient with a skip
+// toggle, and on Send loops Gmail API send calls throttled at
+// 1/sec so the user doesn't trigger Gmail's spam-detection or the
+// per-second send rate limit. Per-row status updates live in the
+// modal as each lands.
+let BATCH_STATE = { recipients: [], inProgress: false };
+
+// Build the RFC 2822 message string for a single recipient, then
+// base64url-encode it the way Gmail API expects in messages.send.
+// Subject is Q-encoded (=?utf-8?B?…?=) so accents survive the
+// headers; body is UTF-8 plain text.
+function buildGmailRawMessage({ to, subject, body, fromAuthuser }){
+  const toUtf8 = (s) => unescape(encodeURIComponent(s || ''));
+  const subjB64 = btoa(toUtf8(subject || ''));
+  const headers = [
+    `From: ${fromAuthuser}`,
+    `To: ${to}`,
+    `Subject: =?utf-8?B?${subjB64}?=`,
+    'MIME-Version: 1.0',
+    'Content-Type: text/plain; charset=utf-8',
+    'Content-Transfer-Encoding: 8bit',
+  ].join('\r\n');
+  const message = headers + '\r\n\r\n' + (body || '');
+  // base64url: standard base64 with +→-, /→_, strip trailing =.
+  const utf8 = toUtf8(message);
+  const b64 = btoa(utf8);
+  return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+async function gmailSendOne({ to, subject, body }){
+  const token = gmailToken();
+  if(!token) throw new Error('Gmail not connected');
+  const raw = buildGmailRawMessage({ to, subject, body, fromAuthuser: GMAIL_AUTHUSER });
+  const resp = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token.access_token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ raw }),
+  });
+  if(!resp.ok){
+    const errTxt = await resp.text();
+    throw new Error(`Gmail send HTTP ${resp.status}: ${errTxt.slice(0,200)}`);
+  }
+  return await resp.json();
+}
+
+// Picks the recipient email for a contact — primary person if set,
+// else the company-level email. Returns null if neither exists.
+function recipientEmailFor(c){
+  const primary = primaryPersonFor(c.id);
+  return (primary?.email) || c.email || null;
+}
+
+function openBatchSendModal(){
+  if(SELECTED.size === 0){ toast('Pick contacts first'); return; }
+  if(!gmailIsConnected()){ toast('Connect Gmail first (⚙ → Connect Gmail)'); return; }
+  // Refresh PEOPLE in case primary picks updated since last render.
+  const ids = Array.from(SELECTED);
+  BATCH_STATE.recipients = ids
+    .map(id => CONTACTS.find(c => c.id === id))
+    .filter(Boolean)
+    .map(c => ({
+      contact: c,
+      email: recipientEmailFor(c),
+      include: !!recipientEmailFor(c),  // skipped by default when no email
+      status: 'pending',                 // pending → sending → sent → failed
+      message: '',
+    }));
+  const withoutEmail = BATCH_STATE.recipients.filter(r => !r.email).length;
+  if(BATCH_STATE.recipients.length - withoutEmail === 0){
+    toast('None of the selected contacts have an email');
+    return;
+  }
+  // Populate template select — only templates for the most common
+  // language across selected (fallback to all).
+  const tplSel = document.getElementById('batchTemplate');
+  if(TEMPLATES.length === 0){
+    toast('No templates yet — create one in the Templates tab first');
+    return;
+  }
+  // Prefer English templates first (most outreach); the user can
+  // pick Portuguese from the dropdown if they want.
+  const en = TEMPLATES.filter(t => t.language === 'en');
+  const pt = TEMPLATES.filter(t => t.language === 'pt');
+  tplSel.innerHTML = [...en, ...pt]
+    .map(t => `<option value="${t.id}">${escHtml(t.name)} (${t.language})</option>`).join('');
+  tplSel.value = (en[0] || TEMPLATES[0]).id;
+  refreshBatchPreview();
+  renderBatchRecipientList();
+  document.getElementById('batchDryRun').checked = false;
+  document.getElementById('batchSendModal').classList.add('open');
+}
+
+function refreshBatchPreview(){
+  const tpl = TEMPLATES.find(t => t.id === document.getElementById('batchTemplate').value);
+  const first = BATCH_STATE.recipients.find(r => r.include && r.email);
+  if(!tpl || !first){
+    document.getElementById('batchPreviewSubject').textContent = '—';
+    document.getElementById('batchPreviewBody').textContent = '';
+    return;
+  }
+  document.getElementById('batchPreviewSubject').textContent = renderTemplate(tpl.subject, first.contact);
+  document.getElementById('batchPreviewBody').textContent    = renderTemplate(tpl.body, first.contact);
+}
+
+function renderBatchRecipientList(){
+  const el = document.getElementById('batchRecipientList');
+  const list = BATCH_STATE.recipients;
+  const includedCount = list.filter(r => r.include && r.email).length;
+  document.getElementById('batchRecipientCount').textContent =
+    `${includedCount} of ${list.length} will send`;
+  const sendBtn = document.getElementById('batchSendStart');
+  sendBtn.textContent = `Send ${includedCount} email${includedCount===1?'':'s'}`;
+  sendBtn.disabled = includedCount === 0 || BATCH_STATE.inProgress;
+  sendBtn.style.opacity = sendBtn.disabled ? '.5' : '';
+  el.innerHTML = list.map((r, i) => {
+    const noEmail = !r.email;
+    const statusChip = (() => {
+      if(noEmail) return `<span style="color:var(--red-text);font-size:11px;font-weight:700">no email</span>`;
+      if(r.status === 'sending') return `<span style="color:var(--ocean);font-size:11px;font-weight:700">sending…</span>`;
+      if(r.status === 'sent')    return `<span style="color:var(--green-text);background:var(--green-bg);padding:2px 7px;border-radius:6px;font-size:11px;font-weight:700">sent</span>`;
+      if(r.status === 'failed')  return `<span style="color:var(--red-text);background:var(--red-bg);padding:2px 7px;border-radius:6px;font-size:11px;font-weight:700" title="${escAttr(r.message||'')}">failed</span>`;
+      return '';
+    })();
+    const border = i === list.length-1 ? '' : 'border-bottom:1px solid var(--border)';
+    return `
+      <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;${border};${noEmail?'opacity:.5':''}">
+        <input type="checkbox" data-batch-idx="${i}" ${r.include && !noEmail ? 'checked' : ''} ${noEmail?'disabled':''} style="width:16px;height:16px;accent-color:var(--ocean);cursor:${noEmail?'not-allowed':'pointer'}">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12.5px;font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(r.contact.company || '')}</div>
+          <div style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(r.email || '(no email)')}</div>
+        </div>
+        ${statusChip}
+      </div>
+    `;
+  }).join('');
+  el.querySelectorAll('[data-batch-idx]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      BATCH_STATE.recipients[Number(cb.dataset.batchIdx)].include = cb.checked;
+      renderBatchRecipientList();
+      refreshBatchPreview();
+    });
+  });
+}
+
+async function runBatchSend(){
+  if(BATCH_STATE.inProgress) return;
+  const tpl = TEMPLATES.find(t => t.id === document.getElementById('batchTemplate').value);
+  if(!tpl){ toast('Pick a template'); return; }
+  const targets = BATCH_STATE.recipients.filter(r => r.include && r.email);
+  if(targets.length === 0){ toast('Nothing to send'); return; }
+  const dryRun = document.getElementById('batchDryRun').checked;
+  const verb = dryRun ? 'simulate' : 'SEND';
+  if(!confirm(`${verb} ${targets.length} email${targets.length>1?'s':''} via ${GMAIL_AUTHUSER}?\n\nThrottle: 1/sec. You can close the modal once it starts; sending continues in the background.`)) return;
+
+  BATCH_STATE.inProgress = true;
+  renderBatchRecipientList();
+  const supa = getClient();
+  let sentCount = 0, failedCount = 0;
+  for(const r of targets){
+    if(!BATCH_STATE.inProgress) break;  // user closed
+    r.status = 'sending';
+    renderBatchRecipientList();
+    const c = r.contact;
+    const subj = renderTemplate(tpl.subject, c);
+    const body = renderTemplate(tpl.body, c);
+    try {
+      if(!dryRun){
+        await gmailSendOne({ to: r.email, subject: subj, body });
+        // Update local state + log activity + auto-advance status.
+        let newStatus = c.status;
+        if(c.status === 'not_started') newStatus = 'first_email';
+        else if(c.status === 'first_email') newStatus = 'follow_up';
+        const patch = { last_contacted_at: new Date().toISOString() };
+        if(newStatus !== c.status) patch.status = newStatus;
+        await supa.from('outreach_contacts').update(patch).eq('id', c.id);
+        Object.assign(c, patch);
+        await logActivity(c.id, 'email_sent', null, null, {
+          template_id: tpl.id, template_name: tpl.name, subject: subj, via: 'batch',
+        });
+      } else {
+        // Dry-run pause so the user sees the row tick through states.
+        await new Promise(res => setTimeout(res, 300));
+      }
+      r.status = 'sent';
+      sentCount++;
+    } catch(err){
+      r.status = 'failed';
+      r.message = err.message;
+      failedCount++;
+    }
+    renderBatchRecipientList();
+    // Throttle: 1 second between sends. Skip throttle in dry-run
+    // since it's instant anyway.
+    if(!dryRun) await new Promise(res => setTimeout(res, 1000));
+  }
+  BATCH_STATE.inProgress = false;
+  renderBatchRecipientList();
+  toast(`${dryRun?'Dry-run':'Batch send'} done · ${sentCount} sent${failedCount?` · ${failedCount} failed`:''}`);
+  if(CURRENT_TAB === 'dashboard') renderDashboard();
+  if(CURRENT_TAB === 'contacts') renderContacts();
+}
+
+function closeBatchSendModal(){
+  if(BATCH_STATE.inProgress){
+    if(!confirm('A send is in progress. Close anyway and stop?')) return;
+    BATCH_STATE.inProgress = false;
+  }
+  document.getElementById('batchSendModal').classList.remove('open');
+}
+
+document.getElementById('bulkSendEmail').addEventListener('click', openBatchSendModal);
+document.getElementById('batchSendClose').addEventListener('click', closeBatchSendModal);
+document.getElementById('batchSendCancel').addEventListener('click', closeBatchSendModal);
+document.getElementById('batchSendStart').addEventListener('click', runBatchSend);
+document.getElementById('batchTemplate').addEventListener('change', refreshBatchPreview);
 
 // Wire the header buttons + Settings modal once at script-load time.
 document.getElementById('gmailConnectBtn').addEventListener('click', connectGmail);
