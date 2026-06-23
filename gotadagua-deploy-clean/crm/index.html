@@ -597,6 +597,14 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
       <div style="margin-left:auto;font-family:'DM Mono',monospace;font-size:12px;color:var(--muted)" id="tasksTabCount">—</div>
       <button type="button" id="tasksTabAddBtn" style="background:var(--ocean);color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">+ Task</button>
     </div>
+    <!-- Bulk action bar — hidden when nothing selected. Appears above
+         the list when 1+ rows are checked. -->
+    <div id="tasksTabBulkBar" class="hidden" style="display:flex;gap:10px;align-items:center;background:var(--navy);color:#fff;padding:10px 14px;border-radius:var(--r-md);margin-bottom:10px">
+      <span style="font-family:'DM Mono',monospace;font-size:12.5px"><span id="tasksTabBulkCount">0</span> selected</span>
+      <button type="button" id="tasksTabBulkDone" style="background:var(--ocean);color:#fff;border:none;border-radius:8px;padding:6px 12px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">Mark done</button>
+      <button type="button" id="tasksTabBulkReopen" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:8px;padding:6px 12px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">Reopen</button>
+      <button type="button" id="tasksTabBulkClear" style="margin-left:auto;background:transparent;color:#bdd4e8;border:none;font-size:11.5px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif">Clear</button>
+    </div>
     <div id="tasksTabList" style="background:#fff;border:1px solid var(--border);border-radius:var(--r-md);overflow:hidden"></div>
   </div>
 
@@ -3407,6 +3415,9 @@ async function quickAddTask(companyId, preset){
 // State for the tab's filter. Persists across renders so flipping in
 // and out of the tab keeps your filter selection.
 let TASKS_TAB_FILTER = 'open';
+// Set of task ids currently selected for bulk actions. Survives a
+// re-render so the user can flip filters without losing selection.
+const TASKS_TAB_SELECTED = new Set();
 const TASKS_TAB_FILTERS = [
   { key:'overdue', label:'Overdue' },
   { key:'today',   label:'Today' },
@@ -3472,12 +3483,40 @@ function renderTasksTab(){
   document.getElementById('tasksTabCount').textContent =
     `${rows.length} task${rows.length===1?'':'s'}`;
 
+  // Drop selections that no longer belong to the visible row set so
+  // the bulk count never lies (filter change can hide previously
+  // selected rows; we don't want phantom selections).
+  const visibleIds = new Set(rows.map(r => r.id));
+  Array.from(TASKS_TAB_SELECTED).forEach(id => {
+    if(!visibleIds.has(id)) TASKS_TAB_SELECTED.delete(id);
+  });
+  updateTasksTabBulkBar();
+
   const listEl = document.getElementById('tasksTabList');
+  // Grid is 7 columns now: select | done-toggle | title | company |
+  // type | due | edit. Keep the header in sync with the row layout
+  // so the columns line up visually.
+  const COL_GRID = 'grid-template-columns:auto auto 1fr 1.2fr auto auto auto;gap:14px';
   if(rows.length === 0){
     listEl.innerHTML = `<div class="empty-state" style="padding:40px;text-align:center">${TASKS_TAB_FILTER==='done' ? 'Nothing completed recently.' : 'No tasks matching this filter.'}</div>`;
     return;
   }
-  listEl.innerHTML = rows.map((t, i) => {
+  // Sticky header row with the select-all checkbox. checked = every
+  // visible row is selected; indeterminate = partial selection.
+  const allSelected = rows.every(r => TASKS_TAB_SELECTED.has(r.id));
+  const someSelected = !allSelected && rows.some(r => TASKS_TAB_SELECTED.has(r.id));
+  const headerRow = `
+    <div style="display:grid;${COL_GRID};align-items:center;padding:10px 16px;background:#f6f9fc;border-bottom:1px solid var(--border);font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);font-weight:700">
+      <input type="checkbox" id="tasksTabSelectAll" ${allSelected?'checked':''} title="Select all visible" style="width:16px;height:16px;accent-color:var(--ocean);cursor:pointer">
+      <span title="Done toggle">Done</span>
+      <span>Task</span>
+      <span>Company</span>
+      <span>Type</span>
+      <span>Due</span>
+      <span></span>
+    </div>
+  `;
+  const rowsHtml = rows.map((t, i) => {
     const c = CONTACTS.find(x => x.id === t.company_id);
     const companyName = c ? c.company : '(unknown company)';
     const due = t.due_at ? t.due_at.slice(0,10) : null;
@@ -3490,9 +3529,11 @@ function renderTasksTab(){
       : '<span style="color:var(--muted)">no due</span>';
     const typeIcon = TASK_TYPE_ICONS[t.type] || 'calendar';
     const rowBorder = i === rows.length-1 ? '' : 'border-bottom:1px solid var(--border)';
+    const isSelected = TASKS_TAB_SELECTED.has(t.id);
     return `
-      <div class="tasks-tab-row" data-task-id="${t.id}" data-company-id="${t.company_id}" style="display:grid;grid-template-columns:auto 1fr 1.2fr auto auto auto;gap:14px;align-items:center;padding:12px 16px;${rowBorder};${t.done_at?'opacity:.55':''};cursor:default">
-        <input type="checkbox" data-tk-tab-toggle="${t.id}" ${t.done_at?'checked':''} style="width:18px;height:18px;accent-color:var(--ocean);cursor:pointer">
+      <div class="tasks-tab-row" data-task-id="${t.id}" data-company-id="${t.company_id}" style="display:grid;${COL_GRID};align-items:center;padding:12px 16px;${rowBorder};${t.done_at?'opacity:.55':''};${isSelected?'background:#eef6fb':''};cursor:default">
+        <input type="checkbox" data-tk-tab-select="${t.id}" ${isSelected?'checked':''} title="Select" style="width:16px;height:16px;accent-color:var(--ocean);cursor:pointer">
+        <input type="checkbox" data-tk-tab-toggle="${t.id}" ${t.done_at?'checked':''} title="${t.done_at?'Reopen':'Mark done'}" style="width:18px;height:18px;accent-color:var(--ocean);cursor:pointer">
         <div style="min-width:0">
           <div style="font-weight:700;color:var(--ink);font-size:13.5px;${t.done_at?'text-decoration:line-through':''};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(t.title)}</div>
           ${t.notes ? `<div style="font-size:11.5px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(t.notes)}</div>` : ''}
@@ -3504,8 +3545,34 @@ function renderTasksTab(){
       </div>
     `;
   }).join('');
+  listEl.innerHTML = headerRow + rowsHtml;
 
-  // Wire the done checkboxes (same as the per-company list).
+  // Restore indeterminate state on the header checkbox — native HTML
+  // attribute doesn't support it; must set via JS after the element
+  // exists in the DOM.
+  const selectAllEl = document.getElementById('tasksTabSelectAll');
+  if(selectAllEl) selectAllEl.indeterminate = someSelected;
+
+  // Select-all click: flip every visible row to the same state. Uses
+  // the current checkbox state after the click (i.e. the desired
+  // future state), since clicking flips the checkbox first.
+  if(selectAllEl){
+    selectAllEl.addEventListener('change', () => {
+      if(selectAllEl.checked) rows.forEach(r => TASKS_TAB_SELECTED.add(r.id));
+      else                    rows.forEach(r => TASKS_TAB_SELECTED.delete(r.id));
+      renderTasksTab();
+    });
+  }
+  // Per-row select.
+  listEl.querySelectorAll('[data-tk-tab-select]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const id = cb.dataset.tkTabSelect;
+      if(cb.checked) TASKS_TAB_SELECTED.add(id);
+      else           TASKS_TAB_SELECTED.delete(id);
+      renderTasksTab();
+    });
+  });
+  // Done toggles (same as the per-company list).
   listEl.querySelectorAll('[data-tk-tab-toggle]').forEach(cb => {
     cb.addEventListener('change', async () => {
       const id = cb.dataset.tkTabToggle;
@@ -3524,12 +3591,51 @@ function renderTasksTab(){
   listEl.querySelectorAll('[data-jump-company]').forEach(el => {
     el.addEventListener('click', () => openContact(el.dataset.jumpCompany));
   });
-  // Edit button reuses the existing modal — needs the company id so the
-  // save handler updates the right parent.
+  // Edit button reuses the existing modal.
   listEl.querySelectorAll('[data-tk-tab-edit]').forEach(btn => {
     btn.addEventListener('click', () => openTaskModal(btn.dataset.companyId, btn.dataset.tkTabEdit));
   });
 }
+
+// Shows / hides the bulk action bar and refreshes its count. Called
+// from renderTasksTab after the visible-row reconciliation pass.
+function updateTasksTabBulkBar(){
+  const bar = document.getElementById('tasksTabBulkBar');
+  if(!bar) return;
+  const n = TASKS_TAB_SELECTED.size;
+  bar.classList.toggle('hidden', n === 0);
+  const countEl = document.getElementById('tasksTabBulkCount');
+  if(countEl) countEl.textContent = n;
+}
+
+// Bulk action: set done_at on every selected row in one round trip.
+// "open" = clears done_at (reopens completed tasks). Confirms via
+// toast count, not a blocking dialog — these are reversible.
+async function tasksTabBulkSetDone(makeDone){
+  const ids = Array.from(TASKS_TAB_SELECTED);
+  if(ids.length === 0) return;
+  const supa = getClient();
+  const newDoneAt = makeDone ? new Date().toISOString() : null;
+  const { error } = await supa.from('tasks').update({ done_at: newDoneAt }).in('id', ids);
+  if(error){ toast('Bulk update failed: '+error.message); return; }
+  ids.forEach(id => {
+    const t = TASKS.find(x => x.id === id);
+    if(t) t.done_at = newDoneAt;
+  });
+  toast(`${ids.length} task${ids.length>1?'s':''} ${makeDone?'marked done':'reopened'}`);
+  TASKS_TAB_SELECTED.clear();
+  renderTasksTab();
+  updateNavTasksCount();
+}
+
+// Wire the bulk-bar buttons once at script-load time — they live in
+// fixed markup and don't get re-stamped per render.
+document.getElementById('tasksTabBulkDone').addEventListener('click', () => tasksTabBulkSetDone(true));
+document.getElementById('tasksTabBulkReopen').addEventListener('click', () => tasksTabBulkSetDone(false));
+document.getElementById('tasksTabBulkClear').addEventListener('click', () => {
+  TASKS_TAB_SELECTED.clear();
+  renderTasksTab();
+});
 
 // ════════════════════════════════════════════════════════════════════════
 //  PEOPLE (multi-contact roster — CRM v2 contacts table)
