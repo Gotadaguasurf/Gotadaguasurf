@@ -2023,6 +2023,18 @@ function subscribeRealtime(){
       if(CURRENT_CONTACT?.id === companyId) renderPipelinesSection(companyId);
       if(CURRENT_TAB === 'pipeline' && CURRENT_PIPELINE_VIEW !== 'status') renderPipeline();
     })
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'email_messages' }, (payload)=>{
+      // Auto-poll inserts inbound replies into email_messages. When
+      // a row lands for the company currently open in the detail
+      // panel, refresh the activity log so the new reply renders
+      // inline without a manual reload. Other tabs (dashboard /
+      // contacts) re-render via scheduleRtRender below.
+      const companyId = payload.new?.company_id;
+      if(companyId && CURRENT_CONTACT?.id === companyId){
+        scheduleRtPanelRefresh(companyId);
+      }
+      scheduleRtRender();
+    })
     .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, (payload)=>{
       const { eventType, new: nw, old: ol } = payload;
       if(eventType === 'INSERT'){
