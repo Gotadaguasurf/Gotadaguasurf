@@ -1911,21 +1911,71 @@ function renderDashboard(){
       const company = CONTACTS.find(c => c.id === cp.company_id);
       if(!company) return null;
       const pipeline = PIPELINES.find(p => p.id === cp.pipeline_id);
-      return { cp, stage, company, pipeline, days };
+      // Pre-compute the "next" stage for the + Push button — the next
+      // stage by sort_order that's NOT is_lost. We don't auto-push
+      // to Lost; that's a deliberate action. is_won IS allowed since
+      // pushing to Won is a positive outcome.
+      const stages = stagesForPipeline(cp.pipeline_id);
+      const nextStage = stages
+        .filter(s => (s.sort_order||0) > (stage.sort_order||0) && !s.is_lost)
+        .sort((a,b) => (a.sort_order||0) - (b.sort_order||0))[0];
+      return { cp, stage, company, pipeline, days, nextStage };
     })
     .filter(Boolean)
     .sort((a,b) => b.days - a.days);
   const stuckEl = document.getElementById('stuckList');
   if(stuckEl){
-    stuckEl.innerHTML = stuck.length ? stuck.slice(0,15).map(s => `
-      <div class="followup-item" style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+    stuckEl.innerHTML = stuck.length ? stuck.slice(0,15).map(s => {
+      // Push button shown only when a non-lost next stage exists. For
+      // the very last in-flight stage (e.g. Negotiation → Won), the
+      // button advances to Won; that's a positive default and the
+      // green confirm toast tells the user what just happened.
+      const pushBtn = s.nextStage
+        ? `<button data-push-cp="${s.cp.id}" data-push-stage="${s.nextStage.id}" title="Move to ${escAttr(s.nextStage.name)}" style="background:transparent;color:var(--ocean);border:1px solid var(--ocean);border-radius:6px;padding:3px 9px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;white-space:nowrap;flex-shrink:0">→ ${escHtml(s.nextStage.name)}</button>`
+        : '';
+      return `<div class="followup-item" style="display:flex;justify-content:space-between;align-items:center;gap:10px">
         <div class="fi-name" data-id="${s.company.id}" style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(s.company.company)}</div>
         <span style="font-size:11px;color:var(--muted);white-space:nowrap;flex-shrink:0">${escHtml(s.pipeline?.name || '—')} · ${escHtml(s.stage.name)}</span>
         <div class="fi-due ${s.days>=60?'overdue':''}" style="flex-shrink:0">${s.days}d in stage</div>
-      </div>
-    `).join('') + (stuck.length>15 ? `<div class="empty-state" style="padding:10px">+ ${stuck.length-15} more</div>` : '') :
+        ${pushBtn}
+      </div>`;
+    }).join('') + (stuck.length>15 ? `<div class="empty-state" style="padding:10px">+ ${stuck.length-15} more</div>` : '') :
       '<div class="empty-state">Nothing stuck — every active deal moved within the last 30 days. 🎉</div>';
     stuckEl.querySelectorAll('.fi-name').forEach(el => el.addEventListener('click', () => openContact(el.dataset.id)));
+    // + Push wiring: update the contact_pipeline row's stage_id to the
+    // next non-lost stage and bump entered_stage_at to now() so the
+    // "days in stage" counter resets. Row drops off the stuck list on
+    // the next render — same UX as Re-engage on Cold accounts.
+    stuckEl.querySelectorAll('[data-push-cp]').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const cpId = btn.dataset.pushCp;
+        const newStageId = btn.dataset.pushStage;
+        const row = CONTACT_PIPELINE.find(x => x.id === cpId);
+        if(!row) return;
+        const newStage = PIPELINE_STAGES.find(s => s.id === newStageId);
+        // is_won next stage: a small confirm so the user doesn't
+        // accidentally close a deal as Won from a dashboard click.
+        if(newStage?.is_won && !confirm(`Mark this deal as ${newStage.name}? This is a terminal positive close.`)) return;
+        btn.disabled = true; btn.style.opacity = '.5'; btn.textContent = '…';
+        const supa = getClient();
+        const nowIso = new Date().toISOString();
+        const { error } = await supa.from('contact_pipeline')
+          .update({ stage_id: newStageId, entered_stage_at: nowIso }).eq('id', cpId);
+        if(error){
+          toast('Push failed: '+error.message);
+          btn.disabled = false; btn.style.opacity = ''; btn.textContent = `→ ${newStage?.name||'next'}`;
+          return;
+        }
+        row.stage_id = newStageId;
+        row.entered_stage_at = nowIso;
+        const company = CONTACTS.find(c => c.id === row.company_id);
+        toast(`${company?.company || 'Deal'} → ${newStage?.name || 'next stage'}`);
+        renderDashboard();
+        if(CURRENT_CONTACT?.id === row.company_id) renderPipelinesSection(row.company_id);
+        if(CURRENT_TAB === 'pipeline' && CURRENT_PIPELINE_VIEW !== 'status') renderPipeline();
+      });
+    });
   }
 }
 
