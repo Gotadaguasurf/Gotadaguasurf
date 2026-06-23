@@ -4799,7 +4799,7 @@ function shouldShowContractSection(companyId){
   return !!(stage && !stage.is_lost);
 }
 
-function pipelineCardHtml(c, daysInStage){
+function pipelineCardHtml(c, daysInStage, nextStage, cpId){
   // How many groups does this partner have, and how many possibilities?
   const groups = GROUPS.filter(g => g.contact_id === c.id);
   const possibilities = groups.filter(g => ['possibility','request','hold'].includes(g.stage)).length;
@@ -4824,6 +4824,12 @@ function pipelineCardHtml(c, daysInStage){
     else if(daysInStage >= 14){ bg = 'var(--amber-bg)'; col = 'var(--amber-text)'; }
     stageBadge = `<span style="background:${bg};color:${col};padding:2px 7px;border-radius:999px;font-size:10px;font-weight:700;font-family:'DM Mono',monospace">${daysInStage}d</span>`;
   }
+  // → push button — pipeline mode only. Tiny chevron in the bottom-
+  // right that advances to the next non-lost stage. Touch-friendly
+  // alternative to drag-and-drop. Won-target gates on a confirm.
+  const pushBtn = nextStage && cpId
+    ? `<button class="kc-push" data-push-cp="${cpId}" data-push-stage="${nextStage.id}" data-push-name="${escAttr(nextStage.name)}" title="Move to ${escAttr(nextStage.name)}" aria-label="Push to next stage" style="background:transparent;border:1px solid var(--border);border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700;color:var(--ocean);cursor:pointer;font-family:'Outfit',sans-serif">→ ${escHtml(nextStage.name)}</button>`
+    : '';
   return `
     <div class="kanban-card" draggable="true" data-id="${c.id}">
       <div class="kc-name" style="display:flex;justify-content:space-between;align-items:center;gap:6px">
@@ -4831,6 +4837,7 @@ function pipelineCardHtml(c, daysInStage){
         ${stageBadge || (c.email ? '' : '<span class="no-email">no email</span>')}
       </div>
       ${meta.length ? `<div class="kc-meta">${meta.join('')}</div>` : ''}
+      ${pushBtn ? `<div style="margin-top:6px;display:flex;justify-content:flex-end">${pushBtn}</div>` : ''}
     </div>
   `;
 }
@@ -5150,12 +5157,23 @@ function renderPipelineByPipeline(pipelineId){
   const renderableStages = PIPELINE_FILTER.stageId
     ? stages.filter(s => s.id === PIPELINE_FILTER.stageId)
     : stages;
+  // Pre-compute the next non-lost stage per stage_id so the per-card
+  // → push button knows where to advance to. Same rule as the Stuck
+  // deals card (next sort_order, exclude is_lost).
+  const nextStageByCurrentId = new Map();
+  stages.forEach(s => {
+    const next = stages
+      .filter(x => (x.sort_order||0) > (s.sort_order||0) && !x.is_lost)
+      .sort((a,b) => (a.sort_order||0) - (b.sort_order||0))[0];
+    if(next) nextStageByCurrentId.set(s.id, next);
+  });
   board.innerHTML = renderableStages.map(s => {
     const cards = (rowsByStage.get(s.id) || []).map(c => {
       const cp = assignmentByCompany.get(c.id);
       const enteredDate = cp?.entered_stage_at ? cp.entered_stage_at.slice(0,10) : null;
       const daysInStage = enteredDate ? daysBetween(enteredDate, today) : undefined;
-      return pipelineCardHtml(c, daysInStage);
+      const next = nextStageByCurrentId.get(s.id);
+      return pipelineCardHtml(c, daysInStage, next, cp?.id);
     }).join('') ||
       '<div class="kanban-empty">drop a card here</div>';
     // Inline dot since stage CSS keys are hardcoded to legacy status —
@@ -5193,6 +5211,9 @@ function wireKanbanInteractions(board, mode, ctx = {}){
   board.querySelectorAll('.kanban-card').forEach(card => {
     card.addEventListener('click', e => {
       if(card.classList.contains('dragging')) return;
+      // Clicks on the inner → push button shouldn't open the detail
+      // panel — they have their own handler below.
+      if(e.target.closest('.kc-push')) return;
       openContact(card.dataset.id);
     });
     card.addEventListener('dragstart', e => {
@@ -5205,6 +5226,38 @@ function wireKanbanInteractions(board, mode, ctx = {}){
       card.classList.remove('dragging');
       _dragContactId = null;
       board.querySelectorAll('.kanban-list.drop-active').forEach(l => l.classList.remove('drop-active'));
+    });
+  });
+
+  // Per-card → push (pipeline mode only — the markup only renders
+  // when nextStage is supplied). Same advance logic as the Stuck
+  // deals dashboard card; confirm gate on is_won targets.
+  board.querySelectorAll('.kc-push').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const cpId = btn.dataset.pushCp;
+      const newStageId = btn.dataset.pushStage;
+      const newStageName = btn.dataset.pushName;
+      const row = CONTACT_PIPELINE.find(x => x.id === cpId);
+      if(!row) return;
+      const newStage = PIPELINE_STAGES.find(s => s.id === newStageId);
+      if(newStage?.is_won && !confirm(`Mark this deal as ${newStage.name}? This is a terminal positive close.`)) return;
+      btn.disabled = true; btn.style.opacity = '.5'; btn.textContent = '…';
+      const supa = getClient();
+      const nowIso = new Date().toISOString();
+      const { error } = await supa.from('contact_pipeline')
+        .update({ stage_id: newStageId, entered_stage_at: nowIso }).eq('id', cpId);
+      if(error){
+        toast('Push failed: '+error.message);
+        btn.disabled = false; btn.style.opacity = ''; btn.textContent = `→ ${newStageName}`;
+        return;
+      }
+      row.stage_id = newStageId;
+      row.entered_stage_at = nowIso;
+      const company = CONTACTS.find(c => c.id === row.company_id);
+      toast(`${company?.company || 'Deal'} → ${newStageName}`);
+      renderPipeline();
+      if(CURRENT_CONTACT?.id === row.company_id) renderPipelinesSection(row.company_id);
     });
   });
 
