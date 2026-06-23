@@ -1199,6 +1199,38 @@ const GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly https://www.
 const GMAIL_LS_CLIENT_ID = 'crmGmailClientId';
 const GMAIL_LS_TOKEN     = 'crmGmailToken';     // { access_token, expires_at }
 const GMAIL_LS_LAST_SYNC = 'crmGmailLastSync';  // ISO timestamp of last successful syncGmailInbox
+// Background poll cadence. 10 min is below the Gmail API per-user
+// rate cap (~1 quota unit per call, 250 units/sec/user budget) by
+// many orders of magnitude. Larger interval would feel stale; smaller
+// burns through quota for no real-time benefit.
+const GMAIL_POLL_MS = 10 * 60 * 1000;
+let _gmailPollTimer = null;
+
+// Starts (or restarts) the background poll. Pauses automatically when
+// the tab is hidden so we don't burn Gmail quota while the user is
+// elsewhere — comes back the moment they return.
+function startGmailAutoPoll(){
+  stopGmailAutoPoll();
+  if(!gmailIsConnected()) return;
+  _gmailPollTimer = setInterval(() => {
+    if(document.hidden) return;
+    if(!gmailIsConnected()){ stopGmailAutoPoll(); return; }
+    // Fire and forget — errors surface via the per-sync toast logic
+    // when it's a real failure (401, etc.).
+    syncGmailInbox({ silent: true });
+  }, GMAIL_POLL_MS);
+}
+function stopGmailAutoPoll(){
+  if(_gmailPollTimer){ clearInterval(_gmailPollTimer); _gmailPollTimer = null; }
+}
+// Resume on tab focus so a long-idle tab doesn't wait the full
+// interval after the user comes back.
+document.addEventListener('visibilitychange', () => {
+  if(!document.hidden && gmailIsConnected()){
+    const last = Number(localStorage.getItem(GMAIL_LS_LAST_SYNC) ? new Date(localStorage.getItem(GMAIL_LS_LAST_SYNC)).getTime() : 0);
+    if(Date.now() - last > GMAIL_POLL_MS) syncGmailInbox({ silent: true });
+  }
+});
 let _gmailTokenClient = null;                   // initialised on demand
 function gmailClientId(){ return localStorage.getItem(GMAIL_LS_CLIENT_ID) || ''; }
 function gmailToken(){
@@ -1281,6 +1313,7 @@ function ensureGmailTokenClient(){
       }));
       toast('Gmail connected');
       refreshGmailUi();
+      startGmailAutoPoll();
     },
   });
   return _gmailTokenClient;
@@ -1295,6 +1328,7 @@ function connectGmail(){
 }
 
 function disconnectGmail(){
+  stopGmailAutoPoll();
   localStorage.removeItem(GMAIL_LS_TOKEN);
   // Best-effort revoke server-side so the token can't be replayed.
   const t = gmailToken() || JSON.parse(localStorage.getItem(GMAIL_LS_TOKEN) || 'null');
@@ -1387,13 +1421,18 @@ async function advanceToInConversation(companyId, viaTag){
   return true;
 }
 
-async function syncGmailInbox(){
-  if(!gmailIsConnected()){ toast('Connect Gmail first'); return; }
+async function syncGmailInbox(opts = {}){
+  const silent = !!opts.silent;
+  // Silent mode: toast only on errors and on "new replies actually
+  // landed" events. Zero-result polls stay quiet so the user isn't
+  // pinged every 10 minutes for nothing.
+  const t = (msg) => { if(!silent) toast(msg); };
+  if(!gmailIsConnected()){ t('Connect Gmail first'); return; }
   const token = gmailToken();
   const query = buildGmailSyncQuery(7);
-  if(!query){ toast('No CRM contacts have emails to match against'); return; }
+  if(!query){ t('No CRM contacts have emails to match against'); return; }
   const syncBtn = document.getElementById('gmailSyncBtn');
-  if(syncBtn){ syncBtn.disabled = true; syncBtn.textContent = 'Syncing…'; }
+  if(syncBtn && !silent){ syncBtn.disabled = true; syncBtn.textContent = 'Syncing…'; }
   try {
     // 1. List candidate message ids.
     const listResp = await fetch(
@@ -1406,14 +1445,14 @@ async function syncGmailInbox(){
     }
     const listData = await listResp.json();
     const ids = (listData.messages || []).map(m => m.id);
-    if(ids.length === 0){ localStorage.setItem(GMAIL_LS_LAST_SYNC, new Date().toISOString()); refreshGmailUi(); toast('Sync complete · 0 new replies'); return; }
+    if(ids.length === 0){ localStorage.setItem(GMAIL_LS_LAST_SYNC, new Date().toISOString()); refreshGmailUi(); t('Sync complete · 0 new replies'); return; }
     // 2. Dedup against existing rows (one query).
     const supa = getClient();
     const { data: existing } = await supa.from('email_messages')
       .select('provider_msg_id').in('provider_msg_id', ids);
     const seenIds = new Set((existing || []).map(r => r.provider_msg_id));
     const newIds = ids.filter(id => !seenIds.has(id));
-    if(newIds.length === 0){ localStorage.setItem(GMAIL_LS_LAST_SYNC, new Date().toISOString()); refreshGmailUi(); toast(`Sync complete · 0 new (already had ${ids.length})`); return; }
+    if(newIds.length === 0){ localStorage.setItem(GMAIL_LS_LAST_SYNC, new Date().toISOString()); refreshGmailUi(); t(`Sync complete · 0 new (already had ${ids.length})`); return; }
     // 3. Fetch metadata for each new message in parallel (small N,
     //    no batching needed). format=metadata avoids transferring
     //    the full body, which we'd ignore anyway.
@@ -1447,7 +1486,7 @@ async function syncGmailInbox(){
       });
       touchedCompanies.add(match.companyId);
     });
-    if(inserts.length === 0){ localStorage.setItem(GMAIL_LS_LAST_SYNC, new Date().toISOString()); refreshGmailUi(); toast(`Sync complete · ${ids.length} fetched, none matched a contact`); return; }
+    if(inserts.length === 0){ localStorage.setItem(GMAIL_LS_LAST_SYNC, new Date().toISOString()); refreshGmailUi(); t(`Sync complete · ${ids.length} fetched, none matched a contact`); return; }
     // 5. One bulk insert.
     const { error } = await supa.from('email_messages').insert(inserts);
     if(error){ toast('Sync insert failed: '+error.message); return; }
@@ -1470,9 +1509,11 @@ async function syncGmailInbox(){
     localStorage.setItem(GMAIL_LS_LAST_SYNC, new Date().toISOString());
     refreshGmailUi();
   } catch(err){
-    toast('Sync error: ' + err.message);
+    toast('Sync error: ' + err.message);  // errors always loud
   } finally {
-    if(syncBtn){ syncBtn.disabled = false; syncBtn.textContent = 'Sync inbox'; }
+    // Only restore the button if we changed it; refreshGmailUi will
+    // re-render the "Xm ago" label from the freshly-stamped LS key.
+    if(syncBtn && !silent){ syncBtn.disabled = false; refreshGmailUi(); }
   }
 }
 
@@ -1718,8 +1759,11 @@ document.getElementById('settingsSaveBtn').addEventListener('click', () => {
 });
 document.getElementById('settingsDisconnectBtn').addEventListener('click', disconnectGmail);
 // First render after the buttons exist — sets visibility from
-// whatever's in localStorage.
+// whatever's in localStorage. Also kicks off the background poll
+// when the page loads with an already-valid token (page reload
+// shouldn't have to re-click Connect to resume auto-sync).
 refreshGmailUi();
+if(gmailIsConnected()) startGmailAutoPoll();
 let SAVED_VIEWS = [];
 let CURRENT_CONTACT = null;
 let CURRENT_TEMPLATE = null;
