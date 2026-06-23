@@ -611,6 +611,7 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
     <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
       <div id="tasksTabFilters" style="display:flex;gap:6px;flex-wrap:wrap"></div>
       <div style="margin-left:auto;font-family:'DM Mono',monospace;font-size:12px;color:var(--muted)" id="tasksTabCount">—</div>
+      <button type="button" id="tasksTabGroupBtn" title="Group rows under a header per company" style="background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:999px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">Group by company</button>
       <button type="button" id="tasksTabExportBtn" title="Download the current filtered view as CSV" style="background:transparent;color:var(--ocean);border:1px solid var(--ocean);border-radius:8px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">Export CSV</button>
       <button type="button" id="tasksTabAddBtn" style="background:var(--ocean);color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">+ Task</button>
     </div>
@@ -1990,7 +1991,14 @@ function renderDashboard(){
           <div class="fi-name" data-id="${c.id}" style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(c.company)}</div>
           ${comm}
           <div class="fi-due" style="flex-shrink:0;background:${expired?'var(--red-bg)':(days<=14?'#fef0e6':'#eef3f8')};color:${expired?'var(--red-text)':'var(--ink)'}">${label}</div>
-          <button data-renew-now-id="${c.id}" title="Already negotiated — shift contract dates +12 months" style="background:var(--green-bg);color:var(--green-text);border:1px solid #a7d8b9;border-radius:6px;padding:3px 9px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;white-space:nowrap;flex-shrink:0">Renew +12mo</button>
+          <span style="position:relative;flex-shrink:0;white-space:nowrap" data-renew-wrap="${c.id}">
+            <button data-renew-toggle="${c.id}" title="Already negotiated — pick a renewal length" style="background:var(--green-bg);color:var(--green-text);border:1px solid #a7d8b9;border-radius:6px;padding:3px 9px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">Renew ▾</button>
+            <span data-renew-menu="${c.id}" class="hidden" style="position:absolute;top:calc(100% + 4px);right:0;background:#fff;border:1px solid var(--border);border-radius:8px;box-shadow:0 6px 24px rgba(40,57,75,.18);padding:4px;z-index:10;display:flex;flex-direction:column;gap:2px;min-width:96px">
+              <button data-renew-now-id="${c.id}" data-renew-months="6" style="background:transparent;border:none;text-align:left;padding:6px 10px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif;border-radius:6px;color:var(--ink)">+6 months</button>
+              <button data-renew-now-id="${c.id}" data-renew-months="12" style="background:transparent;border:none;text-align:left;padding:6px 10px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif;border-radius:6px;color:var(--ink)">+12 months</button>
+              <button data-renew-now-id="${c.id}" data-renew-months="24" style="background:transparent;border:none;text-align:left;padding:6px 10px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif;border-radius:6px;color:var(--ink)">+24 months</button>
+            </span>
+          </span>
           ${renewBtn}
         </div>`;
       }).join('') + (expiring.length>15 ? `<div class="empty-state" style="padding:10px">+ ${expiring.length-15} more</div>` : '') :
@@ -2000,46 +2008,51 @@ function renderDashboard(){
       // has time to negotiate; if the contract already expired, due
       // tomorrow so the user catches up immediately. Same disable-
       // and-… pattern the other inline buttons use.
-      // Renew now — fast path for "we already agreed, just shift the
-      // dates". new_start = max(today, old_end + 1d) so a still-future
-      // contract continues without a gap; an already-expired one
-      // starts fresh today. new_end = new_start + 12 months
-      // (calendar-aware via Date.setMonth, handles 29 Feb edge case).
+      // Renew now — toggle reveals a 3-option menu (+6/+12/+24).
+      // Click anywhere else closes any open menu so they don't pile up.
+      expEl.querySelectorAll('[data-renew-toggle]').forEach(toggle => {
+        toggle.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const id = toggle.dataset.renewToggle;
+          // Close any other open menu first.
+          expEl.querySelectorAll('[data-renew-menu]').forEach(m => {
+            if(m.dataset.renewMenu !== id) m.classList.add('hidden');
+          });
+          const menu = expEl.querySelector(`[data-renew-menu="${id}"]`);
+          if(menu) menu.classList.toggle('hidden');
+        });
+      });
+      // Outside-click closes any open menu — one listener wired per
+      // render is fine since the next render re-attaches.
+      document.addEventListener('click', () => {
+        expEl.querySelectorAll('[data-renew-menu]').forEach(m => m.classList.add('hidden'));
+      }, { once: true });
+      // Pick a length — same date logic for all three.
       expEl.querySelectorAll('[data-renew-now-id]').forEach(btn => {
         btn.addEventListener('click', async (e) => {
           e.stopPropagation();
           const companyId = btn.dataset.renewNowId;
+          const months = Number(btn.dataset.renewMonths || 12);
           const company = CONTACTS.find(x => x.id === companyId);
           if(!company) return;
-          if(!confirm(`Renew contract for ${company.company} by +12 months?`)) return;
-          btn.disabled = true; btn.style.opacity = '.5'; btn.textContent = '…';
+          if(!confirm(`Renew contract for ${company.company} by +${months} months?`)) return;
+          btn.disabled = true; btn.style.opacity = '.5';
           const oldEnd = company.contract_end;
-          // Pick the start: if the contract was still in the future,
-          // continue from the day AFTER the old end (no gap); otherwise
-          // restart today.
-          let newStartISO;
-          if(oldEnd && oldEnd > today){
-            newStartISO = addDays(oldEnd, 1);
-          } else {
-            newStartISO = today;
-          }
-          // +12 months — let JS handle calendar maths (28/29 Feb, etc.).
+          const newStartISO = (oldEnd && oldEnd > today) ? addDays(oldEnd, 1) : today;
           const d = new Date(newStartISO + 'T12:00:00Z');
-          d.setUTCMonth(d.getUTCMonth() + 12);
+          d.setUTCMonth(d.getUTCMonth() + months);
           const newEndISO = d.toISOString().slice(0,10);
           const supa = getClient();
           const { error } = await supa.from('outreach_contacts')
             .update({ contract_start: newStartISO, contract_end: newEndISO }).eq('id', companyId);
           if(error){
             toast('Renewal failed: '+error.message);
-            btn.disabled = false; btn.style.opacity = ''; btn.textContent = 'Renew +12mo';
+            btn.disabled = false; btn.style.opacity = '';
             return;
           }
           company.contract_start = newStartISO;
           company.contract_end = newEndISO;
           toast(`${company.company} → renewed until ${fmtDate(newEndISO)}`);
-          // Row will drop off the expiring list on next render since
-          // new end is 12mo away (well outside the 60d window).
           renderDashboard();
           if(CURRENT_CONTACT?.id === companyId) openContact(companyId);
         });
@@ -4185,7 +4198,13 @@ function maybeShowMyDayDigest(){
   const todayTasks   = TASKS.filter(t => !t.done_at && t.due_at && t.due_at.slice(0,10) === today);
   const overdueFollowups = CONTACTS.filter(c => c.follow_up_at && c.follow_up_at < today);
   const todayFollowups   = CONTACTS.filter(c => c.follow_up_at === today);
-  const total = overdueTasks.length + todayTasks.length + overdueFollowups.length + todayFollowups.length;
+  // Contracts expiring or already expired in the next 7 days — same
+  // 7d horizon as the rest of the digest so the user gets a unified
+  // "this week" view, not a 60d preview. Already-expired ones count
+  // as urgent (negative day count, render same line).
+  const next7 = addDays(today, 7);
+  const expiringSoon = CONTACTS.filter(c => c.contract_end && c.contract_end <= next7);
+  const total = overdueTasks.length + todayTasks.length + overdueFollowups.length + todayFollowups.length + expiringSoon.length;
   // Quiet days don't get a popup — nothing more annoying than a
   // modal interrupting you to say "you have 0 things to do".
   if(total === 0){
@@ -4205,6 +4224,12 @@ function maybeShowMyDayDigest(){
     lines.push(`<div style="color:var(--red-text);font-weight:700">${uiIcon('fire')} ${overdueFollowups.length} overdue follow-up${overdueFollowups.length>1?'s':''}</div>`);
   if(todayFollowups.length)
     lines.push(`<div>${uiIcon('calendar')} ${todayFollowups.length} follow-up${todayFollowups.length>1?'s':''} today</div>`);
+  if(expiringSoon.length){
+    const expired = expiringSoon.filter(c => c.contract_end < today).length;
+    const sub = expired > 0 ? ` (${expired} already expired)` : '';
+    const cls = expired > 0 ? 'style="color:var(--red-text);font-weight:700"' : '';
+    lines.push(`<div ${cls}>${uiIcon('flag')} ${expiringSoon.length} contract${expiringSoon.length>1?'s':''} ending within 7 days${sub}</div>`);
+  }
   document.getElementById('myDayBody').innerHTML = lines.join('');
   document.getElementById('myDayModal').classList.add('open');
 }
@@ -4229,6 +4254,7 @@ document.getElementById('myDayGo').addEventListener('click', () => {
 // State for the tab's filter. Persists across renders so flipping in
 // and out of the tab keeps your filter selection.
 let TASKS_TAB_FILTER = 'open';
+let TASKS_TAB_GROUP = false;    // false = flat list, true = group rows under company headers
 // Set of task ids currently selected for bulk actions. Survives a
 // re-render so the user can flip filters without losing selection.
 const TASKS_TAB_SELECTED = new Set();
@@ -4267,6 +4293,25 @@ function renderTasksTab(){
   const exportBtn = document.getElementById('tasksTabExportBtn');
   if(exportBtn){
     exportBtn.onclick = () => exportTasksCsv();
+  }
+  // Group-by-company toggle — flips a flat list into per-company
+  // sections with a count chip in each header. Useful when batch-
+  // processing all the TODOs for one account in a single sit-down.
+  const groupBtn = document.getElementById('tasksTabGroupBtn');
+  if(groupBtn){
+    if(TASKS_TAB_GROUP){
+      groupBtn.style.background = 'var(--ocean)';
+      groupBtn.style.color = '#fff';
+      groupBtn.style.borderColor = 'var(--ocean)';
+    } else {
+      groupBtn.style.background = '';
+      groupBtn.style.color = '';
+      groupBtn.style.borderColor = '';
+    }
+    groupBtn.onclick = () => {
+      TASKS_TAB_GROUP = !TASKS_TAB_GROUP;
+      renderTasksTab();
+    };
   }
 
   // Filter pill rendering (active pill is the ocean colour).
@@ -4336,6 +4381,31 @@ function renderTasksTab(){
       <span></span>
     </div>
   `;
+  // When grouping is on, re-sort by company name THEN due, and stamp
+  // a header row at every company boundary. When off, the user's
+  // chosen sort (due asc / done desc) wins.
+  if(TASKS_TAB_GROUP){
+    rows.sort((a, b) => {
+      const ca = CONTACTS.find(x => x.id === a.company_id)?.company || '';
+      const cb = CONTACTS.find(x => x.id === b.company_id)?.company || '';
+      const byCompany = ca.localeCompare(cb);
+      if(byCompany !== 0) return byCompany;
+      return (a.due_at || '9999').localeCompare(b.due_at || '9999');
+    });
+  }
+  // Pre-compute boundary indices so we can stitch headers in below.
+  const groupHeaderBefore = new Map();
+  if(TASKS_TAB_GROUP){
+    const seenCompany = new Map(); // companyId → count
+    rows.forEach(t => seenCompany.set(t.company_id, (seenCompany.get(t.company_id) || 0) + 1));
+    let lastId = null;
+    rows.forEach((t, i) => {
+      if(t.company_id !== lastId){
+        groupHeaderBefore.set(i, { companyId: t.company_id, count: seenCompany.get(t.company_id) });
+        lastId = t.company_id;
+      }
+    });
+  }
   const rowsHtml = rows.map((t, i) => {
     const c = CONTACTS.find(x => x.id === t.company_id);
     const companyName = c ? c.company : '(unknown company)';
@@ -4349,8 +4419,16 @@ function renderTasksTab(){
       : '<span style="color:var(--muted)">no due</span>';
     const typeIcon = TASK_TYPE_ICONS[t.type] || 'calendar';
     const rowBorder = i === rows.length-1 ? '' : 'border-bottom:1px solid var(--border)';
+    // Header above this row when the company changes (group mode only).
+    const header = groupHeaderBefore.get(i);
+    const headerHtml = header ? `
+      <div style="padding:10px 16px;background:#fafdff;border-top:${i===0?'none':'2px solid var(--border)'};border-bottom:1px solid var(--border);font-size:11.5px;font-weight:700;color:var(--navy);display:flex;justify-content:space-between;align-items:center" data-group-company="${header.companyId}">
+        <span style="cursor:pointer">${escHtml(companyName)}</span>
+        <span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);font-weight:600">${header.count} ${header.count===1?'task':'tasks'}</span>
+      </div>
+    ` : '';
     const isSelected = TASKS_TAB_SELECTED.has(t.id);
-    return `
+    return headerHtml + `
       <div class="tasks-tab-row" data-task-id="${t.id}" data-company-id="${t.company_id}" style="display:grid;${COL_GRID};align-items:center;padding:12px 16px;${rowBorder};${t.done_at?'opacity:.55':''};${isSelected?'background:#eef6fb':''};cursor:default">
         <input type="checkbox" data-tk-tab-select="${t.id}" ${isSelected?'checked':''} title="Select" style="width:16px;height:16px;accent-color:var(--ocean);cursor:pointer">
         <input type="checkbox" data-tk-tab-toggle="${t.id}" ${t.done_at?'checked':''} title="${t.done_at?'Reopen':'Mark done'}" style="width:18px;height:18px;accent-color:var(--ocean);cursor:pointer">
@@ -4369,6 +4447,10 @@ function renderTasksTab(){
     `;
   }).join('');
   listEl.innerHTML = headerRow + rowsHtml;
+  // Click a group header → open that company's detail panel.
+  listEl.querySelectorAll('[data-group-company]').forEach(h => {
+    h.addEventListener('click', () => openContact(h.dataset.groupCompany));
+  });
 
   // Restore indeterminate state on the header checkbox — native HTML
   // attribute doesn't support it; must set via JS after the element
