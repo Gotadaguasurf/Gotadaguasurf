@@ -1025,9 +1025,12 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
         <label style="display:flex;justify-content:space-between;align-items:center"><span>Recipients</span><span id="batchRecipientCount" style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);font-weight:600"></span></label>
         <div id="batchRecipientList" style="max-height:240px;overflow:auto;border:1px solid var(--border);border-radius:8px"></div>
       </div>
-      <div class="editor-hint" style="display:flex;justify-content:space-between;align-items:center;gap:10px">
-        <span>Throttle: <b>1 email / sec</b> to avoid spam filters. Per-message status updates below as each lands.</span>
-        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap"><input type="checkbox" id="batchDryRun" style="accent-color:var(--ocean)"> Dry-run (don't actually send)</label>
+      <div class="editor-hint" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <span>Throttle: <b>1 email / sec</b> to avoid spam filters.</span>
+        <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap"><input type="checkbox" id="batchSkipRecent" checked style="accent-color:var(--ocean)"> Skip if contacted &lt; 24h</label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap"><input type="checkbox" id="batchDryRun" style="accent-color:var(--ocean)"> Dry-run (don't actually send)</label>
+        </div>
       </div>
     </div>
     <div class="compose-footer">
@@ -1580,16 +1583,27 @@ function openBatchSendModal(){
   if(!gmailIsConnected()){ toast('Connect Gmail first (⚙ → Connect Gmail)'); return; }
   // Refresh PEOPLE in case primary picks updated since last render.
   const ids = Array.from(SELECTED);
+  // Skip-recent default: if last_contacted_at is within 24h, the row
+  // starts unticked. User can still tick manually to override. Toggle
+  // also re-applies via batchApplySkipRecent (wired below).
+  const skipRecentMs = 24 * 60 * 60 * 1000;
+  const nowMs = Date.now();
   BATCH_STATE.recipients = ids
     .map(id => CONTACTS.find(c => c.id === id))
     .filter(Boolean)
-    .map(c => ({
-      contact: c,
-      email: recipientEmailFor(c),
-      include: !!recipientEmailFor(c),  // skipped by default when no email
-      status: 'pending',                 // pending → sending → sent → failed
-      message: '',
-    }));
+    .map(c => {
+      const email = recipientEmailFor(c);
+      const lastMs = c.last_contacted_at ? new Date(c.last_contacted_at).getTime() : 0;
+      const recentlyContacted = lastMs && (nowMs - lastMs) < skipRecentMs;
+      return {
+        contact: c,
+        email,
+        include: !!email && !recentlyContacted,
+        recentlyContacted,
+        status: 'pending',                 // pending → sending → sent → failed
+        message: '',
+      };
+    });
   const withoutEmail = BATCH_STATE.recipients.filter(r => !r.email).length;
   if(BATCH_STATE.recipients.length - withoutEmail === 0){
     toast('None of the selected contacts have an email');
@@ -1644,6 +1658,12 @@ function renderBatchRecipientList(){
       if(r.status === 'sending') return `<span style="color:var(--ocean);font-size:11px;font-weight:700">sending…</span>`;
       if(r.status === 'sent')    return `<span style="color:var(--green-text);background:var(--green-bg);padding:2px 7px;border-radius:6px;font-size:11px;font-weight:700">sent</span>`;
       if(r.status === 'failed')  return `<span style="color:var(--red-text);background:var(--red-bg);padding:2px 7px;border-radius:6px;font-size:11px;font-weight:700" title="${escAttr(r.message||'')}">failed</span>`;
+      // Show the recently-contacted hint when the row would normally
+      // be skipped by the toggle but the user hasn't actively
+      // included it. Doesn't fire on rows the user explicitly ticked
+      // back on (include === true and recentlyContacted is just
+      // informational then).
+      if(r.recentlyContacted && !r.include) return `<span title="last_contacted_at is within 24h" style="color:var(--amber-text);background:var(--amber-bg);padding:2px 7px;border-radius:6px;font-size:11px;font-weight:700">recent</span>`;
       return '';
     })();
     const border = i === list.length-1 ? '' : 'border-bottom:1px solid var(--border)';
@@ -1738,6 +1758,21 @@ document.getElementById('batchSendClose').addEventListener('click', closeBatchSe
 document.getElementById('batchSendCancel').addEventListener('click', closeBatchSendModal);
 document.getElementById('batchSendStart').addEventListener('click', runBatchSend);
 document.getElementById('batchTemplate').addEventListener('change', refreshBatchPreview);
+// Re-apply the skip-recent rule when the toggle flips. Off → tick
+// every row that has an email (ignore the recent flag). On → untick
+// every recently-contacted row. Doesn't override the user's manual
+// include of a "recent" row in the same modal session — once they
+// explicitly say "yes include this", flipping the toggle off and
+// back on respects that.
+document.getElementById('batchSkipRecent').addEventListener('change', (e) => {
+  const skip = e.target.checked;
+  BATCH_STATE.recipients.forEach(r => {
+    if(!r.email) return;
+    r.include = skip ? !r.recentlyContacted : true;
+  });
+  renderBatchRecipientList();
+  refreshBatchPreview();
+});
 
 // Wire the header buttons + Settings modal once at script-load time.
 document.getElementById('gmailConnectBtn').addEventListener('click', connectGmail);
