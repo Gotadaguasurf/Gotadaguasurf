@@ -2584,6 +2584,15 @@ async function openContact(id){
         <span class="label" style="text-align:left">Terms</span>
         <textarea id="contractTermsInput" class="notes-area" placeholder="Net 30, deposit before season, …">${escHtml(c.contract_terms||'')}</textarea>
       </div>
+      <!-- Inline renew shortcuts — same fast-path the dashboard
+           Contracts expiring card carries, available from inside the
+           detail panel too so the user doesn't have to go back. -->
+      <div class="detail-row" style="justify-content:flex-end;gap:6px">
+        <span class="label" style="text-align:left;align-self:center;margin-right:auto">Quick renew</span>
+        <button data-renew-detail="6"  style="background:var(--green-bg);color:var(--green-text);border:1px solid #a7d8b9;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">+6mo</button>
+        <button data-renew-detail="12" style="background:var(--green-bg);color:var(--green-text);border:1px solid #a7d8b9;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">+12mo</button>
+        <button data-renew-detail="24" style="background:var(--green-bg);color:var(--green-text);border:1px solid #a7d8b9;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">+24mo</button>
+      </div>
     </div>
 
     <div class="detail-section">
@@ -2592,7 +2601,10 @@ async function openContact(id){
     </div>
 
     <div class="detail-section">
-      <div class="detail-section-title">Activity</div>
+      <div class="detail-section-title" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <span>Activity</span>
+        ${activity.length > 5 ? `<input type="search" id="activitySearch" placeholder="Filter…" style="border:1px solid var(--border);border-radius:6px;padding:3px 8px;font-size:11px;font-family:'Outfit',sans-serif;font-weight:600;width:140px">` : ''}
+      </div>
       <div id="activityList">
         ${activity.length ? activity.map(a=>{
           const label = activityLabel(a);
@@ -2600,7 +2612,11 @@ async function openContact(id){
           // mis-clicks status, mis-fires a Compose, etc. The log is
           // append-only at the data layer but the UI lets you trim
           // mistakes so the timeline stays honest.
-          return `<div class="activity-item ${a.action}" style="position:relative;padding-right:34px"><button type="button" class="activity-del" data-act="${a.id}" aria-label="Delete this activity" title="Delete activity" style="position:absolute;top:6px;right:6px;width:22px;height:22px;border:none;background:transparent;color:var(--muted);border-radius:6px;cursor:pointer;font-size:14px;line-height:1;display:flex;align-items:center;justify-content:center;transition:background .15s,color .15s">×</button><div class="activity-action">${label}</div>${a.meta?.note?`<div class="activity-meta">${escHtml(a.meta.note)}</div>`:''}<div class="activity-time">${fmtDateTime(a.created_at)}${a.created_by?' · '+escHtml(a.created_by):''}</div></div>`;
+          // data-blob is a flattened searchable string used by the
+          // inline activity filter input above; case-insensitive
+          // substring match.
+          const blob = `${label.replace(/<[^>]+>/g, '')} ${a.meta?.note||''} ${a.meta?.template_name||''} ${a.meta?.subject||''} ${a.meta?.title||''} ${a.created_by||''}`.toLowerCase();
+          return `<div class="activity-item ${a.action}" data-act-blob="${escAttr(blob)}" style="position:relative;padding-right:34px"><button type="button" class="activity-del" data-act="${a.id}" aria-label="Delete this activity" title="Delete activity" style="position:absolute;top:6px;right:6px;width:22px;height:22px;border:none;background:transparent;color:var(--muted);border-radius:6px;cursor:pointer;font-size:14px;line-height:1;display:flex;align-items:center;justify-content:center;transition:background .15s,color .15s">×</button><div class="activity-action">${label}</div>${a.meta?.note?`<div class="activity-meta">${escHtml(a.meta.note)}</div>`:''}<div class="activity-time">${fmtDateTime(a.created_at)}${a.created_by?' · '+escHtml(a.created_by):''}</div></div>`;
         }).join('') : '<div class="empty-state" style="padding:12px;text-align:left">No activity yet.</div>'}
       </div>
     </div>
@@ -2669,6 +2685,31 @@ async function openContact(id){
       c.contract_terms = v;
       toast('Terms saved');
     });
+    // Quick renew chips — same date logic as the dashboard's Renew ▾
+    // (new_start = max(today, old_end + 1d); new_end = +N months via
+    // Date.setMonth). Re-open the detail panel after to show the
+    // updated dates without a stale view.
+    document.querySelectorAll('[data-renew-detail]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const months = Number(btn.dataset.renewDetail);
+        if(!confirm(`Renew contract for ${c.company} by +${months} months?`)) return;
+        const todayISO = new Date().toISOString().slice(0,10);
+        const oldEnd = c.contract_end;
+        const newStartISO = (oldEnd && oldEnd > todayISO) ? addDays(oldEnd, 1) : todayISO;
+        const d = new Date(newStartISO + 'T12:00:00Z');
+        d.setUTCMonth(d.getUTCMonth() + months);
+        const newEndISO = d.toISOString().slice(0,10);
+        const supa = getClient();
+        const { error } = await supa.from('outreach_contacts')
+          .update({ contract_start: newStartISO, contract_end: newEndISO }).eq('id', c.id);
+        if(error){ toast('Renewal failed: '+error.message); return; }
+        c.contract_start = newStartISO;
+        c.contract_end = newEndISO;
+        toast(`Renewed until ${fmtDate(newEndISO)}`);
+        openContact(c.id);
+        if(CURRENT_TAB === 'dashboard') renderDashboard();
+      });
+    });
   }
 
   // Follow-up date
@@ -2689,6 +2730,19 @@ async function openContact(id){
   // status_changed: if the LAST status change is the one we delete, revert
   // c.status to that activity's old_value so the pill in the row matches
   // the new (shorter) timeline.
+  // Activity search — case-insensitive substring filter against the
+  // pre-computed data-act-blob on each row. Hidden rows are display:
+  // none so the per-row delete handlers still bind cleanly.
+  const actSearchEl = document.getElementById('activitySearch');
+  if(actSearchEl){
+    actSearchEl.addEventListener('input', () => {
+      const q = actSearchEl.value.trim().toLowerCase();
+      document.querySelectorAll('#activityList .activity-item').forEach(row => {
+        const blob = row.dataset.actBlob || '';
+        row.style.display = (!q || blob.includes(q)) ? '' : 'none';
+      });
+    });
+  }
   document.querySelectorAll('#activityList .activity-del').forEach(btn=>{
     btn.addEventListener('mouseenter', ()=>{ btn.style.background='var(--red-bg)'; btn.style.color='var(--red-text)'; });
     btn.addEventListener('mouseleave', ()=>{ btn.style.background='transparent'; btn.style.color='var(--muted)'; });
@@ -4723,7 +4777,34 @@ function renderPeopleList(companyId){
   const items = PEOPLE.filter(p => p.company_id === companyId)
     .sort((a,b) => (b.is_primary?1:0) - (a.is_primary?1:0) || (a.name||'').localeCompare(b.name||''));
   if(items.length === 0){
-    list.innerHTML = '<div class="empty-state" style="padding:14px;text-align:left;background:#fafdff;border:1px dashed var(--border);border-radius:10px">No people yet. Click <b>+ Person</b> to add the owner, bookings, ops — anyone you talk to.</div>';
+    // Bridge: companies imported with only the legacy c.email/c.phone
+    // can seed an unnamed primary person in one click, so the
+    // multi-contact model gets a foothold without manual data entry.
+    const company = CONTACTS.find(x => x.id === companyId);
+    const canSeed = !!(company?.email || company?.phone);
+    const seedBtn = canSeed
+      ? `<button id="seedPrimaryBtn" style="margin-top:8px;background:var(--ocean);color:#fff;border:none;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">Seed primary from company ${company.email ? 'email' : 'phone'}</button>`
+      : '';
+    list.innerHTML = `<div class="empty-state" style="padding:14px;text-align:left;background:#fafdff;border:1px dashed var(--border);border-radius:10px">No people yet. Click <b>+ Person</b> to add the owner, bookings, ops — anyone you talk to.${seedBtn ? '<br>' + seedBtn : ''}</div>`;
+    if(canSeed){
+      document.getElementById('seedPrimaryBtn').addEventListener('click', async () => {
+        const payload = {
+          company_id: companyId,
+          name: null,
+          role: null,
+          email: company.email || null,
+          phone: company.phone || null,
+          linkedin: null,
+          is_primary: true,
+        };
+        const supa = getClient();
+        const { data, error } = await supa.from('contacts').insert(payload).select().single();
+        if(error){ toast('Seed failed: '+error.message); return; }
+        PEOPLE.push(data);
+        toast('Primary person seeded — edit the name when you know it');
+        renderPeopleList(companyId);
+      });
+    }
     return;
   }
   list.innerHTML = items.map(p => {
