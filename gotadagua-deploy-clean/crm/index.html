@@ -4198,7 +4198,13 @@ function maybeShowMyDayDigest(){
   const todayTasks   = TASKS.filter(t => !t.done_at && t.due_at && t.due_at.slice(0,10) === today);
   const overdueFollowups = CONTACTS.filter(c => c.follow_up_at && c.follow_up_at < today);
   const todayFollowups   = CONTACTS.filter(c => c.follow_up_at === today);
-  const total = overdueTasks.length + todayTasks.length + overdueFollowups.length + todayFollowups.length;
+  // Contracts expiring or already expired in the next 7 days — same
+  // 7d horizon as the rest of the digest so the user gets a unified
+  // "this week" view, not a 60d preview. Already-expired ones count
+  // as urgent (negative day count, render same line).
+  const next7 = addDays(today, 7);
+  const expiringSoon = CONTACTS.filter(c => c.contract_end && c.contract_end <= next7);
+  const total = overdueTasks.length + todayTasks.length + overdueFollowups.length + todayFollowups.length + expiringSoon.length;
   // Quiet days don't get a popup — nothing more annoying than a
   // modal interrupting you to say "you have 0 things to do".
   if(total === 0){
@@ -4218,6 +4224,12 @@ function maybeShowMyDayDigest(){
     lines.push(`<div style="color:var(--red-text);font-weight:700">${uiIcon('fire')} ${overdueFollowups.length} overdue follow-up${overdueFollowups.length>1?'s':''}</div>`);
   if(todayFollowups.length)
     lines.push(`<div>${uiIcon('calendar')} ${todayFollowups.length} follow-up${todayFollowups.length>1?'s':''} today</div>`);
+  if(expiringSoon.length){
+    const expired = expiringSoon.filter(c => c.contract_end < today).length;
+    const sub = expired > 0 ? ` (${expired} already expired)` : '';
+    const cls = expired > 0 ? 'style="color:var(--red-text);font-weight:700"' : '';
+    lines.push(`<div ${cls}>${uiIcon('flag')} ${expiringSoon.length} contract${expiringSoon.length>1?'s':''} ending within 7 days${sub}</div>`);
+  }
   document.getElementById('myDayBody').innerHTML = lines.join('');
   document.getElementById('myDayModal').classList.add('open');
 }
