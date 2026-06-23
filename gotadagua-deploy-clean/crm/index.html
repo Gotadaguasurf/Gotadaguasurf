@@ -650,6 +650,8 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
     <!-- Pipeline summary strip — populated by renderPipelineSummary,
          hidden in legacy status mode. -->
     <div id="pipelineSummary" class="hidden" style="display:flex;gap:14px;flex-wrap:wrap;padding:14px 18px;background:linear-gradient(135deg,var(--navy),#1e3a52);color:#fff;border-radius:var(--r-md);margin-bottom:14px"></div>
+    <!-- Horizontal-bar funnel showing per-stage counts (also pipeline-mode only). -->
+    <div id="pipelineFunnel" class="hidden" style="background:#fff;border:1px solid var(--border);border-radius:var(--r-md);padding:16px 18px;margin-bottom:14px"></div>
     <div class="kanban-wrap">
       <div class="kanban" id="kanban"></div>
     </div>
@@ -4747,11 +4749,49 @@ function renderPipeline(){
   }
   if(CURRENT_PIPELINE_VIEW === 'status'){
     document.getElementById('pipelineSummary')?.classList.add('hidden');
+    document.getElementById('pipelineFunnel')?.classList.add('hidden');
     renderPipelineByStatus();
   } else {
     renderPipelineByPipeline(CURRENT_PIPELINE_VIEW);
     renderPipelineSummary(CURRENT_PIPELINE_VIEW);
+    renderPipelineFunnel(CURRENT_PIPELINE_VIEW);
   }
+}
+
+// Horizontal-bar funnel for the selected pipeline. Each stage row
+// shows label + bar (length = count / max) + count, sourced from the
+// same filtered set as the Kanban so the visuals never disagree with
+// what's on screen below. Won = green fill, lost = red, in-flight =
+// the default ocean gradient via .funnel-fill.
+function renderPipelineFunnel(pipelineId){
+  const el = document.getElementById('pipelineFunnel');
+  if(!el) return;
+  const stages = stagesForPipeline(pipelineId);
+  if(stages.length === 0){ el.classList.add('hidden'); return; }
+  el.classList.remove('hidden');
+  const visibleSet = new Set(filteredContactsForPipeline().map(c => c.id));
+  // Tally per stage in the same pass — single O(N) walk over
+  // contact_pipeline for the active pipeline.
+  const counts = new Map(stages.map(s => [s.id, 0]));
+  CONTACT_PIPELINE.filter(cp => cp.pipeline_id === pipelineId).forEach(cp => {
+    if(!visibleSet.has(cp.company_id)) return;
+    counts.set(cp.stage_id, (counts.get(cp.stage_id) || 0) + 1);
+  });
+  const maxCount = Math.max(1, ...counts.values());
+  el.innerHTML = stages.map(s => {
+    const n = counts.get(s.id) || 0;
+    const pct = (n / maxCount) * 100;
+    // Override the default gradient for terminal stages so the eye
+    // separates won/lost from in-flight without reading the label.
+    let fillStyle = '';
+    if(s.is_won)       fillStyle = 'background:linear-gradient(90deg,#22c55e,#16a34a)';
+    else if(s.is_lost) fillStyle = 'background:linear-gradient(90deg,#ef4444,#dc2626)';
+    return `<div class="funnel-bar">
+      <div class="funnel-label">${escHtml(s.name)}</div>
+      <div class="funnel-track"><div class="funnel-fill" style="width:${pct}%;${fillStyle}"></div></div>
+      <div class="funnel-count">${n}</div>
+    </div>`;
+  }).join('');
 }
 
 // Strip of KPIs above the Kanban when a real pipeline is selected.
