@@ -498,6 +498,13 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
         <div id="coldList"></div>
       </div>
     </div>
+
+    <div class="dash-row" style="grid-template-columns:1fr">
+      <div class="dash-card">
+        <div class="dash-card-title"><span class="ui-ic lg">__ICN_FIRE__</span>  Stuck deals — 30+ days in current stage</div>
+        <div id="stuckList"></div>
+      </div>
+    </div>
   </div>
 
   <!-- ─── CONTACTS TAB ─── -->
@@ -1887,6 +1894,39 @@ function renderDashboard(){
       renderDashboard();
     });
   });
+
+  // ── Stuck deals (30+ days in current pipeline stage) ────────────────
+  // Uses contact_pipeline.entered_stage_at — only honest in pipeline
+  // mode (the legacy status field has no per-stage entry stamp).
+  // Won/lost stages are excluded: a deal sitting in "Won" for 90 days
+  // is exactly where it should be, not stuck.
+  const stuck = CONTACT_PIPELINE
+    .map(cp => {
+      const stage = PIPELINE_STAGES.find(s => s.id === cp.stage_id);
+      if(!stage || stage.is_won || stage.is_lost) return null;
+      if(!cp.entered_stage_at) return null;
+      const enteredDate = cp.entered_stage_at.slice(0,10);
+      const days = daysBetween(enteredDate, today);
+      if(days < 30) return null;
+      const company = CONTACTS.find(c => c.id === cp.company_id);
+      if(!company) return null;
+      const pipeline = PIPELINES.find(p => p.id === cp.pipeline_id);
+      return { cp, stage, company, pipeline, days };
+    })
+    .filter(Boolean)
+    .sort((a,b) => b.days - a.days);
+  const stuckEl = document.getElementById('stuckList');
+  if(stuckEl){
+    stuckEl.innerHTML = stuck.length ? stuck.slice(0,15).map(s => `
+      <div class="followup-item" style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+        <div class="fi-name" data-id="${s.company.id}" style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(s.company.company)}</div>
+        <span style="font-size:11px;color:var(--muted);white-space:nowrap;flex-shrink:0">${escHtml(s.pipeline?.name || '—')} · ${escHtml(s.stage.name)}</span>
+        <div class="fi-due ${s.days>=60?'overdue':''}" style="flex-shrink:0">${s.days}d in stage</div>
+      </div>
+    `).join('') + (stuck.length>15 ? `<div class="empty-state" style="padding:10px">+ ${stuck.length-15} more</div>` : '') :
+      '<div class="empty-state">Nothing stuck — every active deal moved within the last 30 days. 🎉</div>';
+    stuckEl.querySelectorAll('.fi-name').forEach(el => el.addEventListener('click', () => openContact(el.dataset.id)));
+  }
 }
 
 function addDays(iso, n){
