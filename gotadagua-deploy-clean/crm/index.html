@@ -603,6 +603,11 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
       <span style="font-family:'DM Mono',monospace;font-size:12.5px"><span id="tasksTabBulkCount">0</span> selected</span>
       <button type="button" id="tasksTabBulkDone" style="background:var(--ocean);color:#fff;border:none;border-radius:8px;padding:6px 12px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">Mark done</button>
       <button type="button" id="tasksTabBulkReopen" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:8px;padding:6px 12px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">Reopen</button>
+      <span style="width:1px;height:18px;background:rgba(255,255,255,.2)"></span>
+      <span style="font-size:11px;color:#bdd4e8;font-weight:600">Snooze</span>
+      <button type="button" data-snooze-days="1" class="tk-snooze-btn" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:8px;padding:6px 10px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">+1d</button>
+      <button type="button" data-snooze-days="3" class="tk-snooze-btn" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:8px;padding:6px 10px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">+3d</button>
+      <button type="button" data-snooze-days="7" class="tk-snooze-btn" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:8px;padding:6px 10px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">+1w</button>
       <button type="button" id="tasksTabBulkClear" style="margin-left:auto;background:transparent;color:#bdd4e8;border:none;font-size:11.5px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif">Clear</button>
     </div>
     <div id="tasksTabList" style="background:#fff;border:1px solid var(--border);border-radius:var(--r-md);overflow:hidden"></div>
@@ -925,6 +930,23 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
       <button class="action-btn ghost" id="groupDeleteBtn" style="margin-right:auto;color:var(--red-text);border-color:#f0a0a0;display:none">Delete</button>
       <button class="action-btn ghost" id="groupCancelBtn">Cancel</button>
       <button class="action-btn primary" id="groupSaveBtn" style="grid-column:auto">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── MY-DAY DIGEST MODAL ─── -->
+<div class="compose-modal" id="myDayModal">
+  <div class="compose-card" style="max-width:440px">
+    <div class="compose-header">
+      <div class="compose-title" id="myDayTitle">Good morning</div>
+      <button class="detail-close" id="myDayCloseX" aria-label="Close">×</button>
+    </div>
+    <div class="compose-body">
+      <div id="myDayBody" style="font-size:14px;color:var(--ink);line-height:1.55"></div>
+    </div>
+    <div class="compose-footer">
+      <button class="action-btn ghost" id="myDayDismiss">Já vi, obrigado</button>
+      <button class="action-btn primary" id="myDayGo" style="grid-column:auto">Open Tasks tab →</button>
     </div>
   </div>
 </div>
@@ -1322,6 +1344,7 @@ async function loadAll(){
   renderContacts();
   renderTemplateList();
   updateNavTasksCount();
+  maybeShowMyDayDigest();
   // Kick off realtime AFTER the initial render so the first paint doesn't
   // race with incoming events. Re-callable; subscribeRealtime() no-ops if
   // already subscribed (so re-login doesn't double-bind).
@@ -3416,6 +3439,61 @@ async function quickAddTask(companyId, preset){
   if(CURRENT_TAB === 'tasks') renderTasksTab();
 }
 
+// ── MY-DAY DIGEST ────────────────────────────────────────────────────
+// Fires once at the first sign-in of each calendar day, IF there's
+// anything worth surfacing. Gated by a localStorage key so multiple
+// page refreshes / tab opens on the same day don't pile up popups.
+// User can dismiss to close, or "Open Tasks tab" to jump straight to
+// the today filter.
+const MY_DAY_LS_KEY = 'crmMyDayLastShown';
+
+function maybeShowMyDayDigest(){
+  const today = new Date().toISOString().slice(0,10);
+  if(localStorage.getItem(MY_DAY_LS_KEY) === today) return;
+  const overdueTasks = TASKS.filter(t => !t.done_at && t.due_at && t.due_at.slice(0,10) < today);
+  const todayTasks   = TASKS.filter(t => !t.done_at && t.due_at && t.due_at.slice(0,10) === today);
+  const overdueFollowups = CONTACTS.filter(c => c.follow_up_at && c.follow_up_at < today);
+  const todayFollowups   = CONTACTS.filter(c => c.follow_up_at === today);
+  const total = overdueTasks.length + todayTasks.length + overdueFollowups.length + todayFollowups.length;
+  // Quiet days don't get a popup — nothing more annoying than a
+  // modal interrupting you to say "you have 0 things to do".
+  if(total === 0){
+    localStorage.setItem(MY_DAY_LS_KEY, today);
+    return;
+  }
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Good morning' : (hour < 18 ? 'Good afternoon' : 'Good evening');
+  document.getElementById('myDayTitle').textContent =
+    `${greeting}, ${total} thing${total>1?'s':''} for today`;
+  const lines = [];
+  if(overdueTasks.length)
+    lines.push(`<div style="color:var(--red-text);font-weight:700">${uiIcon('fire')} ${overdueTasks.length} overdue task${overdueTasks.length>1?'s':''}</div>`);
+  if(todayTasks.length)
+    lines.push(`<div>${uiIcon('calendar')} ${todayTasks.length} task${todayTasks.length>1?'s':''} due today</div>`);
+  if(overdueFollowups.length)
+    lines.push(`<div style="color:var(--red-text);font-weight:700">${uiIcon('fire')} ${overdueFollowups.length} overdue follow-up${overdueFollowups.length>1?'s':''}</div>`);
+  if(todayFollowups.length)
+    lines.push(`<div>${uiIcon('calendar')} ${todayFollowups.length} follow-up${todayFollowups.length>1?'s':''} today</div>`);
+  document.getElementById('myDayBody').innerHTML = lines.join('');
+  document.getElementById('myDayModal').classList.add('open');
+}
+
+function closeMyDayDigest(){
+  document.getElementById('myDayModal').classList.remove('open');
+  localStorage.setItem(MY_DAY_LS_KEY, new Date().toISOString().slice(0,10));
+}
+
+document.getElementById('myDayDismiss').addEventListener('click', closeMyDayDigest);
+document.getElementById('myDayCloseX').addEventListener('click', closeMyDayDigest);
+document.getElementById('myDayGo').addEventListener('click', () => {
+  closeMyDayDigest();
+  // Switch to the Tasks tab with the "today" filter pre-applied so
+  // the user lands exactly on the rows the digest was telling them
+  // about. The tab switcher itself fires renderTasksTab.
+  TASKS_TAB_FILTER = 'today';
+  document.querySelector('.nav-tab[data-tab="tasks"]').click();
+});
+
 // ── TASKS TAB (cross-company view of every open TODO) ──────────────────
 // State for the tab's filter. Persists across renders so flipping in
 // and out of the tab keeps your filter selection.
@@ -3633,10 +3711,49 @@ async function tasksTabBulkSetDone(makeDone){
   updateNavTasksCount();
 }
 
+// Bulk snooze: shifts due_at forward by N days for every selected
+// task. Base is the existing due_at when present, otherwise today —
+// so an undated task picks up "today + N" rather than staying undated.
+// One UPDATE per task because each row has a different base; the
+// dataset is small enough (<50 typical) that the round-trip cost is
+// negligible vs. writing a stored procedure.
+async function tasksTabBulkSnooze(days){
+  const ids = Array.from(TASKS_TAB_SELECTED);
+  if(ids.length === 0) return;
+  const today = new Date().toISOString().slice(0,10);
+  const supa = getClient();
+  const updates = ids.map(id => {
+    const t = TASKS.find(x => x.id === id);
+    const base = t?.due_at ? t.due_at.slice(0,10) : today;
+    const newDue = addDays(base, days);
+    return supa.from('tasks')
+      .update({ due_at: new Date(newDue + 'T00:00:00Z').toISOString() })
+      .eq('id', id)
+      .then(({ error }) => ({ id, newDue, error }));
+  });
+  const results = await Promise.all(updates);
+  const failures = results.filter(r => r.error);
+  if(failures.length){
+    toast(`Snooze failed on ${failures.length}/${ids.length}: ${failures[0].error.message}`);
+    return;
+  }
+  results.forEach(r => {
+    const t = TASKS.find(x => x.id === r.id);
+    if(t) t.due_at = new Date(r.newDue + 'T00:00:00Z').toISOString();
+  });
+  toast(`${ids.length} task${ids.length>1?'s':''} snoozed +${days}d`);
+  TASKS_TAB_SELECTED.clear();
+  renderTasksTab();
+  updateNavTasksCount();
+}
+
 // Wire the bulk-bar buttons once at script-load time — they live in
 // fixed markup and don't get re-stamped per render.
 document.getElementById('tasksTabBulkDone').addEventListener('click', () => tasksTabBulkSetDone(true));
 document.getElementById('tasksTabBulkReopen').addEventListener('click', () => tasksTabBulkSetDone(false));
+document.querySelectorAll('.tk-snooze-btn').forEach(btn => {
+  btn.addEventListener('click', () => tasksTabBulkSnooze(Number(btn.dataset.snoozeDays)));
+});
 document.getElementById('tasksTabBulkClear').addEventListener('click', () => {
   TASKS_TAB_SELECTED.clear();
   renderTasksTab();
