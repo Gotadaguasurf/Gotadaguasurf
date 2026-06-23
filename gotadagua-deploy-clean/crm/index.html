@@ -1974,14 +1974,61 @@ function renderDashboard(){
           ? `<span style="color:var(--red-text);font-weight:700">expired ${Math.abs(days)}d ago</span>`
           : `<span style="color:${days<=14?'var(--red-text)':'var(--muted)'};font-weight:${days<=14?700:600}">in ${days}d · ${fmtDate(c.contract_end)}</span>`;
         const comm = c.commission_pct != null ? `<span style="font-size:11px;color:var(--muted);white-space:nowrap;flex-shrink:0">${c.commission_pct}%</span>` : '';
+        // Does a "renewal" task already exist for this company? Check
+        // open tasks whose title contains "renew" (case-insensitive) —
+        // cheap heuristic, avoids storing a separate flag. If yes,
+        // swap the button for a quiet ✓ chip so the user knows it's
+        // already on their TODO list.
+        const hasRenewal = TASKS.some(t => t.company_id === c.id && !t.done_at && /renew/i.test(t.title || ''));
+        const renewBtn = hasRenewal
+          ? `<span title="A renewal task is already open for this company" style="font-size:11px;color:var(--green-text);background:var(--green-bg);border-radius:6px;padding:3px 9px;font-weight:700;font-family:'Outfit',sans-serif;white-space:nowrap;flex-shrink:0">✓ task open</span>`
+          : `<button data-renewal-id="${c.id}" title="Add a 'Renew contract' task" style="background:transparent;color:var(--ocean);border:1px solid var(--ocean);border-radius:6px;padding:3px 9px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;white-space:nowrap;flex-shrink:0">+ Renewal task</button>`;
         return `<div class="followup-item" style="display:flex;justify-content:space-between;align-items:center;gap:10px">
           <div class="fi-name" data-id="${c.id}" style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(c.company)}</div>
           ${comm}
           <div class="fi-due" style="flex-shrink:0;background:${expired?'var(--red-bg)':(days<=14?'#fef0e6':'#eef3f8')};color:${expired?'var(--red-text)':'var(--ink)'}">${label}</div>
+          ${renewBtn}
         </div>`;
       }).join('') + (expiring.length>15 ? `<div class="empty-state" style="padding:10px">+ ${expiring.length-15} more</div>` : '') :
         '<div class="empty-state">No contracts ending in the next 60 days.</div>';
       expEl.querySelectorAll('.fi-name').forEach(el => el.addEventListener('click', () => openContact(el.dataset.id)));
+      // + Renewal task: due 14 days BEFORE contract_end so the user
+      // has time to negotiate; if the contract already expired, due
+      // tomorrow so the user catches up immediately. Same disable-
+      // and-… pattern the other inline buttons use.
+      expEl.querySelectorAll('[data-renewal-id]').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const companyId = btn.dataset.renewalId;
+          const company = CONTACTS.find(x => x.id === companyId);
+          if(!company) return;
+          btn.disabled = true; btn.style.opacity = '.5'; btn.textContent = '…';
+          const endDate = company.contract_end;
+          const dueDate = endDate
+            ? (daysBetween(today, endDate) <= 14
+                ? addDays(today, 1)
+                : addDays(endDate, -14))
+            : addDays(today, 1);
+          const payload = {
+            company_id: companyId,
+            title: `Renew contract with ${company.company || ''}`.trim(),
+            type:  'follow_up',
+            due_at: new Date(dueDate + 'T00:00:00Z').toISOString(),
+            notes: endDate ? `Contract ends ${fmtDate(endDate)}` : null,
+          };
+          const supa = getClient();
+          const { data, error } = await supa.from('tasks').insert(payload).select().single();
+          if(error){
+            toast('Renewal task failed: '+error.message);
+            btn.disabled = false; btn.style.opacity = ''; btn.textContent = '+ Renewal task';
+            return;
+          }
+          TASKS.push(data);
+          toast(`Renewal task scheduled for ${fmtDate(dueDate)} · ${company.company}`);
+          renderDashboard();
+          updateNavTasksCount();
+        });
+      });
     }
 
     // + Push wiring: update the contact_pipeline row's stage_id to the
