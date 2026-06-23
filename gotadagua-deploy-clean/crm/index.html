@@ -433,7 +433,10 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
     <button class="nav-tab" data-tab="templates">Templates</button>
   </div>
   <div class="header-right">
+    <button class="header-btn" id="gmailConnectBtn" title="Authorise Gmail API access to pull replies into the CRM" style="display:none">Connect Gmail</button>
+    <button class="header-btn" id="gmailSyncBtn" title="Pull new inbound replies from Gmail into the CRM" style="display:none">Sync inbox</button>
     <button class="header-btn" id="checkInboxBtn" title="Open Gmail filtered by every CRM contact in the last 7 days">Check inbox</button>
+    <button class="header-btn" id="settingsBtn" title="Settings / Gmail integration" style="padding:6px 10px">⚙</button>
     <button class="header-btn" id="signOutBtn">Sign out</button>
   </div>
 </header>
@@ -996,6 +999,35 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
   </div>
 </div>
 
+<!-- Google Identity Services — for Gmail API OAuth. Async load; the
+     JS checks for window.google.accounts.oauth2 before using it. -->
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+
+<!-- ─── GMAIL / SETTINGS MODAL ─── -->
+<div class="compose-modal" id="settingsModal">
+  <div class="compose-card" style="max-width:520px">
+    <div class="compose-header">
+      <div class="compose-title">Settings · Gmail integration</div>
+      <button class="detail-close" id="settingsClose" aria-label="Close">×</button>
+    </div>
+    <div class="compose-body">
+      <div class="editor-field">
+        <label>Google OAuth Client ID</label>
+        <input type="text" id="settingsClientId" placeholder="123456789012-abcdefg.apps.googleusercontent.com" style="font-family:'DM Mono',monospace;font-size:12px">
+        <div class="editor-hint" style="margin-top:6px">From your Google Cloud Console → Credentials → OAuth Client ID. Setup guide: <code>crm/GMAIL-API-SETUP.md</code></div>
+      </div>
+      <div id="settingsGmailStatus" style="margin-top:14px;padding:12px;background:#fafdff;border:1px solid var(--border);border-radius:10px;font-size:12.5px;color:var(--muted)">
+        Not connected.
+      </div>
+    </div>
+    <div class="compose-footer">
+      <button class="action-btn ghost" id="settingsDisconnectBtn" style="margin-right:auto;color:var(--red-text);border-color:#f0a0a0;display:none">Disconnect Gmail</button>
+      <button class="action-btn ghost" id="settingsCancelBtn">Close</button>
+      <button class="action-btn primary" id="settingsSaveBtn" style="grid-column:auto">Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- ─── TASK MODAL ─── -->
 <div class="compose-modal" id="taskModal">
   <div class="compose-card" style="max-width:480px">
@@ -1119,6 +1151,264 @@ let TEMPLATES = [];
 // param on every mail.google.com URL we generate). Single source of
 // truth — change here, both surfaces update.
 const GMAIL_AUTHUSER = 'groups@gotadaguasurf.com';
+
+// ── Gmail API integration (A2) ──────────────────────────────────────
+// Read-only Gmail OAuth + sync of inbound replies into email_messages.
+// Client ID is user-configurable (Settings dialog → localStorage) so
+// the user doesn't have to edit code after creating their OAuth client.
+// Token is the short-lived (~1h) access token from Google Identity
+// Services' implicit flow; stored alongside its expiry stamp.
+const GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
+const GMAIL_LS_CLIENT_ID = 'crmGmailClientId';
+const GMAIL_LS_TOKEN     = 'crmGmailToken';     // { access_token, expires_at }
+let _gmailTokenClient = null;                   // initialised on demand
+function gmailClientId(){ return localStorage.getItem(GMAIL_LS_CLIENT_ID) || ''; }
+function gmailToken(){
+  try {
+    const raw = localStorage.getItem(GMAIL_LS_TOKEN);
+    if(!raw) return null;
+    const t = JSON.parse(raw);
+    if(!t.access_token || !t.expires_at) return null;
+    if(Date.now() >= t.expires_at) return null;  // expired
+    return t;
+  } catch(e){ return null; }
+}
+function gmailIsConnected(){ return !!gmailToken(); }
+
+// Renders header button visibility + Settings dialog status text
+// based on current client-id + token state.
+function refreshGmailUi(){
+  const hasClientId = !!gmailClientId();
+  const connected = gmailIsConnected();
+  const connectBtn = document.getElementById('gmailConnectBtn');
+  const syncBtn    = document.getElementById('gmailSyncBtn');
+  if(connectBtn) connectBtn.style.display = (hasClientId && !connected) ? '' : 'none';
+  if(syncBtn)    syncBtn.style.display    = connected ? '' : 'none';
+  const status = document.getElementById('settingsGmailStatus');
+  const disconnectBtn = document.getElementById('settingsDisconnectBtn');
+  if(status){
+    if(!hasClientId) status.textContent = 'Not configured. Paste your OAuth Client ID and save.';
+    else if(!connected) status.textContent = 'Configured but not connected. Click Connect Gmail in the header.';
+    else {
+      const t = gmailToken();
+      const mins = Math.max(0, Math.round((t.expires_at - Date.now()) / 60000));
+      status.textContent = `Connected. Token expires in ~${mins} min — re-click Connect Gmail when it does.`;
+    }
+  }
+  if(disconnectBtn) disconnectBtn.style.display = connected ? 'inline-flex' : 'none';
+}
+
+// Returns the initialised GIS token client (lazily — google.accounts
+// might not have loaded yet). Throws a friendly toast when GIS hasn't
+// reached the page yet (network blocked, ad-blocker, etc.).
+function ensureGmailTokenClient(){
+  if(_gmailTokenClient) return _gmailTokenClient;
+  const cid = gmailClientId();
+  if(!cid){ toast('Paste your Client ID in Settings first'); return null; }
+  if(!window.google?.accounts?.oauth2){
+    toast('Google Identity Services not loaded yet — try again in a few seconds');
+    return null;
+  }
+  _gmailTokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: cid,
+    scope: GMAIL_SCOPE,
+    callback: (response) => {
+      if(response.error){
+        toast('Gmail auth failed: ' + response.error);
+        return;
+      }
+      // expires_in is seconds. Subtract 30s safety margin.
+      const expiresAt = Date.now() + (Math.max(60, response.expires_in - 30) * 1000);
+      localStorage.setItem(GMAIL_LS_TOKEN, JSON.stringify({
+        access_token: response.access_token,
+        expires_at: expiresAt,
+      }));
+      toast('Gmail connected');
+      refreshGmailUi();
+    },
+  });
+  return _gmailTokenClient;
+}
+
+function connectGmail(){
+  const client = ensureGmailTokenClient();
+  if(!client) return;
+  // prompt='' attempts silent re-auth when user has consented before;
+  // GIS falls back to a popup when it needs explicit consent.
+  client.requestAccessToken({ prompt: gmailIsConnected() ? '' : 'consent' });
+}
+
+function disconnectGmail(){
+  localStorage.removeItem(GMAIL_LS_TOKEN);
+  // Best-effort revoke server-side so the token can't be replayed.
+  const t = gmailToken() || JSON.parse(localStorage.getItem(GMAIL_LS_TOKEN) || 'null');
+  if(t?.access_token && window.google?.accounts?.oauth2){
+    try { google.accounts.oauth2.revoke(t.access_token, () => {}); } catch(e){}
+  }
+  toast('Gmail disconnected');
+  refreshGmailUi();
+}
+
+// Builds the same (from:@domain OR from:specific) query the "Check
+// inbox" button uses, but scoped to the last syncDays days.
+function buildGmailSyncQuery(syncDays = 7){
+  const allEmails = new Set();
+  CONTACTS.forEach(c => { if(c.email) allEmails.add(c.email.trim().toLowerCase()); });
+  PEOPLE.forEach(p => { if(p.email) allEmails.add(p.email.trim().toLowerCase()); });
+  const domains = new Set();
+  const specific = [];
+  allEmails.forEach(e => {
+    const at = e.lastIndexOf('@');
+    if(at < 0) return;
+    const d = e.slice(at + 1);
+    if(FREE_EMAIL_DOMAINS.has(d)) specific.push(e);
+    else                          domains.add(d);
+  });
+  // Same 100-clause cap as the manual button to keep URL length sane.
+  const ENTRY_CAP = 100;
+  const dList = Array.from(domains).slice(0, ENTRY_CAP);
+  const pList = specific.slice(0, Math.max(0, ENTRY_CAP - dList.length));
+  const clauses = [
+    ...dList.map(d => `from:@${d}`),
+    ...pList.map(e => `from:${e}`),
+  ];
+  if(clauses.length === 0) return null;
+  return `(${clauses.join(' OR ')}) newer_than:${syncDays}d`;
+}
+
+// Resolve a Gmail From: address to a CRM company id. Tries exact
+// email match first (cheap), then domain-only fallback. Returns
+// null if no match — caller drops the message.
+function matchSenderToCompany(fromHeader){
+  if(!fromHeader) return null;
+  // From header is "Name <email>" or just "email"; extract email.
+  const m = fromHeader.match(/<([^>]+)>/);
+  const email = (m ? m[1] : fromHeader).trim().toLowerCase();
+  if(!email.includes('@')) return null;
+  // Exact match against People or CONTACTS.
+  const person = PEOPLE.find(p => (p.email||'').toLowerCase() === email);
+  if(person) return { companyId: person.company_id, contactId: person.id, email };
+  const company = CONTACTS.find(c => (c.email||'').toLowerCase() === email);
+  if(company) return { companyId: company.id, contactId: null, email };
+  // Domain fallback — pick the first company on that domain that
+  // ISN'T on a free provider (otherwise gmail.com would match all
+  // your personal emails to the first random gmail-using lead).
+  const at = email.lastIndexOf('@');
+  const domain = email.slice(at + 1);
+  if(FREE_EMAIL_DOMAINS.has(domain)) return null;
+  const domainCompany = CONTACTS.find(c => {
+    const ce = (c.email||'').toLowerCase();
+    return ce.endsWith('@' + domain);
+  });
+  if(domainCompany) return { companyId: domainCompany.id, contactId: null, email };
+  return null;
+}
+
+// Pulls last 7d of replies from Gmail, matches each to a company,
+// inserts new ones into email_messages, logs replied_marked
+// activity. Dedup is via the email_messages.provider_msg_id index
+// (we read the existing ids once before insert so the DB doesn't
+// reject the batch on conflict).
+async function syncGmailInbox(){
+  if(!gmailIsConnected()){ toast('Connect Gmail first'); return; }
+  const token = gmailToken();
+  const query = buildGmailSyncQuery(7);
+  if(!query){ toast('No CRM contacts have emails to match against'); return; }
+  const syncBtn = document.getElementById('gmailSyncBtn');
+  if(syncBtn){ syncBtn.disabled = true; syncBtn.textContent = 'Syncing…'; }
+  try {
+    // 1. List candidate message ids.
+    const listResp = await fetch(
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=100&q=${encodeURIComponent(query)}`,
+      { headers: { Authorization: `Bearer ${token.access_token}` } }
+    );
+    if(!listResp.ok){
+      if(listResp.status === 401){ toast('Gmail token expired — Connect Gmail again'); localStorage.removeItem(GMAIL_LS_TOKEN); refreshGmailUi(); return; }
+      throw new Error(`Gmail list failed: HTTP ${listResp.status}`);
+    }
+    const listData = await listResp.json();
+    const ids = (listData.messages || []).map(m => m.id);
+    if(ids.length === 0){ toast('Sync complete · 0 new replies'); return; }
+    // 2. Dedup against existing rows (one query).
+    const supa = getClient();
+    const { data: existing } = await supa.from('email_messages')
+      .select('provider_msg_id').in('provider_msg_id', ids);
+    const seenIds = new Set((existing || []).map(r => r.provider_msg_id));
+    const newIds = ids.filter(id => !seenIds.has(id));
+    if(newIds.length === 0){ toast(`Sync complete · 0 new (already had ${ids.length})`); return; }
+    // 3. Fetch metadata for each new message in parallel (small N,
+    //    no batching needed). format=metadata avoids transferring
+    //    the full body, which we'd ignore anyway.
+    const detailResps = await Promise.all(newIds.map(id =>
+      fetch(
+        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Subject&metadataHeaders=Date`,
+        { headers: { Authorization: `Bearer ${token.access_token}` } }
+      ).then(r => r.ok ? r.json() : null)
+    ));
+    // 4. Build inserts: match sender, attach company_id, fall back
+    //    to dropping orphan messages.
+    const inserts = [];
+    const touchedCompanies = new Set();
+    detailResps.forEach((msg, i) => {
+      if(!msg) return;
+      const headers = Object.fromEntries((msg.payload?.headers || []).map(h => [h.name.toLowerCase(), h.value]));
+      const match = matchSenderToCompany(headers.from);
+      if(!match) return;
+      inserts.push({
+        company_id:      match.companyId,
+        contact_id:      match.contactId,
+        direction:       'inbound',
+        from_addr:       headers.from || null,
+        to_addr:         headers.to || null,
+        subject:         headers.subject || null,
+        body:            msg.snippet || null,
+        thread_id:       msg.threadId || null,
+        provider_msg_id: newIds[i],
+        status:          'received',
+        sent_at:         headers.date ? new Date(headers.date).toISOString() : null,
+      });
+      touchedCompanies.add(match.companyId);
+    });
+    if(inserts.length === 0){ toast(`Sync complete · ${ids.length} fetched, none matched a contact`); return; }
+    // 5. One bulk insert.
+    const { error } = await supa.from('email_messages').insert(inserts);
+    if(error){ toast('Sync insert failed: '+error.message); return; }
+    // 6. One replied_marked activity row per touched company so the
+    //    timeline shows the reply landed. Done sequentially so each
+    //    activity insert fires the last_interaction_at trigger.
+    for(const companyId of touchedCompanies){
+      await logActivity(companyId, 'replied_marked', null, null, { via: 'gmail-sync' });
+    }
+    toast(`Sync complete · ${inserts.length} new repl${inserts.length===1?'y':'ies'} across ${touchedCompanies.size} compan${touchedCompanies.size===1?'y':'ies'}`);
+  } catch(err){
+    toast('Sync error: ' + err.message);
+  } finally {
+    if(syncBtn){ syncBtn.disabled = false; syncBtn.textContent = 'Sync inbox'; }
+  }
+}
+
+// Wire the header buttons + Settings modal once at script-load time.
+document.getElementById('gmailConnectBtn').addEventListener('click', connectGmail);
+document.getElementById('gmailSyncBtn').addEventListener('click', syncGmailInbox);
+document.getElementById('settingsBtn').addEventListener('click', () => {
+  document.getElementById('settingsClientId').value = gmailClientId();
+  refreshGmailUi();
+  document.getElementById('settingsModal').classList.add('open');
+});
+document.getElementById('settingsClose').addEventListener('click', () => document.getElementById('settingsModal').classList.remove('open'));
+document.getElementById('settingsCancelBtn').addEventListener('click', () => document.getElementById('settingsModal').classList.remove('open'));
+document.getElementById('settingsSaveBtn').addEventListener('click', () => {
+  const v = document.getElementById('settingsClientId').value.trim();
+  if(v) localStorage.setItem(GMAIL_LS_CLIENT_ID, v);
+  else  localStorage.removeItem(GMAIL_LS_CLIENT_ID);
+  _gmailTokenClient = null;  // force re-init with the new id
+  toast('Settings saved');
+  refreshGmailUi();
+});
+document.getElementById('settingsDisconnectBtn').addEventListener('click', disconnectGmail);
+// First render after the buttons exist — sets visibility from
+// whatever's in localStorage.
+refreshGmailUi();
 let SAVED_VIEWS = [];
 let CURRENT_CONTACT = null;
 let CURRENT_TEMPLATE = null;
