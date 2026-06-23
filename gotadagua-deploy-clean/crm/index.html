@@ -621,7 +621,7 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
     </div>
     <!-- Bulk action bar — hidden when nothing selected. Appears above
          the list when 1+ rows are checked. -->
-    <div id="tasksTabBulkBar" class="hidden" style="display:flex;gap:10px;align-items:center;background:var(--navy);color:#fff;padding:10px 14px;border-radius:var(--r-md);margin-bottom:10px">
+    <div id="tasksTabBulkBar" class="hidden" style="position:sticky;top:60px;z-index:55;display:flex;gap:10px;align-items:center;background:var(--navy);color:#fff;padding:10px 14px;border-radius:var(--r-md);margin-bottom:10px;box-shadow:0 8px 24px rgba(40,57,75,.22);flex-wrap:wrap">
       <span style="font-family:'DM Mono',monospace;font-size:12.5px"><span id="tasksTabBulkCount">0</span> selected</span>
       <button type="button" id="tasksTabBulkDone" style="background:var(--ocean);color:#fff;border:none;border-radius:8px;padding:6px 12px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">Mark done</button>
       <button type="button" id="tasksTabBulkReopen" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:8px;padding:6px 12px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">Reopen</button>
@@ -630,6 +630,7 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
       <button type="button" data-snooze-days="1" class="tk-snooze-btn" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:8px;padding:6px 10px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">+1d</button>
       <button type="button" data-snooze-days="3" class="tk-snooze-btn" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:8px;padding:6px 10px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">+3d</button>
       <button type="button" data-snooze-days="7" class="tk-snooze-btn" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:8px;padding:6px 10px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">+1w</button>
+      <input type="date" id="tasksTabBulkSnoozeDate" title="Snooze selected tasks to a specific date" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:8px;padding:5px 8px;font-size:11.5px;font-family:inherit;color-scheme:dark">
       <button type="button" id="tasksTabBulkClear" style="margin-left:auto;background:transparent;color:#bdd4e8;border:none;font-size:11.5px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif">Clear</button>
     </div>
     <div id="tasksTabList" style="background:#fff;border:1px solid var(--border);border-radius:var(--r-md);overflow:hidden"></div>
@@ -1178,7 +1179,7 @@ let PIPELINE_STAGES = [];    // pipeline_stages table — N rows per pipeline
 let CONTACT_PIPELINE = [];   // contact_pipeline table — company ↔ pipeline assignments
 // Which Kanban view is active. 'status' = the legacy single-pipeline
 // view that drives c.status; otherwise a pipeline id from PIPELINES.
-let CURRENT_PIPELINE_VIEW = 'status';
+let CURRENT_PIPELINE_VIEW = localStorage.getItem('crmPipelineView') || 'status';
 // Pipeline tab filter state — persists across tab switches so the
 // user can flip away and come back without losing their narrowing.
 let PIPELINE_FILTER = { text: '', country: '', segment: '', stuckOnly: false, stageId: null };
@@ -2879,7 +2880,7 @@ function populateFilters(){
   fs.innerHTML = '<option value="">All segments</option>' + segments.map(s=>`<option value="${escAttr(s)}">${escHtml(s)}</option>`).join('');
 }
 
-let CURRENT_PRESET = 'all';
+let CURRENT_PRESET = localStorage.getItem('crmContactsPreset') || 'all';
 
 ['filterStatus','filterCountry','filterSegment','filterSearch'].forEach(id=>{
   document.getElementById(id).addEventListener('input', renderContacts);
@@ -2888,6 +2889,7 @@ let CURRENT_PRESET = 'all';
 document.querySelectorAll('#presetChips .chip').forEach(chip => {
   chip.addEventListener('click', () => {
     CURRENT_PRESET = chip.dataset.preset;
+    localStorage.setItem('crmContactsPreset', CURRENT_PRESET);
     document.querySelectorAll('#presetChips .chip').forEach(c => c.classList.toggle('active', c===chip));
     renderContacts();
   });
@@ -5044,8 +5046,11 @@ document.getElementById('myDayGo').addEventListener('click', () => {
 // ── TASKS TAB (cross-company view of every open TODO) ──────────────────
 // State for the tab's filter. Persists across renders so flipping in
 // and out of the tab keeps your filter selection.
-let TASKS_TAB_FILTER = 'open';
-let TASKS_TAB_GROUP = false;    // false = flat list, true = group rows under company headers
+// Persisted across sessions so the user resumes the view they left
+// off in. localStorage keys are read-once at script-load; subsequent
+// writes happen wherever the filter/group state changes.
+let TASKS_TAB_FILTER = localStorage.getItem('crmTasksTabFilter') || 'open';
+let TASKS_TAB_GROUP = localStorage.getItem('crmTasksTabGroup') === '1';
 // Set of task ids currently selected for bulk actions. Survives a
 // re-render so the user can flip filters without losing selection.
 const TASKS_TAB_SELECTED = new Set();
@@ -5101,6 +5106,7 @@ function renderTasksTab(){
     }
     groupBtn.onclick = () => {
       TASKS_TAB_GROUP = !TASKS_TAB_GROUP;
+      localStorage.setItem('crmTasksTabGroup', TASKS_TAB_GROUP ? '1' : '0');
       renderTasksTab();
     };
   }
@@ -5113,6 +5119,7 @@ function renderTasksTab(){
   filterEl.querySelectorAll('[data-tf]').forEach(b => {
     b.addEventListener('click', () => {
       TASKS_TAB_FILTER = b.dataset.tf;
+      localStorage.setItem('crmTasksTabFilter', TASKS_TAB_FILTER);
       renderTasksTab();
     });
   });
@@ -5368,6 +5375,30 @@ document.getElementById('tasksTabBulkDone').addEventListener('click', () => task
 document.getElementById('tasksTabBulkReopen').addEventListener('click', () => tasksTabBulkSetDone(false));
 document.querySelectorAll('.tk-snooze-btn').forEach(btn => {
   btn.addEventListener('click', () => tasksTabBulkSnooze(Number(btn.dataset.snoozeDays)));
+});
+// Custom-date snooze — picks an explicit due_at instead of N days
+// from base. Same parallel-update pattern as the chip-based snooze,
+// just with an absolute target. Resets the input so the user can
+// fire again on a fresh selection without confusion.
+document.getElementById('tasksTabBulkSnoozeDate').addEventListener('change', async (e) => {
+  const targetDate = e.target.value;
+  if(!targetDate) return;
+  const ids = Array.from(TASKS_TAB_SELECTED);
+  if(ids.length === 0){ toast('Pick tasks first'); e.target.value = ''; return; }
+  const supa = getClient();
+  const newDueIso = new Date(targetDate + 'T00:00:00Z').toISOString();
+  const results = await Promise.all(ids.map(id =>
+    supa.from('tasks').update({ due_at: newDueIso }).eq('id', id)
+      .then(({ error }) => ({ id, error }))
+  ));
+  const failures = results.filter(r => r.error);
+  if(failures.length){ toast(`Snooze failed on ${failures.length}/${ids.length}: ${failures[0].error.message}`); e.target.value = ''; return; }
+  ids.forEach(id => { const t = TASKS.find(x => x.id === id); if(t) t.due_at = newDueIso; });
+  toast(`${ids.length} task${ids.length>1?'s':''} snoozed to ${fmtDate(targetDate)}`);
+  TASKS_TAB_SELECTED.clear();
+  e.target.value = '';
+  renderTasksTab();
+  updateNavTasksCount();
 });
 document.getElementById('tasksTabBulkClear').addEventListener('click', () => {
   TASKS_TAB_SELECTED.clear();
@@ -6077,6 +6108,7 @@ function renderPipeline(){
     sel.value = (desired === 'status' || PIPELINES.find(p => p.id === desired)) ? desired : 'status';
     sel.onchange = () => {
       CURRENT_PIPELINE_VIEW = sel.value;
+      localStorage.setItem('crmPipelineView', CURRENT_PIPELINE_VIEW);
       renderPipeline();
     };
   }
