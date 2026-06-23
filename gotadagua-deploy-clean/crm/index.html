@@ -4542,7 +4542,10 @@ document.getElementById('groupDeleteBtn').addEventListener('click', async ()=>{
 
 let _dragContactId = null;
 
-function pipelineCardHtml(c){
+// daysInStage is optional — only meaningful in pipeline mode where
+// contact_pipeline.entered_stage_at gives an honest stamp. In legacy
+// status mode it's undefined and the badge stays hidden.
+function pipelineCardHtml(c, daysInStage){
   // How many groups does this partner have, and how many possibilities?
   const groups = GROUPS.filter(g => g.contact_id === c.id);
   const possibilities = groups.filter(g => ['possibility','request','hold'].includes(g.stage)).length;
@@ -4557,11 +4560,21 @@ function pipelineCardHtml(c){
       + (possibilities?` · ${possibilities} ?`:'');
     meta.push(`<span class="kc-groups">${uiIcon('people')} ${label}</span>`);
   }
+  // "Time-in-stage" badge — green (<14d, fresh), amber (14-30d,
+  // stretching) or red (30d+, stuck). Lets the user scan a column
+  // and instantly spot deals that need a nudge without reading each.
+  let stageBadge = '';
+  if(typeof daysInStage === 'number' && daysInStage >= 0){
+    let bg = 'var(--green-bg)', col = 'var(--green-text)';
+    if(daysInStage >= 30){ bg = 'var(--red-bg)';   col = 'var(--red-text)'; }
+    else if(daysInStage >= 14){ bg = 'var(--amber-bg)'; col = 'var(--amber-text)'; }
+    stageBadge = `<span style="background:${bg};color:${col};padding:2px 7px;border-radius:999px;font-size:10px;font-weight:700;font-family:'DM Mono',monospace">${daysInStage}d</span>`;
+  }
   return `
     <div class="kanban-card" draggable="true" data-id="${c.id}">
-      <div class="kc-name">
-        <span>${escHtml(c.company)}</span>
-        ${c.email ? '' : '<span class="no-email">no email</span>'}
+      <div class="kc-name" style="display:flex;justify-content:space-between;align-items:center;gap:6px">
+        <span style="min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(c.company)}</span>
+        ${stageBadge || (c.email ? '' : '<span class="no-email">no email</span>')}
       </div>
       ${meta.length ? `<div class="kc-meta">${meta.join('')}</div>` : ''}
     </div>
@@ -4699,8 +4712,14 @@ function renderPipelineByPipeline(pipelineId){
     assignmentByCompany.set(c.id, cp);
   });
   updatePipelineFilterCount(visibleInPipeline, totalInPipeline);
+  const today = new Date().toISOString().slice(0,10);
   board.innerHTML = stages.map(s => {
-    const cards = (rowsByStage.get(s.id) || []).map(pipelineCardHtml).join('') ||
+    const cards = (rowsByStage.get(s.id) || []).map(c => {
+      const cp = assignmentByCompany.get(c.id);
+      const enteredDate = cp?.entered_stage_at ? cp.entered_stage_at.slice(0,10) : null;
+      const daysInStage = enteredDate ? daysBetween(enteredDate, today) : undefined;
+      return pipelineCardHtml(c, daysInStage);
+    }).join('') ||
       '<div class="kanban-empty">drop a card here</div>';
     // Inline dot since stage CSS keys are hardcoded to legacy status —
     // the dynamic stages need an inline color (green/red/gray).
