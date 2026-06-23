@@ -4777,7 +4777,34 @@ function renderPeopleList(companyId){
   const items = PEOPLE.filter(p => p.company_id === companyId)
     .sort((a,b) => (b.is_primary?1:0) - (a.is_primary?1:0) || (a.name||'').localeCompare(b.name||''));
   if(items.length === 0){
-    list.innerHTML = '<div class="empty-state" style="padding:14px;text-align:left;background:#fafdff;border:1px dashed var(--border);border-radius:10px">No people yet. Click <b>+ Person</b> to add the owner, bookings, ops — anyone you talk to.</div>';
+    // Bridge: companies imported with only the legacy c.email/c.phone
+    // can seed an unnamed primary person in one click, so the
+    // multi-contact model gets a foothold without manual data entry.
+    const company = CONTACTS.find(x => x.id === companyId);
+    const canSeed = !!(company?.email || company?.phone);
+    const seedBtn = canSeed
+      ? `<button id="seedPrimaryBtn" style="margin-top:8px;background:var(--ocean);color:#fff;border:none;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">Seed primary from company ${company.email ? 'email' : 'phone'}</button>`
+      : '';
+    list.innerHTML = `<div class="empty-state" style="padding:14px;text-align:left;background:#fafdff;border:1px dashed var(--border);border-radius:10px">No people yet. Click <b>+ Person</b> to add the owner, bookings, ops — anyone you talk to.${seedBtn ? '<br>' + seedBtn : ''}</div>`;
+    if(canSeed){
+      document.getElementById('seedPrimaryBtn').addEventListener('click', async () => {
+        const payload = {
+          company_id: companyId,
+          name: null,
+          role: null,
+          email: company.email || null,
+          phone: company.phone || null,
+          linkedin: null,
+          is_primary: true,
+        };
+        const supa = getClient();
+        const { data, error } = await supa.from('contacts').insert(payload).select().single();
+        if(error){ toast('Seed failed: '+error.message); return; }
+        PEOPLE.push(data);
+        toast('Primary person seeded — edit the name when you know it');
+        renderPeopleList(companyId);
+      });
+    }
     return;
   }
   list.innerHTML = items.map(p => {
