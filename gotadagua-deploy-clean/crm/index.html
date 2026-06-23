@@ -433,6 +433,7 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
     <button class="nav-tab" data-tab="templates">Templates</button>
   </div>
   <div class="header-right">
+    <button class="header-btn" id="checkInboxBtn" title="Open Gmail filtered by every CRM contact in the last 7 days">Check inbox</button>
     <button class="header-btn" id="signOutBtn">Sign out</button>
   </div>
 </header>
@@ -2520,6 +2521,73 @@ document.getElementById('composeBtn').addEventListener('click', ()=>{
     return;
   }
   openCompose();
+});
+
+// Global "Check inbox" — opens Gmail filtered by EVERY CRM contact
+// across the whole DB in the last 7 days. Helps the user scan all
+// possible replies from outreach without going company-by-company.
+//
+// URL length is the constraint. Gmail tolerates very long search
+// strings but ~100 entries is a comfortable ceiling. Strategy:
+//   • For free-provider addresses (gmail/yahoo/hotmail/outlook/etc.)
+//     use the FULL email, since the domain alone would match every
+//     personal email in the inbox and drown the result.
+//   • For custom domains (a surf school's own domain) use just the
+//     DOMAIN, so all addresses at that org count without bloating
+//     the query.
+//   • Dedup, slice to 100, build clauses, open.
+const FREE_EMAIL_DOMAINS = new Set([
+  'gmail.com','googlemail.com',
+  'hotmail.com','hotmail.fr','hotmail.co.uk','hotmail.es','hotmail.it','hotmail.de',
+  'outlook.com','outlook.fr','outlook.es','outlook.de','live.com','live.fr','live.com.pt',
+  'yahoo.com','yahoo.co.uk','yahoo.fr','yahoo.es','yahoo.de','yahoo.it','ymail.com',
+  'icloud.com','me.com','mac.com',
+  'aol.com','aol.fr',
+  'proton.me','protonmail.com','pm.me',
+  'sapo.pt','clix.pt','mail.pt','iol.pt',
+]);
+
+document.getElementById('checkInboxBtn').addEventListener('click', () => {
+  // Collect every address we have across companies + people. Dedup
+  // first so a person + company sharing the same address only counts
+  // once.
+  const allEmails = new Set();
+  CONTACTS.forEach(c => { if(c.email) allEmails.add(c.email.trim().toLowerCase()); });
+  PEOPLE.forEach(p => { if(p.email) allEmails.add(p.email.trim().toLowerCase()); });
+  if(allEmails.size === 0){
+    toast('No emails on any CRM contact yet');
+    return;
+  }
+  // Split into the two buckets (full-email vs domain-only) and dedup
+  // the domain bucket too.
+  const fullEmails = [];
+  const domains = new Set();
+  allEmails.forEach(e => {
+    const at = e.lastIndexOf('@');
+    if(at < 0) return;
+    const domain = e.slice(at + 1);
+    if(!domain) return;
+    if(FREE_EMAIL_DOMAINS.has(domain)) fullEmails.push(e);
+    else                                domains.add(domain);
+  });
+  // Cap at 100 total clauses — domains first (broader coverage per
+  // entry), then fall back to the personal addresses.
+  const ENTRY_CAP = 100;
+  const domainList = Array.from(domains).slice(0, ENTRY_CAP);
+  const personalSlots = Math.max(0, ENTRY_CAP - domainList.length);
+  const personalList = fullEmails.slice(0, personalSlots);
+  const totalEntries = domainList.length + personalList.length;
+  const totalAvailable = domains.size + fullEmails.length;
+
+  const clauses = [
+    ...domainList.map(d => `from:${d}`),
+    ...personalList.map(e => `from:${e}`),
+  ];
+  const query = `(${clauses.join(' OR ')}) newer_than:7d`;
+  const url = `https://mail.google.com/mail/?authuser=${GMAIL_AUTHUSER}#search/` + encodeURIComponent(query);
+  window.open(url, '_blank');
+  const truncated = totalEntries < totalAvailable;
+  toast(`Opening Gmail · ${totalEntries} source${totalEntries>1?'s':''}${truncated?` (capped from ${totalAvailable})`:''} · last 7d`);
 });
 
 // Open Gmail filtered to every email address we know for this company:
