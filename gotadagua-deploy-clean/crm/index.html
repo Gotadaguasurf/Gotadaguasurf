@@ -610,6 +610,7 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
     <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
       <div id="tasksTabFilters" style="display:flex;gap:6px;flex-wrap:wrap"></div>
       <div style="margin-left:auto;font-family:'DM Mono',monospace;font-size:12px;color:var(--muted)" id="tasksTabCount">—</div>
+      <button type="button" id="tasksTabExportBtn" title="Download the current filtered view as CSV" style="background:transparent;color:var(--ocean);border:1px solid var(--ocean);border-radius:8px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">Export CSV</button>
       <button type="button" id="tasksTabAddBtn" style="background:var(--ocean);color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">+ Task</button>
     </div>
     <!-- Bulk action bar — hidden when nothing selected. Appears above
@@ -3996,6 +3997,65 @@ async function quickAddTask(companyId, preset){
   if(CURRENT_TAB === 'tasks') renderTasksTab();
 }
 
+// Computes the same filtered + sorted set as renderTasksTab and
+// downloads it as CSV. Same logic duplicated on purpose — the
+// renderer mutates DOM, and tying them together via a shared helper
+// would force a return shape that complicates the render path.
+function exportTasksCsv(){
+  const today = new Date().toISOString().slice(0,10);
+  const weekEnd = addDays(today, 7);
+  let rows = TASKS.filter(t => {
+    if(TASKS_TAB_FILTER === 'done') return !!t.done_at;
+    if(t.done_at) return false;
+    const due = t.due_at ? t.due_at.slice(0,10) : null;
+    if(TASKS_TAB_FILTER === 'overdue') return due && due < today;
+    if(TASKS_TAB_FILTER === 'today')   return due === today;
+    if(TASKS_TAB_FILTER === 'week')    return due && due >= today && due <= weekEnd;
+    return true;
+  });
+  rows.sort((a,b) => {
+    if(TASKS_TAB_FILTER === 'done') return (b.done_at||'').localeCompare(a.done_at||'');
+    return (a.due_at || '9999').localeCompare(b.due_at || '9999');
+  });
+  if(rows.length === 0){ toast('Nothing to export — current filter is empty'); return; }
+  // RFC 4180 — wrap every field in quotes, double-quote any embedded
+  // quotes, replace newlines with spaces. Belt-and-suspenders against
+  // Excel's loose CSV parser.
+  const esc = (v) => {
+    if(v == null) return '""';
+    const s = String(v).replace(/"/g, '""').replace(/\r?\n/g, ' ');
+    return `"${s}"`;
+  };
+  const header = ['Title','Type','Due','Done','Company','Notes','Created'];
+  const lines = [header.map(esc).join(',')];
+  rows.forEach(t => {
+    const c = CONTACTS.find(x => x.id === t.company_id);
+    lines.push([
+      t.title || '',
+      TASK_TYPE_LABELS[t.type] || t.type || '',
+      t.due_at ? t.due_at.slice(0,10) : '',
+      t.done_at ? t.done_at.slice(0,10) : '',
+      c?.company || '',
+      t.notes || '',
+      t.created_at ? t.created_at.slice(0,10) : '',
+    ].map(esc).join(','));
+  });
+  // BOM so Excel auto-detects UTF-8 (accented company / task names
+  // were otherwise rendered as garbage).
+  const csv = '﻿' + lines.join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = new Date().toISOString().slice(0,10);
+  a.href = url;
+  a.download = `crm-tasks-${TASKS_TAB_FILTER}-${stamp}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  toast(`Exported ${rows.length} task${rows.length===1?'':'s'} · ${TASKS_TAB_FILTER}`);
+}
+
 // ── MY-DAY DIGEST ────────────────────────────────────────────────────
 // Fires once at the first sign-in of each calendar day, IF there's
 // anything worth surfacing. Gated by a localStorage key so multiple
@@ -4087,6 +4147,12 @@ function renderTasksTab(){
   const addBtn = document.getElementById('tasksTabAddBtn');
   if(addBtn){
     addBtn.onclick = () => openTaskModal(null, null);
+  }
+  // Export — downloads the currently filtered rows as CSV. Rebinds
+  // every render so the closure captures the active filter set.
+  const exportBtn = document.getElementById('tasksTabExportBtn');
+  if(exportBtn){
+    exportBtn.onclick = () => exportTasksCsv();
   }
 
   // Filter pill rendering (active pill is the ocean colour).
