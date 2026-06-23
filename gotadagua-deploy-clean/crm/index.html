@@ -1108,7 +1108,7 @@ let CONTACT_PIPELINE = [];   // contact_pipeline table — company ↔ pipeline 
 let CURRENT_PIPELINE_VIEW = 'status';
 // Pipeline tab filter state — persists across tab switches so the
 // user can flip away and come back without losing their narrowing.
-let PIPELINE_FILTER = { text: '', country: '', segment: '', stuckOnly: false };
+let PIPELINE_FILTER = { text: '', country: '', segment: '', stuckOnly: false, stageId: null };
 let TEMPLATES = [];
 
 // Gmail account used by Compose + Check-Gmail buttons (authuser query
@@ -4901,7 +4901,7 @@ function renderPipeline(){
   const clearBtn = document.getElementById('pipelineFilterClear');
   if(clearBtn){
     clearBtn.onclick = () => {
-      PIPELINE_FILTER = { text:'', country:'', segment:'', stuckOnly:false };
+      PIPELINE_FILTER = { text:'', country:'', segment:'', stuckOnly:false, stageId:null };
       if(tEl) tEl.value = '';
       renderPipeline();
     };
@@ -4994,12 +4994,29 @@ function renderPipelineFunnel(pipelineId){
     const avgChip = avg !== null
       ? `<span style="margin-left:8px;font-size:10px;font-weight:700;color:${avg>=30?'var(--red-text)':'var(--muted)'};font-family:'DM Mono',monospace">${avg}d avg</span>`
       : '';
-    return `<div class="funnel-bar">
+    // Clickable to filter the Kanban down to this single stage —
+    // selected bar gets a pill background so the active stage is
+    // visible even when the user has scrolled away from the Kanban.
+    const active = PIPELINE_FILTER.stageId === s.id;
+    const rowStyle = active
+      ? 'cursor:pointer;background:#eef6fb;border-radius:8px;padding:4px 6px;margin:0 -6px 4px'
+      : 'cursor:pointer;border-radius:8px;padding:4px 6px;margin:0 -6px 4px';
+    return `<div class="funnel-bar" data-funnel-stage="${s.id}" style="${rowStyle}">
       <div class="funnel-label">${escHtml(s.name)}</div>
       <div class="funnel-track"><div class="funnel-fill" style="width:${pct}%;${fillStyle}"></div></div>
       <div class="funnel-count" style="width:auto;min-width:36px;display:flex;align-items:center;justify-content:flex-end">${n}${avgChip}</div>
     </div>`;
   }).join('');
+  // Wire click-to-filter on every bar. Clicking the active bar
+  // clears the stage filter (toggle behaviour) — no need for a
+  // separate "show all stages" button.
+  el.querySelectorAll('[data-funnel-stage]').forEach(row => {
+    row.addEventListener('click', () => {
+      const id = row.dataset.funnelStage;
+      PIPELINE_FILTER.stageId = (PIPELINE_FILTER.stageId === id) ? null : id;
+      renderPipeline();
+    });
+  });
 }
 
 // Strip of KPIs above the Kanban when a real pipeline is selected.
@@ -5127,7 +5144,13 @@ function renderPipelineByPipeline(pipelineId){
   });
   updatePipelineFilterCount(visibleInPipeline, totalInPipeline);
   const today = new Date().toISOString().slice(0,10);
-  board.innerHTML = stages.map(s => {
+  // Stage filter — when set, render only the selected column. Other
+  // stages still count toward the funnel + summary above; this is a
+  // Kanban-focus view, not a "stage doesn't exist" view.
+  const renderableStages = PIPELINE_FILTER.stageId
+    ? stages.filter(s => s.id === PIPELINE_FILTER.stageId)
+    : stages;
+  board.innerHTML = renderableStages.map(s => {
     const cards = (rowsByStage.get(s.id) || []).map(c => {
       const cp = assignmentByCompany.get(c.id);
       const enteredDate = cp?.entered_stage_at ? cp.entered_stage_at.slice(0,10) : null;
