@@ -4770,26 +4770,44 @@ function renderPipelineFunnel(pipelineId){
   if(stages.length === 0){ el.classList.add('hidden'); return; }
   el.classList.remove('hidden');
   const visibleSet = new Set(filteredContactsForPipeline().map(c => c.id));
-  // Tally per stage in the same pass — single O(N) walk over
-  // contact_pipeline for the active pipeline.
+  const today = new Date().toISOString().slice(0,10);
+  // Tally count + cumulative days-in-stage per stage in one pass.
+  // Days-in-stage = today - entered_stage_at, computed only for
+  // non-terminal stages (won/lost don't accumulate "time stuck"
+  // because the stage IS the resolution).
   const counts = new Map(stages.map(s => [s.id, 0]));
+  const daysSum = new Map(stages.map(s => [s.id, 0]));
+  const daysN   = new Map(stages.map(s => [s.id, 0]));
   CONTACT_PIPELINE.filter(cp => cp.pipeline_id === pipelineId).forEach(cp => {
     if(!visibleSet.has(cp.company_id)) return;
     counts.set(cp.stage_id, (counts.get(cp.stage_id) || 0) + 1);
+    const stage = PIPELINE_STAGES.find(s => s.id === cp.stage_id);
+    if(!stage || stage.is_won || stage.is_lost) return;
+    if(!cp.entered_stage_at) return;
+    const d = daysBetween(cp.entered_stage_at.slice(0,10), today);
+    if(d < 0) return;                   // future-dated rows shouldn't skew
+    daysSum.set(cp.stage_id, (daysSum.get(cp.stage_id) || 0) + d);
+    daysN.set(cp.stage_id, (daysN.get(cp.stage_id) || 0) + 1);
   });
   const maxCount = Math.max(1, ...counts.values());
   el.innerHTML = stages.map(s => {
     const n = counts.get(s.id) || 0;
     const pct = (n / maxCount) * 100;
-    // Override the default gradient for terminal stages so the eye
-    // separates won/lost from in-flight without reading the label.
     let fillStyle = '';
     if(s.is_won)       fillStyle = 'background:linear-gradient(90deg,#22c55e,#16a34a)';
     else if(s.is_lost) fillStyle = 'background:linear-gradient(90deg,#ef4444,#dc2626)';
+    // Avg days subtitle — only meaningful for in-flight stages with
+    // at least one row. Tints red when avg > 30 to flag bottlenecks
+    // at a glance.
+    const dN = daysN.get(s.id) || 0;
+    const avg = dN > 0 ? Math.round(daysSum.get(s.id) / dN) : null;
+    const avgChip = avg !== null
+      ? `<span style="margin-left:8px;font-size:10px;font-weight:700;color:${avg>=30?'var(--red-text)':'var(--muted)'};font-family:'DM Mono',monospace">${avg}d avg</span>`
+      : '';
     return `<div class="funnel-bar">
       <div class="funnel-label">${escHtml(s.name)}</div>
       <div class="funnel-track"><div class="funnel-fill" style="width:${pct}%;${fillStyle}"></div></div>
-      <div class="funnel-count">${n}</div>
+      <div class="funnel-count" style="width:auto;min-width:36px;display:flex;align-items:center;justify-content:flex-end">${n}${avgChip}</div>
     </div>`;
   }).join('');
 }
