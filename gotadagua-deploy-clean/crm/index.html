@@ -1793,6 +1793,35 @@ function closeBatchSendModal(){
   document.getElementById('batchSendModal').classList.remove('open');
 }
 
+// Esc closes any open modal — single global handler walks every
+// .compose-modal that's currently `.open`. Skipped while typing in
+// any input/textarea so Esc still defocuses fields the way native
+// behaviour expects. Detail panel close is handled by its own
+// existing handler, but Esc on it works via the same mechanism
+// since the panel uses the same .open class.
+document.addEventListener('keydown', (e) => {
+  if(e.key !== 'Escape') return;
+  const tag = (e.target.tagName || '').toLowerCase();
+  if(tag === 'input' || tag === 'textarea' || e.target.isContentEditable) return;
+  // Close every open modal — usually there's one, but if Settings
+  // was opened over the detail panel both should dismiss.
+  let closedAny = false;
+  document.querySelectorAll('.compose-modal.open').forEach(m => {
+    m.classList.remove('open');
+    closedAny = true;
+  });
+  // Detail panel + overlay use a separate class; collapse them too.
+  const detail = document.getElementById('detailPanel');
+  const overlay = document.getElementById('detailOverlay');
+  if(detail?.classList.contains('open')){
+    detail.classList.remove('open');
+    overlay?.classList.remove('open');
+    CURRENT_CONTACT = null;
+    closedAny = true;
+  }
+  if(closedAny) e.preventDefault();
+});
+
 // Contacts-tab cursor — same pattern as the Tasks tab. Reset on
 // renderContacts so a filter change can't leave it pointing past
 // the end.
@@ -2348,13 +2377,17 @@ async function loadTemplates(){
 // timestamp. Email rows get a synthetic action='email_inbound' or
 // 'email_outbound' so activityLabel renders them with the subject +
 // snippet inline, not just "Marked as replied".
-async function loadActivity(contactId){
+//
+// limit is per-source — both tables fetched in parallel, both
+// truncated. "Load more" button below the list bumps it and re-
+// renders the activity section in place.
+async function loadActivity(contactId, limit = 50){
   const c = getClient();
   const [actR, emailR] = await Promise.all([
     c.from('outreach_activity').select('*').eq('contact_id', contactId)
-      .order('created_at', { ascending: false }).limit(50),
+      .order('created_at', { ascending: false }).limit(limit),
     c.from('email_messages').select('*').eq('company_id', contactId)
-      .order('sent_at', { ascending: false, nullsFirst: false }).limit(50),
+      .order('sent_at', { ascending: false, nullsFirst: false }).limit(limit),
   ]);
   if(actR.error) return [];
   const activity = actR.data || [];
@@ -3334,10 +3367,19 @@ document.getElementById('bulkFollowup').addEventListener('change', async (e)=>{
 async function openContact(id){
   const c = CONTACTS.find(x=>x.id===id);
   if(!c) return;
+  // Reset the per-section activity limit whenever a different
+  // contact is opened. Stays at the bumped value if the same
+  // contact is re-opened (e.g. after a stage change re-render).
+  if(CURRENT_CONTACT?.id !== c.id) ACTIVITY_LIMIT = 50;
   CURRENT_CONTACT = c;
   document.getElementById('detailTitle').textContent = c.company;
   const body = document.getElementById('detailBody');
-  const activity = await loadActivity(id);
+  const activity = await loadActivity(id, ACTIVITY_LIMIT);
+  // If we got fewer than the cap, there's nothing left to load —
+  // hide the Load-more button. If we got exactly the cap, there
+  // MAY be more (could be exactly N and no more) but the button
+  // is cheap to show.
+  const moreAvailable = activity.length >= ACTIVITY_LIMIT;
   body.innerHTML = `
     <div class="detail-section">
       <div class="detail-section-title">Contact</div>
@@ -3479,6 +3521,7 @@ async function openContact(id){
           return `<div class="activity-item ${a.action}" data-act-blob="${escAttr(blob)}" style="position:relative;padding-right:34px">${delBtn}<div class="activity-action">${label}</div>${a.meta?.note?`<div class="activity-meta">${escHtml(a.meta.note)}</div>`:''}<div class="activity-time">${fmtDateTime(a.created_at)}${a.created_by?' · '+escHtml(a.created_by):''}</div></div>`;
         }).join('') : '<div class="empty-state" style="padding:12px;text-align:left">No activity yet.</div>'}
       </div>
+      ${moreAvailable ? `<button type="button" id="activityLoadMore" style="margin-top:10px;width:100%;background:transparent;border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12px;font-weight:700;color:var(--ocean);cursor:pointer;font-family:'Outfit',sans-serif">Load 50 more</button>` : ''}
     </div>
   `;
 
@@ -3617,6 +3660,19 @@ async function openContact(id){
     actSearchEl.addEventListener('input', () => {
       _actSearch = actSearchEl.value.trim().toLowerCase();
       applyActivityFilter();
+    });
+  }
+  // Load-more bumps the per-contact activity cap and re-opens the
+  // panel. Re-open is cheap (already a render of cached state +
+  // one query) and means the new rows come pre-wired with all the
+  // delete / filter handlers.
+  const loadMoreBtn = document.getElementById('activityLoadMore');
+  if(loadMoreBtn){
+    loadMoreBtn.addEventListener('click', () => {
+      ACTIVITY_LIMIT += 50;
+      loadMoreBtn.disabled = true;
+      loadMoreBtn.textContent = 'Loading…';
+      openContact(c.id);
     });
   }
   document.querySelectorAll('#activityTypeChips .act-chip').forEach(chip => {
@@ -5224,6 +5280,11 @@ let TASKS_TAB_GROUP = localStorage.getItem('crmTasksTabGroup') === '1';
 // row focused. Reset on every renderTasksTab so it can't point past
 // the end after a filter change.
 let TASKS_TAB_KB_INDEX = -1;
+// Per-contact activity cap. Bumped by the Load-more button so
+// re-opening the same contact (after a stage change, etc.) keeps
+// the expanded view; resets to 50 when a different contact is
+// opened.
+let ACTIVITY_LIMIT = 50;
 // Set of task ids currently selected for bulk actions. Survives a
 // re-render so the user can flip filters without losing selection.
 const TASKS_TAB_SELECTED = new Set();
@@ -5473,6 +5534,19 @@ function renderTasksTab(){
   });
   // Per-row snooze chips.
   wireSnoozeChips(listEl);
+  // Hover preview on each task row — uses the company id so the
+  // popover shows context for the parent company, not the task
+  // itself (which is already fully on screen).
+  listEl.querySelectorAll('.tasks-tab-row').forEach(row => {
+    row.addEventListener('mouseenter', () => {
+      clearTimeout(_kanbanHoverTimer);
+      _kanbanHoverTimer = setTimeout(() => {
+        const c = CONTACTS.find(x => x.id === row.dataset.companyId);
+        if(c) showKanbanHover(row, c);
+      }, 400);
+    });
+    row.addEventListener('mouseleave', hideKanbanHover);
+  });
 }
 
 // Shows / hides the bulk action bar and refreshes its count. Called
