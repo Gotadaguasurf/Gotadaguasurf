@@ -491,6 +491,7 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
     <button class="nav-tab" data-tab="pipeline">Pipeline</button>
     <button class="nav-tab" data-tab="analytics">Analytics</button>
     <button class="nav-tab" data-tab="templates">Templates</button>
+    <button class="nav-tab" data-tab="sequences">Sequences</button>
   </div>
   <div class="header-right">
     <button class="header-btn" id="headerAddTask" title="Add a task from anywhere — picks the company inside the modal" style="background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.25)">+ Task</button>
@@ -801,6 +802,23 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
       <div class="template-list" id="templateList"></div>
       <div class="template-editor" id="templateEditor">
         <div class="empty-state">Select a template on the left, or create a new one.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── SEQUENCES TAB ─── -->
+  <div id="page-sequences" class="hidden">
+    <div class="section-hdr">
+      <div>
+        <div class="section-title">Email sequences</div>
+        <div class="section-hint">Multi-step drip campaigns. Pick templates, set day offsets, then "Start" from any company.</div>
+      </div>
+      <button class="header-btn primary" id="newSequenceBtn" style="background:var(--ocean);border:none">+ New sequence</button>
+    </div>
+    <div class="template-grid">
+      <div class="template-list" id="sequenceList"></div>
+      <div class="template-editor" id="sequenceEditor">
+        <div class="empty-state">Select a sequence on the left, or create a new one.</div>
       </div>
     </div>
   </div>
@@ -1298,6 +1316,9 @@ let CONTACT_PIPELINE = [];   // contact_pipeline table — company ↔ pipeline 
 let TEAM_USERS = [];         // team_users — sales people who own tasks / accounts
 let CURRENT_TEAM_USER = null; // the team_users row matching session.user.id
 let OUTREACH_ACTIVITY_RECENT = []; // last 7 days of outreach_activity for per-team reports
+let SEQUENCES = [];          // outreach_sequences — drip-campaign definitions
+let SEQUENCE_RUNS = [];      // outreach_sequence_runs — active + historic runs per company
+let CURRENT_SEQUENCE = null; // for the Sequences-tab editor
 // Which Kanban view is active. 'status' = the legacy single-pipeline
 // view that drives c.status; otherwise a pipeline id from PIPELINES.
 let CURRENT_PIPELINE_VIEW = localStorage.getItem('crmPipelineView') || 'status';
@@ -2384,7 +2405,7 @@ document.getElementById('loginForm').addEventListener('submit', async (e)=>{
 document.getElementById('signOutBtn').addEventListener('click', async ()=>{
   unsubscribeRealtime();
   try { await getClient().auth.signOut(); } catch(e){}
-  session = null; CONTACTS = []; PEOPLE = []; TASKS = []; PIPELINES = []; PIPELINE_STAGES = []; CONTACT_PIPELINE = []; TEAM_USERS = []; CURRENT_TEAM_USER = null; OUTREACH_ACTIVITY_RECENT = []; TEMPLATES = []; showLogin();
+  session = null; CONTACTS = []; PEOPLE = []; TASKS = []; PIPELINES = []; PIPELINE_STAGES = []; CONTACT_PIPELINE = []; TEAM_USERS = []; CURRENT_TEAM_USER = null; OUTREACH_ACTIVITY_RECENT = []; SEQUENCES = []; SEQUENCE_RUNS = []; CURRENT_SEQUENCE = null; TEMPLATES = []; showLogin();
 });
 
 // ════════════════════════════════════════════════════════════════════════
@@ -2512,7 +2533,7 @@ function unsubscribeRealtime(){
 //  DATA LOADING
 // ════════════════════════════════════════════════════════════════════════
 async function loadAll(){
-  await Promise.all([loadContacts(), loadTemplates(), loadSavedViews(), loadGroups(), loadPeople(), loadTasks(), loadPipelines(), loadTeamUsers(), loadRecentActivity()]);
+  await Promise.all([loadContacts(), loadTemplates(), loadSavedViews(), loadGroups(), loadPeople(), loadTasks(), loadPipelines(), loadTeamUsers(), loadRecentActivity(), loadSequences()]);
   // Identify the team_user row matching the current Supabase auth
   // user. Falls back to first row if no exact id match (defensive —
   // means the user logged in before the team_users seed ran).
@@ -2642,6 +2663,22 @@ async function loadRecentActivity(){
   OUTREACH_ACTIVITY_RECENT = data || [];
 }
 
+// Sequences + runs loaded in parallel. Silent fail when the schema
+// isn't seeded yet so existing deploys keep working.
+async function loadSequences(){
+  const c = getClient();
+  const [sr, rr] = await Promise.all([
+    c.from('outreach_sequences').select('*').order('created_at', { ascending:false }),
+    c.from('outreach_sequence_runs').select('*'),
+  ]);
+  if(sr.error){
+    if(!/relation .* does not exist/i.test(sr.error.message||'')) console.warn('loadSequences failed', sr.error);
+    SEQUENCES = []; SEQUENCE_RUNS = []; return;
+  }
+  SEQUENCES = sr.data || [];
+  SEQUENCE_RUNS = rr.data || [];
+}
+
 async function loadTeamUsers(){
   const c = getClient();
   const { data, error } = await c.from('team_users').select('*').eq('active', true).order('email');
@@ -2748,7 +2785,7 @@ document.querySelectorAll('.nav-tab').forEach(t=>{
   t.addEventListener('click', ()=>{
     CURRENT_TAB = t.dataset.tab;
     document.querySelectorAll('.nav-tab').forEach(x=>x.classList.toggle('active', x===t));
-    ['dashboard','contacts','tasks','pipeline','analytics','templates'].forEach(p=>{
+    ['dashboard','contacts','tasks','pipeline','analytics','templates','sequences'].forEach(p=>{
       document.getElementById('page-'+p).classList.toggle('hidden', p!==CURRENT_TAB);
     });
     if(CURRENT_TAB==='dashboard') renderDashboard();
@@ -2757,6 +2794,7 @@ document.querySelectorAll('.nav-tab').forEach(t=>{
     if(CURRENT_TAB==='pipeline') renderPipeline();
     if(CURRENT_TAB==='analytics') renderAnalytics();
     if(CURRENT_TAB==='templates') renderTemplateList();
+    if(CURRENT_TAB==='sequences') renderSequenceList();
   });
 });
 
@@ -3895,6 +3933,13 @@ async function openContact(id){
     </div>
 
     <div class="detail-section">
+      <div class="detail-section-title">
+        <span>Sequences</span>
+      </div>
+      <div id="sequencesSection"></div>
+    </div>
+
+    <div class="detail-section">
       <div class="detail-section-title" style="display:flex;justify-content:space-between;align-items:center">
         <span>Tasks</span>
         <button type="button" id="addTaskBtn" style="background:var(--ocean);color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">+ Task</button>
@@ -4259,6 +4304,8 @@ async function openContact(id){
 
   // ── Pipelines (CRM v2 multi-pipeline assignments) ───────────────────
   renderPipelinesSection(c.id);
+  // ── Sequences (drip-campaign runs + starter) ────────────────────────
+  renderSequencesSection(c.id);
 
   // ── Tasks (CRM v2 to-do items) ──────────────────────────────────────
   renderTasksList(c.id);
@@ -4854,6 +4901,268 @@ document.getElementById('newTemplateBtn').addEventListener('click', async ()=>{
   selectTemplate(data.id);
   toast('Template created');
 });
+
+// ════════════════════════════════════════════════════════════════════════
+//  SEQUENCES (drip campaigns)
+// ════════════════════════════════════════════════════════════════════════
+// A sequence is an ordered list of steps; each step references a template
+// and a day-offset from sequence start. Starting a sequence on a company
+// creates one task per step at the calculated due date — the user then
+// works through them as normal tasks (Send now / Compose) and the
+// sequence "completes" when the last task is marked done.
+function renderSequenceList(){
+  const list = document.getElementById('sequenceList');
+  if(!list) return;
+  if(SEQUENCES.length === 0){
+    list.innerHTML = '<div class="empty-state" style="padding:24px">No sequences yet. Click <b>+ New sequence</b> to start.</div>';
+    document.getElementById('sequenceEditor').innerHTML = '<div class="empty-state">No sequences yet.</div>';
+    return;
+  }
+  list.innerHTML = SEQUENCES.map(s => {
+    const stepN = (s.steps || []).length;
+    const runs = SEQUENCE_RUNS.filter(r => r.sequence_id === s.id).length;
+    const activeRuns = SEQUENCE_RUNS.filter(r => r.sequence_id === s.id && !r.stopped_at).length;
+    return `
+      <div class="template-item ${CURRENT_SEQUENCE?.id===s.id?'selected':''}" data-seq-id="${s.id}">
+        <div style="font-weight:700;color:var(--ink);font-size:13.5px">${escHtml(s.name)}</div>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:2px">${stepN} step${stepN===1?'':'s'} · ${runs} run${runs===1?'':'s'}${activeRuns?` · <b style="color:var(--ocean)">${activeRuns} active</b>`:''}</div>
+      </div>
+    `;
+  }).join('');
+  list.querySelectorAll('[data-seq-id]').forEach(el => {
+    el.addEventListener('click', () => selectSequence(el.dataset.seqId));
+  });
+  if(CURRENT_SEQUENCE) selectSequence(CURRENT_SEQUENCE.id);
+}
+
+function selectSequence(id){
+  CURRENT_SEQUENCE = SEQUENCES.find(s => s.id === id);
+  if(!CURRENT_SEQUENCE) return;
+  document.querySelectorAll('#sequenceList .template-item').forEach(el => {
+    el.classList.toggle('selected', el.dataset.seqId === id);
+  });
+  renderSequenceEditor();
+}
+
+function renderSequenceEditor(){
+  const s = CURRENT_SEQUENCE;
+  const ed = document.getElementById('sequenceEditor');
+  const steps = s.steps || [];
+  ed.innerHTML = `
+    <div class="editor-field"><label>Name</label><input id="seqName" value="${escAttr(s.name)}"></div>
+    <div class="editor-field"><label>Description</label><input id="seqDesc" value="${escAttr(s.description||'')}" placeholder="What this sequence is for"></div>
+    <div class="editor-field">
+      <label style="display:flex;justify-content:space-between;align-items:center"><span>Steps</span><button type="button" id="seqAddStep" style="background:var(--ocean);color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">+ Add step</button></label>
+      <div id="seqSteps" style="display:flex;flex-direction:column;gap:8px;margin-top:6px">
+        ${steps.length === 0 ? '<div class="empty-state" style="padding:14px">No steps yet. Click + Add step.</div>' :
+          steps.map((st, i) => `
+            <div data-step-idx="${i}" style="display:grid;grid-template-columns:auto 1fr auto auto;gap:8px;align-items:center;padding:8px 10px;background:#fafdff;border:1px solid var(--border);border-radius:8px">
+              <span style="font-family:'DM Mono',monospace;font-size:12px;color:var(--muted);font-weight:700">#${i+1}</span>
+              <select data-step-tpl="${i}" style="border:1px solid var(--border);border-radius:6px;padding:4px 8px;font:inherit;font-size:12px">
+                ${TEMPLATES.map(t => `<option value="${t.id}" ${t.id===st.template_id?'selected':''}>${escHtml(t.name)} (${t.language})</option>`).join('')}
+              </select>
+              <div style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--muted)">
+                Day <input type="number" data-step-day="${i}" value="${st.days_after_start||0}" min="0" step="1" style="width:60px;text-align:right;border:1px solid var(--border);border-radius:6px;padding:4px 6px;font:inherit;font-family:'DM Mono',monospace">
+              </div>
+              <button data-step-del="${i}" title="Remove step" style="background:transparent;border:1px solid var(--border);border-radius:6px;width:26px;height:26px;cursor:pointer;color:var(--red-text);font-size:14px">×</button>
+            </div>
+          `).join('')}
+      </div>
+      <div class="editor-hint" style="margin-top:6px">"Day N" = days after the sequence starts. Step 1 typically Day 0 (immediate), follow-ups at Day 3, Day 7, Day 14…</div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:18px">
+      <button class="action-btn primary" id="seqSave" style="grid-column:auto">Save changes</button>
+      <button class="action-btn ghost" id="seqDelete" style="color:var(--red-text);border-color:#f0a0a0;margin-left:auto">Delete sequence</button>
+    </div>
+  `;
+  document.getElementById('seqAddStep').addEventListener('click', () => {
+    const cur = (CURRENT_SEQUENCE.steps || []).slice();
+    const prevDay = cur.length ? Math.max(...cur.map(x => x.days_after_start || 0)) : -1;
+    cur.push({ template_id: TEMPLATES[0]?.id || null, days_after_start: prevDay + 3 });
+    CURRENT_SEQUENCE.steps = cur;
+    renderSequenceEditor();
+  });
+  document.querySelectorAll('#seqSteps [data-step-tpl]').forEach(sel => {
+    sel.addEventListener('change', () => {
+      const i = Number(sel.dataset.stepTpl);
+      CURRENT_SEQUENCE.steps[i].template_id = sel.value;
+    });
+  });
+  document.querySelectorAll('#seqSteps [data-step-day]').forEach(inp => {
+    inp.addEventListener('change', () => {
+      const i = Number(inp.dataset.stepDay);
+      CURRENT_SEQUENCE.steps[i].days_after_start = Number(inp.value) || 0;
+    });
+  });
+  document.querySelectorAll('#seqSteps [data-step-del]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const i = Number(btn.dataset.stepDel);
+      CURRENT_SEQUENCE.steps.splice(i, 1);
+      renderSequenceEditor();
+    });
+  });
+  document.getElementById('seqSave').addEventListener('click', saveSequence);
+  document.getElementById('seqDelete').addEventListener('click', deleteSequence);
+}
+
+async function saveSequence(){
+  const s = CURRENT_SEQUENCE;
+  const patch = {
+    name: document.getElementById('seqName').value.trim() || 'Untitled',
+    description: document.getElementById('seqDesc').value.trim() || null,
+    steps: s.steps || [],
+  };
+  const { data, error } = await getClient().from('outreach_sequences')
+    .update(patch).eq('id', s.id).select().single();
+  if(error){ toast('Save failed: '+error.message); return; }
+  Object.assign(s, data);
+  const idx = SEQUENCES.findIndex(x => x.id === s.id);
+  if(idx >= 0) SEQUENCES[idx] = data;
+  toast('Sequence saved');
+  renderSequenceList();
+}
+
+async function deleteSequence(){
+  const s = CURRENT_SEQUENCE;
+  const activeRuns = SEQUENCE_RUNS.filter(r => r.sequence_id === s.id && !r.stopped_at).length;
+  const warn = activeRuns ? `\n\n⚠️ ${activeRuns} active run${activeRuns>1?'s':''} will be cancelled.` : '';
+  if(!confirm(`Delete sequence "${s.name}"?${warn}\n\nTasks already created will remain.`)) return;
+  const { error } = await getClient().from('outreach_sequences').delete().eq('id', s.id);
+  if(error){ toast('Delete failed: '+error.message); return; }
+  SEQUENCES = SEQUENCES.filter(x => x.id !== s.id);
+  SEQUENCE_RUNS = SEQUENCE_RUNS.filter(r => r.sequence_id !== s.id);
+  CURRENT_SEQUENCE = null;
+  renderSequenceList();
+  toast('Sequence deleted');
+}
+
+document.getElementById('newSequenceBtn').addEventListener('click', async () => {
+  const { data, error } = await getClient().from('outreach_sequences').insert({
+    name: 'New sequence',
+    description: null,
+    steps: [],
+    created_by: CURRENT_TEAM_USER?.id || null,
+  }).select().single();
+  if(error){ toast('Create failed: '+error.message); return; }
+  SEQUENCES.unshift(data);
+  CURRENT_SEQUENCE = data;
+  renderSequenceList();
+  selectSequence(data.id);
+  toast('Sequence created');
+});
+
+// Renders the Sequences subsection in the detail panel: any active /
+// historic runs for this company, plus a picker to start a new one.
+function renderSequencesSection(companyId){
+  const root = document.getElementById('sequencesSection');
+  if(!root) return;
+  if(SEQUENCES.length === 0){
+    root.innerHTML = '<div class="empty-state" style="padding:14px;text-align:left;background:#fafdff;border:1px dashed var(--border);border-radius:10px">No sequences configured yet. Create one in the <b>Sequences</b> tab to start drip campaigns from here.</div>';
+    return;
+  }
+  const myRuns = SEQUENCE_RUNS.filter(r => r.company_id === companyId)
+    .sort((a,b) => (b.started_at||'').localeCompare(a.started_at||''));
+  const activeSeqIds = new Set(myRuns.filter(r => !r.stopped_at).map(r => r.sequence_id));
+  // Active + historic run cards.
+  const cards = myRuns.length === 0 ? '' : myRuns.map(r => {
+    const seq = SEQUENCES.find(s => s.id === r.sequence_id);
+    const owner = TEAM_USERS.find(u => u.id === r.owner_id);
+    const totalSteps = (seq?.steps || []).length;
+    const status = r.stopped_at
+      ? `<span style="color:var(--muted)">stopped · ${r.stop_reason || 'manual'} · ${fmtDate(r.stopped_at)}</span>`
+      : `<span style="color:var(--green-text);font-weight:700">active</span>`;
+    return `
+      <div class="group-card" style="padding:10px 12px;background:#fff;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:10px">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:700;color:var(--ink);font-size:13px">${escHtml(seq?.name || '(deleted sequence)')}</div>
+          <div style="font-size:11.5px;color:var(--muted);margin-top:2px">${r.current_step || 0}/${totalSteps} steps · started ${fmtDate(r.started_at)}${owner?' · by '+escHtml(owner.full_name || owner.email):''} · ${status}</div>
+        </div>
+        ${!r.stopped_at ? `<button data-stop-run="${r.id}" title="Stop this sequence" style="background:transparent;border:1px solid #f0a0a0;border-radius:6px;padding:4px 10px;font-size:11px;font-weight:700;color:var(--red-text);cursor:pointer;font-family:'Outfit',sans-serif">Stop</button>` : ''}
+      </div>
+    `;
+  }).join('');
+  // Picker only offers sequences NOT already running on this company.
+  const available = SEQUENCES.filter(s => !activeSeqIds.has(s.id));
+  const picker = available.length ? `
+    <div style="display:flex;gap:6px;margin-top:${myRuns.length?'6px':'0'}">
+      <select id="seq-start-select" style="flex:1;border:1px solid var(--border);border-radius:8px;padding:6px 8px;font:inherit;font-size:12px">
+        ${available.map(s => `<option value="${s.id}">${escHtml(s.name)} (${(s.steps||[]).length} steps)</option>`).join('')}
+      </select>
+      <button id="seq-start-btn" style="background:var(--ocean);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">Start</button>
+    </div>
+  ` : (myRuns.length ? '' : '<div class="empty-state" style="padding:10px">No sequences available to start.</div>');
+  root.innerHTML = cards + picker;
+  // Stop run handler — sets stopped_at + reason, keeps the tasks
+  // already scheduled (the user can complete or delete them).
+  root.querySelectorAll('[data-stop-run]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.stopRun;
+      if(!confirm('Stop this sequence? Tasks already scheduled stay — delete them by hand if you want to.')) return;
+      const { error } = await getClient().from('outreach_sequence_runs')
+        .update({ stopped_at: new Date().toISOString(), stop_reason: 'manual' }).eq('id', id);
+      if(error){ toast('Stop failed: '+error.message); return; }
+      const r = SEQUENCE_RUNS.find(x => x.id === id);
+      if(r){ r.stopped_at = new Date().toISOString(); r.stop_reason = 'manual'; }
+      toast('Sequence stopped');
+      renderSequencesSection(companyId);
+    });
+  });
+  const startBtn = document.getElementById('seq-start-btn');
+  if(startBtn){
+    startBtn.addEventListener('click', () => {
+      const seqId = document.getElementById('seq-start-select').value;
+      startSequenceForCompany(companyId, seqId).then(() => renderSequencesSection(companyId));
+    });
+  }
+}
+
+// ── Start a sequence on a company ───────────────────────────────────────
+// Creates one task per step at (today + days_after_start). Records a
+// run row so the auto-stop-on-reply path (next turn) can mark it
+// completed. Task title is "Send: <template name>" so the user
+// immediately knows what to fire.
+async function startSequenceForCompany(companyId, sequenceId){
+  const c = CONTACTS.find(x => x.id === companyId);
+  const seq = SEQUENCES.find(s => s.id === sequenceId);
+  if(!c || !seq) return;
+  if((seq.steps || []).length === 0){ toast(`"${seq.name}" has no steps yet`); return; }
+  // Refuse if a run already exists (DB unique would reject anyway).
+  if(SEQUENCE_RUNS.find(r => r.company_id === companyId && r.sequence_id === sequenceId && !r.stopped_at)){
+    toast(`"${seq.name}" is already running on ${c.company}`); return;
+  }
+  if(!confirm(`Start "${seq.name}" on ${c.company}?\n\n${seq.steps.length} task${seq.steps.length>1?'s':''} will be scheduled.`)) return;
+  const supa = getClient();
+  // 1. Insert the run row first so the FK in tasks.meta can reference
+  //    it. unique constraint guards against accidental double-starts.
+  const { data: runRow, error: runErr } = await supa.from('outreach_sequence_runs').insert({
+    company_id: companyId,
+    sequence_id: sequenceId,
+    current_step: 0,
+    owner_id: CURRENT_TEAM_USER?.id || null,
+  }).select().single();
+  if(runErr){ toast('Start failed: '+runErr.message); return; }
+  SEQUENCE_RUNS.push(runRow);
+  // 2. Build a task per step.
+  const today = new Date().toISOString().slice(0,10);
+  const payload = seq.steps.map((st, i) => {
+    const tpl = TEMPLATES.find(t => t.id === st.template_id);
+    const dueDate = addDays(today, Number(st.days_after_start) || 0);
+    return {
+      company_id: companyId,
+      title: `Send: ${tpl?.name || `Step ${i+1}`}`,
+      type: 'email',
+      owner_id: CURRENT_TEAM_USER?.id || null,
+      due_at: new Date(dueDate + 'T00:00:00Z').toISOString(),
+      notes: `Sequence: ${seq.name} (step ${i+1}/${seq.steps.length})`,
+    };
+  });
+  const { data: taskRows, error: taskErr } = await supa.from('tasks').insert(payload).select();
+  if(taskErr){ toast('Tasks insert failed: '+taskErr.message); return; }
+  TASKS.push(...(taskRows || []));
+  toast(`Started "${seq.name}" — ${payload.length} tasks scheduled`);
+  if(CURRENT_CONTACT?.id === companyId) renderTasksList(companyId);
+  updateNavTasksCount();
+}
 
 // ════════════════════════════════════════════════════════════════════════
 //  UTILITIES
