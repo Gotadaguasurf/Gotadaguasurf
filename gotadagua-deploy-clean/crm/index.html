@@ -1466,6 +1466,39 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 let _gmailTokenClient = null;                   // initialised on demand
+// Silent-refresh timer. Fired ~60s before the access token expires
+// so the new token lands before any API call hits 401. Token then
+// auto-renews as long as the tab stays open and Google still has
+// the session cookie (typical: many days).
+let _gmailRefreshTimer = null;
+function scheduleGmailRefresh(){
+  if(_gmailRefreshTimer){ clearTimeout(_gmailRefreshTimer); _gmailRefreshTimer = null; }
+  const t = gmailToken();
+  if(!t) return;
+  // Aim for 60s before expiry; never less than 30s (don't thrash
+  // if a short token landed).
+  const ms = Math.max(30000, t.expires_at - Date.now() - 60000);
+  _gmailRefreshTimer = setTimeout(() => {
+    if(!_gmailTokenClient){ ensureGmailTokenClient(); }
+    if(!_gmailTokenClient) return;
+    // prompt:'' = silent re-consent. Opens an invisible iframe;
+    // fails only if Google session expired or the user revoked
+    // access — in which case the existing error_callback toasts.
+    try {
+      _gmailTokenClient.requestAccessToken({
+        prompt: '',
+        error_callback: (err) => {
+          // Silent refresh failing isn't loud — only stamp a hint
+          // when the user actively tries to use Gmail next.
+          console.warn('Gmail silent refresh failed', err);
+        },
+      });
+    } catch(e){ console.warn('Gmail silent refresh threw', e); }
+  }, ms);
+}
+function stopGmailRefresh(){
+  if(_gmailRefreshTimer){ clearTimeout(_gmailRefreshTimer); _gmailRefreshTimer = null; }
+}
 function gmailClientId(){ return localStorage.getItem(GMAIL_LS_CLIENT_ID) || ''; }
 function gmailToken(){
   // Try scoped (per-user) key first; fall back to the legacy
@@ -1548,9 +1581,13 @@ function ensureGmailTokenClient(){
         access_token: response.access_token,
         expires_at: expiresAt,
       }));
-      toast('Gmail connected');
+      // First-ever connect gets the toast; silent refreshes (prompt:'')
+      // run quietly so the user isn't pinged every 50 minutes.
+      const isSilent = response?.prompt === '' || _gmailRefreshTimer;
+      if(!isSilent) toast('Gmail connected');
       refreshGmailUi();
       startGmailAutoPoll();
+      scheduleGmailRefresh();
       // Ask once for notification permission so background polls
       // can surface "new reply" alerts when the tab isn't focused.
       // Done here (post-consent moment) rather than on page load
@@ -1593,6 +1630,7 @@ function connectGmail(){
 
 function disconnectGmail(){
   stopGmailAutoPoll();
+  stopGmailRefresh();
   localStorage.removeItem(gmailTokenKey());
   // Best-effort revoke server-side so the token can't be replayed.
   const t = gmailToken() || JSON.parse(localStorage.getItem(GMAIL_LS_TOKEN) || 'null');
@@ -2289,7 +2327,12 @@ document.getElementById('settingsDisconnectBtn').addEventListener('click', disco
 // when the page loads with an already-valid token (page reload
 // shouldn't have to re-click Connect to resume auto-sync).
 refreshGmailUi();
-if(gmailIsConnected()) startGmailAutoPoll();
+if(gmailIsConnected()){
+  startGmailAutoPoll();
+  // Resume the silent-refresh chain from where it left off so a
+  // page reload doesn't break the auto-renew cadence.
+  scheduleGmailRefresh();
+}
 let SAVED_VIEWS = [];
 let CURRENT_CONTACT = null;
 let CURRENT_TEMPLATE = null;
@@ -2460,6 +2503,8 @@ document.getElementById('loginForm').addEventListener('submit', async (e)=>{
 
 document.getElementById('signOutBtn').addEventListener('click', async ()=>{
   unsubscribeRealtime();
+  stopGmailAutoPoll();
+  stopGmailRefresh();
   try { await getClient().auth.signOut(); } catch(e){}
   session = null; CONTACTS = []; PEOPLE = []; TASKS = []; PIPELINES = []; PIPELINE_STAGES = []; CONTACT_PIPELINE = []; TEAM_USERS = []; CURRENT_TEAM_USER = null; OUTREACH_ACTIVITY_RECENT = []; SEQUENCES = []; SEQUENCE_RUNS = []; CURRENT_SEQUENCE = null; TEMPLATES = []; showLogin();
 });
