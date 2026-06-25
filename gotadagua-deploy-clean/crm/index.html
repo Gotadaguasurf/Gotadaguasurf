@@ -4550,7 +4550,22 @@ document.getElementById('checkGmailBtn').addEventListener('click', ()=>{
   toast(`Opening Gmail · ${emails.size} address${emails.size>1?'es':''}`);
 });
 
-function openCompose(){
+// Returns the template_id a sequence task targets, or null. Used by
+// the "Send →" buttons to pre-select the right template in Compose.
+function templateIdForSequenceTask(t){
+  if(!t?.sequence_run_id || !t.sequence_step) return null;
+  const run = SEQUENCE_RUNS.find(r => r.id === t.sequence_run_id);
+  if(!run) return null;
+  const seq = SEQUENCES.find(s => s.id === run.sequence_id);
+  const step = seq?.steps?.[t.sequence_step - 1];
+  return step?.template_id || null;
+}
+
+// preselectTemplateId lets the caller pre-pick which template lands
+// in the picker — used by the "Send →" buttons on sequence task
+// rows so the user doesn't have to re-pick what the sequence step
+// already said.
+function openCompose(preselectTemplateId){
   const c = CURRENT_CONTACT;
   const lang = c.language || 'en';
   const tplSelect = document.getElementById('composeTemplate');
@@ -4563,7 +4578,10 @@ function openCompose(){
     return;
   }
   tplSelect.innerHTML = opts.join('');
-  tplSelect.value = langTemplates[0]?.id || TEMPLATES[0]?.id;
+  // Caller-supplied preselect wins; falls back to first lang-match,
+  // then first overall.
+  const pre = preselectTemplateId && TEMPLATES.find(t => t.id === preselectTemplateId);
+  tplSelect.value = pre ? pre.id : (langTemplates[0]?.id || TEMPLATES[0]?.id);
   refreshComposePreview();
   document.getElementById('composeModal').classList.add('open');
 }
@@ -4955,7 +4973,34 @@ function renderSequenceEditor(){
   const s = CURRENT_SEQUENCE;
   const ed = document.getElementById('sequenceEditor');
   const steps = s.steps || [];
-  ed.innerHTML = `
+  // Stats from the runs table. Reply rate = replied / (replied +
+  // completed). Active runs don't count toward the rate yet (they
+  // haven't had a chance to reply or finish).
+  const runs = SEQUENCE_RUNS.filter(r => r.sequence_id === s.id);
+  const started = runs.length;
+  const active = runs.filter(r => !r.stopped_at).length;
+  const replied = runs.filter(r => r.stop_reason === 'replied').length;
+  const completed = runs.filter(r => r.stop_reason === 'completed').length;
+  const manual = runs.filter(r => r.stop_reason === 'manual').length;
+  const resolved = replied + completed + manual;
+  const replyPct = resolved > 0 ? Math.round((replied / resolved) * 100) : null;
+  const tile = (label, value, sub, color) => `
+    <div style="flex:1;min-width:90px;background:#fff;border:1px solid var(--border);border-radius:8px;padding:10px 12px">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700">${label}</div>
+      <div style="font-family:'DM Mono',monospace;font-size:20px;font-weight:700;color:${color||'var(--ink)'};margin-top:2px">${value}</div>
+      ${sub ? `<div style="font-size:11px;color:var(--muted)">${sub}</div>` : ''}
+    </div>
+  `;
+  const statsStrip = started === 0 ? '' : `
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">
+      ${tile('Started', started)}
+      ${tile('Active', active, null, active ? 'var(--ocean)' : null)}
+      ${tile('Replied', replied, null, replied ? 'var(--green-text)' : null)}
+      ${tile('Completed', completed)}
+      ${tile('Reply rate', replyPct !== null ? `${replyPct}%` : '—', resolved ? `${replied} of ${resolved} resolved` : null, replyPct >= 20 ? 'var(--green-text)' : null)}
+    </div>
+  `;
+  ed.innerHTML = statsStrip + `
     <div class="editor-field"><label>Name</label><input id="seqName" value="${escAttr(s.name)}"></div>
     <div class="editor-field"><label>Description</label><input id="seqDesc" value="${escAttr(s.description||'')}" placeholder="What this sequence is for"></div>
     <div class="editor-field">
@@ -5827,6 +5872,7 @@ function renderTasksList(companyId){
         </div>
         <div class="group-actions" style="display:flex;gap:4px;flex-shrink:0;align-items:center">
           ${TEAM_USERS.length >= 2 ? ownerBadgeHtml(t.owner_id, 22) : ''}
+          ${!isDone && t.sequence_run_id ? `<button class="group-icon-btn" data-tk-send-id="${t.id}" title="Open Compose with the sequence template pre-selected" style="background:var(--green-bg);color:var(--green-text);border:1px solid #a7d8b9;border-radius:6px;padding:0 9px;height:26px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">Send →</button>` : ''}
           ${isDone ? '' : snoozeChipsHtml(t.id)}
           <button class="group-icon-btn" data-tk-edit-id="${t.id}" title="Edit" aria-label="Edit" style="background:transparent;border:1px solid var(--border);border-radius:6px;width:26px;height:26px;cursor:pointer;color:var(--muted);font-size:14px">✎</button>
           <button class="group-icon-btn delete" data-tk-del-id="${t.id}" title="Delete" aria-label="Delete" style="background:transparent;border:1px solid var(--border);border-radius:6px;width:26px;height:26px;cursor:pointer;color:var(--red-text);font-size:16px">×</button>
@@ -5853,6 +5899,20 @@ function renderTasksList(companyId){
       toast(newDoneAt ? 'Task completed' : 'Task reopened');
       renderTasksList(companyId);
       if(CURRENT_TAB === 'dashboard') renderDashboard();
+    });
+  });
+  // Send → opens the existing Compose modal with the sequence
+  // step's template pre-selected. After Send fires (Open in
+  // Gmail or Send now), the user clicks the row's done checkbox
+  // to advance the sequence — no auto-link to avoid double-
+  // sends if the user changes their mind in Compose.
+  list.querySelectorAll('[data-tk-send-id]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const t = TASKS.find(x => x.id === btn.dataset.tkSendId);
+      if(!t) return;
+      const tplId = templateIdForSequenceTask(t);
+      if(!tplId){ toast('Sequence template not found — pick manually in Compose'); }
+      openCompose(tplId);
     });
   });
   list.querySelectorAll('[data-tk-edit-id]').forEach(btn => {
@@ -6558,6 +6618,7 @@ function renderTasksTab(){
         <div style="font-size:12px;white-space:nowrap">${dueLabel}</div>
         <div style="display:flex;gap:4px;align-items:center;justify-content:flex-end">
           ${TEAM_USERS.length >= 2 ? ownerBadgeHtml(t.owner_id, 22) : ''}
+          ${!t.done_at && t.sequence_run_id ? `<button data-tk-tab-send="${t.id}" data-company-id="${t.company_id}" title="Compose with the sequence template" style="background:var(--green-bg);color:var(--green-text);border:1px solid #a7d8b9;border-radius:6px;padding:0 9px;height:26px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">Send →</button>` : ''}
           ${t.done_at ? '' : snoozeChipsHtml(t.id)}
           <button data-tk-tab-edit="${t.id}" data-company-id="${t.company_id}" title="Edit" aria-label="Edit" style="background:transparent;border:1px solid var(--border);border-radius:6px;width:26px;height:26px;cursor:pointer;color:var(--muted);font-size:14px">✎</button>
         </div>
@@ -6617,6 +6678,18 @@ function renderTasksTab(){
   // Edit button reuses the existing modal.
   listEl.querySelectorAll('[data-tk-tab-edit]').forEach(btn => {
     btn.addEventListener('click', () => openTaskModal(btn.dataset.companyId, btn.dataset.tkTabEdit));
+  });
+  // Send → from Tasks tab opens the detail panel for the row's
+  // company first (so CURRENT_CONTACT is set for openCompose) then
+  // fires Compose with the sequence template pre-selected.
+  listEl.querySelectorAll('[data-tk-tab-send]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const t = TASKS.find(x => x.id === btn.dataset.tkTabSend);
+      if(!t) return;
+      const tplId = templateIdForSequenceTask(t);
+      await openContact(btn.dataset.companyId);
+      openCompose(tplId);
+    });
   });
   // Per-row snooze chips.
   wireSnoozeChips(listEl);
