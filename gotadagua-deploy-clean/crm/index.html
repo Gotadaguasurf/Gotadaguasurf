@@ -1069,6 +1069,17 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
       <div id="settingsGmailStatus" style="margin-top:14px;padding:12px;background:#fafdff;border:1px solid var(--border);border-radius:10px;font-size:12.5px;color:var(--muted)">
         Not connected.
       </div>
+      <div class="editor-field" style="margin-top:14px">
+        <label>Shared inbox CC (leave empty to disable)</label>
+        <input type="email" id="settingsSharedCc" placeholder="groups@gotadaguasurf.com" style="font-family:'DM Mono',monospace;font-size:12px">
+        <div class="editor-hint" style="margin-top:6px">Every outbound (Compose + batch send) auto-CCs this address so the shared inbox always has a copy.</div>
+      </div>
+      <div class="editor-field" style="margin-top:6px">
+        <label style="display:flex;gap:8px;align-items:center;cursor:pointer;font-size:13px;color:var(--ink);text-transform:none;letter-spacing:0;font-weight:600">
+          <input type="checkbox" id="settingsAutoCcTeam" style="accent-color:var(--ocean);width:16px;height:16px">
+          Auto-CC the other team members on every outbound
+        </label>
+      </div>
     </div>
     <div class="compose-footer">
       <button class="action-btn ghost" id="settingsDisconnectBtn" style="margin-right:auto;color:var(--red-text);border-color:#f0a0a0;display:none">Disconnect Gmail</button>
@@ -1203,10 +1214,51 @@ let CURRENT_PIPELINE_VIEW = localStorage.getItem('crmPipelineView') || 'status';
 let PIPELINE_FILTER = { text: '', country: '', segment: '', stuckOnly: false, stageId: null };
 let TEMPLATES = [];
 
-// Gmail account used by Compose + Check-Gmail buttons (authuser query
-// param on every mail.google.com URL we generate). Single source of
-// truth — change here, both surfaces update.
-const GMAIL_AUTHUSER = 'groups@gotadaguasurf.com';
+// Legacy fallback when the multi-user setup isn't seeded yet or
+// session/CURRENT_TEAM_USER hasn't loaded. Once team_users is in
+// place, gmailAuthuser() returns the current user's email so each
+// person sends from their own account.
+const GMAIL_AUTHUSER_FALLBACK = 'groups@gotadaguasurf.com';
+function gmailAuthuser(){
+  return CURRENT_TEAM_USER?.email || GMAIL_AUTHUSER_FALLBACK;
+}
+// Backwards-compat shim so older inline references still work. Cannot
+// stay const because we re-export the function above as the truth.
+const GMAIL_AUTHUSER = GMAIL_AUTHUSER_FALLBACK;
+
+// Shared-inbox CC + auto-CC team toggles, both per-browser via
+// localStorage so each person can opt in/out independently.
+const SHARED_CC_LS_KEY = 'crmSharedInboxCc';
+const AUTOCC_TEAM_LS_KEY = 'crmAutoCcTeam';
+function sharedInboxCc(){
+  const raw = localStorage.getItem(SHARED_CC_LS_KEY);
+  // Treat missing as the default (groups@), explicit empty string as
+  // "opt out". So the user can clear the field to send without it.
+  return raw === null ? 'groups@gotadaguasurf.com' : raw.trim();
+}
+function autoCcTeam(){
+  return localStorage.getItem(AUTOCC_TEAM_LS_KEY) !== '0';
+}
+// Returns the list of CC addresses for an outgoing email: every
+// other active team member + the shared inbox, deduped, with the
+// current user filtered out so they don't get their own copy.
+function buildCcList(){
+  const out = new Set();
+  if(autoCcTeam()){
+    const meEmail = (gmailAuthuser() || '').toLowerCase();
+    TEAM_USERS.forEach(u => {
+      if(!u.email) return;
+      if(u.email.toLowerCase() === meEmail) return;
+      out.add(u.email);
+    });
+  }
+  const shared = sharedInboxCc();
+  if(shared){
+    const meEmail = (gmailAuthuser() || '').toLowerCase();
+    if(shared.toLowerCase() !== meEmail) out.add(shared);
+  }
+  return Array.from(out);
+}
 
 // ── Gmail API integration (A2) ──────────────────────────────────────
 // Read-only Gmail OAuth + sync of inbound replies into email_messages.
@@ -1219,8 +1271,24 @@ const GMAIL_AUTHUSER = 'groups@gotadaguasurf.com';
 // once after deploy (old token only has readonly).
 const GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send';
 const GMAIL_LS_CLIENT_ID = 'crmGmailClientId';
-const GMAIL_LS_TOKEN     = 'crmGmailToken';     // { access_token, expires_at }
-const GMAIL_LS_LAST_SYNC = 'crmGmailLastSync';  // ISO timestamp of last successful syncGmailInbox
+// Token + last-sync keys are now per-user (keyed by Supabase auth
+// user id) so Miguel and Ricardo can each Connect their own Gmail
+// without clobbering each other. Legacy single-key form is still
+// read as a fallback so existing tokens survive the upgrade.
+const GMAIL_LS_TOKEN_BASE     = 'crmGmailToken';
+const GMAIL_LS_LAST_SYNC_BASE = 'crmGmailLastSync';
+function userScopeSuffix(){
+  return session?.user?.id ? (':' + session.user.id) : '';
+}
+function gmailTokenKey(){     return GMAIL_LS_TOKEN_BASE     + userScopeSuffix(); }
+function gmailLastSyncKey(){  return GMAIL_LS_LAST_SYNC_BASE + userScopeSuffix(); }
+// Legacy aliases used by call sites that haven't been refactored
+// yet — kept readable so a grep still finds them, but they resolve
+// dynamically via the function getters above. We READ both the
+// scoped key AND the legacy key (in that order) so a user with an
+// old shared token doesn't lose it on first load.
+const GMAIL_LS_TOKEN     = GMAIL_LS_TOKEN_BASE;     // backcompat constant — prefer gmailTokenKey()
+const GMAIL_LS_LAST_SYNC = GMAIL_LS_LAST_SYNC_BASE; // backcompat constant — prefer gmailLastSyncKey()
 // Background poll cadence. 10 min is below the Gmail API per-user
 // rate cap (~1 quota unit per call, 250 units/sec/user budget) by
 // many orders of magnitude. Larger interval would feel stale; smaller
@@ -1249,19 +1317,22 @@ function stopGmailAutoPoll(){
 // interval after the user comes back.
 document.addEventListener('visibilitychange', () => {
   if(!document.hidden && gmailIsConnected()){
-    const last = Number(localStorage.getItem(GMAIL_LS_LAST_SYNC) ? new Date(localStorage.getItem(GMAIL_LS_LAST_SYNC)).getTime() : 0);
+    const last = Number(localStorage.getItem(gmailLastSyncKey()) ? new Date(localStorage.getItem(gmailLastSyncKey())).getTime() : 0);
     if(Date.now() - last > GMAIL_POLL_MS) syncGmailInbox({ silent: true });
   }
 });
 let _gmailTokenClient = null;                   // initialised on demand
 function gmailClientId(){ return localStorage.getItem(GMAIL_LS_CLIENT_ID) || ''; }
 function gmailToken(){
+  // Try scoped (per-user) key first; fall back to the legacy
+  // un-scoped key so a single-user deploy that pre-dates this
+  // change doesn't suddenly look disconnected.
   try {
-    const raw = localStorage.getItem(GMAIL_LS_TOKEN);
+    const raw = localStorage.getItem(gmailTokenKey()) || localStorage.getItem(GMAIL_LS_TOKEN_BASE);
     if(!raw) return null;
     const t = JSON.parse(raw);
     if(!t.access_token || !t.expires_at) return null;
-    if(Date.now() >= t.expires_at) return null;  // expired
+    if(Date.now() >= t.expires_at) return null;
     return t;
   } catch(e){ return null; }
 }
@@ -1280,7 +1351,7 @@ function refreshGmailUi(){
     // Tag the button with "Xm ago" / "Xh ago" using the last
     // successful-sync stamp. Pure read of localStorage — re-renders
     // every time refreshGmailUi runs, which fires after each sync.
-    const last = localStorage.getItem(GMAIL_LS_LAST_SYNC);
+    const last = localStorage.getItem(gmailLastSyncKey());
     if(connected && last){
       const minsAgo = Math.max(0, Math.round((Date.now() - new Date(last).getTime()) / 60000));
       const label = minsAgo < 1   ? 'just now'
@@ -1329,7 +1400,7 @@ function ensureGmailTokenClient(){
       }
       // expires_in is seconds. Subtract 30s safety margin.
       const expiresAt = Date.now() + (Math.max(60, response.expires_in - 30) * 1000);
-      localStorage.setItem(GMAIL_LS_TOKEN, JSON.stringify({
+      localStorage.setItem(gmailTokenKey(), JSON.stringify({
         access_token: response.access_token,
         expires_at: expiresAt,
       }));
@@ -1359,7 +1430,7 @@ function connectGmail(){
 
 function disconnectGmail(){
   stopGmailAutoPoll();
-  localStorage.removeItem(GMAIL_LS_TOKEN);
+  localStorage.removeItem(gmailTokenKey());
   // Best-effort revoke server-side so the token can't be replayed.
   const t = gmailToken() || JSON.parse(localStorage.getItem(GMAIL_LS_TOKEN) || 'null');
   if(t?.access_token && window.google?.accounts?.oauth2){
@@ -1475,19 +1546,19 @@ async function syncGmailInbox(opts = {}){
       { headers: { Authorization: `Bearer ${token.access_token}` } }
     );
     if(!listResp.ok){
-      if(listResp.status === 401){ toast('Gmail token expired — Connect Gmail again'); localStorage.removeItem(GMAIL_LS_TOKEN); refreshGmailUi(); return; }
+      if(listResp.status === 401){ toast('Gmail token expired — Connect Gmail again'); localStorage.removeItem(gmailTokenKey()); refreshGmailUi(); return; }
       throw new Error(`Gmail list failed: HTTP ${listResp.status}`);
     }
     const listData = await listResp.json();
     const ids = (listData.messages || []).map(m => m.id);
-    if(ids.length === 0){ localStorage.setItem(GMAIL_LS_LAST_SYNC, new Date().toISOString()); refreshGmailUi(); t('Sync complete · 0 new replies'); return; }
+    if(ids.length === 0){ localStorage.setItem(gmailLastSyncKey(), new Date().toISOString()); refreshGmailUi(); t('Sync complete · 0 new replies'); return; }
     // 2. Dedup against existing rows (one query).
     const supa = getClient();
     const { data: existing } = await supa.from('email_messages')
       .select('provider_msg_id').in('provider_msg_id', ids);
     const seenIds = new Set((existing || []).map(r => r.provider_msg_id));
     const newIds = ids.filter(id => !seenIds.has(id));
-    if(newIds.length === 0){ localStorage.setItem(GMAIL_LS_LAST_SYNC, new Date().toISOString()); refreshGmailUi(); t(`Sync complete · 0 new (already had ${ids.length})`); return; }
+    if(newIds.length === 0){ localStorage.setItem(gmailLastSyncKey(), new Date().toISOString()); refreshGmailUi(); t(`Sync complete · 0 new (already had ${ids.length})`); return; }
     // 3. Fetch metadata for each new message in parallel (small N,
     //    no batching needed). format=metadata avoids transferring
     //    the full body, which we'd ignore anyway.
@@ -1521,7 +1592,7 @@ async function syncGmailInbox(opts = {}){
       });
       touchedCompanies.add(match.companyId);
     });
-    if(inserts.length === 0){ localStorage.setItem(GMAIL_LS_LAST_SYNC, new Date().toISOString()); refreshGmailUi(); t(`Sync complete · ${ids.length} fetched, none matched a contact`); return; }
+    if(inserts.length === 0){ localStorage.setItem(gmailLastSyncKey(), new Date().toISOString()); refreshGmailUi(); t(`Sync complete · ${ids.length} fetched, none matched a contact`); return; }
     // 5. One bulk insert.
     const { error } = await supa.from('email_messages').insert(inserts);
     if(error){ toast('Sync insert failed: '+error.message); return; }
@@ -1557,7 +1628,7 @@ async function syncGmailInbox(opts = {}){
     // Stamp last-successful-sync so the button can render "Xm ago".
     // Only on a successful (non-throw) path that actually wrote rows
     // or confirmed 0 new — the failure paths above all return early.
-    localStorage.setItem(GMAIL_LS_LAST_SYNC, new Date().toISOString());
+    localStorage.setItem(gmailLastSyncKey(), new Date().toISOString());
     refreshGmailUi();
   } catch(err){
     toast('Sync error: ' + err.message);  // errors always loud
@@ -1588,17 +1659,21 @@ let BATCH_STATE = { recipients: [], inProgress: false };
 // base64url-encode it the way Gmail API expects in messages.send.
 // Subject is Q-encoded (=?utf-8?B?…?=) so accents survive the
 // headers; body is UTF-8 plain text.
-function buildGmailRawMessage({ to, subject, body, fromAuthuser }){
+function buildGmailRawMessage({ to, subject, body, fromAuthuser, cc }){
   const toUtf8 = (s) => unescape(encodeURIComponent(s || ''));
   const subjB64 = btoa(toUtf8(subject || ''));
-  const headers = [
+  const headerLines = [
     `From: ${fromAuthuser}`,
     `To: ${to}`,
+  ];
+  if(cc && cc.length) headerLines.push(`Cc: ${cc.join(', ')}`);
+  headerLines.push(
     `Subject: =?utf-8?B?${subjB64}?=`,
     'MIME-Version: 1.0',
     'Content-Type: text/plain; charset=utf-8',
     'Content-Transfer-Encoding: 8bit',
-  ].join('\r\n');
+  );
+  const headers = headerLines.join('\r\n');
   const message = headers + '\r\n\r\n' + (body || '');
   // base64url: standard base64 with +→-, /→_, strip trailing =.
   const utf8 = toUtf8(message);
@@ -1609,7 +1684,7 @@ function buildGmailRawMessage({ to, subject, body, fromAuthuser }){
 async function gmailSendOne({ to, subject, body }){
   const token = gmailToken();
   if(!token) throw new Error('Gmail not connected');
-  const raw = buildGmailRawMessage({ to, subject, body, fromAuthuser: GMAIL_AUTHUSER });
+  const raw = buildGmailRawMessage({ to, subject, body, fromAuthuser: gmailAuthuser(), cc: buildCcList() });
   const resp = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
     method: 'POST',
     headers: {
@@ -1749,7 +1824,9 @@ async function runBatchSend(){
   if(targets.length === 0){ toast('Nothing to send'); return; }
   const dryRun = document.getElementById('batchDryRun').checked;
   const verb = dryRun ? 'simulate' : 'SEND';
-  if(!confirm(`${verb} ${targets.length} email${targets.length>1?'s':''} via ${GMAIL_AUTHUSER}?\n\nThrottle: 1/sec. You can close the modal once it starts; sending continues in the background.`)) return;
+  const cc = buildCcList();
+  const ccNote = cc.length ? `\nAuto-CC: ${cc.join(', ')}` : '';
+  if(!confirm(`${verb} ${targets.length} email${targets.length>1?'s':''} via ${gmailAuthuser()}?${ccNote}\n\nThrottle: 1/sec. You can close the modal once it starts; sending continues in the background.`)) return;
 
   BATCH_STATE.inProgress = true;
   renderBatchRecipientList();
@@ -1932,6 +2009,13 @@ document.getElementById('gmailConnectBtn').addEventListener('click', connectGmai
 document.getElementById('gmailSyncBtn').addEventListener('click', syncGmailInbox);
 document.getElementById('settingsBtn').addEventListener('click', () => {
   document.getElementById('settingsClientId').value = gmailClientId();
+  // Pre-fill the CC + auto-CC widgets from their localStorage state.
+  // sharedInboxCc returns the default when never set; show that as
+  // the placeholder by default rather than typing it into the field
+  // (so clearing the field actually means "no shared CC").
+  const ccRaw = localStorage.getItem(SHARED_CC_LS_KEY);
+  document.getElementById('settingsSharedCc').value = ccRaw === null ? '' : ccRaw;
+  document.getElementById('settingsAutoCcTeam').checked = autoCcTeam();
   refreshGmailUi();
   document.getElementById('settingsModal').classList.add('open');
 });
@@ -1941,6 +2025,14 @@ document.getElementById('settingsSaveBtn').addEventListener('click', () => {
   const v = document.getElementById('settingsClientId').value.trim();
   if(v) localStorage.setItem(GMAIL_LS_CLIENT_ID, v);
   else  localStorage.removeItem(GMAIL_LS_CLIENT_ID);
+  // Shared CC: store the literal value (including empty) so we can
+  // tell "default" (key absent) from "intentionally disabled" (key
+  // present, empty string).
+  const ccVal = document.getElementById('settingsSharedCc').value.trim();
+  localStorage.setItem(SHARED_CC_LS_KEY, ccVal);
+  // Auto-CC: '1' for on, '0' for off so the default-on logic works
+  // even on a fresh browser (missing key → on).
+  localStorage.setItem(AUTOCC_TEAM_LS_KEY, document.getElementById('settingsAutoCcTeam').checked ? '1' : '0');
   _gmailTokenClient = null;  // force re-init with the new id
   toast('Settings saved');
   refreshGmailUi();
@@ -3871,7 +3963,7 @@ function activityLabel(a){
       // Open the actual thread in Gmail. Uses the same authuser as
       // the Compose / Check-inbox URLs so the account is consistent.
       const threadLink = a.meta?.thread_id
-        ? ` · <a href="https://mail.google.com/mail/?authuser=${encodeURIComponent(GMAIL_AUTHUSER)}#all/${encodeURIComponent(a.meta.thread_id)}" target="_blank" style="color:var(--ocean);text-decoration:none;font-weight:600">open in Gmail →</a>`
+        ? ` · <a href="https://mail.google.com/mail/?authuser=${encodeURIComponent(gmailAuthuser())}#all/${encodeURIComponent(a.meta.thread_id)}" target="_blank" style="color:var(--ocean);text-decoration:none;font-weight:600">open in Gmail →</a>`
         : '';
       return `${uiIcon('mail')} <b>Reply received:</b> "${escHtml(subj)}"${from}${threadLink}${snip}`;
     }
@@ -4043,7 +4135,7 @@ document.getElementById('checkInboxBtn').addEventListener('click', () => {
   // Per-company Check Gmail uses 90d for history; this global view
   // is a recent-activity scan, so 30 is the sweet spot.
   const query = `(${clauses.join(' OR ')}) newer_than:30d`;
-  const url = `https://mail.google.com/mail/?authuser=${GMAIL_AUTHUSER}#search/` + encodeURIComponent(query);
+  const url = `https://mail.google.com/mail/?authuser=${gmailAuthuser()}#search/` + encodeURIComponent(query);
   window.open(url, '_blank');
   const truncated = totalEntries < totalAvailable;
   toast(`Opening Gmail · ${totalEntries} source${totalEntries>1?'s':''}${truncated?` (capped from ${totalAvailable})`:''} · last 30d`);
@@ -4069,7 +4161,7 @@ document.getElementById('checkGmailBtn').addEventListener('click', ()=>{
   const clauses = [];
   emails.forEach(e => { clauses.push(`from:${e}`); clauses.push(`to:${e}`); });
   const query = `(${clauses.join(' OR ')}) newer_than:90d`;
-  const url = `https://mail.google.com/mail/?authuser=${GMAIL_AUTHUSER}#search/` + encodeURIComponent(query);
+  const url = `https://mail.google.com/mail/?authuser=${gmailAuthuser()}#search/` + encodeURIComponent(query);
   window.open(url, '_blank');
   toast(`Opening Gmail · ${emails.size} address${emails.size>1?'es':''}`);
 });
@@ -4157,8 +4249,15 @@ document.getElementById('composeOpen').addEventListener('click', async ()=>{
   // is set or the primary has no email yet.
   const primary = primaryPersonFor(c.id);
   const recipient = (primary?.email) || c.email;
-  const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&authuser=${GMAIL_AUTHUSER}&to=`
+  // Auto-CC the rest of the team (configurable in Settings) so each
+  // outbound stays visible to the whole sales pair. cc= is an empty
+  // string when no CCs configured / single-user deploy — Gmail
+  // ignores empty params.
+  const cc = buildCcList().join(',');
+  const ccPart = cc ? `&cc=${encodeURIComponent(cc)}` : '';
+  const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&authuser=${gmailAuthuser()}&to=`
     + encodeURIComponent(recipient)
+    + ccPart
     + '&su=' + encodeURIComponent(subj)
     + '&body=' + encodeURIComponent(body);
   window.open(gmailUrl, '_blank');
