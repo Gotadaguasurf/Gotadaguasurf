@@ -1752,12 +1752,19 @@ async function syncGmailInbox(opts = {}){
     //    shouldn't regress meeting/proposal back to in_conversation,
     //    and shouldn't auto-reopen lost.
     let advanced = 0;
+    let sequencesStopped = 0;
     for(const companyId of touchedCompanies){
       await logActivity(companyId, 'replied_marked', null, null, { via: 'gmail-sync' });
       if(await advanceToInConversation(companyId, 'gmail-sync')) advanced++;
+      // Auto-stop any active sequence on this company — a reply
+      // means the drip campaign achieved its job, no point firing
+      // more nudges. Tasks already scheduled stay (user can delete
+      // / mark done individually).
+      sequencesStopped += await autoStopSequencesForCompany(companyId, 'replied');
     }
     const advNote = advanced ? ` · ${advanced} moved to In conversation` : '';
-    toast(`Sync complete · ${inserts.length} new repl${inserts.length===1?'y':'ies'} across ${touchedCompanies.size} compan${touchedCompanies.size===1?'y':'ies'}${advNote}`);
+    const seqNote = sequencesStopped ? ` · ${sequencesStopped} sequence${sequencesStopped>1?'s':''} auto-stopped` : '';
+    toast(`Sync complete · ${inserts.length} new repl${inserts.length===1?'y':'ies'} across ${touchedCompanies.size} compan${touchedCompanies.size===1?'y':'ies'}${advNote}${seqNote}`);
     // Browser notification on silent (background) polls so the user
     // sees replies landing even when the CRM tab isn't focused.
     // Manual sync gets the toast only — they're already looking.
@@ -5116,6 +5123,46 @@ function renderSequencesSection(companyId){
   }
 }
 
+// When a sequence task gets marked done, bump the parent run's
+// current_step. When the step that finished is the last one, also
+// close the run with stop_reason='completed'. No-op for tasks that
+// don't belong to a sequence (the common case).
+async function advanceSequenceOnTaskDone(task){
+  if(!task?.sequence_run_id || !task.sequence_step) return;
+  const run = SEQUENCE_RUNS.find(r => r.id === task.sequence_run_id);
+  if(!run || run.stopped_at) return;
+  const seq = SEQUENCES.find(s => s.id === run.sequence_id);
+  const totalSteps = (seq?.steps || []).length;
+  const newStep = Math.max(run.current_step || 0, task.sequence_step);
+  const isLast = newStep >= totalSteps;
+  const patch = { current_step: newStep };
+  if(isLast){
+    patch.stopped_at = new Date().toISOString();
+    patch.stop_reason = 'completed';
+  }
+  const { error } = await getClient().from('outreach_sequence_runs')
+    .update(patch).eq('id', run.id);
+  if(error){ console.warn('advanceSequenceOnTaskDone failed', error); return; }
+  Object.assign(run, patch);
+  if(isLast) toast(`Sequence "${seq?.name || ''}" completed`);
+  if(CURRENT_CONTACT?.id === run.company_id) renderSequencesSection(run.company_id);
+}
+
+// Auto-stop active sequence runs for the given company id with the
+// given reason. Used by syncGmailInbox when a reply comes in.
+async function autoStopSequencesForCompany(companyId, reason){
+  const active = SEQUENCE_RUNS.filter(r => r.company_id === companyId && !r.stopped_at);
+  if(active.length === 0) return 0;
+  const ids = active.map(r => r.id);
+  const nowIso = new Date().toISOString();
+  const { error } = await getClient().from('outreach_sequence_runs')
+    .update({ stopped_at: nowIso, stop_reason: reason }).in('id', ids);
+  if(error){ console.warn('autoStopSequencesForCompany failed', error); return 0; }
+  active.forEach(r => { r.stopped_at = nowIso; r.stop_reason = reason; });
+  if(CURRENT_CONTACT?.id === companyId) renderSequencesSection(companyId);
+  return active.length;
+}
+
 // ── Start a sequence on a company ───────────────────────────────────────
 // Creates one task per step at (today + days_after_start). Records a
 // run row so the auto-stop-on-reply path (next turn) can mark it
@@ -5154,6 +5201,8 @@ async function startSequenceForCompany(companyId, sequenceId){
       owner_id: CURRENT_TEAM_USER?.id || null,
       due_at: new Date(dueDate + 'T00:00:00Z').toISOString(),
       notes: `Sequence: ${seq.name} (step ${i+1}/${seq.steps.length})`,
+      sequence_run_id: runRow.id,
+      sequence_step: i + 1,
     };
   });
   const { data: taskRows, error: taskErr } = await supa.from('tasks').insert(payload).select();
@@ -5800,7 +5849,7 @@ function renderTasksList(companyId){
       const supa = getClient();
       const { error } = await supa.from('tasks').update({ done_at: newDoneAt }).eq('id', id);
       if(error){ toast('Update failed: '+error.message); cb.checked = !cb.checked; return; }
-      if(t) t.done_at = newDoneAt;
+      if(t){ t.done_at = newDoneAt; if(newDoneAt) advanceSequenceOnTaskDone(t); }
       toast(newDoneAt ? 'Task completed' : 'Task reopened');
       renderTasksList(companyId);
       if(CURRENT_TAB === 'dashboard') renderDashboard();
@@ -6555,7 +6604,7 @@ function renderTasksTab(){
       const supa = getClient();
       const { error } = await supa.from('tasks').update({ done_at: newDoneAt }).eq('id', id);
       if(error){ toast('Update failed: '+error.message); cb.checked = !cb.checked; return; }
-      if(t) t.done_at = newDoneAt;
+      if(t){ t.done_at = newDoneAt; if(newDoneAt) advanceSequenceOnTaskDone(t); }
       toast(newDoneAt ? 'Task completed' : 'Task reopened');
       renderTasksTab();
       updateNavTasksCount();
@@ -6609,7 +6658,10 @@ async function tasksTabBulkSetDone(makeDone){
   if(error){ toast('Bulk update failed: '+error.message); return; }
   ids.forEach(id => {
     const t = TASKS.find(x => x.id === id);
-    if(t) t.done_at = newDoneAt;
+    if(t){
+      t.done_at = newDoneAt;
+      if(makeDone) advanceSequenceOnTaskDone(t);
+    }
   });
   toast(`${ids.length} task${ids.length>1?'s':''} ${makeDone?'marked done':'reopened'}`);
   TASKS_TAB_SELECTED.clear();
