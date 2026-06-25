@@ -2534,6 +2534,32 @@
         };
         __currentAccessRows = effectiveAccessRows;
         __workspaceRows = workspaceRes.data || [];
+        // Self-heal: every area the Settings UI lets the user tick
+        // MUST have a matching `workspaces` row, otherwise saves
+        // silently drop the area. Seed the missing ones on-the-fly
+        // so the user never hits a "checkbox ticked but no DB row"
+        // dead-end. Curated list — only the keys we expose in the UI.
+        const REQUIRED_WORKSPACE_SLUGS = [
+          { slug:'crm',              name:'CRM',                workspace_type:'ops' },
+          { slug:'prices-sri-lanka', name:'Sri Lanka prices',   workspace_type:'ops' },
+          { slug:'prices-morocco',   name:'Morocco prices',     workspace_type:'ops' },
+          { slug:'prices-portugal',  name:'Portugal prices',    workspace_type:'ops' },
+          { slug:'prices-junior',    name:'Junior Camp prices', workspace_type:'ops' },
+          { slug:'profit',           name:'Profit by location', workspace_type:'ops' },
+        ];
+        const existingSlugs = new Set(__workspaceRows.map(r => r.slug));
+        const missing = REQUIRED_WORKSPACE_SLUGS.filter(r => !existingSlugs.has(r.slug));
+        if(missing.length){
+          const { data: inserted, error: seedErr } = await client.from('workspaces')
+            .upsert(missing.map(r => ({ ...r, active: true })), { onConflict: 'slug', ignoreDuplicates: true })
+            .select();
+          if(seedErr){
+            console.warn('[Hub] auto-seed missing workspaces failed', seedErr);
+          } else if(inserted?.length){
+            __workspaceRows = __workspaceRows.concat(inserted);
+            console.info('[Hub] auto-seeded workspaces:', inserted.map(r => r.slug).join(', '));
+          }
+        }
         const workspaceMap = Object.fromEntries(__workspaceRows.map(row => [row.id, row.slug]));
         const areas = new Set(['settings']);
         __currentAccessRows.forEach(row => {

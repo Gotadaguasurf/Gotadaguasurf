@@ -841,7 +841,7 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
     <!-- Delete is intentionally last + styled red so it's hard to hit by
          accident. Two-confirm flow (confirm + retype) before the DB
          delete actually fires. -->
-    <button class="action-btn" id="deleteContactBtn" style="grid-column:1/-1;background:transparent;color:var(--red-text);border:1.5px solid #f0a0a0;margin-top:4px"><span class="ui-ic">__ICN_TRASH__</span>  Delete this contact</button>
+    <button class="action-btn" id="deleteContactBtn" title="Delete this contact (asks for confirmation)" style="grid-column:1/-1;background:transparent;color:var(--muted);border:none;font-size:11px;padding:6px;margin-top:8px;text-decoration:underline;text-underline-offset:3px">Delete this contact</button>
   </div>
 </aside>
 
@@ -2698,6 +2698,17 @@ async function loadPipelines(){
   PIPELINES = pr.data || [];
   PIPELINE_STAGES = sr.data || [];
   CONTACT_PIPELINE = cpr.data || [];
+  // First-run default: pick Sales (or the first seeded pipeline) as
+  // the Pipeline-tab View, but only when the user hasn't already
+  // chosen one — respect any persisted preference. The legacy
+  // 'status' view is still available via the View dropdown.
+  if(!localStorage.getItem('crmPipelineView') && PIPELINES.length){
+    const sales = PIPELINES.find(p => p.key === 'sales') || PIPELINES[0];
+    if(sales){
+      CURRENT_PIPELINE_VIEW = sales.id;
+      localStorage.setItem('crmPipelineView', sales.id);
+    }
+  }
 }
 
 // Active team members only. Used as the picker source for task
@@ -4043,8 +4054,11 @@ async function openContact(id){
       <div id="tasksList"></div>
     </div>
 
-    <div class="detail-section">
-      <div class="detail-section-title">Deal</div>
+    <details class="detail-section" ${c.deal_value || c.status==='lost' ? 'open' : ''} style="border:none;padding:0">
+      <summary class="detail-section-title" style="cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center">
+        <span>Deal${c.deal_value ? ` · €${fmtMoney(c.deal_value)}` : ''}</span>
+        <span style="font-size:10px;color:var(--muted);font-weight:600;text-transform:none;letter-spacing:0">click to ${c.deal_value || c.status==='lost' ? 'collapse' : 'expand'}</span>
+      </summary>
       <div class="detail-row"><span class="label">Value (€)</span><span class="value">
         <input type="number" id="dealValueInput" value="${c.deal_value||''}" placeholder="0" min="0" step="100" style="width:120px;text-align:right;border:1px solid var(--border);border-radius:8px;padding:4px 8px;font:inherit;font-family:'DM Mono',monospace">
       </span></div>
@@ -4059,7 +4073,7 @@ async function openContact(id){
       ${c.status==='lost' ? `<div class="detail-row"><span class="label">Lost reason</span><span class="value">
         <input type="text" id="lostReasonInput" value="${escAttr(c.lost_reason||'')}" placeholder="Why did we lose?" style="width:180px;border:1px solid var(--border);border-radius:8px;padding:4px 8px;font:inherit">
       </span></div>` : ''}
-    </div>
+    </details>
 
     <div class="detail-section">
       <div class="detail-section-title" style="display:flex;justify-content:space-between;align-items:center">
