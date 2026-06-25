@@ -436,6 +436,7 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
     <button class="nav-tab" data-tab="templates">Templates</button>
   </div>
   <div class="header-right">
+    <button class="header-btn" id="headerAddTask" title="Add a task from anywhere — picks the company inside the modal" style="background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.25)">+ Task</button>
     <button class="header-btn" id="gmailConnectBtn" title="Authorise Gmail API access to pull replies into the CRM" style="display:none">Connect Gmail</button>
     <button class="header-btn" id="gmailSyncBtn" title="Pull new inbound replies from Gmail into the CRM" style="display:none">Sync inbox</button>
     <button class="header-btn" id="checkInboxBtn" title="Open Gmail filtered by every CRM contact in the last 7 days">Check inbox</button>
@@ -581,6 +582,9 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
         <option value="">All segments</option>
       </select>
       <input class="filter-search" id="filterSearch" type="text" placeholder="Search company, city, email…">
+      <!-- Owner scope chips — rendered by renderContacts when team
+           has ≥ 2 members. -->
+      <span id="contactsOwnerChips" style="display:inline-flex;gap:4px;margin-left:6px"></span>
       <span class="filter-count" id="filterCount"></span>
     </div>
 
@@ -1086,6 +1090,12 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
         <label style="display:flex;gap:8px;align-items:center;cursor:pointer;font-size:13px;color:var(--ink);text-transform:none;letter-spacing:0;font-weight:600">
           <input type="checkbox" id="settingsAutoCcTeam" style="accent-color:var(--ocean);width:16px;height:16px">
           Auto-CC the other team members on every outbound
+        </label>
+      </div>
+      <div class="editor-field" style="margin-top:6px">
+        <label style="display:flex;gap:8px;align-items:center;cursor:pointer;font-size:13px;color:var(--ink);text-transform:none;letter-spacing:0;font-weight:600">
+          <input type="checkbox" id="settingsMuteNotifs" style="accent-color:var(--ocean);width:16px;height:16px">
+          Mute browser notifications (background sync still runs)
         </label>
       </div>
       <div class="editor-field" style="margin-top:14px">
@@ -1667,7 +1677,7 @@ async function syncGmailInbox(opts = {}){
     // Browser notification on silent (background) polls so the user
     // sees replies landing even when the CRM tab isn't focused.
     // Manual sync gets the toast only — they're already looking.
-    if(silent && 'Notification' in window && Notification.permission === 'granted'){
+    if(silent && 'Notification' in window && Notification.permission === 'granted' && localStorage.getItem('crmMuteNotifs') !== '1'){
       const sample = inserts[0];
       const previewFrom = sample?.from_addr || '';
       const previewSubj = sample?.subject || '(no subject)';
@@ -2042,6 +2052,9 @@ document.addEventListener('keydown', (e) => {
 // the user picks the company via the typeahead inside the modal.
 // Lets the user capture a TODO without opening a detail panel first.
 document.getElementById('heroQuickAddTask').addEventListener('click', () => openTaskModal(null, null));
+// Same shortcut from the global header so the user can capture a
+// TODO from any tab without scrolling back to the dashboard hero.
+document.getElementById('headerAddTask').addEventListener('click', () => openTaskModal(null, null));
 
 document.getElementById('bulkSendEmail').addEventListener('click', openBatchSendModal);
 document.getElementById('batchSendClose').addEventListener('click', closeBatchSendModal);
@@ -2076,6 +2089,7 @@ document.getElementById('settingsBtn').addEventListener('click', () => {
   const ccRaw = localStorage.getItem(SHARED_CC_LS_KEY);
   document.getElementById('settingsSharedCc').value = ccRaw === null ? '' : ccRaw;
   document.getElementById('settingsAutoCcTeam').checked = autoCcTeam();
+  document.getElementById('settingsMuteNotifs').checked = localStorage.getItem('crmMuteNotifs') === '1';
   document.getElementById('settingsSignature').value = userSignature();
   document.getElementById('settingsDisplayName').value = CURRENT_TEAM_USER?.full_name || '';
   refreshGmailUi();
@@ -2095,6 +2109,9 @@ document.getElementById('settingsSaveBtn').addEventListener('click', () => {
   // Auto-CC: '1' for on, '0' for off so the default-on logic works
   // even on a fresh browser (missing key → on).
   localStorage.setItem(AUTOCC_TEAM_LS_KEY, document.getElementById('settingsAutoCcTeam').checked ? '1' : '0');
+  // Mute notifications — '1' = muted. Default-off so a fresh
+  // browser still pings the user when a reply lands.
+  localStorage.setItem('crmMuteNotifs', document.getElementById('settingsMuteNotifs').checked ? '1' : '0');
   // Per-user signature — empty clears the key so the next read
   // falls back to "" cleanly. session.user.id keys the slot so a
   // shared browser doesn't cross-contaminate.
@@ -3340,6 +3357,9 @@ function populateFilters(){
 }
 
 let CURRENT_PRESET = localStorage.getItem('crmContactsPreset') || 'all';
+// Contacts-tab owner scope ('mine' | 'theirs' | 'all'). Persists in
+// localStorage and travels with saved views via filters.ownerScope.
+let CONTACTS_OWNER_SCOPE = localStorage.getItem('crmContactsOwnerScope') || 'mine';
 
 ['filterStatus','filterCountry','filterSegment','filterSearch'].forEach(id=>{
   document.getElementById(id).addEventListener('input', renderContacts);
@@ -3414,7 +3434,31 @@ function renderContacts(){
   const fSeg = document.getElementById('filterSegment').value;
   const fQ = document.getElementById('filterSearch').value.toLowerCase().trim();
 
+  // Owner scope chips render here so a render after a TEAM_USERS
+  // reload picks up newly-added team members.
+  const ownerChipsEl = document.getElementById('contactsOwnerChips');
+  if(ownerChipsEl){
+    if(TEAM_USERS.length >= 2){
+      ownerChipsEl.innerHTML = ['mine','theirs','all'].map(k => `
+        <button data-cscope="${k}" style="padding:6px 12px;font-size:12px;font-weight:700;border-radius:999px;border:1px solid ${CONTACTS_OWNER_SCOPE===k?'var(--ocean)':'var(--border)'};background:${CONTACTS_OWNER_SCOPE===k?'var(--ocean)':'transparent'};color:${CONTACTS_OWNER_SCOPE===k?'#fff':'var(--muted)'};cursor:pointer;font-family:'Outfit',sans-serif">${k==='mine'?'Mine':k==='theirs'?'Theirs':'All'}</button>
+      `).join('');
+      ownerChipsEl.querySelectorAll('[data-cscope]').forEach(b => {
+        b.addEventListener('click', () => {
+          CONTACTS_OWNER_SCOPE = b.dataset.cscope;
+          localStorage.setItem('crmContactsOwnerScope', CONTACTS_OWNER_SCOPE);
+          renderContacts();
+        });
+      });
+    } else {
+      ownerChipsEl.innerHTML = '';
+    }
+  }
   const filtered = CONTACTS.filter(c=>{
+    if(TEAM_USERS.length >= 2 && CURRENT_TEAM_USER){
+      const meId = CURRENT_TEAM_USER.id;
+      if(CONTACTS_OWNER_SCOPE === 'mine'   && c.account_manager_id !== meId) return false;
+      if(CONTACTS_OWNER_SCOPE === 'theirs' && (c.account_manager_id === meId || !c.account_manager_id)) return false;
+    }
     if(!matchesPreset(c, CURRENT_PRESET, today)) return false;
     if(fStat && c.status !== fStat) return false;
     // Match against the contact's PRIMARY country, so selecting "Germany"
@@ -4839,6 +4883,12 @@ document.getElementById('savedViewSelect').addEventListener('change', (e)=>{
   document.getElementById('filterCountry').value = f.country || '';
   document.getElementById('filterSegment').value = f.segment || '';
   document.getElementById('filterSearch').value = f.search || '';
+  // Owner scope rides on the saved view too — falls back to current
+  // state when the view pre-dates this column.
+  if(f.ownerScope){
+    CONTACTS_OWNER_SCOPE = f.ownerScope;
+    localStorage.setItem('crmContactsOwnerScope', CONTACTS_OWNER_SCOPE);
+  }
   renderContacts();
   toast(`Loaded: ${v.name}`);
 });
@@ -4850,7 +4900,8 @@ document.getElementById('saveViewBtn').addEventListener('click', async ()=>{
     status: document.getElementById('filterStatus').value,
     country: document.getElementById('filterCountry').value,
     segment: document.getElementById('filterSegment').value,
-    search: document.getElementById('filterSearch').value
+    search: document.getElementById('filterSearch').value,
+    ownerScope: CONTACTS_OWNER_SCOPE,
   };
   const c = getClient();
   const { data, error } = await c.from('outreach_saved_views')
@@ -5625,6 +5676,11 @@ function exportContactsCsv(){
   const fSeg  = document.getElementById('filterSegment').value;
   const fQ    = document.getElementById('filterSearch').value.toLowerCase().trim();
   const rows = CONTACTS.filter(c => {
+    if(TEAM_USERS.length >= 2 && CURRENT_TEAM_USER){
+      const meId = CURRENT_TEAM_USER.id;
+      if(CONTACTS_OWNER_SCOPE === 'mine'   && c.account_manager_id !== meId) return false;
+      if(CONTACTS_OWNER_SCOPE === 'theirs' && (c.account_manager_id === meId || !c.account_manager_id)) return false;
+    }
     if(!matchesPreset(c, CURRENT_PRESET, today)) return false;
     if(fStat && c.status !== fStat) return false;
     if(fCty && primaryCountry(c.country) !== fCty) return false;
