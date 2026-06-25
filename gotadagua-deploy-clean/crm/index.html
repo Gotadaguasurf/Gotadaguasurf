@@ -3847,7 +3847,14 @@ async function openContact(id){
         <button data-act-type="status" class="act-chip" style="background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:999px;padding:3px 9px;font-size:10.5px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">Status</button>
         <button data-act-type="group"  class="act-chip" style="background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:999px;padding:3px 9px;font-size:10.5px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">Groups</button>
         <button data-act-type="other"  class="act-chip" style="background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:999px;padding:3px 9px;font-size:10.5px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">Other</button>
-      </div>` : ''}
+      </div>
+      ${TEAM_USERS.length >= 2 ? `
+      <div id="activityOwnerChips" style="display:flex;gap:4px;flex-wrap:wrap;margin:0 0 10px">
+        <button data-act-owner="" class="act-own-chip" style="background:var(--ocean);color:#fff;border:none;border-radius:999px;padding:3px 9px;font-size:10.5px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">All people</button>
+        ${TEAM_USERS.filter(u => u.active !== false).map(u =>
+          `<button data-act-owner="${escAttr(u.email||'')}" class="act-own-chip" title="${escAttr(u.full_name || u.email || '')}" style="background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:999px;padding:3px 9px;font-size:10.5px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">${escHtml((u.full_name||u.email||'').split(/[\s@]/)[0])}</button>`
+        ).join('')}
+      </div>` : ''}` : ''}
       <div id="activityList">
         ${activity.length ? activity.map(a=>{
           const label = activityLabel(a);
@@ -4004,6 +4011,7 @@ async function openContact(id){
   // applyActivityFilter().
   let _actSearch = '';
   let _actType   = 'all';
+  let _actOwner  = '';  // email filter; '' = all people
   const TYPE_MAP = {
     all:    () => true,
     email:  (act) => /^email_|^replied_marked$/.test(act),
@@ -4017,7 +4025,13 @@ async function openContact(id){
       const action = (row.className.match(/activity-item\s+(\S+)/) || [])[1] || '';
       const typeOk = (TYPE_MAP[_actType] || TYPE_MAP.all)(action);
       const textOk = !_actSearch || blob.includes(_actSearch);
-      row.style.display = (typeOk && textOk) ? '' : 'none';
+      // Owner filter looks at the created_by email rendered into the
+      // .activity-time row footer ("· miguel@gotadaguasurf.com").
+      // Empty filter = all people. Skipped on email_inbound rows
+      // because those have the EXTERNAL sender as created_by, not
+      // our team member.
+      const ownerOk = !_actOwner || (blob.includes(_actOwner));
+      row.style.display = (typeOk && textOk && ownerOk) ? '' : 'none';
     });
   }
   const actSearchEl = document.getElementById('activitySearch');
@@ -4046,6 +4060,19 @@ async function openContact(id){
       // Re-paint chips so the active one stands out.
       document.querySelectorAll('#activityTypeChips .act-chip').forEach(c => {
         const active = c.dataset.actType === _actType;
+        c.style.background  = active ? 'var(--ocean)' : 'transparent';
+        c.style.color       = active ? '#fff' : 'var(--muted)';
+        c.style.borderColor = active ? 'var(--ocean)' : 'var(--border)';
+      });
+      applyActivityFilter();
+    });
+  });
+  // Owner chip handlers — re-paint + apply the email filter.
+  document.querySelectorAll('#activityOwnerChips .act-own-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      _actOwner = (chip.dataset.actOwner || '').toLowerCase();
+      document.querySelectorAll('#activityOwnerChips .act-own-chip').forEach(c => {
+        const active = (c.dataset.actOwner || '').toLowerCase() === _actOwner;
         c.style.background  = active ? 'var(--ocean)' : 'transparent';
         c.style.color       = active ? '#fff' : 'var(--muted)';
         c.style.borderColor = active ? 'var(--ocean)' : 'var(--border)';
@@ -6249,12 +6276,25 @@ function renderPipelinesSection(companyId){
     const stageOpts = stages.map(s =>
       `<option value="${s.id}" ${s.id===a.stage_id?'selected':''}>${escHtml(s.name)}${s.is_won?' ✓':s.is_lost?' ✗':''}</option>`
     ).join('');
+    // Owner picker — distinct from outreach_contacts.account_manager
+    // because the same company can be owned by different people in
+    // different pipelines (Miguel closing in Sales, Ricardo running
+    // it in Account Mgmt). Hidden on solo deploys.
+    const ownerPicker = TEAM_USERS.length >= 2 ? `
+      <select data-pl-owner="${a.id}" title="Deal owner in this pipeline" style="border:1px solid var(--border);border-radius:6px;padding:4px 8px;font:inherit;font-size:12px;max-width:120px">
+        <option value="">— unassigned —</option>
+        ${TEAM_USERS.filter(u => u.active !== false).map(u =>
+          `<option value="${u.id}" ${u.id===a.owner_id?'selected':''}>${escHtml(u.full_name || u.email || 'unnamed')}</option>`
+        ).join('')}
+      </select>
+    ` : '';
     return `
       <div class="group-card" style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;background:#fff;border:1px solid var(--border);border-radius:10px;margin-bottom:8px">
         <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
           <span style="display:inline-block;width:8px;height:8px;border-radius:999px;background:${stageDotColor(currentStage)};flex-shrink:0"></span>
           <div data-pl-jump="${a.pipeline_id}" title="Open Pipeline tab in this view" style="font-weight:700;color:var(--ocean);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer">${escHtml(pipeline?.name || '(unknown pipeline)')}</div>
         </div>
+        ${ownerPicker}
         <select data-pl-stage="${a.id}" style="border:1px solid var(--border);border-radius:6px;padding:4px 8px;font:inherit;font-size:12px">${stageOpts}</select>
         <button data-pl-remove="${a.id}" title="Remove from pipeline" aria-label="Remove" style="background:transparent;border:1px solid var(--border);border-radius:6px;width:26px;height:26px;cursor:pointer;color:var(--red-text);font-size:16px">×</button>
       </div>
@@ -6285,6 +6325,23 @@ function renderPipelinesSection(companyId){
       CURRENT_PIPELINE_VIEW = pid;
       localStorage.setItem('crmPipelineView', pid);
       document.querySelector('.nav-tab[data-tab="pipeline"]').click();
+    });
+  });
+  // Deal-owner inline edit — distinct from the company's account
+  // manager. Sets contact_pipeline.owner_id; null/"" clears it.
+  root.querySelectorAll('[data-pl-owner]').forEach(sel => {
+    sel.addEventListener('change', async () => {
+      const id = sel.dataset.plOwner;
+      const newOwnerId = sel.value || null;
+      const supa = getClient();
+      const { error } = await supa.from('contact_pipeline')
+        .update({ owner_id: newOwnerId }).eq('id', id);
+      if(error){ toast('Owner update failed: '+error.message); return; }
+      const row = CONTACT_PIPELINE.find(x => x.id === id);
+      if(row) row.owner_id = newOwnerId;
+      const u = newOwnerId ? TEAM_USERS.find(x => x.id === newOwnerId) : null;
+      toast(u ? `Deal owner → ${u.full_name || u.email}` : 'Deal owner cleared');
+      if(CURRENT_TAB === 'pipeline' && CURRENT_PIPELINE_VIEW !== 'status') renderPipeline();
     });
   });
   root.querySelectorAll('[data-pl-stage]').forEach(sel => {
@@ -6772,10 +6829,18 @@ function pipelineCardHtml(c, daysInStage, pushOpts){
   } else if(pushOpts?.mode === 'status' && pushOpts.statusKey){
     pushBtn = `<button class="kc-push" data-push-mode="status" data-push-id="${pushOpts.companyId}" data-push-status="${pushOpts.statusKey}" data-push-name="${escAttr(pushOpts.statusLabel)}" title="Move to ${escAttr(pushOpts.statusLabel)}" aria-label="Push to next stage" style="background:transparent;border:1px solid var(--border);border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700;color:var(--ocean);cursor:pointer;font-family:'Outfit',sans-serif">→ ${escHtml(pushOpts.statusLabel)}</button>`;
   }
+  // Owner badge — pipeline mode prefers the deal-level
+  // contact_pipeline.owner_id (via pushOpts.ownerId), legacy mode
+  // falls back to the company's account_manager_id. Skipped on
+  // solo deploys to avoid noise.
+  const ownerId = pushOpts?.ownerId || c.account_manager_id;
+  const ownerPrefix = TEAM_USERS.length >= 2
+    ? `<span style="margin-right:6px;vertical-align:-3px">${ownerBadgeHtml(ownerId, 16)}</span>`
+    : '';
   return `
     <div class="kanban-card" draggable="true" data-id="${c.id}">
       <div class="kc-name" style="display:flex;justify-content:space-between;align-items:center;gap:6px">
-        <span style="min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(c.company)}</span>
+        <span style="min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${ownerPrefix}${escHtml(c.company)}</span>
         ${stageBadge || (c.email ? '' : '<span class="no-email">no email</span>')}
       </div>
       ${meta.length ? `<div class="kc-meta">${meta.join('')}</div>` : ''}
@@ -7264,7 +7329,9 @@ function renderPipelineByPipeline(pipelineId){
       const enteredDate = cp?.entered_stage_at ? cp.entered_stage_at.slice(0,10) : null;
       const daysInStage = enteredDate ? daysBetween(enteredDate, today) : undefined;
       const next = nextStageByCurrentId.get(s.id);
-      const pushOpts = (next && cp?.id) ? { mode:'pipeline', stageId:next.id, stageName:next.name, cpId:cp.id } : undefined;
+      const pushOpts = (next && cp?.id)
+        ? { mode:'pipeline', stageId:next.id, stageName:next.name, cpId:cp.id, ownerId: cp.owner_id || null }
+        : (cp?.owner_id ? { ownerId: cp.owner_id } : undefined);
       return pipelineCardHtml(c, daysInStage, pushOpts);
     }).join('') ||
       '<div class="kanban-empty">drop a card here</div>';
