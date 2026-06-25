@@ -744,6 +744,7 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
     <button class="action-btn green" id="markRepliedBtn"><span class="ui-ic">__ICN_CHECK__</span>  Mark replied</button>
     <button class="action-btn ghost" id="setFollowupBtn"><span class="ui-ic">__ICN_CALENDAR__</span>  Follow-up date</button>
     <button class="action-btn ghost" id="checkGmailBtn" title="Open Gmail filtered by every email address linked to this company"><span class="ui-ic">__ICN_SEARCH__</span>  Check Gmail</button>
+    <button class="action-btn ghost" id="snoozeContactBtn" title="Hide from Cold accounts for 30 days. Any real activity overrides the snooze.">Snooze 30d</button>
     <!-- Delete is intentionally last + styled red so it's hard to hit by
          accident. Two-confirm flow (confirm + retype) before the DB
          delete actually fires. -->
@@ -3812,6 +3813,27 @@ document.getElementById('setFollowupBtn').addEventListener('click', ()=>{
   document.getElementById('followupInput')?.showPicker?.();
 });
 
+// Snooze current contact for 30 days — same logic the dashboard's
+// Cold accounts card uses (set last_interaction_at to today-30d so
+// the cold filter < today-60d no longer matches). Trigger-based
+// last_interaction_at updates on any real activity override the
+// snooze, so the contact reappears the moment anything happens
+// — by design.
+document.getElementById('snoozeContactBtn').addEventListener('click', async ()=>{
+  if(!CURRENT_CONTACT) return;
+  const c = CURRENT_CONTACT;
+  if(!confirm(`Hide "${c.company}" from Cold accounts for 30 days?\n\nAny real activity (status change, task, email) will end the snooze automatically.`)) return;
+  const today = new Date().toISOString().slice(0,10);
+  const snoozedIso = new Date(addDays(today, -30) + 'T12:00:00Z').toISOString();
+  const supa = getClient();
+  const { error } = await supa.from('outreach_contacts')
+    .update({ last_interaction_at: snoozedIso }).eq('id', c.id);
+  if(error){ toast('Snooze failed: '+error.message); return; }
+  c.last_interaction_at = snoozedIso;
+  toast(`Snoozed ${c.company} for 30 days`);
+  if(CURRENT_TAB === 'dashboard') renderDashboard();
+});
+
 // Delete a single contact from the detail panel. Double-confirm because
 // it's irreversible — cascade-deletes the contact's activity and groups
 // via the FK constraints we set up.
@@ -4151,6 +4173,13 @@ function selectTemplate(id){
 function renderTemplateEditor(){
   const t = CURRENT_TEMPLATE;
   const ed = document.getElementById('templateEditor');
+  // Pick a "rich" sample contact for the preview — one with as many
+  // populated fields as possible so all the {{vars}} resolve to
+  // something. Falls back to the first contact, then to a synthetic
+  // stub so the preview always renders.
+  const sample = (CONTACTS.filter(c => c.company && c.country && c.city && c.email)[0])
+    || CONTACTS[0]
+    || { company: 'Sample Surf Co', country: 'Portugal', city: 'Caparica', email: 'hello@example.com' };
   ed.innerHTML = `
     <div class="editor-field"><label>Name</label><input id="tplName" value="${escAttr(t.name)}"></div>
     <div class="editor-field"><label>Language</label><select id="tplLang">
@@ -4160,11 +4189,29 @@ function renderTemplateEditor(){
     <div class="editor-field"><label>Subject</label><input id="tplSubject" value="${escAttr(t.subject)}"></div>
     <div class="editor-field"><label>Body</label><textarea id="tplBody">${escHtml(t.body)}</textarea>
     <div class="editor-hint">Variables: <code>{{company}}</code> <code>{{greeting}}</code> (safe salutation) <code>{{country}}</code> <code>{{city}}</code> · avoid <code>{{first_name}}</code> until contact names are filled in (it now renders blank instead of guessing).</div></div>
+    <div class="editor-field">
+      <label style="display:flex;justify-content:space-between;align-items:center"><span>Live preview</span><span style="font-size:11px;color:var(--muted);font-weight:600;text-transform:none;letter-spacing:0">Sample: ${escHtml(sample.company || '')}</span></label>
+      <div id="tplPreviewSubject" style="font-weight:700;color:var(--ink);font-size:13px;padding:7px 10px;background:#f6f9fc;border:1px solid var(--border);border-radius:6px;margin-bottom:6px"></div>
+      <div id="tplPreviewBody" style="white-space:pre-wrap;color:var(--ink);font-size:12.5px;padding:10px;background:#fafdff;border:1px solid var(--border);border-radius:8px;max-height:240px;overflow:auto"></div>
+    </div>
     <div style="display:flex;gap:10px;margin-top:18px">
       <button class="action-btn primary" id="tplSave" style="grid-column:auto">Save changes</button>
       <button class="action-btn ghost" id="tplDelete" style="color:var(--red-text);border-color:#f0a0a0">Delete</button>
     </div>
   `;
+  // Live preview — rebinds on every keystroke in subject + body so
+  // the user sees the output before saving. renderTemplate is the
+  // same function the compose flow uses, so what you see here is
+  // exactly what lands in Gmail.
+  const refreshPreview = () => {
+    const subj = document.getElementById('tplSubject').value;
+    const body = document.getElementById('tplBody').value;
+    document.getElementById('tplPreviewSubject').textContent = renderTemplate(subj, sample);
+    document.getElementById('tplPreviewBody').textContent    = renderTemplate(body, sample);
+  };
+  refreshPreview();
+  document.getElementById('tplSubject').addEventListener('input', refreshPreview);
+  document.getElementById('tplBody').addEventListener('input', refreshPreview);
   document.getElementById('tplSave').addEventListener('click', saveTemplate);
   document.getElementById('tplDelete').addEventListener('click', deleteTemplate);
 }
@@ -5298,13 +5345,19 @@ const TASKS_TAB_FILTERS = [
 
 // Updates the red count pill in the top nav. Counts OVERDUE open tasks
 // only — the most actionable signal. Hidden when zero.
+// Also writes the browser tab title so a backgrounded tab broadcasts
+// the count to the user's tab strip ("(3) Gota CRM").
 function updateNavTasksCount(){
   const el = document.getElementById('navTasksCount');
-  if(!el) return;
   const today = new Date().toISOString().slice(0,10);
   const n = TASKS.filter(t => !t.done_at && t.due_at && t.due_at.slice(0,10) < today).length;
-  if(n > 0){ el.textContent = n; el.style.display = ''; }
-  else { el.style.display = 'none'; }
+  if(el){
+    if(n > 0){ el.textContent = n; el.style.display = ''; }
+    else { el.style.display = 'none'; }
+  }
+  // Tab title gets the same number — prefixed so it's still
+  // "Gota CRM" when scanning the tab strip but stands out when N>0.
+  document.title = n > 0 ? `(${n}) Gota CRM` : 'Gota CRM';
 }
 
 function renderTasksTab(){
