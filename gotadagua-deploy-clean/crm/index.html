@@ -23,6 +23,63 @@
   --sh:0 4px 24px rgba(40,57,75,.10);
   --sh-lg:0 12px 48px rgba(40,57,75,.18);
 }
+/* Dark mode overrides — applied when <body class="dark"> via the
+   Settings toggle. Keeps the navy header (already dark) but inverts
+   the page bg + card surfaces + ink/muted text. Status pill
+   bgs stay as-is so the colour-coded badges still pop. */
+body.dark{
+  --bg:#0d1b2a;--card:#152535;
+  --ink:#e9eef3;--muted:#94a8bd;
+  --border:#26384c;--foam:#1d2c3e;
+  --sh:0 4px 24px rgba(0,0,0,.45);
+  --sh-lg:0 12px 48px rgba(0,0,0,.6);
+}
+body.dark .kanban-col,body.dark .dash-card,body.dark .detail-panel,body.dark .compose-card{background:var(--card);color:var(--ink)}
+body.dark .kanban-card,body.dark .group-card{background:#1a2a3c;border-color:var(--border)}
+body.dark input,body.dark textarea,body.dark select{background:#1a2a3c;color:var(--ink);border-color:var(--border)}
+body.dark .action-btn.ghost{background:transparent;color:var(--ink)}
+body.dark .kanban-empty{background:#152535;color:var(--muted)}
+body.dark .funnel-track{background:#1a2a3c}
+body.dark .empty-state{color:var(--muted)}
+
+/* ── MOBILE RESPONSIVE (< 720px) ──────────────────────────────────────
+   Desktop-first layout, narrowed only on the most painful surfaces:
+   header wraps, dashboard cards stack, detail panel full-width,
+   filter rows wrap. Pipeline Kanban already scrolls horizontally
+   so it stays as-is. */
+@media (max-width: 720px){
+  header{flex-wrap:wrap;height:auto;padding:8px 12px;gap:8px}
+  .header-center{order:3;flex-basis:100%;justify-content:flex-start;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .header-right{gap:6px;flex-wrap:wrap;justify-content:flex-end}
+  .header-btn{padding:6px 10px;font-size:12px}
+  .nav-tab{padding:6px 10px;font-size:12px;white-space:nowrap}
+  main, .container, #page-dashboard, #page-contacts, #page-pipeline, #page-analytics, #page-templates, #page-tasks{padding:12px}
+  .kpi-strip{grid-template-columns:1fr 1fr;gap:8px}
+  .kpi-strip .kpi{padding:12px}
+  .dash-row{grid-template-columns:1fr !important;gap:14px}
+  .dash-card{padding:14px}
+  .hero-today-title{font-size:20px}
+  .detail-panel{width:100% !important;max-width:100% !important}
+  .filter-bar{flex-wrap:wrap;gap:6px}
+  .filter-select,.filter-search{flex:1 1 calc(50% - 4px);min-width:0}
+  .preset-chips{overflow-x:auto;-webkit-overflow-scrolling:touch;flex-wrap:nowrap}
+  .preset-chips .chip{flex-shrink:0}
+  .compose-card{max-width:100% !important;width:96vw}
+  /* Tasks tab rows: stack columns instead of grid on narrow */
+  .tasks-tab-row{grid-template-columns:auto auto 1fr !important;grid-template-areas:"sel done title" "sel done company" "sel done meta" !important;row-gap:4px}
+  .tasks-tab-row > *:nth-child(3){grid-area:title}
+  .tasks-tab-row > *:nth-child(4){grid-area:company}
+  .tasks-tab-row > *:nth-child(5),
+  .tasks-tab-row > *:nth-child(6),
+  .tasks-tab-row > *:nth-child(7){grid-area:meta;font-size:11px}
+  /* Bulk bars become scrollable horizontally rather than wrapping
+     in a way that pushes the page down. */
+  .bulk-bar,#tasksTabBulkBar{flex-wrap:wrap;gap:6px;padding:8px}
+}
+@media (max-width: 480px){
+  .kpi-strip{grid-template-columns:1fr}
+  .nav-tab{padding:5px 8px;font-size:11px}
+}
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--ink);min-height:100vh}
 .hidden{display:none!important}
@@ -1098,6 +1155,12 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
           Mute browser notifications (background sync still runs)
         </label>
       </div>
+      <div class="editor-field" style="margin-top:6px">
+        <label style="display:flex;gap:8px;align-items:center;cursor:pointer;font-size:13px;color:var(--ink);text-transform:none;letter-spacing:0;font-weight:600">
+          <input type="checkbox" id="settingsDarkMode" style="accent-color:var(--ocean);width:16px;height:16px">
+          Dark mode
+        </label>
+      </div>
       <div class="editor-field" style="margin-top:14px">
         <label>Your display name (used in {{my_first_name}} / {{my_name}})</label>
         <input type="text" id="settingsDisplayName" placeholder="Miguel Pereira">
@@ -2090,6 +2153,7 @@ document.getElementById('settingsBtn').addEventListener('click', () => {
   document.getElementById('settingsSharedCc').value = ccRaw === null ? '' : ccRaw;
   document.getElementById('settingsAutoCcTeam').checked = autoCcTeam();
   document.getElementById('settingsMuteNotifs').checked = localStorage.getItem('crmMuteNotifs') === '1';
+  document.getElementById('settingsDarkMode').checked = localStorage.getItem('crmDarkMode') === '1';
   document.getElementById('settingsSignature').value = userSignature();
   document.getElementById('settingsDisplayName').value = CURRENT_TEAM_USER?.full_name || '';
   refreshGmailUi();
@@ -2112,6 +2176,11 @@ document.getElementById('settingsSaveBtn').addEventListener('click', () => {
   // Mute notifications — '1' = muted. Default-off so a fresh
   // browser still pings the user when a reply lands.
   localStorage.setItem('crmMuteNotifs', document.getElementById('settingsMuteNotifs').checked ? '1' : '0');
+  // Dark mode — toggle the body class so the CSS-variable override
+  // kicks in instantly without a reload. Persist for next session.
+  const dark = document.getElementById('settingsDarkMode').checked;
+  localStorage.setItem('crmDarkMode', dark ? '1' : '0');
+  document.body.classList.toggle('dark', dark);
   // Per-user signature — empty clears the key so the next read
   // falls back to "" cleanly. session.user.id keys the slot so a
   // shared browser doesn't cross-contaminate.
@@ -7667,6 +7736,9 @@ function wireKanbanInteractions(board, mode, ctx = {}){
 // ════════════════════════════════════════════════════════════════════════
 //  BOOT
 // ════════════════════════════════════════════════════════════════════════
+// Apply dark mode BEFORE checkSession to avoid a light-mode flash
+// while the first paint goes through. Cheap localStorage read.
+if(localStorage.getItem('crmDarkMode') === '1') document.body.classList.add('dark');
 checkSession();
 </script>
 </body>
