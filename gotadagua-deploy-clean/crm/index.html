@@ -465,10 +465,13 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
       <div class="hero-today-inner">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap">
           <div class="hero-today-eyebrow">Today · <span id="todayDate"></span></div>
-          <!-- Scope toggle — hidden on solo deploys via JS. -->
-          <div id="dashboardScopeToggle" class="hidden" style="display:flex;gap:4px;align-items:center">
-            <button data-dash-scope="mine" class="dash-scope-btn" style="background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.25);border-radius:999px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">Mine</button>
-            <button data-dash-scope="all" class="dash-scope-btn" style="background:transparent;color:#bdd4e8;border:1px solid rgba(255,255,255,.2);border-radius:999px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">All team</button>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button id="heroQuickAddTask" title="Add a task without opening a company first" style="background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:999px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">+ Task</button>
+            <!-- Scope toggle — hidden on solo deploys via JS. -->
+            <div id="dashboardScopeToggle" class="hidden" style="display:flex;gap:4px;align-items:center">
+              <button data-dash-scope="mine" class="dash-scope-btn" style="background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.25);border-radius:999px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">Mine</button>
+              <button data-dash-scope="all" class="dash-scope-btn" style="background:transparent;color:#bdd4e8;border:1px solid rgba(255,255,255,.2);border-radius:999px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">All team</button>
+            </div>
           </div>
         </div>
         <div class="hero-today-title" id="heroTodayTitle">Loading…</div>
@@ -2035,6 +2038,11 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+// Hero quick-add Task — opens the task modal in "global" mode so
+// the user picks the company via the typeahead inside the modal.
+// Lets the user capture a TODO without opening a detail panel first.
+document.getElementById('heroQuickAddTask').addEventListener('click', () => openTaskModal(null, null));
+
 document.getElementById('bulkSendEmail').addEventListener('click', openBatchSendModal);
 document.getElementById('batchSendClose').addEventListener('click', closeBatchSendModal);
 document.getElementById('batchSendCancel').addEventListener('click', closeBatchSendModal);
@@ -2991,7 +2999,7 @@ function renderDashboard(){
   const cutoff60 = addDays(today, -60);
   const COLD_STATUSES = new Set(['first_email','follow_up','in_conversation','meeting','proposal_sent','active_partner']);
   const cold = CONTACTS
-    .filter(c => COLD_STATUSES.has(c.status) && c.last_interaction_at && c.last_interaction_at.slice(0,10) < cutoff60)
+    .filter(c => COLD_STATUSES.has(c.status) && c.last_interaction_at && c.last_interaction_at.slice(0,10) < cutoff60 && companyBelongsToScope(c))
     .sort((a,b) => (a.last_interaction_at||'').localeCompare(b.last_interaction_at||''));
   const coldEl = document.getElementById('coldList');
   coldEl.innerHTML = cold.length ? cold.slice(0,20).map(c=>{
@@ -3089,6 +3097,13 @@ function renderDashboard(){
       if(days < 30) return null;
       const company = CONTACTS.find(c => c.id === cp.company_id);
       if(!company) return null;
+      // Owner scope: deal-level cp.owner_id when set, else fall back
+      // to the company's account manager. Hides "their" deals on
+      // multi-user 'mine' scope; no effect for solo.
+      if(DASHBOARD_SCOPE !== 'all' && TEAM_USERS.length >= 2 && CURRENT_TEAM_USER){
+        const owner = cp.owner_id || company.account_manager_id;
+        if(owner !== CURRENT_TEAM_USER.id) return null;
+      }
       const pipeline = PIPELINES.find(p => p.id === cp.pipeline_id);
       // Pre-compute the "next" stage for the + Push button — the next
       // stage by sort_order that's NOT is_lost. We don't auto-push
@@ -3129,7 +3144,7 @@ function renderDashboard(){
     // so the user sees missed renewals. Sorted soonest-first.
     const cutoffEnd = addDays(today, 60);
     const expiring = CONTACTS
-      .filter(c => c.contract_end && c.contract_end <= cutoffEnd)
+      .filter(c => c.contract_end && c.contract_end <= cutoffEnd && companyBelongsToScope(c))
       .sort((a,b) => a.contract_end.localeCompare(b.contract_end));
     const expEl = document.getElementById('expiringList');
     if(expEl){
@@ -5735,16 +5750,25 @@ const MY_DAY_LS_KEY = 'crmMyDayLastShown';
 function maybeShowMyDayDigest(){
   const today = new Date().toISOString().slice(0,10);
   if(localStorage.getItem(MY_DAY_LS_KEY) === today) return;
-  const overdueTasks = TASKS.filter(t => !t.done_at && t.due_at && t.due_at.slice(0,10) < today);
-  const todayTasks   = TASKS.filter(t => !t.done_at && t.due_at && t.due_at.slice(0,10) === today);
-  const overdueFollowups = CONTACTS.filter(c => c.follow_up_at && c.follow_up_at < today);
-  const todayFollowups   = CONTACTS.filter(c => c.follow_up_at === today);
+  // Scope to the current user on multi-user deploys so Miguel
+  // doesn't see Ricardo's overdue and vice versa. Tasks scope by
+  // owner_id, follow-ups + contracts by account_manager_id.
+  // Solo deploys (single team_user) skip the scope and show
+  // everything as before.
+  const meId = CURRENT_TEAM_USER?.id || null;
+  const multi = TEAM_USERS.length >= 2 && meId;
+  const isMine = (t) => !multi || t.owner_id === meId;
+  const isMyAccount = (c) => !multi || c.account_manager_id === meId;
+  const overdueTasks = TASKS.filter(t => !t.done_at && t.due_at && t.due_at.slice(0,10) < today && isMine(t));
+  const todayTasks   = TASKS.filter(t => !t.done_at && t.due_at && t.due_at.slice(0,10) === today && isMine(t));
+  const overdueFollowups = CONTACTS.filter(c => c.follow_up_at && c.follow_up_at < today && isMyAccount(c));
+  const todayFollowups   = CONTACTS.filter(c => c.follow_up_at === today && isMyAccount(c));
   // Contracts expiring or already expired in the next 7 days — same
   // 7d horizon as the rest of the digest so the user gets a unified
   // "this week" view, not a 60d preview. Already-expired ones count
   // as urgent (negative day count, render same line).
   const next7 = addDays(today, 7);
-  const expiringSoon = CONTACTS.filter(c => c.contract_end && c.contract_end <= next7);
+  const expiringSoon = CONTACTS.filter(c => c.contract_end && c.contract_end <= next7 && isMyAccount(c));
   const total = overdueTasks.length + todayTasks.length + overdueFollowups.length + todayFollowups.length + expiringSoon.length;
   // Quiet days don't get a popup — nothing more annoying than a
   // modal interrupting you to say "you have 0 things to do".
