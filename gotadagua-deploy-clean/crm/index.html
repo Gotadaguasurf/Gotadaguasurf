@@ -1236,28 +1236,53 @@ function sharedInboxCc(){
   // "opt out". So the user can clear the field to send without it.
   return raw === null ? 'groups@gotadaguasurf.com' : raw.trim();
 }
+// Auto-CC defaults OFF — the seed SQL creates a team_users row for
+// every auth.users entry, which usually includes non-sales mailboxes
+// (marketing@, ops@, partner inboxes). Defaulting ON spammed every
+// outbound to all of them. Opt-in via Settings.
 function autoCcTeam(){
-  return localStorage.getItem(AUTOCC_TEAM_LS_KEY) !== '0';
+  return localStorage.getItem(AUTOCC_TEAM_LS_KEY) === '1';
 }
-// Returns the list of CC addresses for an outgoing email: every
-// other active team member + the shared inbox, deduped, with the
-// current user filtered out so they don't get their own copy.
+// Returns the list of CC addresses for an outgoing email:
+//   • shared inbox (default groups@)
+//   • plus other ACTIVE team members with role='sales' when auto-CC
+//     is on. Role filter keeps non-sales mailboxes from getting
+//     bombarded with every outbound.
 function buildCcList(){
   const out = new Set();
+  const meEmail = (gmailAuthuser() || '').toLowerCase();
   if(autoCcTeam()){
-    const meEmail = (gmailAuthuser() || '').toLowerCase();
     TEAM_USERS.forEach(u => {
       if(!u.email) return;
+      if(u.active === false) return;
+      if(u.role && u.role !== 'sales') return;
       if(u.email.toLowerCase() === meEmail) return;
       out.add(u.email);
     });
   }
   const shared = sharedInboxCc();
-  if(shared){
-    const meEmail = (gmailAuthuser() || '').toLowerCase();
-    if(shared.toLowerCase() !== meEmail) out.add(shared);
-  }
+  if(shared && shared.toLowerCase() !== meEmail) out.add(shared);
   return Array.from(out);
+}
+
+// Domains we consider "ours" — never match these against contacts
+// in the inbound matcher, otherwise internal emails (invites from
+// supabase, miguel→miguel notes) get falsely attached to whichever
+// company happens to share the domain.
+function ownDomains(){
+  const set = new Set();
+  TEAM_USERS.forEach(u => {
+    const e = (u.email || '').toLowerCase();
+    const at = e.lastIndexOf('@');
+    if(at >= 0) set.add(e.slice(at + 1));
+  });
+  const me = (gmailAuthuser() || '').toLowerCase();
+  const meAt = me.lastIndexOf('@');
+  if(meAt >= 0) set.add(me.slice(meAt + 1));
+  const shared = (sharedInboxCc() || '').toLowerCase();
+  const sAt = shared.lastIndexOf('@');
+  if(sAt >= 0) set.add(shared.slice(sAt + 1));
+  return set;
 }
 
 // ── Gmail API integration (A2) ──────────────────────────────────────
@@ -1476,6 +1501,13 @@ function matchSenderToCompany(fromHeader){
   const m = fromHeader.match(/<([^>]+)>/);
   const email = (m ? m[1] : fromHeader).trim().toLowerCase();
   if(!email.includes('@')) return null;
+  // OWN-domain emails are never tracked as inbound replies — they're
+  // internal notes, system invites, miguel→miguel reminders, etc.
+  // Without this filter every team-internal email got falsely attached
+  // to whatever contact happens to share the domain.
+  const at = email.lastIndexOf('@');
+  const domain = email.slice(at + 1);
+  if(ownDomains().has(domain)) return null;
   // Exact match against People or CONTACTS.
   const person = PEOPLE.find(p => (p.email||'').toLowerCase() === email);
   if(person) return { companyId: person.company_id, contactId: person.id, email };
@@ -1484,8 +1516,6 @@ function matchSenderToCompany(fromHeader){
   // Domain fallback — pick the first company on that domain that
   // ISN'T on a free provider (otherwise gmail.com would match all
   // your personal emails to the first random gmail-using lead).
-  const at = email.lastIndexOf('@');
-  const domain = email.slice(at + 1);
   if(FREE_EMAIL_DOMAINS.has(domain)) return null;
   const domainCompany = CONTACTS.find(c => {
     const ce = (c.email||'').toLowerCase();
