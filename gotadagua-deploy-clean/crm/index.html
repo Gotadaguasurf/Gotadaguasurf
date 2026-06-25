@@ -1081,6 +1081,11 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
           Auto-CC the other team members on every outbound
         </label>
       </div>
+      <div class="editor-field" style="margin-top:14px">
+        <label>Your signature</label>
+        <textarea id="settingsSignature" style="min-height:90px;font-family:'DM Mono',monospace;font-size:12px" placeholder="Best,&#10;Miguel Pereira&#10;Co-Founder · Gota d'Água&#10;+351 916 290 842"></textarea>
+        <div class="editor-hint" style="margin-top:6px">Stored on this browser per logged-in user — Miguel's signature and Ricardo's stay independent. Use <code>{{my_signature}}</code> in any template, plus <code>{{my_first_name}}</code> / <code>{{my_name}}</code> / <code>{{my_email}}</code>.</div>
+      </div>
     </div>
     <div class="compose-footer">
       <button class="action-btn ghost" id="settingsDisconnectBtn" style="margin-right:auto;color:var(--red-text);border-color:#f0a0a0;display:none">Disconnect Gmail</button>
@@ -2047,6 +2052,7 @@ document.getElementById('settingsBtn').addEventListener('click', () => {
   const ccRaw = localStorage.getItem(SHARED_CC_LS_KEY);
   document.getElementById('settingsSharedCc').value = ccRaw === null ? '' : ccRaw;
   document.getElementById('settingsAutoCcTeam').checked = autoCcTeam();
+  document.getElementById('settingsSignature').value = userSignature();
   refreshGmailUi();
   document.getElementById('settingsModal').classList.add('open');
 });
@@ -2064,6 +2070,14 @@ document.getElementById('settingsSaveBtn').addEventListener('click', () => {
   // Auto-CC: '1' for on, '0' for off so the default-on logic works
   // even on a fresh browser (missing key → on).
   localStorage.setItem(AUTOCC_TEAM_LS_KEY, document.getElementById('settingsAutoCcTeam').checked ? '1' : '0');
+  // Per-user signature — empty clears the key so the next read
+  // falls back to "" cleanly. session.user.id keys the slot so a
+  // shared browser doesn't cross-contaminate.
+  if(session?.user?.id){
+    const sig = document.getElementById('settingsSignature').value;
+    if(sig.trim() === '') localStorage.removeItem('crmSignature:' + session.user.id);
+    else                  localStorage.setItem('crmSignature:' + session.user.id, sig);
+  }
   _gmailTokenClient = null;  // force re-init with the new id
   toast('Settings saved');
   refreshGmailUi();
@@ -4242,6 +4256,14 @@ function firstNameForCompany(companyId){
   return p.name.trim().split(/\s+/)[0] || '';
 }
 
+// Signature lives in localStorage keyed by the auth user id so
+// Miguel's signature and Ricardo's signature stay independent on
+// shared devices. Falls back to empty string when never set.
+function userSignature(){
+  if(!session?.user?.id) return '';
+  return localStorage.getItem('crmSignature:' + session.user.id) || '';
+}
+
 function renderTemplate(text, c){
   // {{first_name}} was previously falling back to the first WORD of the
   // company name when no real contact name existed — i.e. the email to
@@ -4253,12 +4275,24 @@ function renderTemplate(text, c){
   // any leftover stray comma from a templated salutation.
   const firstName = firstNameForCompany(c.id);
   const greeting = firstName || `the ${c.company || 'team'} team`;
+  // Sender-side vars — resolve to the team_user actually sending now.
+  // Templates that use {{my_first_name}} + {{my_signature}} produce
+  // a different output per logged-in user without any per-template
+  // editing.
+  const myFull = CURRENT_TEAM_USER?.full_name || '';
+  const myFirst = myFull ? myFull.trim().split(/\s+/)[0] : '';
+  const myEmail = CURRENT_TEAM_USER?.email || '';
+  const mySig = userSignature();
   return text
     .replace(/\{\{company\}\}/g, c.company||'')
     .replace(/\{\{first_name\}\}/g, firstName)
     .replace(/\{\{greeting\}\}/g, greeting)
     .replace(/\{\{country\}\}/g, c.country||'')
     .replace(/\{\{city\}\}/g, c.city||'')
+    .replace(/\{\{my_name\}\}/g, myFull)
+    .replace(/\{\{my_first_name\}\}/g, myFirst)
+    .replace(/\{\{my_email\}\}/g, myEmail)
+    .replace(/\{\{my_signature\}\}/g, mySig)
     // Collapse the leftover "Hi ," / "Olá ," when {{first_name}} resolved
     // empty, so the email still reads naturally instead of having a stray
     // comma after the salutation.
@@ -4462,7 +4496,7 @@ function renderTemplateEditor(){
     </select></div>
     <div class="editor-field"><label>Subject</label><input id="tplSubject" value="${escAttr(t.subject)}"></div>
     <div class="editor-field"><label>Body</label><textarea id="tplBody">${escHtml(t.body)}</textarea>
-    <div class="editor-hint">Variables: <code>{{company}}</code> <code>{{greeting}}</code> (safe salutation) <code>{{country}}</code> <code>{{city}}</code> · avoid <code>{{first_name}}</code> until contact names are filled in (it now renders blank instead of guessing).</div></div>
+    <div class="editor-hint">Recipient vars: <code>{{company}}</code> <code>{{greeting}}</code> (safe salutation) <code>{{first_name}}</code> (primary contact) <code>{{country}}</code> <code>{{city}}</code>.<br>Sender vars (resolve per logged-in user): <code>{{my_first_name}}</code> <code>{{my_name}}</code> <code>{{my_email}}</code> <code>{{my_signature}}</code> — set the signature in ⚙ Settings.</div></div>
     <div class="editor-field">
       <label style="display:flex;justify-content:space-between;align-items:center"><span>Live preview</span><span style="font-size:11px;color:var(--muted);font-weight:600;text-transform:none;letter-spacing:0">Sample: ${escHtml(sample.company || '')}</span></label>
       <div id="tplPreviewSubject" style="font-weight:700;color:var(--ink);font-size:13px;padding:7px 10px;background:#f6f9fc;border:1px solid var(--border);border-radius:6px;margin-bottom:6px"></div>
