@@ -482,6 +482,9 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
       <div class="section-hint">Live counts from <code>outreach_contacts</code></div>
     </div>
     <div class="kpi-strip" id="kpiStrip"></div>
+    <!-- Per-team report tile — auto-shown only when the team has 2+
+         active sales people. Filled by renderTeamReports. -->
+    <div id="teamReports" class="hidden" style="background:#fff;border:1px solid var(--border);border-radius:var(--r-md);padding:16px 20px;margin-bottom:24px"></div>
 
     <div class="dash-row">
       <div class="dash-card">
@@ -1080,6 +1083,11 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
           <input type="checkbox" id="settingsAutoCcTeam" style="accent-color:var(--ocean);width:16px;height:16px">
           Auto-CC the other team members on every outbound
         </label>
+      </div>
+      <div class="editor-field" style="margin-top:14px">
+        <label>Your display name (used in {{my_first_name}} / {{my_name}})</label>
+        <input type="text" id="settingsDisplayName" placeholder="Miguel Pereira">
+        <div class="editor-hint" style="margin-top:6px">Saves to team_users.full_name — affects how YOU appear in templates and avatars. Other team members each set their own.</div>
       </div>
       <div class="editor-field" style="margin-top:14px">
         <label>Your signature</label>
@@ -2053,6 +2061,7 @@ document.getElementById('settingsBtn').addEventListener('click', () => {
   document.getElementById('settingsSharedCc').value = ccRaw === null ? '' : ccRaw;
   document.getElementById('settingsAutoCcTeam').checked = autoCcTeam();
   document.getElementById('settingsSignature').value = userSignature();
+  document.getElementById('settingsDisplayName').value = CURRENT_TEAM_USER?.full_name || '';
   refreshGmailUi();
   document.getElementById('settingsModal').classList.add('open');
 });
@@ -2077,6 +2086,19 @@ document.getElementById('settingsSaveBtn').addEventListener('click', () => {
     const sig = document.getElementById('settingsSignature').value;
     if(sig.trim() === '') localStorage.removeItem('crmSignature:' + session.user.id);
     else                  localStorage.setItem('crmSignature:' + session.user.id, sig);
+  }
+  // Display name → team_users.full_name. Fire-and-forget; the
+  // realtime channel on team_users (if subscribed) would echo, but
+  // we also mirror locally so {{my_first_name}} updates immediately.
+  const newName = document.getElementById('settingsDisplayName').value.trim();
+  if(CURRENT_TEAM_USER && newName && newName !== CURRENT_TEAM_USER.full_name){
+    getClient().from('team_users').update({ full_name: newName })
+      .eq('id', CURRENT_TEAM_USER.id).then(({ error }) => {
+        if(error){ toast('Display name save failed: '+error.message); return; }
+        CURRENT_TEAM_USER.full_name = newName;
+        const idx = TEAM_USERS.findIndex(u => u.id === CURRENT_TEAM_USER.id);
+        if(idx >= 0) TEAM_USERS[idx].full_name = newName;
+      });
   }
   _gmailTokenClient = null;  // force re-init with the new id
   toast('Settings saved');
@@ -2624,10 +2646,48 @@ document.querySelectorAll('.nav-tab').forEach(t=>{
 // ════════════════════════════════════════════════════════════════════════
 //  DASHBOARD
 // ════════════════════════════════════════════════════════════════════════
+// Per-team report tile — one row per active sales team_user with
+// overdue / today / sent this week / closed this week counts. Built
+// from the in-memory TASKS + outreach_activity for sent + status
+// changes to active_partner this week. Hidden when <2 active sales.
+function renderTeamReports(){
+  const el = document.getElementById('teamReports');
+  if(!el) return;
+  const sales = TEAM_USERS.filter(u => u.active !== false && (!u.role || u.role === 'sales'));
+  if(sales.length < 2){ el.classList.add('hidden'); return; }
+  el.classList.remove('hidden');
+  const today = new Date().toISOString().slice(0,10);
+  const weekAgo = addDays(today, -7);
+  const rowsHtml = sales.map(u => {
+    const myTasks = TASKS.filter(t => t.owner_id === u.id);
+    const overdue = myTasks.filter(t => !t.done_at && t.due_at && t.due_at.slice(0,10) < today).length;
+    const dueToday = myTasks.filter(t => !t.done_at && t.due_at && t.due_at.slice(0,10) === today).length;
+    const doneWk = myTasks.filter(t => t.done_at && t.done_at.slice(0,10) >= weekAgo).length;
+    // Crude "deals owned" approximation: companies whose
+    // account_manager_id matches this user.
+    const ownedCount = CONTACTS.filter(c => c.account_manager_id === u.id).length;
+    return `
+      <div style="display:grid;grid-template-columns:auto 1.3fr repeat(4,1fr);align-items:center;gap:14px;padding:8px 0;border-bottom:1px solid #eef3f8">
+        <div>${ownerBadgeHtml(u.id, 26)}</div>
+        <div style="font-weight:700;color:var(--ink);font-size:13.5px">${escHtml(u.full_name || u.email || 'unnamed')}</div>
+        <div style="font-size:12px"><span style="color:var(--muted)">Overdue</span> <b style="color:${overdue?'var(--red-text)':'var(--ink)'};font-family:'DM Mono',monospace">${overdue}</b></div>
+        <div style="font-size:12px"><span style="color:var(--muted)">Today</span> <b style="font-family:'DM Mono',monospace">${dueToday}</b></div>
+        <div style="font-size:12px"><span style="color:var(--muted)">Done 7d</span> <b style="color:${doneWk?'var(--green-text)':'var(--ink)'};font-family:'DM Mono',monospace">${doneWk}</b></div>
+        <div style="font-size:12px"><span style="color:var(--muted)">Accounts</span> <b style="font-family:'DM Mono',monospace">${ownedCount}</b></div>
+      </div>
+    `;
+  }).join('');
+  el.innerHTML = `
+    <div style="font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);font-weight:700;margin-bottom:10px">Team activity (last 7 days)</div>
+    ${rowsHtml}
+  `;
+}
+
 function renderDashboard(){
   const today = new Date().toISOString().slice(0,10);
   document.getElementById('todayDate').textContent =
     new Date().toLocaleDateString('en-GB', { weekday:'long', day:'2-digit', month:'long' });
+  renderTeamReports();
   // Scope toggle visibility + active state. Only shown when the
   // team has 2+ members — for a solo deploy "Mine" and "All" are
   // identical so the toggle is noise.
