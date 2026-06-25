@@ -132,6 +132,7 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
 .kanban-card{background:#fff;border:1px solid var(--border);border-radius:10px;padding:10px 12px;cursor:grab;transition:box-shadow .15s,transform .15s;user-select:none}
 .kanban-card.just-moved{animation:kanban-flash .9s ease-out 1}
 @keyframes kanban-flash{0%{background:var(--green-bg);box-shadow:0 0 0 3px var(--green-text)}100%{background:#fff;box-shadow:none}}
+@keyframes sync-spin{to{transform:rotate(360deg)}}
 .kanban-card:hover{box-shadow:0 6px 16px rgba(40,57,75,.12);transform:translateY(-1px)}
 .kanban-card:active,.kanban-card.dragging{cursor:grabbing;opacity:.6}
 .kc-name{font-weight:700;color:var(--navy);font-size:13px;line-height:1.25;margin-bottom:3px;display:flex;justify-content:space-between;gap:6px;align-items:flex-start}
@@ -1447,7 +1448,12 @@ async function syncGmailInbox(opts = {}){
   const query = buildGmailSyncQuery(7);
   if(!query){ t('No CRM contacts have emails to match against'); return; }
   const syncBtn = document.getElementById('gmailSyncBtn');
-  if(syncBtn && !silent){ syncBtn.disabled = true; syncBtn.textContent = 'Syncing…'; }
+  if(syncBtn && !silent){
+    syncBtn.disabled = true;
+    syncBtn.style.opacity = '.7';
+    syncBtn.style.cursor = 'wait';
+    syncBtn.innerHTML = '<span class="sync-spinner" style="display:inline-block;width:10px;height:10px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:sync-spin .8s linear infinite;vertical-align:-1px;margin-right:6px"></span>Syncing…';
+  }
   try {
     // 1. List candidate message ids.
     const listResp = await fetch(
@@ -1544,7 +1550,13 @@ async function syncGmailInbox(opts = {}){
   } finally {
     // Only restore the button if we changed it; refreshGmailUi will
     // re-render the "Xm ago" label from the freshly-stamped LS key.
-    if(syncBtn && !silent){ syncBtn.disabled = false; refreshGmailUi(); }
+    if(syncBtn && !silent){
+      syncBtn.disabled = false;
+      syncBtn.style.opacity = '';
+      syncBtn.style.cursor = '';
+      // refreshGmailUi re-stamps the label with the new "Xm ago".
+      refreshGmailUi();
+    }
   }
 }
 
@@ -1780,6 +1792,35 @@ function closeBatchSendModal(){
   }
   document.getElementById('batchSendModal').classList.remove('open');
 }
+
+// Esc closes any open modal — single global handler walks every
+// .compose-modal that's currently `.open`. Skipped while typing in
+// any input/textarea so Esc still defocuses fields the way native
+// behaviour expects. Detail panel close is handled by its own
+// existing handler, but Esc on it works via the same mechanism
+// since the panel uses the same .open class.
+document.addEventListener('keydown', (e) => {
+  if(e.key !== 'Escape') return;
+  const tag = (e.target.tagName || '').toLowerCase();
+  if(tag === 'input' || tag === 'textarea' || e.target.isContentEditable) return;
+  // Close every open modal — usually there's one, but if Settings
+  // was opened over the detail panel both should dismiss.
+  let closedAny = false;
+  document.querySelectorAll('.compose-modal.open').forEach(m => {
+    m.classList.remove('open');
+    closedAny = true;
+  });
+  // Detail panel + overlay use a separate class; collapse them too.
+  const detail = document.getElementById('detailPanel');
+  const overlay = document.getElementById('detailOverlay');
+  if(detail?.classList.contains('open')){
+    detail.classList.remove('open');
+    overlay?.classList.remove('open');
+    CURRENT_CONTACT = null;
+    closedAny = true;
+  }
+  if(closedAny) e.preventDefault();
+});
 
 // Contacts-tab cursor — same pattern as the Tasks tab. Reset on
 // renderContacts so a filter change can't leave it pointing past
@@ -2336,13 +2377,17 @@ async function loadTemplates(){
 // timestamp. Email rows get a synthetic action='email_inbound' or
 // 'email_outbound' so activityLabel renders them with the subject +
 // snippet inline, not just "Marked as replied".
-async function loadActivity(contactId){
+//
+// limit is per-source — both tables fetched in parallel, both
+// truncated. "Load more" button below the list bumps it and re-
+// renders the activity section in place.
+async function loadActivity(contactId, limit = 50){
   const c = getClient();
   const [actR, emailR] = await Promise.all([
     c.from('outreach_activity').select('*').eq('contact_id', contactId)
-      .order('created_at', { ascending: false }).limit(50),
+      .order('created_at', { ascending: false }).limit(limit),
     c.from('email_messages').select('*').eq('company_id', contactId)
-      .order('sent_at', { ascending: false, nullsFirst: false }).limit(50),
+      .order('sent_at', { ascending: false, nullsFirst: false }).limit(limit),
   ]);
   if(actR.error) return [];
   const activity = actR.data || [];
@@ -3096,6 +3141,17 @@ function renderContacts(){
       e.stopPropagation();
       openInlineStatus(pill, tr.dataset.id);
     });
+    // Hover preview — reuses the Kanban singleton popover. Same
+    // 400ms delay so it doesn't flash while the user scans. Hidden
+    // on mouseleave.
+    tr.addEventListener('mouseenter', () => {
+      clearTimeout(_kanbanHoverTimer);
+      _kanbanHoverTimer = setTimeout(() => {
+        const c = CONTACTS.find(x => x.id === tr.dataset.id);
+        if(c) showKanbanHover(tr, c);
+      }, 400);
+    });
+    tr.addEventListener('mouseleave', hideKanbanHover);
   });
 
   // Restore visual state for any pre-selected ids that are still on screen.
@@ -3311,10 +3367,19 @@ document.getElementById('bulkFollowup').addEventListener('change', async (e)=>{
 async function openContact(id){
   const c = CONTACTS.find(x=>x.id===id);
   if(!c) return;
+  // Reset the per-section activity limit whenever a different
+  // contact is opened. Stays at the bumped value if the same
+  // contact is re-opened (e.g. after a stage change re-render).
+  if(CURRENT_CONTACT?.id !== c.id) ACTIVITY_LIMIT = 50;
   CURRENT_CONTACT = c;
   document.getElementById('detailTitle').textContent = c.company;
   const body = document.getElementById('detailBody');
-  const activity = await loadActivity(id);
+  const activity = await loadActivity(id, ACTIVITY_LIMIT);
+  // If we got fewer than the cap, there's nothing left to load —
+  // hide the Load-more button. If we got exactly the cap, there
+  // MAY be more (could be exactly N and no more) but the button
+  // is cheap to show.
+  const moreAvailable = activity.length >= ACTIVITY_LIMIT;
   body.innerHTML = `
     <div class="detail-section">
       <div class="detail-section-title">Contact</div>
@@ -3425,10 +3490,18 @@ async function openContact(id){
     </div>
 
     <div class="detail-section">
-      <div class="detail-section-title" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+      <div class="detail-section-title" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
         <span>Activity</span>
         ${activity.length > 5 ? `<input type="search" id="activitySearch" placeholder="Filter…" style="border:1px solid var(--border);border-radius:6px;padding:3px 8px;font-size:11px;font-family:'Outfit',sans-serif;font-weight:600;width:140px">` : ''}
       </div>
+      ${activity.length > 5 ? `
+      <div id="activityTypeChips" style="display:flex;gap:4px;flex-wrap:wrap;margin:6px 0 10px">
+        <button data-act-type="all"    class="act-chip" style="background:var(--ocean);color:#fff;border:none;border-radius:999px;padding:3px 9px;font-size:10.5px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">All</button>
+        <button data-act-type="email"  class="act-chip" style="background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:999px;padding:3px 9px;font-size:10.5px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">Emails</button>
+        <button data-act-type="status" class="act-chip" style="background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:999px;padding:3px 9px;font-size:10.5px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">Status</button>
+        <button data-act-type="group"  class="act-chip" style="background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:999px;padding:3px 9px;font-size:10.5px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">Groups</button>
+        <button data-act-type="other"  class="act-chip" style="background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:999px;padding:3px 9px;font-size:10.5px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">Other</button>
+      </div>` : ''}
       <div id="activityList">
         ${activity.length ? activity.map(a=>{
           const label = activityLabel(a);
@@ -3448,6 +3521,7 @@ async function openContact(id){
           return `<div class="activity-item ${a.action}" data-act-blob="${escAttr(blob)}" style="position:relative;padding-right:34px">${delBtn}<div class="activity-action">${label}</div>${a.meta?.note?`<div class="activity-meta">${escHtml(a.meta.note)}</div>`:''}<div class="activity-time">${fmtDateTime(a.created_at)}${a.created_by?' · '+escHtml(a.created_by):''}</div></div>`;
         }).join('') : '<div class="empty-state" style="padding:12px;text-align:left">No activity yet.</div>'}
       </div>
+      ${moreAvailable ? `<button type="button" id="activityLoadMore" style="margin-top:10px;width:100%;background:transparent;border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12px;font-weight:700;color:var(--ocean);cursor:pointer;font-family:'Outfit',sans-serif">Load 50 more</button>` : ''}
     </div>
   `;
 
@@ -3559,19 +3633,61 @@ async function openContact(id){
   // status_changed: if the LAST status change is the one we delete, revert
   // c.status to that activity's old_value so the pill in the row matches
   // the new (shorter) timeline.
-  // Activity search — case-insensitive substring filter against the
-  // pre-computed data-act-blob on each row. Hidden rows are display:
-  // none so the per-row delete handlers still bind cleanly.
+  // Activity search + type chips work together: a row is visible
+  // iff it matches BOTH the search text AND the active type chip.
+  // Persisted via two private vars on the section, applied by
+  // applyActivityFilter().
+  let _actSearch = '';
+  let _actType   = 'all';
+  const TYPE_MAP = {
+    all:    () => true,
+    email:  (act) => /^email_|^replied_marked$/.test(act),
+    status: (act) => act === 'status_changed',
+    group:  (act) => /^group_/.test(act),
+    other:  (act) => !(/^email_|^replied_marked$|^status_changed$|^group_/.test(act)),
+  };
+  function applyActivityFilter(){
+    document.querySelectorAll('#activityList .activity-item').forEach(row => {
+      const blob = row.dataset.actBlob || '';
+      const action = (row.className.match(/activity-item\s+(\S+)/) || [])[1] || '';
+      const typeOk = (TYPE_MAP[_actType] || TYPE_MAP.all)(action);
+      const textOk = !_actSearch || blob.includes(_actSearch);
+      row.style.display = (typeOk && textOk) ? '' : 'none';
+    });
+  }
   const actSearchEl = document.getElementById('activitySearch');
   if(actSearchEl){
     actSearchEl.addEventListener('input', () => {
-      const q = actSearchEl.value.trim().toLowerCase();
-      document.querySelectorAll('#activityList .activity-item').forEach(row => {
-        const blob = row.dataset.actBlob || '';
-        row.style.display = (!q || blob.includes(q)) ? '' : 'none';
-      });
+      _actSearch = actSearchEl.value.trim().toLowerCase();
+      applyActivityFilter();
     });
   }
+  // Load-more bumps the per-contact activity cap and re-opens the
+  // panel. Re-open is cheap (already a render of cached state +
+  // one query) and means the new rows come pre-wired with all the
+  // delete / filter handlers.
+  const loadMoreBtn = document.getElementById('activityLoadMore');
+  if(loadMoreBtn){
+    loadMoreBtn.addEventListener('click', () => {
+      ACTIVITY_LIMIT += 50;
+      loadMoreBtn.disabled = true;
+      loadMoreBtn.textContent = 'Loading…';
+      openContact(c.id);
+    });
+  }
+  document.querySelectorAll('#activityTypeChips .act-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      _actType = chip.dataset.actType;
+      // Re-paint chips so the active one stands out.
+      document.querySelectorAll('#activityTypeChips .act-chip').forEach(c => {
+        const active = c.dataset.actType === _actType;
+        c.style.background  = active ? 'var(--ocean)' : 'transparent';
+        c.style.color       = active ? '#fff' : 'var(--muted)';
+        c.style.borderColor = active ? 'var(--ocean)' : 'var(--border)';
+      });
+      applyActivityFilter();
+    });
+  });
   document.querySelectorAll('#activityList .activity-del').forEach(btn=>{
     btn.addEventListener('mouseenter', ()=>{ btn.style.background='var(--red-bg)'; btn.style.color='var(--red-text)'; });
     btn.addEventListener('mouseleave', ()=>{ btn.style.background='transparent'; btn.style.color='var(--muted)'; });
@@ -3654,7 +3770,12 @@ function activityLabel(a){
       const subj = a.meta?.subject || '(no subject)';
       const from = a.meta?.from ? ` · <span style="color:var(--muted);font-weight:400">from ${escHtml(a.meta.from)}</span>` : '';
       const snip = a.meta?.snippet ? `<div class="activity-meta" style="margin-top:4px;color:var(--muted);font-size:11.5px;font-style:italic">${escHtml(String(a.meta.snippet).slice(0,180))}${(a.meta.snippet||'').length > 180 ? '…' : ''}</div>` : '';
-      return `${uiIcon('mail')} <b>Reply received:</b> "${escHtml(subj)}"${from}${snip}`;
+      // Open the actual thread in Gmail. Uses the same authuser as
+      // the Compose / Check-inbox URLs so the account is consistent.
+      const threadLink = a.meta?.thread_id
+        ? ` · <a href="https://mail.google.com/mail/?authuser=${encodeURIComponent(GMAIL_AUTHUSER)}#all/${encodeURIComponent(a.meta.thread_id)}" target="_blank" style="color:var(--ocean);text-decoration:none;font-weight:600">open in Gmail →</a>`
+        : '';
+      return `${uiIcon('mail')} <b>Reply received:</b> "${escHtml(subj)}"${from}${threadLink}${snip}`;
     }
     case 'email_outbound': {
       const subj = a.meta?.subject || '(no subject)';
@@ -5159,6 +5280,11 @@ let TASKS_TAB_GROUP = localStorage.getItem('crmTasksTabGroup') === '1';
 // row focused. Reset on every renderTasksTab so it can't point past
 // the end after a filter change.
 let TASKS_TAB_KB_INDEX = -1;
+// Per-contact activity cap. Bumped by the Load-more button so
+// re-opening the same contact (after a stage change, etc.) keeps
+// the expanded view; resets to 50 when a different contact is
+// opened.
+let ACTIVITY_LIMIT = 50;
 // Set of task ids currently selected for bulk actions. Survives a
 // re-render so the user can flip filters without losing selection.
 const TASKS_TAB_SELECTED = new Set();
@@ -5408,6 +5534,19 @@ function renderTasksTab(){
   });
   // Per-row snooze chips.
   wireSnoozeChips(listEl);
+  // Hover preview on each task row — uses the company id so the
+  // popover shows context for the parent company, not the task
+  // itself (which is already fully on screen).
+  listEl.querySelectorAll('.tasks-tab-row').forEach(row => {
+    row.addEventListener('mouseenter', () => {
+      clearTimeout(_kanbanHoverTimer);
+      _kanbanHoverTimer = setTimeout(() => {
+        const c = CONTACTS.find(x => x.id === row.dataset.companyId);
+        if(c) showKanbanHover(row, c);
+      }, 400);
+    });
+    row.addEventListener('mouseleave', hideKanbanHover);
+  });
 }
 
 // Shows / hides the bulk action bar and refreshes its count. Called
