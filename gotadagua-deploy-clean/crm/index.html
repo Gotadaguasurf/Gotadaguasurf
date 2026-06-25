@@ -1329,7 +1329,7 @@ let PIPELINE_FILTER = {
   // Owner scope on the Pipeline tab — 'mine' / 'theirs' / 'all'.
   // Filter is by outreach_contacts.account_manager_id (the
   // overall account ownership). Persisted per-browser.
-  ownerScope: localStorage.getItem('crmPipelineOwnerScope') || 'mine',
+  ownerScope: localStorage.getItem('crmPipelineOwnerScope') || 'all',
 };
 let TEMPLATES = [];
 
@@ -1569,7 +1569,26 @@ function connectGmail(){
   if(!client) return;
   // prompt='' attempts silent re-auth when user has consented before;
   // GIS falls back to a popup when it needs explicit consent.
-  client.requestAccessToken({ prompt: gmailIsConnected() ? '' : 'consent' });
+  // error_callback fires when GIS itself can't open the popup
+  // (popup blocker, missing/wrong Authorized JS origin, network
+  // block). Without it the click looks like nothing happened —
+  // make it loud so the user can actually act on the cause.
+  try {
+    client.requestAccessToken({
+      prompt: gmailIsConnected() ? '' : 'consent',
+      error_callback: (err) => {
+        const type = err?.type || 'unknown';
+        if(type === 'popup_failed_to_open' || type === 'popup_closed'){
+          toast('Popup blocked — allow popups for this site, then click Connect Gmail again');
+        } else {
+          toast(`Gmail OAuth failed: ${type} — check Authorized JS origins in Google Cloud (must match this URL exactly)`);
+        }
+      },
+    });
+  } catch(err){
+    toast('Gmail connect threw: ' + (err?.message || 'see console'));
+    console.warn('connectGmail threw', err);
+  }
 }
 
 function disconnectGmail(){
@@ -3503,6 +3522,30 @@ function daysBetween(a, b){
 // near-duplicates. Used by populateFilters() to build the option list AND
 // by the row filter so selecting "Germany" still matches a "Germany/France"
 // contact (handled inside renderContacts via primaryCountry()).
+// Imported rows sometimes have Plus Codes ("F95W+JM") + full street
+// addresses ("Senate House, 24 Tyndall Ave, Bristol BS8 1TH") jammed
+// into the city column. Display-only cleanup: strip the Plus Code,
+// then take the comma segment most likely to be the city (no digits
+// + reasonable length). Falls back to the raw string if nothing
+// fits — better to show something than nothing.
+function cleanCity(raw){
+  if(!raw) return '';
+  // Drop Open Location Code / Plus Code tokens. Loose pattern —
+  // 4+ uppercase alnum, a '+', 2+ alnum.
+  let s = String(raw).replace(/\b[A-Z0-9]{4,}\+[A-Z0-9]{2,}\b/g, '').trim();
+  // Strip trailing UK-style postal codes and number-heavy fragments.
+  s = s.replace(/,\s*[A-Z0-9]{2,4}\s*\d[A-Z0-9 ]{2,5}$/i, '').trim();
+  if(s.length <= 40) return s;
+  // Comma-split — prefer the LAST short, letter-heavy segment
+  // (cities typically end the address). Skip parts that look like
+  // postal codes or are mostly digits.
+  const parts = s.split(',').map(p => p.trim()).filter(Boolean);
+  const cityLike = parts
+    .filter(p => p.length >= 2 && p.length <= 35 && !/^\d/.test(p) && /[A-Za-z]{3,}/.test(p));
+  if(cityLike.length) return cityLike[cityLike.length - 1];
+  return s.slice(0, 40) + '…';
+}
+
 function primaryCountry(country){
   if(!country) return '';
   return String(country).split(/[\/,;]/)[0].trim();
@@ -3519,7 +3562,7 @@ function populateFilters(){
 let CURRENT_PRESET = localStorage.getItem('crmContactsPreset') || 'all';
 // Contacts-tab owner scope ('mine' | 'theirs' | 'all'). Persists in
 // localStorage and travels with saved views via filters.ownerScope.
-let CONTACTS_OWNER_SCOPE = localStorage.getItem('crmContactsOwnerScope') || 'mine';
+let CONTACTS_OWNER_SCOPE = localStorage.getItem('crmContactsOwnerScope') || 'all';
 
 ['filterStatus','filterCountry','filterSegment','filterSearch'].forEach(id=>{
   document.getElementById(id).addEventListener('input', renderContacts);
@@ -3714,7 +3757,7 @@ function renderContactRow(c, today){
         <div class="cname">${ownerPrefix}${escHtml(c.company)}</div>
         <div class="cmeta">${c.email?escHtml(c.email):'<span style="color:var(--red-text)">no email</span>'}</div>
       </td>
-      <td>${escHtml(c.country||'')}${c.city?' · '+escHtml(c.city):''}</td>
+      <td>${escHtml(c.country||'')}${c.city?' · '+escHtml(cleanCity(c.city)):''}</td>
       <td>${escHtml(c.segment||'')}</td>
       <td><button type="button" class="status-pill s-${c.status}" title="Click to change status">${STATUS_LABELS[c.status]||c.status}</button></td>
       <td>${c.last_contacted_at ? fmtDate(c.last_contacted_at)+' '+sinceBadge : '—'}</td>
@@ -6448,11 +6491,11 @@ let TASKS_TAB_FILTER = localStorage.getItem('crmTasksTabFilter') || 'open';
 let TASKS_TAB_GROUP = localStorage.getItem('crmTasksTabGroup') === '1';
 // Owner scope: 'mine' (default — lands you on your own work),
 // 'theirs' (other team members), 'all' (everyone).
-let TASKS_TAB_OWNER_SCOPE = localStorage.getItem('crmTasksTabOwnerScope') || 'mine';
+let TASKS_TAB_OWNER_SCOPE = localStorage.getItem('crmTasksTabOwnerScope') || 'all';
 // Dashboard hero scope — 'mine' filters tasks by owner_id +
 // follow-ups by account_manager_id; 'all' shows everyone.
 // Toggle is hidden on solo deploys (TEAM_USERS < 2).
-let DASHBOARD_SCOPE = localStorage.getItem('crmDashboardScope') || 'mine';
+let DASHBOARD_SCOPE = localStorage.getItem('crmDashboardScope') || 'all';
 // Keyboard-nav cursor index into the currently visible rows. -1 = no
 // row focused. Reset on every renderTasksTab so it can't point past
 // the end after a filter change.
@@ -7664,7 +7707,7 @@ function renderPipeline(){
   const clearBtn = document.getElementById('pipelineFilterClear');
   if(clearBtn){
     clearBtn.onclick = () => {
-      PIPELINE_FILTER = { text:'', country:'', segment:'', stuckOnly:false, stageId:null, ownerScope: TEAM_USERS.length>=2 ? 'mine' : 'all' };
+      PIPELINE_FILTER = { text:'', country:'', segment:'', stuckOnly:false, stageId:null, ownerScope: 'all' };
       localStorage.setItem('crmPipelineOwnerScope', PIPELINE_FILTER.ownerScope);
       if(tEl) tEl.value = '';
       renderPipeline();
@@ -7880,7 +7923,13 @@ function renderPipelineByStatus(){
   const board = document.getElementById('kanban');
   const visibleContacts = filteredContactsForPipeline();
   updatePipelineFilterCount(visibleContacts.length, CONTACTS.length);
-  board.innerHTML = STATUS_ORDER.map(stage => {
+  // Hide "not_started" from the Kanban — for a 2000+ contact DB it's
+  // a single 2000-card column that crushes render perf and reads as
+  // an inbox, not a board. The Contacts tab is the right surface to
+  // start outreach from; the Kanban shows only contacts that ARE in
+  // the funnel.
+  const visibleStages = STATUS_ORDER.filter(s => s !== 'not_started');
+  board.innerHTML = visibleStages.map(stage => {
     const inStage = visibleContacts.filter(c => (c.status || 'not_started') === stage);
     // Same → push button concept as pipeline mode, driven by the
     // hand-curated STATUS_NEXT mapping above. Terminal statuses
