@@ -463,7 +463,14 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
     <!-- Hero: today's tasks - the "what to do RIGHT NOW" surface. -->
     <div class="hero-today" id="heroToday">
       <div class="hero-today-inner">
-        <div class="hero-today-eyebrow">Today · <span id="todayDate"></span></div>
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap">
+          <div class="hero-today-eyebrow">Today · <span id="todayDate"></span></div>
+          <!-- Scope toggle — hidden on solo deploys via JS. -->
+          <div id="dashboardScopeToggle" class="hidden" style="display:flex;gap:4px;align-items:center">
+            <button data-dash-scope="mine" class="dash-scope-btn" style="background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.25);border-radius:999px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">Mine</button>
+            <button data-dash-scope="all" class="dash-scope-btn" style="background:transparent;color:#bdd4e8;border:1px solid rgba(255,255,255,.2);border-radius:999px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">All team</button>
+          </div>
+        </div>
         <div class="hero-today-title" id="heroTodayTitle">Loading…</div>
         <div class="hero-today-sub" id="heroTodaySub"></div>
         <div class="hero-today-list" id="heroTodayList"></div>
@@ -2484,6 +2491,24 @@ function renderDashboard(){
   const today = new Date().toISOString().slice(0,10);
   document.getElementById('todayDate').textContent =
     new Date().toLocaleDateString('en-GB', { weekday:'long', day:'2-digit', month:'long' });
+  // Scope toggle visibility + active state. Only shown when the
+  // team has 2+ members — for a solo deploy "Mine" and "All" are
+  // identical so the toggle is noise.
+  const scopeWrap = document.getElementById('dashboardScopeToggle');
+  if(scopeWrap){
+    scopeWrap.classList.toggle('hidden', TEAM_USERS.length < 2);
+    scopeWrap.querySelectorAll('.dash-scope-btn').forEach(b => {
+      const active = b.dataset.dashScope === DASHBOARD_SCOPE;
+      b.style.background = active ? 'rgba(255,255,255,.15)' : 'transparent';
+      b.style.color = active ? '#fff' : '#bdd4e8';
+      b.style.borderColor = active ? 'rgba(255,255,255,.25)' : 'rgba(255,255,255,.2)';
+      b.onclick = () => {
+        DASHBOARD_SCOPE = b.dataset.dashScope;
+        localStorage.setItem('crmDashboardScope', DASHBOARD_SCOPE);
+        renderDashboard();
+      };
+    });
+  }
 
   // ── HERO: today's tasks ──────────────────────────────────────────────
   // Tasks that need user action TODAY, prioritised in this order:
@@ -2493,19 +2518,30 @@ function renderDashboard(){
   //   3. Follow-ups due today
   //   4. Stale sent emails (>14d silent — opportunity to nudge)
   //   5. Random "needs first touch" if nothing else (always have work)
-  const openTasks = TASKS.filter(t => !t.done_at);
+  // Owner scope — tasks filter by owner_id, follow-ups by account_
+  // manager_id (the closest analogue at the company level). Default
+  // 'mine' for multi-user teams so each person lands on their own
+  // hero; solo deploys hide the toggle and stay 'all'.
+  const meId = CURRENT_TEAM_USER?.id || null;
+  const multiUser = TEAM_USERS.length >= 2;
+  const taskBelongsToScope = (t) =>
+    DASHBOARD_SCOPE === 'all' || !multiUser || t.owner_id === meId;
+  const companyBelongsToScope = (c) =>
+    DASHBOARD_SCOPE === 'all' || !multiUser || c.account_manager_id === meId;
+
+  const openTasks = TASKS.filter(t => !t.done_at && taskBelongsToScope(t));
   const overdueTaskRows = openTasks
     .filter(t => t.due_at && t.due_at.slice(0,10) < today)
     .sort((a,b) => a.due_at.localeCompare(b.due_at));
   const todayTaskRows = openTasks
     .filter(t => t.due_at && t.due_at.slice(0,10) === today);
   const overdueFollowups = CONTACTS
-    .filter(c => c.follow_up_at && c.follow_up_at < today)
+    .filter(c => c.follow_up_at && c.follow_up_at < today && companyBelongsToScope(c))
     .sort((a,b)=>a.follow_up_at.localeCompare(b.follow_up_at));
   const todayFollowups = CONTACTS
-    .filter(c => c.follow_up_at === today);
+    .filter(c => c.follow_up_at === today && companyBelongsToScope(c));
   const stale = CONTACTS
-    .filter(c => (c.status === 'first_email' || c.status === 'follow_up') && c.last_contacted_at && c.last_contacted_at.slice(0,10) < addDays(today,-14))
+    .filter(c => (c.status === 'first_email' || c.status === 'follow_up') && c.last_contacted_at && c.last_contacted_at.slice(0,10) < addDays(today,-14) && companyBelongsToScope(c))
     .sort((a,b)=>(a.last_contacted_at||'').localeCompare(b.last_contacted_at||''));
 
   const tasks = [];
@@ -3216,11 +3252,18 @@ function renderContactRow(c, today){
     else if(diff === 0) followCell = `<span style="color:var(--amber-text);font-weight:700">Today</span>`;
     else followCell = `${fmtDate(c.follow_up_at)} (in ${diff}d)`;
   }
+  // Account-manager avatar prefixes the company name when the team
+  // has ≥ 2 members — single glance shows who owns this account.
+  // Smaller (16px) than the Tasks badge (22px) since the row is
+  // denser.
+  const ownerPrefix = TEAM_USERS.length >= 2
+    ? `<span style="vertical-align:-3px;margin-right:6px">${ownerBadgeHtml(c.account_manager_id, 16)}</span>`
+    : '';
   return `
     <tr data-id="${c.id}">
       <td style="padding-right:0"><input type="checkbox" class="row-check" aria-label="Select ${escAttr(c.company)}"></td>
       <td>
-        <div class="cname">${escHtml(c.company)}</div>
+        <div class="cname">${ownerPrefix}${escHtml(c.company)}</div>
         <div class="cmeta">${c.email?escHtml(c.email):'<span style="color:var(--red-text)">no email</span>'}</div>
       </td>
       <td>${escHtml(c.country||'')}${c.city?' · '+escHtml(c.city):''}</td>
@@ -3430,6 +3473,12 @@ async function openContact(id){
           <option value="pt" ${c.language==='pt'?'selected':''}>Português</option>
         </select>
       </span></div>
+      <div class="detail-row"><span class="label">Account manager</span><span class="value">
+        ${TEAM_USERS.length >= 1 ? `<select id="acctMgrSelect" style="border:1px solid var(--border);border-radius:8px;padding:4px 8px;font:inherit">
+          <option value="">— unassigned —</option>
+          ${TEAM_USERS.map(u => `<option value="${u.id}" ${u.id===c.account_manager_id?'selected':''}>${escHtml(u.full_name||u.email||'unnamed')}</option>`).join('')}
+        </select>` : '—'}
+      </span></div>
       <div class="detail-row"><span class="label">Last contacted</span><span class="value" title="Last time we sent them an email">${c.last_contacted_at?fmtDateTime(c.last_contacted_at):'—'}</span></div>
       <div class="detail-row"><span class="label">Last interaction</span><span class="value" title="Any movement: email, task, status change, group, person">${c.last_interaction_at?fmtDateTime(c.last_interaction_at):'—'}</span></div>
       <div class="detail-row"><span class="label">Follow-up</span><span class="value"><input type="date" id="followupInput" value="${c.follow_up_at||''}" style="border:1px solid var(--border);border-radius:8px;padding:4px 8px;font:inherit"></span></div>
@@ -3548,7 +3597,16 @@ async function openContact(id){
           // Hide the × button on those; users can still archive in
           // Gmail itself if needed.
           const delBtn = a._email ? '' : `<button type="button" class="activity-del" data-act="${a.id}" aria-label="Delete this activity" title="Delete activity" style="position:absolute;top:6px;right:6px;width:22px;height:22px;border:none;background:transparent;color:var(--muted);border-radius:6px;cursor:pointer;font-size:14px;line-height:1;display:flex;align-items:center;justify-content:center;transition:background .15s,color .15s">×</button>`;
-          return `<div class="activity-item ${a.action}" data-act-blob="${escAttr(blob)}" style="position:relative;padding-right:34px">${delBtn}<div class="activity-action">${label}</div>${a.meta?.note?`<div class="activity-meta">${escHtml(a.meta.note)}</div>`:''}<div class="activity-time">${fmtDateTime(a.created_at)}${a.created_by?' · '+escHtml(a.created_by):''}</div></div>`;
+          // Match created_by (an email string) to a team_users row
+          // so the meta line shows "<avatar> Name · datetime" instead
+          // of just the raw address. Falls back to the existing
+          // "· email" text when no team user matches.
+          const byUser = a.created_by ? TEAM_USERS.find(u => (u.email||'').toLowerCase() === a.created_by.toLowerCase()) : null;
+          const byBadge = (byUser && TEAM_USERS.length >= 2)
+            ? `<span style="vertical-align:-3px;margin-right:5px">${ownerBadgeHtml(byUser.id, 14)}</span>${escHtml(byUser.full_name || byUser.email)}`
+            : (a.created_by ? escHtml(a.created_by) : '');
+          const byBit = byBadge ? ' · ' + byBadge : '';
+          return `<div class="activity-item ${a.action}" data-act-blob="${escAttr(blob)}" style="position:relative;padding-right:34px">${delBtn}<div class="activity-action">${label}</div>${a.meta?.note?`<div class="activity-meta">${escHtml(a.meta.note)}</div>`:''}<div class="activity-time">${fmtDateTime(a.created_at)}${byBit}</div></div>`;
         }).join('') : '<div class="empty-state" style="padding:12px;text-align:left">No activity yet.</div>'}
       </div>
       ${moreAvailable ? `<button type="button" id="activityLoadMore" style="margin-top:10px;width:100%;background:transparent;border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12px;font-weight:700;color:var(--ocean);cursor:pointer;font-family:'Outfit',sans-serif">Load 50 more</button>` : ''}
@@ -3574,6 +3632,16 @@ async function openContact(id){
     await updateContact(c.id, { language: e.target.value });
     c.language = e.target.value;
     toast('Language updated');
+  });
+
+  // Account manager — null on empty so the column accepts the
+  // "unassigned" state instead of trying to write an empty string.
+  document.getElementById('acctMgrSelect')?.addEventListener('change', async (e) => {
+    const v = e.target.value || null;
+    await updateContact(c.id, { account_manager_id: v });
+    c.account_manager_id = v;
+    const u = TEAM_USERS.find(x => x.id === v);
+    toast(v ? `Account manager → ${u?.full_name || u?.email || 'updated'}` : 'Account manager cleared');
   });
 
   // Notes auto-save on blur
@@ -4897,6 +4965,7 @@ function renderTasksList(companyId){
           </div>
         </div>
         <div class="group-actions" style="display:flex;gap:4px;flex-shrink:0;align-items:center">
+          ${TEAM_USERS.length >= 2 ? ownerBadgeHtml(t.owner_id, 22) : ''}
           ${isDone ? '' : snoozeChipsHtml(t.id)}
           <button class="group-icon-btn" data-tk-edit-id="${t.id}" title="Edit" aria-label="Edit" style="background:transparent;border:1px solid var(--border);border-radius:6px;width:26px;height:26px;cursor:pointer;color:var(--muted);font-size:14px">✎</button>
           <button class="group-icon-btn delete" data-tk-del-id="${t.id}" title="Delete" aria-label="Delete" style="background:transparent;border:1px solid var(--border);border-radius:6px;width:26px;height:26px;cursor:pointer;color:var(--red-text);font-size:16px">×</button>
@@ -5386,6 +5455,10 @@ let TASKS_TAB_GROUP = localStorage.getItem('crmTasksTabGroup') === '1';
 // Owner scope: 'mine' (default — lands you on your own work),
 // 'theirs' (other team members), 'all' (everyone).
 let TASKS_TAB_OWNER_SCOPE = localStorage.getItem('crmTasksTabOwnerScope') || 'mine';
+// Dashboard hero scope — 'mine' filters tasks by owner_id +
+// follow-ups by account_manager_id; 'all' shows everyone.
+// Toggle is hidden on solo deploys (TEAM_USERS < 2).
+let DASHBOARD_SCOPE = localStorage.getItem('crmDashboardScope') || 'mine';
 // Keyboard-nav cursor index into the currently visible rows. -1 = no
 // row focused. Reset on every renderTasksTab so it can't point past
 // the end after a filter change.
