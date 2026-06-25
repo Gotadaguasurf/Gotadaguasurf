@@ -600,6 +600,7 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
       <input type="date" id="bulkFollowup" class="filter-search" style="max-width:180px" placeholder="Set follow-up date">
       <button class="header-btn" id="bulkClear" style="background:transparent;color:var(--muted);border:1px solid var(--border)">Clear selection</button>
       <button class="header-btn" id="bulkSendEmail" style="background:var(--ocean);color:#fff;border:none">Send email batch</button>
+      <select id="bulkReassign" class="filter-select" style="max-width:200px"><option value="">Reassign to…</option></select>
       <button class="header-btn" id="bulkDelete" style="background:transparent;color:#fca5a5;border:1px solid rgba(252,165,165,.4)"><span class="ui-ic">__ICN_TRASH__</span> Delete selected</button>
     </div>
 
@@ -1220,12 +1221,19 @@ let PIPELINE_STAGES = [];    // pipeline_stages table — N rows per pipeline
 let CONTACT_PIPELINE = [];   // contact_pipeline table — company ↔ pipeline assignments
 let TEAM_USERS = [];         // team_users — sales people who own tasks / accounts
 let CURRENT_TEAM_USER = null; // the team_users row matching session.user.id
+let OUTREACH_ACTIVITY_RECENT = []; // last 7 days of outreach_activity for per-team reports
 // Which Kanban view is active. 'status' = the legacy single-pipeline
 // view that drives c.status; otherwise a pipeline id from PIPELINES.
 let CURRENT_PIPELINE_VIEW = localStorage.getItem('crmPipelineView') || 'status';
 // Pipeline tab filter state — persists across tab switches so the
 // user can flip away and come back without losing their narrowing.
-let PIPELINE_FILTER = { text: '', country: '', segment: '', stuckOnly: false, stageId: null };
+let PIPELINE_FILTER = {
+  text: '', country: '', segment: '', stuckOnly: false, stageId: null,
+  // Owner scope on the Pipeline tab — 'mine' / 'theirs' / 'all'.
+  // Filter is by outreach_contacts.account_manager_id (the
+  // overall account ownership). Persisted per-browser.
+  ownerScope: localStorage.getItem('crmPipelineOwnerScope') || 'mine',
+};
 let TEMPLATES = [];
 
 // Legacy fallback when the multi-user setup isn't seeded yet or
@@ -2282,7 +2290,7 @@ document.getElementById('loginForm').addEventListener('submit', async (e)=>{
 document.getElementById('signOutBtn').addEventListener('click', async ()=>{
   unsubscribeRealtime();
   try { await getClient().auth.signOut(); } catch(e){}
-  session = null; CONTACTS = []; PEOPLE = []; TASKS = []; PIPELINES = []; PIPELINE_STAGES = []; CONTACT_PIPELINE = []; TEAM_USERS = []; CURRENT_TEAM_USER = null; TEMPLATES = []; showLogin();
+  session = null; CONTACTS = []; PEOPLE = []; TASKS = []; PIPELINES = []; PIPELINE_STAGES = []; CONTACT_PIPELINE = []; TEAM_USERS = []; CURRENT_TEAM_USER = null; OUTREACH_ACTIVITY_RECENT = []; TEMPLATES = []; showLogin();
 });
 
 // ════════════════════════════════════════════════════════════════════════
@@ -2410,7 +2418,7 @@ function unsubscribeRealtime(){
 //  DATA LOADING
 // ════════════════════════════════════════════════════════════════════════
 async function loadAll(){
-  await Promise.all([loadContacts(), loadTemplates(), loadSavedViews(), loadGroups(), loadPeople(), loadTasks(), loadPipelines(), loadTeamUsers()]);
+  await Promise.all([loadContacts(), loadTemplates(), loadSavedViews(), loadGroups(), loadPeople(), loadTasks(), loadPipelines(), loadTeamUsers(), loadRecentActivity()]);
   // Identify the team_user row matching the current Supabase auth
   // user. Falls back to first row if no exact id match (defensive —
   // means the user logged in before the team_users seed ran).
@@ -2525,6 +2533,21 @@ async function loadPipelines(){
 // ownership and as the avatar lookup for rendered badges. Silent
 // fail if the table doesn't exist yet so an un-seeded deploy still
 // boots.
+// Last 7 days of outreach_activity, used by the per-team report tile
+// to count emails sent per user without paginating the full history.
+// Cheap query — only one column projected.
+async function loadRecentActivity(){
+  const c = getClient();
+  const weekAgoIso = new Date(Date.now() - 7 * 86400000).toISOString();
+  const { data, error } = await c.from('outreach_activity')
+    .select('action,created_by,created_at')
+    .gte('created_at', weekAgoIso)
+    .order('created_at', { ascending: false })
+    .limit(2000);
+  if(error){ console.warn('loadRecentActivity failed', error); OUTREACH_ACTIVITY_RECENT = []; return; }
+  OUTREACH_ACTIVITY_RECENT = data || [];
+}
+
 async function loadTeamUsers(){
   const c = getClient();
   const { data, error } = await c.from('team_users').select('*').eq('active', true).order('email');
@@ -2663,16 +2686,25 @@ function renderTeamReports(){
     const overdue = myTasks.filter(t => !t.done_at && t.due_at && t.due_at.slice(0,10) < today).length;
     const dueToday = myTasks.filter(t => !t.done_at && t.due_at && t.due_at.slice(0,10) === today).length;
     const doneWk = myTasks.filter(t => t.done_at && t.done_at.slice(0,10) >= weekAgo).length;
-    // Crude "deals owned" approximation: companies whose
-    // account_manager_id matches this user.
     const ownedCount = CONTACTS.filter(c => c.account_manager_id === u.id).length;
+    // Sent 7d — count of email_sent activity rows in the last week
+    // whose created_by matches this user's email. Falls back to 0
+    // if outreach_activity isn't loaded yet.
+    const sentWk = (typeof OUTREACH_ACTIVITY_RECENT === 'object' && OUTREACH_ACTIVITY_RECENT)
+      ? OUTREACH_ACTIVITY_RECENT.filter(a =>
+          a.action === 'email_sent'
+          && a.created_by === u.email
+          && a.created_at && a.created_at.slice(0,10) >= weekAgo
+        ).length
+      : 0;
     return `
-      <div style="display:grid;grid-template-columns:auto 1.3fr repeat(4,1fr);align-items:center;gap:14px;padding:8px 0;border-bottom:1px solid #eef3f8">
+      <div style="display:grid;grid-template-columns:auto 1.3fr repeat(5,1fr);align-items:center;gap:14px;padding:8px 0;border-bottom:1px solid #eef3f8">
         <div>${ownerBadgeHtml(u.id, 26)}</div>
         <div style="font-weight:700;color:var(--ink);font-size:13.5px">${escHtml(u.full_name || u.email || 'unnamed')}</div>
         <div style="font-size:12px"><span style="color:var(--muted)">Overdue</span> <b style="color:${overdue?'var(--red-text)':'var(--ink)'};font-family:'DM Mono',monospace">${overdue}</b></div>
         <div style="font-size:12px"><span style="color:var(--muted)">Today</span> <b style="font-family:'DM Mono',monospace">${dueToday}</b></div>
         <div style="font-size:12px"><span style="color:var(--muted)">Done 7d</span> <b style="color:${doneWk?'var(--green-text)':'var(--ink)'};font-family:'DM Mono',monospace">${doneWk}</b></div>
+        <div style="font-size:12px"><span style="color:var(--muted)">Sent 7d</span> <b style="color:${sentWk?'var(--ocean)':'var(--ink)'};font-family:'DM Mono',monospace">${sentWk}</b></div>
         <div style="font-size:12px"><span style="color:var(--muted)">Accounts</span> <b style="font-family:'DM Mono',monospace">${ownedCount}</b></div>
       </div>
     `;
@@ -3545,7 +3577,45 @@ function updateBulkBar(){
   const count = SELECTED.size;
   document.getElementById('bulkCount').textContent = count;
   bar.classList.toggle('hidden', count === 0);
+  // Re-populate the Reassign dropdown each time the bar surfaces so
+  // newly-added team members show up without a reload. Hidden when
+  // the team is solo (no one to reassign TO).
+  const sel = document.getElementById('bulkReassign');
+  if(sel){
+    const sales = TEAM_USERS.filter(u => u.active !== false && (!u.role || u.role === 'sales'));
+    sel.style.display = sales.length >= 2 ? '' : 'none';
+    if(sales.length >= 2){
+      sel.innerHTML = '<option value="">Reassign to…</option>'
+        + '<option value="__none__">— unassigned —</option>'
+        + sales.map(u => `<option value="${u.id}">${escHtml(u.full_name || u.email || 'unnamed')}</option>`).join('');
+      sel.value = '';
+    }
+  }
 }
+
+document.getElementById('bulkReassign').addEventListener('change', async (e) => {
+  const v = e.target.value;
+  if(!v || SELECTED.size === 0){ e.target.value = ''; return; }
+  const newId = v === '__none__' ? null : v;
+  const u = newId ? TEAM_USERS.find(x => x.id === newId) : null;
+  const label = u ? (u.full_name || u.email) : 'unassigned';
+  if(!confirm(`Reassign ${SELECTED.size} contact${SELECTED.size>1?'s':''} to ${label}?`)){
+    e.target.value = ''; return;
+  }
+  const ids = Array.from(SELECTED);
+  const { error } = await getClient().from('outreach_contacts')
+    .update({ account_manager_id: newId }).in('id', ids);
+  if(error){ toast('Reassign failed: '+error.message); e.target.value = ''; return; }
+  ids.forEach(id => {
+    const c = CONTACTS.find(x => x.id === id);
+    if(c) c.account_manager_id = newId;
+  });
+  toast(`${ids.length} contact${ids.length>1?'s':''} → ${label}`);
+  e.target.value = '';
+  clearSelection();
+  renderContacts();
+  if(CURRENT_TAB === 'dashboard') renderDashboard();
+});
 document.getElementById('selectAll').addEventListener('change', (e)=>{
   const on = e.target.checked;
   document.querySelectorAll('#contactsBody tr[data-id]').forEach(tr=>{
@@ -6826,7 +6896,16 @@ function exportPipelineCsv(){
 // filtering behaves consistently across views.
 function filteredContactsForPipeline(){
   const text = (PIPELINE_FILTER.text || '').trim().toLowerCase();
+  const meId = CURRENT_TEAM_USER?.id || null;
+  const scope = PIPELINE_FILTER.ownerScope;
   return CONTACTS.filter(c => {
+    // Owner scope only meaningful with ≥ 2 team members — for a solo
+    // deploy 'mine' would just hide every account, so we short-
+    // circuit to 'all' implicitly.
+    if(TEAM_USERS.length >= 2){
+      if(scope === 'mine'   && c.account_manager_id !== meId) return false;
+      if(scope === 'theirs' && (c.account_manager_id === meId || !c.account_manager_id)) return false;
+    }
     if(PIPELINE_FILTER.country && primaryCountry(c.country) !== PIPELINE_FILTER.country) return false;
     if(PIPELINE_FILTER.segment && c.segment !== PIPELINE_FILTER.segment) return false;
     if(text){
@@ -6878,7 +6957,8 @@ function renderPipeline(){
   const clearBtn = document.getElementById('pipelineFilterClear');
   if(clearBtn){
     clearBtn.onclick = () => {
-      PIPELINE_FILTER = { text:'', country:'', segment:'', stuckOnly:false, stageId:null };
+      PIPELINE_FILTER = { text:'', country:'', segment:'', stuckOnly:false, stageId:null, ownerScope: TEAM_USERS.length>=2 ? 'mine' : 'all' };
+      localStorage.setItem('crmPipelineOwnerScope', PIPELINE_FILTER.ownerScope);
       if(tEl) tEl.value = '';
       renderPipeline();
     };
@@ -6888,6 +6968,32 @@ function renderPipeline(){
   const expBtn = document.getElementById('pipelineExportBtn');
   if(expBtn){
     expBtn.onclick = () => exportPipelineCsv();
+  }
+  // Owner scope pills — same Mine/Theirs/All pattern as Tasks tab,
+  // hidden on solo deploys (would be one row showing the user
+  // their own counts they already see elsewhere). Inserted before
+  // the Stuck-only toggle inside the filter wrapper.
+  if(TEAM_USERS.length >= 2){
+    const wrap = document.getElementById('pipelineFilterStuck')?.parentElement;
+    let scopeWrap = document.getElementById('pipelineFilterScope');
+    if(!scopeWrap && wrap){
+      scopeWrap = document.createElement('span');
+      scopeWrap.id = 'pipelineFilterScope';
+      scopeWrap.style.cssText = 'display:inline-flex;gap:4px;margin-right:6px';
+      wrap.insertBefore(scopeWrap, document.getElementById('pipelineFilterStuck'));
+    }
+    if(scopeWrap){
+      scopeWrap.innerHTML = ['mine','theirs','all'].map(k => `
+        <button data-pscope="${k}" style="padding:7px 12px;font-size:12px;font-weight:700;border-radius:999px;border:1px solid ${PIPELINE_FILTER.ownerScope===k?'var(--ocean)':'var(--border)'};background:${PIPELINE_FILTER.ownerScope===k?'var(--ocean)':'transparent'};color:${PIPELINE_FILTER.ownerScope===k?'#fff':'var(--muted)'};cursor:pointer;font-family:'Outfit',sans-serif">${k==='mine'?'Mine':k==='theirs'?'Theirs':'All'}</button>
+      `).join('');
+      scopeWrap.querySelectorAll('[data-pscope]').forEach(b => {
+        b.addEventListener('click', () => {
+          PIPELINE_FILTER.ownerScope = b.dataset.pscope;
+          localStorage.setItem('crmPipelineOwnerScope', PIPELINE_FILTER.ownerScope);
+          renderPipeline();
+        });
+      });
+    }
   }
   // Stuck-only toggle — chip styled pill that flips active state on
   // click. Only meaningful in pipeline mode (legacy status has no
