@@ -1853,7 +1853,33 @@ async function gmailSendOne({ to, subject, body }){
     const errTxt = await resp.text();
     throw new Error(`Gmail send HTTP ${resp.status}: ${errTxt.slice(0,200)}`);
   }
+  // Returns { id, threadId, labelIds }. Caller uses id +
+  // threadId to insert into email_messages so the activity log
+  // can later link the inbound reply by thread_id.
   return await resp.json();
+}
+
+// Records an outbound email in email_messages so the activity log
+// can match the inbound reply to it via thread_id. cc + subject +
+// body snippet stored for the timeline display. No-op if the Gmail
+// API response is missing the ids (defensive).
+async function recordOutboundEmail({ companyId, gmailResult, to, subject, body }){
+  if(!gmailResult?.id || !gmailResult?.threadId) return;
+  const cc = buildCcList();
+  const { error } = await getClient().from('email_messages').insert({
+    company_id: companyId,
+    contact_id: null,
+    direction: 'outbound',
+    from_addr: gmailAuthuser(),
+    to_addr: to,
+    subject,
+    body: (body || '').slice(0, 500),
+    thread_id: gmailResult.threadId,
+    provider_msg_id: gmailResult.id,
+    status: 'sent',
+    sent_at: new Date().toISOString(),
+  });
+  if(error) console.warn('recordOutboundEmail failed', error);
 }
 
 // Picks the recipient email for a contact — primary person if set,
@@ -1997,7 +2023,11 @@ async function runBatchSend(){
     const body = renderTemplate(tpl.body, c);
     try {
       if(!dryRun){
-        await gmailSendOne({ to: r.email, subject: subj, body });
+        const sendResult = await gmailSendOne({ to: r.email, subject: subj, body });
+        // Persist the outbound so the inbound reply can later be
+        // linked by thread_id and the original "Sent" timeline row
+        // can show a "✓ Replied" badge.
+        await recordOutboundEmail({ companyId: c.id, gmailResult: sendResult, to: r.email, subject: subj, body });
         // Update local state + log activity + auto-advance status.
         let newStatus = c.status;
         if(c.status === 'not_started') newStatus = 'first_email';
@@ -2750,17 +2780,33 @@ async function loadActivity(contactId, limit = 50){
   // sent_at (real send time) falling back to created_at (when we
   // inserted the row) so old emails with no sent_at don't fall to
   // the bottom.
-  const emails = (emailR.data || []).map(m => ({
-    id:          `em_${m.id}`,        // distinct id so the delete handler can't collide
-    contact_id:  m.company_id,
-    action:      m.direction === 'inbound' ? 'email_inbound' : 'email_outbound',
-    old_value:   null,
-    new_value:   null,
-    meta:        { subject: m.subject, from: m.from_addr, snippet: m.body, thread_id: m.thread_id },
-    created_at:  m.sent_at || m.created_at,
-    created_by:  m.direction === 'inbound' ? (m.from_addr || null) : null,
-    _email:      true,                  // flag so the renderer knows not to show the delete button
-  }));
+  // Pre-compute the set of thread_ids that have any inbound reply
+  // so outbound rows can render a "✓ Replied" badge without
+  // re-scanning the array per item. Also map inbound thread_id →
+  // the inbound row itself for the "(replied DATE)" display.
+  const inboundByThread = new Map();
+  (emailR.data || []).forEach(m => {
+    if(m.direction === 'inbound' && m.thread_id && !inboundByThread.has(m.thread_id)){
+      inboundByThread.set(m.thread_id, m);
+    }
+  });
+  const emails = (emailR.data || []).map(m => {
+    const reply = m.direction === 'outbound' && m.thread_id ? inboundByThread.get(m.thread_id) : null;
+    return {
+      id:          `em_${m.id}`,        // distinct id so the delete handler can't collide
+      contact_id:  m.company_id,
+      action:      m.direction === 'inbound' ? 'email_inbound' : 'email_outbound',
+      old_value:   null,
+      new_value:   null,
+      meta:        {
+        subject: m.subject, from: m.from_addr, snippet: m.body, thread_id: m.thread_id,
+        replied_at: reply ? (reply.sent_at || reply.created_at) : null,
+      },
+      created_at:  m.sent_at || m.created_at,
+      created_by:  m.direction === 'inbound' ? (m.from_addr || null) : null,
+      _email:      true,                  // flag so the renderer knows not to show the delete button
+    };
+  });
   return [...activity, ...emails].sort((a,b) => (b.created_at||'').localeCompare(a.created_at||''));
 }
 
@@ -4353,7 +4399,16 @@ function activityLabel(a){
     }
     case 'email_outbound': {
       const subj = a.meta?.subject || '(no subject)';
-      return `${uiIcon('mail')} Sent: "${escHtml(subj)}"`;
+      // ✓ Replied badge when the precomputed match in loadActivity
+      // found an inbound on the same thread_id.
+      const repliedBadge = a.meta?.replied_at
+        ? ` <span style="color:var(--green-text);background:var(--green-bg);padding:2px 7px;border-radius:6px;font-size:11px;font-weight:700;margin-left:6px">✓ Replied ${fmtDate(a.meta.replied_at)}</span>`
+        : '';
+      // Open the thread in Gmail (same authuser).
+      const threadLink = a.meta?.thread_id
+        ? ` · <a href="https://mail.google.com/mail/?authuser=${encodeURIComponent(gmailAuthuser())}#all/${encodeURIComponent(a.meta.thread_id)}" target="_blank" style="color:var(--ocean);text-decoration:none;font-weight:600">open in Gmail →</a>`
+        : '';
+      return `${uiIcon('mail')} Sent: "${escHtml(subj)}"${repliedBadge}${threadLink}`;
     }
     case 'follow_up_set': return `${uiIcon('calendar')} Follow-up: ${a.new_value||'cleared'}`;
     case 'note_added': return `${uiIcon('note')} Note added`;
@@ -4731,7 +4786,11 @@ document.getElementById('composeSendNow').addEventListener('click', async () => 
   const btn = document.getElementById('composeSendNow');
   btn.disabled = true; btn.style.opacity = '.6'; btn.textContent = 'Sending…';
   try {
-    await gmailSendOne({ to: recipient, subject: subj, body });
+    const sendResult = await gmailSendOne({ to: recipient, subject: subj, body });
+    // Stash the outbound in email_messages with thread_id so the
+    // activity log can tag this exact send as "✓ Replied" once a
+    // reply lands via Sync inbox.
+    await recordOutboundEmail({ companyId: c.id, gmailResult: sendResult, to: recipient, subject: subj, body });
     // Same pipeline auto-advance + activity log + last_contacted as
     // the Open-in-Gmail flow, so both paths leave identical state.
     let newStatus = c.status;
