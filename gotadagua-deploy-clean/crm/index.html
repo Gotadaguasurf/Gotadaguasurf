@@ -1104,6 +1104,10 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
           </select>
         </div>
         <div class="editor-field">
+          <label>Owner</label>
+          <select id="tkOwner"></select>
+        </div>
+        <div class="editor-field" style="grid-column:1 / -1">
           <label>Due date</label>
           <input type="date" id="tkDue">
         </div>
@@ -1182,6 +1186,8 @@ let TASKS = [];      // tasks — to-do items per company (CRM v2)
 let PIPELINES = [];          // pipelines table — Sales / Account Mgmt / Partnerships
 let PIPELINE_STAGES = [];    // pipeline_stages table — N rows per pipeline
 let CONTACT_PIPELINE = [];   // contact_pipeline table — company ↔ pipeline assignments
+let TEAM_USERS = [];         // team_users — sales people who own tasks / accounts
+let CURRENT_TEAM_USER = null; // the team_users row matching session.user.id
 // Which Kanban view is active. 'status' = the legacy single-pipeline
 // view that drives c.status; otherwise a pipeline id from PIPELINES.
 let CURRENT_PIPELINE_VIEW = localStorage.getItem('crmPipelineView') || 'status';
@@ -2110,7 +2116,7 @@ document.getElementById('loginForm').addEventListener('submit', async (e)=>{
 document.getElementById('signOutBtn').addEventListener('click', async ()=>{
   unsubscribeRealtime();
   try { await getClient().auth.signOut(); } catch(e){}
-  session = null; CONTACTS = []; PEOPLE = []; TASKS = []; PIPELINES = []; PIPELINE_STAGES = []; CONTACT_PIPELINE = []; TEMPLATES = []; showLogin();
+  session = null; CONTACTS = []; PEOPLE = []; TASKS = []; PIPELINES = []; PIPELINE_STAGES = []; CONTACT_PIPELINE = []; TEAM_USERS = []; CURRENT_TEAM_USER = null; TEMPLATES = []; showLogin();
 });
 
 // ════════════════════════════════════════════════════════════════════════
@@ -2238,7 +2244,13 @@ function unsubscribeRealtime(){
 //  DATA LOADING
 // ════════════════════════════════════════════════════════════════════════
 async function loadAll(){
-  await Promise.all([loadContacts(), loadTemplates(), loadSavedViews(), loadGroups(), loadPeople(), loadTasks(), loadPipelines()]);
+  await Promise.all([loadContacts(), loadTemplates(), loadSavedViews(), loadGroups(), loadPeople(), loadTasks(), loadPipelines(), loadTeamUsers()]);
+  // Identify the team_user row matching the current Supabase auth
+  // user. Falls back to first row if no exact id match (defensive —
+  // means the user logged in before the team_users seed ran).
+  if(session?.user?.id){
+    CURRENT_TEAM_USER = TEAM_USERS.find(t => t.id === session.user.id) || TEAM_USERS[0] || null;
+  }
   populateFilters();
   populateSavedViewsDropdown();
   renderDashboard();
@@ -2341,6 +2353,20 @@ async function loadPipelines(){
   PIPELINES = pr.data || [];
   PIPELINE_STAGES = sr.data || [];
   CONTACT_PIPELINE = cpr.data || [];
+}
+
+// Active team members only. Used as the picker source for task
+// ownership and as the avatar lookup for rendered badges. Silent
+// fail if the table doesn't exist yet so an un-seeded deploy still
+// boots.
+async function loadTeamUsers(){
+  const c = getClient();
+  const { data, error } = await c.from('team_users').select('*').eq('active', true).order('email');
+  if(error){
+    if(!/relation .* does not exist/i.test(error.message||'')) console.warn('loadTeamUsers failed', error);
+    TEAM_USERS = []; return;
+  }
+  TEAM_USERS = data || [];
 }
 
 async function loadSavedViews(){
@@ -2652,6 +2678,7 @@ function renderDashboard(){
         company_id: companyId,
         title: `Follow up with ${company?.company || ''}`.trim(),
         type:  'follow_up',
+        owner_id: CURRENT_TEAM_USER?.id || null,
         due_at: new Date(tomorrow + 'T00:00:00Z').toISOString(),
         notes: null,
       };
@@ -2730,6 +2757,7 @@ function renderDashboard(){
         company_id: companyId,
         title: `Re-engage ${company?.company || ''}`.trim(),
         type:  'follow_up',
+        owner_id: CURRENT_TEAM_USER?.id || null,
         due_at: new Date(tomorrow + 'T00:00:00Z').toISOString(),
         notes: null,
       };
@@ -2944,6 +2972,7 @@ function renderDashboard(){
             company_id: companyId,
             title: `Renew contract with ${company.company || ''}`.trim(),
             type:  'follow_up',
+            owner_id: CURRENT_TEAM_USER?.id || null,
             due_at: new Date(dueDate + 'T00:00:00Z').toISOString(),
             notes: endDate ? `Contract ends ${fmtDate(endDate)}` : null,
           };
@@ -4929,6 +4958,14 @@ function openTaskModal(companyId, taskId){
   document.getElementById('tkType').value  = t?.type || 'follow_up';
   document.getElementById('tkDue').value   = t?.due_at ? t.due_at.slice(0,10) : '';
   document.getElementById('tkNotes').value = t?.notes || '';
+  // Owner picker — populated from TEAM_USERS every open so a newly
+  // added team member shows up without a reload. Defaults to the
+  // existing owner when editing, otherwise the current user.
+  const ownerSel = document.getElementById('tkOwner');
+  ownerSel.innerHTML = TEAM_USERS.map(u =>
+    `<option value="${u.id}">${escHtml(u.full_name || u.email || 'unnamed')}</option>`
+  ).join('');
+  ownerSel.value = t?.owner_id || CURRENT_TEAM_USER?.id || (TEAM_USERS[0]?.id || '');
   // Company picker: shown only when the modal opens without a known
   // company (Tasks-tab quick-add). When editing, also resolve and
   // display the current company so the user sees what they're editing.
@@ -4985,9 +5022,10 @@ document.getElementById('taskSaveBtn').addEventListener('click', async ()=>{
   const payload = {
     company_id: companyId,
     title,
-    type:   document.getElementById('tkType').value,
-    due_at: due ? new Date(due + 'T00:00:00Z').toISOString() : null,
-    notes:  document.getElementById('tkNotes').value.trim() || null
+    type:    document.getElementById('tkType').value,
+    owner_id: document.getElementById('tkOwner').value || null,
+    due_at:  due ? new Date(due + 'T00:00:00Z').toISOString() : null,
+    notes:   document.getElementById('tkNotes').value.trim() || null
   };
   const supa = getClient();
   if(_editingTaskId){
@@ -5110,6 +5148,7 @@ async function quickAddTask(companyId, preset){
     company_id: companyId,
     title: preset.title,
     type:  preset.type,
+    owner_id: CURRENT_TEAM_USER?.id || null,
     due_at: new Date(due + 'T00:00:00Z').toISOString(),
     notes: null,
   };
@@ -5321,8 +5360,32 @@ document.getElementById('myDayGo').addEventListener('click', () => {
 // Persisted across sessions so the user resumes the view they left
 // off in. localStorage keys are read-once at script-load; subsequent
 // writes happen wherever the filter/group state changes.
+// Stable color per owner id — modulo a small palette so two people
+// never collide on the same hash. Used for the avatar badge bg.
+const OWNER_PALETTE = ['#0ea5e9','#f59e0b','#8b5cf6','#16a34a','#ef4444','#ec4899','#0284c7'];
+function ownerColor(id){
+  if(!id) return '#94a3b8';
+  let h = 0;
+  for(let i=0;i<id.length;i++) h = (h*31 + id.charCodeAt(i)) >>> 0;
+  return OWNER_PALETTE[h % OWNER_PALETTE.length];
+}
+function ownerInitial(u){
+  const s = (u?.full_name || u?.email || '?').trim();
+  return s.charAt(0).toUpperCase();
+}
+function ownerBadgeHtml(ownerId, size = 22){
+  const u = TEAM_USERS.find(x => x.id === ownerId);
+  const initial = ownerInitial(u);
+  const color = ownerColor(ownerId);
+  const title = u ? (u.full_name || u.email || 'unnamed') : 'unassigned';
+  return `<span title="${escAttr(title)}" style="display:inline-flex;align-items:center;justify-content:center;width:${size}px;height:${size}px;border-radius:999px;background:${color};color:#fff;font-size:${Math.round(size*0.5)}px;font-weight:700;font-family:'Outfit',sans-serif;flex-shrink:0">${escHtml(initial)}</span>`;
+}
+
 let TASKS_TAB_FILTER = localStorage.getItem('crmTasksTabFilter') || 'open';
 let TASKS_TAB_GROUP = localStorage.getItem('crmTasksTabGroup') === '1';
+// Owner scope: 'mine' (default — lands you on your own work),
+// 'theirs' (other team members), 'all' (everyone).
+let TASKS_TAB_OWNER_SCOPE = localStorage.getItem('crmTasksTabOwnerScope') || 'mine';
 // Keyboard-nav cursor index into the currently visible rows. -1 = no
 // row focused. Reset on every renderTasksTab so it can't point past
 // the end after a filter change.
@@ -5398,11 +5461,20 @@ function renderTasksTab(){
     };
   }
 
-  // Filter pill rendering (active pill is the ocean colour).
+  // Filter pill rendering — date filter (left) + scope filter
+  // (right, separated by a thin divider). Scope only shown when the
+  // team has 2+ members; for a solo deploy it's noise.
   const filterEl = document.getElementById('tasksTabFilters');
-  filterEl.innerHTML = TASKS_TAB_FILTERS.map(f => `
+  const datePills = TASKS_TAB_FILTERS.map(f => `
     <button data-tf="${f.key}" style="padding:6px 14px;font-size:12px;font-weight:700;border-radius:999px;border:1px solid ${TASKS_TAB_FILTER===f.key?'var(--ocean)':'var(--border)'};background:${TASKS_TAB_FILTER===f.key?'var(--ocean)':'#fff'};color:${TASKS_TAB_FILTER===f.key?'#fff':'var(--ink)'};cursor:pointer;font-family:'Outfit',sans-serif">${f.label}</button>
   `).join('');
+  const scopePills = TEAM_USERS.length >= 2 ? `
+    <span style="width:1px;height:24px;background:var(--border);margin:0 4px"></span>
+    ${['mine','theirs','all'].map(k => `
+      <button data-tscope="${k}" style="padding:6px 14px;font-size:12px;font-weight:700;border-radius:999px;border:1px solid ${TASKS_TAB_OWNER_SCOPE===k?'var(--ocean)':'var(--border)'};background:${TASKS_TAB_OWNER_SCOPE===k?'var(--ocean)':'#fff'};color:${TASKS_TAB_OWNER_SCOPE===k?'#fff':'var(--ink)'};cursor:pointer;font-family:'Outfit',sans-serif">${k==='mine'?'Mine':k==='theirs'?'Theirs':'All'}</button>
+    `).join('')}
+  ` : '';
+  filterEl.innerHTML = datePills + scopePills;
   filterEl.querySelectorAll('[data-tf]').forEach(b => {
     b.addEventListener('click', () => {
       TASKS_TAB_FILTER = b.dataset.tf;
@@ -5410,9 +5482,21 @@ function renderTasksTab(){
       renderTasksTab();
     });
   });
+  filterEl.querySelectorAll('[data-tscope]').forEach(b => {
+    b.addEventListener('click', () => {
+      TASKS_TAB_OWNER_SCOPE = b.dataset.tscope;
+      localStorage.setItem('crmTasksTabOwnerScope', TASKS_TAB_OWNER_SCOPE);
+      renderTasksTab();
+    });
+  });
 
-  // Apply the active filter to the full tasks list.
+  // Apply date filter + owner scope to the full tasks list. Scope
+  // 'mine' = owner_id matches current user; 'theirs' = owned but
+  // not by current; 'all' = no scope restriction.
+  const meId = CURRENT_TEAM_USER?.id || null;
   let rows = TASKS.filter(t => {
+    if(TASKS_TAB_OWNER_SCOPE === 'mine'  && t.owner_id !== meId) return false;
+    if(TASKS_TAB_OWNER_SCOPE === 'theirs' && (t.owner_id === meId || !t.owner_id)) return false;
     if(TASKS_TAB_FILTER === 'done') return !!t.done_at;
     if(t.done_at) return false;
     const due = t.due_at ? t.due_at.slice(0,10) : null;
@@ -5525,6 +5609,7 @@ function renderTasksTab(){
         <div style="font-size:11.5px;color:var(--muted);display:flex;gap:5px;align-items:center;white-space:nowrap">${uiIcon(typeIcon)} ${TASK_TYPE_LABELS[t.type]||t.type||'—'}</div>
         <div style="font-size:12px;white-space:nowrap">${dueLabel}</div>
         <div style="display:flex;gap:4px;align-items:center;justify-content:flex-end">
+          ${TEAM_USERS.length >= 2 ? ownerBadgeHtml(t.owner_id, 22) : ''}
           ${t.done_at ? '' : snoozeChipsHtml(t.id)}
           <button data-tk-tab-edit="${t.id}" data-company-id="${t.company_id}" title="Edit" aria-label="Edit" style="background:transparent;border:1px solid var(--border);border-radius:6px;width:26px;height:26px;cursor:pointer;color:var(--muted);font-size:14px">✎</button>
         </div>
