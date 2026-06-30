@@ -171,7 +171,7 @@ Deno.serve(async (req) => {
         from_addr: account.email,
         to_addr: to,
         subject,
-        body: (body || '').slice(0, 500),
+        body: (body || '').slice(0, 8000),
         thread_id: sent.threadId,
         provider_msg_id: sent.id,
         status: 'sent',
