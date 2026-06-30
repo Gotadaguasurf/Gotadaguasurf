@@ -865,6 +865,13 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
     </div>
     <div class="compose-body">
       <div class="editor-field">
+        <label>Send as <span style="color:var(--red-text)">*</span></label>
+        <select id="composeSendAs" required>
+          <option value="">— pick sender —</option>
+        </select>
+        <div class="editor-hint" style="margin-top:6px">Drives the signature in the body + the audit trail. From always goes via <code>groups@gotadaguasurf.com</code>.</div>
+      </div>
+      <div class="editor-field">
         <label>Template</label>
         <select id="composeTemplate"></select>
       </div>
@@ -1124,6 +1131,13 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
     </div>
     <div class="compose-body">
       <div class="editor-field">
+        <label>Send as <span style="color:var(--red-text)">*</span></label>
+        <select id="batchSendAs" required>
+          <option value="">— pick sender —</option>
+        </select>
+        <div class="editor-hint" style="margin-top:6px">Every email in this batch is sent as the picked user (their signature appears in the body, their name goes into the audit trail).</div>
+      </div>
+      <div class="editor-field">
         <label>Template</label>
         <select id="batchTemplate"></select>
       </div>
@@ -1205,7 +1219,7 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
       <div class="editor-field" style="margin-top:14px">
         <label>Your signature</label>
         <textarea id="settingsSignature" style="min-height:90px;font-family:'DM Mono',monospace;font-size:12px" placeholder="Best,&#10;Miguel Pereira&#10;Co-Founder · Gota d'Água&#10;+351 916 290 842"></textarea>
-        <div class="editor-hint" style="margin-top:6px">Stored on this browser per logged-in user — Miguel's signature and Ricardo's stay independent. Use <code>{{my_signature}}</code> in any template, plus <code>{{my_first_name}}</code> / <code>{{my_name}}</code> / <code>{{my_email}}</code>.</div>
+        <div class="editor-hint" style="margin-top:6px">Stored in <code>team_users.signature</code> — any team member's browser can pick you in Send-as and your signature shows up. Use <code>{{my_signature}}</code> in any template, plus <code>{{my_first_name}}</code> / <code>{{my_name}}</code> / <code>{{my_email}}</code>.</div>
       </div>
     </div>
     <div class="compose-footer">
@@ -1856,7 +1870,7 @@ function buildGmailRawMessage({ to, subject, body, fromAuthuser, cc }){
 //      trail records who clicked Send
 // Returns { ok, message_id, thread_id, from_display } — shape adapted
 // below to match the legacy { id, threadId } the call sites expect.
-async function gmailSendOne({ to, subject, body, companyId, contactId, threadId, inReplyTo, references }){
+async function gmailSendOne({ to, subject, body, companyId, contactId, senderUserId, threadId, inReplyTo, references }){
   const supa = getClient();
   const { data: { session: s } } = await supa.auth.getSession();
   if(!s?.access_token) throw new Error('Not signed in — refresh and sign in to the CRM');
@@ -1875,7 +1889,7 @@ async function gmailSendOne({ to, subject, body, companyId, contactId, threadId,
       cc: ccList.length ? ccList.join(', ') : undefined,
       subject,
       body,
-      sender_user_id: CURRENT_TEAM_USER?.id || null,
+      sender_user_id: senderUserId || CURRENT_TEAM_USER?.id || null,
       company_id: companyId || null,
       contact_id: contactId || null,
       thread_id: threadId || undefined,
@@ -1950,6 +1964,7 @@ function openBatchSendModal(){
   tplSel.innerHTML = [...en, ...pt]
     .map(t => `<option value="${t.id}">${escHtml(t.name)} (${t.language})</option>`).join('');
   tplSel.value = (en[0] || TEMPLATES[0]).id;
+  populateSendAsPicker(document.getElementById('batchSendAs'), CURRENT_TEAM_USER?.id);
   refreshBatchPreview();
   renderBatchRecipientList();
   document.getElementById('batchDryRun').checked = false;
@@ -1964,8 +1979,9 @@ function refreshBatchPreview(){
     document.getElementById('batchPreviewBody').textContent = '';
     return;
   }
-  document.getElementById('batchPreviewSubject').textContent = renderTemplate(tpl.subject, first.contact);
-  document.getElementById('batchPreviewBody').textContent    = renderTemplate(tpl.body, first.contact);
+  const sender = pickedSender('batchSendAs');
+  document.getElementById('batchPreviewSubject').textContent = renderTemplate(tpl.subject, first.contact, sender);
+  document.getElementById('batchPreviewBody').textContent    = renderTemplate(tpl.body, first.contact, sender);
 }
 
 function renderBatchRecipientList(){
@@ -2018,14 +2034,15 @@ async function runBatchSend(){
   if(BATCH_STATE.inProgress) return;
   const tpl = TEMPLATES.find(t => t.id === document.getElementById('batchTemplate').value);
   if(!tpl){ toast('Pick a template'); return; }
+  const sender = pickedSender('batchSendAs');
+  if(!sender){ toast('Pick a sender first'); return; }
   const targets = BATCH_STATE.recipients.filter(r => r.include && r.email);
   if(targets.length === 0){ toast('Nothing to send'); return; }
   const dryRun = document.getElementById('batchDryRun').checked;
   const verb = dryRun ? 'simulate' : 'SEND';
   const cc = buildCcList();
   const ccNote = cc.length ? `\nAuto-CC: ${cc.join(', ')}` : '';
-  const senderName = CURRENT_TEAM_USER?.full_name || gmailAuthuser();
-  if(!confirm(`${verb} ${targets.length} email${targets.length>1?'s':''} as ${senderName} (from groups@gotadaguasurf.com)?${ccNote}\n\nThrottle: 1/sec. You can close the modal once it starts; sending continues in the background.`)) return;
+  if(!confirm(`${verb} ${targets.length} email${targets.length>1?'s':''} as ${sender.full_name} (from groups@gotadaguasurf.com)?${ccNote}\n\nThrottle: 1/sec. You can close the modal once it starts; sending continues in the background.`)) return;
 
   BATCH_STATE.inProgress = true;
   renderBatchRecipientList();
@@ -2036,12 +2053,12 @@ async function runBatchSend(){
     r.status = 'sending';
     renderBatchRecipientList();
     const c = r.contact;
-    const subj = renderTemplate(tpl.subject, c);
-    const body = renderTemplate(tpl.body, c);
+    const subj = renderTemplate(tpl.subject, c, sender);
+    const body = renderTemplate(tpl.body, c, sender);
     try {
       if(!dryRun){
         const primaryForBatch = primaryPersonFor(c.id);
-        await gmailSendOne({ to: r.email, subject: subj, body, companyId: c.id, contactId: primaryForBatch?.id || null });
+        await gmailSendOne({ to: r.email, subject: subj, body, companyId: c.id, contactId: primaryForBatch?.id || null, senderUserId: sender.id });
         // Update local state + log activity + auto-advance status.
         let newStatus = c.status;
         if(c.status === 'not_started') newStatus = 'first_email';
@@ -2196,6 +2213,7 @@ document.getElementById('batchSendClose').addEventListener('click', closeBatchSe
 document.getElementById('batchSendCancel').addEventListener('click', closeBatchSendModal);
 document.getElementById('batchSendStart').addEventListener('click', runBatchSend);
 document.getElementById('batchTemplate').addEventListener('change', refreshBatchPreview);
+document.getElementById('batchSendAs')?.addEventListener('change', refreshBatchPreview);
 // Re-apply the skip-recent rule when the toggle flips. Off → tick
 // every row that has an email (ignore the recent flag). On → untick
 // every recently-contacted row. Doesn't override the user's manual
@@ -2253,13 +2271,23 @@ document.getElementById('settingsSaveBtn').addEventListener('click', () => {
   const dark = document.getElementById('settingsDarkMode').checked;
   localStorage.setItem('crmDarkMode', dark ? '1' : '0');
   document.body.classList.toggle('dark', dark);
-  // Per-user signature — empty clears the key so the next read
-  // falls back to "" cleanly. session.user.id keys the slot so a
-  // shared browser doesn't cross-contaminate.
+  // Per-user signature — now stored on team_users.signature (server-side)
+  // so any browser can resolve any team member's signature for the
+  // Send-as picker. Keep writing to localStorage as a fallback for
+  // mid-migration smoothness.
   if(session?.user?.id){
     const sig = document.getElementById('settingsSignature').value;
     if(sig.trim() === '') localStorage.removeItem('crmSignature:' + session.user.id);
     else                  localStorage.setItem('crmSignature:' + session.user.id, sig);
+    if(CURRENT_TEAM_USER){
+      getClient().from('team_users').update({ signature: sig.trim() || null })
+        .eq('id', CURRENT_TEAM_USER.id).then(({ error }) => {
+          if(error){ console.warn('Signature DB save failed (LS still set):', error.message); return; }
+          CURRENT_TEAM_USER.signature = sig.trim() || null;
+          const idx = TEAM_USERS.findIndex(u => u.id === CURRENT_TEAM_USER.id);
+          if(idx >= 0) TEAM_USERS[idx].signature = sig.trim() || null;
+        });
+    }
   }
   // Display name → team_users.full_name. Fire-and-forget; the
   // realtime channel on team_users (if subscribed) would echo, but
@@ -4518,8 +4546,6 @@ function openReplyCompose(a, contact){
   modal = document.createElement('div');
   modal.id = 'replyModal';
   modal.className = 'compose-modal open';
-  const sig = (localStorage.getItem('crmSignature:' + (session?.user?.id || '')) || localStorage.getItem('crmSignature') || '').trim();
-  const signaturePrefill = sig ? `\n\n${sig}` : '';
   modal.innerHTML = `
     <div class="compose-card" style="max-width:680px">
       <div class="compose-header">
@@ -4527,6 +4553,12 @@ function openReplyCompose(a, contact){
         <button class="detail-close" id="replyClose" aria-label="Close">×</button>
       </div>
       <div class="compose-body">
+        <div class="editor-field">
+          <label>Send as <span style="color:var(--red-text)">*</span></label>
+          <select id="replySendAs" required>
+            <option value="">— pick sender —</option>
+          </select>
+        </div>
         <div class="editor-field">
           <label>To</label>
           <input type="email" id="replyTo" value="${escAttr(fromEmail)}" style="font-family:'DM Mono',monospace;font-size:12px">
@@ -4537,8 +4569,8 @@ function openReplyCompose(a, contact){
         </div>
         <div class="editor-field">
           <label>Message</label>
-          <textarea id="replyBody" style="min-height:200px;font-family:'DM Mono',monospace;font-size:13px;line-height:1.5" placeholder="Type your reply…">${escHtml(signaturePrefill)}</textarea>
-          <div class="editor-hint" style="margin-top:6px">Sends from <code>groups@gotadaguasurf.com</code> as ${escHtml(CURRENT_TEAM_USER?.full_name || gmailAuthuser())} on the same thread.</div>
+          <textarea id="replyBody" style="min-height:200px;font-family:'DM Mono',monospace;font-size:13px;line-height:1.5" placeholder="Type your reply…"></textarea>
+          <div class="editor-hint" style="margin-top:6px">Sends from <code>groups@gotadaguasurf.com</code> on the same thread. Signature comes from the picked sender's team_users row.</div>
         </div>
       </div>
       <div class="compose-footer">
@@ -4550,10 +4582,27 @@ function openReplyCompose(a, contact){
   const close = () => modal.remove();
   modal.querySelector('#replyClose').addEventListener('click', close);
   modal.querySelector('#replyCancel').addEventListener('click', close);
-  // Cursor at start so the user types ABOVE the signature.
+  populateSendAsPicker(modal.querySelector('#replySendAs'), CURRENT_TEAM_USER?.id);
   const ta = modal.querySelector('#replyBody');
+  // Pre-fill the picked sender's signature; update live when the user
+  // changes the picker (only when they haven't typed anything yet, so
+  // we don't clobber drafted text).
+  const applySig = () => {
+    const sender = TEAM_USERS.find(u => u.id === modal.querySelector('#replySendAs').value);
+    const sig = userSignatureFor(sender?.id);
+    ta.value = sig ? `\n\n${sig}` : '';
+    ta.setSelectionRange(0, 0);
+  };
+  applySig();
+  modal.querySelector('#replySendAs').addEventListener('change', () => {
+    // Only auto-replace if the textarea hasn't been edited beyond the
+    // signature footer — heuristic: starts with 2 newlines (our prefill).
+    if(/^\s*\n\s*\n/.test(ta.value) || ta.value.trim() === '') applySig();
+  });
   setTimeout(() => { ta.focus(); ta.setSelectionRange(0, 0); }, 50);
   modal.querySelector('#replySend').addEventListener('click', async () => {
+    const sender = TEAM_USERS.find(u => u.id === modal.querySelector('#replySendAs').value);
+    if(!sender){ toast('Pick a sender first'); return; }
     const to = modal.querySelector('#replyTo').value.trim();
     const subject = modal.querySelector('#replySubject').value.trim();
     const body = ta.value;
@@ -4571,6 +4620,7 @@ function openReplyCompose(a, contact){
         to, subject, body,
         companyId: contact.id,
         contactId: primaryPersonFor(contact.id)?.id || null,
+        senderUserId: sender.id,
         threadId: m.thread_id || undefined,
         inReplyTo,
         references: inReplyTo,
@@ -4840,6 +4890,28 @@ function templateIdForSequenceTask(t){
 // in the picker — used by the "Send →" buttons on sequence task
 // rows so the user doesn't have to re-pick what the sequence step
 // already said.
+// Populates a <select> with one option per active sales team_user, leaves
+// a "— pick sender —" placeholder selected unless the caller passes a
+// preferred id (typically the logged-in user). Used by Compose, Reply,
+// and Batch Send modals.
+function populateSendAsPicker(selectEl, preferredId){
+  if(!selectEl) return;
+  const senders = TEAM_USERS.filter(u => u.active !== false && (!u.role || u.role === 'sales'));
+  const fallback = TEAM_USERS.filter(u => u.active !== false && !(senders.includes(u)));
+  const list = senders.length ? senders : fallback;
+  selectEl.innerHTML = '<option value="">— pick sender —</option>' +
+    list.map(u => `<option value="${u.id}">${escHtml(u.full_name || u.email || '?')}</option>`).join('');
+  const want = preferredId || CURRENT_TEAM_USER?.id || '';
+  if(want && list.find(u => u.id === want)) selectEl.value = want;
+}
+
+// Returns the picked team_user row for a given <select> id, or null.
+function pickedSender(selectId){
+  const id = document.getElementById(selectId)?.value;
+  if(!id) return null;
+  return TEAM_USERS.find(u => u.id === id) || null;
+}
+
 function openCompose(preselectTemplateId){
   const c = CURRENT_CONTACT;
   const lang = c.language || 'en';
@@ -4857,6 +4929,7 @@ function openCompose(preselectTemplateId){
   // then first overall.
   const pre = preselectTemplateId && TEMPLATES.find(t => t.id === preselectTemplateId);
   tplSelect.value = pre ? pre.id : (langTemplates[0]?.id || TEMPLATES[0]?.id);
+  populateSendAsPicker(document.getElementById('composeSendAs'), CURRENT_TEAM_USER?.id);
   refreshComposePreview();
   document.getElementById('composeModal').classList.add('open');
 }
@@ -4866,8 +4939,11 @@ function refreshComposePreview(){
   const tpl = TEMPLATES.find(t=>t.id===tplId);
   if(!tpl) return;
   const c = CURRENT_CONTACT;
-  const subj = renderTemplate(tpl.subject, c);
-  const body = renderTemplate(tpl.body, c);
+  // Picked sender drives {{my_*}} so the preview updates live when the
+  // user changes the Send-as dropdown.
+  const sender = pickedSender('composeSendAs');
+  const subj = renderTemplate(tpl.subject, c, sender);
+  const body = renderTemplate(tpl.body, c, sender);
   document.getElementById('composeSubject').value = subj;
   document.getElementById('composePreview').textContent = body;
 }
@@ -4888,15 +4964,34 @@ function firstNameForCompany(companyId){
   return p.name.trim().split(/\s+/)[0] || '';
 }
 
-// Signature lives in localStorage keyed by the auth user id so
-// Miguel's signature and Ricardo's signature stay independent on
-// shared devices. Falls back to empty string when never set.
+// Signature now lives on team_users.signature (server-side, per row) so
+// any browser can resolve Miguel's, Ricardo's, etc. — needed for the
+// Send-as picker. Falls back to the legacy per-browser localStorage key
+// (crmSignature:<authId>) when the row's signature is empty / missing,
+// so users mid-migration don't lose their existing footers.
+function userSignatureFor(userId){
+  if(!userId) return '';
+  const tu = TEAM_USERS.find(u => u.id === userId);
+  if(tu?.signature && tu.signature.trim()) return tu.signature;
+  // Legacy fallback (only meaningful when the picked user IS the logged-in
+  // user, since LS is per-browser).
+  if(session?.user?.id === userId){
+    return localStorage.getItem('crmSignature:' + userId) || '';
+  }
+  return '';
+}
+// Back-compat shim — old call sites that don't yet pass an id resolve to
+// the logged-in user's signature (the previous behaviour).
 function userSignature(){
-  if(!session?.user?.id) return '';
-  return localStorage.getItem('crmSignature:' + session.user.id) || '';
+  return userSignatureFor(session?.user?.id);
 }
 
-function renderTemplate(text, c){
+// renderTemplate now optionally takes a senderUser (team_users row).
+// When provided, the {{my_*}} variables resolve to that user — so a
+// Send-as picker can render the preview with Ricardo's name + signature
+// even though Miguel is logged in. When omitted (legacy callers), falls
+// back to CURRENT_TEAM_USER.
+function renderTemplate(text, c, senderUser){
   // {{first_name}} was previously falling back to the first WORD of the
   // company name when no real contact name existed — i.e. the email to
   // "360 Surf Travel" began "Hi 360," and "7th Wave Surf School" got
@@ -4907,14 +5002,15 @@ function renderTemplate(text, c){
   // any leftover stray comma from a templated salutation.
   const firstName = firstNameForCompany(c.id);
   const greeting = firstName || `the ${c.company || 'team'} team`;
-  // Sender-side vars — resolve to the team_user actually sending now.
-  // Templates that use {{my_first_name}} + {{my_signature}} produce
-  // a different output per logged-in user without any per-template
-  // editing.
-  const myFull = CURRENT_TEAM_USER?.full_name || '';
+  // Sender-side vars — resolve to the PICKED sender (Send-as) when one is
+  // supplied, otherwise to the logged-in user. This lets Miguel render a
+  // preview "as Ricardo" with Ricardo's name + signature without changing
+  // login.
+  const sender = senderUser || CURRENT_TEAM_USER;
+  const myFull = sender?.full_name || '';
   const myFirst = myFull ? myFull.trim().split(/\s+/)[0] : '';
-  const myEmail = CURRENT_TEAM_USER?.email || '';
-  const mySig = userSignature();
+  const myEmail = sender?.email || '';
+  const mySig = userSignatureFor(sender?.id);
   return text
     .replace(/\{\{company\}\}/g, c.company||'')
     .replace(/\{\{first_name\}\}/g, firstName)
@@ -4932,14 +5028,19 @@ function renderTemplate(text, c){
 }
 
 document.getElementById('composeTemplate').addEventListener('change', refreshComposePreview);
+// Live-update preview when the Send-as picker changes so the user sees
+// Ricardo's signature appear the moment they pick Ricardo.
+document.getElementById('composeSendAs')?.addEventListener('change', refreshComposePreview);
 
 document.getElementById('composeOpen').addEventListener('click', async ()=>{
   const tplId = document.getElementById('composeTemplate').value;
   const tpl = TEMPLATES.find(t=>t.id===tplId);
   if(!tpl || !CURRENT_CONTACT) return;
+  const sender = pickedSender('composeSendAs');
+  if(!sender){ toast('Pick a sender first'); return; }
   const c = CURRENT_CONTACT;
-  const subj = renderTemplate(tpl.subject, c);
-  const body = renderTemplate(tpl.body, c);
+  const subj = renderTemplate(tpl.subject, c, sender);
+  const body = renderTemplate(tpl.body, c, sender);
   // Prefer the primary person's email when they have one — that's the
   // named human you've decided to talk to. Falls back to the company-
   // level email (typically the generic info@/bookings@) when no primary
@@ -4991,20 +5092,21 @@ document.getElementById('composeSendNow').addEventListener('click', async () => 
   const tplId = document.getElementById('composeTemplate').value;
   const tpl = TEMPLATES.find(t => t.id === tplId);
   if(!tpl || !CURRENT_CONTACT) return;
+  const sender = pickedSender('composeSendAs');
+  if(!sender){ toast('Pick a sender first'); return; }
   const c = CURRENT_CONTACT;
-  const subj = renderTemplate(tpl.subject, c);
-  const body = renderTemplate(tpl.body, c);
+  const subj = renderTemplate(tpl.subject, c, sender);
+  const body = renderTemplate(tpl.body, c, sender);
   const primary = primaryPersonFor(c.id);
   const recipient = (primary?.email) || c.email;
   if(!recipient){ toast('No recipient email'); return; }
   const cc = buildCcList();
   const ccLine = cc.length ? `\nCC: ${cc.join(', ')}` : '';
-  const senderName = CURRENT_TEAM_USER?.full_name || gmailAuthuser();
-  if(!confirm(`Send to ${recipient}${ccLine}\n\nFrom: ${senderName} <groups@gotadaguasurf.com>\nSubject: ${subj}\n\nThis sends immediately via the shared mailbox — no chance to edit.`)) return;
+  if(!confirm(`Send to ${recipient}${ccLine}\n\nFrom: ${sender.full_name} <groups@gotadaguasurf.com>\nSubject: ${subj}\n\nThis sends immediately via the shared mailbox — no chance to edit.`)) return;
   const btn = document.getElementById('composeSendNow');
   btn.disabled = true; btn.style.opacity = '.6'; btn.textContent = 'Sending…';
   try {
-    await gmailSendOne({ to: recipient, subject: subj, body, companyId: c.id, contactId: primary?.id || null });
+    await gmailSendOne({ to: recipient, subject: subj, body, companyId: c.id, contactId: primary?.id || null, senderUserId: sender.id });
     // Same pipeline auto-advance + activity log + last_contacted as
     // the Open-in-Gmail flow, so both paths leave identical state.
     let newStatus = c.status;
