@@ -4583,7 +4583,10 @@ function openReplyCompose(a, contact){
       const patch = { last_contacted_at: new Date().toISOString() };
       if(newStatus !== contact.status) patch.status = newStatus;
       await updateContact(contact.id, patch);
-      await logActivity(contact.id, 'email_sent', null, null, { subject, via: 'reply' });
+      // No separate email_sent log — gmail-send already inserted the
+      // email_messages row, which the activity log surfaces with subject
+      // + body + thread badge. A second log row was duplicating the
+      // entry as "Sent 'email'" with no useful info.
       contact.last_contacted_at = patch.last_contacted_at;
       if(newStatus !== contact.status){
         await logActivity(contact.id, 'status_changed', contact.status, newStatus, { auto: true });
