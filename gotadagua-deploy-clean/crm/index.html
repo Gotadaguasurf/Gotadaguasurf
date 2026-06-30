@@ -4582,7 +4582,10 @@ function openReplyCompose(a, contact){
   const close = () => modal.remove();
   modal.querySelector('#replyClose').addEventListener('click', close);
   modal.querySelector('#replyCancel').addEventListener('click', close);
-  populateSendAsPicker(modal.querySelector('#replySendAs'), CURRENT_TEAM_USER?.id);
+  // Default to the contact's account_manager_id (the owner of the
+  // relationship); fall back to logged-in user when unassigned.
+  populateSendAsPicker(modal.querySelector('#replySendAs'),
+    contact?.account_manager_id || CURRENT_TEAM_USER?.id);
   const ta = modal.querySelector('#replyBody');
   // Pre-fill the picked sender's signature; update live when the user
   // changes the picker (only when they haven't typed anything yet, so
@@ -4929,7 +4932,12 @@ function openCompose(preselectTemplateId){
   // then first overall.
   const pre = preselectTemplateId && TEMPLATES.find(t => t.id === preselectTemplateId);
   tplSelect.value = pre ? pre.id : (langTemplates[0]?.id || TEMPLATES[0]?.id);
-  populateSendAsPicker(document.getElementById('composeSendAs'), CURRENT_TEAM_USER?.id);
+  // Default the sender to the contact's account_manager_id when it's
+  // set — they're the one owning the relationship, so their signature
+  // is the natural default. Falls back to the logged-in user if the
+  // contact has no owner assigned yet.
+  populateSendAsPicker(document.getElementById('composeSendAs'),
+    c.account_manager_id || CURRENT_TEAM_USER?.id);
   refreshComposePreview();
   document.getElementById('composeModal').classList.add('open');
 }
