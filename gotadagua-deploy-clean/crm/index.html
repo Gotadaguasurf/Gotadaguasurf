@@ -451,8 +451,19 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
 </head>
 <body>
 
+<!-- Auth-resolving overlay: shown by default, hidden once checkSession
+     decides between login and app. Prevents the "flash of login" race
+     where the loginScreen was visible by default and a slow getSession
+     resolve made it look like a logout on hard refresh. -->
+<div id="authBoot" style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#f6f9fc;z-index:9999;font-family:'Outfit',system-ui,sans-serif;color:#5a6d80;font-size:14px;letter-spacing:.02em">
+  <div style="display:flex;gap:10px;align-items:center">
+    <span style="display:inline-block;width:14px;height:14px;border:2px solid #c5d3e2;border-top-color:#1a7a40;border-radius:50%;animation:sync-spin .8s linear infinite"></span>
+    <span>Loading CRM…</span>
+  </div>
+</div>
+
 <!-- ─────────────────────────── LOGIN SCREEN ─────────────────────────── -->
-<div id="loginScreen">
+<div id="loginScreen" class="hidden">
   <div class="login-card">
     <div class="login-title">Gota d'Água · CRM</div>
     <div class="login-sub">Sign in with your team account</div>
@@ -1148,14 +1159,21 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
       <button class="detail-close" id="settingsClose" aria-label="Close">×</button>
     </div>
     <div class="compose-body">
-      <div class="editor-field">
-        <label>Google OAuth Client ID</label>
-        <input type="text" id="settingsClientId" placeholder="123456789012-abcdefg.apps.googleusercontent.com" style="font-family:'DM Mono',monospace;font-size:12px">
-        <div class="editor-hint" style="margin-top:6px">From your Google Cloud Console → Credentials → OAuth Client ID. Setup guide: <code>crm/GMAIL-API-SETUP.md</code></div>
+      <div style="padding:12px 14px;background:#eafaf1;border:1px solid #b6e7c9;border-radius:10px;font-size:12.5px;color:#1a7a40;margin-bottom:14px">
+        <div style="font-weight:700;margin-bottom:4px">✓ Shared Gmail: <code style="background:#d6f3df;padding:1px 6px;border-radius:4px">groups@gotadaguasurf.com</code></div>
+        <div style="color:#2d6a4f">Every Send Now / Batch Send goes from this mailbox with <b>your</b> display name in the From. Replies land in <code>groups@</code> and link back to the contact via thread id.</div>
       </div>
-      <div id="settingsGmailStatus" style="margin-top:14px;padding:12px;background:#fafdff;border:1px solid var(--border);border-radius:10px;font-size:12.5px;color:var(--muted)">
-        Not connected.
-      </div>
+      <details style="margin-bottom:14px">
+        <summary style="cursor:pointer;font-size:12px;color:var(--muted);font-weight:600">Legacy: per-user inbox read (will be removed in next deploy)</summary>
+        <div class="editor-field" style="margin-top:10px">
+          <label>Google OAuth Client ID</label>
+          <input type="text" id="settingsClientId" placeholder="123456789012-abcdefg.apps.googleusercontent.com" style="font-family:'DM Mono',monospace;font-size:12px">
+          <div class="editor-hint" style="margin-top:6px">Only used by the manual <b>Sync inbox</b> button for now. Server-side sync replaces this next turn.</div>
+        </div>
+        <div id="settingsGmailStatus" style="margin-top:10px;padding:12px;background:#fafdff;border:1px solid var(--border);border-radius:10px;font-size:12.5px;color:var(--muted)">
+          Not connected.
+        </div>
+      </details>
       <div class="editor-field" style="margin-top:14px">
         <label>Shared inbox CC (leave empty to disable)</label>
         <input type="email" id="settingsSharedCc" placeholder="groups@gotadaguasurf.com" style="font-family:'DM Mono',monospace;font-size:12px">
@@ -1445,12 +1463,11 @@ let _gmailPollTimer = null;
 // elsewhere — comes back the moment they return.
 function startGmailAutoPoll(){
   stopGmailAutoPoll();
-  if(!gmailIsConnected()) return;
+  // No per-user OAuth check needed — sync is server-side via the
+  // shared mailbox. We poll regardless; the Edge Function returns
+  // {ok:true, newInbound:0} when there's nothing new.
   _gmailPollTimer = setInterval(() => {
     if(document.hidden) return;
-    if(!gmailIsConnected()){ stopGmailAutoPoll(); return; }
-    // Fire and forget — errors surface via the per-sync toast logic
-    // when it's a real failure (401, etc.).
     syncGmailInbox({ silent: true });
   }, GMAIL_POLL_MS);
 }
@@ -1460,7 +1477,7 @@ function stopGmailAutoPoll(){
 // Resume on tab focus so a long-idle tab doesn't wait the full
 // interval after the user comes back.
 document.addEventListener('visibilitychange', () => {
-  if(!document.hidden && gmailIsConnected()){
+  if(!document.hidden){
     const last = Number(localStorage.getItem(gmailLastSyncKey()) ? new Date(localStorage.getItem(gmailLastSyncKey())).getTime() : 0);
     if(Date.now() - last > GMAIL_POLL_MS) syncGmailInbox({ silent: true });
   }
@@ -1522,9 +1539,12 @@ function refreshGmailUi(){
   const connected = gmailIsConnected();
   const connectBtn = document.getElementById('gmailConnectBtn');
   const syncBtn    = document.getElementById('gmailSyncBtn');
-  if(connectBtn) connectBtn.style.display = (hasClientId && !connected) ? '' : 'none';
+  // Connect Gmail button is legacy (per-user inbox read) — kept under
+  // the Legacy <details> in Settings only; header button stays hidden.
+  if(connectBtn) connectBtn.style.display = 'none';
   if(syncBtn){
-    syncBtn.style.display = connected ? '' : 'none';
+    // Server-side sync is always available now, regardless of per-user token.
+    syncBtn.style.display = '';
     // Tag the button with "Xm ago" / "Xh ago" using the last
     // successful-sync stamp. Pure read of localStorage — re-renders
     // every time refreshGmailUi runs, which fires after each sync.
@@ -1728,16 +1748,16 @@ async function advanceToInConversation(companyId, viaTag){
   return true;
 }
 
+// Thin wrapper around the gmail-sync Edge Function. The function does
+// the actual Gmail API calls server-side using the shared mailbox
+// refresh token — this avoids needing per-user OAuth in the browser
+// for inbox reads. Returns { ok, fetched, newInbound, matched,
+// advanced, sequencesStopped } on success.
 async function syncGmailInbox(opts = {}){
   const silent = !!opts.silent;
-  // Silent mode: toast only on errors and on "new replies actually
-  // landed" events. Zero-result polls stay quiet so the user isn't
-  // pinged every 10 minutes for nothing.
   const t = (msg) => { if(!silent) toast(msg); };
-  if(!gmailIsConnected()){ t('Connect Gmail first'); return; }
-  const token = gmailToken();
-  const query = buildGmailSyncQuery(7);
-  if(!query){ t('No CRM contacts have emails to match against'); return; }
+  const cfg = window.__SUPABASE_CONFIG || {};
+  if(!cfg.url){ t('Supabase URL missing'); return; }
   const syncBtn = document.getElementById('gmailSyncBtn');
   if(syncBtn && !silent){
     syncBtn.disabled = true;
@@ -1746,113 +1766,47 @@ async function syncGmailInbox(opts = {}){
     syncBtn.innerHTML = '<span class="sync-spinner" style="display:inline-block;width:10px;height:10px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:sync-spin .8s linear infinite;vertical-align:-1px;margin-right:6px"></span>Syncing…';
   }
   try {
-    // 1. List candidate message ids.
-    const listResp = await fetch(
-      `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=100&q=${encodeURIComponent(query)}`,
-      { headers: { Authorization: `Bearer ${token.access_token}` } }
-    );
-    if(!listResp.ok){
-      if(listResp.status === 401){ toast('Gmail token expired — Connect Gmail again'); localStorage.removeItem(gmailTokenKey()); refreshGmailUi(); return; }
-      throw new Error(`Gmail list failed: HTTP ${listResp.status}`);
-    }
-    const listData = await listResp.json();
-    const ids = (listData.messages || []).map(m => m.id);
-    if(ids.length === 0){ localStorage.setItem(gmailLastSyncKey(), new Date().toISOString()); refreshGmailUi(); t('Sync complete · 0 new replies'); return; }
-    // 2. Dedup against existing rows (one query).
-    const supa = getClient();
-    const { data: existing } = await supa.from('email_messages')
-      .select('provider_msg_id').in('provider_msg_id', ids);
-    const seenIds = new Set((existing || []).map(r => r.provider_msg_id));
-    const newIds = ids.filter(id => !seenIds.has(id));
-    if(newIds.length === 0){ localStorage.setItem(gmailLastSyncKey(), new Date().toISOString()); refreshGmailUi(); t(`Sync complete · 0 new (already had ${ids.length})`); return; }
-    // 3. Fetch metadata for each new message in parallel (small N,
-    //    no batching needed). format=metadata avoids transferring
-    //    the full body, which we'd ignore anyway.
-    const detailResps = await Promise.all(newIds.map(id =>
-      fetch(
-        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Subject&metadataHeaders=Date`,
-        { headers: { Authorization: `Bearer ${token.access_token}` } }
-      ).then(r => r.ok ? r.json() : null)
-    ));
-    // 4. Build inserts: match sender, attach company_id, fall back
-    //    to dropping orphan messages.
-    const inserts = [];
-    const touchedCompanies = new Set();
-    detailResps.forEach((msg, i) => {
-      if(!msg) return;
-      const headers = Object.fromEntries((msg.payload?.headers || []).map(h => [h.name.toLowerCase(), h.value]));
-      const match = matchSenderToCompany(headers.from);
-      if(!match) return;
-      inserts.push({
-        company_id:      match.companyId,
-        contact_id:      match.contactId,
-        direction:       'inbound',
-        from_addr:       headers.from || null,
-        to_addr:         headers.to || null,
-        subject:         headers.subject || null,
-        body:            msg.snippet || null,
-        thread_id:       msg.threadId || null,
-        provider_msg_id: newIds[i],
-        status:          'received',
-        sent_at:         headers.date ? new Date(headers.date).toISOString() : null,
-      });
-      touchedCompanies.add(match.companyId);
+    const resp = await fetch(`${cfg.url}/functions/v1/gmail-sync`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: cfg.anonKey || '' },
     });
-    if(inserts.length === 0){ localStorage.setItem(gmailLastSyncKey(), new Date().toISOString()); refreshGmailUi(); t(`Sync complete · ${ids.length} fetched, none matched a contact`); return; }
-    // 5. One bulk insert.
-    const { error } = await supa.from('email_messages').insert(inserts);
-    if(error){ toast('Sync insert failed: '+error.message); return; }
-    // 6. Per touched company: log replied_marked + advance status to
-    //    in_conversation if currently in an outbound stage (or
-    //    revived from no_reply). Skip rows that are already past
-    //    in_conversation or in a terminal state — receiving a reply
-    //    shouldn't regress meeting/proposal back to in_conversation,
-    //    and shouldn't auto-reopen lost.
-    let advanced = 0;
-    let sequencesStopped = 0;
-    for(const companyId of touchedCompanies){
-      await logActivity(companyId, 'replied_marked', null, null, { via: 'gmail-sync' });
-      if(await advanceToInConversation(companyId, 'gmail-sync')) advanced++;
-      // Auto-stop any active sequence on this company — a reply
-      // means the drip campaign achieved its job, no point firing
-      // more nudges. Tasks already scheduled stay (user can delete
-      // / mark done individually).
-      sequencesStopped += await autoStopSequencesForCompany(companyId, 'replied');
+    const j = await resp.json().catch(() => ({}));
+    if(!resp.ok || j.ok === false){
+      const msg = j?.error || `gmail-sync HTTP ${resp.status}`;
+      toast('Sync error: ' + msg);
+      return;
     }
-    const advNote = advanced ? ` · ${advanced} moved to In conversation` : '';
-    const seqNote = sequencesStopped ? ` · ${sequencesStopped} sequence${sequencesStopped>1?'s':''} auto-stopped` : '';
-    toast(`Sync complete · ${inserts.length} new repl${inserts.length===1?'y':'ies'} across ${touchedCompanies.size} compan${touchedCompanies.size===1?'y':'ies'}${advNote}${seqNote}`);
-    // Browser notification on silent (background) polls so the user
-    // sees replies landing even when the CRM tab isn't focused.
-    // Manual sync gets the toast only — they're already looking.
-    if(silent && 'Notification' in window && Notification.permission === 'granted' && localStorage.getItem('crmMuteNotifs') !== '1'){
-      const sample = inserts[0];
-      const previewFrom = sample?.from_addr || '';
-      const previewSubj = sample?.subject || '(no subject)';
-      const body = inserts.length === 1
-        ? `${previewFrom}\n${previewSubj}`
-        : `${inserts.length} replies across ${touchedCompanies.size} contacts. Most recent: ${previewSubj}`;
-      try {
-        const title = inserts.length === 1 ? 'New reply in CRM' : `${inserts.length} new replies in CRM`;
-        const n = new Notification(title, { body, icon: '/favicon.ico', tag: 'crm-replies' });
-        n.onclick = () => { window.focus(); n.close(); };
-      } catch(e) {}
-    }
-    // Stamp last-successful-sync so the button can render "Xm ago".
-    // Only on a successful (non-throw) path that actually wrote rows
-    // or confirmed 0 new — the failure paths above all return early.
+    const { newInbound = 0, matched = 0, advanced = 0, sequencesStopped = 0 } = j;
     localStorage.setItem(gmailLastSyncKey(), new Date().toISOString());
     refreshGmailUi();
+    if(newInbound > 0){
+      const advNote = advanced ? ` · ${advanced} moved to In conversation` : '';
+      const seqNote = sequencesStopped ? ` · ${sequencesStopped} sequence${sequencesStopped>1?'s':''} auto-stopped` : '';
+      toast(`Sync · ${newInbound} new repl${newInbound===1?'y':'ies'} across ${matched} compan${matched===1?'y':'ies'}${advNote}${seqNote}`);
+      // Refresh activity log + dashboard so the new rows show
+      // immediately rather than waiting for a tab switch.
+      if(CURRENT_TAB === 'dashboard') renderDashboard();
+      if(CURRENT_TAB === 'contacts')  renderContacts();
+      if(CURRENT_CONTACT && CURRENT_TAB === 'contacts') renderActivityLog(CURRENT_CONTACT.id);
+      // Browser notification on silent (background) polls so the user
+      // sees replies landing even when the CRM tab isn't focused.
+      if(silent && 'Notification' in window && Notification.permission === 'granted' && localStorage.getItem('crmMuteNotifs') !== '1'){
+        try {
+          const title = newInbound === 1 ? 'New reply in CRM' : `${newInbound} new replies in CRM`;
+          const n = new Notification(title, { body: `${matched} contact${matched===1?'':'s'} touched`, icon: '/favicon.ico', tag: 'crm-replies' });
+          n.onclick = () => { window.focus(); n.close(); };
+        } catch(e) {}
+      }
+    } else if(!silent){
+      t('Sync complete · 0 new replies');
+    }
   } catch(err){
-    toast('Sync error: ' + err.message);  // errors always loud
+    toast('Sync error: ' + (err.message || 'network'));
   } finally {
-    // Only restore the button if we changed it; refreshGmailUi will
-    // re-render the "Xm ago" label from the freshly-stamped LS key.
     if(syncBtn && !silent){
       syncBtn.disabled = false;
       syncBtn.style.opacity = '';
       syncBtn.style.cursor = '';
-      // refreshGmailUi re-stamps the label with the new "Xm ago".
       refreshGmailUi();
     }
   }
@@ -1894,50 +1848,55 @@ function buildGmailRawMessage({ to, subject, body, fromAuthuser, cc }){
   return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-async function gmailSendOne({ to, subject, body }){
-  const token = gmailToken();
-  if(!token) throw new Error('Gmail not connected');
-  const raw = buildGmailRawMessage({ to, subject, body, fromAuthuser: gmailAuthuser(), cc: buildCcList() });
-  const resp = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+// POSTs to the gmail-send Edge Function. The function:
+//   1. Verifies the caller's Supabase JWT (must be a logged-in CRM user)
+//   2. Refreshes the shared mailbox's server-side access token if expired
+//   3. Sends from "<full_name>" <groups@gotadaguasurf.com> with Reply-To groups@
+//   4. Inserts email_messages with sender_user_id stamped so the audit
+//      trail records who clicked Send
+// Returns { ok, message_id, thread_id, from_display } — shape adapted
+// below to match the legacy { id, threadId } the call sites expect.
+async function gmailSendOne({ to, subject, body, companyId, contactId, threadId, inReplyTo, references }){
+  const supa = getClient();
+  const { data: { session: s } } = await supa.auth.getSession();
+  if(!s?.access_token) throw new Error('Not signed in — refresh and sign in to the CRM');
+  const cfg = window.__SUPABASE_CONFIG || {};
+  if(!cfg.url) throw new Error('Supabase URL missing');
+  const ccList = buildCcList();
+  const resp = await fetch(`${cfg.url}/functions/v1/gmail-send`, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${token.access_token}`,
+      Authorization: `Bearer ${s.access_token}`,
       'Content-Type': 'application/json',
+      apikey: cfg.anonKey || '',
     },
-    body: JSON.stringify({ raw }),
+    body: JSON.stringify({
+      to,
+      cc: ccList.length ? ccList.join(', ') : undefined,
+      subject,
+      body,
+      sender_user_id: CURRENT_TEAM_USER?.id || null,
+      company_id: companyId || null,
+      contact_id: contactId || null,
+      thread_id: threadId || undefined,
+      in_reply_to: inReplyTo || undefined,
+      references: references || undefined,
+    }),
   });
   if(!resp.ok){
     const errTxt = await resp.text();
-    throw new Error(`Gmail send HTTP ${resp.status}: ${errTxt.slice(0,200)}`);
+    throw new Error(`gmail-send HTTP ${resp.status}: ${errTxt.slice(0,200)}`);
   }
-  // Returns { id, threadId, labelIds }. Caller uses id +
-  // threadId to insert into email_messages so the activity log
-  // can later link the inbound reply by thread_id.
-  return await resp.json();
+  const j = await resp.json();
+  // Adapt to the { id, threadId } shape recordOutboundEmail + callers
+  // expect from the legacy direct-API response.
+  return { id: j.message_id, threadId: j.thread_id, fromDisplay: j.from_display };
 }
 
-// Records an outbound email in email_messages so the activity log
-// can match the inbound reply to it via thread_id. cc + subject +
-// body snippet stored for the timeline display. No-op if the Gmail
-// API response is missing the ids (defensive).
-async function recordOutboundEmail({ companyId, gmailResult, to, subject, body }){
-  if(!gmailResult?.id || !gmailResult?.threadId) return;
-  const cc = buildCcList();
-  const { error } = await getClient().from('email_messages').insert({
-    company_id: companyId,
-    contact_id: null,
-    direction: 'outbound',
-    from_addr: gmailAuthuser(),
-    to_addr: to,
-    subject,
-    body: (body || '').slice(0, 500),
-    thread_id: gmailResult.threadId,
-    provider_msg_id: gmailResult.id,
-    status: 'sent',
-    sent_at: new Date().toISOString(),
-  });
-  if(error) console.warn('recordOutboundEmail failed', error);
-}
+// No-op since the gmail-send Edge Function inserts the email_messages
+// row itself (with sender_user_id stamped, which only the server can do
+// authoritatively). Kept as a stub so call sites don't need to change.
+async function recordOutboundEmail(_args){ /* server-side now */ }
 
 // Picks the recipient email for a contact — primary person if set,
 // else the company-level email. Returns null if neither exists.
@@ -1948,7 +1907,7 @@ function recipientEmailFor(c){
 
 function openBatchSendModal(){
   if(SELECTED.size === 0){ toast('Pick contacts first'); return; }
-  if(!gmailIsConnected()){ toast('Connect Gmail first (⚙ → Connect Gmail)'); return; }
+  // Shared mailbox is server-side; no per-user OAuth needed for send.
   // Refresh PEOPLE in case primary picks updated since last render.
   const ids = Array.from(SELECTED);
   // Skip-recent default: if last_contacted_at is within 24h, the row
@@ -2065,7 +2024,8 @@ async function runBatchSend(){
   const verb = dryRun ? 'simulate' : 'SEND';
   const cc = buildCcList();
   const ccNote = cc.length ? `\nAuto-CC: ${cc.join(', ')}` : '';
-  if(!confirm(`${verb} ${targets.length} email${targets.length>1?'s':''} via ${gmailAuthuser()}?${ccNote}\n\nThrottle: 1/sec. You can close the modal once it starts; sending continues in the background.`)) return;
+  const senderName = CURRENT_TEAM_USER?.full_name || gmailAuthuser();
+  if(!confirm(`${verb} ${targets.length} email${targets.length>1?'s':''} as ${senderName} (from groups@gotadaguasurf.com)?${ccNote}\n\nThrottle: 1/sec. You can close the modal once it starts; sending continues in the background.`)) return;
 
   BATCH_STATE.inProgress = true;
   renderBatchRecipientList();
@@ -2080,11 +2040,8 @@ async function runBatchSend(){
     const body = renderTemplate(tpl.body, c);
     try {
       if(!dryRun){
-        const sendResult = await gmailSendOne({ to: r.email, subject: subj, body });
-        // Persist the outbound so the inbound reply can later be
-        // linked by thread_id and the original "Sent" timeline row
-        // can show a "✓ Replied" badge.
-        await recordOutboundEmail({ companyId: c.id, gmailResult: sendResult, to: r.email, subject: subj, body });
+        const primaryForBatch = primaryPersonFor(c.id);
+        await gmailSendOne({ to: r.email, subject: subj, body, companyId: c.id, contactId: primaryForBatch?.id || null });
         // Update local state + log activity + auto-advance status.
         let newStatus = c.status;
         if(c.status === 'not_started') newStatus = 'first_email';
@@ -2327,12 +2284,12 @@ document.getElementById('settingsDisconnectBtn').addEventListener('click', disco
 // when the page loads with an already-valid token (page reload
 // shouldn't have to re-click Connect to resume auto-sync).
 refreshGmailUi();
-if(gmailIsConnected()){
-  startGmailAutoPoll();
-  // Resume the silent-refresh chain from where it left off so a
-  // page reload doesn't break the auto-renew cadence.
-  scheduleGmailRefresh();
-}
+// Always start the background poll — server-side sync via shared
+// mailbox, no per-user OAuth required. scheduleGmailRefresh stays
+// gated on per-user token because it only matters for legacy
+// browser-side reads (none left, but keeping until next deploy).
+startGmailAutoPoll();
+if(gmailIsConnected()) scheduleGmailRefresh();
 let SAVED_VIEWS = [];
 let CURRENT_CONTACT = null;
 let CURRENT_TEMPLATE = null;
@@ -2471,19 +2428,40 @@ function getClient(){
 async function checkSession(){
   try {
     const c = getClient();
+    // Subscribe BEFORE getSession so we don't miss the INITIAL_SESSION /
+    // TOKEN_REFRESHED event Supabase fires asynchronously on boot. Without
+    // this, a slow refresh would land after checkSession had already
+    // routed to login → user looked logged out despite valid storage.
+    c.auth.onAuthStateChange((event, newSession) => {
+      if(newSession && !session){
+        session = newSession;
+        showApp();
+      } else if(event === 'SIGNED_OUT'){
+        session = null;
+        showLogin();
+      }
+    });
     const { data } = await c.auth.getSession();
     if(data?.session){ session = data.session; showApp(); return; }
   } catch(e){ console.error(e); }
   showLogin();
 }
 
+// Hides the boot overlay once a decision has been made. Called from
+// both showApp and showLogin so neither path leaves the spinner up.
+function hideAuthBoot(){
+  const boot = document.getElementById('authBoot');
+  if(boot) boot.style.display = 'none';
+}
 function showLogin(){
   document.getElementById('loginScreen').classList.remove('hidden');
   document.getElementById('app').classList.add('hidden');
+  hideAuthBoot();
 }
 function showApp(){
   document.getElementById('loginScreen').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
+  hideAuthBoot();
   loadAll();
 }
 
@@ -2874,7 +2852,10 @@ async function loadActivity(contactId, limit = 50){
       old_value:   null,
       new_value:   null,
       meta:        {
-        subject: m.subject, from: m.from_addr, snippet: m.body, thread_id: m.thread_id,
+        subject: m.subject, from: m.from_addr, to: m.to_addr,
+        snippet: m.body, body: m.body, thread_id: m.thread_id,
+        provider_msg_id: m.provider_msg_id,
+        email_message_id: m.id,
         replied_at: reply ? (reply.sent_at || reply.created_at) : null,
       },
       created_at:  m.sent_at || m.created_at,
@@ -4033,6 +4014,8 @@ async function openContact(id){
   document.getElementById('detailTitle').textContent = c.company;
   const body = document.getElementById('detailBody');
   const activity = await loadActivity(id, ACTIVITY_LIMIT);
+  // Cache for the Reply button — needs the matching row to pull subject/from/thread_id.
+  window._lastActivityRows = activity;
   // If we got fewer than the cap, there's nothing left to load —
   // hide the Load-more button. If we got exactly the cap, there
   // MAY be more (could be exactly N and no more) but the button
@@ -4453,6 +4436,38 @@ async function openContact(id){
     });
   });
 
+  // Expand/collapse email body cards (click the card itself).
+  document.querySelectorAll('#activityList [data-emrow]').forEach(box => {
+    box.addEventListener('click', () => {
+      const expanded = box.dataset.expanded === '1';
+      if(expanded){
+        box.style.maxHeight = box.dataset.collapsedHeight || '120px';
+        box.dataset.expanded = '0';
+        const fade = box.querySelector('[data-emrow-fade]');
+        if(fade) fade.style.display = '';
+      } else {
+        if(!box.dataset.collapsedHeight) box.dataset.collapsedHeight = box.style.maxHeight || '120px';
+        box.style.maxHeight = 'none';
+        box.dataset.expanded = '1';
+        const fade = box.querySelector('[data-emrow-fade]');
+        if(fade) fade.style.display = 'none';
+      }
+    });
+  });
+
+  // Reply buttons on inbound emails — open compose modal in reply mode.
+  document.querySelectorAll('#activityList [data-em-reply]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();   // don't trigger the body-expand click on the parent
+      const rowId = btn.dataset.emReply;
+      // Find the matching activity row in the rendered set so we can
+      // pre-fill the compose modal from its meta (subject, from, thread_id…).
+      const a = (window._lastActivityRows || []).find(x => x.id === rowId);
+      if(!a){ toast('Reply context lost — refresh the contact'); return; }
+      openReplyCompose(a, c);
+    });
+  });
+
   // ── People (CRM v2 multi-contact roster) ────────────────────────────
   renderPeopleList(c.id);
   document.getElementById('addPersonBtn').addEventListener('click', ()=>openPeopleModal(c.id, null));
@@ -4483,6 +4498,107 @@ function closeDetail(){
 document.getElementById('detailClose').addEventListener('click', closeDetail);
 document.getElementById('detailOverlay').addEventListener('click', closeDetail);
 
+// Open a lightweight reply modal pre-filled from an inbound email
+// activity row. Sends via gmail-send with threadId + in_reply_to +
+// references so Gmail keeps it inside the same conversation thread.
+function openReplyCompose(a, contact){
+  const m = a.meta || {};
+  const fromEmail = (() => {
+    const raw = m.from || '';
+    const match = raw.match(/<([^>]+)>/);
+    return (match ? match[1] : raw).trim();
+  })();
+  const origSubj = m.subject || '';
+  const replySubj = /^re:\s*/i.test(origSubj) ? origSubj : `Re: ${origSubj}`;
+  // Strip + reuse the existing settings dialog's modal styles so the
+  // reply matches the rest of the app. Built dynamically rather than
+  // adding to the HTML body since this modal is only used here.
+  let modal = document.getElementById('replyModal');
+  if(modal) modal.remove();
+  modal = document.createElement('div');
+  modal.id = 'replyModal';
+  modal.className = 'compose-modal open';
+  const sig = (localStorage.getItem('crmSignature:' + (session?.user?.id || '')) || localStorage.getItem('crmSignature') || '').trim();
+  const signaturePrefill = sig ? `\n\n${sig}` : '';
+  modal.innerHTML = `
+    <div class="compose-card" style="max-width:680px">
+      <div class="compose-header">
+        <div class="compose-title">↩ Reply to ${escHtml(fromEmail || 'contact')}</div>
+        <button class="detail-close" id="replyClose" aria-label="Close">×</button>
+      </div>
+      <div class="compose-body">
+        <div class="editor-field">
+          <label>To</label>
+          <input type="email" id="replyTo" value="${escAttr(fromEmail)}" style="font-family:'DM Mono',monospace;font-size:12px">
+        </div>
+        <div class="editor-field">
+          <label>Subject</label>
+          <input type="text" id="replySubject" value="${escAttr(replySubj)}">
+        </div>
+        <div class="editor-field">
+          <label>Message</label>
+          <textarea id="replyBody" style="min-height:200px;font-family:'DM Mono',monospace;font-size:13px;line-height:1.5" placeholder="Type your reply…">${escHtml(signaturePrefill)}</textarea>
+          <div class="editor-hint" style="margin-top:6px">Sends from <code>groups@gotadaguasurf.com</code> as ${escHtml(CURRENT_TEAM_USER?.full_name || gmailAuthuser())} on the same thread.</div>
+        </div>
+      </div>
+      <div class="compose-footer">
+        <button class="action-btn ghost" id="replyCancel">Cancel</button>
+        <button class="action-btn primary" id="replySend" style="grid-column:auto">Send reply</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  const close = () => modal.remove();
+  modal.querySelector('#replyClose').addEventListener('click', close);
+  modal.querySelector('#replyCancel').addEventListener('click', close);
+  // Cursor at start so the user types ABOVE the signature.
+  const ta = modal.querySelector('#replyBody');
+  setTimeout(() => { ta.focus(); ta.setSelectionRange(0, 0); }, 50);
+  modal.querySelector('#replySend').addEventListener('click', async () => {
+    const to = modal.querySelector('#replyTo').value.trim();
+    const subject = modal.querySelector('#replySubject').value.trim();
+    const body = ta.value;
+    if(!to || !subject){ toast('To + Subject required'); return; }
+    const btn = modal.querySelector('#replySend');
+    btn.disabled = true; btn.style.opacity = '.6'; btn.textContent = 'Sending…';
+    try {
+      // provider_msg_id is Gmail's Message-Id (e.g. "<CABcd@mail.gmail.com>")
+      // — Gmail expects In-Reply-To/References in that <…> format. Wrap if
+      // bare, leave alone otherwise. Some Gmail responses give bare ids
+      // without angle brackets.
+      const wrap = (id) => id ? (id.startsWith('<') ? id : `<${id}>`) : undefined;
+      const inReplyTo = wrap(m.provider_msg_id);
+      await gmailSendOne({
+        to, subject, body,
+        companyId: contact.id,
+        contactId: primaryPersonFor(contact.id)?.id || null,
+        threadId: m.thread_id || undefined,
+        inReplyTo,
+        references: inReplyTo,
+      });
+      // Pipeline auto-advance same as Send Now / Batch — sending a
+      // reply to an inbound counts as activity.
+      let newStatus = contact.status;
+      if(contact.status === 'not_started')  newStatus = 'first_email';
+      else if(contact.status === 'first_email') newStatus = 'follow_up';
+      const patch = { last_contacted_at: new Date().toISOString() };
+      if(newStatus !== contact.status) patch.status = newStatus;
+      await updateContact(contact.id, patch);
+      await logActivity(contact.id, 'email_sent', null, null, { subject, via: 'reply' });
+      contact.last_contacted_at = patch.last_contacted_at;
+      if(newStatus !== contact.status){
+        await logActivity(contact.id, 'status_changed', contact.status, newStatus, { auto: true });
+        contact.status = newStatus;
+      }
+      toast('Reply sent');
+      close();
+      openContact(contact.id);   // refresh the panel so the new outbound shows
+    } catch(err){
+      btn.disabled = false; btn.style.opacity = ''; btn.textContent = 'Send reply';
+      toast('Reply failed: ' + (err.message || 'unknown'));
+    }
+  });
+}
+
 function activityLabel(a){
   switch(a.action){
     case 'status_changed': return `Status: ${STATUS_LABELS[a.old_value]||a.old_value||'—'} → ${STATUS_LABELS[a.new_value]||a.new_value||'—'}`;
@@ -4491,26 +4607,25 @@ function activityLabel(a){
     case 'email_inbound': {
       const subj = a.meta?.subject || '(no subject)';
       const from = a.meta?.from ? ` · <span style="color:var(--muted);font-weight:400">from ${escHtml(a.meta.from)}</span>` : '';
-      const snip = a.meta?.snippet ? `<div class="activity-meta" style="margin-top:4px;color:var(--muted);font-size:11.5px;font-style:italic">${escHtml(String(a.meta.snippet).slice(0,180))}${(a.meta.snippet||'').length > 180 ? '…' : ''}</div>` : '';
-      // Open the actual thread in Gmail. Uses the same authuser as
-      // the Compose / Check-inbox URLs so the account is consistent.
+      const fullBody = a.meta?.body || a.meta?.snippet || '';
+      const bodyBlock = fullBody ? `<div class="email-body" data-emrow="${a.id}" style="margin-top:8px;padding:10px 12px;background:#fafdff;border:1px solid var(--border);border-radius:8px;font-size:12.5px;color:var(--ink);white-space:pre-wrap;max-height:120px;overflow:hidden;position:relative;cursor:pointer" title="Click to expand"><div data-emrow-fade style="position:absolute;left:0;right:0;bottom:0;height:30px;background:linear-gradient(to bottom,transparent,#fafdff);pointer-events:none"></div>${escHtml(fullBody)}</div>` : '';
       const threadLink = a.meta?.thread_id
         ? ` · <a href="https://mail.google.com/mail/?authuser=${encodeURIComponent(gmailAuthuser())}#all/${encodeURIComponent(a.meta.thread_id)}" target="_blank" style="color:var(--ocean);text-decoration:none;font-weight:600">open in Gmail →</a>`
         : '';
-      return `${uiIcon('mail')} <b>Reply received:</b> "${escHtml(subj)}"${from}${threadLink}${snip}`;
+      const replyBtn = `<button data-em-reply="${a.id}" style="margin-top:8px;background:var(--ocean);color:#fff;border:0;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">↩ Reply</button>`;
+      return `${uiIcon('mail')} <b>Reply received:</b> "${escHtml(subj)}"${from}${threadLink}${bodyBlock}<div style="margin-top:4px">${replyBtn}</div>`;
     }
     case 'email_outbound': {
       const subj = a.meta?.subject || '(no subject)';
-      // ✓ Replied badge when the precomputed match in loadActivity
-      // found an inbound on the same thread_id.
+      const fullBody = a.meta?.body || a.meta?.snippet || '';
+      const bodyBlock = fullBody ? `<div class="email-body" data-emrow="${a.id}" style="margin-top:8px;padding:10px 12px;background:#f6f9fc;border:1px solid var(--border);border-radius:8px;font-size:12.5px;color:var(--ink);white-space:pre-wrap;max-height:80px;overflow:hidden;position:relative;cursor:pointer" title="Click to expand"><div data-emrow-fade style="position:absolute;left:0;right:0;bottom:0;height:30px;background:linear-gradient(to bottom,transparent,#f6f9fc);pointer-events:none"></div>${escHtml(fullBody)}</div>` : '';
       const repliedBadge = a.meta?.replied_at
         ? ` <span style="color:var(--green-text);background:var(--green-bg);padding:2px 7px;border-radius:6px;font-size:11px;font-weight:700;margin-left:6px">✓ Replied ${fmtDate(a.meta.replied_at)}</span>`
         : '';
-      // Open the thread in Gmail (same authuser).
       const threadLink = a.meta?.thread_id
         ? ` · <a href="https://mail.google.com/mail/?authuser=${encodeURIComponent(gmailAuthuser())}#all/${encodeURIComponent(a.meta.thread_id)}" target="_blank" style="color:var(--ocean);text-decoration:none;font-weight:600">open in Gmail →</a>`
         : '';
-      return `${uiIcon('mail')} Sent: "${escHtml(subj)}"${repliedBadge}${threadLink}`;
+      return `${uiIcon('mail')} Sent: "${escHtml(subj)}"${repliedBadge}${threadLink}${bodyBlock}`;
     }
     case 'follow_up_set': return `${uiIcon('calendar')} Follow-up: ${a.new_value||'cleared'}`;
     case 'note_added': return `${uiIcon('note')} Note added`;
@@ -4869,10 +4984,7 @@ document.getElementById('composeOpen').addEventListener('click', async ()=>{
 // path, but fires the gmail.send API directly so no Gmail tab is
 // needed. Use when the user doesn't need to edit / attach.
 document.getElementById('composeSendNow').addEventListener('click', async () => {
-  if(!gmailIsConnected()){
-    toast('Gmail not connected (⚙ → Connect Gmail) — use "Open in Gmail" instead');
-    return;
-  }
+  // Shared mailbox is server-side — always "connected".
   const tplId = document.getElementById('composeTemplate').value;
   const tpl = TEMPLATES.find(t => t.id === tplId);
   if(!tpl || !CURRENT_CONTACT) return;
@@ -4884,15 +4996,12 @@ document.getElementById('composeSendNow').addEventListener('click', async () => 
   if(!recipient){ toast('No recipient email'); return; }
   const cc = buildCcList();
   const ccLine = cc.length ? `\nCC: ${cc.join(', ')}` : '';
-  if(!confirm(`Send to ${recipient}${ccLine}\n\nFrom: ${gmailAuthuser()}\nSubject: ${subj}\n\nThis sends immediately via Gmail API — no chance to edit.`)) return;
+  const senderName = CURRENT_TEAM_USER?.full_name || gmailAuthuser();
+  if(!confirm(`Send to ${recipient}${ccLine}\n\nFrom: ${senderName} <groups@gotadaguasurf.com>\nSubject: ${subj}\n\nThis sends immediately via the shared mailbox — no chance to edit.`)) return;
   const btn = document.getElementById('composeSendNow');
   btn.disabled = true; btn.style.opacity = '.6'; btn.textContent = 'Sending…';
   try {
-    const sendResult = await gmailSendOne({ to: recipient, subject: subj, body });
-    // Stash the outbound in email_messages with thread_id so the
-    // activity log can tag this exact send as "✓ Replied" once a
-    // reply lands via Sync inbox.
-    await recordOutboundEmail({ companyId: c.id, gmailResult: sendResult, to: recipient, subject: subj, body });
+    await gmailSendOne({ to: recipient, subject: subj, body, companyId: c.id, contactId: primary?.id || null });
     // Same pipeline auto-advance + activity log + last_contacted as
     // the Open-in-Gmail flow, so both paths leave identical state.
     let newStatus = c.status;

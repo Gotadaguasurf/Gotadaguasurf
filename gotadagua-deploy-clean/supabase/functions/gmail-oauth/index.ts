@@ -40,12 +40,12 @@ ${body}`,
   )
 }
 
-function buildRedirectUri(req: Request) {
-  // Edge Function is reached at https://<project>.supabase.co/functions/v1/gmail-oauth
-  // The redirect URI sent to Google must match what's registered in the
-  // OAuth client — same origin, /callback suffix.
-  const u = new URL(req.url)
-  return `${u.origin}${u.pathname.split('/').slice(0, -1).join('/')}/callback`
+function buildRedirectUri(_req: Request) {
+  // Edge Functions see an internal URL via req.url (no /functions/v1/ prefix,
+  // http not https), so we can't derive the public redirect from it. Build
+  // from SUPABASE_URL — the public origin Supabase sets as a secret.
+  const base = (Deno.env.get('SUPABASE_URL') || '').replace(/\/$/, '')
+  return `${base}/functions/v1/gmail-oauth/callback`
 }
 
 Deno.serve(async (req) => {
