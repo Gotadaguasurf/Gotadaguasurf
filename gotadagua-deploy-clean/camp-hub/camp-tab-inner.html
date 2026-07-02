@@ -1679,7 +1679,22 @@ function findConsumer(value, kind=currentRoster, wk=currentWeek()){
 }
 function staffPriceFor(item){
   if(Number.isFinite(Number(item?.sp))&&Number(item.sp)>0) return Number(item.sp);
+  // Catalog rows in /prices carry alt_price + alt_label. When the owner
+  // labels one "Staff" (case-insensitive, matches "Staff", "staff price",
+  // etc.), we treat that alt_price as the fixed staff price. This lets
+  // the owner set staff pricing entirely in /prices without a separate
+  // POS-local edit, and works even when the price is 0 (free-for-staff).
+  const label = String(item?.altLabel || '');
+  if (/staff/i.test(label) && Number.isFinite(Number(item?.altPrice))) {
+    return Number(item.altPrice);
+  }
   return Math.round((Number(item?.p||0)*STAFF_PRICE_FACTOR)/50)*50;
+}
+// True when the item's alt price is a "Staff" alt — meaning the alt
+// price is really meant only for the Staff tab and shouldn't appear as
+// a second button on the Guest tab.
+function isStaffAltLabel(item){
+  return /staff/i.test(String(item?.altLabel || ''));
 }
 function displayPriceFor(item){
   return currentRoster==='staff'?staffPriceFor(item):Number(item.p||0);
@@ -2242,7 +2257,16 @@ function renderItemGrid(){
     // regular sale, and a small ocean-pill below offers the alt price.
     // Other categories (and Merch without alt) keep the original single-
     // button layout — minimum visual change.
-    const hasAlt = AC==='Merch' && Number(item.altPrice||0)>0;
+    // Only show the alt-price button on Guests tab for non-Staff alts —
+    // a "Staff" alt is the fixed staff price and already drives the
+    // Staff tab's displayed price via staffPriceFor(), so surfacing it
+    // as a second guest button would be confusing. On Staff tab we also
+    // skip the alt button because the main card already shows the
+    // staff price.
+    const hasAlt = AC==='Merch'
+      && Number(item.altPrice||0)>0
+      && currentRoster==='guests'
+      && !isStaffAltLabel(item);
     if(hasAlt){
       const altLabel = String(item.altLabel || 'Offer');
       return `<div class="c-item-card${outOfStock?' out':''}" id="ci${i}" style="background:#fff;border:1.5px solid var(--border);border-radius:11px;padding:12px;display:flex;flex-direction:column;gap:8px;${outOfStock?'opacity:.5':''}">
