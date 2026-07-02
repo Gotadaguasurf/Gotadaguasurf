@@ -1946,29 +1946,42 @@ const getCats=()=>Object.keys(MENU);
 function isSpecialMerchName(name=''){
   return /\b(Offer|Staff|Sale|Promo|Discount)\b/i.test(String(name||''));
 }
-// Explicit display order so user always sees: Drinks · Tours · Extras ·
-// Merch · Merch Special. Anything outside this list keeps its natural
-// position at the end.
-const CAT_DISPLAY_ORDER = ['Drinks', 'Tours', 'Extras', 'Merch', 'Merch Special'];
+// Per-location tab config. Each location's POS shows the tabs listed
+// here in this exact order. A tab still hides itself when its menu is
+// empty — this list defines the MAX set, not a force-show. Owner uses
+// /prices to fill each catalog; missing rows just hide the tab quietly.
+const LOCATION_TAB_CONFIG = {
+  'sri-lanka':   ['Drinks', 'Tours', 'Extras', 'Merch', 'Merch Special'],
+  'morocco':     ['Tours', 'Extras', 'Merch', 'Merch Special'],
+  // 'Bar Tab' will be added in Stage 4 — needs its own freeform-amount UI.
+  'portugal':    ['Tours', 'Extras', 'Merch', 'Merch Special'],
+  'junior-camp': ['Extras', 'Merch', 'Merch Special'],
+};
+// Fallback so a new/unknown slug still gets a sensible tab set.
+const DEFAULT_TAB_ORDER = ['Drinks', 'Tours', 'Extras', 'Merch', 'Merch Special'];
+// Display-name mapping — internal category name stays the same (so
+// expense / ledger / catalog lookups don't break) but the tab label
+// in the POS UI is customised. Add more here as new labels are wanted.
+const CAT_DISPLAY_NAME = {
+  'Tours': 'Tours/Activities',
+};
+function displayCatName(c){ return CAT_DISPLAY_NAME[c] || c; }
+
 function visibleCats(){
-  const all = getCats();
-  // Filter real categories with items; Merch hides itself if every row is
-  // a "special" variant (everything would land in Merch Special anyway).
-  const real = all.filter(c => {
+  const config = LOCATION_TAB_CONFIG[CAMP_TAB_LOCATION_SLUG] || DEFAULT_TAB_ORDER;
+  // "Bar Tab" is a synthetic freeform-amount tab (Portugal only for now);
+  // it renders its own UI and doesn't need a MENU entry.
+  const SYNTHETIC = new Set(['Merch Special', 'Bar Tab']);
+  return config.filter(c => {
+    if (c === 'Merch Special') {
+      const merch = Array.isArray(MENU.Merch) ? MENU.Merch : [];
+      return merch.some(i => isSpecialMerchName(i?.n));
+    }
+    if (SYNTHETIC.has(c)) return true;
     const items = Array.isArray(MENU[c]) ? MENU[c] : [];
     if (!items.length) return false;
     if (c === 'Merch') return items.some(i => !isSpecialMerchName(i?.n));
     return true;
-  });
-  // Synthetic "Merch Special" tab when any special variants exist.
-  const merch = Array.isArray(MENU.Merch) ? MENU.Merch : [];
-  const hasSpecial = merch.some(i => isSpecialMerchName(i?.n));
-  if (hasSpecial && !real.includes('Merch Special')) real.push('Merch Special');
-  // Sort by CAT_DISPLAY_ORDER; unknown categories fall to the end.
-  return real.sort((a, b) => {
-    const ai = CAT_DISPLAY_ORDER.indexOf(a);
-    const bi = CAT_DISPLAY_ORDER.indexOf(b);
-    return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
   });
 }
 function stayMeta(row){
@@ -2188,7 +2201,7 @@ function renderCatTabs(){
   // /prices — and Drinks heading the same way — there's no editable
   // category left to surface from the POS. The catalog is the single
   // source of truth, so the button would only invite confusion.
-  el.innerHTML=visibleCats().map(c=>`<button class="c-cat ${AC===c?'active':''}" onclick="setCat('${esc(c)}')">${c}</button>`).join('');
+  el.innerHTML=visibleCats().map(c=>`<button class="c-cat ${AC===c?'active':''}" onclick="setCat('${esc(c)}')">${esc(displayCatName(c))}</button>`).join('');
 }
 
 function renderItemGrid(){
