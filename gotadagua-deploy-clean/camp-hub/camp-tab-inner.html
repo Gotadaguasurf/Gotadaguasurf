@@ -1968,8 +1968,7 @@ function isSpecialMerchName(name=''){
 const LOCATION_TAB_CONFIG = {
   'sri-lanka':   ['Drinks', 'Tours', 'Extras', 'Merch', 'Merch Special'],
   'morocco':     ['Tours', 'Extras', 'Merch', 'Merch Special'],
-  // 'Bar Tab' will be added in Stage 4 — needs its own freeform-amount UI.
-  'portugal':    ['Tours', 'Extras', 'Merch', 'Merch Special'],
+  'portugal':    ['Bar Tab', 'Tours', 'Extras', 'Merch', 'Merch Special'],
   'junior-camp': ['Extras', 'Merch', 'Merch Special'],
 };
 // Fallback so a new/unknown slug still gets a sensible tab set.
@@ -2222,6 +2221,49 @@ function renderCatTabs(){
 function renderItemGrid(){
   const el=document.getElementById('itemGrid');
   if(!el||!AG)return;
+  // Bar Tab is a synthetic freeform-amount tab (Portugal only for now).
+  // No menu lookup — we render a small form with amount + optional note
+  // and append lines with category='Bar' so the ledger routes them to
+  // the Bar area (which is a legally separate business at Portugal).
+  if (AC === 'Bar Tab') {
+    el.innerHTML = `
+      <div style="grid-column:1/-1;background:#fff;border:1.5px solid var(--border);border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:12px;max-width:520px">
+        <div>
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-weight:700">Bar Tab</div>
+          <div style="font-size:15px;font-weight:800;color:var(--navy);margin-top:2px">Add a bar charge</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">Freeform amount — bar sales are a separate business, so this line lands in the Bar area of the ledger, not Merch/Tours.</div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <input type="number" step="0.01" min="0" id="barTabAmount" placeholder="Amount" style="flex:1;min-width:120px;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;font-family:'DM Mono',monospace;font-size:15px">
+          <input type="text" id="barTabNote" placeholder="What (e.g. Beer, Wine)" style="flex:2;min-width:160px;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;font-family:inherit;font-size:13px">
+        </div>
+        <button id="barTabAdd" style="background:var(--navy);color:#fff;border:0;border-radius:10px;padding:12px 18px;font-weight:700;cursor:pointer;font-family:inherit;font-size:14px">Add to tab</button>
+      </div>`;
+    const amtInput = document.getElementById('barTabAmount');
+    const noteInput = document.getElementById('barTabNote');
+    const addBtn = document.getElementById('barTabAdd');
+    const doAdd = () => {
+      const amt = Number(amtInput.value);
+      if(!Number.isFinite(amt) || amt <= 0){ toast('Enter a valid amount'); return; }
+      const note = (noteInput.value || '').trim() || 'Bar';
+      // Synthesise a menu-like item so addResolvedItem does its normal
+      // stamping (uuid, timestamps, etc.). Category 'Bar' makes the
+      // ledger route it to the Bar area — different business, separate
+      // P&L than Merch/Tours.
+      const synth = { id: '', n: note, p: amt, c: 'Bar' };
+      addResolvedItem(synth, addBtn);
+      amtInput.value = '';
+      noteInput.value = '';
+      amtInput.focus();
+    };
+    addBtn.addEventListener('click', doAdd);
+    // Enter in either input triggers Add — feels natural at a POS.
+    [amtInput, noteInput].forEach(inp => {
+      inp.addEventListener('keydown', (e) => { if(e.key === 'Enter'){ e.preventDefault(); doAdd(); } });
+    });
+    setTimeout(() => amtInput.focus(), 50);
+    return;
+  }
   // Merch + Merch Special share the underlying MENU.Merch array; the
   // synthetic split is purely display. Filter by the "special" name
   // pattern so each tab shows only its share.
@@ -2623,10 +2665,13 @@ function addResolvedItem(item,btn){
   const priceType = altUsed ? String(item._altLabel||'Offer') : (currentRoster==='staff'?'staff':'regular');
   const altStaffNote = altUsed ? String(item._altLabel||'Offer') : null;
   // Persist the canonical category — never the synthetic "Merch Special"
-  // tab. Item.c is what merchSoldCounts + stock + ledger area-routing
-  // read, and those all expect 'Merch'. Without this, special-tab sales
-  // would silently disappear from sold counters and the Merch stock card.
-  const persistedCategory = (AC === 'Merch Special') ? 'Merch' : AC;
+  // or "Bar Tab" tab names. Item.c drives merchSoldCounts, stock, and
+  // the ledger area-routing, all of which expect a stable category:
+  // Merch Special sales are still Merch (same stock); Bar Tab charges
+  // land in the Bar area (separate business, separate P&L).
+  const persistedCategory = (AC === 'Merch Special') ? 'Merch'
+    : (AC === 'Bar Tab') ? 'Bar'
+    : AC;
   const nextItem={id:makeUuid(),menuItemId:item.id||'',n:item.n,p:price,c:persistedCategory,t:tnow(),d:today(),priceType,...(altStaffNote?{s:altStaffNote}:{})};
   g.items=[...normalizeItemRows(g.items),nextItem];
   // per_guest mode: adding a NEW unpaid item must reset the guest's
