@@ -1966,13 +1966,17 @@ function isSpecialMerchName(name=''){
 // empty — this list defines the MAX set, not a force-show. Owner uses
 // /prices to fill each catalog; missing rows just hide the tab quietly.
 const LOCATION_TAB_CONFIG = {
-  'sri-lanka':   ['Drinks', 'Tours', 'Extras', 'Merch', 'Merch Special'],
-  'morocco':     ['Tours', 'Extras', 'Merch', 'Merch Special'],
-  'portugal':    ['Bar Tab', 'Tours', 'Extras', 'Merch', 'Merch Special'],
-  'junior-camp': ['Extras', 'Merch', 'Merch Special'],
+  'sri-lanka':   ['Drinks', 'Tours', 'Extras', 'Merch'],
+  'morocco':     ['Tours', 'Extras', 'Merch'],
+  'portugal':    ['Bar Tab', 'Tours', 'Extras', 'Merch'],
+  'junior-camp': ['Extras', 'Merch'],
 };
+// Merch Special retired: the per-item "%" discount modal covers gifts,
+// staff-only pricing, and one-off offers, so a separate tab was
+// redundant. The synthetic-split code path is left intact for any
+// legacy sessions, but no location surfaces it in the UI anymore.
 // Fallback so a new/unknown slug still gets a sensible tab set.
-const DEFAULT_TAB_ORDER = ['Drinks', 'Tours', 'Extras', 'Merch', 'Merch Special'];
+const DEFAULT_TAB_ORDER = ['Drinks', 'Tours', 'Extras', 'Merch'];
 // Display-name mapping — internal category name stays the same (so
 // expense / ledger / catalog lookups don't break) but the tab label
 // in the POS UI is customised. Add more here as new labels are wanted.
