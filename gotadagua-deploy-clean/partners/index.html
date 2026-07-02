@@ -2271,16 +2271,20 @@ function renderPartnerRows(groups, tbodyId, headId, hintId, emptyLabel) {
 }
 
 function renderTable() {
-  const groups=partnerGroups(filtered());
-  // Split into the four partner-type buckets. Surf Camp now means
-  // strictly surfcamp — junior_surfcamp and kids_camp render in their
-  // own dedicated sections instead of falling into "anything that
-  // isn't surfschool" as before.
+  // Section assignment now happens per BOOKING (not per partner globally),
+  // so a partner that works multiple camps — e.g. JUVIGO doing both Junior
+  // and Kids — appears in each section with its own row, counts, and
+  // totals for that section. Previously getPartnerType() picked the
+  // majority category and the partner only showed once. Grouping first by
+  // section, then by partner within that section, gives clean per-camp
+  // organisation the user asked for without touching the underlying data.
+  const all = filtered();
+  const inSection = (b, section) => inferBookingTypeFromRow(b) === section;
   const bySection = {
-    surfcamp: groups.filter(p=>getPartnerType(p.partner)==='surfcamp'),
-    surfschool: groups.filter(p=>getPartnerType(p.partner)==='surfschool'),
-    junior_surfcamp: groups.filter(p=>getPartnerType(p.partner)==='junior_surfcamp'),
-    kids_camp: groups.filter(p=>getPartnerType(p.partner)==='kids_camp')
+    surfcamp:        partnerGroups(all.filter(b => inSection(b, 'surfcamp'))),
+    surfschool:      partnerGroups(all.filter(b => inSection(b, 'surfschool'))),
+    junior_surfcamp: partnerGroups(all.filter(b => inSection(b, 'junior_surfcamp'))),
+    kids_camp:       partnerGroups(all.filter(b => inSection(b, 'kids_camp'))),
   };
   renderPartnerRows(bySection.surfcamp, 'partnerTableBodyCamp', 'partnerTableHeadCamp', 'surfCampCountHint', 'No surf camp partners for this period');
   renderPartnerRows(bySection.surfschool, 'partnerTableBodySchool', 'partnerTableHeadSchool', 'surfSchoolCountHint', 'No surf school partners for this period');
