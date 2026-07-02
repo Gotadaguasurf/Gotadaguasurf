@@ -1702,6 +1702,37 @@ function displayPriceFor(item){
 function currentMerchMenu(){
   return Array.isArray(MENU.Merch)?MENU.Merch:[];
 }
+// Extras stock — simpler than Merch because Extras rows are standalone
+// (no size/variant pooling, no Offer/Staff suffix). Each item.stk is
+// the initial count; we subtract every occurrence in guest tabs across
+// history + active week to get what's left.
+function extrasSoldCount(itemName){
+  const target = String(itemName||'').trim().toLowerCase();
+  if(!target) return 0;
+  let count = 0;
+  const weeks = [...((Array.isArray(S.history)?S.history:[]))];
+  if(S.activeWeek) weeks.push(S.activeWeek);
+  weeks.forEach(wk=>{
+    allConsumers(wk).forEach(row=>{
+      (Array.isArray(row.items)?row.items:[]).forEach(item=>{
+        if(item?.c === 'Extras' && String(item?.n||'').trim().toLowerCase() === target) count++;
+      });
+    });
+  });
+  return count;
+}
+function extrasStockLeft(item){
+  if(!item || item.stk === null || item.stk === undefined) return null;
+  const initial = Number(item.stk||0);
+  return Math.max(0, initial - extrasSoldCount(item.n));
+}
+// Router — dispatches to the right stock-left helper based on category.
+// Called by the item card renderer and the add-to-tab stock guard.
+function stockLeftForCategory(item, category){
+  if(category === 'Merch' || category === 'Merch Special') return merchStockLeft(item);
+  if(category === 'Extras') return extrasStockLeft(item);
+  return null;
+}
 function merchSoldCounts(){
   const counts={};
   const weeks=[...((Array.isArray(S.history)?S.history:[]))];
@@ -2291,11 +2322,17 @@ function renderItemGrid(){
   // Pre-compute sold counts once per render so the per-item lookup is O(1).
   // Counts span every week (active + history) so the chip reads as
   // "all-time sold for this line" — what the owner wants to glance at.
+  // "Sold" chip lookups — Merch shares a helper that already returns a
+  // { name → count } map; Extras uses the per-item extrasSoldCount
+  // resolved lazily below because each Extras row is standalone.
   const soldByName = AC==='Merch' ? merchSoldCounts() : null;
+  const soldExtras = AC==='Extras';
   el.innerHTML=items.map((item,i)=>{
-    const stockLeft=AC==='Merch'?merchStockLeft(item):null;
+    const stockLeft=stockLeftForCategory(item, AC);
     const outOfStock=stockLeft!==null&&stockLeft<=0;
-    const sold=soldByName?Number(soldByName[item.n]||0):0;
+    const sold = soldByName ? Number(soldByName[item.n]||0)
+               : soldExtras ? extrasSoldCount(item.n)
+               : 0;
     const stockLabel=stockLeft!==null
       ? `<div class="ci-desc" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="color:${outOfStock?'var(--red)':'var(--green)'};font-weight:700">${outOfStock?'Out of stock':stockLeft+' left'}</span>${sold>0?`<span style="color:var(--muted);font-weight:600">· ${sold} sold</span>`:''}</div>`
       : (sold>0?`<div class="ci-desc" style="color:var(--muted);font-weight:600">${sold} sold</div>`:'');
@@ -2678,8 +2715,8 @@ function addResolvedItem(item,btn){
   // Staff M decrement the same counter as the base M). Without including
   // Merch Special here, a stockout could be silently bypassed by selling
   // a Staff/Offer variant.
-  if(AC==='Merch' || AC==='Merch Special'){
-    const stockLeft=merchStockLeft(item);
+  if(AC==='Merch' || AC==='Merch Special' || AC==='Extras'){
+    const stockLeft=stockLeftForCategory(item, AC);
     if(stockLeft!==null&&stockLeft<=0){toast(item.n+' is out of stock');return;}
   }
   const price=displayPriceFor(item);
