@@ -2354,15 +2354,21 @@ function renderItemGrid(){
   } else {
     items = MENU[AC] || [];
   }
-  // On the Staff roster we ONLY show items the owner has explicitly
-  // configured for staff (alt_label='Staff' on /prices). Items without
-  // a Staff alt are guest-only and would otherwise render at the
-  // generic STAFF_PRICE_FACTOR fallback, which is not what the owner
-  // wants. Stock is still shared (staff sales decrement the same
-  // counter guests read from — see stockLeftForCategory), so a t-shirt
-  // given to staff still reduces the number available to guests.
+  // Staff tab shows only items the owner has explicitly configured for
+  // staff — alt_label containing 'Staff' on /prices, or an `sp` value on
+  // the local menu row. Tolerant fallback: if NO item on this tab has
+  // any staff signal, the whole list renders with the STAFF_PRICE_FACTOR
+  // default so the tab doesn't go blank on locations that haven't been
+  // migrated to /prices-driven staff pricing yet.
+  // Stock is shared across rosters — a staff giveaway decrements the
+  // same counter guests read from (see stockLeftForCategory).
   if (currentRoster === 'staff') {
-    items = items.filter(i => isStaffAltLabel(i));
+    const explicit = items.filter(i =>
+      isStaffAltLabel(i) ||
+      (i?.sp !== null && i?.sp !== undefined && Number.isFinite(Number(i?.sp)))
+    );
+    if (explicit.length) items = explicit;
+    // else: keep the full list, fall back to STAFF_PRICE_FACTOR pricing.
   }
   if(!items.length){
     el.innerHTML=`<div class="c-item-empty">
