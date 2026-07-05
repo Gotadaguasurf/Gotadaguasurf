@@ -460,7 +460,7 @@ header{display:none}
     <div class="mbody">
       <div class="mfield">
         <label>Names</label>
-        <textarea style="width:100%;min-height:120px;border:1.5px solid var(--border);border-radius:9px;padding:8px 11px;font-size:13px;font-family:'Outfit',sans-serif;resize:vertical;outline:none;line-height:1.75;transition:border-color .18s" id="newGuestName" placeholder="One name per line&#10;Ana Costa&#10;Miguel Pereira&#10;Joao Silva"></textarea>
+        <textarea style="width:100%;min-height:120px;border:1.5px solid var(--border);border-radius:9px;padding:8px 11px;font-size:13px;font-family:'Outfit',sans-serif;resize:vertical;outline:none;line-height:1.75;transition:border-color .18s" id="newGuestName" placeholder="One name per line — start with the bike number if you use one:&#10;12 Ana Costa&#10;#35 Miguel Pereira&#10;Joao Silva"></textarea>
       </div>
     </div>
     <div class="mfooter">
@@ -1322,6 +1322,7 @@ function hydrateWeekStateFromRows(weekRows,guestRows,itemRows){
       ...(guest.checkout?{bookingCo:new Date(guest.checkout+'T00:00:00').getTime()}:{}),
       ...(guest.pax?{bookingPax:guest.pax}:{}),
       ...(meta.staffNote?{staffNote:meta.staffNote}:{}),
+      ...(meta.bikeNo != null && Number.isFinite(Number(meta.bikeNo)) ? {bikeNo: Number(meta.bikeNo)} : {}),
       sortOrder:Number(guest.sort_order||0)
     };
     guestsByWeek[wkId][guest.is_staff?'staff':'guests'].push(payload);
@@ -1543,7 +1544,10 @@ async function syncCampTabStateToSupabase(){
           checkout:row.bookingCo?isoLocal(new Date(row.bookingCo)):null,
           pax:row.bookingPax||1,
           sort_order:(guestIndex+1)*10,
-          meta:{staffNote:row.staffNote||null}
+          // Portugal uses bike numbers to identify each guest; stored in
+          // meta so no schema change is needed. Rehydration on the read
+          // side picks it back up from meta.bikeNo.
+          meta:{staffNote:row.staffNote||null, bikeNo: (row.bikeNo != null ? Number(row.bikeNo) : null)}
         });
         normalizeItemRows(row.items).forEach((item,itemIndex)=>{
           const itemId=isUuid(item.id)?item.id:makeUuid();
@@ -2225,16 +2229,31 @@ function renderGuestList(){
   // Display-only: hide per_guest closed guests via visibleRoster. The
   // underlying state (rosterRows) still has them so close/re-open can
   // restore them later without losing their item history.
-  const rows=visibleRoster(wk,currentRoster).filter(g=>g.name.toLowerCase().includes(term));
+  // Search matches either the name OR the bike number — typing "12"
+  // jumps straight to bike #12, and typing "ana" finds Ana Costa.
+  const rows=visibleRoster(wk,currentRoster).filter(g=>{
+    if(g.name.toLowerCase().includes(term)) return true;
+    if(g.bikeNo != null && String(g.bikeNo).includes(term)) return true;
+    return false;
+  });
   if(!rows.length){el.innerHTML=`<div style="padding:12px;text-align:center;font-size:12px;color:var(--muted)">${currentRoster==='staff'?'No staff match.':'No match.'}</div>`;return;}
-  el.innerHTML=rows.map(g=>`<div class="c-guest ${AG===g.id?'active':''}" onclick="selGuest('${esc(g.id)}')">
+  // Portugal (and any other roster with bikeNo set) shows the bike
+  // number as a chip in front of the name so staff can identify the
+  // person at a glance. Guests without bikeNo (Sri Lanka / Morocco /
+  // Junior camp) render exactly as before — the chip stays hidden.
+  el.innerHTML=rows.map(g=>{
+    const bikeChip = (g.bikeNo != null)
+      ? `<span style="display:inline-block;background:var(--ocean);color:#fff;border-radius:6px;padding:1px 6px;font-family:'DM Mono',monospace;font-size:10px;font-weight:800;margin-right:6px;vertical-align:1px">#${g.bikeNo}</span>`
+      : '';
+    return `<div class="c-guest ${AG===g.id?'active':''}" onclick="selGuest('${esc(g.id)}')">
     <div style="min-width:0;flex:1">
-      <div class="c-guest-name">${g.name}</div>
+      <div class="c-guest-name">${bikeChip}${g.name}</div>
       <div class="c-guest-amt">${gtot(g)>0?euro(gtot(g)):'no charges'}${currentRoster==='guests'&&isQueuedForNextWeek(g.name)?' / queued next week':''}</div>
     </div>
     ${isGuestFullyPaid(g)?'<div class="c-gpaid"></div>':''}
     <button class="c-guest-del" onclick="event.stopPropagation();delGuestRow('${esc(g.id)}')" title="Remove from this week">×</button>
-  </div>`).join('');
+  </div>`;
+  }).join('');
   if(searchEl&&document.activeElement!==searchEl&&term){
     searchEl.focus({preventScroll:true});
     const len=searchEl.value.length;
@@ -3889,18 +3908,40 @@ async function openAddGuest(){
   document.getElementById('newGuestName').value='';
   openOv('addGuestOv');
 }
+// Parses a raw line from the "Add guests" textarea into { bikeNo, name }.
+// Portugal uses bike numbers (1–100) to identify each person alongside
+// their name. Accepts any of:
+//   "12 Ana Costa" / "#12 Ana Costa" / "12: Ana Costa" / "12 - Ana Costa"
+// If the leading token isn't a plausible bike number (1-999), the whole
+// line stays as the name and bikeNo is null. Works transparently for
+// locations that don't use bike numbers — they just type names as before.
+function parseGuestLine(raw){
+  const line = String(raw||'').trim();
+  if(!line) return { bikeNo: null, name: '' };
+  const m = line.match(/^#?\s*(\d{1,3})\b\s*[:.\-–]?\s*(.+)$/);
+  if(m){
+    const n = Number(m[1]);
+    if(Number.isFinite(n) && n > 0 && n < 1000){
+      return { bikeNo: n, name: m[2].trim() };
+    }
+  }
+  return { bikeNo: null, name: line };
+}
+
 function saveNewGuest(){
   const raw=document.getElementById('newGuestName').value;
-  const names=raw.split('\n').map(s=>s.trim()).filter(Boolean);
-  if(!names.length){toast('Enter at least one name');return;}
+  const lines=raw.split('\n').map(s=>s.trim()).filter(Boolean);
+  if(!lines.length){toast('Enter at least one name');return;}
   if(!S.activeWeek)return;
   const rows=rosterRows(S.activeWeek,currentRoster);
   const existing=new Set(rows.map(g=>g.name.toLowerCase()));
-  const toAdd=names.filter(name=>!existing.has(name.toLowerCase()));
+  const parsed=lines.map(parseGuestLine).filter(p=>p.name);
+  const toAdd=parsed.filter(p=>!existing.has(p.name.toLowerCase()));
   if(!toAdd.length){toast('Already in this week');return;}
   const created=[];
-  toAdd.forEach(name=>{
+  toAdd.forEach(({bikeNo, name})=>{
     const row={id:makeUuid(),name,items:[],paid:false};
+    if(bikeNo != null) row.bikeNo = bikeNo;
     rows.push(row);
     created.push(row);
   });
@@ -3909,7 +3950,8 @@ function saveNewGuest(){
   save();closeOv('addGuestOv');
   renderCharge();
   renderThisWeek();
-  toast(toAdd.length===1?toAdd[0]+' added':toAdd.length+' added');
+  const fmtAdded = (p) => p.bikeNo != null ? `#${p.bikeNo} ${p.name}` : p.name;
+  toast(toAdd.length===1 ? fmtAdded(toAdd[0])+' added' : toAdd.length+' added');
 }
 
 function openCloseWeek(){
