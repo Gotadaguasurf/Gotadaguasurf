@@ -13,22 +13,24 @@
 
 create table if not exists public.pricing_areas (
   id uuid primary key default gen_random_uuid(),
-  -- machine key derived from label (lowercase, underscored). Used as
-  -- the tab identifier in the client and can never collide with a
-  -- system area since we validate on insert.
   key text not null unique,
   label text not null,
-  -- Which pricing_catalog.category values feed this tab. Usually one
-  -- entry matching the label, but the array shape lets a single tab
-  -- collect multiple related categories if the owner ever needs that.
   cats jsonb not null default '[]'::jsonb,
-  -- Optional inline SVG string for a custom icon. Null → no icon
-  -- shown, matching the fallback behaviour of AREA_ICONS.
   icon text,
   sort_order integer not null default 100,
+  -- Hidden flag: true means this key belongs to a SYSTEM area the owner
+  -- has chosen to hide from /prices and the POS. Deleting the row
+  -- restores the system area (system areas stay hardcoded in the
+  -- client, we just track a "is currently hidden" opinion here).
+  -- Custom areas never set hidden=true; they're deleted outright.
+  hidden boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+-- Idempotent for deployments that already ran the table create without
+-- the hidden column.
+alter table public.pricing_areas
+  add column if not exists hidden boolean not null default false;
 
 -- RLS: readable by anyone authenticated, editable by anyone
 -- authenticated. Same policy as pricing_catalog since /prices is

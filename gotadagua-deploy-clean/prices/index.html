@@ -1068,41 +1068,66 @@ async function loadCatalog(){
   catalog = data || [];
 }
 
-// Owner-defined tabs beyond the built-in Accommodation/Surf/Tours/etc.
-// Stored in pricing_areas so all locations share the same tab set.
-// Rebuilds the mutable AREAS list + AREA_BY_KEY on every load, keeping
-// system areas first (in their original order) followed by custom ones
-// in sort_order. Fails silently when the table doesn't exist yet
-// (mid-migration) so /prices keeps working.
+// Keys of system areas the owner has chosen to hide (persisted rows
+// in pricing_areas with hidden=true). Populated by loadCustomAreas.
+let hiddenSystemKeys = new Set();
+
+// Loads owner-defined tabs (custom areas) AND hidden-system flags from
+// pricing_areas. Retries without the `hidden` column when the table is
+// mid-migration so the rest of the feature keeps working.
 async function loadCustomAreas(){
   try{
-    const { data, error } = await sbClient
+    let sel = await sbClient
       .from('pricing_areas')
-      .select('key, label, cats, icon, sort_order')
+      .select('key, label, cats, icon, sort_order, hidden')
       .order('sort_order', { ascending:true })
       .order('label', { ascending:true });
-    if(error){
-      // Table missing → silent no-op. The migration SQL creates it.
-      if(/relation .*does not exist/i.test(error.message||'')) return;
-      console.warn('[Prices] loadCustomAreas failed', error);
+    if(sel.error){
+      if(/relation .*does not exist/i.test(sel.error.message||'')) return;
+      if(/column .*hidden.* does not exist/i.test(sel.error.message||'')){
+        // Fallback without `hidden` column.
+        sel = await sbClient
+          .from('pricing_areas')
+          .select('key, label, cats, icon, sort_order')
+          .order('sort_order', { ascending:true })
+          .order('label', { ascending:true });
+        if(sel.error){ console.warn('[Prices] loadCustomAreas retry failed', sel.error); return; }
+        applyCustomAreas(sel.data || [], /*includeHidden*/ false);
+        return;
+      }
+      console.warn('[Prices] loadCustomAreas failed', sel.error);
       return;
     }
-    const customs = (data||[]).map(r => ({
+    applyCustomAreas(sel.data || [], /*includeHidden*/ true);
+  }catch(e){
+    console.warn('[Prices] loadCustomAreas threw', e);
+  }
+}
+function applyCustomAreas(rows, includeHidden){
+  const systemKeys = new Set(AREAS_SYSTEM.map(a => a.key));
+  hiddenSystemKeys = new Set();
+  const customs = [];
+  (rows||[]).forEach(r => {
+    if(!r.key || !r.label) return;
+    if(includeHidden && r.hidden){
+      // Hidden-system marker. Just remember the key; system area stays
+      // in AREAS_SYSTEM so restoring is a single row delete.
+      if(systemKeys.has(r.key)) hiddenSystemKeys.add(r.key);
+      return;
+    }
+    if(systemKeys.has(r.key)) return;
+    customs.push({
       key: r.key,
       label: r.label,
       cats: Array.isArray(r.cats) ? r.cats : (r.cats ? [r.cats] : [r.label]),
       defaultCategory: (Array.isArray(r.cats) ? r.cats[0] : r.cats) || r.label,
       _custom: true,
-    })).filter(a => a.key && a.label);
-    // Reset AREAS to system, then append customs (dedup by key so a system
-    // key can't be shadowed by a custom row of the same name).
-    AREAS.length = 0;
-    AREAS_SYSTEM.forEach(a => AREAS.push(a));
-    customs.forEach(c => { if(!AREA_BY_KEY[c.key]) AREAS.push(c); });
-    rebuildAreaByKey();
-  }catch(e){
-    console.warn('[Prices] loadCustomAreas threw', e);
-  }
+    });
+  });
+  AREAS.length = 0;
+  AREAS_SYSTEM.forEach(a => AREAS.push(a));
+  customs.forEach(c => AREAS.push(c));
+  rebuildAreaByKey();
 }
 
 // Prompts the owner for a new tab (label + optional category name).
@@ -1138,6 +1163,32 @@ async function deleteCustomArea(key){
   if(error){ alert('Delete failed: '+error.message); return; }
   await loadCustomAreas();
   if(filterArea === key) filterArea = 'accommodation';
+  renderTable();
+}
+
+// System tabs can't be deleted from code, but can be hidden by upserting
+// a pricing_areas row with hidden=true. Restore is a simple row delete
+// (see restoreSystemArea below). Kept separate from deleteCustomArea so
+// the confirm copy explains the "hide, not delete" behaviour.
+async function hideSystemArea(key){
+  const a = AREA_BY_KEY[key];
+  if(!a || a._custom){ return; }
+  if(!confirm(`Hide the "${a.label}" tab?\n\nProducts stay in the catalog. You can bring the tab back any time from the "Restore hidden" button on the tab row.`)) return;
+  const { error } = await sbClient.from('pricing_areas').upsert({
+    key: a.key, label: a.label, cats: a.cats, sort_order: 0, hidden: true,
+  }, { onConflict: 'key' });
+  if(error){ alert('Hide failed: '+error.message); return; }
+  await loadCustomAreas();
+  if(filterArea === key) filterArea = 'accommodation';
+  renderTable();
+}
+async function restoreHiddenAreas(){
+  if(!hiddenSystemKeys.size) return;
+  const list = Array.from(hiddenSystemKeys).map(k => AREAS_SYSTEM.find(a=>a.key===k)?.label || k).join(', ');
+  if(!confirm(`Bring back the hidden tab${hiddenSystemKeys.size===1?'':'s'}: ${list}?`)) return;
+  const { error } = await sbClient.from('pricing_areas').delete().in('key', Array.from(hiddenSystemKeys));
+  if(error){ alert('Restore failed: '+error.message); return; }
+  await loadCustomAreas();
   renderTable();
 }
 
@@ -1227,7 +1278,10 @@ function renderAreaTabs(){
   // many entries live in each surface. The Costs tab has no DB categories
   // yet (placeholder for a future operational-costs view). In Price List
   // mode we hide the Costs tab entirely — it's owner-internal.
-  const visibleAreas = AREAS.filter(a => !(viewMode === 'list' && a.key === 'costs'));
+  const visibleAreas = AREAS.filter(a =>
+    !(viewMode === 'list' && a.key === 'costs') &&
+    !hiddenSystemKeys.has(a.key)
+  );
   const counts = {};
   for (const a of visibleAreas) {
     counts[a.key] = a.cats.length
@@ -1245,9 +1299,15 @@ function renderAreaTabs(){
   // labels there. So we drop the count chip when viewMode === 'list'.
   const showCounts = viewMode === 'edit';
   const tabHtml = visibleAreas.map(a => {
-    const del = (viewMode === 'edit' && a._custom)
+    // Costs is a placeholder area and can't be hidden — the owner uses
+    // it as a reserved slot. Anything else gets an X in edit mode:
+    //   • custom tab → deleteCustomArea (removes the row entirely)
+    //   • system tab → hideSystemArea (upserts hidden=true, reversible
+    //     via the Restore button on the right).
+    const canHide = viewMode === 'edit' && a.key !== 'costs';
+    const del = !canHide ? '' : (a._custom
       ? `<span onclick="event.stopPropagation();deleteCustomArea('${a.key}')" title="Delete this custom tab" style="margin-left:4px;cursor:pointer;opacity:.6;font-size:14px;line-height:1">×</span>`
-      : '';
+      : `<span onclick="event.stopPropagation();hideSystemArea('${a.key}')" title="Hide this tab (reversible)" style="margin-left:4px;cursor:pointer;opacity:.5;font-size:14px;line-height:1">×</span>`);
     return `
     <button class="area-tab ${filterArea === a.key ? 'active' : ''}"
             onclick="onAreaTab('${a.key}')">
@@ -1257,6 +1317,14 @@ function renderAreaTabs(){
       ${del}
     </button>`;
   }).join('');
+  // Restore chip — shows only when the owner has hidden at least one
+  // system tab. One-click brings every hidden tab back at once.
+  const restoreBtn = (viewMode === 'edit' && hiddenSystemKeys.size)
+    ? `<button class="area-tab" onclick="restoreHiddenAreas()" title="Show hidden tabs" style="border:1.5px dashed #b3d1a3;color:#3f7a3f">
+         <span style="font-size:13px;line-height:1">↺</span>
+         <span>Restore ${hiddenSystemKeys.size} hidden</span>
+       </button>`
+    : '';
   // "+ New tab" chip appears at the end of the tab row, edit mode only.
   const newTabBtn = viewMode === 'edit'
     ? `<button class="area-tab" onclick="openNewTabDialog()" title="Create a custom tab" style="border:1.5px dashed #cfcfcc;color:#8a8a86">
@@ -1264,7 +1332,7 @@ function renderAreaTabs(){
          <span>New tab</span>
        </button>`
     : '';
-  tabs.innerHTML = tabHtml + newTabBtn;
+  tabs.innerHTML = tabHtml + restoreBtn + newTabBtn;
 }
 
 function renderTable(){
