@@ -2354,6 +2354,16 @@ function renderItemGrid(){
   } else {
     items = MENU[AC] || [];
   }
+  // On the Staff roster we ONLY show items the owner has explicitly
+  // configured for staff (alt_label='Staff' on /prices). Items without
+  // a Staff alt are guest-only and would otherwise render at the
+  // generic STAFF_PRICE_FACTOR fallback, which is not what the owner
+  // wants. Stock is still shared (staff sales decrement the same
+  // counter guests read from — see stockLeftForCategory), so a t-shirt
+  // given to staff still reduces the number available to guests.
+  if (currentRoster === 'staff') {
+    items = items.filter(i => isStaffAltLabel(i));
+  }
   if(!items.length){
     el.innerHTML=`<div class="c-item-empty">
       <div style="font-size:28px;opacity:.2">Menu</div>
