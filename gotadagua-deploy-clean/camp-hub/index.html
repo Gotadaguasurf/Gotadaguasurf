@@ -2151,6 +2151,17 @@ function subscribeHubRealtime(){
           }
         }).catch(e=>console.warn('[Hub] pricing_catalog RT extras reload failed',e));
       }
+      // Any category the four hardcoded loaders don't handle — Add-ons
+      // ('Other Service') and every custom tab from pricing_areas.
+      // A pricing_catalog change to those categories still fires the
+      // generic reload so the POS picks up new items live.
+      if(!cat || !CAMPTAB_HARDCODED_CATS.has(cat)){
+        refreshCatalogCampTabAny().then(changed=>{
+          if(changed && typeof sendCampTabAnyUpdate==='function'){
+            try{ sendCampTabAnyUpdate(); }catch(_e){}
+          }
+        }).catch(e=>console.warn('[Hub] pricing_catalog RT any-category reload failed',e));
+      }
     })
     .subscribe((status)=>{
       if(status==='SUBSCRIBED') console.log('[Hub] Realtime connected');
@@ -3160,6 +3171,19 @@ let __catalogCampTabTours=null; // null = not yet loaded, [] = loaded but empty
 let __catalogCampTabMerch=null; // mirror cache for Merch
 let __catalogCampTabDrinks=null; // mirror cache for Drinks
 let __catalogCampTabExtras=null; // mirror cache for Extras (Portugal: sunglasses, surf stick, after sun, sun shield)
+// Any-category cache — holds show_in_camp_tab items for the "long tail"
+// of categories the four hardcoded loaders above don't handle: Add-ons
+// (category='Other Service') plus every custom tab the owner creates in
+// /prices via pricing_areas. Keyed by category so the POS can pick each
+// bucket into MENU under the same key.
+let __catalogCampTabAny=null;
+// Category names already covered by the hardcoded loaders — the "any"
+// loader excludes these so we don't double-count.
+const CAMPTAB_HARDCODED_CATS = new Set(['Tour','Merch','Drinks','Extras']);
+// Mapping from pricing_catalog.category → POS tab name. Keeps the tab
+// label human ("Add-ons") while the DB stores the legacy category
+// string ("Other Service"). Custom categories map to themselves.
+const CAMPTAB_CATEGORY_TO_TAB = { 'Other Service': 'Add-ons' };
 
 function currentCampTabMenu(){
   const stored=readJsonStorage(CAMPTAB_MENU_KEY,null);
@@ -3186,7 +3210,77 @@ function currentCampTabMenu(){
     // visibleCats filters the tab out.
     next={...next, Extras: __catalogCampTabExtras.map(e=>({...e}))};
   }
+  // Any-category rows (Add-ons + custom tabs) grouped by their POS tab
+  // name. The loader stores them as { [tabName]: [items] } so we can
+  // just spread over next.
+  if(__catalogCampTabAny && typeof __catalogCampTabAny === 'object'){
+    Object.entries(__catalogCampTabAny).forEach(([tabName, items])=>{
+      if(!Array.isArray(items) || !items.length) return;
+      next={...next, [tabName]: items.map(i=>({...i}))};
+    });
+  }
   return next;
+}
+
+// Generic loader for any category the four hardcoded loaders don't
+// handle (Add-ons + custom tabs). Reads all show_in_camp_tab rows for
+// this location, groups them by POS tab name (via CAMPTAB_CATEGORY_TO_TAB
+// mapping for legacy category names, otherwise identity), and returns
+// the grouped object. Uses the same column set as the Extras loader so
+// stock + alt_price flow through untouched.
+async function loadCampTabAnyFromCatalog(){
+  try{
+    const client=getHubSupabaseClient();
+    const locId=await ensureHubLocationId();
+    if(!client||!locId) return null;
+    const {data,error}=await client
+      .from('pricing_catalog')
+      .select('id,name,sell_price,cost_per_guest,notes,sort_order,stock_qty,alt_price,alt_label,category')
+      .eq('location_id',locId)
+      .eq('show_in_camp_tab',true)
+      .eq('active',true)
+      .order('sort_order',{ascending:true});
+    if(error) throw error;
+    if(!Array.isArray(data)) return null;
+    const buckets={};
+    data.forEach(r=>{
+      const cat=String(r.category||'').trim();
+      if(!cat || CAMPTAB_HARDCODED_CATS.has(cat)) return;
+      const tabName=CAMPTAB_CATEGORY_TO_TAB[cat] || cat;
+      const item={
+        id: 'cat|any|'+r.id,
+        n: String(r.name||'').trim(),
+        p: Number(r.sell_price||0),
+        d: r.notes ? String(r.notes) : '',
+        costPerGuest: Number(r.cost_per_guest||0),
+        sortOrder: Number.isFinite(Number(r.sort_order)) ? Number(r.sort_order) : 100,
+        stk: (r.stock_qty===null || r.stock_qty===undefined) ? null : Number(r.stock_qty),
+        altPrice: (r.alt_price===null || r.alt_price===undefined) ? null : Number(r.alt_price),
+        altLabel: r.alt_label || null,
+        c: tabName,
+      };
+      if(!item.n) return;
+      if(!buckets[tabName]) buckets[tabName]=[];
+      buckets[tabName].push(item);
+    });
+    return buckets;
+  }catch(e){
+    console.warn('[Hub] loadCampTabAnyFromCatalog failed',e);
+    return null;
+  }
+}
+async function refreshCatalogCampTabAny(){
+  const next=await loadCampTabAnyFromCatalog();
+  if(next===null) return false;
+  const prevJson=JSON.stringify(__catalogCampTabAny||{});
+  const nextJson=JSON.stringify(next);
+  __catalogCampTabAny=next;
+  const total=Object.values(next).reduce((s,arr)=>s+arr.length,0);
+  const tabs=Object.keys(next).join(', ');
+  if(total){
+    console.log('[Hub] Camp Tab Any-category loaded — '+total+' item(s) across ['+tabs+']');
+  }
+  return prevJson!==nextJson;
 }
 
 async function loadCampTabToursFromCatalog(){
@@ -8340,6 +8434,10 @@ function sendCampTabBootstrap(){
   // after sun, sun shield). Empty array on other locations hides the
   // Extras tab via visibleCats.
   try{ sendCampTabExtrasUpdate(); }catch(_e){}
+  // Any-category tabs (Add-ons + custom areas from pricing_areas). Empty
+  // buckets on locations that don't use them → visibleCats hides those
+  // tabs automatically. Same idempotent shape as Extras.
+  try{ sendCampTabAnyUpdate(); }catch(_e){}
 }
 
 // Phase 5: live Tours-only update — bypasses the iframe's first-bootstrap
@@ -8390,6 +8488,18 @@ function sendCampTabExtrasUpdate(){
   const extras=Array.isArray(menu?.Extras)?menu.Extras:[];
   try{
     frame.contentWindow.postMessage({type:'camp-tab-extras-update',extras},'*');
+  }catch(_error){}
+}
+// Sends the "any category" bucket (Add-ons + custom tabs from
+// pricing_areas) so the inner page can populate MENU[tabName] for each
+// bucket and render extra POS tabs without a schema change on our side.
+function sendCampTabAnyUpdate(){
+  const frame=document.getElementById('campTabFrame');
+  if(!frame?.contentWindow) return;
+  const buckets = __catalogCampTabAny && typeof __catalogCampTabAny === 'object'
+    ? __catalogCampTabAny : {};
+  try{
+    frame.contentWindow.postMessage({type:'camp-tab-any-update',buckets},'*');
   }catch(_error){}
 }
 async function mountCampTabFrame(){
@@ -8760,6 +8870,13 @@ async function requirePlatformSession(){
         try{ sendCampTabBootstrap(); }catch(_e){}
       }
     }).catch(e=>console.warn('[Hub] refreshCatalogCampTabExtras failed',e));
+    // Any-category tabs — Add-ons + custom (pricing_areas). Same warm-up
+    // pattern so the POS sees them from the first render.
+    refreshCatalogCampTabAny().then(changed=>{
+      if(changed && typeof sendCampTabBootstrap==='function' && document.getElementById('campTabFrame')){
+        try{ sendCampTabBootstrap(); }catch(_e){}
+      }
+    }).catch(e=>console.warn('[Hub] refreshCatalogCampTabAny failed',e));
     // Tour cost presets — both Sri Lanka and Morocco. Each location keeps
     // its own row in state_store so the two camps stay isolated.
     loadTourCostPresets().catch(e=>console.warn('[Hub] loadTourCostPresets failed',e));

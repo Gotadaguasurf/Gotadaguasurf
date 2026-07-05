@@ -2022,10 +2022,11 @@ function displayCatName(c){ return CAT_DISPLAY_NAME[c] || c; }
 
 function visibleCats(){
   const config = LOCATION_TAB_CONFIG[CAMP_TAB_LOCATION_SLUG] || DEFAULT_TAB_ORDER;
-  // "Bar Tab" is a synthetic freeform-amount tab (Portugal only for now);
-  // it renders its own UI and doesn't need a MENU entry.
   const SYNTHETIC = new Set(['Merch Special', 'Bar Tab']);
-  return config.filter(c => {
+  // First pass — the configured tabs in their explicit order. Same
+  // filtering as before: hide empty tabs, hide Merch when only
+  // "special" variants exist, keep synthetic tabs always visible.
+  const primary = config.filter(c => {
     if (c === 'Merch Special') {
       const merch = Array.isArray(MENU.Merch) ? MENU.Merch : [];
       return merch.some(i => isSpecialMerchName(i?.n));
@@ -2036,6 +2037,21 @@ function visibleCats(){
     if (c === 'Merch') return items.some(i => !isSpecialMerchName(i?.n));
     return true;
   });
+  // Second pass — any category with items that ISN'T already in the
+  // config. Picks up Add-ons plus every owner-defined custom tab from
+  // pricing_areas without a code change. Owner controls per-location
+  // visibility purely via the show_in_camp_tab flag on each product.
+  const primarySet = new Set(primary);
+  const extras = Object.keys(MENU || {}).filter(c => {
+    if (primarySet.has(c)) return false;
+    if (SYNTHETIC.has(c)) return false;
+    // Skip the four hardcoded categories the loaders own — if they're
+    // not in the config, the location intentionally hid them.
+    if (['Drinks','Tours','Extras','Merch'].includes(c)) return false;
+    const items = Array.isArray(MENU[c]) ? MENU[c] : [];
+    return items.length > 0;
+  }).sort();
+  return [...primary, ...extras];
 }
 function stayMeta(row){
   if(!row?.bookingCi||!row?.bookingCo) return '';
@@ -4251,6 +4267,43 @@ window.addEventListener('message',async e=>{
       queueMenuSync();
     } else if(document.getElementById('menuOv')?.classList.contains('open')){
       renderMenuSettings();
+    }
+    return;
+  }
+  // Any-category buckets — Add-ons + owner-defined custom tabs from
+  // pricing_areas. The hub sends { [tabName]: [items] } for every non-
+  // hardcoded category with show_in_camp_tab rows. We drop each bucket
+  // straight into MENU under its tab name — visibleCats then picks it
+  // up dynamically without a hardcoded LOCATION_TAB_CONFIG entry.
+  if(e.data?.type==='camp-tab-any-update' && e.data?.buckets && typeof e.data.buckets === 'object'){
+    const buckets = e.data.buckets;
+    const nextMenu = { ...MENU };
+    // Track which tabs the hub currently owns so we can clear MENU
+    // entries that just went empty (all items unchecked on /prices).
+    const ownedTabs = new Set(Object.keys(buckets));
+    let changed = false;
+    Object.entries(buckets).forEach(([tabName, items])=>{
+      const incoming = cloneCampTabPayload(Array.isArray(items) ? items : []);
+      const prev = Array.isArray(MENU[tabName]) ? MENU[tabName] : [];
+      if(JSON.stringify(prev) !== JSON.stringify(incoming)){
+        nextMenu[tabName] = incoming;
+        changed = true;
+      }
+    });
+    // Previously-owned tabs that are no longer in the buckets → drop.
+    (window.__campTabAnyOwnedTabs || []).forEach(tabName => {
+      if(!ownedTabs.has(tabName) && Array.isArray(nextMenu[tabName])){
+        nextMenu[tabName] = [];
+        changed = true;
+      }
+    });
+    window.__campTabAnyOwnedTabs = Array.from(ownedTabs);
+    if(changed){
+      MENU = nextMenu;
+      saveMenu();
+      renderAllCampTabViews();
+      notifyParentStateChanged();
+      queueMenuSync();
     }
     return;
   }
