@@ -691,19 +691,24 @@ const AREA_ICONS = {
   addons:       '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
   costs:        '<svg viewBox="0 0 24 24"><path d="M3 20h18M5 20V10M10 20V6M15 20v-9M20 20v-4"/></svg>'
 };
-const AREAS = [
+// Built-in areas. Extras added — same shape as Merch (stock + optional
+// alt price), category='Extras' feeds the POS Extras tab via
+// refreshCatalogCampTabExtras. Custom areas the owner adds live in
+// pricing_areas (Supabase) and get merged into this list at load time.
+const AREAS_SYSTEM = [
   { key:'accommodation', label:'Accommodation', cats:['Accommodation','Per Night'], defaultCategory:'Accommodation' },
   { key:'surf',          label:'Surf',          cats:['Surf Pack','Lesson'],         defaultCategory:'Surf Pack'     },
   { key:'tours',         label:'Tours',         cats:['Tour'],                        defaultCategory:'Tour'          },
   { key:'transfers',     label:'Transfers',     cats:['Transport'],                   defaultCategory:'Transport'     },
-  // Merch — T-Shirts, hats, etc. stock_qty + alt_price (Offer) live here.
   { key:'merch',         label:'Merch',         cats:['Merch'],                       defaultCategory:'Merch'         },
-  // Drinks — beers, sodas, water. Same shape as Merch (stock + optional
-  // alt price for happy hour). show_in_camp_tab routes to the POS.
+  { key:'extras',        label:'Extras',        cats:['Extras'],                      defaultCategory:'Extras'        },
   { key:'drinks',        label:'Drinks',        cats:['Drinks'],                      defaultCategory:'Drinks'        },
   { key:'addons',        label:'Add-ons',       cats:['Other Service'],               defaultCategory:'Other Service' },
   { key:'costs',         label:'Costs',         cats:[],                              defaultCategory:'Other Service' }
 ];
+// Mutable AREAS list — starts as a copy of SYSTEM, gets custom areas
+// appended when they load. Existing render code reads from AREAS as before.
+const AREAS = [...AREAS_SYSTEM];
 const AREA_BY_KEY = Object.fromEntries(AREAS.map(a=>[a.key,a]));
 function categoriesForArea(key){ return AREA_BY_KEY[key]?.cats || []; }
 
