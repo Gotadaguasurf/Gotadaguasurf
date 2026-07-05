@@ -2235,6 +2235,15 @@ function renderGuestList(){
     if(g.name.toLowerCase().includes(term)) return true;
     if(g.bikeNo != null && String(g.bikeNo).includes(term)) return true;
     return false;
+  }).sort((a,b)=>{
+    // Portugal-style ordering: numbered bikes come first, 1 → 100.
+    // Guests without a bike number fall to the bottom, alphabetical
+    // so they still list predictably.
+    const an = a.bikeNo, bn = b.bikeNo;
+    if(an != null && bn != null) return an - bn;
+    if(an != null) return -1;
+    if(bn != null) return 1;
+    return String(a.name||'').localeCompare(String(b.name||''));
   });
   if(!rows.length){el.innerHTML=`<div style="padding:12px;text-align:center;font-size:12px;color:var(--muted)">${currentRoster==='staff'?'No staff match.':'No match.'}</div>`;return;}
   // Portugal (and any other roster with bikeNo set) shows the bike
