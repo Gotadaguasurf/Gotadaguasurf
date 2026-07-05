@@ -709,8 +709,16 @@ const AREAS_SYSTEM = [
 // Mutable AREAS list — starts as a copy of SYSTEM, gets custom areas
 // appended when they load. Existing render code reads from AREAS as before.
 const AREAS = [...AREAS_SYSTEM];
-const AREA_BY_KEY = Object.fromEntries(AREAS.map(a=>[a.key,a]));
+// Kept mutable so rebuildAreaByKey() can refresh it in place after custom
+// areas load or a new one is created (const rebind isn't allowed).
+const AREA_BY_KEY = {};
+function rebuildAreaByKey(){
+  Object.keys(AREA_BY_KEY).forEach(k => delete AREA_BY_KEY[k]);
+  AREAS.forEach(a => { AREA_BY_KEY[a.key] = a; });
+}
+rebuildAreaByKey();
 function categoriesForArea(key){ return AREA_BY_KEY[key]?.cats || []; }
+function isCustomArea(key){ return !AREAS_SYSTEM.some(a => a.key === key); }
 
 const $ = (id)=>document.getElementById(id);
 const eur = (n)=>'€'+Number(n||0).toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -935,6 +943,9 @@ function withTimeout(promise, ms, label){
   markStep('step-catalog','pending','Loading catalog rows…');
   try {
     await withTimeout(loadCatalog(), 10000, 'loading the catalog rows');
+    // Custom tabs: fire-and-forget, don't block the catalog render if
+    // the pricing_areas table isn't there yet. Re-renders when done.
+    loadCustomAreas().then(()=>renderTable()).catch(()=>{});
     // Sold counts are best-effort — the catalog renders even if this
     // bails (RLS, network). Don't await with the strict timeout.
     loadMerchSoldCounts().then(()=>renderTable()).catch(()=>{});
@@ -1057,6 +1068,79 @@ async function loadCatalog(){
   catalog = data || [];
 }
 
+// Owner-defined tabs beyond the built-in Accommodation/Surf/Tours/etc.
+// Stored in pricing_areas so all locations share the same tab set.
+// Rebuilds the mutable AREAS list + AREA_BY_KEY on every load, keeping
+// system areas first (in their original order) followed by custom ones
+// in sort_order. Fails silently when the table doesn't exist yet
+// (mid-migration) so /prices keeps working.
+async function loadCustomAreas(){
+  try{
+    const { data, error } = await sbClient
+      .from('pricing_areas')
+      .select('key, label, cats, icon, sort_order')
+      .order('sort_order', { ascending:true })
+      .order('label', { ascending:true });
+    if(error){
+      // Table missing → silent no-op. The migration SQL creates it.
+      if(/relation .*does not exist/i.test(error.message||'')) return;
+      console.warn('[Prices] loadCustomAreas failed', error);
+      return;
+    }
+    const customs = (data||[]).map(r => ({
+      key: r.key,
+      label: r.label,
+      cats: Array.isArray(r.cats) ? r.cats : (r.cats ? [r.cats] : [r.label]),
+      defaultCategory: (Array.isArray(r.cats) ? r.cats[0] : r.cats) || r.label,
+      _custom: true,
+    })).filter(a => a.key && a.label);
+    // Reset AREAS to system, then append customs (dedup by key so a system
+    // key can't be shadowed by a custom row of the same name).
+    AREAS.length = 0;
+    AREAS_SYSTEM.forEach(a => AREAS.push(a));
+    customs.forEach(c => { if(!AREA_BY_KEY[c.key]) AREAS.push(c); });
+    rebuildAreaByKey();
+  }catch(e){
+    console.warn('[Prices] loadCustomAreas threw', e);
+  }
+}
+
+// Prompts the owner for a new tab (label + optional category name).
+// Persists to pricing_areas, then reloads and re-renders.
+async function openNewTabDialog(){
+  const label = prompt('New tab name (e.g. "Rentals", "Wetsuits")');
+  if(!label || !label.trim()) return;
+  const cleanLabel = label.trim();
+  // Category defaults to the label — the owner rarely wants a separate
+  // category name and it keeps the pricing_catalog rows self-explanatory.
+  const key = cleanLabel.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'');
+  if(!key){ alert('That label can\'t be turned into a valid key.'); return; }
+  if(AREA_BY_KEY[key]){ alert(`Tab "${cleanLabel}" already exists.`); return; }
+  const sortOrder = 100 + AREAS.filter(a => a._custom).length * 10;
+  const { error } = await sbClient.from('pricing_areas').insert({
+    key, label: cleanLabel, cats: [cleanLabel], icon: null, sort_order: sortOrder,
+  });
+  if(error){ alert('Save failed: '+error.message); return; }
+  await loadCustomAreas();
+  filterArea = key;   // jump straight to the new tab
+  renderTable();
+}
+
+async function deleteCustomArea(key){
+  const a = AREA_BY_KEY[key];
+  if(!a || !a._custom){ return; }
+  const inUse = catalog.filter(r => a.cats.includes(r.category)).length;
+  const msg = inUse
+    ? `Delete tab "${a.label}"?\n\n${inUse} product${inUse===1?'':'s'} in this tab will stay in the catalog (category unchanged) but the tab disappears from /prices and the POS. You can bring the tab back by creating it again with the same label.`
+    : `Delete tab "${a.label}"?`;
+  if(!confirm(msg)) return;
+  const { error } = await sbClient.from('pricing_areas').delete().eq('key', key);
+  if(error){ alert('Delete failed: '+error.message); return; }
+  await loadCustomAreas();
+  if(filterArea === key) filterArea = 'accommodation';
+  renderTable();
+}
+
 // Lifetime sold counts per Merch / Drinks item, keyed by item_name.
 // Populated lazily on first catalog load and refreshed alongside it.
 // Used by renderTable to show a "X sold" badge next to the stock chip
@@ -1160,14 +1244,27 @@ function renderAreaTabs(){
   // Price List view — the user wants the tabs to read as clean section
   // labels there. So we drop the count chip when viewMode === 'list'.
   const showCounts = viewMode === 'edit';
-  tabs.innerHTML = visibleAreas.map(a => `
+  const tabHtml = visibleAreas.map(a => {
+    const del = (viewMode === 'edit' && a._custom)
+      ? `<span onclick="event.stopPropagation();deleteCustomArea('${a.key}')" title="Delete this custom tab" style="margin-left:4px;cursor:pointer;opacity:.6;font-size:14px;line-height:1">×</span>`
+      : '';
+    return `
     <button class="area-tab ${filterArea === a.key ? 'active' : ''}"
             onclick="onAreaTab('${a.key}')">
       <span class="ico">${AREA_ICONS[a.key] || ''}</span>
       <span>${a.label}</span>
       ${showCounts ? `<span class="count">${counts[a.key]}</span>` : ''}
-    </button>
-  `).join('');
+      ${del}
+    </button>`;
+  }).join('');
+  // "+ New tab" chip appears at the end of the tab row, edit mode only.
+  const newTabBtn = viewMode === 'edit'
+    ? `<button class="area-tab" onclick="openNewTabDialog()" title="Create a custom tab" style="border:1.5px dashed #cfcfcc;color:#8a8a86">
+         <span style="font-size:15px;font-weight:700;line-height:1">+</span>
+         <span>New tab</span>
+       </button>`
+    : '';
+  tabs.innerHTML = tabHtml + newTabBtn;
 }
 
 function renderTable(){
