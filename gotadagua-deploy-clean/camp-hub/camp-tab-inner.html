@@ -2414,8 +2414,15 @@ function renderItemGrid(){
     // owner can gift or discount ad hoc without editing the catalog.
     // Not shown on out-of-stock rows (nothing to discount).
     const showDiscount = !outOfStock && (AC==='Merch' || AC==='Extras');
+    // On the Staff roster there is no percentage discount — the staff
+    // price is already the concession. The only extra action the owner
+    // wants is "give it away", so the icon flips from % to a small gift
+    // glyph so staff know instantly what the button will do.
+    const isStaffRoster = currentRoster === 'staff';
+    const glyph = isStaffRoster ? '🎁' : '%';
+    const btnTitle = isStaffRoster ? 'Give as gift' : 'Give discount / gift';
     const discountBtn = showDiscount
-      ? `<button aria-label="Discount" title="Give discount / gift" onclick="event.stopPropagation();openDiscountModal('${esc(item.id||'')}', '${esc(item.n)}')" style="position:absolute;top:8px;right:8px;background:#fff8e6;color:#8a6a00;border:1.5px solid #f2dc9c;border-radius:999px;width:26px;height:26px;padding:0;cursor:pointer;font-family:inherit;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;line-height:1">%</button>`
+      ? `<button aria-label="${btnTitle}" title="${btnTitle}" onclick="event.stopPropagation();openDiscountModal('${esc(item.id||'')}', '${esc(item.n)}')" style="position:absolute;top:8px;right:8px;background:#fff8e6;color:#8a6a00;border:1.5px solid #f2dc9c;border-radius:999px;width:26px;height:26px;padding:0;cursor:pointer;font-family:inherit;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;line-height:1">${glyph}</button>`
       : '';
     if(hasAlt){
       const altLabel = String(item.altLabel || 'Offer');
@@ -2721,22 +2728,18 @@ function openDiscountModal(id, name){
   const p10 = Math.max(0, basePrice * 0.9);
   const p25 = Math.max(0, basePrice * 0.75);
   const p50 = Math.max(0, basePrice * 0.5);
-  m.innerHTML = `
-    <div style="background:#fff;border-radius:14px;max-width:420px;width:100%;padding:18px;font-family:inherit;box-shadow:0 20px 50px rgba(0,0,0,.25)">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
-        <div>
-          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-weight:700">Discount</div>
-          <div style="font-size:18px;font-weight:800;color:var(--navy);margin-top:2px">${esc(item.n)}</div>
-        </div>
-        <button id="discountClose" style="background:none;border:0;font-size:24px;color:var(--muted);cursor:pointer;line-height:1">×</button>
-      </div>
-      <div style="font-size:12px;color:var(--muted);margin-bottom:14px">Full price: <b style="font-family:'DM Mono',monospace;color:var(--navy)">${cur(basePrice)}</b></div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
-        ${button('-10%', p10, '-10%')}
-        ${button('-25%', p25, '-25%')}
-        ${button('-50%', p50, '-50%')}
-        ${button('Gift · free', 0, 'Gift')}
-      </div>
+  // Staff roster: the staff price already IS the concession, so we only
+  // surface a "Gift · free" action here. Guests roster: full quick-
+  // discount grid + custom price input for one-off deals.
+  const staffRoster = currentRoster === 'staff';
+  const title = staffRoster ? 'Give as gift' : 'Discount';
+  const quickButtons = staffRoster
+    ? button('Gift · free', 0, 'Gift')
+    : `${button('-10%', p10, '-10%')}
+       ${button('-25%', p25, '-25%')}
+       ${button('-50%', p50, '-50%')}
+       ${button('Gift · free', 0, 'Gift')}`;
+  const customRow = staffRoster ? '' : `
       <div style="border-top:1px solid var(--border);padding-top:12px">
         <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:6px">Custom price</div>
         <div style="display:flex;gap:8px">
@@ -2744,7 +2747,21 @@ function openDiscountModal(id, name){
           <input type="text" id="discountCustomNote" placeholder="Note (optional)" style="flex:1;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font-family:inherit;font-size:13px">
           <button id="discountCustomApply" style="background:var(--navy);color:#fff;border:0;border-radius:10px;padding:10px 18px;font-weight:700;cursor:pointer;font-family:inherit;font-size:13px">Apply</button>
         </div>
+      </div>`;
+  m.innerHTML = `
+    <div style="background:#fff;border-radius:14px;max-width:420px;width:100%;padding:18px;font-family:inherit;box-shadow:0 20px 50px rgba(0,0,0,.25)">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
+        <div>
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-weight:700">${title}</div>
+          <div style="font-size:18px;font-weight:800;color:var(--navy);margin-top:2px">${esc(item.n)}</div>
+        </div>
+        <button id="discountClose" style="background:none;border:0;font-size:24px;color:var(--muted);cursor:pointer;line-height:1">×</button>
       </div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:14px">${staffRoster ? 'Staff price' : 'Full price'}: <b style="font-family:'DM Mono',monospace;color:var(--navy)">${cur(basePrice)}</b></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+        ${quickButtons}
+      </div>
+      ${customRow}
     </div>`;
   document.body.appendChild(m);
   const close = () => m.remove();
@@ -2758,15 +2775,21 @@ function openDiscountModal(id, name){
       close();
     });
   });
-  m.querySelector('#discountCustomApply').addEventListener('click', () => {
-    const raw = m.querySelector('#discountCustomPrice').value;
-    const price = Number(raw);
-    if(!Number.isFinite(price) || price < 0){ toast('Enter a valid amount'); return; }
-    const note = (m.querySelector('#discountCustomNote').value || '').trim() || `€${price}`;
-    addItemAtCustomPrice(id, name, price, note, null);
-    close();
-  });
-  setTimeout(() => m.querySelector('#discountCustomPrice')?.focus(), 50);
+  // Custom-price handler only exists on the Guests roster — the Staff
+  // modal renders without those inputs so we skip binding here to avoid
+  // a null querySelector.addEventListener throw.
+  const customApply = m.querySelector('#discountCustomApply');
+  if(customApply){
+    customApply.addEventListener('click', () => {
+      const raw = m.querySelector('#discountCustomPrice').value;
+      const price = Number(raw);
+      if(!Number.isFinite(price) || price < 0){ toast('Enter a valid amount'); return; }
+      const note = (m.querySelector('#discountCustomNote').value || '').trim() || `€${price}`;
+      addItemAtCustomPrice(id, name, price, note, null);
+      close();
+    });
+    setTimeout(() => m.querySelector('#discountCustomPrice')?.focus(), 50);
+  }
 }
 function addResolvedItem(item,btn){
   if(!AG||!S.activeWeek){toast('Select a guest first!');return;}
