@@ -2423,7 +2423,12 @@ function renderItemGrid(){
     // wants is "give it away", so the icon flips from % to a small gift
     // glyph so staff know instantly what the button will do.
     const isStaffRoster = currentRoster === 'staff';
-    const glyph = isStaffRoster ? '🎁' : '%';
+    // Flat gift-box SVG (stroke-only, currentColor) so the icon respects
+    // the amber palette below and matches the AREA_ICONS aesthetic used
+    // everywhere else in the app. Emoji rendered inconsistently across
+    // devices, which the user pointed out; SVG solves that.
+    const giftSvg = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px"><path d="M3 9h14v8H3z"/><path d="M2 6h16v3H2z"/><path d="M10 6v11"/><path d="M10 6c-1.2-2-4 0-2 2M10 6c1.2-2 4 0 2 2"/></svg>`;
+    const glyph = isStaffRoster ? giftSvg : '%';
     const btnTitle = isStaffRoster ? 'Give as gift' : 'Give discount / gift';
     const discountBtn = showDiscount
       ? `<button aria-label="${btnTitle}" title="${btnTitle}" onclick="event.stopPropagation();openDiscountModal('${esc(item.id||'')}', '${esc(item.n)}')" style="position:absolute;top:8px;right:8px;background:#fff8e6;color:#8a6a00;border:1.5px solid #f2dc9c;border-radius:999px;width:26px;height:26px;padding:0;cursor:pointer;font-family:inherit;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;line-height:1">${glyph}</button>`
