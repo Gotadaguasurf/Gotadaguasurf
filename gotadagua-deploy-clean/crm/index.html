@@ -239,6 +239,9 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
 .s-proposal_sent{background:#bae6fd;color:#075985}
 .s-active_partner{background:#dcfce7;color:#166534;font-weight:800}
 .s-lost{background:var(--red-bg);color:var(--red-text)}
+/* Excluded — deliberately grey/washed out so the eye reads it as
+   "outside the funnel" rather than "tried and failed". */
+.s-excluded{background:#e5e7eb;color:#6b7280;text-decoration:line-through;text-decoration-color:#9ca3af}
 /* Legacy classes kept so any cached/stale payload still renders sensibly
    until the DB migration normalises every row. */
 .s-sent{background:var(--amber-bg);color:var(--amber-text)}
@@ -2421,12 +2424,25 @@ const STATUS_LABELS = {
   proposal_sent:  'Proposal sent',
   active_partner: 'Active partner',
   no_reply:       'No reply',
-  lost:           'Lost'
+  lost:           'Lost',
+  // Excluded — decided-not-to-contact (competitor, out of scope, wrong
+  // segment). Was previously conflated with "lost" which polluted the
+  // conversion metrics and made revived contacts (e.g. SurfaWhile after
+  // a real reply) invisible. Treated as a terminal state OUTSIDE the
+  // funnel so reach / reply rates only reflect real outreach.
+  excluded:       'Excluded'
 };
 const STATUS_ORDER = [
   'not_started','first_email','follow_up','in_conversation',
-  'meeting','proposal_sent','active_partner','no_reply','lost'
+  'meeting','proposal_sent','active_partner','no_reply','lost','excluded'
 ];
+// Statuses that count as "in the funnel" for reach / reply / conversion
+// metrics. Excluded rows are decided-not-to-contact and shouldn't drag
+// the denominators down.
+const FUNNEL_STATUSES = new Set([
+  'not_started','first_email','follow_up','in_conversation',
+  'meeting','proposal_sent','active_partner','no_reply','lost'
+]);
 // Legacy → new status mapping for any client-side payload still using the
 // old keys (Compose used to set status='sent', etc.). Used wherever we
 // receive a payload from Supabase to keep the UI consistent during the
@@ -3138,7 +3154,7 @@ function renderDashboard(){
   const activePartners = byStatus.active_partner || 0;
 
   // Pipeline weighted value = Σ (deal_value × probability/100) across open deals
-  const openDeals = CONTACTS.filter(c => !['active_partner','lost','no_reply'].includes(c.status));
+  const openDeals = CONTACTS.filter(c => !['active_partner','lost','no_reply','excluded'].includes(c.status));
   const weightedValue = openDeals.reduce((sum,c) => sum + (Number(c.deal_value||0) * Number(c.probability||0)/100), 0);
   const totalValue = openDeals.reduce((sum,c) => sum + Number(c.deal_value||0), 0);
   const wonValue = CONTACTS.filter(c=>c.status==='active_partner').reduce((s,c)=>s+Number(c.deal_value||0),0);
@@ -5824,7 +5840,7 @@ function renderAnalytics(){
   CONTACTS.forEach(c=>{ byStatus[c.status] = (byStatus[c.status]||0)+1; });
 
   // Pipeline value KPIs (more detailed than the dashboard strip)
-  const openDeals = CONTACTS.filter(c => !['active_partner','lost','no_reply'].includes(c.status));
+  const openDeals = CONTACTS.filter(c => !['active_partner','lost','no_reply','excluded'].includes(c.status));
   const totalValue = openDeals.reduce((s,c)=>s+Number(c.deal_value||0),0);
   const weighted = openDeals.reduce((s,c)=>s+(Number(c.deal_value||0)*Number(c.probability||0)/100),0);
   const wonValue = CONTACTS.filter(c=>c.status==='active_partner').reduce((s,c)=>s+Number(c.deal_value||0),0);
