@@ -513,19 +513,18 @@ body.view-list .drag-handle{display:none}
         <div class="mfield" id="em_stock_row" style="display:none">
           <label>Stock on hand</label>
           <input type="number" id="em_stock" min="0" step="1" placeholder="e.g., 12" autocomplete="off">
-          <div style="font-size:10px;color:var(--muted);margin-top:4px">Number of units left. Leave empty to disable stock tracking. <strong>The same stock is shared by the regular price AND the alt price below</strong> — selling either decrements the same counter.</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:4px">Number of units left. Leave empty to disable stock tracking. <strong>The same stock is shared by the regular price AND the staff price below</strong> — selling either decrements the same counter.</div>
         </div>
         <div class="mgrid" id="em_alt_row" style="display:none">
           <div class="mfield">
-            <label>Alt price (optional)</label>
-            <input type="number" id="em_alt_price" min="0" step="0.01" placeholder="0.00">
-            <div style="font-size:10px;color:var(--muted);margin-top:4px">Promotional / discounted price. Currency matches the sell price.</div>
+            <label>Staff price (optional)</label>
+            <input type="number" id="em_alt_price" min="0" step="0.01" placeholder="e.g. 10 · leave empty to hide from Staff tab">
+            <div style="font-size:10px;color:var(--muted);margin-top:4px">Price shown on the Staff tab in the POS. Set 0 for a giveaway. Leave empty and the item stays guest-only. Currency matches the sell price. Stock is shared with the regular price.</div>
           </div>
-          <div class="mfield">
-            <label>Alt label</label>
-            <input type="text" id="em_alt_label" placeholder="Offer" autocomplete="off" maxlength="20">
-            <div style="font-size:10px;color:var(--muted);margin-top:4px">Short text shown next to the alt price in the POS (e.g., Offer · Discount · Bulk · Staff).</div>
-          </div>
+          <!-- Alt label input is now hidden — the alt price is always
+               labelled 'Staff' server-side, matching the simplified
+               "Staff price" UX the owner asked for. -->
+          <input type="hidden" id="em_alt_label" value="Staff">
         </div>
       </div>
 
@@ -2727,8 +2726,12 @@ $('emSave').addEventListener('click', async ()=>{
     // Only persist a label when there's an alt price; clear it otherwise
     // so the catalog doesn't end up with phantom 'Offer' labels on rows
     // that have no alt price.
+    // Label is always 'Staff' now (hidden input). If a legacy row has a
+    // non-Staff label, we preserve it only when the visible input still
+    // reads something else — but the UI hides that path so effectively
+    // every new/edited row with an alt price gets alt_label='Staff'.
     const rawLabel = ($('em_alt_label')?.value || '').trim();
-    payload.alt_label = (altPrice !== null) ? (rawLabel || 'Offer') : null;
+    payload.alt_label = (altPrice !== null) ? (rawLabel || 'Staff') : null;
   }
   // Drop undefined keys so we don't blow away pre-existing values on edit
   // for categories that don't expose those fields.
