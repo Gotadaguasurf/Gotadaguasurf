@@ -2023,33 +2023,45 @@ function displayCatName(c){ return CAT_DISPLAY_NAME[c] || c; }
 function visibleCats(){
   const config = LOCATION_TAB_CONFIG[CAMP_TAB_LOCATION_SLUG] || DEFAULT_TAB_ORDER;
   const SYNTHETIC = new Set(['Merch Special', 'Bar Tab']);
-  // First pass — the configured tabs in their explicit order. Same
-  // filtering as before: hide empty tabs, hide Merch when only
-  // "special" variants exist, keep synthetic tabs always visible.
+  // Helper — count how many items in a category are eligible for the
+  // current roster. On the Staff tab we only count items with a Staff
+  // signal (alt_label='Staff' or legacy sp field); guests count all.
+  const hasEligibleItems = (c) => {
+    const items = Array.isArray(MENU[c]) ? MENU[c] : [];
+    if (!items.length) return false;
+    if (c === 'Merch') {
+      const nonSpecial = items.filter(i => !isSpecialMerchName(i?.n));
+      if (!nonSpecial.length) return false;
+      if (currentRoster === 'staff') {
+        return nonSpecial.some(i => isStaffAltLabel(i) || (i?.sp != null && Number.isFinite(Number(i?.sp))));
+      }
+      return true;
+    }
+    if (currentRoster === 'staff') {
+      return items.some(i => isStaffAltLabel(i) || (i?.sp != null && Number.isFinite(Number(i?.sp))));
+    }
+    return true;
+  };
+  // First pass — the configured tabs in their explicit order.
   const primary = config.filter(c => {
     if (c === 'Merch Special') {
       const merch = Array.isArray(MENU.Merch) ? MENU.Merch : [];
       return merch.some(i => isSpecialMerchName(i?.n));
     }
-    if (SYNTHETIC.has(c)) return true;
-    const items = Array.isArray(MENU[c]) ? MENU[c] : [];
-    if (!items.length) return false;
-    if (c === 'Merch') return items.some(i => !isSpecialMerchName(i?.n));
-    return true;
+    // Bar Tab: freeform, always available on Guests; hide on Staff so
+    // the roster stays purely staff-priced items.
+    if (c === 'Bar Tab') return currentRoster !== 'staff';
+    return hasEligibleItems(c);
   });
   // Second pass — any category with items that ISN'T already in the
   // config. Picks up Add-ons plus every owner-defined custom tab from
-  // pricing_areas without a code change. Owner controls per-location
-  // visibility purely via the show_in_camp_tab flag on each product.
+  // pricing_areas without a code change.
   const primarySet = new Set(primary);
   const extras = Object.keys(MENU || {}).filter(c => {
     if (primarySet.has(c)) return false;
     if (SYNTHETIC.has(c)) return false;
-    // Skip the four hardcoded categories the loaders own — if they're
-    // not in the config, the location intentionally hid them.
     if (['Drinks','Tours','Extras','Merch'].includes(c)) return false;
-    const items = Array.isArray(MENU[c]) ? MENU[c] : [];
-    return items.length > 0;
+    return hasEligibleItems(c);
   }).sort();
   return [...primary, ...extras];
 }
