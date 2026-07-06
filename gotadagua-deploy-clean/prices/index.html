@@ -2486,12 +2486,15 @@ window.onCategoryChange = ()=>{
   $('em_capacity_row').style.display   = (cat === 'Transport') ? '' : 'none';
   // linked_transport ONLY shows for Tour
   $('em_linked_transport_row').style.display = (cat === 'Tour') ? '' : 'none';
-  // Stock on hand + alt price ONLY show for Merch — every other
-  // category leaves those columns NULL forever.
+  // Stock on hand stays Merch/Drinks-only (Tours don't run out; add-ons
+  // aren't inventoried in the POS). Staff price is now available for
+  // any category that can appear on the POS Staff tab — Merch, Drinks,
+  // Extras, plus service categories the owner might charge staff for
+  // (Add-ons via 'Other Service', Tours, Lessons).
   const stockRow = $('em_stock_row');
-  if (stockRow) stockRow.style.display = (['Merch','Drinks'].includes(cat)) ? '' : 'none';
+  if (stockRow) stockRow.style.display = (['Merch','Drinks','Extras'].includes(cat)) ? '' : 'none';
   const altRow = $('em_alt_row');
-  if (altRow) altRow.style.display = (['Merch','Drinks'].includes(cat)) ? '' : 'none';
+  if (altRow) altRow.style.display = (['Merch','Drinks','Extras','Other Service','Tour','Lesson'].includes(cat)) ? '' : 'none';
   // Smart defaults for visibility toggles when category changes
   if (cat === 'Tour' && !editingId) {
     $('em_show_ct').checked = true;
@@ -2717,19 +2720,21 @@ $('emSave').addEventListener('click', async ()=>{
   // add-pricing-catalog-alt-price.sql not run), Tour / Transport / etc.
   // saves still succeed and only Merch surfaces the "column not found"
   // error pointing at the SQL.
-  if (['Merch','Drinks'].includes(cat)) {
+  // Stock stays Merch/Drinks/Extras-only (Tours/Add-ons/Lessons aren't
+  // inventoried by piece). Staff price applies to any category that
+  // can surface on the POS Staff tab — Merch, Drinks, Extras, Tours,
+  // Lessons, and Add-ons ('Other Service').
+  if (['Merch','Drinks','Extras'].includes(cat)) {
     const rawStock = $('em_stock')?.value ?? '';
     payload.stock_qty = (rawStock === '' || rawStock === null) ? null : Math.max(0, Math.round(Number(rawStock)));
+  }
+  if (['Merch','Drinks','Extras','Other Service','Tour','Lesson'].includes(cat)) {
     const rawAlt = $('em_alt_price')?.value ?? '';
     const altPrice = (rawAlt === '' || rawAlt === null) ? null : Math.max(0, Number(rawAlt));
     payload.alt_price = altPrice;
-    // Only persist a label when there's an alt price; clear it otherwise
-    // so the catalog doesn't end up with phantom 'Offer' labels on rows
-    // that have no alt price.
-    // Label is always 'Staff' now (hidden input). If a legacy row has a
-    // non-Staff label, we preserve it only when the visible input still
-    // reads something else — but the UI hides that path so effectively
-    // every new/edited row with an alt price gets alt_label='Staff'.
+    // Label defaults to 'Staff' (hidden input) when a staff price is
+    // set; cleared when the staff price is empty so the POS knows the
+    // item stays guest-only.
     const rawLabel = ($('em_alt_label')?.value || '').trim();
     payload.alt_label = (altPrice !== null) ? (rawLabel || 'Staff') : null;
   }
