@@ -3295,7 +3295,7 @@ async function loadCampTabToursFromCatalog(){
     if(!client||!locId) return null;
     const {data,error}=await client
       .from('pricing_catalog')
-      .select('id,name,sell_price,cost_per_guest,notes,linked_camp_tab_id,sort_order')
+      .select('id,name,sell_price,cost_per_guest,notes,linked_camp_tab_id,sort_order,alt_price,alt_label')
       .eq('location_id',locId)
       .eq('category','Tour')
       .eq('show_in_camp_tab',true)
@@ -3309,7 +3309,11 @@ async function loadCampTabToursFromCatalog(){
       p: Number(r.sell_price||0),
       d: r.notes ? String(r.notes) : '',
       costPerGuest: Number(r.cost_per_guest||0),
-      sortOrder: Number.isFinite(Number(r.sort_order)) ? Number(r.sort_order) : 100
+      sortOrder: Number.isFinite(Number(r.sort_order)) ? Number(r.sort_order) : 100,
+      // Staff price signal — the POS Staff tab reads these to decide
+      // whether to surface a Tour item (Skate lesson, Yoga, etc.).
+      altPrice: (r.alt_price===null || r.alt_price===undefined) ? null : Number(r.alt_price),
+      altLabel: r.alt_label || null
     })).filter(t=>t.n);
   }catch(e){
     console.warn('[Hub] loadCampTabToursFromCatalog failed',e);
