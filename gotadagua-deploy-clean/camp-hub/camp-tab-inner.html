@@ -2705,7 +2705,11 @@ function openDiscountModal(id, name){
   const source=menuSourceFor(AC);
   const item=source.find(row=>row?.id===id) || source.find(row=>String(row?.n||'')===String(name||''));
   if(!item){toast('Item not found');return;}
-  const basePrice = Number(item.p||0);
+  // Base price for the discount modal MUST be the roster-visible price
+  // (staff sees staff price, guest sees guest price). Using item.p
+  // directly showed the guest full price on the Staff tab, so "-50%"
+  // would compute off the wrong number and undercharge staff sales.
+  const basePrice = Number(displayPriceFor(item)||0);
   const isEUR = (typeof HUB_CURRENCY_CODE==='string') ? HUB_CURRENCY_CODE==='EUR' : true;
   const cur = (typeof euro==='function') ? euro : (n)=>`€${(Number(n)||0).toFixed(2)}`;
   // Kill any prior instance so quick re-taps don't stack.
