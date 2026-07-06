@@ -2493,8 +2493,12 @@ window.onCategoryChange = ()=>{
   // (Add-ons via 'Other Service', Tours, Lessons).
   const stockRow = $('em_stock_row');
   if (stockRow) stockRow.style.display = (['Merch','Drinks','Extras'].includes(cat)) ? '' : 'none';
+  // Staff price shows on every category so the owner can opt in from any
+  // tab (Accommodation, Surf Pack, Transport included). Leaving the
+  // field empty keeps the item guest-only; setting any value — even the
+  // same as sell_price — surfaces it on the POS Staff tab.
   const altRow = $('em_alt_row');
-  if (altRow) altRow.style.display = (['Merch','Drinks','Extras','Other Service','Tour','Lesson'].includes(cat)) ? '' : 'none';
+  if (altRow) altRow.style.display = '';
   // Smart defaults for visibility toggles when category changes
   if (cat === 'Tour' && !editingId) {
     $('em_show_ct').checked = true;
@@ -2728,13 +2732,13 @@ $('emSave').addEventListener('click', async ()=>{
     const rawStock = $('em_stock')?.value ?? '';
     payload.stock_qty = (rawStock === '' || rawStock === null) ? null : Math.max(0, Math.round(Number(rawStock)));
   }
-  if (['Merch','Drinks','Extras','Other Service','Tour','Lesson'].includes(cat)) {
+  // Staff price persists for every category — Accommodation, Surf Pack,
+  // Transport included. Empty stays guest-only; any value (even the
+  // same as sell_price) flags the row for the POS Staff tab.
+  {
     const rawAlt = $('em_alt_price')?.value ?? '';
     const altPrice = (rawAlt === '' || rawAlt === null) ? null : Math.max(0, Number(rawAlt));
     payload.alt_price = altPrice;
-    // Label defaults to 'Staff' (hidden input) when a staff price is
-    // set; cleared when the staff price is empty so the POS knows the
-    // item stays guest-only.
     const rawLabel = ($('em_alt_label')?.value || '').trim();
     payload.alt_label = (altPrice !== null) ? (rawLabel || 'Staff') : null;
   }
