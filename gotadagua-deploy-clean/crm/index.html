@@ -880,13 +880,13 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
       </div>
       <div class="editor-field">
         <label>Subject</label>
-        <input type="text" id="composeSubject" readonly>
+        <input type="text" id="composeSubject" placeholder="Write a subject…">
       </div>
       <div class="editor-field">
-        <label>Body preview</label>
-        <div class="compose-preview" id="composePreview"></div>
+        <label>Body <span style="color:var(--muted);font-weight:400;font-size:11px">(editable — tweak per contact)</span></label>
+        <textarea id="composePreview" class="compose-preview" style="width:100%;min-height:220px;font-family:inherit;font-size:13px;line-height:1.5;padding:12px;border:1px solid var(--border);border-radius:8px;background:#fff;resize:vertical" placeholder="Write your email or pick a template above…"></textarea>
       </div>
-      <div class="editor-hint">Clicking <b>Open in Gmail</b> opens a new tab with everything pre-filled. You click <b>Send</b> there from your own Gmail account.</div>
+      <div class="editor-hint">Pick <b>Custom</b> in the template dropdown to write from scratch. Edits stick until you switch template.</div>
     </div>
     <div class="compose-footer">
       <button class="action-btn ghost" id="composeCancel">Cancel</button>
@@ -4946,12 +4946,11 @@ function openCompose(preselectTemplateId){
   const tplSelect = document.getElementById('composeTemplate');
   const langTemplates = TEMPLATES.filter(t=>t.language===lang);
   const fallback = TEMPLATES.filter(t=>t.language!==lang); // show other lang as fallback
-  const opts = [...langTemplates.map(t=>`<option value="${t.id}">${escHtml(t.name)} (${t.language})</option>`),
+  // "Custom" is a synthetic option — leaves subject + body empty for the
+  // user to write from scratch. Always first so it's the escape hatch.
+  const opts = [`<option value="__custom__">Custom — write from scratch</option>`,
+                ...langTemplates.map(t=>`<option value="${t.id}">${escHtml(t.name)} (${t.language})</option>`),
                 ...fallback.map(t=>`<option value="${t.id}">${escHtml(t.name)} (${t.language})</option>`)];
-  if(!opts.length){
-    toast('No templates yet — create one in the Templates tab first');
-    return;
-  }
   tplSelect.innerHTML = opts.join('');
   // Caller-supplied preselect wins; falls back to first lang-match,
   // then first overall.
@@ -4969,16 +4968,26 @@ function openCompose(preselectTemplateId){
 
 function refreshComposePreview(){
   const tplId = document.getElementById('composeTemplate').value;
+  const subjEl = document.getElementById('composeSubject');
+  const bodyEl = document.getElementById('composePreview');
+  // "Custom" clears the fields so the user starts blank. Signature is
+  // still prefilled from the picked sender since almost every custom
+  // email wants it anyway (delete if you don't).
+  if(tplId === '__custom__'){
+    const sender = pickedSender('composeSendAs');
+    const sig = sender ? userSignatureFor(sender.id) : '';
+    subjEl.value = '';
+    bodyEl.value = sig ? '\n\n' + sig : '';
+    return;
+  }
   const tpl = TEMPLATES.find(t=>t.id===tplId);
   if(!tpl) return;
   const c = CURRENT_CONTACT;
   // Picked sender drives {{my_*}} so the preview updates live when the
   // user changes the Send-as dropdown.
   const sender = pickedSender('composeSendAs');
-  const subj = renderTemplate(tpl.subject, c, sender);
-  const body = renderTemplate(tpl.body, c, sender);
-  document.getElementById('composeSubject').value = subj;
-  document.getElementById('composePreview').textContent = body;
+  subjEl.value = renderTemplate(tpl.subject, c, sender);
+  bodyEl.value = renderTemplate(tpl.body, c, sender);
 }
 
 // Returns the primary contact (PEOPLE row) for a given company, or null.
@@ -5066,14 +5075,18 @@ document.getElementById('composeTemplate').addEventListener('change', refreshCom
 document.getElementById('composeSendAs')?.addEventListener('change', refreshComposePreview);
 
 document.getElementById('composeOpen').addEventListener('click', async ()=>{
+  if(!CURRENT_CONTACT) return;
   const tplId = document.getElementById('composeTemplate').value;
-  const tpl = TEMPLATES.find(t=>t.id===tplId);
-  if(!tpl || !CURRENT_CONTACT) return;
+  const tpl = tplId === '__custom__' ? null : TEMPLATES.find(t=>t.id===tplId);
   const sender = pickedSender('composeSendAs');
   if(!sender){ toast('Pick a sender first'); return; }
   const c = CURRENT_CONTACT;
-  const subj = renderTemplate(tpl.subject, c, sender);
-  const body = renderTemplate(tpl.body, c, sender);
+  // Read the editable fields directly so any per-contact tweak the user
+  // typed sticks. Template render already populated them; we only
+  // re-render if the user hasn't touched them yet.
+  const subj = document.getElementById('composeSubject').value.trim();
+  const body = document.getElementById('composePreview').value;
+  if(!subj || !body.trim()){ toast('Subject + body required'); return; }
   // Prefer the primary person's email when they have one — that's the
   // named human you've decided to talk to. Falls back to the company-
   // level email (typically the generic info@/bookings@) when no primary
@@ -5104,7 +5117,7 @@ document.getElementById('composeOpen').addEventListener('click', async ()=>{
   const patch = { last_contacted_at: new Date().toISOString() };
   if(newStatus !== c.status) patch.status = newStatus;
   await updateContact(c.id, patch);
-  await logActivity(c.id, 'email_sent', null, null, { template_id: tpl.id, template_name: tpl.name, subject: subj });
+  await logActivity(c.id, 'email_sent', null, null, { template_id: tpl?.id || null, template_name: tpl?.name || 'Custom', subject: subj });
   if(newStatus !== c.status){
     await logActivity(c.id, 'status_changed', c.status, newStatus, { auto: true });
     c.status = newStatus;
@@ -5122,14 +5135,16 @@ document.getElementById('composeOpen').addEventListener('click', async ()=>{
 // needed. Use when the user doesn't need to edit / attach.
 document.getElementById('composeSendNow').addEventListener('click', async () => {
   // Shared mailbox is server-side — always "connected".
+  if(!CURRENT_CONTACT) return;
   const tplId = document.getElementById('composeTemplate').value;
-  const tpl = TEMPLATES.find(t => t.id === tplId);
-  if(!tpl || !CURRENT_CONTACT) return;
+  const tpl = tplId === '__custom__' ? null : TEMPLATES.find(t => t.id === tplId);
   const sender = pickedSender('composeSendAs');
   if(!sender){ toast('Pick a sender first'); return; }
   const c = CURRENT_CONTACT;
-  const subj = renderTemplate(tpl.subject, c, sender);
-  const body = renderTemplate(tpl.body, c, sender);
+  // Read the editable fields directly so any per-contact tweak sticks.
+  const subj = document.getElementById('composeSubject').value.trim();
+  const body = document.getElementById('composePreview').value;
+  if(!subj || !body.trim()){ toast('Subject + body required'); return; }
   const primary = primaryPersonFor(c.id);
   const recipient = (primary?.email) || c.email;
   if(!recipient){ toast('No recipient email'); return; }
@@ -5148,7 +5163,7 @@ document.getElementById('composeSendNow').addEventListener('click', async () => 
     const patch = { last_contacted_at: new Date().toISOString() };
     if(newStatus !== c.status) patch.status = newStatus;
     await updateContact(c.id, patch);
-    await logActivity(c.id, 'email_sent', null, null, { template_id: tpl.id, template_name: tpl.name, subject: subj, via: 'send-now' });
+    await logActivity(c.id, 'email_sent', null, null, { template_id: tpl?.id || null, template_name: tpl?.name || 'Custom', subject: subj, via: 'send-now' });
     if(newStatus !== c.status){
       await logActivity(c.id, 'status_changed', c.status, newStatus, { auto: true });
       c.status = newStatus;
