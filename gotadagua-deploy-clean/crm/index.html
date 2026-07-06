@@ -1562,11 +1562,12 @@ function refreshGmailUi(){
   if(syncBtn){
     // Server-side sync is always available now, regardless of per-user token.
     syncBtn.style.display = '';
-    // Tag the button with "Xm ago" / "Xh ago" using the last
-    // successful-sync stamp. Pure read of localStorage — re-renders
-    // every time refreshGmailUi runs, which fires after each sync.
+    // Label uses last-sync stamp when we have one; server-side sync
+    // doesn't need `connected` (per-user Gmail token) since the Edge
+    // Function has the shared refresh token. Gating on `connected`
+    // was the bug that left the button stuck on "Syncing…".
     const last = localStorage.getItem(gmailLastSyncKey());
-    if(connected && last){
+    if(last){
       const minsAgo = Math.max(0, Math.round((Date.now() - new Date(last).getTime()) / 60000));
       const label = minsAgo < 1   ? 'just now'
                   : minsAgo < 60  ? `${minsAgo}m ago`
@@ -1574,7 +1575,7 @@ function refreshGmailUi(){
                   : `${Math.round(minsAgo/1440)}d ago`;
       syncBtn.textContent = `Sync inbox · ${label}`;
       syncBtn.title = `Last sync: ${new Date(last).toLocaleString('en-GB')}`;
-    } else if(connected){
+    } else {
       syncBtn.textContent = 'Sync inbox';
       syncBtn.title = 'Pull new inbound replies from Gmail into the CRM';
     }
@@ -1782,10 +1783,16 @@ async function syncGmailInbox(opts = {}){
     syncBtn.style.cursor = 'wait';
     syncBtn.innerHTML = '<span class="sync-spinner" style="display:inline-block;width:10px;height:10px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:sync-spin .8s linear infinite;vertical-align:-1px;margin-right:6px"></span>Syncing…';
   }
+  // 30s guard so a hung Edge Function doesn't leave the button stuck
+  // on "Syncing…" forever. AbortError falls through to the catch and
+  // the finally block resets the label via refreshGmailUi().
+  const ctrl = new AbortController();
+  const timeoutId = setTimeout(() => ctrl.abort(), 30000);
   try {
     const resp = await fetch(`${cfg.url}/functions/v1/gmail-sync`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', apikey: cfg.anonKey || '' },
+      signal: ctrl.signal,
     });
     const j = await resp.json().catch(() => ({}));
     if(!resp.ok || j.ok === false){
@@ -1818,8 +1825,10 @@ async function syncGmailInbox(opts = {}){
       t('Sync complete · 0 new replies');
     }
   } catch(err){
-    toast('Sync error: ' + (err.message || 'network'));
+    const msg = err.name === 'AbortError' ? 'timed out after 30s' : (err.message || 'network');
+    toast('Sync error: ' + msg);
   } finally {
+    clearTimeout(timeoutId);
     if(syncBtn && !silent){
       syncBtn.disabled = false;
       syncBtn.style.opacity = '';
