@@ -2253,9 +2253,13 @@ function renderGuestList(){
     return false;
   }).sort((a,b)=>{
     // Portugal-style ordering: numbered bikes come first, 1 → 100.
-    // Guests without a bike number fall to the bottom, alphabetical
-    // so they still list predictably.
-    const an = a.bikeNo, bn = b.bikeNo;
+    // Falls back to parseGuestLine when the number was typed straight
+    // into the name (legacy rows / bulk imports where "12 Ana Costa"
+    // never went through the new add-guest parser). Guests with no
+    // number fall to the bottom alphabetically so they still list
+    // predictably.
+    const bikeOf = g => g.bikeNo != null ? Number(g.bikeNo) : (parseGuestLine(g.name||'').bikeNo);
+    const an = bikeOf(a), bn = bikeOf(b);
     if(an != null && bn != null) return an - bn;
     if(an != null) return -1;
     if(bn != null) return 1;
