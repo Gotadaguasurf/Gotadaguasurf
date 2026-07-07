@@ -1111,6 +1111,15 @@ Lina Costa
         <div class="mfield" id="em_lkr_wrap" style="display:none"><label>LKR value</label><input id="em_lkr" disabled></div>
         <div class="mfield" style="display:none" id="em_vendor_wrap"><label>Vendor / Note</label><input id="em_vendor" placeholder="e.g. Mercado, Fuel…"></div>
         <div class="mfield" style="display:none" id="em_linked_wrap"><label>Linked item / product</label><select id="em_linked"></select></div>
+        <!-- is_comp flag: marks staff/offered spots so the Tours-by-product
+             card can split "paying-guest margin" (excludes comp) from
+             "total margin" (includes comp). Only visible for Tour expenses. -->
+        <div class="mfield" style="display:none" id="em_iscomp_wrap"><label>&nbsp;</label>
+          <label style="display:flex;align-items:center;gap:8px;font-weight:400;cursor:pointer;font-size:13px;padding:8px 0">
+            <input type="checkbox" id="em_iscomp" style="width:16px;height:16px;cursor:pointer">
+            <span>Staff / offered (not a paying guest)</span>
+          </label>
+        </div>
       </div>
       <div class="mfield" style="display:none" id="em_desc_wrap"><label>Description</label><input id="em_desc" placeholder="What is this for?"></div>
     </div>
@@ -1535,6 +1544,11 @@ function normalizeLedgerEntry(entry){
     fxRate,
     amountLocal:isLocalCurrency?rawAmount:amount,
     quantity:Math.max(1,parseInt(entry.quantity||'1',10)||1),
+    // isComp is only meaningful on Tour expense rows — persist it verbatim
+    // so a round-trip through save→reload doesn't wipe the flag. Non-tour
+    // rows keep the default false; the aggregator only reads the flag
+    // where it matters (Tours-by-product margin split).
+    isComp:!!entry.isComp,
     linkedItem:linkedItem||defaultLinkedItem(type,area,entry.category||''),
     description:entry.description||'',
     vendor:entry.vendor||'',
@@ -1812,7 +1826,7 @@ let activePage='overview';
 const HUB_QUERY=new URLSearchParams(window.location.search);
 const CAMP_TAB_ONLY_MODE=HUB_QUERY.get('view')==='camp-tab-only';
 const LEDGER_LOCATION_SLUG=(HUB_QUERY.get('location')||'sri-lanka').trim().toLowerCase();
-const LEDGER_DB_SELECT='id,location_id,week_id,type,category,linked_item,description,payment_method,qty,amount_local,currency,entry_date,business_area,fx_rate,amount_eur,recurring_source_id,recurring_month,source_kind,created_at';
+const LEDGER_DB_SELECT='id,location_id,week_id,type,category,linked_item,description,payment_method,qty,amount_local,currency,entry_date,business_area,fx_rate,amount_eur,recurring_source_id,recurring_month,source_kind,is_comp,created_at';
 let HUB_SB=null;
 let HUB_SB_LOCATION_ID=null;
 // Camp Tab mode for this location. Set by ensureHubLocationId from
@@ -2348,7 +2362,11 @@ function ledgerEntryToDbRow(entry,locationId){
     amount_eur:Number(normalized.amount||0),
     recurring_source_id:normalized.recurringSourceId||null,
     recurring_month:normalized.recurringMonth||null,
-    source_kind:normalized.sourceKind||'manual'
+    source_kind:normalized.sourceKind||'manual',
+    // is_comp: marks a Tour expense row as a comp (staff / offered spot)
+    // so the Tours-by-product margin card can split paying-guest margin
+    // from total margin. Column added via ALTER TABLE (see SQL note).
+    is_comp:!!normalized.isComp
   };
 }
 function dbRowToLedgerEntry(row){
@@ -2369,7 +2387,8 @@ function dbRowToLedgerEntry(row){
     description:row.description||'',
     recurringSourceId:row.recurring_source_id||'',
     recurringMonth:row.recurring_month||'',
-    sourceKind:row.source_kind||'manual'
+    sourceKind:row.source_kind||'manual',
+    isComp:!!row.is_comp
   });
 }
 async function readSupabaseFxRate(date,quoteCurrency){
@@ -4970,26 +4989,34 @@ function renderOverview(){
         }).join('')}
       </div>
     </div>`:'';
+  // Tour rows carry two cost streams so the display can split
+  // "paying-guest margin" from "total margin":
+  //   costLocal / costEur           = total cost (all rows, comp + paying)
+  //   compCostLocal / compCostEur   = subset flagged is_comp (staff/offered)
+  // payingCost = costLocal - compCostLocal → margin against actual sales.
   const tourMap={};
+  const blankTour = (key) => ({name:key,qty:0,revenueLocal:0,revenueEur:0,costLocal:0,costEur:0,compCostLocal:0,compCostEur:0});
   paidItems.filter(i=>i.category==='Tours').forEach(i=>{
     const key=i.name;
-    tourMap[key]=tourMap[key]||{name:key,qty:0,revenueLocal:0,revenueEur:0,costLocal:0,costEur:0};
+    tourMap[key]=tourMap[key]||blankTour(key);
     tourMap[key].qty+=1;
     tourMap[key].revenueLocal+=i.revenue;
     tourMap[key].revenueEur+=Number((Number(i.revenue||0)/(DEFAULT_LKR_PER_EUR||1)).toFixed(2));
   });
   revenueEntries.filter(x=>x.businessArea==='Tours').forEach(x=>{
     const key=x.linkedItem||x.category;
-    tourMap[key]=tourMap[key]||{name:key,qty:0,revenueLocal:0,revenueEur:0,costLocal:0,costEur:0};
+    tourMap[key]=tourMap[key]||blankTour(key);
     tourMap[key].qty+=Math.max(1,parseInt(x.quantity||'1',10)||1);
     tourMap[key].revenueLocal+=entryLocalDisplayAmount(x);
     tourMap[key].revenueEur+=entryEurAmount(x);
   });
   expenses.filter(x=>x.businessArea==='Tours').forEach(x=>{
     const key=x.linkedItem||'General Tours';
-    tourMap[key]=tourMap[key]||{name:key,qty:0,revenueLocal:0,revenueEur:0,costLocal:0,costEur:0};
-    tourMap[key].costLocal+=entryLocalDisplayAmount(x);
-    tourMap[key].costEur+=entryEurAmount(x);
+    tourMap[key]=tourMap[key]||blankTour(key);
+    const l=entryLocalDisplayAmount(x), e=entryEurAmount(x);
+    tourMap[key].costLocal+=l;
+    tourMap[key].costEur+=e;
+    if(x.isComp){ tourMap[key].compCostLocal+=l; tourMap[key].compCostEur+=e; }
   });
   // Cross-area sweep: revenue OR expense tagged with a linkedItem that
   // matches a real tour name (menu tour item, or already in tourMap from
@@ -5004,7 +5031,7 @@ function renderOverview(){
   revenueEntries.filter(x=>x.businessArea!=='Tours'&&x.businessArea!=='Transport').forEach(x=>{
     const key=String(x.linkedItem||'').trim();
     if(!key||!tourNamesForCrossSweep.has(key)) return;
-    tourMap[key]=tourMap[key]||{name:key,qty:0,revenueLocal:0,revenueEur:0,costLocal:0,costEur:0};
+    tourMap[key]=tourMap[key]||blankTour(key);
     tourMap[key].qty+=Math.max(1,parseInt(x.quantity||'1',10)||1);
     tourMap[key].revenueLocal+=entryLocalDisplayAmount(x);
     tourMap[key].revenueEur+=entryEurAmount(x);
@@ -5012,9 +5039,11 @@ function renderOverview(){
   expenses.filter(x=>x.businessArea!=='Tours'&&x.businessArea!=='Transport').forEach(x=>{
     const key=String(x.linkedItem||'').trim();
     if(!key||!tourNamesForCrossSweep.has(key)) return;
-    tourMap[key]=tourMap[key]||{name:key,qty:0,revenueLocal:0,revenueEur:0,costLocal:0,costEur:0};
-    tourMap[key].costLocal+=entryLocalDisplayAmount(x);
-    tourMap[key].costEur+=entryEurAmount(x);
+    tourMap[key]=tourMap[key]||blankTour(key);
+    const l=entryLocalDisplayAmount(x), e=entryEurAmount(x);
+    tourMap[key].costLocal+=l;
+    tourMap[key].costEur+=e;
+    if(x.isComp){ tourMap[key].compCostLocal+=l; tourMap[key].compCostEur+=e; }
   });
   // Only roll up Transport-area spend into the Tours-by-product card if the
   // linked label is an actual tour (camp-tab menu item OR a tour that
@@ -5052,9 +5081,12 @@ function renderOverview(){
     const shareLocal = entryLocalDisplayAmount(x) / targets.length;
     const shareEur = entryEurAmount(x) / targets.length;
     targets.forEach(t => {
-      tourMap[t] = tourMap[t] || {name:t,qty:0,revenueLocal:0,revenueEur:0,costLocal:0,costEur:0};
+      tourMap[t] = tourMap[t] || blankTour(t);
       tourMap[t].costLocal += shareLocal;
       tourMap[t].costEur += shareEur;
+      // Transport rows are never comps (van cost is the same whether the
+      // seat carries a paying guest or a staff comp), so compCostLocal/Eur
+      // stay untouched here.
     });
   });
   // Consolidate sub-tour cards by activity. Tours whose names follow the
@@ -5076,7 +5108,7 @@ function renderOverview(){
   Object.values(tourMap).forEach(r => {
     const groupKey = tourDisplayGroup(r.name);
     if(!groupedTourMap[groupKey]){
-      groupedTourMap[groupKey] = {name:groupKey,qty:0,revenueLocal:0,revenueEur:0,costLocal:0,costEur:0,variants:[]};
+      groupedTourMap[groupKey] = {name:groupKey,qty:0,revenueLocal:0,revenueEur:0,costLocal:0,costEur:0,compCostLocal:0,compCostEur:0,variants:[]};
     }
     const g = groupedTourMap[groupKey];
     g.qty += r.qty;
@@ -5084,6 +5116,8 @@ function renderOverview(){
     g.revenueEur += r.revenueEur;
     g.costLocal += r.costLocal;
     g.costEur += r.costEur;
+    g.compCostLocal += (r.compCostLocal||0);
+    g.compCostEur += (r.compCostEur||0);
     if(r.name !== groupKey) g.variants.push(r.name);
   });
   const tourRows=Object.values(groupedTourMap).sort((a,b)=>b.revenueLocal-a.revenueLocal);
@@ -5100,16 +5134,26 @@ function renderOverview(){
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px">
         ${tourRows.map(r=>{
-          const profitLocal=r.revenueLocal-r.costLocal;
-          const profitEur=r.revenueEur-r.costEur;
-          const pct=r.revenueLocal>0?((profitLocal/r.revenueLocal)*100).toFixed(0):'—';
+          // Total margin = revenue − ALL cost (comp seats included).
+          // Paying margin = revenue − (cost minus comp cost) → real
+          // economics against actual sales. When there are no comps the
+          // two margins are identical and the comp line is hidden.
+          const totalMarginLocal=r.revenueLocal-r.costLocal;
+          const totalMarginEur=r.revenueEur-r.costEur;
+          const payingCostLocal=r.costLocal-(r.compCostLocal||0);
+          const payingCostEur=r.costEur-(r.compCostEur||0);
+          const payingMarginLocal=r.revenueLocal-payingCostLocal;
+          const payingMarginEur=r.revenueEur-payingCostEur;
+          const payingPct=r.revenueLocal>0?((payingMarginLocal/r.revenueLocal)*100).toFixed(0):'—';
+          const totalPct=r.revenueLocal>0?((totalMarginLocal/r.revenueLocal)*100).toFixed(0):'—';
+          const hasComp=(r.compCostLocal||0)>0.005;
           return `<div style="background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:12px">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:10px">
               <div>
                 <div style="font-weight:700;color:var(--navy)">${r.name}</div>
                 <div style="font-size:11px;color:var(--muted);margin-top:2px">${r.qty||0} paid guest${r.qty===1?'':'s'}${(r.variants&&r.variants.length>1)?` · ${r.variants.length} variants`:''}</div>
               </div>
-              <span class="badge ${profitLocal>=0?'badge-green':'badge-red'}">${profitLocal>=0?'+':''}${lkr(profitLocal)}</span>
+              <span class="badge ${payingMarginLocal>=0?'badge-green':'badge-red'}" title="Paying-guest margin (excludes comp seats)">${payingMarginLocal>=0?'+':''}${lkr(payingMarginLocal)}</span>
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
               <div style="background:#fff;border-radius:8px;padding:10px">
@@ -5120,14 +5164,20 @@ function renderOverview(){
               <div style="background:#fff;border-radius:8px;padding:10px">
                 <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin-bottom:4px">Direct cost</div>
                 <div style="font-family:'DM Serif Display',serif;font-size:18px;color:var(--red)">${lkr(r.costLocal)}</div>
-                <div style="font-size:10px;color:var(--muted);margin-top:2px">${euro(r.costEur)}</div>
+                <div style="font-size:10px;color:var(--muted);margin-top:2px">${euro(r.costEur)}${hasComp?` · ${lkr(r.compCostLocal)} comp`:''}</div>
               </div>
             </div>
             <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:12px;color:var(--muted)">
-              <span>Margin</span>
-              <span style="font-weight:700;color:${profitLocal>=0?'var(--green)':'var(--red)'}">${pct==='—'?'—':pct+'%'}</span>
+              <span>Paying-guest margin</span>
+              <span style="font-weight:700;color:${payingMarginLocal>=0?'var(--green)':'var(--red)'}">${payingPct==='—'?'—':payingPct+'%'}</span>
             </div>
-            <div style="font-size:11px;color:${profitLocal>=0?'var(--green)':'var(--red)'};font-weight:700;margin-top:4px">${moneyPairLocal(profitLocal,profitEur)}</div>
+            <div style="font-size:11px;color:${payingMarginLocal>=0?'var(--green)':'var(--red)'};font-weight:700;margin-top:4px">${moneyPairLocal(payingMarginLocal,payingMarginEur)}</div>
+            ${hasComp?`
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);font-size:11px;color:var(--muted)">
+                <span title="Includes staff / offered seats">Total (with comps)</span>
+                <span style="font-weight:700;color:${totalMarginLocal>=0?'var(--green)':'var(--red)'}">${moneyPairLocal(totalMarginLocal,totalMarginEur)}${totalPct==='—'?'':` · ${totalPct}%`}</span>
+              </div>
+            `:''}
           </div>`;
         }).join('')}
       </div>
@@ -7092,6 +7142,11 @@ function toggleEntryUi(prefix,type){
     }
   }
   if(descWrap) descWrap.style.display=showDesc?'':'none';
+  // is_comp checkbox: only makes sense for Tour expenses (staff/offered spots).
+  const iscompWrap=document.getElementById(prefix+'_iscomp_wrap');
+  if(iscompWrap){
+    iscompWrap.style.display=(type==='expense' && categoryValue==='Tours') ? '' : 'none';
+  }
 }
 function fillEntryFields(prefix,type,preset=null,entry=null){
   const catEl=document.getElementById(prefix+'_cat');
@@ -7118,6 +7173,11 @@ function fillEntryFields(prefix,type,preset=null,entry=null){
     linkedEl.value=opts.includes(desiredLinked)?desiredLinked:'';
     linkedEl.disabled=opts.length<=1;
   }
+  // Sync is_comp checkbox with the entry being edited. When opening a
+  // blank form the flag defaults to unchecked; when editing an existing
+  // row the flag mirrors the saved value so a re-save doesn't lose it.
+  const iscompEl=document.getElementById(prefix+'_iscomp');
+  if(iscompEl) iscompEl.checked=!!(entry?.isComp);
   toggleEntryUi(prefix,type);
   applyLinkedPrice(prefix);
   updateCurrencyUi(prefix,type);
@@ -7316,6 +7376,10 @@ function buildLedgerPayload(prefix,type,id=null){
     amountLocal:currency!=='EUR'?amountInput:amount,
     quantity:qty,
     linkedItem,
+    // isComp: staff / offered spots. Ticked = row is excluded from the
+    // paying-guest margin so tours don't read as loss-making just because
+    // of comps. Only surfaced for Tour expenses in the form UI.
+    isComp:!!(type==='expense' && category==='Tours' && document.getElementById(prefix+'_iscomp')?.checked),
     description:(document.getElementById(prefix+'_desc')?.value||'').trim()||((type==='income'&&linkedItem&&qty>1)?`${qty} x ${linkedItem}`:'')||(type==='transfer'?transferDescDefault:''),
     vendor:'',
     amount
