@@ -6958,6 +6958,13 @@ function linkedItemOptionsFor(type,area,category=''){
   if(type==='expense'&&category==='Tours') return [''].concat(currentTourItems());
   if(type==='expense'&&category==='Transport') return [''].concat(currentTransportItems());
   if(type==='expense'&&category==='Utilities') return [''].concat(UTILITIES_LINKED_ITEMS);
+  // Income under any other category (Other Revenue, Drinks, Merchandise…):
+  // offer the tour list as an OPTIONAL "Related tour" pick. This is how a
+  // package or transfer sold as generic revenue (e.g., "Package Souk+Paradise")
+  // still gets rolled into the correct tour's margin. Empty = generic revenue.
+  if(type==='income'){
+    return [''].concat(currentTourItems());
+  }
   const items=AREA_CONFIG[area]?.linkedItems||[];
   return [''].concat(items);
 }
@@ -7034,8 +7041,12 @@ function toggleEntryUi(prefix,type){
   const showPay=type==='expense';
   const showDesc=type==='expense'||type==='income'||type==='transfer';
   const categoryValue=document.getElementById(prefix+'_cat')?.value||'';
+  // Income: always show the linked dropdown so the user can attach a tour
+  // even when they're logging revenue under a generic category (Other
+  // Revenue / Drinks / Merch). Without this, tour-related revenue booked
+  // as "Other Revenue" falls out of the Tours-by-product margin entirely.
   const showLinked=type==='income'
-    ? ['Tours','Transport'].includes(categoryValue)
+    ? true
     : type==='expense'&&['Tours','Transport','Utilities'].includes(categoryValue);
   // Income on Tours/Transport keeps the qty field (existing). Expense on
   // Tours also gets a qty field so the user can enter Guests and let
@@ -7067,6 +7078,7 @@ function toggleEntryUi(prefix,type){
       if(categoryValue==='Utilities') linkedLabel.textContent='Utility type';
       else if(categoryValue==='Transport') linkedLabel.textContent='Transport item';
       else if(categoryValue==='Tours') linkedLabel.textContent='Tour item';
+      else if(type==='income') linkedLabel.textContent='Related tour (optional)';
       else linkedLabel.textContent='Sub-category';
     }
   }
