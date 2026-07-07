@@ -4991,6 +4991,31 @@ function renderOverview(){
     tourMap[key].costLocal+=entryLocalDisplayAmount(x);
     tourMap[key].costEur+=entryEurAmount(x);
   });
+  // Cross-area sweep: revenue OR expense tagged with a linkedItem that
+  // matches a real tour name (menu tour item, or already in tourMap from
+  // an earlier pass) but sitting under a NON-Tours businessArea. This
+  // catches revenue lines someone booked as "General / Other Revenue"
+  // (e.g., "Paradise Valley Transfer", "Package Souk+Paradise") — they
+  // used to fall out of the Tours-by-product margin entirely, making a
+  // negative-margin tour look positive. Transport-area rows are skipped
+  // here — they go through the smarter linkedTransportTours() splitter
+  // below, which handles shared-van cost splitting across sub-tours.
+  const tourNamesForCrossSweep=new Set([...currentTourItems(),...Object.keys(tourMap)].filter(Boolean));
+  revenueEntries.filter(x=>x.businessArea!=='Tours'&&x.businessArea!=='Transport').forEach(x=>{
+    const key=String(x.linkedItem||'').trim();
+    if(!key||!tourNamesForCrossSweep.has(key)) return;
+    tourMap[key]=tourMap[key]||{name:key,qty:0,revenueLocal:0,revenueEur:0,costLocal:0,costEur:0};
+    tourMap[key].qty+=Math.max(1,parseInt(x.quantity||'1',10)||1);
+    tourMap[key].revenueLocal+=entryLocalDisplayAmount(x);
+    tourMap[key].revenueEur+=entryEurAmount(x);
+  });
+  expenses.filter(x=>x.businessArea!=='Tours'&&x.businessArea!=='Transport').forEach(x=>{
+    const key=String(x.linkedItem||'').trim();
+    if(!key||!tourNamesForCrossSweep.has(key)) return;
+    tourMap[key]=tourMap[key]||{name:key,qty:0,revenueLocal:0,revenueEur:0,costLocal:0,costEur:0};
+    tourMap[key].costLocal+=entryLocalDisplayAmount(x);
+    tourMap[key].costEur+=entryEurAmount(x);
+  });
   // Only roll up Transport-area spend into the Tours-by-product card if the
   // linked label is an actual tour (camp-tab menu item OR a tour that
   // already has revenue/expenses in this period). Non-tour display labels
