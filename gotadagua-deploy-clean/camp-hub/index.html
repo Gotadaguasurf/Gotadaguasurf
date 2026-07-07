@@ -5112,24 +5112,28 @@ function renderOverview(){
     zoneAccum[key].costEur += entryEurAmount(x);
   });
   Object.values(zoneAccum).forEach(z => {
-    // Tours "belong to" a zone when their display group (part before the
-    // em-dash separator) matches the zone name case-insensitively. So
-    // "Dunes — Sandboarding", "Dunes — Camel Ride" and "Dunes — Quad
-    // Bike" all attach to zone "Dunes". No configuration needed as long
-    // as the naming convention is followed; the back-office UI in a
-    // later phase will make this explicit per tour.
+    // Tours "belong to" a zone when either their display group (part
+    // before the em-dash separator) OR their full tour name matches the
+    // zone name case-insensitively. So:
+    //   • zone "Dunes"          → catches "Dunes — Sandboarding" etc. via group
+    //   • zone "Paradise Valley" → catches "Paradise Valley" via full-name match
+    //   • zone "Souk Tour"      → catches "Souk Tour" via full-name match
+    // No configuration needed as long as the naming convention is followed;
+    // the back-office UI in a later phase will make this explicit per tour.
     const zoneNameLc = z.zoneName.toLowerCase();
-    const tourKeys = Object.keys(tourMap).filter(k =>
-      String(tourDisplayGroup(k)||'').toLowerCase() === zoneNameLc
-    );
+    const matchesZone = (name) => {
+      const nameLc = String(name||'').toLowerCase();
+      if(nameLc === zoneNameLc) return true;
+      const groupLc = String(tourDisplayGroup(name)||'').toLowerCase();
+      return groupLc === zoneNameLc;
+    };
+    const tourKeys = Object.keys(tourMap).filter(matchesZone);
     // Fallback: nothing in tourMap matches yet (nobody bought a Dunes
     // tour this period). Attach the whole zone cost to any menu tour
     // in the zone so the spend still shows up somewhere — otherwise the
     // van cost silently vanishes for a period.
     if(!tourKeys.length){
-      const menuMatch = currentTourItems().find(t =>
-        String(tourDisplayGroup(t)||'').toLowerCase() === zoneNameLc
-      );
+      const menuMatch = currentTourItems().find(matchesZone);
       if(menuMatch){
         tourMap[menuMatch] = tourMap[menuMatch] || blankTour(menuMatch);
         tourMap[menuMatch].costLocal += z.costLocal;
