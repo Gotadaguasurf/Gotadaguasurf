@@ -1549,6 +1549,11 @@ function normalizeLedgerEntry(entry){
     // rows keep the default false; the aggregator only reads the flag
     // where it matters (Tours-by-product margin split).
     isComp:!!entry.isComp,
+    // zoneId links a Transport expense to a shared-transport zone (e.g.
+    // "Dunes" van serving multiple sub-tours). The Tours-by-product
+    // aggregator distributes that cost across every tour in the zone by
+    // paying-guest count. Empty string when the row isn't zone-anchored.
+    zoneId:entry.zoneId||'',
     linkedItem:linkedItem||defaultLinkedItem(type,area,entry.category||''),
     description:entry.description||'',
     vendor:entry.vendor||'',
@@ -1826,9 +1831,13 @@ let activePage='overview';
 const HUB_QUERY=new URLSearchParams(window.location.search);
 const CAMP_TAB_ONLY_MODE=HUB_QUERY.get('view')==='camp-tab-only';
 const LEDGER_LOCATION_SLUG=(HUB_QUERY.get('location')||'sri-lanka').trim().toLowerCase();
-const LEDGER_DB_SELECT='id,location_id,week_id,type,category,linked_item,description,payment_method,qty,amount_local,currency,entry_date,business_area,fx_rate,amount_eur,recurring_source_id,recurring_month,source_kind,is_comp,created_at';
+const LEDGER_DB_SELECT='id,location_id,week_id,type,category,linked_item,description,payment_method,qty,amount_local,currency,entry_date,business_area,fx_rate,amount_eur,recurring_source_id,recurring_month,source_kind,is_comp,zone_id,created_at';
 let HUB_SB=null;
 let HUB_SB_LOCATION_ID=null;
+// Shared-transport zones for this location. Populated on hub boot from
+// public.tour_zones. Aggregator reads TOUR_ZONES to split Transport
+// expenses across every tour whose display group matches a zone name.
+let TOUR_ZONES=[];
 // Camp Tab mode for this location. Set by ensureHubLocationId from
 // locations.camp_tab_mode. Possible values: 'weekly' (Sri Lanka style,
 // default) or 'per_guest' (Morocco). Passed to the camp tab iframe via
@@ -2321,6 +2330,24 @@ async function ensureHubLocationId(){
   }
   return HUB_SB_LOCATION_ID;
 }
+// Load the shared-transport zones for this location. Runs after
+// ensureHubLocationId so we have HUB_SB_LOCATION_ID. Silent-fail: an
+// empty TOUR_ZONES simply means the zone-based transport split is a
+// no-op and the aggregator falls back to the linkedItem routing.
+async function loadTourZones(){
+  const client=getHubSupabaseClient();
+  if(!client||!HUB_SB_LOCATION_ID){ TOUR_ZONES=[]; return; }
+  try{
+    const { data,error } = await client
+      .from('tour_zones')
+      .select('id,name,active')
+      .eq('location_id',HUB_SB_LOCATION_ID)
+      .eq('active',true)
+      .order('name');
+    if(error){ console.warn('[Hub] tour_zones load failed',error); TOUR_ZONES=[]; return; }
+    TOUR_ZONES=(data||[]).map(z=>({id:z.id,name:String(z.name||'').trim(),active:!!z.active}));
+  }catch(e){ console.warn('[Hub] tour_zones load threw',e); TOUR_ZONES=[]; }
+}
 function mapLedgerTypeToDb(type='expense'){
   if(type==='income') return 'revenue';
   if(type==='transfer') return 'money_sent';
@@ -2366,7 +2393,10 @@ function ledgerEntryToDbRow(entry,locationId){
     // is_comp: marks a Tour expense row as a comp (staff / offered spot)
     // so the Tours-by-product margin card can split paying-guest margin
     // from total margin. Column added via ALTER TABLE (see SQL note).
-    is_comp:!!normalized.isComp
+    is_comp:!!normalized.isComp,
+    // zone_id: shared-transport zone anchor (Transport rows only). Null
+    // when the row is standalone / tour-specific.
+    zone_id:normalized.zoneId||null
   };
 }
 function dbRowToLedgerEntry(row){
@@ -2388,7 +2418,8 @@ function dbRowToLedgerEntry(row){
     recurringSourceId:row.recurring_source_id||'',
     recurringMonth:row.recurring_month||'',
     sourceKind:row.source_kind||'manual',
-    isComp:!!row.is_comp
+    isComp:!!row.is_comp,
+    zoneId:row.zone_id||''
   });
 }
 async function readSupabaseFxRate(date,quoteCurrency){
@@ -2464,6 +2495,11 @@ async function hydrateLedgerFromSupabase({mergeLocal=true}={}){
     const client=getHubSupabaseClient();
     const locationId=await ensureHubLocationId();
     if(!client||!locationId) return false;
+    // Load shared-transport zones alongside the ledger. Aggregator needs
+    // TOUR_ZONES populated before it can distribute zone_id-anchored
+    // transport across the tours in the zone. Await so the very first
+    // Overview render already has the zones — no visual flicker.
+    try{ await loadTourZones(); }catch(_e){}
     if(mergeLocal&&Array.isArray(S.ledger)&&S.ledger.length){
       try{
         await pushLedgerEntriesToSupabase(S.ledger);
@@ -5054,6 +5090,75 @@ function renderOverview(){
     ...currentTourItems(),
     ...Object.keys(tourMap)
   ]);
+  // ── Zone-based transport split ─────────────────────────────────────
+  // For every Transport expense anchored to a tour_zone (zone_id set),
+  // pool the cost with the other rows in the same zone and distribute
+  // it across every tour whose display group matches the zone name,
+  // weighted by paying-guest count. This is the model described in the
+  // "shared-transport per zone" spec — one van serves multiple sub-tours
+  // in the same physical location, and each sub-tour absorbs a share
+  // proportional to how many guests it actually put in the van.
+  //
+  // Rows with zone_id are skipped by the legacy linkedItem-based rollup
+  // below because their linkedItem was cleared during the migration, so
+  // the two mechanisms don't double-count.
+  const zoneAccum = {}; // zone_id → { costLocal, costEur, zoneName }
+  expenses.filter(x=>x.businessArea==='Transport' && x.zoneId).forEach(x=>{
+    const zone = TOUR_ZONES.find(z => z.id === x.zoneId);
+    if(!zone) return; // Zone was deleted; drop the row silently.
+    const key = zone.id;
+    if(!zoneAccum[key]) zoneAccum[key] = { costLocal:0, costEur:0, zoneName: zone.name };
+    zoneAccum[key].costLocal += entryLocalDisplayAmount(x);
+    zoneAccum[key].costEur += entryEurAmount(x);
+  });
+  Object.values(zoneAccum).forEach(z => {
+    // Tours "belong to" a zone when their display group (part before the
+    // em-dash separator) matches the zone name case-insensitively. So
+    // "Dunes — Sandboarding", "Dunes — Camel Ride" and "Dunes — Quad
+    // Bike" all attach to zone "Dunes". No configuration needed as long
+    // as the naming convention is followed; the back-office UI in a
+    // later phase will make this explicit per tour.
+    const zoneNameLc = z.zoneName.toLowerCase();
+    const tourKeys = Object.keys(tourMap).filter(k =>
+      String(tourDisplayGroup(k)||'').toLowerCase() === zoneNameLc
+    );
+    // Fallback: nothing in tourMap matches yet (nobody bought a Dunes
+    // tour this period). Attach the whole zone cost to any menu tour
+    // in the zone so the spend still shows up somewhere — otherwise the
+    // van cost silently vanishes for a period.
+    if(!tourKeys.length){
+      const menuMatch = currentTourItems().find(t =>
+        String(tourDisplayGroup(t)||'').toLowerCase() === zoneNameLc
+      );
+      if(menuMatch){
+        tourMap[menuMatch] = tourMap[menuMatch] || blankTour(menuMatch);
+        tourMap[menuMatch].costLocal += z.costLocal;
+        tourMap[menuMatch].costEur += z.costEur;
+      }
+      return;
+    }
+    const totalGuests = tourKeys.reduce((s,k) => s + (tourMap[k].qty||0), 0);
+    if(totalGuests <= 0){
+      // Tours exist in tourMap (revenue was posted) but qty is 0 across
+      // the board — dump on the first one so the cost is visible.
+      const k = tourKeys[0];
+      tourMap[k].costLocal += z.costLocal;
+      tourMap[k].costEur += z.costEur;
+      return;
+    }
+    const perGuestLocal = z.costLocal / totalGuests;
+    const perGuestEur = z.costEur / totalGuests;
+    tourKeys.forEach(k => {
+      const guests = tourMap[k].qty || 0;
+      tourMap[k].costLocal += guests * perGuestLocal;
+      tourMap[k].costEur += guests * perGuestEur;
+    });
+  });
+  // ── Legacy linkedItem-based transport rollup ──────────────────────
+  // Still used for transport rows that carry a specific linkedItem (a
+  // single-tour van or a preset with a linkedTour set). Rows migrated
+  // to a zone (zone_id set + linkedItem cleared) fall out of this loop
+  // naturally because candidates resolves to [].
   expenses.filter(x=>x.businessArea==='Transport').forEach(x=>{
     // Per-entry override (set via the Transport quick-add form's linked-tour
     // dropdown) wins over the preset's default linkedTour. Useful when a
