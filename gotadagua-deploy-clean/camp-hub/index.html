@@ -5117,11 +5117,11 @@ function renderOverview(){
     // Override the .g4 (4-column) grid so the 3 Portugal tiles stretch
     // full width instead of leaving an empty fourth column on the right.
     ovKpisEl.style.gridTemplateColumns = 'repeat(3, minmax(0, 1fr))';
-    // Two-row layout: FLOW on top (HQ in / On-site / Spent), POSITION
-    // below (Balance alone for Portugal — it IS the HQ, no Bank/Cash
-    // drawer split). Total Spent uses the neutral kpi-value default —
-    // spending isn't a loss, only truly-negative balances get red.
-    ovKpisEl.style.gridTemplateColumns = 'repeat(3, minmax(0,1fr))';
+    // Portugal is the HQ — no Bank/Cash drawer split, so only 4 chips
+    // exist. Use a single 4-column row instead of 3×2 so Balance doesn't
+    // sit orphaned in row 2. HQ Transferred is normally 0 here (money
+    // doesn't move to itself) but kept for visual parity across locations.
+    ovKpisEl.style.gridTemplateColumns = 'repeat(4, minmax(0,1fr))';
     ovKpisEl.innerHTML = `
       ${kpi('HQ Transferred (in)','Money sent from HQ to this camp',lkr(moneySentLocal),'kv-ocean',euro(moneySentEur))}
       ${kpi('On-site revenue','Tours + merch + bar generated at the camp',lkr(totalRevenueLocal),'kv-green',euro(totalRevenueEur))}
