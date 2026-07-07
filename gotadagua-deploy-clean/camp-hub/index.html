@@ -5291,6 +5291,22 @@ function renderOverview(){
         }
       </div>
     </div>
+    ${(()=>{
+      // Airport-vs-Surf split. Names in transportPresets.airport are the
+      // airport-run chips (mainly Morocco vans / Sri Lanka airport tuks).
+      // Everything else — surf-lesson runs, tuk-tuks tagged as surf/tour
+      // transports, tours with hasTransport — counts as "Surf transport".
+      // Hardcoded 'Airport' string kept as a fallback because the base
+      // TRANSPORT_LINKED_ITEMS always includes it before any preset is set.
+      const airportNames=new Set(['Airport',...(transportPresets?.airport||[]).map(p=>String(p?.name||'').trim()).filter(Boolean)]);
+      const isAirport=r=>airportNames.has(r.name);
+      const airportLocal=sum(transportRows.filter(isAirport),r=>r.spendLocal);
+      const airportEur=sum(transportRows.filter(isAirport),r=>r.spendEur);
+      const surfLocal=sum(transportRows.filter(r=>!isAirport(r)),r=>r.spendLocal);
+      const surfEur=sum(transportRows.filter(r=>!isAirport(r)),r=>r.spendEur);
+      window.__lastAirportSpend={airportLocal,airportEur,surfLocal,surfEur};
+      return '';
+    })()}
     <div class="card">
       <div class="card-pad" style="border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
         <div style="font-family:'DM Serif Display',serif;font-size:17px;color:var(--navy)">Transport control</div>
@@ -5299,6 +5315,29 @@ function renderOverview(){
           <div style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:var(--red)">${transportRows.length?moneyPairLocal(sum(transportRows,r=>r.spendLocal),sum(transportRows,r=>r.spendEur)):'—'}</div>
         </div>
       </div>
+      ${transportRows.length ? (()=>{
+        const s=window.__lastAirportSpend||{airportLocal:0,airportEur:0,surfLocal:0,surfEur:0};
+        const totLocal=s.airportLocal+s.surfLocal, totEur=s.airportEur+s.surfEur;
+        return `<div class="card-pad" style="padding:14px 20px;border-bottom:1px solid var(--border);background:var(--bg)">
+          <div class="g4">
+            <div class="ov-chip">
+              <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">Airport transfers</div>
+              <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--red);margin-top:6px;line-height:1.1">${s.airportLocal?moneyPairLocal(s.airportLocal,s.airportEur):'—'}</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:6px">Guest arrivals / departures</div>
+            </div>
+            <div class="ov-chip">
+              <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">Surf transport</div>
+              <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--red);margin-top:6px;line-height:1.1">${s.surfLocal?moneyPairLocal(s.surfLocal,s.surfEur):'—'}</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:6px">Tuk-tuks / vans to the beach</div>
+            </div>
+            <div class="ov-chip" style="border-color:var(--navy)">
+              <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">Total</div>
+              <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy);margin-top:6px;line-height:1.1">${moneyPairLocal(totLocal,totEur)}</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:6px">Everything transport-related</div>
+            </div>
+          </div>
+        </div>`;
+      })() : ''}
       <div class="card-pad" style="padding:16px 20px 20px">
         ${transportRows.length
           ? `<div class="g4">${transportRows.map(r=>`
