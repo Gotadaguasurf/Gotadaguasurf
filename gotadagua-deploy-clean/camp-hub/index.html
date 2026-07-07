@@ -5117,22 +5117,29 @@ function renderOverview(){
     // Override the .g4 (4-column) grid so the 3 Portugal tiles stretch
     // full width instead of leaving an empty fourth column on the right.
     ovKpisEl.style.gridTemplateColumns = 'repeat(3, minmax(0, 1fr))';
-    const netLocal = totalRevenueLocal - totalExpLocal;
-    const netEur   = totalRevenueEur   - totalExpEur;
+    // Portugal (HQ location) — same 4-card story as the other camps.
+    // HQ Transferred is normally 0 here (Portugal IS the HQ), kept in the
+    // set for visual consistency across locations.
     ovKpisEl.innerHTML = `
-      ${kpi('Total Expenses','Tudo o que saiu',           lkr(totalExpLocal),    'kv-red',                              euro(totalExpEur))}
-      ${kpi('Total Revenue', 'Tudo o que entrou no camp', lkr(totalRevenueLocal),'kv-green',                            euro(totalRevenueEur))}
-      ${kpi('Net',           'Revenue − Expenses',        lkr(netLocal),         netLocal>=0?'kv-green':'kv-red',       euro(netEur))}
+      ${kpi('HQ Transferred (in)','Money sent from HQ to this camp',lkr(moneySentLocal),'kv-ocean',euro(moneySentEur))}
+      ${kpi('On-site revenue','Tours + merch + bar generated at the camp',lkr(totalRevenueLocal),'kv-green',euro(totalRevenueEur))}
+      ${kpi('Total Spent','Everything that went out (expenses only)',lkr(totalExpLocal),'kv-red',euro(totalExpEur))}
+      ${kpi('Balance','Bank + Cash drawers combined',lkr(totalBalanceLocal),totalBalanceLocal>=0?'kv-green':'kv-red',euro(totalBalanceEur))}
     `;
   } else {
-    // Other locations: full Bank + Cash drawer split — restore default
-    // 4-column .g4 grid in case Portugal mode flipped it earlier.
+    // Non-Portugal locations: same 4 primary cards + Bank / Cash detail
+    // below. Manager float control — never Revenue − Expenses (that would
+    // read as a P&L, which this hub is not: the big revenue lives in
+    // Bookinglayer, not the ledger). Restore default .g4 grid in case
+    // Portugal mode flipped it earlier.
     ovKpisEl.style.gridTemplateColumns = '';
     ovKpisEl.innerHTML=`
-      ${kpi('Total Balance','Bank + Cash drawers combined',lkr(totalBalanceLocal),totalBalanceLocal>=0?'kv-green':'kv-red',euro(totalBalanceEur))}
+      ${kpi('HQ Transferred (in)','Money sent from HQ to this camp',lkr(moneySentLocal),'kv-ocean',euro(moneySentEur))}
+      ${kpi('On-site revenue','Tours + merch + bar generated at the camp',lkr(totalRevenueLocal),'kv-green',euro(totalRevenueEur))}
+      ${kpi('Total Spent','Everything that went out (expenses only)',lkr(totalExpLocal),'kv-red',euro(totalExpEur))}
+      ${kpi('Balance','Bank + Cash drawers combined',lkr(totalBalanceLocal),totalBalanceLocal>=0?'kv-green':'kv-red',euro(totalBalanceEur))}
       ${kpi('Bank','HQ transfers − card/bank spend − ATM withdrawals',lkr(bankBalanceLocal),bankBalanceLocal>=0?'kv-ocean':'kv-red',euro(bankBalanceEur))}
-      ${kpi('Cash','ATM withdrawals + revenue − cash spend',lkr(cashBalanceLocal),cashBalanceLocal>=0?'kv-amber':'kv-red',euro(cashBalanceEur))}
-      ${kpi('Gross Profit','Revenue − all expenses',lkr(grossProfitLocal),grossProfitLocal>=0?'kv-green':'kv-red',euro(grossProfitEur))}
+      ${kpi('Cash','ATM withdrawals + on-site revenue − cash spend',lkr(cashBalanceLocal),cashBalanceLocal>=0?'kv-amber':'kv-red',euro(cashBalanceEur))}
     `;
   }
   renderOverviewBookingsPanel(weeks,selectedWid,allLedger);
