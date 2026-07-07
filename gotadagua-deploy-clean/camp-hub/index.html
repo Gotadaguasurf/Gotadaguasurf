@@ -1498,7 +1498,12 @@ function normalizeLedgerEntry(entry){
   let paymentMethod=entry.paymentMethod||defaultPaymentMethod(type,area);
   if(type==='expense'&&paymentMethod==='Camp Cash') paymentMethod='Cash';
   if(type==='expense'&&paymentMethod==='HQ Transfer') paymentMethod='Bank Transfer';
-  if(type==='income'&&paymentMethod!=='Cash') paymentMethod='Cash';
+  // Revenue can be Cash / Card / Bank Transfer — enforced against the
+  // canonical PAYMENT_METHODS list so a stale entry with an invalid
+  // channel falls back to Cash instead of leaking downstream. Previously
+  // this line hard-forced Cash on every income, blocking Card & Transfer
+  // revenue at all locations.
+  if(type==='income'&&!PAYMENT_METHODS.includes(paymentMethod)) paymentMethod='Cash';
   // Transfers can be one of three kinds, distinguished by paymentMethod:
   //   • 'HQ Transfer'    — money sent from HQ to the camp BANK account.
   //   • 'ATM Withdrawal' — owner withdraws cash from the bank ATM; moves
@@ -6893,7 +6898,10 @@ function paymentOptionsFor(type){
     //   Cash Deposit   = Cash → Bank       (cash deposited into bank)
     return ['HQ Transfer','ATM Withdrawal','Cash Deposit'];
   }
-  if(type==='income') return ['Cash'];
+  // Revenue accepts every canonical channel (Cash / Card / Bank Transfer)
+  // — same list as expenses. This mirrors reality: guests pay in card at
+  // the desk, transfer for pre-bookings, cash at Portugal beach cabin, etc.
+  if(type==='income') return PAYMENT_METHODS;
   return PAYMENT_METHODS;
 }
 // CRITICAL: this function is called by updateCurrencyUi() on every keystroke
