@@ -5002,6 +5002,21 @@ function renderOverview(){
   const payrollRows=Object.values(payrollGroups).sort((a,b)=>b.spendLocal-a.spendLocal);
   const payrollTotalLocal=sum(payrollRows,r=>r.spendLocal);
   const payrollTotalEur=sum(payrollRows,r=>r.spendEur);
+  // Monthly rollup for the Payroll card summary. Groups the same salary
+  // rows by YYYY-MM so the header can show "3 months paid" with a total
+  // per month. Managers open the <details> below to drill into per-staff
+  // detail; the closed default keeps the Overview short even on camps
+  // with 17+ people on the roster.
+  const payrollByMonth={};
+  salaryExpenses.forEach(x=>{
+    const m=String(x.date||'').slice(0,7);
+    if(!m) return;
+    if(!payrollByMonth[m]) payrollByMonth[m]={month:m,local:0,eur:0,entries:0};
+    payrollByMonth[m].local+=entryLocalDisplayAmount(x);
+    payrollByMonth[m].eur+=entryEurAmount(x);
+    payrollByMonth[m].entries+=1;
+  });
+  const payrollMonthRows=Object.values(payrollByMonth).sort((a,b)=>b.month.localeCompare(a.month));
   // Laundry breakdown: every expense tagged category='Laundry' in the
   // selection, with camp-paid vs HQ-paid split.
   const laundryExpenses=expenses.filter(x=>x.category==='Laundry');
@@ -5011,7 +5026,13 @@ function renderOverview(){
   const laundryCampEur=sum(laundryExpenses.filter(x=>x.paymentMethod==='Cash'),x=>entryEurAmount(x));
   const laundryHqLocal=sum(laundryExpenses.filter(x=>x.paymentMethod==='Bank Transfer'),x=>entryLocalDisplayAmount(x));
   const laundryHqEur=sum(laundryExpenses.filter(x=>x.paymentMethod==='Bank Transfer'),x=>entryEurAmount(x));
-  const transportCardsMarkup=transportRows.length?`
+  // "Transport by line" card (below) is intentionally short-circuited
+  // to empty — the consolidated "Transport" block further down shows
+  // the same per-line detail plus the Tours/Surf/Airport split, so the
+  // top card was pure duplication that made the Overview scroll wider
+  // and confused managers by rendering red per-line "margin" badges on
+  // a cost-only area.
+  const transportCardsMarkup=false && transportRows.length?`
     <div class="card card-pad" style="grid-column:1 / -1">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;gap:12px;flex-wrap:wrap">
         <div style="font-family:'DM Serif Display',serif;font-size:17px;color:var(--navy);display:flex;align-items:center;gap:8px">${uiIcon('send')}<span>Transport by line</span></div>
@@ -5226,8 +5247,13 @@ function renderOverview(){
   // rolled into every tour's margin via the aggregator. Showing it here
   // as "no revenue" would flash a huge negative "margin" against the
   // tours' revenue — pure noise for the manager.
+  // Bar is hidden for Morocco — the camp doesn't operate a bar there, so
+  // the card was always €0/€0 noise. Every other location keeps it. This
+  // is a location-specific UX trim, not a data cutoff: any Bar row that
+  // ever landed against Morocco still counts toward Total Spent.
+  const HIDE_BAR=(typeof __HUB_LOCATION_SLUG!=='undefined') && __HUB_LOCATION_SLUG==='morocco';
   const profitAreas=[
-    {icon:'cup',name:'Bar',revenueLocal:areaRevenues.Bar.local,revenueEur:areaRevenues.Bar.eur,costLocal:areaCosts.Bar.local,costEur:areaCosts.Bar.eur},
+    ...(HIDE_BAR ? [] : [{icon:'cup',name:'Bar',revenueLocal:areaRevenues.Bar.local,revenueEur:areaRevenues.Bar.eur,costLocal:areaCosts.Bar.local,costEur:areaCosts.Bar.eur}]),
     {icon:'shirt',name:'Merch',revenueLocal:areaRevenues.Merch.local,revenueEur:areaRevenues.Merch.eur,costLocal:merchCogsLocal,costEur:merchCogsEur}
   ];
   const tourCardsMarkup=tourRows.length?`
@@ -5431,9 +5457,14 @@ function renderOverview(){
         </table></div>
       </div>
     `;
+  // Audit ordering (v3): Tours (rendered above in ovCatPanels) → Transport
+  // → Laundry → Utilities → Payroll → Merch stock. ovCatCard is a
+  // flex-column container so we reorder with CSS `order:` on each card
+  // instead of moving giant template blocks around (safer, less prone
+  // to breaking nested backticks).
   document.getElementById('ovCatCard').innerHTML=`
-    ${merchStockCards}
-    <div class="card">
+    <div style="display:contents" id="__ovMerch" data-order="5">${merchStockCards.replace(/<div class="card"/g,'<div class="card" style="order:5"')}</div>
+    <div class="card" style="order:3">
       <div class="card-pad" style="border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
         <div style="font-family:'DM Serif Display',serif;font-size:17px;color:var(--navy)">Utilities control</div>
         <div style="font-size:11px;color:var(--muted)">Electricity, water, internet, and gas spend</div>
@@ -5454,7 +5485,7 @@ function renderOverview(){
         }
       </div>
     </div>
-    <div class="card">
+    <div class="card" style="order:4">
       <div class="card-pad" style="border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
         <div style="font-family:'DM Serif Display',serif;font-size:17px;color:var(--navy)">Payroll</div>
         <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
@@ -5463,64 +5494,96 @@ function renderOverview(){
         </div>
       </div>
       <div class="card-pad" style="padding:16px 20px 20px">
-        ${payrollRows.length
-          ? `<div class="g4">${payrollRows.map(r=>`
+        ${payrollRows.length ? `
+          <!-- Monthly rollup — one chip per YYYY-MM, always visible so
+               the manager can see cadence at a glance without opening
+               the per-person breakdown. -->
+          <div class="g4">${payrollMonthRows.map(m=>`
             <div class="ov-chip">
-              <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">${r.name}</div>
-              <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy);margin-top:6px;line-height:1.1">${moneyPairLocal(r.spendLocal,r.spendEur)}</div>
-              <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:10px;gap:8px">
-                <span>Camp-paid: <span style="color:var(--navy);font-weight:600">${r.campLocal?moneyPairLocal(r.campLocal,r.campEur):'—'}</span></span>
-                <span>HQ-paid: <span style="color:var(--navy);font-weight:600">${r.hqLocal?moneyPairLocal(r.hqLocal,r.hqEur):'—'}</span></span>
-              </div>
-              <div style="font-size:11px;color:var(--muted);margin-top:6px">${r.entries||0} payment${r.entries===1?'':'s'}</div>
-            </div>`).join('')}</div>`
-          : `<div style="color:var(--muted);font-size:13px;padding:12px 0">No payroll entries yet — add salary expenses to see them grouped by staff.</div>`
+              <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">${m.month}</div>
+              <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy);margin-top:6px;line-height:1.1">${moneyPairLocal(m.local,m.eur)}</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:6px">${m.entries} payment${m.entries===1?'':'s'}</div>
+            </div>`).join('')}</div>
+          <details style="margin-top:14px">
+            <summary style="cursor:pointer;font-size:12px;color:var(--ocean);font-weight:600;padding:4px 0;user-select:none">Show per-staff detail (${payrollRows.length})</summary>
+            <div class="g4" style="margin-top:12px">${payrollRows.map(r=>`
+              <div class="ov-chip">
+                <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">${r.name}</div>
+                <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy);margin-top:6px;line-height:1.1">${moneyPairLocal(r.spendLocal,r.spendEur)}</div>
+                <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:10px;gap:8px">
+                  <span>Camp-paid: <span style="color:var(--navy);font-weight:600">${r.campLocal?moneyPairLocal(r.campLocal,r.campEur):'—'}</span></span>
+                  <span>HQ-paid: <span style="color:var(--navy);font-weight:600">${r.hqLocal?moneyPairLocal(r.hqLocal,r.hqEur):'—'}</span></span>
+                </div>
+                <div style="font-size:11px;color:var(--muted);margin-top:6px">${r.entries||0} payment${r.entries===1?'':'s'}</div>
+              </div>`).join('')}</div>
+          </details>
+        ` : `<div style="color:var(--muted);font-size:13px;padding:12px 0">No payroll entries yet — add salary expenses to see them grouped by staff.</div>`
         }
       </div>
     </div>
     ${(()=>{
-      // Airport-vs-Surf split. Names in transportPresets.airport are the
-      // airport-run chips (mainly Morocco vans / Sri Lanka airport tuks).
-      // Everything else — surf-lesson runs, tuk-tuks tagged as surf/tour
-      // transports, tours with hasTransport — counts as "Surf transport".
-      // Hardcoded 'Airport' string kept as a fallback because the base
-      // TRANSPORT_LINKED_ITEMS always includes it before any preset is set.
-      const airportNames=new Set(['Airport',...(transportPresets?.airport||[]).map(p=>String(p?.name||'').trim()).filter(Boolean)]);
-      const isAirport=r=>airportNames.has(r.name);
-      const airportLocal=sum(transportRows.filter(isAirport),r=>r.spendLocal);
-      const airportEur=sum(transportRows.filter(isAirport),r=>r.spendEur);
-      const surfLocal=sum(transportRows.filter(r=>!isAirport(r)),r=>r.spendLocal);
-      const surfEur=sum(transportRows.filter(r=>!isAirport(r)),r=>r.spendEur);
-      window.__lastAirportSpend={airportLocal,airportEur,surfLocal,surfEur};
+      // Split transport spend across the three picker tabs: Tours / Surf
+      // / Airport. Each preset bucket carries the destination names for
+      // its tab (Airport chips, Surf chips, Tours chips) so a transport
+      // row lands in the matching group by name. The static 'Airport'
+      // fallback catches legacy rows still using the base linked-item
+      // list. Anything that doesn't classify falls into 'other' — kept
+      // in the total but not surfaced as its own chip.
+      const nameSet=(bucket)=>new Set((transportPresets?.[bucket]||[]).map(p=>String(p?.name||'').trim()).filter(Boolean));
+      const airportNames=new Set(['Airport',...nameSet('airport')]);
+      const surfNames=nameSet('surf');
+      const toursNames=new Set([...nameSet('tours'),...nameSet('tuktuk')]);
+      const classify=(r)=>{
+        if(airportNames.has(r.name)) return 'airport';
+        if(surfNames.has(r.name)) return 'surf';
+        if(toursNames.has(r.name)) return 'tours';
+        return 'other';
+      };
+      const bucketOf={};
+      transportRows.forEach(r=>{ (bucketOf[classify(r)]=bucketOf[classify(r)]||[]).push(r); });
+      const bucketTotal=(key)=>({
+        local:sum(bucketOf[key]||[],r=>r.spendLocal),
+        eur:sum(bucketOf[key]||[],r=>r.spendEur)
+      });
+      window.__lastTransportSplit={
+        tours:bucketTotal('tours'),
+        surf:bucketTotal('surf'),
+        airport:bucketTotal('airport'),
+        other:bucketTotal('other')
+      };
       return '';
     })()}
-    <div class="card">
+    <div class="card" style="order:1">
       <div class="card-pad" style="border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
-        <div style="font-family:'DM Serif Display',serif;font-size:17px;color:var(--navy)">Transport control</div>
+        <div style="font-family:'DM Serif Display',serif;font-size:17px;color:var(--navy)">Transport</div>
         <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
           <div style="font-size:11px;color:var(--muted)">${transportRows.length} line${transportRows.length===1?'':'s'} with spend</div>
           <div style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:var(--navy)">${transportRows.length?moneyPairLocal(sum(transportRows,r=>r.spendLocal),sum(transportRows,r=>r.spendEur)):'—'}</div>
         </div>
       </div>
       ${transportRows.length ? (()=>{
-        const s=window.__lastAirportSpend||{airportLocal:0,airportEur:0,surfLocal:0,surfEur:0};
-        const totLocal=s.airportLocal+s.surfLocal, totEur=s.airportEur+s.surfEur;
+        const s=window.__lastTransportSplit||{tours:{local:0,eur:0},surf:{local:0,eur:0},airport:{local:0,eur:0},other:{local:0,eur:0}};
+        // Order matches the audit spec: Tours first (biggest driver of
+        // spend at Morocco), then Surf, then Airport. "Other" is folded
+        // into the header total silently — showing it as a chip would
+        // require the manager to know what "other" means; better to
+        // just categorise those lines in the picker.
         return `<div class="card-pad" style="padding:14px 20px;border-bottom:1px solid var(--border);background:var(--bg)">
           <div class="g4">
             <div class="ov-chip">
-              <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">Airport transfers</div>
-              <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy);margin-top:6px;line-height:1.1">${s.airportLocal?moneyPairLocal(s.airportLocal,s.airportEur):'—'}</div>
-              <div style="font-size:11px;color:var(--muted);margin-top:6px">Guest arrivals / departures</div>
+              <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">Tours</div>
+              <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy);margin-top:6px;line-height:1.1">${s.tours.local?moneyPairLocal(s.tours.local,s.tours.eur):'—'}</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:6px">Dunes · Souk · Paradise · …</div>
             </div>
             <div class="ov-chip">
-              <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">Surf transport</div>
-              <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy);margin-top:6px;line-height:1.1">${s.surfLocal?moneyPairLocal(s.surfLocal,s.surfEur):'—'}</div>
-              <div style="font-size:11px;color:var(--muted);margin-top:6px">Tuk-tuks / vans to the beach</div>
+              <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">Surf</div>
+              <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy);margin-top:6px;line-height:1.1">${s.surf.local?moneyPairLocal(s.surf.local,s.surf.eur):'—'}</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:6px">Runs to surf spots</div>
             </div>
-            <div class="ov-chip" style="border-color:var(--navy)">
-              <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">Total</div>
-              <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy);margin-top:6px;line-height:1.1">${moneyPairLocal(totLocal,totEur)}</div>
-              <div style="font-size:11px;color:var(--muted);margin-top:6px">Everything transport-related</div>
+            <div class="ov-chip">
+              <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">Airport</div>
+              <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy);margin-top:6px;line-height:1.1">${s.airport.local?moneyPairLocal(s.airport.local,s.airport.eur):'—'}</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:6px">Guest arrivals / departures</div>
             </div>
           </div>
         </div>`;
@@ -5542,7 +5605,7 @@ function renderOverview(){
         }
       </div>
     </div>
-    <div class="card">
+    <div class="card" style="order:2">
       <div class="card-pad" style="border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
         <div style="font-family:'DM Serif Display',serif;font-size:17px;color:var(--navy)">Laundry</div>
         <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
