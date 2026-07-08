@@ -1122,6 +1122,36 @@ Lina Costa
             <span>Staff / offered (not a paying guest)</span>
           </label>
         </div>
+        <!-- HQ layer (visible only when the current camp is Portugal — that
+             is, the HQ hub). Two independent axes: where the cash left from
+             ("paid_from") and which location bears the cost economically
+             ("attributed_location"). For every other camp, both fields
+             stay hidden and default to the current location slug so the
+             manager sees a clean form. -->
+        <div class="mfield" style="display:none" id="em_paid_from_wrap">
+          <label>Paid from</label>
+          <select id="em_paid_from">
+            <option value="hq">HQ (Portugal)</option>
+            <option value="morocco">Morocco</option>
+            <option value="sri-lanka">Sri Lanka</option>
+            <option value="portugal">Portugal</option>
+            <option value="surf-school">Surf School</option>
+            <option value="junior-camp">Junior Camp</option>
+          </select>
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">Where the cash actually left from — drives the cash flow of that entity.</div>
+        </div>
+        <div class="mfield" style="display:none" id="em_attrib_loc_wrap">
+          <label>Attributed to</label>
+          <select id="em_attrib_loc">
+            <option value="hq-general">HQ / Geral</option>
+            <option value="morocco">Morocco</option>
+            <option value="sri-lanka">Sri Lanka</option>
+            <option value="portugal">Portugal</option>
+            <option value="surf-school">Surf School</option>
+            <option value="junior-camp">Junior Camp</option>
+          </select>
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">Which location this cost economically belongs to — drives HQ's per-location profit view.</div>
+        </div>
       </div>
       <div class="mfield" style="display:none" id="em_desc_wrap"><label>Description</label><input id="em_desc" placeholder="What is this for?"></div>
     </div>
@@ -1374,7 +1404,10 @@ const LOCAL_CURRENCY_PINNED = {
   // default — wrong currency stamped on every entry. Keep both for
   // back-compat with anything that might still reference the short form.
   'junior-camp': 'EUR',
-  'junior':      'EUR'
+  'junior':      'EUR',
+  // Surf School (Caparica) — same EUR footing as Portugal, standalone
+  // location with its own cash flow. Added Fase HQ Base.
+  'surf-school': 'EUR'
 };
 let LOCAL_CURRENCY = LOCAL_CURRENCY_PINNED[__HUB_LOCATION_SLUG] || 'LKR';
 // ── FX rate fallbacks (NOT a lock) ────────────────────────────────────────
@@ -1556,6 +1589,18 @@ function normalizeLedgerEntry(entry){
     // aggregator distributes that cost across every tour in the zone by
     // paying-guest count. Empty string when the row isn't zone-anchored.
     zoneId:entry.zoneId||'',
+    // HQ layer fields (Fase Base):
+    //   paidFrom — where the cash actually left ('morocco', 'portugal',
+    //     'hq', …). Drives the cash-flow view of that entity.
+    //   attributedLocation — which location bears the cost economically
+    //     ('morocco', 'sri-lanka', 'hq-general', …). Drives the profit-
+    //     per-location view in HQ. Independent of paidFrom.
+    // When empty, callers upstream fill in defaults (paidFrom = current
+    // location slug, attributedLocation = same). The two fields let a
+    // manager's salary paid from Portugal be attributed to Morocco's
+    // P&L without touching Morocco's cash flow.
+    paidFrom:String(entry.paidFrom||'').trim(),
+    attributedLocation:String(entry.attributedLocation||'').trim(),
     linkedItem:linkedItem||defaultLinkedItem(type,area,entry.category||''),
     description:entry.description||'',
     vendor:entry.vendor||'',
@@ -1833,7 +1878,7 @@ let activePage='overview';
 const HUB_QUERY=new URLSearchParams(window.location.search);
 const CAMP_TAB_ONLY_MODE=HUB_QUERY.get('view')==='camp-tab-only';
 const LEDGER_LOCATION_SLUG=(HUB_QUERY.get('location')||'sri-lanka').trim().toLowerCase();
-const LEDGER_DB_SELECT='id,location_id,week_id,type,category,linked_item,description,payment_method,qty,amount_local,currency,entry_date,business_area,fx_rate,amount_eur,recurring_source_id,recurring_month,source_kind,is_comp,zone_id,created_at';
+const LEDGER_DB_SELECT='id,location_id,week_id,type,category,linked_item,description,payment_method,qty,amount_local,currency,entry_date,business_area,fx_rate,amount_eur,recurring_source_id,recurring_month,source_kind,is_comp,zone_id,paid_from,attributed_location,created_at';
 let HUB_SB=null;
 let HUB_SB_LOCATION_ID=null;
 // Shared-transport zones for this location. Populated on hub boot from
@@ -2398,7 +2443,12 @@ function ledgerEntryToDbRow(entry,locationId){
     is_comp:!!normalized.isComp,
     // zone_id: shared-transport zone anchor (Transport rows only). Null
     // when the row is standalone / tour-specific.
-    zone_id:normalized.zoneId||null
+    zone_id:normalized.zoneId||null,
+    // HQ layer (Fase Base). Fall back to the current location's slug so
+    // pre-HQ rows still work — every row's default is "paid & attributed
+    // to this camp" until the HQ dropdown starts overriding.
+    paid_from:normalized.paidFrom||LEDGER_LOCATION_SLUG||null,
+    attributed_location:normalized.attributedLocation||LEDGER_LOCATION_SLUG||null
   };
 }
 function dbRowToLedgerEntry(row){
@@ -2421,7 +2471,9 @@ function dbRowToLedgerEntry(row){
     recurringMonth:row.recurring_month||'',
     sourceKind:row.source_kind||'manual',
     isComp:!!row.is_comp,
-    zoneId:row.zone_id||''
+    zoneId:row.zone_id||'',
+    paidFrom:row.paid_from||'',
+    attributedLocation:row.attributed_location||''
   });
 }
 async function readSupabaseFxRate(date,quoteCurrency){
@@ -5776,7 +5828,8 @@ const TQ_TABS_BY_LOCATION={
   'morocco':    [{key:'airport',label:'Airport'},{key:'surf',label:'Surf'},{key:'tours',label:'Tours'}],
   'sri-lanka':  [{key:'airport',label:'Airport'},{key:'surf',label:'Surf'},{key:'tours',label:'Tours'}],
   'portugal':   [{key:'airport',label:'Airport'},{key:'surf',label:'Surf'},{key:'tours',label:'Tours'}],
-  'junior-camp':[{key:'airport',label:'Airport'},{key:'surf',label:'Surf'},{key:'tours',label:'Tours'}]
+  'junior-camp':[{key:'airport',label:'Airport'},{key:'surf',label:'Surf'},{key:'tours',label:'Tours'}],
+  'surf-school':[{key:'airport',label:'Airport'},{key:'surf',label:'Surf'},{key:'tours',label:'Tours'}]
 };
 function tqTabsForCurrentLocation(){
   return TQ_TABS_BY_LOCATION[__HUB_LOCATION_SLUG] || [
@@ -7358,6 +7411,17 @@ function toggleEntryUi(prefix,type){
   if(iscompWrap){
     iscompWrap.style.display=(type==='expense' && categoryValue==='Tours') ? '' : 'none';
   }
+  // HQ layer fields — visible only when the current camp is Portugal
+  // (the HQ hub). Never surface these in an ops-camp hub; the manager
+  // would be confused by a "Paid from" dropdown when everything is
+  // obviously paid from their own camp. Fields only make sense for
+  // expenses (income and transfers keep their existing semantics).
+  const IS_HQ_HUB = (typeof __HUB_LOCATION_SLUG!=='undefined') && __HUB_LOCATION_SLUG==='portugal';
+  const paidFromWrap=document.getElementById(prefix+'_paid_from_wrap');
+  const attribLocWrap=document.getElementById(prefix+'_attrib_loc_wrap');
+  const showHqFields = IS_HQ_HUB && type==='expense';
+  if(paidFromWrap) paidFromWrap.style.display = showHqFields ? '' : 'none';
+  if(attribLocWrap) attribLocWrap.style.display = showHqFields ? '' : 'none';
 }
 function fillEntryFields(prefix,type,preset=null,entry=null){
   const catEl=document.getElementById(prefix+'_cat');
@@ -7389,6 +7453,20 @@ function fillEntryFields(prefix,type,preset=null,entry=null){
   // row the flag mirrors the saved value so a re-save doesn't lose it.
   const iscompEl=document.getElementById(prefix+'_iscomp');
   if(iscompEl) iscompEl.checked=!!(entry?.isComp);
+  // HQ layer fields — same behaviour: mirror saved values on edit; on a
+  // fresh form the paid_from defaults to the current camp slug and the
+  // attributed_location falls back to "same as current camp" so 90% of
+  // ops flow through unchanged. Manager only touches these on Portugal.
+  const paidFromEl=document.getElementById(prefix+'_paid_from');
+  if(paidFromEl){
+    const val=String(entry?.paidFrom||'').trim() || (__HUB_LOCATION_SLUG==='portugal'?'hq':(__HUB_LOCATION_SLUG||''));
+    paidFromEl.value=val;
+  }
+  const attribLocEl=document.getElementById(prefix+'_attrib_loc');
+  if(attribLocEl){
+    const val=String(entry?.attributedLocation||'').trim() || (__HUB_LOCATION_SLUG==='portugal'?'hq-general':(__HUB_LOCATION_SLUG||''));
+    attribLocEl.value=val;
+  }
   toggleEntryUi(prefix,type);
   applyLinkedPrice(prefix);
   updateCurrencyUi(prefix,type);
@@ -7591,6 +7669,18 @@ function buildLedgerPayload(prefix,type,id=null){
     // paying-guest margin so tours don't read as loss-making just because
     // of comps. Only surfaced for Tour expenses in the form UI.
     isComp:!!(type==='expense' && category==='Tours' && document.getElementById(prefix+'_iscomp')?.checked),
+    // HQ layer — read from the form when the fields are shown (Portugal
+    // hub only), otherwise fall back to the current camp slug so ops
+    // hubs keep working without ever surfacing the two axes to their
+    // managers.
+    paidFrom:((__HUB_LOCATION_SLUG==='portugal' && type==='expense'
+                ? (document.getElementById(prefix+'_paid_from')?.value||'').trim()
+                : '')
+              || (__HUB_LOCATION_SLUG==='portugal'?'hq':(__HUB_LOCATION_SLUG||''))),
+    attributedLocation:((__HUB_LOCATION_SLUG==='portugal' && type==='expense'
+                          ? (document.getElementById(prefix+'_attrib_loc')?.value||'').trim()
+                          : '')
+                        || (__HUB_LOCATION_SLUG==='portugal'?'hq-general':(__HUB_LOCATION_SLUG||''))),
     description:(document.getElementById(prefix+'_desc')?.value||'').trim()||((type==='income'&&linkedItem&&qty>1)?`${qty} x ${linkedItem}`:'')||(type==='transfer'?transferDescDefault:''),
     vendor:'',
     amount
