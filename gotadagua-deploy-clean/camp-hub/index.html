@@ -840,8 +840,10 @@ td.r{text-align:right;font-family:'DM Mono',monospace;font-size:12px}
         </div>
         <div class="mbody">
           <div class="tq-tabs">
-            <button class="tq-tab tq-tab-active" data-tqtab="airport" onclick="pickTqTab('airport')">Airport</button>
-            <button class="tq-tab" data-tqtab="tuktuk" onclick="pickTqTab('tuktuk')">Tuk Tuk</button>
+            <span id="tqTabsWrap" style="display:flex;gap:6px;align-items:center">
+              <!-- Tab buttons rendered dynamically on open — see
+                   renderTqTabs() — based on TQ_TABS_BY_LOCATION. -->
+            </span>
             <div style="flex:1"></div>
             <label class="tq-edit-toggle" id="tqEditModeWrap"><input type="checkbox" id="tqEditMode" onchange="renderTransportChips()"> <span>Edit presets</span></label>
             <a id="tqCatalogHint" href="/prices?location=__SLUG__" target="_blank" style="display:none;font-size:11px;color:var(--ocean);font-weight:600;text-decoration:none;padding:6px 10px;border-radius:8px;background:var(--foam)">↗ Edit in /prices</a>
@@ -1638,7 +1640,7 @@ let HUB_SUPPRESS_TRANSPORT_RT=false; // suppresses our own transport_presets wri
 // Transport quick-add presets. Declared early so that transportPresetNames(),
 // called from currentTransportItems() during any render, never trips TDZ. The
 // real load happens in loadTransportPresets() at bootstrap.
-let transportPresets={airport:[],tuktuk:[]};
+let transportPresets={airport:[],tuktuk:[],surf:[],tours:[]};
 let tqActiveTab='airport';
 let tqSelectedPresetId=null;
 let tqSelectedVehicleId=null;
@@ -3580,11 +3582,13 @@ function toursWithTransport(){
   return tours.filter(t=>t&&t.hasTransport).map(t=>String(t.n||'')).filter(Boolean);
 }
 function transportPresetNames(){
-  // Names of every saved Transport quick-add preset (Airport + Tuk Tuk).
-  // These get folded into the Transport linked-item picker so the
-  // Transport breakdown card aggregates spend by preset.
-  const p=transportPresets||{airport:[],tuktuk:[]};
-  return [...(p.airport||[]),...(p.tuktuk||[])].map(x=>String(x?.name||'').trim()).filter(Boolean);
+  // Names of every saved Transport quick-add preset across every bucket
+  // (Airport / Surf / Tours / Tuk Tuk). These get folded into the
+  // Transport linked-item picker so the Transport breakdown card
+  // aggregates spend by preset.
+  const p=transportPresets||{airport:[],tuktuk:[],surf:[],tours:[]};
+  return [...(p.airport||[]),...(p.surf||[]),...(p.tours||[]),...(p.tuktuk||[])]
+    .map(x=>String(x?.name||'').trim()).filter(Boolean);
 }
 function currentTransportItems(){
   // Static base + every tour that's flagged with transport + Transport
@@ -3626,7 +3630,12 @@ function linkedTransportTours(name){
     }
   }catch(_e){}
   if(TRANSPORT_TOUR_COST_MAP[name]) return [TRANSPORT_TOUR_COST_MAP[name]];
-  const all=[...(transportPresets?.airport||[]),...(transportPresets?.tuktuk||[])];
+  const all=[
+    ...(transportPresets?.airport||[]),
+    ...(transportPresets?.surf||[]),
+    ...(transportPresets?.tours||[]),
+    ...(transportPresets?.tuktuk||[])
+  ];
   const preset=all.find(p=>String(p?.name||'')===String(name||''));
   if(preset && preset.linkedTour) return [preset.linkedTour];
   if(toursWithTransport().includes(name)) return [name];
@@ -5674,18 +5683,37 @@ const DEFAULT_TRANSPORT_PRESETS_BY_LOCATION={
     ]
   }
 };
-// Tab labels per location — internal keys stay 'airport'/'tuktuk' so the
-// same render code works for every location. Morocco uses "Tours & Surf"
-// as the second tab since the operational transport runs there are mostly
-// surf lessons and the in-town tour transfers.
-const TRANSPORT_TAB_LABELS_BY_LOCATION={
-  'sri-lanka':{airport:'Airport',tuktuk:'Tuk Tuk'},
-  'morocco':{airport:'Airport',tuktuk:'Tours & Surf'}
+// Tab configuration per location. Every location shares the same tab
+// STRUCTURE (a list of {key,label} entries) — only the content differs.
+// The internal keys map 1-to-1 to transportPresets buckets in storage,
+// so adding a new tab is a 2-step change: add the key here + include
+// it in normalizeTransportPresetsPayload's return object.
+//
+// Morocco: Airport (OW/TW) + Surf (round-trip only) + Tours (round-trip).
+// Sri Lanka: Airport (OW/TW) + Tuk Tuk (for the legacy tuktuk chips).
+// Default: Airport + Surf + Tours (matches the newest model going forward).
+const TQ_TABS_BY_LOCATION={
+  'morocco':   [{key:'airport',label:'Airport'},{key:'surf',label:'Surf'},{key:'tours',label:'Tours'}],
+  'sri-lanka': [{key:'airport',label:'Airport'},{key:'tuktuk',label:'Tuk Tuk'}],
+  'portugal':  [{key:'airport',label:'Airport'},{key:'surf',label:'Surf'},{key:'tours',label:'Tours'}],
+  'junior-camp':[{key:'airport',label:'Airport'},{key:'surf',label:'Surf'},{key:'tours',label:'Tours'}]
 };
-function tqTabLabel(tabKey){
-  const map=TRANSPORT_TAB_LABELS_BY_LOCATION[__HUB_LOCATION_SLUG]||{};
-  return map[tabKey] || (tabKey==='airport'?'Airport':'Tuk Tuk');
+function tqTabsForCurrentLocation(){
+  return TQ_TABS_BY_LOCATION[__HUB_LOCATION_SLUG] || [
+    {key:'airport',label:'Airport'},{key:'surf',label:'Surf'},{key:'tours',label:'Tours'}
+  ];
 }
+function tqTabLabel(tabKey){
+  const tab=tqTabsForCurrentLocation().find(t=>t.key===tabKey);
+  return tab ? tab.label : (tabKey==='airport'?'Airport':tabKey);
+}
+// Legacy alias — some call sites may still reference this map. Regenerate
+// on demand so the tab labels reflect whatever the location config says.
+const TRANSPORT_TAB_LABELS_BY_LOCATION = new Proxy({}, {
+  get(_, slug){
+    return (TQ_TABS_BY_LOCATION[slug]||[]).reduce((acc,t)=>{ acc[t.key]=t.label; return acc; }, {});
+  }
+});
 // (transportPresets / tqActiveTab / tqSelectedPresetId are declared near the
 //  top of the file with the other module-level lets to avoid TDZ.)
 function escapeHtml(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
@@ -5720,7 +5748,9 @@ function normalizeTransportPresetsPayload(raw){
   }).filter(p=>p.name).sort((a,b)=>a.sortOrder-b.sortOrder);
   return {
     airport:safeArr(raw?.airport),
-    tuktuk:safeArr(raw?.tuktuk)
+    tuktuk:safeArr(raw?.tuktuk),
+    surf:safeArr(raw?.surf),
+    tours:safeArr(raw?.tours)
   };
 }
 
@@ -6000,13 +6030,31 @@ function openTransportQuickAdd(){
   document.getElementById('tqForm').style.display='none';
   const editBox=document.getElementById('tqEditMode');
   if(editBox) editBox.checked=false;
+  renderTqTabs();          // Build tab buttons from the location config.
   applyTransportTabLabels();
   renderTransportChips();
   openOv('transportQuickOv');
 }
 
+function renderTqTabs(){
+  // Rebuild the tab buttons dynamically from the location config so a
+  // Morocco session shows Airport/Surf/Tours and a Sri Lanka one shows
+  // Airport/Tuk Tuk. Called by openTransportQuickAdd() before the modal
+  // is shown so the tabs always reflect the active location.
+  const wrap=document.getElementById('tqTabsWrap');
+  if(!wrap) return;
+  const tabs=tqTabsForCurrentLocation();
+  // Reset active tab if the current one isn't valid for this location
+  // (e.g. jumping from Morocco → Sri Lanka would leave tqActiveTab='tours'
+  // pointing at a tab that no longer exists).
+  if(!tabs.some(t=>t.key===tqActiveTab)) tqActiveTab=tabs[0]?.key||'airport';
+  wrap.innerHTML=tabs.map(t=>
+    `<button class="tq-tab${t.key===tqActiveTab?' tq-tab-active':''}" data-tqtab="${t.key}" onclick="pickTqTab('${t.key}')">${escapeHtml(t.label)}</button>`
+  ).join('');
+}
 function pickTqTab(tab){
-  tqActiveTab=tab==='tuktuk'?'tuktuk':'airport';
+  const tabs=tqTabsForCurrentLocation();
+  tqActiveTab=tabs.some(t=>t.key===tab) ? tab : (tabs[0]?.key||'airport');
   document.querySelectorAll('.tq-tab').forEach(btn=>{
     btn.classList.toggle('tq-tab-active',btn.dataset.tqtab===tqActiveTab);
   });
@@ -6032,6 +6080,9 @@ const TRANSPORT_NON_TOUR_LABELS=['Surf Lessons'];
 // Airport transfers stay OW/TW because pickups and drop-offs are
 // charged independently.
 function isRoundTripOnlyTab(){
+  // Morocco: every non-airport tab is round-trip (Surf and Tours drive
+  // guests out to the spot and back; only Airport transfers are OW/TW).
+  if(__HUB_LOCATION_SLUG==='morocco' && tqActiveTab!=='airport') return true;
   return __HUB_LOCATION_SLUG==='morocco' && tqActiveTab==='tuktuk';
 }
 
