@@ -5038,7 +5038,7 @@ function renderOverview(){
               </div>
               <div style="background:#fff;border-radius:8px;padding:10px">
                 <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin-bottom:4px">Direct cost</div>
-                <div style="font-family:'DM Serif Display',serif;font-size:18px;color:var(--red)">${lkr(r.spendLocal)}</div>
+                <div style="font-family:'DM Serif Display',serif;font-size:18px;color:var(--navy)">${lkr(r.spendLocal)}</div>
                 <div style="font-size:10px;color:var(--muted);margin-top:2px">${euro(r.spendEur)}</div>
               </div>
             </div>
@@ -5208,10 +5208,27 @@ function renderOverview(){
     if(r.name !== groupKey) g.variants.push(r.name);
   });
   const tourRows=Object.values(groupedTourMap).sort((a,b)=>b.revenueLocal-a.revenueLocal);
+  // Merch COGS: cost of goods SOLD, not the whole stock bought. For each
+  // Merch item that appeared on a paid tab, look up its unit cost from
+  // the menu (falls back to 0 when the menu row has no costPerGuest
+  // set). Prevents the "-1004% margin" trap where a fresh Merch stock
+  // purchase drags an early-season card into fake losses.
+  const merchMenu=Array.isArray(MENU?.Merch)?MENU.Merch:[];
+  const merchUnitCost=(name)=>{
+    const it=merchMenu.find(m=>String(m?.n||'')===String(name||''));
+    return Number(it?.costPerGuest||0)||0;
+  };
+  const merchCogsLocal=sum(paidItems.filter(i=>i.category==='Merch'),i=>merchUnitCost(i.name));
+  const merchCogsEur=Number((merchCogsLocal/(DEFAULT_LKR_PER_EUR||1)).toFixed(2));
+  // Revenue centers: only areas that actually have BOTH revenue and cost
+  // (Bar and Merch). Transport is a cost-only area — it's already shown
+  // in the "Transport control" and "Transport by line" cards below, and
+  // rolled into every tour's margin via the aggregator. Showing it here
+  // as "no revenue" would flash a huge negative "margin" against the
+  // tours' revenue — pure noise for the manager.
   const profitAreas=[
     {icon:'cup',name:'Bar',revenueLocal:areaRevenues.Bar.local,revenueEur:areaRevenues.Bar.eur,costLocal:areaCosts.Bar.local,costEur:areaCosts.Bar.eur},
-    {icon:'shirt',name:'Merch',revenueLocal:areaRevenues.Merch.local,revenueEur:areaRevenues.Merch.eur,costLocal:areaCosts.Merch.local,costEur:areaCosts.Merch.eur},
-    {icon:'send',name:'Transport',revenueLocal:areaRevenues.Transport.local,revenueEur:areaRevenues.Transport.eur,costLocal:areaCosts.Transport.local,costEur:areaCosts.Transport.eur}
+    {icon:'shirt',name:'Merch',revenueLocal:areaRevenues.Merch.local,revenueEur:areaRevenues.Merch.eur,costLocal:merchCogsLocal,costEur:merchCogsEur}
   ];
   const tourCardsMarkup=tourRows.length?`
     <div class="card card-pad" style="grid-column:1 / -1">
@@ -5250,7 +5267,7 @@ function renderOverview(){
               </div>
               <div style="background:#fff;border-radius:8px;padding:10px">
                 <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin-bottom:4px">Direct cost</div>
-                <div style="font-family:'DM Serif Display',serif;font-size:18px;color:var(--red)">${lkr(r.costLocal)}</div>
+                <div style="font-family:'DM Serif Display',serif;font-size:18px;color:var(--navy)">${lkr(r.costLocal)}</div>
                 <div style="font-size:10px;color:var(--muted);margin-top:2px">${euro(r.costEur)}${hasComp?` · ${lkr(r.compCostLocal)} comp`:''}</div>
               </div>
             </div>
@@ -5262,7 +5279,7 @@ function renderOverview(){
             ${hasComp?`
               <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);font-size:11px;color:var(--muted)">
                 <span title="Includes staff / offered seats">Total (with comps)</span>
-                <span style="font-weight:700;color:${totalMarginLocal>=0?'var(--green)':'var(--red)'}">${moneyPairLocal(totalMarginLocal,totalMarginEur)}${totalPct==='—'?'':` · ${totalPct}%`}</span>
+                <span style="font-weight:600;color:var(--muted)">${moneyPairLocal(totalMarginLocal,totalMarginEur)}${totalPct==='—'?'':` · ${totalPct}%`}</span>
               </div>
             `:''}
           </div>`;
@@ -5426,7 +5443,7 @@ function renderOverview(){
           ? `<div class="g4">${utilityRows.map(r=>`
             <div class="ov-chip">
               <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">${r.name}</div>
-              <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--red);margin-top:6px;line-height:1.1">${moneyPairLocal(r.spendLocal,r.spendEur)}</div>
+              <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy);margin-top:6px;line-height:1.1">${moneyPairLocal(r.spendLocal,r.spendEur)}</div>
               <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:10px;gap:8px">
                 <span>Camp-paid: <span style="color:var(--navy);font-weight:600">${r.campLocal?moneyPairLocal(r.campLocal,r.campEur):'—'}</span></span>
                 <span>HQ-paid: <span style="color:var(--navy);font-weight:600">${r.hqLocal?moneyPairLocal(r.hqLocal,r.hqEur):'—'}</span></span>
@@ -5442,7 +5459,7 @@ function renderOverview(){
         <div style="font-family:'DM Serif Display',serif;font-size:17px;color:var(--navy)">Payroll</div>
         <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
           <div style="font-size:11px;color:var(--muted)">${payrollRows.length} staff · ${salaryExpenses.length} payment${salaryExpenses.length===1?'':'s'}</div>
-          <div style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:var(--red)">${payrollTotalLocal?moneyPairLocal(payrollTotalLocal,payrollTotalEur):'—'}</div>
+          <div style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:var(--navy)">${payrollTotalLocal?moneyPairLocal(payrollTotalLocal,payrollTotalEur):'—'}</div>
         </div>
       </div>
       <div class="card-pad" style="padding:16px 20px 20px">
@@ -5450,7 +5467,7 @@ function renderOverview(){
           ? `<div class="g4">${payrollRows.map(r=>`
             <div class="ov-chip">
               <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">${r.name}</div>
-              <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--red);margin-top:6px;line-height:1.1">${moneyPairLocal(r.spendLocal,r.spendEur)}</div>
+              <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy);margin-top:6px;line-height:1.1">${moneyPairLocal(r.spendLocal,r.spendEur)}</div>
               <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:10px;gap:8px">
                 <span>Camp-paid: <span style="color:var(--navy);font-weight:600">${r.campLocal?moneyPairLocal(r.campLocal,r.campEur):'—'}</span></span>
                 <span>HQ-paid: <span style="color:var(--navy);font-weight:600">${r.hqLocal?moneyPairLocal(r.hqLocal,r.hqEur):'—'}</span></span>
@@ -5482,7 +5499,7 @@ function renderOverview(){
         <div style="font-family:'DM Serif Display',serif;font-size:17px;color:var(--navy)">Transport control</div>
         <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
           <div style="font-size:11px;color:var(--muted)">${transportRows.length} line${transportRows.length===1?'':'s'} with spend</div>
-          <div style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:var(--red)">${transportRows.length?moneyPairLocal(sum(transportRows,r=>r.spendLocal),sum(transportRows,r=>r.spendEur)):'—'}</div>
+          <div style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:var(--navy)">${transportRows.length?moneyPairLocal(sum(transportRows,r=>r.spendLocal),sum(transportRows,r=>r.spendEur)):'—'}</div>
         </div>
       </div>
       ${transportRows.length ? (()=>{
@@ -5492,12 +5509,12 @@ function renderOverview(){
           <div class="g4">
             <div class="ov-chip">
               <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">Airport transfers</div>
-              <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--red);margin-top:6px;line-height:1.1">${s.airportLocal?moneyPairLocal(s.airportLocal,s.airportEur):'—'}</div>
+              <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy);margin-top:6px;line-height:1.1">${s.airportLocal?moneyPairLocal(s.airportLocal,s.airportEur):'—'}</div>
               <div style="font-size:11px;color:var(--muted);margin-top:6px">Guest arrivals / departures</div>
             </div>
             <div class="ov-chip">
               <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">Surf transport</div>
-              <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--red);margin-top:6px;line-height:1.1">${s.surfLocal?moneyPairLocal(s.surfLocal,s.surfEur):'—'}</div>
+              <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy);margin-top:6px;line-height:1.1">${s.surfLocal?moneyPairLocal(s.surfLocal,s.surfEur):'—'}</div>
               <div style="font-size:11px;color:var(--muted);margin-top:6px">Tuk-tuks / vans to the beach</div>
             </div>
             <div class="ov-chip" style="border-color:var(--navy)">
@@ -5513,7 +5530,7 @@ function renderOverview(){
           ? `<div class="g4">${transportRows.map(r=>`
             <div class="ov-chip">
               <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">${r.name}</div>
-              <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--red);margin-top:6px;line-height:1.1">${moneyPairLocal(r.spendLocal,r.spendEur)}</div>
+              <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy);margin-top:6px;line-height:1.1">${moneyPairLocal(r.spendLocal,r.spendEur)}</div>
               ${r.linkedTour?`<div style="font-size:10px;color:var(--ocean);margin-top:2px;font-weight:600">↳ ${r.linkedTour}</div>`:''}
               <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:10px;gap:8px">
                 <span>Camp-paid: <span style="color:var(--navy);font-weight:600">${r.campLocal?moneyPairLocal(r.campLocal,r.campEur):'—'}</span></span>
@@ -5530,7 +5547,7 @@ function renderOverview(){
         <div style="font-family:'DM Serif Display',serif;font-size:17px;color:var(--navy)">Laundry</div>
         <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
           <div style="font-size:11px;color:var(--muted)">${laundryExpenses.length} entr${laundryExpenses.length===1?'y':'ies'}</div>
-          <div style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:var(--red)">${laundryTotalLocal?moneyPairLocal(laundryTotalLocal,laundryTotalEur):'—'}</div>
+          <div style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:var(--navy)">${laundryTotalLocal?moneyPairLocal(laundryTotalLocal,laundryTotalEur):'—'}</div>
         </div>
       </div>
       <div class="card-pad" style="padding:16px 20px 20px">
@@ -5538,7 +5555,7 @@ function renderOverview(){
           ? `<div class="g4">
               <div class="ov-chip">
                 <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">Total spend</div>
-                <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--red);margin-top:6px;line-height:1.1">${moneyPairLocal(laundryTotalLocal,laundryTotalEur)}</div>
+                <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy);margin-top:6px;line-height:1.1">${moneyPairLocal(laundryTotalLocal,laundryTotalEur)}</div>
                 <div style="font-size:11px;color:var(--muted);margin-top:6px">${laundryExpenses.length} payment${laundryExpenses.length===1?'':'s'}</div>
               </div>
               <div class="ov-chip">
@@ -8301,7 +8318,7 @@ function renderExpenses(){
     expKpisEl.innerHTML=`
       <div class="card kpi">
         <div class="kpi-label">Total Expenses</div>
-        <div class="kpi-value kv-red">${lkr(totalSpentLocal)}</div>
+        <div class="kpi-value">${lkr(totalSpentLocal)}</div>
         <div class="kpi-sub" style="margin-top:4px">${euro(totalSpentEur)}</div>
         <div class="kpi-sub">Cash + Card + Bank Transfer</div>
       </div>
