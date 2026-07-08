@@ -3,9 +3,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Gota Dagua — HQ</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path d='M16 3 C10 12 6 17 6 22 a10 10 0 0 0 20 0 C 26 17 22 12 16 3 Z' fill='%231e6fa8'/><path d='M11 20 a5 5 0 0 0 5 5' fill='none' stroke='%23e8f4fd' stroke-width='1.5' stroke-linecap='round'/></svg>">
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Mono:wght@400;500&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-:root{--navy:#28394b;--ocean:#1e6fa8;--foam:#e8f4fd;--ink:#0d1b2a;--muted:#6b8099;--border:#d4e3f0;--bg:#f0f5fa;--green-bg:#eafaf1;--green:#1a7a40;--red-bg:#fdecea;--red:#b91c1c;--r:12px;--sh:0 4px 24px rgba(40,57,75,.10)}
+:root{--navy:#28394b;--ocean:#1e6fa8;--foam:#e8f4fd;--ink:#0d1b2a;--muted:#6b8099;--border:#d4e3f0;--bg:#f0f5fa;--green-bg:#eafaf1;--green:#1a7a40;--red-bg:#fdecea;--red:#b91c1c;--amber-bg:#fef3c7;--amber:#92400e;--r:12px;--sh:0 4px 24px rgba(40,57,75,.10)}
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--ink);min-height:100vh}
 header{background:var(--navy);color:#fff;padding:0 24px;display:flex;align-items:center;justify-content:space-between;height:60px;position:sticky;top:0;z-index:100;box-shadow:0 2px 20px rgba(0,0,0,.25)}
@@ -18,6 +19,12 @@ main{max-width:1400px;margin:0 auto;padding:32px 48px}
 .gate-msg{font-size:14px;color:var(--muted);line-height:1.6;margin-bottom:24px}
 .gate-btn{background:var(--ocean);color:#fff;border:none;padding:12px 32px;border-radius:8px;font-weight:700;font-family:'Outfit',sans-serif;font-size:14px;cursor:pointer}
 .gate-btn:hover{background:var(--navy)}
+.tabs{display:flex;gap:4px;margin-bottom:24px;border-bottom:2px solid var(--border);flex-wrap:wrap}
+.tab-btn{background:transparent;border:none;padding:12px 20px;font-family:'Outfit',sans-serif;font-size:14px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px;transition:color .18s, border-color .18s}
+.tab-btn:hover{color:var(--navy)}
+.tab-btn.active{color:var(--ocean);border-bottom-color:var(--ocean)}
+.tab-pane{display:none}
+.tab-pane.active{display:block}
 .card{background:#fff;border-radius:var(--r);border:1px solid var(--border);box-shadow:var(--sh);margin-bottom:28px;overflow:hidden}
 .card-hdr{padding:20px 24px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px}
 .card-title{font-family:'DM Serif Display',serif;font-size:20px;color:var(--navy)}
@@ -25,29 +32,60 @@ main{max-width:1400px;margin:0 auto;padding:32px 48px}
 .card-body{padding:24px}
 textarea{width:100%;min-height:180px;border:1.5px solid var(--border);border-radius:8px;padding:14px;font-family:'DM Mono',monospace;font-size:12px;line-height:1.5;resize:vertical}
 textarea:focus{outline:none;border-color:var(--ocean);box-shadow:0 0 0 3px rgba(30,111,168,.1)}
+input,select{width:100%;border:1.5px solid var(--border);border-radius:8px;padding:10px 12px;font-family:'Outfit',sans-serif;font-size:13px;background:#fff}
+input:focus,select:focus{outline:none;border-color:var(--ocean);box-shadow:0 0 0 3px rgba(30,111,168,.1)}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em}
+.form-grid{display:grid;grid-template-columns:repeat(12,1fr);gap:14px}
+.col-3{grid-column:span 3}.col-4{grid-column:span 4}.col-5{grid-column:span 5}.col-6{grid-column:span 6}.col-7{grid-column:span 7}.col-8{grid-column:span 8}.col-12{grid-column:span 12}
+@media(max-width:900px){.col-3,.col-4,.col-5,.col-6,.col-7,.col-8{grid-column:span 12}}
 .hint{font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5}
 .btn{background:var(--ocean);color:#fff;border:none;padding:10px 24px;border-radius:8px;font-weight:700;font-family:'Outfit',sans-serif;font-size:13px;cursor:pointer;transition:background .18s}
 .btn:hover{background:var(--navy)}
 .btn:disabled{background:var(--muted);cursor:not-allowed}
-.btn-row{display:flex;gap:10px;margin-top:14px;align-items:center}
+.btn-ghost{background:transparent;color:var(--ocean);border:1.5px solid var(--ocean)}
+.btn-ghost:hover{background:var(--foam);color:var(--navy);border-color:var(--navy)}
+.btn-danger{background:var(--red)}
+.btn-danger:hover{background:#8f1414}
+.btn-row{display:flex;gap:10px;margin-top:14px;align-items:center;flex-wrap:wrap}
 .toast{padding:10px 14px;border-radius:8px;font-size:12px;font-weight:600}
 .toast-ok{background:var(--green-bg);color:var(--green)}
 .toast-err{background:var(--red-bg);color:var(--red)}
+.toast-warn{background:var(--amber-bg);color:var(--amber)}
 table{width:100%;border-collapse:collapse}
 thead{background:var(--navy)}thead th{padding:12px 16px;font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:#7aabcc;font-weight:600;text-align:left}
 thead th.r{text-align:right}
 tbody tr{border-bottom:1px solid var(--border)}
 tbody tr:last-child{border-bottom:none}
-td{padding:13px 16px;font-size:13px;vertical-align:middle}
+tbody tr.dup{background:#fef3c7}
+tbody tr.dup td:first-child::before{content:"⚠ ";color:var(--amber);font-weight:700}
+td{padding:12px 16px;font-size:13px;vertical-align:middle}
 td.r{text-align:right;font-family:'DM Mono',monospace;font-size:12px}
 td.loc-name{font-weight:700;color:var(--navy)}
 .pos{color:var(--green);font-weight:700}
 .neg{color:var(--red);font-weight:700}
 .zero{color:var(--muted)}
+.chip{display:inline-block;padding:3px 8px;border-radius:12px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em}
+.chip-personal{background:#fce7f3;color:#9d174d}
+.chip-review{background:var(--amber-bg);color:var(--amber)}
+.chip-normal{background:var(--foam);color:var(--ocean)}
 .period-row{margin-bottom:16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
-.period-row label{font-size:12px;color:var(--muted);font-weight:600}
-.period-row select{padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;font-family:'Outfit',sans-serif;font-size:13px;background:#fff}
+.period-row label{font-size:12px;color:var(--muted);font-weight:600;margin:0;text-transform:none;letter-spacing:0}
+.period-row select,.period-row input{padding:8px 12px;font-size:13px;width:auto;min-width:140px}
 .loading{padding:60px;text-align:center;color:var(--muted);font-size:14px}
+.dup-warn{background:var(--amber-bg);color:var(--amber);padding:10px 14px;border-radius:8px;font-size:12px;font-weight:600;margin-top:12px;display:none}
+.dup-warn.show{display:block}
+.dup-warn ul{margin:6px 0 0 20px}
+.file-link{color:var(--ocean);text-decoration:none;font-weight:600;font-size:12px}
+.file-link:hover{text-decoration:underline}
+.action-btn{background:transparent;border:none;color:var(--ocean);cursor:pointer;font-size:12px;font-weight:600;padding:4px 8px;border-radius:4px}
+.action-btn:hover{background:var(--foam)}
+.action-btn.danger{color:var(--red)}
+.action-btn.danger:hover{background:var(--red-bg)}
+.summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:18px}
+.summary-box{background:var(--foam);border:1px solid var(--border);border-radius:8px;padding:14px}
+.summary-lbl{font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px}
+.summary-val{font-family:'DM Mono',monospace;font-size:20px;font-weight:600;color:var(--navy)}
 </style>
 </head>
 <body>
@@ -62,32 +100,30 @@ td.loc-name{font-weight:700;color:var(--navy)}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="/supabase-config.js"></script>
 <script>
-// Gate + auth boot. HQ access is now controlled via the Settings page
-// (workspace_memberships row on the 'hq' workspace) so the owner can
-// toggle it per teammate without touching SQL. Miguel keeps a hardcoded
-// bypass — the platform owner should never be able to lock himself out
-// by accidentally deselecting his own pill.
 const cfg = window.__SUPABASE_CONFIG || {};
 const sb  = window.supabase.createClient(cfg.url, cfg.anonKey);
 const $   = (id) => document.getElementById(id);
 const OWNER_EMAILS = new Set(['miguel@gotadaguasurf.com']);
 
-const LOCATIONS_SEED = [
-  {slug:'morocco',      label:'Morocco'},
-  {slug:'sri-lanka',    label:'Sri Lanka'},
-  {slug:'portugal',     label:'Portugal'},
-  {slug:'surf-school',  label:'Surf School'},
-  {slug:'junior-camp',  label:'Junior Camp'},
+const HQ_LOCATIONS = [
+  {slug:'portugal',    label:'Surfcamp PT'},
+  {slug:'surf-school', label:'Surf School'},
+  {slug:'morocco',     label:'Morocco'},
+  {slug:'sri-lanka',   label:'Sri Lanka'},
+  {slug:'junior-camp', label:'Junior Camp'},
+  {slug:'general',     label:'General (HQ)'},
 ];
+const PAYMENT_TYPES = ['Cash','Card','Bank Transfer','Other'];
 
 let CURRENT_USER = null;
-let LOCATIONS    = []; // {id, slug, name, currency}
+let LOCATIONS    = [];     // from public.locations (BL revenue join)
+let CATEGORIES   = [];     // from hq_invoice_categories
+let FX_CACHE     = { date:null, rates:{ EUR:1 } };
 
 // ── Boot ────────────────────────────────────────────────────────────
 (async () => {
   const { data:{ session }, error } = await sb.auth.getSession();
   if (error || !session) {
-    // Not logged in — bounce to the main login (root index.html handles it).
     location.href = '/?next=' + encodeURIComponent('/hq/');
     return;
   }
@@ -99,13 +135,6 @@ let LOCATIONS    = []; // {id, slug, name, currency}
   CURRENT_USER = profile || {};
   $('userBadge').textContent = profile?.email || session.user.email || '';
 
-  // Access rules for HQ (in order of precedence):
-  //  1. Hardcoded owner email bypass — Miguel is always in, even if the
-  //     Settings pill got unchecked by mistake.
-  //  2. platform_role owner/super_admin — the legacy path for anyone
-  //     already promoted at the platform layer.
-  //  3. Active workspace_memberships row on the 'hq' workspace — the
-  //     new UI-driven path: Miguel toggles the HQ pill in Settings.
   let hasAccess = OWNER_EMAILS.has(myEmail) || role === 'owner' || role === 'super_admin';
   if (!hasAccess) {
     const { data: hqMembership } = await sb
@@ -128,15 +157,548 @@ let LOCATIONS    = []; // {id, slug, name, currency}
     return;
   }
 
-  // Fetch locations for the profit table.
-  const { data: locs } = await sb.from('locations').select('id, slug, name, currency').order('name');
-  LOCATIONS = locs || [];
+  // Load reference data in parallel.
+  const [locsRes, catsRes] = await Promise.all([
+    sb.from('locations').select('id, slug, name, currency').order('name'),
+    sb.from('hq_invoice_categories').select('id, name, sort_order, is_personal, active').eq('active', true).order('sort_order')
+  ]);
+  LOCATIONS  = locsRes.data || [];
+  CATEGORIES = catsRes.data || [];
 
   render();
 })();
 
+// ── Layout ──────────────────────────────────────────────────────────
 function render(){
   $('mainWrap').innerHTML = `
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="overview" onclick="switchTab('overview')">Overview</button>
+      <button class="tab-btn" data-tab="invoices" onclick="switchTab('invoices')">Despesas HQ</button>
+      <button class="tab-btn" data-tab="import" onclick="switchTab('import')">Import Bookinglayer</button>
+      <button class="tab-btn" data-tab="profit" onclick="switchTab('profit')">Profit per location</button>
+    </div>
+
+    <div class="tab-pane active" id="tab-overview">${overviewTabHtml()}</div>
+    <div class="tab-pane" id="tab-invoices">${invoicesTabHtml()}</div>
+    <div class="tab-pane" id="tab-import">${importTabHtml()}</div>
+    <div class="tab-pane" id="tab-profit">${profitTabHtml()}</div>
+  `;
+  wireInvoiceForm();
+  renderOverview();
+  renderInvoiceList();
+}
+
+function switchTab(name){
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.toggle('active', p.id === 'tab-'+name));
+  if (name === 'profit')   { populatePeriods().then(renderProfit); }
+  if (name === 'overview') { renderOverview(); }
+  if (name === 'invoices') { renderInvoiceList(); }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//   TAB 0 — OVERVIEW  (rolled-up snapshot + quick nav)
+// ═══════════════════════════════════════════════════════════════════
+function overviewTabHtml(){
+  return `
+    <div class="card">
+      <div class="card-hdr">
+        <div>
+          <div class="card-title">Operations overview</div>
+          <div class="card-hint">Current month at a glance — click a card to drill in</div>
+        </div>
+        <div class="card-hint" id="ov_month">…</div>
+      </div>
+      <div class="card-body" id="overviewBody">
+        <div class="loading">Loading…</div>
+      </div>
+    </div>
+  `;
+}
+
+async function renderOverview(){
+  const body = $('overviewBody');
+  if (!body) return;
+  const now = new Date();
+  const ym  = `${now.getUTCFullYear()}-${String(now.getUTCMonth()+1).padStart(2,'0')}`;
+  const start = `${ym}-01`;
+  const nextD = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth()+1, 1));
+  const end = nextD.toISOString().slice(0,10);
+  const ymLabel = $('ov_month'); if (ymLabel) ymLabel.textContent = ym;
+
+  body.innerHTML = `<div class="loading">Loading…</div>`;
+
+  const [invRes, blRes, lgRes] = await Promise.all([
+    sb.from('hq_invoices').select('location_slug, amount_eur, category_id, invoice_date').gte('invoice_date', start).lt('invoice_date', end),
+    sb.from('bookinglayer_revenue').select('location_id, amount_eur').eq('period_ym', ym),
+    sb.from('ledger_entries').select('type, amount_eur, entry_date, paid_from, attributed_location, location_id')
+  ]);
+
+  const invRows = invRes.data || [];
+  const blRows  = blRes.data  || [];
+  const lgRows  = (lgRes.data || []).filter(r => String(r.entry_date||'').slice(0,7) === ym);
+
+  const personalCatIds = new Set(CATEGORIES.filter(c => c.is_personal).map(c => c.id));
+  const invBusiness = invRows.filter(r => !personalCatIds.has(r.category_id));
+  const invPersonal = invRows.filter(r =>  personalCatIds.has(r.category_id));
+
+  const hqTotal      = invBusiness.reduce((s,r)=>s+Number(r.amount_eur||0), 0);
+  const hqGeneral    = invBusiness.filter(r => r.location_slug === 'general').reduce((s,r)=>s+Number(r.amount_eur||0), 0);
+  const hqAttribLoc  = hqTotal - hqGeneral;
+  const personalTot  = invPersonal.reduce((s,r)=>s+Number(r.amount_eur||0), 0);
+
+  const blTotal      = blRows.reduce((s,r)=>s+Number(r.amount_eur||0), 0);
+  const localRev     = lgRows.filter(r => r.type==='revenue').reduce((s,r)=>s+Number(r.amount_eur||0), 0);
+  const localExp     = lgRows.filter(r => r.type==='expense').reduce((s,r)=>s+Number(r.amount_eur||0), 0);
+  const businessProfit = blTotal + localRev - localExp - hqTotal;
+
+  body.innerHTML = `
+    <div class="summary-grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
+      <div class="summary-box" style="border-left:4px solid var(--ocean);cursor:pointer" onclick="switchTab('invoices')">
+        <div class="summary-lbl">Despesas HQ · General</div>
+        <div class="summary-val">${eur(hqGeneral)}</div>
+        <div class="hint" style="margin-top:4px">${invBusiness.filter(r => r.location_slug === 'general').length} invoice(s)</div>
+      </div>
+      <div class="summary-box" style="border-left:4px solid var(--ocean);cursor:pointer" onclick="switchTab('invoices')">
+        <div class="summary-lbl">Despesas HQ · Attributed</div>
+        <div class="summary-val">${eur(hqAttribLoc)}</div>
+        <div class="hint" style="margin-top:4px">Paid by HQ, allocated to camps</div>
+      </div>
+      <div class="summary-box" style="border-left:4px solid #9d174d">
+        <div class="summary-lbl">Miguel — Personal</div>
+        <div class="summary-val">${eur(personalTot)}</div>
+        <div class="hint" style="margin-top:4px">Excluded from business profit</div>
+      </div>
+      <div class="summary-box" style="border-left:4px solid var(--green);cursor:pointer" onclick="switchTab('profit')">
+        <div class="summary-lbl">Bookinglayer revenue</div>
+        <div class="summary-val">${eur(blTotal)}</div>
+      </div>
+      <div class="summary-box" style="border-left:4px solid var(--green)">
+        <div class="summary-lbl">On-site revenue (camps)</div>
+        <div class="summary-val">${eur(localRev)}</div>
+      </div>
+      <div class="summary-box" style="border-left:4px solid var(--red)">
+        <div class="summary-lbl">Local expenses (camps)</div>
+        <div class="summary-val">${eur(localExp)}</div>
+      </div>
+      <div class="summary-box" style="grid-column:span 2;border-left:4px solid ${businessProfit>=0?'var(--green)':'var(--red)'}">
+        <div class="summary-lbl">Business profit this month</div>
+        <div class="summary-val ${businessProfit>=0?'pos':'neg'}">${businessProfit>=0?'+':''}${eur(businessProfit)}</div>
+        <div class="hint" style="margin-top:4px">BL + on-site − local expenses − HQ invoices (excl. personal)</div>
+      </div>
+    </div>
+
+    <div class="hint" style="margin-top:16px">
+      <b>Quick nav:</b>
+      · <a href="#" onclick="switchTab('invoices');return false;" style="color:var(--ocean);font-weight:600">Register new invoice</a>
+      · <a href="#" onclick="switchTab('import');return false;" style="color:var(--ocean);font-weight:600">Import Bookinglayer</a>
+      · <a href="#" onclick="switchTab('profit');return false;" style="color:var(--ocean);font-weight:600">Profit per location</a>
+    </div>
+  `;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//   TAB 1 — INVOICES  (form + list + dedup)
+// ═══════════════════════════════════════════════════════════════════
+function invoicesTabHtml(){
+  const today = new Date().toISOString().slice(0,10);
+  const catOptions = CATEGORIES.map(c => `<option value="${c.id}" data-personal="${c.is_personal?1:0}">${c.name}</option>`).join('');
+  const locOptions = HQ_LOCATIONS.map(l => `<option value="${l.slug}">${l.label}</option>`).join('');
+  const payOptions = PAYMENT_TYPES.map(p => `<option value="${p}">${p}</option>`).join('');
+
+  return `
+    <div class="card">
+      <div class="card-hdr">
+        <div>
+          <div class="card-title">New invoice</div>
+          <div class="card-hint">Central register — every business invoice lives here, tagged by location and category</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="form-grid">
+          <div class="field col-3">
+            <label>Location</label>
+            <select id="inv_location">${locOptions}</select>
+          </div>
+          <div class="field col-3">
+            <label>Invoice date</label>
+            <input id="inv_date" type="date" value="${today}">
+          </div>
+          <div class="field col-3">
+            <label>Category</label>
+            <select id="inv_category">${catOptions}</select>
+          </div>
+          <div class="field col-3">
+            <label>Payment type</label>
+            <select id="inv_payment">${payOptions}</select>
+          </div>
+
+          <div class="field col-5">
+            <label>Company / Supplier</label>
+            <input id="inv_company" type="text" placeholder="e.g. Continente, Fnac, EDP">
+          </div>
+          <div class="field col-4">
+            <label>Tax reg number (NIF)</label>
+            <input id="inv_nif" type="text" placeholder="optional">
+          </div>
+          <div class="field col-3">
+            <label>Invoice number</label>
+            <input id="inv_number" type="text" placeholder="e.g. FT 2026/1234">
+          </div>
+
+          <div class="field col-3">
+            <label>Amount</label>
+            <input id="inv_amount" type="number" step="0.01" min="0" placeholder="0.00">
+          </div>
+          <div class="field col-3">
+            <label>Currency</label>
+            <select id="inv_currency">
+              <option value="EUR">EUR</option>
+              <option value="MAD">MAD (Morocco)</option>
+              <option value="LKR">LKR (Sri Lanka)</option>
+              <option value="USD">USD</option>
+              <option value="GBP">GBP</option>
+            </select>
+          </div>
+          <div class="field col-3">
+            <label>FX rate → EUR <span id="fxHint" style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(auto)</span></label>
+            <input id="inv_fx" type="number" step="0.000001" min="0" placeholder="1.000000">
+          </div>
+          <div class="field col-3">
+            <label>Amount in EUR</label>
+            <input id="inv_amount_eur" type="number" step="0.01" min="0" placeholder="auto" readonly style="background:#f7fafd">
+          </div>
+
+          <div class="field col-12">
+            <label>Description</label>
+            <input id="inv_description" type="text" placeholder="What was purchased?">
+          </div>
+
+          <div class="field col-6">
+            <label>Attach invoice (PDF / photo)</label>
+            <input id="inv_file" type="file" accept="application/pdf,image/*">
+          </div>
+          <div class="field col-6">
+            <label>Notes</label>
+            <input id="inv_notes" type="text" placeholder="Internal notes (optional)">
+          </div>
+        </div>
+
+        <div id="dupWarn" class="dup-warn"></div>
+
+        <div class="btn-row">
+          <button class="btn" id="saveInvBtn" onclick="saveInvoice()">Save invoice</button>
+          <button class="btn btn-ghost" onclick="clearInvoiceForm()">Clear</button>
+          <span id="invToast"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-hdr">
+        <div>
+          <div class="card-title">Registered invoices</div>
+          <div class="card-hint">Sorted by invoice date, newest first — click a row to edit</div>
+        </div>
+        <div class="period-row">
+          <label>Location</label>
+          <select id="filter_location" onchange="renderInvoiceList()">
+            <option value="__all__">All</option>
+            ${HQ_LOCATIONS.map(l=>`<option value="${l.slug}">${l.label}</option>`).join('')}
+          </select>
+          <label>Month</label>
+          <input id="filter_month" type="month" onchange="renderInvoiceList()">
+        </div>
+      </div>
+      <div class="card-body" id="invListBody">
+        <div class="loading">Loading…</div>
+      </div>
+    </div>
+  `;
+}
+
+function wireInvoiceForm(){
+  const inpCur = $('inv_currency');
+  const inpAmt = $('inv_amount');
+  const inpFx  = $('inv_fx');
+  const inpEur = $('inv_amount_eur');
+  const inpNum = $('inv_number');
+  const inpCo  = $('inv_company');
+
+  const recalcEur = () => {
+    const amt = Number(inpAmt.value) || 0;
+    const fx  = Number(inpFx.value) || 0;
+    inpEur.value = fx > 0 ? (amt * fx).toFixed(2) : '';
+  };
+
+  const refreshFx = async () => {
+    const cur = inpCur.value || 'EUR';
+    if (cur === 'EUR') { inpFx.value = '1'; $('fxHint').textContent = '(EUR — 1.000000)'; recalcEur(); return; }
+    try {
+      const rate = await fetchFxToEur(cur);
+      inpFx.value = rate.toFixed(6);
+      $('fxHint').textContent = `(auto ${FX_CACHE.date} — editable)`;
+    } catch(e) {
+      $('fxHint').textContent = '(auto failed — set manually)';
+    }
+    recalcEur();
+  };
+
+  inpCur.addEventListener('change', refreshFx);
+  inpAmt.addEventListener('input', recalcEur);
+  inpFx.addEventListener('input', recalcEur);
+
+  // Live dedup check as the user fills invoice_number / amount / company.
+  const checkDup = debounce(async () => {
+    const num = (inpNum.value||'').trim();
+    const amt = Number(inpAmt.value)||0;
+    const co  = (inpCo.value||'').trim();
+    if (!num || !amt || !co) { $('dupWarn').classList.remove('show'); return; }
+    const { data } = await sb.from('hq_invoices')
+      .select('id, invoice_date, location_slug, amount, currency, company')
+      .eq('invoice_number', num).eq('amount', amt)
+      .ilike('company', co).limit(5);
+    if (!data || !data.length) { $('dupWarn').classList.remove('show'); return; }
+    $('dupWarn').innerHTML = `<b>Possible duplicate.</b> A similar invoice is already registered:
+      <ul>${data.map(d => `<li>${d.invoice_date} · ${d.company} · ${d.amount} ${d.currency} · ${locLabel(d.location_slug)}</li>`).join('')}</ul>
+      Saving will still work — the form only warns.`;
+    $('dupWarn').classList.add('show');
+  }, 400);
+  [inpNum, inpAmt, inpCo].forEach(el => el.addEventListener('input', checkDup));
+
+  refreshFx();
+}
+
+async function fetchFxToEur(currency){
+  // Frankfurter (ECB) — free, no key. Base=currency, target=EUR.
+  // Cache by date so we don't hammer the API mid-session.
+  const today = new Date().toISOString().slice(0,10);
+  if (FX_CACHE.date === today && FX_CACHE.rates[currency]) return FX_CACHE.rates[currency];
+  const url = `https://api.frankfurter.dev/v1/latest?base=${encodeURIComponent(currency)}&symbols=EUR`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('FX fetch failed');
+  const j = await res.json();
+  const rate = j?.rates?.EUR;
+  if (typeof rate !== 'number') throw new Error('FX shape unexpected');
+  if (FX_CACHE.date !== today) FX_CACHE = { date: today, rates: { EUR:1 } };
+  FX_CACHE.rates[currency] = rate;
+  return rate;
+}
+
+async function saveInvoice(){
+  const btn = $('saveInvBtn');
+  btn.disabled = true;
+
+  const catSel = $('inv_category');
+  const catOpt = catSel.options[catSel.selectedIndex];
+
+  const location_slug   = $('inv_location').value;
+  const invoice_date    = $('inv_date').value;
+  const company         = ($('inv_company').value||'').trim();
+  const supplier_nif    = ($('inv_nif').value||'').trim() || null;
+  const invoice_number  = ($('inv_number').value||'').trim() || null;
+  const amount          = Number($('inv_amount').value) || 0;
+  const currency        = $('inv_currency').value || 'EUR';
+  const fx_rate         = Number($('inv_fx').value) || (currency==='EUR' ? 1 : null);
+  const amount_eur      = Number($('inv_amount_eur').value) || (amount * (fx_rate||1));
+  const payment_type    = $('inv_payment').value;
+  const description     = ($('inv_description').value||'').trim() || null;
+  const notes           = ($('inv_notes').value||'').trim() || null;
+  const category_id     = catSel.value || null;
+  const category_name   = catOpt?.textContent || null;
+
+  if (!location_slug || !invoice_date || !company || !amount || !payment_type || !category_id) {
+    toast('invToast','err','Fill in location, date, company, amount, payment type and category');
+    btn.disabled = false;
+    return;
+  }
+  if (!fx_rate || fx_rate <= 0) {
+    toast('invToast','err','Set an FX rate (or use EUR)');
+    btn.disabled = false;
+    return;
+  }
+
+  // Upload file first, if any.
+  let file_url = null, file_name = null, file_mime = null;
+  const fileInput = $('inv_file');
+  if (fileInput.files && fileInput.files[0]) {
+    const f = fileInput.files[0];
+    const safe = f.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+    const key = `${location_slug}/${invoice_date.slice(0,7)}/${Date.now()}_${safe}`;
+    const { error: upErr } = await sb.storage.from('hq-invoices').upload(key, f, {
+      contentType: f.type || 'application/octet-stream', upsert:false
+    });
+    if (upErr) { toast('invToast','err','File upload failed: '+upErr.message); btn.disabled = false; return; }
+    file_url  = key;
+    file_name = f.name;
+    file_mime = f.type || null;
+  }
+
+  const payload = {
+    location_slug, invoice_date, company, supplier_nif, description,
+    amount, currency, fx_rate, amount_eur,
+    payment_type, invoice_number, category_id, category_name,
+    file_url, file_name, file_mime,
+    notes,
+    created_by: CURRENT_USER?.id || null
+  };
+
+  const { error } = await sb.from('hq_invoices').insert(payload);
+  if (error) { toast('invToast','err','Save failed: '+error.message); btn.disabled = false; return; }
+
+  toast('invToast','ok','Invoice saved');
+  clearInvoiceForm();
+  btn.disabled = false;
+  renderInvoiceList();
+}
+
+function clearInvoiceForm(){
+  const today = new Date().toISOString().slice(0,10);
+  $('inv_date').value = today;
+  ['inv_company','inv_nif','inv_number','inv_amount','inv_amount_eur','inv_description','inv_notes'].forEach(id => $(id).value = '');
+  $('inv_currency').value = 'EUR';
+  $('inv_fx').value = '1';
+  $('fxHint').textContent = '(EUR — 1.000000)';
+  $('dupWarn').classList.remove('show');
+  const fileInput = $('inv_file');
+  if (fileInput) fileInput.value = '';
+}
+
+async function renderInvoiceList(){
+  const body = $('invListBody');
+  if (!body) return;
+  const loc = $('filter_location')?.value || '__all__';
+  const month = $('filter_month')?.value || '';
+
+  body.innerHTML = `<div class="loading">Loading…</div>`;
+  let q = sb.from('hq_invoices')
+    .select('id, location_slug, invoice_date, company, description, amount, currency, amount_eur, payment_type, invoice_number, category_name, file_url, file_name, needs_review, is_duplicate, category_id, notes, supplier_nif, fx_rate')
+    .order('invoice_date', { ascending:false })
+    .limit(500);
+  if (loc !== '__all__') q = q.eq('location_slug', loc);
+  if (month) {
+    const start = `${month}-01`;
+    const [y,m] = month.split('-').map(Number);
+    const endD = new Date(Date.UTC(y, m, 1)); // first day of next month
+    const end = endD.toISOString().slice(0,10);
+    q = q.gte('invoice_date', start).lt('invoice_date', end);
+  }
+  const { data, error } = await q;
+  if (error) { body.innerHTML = `<div class="loading" style="color:var(--red)">Load failed: ${error.message}</div>`; return; }
+  const rows = data || [];
+  const personalCatIds = new Set(CATEGORIES.filter(c => c.is_personal).map(c => c.id));
+
+  const totalCount   = rows.length;
+  const totalEur     = rows.reduce((s,r)=>s+Number(r.amount_eur||0), 0);
+  const personalEur  = rows.filter(r => personalCatIds.has(r.category_id)).reduce((s,r)=>s+Number(r.amount_eur||0), 0);
+  const businessEur  = totalEur - personalEur;
+
+  if (!rows.length) {
+    body.innerHTML = `<div class="loading">No invoices yet. Register the first one above.</div>`;
+    return;
+  }
+
+  // Group by location_slug when "All" is selected. General first, then camps by size.
+  const groupsOrder = ['general','portugal','surf-school','morocco','sri-lanka','junior-camp'];
+  const grouped = {};
+  rows.forEach(r => {
+    const k = r.location_slug || 'general';
+    if (!grouped[k]) grouped[k] = [];
+    grouped[k].push(r);
+  });
+  const showGrouped = (loc === '__all__');
+
+  const rowHtml = (r) => {
+    const isPersonal = personalCatIds.has(r.category_id);
+    return `<tr class="${r.is_duplicate?'dup':''}">
+      <td>${r.invoice_date}</td>
+      <td class="loc-name">${locLabel(r.location_slug)}</td>
+      <td>${escapeHtml(r.company||'')}${r.description?`<br><span style="font-size:11px;color:var(--muted)">${escapeHtml(r.description)}</span>`:''}</td>
+      <td>${escapeHtml(r.category_name||'')} ${isPersonal?'<span class="chip chip-personal">personal</span>':''} ${r.needs_review?'<span class="chip chip-review">review</span>':''}</td>
+      <td style="font-family:'DM Mono',monospace;font-size:11px">${escapeHtml(r.invoice_number||'—')}</td>
+      <td class="r">${Number(r.amount).toFixed(2)} ${r.currency}</td>
+      <td class="r">${eur(r.amount_eur)}</td>
+      <td>${escapeHtml(r.payment_type||'')}</td>
+      <td>${r.file_url?`<a class="file-link" href="#" onclick="openInvoiceFile('${r.file_url}');return false;">${escapeHtml(r.file_name||'view')}</a>`:'—'}</td>
+      <td><button class="action-btn danger" onclick="deleteInvoice('${r.id}')">Delete</button></td>
+    </tr>`;
+  };
+
+  const tableHead = `
+    <thead><tr>
+      <th>Date</th><th>Location</th><th>Company</th><th>Category</th>
+      <th>Invoice #</th><th class="r">Amount</th><th class="r">EUR</th>
+      <th>Pay</th><th>File</th><th></th>
+    </tr></thead>`;
+
+  let tableBody;
+  if (showGrouped) {
+    const groupSections = groupsOrder
+      .filter(slug => grouped[slug] && grouped[slug].length)
+      .map(slug => {
+        const gRows = grouped[slug];
+        const gTotal = gRows.reduce((s,r)=>s+Number(r.amount_eur||0), 0);
+        const label = slug === 'general' ? 'General HQ · not attributed to a camp' : `Attributed to ${locLabel(slug)}`;
+        return `
+          <tr style="background:var(--foam);border-top:2px solid var(--border)">
+            <td colspan="6" style="font-weight:700;color:var(--navy);font-size:12px;text-transform:uppercase;letter-spacing:.06em">${label}</td>
+            <td class="r" style="font-weight:700;color:var(--navy)">${eur(gTotal)}</td>
+            <td colspan="3" style="color:var(--muted);font-size:11px">${gRows.length} invoice(s)</td>
+          </tr>
+          ${gRows.map(rowHtml).join('')}
+        `;
+      }).join('');
+    // Any unexpected slugs go to a fallback bucket
+    const knownSlugs = new Set(groupsOrder);
+    const otherSlugs = Object.keys(grouped).filter(s => !knownSlugs.has(s));
+    const otherSection = otherSlugs.map(slug => `
+      <tr style="background:var(--foam);border-top:2px solid var(--border)">
+        <td colspan="10" style="font-weight:700;color:var(--navy);font-size:12px">Other · ${escapeHtml(slug)}</td>
+      </tr>
+      ${grouped[slug].map(rowHtml).join('')}
+    `).join('');
+    tableBody = `<tbody>${groupSections}${otherSection}</tbody>`;
+  } else {
+    tableBody = `<tbody>${rows.map(rowHtml).join('')}</tbody>`;
+  }
+
+  body.innerHTML = `
+    <div class="summary-grid">
+      <div class="summary-box"><div class="summary-lbl">Invoices</div><div class="summary-val">${totalCount}</div></div>
+      <div class="summary-box"><div class="summary-lbl">Total (EUR)</div><div class="summary-val">${eur(totalEur)}</div></div>
+      <div class="summary-box"><div class="summary-lbl">Business (excl. personal)</div><div class="summary-val">${eur(businessEur)}</div></div>
+      <div class="summary-box"><div class="summary-lbl">Miguel — Personal</div><div class="summary-val">${eur(personalEur)}</div></div>
+    </div>
+    <div style="overflow-x:auto"><table>${tableHead}${tableBody}</table></div>
+    <div class="hint" style="margin-top:14px">
+      <b>General HQ</b> = despesas que pertencem à empresa como um todo (contabilidade, seguros globais, software…).<br>
+      <b>Attributed to a camp</b> = despesas pagas pelo HQ mas alocadas ao camp para efeitos de lucro (ex.: um seguro do Morocco pago da conta do HQ).<br>
+      As despesas que os camps pagam da sua própria caixa continuam no ledger de cada camp — <b>não vão para aqui</b>.
+    </div>
+  `;
+}
+
+async function openInvoiceFile(key){
+  const { data, error } = await sb.storage.from('hq-invoices').createSignedUrl(key, 60);
+  if (error || !data?.signedUrl) { alert('Could not open file: '+(error?.message||'unknown')); return; }
+  window.open(data.signedUrl, '_blank', 'noopener');
+}
+
+async function deleteInvoice(id){
+  if (!confirm('Delete this invoice permanently?')) return;
+  // Fetch first to get file_url so we can delete the attachment too.
+  const { data: row } = await sb.from('hq_invoices').select('file_url').eq('id', id).maybeSingle();
+  const { error } = await sb.from('hq_invoices').delete().eq('id', id);
+  if (error) { alert('Delete failed: '+error.message); return; }
+  if (row?.file_url) { await sb.storage.from('hq-invoices').remove([row.file_url]); }
+  renderInvoiceList();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//   TAB 2 — IMPORT  (Bookinglayer CSV — kept from previous version)
+// ═══════════════════════════════════════════════════════════════════
+function importTabHtml(){
+  return `
     <div class="card">
       <div class="card-hdr">
         <div>
@@ -164,12 +726,66 @@ Sri Lanka,2026-07,accommodation,8900.00,32,64"></textarea>
         </div>
       </div>
     </div>
+  `;
+}
 
+async function importCsv(){
+  const raw = ($('csvBox').value || '').trim();
+  if (!raw) { toast('importToast','err','Paste some CSV first'); return; }
+  const rows = parseCsv(raw);
+  if (!rows.length) { toast('importToast','err','No valid rows parsed'); return; }
+  const locBySlug = new Map(LOCATIONS.map(l => [String(l.slug||'').toLowerCase(), l.id]));
+  const locByName = new Map(LOCATIONS.map(l => [String(l.name||'').toLowerCase(), l.id]));
+  const resolved = [];
+  const dropped  = [];
+  for (const r of rows) {
+    const key = String(r.location||'').toLowerCase();
+    const location_id = locBySlug.get(key) || locByName.get(key);
+    if (!location_id) { dropped.push(r.location); continue; }
+    resolved.push({
+      location_id, period_ym: r.period, category: r.category,
+      amount_eur: Number(r.amount_eur) || 0,
+      bookings_count: Number(r.bookings) || 0,
+      guests_count: Number(r.guests) || 0,
+      imported_by: CURRENT_USER?.id || null
+    });
+  }
+  if (!resolved.length) { toast('importToast','err','No rows matched a known location. Dropped: '+dropped.join(', ')); return; }
+  const { error } = await sb.from('bookinglayer_revenue')
+    .upsert(resolved, { onConflict: 'location_id,period_ym,category' });
+  if (error) { toast('importToast','err','Import failed: '+error.message); return; }
+  toast('importToast','ok', `Imported ${resolved.length} rows${dropped.length?` (dropped ${dropped.length} with unknown location)`:''}`);
+}
+
+function parseCsv(text){
+  const lines = text.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+  if (!lines.length) return [];
+  const first = lines[0].toLowerCase();
+  const hasHeader = first.includes('location') && first.includes('period');
+  const start = hasHeader ? 1 : 0;
+  const out = [];
+  for (let i = start; i < lines.length; i++) {
+    const cells = lines[i].split(',').map(c => c.trim());
+    if (cells.length < 4) continue;
+    out.push({
+      location: cells[0], period: cells[1],
+      category: String(cells[2]||'').toLowerCase(),
+      amount_eur: cells[3], bookings: cells[4] || 0, guests: cells[5] || 0
+    });
+  }
+  return out;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//   TAB 3 — PROFIT PER LOCATION
+// ═══════════════════════════════════════════════════════════════════
+function profitTabHtml(){
+  return `
     <div class="card">
       <div class="card-hdr">
         <div>
           <div class="card-title">Profit per location</div>
-          <div class="card-hint">Bookinglayer + local ledger, split by attribution</div>
+          <div class="card-hint">Bookinglayer + on-site revenue − HQ invoices (excl. personal) − local ledger expenses</div>
         </div>
         <div class="period-row">
           <label>Period</label>
@@ -181,82 +797,14 @@ Sri Lanka,2026-07,accommodation,8900.00,32,64"></textarea>
       </div>
     </div>
   `;
-  populatePeriods().then(renderProfit);
 }
 
-// ── CSV import ──────────────────────────────────────────────────────
-async function importCsv(){
-  const raw = ($('csvBox').value || '').trim();
-  if (!raw) { toast('importToast','err','Paste some CSV first'); return; }
-  const rows = parseCsv(raw);
-  if (!rows.length) { toast('importToast','err','No valid rows parsed'); return; }
-
-  // Resolve location NAMES/SLUGS to UUIDs. Rows with unrecognised location
-  // get dropped with a warning — better than silently importing garbage.
-  const locBySlug = new Map(LOCATIONS.map(l => [String(l.slug||'').toLowerCase(), l.id]));
-  const locByName = new Map(LOCATIONS.map(l => [String(l.name||'').toLowerCase(), l.id]));
-  const resolved = [];
-  const dropped  = [];
-  for (const r of rows) {
-    const key = String(r.location||'').toLowerCase();
-    const location_id = locBySlug.get(key) || locByName.get(key);
-    if (!location_id) { dropped.push(r.location); continue; }
-    resolved.push({
-      location_id,
-      period_ym: r.period,
-      category: r.category,
-      amount_eur: Number(r.amount_eur) || 0,
-      bookings_count: Number(r.bookings) || 0,
-      guests_count: Number(r.guests) || 0,
-      imported_by: CURRENT_USER?.id || null
-    });
-  }
-  if (!resolved.length) { toast('importToast','err','No rows matched a known location. Dropped: '+dropped.join(', ')); return; }
-
-  const { error } = await sb.from('bookinglayer_revenue')
-    .upsert(resolved, { onConflict: 'location_id,period_ym,category' });
-  if (error) { toast('importToast','err','Import failed: '+error.message); return; }
-  toast('importToast','ok', `Imported ${resolved.length} rows${dropped.length?` (dropped ${dropped.length} with unknown location)`:''}`);
-  populatePeriods().then(renderProfit);
-}
-
-function parseCsv(text){
-  const lines = text.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
-  if (!lines.length) return [];
-  // Detect header row.
-  const first = lines[0].toLowerCase();
-  const hasHeader = first.includes('location') && first.includes('period');
-  const start = hasHeader ? 1 : 0;
-  const out = [];
-  for (let i = start; i < lines.length; i++) {
-    const cells = lines[i].split(',').map(c => c.trim());
-    if (cells.length < 4) continue;
-    out.push({
-      location:   cells[0],
-      period:     cells[1],
-      category:   String(cells[2]||'').toLowerCase(),
-      amount_eur: cells[3],
-      bookings:   cells[4] || 0,
-      guests:     cells[5] || 0
-    });
-  }
-  return out;
-}
-
-function toast(id, kind, msg){
-  const el = $(id);
-  el.className = 'toast toast-'+(kind==='ok'?'ok':'err');
-  el.textContent = msg;
-  setTimeout(()=>{ el.className=''; el.textContent=''; }, 6000);
-}
-
-// ── Profit table ────────────────────────────────────────────────────
 async function populatePeriods(){
   const { data } = await sb.from('bookinglayer_revenue').select('period_ym').order('period_ym',{ascending:false});
   const periods = Array.from(new Set((data||[]).map(r => r.period_ym))).filter(Boolean);
   if (!periods.length) periods.push(currentMonth());
   const sel = $('periodSelect');
-  sel.innerHTML = periods.map(p => `<option value="${p}">${p}</option>`).join('') + `<option value="__all__">All-time</option>`;
+  if (sel) sel.innerHTML = periods.map(p => `<option value="${p}">${p}</option>`).join('') + `<option value="__all__">All-time</option>`;
 }
 
 function currentMonth(){
@@ -269,36 +817,32 @@ async function renderProfit(){
   const isAll  = period === '__all__';
   $('profitBody').innerHTML = `<div class="loading">Loading…</div>`;
 
-  // 1. Bookinglayer revenue for the period (per location + category)
-  let blQ = sb.from('bookinglayer_revenue').select('location_id, category, amount_eur, bookings_count, guests_count, period_ym');
+  let blQ = sb.from('bookinglayer_revenue').select('location_id, category, amount_eur, period_ym');
   if (!isAll) blQ = blQ.eq('period_ym', period);
   const { data: blRows } = await blQ;
 
-  // 2. Ledger — every expense + income across ALL locations for the same
-  // period. We use entry_date (YYYY-MM slice) to filter.
-  let lgQ = sb.from('ledger_entries').select('type, amount_eur, entry_date, business_area, category, paid_from, attributed_location, location_id');
-  const { data: lgRows } = await lgQ;
+  const { data: lgRows } = await sb.from('ledger_entries')
+    .select('type, amount_eur, entry_date, business_area, category, paid_from, attributed_location, location_id');
 
-  // Filter ledger by period client-side (Supabase text prefix filter is finicky).
   const inPeriod = (d) => isAll || String(d||'').slice(0,7) === period;
 
-  // Attribution key: prefer attributed_location; fall back to the row's
-  // location slug (via location_id → LOCATIONS map).
+  // NEW: HQ invoices contribute to expenses. Skip personal ones.
+  let hqQ = sb.from('hq_invoices').select('location_slug, amount_eur, invoice_date, category_id');
+  const { data: hqRows } = await hqQ;
+  const personalCatIds = new Set(CATEGORIES.filter(c => c.is_personal).map(c => c.id));
+
   const locIdToSlug = new Map(LOCATIONS.map(l => [l.id, l.slug]));
   const attribOf = (r) => {
     if (r.attributed_location) return r.attributed_location;
     return locIdToSlug.get(r.location_id) || 'unknown';
   };
 
-  // Aggregate per attributed_location.
   const byLoc = {};
-  const ensureLoc = (key) => { if (!byLoc[key]) byLoc[key] = {slug:key, blRev:0, localRev:0, expenses:0}; return byLoc[key]; };
-  LOCATIONS.forEach(l => ensureLoc(l.slug));
-  ensureLoc('hq-general');
+  const ensureLoc = (key) => { if (!byLoc[key]) byLoc[key] = {slug:key, blRev:0, localRev:0, expenses:0, hqExpenses:0}; return byLoc[key]; };
+  HQ_LOCATIONS.forEach(l => ensureLoc(l.slug));
 
-  const blLocIdToSlug = new Map(LOCATIONS.map(l => [l.id, l.slug]));
   (blRows||[]).forEach(r => {
-    const slug = blLocIdToSlug.get(r.location_id);
+    const slug = locIdToSlug.get(r.location_id);
     if (!slug) return;
     ensureLoc(slug).blRev += Number(r.amount_eur||0);
   });
@@ -309,35 +853,41 @@ async function renderProfit(){
     const amt = Number(r.amount_eur||0);
     if (r.type === 'revenue') row.localRev += amt;
     else if (r.type === 'expense') row.expenses += amt;
-    // transfers ignored — they're internal cash moves, not P&L
+  });
+  (hqRows||[]).forEach(r => {
+    if (!inPeriod(r.invoice_date)) return;
+    if (personalCatIds.has(r.category_id)) return;   // exclude Miguel-Personal
+    const key = r.location_slug || 'general';
+    ensureLoc(key).hqExpenses += Number(r.amount_eur||0);
   });
 
   const rows = Object.values(byLoc).map(r => ({
     ...r,
     label: locLabel(r.slug),
     totalRev: r.blRev + r.localRev,
-    profit: r.blRev + r.localRev - r.expenses
+    totalExp: r.expenses + r.hqExpenses,
+    profit: r.blRev + r.localRev - r.expenses - r.hqExpenses
   }));
-  // Sort by absolute profit desc so the biggest movers come first,
-  // with HQ/Geral last since it's a bucket, not a real camp.
   rows.sort((a,b) => {
-    if (a.slug === 'hq-general') return 1;
-    if (b.slug === 'hq-general') return -1;
+    if (a.slug === 'general') return 1;
+    if (b.slug === 'general') return -1;
     return Math.abs(b.profit) - Math.abs(a.profit);
   });
 
-  const totalBlRev    = rows.reduce((s,r)=>s+r.blRev,0);
-  const totalLocalRev = rows.reduce((s,r)=>s+r.localRev,0);
-  const totalExpenses = rows.reduce((s,r)=>s+r.expenses,0);
-  const totalProfit   = totalBlRev + totalLocalRev - totalExpenses;
+  const totBl = rows.reduce((s,r)=>s+r.blRev,0);
+  const totLR = rows.reduce((s,r)=>s+r.localRev,0);
+  const totLE = rows.reduce((s,r)=>s+r.expenses,0);
+  const totHE = rows.reduce((s,r)=>s+r.hqExpenses,0);
+  const totPF = totBl + totLR - totLE - totHE;
 
   $('profitBody').innerHTML = `
     <div style="overflow-x:auto"><table>
       <thead><tr>
         <th>Location</th>
-        <th class="r">Bookinglayer rev</th>
+        <th class="r">Bookinglayer</th>
         <th class="r">On-site rev</th>
-        <th class="r">Expenses</th>
+        <th class="r">Local expenses</th>
+        <th class="r">HQ invoices</th>
         <th class="r">Profit</th>
       </tr></thead>
       <tbody>
@@ -346,32 +896,50 @@ async function renderProfit(){
           <td class="r">${eur(r.blRev)}</td>
           <td class="r">${eur(r.localRev)}</td>
           <td class="r">${eur(r.expenses)}</td>
+          <td class="r">${eur(r.hqExpenses)}</td>
           <td class="r ${r.profit>0?'pos':r.profit<0?'neg':'zero'}">${r.profit>=0?'+':''}${eur(r.profit)}</td>
         </tr>`).join('')}
         <tr style="background:var(--foam);font-weight:700">
           <td class="loc-name">Total</td>
-          <td class="r">${eur(totalBlRev)}</td>
-          <td class="r">${eur(totalLocalRev)}</td>
-          <td class="r">${eur(totalExpenses)}</td>
-          <td class="r ${totalProfit>0?'pos':totalProfit<0?'neg':'zero'}">${totalProfit>=0?'+':''}${eur(totalProfit)}</td>
+          <td class="r">${eur(totBl)}</td>
+          <td class="r">${eur(totLR)}</td>
+          <td class="r">${eur(totLE)}</td>
+          <td class="r">${eur(totHE)}</td>
+          <td class="r ${totPF>0?'pos':totPF<0?'neg':'zero'}">${totPF>=0?'+':''}${eur(totPF)}</td>
         </tr>
       </tbody>
     </table></div>
     <div class="hint" style="margin-top:14px">
-      <b>Profit</b> = Bookinglayer revenue + on-site revenue (tours, merch, bar) − expenses attributed to this location.
-      <br>Expenses use <code>attributed_location</code> when set (HQ-paid manager salaries land here) — otherwise fall back to the location where the row was created. Cash-flow of each camp stays untouched.
+      <b>Profit</b> = Bookinglayer + on-site revenue − local ledger expenses − HQ invoices attributed to this location.
+      <br><b>HQ invoices</b> come from the Invoices tab. Rows in category <b>Miguel — Personal</b> are excluded.
+      <br>Local expenses use <code>attributed_location</code> when set — otherwise fall back to the row's own location.
     </div>
   `;
 }
 
+// ── Utilities ───────────────────────────────────────────────────────
 function locLabel(slug){
-  if (slug === 'hq-general') return 'HQ / Geral';
+  const hq = HQ_LOCATIONS.find(x => x.slug === slug);
+  if (hq) return hq.label;
   const l = LOCATIONS.find(x => x.slug === slug);
-  return l?.name || slug;
+  return l?.name || slug || '—';
 }
 function eur(n){
   const v = Number(n||0);
   return '€' + v.toLocaleString('en-GB', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+function toast(id, kind, msg){
+  const el = $(id);
+  if (!el) return;
+  el.className = 'toast toast-'+(kind==='ok'?'ok':kind==='warn'?'warn':'err');
+  el.textContent = msg;
+  setTimeout(()=>{ el.className=''; el.textContent=''; }, 6000);
+}
+function escapeHtml(s){
+  return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function debounce(fn, ms){
+  let t; return function(...a){ clearTimeout(t); t = setTimeout(()=>fn.apply(this,a), ms); };
 }
 </script>
 </body></html>
