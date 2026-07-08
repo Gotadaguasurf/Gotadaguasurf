@@ -9,24 +9,31 @@
 :root{--navy:#28394b;--ocean:#1e6fa8;--foam:#e8f4fd;--ink:#0d1b2a;--muted:#6b8099;--border:#d4e3f0;--bg:#f0f5fa;--green-bg:#eafaf1;--green:#1a7a40;--red-bg:#fdecea;--red:#b91c1c;--amber-bg:#fef3c7;--amber:#92400e;--r:12px;--sh:0 4px 24px rgba(40,57,75,.10)}
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--ink);min-height:100vh}
-header{background:var(--navy);color:#fff;padding:0 24px;display:flex;align-items:center;justify-content:space-between;height:60px;position:sticky;top:0;z-index:100;box-shadow:0 2px 20px rgba(0,0,0,.25)}
-.brand-home{display:flex;align-items:center;gap:14px;color:#fff;text-decoration:none;padding:6px 10px;border-radius:8px;transition:background .15s}
-.brand-home:hover{background:rgba(255,255,255,.08)}
-.brand-logo{display:flex;align-items:center;justify-content:flex-start;width:110px;height:26px;flex-shrink:0}
-.brand-logo svg{height:26px;width:auto;display:block}
-.brand-sub{font-size:11px;color:#7aabcc;font-weight:700;letter-spacing:.15em;text-transform:uppercase;border-left:1px solid rgba(255,255,255,.15);padding-left:14px}
-.back-hint{font-size:11px;color:#7aabcc;margin-right:auto;padding-left:14px}
+header{background:var(--navy);padding:0 24px;display:flex;align-items:center;justify-content:space-between;height:60px;position:sticky;top:0;z-index:100;box-shadow:0 2px 20px rgba(0,0,0,.25);gap:20px}
+.header-left{display:flex;align-items:center;gap:16px;min-width:220px}
+.brand-home{display:flex;align-items:center;gap:10px;color:inherit;text-decoration:none}
+.brand-lockup{display:flex;align-items:center;gap:10px;min-width:0}
+.brand-logo{display:flex;align-items:center;justify-content:flex-start;width:134px;height:30px;flex-shrink:0}
+.brand-logo svg{height:30px;width:auto;display:block}
+.header-sub{font-size:10px;color:#7aabcc;font-weight:700;letter-spacing:.1em;text-transform:uppercase;white-space:nowrap}
+.header-center{display:flex;align-items:center;justify-content:center;gap:4px;flex:1;min-width:0}
+.header-right{display:flex;align-items:center;gap:12px;flex-shrink:0;justify-content:flex-end;min-width:220px}
+.nav-tabs{display:flex;gap:3px;align-items:center;flex-wrap:wrap;justify-content:center}
+.nav-tab{padding:7px 14px;font-size:12px;font-weight:700;color:#7aabcc;cursor:pointer;border:none;border-radius:8px;background:transparent;transition:all .2s;font-family:'Outfit',sans-serif;white-space:nowrap}
+.nav-tab:hover{color:#fff;background:rgba(255,255,255,.08)}
+.nav-tab.active{color:#fff;background:var(--ocean)}
 .user-badge{font-size:12px;color:#bdd4e8;background:rgba(255,255,255,.08);padding:6px 12px;border-radius:20px}
+@media(max-width:900px){
+  header{height:auto;padding:12px 20px;flex-wrap:wrap}
+  .header-left,.header-right{min-width:0;width:100%;justify-content:space-between}
+  .header-center{width:100%;order:3}
+}
 main{max-width:1400px;margin:0 auto;padding:32px 48px}
 .gate-screen{max-width:520px;margin:80px auto;background:#fff;border-radius:var(--r);padding:48px;border:1px solid var(--border);box-shadow:var(--sh);text-align:center}
 .gate-title{font-family:'DM Serif Display',serif;font-size:28px;color:var(--navy);margin-bottom:12px}
 .gate-msg{font-size:14px;color:var(--muted);line-height:1.6;margin-bottom:24px}
 .gate-btn{background:var(--ocean);color:#fff;border:none;padding:12px 32px;border-radius:8px;font-weight:700;font-family:'Outfit',sans-serif;font-size:14px;cursor:pointer}
 .gate-btn:hover{background:var(--navy)}
-.tabs{display:flex;gap:4px;margin-bottom:24px;border-bottom:2px solid var(--border);flex-wrap:wrap}
-.tab-btn{background:transparent;border:none;padding:12px 20px;font-family:'Outfit',sans-serif;font-size:14px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px;transition:color .18s, border-color .18s}
-.tab-btn:hover{color:var(--navy)}
-.tab-btn.active{color:var(--ocean);border-bottom-color:var(--ocean)}
 .tab-pane{display:none}
 .tab-pane.active{display:block}
 .card{background:#fff;border-radius:var(--r);border:1px solid var(--border);box-shadow:var(--sh);margin-bottom:28px;overflow:hidden}
@@ -95,7 +102,9 @@ td.loc-name{font-weight:700;color:var(--navy)}
 <body>
 
 <header>
-  <a class="brand-home" href="/" title="Back to hub">
+  <div class="header-left">
+    <a class="brand-home" href="/" title="Back to hub">
+    <div class="brand-lockup">
     <div class="brand-logo">
       <svg viewBox="0 0 197.4 91" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
         <path fill="#fff4d5" d="M61.7,51.9c-.4-9-5.5-16.5-9.7-24.1-2.9-4.8-5.3-9.8-9.3-13.9-3.9-4.4-6.5-9.8-10.8-13.9C19.2,16.6-.5,39.9,0,61.9c9.4-7.9,20.1-17.7,33.1-17.8,3,0,7.2,0,9.5,2.2,1.7,1.7,3.2,4.2,2,6.5-.3.5-1.9,2.7-2.3,2.9-12.9,7.4-20.3,18.6-16.5,33.7,3.1,1.3,8,1,11.1-.3,2.7-.3,5.1-1.3,7.5-2.5,8.7-2.9,14.5-11.1,15.5-20.1,1.2-4.7,2.1-9.7,1.8-14.6h0Z"/>
@@ -110,10 +119,21 @@ td.loc-name{font-weight:700;color:var(--navy)}
         <path fill="#fff4d5" d="M142.8,61.3h-6.9c-.2-.5-.1-1-.2-1.4-.1-.5-1.3-2.4-1.5-2.8-.5-.7-1.5-1.5-2.3-1.5-1.3,0-3.2,0-4.3.8-.5.3-1.2,2.1-1.4,2.7-1.1,3.3-1.3,6.7-1.5,10.1,0,3.6.2,8.1,1.7,11.5,0,.3.5.9.6,1.1.2.3,1.7,1.1,2,1.1.9,0,2.5,0,3.5-.3.4,0,1.7-1,2-1.3.6-.7,1.3-3.3,1.3-4.3s-.3-1.9-.4-2l-4.5-.2c-.3-1.9-.1-3.9.1-5.8v-.2c.9,0,6.9.3,9.1.5h2.2c0,.7.2,1.3.3,2.1.5,3.1.4,5.2.1,8.3-.3,3.1-.5,6.5-3.1,8.6-1.1.9-1.8,1.5-3.3,1.9-1.9.6-2.8.6-4.7.7-1.3,0-2.3,0-3.6-.2-3.9-.8-6.3-2.8-7.5-6.6-2.7-8.9-3.1-18.9-.9-27.9.8-3.1,1.3-4.7,3.9-6.5,2.1-1.5,7.1-2.3,9.5-1.6,2.7.8,6.6,2.7,8.1,4.4.7.8,1.5,2.8,1.7,3.8.2,1.3,0,5,0,5h0Z"/>
       </svg>
     </div>
-    <span class="brand-sub">HQ</span>
-  </a>
-  <span class="back-hint">← click logo for hub</span>
-  <div class="user-badge" id="userBadge">…</div>
+    <div class="header-sub">HQ</div>
+    </div>
+    </a>
+  </div>
+  <div class="header-center">
+    <div class="nav-tabs" id="hqNavTabs" style="display:none">
+      <button class="nav-tab active" data-tab="overview" onclick="switchTab('overview')">Overview</button>
+      <button class="nav-tab" data-tab="invoices" onclick="switchTab('invoices')">Despesas HQ</button>
+      <button class="nav-tab" data-tab="import" onclick="switchTab('import')">Import</button>
+      <button class="nav-tab" data-tab="profit" onclick="switchTab('profit')">Profit per location</button>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="user-badge" id="userBadge">…</div>
+  </div>
 </header>
 
 <main id="mainWrap"><div class="loading">Checking access…</div></main>
@@ -191,14 +211,9 @@ let FX_CACHE     = { date:null, rates:{ EUR:1 } };
 
 // ── Layout ──────────────────────────────────────────────────────────
 function render(){
+  const navEl = $('hqNavTabs');
+  if (navEl) navEl.style.display = '';
   $('mainWrap').innerHTML = `
-    <div class="tabs">
-      <button class="tab-btn active" data-tab="overview" onclick="switchTab('overview')">Overview</button>
-      <button class="tab-btn" data-tab="invoices" onclick="switchTab('invoices')">Despesas HQ</button>
-      <button class="tab-btn" data-tab="import" onclick="switchTab('import')">Import</button>
-      <button class="tab-btn" data-tab="profit" onclick="switchTab('profit')">Profit per location</button>
-    </div>
-
     <div class="tab-pane active" id="tab-overview">${overviewTabHtml()}</div>
     <div class="tab-pane" id="tab-invoices">${invoicesTabHtml()}</div>
     <div class="tab-pane" id="tab-import">${importTabHtml()}</div>
@@ -210,7 +225,7 @@ function render(){
 }
 
 function switchTab(name){
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+  document.querySelectorAll('.nav-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
   document.querySelectorAll('.tab-pane').forEach(p => p.classList.toggle('active', p.id === 'tab-'+name));
   if (name === 'profit')   { populatePeriods().then(renderProfit); }
   if (name === 'overview') { renderOverview(); }
@@ -225,10 +240,27 @@ function overviewTabHtml(){
     <div class="card">
       <div class="card-hdr">
         <div>
-          <div class="card-title">Operations overview</div>
-          <div class="card-hint">Current month at a glance — click a card to drill in</div>
+          <div class="card-title">Bookinglayer revenue</div>
+          <div class="card-hint">Live totals — matches the numbers you see in Partners</div>
         </div>
-        <div class="card-hint" id="ov_month">…</div>
+        <div class="period-row">
+          <label>Period</label>
+          <select id="ov_period" onchange="renderOverview()">
+            <option value="__all__">All-time</option>
+          </select>
+        </div>
+      </div>
+      <div class="card-body" id="blKpiBody">
+        <div class="loading">Loading bookings…</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-hdr">
+        <div>
+          <div class="card-title">Operations overview</div>
+          <div class="card-hint">HQ expenses + business profit for the selected period</div>
+        </div>
       </div>
       <div class="card-body" id="overviewBody">
         <div class="loading">Loading…</div>
@@ -238,41 +270,101 @@ function overviewTabHtml(){
 }
 
 async function renderOverview(){
-  const body = $('overviewBody');
-  if (!body) return;
-  const now = new Date();
-  const ym  = `${now.getUTCFullYear()}-${String(now.getUTCMonth()+1).padStart(2,'0')}`;
-  const start = `${ym}-01`;
-  const nextD = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth()+1, 1));
-  const end = nextD.toISOString().slice(0,10);
-  const ymLabel = $('ov_month'); if (ymLabel) ymLabel.textContent = ym;
+  const kpiBody = $('blKpiBody');
+  const body    = $('overviewBody');
+  if (!body || !kpiBody) return;
 
-  body.innerHTML = `<div class="loading">Loading…</div>`;
+  // ── Populate period dropdown from bookings.month_key + hq_invoices dates ──
+  const perSel = $('ov_period');
+  if (perSel && perSel.options.length <= 1) {
+    const [{data: bkMonths}, {data: invMonths}] = await Promise.all([
+      sb.from('bookings').select('month_key').limit(20000),
+      sb.from('hq_invoices').select('invoice_date').limit(20000)
+    ]);
+    const set = new Set();
+    (bkMonths||[]).forEach(r => r.month_key && set.add(r.month_key));
+    (invMonths||[]).forEach(r => r.invoice_date && set.add(String(r.invoice_date).slice(0,7)));
+    const months = [...set].sort().reverse();
+    const cur = perSel.value;
+    perSel.innerHTML = '<option value="__all__">All-time</option>' +
+      months.map(m => `<option value="${m}" ${cur===m?'selected':''}>${m}</option>`).join('');
+  }
 
-  const [invRes, bkRes, lgRes] = await Promise.all([
-    sb.from('hq_invoices').select('location_slug, amount_eur, category_id, invoice_date').gte('invoice_date', start).lt('invoice_date', end),
-    sb.from('bookings').select('location, total, net_amount, pax').eq('month_key', ym),
-    sb.from('ledger_entries').select('type, amount_eur, entry_date, paid_from, attributed_location, location_id')
-  ]);
+  const period = perSel?.value || '__all__';
+  const isAll  = period === '__all__';
 
-  const invRows = invRes.data || [];
+  kpiBody.innerHTML = `<div class="loading">Loading bookings…</div>`;
+  body.innerHTML    = `<div class="loading">Loading…</div>`;
+
+  // ── Fetch data ─────────────────────────────────────────────────────
+  let bkQ = sb.from('bookings').select('total, net_amount, commission_amount, partner_name, booking_type, month_key, pax').limit(20000);
+  if (!isAll) bkQ = bkQ.eq('month_key', period);
+
+  const invQ = sb.from('hq_invoices').select('location_slug, amount_eur, category_id, invoice_date').limit(20000);
+  const lgQ  = sb.from('ledger_entries').select('type, amount_eur, entry_date, paid_from, attributed_location, location_id').limit(20000);
+
+  const [bkRes, invRes, lgRes] = await Promise.all([bkQ, invQ, lgQ]);
   const bkRows  = bkRes.data  || [];
-  const lgRows  = (lgRes.data || []).filter(r => String(r.entry_date||'').slice(0,7) === ym);
+  const invRows = (invRes.data || []).filter(r => isAll || String(r.invoice_date||'').slice(0,7) === period);
+  const lgRows  = (lgRes.data  || []).filter(r => isAll || String(r.entry_date||'').slice(0,7) === period);
 
+  // ── BL KPIs — same formula as /partners renderKPIs() ───────────────
+  const isDirect = (b) => !b.partner_name || b.booking_type === 'direct';
+  const partnerBks = bkRows.filter(b => !isDirect(b));
+  const directBks  = bkRows.filter(isDirect);
+
+  const partnerGross = partnerBks.reduce((s,b) => s + Number(b.total||0), 0);
+  const partnerNet   = partnerBks.reduce((s,b) => s + Number(b.net_amount ?? b.total ?? 0), 0);
+  const directGross  = directBks.reduce((s,b) => s + Number(b.total||0), 0);
+  const grossTotal   = partnerGross + directGross;       // Total Gross (Bookinglayer)
+  const totalRevenue = partnerNet + directGross;         // Total Revenue GotaDagua
+  const commissionPaid = grossTotal - totalRevenue;
+  const bkCount      = bkRows.length;
+
+  kpiBody.innerHTML = `
+    <div class="summary-grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
+      <div class="summary-box" style="border:2px dashed var(--muted)">
+        <div class="summary-lbl">Total Gross (Bookinglayer)</div>
+        <div class="summary-val">${eur(grossTotal)}</div>
+        <div class="hint" style="margin-top:4px">Partner gross + direct · matches Bookinglayer</div>
+      </div>
+      <div class="summary-box">
+        <div class="summary-lbl">Partner Gross Revenue</div>
+        <div class="summary-val">${eur(partnerGross)}</div>
+        <div class="hint" style="margin-top:4px">${isAll?'All months':period}</div>
+      </div>
+      <div class="summary-box" style="border-left:4px solid var(--ocean)">
+        <div class="summary-lbl">Net from Partners</div>
+        <div class="summary-val" style="color:var(--ocean)">${eur(partnerNet)}</div>
+        <div class="hint" style="margin-top:4px">After commissions (−${eur(commissionPaid)})</div>
+      </div>
+      <div class="summary-box" style="border-left:4px solid var(--ocean)">
+        <div class="summary-lbl">Direct Bookings</div>
+        <div class="summary-val" style="color:var(--ocean)">${eur(directGross)}</div>
+        <div class="hint" style="margin-top:4px">${directBks.length} booking${directBks.length===1?'':'s'} · 100% ours</div>
+      </div>
+      <div class="summary-box" style="border:2px solid var(--ocean)">
+        <div class="summary-lbl">Total Revenue GotaDagua</div>
+        <div class="summary-val" style="color:var(--ocean)">${eur(totalRevenue)}</div>
+        <div class="hint" style="margin-top:4px">Your real take-home (partners net + direct)</div>
+      </div>
+    </div>
+    <div class="hint" style="margin-top:12px">${bkCount} booking${bkCount===1?'':'s'} in the selected period · numbers match the <a href="/partners/" style="color:var(--ocean);font-weight:600">Partners app</a>.</div>
+  `;
+
+  // ── HQ expenses + business profit (uses same period filter) ────────
   const personalCatIds = new Set(CATEGORIES.filter(c => c.is_personal).map(c => c.id));
   const invBusiness = invRows.filter(r => !personalCatIds.has(r.category_id));
   const invPersonal = invRows.filter(r =>  personalCatIds.has(r.category_id));
 
-  const hqTotal      = invBusiness.reduce((s,r)=>s+Number(r.amount_eur||0), 0);
-  const hqGeneral    = invBusiness.filter(r => r.location_slug === 'general').reduce((s,r)=>s+Number(r.amount_eur||0), 0);
-  const hqAttribLoc  = hqTotal - hqGeneral;
-  const personalTot  = invPersonal.reduce((s,r)=>s+Number(r.amount_eur||0), 0);
+  const hqTotal     = invBusiness.reduce((s,r)=>s+Number(r.amount_eur||0), 0);
+  const hqGeneral   = invBusiness.filter(r => r.location_slug === 'general').reduce((s,r)=>s+Number(r.amount_eur||0), 0);
+  const hqAttribLoc = hqTotal - hqGeneral;
+  const personalTot = invPersonal.reduce((s,r)=>s+Number(r.amount_eur||0), 0);
 
-  const blTotal      = bkRows.reduce((s,r)=>s+Number(r.net_amount ?? r.total ?? 0), 0);
-  const bkCount      = bkRows.length;
-  const localRev     = lgRows.filter(r => r.type==='revenue').reduce((s,r)=>s+Number(r.amount_eur||0), 0);
-  const localExp     = lgRows.filter(r => r.type==='expense').reduce((s,r)=>s+Number(r.amount_eur||0), 0);
-  const businessProfit = blTotal + localRev - localExp - hqTotal;
+  const localRev    = lgRows.filter(r => r.type==='revenue').reduce((s,r)=>s+Number(r.amount_eur||0), 0);
+  const localExp    = lgRows.filter(r => r.type==='expense').reduce((s,r)=>s+Number(r.amount_eur||0), 0);
+  const businessProfit = totalRevenue + localRev - localExp - hqTotal;
 
   body.innerHTML = `
     <div class="summary-grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
@@ -291,11 +383,6 @@ async function renderOverview(){
         <div class="summary-val">${eur(personalTot)}</div>
         <div class="hint" style="margin-top:4px">Excluded from business profit</div>
       </div>
-      <div class="summary-box" style="border-left:4px solid var(--green);cursor:pointer" onclick="switchTab('profit')">
-        <div class="summary-lbl">Bookings revenue (net)</div>
-        <div class="summary-val">${eur(blTotal)}</div>
-        <div class="hint" style="margin-top:4px">${bkCount} booking(s) — from hub CSV import</div>
-      </div>
       <div class="summary-box" style="border-left:4px solid var(--green)">
         <div class="summary-lbl">On-site revenue (camps)</div>
         <div class="summary-val">${eur(localRev)}</div>
@@ -305,17 +392,10 @@ async function renderOverview(){
         <div class="summary-val">${eur(localExp)}</div>
       </div>
       <div class="summary-box" style="grid-column:span 2;border-left:4px solid ${businessProfit>=0?'var(--green)':'var(--red)'}">
-        <div class="summary-lbl">Business profit this month</div>
+        <div class="summary-lbl">Business profit${isAll?' (all-time)':' — '+period}</div>
         <div class="summary-val ${businessProfit>=0?'pos':'neg'}">${businessProfit>=0?'+':''}${eur(businessProfit)}</div>
-        <div class="hint" style="margin-top:4px">BL + on-site − local expenses − HQ invoices (excl. personal)</div>
+        <div class="hint" style="margin-top:4px">Total Revenue GotaDagua + on-site − local expenses − HQ invoices (excl. personal)</div>
       </div>
-    </div>
-
-    <div class="hint" style="margin-top:16px">
-      <b>Quick nav:</b>
-      · <a href="#" onclick="switchTab('invoices');return false;" style="color:var(--ocean);font-weight:600">Register new invoice</a>
-      · <a href="#" onclick="switchTab('import');return false;" style="color:var(--ocean);font-weight:600">Import Bookinglayer</a>
-      · <a href="#" onclick="switchTab('profit');return false;" style="color:var(--ocean);font-weight:600">Profit per location</a>
     </div>
   `;
 }
