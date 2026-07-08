@@ -5786,16 +5786,15 @@ function groupCatalogIntoPresets(rows, tourIdToName){
   // correctly at the vehicle boundary).
   //
   // picker_tab on each catalog row drives which Hub tab the preset lands
-  // in ('airport' | 'tuktuk'). Rows without picker_tab (NULL) default to
-  // 'airport'. The same destination name appearing under both tabs (rare,
-  // not currently a use case) would be deduplicated to whichever tab the
-  // first matching row landed in — that's fine, we don't want destination
-  // names splitting across tabs by accident.
+  // in. Recognises the full tab set ('airport' | 'surf' | 'tours' |
+  // 'tuktuk'); anything else (including NULL) falls back to 'airport'.
+  // Legacy 'tuktuk' is kept for Sri Lanka backwards compat.
+  const VALID_TABS=new Set(['airport','surf','tours','tuktuk']);
   const byDest=new Map();
   for(const r of rows){
     const fullName=String(r.name||'').trim();
     if(!fullName) continue;
-    const tab=(r.picker_tab==='tuktuk')?'tuktuk':'airport';
+    const tab=VALID_TABS.has(r.picker_tab)?r.picker_tab:'airport';
     const splitIdx=fullName.lastIndexOf(' — ');
     let destName,vehicleLabel;
     if(splitIdx>0){
@@ -5849,10 +5848,13 @@ function groupCatalogIntoPresets(rows, tourIdToName){
   for(const p of all){
     p.vehicles.sort((a,b)=>a.sortOrder-b.sortOrder||(a.label||'').localeCompare(b.label||''));
   }
-  // Split into the two Hub tabs
-  const result={airport:[],tuktuk:[]};
+  // Split into every Hub tab bucket (airport / surf / tours / tuktuk).
+  // Presets whose tab isn't one of these — shouldn't happen after the
+  // VALID_TABS normalisation above — get dropped silently rather than
+  // leaking into Airport.
+  const result={airport:[],surf:[],tours:[],tuktuk:[]};
   for(const p of all){
-    (p.tab==='tuktuk'?result.tuktuk:result.airport).push(p);
+    if(result[p.tab]) result[p.tab].push(p);
   }
   return result;
 }
