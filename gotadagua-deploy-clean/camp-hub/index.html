@@ -5090,79 +5090,15 @@ function renderOverview(){
     ...currentTourItems(),
     ...Object.keys(tourMap)
   ]);
-  // ── Zone-based transport split ─────────────────────────────────────
-  // For every Transport expense anchored to a tour_zone (zone_id set),
-  // pool the cost with the other rows in the same zone and distribute
-  // it across every tour whose display group matches the zone name,
-  // weighted by paying-guest count. This is the model described in the
-  // "shared-transport per zone" spec — one van serves multiple sub-tours
-  // in the same physical location, and each sub-tour absorbs a share
-  // proportional to how many guests it actually put in the van.
-  //
-  // Rows with zone_id are skipped by the legacy linkedItem-based rollup
-  // below because their linkedItem was cleared during the migration, so
-  // the two mechanisms don't double-count.
-  const zoneAccum = {}; // zone_id → { costLocal, costEur, zoneName }
-  expenses.filter(x=>x.businessArea==='Transport' && x.zoneId).forEach(x=>{
-    const zone = TOUR_ZONES.find(z => z.id === x.zoneId);
-    if(!zone) return; // Zone was deleted; drop the row silently.
-    const key = zone.id;
-    if(!zoneAccum[key]) zoneAccum[key] = { costLocal:0, costEur:0, zoneName: zone.name };
-    zoneAccum[key].costLocal += entryLocalDisplayAmount(x);
-    zoneAccum[key].costEur += entryEurAmount(x);
-  });
-  Object.values(zoneAccum).forEach(z => {
-    // Tours "belong to" a zone when either their display group (part
-    // before the em-dash separator) OR their full tour name matches the
-    // zone name case-insensitively. So:
-    //   • zone "Dunes"          → catches "Dunes — Sandboarding" etc. via group
-    //   • zone "Paradise Valley" → catches "Paradise Valley" via full-name match
-    //   • zone "Souk Tour"      → catches "Souk Tour" via full-name match
-    // No configuration needed as long as the naming convention is followed;
-    // the back-office UI in a later phase will make this explicit per tour.
-    const zoneNameLc = z.zoneName.toLowerCase();
-    const matchesZone = (name) => {
-      const nameLc = String(name||'').toLowerCase();
-      if(nameLc === zoneNameLc) return true;
-      const groupLc = String(tourDisplayGroup(name)||'').toLowerCase();
-      return groupLc === zoneNameLc;
-    };
-    const tourKeys = Object.keys(tourMap).filter(matchesZone);
-    // Fallback: nothing in tourMap matches yet (nobody bought a Dunes
-    // tour this period). Attach the whole zone cost to any menu tour
-    // in the zone so the spend still shows up somewhere — otherwise the
-    // van cost silently vanishes for a period.
-    if(!tourKeys.length){
-      const menuMatch = currentTourItems().find(matchesZone);
-      if(menuMatch){
-        tourMap[menuMatch] = tourMap[menuMatch] || blankTour(menuMatch);
-        tourMap[menuMatch].costLocal += z.costLocal;
-        tourMap[menuMatch].costEur += z.costEur;
-      }
-      return;
-    }
-    const totalGuests = tourKeys.reduce((s,k) => s + (tourMap[k].qty||0), 0);
-    if(totalGuests <= 0){
-      // Tours exist in tourMap (revenue was posted) but qty is 0 across
-      // the board — dump on the first one so the cost is visible.
-      const k = tourKeys[0];
-      tourMap[k].costLocal += z.costLocal;
-      tourMap[k].costEur += z.costEur;
-      return;
-    }
-    const perGuestLocal = z.costLocal / totalGuests;
-    const perGuestEur = z.costEur / totalGuests;
-    tourKeys.forEach(k => {
-      const guests = tourMap[k].qty || 0;
-      tourMap[k].costLocal += guests * perGuestLocal;
-      tourMap[k].costEur += guests * perGuestEur;
-    });
-  });
-  // ── Legacy linkedItem-based transport rollup ──────────────────────
-  // Still used for transport rows that carry a specific linkedItem (a
-  // single-tour van or a preset with a linkedTour set). Rows migrated
-  // to a zone (zone_id set + linkedItem cleared) fall out of this loop
-  // naturally because candidates resolves to [].
+  // ── Transport rollup: group by linked_item, distribute by paying guests ──
+  // Unified model: every Transport row carries the subcategory in
+  // linked_item (e.g. "Dunes", "Paradise Valley", "Souk Tour", "Airport",
+  // "Transport Surf Lesson"). The aggregator resolves that subcategory
+  // to one or more tours via linkedTransportTours() — direct name match,
+  // display-group match, preset.linkedTour, or the TRANSPORT_TOUR_COST_MAP.
+  // The cost then splits WEIGHTED BY PAYING-GUEST COUNT across the
+  // matched tours: the shared "Dunes" van absorbs into Sandboarding,
+  // Camel Ride and Quad Bike proportional to how many guests each ran.
   expenses.filter(x=>x.businessArea==='Transport').forEach(x=>{
     // Per-entry override (set via the Transport quick-add form's linked-tour
     // dropdown) wins over the preset's default linkedTour. Useful when a
@@ -5183,20 +5119,36 @@ function renderOverview(){
     if(!validInMenuOrTourMap.length) return;
     const ranThisPeriod = validInMenuOrTourMap.filter(t => (tourMap[t]?.qty||0) > 0);
     const targets = ranThisPeriod.length ? ranThisPeriod : [validInMenuOrTourMap[0]];
-    // Split the transport cost equally across all targets. With one
-    // target the full cost lands there (single-tour van). With multiple
-    // the cost divides — e.g., a Dunes van shared by Camel Ride + Quad
-    // Bike gives each tour half the transport cost.
-    const shareLocal = entryLocalDisplayAmount(x) / targets.length;
-    const shareEur = entryEurAmount(x) / targets.length;
-    targets.forEach(t => {
-      tourMap[t] = tourMap[t] || blankTour(t);
-      tourMap[t].costLocal += shareLocal;
-      tourMap[t].costEur += shareEur;
-      // Transport rows are never comps (van cost is the same whether the
-      // seat carries a paying guest or a staff comp), so compCostLocal/Eur
-      // stay untouched here.
-    });
+    const rowLocal = entryLocalDisplayAmount(x);
+    const rowEur = entryEurAmount(x);
+    // Weight by paying-guest count when the transport is shared across
+    // multiple tours (e.g., one "Dunes" van absorbed into Sandboarding,
+    // Camel Ride and Quad Bike by how many pagantes each put in the
+    // van). With a single target the full cost lands there. If nobody
+    // paid a matched tour this period we fall back to an equal split so
+    // the cost never silently vanishes.
+    const totalGuests = targets.reduce((s, t) => s + (tourMap[t]?.qty || 0), 0);
+    if(totalGuests > 0){
+      const perGuestLocal = rowLocal / totalGuests;
+      const perGuestEur = rowEur / totalGuests;
+      targets.forEach(t => {
+        tourMap[t] = tourMap[t] || blankTour(t);
+        const guests = tourMap[t].qty || 0;
+        tourMap[t].costLocal += guests * perGuestLocal;
+        tourMap[t].costEur += guests * perGuestEur;
+      });
+    } else {
+      const shareLocal = rowLocal / targets.length;
+      const shareEur = rowEur / targets.length;
+      targets.forEach(t => {
+        tourMap[t] = tourMap[t] || blankTour(t);
+        tourMap[t].costLocal += shareLocal;
+        tourMap[t].costEur += shareEur;
+      });
+    }
+    // Transport rows are never comps (van cost is the same whether the
+    // seat carries a paying guest or a staff comp), so compCostLocal/Eur
+    // stay untouched here.
   });
   // Consolidate sub-tour cards by activity. Tours whose names follow the
   // pattern "<Activity> — <Variant>" (em-dash or " - ") are merged into a
