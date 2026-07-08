@@ -10,8 +10,12 @@
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--ink);min-height:100vh}
 header{background:var(--navy);color:#fff;padding:0 24px;display:flex;align-items:center;justify-content:space-between;height:60px;position:sticky;top:0;z-index:100;box-shadow:0 2px 20px rgba(0,0,0,.25)}
-.brand{font-family:'DM Serif Display',serif;font-size:22px}
-.brand-sub{font-size:11px;color:#7aabcc;font-weight:700;letter-spacing:.15em;text-transform:uppercase;margin-left:12px}
+.brand-home{display:flex;align-items:center;gap:14px;color:#fff;text-decoration:none;padding:6px 10px;border-radius:8px;transition:background .15s}
+.brand-home:hover{background:rgba(255,255,255,.08)}
+.brand-logo{display:flex;align-items:center;justify-content:flex-start;width:110px;height:26px;flex-shrink:0}
+.brand-logo svg{height:26px;width:auto;display:block}
+.brand-sub{font-size:11px;color:#7aabcc;font-weight:700;letter-spacing:.15em;text-transform:uppercase;border-left:1px solid rgba(255,255,255,.15);padding-left:14px}
+.back-hint{font-size:11px;color:#7aabcc;margin-right:auto;padding-left:14px}
 .user-badge{font-size:12px;color:#bdd4e8;background:rgba(255,255,255,.08);padding:6px 12px;border-radius:20px}
 main{max-width:1400px;margin:0 auto;padding:32px 48px}
 .gate-screen{max-width:520px;margin:80px auto;background:#fff;border-radius:var(--r);padding:48px;border:1px solid var(--border);box-shadow:var(--sh);text-align:center}
@@ -91,7 +95,24 @@ td.loc-name{font-weight:700;color:var(--navy)}
 <body>
 
 <header>
-  <div><span class="brand">Gota Dagua</span><span class="brand-sub">HQ</span></div>
+  <a class="brand-home" href="/" title="Back to hub">
+    <div class="brand-logo">
+      <svg viewBox="0 0 197.4 91" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <path fill="#fff4d5" d="M61.7,51.9c-.4-9-5.5-16.5-9.7-24.1-2.9-4.8-5.3-9.8-9.3-13.9-3.9-4.4-6.5-9.8-10.8-13.9C19.2,16.6-.5,39.9,0,61.9c9.4-7.9,20.1-17.7,33.1-17.8,3,0,7.2,0,9.5,2.2,1.7,1.7,3.2,4.2,2,6.5-.3.5-1.9,2.7-2.3,2.9-12.9,7.4-20.3,18.6-16.5,33.7,3.1,1.3,8,1,11.1-.3,2.7-.3,5.1-1.3,7.5-2.5,8.7-2.9,14.5-11.1,15.5-20.1,1.2-4.7,2.1-9.7,1.8-14.6h0Z"/>
+        <path fill="#fff4d5" d="M69.7,90.6l-.3-1.9c-.7-5.9-.5-11.9-.4-17.9,0-6.7-.3-13.7,0-20.3v-2.3c.5,0,1.1,0,1.7,0,3.3-.3,6.9-.3,10.2,0,.7,0,1.7,0,2.4,0,1.5.3,4,2.2,5,3.3,2.2,2.7,4.9,8.2,5.5,11.7,1.1,7.7-1.8,18.8-6.7,24.8-.4.5-1.4,1.9-1.7,2.1-.2,0-1.5.4-1.9.4-3.3.5-13.7,0-13.7,0h0v.2ZM77.2,61.3v.8c.4,4.6,0,9.3.3,13.9,0,.9-.3,1.7.9,1.8,2.2.3,4.1-.4,5.3-2.3,2.4-3.5,2.3-5.9,1.4-9.9-.3-1.1-1-2.6-1.7-3.5-.8-1-1.4-.8-2.5-.9-.2,0-.3,0-.6,0-1.1,0-2.1,0-3.3,0h.2Z"/>
+        <path fill="#fff4d5" d="M124.1.2c2.7,0,4.5.8,7,1.9,6.3,2.9,4.6,10.5,5.1,16.2.5,6.7.9,13.3-1.7,19.7-.9,2.1-3.1,4.1-5.4,4.5-3.5.5-6.3,1-9.8.3-5.6-1.2-7.1-5.7-7.5-10.9-.3-3.7-.4-7.5-.7-11.3-.3-3.5.3-9.2,1.1-12.7,1.5-6.5,6.1-7.6,12.1-7.7h-.2ZM124.1,8.4c-1.4.1-2.7.7-3.7,1.7-.9.8-2.1,3.8-2.4,5-1.1,4.5-.7,9.9.4,14.5.5,2.3,1.9,5.4,4.6,5.7,1.5,0,2.7-.3,3.9-1.1,2-1.4,2-4.9,2.1-7.1.1-1.4.2-2.7.3-4.1,0-1.7,0-3.5-.1-5.1-.3-2.5-.9-7.1-3.1-8.6-.5-.3-1.3-.7-1.9-.7h0v-.2Z"/>
+        <path fill="#fff4d5" d="M163.1,48.3c.2-.3,4.1-.3,4.3-.3h3.1v10.8c-.1,5.1-.9,10.1-.7,15.2.1,3.2-.2,5.8-1.1,8.9-.8,2.9-1.7,5.4-4.6,6.8-4.5,2.3-10,1.4-14.4-.9-1.1-.6-2.5-2.7-3-3.8-1.9-4.6-1.2-9.7-1-14.4.1-3.2.4-12.1.4-13.7s.1-6.4.1-8.5,1.5-.3,1.8-.2c.3,0,3.4,0,4.5,0,.2,0,.3,0,.3.2v6.1c-.1,5.9-.1,11.9.1,17.9.1,2.4.3,7.4,1.9,9.3.2.2.6.7.8.7.3,0,1.8.3,2.2.3s2.5-1,2.8-1.3c.1,0,.7-1.6.8-1.9.9-2.8.7-5.9.8-8.7.1-4,.1-7.9.4-11.9.1-1.9.3-9.5.3-10.5h0l.2-.2Z"/>
+        <path fill="#fff4d5" d="M176.3.4c.3,1.1.2,2.4.5,3.5.3,1.6.9,3.2,1.2,4.8.9,4.1,1.3,8.3,2.3,12.3.5,2.2,1.3,4.5,1.9,6.7,1.3,4.6,2.3,9.3,3.4,13.9.1.7.3,1,.5,1.6h-8.5c-.1-1.3-.5-2.6-.9-3.9-.3-1.3-.5-2.8-.9-4.1-.3-.9-.5-1.4-.7-2.5,0,0-4.1,0-5.3,0h-.2c-.2,1.2-.4,2.2-.6,3.3-.3,1.5-.7,3.1-1.1,4.7-.1.7-.3,1.7-.4,2.5-1,0-8.3-.2-9,0-.1-.5,5.7-24.6,8.4-36.2.5-2.2.9-4.4,1.4-6.6,0,0,3.5.1,3.7.1h4.3v-.2ZM172.4,11.8q-.3,0-.3.2c-.2.9-.5,1.9-.7,2.8-.5,2.5-.9,5.3-1.3,7.9-.1.9-.3,1.8-.3,2.7,1.6,0,3.2,0,4.7-.3.1-.9-.2-1.7-.3-2.5-.3-2.4-.5-5-1-7.3-.2-1.1-.7-2.3-.9-3.4h.1Z"/>
+        <path fill="#fff4d5" d="M162.6,8.9h-.8c-.9.1-2,.3-2.9.4h-4.3c-.3,1.2-.1,2.5-.1,3.7-.3,8.1,0,16.5-.3,24.6,0,1.7.1,3.3.1,4.9s0,.3.1.5c0,.3-7.8,0-8.5,0,0-.9-.3-4.9-.3-6.1-.4-6.9.5-14.1-.3-21,0-.8-.4-1.8-.5-2.6-.1-1.4,0-2.9,0-4.3v-.2c-.8-.1-1.5,0-2.3,0s-.5-.1-.7-.1c-1.5,0-2.9.1-4.4.1V.5h1.3c3.8-.3,7.5.1,11.3,0,3.5,0,6.5.2,10,.4.5,0,2.4-.1,2.6.1.2.3,0,.6,0,.9,0,1,0,2.1-.1,3.1,0,1.3.3,2.5.1,3.9h0Z"/>
+        <path fill="#fff4d5" d="M109.8,48c.3,1.1.2,2.4.5,3.5.3,1.6.9,3.2,1.2,4.8.9,4.1,1.3,8.3,2.3,12.3.5,2.2,1.3,4.5,1.9,6.7,1.3,4.6,2.3,9.3,3.4,13.9,0,.7.3,1,.5,1.6h-8.5c0-1.3-.5-2.6-.9-3.9-.3-1.3-.5-2.8-.9-4.1-.3-.9-.5-1.4-.7-2.5,0,0-4.1,0-5.3,0h-.2c-.2,1.2-.4,2.2-.6,3.3-.3,1.5-.7,3.1-1.1,4.7,0,.7-.3,1.7-.4,2.5-1,0-8.3-.2-9,0,0-.5,5.7-24.6,8.4-36.2.5-2.2.9-4.4,1.4-6.6,0,0,3.5,0,3.7,0h4.3v-.2ZM105.9,59.5q-.3,0-.3.2c-.2.9-.5,1.9-.7,2.8-.5,2.5-.9,5.3-1.3,7.9,0,.9-.3,1.8-.3,2.7,1.6,0,3.2,0,4.7-.3,0-.9-.2-1.7-.3-2.5-.3-2.4-.5-5-1-7.3-.2-1.1-.7-2.3-.9-3.4h.1Z"/>
+        <path fill="#fff4d5" d="M187.6,48c.3,1.1.2,2.4.5,3.5.3,1.6.9,3.2,1.2,4.8.9,4.1,1.3,8.3,2.3,12.3.5,2.2,1.3,4.5,1.9,6.7,1.3,4.6,2.3,9.3,3.4,13.9.1.7.3,1,.5,1.6h-8.5c-.1-1.3-.5-2.6-.9-3.9-.3-1.3-.5-2.8-.9-4.1-.3-.9-.5-1.4-.7-2.5,0,0-4.1,0-5.3,0h-.2c-.2,1.2-.4,2.2-.6,3.3-.3,1.5-.7,3.1-1.1,4.7-.1.7-.3,1.7-.4,2.5-1,0-8.3-.2-9,0-.1-.5,5.7-24.6,8.4-36.2.5-2.2.9-4.4,1.4-6.6,0,0,3.5,0,3.7,0h4.3v-.2ZM183.7,59.5q-.3,0-.3.2c-.2.9-.5,1.9-.7,2.8-.5,2.5-.9,5.3-1.3,7.9-.1.9-.3,1.8-.3,2.7,1.6,0,3.2,0,4.7-.3.1-.9-.2-1.7-.3-2.5-.3-2.4-.5-5-1-7.3-.2-1.1-.7-2.3-.9-3.4h.1Z"/>
+        <path fill="#fff4d5" d="M108.3,13.8h-6.9c-.2-.5,0-1-.2-1.4,0-.5-1.3-2.3-1.5-2.8-.5-.7-1.4-1.5-2.3-1.5-1.3-.1-3.2,0-4.3.8-.5.3-1.1,2.1-1.4,2.7-1.1,3.3-1.3,6.6-1.5,10.1,0,3.6.2,8.1,1.7,11.4,0,.3.5.9.6,1.1.2.3,1.7,1.1,2,1.1.9,0,2.5,0,3.4-.3.3,0,1.7-1,2-1.3.6-.6,1.3-3.3,1.3-4.2s-.3-1.9-.4-2l-4.5-.2c-.3-1.9,0-3.9,0-5.8v-.2c.9,0,6.9.3,9.1.5h2.2c0,.7.2,1.3.3,2,.4,3.1.4,5.2,0,8.3s-.5,6.5-3.1,8.5c-1.1.9-1.8,1.5-3.3,1.9-1.9.6-2.8.6-4.7.7-1.3,0-2.3,0-3.6-.2-3.9-.8-6.3-2.8-7.5-6.5-2.7-8.8-3.1-18.8-.9-27.8.7-3,1.3-4.6,3.9-6.5,2.1-1.5,7-2.3,9.4-1.6,2.7.8,6.6,2.7,8.1,4.4.7.8,1.5,2.7,1.7,3.8.2,1.2,0,5,0,5h.2Z"/>
+        <path fill="#fff4d5" d="M142.8,61.3h-6.9c-.2-.5-.1-1-.2-1.4-.1-.5-1.3-2.4-1.5-2.8-.5-.7-1.5-1.5-2.3-1.5-1.3,0-3.2,0-4.3.8-.5.3-1.2,2.1-1.4,2.7-1.1,3.3-1.3,6.7-1.5,10.1,0,3.6.2,8.1,1.7,11.5,0,.3.5.9.6,1.1.2.3,1.7,1.1,2,1.1.9,0,2.5,0,3.5-.3.4,0,1.7-1,2-1.3.6-.7,1.3-3.3,1.3-4.3s-.3-1.9-.4-2l-4.5-.2c-.3-1.9-.1-3.9.1-5.8v-.2c.9,0,6.9.3,9.1.5h2.2c0,.7.2,1.3.3,2.1.5,3.1.4,5.2.1,8.3-.3,3.1-.5,6.5-3.1,8.6-1.1.9-1.8,1.5-3.3,1.9-1.9.6-2.8.6-4.7.7-1.3,0-2.3,0-3.6-.2-3.9-.8-6.3-2.8-7.5-6.6-2.7-8.9-3.1-18.9-.9-27.9.8-3.1,1.3-4.7,3.9-6.5,2.1-1.5,7.1-2.3,9.5-1.6,2.7.8,6.6,2.7,8.1,4.4.7.8,1.5,2.8,1.7,3.8.2,1.3,0,5,0,5h0Z"/>
+      </svg>
+    </div>
+    <span class="brand-sub">HQ</span>
+  </a>
+  <span class="back-hint">← click logo for hub</span>
   <div class="user-badge" id="userBadge">…</div>
 </header>
 
@@ -174,7 +195,7 @@ function render(){
     <div class="tabs">
       <button class="tab-btn active" data-tab="overview" onclick="switchTab('overview')">Overview</button>
       <button class="tab-btn" data-tab="invoices" onclick="switchTab('invoices')">Despesas HQ</button>
-      <button class="tab-btn" data-tab="import" onclick="switchTab('import')">Import Bookinglayer</button>
+      <button class="tab-btn" data-tab="import" onclick="switchTab('import')">Import</button>
       <button class="tab-btn" data-tab="profit" onclick="switchTab('profit')">Profit per location</button>
     </div>
 
@@ -702,6 +723,34 @@ function importTabHtml(){
     <div class="card">
       <div class="card-hdr">
         <div>
+          <div class="card-title">Import Excel history · Despesas HQ</div>
+          <div class="card-hint">Paste your master expenses CSV (GENERAL EXPENSES) — headers exactly as your Google Sheet</div>
+        </div>
+        <div class="card-hint">Safe: only inserts new rows, never touches existing data</div>
+      </div>
+      <div class="card-body">
+        <textarea id="excelBox" placeholder="Location,Invoice Date,Company Name,Description,Tax Reg. Num.,Amount,Currency Converter,Payment Type,Invoice Number,Category,Duplicate check
+Surfcamp PT,14/12/2025,auchan,,,€20.09,,Cash,35710152025120001/000520,Food,FALSE
+Morroco,29/12/2025,IKEA,,,€761.08,,Card,,Setup,FALSE"></textarea>
+        <div class="hint">
+          <b>Location</b> maps: Surfcamp PT → portugal · Morroco/Morocco → morocco · Surfschool → surf-school · Sri Lanka → sri-lanka · Junior Camp → junior-camp · General → general.<br>
+          <b>Invoice Date</b>: DD/MM/YYYY.<br>
+          <b>Amount</b>: <code>€2,232.07</code> or <code>2232.07</code>. Currency assumed EUR unless <b>Currency Converter</b> is filled.<br>
+          <b>Category</b>: case-insensitive match to registered categories. Typo <code>Utulities</code> auto-fixed to <b>Utilities</b>.<br>
+          <b>Duplicate check</b>: TRUE marks the row for review (still imported). Rows already in the database (same invoice#, amount, company, date) are skipped.
+        </div>
+        <div class="btn-row">
+          <button class="btn" onclick="previewExcel()">Preview</button>
+          <button class="btn btn-ghost" onclick="$('excelBox').value=''">Clear</button>
+          <span id="excelToast"></span>
+        </div>
+        <div id="excelPreview" style="margin-top:16px"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-hdr">
+        <div>
           <div class="card-title">Import Bookinglayer revenue</div>
           <div class="card-hint">Paste your CSV export — one row per location · period · category</div>
         </div>
@@ -727,6 +776,246 @@ Sri Lanka,2026-07,accommodation,8900.00,32,64"></textarea>
       </div>
     </div>
   `;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//   EXCEL HISTORY IMPORT (master file with 11 columns)
+// ═══════════════════════════════════════════════════════════════════
+const EXCEL_LOCATION_MAP = {
+  'surfcamp pt':'portugal', 'surfcamppt':'portugal', 'portugal':'portugal',
+  'morocco':'morocco', 'morroco':'morocco',  // user's spelling in the sheet
+  'surfschool':'surf-school', 'surf school':'surf-school', 'surf-school':'surf-school',
+  'sri lanka':'sri-lanka', 'srilanka':'sri-lanka', 'sri-lanka':'sri-lanka',
+  'junior camp':'junior-camp', 'juniorcamp':'junior-camp', 'junior-camp':'junior-camp',
+  'general':'general', 'hq':'general'
+};
+const EXCEL_CATEGORY_FIXES = {
+  'utulities':'Utilities'   // known typo
+};
+
+function parseExcelAmount(cell){
+  if (!cell) return null;
+  // Strip €, spaces, thousands commas (European "€2,232.07" uses . decimal + , thousands)
+  const s = String(cell).replace(/€/g,'').replace(/\s/g,'').replace(/,/g, (m, i, all) => {
+    // Ambiguity: comma could be decimal separator in some locales. In Miguel's sheet,
+    // format is always €X,XXX.XX so comma = thousands. Strip all commas.
+    return '';
+  });
+  const n = Number(s);
+  return isNaN(n) ? null : n;
+}
+
+function parseExcelDate(cell){
+  // Expected DD/MM/YYYY. Return YYYY-MM-DD or null.
+  const s = String(cell||'').trim();
+  const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!m) return null;
+  const [_, d, mo, y] = m;
+  return `${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+}
+
+// CSV row splitter that honors "quoted, cells" — the sheet exports amounts like
+// "€2,232.07" wrapped in quotes because of the internal comma.
+function splitCsvRow(line){
+  const out = [];
+  let cur = '', inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQ && line[i+1] === '"') { cur += '"'; i++; }
+      else inQ = !inQ;
+    } else if (ch === ',' && !inQ) {
+      out.push(cur); cur = '';
+    } else {
+      cur += ch;
+    }
+  }
+  out.push(cur);
+  return out.map(c => c.trim());
+}
+
+async function previewExcel(){
+  const raw = ($('excelBox').value || '').trim();
+  const preview = $('excelPreview');
+  if (!raw) { preview.innerHTML = '<div class="toast toast-err">Paste your CSV first</div>'; return; }
+
+  const lines = raw.split(/\r?\n/).filter(l => l.trim().length);
+  if (lines.length < 2) { preview.innerHTML = '<div class="toast toast-err">Need header + at least one data row</div>'; return; }
+
+  const header = splitCsvRow(lines[0]).map(h => h.toLowerCase());
+  const idx = {
+    location:    header.findIndex(h => h.includes('location')),
+    date:        header.findIndex(h => h.includes('invoice date') || h === 'date'),
+    company:     header.findIndex(h => h.includes('company')),
+    description: header.findIndex(h => h.includes('description')),
+    nif:         header.findIndex(h => h.includes('tax reg') || h === 'nif'),
+    amount:      header.findIndex(h => h === 'amount'),
+    currency:    header.findIndex(h => h.includes('currency')),
+    payment:     header.findIndex(h => h.includes('payment')),
+    invnum:      header.findIndex(h => h.includes('invoice number')),
+    category:    header.findIndex(h => h === 'category'),
+    dup:         header.findIndex(h => h.includes('duplicate'))
+  };
+  const missing = ['location','date','company','amount','payment','category'].filter(k => idx[k] < 0);
+  if (missing.length) {
+    preview.innerHTML = `<div class="toast toast-err">Header missing required columns: ${missing.join(', ')}</div>`;
+    return;
+  }
+
+  const catByName = new Map(CATEGORIES.map(c => [c.name.toLowerCase(), c]));
+  const applyCatFix = (raw) => {
+    const key = String(raw||'').trim().toLowerCase();
+    const fixed = EXCEL_CATEGORY_FIXES[key] || raw;
+    return String(fixed||'').trim();
+  };
+
+  const rows = [];
+  const errors = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cells = splitCsvRow(lines[i]);
+    if (cells.length < 3) continue;
+    const rowNum = i + 1;
+    const rawLoc = (cells[idx.location]||'').trim();
+    const rawDate = (cells[idx.date]||'').trim();
+    const rawAmt = (cells[idx.amount]||'').trim();
+    const rawCat = applyCatFix(cells[idx.category]);
+
+    const location_slug = EXCEL_LOCATION_MAP[rawLoc.toLowerCase()];
+    const invoice_date  = parseExcelDate(rawDate);
+    const amount        = parseExcelAmount(rawAmt);
+    const category      = catByName.get(String(rawCat).toLowerCase());
+    const rowErrors = [];
+    if (!location_slug) rowErrors.push(`unknown location "${rawLoc}"`);
+    if (!invoice_date)  rowErrors.push(`bad date "${rawDate}"`);
+    if (!amount || amount <= 0) rowErrors.push(`bad amount "${rawAmt}"`);
+    if (!category)      rowErrors.push(`unknown category "${rawCat}"`);
+
+    const currency = (idx.currency >= 0 && cells[idx.currency]) ? String(cells[idx.currency]).trim().toUpperCase() : 'EUR';
+    const fx_rate = currency === 'EUR' ? 1 : null;
+    const record = {
+      _row: rowNum,
+      _errors: rowErrors,
+      location_slug: location_slug || null,
+      invoice_date: invoice_date || null,
+      company: (cells[idx.company]||'').trim(),
+      description: idx.description >= 0 ? (cells[idx.description]||'').trim() || null : null,
+      supplier_nif: idx.nif >= 0 ? (cells[idx.nif]||'').trim() || null : null,
+      amount: amount || 0,
+      currency: currency || 'EUR',
+      fx_rate,
+      amount_eur: currency === 'EUR' ? (amount||0) : null,
+      payment_type: mapPaymentType((cells[idx.payment]||'').trim()),
+      invoice_number: idx.invnum >= 0 ? (cells[idx.invnum]||'').trim() || null : null,
+      category_id: category?.id || null,
+      category_name: category?.name || rawCat || null,
+      needs_review: idx.dup >= 0 ? String(cells[idx.dup]||'').trim().toUpperCase() === 'TRUE' : false
+    };
+    if (currency !== 'EUR') rowErrors.push(`non-EUR row (${currency}) needs manual FX — skipped`);
+    rows.push(record);
+    if (rowErrors.length) errors.push({row: rowNum, errors: rowErrors, company: record.company});
+  }
+
+  // Dedup against existing DB rows. Key: invoice_number + amount + company + date.
+  // Fetch existing signatures once and compare in-memory (fast for a few hundred rows).
+  const validRows = rows.filter(r => !r._errors.length);
+  const { data: existing } = await sb.from('hq_invoices')
+    .select('invoice_number, amount, company, invoice_date');
+  const existingKeys = new Set((existing||[]).map(r => sigKey(r)));
+
+  const dupRows = [];
+  const newRows = [];
+  for (const r of validRows) {
+    if (existingKeys.has(sigKey(r))) dupRows.push(r);
+    else newRows.push(r);
+  }
+
+  window.__excelImportBuffer = newRows;   // for the Import step
+
+  preview.innerHTML = `
+    <div class="summary-grid">
+      <div class="summary-box"><div class="summary-lbl">Rows parsed</div><div class="summary-val">${rows.length}</div></div>
+      <div class="summary-box" style="border-left:4px solid var(--green)"><div class="summary-lbl">New to import</div><div class="summary-val">${newRows.length}</div></div>
+      <div class="summary-box" style="border-left:4px solid var(--amber)"><div class="summary-lbl">Skipped (already in DB)</div><div class="summary-val">${dupRows.length}</div></div>
+      <div class="summary-box" style="border-left:4px solid var(--red)"><div class="summary-lbl">Errors</div><div class="summary-val">${errors.length}</div></div>
+    </div>
+
+    ${errors.length ? `
+      <div class="toast toast-warn" style="margin-bottom:14px"><b>${errors.length} row(s) with errors — will be skipped:</b>
+        <ul style="margin-top:6px;margin-left:20px;font-weight:400;line-height:1.7">
+          ${errors.slice(0, 20).map(e => `<li>Row ${e.row} (${escapeHtml(e.company||'?')}): ${e.errors.join(' · ')}</li>`).join('')}
+          ${errors.length > 20 ? `<li>… and ${errors.length - 20} more</li>` : ''}
+        </ul>
+      </div>` : ''}
+
+    <div style="overflow-x:auto;max-height:380px;overflow-y:auto;border:1px solid var(--border);border-radius:8px">
+      <table style="min-width:900px">
+        <thead style="position:sticky;top:0"><tr>
+          <th>#</th><th>Date</th><th>Location</th><th>Company</th><th>Category</th>
+          <th class="r">Amount</th><th>Pay</th><th>Inv #</th><th>Status</th>
+        </tr></thead>
+        <tbody>
+          ${newRows.slice(0, 40).map(r => `<tr>
+            <td>${r._row}</td><td>${r.invoice_date}</td><td>${locLabel(r.location_slug)}</td>
+            <td>${escapeHtml(r.company)}</td><td>${escapeHtml(r.category_name)}</td>
+            <td class="r">${r.amount.toFixed(2)} ${r.currency}</td>
+            <td>${escapeHtml(r.payment_type||'')}</td><td style="font-family:'DM Mono',monospace;font-size:11px">${escapeHtml(r.invoice_number||'—')}</td>
+            <td><span class="chip chip-normal">new</span></td>
+          </tr>`).join('')}
+          ${newRows.length > 40 ? `<tr><td colspan="9" style="text-align:center;color:var(--muted);font-style:italic">… and ${newRows.length - 40} more rows to import</td></tr>` : ''}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="btn-row" style="margin-top:16px">
+      <button class="btn" onclick="commitExcelImport()" ${newRows.length ? '' : 'disabled'}>Import ${newRows.length} new row(s)</button>
+      <button class="btn btn-ghost" onclick="$('excelPreview').innerHTML=''">Cancel</button>
+    </div>
+    <div class="hint" style="margin-top:8px">Non-EUR rows are skipped in this pass — add them manually via the Despesas HQ form so you can set the FX rate correctly.</div>
+  `;
+}
+
+function sigKey(r){
+  const num = String(r.invoice_number||'').trim().toLowerCase();
+  const co  = String(r.company||'').trim().toLowerCase();
+  const amt = Number(r.amount||0).toFixed(2);
+  const dt  = String(r.invoice_date||'').trim();
+  return `${num}|${amt}|${co}|${dt}`;
+}
+
+function mapPaymentType(raw){
+  const s = String(raw||'').trim().toLowerCase();
+  if (s.includes('bank') || s.includes('transfer')) return 'Bank Transfer';
+  if (s.includes('card')) return 'Card';
+  if (s.includes('cash')) return 'Cash';
+  return 'Other';
+}
+
+async function commitExcelImport(){
+  const rows = window.__excelImportBuffer || [];
+  if (!rows.length) { toast('excelToast','err','Nothing to import — run Preview first'); return; }
+
+  // Strip internal preview keys, add created_by, batch insert.
+  const clean = rows.map(r => {
+    const { _row, _errors, ...rest } = r;
+    return { ...rest, created_by: CURRENT_USER?.id || null };
+  });
+
+  const BATCH = 100;
+  let inserted = 0;
+  for (let i = 0; i < clean.length; i += BATCH) {
+    const chunk = clean.slice(i, i + BATCH);
+    const { error } = await sb.from('hq_invoices').insert(chunk);
+    if (error) {
+      toast('excelToast','err',`Failed at row batch ${i}-${i+chunk.length}: ${error.message}`);
+      return;
+    }
+    inserted += chunk.length;
+  }
+  window.__excelImportBuffer = [];
+  toast('excelToast','ok',`Imported ${inserted} row(s)`);
+  $('excelPreview').innerHTML = `<div class="toast toast-ok" style="margin-top:12px">Import complete · ${inserted} row(s) added to Despesas HQ.</div>`;
+  renderInvoiceList();
+  renderOverview();
 }
 
 async function importCsv(){
