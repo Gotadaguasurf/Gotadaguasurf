@@ -551,6 +551,12 @@ header{display:none}
             </label>
             <div style="font-size:11px;color:var(--muted);margin-top:4px;margin-left:24px">When you log a Transport expense, this tour will appear in the linked-item picker so the cost ties back to its margin.</div>
           </div>
+          <div class="mfield" id="menuItemTransportAssocWrap" style="display:none">
+            <label>Transporte associado <span style="color:var(--muted);font-weight:400;font-size:11px">(optional)</span></label>
+            <input type="text" id="menuItemTransportAssoc" list="menuItemTransportAssocList" placeholder="e.g. Dunes, Paradise Valley, Souk Tour">
+            <datalist id="menuItemTransportAssocList"></datalist>
+            <div style="font-size:11px;color:var(--muted);margin-top:4px">Which Transport subcategory pays for this tour. Multiple tours pointing to the same subcategory share the van cost by paying-guest count. Leave blank to fall back to auto-matching by tour name.</div>
+          </div>
           <div class="menu-inline-actions">
             <button class="mbtn mbtn-p" id="menuItemSaveBtn" onclick="saveMenuItem()">Add item</button>
             <button class="mbtn mbtn-s" onclick="clearMenuItemForm()">Clear</button>
@@ -668,10 +674,14 @@ function normalizeMenu(menu){
         // Carry-through fields that the normalizer used to strip:
         //  - hasTransport: "this tour includes a transport leg" flag
         //  - costPerGuest: what we pay the operator per guest
-        // Both must survive the normalize pass or they're lost on every
-        // save/hydrate roundtrip.
+        //  - transportAssoc: Transport subcategory this tour uses (the
+        //    Overview aggregator groups tours sharing the same value and
+        //    splits van cost proportional to paying guests)
+        // All three must survive the normalize pass or they're lost on
+        // every save/hydrate roundtrip.
         hasTransport:!!item?.hasTransport,
-        costPerGuest:Number(item?.costPerGuest||0)||0
+        costPerGuest:Number(item?.costPerGuest||0)||0,
+        transportAssoc:String(item?.transportAssoc||'').trim()
       })).filter(item=>item.n&&Number.isFinite(item.p));
       cleaned[catName]=safeItems.map(item=>({
         ...(item.id?{id:item.id}:{}),
@@ -682,7 +692,8 @@ function normalizeMenu(menu){
         ...(Number.isFinite(item.stk)&&item.stk>=0?{stk:Math.max(0,Math.round(item.stk))}:{}),
         ...(item.sortOrder?{sortOrder:item.sortOrder}:{}),
         ...(item.hasTransport?{hasTransport:true}:{}),
-        ...(item.costPerGuest>0?{costPerGuest:item.costPerGuest}:{})
+        ...(item.costPerGuest>0?{costPerGuest:item.costPerGuest}:{}),
+        ...(item.transportAssoc?{transportAssoc:item.transportAssoc}:{})
       }));
     });
   }
@@ -1199,6 +1210,7 @@ function menuRowsToState(rows){
       ...(decoded.d?{d:decoded.d}:{}),
       ...(decoded.hasTransport?{hasTransport:true}:{}),
       ...(decoded.costPerGuest>0?{costPerGuest:decoded.costPerGuest}:{}),
+      ...(decoded.transportAssoc?{transportAssoc:decoded.transportAssoc}:{}),
       ...(row.stock_qty!=null?{stk:Number(row.stock_qty)}:{}),
       sortOrder:Number(row.sort_order||0)
     });
@@ -1209,29 +1221,37 @@ function menuRowsToState(rows){
   });
   return normalizeMenu(grouped);
 }
-// Tours can carry extra fields (hasTransport, costPerGuest) that don't fit
-// the shared location_menus schema. Encode them into the description with
-// inline markers. encode/decode below keep that detail out of the rest of
-// the menu code and the UI.
+// Tours can carry extra fields (hasTransport, costPerGuest, transportAssoc)
+// that don't fit the shared location_menus schema. Encode them into the
+// description with inline markers. encode/decode below keep that detail
+// out of the rest of the menu code and the UI.
 //   [TRANSPORT]      → hasTransport flag (presence = true)
 //   [COST:N]         → costPerGuest number
-// Both can coexist; they're stripped before the user-typed description.
+//   [TA:name]        → transportAssoc — Transport subcategory that pays
+//                      for this tour; the Overview aggregator groups
+//                      tours sharing the same value and splits van cost
+//                      proportional to paying-guest count.
+// All can coexist; they're stripped before the user-typed description.
 const TRANSPORT_DESC_MARKER='[TRANSPORT]';
 const COST_DESC_MARKER_RE=/\[COST:([0-9.]+)\]/;
+const TA_DESC_MARKER_RE=/\[TA:([^\]]+)\]/;
 function encodeMenuDescription(item){
   const userDesc=String(item?.d||'').trim();
   const markers=[];
   if(item?.hasTransport) markers.push(TRANSPORT_DESC_MARKER);
   const cost=Number(item?.costPerGuest||0);
   if(cost>0) markers.push(`[COST:${cost}]`);
+  const ta=String(item?.transportAssoc||'').trim();
+  if(ta) markers.push(`[TA:${ta}]`);
   if(!markers.length) return userDesc||null;
   return userDesc?`${markers.join(' ')} ${userDesc}`:markers.join(' ');
 }
 function decodeMenuDescription(raw){
   let s=String(raw||'');
-  if(!s) return {d:null,hasTransport:false,costPerGuest:0};
+  if(!s) return {d:null,hasTransport:false,costPerGuest:0,transportAssoc:''};
   let hasTransport=false;
   let costPerGuest=0;
+  let transportAssoc='';
   // Strip markers from the start in any order; stop at the first chunk
   // that isn't a known marker.
   while(true){
@@ -1247,9 +1267,15 @@ function decodeMenuDescription(raw){
       s=trimmed.slice(costMatch[0].length);
       continue;
     }
+    const taMatch=trimmed.match(/^\[TA:([^\]]+)\]/);
+    if(taMatch){
+      transportAssoc=String(taMatch[1]||'').trim();
+      s=trimmed.slice(taMatch[0].length);
+      continue;
+    }
     break;
   }
-  return {d:s.trim()||null,hasTransport,costPerGuest};
+  return {d:s.trim()||null,hasTransport,costPerGuest,transportAssoc};
 }
 function menuStateToRows(locationId){
   return getCats().flatMap((cat,catIndex)=>(MENU[cat]||[]).map((item,itemIndex)=>({
@@ -3856,15 +3882,30 @@ function deleteMenuCategory(){
 }
 
 function refreshMenuItemTransportToggle(){
-  // The "has transport" checkbox + cost-per-guest field only make sense
-  // for Tours. Hide them for every other category so the Drinks / Merch
-  // / Food forms stay clean.
+  // The "has transport" checkbox + cost-per-guest field + transport-
+  // subcategory picker only make sense for Tours. Hide them for every
+  // other category so the Drinks / Merch / Food forms stay clean.
   const wrap=document.getElementById('menuItemHasTransportWrap');
   if(wrap) wrap.style.display=menuEditCat==='Tours'?'block':'none';
   const costWrap=document.getElementById('menuItemCostPerGuestWrap');
   if(costWrap) costWrap.style.display=menuEditCat==='Tours'?'block':'none';
   const costLbl=document.getElementById('menuItemCostPerGuestLabel');
   if(costLbl) costLbl.textContent=`Cost per guest (${LOCAL_CURRENCY||'LKR'})`;
+  const assocWrap=document.getElementById('menuItemTransportAssocWrap');
+  if(assocWrap) assocWrap.style.display=menuEditCat==='Tours'?'block':'none';
+  // Populate the datalist with every unique Transport linked_item name
+  // seen in the ledger this session, so the user can pick from what
+  // already exists instead of typing free-text. Fresh camps get the
+  // static base list until they start logging transport.
+  const list=document.getElementById('menuItemTransportAssocList');
+  if(list && Array.isArray(window.S?.ledger)){
+    const seen=new Set();
+    (window.TRANSPORT_LINKED_ITEMS_BASE||['Airport','Transport Surf Lesson']).forEach(n=>seen.add(n));
+    window.S.ledger.forEach(e=>{
+      if(e && e.businessArea==='Transport' && e.linkedItem) seen.add(String(e.linkedItem).trim());
+    });
+    list.innerHTML=Array.from(seen).filter(Boolean).sort().map(n=>`<option value="${n}"></option>`).join('');
+  }
 }
 
 function clearMenuItemForm(){
@@ -3884,6 +3925,8 @@ function clearMenuItemForm(){
   if(desc) desc.value='';
   if(hasTransport) hasTransport.checked=false;
   if(costPerGuest) costPerGuest.value='';
+  const transportAssoc=document.getElementById('menuItemTransportAssoc');
+  if(transportAssoc) transportAssoc.value='';
   if(btn) btn.textContent='Add item';
   refreshMenuItemTransportToggle();
 }
@@ -3901,6 +3944,8 @@ function editMenuItem(idx){
   if(hasTransport) hasTransport.checked=!!item.hasTransport;
   const costPerGuest=document.getElementById('menuItemCostPerGuest');
   if(costPerGuest) costPerGuest.value=Number(item.costPerGuest||0)||'';
+  const transportAssoc=document.getElementById('menuItemTransportAssoc');
+  if(transportAssoc) transportAssoc.value=String(item.transportAssoc||'').trim();
   refreshMenuItemTransportToggle();
   document.getElementById('menuItemSaveBtn').textContent='Save item';
 }
@@ -3917,8 +3962,11 @@ function saveMenuItem(){
   const costPerGuest=menuEditCat==='Tours'
     ? (parseFloat(document.getElementById('menuItemCostPerGuest')?.value||'0')||0)
     : 0;
+  const transportAssoc=menuEditCat==='Tours'
+    ? (document.getElementById('menuItemTransportAssoc')?.value||'').trim()
+    : '';
   if(!name||!price){toast('Name and price are required');return;}
-  const payload={n:name,p:price,...(staffPrice>0?{sp:staffPrice}:{}),...(desc?{d:desc}:{}),...(Number.isFinite(stock)?{stk:stock}:{}),...(hasTransport?{hasTransport:true}:{}),...(costPerGuest>0?{costPerGuest}:{})};
+  const payload={n:name,p:price,...(staffPrice>0?{sp:staffPrice}:{}),...(desc?{d:desc}:{}),...(Number.isFinite(stock)?{stk:stock}:{}),...(hasTransport?{hasTransport:true}:{}),...(costPerGuest>0?{costPerGuest}:{}),...(transportAssoc?{transportAssoc}:{})};
   const isNew=menuEditIndex===null;
   if(isNew) MENU[menuEditCat].push(payload);
   else MENU[menuEditCat][menuEditIndex]=payload;
