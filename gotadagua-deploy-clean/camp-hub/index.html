@@ -519,6 +519,12 @@ td.r{text-align:right;font-family:'DM Mono',monospace;font-size:12px}
   </div>
   <div class="nav-actions">
     <span class="save-pill saved" id="savePill" title="Click to retry if failed" onclick="retrySave()"><span class="save-dot"></span><span id="savePillTxt">Saved</span></span>
+    <!-- HQ shortcut: only rendered when the current user has access
+         (owner email bypass OR an active workspace_membership on 'hq').
+         Hidden by default; showHqButtonIfAccessible() flips it on after
+         the auth boot resolves. Prevents ops-camp managers from ever
+         seeing a link they can't open. -->
+    <a class="nav-action-btn" id="hqShortcutBtn" href="/hq/" style="display:none;text-decoration:none"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M3 10 10 3l7 7"/><path d="M5 9v8h10V9"/></svg></span><span>HQ</span></span></a>
     <button class="nav-action-btn" onclick="exportBackup()"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M10 14V4"/><path d="m6.5 7.5 3.5-3.5 3.5 3.5"/><path d="M4 16h12"/></svg></span><span>Export backup</span></span></button>
   </div>
 </nav>
@@ -5299,11 +5305,13 @@ function renderOverview(){
   // rolled into every tour's margin via the aggregator. Showing it here
   // as "no revenue" would flash a huge negative "margin" against the
   // tours' revenue — pure noise for the manager.
-  // Bar is hidden for Morocco — the camp doesn't operate a bar there, so
-  // the card was always €0/€0 noise. Every other location keeps it. This
-  // is a location-specific UX trim, not a data cutoff: any Bar row that
-  // ever landed against Morocco still counts toward Total Spent.
-  const HIDE_BAR=(typeof __HUB_LOCATION_SLUG!=='undefined') && __HUB_LOCATION_SLUG==='morocco';
+  // Bar is hidden for camps that don't operate one (Morocco + Surf
+  // School so far). Sri Lanka HAS a bar → stays visible there. The
+  // card was always €0/€0 noise on the hidden camps. This is a UX
+  // trim, not a data cutoff: any Bar row that ever landed against
+  // these camps still counts toward Total Spent — it just doesn't
+  // get its own idle-zero card.
+  const HIDE_BAR=(typeof __HUB_LOCATION_SLUG!=='undefined') && ['morocco','surf-school'].includes(__HUB_LOCATION_SLUG);
   const profitAreas=[
     ...(HIDE_BAR ? [] : [{icon:'cup',name:'Bar',revenueLocal:areaRevenues.Bar.local,revenueEur:areaRevenues.Bar.eur,costLocal:areaCosts.Bar.local,costEur:areaCosts.Bar.eur}]),
     {icon:'shirt',name:'Merch',revenueLocal:areaRevenues.Merch.local,revenueEur:areaRevenues.Merch.eur,costLocal:merchCogsLocal,costEur:merchCogsEur}
@@ -9287,11 +9295,39 @@ if(CAMP_TAB_ONLY_MODE){
   });
 })();
 
+// Reveals the "HQ" header shortcut when the current user is an owner
+// (email bypass), has platform_role owner/super_admin, or has an active
+// workspace_membership on the 'hq' workspace with can_view. Mirrors the
+// gate in /hq/index.html so the two never disagree.
+async function showHqShortcutIfAccessible(client, session){
+  const btn=document.getElementById('hqShortcutBtn');
+  if(!btn||!client||!session) return;
+  const OWNER_EMAILS_HUB=new Set(['miguel@gotadaguasurf.com']);
+  const email=String(session.user?.email||'').toLowerCase();
+  if(OWNER_EMAILS_HUB.has(email)){ btn.style.display=''; return; }
+  try{
+    const {data:profile}=await client.from('platform_profiles')
+      .select('platform_role').eq('id',session.user.id).maybeSingle();
+    const role=String(profile?.platform_role||'').toLowerCase();
+    if(role==='owner'||role==='super_admin'){ btn.style.display=''; return; }
+    const {data:mem}=await client.from('workspace_memberships')
+      .select('can_view, active, workspaces!inner(slug)')
+      .eq('user_id',session.user.id).eq('active',true)
+      .eq('workspaces.slug','hq').maybeSingle();
+    if(mem && mem.can_view){ btn.style.display=''; }
+  }catch(_e){}
+}
+
 async function requirePlatformSession(){
   const client=getHubSupabaseClient();
   if(!client) return;
   const {data}=await client.auth.getSession();
   if(!data.session){window.location.href='/';return;}
+  // HQ shortcut button — flip on for anyone with owner-tier access.
+  // Runs off the same rules the /hq page uses so the shortcut never
+  // shows a link the user can't actually open. Silent-fail: if the
+  // membership fetch errors we just leave the button hidden.
+  showHqShortcutIfAccessible(client, data.session).catch(()=>{});
   try{
     // CRITICAL ORDER: loadDeletedCampcloseIds() MUST finish before
     // hydrateLedgerFromSupabase(), otherwise the ghost filter inside
