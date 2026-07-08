@@ -1,4 +1,7 @@
 {
+  "redirects": [
+    { "source": "/hq", "destination": "/hq/", "permanent": false }
+  ],
   "headers": [
     {
       "source": "/prices/(.*)",
