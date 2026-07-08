@@ -249,14 +249,14 @@ async function renderOverview(){
 
   body.innerHTML = `<div class="loading">Loading…</div>`;
 
-  const [invRes, blRes, lgRes] = await Promise.all([
+  const [invRes, bkRes, lgRes] = await Promise.all([
     sb.from('hq_invoices').select('location_slug, amount_eur, category_id, invoice_date').gte('invoice_date', start).lt('invoice_date', end),
-    sb.from('bookinglayer_revenue').select('location_id, amount_eur').eq('period_ym', ym),
+    sb.from('bookings').select('location, total, net_amount, pax').eq('month_key', ym),
     sb.from('ledger_entries').select('type, amount_eur, entry_date, paid_from, attributed_location, location_id')
   ]);
 
   const invRows = invRes.data || [];
-  const blRows  = blRes.data  || [];
+  const bkRows  = bkRes.data  || [];
   const lgRows  = (lgRes.data || []).filter(r => String(r.entry_date||'').slice(0,7) === ym);
 
   const personalCatIds = new Set(CATEGORIES.filter(c => c.is_personal).map(c => c.id));
@@ -268,7 +268,8 @@ async function renderOverview(){
   const hqAttribLoc  = hqTotal - hqGeneral;
   const personalTot  = invPersonal.reduce((s,r)=>s+Number(r.amount_eur||0), 0);
 
-  const blTotal      = blRows.reduce((s,r)=>s+Number(r.amount_eur||0), 0);
+  const blTotal      = bkRows.reduce((s,r)=>s+Number(r.net_amount ?? r.total ?? 0), 0);
+  const bkCount      = bkRows.length;
   const localRev     = lgRows.filter(r => r.type==='revenue').reduce((s,r)=>s+Number(r.amount_eur||0), 0);
   const localExp     = lgRows.filter(r => r.type==='expense').reduce((s,r)=>s+Number(r.amount_eur||0), 0);
   const businessProfit = blTotal + localRev - localExp - hqTotal;
@@ -291,8 +292,9 @@ async function renderOverview(){
         <div class="hint" style="margin-top:4px">Excluded from business profit</div>
       </div>
       <div class="summary-box" style="border-left:4px solid var(--green);cursor:pointer" onclick="switchTab('profit')">
-        <div class="summary-lbl">Bookinglayer revenue</div>
+        <div class="summary-lbl">Bookings revenue (net)</div>
         <div class="summary-val">${eur(blTotal)}</div>
+        <div class="hint" style="margin-top:4px">${bkCount} booking(s) — from hub CSV import</div>
       </div>
       <div class="summary-box" style="border-left:4px solid var(--green)">
         <div class="summary-lbl">On-site revenue (camps)</div>
@@ -751,27 +753,17 @@ Morroco,29/12/2025,IKEA,,,€761.08,,Card,,Setup,FALSE"></textarea>
     <div class="card">
       <div class="card-hdr">
         <div>
-          <div class="card-title">Import Bookinglayer revenue</div>
-          <div class="card-hint">Paste your CSV export — one row per location · period · category</div>
+          <div class="card-title">Bookinglayer bookings</div>
+          <div class="card-hint">Imported once at the hub — HQ reads the same data automatically</div>
         </div>
-        <div class="card-hint">Format: <code>location,period,category,amount_eur,bookings,guests</code></div>
       </div>
       <div class="card-body">
-        <textarea id="csvBox" placeholder="location,period,category,amount_eur,bookings,guests
-Morocco,2026-07,accommodation,12500.00,45,89
-Morocco,2026-07,food,3200.00,45,89
-Morocco,2026-07,surf,4800.00,45,89
-Sri Lanka,2026-07,accommodation,8900.00,32,64"></textarea>
-        <div class="hint">
-          <b>location</b>: name (Morocco / Sri Lanka / Portugal / Surf School / Junior Camp) or slug.<br>
-          <b>period</b>: YYYY-MM (e.g. 2026-07).<br>
-          <b>category</b>: one of <code>accommodation · food · surf · yoga · extras · other</code>.<br>
-          <b>amount_eur</b>: revenue in EUR (2 decimals ok).<br>
-          Re-importing the same location/period/category overwrites the previous value.
+        <div class="hint" style="font-size:13px;line-height:1.7">
+          The <b>Import CSV</b> action lives in the top bar of the main hub — it splits the Bookinglayer export by camp, feeds every camp hub and the partners app, and the same rows now flow into HQ's Profit view automatically. No separate import here.
         </div>
         <div class="btn-row">
-          <button class="btn" onclick="importCsv()">Import CSV</button>
-          <span id="importToast"></span>
+          <a href="/?openImport=1" class="btn">Open bookings import at hub →</a>
+          <a href="/" class="btn btn-ghost">Back to hub</a>
         </div>
       </div>
     </div>
@@ -1018,51 +1010,19 @@ async function commitExcelImport(){
   renderOverview();
 }
 
-async function importCsv(){
-  const raw = ($('csvBox').value || '').trim();
-  if (!raw) { toast('importToast','err','Paste some CSV first'); return; }
-  const rows = parseCsv(raw);
-  if (!rows.length) { toast('importToast','err','No valid rows parsed'); return; }
-  const locBySlug = new Map(LOCATIONS.map(l => [String(l.slug||'').toLowerCase(), l.id]));
-  const locByName = new Map(LOCATIONS.map(l => [String(l.name||'').toLowerCase(), l.id]));
-  const resolved = [];
-  const dropped  = [];
-  for (const r of rows) {
-    const key = String(r.location||'').toLowerCase();
-    const location_id = locBySlug.get(key) || locByName.get(key);
-    if (!location_id) { dropped.push(r.location); continue; }
-    resolved.push({
-      location_id, period_ym: r.period, category: r.category,
-      amount_eur: Number(r.amount_eur) || 0,
-      bookings_count: Number(r.bookings) || 0,
-      guests_count: Number(r.guests) || 0,
-      imported_by: CURRENT_USER?.id || null
-    });
-  }
-  if (!resolved.length) { toast('importToast','err','No rows matched a known location. Dropped: '+dropped.join(', ')); return; }
-  const { error } = await sb.from('bookinglayer_revenue')
-    .upsert(resolved, { onConflict: 'location_id,period_ym,category' });
-  if (error) { toast('importToast','err','Import failed: '+error.message); return; }
-  toast('importToast','ok', `Imported ${resolved.length} rows${dropped.length?` (dropped ${dropped.length} with unknown location)`:''}`);
-}
-
-function parseCsv(text){
-  const lines = text.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
-  if (!lines.length) return [];
-  const first = lines[0].toLowerCase();
-  const hasHeader = first.includes('location') && first.includes('period');
-  const start = hasHeader ? 1 : 0;
-  const out = [];
-  for (let i = start; i < lines.length; i++) {
-    const cells = lines[i].split(',').map(c => c.trim());
-    if (cells.length < 4) continue;
-    out.push({
-      location: cells[0], period: cells[1],
-      category: String(cells[2]||'').toLowerCase(),
-      amount_eur: cells[3], bookings: cells[4] || 0, guests: cells[5] || 0
-    });
-  }
-  return out;
+// Booking revenue helper — reads directly from the `bookings` table populated
+// by the hub-level CSV import. Maps location NAMES (e.g. "Morocco") to slugs
+// via LOCATIONS. Uses net_amount (gross − partner commission) so the number
+// represents what the camp actually receives.
+function locNameToSlug(name){
+  const s = String(name||'').trim().toLowerCase();
+  if (!s) return null;
+  // First check LOCATIONS from Supabase (canonical).
+  const hit = LOCATIONS.find(l => String(l.name||'').toLowerCase() === s || String(l.slug||'').toLowerCase() === s);
+  if (hit) return hit.slug;
+  // Fallback: known aliases from the CSV import.
+  const alias = { 'morocco':'morocco','portugal':'portugal','surf school':'surf-school','sri lanka':'sri-lanka','junior camp':'junior-camp' };
+  return alias[s] || null;
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1089,8 +1049,8 @@ function profitTabHtml(){
 }
 
 async function populatePeriods(){
-  const { data } = await sb.from('bookinglayer_revenue').select('period_ym').order('period_ym',{ascending:false});
-  const periods = Array.from(new Set((data||[]).map(r => r.period_ym))).filter(Boolean);
+  const { data } = await sb.from('bookings').select('month_key').order('month_key',{ascending:false}).limit(20000);
+  const periods = Array.from(new Set((data||[]).map(r => r.month_key))).filter(Boolean);
   if (!periods.length) periods.push(currentMonth());
   const sel = $('periodSelect');
   if (sel) sel.innerHTML = periods.map(p => `<option value="${p}">${p}</option>`).join('') + `<option value="__all__">All-time</option>`;
@@ -1106,16 +1066,17 @@ async function renderProfit(){
   const isAll  = period === '__all__';
   $('profitBody').innerHTML = `<div class="loading">Loading…</div>`;
 
-  let blQ = sb.from('bookinglayer_revenue').select('location_id, category, amount_eur, period_ym');
-  if (!isAll) blQ = blQ.eq('period_ym', period);
-  const { data: blRows } = await blQ;
+  // Bookings from the hub-level import: one row per reservation.
+  // net_amount = gross − partner commission (what the camp actually receives).
+  let bkQ = sb.from('bookings').select('location, month_key, total, net_amount, pax').limit(20000);
+  if (!isAll) bkQ = bkQ.eq('month_key', period);
+  const { data: bkRows } = await bkQ;
 
   const { data: lgRows } = await sb.from('ledger_entries')
     .select('type, amount_eur, entry_date, business_area, category, paid_from, attributed_location, location_id');
 
   const inPeriod = (d) => isAll || String(d||'').slice(0,7) === period;
 
-  // NEW: HQ invoices contribute to expenses. Skip personal ones.
   let hqQ = sb.from('hq_invoices').select('location_slug, amount_eur, invoice_date, category_id');
   const { data: hqRows } = await hqQ;
   const personalCatIds = new Set(CATEGORIES.filter(c => c.is_personal).map(c => c.id));
@@ -1127,13 +1088,17 @@ async function renderProfit(){
   };
 
   const byLoc = {};
-  const ensureLoc = (key) => { if (!byLoc[key]) byLoc[key] = {slug:key, blRev:0, localRev:0, expenses:0, hqExpenses:0}; return byLoc[key]; };
+  const ensureLoc = (key) => { if (!byLoc[key]) byLoc[key] = {slug:key, blRev:0, blCount:0, blPax:0, localRev:0, expenses:0, hqExpenses:0}; return byLoc[key]; };
   HQ_LOCATIONS.forEach(l => ensureLoc(l.slug));
 
-  (blRows||[]).forEach(r => {
-    const slug = locIdToSlug.get(r.location_id);
+  (bkRows||[]).forEach(r => {
+    const slug = locNameToSlug(r.location);
     if (!slug) return;
-    ensureLoc(slug).blRev += Number(r.amount_eur||0);
+    const row = ensureLoc(slug);
+    // Prefer net_amount when populated; otherwise use total (older rows).
+    row.blRev += Number(r.net_amount ?? r.total ?? 0);
+    row.blCount += 1;
+    row.blPax += Number(r.pax || 0);
   });
   (lgRows||[]).forEach(r => {
     if (!inPeriod(r.entry_date)) return;
@@ -1145,7 +1110,7 @@ async function renderProfit(){
   });
   (hqRows||[]).forEach(r => {
     if (!inPeriod(r.invoice_date)) return;
-    if (personalCatIds.has(r.category_id)) return;   // exclude Miguel-Personal
+    if (personalCatIds.has(r.category_id)) return;
     const key = r.location_slug || 'general';
     ensureLoc(key).hqExpenses += Number(r.amount_eur||0);
   });
@@ -1199,8 +1164,9 @@ async function renderProfit(){
       </tbody>
     </table></div>
     <div class="hint" style="margin-top:14px">
-      <b>Profit</b> = Bookinglayer + on-site revenue − local ledger expenses − HQ invoices attributed to this location.
-      <br><b>HQ invoices</b> come from the Invoices tab. Rows in category <b>Miguel — Personal</b> are excluded.
+      <b>Profit</b> = Bookings (net of partner commission) + on-site revenue − local ledger expenses − HQ invoices attributed to this location.
+      <br><b>Bookings</b> comes from the <code>bookings</code> table populated by the hub CSV import — no separate import here. <b>net_amount</b> is used when available (gross − commission), falling back to <b>total</b> for older rows.
+      <br><b>HQ invoices</b> come from Despesas HQ. Rows in category <b>Miguel — Personal</b> are excluded.
       <br>Local expenses use <code>attributed_location</code> when set — otherwise fall back to the row's own location.
     </div>
   `;
