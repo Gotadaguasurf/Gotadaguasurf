@@ -62,12 +62,15 @@ td.loc-name{font-weight:700;color:var(--navy)}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="/supabase-config.js"></script>
 <script>
-// Gate + auth boot. Anyone without owner/super_admin role gets a friendly
-// splash — the RLS on bookinglayer_revenue would also block their reads,
-// but a client-side redirect avoids the whiplash of an empty page.
+// Gate + auth boot. HQ access is now controlled via the Settings page
+// (workspace_memberships row on the 'hq' workspace) so the owner can
+// toggle it per teammate without touching SQL. Miguel keeps a hardcoded
+// bypass — the platform owner should never be able to lock himself out
+// by accidentally deselecting his own pill.
 const cfg = window.__SUPABASE_CONFIG || {};
 const sb  = window.supabase.createClient(cfg.url, cfg.anonKey);
 const $   = (id) => document.getElementById(id);
+const OWNER_EMAILS = new Set(['miguel@gotadaguasurf.com']);
 
 const LOCATIONS_SEED = [
   {slug:'morocco',      label:'Morocco'},
@@ -92,15 +95,34 @@ let LOCATIONS    = []; // {id, slug, name, currency}
     .select('id, email, full_name, platform_role')
     .eq('id', session.user.id).maybeSingle();
   const role = String(profile?.platform_role || '').toLowerCase();
-  const isOwner = role === 'owner' || role === 'super_admin';
+  const myEmail = String(profile?.email || session.user.email || '').toLowerCase();
   CURRENT_USER = profile || {};
   $('userBadge').textContent = profile?.email || session.user.email || '';
 
-  if (!isOwner) {
+  // Access rules for HQ (in order of precedence):
+  //  1. Hardcoded owner email bypass — Miguel is always in, even if the
+  //     Settings pill got unchecked by mistake.
+  //  2. platform_role owner/super_admin — the legacy path for anyone
+  //     already promoted at the platform layer.
+  //  3. Active workspace_memberships row on the 'hq' workspace — the
+  //     new UI-driven path: Miguel toggles the HQ pill in Settings.
+  let hasAccess = OWNER_EMAILS.has(myEmail) || role === 'owner' || role === 'super_admin';
+  if (!hasAccess) {
+    const { data: hqMembership } = await sb
+      .from('workspace_memberships')
+      .select('workspace_id, can_view, active, workspaces!inner(slug)')
+      .eq('user_id', session.user.id)
+      .eq('active', true)
+      .eq('workspaces.slug', 'hq')
+      .maybeSingle();
+    hasAccess = !!(hqMembership && hqMembership.can_view);
+  }
+
+  if (!hasAccess) {
     $('mainWrap').innerHTML = `
       <div class="gate-screen">
-        <div class="gate-title">HQ is owner-only</div>
-        <div class="gate-msg">This area is restricted to platform owners and finance admins. If you think you should have access, ask Miguel to promote your role in <code>platform_profiles.platform_role</code>.</div>
+        <div class="gate-title">HQ access needed</div>
+        <div class="gate-msg">This area is restricted to teammates that Miguel has enabled the HQ pill for. Ask him to add you in <b>Settings → Team access → HQ (owner view)</b>.</div>
         <button class="gate-btn" onclick="location.href='/'">Back to camp hub</button>
       </div>`;
     return;
