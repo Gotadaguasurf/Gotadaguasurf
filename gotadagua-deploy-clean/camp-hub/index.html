@@ -3608,6 +3608,23 @@ function currentTourItems(){
 // Overview aggregator uses this plural version to split the transport
 // cost across all matching sub-tours.
 function linkedTransportTours(name){
+  // 1. Explicit menu-editor link (highest priority): every menu tour
+  // whose transportAssoc equals this Transport subcategory. Set via
+  // the "Transporte associado" field in the tour menu editor. Once a
+  // tour has this field, its aggregation is deterministic — no more
+  // depending on name prefix conventions.
+  try{
+    const trimmed=String(name||'').trim();
+    if(trimmed){
+      const lc=trimmed.toLowerCase();
+      const tours=currentCampTabMenu()?.Tours||[];
+      const explicit=tours
+        .filter(t=>t && String(t.transportAssoc||'').trim().toLowerCase()===lc)
+        .map(t=>String(t.n||'').trim())
+        .filter(Boolean);
+      if(explicit.length>0) return explicit;
+    }
+  }catch(_e){}
   if(TRANSPORT_TOUR_COST_MAP[name]) return [TRANSPORT_TOUR_COST_MAP[name]];
   const all=[...(transportPresets?.airport||[]),...(transportPresets?.tuktuk||[])];
   const preset=all.find(p=>String(p?.name||'')===String(name||''));
