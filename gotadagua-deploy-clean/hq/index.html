@@ -164,7 +164,6 @@ td.loc-name{font-weight:700;color:var(--navy)}
     <div class="nav-tabs" id="hqNavTabs" style="display:none">
       <button class="nav-tab active" data-tab="overview" onclick="switchTab('overview')">Overview</button>
       <button class="nav-tab" data-tab="invoices" onclick="switchTab('invoices')">Despesas HQ</button>
-      <button class="nav-tab" data-tab="import" onclick="switchTab('import')">Import</button>
       <button class="nav-tab" data-tab="profit" onclick="switchTab('profit')">Profit per location</button>
       <button class="nav-tab" data-tab="cashflow" onclick="switchTab('cashflow')">Cash flow</button>
     </div>
@@ -186,6 +185,21 @@ td.loc-name{font-weight:700;color:var(--navy)}
       <button class="action-btn" onclick="closeCategoryPanel()">✕ Close</button>
     </div>
     <div id="catModalBody" class="cat-modal-body">
+      <div class="loading">Loading…</div>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="importModal" class="cat-modal" style="max-width:960px">
+  <div class="cat-modal-inner">
+    <div class="cat-modal-hdr">
+      <div>
+        <div class="card-title">Import CSV</div>
+        <div class="card-hint">One-off tools — Excel history (Miguel's master) and Bookinglayer (via the hub-level import).</div>
+      </div>
+      <button class="action-btn" onclick="closeImportModal()">✕ Close</button>
+    </div>
+    <div id="importModalBody" class="cat-modal-body">
       <div class="loading">Loading…</div>
     </div>
   </div>
@@ -304,7 +318,6 @@ function render(){
   $('mainWrap').innerHTML = `
     <div class="tab-pane active" id="tab-overview">${overviewTabHtml()}</div>
     <div class="tab-pane" id="tab-invoices">${invoicesTabHtml()}</div>
-    <div class="tab-pane" id="tab-import">${importTabHtml()}</div>
     <div class="tab-pane" id="tab-profit">${profitTabHtml()}</div>
     <div class="tab-pane" id="tab-cashflow">${cashflowTabHtml()}</div>
   `;
@@ -652,9 +665,10 @@ function invoicesTabHtml(){
             <div class="card-hint">Sorted by invoice date, newest first</div>
           </div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <button class="btn" style="padding:8px 14px;font-size:12px" onclick="openImportModal()" title="Import an Excel/CSV master or link to Bookinglayer — one-off setup">⬆ Import CSV</button>
             <button class="btn btn-ghost" style="padding:8px 14px;font-size:12px" onclick="exportInvoicesCsv()" title="Download the current filtered view as CSV — matches the Excel master column order">⬇ Export CSV</button>
             <button class="btn btn-ghost" style="padding:8px 14px;font-size:12px" onclick="openCategoryPanel()">⚙ Manage categories</button>
-            <input id="filter_search" type="search" placeholder="🔎 Search supplier, invoice #, NIF…" oninput="onFilterChanged()" style="width:240px;max-width:100%;padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;font-family:'Outfit',sans-serif;font-size:13px">
+            <input id="filter_search" type="search" placeholder="🔎 Search supplier, invoice #, NIF…" oninput="onFilterChanged()" style="width:220px;max-width:100%;padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;font-family:'Outfit',sans-serif;font-size:13px">
           </div>
         </div>
         <div class="period-row" style="margin:0;flex-wrap:wrap">
@@ -1401,6 +1415,31 @@ function closeCategoryPanel(){
   const modal = $('catModal');
   if (modal && modal.open) modal.close();
 }
+
+// ─── Import CSV modal — hosts the old Import tab content ──────────────
+// Miguel: "por que na realidade eu so vou usar agora depois vou sempre
+// usar invoices para arrastar" — bulk PDF drop is the daily flow, CSV
+// import is a rare setup step. So it lives behind a button now.
+function openImportModal(){
+  const modal = $('importModal');
+  if (!modal) return;
+  const body = $('importModalBody');
+  if (body) body.innerHTML = importTabHtml();
+  modal.showModal();
+}
+function closeImportModal(){
+  const modal = $('importModal');
+  if (modal && modal.open) modal.close();
+}
+// Close on backdrop click, same pattern as catModal.
+document.addEventListener('click', (e) => {
+  const modal = document.getElementById('importModal');
+  if (!modal || !modal.open) return;
+  const rect = modal.getBoundingClientRect();
+  const inside = e.clientX >= rect.left && e.clientX <= rect.right
+              && e.clientY >= rect.top  && e.clientY <= rect.bottom;
+  if (!inside) modal.close();
+});
 
 async function loadCategoryPanel(){
   const body = $('catModalBody');
