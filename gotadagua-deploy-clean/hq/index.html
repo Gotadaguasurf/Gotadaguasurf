@@ -50,13 +50,18 @@ input:focus,select:focus{outline:none;border-color:var(--ocean);box-shadow:0 0 0
 .form-grid{display:grid;grid-template-columns:repeat(12,1fr);gap:14px}
 .col-3{grid-column:span 3}.col-4{grid-column:span 4}.col-5{grid-column:span 5}.col-6{grid-column:span 6}.col-7{grid-column:span 7}.col-8{grid-column:span 8}.col-12{grid-column:span 12}
 @media(max-width:900px){.col-3,.col-4,.col-5,.col-6,.col-7,.col-8{grid-column:span 12}}
-.manual-row{display:grid;gap:8px;align-items:end;
-  grid-template-columns:minmax(120px,1.1fr) minmax(120px,1fr) minmax(160px,1.8fr) minmax(80px,0.7fr) minmax(56px,0.5fr) minmax(130px,1.1fr) minmax(90px,0.8fr) auto}
+.manual-row{display:grid;gap:10px;align-items:end;
+  grid-template-columns:minmax(130px,1fr) minmax(130px,0.9fr) minmax(180px,1.6fr) minmax(90px,0.7fr) minmax(140px,1.1fr) auto}
 .manual-row .field{gap:4px}
 .manual-row .field label{font-size:10px}
-.manual-row .field input,.manual-row .field select{padding:8px 10px;font-size:13px}
+.manual-row .field input,.manual-row .field select{padding:9px 10px;font-size:13px}
 @media(max-width:1100px){.manual-row{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:600px){.manual-row{grid-template-columns:1fr}}
+.inline-select{border:1px solid transparent;background:transparent;padding:3px 22px 3px 6px;font-size:12px;font-family:'Outfit',sans-serif;color:inherit;cursor:pointer;border-radius:4px;transition:background .12s, border-color .12s;max-width:100%;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%236b8099' stroke-width='2'><polyline points='6 9 12 15 18 9'/></svg>");background-repeat:no-repeat;background-position:right 4px center}
+.inline-select:hover{background-color:var(--foam);border-color:var(--border)}
+.inline-select:focus{background-color:var(--foam);border-color:var(--ocean);outline:none}
+.cell-save-flash{animation:cellFlash .9s ease-out}
+@keyframes cellFlash{0%{background-color:var(--green-bg)}100%{background-color:transparent}}
 .hint{font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5}
 .btn{background:var(--ocean);color:#fff;border:none;padding:10px 24px;border-radius:8px;font-weight:700;font-family:'Outfit',sans-serif;font-size:13px;cursor:pointer;transition:background .18s}
 .btn:hover{background:var(--navy)}
@@ -520,23 +525,11 @@ function invoicesTabHtml(){
           <div class="field"><label>Company / Supplier</label>
             <input id="inv_company" type="text" placeholder="e.g. Auchan, EDP">
           </div>
-          <div class="field"><label>Amount</label>
+          <div class="field"><label>Amount (EUR)</label>
             <input id="inv_amount" type="number" step="0.01" min="0" placeholder="0.00">
-          </div>
-          <div class="field"><label>Cur</label>
-            <select id="inv_currency">
-              <option value="EUR">EUR</option>
-              <option value="MAD">MAD</option>
-              <option value="LKR">LKR</option>
-              <option value="USD">USD</option>
-              <option value="GBP">GBP</option>
-            </select>
           </div>
           <div class="field"><label>Category</label>
             <select id="inv_category">${catOptions}</select>
-          </div>
-          <div class="field"><label>Pay</label>
-            <select id="inv_payment">${payOptions}</select>
           </div>
           <div class="field" style="align-self:end">
             <button class="btn" id="saveInvBtn" onclick="saveInvoice()" style="height:38px">Save</button>
@@ -546,11 +539,26 @@ function invoicesTabHtml(){
         <div id="manualExtras" style="display:none;margin-top:14px;padding-top:14px;border-top:1px dashed var(--border)">
           <div class="form-grid">
             <div class="field col-4">
+              <label>Payment type</label>
+              <select id="inv_payment">${payOptions}</select>
+            </div>
+            <div class="field col-4">
+              <label>Currency</label>
+              <select id="inv_currency">
+                <option value="EUR">EUR</option>
+                <option value="MAD">MAD (Morocco)</option>
+                <option value="LKR">LKR (Sri Lanka)</option>
+                <option value="USD">USD</option>
+                <option value="GBP">GBP</option>
+              </select>
+            </div>
+            <div class="field col-4">
               <label>Paying company <span id="payCoAuto" style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(auto from location)</span></label>
               <select id="inv_paying_company">
                 ${HQ_COMPANIES.map(c => `<option value="${c.slug}">${c.label}</option>`).join('')}
               </select>
             </div>
+
             <div class="field col-4">
               <label>Tax reg number (NIF)</label>
               <input id="inv_nif" type="text" placeholder="optional">
@@ -559,11 +567,11 @@ function invoicesTabHtml(){
               <label>Invoice number</label>
               <input id="inv_number" type="text" placeholder="e.g. FT 2026/1234">
             </div>
-
             <div class="field col-4">
               <label>FX rate → EUR <span id="fxHint" style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(auto)</span></label>
               <input id="inv_fx" type="number" step="0.000001" min="0" placeholder="1.000000">
             </div>
+
             <div class="field col-4">
               <label>Amount in EUR</label>
               <input id="inv_amount_eur" type="number" step="0.01" min="0" placeholder="auto" readonly style="background:#f7fafd">
@@ -572,12 +580,12 @@ function invoicesTabHtml(){
               <label>Attach invoice (optional)</label>
               <input id="inv_file" type="file" accept="application/pdf,image/*,.heic">
             </div>
-
-            <div class="field col-8">
+            <div class="field col-4">
               <label>Description</label>
               <input id="inv_description" type="text" placeholder="What was purchased?">
             </div>
-            <div class="field col-4">
+
+            <div class="field col-12">
               <label>Notes</label>
               <input id="inv_notes" type="text" placeholder="Internal notes">
             </div>
@@ -868,6 +876,8 @@ async function saveInvoice(){
   const fileInput = $('inv_file');
   const preUploaded = window.__prefilledStoragePath;
   const wasExtracted = !!preUploaded;
+  const isEditing    = !!window.__editingInvoiceId;
+
   if (preUploaded) {
     file_url  = preUploaded;
     file_name = window.__prefilledFileName || (fileInput.files?.[0]?.name || null);
@@ -883,6 +893,11 @@ async function saveInvoice(){
     file_url  = key;
     file_name = f.name;
     file_mime = f.type || null;
+  } else if (isEditing) {
+    // Editing without touching the file input — keep the original attachment.
+    file_url  = window.__editingFileUrl  || null;
+    file_name = window.__editingFileName || null;
+    file_mime = window.__editingFileMime || null;
   }
 
   const payload = {
@@ -892,17 +907,29 @@ async function saveInvoice(){
     payment_type, invoice_number, category_id, category_name,
     file_url, file_name, file_mime,
     notes,
-    // AI-populated rows are flagged for human confirmation so they show
-    // the amber "review" chip in the list until re-saved from the form.
-    needs_review: wasExtracted,
-    created_by: CURRENT_USER?.id || null
+    // Editing = the user reviewed the row → clear the amber chip.
+    // Fresh save from AI extract = still needs review.
+    // Fresh manual save = clean, no review needed.
+    needs_review: isEditing ? false : wasExtracted
   };
+  if (!isEditing) payload.created_by = CURRENT_USER?.id || null;
 
-  const { error } = await sb.from('hq_invoices').insert(payload);
+  let error;
+  if (isEditing) {
+    const oldFileUrl = window.__editingFileUrl;
+    ({ error } = await sb.from('hq_invoices').update(payload).eq('id', window.__editingInvoiceId));
+    // If the user replaced the attachment, garbage-collect the old file.
+    if (!error && oldFileUrl && oldFileUrl !== file_url) {
+      await sb.storage.from('hq-invoices').remove([oldFileUrl]).catch(()=>{});
+    }
+  } else {
+    ({ error } = await sb.from('hq_invoices').insert(payload));
+  }
   if (error) { toast('invToast','err','Save failed: '+error.message); btn.disabled = false; return; }
 
-  toast('invToast','ok','Invoice saved');
-  clearInvoiceForm();
+  toast('invToast','ok', isEditing ? 'Invoice updated · review cleared' : 'Invoice saved');
+  if (isEditing) cancelEditInvoice();
+  else           clearInvoiceForm();
   btn.disabled = false;
   renderInvoiceList();
 }
@@ -1151,9 +1178,147 @@ function toggleManualExtras(){
   const box = $('manualExtras');
   const btn = $('manualMoreBtn');
   if (!box || !btn) return;
-  const opening = box.style.display === 'none' || !box.style.display;
-  box.style.display = opening ? '' : 'none';
-  btn.textContent = opening ? 'Fewer fields ▴' : 'More fields ▾';
+  // Treat empty display as "visible" (it inherits from the div default),
+  // so once opened the toggle can actually collapse it again. Previous
+  // logic mis-classified an already-open box as still-closed.
+  const isOpen = box.style.display !== 'none';
+  box.style.display = isOpen ? 'none' : '';
+  btn.textContent = isOpen ? 'More fields ▾' : 'Fewer fields ▴';
+}
+
+// ─── Edit an existing invoice: fetch, prefill, flag Save as an UPDATE ───
+// ─── Inline single-field update from a select in a list row ────────────
+// Runs an UPDATE for just the changed field and, when the field is
+// location_slug, cascades to paying_company (unless the row is already
+// flagged inter-company). Skips a full re-render for speed and flashes
+// the cell green so the save is visible. On location or paying_company
+// change we DO re-render so the chip + grouping stay coherent.
+async function quickUpdateInvoice(id, field, value, el){
+  const payload = { [field]: value };
+  let needsFullRerender = false;
+
+  if (field === 'location_slug') {
+    // Cascade paying_company from the new location. If the user had
+    // previously set an inter-co override (paying_company diverged from
+    // the OLD location's default), don't touch it — the override was
+    // deliberate. Fetch the current row cheaply to decide.
+    const { data: cur } = await sb.from('hq_invoices')
+      .select('paying_company, location_slug').eq('id', id).maybeSingle();
+    if (cur) {
+      const oldDerived = payingCompanyFor(cur.location_slug);
+      const wasInterCo = cur.paying_company && cur.paying_company !== oldDerived;
+      if (!wasInterCo) payload.paying_company = payingCompanyFor(value);
+    }
+    needsFullRerender = true;
+  }
+  if (field === 'paying_company') needsFullRerender = true;
+  if (field === 'category_id') {
+    // Snapshot the category name for historical stability, same as saveInvoice.
+    const cat = CATEGORIES.find(c => c.id === value);
+    if (cat) payload.category_name = cat.name;
+    needsFullRerender = true;   // personal/business totals may change
+  }
+
+  const { error } = await sb.from('hq_invoices').update(payload).eq('id', id);
+  if (error) { alert('Update failed: '+error.message); return; }
+
+  // Green flash on the changed cell so the user sees the write landed.
+  if (el && el.parentElement) {
+    el.parentElement.classList.remove('cell-save-flash');
+    void el.parentElement.offsetWidth;   // restart the animation
+    el.parentElement.classList.add('cell-save-flash');
+  }
+  if (needsFullRerender) renderInvoiceList();
+}
+
+async function openEditInvoice(id){
+  const { data: row, error } = await sb.from('hq_invoices')
+    .select('id, location_slug, paying_company, invoice_date, company, description, amount, currency, amount_eur, payment_type, invoice_number, category_id, category_name, file_url, file_name, file_mime, needs_review, notes, supplier_nif, fx_rate')
+    .eq('id', id).maybeSingle();
+  if (error || !row) { alert('Could not load invoice: '+(error?.message||'not found')); return; }
+
+  // Populate the single-line row (essentials).
+  $('inv_location').value  = row.location_slug || 'general';
+  $('inv_date').value      = row.invoice_date  || '';
+  $('inv_company').value   = row.company       || '';
+  $('inv_amount').value    = row.amount != null ? Number(row.amount).toFixed(2) : '';
+  $('inv_currency').value  = row.currency      || 'EUR';
+  $('inv_payment').value   = row.payment_type  || 'Other';
+  if (row.category_id) $('inv_category').value = row.category_id;
+
+  // Populate the extras.
+  $('inv_paying_company').value = row.paying_company || payingCompanyFor(row.location_slug);
+  $('inv_nif').value            = row.supplier_nif   || '';
+  $('inv_number').value         = row.invoice_number || '';
+  $('inv_fx').value             = row.fx_rate != null ? Number(row.fx_rate) : (row.currency === 'EUR' ? 1 : '');
+  $('inv_amount_eur').value     = row.amount_eur != null ? Number(row.amount_eur).toFixed(2) : '';
+  $('inv_description').value    = row.description    || '';
+  $('inv_notes').value          = row.notes          || '';
+
+  // Reflect the paying_company auto/override state so the label reads right.
+  const derived    = payingCompanyFor(row.location_slug);
+  const overridden = row.paying_company && row.paying_company !== derived;
+  $('inv_paying_company').dataset.userTouched = overridden ? '1' : '0';
+  const payCoAuto = $('payCoAuto');
+  if (payCoAuto) payCoAuto.textContent = overridden ? '(overridden — inter-company)' : '(auto from location)';
+
+  // Refresh the fx hint label without triggering the auto-refresh network call.
+  const fxHint = $('fxHint');
+  if (fxHint) fxHint.textContent = row.currency === 'EUR' ? '(EUR — 1.000000)' : `(from row — editable)`;
+
+  // Stash the id so saveInvoice() does UPDATE. Also stash file metadata so we
+  // don't overwrite it when the user saves without touching the file input.
+  window.__editingInvoiceId  = id;
+  window.__editingFileUrl    = row.file_url;
+  window.__editingFileName   = row.file_name;
+  window.__editingFileMime   = row.file_mime;
+  // Clear any AI-extract stash from a previous single-file flow.
+  window.__prefilledStoragePath = null;
+  window.__prefilledFileName    = null;
+  window.__prefilledFileMime    = null;
+
+  // Show the More fields section if the row has any extras — makes the FX,
+  // NIF, invoice number and paying_company visible at a glance for review.
+  const hasExtras = row.supplier_nif || row.invoice_number || row.description || row.notes || row.file_url || (row.currency && row.currency !== 'EUR') || overridden;
+  const extras = $('manualExtras');
+  if (hasExtras && extras && (extras.style.display === 'none' || !extras.style.display)) {
+    toggleManualExtras();
+  }
+
+  // Change Save button label + inject an edit banner above the row.
+  $('saveInvBtn').textContent = 'Save changes';
+  let banner = $('editBanner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'editBanner';
+    banner.className = 'toast toast-warn';
+    banner.style.marginBottom = '12px';
+    const cardBody = document.querySelector('#tab-invoices .card:nth-of-type(2) .card-body');
+    if (cardBody) cardBody.insertBefore(banner, cardBody.firstChild);
+  }
+  const chip = row.needs_review
+    ? ' <span class="chip chip-review" style="margin-left:6px">was flagged for review</span>'
+    : '';
+  banner.innerHTML = `
+    ✎ Editing <b>${row.invoice_date}</b> · ${escapeHtml(row.company||'')}${chip}
+    <button type="button" class="action-btn" style="margin-left:12px" onclick="cancelEditInvoice()">Cancel edit</button>
+  `;
+
+  // Scroll the form into view so the user knows something happened.
+  const anchor = $('inv_location');
+  if (anchor) anchor.closest('.card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function cancelEditInvoice(){
+  window.__editingInvoiceId = null;
+  window.__editingFileUrl   = null;
+  window.__editingFileName  = null;
+  window.__editingFileMime  = null;
+  const banner = $('editBanner');
+  if (banner) banner.remove();
+  const saveBtn = $('saveInvBtn');
+  if (saveBtn) saveBtn.textContent = 'Save';
+  clearInvoiceForm();
 }
 
 function clearInvoiceForm(){
@@ -1235,22 +1400,52 @@ async function renderInvoiceList(){
 
   const rowHtml = (r) => {
     const isPersonal = personalCatIds.has(r.category_id);
-    // If paying_company diverges from the default for this location,
-    // mark the row so the inter-company flow is visible at a glance.
+    // Inter-company chip shows on rows where paying_company diverges
+    // from the location's default company (Water Movements paid for a
+    // Morocco expense, etc.). Chip updates automatically as the user
+    // changes the dropdowns in this row.
     const derivedPayCo = payingCompanyFor(r.location_slug);
     const isInterCo = r.paying_company && r.paying_company !== derivedPayCo;
-    return `<tr class="${r.is_duplicate?'dup':''}">
+
+    const locSelect = HQ_LOCATIONS.map(l =>
+      `<option value="${l.slug}" ${l.slug===r.location_slug?'selected':''}>${l.label}</option>`
+    ).join('');
+    const payCoSelect = HQ_COMPANIES.map(c =>
+      `<option value="${c.slug}" ${c.slug===r.paying_company?'selected':''}>${c.label}</option>`
+    ).join('');
+    const catSelect = CATEGORIES.map(c =>
+      `<option value="${c.id}" ${c.id===r.category_id?'selected':''}>${c.name}</option>`
+    ).join('');
+    const payTypeSelect = PAYMENT_TYPES.map(p =>
+      `<option value="${p}" ${p===r.payment_type?'selected':''}>${p}</option>`
+    ).join('');
+
+    return `<tr class="${r.is_duplicate?'dup':''}" data-inv-id="${r.id}">
       <td>${r.invoice_date}</td>
-      <td class="loc-name">${locLabel(r.location_slug)}</td>
-      <td>${escapeHtml(companyLabel(r.paying_company))}${isInterCo?' <span class="chip chip-review" title="Inter-company: paid by a different company than the location default">inter-co</span>':''}</td>
+      <td>
+        <select class="inline-select" onchange="quickUpdateInvoice('${r.id}','location_slug',this.value,this)" title="Change location — paying company auto-updates unless overridden">${locSelect}</select>
+      </td>
+      <td>
+        <select class="inline-select" onchange="quickUpdateInvoice('${r.id}','paying_company',this.value,this)" title="Change the company that actually paid">${payCoSelect}</select>
+        ${isInterCo?' <span class="chip chip-review" title="Inter-company: paid by a different company than the location default">inter-co</span>':''}
+      </td>
       <td>${escapeHtml(r.company||'')}${r.description?`<br><span style="font-size:11px;color:var(--muted)">${escapeHtml(r.description)}</span>`:''}</td>
-      <td>${escapeHtml(r.category_name||'')} ${isPersonal?'<span class="chip chip-personal">personal</span>':''} ${r.needs_review?'<span class="chip chip-review">review</span>':''}</td>
+      <td>
+        <select class="inline-select" onchange="quickUpdateInvoice('${r.id}','category_id',this.value,this)">${catSelect}</select>
+        ${isPersonal?'<span class="chip chip-personal">personal</span>':''}
+        ${r.needs_review?'<span class="chip chip-review">review</span>':''}
+      </td>
       <td style="font-family:'DM Mono',monospace;font-size:11px">${escapeHtml(r.invoice_number||'—')}</td>
       <td class="r">${Number(r.amount).toFixed(2)} ${r.currency}</td>
       <td class="r">${eur(r.amount_eur)}</td>
-      <td>${escapeHtml(r.payment_type||'')}</td>
+      <td>
+        <select class="inline-select" onchange="quickUpdateInvoice('${r.id}','payment_type',this.value,this)">${payTypeSelect}</select>
+      </td>
       <td>${r.file_url?`<a class="file-link" href="#" onclick="openInvoiceFile('${r.file_url}');return false;">${escapeHtml(r.file_name||'view')}</a>`:'—'}</td>
-      <td><button class="action-btn danger" onclick="deleteInvoice('${r.id}')">Delete</button></td>
+      <td style="white-space:nowrap">
+        <button class="action-btn" onclick="openEditInvoice('${r.id}')" title="Edit all fields — also clears the review chip">Edit</button>
+        <button class="action-btn danger" onclick="deleteInvoice('${r.id}')">Delete</button>
+      </td>
     </tr>`;
   };
 
