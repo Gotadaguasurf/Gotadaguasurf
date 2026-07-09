@@ -497,16 +497,22 @@ function invoicesTabHtml(){
             <input id="inv_description" type="text" placeholder="What was purchased?">
           </div>
 
-          <div class="field col-6">
+          <div class="field col-8">
             <label>Attach invoice (PDF / photo)</label>
-            <input id="inv_file" type="file" accept="application/pdf,image/*">
+            <input id="inv_file" type="file" accept="application/pdf,image/*,.heic">
           </div>
-          <div class="field col-6">
+          <div class="field col-4">
+            <label>AI extract</label>
+            <button type="button" class="btn" id="extractBtn" onclick="extractFromInvoice()" disabled style="width:100%">🤖 Extract from invoice</button>
+          </div>
+
+          <div class="field col-12">
             <label>Notes</label>
             <input id="inv_notes" type="text" placeholder="Internal notes (optional)">
           </div>
         </div>
 
+        <div id="extractStatus" style="margin-top:8px"></div>
         <div id="dupWarn" class="dup-warn"></div>
 
         <div class="btn-row">
@@ -589,7 +595,125 @@ function wireInvoiceForm(){
   }, 400);
   [inpNum, inpAmt, inpCo].forEach(el => el.addEventListener('input', checkDup));
 
+  // Enable the "Extract from invoice" button only when a file is selected.
+  const inpFile = $('inv_file');
+  const btnEx   = $('extractBtn');
+  if (inpFile && btnEx) {
+    inpFile.addEventListener('change', () => {
+      btnEx.disabled = !(inpFile.files && inpFile.files[0]);
+    });
+  }
+
   refreshFx();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//   AI extract — upload selected file, call parse-invoice, fill form
+// ═══════════════════════════════════════════════════════════════════
+async function extractFromInvoice(){
+  const fileInput = $('inv_file');
+  const status    = $('extractStatus');
+  const btn       = $('extractBtn');
+  if (!fileInput?.files?.[0]) { toast('invToast','err','Attach a file first'); return; }
+  const file = fileInput.files[0];
+
+  btn.disabled = true;
+  status.innerHTML = `<div class="toast toast-warn">🤖 Analysing invoice with Claude Sonnet 4.5 — this takes ~3 seconds…</div>`;
+
+  // 1. Upload to a temp path in the same bucket so the Edge Function
+  //    can download it via the caller's JWT. Save uses this same path.
+  //    Path scheme mirrors saveInvoice() so if the user saves, the file
+  //    is already in the right shape and we don't re-upload.
+  const location_slug = $('inv_location').value || 'general';
+  const dateSlice = ($('inv_date').value || new Date().toISOString().slice(0,10)).slice(0,7);
+  const safe = file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+  const key = `${location_slug}/${dateSlice}/${Date.now()}_${safe}`;
+
+  const { error: upErr } = await sb.storage.from('hq-invoices').upload(key, file, {
+    contentType: file.type || 'application/octet-stream', upsert:false
+  });
+  if (upErr) {
+    status.innerHTML = `<div class="toast toast-err">Upload failed: ${escapeHtml(upErr.message)}</div>`;
+    btn.disabled = false;
+    return;
+  }
+
+  // 2. Call the Edge Function. Auth header carries the caller JWT so bucket RLS
+  //    applies (the function downloads with the same permissions the caller has).
+  const { data: sessionData } = await sb.auth.getSession();
+  const jwt = sessionData?.session?.access_token || '';
+  const url = `${cfg.url}/functions/v1/parse-invoice`;
+  let resp;
+  try {
+    resp = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${jwt}`,
+        'Content-Type': 'application/json',
+        'apikey': cfg.anonKey
+      },
+      body: JSON.stringify({ storage_path: key })
+    });
+  } catch (e) {
+    status.innerHTML = `<div class="toast toast-err">Network error: ${escapeHtml(e.message||'unknown')}</div>`;
+    // Best-effort cleanup — remove the file we uploaded so it doesn't orphan.
+    await sb.storage.from('hq-invoices').remove([key]).catch(()=>{});
+    btn.disabled = false;
+    return;
+  }
+  const result = await resp.json().catch(() => ({error:'invalid JSON from function'}));
+  if (!resp.ok || result?.error) {
+    status.innerHTML = `<div class="toast toast-err">Extract failed: ${escapeHtml(result?.error || resp.statusText)}</div>`;
+    await sb.storage.from('hq-invoices').remove([key]).catch(()=>{});
+    btn.disabled = false;
+    return;
+  }
+
+  const ex = result.extracted || {};
+
+  // 3. Fill form fields with what the model returned. All fields stay editable.
+  //    Also stash the storage key so saveInvoice() reuses it instead of re-uploading.
+  window.__prefilledStoragePath = key;
+  window.__prefilledFileName    = file.name;
+  window.__prefilledFileMime    = file.type || null;
+
+  if (ex.invoice_date)   $('inv_date').value        = ex.invoice_date;
+  if (ex.company)        $('inv_company').value     = String(ex.company).trim();
+  if (ex.supplier_nif)   $('inv_nif').value         = ex.supplier_nif;
+  if (ex.description)    $('inv_description').value = ex.description;
+  if (ex.invoice_number) $('inv_number').value      = ex.invoice_number;
+  if (ex.amount != null) $('inv_amount').value      = Number(ex.amount).toFixed(2);
+  if (ex.currency)       $('inv_currency').value    = ex.currency;
+  if (ex.payment_type)   $('inv_payment').value     = ex.payment_type;
+
+  // Category — match by lowercase name against CATEGORIES.
+  if (ex.category_hint) {
+    const target = String(ex.category_hint).toLowerCase();
+    const catSel = $('inv_category');
+    for (let i = 0; i < catSel.options.length; i++) {
+      if (catSel.options[i].textContent.trim().toLowerCase() === target) {
+        catSel.selectedIndex = i;
+        break;
+      }
+    }
+  }
+  // Location — match by slug.
+  if (ex.location_hint) {
+    const locSel = $('inv_location');
+    for (let i = 0; i < locSel.options.length; i++) {
+      if (locSel.options[i].value === ex.location_hint) { locSel.selectedIndex = i; break; }
+    }
+  }
+
+  // Trigger FX recalculation now that amount + currency are set.
+  $('inv_currency').dispatchEvent(new Event('change'));
+
+  const usage = result.usage || {};
+  const costHint = usage.input_tokens
+    ? ` · ${usage.input_tokens} in + ${usage.output_tokens} out tokens`
+    : '';
+  status.innerHTML = `<div class="toast toast-ok">✓ Fields extracted — review below and click Save${costHint}</div>`;
+  btn.disabled = false;
 }
 
 async function fetchFxToEur(currency){
@@ -642,9 +766,17 @@ async function saveInvoice(){
   }
 
   // Upload file first, if any.
+  // If the user ran AI extract already, the file is already in the bucket —
+  // reuse the stashed key so we don't double-upload the same PDF.
   let file_url = null, file_name = null, file_mime = null;
   const fileInput = $('inv_file');
-  if (fileInput.files && fileInput.files[0]) {
+  const preUploaded = window.__prefilledStoragePath;
+  const wasExtracted = !!preUploaded;
+  if (preUploaded) {
+    file_url  = preUploaded;
+    file_name = window.__prefilledFileName || (fileInput.files?.[0]?.name || null);
+    file_mime = window.__prefilledFileMime || (fileInput.files?.[0]?.type || null);
+  } else if (fileInput.files && fileInput.files[0]) {
     const f = fileInput.files[0];
     const safe = f.name.replace(/[^a-zA-Z0-9._-]/g,'_');
     const key = `${location_slug}/${invoice_date.slice(0,7)}/${Date.now()}_${safe}`;
@@ -663,6 +795,9 @@ async function saveInvoice(){
     payment_type, invoice_number, category_id, category_name,
     file_url, file_name, file_mime,
     notes,
+    // AI-populated rows are flagged for human confirmation so they show
+    // the amber "review" chip in the list until re-saved from the form.
+    needs_review: wasExtracted,
     created_by: CURRENT_USER?.id || null
   };
 
@@ -685,6 +820,14 @@ function clearInvoiceForm(){
   $('dupWarn').classList.remove('show');
   const fileInput = $('inv_file');
   if (fileInput) fileInput.value = '';
+  const extractStatus = $('extractStatus');
+  if (extractStatus) extractStatus.innerHTML = '';
+  const extractBtn = $('extractBtn');
+  if (extractBtn) extractBtn.disabled = true;
+  // AI-extract stash cleared so the next Save re-uploads if needed.
+  window.__prefilledStoragePath = null;
+  window.__prefilledFileName = null;
+  window.__prefilledFileMime = null;
 }
 
 async function renderInvoiceList(){
