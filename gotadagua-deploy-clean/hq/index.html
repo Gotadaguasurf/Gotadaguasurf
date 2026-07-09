@@ -161,6 +161,25 @@ let LOCATIONS    = [];     // from public.locations (BL revenue join)
 let CATEGORIES   = [];     // from hq_invoice_categories
 let FX_CACHE     = { date:null, rates:{ EUR:1 } };
 
+// Supabase caps .select() at 1000 rows per request by default. Any table
+// that can grow past that (bookings, hq_invoices, ledger_entries) MUST be
+// fetched with pagination — otherwise numbers silently truncate. This
+// mirrors fetchAllBookings() in /partners/index.html.
+async function fetchAllPaged(build){
+  const PAGE = 1000;
+  let all = [];
+  let from = 0;
+  for (;;) {
+    const { data, error } = await build().range(from, from + PAGE - 1);
+    if (error) throw error;
+    if (!data || !data.length) break;
+    all = all.concat(data);
+    if (data.length < PAGE) break;
+    from += PAGE;
+  }
+  return all;
+}
+
 // ── Boot ────────────────────────────────────────────────────────────
 (async () => {
   const { data:{ session }, error } = await sb.auth.getSession();
@@ -277,13 +296,13 @@ async function renderOverview(){
   // ── Populate period dropdown from bookings.month_key + hq_invoices dates ──
   const perSel = $('ov_period');
   if (perSel && perSel.options.length <= 1) {
-    const [{data: bkMonths}, {data: invMonths}] = await Promise.all([
-      sb.from('bookings').select('month_key').limit(20000),
-      sb.from('hq_invoices').select('invoice_date').limit(20000)
+    const [bkMonths, invMonths] = await Promise.all([
+      fetchAllPaged(() => sb.from('bookings').select('month_key').order('check_in_on', {ascending:false})),
+      fetchAllPaged(() => sb.from('hq_invoices').select('invoice_date').order('invoice_date', {ascending:false}))
     ]);
     const set = new Set();
-    (bkMonths||[]).forEach(r => r.month_key && set.add(r.month_key));
-    (invMonths||[]).forEach(r => r.invoice_date && set.add(String(r.invoice_date).slice(0,7)));
+    bkMonths.forEach(r => r.month_key && set.add(r.month_key));
+    invMonths.forEach(r => r.invoice_date && set.add(String(r.invoice_date).slice(0,7)));
     const months = [...set].sort().reverse();
     const cur = perSel.value;
     perSel.innerHTML = '<option value="__all__">All-time</option>' +
@@ -296,17 +315,18 @@ async function renderOverview(){
   kpiBody.innerHTML = `<div class="loading">Loading bookings…</div>`;
   body.innerHTML    = `<div class="loading">Loading…</div>`;
 
-  // ── Fetch data ─────────────────────────────────────────────────────
-  let bkQ = sb.from('bookings').select('total, net_amount, commission_amount, partner_name, booking_type, month_key, pax').limit(20000);
-  if (!isAll) bkQ = bkQ.eq('month_key', period);
-
-  const invQ = sb.from('hq_invoices').select('location_slug, amount_eur, category_id, invoice_date').limit(20000);
-  const lgQ  = sb.from('ledger_entries').select('type, amount_eur, entry_date, paid_from, attributed_location, location_id').limit(20000);
-
-  const [bkRes, invRes, lgRes] = await Promise.all([bkQ, invQ, lgQ]);
-  const bkRows  = bkRes.data  || [];
-  const invRows = (invRes.data || []).filter(r => isAll || String(r.invoice_date||'').slice(0,7) === period);
-  const lgRows  = (lgRes.data  || []).filter(r => isAll || String(r.entry_date||'').slice(0,7) === period);
+  // ── Fetch data (paginated — Supabase caps at 1000 per request) ─────
+  const [bkRows, invRowsAll, lgRowsAll] = await Promise.all([
+    fetchAllPaged(() => {
+      let q = sb.from('bookings').select('total, net_amount, commission_amount, partner_name, booking_type, month_key, pax').order('check_in_on', {ascending:true});
+      if (!isAll) q = q.eq('month_key', period);
+      return q;
+    }),
+    fetchAllPaged(() => sb.from('hq_invoices').select('location_slug, amount_eur, category_id, invoice_date').order('invoice_date', {ascending:false})),
+    fetchAllPaged(() => sb.from('ledger_entries').select('type, amount_eur, entry_date, paid_from, attributed_location, location_id').order('entry_date', {ascending:false}))
+  ]);
+  const invRows = invRowsAll.filter(r => isAll || String(r.invoice_date||'').slice(0,7) === period);
+  const lgRows  = lgRowsAll.filter(r => isAll || String(r.entry_date||'').slice(0,7) === period);
 
   // ── BL KPIs — same formula as /partners renderKPIs() ───────────────
   const isDirect = (b) => !b.partner_name || b.booking_type === 'direct';
@@ -674,21 +694,26 @@ async function renderInvoiceList(){
   const month = $('filter_month')?.value || '';
 
   body.innerHTML = `<div class="loading">Loading…</div>`;
-  let q = sb.from('hq_invoices')
-    .select('id, location_slug, invoice_date, company, description, amount, currency, amount_eur, payment_type, invoice_number, category_name, file_url, file_name, needs_review, is_duplicate, category_id, notes, supplier_nif, fx_rate')
-    .order('invoice_date', { ascending:false })
-    .limit(500);
-  if (loc !== '__all__') q = q.eq('location_slug', loc);
-  if (month) {
-    const start = `${month}-01`;
-    const [y,m] = month.split('-').map(Number);
-    const endD = new Date(Date.UTC(y, m, 1)); // first day of next month
-    const end = endD.toISOString().slice(0,10);
-    q = q.gte('invoice_date', start).lt('invoice_date', end);
+  let rows;
+  try {
+    rows = await fetchAllPaged(() => {
+      let q = sb.from('hq_invoices')
+        .select('id, location_slug, invoice_date, company, description, amount, currency, amount_eur, payment_type, invoice_number, category_name, file_url, file_name, needs_review, is_duplicate, category_id, notes, supplier_nif, fx_rate')
+        .order('invoice_date', { ascending:false });
+      if (loc !== '__all__') q = q.eq('location_slug', loc);
+      if (month) {
+        const start = `${month}-01`;
+        const [y,m] = month.split('-').map(Number);
+        const endD = new Date(Date.UTC(y, m, 1));
+        const end = endD.toISOString().slice(0,10);
+        q = q.gte('invoice_date', start).lt('invoice_date', end);
+      }
+      return q;
+    });
+  } catch (error) {
+    body.innerHTML = `<div class="loading" style="color:var(--red)">Load failed: ${error.message}</div>`;
+    return;
   }
-  const { data, error } = await q;
-  if (error) { body.innerHTML = `<div class="loading" style="color:var(--red)">Load failed: ${error.message}</div>`; return; }
-  const rows = data || [];
   const personalCatIds = new Set(CATEGORIES.filter(c => c.is_personal).map(c => c.id));
 
   const totalCount   = rows.length;
@@ -988,11 +1013,13 @@ async function previewExcel(){
   }
 
   // Dedup against existing DB rows. Key: invoice_number + amount + company + date.
-  // Fetch existing signatures once and compare in-memory (fast for a few hundred rows).
+  // Paginated: Supabase caps .select() at 1000 per request — without paging,
+  // dedup silently lets duplicates through once the table crosses 1000 rows.
   const validRows = rows.filter(r => !r._errors.length);
-  const { data: existing } = await sb.from('hq_invoices')
-    .select('invoice_number, amount, company, invoice_date');
-  const existingKeys = new Set((existing||[]).map(r => sigKey(r)));
+  const existing = await fetchAllPaged(() =>
+    sb.from('hq_invoices').select('invoice_number, amount, company, invoice_date').order('invoice_date',{ascending:false})
+  );
+  const existingKeys = new Set(existing.map(r => sigKey(r)));
 
   const dupRows = [];
   const newRows = [];
@@ -1129,8 +1156,8 @@ function profitTabHtml(){
 }
 
 async function populatePeriods(){
-  const { data } = await sb.from('bookings').select('month_key').order('month_key',{ascending:false}).limit(20000);
-  const periods = Array.from(new Set((data||[]).map(r => r.month_key))).filter(Boolean);
+  const data = await fetchAllPaged(() => sb.from('bookings').select('month_key').order('check_in_on',{ascending:false}));
+  const periods = Array.from(new Set(data.map(r => r.month_key))).filter(Boolean);
   if (!periods.length) periods.push(currentMonth());
   const sel = $('periodSelect');
   if (sel) sel.innerHTML = periods.map(p => `<option value="${p}">${p}</option>`).join('') + `<option value="__all__">All-time</option>`;
@@ -1148,17 +1175,18 @@ async function renderProfit(){
 
   // Bookings from the hub-level import: one row per reservation.
   // net_amount = gross − partner commission (what the camp actually receives).
-  let bkQ = sb.from('bookings').select('location, month_key, total, net_amount, pax').limit(20000);
-  if (!isAll) bkQ = bkQ.eq('month_key', period);
-  const { data: bkRows } = await bkQ;
-
-  const { data: lgRows } = await sb.from('ledger_entries')
-    .select('type, amount_eur, entry_date, business_area, category, paid_from, attributed_location, location_id');
+  // Paginated because Supabase caps .select() at 1000 rows per request.
+  const [bkRows, lgRows, hqRows] = await Promise.all([
+    fetchAllPaged(() => {
+      let q = sb.from('bookings').select('location, month_key, total, net_amount, pax').order('check_in_on',{ascending:true});
+      if (!isAll) q = q.eq('month_key', period);
+      return q;
+    }),
+    fetchAllPaged(() => sb.from('ledger_entries').select('type, amount_eur, entry_date, business_area, category, paid_from, attributed_location, location_id').order('entry_date',{ascending:false})),
+    fetchAllPaged(() => sb.from('hq_invoices').select('location_slug, amount_eur, invoice_date, category_id').order('invoice_date',{ascending:false}))
+  ]);
 
   const inPeriod = (d) => isAll || String(d||'').slice(0,7) === period;
-
-  let hqQ = sb.from('hq_invoices').select('location_slug, amount_eur, invoice_date, category_id');
-  const { data: hqRows } = await hqQ;
   const personalCatIds = new Set(CATEGORIES.filter(c => c.is_personal).map(c => c.id));
 
   const locIdToSlug = new Map(LOCATIONS.map(l => [l.id, l.slug]));
