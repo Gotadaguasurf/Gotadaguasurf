@@ -149,12 +149,27 @@ const OWNER_EMAILS = new Set(['miguel@gotadaguasurf.com']);
 const HQ_LOCATIONS = [
   {slug:'portugal',    label:'Surfcamp PT'},
   {slug:'surf-school', label:'Surf School'},
+  {slug:'junior-camp', label:'Junior Camp'},
+  {slug:'kids-camp',   label:'Kids Camp'},
   {slug:'morocco',     label:'Morocco'},
   {slug:'sri-lanka',   label:'Sri Lanka'},
-  {slug:'junior-camp', label:'Junior Camp'},
   {slug:'general',     label:'General (HQ)'},
 ];
 const PAYMENT_TYPES = ['Cash','Card','Bank Transfer','Other'];
+
+// Legal entities that actually pay invoices. covers_locations mirrors the
+// public.hq_companies table — if you add a location, update BOTH here and
+// there (or query hq_companies at boot; kept as constant for simplicity).
+const HQ_COMPANIES = [
+  {slug:'water-movements', label:'Water Movements Lda', covers:['portugal','surf-school','junior-camp','kids-camp','general']},
+  {slug:'mgrp-sarl',       label:'MGRP Sarl',           covers:['morocco']},
+  {slug:'wave-movements',  label:'Wave Movements',      covers:['sri-lanka']},
+];
+const payingCompanyFor = (locationSlug) => {
+  const c = HQ_COMPANIES.find(x => x.covers.includes(locationSlug));
+  return c ? c.slug : 'water-movements';   // default fallback so nothing saves null
+};
+const companyLabel = (slug) => (HQ_COMPANIES.find(c => c.slug === slug)?.label) || slug || '—';
 
 let CURRENT_USER = null;
 let LOCATIONS    = [];     // from public.locations (BL revenue join)
@@ -456,6 +471,19 @@ function invoicesTabHtml(){
             <select id="inv_payment">${payOptions}</select>
           </div>
 
+          <div class="field col-6">
+            <label>Paying company <span id="payCoAuto" style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(auto from location)</span></label>
+            <select id="inv_paying_company">
+              ${HQ_COMPANIES.map(c => `<option value="${c.slug}">${c.label}</option>`).join('')}
+            </select>
+          </div>
+          <div class="field col-6" style="justify-content:flex-end">
+            <label>&nbsp;</label>
+            <div class="hint" style="margin:0;line-height:1.5">
+              Default derived from location. Override when HQ pays for a Morocco / Sri Lanka expense — the row will still count for Profit at the intended location.
+            </div>
+          </div>
+
           <div class="field col-5">
             <label>Company / Supplier</label>
             <input id="inv_company" type="text" placeholder="e.g. Continente, Fnac, EDP">
@@ -604,6 +632,28 @@ function wireInvoiceForm(){
     });
   }
 
+  // Auto-derive paying_company from location. As long as the user hasn't
+  // manually picked a different company, changing location keeps them in
+  // sync. Once the user overrides paying_company, we stop auto-updating
+  // for this row so we don't clobber their choice.
+  const inpLoc    = $('inv_location');
+  const inpPayCo  = $('inv_paying_company');
+  const payCoAuto = $('payCoAuto');
+  const syncPayingCompany = () => {
+    if (inpPayCo.dataset.userTouched === '1') return;
+    const derived = payingCompanyFor(inpLoc.value);
+    inpPayCo.value = derived;
+    if (payCoAuto) payCoAuto.textContent = '(auto from location)';
+  };
+  inpLoc.addEventListener('change', syncPayingCompany);
+  inpPayCo.addEventListener('change', () => {
+    const derived = payingCompanyFor(inpLoc.value);
+    const overridden = inpPayCo.value !== derived;
+    inpPayCo.dataset.userTouched = overridden ? '1' : '0';
+    if (payCoAuto) payCoAuto.textContent = overridden ? '(overridden — inter-company)' : '(auto from location)';
+  });
+  syncPayingCompany();
+
   refreshFx();
 }
 
@@ -697,12 +747,13 @@ async function extractFromInvoice(){
       }
     }
   }
-  // Location — match by slug.
+  // Location — match by slug. Dispatch change so paying_company auto-syncs.
   if (ex.location_hint) {
     const locSel = $('inv_location');
     for (let i = 0; i < locSel.options.length; i++) {
       if (locSel.options[i].value === ex.location_hint) { locSel.selectedIndex = i; break; }
     }
+    locSel.dispatchEvent(new Event('change'));
   }
 
   // Trigger FX recalculation now that amount + currency are set.
@@ -749,6 +800,7 @@ async function saveInvoice(){
   const fx_rate         = Number($('inv_fx').value) || (currency==='EUR' ? 1 : null);
   const amount_eur      = Number($('inv_amount_eur').value) || (amount * (fx_rate||1));
   const payment_type    = $('inv_payment').value;
+  const paying_company  = $('inv_paying_company').value || payingCompanyFor(location_slug);
   const description     = ($('inv_description').value||'').trim() || null;
   const notes           = ($('inv_notes').value||'').trim() || null;
   const category_id     = catSel.value || null;
@@ -790,7 +842,8 @@ async function saveInvoice(){
   }
 
   const payload = {
-    location_slug, invoice_date, company, supplier_nif, description,
+    location_slug, paying_company,
+    invoice_date, company, supplier_nif, description,
     amount, currency, fx_rate, amount_eur,
     payment_type, invoice_number, category_id, category_name,
     file_url, file_name, file_mime,
@@ -828,6 +881,14 @@ function clearInvoiceForm(){
   window.__prefilledStoragePath = null;
   window.__prefilledFileName = null;
   window.__prefilledFileMime = null;
+  // Reset paying_company override state so it goes back to auto-derive mode.
+  const payCo = $('inv_paying_company');
+  if (payCo) {
+    payCo.dataset.userTouched = '0';
+    payCo.value = payingCompanyFor($('inv_location').value);
+  }
+  const payCoAuto = $('payCoAuto');
+  if (payCoAuto) payCoAuto.textContent = '(auto from location)';
 }
 
 async function renderInvoiceList(){
@@ -841,7 +902,7 @@ async function renderInvoiceList(){
   try {
     rows = await fetchAllPaged(() => {
       let q = sb.from('hq_invoices')
-        .select('id, location_slug, invoice_date, company, description, amount, currency, amount_eur, payment_type, invoice_number, category_name, file_url, file_name, needs_review, is_duplicate, category_id, notes, supplier_nif, fx_rate')
+        .select('id, location_slug, paying_company, invoice_date, company, description, amount, currency, amount_eur, payment_type, invoice_number, category_name, file_url, file_name, needs_review, is_duplicate, category_id, notes, supplier_nif, fx_rate')
         .order('invoice_date', { ascending:false });
       if (loc !== '__all__') q = q.eq('location_slug', loc);
       if (month) {
@@ -870,7 +931,7 @@ async function renderInvoiceList(){
   }
 
   // Group by location_slug when "All" is selected. General first, then camps by size.
-  const groupsOrder = ['general','portugal','surf-school','morocco','sri-lanka','junior-camp'];
+  const groupsOrder = ['general','portugal','surf-school','junior-camp','kids-camp','morocco','sri-lanka'];
   const grouped = {};
   rows.forEach(r => {
     const k = r.location_slug || 'general';
@@ -881,9 +942,14 @@ async function renderInvoiceList(){
 
   const rowHtml = (r) => {
     const isPersonal = personalCatIds.has(r.category_id);
+    // If paying_company diverges from the default for this location,
+    // mark the row so the inter-company flow is visible at a glance.
+    const derivedPayCo = payingCompanyFor(r.location_slug);
+    const isInterCo = r.paying_company && r.paying_company !== derivedPayCo;
     return `<tr class="${r.is_duplicate?'dup':''}">
       <td>${r.invoice_date}</td>
       <td class="loc-name">${locLabel(r.location_slug)}</td>
+      <td>${escapeHtml(companyLabel(r.paying_company))}${isInterCo?' <span class="chip chip-review" title="Inter-company: paid by a different company than the location default">inter-co</span>':''}</td>
       <td>${escapeHtml(r.company||'')}${r.description?`<br><span style="font-size:11px;color:var(--muted)">${escapeHtml(r.description)}</span>`:''}</td>
       <td>${escapeHtml(r.category_name||'')} ${isPersonal?'<span class="chip chip-personal">personal</span>':''} ${r.needs_review?'<span class="chip chip-review">review</span>':''}</td>
       <td style="font-family:'DM Mono',monospace;font-size:11px">${escapeHtml(r.invoice_number||'—')}</td>
@@ -897,7 +963,7 @@ async function renderInvoiceList(){
 
   const tableHead = `
     <thead><tr>
-      <th>Date</th><th>Location</th><th>Company</th><th>Category</th>
+      <th>Date</th><th>Location</th><th>Paid by</th><th>Company</th><th>Category</th>
       <th>Invoice #</th><th class="r">Amount</th><th class="r">EUR</th>
       <th>Pay</th><th>File</th><th></th>
     </tr></thead>`;
@@ -912,7 +978,7 @@ async function renderInvoiceList(){
         const label = slug === 'general' ? 'General HQ · not attributed to a camp' : `Attributed to ${locLabel(slug)}`;
         return `
           <tr style="background:var(--foam);border-top:2px solid var(--border)">
-            <td colspan="6" style="font-weight:700;color:var(--navy);font-size:12px;text-transform:uppercase;letter-spacing:.06em">${label}</td>
+            <td colspan="7" style="font-weight:700;color:var(--navy);font-size:12px;text-transform:uppercase;letter-spacing:.06em">${label}</td>
             <td class="r" style="font-weight:700;color:var(--navy)">${eur(gTotal)}</td>
             <td colspan="3" style="color:var(--muted);font-size:11px">${gRows.length} invoice(s)</td>
           </tr>
@@ -924,7 +990,7 @@ async function renderInvoiceList(){
     const otherSlugs = Object.keys(grouped).filter(s => !knownSlugs.has(s));
     const otherSection = otherSlugs.map(slug => `
       <tr style="background:var(--foam);border-top:2px solid var(--border)">
-        <td colspan="10" style="font-weight:700;color:var(--navy);font-size:12px">Other · ${escapeHtml(slug)}</td>
+        <td colspan="11" style="font-weight:700;color:var(--navy);font-size:12px">Other · ${escapeHtml(slug)}</td>
       </tr>
       ${grouped[slug].map(rowHtml).join('')}
     `).join('');
@@ -1027,6 +1093,7 @@ const EXCEL_LOCATION_MAP = {
   'surfschool':'surf-school', 'surf school':'surf-school', 'surf-school':'surf-school',
   'sri lanka':'sri-lanka', 'srilanka':'sri-lanka', 'sri-lanka':'sri-lanka',
   'junior camp':'junior-camp', 'juniorcamp':'junior-camp', 'junior-camp':'junior-camp',
+  'kids camp':'kids-camp', 'kidscamp':'kids-camp', 'kids-camp':'kids-camp',
   'general':'general', 'hq':'general'
 };
 const EXCEL_CATEGORY_FIXES = {
@@ -1136,6 +1203,12 @@ async function previewExcel(){
       _row: rowNum,
       _errors: rowErrors,
       location_slug: location_slug || null,
+      // Excel doesn't have a paying_company column — assume the default
+      // company for the location (Water Movements for PT locations,
+      // MGRP for morocco, Wave for sri-lanka). If Miguel actually paid
+      // some of those Excel rows inter-company, he'll fix them one-off
+      // in the invoice list afterwards.
+      paying_company: location_slug ? payingCompanyFor(location_slug) : null,
       invoice_date: invoice_date || null,
       company: (cells[idx.company]||'').trim(),
       description: idx.description >= 0 ? (cells[idx.description]||'').trim() || null : null,
