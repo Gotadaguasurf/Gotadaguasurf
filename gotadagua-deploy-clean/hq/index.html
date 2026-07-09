@@ -57,7 +57,7 @@ input:focus,select:focus{outline:none;border-color:var(--ocean);box-shadow:0 0 0
 .manual-row .field input,.manual-row .field select{padding:9px 10px;font-size:13px}
 @media(max-width:1100px){.manual-row{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:600px){.manual-row{grid-template-columns:1fr}}
-.cat-modal{border:none;border-radius:14px;padding:0;max-width:720px;width:calc(100vw - 40px);box-shadow:0 24px 60px rgba(0,0,0,.28)}
+.cat-modal{border:none;border-radius:14px;padding:0;max-width:720px;width:calc(100vw - 40px);box-shadow:0 24px 60px rgba(0,0,0,.28);inset:0;margin:auto;max-height:calc(100vh - 40px);overflow:auto}
 .cat-modal::backdrop{background:rgba(13,27,42,.55);backdrop-filter:blur(3px)}
 .cat-modal-inner{background:#fff;color:var(--ink)}
 .cat-modal-hdr{padding:18px 22px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
@@ -2246,23 +2246,6 @@ Morroco,29/12/2025,IKEA,,,€761.08,,Card,,Setup,FALSE"></textarea>
       </div>
     </div>
 
-    <div class="card">
-      <div class="card-hdr">
-        <div>
-          <div class="card-title">Bookinglayer bookings</div>
-          <div class="card-hint">Imported once at the hub — HQ reads the same data automatically</div>
-        </div>
-      </div>
-      <div class="card-body">
-        <div class="hint" style="font-size:13px;line-height:1.7">
-          The <b>Import CSV</b> action lives in the top bar of the main hub — it splits the Bookinglayer export by camp, feeds every camp hub and the partners app, and the same rows now flow into HQ's Profit view automatically. No separate import here.
-        </div>
-        <div class="btn-row">
-          <a href="/?openImport=1" class="btn">Open bookings import at hub →</a>
-          <a href="/" class="btn btn-ghost">Back to hub</a>
-        </div>
-      </div>
-    </div>
   `;
 }
 
