@@ -57,6 +57,22 @@ input:focus,select:focus{outline:none;border-color:var(--ocean);box-shadow:0 0 0
 .manual-row .field input,.manual-row .field select{padding:9px 10px;font-size:13px}
 @media(max-width:1100px){.manual-row{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:600px){.manual-row{grid-template-columns:1fr}}
+.cat-modal{border:none;border-radius:14px;padding:0;max-width:720px;width:calc(100vw - 40px);box-shadow:0 24px 60px rgba(0,0,0,.28)}
+.cat-modal::backdrop{background:rgba(13,27,42,.55);backdrop-filter:blur(3px)}
+.cat-modal-inner{background:#fff;color:var(--ink)}
+.cat-modal-hdr{padding:18px 22px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.cat-modal-body{padding:18px 22px 22px}
+.cat-tbl{width:100%;border-collapse:collapse}
+.cat-tbl th{padding:8px 10px;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);border-bottom:1px solid var(--border);text-align:left;font-weight:700}
+.cat-tbl td{padding:6px 10px;font-size:13px;border-bottom:1px solid #eef3f8;vertical-align:middle}
+.cat-tbl input[type="text"]{width:100%;border:1px solid transparent;padding:5px 8px;border-radius:6px;font-size:13px;font-family:'Outfit',sans-serif;background:transparent}
+.cat-tbl input[type="text"]:hover{border-color:var(--border);background:#fff}
+.cat-tbl input[type="text"]:focus{border-color:var(--ocean);background:#fff;outline:none}
+.cat-tbl tr.inactive td{opacity:.55}
+.cat-tbl tr.new-row{background:var(--foam)}
+.cat-mini-btn{background:transparent;border:none;color:var(--muted);cursor:pointer;padding:4px 6px;border-radius:4px;font-size:13px}
+.cat-mini-btn:hover{background:var(--foam);color:var(--navy)}
+.cat-mini-btn.danger:hover{background:var(--red-bg);color:var(--red)}
 .row-selected{background:#eaf3fa}
 .row-selected td{border-color:#c7ddf0}
 .batch-bar{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:900;background:var(--navy);color:#fff;border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.25);padding:0;animation:barIn .2s ease-out}
@@ -157,6 +173,21 @@ td.loc-name{font-weight:700;color:var(--navy)}
 </header>
 
 <main id="mainWrap"><div class="loading">Checking access…</div></main>
+
+<dialog id="catModal" class="cat-modal">
+  <div class="cat-modal-inner">
+    <div class="cat-modal-hdr">
+      <div>
+        <div class="card-title">Manage categories</div>
+        <div class="card-hint">Rename, reorder, mark personal, or add new ones. Changes reflect everywhere in HQ.</div>
+      </div>
+      <button class="action-btn" onclick="closeCategoryPanel()">✕ Close</button>
+    </div>
+    <div id="catModalBody" class="cat-modal-body">
+      <div class="loading">Loading…</div>
+    </div>
+  </div>
+</dialog>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="/supabase-config.js"></script>
@@ -617,7 +648,10 @@ function invoicesTabHtml(){
             <div class="card-title">Registered invoices</div>
             <div class="card-hint">Sorted by invoice date, newest first</div>
           </div>
-          <input id="filter_search" type="search" placeholder="🔎 Search supplier, invoice #, NIF…" oninput="onFilterChanged()" style="width:280px;max-width:100%;padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;font-family:'Outfit',sans-serif;font-size:13px">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <button class="btn btn-ghost" style="padding:8px 14px;font-size:12px" onclick="openCategoryPanel()">⚙ Manage categories</button>
+            <input id="filter_search" type="search" placeholder="🔎 Search supplier, invoice #, NIF…" oninput="onFilterChanged()" style="width:260px;max-width:100%;padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;font-family:'Outfit',sans-serif;font-size:13px">
+          </div>
         </div>
         <div class="period-row" style="margin:0;flex-wrap:wrap">
           <label>Location</label>
@@ -1245,6 +1279,204 @@ function clearAllFilters(){
   set('filter_search', '');
   renderInvoiceList();
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+//   Category management — modal-based CRUD for hq_invoice_categories
+// ═══════════════════════════════════════════════════════════════════════
+// State cached so the panel can rearrange without a round-trip per key
+// stroke. Rebuilt on every open + after every persist.
+let CAT_PANEL_ROWS = [];
+
+async function openCategoryPanel(){
+  const modal = $('catModal');
+  if (!modal) return;
+  await loadCategoryPanel();
+  modal.showModal();
+}
+function closeCategoryPanel(){
+  const modal = $('catModal');
+  if (modal && modal.open) modal.close();
+}
+
+async function loadCategoryPanel(){
+  const body = $('catModalBody');
+  if (!body) return;
+  body.innerHTML = `<div class="loading">Loading…</div>`;
+  const { data, error } = await sb.from('hq_invoice_categories')
+    .select('id, name, sort_order, is_personal, active')
+    .order('sort_order').order('name');
+  if (error) { body.innerHTML = `<div class="loading" style="color:var(--red)">Load failed: ${error.message}</div>`; return; }
+  CAT_PANEL_ROWS = data || [];
+  renderCategoryPanel();
+}
+
+function renderCategoryPanel(){
+  const body = $('catModalBody');
+  if (!body) return;
+  const rows = CAT_PANEL_ROWS;
+  const rowHtml = (r, i) => `
+    <tr class="${r.active===false?'inactive':''}" data-cat-id="${r.id}">
+      <td style="color:var(--muted);font-family:'DM Mono',monospace;font-size:11px;width:38px">${(r.sort_order||0).toString().padStart(3,'0')}</td>
+      <td><input type="text" value="${escapeAttr(r.name)}" onblur="saveCategoryName('${r.id}', this.value)"></td>
+      <td style="width:80px;text-align:center"><input type="checkbox" ${r.is_personal?'checked':''} onchange="setCategoryFlag('${r.id}','is_personal',this.checked)" title="Personal categories are excluded from business profit"></td>
+      <td style="width:80px;text-align:center"><input type="checkbox" ${r.active!==false?'checked':''} onchange="setCategoryFlag('${r.id}','active',this.checked)" title="Inactive categories are hidden from dropdowns but existing invoices keep their history"></td>
+      <td style="width:90px;text-align:right;white-space:nowrap">
+        <button class="cat-mini-btn" onclick="moveCategory('${r.id}',-1)" title="Move up" ${i===0?'disabled':''}>▲</button>
+        <button class="cat-mini-btn" onclick="moveCategory('${r.id}',1)" title="Move down" ${i===rows.length-1?'disabled':''}>▼</button>
+        <button class="cat-mini-btn danger" onclick="deleteCategoryConfirm('${r.id}','${escapeAttr(r.name)}')" title="Delete (only if unused)">🗑</button>
+      </td>
+    </tr>
+  `;
+  body.innerHTML = `
+    <table class="cat-tbl">
+      <thead><tr>
+        <th>#</th><th>Name</th><th style="text-align:center">Personal</th><th style="text-align:center">Active</th><th></th>
+      </tr></thead>
+      <tbody>${rows.map(rowHtml).join('')}</tbody>
+    </table>
+    <div style="margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <input id="newCatName" type="text" placeholder="New category name (e.g. Marketing)" style="flex:1;min-width:220px;padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:'Outfit',sans-serif">
+      <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)">
+        <input type="checkbox" id="newCatPersonal"> Personal (excl. profit)
+      </label>
+      <button class="btn" onclick="addNewCategory()" style="padding:8px 16px;font-size:13px">+ Add</button>
+    </div>
+    <div id="catToast" style="margin-top:10px"></div>
+    <div class="hint" style="margin-top:14px">
+      <b>Personal</b> categories (like <i>Miguel — Personal</i>) are excluded from business profit calculations.<br>
+      <b>Inactive</b> categories disappear from dropdowns but existing invoices keep their historical <code>category_name</code> snapshot intact.
+    </div>
+  `;
+}
+
+function escapeAttr(s){
+  return String(s||'').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+async function saveCategoryName(id, newName){
+  const clean = String(newName || '').trim();
+  const row = CAT_PANEL_ROWS.find(r => r.id === id);
+  if (!row) return;
+  if (!clean) { toast('catToast','err','Name cannot be empty'); await loadCategoryPanel(); return; }
+  if (clean === row.name) return;
+  const { error } = await sb.from('hq_invoice_categories').update({ name: clean }).eq('id', id);
+  if (error) { toast('catToast','err','Rename failed: '+error.message); return; }
+  row.name = clean;
+  await refreshCategoriesEverywhere();
+}
+
+async function setCategoryFlag(id, field, value){
+  const row = CAT_PANEL_ROWS.find(r => r.id === id);
+  if (!row) return;
+  const { error } = await sb.from('hq_invoice_categories').update({ [field]: value }).eq('id', id);
+  if (error) { toast('catToast','err','Update failed: '+error.message); await loadCategoryPanel(); return; }
+  row[field] = value;
+  await refreshCategoriesEverywhere(false);   // no need to re-render the panel here
+}
+
+async function moveCategory(id, delta){
+  const idx = CAT_PANEL_ROWS.findIndex(r => r.id === id);
+  const swap = idx + delta;
+  if (idx < 0 || swap < 0 || swap >= CAT_PANEL_ROWS.length) return;
+  const a = CAT_PANEL_ROWS[idx];
+  const b = CAT_PANEL_ROWS[swap];
+  // Swap sort_order values so both rows end up with the neighbour's number.
+  const so1 = a.sort_order, so2 = b.sort_order;
+  const { error: e1 } = await sb.from('hq_invoice_categories').update({ sort_order: so2 }).eq('id', a.id);
+  if (e1) { toast('catToast','err','Reorder failed: '+e1.message); return; }
+  const { error: e2 } = await sb.from('hq_invoice_categories').update({ sort_order: so1 }).eq('id', b.id);
+  if (e2) { toast('catToast','err','Reorder failed (second half): '+e2.message); return; }
+  a.sort_order = so2; b.sort_order = so1;
+  CAT_PANEL_ROWS.sort((x,y) => (x.sort_order||0) - (y.sort_order||0));
+  renderCategoryPanel();
+  await refreshCategoriesEverywhere(false);
+}
+
+async function addNewCategory(){
+  const name = ($('newCatName')?.value || '').trim();
+  const isPersonal = !!$('newCatPersonal')?.checked;
+  if (!name) { toast('catToast','err','Type a name first'); return; }
+  // Next sort_order = max existing + 10, so the row lands at the bottom
+  // and there's room to insert without shuffling later.
+  const maxSort = CAT_PANEL_ROWS.reduce((m, r) => Math.max(m, r.sort_order||0), 0);
+  const { error } = await sb.from('hq_invoice_categories').insert({
+    name, sort_order: maxSort + 10, is_personal: isPersonal, active: true
+  });
+  if (error) {
+    // Unique-name conflict is the common case → surface a friendlier message.
+    const msg = /duplicate|unique/i.test(error.message) ? `"${name}" already exists` : error.message;
+    toast('catToast','err','Add failed: '+msg);
+    return;
+  }
+  toast('catToast','ok', `Added "${name}"`);
+  $('newCatName').value = '';
+  $('newCatPersonal').checked = false;
+  await loadCategoryPanel();
+  await refreshCategoriesEverywhere(false);
+}
+
+async function deleteCategoryConfirm(id, name){
+  if (!confirm(`Delete "${name}"? Only works if no invoices use it. Otherwise set it inactive instead.`)) return;
+  const { error } = await sb.from('hq_invoice_categories').delete().eq('id', id);
+  if (error) {
+    // 23503 = foreign_key_violation. Category is referenced by at least one
+    // invoice, so it can't be removed without orphaning history.
+    const msg = /foreign key|violates|23503/i.test(error.message)
+      ? `Cannot delete — invoices reference this category. Uncheck "Active" instead.`
+      : error.message;
+    toast('catToast','err', msg);
+    return;
+  }
+  toast('catToast','ok', `Deleted "${name}"`);
+  await loadCategoryPanel();
+  await refreshCategoriesEverywhere(false);
+}
+
+// After any change to hq_invoice_categories, resync the globally cached
+// CATEGORIES array + every UI surface that renders from it: the manual
+// form's Category dropdown, the invoice list rows' inline selects, and
+// the filter dropdown.
+async function refreshCategoriesEverywhere(alsoRerenderPanel = true){
+  const { data } = await sb.from('hq_invoice_categories')
+    .select('id, name, sort_order, is_personal, active')
+    .eq('active', true).order('sort_order');
+  CATEGORIES = data || [];
+
+  // Rebuild the manual form's Category dropdown so a rename is visible
+  // there too. Preserve the current selection if it still exists.
+  const catSel = $('inv_category');
+  if (catSel) {
+    const prev = catSel.value;
+    catSel.innerHTML = CATEGORIES.map(c =>
+      `<option value="${c.id}" data-personal="${c.is_personal?1:0}">${c.name}</option>`
+    ).join('');
+    if (CATEGORIES.find(c => c.id === prev)) catSel.value = prev;
+  }
+  // Rebuild the filter dropdown so filter-by-category also reflects the
+  // latest names/order.
+  const filterCat = $('filter_category');
+  if (filterCat) {
+    const prev = filterCat.value;
+    filterCat.innerHTML = '<option value="__all__">All</option>' +
+      CATEGORIES.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+    if (prev) filterCat.value = prev;
+  }
+  // Re-render the invoice list so inline row Category selects rebuild
+  // with the fresh options + personal totals recompute.
+  await renderInvoiceList();
+  if (alsoRerenderPanel) renderCategoryPanel();
+}
+
+// Close the modal on Escape (native dialog already handles it) and on
+// backdrop click (we wire manually because dialog doesn't fire that).
+document.addEventListener('click', (e) => {
+  const modal = document.getElementById('catModal');
+  if (!modal || !modal.open) return;
+  const rect = modal.getBoundingClientRect();
+  const inside = e.clientX >= rect.left && e.clientX <= rect.right
+              && e.clientY >= rect.top  && e.clientY <= rect.bottom;
+  if (!inside) modal.close();
+});
 
 // ─── Selection state for batch actions ─────────────────────────────────
 window.__selectedInvoiceIds = new Set();
