@@ -649,8 +649,9 @@ function invoicesTabHtml(){
             <div class="card-hint">Sorted by invoice date, newest first</div>
           </div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <button class="btn btn-ghost" style="padding:8px 14px;font-size:12px" onclick="exportInvoicesCsv()" title="Download the current filtered view as CSV — matches the Excel master column order">⬇ Export CSV</button>
             <button class="btn btn-ghost" style="padding:8px 14px;font-size:12px" onclick="openCategoryPanel()">⚙ Manage categories</button>
-            <input id="filter_search" type="search" placeholder="🔎 Search supplier, invoice #, NIF…" oninput="onFilterChanged()" style="width:260px;max-width:100%;padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;font-family:'Outfit',sans-serif;font-size:13px">
+            <input id="filter_search" type="search" placeholder="🔎 Search supplier, invoice #, NIF…" oninput="onFilterChanged()" style="width:240px;max-width:100%;padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;font-family:'Outfit',sans-serif;font-size:13px">
           </div>
         </div>
         <div class="period-row" style="margin:0;flex-wrap:wrap">
@@ -1278,6 +1279,74 @@ function clearAllFilters(){
   set('filter_personal', false);
   set('filter_search', '');
   renderInvoiceList();
+}
+
+// ─── CSV export of the current filtered invoice view ──────────────────
+// Column order mirrors Miguel's Excel master so the file drops straight
+// into his existing accountant workflow. Adds a few HQ-only columns
+// (Entity, FX Rate, Amount EUR, Review) at the end for auditability.
+function exportInvoicesCsv(){
+  const rows = window.__lastRenderedRows || [];
+  if (!rows.length) { toast('invToast','err','No rows to export in the current view'); return; }
+
+  const headers = [
+    'Location','Invoice Date','Company Name','Description','Tax Reg. Num.',
+    'Amount','Currency','Payment Type','Invoice Number','Category',
+    'Personal','Duplicate check',
+    'Entity','FX Rate','Amount EUR','Review','File'
+  ];
+
+  const esc = (v) => {
+    if (v == null) return '';
+    const s = String(v);
+    // Quote if the cell contains any of these; escape internal quotes.
+    return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s;
+  };
+
+  const personalCatIds = new Set(CATEGORIES.filter(c => c.is_personal).map(c => c.id));
+
+  const lines = [headers.join(',')];
+  for (const r of rows) {
+    lines.push([
+      locLabel(r.location_slug),
+      r.invoice_date || '',
+      r.company || '',
+      r.description || '',
+      r.supplier_nif || '',
+      r.amount != null ? Number(r.amount).toFixed(2) : '',
+      r.currency || 'EUR',
+      r.payment_type || '',
+      r.invoice_number || '',
+      r.category_name || '',
+      personalCatIds.has(r.category_id) ? 'TRUE' : 'FALSE',
+      r.is_duplicate ? 'TRUE' : 'FALSE',
+      companyLabel(r.paying_company),
+      r.fx_rate != null ? Number(r.fx_rate).toFixed(6) : '',
+      r.amount_eur != null ? Number(r.amount_eur).toFixed(2) : '',
+      r.needs_review ? 'TRUE' : 'FALSE',
+      r.file_name || ''
+    ].map(esc).join(','));
+  }
+
+  // UTF-8 BOM so Excel opens accented characters (Água, Sáfí…) correctly
+  // instead of rendering them as gibberish.
+  const csv = '﻿' + lines.join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const stamp = new Date().toISOString().slice(0,10);
+  // Encode the filter context so exports don't overwrite each other
+  // when the user does location-by-location per month.
+  const locPart   = ($('filter_location')?.value === '__all__' || !$('filter_location')?.value) ? 'all' : $('filter_location').value;
+  const monthPart = $('filter_month')?.value || 'all';
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `hq-invoices-${monthPart}-${locPart}-${stamp}-${rows.length}rows.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+  toast('invToast','ok', `Exported ${rows.length} row(s)`);
 }
 
 // ═══════════════════════════════════════════════════════════════════════
