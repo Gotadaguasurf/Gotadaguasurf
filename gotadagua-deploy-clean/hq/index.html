@@ -50,6 +50,13 @@ input:focus,select:focus{outline:none;border-color:var(--ocean);box-shadow:0 0 0
 .form-grid{display:grid;grid-template-columns:repeat(12,1fr);gap:14px}
 .col-3{grid-column:span 3}.col-4{grid-column:span 4}.col-5{grid-column:span 5}.col-6{grid-column:span 6}.col-7{grid-column:span 7}.col-8{grid-column:span 8}.col-12{grid-column:span 12}
 @media(max-width:900px){.col-3,.col-4,.col-5,.col-6,.col-7,.col-8{grid-column:span 12}}
+.manual-row{display:grid;gap:8px;align-items:end;
+  grid-template-columns:minmax(120px,1.1fr) minmax(120px,1fr) minmax(160px,1.8fr) minmax(80px,0.7fr) minmax(56px,0.5fr) minmax(130px,1.1fr) minmax(90px,0.8fr) auto}
+.manual-row .field{gap:4px}
+.manual-row .field label{font-size:10px}
+.manual-row .field input,.manual-row .field select{padding:8px 10px;font-size:13px}
+@media(max-width:1100px){.manual-row{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:600px){.manual-row{grid-template-columns:1fr}}
 .hint{font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5}
 .btn{background:var(--ocean);color:#fff;border:none;padding:10px 24px;border-radius:8px;font-weight:700;font-family:'Outfit',sans-serif;font-size:13px;cursor:pointer;transition:background .18s}
 .btn:hover{background:var(--navy)}
@@ -497,106 +504,94 @@ function invoicesTabHtml(){
     <div class="card">
       <div class="card-hdr">
         <div>
-          <div class="card-title">New invoice · manual</div>
-          <div class="card-hint">Central register — every business invoice lives here, tagged by location and category</div>
+          <div class="card-title">Quick add · manual</div>
+          <div class="card-hint">One-line entry for cases the AI bulk upload above doesn't cover — receipts without a PDF, hand-written notes, quick edits</div>
         </div>
+        <button type="button" class="btn btn-ghost" id="manualMoreBtn" onclick="toggleManualExtras()" style="padding:6px 12px;font-size:12px">More fields ▾</button>
       </div>
       <div class="card-body">
-        <div class="form-grid">
-          <div class="field col-3">
-            <label>Location</label>
+        <div class="manual-row">
+          <div class="field"><label>Location</label>
             <select id="inv_location">${locOptions}</select>
           </div>
-          <div class="field col-3">
-            <label>Invoice date</label>
+          <div class="field"><label>Date</label>
             <input id="inv_date" type="date" value="${today}">
           </div>
-          <div class="field col-3">
-            <label>Category</label>
-            <select id="inv_category">${catOptions}</select>
+          <div class="field"><label>Company / Supplier</label>
+            <input id="inv_company" type="text" placeholder="e.g. Auchan, EDP">
           </div>
-          <div class="field col-3">
-            <label>Payment type</label>
-            <select id="inv_payment">${payOptions}</select>
-          </div>
-
-          <div class="field col-6">
-            <label>Paying company <span id="payCoAuto" style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(auto from location)</span></label>
-            <select id="inv_paying_company">
-              ${HQ_COMPANIES.map(c => `<option value="${c.slug}">${c.label}</option>`).join('')}
-            </select>
-          </div>
-          <div class="field col-6" style="justify-content:flex-end">
-            <label>&nbsp;</label>
-            <div class="hint" style="margin:0;line-height:1.5">
-              Default derived from location. Override when HQ pays for a Morocco / Sri Lanka expense — the row will still count for Profit at the intended location.
-            </div>
-          </div>
-
-          <div class="field col-5">
-            <label>Company / Supplier</label>
-            <input id="inv_company" type="text" placeholder="e.g. Continente, Fnac, EDP">
-          </div>
-          <div class="field col-4">
-            <label>Tax reg number (NIF)</label>
-            <input id="inv_nif" type="text" placeholder="optional">
-          </div>
-          <div class="field col-3">
-            <label>Invoice number</label>
-            <input id="inv_number" type="text" placeholder="e.g. FT 2026/1234">
-          </div>
-
-          <div class="field col-3">
-            <label>Amount</label>
+          <div class="field"><label>Amount</label>
             <input id="inv_amount" type="number" step="0.01" min="0" placeholder="0.00">
           </div>
-          <div class="field col-3">
-            <label>Currency</label>
+          <div class="field"><label>Cur</label>
             <select id="inv_currency">
               <option value="EUR">EUR</option>
-              <option value="MAD">MAD (Morocco)</option>
-              <option value="LKR">LKR (Sri Lanka)</option>
+              <option value="MAD">MAD</option>
+              <option value="LKR">LKR</option>
               <option value="USD">USD</option>
               <option value="GBP">GBP</option>
             </select>
           </div>
-          <div class="field col-3">
-            <label>FX rate → EUR <span id="fxHint" style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(auto)</span></label>
-            <input id="inv_fx" type="number" step="0.000001" min="0" placeholder="1.000000">
+          <div class="field"><label>Category</label>
+            <select id="inv_category">${catOptions}</select>
           </div>
-          <div class="field col-3">
-            <label>Amount in EUR</label>
-            <input id="inv_amount_eur" type="number" step="0.01" min="0" placeholder="auto" readonly style="background:#f7fafd">
+          <div class="field"><label>Pay</label>
+            <select id="inv_payment">${payOptions}</select>
           </div>
+          <div class="field" style="align-self:end">
+            <button class="btn" id="saveInvBtn" onclick="saveInvoice()" style="height:38px">Save</button>
+          </div>
+        </div>
 
-          <div class="field col-12">
-            <label>Description</label>
-            <input id="inv_description" type="text" placeholder="What was purchased?">
-          </div>
+        <div id="manualExtras" style="display:none;margin-top:14px;padding-top:14px;border-top:1px dashed var(--border)">
+          <div class="form-grid">
+            <div class="field col-4">
+              <label>Paying company <span id="payCoAuto" style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(auto from location)</span></label>
+              <select id="inv_paying_company">
+                ${HQ_COMPANIES.map(c => `<option value="${c.slug}">${c.label}</option>`).join('')}
+              </select>
+            </div>
+            <div class="field col-4">
+              <label>Tax reg number (NIF)</label>
+              <input id="inv_nif" type="text" placeholder="optional">
+            </div>
+            <div class="field col-4">
+              <label>Invoice number</label>
+              <input id="inv_number" type="text" placeholder="e.g. FT 2026/1234">
+            </div>
 
-          <div class="field col-8">
-            <label>Attach invoice (PDF / photo)</label>
-            <input id="inv_file" type="file" accept="application/pdf,image/*,.heic">
-          </div>
-          <div class="field col-4">
-            <label>AI extract</label>
-            <button type="button" class="btn" id="extractBtn" onclick="extractFromInvoice()" disabled style="width:100%">🤖 Extract from invoice</button>
-          </div>
+            <div class="field col-4">
+              <label>FX rate → EUR <span id="fxHint" style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(auto)</span></label>
+              <input id="inv_fx" type="number" step="0.000001" min="0" placeholder="1.000000">
+            </div>
+            <div class="field col-4">
+              <label>Amount in EUR</label>
+              <input id="inv_amount_eur" type="number" step="0.01" min="0" placeholder="auto" readonly style="background:#f7fafd">
+            </div>
+            <div class="field col-4">
+              <label>Attach invoice (optional)</label>
+              <input id="inv_file" type="file" accept="application/pdf,image/*,.heic">
+            </div>
 
-          <div class="field col-12">
-            <label>Notes</label>
-            <input id="inv_notes" type="text" placeholder="Internal notes (optional)">
+            <div class="field col-8">
+              <label>Description</label>
+              <input id="inv_description" type="text" placeholder="What was purchased?">
+            </div>
+            <div class="field col-4">
+              <label>Notes</label>
+              <input id="inv_notes" type="text" placeholder="Internal notes">
+            </div>
           </div>
+          <div style="margin-top:6px">
+            <button type="button" class="action-btn" onclick="clearInvoiceForm()">Clear all fields</button>
+          </div>
+          <!-- extract button lives here so bulk stays the primary AI path -->
+          <button type="button" id="extractBtn" onclick="extractFromInvoice()" style="display:none"></button>
         </div>
 
         <div id="extractStatus" style="margin-top:8px"></div>
         <div id="dupWarn" class="dup-warn"></div>
-
-        <div class="btn-row">
-          <button class="btn" id="saveInvBtn" onclick="saveInvoice()">Save invoice</button>
-          <button class="btn btn-ghost" onclick="clearInvoiceForm()">Clear</button>
-          <span id="invToast"></span>
-        </div>
+        <div id="invToast" style="margin-top:8px"></div>
       </div>
     </div>
 
@@ -1150,6 +1145,15 @@ async function bulkProcessInvoices(){
     </div>`
   );
   renderInvoiceList();
+}
+
+function toggleManualExtras(){
+  const box = $('manualExtras');
+  const btn = $('manualMoreBtn');
+  if (!box || !btn) return;
+  const opening = box.style.display === 'none' || !box.style.display;
+  box.style.display = opening ? '' : 'none';
+  btn.textContent = opening ? 'Fewer fields ▴' : 'More fields ▾';
 }
 
 function clearInvoiceForm(){
