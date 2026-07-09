@@ -129,6 +129,7 @@ td.loc-name{font-weight:700;color:var(--navy)}
       <button class="nav-tab" data-tab="invoices" onclick="switchTab('invoices')">Despesas HQ</button>
       <button class="nav-tab" data-tab="import" onclick="switchTab('import')">Import</button>
       <button class="nav-tab" data-tab="profit" onclick="switchTab('profit')">Profit per location</button>
+      <button class="nav-tab" data-tab="cashflow" onclick="switchTab('cashflow')">Cash flow</button>
     </div>
   </div>
   <div class="header-right">
@@ -252,6 +253,7 @@ function render(){
     <div class="tab-pane" id="tab-invoices">${invoicesTabHtml()}</div>
     <div class="tab-pane" id="tab-import">${importTabHtml()}</div>
     <div class="tab-pane" id="tab-profit">${profitTabHtml()}</div>
+    <div class="tab-pane" id="tab-cashflow">${cashflowTabHtml()}</div>
   `;
   wireInvoiceForm();
   renderOverview();
@@ -264,6 +266,7 @@ function switchTab(name){
   if (name === 'profit')   { populatePeriods().then(renderProfit); }
   if (name === 'overview') { renderOverview(); }
   if (name === 'invoices') { renderInvoiceList(); }
+  if (name === 'cashflow') { renderCashflow(); }
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1494,6 +1497,354 @@ async function renderProfit(){
       <br>Local expenses use <code>attributed_location</code> when set — otherwise fall back to the row's own location.
     </div>
   `;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//   TAB 4 — CASH FLOW PER COMPANY
+// ═══════════════════════════════════════════════════════════════════
+function cashflowTabHtml(){
+  const today = new Date().toISOString().slice(0,10);
+  const coOptions = HQ_COMPANIES.map(c => `<option value="${c.slug}">${c.label}</option>`).join('');
+  return `
+    <div class="card">
+      <div class="card-hdr">
+        <div>
+          <div class="card-title">Log inter-company transfer</div>
+          <div class="card-hint">Money moved between company bank accounts (Water Movements → MGRP, etc.)</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="form-grid">
+          <div class="field col-3">
+            <label>Date</label>
+            <input id="tr_date" type="date" value="${today}">
+          </div>
+          <div class="field col-3">
+            <label>From company</label>
+            <select id="tr_from">${coOptions}</select>
+          </div>
+          <div class="field col-3">
+            <label>To company</label>
+            <select id="tr_to">${coOptions}</select>
+          </div>
+          <div class="field col-3">
+            <label>Purpose</label>
+            <input id="tr_purpose" type="text" placeholder="e.g. monthly allocation, salary funding">
+          </div>
+
+          <div class="field col-3">
+            <label>Amount</label>
+            <input id="tr_amount" type="number" step="0.01" min="0" placeholder="0.00">
+          </div>
+          <div class="field col-3">
+            <label>Currency</label>
+            <select id="tr_currency">
+              <option value="EUR">EUR</option>
+              <option value="MAD">MAD</option>
+              <option value="LKR">LKR</option>
+              <option value="USD">USD</option>
+              <option value="GBP">GBP</option>
+            </select>
+          </div>
+          <div class="field col-3">
+            <label>FX rate → EUR</label>
+            <input id="tr_fx" type="number" step="0.000001" min="0" placeholder="1.000000">
+          </div>
+          <div class="field col-3">
+            <label>Amount in EUR</label>
+            <input id="tr_amount_eur" type="number" step="0.01" min="0" readonly style="background:#f7fafd">
+          </div>
+
+          <div class="field col-8">
+            <label>Bank reference (optional)</label>
+            <input id="tr_reference" type="text" placeholder="SWIFT / transaction id">
+          </div>
+          <div class="field col-4">
+            <label>&nbsp;</label>
+            <button class="btn" style="width:100%" onclick="saveTransfer()">Save transfer</button>
+          </div>
+        </div>
+        <div id="tr_toast" style="margin-top:10px"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-hdr">
+        <div>
+          <div class="card-title">Cash flow per company</div>
+          <div class="card-hint">Bank movements at each legal entity + inter-company balance</div>
+        </div>
+        <div class="period-row">
+          <label>Period</label>
+          <select id="cf_period" onchange="renderCashflow()">
+            <option value="__all__">All-time</option>
+          </select>
+        </div>
+      </div>
+      <div class="card-body" id="cashflowBody">
+        <div class="loading">Loading…</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-hdr">
+        <div>
+          <div class="card-title">Transfer history</div>
+          <div class="card-hint">Last 200 transfers, newest first</div>
+        </div>
+      </div>
+      <div class="card-body" id="transferListBody">
+        <div class="loading">Loading…</div>
+      </div>
+    </div>
+  `;
+}
+
+async function renderCashflow(){
+  const cfBody = $('cashflowBody');
+  const trBody = $('transferListBody');
+  if (!cfBody || !trBody) return;
+
+  // FX-auto for the transfer form (only once).
+  wireTransferForm();
+
+  // Populate period dropdown once.
+  const perSel = $('cf_period');
+  if (perSel && perSel.options.length <= 1) {
+    const [bkMonths, invMonths, trMonths] = await Promise.all([
+      fetchAllPaged(() => sb.from('bookings').select('month_key').order('check_in_on',{ascending:false})),
+      fetchAllPaged(() => sb.from('hq_invoices').select('invoice_date').order('invoice_date',{ascending:false})),
+      fetchAllPaged(() => sb.from('internal_transfers').select('transfer_date').order('transfer_date',{ascending:false}))
+    ]);
+    const set = new Set();
+    bkMonths.forEach(r  => r.month_key && set.add(r.month_key));
+    invMonths.forEach(r => r.invoice_date && set.add(String(r.invoice_date).slice(0,7)));
+    trMonths.forEach(r  => r.transfer_date && set.add(String(r.transfer_date).slice(0,7)));
+    const months = [...set].sort().reverse();
+    perSel.innerHTML = '<option value="__all__">All-time</option>' +
+      months.map(m => `<option value="${m}">${m}</option>`).join('');
+  }
+  const period = perSel?.value || '__all__';
+  const isAll  = period === '__all__';
+  const inPeriod = (d) => isAll || String(d||'').slice(0,7) === period;
+
+  cfBody.innerHTML = `<div class="loading">Loading…</div>`;
+  trBody.innerHTML = `<div class="loading">Loading…</div>`;
+
+  const [invRows, transferRows, bkRows] = await Promise.all([
+    fetchAllPaged(() => sb.from('hq_invoices').select('paying_company, location_slug, amount_eur, category_id, invoice_date').order('invoice_date',{ascending:false})),
+    fetchAllPaged(() => sb.from('internal_transfers').select('id, transfer_date, from_company, to_company, amount, currency, amount_eur, purpose, reference, notes').order('transfer_date',{ascending:false})),
+    fetchAllPaged(() => sb.from('bookings').select('total, net_amount, month_key, location').order('check_in_on',{ascending:true}))
+  ]);
+
+  const personalCatIds = new Set(CATEGORIES.filter(c => c.is_personal).map(c => c.id));
+
+  // Cashflow per company: aggregate in/out by paying_company slug.
+  const byCo = {};
+  const ensureCo = (slug) => { if (!byCo[slug]) byCo[slug] = { slug, bookingsIn:0, transfersIn:0, expensesOut:0, transfersOut:0 }; return byCo[slug]; };
+  HQ_COMPANIES.forEach(c => ensureCo(c.slug));
+
+  // Bookings revenue: all money hits Water Movements first per the model.
+  const wm = ensureCo('water-movements');
+  bkRows.forEach(r => {
+    if (!inPeriod(r.month_key)) return;
+    wm.bookingsIn += Number(r.net_amount ?? r.total ?? 0);
+  });
+
+  // Expenses out: HQ invoices bucketed by paying_company (excl. personal).
+  invRows.forEach(r => {
+    if (!inPeriod(r.invoice_date)) return;
+    if (personalCatIds.has(r.category_id)) return;
+    const co = r.paying_company || payingCompanyFor(r.location_slug) || 'water-movements';
+    ensureCo(co).expensesOut += Number(r.amount_eur || 0);
+  });
+
+  // Transfers: sender loses, receiver gains.
+  const transfersInPeriod = transferRows.filter(t => inPeriod(t.transfer_date));
+  transfersInPeriod.forEach(t => {
+    const amt = Number(t.amount_eur || 0);
+    ensureCo(t.from_company).transfersOut += amt;
+    ensureCo(t.to_company).transfersIn    += amt;
+  });
+
+  const rows = HQ_COMPANIES.map(c => {
+    const b = byCo[c.slug] || ensureCo(c.slug);
+    const netFlow = b.bookingsIn + b.transfersIn - b.expensesOut - b.transfersOut;
+    return { ...b, label: c.label, netFlow };
+  });
+
+  // Inter-company balance — cumulative view (all-time regardless of filter).
+  // For each pair (from → to), sum all transfers ever + all HQ invoices where
+  // paying_company is one side but location_slug attributes to the other.
+  const allTransfers = transferRows;
+  const pairBalance = {};   // key = 'from|to' → EUR net paid FROM→TO
+  const bumpPair = (from, to, eur) => {
+    if (from === to) return;
+    const key = `${from}|${to}`;
+    pairBalance[key] = (pairBalance[key] || 0) + eur;
+  };
+  allTransfers.forEach(t => bumpPair(t.from_company, t.to_company, Number(t.amount_eur || 0)));
+
+  // Cross-company expenses: paying_company != covers_company for that location.
+  // When Water Movements pays for a Morocco expense, WM has effectively lent
+  // €X to MGRP that still needs to be reconciled via a real transfer.
+  invRows.forEach(r => {
+    if (personalCatIds.has(r.category_id)) return;
+    const derivedCo = payingCompanyFor(r.location_slug);
+    if (r.paying_company && r.paying_company !== derivedCo) {
+      bumpPair(r.paying_company, derivedCo, Number(r.amount_eur || 0));
+    }
+  });
+
+  // Reduce to net directional balances (from A→B minus B→A).
+  const netPairs = [];
+  const seen = new Set();
+  for (const key of Object.keys(pairBalance)) {
+    const [from, to] = key.split('|');
+    const revKey = `${to}|${from}`;
+    if (seen.has(revKey)) continue;
+    seen.add(key);
+    const net = (pairBalance[key] || 0) - (pairBalance[revKey] || 0);
+    if (Math.abs(net) < 0.01) continue;
+    if (net > 0) netPairs.push({ from, to,   amount: net });
+    else         netPairs.push({ from: to, to: from, amount: -net });
+  }
+
+  cfBody.innerHTML = `
+    <div style="overflow-x:auto"><table>
+      <thead><tr>
+        <th>Company</th>
+        <th class="r">Bookings IN</th>
+        <th class="r">Transfers IN</th>
+        <th class="r">Expenses OUT</th>
+        <th class="r">Transfers OUT</th>
+        <th class="r">Net cash flow</th>
+      </tr></thead>
+      <tbody>
+        ${rows.map(r => `<tr>
+          <td class="loc-name">${escapeHtml(r.label)}</td>
+          <td class="r">${eur(r.bookingsIn)}</td>
+          <td class="r">${eur(r.transfersIn)}</td>
+          <td class="r">${eur(r.expensesOut)}</td>
+          <td class="r">${eur(r.transfersOut)}</td>
+          <td class="r ${r.netFlow>0?'pos':r.netFlow<0?'neg':'zero'}">${r.netFlow>=0?'+':''}${eur(r.netFlow)}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table></div>
+
+    ${netPairs.length ? `
+      <div style="margin-top:20px">
+        <div style="font-family:'DM Serif Display',serif;font-size:16px;color:var(--navy);margin-bottom:8px">Inter-company balance (all-time)</div>
+        <div class="hint" style="margin-bottom:10px">Money one company advanced for another that hasn't been settled with a matching transfer. Positive number = <b>from</b> still needs to receive back from <b>to</b>.</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px">
+          ${netPairs.map(p => `
+            <div class="summary-box" style="border-left:4px solid var(--amber)">
+              <div class="summary-lbl">${escapeHtml(companyLabel(p.from))} → ${escapeHtml(companyLabel(p.to))}</div>
+              <div class="summary-val">${eur(p.amount)}</div>
+              <div class="hint" style="margin-top:4px">Owed by ${escapeHtml(companyLabel(p.to))} to ${escapeHtml(companyLabel(p.from))}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    ` : `
+      <div class="hint" style="margin-top:16px">No inter-company balance — every advance has been settled by a matching transfer.</div>
+    `}
+
+    <div class="hint" style="margin-top:14px">
+      <b>Bookings IN</b> goes 100% to Water Movements per the current model (Bookinglayer routes all customer money to the mother company).<br>
+      <b>Expenses OUT</b> uses <code>paying_company</code>, so a Morocco expense paid by HQ counts against Water Movements' bank here (but still against Morocco's profit).<br>
+      <b>Inter-company balance</b> = cumulative HQ-paid-for-camps + past transfers, netted.
+    </div>
+  `;
+
+  // Transfer list.
+  if (!transferRows.length) {
+    trBody.innerHTML = `<div class="loading">No transfers logged yet.</div>`;
+  } else {
+    trBody.innerHTML = `
+      <div style="overflow-x:auto"><table>
+        <thead><tr>
+          <th>Date</th><th>From</th><th>To</th>
+          <th class="r">Amount</th><th class="r">EUR</th>
+          <th>Purpose</th><th>Ref</th><th></th>
+        </tr></thead>
+        <tbody>
+          ${transferRows.slice(0, 200).map(t => `<tr>
+            <td>${t.transfer_date}</td>
+            <td class="loc-name">${escapeHtml(companyLabel(t.from_company))}</td>
+            <td class="loc-name">${escapeHtml(companyLabel(t.to_company))}</td>
+            <td class="r">${Number(t.amount).toFixed(2)} ${t.currency}</td>
+            <td class="r">${eur(t.amount_eur)}</td>
+            <td>${escapeHtml(t.purpose||'—')}</td>
+            <td style="font-family:'DM Mono',monospace;font-size:11px">${escapeHtml(t.reference||'—')}</td>
+            <td><button class="action-btn danger" onclick="deleteTransfer('${t.id}')">Delete</button></td>
+          </tr>`).join('')}
+        </tbody>
+      </table></div>
+    `;
+  }
+}
+
+function wireTransferForm(){
+  if (window.__transferWired) return;
+  window.__transferWired = true;
+  const inpCur = $('tr_currency');
+  const inpAmt = $('tr_amount');
+  const inpFx  = $('tr_fx');
+  const inpEur = $('tr_amount_eur');
+  const recalc = () => {
+    const amt = Number(inpAmt.value) || 0;
+    const fx  = Number(inpFx.value) || 0;
+    inpEur.value = fx > 0 ? (amt * fx).toFixed(2) : '';
+  };
+  const refreshFx = async () => {
+    const cur = inpCur.value || 'EUR';
+    if (cur === 'EUR') { inpFx.value = '1'; recalc(); return; }
+    try { inpFx.value = (await fetchFxToEur(cur)).toFixed(6); } catch(e){}
+    recalc();
+  };
+  inpCur.addEventListener('change', refreshFx);
+  inpAmt.addEventListener('input', recalc);
+  inpFx.addEventListener('input', recalc);
+  refreshFx();
+}
+
+async function saveTransfer(){
+  const transfer_date = $('tr_date').value;
+  const from_company  = $('tr_from').value;
+  const to_company    = $('tr_to').value;
+  const amount        = Number($('tr_amount').value) || 0;
+  const currency      = $('tr_currency').value || 'EUR';
+  const fx_rate       = Number($('tr_fx').value) || (currency==='EUR' ? 1 : null);
+  const amount_eur    = Number($('tr_amount_eur').value) || (amount * (fx_rate||1));
+  const purpose       = ($('tr_purpose').value||'').trim() || null;
+  const reference     = ($('tr_reference').value||'').trim() || null;
+
+  if (!transfer_date || !from_company || !to_company || amount <= 0 || !fx_rate) {
+    toast('tr_toast','err','Fill in date, from, to, amount and FX rate');
+    return;
+  }
+  if (from_company === to_company) {
+    toast('tr_toast','err','From and To companies must differ');
+    return;
+  }
+  const { error } = await sb.from('internal_transfers').insert({
+    transfer_date, from_company, to_company,
+    amount, currency, fx_rate, amount_eur,
+    purpose, reference,
+    created_by: CURRENT_USER?.id || null
+  });
+  if (error) { toast('tr_toast','err','Save failed: '+error.message); return; }
+  toast('tr_toast','ok', `Transfer saved (${eur(amount_eur)})`);
+  ['tr_amount','tr_amount_eur','tr_purpose','tr_reference'].forEach(id => $(id).value = '');
+  renderCashflow();
+}
+
+async function deleteTransfer(id){
+  if (!confirm('Delete this transfer permanently?')) return;
+  const { error } = await sb.from('internal_transfers').delete().eq('id', id);
+  if (error) { alert('Delete failed: '+error.message); return; }
+  renderCashflow();
 }
 
 // ── Utilities ───────────────────────────────────────────────────────
