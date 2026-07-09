@@ -80,7 +80,9 @@ input:focus,select:focus{outline:none;border-color:var(--ocean);box-shadow:0 0 0
 .batch-bar-inner select{background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:6px}
 .batch-bar-inner select option{color:var(--ink)}
 @keyframes barIn{from{opacity:0;transform:translate(-50%,10px)}to{opacity:1;transform:translate(-50%,0)}}
-.inline-select{border:1px solid transparent;background:transparent;padding:3px 22px 3px 6px;font-size:12px;font-family:'Outfit',sans-serif;color:inherit;cursor:pointer;border-radius:4px;transition:background .12s, border-color .12s;max-width:100%;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%236b8099' stroke-width='2'><polyline points='6 9 12 15 18 9'/></svg>");background-repeat:no-repeat;background-position:right 4px center}
+.inline-select{border:1px solid transparent;background:transparent;padding:3px 22px 3px 6px;font-size:12px;font-family:'Outfit',sans-serif;color:inherit;cursor:pointer;border-radius:4px;transition:background .12s, border-color .12s;min-width:108px;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%236b8099' stroke-width='2'><polyline points='6 9 12 15 18 9'/></svg>");background-repeat:no-repeat;background-position:right 4px center}
+.inline-select.wide{min-width:150px}
+.inline-select.narrow{min-width:96px}
 .inline-select:hover{background-color:var(--foam);border-color:var(--border)}
 .inline-select:focus{background-color:var(--foam);border-color:var(--ocean);outline:none}
 .cell-save-flash{animation:cellFlash .9s ease-out}
@@ -1956,13 +1958,13 @@ async function renderInvoiceList(){
         <select class="inline-select" onchange="quickUpdateInvoice('${r.id}','location_slug',this.value,this)" title="Change location — paying company auto-updates unless overridden">${locSelect}</select>
       </td>
       <td>
-        <select class="inline-select" onchange="quickUpdateInvoice('${r.id}','paying_company',this.value,this)" title="Change the company that actually paid">${payCoSelect}</select>
+        <select class="inline-select wide" onchange="quickUpdateInvoice('${r.id}','paying_company',this.value,this)" title="Change the company that actually paid">${payCoSelect}</select>
         ${isInterCo?' <span class="chip chip-review" title="Inter-company: paid by a different company than the location default">inter-co</span>':''}
       </td>
       <td>${escapeHtml(r.company||'')}${r.description?`<br><span style="font-size:11px;color:var(--muted)">${escapeHtml(r.description)}</span>`:''}</td>
       <td style="font-family:'DM Mono',monospace;font-size:11px">${escapeHtml(r.supplier_nif||'—')}</td>
       <td>
-        <select class="inline-select" onchange="quickUpdateInvoice('${r.id}','category_id',this.value,this)">${catSelect}</select>
+        <select class="inline-select wide" onchange="quickUpdateInvoice('${r.id}','category_id',this.value,this)">${catSelect}</select>
         ${isPersonal?'<span class="chip chip-personal">personal</span>':''}
         ${r.needs_review?'<span class="chip chip-review">review</span>':''}
       </td>
@@ -1970,7 +1972,7 @@ async function renderInvoiceList(){
       <td class="r">${Number(r.amount).toFixed(2)} ${r.currency}</td>
       <td class="r">${eur(r.amount_eur)}</td>
       <td>
-        <select class="inline-select" onchange="quickUpdateInvoice('${r.id}','payment_type',this.value,this)">${payTypeSelect}</select>
+        <select class="inline-select narrow" onchange="quickUpdateInvoice('${r.id}','payment_type',this.value,this)">${payTypeSelect}</select>
       </td>
       <td>${r.file_url?`<a class="file-link" href="#" onclick="openInvoiceFile('${r.file_url}');return false;">${escapeHtml(r.file_name||'view')}</a>`:'—'}</td>
       <td style="white-space:nowrap">
@@ -2035,7 +2037,7 @@ async function renderInvoiceList(){
         <button class="btn" style="padding:6px 14px;font-size:12px" onclick="approveAllReviews()">✓ Approve all ${reviewCount}</button>
       </div>
     ` : ''}
-    <div style="overflow-x:auto"><table>${tableHead}${tableBody}</table></div>
+    <div style="overflow-x:auto"><table style="min-width:1520px">${tableHead}${tableBody}</table></div>
     <div class="hint" style="margin-top:14px">
       <b>General HQ</b> = despesas que pertencem à empresa como um todo (contabilidade, seguros globais, software…).<br>
       <b>Attributed to a camp</b> = despesas pagas pelo HQ mas alocadas ao camp para efeitos de lucro (ex.: um seguro do Morocco pago da conta do HQ).<br>
