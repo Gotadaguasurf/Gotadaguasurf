@@ -2350,8 +2350,13 @@ async function previewExcel(){
       invoice_number: idx.invnum >= 0 ? (cells[idx.invnum]||'').trim() || null : null,
       category_id: category?.id || null,
       category_name: category?.name || rawCat || null,
-      // Force needs_review when data is incomplete OR Miguel had marked it.
-      needs_review: preFlaggedDup || missingLocation || !category,
+      // needs_review is ORTHOGONAL to is_duplicate: only flip it when the
+      // row itself is incomplete (missing location or missing category).
+      // Pre-flagged duplicates land with is_duplicate=true but stay clear
+      // of the review chip unless they also miss data — otherwise the
+      // "Only review" filter would be dominated by known-duplicate noise
+      // (194+ instead of the ~101 rows that actually need eyes).
+      needs_review: missingLocation || !category,
       _preFlaggedDup: preFlaggedDup
     };
     if (currency !== 'EUR') rowErrors.push(`non-EUR row (${currency}) needs manual FX — skipped`);
@@ -2390,11 +2395,23 @@ async function previewExcel(){
     const k = sigKey(r);
     if (!existingBySig.has(k) && r.id) existingBySig.set(k, r.id);
   });
-  const importAll = validRows.map(r => ({
-    ...r,
-    is_duplicate: r._preFlaggedDup || existingBySig.has(sigKey(r)),
-    duplicate_of: existingBySig.get(sigKey(r)) || null
-  }));
+  // Intra-batch dedup: catch pairs within the CSV itself (Miguel's 98
+  // internal duplicates). The FIRST occurrence in the file lands clean;
+  // every subsequent row with the same signature flags is_duplicate=true.
+  // duplicate_of stays null for these because the target doesn't have a
+  // DB id yet — a follow-up post-import SQL can resolve them if needed.
+  const seenInBatch = new Set();
+  const importAll = validRows.map(r => {
+    const k = sigKey(r);
+    const dupAgainstDb    = existingBySig.has(k);
+    const dupInBatch      = seenInBatch.has(k);
+    seenInBatch.add(k);
+    return {
+      ...r,
+      is_duplicate: r._preFlaggedDup || dupAgainstDb || dupInBatch,
+      duplicate_of: existingBySig.get(k) || null
+    };
+  });
   const dupCount = importAll.filter(r => r.is_duplicate).length;
   const reviewCount = importAll.filter(r => r.needs_review).length;
 
