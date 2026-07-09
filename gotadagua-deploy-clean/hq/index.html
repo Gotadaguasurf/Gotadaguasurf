@@ -908,8 +908,7 @@ async function saveInvoice(){
   const invoice_number  = ($('inv_number').value||'').trim() || null;
   const amount          = Number($('inv_amount').value) || 0;
   const currency        = $('inv_currency').value || 'EUR';
-  const fx_rate         = Number($('inv_fx').value) || (currency==='EUR' ? 1 : null);
-  const amount_eur      = Number($('inv_amount_eur').value) || (amount * (fx_rate||1));
+  let   fx_rate         = Number($('inv_fx').value) || (currency==='EUR' ? 1 : null);
   const payment_type    = $('inv_payment').value;
   const paying_company  = $('inv_paying_company').value || payingCompanyFor(location_slug);
   const description     = ($('inv_description').value||'').trim() || null;
@@ -922,11 +921,18 @@ async function saveInvoice(){
     btn.disabled = false;
     return;
   }
+  // Auto-fetch a real FX for non-EUR when the field is empty or still on the
+  // default 1. Previously we'd save 20 USD as €20; now Frankfurter kicks in.
+  if (currency !== 'EUR' && (!fx_rate || fx_rate === 1)) {
+    try { fx_rate = await fetchFxToEur(currency); }
+    catch (e) { toast('invToast','err','FX fetch failed — set the rate manually'); btn.disabled = false; return; }
+  }
   if (!fx_rate || fx_rate <= 0) {
     toast('invToast','err','Set an FX rate (or use EUR)');
     btn.disabled = false;
     return;
   }
+  const amount_eur = Number($('inv_amount_eur').value) || (amount * fx_rate);
 
   // Upload file first, if any.
   // If the user ran AI extract already, the file is already in the bucket —
@@ -959,6 +965,27 @@ async function saveInvoice(){
     file_mime = window.__editingFileMime || null;
   }
 
+  // Dedup check for FRESH saves — mirrors the bulk path so no matter how a
+  // row enters the DB, a matching (invoice_number, amount, company) is
+  // flagged with is_duplicate=true and points at the earlier row via
+  // duplicate_of. Editing an existing row skips this so a rename doesn't
+  // suddenly flag the row against itself.
+  let is_duplicate = false;
+  let duplicate_of = null;
+  if (!isEditing && invoice_number && amount > 0 && company) {
+    const { data: existing } = await sb.from('hq_invoices')
+      .select('id')
+      .eq('invoice_number', invoice_number)
+      .eq('amount', amount)
+      .ilike('company', company)
+      .order('created_at', { ascending: true })
+      .limit(1);
+    if (existing && existing.length) {
+      is_duplicate = true;
+      duplicate_of = existing[0].id;
+    }
+  }
+
   const payload = {
     location_slug, paying_company,
     invoice_date, company, supplier_nif, description,
@@ -971,7 +998,12 @@ async function saveInvoice(){
     // Fresh manual save = clean, no review needed.
     needs_review: isEditing ? false : wasExtracted
   };
-  if (!isEditing) payload.created_by = CURRENT_USER?.id || null;
+  // Only stamp dedup fields on fresh inserts (editing preserves the DB state).
+  if (!isEditing) {
+    payload.is_duplicate = is_duplicate;
+    payload.duplicate_of = duplicate_of;
+    payload.created_by = CURRENT_USER?.id || null;
+  }
 
   let error;
   if (isEditing) {
@@ -2191,21 +2223,50 @@ async function previewExcel(){
   const lines = raw.split(/\r?\n/).filter(l => l.trim().length);
   if (lines.length < 2) { preview.innerHTML = '<div class="toast toast-err">Need header + at least one data row</div>'; return; }
 
-  const header = splitCsvRow(lines[0]).map(h => h.toLowerCase());
-  const idx = {
-    location:    header.findIndex(h => h.includes('location')),
-    date:        header.findIndex(h => h.includes('invoice date') || h === 'date'),
-    company:     header.findIndex(h => h.includes('company')),
-    description: header.findIndex(h => h.includes('description')),
-    nif:         header.findIndex(h => h.includes('tax reg') || h === 'nif'),
-    amount:      header.findIndex(h => h === 'amount'),
-    currency:    header.findIndex(h => h.includes('currency')),
-    payment:     header.findIndex(h => h.includes('payment')),
-    invnum:      header.findIndex(h => h.includes('invoice number')),
-    category:    header.findIndex(h => h === 'category'),
-    dup:         header.findIndex(h => h.includes('duplicate'))
+  // Normalize headers: treat underscores + dots + multi-space as single space
+  // so both Miguel's original Excel ("Invoice Date", "Tax Reg. Num.") and
+  // the pre-processed CSV ("invoice_date", "supplier_nif", "amount_eur")
+  // parse via the same detection rules.
+  const norm = (s) => String(s||'').toLowerCase().replace(/[._]+/g,' ').replace(/\s+/g,' ').trim();
+  const header = splitCsvRow(lines[0]).map(norm);
+  // findBest prefers the first exact match in the candidate list, then falls
+  // back to a substring hit. Order candidates from most-specific first
+  // (e.g. "location slug" > "location original" > bare "location").
+  const findBest = (candidates) => {
+    for (const c of candidates) {
+      const i = header.indexOf(c);
+      if (i >= 0) return i;
+    }
+    for (const c of candidates) {
+      const i = header.findIndex(h => h.includes(c));
+      if (i >= 0) return i;
+    }
+    return -1;
   };
-  const missing = ['location','date','company','amount','payment','category'].filter(k => idx[k] < 0);
+
+  const idx = {
+    location:    findBest(['location slug', 'location', 'location original']),
+    date:        findBest(['invoice date', 'date']),
+    company:     findBest(['company name', 'company', 'supplier']),
+    description: findBest(['description']),
+    nif:         findBest(['supplier nif', 'tax reg num', 'tax reg number', 'nif']),
+    amount:      findBest(['amount eur', 'amount']),
+    currency:    findBest(['currency converter', 'currency']),
+    payment:     findBest(['payment type', 'payment']),
+    invnum:      findBest(['invoice number']),
+    category:    findBest(['category']),
+    dup:         findBest(['duplicate check original', 'duplicate check', 'duplicate'])
+  };
+
+  // Was the amount column the pre-normalized "amount_eur"? Then we trust it as
+  // EUR without fetching FX, regardless of the (usually absent) currency column.
+  const amountIsEur = idx.amount >= 0 && header[idx.amount] === 'amount eur';
+  // The LIMPO CSV already has the slug — when the column matched is exactly
+  // "location slug", skip the EXCEL_LOCATION_MAP lookup so we don't discard
+  // valid slugs. Otherwise use the alias map for raw names ("Surfcamp PT").
+  const locationIsSlug = idx.location >= 0 && header[idx.location] === 'location slug';
+
+  const missing = ['location','date','company','amount'].filter(k => idx[k] < 0);
   if (missing.length) {
     preview.innerHTML = `<div class="toast toast-err">Header missing required columns: ${missing.join(', ')}</div>`;
     return;
@@ -2220,6 +2281,7 @@ async function previewExcel(){
 
   const rows = [];
   const errors = [];
+  const warnings = [];
   for (let i = 1; i < lines.length; i++) {
     const cells = splitCsvRow(lines[i]);
     if (cells.length < 3) continue;
@@ -2227,47 +2289,75 @@ async function previewExcel(){
     const rawLoc = (cells[idx.location]||'').trim();
     const rawDate = (cells[idx.date]||'').trim();
     const rawAmt = (cells[idx.amount]||'').trim();
-    const rawCat = applyCatFix(cells[idx.category]);
+    const rawCat = idx.category >= 0 ? applyCatFix(cells[idx.category]) : '';
 
-    const location_slug = EXCEL_LOCATION_MAP[rawLoc.toLowerCase()];
+    // Location: LIMPO passes canonical slugs already; anything else goes
+    // through the alias map. Empty → row imports with fallback 'general'
+    // + needs_review=true (Miguel's 93-row bucket to fix later).
+    let location_slug;
+    if (locationIsSlug) {
+      location_slug = rawLoc || null;
+      if (location_slug && !HQ_LOCATIONS.some(l => l.slug === location_slug)) {
+        location_slug = null;    // slug not in our known set → treat as missing
+      }
+    } else {
+      location_slug = EXCEL_LOCATION_MAP[rawLoc.toLowerCase()] || null;
+    }
+    const missingLocation = !location_slug;
+    if (missingLocation) location_slug = 'general';
+
     const invoice_date  = parseExcelDate(rawDate);
     const amount        = parseExcelAmount(rawAmt);
-    const category      = catByName.get(String(rawCat).toLowerCase());
+    const category      = rawCat ? catByName.get(String(rawCat).toLowerCase()) : null;
+
     const rowErrors = [];
-    if (!location_slug) rowErrors.push(`unknown location "${rawLoc}"`);
     if (!invoice_date)  rowErrors.push(`bad date "${rawDate}"`);
     if (!amount || amount <= 0) rowErrors.push(`bad amount "${rawAmt}"`);
-    if (!category)      rowErrors.push(`unknown category "${rawCat}"`);
 
-    const currency = (idx.currency >= 0 && cells[idx.currency]) ? String(cells[idx.currency]).trim().toUpperCase() : 'EUR';
-    const fx_rate = currency === 'EUR' ? 1 : null;
+    // Missing location or category is no longer fatal — the row still imports
+    // with needs_review=true so Miguel can filter/review + fix in bulk later.
+    const rowWarnings = [];
+    if (missingLocation && rawLoc) rowWarnings.push(`unknown location "${rawLoc}" → general`);
+    else if (missingLocation)      rowWarnings.push(`empty location → general`);
+    if (rawCat && !category)       rowWarnings.push(`unknown category "${rawCat}" → left blank`);
+    if (!rawCat)                   rowWarnings.push(`no category → left blank`);
+
+    // Currency handling: amountIsEur wins (LIMPO); otherwise fall back to
+    // the currency column if present, else default EUR.
+    const currency = amountIsEur ? 'EUR'
+                   : ((idx.currency >= 0 && cells[idx.currency]) ? String(cells[idx.currency]).trim().toUpperCase() : 'EUR');
+    const fx_rate  = currency === 'EUR' ? 1 : null;
+
+    // Miguel's own duplicate_check_original TRUE → import with is_duplicate=true
+    // AND needs_review=true so it lands flagged rather than silently in the pile.
+    const preFlaggedDup = idx.dup >= 0 && String(cells[idx.dup]||'').trim().toUpperCase() === 'TRUE';
+
     const record = {
       _row: rowNum,
       _errors: rowErrors,
-      location_slug: location_slug || null,
-      // Excel doesn't have a paying_company column — assume the default
-      // company for the location (Water Movements for PT locations,
-      // MGRP for morocco, Wave for sri-lanka). If Miguel actually paid
-      // some of those Excel rows inter-company, he'll fix them one-off
-      // in the invoice list afterwards.
-      paying_company: location_slug ? payingCompanyFor(location_slug) : null,
+      _warnings: rowWarnings,
+      location_slug,
+      paying_company: payingCompanyFor(location_slug),
       invoice_date: invoice_date || null,
       company: (cells[idx.company]||'').trim(),
       description: idx.description >= 0 ? (cells[idx.description]||'').trim() || null : null,
       supplier_nif: idx.nif >= 0 ? (cells[idx.nif]||'').trim() || null : null,
       amount: amount || 0,
-      currency: currency || 'EUR',
+      currency,
       fx_rate,
       amount_eur: currency === 'EUR' ? (amount||0) : null,
-      payment_type: mapPaymentType((cells[idx.payment]||'').trim()),
+      payment_type: idx.payment >= 0 ? mapPaymentType((cells[idx.payment]||'').trim()) : 'Other',
       invoice_number: idx.invnum >= 0 ? (cells[idx.invnum]||'').trim() || null : null,
       category_id: category?.id || null,
       category_name: category?.name || rawCat || null,
-      needs_review: idx.dup >= 0 ? String(cells[idx.dup]||'').trim().toUpperCase() === 'TRUE' : false
+      // Force needs_review when data is incomplete OR Miguel had marked it.
+      needs_review: preFlaggedDup || missingLocation || !category,
+      _preFlaggedDup: preFlaggedDup
     };
     if (currency !== 'EUR') rowErrors.push(`non-EUR row (${currency}) needs manual FX — skipped`);
     rows.push(record);
     if (rowErrors.length) errors.push({row: rowNum, errors: rowErrors, company: record.company});
+    if (rowWarnings.length && !rowErrors.length) warnings.push({row: rowNum, warnings: rowWarnings, company: record.company});
   }
 
   // Dedup against existing DB rows. Key: invoice_number + amount + company + date.
@@ -2286,21 +2376,73 @@ async function previewExcel(){
     else newRows.push(r);
   }
 
-  window.__excelImportBuffer = newRows;   // for the Import step
+  // On the insert path we set is_duplicate=true for rows that:
+  //   a) Miguel already flagged in the sheet (duplicate_check_original TRUE), OR
+  //   b) match an existing row already in hq_invoices by signature.
+  // For (b) we also stamp duplicate_of pointing at the earlier row so the
+  // "review the flagged ones" workflow gets the pair for free.
+  //
+  // We DON'T skip either — the row imports so the count matches Miguel's
+  // sheet and so the file survives. He filters by is_duplicate afterwards
+  // to decide what to keep vs delete in bulk.
+  const existingBySig = new Map();
+  existing.forEach(r => {
+    const k = sigKey(r);
+    if (!existingBySig.has(k) && r.id) existingBySig.set(k, r.id);
+  });
+  const importAll = validRows.map(r => ({
+    ...r,
+    is_duplicate: r._preFlaggedDup || existingBySig.has(sigKey(r)),
+    duplicate_of: existingBySig.get(sigKey(r)) || null
+  }));
+  const dupCount = importAll.filter(r => r.is_duplicate).length;
+  const reviewCount = importAll.filter(r => r.needs_review).length;
+
+  window.__excelImportBuffer = importAll;
+
+  // Fetch actual IDs from existing signatures for the duplicate_of link.
+  // The existing paginated fetch above only has invoice_number/amount/company/date,
+  // not id — do a targeted lookup for signatures that actually collide.
+  const collisions = importAll.filter(r => r.is_duplicate && !r._preFlaggedDup);
+  if (collisions.length) {
+    const { data: existingIds } = await sb.from('hq_invoices')
+      .select('id, invoice_number, amount, company, invoice_date');
+    const byId = new Map();
+    (existingIds || []).forEach(r => {
+      const k = sigKey(r);
+      if (!byId.has(k)) byId.set(k, r.id);
+    });
+    importAll.forEach(r => {
+      if (r.is_duplicate && !r._preFlaggedDup) {
+        r.duplicate_of = byId.get(sigKey(r)) || null;
+      }
+    });
+  }
+
+  const nonEurCount = importAll.filter(r => r.currency !== 'EUR').length;
 
   preview.innerHTML = `
     <div class="summary-grid">
       <div class="summary-box"><div class="summary-lbl">Rows parsed</div><div class="summary-val">${rows.length}</div></div>
-      <div class="summary-box" style="border-left:4px solid var(--green)"><div class="summary-lbl">New to import</div><div class="summary-val">${newRows.length}</div></div>
-      <div class="summary-box" style="border-left:4px solid var(--amber)"><div class="summary-lbl">Skipped (already in DB)</div><div class="summary-val">${dupRows.length}</div></div>
-      <div class="summary-box" style="border-left:4px solid var(--red)"><div class="summary-lbl">Errors</div><div class="summary-val">${errors.length}</div></div>
+      <div class="summary-box" style="border-left:4px solid var(--green)"><div class="summary-lbl">Will import</div><div class="summary-val">${importAll.length}</div></div>
+      <div class="summary-box" style="border-left:4px solid var(--amber)"><div class="summary-lbl">Flagged duplicate</div><div class="summary-val">${dupCount}</div></div>
+      <div class="summary-box" style="border-left:4px solid var(--amber)"><div class="summary-lbl">Needs review</div><div class="summary-val">${reviewCount}</div></div>
+      <div class="summary-box" style="border-left:4px solid var(--red)"><div class="summary-lbl">Skipped (errors)</div><div class="summary-val">${errors.length}</div></div>
     </div>
 
     ${errors.length ? `
-      <div class="toast toast-warn" style="margin-bottom:14px"><b>${errors.length} row(s) with errors — will be skipped:</b>
+      <div class="toast toast-warn" style="margin-bottom:10px"><b>${errors.length} row(s) with errors — will be skipped:</b>
         <ul style="margin-top:6px;margin-left:20px;font-weight:400;line-height:1.7">
-          ${errors.slice(0, 20).map(e => `<li>Row ${e.row} (${escapeHtml(e.company||'?')}): ${e.errors.join(' · ')}</li>`).join('')}
-          ${errors.length > 20 ? `<li>… and ${errors.length - 20} more</li>` : ''}
+          ${errors.slice(0, 15).map(e => `<li>Row ${e.row} (${escapeHtml(e.company||'?')}): ${e.errors.join(' · ')}</li>`).join('')}
+          ${errors.length > 15 ? `<li>… and ${errors.length - 15} more</li>` : ''}
+        </ul>
+      </div>` : ''}
+
+    ${warnings.length ? `
+      <div class="toast toast-warn" style="margin-bottom:14px;background:#fef9e7;color:#9a6f00"><b>${warnings.length} row(s) imported with warnings (flagged for review):</b>
+        <ul style="margin-top:6px;margin-left:20px;font-weight:400;line-height:1.5;font-size:12px">
+          ${warnings.slice(0, 8).map(w => `<li>Row ${w.row} (${escapeHtml(w.company||'?')}): ${w.warnings.join(' · ')}</li>`).join('')}
+          ${warnings.length > 8 ? `<li>… and ${warnings.length - 8} more</li>` : ''}
         </ul>
       </div>` : ''}
 
@@ -2311,23 +2453,30 @@ async function previewExcel(){
           <th class="r">Amount</th><th>Pay</th><th>Inv #</th><th>Status</th>
         </tr></thead>
         <tbody>
-          ${newRows.slice(0, 40).map(r => `<tr>
-            <td>${r._row}</td><td>${r.invoice_date}</td><td>${locLabel(r.location_slug)}</td>
-            <td>${escapeHtml(r.company)}</td><td>${escapeHtml(r.category_name)}</td>
+          ${importAll.slice(0, 40).map(r => `<tr${r.is_duplicate?' style="background:#fef3c7"':''}>
+            <td>${r._row}</td><td>${r.invoice_date||'—'}</td><td>${locLabel(r.location_slug)}</td>
+            <td>${escapeHtml(r.company)}</td><td>${escapeHtml(r.category_name||'—')}</td>
             <td class="r">${r.amount.toFixed(2)} ${r.currency}</td>
             <td>${escapeHtml(r.payment_type||'')}</td><td style="font-family:'DM Mono',monospace;font-size:11px">${escapeHtml(r.invoice_number||'—')}</td>
-            <td><span class="chip chip-normal">new</span></td>
+            <td>
+              ${r.is_duplicate?'<span class="chip chip-review" title="Duplicate of an existing/marked row">dup</span>':'<span class="chip chip-normal">new</span>'}
+              ${r.needs_review?'<span class="chip chip-review">review</span>':''}
+            </td>
           </tr>`).join('')}
-          ${newRows.length > 40 ? `<tr><td colspan="9" style="text-align:center;color:var(--muted);font-style:italic">… and ${newRows.length - 40} more rows to import</td></tr>` : ''}
+          ${importAll.length > 40 ? `<tr><td colspan="9" style="text-align:center;color:var(--muted);font-style:italic">… and ${importAll.length - 40} more rows to import</td></tr>` : ''}
         </tbody>
       </table>
     </div>
 
-    <div class="btn-row" style="margin-top:16px">
-      <button class="btn" onclick="commitExcelImport()" ${newRows.length ? '' : 'disabled'}>Import ${newRows.length} new row(s)</button>
+    <div class="btn-row" style="margin-top:16px;flex-wrap:wrap">
+      <button class="btn" onclick="commitExcelImport(10)" ${importAll.length ? '' : 'disabled'} title="Insert the first 10 rows only, to verify mapping before committing the rest">🧪 Test batch (first 10)</button>
+      <button class="btn" onclick="commitExcelImport()" ${importAll.length ? '' : 'disabled'} style="background:var(--green)">Import all ${importAll.length} row(s)</button>
       <button class="btn btn-ghost" onclick="$('excelPreview').innerHTML=''">Cancel</button>
     </div>
-    <div class="hint" style="margin-top:8px">Non-EUR rows are skipped in this pass — add them manually via the Despesas HQ form so you can set the FX rate correctly.</div>
+    <div class="hint" style="margin-top:8px">
+      Duplicates are <b>saved with a flag</b> (not silently dropped) — filter by <code>duplicate</code> in the list afterwards.
+      ${nonEurCount ? `<br>${nonEurCount} non-EUR row(s) will import with placeholder FX=1 — open each afterwards to set the real rate.` : ''}
+    </div>
   `;
 }
 
@@ -2347,13 +2496,19 @@ function mapPaymentType(raw){
   return 'Other';
 }
 
-async function commitExcelImport(){
-  const rows = window.__excelImportBuffer || [];
-  if (!rows.length) { toast('excelToast','err','Nothing to import — run Preview first'); return; }
+async function commitExcelImport(limit){
+  const buffer = window.__excelImportBuffer || [];
+  if (!buffer.length) { toast('excelToast','err','Nothing to import — run Preview first'); return; }
+  // Optional limit lets the user run a small test batch first (J.4 of the
+  // spec: "primeiro um lote de teste (5–10 linhas) para confirmar mapeamento").
+  const slice = typeof limit === 'number' ? buffer.slice(0, limit) : buffer;
+  const isTest = typeof limit === 'number';
 
-  // Strip internal preview keys, add created_by, batch insert.
-  const clean = rows.map(r => {
-    const { _row, _errors, ...rest } = r;
+  if (isTest && !confirm(`Import a test batch of ${slice.length} rows first? The remaining ${buffer.length - slice.length} will stay in the preview so you can commit them after verifying.`)) return;
+
+  // Strip internal preview-only keys and stamp created_by.
+  const clean = slice.map(r => {
+    const { _row, _errors, _warnings, _preFlaggedDup, ...rest } = r;
     return { ...rest, created_by: CURRENT_USER?.id || null };
   });
 
@@ -2368,9 +2523,21 @@ async function commitExcelImport(){
     }
     inserted += chunk.length;
   }
-  window.__excelImportBuffer = [];
-  toast('excelToast','ok',`Imported ${inserted} row(s)`);
-  $('excelPreview').innerHTML = `<div class="toast toast-ok" style="margin-top:12px">Import complete · ${inserted} row(s) added to Despesas HQ.</div>`;
+  // Test batches keep the remainder in the buffer so the user can commit
+  // the rest with a second click after verifying. Full imports clear it.
+  if (isTest) {
+    window.__excelImportBuffer = buffer.slice(inserted);
+    const remaining = window.__excelImportBuffer.length;
+    toast('excelToast','ok', `Test batch: ${inserted} row(s) imported · ${remaining} remaining in buffer`);
+    // Nudge the preview so the "Import all N" button now reads the remainder.
+    $('excelPreview').insertAdjacentHTML('afterbegin',
+      `<div class="toast toast-ok" style="margin-bottom:10px">✓ Test batch of ${inserted} imported — verify in the list below, then click <b>Import all ${remaining}</b> to commit the rest.</div>`
+    );
+  } else {
+    window.__excelImportBuffer = [];
+    toast('excelToast','ok',`Imported ${inserted} row(s)`);
+    $('excelPreview').innerHTML = `<div class="toast toast-ok" style="margin-top:12px">Import complete · ${inserted} row(s) added to Despesas HQ.</div>`;
+  }
   renderInvoiceList();
   renderOverview();
 }
