@@ -868,6 +868,8 @@ async function saveInvoice(){
   const fileInput = $('inv_file');
   const preUploaded = window.__prefilledStoragePath;
   const wasExtracted = !!preUploaded;
+  const isEditing    = !!window.__editingInvoiceId;
+
   if (preUploaded) {
     file_url  = preUploaded;
     file_name = window.__prefilledFileName || (fileInput.files?.[0]?.name || null);
@@ -883,6 +885,11 @@ async function saveInvoice(){
     file_url  = key;
     file_name = f.name;
     file_mime = f.type || null;
+  } else if (isEditing) {
+    // Editing without touching the file input — keep the original attachment.
+    file_url  = window.__editingFileUrl  || null;
+    file_name = window.__editingFileName || null;
+    file_mime = window.__editingFileMime || null;
   }
 
   const payload = {
@@ -892,17 +899,29 @@ async function saveInvoice(){
     payment_type, invoice_number, category_id, category_name,
     file_url, file_name, file_mime,
     notes,
-    // AI-populated rows are flagged for human confirmation so they show
-    // the amber "review" chip in the list until re-saved from the form.
-    needs_review: wasExtracted,
-    created_by: CURRENT_USER?.id || null
+    // Editing = the user reviewed the row → clear the amber chip.
+    // Fresh save from AI extract = still needs review.
+    // Fresh manual save = clean, no review needed.
+    needs_review: isEditing ? false : wasExtracted
   };
+  if (!isEditing) payload.created_by = CURRENT_USER?.id || null;
 
-  const { error } = await sb.from('hq_invoices').insert(payload);
+  let error;
+  if (isEditing) {
+    const oldFileUrl = window.__editingFileUrl;
+    ({ error } = await sb.from('hq_invoices').update(payload).eq('id', window.__editingInvoiceId));
+    // If the user replaced the attachment, garbage-collect the old file.
+    if (!error && oldFileUrl && oldFileUrl !== file_url) {
+      await sb.storage.from('hq-invoices').remove([oldFileUrl]).catch(()=>{});
+    }
+  } else {
+    ({ error } = await sb.from('hq_invoices').insert(payload));
+  }
   if (error) { toast('invToast','err','Save failed: '+error.message); btn.disabled = false; return; }
 
-  toast('invToast','ok','Invoice saved');
-  clearInvoiceForm();
+  toast('invToast','ok', isEditing ? 'Invoice updated · review cleared' : 'Invoice saved');
+  if (isEditing) cancelEditInvoice();
+  else           clearInvoiceForm();
   btn.disabled = false;
   renderInvoiceList();
 }
@@ -1156,6 +1175,97 @@ function toggleManualExtras(){
   btn.textContent = opening ? 'Fewer fields ▴' : 'More fields ▾';
 }
 
+// ─── Edit an existing invoice: fetch, prefill, flag Save as an UPDATE ───
+async function openEditInvoice(id){
+  const { data: row, error } = await sb.from('hq_invoices')
+    .select('id, location_slug, paying_company, invoice_date, company, description, amount, currency, amount_eur, payment_type, invoice_number, category_id, category_name, file_url, file_name, file_mime, needs_review, notes, supplier_nif, fx_rate')
+    .eq('id', id).maybeSingle();
+  if (error || !row) { alert('Could not load invoice: '+(error?.message||'not found')); return; }
+
+  // Populate the single-line row (essentials).
+  $('inv_location').value  = row.location_slug || 'general';
+  $('inv_date').value      = row.invoice_date  || '';
+  $('inv_company').value   = row.company       || '';
+  $('inv_amount').value    = row.amount != null ? Number(row.amount).toFixed(2) : '';
+  $('inv_currency').value  = row.currency      || 'EUR';
+  $('inv_payment').value   = row.payment_type  || 'Other';
+  if (row.category_id) $('inv_category').value = row.category_id;
+
+  // Populate the extras.
+  $('inv_paying_company').value = row.paying_company || payingCompanyFor(row.location_slug);
+  $('inv_nif').value            = row.supplier_nif   || '';
+  $('inv_number').value         = row.invoice_number || '';
+  $('inv_fx').value             = row.fx_rate != null ? Number(row.fx_rate) : (row.currency === 'EUR' ? 1 : '');
+  $('inv_amount_eur').value     = row.amount_eur != null ? Number(row.amount_eur).toFixed(2) : '';
+  $('inv_description').value    = row.description    || '';
+  $('inv_notes').value          = row.notes          || '';
+
+  // Reflect the paying_company auto/override state so the label reads right.
+  const derived    = payingCompanyFor(row.location_slug);
+  const overridden = row.paying_company && row.paying_company !== derived;
+  $('inv_paying_company').dataset.userTouched = overridden ? '1' : '0';
+  const payCoAuto = $('payCoAuto');
+  if (payCoAuto) payCoAuto.textContent = overridden ? '(overridden — inter-company)' : '(auto from location)';
+
+  // Refresh the fx hint label without triggering the auto-refresh network call.
+  const fxHint = $('fxHint');
+  if (fxHint) fxHint.textContent = row.currency === 'EUR' ? '(EUR — 1.000000)' : `(from row — editable)`;
+
+  // Stash the id so saveInvoice() does UPDATE. Also stash file metadata so we
+  // don't overwrite it when the user saves without touching the file input.
+  window.__editingInvoiceId  = id;
+  window.__editingFileUrl    = row.file_url;
+  window.__editingFileName   = row.file_name;
+  window.__editingFileMime   = row.file_mime;
+  // Clear any AI-extract stash from a previous single-file flow.
+  window.__prefilledStoragePath = null;
+  window.__prefilledFileName    = null;
+  window.__prefilledFileMime    = null;
+
+  // Show the More fields section if the row has any extras — makes the FX,
+  // NIF, invoice number and paying_company visible at a glance for review.
+  const hasExtras = row.supplier_nif || row.invoice_number || row.description || row.notes || row.file_url || (row.currency && row.currency !== 'EUR') || overridden;
+  const extras = $('manualExtras');
+  if (hasExtras && extras && (extras.style.display === 'none' || !extras.style.display)) {
+    toggleManualExtras();
+  }
+
+  // Change Save button label + inject an edit banner above the row.
+  $('saveInvBtn').textContent = 'Save changes';
+  let banner = $('editBanner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'editBanner';
+    banner.className = 'toast toast-warn';
+    banner.style.marginBottom = '12px';
+    const cardBody = document.querySelector('#tab-invoices .card:nth-of-type(2) .card-body');
+    if (cardBody) cardBody.insertBefore(banner, cardBody.firstChild);
+  }
+  const chip = row.needs_review
+    ? ' <span class="chip chip-review" style="margin-left:6px">was flagged for review</span>'
+    : '';
+  banner.innerHTML = `
+    ✎ Editing <b>${row.invoice_date}</b> · ${escapeHtml(row.company||'')}${chip}
+    <button type="button" class="action-btn" style="margin-left:12px" onclick="cancelEditInvoice()">Cancel edit</button>
+  `;
+
+  // Scroll the form into view so the user knows something happened.
+  const anchor = $('inv_location');
+  if (anchor) anchor.closest('.card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function cancelEditInvoice(){
+  window.__editingInvoiceId = null;
+  window.__editingFileUrl   = null;
+  window.__editingFileName  = null;
+  window.__editingFileMime  = null;
+  const banner = $('editBanner');
+  if (banner) banner.remove();
+  const saveBtn = $('saveInvBtn');
+  if (saveBtn) saveBtn.textContent = 'Save';
+  clearInvoiceForm();
+}
+
 function clearInvoiceForm(){
   const today = new Date().toISOString().slice(0,10);
   $('inv_date').value = today;
@@ -1250,7 +1360,10 @@ async function renderInvoiceList(){
       <td class="r">${eur(r.amount_eur)}</td>
       <td>${escapeHtml(r.payment_type||'')}</td>
       <td>${r.file_url?`<a class="file-link" href="#" onclick="openInvoiceFile('${r.file_url}');return false;">${escapeHtml(r.file_name||'view')}</a>`:'—'}</td>
-      <td><button class="action-btn danger" onclick="deleteInvoice('${r.id}')">Delete</button></td>
+      <td style="white-space:nowrap">
+        <button class="action-btn" onclick="openEditInvoice('${r.id}')" title="Edit fields — also clears the review chip">Edit</button>
+        <button class="action-btn danger" onclick="deleteInvoice('${r.id}')">Delete</button>
+      </td>
     </tr>`;
   };
 
