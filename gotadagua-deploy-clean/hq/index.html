@@ -1760,11 +1760,27 @@ function clearSelection(){
   renderBatchBar();
 }
 
+// Supabase / PostgREST reject overly-long URLs, so an .in('id', […]) with
+// 1478 UUIDs fails with a plain "Bad Request" and no useful message. We
+// chunk every batch operation into 100-id slices to stay comfortably
+// under the URL limit and to let the DB do it in bite-sized transactions.
+const BATCH_CHUNK = 100;
+async function forEachChunk(ids, fn){
+  for (let i = 0; i < ids.length; i += BATCH_CHUNK) {
+    await fn(ids.slice(i, i + BATCH_CHUNK), i);
+  }
+}
+
 async function batchApprove(){
   const ids = Array.from(window.__selectedInvoiceIds);
   if (!ids.length) return;
-  const { error } = await sb.from('hq_invoices').update({ needs_review: false }).in('id', ids);
-  if (error) { alert('Approve failed: '+error.message); return; }
+  let firstErr = null;
+  await forEachChunk(ids, async (chunk) => {
+    if (firstErr) return;
+    const { error } = await sb.from('hq_invoices').update({ needs_review: false }).in('id', chunk);
+    if (error) firstErr = error;
+  });
+  if (firstErr) { alert('Approve failed: '+firstErr.message); return; }
   clearSelection();
   renderInvoiceList();
 }
@@ -1773,12 +1789,27 @@ async function batchDelete(){
   const ids = Array.from(window.__selectedInvoiceIds);
   if (!ids.length) return;
   if (!confirm(`Delete ${ids.length} invoice(s) permanently? Attached files will also be removed.`)) return;
-  // Fetch file_urls first so we can clean the bucket.
-  const { data: rows } = await sb.from('hq_invoices').select('id, file_url').in('id', ids);
-  const files = (rows || []).map(r => r.file_url).filter(Boolean);
-  const { error } = await sb.from('hq_invoices').delete().in('id', ids);
-  if (error) { alert('Delete failed: '+error.message); return; }
-  if (files.length) await sb.storage.from('hq-invoices').remove(files).catch(()=>{});
+  const allFiles = [];
+  let firstErr = null;
+  let deleted = 0;
+  await forEachChunk(ids, async (chunk) => {
+    if (firstErr) return;
+    // Grab file_urls for this slice so we can clean storage after.
+    const { data: rows } = await sb.from('hq_invoices').select('file_url').in('id', chunk);
+    (rows || []).forEach(r => { if (r.file_url) allFiles.push(r.file_url); });
+    // Delete the invoice rows in this slice.
+    const { error } = await sb.from('hq_invoices').delete().in('id', chunk);
+    if (error) { firstErr = error; return; }
+    deleted += chunk.length;
+  });
+  if (firstErr) { alert(`Delete failed after ${deleted} row(s): ${firstErr.message}`); }
+  // Chunk the storage delete too — the bucket API takes an array but is
+  // happier with modest sizes.
+  if (allFiles.length) {
+    for (let i = 0; i < allFiles.length; i += BATCH_CHUNK) {
+      await sb.storage.from('hq-invoices').remove(allFiles.slice(i, i + BATCH_CHUNK)).catch(()=>{});
+    }
+  }
   clearSelection();
   renderInvoiceList();
 }
@@ -1787,20 +1818,25 @@ async function batchSetField(field, value){
   const ids = Array.from(window.__selectedInvoiceIds);
   if (!ids.length) return;
   const payload = { [field]: value };
-  // Category: snapshot the name too.
+  // Category: snapshot the name too so the historical label stays if the
+  // category is renamed later.
   if (field === 'category_id') {
     const cat = CATEGORIES.find(c => c.id === value);
     if (cat) payload.category_name = cat.name;
   }
   // Location: cascade paying_company for rows that weren't inter-company.
-  // Doing this cleanly per-row requires a fetch first — cheaper to just
-  // apply payingCompanyFor(new location) for everyone. If someone had a
-  // manual inter-co override, they can fix it row-by-row afterwards.
+  // We don't try to preserve per-row inter-co overrides during batch —
+  // Miguel can fix those row-by-row after if a batch clobbered them.
   if (field === 'location_slug') {
     payload.paying_company = payingCompanyFor(value);
   }
-  const { error } = await sb.from('hq_invoices').update(payload).in('id', ids);
-  if (error) { alert('Batch update failed: '+error.message); return; }
+  let firstErr = null;
+  await forEachChunk(ids, async (chunk) => {
+    if (firstErr) return;
+    const { error } = await sb.from('hq_invoices').update(payload).in('id', chunk);
+    if (error) firstErr = error;
+  });
+  if (firstErr) { alert('Batch update failed: '+firstErr.message); return; }
   clearSelection();
   renderInvoiceList();
 }
