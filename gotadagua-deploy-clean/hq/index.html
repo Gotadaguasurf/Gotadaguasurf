@@ -2569,8 +2569,30 @@ function locNameToSlug(name){
   // First check LOCATIONS from Supabase (canonical).
   const hit = LOCATIONS.find(l => String(l.name||'').toLowerCase() === s || String(l.slug||'').toLowerCase() === s);
   if (hit) return hit.slug;
-  // Fallback: known aliases from the CSV import.
-  const alias = { 'morocco':'morocco','portugal':'portugal','surf school':'surf-school','sri lanka':'sri-lanka','junior camp':'junior-camp' };
+  // Fallback aliases — MUST include every display name the hub-level
+  // import writes to bookings.location via CSV_LOC_CODE_TO_NAME, or the
+  // Profit view silently drops the row (Portugal/Morocco/Sri Lanka read
+  // as €0 in All-time when the bookings actually exist under the long
+  // names). Add both the short and the full display forms.
+  const alias = {
+    // Long display names from index.html CSV_LOC_CODE_TO_NAME
+    'surf camp portugal':          'portugal',
+    'tamraght camp':               'morocco',
+    'surf camp ahangama':          'sri-lanka',
+    'junior camp caparica':        'junior-camp',
+    'surf school caparica':        'surf-school',
+    'kids camp caparica':          'kids-camp',
+    // Coliving is the Portugal camp's coliving product — same location
+    // for profit purposes. Miguel can override if he ever splits them.
+    'coliving portugal caparica':  'portugal',
+    // Short forms that also show up in older imports / manual entries
+    'morocco':      'morocco',
+    'portugal':     'portugal',
+    'surf school':  'surf-school',
+    'sri lanka':    'sri-lanka',
+    'junior camp':  'junior-camp',
+    'kids camp':    'kids-camp'
+  };
   return alias[s] || null;
 }
 
