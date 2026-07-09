@@ -1416,6 +1416,62 @@ function closeCategoryPanel(){
   if (modal && modal.open) modal.close();
 }
 
+// ─── Excel/CSV file picker for the Import modal ───────────────────────
+// Miguel: "eu quero so importar um ficheiro" — file picker + drag-drop is
+// the primary path now. Textarea kept behind a <details> as fallback.
+function loadExcelFile(file){
+  if (!file) return;
+  const picked = $('excelFilePicked');
+  if (picked) {
+    picked.textContent = `✓ ${file.name} (${(file.size/1024).toFixed(1)} KB) — running preview…`;
+    picked.style.display = '';
+  }
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const txt = String(e.target.result || '');
+    const box = $('excelBox');
+    if (box) box.value = txt;
+    // Auto-preview so the user immediately sees the row counts + errors.
+    previewExcel();
+    if (picked) picked.textContent = `✓ ${file.name} (${(file.size/1024).toFixed(1)} KB)`;
+  };
+  reader.onerror = () => {
+    if (picked) { picked.textContent = `✗ Could not read ${file.name}`; picked.style.color = 'var(--red)'; }
+  };
+  reader.readAsText(file);
+}
+
+function clearExcelImport(){
+  const box = $('excelBox');       if (box) box.value = '';
+  const preview = $('excelPreview'); if (preview) preview.innerHTML = '';
+  const picked = $('excelFilePicked'); if (picked) { picked.textContent = ''; picked.style.display = 'none'; }
+  const fileInput = $('excelFile'); if (fileInput) fileInput.value = '';
+  window.__excelImportBuffer = [];
+}
+
+// Drag-drop + click-to-pick wiring. Called every time the import modal
+// opens (the drop zone is re-created each open, so we (re)attach).
+function wireExcelDropZone(){
+  const drop  = $('excelDrop');
+  const input = $('excelFile');
+  if (!drop || !input) return;
+  drop.addEventListener('click', () => input.click());
+  ['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, (e) => {
+    e.preventDefault(); e.stopPropagation();
+    drop.style.borderColor = 'var(--ocean)';
+    drop.style.background  = 'var(--foam)';
+  }));
+  ['dragleave','drop'].forEach(ev => drop.addEventListener(ev, (e) => {
+    e.preventDefault(); e.stopPropagation();
+    drop.style.borderColor = '';
+    drop.style.background  = '';
+  }));
+  drop.addEventListener('drop', (e) => {
+    const f = e.dataTransfer.files?.[0];
+    if (f) loadExcelFile(f);
+  });
+}
+
 // ─── Import CSV modal — hosts the old Import tab content ──────────────
 // Miguel: "por que na realidade eu so vou usar agora depois vou sempre
 // usar invoices para arrastar" — bulk PDF drop is the daily flow, CSV
@@ -1426,6 +1482,8 @@ function openImportModal(){
   const body = $('importModalBody');
   if (body) body.innerHTML = importTabHtml();
   modal.showModal();
+  // Attach drag-drop + click listeners AFTER the drop zone lands in the DOM.
+  wireExcelDropZone();
 }
 function closeImportModal(){
   const modal = $('importModal');
@@ -2154,24 +2212,34 @@ function importTabHtml(){
       <div class="card-hdr">
         <div>
           <div class="card-title">Import Excel history · Despesas HQ</div>
-          <div class="card-hint">Paste your master expenses CSV (GENERAL EXPENSES) — headers exactly as your Google Sheet</div>
+          <div class="card-hint">Pick your master expenses CSV file (or paste the contents)</div>
         </div>
         <div class="card-hint">Safe: only inserts new rows, never touches existing data</div>
       </div>
       <div class="card-body">
-        <textarea id="excelBox" placeholder="Location,Invoice Date,Company Name,Description,Tax Reg. Num.,Amount,Currency Converter,Payment Type,Invoice Number,Category,Duplicate check
+        <div id="excelDrop" style="border:2.5px dashed var(--border);border-radius:10px;padding:24px 20px;text-align:center;cursor:pointer;transition:border-color .18s, background .18s">
+          <div style="font-size:34px;line-height:1;margin-bottom:6px">📄</div>
+          <div style="font-size:15px;font-weight:600;color:var(--navy)">Drop your CSV here</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:4px">or <span style="color:var(--ocean);font-weight:600;text-decoration:underline">click to choose a file</span> — .csv / .txt</div>
+          <input id="excelFile" type="file" accept=".csv,.txt,text/csv" style="display:none" onchange="loadExcelFile(this.files[0])">
+          <div id="excelFilePicked" style="font-size:12px;color:var(--green);margin-top:8px;display:none"></div>
+        </div>
+
+        <details style="margin-top:12px">
+          <summary style="cursor:pointer;font-size:12px;color:var(--muted)">Or paste the CSV manually…</summary>
+          <textarea id="excelBox" style="margin-top:8px" placeholder="Location,Invoice Date,Company Name,Description,Tax Reg. Num.,Amount,Currency Converter,Payment Type,Invoice Number,Category,Duplicate check
 Surfcamp PT,14/12/2025,auchan,,,€20.09,,Cash,35710152025120001/000520,Food,FALSE
 Morroco,29/12/2025,IKEA,,,€761.08,,Card,,Setup,FALSE"></textarea>
-        <div class="hint">
+        </details>
+
+        <div class="hint" style="margin-top:12px">
           <b>Location</b> maps: Surfcamp PT → portugal · Morroco/Morocco → morocco · Surfschool → surf-school · Sri Lanka → sri-lanka · Junior Camp → junior-camp · General → general.<br>
-          <b>Invoice Date</b>: DD/MM/YYYY.<br>
-          <b>Amount</b>: <code>€2,232.07</code> or <code>2232.07</code>. Currency assumed EUR unless <b>Currency Converter</b> is filled.<br>
-          <b>Category</b>: case-insensitive match to registered categories. Typo <code>Utulities</code> auto-fixed to <b>Utilities</b>.<br>
-          <b>Duplicate check</b>: TRUE marks the row for review (still imported). Rows already in the database (same invoice#, amount, company, date) are skipped.
+          <b>Invoice Date</b>: DD/MM/YYYY. <b>Amount</b>: <code>€2,232.07</code> or <code>2232.07</code>. <b>Currency</b>: EUR unless the Currency Converter column is filled.<br>
+          <b>Duplicate check</b>: TRUE marks the row for review (still imported). Rows already in the database (same invoice#, amount, company, date) are flagged as duplicates too.
         </div>
         <div class="btn-row">
           <button class="btn" onclick="previewExcel()">Preview</button>
-          <button class="btn btn-ghost" onclick="$('excelBox').value=''">Clear</button>
+          <button class="btn btn-ghost" onclick="clearExcelImport()">Clear</button>
           <span id="excelToast"></span>
         </div>
         <div id="excelPreview" style="margin-top:16px"></div>
