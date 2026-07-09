@@ -200,13 +200,14 @@ const $   = (id) => document.getElementById(id);
 const OWNER_EMAILS = new Set(['miguel@gotadaguasurf.com']);
 
 const HQ_LOCATIONS = [
-  {slug:'portugal',    label:'Surfcamp PT'},
-  {slug:'surf-school', label:'Surf School'},
-  {slug:'junior-camp', label:'Junior Camp'},
-  {slug:'kids-camp',   label:'Kids Camp'},
-  {slug:'morocco',     label:'Morocco'},
-  {slug:'sri-lanka',   label:'Sri Lanka'},
-  {slug:'general',     label:'General (HQ)'},
+  {slug:'portugal',       label:'Surfcamp PT'},
+  {slug:'surf-school',    label:'Surf School'},
+  {slug:'junior-camp',    label:'Junior Camp'},
+  {slug:'kids-camp',      label:'Kids Camp'},
+  {slug:'wild-wednesday', label:'Wild Wednesday'},
+  {slug:'morocco',        label:'Morocco'},
+  {slug:'sri-lanka',      label:'Sri Lanka'},
+  {slug:'general',        label:'General (HQ)'},
 ];
 const PAYMENT_TYPES = ['Cash','Card','Bank Transfer','Other'];
 
@@ -214,7 +215,7 @@ const PAYMENT_TYPES = ['Cash','Card','Bank Transfer','Other'];
 // public.hq_companies table — if you add a location, update BOTH here and
 // there (or query hq_companies at boot; kept as constant for simplicity).
 const HQ_COMPANIES = [
-  {slug:'water-movements', label:'Water Movements Lda', covers:['portugal','surf-school','junior-camp','kids-camp','general']},
+  {slug:'water-movements', label:'Water Movements Lda', covers:['portugal','surf-school','junior-camp','kids-camp','wild-wednesday','general']},
   {slug:'mgrp-sarl',       label:'MGRP Sarl',           covers:['morocco']},
   {slug:'wave-movements',  label:'Wave Movements',      covers:['sri-lanka']},
 ];
@@ -1951,7 +1952,7 @@ async function renderInvoiceList(){
   }
 
   // Group by location_slug when "All" is selected. General first, then camps by size.
-  const groupsOrder = ['general','portugal','surf-school','junior-camp','kids-camp','morocco','sri-lanka'];
+  const groupsOrder = ['general','portugal','surf-school','junior-camp','kids-camp','wild-wednesday','morocco','sri-lanka'];
   const grouped = {};
   rows.forEach(r => {
     const k = r.location_slug || 'general';
@@ -2168,6 +2169,7 @@ const EXCEL_LOCATION_MAP = {
   'sri lanka':'sri-lanka', 'srilanka':'sri-lanka', 'sri-lanka':'sri-lanka',
   'junior camp':'junior-camp', 'juniorcamp':'junior-camp', 'junior-camp':'junior-camp',
   'kids camp':'kids-camp', 'kidscamp':'kids-camp', 'kids-camp':'kids-camp',
+  'wild wednesday':'wild-wednesday','wildwednesday':'wild-wednesday','wild-wednesday':'wild-wednesday','wild':'wild-wednesday',
   'general':'general', 'hq':'general'
 };
 const EXCEL_CATEGORY_FIXES = {
@@ -2586,12 +2588,14 @@ function locNameToSlug(name){
     // for profit purposes. Miguel can override if he ever splits them.
     'coliving portugal caparica':  'portugal',
     // Short forms that also show up in older imports / manual entries
-    'morocco':      'morocco',
-    'portugal':     'portugal',
-    'surf school':  'surf-school',
-    'sri lanka':    'sri-lanka',
-    'junior camp':  'junior-camp',
-    'kids camp':    'kids-camp'
+    'morocco':         'morocco',
+    'portugal':        'portugal',
+    'surf school':     'surf-school',
+    'sri lanka':       'sri-lanka',
+    'junior camp':     'junior-camp',
+    'kids camp':       'kids-camp',
+    'wild wednesday':  'wild-wednesday',
+    'wild':            'wild-wednesday'
   };
   return alias[s] || null;
 }
@@ -2749,8 +2753,76 @@ async function renderProfit(){
 // ═══════════════════════════════════════════════════════════════════
 function cashflowTabHtml(){
   const today = new Date().toISOString().slice(0,10);
+  const thisMonth = today.slice(0,7);
   const coOptions = HQ_COMPANIES.map(c => `<option value="${c.slug}">${c.label}</option>`).join('');
+  const locOptions = HQ_LOCATIONS
+    .filter(l => l.slug !== 'general')   // no revenue on the "general" bucket
+    .map(l => `<option value="${l.slug}" ${l.slug==='wild-wednesday'?'selected':''}>${l.label}</option>`).join('');
   return `
+    <div class="card">
+      <div class="card-hdr">
+        <div>
+          <div class="card-title">Log manual revenue</div>
+          <div class="card-hint">Revenue that doesn't come via Bookinglayer — Wild Wednesday cash/app, one-off events, etc.</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="form-grid">
+          <div class="field col-3">
+            <label>Location</label>
+            <select id="rev_location">${locOptions}</select>
+          </div>
+          <div class="field col-3">
+            <label>Month</label>
+            <input id="rev_month" type="month" value="${thisMonth}">
+          </div>
+          <div class="field col-3">
+            <label>Source</label>
+            <select id="rev_source">
+              <option value="cash-door">Cash at door</option>
+              <option value="app">App</option>
+              <option value="bank-transfer">Bank transfer</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div class="field col-3">
+            <label>Amount</label>
+            <input id="rev_amount" type="number" step="0.01" min="0" placeholder="0.00">
+          </div>
+          <div class="field col-3">
+            <label>Currency</label>
+            <select id="rev_currency">
+              <option value="EUR">EUR</option>
+              <option value="MAD">MAD</option>
+              <option value="LKR">LKR</option>
+              <option value="USD">USD</option>
+              <option value="GBP">GBP</option>
+            </select>
+          </div>
+          <div class="field col-3">
+            <label>FX rate → EUR</label>
+            <input id="rev_fx" type="number" step="0.000001" min="0" placeholder="1.000000">
+          </div>
+          <div class="field col-3">
+            <label>Amount in EUR</label>
+            <input id="rev_amount_eur" type="number" step="0.01" min="0" readonly style="background:#f7fafd">
+          </div>
+          <div class="field col-3">
+            <label>&nbsp;</label>
+            <button class="btn" style="width:100%;height:38px" onclick="saveManualRevenue()">Save revenue</button>
+          </div>
+          <div class="field col-12">
+            <label>Notes (optional)</label>
+            <input id="rev_notes" type="text" placeholder="e.g. 3 events in July · door + app breakdown">
+          </div>
+        </div>
+        <div id="rev_toast" style="margin-top:10px"></div>
+        <div class="hint" style="margin-top:8px">
+          The row lands in <code>ledger_entries</code> (type=revenue, dated first day of the month) and flows automatically into <b>Profit per location</b> under On-site revenue.
+        </div>
+      </div>
+    </div>
+
     <div class="card">
       <div class="card-hdr">
         <div>
@@ -3052,6 +3124,82 @@ function wireTransferForm(){
   inpAmt.addEventListener('input', recalc);
   inpFx.addEventListener('input', recalc);
   refreshFx();
+
+  // Also wire the manual revenue form that lives above the transfer one.
+  // Same behaviour — auto-fetch FX for non-EUR, recompute EUR on any edit.
+  const rCur = $('rev_currency');
+  if (rCur && !window.__revWired) {
+    window.__revWired = true;
+    const rAmt = $('rev_amount');
+    const rFx  = $('rev_fx');
+    const rEur = $('rev_amount_eur');
+    const rRecalc = () => {
+      const amt = Number(rAmt.value) || 0;
+      const fx  = Number(rFx.value) || 0;
+      rEur.value = fx > 0 ? (amt * fx).toFixed(2) : '';
+    };
+    const rRefreshFx = async () => {
+      const cur = rCur.value || 'EUR';
+      if (cur === 'EUR') { rFx.value = '1'; rRecalc(); return; }
+      try { rFx.value = (await fetchFxToEur(cur)).toFixed(6); } catch(e){}
+      rRecalc();
+    };
+    rCur.addEventListener('change', rRefreshFx);
+    rAmt.addEventListener('input', rRecalc);
+    rFx.addEventListener('input', rRecalc);
+    rRefreshFx();
+  }
+}
+
+async function saveManualRevenue(){
+  const location_slug = $('rev_location').value;
+  const month         = $('rev_month').value;   // YYYY-MM
+  const source        = $('rev_source').value;
+  const amount        = Number($('rev_amount').value) || 0;
+  const currency      = $('rev_currency').value || 'EUR';
+  const fx_rate       = Number($('rev_fx').value) || (currency==='EUR' ? 1 : null);
+  const amount_eur    = Number($('rev_amount_eur').value) || (amount * (fx_rate||1));
+  const notes         = ($('rev_notes').value||'').trim() || null;
+
+  if (!location_slug || !month || amount <= 0 || !fx_rate) {
+    toast('rev_toast','err','Fill location, month, amount and FX rate');
+    return;
+  }
+
+  // Resolve location UUID from LOCATIONS. Fresh rows created via SQL land
+  // there at boot; if the user just ran the migration, prompt to reload
+  // so LOCATIONS picks up the new wild-wednesday row.
+  const loc = LOCATIONS.find(l => l.slug === location_slug);
+  if (!loc) {
+    toast('rev_toast','err',`Location "${location_slug}" not found in the locations table. Refresh the page if you just ran the SQL.`);
+    return;
+  }
+
+  // Anchor the ledger row at the first day of the picked month so the
+  // Profit view's month filter buckets it cleanly.
+  const entry_date = `${month}-01`;
+
+  // Only include columns we've confirmed exist on ledger_entries from HQ
+  // read paths (type, amount_eur, entry_date, business_area, category,
+  // paid_from, attributed_location, location_id). Notes / amount / currency
+  // may exist too but we don't rely on them here — if the insert errors on
+  // a missing column, the message surfaces immediately in the toast.
+  const payload = {
+    location_id: loc.id,
+    type: 'revenue',
+    entry_date,
+    amount_eur,
+    business_area: 'wild',              // free-text label; groups Wild's rows
+    category: source,                   // 'cash-door' / 'app' / 'bank-transfer' / 'other'
+    attributed_location: location_slug,
+    paid_from: location_slug
+  };
+  const { error } = await sb.from('ledger_entries').insert(payload);
+  if (error) { toast('rev_toast','err','Save failed: '+error.message); return; }
+
+  toast('rev_toast','ok', `Saved ${eur(amount_eur)} for ${locLabel(location_slug)} · ${month}`);
+  ['rev_amount','rev_amount_eur','rev_notes'].forEach(id => $(id).value = '');
+  renderCashflow();   // refresh so the totals + inter-co balance reflect
 }
 
 async function saveTransfer(){
