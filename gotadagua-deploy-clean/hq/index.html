@@ -1104,21 +1104,42 @@ async function bulkProcessInvoices(){
       const catByName = new Map(CATEGORIES.map(c => [c.name.toLowerCase(), c]));
       const catHit    = ex.category_hint ? catByName.get(String(ex.category_hint).toLowerCase()) : null;
 
-      // 5. FX. If EUR → 1. Otherwise 1 as placeholder — user must confirm
-      //    the real rate in review since we don't fetch it inline here.
+      // 5. FX. Fetch a real rate via Frankfurter for non-EUR so amount_eur
+      //    is reasonable in the totals from the moment the row lands.
+      //    fetchFxToEur caches by day so a batch only hits the API once.
       const currency = (ex.currency || 'EUR').toUpperCase();
-      const fx_rate  = currency === 'EUR' ? 1 : 1;
+      let fx_rate = 1;
+      if (currency !== 'EUR') {
+        try { fx_rate = await fetchFxToEur(currency); }
+        catch (_) { fx_rate = 1; }   // fall back to 1 if the API is unreachable
+      }
       const amount   = Number(ex.amount) || 0;
       if (!amount) throw new Error('AI could not read a valid amount');
-      const amount_eur = currency === 'EUR' ? amount : amount * fx_rate;
+      const amount_eur = amount * fx_rate;
 
-      // 6. Build the row and insert. Everything is saved as needs_review
+      // 6. Dedup check against the existing table by (invoice_number + amount
+      //    + company). If we hit, still insert the row (so the file stays
+      //    linked + user can see the duplicate) but flag is_duplicate=true
+      //    so the amber row + chip highlight it in the list.
+      const cleanCompany = (ex.company || 'unknown').toString().trim();
+      let dupHit = false;
+      if (ex.invoice_number && amount > 0 && cleanCompany) {
+        const { data: existing } = await sb.from('hq_invoices')
+          .select('id')
+          .eq('invoice_number', ex.invoice_number)
+          .eq('amount', amount)
+          .ilike('company', cleanCompany)
+          .limit(1);
+        dupHit = !!(existing && existing.length);
+      }
+
+      // 7. Build the row and insert. Everything is saved as needs_review
       //    so the amber chip in the list clearly marks the queue to review.
       const payload = {
         location_slug: finalLoc,
         paying_company: finalPayCo,
         invoice_date: ex.invoice_date || new Date().toISOString().slice(0,10),
-        company: (ex.company || 'unknown').toString().trim(),
+        company: cleanCompany,
         supplier_nif: ex.supplier_nif || null,
         description: ex.description || null,
         amount, currency, fx_rate, amount_eur,
@@ -1130,13 +1151,15 @@ async function bulkProcessInvoices(){
         file_name: file.name,
         file_mime: file.type || null,
         needs_review: true,
+        is_duplicate: dupHit,
         created_by: CURRENT_USER?.id || null
       };
       const { error: insErr } = await sb.from('hq_invoices').insert(payload);
       if (insErr) throw new Error('save: '+insErr.message);
 
       s.state = 'saved';
-      s.message = `${payload.company} · ${amount.toFixed(2)} ${currency} · ${payload.category_name || 'no category'} · ${locLabel(finalLoc)}`;
+      const dupTag = dupHit ? ' · ⚠ possible duplicate' : '';
+      s.message = `${payload.company} · ${amount.toFixed(2)} ${currency} · ${payload.category_name || 'no category'} · ${locLabel(finalLoc)}${dupTag}`;
       saved++;
     } catch (e) {
       s.state = 'error';
@@ -1187,6 +1210,23 @@ function toggleManualExtras(){
 }
 
 // ─── Edit an existing invoice: fetch, prefill, flag Save as an UPDATE ───
+// ─── Approve a review row without opening the full edit form ───────────
+async function approveInvoice(id){
+  const { error } = await sb.from('hq_invoices').update({ needs_review: false }).eq('id', id);
+  if (error) { alert('Approve failed: '+error.message); return; }
+  renderInvoiceList();
+}
+
+async function approveAllReviews(){
+  const rows = window.__lastRenderedRows || [];
+  const ids  = rows.filter(r => r.needs_review).map(r => r.id);
+  if (!ids.length) return;
+  if (!confirm(`Approve all ${ids.length} row(s) currently under review?`)) return;
+  const { error } = await sb.from('hq_invoices').update({ needs_review: false }).in('id', ids);
+  if (error) { alert('Bulk approve failed: '+error.message); return; }
+  renderInvoiceList();
+}
+
 // ─── Inline single-field update from a select in a list row ────────────
 // Runs an UPDATE for just the changed field and, when the field is
 // location_slug, cascades to paying_company (unless the row is already
@@ -1382,6 +1422,11 @@ async function renderInvoiceList(){
   const totalEur     = rows.reduce((s,r)=>s+Number(r.amount_eur||0), 0);
   const personalEur  = rows.filter(r => personalCatIds.has(r.category_id)).reduce((s,r)=>s+Number(r.amount_eur||0), 0);
   const businessEur  = totalEur - personalEur;
+  const reviewCount  = rows.filter(r => r.needs_review).length;
+
+  // Cache the rendered set so batch actions (approve all, later delete all)
+  // can act on exactly what the user sees without re-fetching from the DB.
+  window.__lastRenderedRows = rows;
 
   if (!rows.length) {
     body.innerHTML = `<div class="loading">No invoices yet. Register the first one above.</div>`;
@@ -1430,6 +1475,7 @@ async function renderInvoiceList(){
         ${isInterCo?' <span class="chip chip-review" title="Inter-company: paid by a different company than the location default">inter-co</span>':''}
       </td>
       <td>${escapeHtml(r.company||'')}${r.description?`<br><span style="font-size:11px;color:var(--muted)">${escapeHtml(r.description)}</span>`:''}</td>
+      <td style="font-family:'DM Mono',monospace;font-size:11px">${escapeHtml(r.supplier_nif||'—')}</td>
       <td>
         <select class="inline-select" onchange="quickUpdateInvoice('${r.id}','category_id',this.value,this)">${catSelect}</select>
         ${isPersonal?'<span class="chip chip-personal">personal</span>':''}
@@ -1443,6 +1489,7 @@ async function renderInvoiceList(){
       </td>
       <td>${r.file_url?`<a class="file-link" href="#" onclick="openInvoiceFile('${r.file_url}');return false;">${escapeHtml(r.file_name||'view')}</a>`:'—'}</td>
       <td style="white-space:nowrap">
+        ${r.needs_review?`<button class="action-btn" style="color:var(--green);font-weight:700" onclick="approveInvoice('${r.id}')" title="Approve — clears the review chip">✓</button>`:''}
         <button class="action-btn" onclick="openEditInvoice('${r.id}')" title="Edit all fields — also clears the review chip">Edit</button>
         <button class="action-btn danger" onclick="deleteInvoice('${r.id}')">Delete</button>
       </td>
@@ -1451,7 +1498,9 @@ async function renderInvoiceList(){
 
   const tableHead = `
     <thead><tr>
-      <th>Date</th><th>Location</th><th>Paid by</th><th>Company</th><th>Category</th>
+      <th>Date</th><th>Location</th>
+      <th title="Which legal entity's bank paid — Water Movements Lda · MGRP Sarl · Wave Movements">Entity</th>
+      <th>Supplier</th><th>NIF</th><th>Category</th>
       <th>Invoice #</th><th class="r">Amount</th><th class="r">EUR</th>
       <th>Pay</th><th>File</th><th></th>
     </tr></thead>`;
@@ -1466,7 +1515,7 @@ async function renderInvoiceList(){
         const label = slug === 'general' ? 'General HQ · not attributed to a camp' : `Attributed to ${locLabel(slug)}`;
         return `
           <tr style="background:var(--foam);border-top:2px solid var(--border)">
-            <td colspan="7" style="font-weight:700;color:var(--navy);font-size:12px;text-transform:uppercase;letter-spacing:.06em">${label}</td>
+            <td colspan="8" style="font-weight:700;color:var(--navy);font-size:12px;text-transform:uppercase;letter-spacing:.06em">${label}</td>
             <td class="r" style="font-weight:700;color:var(--navy)">${eur(gTotal)}</td>
             <td colspan="3" style="color:var(--muted);font-size:11px">${gRows.length} invoice(s)</td>
           </tr>
@@ -1478,7 +1527,7 @@ async function renderInvoiceList(){
     const otherSlugs = Object.keys(grouped).filter(s => !knownSlugs.has(s));
     const otherSection = otherSlugs.map(slug => `
       <tr style="background:var(--foam);border-top:2px solid var(--border)">
-        <td colspan="11" style="font-weight:700;color:var(--navy);font-size:12px">Other · ${escapeHtml(slug)}</td>
+        <td colspan="12" style="font-weight:700;color:var(--navy);font-size:12px">Other · ${escapeHtml(slug)}</td>
       </tr>
       ${grouped[slug].map(rowHtml).join('')}
     `).join('');
@@ -1494,6 +1543,12 @@ async function renderInvoiceList(){
       <div class="summary-box"><div class="summary-lbl">Business (excl. personal)</div><div class="summary-val">${eur(businessEur)}</div></div>
       <div class="summary-box"><div class="summary-lbl">Miguel — Personal</div><div class="summary-val">${eur(personalEur)}</div></div>
     </div>
+    ${reviewCount ? `
+      <div class="toast toast-warn" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <span><b>${reviewCount}</b> row${reviewCount===1?'':'s'} waiting for review (chip <span class="chip chip-review">review</span>). Verify each or approve them all.</span>
+        <button class="btn" style="padding:6px 14px;font-size:12px" onclick="approveAllReviews()">✓ Approve all ${reviewCount}</button>
+      </div>
+    ` : ''}
     <div style="overflow-x:auto"><table>${tableHead}${tableBody}</table></div>
     <div class="hint" style="margin-top:14px">
       <b>General HQ</b> = despesas que pertencem à empresa como um todo (contabilidade, seguros globais, software…).<br>
