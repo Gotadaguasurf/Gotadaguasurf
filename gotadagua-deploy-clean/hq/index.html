@@ -256,6 +256,7 @@ function render(){
     <div class="tab-pane" id="tab-cashflow">${cashflowTabHtml()}</div>
   `;
   wireInvoiceForm();
+  wireBulkUpload();
   renderOverview();
   renderInvoiceList();
 }
@@ -445,13 +446,58 @@ function invoicesTabHtml(){
   const today = new Date().toISOString().slice(0,10);
   const catOptions = CATEGORIES.map(c => `<option value="${c.id}" data-personal="${c.is_personal?1:0}">${c.name}</option>`).join('');
   const locOptions = HQ_LOCATIONS.map(l => `<option value="${l.slug}">${l.label}</option>`).join('');
+  const locOptionsAuto = `<option value="__auto__">Auto-detect from invoice</option>` + locOptions;
+  const coOptionsAuto  = `<option value="__auto__">Auto (from location)</option>` +
+                         HQ_COMPANIES.map(c => `<option value="${c.slug}">${c.label}</option>`).join('');
   const payOptions = PAYMENT_TYPES.map(p => `<option value="${p}">${p}</option>`).join('');
 
   return `
     <div class="card">
+      <div class="card-hdr" style="background:linear-gradient(135deg, var(--foam), #fff)">
+        <div>
+          <div class="card-title">🤖 Bulk upload · AI-first</div>
+          <div class="card-hint">Drop many invoices at once — AI extracts every field, you review the batch below</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div id="bulkDrop" style="border:2.5px dashed var(--border);border-radius:10px;padding:32px 20px;text-align:center;cursor:pointer;transition:border-color .18s, background .18s">
+          <div style="font-size:36px;line-height:1;margin-bottom:8px">📥</div>
+          <div style="font-size:15px;font-weight:600;color:var(--navy)">Drop PDFs or photos here</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:4px">or <span style="color:var(--ocean);font-weight:600;text-decoration:underline">click to choose files</span> — you can pick many at once</div>
+          <input id="bulkFiles" type="file" accept="application/pdf,image/*,.heic" multiple style="display:none">
+        </div>
+
+        <div id="bulkList" style="margin-top:14px;display:none"></div>
+
+        <div class="form-grid" style="margin-top:14px">
+          <div class="field col-5">
+            <label>Default location (all files)</label>
+            <select id="bulk_location">${locOptionsAuto}</select>
+          </div>
+          <div class="field col-4">
+            <label>Default paying company</label>
+            <select id="bulk_paying_company">${coOptionsAuto}</select>
+          </div>
+          <div class="field col-3">
+            <label>&nbsp;</label>
+            <button class="btn" id="bulkProcessBtn" onclick="bulkProcessInvoices()" disabled style="width:100%">🚀 Process 0 file(s)</button>
+          </div>
+          <div class="field col-12">
+            <div class="hint" style="margin:0">
+              <b>Auto-detect</b> lets the AI guess location per file from the invoice content (Portuguese NIF → Portugal, MAD → Morocco, etc.). Pick a specific location when you know all N files are the same.
+              Every row is saved with <b>needs review = true</b> so the amber chip in the list below marks them until you confirm.
+            </div>
+          </div>
+        </div>
+
+        <div id="bulkResults" style="margin-top:12px"></div>
+      </div>
+    </div>
+
+    <div class="card">
       <div class="card-hdr">
         <div>
-          <div class="card-title">New invoice</div>
+          <div class="card-title">New invoice · manual</div>
           <div class="card-hint">Central register — every business invoice lives here, tagged by location and category</div>
         </div>
       </div>
@@ -863,6 +909,246 @@ async function saveInvoice(){
   toast('invToast','ok','Invoice saved');
   clearInvoiceForm();
   btn.disabled = false;
+  renderInvoiceList();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//   BULK AI-FIRST UPLOAD — drop N files, AI fills each, save all
+// ═══════════════════════════════════════════════════════════════════
+function wireBulkUpload(){
+  if (window.__bulkWired) return;
+  window.__bulkWired = true;
+
+  const drop  = $('bulkDrop');
+  const input = $('bulkFiles');
+  const btn   = $('bulkProcessBtn');
+  const list  = $('bulkList');
+  if (!drop || !input || !btn || !list) return;
+
+  // Persist the pending file list on the button so we don't re-read the
+  // <input> after it's been reused. Drag-drop bypasses <input.files>
+  // otherwise on some browsers.
+  window.__bulkFiles = [];
+
+  const updateList = () => {
+    const files = window.__bulkFiles || [];
+    btn.disabled = files.length === 0;
+    btn.textContent = `🚀 Process ${files.length} file${files.length===1?'':'s'}`;
+    if (!files.length) { list.style.display = 'none'; list.innerHTML = ''; return; }
+    list.style.display = '';
+    list.innerHTML = `
+      <div class="hint" style="margin-bottom:6px"><b>${files.length}</b> file(s) queued:</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        ${files.map((f, i) => `
+          <span style="display:inline-flex;align-items:center;gap:6px;background:var(--foam);color:var(--navy);padding:4px 10px;border-radius:14px;font-size:12px">
+            ${escapeHtml(f.name)}
+            <button type="button" onclick="removeBulkFile(${i})" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;line-height:1;padding:0" title="Remove">×</button>
+          </span>
+        `).join('')}
+      </div>`;
+  };
+
+  const addFiles = (fileList) => {
+    const arr = Array.from(fileList || []);
+    if (!arr.length) return;
+    window.__bulkFiles = (window.__bulkFiles || []).concat(arr);
+    updateList();
+  };
+
+  drop.addEventListener('click', () => input.click());
+  input.addEventListener('change', () => { addFiles(input.files); input.value = ''; });
+
+  ['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, (e) => {
+    e.preventDefault(); e.stopPropagation();
+    drop.style.borderColor = 'var(--ocean)';
+    drop.style.background  = 'var(--foam)';
+  }));
+  ['dragleave','drop'].forEach(ev => drop.addEventListener(ev, (e) => {
+    e.preventDefault(); e.stopPropagation();
+    drop.style.borderColor = '';
+    drop.style.background  = '';
+  }));
+  drop.addEventListener('drop', (e) => addFiles(e.dataTransfer.files));
+}
+
+function removeBulkFile(index){
+  window.__bulkFiles = (window.__bulkFiles || []).filter((_, i) => i !== index);
+  const drop  = $('bulkDrop');
+  const btn   = $('bulkProcessBtn');
+  const list  = $('bulkList');
+  const files = window.__bulkFiles;
+  btn.disabled = files.length === 0;
+  btn.textContent = `🚀 Process ${files.length} file${files.length===1?'':'s'}`;
+  if (!files.length) { list.style.display = 'none'; list.innerHTML = ''; return; }
+  // Rebuild the chips (simpler than mutating in-place).
+  list.innerHTML = `
+    <div class="hint" style="margin-bottom:6px"><b>${files.length}</b> file(s) queued:</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px">
+      ${files.map((f, i) => `
+        <span style="display:inline-flex;align-items:center;gap:6px;background:var(--foam);color:var(--navy);padding:4px 10px;border-radius:14px;font-size:12px">
+          ${escapeHtml(f.name)}
+          <button type="button" onclick="removeBulkFile(${i})" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;line-height:1;padding:0" title="Remove">×</button>
+        </span>
+      `).join('')}
+    </div>`;
+}
+
+async function bulkProcessInvoices(){
+  const files = window.__bulkFiles || [];
+  if (!files.length) return;
+  const btn = $('bulkProcessBtn');
+  const results = $('bulkResults');
+  btn.disabled = true;
+  btn.textContent = `Processing 0 / ${files.length}…`;
+
+  const defaultLoc = $('bulk_location').value;
+  const defaultCo  = $('bulk_paying_company').value;
+
+  // Build a per-file status object we mutate as work progresses.
+  const status = files.map((f, i) => ({ i, name: f.name, state: 'queued', message: '' }));
+  const renderStatus = () => {
+    results.innerHTML = `
+      <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">
+        <table style="min-width:600px">
+          <thead><tr><th>#</th><th>File</th><th>Status</th><th>Details</th></tr></thead>
+          <tbody>
+            ${status.map(s => `<tr>
+              <td>${s.i+1}</td>
+              <td style="font-family:'DM Mono',monospace;font-size:11px">${escapeHtml(s.name)}</td>
+              <td>
+                ${s.state==='queued'   ? '<span class="chip chip-normal">queued</span>' : ''}
+                ${s.state==='working'  ? '<span class="chip chip-review">analysing…</span>' : ''}
+                ${s.state==='saved'    ? '<span class="chip chip-normal" style="background:var(--green-bg);color:var(--green)">✓ saved</span>' : ''}
+                ${s.state==='error'    ? '<span class="chip chip-review" style="background:var(--red-bg);color:var(--red)">✗ error</span>' : ''}
+              </td>
+              <td style="font-size:12px;color:var(--muted)">${escapeHtml(s.message||'')}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  };
+  renderStatus();
+
+  // Small concurrency limit so we don't hammer the Edge Function or hit
+  // Anthropic rate limits with 20 requests at once. 3 in flight = fast
+  // enough for a batch of 10-20 files and still safe.
+  const CONCURRENCY = 3;
+  let cursor = 0;
+  let saved = 0;
+  let failed = 0;
+
+  const processOne = async (idx) => {
+    const file = files[idx];
+    const s = status[idx];
+    s.state = 'working';
+    renderStatus();
+
+    try {
+      // 1. Upload to Storage. Path is under a "_bulk" prefix by month so
+      //    the folder stays organized even before we know the real location.
+      const nowMonth = new Date().toISOString().slice(0,7);
+      const guessLoc = defaultLoc !== '__auto__' ? defaultLoc : '_pending';
+      const safe = file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+      const storageKey = `${guessLoc}/${nowMonth}/${Date.now()}_${idx}_${safe}`;
+
+      const { error: upErr } = await sb.storage.from('hq-invoices').upload(storageKey, file, {
+        contentType: file.type || 'application/octet-stream', upsert:false
+      });
+      if (upErr) throw new Error('upload: '+upErr.message);
+
+      // 2. Call parse-invoice.
+      const { data: sessionData } = await sb.auth.getSession();
+      const jwt = sessionData?.session?.access_token || '';
+      const resp = await fetch(`${cfg.url}/functions/v1/parse-invoice`, {
+        method:'POST',
+        headers:{
+          'Authorization': `Bearer ${jwt}`,
+          'Content-Type':  'application/json',
+          'apikey': cfg.anonKey
+        },
+        body: JSON.stringify({ storage_path: storageKey })
+      });
+      const result = await resp.json().catch(() => ({error:'invalid JSON'}));
+      if (!resp.ok || result?.error) throw new Error(result?.error || resp.statusText);
+      const ex = result.extracted || {};
+
+      // 3. Decide final location + paying_company. User's default wins if set.
+      const finalLoc = defaultLoc !== '__auto__' ? defaultLoc
+                     : (HQ_LOCATIONS.find(l => l.slug === ex.location_hint)?.slug || 'general');
+      const finalPayCo = defaultCo !== '__auto__' ? defaultCo : payingCompanyFor(finalLoc);
+
+      // 4. Resolve category by name (case-insensitive) against the CATEGORIES
+      //    list loaded at boot. Missing/unknown → leave null (user reviews).
+      const catByName = new Map(CATEGORIES.map(c => [c.name.toLowerCase(), c]));
+      const catHit    = ex.category_hint ? catByName.get(String(ex.category_hint).toLowerCase()) : null;
+
+      // 5. FX. If EUR → 1. Otherwise 1 as placeholder — user must confirm
+      //    the real rate in review since we don't fetch it inline here.
+      const currency = (ex.currency || 'EUR').toUpperCase();
+      const fx_rate  = currency === 'EUR' ? 1 : 1;
+      const amount   = Number(ex.amount) || 0;
+      if (!amount) throw new Error('AI could not read a valid amount');
+      const amount_eur = currency === 'EUR' ? amount : amount * fx_rate;
+
+      // 6. Build the row and insert. Everything is saved as needs_review
+      //    so the amber chip in the list clearly marks the queue to review.
+      const payload = {
+        location_slug: finalLoc,
+        paying_company: finalPayCo,
+        invoice_date: ex.invoice_date || new Date().toISOString().slice(0,10),
+        company: (ex.company || 'unknown').toString().trim(),
+        supplier_nif: ex.supplier_nif || null,
+        description: ex.description || null,
+        amount, currency, fx_rate, amount_eur,
+        payment_type: ex.payment_type || 'Other',
+        invoice_number: ex.invoice_number || null,
+        category_id: catHit?.id || null,
+        category_name: catHit?.name || (ex.category_hint || null),
+        file_url: storageKey,
+        file_name: file.name,
+        file_mime: file.type || null,
+        needs_review: true,
+        created_by: CURRENT_USER?.id || null
+      };
+      const { error: insErr } = await sb.from('hq_invoices').insert(payload);
+      if (insErr) throw new Error('save: '+insErr.message);
+
+      s.state = 'saved';
+      s.message = `${payload.company} · ${amount.toFixed(2)} ${currency} · ${payload.category_name || 'no category'} · ${locLabel(finalLoc)}`;
+      saved++;
+    } catch (e) {
+      s.state = 'error';
+      s.message = String(e.message || e);
+      failed++;
+    }
+    renderStatus();
+    btn.textContent = `Processing ${saved+failed} / ${files.length}…`;
+  };
+
+  // Run with a rolling window of CONCURRENCY workers pulling from the queue.
+  const workers = [];
+  for (let w = 0; w < CONCURRENCY; w++) {
+    workers.push((async () => {
+      while (true) {
+        const idx = cursor++;
+        if (idx >= files.length) break;
+        await processOne(idx);
+      }
+    })());
+  }
+  await Promise.all(workers);
+
+  btn.textContent = `🚀 Process 0 files`;
+  btn.disabled = true;
+  window.__bulkFiles = [];
+  $('bulkList').style.display = 'none';
+  $('bulkList').innerHTML = '';
+
+  results.insertAdjacentHTML('afterbegin',
+    `<div class="toast ${failed?'toast-warn':'toast-ok'}" style="margin-bottom:10px">
+      ✓ ${saved} imported${failed?` · ${failed} failed`:''} — scroll down to review each row and click Save after any corrections.
+    </div>`
+  );
   renderInvoiceList();
 }
 
