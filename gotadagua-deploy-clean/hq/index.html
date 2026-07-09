@@ -1487,14 +1487,17 @@ function closeImportModal(){
   const modal = $('importModal');
   if (modal && modal.open) modal.close();
 }
-// Close on backdrop click, same pattern as catModal.
+// Close on backdrop click. Native <dialog>::backdrop clicks bubble with
+// e.target === the dialog element itself; clicks on any child (button,
+// input, form, textarea) have a target INSIDE the dialog. That's more
+// robust than the getBoundingClientRect() coordinate compare, which
+// was incorrectly closing the modal on the same click that opened it
+// (the open button lives outside the centred modal's rect, so its
+// bubble-up looked like "outside" and slammed the modal shut).
 document.addEventListener('click', (e) => {
   const modal = document.getElementById('importModal');
   if (!modal || !modal.open) return;
-  const rect = modal.getBoundingClientRect();
-  const inside = e.clientX >= rect.left && e.clientX <= rect.right
-              && e.clientY >= rect.top  && e.clientY <= rect.bottom;
-  if (!inside) modal.close();
+  if (e.target === modal) modal.close();
 });
 
 async function loadCategoryPanel(){
@@ -1666,15 +1669,14 @@ async function refreshCategoriesEverywhere(alsoRerenderPanel = true){
   if (alsoRerenderPanel) renderCategoryPanel();
 }
 
-// Close the modal on Escape (native dialog already handles it) and on
-// backdrop click (we wire manually because dialog doesn't fire that).
+// Close on backdrop click. Native <dialog>::backdrop clicks bubble with
+// e.target === the dialog itself; child clicks target the actual element
+// inside. Compare targets instead of coordinates so the modal doesn't
+// slam shut when the open button lives outside the centred rect.
 document.addEventListener('click', (e) => {
   const modal = document.getElementById('catModal');
   if (!modal || !modal.open) return;
-  const rect = modal.getBoundingClientRect();
-  const inside = e.clientX >= rect.left && e.clientX <= rect.right
-              && e.clientY >= rect.top  && e.clientY <= rect.bottom;
-  if (!inside) modal.close();
+  if (e.target === modal) modal.close();
 });
 
 // ─── Selection state for batch actions ─────────────────────────────────
@@ -2759,7 +2761,12 @@ async function populatePeriods(){
   const periods = Array.from(new Set(data.map(r => r.month_key))).filter(Boolean);
   if (!periods.length) periods.push(currentMonth());
   const sel = $('periodSelect');
-  if (sel) sel.innerHTML = periods.map(p => `<option value="${p}">${p}</option>`).join('') + `<option value="__all__">All-time</option>`;
+  if (!sel) return;
+  // Default to All-time on first open. Otherwise the tab opens on the
+  // current month, which almost always has no bookings yet + no invoices
+  // yet, so the whole table reads as €0 and looks broken.
+  sel.innerHTML = `<option value="__all__" selected>All-time</option>` +
+    periods.map(p => `<option value="${p}">${p}</option>`).join('');
 }
 
 function currentMonth(){
@@ -2768,7 +2775,9 @@ function currentMonth(){
 }
 
 async function renderProfit(){
-  const period = $('periodSelect')?.value || currentMonth();
+  // Fallback to All-time (not currentMonth) so a first-render before
+  // populatePeriods finishes still shows meaningful numbers.
+  const period = $('periodSelect')?.value || '__all__';
   const isAll  = period === '__all__';
   $('profitBody').innerHTML = `<div class="loading">Loading…</div>`;
 
