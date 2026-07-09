@@ -205,6 +205,21 @@ td.loc-name{font-weight:700;color:var(--navy)}
   </div>
 </dialog>
 
+<dialog id="recurringModal" class="cat-modal" style="max-width:1020px">
+  <div class="cat-modal-inner">
+    <div class="cat-modal-hdr">
+      <div>
+        <div class="card-title">Recurring expenses</div>
+        <div class="card-hint">Set a template once — the row spawns as a new invoice every month. Rent, salaries, EDP, insurances, software…</div>
+      </div>
+      <button class="action-btn" onclick="closeRecurringPanel()">✕ Close</button>
+    </div>
+    <div id="recurringModalBody" class="cat-modal-body">
+      <div class="loading">Loading…</div>
+    </div>
+  </div>
+</dialog>
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="/supabase-config.js"></script>
 <script>
@@ -666,7 +681,8 @@ function invoicesTabHtml(){
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <button class="btn" style="padding:8px 14px;font-size:12px" onclick="openImportModal()" title="Import an Excel/CSV master or link to Bookinglayer — one-off setup">⬆ Import CSV</button>
             <button class="btn btn-ghost" style="padding:8px 14px;font-size:12px" onclick="exportInvoicesCsv()" title="Download the current filtered view as CSV — matches the Excel master column order">⬇ Export CSV</button>
-            <button class="btn btn-ghost" style="padding:8px 14px;font-size:12px" onclick="openCategoryPanel()">⚙ Manage categories</button>
+            <button class="btn btn-ghost" style="padding:8px 14px;font-size:12px" onclick="openRecurringPanel()" title="Rent, salaries, EDP, insurances — set them once, spawn them every month">⏰ Recurring</button>
+            <button class="btn btn-ghost" style="padding:8px 14px;font-size:12px" onclick="openCategoryPanel()">⚙ Categories</button>
             <input id="filter_search" type="search" placeholder="🔎 Search supplier, invoice #, NIF…" oninput="onFilterChanged()" style="width:220px;max-width:100%;padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;font-family:'Outfit',sans-serif;font-size:13px">
           </div>
         </div>
@@ -1499,6 +1515,319 @@ function openImportModal(){
   // Attach drag-drop + click listeners AFTER the drop zone lands in the DOM.
   wireExcelDropZone();
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+//   Recurring expenses — template CRUD + banner + monthly spawn
+// ═══════════════════════════════════════════════════════════════════════
+let REC_ROWS = [];
+let REC_EDIT_ID = null;   // when set, the form is editing an existing row
+
+async function openRecurringPanel(){
+  const modal = $('recurringModal');
+  if (!modal) return;
+  await loadRecurringPanel();
+  modal.showModal();
+}
+function closeRecurringPanel(){
+  const modal = $('recurringModal');
+  if (modal && modal.open) modal.close();
+}
+document.addEventListener('click', (e) => {
+  const modal = document.getElementById('recurringModal');
+  if (!modal || !modal.open) return;
+  if (e.target === modal) modal.close();
+});
+
+async function loadRecurringPanel(){
+  const body = $('recurringModalBody');
+  if (!body) return;
+  body.innerHTML = `<div class="loading">Loading…</div>`;
+  const { data, error } = await sb.from('hq_recurring_expenses')
+    .select('*').order('active', {ascending:false}).order('day_of_month');
+  if (error) { body.innerHTML = `<div class="loading" style="color:var(--red)">Load failed: ${error.message}</div>`; return; }
+  REC_ROWS = data || [];
+  renderRecurringPanel();
+}
+
+function recFormHtml(edit){
+  // Prefill values from edit target if present, otherwise blank + sensible defaults.
+  const e = edit || {};
+  const catOptions = CATEGORIES.map(c => `<option value="${c.id}" ${c.id===e.category_id?'selected':''}>${c.name}</option>`).join('');
+  const locOptions = HQ_LOCATIONS.map(l => `<option value="${l.slug}" ${l.slug===(e.location_slug||'general')?'selected':''}>${l.label}</option>`).join('');
+  const coOptions  = HQ_COMPANIES.map(c => `<option value="${c.slug}" ${c.slug===e.paying_company?'selected':''}>${c.label}</option>`).join('');
+  const payOptions = PAYMENT_TYPES.map(p => `<option value="${p}" ${p===(e.payment_type||'Bank Transfer')?'selected':''}>${p}</option>`).join('');
+  const cur = e.currency || 'EUR';
+  return `
+    <div class="form-grid" style="padding:12px;background:var(--foam);border-radius:10px;border:1px solid var(--border)">
+      <div class="field col-4"><label>Supplier</label>
+        <input id="rec_company" type="text" value="${escapeAttr(e.company || '')}" placeholder="e.g. EDP, Santander, Segurança Social">
+      </div>
+      <div class="field col-4"><label>Category</label>
+        <select id="rec_category">${catOptions}</select>
+      </div>
+      <div class="field col-4"><label>Location</label>
+        <select id="rec_location">${locOptions}</select>
+      </div>
+
+      <div class="field col-3"><label>Amount</label>
+        <input id="rec_amount" type="number" step="0.01" min="0" value="${e.amount ?? ''}" placeholder="0.00">
+      </div>
+      <div class="field col-2"><label>Currency</label>
+        <select id="rec_currency">
+          ${['EUR','MAD','LKR','USD','GBP'].map(c => `<option value="${c}" ${c===cur?'selected':''}>${c}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field col-2"><label>FX → EUR</label>
+        <input id="rec_fx" type="number" step="0.000001" min="0" value="${e.fx_rate ?? 1}">
+      </div>
+      <div class="field col-3"><label>Payment</label>
+        <select id="rec_payment">${payOptions}</select>
+      </div>
+      <div class="field col-2"><label>Day of month</label>
+        <input id="rec_day" type="number" min="1" max="28" value="${e.day_of_month || 1}">
+      </div>
+
+      <div class="field col-4"><label>Paying company</label>
+        <select id="rec_paying">${coOptions}</select>
+      </div>
+      <div class="field col-4"><label>Tax number (NIF)</label>
+        <input id="rec_nif" type="text" value="${escapeAttr(e.supplier_nif || '')}">
+      </div>
+      <div class="field col-4"><label>Invoice # pattern <span style="color:var(--muted);font-weight:400;text-transform:none">(optional)</span></label>
+        <input id="rec_invnum" type="text" value="${escapeAttr(e.invoice_number_pattern || '')}" placeholder="{YYYY-MM} → 2026-07, etc.">
+      </div>
+
+      <div class="field col-12"><label>Description</label>
+        <input id="rec_desc" type="text" value="${escapeAttr(e.description || '')}" placeholder="What is this recurring for?">
+      </div>
+    </div>
+    <div class="btn-row" style="margin-top:10px">
+      <button class="btn" onclick="saveRecurring()">${edit?'Save changes':'+ Add template'}</button>
+      ${edit ? `<button class="btn btn-ghost" onclick="cancelRecurringEdit()">Cancel</button>` : ''}
+      <span id="rec_toast"></span>
+    </div>
+  `;
+}
+
+function renderRecurringPanel(){
+  const body = $('recurringModalBody');
+  if (!body) return;
+  const rows = REC_ROWS;
+  const editTarget = REC_EDIT_ID ? rows.find(r => r.id === REC_EDIT_ID) : null;
+  const dueCount = rows.filter(r => r.active && isRecurringDue(r)).length;
+
+  body.innerHTML = `
+    ${dueCount ? `
+      <div class="toast toast-warn" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <span><b>${dueCount}</b> template${dueCount===1?'':'s'} due for <b>${currentMonth()}</b> — spawn them all as review-flagged invoices.</span>
+        <button class="btn" style="padding:6px 14px;font-size:12px" onclick="spawnAllDueRecurring()">▶ Create ${dueCount}</button>
+      </div>
+    ` : ''}
+    ${recFormHtml(editTarget)}
+
+    <div style="margin-top:18px">
+      <div class="card-title" style="font-size:16px;margin-bottom:6px">${rows.length} template${rows.length===1?'':'s'}</div>
+      <div style="overflow-x:auto"><table style="min-width:900px">
+        <thead><tr>
+          <th>Active</th><th>Day</th><th>Supplier</th><th>Category</th><th>Location</th>
+          <th class="r">Amount</th><th class="r">EUR</th><th>Pay</th><th>Last spawned</th><th></th>
+        </tr></thead>
+        <tbody>
+          ${rows.map(r => {
+            const due = r.active && isRecurringDue(r);
+            return `<tr ${due?'style="background:#fef3c7"':''}>
+              <td><input type="checkbox" ${r.active?'checked':''} onchange="setRecurringActive('${r.id}', this.checked)"></td>
+              <td style="font-family:'DM Mono',monospace;font-size:12px">${r.day_of_month}</td>
+              <td>${escapeHtml(r.company)}</td>
+              <td>${escapeHtml(r.category_name || '—')}</td>
+              <td>${locLabel(r.location_slug)}</td>
+              <td class="r">${Number(r.amount).toFixed(2)} ${r.currency}</td>
+              <td class="r">${eur(r.amount_eur)}</td>
+              <td>${escapeHtml(r.payment_type || '')}</td>
+              <td style="font-size:11px">${r.last_created_on || '—'}${due?' <span class="chip chip-review">due</span>':''}</td>
+              <td style="white-space:nowrap">
+                ${r.active ? `<button class="action-btn" onclick="spawnOneRecurring('${r.id}')" title="Create this month's invoice from this template">▶ Now</button>`:''}
+                <button class="action-btn" onclick="editRecurring('${r.id}')">Edit</button>
+                <button class="action-btn danger" onclick="deleteRecurring('${r.id}')">Delete</button>
+              </td>
+            </tr>`;
+          }).join('')}
+          ${rows.length === 0 ? `<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:24px">No templates yet. Add one above.</td></tr>`:''}
+        </tbody>
+      </table></div>
+    </div>
+    <div class="hint" style="margin-top:14px">
+      <b>Due</b> = today is on or past the template's day-of-month AND the template hasn't been spawned yet this month.<br>
+      Spawned rows land in Despesas HQ with <b>needs_review = true</b> so you can tweak (amount changed? new invoice #?) before confirming.
+    </div>
+  `;
+}
+
+// A template is due for the current month if:
+//  1. today's day >= template.day_of_month, AND
+//  2. last_created_on is null OR is before the first day of this month.
+function isRecurringDue(r){
+  const today = new Date();
+  const todayDom = today.getUTCDate();
+  const firstOfMonth = `${today.getUTCFullYear()}-${String(today.getUTCMonth()+1).padStart(2,'0')}-01`;
+  if (todayDom < (r.day_of_month || 1)) return false;
+  if (!r.last_created_on) return true;
+  return String(r.last_created_on) < firstOfMonth;
+}
+
+async function saveRecurring(){
+  const catSel = $('rec_category');
+  const cat    = CATEGORIES.find(c => c.id === catSel.value);
+  const loc    = $('rec_location').value;
+  const paying = $('rec_paying').value || payingCompanyFor(loc);
+  const amount = Number($('rec_amount').value) || 0;
+  const currency = $('rec_currency').value || 'EUR';
+  const fx_rate  = Number($('rec_fx').value) || 1;
+  const payload = {
+    location_slug: loc,
+    paying_company: paying,
+    company: ($('rec_company').value||'').trim(),
+    supplier_nif: ($('rec_nif').value||'').trim() || null,
+    description: ($('rec_desc').value||'').trim() || null,
+    category_id: cat?.id || null,
+    category_name: cat?.name || null,
+    amount, currency, fx_rate,
+    amount_eur: Number((amount * fx_rate).toFixed(2)),
+    payment_type: $('rec_payment').value,
+    invoice_number_pattern: ($('rec_invnum').value||'').trim() || null,
+    day_of_month: Math.max(1, Math.min(28, parseInt($('rec_day').value, 10) || 1))
+  };
+  if (!payload.company || amount <= 0) { toast('rec_toast','err','Supplier and Amount are required'); return; }
+
+  let error;
+  if (REC_EDIT_ID) {
+    ({ error } = await sb.from('hq_recurring_expenses').update(payload).eq('id', REC_EDIT_ID));
+  } else {
+    payload.created_by = CURRENT_USER?.id || null;
+    payload.active = true;
+    ({ error } = await sb.from('hq_recurring_expenses').insert(payload));
+  }
+  if (error) { toast('rec_toast','err','Save failed: '+error.message); return; }
+  REC_EDIT_ID = null;
+  await loadRecurringPanel();
+  toast('rec_toast','ok', 'Saved');
+}
+
+function editRecurring(id){
+  REC_EDIT_ID = id;
+  renderRecurringPanel();
+  // Scroll the form into view — the modal is scrollable when the list is long.
+  $('recurringModalBody')?.scrollTo({top: 0, behavior: 'smooth'});
+}
+function cancelRecurringEdit(){
+  REC_EDIT_ID = null;
+  renderRecurringPanel();
+}
+
+async function setRecurringActive(id, active){
+  const { error } = await sb.from('hq_recurring_expenses').update({active}).eq('id', id);
+  if (error) { alert('Toggle failed: '+error.message); return; }
+  const row = REC_ROWS.find(r => r.id === id);
+  if (row) row.active = active;
+  renderRecurringPanel();
+}
+
+async function deleteRecurring(id){
+  const row = REC_ROWS.find(r => r.id === id);
+  if (!confirm(`Delete template for "${row?.company||'?'}"? Existing invoices already spawned from it are kept.`)) return;
+  const { error } = await sb.from('hq_recurring_expenses').delete().eq('id', id);
+  if (error) { alert('Delete failed: '+error.message); return; }
+  REC_ROWS = REC_ROWS.filter(r => r.id !== id);
+  renderRecurringPanel();
+}
+
+// Turn a template into a real hq_invoices row for the current month. Invoice
+// number pattern replaces {YYYY-MM} / {YYYY} / {MM} tokens. Rows land as
+// needs_review=true so Miguel can adjust the final amount (utility bills
+// bounce around) before saving.
+async function spawnOneRecurring(id, opts){
+  const row = REC_ROWS.find(r => r.id === id);
+  if (!row) return;
+  const now = new Date();
+  const ym  = `${now.getUTCFullYear()}-${String(now.getUTCMonth()+1).padStart(2,'0')}`;
+  const invoiceDate = `${ym}-${String(Math.min(row.day_of_month || 1, 28)).padStart(2,'0')}`;
+  const invoiceNumber = (row.invoice_number_pattern || '')
+    .replace(/\{YYYY-MM\}/g, ym)
+    .replace(/\{YYYY\}/g, String(now.getUTCFullYear()))
+    .replace(/\{MM\}/g, String(now.getUTCMonth()+1).padStart(2,'0'))
+    .trim() || null;
+
+  const payload = {
+    location_slug: row.location_slug,
+    paying_company: row.paying_company,
+    invoice_date: invoiceDate,
+    company: row.company,
+    supplier_nif: row.supplier_nif,
+    description: row.description,
+    amount: row.amount,
+    currency: row.currency,
+    fx_rate: row.fx_rate,
+    amount_eur: row.amount_eur,
+    payment_type: row.payment_type,
+    invoice_number: invoiceNumber,
+    category_id: row.category_id,
+    category_name: row.category_name,
+    needs_review: true,
+    created_by: CURRENT_USER?.id || null
+  };
+  const { error } = await sb.from('hq_invoices').insert(payload);
+  if (error) { alert('Spawn failed: '+error.message); return; }
+  const { error: e2 } = await sb.from('hq_recurring_expenses')
+    .update({last_created_on: invoiceDate}).eq('id', id);
+  if (!e2) row.last_created_on = invoiceDate;
+
+  if (!opts?.silent) {
+    renderRecurringPanel();
+    renderInvoiceList();
+  }
+}
+
+async function spawnAllDueRecurring(){
+  const due = REC_ROWS.filter(r => r.active && isRecurringDue(r));
+  if (!due.length) return;
+  if (!confirm(`Spawn ${due.length} recurring invoice(s) for ${currentMonth()}? They land flagged for review so you can still adjust amounts.`)) return;
+  for (const r of due) {
+    await spawnOneRecurring(r.id, {silent: true});
+  }
+  renderRecurringPanel();
+  renderInvoiceList();
+}
+
+// Banner shown at the top of the Despesas HQ list when recurring templates
+// are due. Miguel gets a one-click "spawn everything" without opening the
+// full recurring panel.
+async function checkRecurringDueBanner(){
+  const wrap = $('recurringDueBanner');
+  if (!wrap) return;
+  const { data } = await sb.from('hq_recurring_expenses')
+    .select('id, active, day_of_month, last_created_on').eq('active', true);
+  const due = (data || []).filter(isRecurringDue);
+  if (!due.length) { wrap.innerHTML = ''; return; }
+  wrap.innerHTML = `
+    <div class="toast toast-warn" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <span>⏰ <b>${due.length}</b> recurring template${due.length===1?'':'s'} due for <b>${currentMonth()}</b>.</span>
+      <div style="display:flex;gap:8px">
+        <button class="btn" style="padding:6px 12px;font-size:12px" onclick="openRecurringPanel()">Review templates</button>
+        <button class="btn" style="padding:6px 12px;font-size:12px;background:var(--green)" onclick="spawnAllDueFromBanner()">▶ Create all ${due.length}</button>
+      </div>
+    </div>
+  `;
+}
+
+async function spawnAllDueFromBanner(){
+  // Ensure REC_ROWS is loaded so spawnOneRecurring finds the templates.
+  if (!REC_ROWS.length) {
+    const { data } = await sb.from('hq_recurring_expenses').select('*').eq('active', true);
+    REC_ROWS = data || [];
+  }
+  await spawnAllDueRecurring();
+  checkRecurringDueBanner();
+}
 function closeImportModal(){
   const modal = $('importModal');
   if (modal && modal.open) modal.close();
@@ -2209,6 +2538,7 @@ async function renderInvoiceList(){
   }
 
   body.innerHTML = `
+    <div id="recurringDueBanner"></div>
     <div class="summary-grid">
       <div class="summary-box"><div class="summary-lbl">Invoices</div><div class="summary-val">${totalCount}</div></div>
       <div class="summary-box"><div class="summary-lbl">Total (EUR)</div><div class="summary-val">${eur(totalEur)}</div></div>
@@ -2239,6 +2569,10 @@ async function renderInvoiceList(){
   }
   syncSelectAllHeaderState();
   renderBatchBar();
+  // Fire-and-forget: fills the recurring due banner if templates are pending
+  // this month. Runs unauthenticated tables would silently fail; we don't
+  // block the list render on it.
+  checkRecurringDueBanner();
 }
 
 async function openInvoiceFile(key){
