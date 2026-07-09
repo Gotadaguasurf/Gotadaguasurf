@@ -689,6 +689,9 @@ function invoicesTabHtml(){
           <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer">
             <input type="checkbox" id="filter_personal" onchange="onFilterChanged()"> Only personal
           </label>
+          <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer" title="Rows flagged is_duplicate=true (LIMPO's TRUE marks + collisions caught at insert)">
+            <input type="checkbox" id="filter_duplicate" onchange="onFilterChanged()"> Only duplicates
+          </label>
           <button class="action-btn" onclick="clearAllFilters()" title="Reset all filters">Clear</button>
         </div>
       </div>
@@ -1338,6 +1341,7 @@ function clearAllFilters(){
   set('filter_category', '__all__');
   set('filter_review', false);
   set('filter_personal', false);
+  set('filter_duplicate', false);
   set('filter_search', '');
   renderInvoiceList();
 }
@@ -2065,13 +2069,15 @@ async function renderInvoiceList(){
   const catFilter    = $('filter_category')?.value || '__all__';
   const reviewOnly   = $('filter_review')?.checked;
   const personalOnly = $('filter_personal')?.checked;
+  const duplicateOnly= $('filter_duplicate')?.checked;
   const search       = ($('filter_search')?.value || '').toLowerCase().trim();
 
   if (catFilter && catFilter !== '__all__') {
     rows = rows.filter(r => r.category_id === catFilter);
   }
-  if (reviewOnly)   rows = rows.filter(r => r.needs_review);
-  if (personalOnly) rows = rows.filter(r => personalCatIds.has(r.category_id));
+  if (reviewOnly)    rows = rows.filter(r => r.needs_review);
+  if (personalOnly)  rows = rows.filter(r => personalCatIds.has(r.category_id));
+  if (duplicateOnly) rows = rows.filter(r => r.is_duplicate);
   if (search) {
     rows = rows.filter(r =>
       String(r.company        || '').toLowerCase().includes(search) ||
