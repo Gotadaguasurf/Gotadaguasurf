@@ -16,6 +16,23 @@ header{background:var(--navy);padding:0 24px;display:flex;align-items:center;jus
 .brand-logo{display:flex;align-items:center;justify-content:flex-start;width:134px;height:30px;flex-shrink:0}
 .brand-logo svg{height:30px;width:auto;display:block}
 .header-sub{font-size:10px;color:#7aabcc;font-weight:700;letter-spacing:.1em;text-transform:uppercase;white-space:nowrap}
+/* Unified app switcher — same component destined for every top-level page
+   so CRM / Camp hub / Prices / Partners / HQ / Overview feel like one
+   product. Native <details> so the toggle needs no JS. */
+.app-switch{position:relative}
+.app-switch summary{list-style:none;cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:5px 10px 5px 12px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:999px;color:#fff;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;transition:background .15s, border-color .15s}
+.app-switch summary::-webkit-details-marker{display:none}
+.app-switch summary::marker{content:''}
+.app-switch summary:hover{background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.28)}
+.app-switch[open] summary{background:rgba(255,255,255,.20);border-color:rgba(255,255,255,.32)}
+.app-switch-caret{font-size:9px;transition:transform .2s;opacity:.8}
+.app-switch[open] .app-switch-caret{transform:rotate(180deg)}
+.app-switch-menu{position:absolute;top:calc(100% + 6px);left:0;background:#fff;border:1px solid #d4e3f0;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.18);padding:6px;min-width:220px;z-index:200}
+.app-switch-menu a{display:flex;flex-direction:column;padding:8px 12px;border-radius:8px;color:#0d1b2a;text-decoration:none;font-size:13px;font-weight:600;transition:background .1s}
+.app-switch-menu a small{font-size:11px;color:#6b8099;font-weight:500;margin-top:1px}
+.app-switch-menu a:hover{background:#edf5fb}
+.app-switch-menu a.is-current{background:#edf5fb;color:#1e6fa8}
+.app-switch-menu a.is-current small{color:#1e6fa8;opacity:.7}
 .header-center{display:flex;align-items:center;justify-content:center;gap:4px;flex:1;min-width:0}
 .header-right{display:flex;align-items:center;gap:12px;flex-shrink:0;justify-content:flex-end;min-width:220px}
 .nav-tabs{display:flex;gap:3px;align-items:center;flex-wrap:wrap;justify-content:center}
@@ -157,6 +174,14 @@ td.loc-name{font-weight:700;color:var(--navy)}
 .health-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.14em;color:var(--amber);font-weight:700;margin-right:4px}
 .health-chip{background:#fff;border:1px solid #f0e0b0;color:var(--amber);border-radius:14px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif;transition:background .15s, border-color .15s}
 .health-chip:hover{background:var(--amber);color:#fff;border-color:var(--amber)}
+.digest-strip{display:flex;align-items:center;flex-wrap:wrap;gap:10px;padding:12px 22px;background:#f4f9fd;border-bottom:1px solid #dce8f2}
+.digest-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.14em;color:var(--ocean);font-weight:700}
+.digest-hint{font-size:12px;color:var(--muted);margin-right:auto}
+.digest-btn{background:#fff;border:1px solid var(--border);color:var(--ink);border-radius:14px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif;transition:background .15s, border-color .15s}
+.digest-btn:hover{background:var(--foam);border-color:var(--ocean)}
+.digest-btn.primary{background:var(--ocean);border-color:var(--ocean);color:#fff}
+.digest-btn.primary:hover{background:#175a8f;border-color:#175a8f}
+.digest-btn:disabled{opacity:.5;cursor:wait}
 /* Monthly trend — 12-month business profit bars. Height per bar is a
    percentage of the tallest absolute value in the window; positive
    bars grow from the baseline up, negative bars just get red styling
@@ -209,9 +234,22 @@ td.loc-name{font-weight:700;color:var(--navy)}
         <path fill="#fff4d5" d="M142.8,61.3h-6.9c-.2-.5-.1-1-.2-1.4-.1-.5-1.3-2.4-1.5-2.8-.5-.7-1.5-1.5-2.3-1.5-1.3,0-3.2,0-4.3.8-.5.3-1.2,2.1-1.4,2.7-1.1,3.3-1.3,6.7-1.5,10.1,0,3.6.2,8.1,1.7,11.5,0,.3.5.9.6,1.1.2.3,1.7,1.1,2,1.1.9,0,2.5,0,3.5-.3.4,0,1.7-1,2-1.3.6-.7,1.3-3.3,1.3-4.3s-.3-1.9-.4-2l-4.5-.2c-.3-1.9-.1-3.9.1-5.8v-.2c.9,0,6.9.3,9.1.5h2.2c0,.7.2,1.3.3,2.1.5,3.1.4,5.2.1,8.3-.3,3.1-.5,6.5-3.1,8.6-1.1.9-1.8,1.5-3.3,1.9-1.9.6-2.8.6-4.7.7-1.3,0-2.3,0-3.6-.2-3.9-.8-6.3-2.8-7.5-6.6-2.7-8.9-3.1-18.9-.9-27.9.8-3.1,1.3-4.7,3.9-6.5,2.1-1.5,7.1-2.3,9.5-1.6,2.7.8,6.6,2.7,8.1,4.4.7.8,1.5,2.8,1.7,3.8.2,1.3,0,5,0,5h0Z"/>
       </svg>
     </div>
-    <div class="header-sub">HQ</div>
     </div>
     </a>
+    <details class="app-switch">
+      <summary>
+        <span>HQ</span>
+        <span class="app-switch-caret">▾</span>
+      </summary>
+      <nav class="app-switch-menu">
+        <a href="/"><span>Overview</span><small>Camps + prices home</small></a>
+        <a href="/hq/" class="is-current"><span>HQ</span><small>Finances, profit, cash flow</small></a>
+        <a href="/camp-hub/"><span>Camp hub</span><small>Managers' float ledger</small></a>
+        <a href="/prices/"><span>Prices</span><small>Catalog + packages</small></a>
+        <a href="/partners/"><span>Partners</span><small>Partner P&amp;L + statements</small></a>
+        <a href="/crm/"><span>CRM</span><small>Outreach + pipeline</small></a>
+      </nav>
+    </details>
   </div>
   <div class="header-center">
     <div class="nav-tabs" id="hqNavTabs" style="display:none">
@@ -631,6 +669,13 @@ async function renderOverview(){
       </div>
     ` : ''}
 
+    <div class="digest-strip">
+      <span class="digest-lbl">Weekly digest</span>
+      <span class="digest-hint">Last full Mon–Sun as an email</span>
+      <button class="digest-btn" onclick="previewWeeklyDigest()">Preview</button>
+      <button class="digest-btn primary" onclick="sendWeeklyDigest()">Send to accounting@</button>
+    </div>
+
     <div class="section-lbl">Revenue</div>
     <div class="summary-grid tight">
       <div class="summary-box pos">
@@ -743,6 +788,69 @@ async function renderOverview(){
 
     <div class="hint" style="padding:14px 22px 4px">${bkCount} booking${bkCount===1?'':'s'} in the selected period · numbers match the <a href="/partners/" style="color:var(--ocean);font-weight:600">Partners app</a>.<br>Local expenses use <code>attributed_location</code> when set — otherwise the row's own location.</div>
   `;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//   WEEKLY DIGEST — Preview + Send from the Overview
+//   Backed by the hq-weekly-digest Edge Function. Uses the caller's
+//   JWT so the function's is_hq_member gate protects it; the function
+//   itself queries with the service role, cron path unchanged.
+// ═══════════════════════════════════════════════════════════════════
+async function _digestFetch(qs, body){
+  const { data: sessionData } = await sb.auth.getSession();
+  const jwt = sessionData?.session?.access_token || '';
+  if (!jwt) throw new Error('Not signed in');
+  const url = `${cfg.url}/functions/v1/hq-weekly-digest${qs ? '?' + qs : ''}`;
+  return fetch(url, {
+    method: body ? 'POST' : 'GET',
+    headers: {
+      'Authorization': `Bearer ${jwt}`,
+      'Content-Type': 'application/json',
+      'apikey': cfg.anonKey,
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+}
+
+async function previewWeeklyDigest(){
+  const btns = document.querySelectorAll('.digest-btn');
+  btns.forEach(b => b.disabled = true);
+  try {
+    const resp = await _digestFetch('preview=1');
+    if (!resp.ok) {
+      const err = await resp.text();
+      alert(`Preview failed (${resp.status}):\n${err.slice(0, 300)}`);
+      return;
+    }
+    const html = await resp.text();
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
+    // Blob URL stays valid until the tab is closed — no revoke needed here.
+  } catch (e) {
+    alert(`Preview error: ${e.message || e}`);
+  } finally {
+    btns.forEach(b => b.disabled = false);
+  }
+}
+
+async function sendWeeklyDigest(){
+  if (!confirm("Send the weekly digest email to accounting@gotadaguasurf.com now?")) return;
+  const btns = document.querySelectorAll('.digest-btn');
+  btns.forEach(b => b.disabled = true);
+  try {
+    const resp = await _digestFetch('', { to: 'accounting@gotadaguasurf.com' });
+    const result = await resp.json().catch(() => ({}));
+    if (!resp.ok || result?.error) {
+      alert(`Send failed:\n${result?.error || resp.statusText}`);
+      return;
+    }
+    alert(`✓ Sent to accounting@gotadaguasurf.com\nProfit: €${Math.round(result.profit).toLocaleString('en-GB')}`);
+  } catch (e) {
+    alert(`Send error: ${e.message || e}`);
+  } finally {
+    btns.forEach(b => b.disabled = false);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════
