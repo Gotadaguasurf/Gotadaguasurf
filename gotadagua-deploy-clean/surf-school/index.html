@@ -189,21 +189,55 @@ main{padding:16px;max-width:640px;margin:0 auto}
           <input id="fld_id" type="text" placeholder="Passport / ID for board return" autocomplete="off">
         </div>
       </div>
-      <div class="field">
+      <!-- Customer Type — only relevant for rentals; hidden for lessons/activities. -->
+      <div class="field" id="custTypeWrap">
+        <label>Customer type</label>
+        <select id="fld_customer_type">
+          <option value="Regular">Regular</option>
+          <option value="Student">Student</option>
+          <option value="Resident">Resident</option>
+          <option value="Surf Camp Customer">Surf Camp Customer</option>
+        </select>
+      </div>
+
+      <!-- Rental Type — Same Day vs Multi-day. Rentals only. -->
+      <div class="field" id="rentalTypeWrap">
+        <label>Rental type</label>
+        <div class="segment" style="grid-template-columns:1fr 1fr">
+          <button type="button" class="active" data-rtype="Same Day" onclick="setRentalType('Same Day')">Same Day</button>
+          <button type="button" data-rtype="Multi-day" onclick="setRentalType('Multi-day')">Multi-day</button>
+        </div>
+      </div>
+
+      <!-- Duration — 1H/2H/3H/Full day (Same Day) OR number of days (Multi-day). -->
+      <div class="field" id="durationWrap">
+        <label id="durationLbl">Duration</label>
+        <select id="fld_duration" onchange="recalcRentalTotal()">
+          <option value="1H">1 hour</option>
+          <option value="2H">2 hours</option>
+          <option value="3H">3 hours</option>
+          <option value="Full day">Full day</option>
+        </select>
+        <input id="fld_days" type="number" min="1" step="1" value="2" placeholder="Number of days" style="display:none" oninput="recalcRentalTotal()">
+      </div>
+
+      <!-- Multi-item picker for rentals (Board + Wetsuit combos). For lessons/
+           activities the single-select fld_item below is shown instead. -->
+      <div class="field" id="rentalItemsWrap">
+        <label>Rental item(s)</label>
+        <div id="fld_items_multi"></div>
+        <div class="hint">Tick each item the student is taking. Amount adds up automatically.</div>
+      </div>
+
+      <div class="field" id="singleItemWrap" style="display:none">
         <label>Item</label>
         <select id="fld_item" onchange="onItemPick()"></select>
-        <div class="hint" id="itemHint">Pick from the Surf School catalog.</div>
       </div>
-      <div class="grid2">
-        <div class="field">
-          <label>Qty / duration</label>
-          <input id="fld_qty" type="number" step="0.5" min="0.5" value="1">
-        </div>
-        <div class="field">
-          <label>Amount</label>
-          <input id="fld_price" type="number" step="0.01" min="0" placeholder="0.00">
-          <div class="hint" id="curHint">EUR</div>
-        </div>
+
+      <div class="field">
+        <label>Amount</label>
+        <input id="fld_price" type="number" step="0.01" min="0" placeholder="0.00">
+        <div class="hint" id="curHint">EUR · edit if you gave a discount</div>
       </div>
       <div class="field">
         <label>Payment</label>
@@ -271,6 +305,7 @@ let CATALOG = [];
 let ALL_RENTALS = [];
 let CURRENT_KIND = 'rental';
 let CURRENT_PAY = 'Cash';
+let CURRENT_RENTAL_TYPE = 'Same Day';
 let CURRENT_USER = null;
 let PROFILE_NAMES = new Map();
 
@@ -327,9 +362,7 @@ async function loadCatalog(){
 }
 
 function renderItemPicker(){
-  const sel = document.getElementById('fld_item');
-  // Filter by kind: rental → Surf Pack / Other Service rentals;
-  // lesson → Lesson; activity → any Tour / Other Service.
+  // Filter the catalog to what makes sense for the selected kind.
   const kindGuess = (c) => {
     const cat = String(c.category||'').toLowerCase();
     if (CURRENT_KIND === 'lesson') return cat.includes('lesson');
@@ -337,17 +370,56 @@ function renderItemPicker(){
     return true; // activity — show all
   };
   const items = CATALOG.filter(kindGuess);
-  sel.innerHTML = items.length
-    ? items.map(c => `<option value="${c.id}" data-price="${c.sell_price}" data-cur="${c.currency||'EUR'}" data-name="${escapeHtml(c.name)}">${escapeHtml(c.name)} · ${c.currency||'EUR'} ${Number(c.sell_price).toFixed(0)}</option>`).join('')
-    : `<option value="">(no items in catalog for this type — add in Prices app)</option>`;
-  onItemPick();
+
+  if (CURRENT_KIND === 'rental') {
+    // Multi-select: staff can tick Board + Wetsuit + …, price adds up.
+    const box = document.getElementById('fld_items_multi');
+    box.innerHTML = items.length
+      ? items.map(c => `<label style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;margin-bottom:6px;cursor:pointer;background:#fff">
+          <input type="checkbox" class="item-cb" data-id="${c.id}" data-price="${c.sell_price}" data-cur="${c.currency||'EUR'}" data-name="${escapeHtml(c.name)}" onchange="recalcRentalTotal()" style="width:20px;height:20px;accent-color:var(--ocean)">
+          <span style="flex:1;font-weight:700">${escapeHtml(c.name)}</span>
+          <span style="font-family:'DM Mono',monospace;font-size:12px;color:var(--muted)">${c.currency||'EUR'} ${Number(c.sell_price).toFixed(0)}</span>
+        </label>`).join('')
+      : `<div class="hint" style="padding:12px;background:var(--foam);border-radius:10px">No rental items in the catalog yet. Add them in the Prices app under Surf School.</div>`;
+    document.getElementById('fld_price').value = '';
+    document.getElementById('curHint').textContent = items.length ? `${items[0].currency || 'EUR'} · edit if you gave a discount` : '—';
+  } else {
+    // Lessons / activities keep the single-select dropdown.
+    const sel = document.getElementById('fld_item');
+    sel.innerHTML = items.length
+      ? items.map(c => `<option value="${c.id}" data-price="${c.sell_price}" data-cur="${c.currency||'EUR'}" data-name="${escapeHtml(c.name)}">${escapeHtml(c.name)} · ${c.currency||'EUR'} ${Number(c.sell_price).toFixed(0)}</option>`).join('')
+      : `<option value="">(no items in catalog for this type — add in Prices app)</option>`;
+    onItemPick();
+  }
 }
 function onItemPick(){
   const sel = document.getElementById('fld_item');
-  const opt = sel.selectedOptions[0];
+  const opt = sel?.selectedOptions?.[0];
   if (!opt || !opt.value) { document.getElementById('fld_price').value = ''; document.getElementById('curHint').textContent = ''; return; }
   document.getElementById('fld_price').value = Number(opt.dataset.price || 0).toFixed(2);
-  document.getElementById('curHint').textContent = opt.dataset.cur || 'EUR';
+  document.getElementById('curHint').textContent = (opt.dataset.cur || 'EUR') + ' · edit if you gave a discount';
+}
+function recalcRentalTotal(){
+  // Sum sell_price of every ticked checkbox × duration multiplier. For
+  // Same Day rentals a "Full day" bumps the multiplier; other durations
+  // keep the catalog price as-is. Multi-day multiplies by number of days.
+  const cbs = [...document.querySelectorAll('.item-cb:checked')];
+  let sum = 0, cur = 'EUR';
+  cbs.forEach(cb => { sum += Number(cb.dataset.price || 0); cur = cb.dataset.cur || cur; });
+  const mult = rentalDurationMultiplier();
+  document.getElementById('fld_price').value = (sum * mult).toFixed(2);
+  document.getElementById('curHint').textContent = `${cur} · edit if you gave a discount`;
+}
+function rentalDurationMultiplier(){
+  if (CURRENT_KIND !== 'rental') return 1;
+  if (CURRENT_RENTAL_TYPE === 'Multi-day') {
+    return Math.max(1, Number(document.getElementById('fld_days')?.value) || 1);
+  }
+  // Same Day. Catalog price is treated as the 1H rate — 2H doubles it,
+  // 3H triples, Full day = 4x. Adjust here if Miguel's catalog uses a
+  // different base rate.
+  const d = document.getElementById('fld_duration')?.value || '1H';
+  return { '1H':1, '2H':2, '3H':3, 'Full day':4 }[d] || 1;
 }
 
 // ── Rentals ──────────────────────────────────────────────────────
@@ -469,18 +541,53 @@ async function saveEntry(){
   const name  = document.getElementById('fld_name').value.trim();
   const email = document.getElementById('fld_email').value.trim() || null;
   const idCard= document.getElementById('fld_id').value.trim() || null;
-  const itemSel = document.getElementById('fld_item');
-  const opt = itemSel.selectedOptions[0];
-  const qty = Number(document.getElementById('fld_qty').value) || 1;
   const price = Number(document.getElementById('fld_price').value) || 0;
   const terms = document.getElementById('fld_terms').checked;
+
+  // Two item-picker shapes:
+  //   Rental → checkboxes (fld_items_multi). Can be several at once.
+  //   Lesson / activity → single-select (fld_item).
+  let pickedItems = [];
+  let primaryItem = null;
+  let currency = 'EUR';
+  if (CURRENT_KIND === 'rental') {
+    const cbs = [...document.querySelectorAll('.item-cb:checked')];
+    if (!cbs.length) { toast('Tick at least one rental item', 'err'); return; }
+    pickedItems = cbs.map(cb => ({
+      item_id: cb.dataset.id,
+      name:    cb.dataset.name,
+      price:   Number(cb.dataset.price || 0),
+      currency: cb.dataset.cur || 'EUR'
+    }));
+    primaryItem = pickedItems[0];
+    currency = primaryItem.currency;
+  } else {
+    const itemSel = document.getElementById('fld_item');
+    const opt = itemSel.selectedOptions[0];
+    if (!opt || !opt.value) { toast('Pick an item from the catalog', 'err'); return; }
+    primaryItem = { item_id: opt.value, name: opt.dataset.name || opt.textContent, price: Number(opt.dataset.price || 0), currency: opt.dataset.cur || 'EUR' };
+    pickedItems = [primaryItem];
+    currency = primaryItem.currency;
+  }
+
   if (!name) { toast('Student name required', 'err'); return; }
-  if (!opt || !opt.value) { toast('Pick an item from the catalog', 'err'); return; }
   if (!(price > 0)) { toast('Amount must be > 0', 'err'); return; }
   if (!terms) { toast('Confirm terms accepted', 'err'); return; }
 
-  const currency = opt.dataset.cur || 'EUR';
-  const itemName = opt.dataset.name || opt.textContent;
+  const customerType = CURRENT_KIND === 'rental' ? (document.getElementById('fld_customer_type').value || null) : null;
+  const rentalType   = CURRENT_KIND === 'rental' ? CURRENT_RENTAL_TYPE : null;
+  const duration     = CURRENT_KIND === 'rental'
+    ? (CURRENT_RENTAL_TYPE === 'Multi-day'
+        ? `${Number(document.getElementById('fld_days').value) || 1} days`
+        : document.getElementById('fld_duration').value)
+    : null;
+  const qty = CURRENT_KIND === 'rental' && CURRENT_RENTAL_TYPE === 'Multi-day'
+    ? (Number(document.getElementById('fld_days').value) || 1)
+    : 1;
+
+  const itemName = pickedItems.length > 1
+    ? pickedItems.map(p => p.name).join(' + ')
+    : primaryItem.name;
   const nowIso = new Date().toISOString();
 
   btn.disabled = true; btn.textContent = 'Saving…';
@@ -492,7 +599,7 @@ async function saveEntry(){
     location_id: LOCATION_ID,
     type: 'revenue',
     category: CURRENT_KIND === 'lesson' ? 'Lessons' : (CURRENT_KIND === 'activity' ? 'Activities' : 'Rentals'),
-    description: `${itemName} — ${name}${idCard?` (ID ${idCard})`:''}`,
+    description: `${itemName} — ${name}${customerType?` (${customerType})`:''}${duration?` · ${duration}`:''}${idCard?` · ID ${idCard}`:''}`,
     payment_method: CURRENT_PAY,
     qty,
     amount_local: price,
@@ -524,12 +631,16 @@ async function saveEntry(){
     student_name: name,
     student_email: email,
     id_card_number: idCard,
-    item_id: opt.value,
+    item_id: primaryItem.item_id,
     item_name: itemName,
     qty,
     price_local: price,
     currency,
     payment_method: CURRENT_PAY,
+    customer_type: customerType,
+    rental_type: rentalType,
+    duration,
+    items: pickedItems,
     terms_accepted: terms,
     terms_accepted_at: nowIso,
     is_returned: CURRENT_KIND !== 'rental',
@@ -562,9 +673,28 @@ async function closeRental(id, studentName){
 // ── UI helpers ──────────────────────────────────────────────────
 function setKind(k){
   CURRENT_KIND = k;
-  document.querySelectorAll('.segment button').forEach(b => b.classList.toggle('active', b.dataset.kind === k));
+  document.querySelectorAll('.segment button[data-kind]').forEach(b => b.classList.toggle('active', b.dataset.kind === k));
   document.getElementById('idLbl').textContent = k === 'rental' ? 'ID card (recommended)' : 'ID card (optional)';
+  // Show/hide rental-only fields: Customer Type, Rental Type, Duration,
+  // and switch between multi-item checkboxes (rental) vs single-item
+  // dropdown (lesson / activity).
+  const isRental = k === 'rental';
+  document.getElementById('custTypeWrap').style.display    = isRental ? '' : 'none';
+  document.getElementById('rentalTypeWrap').style.display  = isRental ? '' : 'none';
+  document.getElementById('durationWrap').style.display    = isRental ? '' : 'none';
+  document.getElementById('rentalItemsWrap').style.display = isRental ? '' : 'none';
+  document.getElementById('singleItemWrap').style.display  = isRental ? 'none' : '';
   renderItemPicker();
+  if (isRental) recalcRentalTotal();
+}
+function setRentalType(t){
+  CURRENT_RENTAL_TYPE = t;
+  document.querySelectorAll('#rentalTypeWrap .segment button').forEach(b => b.classList.toggle('active', b.dataset.rtype === t));
+  const isMulti = t === 'Multi-day';
+  document.getElementById('fld_duration').style.display = isMulti ? 'none' : '';
+  document.getElementById('fld_days').style.display     = isMulti ? '' : 'none';
+  document.getElementById('durationLbl').textContent    = isMulti ? 'How many days?' : 'Duration';
+  recalcRentalTotal();
 }
 function setPay(p){
   CURRENT_PAY = p;
@@ -581,9 +711,12 @@ function clearForm(){
   document.getElementById('fld_name').value = '';
   document.getElementById('fld_email').value = '';
   document.getElementById('fld_id').value = '';
-  document.getElementById('fld_qty').value = 1;
   document.getElementById('fld_price').value = '';
   document.getElementById('fld_terms').checked = false;
+  document.querySelectorAll('.item-cb').forEach(cb => cb.checked = false);
+  const cust = document.getElementById('fld_customer_type'); if (cust) cust.value = 'Regular';
+  const dur = document.getElementById('fld_duration'); if (dur) dur.value = '1H';
+  const days = document.getElementById('fld_days'); if (days) days.value = 2;
 }
 function showTerms(){
   alert("Rental terms & conditions:\n\n1. Board rented in the condition inspected on pickup.\n2. Renter is responsible for damage / loss until return.\n3. ID retained as collateral until the board comes back.\n4. Total is due at pickup — no refunds for early return.\n\n(Miguel will replace this with the full text.)");
