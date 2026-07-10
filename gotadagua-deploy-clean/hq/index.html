@@ -102,6 +102,13 @@ input:focus,select:focus{outline:none;border-color:var(--ocean);box-shadow:0 0 0
 .inline-select.narrow{min-width:96px}
 .inline-select:hover{background-color:var(--foam);border-color:var(--border)}
 .inline-select:focus{background-color:var(--foam);border-color:var(--ocean);outline:none}
+/* Invoice table row polish — supplier cell shows the vendor name on line 1
+   and truncates the AI-extracted description to 1 line on line 2. Full text
+   on hover via the title attribute. Row height stays uniform. */
+#invListBody table tbody tr td{vertical-align:middle;padding-top:8px;padding-bottom:8px}
+.sup-cell{display:flex;flex-direction:column;gap:1px;max-width:260px;min-width:0}
+.sup-name{font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sup-desc{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:260px}
 .cell-save-flash{animation:cellFlash .9s ease-out}
 @keyframes cellFlash{0%{background-color:var(--green-bg)}100%{background-color:transparent}}
 .hint{font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5}
@@ -182,6 +189,43 @@ td.loc-name{font-weight:700;color:var(--navy)}
 .digest-btn.primary{background:var(--ocean);border-color:var(--ocean);color:#fff}
 .digest-btn.primary:hover{background:#175a8f;border-color:#175a8f}
 .digest-btn:disabled{opacity:.5;cursor:wait}
+/* Profit-per-location drill-down — click a row to slide in a read-only
+   summary of that location's expenses and HQ invoices for the current
+   period. Read-only: editing still happens in camp-hub / Despesas HQ. */
+.loc-row-drill{cursor:pointer;transition:background .1s}
+.loc-row-drill:hover{background:var(--foam)}
+.loc-row-drill td.loc-name::before{content:'▸ ';color:var(--muted);font-size:11px}
+.hq-drawer-backdrop{position:fixed;inset:0;background:rgba(13,27,42,.45);z-index:400;opacity:0;pointer-events:none;transition:opacity .2s}
+.hq-drawer-backdrop.open{opacity:1;pointer-events:auto}
+.hq-drawer{position:fixed;top:0;right:0;bottom:0;width:min(520px,100vw);background:#fff;z-index:401;box-shadow:-20px 0 60px rgba(0,0,0,.15);transform:translateX(100%);transition:transform .25s cubic-bezier(.16,.7,.3,1);display:flex;flex-direction:column;overflow:hidden}
+.hq-drawer.open{transform:translateX(0)}
+.drawer-hdr{padding:22px 24px 18px;background:linear-gradient(135deg,var(--navy) 0%,#1f2c3b 100%);color:#fff;flex-shrink:0}
+.drawer-hdr-eyebrow{font-size:10px;text-transform:uppercase;letter-spacing:.14em;color:#7aabcc;font-weight:700}
+.drawer-hdr-title{font-family:'DM Serif Display',serif;font-size:26px;line-height:1.1;margin-top:6px}
+.drawer-hdr-profit{margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;font-size:12px}
+.drawer-hdr-profit span{padding:4px 10px;border-radius:999px;background:rgba(255,255,255,.10);font-weight:600}
+.drawer-close{position:absolute;top:14px;right:14px;background:rgba(255,255,255,.10);border:none;color:#fff;width:32px;height:32px;border-radius:50%;font-size:20px;cursor:pointer;line-height:1}
+.drawer-close:hover{background:rgba(255,255,255,.22)}
+.drawer-body{overflow-y:auto;padding:16px 24px 32px;flex:1}
+.drawer-section{margin-top:20px}
+.drawer-section:first-child{margin-top:8px}
+.drawer-sect-lbl{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);font-weight:700;margin-bottom:10px;display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.drawer-sect-lbl small{font-weight:500;text-transform:none;letter-spacing:0;color:var(--muted);font-size:11px}
+.drawer-cat-row{display:grid;grid-template-columns:1fr 60px 80px;align-items:center;gap:10px;padding:6px 0;font-size:13px;border-bottom:1px solid #eef2f7}
+.drawer-cat-name{font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.drawer-cat-n{color:var(--muted);font-size:11px;text-align:right}
+.drawer-cat-total{text-align:right;font-variant-numeric:tabular-nums;font-weight:600;color:var(--ink)}
+.drawer-cat-bar{grid-column:1/-1;height:3px;background:#eef2f7;border-radius:2px;overflow:hidden;margin-top:2px}
+.drawer-cat-bar-fill{height:100%;background:linear-gradient(90deg,var(--ocean),#3b9dd4)}
+.drawer-item{display:grid;grid-template-columns:64px 1fr 100px;gap:10px;padding:8px 0;font-size:12px;border-bottom:1px solid #eef2f7}
+.drawer-item-date{color:var(--muted);font-family:'DM Mono',monospace;font-size:11px}
+.drawer-item-body{min-width:0}
+.drawer-item-cat{font-weight:600;color:var(--ink);font-size:12px}
+.drawer-item-desc{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.drawer-item-amt{text-align:right;font-variant-numeric:tabular-nums;font-weight:600;font-size:13px;color:var(--ink)}
+.drawer-empty{padding:16px 0;font-size:12px;color:var(--muted);font-style:italic;text-align:center}
+.drawer-footer{padding:14px 24px;border-top:1px solid var(--border);display:flex;gap:10px;flex-shrink:0;background:#fafcfe}
+.drawer-footer .btn{flex:1}
 /* Monthly trend — 12-month business profit bars. Height per bar is a
    percentage of the tallest absolute value in the window; positive
    bars grow from the baseline up, negative bars just get red styling
@@ -309,6 +353,26 @@ td.loc-name{font-weight:700;color:var(--navy)}
     </div>
   </div>
 </dialog>
+
+<!-- Profit-per-location drill-down. Hidden until openLocDrilldown() slides
+     it in. Read-only: shows category breakdown, top expenses and HQ
+     invoices for the selected location + period. -->
+<div id="hqDrawerBackdrop" class="hq-drawer-backdrop" onclick="closeLocDrilldown()"></div>
+<aside id="hqDrawer" class="hq-drawer" role="dialog" aria-hidden="true">
+  <div class="drawer-hdr">
+    <button class="drawer-close" onclick="closeLocDrilldown()" aria-label="Close">×</button>
+    <div class="drawer-hdr-eyebrow" id="drawerEyebrow">Loading…</div>
+    <div class="drawer-hdr-title" id="drawerTitle">—</div>
+    <div class="drawer-hdr-profit" id="drawerProfitRow"></div>
+  </div>
+  <div class="drawer-body" id="drawerBody">
+    <div class="drawer-empty">Loading…</div>
+  </div>
+  <div class="drawer-footer">
+    <a class="btn btn-ghost" id="drawerOpenCampBtn" href="#" target="_blank" rel="noopener" style="text-decoration:none;text-align:center">Open Operations Ledger →</a>
+    <button class="btn" onclick="closeLocDrilldown()">Close</button>
+  </div>
+</aside>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="/supabase-config.js"></script>
@@ -745,7 +809,7 @@ async function renderOverview(){
         <th class="r">Profit</th>
       </tr></thead>
       <tbody>
-        ${locRows.map(r => `<tr>
+        ${locRows.map(r => `<tr class="loc-row-drill" onclick="openLocDrilldown('${r.slug}','${period}','${(r.label||'').replace(/'/g,'&#39;')}',${r.profit.toFixed(2)})" title="Click to see the expenses behind this row">
           <td class="loc-name">${r.label}</td>
           <td class="r">${eur(r.blRev)}</td>
           <td class="r">${eur(r.localRev)}</td>
@@ -852,6 +916,185 @@ async function sendWeeklyDigest(){
     btns.forEach(b => b.disabled = false);
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════
+//   PROFIT-PER-LOCATION DRILL-DOWN
+//   Click a row in the Overview → slide-in panel showing category
+//   breakdown, top 10 individual expenses (ledger_entries), and HQ
+//   invoices for that location + period. Read-only — every edit path
+//   still lives in camp-hub (ledger) and Despesas HQ (invoices).
+// ═══════════════════════════════════════════════════════════════════
+const _CAMP_HUB_SLUGS = new Set(['morocco','sri-lanka','portugal']);
+
+function _periodRange(period) {
+  // '__all__' → open range; 'YYYY-MM' → [YYYY-MM-01, YYYY-MM+1-01).
+  if (!period || period === '__all__') return { start: null, end: null, label: 'All-time' };
+  const [y, m] = period.split('-').map(Number);
+  const start = `${y}-${String(m).padStart(2,'0')}-01`;
+  const endD = new Date(Date.UTC(y, m, 1));
+  const end = endD.toISOString().slice(0,10);
+  const monthLabel = new Date(Date.UTC(y, m-1, 1))
+    .toLocaleDateString('en-GB', { month:'long', year:'numeric', timeZone:'UTC' });
+  return { start, end, label: monthLabel };
+}
+
+async function openLocDrilldown(slug, period, label, profit) {
+  const drawer   = document.getElementById('hqDrawer');
+  const backdrop = document.getElementById('hqDrawerBackdrop');
+  const body     = document.getElementById('drawerBody');
+  const title    = document.getElementById('drawerTitle');
+  const eyebrow  = document.getElementById('drawerEyebrow');
+  const profRow  = document.getElementById('drawerProfitRow');
+  const openBtn  = document.getElementById('drawerOpenCampBtn');
+  if (!drawer || !backdrop) return;
+
+  const { start, end, label: periodLabel } = _periodRange(period);
+  title.textContent   = label || slug;
+  eyebrow.textContent = `${periodLabel} · Profit-per-location detail`;
+  const profNum = Number(profit) || 0;
+  const cls     = profNum >= 0 ? 'pos' : 'neg';
+  profRow.innerHTML = `<span class="${cls}" style="color:${profNum>=0?'#7ee2a8':'#ff9591'}">Profit ${profNum>=0?'+':''}${eur(profNum)}</span>`;
+
+  // Deep-link to the camp-hub Operations Ledger for the three camps we
+  // have hubs for. General / surf-school / wild-wednesday just link to
+  // the Despesas HQ tab since there's no per-location hub.
+  if (openBtn) {
+    if (_CAMP_HUB_SLUGS.has(slug)) {
+      openBtn.href = `/camp-hub/?location=${slug}#expenses`;
+      openBtn.textContent = 'Open camp-hub Ledger →';
+      openBtn.style.display = '';
+    } else {
+      openBtn.href = `#`;
+      openBtn.textContent = 'No camp-hub for this location';
+      openBtn.style.display = 'none';
+    }
+  }
+
+  drawer.classList.add('open');
+  backdrop.classList.add('open');
+  drawer.setAttribute('aria-hidden','false');
+  body.innerHTML = `<div class="drawer-empty">Loading breakdown…</div>`;
+
+  // Fetch ledger + invoices for this slug + period. Pull richer columns
+  // than the Overview does — we want description, category, amounts.
+  let ledgerRows = [], invoiceRows = [];
+  try {
+    const [lRes, iRes] = await Promise.all([
+      (async () => {
+        let q = sb.from('ledger_entries')
+          .select('entry_date, category, description, amount_local, currency, fx_rate, amount_eur, payment_method, source_kind, type, attributed_location, linked_item')
+          .eq('attributed_location', slug)
+          .eq('type', 'expense');
+        if (start) q = q.gte('entry_date', start).lt('entry_date', end);
+        return await fetchAllPaged(() => q.order('amount_eur', { ascending:false }));
+      })(),
+      (async () => {
+        let q = sb.from('hq_invoices')
+          .select('invoice_date, company, description, amount_eur, currency, amount, paying_company, category_name, is_duplicate')
+          .eq('location_slug', slug)
+          .eq('is_duplicate', false);
+        if (start) q = q.gte('invoice_date', start).lt('invoice_date', end);
+        return await fetchAllPaged(() => q.order('amount_eur', { ascending:false }));
+      })()
+    ]);
+    ledgerRows  = lRes || [];
+    invoiceRows = iRes || [];
+  } catch (e) {
+    body.innerHTML = `<div class="drawer-empty" style="color:var(--red)">Load failed: ${escapeHtml(e?.message||e)}</div>`;
+    return;
+  }
+
+  // Aggregate ledger by category.
+  const byCat = new Map();
+  let ledgerTotal = 0;
+  ledgerRows.forEach(r => {
+    const cat = r.category || 'Uncategorised';
+    const amt = Number(r.amount_eur || 0);
+    ledgerTotal += amt;
+    const prev = byCat.get(cat) || { n: 0, total: 0 };
+    byCat.set(cat, { n: prev.n + 1, total: prev.total + amt });
+  });
+  const catRows = [...byCat.entries()]
+    .sort((a,b) => b[1].total - a[1].total);
+  const catMax = catRows.length ? catRows[0][1].total : 1;
+
+  // Top 10 individual ledger expenses.
+  const topExp = ledgerRows.slice(0, 10);
+
+  // HQ invoice total for the panel header.
+  const invTotal = invoiceRows.reduce((s,r) => s + Number(r.amount_eur || 0), 0);
+
+  // Add ledger/HQ totals to the header chips.
+  profRow.innerHTML += `
+    <span>Ledger ${eur(ledgerTotal)}</span>
+    <span>HQ ${eur(invTotal)}</span>
+  `;
+
+  const catHtml = catRows.length
+    ? catRows.map(([cat, v]) => `
+        <div class="drawer-cat-row">
+          <div class="drawer-cat-name">${escapeHtml(cat)}</div>
+          <div class="drawer-cat-n">${v.n}×</div>
+          <div class="drawer-cat-total">${eur(v.total)}</div>
+          <div class="drawer-cat-bar"><div class="drawer-cat-bar-fill" style="width:${Math.max(2, Math.round(v.total/catMax*100))}%"></div></div>
+        </div>`).join('')
+    : `<div class="drawer-empty">No ledger expenses in this period</div>`;
+
+  const topHtml = topExp.length
+    ? topExp.map(r => `
+        <div class="drawer-item">
+          <div class="drawer-item-date">${escapeHtml(String(r.entry_date||'').slice(5))}</div>
+          <div class="drawer-item-body">
+            <div class="drawer-item-cat">${escapeHtml(r.category||'—')}${r.source_kind==='invoice_ai'?' · <span style="color:var(--ocean);font-size:10px;font-weight:600">AI</span>':''}</div>
+            <div class="drawer-item-desc" title="${escapeHtml(r.description||'')}">${escapeHtml(r.description||'')}</div>
+          </div>
+          <div class="drawer-item-amt">${eur(r.amount_eur)}</div>
+        </div>`).join('')
+    : `<div class="drawer-empty">No individual expenses to show</div>`;
+
+  const invHtml = invoiceRows.length
+    ? invoiceRows.slice(0, 15).map(r => `
+        <div class="drawer-item">
+          <div class="drawer-item-date">${escapeHtml(String(r.invoice_date||'').slice(5))}</div>
+          <div class="drawer-item-body">
+            <div class="drawer-item-cat">${escapeHtml(r.company||'—')}</div>
+            <div class="drawer-item-desc" title="${escapeHtml(r.description||'')}">${escapeHtml(r.category_name||'—')}${r.description?` · ${escapeHtml(r.description)}`:''}</div>
+          </div>
+          <div class="drawer-item-amt">${eur(r.amount_eur)}</div>
+        </div>`).join('')
+    : `<div class="drawer-empty">No HQ invoices tagged to this location for this period</div>`;
+
+  body.innerHTML = `
+    <div class="drawer-section">
+      <div class="drawer-sect-lbl">Ledger by category<small>${ledgerRows.length} entr${ledgerRows.length===1?'y':'ies'}</small></div>
+      ${catHtml}
+    </div>
+    <div class="drawer-section">
+      <div class="drawer-sect-lbl">Top ${Math.min(10, ledgerRows.length)} individual expenses</div>
+      ${topHtml}
+    </div>
+    <div class="drawer-section">
+      <div class="drawer-sect-lbl">HQ invoices (paid via bank / card)<small>${invoiceRows.length} row${invoiceRows.length===1?'':'s'}${invoiceRows.length>15?` · showing 15`:''}</small></div>
+      ${invHtml}
+    </div>
+  `;
+}
+
+function closeLocDrilldown() {
+  const drawer   = document.getElementById('hqDrawer');
+  const backdrop = document.getElementById('hqDrawerBackdrop');
+  if (drawer)   drawer.classList.remove('open');
+  if (backdrop) backdrop.classList.remove('open');
+  if (drawer)   drawer.setAttribute('aria-hidden','true');
+}
+
+// Escape key closes the drawer.
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    const d = document.getElementById('hqDrawer');
+    if (d && d.classList.contains('open')) closeLocDrilldown();
+  }
+});
 
 // ═══════════════════════════════════════════════════════════════════
 //   TAB 1 — INVOICES  (form + list + dedup)
@@ -984,7 +1227,7 @@ function invoicesTabHtml(){
               <input id="inv_amount_eur" type="number" step="0.01" min="0" placeholder="auto" readonly style="background:#f7fafd">
             </div>
             <div class="field col-4">
-              <label>Attach invoice (optional)</label>
+              <label>Invoice PDF (AI reads it — not saved)</label>
               <input id="inv_file" type="file" accept="application/pdf,image/*,.heic">
             </div>
             <div class="field col-4">
@@ -992,7 +1235,11 @@ function invoicesTabHtml(){
               <input id="inv_description" type="text" placeholder="What was purchased?">
             </div>
 
-            <div class="field col-12">
+            <div class="field col-6">
+              <label>Google Drive link (optional — paste the PDF's Drive URL)</label>
+              <input id="inv_drive_link" type="url" placeholder="https://drive.google.com/…">
+            </div>
+            <div class="field col-6">
               <label>Notes</label>
               <input id="inv_notes" type="text" placeholder="Internal notes">
             </div>
@@ -1155,8 +1402,24 @@ function wireInvoiceForm(){
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//   AI extract — upload selected file, call parse-invoice, fill form
+//   AI extract — base64 the selected file, call parse-invoice, fill form.
+//   We never store the PDF: the file is only used for extraction and
+//   thrown away. Miguel keeps the physical archive in Google Drive; we
+//   only persist the filename so a row can be matched back to the PDF.
 // ═══════════════════════════════════════════════════════════════════
+async function _fileToBase64Simple(file){
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => {
+      const s = String(r.result || '');
+      const comma = s.indexOf(',');
+      resolve(comma >= 0 ? s.slice(comma + 1) : s);
+    };
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+}
+
 async function extractFromInvoice(){
   const fileInput = $('inv_file');
   const status    = $('extractStatus');
@@ -1167,26 +1430,15 @@ async function extractFromInvoice(){
   btn.disabled = true;
   status.innerHTML = `<div class="toast toast-warn">🤖 Analysing invoice with Claude Sonnet 4.5 — this takes ~3 seconds…</div>`;
 
-  // 1. Upload to a temp path in the same bucket so the Edge Function
-  //    can download it via the caller's JWT. Save uses this same path.
-  //    Path scheme mirrors saveInvoice() so if the user saves, the file
-  //    is already in the right shape and we don't re-upload.
-  const location_slug = $('inv_location').value || 'general';
-  const dateSlice = ($('inv_date').value || new Date().toISOString().slice(0,10)).slice(0,7);
-  const safe = file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
-  const key = `${location_slug}/${dateSlice}/${Date.now()}_${safe}`;
-
-  const { error: upErr } = await sb.storage.from('hq-invoices').upload(key, file, {
-    contentType: file.type || 'application/octet-stream', upsert:false
-  });
-  if (upErr) {
-    status.innerHTML = `<div class="toast toast-err">Upload failed: ${escapeHtml(upErr.message)}</div>`;
+  let b64;
+  try {
+    b64 = await _fileToBase64Simple(file);
+  } catch (e) {
+    status.innerHTML = `<div class="toast toast-err">Could not read file: ${escapeHtml(e?.message||'unknown')}</div>`;
     btn.disabled = false;
     return;
   }
 
-  // 2. Call the Edge Function. Auth header carries the caller JWT so bucket RLS
-  //    applies (the function downloads with the same permissions the caller has).
   const { data: sessionData } = await sb.auth.getSession();
   const jwt = sessionData?.session?.access_token || '';
   const url = `${cfg.url}/functions/v1/parse-invoice`;
@@ -1199,28 +1451,24 @@ async function extractFromInvoice(){
         'Content-Type': 'application/json',
         'apikey': cfg.anonKey
       },
-      body: JSON.stringify({ storage_path: key })
+      body: JSON.stringify({ file_base64: b64, filename: file.name })
     });
   } catch (e) {
     status.innerHTML = `<div class="toast toast-err">Network error: ${escapeHtml(e.message||'unknown')}</div>`;
-    // Best-effort cleanup — remove the file we uploaded so it doesn't orphan.
-    await sb.storage.from('hq-invoices').remove([key]).catch(()=>{});
     btn.disabled = false;
     return;
   }
   const result = await resp.json().catch(() => ({error:'invalid JSON from function'}));
   if (!resp.ok || result?.error) {
     status.innerHTML = `<div class="toast toast-err">Extract failed: ${escapeHtml(result?.error || resp.statusText)}</div>`;
-    await sb.storage.from('hq-invoices').remove([key]).catch(()=>{});
     btn.disabled = false;
     return;
   }
 
   const ex = result.extracted || {};
 
-  // 3. Fill form fields with what the model returned. All fields stay editable.
-  //    Also stash the storage key so saveInvoice() reuses it instead of re-uploading.
-  window.__prefilledStoragePath = key;
+  // File name gets carried so the saved row can name the PDF Miguel filed in
+  // Drive. No storage_path — we never uploaded, so there's nothing to link to.
   window.__prefilledFileName    = file.name;
   window.__prefilledFileMime    = file.type || null;
 
@@ -1320,36 +1568,30 @@ async function saveInvoice(){
   }
   const amount_eur = Number($('inv_amount_eur').value) || (amount * fx_rate);
 
-  // Upload file first, if any.
-  // If the user ran AI extract already, the file is already in the bucket —
-  // reuse the stashed key so we don't double-upload the same PDF.
-  let file_url = null, file_name = null, file_mime = null;
+  // File handling: we no longer store PDFs in Supabase. The picker + AI
+  // extract still work — they read the file only to feed parse-invoice —
+  // but only the filename is persisted so a row can be matched back to
+  // the PDF Miguel keeps in Google Drive. drive_link is user-editable.
+  let file_url = null, file_name = null, file_mime = null, drive_link = null;
   const fileInput = $('inv_file');
-  const preUploaded = window.__prefilledStoragePath;
-  const wasExtracted = !!preUploaded;
+  const drivInput = $('inv_drive_link');
+  const wasExtracted = !!window.__prefilledFileName;
   const isEditing    = !!window.__editingInvoiceId;
 
-  if (preUploaded) {
-    file_url  = preUploaded;
-    file_name = window.__prefilledFileName || (fileInput.files?.[0]?.name || null);
-    file_mime = window.__prefilledFileMime || (fileInput.files?.[0]?.type || null);
-  } else if (fileInput.files && fileInput.files[0]) {
-    const f = fileInput.files[0];
-    const safe = f.name.replace(/[^a-zA-Z0-9._-]/g,'_');
-    const key = `${location_slug}/${invoice_date.slice(0,7)}/${Date.now()}_${safe}`;
-    const { error: upErr } = await sb.storage.from('hq-invoices').upload(key, f, {
-      contentType: f.type || 'application/octet-stream', upsert:false
-    });
-    if (upErr) { toast('invToast','err','File upload failed: '+upErr.message); btn.disabled = false; return; }
-    file_url  = key;
-    file_name = f.name;
-    file_mime = f.type || null;
+  if (window.__prefilledFileName) {
+    file_name = window.__prefilledFileName;
+    file_mime = window.__prefilledFileMime || null;
+  } else if (fileInput?.files && fileInput.files[0]) {
+    file_name = fileInput.files[0].name;
+    file_mime = fileInput.files[0].type || null;
   } else if (isEditing) {
-    // Editing without touching the file input — keep the original attachment.
+    // Editing without touching the file input — keep whatever filename was
+    // there before. file_url stays whatever it was (null for new AI rows).
     file_url  = window.__editingFileUrl  || null;
     file_name = window.__editingFileName || null;
     file_mime = window.__editingFileMime || null;
   }
+  if (drivInput) drive_link = (drivInput.value || '').trim() || null;
 
   // Dedup check for FRESH saves — mirrors the bulk path so no matter how a
   // row enters the DB, a matching (invoice_number, amount, company) is
@@ -1377,7 +1619,7 @@ async function saveInvoice(){
     invoice_date, company, supplier_nif, description,
     amount, currency, fx_rate, amount_eur,
     payment_type, invoice_number, category_id, category_name,
-    file_url, file_name, file_mime,
+    file_url, file_name, file_mime, drive_link,
     notes,
     // Editing = the user reviewed the row → clear the amber chip.
     // Fresh save from AI extract = still needs review.
@@ -1393,12 +1635,7 @@ async function saveInvoice(){
 
   let error;
   if (isEditing) {
-    const oldFileUrl = window.__editingFileUrl;
     ({ error } = await sb.from('hq_invoices').update(payload).eq('id', window.__editingInvoiceId));
-    // If the user replaced the attachment, garbage-collect the old file.
-    if (!error && oldFileUrl && oldFileUrl !== file_url) {
-      await sb.storage.from('hq-invoices').remove([oldFileUrl]).catch(()=>{});
-    }
   } else {
     ({ error } = await sb.from('hq_invoices').insert(payload));
   }
@@ -1543,19 +1780,11 @@ async function bulkProcessInvoices(){
     renderStatus();
 
     try {
-      // 1. Upload to Storage. Path is under a "_bulk" prefix by month so
-      //    the folder stays organized even before we know the real location.
-      const nowMonth = new Date().toISOString().slice(0,7);
-      const guessLoc = defaultLoc !== '__auto__' ? defaultLoc : '_pending';
-      const safe = file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
-      const storageKey = `${guessLoc}/${nowMonth}/${Date.now()}_${idx}_${safe}`;
+      // 1. Base64 the file client-side. We never upload PDFs to Storage —
+      //    Miguel keeps them in Drive; only the filename is persisted below.
+      const b64 = await _fileToBase64Simple(file);
 
-      const { error: upErr } = await sb.storage.from('hq-invoices').upload(storageKey, file, {
-        contentType: file.type || 'application/octet-stream', upsert:false
-      });
-      if (upErr) throw new Error('upload: '+upErr.message);
-
-      // 2. Call parse-invoice.
+      // 2. Call parse-invoice with the payload inline.
       const { data: sessionData } = await sb.auth.getSession();
       const jwt = sessionData?.session?.access_token || '';
       const resp = await fetch(`${cfg.url}/functions/v1/parse-invoice`, {
@@ -1565,7 +1794,7 @@ async function bulkProcessInvoices(){
           'Content-Type':  'application/json',
           'apikey': cfg.anonKey
         },
-        body: JSON.stringify({ storage_path: storageKey })
+        body: JSON.stringify({ file_base64: b64, filename: file.name })
       });
       const result = await resp.json().catch(() => ({error:'invalid JSON'}));
       if (!resp.ok || result?.error) throw new Error(result?.error || resp.statusText);
@@ -1624,9 +1853,10 @@ async function bulkProcessInvoices(){
         invoice_number: ex.invoice_number || null,
         category_id: catHit?.id || null,
         category_name: catHit?.name || (ex.category_hint || null),
-        file_url: storageKey,
+        file_url: null,
         file_name: file.name,
         file_mime: file.type || null,
+        drive_link: null,
         needs_review: true,
         is_duplicate: dupHit,
         created_by: CURRENT_USER?.id || null
@@ -2624,6 +2854,8 @@ async function openEditInvoice(id){
   $('inv_amount_eur').value     = row.amount_eur != null ? Number(row.amount_eur).toFixed(2) : '';
   $('inv_description').value    = row.description    || '';
   $('inv_notes').value          = row.notes          || '';
+  const drivInputE = $('inv_drive_link');
+  if (drivInputE) drivInputE.value = row.drive_link || '';
 
   // Reflect the paying_company auto/override state so the label reads right.
   const derived    = payingCompanyFor(row.location_slug);
@@ -2694,7 +2926,7 @@ function cancelEditInvoice(){
 function clearInvoiceForm(){
   const today = new Date().toISOString().slice(0,10);
   $('inv_date').value = today;
-  ['inv_company','inv_nif','inv_number','inv_amount','inv_amount_eur','inv_description','inv_notes'].forEach(id => $(id).value = '');
+  ['inv_company','inv_nif','inv_number','inv_amount','inv_amount_eur','inv_description','inv_notes','inv_drive_link'].forEach(id => { const el = $(id); if (el) el.value = ''; });
   $('inv_currency').value = 'EUR';
   $('inv_fx').value = '1';
   $('fxHint').textContent = '(EUR — 1.000000)';
@@ -2730,7 +2962,7 @@ async function renderInvoiceList(){
   try {
     rows = await fetchAllPaged(() => {
       let q = sb.from('hq_invoices')
-        .select('id, location_slug, paying_company, invoice_date, company, description, amount, currency, amount_eur, payment_type, invoice_number, category_name, file_url, file_name, needs_review, is_duplicate, category_id, notes, supplier_nif, fx_rate')
+        .select('id, location_slug, paying_company, invoice_date, company, description, amount, currency, amount_eur, payment_type, invoice_number, category_name, file_url, file_name, drive_link, needs_review, is_duplicate, category_id, notes, supplier_nif, fx_rate')
         .order('invoice_date', { ascending:false });
       if (loc !== '__all__') q = q.eq('location_slug', loc);
       if (month) {
@@ -2842,7 +3074,7 @@ async function renderInvoiceList(){
         <select class="inline-select wide" onchange="quickUpdateInvoice('${r.id}','paying_company',this.value,this)" title="Change the company that actually paid">${payCoSelect}</select>
         ${isInterCo?' <span class="chip chip-review" title="Inter-company: paid by a different company than the location default">inter-co</span>':''}
       </td>
-      <td>${escapeHtml(r.company||'')}${r.description?`<br><span style="font-size:11px;color:var(--muted)">${escapeHtml(r.description)}</span>`:''}</td>
+      <td><div class="sup-cell"><span class="sup-name" title="${escapeHtml(r.company||'')}">${escapeHtml(r.company||'')}</span>${r.description?`<span class="sup-desc" title="${escapeHtml(r.description)}">${escapeHtml(r.description)}</span>`:''}</div></td>
       <td style="font-family:'DM Mono',monospace;font-size:11px">${escapeHtml(r.supplier_nif||'—')}</td>
       <td>
         <select class="inline-select wide" onchange="quickUpdateInvoice('${r.id}','category_id',this.value,this)">${catSelect}</select>
@@ -2855,7 +3087,13 @@ async function renderInvoiceList(){
       <td>
         <select class="inline-select narrow" onchange="quickUpdateInvoice('${r.id}','payment_type',this.value,this)">${payTypeSelect}</select>
       </td>
-      <td>${r.file_url?`<a class="file-link" href="#" onclick="openInvoiceFile('${r.file_url}');return false;">${escapeHtml(r.file_name||'view')}</a>`:'—'}</td>
+      <td>${r.drive_link
+        ? `<a class="file-link" href="${escapeHtml(r.drive_link)}" target="_blank" rel="noopener" title="${escapeHtml(r.file_name||'')}">↗ Drive</a>`
+        : r.file_url
+          ? `<a class="file-link" href="#" onclick="openInvoiceFile('${r.file_url}');return false;">${escapeHtml(r.file_name||'view')}</a>`
+          : r.file_name
+            ? `<span class="sup-desc" title="${escapeHtml(r.file_name)}">${escapeHtml(r.file_name)}</span>`
+            : '—'}</td>
       <td style="white-space:nowrap">
         ${r.needs_review?`<button class="action-btn" style="color:var(--green);font-weight:700" onclick="approveInvoice('${r.id}')" title="Approve — clears the review chip">✓</button>`:''}
         <button class="action-btn" onclick="openEditInvoice('${r.id}')" title="Edit all fields — also clears the review chip">Edit</button>

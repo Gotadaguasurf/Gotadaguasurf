@@ -155,6 +155,11 @@ nav{background:var(--navy);height:60px;display:flex;align-items:center;justify-c
 .app-switch-menu a:hover{background:#edf5fb}
 .app-switch-menu a.is-current{background:#edf5fb;color:#1e6fa8}
 .app-switch-menu a.is-current small{color:#1e6fa8;opacity:.7}
+/* Location switcher — same shape as the app pill but a subtle amber tint so
+   the two contexts (section vs location) read as distinct at a glance. */
+.loc-switch>summary{background:rgba(255,203,120,.12);border-color:rgba(255,203,120,.28)}
+.loc-switch>summary:hover{background:rgba(255,203,120,.22);border-color:rgba(255,203,120,.42)}
+.loc-switch[open]>summary{background:rgba(255,203,120,.28);border-color:rgba(255,203,120,.50)}
 .nav-tabs{display:flex;gap:3px}
 .nav-actions{display:flex;align-items:center;gap:10px;justify-content:flex-end;min-width:160px}
 .save-pill{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:4px 10px;font-size:10px;font-weight:700;letter-spacing:.04em;transition:all .3s;white-space:nowrap}
@@ -546,7 +551,6 @@ td.r{text-align:right;font-family:'DM Mono',monospace;font-size:12px}
       <path style="fill:#fff4d5;stroke-width:0" d="M142.8,61.3h-6.9c-.2-.5-.1-1-.2-1.4-.1-.5-1.3-2.4-1.5-2.8-.5-.7-1.5-1.5-2.3-1.5-1.3,0-3.2,0-4.3.8-.5.3-1.2,2.1-1.4,2.7-1.1,3.3-1.3,6.7-1.5,10.1,0,3.6.2,8.1,1.7,11.5,0,.3.5.9.6,1.1.2.3,1.7,1.1,2,1.1.9,0,2.5,0,3.5-.3.4,0,1.7-1,2-1.3.6-.7,1.3-3.3,1.3-4.3s-.3-1.9-.4-2l-4.5-.2c-.3-1.9-.1-3.9.1-5.8v-.2c.9,0,6.9.3,9.1.5h2.2c0,.7.2,1.3.3,2.1.5,3.1.4,5.2.1,8.3-.3,3.1-.5,6.5-3.1,8.6-1.1.9-1.8,1.5-3.3,1.9-1.9.6-2.8.6-4.7.7-1.3,0-2.3,0-3.6-.2-3.9-.8-6.3-2.8-7.5-6.6-2.7-8.9-3.1-18.9-.9-27.9.8-3.1,1.3-4.7,3.9-6.5,2.1-1.5,7.1-2.3,9.5-1.6,2.7.8,6.6,2.7,8.1,4.4.7.8,1.5,2.8,1.7,3.8.2,1.3,0,5,0,5h0Z"></path>
     </svg>
     </div>
-    <div class="nav-title-stack"><div class="nav-sub" id="hubNavSubLabel">Sri Lanka Hub</div></div>
     </a>
     <details class="app-switch">
       <summary>
@@ -560,6 +564,17 @@ td.r{text-align:right;font-family:'DM Mono',monospace;font-size:12px}
         <a href="/prices/"><span>Prices</span><small>Catalog + packages</small></a>
         <a href="/partners/"><span>Partners</span><small>Partner P&amp;L + statements</small></a>
         <a href="/crm/"><span>CRM</span><small>Outreach + pipeline</small></a>
+      </nav>
+    </details>
+    <details class="app-switch loc-switch" id="hubLocSwitch">
+      <summary>
+        <span>📍 <span id="hubLocLabel">Sri Lanka</span></span>
+        <span class="app-switch-caret">▾</span>
+      </summary>
+      <nav class="app-switch-menu">
+        <a href="/camp-hub/?location=portugal"  data-loc="portugal"><span>Portugal</span><small>Ericeira surf camp</small></a>
+        <a href="/camp-hub/?location=morocco"   data-loc="morocco"><span>Morocco</span><small>Taghazout camp</small></a>
+        <a href="/camp-hub/?location=sri-lanka" data-loc="sri-lanka"><span>Sri Lanka</span><small>Weligama camp</small></a>
       </nav>
     </details>
   </div>
@@ -674,6 +689,9 @@ td.r{text-align:right;font-family:'DM Mono',monospace;font-size:12px}
       <button class="exp-period-btn" data-expperiod="week" onclick="setExpPeriod('week')">This week</button>
       <button class="exp-period-btn" data-expperiod="month" onclick="setExpPeriod('month')">This month</button>
       <button class="exp-period-btn active" data-expperiod="all" onclick="setExpPeriod('all')">All</button>
+      <select class="fsel exp-month-sel" id="expMonthSel" onchange="setExpMonth(this.value)" style="margin-left:6px" title="Jump to a specific month">
+        <option value="">Pick a month…</option>
+      </select>
     </div>
 
     <div class="exp-kpis" id="expKpis"></div>
@@ -1946,6 +1964,10 @@ let histOpenWeek=null;
 let histOpenGuest=null;
 let expModalType='expense';
 let expPeriod='all';
+// When set to 'YYYY-MM' the ledger filter jumps to that specific month and
+// the week/month/all pill buttons visually clear. Cleared by picking the
+// blank option or clicking any of the pill presets.
+let expMonth='';
 let editingLedgerId=null;
 let editingRecurringId=null;
 let editingRecurringSourceName='';
@@ -2028,11 +2050,16 @@ function applyLocationCurrencyToDom(){
   document.querySelectorAll('input[placeholder="330"]').forEach(inp => {
     inp.placeholder = String(fx);
   });
-  // Update the in-page nav label and document title for the active location.
+  // Update the in-page location switcher and document title for the active
+  // location. hubLocLabel is the summary text of the pill; each menu item's
+  // is-current class marks where we are so the dropdown reads at a glance.
   if (LEDGER_LOCATION_SLUG) {
     const loc = LEDGER_LOCATION_SLUG.replace(/-/g,' ').replace(/\b\w/g,m=>m.toUpperCase());
-    const navSub = document.getElementById('hubNavSubLabel');
-    if (navSub) navSub.textContent = `${loc} Hub`;
+    const label = document.getElementById('hubLocLabel');
+    if (label) label.textContent = loc;
+    document.querySelectorAll('#hubLocSwitch a[data-loc]').forEach(a=>{
+      a.classList.toggle('is-current', a.dataset.loc === LEDGER_LOCATION_SLUG);
+    });
     document.title = `${loc} — Camp Hub`;
   }
 }
@@ -7450,7 +7477,44 @@ function addCustom(){
 // ═══════════════════════════════════════════════════════════
 //  EXPENSES
 // ═══════════════════════════════════════════════════════════
-function setExpPeriod(period){expPeriod=period;document.querySelectorAll('.exp-period-btn').forEach(btn=>btn.classList.toggle('active',btn.dataset.expperiod===period));renderExpenses();}
+function setExpPeriod(period){
+  expPeriod=period;
+  // Picking a pill clears the month dropdown so the two filters can't
+  // silently disagree with each other.
+  expMonth='';
+  const sel=document.getElementById('expMonthSel');
+  if(sel) sel.value='';
+  document.querySelectorAll('.exp-period-btn').forEach(btn=>btn.classList.toggle('active',btn.dataset.expperiod===period));
+  renderExpenses();
+}
+function setExpMonth(m){
+  expMonth=m||'';
+  // Picking a specific month overrides the pill filter — clear the pill
+  // highlight so the UI shows only one active filter at a time.
+  if(expMonth){
+    document.querySelectorAll('.exp-period-btn').forEach(btn=>btn.classList.remove('active'));
+  } else {
+    // Falling back to whichever pill was set before.
+    document.querySelectorAll('.exp-period-btn').forEach(btn=>btn.classList.toggle('active',btn.dataset.expperiod===expPeriod));
+  }
+  renderExpenses();
+}
+function refreshExpMonthOptions(){
+  const sel=document.getElementById('expMonthSel');
+  if(!sel) return;
+  const months=new Set();
+  (S.ledger||[]).forEach(e=>{ if(e?.date) months.add(String(e.date).slice(0,7)); });
+  const ordered=[...months].filter(Boolean).sort().reverse();
+  const currentValue=sel.value;
+  sel.innerHTML='<option value="">Pick a month…</option>' +
+    ordered.map(m=>{
+      const [y,mo]=m.split('-');
+      const label=new Date(Date.UTC(Number(y),Number(mo)-1,1))
+        .toLocaleDateString('en-GB',{month:'long',year:'numeric',timeZone:'UTC'});
+      return `<option value="${m}">${label}</option>`;
+    }).join('');
+  if(currentValue && ordered.includes(currentValue)) sel.value=currentValue;
+}
 
 function areaOptionsForType(type){
   if(type==='transfer') return ['General'];
@@ -8518,6 +8582,11 @@ function renderRecurringEntries(){
 function getLedgerRowsForPeriod(){
   applyRecurringEntries();
   let rows=[...S.ledger];
+  // Specific-month pick overrides the week/month/all preset when set.
+  if(expMonth){
+    rows=rows.filter(x=>String(x.date||'').slice(0,7)===expMonth);
+    return rows;
+  }
   const currentWs=weekStartSat(today());
   if(expPeriod==='week') rows=rows.filter(x=>weekStartSat(x.date)===currentWs);
   if(expPeriod==='month') rows=rows.filter(x=>monthKey(x.date)===monthKey(today()));
@@ -8526,6 +8595,7 @@ function getLedgerRowsForPeriod(){
 
 function renderExpenses(){
   renderRecurringEntries();
+  refreshExpMonthOptions();
   const baseRows=getLedgerRowsForPeriod();
   const search=(document.getElementById('expSearch')?.value||'').trim().toLowerCase();
   let catF=document.getElementById('expCatF')?.value||'all';

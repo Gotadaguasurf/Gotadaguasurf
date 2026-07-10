@@ -71,6 +71,11 @@ header{background:var(--navy);padding:0 24px;display:flex;align-items:center;jus
 .app-switch-menu a:hover{background:#edf5fb}
 .app-switch-menu a.is-current{background:#edf5fb;color:#1e6fa8}
 .app-switch-menu a.is-current small{color:#1e6fa8;opacity:.7}
+/* Location switcher — same shape as the app pill but a subtle amber tint so
+   the two contexts (section vs location) read as distinct at a glance. */
+.loc-switch>summary{background:rgba(255,203,120,.12);border-color:rgba(255,203,120,.28)}
+.loc-switch>summary:hover{background:rgba(255,203,120,.22);border-color:rgba(255,203,120,.42)}
+.loc-switch[open]>summary{background:rgba(255,203,120,.28);border-color:rgba(255,203,120,.50)}
 .header-right{display:flex;align-items:center;gap:12px;flex-shrink:0;justify-content:flex-end;min-width:220px}
 .back-btn{display:inline-flex;align-items:center;gap:6px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.08);color:#fff;border-radius:999px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;text-decoration:none;font-family:'Outfit',sans-serif}
 /* Download PDF — matches the Import CSV ghost-pill style used on the
@@ -427,7 +432,18 @@ body.view-list .drag-handle{display:none}
         <a href="/crm/"><span>CRM</span><small>Outreach + pipeline</small></a>
       </nav>
     </details>
-    <div class="header-sub" id="headerSub">Pricing Catalog</div>
+    <details class="app-switch loc-switch" id="pricesLocSwitch">
+      <summary>
+        <span>📍 <span id="pricesLocLabel">Sri Lanka</span></span>
+        <span class="app-switch-caret">▾</span>
+      </summary>
+      <nav class="app-switch-menu">
+        <a href="/prices/?location=portugal"    data-loc="portugal"><span>Portugal</span><small>EUR catalog</small></a>
+        <a href="/prices/?location=morocco"     data-loc="morocco"><span>Morocco</span><small>MAD catalog</small></a>
+        <a href="/prices/?location=sri-lanka"   data-loc="sri-lanka"><span>Sri Lanka</span><small>LKR catalog</small></a>
+        <a href="/prices/?location=junior-camp" data-loc="junior-camp"><span>Junior Camp</span><small>EUR catalog</small></a>
+      </nav>
+    </details>
   </div>
   <div class="view-toggle" id="viewToggle">
     <button class="view-btn active" onclick="onViewMode('edit')"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M14 3l3 3-9 9H5v-3z"/><path d="M12 5l3 3"/></svg></span><span>Edit</span></button>
@@ -915,8 +931,11 @@ function withTimeout(promise, ms, label){
   // Header sub-label reads e.g. "Pricing Catalog · Morocco" so users always
   // see which camp they're editing. Replaces the old centered location pill.
   const _locLabel = (LOCATION_LABELS[LOCATION_SLUG] || locRow.name || LOCATION_SLUG);
-  const _hs = $('headerSub');
-  if (_hs) _hs.textContent = `Pricing Catalog · ${_locLabel}`;
+  const _lbl = document.getElementById('pricesLocLabel');
+  if (_lbl) _lbl.textContent = _locLabel;
+  document.querySelectorAll('#pricesLocSwitch a[data-loc]').forEach(a=>{
+    a.classList.toggle('is-current', a.dataset.loc === LOCATION_SLUG);
+  });
   document.title = `${_locLabel} prices · Gota d'Água`;
   markStep('step-location','ok','Location: '+(LOCATION_LABELS[LOCATION_SLUG] || locRow.name));
 
