@@ -100,32 +100,50 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}))
     const storagePath = String(body?.storage_path || '').trim()
-    if (!storagePath) return json({ error: 'storage_path required' }, 400)
+    const fileB64Direct = String(body?.file_base64 || '').trim()
+    const filenameHint  = String(body?.filename || '').toLowerCase()
+    if (!storagePath && !fileB64Direct) return json({ error: 'storage_path or file_base64 required' }, 400)
 
-    // Auth via caller JWT so bucket RLS applies (is_hq_member() check).
+    // Auth via caller JWT so bucket RLS applies (is_hq_member() check on
+    // the storage_path branch). The file_base64 branch skips storage — used
+    // by camp-hub managers who don't have access to the hq-invoices bucket.
     const sb = createClient(SUPABASE_URL, ANON_KEY, {
       global: { headers: { Authorization: authHeader } },
     })
 
-    const { data: fileBlob, error: dlErr } = await sb.storage
-      .from('hq-invoices')
-      .download(storagePath)
-    if (dlErr || !fileBlob) return json({ error: `Download failed: ${dlErr?.message || 'no file'}` }, 400)
+    let base64: string
+    let mediaType: string
 
-    const bytes = new Uint8Array(await fileBlob.arrayBuffer())
-    if (bytes.length > 15 * 1024 * 1024) {
-      return json({ error: 'File too large (max 15 MB)' }, 413)
+    if (fileB64Direct) {
+      // Sanity: base64 length ≈ raw × 4/3; cap at ~20 MB base64 ≈ 15 MB raw.
+      if (fileB64Direct.length > 20 * 1024 * 1024) return json({ error: 'File too large (max 15 MB)' }, 413)
+      base64 = fileB64Direct
+      mediaType = 'application/octet-stream'
+      const lower = filenameHint
+      if (lower.endsWith('.pdf'))                  mediaType = 'application/pdf'
+      else if (lower.endsWith('.png'))             mediaType = 'image/png'
+      else if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) mediaType = 'image/jpeg'
+      else if (lower.endsWith('.webp'))            mediaType = 'image/webp'
+      else if (lower.endsWith('.heic'))            mediaType = 'image/heic'
+    } else {
+      const { data: fileBlob, error: dlErr } = await sb.storage
+        .from('hq-invoices')
+        .download(storagePath)
+      if (dlErr || !fileBlob) return json({ error: `Download failed: ${dlErr?.message || 'no file'}` }, 400)
+
+      const bytes = new Uint8Array(await fileBlob.arrayBuffer())
+      if (bytes.length > 15 * 1024 * 1024) return json({ error: 'File too large (max 15 MB)' }, 413)
+      base64 = bytesToBase64(bytes)
+
+      // Infer media type. Storage sometimes returns application/octet-stream.
+      mediaType = fileBlob.type || 'application/octet-stream'
+      const lower = storagePath.toLowerCase()
+      if (lower.endsWith('.pdf'))                  mediaType = 'application/pdf'
+      else if (lower.endsWith('.png'))             mediaType = 'image/png'
+      else if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) mediaType = 'image/jpeg'
+      else if (lower.endsWith('.webp'))            mediaType = 'image/webp'
+      else if (lower.endsWith('.heic'))            mediaType = 'image/heic'
     }
-    const base64 = bytesToBase64(bytes)
-
-    // Infer media type. Storage sometimes returns application/octet-stream.
-    let mediaType = fileBlob.type || 'application/octet-stream'
-    const lower = storagePath.toLowerCase()
-    if (lower.endsWith('.pdf'))                  mediaType = 'application/pdf'
-    else if (lower.endsWith('.png'))             mediaType = 'image/png'
-    else if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) mediaType = 'image/jpeg'
-    else if (lower.endsWith('.webp'))            mediaType = 'image/webp'
-    else if (lower.endsWith('.heic'))            mediaType = 'image/heic'
 
     const isPdf = mediaType === 'application/pdf'
     const contentBlock = isPdf

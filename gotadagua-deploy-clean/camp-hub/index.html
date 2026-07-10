@@ -409,6 +409,27 @@ td.r{text-align:right;font-family:'DM Mono',monospace;font-size:12px}
 .ts-rev{font-family:'DM Mono',monospace;font-size:12px;font-weight:700;color:var(--navy);min-width:60px;text-align:right}
 
 .exp-top{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap;margin-bottom:18px}
+/* AI Bulk upload — drag PDF/photo invoices, parse-invoice extracts, row lands
+   in ledger_entries with paid_from + attributed_location = this camp. */
+.ai-upload-block{margin-bottom:16px;background:linear-gradient(135deg,#eef7fd,#fff);border:1px solid #d1e3f0;border-radius:12px}
+.ai-upload-block>summary{list-style:none;cursor:pointer;padding:14px 18px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-family:'Outfit',sans-serif}
+.ai-upload-block>summary::-webkit-details-marker{display:none}
+.ai-upload-block>summary::marker{content:''}
+.ai-upload-title{font-size:14px;font-weight:700;color:var(--navy)}
+.ai-upload-hint{font-size:12px;color:var(--muted);margin-right:auto}
+.ai-upload-caret{font-size:11px;color:var(--muted);transition:transform .2s}
+.ai-upload-block[open] .ai-upload-caret{transform:rotate(180deg)}
+.ai-upload-body{padding:0 18px 18px}
+.ai-dropzone{border:2.5px dashed var(--border);border-radius:10px;padding:28px 20px;text-align:center;background:#fff;transition:border-color .18s, background .18s}
+.ai-dropzone.drag{border-color:var(--ocean);background:#eaf3fa}
+.ai-dropzone .ai-drop-icon{font-size:32px;line-height:1;margin-bottom:6px}
+.ai-dropzone .ai-drop-t{font-size:14px;font-weight:600;color:var(--navy)}
+.ai-dropzone .ai-drop-s{font-size:12px;color:var(--muted);margin-top:4px}
+.ai-upload-link{color:var(--ocean);font-weight:600;text-decoration:underline;cursor:pointer}
+.ai-rows{margin-top:12px;display:flex;flex-direction:column;gap:6px}
+.ai-row{display:flex;align-items:center;gap:12px;padding:8px 12px;background:#fff;border:1px solid var(--border);border-radius:8px;font-size:13px}
+.ai-row-name{flex:1;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ai-row-state{font-size:12px;color:var(--muted);white-space:nowrap}
 .exp-top-actions{display:flex;gap:8px;flex-wrap:wrap}
 .exp-periods{display:flex;gap:6px;flex-wrap:wrap}
 .exp-recurring-card{margin-top:16px}
@@ -631,6 +652,23 @@ td.r{text-align:right;font-family:'DM Mono',monospace;font-size:12px}
         <button class="btn btn-s" onclick="openMonthlyExpensesModal()"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M6 3h8l3 3v11H6z"/><path d="M14 3v4h4"/><path d="M9 10h5"/><path d="M9 13h5"/></svg></span><span>Monthly Expenses</span></span></button>
       </div>
     </div>
+
+    <details class="ai-upload-block" id="aiUploadBlock">
+      <summary>
+        <span class="ai-upload-title">🤖 Bulk upload · AI reads the invoices</span>
+        <span class="ai-upload-hint">Drop PDFs/photos — each one is added to this camp's ledger automatically</span>
+        <span class="ai-upload-caret">▾</span>
+      </summary>
+      <div class="ai-upload-body">
+        <div id="aiDropzone" class="ai-dropzone" onclick="document.getElementById('aiFileInput').click()">
+          <div class="ai-drop-icon">📥</div>
+          <div class="ai-drop-t">Drop invoices here</div>
+          <div class="ai-drop-s">or <label for="aiFileInput" class="ai-upload-link" onclick="event.stopPropagation()">click to choose files</label> — you can pick many at once</div>
+          <input id="aiFileInput" type="file" accept="application/pdf,image/*,.heic" multiple style="display:none">
+        </div>
+        <div id="aiUploadStatus" class="ai-rows"></div>
+      </div>
+    </details>
 
     <div class="exp-periods" style="margin-bottom:16px">
       <button class="exp-period-btn" data-expperiod="week" onclick="setExpPeriod('week')">This week</button>
@@ -2763,6 +2801,125 @@ async function autoHealMadEntriesIfNeeded(){
     console.warn('[Hub] MAD fxRate heal sync failed',e);
   }
 }
+// ═══════════════════════════════════════════════════════════
+//  AI BULK UPLOAD — parse-invoice → commitLedgerEntry per file
+//  Each dropped PDF/photo is base64'd, sent to the Edge Function
+//  (which asks Claude Sonnet to extract fields), then saved to
+//  ledger_entries via commitLedgerEntry so paid_from + attributed
+//  default to THIS camp's slug and HQ eventually sees it too.
+// ═══════════════════════════════════════════════════════════
+let AI_UPLOAD_WIRED=false;
+function ensureAiUploadWired(){
+  if(AI_UPLOAD_WIRED) return;
+  const dz=document.getElementById('aiDropzone');
+  const input=document.getElementById('aiFileInput');
+  if(!dz||!input) return;
+  input.addEventListener('change',()=>{ if(input.files?.length){ processAiInvoiceFiles([...input.files]); input.value=''; } });
+  dz.addEventListener('dragover',(e)=>{ e.preventDefault(); dz.classList.add('drag'); });
+  dz.addEventListener('dragleave',()=>dz.classList.remove('drag'));
+  dz.addEventListener('drop',(e)=>{
+    e.preventDefault(); dz.classList.remove('drag');
+    const files=[...(e.dataTransfer?.files||[])].filter(f=>f && f.size>0);
+    if(files.length) processAiInvoiceFiles(files);
+  });
+  AI_UPLOAD_WIRED=true;
+}
+function _fileToBase64(file){
+  return new Promise((resolve,reject)=>{
+    const r=new FileReader();
+    r.onload=()=>{
+      const s=String(r.result||'');
+      const comma=s.indexOf(',');
+      resolve(comma>=0 ? s.slice(comma+1) : s);
+    };
+    r.onerror=reject;
+    r.readAsDataURL(file);
+  });
+}
+function _pickCurrencyForInvoice(invCur){
+  const local=String(LOCAL_CURRENCY||'LKR').toUpperCase();
+  const c=String(invCur||'EUR').toUpperCase();
+  return c==='EUR' || c===local ? c : c;
+}
+async function processAiInvoiceFiles(files){
+  const cfg=window.__SUPABASE_CONFIG;
+  const client=getHubSupabaseClient();
+  const box=document.getElementById('aiUploadStatus');
+  const block=document.getElementById('aiUploadBlock');
+  if(!cfg||!client||!box){ alert('Supabase not ready — refresh and try again'); return; }
+  if(block && !block.open) block.open=true;
+  const { data: sess } = await client.auth.getSession();
+  const jwt=sess?.session?.access_token||'';
+  if(!jwt){ box.innerHTML=`<div class="ai-row"><span class="ai-row-state" style="color:#c94e42">Sign in first — session expired.</span></div>`; return; }
+
+  const local=String(LOCAL_CURRENCY||'LKR').toUpperCase();
+  const fx=Number(DEFAULT_LKR_PER_EUR||1);
+
+  for (const f of files) {
+    const row=document.createElement('div');
+    row.className='ai-row';
+    row.innerHTML=`<span class="ai-row-name">${escapeHtml(f.name)}</span><span class="ai-row-state">Reading…</span>`;
+    box.appendChild(row);
+    const state=row.querySelector('.ai-row-state');
+    try {
+      const b64=await _fileToBase64(f);
+      state.textContent='AI extracting…';
+      const resp=await fetch(`${cfg.url}/functions/v1/parse-invoice`, {
+        method:'POST',
+        headers:{
+          'Authorization':`Bearer ${jwt}`,
+          'Content-Type':'application/json',
+          'apikey':cfg.anonKey
+        },
+        body:JSON.stringify({ file_base64:b64, filename:f.name })
+      });
+      const result=await resp.json().catch(()=>({error:'invalid JSON'}));
+      if (!resp.ok || result?.error) {
+        state.innerHTML=`<span style="color:#c94e42">Failed: ${escapeHtml(result?.error||resp.statusText)}</span>`;
+        continue;
+      }
+      const x=result.extracted||{};
+      const invCur=_pickCurrencyForInvoice(x.currency);
+      const invAmt=Number(x.amount||0);
+      // Currency policy — camp ledger stores amount_local in the camp's
+      // LOCAL_CURRENCY and amount_eur as the FX-converted value.
+      //   invoice EUR   → local = amt * fx, eur = amt
+      //   invoice local → local = amt,       eur = amt / fx (fx>0)
+      //   other cur     → assume EUR-equiv for now; user can edit inline.
+      let amountLocal, amountEur;
+      if (invCur === local)      { amountLocal = invAmt;                 amountEur = fx>0 ? invAmt/fx : 0; }
+      else if (invCur === 'EUR') { amountLocal = invAmt * fx;            amountEur = invAmt; }
+      else                       { amountLocal = invAmt * fx;            amountEur = invAmt; }
+
+      const desc=[x.company, x.description, x.invoice_number?`Invoice ${x.invoice_number}`:'']
+        .map(s=>String(s||'').trim()).filter(Boolean).join(' · ') || f.name;
+
+      const payload={
+        id: (crypto.randomUUID ? crypto.randomUUID() : (Date.now()+'-'+Math.random().toString(36).slice(2))),
+        date: x.invoice_date || new Date().toISOString().slice(0,10),
+        type: 'expense',
+        category: x.category_hint || 'Services',
+        description: desc,
+        paymentMethod: x.payment_type || 'Bank Transfer',
+        currency: invCur,
+        fxRate: fx,
+        amountLocal,
+        amount: amountEur,
+        quantity: 1,
+        linkedItem: x.company || '',
+        sourceKind: 'invoice_ai',
+      };
+      state.textContent='Saving…';
+      await commitLedgerEntry(payload, 'ai-invoice');
+      state.innerHTML=`<span style="color:#118a5b">✓ Added · €${Math.round(amountEur).toLocaleString('en-GB')}</span>`;
+    } catch (e) {
+      state.innerHTML=`<span style="color:#c94e42">Error: ${escapeHtml(String(e?.message||e))}</span>`;
+    }
+  }
+  // Re-render so the new rows show in the list + KPIs immediately.
+  try { renderExpenses(); renderOverview(); renderWeeklyPL(); } catch {}
+}
+
 function monthlyProfileKey(profileType,name=''){
   return `${profileType}|${String(name||'').trim().toLowerCase()}`;
 }
@@ -4595,7 +4752,7 @@ function showPage(p){
   document.querySelectorAll('.ntab').forEach(btn=>btn.classList.toggle('active',btn.dataset.page===p));
   if(p==='overview') renderOverview();
   else if(p==='pos'){ mountCampTabFrame(); return; }
-  else if(p==='expenses') renderExpenses();
+  else if(p==='expenses'){ renderExpenses(); ensureAiUploadWired(); }
   else if(p==='weekly') renderWeeklyPL();
 }
 
