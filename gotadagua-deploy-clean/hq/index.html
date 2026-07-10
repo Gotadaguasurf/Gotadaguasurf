@@ -486,7 +486,7 @@ async function renderOverview(){
   const localExp    = lgRows.filter(r => r.type==='expense').reduce((s,r)=>s+Number(r.amount_eur||0), 0);
   const businessProfit = totalRevenue + localRev - localExp - hqTotal;
 
-  // Per-location breakdown — same data buckets renderProfit used to fetch on
+  // Per-location breakdown — same data buckets the retired Profit tab used
   // its own tab, now folded into the aggregate view so the story reads top-
   // down: business profit → revenue tiles → expense tiles → who contributed.
   const locIdToSlug = new Map(LOCATIONS.map(l => [l.id, l.slug]));
@@ -3285,166 +3285,11 @@ function locNameToSlug(name){
   return alias[s] || null;
 }
 
-// ═══════════════════════════════════════════════════════════════════
-//   TAB 3 — PROFIT PER LOCATION
-// ═══════════════════════════════════════════════════════════════════
-function profitTabHtml(){
-  return `
-    <div class="card">
-      <div class="card-hdr">
-        <div>
-          <div class="card-title">Profit per location</div>
-          <div class="card-hint">Bookinglayer + on-site revenue − HQ invoices (excl. personal) − local ledger expenses</div>
-        </div>
-        <div class="period-row">
-          <label>Period</label>
-          <select id="periodSelect" onchange="renderProfit()"></select>
-        </div>
-      </div>
-      <div class="card-body" id="profitBody">
-        <div class="loading">Loading…</div>
-      </div>
-    </div>
-  `;
-}
-
-async function populatePeriods(){
-  const data = await fetchAllPaged(() => sb.from('bookings').select('month_key').order('check_in_on',{ascending:false}));
-  const periods = Array.from(new Set(data.map(r => r.month_key))).filter(Boolean);
-  if (!periods.length) periods.push(currentMonth());
-  const sel = $('periodSelect');
-  if (!sel) return;
-  // Default to All-time on first open. Otherwise the tab opens on the
-  // current month, which almost always has no bookings yet + no invoices
-  // yet, so the whole table reads as €0 and looks broken.
-  sel.innerHTML = `<option value="__all__" selected>All-time</option>` +
-    periods.map(p => `<option value="${p}">${p}</option>`).join('');
-}
-
 function currentMonth(){
   const d = new Date();
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}`;
 }
 
-async function renderProfit(){
-  // Fallback to All-time (not currentMonth) so a first-render before
-  // populatePeriods finishes still shows meaningful numbers.
-  const period = $('periodSelect')?.value || '__all__';
-  const isAll  = period === '__all__';
-  $('profitBody').innerHTML = `<div class="loading">Loading…</div>`;
-
-  // Bookings from the hub-level import: one row per reservation.
-  // net_amount = gross − partner commission (what the camp actually receives).
-  // Paginated because Supabase caps .select() at 1000 rows per request.
-  const [bkRows, lgRows, hqRows] = await Promise.all([
-    fetchAllPaged(() => {
-      let q = sb.from('bookings').select('location, month_key, total, net_amount, pax').order('check_in_on',{ascending:true});
-      if (!isAll) q = q.eq('month_key', period);
-      return q;
-    }),
-    fetchAllPaged(() => sb.from('ledger_entries').select('type, amount_eur, entry_date, business_area, category, paid_from, attributed_location, location_id').order('entry_date',{ascending:false})),
-    fetchAllPaged(() => sb.from('hq_invoices').select('location_slug, amount_eur, invoice_date, category_id').order('invoice_date',{ascending:false}))
-  ]);
-
-  const inPeriod = (d) => isAll || String(d||'').slice(0,7) === period;
-  const personalCatIds = new Set(CATEGORIES.filter(c => c.is_personal).map(c => c.id));
-
-  const locIdToSlug = new Map(LOCATIONS.map(l => [l.id, l.slug]));
-  const attribOf = (r) => {
-    if (r.attributed_location) return r.attributed_location;
-    return locIdToSlug.get(r.location_id) || 'unknown';
-  };
-
-  const byLoc = {};
-  const ensureLoc = (key) => { if (!byLoc[key]) byLoc[key] = {slug:key, blRev:0, blCount:0, blPax:0, localRev:0, expenses:0, hqExpenses:0}; return byLoc[key]; };
-  HQ_LOCATIONS.forEach(l => ensureLoc(l.slug));
-
-  (bkRows||[]).forEach(r => {
-    const slug = locNameToSlug(r.location);
-    if (!slug) return;
-    const row = ensureLoc(slug);
-    // Prefer net_amount when populated; otherwise use total (older rows).
-    row.blRev += Number(r.net_amount ?? r.total ?? 0);
-    row.blCount += 1;
-    row.blPax += Number(r.pax || 0);
-  });
-  (lgRows||[]).forEach(r => {
-    if (!inPeriod(r.entry_date)) return;
-    const key = attribOf(r);
-    const row = ensureLoc(key);
-    const amt = Number(r.amount_eur||0);
-    if (r.type === 'revenue') row.localRev += amt;
-    else if (r.type === 'expense') row.expenses += amt;
-  });
-  (hqRows||[]).forEach(r => {
-    if (!inPeriod(r.invoice_date)) return;
-    if (personalCatIds.has(r.category_id)) return;
-    const key = r.location_slug || 'general';
-    ensureLoc(key).hqExpenses += Number(r.amount_eur||0);
-  });
-
-  const rows = Object.values(byLoc).map(r => ({
-    ...r,
-    label: locLabel(r.slug),
-    totalRev: r.blRev + r.localRev,
-    totalExp: r.expenses + r.hqExpenses,
-    profit: r.blRev + r.localRev - r.expenses - r.hqExpenses
-  }));
-  rows.sort((a,b) => {
-    if (a.slug === 'general') return 1;
-    if (b.slug === 'general') return -1;
-    return Math.abs(b.profit) - Math.abs(a.profit);
-  });
-
-  const totBl = rows.reduce((s,r)=>s+r.blRev,0);
-  const totLR = rows.reduce((s,r)=>s+r.localRev,0);
-  const totLE = rows.reduce((s,r)=>s+r.expenses,0);
-  const totHE = rows.reduce((s,r)=>s+r.hqExpenses,0);
-  const totPF = totBl + totLR - totLE - totHE;
-
-  $('profitBody').innerHTML = `
-    <div class="hero-profit ${totPF>=0?'pos':'neg'}" style="margin:-24px -24px 20px;border-radius:0">
-      <div class="hero-lbl">Total profit ${isAll?'· all-time':'· '+period}</div>
-      <div class="hero-val">${totPF>=0?'+':''}${eur(totPF)}</div>
-      <div class="hero-sub">Bookings (net) + on-site revenue − local expenses − HQ invoices attributed to each location</div>
-    </div>
-
-    <div style="overflow-x:auto"><table>
-      <thead><tr>
-        <th>Location</th>
-        <th class="r">Bookinglayer</th>
-        <th class="r">On-site rev</th>
-        <th class="r">Local expenses</th>
-        <th class="r">HQ invoices</th>
-        <th class="r">Profit</th>
-      </tr></thead>
-      <tbody>
-        ${rows.map(r => `<tr>
-          <td class="loc-name">${r.label}</td>
-          <td class="r">${eur(r.blRev)}</td>
-          <td class="r">${eur(r.localRev)}</td>
-          <td class="r">${eur(r.expenses)}</td>
-          <td class="r">${eur(r.hqExpenses)}</td>
-          <td class="r ${r.profit>0?'pos':r.profit<0?'neg':'zero'}">${r.profit>=0?'+':''}${eur(r.profit)}</td>
-        </tr>`).join('')}
-        <tr style="background:var(--foam);font-weight:700">
-          <td class="loc-name">Total</td>
-          <td class="r">${eur(totBl)}</td>
-          <td class="r">${eur(totLR)}</td>
-          <td class="r">${eur(totLE)}</td>
-          <td class="r">${eur(totHE)}</td>
-          <td class="r ${totPF>0?'pos':totPF<0?'neg':'zero'}">${totPF>=0?'+':''}${eur(totPF)}</td>
-        </tr>
-      </tbody>
-    </table></div>
-    <div class="hint" style="margin-top:14px">
-      <b>Profit</b> = Bookings (net of partner commission) + on-site revenue − local ledger expenses − HQ invoices attributed to this location.
-      <br><b>Bookings</b> comes from the <code>bookings</code> table populated by the hub CSV import — no separate import here. <b>net_amount</b> is used when available (gross − commission), falling back to <b>total</b> for older rows.
-      <br><b>HQ invoices</b> come from the Expenses tab. Rows in category <b>Miguel — Personal</b> are excluded.
-      <br>Local expenses use <code>attributed_location</code> when set — otherwise fall back to the row's own location.
-    </div>
-  `;
-}
 
 // ═══════════════════════════════════════════════════════════════════
 //   TAB 4 — CASH FLOW PER COMPANY
