@@ -169,11 +169,11 @@ main{padding:16px;max-width:640px;margin:0 auto}
   <!-- ══════════════════ NEW ENTRY ══════════════════ -->
   <div class="page active" id="page-new">
     <div class="card">
-      <div class="segment">
-        <button class="active" data-kind="rental" onclick="setKind('rental')">Rental</button>
-        <button data-kind="lesson" onclick="setKind('lesson')">Lesson</button>
-        <button data-kind="activity" onclick="setKind('activity')">Activity</button>
-      </div>
+      <!-- Kind segment removed — Miguel confirmed the school only takes
+           rentals through this form (lessons + activities aren't billed
+           this way). Everything saved is kind='rental' by default; the
+           JS still keeps the setKind() plumbing so lessons/activities
+           can be re-enabled later without another rewrite. -->
 
       <div class="field">
         <label>Date of activity</label>
@@ -194,10 +194,13 @@ main{padding:16px;max-width:640px;margin:0 auto}
           <input id="fld_id" type="text" placeholder="Passport / ID for board return" autocomplete="off">
         </div>
       </div>
-      <!-- Customer Type — only relevant for rentals; hidden for lessons/activities. -->
+      <!-- Customer Type — always shown now that the form only takes rentals.
+           "Choose" is the placeholder so staff have to make an active pick
+           (Google Form parity) instead of defaulting to Regular by accident. -->
       <div class="field" id="custTypeWrap">
         <label>Customer type</label>
         <select id="fld_customer_type">
+          <option value="">Choose…</option>
           <option value="Regular">Regular</option>
           <option value="Student">Student</option>
           <option value="Resident">Resident</option>
@@ -244,12 +247,14 @@ main{padding:16px;max-width:640px;margin:0 auto}
         <input id="fld_price" type="number" step="0.01" min="0" placeholder="0.00">
         <div class="hint" id="curHint">EUR · edit if you gave a discount</div>
       </div>
+      <!-- Payment is Cash only for the Surf School — the form was born
+           from the "Surf School Cash Payment Data Collection Form".
+           Kept a small chip so staff know what's being recorded rather
+           than hiding it entirely. If card ever gets accepted here, add
+           the toggle back and wire setPay(). -->
       <div class="field">
         <label>Payment</label>
-        <div class="pay-toggle">
-          <button class="active" data-pay="Cash" onclick="setPay('Cash')">💵 Cash</button>
-          <button data-pay="Card" onclick="setPay('Card')">💳 Card</button>
-        </div>
+        <div style="padding:11px 14px;background:var(--foam);border-radius:10px;font-size:13px;color:var(--navy);font-weight:700">💵 Cash</div>
       </div>
       <label class="terms">
         <input id="fld_terms" type="checkbox">
@@ -580,6 +585,9 @@ async function saveEntry(){
   }
 
   if (!name) { toast('Student name required', 'err'); return; }
+  if (CURRENT_KIND === 'rental' && !document.getElementById('fld_customer_type').value) {
+    toast('Pick a customer type', 'err'); return;
+  }
   if (!(price > 0)) { toast('Amount must be > 0', 'err'); return; }
   if (!terms) { toast('Confirm terms accepted', 'err'); return; }
 
@@ -734,7 +742,7 @@ function clearForm(){
   document.getElementById('fld_price').value = '';
   document.getElementById('fld_terms').checked = false;
   document.querySelectorAll('.item-cb').forEach(cb => cb.checked = false);
-  const cust = document.getElementById('fld_customer_type'); if (cust) cust.value = 'Regular';
+  const cust = document.getElementById('fld_customer_type'); if (cust) cust.value = '';
   const dur = document.getElementById('fld_duration'); if (dur) dur.value = '1H';
   const days = document.getElementById('fld_days'); if (days) days.value = 2;
   // Reset the date back to today so the next entry defaults correctly.
