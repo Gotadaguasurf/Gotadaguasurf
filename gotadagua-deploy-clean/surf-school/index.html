@@ -1,0 +1,606 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#28394b">
+<title>Surf School — Gota d'Água</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Outfit:wght@400;600;700;800&family=DM+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --navy:#28394b;
+  --navy-dark:#1f2c3b;
+  --ocean:#1e6fa8;
+  --ocean-light:#3b9dd4;
+  --foam:#edf5fb;
+  --ink:#0d1b2a;
+  --muted:#6b8099;
+  --border:#d4e3f0;
+  --bg:#f0f5fa;
+  --green:#118a5b;
+  --green-bg:#e6f5ec;
+  --red:#c94e42;
+  --red-bg:#fdf1ef;
+  --amber:#b57508;
+  --amber-bg:#fef4dc;
+  --sh-soft:0 1px 3px rgba(0,0,0,.05),0 4px 12px rgba(31,44,59,.08);
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:'Outfit',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:15px;line-height:1.4;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+input,select,textarea,button{font-family:inherit;font-size:inherit}
+
+/* ── Header (dark navy) ─────────────────────────────────────────── */
+header{background:var(--navy);color:#fff;padding:12px 16px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:50;box-shadow:0 2px 12px rgba(0,0,0,.15)}
+.brand{display:flex;align-items:center;gap:10px;color:inherit;text-decoration:none;flex:1;min-width:0}
+.brand svg{height:26px;width:auto;flex-shrink:0}
+.brand-sub{font-size:10px;color:#7aabcc;letter-spacing:.14em;text-transform:uppercase;font-weight:800;white-space:nowrap}
+.hdr-actions{display:flex;align-items:center;gap:8px}
+.hdr-btn{background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.16);color:#fff;border-radius:999px;padding:6px 12px;font-size:11px;font-weight:700;text-decoration:none;cursor:pointer;text-transform:uppercase;letter-spacing:.06em}
+.hdr-btn:hover{background:rgba(255,255,255,.20)}
+.user-chip{font-size:10px;color:#a8c4db;background:rgba(255,255,255,.08);padding:5px 10px;border-radius:999px;font-weight:600;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ── Sub-nav (mobile-first tabs) ─────────────────────────────────── */
+.subnav{background:#fff;border-bottom:1px solid var(--border);padding:6px 6px 0;display:flex;gap:4px;overflow-x:auto;position:sticky;top:52px;z-index:40}
+.subnav::-webkit-scrollbar{display:none}
+.tabbtn{background:none;border:none;color:var(--muted);padding:12px 18px;font-size:13px;font-weight:700;cursor:pointer;border-bottom:3px solid transparent;flex-shrink:0;position:relative;transition:color .15s, border-color .15s}
+.tabbtn.active{color:var(--navy);border-bottom-color:var(--ocean)}
+.tabbtn .badge{background:var(--ocean);color:#fff;font-size:10px;font-weight:800;padding:1px 7px;border-radius:999px;margin-left:6px;min-width:18px;display:inline-block;text-align:center}
+
+/* ── Content sections ───────────────────────────────────────────── */
+main{padding:16px;max-width:640px;margin:0 auto}
+.page{display:none}
+.page.active{display:block}
+
+/* ── Cards + form primitives ────────────────────────────────────── */
+.card{background:#fff;border-radius:12px;box-shadow:var(--sh-soft);padding:16px;margin-bottom:14px}
+.card-t{font-family:'DM Serif Display',serif;font-size:20px;color:var(--navy);margin:0 0 12px}
+.field{margin-bottom:14px}
+.field label{display:block;font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.09em;margin-bottom:5px}
+.field input,.field select,.field textarea{width:100%;border:1.5px solid var(--border);border-radius:10px;padding:12px 14px;font-size:15px;background:#fff;color:var(--ink);transition:border-color .15s;outline:none}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--ocean);box-shadow:0 0 0 3px rgba(30,111,168,.10)}
+.field .hint{font-size:11px;color:var(--muted);margin-top:4px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+/* Segment control (Kind: rental / lesson / activity) */
+.segment{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;background:var(--foam);padding:4px;border-radius:12px;margin-bottom:14px}
+.segment button{background:none;border:none;padding:11px 8px;font-size:13px;font-weight:700;color:var(--muted);border-radius:9px;cursor:pointer;transition:background .15s, color .15s}
+.segment button.active{background:#fff;color:var(--navy);box-shadow:0 1px 3px rgba(0,0,0,.08)}
+
+/* Payment method toggle */
+.pay-toggle{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.pay-toggle button{background:#fff;border:1.5px solid var(--border);padding:11px;border-radius:10px;font-size:13px;font-weight:700;color:var(--muted);cursor:pointer;transition:all .15s}
+.pay-toggle button.active{background:var(--navy);border-color:var(--navy);color:#fff}
+
+/* Buttons */
+.btn{width:100%;background:var(--ocean);color:#fff;border:none;padding:14px;border-radius:12px;font-weight:800;font-size:15px;cursor:pointer;transition:background .15s;letter-spacing:.02em}
+.btn:hover:not(:disabled){background:#175a8f}
+.btn:disabled{opacity:.55;cursor:not-allowed}
+.btn.secondary{background:#fff;color:var(--navy);border:1.5px solid var(--border)}
+.btn.secondary:hover:not(:disabled){background:var(--foam)}
+.btn.success{background:var(--green)}
+.btn.success:hover:not(:disabled){background:#0d6d47}
+.btn.danger{background:var(--red)}
+.btn-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+
+/* Checkbox (terms) */
+.terms{display:flex;gap:10px;align-items:flex-start;padding:12px;background:var(--foam);border-radius:10px;cursor:pointer}
+.terms input{margin-top:2px;width:20px;height:20px;accent-color:var(--ocean);flex-shrink:0}
+.terms-txt{font-size:12px;color:var(--muted);line-height:1.5}
+.terms-txt a{color:var(--ocean);font-weight:700}
+
+/* Open-rental / history item rows */
+.rental-row{background:#fff;border:1.5px solid var(--border);border-radius:12px;padding:14px;margin-bottom:10px;box-shadow:var(--sh-soft)}
+.rental-row.open{border-left:4px solid var(--amber)}
+.rental-row.overdue{border-left-color:var(--red)}
+.rental-row.returned{border-left:4px solid var(--green);opacity:.72}
+.rr-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:6px}
+.rr-name{font-weight:800;color:var(--ink);font-size:15px}
+.rr-time{font-size:11px;color:var(--muted);white-space:nowrap;flex-shrink:0}
+.rr-item{color:var(--muted);font-size:13px;margin-bottom:4px}
+.rr-meta{font-size:11px;color:var(--muted);display:flex;flex-wrap:wrap;gap:10px}
+.rr-price{font-family:'DM Mono',monospace;font-weight:800;color:var(--navy);font-size:15px}
+.rr-actions{display:flex;gap:8px;margin-top:12px}
+
+/* Chips */
+.chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em}
+.chip-open{background:var(--amber-bg);color:var(--amber)}
+.chip-returned{background:var(--green-bg);color:var(--green)}
+.chip-lesson{background:#eaf3fa;color:var(--ocean)}
+.chip-activity{background:#f5efe6;color:#a06430}
+
+/* Empty state */
+.empty{padding:36px 20px;text-align:center;color:var(--muted);font-size:13px;background:#fff;border:1.5px dashed var(--border);border-radius:12px}
+.empty-icon{font-size:36px;margin-bottom:10px;line-height:1}
+
+/* Toast */
+.toast-wrap{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:100;pointer-events:none}
+.toast{background:var(--navy);color:#fff;padding:12px 20px;border-radius:999px;font-weight:700;font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,.24);opacity:0;transition:opacity .2s, transform .2s;transform:translateY(20px)}
+.toast.ok{background:var(--green)}
+.toast.err{background:var(--red)}
+.toast.show{opacity:1;transform:translateY(0)}
+
+/* Filter row */
+.filter-row{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+.filter-row select{background:#fff;border:1.5px solid var(--border);border-radius:10px;padding:8px 12px;font-size:12px;color:var(--ink);cursor:pointer}
+
+/* KPI strip on Open rentals */
+.kpi-strip{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
+.kpi{background:#fff;padding:12px;border-radius:10px;box-shadow:var(--sh-soft)}
+.kpi-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700}
+.kpi-val{font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy);margin-top:2px;line-height:1}
+
+/* Access denied splash */
+.splash{max-width:420px;margin:80px auto;padding:32px;background:#fff;border-radius:14px;box-shadow:var(--sh-soft);text-align:center}
+.splash h1{font-family:'DM Serif Display',serif;color:var(--navy);margin:0 0 12px;font-size:24px}
+.splash p{color:var(--muted);font-size:13px;line-height:1.6;margin:0 0 18px}
+.splash a{color:var(--ocean);font-weight:800;text-decoration:none}
+
+@media(min-width:640px){
+  .btn-row{grid-template-columns:1fr 1fr 1fr}
+  .kpi-strip{grid-template-columns:repeat(4,1fr)}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <a class="brand" href="/">
+    <svg viewBox="0 0 197.4 91" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path fill="#fff4d5" d="M61.7,51.9c-.4-9-5.5-16.5-9.7-24.1-2.9-4.8-5.3-9.8-9.3-13.9-3.9-4.4-6.5-9.8-10.8-13.9C19.2,16.6-.5,39.9,0,61.9c9.4-7.9,20.1-17.7,33.1-17.8,3,0,7.2,0,9.5,2.2,1.7,1.7,3.2,4.2,2,6.5-.3.5-1.9,2.7-2.3,2.9-12.9,7.4-20.3,18.6-16.5,33.7,3.1,1.3,8,1,11.1-.3,2.7-.3,5.1-1.3,7.5-2.5,8.7-2.9,14.5-11.1,15.5-20.1,1.2-4.7,2.1-9.7,1.8-14.6h0Z"/>
+      <path fill="#fff4d5" d="M69.7,90.6l-.3-1.9c-.7-5.9-.5-11.9-.4-17.9,0-6.7-.3-13.7,0-20.3v-2.3c.5,0,1.1,0,1.7,0,3.3-.3,6.9-.3,10.2,0,.7,0,1.7,0,2.4,0,1.5.3,4,2.2,5,3.3,2.2,2.7,4.9,8.2,5.5,11.7,1.1,7.7-1.8,18.8-6.7,24.8-.4.5-1.4,1.9-1.7,2.1-.2,0-1.5.4-1.9.4-3.3.5-13.7,0-13.7,0h0v.2ZM77.2,61.3v.8c.4,4.6,0,9.3.3,13.9,0,.9-.3,1.7.9,1.8,2.2.3,4.1-.4,5.3-2.3,2.4-3.5,2.3-5.9,1.4-9.9-.3-1.1-1-2.6-1.7-3.5-.8-1-1.4-.8-2.5-.9-.2,0-.3,0-.6,0-1.1,0-2.1,0-3.3,0h.2Z"/>
+    </svg>
+    <span class="brand-sub">Surf School</span>
+  </a>
+  <div class="hdr-actions">
+    <span class="user-chip" id="userChip">—</span>
+    <a class="hdr-btn" href="/hq/">HQ</a>
+  </div>
+</header>
+
+<nav class="subnav">
+  <button class="tabbtn active" data-page="new" onclick="showPage('new')">+ New</button>
+  <button class="tabbtn" data-page="open" onclick="showPage('open')">Open <span class="badge" id="openBadge">0</span></button>
+  <button class="tabbtn" data-page="history" onclick="showPage('history')">History</button>
+</nav>
+
+<main id="main">
+  <!-- ══════════════════ NEW ENTRY ══════════════════ -->
+  <div class="page active" id="page-new">
+    <div class="card">
+      <div class="segment">
+        <button class="active" data-kind="rental" onclick="setKind('rental')">Rental</button>
+        <button data-kind="lesson" onclick="setKind('lesson')">Lesson</button>
+        <button data-kind="activity" onclick="setKind('activity')">Activity</button>
+      </div>
+
+      <div class="field">
+        <label>Student name</label>
+        <input id="fld_name" type="text" placeholder="e.g. Ana Costa" autocomplete="off">
+      </div>
+      <div class="grid2">
+        <div class="field">
+          <label>Email (optional)</label>
+          <input id="fld_email" type="email" placeholder="ana@…" autocomplete="off">
+        </div>
+        <div class="field">
+          <label id="idLbl">ID card (optional)</label>
+          <input id="fld_id" type="text" placeholder="Passport / ID for board return" autocomplete="off">
+        </div>
+      </div>
+      <div class="field">
+        <label>Item</label>
+        <select id="fld_item" onchange="onItemPick()"></select>
+        <div class="hint" id="itemHint">Pick from the Surf School catalog.</div>
+      </div>
+      <div class="grid2">
+        <div class="field">
+          <label>Qty / duration</label>
+          <input id="fld_qty" type="number" step="0.5" min="0.5" value="1">
+        </div>
+        <div class="field">
+          <label>Amount</label>
+          <input id="fld_price" type="number" step="0.01" min="0" placeholder="0.00">
+          <div class="hint" id="curHint">EUR</div>
+        </div>
+      </div>
+      <div class="field">
+        <label>Payment</label>
+        <div class="pay-toggle">
+          <button class="active" data-pay="Cash" onclick="setPay('Cash')">💵 Cash</button>
+          <button data-pay="Card" onclick="setPay('Card')">💳 Card</button>
+        </div>
+      </div>
+      <label class="terms">
+        <input id="fld_terms" type="checkbox">
+        <span class="terms-txt">Student accepted the <a href="#" onclick="event.preventDefault();showTerms()">rental terms &amp; conditions</a> and gave consent for their info to be recorded.</span>
+      </label>
+      <div style="margin-top:14px">
+        <button class="btn" id="saveBtn" onclick="saveEntry()">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════ OPEN RENTALS ══════════════════ -->
+  <div class="page" id="page-open">
+    <div class="kpi-strip">
+      <div class="kpi">
+        <div class="kpi-lbl">Boards out</div>
+        <div class="kpi-val" id="kpiOut">0</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-lbl">Overdue &gt;2h</div>
+        <div class="kpi-val" id="kpiOverdue" style="color:var(--red)">0</div>
+      </div>
+    </div>
+    <div id="openList"><div class="empty"><div class="empty-icon">🏄</div>No boards out right now.</div></div>
+  </div>
+
+  <!-- ══════════════════ HISTORY ══════════════════ -->
+  <div class="page" id="page-history">
+    <div class="filter-row">
+      <select id="filt_kind" onchange="renderHistory()">
+        <option value="all">All types</option>
+        <option value="rental">Rentals</option>
+        <option value="lesson">Lessons</option>
+        <option value="activity">Activities</option>
+      </select>
+      <select id="filt_period" onchange="renderHistory()">
+        <option value="today">Today</option>
+        <option value="week" selected>Last 7 days</option>
+        <option value="month">Last 30 days</option>
+        <option value="all">All time</option>
+      </select>
+    </div>
+    <div id="historyList"><div class="empty"><div class="empty-icon">⏳</div>Loading…</div></div>
+  </div>
+</main>
+
+<div class="toast-wrap"><div class="toast" id="toast"></div></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="/supabase-config.js"></script>
+<script>
+const cfg = window.__SUPABASE_CONFIG || {};
+const sb = window.supabase.createClient(cfg.url, cfg.anonKey);
+
+// State
+let LOCATION_ID = null;
+let CATALOG = [];
+let ALL_RENTALS = [];
+let CURRENT_KIND = 'rental';
+let CURRENT_PAY = 'Cash';
+let CURRENT_USER = null;
+let PROFILE_NAMES = new Map();
+
+// ── Boot ─────────────────────────────────────────────────────────
+async function boot(){
+  const { data:{ user } } = await sb.auth.getUser();
+  if (!user) {
+    document.body.innerHTML = `<div class="splash"><h1>Sign in required</h1><p>Open the Gota d'Água hub, sign in, then reopen this page.</p><a href="/">← Back to hub</a></div>`;
+    return;
+  }
+  CURRENT_USER = user;
+  // Best-effort display name.
+  try {
+    const { data } = await sb.from('platform_profiles').select('full_name,email').eq('id', user.id).maybeSingle();
+    document.getElementById('userChip').textContent = data?.full_name || data?.email || user.email || 'you';
+  } catch { document.getElementById('userChip').textContent = user.email || 'you'; }
+
+  // Resolve surf-school location id — RLS on locations gates it, so if the
+  // user has no access, this returns null and we show the access-denied splash.
+  const { data: loc, error: locErr } = await sb.from('locations').select('id, name, slug').eq('slug','surf-school').maybeSingle();
+  if (locErr || !loc) {
+    document.body.innerHTML = `<div class="splash"><h1>No access</h1><p>Your account isn't provisioned for the Surf School location. Ask Miguel to add you.</p><a href="/">← Back to hub</a></div>`;
+    return;
+  }
+  LOCATION_ID = loc.id;
+  await loadCatalog();
+  await loadRentals();
+  renderOpen();
+  subscribeRealtime();
+}
+
+// ── Catalog ──────────────────────────────────────────────────────
+async function loadCatalog(){
+  const { data, error } = await sb.from('pricing_catalog')
+    .select('id, name, category, sell_price, currency, active, sort_order')
+    .eq('location_id', LOCATION_ID)
+    .eq('active', true)
+    .order('sort_order', { ascending:true });
+  if (error) { toast('Catalog load failed: '+error.message, 'err'); return; }
+  CATALOG = data || [];
+  renderItemPicker();
+}
+
+function renderItemPicker(){
+  const sel = document.getElementById('fld_item');
+  // Filter by kind: rental → Surf Pack / Other Service rentals;
+  // lesson → Lesson; activity → any Tour / Other Service.
+  const kindGuess = (c) => {
+    const cat = String(c.category||'').toLowerCase();
+    if (CURRENT_KIND === 'lesson') return cat.includes('lesson');
+    if (CURRENT_KIND === 'rental') return cat.includes('surf pack') || cat.includes('rental') || cat.includes('other service');
+    return true; // activity — show all
+  };
+  const items = CATALOG.filter(kindGuess);
+  sel.innerHTML = items.length
+    ? items.map(c => `<option value="${c.id}" data-price="${c.sell_price}" data-cur="${c.currency||'EUR'}" data-name="${escapeHtml(c.name)}">${escapeHtml(c.name)} · ${c.currency||'EUR'} ${Number(c.sell_price).toFixed(0)}</option>`).join('')
+    : `<option value="">(no items in catalog for this type — add in Prices app)</option>`;
+  onItemPick();
+}
+function onItemPick(){
+  const sel = document.getElementById('fld_item');
+  const opt = sel.selectedOptions[0];
+  if (!opt || !opt.value) { document.getElementById('fld_price').value = ''; document.getElementById('curHint').textContent = ''; return; }
+  document.getElementById('fld_price').value = Number(opt.dataset.price || 0).toFixed(2);
+  document.getElementById('curHint').textContent = opt.dataset.cur || 'EUR';
+}
+
+// ── Rentals ──────────────────────────────────────────────────────
+async function loadRentals(){
+  const { data, error } = await sb.from('surf_school_rentals')
+    .select('id, kind, student_name, student_email, id_card_number, item_id, item_name, qty, price_local, currency, payment_method, opened_at, opened_by, closed_at, closed_by, is_returned, ledger_entry_id, terms_accepted')
+    .eq('location_id', LOCATION_ID)
+    .order('opened_at', { ascending:false })
+    .limit(500);
+  if (error) { toast('Rentals load failed: '+error.message, 'err'); return; }
+  ALL_RENTALS = data || [];
+  // Resolve staff names in the background so history/open show who
+  // opened/closed each row.
+  const uids = [...new Set(ALL_RENTALS.flatMap(r => [r.opened_by, r.closed_by]).filter(Boolean))];
+  const missing = uids.filter(id => !PROFILE_NAMES.has(id));
+  if (missing.length) {
+    try {
+      const { data: profs } = await sb.from('platform_profiles').select('id, full_name, email').in('id', missing);
+      (profs||[]).forEach(p => PROFILE_NAMES.set(p.id, p.full_name || p.email || 'Unknown'));
+      missing.forEach(id => { if (!PROFILE_NAMES.has(id)) PROFILE_NAMES.set(id, 'Unknown'); });
+    } catch { missing.forEach(id => PROFILE_NAMES.set(id, 'Unknown')); }
+  }
+  const openCount = ALL_RENTALS.filter(r => r.kind === 'rental' && !r.is_returned).length;
+  document.getElementById('openBadge').textContent = openCount;
+}
+
+function renderOpen(){
+  const list = document.getElementById('openList');
+  const open = ALL_RENTALS.filter(r => r.kind === 'rental' && !r.is_returned);
+  document.getElementById('kpiOut').textContent = open.length;
+  const now = Date.now();
+  const overdue = open.filter(r => (now - new Date(r.opened_at).getTime()) > 2*60*60*1000);
+  document.getElementById('kpiOverdue').textContent = overdue.length;
+
+  if (!open.length) {
+    list.innerHTML = `<div class="empty"><div class="empty-icon">🏄</div>No boards out right now.</div>`;
+    return;
+  }
+  // Sort by opened_at asc so the oldest / most overdue floats to top.
+  const sorted = [...open].sort((a,b) => String(a.opened_at).localeCompare(String(b.opened_at)));
+  list.innerHTML = sorted.map(r => {
+    const openedMs = new Date(r.opened_at).getTime();
+    const mins = Math.max(0, Math.round((now - openedMs)/60000));
+    const isOverdue = mins > 120;
+    const cls = isOverdue ? 'open overdue' : 'open';
+    const timeAgo = mins < 60 ? `${mins} min out` : `${Math.floor(mins/60)}h ${mins%60}m out`;
+    const staff = PROFILE_NAMES.get(r.opened_by) || 'Unknown';
+    return `<div class="rental-row ${cls}">
+      <div class="rr-top">
+        <div class="rr-name">${escapeHtml(r.student_name)}</div>
+        <div class="rr-time">${timeAgo}</div>
+      </div>
+      <div class="rr-item">${escapeHtml(r.item_name)}${r.qty!=1?` · ${r.qty}x`:''}</div>
+      <div class="rr-meta">
+        <span>Given by <strong>${escapeHtml(staff)}</strong></span>
+        ${r.id_card_number?`<span>ID ${escapeHtml(r.id_card_number)}</span>`:''}
+        <span class="rr-price">${escapeHtml(r.currency||'EUR')} ${Number(r.price_local||0).toFixed(0)}</span>
+      </div>
+      <div class="rr-actions">
+        <button class="btn success" onclick="closeRental('${r.id}', '${escapeAttr(r.student_name)}')">✓ Return board</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderHistory(){
+  const kindF = document.getElementById('filt_kind')?.value || 'all';
+  const periodF = document.getElementById('filt_period')?.value || 'week';
+  const cutoff = (() => {
+    const d = new Date();
+    if (periodF === 'today') d.setUTCHours(0,0,0,0);
+    else if (periodF === 'week') d.setUTCDate(d.getUTCDate() - 7);
+    else if (periodF === 'month') d.setUTCDate(d.getUTCDate() - 30);
+    else return null;
+    return d.toISOString();
+  })();
+
+  const rows = ALL_RENTALS.filter(r => {
+    if (kindF !== 'all' && r.kind !== kindF) return false;
+    if (cutoff && String(r.opened_at) < cutoff) return false;
+    return true;
+  });
+  const list = document.getElementById('historyList');
+  if (!rows.length) {
+    list.innerHTML = `<div class="empty"><div class="empty-icon">📖</div>Nothing in this window.</div>`;
+    return;
+  }
+  const now = Date.now();
+  list.innerHTML = rows.slice(0, 300).map(r => {
+    const openedDate = new Date(r.opened_at);
+    const dateLbl = openedDate.toLocaleDateString('en-GB', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' });
+    const staff = PROFILE_NAMES.get(r.opened_by) || 'Unknown';
+    const closedBy = r.closed_by ? (PROFILE_NAMES.get(r.closed_by) || 'someone') : null;
+    const cls = r.kind === 'rental' ? (r.is_returned?'returned':'open') : 'returned';
+    const chip = r.kind === 'rental'
+      ? (r.is_returned ? `<span class="chip chip-returned">Returned</span>` : `<span class="chip chip-open">Open</span>`)
+      : (r.kind === 'lesson' ? `<span class="chip chip-lesson">Lesson</span>` : `<span class="chip chip-activity">Activity</span>`);
+    const closedInfo = r.is_returned && r.closed_at
+      ? `Returned ${new Date(r.closed_at).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}${closedBy?` by ${escapeHtml(closedBy)}`:''}`
+      : '';
+    return `<div class="rental-row ${cls}">
+      <div class="rr-top">
+        <div class="rr-name">${escapeHtml(r.student_name)} ${chip}</div>
+        <div class="rr-time">${dateLbl}</div>
+      </div>
+      <div class="rr-item">${escapeHtml(r.item_name)}${r.qty!=1?` · ${r.qty}x`:''} · ${escapeHtml(r.payment_method||'—')}</div>
+      <div class="rr-meta">
+        <span>By <strong>${escapeHtml(staff)}</strong></span>
+        ${closedInfo?`<span>${closedInfo}</span>`:''}
+        <span class="rr-price">${escapeHtml(r.currency||'EUR')} ${Number(r.price_local||0).toFixed(0)}</span>
+      </div>
+    </div>`;
+  }).join('') + (rows.length > 300 ? `<div class="empty" style="border:none;padding:14px 8px;font-size:11px">Showing 300 of ${rows.length}. Narrow the filters to see more.</div>` : '');
+}
+
+// ── Save flow ────────────────────────────────────────────────────
+async function saveEntry(){
+  const btn = document.getElementById('saveBtn');
+  const name  = document.getElementById('fld_name').value.trim();
+  const email = document.getElementById('fld_email').value.trim() || null;
+  const idCard= document.getElementById('fld_id').value.trim() || null;
+  const itemSel = document.getElementById('fld_item');
+  const opt = itemSel.selectedOptions[0];
+  const qty = Number(document.getElementById('fld_qty').value) || 1;
+  const price = Number(document.getElementById('fld_price').value) || 0;
+  const terms = document.getElementById('fld_terms').checked;
+  if (!name) { toast('Student name required', 'err'); return; }
+  if (!opt || !opt.value) { toast('Pick an item from the catalog', 'err'); return; }
+  if (!(price > 0)) { toast('Amount must be > 0', 'err'); return; }
+  if (!terms) { toast('Confirm terms accepted', 'err'); return; }
+
+  const currency = opt.dataset.cur || 'EUR';
+  const itemName = opt.dataset.name || opt.textContent;
+  const nowIso = new Date().toISOString();
+
+  btn.disabled = true; btn.textContent = 'Saving…';
+
+  // 1. Insert the revenue row in ledger_entries first so we can point the
+  //    rental at it. Uses attributed_location='surf-school' + type='revenue'
+  //    so the row flows straight into HQ profit per location.
+  const ledgerPayload = {
+    location_id: LOCATION_ID,
+    type: 'revenue',
+    category: CURRENT_KIND === 'lesson' ? 'Lessons' : (CURRENT_KIND === 'activity' ? 'Activities' : 'Rentals'),
+    description: `${itemName} — ${name}${idCard?` (ID ${idCard})`:''}`,
+    payment_method: CURRENT_PAY,
+    qty,
+    amount_local: price,
+    currency,
+    entry_date: nowIso.slice(0,10),
+    business_area: 'Surf School',
+    // fx_rate + amount_eur are stamped downstream by camp-hub healers
+    // when the row lands in Sri Lanka / Morocco. For surf-school (EUR)
+    // we can compute right away.
+    fx_rate: 1,
+    amount_eur: currency === 'EUR' ? price : 0,
+    source_kind: 'surf_school',
+    paid_from: 'surf-school',
+    attributed_location: 'surf-school'
+  };
+  const { data: ledger, error: ledgerErr } = await sb.from('ledger_entries').insert(ledgerPayload).select().single();
+  if (ledgerErr) {
+    toast('Save failed: '+ledgerErr.message, 'err');
+    btn.disabled = false; btn.textContent = 'Save';
+    return;
+  }
+
+  // 2. Insert the surf_school_rentals row. Lessons + activities are born
+  //    with is_returned=true so they never show up in Open rentals.
+  const rentalPayload = {
+    location_id: LOCATION_ID,
+    ledger_entry_id: ledger.id,
+    kind: CURRENT_KIND,
+    student_name: name,
+    student_email: email,
+    id_card_number: idCard,
+    item_id: opt.value,
+    item_name: itemName,
+    qty,
+    price_local: price,
+    currency,
+    payment_method: CURRENT_PAY,
+    terms_accepted: terms,
+    terms_accepted_at: nowIso,
+    is_returned: CURRENT_KIND !== 'rental',
+    closed_at: CURRENT_KIND !== 'rental' ? nowIso : null
+  };
+  const { error: rentalErr } = await sb.from('surf_school_rentals').insert(rentalPayload);
+  if (rentalErr) {
+    toast('Ledger saved but rental failed: '+rentalErr.message, 'err');
+    btn.disabled = false; btn.textContent = 'Save';
+    return;
+  }
+
+  toast(`✓ Saved · ${currency} ${price.toFixed(0)}`, 'ok');
+  clearForm();
+  await loadRentals();
+  renderOpen();
+  if (CURRENT_KIND === 'rental') showPage('open');
+  btn.disabled = false; btn.textContent = 'Save';
+}
+
+async function closeRental(id, studentName){
+  if (!confirm(`Confirm the board is back from ${studentName}?`)) return;
+  const { error } = await sb.from('surf_school_rentals').update({ is_returned: true, closed_at: new Date().toISOString() }).eq('id', id);
+  if (error) { toast('Close failed: '+error.message, 'err'); return; }
+  toast('✓ Board returned', 'ok');
+  await loadRentals();
+  renderOpen();
+}
+
+// ── UI helpers ──────────────────────────────────────────────────
+function setKind(k){
+  CURRENT_KIND = k;
+  document.querySelectorAll('.segment button').forEach(b => b.classList.toggle('active', b.dataset.kind === k));
+  document.getElementById('idLbl').textContent = k === 'rental' ? 'ID card (recommended)' : 'ID card (optional)';
+  renderItemPicker();
+}
+function setPay(p){
+  CURRENT_PAY = p;
+  document.querySelectorAll('.pay-toggle button').forEach(b => b.classList.toggle('active', b.dataset.pay === p));
+}
+function showPage(name){
+  document.querySelectorAll('.page').forEach(el => el.classList.remove('active'));
+  document.getElementById('page-'+name)?.classList.add('active');
+  document.querySelectorAll('.tabbtn').forEach(b => b.classList.toggle('active', b.dataset.page === name));
+  if (name === 'history') renderHistory();
+  if (name === 'open')    renderOpen();
+}
+function clearForm(){
+  document.getElementById('fld_name').value = '';
+  document.getElementById('fld_email').value = '';
+  document.getElementById('fld_id').value = '';
+  document.getElementById('fld_qty').value = 1;
+  document.getElementById('fld_price').value = '';
+  document.getElementById('fld_terms').checked = false;
+}
+function showTerms(){
+  alert("Rental terms & conditions:\n\n1. Board rented in the condition inspected on pickup.\n2. Renter is responsible for damage / loss until return.\n3. ID retained as collateral until the board comes back.\n4. Total is due at pickup — no refunds for early return.\n\n(Miguel will replace this with the full text.)");
+}
+function toast(msg, kind){
+  const el = document.getElementById('toast');
+  el.className = 'toast show ' + (kind||'');
+  el.textContent = msg;
+  setTimeout(() => el.className = 'toast', 2500);
+}
+
+// Realtime — new rentals / returns fire on any device using this page.
+function subscribeRealtime(){
+  sb.channel('surf-school-rt')
+    .on('postgres_changes', { event:'*', schema:'public', table:'surf_school_rentals', filter:`location_id=eq.${LOCATION_ID}` }, async () => {
+      await loadRentals();
+      // Re-render whichever tab is visible.
+      const active = document.querySelector('.page.active')?.id;
+      if (active === 'page-open') renderOpen();
+      else if (active === 'page-history') renderHistory();
+    })
+    .subscribe();
+}
+
+// Escape helpers.
+function escapeHtml(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function escapeAttr(s){return String(s||'').replace(/'/g,"&#39;").replace(/"/g,'&quot;');}
+
+boot();
+</script>
+</body>
+</html>
