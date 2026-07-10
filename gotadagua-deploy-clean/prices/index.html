@@ -936,6 +936,36 @@ function withTimeout(promise, ms, label){
   document.querySelectorAll('#pricesLocSwitch a[data-loc]').forEach(a=>{
     a.classList.toggle('is-current', a.dataset.loc === LOCATION_SLUG);
   });
+  // Hide catalogs the user has no membership for. Owner already resolved
+  // above via `isOwner`; skip filtering for them so they see every catalog
+  // in the switcher. Silent-fail — leaving all options visible degrades
+  // safely because the per-catalog access gate at step-access below will
+  // still block a click.
+  if (!isOwner) {
+    (async () => {
+      try {
+        const items = document.querySelectorAll('#pricesLocSwitch a[data-loc]');
+        const slugs = [...items].map(a => `prices-${a.dataset.loc}`);
+        const { data: mems } = await sbClient
+          .from('workspace_memberships')
+          .select('can_view, workspaces!inner(slug)')
+          .eq('user_id', session.user.id).eq('active', true)
+          .in('workspaces.slug', slugs);
+        const allowed = new Set((mems || [])
+          .filter(m => m.can_view !== false)
+          .map(m => String(m.workspaces?.slug || '').replace(/^prices-/, '')));
+        let visible = 0;
+        items.forEach(a => {
+          if (allowed.has(a.dataset.loc)) { a.style.display = ''; visible++; }
+          else                             a.style.display = 'none';
+        });
+        // One or zero accessible catalogs → hide the switcher entirely so
+        // the header stays clean.
+        const wrap = document.getElementById('pricesLocSwitch');
+        if (wrap && visible <= 1) wrap.style.display = 'none';
+      } catch (_e) { /* silent-fail */ }
+    })();
+  }
   document.title = `${_locLabel} prices · Gota d'Água`;
   markStep('step-location','ok','Location: '+(LOCATION_LABELS[LOCATION_SLUG] || locRow.name));
 
