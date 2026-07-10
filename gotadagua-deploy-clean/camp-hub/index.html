@@ -138,6 +138,23 @@ nav{background:var(--navy);height:60px;display:flex;align-items:center;justify-c
 .nav-logo-mark svg{height:30px;width:auto;display:block}
 .nav-title-stack{display:flex;flex-direction:column;gap:2px;min-width:0}
 .nav-sub{font-size:10px;color:#7aabcc;letter-spacing:.1em;text-transform:uppercase;font-weight:700;white-space:nowrap}
+/* Unified app switcher — same component across every top-level page.
+   Keep this block byte-for-byte identical everywhere so the nav grammar
+   stays synced. */
+.app-switch{position:relative}
+.app-switch summary{list-style:none;cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:5px 10px 5px 12px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:999px;color:#fff;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;transition:background .15s, border-color .15s}
+.app-switch summary::-webkit-details-marker{display:none}
+.app-switch summary::marker{content:''}
+.app-switch summary:hover{background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.28)}
+.app-switch[open] summary{background:rgba(255,255,255,.20);border-color:rgba(255,255,255,.32)}
+.app-switch-caret{font-size:9px;transition:transform .2s;opacity:.8}
+.app-switch[open] .app-switch-caret{transform:rotate(180deg)}
+.app-switch-menu{position:absolute;top:calc(100% + 6px);left:0;background:#fff;border:1px solid #d4e3f0;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.18);padding:6px;min-width:220px;z-index:200}
+.app-switch-menu a{display:flex;flex-direction:column;padding:8px 12px;border-radius:8px;color:#0d1b2a;text-decoration:none;font-size:13px;font-weight:600;transition:background .1s}
+.app-switch-menu a small{font-size:11px;color:#6b8099;font-weight:500;margin-top:1px}
+.app-switch-menu a:hover{background:#edf5fb}
+.app-switch-menu a.is-current{background:#edf5fb;color:#1e6fa8}
+.app-switch-menu a.is-current small{color:#1e6fa8;opacity:.7}
 .nav-tabs{display:flex;gap:3px}
 .nav-actions{display:flex;align-items:center;gap:10px;justify-content:flex-end;min-width:160px}
 .save-pill{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:4px 10px;font-size:10px;font-weight:700;letter-spacing:.04em;transition:all .3s;white-space:nowrap}
@@ -510,6 +527,20 @@ td.r{text-align:right;font-family:'DM Mono',monospace;font-size:12px}
     </div>
     <div class="nav-title-stack"><div class="nav-sub" id="hubNavSubLabel">Sri Lanka Hub</div></div>
     </a>
+    <details class="app-switch">
+      <summary>
+        <span>Camp hub</span>
+        <span class="app-switch-caret">▾</span>
+      </summary>
+      <nav class="app-switch-menu">
+        <a href="/"><span>Overview</span><small>Camps + prices home</small></a>
+        <a href="/hq/"><span>HQ</span><small>Finances, profit, cash flow</small></a>
+        <a href="/camp-hub/" class="is-current"><span>Camp hub</span><small>Managers' float ledger</small></a>
+        <a href="/prices/"><span>Prices</span><small>Catalog + packages</small></a>
+        <a href="/partners/"><span>Partners</span><small>Partner P&amp;L + statements</small></a>
+        <a href="/crm/"><span>CRM</span><small>Outreach + pipeline</small></a>
+      </nav>
+    </details>
   </div>
   <div class="nav-tabs">
     <button class="ntab" data-page="overview" onclick="showPage(&#39;overview&#39;)"><span class="nav-btn-label"><span class="ui-ic ui-ic-lg"><svg viewBox="0 0 20 20"><path d="M3 17h14"/><path d="M6 14V8"/><path d="M10 14V4"/><path d="M14 14v-6"/></svg></span><span>Overview</span></span></button>
