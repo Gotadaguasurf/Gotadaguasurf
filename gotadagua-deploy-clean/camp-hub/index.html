@@ -76,6 +76,25 @@
 .ov-chip-meta b{color:var(--navy);font-weight:600;font-family:'DM Mono',monospace}
 /* Subtle filter pill — used at the very top */
 .ov-filters{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:#fff;border-radius:12px;padding:10px 14px;box-shadow:var(--sh-soft);margin-bottom:24px}
+/* Activity tab — POS audit feed. Filter bar + KPI strip + timeline. */
+.act-filters{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:#fff;border-radius:12px;padding:10px 14px;box-shadow:var(--sh-soft);margin-bottom:16px}
+.act-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:16px}
+.act-kpi{background:#fff;border-radius:12px;padding:12px 14px;box-shadow:var(--sh-soft)}
+.act-kpi-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700}
+.act-kpi-val{font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy);margin-top:2px;line-height:1}
+.act-kpi-sub{font-size:11px;color:var(--muted);margin-top:3px}
+.act-feed{background:#fff;border-radius:12px;box-shadow:var(--sh-soft);overflow:hidden}
+.act-row{display:grid;grid-template-columns:36px 1fr auto;gap:12px;align-items:center;padding:11px 16px;border-bottom:1px solid var(--border);font-size:13px}
+.act-row:last-child{border-bottom:0}
+.act-row.act-edit{background:#fdf9ee}
+.act-avatar{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--ocean),#3b9dd4);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;font-family:'Outfit',sans-serif;flex-shrink:0}
+.act-body{min-width:0}
+.act-line{color:var(--ink);line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.act-line b{color:var(--navy)}
+.act-meta{font-size:11px;color:var(--muted);margin-top:1px}
+.act-amt{font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:var(--navy);text-align:right;white-space:nowrap}
+.act-amt.act-neg{color:var(--red)}
+.act-empty{padding:36px 16px;text-align:center;color:var(--muted);font-size:13px;font-style:italic}
 .ov-filters .fsel{background:transparent;border:1px solid var(--border)}
 .ov-filters .ov-week-info{font-size:12px;color:var(--muted);margin-left:auto;padding-left:8px}
 
@@ -592,6 +611,7 @@ td.r{text-align:right;font-family:'DM Mono',monospace;font-size:12px}
     <button class="ntab" data-page="pos" onclick="showPage(&#39;pos&#39;)"><span class="nav-btn-label"><span class="ui-ic ui-ic-lg"><svg viewBox="0 0 20 20"><rect x="3" y="5" width="14" height="10" rx="2"/><path d="M6 9h8"/><path d="M6 12h5"/></svg></span><span>Camp Tab</span></span></button>
     <button class="ntab" data-page="expenses" onclick="showPage(&#39;expenses&#39;)"><span class="nav-btn-label"><span class="ui-ic ui-ic-lg"><svg viewBox="0 0 20 20"><path d="M6 3h8l3 3v11H6z"/><path d="M14 3v4h4"/><path d="M9 10h5"/><path d="M9 13h5"/></svg></span><span>Operations Ledger</span></span></button>
     <button class="ntab" data-page="weekly" onclick="showPage(&#39;weekly&#39;)"><span class="nav-btn-label"><span class="ui-ic ui-ic-lg"><svg viewBox="0 0 20 20"><rect x="3" y="4" width="14" height="13" rx="2"/><path d="M7 2v4"/><path d="M13 2v4"/><path d="M3 8h14"/></svg></span><span>Weekly P&amp;L</span></span></button>
+    <button class="ntab" data-page="activity" onclick="showPage(&#39;activity&#39;)"><span class="nav-btn-label"><span class="ui-ic ui-ic-lg"><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/><path d="M10 6v4l3 2"/></svg></span><span>Activity</span></span></button>
   </div>
   <div class="nav-actions">
     <span class="save-pill saved" id="savePill" title="Click to retry if failed" onclick="retrySave()"><span class="save-dot"></span><span id="savePillTxt">Saved</span></span>
@@ -1145,6 +1165,37 @@ td.r{text-align:right;font-family:'DM Mono',monospace;font-size:12px}
       </tfoot>
     </table></div>
   </div></div>
+  </div>
+</div>
+
+<!-- ══════════════════ ACTIVITY (POS audit trail) ══════════════════ -->
+<div class="page" id="page-activity">
+  <div class="container">
+    <div style="margin-bottom:18px">
+      <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy)">Activity</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">Who added what in the Camp Tab — chronological. Read-only.</div>
+    </div>
+    <div class="act-filters">
+      <label class="period-picker" title="Filter by staff">
+        <span class="period-picker-lbl">Staff</span>
+        <select id="actStaffSel" onchange="renderActivity()"><option value="all">Everyone</option></select>
+      </label>
+      <label class="period-picker" title="Filter by category">
+        <span class="period-picker-lbl">Category</span>
+        <select id="actCatSel" onchange="renderActivity()"><option value="all">All categories</option></select>
+      </label>
+      <label class="period-picker" title="Filter by period">
+        <span class="period-picker-lbl">Period</span>
+        <select id="actPeriodSel" onchange="renderActivity()">
+          <option value="all">All time</option>
+          <option value="today">Today</option>
+          <option value="week" selected>Last 7 days</option>
+          <option value="month">Last 30 days</option>
+        </select>
+      </label>
+    </div>
+    <div class="act-kpis" id="actKpis"></div>
+    <div id="actFeed" class="act-feed"><div class="loading">Loading…</div></div>
   </div>
 </div>
 
@@ -4796,6 +4847,7 @@ function showPage(p){
   else if(p==='pos'){ mountCampTabFrame(); return; }
   else if(p==='expenses'){ renderExpenses(); ensureAiUploadWired(); }
   else if(p==='weekly') renderWeeklyPL();
+  else if(p==='activity') renderActivity();
 }
 
 function showPosSub(sub){
@@ -9019,6 +9071,160 @@ async function saveExpense(){
 // ═══════════════════════════════════════════════════════════
 //  WEEKLY P&L  — connected to both weeks AND ledger
 // ═══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
+//   ACTIVITY — POS audit feed
+//   Reads camp_tab_items directly from Supabase (bypasses the local S
+//   cache so we get the created_by/updated_by columns the trigger fills
+//   server-side) and joins with platform_profiles for human names.
+//   RLS already scopes the query to this location — a Morocco manager
+//   couldn't read Sri Lanka rows even if they knew this endpoint.
+// ═══════════════════════════════════════════════════════════════════
+let _actLastLoad = 0;
+let _actCache = null;
+
+async function renderActivity(){
+  const feed = document.getElementById('actFeed');
+  const kpis = document.getElementById('actKpis');
+  if (!feed) return;
+
+  const client = getHubSupabaseClient();
+  const locationId = await ensureHubLocationId();
+  if (!client || !locationId) {
+    feed.innerHTML = `<div class="act-empty">Not connected. Refresh the page.</div>`;
+    return;
+  }
+
+  const now = Date.now();
+  // Re-fetch every 30s at most so tab-switching feels instant.
+  if (!_actCache || (now - _actLastLoad) > 30_000) {
+    feed.innerHTML = `<div class="act-empty">Loading recent Camp Tab activity…</div>`;
+    try {
+      // Latest 500 items should be plenty for the "who did what" audit
+      // view — order by added_at DESC. Joining guest name via camp_guests
+      // (which is location-scoped too) keeps rows compact.
+      const { data: items, error } = await client
+        .from('camp_tab_items')
+        .select('id, item_name, category, price_local, currency, added_at, updated_at, created_by, updated_by, guest_id, camp_guests(id, guest_name)')
+        .eq('location_id', locationId)
+        .order('added_at', { ascending:false })
+        .limit(500);
+      if (error) throw error;
+
+      // Resolve staff names in one round-trip. The set includes both
+      // creators and editors so an edit-only row still shows a name.
+      const uids = [...new Set((items||[])
+        .flatMap(r => [r.created_by, r.updated_by])
+        .filter(Boolean))];
+      let byId = new Map();
+      if (uids.length) {
+        const { data: profs } = await client
+          .from('platform_profiles')
+          .select('id, full_name, email')
+          .in('id', uids);
+        (profs||[]).forEach(p => byId.set(p.id, p.full_name || p.email || 'Unknown'));
+      }
+      _actCache = { items: items||[], byId };
+      _actLastLoad = now;
+    } catch (e) {
+      feed.innerHTML = `<div class="act-empty" style="color:var(--red)">Load failed: ${escapeHtml(e?.message||e)}</div>`;
+      return;
+    }
+  }
+
+  const { items, byId } = _actCache;
+
+  // Populate staff + category filters from actual rows before first render.
+  const staffSel = document.getElementById('actStaffSel');
+  const catSel   = document.getElementById('actCatSel');
+  if (staffSel && staffSel.options.length <= 1) {
+    const staffIds = [...new Set(items.map(r => r.created_by).filter(Boolean))];
+    staffSel.innerHTML = '<option value="all">Everyone</option>' +
+      staffIds.map(id => `<option value="${id}">${escapeHtml(byId.get(id) || 'Unknown')}</option>`).join('');
+  }
+  if (catSel && catSel.options.length <= 1) {
+    const cats = [...new Set(items.map(r => r.category).filter(Boolean))].sort();
+    catSel.innerHTML = '<option value="all">All categories</option>' +
+      cats.map(c => `<option value="${c}">${escapeHtml(c)}</option>`).join('');
+  }
+
+  const staffF  = staffSel?.value  || 'all';
+  const catF    = catSel?.value    || 'all';
+  const periodF = document.getElementById('actPeriodSel')?.value || 'week';
+
+  const cutoff = (() => {
+    const d = new Date();
+    if (periodF === 'today') d.setUTCHours(0,0,0,0);
+    else if (periodF === 'week')  d.setUTCDate(d.getUTCDate() - 7);
+    else if (periodF === 'month') d.setUTCDate(d.getUTCDate() - 30);
+    else return null;
+    return d.toISOString();
+  })();
+
+  const filtered = items.filter(r => {
+    if (staffF !== 'all' && r.created_by !== staffF) return false;
+    if (catF   !== 'all' && r.category !== catF)     return false;
+    if (cutoff && String(r.added_at || '') < cutoff) return false;
+    return true;
+  });
+
+  // KPIs — total items, total value in LOCAL currency, unique staff/guests.
+  const total = filtered.reduce((s,r) => s + Number(r.price_local||0), 0);
+  const staffCount = new Set(filtered.map(r => r.created_by).filter(Boolean)).size;
+  const guestCount = new Set(filtered.map(r => r.guest_id).filter(Boolean)).size;
+  const cur = filtered[0]?.currency || (LOCAL_CURRENCY || 'LKR');
+  const fmtLocal = (n) => `${cur} ${Math.round(n).toLocaleString('en-GB')}`;
+
+  kpis.innerHTML = `
+    <div class="act-kpi"><div class="act-kpi-lbl">Items added</div><div class="act-kpi-val">${filtered.length}</div><div class="act-kpi-sub">In this period</div></div>
+    <div class="act-kpi"><div class="act-kpi-lbl">Total value</div><div class="act-kpi-val">${fmtLocal(total)}</div><div class="act-kpi-sub">Sum of price_local</div></div>
+    <div class="act-kpi"><div class="act-kpi-lbl">Staff active</div><div class="act-kpi-val">${staffCount}</div><div class="act-kpi-sub">Distinct sellers</div></div>
+    <div class="act-kpi"><div class="act-kpi-lbl">Guests touched</div><div class="act-kpi-val">${guestCount}</div><div class="act-kpi-sub">Distinct tabs</div></div>
+  `;
+
+  if (!filtered.length) {
+    feed.innerHTML = `<div class="act-empty">No activity in this window. Change the filters above or come back after some items are added.</div>`;
+    return;
+  }
+
+  // Row renderer. Show "edited" separately when updated_by differs from
+  // the creator, so tampering is visible without opening the row.
+  const rowHtml = (r) => {
+    const who = byId.get(r.created_by) || 'Unknown';
+    const initials = who.split(/\s+/).filter(Boolean).slice(0,2).map(s => s[0]?.toUpperCase()||'').join('') || '?';
+    const guest = r.camp_guests?.guest_name || '—';
+    const edited = r.updated_by && r.updated_by !== r.created_by;
+    const editedByName = edited ? (byId.get(r.updated_by) || 'someone else') : null;
+    const when = _actWhen(r.added_at);
+    const editedWhen = edited ? _actWhen(r.updated_at) : null;
+    return `<div class="act-row${edited?' act-edit':''}">
+      <div class="act-avatar">${escapeHtml(initials)}</div>
+      <div class="act-body">
+        <div class="act-line"><b>${escapeHtml(who)}</b> added <b>${escapeHtml(r.item_name||'item')}</b> to <b>${escapeHtml(guest)}</b></div>
+        <div class="act-meta">${escapeHtml(r.category||'—')} · ${when}${edited ? ` · edited by ${escapeHtml(editedByName)} ${editedWhen}` : ''}</div>
+      </div>
+      <div class="act-amt">${cur} ${Number(r.price_local||0).toFixed(0)}</div>
+    </div>`;
+  };
+  feed.innerHTML = filtered.slice(0, 200).map(rowHtml).join('') +
+    (filtered.length > 200 ? `<div class="act-empty">Showing 200 most recent of ${filtered.length}. Narrow the filters to see older rows.</div>` : '');
+}
+
+function _actWhen(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  const now = new Date();
+  const diffMs = now - d;
+  if (diffMs < 0) return d.toLocaleString('en-GB', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' });
+  const mins = Math.round(diffMs / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins} min ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.round(hrs / 24);
+  if (days < 7) return `${days}d ago`;
+  return d.toLocaleDateString('en-GB', { day:'numeric', month:'short', year: (d.getUTCFullYear() !== now.getUTCFullYear() ? 'numeric' : undefined) });
+}
+
 function renderWeeklyPL(){
   const el=document.getElementById('weeklyContent');
   if(!el)return;
@@ -9571,6 +9777,49 @@ if(CAMP_TAB_ONLY_MODE){
   });
 })();
 
+// Hides camps in the location switcher that the current user has no
+// workspace_membership on. Owner / super_admin see the full list. A
+// manager with only one accessible location gets the whole switcher
+// hidden (there's nothing to switch to). The RLS phase-7 policies
+// already stop cross-location reads at the DB — this is UX only.
+async function filterLocationSwitcherByAccess(client, session){
+  const wrap = document.getElementById('hubLocSwitch');
+  if (!wrap || !client || !session) return;
+  const OWNER_EMAILS_HUB = new Set(['miguel@gotadaguasurf.com']);
+  const email = String(session.user?.email || '').toLowerCase();
+  if (OWNER_EMAILS_HUB.has(email)) return; // owner sees all camps
+
+  try {
+    const { data: profile } = await client.from('platform_profiles')
+      .select('platform_role').eq('id', session.user.id).maybeSingle();
+    const role = String(profile?.platform_role || '').toLowerCase();
+    if (role === 'owner' || role === 'super_admin') return;
+
+    const { data: mems } = await client.from('workspace_memberships')
+      .select('workspaces!inner(slug)')
+      .eq('user_id', session.user.id).eq('active', true);
+    // workspaces.slug → location.slug mapping mirrors the has_location_access
+    // SQL join: workspaces('junior') resolves to locations('junior-camp').
+    const mapSlug = (s) => (s === 'junior' ? 'junior-camp' : s);
+    const allowed = new Set((mems || [])
+      .map(m => mapSlug(String(m.workspaces?.slug || '').toLowerCase()))
+      .filter(Boolean));
+
+    const items = wrap.querySelectorAll('a[data-loc]');
+    let visible = 0;
+    items.forEach(a => {
+      if (allowed.has(a.dataset.loc)) { a.style.display = ''; visible++; }
+      else                             a.style.display = 'none';
+    });
+    // Nothing to switch to → hide the whole pill so the header stays
+    // clean. Users still see the current location context via the app
+    // switcher pill next door.
+    if (visible <= 1) wrap.style.display = 'none';
+  } catch (_e) {
+    // Silent-fail: leaving the switcher fully visible degrades safely.
+  }
+}
+
 // Reveals the "HQ" header shortcut when the current user is an owner
 // (email bypass), has platform_role owner/super_admin, or has an active
 // workspace_membership on the 'hq' workspace with can_view. Mirrors the
@@ -9604,6 +9853,7 @@ async function requirePlatformSession(){
   // shows a link the user can't actually open. Silent-fail: if the
   // membership fetch errors we just leave the button hidden.
   showHqShortcutIfAccessible(client, data.session).catch(()=>{});
+  filterLocationSwitcherByAccess(client, data.session).catch(()=>{});
   try{
     // CRITICAL ORDER: loadDeletedCampcloseIds() MUST finish before
     // hydrateLedgerFromSupabase(), otherwise the ghost filter inside
