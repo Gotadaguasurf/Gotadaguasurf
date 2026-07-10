@@ -323,6 +323,7 @@ header{display:none}
   <button class="snav-btn" data-sub="week" onclick="showSub('week')">This week</button>
   <button class="snav-btn" data-sub="history" onclick="showSub('history')">History</button>
   <button class="snav-btn" data-sub="sellers" onclick="showSub('sellers')">Top sellers</button>
+  <button class="snav-btn" data-sub="activity" onclick="showSub('activity')">Activity</button>
 </div>
 
 <div class="app">
@@ -427,6 +428,31 @@ header{display:none}
       <div id="tsCatRow" style="display:flex;gap:8px;flex-wrap:wrap"></div>
     </div>
     <div class="ts-body" id="tsBody"></div>
+  </div>
+</div>
+
+<!-- ══════════════ ACTIVITY (POS audit) ══════════════ -->
+<div class="subpage" id="sub-activity">
+  <div class="ts-wrap">
+    <div class="ts-header" style="flex-wrap:wrap;gap:10px">
+      <div style="font-family:'DM Serif Display',serif;font-size:18px;color:var(--navy);margin-right:auto">Activity</div>
+      <label style="display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--muted)">Staff
+        <select id="acStaff" onchange="renderPosActivity()" style="border:1px solid var(--border);border-radius:8px;padding:5px 8px;font-size:12px;font-family:'Outfit',sans-serif"><option value="all">Everyone</option></select>
+      </label>
+      <label style="display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--muted)">Category
+        <select id="acCat" onchange="renderPosActivity()" style="border:1px solid var(--border);border-radius:8px;padding:5px 8px;font-size:12px;font-family:'Outfit',sans-serif"><option value="all">All categories</option></select>
+      </label>
+      <label style="display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--muted)">Period
+        <select id="acPeriod" onchange="renderPosActivity()" style="border:1px solid var(--border);border-radius:8px;padding:5px 8px;font-size:12px;font-family:'Outfit',sans-serif">
+          <option value="all">All time</option>
+          <option value="today">Today</option>
+          <option value="week" selected>Last 7 days</option>
+          <option value="month">Last 30 days</option>
+        </select>
+      </label>
+      <button class="snav-btn" style="padding:5px 12px;font-size:11px" onclick="_acLastLoad=0;renderPosActivity()">Refresh</button>
+    </div>
+    <div class="ts-body" id="acBody"><div style="padding:20px;text-align:center;color:var(--muted);font-size:12px">Loading…</div></div>
   </div>
 </div>
 
@@ -1323,6 +1349,12 @@ function hydrateWeekStateFromRows(weekRows,guestRows,itemRows){
       ...(item.paid_at?{paidAt:item.paid_at}:{}),
       ...(meta.staffNote?{s:meta.staffNote}:{}),
       ...(item.price_type?{priceType:item.price_type}:{}),
+      // Audit fields — populated server-side by fn_stamp_audit_camp_tab.
+      // Names resolved from platform_profiles via resolveAuditNames() and
+      // shown on hover in the item row.
+      ...(item.created_by?{createdBy:item.created_by}:{}),
+      ...(item.updated_by?{updatedBy:item.updated_by}:{}),
+      ...(item.updated_at?{updatedAt:item.updated_at}:{}),
       sortOrder:Number(item.sort_order||0)
     });
   });
@@ -1489,6 +1521,40 @@ async function syncCampTabStaffToSupabase(){
     setTimeout(()=>{ if(_suppressGeneration===_gen) suppressRemoteSync=false; },800);
   }
 }
+// Audit name cache — resolves auth UIDs (created_by / updated_by on
+// camp_tab_items) to human-readable names once and reuses them on
+// every render. Populated by resolveAuditNames() after hydrate.
+const PROFILE_NAMES = new Map();
+async function resolveAuditNames(client, uids){
+  const needed = [...new Set(uids.filter(id => id && !PROFILE_NAMES.has(id)))];
+  if (!needed.length) return;
+  try {
+    const { data } = await client.from('platform_profiles')
+      .select('id, full_name, email')
+      .in('id', needed);
+    (data || []).forEach(p => {
+      PROFILE_NAMES.set(p.id, p.full_name || p.email || 'Unknown');
+    });
+    // Cache negative lookups too so we don't retry every render for a
+    // uid the caller can't see (RLS on platform_profiles, deleted user).
+    needed.forEach(id => { if (!PROFILE_NAMES.has(id)) PROFILE_NAMES.set(id, 'Unknown'); });
+  } catch (_e) {
+    needed.forEach(id => PROFILE_NAMES.set(id, 'Unknown'));
+  }
+}
+function auditTitleFor(item){
+  if (!item?.createdBy) return '';
+  const who = PROFILE_NAMES.get(item.createdBy) || 'Unknown';
+  const when = item.d ? `${item.d} ${String(item.t||'').padEnd(5)}` : '';
+  const editedBy = item.updatedBy && item.updatedBy !== item.createdBy
+    ? (PROFILE_NAMES.get(item.updatedBy) || 'someone else')
+    : null;
+  const editedWhen = editedBy ? String(item.updatedAt || '').slice(0,16).replace('T',' ') : '';
+  return editedBy
+    ? `Added by ${who} · ${when}\nEdited by ${editedBy} · ${editedWhen}`
+    : `Added by ${who} · ${when}`;
+}
+
 async function hydrateCampTabStateFromSupabase({mergeLocal=false}={}){
   const client=getCampTabSupabaseClient();
   const locationId=await ensureCampTabLocationId();
@@ -1496,7 +1562,7 @@ async function hydrateCampTabStateFromSupabase({mergeLocal=false}={}){
   const [{data:weekRows,error:weeksError},{data:guestRows,error:guestsError},{data:itemRows,error:itemsError}] = await Promise.all([
     client.from('camp_weeks').select('id,start_date,end_date,status,closed_at,draft_kind,meta').eq('location_id',locationId).order('start_date',{ascending:true}),
     client.from('camp_guests').select('id,week_id,name,booking_ref,is_staff,paid,paid_at,closed_at,checkin,checkout,pax,sort_order,meta').eq('location_id',locationId).order('sort_order',{ascending:true}),
-    client.from('camp_tab_items').select('id,guest_id,week_id,category,item_name,price_local,price_type,added_at,paid_at,sort_order,meta').eq('location_id',locationId).order('sort_order',{ascending:true})
+    client.from('camp_tab_items').select('id,guest_id,week_id,category,item_name,price_local,price_type,added_at,paid_at,sort_order,meta,created_by,updated_by,updated_at').eq('location_id',locationId).order('sort_order',{ascending:true})
   ]);
   if(weeksError||guestsError||itemsError){
     console.warn('Camp Tab state hydrate failed',weeksError||guestsError||itemsError);
@@ -1507,6 +1573,11 @@ async function hydrateCampTabStateFromSupabase({mergeLocal=false}={}){
     // After hydrate, sync's "what to delete" baseline is whatever we just loaded.
     // Anything the user removes AFTER this point becomes a legitimate delete.
     _lastLocalSnapshot=captureLocalSnapshotIds();
+    // Resolve audit UIDs to display names in the background so the next
+    // render can show "Added by X" tooltips on each POS item without
+    // blocking hydrate. Silent-fail — worst case tooltips show 'Unknown'.
+    const uids = (itemRows||[]).flatMap(r => [r.created_by, r.updated_by]);
+    resolveAuditNames(client, uids).catch(()=>{});
     return true;
   }
   if(mergeLocal && (S.activeWeek || S.nextWeek || (S.history||[]).length)){
@@ -2168,6 +2239,7 @@ function showSub(sub){
   else if(sub==='week') renderThisWeek();
   else if(sub==='history') renderHistory();
   else if(sub==='sellers') renderSellers();
+  else if(sub==='activity') renderPosActivity();
 }
 
 function setRoster(roster){
@@ -2309,12 +2381,26 @@ function renderGuestList(){
   // person at a glance. Guests without bikeNo (Sri Lanka / Morocco /
   // Junior camp) render exactly as before — the chip stays hidden.
   el.innerHTML=rows.map(g=>{
-    const bikeChip = (g.bikeNo != null)
-      ? `<span style="display:inline-block;background:var(--ocean);color:#fff;border-radius:6px;padding:1px 6px;font-family:'DM Mono',monospace;font-size:10px;font-weight:800;margin-right:6px;vertical-align:1px">#${g.bikeNo}</span>`
+    // Defensive rendering: if bikeNo wasn't captured (parser missed it,
+    // realtime clobbered the local row before Supabase persisted, or the
+    // guest was imported before parseGuestLine existed), fall back to
+    // pulling it out of the display name. Keeps the chip + sort correct
+    // even when the underlying data lost the number field.
+    let bikeNo = g.bikeNo;
+    let displayName = String(g.name || '');
+    if (bikeNo == null) {
+      const parsed = parseGuestLine(displayName);
+      if (parsed.bikeNo != null) {
+        bikeNo = parsed.bikeNo;
+        displayName = parsed.name;
+      }
+    }
+    const bikeChip = (bikeNo != null)
+      ? `<span style="display:inline-block;background:var(--ocean);color:#fff;border-radius:6px;padding:1px 6px;font-family:'DM Mono',monospace;font-size:10px;font-weight:800;margin-right:6px;vertical-align:1px">#${bikeNo}</span>`
       : '';
     return `<div class="c-guest ${AG===g.id?'active':''}" onclick="selGuest('${esc(g.id)}')">
     <div style="min-width:0;flex:1">
-      <div class="c-guest-name">${bikeChip}${g.name}</div>
+      <div class="c-guest-name">${bikeChip}${displayName}</div>
       <div class="c-guest-amt">${gtot(g)>0?euro(gtot(g)):'no charges'}${currentRoster==='guests'&&isQueuedForNextWeek(g.name)?' / queued next week':''}</div>
     </div>
     ${isGuestFullyPaid(g)?'<div class="c-gpaid"></div>':''}
@@ -3257,7 +3343,8 @@ function renderThisWeek(){
             const delBtn = itemPaid
               ? ''
               : `<button class="tw-item-del" onclick="deleteGuestItem('${esc(g.id)}',${idx});event.stopPropagation()" title="Delete item">×</button>`;
-            return `<div class="tw-item-row${itemPaid?' paid':''}">
+            const auditTitle = auditTitleFor(i);
+            return `<div class="tw-item-row${itemPaid?' paid':''}"${auditTitle?` title="${esc(auditTitle)}"`:''}>
               <div class="tw-item-main">
                 <span>${i.n}${i.s?` <span style="font-size:10px;color:var(--muted)">· ${i.s}</span>`:''}</span>
                 <span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted)">${euro(i.p)}</span>
@@ -3739,6 +3826,142 @@ function renderSellers(){
     <div class="ts-qty">${item.qty}x</div>
     <div class="ts-rev">${euro(item.rev)}</div>
   </div>`).join('');
+}
+
+// ══════════════ ACTIVITY — POS audit feed (sub-tab) ══════════════
+// Reads camp_tab_items straight from Supabase so we get created_by /
+// updated_by / updated_at that the trigger fills server-side. Filter
+// by staff / category / period. Same location gating as everything
+// else (via ensureCampTabLocationId + the RLS phase-7 policies).
+let _acLastLoad = 0;
+let _acCache = null;
+
+async function renderPosActivity(){
+  const body = document.getElementById('acBody');
+  if (!body) return;
+
+  const client = getCampTabSupabaseClient();
+  const locationId = await ensureCampTabLocationId();
+  if (!client || !locationId) {
+    body.innerHTML = `<div style="padding:20px;text-align:center;color:var(--muted);font-size:12px">Not connected. Refresh the page.</div>`;
+    return;
+  }
+
+  const now = Date.now();
+  if (!_acCache || (now - _acLastLoad) > 30_000) {
+    body.innerHTML = `<div style="padding:20px;text-align:center;color:var(--muted);font-size:12px">Loading recent Camp Tab activity…</div>`;
+    try {
+      // camp_guests exposes the guest name via the `name` column (not
+      // `guest_name`). The v1 of this feed queried guest_name and every
+      // hydrate errored with "column camp_guests_1.guest_name does not
+      // exist" — fixed here.
+      const { data: items, error } = await client
+        .from('camp_tab_items')
+        .select('id, item_name, category, price_local, currency, added_at, updated_at, created_by, updated_by, guest_id, camp_guests(id, name)')
+        .eq('location_id', locationId)
+        .order('added_at', { ascending:false })
+        .limit(500);
+      if (error) throw error;
+
+      // Resolve staff UIDs → display names via platform_profiles. Uses
+      // the same PROFILE_NAMES cache the item hover-tooltip populates,
+      // so repeat renders reuse names without extra round-trips.
+      const uids = [...new Set((items||[])
+        .flatMap(r => [r.created_by, r.updated_by])
+        .filter(Boolean))];
+      await resolveAuditNames(client, uids);
+      _acCache = { items: items || [] };
+      _acLastLoad = now;
+    } catch (e) {
+      body.innerHTML = `<div style="padding:20px;text-align:center;color:var(--red);font-size:12px">Load failed: ${String(e?.message || e)}</div>`;
+      return;
+    }
+  }
+
+  const items = _acCache.items;
+
+  // Populate the filter dropdowns on first render.
+  const staffSel = document.getElementById('acStaff');
+  const catSel   = document.getElementById('acCat');
+  if (staffSel && staffSel.options.length <= 1) {
+    const uids = [...new Set(items.map(r => r.created_by).filter(Boolean))];
+    staffSel.innerHTML = '<option value="all">Everyone</option>' +
+      uids.map(id => `<option value="${id}">${PROFILE_NAMES.get(id) || 'Unknown'}</option>`).join('');
+  }
+  if (catSel && catSel.options.length <= 1) {
+    const cats = [...new Set(items.map(r => r.category).filter(Boolean))].sort();
+    catSel.innerHTML = '<option value="all">All categories</option>' +
+      cats.map(c => `<option value="${c}">${c}</option>`).join('');
+  }
+
+  const staffF  = staffSel?.value  || 'all';
+  const catF    = catSel?.value    || 'all';
+  const periodF = document.getElementById('acPeriod')?.value || 'week';
+
+  const cutoff = (() => {
+    const d = new Date();
+    if (periodF === 'today') d.setUTCHours(0,0,0,0);
+    else if (periodF === 'week')  d.setUTCDate(d.getUTCDate() - 7);
+    else if (periodF === 'month') d.setUTCDate(d.getUTCDate() - 30);
+    else return null;
+    return d.toISOString();
+  })();
+
+  const filtered = items.filter(r => {
+    if (staffF !== 'all' && r.created_by !== staffF) return false;
+    if (catF   !== 'all' && r.category !== catF)     return false;
+    if (cutoff && String(r.added_at || '') < cutoff) return false;
+    return true;
+  });
+
+  if (!filtered.length) {
+    body.innerHTML = `<div style="padding:20px;text-align:center;color:var(--muted);font-size:12px;font-style:italic">No activity in this window. Change the filters or come back after some items are added.</div>`;
+    return;
+  }
+
+  const cur = filtered[0]?.currency || (typeof LOCAL_CURRENCY !== 'undefined' ? LOCAL_CURRENCY : 'LKR');
+  const total = filtered.reduce((s,r) => s + Number(r.price_local||0), 0);
+  const staffCount = new Set(filtered.map(r => r.created_by).filter(Boolean)).size;
+
+  const when = (iso) => {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    const nowD = new Date();
+    const diffMs = nowD - d;
+    if (diffMs < 60000) return 'just now';
+    const mins = Math.round(diffMs/60000);
+    if (mins < 60) return `${mins} min ago`;
+    const hrs = Math.round(mins/60);
+    if (hrs < 24) return `${hrs}h ago`;
+    const days = Math.round(hrs/24);
+    if (days < 7) return `${days}d ago`;
+    return d.toLocaleDateString('en-GB', { day:'numeric', month:'short' });
+  };
+
+  const rows = filtered.slice(0, 200).map(r => {
+    const who = PROFILE_NAMES.get(r.created_by) || 'Unknown';
+    const guest = r.camp_guests?.name || '—';
+    const edited = r.updated_by && r.updated_by !== r.created_by;
+    const editedByName = edited ? (PROFILE_NAMES.get(r.updated_by) || 'someone else') : null;
+    return `<div style="display:grid;grid-template-columns:1fr auto;gap:10px;padding:9px 14px;border-bottom:1px solid var(--border);font-size:12px${edited?';background:#fdf9ee':''}">
+      <div style="min-width:0">
+        <div style="color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><strong>${who}</strong> added <strong>${r.item_name||'item'}</strong> to <strong>${guest}</strong></div>
+        <div style="font-size:10px;color:var(--muted);margin-top:1px">${r.category||'—'} · ${when(r.added_at)}${edited?` · edited by ${editedByName} ${when(r.updated_at)}`:''}</div>
+      </div>
+      <div style="font-family:'DM Mono',monospace;font-weight:700;color:var(--navy);text-align:right;white-space:nowrap">${cur} ${Number(r.price_local||0).toFixed(0)}</div>
+    </div>`;
+  }).join('');
+
+  const summary = `<div style="display:flex;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);background:var(--bg);font-size:11px;color:var(--muted)">
+    <span><strong style="color:var(--navy)">${filtered.length}</strong> items</span> ·
+    <span><strong style="color:var(--navy)">${cur} ${Math.round(total).toLocaleString('en-GB')}</strong> total</span> ·
+    <span><strong style="color:var(--navy)">${staffCount}</strong> staff active</span>
+  </div>`;
+  const truncNote = filtered.length > 200
+    ? `<div style="padding:10px 14px;text-align:center;color:var(--muted);font-size:11px;font-style:italic">Showing 200 most recent of ${filtered.length}. Narrow the filters to see older rows.</div>`
+    : '';
+
+  body.innerHTML = summary + rows + truncNote;
 }
 
 function setTsCat(cat){
