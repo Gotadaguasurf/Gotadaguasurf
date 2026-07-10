@@ -147,6 +147,13 @@ td.loc-name{font-weight:700;color:var(--navy)}
 .period-row{margin-bottom:16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
 .period-row label{font-size:12px;color:var(--muted);font-weight:600;margin:0;text-transform:none;letter-spacing:0}
 .period-row select,.period-row input{padding:8px 12px;font-size:13px;width:auto;min-width:140px}
+/* Unified Period picker — same shape across camp-hub and HQ so users always
+   look for the same control in the top-right corner. */
+.period-picker{display:inline-flex;align-items:center;gap:8px;padding:4px 4px 4px 12px;background:#fff;border:1px solid var(--border);border-radius:20px;font-size:12px;color:var(--muted);font-weight:600;font-family:'Outfit',sans-serif}
+.period-picker-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
+.period-picker select{border:0;background:transparent;font-size:13px;font-weight:700;color:var(--navy);padding:4px 22px 4px 6px;cursor:pointer;font-family:'Outfit',sans-serif;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%236b8099' stroke-width='2'><polyline points='6 9 12 15 18 9'/></svg>");background-repeat:no-repeat;background-position:right 4px center}
+.period-picker select:focus{outline:none}
+.period-picker option{color:var(--ink)}
 .loading{padding:60px;text-align:center;color:var(--muted);font-size:14px}
 .dup-warn{background:var(--amber-bg);color:var(--amber);padding:10px 14px;border-radius:8px;font-size:12px;font-weight:600;margin-top:12px;display:none}
 .dup-warn.show{display:block}
@@ -520,12 +527,12 @@ function overviewTabHtml(){
           <div class="card-title">Overview</div>
           <div class="card-hint">Revenue in green, expenses in gray, profit big and colour-coded</div>
         </div>
-        <div class="period-row">
-          <label>Period</label>
+        <label class="period-picker" title="Filter by period">
+          <span class="period-picker-lbl">Period</span>
           <select id="ov_period" onchange="renderOverview()">
             <option value="__all__">All-time</option>
           </select>
-        </div>
+        </label>
       </div>
       <div class="card-body" id="overviewBody" style="padding:0">
         <div class="loading">Loading…</div>
