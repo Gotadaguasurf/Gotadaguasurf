@@ -153,6 +153,10 @@ td.loc-name{font-weight:700;color:var(--navy)}
 .hero-delta.pos{background:rgba(126,226,168,.18);color:#7ee2a8}
 .hero-delta.neg{background:rgba(255,149,145,.18);color:#ff9591}
 .section-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.14em;color:var(--muted);font-weight:700;padding:18px 22px 8px}
+.health-strip{display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:12px 22px;background:#fef9e7;border-bottom:1px solid #f0e0b0}
+.health-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.14em;color:var(--amber);font-weight:700;margin-right:4px}
+.health-chip{background:#fff;border:1px solid #f0e0b0;color:var(--amber);border-radius:14px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif;transition:background .15s, border-color .15s}
+.health-chip:hover{background:var(--amber);color:#fff;border-color:var(--amber)}
 /* Monthly trend — 12-month business profit bars. Height per bar is a
    percentage of the tallest absolute value in the window; positive
    bars grow from the baseline up, negative bars just get red styling
@@ -554,6 +558,35 @@ async function renderOverview(){
   });
   const trendMax = Math.max(1, ...trendData.map(d => Math.abs(d.profit)));
 
+  // Health check — cheap counts + a fetch of the two tiny side tables so
+  // the chip strip can flag what needs Miguel's attention right now.
+  const [reviewRes, dupRes, recurRes, transfersAll] = await Promise.all([
+    sb.from('hq_invoices').select('id', { count:'exact', head:true }).eq('needs_review', true),
+    sb.from('hq_invoices').select('id', { count:'exact', head:true }).eq('is_duplicate', true),
+    sb.from('hq_recurring_expenses').select('id, active, day_of_month, last_created_on').eq('active', true),
+    fetchAllPaged(() => sb.from('internal_transfers').select('from_company, to_company, amount_eur'))
+  ]);
+  const reviewCount = reviewRes.count || 0;
+  const dupCount    = dupRes.count    || 0;
+  const recDue      = (recurRes.data || []).filter(isRecurringDue).length;
+  // Inter-company net: any surviving pair with |amount| > €1 is unreconciled.
+  const pairSums = {};
+  (transfersAll || []).forEach(t => {
+    if (t.from_company && t.to_company && t.from_company !== t.to_company) {
+      const k = `${t.from_company}|${t.to_company}`;
+      pairSums[k] = (pairSums[k] || 0) + Number(t.amount_eur || 0);
+    }
+  });
+  let interCoCount = 0;
+  const seenPair = new Set();
+  for (const k of Object.keys(pairSums)) {
+    const [from, to] = k.split('|');
+    const rev = `${to}|${from}`;
+    if (seenPair.has(rev)) continue;
+    seenPair.add(k);
+    if (Math.abs((pairSums[k]||0) - (pairSums[rev]||0)) > 1) interCoCount++;
+  }
+
   // Period-over-period delta for the hero. Only meaningful when a specific
   // YYYY-MM is picked; All-time has nothing to compare against.
   let deltaHtml = `<div class="hero-sub">Total Revenue GotaDagua + on-site revenue − local expenses − HQ invoices (Miguel-Personal excluded)</div>`;
@@ -578,12 +611,25 @@ async function renderOverview(){
   }
 
   // Consistent colour rule: green=revenue/positive · red=negative · neutral=normal outflow
+  const healthChips = [];
+  if (reviewCount)  healthChips.push({label:`${reviewCount} to review`,        onclick:"goToInvoicesFilter('review')"});
+  if (dupCount)     healthChips.push({label:`${dupCount} duplicates`,          onclick:"goToInvoicesFilter('duplicate')"});
+  if (recDue)       healthChips.push({label:`${recDue} recurring due`,         onclick:"openRecurringPanel()"});
+  if (interCoCount) healthChips.push({label:`${interCoCount} inter-co unreconciled`, onclick:"switchTab('cashflow')"});
+
   body.innerHTML = `
     <div class="hero-profit ${businessProfit>=0?'pos':'neg'}">
       <div class="hero-lbl">Business profit ${isAll?'· all-time':'· '+period}</div>
       <div class="hero-val">${businessProfit>=0?'+':''}${eur(businessProfit)}</div>
       ${deltaHtml}
     </div>
+
+    ${healthChips.length ? `
+      <div class="health-strip">
+        <span class="health-lbl">Needs attention</span>
+        ${healthChips.map(c => `<button class="health-chip" onclick="${c.onclick}">⚠ ${c.label} →</button>`).join('')}
+      </div>
+    ` : ''}
 
     <div class="section-lbl">Revenue</div>
     <div class="summary-grid tight">
@@ -1533,6 +1579,20 @@ function toggleManualExtras(){
 }
 
 // ─── Edit an existing invoice: fetch, prefill, flag Save as an UPDATE ───
+// Jump to the Expenses tab with one of the review/duplicate/personal
+// toggles pre-checked. Called by the Overview health chips.
+function goToInvoicesFilter(which){
+  switchTab('invoices');
+  clearAllFilters();
+  const target = which === 'review' ? 'filter_review'
+              :  which === 'duplicate' ? 'filter_duplicate'
+              :  which === 'personal' ? 'filter_personal' : null;
+  if (target) {
+    const el = document.getElementById(target);
+    if (el) { el.checked = true; renderInvoiceList(); }
+  }
+}
+
 // ─── Filter change handlers ───────────────────────────────────────────
 // Debounced so typing in the search box doesn't hammer render.
 const onFilterChanged = debounce(() => renderInvoiceList(), 220);
