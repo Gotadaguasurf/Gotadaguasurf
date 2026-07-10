@@ -3242,6 +3242,12 @@ async function renderProfit(){
   const totPF = totBl + totLR - totLE - totHE;
 
   $('profitBody').innerHTML = `
+    <div class="hero-profit ${totPF>=0?'pos':'neg'}" style="margin:-24px -24px 20px;border-radius:0">
+      <div class="hero-lbl">Total profit ${isAll?'· all-time':'· '+period}</div>
+      <div class="hero-val">${totPF>=0?'+':''}${eur(totPF)}</div>
+      <div class="hero-sub">Bookings (net) + on-site revenue − local expenses − HQ invoices attributed to each location</div>
+    </div>
+
     <div style="overflow-x:auto"><table>
       <thead><tr>
         <th>Location</th>
@@ -3290,7 +3296,13 @@ function cashflowTabHtml(){
     .filter(l => l.slug !== 'general')   // no revenue on the "general" bucket
     .map(l => `<option value="${l.slug}" ${l.slug==='wild-wednesday'?'selected':''}>${l.label}</option>`).join('');
   return `
-    <div class="card">
+    <details class="add-block">
+      <summary class="add-block-sum">
+        <span class="add-block-title">+ Log revenue or transfer</span>
+        <span class="add-block-hint">Non-Bookinglayer revenue · Inter-company transfers — click to expand</span>
+        <span class="add-block-caret">▾</span>
+      </summary>
+    <div class="card" style="margin-top:14px">
       <div class="card-hdr">
         <div>
           <div class="card-title">Log manual revenue</div>
@@ -3415,6 +3427,7 @@ function cashflowTabHtml(){
         <div id="tr_toast" style="margin-top:10px"></div>
       </div>
     </div>
+    </details>
 
     <div class="card">
       <div class="card-hdr">
