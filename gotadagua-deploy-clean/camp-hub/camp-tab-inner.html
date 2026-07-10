@@ -1323,6 +1323,12 @@ function hydrateWeekStateFromRows(weekRows,guestRows,itemRows){
       ...(item.paid_at?{paidAt:item.paid_at}:{}),
       ...(meta.staffNote?{s:meta.staffNote}:{}),
       ...(item.price_type?{priceType:item.price_type}:{}),
+      // Audit fields — populated server-side by fn_stamp_audit_camp_tab.
+      // Names resolved from platform_profiles via resolveAuditNames() and
+      // shown on hover in the item row.
+      ...(item.created_by?{createdBy:item.created_by}:{}),
+      ...(item.updated_by?{updatedBy:item.updated_by}:{}),
+      ...(item.updated_at?{updatedAt:item.updated_at}:{}),
       sortOrder:Number(item.sort_order||0)
     });
   });
@@ -1489,6 +1495,40 @@ async function syncCampTabStaffToSupabase(){
     setTimeout(()=>{ if(_suppressGeneration===_gen) suppressRemoteSync=false; },800);
   }
 }
+// Audit name cache — resolves auth UIDs (created_by / updated_by on
+// camp_tab_items) to human-readable names once and reuses them on
+// every render. Populated by resolveAuditNames() after hydrate.
+const PROFILE_NAMES = new Map();
+async function resolveAuditNames(client, uids){
+  const needed = [...new Set(uids.filter(id => id && !PROFILE_NAMES.has(id)))];
+  if (!needed.length) return;
+  try {
+    const { data } = await client.from('platform_profiles')
+      .select('id, full_name, email')
+      .in('id', needed);
+    (data || []).forEach(p => {
+      PROFILE_NAMES.set(p.id, p.full_name || p.email || 'Unknown');
+    });
+    // Cache negative lookups too so we don't retry every render for a
+    // uid the caller can't see (RLS on platform_profiles, deleted user).
+    needed.forEach(id => { if (!PROFILE_NAMES.has(id)) PROFILE_NAMES.set(id, 'Unknown'); });
+  } catch (_e) {
+    needed.forEach(id => PROFILE_NAMES.set(id, 'Unknown'));
+  }
+}
+function auditTitleFor(item){
+  if (!item?.createdBy) return '';
+  const who = PROFILE_NAMES.get(item.createdBy) || 'Unknown';
+  const when = item.d ? `${item.d} ${String(item.t||'').padEnd(5)}` : '';
+  const editedBy = item.updatedBy && item.updatedBy !== item.createdBy
+    ? (PROFILE_NAMES.get(item.updatedBy) || 'someone else')
+    : null;
+  const editedWhen = editedBy ? String(item.updatedAt || '').slice(0,16).replace('T',' ') : '';
+  return editedBy
+    ? `Added by ${who} · ${when}\nEdited by ${editedBy} · ${editedWhen}`
+    : `Added by ${who} · ${when}`;
+}
+
 async function hydrateCampTabStateFromSupabase({mergeLocal=false}={}){
   const client=getCampTabSupabaseClient();
   const locationId=await ensureCampTabLocationId();
@@ -1496,7 +1536,7 @@ async function hydrateCampTabStateFromSupabase({mergeLocal=false}={}){
   const [{data:weekRows,error:weeksError},{data:guestRows,error:guestsError},{data:itemRows,error:itemsError}] = await Promise.all([
     client.from('camp_weeks').select('id,start_date,end_date,status,closed_at,draft_kind,meta').eq('location_id',locationId).order('start_date',{ascending:true}),
     client.from('camp_guests').select('id,week_id,name,booking_ref,is_staff,paid,paid_at,closed_at,checkin,checkout,pax,sort_order,meta').eq('location_id',locationId).order('sort_order',{ascending:true}),
-    client.from('camp_tab_items').select('id,guest_id,week_id,category,item_name,price_local,price_type,added_at,paid_at,sort_order,meta').eq('location_id',locationId).order('sort_order',{ascending:true})
+    client.from('camp_tab_items').select('id,guest_id,week_id,category,item_name,price_local,price_type,added_at,paid_at,sort_order,meta,created_by,updated_by,updated_at').eq('location_id',locationId).order('sort_order',{ascending:true})
   ]);
   if(weeksError||guestsError||itemsError){
     console.warn('Camp Tab state hydrate failed',weeksError||guestsError||itemsError);
@@ -1507,6 +1547,11 @@ async function hydrateCampTabStateFromSupabase({mergeLocal=false}={}){
     // After hydrate, sync's "what to delete" baseline is whatever we just loaded.
     // Anything the user removes AFTER this point becomes a legitimate delete.
     _lastLocalSnapshot=captureLocalSnapshotIds();
+    // Resolve audit UIDs to display names in the background so the next
+    // render can show "Added by X" tooltips on each POS item without
+    // blocking hydrate. Silent-fail — worst case tooltips show 'Unknown'.
+    const uids = (itemRows||[]).flatMap(r => [r.created_by, r.updated_by]);
+    resolveAuditNames(client, uids).catch(()=>{});
     return true;
   }
   if(mergeLocal && (S.activeWeek || S.nextWeek || (S.history||[]).length)){
@@ -2309,12 +2354,26 @@ function renderGuestList(){
   // person at a glance. Guests without bikeNo (Sri Lanka / Morocco /
   // Junior camp) render exactly as before — the chip stays hidden.
   el.innerHTML=rows.map(g=>{
-    const bikeChip = (g.bikeNo != null)
-      ? `<span style="display:inline-block;background:var(--ocean);color:#fff;border-radius:6px;padding:1px 6px;font-family:'DM Mono',monospace;font-size:10px;font-weight:800;margin-right:6px;vertical-align:1px">#${g.bikeNo}</span>`
+    // Defensive rendering: if bikeNo wasn't captured (parser missed it,
+    // realtime clobbered the local row before Supabase persisted, or the
+    // guest was imported before parseGuestLine existed), fall back to
+    // pulling it out of the display name. Keeps the chip + sort correct
+    // even when the underlying data lost the number field.
+    let bikeNo = g.bikeNo;
+    let displayName = String(g.name || '');
+    if (bikeNo == null) {
+      const parsed = parseGuestLine(displayName);
+      if (parsed.bikeNo != null) {
+        bikeNo = parsed.bikeNo;
+        displayName = parsed.name;
+      }
+    }
+    const bikeChip = (bikeNo != null)
+      ? `<span style="display:inline-block;background:var(--ocean);color:#fff;border-radius:6px;padding:1px 6px;font-family:'DM Mono',monospace;font-size:10px;font-weight:800;margin-right:6px;vertical-align:1px">#${bikeNo}</span>`
       : '';
     return `<div class="c-guest ${AG===g.id?'active':''}" onclick="selGuest('${esc(g.id)}')">
     <div style="min-width:0;flex:1">
-      <div class="c-guest-name">${bikeChip}${g.name}</div>
+      <div class="c-guest-name">${bikeChip}${displayName}</div>
       <div class="c-guest-amt">${gtot(g)>0?euro(gtot(g)):'no charges'}${currentRoster==='guests'&&isQueuedForNextWeek(g.name)?' / queued next week':''}</div>
     </div>
     ${isGuestFullyPaid(g)?'<div class="c-gpaid"></div>':''}
@@ -3257,7 +3316,8 @@ function renderThisWeek(){
             const delBtn = itemPaid
               ? ''
               : `<button class="tw-item-del" onclick="deleteGuestItem('${esc(g.id)}',${idx});event.stopPropagation()" title="Delete item">×</button>`;
-            return `<div class="tw-item-row${itemPaid?' paid':''}">
+            const auditTitle = auditTitleFor(i);
+            return `<div class="tw-item-row${itemPaid?' paid':''}"${auditTitle?` title="${esc(auditTitle)}"`:''}>
               <div class="tw-item-main">
                 <span>${i.n}${i.s?` <span style="font-size:10px;color:var(--muted)">· ${i.s}</span>`:''}</span>
                 <span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted)">${euro(i.p)}</span>
