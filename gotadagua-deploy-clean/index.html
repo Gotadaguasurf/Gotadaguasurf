@@ -251,8 +251,8 @@
     }
     .grid{
       display:grid;
-      grid-template-columns:repeat(4,minmax(0,1fr));
-      gap:16px;
+      grid-template-columns:repeat(5,minmax(0,1fr));
+      gap:14px;
     }
     .workspace-card{
       background:var(--card);
@@ -568,11 +568,17 @@
     }
     .ui-ic{display:inline-flex;width:18px;height:18px}
     .ui-ic svg{width:18px;height:18px;stroke:currentColor;stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round}
+    @media (max-width:1280px){
+      .grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+    }
     @media (max-width:1080px){
       .hero,.two-col,.access-grid{grid-template-columns:1fr}
-      .grid{grid-template-columns:1fr 1fr}
+      .grid{grid-template-columns:repeat(3,minmax(0,1fr))}
       .overview-grid{grid-template-columns:1fr 1fr}
       .hero-kpis{grid-template-columns:1fr 1fr 1fr}
+    }
+    @media (max-width:820px){
+      .grid{grid-template-columns:repeat(2,minmax(0,1fr))}
     }
     @media (max-width:900px){
       .access-user-top{
@@ -3485,5 +3491,22 @@
       input.value = '';
     }
   </script>
+<script>
+// App switcher & location switcher — close on click-outside + Escape.
+// Native <details> doesn't do this: without it the menu stays stuck
+// open until you click it directly, which reads as broken.
+(function(){
+  document.addEventListener('click', function(e){
+    document.querySelectorAll('details.app-switch[open]').forEach(function(d){
+      if (!d.contains(e.target)) d.open = false;
+    });
+  });
+  document.addEventListener('keydown', function(e){
+    if (e.key === 'Escape') {
+      document.querySelectorAll('details.app-switch[open]').forEach(function(d){ d.open = false; });
+    }
+  });
+})();
+</script>
 </body>
 </html>

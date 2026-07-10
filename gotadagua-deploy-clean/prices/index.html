@@ -434,7 +434,7 @@ body.view-list .drag-handle{display:none}
     </details>
     <details class="app-switch loc-switch" id="pricesLocSwitch">
       <summary>
-        <span>📍 <span id="pricesLocLabel">Sri Lanka</span></span>
+        <span id="pricesLocLabel">Sri Lanka</span>
         <span class="app-switch-caret">▾</span>
       </summary>
       <nav class="app-switch-menu">
@@ -3309,6 +3309,20 @@ function pmfMoney(amount, currency){
 }
 
 window.downloadPriceListPDF = downloadPriceListPDF;
+
+// App switcher & location switcher — close on click-outside + Escape.
+// Native <details> doesn't do this: without it the menu stays stuck
+// open until you click it directly, which reads as broken.
+document.addEventListener('click', function(e){
+  document.querySelectorAll('details.app-switch[open]').forEach(function(d){
+    if (!d.contains(e.target)) d.open = false;
+  });
+});
+document.addEventListener('keydown', function(e){
+  if (e.key === 'Escape') {
+    document.querySelectorAll('details.app-switch[open]').forEach(function(d){ d.open = false; });
+  }
+});
 </script>
 
 </body>
