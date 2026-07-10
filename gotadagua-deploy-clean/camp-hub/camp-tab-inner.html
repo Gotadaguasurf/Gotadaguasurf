@@ -1080,7 +1080,12 @@ function normalizeConsumerRows(rows){
     ...(row?.bookingRef?{bookingRef:String(row.bookingRef).trim()}:{}),
     ...(row?.bookingCi?{bookingCi:Number(row.bookingCi)}:{}),
     ...(row?.bookingCo?{bookingCo:Number(row.bookingCo)}:{}),
-    ...(row?.bookingPax?{bookingPax:Math.max(1,parseInt(row.bookingPax,10)||1)}:{})
+    ...(row?.bookingPax?{bookingPax:Math.max(1,parseInt(row.bookingPax,10)||1)}:{}),
+    // Portugal bike number — preserved through normalisation. Without
+    // this, rosterRows() would silently strip the number saveNewGuest
+    // parsed out of "#99 Testo", every render would re-normalise, and
+    // the #99 chip would vanish on the next paint. bug reproduced live.
+    ...(row?.bikeNo != null && Number.isFinite(Number(row.bikeNo)) ? {bikeNo: Number(row.bikeNo)} : {})
   })).filter(row=>row.name);
 }
 function ensureWeekShape(wk){
