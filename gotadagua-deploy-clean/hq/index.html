@@ -4226,5 +4226,19 @@ function escapeHtml(s){
 function debounce(fn, ms){
   let t; return function(...a){ clearTimeout(t); t = setTimeout(()=>fn.apply(this,a), ms); };
 }
+
+// App switcher & location switcher — close on click-outside + Escape.
+// Native <details> doesn't do this: without it the menu stays stuck
+// open until you click it directly, which reads as broken.
+document.addEventListener('click', function(e){
+  document.querySelectorAll('details.app-switch[open]').forEach(function(d){
+    if (!d.contains(e.target)) d.open = false;
+  });
+});
+document.addEventListener('keydown', function(e){
+  if (e.key === 'Escape') {
+    document.querySelectorAll('details.app-switch[open]').forEach(function(d){ d.open = false; });
+  }
+});
 </script>
 </body></html>

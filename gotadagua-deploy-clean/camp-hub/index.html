@@ -568,7 +568,7 @@ td.r{text-align:right;font-family:'DM Mono',monospace;font-size:12px}
     </details>
     <details class="app-switch loc-switch" id="hubLocSwitch">
       <summary>
-        <span>📍 <span id="hubLocLabel">Sri Lanka</span></span>
+        <span id="hubLocLabel">Sri Lanka</span>
         <span class="app-switch-caret">▾</span>
       </summary>
       <nav class="app-switch-menu">
@@ -9678,6 +9678,20 @@ async function requirePlatformSession(){
   }
 }
 requirePlatformSession();
+
+// App switcher & location switcher — close on click-outside + Escape.
+// Native <details> doesn't do this: without it the menu stays stuck
+// open until you click it directly, which reads as broken.
+document.addEventListener('click', function(e){
+  document.querySelectorAll('details.app-switch[open]').forEach(function(d){
+    if (!d.contains(e.target)) d.open = false;
+  });
+});
+document.addEventListener('keydown', function(e){
+  if (e.key === 'Escape') {
+    document.querySelectorAll('details.app-switch[open]').forEach(function(d){ d.open = false; });
+  }
+});
 
 </script>
 
