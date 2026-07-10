@@ -193,7 +193,6 @@ td.loc-name{font-weight:700;color:var(--navy)}
     <div class="nav-tabs" id="hqNavTabs" style="display:none">
       <button class="nav-tab active" data-tab="overview" onclick="switchTab('overview')">Overview</button>
       <button class="nav-tab" data-tab="invoices" onclick="switchTab('invoices')">Expenses</button>
-      <button class="nav-tab" data-tab="profit" onclick="switchTab('profit')">Profit per location</button>
       <button class="nav-tab" data-tab="cashflow" onclick="switchTab('cashflow')">Cash flow</button>
     </div>
   </div>
@@ -362,7 +361,6 @@ function render(){
   $('mainWrap').innerHTML = `
     <div class="tab-pane active" id="tab-overview">${overviewTabHtml()}</div>
     <div class="tab-pane" id="tab-invoices">${invoicesTabHtml()}</div>
-    <div class="tab-pane" id="tab-profit">${profitTabHtml()}</div>
     <div class="tab-pane" id="tab-cashflow">${cashflowTabHtml()}</div>
   `;
   wireInvoiceForm();
@@ -374,7 +372,6 @@ function render(){
 function switchTab(name){
   document.querySelectorAll('.nav-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
   document.querySelectorAll('.tab-pane').forEach(p => p.classList.toggle('active', p.id === 'tab-'+name));
-  if (name === 'profit')   { populatePeriods().then(renderProfit); }
   if (name === 'overview') { renderOverview(); }
   if (name === 'invoices') { renderInvoiceList(); }
   if (name === 'cashflow') { renderCashflow(); }
@@ -470,6 +467,46 @@ async function renderOverview(){
   const localExp    = lgRows.filter(r => r.type==='expense').reduce((s,r)=>s+Number(r.amount_eur||0), 0);
   const businessProfit = totalRevenue + localRev - localExp - hqTotal;
 
+  // Per-location breakdown — same data buckets renderProfit used to fetch on
+  // its own tab, now folded into the aggregate view so the story reads top-
+  // down: business profit → revenue tiles → expense tiles → who contributed.
+  const locIdToSlug = new Map(LOCATIONS.map(l => [l.id, l.slug]));
+  const attribOf = (r) => r.attributed_location || locIdToSlug.get(r.location_id) || 'unknown';
+  const byLoc = {};
+  const ensureLoc = (key) => { if (!byLoc[key]) byLoc[key] = {slug:key, blRev:0, localRev:0, expenses:0, hqExpenses:0}; return byLoc[key]; };
+  HQ_LOCATIONS.forEach(l => ensureLoc(l.slug));
+
+  bkRows.forEach(r => {
+    const slug = locNameToSlug(r.location);
+    if (!slug) return;
+    ensureLoc(slug).blRev += Number(r.net_amount ?? r.total ?? 0);
+  });
+  lgRows.forEach(r => {
+    const row = ensureLoc(attribOf(r));
+    const amt = Number(r.amount_eur||0);
+    if (r.type === 'revenue') row.localRev += amt;
+    else if (r.type === 'expense') row.expenses += amt;
+  });
+  invRows.forEach(r => {
+    if (personalCatIds.has(r.category_id)) return;
+    ensureLoc(r.location_slug || 'general').hqExpenses += Number(r.amount_eur || 0);
+  });
+
+  const locRows = Object.values(byLoc).map(r => ({
+    ...r,
+    label: locLabel(r.slug),
+    profit: r.blRev + r.localRev - r.expenses - r.hqExpenses
+  })).sort((a,b) => {
+    if (a.slug === 'general') return 1;
+    if (b.slug === 'general') return -1;
+    return Math.abs(b.profit) - Math.abs(a.profit);
+  });
+  const locTotBl = locRows.reduce((s,r)=>s+r.blRev,0);
+  const locTotLR = locRows.reduce((s,r)=>s+r.localRev,0);
+  const locTotLE = locRows.reduce((s,r)=>s+r.expenses,0);
+  const locTotHE = locRows.reduce((s,r)=>s+r.hqExpenses,0);
+  const locTotPF = locTotBl + locTotLR - locTotLE - locTotHE;
+
   // Consistent colour rule: green=revenue/positive · red=negative · neutral=normal outflow
   body.innerHTML = `
     <div class="hero-profit ${businessProfit>=0?'pos':'neg'}">
@@ -536,7 +573,37 @@ async function renderOverview(){
       </div>
     </div>
 
-    <div class="hint" style="padding:14px 22px 4px">${bkCount} booking${bkCount===1?'':'s'} in the selected period · numbers match the <a href="/partners/" style="color:var(--ocean);font-weight:600">Partners app</a>.</div>
+    <div class="section-lbl">Profit per location</div>
+    <div style="overflow-x:auto;padding:0 22px 4px"><table>
+      <thead><tr>
+        <th>Location</th>
+        <th class="r">Bookinglayer</th>
+        <th class="r">On-site rev</th>
+        <th class="r">Local expenses</th>
+        <th class="r">HQ invoices</th>
+        <th class="r">Profit</th>
+      </tr></thead>
+      <tbody>
+        ${locRows.map(r => `<tr>
+          <td class="loc-name">${r.label}</td>
+          <td class="r">${eur(r.blRev)}</td>
+          <td class="r">${eur(r.localRev)}</td>
+          <td class="r">${eur(r.expenses)}</td>
+          <td class="r">${eur(r.hqExpenses)}</td>
+          <td class="r ${r.profit>0?'pos':r.profit<0?'neg':'zero'}">${r.profit>=0?'+':''}${eur(r.profit)}</td>
+        </tr>`).join('')}
+        <tr style="background:var(--foam);font-weight:700">
+          <td class="loc-name">Total</td>
+          <td class="r">${eur(locTotBl)}</td>
+          <td class="r">${eur(locTotLR)}</td>
+          <td class="r">${eur(locTotLE)}</td>
+          <td class="r">${eur(locTotHE)}</td>
+          <td class="r ${locTotPF>0?'pos':locTotPF<0?'neg':'zero'}">${locTotPF>=0?'+':''}${eur(locTotPF)}</td>
+        </tr>
+      </tbody>
+    </table></div>
+
+    <div class="hint" style="padding:14px 22px 4px">${bkCount} booking${bkCount===1?'':'s'} in the selected period · numbers match the <a href="/partners/" style="color:var(--ocean);font-weight:600">Partners app</a>.<br>Local expenses use <code>attributed_location</code> when set — otherwise the row's own location.</div>
   `;
 }
 
