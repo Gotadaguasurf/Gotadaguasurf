@@ -150,6 +150,23 @@ td.loc-name{font-weight:700;color:var(--navy)}
 .hero-profit.neg .hero-val{color:#ff9591}
 .hero-profit .hero-sub{font-size:13px;color:#cfe1f0;max-width:640px;margin:0 auto;position:relative}
 .section-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.14em;color:var(--muted);font-weight:700;padding:18px 22px 8px}
+/* Monthly trend — 12-month business profit bars. Height per bar is a
+   percentage of the tallest absolute value in the window; positive
+   bars grow from the baseline up, negative bars just get red styling
+   (we don't inverse-draw them below a zero line for simplicity). */
+.trend-wrap{padding:0 22px 4px}
+.trend-chart{display:flex;gap:8px;align-items:flex-end;height:140px;padding:8px 0 0;border-bottom:1px solid var(--border)}
+.trend-col{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:4px;position:relative;cursor:default}
+.trend-col.selected{position:relative}
+.trend-col.selected::before{content:'';position:absolute;top:-4px;left:-4px;right:-4px;bottom:-4px;border:2px solid var(--ocean);border-radius:6px;pointer-events:none}
+.trend-val{font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;text-align:center}
+.trend-bar-track{width:100%;flex:1;display:flex;align-items:flex-end;justify-content:center}
+.trend-bar{width:100%;max-width:32px;border-radius:3px 3px 0 0;transition:opacity .15s}
+.trend-bar.pos{background:linear-gradient(180deg,#7ee2a8,var(--green))}
+.trend-bar.neg{background:linear-gradient(180deg,#ff9591,var(--red))}
+.trend-col:hover .trend-bar{opacity:.75}
+.trend-lbl{font-size:11px;color:var(--muted);font-family:'DM Mono',monospace;padding-top:2px}
+.trend-yr{opacity:.5;font-size:9px}
 /* Collapsible + Add block in Despesas HQ — invoice list is the main view. */
 .add-block{background:#fff;border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--sh);margin-bottom:28px;overflow:hidden}
 .add-block > .add-block-sum{list-style:none;cursor:pointer;padding:14px 22px;display:flex;align-items:center;gap:14px;transition:background .15s;user-select:none}
@@ -427,16 +444,15 @@ async function renderOverview(){
 
   body.innerHTML = `<div class="loading">Loading…</div>`;
 
-  // ── Fetch data (paginated — Supabase caps at 1000 per request) ─────
-  const [bkRows, invRowsAll, lgRowsAll] = await Promise.all([
-    fetchAllPaged(() => {
-      let q = sb.from('bookings').select('total, net_amount, commission_amount, partner_name, booking_type, month_key, pax').order('check_in_on', {ascending:true});
-      if (!isAll) q = q.eq('month_key', period);
-      return q;
-    }),
+  // ── Fetch ALL-time data (paginated) so the trend chart at the bottom
+  //    can render every month without a second round-trip. The current-
+  //    period KPIs are filtered client-side.
+  const [bkRowsAll, invRowsAll, lgRowsAll] = await Promise.all([
+    fetchAllPaged(() => sb.from('bookings').select('total, net_amount, commission_amount, partner_name, booking_type, month_key, pax, location, check_in_on').order('check_in_on', {ascending:true})),
     fetchAllPaged(() => sb.from('hq_invoices').select('location_slug, amount_eur, category_id, invoice_date').order('invoice_date', {ascending:false})),
     fetchAllPaged(() => sb.from('ledger_entries').select('type, amount_eur, entry_date, paid_from, attributed_location, location_id').order('entry_date', {ascending:false}))
   ]);
+  const bkRows  = isAll ? bkRowsAll : bkRowsAll.filter(r => r.month_key === period);
   const invRows = invRowsAll.filter(r => isAll || String(r.invoice_date||'').slice(0,7) === period);
   const lgRows  = lgRowsAll.filter(r => isAll || String(r.entry_date||'').slice(0,7) === period);
 
@@ -506,6 +522,34 @@ async function renderOverview(){
   const locTotLE = locRows.reduce((s,r)=>s+r.expenses,0);
   const locTotHE = locRows.reduce((s,r)=>s+r.hqExpenses,0);
   const locTotPF = locTotBl + locTotLR - locTotLE - locTotHE;
+
+  // ── Monthly trend — business profit over the last 12 months ────────
+  // Aggregates from the ALL-time datasets so the chart is stable regardless
+  // of the period picked at the top. Highlights the selected month when
+  // period is a specific YYYY-MM.
+  const monthly = {};
+  const bumpMonth = (m, key, amt) => {
+    if (!m) return;
+    if (!monthly[m]) monthly[m] = { rev:0, hqExp:0, locExp:0, locRev:0 };
+    monthly[m][key] += Number(amt || 0);
+  };
+  bkRowsAll.forEach(b => bumpMonth(b.month_key, 'rev', b.net_amount ?? b.total ?? 0));
+  invRowsAll.forEach(r => {
+    if (personalCatIds.has(r.category_id)) return;
+    bumpMonth(String(r.invoice_date||'').slice(0,7), 'hqExp', r.amount_eur);
+  });
+  lgRowsAll.forEach(r => {
+    const m = String(r.entry_date||'').slice(0,7);
+    if (r.type === 'revenue') bumpMonth(m, 'locRev', r.amount_eur);
+    else if (r.type === 'expense') bumpMonth(m, 'locExp', r.amount_eur);
+  });
+  const allMonths = Object.keys(monthly).sort();
+  const trendMonths = allMonths.slice(-12);
+  const trendData = trendMonths.map(m => {
+    const b = monthly[m];
+    return { month: m, profit: b.rev + b.locRev - b.hqExp - b.locExp };
+  });
+  const trendMax = Math.max(1, ...trendData.map(d => Math.abs(d.profit)));
 
   // Consistent colour rule: green=revenue/positive · red=negative · neutral=normal outflow
   body.innerHTML = `
@@ -602,6 +646,28 @@ async function renderOverview(){
         </tr>
       </tbody>
     </table></div>
+
+    ${trendData.length > 1 ? `
+      <div class="section-lbl">Monthly trend · business profit</div>
+      <div class="trend-wrap">
+        <div class="trend-chart">
+          ${trendData.map(d => {
+            const heightPct = Math.max(2, Math.round(Math.abs(d.profit) / trendMax * 100));
+            const cls = d.profit >= 0 ? 'pos' : 'neg';
+            const selected = (!isAll && d.month === period) ? ' selected' : '';
+            const yr = d.month.slice(2,4), mo = d.month.slice(5);
+            return `
+              <div class="trend-col${selected}" title="${d.month} · ${d.profit>=0?'+':''}${eur(d.profit)}">
+                <div class="trend-val">${d.profit>=0?'+':''}${eur(Math.round(d.profit))}</div>
+                <div class="trend-bar-track">
+                  <div class="trend-bar ${cls}" style="height:${heightPct}%"></div>
+                </div>
+                <div class="trend-lbl">${mo}<span class="trend-yr">/${yr}</span></div>
+              </div>`;
+          }).join('')}
+        </div>
+      </div>
+    ` : ''}
 
     <div class="hint" style="padding:14px 22px 4px">${bkCount} booking${bkCount===1?'':'s'} in the selected period · numbers match the <a href="/partners/" style="color:var(--ocean);font-weight:600">Partners app</a>.<br>Local expenses use <code>attributed_location</code> when set — otherwise the row's own location.</div>
   `;
