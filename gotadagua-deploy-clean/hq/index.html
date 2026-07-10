@@ -174,6 +174,14 @@ td.loc-name{font-weight:700;color:var(--navy)}
 .health-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.14em;color:var(--amber);font-weight:700;margin-right:4px}
 .health-chip{background:#fff;border:1px solid #f0e0b0;color:var(--amber);border-radius:14px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif;transition:background .15s, border-color .15s}
 .health-chip:hover{background:var(--amber);color:#fff;border-color:var(--amber)}
+.digest-strip{display:flex;align-items:center;flex-wrap:wrap;gap:10px;padding:12px 22px;background:#f4f9fd;border-bottom:1px solid #dce8f2}
+.digest-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.14em;color:var(--ocean);font-weight:700}
+.digest-hint{font-size:12px;color:var(--muted);margin-right:auto}
+.digest-btn{background:#fff;border:1px solid var(--border);color:var(--ink);border-radius:14px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif;transition:background .15s, border-color .15s}
+.digest-btn:hover{background:var(--foam);border-color:var(--ocean)}
+.digest-btn.primary{background:var(--ocean);border-color:var(--ocean);color:#fff}
+.digest-btn.primary:hover{background:#175a8f;border-color:#175a8f}
+.digest-btn:disabled{opacity:.5;cursor:wait}
 /* Monthly trend — 12-month business profit bars. Height per bar is a
    percentage of the tallest absolute value in the window; positive
    bars grow from the baseline up, negative bars just get red styling
@@ -661,6 +669,13 @@ async function renderOverview(){
       </div>
     ` : ''}
 
+    <div class="digest-strip">
+      <span class="digest-lbl">Weekly digest</span>
+      <span class="digest-hint">Last full Mon–Sun as an email</span>
+      <button class="digest-btn" onclick="previewWeeklyDigest()">Preview</button>
+      <button class="digest-btn primary" onclick="sendWeeklyDigest()">Send to accounting@</button>
+    </div>
+
     <div class="section-lbl">Revenue</div>
     <div class="summary-grid tight">
       <div class="summary-box pos">
@@ -773,6 +788,69 @@ async function renderOverview(){
 
     <div class="hint" style="padding:14px 22px 4px">${bkCount} booking${bkCount===1?'':'s'} in the selected period · numbers match the <a href="/partners/" style="color:var(--ocean);font-weight:600">Partners app</a>.<br>Local expenses use <code>attributed_location</code> when set — otherwise the row's own location.</div>
   `;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//   WEEKLY DIGEST — Preview + Send from the Overview
+//   Backed by the hq-weekly-digest Edge Function. Uses the caller's
+//   JWT so the function's is_hq_member gate protects it; the function
+//   itself queries with the service role, cron path unchanged.
+// ═══════════════════════════════════════════════════════════════════
+async function _digestFetch(qs, body){
+  const { data: sessionData } = await sb.auth.getSession();
+  const jwt = sessionData?.session?.access_token || '';
+  if (!jwt) throw new Error('Not signed in');
+  const url = `${cfg.url}/functions/v1/hq-weekly-digest${qs ? '?' + qs : ''}`;
+  return fetch(url, {
+    method: body ? 'POST' : 'GET',
+    headers: {
+      'Authorization': `Bearer ${jwt}`,
+      'Content-Type': 'application/json',
+      'apikey': cfg.anonKey,
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+}
+
+async function previewWeeklyDigest(){
+  const btns = document.querySelectorAll('.digest-btn');
+  btns.forEach(b => b.disabled = true);
+  try {
+    const resp = await _digestFetch('preview=1');
+    if (!resp.ok) {
+      const err = await resp.text();
+      alert(`Preview failed (${resp.status}):\n${err.slice(0, 300)}`);
+      return;
+    }
+    const html = await resp.text();
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
+    // Blob URL stays valid until the tab is closed — no revoke needed here.
+  } catch (e) {
+    alert(`Preview error: ${e.message || e}`);
+  } finally {
+    btns.forEach(b => b.disabled = false);
+  }
+}
+
+async function sendWeeklyDigest(){
+  if (!confirm("Send the weekly digest email to accounting@gotadaguasurf.com now?")) return;
+  const btns = document.querySelectorAll('.digest-btn');
+  btns.forEach(b => b.disabled = true);
+  try {
+    const resp = await _digestFetch('', { to: 'accounting@gotadaguasurf.com' });
+    const result = await resp.json().catch(() => ({}));
+    if (!resp.ok || result?.error) {
+      alert(`Send failed:\n${result?.error || resp.statusText}`);
+      return;
+    }
+    alert(`✓ Sent to accounting@gotadaguasurf.com\nProfit: €${Math.round(result.profit).toLocaleString('en-GB')}`);
+  } catch (e) {
+    alert(`Send error: ${e.message || e}`);
+  } finally {
+    btns.forEach(b => b.disabled = false);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════

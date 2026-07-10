@@ -27,8 +27,9 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 const CLIENT_ID     = Deno.env.get('GOOGLE_OAUTH_CLIENT_ID') || ''
 const CLIENT_SECRET = Deno.env.get('GOOGLE_OAUTH_CLIENT_SECRET') || ''
 const SUPABASE_URL  = Deno.env.get('SUPABASE_URL') || ''
+const ANON_KEY      = Deno.env.get('SUPABASE_ANON_KEY') || ''
 const SERVICE_KEY   = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
-const DEFAULT_TO    = Deno.env.get('DIGEST_TO_EMAIL') || 'miguel@gotadaguasurf.com'
+const DEFAULT_TO    = Deno.env.get('DIGEST_TO_EMAIL') || 'accounting@gotadaguasurf.com'
 
 const CORS = {
   'access-control-allow-origin': '*',
@@ -351,12 +352,22 @@ function renderText(label: string, wk: WeekNumbers): string {
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
 
-  // Auth gate: service-role only. pg_cron passes it via Authorization; a
-  // manual curl from Miguel would too. No user-JWT path — this reads
-  // financial data across every workspace.
+  // Auth gate: accept either the service-role key (pg_cron path) OR a
+  // valid user JWT belonging to an HQ member (browser Preview/Send button
+  // path). Data queries always use the service client anyway, so RLS
+  // doesn't matter — we just need proof of identity + HQ membership.
   const auth = req.headers.get('authorization') || ''
   const key = auth.replace(/^Bearer\s+/i, '')
-  if (key !== SERVICE_KEY) return jsonResp({ error: 'Service role required' }, 401)
+  if (!key) return jsonResp({ error: 'Missing Authorization' }, 401)
+  if (key !== SERVICE_KEY) {
+    const userClient = createClient(SUPABASE_URL, ANON_KEY, {
+      global: { headers: { Authorization: `Bearer ${key}` } },
+    })
+    const { data: { user }, error: authErr } = await userClient.auth.getUser()
+    if (authErr || !user) return jsonResp({ error: 'Invalid auth' }, 401)
+    const { data: isHq, error: rpcErr } = await userClient.rpc('is_hq_member')
+    if (rpcErr || !isHq) return jsonResp({ error: 'HQ member required' }, 403)
+  }
 
   const url = new URL(req.url)
   const preview = url.searchParams.get('preview') === '1'
