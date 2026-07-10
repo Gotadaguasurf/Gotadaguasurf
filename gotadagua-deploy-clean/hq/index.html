@@ -149,6 +149,9 @@ td.loc-name{font-weight:700;color:var(--navy)}
 .hero-profit.pos .hero-val{color:#7ee2a8}
 .hero-profit.neg .hero-val{color:#ff9591}
 .hero-profit .hero-sub{font-size:13px;color:#cfe1f0;max-width:640px;margin:0 auto;position:relative}
+.hero-delta{display:inline-block;padding:2px 10px;border-radius:12px;font-weight:700;font-size:12px;margin-right:6px}
+.hero-delta.pos{background:rgba(126,226,168,.18);color:#7ee2a8}
+.hero-delta.neg{background:rgba(255,149,145,.18);color:#ff9591}
 .section-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.14em;color:var(--muted);font-weight:700;padding:18px 22px 8px}
 /* Monthly trend — 12-month business profit bars. Height per bar is a
    percentage of the tallest absolute value in the window; positive
@@ -551,12 +554,35 @@ async function renderOverview(){
   });
   const trendMax = Math.max(1, ...trendData.map(d => Math.abs(d.profit)));
 
+  // Period-over-period delta for the hero. Only meaningful when a specific
+  // YYYY-MM is picked; All-time has nothing to compare against.
+  let deltaHtml = `<div class="hero-sub">Total Revenue GotaDagua + on-site revenue − local expenses − HQ invoices (Miguel-Personal excluded)</div>`;
+  if (!isAll) {
+    const [py, pm] = period.split('-').map(Number);
+    const prevD = new Date(Date.UTC(py, pm - 2, 1));   // one month before period
+    const prevKey = `${prevD.getUTCFullYear()}-${String(prevD.getUTCMonth()+1).padStart(2,'0')}`;
+    const prevMonthly = monthly[prevKey];
+    if (prevMonthly) {
+      const prevProfit = prevMonthly.rev + prevMonthly.locRev - prevMonthly.hqExp - prevMonthly.locExp;
+      const delta = businessProfit - prevProfit;
+      const abs = Math.abs(prevProfit);
+      const pct = abs > 0.5 ? ((delta / abs) * 100) : null;
+      const up = delta >= 0;
+      const arrow = up ? '↑' : '↓';
+      const cls = up ? 'pos' : 'neg';
+      const pctStr = pct == null ? '' : ` (${up?'+':''}${pct.toFixed(1)}%)`;
+      deltaHtml = `<div class="hero-sub"><span class="hero-delta ${cls}">${arrow} ${up?'+':''}${eur(delta)}${pctStr}</span> vs ${prevKey}</div>`;
+    } else {
+      deltaHtml = `<div class="hero-sub">No data for ${prevKey} to compare against</div>`;
+    }
+  }
+
   // Consistent colour rule: green=revenue/positive · red=negative · neutral=normal outflow
   body.innerHTML = `
     <div class="hero-profit ${businessProfit>=0?'pos':'neg'}">
       <div class="hero-lbl">Business profit ${isAll?'· all-time':'· '+period}</div>
       <div class="hero-val">${businessProfit>=0?'+':''}${eur(businessProfit)}</div>
-      <div class="hero-sub">Total Revenue GotaDagua + on-site revenue − local expenses − HQ invoices (Miguel-Personal excluded)</div>
+      ${deltaHtml}
     </div>
 
     <div class="section-lbl">Revenue</div>
