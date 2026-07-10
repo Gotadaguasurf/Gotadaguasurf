@@ -131,7 +131,34 @@ td.loc-name{font-weight:700;color:var(--navy)}
 .action-btn.danger{color:var(--red)}
 .action-btn.danger:hover{background:var(--red-bg)}
 .summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:18px}
-.summary-box{background:var(--foam);border:1px solid var(--border);border-radius:8px;padding:14px}
+.summary-grid.tight{gap:10px;margin-bottom:14px;padding:0 22px}
+.summary-box{background:#fff;border:1px solid var(--border);border-radius:8px;padding:14px}
+/* Semantic colour rule — one meaning per shade, applied everywhere. */
+.summary-box.pos{border-left:4px solid var(--green);background:#f5fbf7}
+.summary-box.pos .summary-val{color:var(--green)}
+.summary-box.neg{border-left:4px solid var(--red);background:#fdf6f5}
+.summary-box.neg .summary-val{color:var(--red)}
+.summary-box.neutral{border-left:4px solid #b8c8d6;background:#f7fafd}
+.summary-box.neutral .summary-val{color:var(--ink)}
+/* Hero: single dominant number at the top of Overview */
+.hero-profit{background:linear-gradient(135deg,var(--foam),#fff);border-bottom:1px solid var(--border);padding:34px 22px 30px;text-align:center}
+.hero-profit .hero-lbl{font-size:11px;text-transform:uppercase;letter-spacing:.18em;color:var(--muted);font-weight:700}
+.hero-profit .hero-val{font-family:'DM Serif Display',serif;font-size:58px;line-height:1.05;margin:8px 0 6px}
+.hero-profit.pos .hero-val{color:var(--green)}
+.hero-profit.neg .hero-val{color:var(--red)}
+.hero-profit .hero-sub{font-size:12px;color:var(--muted);max-width:640px;margin:0 auto}
+.section-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.14em;color:var(--muted);font-weight:700;padding:18px 22px 8px}
+/* Collapsible + Add block in Despesas HQ — invoice list is the main view. */
+.add-block{background:#fff;border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--sh);margin-bottom:28px;overflow:hidden}
+.add-block > .add-block-sum{list-style:none;cursor:pointer;padding:14px 22px;display:flex;align-items:center;gap:14px;transition:background .15s;user-select:none}
+.add-block > .add-block-sum::-webkit-details-marker{display:none}
+.add-block > .add-block-sum:hover{background:var(--foam)}
+.add-block-title{font-family:'DM Serif Display',serif;font-size:18px;color:var(--navy)}
+.add-block-hint{font-size:12px;color:var(--muted);flex:1}
+.add-block-caret{font-size:14px;color:var(--muted);transition:transform .2s}
+.add-block[open] .add-block-caret{transform:rotate(180deg)}
+.add-block[open] > .add-block-sum{border-bottom:1px solid var(--border)}
+.add-block > .card{margin:14px !important;box-shadow:none;border:1px solid var(--border)}
 .summary-lbl{font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px}
 .summary-val{font-family:'DM Mono',monospace;font-size:20px;font-weight:600;color:var(--navy)}
 </style>
@@ -357,10 +384,10 @@ function switchTab(name){
 function overviewTabHtml(){
   return `
     <div class="card">
-      <div class="card-hdr">
+      <div class="card-hdr" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
         <div>
-          <div class="card-title">Bookinglayer revenue</div>
-          <div class="card-hint">Live totals — matches the numbers you see in Partners</div>
+          <div class="card-title">Overview</div>
+          <div class="card-hint">Revenue in green, expenses in gray, profit big and colour-coded</div>
         </div>
         <div class="period-row">
           <label>Period</label>
@@ -369,19 +396,7 @@ function overviewTabHtml(){
           </select>
         </div>
       </div>
-      <div class="card-body" id="blKpiBody">
-        <div class="loading">Loading bookings…</div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-hdr">
-        <div>
-          <div class="card-title">Operations overview</div>
-          <div class="card-hint">HQ expenses + business profit for the selected period</div>
-        </div>
-      </div>
-      <div class="card-body" id="overviewBody">
+      <div class="card-body" id="overviewBody" style="padding:0">
         <div class="loading">Loading…</div>
       </div>
     </div>
@@ -389,9 +404,8 @@ function overviewTabHtml(){
 }
 
 async function renderOverview(){
-  const kpiBody = $('blKpiBody');
-  const body    = $('overviewBody');
-  if (!body || !kpiBody) return;
+  const body = $('overviewBody');
+  if (!body) return;
 
   // ── Populate period dropdown from bookings.month_key + hq_invoices dates ──
   const perSel = $('ov_period');
@@ -412,8 +426,7 @@ async function renderOverview(){
   const period = perSel?.value || '__all__';
   const isAll  = period === '__all__';
 
-  kpiBody.innerHTML = `<div class="loading">Loading bookings…</div>`;
-  body.innerHTML    = `<div class="loading">Loading…</div>`;
+  body.innerHTML = `<div class="loading">Loading…</div>`;
 
   // ── Fetch data (paginated — Supabase caps at 1000 per request) ─────
   const [bkRows, invRowsAll, lgRowsAll] = await Promise.all([
@@ -441,38 +454,7 @@ async function renderOverview(){
   const commissionPaid = grossTotal - totalRevenue;
   const bkCount      = bkRows.length;
 
-  kpiBody.innerHTML = `
-    <div class="summary-grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
-      <div class="summary-box" style="border:2px dashed var(--muted)">
-        <div class="summary-lbl">Total Gross (Bookinglayer)</div>
-        <div class="summary-val">${eur(grossTotal)}</div>
-        <div class="hint" style="margin-top:4px">Partner gross + direct · matches Bookinglayer</div>
-      </div>
-      <div class="summary-box">
-        <div class="summary-lbl">Partner Gross Revenue</div>
-        <div class="summary-val">${eur(partnerGross)}</div>
-        <div class="hint" style="margin-top:4px">${isAll?'All months':period}</div>
-      </div>
-      <div class="summary-box" style="border-left:4px solid var(--ocean)">
-        <div class="summary-lbl">Net from Partners</div>
-        <div class="summary-val" style="color:var(--ocean)">${eur(partnerNet)}</div>
-        <div class="hint" style="margin-top:4px">After commissions (−${eur(commissionPaid)})</div>
-      </div>
-      <div class="summary-box" style="border-left:4px solid var(--ocean)">
-        <div class="summary-lbl">Direct Bookings</div>
-        <div class="summary-val" style="color:var(--ocean)">${eur(directGross)}</div>
-        <div class="hint" style="margin-top:4px">${directBks.length} booking${directBks.length===1?'':'s'} · 100% ours</div>
-      </div>
-      <div class="summary-box" style="border:2px solid var(--ocean)">
-        <div class="summary-lbl">Total Revenue GotaDagua</div>
-        <div class="summary-val" style="color:var(--ocean)">${eur(totalRevenue)}</div>
-        <div class="hint" style="margin-top:4px">Your real take-home (partners net + direct)</div>
-      </div>
-    </div>
-    <div class="hint" style="margin-top:12px">${bkCount} booking${bkCount===1?'':'s'} in the selected period · numbers match the <a href="/partners/" style="color:var(--ocean);font-weight:600">Partners app</a>.</div>
-  `;
-
-  // ── HQ expenses + business profit (uses same period filter) ────────
+  // ── HQ expenses + business profit (calculated FIRST so hero renders) ──
   const personalCatIds = new Set(CATEGORIES.filter(c => c.is_personal).map(c => c.id));
   const invBusiness = invRows.filter(r => !personalCatIds.has(r.category_id));
   const invPersonal = invRows.filter(r =>  personalCatIds.has(r.category_id));
@@ -486,37 +468,73 @@ async function renderOverview(){
   const localExp    = lgRows.filter(r => r.type==='expense').reduce((s,r)=>s+Number(r.amount_eur||0), 0);
   const businessProfit = totalRevenue + localRev - localExp - hqTotal;
 
+  // Consistent colour rule: green=revenue/positive · red=negative · neutral=normal outflow
   body.innerHTML = `
-    <div class="summary-grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
-      <div class="summary-box" style="border-left:4px solid var(--ocean);cursor:pointer" onclick="switchTab('invoices')">
-        <div class="summary-lbl">Despesas HQ · General</div>
+    <div class="hero-profit ${businessProfit>=0?'pos':'neg'}">
+      <div class="hero-lbl">Business profit ${isAll?'· all-time':'· '+period}</div>
+      <div class="hero-val">${businessProfit>=0?'+':''}${eur(businessProfit)}</div>
+      <div class="hero-sub">Total Revenue GotaDagua + on-site revenue − local expenses − HQ invoices (Miguel-Personal excluded)</div>
+    </div>
+
+    <div class="section-lbl">Revenue</div>
+    <div class="summary-grid tight">
+      <div class="summary-box pos">
+        <div class="summary-lbl">Total Revenue GotaDagua</div>
+        <div class="summary-val">${eur(totalRevenue)}</div>
+        <div class="hint" style="margin-top:4px">Partners net + direct — real take-home</div>
+      </div>
+      <div class="summary-box pos">
+        <div class="summary-lbl">Net from Partners</div>
+        <div class="summary-val">${eur(partnerNet)}</div>
+        <div class="hint" style="margin-top:4px">After −${eur(commissionPaid)} commissions</div>
+      </div>
+      <div class="summary-box pos">
+        <div class="summary-lbl">Direct Bookings</div>
+        <div class="summary-val">${eur(directGross)}</div>
+        <div class="hint" style="margin-top:4px">${directBks.length} booking${directBks.length===1?'':'s'} · 100% ours</div>
+      </div>
+      <div class="summary-box pos">
+        <div class="summary-lbl">On-site revenue (camps)</div>
+        <div class="summary-val">${eur(localRev)}</div>
+        <div class="hint" style="margin-top:4px">Tours, bar, merch — ledger receipts</div>
+      </div>
+      <div class="summary-box neutral">
+        <div class="summary-lbl">Partner Gross (pre-commission)</div>
+        <div class="summary-val">${eur(partnerGross)}</div>
+        <div class="hint" style="margin-top:4px">${isAll?'All months':period}</div>
+      </div>
+      <div class="summary-box neutral">
+        <div class="summary-lbl">Total Gross Bookinglayer</div>
+        <div class="summary-val">${eur(grossTotal)}</div>
+        <div class="hint" style="margin-top:4px">Partner gross + direct · matches Bookinglayer</div>
+      </div>
+    </div>
+
+    <div class="section-lbl">Expenses</div>
+    <div class="summary-grid tight">
+      <div class="summary-box neutral" style="cursor:pointer" onclick="switchTab('invoices')">
+        <div class="summary-lbl">HQ invoices · General</div>
         <div class="summary-val">${eur(hqGeneral)}</div>
         <div class="hint" style="margin-top:4px">${invBusiness.filter(r => r.location_slug === 'general').length} invoice(s)</div>
       </div>
-      <div class="summary-box" style="border-left:4px solid var(--ocean);cursor:pointer" onclick="switchTab('invoices')">
-        <div class="summary-lbl">Despesas HQ · Attributed</div>
+      <div class="summary-box neutral" style="cursor:pointer" onclick="switchTab('invoices')">
+        <div class="summary-lbl">HQ invoices · Attributed</div>
         <div class="summary-val">${eur(hqAttribLoc)}</div>
         <div class="hint" style="margin-top:4px">Paid by HQ, allocated to camps</div>
       </div>
-      <div class="summary-box" style="border-left:4px solid #9d174d">
+      <div class="summary-box neutral">
+        <div class="summary-lbl">Local expenses (camps)</div>
+        <div class="summary-val">${eur(localExp)}</div>
+        <div class="hint" style="margin-top:4px">Managers' float</div>
+      </div>
+      <div class="summary-box neutral">
         <div class="summary-lbl">Miguel — Personal</div>
         <div class="summary-val">${eur(personalTot)}</div>
         <div class="hint" style="margin-top:4px">Excluded from business profit</div>
       </div>
-      <div class="summary-box" style="border-left:4px solid var(--green)">
-        <div class="summary-lbl">On-site revenue (camps)</div>
-        <div class="summary-val">${eur(localRev)}</div>
-      </div>
-      <div class="summary-box" style="border-left:4px solid var(--red)">
-        <div class="summary-lbl">Local expenses (camps)</div>
-        <div class="summary-val">${eur(localExp)}</div>
-      </div>
-      <div class="summary-box" style="grid-column:span 2;border-left:4px solid ${businessProfit>=0?'var(--green)':'var(--red)'}">
-        <div class="summary-lbl">Business profit${isAll?' (all-time)':' — '+period}</div>
-        <div class="summary-val ${businessProfit>=0?'pos':'neg'}">${businessProfit>=0?'+':''}${eur(businessProfit)}</div>
-        <div class="hint" style="margin-top:4px">Total Revenue GotaDagua + on-site − local expenses − HQ invoices (excl. personal)</div>
-      </div>
     </div>
+
+    <div class="hint" style="padding:14px 22px 4px">${bkCount} booking${bkCount===1?'':'s'} in the selected period · numbers match the <a href="/partners/" style="color:var(--ocean);font-weight:600">Partners app</a>.</div>
   `;
 }
 
@@ -533,7 +551,13 @@ function invoicesTabHtml(){
   const payOptions = PAYMENT_TYPES.map(p => `<option value="${p}">${p}</option>`).join('');
 
   return `
-    <div class="card">
+    <details class="add-block">
+      <summary class="add-block-sum">
+        <span class="add-block-title">+ Add invoice</span>
+        <span class="add-block-hint">AI bulk upload · Quick add manual — click to expand</span>
+        <span class="add-block-caret">▾</span>
+      </summary>
+    <div class="card" style="margin-top:14px">
       <div class="card-hdr" style="background:linear-gradient(135deg, var(--foam), #fff)">
         <div>
           <div class="card-title">🤖 Bulk upload · AI-first</div>
@@ -670,6 +694,7 @@ function invoicesTabHtml(){
         <div id="invToast" style="margin-top:8px"></div>
       </div>
     </div>
+    </details>
 
     <div class="card">
       <div class="card-hdr" style="flex-direction:column;align-items:stretch;gap:12px">
