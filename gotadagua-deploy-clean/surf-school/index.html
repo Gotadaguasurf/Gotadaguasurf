@@ -175,10 +175,19 @@ main{padding:16px;max-width:640px;margin:0 auto}
            JS still keeps the setKind() plumbing so lessons/activities
            can be re-enabled later without another rewrite. -->
 
-      <div class="field">
-        <label>Date of activity</label>
-        <input id="fld_date" type="date">
-        <div class="hint">Defaults to today. Change if you're logging a rental from another day.</div>
+      <div class="grid2">
+        <div class="field">
+          <label>Date of activity</label>
+          <input id="fld_date" type="date" onchange="updateReturnPreview()">
+        </div>
+        <div class="field">
+          <label>Start time</label>
+          <input id="fld_start" type="time" onchange="updateReturnPreview()">
+        </div>
+      </div>
+      <div id="returnPreview" style="margin:-6px 0 14px;padding:10px 12px;background:var(--foam);border-radius:10px;font-size:12px;color:var(--navy);display:none">
+        <strong id="returnPreviewTxt">Return by —</strong>
+        <span id="returnPreviewHint" style="color:var(--muted);font-weight:500"> · staff will know if the student went over</span>
       </div>
       <div class="field">
         <label>Student name</label>
@@ -353,10 +362,16 @@ async function boot(){
     return;
   }
   LOCATION_ID = loc.id;
-  // Default the "Date of activity" field to today so staff mostly just tap
-  // through it. Timezone-safe local date (yyyy-mm-dd).
+  // Default the "Date of activity" + "Start time" fields to now so staff
+  // usually just tap through them. Uses LOCAL clock so a 14:30 pick means
+  // 14:30 in the manager's timezone.
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2,'0');
   const dfld = document.getElementById('fld_date');
-  if (dfld) dfld.value = new Date().toISOString().slice(0,10);
+  if (dfld) dfld.value = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+  const sfld = document.getElementById('fld_start');
+  if (sfld) sfld.value = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  updateReturnPreview();
   await loadCatalog();
   await loadRentals();
   renderOpen();
@@ -414,6 +429,7 @@ function onItemPick(){
   document.getElementById('curHint').textContent = (opt.dataset.cur || 'EUR') + ' · edit if you gave a discount';
 }
 function recalcRentalTotal(){
+  updateReturnPreview();
   // Sum sell_price of every ticked checkbox × duration multiplier. For
   // Same Day rentals a "Full day" bumps the multiplier; other durations
   // keep the catalog price as-is. Multi-day multiplies by number of days.
@@ -435,11 +451,48 @@ function rentalDurationMultiplier(){
   const d = document.getElementById('fld_duration')?.value || '1H';
   return { '1H':1, '2H':2, '3H':3, 'Full day':4 }[d] || 1;
 }
+// Turn "Date of activity" + "Start time" + the picked duration into two
+// timestamps: when the rental starts and when it's expected back. Same
+// Day uses hour offsets (1/2/3 hours, or 8 hours for Full day). Multi-day
+// uses N × 24 h. Returns null when the required fields aren't filled yet.
+function computeExpectedReturn(){
+  const dateStr  = document.getElementById('fld_date')?.value;
+  const startStr = document.getElementById('fld_start')?.value;
+  if (!dateStr || !startStr) return null;
+  const start = new Date(`${dateStr}T${startStr}`);
+  if (isNaN(start.getTime())) return null;
+  let addMs = 0;
+  if (CURRENT_RENTAL_TYPE === 'Multi-day') {
+    const days = Math.max(1, Number(document.getElementById('fld_days')?.value) || 1);
+    addMs = days * 24 * 60 * 60 * 1000;
+  } else {
+    const d = document.getElementById('fld_duration')?.value || '1H';
+    const hours = { '1H':1, '2H':2, '3H':3, 'Full day':8 }[d] || 1;
+    addMs = hours * 60 * 60 * 1000;
+  }
+  return { start, expected: new Date(start.getTime() + addMs) };
+}
+function updateReturnPreview(){
+  const box = document.getElementById('returnPreview');
+  const txt = document.getElementById('returnPreviewTxt');
+  if (!box || !txt) return;
+  if (CURRENT_KIND !== 'rental') { box.style.display = 'none'; return; }
+  const r = computeExpectedReturn();
+  if (!r) { box.style.display = 'none'; return; }
+  const sameDay = r.start.toDateString() === r.expected.toDateString();
+  const timeFmt = { hour:'2-digit', minute:'2-digit' };
+  const dateFmt = { day:'numeric', month:'short' };
+  const label = sameDay
+    ? `Return by ${r.expected.toLocaleTimeString('en-GB', timeFmt)}`
+    : `Return by ${r.expected.toLocaleDateString('en-GB', dateFmt)} · ${r.expected.toLocaleTimeString('en-GB', timeFmt)}`;
+  txt.textContent = label;
+  box.style.display = '';
+}
 
 // ── Rentals ──────────────────────────────────────────────────────
 async function loadRentals(){
   const { data, error } = await sb.from('surf_school_rentals')
-    .select('id, kind, student_name, student_email, id_card_number, item_id, item_name, qty, price_local, currency, payment_method, opened_at, opened_by, closed_at, closed_by, is_returned, ledger_entry_id, terms_accepted')
+    .select('id, kind, student_name, student_email, id_card_number, item_id, item_name, qty, price_local, currency, payment_method, opened_at, opened_by, closed_at, closed_by, is_returned, ledger_entry_id, terms_accepted, customer_type, rental_type, duration, items, start_time, expected_return_at')
     .eq('location_id', LOCATION_ID)
     .order('opened_at', { ascending:false })
     .limit(500);
@@ -465,28 +518,56 @@ function renderOpen(){
   const open = ALL_RENTALS.filter(r => r.kind === 'rental' && !r.is_returned);
   document.getElementById('kpiOut').textContent = open.length;
   const now = Date.now();
-  const overdue = open.filter(r => (now - new Date(r.opened_at).getTime()) > 2*60*60*1000);
-  document.getElementById('kpiOverdue').textContent = overdue.length;
+  // Overdue rule: prefer expected_return_at when the row has it. Fall
+  // back to the old "2h since opened_at" heuristic for phase-1 rows that
+  // pre-date the expected_return_at column.
+  const isOverdueOf = (r) => r.expected_return_at
+    ? (now > new Date(r.expected_return_at).getTime())
+    : ((now - new Date(r.opened_at).getTime()) > 2*60*60*1000);
+  document.getElementById('kpiOverdue').textContent = open.filter(isOverdueOf).length;
 
   if (!open.length) {
     list.innerHTML = `<div class="empty"><div class="empty-icon">🏄</div>No boards out right now.</div>`;
     return;
   }
-  // Sort by opened_at asc so the oldest / most overdue floats to top.
-  const sorted = [...open].sort((a,b) => String(a.opened_at).localeCompare(String(b.opened_at)));
+  // Sort by expected_return_at asc so the most-imminent-return / overdue
+  // floats to the top. Rows without expected_return_at (phase 1) sort
+  // by opened_at as before.
+  const sortKey = (r) => new Date(r.expected_return_at || r.opened_at).getTime();
+  const sorted = [...open].sort((a,b) => sortKey(a) - sortKey(b));
+  const timeFmt = { hour:'2-digit', minute:'2-digit' };
+  const dateFmt = { day:'numeric', month:'short' };
   list.innerHTML = sorted.map(r => {
     const openedMs = new Date(r.opened_at).getTime();
     const mins = Math.max(0, Math.round((now - openedMs)/60000));
-    const isOverdue = mins > 120;
-    const cls = isOverdue ? 'open overdue' : 'open';
     const timeAgo = mins < 60 ? `${mins} min out` : `${Math.floor(mins/60)}h ${mins%60}m out`;
+    const isOverdue = isOverdueOf(r);
+    const cls = isOverdue ? 'open overdue' : 'open';
     const staff = PROFILE_NAMES.get(r.opened_by) || 'Unknown';
+    // Return-by label. Same-day rentals show only the time; multi-day
+    // adds the date.
+    let returnLbl = '';
+    if (r.expected_return_at) {
+      const exp = new Date(r.expected_return_at);
+      const open = new Date(r.opened_at);
+      const sameDay = exp.toDateString() === open.toDateString();
+      returnLbl = sameDay
+        ? `Return by ${exp.toLocaleTimeString('en-GB', timeFmt)}`
+        : `Return by ${exp.toLocaleDateString('en-GB', dateFmt)} · ${exp.toLocaleTimeString('en-GB', timeFmt)}`;
+      if (isOverdue) {
+        const overdueMs = now - exp.getTime();
+        const overMins = Math.max(1, Math.round(overdueMs / 60000));
+        const overStr = overMins < 60 ? `${overMins} min` : `${Math.floor(overMins/60)}h ${overMins%60}m`;
+        returnLbl += ` · <strong style="color:var(--red)">${overStr} over</strong>`;
+      }
+    }
     return `<div class="rental-row ${cls}">
       <div class="rr-top">
-        <div class="rr-name">${escapeHtml(r.student_name)}</div>
+        <div class="rr-name">${escapeHtml(r.student_name)}${r.customer_type?` <span class="chip" style="background:var(--foam);color:var(--ocean)">${escapeHtml(r.customer_type)}</span>`:''}</div>
         <div class="rr-time">${timeAgo}</div>
       </div>
-      <div class="rr-item">${escapeHtml(r.item_name)}${r.qty!=1?` · ${r.qty}x`:''}</div>
+      <div class="rr-item">${escapeHtml(r.item_name)}${r.duration?` · ${escapeHtml(r.duration)}`:''}</div>
+      ${returnLbl?`<div class="rr-meta" style="margin-bottom:6px;color:${isOverdue?'var(--red)':'var(--navy)'};font-weight:600">${returnLbl}</div>`:''}
       <div class="rr-meta">
         <span>Given by <strong>${escapeHtml(staff)}</strong></span>
         ${r.id_card_number?`<span>ID ${escapeHtml(r.id_card_number)}</span>`:''}
@@ -609,9 +690,20 @@ async function saveEntry(){
   // timestamp we use as "when the board went out". If the user cleared
   // the field we fall back to today.
   const activityDate = document.getElementById('fld_date')?.value || new Date().toISOString().slice(0,10);
-  // Anchor the opened_at at noon of the picked date so timezones don't
-  // shove it into the previous day when read back.
-  const openedAt = `${activityDate}T12:00:00.000Z`;
+  // Start time + expected return come from the same Date + Time widgets.
+  // We use the LOCAL clock so a "14:30" pick means 14:30 in the manager's
+  // timezone — new Date("2026-07-12T14:30") is exactly that. Fall back
+  // to noon if the field is somehow blank.
+  const startStr = document.getElementById('fld_start')?.value || '12:00';
+  const startTime = new Date(`${activityDate}T${startStr}`);
+  const ret = computeExpectedReturn();
+  const expectedReturnAt = ret ? ret.expected : null;
+  // opened_at anchors the row's timeline. Use start_time when we have it
+  // (real hour the board went out); fall back to noon of the picked date
+  // for backwards compat with phase 1 rows.
+  const openedAt = isNaN(startTime.getTime())
+    ? `${activityDate}T12:00:00.000Z`
+    : startTime.toISOString();
   const nowIso = new Date().toISOString();
 
   btn.disabled = true; btn.textContent = 'Saving…';
@@ -667,10 +759,12 @@ async function saveEntry(){
     items: pickedItems,
     terms_accepted: terms,
     terms_accepted_at: nowIso,
-    // Anchor the "board went out at" to noon of Date of activity so
-    // Open rentals sort chronologically by the day the rental actually
-    // started, not by when staff typed it in.
+    // Anchor the "board went out at" to the picked Start time so Open
+    // rentals sort chronologically by when the rental actually started,
+    // not by when staff typed it in.
     opened_at: openedAt,
+    start_time: isNaN(startTime.getTime()) ? null : startTime.toISOString(),
+    expected_return_at: expectedReturnAt ? expectedReturnAt.toISOString() : null,
     is_returned: CURRENT_KIND !== 'rental',
     closed_at: CURRENT_KIND !== 'rental' ? nowIso : null
   };
@@ -745,8 +839,13 @@ function clearForm(){
   const cust = document.getElementById('fld_customer_type'); if (cust) cust.value = '';
   const dur = document.getElementById('fld_duration'); if (dur) dur.value = '1H';
   const days = document.getElementById('fld_days'); if (days) days.value = 2;
-  // Reset the date back to today so the next entry defaults correctly.
-  const dfld = document.getElementById('fld_date'); if (dfld) dfld.value = new Date().toISOString().slice(0,10);
+  // Reset the date + start time back to now so the next entry defaults
+  // correctly and the Return-by preview snaps back to something current.
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2,'0');
+  const dfld = document.getElementById('fld_date'); if (dfld) dfld.value = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+  const sfld = document.getElementById('fld_start'); if (sfld) sfld.value = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  updateReturnPreview();
 }
 function showTerms(){
   alert("Rental terms & conditions:\n\n1. Board rented in the condition inspected on pickup.\n2. Renter is responsible for damage / loss until return.\n3. ID retained as collateral until the board comes back.\n4. Total is due at pickup — no refunds for early return.\n\n(Miguel will replace this with the full text.)");
