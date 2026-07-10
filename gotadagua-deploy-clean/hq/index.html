@@ -103,12 +103,15 @@ input:focus,select:focus{outline:none;border-color:var(--ocean);box-shadow:0 0 0
 .inline-select:hover{background-color:var(--foam);border-color:var(--border)}
 .inline-select:focus{background-color:var(--foam);border-color:var(--ocean);outline:none}
 /* Invoice table row polish — supplier cell shows the vendor name on line 1
-   and truncates the AI-extracted description to 1 line on line 2. Full text
-   on hover via the title attribute. Row height stays uniform. */
+   and truncates the AI-extracted description to 1 line on line 2. Full
+   text on hover via the title attribute. Uniform row height.
+   Note: HTML table cells ignore max-width unless the table itself has
+   table-layout:fixed, so we set an explicit fixed width on the wrapping
+   div and rely on the inner block spans for text-overflow ellipsis. */
 #invListBody table tbody tr td{vertical-align:middle;padding-top:8px;padding-bottom:8px}
-.sup-cell{display:flex;flex-direction:column;gap:1px;max-width:260px;min-width:0}
-.sup-name{font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.sup-desc{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:260px}
+.sup-cell{display:block;width:240px;overflow:hidden}
+.sup-name{display:block;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sup-desc{display:block;font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px}
 .cell-save-flash{animation:cellFlash .9s ease-out}
 @keyframes cellFlash{0%{background-color:var(--green-bg)}100%{background-color:transparent}}
 .hint{font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5}
@@ -194,7 +197,10 @@ td.loc-name{font-weight:700;color:var(--navy)}
    period. Read-only: editing still happens in camp-hub / Despesas HQ. */
 .loc-row-drill{cursor:pointer;transition:background .1s}
 .loc-row-drill:hover{background:var(--foam)}
-.loc-row-drill td.loc-name::before{content:'▸ ';color:var(--muted);font-size:11px}
+.loc-row-drill:hover td.loc-name{color:var(--ocean)}
+.loc-row-drill td.loc-name{position:relative;padding-left:22px}
+.loc-row-drill td.loc-name::before{content:'▸';color:var(--ocean);font-size:12px;font-weight:700;position:absolute;left:8px;top:50%;transform:translateY(-50%);transition:transform .15s}
+.loc-row-drill:hover td.loc-name::before{transform:translateY(-50%) translateX(2px)}
 .hq-drawer-backdrop{position:fixed;inset:0;background:rgba(13,27,42,.45);z-index:400;opacity:0;pointer-events:none;transition:opacity .2s}
 .hq-drawer-backdrop.open{opacity:1;pointer-events:auto}
 .hq-drawer{position:fixed;top:0;right:0;bottom:0;width:min(520px,100vw);background:#fff;z-index:401;box-shadow:-20px 0 60px rgba(0,0,0,.15);transform:translateX(100%);transition:transform .25s cubic-bezier(.16,.7,.3,1);display:flex;flex-direction:column;overflow:hidden}
