@@ -16,6 +16,23 @@ header{background:var(--navy);padding:0 24px;display:flex;align-items:center;jus
 .brand-logo{display:flex;align-items:center;justify-content:flex-start;width:134px;height:30px;flex-shrink:0}
 .brand-logo svg{height:30px;width:auto;display:block}
 .header-sub{font-size:10px;color:#7aabcc;font-weight:700;letter-spacing:.1em;text-transform:uppercase;white-space:nowrap}
+/* Unified app switcher — same component destined for every top-level page
+   so CRM / Camp hub / Prices / Partners / HQ / Overview feel like one
+   product. Native <details> so the toggle needs no JS. */
+.app-switch{position:relative}
+.app-switch summary{list-style:none;cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:5px 10px 5px 12px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:999px;color:#fff;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;transition:background .15s, border-color .15s}
+.app-switch summary::-webkit-details-marker{display:none}
+.app-switch summary::marker{content:''}
+.app-switch summary:hover{background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.28)}
+.app-switch[open] summary{background:rgba(255,255,255,.20);border-color:rgba(255,255,255,.32)}
+.app-switch-caret{font-size:9px;transition:transform .2s;opacity:.8}
+.app-switch[open] .app-switch-caret{transform:rotate(180deg)}
+.app-switch-menu{position:absolute;top:calc(100% + 6px);left:0;background:#fff;border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.18);padding:6px;min-width:220px;z-index:200}
+.app-switch-menu a{display:flex;flex-direction:column;padding:8px 12px;border-radius:8px;color:var(--ink);text-decoration:none;font-size:13px;font-weight:600;transition:background .1s}
+.app-switch-menu a small{font-size:11px;color:var(--muted);font-weight:500;margin-top:1px}
+.app-switch-menu a:hover{background:var(--foam)}
+.app-switch-menu a.is-current{background:var(--foam);color:var(--ocean)}
+.app-switch-menu a.is-current small{color:var(--ocean);opacity:.7}
 .header-center{display:flex;align-items:center;justify-content:center;gap:4px;flex:1;min-width:0}
 .header-right{display:flex;align-items:center;gap:12px;flex-shrink:0;justify-content:flex-end;min-width:220px}
 .nav-tabs{display:flex;gap:3px;align-items:center;flex-wrap:wrap;justify-content:center}
@@ -209,9 +226,22 @@ td.loc-name{font-weight:700;color:var(--navy)}
         <path fill="#fff4d5" d="M142.8,61.3h-6.9c-.2-.5-.1-1-.2-1.4-.1-.5-1.3-2.4-1.5-2.8-.5-.7-1.5-1.5-2.3-1.5-1.3,0-3.2,0-4.3.8-.5.3-1.2,2.1-1.4,2.7-1.1,3.3-1.3,6.7-1.5,10.1,0,3.6.2,8.1,1.7,11.5,0,.3.5.9.6,1.1.2.3,1.7,1.1,2,1.1.9,0,2.5,0,3.5-.3.4,0,1.7-1,2-1.3.6-.7,1.3-3.3,1.3-4.3s-.3-1.9-.4-2l-4.5-.2c-.3-1.9-.1-3.9.1-5.8v-.2c.9,0,6.9.3,9.1.5h2.2c0,.7.2,1.3.3,2.1.5,3.1.4,5.2.1,8.3-.3,3.1-.5,6.5-3.1,8.6-1.1.9-1.8,1.5-3.3,1.9-1.9.6-2.8.6-4.7.7-1.3,0-2.3,0-3.6-.2-3.9-.8-6.3-2.8-7.5-6.6-2.7-8.9-3.1-18.9-.9-27.9.8-3.1,1.3-4.7,3.9-6.5,2.1-1.5,7.1-2.3,9.5-1.6,2.7.8,6.6,2.7,8.1,4.4.7.8,1.5,2.8,1.7,3.8.2,1.3,0,5,0,5h0Z"/>
       </svg>
     </div>
-    <div class="header-sub">HQ</div>
     </div>
     </a>
+    <details class="app-switch">
+      <summary>
+        <span>HQ</span>
+        <span class="app-switch-caret">▾</span>
+      </summary>
+      <nav class="app-switch-menu">
+        <a href="/"><span>Overview</span><small>Camps + prices home</small></a>
+        <a href="/hq/" class="is-current"><span>HQ</span><small>Finances, profit, cash flow</small></a>
+        <a href="/camp-hub/"><span>Camp hub</span><small>Managers' float ledger</small></a>
+        <a href="/prices/"><span>Prices</span><small>Catalog + packages</small></a>
+        <a href="/partners/"><span>Partners</span><small>Partner P&amp;L + statements</small></a>
+        <a href="/crm/"><span>CRM</span><small>Outreach + pipeline</small></a>
+      </nav>
+    </details>
   </div>
   <div class="header-center">
     <div class="nav-tabs" id="hqNavTabs" style="display:none">
