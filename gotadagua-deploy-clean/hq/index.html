@@ -190,7 +190,7 @@ td.loc-name{font-weight:700;color:var(--navy)}
   <div class="header-center">
     <div class="nav-tabs" id="hqNavTabs" style="display:none">
       <button class="nav-tab active" data-tab="overview" onclick="switchTab('overview')">Overview</button>
-      <button class="nav-tab" data-tab="invoices" onclick="switchTab('invoices')">Despesas HQ</button>
+      <button class="nav-tab" data-tab="invoices" onclick="switchTab('invoices')">Expenses</button>
       <button class="nav-tab" data-tab="profit" onclick="switchTab('profit')">Profit per location</button>
       <button class="nav-tab" data-tab="cashflow" onclick="switchTab('cashflow')">Cash flow</button>
     </div>
@@ -2452,7 +2452,21 @@ async function renderInvoiceList(){
   window.__lastRenderedRows = rows;
 
   if (!rows.length) {
-    body.innerHTML = `<div class="loading">No invoices yet. Register the first one above.</div>`;
+    // Empty state as an invitation, not a dead end. The Excel import is the
+    // first thing most owners do, so the primary CTA is right there. The
+    // secondary hint reminds them they can still drop PDFs or use quick add.
+    body.innerHTML = `
+      <div style="text-align:center;padding:56px 24px;color:var(--muted);background:linear-gradient(180deg,var(--foam),#fff);border:1px dashed var(--border);border-radius:12px">
+        <div style="font-size:44px;line-height:1;margin-bottom:10px">📥</div>
+        <div style="font-family:'DM Serif Display',serif;color:var(--navy);font-size:22px;margin-bottom:4px">No expenses yet</div>
+        <div style="font-size:13px;margin-bottom:22px;max-width:420px;margin-left:auto;margin-right:auto;line-height:1.6">
+          Start by importing your existing Excel master, drop a few PDFs for the AI to read, or open <b>+ Add invoice</b> above for a manual entry.
+        </div>
+        <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+          <button class="btn" onclick="openImportModal()">⬆ Import Excel / CSV</button>
+          <button class="btn btn-ghost" onclick="document.querySelector('.add-block')?.setAttribute('open','')">+ Add invoice</button>
+        </div>
+      </div>`;
     return;
   }
 
@@ -2565,10 +2579,10 @@ async function renderInvoiceList(){
   body.innerHTML = `
     <div id="recurringDueBanner"></div>
     <div class="summary-grid">
-      <div class="summary-box"><div class="summary-lbl">Invoices</div><div class="summary-val">${totalCount}</div></div>
-      <div class="summary-box"><div class="summary-lbl">Total (EUR)</div><div class="summary-val">${eur(totalEur)}</div></div>
-      <div class="summary-box"><div class="summary-lbl">Business (excl. personal)</div><div class="summary-val">${eur(businessEur)}</div></div>
-      <div class="summary-box"><div class="summary-lbl">Miguel — Personal</div><div class="summary-val">${eur(personalEur)}</div></div>
+      <div class="summary-box neutral"><div class="summary-lbl">Invoices</div><div class="summary-val">${totalCount}</div></div>
+      <div class="summary-box neutral"><div class="summary-lbl">Total (EUR)</div><div class="summary-val">${eur(totalEur)}</div></div>
+      <div class="summary-box neutral"><div class="summary-lbl">Business (excl. personal)</div><div class="summary-val">${eur(businessEur)}</div></div>
+      <div class="summary-box neutral"><div class="summary-lbl">Miguel — Personal</div><div class="summary-val">${eur(personalEur)}</div></div>
     </div>
     ${reviewCount ? `
       <div class="toast toast-warn" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
@@ -2578,9 +2592,9 @@ async function renderInvoiceList(){
     ` : ''}
     <div style="overflow-x:auto"><table style="min-width:1520px">${tableHead}${tableBody}</table></div>
     <div class="hint" style="margin-top:14px">
-      <b>General HQ</b> = despesas que pertencem à empresa como um todo (contabilidade, seguros globais, software…).<br>
-      <b>Attributed to a camp</b> = despesas pagas pelo HQ mas alocadas ao camp para efeitos de lucro (ex.: um seguro do Morocco pago da conta do HQ).<br>
-      As despesas que os camps pagam da sua própria caixa continuam no ledger de cada camp — <b>não vão para aqui</b>.
+      <b>General HQ</b> = expenses that belong to the company as a whole (accounting, global insurance, software…).<br>
+      <b>Attributed to a camp</b> = paid by HQ but allocated to the camp for profit purposes (e.g. a Morocco insurance paid from the HQ account).<br>
+      Anything a camp pays from its own cash stays in that camp's local ledger — <b>it does not appear here</b>.
     </div>
   `;
 
@@ -2624,7 +2638,7 @@ function importTabHtml(){
     <div class="card">
       <div class="card-hdr">
         <div>
-          <div class="card-title">Import Excel history · Despesas HQ</div>
+          <div class="card-title">Import Excel history · Expenses</div>
           <div class="card-hint">Pick your master expenses CSV file (or paste the contents)</div>
         </div>
         <div class="card-hint">Safe: only inserts new rows, never touches existing data</div>
@@ -3065,7 +3079,7 @@ async function commitExcelImport(limit){
   } else {
     window.__excelImportBuffer = [];
     toast('excelToast','ok',`Imported ${inserted} row(s)`);
-    $('excelPreview').innerHTML = `<div class="toast toast-ok" style="margin-top:12px">Import complete · ${inserted} row(s) added to Despesas HQ.</div>`;
+    $('excelPreview').innerHTML = `<div class="toast toast-ok" style="margin-top:12px">Import complete · ${inserted} row(s) added to Expenses.</div>`;
   }
   renderInvoiceList();
   renderOverview();
@@ -3259,7 +3273,7 @@ async function renderProfit(){
     <div class="hint" style="margin-top:14px">
       <b>Profit</b> = Bookings (net of partner commission) + on-site revenue − local ledger expenses − HQ invoices attributed to this location.
       <br><b>Bookings</b> comes from the <code>bookings</code> table populated by the hub CSV import — no separate import here. <b>net_amount</b> is used when available (gross − commission), falling back to <b>total</b> for older rows.
-      <br><b>HQ invoices</b> come from Despesas HQ. Rows in category <b>Miguel — Personal</b> are excluded.
+      <br><b>HQ invoices</b> come from the Expenses tab. Rows in category <b>Miguel — Personal</b> are excluded.
       <br>Local expenses use <code>attributed_location</code> when set — otherwise fall back to the row's own location.
     </div>
   `;
@@ -3572,9 +3586,9 @@ async function renderCashflow(){
         <div class="hint" style="margin-bottom:10px">Money one company advanced for another that hasn't been settled with a matching transfer. Positive number = <b>from</b> still needs to receive back from <b>to</b>.</div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px">
           ${netPairs.map(p => `
-            <div class="summary-box" style="border-left:4px solid var(--amber)">
+            <div class="summary-box neutral" style="border-left-color:var(--amber);background:#fef9e7">
               <div class="summary-lbl">${escapeHtml(companyLabel(p.from))} → ${escapeHtml(companyLabel(p.to))}</div>
-              <div class="summary-val">${eur(p.amount)}</div>
+              <div class="summary-val" style="color:var(--amber)">${eur(p.amount)}</div>
               <div class="hint" style="margin-top:4px">Owed by ${escapeHtml(companyLabel(p.to))} to ${escapeHtml(companyLabel(p.from))}</div>
             </div>
           `).join('')}
