@@ -189,6 +189,43 @@ td.loc-name{font-weight:700;color:var(--navy)}
 .digest-btn.primary{background:var(--ocean);border-color:var(--ocean);color:#fff}
 .digest-btn.primary:hover{background:#175a8f;border-color:#175a8f}
 .digest-btn:disabled{opacity:.5;cursor:wait}
+/* Profit-per-location drill-down — click a row to slide in a read-only
+   summary of that location's expenses and HQ invoices for the current
+   period. Read-only: editing still happens in camp-hub / Despesas HQ. */
+.loc-row-drill{cursor:pointer;transition:background .1s}
+.loc-row-drill:hover{background:var(--foam)}
+.loc-row-drill td.loc-name::before{content:'▸ ';color:var(--muted);font-size:11px}
+.hq-drawer-backdrop{position:fixed;inset:0;background:rgba(13,27,42,.45);z-index:400;opacity:0;pointer-events:none;transition:opacity .2s}
+.hq-drawer-backdrop.open{opacity:1;pointer-events:auto}
+.hq-drawer{position:fixed;top:0;right:0;bottom:0;width:min(520px,100vw);background:#fff;z-index:401;box-shadow:-20px 0 60px rgba(0,0,0,.15);transform:translateX(100%);transition:transform .25s cubic-bezier(.16,.7,.3,1);display:flex;flex-direction:column;overflow:hidden}
+.hq-drawer.open{transform:translateX(0)}
+.drawer-hdr{padding:22px 24px 18px;background:linear-gradient(135deg,var(--navy) 0%,#1f2c3b 100%);color:#fff;flex-shrink:0}
+.drawer-hdr-eyebrow{font-size:10px;text-transform:uppercase;letter-spacing:.14em;color:#7aabcc;font-weight:700}
+.drawer-hdr-title{font-family:'DM Serif Display',serif;font-size:26px;line-height:1.1;margin-top:6px}
+.drawer-hdr-profit{margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;font-size:12px}
+.drawer-hdr-profit span{padding:4px 10px;border-radius:999px;background:rgba(255,255,255,.10);font-weight:600}
+.drawer-close{position:absolute;top:14px;right:14px;background:rgba(255,255,255,.10);border:none;color:#fff;width:32px;height:32px;border-radius:50%;font-size:20px;cursor:pointer;line-height:1}
+.drawer-close:hover{background:rgba(255,255,255,.22)}
+.drawer-body{overflow-y:auto;padding:16px 24px 32px;flex:1}
+.drawer-section{margin-top:20px}
+.drawer-section:first-child{margin-top:8px}
+.drawer-sect-lbl{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);font-weight:700;margin-bottom:10px;display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.drawer-sect-lbl small{font-weight:500;text-transform:none;letter-spacing:0;color:var(--muted);font-size:11px}
+.drawer-cat-row{display:grid;grid-template-columns:1fr 60px 80px;align-items:center;gap:10px;padding:6px 0;font-size:13px;border-bottom:1px solid #eef2f7}
+.drawer-cat-name{font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.drawer-cat-n{color:var(--muted);font-size:11px;text-align:right}
+.drawer-cat-total{text-align:right;font-variant-numeric:tabular-nums;font-weight:600;color:var(--ink)}
+.drawer-cat-bar{grid-column:1/-1;height:3px;background:#eef2f7;border-radius:2px;overflow:hidden;margin-top:2px}
+.drawer-cat-bar-fill{height:100%;background:linear-gradient(90deg,var(--ocean),#3b9dd4)}
+.drawer-item{display:grid;grid-template-columns:64px 1fr 100px;gap:10px;padding:8px 0;font-size:12px;border-bottom:1px solid #eef2f7}
+.drawer-item-date{color:var(--muted);font-family:'DM Mono',monospace;font-size:11px}
+.drawer-item-body{min-width:0}
+.drawer-item-cat{font-weight:600;color:var(--ink);font-size:12px}
+.drawer-item-desc{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.drawer-item-amt{text-align:right;font-variant-numeric:tabular-nums;font-weight:600;font-size:13px;color:var(--ink)}
+.drawer-empty{padding:16px 0;font-size:12px;color:var(--muted);font-style:italic;text-align:center}
+.drawer-footer{padding:14px 24px;border-top:1px solid var(--border);display:flex;gap:10px;flex-shrink:0;background:#fafcfe}
+.drawer-footer .btn{flex:1}
 /* Monthly trend — 12-month business profit bars. Height per bar is a
    percentage of the tallest absolute value in the window; positive
    bars grow from the baseline up, negative bars just get red styling
@@ -316,6 +353,26 @@ td.loc-name{font-weight:700;color:var(--navy)}
     </div>
   </div>
 </dialog>
+
+<!-- Profit-per-location drill-down. Hidden until openLocDrilldown() slides
+     it in. Read-only: shows category breakdown, top expenses and HQ
+     invoices for the selected location + period. -->
+<div id="hqDrawerBackdrop" class="hq-drawer-backdrop" onclick="closeLocDrilldown()"></div>
+<aside id="hqDrawer" class="hq-drawer" role="dialog" aria-hidden="true">
+  <div class="drawer-hdr">
+    <button class="drawer-close" onclick="closeLocDrilldown()" aria-label="Close">×</button>
+    <div class="drawer-hdr-eyebrow" id="drawerEyebrow">Loading…</div>
+    <div class="drawer-hdr-title" id="drawerTitle">—</div>
+    <div class="drawer-hdr-profit" id="drawerProfitRow"></div>
+  </div>
+  <div class="drawer-body" id="drawerBody">
+    <div class="drawer-empty">Loading…</div>
+  </div>
+  <div class="drawer-footer">
+    <a class="btn btn-ghost" id="drawerOpenCampBtn" href="#" target="_blank" rel="noopener" style="text-decoration:none;text-align:center">Open Operations Ledger →</a>
+    <button class="btn" onclick="closeLocDrilldown()">Close</button>
+  </div>
+</aside>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="/supabase-config.js"></script>
@@ -752,7 +809,7 @@ async function renderOverview(){
         <th class="r">Profit</th>
       </tr></thead>
       <tbody>
-        ${locRows.map(r => `<tr>
+        ${locRows.map(r => `<tr class="loc-row-drill" onclick="openLocDrilldown('${r.slug}','${period}','${(r.label||'').replace(/'/g,'&#39;')}',${r.profit.toFixed(2)})" title="Click to see the expenses behind this row">
           <td class="loc-name">${r.label}</td>
           <td class="r">${eur(r.blRev)}</td>
           <td class="r">${eur(r.localRev)}</td>
@@ -859,6 +916,185 @@ async function sendWeeklyDigest(){
     btns.forEach(b => b.disabled = false);
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════
+//   PROFIT-PER-LOCATION DRILL-DOWN
+//   Click a row in the Overview → slide-in panel showing category
+//   breakdown, top 10 individual expenses (ledger_entries), and HQ
+//   invoices for that location + period. Read-only — every edit path
+//   still lives in camp-hub (ledger) and Despesas HQ (invoices).
+// ═══════════════════════════════════════════════════════════════════
+const _CAMP_HUB_SLUGS = new Set(['morocco','sri-lanka','portugal']);
+
+function _periodRange(period) {
+  // '__all__' → open range; 'YYYY-MM' → [YYYY-MM-01, YYYY-MM+1-01).
+  if (!period || period === '__all__') return { start: null, end: null, label: 'All-time' };
+  const [y, m] = period.split('-').map(Number);
+  const start = `${y}-${String(m).padStart(2,'0')}-01`;
+  const endD = new Date(Date.UTC(y, m, 1));
+  const end = endD.toISOString().slice(0,10);
+  const monthLabel = new Date(Date.UTC(y, m-1, 1))
+    .toLocaleDateString('en-GB', { month:'long', year:'numeric', timeZone:'UTC' });
+  return { start, end, label: monthLabel };
+}
+
+async function openLocDrilldown(slug, period, label, profit) {
+  const drawer   = document.getElementById('hqDrawer');
+  const backdrop = document.getElementById('hqDrawerBackdrop');
+  const body     = document.getElementById('drawerBody');
+  const title    = document.getElementById('drawerTitle');
+  const eyebrow  = document.getElementById('drawerEyebrow');
+  const profRow  = document.getElementById('drawerProfitRow');
+  const openBtn  = document.getElementById('drawerOpenCampBtn');
+  if (!drawer || !backdrop) return;
+
+  const { start, end, label: periodLabel } = _periodRange(period);
+  title.textContent   = label || slug;
+  eyebrow.textContent = `${periodLabel} · Profit-per-location detail`;
+  const profNum = Number(profit) || 0;
+  const cls     = profNum >= 0 ? 'pos' : 'neg';
+  profRow.innerHTML = `<span class="${cls}" style="color:${profNum>=0?'#7ee2a8':'#ff9591'}">Profit ${profNum>=0?'+':''}${eur(profNum)}</span>`;
+
+  // Deep-link to the camp-hub Operations Ledger for the three camps we
+  // have hubs for. General / surf-school / wild-wednesday just link to
+  // the Despesas HQ tab since there's no per-location hub.
+  if (openBtn) {
+    if (_CAMP_HUB_SLUGS.has(slug)) {
+      openBtn.href = `/camp-hub/?location=${slug}#expenses`;
+      openBtn.textContent = 'Open camp-hub Ledger →';
+      openBtn.style.display = '';
+    } else {
+      openBtn.href = `#`;
+      openBtn.textContent = 'No camp-hub for this location';
+      openBtn.style.display = 'none';
+    }
+  }
+
+  drawer.classList.add('open');
+  backdrop.classList.add('open');
+  drawer.setAttribute('aria-hidden','false');
+  body.innerHTML = `<div class="drawer-empty">Loading breakdown…</div>`;
+
+  // Fetch ledger + invoices for this slug + period. Pull richer columns
+  // than the Overview does — we want description, category, amounts.
+  let ledgerRows = [], invoiceRows = [];
+  try {
+    const [lRes, iRes] = await Promise.all([
+      (async () => {
+        let q = sb.from('ledger_entries')
+          .select('entry_date, category, description, amount_local, currency, fx_rate, amount_eur, payment_method, source_kind, type, attributed_location, linked_item')
+          .eq('attributed_location', slug)
+          .eq('type', 'expense');
+        if (start) q = q.gte('entry_date', start).lt('entry_date', end);
+        return await fetchAllPaged(() => q.order('amount_eur', { ascending:false }));
+      })(),
+      (async () => {
+        let q = sb.from('hq_invoices')
+          .select('invoice_date, company, description, amount_eur, currency, amount, paying_company, category_name, is_duplicate')
+          .eq('location_slug', slug)
+          .eq('is_duplicate', false);
+        if (start) q = q.gte('invoice_date', start).lt('invoice_date', end);
+        return await fetchAllPaged(() => q.order('amount_eur', { ascending:false }));
+      })()
+    ]);
+    ledgerRows  = lRes || [];
+    invoiceRows = iRes || [];
+  } catch (e) {
+    body.innerHTML = `<div class="drawer-empty" style="color:var(--red)">Load failed: ${escapeHtml(e?.message||e)}</div>`;
+    return;
+  }
+
+  // Aggregate ledger by category.
+  const byCat = new Map();
+  let ledgerTotal = 0;
+  ledgerRows.forEach(r => {
+    const cat = r.category || 'Uncategorised';
+    const amt = Number(r.amount_eur || 0);
+    ledgerTotal += amt;
+    const prev = byCat.get(cat) || { n: 0, total: 0 };
+    byCat.set(cat, { n: prev.n + 1, total: prev.total + amt });
+  });
+  const catRows = [...byCat.entries()]
+    .sort((a,b) => b[1].total - a[1].total);
+  const catMax = catRows.length ? catRows[0][1].total : 1;
+
+  // Top 10 individual ledger expenses.
+  const topExp = ledgerRows.slice(0, 10);
+
+  // HQ invoice total for the panel header.
+  const invTotal = invoiceRows.reduce((s,r) => s + Number(r.amount_eur || 0), 0);
+
+  // Add ledger/HQ totals to the header chips.
+  profRow.innerHTML += `
+    <span>Ledger ${eur(ledgerTotal)}</span>
+    <span>HQ ${eur(invTotal)}</span>
+  `;
+
+  const catHtml = catRows.length
+    ? catRows.map(([cat, v]) => `
+        <div class="drawer-cat-row">
+          <div class="drawer-cat-name">${escapeHtml(cat)}</div>
+          <div class="drawer-cat-n">${v.n}×</div>
+          <div class="drawer-cat-total">${eur(v.total)}</div>
+          <div class="drawer-cat-bar"><div class="drawer-cat-bar-fill" style="width:${Math.max(2, Math.round(v.total/catMax*100))}%"></div></div>
+        </div>`).join('')
+    : `<div class="drawer-empty">No ledger expenses in this period</div>`;
+
+  const topHtml = topExp.length
+    ? topExp.map(r => `
+        <div class="drawer-item">
+          <div class="drawer-item-date">${escapeHtml(String(r.entry_date||'').slice(5))}</div>
+          <div class="drawer-item-body">
+            <div class="drawer-item-cat">${escapeHtml(r.category||'—')}${r.source_kind==='invoice_ai'?' · <span style="color:var(--ocean);font-size:10px;font-weight:600">AI</span>':''}</div>
+            <div class="drawer-item-desc" title="${escapeHtml(r.description||'')}">${escapeHtml(r.description||'')}</div>
+          </div>
+          <div class="drawer-item-amt">${eur(r.amount_eur)}</div>
+        </div>`).join('')
+    : `<div class="drawer-empty">No individual expenses to show</div>`;
+
+  const invHtml = invoiceRows.length
+    ? invoiceRows.slice(0, 15).map(r => `
+        <div class="drawer-item">
+          <div class="drawer-item-date">${escapeHtml(String(r.invoice_date||'').slice(5))}</div>
+          <div class="drawer-item-body">
+            <div class="drawer-item-cat">${escapeHtml(r.company||'—')}</div>
+            <div class="drawer-item-desc" title="${escapeHtml(r.description||'')}">${escapeHtml(r.category_name||'—')}${r.description?` · ${escapeHtml(r.description)}`:''}</div>
+          </div>
+          <div class="drawer-item-amt">${eur(r.amount_eur)}</div>
+        </div>`).join('')
+    : `<div class="drawer-empty">No HQ invoices tagged to this location for this period</div>`;
+
+  body.innerHTML = `
+    <div class="drawer-section">
+      <div class="drawer-sect-lbl">Ledger by category<small>${ledgerRows.length} entr${ledgerRows.length===1?'y':'ies'}</small></div>
+      ${catHtml}
+    </div>
+    <div class="drawer-section">
+      <div class="drawer-sect-lbl">Top ${Math.min(10, ledgerRows.length)} individual expenses</div>
+      ${topHtml}
+    </div>
+    <div class="drawer-section">
+      <div class="drawer-sect-lbl">HQ invoices (paid via bank / card)<small>${invoiceRows.length} row${invoiceRows.length===1?'':'s'}${invoiceRows.length>15?` · showing 15`:''}</small></div>
+      ${invHtml}
+    </div>
+  `;
+}
+
+function closeLocDrilldown() {
+  const drawer   = document.getElementById('hqDrawer');
+  const backdrop = document.getElementById('hqDrawerBackdrop');
+  if (drawer)   drawer.classList.remove('open');
+  if (backdrop) backdrop.classList.remove('open');
+  if (drawer)   drawer.setAttribute('aria-hidden','true');
+}
+
+// Escape key closes the drawer.
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    const d = document.getElementById('hqDrawer');
+    if (d && d.classList.contains('open')) closeLocDrilldown();
+  }
+});
 
 // ═══════════════════════════════════════════════════════════════════
 //   TAB 1 — INVOICES  (form + list + dedup)
