@@ -2401,7 +2401,7 @@ function renderGuestList(){
       }
     }
     const bikeChip = (bikeNo != null)
-      ? `<span style="display:inline-block;background:var(--ocean);color:#fff;border-radius:6px;padding:1px 6px;font-family:'DM Mono',monospace;font-size:10px;font-weight:800;margin-right:6px;vertical-align:1px">#${bikeNo}</span>`
+      ? `<span style="display:inline-block;background:var(--ocean);color:#fff;border-radius:6px;padding:1px 6px;font-family:'DM Mono',monospace;font-size:10px;font-weight:800;margin-right:6px;vertical-align:1px">${bikeNo}</span>`
       : '';
     return `<div class="c-guest ${AG===g.id?'active':''}" onclick="selGuest('${esc(g.id)}')">
     <div style="min-width:0;flex:1">
@@ -4314,7 +4314,7 @@ function saveNewGuest(){
   save();closeOv('addGuestOv');
   renderCharge();
   renderThisWeek();
-  const fmtAdded = (p) => p.bikeNo != null ? `#${p.bikeNo} ${p.name}` : p.name;
+  const fmtAdded = (p) => p.bikeNo != null ? `${p.bikeNo} ${p.name}` : p.name;
   toast(toAdd.length===1 ? fmtAdded(toAdd[0])+' added' : toAdd.length+' added');
 }
 
