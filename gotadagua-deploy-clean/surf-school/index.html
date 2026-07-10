@@ -176,6 +176,11 @@ main{padding:16px;max-width:640px;margin:0 auto}
       </div>
 
       <div class="field">
+        <label>Date of activity</label>
+        <input id="fld_date" type="date">
+        <div class="hint">Defaults to today. Change if you're logging a rental from another day.</div>
+      </div>
+      <div class="field">
         <label>Student name</label>
         <input id="fld_name" type="text" placeholder="e.g. Ana Costa" autocomplete="off">
       </div>
@@ -248,7 +253,7 @@ main{padding:16px;max-width:640px;margin:0 auto}
       </div>
       <label class="terms">
         <input id="fld_terms" type="checkbox">
-        <span class="terms-txt">Student accepted the <a href="#" onclick="event.preventDefault();showTerms()">rental terms &amp; conditions</a> and gave consent for their info to be recorded.</span>
+        <span class="terms-txt">Student agrees to the <a href="https://gotadaguasurf.com/terms-and-conditions/" target="_blank" rel="noopener">terms &amp; conditions</a> and consents to their info being recorded.</span>
       </label>
       <div style="margin-top:14px">
         <button class="btn" id="saveBtn" onclick="saveEntry()">Save</button>
@@ -343,6 +348,10 @@ async function boot(){
     return;
   }
   LOCATION_ID = loc.id;
+  // Default the "Date of activity" field to today so staff mostly just tap
+  // through it. Timezone-safe local date (yyyy-mm-dd).
+  const dfld = document.getElementById('fld_date');
+  if (dfld) dfld.value = new Date().toISOString().slice(0,10);
   await loadCatalog();
   await loadRentals();
   renderOpen();
@@ -588,6 +597,13 @@ async function saveEntry(){
   const itemName = pickedItems.length > 1
     ? pickedItems.map(p => p.name).join(' + ')
     : primaryItem.name;
+  // "Date of activity" drives the ledger entry_date + the opened_at
+  // timestamp we use as "when the board went out". If the user cleared
+  // the field we fall back to today.
+  const activityDate = document.getElementById('fld_date')?.value || new Date().toISOString().slice(0,10);
+  // Anchor the opened_at at noon of the picked date so timezones don't
+  // shove it into the previous day when read back.
+  const openedAt = `${activityDate}T12:00:00.000Z`;
   const nowIso = new Date().toISOString();
 
   btn.disabled = true; btn.textContent = 'Saving…';
@@ -604,7 +620,7 @@ async function saveEntry(){
     qty,
     amount_local: price,
     currency,
-    entry_date: nowIso.slice(0,10),
+    entry_date: activityDate,
     business_area: 'Surf School',
     // fx_rate + amount_eur are stamped downstream by camp-hub healers
     // when the row lands in Sri Lanka / Morocco. For surf-school (EUR)
@@ -643,6 +659,10 @@ async function saveEntry(){
     items: pickedItems,
     terms_accepted: terms,
     terms_accepted_at: nowIso,
+    // Anchor the "board went out at" to noon of Date of activity so
+    // Open rentals sort chronologically by the day the rental actually
+    // started, not by when staff typed it in.
+    opened_at: openedAt,
     is_returned: CURRENT_KIND !== 'rental',
     closed_at: CURRENT_KIND !== 'rental' ? nowIso : null
   };
@@ -717,6 +737,8 @@ function clearForm(){
   const cust = document.getElementById('fld_customer_type'); if (cust) cust.value = 'Regular';
   const dur = document.getElementById('fld_duration'); if (dur) dur.value = '1H';
   const days = document.getElementById('fld_days'); if (days) days.value = 2;
+  // Reset the date back to today so the next entry defaults correctly.
+  const dfld = document.getElementById('fld_date'); if (dfld) dfld.value = new Date().toISOString().slice(0,10);
 }
 function showTerms(){
   alert("Rental terms & conditions:\n\n1. Board rented in the condition inspected on pickup.\n2. Renter is responsible for damage / loss until return.\n3. ID retained as collateral until the board comes back.\n4. Total is due at pickup — no refunds for early return.\n\n(Miguel will replace this with the full text.)");
