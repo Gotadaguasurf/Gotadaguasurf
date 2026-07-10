@@ -601,15 +601,16 @@ td.r{text-align:right;font-family:'DM Mono',monospace;font-size:12px}
         <span class="app-switch-caret">▾</span>
       </summary>
       <nav class="app-switch-menu">
-        <a href="/camp-hub/?location=portugal"  data-loc="portugal"><span>Portugal</span><small>Ericeira surf camp</small></a>
-        <a href="/camp-hub/?location=morocco"   data-loc="morocco"><span>Morocco</span><small>Taghazout camp</small></a>
-        <a href="/camp-hub/?location=sri-lanka" data-loc="sri-lanka"><span>Sri Lanka</span><small>Weligama camp</small></a>
+        <a href="/camp-hub/?location=portugal"    data-loc="portugal"><span>Portugal</span><small>Ericeira surf camp</small></a>
+        <a href="/camp-hub/?location=morocco"     data-loc="morocco"><span>Morocco</span><small>Taghazout camp</small></a>
+        <a href="/camp-hub/?location=sri-lanka"   data-loc="sri-lanka"><span>Sri Lanka</span><small>Weligama camp</small></a>
+        <a href="/camp-hub/?location=surf-school" data-loc="surf-school"><span>Surf School</span><small>Caparica rentals</small></a>
       </nav>
     </details>
   </div>
   <div class="nav-tabs">
     <button class="ntab" data-page="overview" onclick="showPage(&#39;overview&#39;)"><span class="nav-btn-label"><span class="ui-ic ui-ic-lg"><svg viewBox="0 0 20 20"><path d="M3 17h14"/><path d="M6 14V8"/><path d="M10 14V4"/><path d="M14 14v-6"/></svg></span><span>Overview</span></span></button>
-    <button class="ntab" data-page="pos" onclick="showPage(&#39;pos&#39;)"><span class="nav-btn-label"><span class="ui-ic ui-ic-lg"><svg viewBox="0 0 20 20"><rect x="3" y="5" width="14" height="10" rx="2"/><path d="M6 9h8"/><path d="M6 12h5"/></svg></span><span>Camp Tab</span></span></button>
+    <button class="ntab" data-page="pos" onclick="showPage(&#39;pos&#39;)"><span class="nav-btn-label"><span class="ui-ic ui-ic-lg"><svg viewBox="0 0 20 20"><rect x="3" y="5" width="14" height="10" rx="2"/><path d="M6 9h8"/><path d="M6 12h5"/></svg></span><span id="posTabLabel">Camp Tab</span></span></button>
     <button class="ntab" data-page="expenses" onclick="showPage(&#39;expenses&#39;)"><span class="nav-btn-label"><span class="ui-ic ui-ic-lg"><svg viewBox="0 0 20 20"><path d="M6 3h8l3 3v11H6z"/><path d="M14 3v4h4"/><path d="M9 10h5"/><path d="M9 13h5"/></svg></span><span>Operations Ledger</span></span></button>
     <button class="ntab" data-page="weekly" onclick="showPage(&#39;weekly&#39;)"><span class="nav-btn-label"><span class="ui-ic ui-ic-lg"><svg viewBox="0 0 20 20"><rect x="3" y="4" width="14" height="13" rx="2"/><path d="M7 2v4"/><path d="M13 2v4"/><path d="M3 8h14"/></svg></span><span>Weekly P&amp;L</span></span></button>
   </div>
@@ -2096,6 +2097,10 @@ function applyLocationCurrencyToDom(){
     document.querySelectorAll('#hubLocSwitch a[data-loc]').forEach(a=>{
       a.classList.toggle('is-current', a.dataset.loc === LEDGER_LOCATION_SLUG);
     });
+    // Surf School doesn't have a Camp Tab — the middle nav tab shows the
+    // rentals + lessons module instead, so re-label the button accordingly.
+    const posLbl = document.getElementById('posTabLabel');
+    if (posLbl) posLbl.textContent = LEDGER_LOCATION_SLUG === 'surf-school' ? 'Rentals & Lessons' : 'Camp Tab';
     document.title = `${loc} — Camp Hub`;
   }
 }
@@ -9446,10 +9451,20 @@ async function mountCampTabFrame(){
     return;
   }
   frame.onload=()=>{sendCampTabBootstrap();};
-  // Pass the active hub's location AND the resolved camp_tab_mode so the
-  // inner page knows whether to render weekly (Sri Lanka) or per_guest
-  // (Morocco) on first paint.
-  frame.src='/camp-hub/camp-tab-inner.html?location='+encodeURIComponent(__HUB_LOCATION_SLUG)+'&mode='+encodeURIComponent(targetMode);
+  // Surf School doesn't use the guest-tab POS — it has its own module at
+  // /surf-school/ (rentals + lessons + returns). Embed that instead of
+  // the camp-tab-inner when the active location is surf-school so the
+  // Overview / Ledger / Weekly P&L tabs still give context but the
+  // middle tab shows the right workflow. ?embedded=1 hides the inner
+  // page's own header so it slots cleanly under the camp-hub header.
+  if (__HUB_LOCATION_SLUG === 'surf-school') {
+    frame.src='/surf-school/?embedded=1';
+  } else {
+    // Pass the active hub's location AND the resolved camp_tab_mode so the
+    // inner page knows whether to render weekly (Sri Lanka) or per_guest
+    // (Morocco) on first paint.
+    frame.src='/camp-hub/camp-tab-inner.html?location='+encodeURIComponent(__HUB_LOCATION_SLUG)+'&mode='+encodeURIComponent(targetMode);
+  }
   frame.dataset.loaded='1';
   frame.dataset.mode=targetMode;
 }
