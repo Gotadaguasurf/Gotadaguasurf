@@ -180,6 +180,32 @@ nav{background:var(--navy);height:60px;display:flex;align-items:center;justify-c
 .loc-switch>summary:hover{background:rgba(255,203,120,.22);border-color:rgba(255,203,120,.42)}
 .loc-switch[open]>summary{background:rgba(255,203,120,.28);border-color:rgba(255,203,120,.50)}
 .nav-tabs{display:flex;gap:3px}
+/* Mobile hamburger + drawer — the desktop-only .nav-tabs and .nav-actions
+   collapse into a right-side drawer when the viewport is too narrow to
+   hold the whole nav bar (managers on their phones, ≤768px). The logo,
+   CAMP HUB and LOCATION pills stay visible so context isn't lost. */
+.nav-hamburger{display:none;background:transparent;border:none;color:#fff;font-size:22px;cursor:pointer;padding:4px 10px;border-radius:8px}
+.nav-hamburger:hover{background:rgba(255,255,255,.10)}
+.nav-mob-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:150;opacity:0;pointer-events:none;transition:opacity .22s}
+.nav-mob-backdrop.open{opacity:1;pointer-events:auto}
+.nav-mob-drawer{position:fixed;top:0;right:-320px;width:280px;height:100vh;background:var(--navy);z-index:200;display:flex;flex-direction:column;padding:56px 16px 20px;transition:right .25s cubic-bezier(.16,.7,.3,1);box-shadow:-8px 0 24px rgba(0,0,0,.3)}
+.nav-mob-drawer.open{right:0}
+.nav-mob-close{position:absolute;top:12px;right:14px;color:#fff;background:transparent;border:none;font-size:28px;cursor:pointer;line-height:1;padding:6px 10px;border-radius:8px}
+.nav-mob-close:hover{background:rgba(255,255,255,.10)}
+.nav-mob-lbl{font-size:10px;color:#7aabcc;text-transform:uppercase;letter-spacing:.12em;font-weight:800;margin:14px 8px 6px}
+.ntab-m{padding:12px 14px;color:#fff;background:transparent;border:none;text-align:left;font-size:15px;font-weight:600;border-radius:9px;cursor:pointer;font-family:inherit;text-decoration:none;display:flex;align-items:center;gap:10px;width:100%}
+.ntab-m:hover{background:rgba(255,255,255,.08)}
+.ntab-m.active{background:var(--ocean)}
+@media (max-width: 820px){
+  nav{padding:0 12px}
+  .nav-logo{min-width:0;gap:10px}
+  .nav-logo-mark{width:110px}
+  .nav-logo-mark svg{height:24px}
+  .nav-title-stack{display:none}
+  .app-switch summary{padding:4px 8px 4px 10px;font-size:10px}
+  .nav-tabs, .nav-actions{display:none}
+  .nav-hamburger{display:block}
+}
 .nav-actions{display:flex;align-items:center;gap:10px;justify-content:flex-end;min-width:160px}
 .save-pill{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:4px 10px;font-size:10px;font-weight:700;letter-spacing:.04em;transition:all .3s;white-space:nowrap}
 .save-pill.saving{background:rgba(255,255,255,.12);color:#7aabcc}
@@ -624,7 +650,24 @@ td.r{text-align:right;font-family:'DM Mono',monospace;font-size:12px}
     <a class="nav-action-btn" id="hqShortcutBtn" href="/hq/" style="display:none;text-decoration:none"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M3 10 10 3l7 7"/><path d="M5 9v8h10V9"/></svg></span><span>HQ</span></span></a>
     <button class="nav-action-btn" onclick="exportBackup()"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M10 14V4"/><path d="m6.5 7.5 3.5-3.5 3.5 3.5"/><path d="M4 16h12"/></svg></span><span>Export backup</span></span></button>
   </div>
+  <button class="nav-hamburger" onclick="toggleMobileNav()" aria-label="Open menu">☰</button>
 </nav>
+
+<!-- Mobile nav drawer — mirror of the desktop .nav-tabs + .nav-actions.
+     Shown at ≤820px. Every button also closes the drawer via
+     toggleMobileNav() so tapping a tab jumps AND collapses in one gesture. -->
+<div class="nav-mob-backdrop" id="mobNavBackdrop" onclick="toggleMobileNav()"></div>
+<aside class="nav-mob-drawer" id="mobNavDrawer" aria-hidden="true">
+  <button class="nav-mob-close" onclick="toggleMobileNav()" aria-label="Close menu">×</button>
+  <div class="nav-mob-lbl">Sections</div>
+  <button class="ntab-m" data-page="overview" onclick="showPage('overview');toggleMobileNav()">Overview</button>
+  <button class="ntab-m" data-page="pos" onclick="showPage('pos');toggleMobileNav()"><span id="posTabLabelMob">Camp Tab</span></button>
+  <button class="ntab-m" data-page="expenses" onclick="showPage('expenses');toggleMobileNav()">Operations Ledger</button>
+  <button class="ntab-m" data-page="weekly" onclick="showPage('weekly');toggleMobileNav()">Weekly P&amp;L</button>
+  <div class="nav-mob-lbl">Actions</div>
+  <a class="ntab-m" id="hqShortcutBtnMob" href="/hq/" style="display:none">🏠 HQ</a>
+  <button class="ntab-m" onclick="exportBackup();toggleMobileNav()">⤴ Export backup</button>
+</aside>
 
 <!-- ═══════════ OVERVIEW ═══════════ -->
 <div class="page" id="page-overview">
@@ -2099,8 +2142,11 @@ function applyLocationCurrencyToDom(){
     });
     // Surf School doesn't have a Camp Tab — the middle nav tab shows the
     // rentals + lessons module instead, so re-label the button accordingly.
+    const posLabelText = LEDGER_LOCATION_SLUG === 'surf-school' ? 'Rentals' : 'Camp Tab';
     const posLbl = document.getElementById('posTabLabel');
-    if (posLbl) posLbl.textContent = LEDGER_LOCATION_SLUG === 'surf-school' ? 'Rentals' : 'Camp Tab';
+    if (posLbl) posLbl.textContent = posLabelText;
+    const posLblMob = document.getElementById('posTabLabelMob');
+    if (posLblMob) posLblMob.textContent = posLabelText;
     document.title = `${loc} — Camp Hub`;
   }
 }
@@ -4818,6 +4864,7 @@ function showPage(p){
   document.querySelectorAll('.page').forEach(el=>el.classList.remove('active'));
   document.getElementById('page-'+p).classList.add('active');
   document.querySelectorAll('.ntab').forEach(btn=>btn.classList.toggle('active',btn.dataset.page===p));
+  document.querySelectorAll('.ntab-m').forEach(btn=>btn.classList.toggle('active',btn.dataset.page===p));
   if(p==='overview') renderOverview();
   else if(p==='pos'){ mountCampTabFrame(); return; }
   else if(p==='expenses'){ renderExpenses(); ensureAiUploadWired(); }
@@ -9810,22 +9857,40 @@ async function filterLocationSwitcherByAccess(client, session){
 // gate in /hq/index.html so the two never disagree.
 async function showHqShortcutIfAccessible(client, session){
   const btn=document.getElementById('hqShortcutBtn');
+  const btnMob=document.getElementById('hqShortcutBtnMob');
+  const showBoth=()=>{ if(btn) btn.style.display=''; if(btnMob) btnMob.style.display=''; };
   if(!btn||!client||!session) return;
   const OWNER_EMAILS_HUB=new Set(['miguel@gotadaguasurf.com']);
   const email=String(session.user?.email||'').toLowerCase();
-  if(OWNER_EMAILS_HUB.has(email)){ btn.style.display=''; return; }
+  if(OWNER_EMAILS_HUB.has(email)){ showBoth(); return; }
   try{
     const {data:profile}=await client.from('platform_profiles')
       .select('platform_role').eq('id',session.user.id).maybeSingle();
     const role=String(profile?.platform_role||'').toLowerCase();
-    if(role==='owner'||role==='super_admin'){ btn.style.display=''; return; }
+    if(role==='owner'||role==='super_admin'){ showBoth(); return; }
     const {data:mem}=await client.from('workspace_memberships')
       .select('can_view, active, workspaces!inner(slug)')
       .eq('user_id',session.user.id).eq('active',true)
       .eq('workspaces.slug','hq').maybeSingle();
-    if(mem && mem.can_view){ btn.style.display=''; }
+    if(mem && mem.can_view){ showBoth(); }
   }catch(_e){}
 }
+
+// Mobile nav open/close. Escape closes; backdrop click closes.
+function toggleMobileNav(){
+  const d=document.getElementById('mobNavDrawer');
+  const b=document.getElementById('mobNavBackdrop');
+  if(!d||!b) return;
+  const open=d.classList.toggle('open');
+  b.classList.toggle('open',open);
+  d.setAttribute('aria-hidden', open?'false':'true');
+}
+document.addEventListener('keydown',(e)=>{
+  if(e.key==='Escape'){
+    const d=document.getElementById('mobNavDrawer');
+    if(d && d.classList.contains('open')) toggleMobileNav();
+  }
+});
 
 async function requirePlatformSession(){
   const client=getHubSupabaseClient();
