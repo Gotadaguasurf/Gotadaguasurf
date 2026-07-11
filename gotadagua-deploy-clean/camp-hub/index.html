@@ -795,7 +795,7 @@ td.r{text-align:right;font-family:'DM Mono',monospace;font-size:12px}
       <button class="exp-quick-btn qcat-camp" data-cat="Tours" onclick="quickCategoryShortcut('Tours')"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M3 15c2-4 5-6 8-6s6 2 6 6"/><path d="M10 9V4"/><path d="M7.5 6.5 10 4l2.5 2.5"/></svg></span><span>Tours</span></span></button>
       <button class="exp-quick-btn qcat-camp" data-cat="Bar" onclick="quickCategoryShortcut('Bar')"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M6 4h8"/><path d="M7 4v3c0 2 1.5 3.5 3 3.5S13 9 13 7V4"/><path d="M10 10.5V16"/><path d="M7.5 16h5"/></svg></span><span>Bar</span></span></button>
       <button class="exp-quick-btn qcat-camp" data-cat="Cleaning Supplies" onclick="quickCategoryShortcut('Cleaning Supplies')"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M6 4h8"/><path d="M8 4v3"/><path d="M12 4v3"/><path d="M5 7h10l-1 9H6z"/></svg></span><span>Cleaning Supplies</span></span></button>
-      <button class="exp-quick-btn qcat-camp" data-cat="Transport" onclick="quickCategoryShortcut('Transport')"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M3 12h11"/><path d="m11 8 4 4-4 4"/><path d="M4 8h4"/></svg></span><span>Transport</span></span></button>
+      <button class="exp-quick-btn" data-cat="Transport" onclick="quickCategoryShortcut('Transport')"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M3 12h11"/><path d="m11 8 4 4-4 4"/><path d="M4 8h4"/></svg></span><span>Transport</span></span></button>
       <button class="exp-quick-btn" data-cat="Cash Float" onclick="startQuickExpense('transfer',{category:'Cash Float',description:'Cash sent to camp'})"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M3 10h10"/><path d="m10 6 4 4-4 4"/><path d="M14 5h3v10h-3"/></svg></span><span>Cash sent</span></span></button>
       <button class="exp-quick-btn qcat-camp" data-cat="Merchandising" onclick="quickCategoryShortcut('Merchandising')"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7h10l-.6 9H5.6z"/><path d="M7 7V5a3 3 0 0 1 6 0v2"/></svg></span><span>Merchandise</span></span></button>
       <!-- Surf School specific shortcuts — Rent / Salary / Gear. Toggled
@@ -6118,7 +6118,9 @@ function renderOverview(){
   // template above doesn't tag individual cards with an id.
   const isSchoolCards = (typeof __HUB_LOCATION_SLUG!=='undefined') && __HUB_LOCATION_SLUG === 'surf-school';
   if (isSchoolCards) {
-    const CAMP_ONLY_CARD_TITLES = new Set(['Laundry','Transport','Food control','Merch stock']);
+    // Transport stays visible for the school — Miguel picks up clients
+    // sometimes and needs the same transport breakdown the camps get.
+    const CAMP_ONLY_CARD_TITLES = new Set(['Laundry','Food control','Merch stock']);
     const merch = document.getElementById('__ovMerch');
     if (merch) merch.style.display = 'none';
     document.querySelectorAll('#ovCatCard > .card').forEach(card => {
@@ -7740,7 +7742,7 @@ function areaOptionsForType(type){
 // log a Sri Lanka-shaped expense against a Portuguese surf school. Revenue
 // / transfer paths stay unchanged — those either land here via the
 // Rentals module or via the standard cash-float flow.
-const SURF_SCHOOL_EXP_CATS = ['Utilities','Rent','Setup','Salary','Services','Taxes','Special'];
+const SURF_SCHOOL_EXP_CATS = ['Utilities','Rent','Setup','Salary','Services','Transport','Taxes','Special'];
 function categoryOptionsFor(type,area){
   if(type==='transfer') return ['Cash Float'];
   if(type==='income') return REVENUE_CATS;
