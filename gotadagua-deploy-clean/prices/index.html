@@ -1360,9 +1360,20 @@ function renderAreaTabs(){
   // many entries live in each surface. The Costs tab has no DB categories
   // yet (placeholder for a future operational-costs view). In Price List
   // mode we hide the Costs tab entirely — it's owner-internal.
+  // Per-location tab overrides. Surf School has a different workflow
+  // than the camps (only rents boards + wetsuits and gives lessons), so
+  // most camp-centric tabs (Tours, Merch, Bar/Drinks, Add-ons, etc.)
+  // aren't relevant and clutter the picker. Only 'surf' (Surf Pack +
+  // Lesson) is exposed. If Miguel later wants Costs to show for the
+  // school too, add 'costs' to this array.
+  const LOCATION_AREAS_OVERRIDE = {
+    'surf-school': new Set(['surf'])
+  };
+  const overrideForThisLoc = LOCATION_AREAS_OVERRIDE[LOCATION_SLUG];
   const visibleAreas = AREAS.filter(a =>
     !(viewMode === 'list' && a.key === 'costs') &&
-    !hiddenSystemKeys.has(a.key)
+    !hiddenSystemKeys.has(a.key) &&
+    (!overrideForThisLoc || overrideForThisLoc.has(a.key))
   );
   const counts = {};
   for (const a of visibleAreas) {

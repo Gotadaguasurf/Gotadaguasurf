@@ -701,12 +701,24 @@ td.r{text-align:right;font-family:'DM Mono',monospace;font-size:12px}
     <div class="card card-pad" id="ovBookingsPanel" style="display:none"></div>
 
     <!-- ────── Revenue & Food ────── -->
-    <section class="ov-section">
+    <section class="ov-section" id="ovRevCentersSection">
       <div class="ov-section-head">
         <div class="ov-section-title">Revenue centers</div>
         <div class="ov-section-sub">Profit per business area</div>
       </div>
       <div class="g2" id="ovCatPanels"></div>
+    </section>
+
+    <!-- Surf School only — replaces Revenue centers when the location is
+         the school. Wired by renderSurfSchoolOverview() below. Hidden
+         everywhere else via style="display:none" until surf-school is
+         active. -->
+    <section class="ov-section" id="ovSurfSchoolSection" style="display:none">
+      <div class="ov-section-head">
+        <div class="ov-section-title">Rentals &amp; Lessons</div>
+        <div class="ov-section-sub">Surf School revenue centers</div>
+      </div>
+      <div class="g2" id="ovSurfSchoolCards"></div>
     </section>
 
     <!-- Hidden remnants of the old cash + chart row -->
@@ -775,17 +787,23 @@ td.r{text-align:right;font-family:'DM Mono',monospace;font-size:12px}
 
     <div class="exp-kpis" id="expKpis"></div>
 
-    <div class="exp-quick">
-      <button class="exp-quick-btn" onclick="quickCategoryShortcut('Food')"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M4 6h13l-1.2 6H6z"/><path d="M4 6 3 3H1.5"/><circle cx="7.5" cy="16" r="1"/><circle cx="14.5" cy="16" r="1"/></svg></span><span>Food</span></span></button>
-      <button class="exp-quick-btn" onclick="quickCategoryShortcut('Setup')"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M4 14h12"/><path d="M6 14V8"/><path d="M10 14V5"/><path d="M14 14v-3"/></svg></span><span>Setup</span></span></button>
-      <button class="exp-quick-btn" onclick="quickCategoryShortcut('Services')"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M4 10h12"/><path d="M10 4v12"/><circle cx="10" cy="10" r="5.5"/></svg></span><span>Services</span></span></button>
-      <button class="exp-quick-btn" onclick="quickCategoryShortcut('Utilities')"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M11 3 5 11h4l-1 6 6-9h-4z"/></svg></span><span>Utilities</span></span></button>
-      <button class="exp-quick-btn" onclick="quickCategoryShortcut('Tours')"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M3 15c2-4 5-6 8-6s6 2 6 6"/><path d="M10 9V4"/><path d="M7.5 6.5 10 4l2.5 2.5"/></svg></span><span>Tours</span></span></button>
-      <button class="exp-quick-btn" onclick="quickCategoryShortcut('Bar')"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M6 4h8"/><path d="M7 4v3c0 2 1.5 3.5 3 3.5S13 9 13 7V4"/><path d="M10 10.5V16"/><path d="M7.5 16h5"/></svg></span><span>Bar</span></span></button>
-      <button class="exp-quick-btn" onclick="quickCategoryShortcut('Cleaning Supplies')"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M6 4h8"/><path d="M8 4v3"/><path d="M12 4v3"/><path d="M5 7h10l-1 9H6z"/></svg></span><span>Cleaning Supplies</span></span></button>
-      <button class="exp-quick-btn" onclick="quickCategoryShortcut('Transport')"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M3 12h11"/><path d="m11 8 4 4-4 4"/><path d="M4 8h4"/></svg></span><span>Transport</span></span></button>
-      <button class="exp-quick-btn" onclick="startQuickExpense('transfer',{category:'Cash Float',description:'Cash sent to camp'})"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M3 10h10"/><path d="m10 6 4 4-4 4"/><path d="M14 5h3v10h-3"/></svg></span><span>Cash sent</span></span></button>
-      <button class="exp-quick-btn" onclick="quickCategoryShortcut('Merchandising')"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7h10l-.6 9H5.6z"/><path d="M7 7V5a3 3 0 0 1 6 0v2"/></svg></span><span>Merchandise</span></span></button>
+    <div class="exp-quick" id="expQuickBar">
+      <button class="exp-quick-btn qcat-camp" data-cat="Food" onclick="quickCategoryShortcut('Food')"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M4 6h13l-1.2 6H6z"/><path d="M4 6 3 3H1.5"/><circle cx="7.5" cy="16" r="1"/><circle cx="14.5" cy="16" r="1"/></svg></span><span>Food</span></span></button>
+      <button class="exp-quick-btn qcat-camp" data-cat="Setup" onclick="quickCategoryShortcut('Setup')"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M4 14h12"/><path d="M6 14V8"/><path d="M10 14V5"/><path d="M14 14v-3"/></svg></span><span>Setup</span></span></button>
+      <button class="exp-quick-btn" data-cat="Services" onclick="quickCategoryShortcut('Services')"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M4 10h12"/><path d="M10 4v12"/><circle cx="10" cy="10" r="5.5"/></svg></span><span>Services</span></span></button>
+      <button class="exp-quick-btn" data-cat="Utilities" onclick="quickCategoryShortcut('Utilities')"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M11 3 5 11h4l-1 6 6-9h-4z"/></svg></span><span>Utilities</span></span></button>
+      <button class="exp-quick-btn qcat-camp" data-cat="Tours" onclick="quickCategoryShortcut('Tours')"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M3 15c2-4 5-6 8-6s6 2 6 6"/><path d="M10 9V4"/><path d="M7.5 6.5 10 4l2.5 2.5"/></svg></span><span>Tours</span></span></button>
+      <button class="exp-quick-btn qcat-camp" data-cat="Bar" onclick="quickCategoryShortcut('Bar')"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M6 4h8"/><path d="M7 4v3c0 2 1.5 3.5 3 3.5S13 9 13 7V4"/><path d="M10 10.5V16"/><path d="M7.5 16h5"/></svg></span><span>Bar</span></span></button>
+      <button class="exp-quick-btn qcat-camp" data-cat="Cleaning Supplies" onclick="quickCategoryShortcut('Cleaning Supplies')"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M6 4h8"/><path d="M8 4v3"/><path d="M12 4v3"/><path d="M5 7h10l-1 9H6z"/></svg></span><span>Cleaning Supplies</span></span></button>
+      <button class="exp-quick-btn qcat-camp" data-cat="Transport" onclick="quickCategoryShortcut('Transport')"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M3 12h11"/><path d="m11 8 4 4-4 4"/><path d="M4 8h4"/></svg></span><span>Transport</span></span></button>
+      <button class="exp-quick-btn" data-cat="Cash Float" onclick="startQuickExpense('transfer',{category:'Cash Float',description:'Cash sent to camp'})"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M3 10h10"/><path d="m10 6 4 4-4 4"/><path d="M14 5h3v10h-3"/></svg></span><span>Cash sent</span></span></button>
+      <button class="exp-quick-btn qcat-camp" data-cat="Merchandising" onclick="quickCategoryShortcut('Merchandising')"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7h10l-.6 9H5.6z"/><path d="M7 7V5a3 3 0 0 1 6 0v2"/></svg></span><span>Merchandise</span></span></button>
+      <!-- Surf School specific shortcuts — Rent / Salary / Gear. Toggled
+           in by applyLocationSpecificExpUI() when the active hub is the
+           school. Hidden everywhere else. -->
+      <button class="exp-quick-btn qcat-school" data-cat="Rent" style="display:none" onclick="quickCategoryShortcut('Rent')"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M3 10 10 3l7 7"/><path d="M5 9v8h10V9"/></svg></span><span>Rent</span></span></button>
+      <button class="exp-quick-btn qcat-school" data-cat="Salary" style="display:none" onclick="quickCategoryShortcut('Salary')"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M4 12v3h12v-3"/><path d="M10 4v9"/><path d="m7 7 3-3 3 3"/></svg></span><span>Salary</span></span></button>
+      <button class="exp-quick-btn qcat-school" data-cat="Setup" style="display:none" onclick="quickCategoryShortcut('Setup')"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><rect x="4" y="4" width="12" height="12" rx="1.5"/><path d="M8 10h4"/><path d="M10 8v4"/></svg></span><span>Gear / Setup</span></span></button>
     </div>
 
     <div class="card exp-inline">
@@ -2938,6 +2956,30 @@ function ensureAiUploadWired(){
   });
   AI_UPLOAD_WIRED=true;
 }
+
+// Location-specific Operations Ledger UI. Currently only tunes the
+// Quick-add shortcut row: for the Surf School, hide the camp-flavoured
+// buttons (Food / Tours / Bar / Cleaning Supplies / Transport /
+// Merchandise / plain Setup) and reveal the school-flavoured trio
+// (Rent / Salary / Gear+Setup). Also updates the page subtitle so
+// staff read the right thing. Runs on every showPage('expenses').
+function applyLocationSpecificExpUI(){
+  const isSchool = (typeof __HUB_LOCATION_SLUG !== 'undefined') && __HUB_LOCATION_SLUG === 'surf-school';
+  document.querySelectorAll('.exp-quick-btn.qcat-camp').forEach(b => {
+    b.style.display = isSchool ? 'none' : '';
+  });
+  document.querySelectorAll('.exp-quick-btn.qcat-school').forEach(b => {
+    b.style.display = isSchool ? '' : 'none';
+  });
+  // Swap the sub-line so "daily logging in LKR" isn't shown to the
+  // school (which uses EUR). Camp copy stays intact everywhere else.
+  const sub = document.querySelector('#page-expenses .exp-top div div:nth-child(2)');
+  if (sub) {
+    sub.textContent = isSchool
+      ? 'Rentals + Lessons revenue lands automatically. Add the school\'s general costs (Rent, Salaries, Gear, Utilities…) here.'
+      : 'Faster daily logging in LKR. Category drives the reporting area automatically.';
+  }
+}
 function _fileToBase64(file){
   return new Promise((resolve,reject)=>{
     const r=new FileReader();
@@ -4867,7 +4909,7 @@ function showPage(p){
   document.querySelectorAll('.ntab-m').forEach(btn=>btn.classList.toggle('active',btn.dataset.page===p));
   if(p==='overview') renderOverview();
   else if(p==='pos'){ mountCampTabFrame(); return; }
-  else if(p==='expenses'){ renderExpenses(); ensureAiUploadWired(); }
+  else if(p==='expenses'){ renderExpenses(); ensureAiUploadWired(); applyLocationSpecificExpUI(); }
   else if(p==='weekly') renderWeeklyPL();
 }
 
@@ -5165,7 +5207,70 @@ function perGuestDayMetric(amount,guestDays){
 // ═══════════════════════════════════════════════════════════
 //  OVERVIEW
 // ═══════════════════════════════════════════════════════════
+// Surf School Overview — paints the Rentals card (revenue + count +
+// still-open) and a Lessons placeholder in place of the camp-centric
+// Revenue centers section. Reads directly from surf_school_rentals so
+// the numbers match the Rentals tab exactly. Silent-fails to a hint if
+// Supabase is unreachable.
+async function renderSurfSchoolOverview(){
+  const box = document.getElementById('ovSurfSchoolCards');
+  if (!box) return;
+  const client = getHubSupabaseClient();
+  const locationId = await ensureHubLocationId();
+  if (!client || !locationId) {
+    box.innerHTML = `<div style="grid-column:1/-1;padding:14px;color:var(--muted);font-size:12px">Sign in required to load rentals.</div>`;
+    return;
+  }
+  const monthSel = document.getElementById('ovMonthSel');
+  const selectedMonth = monthSel?.value || 'all';
+  try {
+    const { data, error } = await client
+      .from('surf_school_rentals')
+      .select('id, kind, price_local, is_returned, opened_at, closed_at')
+      .eq('location_id', locationId)
+      .limit(2000);
+    if (error) throw error;
+    const rows = (data || []).filter(r => {
+      if (selectedMonth === 'all') return true;
+      const d = String(r.opened_at || '').slice(0, 7);
+      return d === selectedMonth;
+    });
+    const rentals = rows.filter(r => (r.kind || 'rental') === 'rental');
+    const lessons = rows.filter(r => r.kind === 'lesson');
+    const openNow = rentals.filter(r => !r.is_returned).length;
+    const rentalRev = rentals.reduce((s,r) => s + Number(r.price_local || 0), 0);
+    const lessonRev = lessons.reduce((s,r) => s + Number(r.price_local || 0), 0);
+    const fmtEur = (n) => `€${Math.round(n).toLocaleString('en-GB')}`;
+    box.innerHTML = `
+      <div class="card card-pad" style="border-left:4px solid var(--ocean)">
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.14em;font-weight:800;margin-bottom:6px">Rentals</div>
+        <div style="font-family:'DM Serif Display',serif;font-size:32px;color:var(--navy);line-height:1">${fmtEur(rentalRev)}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:6px">${rentals.length} rental${rentals.length===1?'':'s'} · ${openNow} still open</div>
+        <button class="btn btn-s" style="margin-top:10px" onclick="showPage('pos')">Open Rentals tab →</button>
+      </div>
+      <div class="card card-pad" style="border-left:4px solid var(--amber-mid,#c98a1f);opacity:${lessons.length?1:.65}">
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.14em;font-weight:800;margin-bottom:6px">Lessons</div>
+        <div style="font-family:'DM Serif Display',serif;font-size:32px;color:var(--navy);line-height:1">${fmtEur(lessonRev)}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:6px">${lessons.length} lesson${lessons.length===1?'':'s'}${lessons.length?'':' · not yet exposed on the form'}</div>
+      </div>
+    `;
+  } catch (e) {
+    box.innerHTML = `<div style="grid-column:1/-1;padding:14px;color:var(--red);font-size:12px">Load failed: ${String(e?.message || e)}</div>`;
+  }
+}
+
 function renderOverview(){
+  // Surf School isn't a camp — the camp-centric Revenue centers
+  // (Food / Bar / Merch / Tours / Laundry) don't apply. Toggle the
+  // camp-only section off and paint the school-specific one in its
+  // place. All Performance KPIs above stay identical: money in / out
+  // is the same shape regardless of what generates it.
+  const isSurfSchool = (typeof __HUB_LOCATION_SLUG!=='undefined') && __HUB_LOCATION_SLUG === 'surf-school';
+  const camp = document.getElementById('ovRevCentersSection');
+  const school = document.getElementById('ovSurfSchoolSection');
+  if (camp)   camp.style.display   = isSurfSchool ? 'none' : '';
+  if (school) school.style.display = isSurfSchool ? '' : 'none';
+  if (isSurfSchool) { renderSurfSchoolOverview(); }
   const monthSel=document.getElementById('ovMonthSel');
   const sel=document.getElementById('ovWeekSel');
   const monthOptions=[...new Set([...S.weeks.map(w=>monthKey(w.start)),...S.ledger.map(x=>monthKey(x.date)),...ovBookingMonths()].filter(Boolean))].sort().reverse();
