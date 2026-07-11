@@ -911,41 +911,15 @@ async function saveEntry(){
 
   btn.disabled = true; btn.textContent = 'Saving…';
 
-  // 1. Insert the revenue row in ledger_entries first so we can point the
-  //    rental at it. Uses attributed_location='surf-school' + type='revenue'
-  //    so the row flows straight into HQ profit per location.
-  const ledgerPayload = {
-    location_id: LOCATION_ID,
-    type: 'revenue',
-    category: CURRENT_KIND === 'lesson' ? 'Lessons' : (CURRENT_KIND === 'activity' ? 'Activities' : 'Rentals'),
-    description: `${itemName} — ${name}${customerType?` (${customerType})`:''}${duration?` · ${duration}`:''}${idCard?` · ID ${idCard}`:''}`,
-    payment_method: CURRENT_PAY,
-    qty,
-    amount_local: price,
-    currency,
-    entry_date: activityDate,
-    business_area: 'Surf School',
-    // fx_rate + amount_eur are stamped downstream by camp-hub healers
-    // when the row lands in Sri Lanka / Morocco. For surf-school (EUR)
-    // we can compute right away.
-    fx_rate: 1,
-    amount_eur: currency === 'EUR' ? price : 0,
-    source_kind: 'surf_school',
-    paid_from: 'surf-school',
-    attributed_location: 'surf-school'
-  };
-  const { data: ledger, error: ledgerErr } = await sb.from('ledger_entries').insert(ledgerPayload).select().single();
-  if (ledgerErr) {
-    toast('Save failed: '+ledgerErr.message, 'err');
-    btn.disabled = false; btn.textContent = 'Save';
-    return;
-  }
-
-  // 2. Insert the surf_school_rentals row. Lessons + activities are born
-  //    with is_returned=true so they never show up in Open rentals.
+  // Revenue linkage is handled server-side by tr_surf_rental_ledger
+  // (see supabase/surf-school-rentals-ledger-trigger.sql). The trigger
+  // fires BEFORE INSERT, creates the ledger_entries row with the same
+  // amount + entry_date + descriptor, and stamps ledger_entry_id on
+  // the new rental row atomically. Client no longer does a two-step
+  // insert — that path silently produced NULL ledger links in some
+  // race + RLS combinations. Trigger is the single source of truth.
   const rentalPayload = {
     location_id: LOCATION_ID,
-    ledger_entry_id: ledger.id,
     kind: CURRENT_KIND,
     student_name: name,
     student_email: email,
