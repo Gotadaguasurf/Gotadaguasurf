@@ -208,7 +208,7 @@ main{padding:16px;max-width:640px;margin:0 auto}
            (Google Form parity) instead of defaulting to Regular by accident. -->
       <div class="field" id="custTypeWrap">
         <label>Customer type</label>
-        <select id="fld_customer_type">
+        <select id="fld_customer_type" onchange="recalcRentalTotal()">
           <option value="">Choose…</option>
           <option value="Regular">Regular</option>
           <option value="Student">Student</option>
@@ -238,23 +238,23 @@ main{padding:16px;max-width:640px;margin:0 auto}
         <input id="fld_days" type="number" min="1" step="1" value="2" placeholder="Number of days" style="display:none" oninput="recalcRentalTotal()">
       </div>
 
-      <!-- Multi-item picker for rentals (Board + Wetsuit combos). For lessons/
-           activities the single-select fld_item below is shown instead. -->
+      <!-- Rental option: Board + Wetsuit combo (the common case), or one
+           of them alone. Prices come from the RENTAL_PRICING matrix and
+           auto-fill Amount. Single-select — combos live in the matrix as
+           their own row, not as a multi-tick of the two items. -->
       <div class="field" id="rentalItemsWrap">
-        <label>Rental item(s)</label>
-        <div id="fld_items_multi"></div>
-        <div class="hint">Tick each item the student is taking. Amount adds up automatically.</div>
-      </div>
-
-      <div class="field" id="singleItemWrap" style="display:none">
-        <label>Item</label>
-        <select id="fld_item" onchange="onItemPick()"></select>
+        <label>Rental item</label>
+        <select id="fld_rental_combo" onchange="recalcRentalTotal()">
+          <option value="Board + Wetsuit" selected>Board + Wetsuit</option>
+          <option value="Board">Board only</option>
+          <option value="Wetsuit">Wetsuit only</option>
+        </select>
       </div>
 
       <div class="field">
         <label>Amount</label>
         <input id="fld_price" type="number" step="0.01" min="0" placeholder="0.00">
-        <div class="hint" id="curHint">EUR · edit if you gave a discount</div>
+        <div class="hint" id="curHint">EUR · edit if you gave an extra discount · <strong>€250 deposit taken</strong></div>
       </div>
       <!-- Payment is Cash only for the Surf School — the form was born
            from the "Surf School Cash Payment Data Collection Form".
@@ -372,6 +372,9 @@ async function boot(){
   const sfld = document.getElementById('fld_start');
   if (sfld) sfld.value = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
   updateReturnPreview();
+  // Preview the Regular price for the default combo/duration so the
+  // amount doesn't sit at 0 until staff opens the customer dropdown.
+  recalcRentalTotal();
   await loadCatalog();
   await loadRentals();
   renderOpen();
@@ -428,28 +431,58 @@ function onItemPick(){
   document.getElementById('fld_price').value = Number(opt.dataset.price || 0).toFixed(2);
   document.getElementById('curHint').textContent = (opt.dataset.cur || 'EUR') + ' · edit if you gave a discount';
 }
+// Surf School rental price matrix — from the printed price card Miguel
+// shared. Every combo × duration lives here so the form auto-fills
+// Amount without a second thought. Student and Resident tiers only
+// quote 2H + Full day for the Board+Wetsuit combo — anything outside
+// that falls back to Regular. Same for Surf Camp Customer until Miguel
+// gives dedicated numbers.
+const RENTAL_PRICING = {
+  Regular: {
+    'Board + Wetsuit': { '1H':20, '2H':30, '3H':40, 'Full day':45, extra:15 },
+    'Board':           { '1H':15, '2H':20, '3H':30, 'Full day':40, extra:10 },
+    'Wetsuit':         { '1H':10, '2H':12, '3H':15, 'Full day':20, extra:15 }
+  },
+  Student: {
+    'Board + Wetsuit': { '2H':20, 'Full day':25 }
+  },
+  Resident: {
+    'Board + Wetsuit': { '2H':15, 'Full day':25 }
+  }
+  // 'Surf Camp Customer' has no dedicated tier yet — falls back to Regular
+  // via priceFor(). Miguel can add the row here when he decides on the rate.
+};
+
+function priceFor(customerType, combo, durationKey){
+  const tier = RENTAL_PRICING[customerType];
+  const tierPrice = tier?.[combo]?.[durationKey];
+  if (typeof tierPrice === 'number') return tierPrice;
+  // Fall back to Regular for any (tier, combo, duration) the discount
+  // table doesn't cover.
+  return RENTAL_PRICING.Regular[combo]?.[durationKey] ?? 0;
+}
+function extraDayRateFor(combo){
+  return RENTAL_PRICING.Regular[combo]?.extra ?? 0;
+}
+
 function recalcRentalTotal(){
   updateReturnPreview();
-  // Sum sell_price of every ticked checkbox × duration multiplier. For
-  // Same Day rentals a "Full day" bumps the multiplier; other durations
-  // keep the catalog price as-is. Multi-day multiplies by number of days.
-  const cbs = [...document.querySelectorAll('.item-cb:checked')];
-  let sum = 0, cur = 'EUR';
-  cbs.forEach(cb => { sum += Number(cb.dataset.price || 0); cur = cb.dataset.cur || cur; });
-  const mult = rentalDurationMultiplier();
-  document.getElementById('fld_price').value = (sum * mult).toFixed(2);
-  document.getElementById('curHint').textContent = `${cur} · edit if you gave a discount`;
-}
-function rentalDurationMultiplier(){
-  if (CURRENT_KIND !== 'rental') return 1;
+  if (CURRENT_KIND !== 'rental') return;
+  const combo = document.getElementById('fld_rental_combo')?.value || 'Board + Wetsuit';
+  const customer = document.getElementById('fld_customer_type')?.value || 'Regular';
+  let total = 0;
   if (CURRENT_RENTAL_TYPE === 'Multi-day') {
-    return Math.max(1, Number(document.getElementById('fld_days')?.value) || 1);
+    // Multi-day pricing = one Full day (with tier discount if it applies)
+    // + Extra days rate for every additional day. Extra rate uses the
+    // Regular table across the board — the discount tiers only cover
+    // 2H and Full day.
+    const days = Math.max(1, Number(document.getElementById('fld_days')?.value) || 1);
+    total = priceFor(customer, combo, 'Full day') + (days - 1) * extraDayRateFor(combo);
+  } else {
+    const d = document.getElementById('fld_duration')?.value || '1H';
+    total = priceFor(customer, combo, d);
   }
-  // Same Day. Catalog price is treated as the 1H rate — 2H doubles it,
-  // 3H triples, Full day = 4x. Adjust here if Miguel's catalog uses a
-  // different base rate.
-  const d = document.getElementById('fld_duration')?.value || '1H';
-  return { '1H':1, '2H':2, '3H':3, 'Full day':4 }[d] || 1;
+  document.getElementById('fld_price').value = total.toFixed(2);
 }
 // Turn "Date of activity" + "Start time" + the picked duration into two
 // timestamps: when the rental starts and when it's expected back. Same
@@ -639,23 +672,19 @@ async function saveEntry(){
   const price = Number(document.getElementById('fld_price').value) || 0;
   const terms = document.getElementById('fld_terms').checked;
 
-  // Two item-picker shapes:
-  //   Rental → checkboxes (fld_items_multi). Can be several at once.
-  //   Lesson / activity → single-select (fld_item).
+  // Rentals: the item picker is a single dropdown with the three combos
+  // (Board + Wetsuit / Board / Wetsuit) that the price matrix knows. No
+  // item_id — the item lives in the matrix, not the pricing_catalog.
+  // Lesson / activity paths still exist for a future re-enable but aren't
+  // reachable via the UI right now (kind segment was removed).
   let pickedItems = [];
   let primaryItem = null;
   let currency = 'EUR';
   if (CURRENT_KIND === 'rental') {
-    const cbs = [...document.querySelectorAll('.item-cb:checked')];
-    if (!cbs.length) { toast('Tick at least one rental item', 'err'); return; }
-    pickedItems = cbs.map(cb => ({
-      item_id: cb.dataset.id,
-      name:    cb.dataset.name,
-      price:   Number(cb.dataset.price || 0),
-      currency: cb.dataset.cur || 'EUR'
-    }));
-    primaryItem = pickedItems[0];
-    currency = primaryItem.currency;
+    const combo = document.getElementById('fld_rental_combo')?.value || 'Board + Wetsuit';
+    primaryItem = { item_id: null, name: combo, price, currency: 'EUR' };
+    pickedItems = [primaryItem];
+    currency = 'EUR';
   } else {
     const itemSel = document.getElementById('fld_item');
     const opt = itemSel.selectedOptions[0];
