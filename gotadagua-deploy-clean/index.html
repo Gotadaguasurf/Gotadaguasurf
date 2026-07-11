@@ -1127,11 +1127,18 @@
       { key:'portugal-camp-tab',  label:'Portugal · Camp Tab', group:'Surf Camps' },
       { key:'junior',             label:'Junior Camp',         group:'Surf Camps' },
       { key:'junior-camp-tab',    label:'Junior Camp · Camp Tab', group:'Surf Camps' },
+      // Surf School — the middle tab is "Rentals" (not "Camp Tab"), but
+      // reuses the same *-camp-tab key suffix so all the workspace/RLS
+      // machinery for scope='camp-tab' (row.can_edit=false) applies
+      // unchanged. Only the label reads "Rentals" so it makes sense.
+      { key:'surf-school',          label:'Surf School',          group:'Surf Camps' },
+      { key:'surf-school-camp-tab', label:'Surf School · Rentals',group:'Surf Camps' },
       // Prices (Pricing Catalog per camp — Phase 4 access-control)
       { key:'prices-sri-lanka',   label:'Sri Lanka prices',    group:'Prices' },
       { key:'prices-morocco',     label:'Morocco prices',      group:'Prices' },
       { key:'prices-portugal',    label:'Portugal prices',     group:'Prices' },
       { key:'prices-junior',      label:'Junior Camp prices',  group:'Prices' },
+      { key:'prices-surf-school', label:'Surf School prices',  group:'Prices' },
       // Management
       { key:'partners',           label:'Partners',            group:'Management' },
       { key:'crm',                label:'CRM',                 group:'Management' },
@@ -2626,6 +2633,7 @@
           { slug:'prices-morocco',   name:'Morocco prices',     workspace_type:'ops' },
           { slug:'prices-portugal',  name:'Portugal prices',    workspace_type:'ops' },
           { slug:'prices-junior',    name:'Junior Camp prices', workspace_type:'ops' },
+          { slug:'prices-surf-school', name:'Surf School prices', workspace_type:'ops' },
           { slug:'profit',           name:'Profit by location', workspace_type:'ops' },
         ];
         const existingSlugs = new Set(__workspaceRows.map(r => r.slug));
