@@ -93,7 +93,8 @@ main{padding:16px;max-width:640px;margin:0 auto}
 /* Open-rental / history item rows */
 .rental-row{background:#fff;border:1.5px solid var(--border);border-radius:12px;padding:14px;margin-bottom:10px;box-shadow:var(--sh-soft)}
 .rental-row.open{border-left:4px solid var(--amber)}
-.rental-row.overdue{border-left-color:var(--red)}
+.rental-row.overdue{border-left-color:var(--red);background:#fef4f2;border-color:#f4c3bd}
+.rental-row.overdue .rr-name{color:var(--red)}
 .rental-row.returned{border-left:4px solid var(--green);opacity:.72}
 .rr-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:6px}
 .rr-name{font-weight:800;color:var(--ink);font-size:15px}
@@ -218,11 +219,11 @@ main{padding:16px;max-width:640px;margin:0 auto}
         <label>Customer type</label>
         <select id="fld_customer_type" onchange="recalcRentalTotal()">
           <option value="">Choose…</option>
-          <option value="Regular">Regular</option>
-          <option value="Student">Student</option>
+          <option value="Standard">Standard</option>
+          <option value="Erasmus / Student">Erasmus / Student</option>
           <option value="Resident">Resident</option>
-          <option value="Surf Camp Customer">Surf Camp Customer</option>
         </select>
+        <div class="hint" id="customerTypeHint" style="display:none"></div>
       </div>
 
       <!-- Rental Type — Same Day vs Multi-day. Rentals only. -->
@@ -446,38 +447,74 @@ function onItemPick(){
 // that falls back to Regular. Same for Surf Camp Customer until Miguel
 // gives dedicated numbers.
 const RENTAL_PRICING = {
-  Regular: {
+  Standard: {
     'Board + Wetsuit': { '1H':20, '2H':30, '3H':40, 'Full day':45, extra:15 },
     'Board':           { '1H':15, '2H':20, '3H':30, 'Full day':40, extra:10 },
     'Wetsuit':         { '1H':10, '2H':12, '3H':15, 'Full day':20, extra:15 }
   },
-  Student: {
+  'Erasmus / Student': {
+    // Discount tier only quotes 2H + Full day for the combo — anything
+    // outside that falls back to Standard via priceFor().
     'Board + Wetsuit': { '2H':20, 'Full day':25 }
   },
   Resident: {
     'Board + Wetsuit': { '2H':15, 'Full day':25 }
   }
-  // 'Surf Camp Customer' has no dedicated tier yet — falls back to Regular
-  // via priceFor(). Miguel can add the row here when he decides on the rate.
+};
+
+// Lesson pricing — not exposed on this form (rentals only for now) but
+// kept here as the single source of truth so the Prices app and the
+// Camp Tab exposure can pick it up when Miguel opts in.
+//   Group (Standard):    max 5 per instructor, 1h30 per lesson.
+//   Private (Standard):  max 5 pax, 1h30 per lesson. +30€ per extra person.
+//   Erasmus surf lessons: 1h30, ESN document required.
+//   Resident group lessons: 1h30, PT residency document required.
+const LESSON_PRICING = {
+  'Group (Standard)':     { 1: 35, 3: 95,  5: 140, 10: 230, note: 'Max 5 per instructor · 1h30' },
+  'Private (Standard)':   { 1: 75, 3: 210, 5: 325, 10: 550, note: 'Max 5 pax · 1h30 · +€30 per extra person' },
+  'Erasmus surf lessons': { 1: 20,          5: 90,  10: 160, note: '1h30 · ESN document required' },
+  'Resident group':       {                5: 125, 10: 190, 20: 320, note: '1h30 · PT residency document required' }
+};
+
+// Documents required by customer type — surfaced under the picker so
+// staff know to ask for the ID / student card before applying the tier.
+const CUSTOMER_TYPE_NOTES = {
+  'Erasmus / Student': 'Ask for the ESN document to apply the student rate.',
+  'Resident':          'Ask for the PT residency document to apply the resident rate.'
 };
 
 function priceFor(customerType, combo, durationKey){
   const tier = RENTAL_PRICING[customerType];
   const tierPrice = tier?.[combo]?.[durationKey];
   if (typeof tierPrice === 'number') return tierPrice;
-  // Fall back to Regular for any (tier, combo, duration) the discount
-  // table doesn't cover.
-  return RENTAL_PRICING.Regular[combo]?.[durationKey] ?? 0;
+  // Fall back to Standard for any (tier, combo, duration) the discount
+  // table doesn't cover — e.g. Erasmus + Board only, Resident + 3H.
+  return RENTAL_PRICING.Standard[combo]?.[durationKey] ?? 0;
 }
 function extraDayRateFor(combo){
-  return RENTAL_PRICING.Regular[combo]?.extra ?? 0;
+  return RENTAL_PRICING.Standard[combo]?.extra ?? 0;
+}
+function updateCustomerTypeHint(){
+  const hint = document.getElementById('customerTypeHint');
+  const val = document.getElementById('fld_customer_type')?.value;
+  if (!hint) return;
+  const note = CUSTOMER_TYPE_NOTES[val];
+  if (note) {
+    hint.textContent = '⚠ ' + note;
+    hint.style.display = '';
+    hint.style.color = 'var(--amber)';
+    hint.style.fontWeight = '600';
+  } else {
+    hint.style.display = 'none';
+  }
 }
 
 function recalcRentalTotal(){
   updateReturnPreview();
+  updateCustomerTypeHint();
   if (CURRENT_KIND !== 'rental') return;
   const combo = document.getElementById('fld_rental_combo')?.value || 'Board + Wetsuit';
-  const customer = document.getElementById('fld_customer_type')?.value || 'Regular';
+  const customer = document.getElementById('fld_customer_type')?.value || 'Standard';
   let total = 0;
   if (CURRENT_RENTAL_TYPE === 'Multi-day') {
     // Multi-day pricing = one Full day (with tier discount if it applies)
@@ -619,6 +656,37 @@ function renderOpen(){
       </div>
     </div>`;
   }).join('');
+
+  // "Recently closed" strip — rentals that were returned in the last 24h.
+  // If a manager tapped Return by mistake, the row is one click away from
+  // Reopen. Muted styling so it doesn't compete with the active list.
+  const dayAgo = now - 24*60*60*1000;
+  const recent = ALL_RENTALS
+    .filter(r => r.kind === 'rental' && r.is_returned && r.closed_at && new Date(r.closed_at).getTime() > dayAgo)
+    .sort((a,b) => new Date(b.closed_at).getTime() - new Date(a.closed_at).getTime())
+    .slice(0, 6);
+  if (recent.length) {
+    const rc = recent.map(r => {
+      const closedMs = new Date(r.closed_at).getTime();
+      const mins = Math.max(1, Math.round((now - closedMs)/60000));
+      const ago = mins < 60 ? `${mins} min ago` : `${Math.floor(mins/60)}h ${mins%60}m ago`;
+      return `<div class="rental-row returned" style="opacity:.9">
+        <div class="rr-top">
+          <div class="rr-name" style="color:var(--muted);text-decoration:line-through">${escapeHtml(r.student_name)}</div>
+          <div class="rr-time">${ago}</div>
+        </div>
+        <div class="rr-item">${escapeHtml(r.item_name)}${r.duration?` · ${escapeHtml(r.duration)}`:''}</div>
+        <div class="rr-actions">
+          <button class="btn secondary" onclick="reopenRental('${r.id}', '${escapeAttr(r.student_name)}')">↺ Reopen (returned by mistake)</button>
+        </div>
+      </div>`;
+    }).join('');
+    list.insertAdjacentHTML('beforeend', `
+      <div style="margin-top:28px;padding-top:14px;border-top:1px solid var(--border)">
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;font-weight:800;margin-bottom:10px">Recently returned · last 24h</div>
+        ${rc}
+      </div>`);
+  }
 }
 
 function renderHistory(){
@@ -821,10 +889,27 @@ async function saveEntry(){
 }
 
 async function closeRental(id, studentName){
-  if (!confirm(`Confirm the board is back from ${studentName}?`)) return;
+  // Two-step confirm — staff has to type the student's first name to
+  // confirm the board is really back. Prevents accidental returns.
+  const first = String(studentName || '').trim().split(/\s+/)[0] || '';
+  const typed = window.prompt(`Board back from ${studentName}?\n\nType "${first}" to confirm the return.`);
+  if (typed === null) return; // cancelled
+  if (String(typed).trim().toLowerCase() !== first.toLowerCase()) {
+    toast('Name didn\'t match — return cancelled', 'err');
+    return;
+  }
   const { error } = await sb.from('surf_school_rentals').update({ is_returned: true, closed_at: new Date().toISOString() }).eq('id', id);
   if (error) { toast('Close failed: '+error.message, 'err'); return; }
   toast('✓ Board returned', 'ok');
+  await loadRentals();
+  renderOpen();
+}
+
+async function reopenRental(id, studentName){
+  if (!confirm(`Reopen ${studentName}'s rental? (Board goes back to Open)`)) return;
+  const { error } = await sb.from('surf_school_rentals').update({ is_returned: false, closed_at: null, closed_by: null }).eq('id', id);
+  if (error) { toast('Reopen failed: '+error.message, 'err'); return; }
+  toast('✓ Rental reopened', 'ok');
   await loadRentals();
   renderOpen();
 }
