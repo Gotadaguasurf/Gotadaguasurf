@@ -148,6 +148,69 @@ main{padding:16px;max-width:640px;margin:0 auto}
 .splash p{color:var(--muted);font-size:13px;line-height:1.6;margin:0 0 18px}
 .splash a{color:var(--ocean);font-weight:800;text-decoration:none}
 
+/* ── Mobile-first chip selectors ─────────────────────────────────────
+   Tap-once picks that replace <select> for enum fields. The hidden
+   select stays around so existing JS (recalc, saveEntry) can read
+   .value directly. Chip click → pickChip() sets the select + fires
+   change. Buttons feel like a native app, no dropdown roundtrip. */
+.chip-grid{display:grid;gap:8px}
+.chip-grid.cols-2{grid-template-columns:1fr 1fr}
+.chip-grid.cols-3{grid-template-columns:1fr 1fr 1fr}
+.chip-grid.cols-4{grid-template-columns:1fr 1fr 1fr 1fr}
+.chip-btn{background:#fff;border:1.5px solid var(--border);padding:14px 6px;border-radius:12px;font-size:14px;font-weight:800;color:var(--muted);cursor:pointer;transition:transform .1s, background .15s, border-color .15s, color .15s;line-height:1.15;-webkit-tap-highlight-color:transparent;font-family:inherit}
+.chip-btn:active{transform:scale(.97)}
+.chip-btn.active{background:var(--navy);border-color:var(--navy);color:#fff;box-shadow:0 2px 8px rgba(40,57,75,.18)}
+.chip-btn small{display:block;font-size:11px;font-weight:600;opacity:.75;margin-top:2px}
+.chip-btn.active small{opacity:.9}
+
+/* Days stepper — thumb-friendly +/− controls for Multi-day rentals.
+   Replaces the number spinner which is fiddly on mobile Safari. */
+.stepper{display:grid;grid-template-columns:56px 1fr 56px;border:1.5px solid var(--border);border-radius:12px;overflow:hidden;background:#fff;max-width:220px}
+.stepper button{background:#fff;border:none;font-size:24px;font-weight:800;color:var(--navy);cursor:pointer;padding:0;transition:background .15s;-webkit-tap-highlight-color:transparent;font-family:inherit}
+.stepper button:active{background:var(--foam)}
+.stepper button:disabled{opacity:.35;cursor:not-allowed}
+.stepper .val{display:flex;align-items:center;justify-content:center;font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy);border-left:1.5px solid var(--border);border-right:1.5px solid var(--border);min-height:52px}
+.stepper .val small{display:block;font-size:10px;color:var(--muted);font-family:'Outfit',sans-serif;font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-top:1px}
+
+/* Live total preview — the big number staff read at a glance before
+   pressing Save. Sits right above the editable Amount field so any
+   manual override is obvious. */
+.total-preview{background:linear-gradient(135deg,var(--navy),#3a5570);color:#fff;padding:14px 18px;border-radius:14px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;gap:12px;box-shadow:0 4px 14px rgba(40,57,75,.18)}
+.total-preview-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.14em;font-weight:800;opacity:.72}
+.total-preview-val{font-family:'DM Serif Display',serif;font-size:34px;line-height:1;margin-top:2px}
+.total-preview-breakdown{font-size:11px;opacity:.78;text-align:right;line-height:1.4;max-width:150px}
+
+/* Sticky save on mobile — the save button always sits at thumb-reach
+   without the user having to scroll to the bottom of the card. Fades
+   into the page background so it doesn't feel like a hard bar. */
+.sticky-save{position:sticky;bottom:0;padding:14px 0 8px;margin-top:14px;background:linear-gradient(to top,var(--bg) 60%,rgba(240,245,250,0));z-index:20}
+
+/* Optional-fields collapsible — hides Email + ID Card behind a
+   toggle so the default rental flow is 4 fields shorter. */
+.optional-toggle{background:transparent;border:none;color:var(--ocean);font-weight:800;font-size:13px;cursor:pointer;padding:10px 0;display:flex;align-items:center;gap:6px;font-family:inherit}
+.optional-toggle:hover{color:var(--navy)}
+.optional-toggle .arrow{transition:transform .15s;display:inline-block}
+.optional-toggle.open .arrow{transform:rotate(90deg)}
+.optional-body{display:none;padding-top:4px}
+.optional-body.open{display:block}
+
+/* iOS Safari auto-zooms inputs with font-size < 16px on focus. Bump
+   inputs to 16px on mobile so tapping into a field doesn't jerk the
+   viewport. Selects included for the ones still visible (Cash chip
+   fake-input etc). */
+@media(max-width:640px){
+  .field input,.field select,.field textarea{font-size:16px}
+  /* The subnav's fixed top offset (52px) is Tuned for the header. On
+     iOS momentum-scrolls it can jitter — set overscroll behavior so
+     the scroll stays inside the container. */
+  .subnav{overscroll-behavior:contain}
+  /* On tiny screens (<380), let the date+time and email+id grids
+     collapse to a single column rather than truncating labels. */
+  @media(max-width:379px){
+    .grid2{grid-template-columns:1fr}
+  }
+}
+
 @media(min-width:640px){
   .btn-row{grid-template-columns:1fr 1fr 1fr}
   .kpi-strip{grid-template-columns:repeat(4,1fr)}
@@ -210,24 +273,40 @@ main{padding:16px;max-width:640px;margin:0 auto}
       </div>
       <div class="field">
         <label>Student name</label>
-        <input id="fld_name" type="text" placeholder="e.g. Ana Costa" autocomplete="off">
+        <input id="fld_name" type="text" placeholder="e.g. Ana Costa" autocomplete="off" autocapitalize="words" inputmode="text">
       </div>
-      <div class="grid2">
-        <div class="field">
-          <label>Email (optional)</label>
-          <input id="fld_email" type="email" placeholder="ana@…" autocomplete="off">
-        </div>
-        <div class="field">
-          <label id="idLbl">ID card (optional)</label>
-          <input id="fld_id" type="text" placeholder="Passport / ID for board return" autocomplete="off">
+
+      <!-- Email + ID collapsed by default. Most rentals don't need them;
+           when the student wants a receipt or is leaving the board unsupervised
+           the staff taps "Add contact info" to reveal them. Both stay optional. -->
+      <button type="button" class="optional-toggle" id="contactToggle" onclick="toggleContactInfo()">
+        <span class="arrow">▸</span>
+        <span id="contactToggleLbl">Add contact info (email · ID)</span>
+      </button>
+      <div class="optional-body" id="contactBody">
+        <div class="grid2">
+          <div class="field">
+            <label>Email (optional)</label>
+            <input id="fld_email" type="email" placeholder="ana@…" autocomplete="off" inputmode="email" autocapitalize="off">
+          </div>
+          <div class="field">
+            <label id="idLbl">ID card (optional)</label>
+            <input id="fld_id" type="text" placeholder="Passport / ID" autocomplete="off">
+          </div>
         </div>
       </div>
-      <!-- Customer Type — always shown now that the form only takes rentals.
-           "Choose" is the placeholder so staff have to make an active pick
-           (Google Form parity) instead of defaulting to Regular by accident. -->
+
+      <!-- Customer Type — chips (mobile-first). Hidden select mirrors the
+           value for recalcRentalTotal() + saveEntry() so the JS stays as-is.
+           "Choose" placeholder enforces an active pick (Google Form parity). -->
       <div class="field" id="custTypeWrap">
         <label>Customer type</label>
-        <select id="fld_customer_type" onchange="recalcRentalTotal()">
+        <div class="chip-grid cols-3">
+          <button type="button" class="chip-btn" data-val="Standard" onclick="pickChip('fld_customer_type','Standard')">Standard</button>
+          <button type="button" class="chip-btn" data-val="Erasmus / Student" onclick="pickChip('fld_customer_type','Erasmus / Student')">Erasmus<small>/ Student</small></button>
+          <button type="button" class="chip-btn" data-val="Resident" onclick="pickChip('fld_customer_type','Resident')">Resident</button>
+        </div>
+        <select id="fld_customer_type" style="display:none" onchange="recalcRentalTotal()" aria-hidden="true">
           <option value="">Choose…</option>
           <option value="Standard">Standard</option>
           <option value="Erasmus / Student">Erasmus / Student</option>
@@ -245,35 +324,63 @@ main{padding:16px;max-width:640px;margin:0 auto}
         </div>
       </div>
 
-      <!-- Duration — 1H/2H/3H/Full day (Same Day) OR number of days (Multi-day). -->
+      <!-- Duration — chip grid for Same Day (4 chips), stepper for Multi-day.
+           Both feed the same recalcRentalTotal() path via their hidden holders. -->
       <div class="field" id="durationWrap">
         <label id="durationLbl">Duration</label>
-        <select id="fld_duration" onchange="recalcRentalTotal()">
+        <div class="chip-grid cols-4" id="durationChips">
+          <button type="button" class="chip-btn active" data-val="1H" onclick="pickChip('fld_duration','1H')">1<small>hour</small></button>
+          <button type="button" class="chip-btn" data-val="2H" onclick="pickChip('fld_duration','2H')">2<small>hours</small></button>
+          <button type="button" class="chip-btn" data-val="3H" onclick="pickChip('fld_duration','3H')">3<small>hours</small></button>
+          <button type="button" class="chip-btn" data-val="Full day" onclick="pickChip('fld_duration','Full day')">Full<small>day</small></button>
+        </div>
+        <select id="fld_duration" style="display:none" onchange="recalcRentalTotal()" aria-hidden="true">
           <option value="1H">1 hour</option>
           <option value="2H">2 hours</option>
           <option value="3H">3 hours</option>
           <option value="Full day">Full day</option>
         </select>
-        <input id="fld_days" type="number" min="1" step="1" value="2" placeholder="Number of days" style="display:none" oninput="recalcRentalTotal()">
+        <div id="daysStepperWrap" style="display:none">
+          <div class="stepper">
+            <button type="button" id="daysMinus" onclick="stepDays(-1)" aria-label="Fewer days">−</button>
+            <div class="val"><span id="daysDisplay">2</span><small>days</small></div>
+            <button type="button" onclick="stepDays(1)" aria-label="More days">+</button>
+          </div>
+          <div class="hint" style="margin-top:6px">Board goes home with the student — deposit taken.</div>
+        </div>
+        <input id="fld_days" type="hidden" value="2">
       </div>
 
-      <!-- Rental option: Board + Wetsuit combo (the common case), or one
-           of them alone. Prices come from the RENTAL_PRICING matrix and
-           auto-fill Amount. Single-select — combos live in the matrix as
-           their own row, not as a multi-tick of the two items. -->
+      <!-- Rental item — chips (Board + Wetsuit is the common case). -->
       <div class="field" id="rentalItemsWrap">
         <label>Rental item</label>
-        <select id="fld_rental_combo" onchange="recalcRentalTotal()">
+        <div class="chip-grid cols-3">
+          <button type="button" class="chip-btn active" data-val="Board + Wetsuit" onclick="pickChip('fld_rental_combo','Board + Wetsuit')">Board<small>+ Wetsuit</small></button>
+          <button type="button" class="chip-btn" data-val="Board" onclick="pickChip('fld_rental_combo','Board')">Board<small>only</small></button>
+          <button type="button" class="chip-btn" data-val="Wetsuit" onclick="pickChip('fld_rental_combo','Wetsuit')">Wetsuit<small>only</small></button>
+        </div>
+        <select id="fld_rental_combo" style="display:none" onchange="recalcRentalTotal()" aria-hidden="true">
           <option value="Board + Wetsuit" selected>Board + Wetsuit</option>
           <option value="Board">Board only</option>
           <option value="Wetsuit">Wetsuit only</option>
         </select>
       </div>
 
+      <!-- Big total preview — recalcRentalTotal() paints this AND fills the
+           Amount input below with the same number. Staff read the total
+           here; the Amount field remains editable for one-off discounts. -->
+      <div class="total-preview" id="totalPreview">
+        <div>
+          <div class="total-preview-lbl">Total</div>
+          <div class="total-preview-val" id="totalPreviewVal">€0</div>
+        </div>
+        <div class="total-preview-breakdown" id="totalPreviewBreakdown">Pick a customer type</div>
+      </div>
+
       <div class="field">
-        <label>Amount</label>
-        <input id="fld_price" type="number" step="0.01" min="0" placeholder="0.00">
-        <div class="hint" id="curHint">EUR · edit if you gave an extra discount · <strong>€250 deposit taken</strong></div>
+        <label>Amount (edit for discount)</label>
+        <input id="fld_price" type="number" step="0.01" min="0" placeholder="0.00" inputmode="decimal">
+        <div class="hint" id="curHint">EUR · <strong>€250 deposit taken</strong> if the board leaves the shop.</div>
       </div>
       <!-- Payment is Cash only for the Surf School — the form was born
            from the "Surf School Cash Payment Data Collection Form".
@@ -288,8 +395,8 @@ main{padding:16px;max-width:640px;margin:0 auto}
         <input id="fld_terms" type="checkbox">
         <span class="terms-txt">Student agrees to the <a href="https://gotadaguasurf.com/terms-and-conditions/" target="_blank" rel="noopener">terms &amp; conditions</a> and consents to their info being recorded.</span>
       </label>
-      <div style="margin-top:14px">
-        <button class="btn" id="saveBtn" onclick="saveEntry()">Save</button>
+      <div class="sticky-save">
+        <button class="btn" id="saveBtn" onclick="saveEntry()">Save rental</button>
       </div>
     </div>
   </div>
@@ -556,20 +663,41 @@ function recalcRentalTotal(){
   updateCustomerTypeHint();
   if (CURRENT_KIND !== 'rental') return;
   const combo = document.getElementById('fld_rental_combo')?.value || 'Board + Wetsuit';
-  const customer = document.getElementById('fld_customer_type')?.value || 'Standard';
+  const customerRaw = document.getElementById('fld_customer_type')?.value || '';
+  const customer = customerRaw || 'Standard';
   let total = 0;
+  let breakdown = '';
   if (CURRENT_RENTAL_TYPE === 'Multi-day') {
     // Multi-day pricing = one Full day (with tier discount if it applies)
     // + Extra days rate for every additional day. Extra rate uses the
     // Regular table across the board — the discount tiers only cover
     // 2H and Full day.
     const days = Math.max(1, Number(document.getElementById('fld_days')?.value) || 1);
-    total = priceFor(customer, combo, 'Full day') + (days - 1) * extraDayRateFor(combo);
+    const dayOne = priceFor(customer, combo, 'Full day');
+    const extraRate = extraDayRateFor(combo);
+    const extraTotal = (days - 1) * extraRate;
+    total = dayOne + extraTotal;
+    breakdown = days === 1
+      ? `1 day · ${combo}`
+      : `Day 1: €${dayOne} + ${days-1} × €${extraRate}`;
   } else {
     const d = document.getElementById('fld_duration')?.value || '1H';
     total = priceFor(customer, combo, d);
+    const durLabel = { '1H':'1h', '2H':'2h', '3H':'3h', 'Full day':'Full day' }[d] || d;
+    breakdown = `${combo} · ${durLabel}`;
   }
   document.getElementById('fld_price').value = total.toFixed(2);
+  // Big total-preview readout above the (editable) Amount input.
+  const totalEl = document.getElementById('totalPreviewVal');
+  const brkEl = document.getElementById('totalPreviewBreakdown');
+  if (totalEl) totalEl.textContent = '€' + total.toFixed(total % 1 === 0 ? 0 : 2);
+  if (brkEl) {
+    if (!customerRaw) {
+      brkEl.textContent = 'Pick a customer type';
+    } else {
+      brkEl.innerHTML = `${breakdown}<br><span style="opacity:.72">${customerRaw}</span>`;
+    }
+  }
 }
 // Turn "Date of activity" + "Start time" + the picked duration into two
 // timestamps: when the rental starts and when it's expected back. Same
@@ -1008,10 +1136,58 @@ function setRentalType(t){
   CURRENT_RENTAL_TYPE = t;
   document.querySelectorAll('#rentalTypeWrap .segment button').forEach(b => b.classList.toggle('active', b.dataset.rtype === t));
   const isMulti = t === 'Multi-day';
-  document.getElementById('fld_duration').style.display = isMulti ? 'none' : '';
-  document.getElementById('fld_days').style.display     = isMulti ? '' : 'none';
-  document.getElementById('durationLbl').textContent    = isMulti ? 'How many days?' : 'Duration';
+  // Chip grid (hours) hides for Multi-day; stepper (days) hides for Same Day.
+  // The hidden <select> and <input type="hidden"> keep their last values so
+  // switching back doesn't clobber the user's earlier pick.
+  const chipGrid = document.getElementById('durationChips');
+  const stepper  = document.getElementById('daysStepperWrap');
+  if (chipGrid) chipGrid.style.display = isMulti ? 'none' : '';
+  if (stepper)  stepper.style.display  = isMulti ? '' : 'none';
+  document.getElementById('durationLbl').textContent = isMulti ? 'How many days?' : 'Duration';
   recalcRentalTotal();
+}
+
+// Mobile chip picker: assigns to the hidden <select> so recalc/save keep
+// reading .value the same way, fires the native change event to trigger
+// any wired onchange, and paints the .active class on the tapped button.
+function pickChip(selectId, value){
+  const sel = document.getElementById(selectId);
+  if (!sel) return;
+  sel.value = value;
+  sel.dispatchEvent(new Event('change', { bubbles: true }));
+  const wrap = sel.closest('.field');
+  if (wrap) {
+    wrap.querySelectorAll('.chip-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.val === value);
+    });
+  }
+}
+
+// +/− stepper for the Multi-day "How many days?" input. The hidden
+// fld_days input remains the source of truth (saveEntry reads .value).
+function stepDays(delta){
+  const inp = document.getElementById('fld_days');
+  if (!inp) return;
+  const current = Math.max(1, Number(inp.value) || 1);
+  const next = Math.max(1, current + delta);
+  inp.value = next;
+  const disp = document.getElementById('daysDisplay');
+  if (disp) disp.textContent = String(next);
+  const minusBtn = document.getElementById('daysMinus');
+  if (minusBtn) minusBtn.disabled = next <= 1;
+  recalcRentalTotal();
+}
+
+// Collapsible for the optional Email + ID Card fields. Default closed so
+// the default rental flow is 2 fields shorter; staff taps to reveal.
+function toggleContactInfo(){
+  const btn = document.getElementById('contactToggle');
+  const body = document.getElementById('contactBody');
+  const lbl = document.getElementById('contactToggleLbl');
+  if (!btn || !body) return;
+  const isOpen = body.classList.toggle('open');
+  btn.classList.toggle('open', isOpen);
+  if (lbl) lbl.textContent = isOpen ? 'Hide contact info' : 'Add contact info (email · ID)';
 }
 function setPay(p){
   CURRENT_PAY = p;
@@ -1034,6 +1210,23 @@ function clearForm(){
   const cust = document.getElementById('fld_customer_type'); if (cust) cust.value = '';
   const dur = document.getElementById('fld_duration'); if (dur) dur.value = '1H';
   const days = document.getElementById('fld_days'); if (days) days.value = 2;
+  // Reset chip active states — customer type back to unpicked, duration
+  // back to 1H, rental item back to Board + Wetsuit (the common defaults).
+  document.querySelectorAll('#custTypeWrap .chip-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('#durationChips .chip-btn').forEach(b => b.classList.toggle('active', b.dataset.val === '1H'));
+  document.querySelectorAll('#rentalItemsWrap .chip-btn').forEach(b => b.classList.toggle('active', b.dataset.val === 'Board + Wetsuit'));
+  // Reset combo select to default too so recalcRentalTotal reads the right value.
+  const combo = document.getElementById('fld_rental_combo'); if (combo) combo.value = 'Board + Wetsuit';
+  // Days stepper display + minus-button disabled state.
+  const daysDisp = document.getElementById('daysDisplay'); if (daysDisp) daysDisp.textContent = '2';
+  const minus = document.getElementById('daysMinus'); if (minus) minus.disabled = false;
+  // Collapse the contact-info block back to its default hidden state.
+  const contactBody = document.getElementById('contactBody');
+  const contactBtn = document.getElementById('contactToggle');
+  const contactLbl = document.getElementById('contactToggleLbl');
+  if (contactBody) contactBody.classList.remove('open');
+  if (contactBtn) contactBtn.classList.remove('open');
+  if (contactLbl) contactLbl.textContent = 'Add contact info (email · ID)';
   // Reset the date + start time back to now so the next entry defaults
   // correctly and the Return-by preview snaps back to something current.
   const now = new Date();
