@@ -93,6 +93,15 @@ main{padding:16px;max-width:640px;margin:0 auto}
 /* Open-rental / history item rows */
 .rental-row{background:#fff;border:1.5px solid var(--border);border-radius:12px;padding:14px;margin-bottom:10px;box-shadow:var(--sh-soft)}
 .rental-row.open{border-left:4px solid var(--amber)}
+/* Big "Return by HH:MM" hero on every open rental card. Staff need to
+   read the return time from across the shop, not squint at 12px meta. */
+.rr-return-hero{background:var(--foam);padding:12px 14px;border-radius:10px;margin-bottom:12px;text-align:center;border:1px solid #dce8f2}
+.rr-return-hero.overdue{background:#fef4f2;border-color:#f4c3bd}
+.rr-return-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.14em;color:var(--muted);font-weight:800}
+.rr-return-time{font-family:'DM Serif Display',serif;font-size:38px;color:var(--navy);line-height:1;margin-top:4px}
+.rr-return-hero.overdue .rr-return-time{color:var(--red)}
+.rr-return-sub{font-size:12px;color:var(--muted);margin-top:4px}
+.rr-return-hero.overdue .rr-return-sub{color:var(--red);font-weight:700}
 .rental-row.overdue{border-left-color:var(--red);background:#fef4f2;border-color:#f4c3bd}
 .rental-row.overdue .rr-name{color:var(--red)}
 .rental-row.returned{border-left:4px solid var(--green);opacity:.72}
@@ -336,6 +345,13 @@ let CURRENT_PAY = 'Cash';
 let CURRENT_RENTAL_TYPE = 'Same Day';
 let CURRENT_USER = null;
 let PROFILE_NAMES = new Map();
+// CAN_EDIT_HISTORY gates the Delete button on the History tab and any
+// after-the-fact edit paths. Only staff with full Surf School access
+// (workspace_memberships.can_edit=true) get these. The "Rentals only"
+// role, which comes in via ?view=camp-tab-only from Settings, always
+// sees false — so a cash-handling staff member can never edit a paid
+// rental at the end of the day and pocket the difference.
+let CAN_EDIT_HISTORY = false;
 
 // When embedded inside camp-hub (iframe with ?embedded=1) the parent
 // already has its own dark navy header + location switcher, so hiding
@@ -371,6 +387,31 @@ async function boot(){
     return;
   }
   LOCATION_ID = loc.id;
+  // Detect edit rights. Rentals-only staff (invited with just "Surf School
+  // · Rentals" in Settings) come in through ?view=camp-tab-only — a
+  // structural signal we can trust before any DB round-trip. Otherwise
+  // look for a workspace_memberships row with can_edit=true on
+  // surf-school; owner emails always get through.
+  const viewMode = new URLSearchParams(location.search).get('view');
+  if (viewMode === 'camp-tab-only') {
+    CAN_EDIT_HISTORY = false;
+  } else {
+    try {
+      const ownerEmails = new Set(['miguel@gotadaguasurf.com']);
+      const email = String(user.email || '').toLowerCase();
+      if (ownerEmails.has(email)) {
+        CAN_EDIT_HISTORY = true;
+      } else {
+        const { data: mem } = await sb.from('workspace_memberships')
+          .select('can_edit, workspaces!inner(slug)')
+          .eq('user_id', user.id)
+          .eq('active', true)
+          .eq('workspaces.slug', 'surf-school')
+          .maybeSingle();
+        CAN_EDIT_HISTORY = !!mem?.can_edit;
+      }
+    } catch (_e) { CAN_EDIT_HISTORY = false; }
+  }
   // Default the "Date of activity" + "Start time" fields to now so staff
   // usually just tap through them. Uses LOCAL clock so a 14:30 pick means
   // 14:30 in the manager's timezone.
@@ -639,13 +680,39 @@ function renderOpen(){
         returnLbl += ` · <strong style="color:var(--red)">${overStr} over</strong>`;
       }
     }
+    // Big "Return by" hero. Time is the anchor — everything else supports
+    // it. Multi-day returns show the date on the sub-line; overdue rows
+    // paint the whole hero red with a countdown of "how far over".
+    let heroTimeStr = '', heroSubStr = '';
+    if (r.expected_return_at) {
+      const exp = new Date(r.expected_return_at);
+      const open = new Date(r.opened_at);
+      const sameDay = exp.toDateString() === open.toDateString();
+      heroTimeStr = exp.toLocaleTimeString('en-GB', timeFmt);
+      const dayStr = exp.toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short' });
+      if (isOverdue) {
+        const overMs = now - exp.getTime();
+        const overMins = Math.max(1, Math.round(overMs/60000));
+        const overStr = overMins < 60 ? `${overMins} min` : `${Math.floor(overMins/60)}h ${overMins%60}m`;
+        heroSubStr = sameDay ? `⚠ ${overStr} over` : `${dayStr} · ⚠ ${overStr} over`;
+      } else {
+        heroSubStr = sameDay ? 'today' : dayStr;
+      }
+    }
+    const returnHero = heroTimeStr
+      ? `<div class="rr-return-hero ${isOverdue?'overdue':''}">
+           <div class="rr-return-lbl">Return by</div>
+           <div class="rr-return-time">${heroTimeStr}</div>
+           <div class="rr-return-sub">${heroSubStr}</div>
+         </div>`
+      : '';
     return `<div class="rental-row ${cls}">
+      ${returnHero}
       <div class="rr-top">
         <div class="rr-name">${escapeHtml(r.student_name)}${r.customer_type?` <span class="chip" style="background:var(--foam);color:var(--ocean)">${escapeHtml(r.customer_type)}</span>`:''}</div>
         <div class="rr-time">${timeAgo}</div>
       </div>
       <div class="rr-item">${escapeHtml(r.item_name)}${r.duration?` · ${escapeHtml(r.duration)}`:''}</div>
-      ${returnLbl?`<div class="rr-meta" style="margin-bottom:6px;color:${isOverdue?'var(--red)':'var(--navy)'};font-weight:600">${returnLbl}</div>`:''}
       <div class="rr-meta">
         <span>Given by <strong>${escapeHtml(staff)}</strong></span>
         ${r.id_card_number?`<span>ID ${escapeHtml(r.id_card_number)}</span>`:''}
@@ -724,6 +791,12 @@ function renderHistory(){
     const closedInfo = r.is_returned && r.closed_at
       ? `Returned ${new Date(r.closed_at).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}${closedBy?` by ${escapeHtml(closedBy)}`:''}`
       : '';
+    // Delete action — only for full-access staff. Rentals-only role
+    // never sees this button (server-side RLS also blocks the delete,
+    // so a manipulated request can't slip through either).
+    const delBtn = CAN_EDIT_HISTORY
+      ? `<button class="btn danger" style="margin-top:10px" onclick="deleteRental('${r.id}', '${escapeAttr(r.student_name)}')">🗑 Delete entry</button>`
+      : '';
     return `<div class="rental-row ${cls}">
       <div class="rr-top">
         <div class="rr-name">${escapeHtml(r.student_name)} ${chip}</div>
@@ -735,8 +808,33 @@ function renderHistory(){
         ${closedInfo?`<span>${closedInfo}</span>`:''}
         <span class="rr-price">${escapeHtml(r.currency||'EUR')} ${Number(r.price_local||0).toFixed(0)}</span>
       </div>
+      ${delBtn}
     </div>`;
   }).join('') + (rows.length > 300 ? `<div class="empty" style="border:none;padding:14px 8px;font-size:11px">Showing 300 of ${rows.length}. Narrow the filters to see more.</div>` : '');
+}
+
+// Hard-delete a rental + its ledger revenue line. Guarded by
+// CAN_EDIT_HISTORY on the client and by RLS on the server. Requires
+// the staff member to retype the student's first name to confirm.
+async function deleteRental(id, studentName){
+  if (!CAN_EDIT_HISTORY) { toast('Not allowed', 'err'); return; }
+  const first = String(studentName||'').trim().split(/\s+/)[0] || '';
+  const typed = window.prompt(`DELETE ${studentName}'s rental (and its revenue line)?\n\nType "${first}" to confirm.`);
+  if (typed === null) return;
+  if (String(typed).trim().toLowerCase() !== first.toLowerCase()) {
+    toast('Name didn\'t match — delete cancelled', 'err');
+    return;
+  }
+  // Fetch the row so we can nuke the ledger_entry_id too.
+  const row = ALL_RENTALS.find(r => r.id === id);
+  if (row?.ledger_entry_id) {
+    await sb.from('ledger_entries').delete().eq('id', row.ledger_entry_id).catch(()=>{});
+  }
+  const { error } = await sb.from('surf_school_rentals').delete().eq('id', id);
+  if (error) { toast('Delete failed: '+error.message, 'err'); return; }
+  toast('✓ Deleted', 'ok');
+  await loadRentals();
+  renderHistory();
 }
 
 // ── Save flow ────────────────────────────────────────────────────
