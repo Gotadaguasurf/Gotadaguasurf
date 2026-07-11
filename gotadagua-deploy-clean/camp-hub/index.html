@@ -10024,11 +10024,133 @@ document.addEventListener('keydown',(e)=>{
   }
 });
 
+// ── Location access guard ────────────────────────────────────────────
+// Before hydrating ANY location-scoped data, verify the signed-in user
+// has an active workspace_membership on the workspace matching
+// __HUB_LOCATION_SLUG (full access) or __HUB_LOCATION_SLUG + '-camp-tab'
+// (restricted). Without this, opening /camp-hub/?location=portugal as a
+// user without Portugal access silently rendered the Sri Lanka default
+// (LEDGER_LOCATION_SLUG falls back to 'sri-lanka' at module load) —
+// which surfaced as "cafe@ sees LKR on Portugal" in real usage. Fail
+// closed, show a picker of the locations the user CAN open.
+const HUB_ACCESS_OWNER_EMAILS = new Set(['miguel@gotadaguasurf.com']);
+async function enforceLocationAccess(client, session){
+  const email = String(session?.user?.email || '').toLowerCase();
+  if(HUB_ACCESS_OWNER_EMAILS.has(email)) return { ok:true, campTabOnly:false };
+  const userId = session?.user?.id;
+  if(!client || !userId) return { ok:false, reason:'no-client-or-user' };
+  // Platform owner/super_admin bypass — mirrors filterLocationSwitcherByAccess.
+  try{
+    const { data: profile } = await client.from('platform_profiles')
+      .select('platform_role').eq('id', userId).maybeSingle();
+    const role = String(profile?.platform_role || '').toLowerCase();
+    if(role === 'owner' || role === 'super_admin') return { ok:true, campTabOnly:false };
+  }catch(_e){}
+  // workspaces.slug uses 'junior' as the short form even though the
+  // location slug is 'junior-camp' (see filterLocationSwitcherByAccess
+  // and setup-locations-currency.sql). Map the URL slug back to whatever
+  // the workspaces table uses before comparing.
+  const toWorkspaceSlug = (locSlug) => locSlug === 'junior-camp' ? 'junior' : locSlug;
+  const wantedFull = toWorkspaceSlug(__HUB_LOCATION_SLUG);
+  const wantedCampTab = wantedFull + '-camp-tab';
+  try{
+    const { data: memberships, error } = await client
+      .from('workspace_memberships')
+      .select('workspace_id, can_view, can_edit, active, workspaces(slug, name, workspace_type)')
+      .eq('user_id', userId)
+      .eq('active', true);
+    if(error){
+      console.warn('[Hub] access-guard: memberships query failed', error);
+      return { ok:false, reason:'query-error', wanted:__HUB_LOCATION_SLUG, message:error.message };
+    }
+    const rows = (memberships || []).filter(m => m && m.workspaces);
+    const full = rows.find(m => m.workspaces.slug === wantedFull && m.can_view !== false);
+    if(full) return { ok:true, campTabOnly:false };
+    const campTab = rows.find(m => m.workspaces.slug === wantedCampTab && m.can_view !== false);
+    if(campTab) return { ok:true, campTabOnly:true };
+    // Build a picker of the locations this user CAN open. Collapse
+    // -camp-tab variants under the base slug so each location appears
+    // once, tagged with a "camp tab only" hint when applicable.
+    const bySlug = new Map();
+    const CAMP_SLUGS = /^(sri-lanka|morocco|portugal|junior|surf-school)$/;
+    rows.forEach(m => {
+      const raw = String(m.workspaces.slug || '').toLowerCase();
+      const isCampTab = raw.endsWith('-camp-tab');
+      const base = isCampTab ? raw.slice(0, -('-camp-tab'.length)) : raw;
+      if(!CAMP_SLUGS.test(base)) return;
+      const urlSlug = base === 'junior' ? 'junior-camp' : base;
+      const existing = bySlug.get(urlSlug) || { slug:urlSlug, name:m.workspaces.name || urlSlug, campTabOnly:true };
+      if(!isCampTab) existing.campTabOnly = false;
+      existing.name = m.workspaces.name || existing.name;
+      bySlug.set(urlSlug, existing);
+    });
+    return { ok:false, reason:'no-access', wanted:__HUB_LOCATION_SLUG, accessible:Array.from(bySlug.values()) };
+  }catch(e){
+    console.warn('[Hub] access-guard threw', e);
+    return { ok:false, reason:'threw', wanted:__HUB_LOCATION_SLUG, message:String(e?.message||e) };
+  }
+}
+function renderAccessBlockScreen(result){
+  const wanted = result.wanted || __HUB_LOCATION_SLUG;
+  const accessible = Array.isArray(result.accessible) ? result.accessible : [];
+  const links = accessible.length ? `
+    <div style="opacity:.7;margin-bottom:10px;font-size:14px">Locations que podes abrir:</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:24px">
+      ${accessible.map(a => `
+        <a href="/camp-hub/?location=${encodeURIComponent(a.slug)}${a.campTabOnly ? '&view=camp-tab-only' : ''}"
+           style="background:#1a2540;padding:12px 16px;border-radius:12px;color:#e8ecf5;text-decoration:none;font-weight:600;border:1px solid rgba(255,255,255,.08)">
+          ${a.name || a.slug}${a.campTabOnly ? ' <span style="opacity:.55;font-weight:400;font-size:12px">· camp tab only</span>' : ''}
+        </a>`).join('')}
+    </div>` : `
+    <div style="opacity:.6;margin-bottom:24px;font-size:14px">Ainda não tens acesso a nenhuma location. Pede ao owner para te conceder acesso.</div>`;
+  const errNote = (result.reason === 'query-error' || result.reason === 'threw') && result.message ?
+    `<div style="opacity:.5;font-size:12px;margin-top:16px">${result.message}</div>` : '';
+  document.body.innerHTML = `
+    <div style="position:fixed;inset:0;background:#0b1220;color:#e8ecf5;display:flex;align-items:center;justify-content:center;font-family:system-ui,-apple-system,sans-serif;padding:24px;z-index:99999">
+      <div style="max-width:520px;width:100%;text-align:center">
+        <div style="font-family:'DM Serif Display',Georgia,serif;font-size:32px;margin-bottom:10px">Sem acesso a esta location</div>
+        <div style="opacity:.7;margin-bottom:24px;font-size:15px;line-height:1.5">Não tens permissão para abrir <strong>${wanted}</strong>. Pede ao owner para te conceder acesso via Settings → Team Access.</div>
+        ${links}
+        <div style="display:flex;gap:10px;justify-content:center">
+          <a href="/" style="background:transparent;border:1px solid rgba(255,255,255,.2);padding:10px 18px;border-radius:10px;color:#e8ecf5;text-decoration:none;font-size:14px">Voltar</a>
+          <button id="hubAccessSignOut" style="background:transparent;border:1px solid rgba(255,255,255,.2);padding:10px 18px;border-radius:10px;color:#e8ecf5;font-family:inherit;font-size:14px;cursor:pointer">Sign out</button>
+        </div>
+        ${errNote}
+      </div>
+    </div>`;
+  const signOut = document.getElementById('hubAccessSignOut');
+  if(signOut){
+    signOut.addEventListener('click', async () => {
+      try{
+        const c = getHubSupabaseClient();
+        if(c) await c.auth.signOut();
+      }catch(_){}
+      window.location.href = '/';
+    });
+  }
+}
+
 async function requirePlatformSession(){
   const client=getHubSupabaseClient();
   if(!client) return;
   const {data}=await client.auth.getSession();
   if(!data.session){window.location.href='/';return;}
+  // Gate: verify the user has access to __HUB_LOCATION_SLUG BEFORE any
+  // location-scoped hydration runs — otherwise the app would render the
+  // default (Sri Lanka / LKR) even for a Portugal-only user.
+  const access = await enforceLocationAccess(client, data.session);
+  if(!access.ok){
+    renderAccessBlockScreen(access);
+    return;
+  }
+  if(access.campTabOnly && !CAMP_TAB_ONLY_MODE){
+    // User only holds the camp-tab variant → redirect into restricted mode.
+    const q = new URLSearchParams(window.location.search);
+    q.set('location', __HUB_LOCATION_SLUG);
+    q.set('view', 'camp-tab-only');
+    window.location.replace(window.location.pathname + '?' + q.toString());
+    return;
+  }
   // HQ shortcut button — flip on for anyone with owner-tier access.
   // Runs off the same rules the /hq page uses so the shortcut never
   // shows a link the user can't actually open. Silent-fail: if the

@@ -108,6 +108,53 @@ create trigger tr_surf_rental_delete_ledger
   before delete on public.surf_school_rentals
   for each row execute function public.fn_surf_rental_delete_ledger();
 
+-- ── 2b. Cascata inversa: DELETE no ledger → apaga a rental linkada ─────
+--     Miguel: "se apagar do operation ledger da surf school, apaga
+--     completamente (e também da history)". Sem isto, apagar uma linha
+--     de revenue no HQ deixava a rental órfã no History do surf-school.
+--     Só atua em ledger_entries.source_kind = 'surf_school' — deletes
+--     manuais de outras origens (rentals de outros locations, expenses,
+--     etc.) passam sem cascata.
+--     Anti-loop: primeiro nula ledger_entry_id na rental para que o
+--     trigger tr_surf_rental_delete_ledger (BEFORE DELETE) veja NULL e
+--     salte a sua própria remoção do ledger — que já está em curso.
+create or replace function public.fn_ledger_cascade_to_surf_rental()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  rental_ids uuid[];
+begin
+  if old.source_kind is distinct from 'surf_school' then
+    return old;
+  end if;
+
+  select array_agg(id) into rental_ids
+    from public.surf_school_rentals
+   where ledger_entry_id = old.id;
+
+  if rental_ids is null or array_length(rental_ids, 1) is null then
+    return old;
+  end if;
+
+  update public.surf_school_rentals
+     set ledger_entry_id = null
+   where id = any(rental_ids);
+
+  delete from public.surf_school_rentals
+   where id = any(rental_ids);
+
+  return old;
+end;
+$$;
+
+drop trigger if exists tr_ledger_cascade_surf_rental on public.ledger_entries;
+create trigger tr_ledger_cascade_surf_rental
+  before delete on public.ledger_entries
+  for each row execute function public.fn_ledger_cascade_to_surf_rental();
+
 -- ── 3. Backfill the 4 test rentals (or any real ones missing a ledger) ─
 --     If Miguel deletes the test data below instead of running this
 --     backfill, that's fine too — new rentals get linked automatically
