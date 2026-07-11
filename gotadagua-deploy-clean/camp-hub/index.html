@@ -10026,13 +10026,17 @@ document.addEventListener('keydown',(e)=>{
 
 // ── Location access guard ────────────────────────────────────────────
 // Before hydrating ANY location-scoped data, verify the signed-in user
-// has an active workspace_membership on the workspace matching
-// __HUB_LOCATION_SLUG (full access) or __HUB_LOCATION_SLUG + '-camp-tab'
-// (restricted). Without this, opening /camp-hub/?location=portugal as a
-// user without Portugal access silently rendered the Sri Lanka default
-// (LEDGER_LOCATION_SLUG falls back to 'sri-lanka' at module load) —
-// which surfaced as "cafe@ sees LKR on Portugal" in real usage. Fail
-// closed, show a picker of the locations the user CAN open.
+// has an active workspace_membership on the workspace whose slug matches
+// __HUB_LOCATION_SLUG. Settings stores BOTH full and camp-tab-only
+// access on the SAME workspace slug — the scope is encoded only in the
+// can_edit flag (true = full hub, false = camp-tab-only). If the user
+// has camp-tab-only access, we redirect into ?view=camp-tab-only so
+// applyCampTabOnlyMode hides Overview/Ledger/Expenses and leaves only
+// the POS/Camp Tab surface. Without this gate, opening /camp-hub/ (or
+// ?location=X for an X the user can't open) silently fell through to
+// the module-load default 'sri-lanka' and rendered LKR — the "cafe@
+// sees LKR on Portugal" bug. Fail closed, show a picker of what the
+// user CAN open with each entry labelled by scope.
 const HUB_ACCESS_OWNER_EMAILS = new Set(['miguel@gotadaguasurf.com']);
 async function enforceLocationAccess(client, session){
   const email = String(session?.user?.email || '').toLowerCase();
@@ -10051,8 +10055,7 @@ async function enforceLocationAccess(client, session){
   // and setup-locations-currency.sql). Map the URL slug back to whatever
   // the workspaces table uses before comparing.
   const toWorkspaceSlug = (locSlug) => locSlug === 'junior-camp' ? 'junior' : locSlug;
-  const wantedFull = toWorkspaceSlug(__HUB_LOCATION_SLUG);
-  const wantedCampTab = wantedFull + '-camp-tab';
+  const wanted = toWorkspaceSlug(__HUB_LOCATION_SLUG);
   try{
     const { data: memberships, error } = await client
       .from('workspace_memberships')
@@ -10064,25 +10067,28 @@ async function enforceLocationAccess(client, session){
       return { ok:false, reason:'query-error', wanted:__HUB_LOCATION_SLUG, message:error.message };
     }
     const rows = (memberships || []).filter(m => m && m.workspaces);
-    const full = rows.find(m => m.workspaces.slug === wantedFull && m.can_view !== false);
-    if(full) return { ok:true, campTabOnly:false };
-    const campTab = rows.find(m => m.workspaces.slug === wantedCampTab && m.can_view !== false);
-    if(campTab) return { ok:true, campTabOnly:true };
-    // Build a picker of the locations this user CAN open. Collapse
-    // -camp-tab variants under the base slug so each location appears
-    // once, tagged with a "camp tab only" hint when applicable.
+    // Settings writes both "full" and "camp-tab-only" access to the SAME
+    // workspace slug (e.g. 'portugal'). The scope distinction is stored
+    // ONLY in can_edit: full → can_edit=true, camp-tab-only → can_edit=false.
+    // See buildWorkspaceAccessRows in root index.html.
+    const hit = rows.find(m => m.workspaces.slug === wanted && m.can_view !== false);
+    if(hit) return { ok:true, campTabOnly: hit.can_edit === false };
+    // No access → build a picker of the locations this user CAN open,
+    // labelling each with its scope so the user sees whether the button
+    // will drop them into the full hub or the camp-tab-only view.
     const bySlug = new Map();
     const CAMP_SLUGS = /^(sri-lanka|morocco|portugal|junior|surf-school)$/;
     rows.forEach(m => {
-      const raw = String(m.workspaces.slug || '').toLowerCase();
-      const isCampTab = raw.endsWith('-camp-tab');
-      const base = isCampTab ? raw.slice(0, -('-camp-tab'.length)) : raw;
-      if(!CAMP_SLUGS.test(base)) return;
-      const urlSlug = base === 'junior' ? 'junior-camp' : base;
-      const existing = bySlug.get(urlSlug) || { slug:urlSlug, name:m.workspaces.name || urlSlug, campTabOnly:true };
-      if(!isCampTab) existing.campTabOnly = false;
-      existing.name = m.workspaces.name || existing.name;
-      bySlug.set(urlSlug, existing);
+      const slug = String(m.workspaces.slug || '').toLowerCase();
+      if(!CAMP_SLUGS.test(slug)) return;
+      const urlSlug = slug === 'junior' ? 'junior-camp' : slug;
+      const isCampTabOnly = m.can_edit === false;
+      const existing = bySlug.get(urlSlug);
+      // If both a full and a camp-tab row exist for the same location,
+      // the full one wins.
+      if(!existing || (existing.campTabOnly && !isCampTabOnly)){
+        bySlug.set(urlSlug, { slug:urlSlug, name:m.workspaces.name || urlSlug, campTabOnly:isCampTabOnly });
+      }
     });
     return { ok:false, reason:'no-access', wanted:__HUB_LOCATION_SLUG, accessible:Array.from(bySlug.values()) };
   }catch(e){
