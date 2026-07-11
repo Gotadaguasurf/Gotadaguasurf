@@ -443,6 +443,7 @@ body.view-list .drag-handle{display:none}
         <a href="/prices/?location=morocco"     data-loc="morocco"><span>Morocco</span><small>MAD catalog</small></a>
         <a href="/prices/?location=sri-lanka"   data-loc="sri-lanka"><span>Sri Lanka</span><small>LKR catalog</small></a>
         <a href="/prices/?location=junior-camp" data-loc="junior-camp"><span>Junior Camp</span><small>EUR catalog</small></a>
+        <a href="/prices/?location=surf-school" data-loc="surf-school"><span>Surf School</span><small>EUR · Rentals + Lessons</small></a>
       </nav>
     </details>
   </div>
@@ -674,14 +675,16 @@ const LOCATION_LABELS = {
   'morocco':    'Morocco',
   'portugal':   'Portugal',
   'junior':     'Junior Camp',
-  'junior-camp':'Junior Camp'
+  'junior-camp':'Junior Camp',
+  'surf-school':'Surf School'
 };
 const LOCATION_CURRENCY = {
   'sri-lanka':'LKR',
   'morocco':'MAD',
   'portugal':'EUR',
   'junior':'EUR',
-  'junior-camp':'EUR'
+  'junior-camp':'EUR',
+  'surf-school':'EUR'
 };
 // Phase 6: each camp uses ONE local currency plus EUR (for cross-camp
 // items). Restricting the dropdown to the relevant pair removes a class
@@ -691,7 +694,8 @@ const LOCATION_CURRENCIES_ALLOWED = {
   'morocco':    ['MAD','EUR'],
   'portugal':   ['EUR'],
   'junior':     ['EUR'],
-  'junior-camp':['EUR']
+  'junior-camp':['EUR'],
+  'surf-school':['EUR']
 };
 const CURRENCY_LABEL = {
   LKR:'LKR (Sri Lankan Rupee)',
@@ -1599,6 +1603,17 @@ let __accomFlexNights = 1;
 async function renderAccommodation(){
   const wrap = $('tableWrap');
   if (!wrap) return;
+  // Surf School doesn't have accommodation — swallow the section entirely
+  // and paint a friendlier hint instead of "Accommodation not set up yet"
+  // which mid-guides the school manager toward an SQL they shouldn't run.
+  if (LOCATION_SLUG === 'surf-school') {
+    wrap.innerHTML = `<div class="empty">
+      <div class="empty-icon">🏄</div>
+      <div style="font-family:'DM Serif Display',serif;font-size:18px;color:var(--navy);margin-bottom:4px">The Surf School doesn't stock accommodation</div>
+      <div style="font-size:13px">Manage board + wetsuit rates in the <strong>Surf</strong> tab above. Rentals sold from the Rentals module in the Camp Hub always use the built-in matrix (Standard / Erasmus / Resident).</div>
+    </div>`;
+    return;
+  }
 
   // Lazy-load + subscribe on first open
   if (!accomData) {

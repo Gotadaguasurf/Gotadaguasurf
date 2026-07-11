@@ -6110,6 +6110,23 @@ function renderOverview(){
       </div>
     </div>
   `;
+
+  // Surf School post-render: strip out the camp-shaped cost cards
+  // (Merch stock, Laundry, Transport, Food control if it snuck through)
+  // so the Costs & Stock section only carries what's relevant — Utilities
+  // and Payroll. Uses the heading text as the anchor because the massive
+  // template above doesn't tag individual cards with an id.
+  const isSchoolCards = (typeof __HUB_LOCATION_SLUG!=='undefined') && __HUB_LOCATION_SLUG === 'surf-school';
+  if (isSchoolCards) {
+    const CAMP_ONLY_CARD_TITLES = new Set(['Laundry','Transport','Food control','Merch stock']);
+    const merch = document.getElementById('__ovMerch');
+    if (merch) merch.style.display = 'none';
+    document.querySelectorAll('#ovCatCard > .card').forEach(card => {
+      const heading = card.querySelector('div[style*="DM Serif Display"]');
+      const txt = heading?.textContent?.trim() || '';
+      if (CAMP_ONLY_CARD_TITLES.has(txt)) card.style.display = 'none';
+    });
+  }
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -7717,10 +7734,18 @@ function areaOptionsForType(type){
   if(type==='income') return ['Bar','Merch','Transport','Tours','General'];
   return [];
 }
+// Categories the Operations Ledger picker shows. For the Surf School we
+// strip out every camp-flavoured category (Food/Tours/Bar/Cleaning
+// Supplies/Laundry/Merchandising/Transport) so managers don't accidentally
+// log a Sri Lanka-shaped expense against a Portuguese surf school. Revenue
+// / transfer paths stay unchanged — those either land here via the
+// Rentals module or via the standard cash-float flow.
+const SURF_SCHOOL_EXP_CATS = ['Utilities','Rent','Setup','Salary','Services','Taxes','Special'];
 function categoryOptionsFor(type,area){
   if(type==='transfer') return ['Cash Float'];
   if(type==='income') return REVENUE_CATS;
-  return EXP_CATS;
+  const isSchool = (typeof __HUB_LOCATION_SLUG!=='undefined') && __HUB_LOCATION_SLUG === 'surf-school';
+  return isSchool ? SURF_SCHOOL_EXP_CATS : EXP_CATS;
 }
 function linkedItemOptionsFor(type,area,category=''){
   if(type==='income'&&category==='Tours') return [''].concat(currentTourItems());
