@@ -2100,7 +2100,7 @@ function applyLocationCurrencyToDom(){
     // Surf School doesn't have a Camp Tab — the middle nav tab shows the
     // rentals + lessons module instead, so re-label the button accordingly.
     const posLbl = document.getElementById('posTabLabel');
-    if (posLbl) posLbl.textContent = LEDGER_LOCATION_SLUG === 'surf-school' ? 'Rentals & Lessons' : 'Camp Tab';
+    if (posLbl) posLbl.textContent = LEDGER_LOCATION_SLUG === 'surf-school' ? 'Rentals' : 'Camp Tab';
     document.title = `${loc} — Camp Hub`;
   }
 }
