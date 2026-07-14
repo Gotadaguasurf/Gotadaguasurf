@@ -41,6 +41,11 @@ const GLOBAL_DAILY_CAP = 150
 // Random pause between sends inside one run.
 const GAP_MIN_MS = 20_000
 const GAP_MAX_MS = 50_000
+// Appended to every campaign email. Gives recipients a working opt-out
+// (GDPR courtesy + fewer spam complaints — a complaint hurts sender
+// reputation far more than an unsubscribe). gmail-sync watches replies
+// for these keywords and auto-suppresses.
+const UNSUB_FOOTER = '\n\n—\nIf you\'d rather not receive these emails, just reply "unsubscribe".'
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -166,6 +171,17 @@ Deno.serve(async (req) => {
       continue
     }
 
+    // 3b. Suppression check — one query for this batch's addresses.
+    //     Suppressed rows are skipped, never sent: unsubscribed people
+    //     asked to be left alone, bounced addresses poison sender
+    //     reputation if we keep hitting them.
+    const emails = rows.map(r => (r.to_email || '').toLowerCase())
+    const { data: suppressed } = await supa
+      .from('email_suppression')
+      .select('email, reason')
+      .in('email', emails)
+    const suppressedBy = new Map((suppressed || []).map(s => [s.email, s.reason]))
+
     // Sender display name once per campaign.
     let displayName = ''
     if (campaign.sender_user_id) {
@@ -176,6 +192,16 @@ Deno.serve(async (req) => {
 
     for (const row of rows) {
       if (budget <= 0) break
+
+      // Suppressed address → skip permanently.
+      const supReason = suppressedBy.get((row.to_email || '').toLowerCase())
+      if (supReason) {
+        await supa.from('email_queue').update({
+          status: 'skipped', error: `suppressed: ${supReason}`,
+        }).eq('id', row.id)
+        summary.skipped++
+        continue
+      }
 
       // 4. Stop-on-reply: any inbound from this company since the campaign
       //    started means a human conversation is live — a templated drip
@@ -201,7 +227,8 @@ Deno.serve(async (req) => {
         const { token, account } = await ensureAccessToken(supa)
         const raw = buildRaw({
           fromEmail: account.email, fromDisplay: displayName,
-          to: row.to_email, subject: row.subject, body: row.body,
+          to: row.to_email, subject: row.subject,
+          body: (row.body || '') + UNSUB_FOOTER,
         })
         const resp = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
           method: 'POST',

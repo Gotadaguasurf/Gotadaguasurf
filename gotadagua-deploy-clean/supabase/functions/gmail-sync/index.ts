@@ -150,6 +150,46 @@ function buildInboxQuery(days = 7): string {
   return `in:inbox newer_than:${days}d`
 }
 
+// ── Suppression detection helpers ────────────────────────────────────────
+
+// Delivery-failure notifications. From is the strongest signal;
+// subject patterns catch non-Google MTAs.
+function isBounce(fromEmail: string, subject: string): boolean {
+  if (/^(mailer-daemon|postmaster)@/i.test(fromEmail)) return true
+  return /delivery status notification|undeliver|returned mail|failure notice|delivery has failed|address not found|mail delivery failed/i
+    .test(subject || '')
+}
+
+// Keep only the text the person actually typed: drop ">"-quoted lines
+// and everything below the "On ... wrote:" marker. Critical for
+// unsubscribe detection — our own footer says 'reply "unsubscribe"',
+// so a genuine interested reply that QUOTES our email would otherwise
+// trip the keyword match and suppress an engaged lead.
+function replyTextOnly(body: string): string {
+  const lines = (body || '').split('\n')
+  const out: string[] = []
+  for (const line of lines) {
+    const t = line.trim()
+    if (/^On .{5,120} wrote:\s*$/.test(t)) break
+    if (/^-{2,}\s*(Original|Forwarded) Message/i.test(t)) break
+    if (t.startsWith('>')) continue
+    out.push(line)
+  }
+  return out.join('\n').trim()
+}
+
+// Opt-out intent, multi-language. Only trusted on SHORT typed replies —
+// people asking out write two words, not four paragraphs; a long reply
+// that merely mentions "unsubscribe" is conversation, not opt-out.
+function isUnsubscribe(body: string): { hit: boolean; keyword?: string } {
+  const typed = replyTextOnly(body)
+  if (!typed || typed.length > 400) return { hit: false }
+  const m = typed.match(
+    /\b(unsubscribe|remove me|stop email(ing)?|opt.?out|remover|desinscrever|n[aã]o quero receber|no quiero recibir|d[eé]sinscrire|abmelden)\b/i
+  )
+  return m ? { hit: true, keyword: m[1] } : { hit: false }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
 
@@ -263,6 +303,10 @@ Deno.serve(async (req) => {
     const inserts: any[] = []
     const touchedCompanies = new Set<string>()
     const unmatched: { from: string; reason: string }[] = []
+    // Suppression candidates collected during the sync pass; processed
+    // after the upsert (they need their own DB lookups).
+    const bounceCandidates: { threadId: string; subject: string }[] = []
+    const unsubCandidates: { email: string; companyId: string; keyword: string }[] = []
     detailResps.forEach((msg: any, i: number) => {
       if (!msg) { unmatched.push({ from: '(metadata fetch failed)', reason: 'no msg' }); return }
       const headers: Record<string, string> = Object.fromEntries(
@@ -270,6 +314,15 @@ Deno.serve(async (req) => {
       )
       const fromEmail = parseEmail(headers.from)
       if (!fromEmail) { unmatched.push({ from: headers.from || '?', reason: 'no email parsed' }); return }
+      // Bounce? These come from mailer-daemon@googlemail.com et al. and
+      // would otherwise fall through as "no contact matched" and be lost.
+      // The DSN threads with the original outbound, so threadId is enough
+      // to recover WHO we failed to reach — resolved after this loop.
+      if (isBounce(fromEmail, headers.subject || '')) {
+        if (msg.threadId) bounceCandidates.push({ threadId: msg.threadId, subject: headers.subject || '' })
+        unmatched.push({ from: fromEmail, reason: 'bounce (queued for suppression)' })
+        return
+      }
       const at = fromEmail.lastIndexOf('@')
       const domain = fromEmail.slice(at + 1)
       if (ownDomains.has(domain)) { unmatched.push({ from: fromEmail, reason: 'own-domain skipped' }); return }
@@ -291,6 +344,11 @@ Deno.serve(async (req) => {
       }
       if (!companyId) { unmatched.push({ from: fromEmail, reason: 'no contact matched' }); return }
       const fullBody = extractBody(msg.payload) || msg.snippet || null
+      // Opt-out intent in the typed part of the reply → suppress after
+      // the upsert. The message row still lands in email_messages so the
+      // conversation panel shows WHY the contact went excluded.
+      const unsub = isUnsubscribe(fullBody || '')
+      if (unsub.hit) unsubCandidates.push({ email: fromEmail, companyId, keyword: unsub.keyword || '' })
       inserts.push({
         company_id:      companyId,
         contact_id:      contactId,
@@ -307,9 +365,48 @@ Deno.serve(async (req) => {
       touchedCompanies.add(companyId)
     })
 
+    // 5b. Bounce suppression — resolve WHO we failed to reach via the
+    //     DSN's thread: the outbound we sent lives in email_messages
+    //     with the same thread_id, and its to_addr is the dead address.
+    //     Runs BEFORE the empty-inserts early return: a sync window
+    //     containing only bounces must still suppress them.
+    let bouncesSuppressed = 0
+    for (const b of bounceCandidates) {
+      const { data: outbound } = await supa.from('email_messages')
+        .select('to_addr, company_id')
+        .eq('thread_id', b.threadId)
+        .eq('direction', 'outbound')
+        .limit(1)
+        .maybeSingle()
+      const deadEmail = (outbound?.to_addr || '').toLowerCase().trim()
+      if (!deadEmail || !deadEmail.includes('@')) continue
+      const { error: supErr } = await supa.from('email_suppression').upsert({
+        email: deadEmail,
+        reason: 'bounce',
+        detail: b.subject.slice(0, 200),
+        company_id: outbound?.company_id || null,
+        created_by: 'gmail-sync-server',
+      }, { onConflict: 'email', ignoreDuplicates: true })
+      if (supErr) { console.warn('bounce suppress failed', supErr.message); continue }
+      // Cancel anything still queued to the dead address.
+      await supa.from('email_queue')
+        .update({ status: 'cancelled', error: 'suppressed: bounce' })
+        .eq('status', 'pending')
+        .ilike('to_email', deadEmail)
+      if (outbound?.company_id) {
+        await supa.from('outreach_activity').insert({
+          contact_id: outbound.company_id,
+          action: 'email_bounced',
+          meta: { email: deadEmail, subject: b.subject.slice(0, 120), via: 'gmail-sync-server' },
+          created_by: 'gmail-sync-server',
+        })
+      }
+      bouncesSuppressed++
+    }
+
     if (inserts.length === 0) {
       dbg.unmatched = unmatched.slice(0, 20)
-      return json({ ok: true, fetched: ids.length, newInbound: 0, matched: 0, advanced: 0, note: 'no inbound matched a contact', ...(debug ? { dbg } : {}) })
+      return json({ ok: true, fetched: ids.length, newInbound: 0, matched: 0, advanced: 0, bouncesSuppressed, note: 'no inbound matched a contact', ...(debug ? { dbg } : {}) })
     }
     dbg.unmatched = unmatched.slice(0, 20)
 
@@ -320,6 +417,39 @@ Deno.serve(async (req) => {
       .upsert(inserts, { onConflict: 'provider_msg_id', ignoreDuplicates: true })
     if (insErr) return json({ ok: false, error: `upsert failed: ${insErr.message}` }, 500)
 
+    // 6b. Unsubscribe suppression — the reply is already in
+    //     email_messages (visible in the conversation panel); now honour
+    //     the request: suppress the address, cancel their pending queue
+    //     rows, move the company to 'excluded', log why.
+    const unsubbedCompanies = new Set<string>()
+    let unsubsSuppressed = 0
+    for (const u of unsubCandidates) {
+      const { error: supErr } = await supa.from('email_suppression').upsert({
+        email: u.email,
+        reason: 'unsubscribe',
+        detail: `matched "${u.keyword}"`,
+        company_id: u.companyId,
+        created_by: 'gmail-sync-server',
+      }, { onConflict: 'email', ignoreDuplicates: true })
+      if (supErr) { console.warn('unsub suppress failed', supErr.message); continue }
+      await supa.from('email_queue')
+        .update({ status: 'cancelled', error: 'suppressed: unsubscribe' })
+        .eq('status', 'pending')
+        .ilike('to_email', u.email)
+      await supa.from('outreach_contacts')
+        .update({ status: 'excluded' })
+        .eq('id', u.companyId)
+      await supa.from('outreach_activity').insert({
+        contact_id: u.companyId,
+        action: 'unsubscribed',
+        new_value: 'excluded',
+        meta: { email: u.email, keyword: u.keyword, via: 'gmail-sync-server' },
+        created_by: 'gmail-sync-server',
+      })
+      unsubbedCompanies.add(u.companyId)
+      unsubsSuppressed++
+    }
+
     // 7. Per touched company: log replied_marked activity, advance
     //    status to in_conversation when in an outbound stage, and
     //    auto-stop active sequences (a reply means the drip campaign
@@ -328,6 +458,11 @@ Deno.serve(async (req) => {
     let advanced = 0
     let sequencesStopped = 0
     for (const companyId of touchedCompanies) {
+      // An unsubscribe is technically a reply, but advancing them to
+      // in_conversation (or flagging replied for triage) would put a
+      // "leave me alone" straight into the hot-leads shelf. They were
+      // just set to excluded above — leave them there.
+      if (unsubbedCompanies.has(companyId)) continue
       // Activity row — column names mirror logActivity() in the client:
       // contact_id (yes, named that even though it FKs outreach_contacts /
       // the "company"), action, old_value, new_value, meta, created_by.
@@ -382,6 +517,8 @@ Deno.serve(async (req) => {
       matched: touchedCompanies.size,
       advanced,
       sequencesStopped,
+      bouncesSuppressed,
+      unsubsSuppressed,
       ...(debug ? { dbg } : {}),
     })
   } catch (e) {
