@@ -2258,18 +2258,25 @@ async function loadCampaigns(){
     .limit(20);
   if(error){ console.warn('[CRM] loadCampaigns failed', error); return []; }
   if(!campaigns?.length) return [];
-  // One aggregate query for all statuses of all visible campaigns.
+  // One aggregate query for all statuses of all visible campaigns, plus
+  // the reply stats view (email_campaign_stats — computed in the DB so
+  // we don't drag every email_messages row over the wire).
   const ids = campaigns.map(c => c.id);
-  const { data: counts } = await supa
-    .from('email_queue')
-    .select('campaign_id, status')
-    .in('campaign_id', ids);
+  const [{ data: counts }, { data: stats }] = await Promise.all([
+    supa.from('email_queue').select('campaign_id, status').in('campaign_id', ids),
+    supa.from('email_campaign_stats').select('*').in('campaign_id', ids),
+  ]);
   const tally = {};
   (counts || []).forEach(r => {
     const t = tally[r.campaign_id] || (tally[r.campaign_id] = { pending:0, sent:0, failed:0, skipped:0, cancelled:0 });
     t[r.status] = (t[r.status] || 0) + 1;
   });
-  return campaigns.map(c => ({ ...c, counts: tally[c.id] || { pending:0, sent:0, failed:0, skipped:0, cancelled:0 } }));
+  const statMap = Object.fromEntries((stats || []).map(s => [s.campaign_id, s]));
+  return campaigns.map(c => ({
+    ...c,
+    counts: tally[c.id] || { pending:0, sent:0, failed:0, skipped:0, cancelled:0 },
+    replied: statMap[c.id]?.replied_count ?? 0,
+  }));
 }
 
 async function renderCampaigns(){
@@ -2290,6 +2297,10 @@ async function renderCampaigns(){
     const t = c.counts;
     const total = t.pending + t.sent + t.failed + t.skipped + t.cancelled;
     const pct = total ? Math.round((t.sent / total) * 100) : 0;
+    const replyRate = t.sent ? Math.round((c.replied / t.sent) * 100) : 0;
+    const replyBadge = t.sent
+      ? `<span style="font-weight:800;color:${replyRate >= 5 ? '#1a7a40' : 'var(--muted)'}">↩ ${c.replied} repl${c.replied === 1 ? 'y' : 'ies'} · ${replyRate}%</span>`
+      : '';
     const actions = c.status === 'running'
       ? `<button class="header-btn" onclick="setCampaignStatus('${c.id}','paused')">Pause</button>
          <button class="header-btn" style="color:#c94e42" onclick="cancelCampaign('${c.id}')">Cancel</button>`
@@ -2305,11 +2316,36 @@ async function renderCampaigns(){
       <div style="margin-top:8px;background:#eef2f6;border-radius:999px;height:8px;overflow:hidden">
         <div style="width:${pct}%;height:100%;background:var(--ocean);border-radius:999px;transition:width .3s"></div>
       </div>
-      <div style="margin-top:6px;font-size:11.5px;color:var(--muted);font-family:'DM Mono',monospace">
-        ${t.sent}/${total} sent · ${t.pending} pending${t.skipped?` · ${t.skipped} skipped (replied)`:''}${t.failed?` · <span style="color:#c94e42">${t.failed} failed</span>`:''} · cap ${c.daily_cap}/day
+      <div style="margin-top:6px;font-size:11.5px;color:var(--muted);font-family:'DM Mono',monospace;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
+        <span>${t.sent}/${total} sent · ${t.pending} pending${t.skipped?` · ${t.skipped} skipped`:''}${t.failed?` · <span style="color:#c94e42">${t.failed} failed</span>`:''} · cap ${c.daily_cap}/day</span>
+        ${replyBadge}
       </div>
     </div>`;
   }).join('');
+
+  // Per-template rollup — aggregates every campaign that used the same
+  // template so the winner emerges across runs, not just within one.
+  const byTpl = new Map();
+  campaigns.forEach(c => {
+    if(!c.template_name || !c.counts.sent) return;
+    const agg = byTpl.get(c.template_name) || { sent:0, replied:0, campaigns:0 };
+    agg.sent += c.counts.sent; agg.replied += c.replied; agg.campaigns++;
+    byTpl.set(c.template_name, agg);
+  });
+  if(byTpl.size > 1){
+    const rows = [...byTpl.entries()]
+      .map(([name, a]) => ({ name, ...a, rate: a.sent ? a.replied / a.sent : 0 }))
+      .sort((a,b) => b.rate - a.rate);
+    el.insertAdjacentHTML('beforeend', `
+      <div style="background:#f6f9fc;border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-top:4px">
+        <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px">Reply rate by template</div>
+        ${rows.map((r,i) => `
+          <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;padding:4px 0;${i===0?'font-weight:700;color:#1a7a40':''}">
+            <span>${i===0?'🏆 ':''}${escapeHtml(r.name)} <span style="color:var(--muted);font-weight:400">· ${r.campaigns} campaign${r.campaigns>1?'s':''}</span></span>
+            <span style="font-family:'DM Mono',monospace">${r.replied}/${r.sent} · ${Math.round(r.rate*100)}%</span>
+          </div>`).join('')}
+      </div>`);
+  }
 }
 
 async function setCampaignStatus(id, status){
