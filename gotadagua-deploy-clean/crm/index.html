@@ -857,6 +857,15 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
   <div id="page-sequences" class="hidden">
     <div class="section-hdr">
       <div>
+        <div class="section-title">Campaigns</div>
+        <div class="section-hint">Server-side drip queues. Batches of 6+ from "Send email batch" land here — dripped ~1 email/2 min inside 08:30–19:30, auto-stopping per contact on reply. Survives closing the browser.</div>
+      </div>
+      <button class="header-btn" id="refreshCampaignsBtn" onclick="renderCampaigns()">↻ Refresh</button>
+    </div>
+    <div id="campaignList" style="margin-bottom:26px"></div>
+
+    <div class="section-hdr">
+      <div>
         <div class="section-title">Email sequences</div>
         <div class="section-hint">Multi-step drip campaigns. Pick templates, set day offsets, then "Start" from any company.</div>
       </div>
@@ -1190,9 +1199,19 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
         <label style="display:flex;justify-content:space-between;align-items:center"><span>Recipients</span><span id="batchRecipientCount" style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);font-weight:600"></span></label>
         <div id="batchRecipientList" style="max-height:240px;overflow:auto;border:1px solid var(--border);border-radius:8px"></div>
       </div>
-      <div class="editor-hint" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
-        <span>Throttle: <b>1 email / sec</b> to avoid spam filters.</span>
-        <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+      <div class="editor-field" id="batchDripSettings" style="background:#f6f9fc;border:1px solid var(--border);border-radius:10px;padding:12px 14px">
+        <label style="margin-bottom:8px">Drip settings <span style="font-weight:500;color:var(--muted);text-transform:none;letter-spacing:0">· 6+ recipients are queued server-side and dripped slowly so Google never sees a burst</span></label>
+        <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;font-size:12.5px">
+          <label style="display:flex;align-items:center;gap:6px;white-space:nowrap">Max/day
+            <select id="batchDailyCap" style="padding:4px 8px;border:1px solid var(--border);border-radius:6px">
+              <option value="50">50 · warm-up</option>
+              <option value="80" selected>80 · safe</option>
+              <option value="120">120 · max</option>
+            </select>
+          </label>
+          <span style="color:var(--muted)">Window: <b>08:30–19:30 Lisbon</b> · ~1 email / 2 min · auto-stops if the contact replies</span>
+        </div>
+        <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:10px">
           <label style="display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap"><input type="checkbox" id="batchSkipRecent" checked style="accent-color:var(--ocean)"> Skip if contacted &lt; 24h</label>
           <label style="display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap"><input type="checkbox" id="batchDryRun" style="accent-color:var(--ocean)"> Dry-run (don't actually send)</label>
         </div>
@@ -2087,6 +2106,11 @@ function renderBatchRecipientList(){
   });
 }
 
+// Above this size, the batch is queued as a server-side drip campaign
+// instead of sent in a browser loop. 5 instant sends in a row is fine;
+// 50 in 50 seconds is the burst pattern that gets mailboxes flagged.
+const INSTANT_SEND_MAX = 5;
+
 async function runBatchSend(){
   if(BATCH_STATE.inProgress) return;
   const tpl = TEMPLATES.find(t => t.id === document.getElementById('batchTemplate').value);
@@ -2096,6 +2120,15 @@ async function runBatchSend(){
   const targets = BATCH_STATE.recipients.filter(r => r.include && r.email);
   if(targets.length === 0){ toast('Nothing to send'); return; }
   const dryRun = document.getElementById('batchDryRun').checked;
+
+  // Large batch + not a dry-run → queue a drip campaign. The dispatcher
+  // Edge Function (cron, every 5 min) sends a few at a time inside the
+  // 08:30–19:30 window with random gaps, auto-skipping anyone who
+  // replies mid-campaign. Closing the browser doesn't stop it.
+  if(!dryRun && targets.length > INSTANT_SEND_MAX){
+    await queueDripCampaign({ tpl, sender, targets });
+    return;
+  }
   const verb = dryRun ? 'simulate' : 'SEND';
   const cc = buildCcList();
   const ccNote = cc.length ? `\nAuto-CC: ${cc.join(', ')}` : '';
@@ -2156,6 +2189,144 @@ function closeBatchSendModal(){
     BATCH_STATE.inProgress = false;
   }
   document.getElementById('batchSendModal').classList.remove('open');
+}
+
+// ─── DRIP CAMPAIGNS (server-side queue) ────────────────────────────────
+// queueDripCampaign renders every email NOW (so the queue rows are
+// immutable snapshots — editing the template later doesn't change what
+// an in-flight campaign sends) and inserts campaign + queue rows. The
+// email-dispatch Edge Function does the actual sending on a 5-min cron.
+
+async function queueDripCampaign({ tpl, sender, targets }){
+  const dailyCap = Number(document.getElementById('batchDailyCap')?.value) || 80;
+  const days = Math.ceil(targets.length / dailyCap);
+  if(!confirm(
+    `Queue ${targets.length} emails as a drip campaign?\n\n` +
+    `• Sender: ${sender.full_name} (groups@gotadaguasurf.com)\n` +
+    `• Max ${dailyCap}/day · 08:30–19:30 Lisbon · ~1 email per 2 min\n` +
+    `• Runs ~${days} day${days>1?'s':''} · auto-skips anyone who replies\n\n` +
+    `You can pause or cancel anytime in Sequences → Campaigns. ` +
+    `Closing the browser does NOT stop it.`
+  )) return;
+
+  const supa = getClient();
+  const { data: campaign, error: campErr } = await supa
+    .from('email_campaigns')
+    .insert({
+      name: `${tpl.name} · ${new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'short'})} · ${targets.length} contacts`,
+      sender_user_id: sender.id,
+      daily_cap: dailyCap,
+      template_name: tpl.name,
+      created_by: session?.user?.email || null,
+    })
+    .select()
+    .single();
+  if(campErr){ toast('Could not create campaign: ' + campErr.message); return; }
+
+  // Render each recipient's subject+body against the template NOW.
+  const rows = targets.map(r => ({
+    campaign_id: campaign.id,
+    company_id: r.contact?.id || null,
+    contact_id: primaryPersonFor(r.contact?.id)?.id || null,
+    to_email: r.email,
+    subject: renderTemplate(tpl.subject, r.contact, sender),
+    body: renderTemplate(tpl.body, r.contact, sender),
+  }));
+  // Chunked insert — Supabase caps request payloads; 200-row chunks are
+  // comfortably inside the limit even with long bodies.
+  for(let i = 0; i < rows.length; i += 200){
+    const { error: qErr } = await supa.from('email_queue').insert(rows.slice(i, i+200));
+    if(qErr){
+      toast('Queue insert failed: ' + qErr.message + ' — campaign cancelled');
+      await supa.from('email_campaigns').update({ status:'cancelled' }).eq('id', campaign.id);
+      return;
+    }
+  }
+
+  document.getElementById('batchSendModal').classList.remove('open');
+  toast(`Campaign queued — ${rows.length} emails will drip out starting within 5 min`);
+  // Jump to the campaigns view so the user sees it running.
+  document.querySelector('.nav-tab[data-tab="sequences"]')?.click();
+}
+
+async function loadCampaigns(){
+  const supa = getClient();
+  const { data: campaigns, error } = await supa
+    .from('email_campaigns')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(20);
+  if(error){ console.warn('[CRM] loadCampaigns failed', error); return []; }
+  if(!campaigns?.length) return [];
+  // One aggregate query for all statuses of all visible campaigns.
+  const ids = campaigns.map(c => c.id);
+  const { data: counts } = await supa
+    .from('email_queue')
+    .select('campaign_id, status')
+    .in('campaign_id', ids);
+  const tally = {};
+  (counts || []).forEach(r => {
+    const t = tally[r.campaign_id] || (tally[r.campaign_id] = { pending:0, sent:0, failed:0, skipped:0, cancelled:0 });
+    t[r.status] = (t[r.status] || 0) + 1;
+  });
+  return campaigns.map(c => ({ ...c, counts: tally[c.id] || { pending:0, sent:0, failed:0, skipped:0, cancelled:0 } }));
+}
+
+async function renderCampaigns(){
+  const el = document.getElementById('campaignList');
+  if(!el) return;
+  const campaigns = await loadCampaigns();
+  if(!campaigns.length){
+    el.innerHTML = `<div class="empty-state" style="padding:16px">No campaigns yet. Select contacts in the Contacts tab and hit "Send email batch" — 6+ recipients become a drip campaign automatically.</div>`;
+    return;
+  }
+  const chip = (s) => ({
+    running:   '<span class="chip" style="background:#eafaf1;color:#1a7a40">● running</span>',
+    paused:    '<span class="chip" style="background:#fef4dc;color:#b57508">‖ paused</span>',
+    done:      '<span class="chip" style="background:#eaf3fa;color:#1e6fa8">✓ done</span>',
+    cancelled: '<span class="chip" style="background:#f3f4f6;color:#6b7280">× cancelled</span>',
+  }[s] || s);
+  el.innerHTML = campaigns.map(c => {
+    const t = c.counts;
+    const total = t.pending + t.sent + t.failed + t.skipped + t.cancelled;
+    const pct = total ? Math.round((t.sent / total) * 100) : 0;
+    const actions = c.status === 'running'
+      ? `<button class="header-btn" onclick="setCampaignStatus('${c.id}','paused')">Pause</button>
+         <button class="header-btn" style="color:#c94e42" onclick="cancelCampaign('${c.id}')">Cancel</button>`
+      : c.status === 'paused'
+      ? `<button class="header-btn" onclick="setCampaignStatus('${c.id}','running')">Resume</button>
+         <button class="header-btn" style="color:#c94e42" onclick="cancelCampaign('${c.id}')">Cancel</button>`
+      : '';
+    return `<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <div style="font-weight:700;font-size:13px;color:var(--ink)">${escapeHtml(c.name)}</div>
+        <div style="display:flex;gap:6px;align-items:center">${chip(c.status)}${actions}</div>
+      </div>
+      <div style="margin-top:8px;background:#eef2f6;border-radius:999px;height:8px;overflow:hidden">
+        <div style="width:${pct}%;height:100%;background:var(--ocean);border-radius:999px;transition:width .3s"></div>
+      </div>
+      <div style="margin-top:6px;font-size:11.5px;color:var(--muted);font-family:'DM Mono',monospace">
+        ${t.sent}/${total} sent · ${t.pending} pending${t.skipped?` · ${t.skipped} skipped (replied)`:''}${t.failed?` · <span style="color:#c94e42">${t.failed} failed</span>`:''} · cap ${c.daily_cap}/day
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function setCampaignStatus(id, status){
+  const { error } = await getClient().from('email_campaigns').update({ status }).eq('id', id);
+  if(error){ toast(error.message); return; }
+  toast(status === 'paused' ? 'Campaign paused' : 'Campaign resumed');
+  renderCampaigns();
+}
+
+async function cancelCampaign(id){
+  if(!confirm('Cancel this campaign? Pending emails will not be sent. Already-sent emails are unaffected.')) return;
+  const supa = getClient();
+  await supa.from('email_queue').update({ status:'cancelled' }).eq('campaign_id', id).eq('status','pending');
+  const { error } = await supa.from('email_campaigns').update({ status:'cancelled' }).eq('id', id);
+  if(error){ toast(error.message); return; }
+  toast('Campaign cancelled');
+  renderCampaigns();
 }
 
 // Esc closes any open modal — single global handler walks every
@@ -3001,7 +3172,7 @@ document.querySelectorAll('.nav-tab').forEach(t=>{
     if(CURRENT_TAB==='pipeline') renderPipeline();
     if(CURRENT_TAB==='analytics') renderAnalytics();
     if(CURRENT_TAB==='templates') renderTemplateList();
-    if(CURRENT_TAB==='sequences') renderSequenceList();
+    if(CURRENT_TAB==='sequences'){ renderSequenceList(); renderCampaigns(); }
   });
 });
 
