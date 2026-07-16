@@ -144,6 +144,17 @@ test('camp-hub currency pins: each location locked to its currency', async ({ pa
   expect(pins['surf-school']).toBe('EUR');
 });
 
+test('owner-config.js loads and defines the owner list', async ({ page }) => {
+  // The 8 owner-bypass sites fall back to a hardcoded email if this file
+  // fails to load — which keeps Miguel un-locked-out but would silently
+  // mask a 404 forever. This test makes a missing/broken owner-config
+  // loud instead.
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  const owners = await page.evaluate(() => window.__PLATFORM_OWNER_EMAILS);
+  expect(Array.isArray(owners)).toBe(true);
+  expect(owners).toContain('miguel@gotadaguasurf.com');
+});
+
 test('crm campaign plumbing exists (queue, render, suppression-aware batch)', async ({ page }) => {
   await fakeOwnerSession(page);
   await page.goto('/crm/', { waitUntil: 'domcontentloaded' });

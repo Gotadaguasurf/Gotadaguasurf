@@ -440,6 +440,7 @@ main{padding:16px;max-width:640px;margin:0 auto}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.4"></script>
 <script src="/supabase-config.js"></script>
+<script src="/owner-config.js"></script>
 <script>
 const cfg = window.__SUPABASE_CONFIG || {};
 const sb = window.supabase.createClient(cfg.url, cfg.anonKey);
@@ -505,7 +506,7 @@ async function boot(){
     CAN_EDIT_HISTORY = false;
   } else {
     try {
-      const ownerEmails = new Set(['miguel@gotadaguasurf.com']);
+      const ownerEmails = new Set(window.__PLATFORM_OWNER_EMAILS || ['miguel@gotadaguasurf.com']);
       const email = String(user.email || '').toLowerCase();
       if (ownerEmails.has(email)) {
         CAN_EDIT_HISTORY = true;

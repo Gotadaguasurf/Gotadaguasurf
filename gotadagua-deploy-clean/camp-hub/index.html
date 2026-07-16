@@ -9,6 +9,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.4"></script>
 <script src="/supabase-config.js"></script>
+<script src="/owner-config.js"></script>
 <script src="/error-monitor.js"></script>
 <style>
 :root{
@@ -9949,7 +9950,7 @@ if(CAMP_TAB_ONLY_MODE){
 async function filterLocationSwitcherByAccess(client, session){
   const wrap = document.getElementById('hubLocSwitch');
   if (!wrap || !client || !session) return;
-  const OWNER_EMAILS_HUB = new Set(['miguel@gotadaguasurf.com']);
+  const OWNER_EMAILS_HUB = new Set(window.__PLATFORM_OWNER_EMAILS || ['miguel@gotadaguasurf.com']);
   const email = String(session.user?.email || '').toLowerCase();
   if (OWNER_EMAILS_HUB.has(email)) return; // owner sees all camps
 
@@ -9993,7 +9994,7 @@ async function showHqShortcutIfAccessible(client, session){
   const btnMob=document.getElementById('hqShortcutBtnMob');
   const showBoth=()=>{ if(btn) btn.style.display=''; if(btnMob) btnMob.style.display=''; };
   if(!btn||!client||!session) return;
-  const OWNER_EMAILS_HUB=new Set(['miguel@gotadaguasurf.com']);
+  const OWNER_EMAILS_HUB=new Set(window.__PLATFORM_OWNER_EMAILS || ['miguel@gotadaguasurf.com']);
   const email=String(session.user?.email||'').toLowerCase();
   if(OWNER_EMAILS_HUB.has(email)){ showBoth(); return; }
   try{
@@ -10038,7 +10039,7 @@ document.addEventListener('keydown',(e)=>{
 // the module-load default 'sri-lanka' and rendered LKR — the "cafe@
 // sees LKR on Portugal" bug. Fail closed, show a picker of what the
 // user CAN open with each entry labelled by scope.
-const HUB_ACCESS_OWNER_EMAILS = new Set(['miguel@gotadaguasurf.com']);
+const HUB_ACCESS_OWNER_EMAILS = new Set(window.__PLATFORM_OWNER_EMAILS || ['miguel@gotadaguasurf.com']);
 async function enforceLocationAccess(client, session){
   const email = String(session?.user?.email || '').toLowerCase();
   if(HUB_ACCESS_OWNER_EMAILS.has(email)) return { ok:true, campTabOnly:false };

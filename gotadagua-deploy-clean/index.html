@@ -8,6 +8,7 @@
   <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.4"></script>
   <script src="/supabase-config.js"></script>
+<script src="/owner-config.js"></script>
   <script src="/error-monitor.js"></script>
   <style>
     :root{
@@ -1212,7 +1213,7 @@
       // would be invisible to the owner. When previewing AS another user,
       // we still honor that user's pills — so the preview tool keeps
       // working for testing partner accounts.
-      const OWNER_EMAILS = new Set(['miguel@gotadaguasurf.com']);
+      const OWNER_EMAILS = new Set(window.__PLATFORM_OWNER_EMAILS || ['miguel@gotadaguasurf.com']);
       const myEmail = String(__currentProfile?.email || '').toLowerCase();
       const previewIsSelf = currentPreviewUser && currentPreviewUser.toLowerCase() === myEmail;
       const role = String(__currentProfile?.role || '').toLowerCase();
@@ -2762,7 +2763,7 @@
       // platform_profile row where platform_role wasn't migrated to the
       // current label set, and we don't want the button to silently
       // disappear for the actual owner.
-      const OWNER_EMAILS=new Set(['miguel@gotadaguasurf.com']);
+      const OWNER_EMAILS=new Set(window.__PLATFORM_OWNER_EMAILS || ['miguel@gotadaguasurf.com']);
       const _isOwner=(__currentProfile?.role==='owner')||OWNER_EMAILS.has(String(__currentProfile?.email||'').toLowerCase());
       const _csvBtn=document.getElementById('csvImportBtn');
       if(_csvBtn) _csvBtn.style.display=_isOwner?'':'none';

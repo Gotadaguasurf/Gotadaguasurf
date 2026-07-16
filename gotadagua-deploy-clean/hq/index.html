@@ -390,11 +390,12 @@ td.loc-name{font-weight:700;color:var(--navy)}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.4"></script>
 <script src="/supabase-config.js"></script>
+<script src="/owner-config.js"></script>
 <script>
 const cfg = window.__SUPABASE_CONFIG || {};
 const sb  = window.supabase.createClient(cfg.url, cfg.anonKey);
 const $   = (id) => document.getElementById(id);
-const OWNER_EMAILS = new Set(['miguel@gotadaguasurf.com']);
+const OWNER_EMAILS = new Set(window.__PLATFORM_OWNER_EMAILS || ['miguel@gotadaguasurf.com']);
 
 const HQ_LOCATIONS = [
   {slug:'portugal',       label:'Surfcamp PT'},

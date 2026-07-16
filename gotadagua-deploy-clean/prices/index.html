@@ -32,6 +32,7 @@
      this pattern without issue for months. -->
 <script src="/lib/supabase.min.js?v=6" onerror="window.__SUPABASE_SDK_FAILED=true"></script>
 <script src="/supabase-config.js?v=6" onerror="window.__SUPABASE_CFG_FAILED=true"></script>
+<script src="/owner-config.js"></script>
 <style>
 :root{
   --navy:#28394b;--navy-mid:#344d63;--ocean:#1e6fa8;--ocean-light:#3b9dd4;
@@ -667,7 +668,7 @@ body.view-list .drag-handle{display:none}
 //  Realtime subscription keeps two browsers in sync.
 // ════════════════════════════════════════════════════════════════════════════
 
-const OWNER_EMAILS = new Set(['miguel@gotadaguasurf.com']);
+const OWNER_EMAILS = new Set(window.__PLATFORM_OWNER_EMAILS || ['miguel@gotadaguasurf.com']);
 
 const url = new URL(window.location.href);
 const LOCATION_SLUG = (url.searchParams.get('location') || 'sri-lanka').trim().toLowerCase();
