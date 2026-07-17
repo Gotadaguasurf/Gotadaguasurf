@@ -79,6 +79,18 @@ header{background:var(--navy);padding:0 24px;display:flex;align-items:center;jus
 .loc-switch>summary:hover{background:rgba(255,203,120,.22);border-color:rgba(255,203,120,.42)}
 .loc-switch[open]>summary{background:rgba(255,203,120,.28);border-color:rgba(255,203,120,.50)}
 .header-right{display:flex;align-items:center;gap:12px;flex-shrink:0;justify-content:flex-end;min-width:220px}
+/* Mobile: logo + 2 switchers + Edit/Price List toggle + PDF button
+   overflowed the 60px bar on phones. Wrap: toggle drops to its own
+   full-width row; the rest compacts. (Area tabs inside the page already
+   flex-wrap on their own.) */
+@media (max-width: 900px){
+  header{flex-wrap:wrap;height:auto;padding:8px 12px;gap:8px}
+  .header-left,.header-right{min-width:0}
+  .brand-logo{width:100px}
+  .brand-logo svg{height:24px}
+  .view-toggle{order:3;flex-basis:100%;justify-content:center;display:flex}
+  .dl-btn{padding:6px 10px;font-size:11px}
+}
 .back-btn{display:inline-flex;align-items:center;gap:6px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.08);color:#fff;border-radius:999px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;text-decoration:none;font-family:'Outfit',sans-serif}
 /* Download PDF — matches the Import CSV ghost-pill style used on the
    workspace home, so the platform shares one button language across

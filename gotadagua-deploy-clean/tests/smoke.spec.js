@@ -144,6 +144,21 @@ test('camp-hub currency pins: each location locked to its currency', async ({ pa
   expect(pins['surf-school']).toBe('EUR');
 });
 
+test('crm mobile drawer opens, switches tab, and closes', async ({ page }) => {
+  // Suite viewport is 390×844 (mobile) — the hamburger must be visible,
+  // the drawer must open, and a drawer tab tap must both switch the real
+  // tab (delegation to .nav-tab) and collapse the drawer.
+  await fakeOwnerSession(page);
+  await page.goto('/crm/', { waitUntil: 'domcontentloaded' });
+  const burger = page.locator('.nav-hamburger');
+  await expect(burger).toBeVisible({ timeout: 10_000 });
+  await burger.click();
+  await expect(page.locator('#mobNavDrawer')).toHaveClass(/open/);
+  await page.locator('.ntab-m[data-tab="pipeline"]').click();
+  await expect(page.locator('#mobNavDrawer')).not.toHaveClass(/open/);
+  await expect(page.locator('.nav-tab[data-tab="pipeline"]')).toHaveClass(/active/);
+});
+
 test('owner-config.js loads and defines the owner list', async ({ page }) => {
   // The 8 owner-bypass sites fall back to a hardcoded email if this file
   // fails to load — which keeps Miguel un-locked-out but would silently

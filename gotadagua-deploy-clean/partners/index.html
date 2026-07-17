@@ -47,6 +47,17 @@ header{background:var(--navy);padding:0 24px;display:flex;align-items:center;jus
 .nav-tabs{display:flex;gap:3px;align-items:center}
 .nav-tab{padding:7px 14px;font-size:12px;font-weight:700;color:#7aabcc;cursor:pointer;border:none;border-radius:8px;background:transparent;transition:all .2s;font-family:'Outfit',sans-serif}
 .nav-tab:hover{color:#fff;background:rgba(255,255,255,.08)}.nav-tab.active{color:#fff;background:var(--ocean)}
+/* Mobile: the header had NO responsive rules — 3 tabs + the data badge
+   + 2 settings buttons overflowed off-screen on phones. Same wrap
+   pattern as /hq: header stacks, tab row goes full-width and scrolls. */
+@media (max-width: 900px){
+  header{flex-wrap:wrap;height:auto;padding:8px 12px;gap:8px}
+  .header-left,.header-right{min-width:0}
+  .header-center{order:3;flex-basis:100%;justify-content:flex-start;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .nav-tab{white-space:nowrap;padding:6px 10px;font-size:12px}
+  .header-right{flex-wrap:wrap;gap:6px;justify-content:flex-end}
+  .data-badge{display:none}
+}
 main{max-width:1400px;margin:0 auto;padding:32px 48px}
 .kpi-strip{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:28px}
 /* Keep all 5 KPIs on a single row at every desktop width. Only collapse on
