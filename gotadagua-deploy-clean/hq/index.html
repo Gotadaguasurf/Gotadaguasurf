@@ -552,7 +552,7 @@ async function renderOverview(){
   if (perSel && perSel.options.length <= 1) {
     const [bkMonths, invMonths] = await Promise.all([
       fetchAllPaged(() => sb.from('bookings').select('month_key').order('check_in_on', {ascending:false})),
-      fetchAllPaged(() => sb.from('hq_invoices').select('invoice_date').order('invoice_date', {ascending:false}))
+      fetchAllPaged(() => sb.from('hq_invoices').select('invoice_date').is('deleted_at', null).order('invoice_date', {ascending:false}))
     ]);
     const set = new Set();
     bkMonths.forEach(r => r.month_key && set.add(r.month_key));
@@ -573,7 +573,7 @@ async function renderOverview(){
   //    period KPIs are filtered client-side.
   const [bkRowsAll, invRowsAll, lgRowsAll] = await Promise.all([
     fetchAllPaged(() => sb.from('bookings').select('total, net_amount, commission_amount, partner_name, booking_type, month_key, pax, location, check_in_on').order('check_in_on', {ascending:true})),
-    fetchAllPaged(() => sb.from('hq_invoices').select('location_slug, amount_eur, category_id, invoice_date').order('invoice_date', {ascending:false})),
+    fetchAllPaged(() => sb.from('hq_invoices').select('location_slug, amount_eur, category_id, invoice_date').is('deleted_at', null).order('invoice_date', {ascending:false})),
     fetchAllPaged(() => sb.from('ledger_entries').select('type, amount_eur, entry_date, paid_from, attributed_location, location_id').order('entry_date', {ascending:false}))
   ]);
   const bkRows  = isAll ? bkRowsAll : bkRowsAll.filter(r => r.month_key === period);
@@ -678,8 +678,8 @@ async function renderOverview(){
   // Health check — cheap counts + a fetch of the two tiny side tables so
   // the chip strip can flag what needs Miguel's attention right now.
   const [reviewRes, dupRes, recurRes, transfersAll] = await Promise.all([
-    sb.from('hq_invoices').select('id', { count:'exact', head:true }).eq('needs_review', true),
-    sb.from('hq_invoices').select('id', { count:'exact', head:true }).eq('is_duplicate', true),
+    sb.from('hq_invoices').select('id', { count:'exact', head:true }).eq('needs_review', true).is('deleted_at', null),
+    sb.from('hq_invoices').select('id', { count:'exact', head:true }).eq('is_duplicate', true).is('deleted_at', null),
     sb.from('hq_recurring_expenses').select('id, active, day_of_month, last_created_on').eq('active', true),
     fetchAllPaged(() => sb.from('internal_transfers').select('from_company, to_company, amount_eur'))
   ]);
@@ -1007,7 +1007,8 @@ async function openLocDrilldown(slug, period, label, profit) {
         let q = sb.from('hq_invoices')
           .select('invoice_date, company, description, amount_eur, currency, amount, paying_company, category_name, is_duplicate')
           .eq('location_slug', slug)
-          .eq('is_duplicate', false);
+          .eq('is_duplicate', false)
+          .is('deleted_at', null);
         if (start) q = q.gte('invoice_date', start).lt('invoice_date', end);
         return await fetchAllPaged(() => q.order('amount_eur', { ascending:false }));
       })()
@@ -1310,6 +1311,9 @@ function invoicesTabHtml(){
           <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer" title="Rows flagged is_duplicate=true (LIMPO's TRUE marks + collisions caught at insert)">
             <input type="checkbox" id="filter_duplicate" onchange="onFilterChanged()"> Only duplicates
           </label>
+          <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer" title="Show soft-deleted invoices — restore them or delete forever">
+            <input type="checkbox" id="filter_deleted" onchange="onFilterChanged()"> 🗑 Deleted
+          </label>
           <button class="action-btn" onclick="clearAllFilters()" title="Reset all filters">Clear</button>
         </div>
       </div>
@@ -1373,7 +1377,7 @@ function wireInvoiceForm(){
     const { data } = await sb.from('hq_invoices')
       .select('id, invoice_date, location_slug, amount, currency, company')
       .eq('invoice_number', num).eq('amount', amt)
-      .ilike('company', co).limit(5);
+      .ilike('company', co).is('deleted_at', null).limit(5);
     if (!data || !data.length) { $('dupWarn').classList.remove('show'); return; }
     $('dupWarn').innerHTML = `<b>Possible duplicate.</b> A similar invoice is already registered:
       <ul>${data.map(d => `<li>${d.invoice_date} · ${d.company} · ${d.amount} ${d.currency} · ${locLabel(d.location_slug)}</li>`).join('')}</ul>
@@ -1621,6 +1625,7 @@ async function saveInvoice(){
       .eq('invoice_number', invoice_number)
       .eq('amount', amount)
       .ilike('company', company)
+      .is('deleted_at', null)
       .order('created_at', { ascending: true })
       .limit(1);
     if (existing && existing.length) {
@@ -1850,6 +1855,7 @@ async function bulkProcessInvoices(){
           .eq('invoice_number', ex.invoice_number)
           .eq('amount', amount)
           .ilike('company', cleanCompany)
+          .is('deleted_at', null)
           .limit(1);
         dupHit = !!(existing && existing.length);
       }
@@ -1957,6 +1963,7 @@ function clearAllFilters(){
   set('filter_review', false);
   set('filter_personal', false);
   set('filter_duplicate', false);
+  set('filter_deleted', false);
   set('filter_search', '');
   renderInvoiceList();
 }
@@ -2729,31 +2736,33 @@ async function batchApprove(){
   renderInvoiceList();
 }
 
+// Batch delete is SOFT now — rows get deleted_at stamps + audit
+// snapshots; storage files stay (needed for restore). Hard removal is
+// per-row via purgeInvoice in the Deleted view.
 async function batchDelete(){
   const ids = Array.from(window.__selectedInvoiceIds);
   if (!ids.length) return;
-  if (!confirm(`Delete ${ids.length} invoice(s) permanently? Attached files will also be removed.`)) return;
-  const allFiles = [];
+  if (!confirm(`Move ${ids.length} invoice(s) to Deleted? You can restore them later from the "Deleted" filter.`)) return;
+  const actor = CURRENT_USER?.email || '';
+  const nowIso = new Date().toISOString();
   let firstErr = null;
   let deleted = 0;
   await forEachChunk(ids, async (chunk) => {
     if (firstErr) return;
-    // Grab file_urls for this slice so we can clean storage after.
-    const { data: rows } = await sb.from('hq_invoices').select('file_url').in('id', chunk);
-    (rows || []).forEach(r => { if (r.file_url) allFiles.push(r.file_url); });
-    // Delete the invoice rows in this slice.
-    const { error } = await sb.from('hq_invoices').delete().in('id', chunk);
+    // Snapshot the slice for the audit trail before stamping.
+    const { data: rows } = await sb.from('hq_invoices').select('*').in('id', chunk);
+    const { error } = await sb.from('hq_invoices')
+      .update({ deleted_at: nowIso, deleted_by: actor })
+      .in('id', chunk);
     if (error) { firstErr = error; return; }
+    if (rows?.length) {
+      const { error: aErr } = await sb.from('hq_invoice_audit')
+        .insert(rows.map(r => ({ invoice_id: r.id, action:'deleted', actor, snapshot: r })));
+      if (aErr) console.warn('[HQ] batch audit insert failed', aErr.message);
+    }
     deleted += chunk.length;
   });
   if (firstErr) { alert(`Delete failed after ${deleted} row(s): ${firstErr.message}`); }
-  // Chunk the storage delete too — the bucket API takes an array but is
-  // happier with modest sizes.
-  if (allFiles.length) {
-    for (let i = 0; i < allFiles.length; i += BATCH_CHUNK) {
-      await sb.storage.from('hq-invoices').remove(allFiles.slice(i, i + BATCH_CHUNK)).catch(()=>{});
-    }
-  }
   clearSelection();
   renderInvoiceList();
 }
@@ -2975,10 +2984,15 @@ async function renderInvoiceList(){
   body.innerHTML = `<div class="loading">Loading…</div>`;
   let rows;
   try {
+    // Deleted view: the 🗑 filter flips the query between live rows and
+    // the recycle bin. Everything else (aggregates, exports, batch bar)
+    // operates on whatever set is rendered.
+    const showDeleted = $('filter_deleted')?.checked;
     rows = await fetchAllPaged(() => {
       let q = sb.from('hq_invoices')
-        .select('id, location_slug, paying_company, invoice_date, company, description, amount, currency, amount_eur, payment_type, invoice_number, category_name, file_url, file_name, drive_link, needs_review, is_duplicate, category_id, notes, supplier_nif, fx_rate')
+        .select('id, location_slug, paying_company, invoice_date, company, description, amount, currency, amount_eur, payment_type, invoice_number, category_name, file_url, file_name, drive_link, needs_review, is_duplicate, category_id, notes, supplier_nif, fx_rate, deleted_at, deleted_by')
         .order('invoice_date', { ascending:false });
+      q = showDeleted ? q.not('deleted_at', 'is', null) : q.is('deleted_at', null);
       if (loc !== '__all__') q = q.eq('location_slug', loc);
       if (month) {
         const start = `${month}-01`;
@@ -3110,9 +3124,12 @@ async function renderInvoiceList(){
             ? `<span class="sup-desc" title="${escapeHtml(r.file_name)}">${escapeHtml(r.file_name)}</span>`
             : '—'}</td>
       <td style="white-space:nowrap">
-        ${r.needs_review?`<button class="action-btn" style="color:var(--green);font-weight:700" onclick="approveInvoice('${r.id}')" title="Approve — clears the review chip">✓</button>`:''}
-        <button class="action-btn" onclick="openEditInvoice('${r.id}')" title="Edit all fields — also clears the review chip">Edit</button>
-        <button class="action-btn danger" onclick="deleteInvoice('${r.id}')">Delete</button>
+        ${r.deleted_at
+          ? `<button class="action-btn" style="color:var(--green);font-weight:700" onclick="restoreInvoice('${r.id}')" title="Restore this invoice — it reappears in every list and total">↩ Restore</button>
+             <button class="action-btn danger" onclick="purgeInvoice('${r.id}')" title="Hard delete — removes the row AND the attached file; only the audit snapshot survives">Delete forever</button>`
+          : `${r.needs_review?`<button class="action-btn" style="color:var(--green);font-weight:700" onclick="approveInvoice('${r.id}')" title="Approve — clears the review chip">✓</button>`:''}
+             <button class="action-btn" onclick="openEditInvoice('${r.id}')" title="Edit all fields — also clears the review chip">Edit</button>
+             <button class="action-btn danger" onclick="deleteInvoice('${r.id}')" title="Soft delete — recoverable from the 🗑 Deleted filter">Delete</button>`}
       </td>
     </tr>`;
   };
@@ -3202,13 +3219,45 @@ async function openInvoiceFile(key){
   window.open(data.signedUrl, '_blank', 'noopener');
 }
 
+// Soft delete: stamp deleted_at/deleted_by, snapshot the row into
+// hq_invoice_audit, KEEP the storage file. The invoice disappears from
+// every list/aggregate but is restorable from the Deleted view. Hard
+// removal only via purgeInvoice below.
 async function deleteInvoice(id){
-  if (!confirm('Delete this invoice permanently?')) return;
-  // Fetch first to get file_url so we can delete the attachment too.
-  const { data: row } = await sb.from('hq_invoices').select('file_url').eq('id', id).maybeSingle();
-  const { error } = await sb.from('hq_invoices').delete().eq('id', id);
+  if (!confirm('Move this invoice to Deleted? You can restore it later from the "Deleted" filter.')) return;
+  const { data: row } = await sb.from('hq_invoices').select('*').eq('id', id).maybeSingle();
+  const actor = CURRENT_USER?.email || '';
+  const { error } = await sb.from('hq_invoices')
+    .update({ deleted_at: new Date().toISOString(), deleted_by: actor })
+    .eq('id', id);
   if (error) { alert('Delete failed: '+error.message); return; }
-  if (row?.file_url) { await sb.storage.from('hq-invoices').remove([row.file_url]); }
+  const { error: aErr } = await sb.from('hq_invoice_audit')
+    .insert({ invoice_id: id, action:'deleted', actor, snapshot: row || {} });
+  if (aErr) console.warn('[HQ] audit insert failed', aErr.message);
+  renderInvoiceList();
+}
+
+async function restoreInvoice(id){
+  const actor = CURRENT_USER?.email || '';
+  const { error } = await sb.from('hq_invoices')
+    .update({ deleted_at: null, deleted_by: null })
+    .eq('id', id);
+  if (error) { alert('Restore failed: '+error.message); return; }
+  await sb.from('hq_invoice_audit').insert({ invoice_id: id, action:'restored', actor });
+  renderInvoiceList();
+}
+
+// The ONLY remaining hard-delete path — reachable exclusively from the
+// Deleted view, so it's always a two-step (soft delete → purge). Cleans
+// the storage file too. The audit snapshot survives.
+async function purgeInvoice(id){
+  if (!confirm('Delete FOREVER? This cannot be undone — the attached file is removed too. (The audit snapshot is kept.)')) return;
+  const { data: row } = await sb.from('hq_invoices').select('file_url').eq('id', id).maybeSingle();
+  const actor = CURRENT_USER?.email || '';
+  const { error } = await sb.from('hq_invoices').delete().eq('id', id);
+  if (error) { alert('Purge failed: '+error.message); return; }
+  if (row?.file_url) { await sb.storage.from('hq-invoices').remove([row.file_url]).catch(()=>{}); }
+  await sb.from('hq_invoice_audit').insert({ invoice_id: id, action:'purged', actor });
   renderInvoiceList();
 }
 
