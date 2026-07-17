@@ -170,6 +170,30 @@ test('camp-hub currency pins: each location locked to its currency', async ({ pa
   expect(pins['surf-school']).toBe('EUR');
 });
 
+// Regression: location_menus dupes (non-atomic DELETE+INSERT race between
+// two browsers) made every POS item show 2-3 times with mixed stock
+// snapshots. normalizeMenu must collapse duplicates and backfill fields
+// the surviving copy is missing.
+test('camp-tab menu dedup heals duplicated items', async ({ page }) => {
+  await fakeOwnerSession(page);
+  await page.goto('/camp-hub/camp-tab-inner.html?location=portugal', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof window.normalizeMenu === 'function');
+  const result = await page.evaluate(() => {
+    const menu = window.normalizeMenu({
+      Merch: [
+        { n: 'T-Shirt S', p: 30 },              // race copy without stock
+        { n: 'T-Shirt S', p: 30, stk: 21 },     // race copy WITH stock
+        { n: 'T-Shirt S', p: 30 },              // third copy
+        { n: 'Hoodie M', p: 50, stk: 32 },
+      ],
+    });
+    return { count: menu.Merch.length, names: menu.Merch.map(i => i.n), tshirtStk: menu.Merch[0].stk };
+  });
+  expect(result.count).toBe(2);                       // 4 rows → 2 items
+  expect(result.names).toEqual(['T-Shirt S', 'Hoodie M']);
+  expect(result.tshirtStk).toBe(21);                  // stock backfilled from the dupe
+});
+
 test('crm mobile drawer opens, switches tab, and closes', async ({ page }) => {
   // Suite viewport is 390×844 (mobile) — the hamburger must be visible,
   // the drawer must open, and a drawer tab tap must both switch the real

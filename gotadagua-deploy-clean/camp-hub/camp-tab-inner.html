@@ -709,7 +709,28 @@ function normalizeMenu(menu){
         costPerGuest:Number(item?.costPerGuest||0)||0,
         transportAssoc:String(item?.transportAssoc||'').trim()
       })).filter(item=>item.n&&Number.isFinite(item.p));
-      cleaned[catName]=safeItems.map(item=>({
+      // Dedup by (name, price). The menu sync to location_menus is a
+      // non-atomic DELETE+INSERT — two browsers syncing at the same time
+      // interleave and the table ends up with 2-3 copies of every item
+      // ("Maxime sees every tee three times, some Out of stock"). Since
+      // normalizeMenu sits on EVERY entry path (localStorage load,
+      // parent bootstrap, location_menus hydrate), healing here fixes
+      // every client's view no matter how the dupes got in. Keeps the
+      // first copy, backfills fields the survivor is missing (a race
+      // copy sometimes carries the stk/staff-price the first one lost).
+      const seen=new Map();
+      safeItems.forEach(item=>{
+        const key=`${item.n.toLowerCase()}|${item.p}`;
+        const kept=seen.get(key);
+        if(!kept){ seen.set(key,item); return; }
+        if(kept.stk==null&&item.stk!=null) kept.stk=item.stk;
+        if(!(Number.isFinite(kept.sp)&&kept.sp>0)&&Number.isFinite(item.sp)&&item.sp>0) kept.sp=item.sp;
+        if(!kept.d&&item.d) kept.d=item.d;
+        if(!kept.hasTransport&&item.hasTransport) kept.hasTransport=true;
+        if(!(kept.costPerGuest>0)&&item.costPerGuest>0) kept.costPerGuest=item.costPerGuest;
+        if(!kept.transportAssoc&&item.transportAssoc) kept.transportAssoc=item.transportAssoc;
+      });
+      cleaned[catName]=[...seen.values()].map(item=>({
         ...(item.id?{id:item.id}:{}),
         n:item.n,
         p:item.p,
@@ -1309,6 +1330,13 @@ function decodeMenuDescription(raw){
   return {d:s.trim()||null,hasTransport,costPerGuest,transportAssoc};
 }
 function menuStateToRows(locationId){
+  // Defensive dedup on the OUTBOUND payload too: the DB now has a
+  // unique index on (location_id, category, item_name, price_local)
+  // and the sync uses upsert against it — a payload that repeats the
+  // same tuple would make Postgres error with "cannot affect row a
+  // second time". normalizeMenu already dedups MENU, this is the
+  // belt to that braces.
+  const seenTuples=new Set();
   return getCats().flatMap((cat,catIndex)=>(MENU[cat]||[]).map((item,itemIndex)=>({
     id:isUuid(item?.id)?item.id:makeUuid(),
     location_id:locationId,
@@ -1320,7 +1348,12 @@ function menuStateToRows(locationId){
     staff_price_local:Number.isFinite(Number(item.sp))&&Number(item.sp)>0?Number(item.sp):null,
     sort_order:(catIndex+1)*1000 + (itemIndex+1)*10,
     active:true
-  })));
+  }))).filter(row=>{
+    const key=`${row.category}|${row.item_name.toLowerCase()}|${row.price_local}`;
+    if(seenTuples.has(key)) return false;
+    seenTuples.add(key);
+    return true;
+  });
 }
 function serializeGuestMeta(row){
   return {
@@ -1469,7 +1502,14 @@ async function syncCampTabMenuToSupabase(){
     const { error: deleteError } = await client.from('location_menus').delete().eq('location_id',locationId);
     if(deleteError) throw deleteError;
     if(rows.length){
-      const { error } = await client.from('location_menus').insert(rows);
+      // upsert (NOT insert): DELETE+INSERT from two browsers interleaves
+      // as "A deletes, B deletes, A inserts, B inserts" — plain insert
+      // then lands B's copies next to A's and every item shows 2-3
+      // times for whoever hydrates from the DB (the Maxime-triplicates
+      // bug). With the unique index on this tuple + upsert, B's late
+      // write updates A's rows in place instead of duplicating them.
+      const { error } = await client.from('location_menus')
+        .upsert(rows,{onConflict:'location_id,category,item_name,price_local'});
       if(error) throw error;
     }
     return true;
