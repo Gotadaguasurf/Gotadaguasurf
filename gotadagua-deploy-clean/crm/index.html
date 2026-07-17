@@ -4369,6 +4369,74 @@ document.getElementById('bulkFollowup').addEventListener('change', async (e)=>{
 // ════════════════════════════════════════════════════════════════════════
 //  CONTACT DETAIL PANEL
 // ════════════════════════════════════════════════════════════════════════
+
+// Partner performance — closes the loop between outreach and production.
+// Matches this company's name against bookings.partner_name (the same
+// data /partners and /hq read). Case-insensitive exact match; no match
+// (or RLS blocking bookings for this user) simply leaves the section
+// hidden, so prospecting contacts never see an empty box.
+async function loadPartnerPerformance(c){
+  const section = document.getElementById('partnerPerfSection');
+  const wrap = document.getElementById('partnerPerfWrap');
+  if (!section || !wrap) return;
+  const name = String(c.company || '').trim();
+  if (!name) return;
+  const supa = getClient();
+  // Escape ilike wildcards so a company named "100% Surf" matches literally.
+  const escaped = name.replace(/([%_\\])/g, '\\$1');
+  const { data, error } = await supa.from('bookings')
+    .select('total, net_amount, commission_amount, month_key, pax, location, check_in_on')
+    .ilike('partner_name', escaped)
+    .order('check_in_on', { ascending: false })
+    .limit(1000);
+  if (error || !data?.length) return;
+  // The user may have switched contacts while we were fetching.
+  if (CURRENT_CONTACT?.id !== c.id) return;
+
+  const eur0 = (n) => '€' + Math.round(Number(n) || 0).toLocaleString('en-GB');
+  const revenue    = data.reduce((s, b) => s + (Number(b.total) || 0), 0);
+  const commission = data.reduce((s, b) => s + (Number(b.commission_amount) || 0), 0);
+  const pax        = data.reduce((s, b) => s + (Number(b.pax) || 0), 0);
+  const last       = data[0]?.check_in_on ? String(data[0].check_in_on).slice(0, 10) : '—';
+
+  // Last 3 active months, newest first.
+  const byMonth = new Map();
+  data.forEach(b => {
+    if (!b.month_key) return;
+    const m = byMonth.get(b.month_key) || { n: 0, rev: 0 };
+    m.n++; m.rev += Number(b.total) || 0;
+    byMonth.set(b.month_key, m);
+  });
+  const recent = [...byMonth.entries()].sort((a, b) => b[0].localeCompare(a[0])).slice(0, 3);
+
+  wrap.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:10px">
+      <div style="background:var(--foam);border-radius:10px;padding:10px 12px">
+        <div style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em">Bookings</div>
+        <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy)">${data.length}${pax ? ` <span style="font-size:12px;color:var(--muted);font-family:'Outfit',sans-serif">· ${pax} pax</span>` : ''}</div>
+      </div>
+      <div style="background:var(--foam);border-radius:10px;padding:10px 12px">
+        <div style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em">Revenue</div>
+        <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy)">${eur0(revenue)}</div>
+      </div>
+      <div style="background:#eafaf1;border-radius:10px;padding:10px 12px">
+        <div style="font-size:10px;color:var(--green-text);font-weight:700;text-transform:uppercase;letter-spacing:.06em">Their commission</div>
+        <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--green-text)">${eur0(commission)}</div>
+      </div>
+      <div style="background:var(--foam);border-radius:10px;padding:10px 12px">
+        <div style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em">Last check-in</div>
+        <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy)">${last}</div>
+      </div>
+    </div>
+    ${recent.length ? `
+      <div style="font-size:11.5px;color:var(--muted);font-family:'DM Mono',monospace;line-height:1.8">
+        ${recent.map(([m, v]) => `${m} · ${v.n} booking${v.n > 1 ? 's' : ''} · ${eur0(v.rev)}`).join('<br>')}
+      </div>` : ''}
+    <a href="/partners/" target="_blank" style="display:inline-block;margin-top:8px;font-size:12px;font-weight:700;color:var(--ocean);text-decoration:none">↗ Full statement in Partners</a>
+  `;
+  section.style.display = '';
+}
+
 async function openContact(id){
   const c = CONTACTS.find(x=>x.id===id);
   if(!c) return;
@@ -4416,6 +4484,14 @@ async function openContact(id){
       <div class="detail-row"><span class="label">Last contacted</span><span class="value" title="Last time we sent them an email">${c.last_contacted_at?fmtDateTime(c.last_contacted_at):'—'}</span></div>
       <div class="detail-row"><span class="label">Last interaction</span><span class="value" title="Any movement: email, task, status change, group, person">${c.last_interaction_at?fmtDateTime(c.last_interaction_at):'—'}</span></div>
       <div class="detail-row"><span class="label">Follow-up</span><span class="value"><input type="date" id="followupInput" value="${c.follow_up_at||''}" style="border:1px solid var(--border);border-radius:8px;padding:4px 8px;font:inherit"></span></div>
+    </div>
+
+    <!-- Partner performance — filled async by loadPartnerPerformance()
+         when this company's name matches bookings.partner_name. Hidden
+         for non-partners, so prospecting contacts see no empty box. -->
+    <div class="detail-section" id="partnerPerfSection" style="display:none">
+      <div class="detail-section-title">Partner performance <span style="font-weight:400;font-size:10px;color:var(--muted);text-transform:none;letter-spacing:0">· live from bookings</span></div>
+      <div id="partnerPerfWrap"></div>
     </div>
 
     <div class="detail-section">
@@ -4845,6 +4921,9 @@ async function openContact(id){
   // ── People (CRM v2 multi-contact roster) ────────────────────────────
   renderPeopleList(c.id);
   document.getElementById('addPersonBtn').addEventListener('click', ()=>openPeopleModal(c.id, null));
+
+  // ── Partner performance (live bookings, fire-and-forget) ────────────
+  loadPartnerPerformance(c).catch(e => console.warn('[CRM] partner perf load failed', e));
 
   // ── Pipelines (CRM v2 multi-pipeline assignments) ───────────────────
   renderPipelinesSection(c.id);

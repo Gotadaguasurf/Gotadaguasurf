@@ -205,6 +205,7 @@ test('crm campaign plumbing exists (queue, render, suppression-aware batch)', as
     renderCampaigns: typeof window.renderCampaigns,
     setCampaignStatus: typeof window.setCampaignStatus,
     cancelCampaign: typeof window.cancelCampaign,
+    partnerPerf: typeof window.loadPartnerPerformance,
     // const → global lexical scope, not window; guard the direct reference
     instantMax: (() => { try { return INSTANT_SEND_MAX; } catch (_) { return null; } })(),
   }));
@@ -212,5 +213,6 @@ test('crm campaign plumbing exists (queue, render, suppression-aware batch)', as
   expect(fns.renderCampaigns).toBe('function');
   expect(fns.setCampaignStatus).toBe('function');
   expect(fns.cancelCampaign).toBe('function');
+  expect(fns.partnerPerf).toBe('function');
   expect(fns.instantMax).toBe(5);
 });
