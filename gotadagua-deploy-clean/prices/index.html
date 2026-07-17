@@ -1624,7 +1624,7 @@ async function renderAccommodation(){
     wrap.innerHTML = `<div class="empty">
       <div class="empty-icon">🏄</div>
       <div style="font-family:'DM Serif Display',serif;font-size:18px;color:var(--navy);margin-bottom:4px">The Surf School doesn't stock accommodation</div>
-      <div style="font-size:13px">Manage board + wetsuit rates in the <strong>Surf</strong> tab above. Rentals sold from the Rentals module in the Camp Hub always use the built-in matrix (Standard / Erasmus / Resident).</div>
+      <div style="font-size:13px">Manage board + wetsuit rates in the <strong>Surf</strong> tab above. The Rentals form in the Camp Hub reads these <em>live</em> — edit a "Surf Pack" price here (keep the name format, e.g. "Board & Wetsuit — 2h (Standard)") and the rental form picks it up on its next load. Rows with unrecognised names fall back to the built-in matrix.</div>
     </div>`;
     return;
   }

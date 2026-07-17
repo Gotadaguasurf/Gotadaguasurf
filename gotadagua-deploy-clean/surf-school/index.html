@@ -550,6 +550,48 @@ async function loadCatalog(){
   if (error) { toast('Catalog load failed: '+error.message, 'err'); return; }
   CATALOG = data || [];
   renderItemPicker();
+  applyLivePricing();
+}
+
+// ── Live pricing overrides ───────────────────────────────────────
+// Miguel edits rental prices in /prices?location=surf-school (category
+// "Surf Pack", seeded by supabase/seed-surf-school-prices.sql). This
+// parses those rows BACK into RENTAL_PRICING cells using the seed's
+// naming convention:
+//     "Board & Wetsuit — 2h (Standard)"        → Standard  / combo / 2H
+//     "Board — All day (Standard)"             → Standard  / Board / Full day
+//     "Wetsuit — Extra day (Standard)"         → Standard  / Wetsuit / extra
+//     "Rental — 2h (Erasmus/Student)"          → discount tier / combo / 2H
+// Per-cell override: a row that doesn't parse (renamed, new custom item)
+// is simply ignored and that cell keeps the hardcoded value — same
+// fail-safe philosophy as LOCAL_CURRENCY_PINNED in camp-hub. If the
+// fetch itself fails, the whole hardcoded matrix stands. Result: price
+// changes land without a deploy, but a broken catalog can never zero
+// out a rental.
+function applyLivePricing(){
+  const COMBO = { 'board & wetsuit':'Board + Wetsuit', 'board':'Board', 'wetsuit':'Wetsuit', 'rental':'Board + Wetsuit' };
+  const DUR   = { '1h':'1H', '2h':'2H', '3h':'3H', 'all day':'Full day', 'full day':'Full day', 'extra day':'extra' };
+  const TIER  = { 'standard':'Standard', 'erasmus/student':'Erasmus / Student', 'resident':'Resident' };
+  const re = /^(Board & Wetsuit|Board|Wetsuit|Rental)\s*[—–-]\s*(1h|2h|3h|All day|Full day|Extra day)\s*\((Standard|Erasmus\s*\/\s*Student|Resident)\)\s*$/i;
+  let applied = 0;
+  CATALOG.forEach(c => {
+    if (String(c.category||'').toLowerCase() !== 'surf pack') return;
+    const m = String(c.name||'').trim().match(re);
+    if (!m) return;
+    const combo = COMBO[m[1].toLowerCase()];
+    const dur   = DUR[m[2].toLowerCase()];
+    const tier  = TIER[m[3].toLowerCase().replace(/\s*\/\s*/, '/')];
+    const price = Number(c.sell_price);
+    if (!combo || !dur || !tier || !Number.isFinite(price) || price < 0) return;
+    if (!RENTAL_PRICING[tier]) RENTAL_PRICING[tier] = {};
+    if (!RENTAL_PRICING[tier][combo]) RENTAL_PRICING[tier][combo] = {};
+    RENTAL_PRICING[tier][combo][dur] = price;
+    applied++;
+  });
+  if (applied) {
+    console.info(`[SurfSchool] live pricing: ${applied} cells from /prices catalog`);
+    try { recalcRentalTotal(); } catch(_e){}
+  }
 }
 
 function renderItemPicker(){

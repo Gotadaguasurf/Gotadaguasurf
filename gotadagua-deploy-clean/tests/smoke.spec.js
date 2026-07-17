@@ -102,6 +102,32 @@ test('surf-school pricing matrix matches the price card', async ({ page }) => {
   expect(cases.extraBW).toBe(15);
 });
 
+// Live pricing overrides: /prices "Surf Pack" rows override matrix cells
+// by naming convention; unparseable rows are ignored (cell keeps the
+// hardcoded value). Stubs CATALOG in-page — no network needed.
+test('surf-school live pricing override parses catalog rows', async ({ page }) => {
+  await fakeOwnerSession(page);
+  await page.goto('/surf-school/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof window.applyLivePricing === 'function');
+  const result = await page.evaluate(() => {
+    CATALOG = [
+      { name: 'Board & Wetsuit — 2h (Standard)', category: 'Surf Pack', sell_price: 99 },
+      { name: 'Rental — Full day (Erasmus/Student)', category: 'Surf Pack', sell_price: 33 },
+      { name: 'Some Custom Item', category: 'Surf Pack', sell_price: 5 },       // no match → ignored
+      { name: 'Board — 2h (Standard)', category: 'Lesson', sell_price: 1 },     // wrong category → ignored
+    ];
+    window.applyLivePricing();
+    return {
+      overridden: window.priceFor('Standard', 'Board + Wetsuit', '2H'),
+      tierOverridden: window.priceFor('Erasmus / Student', 'Board + Wetsuit', 'Full day'),
+      untouched: window.priceFor('Standard', 'Board', '2H'),
+    };
+  });
+  expect(result.overridden).toBe(99);      // live value won
+  expect(result.tierOverridden).toBe(33);  // discount-tier row parsed
+  expect(result.untouched).toBe(20);       // unmatched cell kept hardcoded price
+});
+
 // Expected-return math: 2H rental starting 10:00 returns by 12:00;
 // multi-day N days = N × 24h.
 test('surf-school expected-return math', async ({ page }) => {
