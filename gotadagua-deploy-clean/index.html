@@ -719,8 +719,11 @@
         <button class="ghost-btn" id="csvImportBtn" type="button" onclick="openGlobalCsvImport()" title="Import a Bookinglayer CSV — splits rows by location and feeds every camp hub + partners" style="display:none">Import CSV</button>
         <button class="ghost-btn" type="button" onclick="doSignOut()">Log out</button>
         <div class="user-meta">
-          <div class="user-name" id="userName">Miguel</div>
-          <div class="user-role">Platform owner</div>
+          <div class="user-name" id="userName">—</div>
+          <!-- Filled by hydrateFromSession with the user's REAL role. Was
+               hardcoded "Platform owner" — every staff member saw
+               themselves labelled owner, which read as an access bug. -->
+          <div class="user-role" id="userRoleLabel"></div>
         </div>
       </div>
     </div>
@@ -2753,6 +2756,11 @@
       // platform_profiles.password_set_at. We don't need a second call here —
       // it would just race with the URL having ?reset=1 still in the bar.
       document.getElementById('userName').textContent = __currentProfile.full_name || email.split('@')[0] || 'User';
+      // Show the user's REAL role under their name (the div used to be
+      // hardcoded "Platform owner" for everyone — confusing at best,
+      // alarming during access audits).
+      const roleLabelEl = document.getElementById('userRoleLabel');
+      if(roleLabelEl) roleLabelEl.textContent = platformRoleToLabel(__currentProfile.role || 'viewer');
       // Owner-only UI: the Import CSV button can mass-create or overwrite
       // ledger / camp-tab data across every location, so we restrict it
       // to the platform owner. Robust gate — passes if EITHER condition
