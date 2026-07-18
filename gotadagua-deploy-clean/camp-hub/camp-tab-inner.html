@@ -2275,12 +2275,9 @@ function ensureMenuState(){
 // ════════════════════════════════════════════════════════════
 let activeSub='charge';
 function showSub(sub){
-  // per_guest (Morocco): the History tab is retired — there are no weeks
-  // to historicise, and every paid line is fully traceable in the
-  // Operations Ledger now that deletes cascade in both directions.
-  // Hard redirect to Charge so a stale link / programmatic call doesn't
-  // open a hidden subpage in a broken state.
-  if(sub==='history' && CAMP_TAB_MODE==='per_guest') sub='charge';
+  // per_guest: History is BACK (Miguel asked for a paid-guests history).
+  // renderHistory branches to renderHistoryPerGuest — closed guests with
+  // their paid items, lifetime-collected stat, search, and Re-open.
   activeSub=sub;
   document.querySelectorAll('.subpage').forEach(el=>el.classList.remove('active'));
   document.getElementById('sub-'+sub).classList.add('active');
@@ -4902,14 +4899,11 @@ setRoster('guests');
 // If Supabase has its own week, the bootstrap hydrate replaces this one;
 // otherwise this local one gets persisted up on the first save().
 ensurePerGuestWeek();
-// per_guest mode: hide the History subnav button. Closed guests have
-// no historic value here — the Operations Ledger holds the audit trail
-// and the cascading deletes keep both sides in sync. Sri Lanka keeps
-// the tab for the weekly close history.
-if(CAMP_TAB_MODE==='per_guest'){
-  const histBtn=document.querySelector('.snav-btn[data-sub="history"]');
-  if(histBtn) histBtn.style.display='none';
-}
+// per_guest mode: the History subnav stays VISIBLE — it renders the
+// closed-guests history (renderHistoryPerGuest): who paid what, when
+// they were closed, lifetime collected, with search + Re-open for
+// returning guests. (It was hidden for a while on the theory that the
+// Operations Ledger covered it, but staff need the guest-centric view.)
 renderHeader();
 renderCharge();
 bootstrapCampTabFromSupabase();
