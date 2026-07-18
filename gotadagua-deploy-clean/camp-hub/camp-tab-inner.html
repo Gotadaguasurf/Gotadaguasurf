@@ -1703,7 +1703,12 @@ async function syncCampTabStateToSupabase(){
             item_name:item.n,
             qty:1,
             price_local:Number(item.p||0),
-            currency:'LKR',
+            // Stamp the ACTIVE location's currency, not a hardcoded LKR.
+            // The old literal made every Portugal/Morocco item carry
+            // currency='LKR' in the DB — amounts were right, but the
+            // Activity feed (which trusts the stored column) rendered
+            // "LKR 30" for €30 Portugal merch.
+            currency:LOCAL_CURRENCY||'LKR',
             added_at:item.d?(item.d+'T'+(item.t||'12:00')+':00.000Z'):new Date().toISOString(),
             // per_guest mode (Morocco) — persist the item's individual paid
             // timestamp. Sri Lanka items never set paidAt so this stays
@@ -3964,7 +3969,12 @@ async function renderPosActivity(){
     return;
   }
 
-  const cur = filtered[0]?.currency || (typeof LOCAL_CURRENCY !== 'undefined' ? LOCAL_CURRENCY : 'LKR');
+  // LOCAL_CURRENCY first: every price in this feed is a local price for
+  // THIS location, so the location's currency is always the right label.
+  // The stored per-row currency is only a fallback — historical rows
+  // were stamped 'LKR' regardless of location (fixed at the write site,
+  // healed in SQL), so trusting rows first showed "LKR" in Portugal.
+  const cur = (typeof LOCAL_CURRENCY !== 'undefined' && LOCAL_CURRENCY) || filtered[0]?.currency || 'LKR';
   const total = filtered.reduce((s,r) => s + Number(r.price_local||0), 0);
   const staffCount = new Set(filtered.map(r => r.created_by).filter(Boolean)).size;
 
