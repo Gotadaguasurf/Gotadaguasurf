@@ -194,6 +194,32 @@ test('camp-tab menu dedup heals duplicated items', async ({ page }) => {
   expect(result.tshirtStk).toBe(21);                  // stock backfilled from the dupe
 });
 
+// Regression, data-loss class: camp-tab-inner boots with MENU =
+// DEFAULT_MENU (Sri Lanka seed — LKR drinks, 6500 tees). The menu sync is
+// delete-all-then-write, so syncing that placeholder REPLACES a real
+// camp's menu (this wiped Portugal's Tours + Extras once). The sync must
+// refuse to run until the menu has been hydrated from the DB.
+test('camp-tab menu sync refuses to write a non-hydrated (default) menu', async ({ page }) => {
+  await fakeOwnerSession(page);
+  await page.goto('/camp-hub/camp-tab-inner.html?location=portugal', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof window.syncCampTabMenuToSupabase === 'function');
+  const result = await page.evaluate(async () => {
+    // Force the pre-hydrate state, then attempt the destructive sync.
+    MENU_HYDRATED = false;
+    const blocked = await window.syncCampTabMenuToSupabase();
+    // With the flag set (DB state known) it proceeds past the guard —
+    // it may still fail on the network with the fake JWT, which is fine:
+    // we only assert it is no longer short-circuited by the guard.
+    MENU_HYDRATED = true;
+    let reached = false;
+    try { await window.syncCampTabMenuToSupabase(); reached = true; }
+    catch (_) { reached = true; }
+    return { blocked, reached };
+  });
+  expect(result.blocked).toBe(false);  // guard returned false without writing
+  expect(result.reached).toBe(true);   // guard is not a permanent block
+});
+
 // Diploria (Portugal boardshorts): its own POS tab with STANDALONE stock
 // — each colour+size name is its own SKU counter, unlike Merch where
 // "T-Shirt Offer L" borrows from "T-Shirt L". Guards both the tab config

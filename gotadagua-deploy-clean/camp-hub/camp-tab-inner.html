@@ -748,6 +748,20 @@ function normalizeMenu(menu){
 }
 function loadMenu(){return clone(DEFAULT_MENU);}
 let MENU=loadMenu();
+// ── Destructive-write guard ────────────────────────────────────────────
+// MENU starts as DEFAULT_MENU (the Sri Lanka seed: LKR drinks, 6500 tees).
+// syncCampTabMenuToSupabase is delete-all-then-write, so pushing that
+// placeholder up REPLACES a real location's menu with Sri Lanka defaults.
+// That is exactly what happened to Portugal once (Tours + Extras wiped,
+// merch showing €6,500) after camp-tab-inner.html was opened standalone,
+// with no parent hub to feed it the catalog.
+//
+// Rule: never write the menu upstream until we know what the DB actually
+// holds. Set only by hydrateCampTabMenuFromSupabase — either it loaded
+// rows, or it confirmed the location has none (a legitimate first-time
+// seed). Everything else (parent bootstrap, catalog pushes, menu edits)
+// queues a sync that no-ops until then.
+let MENU_HYDRATED=false;
 // Phase 5: rename any legacy "Activities" category back to "Tours" so the
 // catalog-driven Tours menu (from /prices) lands in the right bucket. The
 // user may have renamed Tours → Activities at some point in the Menu editor;
@@ -1484,14 +1498,27 @@ async function hydrateCampTabMenuFromSupabase({mergeLocal=false}={}){
   }
   if(data?.length){
     MENU=menuRowsToState(data);
+    MENU_HYDRATED=true;   // we know what the DB holds — writes are safe now
     return true;
   }
+  // No rows for this location. That's still a KNOWN state (brand-new
+  // camp), so seeding from local is legitimate — flip the flag before
+  // the seed call, which itself goes through syncCampTabMenuToSupabase.
+  MENU_HYDRATED=true;
   if(mergeLocal && getCats().length){
     await syncCampTabMenuToSupabase();
   }
   return false;
 }
 async function syncCampTabMenuToSupabase(){
+  // See MENU_HYDRATED above: refuse to run the delete-all-then-write
+  // sync while MENU may still be the DEFAULT_MENU placeholder. Without
+  // this, one standalone load of camp-tab-inner.html replaces a real
+  // camp's menu with the Sri Lanka defaults.
+  if(!MENU_HYDRATED){
+    console.warn('[CampTab] menu sync skipped — menu not hydrated from the DB yet');
+    return false;
+  }
   const client=getCampTabSupabaseClient();
   const locationId=await ensureCampTabLocationId();
   if(!client||!locationId) return false;
