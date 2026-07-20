@@ -4597,6 +4597,10 @@ async function removeOrphanedClosedWeekEntries(history){
 function mapCampTabRevenueCategory(item){
   if(item.c==='Drinks') return 'Drinks';
   if(item.c==='Merch') return 'Merchandise';
+  // Diploria (Portugal boardshorts) IS merchandise — same revenue bucket
+  // and Merch business area. The SKU name rides along on linked_item, so
+  // per-model reporting stays available without a new revenue category.
+  if(item.c==='Diploria') return 'Merchandise';
   if(item.c==='Tours') return 'Tours';
   return 'Other Revenue';
 }

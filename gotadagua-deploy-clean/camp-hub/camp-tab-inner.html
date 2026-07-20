@@ -1857,7 +1857,11 @@ function currentMerchMenu(){
 // (no size/variant pooling, no Offer/Staff suffix). Each item.stk is
 // the initial count; we subtract every occurrence in guest tabs across
 // history + active week to get what's left.
-function extrasSoldCount(itemName){
+// Standalone stock model: the item NAME is the SKU. No family/size
+// grouping like Merch (where "T-Shirt Offer L" borrows from "T-Shirt L"
+// stock) — every name keeps its own counter. Used by Extras and by
+// Diploria, whose SKUs are already colour+size ("Core Black 32").
+function standaloneSoldCount(itemName, category){
   const target = String(itemName||'').trim().toLowerCase();
   if(!target) return 0;
   let count = 0;
@@ -1866,11 +1870,17 @@ function extrasSoldCount(itemName){
   weeks.forEach(wk=>{
     allConsumers(wk).forEach(row=>{
       (Array.isArray(row.items)?row.items:[]).forEach(item=>{
-        if(item?.c === 'Extras' && String(item?.n||'').trim().toLowerCase() === target) count++;
+        if(item?.c === category && String(item?.n||'').trim().toLowerCase() === target) count++;
       });
     });
   });
   return count;
+}
+function extrasSoldCount(itemName){ return standaloneSoldCount(itemName, 'Extras'); }
+function diploriaSoldCount(itemName){ return standaloneSoldCount(itemName, 'Diploria'); }
+function diploriaStockLeft(item){
+  if(!item || item.stk === null || item.stk === undefined) return null;
+  return Math.max(0, Number(item.stk||0) - diploriaSoldCount(item.n));
 }
 function extrasStockLeft(item){
   if(!item || item.stk === null || item.stk === undefined) return null;
@@ -1882,6 +1892,7 @@ function extrasStockLeft(item){
 function stockLeftForCategory(item, category){
   if(category === 'Merch' || category === 'Merch Special') return merchStockLeft(item);
   if(category === 'Extras') return extrasStockLeft(item);
+  if(category === 'Diploria') return diploriaStockLeft(item);
   return null;
 }
 function merchSoldCounts(){
@@ -2150,7 +2161,9 @@ function isSpecialMerchName(name=''){
 const LOCATION_TAB_CONFIG = {
   'sri-lanka':   ['Drinks', 'Tours', 'Extras', 'Merch'],
   'morocco':     ['Tours', 'Extras', 'Merch'],
-  'portugal':    ['Tours', 'Extras', 'Merch', 'Bar Tab'],
+  // Diploria: boardshort line sold at the Portugal camp only. Colour ×
+  // waist-size SKUs ("Core Black 32"), standalone stock per SKU.
+  'portugal':    ['Tours', 'Extras', 'Merch', 'Diploria', 'Bar Tab'],
   'junior-camp': ['Merch', 'Extras'],
 };
 // Merch Special retired: the per-item "%" discount modal covers gifts,

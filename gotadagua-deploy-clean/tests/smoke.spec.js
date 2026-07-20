@@ -194,6 +194,35 @@ test('camp-tab menu dedup heals duplicated items', async ({ page }) => {
   expect(result.tshirtStk).toBe(21);                  // stock backfilled from the dupe
 });
 
+// Diploria (Portugal boardshorts): its own POS tab with STANDALONE stock
+// — each colour+size name is its own SKU counter, unlike Merch where
+// "T-Shirt Offer L" borrows from "T-Shirt L". Guards both the tab config
+// and the stock route.
+test('camp-tab Diploria: Portugal tab config + standalone stock route', async ({ page }) => {
+  await fakeOwnerSession(page);
+  await page.goto('/camp-hub/camp-tab-inner.html?location=portugal', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof window.stockLeftForCategory === 'function');
+  const result = await page.evaluate(() => ({
+    // const → global lexical scope, not window; guard the direct reference
+    portugalTabs: (() => { try { return LOCATION_TAB_CONFIG['portugal']; } catch (_) { return null; } })(),
+    otherCamps: (() => {
+      try {
+        return ['sri-lanka', 'morocco', 'junior-camp']
+          .filter(s => (LOCATION_TAB_CONFIG[s] || []).includes('Diploria'));
+      } catch (_) { return null; }
+    })(),
+    // Nothing sold in a fresh session → stock left === initial stock.
+    stockLeft: window.stockLeftForCategory({ n: 'Core Black 32', stk: 1 }, 'Diploria'),
+    noStockField: window.stockLeftForCategory({ n: 'Retro 28' }, 'Diploria'),
+    unknownCat: window.stockLeftForCategory({ n: 'Whatever', stk: 5 }, 'Nope'),
+  }));
+  expect(result.portugalTabs).toContain('Diploria');
+  expect(result.otherCamps).toEqual([]);   // Portugal only
+  expect(result.stockLeft).toBe(1);
+  expect(result.noStockField).toBeNull();  // no stk → untracked, not zero
+  expect(result.unknownCat).toBeNull();
+});
+
 test('crm mobile drawer opens, switches tab, and closes', async ({ page }) => {
   // Suite viewport is 390×844 (mobile) — the hamburger must be visible,
   // the drawer must open, and a drawer tab tap must both switch the real
