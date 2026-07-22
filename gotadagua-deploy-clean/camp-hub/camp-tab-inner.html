@@ -2599,14 +2599,15 @@ function renderItemGrid(){
   // "Sold" chip lookups — Merch shares a helper that already returns a
   // { name → count } map; Extras uses the per-item extrasSoldCount
   // resolved lazily below because each Extras row is standalone.
+  // "Sold" chip is Merch-only: for perishables like Extras (suncreams,
+  // sticks) the owner only wants "X left" at the point of sale — the
+  // running total moved lives in the Top sellers tab. Extras therefore
+  // behaves like Diploria (stock left, no sold count).
   const soldByName = AC==='Merch' ? merchSoldCounts() : null;
-  const soldExtras = AC==='Extras';
   el.innerHTML=items.map((item,i)=>{
     const stockLeft=stockLeftForCategory(item, AC);
     const outOfStock=stockLeft!==null&&stockLeft<=0;
-    const sold = soldByName ? Number(soldByName[item.n]||0)
-               : soldExtras ? extrasSoldCount(item.n)
-               : 0;
+    const sold = soldByName ? Number(soldByName[item.n]||0) : 0;
     const stockLabel=stockLeft!==null
       ? `<div class="ci-desc" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="color:${outOfStock?'var(--red)':'var(--green)'};font-weight:700">${outOfStock?'Out of stock':stockLeft+' left'}</span>${sold>0?`<span style="color:var(--muted);font-weight:600">· ${sold} sold</span>`:''}</div>`
       : (sold>0?`<div class="ci-desc" style="color:var(--muted);font-weight:600">${sold} sold</div>`:'');
