@@ -4386,12 +4386,17 @@ function saveNewGuest(){
   if(!lines.length){toast('Enter at least one name');return;}
   if(!S.activeWeek)return;
   const rows=rosterRows(S.activeWeek,currentRoster);
-  // Duplicate-name check runs against the VISIBLE roster only. In
-  // per_guest mode closed guests stay in the underlying array with
-  // closedAt set — counting them here permanently blocked re-adding a
-  // returning guest's name after Close ("Already in this week" forever).
-  // A closed João and a new João are different stays; History keeps both.
-  const existing=new Set(visibleRoster(S.activeWeek,currentRoster).map(g=>g.name.toLowerCase()));
+  // Duplicate-name check runs against OPEN guests only. In per_guest
+  // mode closed guests stay in the underlying array with closedAt set —
+  // counting them here permanently blocked re-adding a returning guest's
+  // name after Close ("Already in this week" forever). A closed João and
+  // a new João are different stays; History keeps both.
+  // MUST filter `rows` directly — calling rosterRows/visibleRoster a
+  // second time re-normalizes and REPLACES wk[roster], orphaning `rows`
+  // so the push below lands in a dead array (guest "added" but never
+  // appears; shipped once).
+  const openRows=(CAMP_TAB_MODE==='per_guest')?rows.filter(g=>!g?.closedAt&&!g?.closed_at):rows;
+  const existing=new Set(openRows.map(g=>g.name.toLowerCase()));
   const parsed=lines.map(parseGuestLine).filter(p=>p.name);
   const toAdd=parsed.filter(p=>!existing.has(p.name.toLowerCase()));
   if(!toAdd.length){toast('Already in this week');return;}
