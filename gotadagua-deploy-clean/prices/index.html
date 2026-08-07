@@ -1302,38 +1302,46 @@ async function restoreHiddenAreas(){
 // to a guest's tab over the camp's lifetime) so pulling + grouping in
 // JS is cheap and avoids the complexity of an RPC function.
 let merchSoldByName = {};
+let merchOnTabByName = {};
 async function loadMerchSoldCounts(){
   try{
     const { data, error } = await sbClient
       .from('camp_tab_items')
-      .select('item_name,category')
+      .select('item_name,category,paid_at,camp_guests(paid)')
       .eq('location_id', locationId)
       .in('category', ['Merch','Drinks','Diploria','Extras']);
     if (error) throw error;
-    const counts = {};
+    // "Sold" = money actually collected: the item's own paid_at
+    // (per_guest mode) or its guest marked paid (weekly mode — items
+    // there never carry paid_at). Anything still open is "on tab" so
+    // the owner sees committed-but-uncollected units separately.
+    const sold = {};
+    const onTab = {};
+    const bump = (map, key) => { map[key] = (map[key] || 0) + 1; };
     (data || []).forEach(row => {
       const n = String(row?.item_name || '').trim();
       if (!n) return;
-      counts[n] = (counts[n] || 0) + 1;
-      // Diploria sold twice under two naming schemes: per model/colour
+      const isPaid = !!row?.paid_at || !!row?.camp_guests?.paid;
+      const map = isPaid ? sold : onTab;
+      bump(map, n);
+      // Diploria sold under two naming schemes: per model/colour
       // ("Core Black 28") and per size ("Size 28"). Fold every Diploria
       // sale into the size bucket too so the catalog's "Size 28" row
-      // reports lifetime sales across both eras. Guarded so a sale
+      // reports lifetime numbers across both eras. Guarded so a sale
       // already named "Size 28" isn't double-counted.
       if (String(row?.category || '') === 'Diploria') {
         const sz = (n.match(/(\d{2})\s*$/) || [])[1];
-        if (sz) {
-          const sizeKey = 'Size ' + sz;
-          if (sizeKey !== n) counts[sizeKey] = (counts[sizeKey] || 0) + 1;
-        }
+        if (sz && ('Size ' + sz) !== n) bump(map, 'Size ' + sz);
       }
     });
-    merchSoldByName = counts;
+    merchSoldByName = sold;
+    merchOnTabByName = onTab;
   }catch(e){
     // Non-fatal — catalog page must keep working even if camp_tab_items
-    // query fails (RLS, network, etc.). Fall back to empty map.
+    // query fails (RLS, network, etc.). Fall back to empty maps.
     console.warn('[Prices] loadMerchSoldCounts failed', e);
     merchSoldByName = {};
+    merchOnTabByName = {};
   }
 }
 
@@ -1575,9 +1583,11 @@ function renderTable(){
     // Lifetime sold badge — Merch + Drinks only. Subdued navy chip so it
     // reads as a metric, not an action. Hidden when 0 to keep the row
     // visually quiet for fresh items.
-    const soldCount = (['Merch','Drinks','Diploria','Extras'].includes(r.category)) ? Number(merchSoldByName[r.name] || 0) : 0;
-    const soldBadge = soldCount > 0
-      ? `<span style="font-size:10px;font-weight:700;background:#eef4f9;color:var(--navy);border:1px solid var(--border);border-radius:20px;padding:2px 9px;margin-left:6px;letter-spacing:.04em">${soldCount} sold</span>`
+    const soldTracked = ['Merch','Drinks','Diploria','Extras'].includes(r.category);
+    const soldCount = soldTracked ? Number(merchSoldByName[r.name] || 0) : 0;
+    const onTabCount = soldTracked ? Number(merchOnTabByName[r.name] || 0) : 0;
+    const soldBadge = (soldCount > 0 || onTabCount > 0)
+      ? `<span style="font-size:10px;font-weight:700;background:#eef4f9;color:var(--navy);border:1px solid var(--border);border-radius:20px;padding:2px 9px;margin-left:6px;letter-spacing:.04em">${soldCount} sold${onTabCount>0?` <span style=\"color:var(--muted);font-weight:600\">· +${onTabCount} on tab</span>`:''}</span>`
       : '';
     return `<tr data-row-id="${r.id}" ondragover="onRowDragOver(event)" ondragleave="onRowDragLeave(event)" ondrop="onRowDrop(event,'${r.id}')">
       ${canEdit ? `<td class="c"><span class="drag-handle" draggable="true" title="Drag to reorder" ondragstart="onRowDragStart(event,'${r.id}')" ondragend="onRowDragEnd(event)">⋮⋮</span></td>` : ''}
