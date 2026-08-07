@@ -1308,7 +1308,7 @@ async function loadMerchSoldCounts(){
       .from('camp_tab_items')
       .select('item_name,category')
       .eq('location_id', locationId)
-      .in('category', ['Merch','Drinks']);
+      .in('category', ['Merch','Drinks','Diploria','Extras']);
     if (error) throw error;
     const counts = {};
     (data || []).forEach(row => {
@@ -1551,19 +1551,19 @@ function renderTable(){
     // Merch stock badge: green pill with count, red "Out of stock" when 0,
     // nothing at all when stock_qty is null (tracking disabled). Keeps
     // every other category visually unchanged.
-    const stockBadge = (['Merch','Drinks'].includes(r.category) && r.stock_qty !== null && r.stock_qty !== undefined)
+    const stockBadge = (['Merch','Drinks','Diploria','Extras'].includes(r.category) && r.stock_qty !== null && r.stock_qty !== undefined)
       ? `<span style="font-size:10px;font-weight:700;background:${Number(r.stock_qty)>0?'var(--green-bg)':'var(--red-bg)'};color:${Number(r.stock_qty)>0?'var(--green)':'var(--red)'};border:1px solid ${Number(r.stock_qty)>0?'var(--green-border)':'#f0a0a0'};border-radius:20px;padding:2px 9px;margin-left:8px;letter-spacing:.04em">${Number(r.stock_qty)>0?`${r.stock_qty} in stock`:'Out of stock'}</span>`
       : '';
     // Alt-price badge for Merch — shown only when set. Same pill style
     // as stockBadge but in ocean blue so the eye registers it as a
     // pricing variation rather than a stock indicator.
-    const altBadge = (['Merch','Drinks'].includes(r.category) && r.alt_price !== null && r.alt_price !== undefined)
+    const altBadge = (['Merch','Drinks','Diploria','Extras'].includes(r.category) && r.alt_price !== null && r.alt_price !== undefined)
       ? `<span style="font-size:10px;font-weight:700;background:#eef6ff;color:var(--ocean);border:1px solid #bfdcf2;border-radius:20px;padding:2px 9px;margin-left:6px;letter-spacing:.04em">${escapeHtml(r.alt_label || 'Offer')} · ${money(Number(r.alt_price), sellCcy)}</span>`
       : '';
     // Lifetime sold badge — Merch + Drinks only. Subdued navy chip so it
     // reads as a metric, not an action. Hidden when 0 to keep the row
     // visually quiet for fresh items.
-    const soldCount = (['Merch','Drinks'].includes(r.category)) ? Number(merchSoldByName[r.name] || 0) : 0;
+    const soldCount = (['Merch','Drinks','Diploria','Extras'].includes(r.category)) ? Number(merchSoldByName[r.name] || 0) : 0;
     const soldBadge = soldCount > 0
       ? `<span style="font-size:10px;font-weight:700;background:#eef4f9;color:var(--navy);border:1px solid var(--border);border-radius:20px;padding:2px 9px;margin-left:6px;letter-spacing:.04em">${soldCount} sold</span>`
       : '';
@@ -2615,7 +2615,7 @@ window.onCategoryChange = ()=>{
   // Extras, plus service categories the owner might charge staff for
   // (Add-ons via 'Other Service', Tours, Lessons).
   const stockRow = $('em_stock_row');
-  if (stockRow) stockRow.style.display = (['Merch','Drinks','Extras'].includes(cat)) ? '' : 'none';
+  if (stockRow) stockRow.style.display = (['Merch','Drinks','Extras','Diploria'].includes(cat)) ? '' : 'none';
   // Staff price shows on every category so the owner can opt in from any
   // tab (Accommodation, Surf Pack, Transport included). Leaving the
   // field empty keeps the item guest-only; setting any value — even the
@@ -2703,6 +2703,16 @@ function updateEffectiveCostPreview(){
   $('em_total_preview').style.display = '';
 }
 
+// The category <select> ships with the classic fixed list; area-driven
+// categories (Extras, Diploria, custom pricing_areas) are appended on
+// demand. Setting select.value to a value with no <option> silently
+// resolves to '' — the row would save with an empty category and vanish
+// from every tab.
+function ensureCategoryOption(cat){
+  const sel = $('em_category');
+  if (!sel || !cat) return;
+  if (![...sel.options].some(o => o.value === cat)) sel.add(new Option(cat, cat));
+}
 window.openNew = ()=>{
   editingId = null;
   $('modalTitle').textContent = 'New entry';
@@ -2712,6 +2722,7 @@ window.openNew = ()=>{
   // doesn't have to pick it again. They can still change it via the
   // dropdown (it'll just file the row under a different tab).
   const area = AREA_BY_KEY[filterArea];
+  ensureCategoryOption(area?.defaultCategory);
   $('em_category').value = area?.defaultCategory || 'Tour';
   $('em_audience').value = 'general';
   $('em_sell').value = '';
@@ -2745,6 +2756,7 @@ window.openEdit = (id)=>{
   $('modalTitle').textContent = 'Edit entry';
   $('modalSub').textContent = r.name || '';
   $('em_name').value = r.name || '';
+  ensureCategoryOption(r.category);
   $('em_category').value = r.category || 'Tour';
   $('em_audience').value = r.audience || 'general';
   $('em_sell').value = r.sell_price || '';
@@ -2851,7 +2863,7 @@ $('emSave').addEventListener('click', async ()=>{
   // inventoried by piece). Staff price applies to any category that
   // can surface on the POS Staff tab — Merch, Drinks, Extras, Tours,
   // Lessons, and Add-ons ('Other Service').
-  if (['Merch','Drinks','Extras'].includes(cat)) {
+  if (['Merch','Drinks','Extras','Diploria'].includes(cat)) {
     const rawStock = $('em_stock')?.value ?? '';
     payload.stock_qty = (rawStock === '' || rawStock === null) ? null : Math.max(0, Math.round(Number(rawStock)));
   }
