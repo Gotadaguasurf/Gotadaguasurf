@@ -5327,15 +5327,27 @@ function renderOverview(){
 
   const revByCat={};
   paidItems.forEach(i=>{revByCat[i.category]=(revByCat[i.category]||0)+i.revenue;});
-  // Diploria snapshot for the Revenue centers grid. paidItems only sees
-  // g.paid guests (weekly close semantics); Portugal is per_guest where
-  // payment lives on the ITEM (paidAt) — so count both shapes here.
+  // Diploria snapshot for the Revenue centers grid. The hub's S.weeks is
+  // the WEEKLY model — in per_guest locations (Portugal) it never holds
+  // the POS container week, so reading `weeks` here found nothing. The
+  // POS state (activeWeek + history, guests + items with per-item
+  // paidAt) lives in CAMPTAB_KEY, mirrored on every camp-tab-state-
+  // changed message — read it from there. "Sold" = item.paidAt
+  // (per_guest) OR guest.paid (weekly); anything else is on tab.
   const diploria={sold:0,revenueLocal:0,onTab:0};
-  weeks.forEach(w=>{(w.guests||[]).forEach(g=>{(g.items||[]).forEach(i=>{
-    if(i?.c!=='Diploria') return;
-    if(i.paidAt||g.paid){diploria.sold++;diploria.revenueLocal+=Number(i.p||0);}
-    else diploria.onTab++;
-  });});});
+  try{
+    const ctState=readJsonStorage(CAMPTAB_KEY,null);
+    const ctWeeks=[ctState?.activeWeek,ctState?.nextWeek,
+                   ...(Array.isArray(ctState?.history)?ctState.history:[])].filter(Boolean);
+    ctWeeks.forEach(w=>{
+      [...(w.guests||[]),...(w.staff||[])].forEach(g=>{(g.items||[]).forEach(i=>{
+        if(i?.c!=='Diploria') return;
+        if(selectedMonth!=='all' && i?.d && monthKey(i.d)!==selectedMonth) return;
+        if(i.paidAt||g.paid){diploria.sold++;diploria.revenueLocal+=Number(i.p||0);}
+        else diploria.onTab++;
+      });});
+    });
+  }catch(_e){/* card simply hides when the POS state isn't readable */}
   const tabBarRevenue=sum(paidItems.filter(i=>i.category==='Drinks'),i=>i.revenue);
   const tabMerchRevenue=sum(paidItems.filter(i=>i.category==='Merch'),i=>i.revenue);
   const tabTransportRevenue=sum(paidItems.filter(i=>i.category==='Tours'&&isTransportRevenueName(i.name)),i=>i.revenue);
