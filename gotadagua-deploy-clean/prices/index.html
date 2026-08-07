@@ -1315,6 +1315,18 @@ async function loadMerchSoldCounts(){
       const n = String(row?.item_name || '').trim();
       if (!n) return;
       counts[n] = (counts[n] || 0) + 1;
+      // Diploria sold twice under two naming schemes: per model/colour
+      // ("Core Black 28") and per size ("Size 28"). Fold every Diploria
+      // sale into the size bucket too so the catalog's "Size 28" row
+      // reports lifetime sales across both eras. Guarded so a sale
+      // already named "Size 28" isn't double-counted.
+      if (String(row?.category || '') === 'Diploria') {
+        const sz = (n.match(/(\d{2})\s*$/) || [])[1];
+        if (sz) {
+          const sizeKey = 'Size ' + sz;
+          if (sizeKey !== n) counts[sizeKey] = (counts[sizeKey] || 0) + 1;
+        }
+      }
     });
     merchSoldByName = counts;
   }catch(e){
