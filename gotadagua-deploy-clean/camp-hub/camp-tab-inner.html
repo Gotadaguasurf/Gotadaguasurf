@@ -1641,10 +1641,69 @@ async function hydrateCampTabStateFromSupabase({mergeLocal=false}={}){
     return false;
   }
   if((weekRows?.length||0) || (guestRows?.length||0) || (itemRows?.length||0)){
-    S=hydrateWeekStateFromRows(weekRows,guestRows,itemRows);
-    // After hydrate, sync's "what to delete" baseline is whatever we just loaded.
-    // Anything the user removes AFTER this point becomes a legitimate delete.
-    _lastLocalSnapshot=captureLocalSnapshotIds();
+    const prevS=S;
+    const hydrated=hydrateWeekStateFromRows(weekRows,guestRows,itemRows);
+    // ── PENDING-LOCAL MERGE ──────────────────────────────────────────────
+    // Replacing S wholesale silently discarded anything created locally
+    // since the LAST SUCCESSFUL SYNC — on flaky wifi (Sri Lanka) a guest
+    // added moments ago vanished on the next RT rehydrate and nothing
+    // ever retried it. The baseline (_lastLocalSnapshot) tells the two
+    // absent-from-DB cases apart:
+    //   id ∈ baseline  → was synced before, DB says it's gone → a REMOTE
+    //                    DELETE from another device — drop it (correct).
+    //   id ∉ baseline  → born locally after the baseline, never confirmed
+    //                    synced → PENDING — keep it and re-sync below.
+    let pendingMerged=0;
+    try{
+      const hydWeeks=[hydrated.activeWeek,hydrated.nextWeek,...(hydrated.history||[])].filter(Boolean);
+      const hydGuestById=new Map(); const hydItemIds=new Set();
+      hydWeeks.forEach(w=>{['guests','staff'].forEach(r=>{(w[r]||[]).forEach(g=>{
+        if(g?.id) hydGuestById.set(g.id,g);
+        (g?.items||[]).forEach(it=>{ if(it?.id) hydItemIds.add(it.id); });
+      });});});
+      const prevWeeks=[prevS?.activeWeek,prevS?.nextWeek,...(Array.isArray(prevS?.history)?prevS.history:[])].filter(Boolean);
+      prevWeeks.forEach(pw=>{
+        // Same week if the DB still has it; otherwise fold into the active
+        // week (mirrors the duplicate-open-week guard's philosophy: never
+        // lose people, consolidate on next sync).
+        const targetWeek=hydWeeks.find(w=>w.id===pw.id)||hydrated.activeWeek;
+        ['guests','staff'].forEach(roster=>{
+          (pw[roster]||[]).forEach(g=>{
+            if(!g?.id) return;
+            const hydratedTwin=hydGuestById.get(g.id);
+            if(hydratedTwin){
+              // Guest exists in the DB — rescue only PENDING items.
+              (g.items||[]).forEach(it=>{
+                if(it?.id && !hydItemIds.has(it.id) && !_lastLocalSnapshot.items.has(it.id)){
+                  hydratedTwin.items.push(it); hydItemIds.add(it.id); pendingMerged++;
+                }
+              });
+              return;
+            }
+            if(_lastLocalSnapshot.guests.has(g.id)) return; // remote delete
+            if(!targetWeek) return;
+            (targetWeek[roster]=targetWeek[roster]||[]).push(g);
+            hydGuestById.set(g.id,g); pendingMerged++;
+          });
+        });
+      });
+    }catch(mergeErr){ console.warn('[CampTab] pending-local merge failed',mergeErr); }
+    S=hydrated;
+    // Baseline = what the DB CONFIRMED (pre-merge), so still-pending rows
+    // stay classified as pending across repeated hydrates until a sync
+    // actually lands (sync success advances the baseline itself).
+    {
+      const weeks=new Set(),guests=new Set(),items=new Set();
+      (Array.isArray(weekRows)?weekRows:[]).forEach(r=>{ if(r?.id) weeks.add(r.id); });
+      (Array.isArray(guestRows)?guestRows:[]).forEach(r=>{ if(r?.id) guests.add(r.id); });
+      (Array.isArray(itemRows)?itemRows:[]).forEach(r=>{ if(r?.id) items.add(r.id); });
+      _lastLocalSnapshot={weeks,guests,items};
+    }
+    if(pendingMerged>0){
+      console.warn('[CampTab] rescued '+pendingMerged+' pending local guest(s)/item(s) — re-syncing');
+      try{ save(); }catch(_e){}
+      setTimeout(()=>{ syncCampTabStateToSupabase().catch(e=>console.warn('[CampTab] pending re-sync failed',e)); },100);
+    }
     // Resolve audit UIDs to display names in the background so the next
     // render can show "Added by X" tooltips on each POS item without
     // blocking hydrate. Silent-fail — worst case tooltips show 'Unknown'.
