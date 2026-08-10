@@ -3708,6 +3708,17 @@ async function loadCampTabAnyFromCatalog(){
       .order('sort_order',{ascending:true});
     if(error) throw error;
     if(!Array.isArray(data)) return null;
+    if(!data.length){
+      // RLS returns an EMPTY LIST (not an error) when the request goes out
+      // with a missing/stale JWT during boot. Adopting that empty hides the
+      // POS tab and the follow-up menu sync deletes the category's
+      // location_menus rows — the Sri Lanka "Drinks menu disappears until
+      // several refreshes" flap. Only trust emptiness with a live session.
+      try{
+        const { data: sess } = await client.auth.getSession();
+        if(!sess?.session) return null;
+      }catch(_e){ return null; }
+    }
     const buckets={};
     data.forEach(r=>{
       const cat=String(r.category||'').trim();
@@ -3822,6 +3833,17 @@ async function loadCampTabMerchFromCatalog(){
       .order('sort_order',{ascending:true});
     if(error) throw error;
     if(!Array.isArray(data)) return null;
+    if(!data.length){
+      // RLS returns an EMPTY LIST (not an error) when the request goes out
+      // with a missing/stale JWT during boot. Adopting that empty hides the
+      // POS tab and the follow-up menu sync deletes the category's
+      // location_menus rows — the Sri Lanka "Drinks menu disappears until
+      // several refreshes" flap. Only trust emptiness with a live session.
+      try{
+        const { data: sess } = await client.auth.getSession();
+        if(!sess?.session) return null;
+      }catch(_e){ return null; }
+    }
     // Map to the Camp Tab menu item shape, extended with the new fields
     // the POS uses (stock + alt-price). The inner page knows to render
     // an extra button when altPrice is present.
@@ -3876,6 +3898,17 @@ async function loadCampTabDrinksFromCatalog(){
       .order('sort_order',{ascending:true});
     if(error) throw error;
     if(!Array.isArray(data)) return null;
+    if(!data.length){
+      // RLS returns an EMPTY LIST (not an error) when the request goes out
+      // with a missing/stale JWT during boot. Adopting that empty hides the
+      // POS tab and the follow-up menu sync deletes the category's
+      // location_menus rows — the Sri Lanka "Drinks menu disappears until
+      // several refreshes" flap. Only trust emptiness with a live session.
+      try{
+        const { data: sess } = await client.auth.getSession();
+        if(!sess?.session) return null;
+      }catch(_e){ return null; }
+    }
     return data.map(r=>({
       id: 'cat|drinks|'+r.id,
       n: String(r.name||'').trim(),
@@ -3923,6 +3956,17 @@ async function loadCampTabExtrasFromCatalog(){
       .order('sort_order',{ascending:true});
     if(error) throw error;
     if(!Array.isArray(data)) return null;
+    if(!data.length){
+      // RLS returns an EMPTY LIST (not an error) when the request goes out
+      // with a missing/stale JWT during boot. Adopting that empty hides the
+      // POS tab and the follow-up menu sync deletes the category's
+      // location_menus rows — the Sri Lanka "Drinks menu disappears until
+      // several refreshes" flap. Only trust emptiness with a live session.
+      try{
+        const { data: sess } = await client.auth.getSession();
+        if(!sess?.session) return null;
+      }catch(_e){ return null; }
+    }
     return data.map(r=>({
       id: 'cat|extras|'+r.id,
       n: String(r.name||'').trim(),

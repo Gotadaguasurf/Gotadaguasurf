@@ -1699,6 +1699,22 @@ async function hydrateCampTabStateFromSupabase({mergeLocal=false}={}){
       (Array.isArray(itemRows)?itemRows:[]).forEach(r=>{ if(r?.id) items.add(r.id); });
       _lastLocalSnapshot={weeks,guests,items};
     }
+    // Content baseline for the dirty-row sync filter: serialize the state
+    // we JUST hydrated (before local edits resume). Pending-merged rows
+    // (rescued above) are deliberately serialized too and then removed —
+    // they aren't DB-confirmed, so deleting their entries keeps them
+    // classified dirty and the follow-up re-sync writes them.
+    try{
+      const confirmed=buildCampTabSyncRows(locationId);
+      const wm=new Map(),gm=new Map(),im=new Map();
+      const dbWeekIds=new Set((Array.isArray(weekRows)?weekRows:[]).map(r=>r.id));
+      const dbGuestIds=new Set((Array.isArray(guestRows)?guestRows:[]).map(r=>r.id));
+      const dbItemIds=new Set((Array.isArray(itemRows)?itemRows:[]).map(r=>r.id));
+      confirmed.weekRows.forEach(r=>{ if(dbWeekIds.has(r.id)) wm.set(r.id,JSON.stringify(r)); });
+      confirmed.guestRows.forEach(r=>{ if(dbGuestIds.has(r.id)) gm.set(r.id,JSON.stringify(r)); });
+      confirmed.itemRows.forEach(r=>{ if(dbItemIds.has(r.id)) im.set(r.id,JSON.stringify(r)); });
+      _lastSyncedRowJson={weeks:wm,guests:gm,items:im};
+    }catch(_e){ _lastSyncedRowJson={weeks:new Map(),guests:new Map(),items:new Map()}; }
     if(pendingMerged>0){
       console.warn('[CampTab] rescued '+pendingMerged+' pending local guest(s)/item(s) — re-syncing');
       try{ save(); }catch(_e){}
@@ -1723,15 +1739,14 @@ function weeksSnapshot(){
   rows.push(...(Array.isArray(S.history)?S.history.map(ensureWeekShape):[]));
   return rows.filter(Boolean);
 }
-async function syncCampTabStateToSupabase(){
-  const client=getCampTabSupabaseClient();
-  const locationId=await ensureCampTabLocationId();
-  if(!client||!locationId) return false;
-  // Prevent RT rehydrate from overwriting in-memory state during our own sync
-  const _gen=++_suppressGeneration;
-  suppressRemoteSync=true;
-  clearTimeout(campTabRehydrateTimer);
-  try{
+// Serialized-row baseline of what the DB is KNOWN to hold (last successful
+// sync or hydrate). Sync only upserts rows whose serialization changed —
+// without this, every sync rewrote the ENTIRE roster with whatever this
+// browser had in memory, so a stale device adding one item also re-wrote
+// every other guest with its old paid flags. Sri Lanka: "pay all + close,
+// guest reopens next time" — device B clobbering device A's payment.
+let _lastSyncedRowJson={weeks:new Map(),guests:new Map(),items:new Map()};
+function buildCampTabSyncRows(locationId){
   const weeks=weeksSnapshot();
   const weekRows=[];
   const guestRows=[];
@@ -1808,19 +1823,36 @@ async function syncCampTabStateToSupabase(){
       });
     });
   });
-  // UPSERT everything in the local snapshot. New guests/items/weeks added on
-  // this device land here; anything modified locally (paid_at, closed_at, …)
-  // overwrites the DB row by id.
-  if(weekRows.length){
-    const { error: upsertWeeksError } = await client.from('camp_weeks').upsert(weekRows,{onConflict:'id'});
+  return {weekRows,guestRows,itemRows};
+}
+async function syncCampTabStateToSupabase(){
+  const client=getCampTabSupabaseClient();
+  const locationId=await ensureCampTabLocationId();
+  if(!client||!locationId) return false;
+  // Prevent RT rehydrate from overwriting in-memory state during our own sync
+  const _gen=++_suppressGeneration;
+  suppressRemoteSync=true;
+  clearTimeout(campTabRehydrateTimer);
+  try{
+  const {weekRows,guestRows,itemRows}=buildCampTabSyncRows(locationId);
+  // ── DIRTY-ROW FILTER ────────────────────────────────────────────────────
+  // Upsert ONLY rows this device actually changed since the last confirmed
+  // sync/hydrate. Rows equal to the baseline are the OTHER devices' truth
+  // as much as ours — rewriting them let a stale browser revert a payment
+  // (guest "reopening"), un-close weeks, resurrect item edits, etc.
+  const dirtyWeeks=weekRows.filter(r=>_lastSyncedRowJson.weeks.get(r.id)!==JSON.stringify(r));
+  const dirtyGuests=guestRows.filter(r=>_lastSyncedRowJson.guests.get(r.id)!==JSON.stringify(r));
+  const dirtyItems=itemRows.filter(r=>_lastSyncedRowJson.items.get(r.id)!==JSON.stringify(r));
+  if(dirtyWeeks.length){
+    const { error: upsertWeeksError } = await client.from('camp_weeks').upsert(dirtyWeeks,{onConflict:'id'});
     if(upsertWeeksError) throw upsertWeeksError;
   }
-  if(guestRows.length){
-    const { error: upsertGuestsError } = await client.from('camp_guests').upsert(guestRows,{onConflict:'id'});
+  if(dirtyGuests.length){
+    const { error: upsertGuestsError } = await client.from('camp_guests').upsert(dirtyGuests,{onConflict:'id'});
     if(upsertGuestsError) throw upsertGuestsError;
   }
-  if(itemRows.length){
-    const { error: upsertItemsError } = await client.from('camp_tab_items').upsert(itemRows,{onConflict:'id'});
+  if(dirtyItems.length){
+    const { error: upsertItemsError } = await client.from('camp_tab_items').upsert(dirtyItems,{onConflict:'id'});
     if(upsertItemsError) throw upsertItemsError;
   }
   // ── DELETE DIFF: LOCAL-vs-LOCAL (not local-vs-DB) ─────────────────────────
@@ -1851,10 +1883,16 @@ async function syncCampTabStateToSupabase(){
     const { error: deleteWeeksError } = await client.from('camp_weeks').delete().in('id',removedWeekIds);
     if(deleteWeeksError) throw deleteWeeksError;
   }
-  // Commit the new baseline — only after every upsert/delete succeeded so a
+  // Commit the new baselines — only after every upsert/delete succeeded so a
   // mid-sync failure doesn't strand us with a stale snapshot that re-deletes
-  // on retry.
+  // on retry (ids) or re-clobbers rows we never actually wrote (content).
   _lastLocalSnapshot=currentSnap;
+  weekRows.forEach(r=>_lastSyncedRowJson.weeks.set(r.id,JSON.stringify(r)));
+  guestRows.forEach(r=>_lastSyncedRowJson.guests.set(r.id,JSON.stringify(r)));
+  itemRows.forEach(r=>_lastSyncedRowJson.items.set(r.id,JSON.stringify(r)));
+  removedWeekIds.forEach(id=>_lastSyncedRowJson.weeks.delete(id));
+  removedGuestIds.forEach(id=>_lastSyncedRowJson.guests.delete(id));
+  removedItemIds.forEach(id=>_lastSyncedRowJson.items.delete(id));
   return true;
   }finally{
     // Release the RT lock after a brief cooldown so our own delete-triggered RT events
