@@ -3709,7 +3709,7 @@ const LOCATION_NAMES = {
   'PT': 'Surf Camp Portugal',
   'MA': 'Tamraght Camp',
   'Colon': 'Kids Camp Caparica',
-  'JUN': 'Junior Camp Caparica'
+  'JUN': 'Junior Camp'
 };
 
 function parseCheckin(raw) {
@@ -3805,7 +3805,7 @@ function processFile(file) {
         const partnerName = normalizePartnerName(rawPartner);
         const guest      = getRowValue(r, ['Booker','Guest','Customer']);
         const pax        = parseInt(getRowValue(r, ['Pax','Guests','Persons'])||1) || 1;
-        const pkgCode    = getRowValue(r, ['Package','Product code','Product','Package code']);
+        const pkgCode    = getRowValue(r, ['Package','Packages','Product code','Product','Package code']);
         // Multi-location bookings: Bookinglayer stamps EVERY location whose
         // items appear on the booking — an Ahangama package with a €30
         // "Surfboards insurance PT" add-on exports as "PT, LK". Taking the
@@ -3816,14 +3816,22 @@ function processFile(file) {
         // match (>5 chars skips generic "surf"/"camp"). Falls back to the
         // first code when the package doesn't identify a location.
         const locCodes = getRowValue(r, ['Location','Location code']).split(',').map(c=>c.trim()).filter(Boolean);
-        let locCode = locCodes[0] || '';
-        if (locCodes.length > 1) {
+        // Pseudo-codes like TRANS (transfers) are not camps — never let
+        // them decide where the money files. "SC, TRANS" is simply SC.
+        const campCodes = locCodes.filter(c => LOCATION_NAMES[c]);
+        let locCode = campCodes[0] || locCodes[0] || '';
+        if (campCodes.length > 1) {
           const pkgLower = (pkgCode || '').toLowerCase();
-          const byPackage = locCodes.find(code => {
+          // Generic words appear in almost every location name; matching
+          // on them would tie. 'kids' (4 chars) must still match — Kids
+          // Camp bookings export as "SC, Colon" with package "Kids Surf
+          // Activities | Summer".
+          const GENERIC = new Set(['surf','camp','the']);
+          const byPackage = campCodes.find(code => {
             const name = (LOCATION_NAMES[code] || '').toLowerCase();
             if (!name || !pkgLower) return false;
             if (pkgLower.includes(name)) return true;
-            return name.split(/\s+/).some(tok => tok.length > 5 && pkgLower.includes(tok));
+            return name.split(/\s+/).some(tok => tok.length > 3 && !GENERIC.has(tok) && pkgLower.includes(tok));
           });
           if (byPackage) locCode = byPackage;
           else console.warn('[Partners import] multi-location booking without package match:', ref, locCodes.join(','), pkgCode);
