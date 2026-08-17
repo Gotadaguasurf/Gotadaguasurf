@@ -3737,11 +3737,18 @@ function validateCsvHeaders(rows) {
   const requiredGroups = [
     ['booking #','booking','booking ref','booking reference'],
     ['check-in on','check in on','check-in','check in','arrival date'],
-    ['total','total price','price total','amount']
+    ['total','total price','price total','amount'],
+    // Location is REQUIRED: without the column every row resolves to
+    // 'Unknown', which not only files new bookings wrong but would
+    // overwrite the location of every EXISTING booking matched by ref.
+    // A quick default Bookinglayer export (Created/Source/Booking/
+    // Status/Check-in/Booker/Total/Due/Pax) hits exactly this — refuse
+    // it with a message that says which export to use instead.
+    ['location','location code']
   ];
   const missing = requiredGroups.filter(group => !group.some(alias => headerKeys.includes(alias)));
   if (missing.length) {
-    throw new Error('Missing required CSV columns. Needed at least: Booking #, Check-in on, Total.');
+    throw new Error('Missing required CSV columns (incl. Location). Re-export from Bookinglayer with: Booking #, Booker, Status, Check-in on, Total, Pax, Location, Partner, Partner commission %.');
   }
 }
 function processFile(file) {
@@ -3812,7 +3819,9 @@ function processFile(file) {
 
           if(guest && b.guest !== guest){ b.guest = guest; changed = true; }
           if(checkin && b.checkin !== checkin){ b.checkin = checkin; changed = true; }
-          if(location && b.location !== location){ b.location = location; changed = true; }
+          // Only overwrite location when the CSV row actually carries one —
+          // the 'Unknown' fallback must never clobber a known location.
+          if(locCode && location && location !== 'Unknown' && b.location !== location){ b.location = location; changed = true; }
           if(pkgCode && b.package !== pkgCode){ b.package = pkgCode; changed = true; }
           if(Number.isFinite(pax) && b.pax !== pax){ b.pax = pax; changed = true; }
           if(gross > 0 && b.gross !== gross){ b.gross = gross; changed = true; }
