@@ -3704,7 +3704,7 @@ window.handleFile = e => { processFile(e.target.files[0]); e.target.value=''; };
 
 // Location code → full name map (add more as needed)
 const LOCATION_NAMES = {
-  'LK': 'Surf Camp Ahamgama',
+  'LK': 'Surf Camp Ahangama',
   'SC': 'Surf School Caparica',
   'PT': 'Surf Camp Portugal',
   'MA': 'Tamraght Camp',
@@ -3803,11 +3803,32 @@ function processFile(file) {
         const csvRate = (csvRateRaw !== '' && Number.isFinite(_csvParsed)) ? _csvParsed : null;
         const rawPartner = getRowValue(r, ['Partner','Agent','Affiliate']);
         const partnerName = normalizePartnerName(rawPartner);
-        const locCode    = getRowValue(r, ['Location','Location code']).split(',')[0].trim();
-        const location   = LOCATION_NAMES[locCode] || locCode || 'Unknown';
         const guest      = getRowValue(r, ['Booker','Guest','Customer']);
         const pax        = parseInt(getRowValue(r, ['Pax','Guests','Persons'])||1) || 1;
         const pkgCode    = getRowValue(r, ['Package','Product code','Product','Package code']);
+        // Multi-location bookings: Bookinglayer stamps EVERY location whose
+        // items appear on the booking — an Ahangama package with a €30
+        // "Surfboards insurance PT" add-on exports as "PT, LK". Taking the
+        // first code filed the whole €1,398 under Portugal. The money
+        // belongs to the camp hosting the guest, so resolve multi-code
+        // cells via the Package name (e.g. "Surf Camp Ahangama, Sri
+        // Lanka"): full-name containment first, then a distinctive-token
+        // match (>5 chars skips generic "surf"/"camp"). Falls back to the
+        // first code when the package doesn't identify a location.
+        const locCodes = getRowValue(r, ['Location','Location code']).split(',').map(c=>c.trim()).filter(Boolean);
+        let locCode = locCodes[0] || '';
+        if (locCodes.length > 1) {
+          const pkgLower = (pkgCode || '').toLowerCase();
+          const byPackage = locCodes.find(code => {
+            const name = (LOCATION_NAMES[code] || '').toLowerCase();
+            if (!name || !pkgLower) return false;
+            if (pkgLower.includes(name)) return true;
+            return name.split(/\s+/).some(tok => tok.length > 5 && pkgLower.includes(tok));
+          });
+          if (byPackage) locCode = byPackage;
+          else console.warn('[Partners import] multi-location booking without package match:', ref, locCodes.join(','), pkgCode);
+        }
+        const location   = LOCATION_NAMES[locCode] || locCode || 'Unknown';
 
         const existingEntry = bookingByRef.get(ref);
         const hasPartnerInfo = !!partnerName;
