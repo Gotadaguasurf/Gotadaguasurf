@@ -3279,7 +3279,7 @@
         location: findCol('location','location code'),
         partner: findCol('partner','agent','affiliate'),
         commission: findCol('partner commission %','partner commission','commission %','commission'),
-        package: findCol('package','accommodation','room','product','product name','product code','package code'),
+        package: findCol('package','packages','accommodation','room','product','product name','product code','package code'),
         total: findCol('total','total price','price total','amount','gross'),
         // New columns from the latest Bookinglayer export format:
         email: findCol('email','booker email','guest email','customer email'),
@@ -3298,7 +3298,29 @@
         const coMs = co ? co.getTime() : null;
         const nights = (ciMs && coMs) ? Math.max(1, Math.round((coMs - ciMs) / 86400000)) : 7;
         const locCell = get('location');
-        const locationCode = (locCell.split(',')[0] || '').trim().toUpperCase();
+        // Multi-location bookings ("PT, LK"): Bookinglayer stamps every
+        // location whose items appear on the booking. Taking the first
+        // code filed an Ahangama package with a €30 PT insurance line
+        // entirely under Portugal. Resolve: drop pseudo-codes (TRANS),
+        // then let the Package name decide (full-name containment, else
+        // distinctive tokens >3 chars skipping generic surf/camp);
+        // fall back to the first camp code.
+        const pkgVal = get('package');
+        const allCodes = locCell.split(',').map(c => c.trim().toUpperCase()).filter(Boolean);
+        const campCodes = allCodes.filter(c => CSV_LOC_CODE_TO_NAME[c]);
+        let locationCode = campCodes[0] || allCodes[0] || '';
+        if(campCodes.length > 1){
+          const pkgLower = pkgVal.toLowerCase();
+          const GENERIC_LOC_TOKENS = ['surf','camp','the'];
+          const byPackage = campCodes.find(code => {
+            const name = (CSV_LOC_CODE_TO_NAME[code] || '').toLowerCase();
+            if(!name || !pkgLower) return false;
+            if(pkgLower.includes(name)) return true;
+            return name.split(/\s+/).some(tok => tok.length > 3 && GENERIC_LOC_TOKENS.indexOf(tok) === -1 && pkgLower.includes(tok));
+          });
+          if(byPackage) locationCode = byPackage;
+          else console.warn('[Global import] multi-location booking without package match:', ref, allCodes.join(','), pkgVal);
+        }
         rows.push({
           ref,
           guest: get('guest'),
@@ -3310,7 +3332,7 @@
           locationCode,
           partner: get('partner') || 'Direct Bookings',
           commissionPct: parseFloat(String(get('commission')).replace(',','.')) || 0,
-          package: get('package'),
+          package: pkgVal,
           gross: parseFloat(String(get('total')).replace(/[^\d.\-]/g,'')) || 0,
           // NEW: booker contact + payment info (booker email, NOT partner email —
           // Bookinglayer doesn't export partner emails. Partner emails stay in
