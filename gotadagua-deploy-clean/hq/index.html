@@ -314,6 +314,7 @@ td.loc-name{font-weight:700;color:var(--navy)}
       <button class="nav-tab active" data-tab="overview" onclick="switchTab('overview')">Overview</button>
       <button class="nav-tab" data-tab="invoices" onclick="switchTab('invoices')">Expenses</button>
       <button class="nav-tab" data-tab="cashflow" onclick="switchTab('cashflow')">Cash flow</button>
+      <button class="nav-tab" data-tab="pnl" onclick="switchTab('pnl')">P&amp;L Report</button>
     </div>
   </div>
   <div class="header-right">
@@ -503,6 +504,7 @@ function render(){
     <div class="tab-pane active" id="tab-overview">${overviewTabHtml()}</div>
     <div class="tab-pane" id="tab-invoices">${invoicesTabHtml()}</div>
     <div class="tab-pane" id="tab-cashflow">${cashflowTabHtml()}</div>
+    <div class="tab-pane" id="tab-pnl">${pnlTabHtml()}</div>
   `;
   wireInvoiceForm();
   wireBulkUpload();
@@ -516,6 +518,7 @@ function switchTab(name){
   if (name === 'overview') { renderOverview(); }
   if (name === 'invoices') { renderInvoiceList(); }
   if (name === 'cashflow') { renderCashflow(); }
+  if (name === 'pnl') { renderPnl(); }
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -3935,6 +3938,156 @@ function cashflowTabHtml(){
       </div>
     </div>
   `;
+}
+
+function pnlTabHtml(){
+  return `
+    <div class="card">
+      <div class="card-hdr" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+        <div>
+          <div class="card-title">P&amp;L Report — all locations</div>
+          <div class="card-hint">Revenue (bookings net + operations) vs expenses (local ledger + HQ invoices). General/HQ overhead stays in its own column — no allocation.</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <select id="pnl_period" onchange="renderPnl()"><option value="all">All months</option></select>
+          <button class="btn" onclick="exportPnlCsv()">⬇ Export CSV</button>
+        </div>
+      </div>
+      <div class="card-body">
+        <div id="pnlGrid" style="overflow-x:auto"><div class="loading">Loading…</div></div>
+        <div id="pnlNote" style="font-size:11px;color:var(--muted);margin-top:10px"></div>
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin:18px 0 8px">Result by month</div>
+        <div id="pnlMonthly" style="overflow-x:auto"></div>
+      </div>
+    </div>`;
+}
+
+// ── P&L data: one aggregate map per stream, keyed slug|month ──────────────
+let __pnlAgg=null;      // {key:{revBook,revOps,expLocal,expHq}}
+let __pnlMonths=[];
+let __pnlPersonal=0;
+let __pnlLastGrid=null; // for CSV export
+async function loadPnlData(){
+  const personalCatIds = new Set(CATEGORIES.filter(c => c.is_personal).map(c => c.id));
+  const [books, ledger, invoices] = await Promise.all([
+    fetchAllPaged(() => sb.from('bookings').select('location, month_key, total, net_amount').order('check_in_on',{ascending:true})),
+    fetchAllPaged(() => sb.from('ledger_entries').select('type, amount_eur, entry_date, attributed_location').order('entry_date',{ascending:false})),
+    fetchAllPaged(() => sb.from('hq_invoices').select('amount_eur, location_slug, invoice_date, category_id').is('deleted_at', null).order('invoice_date',{ascending:false})),
+  ]);
+  const agg = {}; const months = new Set(); let personal = 0;
+  const bump = (slug, month, field, v) => {
+    if (!slug || !month || !Number.isFinite(v)) return;
+    const k = slug + '|' + month;
+    (agg[k] = agg[k] || {revBook:0, revOps:0, expLocal:0, expHq:0})[field] += v;
+    months.add(month);
+  };
+  (books||[]).forEach(b => {
+    const slug = locNameToSlug(b.location);
+    const v = Number(b.net_amount != null ? b.net_amount : b.total) || 0;
+    bump(slug, b.month_key, 'revBook', v);
+  });
+  (ledger||[]).forEach(l => {
+    const m = String(l.entry_date||'').slice(0,7);
+    const v = Number(l.amount_eur)||0;
+    if (l.type === 'income') bump(l.attributed_location, m, 'revOps', v);
+    else if (l.type === 'expense') bump(l.attributed_location, m, 'expLocal', v);
+    // transfers deliberately ignored — money moving, not made or spent
+  });
+  (invoices||[]).forEach(i => {
+    const v = Number(i.amount_eur)||0;
+    if (personalCatIds.has(i.category_id)) { personal += v; return; }
+    bump(i.location_slug || 'general', String(i.invoice_date||'').slice(0,7), 'expHq', v);
+  });
+  __pnlAgg = agg;
+  __pnlMonths = [...months].sort().reverse();
+  __pnlPersonal = personal;
+}
+async function renderPnl(){
+  const grid = document.getElementById('pnlGrid');
+  if (!grid) return;
+  if (!__pnlAgg) { grid.innerHTML = '<div class="loading">Loading…</div>'; await loadPnlData(); }
+  const sel = document.getElementById('pnl_period');
+  if (sel && sel.options.length <= 1) {
+    sel.innerHTML = '<option value="all">All months</option>' + __pnlMonths.map(m => `<option value="${m}">${m}</option>`).join('');
+  }
+  const period = sel?.value || 'all';
+  const cols = HQ_LOCATIONS;
+  const cell = (slug, month) => __pnlAgg[slug + '|' + month] || {revBook:0,revOps:0,expLocal:0,expHq:0};
+  const inPeriod = (m) => period === 'all' || m === period;
+  const sumFor = (slug) => {
+    const t = {revBook:0,revOps:0,expLocal:0,expHq:0};
+    __pnlMonths.filter(inPeriod).forEach(m => {
+      const c = cell(slug, m);
+      t.revBook += c.revBook; t.revOps += c.revOps; t.expLocal += c.expLocal; t.expHq += c.expHq;
+    });
+    return t;
+  };
+  const per = cols.map(l => ({...l, t: sumFor(l.slug)}));
+  const tot = per.reduce((a,p)=>({revBook:a.revBook+p.t.revBook,revOps:a.revOps+p.t.revOps,expLocal:a.expLocal+p.t.expLocal,expHq:a.expHq+p.t.expHq}),{revBook:0,revOps:0,expLocal:0,expHq:0});
+  const res = t => t.revBook + t.revOps - t.expLocal - t.expHq;
+  const fmt = v => v ? eur(v) : '<span style="color:var(--muted)">—</span>';
+  const rows = [
+    ['Revenue — bookings (net)', t=>t.revBook, 'var(--green)'],
+    ['Revenue — operations (POS/ledger)', t=>t.revOps, 'var(--green)'],
+    ['Expenses — local (ledger)', t=>t.expLocal, ''],
+    ['Expenses — HQ invoices', t=>t.expHq, ''],
+  ];
+  grid.innerHTML = `<table class="tbl" style="min-width:900px"><thead><tr>
+      <th style="text-align:left">${period==='all'?'All months':period}</th>
+      ${per.map(p=>`<th style="text-align:right">${p.label}</th>`).join('')}
+      <th style="text-align:right">Total</th>
+    </tr></thead><tbody>
+    ${rows.map(([label, f, color])=>`<tr>
+      <td style="font-weight:600">${label}</td>
+      ${per.map(p=>`<td style="text-align:right;${color?'color:'+color:''}">${fmt(f(p.t))}</td>`).join('')}
+      <td style="text-align:right;font-weight:700;${color?'color:'+color:''}">${fmt(f(tot))}</td>
+    </tr>`).join('')}
+    <tr style="border-top:2px solid var(--navy)">
+      <td style="font-weight:800">Result</td>
+      ${per.map(p=>{const r=res(p.t);return `<td style="text-align:right;font-weight:800;color:${r>=0?'var(--green)':'var(--red)'}">${eur(r)}</td>`;}).join('')}
+      <td style="text-align:right;font-weight:800;color:${res(tot)>=0?'var(--green)':'var(--red)'}">${eur(res(tot))}</td>
+    </tr></tbody></table>`;
+  const note = document.getElementById('pnlNote');
+  if (note) note.textContent = __pnlPersonal > 0
+    ? `Personal categories (Miguel/Ricardo) excluded from every figure: ${eur(__pnlPersonal)} across all months. Inter-company transfers are also excluded.`
+    : 'Inter-company transfers are excluded.';
+  const monthly = document.getElementById('pnlMonthly');
+  if (monthly) {
+    const ms = __pnlMonths.filter(inPeriod);
+    monthly.innerHTML = `<table class="tbl" style="min-width:900px"><thead><tr>
+        <th style="text-align:left">Month</th>
+        ${cols.map(l=>`<th style="text-align:right">${l.label}</th>`).join('')}
+        <th style="text-align:right">Total</th>
+      </tr></thead><tbody>
+      ${ms.map(m=>{
+        const vals = cols.map(l=>{const c=cell(l.slug,m);return c.revBook+c.revOps-c.expLocal-c.expHq;});
+        const t = vals.reduce((a,b)=>a+b,0);
+        return `<tr><td style="font-weight:600">${m}</td>
+          ${vals.map(v=>`<td style="text-align:right;color:${v>=0?'var(--green)':'var(--red)'}">${v?eur(v):'<span style=\"color:var(--muted)\">—</span>'}</td>`).join('')}
+          <td style="text-align:right;font-weight:700;color:${t>=0?'var(--green)':'var(--red)'}">${eur(t)}</td></tr>`;
+      }).join('')}
+      </tbody></table>`;
+  }
+  __pnlLastGrid = {period, per, tot, cols};
+}
+function exportPnlCsv(){
+  if (!__pnlAgg) return;
+  const esc = v => { const s = String(v==null?'':v); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; };
+  const lines = [['Month','Location','Revenue bookings (net)','Revenue operations','Expenses local','Expenses HQ','Result'].join(',')];
+  __pnlMonths.slice().sort().forEach(m => {
+    HQ_LOCATIONS.forEach(l => {
+      const c = __pnlAgg[l.slug+'|'+m];
+      if (!c) return;
+      lines.push([m, l.label, c.revBook.toFixed(2), c.revOps.toFixed(2), c.expLocal.toFixed(2), c.expHq.toFixed(2), (c.revBook+c.revOps-c.expLocal-c.expHq).toFixed(2)].map(esc).join(','));
+    });
+  });
+  const csv = '\ufeff' + lines.join('\r\n');
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `pnl-report-${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url);},200);
 }
 
 async function renderCashflow(){
