@@ -1,0 +1,330 @@
+// ════════════════════════════════════════════════════════════════════════════
+//  drive-sync — pulls NEW invoice files from the Google Drive expenses folder
+//  and files them into hq_invoices as needs_review rows.
+//
+//  Flow (cron-invoked, no user in the loop):
+//    1. Service-account JWT → Google OAuth token (drive.readonly).
+//    2. List the monthly subfolders of DRIVE_ROOT_FOLDER_ID, then their files.
+//    3. Skip anything already in hq_drive_ingest (dedup by Drive file id —
+//       a file is processed exactly once, ever).
+//    4. Download each new PDF/image, run the same extraction prompt the
+//       parse-invoice function uses (Claude vision), insert into hq_invoices
+//       with needs_review=true so Miguel confirms in the app.
+//    5. Record the outcome per file in hq_drive_ingest (inserted / error /
+//       skipped) — failures stay visible instead of vanishing.
+//
+//  Caps: MAX_PER_RUN files per invocation (Anthropic cost + edge time limit);
+//  the cron runs every few hours so a backlog drains across runs.
+//
+//  Secrets required (supabase secrets set ...):
+//    GDRIVE_SA_EMAIL         service-account email (xxx@yyy.iam.gserviceaccount.com)
+//    GDRIVE_SA_PRIVATE_KEY   the service account's PEM private key (\n-escaped ok)
+//    DRIVE_SYNC_SECRET       shared secret; callers must send x-drive-sync-secret
+//    ANTHROPIC_API_KEY       (already set for parse-invoice)
+//    DRIVE_ROOT_FOLDER_ID    optional override; defaults to the GENERAL EXPENSES folder
+//  Auto-provided: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+//
+//  Deploy: supabase functions deploy drive-sync --no-verify-jwt
+// ════════════════════════════════════════════════════════════════════════════
+
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
+const SA_EMAIL       = Deno.env.get('GDRIVE_SA_EMAIL') || ''
+const SA_KEY_RAW     = Deno.env.get('GDRIVE_SA_PRIVATE_KEY') || ''
+const SYNC_SECRET    = Deno.env.get('DRIVE_SYNC_SECRET') || ''
+const ANTHROPIC_KEY  = Deno.env.get('ANTHROPIC_API_KEY') || ''
+const SUPABASE_URL   = Deno.env.get('SUPABASE_URL') || ''
+const SERVICE_KEY    = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
+const ROOT_FOLDER    = Deno.env.get('DRIVE_ROOT_FOLDER_ID') || '10plNGyUBfVUnde4U9kKe-QyzllbkYGH4'
+
+const MODEL       = 'claude-sonnet-4-5'
+const MAX_PER_RUN = 6
+const MAX_BYTES   = 15 * 1024 * 1024
+
+const FILE_MIMES = new Set([
+  'application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif',
+])
+
+// Mirrors hq/index.html HQ_COMPANIES coverage.
+const PAYING_COMPANY: Record<string, string> = {
+  portugal: 'water-movements', 'surf-school': 'water-movements',
+  'junior-camp': 'water-movements', 'kids-camp': 'water-movements',
+  'wild-wednesday': 'water-movements', general: 'water-movements',
+  morocco: 'mgrp-sarl', 'sri-lanka': 'wave-movements',
+}
+const KNOWN_SLUGS = new Set(Object.keys(PAYING_COMPANY))
+
+// Same schema + rules as parse-invoice — keep the two prompts in sync.
+const EXTRACTION_PROMPT = `You are an invoice-parsing assistant for a surf-camp business with entities in Portugal, Morocco, and Sri Lanka. Extract data from this invoice and return ONLY valid JSON, no markdown, no commentary.
+
+Schema:
+{
+  "invoice_date": "YYYY-MM-DD or null",
+  "company": "supplier name in lowercase, strip Lda/SA/SARL/Ltda suffixes",
+  "supplier_nif": "tax registration number if present (Portuguese NIF, Moroccan ICE, etc.), or null",
+  "description": "one-line description of what was purchased/paid, or null",
+  "amount": "numeric total including tax, no currency symbol",
+  "currency": "EUR | MAD | LKR | USD | GBP — inferred from currency symbol or country",
+  "invoice_number": "invoice reference number, or null",
+  "payment_type": "Cash | Card | Bank Transfer | Other — null if not visible on the document",
+  "category_hint": "best guess from: Food, Setup, Rent, Services, Insurances, Transport, Salary, Utilities, Partners, Benefits, Taxes, Work Trips, Accounting, Cleaning Supplies, Miguel - Personal",
+  "location_hint": "best guess from: portugal, surf-school, junior-camp, kids-camp, morocco, sri-lanka, general"
+}
+
+Rules:
+- Portuguese addresses/NIF (9-digit) → location_hint=portugal or one of the PT camps if the item is camp-specific.
+- Moroccan addresses (Dirham/MAD/ICE number) → location_hint=morocco.
+- Sri Lankan (LKR/Colombo/Weligama) → location_hint=sri-lanka.
+- Generic digital services (Google Workspace, Cloudways, Uber, Anthropic) → location_hint=general.
+- "Utulities" is a legacy typo → return "Utilities".
+- Amount uses . as decimal separator and no thousand separators.
+- If a value is unreadable or absent, return null (except amount).
+
+Return the JSON object and nothing else.`
+
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status, headers: { 'content-type': 'application/json' },
+  })
+}
+
+function b64url(bytes: Uint8Array): string {
+  let bin = ''
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+  }
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+function bytesToBase64(bytes: Uint8Array): string {
+  let bin = ''
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+  }
+  return btoa(bin)
+}
+
+// ── Google service-account auth (JWT bearer → access token) ────────────────
+async function googleToken(): Promise<string> {
+  const pem = SA_KEY_RAW.replace(/\\n/g, '\n')
+  const pkcs8 = pem
+    .replace('-----BEGIN PRIVATE KEY-----', '')
+    .replace('-----END PRIVATE KEY-----', '')
+    .replace(/\s+/g, '')
+  const keyBytes = Uint8Array.from(atob(pkcs8), c => c.charCodeAt(0))
+  const key = await crypto.subtle.importKey(
+    'pkcs8', keyBytes,
+    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+    false, ['sign'],
+  )
+  const now = Math.floor(Date.now() / 1000)
+  const enc = (o: unknown) => b64url(new TextEncoder().encode(JSON.stringify(o)))
+  const unsigned = `${enc({ alg: 'RS256', typ: 'JWT' })}.${enc({
+    iss: SA_EMAIL,
+    scope: 'https://www.googleapis.com/auth/drive.readonly',
+    aud: 'https://oauth2.googleapis.com/token',
+    iat: now, exp: now + 3600,
+  })}`
+  const sig = new Uint8Array(await crypto.subtle.sign(
+    'RSASSA-PKCS1-v1_5', key, new TextEncoder().encode(unsigned),
+  ))
+  const assertion = `${unsigned}.${b64url(sig)}`
+  const resp = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+      assertion,
+    }),
+  })
+  const data = await resp.json()
+  if (!resp.ok || !data.access_token) {
+    throw new Error('google token: ' + JSON.stringify(data).slice(0, 300))
+  }
+  return data.access_token
+}
+
+async function driveList(token: string, q: string): Promise<any[]> {
+  const out: any[] = []
+  let pageToken = ''
+  do {
+    const url = new URL('https://www.googleapis.com/drive/v3/files')
+    url.searchParams.set('q', q)
+    url.searchParams.set('fields', 'nextPageToken,files(id,name,mimeType,createdTime,size)')
+    url.searchParams.set('pageSize', '200')
+    if (pageToken) url.searchParams.set('pageToken', pageToken)
+    const resp = await fetch(url, { headers: { authorization: `Bearer ${token}` } })
+    const data = await resp.json()
+    if (!resp.ok) throw new Error('drive list: ' + JSON.stringify(data).slice(0, 300))
+    out.push(...(data.files || []))
+    pageToken = data.nextPageToken || ''
+  } while (pageToken)
+  return out
+}
+
+serve_handler()
+function serve_handler() {
+  Deno.serve(async (req) => {
+    if (req.method === 'OPTIONS') return new Response('ok')
+    // Shared-secret gate: this function is deployed --no-verify-jwt for the
+    // cron; the header keeps anonymous internet callers from burning the
+    // Anthropic budget. (The email-dispatch endpoint predates this pattern.)
+    if (!SYNC_SECRET || req.headers.get('x-drive-sync-secret') !== SYNC_SECRET) {
+      return json({ error: 'unauthorized' }, 401)
+    }
+    if (!SA_EMAIL || !SA_KEY_RAW) return json({ error: 'service account not configured' }, 500)
+    if (!ANTHROPIC_KEY) return json({ error: 'ANTHROPIC_API_KEY missing' }, 500)
+
+    const db = createClient(SUPABASE_URL, SERVICE_KEY)
+    const summary = { scanned: 0, new: 0, inserted: 0, errors: 0, skipped_dup_invoice: 0, details: [] as string[] }
+    try {
+      const token = await googleToken()
+
+      // 1. Subfolders of the root (the monthly folders) + the root itself.
+      const folders = await driveList(token,
+        `'${ROOT_FOLDER}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`)
+      const folderIds = [{ id: ROOT_FOLDER, name: '(root)' }, ...folders.map(f => ({ id: f.id, name: f.name }))]
+
+      // 2. Candidate files across folders.
+      const candidates: { id: string; name: string; mime: string; folder: string; size: number }[] = []
+      for (const f of folderIds) {
+        const files = await driveList(token, `'${f.id}' in parents and trashed = false`)
+        for (const file of files) {
+          if (!FILE_MIMES.has(file.mimeType)) continue
+          candidates.push({ id: file.id, name: file.name, mime: file.mimeType, folder: f.name, size: Number(file.size || 0) })
+        }
+      }
+      summary.scanned = candidates.length
+
+      // 3. Which are NEW? (hq_drive_ingest never forgets a file id.)
+      const ids = candidates.map(c => c.id)
+      const seen = new Set<string>()
+      for (let i = 0; i < ids.length; i += 200) {
+        const { data } = await db.from('hq_drive_ingest').select('drive_file_id').in('drive_file_id', ids.slice(i, i + 200))
+        ;(data || []).forEach(r => seen.add(r.drive_file_id))
+      }
+      const unseen = candidates.filter(c => !seen.has(c.id))
+      summary.new = unseen.length
+
+      // BASELINE mode: register every current file WITHOUT parsing. Run once
+      // at activation — the historical PDFs are already in hq_invoices via
+      // the sheet migration; re-parsing them would double half a year of
+      // expenses. After the baseline, only files added later are processed.
+      let baselineMode = false
+      try { baselineMode = (await req.clone().json())?.baseline === true } catch (_e) { /* empty body */ }
+      if (baselineMode) {
+        for (let i = 0; i < unseen.length; i += 100) {
+          const batch = unseen.slice(i, i + 100).map(c => ({
+            drive_file_id: c.id, file_name: c.name, folder_name: c.folder,
+            status: 'skipped', error: 'baseline — pre-sync file, not parsed',
+          }))
+          const { error } = await db.from('hq_drive_ingest').insert(batch)
+          if (error) throw new Error('baseline insert: ' + error.message)
+        }
+        summary.details.push(`baseline: ${unseen.length} ficheiros registados sem processar`)
+        return json(summary)
+      }
+
+      const fresh = unseen.slice(0, MAX_PER_RUN)
+
+      // Category name → id map (matched case-insensitively).
+      const { data: cats } = await db.from('hq_invoice_categories').select('id,name')
+      const catByName = new Map((cats || []).map(c => [String(c.name).toLowerCase(), c.id]))
+
+      // 4. Process each new file.
+      for (const file of fresh) {
+        try {
+          if (file.size > MAX_BYTES) {
+            await db.from('hq_drive_ingest').insert({ drive_file_id: file.id, file_name: file.name, folder_name: file.folder, status: 'skipped', error: 'file > 15MB' })
+            summary.details.push(`skip ${file.name}: too big`)
+            continue
+          }
+          const dl = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`, {
+            headers: { authorization: `Bearer ${token}` },
+          })
+          if (!dl.ok) throw new Error('download HTTP ' + dl.status)
+          const bytes = new Uint8Array(await dl.arrayBuffer())
+          const base64 = bytesToBase64(bytes)
+          const isPdf = file.mime === 'application/pdf'
+          const contentBlock = isPdf
+            ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } }
+            : { type: 'image', source: { type: 'base64', media_type: file.mime === 'image/heic' || file.mime === 'image/heif' ? 'image/jpeg' : file.mime, data: base64 } }
+
+          const ai = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+              'x-api-key': ANTHROPIC_KEY,
+              'anthropic-version': '2023-06-01',
+              'content-type': 'application/json',
+            },
+            body: JSON.stringify({
+              model: MODEL,
+              max_tokens: 1024,
+              messages: [{ role: 'user', content: [contentBlock, { type: 'text', text: EXTRACTION_PROMPT }] }],
+            }),
+          })
+          const aiData = await ai.json()
+          if (!ai.ok) throw new Error('anthropic: ' + JSON.stringify(aiData).slice(0, 200))
+          const text = (aiData.content || []).map((b: any) => b.text || '').join('')
+          const parsed = JSON.parse(text.replace(/^```json?\s*/i, '').replace(/```\s*$/, ''))
+
+          const amount = Number(parsed.amount)
+          if (!Number.isFinite(amount) || amount <= 0) throw new Error('no readable amount')
+          const currency = ['EUR', 'MAD', 'LKR', 'USD', 'GBP'].includes(parsed.currency) ? parsed.currency : 'EUR'
+          const slug = KNOWN_SLUGS.has(parsed.location_hint) ? parsed.location_hint : 'general'
+          const categoryId = catByName.get(String(parsed.category_hint || '').toLowerCase()) || null
+
+          // Signature dedup against existing invoices (double-shot photos etc.)
+          let isDup = false, dupOf: string | null = null
+          if (parsed.invoice_number) {
+            const { data: twin } = await db.from('hq_invoices')
+              .select('id').is('deleted_at', null)
+              .ilike('company', parsed.company || '')
+              .eq('invoice_number', parsed.invoice_number)
+              .eq('amount', amount)
+              .limit(1)
+            if (twin && twin.length) { isDup = true; dupOf = twin[0].id }
+          }
+
+          const { data: inserted, error: insErr } = await db.from('hq_invoices').insert({
+            location_slug: slug,
+            invoice_date: parsed.invoice_date || new Date().toISOString().slice(0, 10),
+            company: parsed.company || file.name.replace(/\.[a-z0-9]+$/i, ''),
+            description: parsed.description || null,
+            supplier_nif: parsed.supplier_nif || null,
+            amount,
+            currency,
+            fx_rate: currency === 'EUR' ? 1 : null,
+            amount_eur: currency === 'EUR' ? amount : null,
+            payment_type: parsed.payment_type || null,
+            invoice_number: parsed.invoice_number || null,
+            category_id: categoryId,
+            needs_review: true,
+            is_duplicate: isDup,
+            duplicate_of: dupOf,
+            paying_company: PAYING_COMPANY[slug],
+            file_name: file.name,
+          }).select('id').single()
+          if (insErr) throw new Error('insert: ' + insErr.message)
+
+          await db.from('hq_drive_ingest').insert({
+            drive_file_id: file.id, file_name: file.name, folder_name: file.folder,
+            status: 'inserted', invoice_id: inserted.id,
+          })
+          summary.inserted++
+          if (isDup) summary.skipped_dup_invoice++
+          summary.details.push(`ok ${file.name} → ${slug} ${amount} ${currency}${isDup ? ' (dup-flag)' : ''}`)
+        } catch (fileErr) {
+          summary.errors++
+          summary.details.push(`err ${file.name}: ${String(fileErr).slice(0, 160)}`)
+          await db.from('hq_drive_ingest').insert({
+            drive_file_id: file.id, file_name: file.name, folder_name: file.folder,
+            status: 'error', error: String(fileErr).slice(0, 500),
+          }).then(() => {}, () => {})
+        }
+      }
+      return json(summary)
+    } catch (e) {
+      return json({ error: String(e).slice(0, 400), ...summary }, 500)
+    }
+  })
+}
