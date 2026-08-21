@@ -232,12 +232,12 @@ function serve_handler() {
       const folderIds = [{ id: ROOT_FOLDER, name: '(root)' }, ...folders.map(f => ({ id: f.id, name: f.name }))]
 
       // 2. Candidate files across folders.
-      const candidates: { id: string; name: string; mime: string; folder: string; size: number }[] = []
+      const candidates: { id: string; name: string; mime: string; folder: string; size: number; created: string }[] = []
       for (const f of folderIds) {
         const files = await driveList(token, `'${f.id}' in parents and trashed = false`)
         for (const file of files) {
           if (!FILE_MIMES.has(file.mimeType)) continue
-          candidates.push({ id: file.id, name: file.name, mime: file.mimeType, folder: f.name, size: Number(file.size || 0) })
+          candidates.push({ id: file.id, name: file.name, mime: file.mimeType, folder: f.name, size: Number(file.size || 0), created: String(file.createdTime || '') })
         }
       }
       summary.scanned = candidates.length
@@ -256,18 +256,25 @@ function serve_handler() {
       // at activation — the historical PDFs are already in hq_invoices via
       // the sheet migration; re-parsing them would double half a year of
       // expenses. After the baseline, only files added later are processed.
-      let baselineMode = false
-      try { baselineMode = (await req.clone().json())?.baseline === true } catch (_e) { /* empty body */ }
+      let baselineMode = false, baselineBefore = ''
+      try {
+        const b = await req.clone().json()
+        baselineMode = b?.baseline === true
+        baselineBefore = String(b?.before || '')
+      } catch (_e) { /* empty body */ }
       if (baselineMode) {
-        for (let i = 0; i < unseen.length; i += 100) {
-          const batch = unseen.slice(i, i + 100).map(c => ({
+        const toRegister = baselineBefore
+          ? unseen.filter(c => (c.created || '') < baselineBefore)
+          : unseen
+        for (let i = 0; i < toRegister.length; i += 100) {
+          const batch = toRegister.slice(i, i + 100).map(c => ({
             drive_file_id: c.id, file_name: c.name, folder_name: c.folder,
             status: 'skipped', error: 'baseline — pre-sync file, not parsed',
           }))
           const { error } = await db.from('hq_drive_ingest').insert(batch)
           if (error) throw new Error('baseline insert: ' + error.message)
         }
-        summary.details.push(`baseline: ${unseen.length} ficheiros registados sem processar`)
+        summary.details.push(`baseline: ${(baselineBefore ? unseen.filter(c => (c.created || '') < baselineBefore) : unseen).length} ficheiros registados sem processar${baselineBefore ? ' (criados antes de ' + baselineBefore + ')' : ''}`)
         return json(summary)
       }
 
@@ -319,6 +326,32 @@ function serve_handler() {
           const currency = ['EUR', 'MAD', 'LKR', 'USD', 'GBP'].includes(parsed.currency) ? parsed.currency : 'EUR'
           const slug = KNOWN_SLUGS.has(parsed.location_hint) ? parsed.location_hint : 'general'
           const categoryId = catByName.get(String(parsed.category_hint || '').toLowerCase()) || null
+
+          // Miguel's rule: an expense that already lives in a location's
+          // Operations Ledger belongs THERE — the Drive folder also holds
+          // camp-float receipts (Junior's Makro runs etc.), and ingesting
+          // them into hq_invoices would double-count the camp in All
+          // Expenses. Match by amount + date ±2 days on ledger expenses.
+          if (parsed.invoice_date) {
+            const d0 = new Date(parsed.invoice_date)
+            const lo = new Date(d0.getTime() - 2 * 86400000).toISOString().slice(0, 10)
+            const hi = new Date(d0.getTime() + 2 * 86400000).toISOString().slice(0, 10)
+            const { data: ledTwin } = await db.from('ledger_entries')
+              .select('id, attributed_location')
+              .eq('type', 'expense')
+              .gte('entry_date', lo).lte('entry_date', hi)
+              .gte('amount_local', amount - 0.005).lte('amount_local', amount + 0.005)
+              .limit(1)
+            if (ledTwin && ledTwin.length) {
+              await db.from('hq_drive_ingest').insert({
+                drive_file_id: file.id, file_name: file.name, folder_name: file.folder,
+                status: 'skipped',
+                error: 'já no Operations Ledger de ' + ledTwin[0].attributed_location + ' — pertence lá',
+              })
+              summary.details.push(`skip ${file.name}: já no ledger (${ledTwin[0].attributed_location})`)
+              continue
+            }
+          }
 
           // Signature dedup against existing invoices (double-shot photos etc.)
           let isDup = false, dupOf: string | null = null
