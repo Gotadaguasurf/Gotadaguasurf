@@ -52,14 +52,13 @@ const FILE_MIMES = new Set([
   'application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif',
 ])
 
-// Mirrors hq/index.html HQ_COMPANIES coverage.
-const PAYING_COMPANY: Record<string, string> = {
-  portugal: 'water-movements', 'surf-school': 'water-movements',
-  'junior-camp': 'water-movements', 'kids-camp': 'water-movements',
-  'wild-wednesday': 'water-movements', general: 'water-movements',
-  morocco: 'mgrp-sarl', 'sri-lanka': 'wave-movements',
-}
-const KNOWN_SLUGS = new Set(Object.keys(PAYING_COMPANY))
+// Miguel's model: EVERYTHING in Despesas HQ is paid by Water Movements
+// (the PT entity's bank/cards) — Morocco/Sri Lanka local spending lives
+// in each camp's Operations Ledger instead, so it never reaches this
+// table. Location = whose cost it is; paying_company = who paid = PT.
+// Exceptions are edited by hand in the app.
+const KNOWN_SLUGS = new Set(['portugal','surf-school','junior-camp','kids-camp','wild-wednesday','general','morocco','sri-lanka'])
+const PAYING_COMPANY_DEFAULT = 'water-movements'
 
 // Same schema + rules as parse-invoice — keep the two prompts in sync.
 const EXTRACTION_PROMPT = `You are an invoice-parsing assistant for a surf-camp business with entities in Portugal, Morocco, and Sri Lanka. Extract data from this invoice and return ONLY valid JSON, no markdown, no commentary.
@@ -349,7 +348,7 @@ function serve_handler() {
             needs_review: true,
             is_duplicate: isDup,
             duplicate_of: dupOf,
-            paying_company: PAYING_COMPANY[slug],
+            paying_company: PAYING_COMPANY_DEFAULT,
             file_name: file.name,
           }).select('id').single()
           if (insErr) throw new Error('insert: ' + insErr.message)
