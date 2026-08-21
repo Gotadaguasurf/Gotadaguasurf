@@ -16,21 +16,28 @@
 //  Caps: MAX_PER_RUN files per invocation (Anthropic cost + edge time limit);
 //  the cron runs every few hours so a backlog drains across runs.
 //
-//  Secrets required (supabase secrets set ...):
-//    GDRIVE_SA_EMAIL         service-account email (xxx@yyy.iam.gserviceaccount.com)
-//    GDRIVE_SA_PRIVATE_KEY   the service account's PEM private key (\n-escaped ok)
-//    DRIVE_SYNC_SECRET       shared secret; callers must send x-drive-sync-secret
+//  Auth: OAuth refresh token (same pattern as gmail-sync) — the Workspace
+//  org policy blocks service-account keys, and this is tidier anyway: the
+//  folder owner (miguel@) authorises once via /drive-sync?start=SECRET and
+//  the refresh token lives in the drive_account table (RLS deny-all).
+//
+//  Secrets required (GOOGLE_* already set for the gmail functions):
+//    GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET
+//    DRIVE_SYNC_SECRET       gates cron calls AND the one-time consent URL
 //    ANTHROPIC_API_KEY       (already set for parse-invoice)
 //    DRIVE_ROOT_FOLDER_ID    optional override; defaults to the GENERAL EXPENSES folder
 //  Auto-provided: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+//
+//  One-time setup: add this function's URL to the OAuth client's Authorized
+//  redirect URIs, then open /drive-sync?start=SECRET with miguel@ and accept.
 //
 //  Deploy: supabase functions deploy drive-sync --no-verify-jwt
 // ════════════════════════════════════════════════════════════════════════════
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-const SA_EMAIL       = Deno.env.get('GDRIVE_SA_EMAIL') || ''
-const SA_KEY_RAW     = Deno.env.get('GDRIVE_SA_PRIVATE_KEY') || ''
+const CLIENT_ID      = Deno.env.get('GOOGLE_OAUTH_CLIENT_ID') || ''
+const CLIENT_SECRET  = Deno.env.get('GOOGLE_OAUTH_CLIENT_SECRET') || ''
 const SYNC_SECRET    = Deno.env.get('DRIVE_SYNC_SECRET') || ''
 const ANTHROPIC_KEY  = Deno.env.get('ANTHROPIC_API_KEY') || ''
 const SUPABASE_URL   = Deno.env.get('SUPABASE_URL') || ''
@@ -103,44 +110,31 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(bin)
 }
 
-// ── Google service-account auth (JWT bearer → access token) ────────────────
-async function googleToken(): Promise<string> {
-  const pem = SA_KEY_RAW.replace(/\\n/g, '\n')
-  const pkcs8 = pem
-    .replace('-----BEGIN PRIVATE KEY-----', '')
-    .replace('-----END PRIVATE KEY-----', '')
-    .replace(/\s+/g, '')
-  const keyBytes = Uint8Array.from(atob(pkcs8), c => c.charCodeAt(0))
-  const key = await crypto.subtle.importKey(
-    'pkcs8', keyBytes,
-    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
-    false, ['sign'],
-  )
-  const now = Math.floor(Date.now() / 1000)
-  const enc = (o: unknown) => b64url(new TextEncoder().encode(JSON.stringify(o)))
-  const unsigned = `${enc({ alg: 'RS256', typ: 'JWT' })}.${enc({
-    iss: SA_EMAIL,
-    scope: 'https://www.googleapis.com/auth/drive.readonly',
-    aud: 'https://oauth2.googleapis.com/token',
-    iat: now, exp: now + 3600,
-  })}`
-  const sig = new Uint8Array(await crypto.subtle.sign(
-    'RSASSA-PKCS1-v1_5', key, new TextEncoder().encode(unsigned),
-  ))
-  const assertion = `${unsigned}.${b64url(sig)}`
+// ── OAuth (mirrors gmail-sync's ensureAccessToken, table drive_account) ──
+function selfUrl(): string {
+  return (SUPABASE_URL || '').replace(/\/$/, '') + '/functions/v1/drive-sync'
+}
+async function ensureDriveToken(db: ReturnType<typeof createClient>): Promise<string> {
+  const { data: acct, error } = await db.from('drive_account').select('*').limit(1).single()
+  if (error || !acct) throw new Error('drive_account vazio — abrir /drive-sync?start=SECRET com a conta dona da pasta')
+  const expiresAt = acct.access_expires_at ? new Date(acct.access_expires_at).getTime() : 0
+  if (acct.access_token && expiresAt > Date.now() + 60_000) return acct.access_token
   const resp = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
-      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-      assertion,
+      client_id: CLIENT_ID, client_secret: CLIENT_SECRET,
+      refresh_token: acct.refresh_token, grant_type: 'refresh_token',
     }),
   })
-  const data = await resp.json()
-  if (!resp.ok || !data.access_token) {
-    throw new Error('google token: ' + JSON.stringify(data).slice(0, 300))
-  }
-  return data.access_token
+  if (!resp.ok) throw new Error('token refresh: HTTP ' + resp.status + ' ' + (await resp.text()).slice(0, 200))
+  const tk = await resp.json() as { access_token: string; expires_in: number }
+  await db.from('drive_account').update({
+    access_token: tk.access_token,
+    access_expires_at: new Date(Date.now() + (tk.expires_in - 30) * 1000).toISOString(),
+    updated_at: new Date().toISOString(),
+  }).eq('id', acct.id)
+  return tk.access_token
 }
 
 async function driveList(token: string, q: string): Promise<any[]> {
@@ -165,19 +159,73 @@ serve_handler()
 function serve_handler() {
   Deno.serve(async (req) => {
     if (req.method === 'OPTIONS') return new Response('ok')
+    const db = createClient(SUPABASE_URL, SERVICE_KEY)
+    const u = new URL(req.url)
+
+    // ── One-time OAuth setup (GET) ──────────────────────────────────────
+    // /drive-sync?start=SECRET  → redirect to Google's consent screen
+    // /drive-sync?code=...&state=SECRET → store the refresh token
+    if (req.method === 'GET') {
+      if (u.searchParams.get('start')) {
+        if (u.searchParams.get('start') !== SYNC_SECRET) return json({ error: 'unauthorized' }, 401)
+        const auth = new URL('https://accounts.google.com/o/oauth2/v2/auth')
+        auth.searchParams.set('client_id', CLIENT_ID)
+        auth.searchParams.set('redirect_uri', selfUrl())
+        auth.searchParams.set('response_type', 'code')
+        auth.searchParams.set('scope', 'https://www.googleapis.com/auth/drive.readonly email')
+        auth.searchParams.set('access_type', 'offline')
+        auth.searchParams.set('prompt', 'consent')
+        auth.searchParams.set('state', SYNC_SECRET)
+        return Response.redirect(auth.toString(), 302)
+      }
+      if (u.searchParams.get('code')) {
+        if (u.searchParams.get('state') !== SYNC_SECRET) return json({ error: 'unauthorized' }, 401)
+        const resp = await fetch('https://oauth2.googleapis.com/token', {
+          method: 'POST',
+          headers: { 'content-type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            client_id: CLIENT_ID, client_secret: CLIENT_SECRET,
+            code: u.searchParams.get('code')!, grant_type: 'authorization_code',
+            redirect_uri: selfUrl(),
+          }),
+        })
+        const tk = await resp.json()
+        if (!resp.ok || !tk.refresh_token) {
+          return new Response('Falhou a troca do código: ' + JSON.stringify(tk).slice(0, 300), { status: 500 })
+        }
+        let email = ''
+        try {
+          const ui = await fetch('https://openidconnect.googleapis.com/v1/userinfo', {
+            headers: { authorization: 'Bearer ' + tk.access_token },
+          })
+          email = (await ui.json()).email || ''
+        } catch (_e) { /* cosmetic only */ }
+        await db.from('drive_account').delete().neq('id', '00000000-0000-0000-0000-000000000000')
+        const { error } = await db.from('drive_account').insert({
+          authed_email: email,
+          refresh_token: tk.refresh_token,
+          access_token: tk.access_token,
+          access_expires_at: new Date(Date.now() + ((tk.expires_in || 3600) - 30) * 1000).toISOString(),
+        })
+        if (error) return new Response('Falhou a gravar: ' + error.message, { status: 500 })
+        return new Response('<h2>✓ Drive ligado (' + email + ')</h2><p>Podes fechar esta janela. O drive-sync já consegue ler a pasta das despesas.</p>',
+          { headers: { 'content-type': 'text/html; charset=utf-8' } })
+      }
+      return json({ error: 'use ?start=SECRET para autorizar' }, 400)
+    }
+
+    // ── Cron/manual sync (POST) ─────────────────────────────────────────
     // Shared-secret gate: this function is deployed --no-verify-jwt for the
     // cron; the header keeps anonymous internet callers from burning the
-    // Anthropic budget. (The email-dispatch endpoint predates this pattern.)
+    // Anthropic budget.
     if (!SYNC_SECRET || req.headers.get('x-drive-sync-secret') !== SYNC_SECRET) {
       return json({ error: 'unauthorized' }, 401)
     }
-    if (!SA_EMAIL || !SA_KEY_RAW) return json({ error: 'service account not configured' }, 500)
+    if (!CLIENT_ID || !CLIENT_SECRET) return json({ error: 'GOOGLE_OAUTH_CLIENT_ID/SECRET missing' }, 500)
     if (!ANTHROPIC_KEY) return json({ error: 'ANTHROPIC_API_KEY missing' }, 500)
-
-    const db = createClient(SUPABASE_URL, SERVICE_KEY)
     const summary = { scanned: 0, new: 0, inserted: 0, errors: 0, skipped_dup_invoice: 0, details: [] as string[] }
     try {
-      const token = await googleToken()
+      const token = await ensureDriveToken(db)
 
       // 1. Subfolders of the root (the monthly folders) + the root itself.
       const folders = await driveList(token,

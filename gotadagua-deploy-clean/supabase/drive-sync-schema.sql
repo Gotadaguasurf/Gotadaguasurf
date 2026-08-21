@@ -10,6 +10,22 @@
 --  definires em `supabase secrets set DRIVE_SYNC_SECRET=...`
 -- ═══════════════════════════════════════════════════════════════════════════
 
+-- Conta Drive autorizada (espelho da gmail_account): refresh token do
+-- dono da pasta, obtido uma vez via /drive-sync?start=SECRET. RLS nega
+-- tudo — só o service role (Edge Function) lê/escreve.
+create table if not exists public.drive_account (
+  id                uuid primary key default gen_random_uuid(),
+  authed_email      text,
+  refresh_token     text not null,
+  access_token      text,
+  access_expires_at timestamptz,
+  updated_at        timestamptz not null default now()
+);
+alter table public.drive_account enable row level security;
+drop policy if exists drive_account_none on public.drive_account;
+create policy drive_account_none on public.drive_account
+  for all to authenticated using (false) with check (false);
+
 create table if not exists public.hq_drive_ingest (
   drive_file_id text primary key,
   file_name     text not null,
