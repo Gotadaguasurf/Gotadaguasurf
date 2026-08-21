@@ -3971,9 +3971,15 @@ async function loadPnlData(){
   const personalCatIds = new Set(CATEGORIES.filter(c => c.is_personal).map(c => c.id));
   const [books, ledger, invoices] = await Promise.all([
     fetchAllPaged(() => sb.from('bookings').select('location, month_key, total, net_amount').order('check_in_on',{ascending:true})),
-    fetchAllPaged(() => sb.from('ledger_entries').select('type, amount_eur, entry_date, attributed_location').order('entry_date',{ascending:false})),
+    fetchAllPaged(() => sb.from('ledger_entries').select('type, amount_eur, entry_date, attributed_location, paid_from, location_id').order('entry_date',{ascending:false})),
     fetchAllPaged(() => sb.from('hq_invoices').select('amount_eur, location_slug, invoice_date, category_id').is('deleted_at', null).order('invoice_date',{ascending:false})),
   ]);
+  // Income rows from the POS often carry only paid_from / location_id —
+  // attributed_location is an expense-side convention. Resolve through
+  // the full chain so operations revenue lands on the right camp.
+  const locIdToSlug = {};
+  (LOCATIONS||[]).forEach(l => { if (l.id && l.slug) locIdToSlug[l.id] = l.slug; });
+  const ledgerSlug = (l) => l.attributed_location || l.paid_from || locIdToSlug[l.location_id] || null;
   const agg = {}; const months = new Set(); let personal = 0;
   const bump = (slug, month, field, v) => {
     if (!slug || !month || !Number.isFinite(v)) return;
@@ -3989,8 +3995,8 @@ async function loadPnlData(){
   (ledger||[]).forEach(l => {
     const m = String(l.entry_date||'').slice(0,7);
     const v = Number(l.amount_eur)||0;
-    if (l.type === 'income') bump(l.attributed_location, m, 'revOps', v);
-    else if (l.type === 'expense') bump(l.attributed_location, m, 'expLocal', v);
+    if (l.type === 'income') bump(ledgerSlug(l), m, 'revOps', v);
+    else if (l.type === 'expense') bump(ledgerSlug(l), m, 'expLocal', v);
     // transfers deliberately ignored — money moving, not made or spent
   });
   (invoices||[]).forEach(i => {
