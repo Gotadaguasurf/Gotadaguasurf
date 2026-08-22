@@ -73,8 +73,8 @@ Schema:
   "currency": "EUR | MAD | LKR | USD | GBP — inferred from currency symbol or country",
   "invoice_number": "invoice reference number, or null",
   "payment_type": "Cash | Card | Bank Transfer | Other — null if not visible on the document",
-  "category_hint": "best guess from: Food, Setup, Rent, Services, Insurances, Transport, Salary, Utilities, Partners, Benefits, Taxes, Work Trips, Accounting, Cleaning Supplies, Miguel - Personal",
-  "location_hint": "best guess from: portugal, surf-school, junior-camp, kids-camp, morocco, sri-lanka, general"
+  "category_hint": "best guess from: Food, Setup, Rent, Services, Insurances, Transport, Salary, Utilities, Partners, Benefits, Taxes, Work Trips, Accounting, Cleaning Supplies, Wild, Miguel - Personal",
+  "location_hint": "best guess from: portugal, surf-school, junior-camp, kids-camp, wild-wednesday, morocco, sri-lanka, general"
 }
 
 Rules:
@@ -82,6 +82,7 @@ Rules:
 - Moroccan addresses (Dirham/MAD/ICE number) → location_hint=morocco.
 - Sri Lankan (LKR/Colombo/Weligama) → location_hint=sri-lanka.
 - Generic digital services (Google Workspace, Cloudways, Uber, Anthropic) → location_hint=general.
+- Party/event suppliers (DJs, sound/light rental, event production — e.g. debeat, raimundo e cenas, namor cayres, david van der heyden) → location_hint=wild-wednesday with category_hint=Wild (the weekly party Water Movements runs).
 - "Utulities" is a legacy typo → return "Utilities".
 - Amount uses . as decimal separator and no thousand separators.
 - If a value is unreadable or absent, return null (except amount).
