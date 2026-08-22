@@ -1769,6 +1769,12 @@ function buildCampTabSyncRows(locationId){
     [['guests',false],['staff',true]].forEach(([rosterName,isStaff])=>{
       (wk[rosterName]||[]).forEach((row,guestIndex)=>{
         row.id=isUuid(row.id)?row.id:makeUuid();
+        // DETERMINISM: a paid guest without paidAt used to serialize with
+        // a fresh new Date() on EVERY build — the row never matched the
+        // dirty-filter baseline, so both devices rewrote it forever and
+        // stale copies clobbered fresh edits (Sri Lanka "changes reset").
+        // Stamp once into state; save() persists it.
+        if(row.paid && !row.paidAt) row.paidAt=new Date().toISOString();
         guestRows.push({
           id:row.id,
           week_id:weekId,
@@ -1777,7 +1783,7 @@ function buildCampTabSyncRows(locationId){
           booking_ref:row.bookingRef||null,
           is_staff:isStaff,
           paid:!!row.paid,
-          paid_at:row.paid? (row.paidAt||new Date().toISOString()) : null,
+          paid_at:row.paid? row.paidAt : null,
           // Per_guest closed timestamp — null when the guest is still
           // active. Set by closeActiveGuest in per_guest mode (Morocco).
           // Weekly mode never sets this field, so it stays null forever
@@ -1795,6 +1801,13 @@ function buildCampTabSyncRows(locationId){
         normalizeItemRows(row.items).forEach((item,itemIndex)=>{
           const itemId=isUuid(item.id)?item.id:makeUuid();
           item.id=itemId;
+          // DETERMINISM: same rule as paidAt above — an item without d/t
+          // serialized added_at as new Date() every build. Stamp once.
+          if(!item.d){
+            const nowIso=new Date().toISOString();
+            item.d=nowIso.slice(0,10);
+            if(!item.t) item.t=nowIso.slice(11,16);
+          }
           itemRows.push({
             id:itemId,
             guest_id:row.id,
@@ -1810,7 +1823,7 @@ function buildCampTabSyncRows(locationId){
             // Activity feed (which trusts the stored column) rendered
             // "LKR 30" for €30 Portugal merch.
             currency:LOCAL_CURRENCY||'LKR',
-            added_at:item.d?(item.d+'T'+(item.t||'12:00')+':00.000Z'):new Date().toISOString(),
+            added_at:item.d+'T'+(item.t||'12:00')+':00.000Z',
             // per_guest mode (Morocco) — persist the item's individual paid
             // timestamp. Sri Lanka items never set paidAt so this stays
             // null and the column is effectively unused there.
