@@ -383,6 +383,10 @@ function serve_handler() {
             duplicate_of: dupOf,
             paying_company: PAYING_COMPANY_DEFAULT,
             file_name: file.name,
+            // Preview sem ocupar storage: o documento fica na Drive e a
+            // lista do HQ mostra "↗ Drive" (render já existente em
+            // hq/index.html) a abrir o ficheiro original.
+            drive_link: 'https://drive.google.com/file/d/' + file.id + '/view',
           }).select('id').single()
           if (insErr) throw new Error('insert: ' + insErr.message)
 
