@@ -82,7 +82,7 @@ Rules:
 - Moroccan addresses (Dirham/MAD/ICE number) → location_hint=morocco.
 - Sri Lankan (LKR/Colombo/Weligama) → location_hint=sri-lanka.
 - Generic digital services (Google Workspace, Cloudways, Uber, Anthropic) → location_hint=general.
-- Party/event suppliers (DJs, sound/light rental, event production — e.g. debeat, raimundo e cenas, namor cayres, david van der heyden) → location_hint=wild-wednesday with category_hint=Wild (the weekly party Water Movements runs).
+- Party/event suppliers (DJs, sound/light rental, event production — e.g. debeat, raimundo e cenas, namor cayres, david van der heyden, uljc) → location_hint=wild-wednesday with category_hint=Wild (the weekly party Water Movements runs).
 - "Fatura-Recibo" documents from AT (Autoridade Tributária e Aduaneira) are Portuguese freelancer receipts (recibos verdes): ALWAYS category_hint=Salary. The supplier ("company") is the PERSON in "Dados do transmitente de bens ou do prestador de serviços" — NEVER "autoridade tributária". These people work at different camps, so location_hint=general unless the document itself names a camp — the owner assigns the real location during review. EXCEPTION: known Wild Wednesday crew (namor cayres, david van der heyden, and other party-supplier names above) keep location_hint=wild-wednesday and category_hint=Wild even on a Fatura-Recibo.
 - "Utulities" is a legacy typo → return "Utilities".
 - Amount uses . as decimal separator and no thousand separators.
