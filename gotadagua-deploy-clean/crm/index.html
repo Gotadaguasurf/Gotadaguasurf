@@ -508,6 +508,22 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
 .act-view-chip{background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:999px;padding:3px 10px;font-size:10.5px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif}
 .act-view-chip.active{background:var(--ocean);color:#fff;border-color:var(--ocean)}
 
+/* ── INBOX TAB (unread inbound replies, Gmail-style) ─────────────── */
+#inboxList{display:flex;flex-direction:column;gap:8px}
+.inbox-row{display:flex;gap:12px;align-items:center;padding:13px 16px;background:#fff;border:1px solid var(--border);border-radius:12px;cursor:pointer;transition:box-shadow .15s}
+.inbox-row:hover{box-shadow:0 2px 8px rgba(15,40,60,.1)}
+.inbox-row.unread{background:#f2f8ff;border-color:#cfe3f6}
+.inbox-dot{width:9px;height:9px;border-radius:50%;background:var(--ocean);flex:0 0 auto;visibility:hidden}
+.inbox-row.unread .inbox-dot{visibility:visible}
+.inbox-co{flex:0 0 190px;font-weight:700;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:'Outfit',sans-serif}
+.inbox-main{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px;color:var(--muted)}
+.inbox-main b{color:var(--ink);font-weight:600}
+.inbox-row.unread .inbox-main{color:var(--ink)}
+.inbox-row.unread .inbox-main b{font-weight:800}
+.inbox-when{flex:0 0 auto;font-size:11px;color:var(--muted);font-family:'Outfit',sans-serif}
+.inbox-row.unread .inbox-when{color:var(--ocean);font-weight:700}
+@media (max-width:700px){ .inbox-co{flex-basis:104px} }
+
 /* Gmail-style two-pane layout on wide screens. The body itself stops
    scrolling; instead each pane owns exactly one scrollbar — the
    contact card column on the left, the conversation (or full log) on
@@ -712,6 +728,19 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
         <div id="expiringList"></div>
       </div>
     </div>
+  </div>
+
+  <!-- ─── INBOX TAB ─── -->
+  <div id="page-inbox" class="hidden">
+    <div class="section-hdr">
+      <div class="section-title">Inbox</div>
+      <div style="display:flex;gap:10px;align-items:center">
+        <button class="action-btn ghost" id="inboxSyncBtn">Check now</button>
+        <button class="action-btn ghost" id="inboxMarkAllBtn">Mark all as read</button>
+      </div>
+    </div>
+    <div id="inboxHint" class="editor-hint" style="display:none;margin-bottom:10px"></div>
+    <div id="inboxList"></div>
   </div>
 
   <!-- ─── CONTACTS TAB ─── -->
@@ -1599,11 +1628,10 @@ function gmailLastSyncKey(){  return GMAIL_LS_LAST_SYNC_BASE + userScopeSuffix()
 // old shared token doesn't lose it on first load.
 const GMAIL_LS_TOKEN     = GMAIL_LS_TOKEN_BASE;     // backcompat constant — prefer gmailTokenKey()
 const GMAIL_LS_LAST_SYNC = GMAIL_LS_LAST_SYNC_BASE; // backcompat constant — prefer gmailLastSyncKey()
-// Background poll cadence. 10 min is below the Gmail API per-user
-// rate cap (~1 quota unit per call, 250 units/sec/user budget) by
-// many orders of magnitude. Larger interval would feel stale; smaller
-// burns through quota for no real-time benefit.
-const GMAIL_POLL_MS = 10 * 60 * 1000;
+// Background poll cadence. 5 min is still far below the Gmail API
+// per-user rate cap (~1 quota unit per call, 250 units/sec/user
+// budget); the server-side cron covers the gaps when no tab is open.
+const GMAIL_POLL_MS = 5 * 60 * 1000;
 let _gmailPollTimer = null;
 
 // Starts (or restarts) the background poll. Pauses automatically when
@@ -1950,6 +1978,7 @@ async function syncGmailInbox(opts = {}){
       // immediately rather than waiting for a tab switch.
       if(CURRENT_TAB === 'dashboard') renderDashboard();
       if(CURRENT_TAB === 'contacts')  renderContacts();
+      loadInbox().then(() => { if(CURRENT_TAB === 'inbox') renderInbox(); });
       if(CURRENT_CONTACT && CURRENT_TAB === 'contacts') openContact(CURRENT_CONTACT.id);
       // Browser notification on silent (background) polls so the user
       // sees replies landing even when the CRM tab isn't focused.
@@ -2962,6 +2991,9 @@ function subscribeRealtime(){
       if(companyId && CURRENT_CONTACT?.id === companyId){
         scheduleRtPanelRefresh(companyId);
       }
+      if(payload.new?.direction === 'inbound'){
+        loadInbox().then(() => { if(CURRENT_TAB === 'inbox') renderInbox(); });
+      }
       scheduleRtRender();
     })
     .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, (payload)=>{
@@ -2992,7 +3024,7 @@ function unsubscribeRealtime(){
 //  DATA LOADING
 // ════════════════════════════════════════════════════════════════════════
 async function loadAll(){
-  await Promise.all([loadContacts(), loadTemplates(), loadSavedViews(), loadGroups(), loadPeople(), loadTasks(), loadPipelines(), loadTeamUsers(), loadRecentActivity(), loadSequences()]);
+  await Promise.all([loadContacts(), loadTemplates(), loadSavedViews(), loadGroups(), loadPeople(), loadTasks(), loadPipelines(), loadTeamUsers(), loadRecentActivity(), loadSequences(), loadInbox()]);
   // Identify the team_user row matching the current Supabase auth
   // user. Falls back to first row if no exact id match (defensive —
   // means the user logged in before the team_users seed ran).
@@ -3159,6 +3191,96 @@ async function loadTeamUsers(){
   TEAM_USERS = data || [];
 }
 
+// ── Inbox (inbound replies with read/unread, Gmail-style) ──────────
+// Unread state lives in email_messages.read_at (null = unread). Until
+// the crm-inbox-read-receipts.sql migration runs that column doesn't
+// exist — the tab still lists every received email, just without
+// unread tracking, and shows a hint instead of erroring.
+let INBOX_MSGS = [];
+let INBOX_HAS_READ_COL = true;
+
+async function loadInbox(){
+  const c = getClient();
+  let { data, error } = await c.from('email_messages')
+    .select('id,company_id,from_addr,subject,body,sent_at,created_at,read_at')
+    .eq('direction','inbound')
+    .order('sent_at', { ascending:false })
+    .limit(200);
+  if(error && /read_at/i.test(error.message || '')){
+    INBOX_HAS_READ_COL = false;
+    const r2 = await c.from('email_messages')
+      .select('id,company_id,from_addr,subject,body,sent_at,created_at')
+      .eq('direction','inbound')
+      .order('sent_at', { ascending:false })
+      .limit(200);
+    data = r2.data; error = r2.error;
+  } else if(!error){ INBOX_HAS_READ_COL = true; }
+  if(error){ console.warn('loadInbox failed', error); INBOX_MSGS = []; }
+  else INBOX_MSGS = data || [];
+  updateNavInboxCount();
+}
+
+function inboxUnreadCount(){
+  return INBOX_HAS_READ_COL ? INBOX_MSGS.filter(m => !m.read_at).length : 0;
+}
+
+function updateNavInboxCount(){
+  const n = inboxUnreadCount();
+  ['navInboxCount','navInboxCountMob'].forEach(id => {
+    const el = document.getElementById(id);
+    if(el){ el.textContent = n; el.style.display = n > 0 ? '' : 'none'; }
+  });
+}
+
+function renderInbox(){
+  const list = document.getElementById('inboxList');
+  if(!list) return;
+  const hint = document.getElementById('inboxHint');
+  if(hint){
+    hint.style.display = INBOX_HAS_READ_COL ? 'none' : '';
+    if(!INBOX_HAS_READ_COL) hint.textContent = 'Unread tracking needs a one-time database update (supabase/crm-inbox-read-receipts.sql in the Supabase SQL Editor). Showing every received email meanwhile.';
+  }
+  if(!INBOX_MSGS.length){
+    list.innerHTML = '<div class="editor-hint" style="padding:34px;text-align:center">No replies yet — as soon as a contact answers, it lands here.</div>';
+    return;
+  }
+  list.innerHTML = INBOX_MSGS.map(m => {
+    const co = CONTACTS.find(x => x.id === m.company_id);
+    const unread = INBOX_HAS_READ_COL && !m.read_at;
+    const head = splitQuoted(m.body || '').head.replace(/\s+/g, ' ').trim();
+    const from = (m.from_addr || '').replace(/<[^>]*>/g, '').trim();
+    return `<div class="inbox-row ${unread ? 'unread' : ''}" data-cid="${m.company_id || ''}"><span class="inbox-dot"></span><span class="inbox-co">${escHtml(co?.company || from || '?')}</span><span class="inbox-main"><b>${escHtml(m.subject || '(no subject)')}</b> &nbsp;${escHtml(head.slice(0, 130))}</span><span class="inbox-when">${fmtDateTime(m.sent_at || m.created_at)}</span></div>`;
+  }).join('');
+  list.querySelectorAll('.inbox-row[data-cid]').forEach(row => {
+    row.addEventListener('click', () => { if(row.dataset.cid) openContact(row.dataset.cid); });
+  });
+}
+
+// Viewing a conversation clears its unread state (Gmail behaviour).
+// Called from openContact so it works from Inbox, Contacts or search.
+function markInboxRead(companyId){
+  if(!INBOX_HAS_READ_COL || !companyId) return;
+  if(!INBOX_MSGS.some(m => m.company_id === companyId && !m.read_at)) return;
+  const now = new Date().toISOString();
+  INBOX_MSGS.forEach(m => { if(m.company_id === companyId && !m.read_at) m.read_at = now; });
+  updateNavInboxCount();
+  if(CURRENT_TAB === 'inbox') renderInbox();
+  getClient().from('email_messages').update({ read_at: now })
+    .eq('company_id', companyId).eq('direction','inbound').is('read_at', null)
+    .then(({ error }) => { if(error) console.warn('markInboxRead failed', error); });
+}
+
+document.getElementById('inboxSyncBtn')?.addEventListener('click', () => syncGmailInbox());
+document.getElementById('inboxMarkAllBtn')?.addEventListener('click', async () => {
+  if(!INBOX_HAS_READ_COL){ toast('Run the read-receipts SQL first'); return; }
+  const now = new Date().toISOString();
+  INBOX_MSGS.forEach(m => { if(!m.read_at) m.read_at = now; });
+  updateNavInboxCount(); renderInbox();
+  const { error } = await getClient().from('email_messages')
+    .update({ read_at: now }).eq('direction','inbound').is('read_at', null);
+  toast(error ? 'Mark all failed: ' + error.message : 'Inbox cleared');
+});
+
 async function loadSavedViews(){
   const c = getClient();
   const { data, error } = await c.from('outreach_saved_views').select('*').order('name');
@@ -3279,6 +3401,7 @@ document.querySelectorAll('.nav-tab').forEach(t=>{
       document.getElementById('page-'+p).classList.toggle('hidden', p!==CURRENT_TAB);
     });
     if(CURRENT_TAB==='dashboard') renderDashboard();
+    if(CURRENT_TAB==='inbox') renderInbox();
     if(CURRENT_TAB==='contacts') renderContacts();
     if(CURRENT_TAB==='tasks') renderTasksTab();
     if(CURRENT_TAB==='pipeline') renderPipeline();
@@ -4484,6 +4607,7 @@ async function openContact(id){
   // contact is re-opened (e.g. after a stage change re-render).
   if(CURRENT_CONTACT?.id !== c.id) ACTIVITY_LIMIT = 50;
   CURRENT_CONTACT = c;
+  markInboxRead(id);
   document.getElementById('detailTitle').textContent = c.company;
   const body = document.getElementById('detailBody');
   const activity = await loadActivity(id, ACTIVITY_LIMIT);
