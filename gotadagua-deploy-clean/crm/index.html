@@ -5461,19 +5461,19 @@ function templateIdForSequenceTask(t){
 // in the picker — used by the "Send →" buttons on sequence task
 // rows so the user doesn't have to re-pick what the sequence step
 // already said.
-// Populates a <select> with one option per active team_user. The team
-// member whose role is "Sales Manager" is the house sender: listed
-// first and pre-selected everywhere, regardless of who is logged in
-// (outreach goes out under the sales manager's name by default).
-// Everyone else stays pickable for the occasional personal reply.
+// Every email goes out under the sales manager's name, no matter who
+// is logged in — the whole team can read and reply, but the contact
+// always talks to one person. The picker therefore offers ONLY the
+// active team_user whose role is "Sales Manager", pre-selected. If no
+// sales manager exists (row deactivated), it falls back to all active
+// members so sending never breaks.
 function populateSendAsPicker(selectEl, preferredId){
   if(!selectEl) return;
-  const isMain = u => /sales\s*manager/i.test(u.role || '');
-  const list = TEAM_USERS.filter(u => u.active !== false)
-    .sort((a, b) => (isMain(b) ? 1 : 0) - (isMain(a) ? 1 : 0));
-  selectEl.innerHTML = '<option value="">— pick sender —</option>' +
+  const active = TEAM_USERS.filter(u => u.active !== false);
+  const main = active.find(u => /sales\s*manager/i.test(u.role || ''));
+  const list = main ? [main] : active;
+  selectEl.innerHTML = (list.length > 1 ? '<option value="">— pick sender —</option>' : '') +
     list.map(u => `<option value="${u.id}">${escHtml(u.full_name || u.email || '?')}</option>`).join('');
-  const main = list.find(isMain);
   const want = main?.id || preferredId || CURRENT_TEAM_USER?.id || '';
   if(want && list.find(u => u.id === want)) selectEl.value = want;
 }
