@@ -485,6 +485,26 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
 /* ── TOAST ────────────────────────────────────────────────────────── */
 #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--navy);color:#fff;padding:12px 22px;border-radius:999px;font-size:13px;font-weight:600;box-shadow:var(--sh-lg);opacity:0;pointer-events:none;transition:all .25s;z-index:500}
 #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* ── CONVERSATION VIEW (chat-style contact timeline) ─────────────── */
+.convo-wrap{display:flex;flex-direction:column;gap:10px;padding:4px 2px 0;max-height:480px;overflow-y:auto}
+.convo-bubble{max-width:86%;border-radius:14px;padding:10px 13px;font-size:12.5px;line-height:1.5;white-space:pre-wrap;box-shadow:0 1px 2px rgba(15,40,60,.06)}
+.convo-bubble.in{align-self:flex-start;background:#fff;border:1px solid var(--border);border-bottom-left-radius:4px}
+.convo-bubble.out{align-self:flex-end;background:#e3eefb;border:1px solid #cddff2;border-bottom-right-radius:4px}
+.convo-who{font-size:10.5px;font-weight:700;color:var(--muted);margin-bottom:3px;font-family:'Outfit',sans-serif}
+.convo-subject{font-weight:700;margin-bottom:4px;font-size:12px}
+.convo-time{font-size:10px;color:var(--muted);margin-top:6px;text-align:right;font-family:'Outfit',sans-serif}
+.convo-sep{align-self:center;font-size:10.5px;color:var(--muted);background:#f4f7fa;border:1px solid var(--border);border-radius:999px;padding:2px 10px;font-family:'Outfit',sans-serif;font-weight:600}
+.convo-quote{margin-top:6px}
+.convo-quote summary{cursor:pointer;color:var(--muted);font-size:11px;list-style:none;user-select:none;font-family:'Outfit',sans-serif}
+.convo-quote summary::-webkit-details-marker{display:none}
+.convo-quote[open] summary{margin-bottom:4px}
+.convo-quote .q{color:var(--muted);border-left:2px solid var(--border);padding-left:8px;white-space:pre-wrap;font-size:11.5px}
+.convo-replybar{margin-top:10px;display:flex;gap:8px}
+.convo-replybar button{flex:1;background:var(--ocean);color:#fff;border:0;border-radius:10px;padding:11px 14px;font-size:13px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif}
+.convo-replybar button.secondary{flex:0 0 auto;background:#fff;color:var(--ocean);border:1px solid var(--border)}
+.act-view-chip{background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:999px;padding:3px 10px;font-size:10.5px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif}
+.act-view-chip.active{background:var(--ocean);color:#fff;border-color:var(--ocean)}
 </style>
 </head>
 <body>
@@ -1912,7 +1932,7 @@ async function syncGmailInbox(opts = {}){
       // immediately rather than waiting for a tab switch.
       if(CURRENT_TAB === 'dashboard') renderDashboard();
       if(CURRENT_TAB === 'contacts')  renderContacts();
-      if(CURRENT_CONTACT && CURRENT_TAB === 'contacts') renderActivityLog(CURRENT_CONTACT.id);
+      if(CURRENT_CONTACT && CURRENT_TAB === 'contacts') openContact(CURRENT_CONTACT.id);
       // Browser notification on silent (background) polls so the user
       // sees replies landing even when the CRM tab isn't focused.
       if(silent && 'Notification' in window && Notification.permission === 'granted' && localStorage.getItem('crmMuteNotifs') !== '1'){
@@ -4455,6 +4475,13 @@ async function openContact(id){
   // MAY be more (could be exactly N and no more) but the button
   // is cheap to show.
   const moreAvailable = activity.length >= ACTIVITY_LIMIT;
+  // Conversation view: pre-render the chat-style thread (empty string
+  // when there's no email exchange yet) and remember which inbound
+  // message the sticky Reply button should thread onto (the latest).
+  const convoHtml = conversationHtml(activity);
+  const lastInbound = activity.filter(a => a.action === 'email_inbound')
+    .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))[0] || null;
+  const actView = convoHtml && localStorage.getItem('crmActView') !== 'log' ? 'convo' : 'log';
   body.innerHTML = `
     <div class="detail-section">
       <div class="detail-section-title">Contact</div>
@@ -4599,8 +4626,23 @@ async function openContact(id){
     <div class="detail-section">
       <div class="detail-section-title" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
         <span>Activity</span>
+        ${convoHtml ? `<span id="activityViewToggle" style="display:flex;gap:4px">
+          <button type="button" class="act-view-chip ${actView === 'convo' ? 'active' : ''}" data-actview="convo">💬 Conversation</button>
+          <button type="button" class="act-view-chip ${actView === 'log' ? 'active' : ''}" data-actview="log">Full log</button>
+        </span>` : ''}
         ${activity.length > 5 ? `<input type="search" id="activitySearch" placeholder="Filter…" style="border:1px solid var(--border);border-radius:6px;padding:3px 8px;font-size:11px;font-family:'Outfit',sans-serif;font-weight:600;width:140px">` : ''}
       </div>
+      ${convoHtml ? `
+      <div id="convoView" style="display:${actView === 'convo' ? 'block' : 'none'}">
+        ${convoHtml}
+        <div class="convo-replybar">
+          ${lastInbound
+            ? `<button type="button" data-em-reply="${lastInbound.id}">↩ Reply</button>`
+            : `<button type="button" id="convoComposeBtn">✉ Write email</button>`}
+          ${lastInbound ? `<button type="button" class="secondary" id="convoComposeBtn" title="New email (not a reply)">✉ New</button>` : ''}
+        </div>
+      </div>` : ''}
+      <div id="fullLogView" style="display:${actView === 'log' || !convoHtml ? 'block' : 'none'}">
       ${activity.length > 5 ? `
       <div id="activityTypeChips" style="display:flex;gap:4px;flex-wrap:wrap;margin:6px 0 10px">
         <button data-act-type="all"    class="act-chip" style="background:var(--ocean);color:#fff;border:none;border-radius:999px;padding:3px 9px;font-size:10.5px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">All</button>
@@ -4645,8 +4687,25 @@ async function openContact(id){
         }).join('') : '<div class="empty-state" style="padding:12px;text-align:left">No activity yet.</div>'}
       </div>
       ${moreAvailable ? `<button type="button" id="activityLoadMore" style="margin-top:10px;width:100%;background:transparent;border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12px;font-weight:700;color:var(--ocean);cursor:pointer;font-family:'Outfit',sans-serif">Load 50 more</button>` : ''}
+      </div>
     </div>
   `;
+
+  // Conversation ⇄ Full log toggle. Preference sticks across contacts
+  // via localStorage; convo view auto-scrolls to the newest message.
+  document.querySelectorAll('#activityViewToggle .act-view-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const v = chip.dataset.actview;
+      localStorage.setItem('crmActView', v);
+      document.getElementById('convoView').style.display   = v === 'convo' ? 'block' : 'none';
+      document.getElementById('fullLogView').style.display = v === 'log'   ? 'block' : 'none';
+      document.querySelectorAll('#activityViewToggle .act-view-chip').forEach(x =>
+        x.classList.toggle('active', x.dataset.actview === v));
+      if(v === 'convo'){ const s = document.getElementById('convoScroll'); if(s) s.scrollTop = s.scrollHeight; }
+    });
+  });
+  { const s = document.getElementById('convoScroll'); if(s) s.scrollTop = s.scrollHeight; }
+  document.querySelectorAll('#convoComposeBtn').forEach(b => b.addEventListener('click', () => openCompose()));
 
   // Wire up status select
   document.getElementById('statusSelect').addEventListener('change', async (e)=>{
@@ -4906,7 +4965,7 @@ async function openContact(id){
   });
 
   // Reply buttons on inbound emails — open compose modal in reply mode.
-  document.querySelectorAll('#activityList [data-em-reply]').forEach(btn => {
+  document.querySelectorAll('#activityList [data-em-reply], #convoView [data-em-reply]').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();   // don't trigger the body-expand click on the parent
       const rowId = btn.dataset.emReply;
@@ -5078,6 +5137,57 @@ function openReplyCompose(a, contact){
       toast('Reply failed: ' + (err.message || 'unknown'));
     }
   });
+}
+
+// ── Conversation view helpers ───────────────────────────────────────
+// Splits an email body into the fresh part and the quoted trail so
+// chat bubbles stay short. Cuts at the first "On … wrote:" line, the
+// first ">"-quoted line, or an "-- Original Message --" divider.
+function splitQuoted(body){
+  const text = String(body || '');
+  const lines = text.split(/\r?\n/);
+  let cut = -1;
+  for(let i = 0; i < lines.length; i++){
+    const l = lines[i].trim();
+    if(/^>/.test(l) || /^On .{4,140}wrote:?$/.test(l) || /^-{2,}\s*Original Message/i.test(l)){ cut = i; break; }
+  }
+  if(cut < 0) return { head: text.trim(), quoted: '' };
+  return { head: lines.slice(0, cut).join('\n').trim(), quoted: lines.slice(cut).join('\n').trim() };
+}
+
+// Chat-style renderer for the contact timeline: email bubbles in
+// chronological order (theirs left, ours right), status changes as
+// thin pill separators, quoted trails collapsed behind a toggle.
+// Returns '' when the contact has no email exchange yet.
+function conversationHtml(activity){
+  const rows = [...activity]
+    .filter(a => a.action === 'email_inbound' || a.action === 'email_outbound' || a.action === 'status_changed')
+    .sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''));
+  if(!rows.some(a => a.action !== 'status_changed')) return '';
+  let lastSubject = '';
+  const parts = rows.map(a => {
+    if(a.action === 'status_changed'){
+      return `<div class="convo-sep">→ ${escHtml(STATUS_LABELS[a.new_value] || a.new_value || '—')} · ${fmtDateTime(a.created_at)}</div>`;
+    }
+    const inb = a.action === 'email_inbound';
+    const { head, quoted } = splitQuoted(a.meta?.body || a.meta?.snippet || '');
+    const subj = a.meta?.subject || '';
+    const baseSubj = subj.replace(/^(re|fwd?):\s*/i, '').trim().toLowerCase();
+    const showSubj = subj && baseSubj !== lastSubject;
+    if(subj) lastSubject = baseSubj;
+    const fromName = inb
+      ? escHtml((a.meta?.from || '').replace(/<[^>]*>/g, '').trim() || 'Contact')
+      : 'Gota d’Água';
+    const quoteBlock = quoted ? `<details class="convo-quote"><summary>··· earlier messages</summary><div class="q">${escHtml(quoted)}</div></details>` : '';
+    return `<div class="convo-bubble ${inb ? 'in' : 'out'}">
+      <div class="convo-who">${fromName}</div>
+      ${showSubj ? `<div class="convo-subject">${escHtml(subj)}</div>` : ''}
+      <div>${escHtml(head || '(empty)')}</div>
+      ${quoteBlock}
+      <div class="convo-time">${fmtDateTime(a.created_at)}</div>
+    </div>`;
+  });
+  return `<div class="convo-wrap" id="convoScroll">${parts.join('')}</div>`;
 }
 
 function activityLabel(a){
