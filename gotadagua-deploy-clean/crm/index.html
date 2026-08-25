@@ -506,16 +506,20 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
 .act-view-chip{background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:999px;padding:3px 10px;font-size:10.5px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif}
 .act-view-chip.active{background:var(--ocean);color:#fff;border-color:var(--ocean)}
 
-/* Gmail-style two-pane layout on wide screens: contact card on the
-   left, the conversation as a full-height reading pane on the right.
-   Sections auto-place into column 1; the activity section is pinned
-   to column 2 and sticks while the left column scrolls. */
+/* Gmail-style two-pane layout on wide screens. The body itself stops
+   scrolling; instead each pane owns exactly one scrollbar — the
+   contact card column on the left, the conversation (or full log) on
+   the right. The reply bar stays pinned to the bottom of the right
+   pane like a chat composer. Mobile keeps the single scrolling flow. */
 @media (min-width: 1000px){
-  .detail-body{display:grid;grid-template-columns:minmax(320px,380px) minmax(0,1fr);gap:0 28px;align-items:start}
-  .detail-body > .detail-section{grid-column:1}
-  .detail-body > #activitySection{grid-column:2;grid-row:1 / span 40;position:sticky;top:0;border-left:1px solid var(--border);padding-left:28px;margin-bottom:0;display:flex;flex-direction:column;min-height:70vh}
-  #activitySection .convo-wrap{max-height:calc(100vh - 250px)}
-  .convo-bubble{max-width:72%;font-size:13.5px}
+  .detail-body{display:grid;grid-template-columns:minmax(320px,390px) minmax(0,1fr);gap:0;padding:0;overflow:hidden}
+  .detail-left{grid-column:1;min-height:0;height:100%;overflow-y:auto;padding:22px 24px;border-right:1px solid var(--border)}
+  .detail-body > #activitySection{grid-column:2;height:100%;min-height:0;margin:0;display:flex;flex-direction:column;overflow:hidden;padding:16px 26px 14px;background:#fbfdff}
+  #activitySection #convoView{flex:1;display:flex;flex-direction:column;min-height:0}
+  #activitySection .convo-wrap{flex:1;max-height:none;min-height:0}
+  #activitySection #fullLogView{flex:1;overflow-y:auto;min-height:0}
+  .convo-bubble{max-width:68%;font-size:13.5px}
+  .convo-replybar{border-top:1px solid var(--border);padding-top:12px}
 }
 </style>
 </head>
@@ -4495,6 +4499,7 @@ async function openContact(id){
     .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))[0] || null;
   const actView = convoHtml && localStorage.getItem('crmActView') !== 'log' ? 'convo' : 'log';
   body.innerHTML = `
+    <div class="detail-left">
     <div class="detail-section">
       <div class="detail-section-title">Contact</div>
       <div class="detail-row"><span class="label">Status</span><span class="value">
@@ -4635,6 +4640,8 @@ async function openContact(id){
       <textarea class="notes-area" id="notesArea" placeholder="Add notes…">${escHtml(c.notes||'')}</textarea>
     </div>
 
+    </div>
+
     <div class="detail-section" id="activitySection">
       <div class="detail-section-title" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
         <span>Activity</span>
@@ -4645,7 +4652,7 @@ async function openContact(id){
         ${activity.length > 5 ? `<input type="search" id="activitySearch" placeholder="Filter…" style="border:1px solid var(--border);border-radius:6px;padding:3px 8px;font-size:11px;font-family:'Outfit',sans-serif;font-weight:600;width:140px">` : ''}
       </div>
       ${convoHtml ? `
-      <div id="convoView" style="display:${actView === 'convo' ? 'block' : 'none'}">
+      <div id="convoView" style="${actView === 'convo' ? '' : 'display:none'}">
         ${convoHtml}
         <div class="convo-replybar">
           ${lastInbound
@@ -4654,7 +4661,7 @@ async function openContact(id){
           ${lastInbound ? `<button type="button" class="secondary" id="convoComposeBtn" title="New email (not a reply)">✉ New</button>` : ''}
         </div>
       </div>` : ''}
-      <div id="fullLogView" style="display:${actView === 'log' || !convoHtml ? 'block' : 'none'}">
+      <div id="fullLogView" style="${actView === 'log' || !convoHtml ? '' : 'display:none'}">
       ${activity.length > 5 ? `
       <div id="activityTypeChips" style="display:flex;gap:4px;flex-wrap:wrap;margin:6px 0 10px">
         <button data-act-type="all"    class="act-chip" style="background:var(--ocean);color:#fff;border:none;border-radius:999px;padding:3px 9px;font-size:10.5px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">All</button>
@@ -4709,8 +4716,8 @@ async function openContact(id){
     chip.addEventListener('click', () => {
       const v = chip.dataset.actview;
       localStorage.setItem('crmActView', v);
-      document.getElementById('convoView').style.display   = v === 'convo' ? 'block' : 'none';
-      document.getElementById('fullLogView').style.display = v === 'log'   ? 'block' : 'none';
+      document.getElementById('convoView').style.display   = v === 'convo' ? '' : 'none';
+      document.getElementById('fullLogView').style.display = v === 'log'   ? '' : 'none';
       document.querySelectorAll('#activityViewToggle .act-view-chip').forEach(x =>
         x.classList.toggle('active', x.dataset.actview === v));
       if(v === 'convo'){ const s = document.getElementById('convoScroll'); if(s) s.scrollTop = s.scrollHeight; }
