@@ -1,0 +1,35 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Assinatura — Pedro Paiva (surfschool@gotadaguasurf.com)</title></head>
+<body style="background:#f6f7f9;font-family:Arial,Helvetica,sans-serif;padding:34px;color:#233a4d">
+<div style="max-width:760px;margin:0 auto">
+<h2 style="margin:0 0 6px">Assinatura de email — Pedro Paiva</h2>
+<p style="color:#6b7280;margin:0 0 18px">1&#41; Clica em <b>Copiar assinatura</b> &nbsp;2&#41; Gmail &#8594; &#9881;&#65039; Definições &#8594; "Ver todas as definições" &#8594; secção <b>Assinatura</b> &#8594; Criar nova &#8594; cola (Cmd/Ctrl+V) &#8594; Guardar alterações no fundo da página.</p>
+<button onclick="copySig()" style="background:#233a4d;color:#fff;border:none;border-radius:8px;padding:10px 18px;font-size:14px;font-weight:700;cursor:pointer;margin-bottom:18px">Copiar assinatura</button>
+<span id="ok" style="display:none;color:#16a34a;font-weight:700;margin-left:10px">Copiada &#10003;</span>
+<div id="sig" style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:24px"><table cellpadding="0" cellspacing="0" border="0" style="font-family:Arial,Helvetica,sans-serif;color:#233a4d;font-size:13px;line-height:1.4">
+  <tr>
+    <td style="vertical-align:middle;padding-right:20px;border-right:2px solid #e5e7eb">
+      <a href="https://www.gotadaguasurf.com" style="text-decoration:none"><img src="https://gotadaguasurf.vercel.app/assets/logos/logo-blue.png" alt="Gota Dagua Surf Camp" width="130" style="display:block;border:0"></a>
+    </td>
+    <td style="vertical-align:middle;padding:0 20px;border-right:2px solid #e5e7eb">
+      <div style="font-weight:bold;font-size:17px;margin-bottom:2px;color:#233a4d">Pedro Paiva</div>
+      <div style="color:#6b7280;margin-bottom:10px">Surf School</div>
+      
+      <div style="white-space:nowrap"><a href="mailto:surfschool@gotadaguasurf.com" style="color:#233a4d;text-decoration:none;"><img src="https://gotadaguasurf.vercel.app/assets/sig/mail.png" width="18" height="18" alt="" style="vertical-align:middle;border:0"> <span style="vertical-align:middle">surfschool@gotadaguasurf.com</span></a></div>
+    </td>
+    <td style="vertical-align:middle;padding-left:20px">
+      <div style="margin-bottom:6px;white-space:nowrap"><a href="https://www.instagram.com/gotadagua_surf" style="color:#233a4d;text-decoration:none;"><img src="https://gotadaguasurf.vercel.app/assets/sig/ig.png" width="20" height="20" alt="" style="vertical-align:middle;border:0"> <span style="vertical-align:middle">gotadagua_surf</span></a></div>
+      <div style="margin-bottom:6px;white-space:nowrap"><a href="https://www.youtube.com/@gotadaguasurf1939" style="color:#233a4d;text-decoration:none;"><img src="https://gotadaguasurf.vercel.app/assets/sig/yt.png" width="20" height="20" alt="" style="vertical-align:middle;border:0"> <span style="vertical-align:middle">gotadagua_surf</span></a></div>
+      <div style="white-space:nowrap"><a href="https://www.gotadaguasurf.com" style="color:#233a4d;text-decoration:none;"><img src="https://gotadaguasurf.vercel.app/assets/sig/web.png" width="20" height="20" alt="" style="vertical-align:middle;border:0"> <span style="vertical-align:middle">www.gotadaguasurf.com</span></a></div>
+    </td>
+  </tr>
+</table></div>
+</div>
+<script>
+function copySig(){
+  const el=document.getElementById('sig');
+  const r=document.createRange(); r.selectNodeContents(el);
+  const sel=window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+  document.execCommand('copy'); sel.removeAllRanges();
+  document.getElementById('ok').style.display='inline';
+}
+</script></body></html>
