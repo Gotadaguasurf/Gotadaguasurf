@@ -76,7 +76,7 @@ async function ensureAccessToken(supa: ReturnType<typeof createClient>) {
 function buildRaw(args: {
   fromEmail: string; fromDisplay: string;
   to: string; cc?: string;
-  subject: string; body: string;
+  subject: string; body: string; html?: string;
   inReplyTo?: string; references?: string;
 }) {
   const toUtf8 = (s: string) => unescape(encodeURIComponent(s || ''))
@@ -104,7 +104,26 @@ function buildRaw(args: {
   )
   if (args.inReplyTo) lines.push(`In-Reply-To: ${args.inReplyTo}`)
   if (args.references) lines.push(`References: ${args.references}`)
-  const message = lines.join('\r\n') + '\r\n\r\n' + (args.body || '')
+  let message: string
+  if (args.html) {
+    // multipart/alternative: plain text first (spam filters like it and
+    // basic clients fall back to it), HTML second so capable clients
+    // render the signature with logo + icons.
+    const b = 'gds_alt_7f3b2c'
+    // The MIME-Version/Content-Type lines pushed above assume plain
+    // text — swap the last two for the multipart header.
+    lines.splice(lines.indexOf('MIME-Version: 1.0'))
+    lines.push('MIME-Version: 1.0', `Content-Type: multipart/alternative; boundary="${b}"`)
+    if (args.inReplyTo) lines.push(`In-Reply-To: ${args.inReplyTo}`)
+    if (args.references) lines.push(`References: ${args.references}`)
+    message = lines.join('\r\n') + '\r\n\r\n' +
+      `--${b}\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n` +
+      (args.body || '') + '\r\n\r\n' +
+      `--${b}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n` +
+      args.html + `\r\n\r\n--${b}--\r\n`
+  } else {
+    message = lines.join('\r\n') + '\r\n\r\n' + (args.body || '')
+  }
   const utf8 = toUtf8(message)
   return btoa(utf8).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }
@@ -128,7 +147,7 @@ Deno.serve(async (req) => {
   // 2. Parse body + basic validation.
   let payload: any
   try { payload = await req.json() } catch { return json({ error: 'Invalid JSON' }, 400) }
-  const { to, cc, subject, body, sender_user_id, company_id, contact_id, in_reply_to, references, thread_id } = payload || {}
+  const { to, cc, subject, body, html, sender_user_id, company_id, contact_id, in_reply_to, references, thread_id } = payload || {}
   if (!to || !subject) return json({ error: 'to + subject required' }, 400)
 
   // 3. Look up the sender's display name from team_users (service-role
@@ -180,7 +199,7 @@ Deno.serve(async (req) => {
     const raw = buildRaw({
       fromEmail: account.email,
       fromDisplay: displayName,
-      to, cc, subject, body,
+      to, cc, subject, body, html,
       inReplyTo: looksRfc(effInReplyTo) ? effInReplyTo : undefined,
       references: looksRfc(effReferences) ? effReferences : undefined,
     })

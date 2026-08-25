@@ -2061,6 +2061,55 @@ function buildGmailRawMessage({ to, subject, body, fromAuthuser, cc }){
   return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
+// ── HTML signature (house layout: logo | name/role/email | socials) ─
+// Assets live on our own Vercel deploy (assets/logos + assets/sig) so
+// they never break like the old postimage-hosted ones did.
+const SIG_ASSET_BASE = 'https://gotadaguasurf.vercel.app';
+function signatureHtml(sender){
+  const name = escHtml(sender?.full_name || 'Gota Dagua Surf');
+  const role = escHtml(sender?.role || '');
+  const email = escHtml(sender?.email || 'groups@gotadaguasurf.com');
+  const cell = 'vertical-align:middle;';
+  const link = 'color:#233a4d;text-decoration:none;';
+  const soc = (icon, href, label) =>
+    `<div style="margin-bottom:6px;white-space:nowrap"><a href="${href}" style="${link}"><img src="${SIG_ASSET_BASE}/assets/sig/${icon}.png" width="20" height="20" alt="" style="vertical-align:middle;border:0"> <span style="vertical-align:middle">${label}</span></a></div>`;
+  return `<div style="margin-bottom:10px">Best,</div>
+<table cellpadding="0" cellspacing="0" border="0" style="font-family:Arial,Helvetica,sans-serif;color:#233a4d;font-size:13px;line-height:1.4">
+  <tr>
+    <td style="${cell}padding-right:20px;border-right:2px solid #e5e7eb">
+      <a href="https://www.gotadaguasurf.com" style="text-decoration:none"><img src="${SIG_ASSET_BASE}/assets/logos/logo-blue.png" alt="Gota Dagua Surf Camp" width="130" style="display:block;border:0"></a>
+    </td>
+    <td style="${cell}padding:0 20px;border-right:2px solid #e5e7eb">
+      <div style="font-weight:bold;font-size:17px;margin-bottom:2px">${name}</div>
+      ${role ? `<div style="color:#6b7280;margin-bottom:10px">${role}</div>` : ''}
+      <div style="white-space:nowrap"><a href="mailto:${email}" style="${link}">${email}</a></div>
+    </td>
+    <td style="${cell}padding-left:20px">
+      ${soc('ig', 'https://www.instagram.com/gotadagua_surf', 'gotadagua_surf')}
+      ${soc('yt', 'https://www.youtube.com/@gotadaguasurf1939', 'gotadagua_surf')}
+      <div style="white-space:nowrap"><a href="https://www.gotadaguasurf.com" style="${link}"><img src="${SIG_ASSET_BASE}/assets/sig/web.png" width="20" height="20" alt="" style="vertical-align:middle;border:0"> <span style="vertical-align:middle">www.gotadaguasurf.com</span></a></div>
+    </td>
+  </tr>
+</table>`;
+}
+
+// Builds the HTML alternative for an outgoing email: the typed body
+// with newlines as <br>, and the plain-text signature (if present at
+// the end) swapped for the rich signatureHtml block. The plain body
+// keeps the text signature, so text-only clients still see it.
+function buildEmailHtml(body, sender){
+  let text = String(body || '');
+  const sig = (sender?.signature || '').trim();
+  let sigIdx = -1;
+  if(sig){
+    sigIdx = text.lastIndexOf(sig);
+    if(sigIdx >= 0) text = text.slice(0, sigIdx).replace(/\s+$/, '');
+  }
+  const escaped = escHtml(text).replace(/\r?\n/g, '<br>');
+  const sigBlock = sigIdx >= 0 ? '<br><br>' + signatureHtml(sender) : '';
+  return `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#1f2a44;line-height:1.5">${escaped}${sigBlock}</div>`;
+}
+
 // POSTs to the gmail-send Edge Function. The function:
 //   1. Verifies the caller's Supabase JWT (must be a logged-in CRM user)
 //   2. Refreshes the shared mailbox's server-side access token if expired
@@ -2076,6 +2125,8 @@ async function gmailSendOne({ to, subject, body, companyId, contactId, senderUse
   const cfg = window.__SUPABASE_CONFIG || {};
   if(!cfg.url) throw new Error('Supabase URL missing');
   const ccList = buildCcList();
+  const senderRow = TEAM_USERS.find(u => u.id === (senderUserId || CURRENT_TEAM_USER?.id)) || null;
+  const htmlBody = buildEmailHtml(body, senderRow);
   const resp = await fetch(`${cfg.url}/functions/v1/gmail-send`, {
     method: 'POST',
     headers: {
@@ -2088,6 +2139,7 @@ async function gmailSendOne({ to, subject, body, companyId, contactId, senderUse
       cc: ccList.length ? ccList.join(', ') : undefined,
       subject,
       body,
+      html: htmlBody,
       sender_user_id: senderUserId || CURRENT_TEAM_USER?.id || null,
       company_id: companyId || null,
       contact_id: contactId || null,
