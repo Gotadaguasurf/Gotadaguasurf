@@ -488,12 +488,14 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
 
 /* ── CONVERSATION VIEW (chat-style contact timeline) ─────────────── */
 .convo-wrap{display:flex;flex-direction:column;gap:10px;padding:4px 2px 0;max-height:480px;overflow-y:auto}
-.convo-bubble{max-width:86%;border-radius:14px;padding:10px 13px;font-size:12.5px;line-height:1.5;white-space:pre-wrap;box-shadow:0 1px 2px rgba(15,40,60,.06)}
+.convo-bubble{max-width:86%;border-radius:14px;padding:9px 14px 11px;font-size:13px;line-height:1.55;box-shadow:0 1px 2px rgba(15,40,60,.06)}
 .convo-bubble.in{align-self:flex-start;background:#fff;border:1px solid var(--border);border-bottom-left-radius:4px}
 .convo-bubble.out{align-self:flex-end;background:#e3eefb;border:1px solid #cddff2;border-bottom-right-radius:4px}
-.convo-who{font-size:10.5px;font-weight:700;color:var(--muted);margin-bottom:3px;font-family:'Outfit',sans-serif}
+.convo-meta{display:flex;justify-content:space-between;align-items:baseline;gap:16px;font-size:10.5px;color:var(--muted);margin-bottom:5px;font-family:'Outfit',sans-serif}
+.convo-meta .who{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.convo-meta .when{flex:0 0 auto}
+.convo-msg{white-space:pre-wrap;overflow-wrap:anywhere}
 .convo-subject{font-weight:700;margin-bottom:4px;font-size:12px}
-.convo-time{font-size:10px;color:var(--muted);margin-top:6px;text-align:right;font-family:'Outfit',sans-serif}
 .convo-sep{align-self:center;font-size:10.5px;color:var(--muted);background:#f4f7fa;border:1px solid var(--border);border-radius:999px;padding:2px 10px;font-family:'Outfit',sans-serif;font-weight:600}
 .convo-quote{margin-top:6px}
 .convo-quote summary{cursor:pointer;color:var(--muted);font-size:11px;list-style:none;user-select:none;font-family:'Outfit',sans-serif}
@@ -3234,6 +3236,7 @@ async function loadActivity(contactId, limit = 50){
         snippet: m.body, body: m.body, thread_id: m.thread_id,
         provider_msg_id: m.provider_msg_id,
         email_message_id: m.id,
+        sender_user_id: m.sender_user_id || null,
         replied_at: reply ? (reply.sent_at || reply.created_at) : null,
       },
       created_at:  m.sent_at || m.created_at,
@@ -5167,15 +5170,27 @@ function openReplyCompose(a, contact){
 // chat bubbles stay short. Cuts at the first "On … wrote:" line, the
 // first ">"-quoted line, or an "-- Original Message --" divider.
 function splitQuoted(body){
-  const text = String(body || '');
-  const lines = text.split(/\r?\n/);
+  const text = String(body || '').replace(/\r\n/g, '\n');
+  // Candidate cut markers; the earliest match wins. Gmail hard-wraps the
+  // "On … wrote:" attribution across lines, so that pattern spans up to
+  // three lines instead of requiring wrote: on the same line.
+  const markers = [
+    /(^|\n)[ \t]*>/,
+    /(^|\n)[ \t]*On [^\n]{0,200}(?:\n[^\n]{0,200}){0,2}?wrote:[ \t]*(\n|$)/,
+    /(^|\n)[ \t]*-{2,}[ \t]*Original Message/i,
+    /(^|\n)[ \t]*-{2,}[ \t]*Forwarded message/i,
+  ];
   let cut = -1;
-  for(let i = 0; i < lines.length; i++){
-    const l = lines[i].trim();
-    if(/^>/.test(l) || /^On .{4,140}wrote:?$/.test(l) || /^-{2,}\s*Original Message/i.test(l)){ cut = i; break; }
+  for(const re of markers){
+    const m = re.exec(text);
+    if(m){
+      const idx = m.index + (m[1] ? m[1].length : 0);
+      if(cut < 0 || idx < cut) cut = idx;
+    }
   }
-  if(cut < 0) return { head: text.trim(), quoted: '' };
-  return { head: lines.slice(0, cut).join('\n').trim(), quoted: lines.slice(cut).join('\n').trim() };
+  const clean = t => t.replace(/\n{3,}/g, '\n\n').trim();
+  if(cut < 0) return { head: clean(text), quoted: '' };
+  return { head: clean(text.slice(0, cut)), quoted: clean(text.slice(cut)) };
 }
 
 // Chat-style renderer for the contact timeline: email bubbles in
@@ -5198,17 +5213,12 @@ function conversationHtml(activity){
     const baseSubj = subj.replace(/^(re|fwd?):\s*/i, '').trim().toLowerCase();
     const showSubj = subj && baseSubj !== lastSubject;
     if(subj) lastSubject = baseSubj;
+    const senderRow = !inb && a.meta?.sender_user_id ? TEAM_USERS.find(u => u.id === a.meta.sender_user_id) : null;
     const fromName = inb
       ? escHtml((a.meta?.from || '').replace(/<[^>]*>/g, '').trim() || 'Contact')
-      : 'Gota d’Água';
+      : escHtml(senderRow?.full_name || 'Gota d’Água');
     const quoteBlock = quoted ? `<details class="convo-quote"><summary>··· earlier messages</summary><div class="q">${escHtml(quoted)}</div></details>` : '';
-    return `<div class="convo-bubble ${inb ? 'in' : 'out'}">
-      <div class="convo-who">${fromName}</div>
-      ${showSubj ? `<div class="convo-subject">${escHtml(subj)}</div>` : ''}
-      <div>${escHtml(head || '(empty)')}</div>
-      ${quoteBlock}
-      <div class="convo-time">${fmtDateTime(a.created_at)}</div>
-    </div>`;
+    return `<div class="convo-bubble ${inb ? 'in' : 'out'}"><div class="convo-meta"><span class="who">${fromName}</span><span class="when">${fmtDateTime(a.created_at)}</span></div>${showSubj ? `<div class="convo-subject">${escHtml(subj)}</div>` : ''}<div class="convo-msg">${escHtml(head || '(empty)')}</div>${quoteBlock}</div>`;
   });
   return `<div class="convo-wrap" id="convoScroll">${parts.join('')}</div>`;
 }
