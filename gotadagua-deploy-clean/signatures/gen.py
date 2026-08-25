@@ -37,7 +37,7 @@ def sig_table(name, role, email, phone, photo):
     photo_td = ''
     if photo:
         photo_td = (f'<td style="vertical-align:middle;padding:0 0 0 20px">'
-                    f'<img src="{BASE}/assets/sig/people/{photo}" width="72" height="72" alt="{name}" '
+                    f'<img src="{BASE}/assets/sig/people/{photo}" width="72" height="72" alt="" '
                     f'style="display:block;border:0;border-radius:50%"></td>')
     return f'''<table cellpadding="0" cellspacing="0" border="0" style="font-family:Arial,Helvetica,sans-serif;color:#233a4d;font-size:13px;line-height:1.4"><tbody><tr>
 <td style="vertical-align:middle;padding-right:20px;border-right:2px solid #e5e7eb"><a href="https://www.gotadaguasurf.com" style="text-decoration:none"><img src="{BASE}/assets/logos/logo-blue.png" alt="Gota Dagua Surf Camp" width="130" style="display:block;border:0"></a></td>
