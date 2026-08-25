@@ -5451,15 +5451,14 @@ function templateIdForSequenceTask(t){
 // in the picker — used by the "Send →" buttons on sequence task
 // rows so the user doesn't have to re-pick what the sequence step
 // already said.
-// Populates a <select> with one option per active sales team_user, leaves
+// Populates a <select> with one option per active team_user, leaves
 // a "— pick sender —" placeholder selected unless the caller passes a
 // preferred id (typically the logged-in user). Used by Compose, Reply,
-// and Batch Send modals.
+// and Batch Send modals. Every active row qualifies — role is a display
+// title ('owner', 'Sales Manager'), not a sending permission.
 function populateSendAsPicker(selectEl, preferredId){
   if(!selectEl) return;
-  const senders = TEAM_USERS.filter(u => u.active !== false && (!u.role || u.role === 'sales'));
-  const fallback = TEAM_USERS.filter(u => u.active !== false && !(senders.includes(u)));
-  const list = senders.length ? senders : fallback;
+  const list = TEAM_USERS.filter(u => u.active !== false);
   selectEl.innerHTML = '<option value="">— pick sender —</option>' +
     list.map(u => `<option value="${u.id}">${escHtml(u.full_name || u.email || '?')}</option>`).join('');
   const want = preferredId || CURRENT_TEAM_USER?.id || '';
