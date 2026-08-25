@@ -5116,20 +5116,24 @@ function openReplyCompose(a, contact){
     const btn = modal.querySelector('#replySend');
     btn.disabled = true; btn.style.opacity = '.6'; btn.textContent = 'Sending…';
     try {
-      // provider_msg_id is Gmail's Message-Id (e.g. "<CABcd@mail.gmail.com>")
-      // — Gmail expects In-Reply-To/References in that <…> format. Wrap if
-      // bare, leave alone otherwise. Some Gmail responses give bare ids
-      // without angle brackets.
-      const wrap = (id) => id ? (id.startsWith('<') ? id : `<${id}>`) : undefined;
-      const inReplyTo = wrap(m.provider_msg_id);
+      // provider_msg_id is Gmail's INTERNAL API id (hex, no "@"), not
+      // the RFC 2822 Message-ID the recipient's mail client threads
+      // on. Only pass it as In-Reply-To when it actually looks like
+      // an RFC id; otherwise send just the threadId and let the
+      // gmail-send Edge Function resolve the real headers from the
+      // thread server-side — that keeps the conversation as ONE
+      // thread in Gmail on both sides.
+      const rfcId = (m.provider_msg_id || '').includes('@')
+        ? (m.provider_msg_id.startsWith('<') ? m.provider_msg_id : `<${m.provider_msg_id}>`)
+        : undefined;
       await gmailSendOne({
         to, subject, body,
         companyId: contact.id,
         contactId: primaryPersonFor(contact.id)?.id || null,
         senderUserId: sender.id,
         threadId: m.thread_id || undefined,
-        inReplyTo,
-        references: inReplyTo,
+        inReplyTo: rfcId,
+        references: rfcId,
       });
       // Pipeline auto-advance same as Send Now / Batch — sending a
       // reply to an inbound counts as activity.

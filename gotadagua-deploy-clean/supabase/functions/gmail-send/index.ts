@@ -140,11 +140,44 @@ Deno.serve(async (req) => {
   // 4. Refresh access token + send.
   try {
     const { token, account } = await ensureAccessToken(adminClient)
+
+    // Threading: a reply only lands in the same conversation on BOTH
+    // sides when In-Reply-To/References carry the real RFC 2822
+    // Message-ID of the message being answered. Callers historically
+    // sent Gmail's internal API id here (no "@" in it), which the
+    // recipient's mail client can't thread on. When we have a
+    // thread_id and no usable RFC id, resolve the true headers from
+    // the thread's last message server-side.
+    let effInReplyTo = in_reply_to as string | undefined
+    let effReferences = references as string | undefined
+    const looksRfc = (s?: string) => !!s && s.includes('@')
+    if (thread_id && !looksRfc(effInReplyTo)) {
+      try {
+        const tResp = await fetch(
+          `https://gmail.googleapis.com/gmail/v1/users/me/threads/${encodeURIComponent(thread_id)}` +
+          `?format=metadata&metadataHeaders=Message-ID&metadataHeaders=Message-Id&metadataHeaders=References`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        )
+        if (tResp.ok) {
+          const tj = await tResp.json() as { messages?: Array<{ payload?: { headers?: Array<{ name: string; value: string }> } }> }
+          const last = tj.messages?.[tj.messages.length - 1]
+          const h = (n: string) => last?.payload?.headers?.find(x => x.name.toLowerCase() === n.toLowerCase())?.value
+          const msgId = h('Message-ID') || h('Message-Id')
+          if (msgId) {
+            effInReplyTo = msgId
+            const prevRefs = h('References') || ''
+            effReferences = (prevRefs + ' ' + msgId).trim()
+          }
+        }
+      } catch { /* threading headers are best-effort — threadId still groups on our side */ }
+    }
+
     const raw = buildRaw({
       fromEmail: account.email,
       fromDisplay: displayName,
       to, cc, subject, body,
-      inReplyTo: in_reply_to, references,
+      inReplyTo: looksRfc(effInReplyTo) ? effInReplyTo : undefined,
+      references: looksRfc(effReferences) ? effReferences : undefined,
     })
     const sendBody: Record<string, unknown> = { raw }
     if (thread_id) sendBody.threadId = thread_id
