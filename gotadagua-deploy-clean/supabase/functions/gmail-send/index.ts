@@ -82,8 +82,13 @@ function buildRaw(args: {
   const toUtf8 = (s: string) => unescape(encodeURIComponent(s || ''))
   const subjB64 = btoa(toUtf8(args.subject || ''))
   const escapedDisplay = (args.fromDisplay || '').replace(/"/g, "'")
+  // Non-ASCII display names ("João") must be RFC 2047 encoded — raw UTF-8
+  // in a header renders as mojibake in Gmail.
+  const displayWord = /[^\x20-\x7e]/.test(escapedDisplay)
+    ? `=?utf-8?B?${btoa(toUtf8(escapedDisplay))}?=`
+    : `"${escapedDisplay}"`
   const fromHeader = escapedDisplay
-    ? `"${escapedDisplay}" <${args.fromEmail}>`
+    ? `${displayWord} <${args.fromEmail}>`
     : args.fromEmail
   const lines: string[] = [
     `From: ${fromHeader}`,
