@@ -8,16 +8,16 @@ L = 'color:#233a4d;text-decoration:none;'
 
 # (ficheiro, nome, cargo, email, telefone, foto — ficheiro em assets/sig/people/ ou None)
 PEOPLE = [
-    ('miguel',     'Miguel Pereira',     'Co-Founder',                'miguel@gotadaguasurf.com',     '+351 916 290 842', None),
-    ('accounting', 'Miguel Pereira',     'Co-Founder',                'accounting@gotadaguasurf.com', '+351 916 290 842', None),
-    ('info',       'Gonçalo Pereira',    'Co-Founder',                'info@gotadaguasurf.com',       '+351 939 756 959', None),
-    ('kids',       'Gonçalo Pereira',    'Co-Founder',                'kids@gotadaguasurf.com',       '+351 939 756 959', None),
-    ('ricardo',    'Ricardo Carvalho',   'Co-Founder',                'ricardo@gotadaguasurf.com',    '+351 927 488 266', None),
-    ('surfschool', 'Pedro Paiva',        'Co-Founder',                'surfschool@gotadaguasurf.com', '+351 913 227 407', None),
-    ('marketing',  'João Girbal',        'Marketing Manager',         'marketing@gotadaguasurf.com',  '+351 915 094 559', None),
-    ('groups',     'João Maria André',   'Sales Manager',             'groups@gotadaguasurf.com',     '+351 917 744 363', None),
-    ('maxime',     'Maxime Dergatcheff', 'Portugal Surf Camp Manager','maxime@gotadaguasurf.com',     None,               None),
-    ('floriane',   'Floriane Raina',     'Morocco Surf Camp Manager', None,                           '+33 6 33 26 88 24', None),
+    ('miguel',     'Miguel Pereira',     'Co-Founder',                'miguel@gotadaguasurf.com',     '+351 916 290 842', 'miguel.jpg'),
+    ('accounting', 'Miguel Pereira',     'Co-Founder',                'accounting@gotadaguasurf.com', '+351 916 290 842', 'miguel.jpg'),
+    ('info',       'Gonçalo Pereira',    'Co-Founder',                'info@gotadaguasurf.com',       '+351 939 756 959', 'goncalo.jpg'),
+    ('kids',       'Gonçalo Pereira',    'Co-Founder',                'kids@gotadaguasurf.com',       '+351 939 756 959', 'goncalo.jpg'),
+    ('ricardo',    'Ricardo Carvalho',   'Co-Founder',                'ricardo@gotadaguasurf.com',    '+351 927 488 266', 'ricardo.jpg'),
+    ('surfschool', 'Pedro Paiva',        'Co-Founder',                'surfschool@gotadaguasurf.com', '+351 913 227 407', 'pedro.jpg'),
+    ('marketing',  'João Girbal',        'Marketing Manager',         'marketing@gotadaguasurf.com',  '+351 915 094 559', 'joao-girbal.jpg'),
+    ('groups',     'João Maria André',   'Sales Manager',             'groups@gotadaguasurf.com',     '+351 917 744 363', 'joao-maria.jpg'),
+    ('maxime',     'Maxime Dergatcheff', 'Portugal Surf Camp Manager','maxime@gotadaguasurf.com',     None,               'maxime.jpg'),
+    ('floriane',   'Floriane Raina',     'Morocco Surf Camp Manager', None,                           '+33 6 33 26 88 24', 'floriane.jpg'),
     ('shenal',     'Shenal de Almeida',  'Sri Lanka Surf Camp Manager', None,                         '+44 7949 557272',  None),
 ]
 
