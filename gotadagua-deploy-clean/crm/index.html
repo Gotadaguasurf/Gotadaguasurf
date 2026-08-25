@@ -531,6 +531,16 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
 .inbox-row.unread .inbox-when{color:var(--ocean);font-weight:700}
 @media (max-width:700px){ .inbox-co{flex-basis:104px} }
 
+/* ── MEETINGS (panel section + dashboard card) ───────────────────── */
+.meeting-row{display:flex;gap:10px;align-items:center;padding:8px 10px;background:#fff;border:1px solid var(--border);border-radius:10px;margin-bottom:6px;font-size:12.5px;cursor:pointer}
+.meeting-row.upcoming{background:#f2fbf5;border-color:#bfe6cd}
+.meeting-when{flex:0 0 auto;font-family:'DM Mono',monospace;font-size:11.5px;color:var(--navy);font-weight:600;white-space:nowrap}
+.meeting-row.upcoming .meeting-when{color:#16a34a}
+.meeting-main{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.meeting-gcal{flex:0 0 auto;font-size:10.5px;font-weight:700;color:var(--ocean);border:1px solid var(--ocean);border-radius:999px;padding:2px 9px;text-decoration:none;font-family:'Outfit',sans-serif}
+.meeting-del{flex:0 0 auto;background:transparent;border:none;color:var(--muted);font-size:15px;cursor:pointer;line-height:1;padding:2px 4px}
+.meeting-del:hover{color:#dc2626}
+
 /* Gmail-style two-pane layout on wide screens. The body itself stops
    scrolling; instead each pane owns exactly one scrollbar — the
    contact card column on the left, the conversation (or full log) on
@@ -692,6 +702,11 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
     <!-- Per-team report tile — auto-shown only when the team has 2+
          active sales people. Filled by renderTeamReports. -->
     <div id="teamReports" class="hidden" style="background:#fff;border:1px solid var(--border);border-radius:var(--r-md);padding:16px 20px;margin-bottom:24px"></div>
+
+    <div class="dash-card" style="margin-bottom:24px">
+      <div class="dash-card-title"><span class="ui-ic lg">__ICN_CALENDAR__</span>  Upcoming meetings</div>
+      <div id="dashMeetingsList"></div>
+    </div>
 
     <div class="dash-row">
       <div class="dash-card">
@@ -3000,6 +3015,12 @@ function subscribeRealtime(){
       }
       scheduleRtRender();
     })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'meetings' }, ()=>{
+      loadMeetings().then(() => {
+        if(CURRENT_TAB === 'dashboard') renderDashMeetings();
+        if(CURRENT_CONTACT) renderMeetingsSection(CURRENT_CONTACT.id);
+      });
+    })
     .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, (payload)=>{
       const { eventType, new: nw, old: ol } = payload;
       if(eventType === 'INSERT'){
@@ -3028,7 +3049,7 @@ function unsubscribeRealtime(){
 //  DATA LOADING
 // ════════════════════════════════════════════════════════════════════════
 async function loadAll(){
-  await Promise.all([loadContacts(), loadTemplates(), loadSavedViews(), loadGroups(), loadPeople(), loadTasks(), loadPipelines(), loadTeamUsers(), loadRecentActivity(), loadSequences(), loadInbox()]);
+  await Promise.all([loadContacts(), loadTemplates(), loadSavedViews(), loadGroups(), loadPeople(), loadTasks(), loadPipelines(), loadTeamUsers(), loadRecentActivity(), loadSequences(), loadInbox(), loadMeetings()]);
   // Identify the team_user row matching the current Supabase auth
   // user. Falls back to first row if no exact id match (defensive —
   // means the user logged in before the team_users seed ran).
@@ -3186,6 +3207,126 @@ async function loadTeamUsers(){
     TEAM_USERS = []; return;
   }
   TEAM_USERS = data || [];
+}
+
+// ── Meetings (meetings table — UI + Google Calendar hand-off) ──────
+let MEETINGS = [];
+
+async function loadMeetings(){
+  const { data, error } = await getClient().from('meetings')
+    .select('*').order('met_at', { ascending:false }).limit(500);
+  if(error){ console.warn('loadMeetings failed', error); MEETINGS = []; return; }
+  MEETINGS = data || [];
+}
+
+// Prefilled Google Calendar "create event" link — one click in the
+// opened tab saves it on the groups@ calendar (authuser preselects the
+// shared account when its Google session is active in the browser).
+function gcalUrl(m, company){
+  const start = new Date(m.met_at);
+  const end   = new Date(start.getTime() + 60 * 60 * 1000);
+  const z = d => d.toISOString().replace(/[-:]|\.\d{3}/g, '');
+  const details = (m.attendees ? 'With: ' + m.attendees + '\n' : '') +
+    (m.notes || '') + '\n\nCRM: https://gotadaguasurf.vercel.app/crm';
+  return 'https://calendar.google.com/calendar/render?action=TEMPLATE' +
+    '&text=' + encodeURIComponent('Meeting — ' + (company || 'CRM contact')) +
+    '&dates=' + z(start) + '/' + z(end) +
+    '&details=' + encodeURIComponent(details) +
+    '&authuser=' + encodeURIComponent(GMAIL_AUTHUSER);
+}
+
+function meetingRowHtml(m, withCompany){
+  const co = CONTACTS.find(x => x.id === m.company_id);
+  const upcoming = m.met_at && new Date(m.met_at).getTime() > Date.now();
+  const owner = TEAM_USERS.find(u => u.id === m.owner_id);
+  return `<div class="meeting-row ${upcoming ? 'upcoming' : ''}" data-mtco="${m.company_id || ''}">
+    <div class="meeting-when">${fmtDateTime(m.met_at)}</div>
+    <div class="meeting-main">${withCompany ? `<b>${escHtml(co?.company || '?')}</b> ` : ''}${escHtml(m.attendees || '')}${m.notes ? ` <span style="color:var(--muted)">· ${escHtml(m.notes)}</span>` : ''}${owner ? ` <span style="color:var(--muted);font-size:10.5px">(${escHtml(owner.full_name)})</span>` : ''}</div>
+    <a class="meeting-gcal" href="${gcalUrl(m, co?.company)}" target="_blank" rel="noopener" title="Add to the groups@ Google Calendar" onclick="event.stopPropagation()">GCal</a>
+    <button type="button" class="meeting-del" data-mtdel="${m.id}" title="Delete meeting">&times;</button>
+  </div>`;
+}
+
+function renderMeetingsSection(companyId){
+  const list = document.getElementById('meetingsList');
+  if(!list) return;
+  const rows = MEETINGS.filter(m => m.company_id === companyId)
+    .sort((a, b) => (b.met_at || '').localeCompare(a.met_at || ''));
+  list.innerHTML = rows.length
+    ? rows.map(m => meetingRowHtml(m, false)).join('')
+    : '<div class="editor-hint">No meetings yet.</div>';
+  list.querySelectorAll('[data-mtdel]').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if(!confirm('Delete this meeting?')) return;
+      const { error } = await getClient().from('meetings').delete().eq('id', btn.dataset.mtdel);
+      if(error){ toast('Delete failed: ' + error.message); return; }
+      MEETINGS = MEETINGS.filter(m => m.id !== btn.dataset.mtdel);
+      renderMeetingsSection(companyId);
+      if(CURRENT_TAB === 'dashboard') renderDashMeetings();
+    });
+  });
+}
+
+function renderDashMeetings(){
+  const el = document.getElementById('dashMeetingsList');
+  if(!el) return;
+  const upcoming = MEETINGS.filter(m => m.met_at && new Date(m.met_at).getTime() > Date.now() - 60 * 60 * 1000)
+    .sort((a, b) => (a.met_at || '').localeCompare(b.met_at || ''))
+    .slice(0, 8);
+  el.innerHTML = upcoming.length
+    ? upcoming.map(m => meetingRowHtml(m, true)).join('')
+    : '<div class="editor-hint">No meetings scheduled — book one from any contact\u2019s panel (+ Meeting).</div>';
+  el.querySelectorAll('.meeting-row[data-mtco]').forEach(row => {
+    row.addEventListener('click', () => { if(row.dataset.mtco) openContact(row.dataset.mtco); });
+  });
+  el.querySelectorAll('[data-mtdel]').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if(!confirm('Delete this meeting?')) return;
+      const { error } = await getClient().from('meetings').delete().eq('id', btn.dataset.mtdel);
+      if(error){ toast('Delete failed: ' + error.message); return; }
+      MEETINGS = MEETINGS.filter(m => m.id !== btn.dataset.mtdel);
+      renderDashMeetings();
+    });
+  });
+}
+
+async function saveMeetingFromForm(companyId){
+  const when = document.getElementById('meetingWhen')?.value;
+  if(!when){ toast('Pick a date and time first'); return; }
+  const attendees = document.getElementById('meetingWith')?.value?.trim() || null;
+  const notes = document.getElementById('meetingNotes')?.value?.trim() || null;
+  const row = {
+    company_id: companyId,
+    owner_id: CURRENT_TEAM_USER?.id || null,
+    met_at: new Date(when).toISOString(),
+    attendees, notes,
+  };
+  const { data, error } = await getClient().from('meetings').insert(row).select().single();
+  if(error){ toast('Save failed: ' + error.message); return; }
+  MEETINGS.unshift(data);
+  document.getElementById('meetingForm')?.classList.add('hidden');
+  renderMeetingsSection(companyId);
+  // Scheduling a meeting IS pipeline progress — auto-advance the card
+  // to the Meeting column unless the contact is already further along.
+  const co = CONTACTS.find(x => x.id === companyId);
+  const early = ['not_started','first_email','follow_up','in_conversation','no_reply'];
+  if(co && early.includes(co.status || 'not_started')){
+    const old = co.status || 'not_started';
+    const { error: stErr } = await getClient().from('outreach_contacts')
+      .update({ status: 'meeting' }).eq('id', companyId);
+    if(!stErr){
+      co.status = 'meeting';
+      logActivity(companyId, 'status_changed', old, 'meeting', { via: 'meeting-scheduled' });
+      toast('Meeting saved · moved to "Meeting" in the pipeline');
+    }
+  } else {
+    toast('Meeting saved');
+  }
+  // Hand off to Google Calendar with everything prefilled — one click
+  // ("Save") in the new tab puts it on the groups@ calendar.
+  window.open(gcalUrl(data, co?.company), '_blank', 'noopener');
 }
 
 // ── Inbox (inbound replies with read/unread, Gmail-style) ──────────
@@ -3482,6 +3623,7 @@ function renderTeamReports(){
 }
 
 function renderDashboard(){
+  renderDashMeetings();
   const today = new Date().toISOString().slice(0,10);
   document.getElementById('todayDate').textContent =
     new Date().toLocaleDateString('en-GB', { weekday:'long', day:'2-digit', month:'long' });
@@ -4692,6 +4834,23 @@ async function openContact(id){
       <div id="tasksList"></div>
     </div>
 
+    <div class="detail-section">
+      <div class="detail-section-title" style="display:flex;justify-content:space-between;align-items:center">
+        <span>Meetings</span>
+        <button type="button" id="addMeetingBtn" style="background:var(--ocean);color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">+ Meeting</button>
+      </div>
+      <div id="meetingForm" class="hidden" style="background:#fafdff;border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px;display:flex;flex-direction:column;gap:8px">
+        <input type="datetime-local" id="meetingWhen" style="border:1px solid var(--border);border-radius:8px;padding:7px 10px;font:inherit;font-size:13px">
+        <input type="text" id="meetingWith" placeholder="With whom? (names / emails)" style="border:1px solid var(--border);border-radius:8px;padding:7px 10px;font:inherit;font-size:13px">
+        <input type="text" id="meetingNotes" placeholder="Notes (optional — e.g. video call link)" style="border:1px solid var(--border);border-radius:8px;padding:7px 10px;font:inherit;font-size:13px">
+        <div style="display:flex;gap:8px">
+          <button type="button" id="meetingSaveBtn" style="flex:1;background:var(--ocean);color:#fff;border:none;border-radius:8px;padding:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">Save + add to Google Calendar</button>
+          <button type="button" id="meetingCancelBtn" style="background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif">Cancel</button>
+        </div>
+      </div>
+      <div id="meetingsList"></div>
+    </div>
+
     <!-- Deal block: only rendered when there IS a deal value already
          entered OR the contact is Lost (so we can capture the
          lost_reason). For partner-outreach the € field is unused most
@@ -5135,6 +5294,16 @@ async function openContact(id){
   // ── Tasks (CRM v2 to-do items) ──────────────────────────────────────
   renderTasksList(c.id);
   document.getElementById('addTaskBtn').addEventListener('click', ()=>openTaskModal(c.id, null));
+
+  // ── Meetings ────────────────────────────────────────────────────────
+  renderMeetingsSection(c.id);
+  document.getElementById('addMeetingBtn').addEventListener('click', ()=>{
+    document.getElementById('meetingForm').classList.toggle('hidden');
+  });
+  document.getElementById('meetingCancelBtn').addEventListener('click', ()=>{
+    document.getElementById('meetingForm').classList.add('hidden');
+  });
+  document.getElementById('meetingSaveBtn').addEventListener('click', ()=>saveMeetingFromForm(c.id));
 
   // ── Groups & possibilities ──────────────────────────────────────────
   renderGroupsList(c.id);
