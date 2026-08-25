@@ -5461,17 +5461,20 @@ function templateIdForSequenceTask(t){
 // in the picker — used by the "Send →" buttons on sequence task
 // rows so the user doesn't have to re-pick what the sequence step
 // already said.
-// Populates a <select> with one option per active team_user, leaves
-// a "— pick sender —" placeholder selected unless the caller passes a
-// preferred id (typically the logged-in user). Used by Compose, Reply,
-// and Batch Send modals. Every active row qualifies — role is a display
-// title ('owner', 'Sales Manager'), not a sending permission.
+// Populates a <select> with one option per active team_user. The team
+// member whose role is "Sales Manager" is the house sender: listed
+// first and pre-selected everywhere, regardless of who is logged in
+// (outreach goes out under the sales manager's name by default).
+// Everyone else stays pickable for the occasional personal reply.
 function populateSendAsPicker(selectEl, preferredId){
   if(!selectEl) return;
-  const list = TEAM_USERS.filter(u => u.active !== false);
+  const isMain = u => /sales\s*manager/i.test(u.role || '');
+  const list = TEAM_USERS.filter(u => u.active !== false)
+    .sort((a, b) => (isMain(b) ? 1 : 0) - (isMain(a) ? 1 : 0));
   selectEl.innerHTML = '<option value="">— pick sender —</option>' +
     list.map(u => `<option value="${u.id}">${escHtml(u.full_name || u.email || '?')}</option>`).join('');
-  const want = preferredId || CURRENT_TEAM_USER?.id || '';
+  const main = list.find(isMain);
+  const want = main?.id || preferredId || CURRENT_TEAM_USER?.id || '';
   if(want && list.find(u => u.id === want)) selectEl.value = want;
 }
 
