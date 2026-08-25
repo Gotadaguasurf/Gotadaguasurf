@@ -17,8 +17,8 @@ PEOPLE = [
     ('marketing',  'João Girbal',        'Marketing Manager',         'marketing@gotadaguasurf.com',  '+351 915 094 559', 'joao-girbal.jpg'),
     ('groups',     'João Maria André',   'Sales Manager',             'groups@gotadaguasurf.com',     '+351 917 744 363', 'joao-maria.jpg'),
     ('maxime',     'Maxime Dergatcheff', 'Portugal Surf Camp Manager','maxime@gotadaguasurf.com',     None,               'maxime.jpg'),
-    ('floriane',   'Floriane Raina',     'Morocco Surf Camp Manager', None,                           '+33 6 33 26 88 24', 'floriane.jpg'),
-    ('shenal',     'Shenal de Almeida',  'Sri Lanka Surf Camp Manager', None,                         '+44 7949 557272',  None),
+    ('floriane',   'Floriane Raina',     'Morocco Surf Camp Manager', 'morocco@gotadaguasurf.com',    '+33 6 33 26 88 24', 'floriane.jpg'),
+    ('shenal',     'Shenal de Almeida',  'Sri Lanka Surf Camp Manager', 'srilanka@gotadaguasurf.com', '+44 7949 557272',  None),
 ]
 
 def sig_table(name, role, email, phone, photo):
