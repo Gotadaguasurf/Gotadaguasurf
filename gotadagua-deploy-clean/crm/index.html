@@ -203,6 +203,13 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
 .status-inline-select{appearance:none;-webkit-appearance:none;border:1.5px solid var(--ocean);border-radius:999px;padding:4px 24px 4px 10px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;font-family:'Outfit',sans-serif;cursor:pointer;background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 14 14'%3E%3Cpath fill='%231e6fa8' d='M3.2 5.2a.75.75 0 0 1 1.06 0L7 7.94 9.74 5.2a.75.75 0 1 1 1.06 1.06l-3.27 3.27a.75.75 0 0 1-1.06 0L3.2 6.26a.75.75 0 0 1 0-1.06Z'/%3E%3C/svg%3E") no-repeat right 6px center;background-size:12px}
 /* ── Pipeline (Kanban) ─────────────────────────────────────────────── */
 .kanban-wrap{margin:0 -8px;overflow:visible}
+/* Pipeline tab breaks out of main's 1400px column: the board runs
+   edge-to-edge and each column is a full-height vertical lane that
+   scrolls internally, like Pipedrive. */
+@media (min-width: 901px){
+  #page-pipeline .kanban-wrap{margin-left:calc(50% - 50vw);margin-right:calc(50% - 50vw);padding:0 14px}
+  #page-pipeline .kanban-col{flex:0 0 300px;height:calc(100vh - 235px);max-height:none}
+}
 /* Horizontal scroll on smaller widths; columns keep a comfortable minimum. */
 .kanban{display:flex;gap:12px;overflow-x:auto;overflow-y:visible;padding:4px 8px 18px;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch}
 .kanban-col{flex:0 0 280px;background:#fafdff;border:1px solid var(--border);border-radius:14px;padding:10px;display:flex;flex-direction:column;max-height:calc(100vh - 200px);scroll-snap-align:start}
@@ -871,13 +878,7 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
     <div class="section-hdr" style="display:flex;justify-content:space-between;align-items:flex-end;gap:14px;flex-wrap:wrap">
       <div>
         <div class="section-title">Pipeline</div>
-        <div class="section-hint">Drag a card between columns to update its stage — change syncs to other devices in real time.</div>
-      </div>
-      <div style="display:flex;align-items:center;gap:8px">
-        <label style="font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700">View</label>
-        <select id="pipelineViewSelect" style="border:1px solid var(--border);border-radius:8px;padding:6px 10px;font:inherit;font-size:13px;font-family:'Outfit',sans-serif;font-weight:600">
-          <option value="status">Status (legacy)</option>
-        </select>
+        <div class="section-hint">Columns are the contact statuses — drag a card (or change a contact's status anywhere) and it moves here automatically, on every device.</div>
       </div>
     </div>
     <!-- Filter row — narrows the Kanban so 500+ cards become manageable.
@@ -1516,7 +1517,10 @@ let SEQUENCE_RUNS = [];      // outreach_sequence_runs — active + historic run
 let CURRENT_SEQUENCE = null; // for the Sequences-tab editor
 // Which Kanban view is active. 'status' = the legacy single-pipeline
 // view that drives c.status; otherwise a pipeline id from PIPELINES.
-let CURRENT_PIPELINE_VIEW = localStorage.getItem('crmPipelineView') || 'status';
+// The Kanban is driven by outreach_contacts.status — the same field as
+// the contact panel's Status dropdown, so board and dropdown can never
+// disagree. The old per-pipelines-table views were retired from this tab.
+let CURRENT_PIPELINE_VIEW = 'status';
 // Pipeline tab filter state — persists across tab switches so the
 // user can flip away and come back without losing their narrowing.
 let PIPELINE_FILTER = {
@@ -3137,13 +3141,6 @@ async function loadPipelines(){
   // the Pipeline-tab View, but only when the user hasn't already
   // chosen one — respect any persisted preference. The legacy
   // 'status' view is still available via the View dropdown.
-  if(!localStorage.getItem('crmPipelineView') && PIPELINES.length){
-    const sales = PIPELINES.find(p => p.key === 'sales') || PIPELINES[0];
-    if(sales){
-      CURRENT_PIPELINE_VIEW = sales.id;
-      localStorage.setItem('crmPipelineView', sales.id);
-    }
-  }
 }
 
 // Active team members only. Used as the picker source for task
@@ -8003,8 +8000,7 @@ function renderPipelinesSection(companyId){
   root.querySelectorAll('[data-pl-jump]').forEach(el => {
     el.addEventListener('click', () => {
       const pid = el.dataset.plJump;
-      CURRENT_PIPELINE_VIEW = pid;
-      localStorage.setItem('crmPipelineView', pid);
+      // Pipeline tab is always the status board now — just go there.
       document.querySelector('.nav-tab[data-tab="pipeline"]').click();
     });
   });
