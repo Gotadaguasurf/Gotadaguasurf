@@ -529,6 +529,11 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
 .inbox-row.unread .inbox-main b{font-weight:800}
 .inbox-when{flex:0 0 auto;font-size:11px;color:var(--muted);font-family:'Outfit',sans-serif}
 .inbox-row.unread .inbox-when{color:var(--ocean);font-weight:700}
+.inbox-arch{flex:0 0 auto;background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:8px;width:26px;height:26px;font-size:13px;line-height:1;cursor:pointer;padding:0}
+.inbox-arch:hover{background:var(--ocean);border-color:var(--ocean);color:#fff}
+.inbox-row.archived{opacity:.55}
+.inbox-co[data-co]{cursor:pointer}
+.inbox-co[data-co]:hover{color:var(--ocean);text-decoration:underline}
 .inbox-n{display:inline-block;margin-left:6px;font-size:10.5px;font-weight:700;color:var(--muted);background:#eef3f8;border:1px solid var(--border);border-radius:999px;padding:0 6px;font-family:'Outfit',sans-serif;vertical-align:1px}
 .inbox-todo{flex:0 0 auto;font-size:10px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:#b45309;background:#fef3c7;border:1px solid #fcd34d;border-radius:999px;padding:2px 8px;font-family:'Outfit',sans-serif}
 @media (max-width:700px){ .inbox-co{flex-basis:104px} }
@@ -3408,6 +3413,8 @@ let INBOX_MSGS = [];      // inbound messages
 let INBOX_OUT  = [];      // outbound, thread_id + timestamp only — used to
                           // tell which inbound messages are still unanswered
 let INBOX_HAS_READ_COL = true;
+let INBOX_HAS_ARCHIVE  = true;
+let INBOX_THREAD_MAP   = {};   // key -> message ids, for the archive button
 let INBOX_FILTER = localStorage.getItem('crmInboxFilter') || 'todo';
 
 // An inbound message still needs a reply when nothing outbound went out on
@@ -3415,6 +3422,7 @@ let INBOX_FILTER = localStorage.getItem('crmInboxFilter') || 'todo';
 // question on an old thread re-flags the contact. No thread id (older rows)
 // counts as needing a reply — better to over-surface than to lose one.
 function needsReply(m){
+  if(m.archived_at) return false;
   if(!m.thread_id) return true;
   const when = new Date(m.sent_at || m.created_at).getTime();
   return !INBOX_OUT.some(o => o.thread_id === m.thread_id &&
@@ -3423,20 +3431,24 @@ function needsReply(m){
 
 async function loadInbox(){
   const c = getClient();
+  const BASE = 'id,company_id,from_addr,subject,body,sent_at,created_at,thread_id';
   let { data, error } = await c.from('email_messages')
-    .select('id,company_id,from_addr,subject,body,sent_at,created_at,thread_id,read_at')
+    .select(BASE + ',read_at,archived_at')
     .eq('direction','inbound')
     .order('sent_at', { ascending:false })
-    .limit(200);
-  if(error && /read_at/i.test(error.message || '')){
-    INBOX_HAS_READ_COL = false;
+    .limit(400);
+  if(error && /read_at|archived_at/i.test(error.message || '')){
+    // Migration not run yet. Keep the tab working without the extras.
+    INBOX_HAS_READ_COL = /read_at/i.test(error.message) ? false : INBOX_HAS_READ_COL;
+    INBOX_HAS_ARCHIVE  = false;
     const r2 = await c.from('email_messages')
-      .select('id,company_id,from_addr,subject,body,sent_at,created_at,thread_id')
+      .select(BASE)
       .eq('direction','inbound')
       .order('sent_at', { ascending:false })
-      .limit(200);
+      .limit(400);
     data = r2.data; error = r2.error;
-  } else if(!error){ INBOX_HAS_READ_COL = true; }
+    INBOX_HAS_READ_COL = false;
+  } else if(!error){ INBOX_HAS_READ_COL = true; INBOX_HAS_ARCHIVE = true; }
   if(error){ console.warn('loadInbox failed', error); INBOX_MSGS = []; }
   else INBOX_MSGS = data || [];
   const out = await c.from('email_messages')
@@ -3471,8 +3483,8 @@ function inboxThreads(){
       's:' + (m.subject || '').replace(/^((re|fwd?|aw|enc)\s*:\s*)+/i, '').trim().toLowerCase() +
       '|' + (m.company_id || m.from_addr || '');
     const g = map.get(key);
-    if(!g){ map.set(key, { key, latest: m, count: 1 }); continue; }
-    g.count++;
+    if(!g){ map.set(key, { key, latest: m, count: 1, ids: [m.id] }); continue; }
+    g.count++; g.ids.push(m.id);
     if(new Date(m.sent_at || m.created_at) > new Date(g.latest.sent_at || g.latest.created_at)) g.latest = m;
   }
   return [...map.values()].sort((a, b) =>
@@ -3532,16 +3544,56 @@ function renderInbox(){
     const head = decodeEntities(splitQuoted(m.body || '').head).replace(/\s+/g, ' ').trim();
     const from = (m.from_addr || '').replace(/<[^>]*>/g, '').trim();
     const subj = decodeEntities(m.subject || '').replace(/^((re|fwd?|aw|enc)\s*:\s*)+/i, '') || '(no subject)';
-    return `<div class="inbox-row ${unread ? 'unread' : ''}" data-cid="${m.company_id || ''}"><span class="inbox-dot"></span><span class="inbox-co">${escHtml(co?.company || from || '?')}</span><span class="inbox-main"><b>${escHtml(subj)}</b>${t.count > 1 ? `<span class="inbox-n">${t.count}</span>` : ''} &nbsp;${escHtml(head.slice(0, 130))}</span>${open ? '<span class="inbox-todo">reply</span>' : ''}<span class="inbox-when">${fmtDateTime(m.sent_at || m.created_at)}</span></div>`;
+    const label = co?.company || from || '?';
+    const arch = !!m.archived_at;
+    const btn = INBOX_HAS_ARCHIVE
+      ? `<button type="button" class="inbox-arch" data-arch="${t.key}" data-undo="${arch ? '1' : ''}" title="${arch ? 'Put back in the inbox' : 'Done — no reply needed'}">${arch ? '↺' : '✓'}</button>`
+      : '';
+    return `<div class="inbox-row ${unread ? 'unread' : ''} ${arch ? 'archived' : ''}" data-cid="${m.company_id || ''}"><span class="inbox-dot"></span><span class="inbox-co" data-co="${escAttr(label)}" title="Show only this contact">${escHtml(label)}</span><span class="inbox-main"><b>${escHtml(subj)}</b>${t.count > 1 ? `<span class="inbox-n">${t.count}</span>` : ''} &nbsp;${escHtml(head.slice(0, 130))}</span>${open ? '<span class="inbox-todo">reply</span>' : ''}<span class="inbox-when">${fmtDateTime(m.sent_at || m.created_at)}</span>${btn}</div>`;
   }).join('');
+  INBOX_THREAD_MAP = Object.fromEntries(threads.map(t => [t.key, t.ids]));
   list.querySelectorAll('.inbox-row[data-cid]').forEach(row => {
     row.addEventListener('click', () => { if(row.dataset.cid) openContact(row.dataset.cid); });
+  });
+  list.querySelectorAll('.inbox-co[data-co]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation();
+      const box = document.getElementById('inboxSearch');
+      if(box){ box.value = el.dataset.co; renderInbox(); }
+    });
+  });
+  list.querySelectorAll('[data-arch]').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      archiveThread(btn.dataset.arch, !btn.dataset.undo);
+    });
   });
   const searchEl = document.getElementById('inboxSearch');
   if(searchEl && !searchEl.dataset.bound){
     searchEl.dataset.bound = '1';
     searchEl.addEventListener('input', () => renderInbox());
   }
+}
+
+// ✓ on a row marks the whole conversation done: it leaves "Needs reply"
+// without anyone having to answer it, which is what booking confirmations
+// and pre-travel notices need. Reversible from "All received" (↺), and the
+// mail itself is untouched — only archived_at moves.
+async function archiveThread(key, archive){
+  const ids = INBOX_THREAD_MAP[key];
+  if(!ids || !ids.length) return;
+  const stamp = archive ? new Date().toISOString() : null;
+  INBOX_MSGS.forEach(m => { if(ids.includes(m.id)) m.archived_at = stamp; });
+  updateNavInboxCount();
+  renderInbox();
+  const { error } = await getClient().from('email_messages')
+    .update({ archived_at: stamp }).in('id', ids);
+  if(error){
+    toast('Archive failed: ' + error.message);
+    loadInbox().then(renderInbox);   // resync rather than lie about the state
+    return;
+  }
+  toast(archive ? `Archived · ${ids.length} message${ids.length === 1 ? '' : 's'}` : 'Back in the inbox');
 }
 
 // Viewing a conversation clears its unread state (Gmail behaviour).
