@@ -529,6 +529,7 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
 .inbox-row.unread .inbox-main b{font-weight:800}
 .inbox-when{flex:0 0 auto;font-size:11px;color:var(--muted);font-family:'Outfit',sans-serif}
 .inbox-row.unread .inbox-when{color:var(--ocean);font-weight:700}
+.inbox-n{display:inline-block;margin-left:6px;font-size:10.5px;font-weight:700;color:var(--muted);background:#eef3f8;border:1px solid var(--border);border-radius:999px;padding:0 6px;font-family:'Outfit',sans-serif;vertical-align:1px}
 .inbox-todo{flex:0 0 auto;font-size:10px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:#b45309;background:#fef3c7;border:1px solid #fcd34d;border-radius:999px;padding:2px 8px;font-family:'Outfit',sans-serif}
 @media (max-width:700px){ .inbox-co{flex-basis:104px} }
 
@@ -764,9 +765,11 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
         <button class="action-btn ghost" id="inboxMarkAllBtn">Mark all as read</button>
       </div>
     </div>
-    <div style="display:flex;gap:6px;margin-bottom:12px">
+    <div style="display:flex;gap:6px;margin-bottom:12px;align-items:center;flex-wrap:wrap">
       <button type="button" class="act-view-chip" data-inbox-filter="todo">Needs reply</button>
       <button type="button" class="act-view-chip" data-inbox-filter="all">All received</button>
+      <input type="search" id="inboxSearch" placeholder="Search sender, subject or text…" style="margin-left:auto;flex:0 1 300px;border:1px solid var(--border);border-radius:8px;padding:7px 10px;font:inherit;font-size:13px">
+      <span id="inboxCount" style="font-family:'DM Mono',monospace;font-size:12px;color:var(--muted)"></span>
     </div>
     <div id="inboxHint" class="editor-hint" style="display:none;margin-bottom:10px"></div>
     <div id="inboxList"></div>
@@ -3456,6 +3459,35 @@ function updateNavInboxCount(){
   });
 }
 
+// Gmail groups a back-and-forth into one conversation; so does this. Rows
+// are threads, not messages: one line per thread_id showing its newest
+// message. Older rows predate thread_id, so those fall back to the
+// subject (Re:/Fwd: stripped) scoped to the same contact — two different
+// enquiries from one client stay apart, which is the point.
+function inboxThreads(){
+  const map = new Map();
+  for(const m of INBOX_MSGS){
+    const key = m.thread_id ||
+      's:' + (m.subject || '').replace(/^((re|fwd?|aw|enc)\s*:\s*)+/i, '').trim().toLowerCase() +
+      '|' + (m.company_id || m.from_addr || '');
+    const g = map.get(key);
+    if(!g){ map.set(key, { key, latest: m, count: 1 }); continue; }
+    g.count++;
+    if(new Date(m.sent_at || m.created_at) > new Date(g.latest.sent_at || g.latest.created_at)) g.latest = m;
+  }
+  return [...map.values()].sort((a, b) =>
+    new Date(b.latest.sent_at || b.latest.created_at) - new Date(a.latest.sent_at || a.latest.created_at));
+}
+
+// Inbound bodies arrive with HTML entities already in them ("I&#39;m"),
+// and escaping them again renders the entity literally. Decode via a
+// textarea, whose content model is raw text, so no markup can execute.
+function decodeEntities(str){
+  const t = document.createElement('textarea');
+  t.innerHTML = String(str || '');
+  return t.value;
+}
+
 function renderInbox(){
   const list = document.getElementById('inboxList');
   if(!list) return;
@@ -3472,25 +3504,44 @@ function renderInbox(){
       renderInbox();
     };
   });
-  const rows = INBOX_FILTER === 'todo' ? INBOX_MSGS.filter(needsReply) : INBOX_MSGS;
-  if(!rows.length){
+  const search = (document.getElementById('inboxSearch')?.value || '').trim().toLowerCase();
+  let threads = inboxThreads();
+  if(INBOX_FILTER === 'todo') threads = threads.filter(t => needsReply(t.latest));
+  if(search){
+    threads = threads.filter(t => {
+      const co = CONTACTS.find(x => x.id === t.latest.company_id);
+      return `${co?.company || ''} ${t.latest.from_addr || ''} ${t.latest.subject || ''} ${t.latest.body || ''}`
+        .toLowerCase().includes(search);
+    });
+  }
+  const countEl = document.getElementById('inboxCount');
+  if(countEl) countEl.textContent = threads.length ? `${threads.length} conversation${threads.length === 1 ? '' : 's'}` : '';
+  if(!threads.length){
     list.innerHTML = `<div class="editor-hint" style="padding:34px;text-align:center">${
-      INBOX_FILTER === 'todo'
-        ? (INBOX_MSGS.length ? 'Nothing waiting on you. Every reply has been answered.' : 'No replies yet. As soon as a contact answers, it lands here.')
-        : 'No replies yet. As soon as a contact answers, it lands here.'}</div>`;
+      search ? 'Nothing matches that search.'
+        : INBOX_FILTER === 'todo'
+          ? (INBOX_MSGS.length ? 'Nothing waiting on you. Every reply has been answered.' : 'No replies yet. As soon as a contact answers, it lands here.')
+          : 'No replies yet. As soon as a contact answers, it lands here.'}</div>`;
     return;
   }
-  list.innerHTML = rows.map(m => {
+  list.innerHTML = threads.map(t => {
+    const m = t.latest;
     const co = CONTACTS.find(x => x.id === m.company_id);
     const open = needsReply(m);
     const unread = INBOX_HAS_READ_COL && !m.read_at;
-    const head = splitQuoted(m.body || '').head.replace(/\s+/g, ' ').trim();
+    const head = decodeEntities(splitQuoted(m.body || '').head).replace(/\s+/g, ' ').trim();
     const from = (m.from_addr || '').replace(/<[^>]*>/g, '').trim();
-    return `<div class="inbox-row ${unread ? 'unread' : ''}" data-cid="${m.company_id || ''}"><span class="inbox-dot"></span><span class="inbox-co">${escHtml(co?.company || from || '?')}</span><span class="inbox-main"><b>${escHtml(m.subject || '(no subject)')}</b> &nbsp;${escHtml(head.slice(0, 130))}</span>${open ? '<span class="inbox-todo">reply</span>' : ''}<span class="inbox-when">${fmtDateTime(m.sent_at || m.created_at)}</span></div>`;
+    const subj = decodeEntities(m.subject || '').replace(/^((re|fwd?|aw|enc)\s*:\s*)+/i, '') || '(no subject)';
+    return `<div class="inbox-row ${unread ? 'unread' : ''}" data-cid="${m.company_id || ''}"><span class="inbox-dot"></span><span class="inbox-co">${escHtml(co?.company || from || '?')}</span><span class="inbox-main"><b>${escHtml(subj)}</b>${t.count > 1 ? `<span class="inbox-n">${t.count}</span>` : ''} &nbsp;${escHtml(head.slice(0, 130))}</span>${open ? '<span class="inbox-todo">reply</span>' : ''}<span class="inbox-when">${fmtDateTime(m.sent_at || m.created_at)}</span></div>`;
   }).join('');
   list.querySelectorAll('.inbox-row[data-cid]').forEach(row => {
     row.addEventListener('click', () => { if(row.dataset.cid) openContact(row.dataset.cid); });
   });
+  const searchEl = document.getElementById('inboxSearch');
+  if(searchEl && !searchEl.dataset.bound){
+    searchEl.dataset.bound = '1';
+    searchEl.addEventListener('input', () => renderInbox());
+  }
 }
 
 // Viewing a conversation clears its unread state (Gmail behaviour).
