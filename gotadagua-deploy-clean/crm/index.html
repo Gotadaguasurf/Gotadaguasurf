@@ -529,6 +529,7 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
 .inbox-row.unread .inbox-main b{font-weight:800}
 .inbox-when{flex:0 0 auto;font-size:11px;color:var(--muted);font-family:'Outfit',sans-serif}
 .inbox-row.unread .inbox-when{color:var(--ocean);font-weight:700}
+.inbox-todo{flex:0 0 auto;font-size:10px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:#b45309;background:#fef3c7;border:1px solid #fcd34d;border-radius:999px;padding:2px 8px;font-family:'Outfit',sans-serif}
 @media (max-width:700px){ .inbox-co{flex-basis:104px} }
 
 /* ── MEETINGS (panel section + dashboard card) ───────────────────── */
@@ -620,6 +621,7 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
   </div>
   <div class="header-center">
     <button class="nav-tab active" data-tab="dashboard">Dashboard</button>
+    <button class="nav-tab" data-tab="inbox">Inbox <span id="navInboxCount" style="margin-left:6px;font-size:10px;background:#dc2626;color:#fff;padding:2px 7px;border-radius:999px;font-weight:700;display:none">0</span></button>
     <button class="nav-tab" data-tab="contacts">Contacts</button>
     <button class="nav-tab" data-tab="tasks">Tasks <span id="navTasksCount" style="margin-left:6px;font-size:10px;background:#dc2626;color:#fff;padding:2px 7px;border-radius:999px;font-weight:700;display:none">0</span></button>
     <button class="nav-tab" data-tab="pipeline">Pipeline</button>
@@ -645,6 +647,7 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
   <button class="nav-mob-close" onclick="toggleMobileNav()" aria-label="Close menu">×</button>
   <div class="nav-mob-lbl">CRM</div>
   <button class="ntab-m active" data-tab="dashboard" onclick="mobGoTab('dashboard')">Dashboard</button>
+  <button class="ntab-m" data-tab="inbox" onclick="mobGoTab('inbox')">Inbox <span id="navInboxCountMob" style="font-size:10px;background:#dc2626;color:#fff;padding:2px 7px;border-radius:999px;font-weight:700;display:none">0</span></button>
   <button class="ntab-m" data-tab="contacts" onclick="mobGoTab('contacts')">Contacts</button>
   <button class="ntab-m" data-tab="tasks" onclick="mobGoTab('tasks')">Tasks <span id="navTasksCountMob" style="font-size:10px;background:#dc2626;color:#fff;padding:2px 7px;border-radius:999px;font-weight:700;display:none">0</span></button>
   <button class="ntab-m" data-tab="pipeline" onclick="mobGoTab('pipeline')">Pipeline</button>
@@ -760,6 +763,10 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
         <button class="action-btn ghost" id="inboxSyncBtn">Check now</button>
         <button class="action-btn ghost" id="inboxMarkAllBtn">Mark all as read</button>
       </div>
+    </div>
+    <div style="display:flex;gap:6px;margin-bottom:12px">
+      <button type="button" class="act-view-chip" data-inbox-filter="todo">Needs reply</button>
+      <button type="button" class="act-view-chip" data-inbox-filter="all">All received</button>
     </div>
     <div id="inboxHint" class="editor-hint" style="display:none;margin-bottom:10px"></div>
     <div id="inboxList"></div>
@@ -3070,9 +3077,9 @@ function subscribeRealtime(){
       if(companyId && CURRENT_CONTACT?.id === companyId){
         scheduleRtPanelRefresh(companyId);
       }
-      if(payload.new?.direction === 'inbound'){
-        loadInbox().then(() => { if(CURRENT_TAB === 'inbox') renderInbox(); });
-      }
+      // Refresh on BOTH directions: an inbound row adds work to the inbox,
+      // an outbound one clears the "needs reply" flag on its thread.
+      loadInbox().then(() => { if(CURRENT_TAB === 'inbox') renderInbox(); });
       scheduleRtRender();
     })
     .on('postgres_changes', { event: '*', schema: 'public', table: 'meetings' }, ()=>{
@@ -3394,20 +3401,34 @@ async function saveMeetingFromForm(companyId){
 // the crm-inbox-read-receipts.sql migration runs that column doesn't
 // exist — the tab still lists every received email, just without
 // unread tracking, and shows a hint instead of erroring.
-let INBOX_MSGS = [];
+let INBOX_MSGS = [];      // inbound messages
+let INBOX_OUT  = [];      // outbound, thread_id + timestamp only — used to
+                          // tell which inbound messages are still unanswered
 let INBOX_HAS_READ_COL = true;
+let INBOX_FILTER = localStorage.getItem('crmInboxFilter') || 'todo';
+
+// An inbound message still needs a reply when nothing outbound went out on
+// its thread afterwards. Thread-based rather than contact-based so a second
+// question on an old thread re-flags the contact. No thread id (older rows)
+// counts as needing a reply — better to over-surface than to lose one.
+function needsReply(m){
+  if(!m.thread_id) return true;
+  const when = new Date(m.sent_at || m.created_at).getTime();
+  return !INBOX_OUT.some(o => o.thread_id === m.thread_id &&
+    new Date(o.sent_at || o.created_at).getTime() > when);
+}
 
 async function loadInbox(){
   const c = getClient();
   let { data, error } = await c.from('email_messages')
-    .select('id,company_id,from_addr,subject,body,sent_at,created_at,read_at')
+    .select('id,company_id,from_addr,subject,body,sent_at,created_at,thread_id,read_at')
     .eq('direction','inbound')
     .order('sent_at', { ascending:false })
     .limit(200);
   if(error && /read_at/i.test(error.message || '')){
     INBOX_HAS_READ_COL = false;
     const r2 = await c.from('email_messages')
-      .select('id,company_id,from_addr,subject,body,sent_at,created_at')
+      .select('id,company_id,from_addr,subject,body,sent_at,created_at,thread_id')
       .eq('direction','inbound')
       .order('sent_at', { ascending:false })
       .limit(200);
@@ -3415,6 +3436,11 @@ async function loadInbox(){
   } else if(!error){ INBOX_HAS_READ_COL = true; }
   if(error){ console.warn('loadInbox failed', error); INBOX_MSGS = []; }
   else INBOX_MSGS = data || [];
+  const out = await c.from('email_messages')
+    .select('thread_id,sent_at,created_at')
+    .eq('direction','outbound').not('thread_id','is',null)
+    .order('sent_at', { ascending:false }).limit(1000);
+  INBOX_OUT = out.data || [];
   updateNavInboxCount();
 }
 
@@ -3423,7 +3449,7 @@ function inboxUnreadCount(){
 }
 
 function updateNavInboxCount(){
-  const n = inboxUnreadCount();
+  const n = INBOX_MSGS.filter(needsReply).length;
   ['navInboxCount','navInboxCountMob'].forEach(id => {
     const el = document.getElementById(id);
     if(el){ el.textContent = n; el.style.display = n > 0 ? '' : 'none'; }
@@ -3438,16 +3464,29 @@ function renderInbox(){
     hint.style.display = INBOX_HAS_READ_COL ? 'none' : '';
     if(!INBOX_HAS_READ_COL) hint.textContent = 'Unread tracking needs a one-time database update (supabase/crm-inbox-read-receipts.sql in the Supabase SQL Editor). Showing every received email meanwhile.';
   }
-  if(!INBOX_MSGS.length){
-    list.innerHTML = '<div class="editor-hint" style="padding:34px;text-align:center">No replies yet — as soon as a contact answers, it lands here.</div>';
+  document.querySelectorAll('[data-inbox-filter]').forEach(b => {
+    b.classList.toggle('active', b.dataset.inboxFilter === INBOX_FILTER);
+    b.onclick = () => {
+      INBOX_FILTER = b.dataset.inboxFilter;
+      localStorage.setItem('crmInboxFilter', INBOX_FILTER);
+      renderInbox();
+    };
+  });
+  const rows = INBOX_FILTER === 'todo' ? INBOX_MSGS.filter(needsReply) : INBOX_MSGS;
+  if(!rows.length){
+    list.innerHTML = `<div class="editor-hint" style="padding:34px;text-align:center">${
+      INBOX_FILTER === 'todo'
+        ? (INBOX_MSGS.length ? 'Nothing waiting on you. Every reply has been answered.' : 'No replies yet. As soon as a contact answers, it lands here.')
+        : 'No replies yet. As soon as a contact answers, it lands here.'}</div>`;
     return;
   }
-  list.innerHTML = INBOX_MSGS.map(m => {
+  list.innerHTML = rows.map(m => {
     const co = CONTACTS.find(x => x.id === m.company_id);
+    const open = needsReply(m);
     const unread = INBOX_HAS_READ_COL && !m.read_at;
     const head = splitQuoted(m.body || '').head.replace(/\s+/g, ' ').trim();
     const from = (m.from_addr || '').replace(/<[^>]*>/g, '').trim();
-    return `<div class="inbox-row ${unread ? 'unread' : ''}" data-cid="${m.company_id || ''}"><span class="inbox-dot"></span><span class="inbox-co">${escHtml(co?.company || from || '?')}</span><span class="inbox-main"><b>${escHtml(m.subject || '(no subject)')}</b> &nbsp;${escHtml(head.slice(0, 130))}</span><span class="inbox-when">${fmtDateTime(m.sent_at || m.created_at)}</span></div>`;
+    return `<div class="inbox-row ${unread ? 'unread' : ''}" data-cid="${m.company_id || ''}"><span class="inbox-dot"></span><span class="inbox-co">${escHtml(co?.company || from || '?')}</span><span class="inbox-main"><b>${escHtml(m.subject || '(no subject)')}</b> &nbsp;${escHtml(head.slice(0, 130))}</span>${open ? '<span class="inbox-todo">reply</span>' : ''}<span class="inbox-when">${fmtDateTime(m.sent_at || m.created_at)}</span></div>`;
   }).join('');
   list.querySelectorAll('.inbox-row[data-cid]').forEach(row => {
     row.addEventListener('click', () => { if(row.dataset.cid) openContact(row.dataset.cid); });
