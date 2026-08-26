@@ -3634,7 +3634,7 @@ document.querySelectorAll('.nav-tab').forEach(t=>{
   t.addEventListener('click', ()=>{
     CURRENT_TAB = t.dataset.tab;
     document.querySelectorAll('.nav-tab').forEach(x=>x.classList.toggle('active', x===t));
-    ['dashboard','contacts','tasks','pipeline','analytics','templates','sequences'].forEach(p=>{
+    ['dashboard','inbox','contacts','tasks','pipeline','analytics','templates','sequences'].forEach(p=>{
       document.getElementById('page-'+p).classList.toggle('hidden', p!==CURRENT_TAB);
     });
     if(CURRENT_TAB==='dashboard') renderDashboard();

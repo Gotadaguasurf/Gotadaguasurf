@@ -295,3 +295,28 @@ test('crm campaign plumbing exists (queue, render, suppression-aware batch)', as
   expect(fns.partnerPerf).toBe('function');
   expect(fns.instantMax).toBe(5);
 });
+
+test('crm: every tab panel has a nav button and actually opens', async ({ page }) => {
+  // Three separate bugs shipped because a panel, its nav button and the
+  // show/hide array drifted apart: the Inbox tab existed with no button,
+  // then had a button that revealed nothing. Clicking each tab for real is
+  // the only check that catches all three at once.
+  await fakeOwnerSession(page);
+  await page.goto('/crm/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => document.querySelectorAll('.nav-tab').length > 0);
+
+  const panels = await page.evaluate(() =>
+    [...document.querySelectorAll('[id^="page-"]')].map(el => el.id.replace('page-', '')));
+  const tabs = await page.evaluate(() =>
+    [...document.querySelectorAll('.nav-tab[data-tab]')].map(el => el.dataset.tab));
+
+  // No orphan panels (unreachable) and no orphan buttons (dead click).
+  expect([...panels].sort()).toEqual([...tabs].sort());
+
+  for (const tab of tabs) {
+    await page.click(`.nav-tab[data-tab="${tab}"]`);
+    const hidden = await page.evaluate(
+      t => document.getElementById('page-' + t).classList.contains('hidden'), tab);
+    expect(hidden, `panel page-${tab} stayed hidden after clicking its tab`).toBe(false);
+  }
+});
