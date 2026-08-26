@@ -6184,7 +6184,7 @@ function renderTemplateEditor(){
     <div class="editor-field">
       <label style="display:flex;justify-content:space-between;align-items:center"><span>Live preview</span><span style="font-size:11px;color:var(--muted);font-weight:600;text-transform:none;letter-spacing:0">Sample: ${escHtml(sample.company || '')}</span></label>
       <div id="tplPreviewSubject" style="font-weight:700;color:var(--ink);font-size:13px;padding:7px 10px;background:#f6f9fc;border:1px solid var(--border);border-radius:6px;margin-bottom:6px"></div>
-      <div id="tplPreviewBody" style="white-space:pre-wrap;color:var(--ink);font-size:12.5px;padding:10px;background:#fafdff;border:1px solid var(--border);border-radius:8px;max-height:240px;overflow:auto"></div>
+      <div id="tplPreviewBody" style="color:var(--ink);font-size:12.5px;padding:10px;background:#fff;border:1px solid var(--border);border-radius:8px;max-height:320px;overflow:auto"></div>
     </div>
     <div style="display:flex;gap:10px;margin-top:18px">
       <button class="action-btn primary" id="tplSave" style="grid-column:auto">Save changes</button>
@@ -6199,7 +6199,11 @@ function renderTemplateEditor(){
     const subj = document.getElementById('tplSubject').value;
     const body = document.getElementById('tplBody').value;
     document.getElementById('tplPreviewSubject').textContent = renderTemplate(subj, sample);
-    document.getElementById('tplPreviewBody').textContent    = renderTemplate(body, sample);
+    // Show the HTML alternative — byte for byte what gmailSendOne sends — so
+    // the preview carries the real footer (logo, photo, social icons) rather
+    // than the plain-text signature only text-only clients ever see.
+    document.getElementById('tplPreviewBody').innerHTML =
+      buildEmailHtml(renderTemplate(body, sample), houseSender() || CURRENT_TEAM_USER);
   };
   refreshPreview();
   document.getElementById('tplSubject').addEventListener('input', refreshPreview);
