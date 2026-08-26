@@ -2782,6 +2782,7 @@ startGmailAutoPoll();
 if(gmailIsConnected()) scheduleGmailRefresh();
 let SAVED_VIEWS = [];
 let CURRENT_CONTACT = null;
+let TEMPLATE_DIRTY = false;   // unsaved edits in the template editor
 let CURRENT_TEMPLATE = null;
 let CURRENT_TAB = 'dashboard';
 let CHARTS = {}; // Chart.js instances, destroyed on re-render to free memory
@@ -6299,6 +6300,9 @@ function renderTemplateList(){
 }
 
 function selectTemplate(id){
+  if(TEMPLATE_DIRTY && CURRENT_TEMPLATE && CURRENT_TEMPLATE.id !== id &&
+     !confirm('This template has unsaved changes. Discard them?')) return;
+  TEMPLATE_DIRTY = false;
   CURRENT_TEMPLATE = TEMPLATES.find(t=>t.id===id);
   if(!CURRENT_TEMPLATE) return;
   document.querySelectorAll('.template-item').forEach(el=>{
@@ -6350,11 +6354,29 @@ function renderTemplateEditor(){
     document.getElementById('tplPreviewBody').innerHTML =
       buildEmailHtml(renderTemplate(body, sample), houseSender() || CURRENT_TEAM_USER);
   };
+  const langEl = document.getElementById('tplLang');
+  langEl.value = (t.language || 'en').trim().toLowerCase() === 'pt' ? 'pt' : 'en';
+
   refreshPreview();
+  // Edits live in the form until Save, and re-rendering the editor rebuilds
+  // it from CURRENT_TEMPLATE — so switching template mid-edit used to throw
+  // the change away without a word. Track it and ask instead.
+  TEMPLATE_DIRTY = false;
+  ['tplName','tplLang','tplSubject','tplBody'].forEach(id => {
+    const el = document.getElementById(id);
+    el.addEventListener('input',  () => { TEMPLATE_DIRTY = true; markTemplateDirty(); });
+    el.addEventListener('change', () => { TEMPLATE_DIRTY = true; markTemplateDirty(); });
+  });
   document.getElementById('tplSubject').addEventListener('input', refreshPreview);
   document.getElementById('tplBody').addEventListener('input', refreshPreview);
   document.getElementById('tplSave').addEventListener('click', saveTemplate);
   document.getElementById('tplDelete').addEventListener('click', deleteTemplate);
+}
+
+// Unsaved edits need to be visible, or the Save button looks optional.
+function markTemplateDirty(){
+  const btn = document.getElementById('tplSave');
+  if(btn && TEMPLATE_DIRTY){ btn.textContent = 'Save changes •'; btn.style.background = 'var(--ocean)'; }
 }
 
 async function saveTemplate(){
@@ -6369,7 +6391,8 @@ async function saveTemplate(){
   const { error } = await c.from('outreach_templates').update(patch).eq('id', t.id);
   if(error){ toast('Save failed: '+error.message); return; }
   Object.assign(t, patch);
-  toast('Template saved');
+  TEMPLATE_DIRTY = false;
+  toast(`Template saved · ${patch.language.toUpperCase()}`);
   renderTemplateList();
 }
 
