@@ -3464,7 +3464,9 @@ function inboxUnreadCount(){
 }
 
 function updateNavInboxCount(){
-  const n = INBOX_MSGS.filter(needsReply).length;
+  // Count conversations, not messages: the badge has to match the number of
+  // rows the tab shows, or it reads as a bug ("8" over four lines).
+  const n = inboxThreads().filter(t => needsReply(t.latest)).length;
   ['navInboxCount','navInboxCountMob'].forEach(id => {
     const el = document.getElementById(id);
     if(el){ el.textContent = n; el.style.display = n > 0 ? '' : 'none'; }
