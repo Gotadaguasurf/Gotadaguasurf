@@ -5702,8 +5702,9 @@ function conversationHtml(activity){
       return `<div class="convo-sep">→ ${escHtml(STATUS_LABELS[a.new_value] || a.new_value || '—')} · ${fmtDateTime(a.created_at)}</div>`;
     }
     const inb = a.action === 'email_inbound';
-    const { head, quoted } = splitQuoted(a.meta?.body || a.meta?.snippet || '');
-    const subj = a.meta?.subject || '';
+    const raw = splitQuoted(decodeEntities(a.meta?.body || a.meta?.snippet || ''));
+    const head = raw.head, quoted = raw.quoted;
+    const subj = decodeEntities(a.meta?.subject || '');
     const baseSubj = subj.replace(/^(re|fwd?):\s*/i, '').trim().toLowerCase();
     const showSubj = subj && baseSubj !== lastSubject;
     if(subj) lastSubject = baseSubj;

@@ -147,7 +147,7 @@ function extractBody(payload: any): string {
 // against the CRM tables. More metadata fetches but bounded by inbox
 // volume, not contact count.
 function buildInboxQuery(days = 7): string {
-  return `in:inbox newer_than:${days}d`
+  return `(in:inbox OR in:sent) newer_than:${days}d`
 }
 
 // ── Suppression detection helpers ────────────────────────────────────────
@@ -249,7 +249,13 @@ Deno.serve(async (req) => {
       if (!FREE_EMAIL_DOMAINS.has(d)) ownDomains.add(d)
     })
 
-    const query = buildInboxQuery(7)
+    // Default window is a week — the cron runs often, so that is plenty.
+    // ?days=N widens it for a one-off backfill, e.g. after teaching the
+    // sync to import our own sent mail, when months of replies typed in
+    // Gmail are missing from the conversation panels. Capped at a year;
+    // the id list is capped at 500 by the Gmail call below either way.
+    const days = Math.min(365, Math.max(1, Number(url.searchParams.get('days')) || 7))
+    const query = buildInboxQuery(days)
     dbg.contactsCount = contacts?.length || 0
     dbg.peopleCount = people?.length || 0
     dbg.query = query
@@ -307,6 +313,26 @@ Deno.serve(async (req) => {
     // after the upsert (they need their own DB lookups).
     const bounceCandidates: { threadId: string; subject: string }[] = []
     const unsubCandidates: { email: string; companyId: string; keyword: string }[] = []
+    // Resolve an address to a contact: exact person, then exact company,
+    // then company domain (never for free providers, where the domain says
+    // nothing about who someone works for).
+    const resolveContact = (email: string) => {
+      const domain = email.slice(email.lastIndexOf('@') + 1)
+      let companyId: string | null = null
+      let contactId: string | null = null
+      const person = people?.find((p: any) => (p.email || '').toLowerCase() === email)
+      if (person) { companyId = person.company_id; contactId = person.id }
+      if (!companyId) {
+        const company = contacts?.find((c: any) => (c.email || '').toLowerCase() === email)
+        if (company) companyId = company.id
+      }
+      if (!companyId && !FREE_EMAIL_DOMAINS.has(domain)) {
+        const dc = contacts?.find((c: any) => (c.email || '').toLowerCase().endsWith('@' + domain))
+        if (dc) companyId = dc.id
+      }
+      return { companyId, contactId, domain }
+    }
+
     detailResps.forEach((msg: any, i: number) => {
       if (!msg) { unmatched.push({ from: '(metadata fetch failed)', reason: 'no msg' }); return }
       const headers: Record<string, string> = Object.fromEntries(
@@ -325,44 +351,44 @@ Deno.serve(async (req) => {
       }
       const at = fromEmail.lastIndexOf('@')
       const domain = fromEmail.slice(at + 1)
-      if (ownDomains.has(domain)) { unmatched.push({ from: fromEmail, reason: 'own-domain skipped' }); return }
-      // Also skip when the From exactly matches a team_user's personal
-      // email (e.g. a team member's gmail). gmail.com itself stays
-      // matchable for actual clients.
-      if (ownEmails.has(fromEmail)) { unmatched.push({ from: fromEmail, reason: 'own-email skipped' }); return }
-      let companyId: string | null = null
-      let contactId: string | null = null
-      const person = people?.find((p: any) => (p.email || '').toLowerCase() === fromEmail)
-      if (person) { companyId = person.company_id; contactId = person.id }
+      // Mail we sent ourselves: either Gmail labelled it SENT, or it comes
+      // from one of our own addresses. Match it on the RECIPIENT, and file
+      // it as outbound so the conversation panel shows both sides and a
+      // thread answered from Gmail stops asking for a reply.
+      const isOwn = (msg.labelIds || []).includes('SENT') ||
+        ownDomains.has(domain) || ownEmails.has(fromEmail)
+      const toEmail = isOwn ? parseEmail(headers.to) : ''
+      if (isOwn && !toEmail) { unmatched.push({ from: fromEmail, reason: 'sent, no recipient parsed' }); return }
+      const subject = isOwn ? toEmail : fromEmail
+      const { companyId, contactId } = resolveContact(subject)
       if (!companyId) {
-        const company = contacts?.find((c: any) => (c.email || '').toLowerCase() === fromEmail)
-        if (company) companyId = company.id
+        unmatched.push({ from: subject, reason: isOwn ? 'sent, no contact matched' : 'no contact matched' })
+        return
       }
-      if (!companyId && !FREE_EMAIL_DOMAINS.has(domain)) {
-        const dc = contacts?.find((c: any) => (c.email || '').toLowerCase().endsWith('@' + domain))
-        if (dc) companyId = dc.id
-      }
-      if (!companyId) { unmatched.push({ from: fromEmail, reason: 'no contact matched' }); return }
       const fullBody = extractBody(msg.payload) || msg.snippet || null
       // Opt-out intent in the typed part of the reply → suppress after
       // the upsert. The message row still lands in email_messages so the
       // conversation panel shows WHY the contact went excluded.
-      const unsub = isUnsubscribe(fullBody || '')
-      if (unsub.hit) unsubCandidates.push({ email: fromEmail, companyId, keyword: unsub.keyword || '' })
+      // Opt-out only ever applies to what THEY write, never to our own copy.
+      if (!isOwn) {
+        const unsub = isUnsubscribe(fullBody || '')
+        if (unsub.hit) unsubCandidates.push({ email: fromEmail, companyId, keyword: unsub.keyword || '' })
+      }
       inserts.push({
         company_id:      companyId,
         contact_id:      contactId,
-        direction:       'inbound',
+        direction:       isOwn ? 'outbound' : 'inbound',
         from_addr:       headers.from || null,
         to_addr:         headers.to || null,
         subject:         headers.subject || null,
         body:            fullBody,
         thread_id:       msg.threadId || null,
         provider_msg_id: newIds[i],
-        status:          'received',
+        status:          isOwn ? 'sent' : 'received',
         sent_at:         headers.date ? new Date(headers.date).toISOString() : null,
       })
-      touchedCompanies.add(companyId)
+      // Only a real reply from them advances the pipeline; us sending does not.
+      if (!isOwn) touchedCompanies.add(companyId)
     })
 
     // 5b. Bounce suppression — resolve WHO we failed to reach via the
@@ -513,7 +539,8 @@ Deno.serve(async (req) => {
     return json({
       ok: true,
       fetched: ids.length,
-      newInbound: inserts.length,
+      newInbound: inserts.filter(r => r.direction === 'inbound').length,
+      newOutbound: inserts.filter(r => r.direction === 'outbound').length,
       matched: touchedCompanies.size,
       advanced,
       sequencesStopped,
