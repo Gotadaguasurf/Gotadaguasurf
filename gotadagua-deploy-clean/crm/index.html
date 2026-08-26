@@ -5811,6 +5811,14 @@ function templateIdForSequenceTask(t){
 // in the picker — used by the "Send →" buttons on sequence task
 // rows so the user doesn't have to re-pick what the sequence step
 // already said.
+// The mailbox's public face: the active team member whose role is
+// "Sales Manager". Every outbound email carries this person's name and
+// signature regardless of who is logged in, so previews, Compose and
+// the actual send can never disagree. Null only if that row is gone.
+function houseSender(){
+  return TEAM_USERS.find(u => u.active !== false && /sales\s*manager/i.test(u.role || '')) || null;
+}
+
 // Every email goes out under the sales manager's name, no matter who
 // is logged in — the whole team can read and reply, but the contact
 // always talks to one person. The picker therefore offers ONLY the
@@ -5820,7 +5828,7 @@ function templateIdForSequenceTask(t){
 function populateSendAsPicker(selectEl, preferredId){
   if(!selectEl) return;
   const active = TEAM_USERS.filter(u => u.active !== false);
-  const main = active.find(u => /sales\s*manager/i.test(u.role || ''));
+  const main = houseSender();
   const list = main ? [main] : active;
   selectEl.innerHTML = (list.length > 1 ? '<option value="">— pick sender —</option>' : '') +
     list.map(u => `<option value="${u.id}">${escHtml(u.full_name || u.email || '?')}</option>`).join('');
@@ -5940,10 +5948,11 @@ function renderTemplate(text, c, senderUser){
   const firstName = firstNameForCompany(c.id);
   const greeting = firstName || `the ${c.company || 'team'} team`;
   // Sender-side vars — resolve to the PICKED sender (Send-as) when one is
-  // supplied, otherwise to the logged-in user. This lets Miguel render a
-  // preview "as Ricardo" with Ricardo's name + signature without changing
-  // login.
-  const sender = senderUser || CURRENT_TEAM_USER;
+  // supplied, else to the house sender (the sales manager, whose name every
+  // outbound email carries), and only then to the logged-in user. Without
+  // the middle step the Templates preview rendered Miguel's name while the
+  // real send used João's.
+  const sender = senderUser || houseSender() || CURRENT_TEAM_USER;
   const myFull = sender?.full_name || '';
   const myFirst = myFull ? myFull.trim().split(/\s+/)[0] : '';
   const myEmail = sender?.email || '';
