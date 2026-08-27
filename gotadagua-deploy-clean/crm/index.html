@@ -2921,7 +2921,7 @@ if(document.readyState === 'loading'){
 // preset filters, and the Kanban columns (next session).
 const STATUS_LABELS = {
   not_started:    'Not started',
-  first_email:    '1st email',
+  first_email:    'First touch',   // email or Instagram DM — the stage is the same
   follow_up:      'Follow-up',
   in_conversation:'In conversation',
   meeting:        'Meeting',
@@ -5272,6 +5272,7 @@ async function openContact(id){
     } catch(e){ toast('Could not copy: ' + (e.message || 'clipboard blocked')); }
   });
   document.getElementById('igSentBtn')?.addEventListener('click', () => logInstagramDm(c));
+  document.getElementById('igRepliedBtn')?.addEventListener('click', () => logInstagramReply(c));
 
   // Click-to-edit on the plain contact fields.
   document.querySelectorAll('#detailBody .ed[data-field]').forEach(el => {
@@ -5926,7 +5927,8 @@ function igRow(c){
   return row + `<div class="ig-actions">
       <button type="button" class="ig-btn" id="igCopyBtn">Copy DM</button>
       <button type="button" class="ig-btn ig-btn--primary" id="igSentBtn">I sent the DM</button>
-      <span class="ig-note">Ask for their email. Once you add it above, the templates take over.</span>
+      <button type="button" class="ig-btn" id="igRepliedBtn">They replied</button>
+      <span class="ig-note">Instagram DMs can't be read from here, so check the app and press "They replied" when they answer. Add their email above and the templates take over.</span>
     </div>`;
 }
 
@@ -5964,6 +5966,34 @@ async function logInstagramDm(c){
   openContact(c.id);
 }
 
+// Nothing can tell us they answered on Instagram — the API only exposes
+// threads that started with them messaging us. So this is the manual
+// counterpart to "I sent the DM": it moves the contact into the same
+// stage an email reply would, and closes the reminder it created.
+async function logInstagramReply(c){
+  const btn = document.getElementById('igRepliedBtn');
+  if(btn){ btn.disabled = true; btn.textContent = '…'; }
+  const before = c.status || 'not_started';
+  const ok = await updateContact(c.id, { status: 'in_conversation', replied: true });
+  if(!ok){ if(btn){ btn.disabled = false; btn.textContent = 'They replied'; } return; }
+  c.status = 'in_conversation';
+  c.replied = true;
+  await logActivity(c.id, 'dm_reply', before, 'in_conversation', { channel: 'instagram' });
+  // The follow-up booked when the DM went out has done its job.
+  const open = TASKS.filter(t => t.company_id === c.id && !t.done_at && /instagram dm/i.test(t.title || ''));
+  if(open.length){
+    const stamp = new Date().toISOString();
+    const { error } = await getClient().from('tasks')
+      .update({ done_at: stamp }).in('id', open.map(t => t.id));
+    if(!error) open.forEach(t => { t.done_at = stamp; });
+  }
+  toast('Moved to In conversation');
+  updateNavTasksCount();
+  renderContacts();
+  if(CURRENT_TAB === 'pipeline') renderPipeline();
+  openContact(c.id);
+}
+
 function activityLabel(a){
   switch(a.action){
     case 'status_changed': return `Status: ${STATUS_LABELS[a.old_value]||a.old_value||'—'} → ${STATUS_LABELS[a.new_value]||a.new_value||'—'}`;
@@ -5995,6 +6025,7 @@ function activityLabel(a){
     case 'follow_up_set': return `${uiIcon('calendar')} Follow-up: ${a.new_value||'cleared'}`;
     case 'note_added': return `${uiIcon('note')} Note added`;
     case 'dm_sent': return `${uiIcon('chat')} Instagram DM sent${a.new_value ? ` to @${escHtml(a.new_value)}` : ''}`;
+    case 'dm_reply': return `${uiIcon('chat')} Replied on Instagram`;
     case 'field_updated': {
       const f = a.meta?.field || 'field';
       const to = a.new_value ? `"${escHtml(a.new_value)}"` : 'empty';
