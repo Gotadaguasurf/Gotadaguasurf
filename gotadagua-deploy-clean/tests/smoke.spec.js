@@ -345,3 +345,30 @@ test('crm: contact fields render as click-to-edit', async ({ page }) => {
   expect(out.phone).toContain('ed-empty');
   expect(out.phone).not.toContain('href="tel:');
 });
+
+test('crm: segment edits offer the existing list plus a way to add one', async ({ page }) => {
+  // Segment is a shared vocabulary. Free text is what produces "Surf school"
+  // and "Surf School" as separate values, so the editor must be a picker
+  // that still allows a deliberate new entry.
+  await fakeOwnerSession(page);
+  await page.goto('/crm/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof window.startFieldEdit === 'function');
+  const out = await page.evaluate(() => {
+    CONTACTS.push({ id: 'a', segment: 'University' }, { id: 'b', segment: 'Surf school' });
+    const el = document.createElement('span');
+    el.dataset.field = 'segment';
+    document.body.appendChild(el);
+    startFieldEdit(el, { id: 'a', segment: 'University' });
+    const field = el.firstElementChild;
+    return {
+      tag: field.tagName,
+      options: [...field.options].map(o => o.textContent),
+      selected: field.value,
+    };
+  });
+  expect(out.tag).toBe('SELECT');
+  expect(out.options).toContain('University');
+  expect(out.options).toContain('Surf school');
+  expect(out.options.some(o => /new segment/i.test(o))).toBe(true);
+  expect(out.selected).toBe('University');   // opens on the current value
+});

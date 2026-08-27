@@ -4994,7 +4994,6 @@ async function openContact(id){
       ${editRow('Email', c, 'email', v => `mailto:${escAttr(v)}`)}
       ${editRow('Phone', c, 'phone', v => `tel:${escAttr(v.replace(/\s+/g,''))}`)}
       ${editRow('Website', c, 'website', v => escAttr(/^https?:/.test(v) ? v : 'https://' + v))}
-      <datalist id="edList-segment">${[...new Set(CONTACTS.map(x => x.segment).filter(Boolean))].sort().map(v => `<option value="${escAttr(v)}">`).join('')}</datalist>
       <datalist id="edList-country">${[...new Set(CONTACTS.map(x => x.country).filter(Boolean))].sort().map(v => `<option value="${escAttr(v)}">`).join('')}</datalist>
       <div class="detail-row"><span class="label">Language</span><span class="value">
         <select id="langSelect" style="border:1px solid var(--border);border-radius:8px;padding:4px 8px;font:inherit">
@@ -5754,31 +5753,23 @@ function editRow(label, c, field, hrefFn){
     `title="Click to edit">${shown}</span>${go}</span></div>`;
 }
 
-// Turns the span into an input, saves on Enter or blur, reverts on Escape.
+// Turns the span into a field, saves on Enter or blur, reverts on Escape.
 // Re-opens the panel afterwards so every view of the value agrees.
+const NEW_SEGMENT = '__new__';
+
 function startFieldEdit(el, c){
   if(el.dataset.editing) return;
   el.dataset.editing = '1';
   const field = el.dataset.field;
   const before = c[field] || '';
-  const input = document.createElement('input');
-  input.type = field === 'email' ? 'email' : 'text';
-  input.value = before;
-  input.className = 'ed-input';
-  input.placeholder = field === 'phone' ? '+351 …' : '';
-  if(field === 'segment' || field === 'country') input.setAttribute('list', 'edList-' + field);
-  el.textContent = '';
-  el.appendChild(input);
-  input.focus();
-  input.select();
-
   let settled = false;
-  const finish = async (save) => {
+
+  const commit = async (val, save) => {
     if(settled) return;
-    const val = input.value.trim();
+    val = (val || '').trim();
     if(!save || val === before){ settled = true; openContact(c.id); return; }
     if(field === 'email' && val && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)){
-      toast('That does not look like an email address'); input.focus(); return;
+      toast('That does not look like an email address'); return;
     }
     settled = true;
     const ok = await updateContact(c.id, { [field]: val || null });
@@ -5791,11 +5782,54 @@ function startFieldEdit(el, c){
     }
     openContact(c.id);
   };
-  input.addEventListener('keydown', e => {
-    if(e.key === 'Enter'){ e.preventDefault(); finish(true); }
-    else if(e.key === 'Escape'){ e.preventDefault(); finish(false); }
-  });
-  input.addEventListener('blur', () => finish(true));
+
+  const textInput = (value, placeholder) => {
+    const input = document.createElement('input');
+    input.type = field === 'email' ? 'email' : 'text';
+    input.value = value;
+    input.className = 'ed-input';
+    if(placeholder) input.placeholder = placeholder;
+    if(field === 'country') input.setAttribute('list', 'edList-country');
+    input.addEventListener('keydown', e => {
+      if(e.key === 'Enter'){ e.preventDefault(); commit(input.value, true); }
+      else if(e.key === 'Escape'){ e.preventDefault(); commit(null, false); }
+    });
+    input.addEventListener('blur', () => commit(input.value, true));
+    el.textContent = '';
+    el.appendChild(input);
+    input.focus();
+    input.select();
+    return input;
+  };
+
+  // Segment is a shared vocabulary, not free text: typing it by hand is how
+  // a list ends up with "Surf school", "Surf School" and "surf-school" as
+  // three different things. Pick an existing one, or create one on purpose.
+  if(field === 'segment'){
+    const known = [...new Set(CONTACTS.map(x => x.segment).filter(Boolean))].sort();
+    const sel = document.createElement('select');
+    sel.className = 'ed-input';
+    sel.innerHTML = '<option value="">— none —</option>' +
+      known.map(v => `<option value="${escAttr(v)}"${v === before ? ' selected' : ''}>${escHtml(v)}</option>`).join('') +
+      `<option value="${NEW_SEGMENT}">+ new segment…</option>`;
+    let swapping = false;
+    sel.addEventListener('change', () => {
+      if(sel.value === NEW_SEGMENT){ swapping = true; textInput('', 'Name the new segment'); return; }
+      commit(sel.value, true);
+    });
+    // Removing the focused select fires blur; the flag keeps that from
+    // saving the sentinel instead of opening the new-segment box.
+    sel.addEventListener('blur', () => { if(!swapping) commit(sel.value, true); });
+    sel.addEventListener('keydown', e => {
+      if(e.key === 'Escape'){ e.preventDefault(); commit(null, false); }
+    });
+    el.textContent = '';
+    el.appendChild(sel);
+    sel.focus();
+    return;
+  }
+
+  textInput(before, field === 'phone' ? '+351 …' : '');
 }
 
 function activityLabel(a){
