@@ -320,3 +320,28 @@ test('crm: every tab panel has a nav button and actually opens', async ({ page }
     expect(hidden, `panel page-${tab} stayed hidden after clicking its tab`).toBe(false);
   }
 });
+
+test('crm: contact fields render as click-to-edit', async ({ page }) => {
+  // The panel is built from a template string, so a typo here degrades to a
+  // plain read-only row rather than an error. Render one for real and check
+  // the edit hooks and the mailto escape hatch both survived.
+  await fakeOwnerSession(page);
+  await page.goto('/crm/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof window.editRow === 'function');
+  const out = await page.evaluate(() => {
+    const c = { id: 'x', email: 'hello@example.com', phone: '', segment: 'Surf school' };
+    return {
+      email: editRow('Email', c, 'email', v => `mailto:${v}`),
+      phone: editRow('Phone', c, 'phone', v => `tel:${v}`),
+      hasEditor: typeof window.startFieldEdit === 'function',
+    };
+  });
+  expect(out.hasEditor).toBe(true);
+  // Filled field: editable text plus a separate link to open it.
+  expect(out.email).toContain('data-field="email"');
+  expect(out.email).toContain('mailto:hello@example.com');
+  // Empty field still offers somewhere to click, and no dead link.
+  expect(out.phone).toContain('data-field="phone"');
+  expect(out.phone).toContain('ed-empty');
+  expect(out.phone).not.toContain('href="tel:');
+});

@@ -515,6 +515,16 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
 .act-view-chip{background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:999px;padding:3px 10px;font-size:10.5px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif}
 .act-view-chip.active{background:var(--ocean);color:#fff;border-color:var(--ocean)}
 
+/* ── CLICK-TO-EDIT CONTACT FIELDS ─────────────────────────────────── */
+.ed{cursor:text;border-radius:5px;padding:1px 5px;margin:0 -5px;border:1px dashed transparent;transition:background .12s,border-color .12s}
+.ed:hover{background:#f2f7fb;border-color:var(--border)}
+.ed:focus-visible{outline:2px solid var(--ocean);outline-offset:1px}
+.ed-empty{color:var(--muted);font-style:italic;opacity:.75}
+.ed:hover .ed-empty{opacity:1;color:var(--ocean);font-style:normal}
+.ed-input{font:inherit;color:var(--ink);border:1px solid var(--ocean);border-radius:5px;padding:2px 6px;min-width:min(230px,52vw);background:#fff}
+.ed-go{margin-left:6px;color:var(--muted);text-decoration:none;font-size:12px}
+.ed-go:hover{color:var(--ocean)}
+
 /* ── INBOX TAB (unread inbound replies, Gmail-style) ─────────────── */
 #inboxList{display:flex;flex-direction:column;gap:8px}
 .inbox-row{display:flex;gap:12px;align-items:center;padding:13px 16px;background:#fff;border:1px solid var(--border);border-radius:12px;cursor:pointer;transition:box-shadow .15s}
@@ -4978,12 +4988,14 @@ async function openContact(id){
           ${STATUS_ORDER.map(s=>`<option value="${s}" ${s===c.status?'selected':''}>${STATUS_LABELS[s]}</option>`).join('')}
         </select>
       </span></div>
-      <div class="detail-row"><span class="label">Segment</span><span class="value">${escHtml(c.segment||'—')}</span></div>
-      <div class="detail-row"><span class="label">Country</span><span class="value">${escHtml(c.country||'—')}</span></div>
-      <div class="detail-row"><span class="label">City</span><span class="value">${escHtml(c.city||'—')}</span></div>
-      <div class="detail-row"><span class="label">Email</span><span class="value">${c.email?`<a href="mailto:${escAttr(c.email)}">${escHtml(c.email)}</a>`:'—'}</span></div>
-      <div class="detail-row"><span class="label">Phone</span><span class="value">${c.phone?`<a href="tel:${escAttr(c.phone)}">${escHtml(c.phone)}</a>`:'—'}</span></div>
-      <div class="detail-row"><span class="label">Website</span><span class="value">${c.website?`<a href="${escAttr(/^https?:/.test(c.website)?c.website:'https://'+c.website)}" target="_blank">${escHtml(c.website)}</a>`:'—'}</span></div>
+      ${editRow('Segment', c, 'segment')}
+      ${editRow('Country', c, 'country')}
+      ${editRow('City', c, 'city')}
+      ${editRow('Email', c, 'email', v => `mailto:${escAttr(v)}`)}
+      ${editRow('Phone', c, 'phone', v => `tel:${escAttr(v.replace(/\s+/g,''))}`)}
+      ${editRow('Website', c, 'website', v => escAttr(/^https?:/.test(v) ? v : 'https://' + v))}
+      <datalist id="edList-segment">${[...new Set(CONTACTS.map(x => x.segment).filter(Boolean))].sort().map(v => `<option value="${escAttr(v)}">`).join('')}</datalist>
+      <datalist id="edList-country">${[...new Set(CONTACTS.map(x => x.country).filter(Boolean))].sort().map(v => `<option value="${escAttr(v)}">`).join('')}</datalist>
       <div class="detail-row"><span class="label">Language</span><span class="value">
         <select id="langSelect" style="border:1px solid var(--border);border-radius:8px;padding:4px 8px;font:inherit">
           <option value="en" ${c.language==='en'?'selected':''}>English</option>
@@ -5215,6 +5227,14 @@ async function openContact(id){
   document.querySelectorAll('#convoComposeBtn').forEach(b => b.addEventListener('click', () => openCompose()));
 
   // Wire up status select
+  // Click-to-edit on the plain contact fields.
+  document.querySelectorAll('#detailBody .ed[data-field]').forEach(el => {
+    el.addEventListener('click', () => startFieldEdit(el, c));
+    el.addEventListener('keydown', e => {
+      if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); startFieldEdit(el, c); }
+    });
+  });
+
   document.getElementById('statusSelect').addEventListener('change', async (e)=>{
     const newStatus = e.target.value;
     const oldStatus = c.status;
@@ -5719,6 +5739,65 @@ function conversationHtml(activity){
   return `<div class="convo-wrap" id="convoScroll">${parts.join('')}</div>`;
 }
 
+// A contact detail row whose value can be edited in place. The value is
+// plain text you click to edit; when there is something to open (mail,
+// phone, site) a separate arrow carries the link, so clicking the text
+// never fires the link by accident.
+function editRow(label, c, field, hrefFn){
+  const v = c[field] || '';
+  const go = (v && hrefFn)
+    ? ` <a class="ed-go" href="${hrefFn(v)}"${field === 'website' ? ' target="_blank" rel="noopener"' : ''} title="Open" onclick="event.stopPropagation()">&#8599;</a>`
+    : '';
+  const shown = v ? escHtml(v) : '<span class="ed-empty">add</span>';
+  return `<div class="detail-row"><span class="label">${escHtml(label)}</span>` +
+    `<span class="value"><span class="ed" data-field="${field}" tabindex="0" role="button" ` +
+    `title="Click to edit">${shown}</span>${go}</span></div>`;
+}
+
+// Turns the span into an input, saves on Enter or blur, reverts on Escape.
+// Re-opens the panel afterwards so every view of the value agrees.
+function startFieldEdit(el, c){
+  if(el.dataset.editing) return;
+  el.dataset.editing = '1';
+  const field = el.dataset.field;
+  const before = c[field] || '';
+  const input = document.createElement('input');
+  input.type = field === 'email' ? 'email' : 'text';
+  input.value = before;
+  input.className = 'ed-input';
+  input.placeholder = field === 'phone' ? '+351 …' : '';
+  if(field === 'segment' || field === 'country') input.setAttribute('list', 'edList-' + field);
+  el.textContent = '';
+  el.appendChild(input);
+  input.focus();
+  input.select();
+
+  let settled = false;
+  const finish = async (save) => {
+    if(settled) return;
+    const val = input.value.trim();
+    if(!save || val === before){ settled = true; openContact(c.id); return; }
+    if(field === 'email' && val && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)){
+      toast('That does not look like an email address'); input.focus(); return;
+    }
+    settled = true;
+    const ok = await updateContact(c.id, { [field]: val || null });
+    if(ok){
+      c[field] = val || null;
+      logActivity(c.id, 'field_updated', before || null, val || null, { field });
+      toast(`${field} ${val ? 'saved' : 'cleared'}`);
+      renderContacts();
+      if(CURRENT_TAB === 'dashboard') renderDashboard();
+    }
+    openContact(c.id);
+  };
+  input.addEventListener('keydown', e => {
+    if(e.key === 'Enter'){ e.preventDefault(); finish(true); }
+    else if(e.key === 'Escape'){ e.preventDefault(); finish(false); }
+  });
+  input.addEventListener('blur', () => finish(true));
+}
+
 function activityLabel(a){
   switch(a.action){
     case 'status_changed': return `Status: ${STATUS_LABELS[a.old_value]||a.old_value||'—'} → ${STATUS_LABELS[a.new_value]||a.new_value||'—'}`;
@@ -5749,6 +5828,11 @@ function activityLabel(a){
     }
     case 'follow_up_set': return `${uiIcon('calendar')} Follow-up: ${a.new_value||'cleared'}`;
     case 'note_added': return `${uiIcon('note')} Note added`;
+    case 'field_updated': {
+      const f = a.meta?.field || 'field';
+      const to = a.new_value ? `"${escHtml(a.new_value)}"` : 'empty';
+      return `${uiIcon('note')} ${escHtml(f)} set to ${to}`;
+    }
     case 'imported': return `Imported from xlsx`;
     case 'group_added': return `${uiIcon('people')} Group added: "${a.meta?.title||'untitled'}"${a.meta?.stage?` (${GROUP_STAGE_LABELS[a.meta.stage]||a.meta.stage})`:''}`;
     case 'group_updated': return `${uiIcon('people')} Group updated: "${a.meta?.title||'untitled'}"`;
