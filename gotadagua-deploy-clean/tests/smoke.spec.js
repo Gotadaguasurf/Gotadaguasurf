@@ -372,3 +372,36 @@ test('crm: segment edits offer the existing list plus a way to add one', async (
   expect(out.options.some(o => /new segment/i.test(o))).toBe(true);
   expect(out.selected).toBe('University');   // opens on the current value
 });
+
+test('crm: instagram-only contacts are detected and get DM tooling', async ({ page }) => {
+  // Instagram has no column of its own: the handle hides in the website URL
+  // or in a "IG: @name" note. If igHandle stops reading both, the whole
+  // DM-first list silently empties.
+  await fakeOwnerSession(page);
+  await page.goto('/crm/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof window.igHandle === 'function');
+  const out = await page.evaluate(() => {
+    const fromUrl   = { id:'1', website:'https://www.instagram.com/soulandsurfportugal/' };
+    const fromNotes = { id:'2', notes:'IG: @wssclub | ~1,300 followers' };
+    const realSite  = { id:'3', website:'https://gotadaguasurf.com' };
+    return {
+      url: igHandle(fromUrl),
+      notes: igHandle(fromNotes),
+      none: igHandle(realSite),
+      // No email → the DM block appears; with one → just the row.
+      dmBlock: igRow({ ...fromUrl, email:null }).includes('igSentBtn'),
+      noDmBlock: igRow({ ...fromUrl, email:'hi@x.com' }).includes('igSentBtn'),
+      opensDm: igRow({ ...fromUrl, email:null }).includes('ig.me/m/soulandsurfportugal'),
+      script: dmScript({ company:'Test' }),
+    };
+  });
+  expect(out.url).toBe('soulandsurfportugal');
+  expect(out.notes).toBe('wssclub');
+  expect(out.none).toBe(null);
+  expect(out.dmBlock).toBe(true);
+  expect(out.noDmBlock).toBe(false);
+  expect(out.opensDm).toBe(true);
+  // The DM must ask for the email; that handoff is the whole point.
+  expect(out.script.toLowerCase()).toContain('email');
+  expect(out.script.length).toBeLessThan(400);
+});

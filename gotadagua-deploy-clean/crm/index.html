@@ -543,6 +543,19 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
   color:var(--muted);font-size:11px;font-weight:400;line-height:1;text-decoration:none}
 .detail-row .value a.ed-go:hover{background:var(--ocean);border-color:var(--ocean);color:#fff;text-decoration:none}
 body.dark .ed:hover{background:#1b2c3d;border-color:#2d4459}
+
+/* ── INSTAGRAM-FIRST OUTREACH ─────────────────────────────────────── */
+.ig-handle{font-weight:600;color:var(--ink)}
+.ig-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:12px 0 4px}
+.ig-btn{background:#fff;color:var(--ocean);border:1px solid var(--ocean);border-radius:8px;
+  padding:6px 13px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif}
+.ig-btn:hover{background:#eef5fb}
+.ig-btn--primary{background:var(--ocean);color:#fff}
+.ig-btn--primary:hover{background:#24689a}
+.ig-btn:disabled{opacity:.55;cursor:default}
+.ig-note{flex:1 1 100%;font-size:11.5px;color:var(--muted);line-height:1.45}
+body.dark .ig-btn{background:var(--card)}
+body.dark .ig-btn--primary{background:var(--ocean);color:#fff}
 body.dark .ed-input{background:var(--card)}
 
 /* ── INBOX TAB (unread inbound replies, Gmail-style) ─────────────── */
@@ -833,6 +846,7 @@ body.dark .ed-input{background:var(--card)}
       <button class="chip" data-preset="overdue"><span class="ui-ic">__ICN_FIRE__</span> Overdue <span class="chip-count" id="cn-overdue">0</span></button>
       <button class="chip" data-preset="hot"><span class="ui-ic">__ICN_CHAT__</span> Hot (In convo · Meeting · Proposal) <span class="chip-count" id="cn-hot">0</span></button>
       <button class="chip" data-preset="first-touch"><span class="ui-ic">__ICN_SPARKLES__</span> Needs first touch <span class="chip-count" id="cn-first">0</span></button>
+      <button class="chip" data-preset="insta"><span class="ui-ic">__ICN_CHAT__</span> Instagram only <span class="chip-count" id="cn-insta">0</span></button>
       <button class="chip" data-preset="stale"><span class="ui-ic">__ICN_MOON__</span> Stale (>14d silent) <span class="chip-count" id="cn-stale">0</span></button>
       <button class="chip" data-preset="active"><span class="ui-ic">__ICN_HANDSHAKE__</span> Active partners <span class="chip-count" id="cn-active">0</span></button>
       <button class="chip" data-preset="closed"><span class="ui-ic">__ICN_FLAG__</span> Closed (won + lost) <span class="chip-count" id="cn-closed">0</span></button>
@@ -4536,6 +4550,9 @@ function matchesPreset(c, preset, today){
       return c.status==='in_conversation' || c.status==='meeting' || c.status==='proposal_sent';
     case 'first-touch':
       return c.status==='not_started' && c.email;
+    case 'insta':
+      // No email, but reachable on Instagram: the DM-first list.
+      return !c.email && !!igHandle(c);
     case 'stale':
       return awaitingReply(c.status) && c.last_contacted_at && c.last_contacted_at.slice(0,10) < addDays(today,-14);
     case 'active':
@@ -4548,7 +4565,7 @@ function matchesPreset(c, preset, today){
 
 function updatePresetCounts(){
   const today = new Date().toISOString().slice(0,10);
-  const counts = { all:CONTACTS.length, today:0, overdue:0, hot:0, 'first-touch':0, stale:0, active:0, closed:0 };
+  const counts = { all:CONTACTS.length, today:0, overdue:0, hot:0, 'first-touch':0, insta:0, stale:0, active:0, closed:0 };
   CONTACTS.forEach(c=>{
     if(matchesPreset(c,'today',today)) counts.today++;
     if(matchesPreset(c,'overdue',today)) counts.overdue++;
@@ -4563,6 +4580,7 @@ function updatePresetCounts(){
   document.getElementById('cn-overdue').textContent = counts.overdue;
   document.getElementById('cn-hot').textContent = counts.hot;
   document.getElementById('cn-first').textContent = counts['first-touch'];
+  document.getElementById('cn-insta').textContent = counts.insta;
   document.getElementById('cn-stale').textContent = counts.stale;
   const activeEl = document.getElementById('cn-active'); if(activeEl) activeEl.textContent = counts.active;
   document.getElementById('cn-closed').textContent = counts.closed;
@@ -5014,6 +5032,7 @@ async function openContact(id){
       ${editRow('Email', c, 'email', v => `mailto:${escAttr(v)}`)}
       ${editRow('Phone', c, 'phone', v => `tel:${escAttr(v.replace(/\s+/g,''))}`)}
       ${editRow('Website', c, 'website', v => escAttr(/^https?:/.test(v) ? v : 'https://' + v))}
+      ${igRow(c)}
       <datalist id="edList-country">${[...new Set(CONTACTS.map(x => x.country).filter(Boolean))].sort().map(v => `<option value="${escAttr(v)}">`).join('')}</datalist>
       <div class="detail-row"><span class="label">Language</span><span class="value">
         <select id="langSelect" style="border:1px solid var(--border);border-radius:8px;padding:4px 8px;font:inherit">
@@ -5246,6 +5265,14 @@ async function openContact(id){
   document.querySelectorAll('#convoComposeBtn').forEach(b => b.addEventListener('click', () => openCompose()));
 
   // Wire up status select
+  document.getElementById('igCopyBtn')?.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(dmScript(c));
+      toast('DM copied · paste it in Instagram');
+    } catch(e){ toast('Could not copy: ' + (e.message || 'clipboard blocked')); }
+  });
+  document.getElementById('igSentBtn')?.addEventListener('click', () => logInstagramDm(c));
+
   // Click-to-edit on the plain contact fields.
   document.querySelectorAll('#detailBody .ed[data-field]').forEach(el => {
     el.addEventListener('click', () => startFieldEdit(el, c));
@@ -5864,6 +5891,79 @@ function startFieldEdit(el, c){
   textInput(before, field === 'phone' ? '+351 …' : '');
 }
 
+// Instagram was never given its own column: the import put the profile URL
+// in `website` when a contact had no real site, and repeated the handle in
+// the notes as "IG: @name". Read both rather than migrate 2,000 rows.
+function igHandle(c){
+  const fromUrl = /instagram\.com\/([A-Za-z0-9._]+)/i.exec(c.website || '');
+  if(fromUrl) return fromUrl[1].replace(/\/$/, '');
+  const fromNotes = /IG:\s*@([A-Za-z0-9._]+)/i.exec(c.notes || '');
+  return fromNotes ? fromNotes[1] : null;
+}
+
+// The DM has one job: get permission and an email address. It is not the
+// place to sell, and it must be short enough to read without tapping
+// "more". Edit this and every contact gets the new wording.
+function dmScript(c){
+  const me = (houseSender()?.full_name || CURRENT_TEAM_USER?.full_name || '').split(' ')[0];
+  return `Hey! Loving what you're doing 🙂\n\n` +
+    `I'm ${me} from Gota Dagua Surf, we run surf camps in Portugal (Costa da Caparica), ` +
+    `Morocco (Tamraght) and Sri Lanka (Ahangama) and we host a lot of groups like yours.\n\n` +
+    `Mind if I send you a bit of info by email? What's the best address?`;
+}
+
+// Instagram row +, when there is no email yet, the two things you need:
+// the message to send and a way to record that you sent it.
+function igRow(c){
+  const h = igHandle(c);
+  if(!h) return '';
+  const row = `<div class="detail-row"><span class="label">Instagram</span><span class="value">` +
+    `<span class="ig-handle">@${escHtml(h)}</span>` +
+    `<a class="ed-go" href="https://ig.me/m/${escAttr(h)}" target="_blank" rel="noopener" title="Open the DM">&#9993;</a>` +
+    `<a class="ed-go" href="https://instagram.com/${escAttr(h)}" target="_blank" rel="noopener" title="Open the profile">&#8599;</a>` +
+    `</span></div>`;
+  if(c.email) return row;   // email exists, normal flow applies
+  return row + `<div class="ig-actions">
+      <button type="button" class="ig-btn" id="igCopyBtn">Copy DM</button>
+      <button type="button" class="ig-btn ig-btn--primary" id="igSentBtn">I sent the DM</button>
+      <span class="ig-note">Ask for their email. Once you add it above, the templates take over.</span>
+    </div>`;
+}
+
+// Recording the DM is what keeps Instagram inside the same funnel: it
+// counts as the first touch, and books the reminder that stops a sent DM
+// from being a forgotten one.
+async function logInstagramDm(c){
+  const btn = document.getElementById('igSentBtn');
+  if(btn){ btn.disabled = true; btn.textContent = '…'; }
+  const now = new Date().toISOString();
+  const patch = { last_contacted_at: now };
+  const wasNew = (c.status || 'not_started') === 'not_started';
+  if(wasNew) patch.status = 'first_email';   // same stage, different channel
+  const ok = await updateContact(c.id, patch);
+  if(!ok){ if(btn){ btn.disabled = false; btn.textContent = 'I sent the DM'; } return; }
+  c.last_contacted_at = now;
+  if(wasNew){
+    await logActivity(c.id, 'status_changed', 'not_started', 'first_email', { via: 'instagram-dm' });
+    c.status = 'first_email';
+  }
+  await logActivity(c.id, 'dm_sent', null, igHandle(c), { channel: 'instagram' });
+  const due = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
+  const { data, error } = await getClient().from('tasks').insert({
+    company_id: c.id,
+    title: `Follow up on Instagram DM to ${c.company || ''}`.trim(),
+    type: 'follow_up',
+    owner_id: CURRENT_TEAM_USER?.id || null,
+    due_at: new Date(due + 'T00:00:00Z').toISOString(),
+    notes: null,
+  }).select().single();
+  if(error) toast('DM logged, but the reminder failed: ' + error.message);
+  else { TASKS.push(data); toast('DM logged · reminder in 3 days'); }
+  updateNavTasksCount();
+  renderContacts();
+  openContact(c.id);
+}
+
 function activityLabel(a){
   switch(a.action){
     case 'status_changed': return `Status: ${STATUS_LABELS[a.old_value]||a.old_value||'—'} → ${STATUS_LABELS[a.new_value]||a.new_value||'—'}`;
@@ -5894,6 +5994,7 @@ function activityLabel(a){
     }
     case 'follow_up_set': return `${uiIcon('calendar')} Follow-up: ${a.new_value||'cleared'}`;
     case 'note_added': return `${uiIcon('note')} Note added`;
+    case 'dm_sent': return `${uiIcon('chat')} Instagram DM sent${a.new_value ? ` to @${escHtml(a.new_value)}` : ''}`;
     case 'field_updated': {
       const f = a.meta?.field || 'field';
       const to = a.new_value ? `"${escHtml(a.new_value)}"` : 'empty';
