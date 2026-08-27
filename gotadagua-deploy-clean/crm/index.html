@@ -516,14 +516,34 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
 .act-view-chip.active{background:var(--ocean);color:#fff;border-color:var(--ocean)}
 
 /* ── CLICK-TO-EDIT CONTACT FIELDS ─────────────────────────────────── */
-.ed{cursor:text;border-radius:5px;padding:1px 5px;margin:0 -5px;border:1px dashed transparent;transition:background .12s,border-color .12s}
-.ed:hover{background:#f2f7fb;border-color:var(--border)}
-.ed:focus-visible{outline:2px solid var(--ocean);outline-offset:1px}
-.ed-empty{color:var(--muted);font-style:italic;opacity:.75}
-.ed:hover .ed-empty{opacity:1;color:var(--ocean);font-style:normal}
-.ed-input{font:inherit;color:var(--ink);border:1px solid var(--ocean);border-radius:5px;padding:2px 6px;min-width:min(230px,52vw);background:#fff}
-.ed-go{margin-left:6px;color:var(--muted);text-decoration:none;font-size:12px}
-.ed-go:hover{color:var(--ocean)}
+/* A filled value carries a dotted underline so it reads as fillable
+   without hover; an empty one is a dashed box with a written prompt,
+   which is the only version that works on touch. */
+.detail-row .value{display:flex;align-items:center;justify-content:flex-end;gap:5px;min-width:0}
+.ed{display:inline-flex;align-items:center;gap:7px;max-width:100%;cursor:text;
+  border-radius:6px;padding:2px 7px;border:1px solid transparent;
+  text-decoration:underline dotted var(--border);text-underline-offset:4px;
+  overflow-wrap:anywhere;transition:background .12s,border-color .12s}
+.ed:hover{background:#eef5fb;border-color:#cfe0ee;text-decoration:none}
+.ed:focus-visible{outline:2px solid var(--ocean);outline-offset:1px;text-decoration:none}
+.ed--empty{text-decoration:none;border-style:dashed;border-color:var(--border)}
+.ed--empty:hover{border-style:dashed;border-color:var(--ocean)}
+.ed-empty{color:var(--ocean);font-weight:600;white-space:nowrap}
+.ed-pen{flex:0 0 auto;font-size:11px;color:var(--ocean);opacity:0;transition:opacity .12s}
+.ed:hover .ed-pen,.ed:focus-visible .ed-pen{opacity:1}
+.ed--editing{flex-direction:column;align-items:flex-end;gap:3px;
+  background:transparent;border-color:transparent;padding:0}
+.ed-input{font:inherit;color:var(--ink);background:#fff;border:1px solid var(--ocean);
+  border-radius:6px;padding:4px 8px;min-width:min(240px,54vw);
+  box-shadow:0 0 0 3px rgba(42,122,178,.13)}
+.ed-hint{font-size:10.5px;color:var(--muted);font-family:'Outfit',sans-serif;white-space:nowrap}
+/* The open-it link is a button of its own, so clicking the text edits. */
+.detail-row .value a.ed-go{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;
+  width:23px;height:23px;border-radius:6px;border:1px solid var(--border);
+  color:var(--muted);font-size:11px;font-weight:400;line-height:1;text-decoration:none}
+.detail-row .value a.ed-go:hover{background:var(--ocean);border-color:var(--ocean);color:#fff;text-decoration:none}
+body.dark .ed:hover{background:#1b2c3d;border-color:#2d4459}
+body.dark .ed-input{background:var(--card)}
 
 /* ── INBOX TAB (unread inbound replies, Gmail-style) ─────────────── */
 #inboxList{display:flex;flex-direction:column;gap:8px}
@@ -5747,10 +5767,12 @@ function editRow(label, c, field, hrefFn){
   const go = (v && hrefFn)
     ? ` <a class="ed-go" href="${hrefFn(v)}"${field === 'website' ? ' target="_blank" rel="noopener"' : ''} title="Open" onclick="event.stopPropagation()">&#8599;</a>`
     : '';
-  const shown = v ? escHtml(v) : '<span class="ed-empty">add</span>';
+  const shown = v
+    ? `${escHtml(v)}<span class="ed-pen" aria-hidden="true">&#9998;</span>`
+    : `<span class="ed-empty">+ Add ${escHtml(label.toLowerCase())}</span>`;
   return `<div class="detail-row"><span class="label">${escHtml(label)}</span>` +
-    `<span class="value"><span class="ed" data-field="${field}" tabindex="0" role="button" ` +
-    `title="Click to edit">${shown}</span>${go}</span></div>`;
+    `<span class="value"><span class="ed${v ? '' : ' ed--empty'}" data-field="${field}" tabindex="0" ` +
+    `role="button" aria-label="${v ? 'Edit' : 'Add'} ${escHtml(label.toLowerCase())}">${shown}</span>${go}</span></div>`;
 }
 
 // Turns the span into a field, saves on Enter or blur, reverts on Escape.
@@ -5758,6 +5780,12 @@ function editRow(label, c, field, hrefFn){
 const NEW_SEGMENT = '__new__';
 
 function startFieldEdit(el, c){
+  const hint = (html) => {
+    const h = document.createElement('span');
+    h.className = 'ed-hint';
+    h.innerHTML = html;
+    return h;
+  };
   if(el.dataset.editing) return;
   el.dataset.editing = '1';
   const field = el.dataset.field;
@@ -5796,7 +5824,9 @@ function startFieldEdit(el, c){
     });
     input.addEventListener('blur', () => commit(input.value, true));
     el.textContent = '';
+    el.classList.add('ed--editing');
     el.appendChild(input);
+    el.appendChild(hint('Enter to save &middot; Esc to cancel'));
     input.focus();
     input.select();
     return input;
@@ -5824,7 +5854,9 @@ function startFieldEdit(el, c){
       if(e.key === 'Escape'){ e.preventDefault(); commit(null, false); }
     });
     el.textContent = '';
+    el.classList.add('ed--editing');
     el.appendChild(sel);
+    el.appendChild(hint('Pick one, or add a new segment'));
     sel.focus();
     return;
   }
