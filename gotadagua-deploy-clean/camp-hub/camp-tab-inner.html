@@ -1627,14 +1627,37 @@ function auditTitleFor(item){
     : `Added by ${who} · ${when}`;
 }
 
+// PostgREST answers every select with at most 1000 rows. This hydrate asked
+// for a camp's whole history in three plain selects, so once a location
+// passed that mark the surplus rows simply never arrived: a guest whose
+// sort_order sat past the cut was missing from the week, and a guest whose
+// items were past it opened with a short tab. Nothing was ever deleted from
+// the database (the delete diff compares local to local), but a tab that
+// renders short is a tab that gets undercharged at checkout.
+//
+// sort_order is (index+1)*10 within a week, so hundreds of rows share the
+// value 10. Paging over a non-unique sort can repeat and skip rows, which is
+// why every query below also orders by id: that makes the sort total, so the
+// pages tile the table exactly once.
+async function selectAllPaged(makeQuery, pageSize=1000){
+  const rows=[];
+  for(let page=0; page<500; page++){
+    const {data,error}=await makeQuery().range(page*pageSize, page*pageSize+pageSize-1);
+    if(error) return {data:null,error};
+    rows.push(...(data||[]));
+    if(!data || data.length<pageSize) break;
+  }
+  return {data:rows,error:null};
+}
+
 async function hydrateCampTabStateFromSupabase({mergeLocal=false}={}){
   const client=getCampTabSupabaseClient();
   const locationId=await ensureCampTabLocationId();
   if(!client||!locationId) return false;
   const [{data:weekRows,error:weeksError},{data:guestRows,error:guestsError},{data:itemRows,error:itemsError}] = await Promise.all([
-    client.from('camp_weeks').select('id,start_date,end_date,status,closed_at,draft_kind,meta').eq('location_id',locationId).order('start_date',{ascending:true}),
-    client.from('camp_guests').select('id,week_id,name,booking_ref,is_staff,paid,paid_at,closed_at,checkin,checkout,pax,sort_order,meta').eq('location_id',locationId).order('sort_order',{ascending:true}),
-    client.from('camp_tab_items').select('id,guest_id,week_id,category,item_name,price_local,price_type,added_at,paid_at,sort_order,meta,created_by,updated_by,updated_at').eq('location_id',locationId).order('sort_order',{ascending:true})
+    selectAllPaged(()=>client.from('camp_weeks').select('id,start_date,end_date,status,closed_at,draft_kind,meta').eq('location_id',locationId).order('start_date',{ascending:true}).order('id',{ascending:true})),
+    selectAllPaged(()=>client.from('camp_guests').select('id,week_id,name,booking_ref,is_staff,paid,paid_at,closed_at,checkin,checkout,pax,sort_order,meta').eq('location_id',locationId).order('sort_order',{ascending:true}).order('id',{ascending:true})),
+    selectAllPaged(()=>client.from('camp_tab_items').select('id,guest_id,week_id,category,item_name,price_local,price_type,added_at,paid_at,sort_order,meta,created_by,updated_by,updated_at').eq('location_id',locationId).order('sort_order',{ascending:true}).order('id',{ascending:true}))
   ]);
   if(weeksError||guestsError||itemsError){
     console.warn('Camp Tab state hydrate failed',weeksError||guestsError||itemsError);
