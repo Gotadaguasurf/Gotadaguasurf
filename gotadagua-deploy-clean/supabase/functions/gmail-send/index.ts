@@ -20,6 +20,8 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+// Shared with email-dispatch so the two send paths cannot drift apart again.
+import { buildRaw } from '../_shared/mail.ts'
 
 const CLIENT_ID     = Deno.env.get('GOOGLE_OAUTH_CLIENT_ID') || ''
 const CLIENT_SECRET = Deno.env.get('GOOGLE_OAUTH_CLIENT_SECRET') || ''
@@ -70,63 +72,6 @@ async function ensureAccessToken(supa: ReturnType<typeof createClient>) {
   return { token: tk.access_token, account: { ...acct, access_token: tk.access_token, access_expires_at: newExpiry } }
 }
 
-// RFC 2822 with Q-encoded subject + base64url-encoded message for the
-// Gmail API. Display name escaped to keep commas/quotes from breaking
-// the header.
-function buildRaw(args: {
-  fromEmail: string; fromDisplay: string;
-  to: string; cc?: string;
-  subject: string; body: string; html?: string;
-  inReplyTo?: string; references?: string;
-}) {
-  const toUtf8 = (s: string) => unescape(encodeURIComponent(s || ''))
-  const subjB64 = btoa(toUtf8(args.subject || ''))
-  const escapedDisplay = (args.fromDisplay || '').replace(/"/g, "'")
-  // Non-ASCII display names ("João") must be RFC 2047 encoded — raw UTF-8
-  // in a header renders as mojibake in Gmail.
-  const displayWord = /[^\x20-\x7e]/.test(escapedDisplay)
-    ? `=?utf-8?B?${btoa(toUtf8(escapedDisplay))}?=`
-    : `"${escapedDisplay}"`
-  const fromHeader = escapedDisplay
-    ? `${displayWord} <${args.fromEmail}>`
-    : args.fromEmail
-  const lines: string[] = [
-    `From: ${fromHeader}`,
-    `Reply-To: ${args.fromEmail}`,
-    `To: ${args.to}`,
-  ]
-  if (args.cc) lines.push(`Cc: ${args.cc}`)
-  lines.push(
-    `Subject: =?utf-8?B?${subjB64}?=`,
-    'MIME-Version: 1.0',
-    'Content-Type: text/plain; charset=utf-8',
-    'Content-Transfer-Encoding: 8bit',
-  )
-  if (args.inReplyTo) lines.push(`In-Reply-To: ${args.inReplyTo}`)
-  if (args.references) lines.push(`References: ${args.references}`)
-  let message: string
-  if (args.html) {
-    // multipart/alternative: plain text first (spam filters like it and
-    // basic clients fall back to it), HTML second so capable clients
-    // render the signature with logo + icons.
-    const b = 'gds_alt_7f3b2c'
-    // The MIME-Version/Content-Type lines pushed above assume plain
-    // text — swap the last two for the multipart header.
-    lines.splice(lines.indexOf('MIME-Version: 1.0'))
-    lines.push('MIME-Version: 1.0', `Content-Type: multipart/alternative; boundary="${b}"`)
-    if (args.inReplyTo) lines.push(`In-Reply-To: ${args.inReplyTo}`)
-    if (args.references) lines.push(`References: ${args.references}`)
-    message = lines.join('\r\n') + '\r\n\r\n' +
-      `--${b}\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n` +
-      (args.body || '') + '\r\n\r\n' +
-      `--${b}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n` +
-      args.html + `\r\n\r\n--${b}--\r\n`
-  } else {
-    message = lines.join('\r\n') + '\r\n\r\n' + (args.body || '')
-  }
-  const utf8 = toUtf8(message)
-  return btoa(utf8).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
-}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })

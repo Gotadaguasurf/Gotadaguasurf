@@ -26,6 +26,10 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+// Shared with gmail-send. This function used to carry its own copy, which is
+// how the campaign path kept sending an unencoded From and no HTML footer
+// long after the single-send path was fixed.
+import { buildRaw, buildEmailHtml } from '../_shared/mail.ts'
 
 const CLIENT_ID     = Deno.env.get('GOOGLE_OAUTH_CLIENT_ID') || ''
 const CLIENT_SECRET = Deno.env.get('GOOGLE_OAUTH_CLIENT_SECRET') || ''
@@ -78,26 +82,6 @@ async function ensureAccessToken(supa: ReturnType<typeof createClient>) {
   return { token: tk.access_token, account: { ...acct, access_token: tk.access_token } }
 }
 
-function buildRaw(args: {
-  fromEmail: string; fromDisplay: string;
-  to: string; subject: string; body: string;
-}) {
-  const toUtf8 = (s: string) => unescape(encodeURIComponent(s || ''))
-  const subjB64 = btoa(toUtf8(args.subject || ''))
-  const escapedDisplay = (args.fromDisplay || '').replace(/"/g, "'")
-  const fromHeader = escapedDisplay ? `"${escapedDisplay}" <${args.fromEmail}>` : args.fromEmail
-  const lines = [
-    `From: ${fromHeader}`,
-    `Reply-To: ${args.fromEmail}`,
-    `To: ${args.to}`,
-    `Subject: =?utf-8?B?${subjB64}?=`,
-    'MIME-Version: 1.0',
-    'Content-Type: text/plain; charset=utf-8',
-    'Content-Transfer-Encoding: 8bit',
-  ]
-  const message = lines.join('\r\n') + '\r\n\r\n' + (args.body || '')
-  return btoa(toUtf8(message)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
-}
 
 // Is `now` inside the campaign's local send window?
 function insideWindow(campaign: { window_start: string; window_end: string; timezone: string }) {
@@ -184,10 +168,12 @@ Deno.serve(async (req) => {
 
     // Sender display name once per campaign.
     let displayName = ''
+    let senderRow: { full_name?: string; role?: string; email?: string; signature?: string } | null = null
     if (campaign.sender_user_id) {
       const { data: tu } = await supa.from('team_users')
-        .select('full_name, email').eq('id', campaign.sender_user_id).maybeSingle()
+        .select('full_name, role, email, signature').eq('id', campaign.sender_user_id).maybeSingle()
       displayName = (tu?.full_name || tu?.email || '').trim()
+      senderRow = tu || null
     }
 
     for (const row of rows) {
@@ -222,6 +208,26 @@ Deno.serve(async (req) => {
         }
       }
 
+      // 4b. Already emailed recently? A campaign's recipients are frozen when
+      //     it is queued, so two campaigns built minutes apart from an
+      //     overlapping selection both hold the same contacts and neither
+      //     knows about the other's sends. Four schools received the same
+      //     message twice, forty minutes apart, exactly this way. The queue
+      //     cannot see the future; the moment of sending can.
+      {
+        const { data: recent } = await supa.from('outreach_contacts')
+          .select('last_contacted_at').eq('id', row.company_id).maybeSingle()
+        const lastMs = recent?.last_contacted_at ? new Date(recent.last_contacted_at).getTime() : 0
+        if (lastMs && Date.now() - lastMs < 24 * 60 * 60 * 1000) {
+          await supa.from('email_queue').update({
+            status: 'skipped',
+            error: `already emailed ${new Date(lastMs).toISOString()} — duplicate blocked`,
+          }).eq('id', row.id)
+          summary.skipped++
+          continue
+        }
+      }
+
       // 5. Send.
       try {
         const { token, account } = await ensureAccessToken(supa)
@@ -229,6 +235,7 @@ Deno.serve(async (req) => {
           fromEmail: account.email, fromDisplay: displayName,
           to: row.to_email, subject: row.subject,
           body: (row.body || '') + UNSUB_FOOTER,
+          html: buildEmailHtml(row.body || '', senderRow || { email: account.email }, UNSUB_FOOTER),
         })
         const resp = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
           method: 'POST',
