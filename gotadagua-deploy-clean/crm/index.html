@@ -2379,12 +2379,45 @@ async function runBatchSend(){
   BATCH_STATE.inProgress = true;
   renderBatchRecipientList();
   const supa = getClient();
-  let sentCount = 0, failedCount = 0;
+
+  // ── DUPLICATE GUARD ──────────────────────────────────────────────────
+  // The recipient list only unticks recently-contacted rows as a DEFAULT,
+  // and a default is not a guard: "select all" re-ticks them, and a tab
+  // left open since before the last batch still holds a stale
+  // last_contacted_at, so it never unticked them in the first place. Four
+  // schools were emailed the same message twice, forty minutes apart,
+  // exactly that way. Re-read the timestamp from the database for these
+  // contacts and refuse inside the loop, where the send actually happens.
+  const DUP_WINDOW_MS = 24 * 60 * 60 * 1000;
+  const lastContactedById = new Map();
+  if(!dryRun){
+    const { data: fresh, error: freshErr } = await supa.from('outreach_contacts')
+      .select('id,last_contacted_at').in('id', targets.map(t => t.contact.id));
+    if(freshErr){
+      // Can't verify, so don't gamble with the domain's reputation.
+      BATCH_STATE.inProgress = false;
+      toast('Could not check who was already emailed — nothing sent. ' + freshErr.message);
+      renderBatchRecipientList();
+      return;
+    }
+    (fresh || []).forEach(row => lastContactedById.set(row.id, row.last_contacted_at));
+  }
+
+  let sentCount = 0, failedCount = 0, skippedCount = 0;
   for(const r of targets){
     if(!BATCH_STATE.inProgress) break;  // user closed
     r.status = 'sending';
     renderBatchRecipientList();
     const c = r.contact;
+    const lastIso = lastContactedById.has(c.id) ? lastContactedById.get(c.id) : c.last_contacted_at;
+    const lastMs = lastIso ? new Date(lastIso).getTime() : 0;
+    if(!dryRun && lastMs && (Date.now() - lastMs) < DUP_WINDOW_MS && !r.overrideRecent){
+      r.status = 'skipped';
+      r.message = `already emailed ${fmtDateTime(lastIso)}`;
+      skippedCount++;
+      renderBatchRecipientList();
+      continue;
+    }
     const subj = renderTemplate(tpl.subject, c, sender);
     const body = renderTemplate(tpl.body, c, sender);
     try {
@@ -2420,7 +2453,7 @@ async function runBatchSend(){
   }
   BATCH_STATE.inProgress = false;
   renderBatchRecipientList();
-  toast(`${dryRun?'Dry-run':'Batch send'} done · ${sentCount} sent${failedCount?` · ${failedCount} failed`:''}`);
+  toast(`${dryRun?'Dry-run':'Batch send'} done · ${sentCount} sent${failedCount?` · ${failedCount} failed`:''}${skippedCount?` · ${skippedCount} skipped (already emailed today)`:''}`);
   if(CURRENT_TAB === 'dashboard') renderDashboard();
   if(CURRENT_TAB === 'contacts') renderContacts();
 }

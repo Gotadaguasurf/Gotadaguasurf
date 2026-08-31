@@ -405,3 +405,21 @@ test('crm: instagram-only contacts are detected and get DM tooling', async ({ pa
   expect(out.script.toLowerCase()).toContain('email');
   expect(out.script.length).toBeLessThan(400);
 });
+
+test('crm: batch send refuses a contact already emailed today', async ({ page }) => {
+  // Four schools got the same email twice, forty minutes apart, because the
+  // recipient list only UNTICKS recent contacts as a default and a default
+  // is not a guard. The refusal has to live where the send happens.
+  await fakeOwnerSession(page);
+  await page.goto('/crm/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof window.runBatchSend === 'function');
+  const src = await page.evaluate(() => window.runBatchSend.toString());
+  // Freshness is re-read from the database, not trusted from memory.
+  expect(src).toContain('last_contacted_at');
+  expect(src).toMatch(/DUP_WINDOW_MS/);
+  expect(src).toMatch(/status\s*=\s*'skipped'/);
+  // A failed check must stop the batch rather than send blind.
+  expect(src).toMatch(/Could not check who was already emailed/);
+  // The skip happens before the message is built, not after.
+  expect(src.indexOf('DUP_WINDOW_MS')).toBeLessThan(src.indexOf('gmailSendOne'));
+});
