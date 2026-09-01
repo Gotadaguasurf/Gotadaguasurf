@@ -2173,8 +2173,7 @@ function buildEmailHtml(body, sender){
     if(sigIdx >= 0) text = text.slice(0, sigIdx).replace(/\s+$/, '');
   }
   const escaped = escHtml(text).replace(/\r?\n/g, '<br>');
-  const sigBlock = sigIdx >= 0 ? '<br><br>' + signatureHtml(sender) : '';
-  return `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#1f2a44;line-height:1.5">${escaped}${sigBlock}</div>`;
+  return `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#1f2a44;line-height:1.5">${escaped}<br><br>${signatureHtml(sender)}</div>`;
 }
 
 // POSTs to the gmail-send Edge Function. The function:
@@ -2193,7 +2192,12 @@ async function gmailSendOne({ to, subject, body, companyId, contactId, senderUse
   if(!cfg.url) throw new Error('Supabase URL missing');
   const ccList = buildCcList();
   const senderRow = TEAM_USERS.find(u => u.id === (senderUserId || CURRENT_TEAM_USER?.id)) || null;
-  const htmlBody = buildEmailHtml(body, senderRow);
+  const sigText = (senderRow?.signature || '').trim();
+  let bodyOut = String(body || '');
+  if(sigText && !bodyOut.includes(sigText)){
+    bodyOut = bodyOut.replace(/\s+$/, '') + '\n\n' + sigText;
+  }
+  const htmlBody = buildEmailHtml(bodyOut, senderRow);
   const resp = await fetch(`${cfg.url}/functions/v1/gmail-send`, {
     method: 'POST',
     headers: {
@@ -2205,7 +2209,7 @@ async function gmailSendOne({ to, subject, body, companyId, contactId, senderUse
       to,
       cc: ccList.length ? ccList.join(', ') : undefined,
       subject,
-      body,
+      body: bodyOut,
       html: htmlBody,
       sender_user_id: senderUserId || CURRENT_TEAM_USER?.id || null,
       company_id: companyId || null,

@@ -423,3 +423,30 @@ test('crm: batch send refuses a contact already emailed today', async ({ page })
   // The skip happens before the message is built, not after.
   expect(src.indexOf('DUP_WINDOW_MS')).toBeLessThan(src.indexOf('gmailSendOne'));
 });
+
+test('crm: an email cannot go out unsigned', async ({ page }) => {
+  // Templates are documents people edit, and two of thirteen had already
+  // lost {{my_signature}} that way — those emails went out with no name, no
+  // phone and no branding, and nothing flagged it. Signing has to happen at
+  // send time, not depend on the template remembering.
+  await fakeOwnerSession(page);
+  await page.goto('/crm/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof window.buildEmailHtml === 'function');
+  const out = await page.evaluate(() => {
+    const sender = { full_name:'João Maria André', role:'Sales Manager',
+      email:'groups@gotadaguasurf.com', signature:'Best,\n\nJoão Maria André\ngroups@gotadaguasurf.com' };
+    return {
+      withSig: buildEmailHtml('Hi there,\n\nBody.\n\n' + sender.signature, sender),
+      withoutSig: buildEmailHtml('Hi there,\n\nBody, template lost the variable.', sender),
+      sendSrc: window.gmailSendOne.toString(),
+    };
+  });
+  // Branded footer present either way.
+  expect(out.withSig).toContain('logo-blue.png');
+  expect(out.withoutSig).toContain('logo-blue.png');
+  // When the plain signature was there it is replaced, not duplicated.
+  expect(out.withSig).not.toContain('groups@gotadaguasurf.com<br>');
+  // And the plain-text half gets signed before sending.
+  expect(out.sendSrc).toMatch(/sigText/);
+  expect(out.sendSrc).toMatch(/body: bodyOut/);
+});
