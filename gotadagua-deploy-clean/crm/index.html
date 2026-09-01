@@ -856,15 +856,6 @@ body.dark .ed-input{background:var(--card)}
     <div class="filter-bar">
       <select class="filter-select" id="filterStatus">
         <option value="">All statuses</option>
-        <option value="not_started">Not started</option>
-        <option value="first_email">1st email</option>
-        <option value="follow_up">Follow-up</option>
-        <option value="in_conversation">In conversation</option>
-        <option value="meeting">Meeting</option>
-        <option value="proposal_sent">Proposal sent</option>
-        <option value="active_partner">Active partner</option>
-        <option value="no_reply">No reply</option>
-        <option value="lost">Lost</option>
       </select>
       <select class="filter-select" id="filterCountry">
         <option value="">All countries</option>
@@ -4603,7 +4594,21 @@ function primaryCountry(country){
   if(!country) return '';
   return String(country).split(/[\/,;]/)[0].trim();
 }
+// One source of truth for stage names. A hand-written <option> list drifts:
+// this one still read "1st email" after the stage was renamed to "First
+// touch" on the board, so the same stage had two names and the filter looked
+// like it was missing.
+function populateStatusFilter(){
+  const sel = document.getElementById('filterStatus');
+  if(!sel) return;
+  const keep = sel.value;
+  sel.innerHTML = '<option value="">All statuses</option>' +
+    STATUS_ORDER.map(s => `<option value="${s}">${escHtml(STATUS_LABELS[s] || s)}</option>`).join('');
+  if(keep) sel.value = keep;
+}
+
 function populateFilters(){
+  populateStatusFilter();
   const countries = [...new Set(CONTACTS.map(c=>primaryCountry(c.country)).filter(Boolean))].sort();
   const segments = [...new Set(CONTACTS.map(c=>c.segment).filter(Boolean))].sort();
   const fc = document.getElementById('filterCountry');

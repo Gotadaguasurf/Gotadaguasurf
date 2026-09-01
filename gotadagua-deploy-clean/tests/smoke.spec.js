@@ -470,3 +470,27 @@ test('crm: attached photos render in the email, other files become links', async
   expect(out.html).toMatch(/<a href="[^"]*deck\.pdf"/);
   expect(out.html).not.toMatch(/<img src="[^"]*deck\.pdf"/);
 });
+
+test('crm: the status filter is built from the stage names, not hand-written', async ({ page }) => {
+  // The options were typed by hand, so renaming a stage left the filter
+  // behind: the board said "First touch" while the filter still said
+  // "1st email", and 'excluded' was missing from it altogether.
+  await fakeOwnerSession(page);
+  await page.goto('/crm/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof window.populateStatusFilter === 'function');
+  const out = await page.evaluate(() => {
+    populateStatusFilter();
+    const sel = document.getElementById('filterStatus');
+    return {
+      values: [...sel.options].map(o => o.value).filter(Boolean),
+      labels: [...sel.options].map(o => o.textContent),
+      expected: STATUS_ORDER,
+      firstTouchLabel: STATUS_LABELS.first_email,
+    };
+  });
+  // Every stage the board knows about is filterable, none missing.
+  expect(out.values).toEqual(out.expected);
+  // And named identically in both places.
+  expect(out.labels).toContain(out.firstTouchLabel);
+  expect(out.labels).toContain('In conversation');
+});
