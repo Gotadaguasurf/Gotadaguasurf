@@ -494,3 +494,28 @@ test('crm: the status filter is built from the stage names, not hand-written', a
   expect(out.labels).toContain(out.firstTouchLabel);
   expect(out.labels).toContain('In conversation');
 });
+
+test('crm: a half-written email survives closing the window', async ({ page }) => {
+  // Closing compose is exactly what you do when you need to go and check
+  // something before finishing the sentence, and it used to throw the
+  // writing away.
+  await fakeOwnerSession(page);
+  await page.goto('/crm/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof window.saveComposeDraft === 'function');
+  const out = await page.evaluate(async () => {
+    CURRENT_CONTACT = { id: 'contact-under-test', language: 'en' };
+    document.getElementById('composeSubject').value = 'half a subject';
+    document.getElementById('composePreview').value = 'half a sentence, then I went to check something';
+    saveComposeDraft();
+    const stored = readComposeDraft('contact-under-test');
+    // Sending is what clears it, not closing.
+    closeCompose();
+    const afterClose = readComposeDraft('contact-under-test');
+    clearComposeDraft('contact-under-test');
+    return { stored, survivedClose: !!afterClose, afterClear: readComposeDraft('contact-under-test') };
+  });
+  expect(out.stored.subject).toBe('half a subject');
+  expect(out.stored.body).toContain('went to check something');
+  expect(out.survivedClose).toBe(true);
+  expect(out.afterClear).toBe(null);
+});

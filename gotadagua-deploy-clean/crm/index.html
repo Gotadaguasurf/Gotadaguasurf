@@ -555,6 +555,11 @@ body.dark .ed:hover{background:#1b2c3d;border-color:#2d4459}
 .ig-btn:disabled{opacity:.55;cursor:default}
 .ig-note{flex:1 1 100%;font-size:11.5px;color:var(--muted);line-height:1.45}
 .cmp-files{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:10px 0 4px}
+.cmp-draft{display:flex;align-items:center;gap:10px;min-height:20px;margin-top:8px;
+  font-size:11.5px;color:var(--muted);font-family:'Outfit',sans-serif}
+.cmp-draft button{background:none;border:none;padding:0;font:inherit;color:var(--ocean);
+  font-weight:700;cursor:pointer;text-decoration:underline}
+.cmp-draft button:hover{color:var(--navy)}
 body.dark .ig-btn{background:var(--card)}
 body.dark .ig-btn--primary{background:var(--ocean);color:#fff}
 body.dark .ed-input{background:var(--card)}
@@ -1102,6 +1107,10 @@ body.dark .ed-input{background:var(--card)}
       <div class="editor-field">
         <label>Body <span style="color:var(--muted);font-weight:400;font-size:11px">(editable — tweak per contact)</span></label>
         <textarea id="composePreview" class="compose-preview" style="width:100%;min-height:220px;font-family:inherit;font-size:13px;line-height:1.5;padding:12px;border:1px solid var(--border);border-radius:8px;background:#fff;resize:vertical" placeholder="Write your email or pick a template above…"></textarea>
+      </div>
+      <div class="cmp-draft">
+        <span id="composeDraftNote" style="display:none"></span>
+        <button type="button" id="composeDraftDiscard">Start fresh</button>
       </div>
       <div class="cmp-files">
         <button type="button" class="ig-btn" id="composeAttachBtn">Add photo or file</button>
@@ -6376,6 +6385,50 @@ function pickedSender(selectId){
   return TEAM_USERS.find(u => u.id === id) || null;
 }
 
+// ── Drafts ──────────────────────────────────────────────────────────
+// Half-written emails were lost the moment the window closed, and closing
+// it is exactly what you do when you need to go and check something before
+// finishing the sentence. Everything typed is kept per contact and offered
+// back on reopening; sending clears it.
+const draftKey = (contactId) => 'crmDraft:' + contactId;
+let _draftTimer = null;
+
+function saveComposeDraft(){
+  const c = CURRENT_CONTACT;
+  if(!c) return;
+  const subject = document.getElementById('composeSubject')?.value || '';
+  const body = document.getElementById('composePreview')?.value || '';
+  const note = document.getElementById('composeDraftNote');
+  if(!subject.trim() && !body.trim()){ clearComposeDraft(); return; }
+  try {
+    localStorage.setItem(draftKey(c.id), JSON.stringify({
+      subject, body,
+      templateId: document.getElementById('composeTemplate')?.value || '',
+      senderId: document.getElementById('composeSendAs')?.value || '',
+      at: new Date().toISOString(),
+    }));
+    if(note){ note.textContent = 'Draft saved'; note.style.display = ''; }
+  } catch(e){ /* private mode, quota — not worth interrupting the writing */ }
+}
+
+function readComposeDraft(contactId){
+  try { return JSON.parse(localStorage.getItem(draftKey(contactId)) || 'null'); }
+  catch(e){ return null; }
+}
+
+function clearComposeDraft(contactId){
+  const id = contactId || CURRENT_CONTACT?.id;
+  if(!id) return;
+  try { localStorage.removeItem(draftKey(id)); } catch(e){}
+  const note = document.getElementById('composeDraftNote');
+  if(note) note.style.display = 'none';
+}
+
+function queueDraftSave(){
+  clearTimeout(_draftTimer);
+  _draftTimer = setTimeout(saveComposeDraft, 400);
+}
+
 function openCompose(preselectTemplateId){
   const c = CURRENT_CONTACT;
   const lang = c.language || 'en';
@@ -6399,6 +6452,25 @@ function openCompose(preselectTemplateId){
   populateSendAsPicker(document.getElementById('composeSendAs'),
     c.account_manager_id || CURRENT_TEAM_USER?.id);
   refreshComposePreview();
+
+  // A draft beats the template: it is what the user actually wrote.
+  const draft = readComposeDraft(c.id);
+  const note = document.getElementById('composeDraftNote');
+  if(draft && (draft.subject?.trim() || draft.body?.trim())){
+    if(draft.templateId){
+      tplSelect.value = draft.templateId;
+      // Setting the template would repaint the fields; put the draft back after.
+    }
+    if(draft.senderId) document.getElementById('composeSendAs').value = draft.senderId;
+    document.getElementById('composeSubject').value = draft.subject || '';
+    document.getElementById('composePreview').value = draft.body || '';
+    if(note){
+      note.style.display = '';
+      note.textContent = `Unsent draft from ${fmtDateTime(draft.at)} restored.`;
+    }
+  } else if(note){
+    note.style.display = 'none';
+  }
   document.getElementById('composeModal').classList.add('open');
 }
 
@@ -6607,6 +6679,7 @@ document.getElementById('composeSendNow').addEventListener('click', async () => 
     }
     c.last_contacted_at = patch.last_contacted_at;
     toast('Sent ✓');
+    clearComposeDraft(c.id);   // it left the building; nothing left to keep
     closeCompose();
     openFollowupPrompt(c);
   } catch(err){
@@ -6668,6 +6741,15 @@ function closeCompose(){
 }
 document.getElementById('composeClose').addEventListener('click', closeCompose);
 document.getElementById('composeCancel').addEventListener('click', closeCompose);
+['composeSubject','composePreview'].forEach(id => {
+  document.getElementById(id)?.addEventListener('input', queueDraftSave);
+});
+document.getElementById('composeSendAs')?.addEventListener('change', queueDraftSave);
+document.getElementById('composeDraftDiscard')?.addEventListener('click', () => {
+  clearComposeDraft();
+  refreshComposePreview();           // back to the template as written
+  toast('Draft discarded');
+});
 document.getElementById('composeAttachBtn')?.addEventListener('click', () => {
   document.getElementById('composeAttachInput').click();
 });
