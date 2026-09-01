@@ -554,6 +554,7 @@ body.dark .ed:hover{background:#1b2c3d;border-color:#2d4459}
 .ig-btn--primary:hover{background:#24689a}
 .ig-btn:disabled{opacity:.55;cursor:default}
 .ig-note{flex:1 1 100%;font-size:11.5px;color:var(--muted);line-height:1.45}
+.cmp-files{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:10px 0 4px}
 body.dark .ig-btn{background:var(--card)}
 body.dark .ig-btn--primary{background:var(--ocean);color:#fff}
 body.dark .ed-input{background:var(--card)}
@@ -1110,6 +1111,11 @@ body.dark .ed-input{background:var(--card)}
       <div class="editor-field">
         <label>Body <span style="color:var(--muted);font-weight:400;font-size:11px">(editable — tweak per contact)</span></label>
         <textarea id="composePreview" class="compose-preview" style="width:100%;min-height:220px;font-family:inherit;font-size:13px;line-height:1.5;padding:12px;border:1px solid var(--border);border-radius:8px;background:#fff;resize:vertical" placeholder="Write your email or pick a template above…"></textarea>
+      </div>
+      <div class="cmp-files">
+        <button type="button" class="ig-btn" id="composeAttachBtn">Add photo or file</button>
+        <input type="file" id="composeAttachInput" multiple accept="image/*,application/pdf" style="display:none">
+        <span class="ig-note" id="composeAttachNote">Photos show inside the email; PDFs and decks go as a link, which keeps the email light enough to reach the inbox.</span>
       </div>
       <div class="editor-hint">Pick <b>Custom</b> in the template dropdown to write from scratch. Edits stick until you switch template.</div>
     </div>
@@ -2120,6 +2126,57 @@ function buildGmailRawMessage({ to, subject, body, fromAuthuser, cc }){
   return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
+// ── Attachments ─────────────────────────────────────────────────────
+// Files live in the public crm-assets bucket and travel as URLs, not as
+// MIME attachments. Two reasons: a first email dragging a 10 MB deck behind
+// it is a first email that lands in spam, and a photo referenced by URL
+// renders INSIDE the message, which is better than something the reader has
+// to download. buildEmailHtml turns an image URL into an <img> and any other
+// URL into a link, so the plain-text half stays readable either way.
+const CRM_FILES_BUCKET = 'crm-assets';
+
+function isImageUrl(u){ return /\.(png|jpe?g|gif|webp)(\?|$)/i.test(u || ''); }
+
+async function uploadComposeFile(file){
+  const clean = file.name.replace(/[^\w.\-]+/g, '-').toLowerCase();
+  const path = `${new Date().toISOString().slice(0,10)}/${Math.random().toString(36).slice(2,8)}-${clean}`;
+  const { error } = await getClient().storage.from(CRM_FILES_BUCKET)
+    .upload(path, file, { cacheControl: '31536000', upsert: false });
+  if(error) throw new Error(error.message);
+  const { data } = getClient().storage.from(CRM_FILES_BUCKET).getPublicUrl(path);
+  return data.publicUrl;
+}
+
+async function handleComposeAttach(files){
+  const btn = document.getElementById('composeAttachBtn');
+  const note = document.getElementById('composeAttachNote');
+  const box = document.getElementById('composePreview');
+  if(!files.length || !box) return;
+  const label = btn.textContent;
+  btn.disabled = true;
+  const urls = [];
+  for(const f of files){
+    btn.textContent = `Uploading ${f.name.slice(0,22)}…`;
+    try { urls.push(await uploadComposeFile(f)); }
+    catch(e){ toast(`${f.name}: ${e.message}`); }
+  }
+  btn.disabled = false;
+  btn.textContent = label;
+  if(!urls.length) return;
+  // Drop the links in above the signature, not after it, so the email does
+  // not end on a bare URL.
+  const sig = (houseSender()?.signature || '').trim();
+  const text = box.value;
+  const at = sig ? text.lastIndexOf(sig) : -1;
+  const block = urls.join('\n');
+  box.value = at >= 0
+    ? text.slice(0, at).replace(/\s+$/, '') + '\n\n' + block + '\n\n' + text.slice(at)
+    : text.replace(/\s+$/, '') + '\n\n' + block;
+  box.dispatchEvent(new Event('input', { bubbles: true }));
+  if(note) note.textContent = `${urls.length} file${urls.length>1?'s':''} added. Photos appear inside the email; other files go as a link.`;
+  toast(`${urls.length} file${urls.length>1?'s':''} added`);
+}
+
 // ── HTML signature (house layout: logo | name/role/email | socials) ─
 // Assets live on our own Vercel deploy (assets/logos + assets/sig) so
 // they never break like the old postimage-hosted ones did.
@@ -2172,7 +2229,13 @@ function buildEmailHtml(body, sender){
     sigIdx = text.lastIndexOf(sig);
     if(sigIdx >= 0) text = text.slice(0, sigIdx).replace(/\s+$/, '');
   }
-  const escaped = escHtml(text).replace(/\r?\n/g, '<br>');
+  // A bare image URL becomes the picture itself; any other URL becomes a
+  // link. The plain-text half keeps the URL, so both halves work.
+  const escaped = escHtml(text)
+    .replace(/https?:\/\/[^\s<]+/g, (u) => isImageUrl(u)
+      ? `<img src="${u}" alt="" style="max-width:100%;height:auto;border-radius:8px;margin:6px 0">`
+      : `<a href="${u}" style="color:#2a7ab2">${u}</a>`)
+    .replace(/\r?\n/g, '<br>');
   return `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#1f2a44;line-height:1.5">${escaped}<br><br>${signatureHtml(sender)}</div>`;
 }
 
@@ -6600,6 +6663,14 @@ function closeCompose(){
 }
 document.getElementById('composeClose').addEventListener('click', closeCompose);
 document.getElementById('composeCancel').addEventListener('click', closeCompose);
+document.getElementById('composeAttachBtn')?.addEventListener('click', () => {
+  document.getElementById('composeAttachInput').click();
+});
+document.getElementById('composeAttachInput')?.addEventListener('change', async (e) => {
+  const files = Array.from(e.target.files || []);
+  e.target.value = '';                 // same file twice in a row still fires
+  await handleComposeAttach(files);
+});
 
 // ════════════════════════════════════════════════════════════════════════
 //  TEMPLATES

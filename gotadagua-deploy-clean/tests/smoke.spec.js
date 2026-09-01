@@ -450,3 +450,23 @@ test('crm: an email cannot go out unsigned', async ({ page }) => {
   expect(out.sendSrc).toMatch(/sigText/);
   expect(out.sendSrc).toMatch(/body: bodyOut/);
 });
+
+test('crm: attached photos render in the email, other files become links', async ({ page }) => {
+  await fakeOwnerSession(page);
+  await page.goto('/crm/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof window.buildEmailHtml === 'function');
+  const out = await page.evaluate(() => {
+    const sender = { full_name:'João', email:'groups@gotadaguasurf.com', signature:'Best,\nJoão' };
+    const base = 'https://x.supabase.co/storage/v1/object/public/crm-assets/2026-08-31';
+    const html = buildEmailHtml(`Have a look:\n\n${base}/casa.jpg\n${base}/deck.pdf\n\nBest,\nJoão`, sender);
+    return { html, hasBtn: !!document.getElementById('composeAttachBtn'),
+             upload: typeof window.uploadComposeFile };
+  });
+  expect(out.hasBtn).toBe(true);
+  expect(out.upload).toBe('function');
+  // The photo is shown, not linked.
+  expect(out.html).toMatch(/<img src="[^"]*casa\.jpg"/);
+  // The deck is a link, not an <img>.
+  expect(out.html).toMatch(/<a href="[^"]*deck\.pdf"/);
+  expect(out.html).not.toMatch(/<img src="[^"]*deck\.pdf"/);
+});
