@@ -8513,7 +8513,10 @@ const TASKS_TAB_FILTERS = [
 function updateNavTasksCount(){
   const el = document.getElementById('navTasksCount');
   const today = new Date().toISOString().slice(0,10);
-  const n = TASKS.filter(t => !t.done_at && t.due_at && t.due_at.slice(0,10) < today).length;
+  // Due TODAY counts too. Counting only what is already late meant the
+  // badge told you about a follow-up the day after you should have made
+  // it — the one day it could not help.
+  const n = TASKS.filter(t => !t.done_at && t.due_at && t.due_at.slice(0,10) <= today).length;
   if(el){
     if(n > 0){ el.textContent = n; el.style.display = ''; }
     else { el.style.display = 'none'; }

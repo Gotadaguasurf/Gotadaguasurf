@@ -568,3 +568,23 @@ test('crm: compose has the same formatting bar, and templates still load into it
   expect(out.bars).toBe(1);
   expect(out.roundTrip).toBe('Hi team,\n\nFirst line.\n\nBest,\nJoão');
 });
+
+test('crm: the tasks badge counts what is due today, not only what is late', async ({ page }) => {
+  // Counting only overdue meant the badge announced a follow-up the day
+  // after it should have been made.
+  await fakeOwnerSession(page);
+  await page.goto('/crm/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof window.updateNavTasksCount === 'function');
+  const out = await page.evaluate(() => {
+    const day = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+    TASKS.length = 0;
+    TASKS.push({ id:'a', due_at: day(-2) + 'T00:00:00Z', done_at: null });  // late
+    TASKS.push({ id:'b', due_at: day(0)  + 'T00:00:00Z', done_at: null });  // today
+    TASKS.push({ id:'c', due_at: day(3)  + 'T00:00:00Z', done_at: null });  // later
+    TASKS.push({ id:'d', due_at: day(-1) + 'T00:00:00Z', done_at: day(0) }); // done
+    updateNavTasksCount();
+    return { badge: document.getElementById('navTasksCount').textContent, title: document.title };
+  });
+  expect(out.badge).toBe('2');            // late + today, not the future one, not the done one
+  expect(out.title).toContain('(2)');     // and the browser tab says so too
+});
