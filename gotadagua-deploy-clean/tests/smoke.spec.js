@@ -505,7 +505,7 @@ test('crm: a half-written email survives closing the window', async ({ page }) =
   const out = await page.evaluate(async () => {
     CURRENT_CONTACT = { id: 'contact-under-test', language: 'en' };
     document.getElementById('composeSubject').value = 'half a subject';
-    document.getElementById('composePreview').value = 'half a sentence, then I went to check something';
+    document.getElementById('composePreview').innerHTML = textToRichHtml('half a sentence, then I went to check something');
     saveComposeDraft();
     const stored = readComposeDraft('contact-under-test');
     // Sending is what clears it, not closing.
@@ -546,4 +546,25 @@ test('crm: a formatted reply sends readable text alongside the HTML', async ({ p
   expect(out.html).toContain('<li>');                      // the HTML half keeps the list
   expect(out.html).toContain('logo-blue.png');             // and still gets the footer
   expect(out.sendTakesHtml).toBe(true);
+});
+
+test('crm: compose has the same formatting bar, and templates still load into it', async ({ page }) => {
+  await fakeOwnerSession(page);
+  await page.goto('/crm/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof window.textToRichHtml === 'function');
+  const out = await page.evaluate(() => {
+    const editor = document.getElementById('composePreview');
+    // A plain template must survive the round trip through the editor.
+    const original = 'Hi team,\n\nFirst line.\n\nBest,\nJoão';
+    editor.innerHTML = textToRichHtml(original);
+    return {
+      isEditor: editor.getAttribute('contenteditable') === 'true',
+      bars: document.querySelectorAll('.rt-bar').length,
+      roundTrip: rtToText(editor),
+    };
+  });
+  expect(out.isEditor).toBe(true);
+  // Reply's modal is built on demand, so only compose's bar exists at load.
+  expect(out.bars).toBe(1);
+  expect(out.roundTrip).toBe('Hi team,\n\nFirst line.\n\nBest,\nJoão');
 });

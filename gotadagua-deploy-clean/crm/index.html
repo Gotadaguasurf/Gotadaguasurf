@@ -1126,7 +1126,19 @@ body.dark .ed-input{background:var(--card)}
       </div>
       <div class="editor-field">
         <label>Body <span style="color:var(--muted);font-weight:400;font-size:11px">(editable — tweak per contact)</span></label>
-        <textarea id="composePreview" class="compose-preview" style="width:100%;min-height:220px;font-family:inherit;font-size:13px;line-height:1.5;padding:12px;border:1px solid var(--border);border-radius:8px;background:#fff;resize:vertical" placeholder="Write your email or pick a template above…"></textarea>
+        <div class="rt-bar" role="toolbar" aria-label="Formatting">
+          <button type="button" data-rt="bold" title="Bold (Cmd+B)"><b>B</b></button>
+          <button type="button" data-rt="italic" title="Italic (Cmd+I)"><i>I</i></button>
+          <button type="button" data-rt="underline" title="Underline (Cmd+U)"><u>U</u></button>
+          <span class="rt-sep"></span>
+          <button type="button" data-rt="insertUnorderedList" title="Bulleted list">&#8226; List</button>
+          <button type="button" data-rt="insertOrderedList" title="Numbered list">1. List</button>
+          <span class="rt-sep"></span>
+          <button type="button" data-rt="createLink" title="Add a link">Link</button>
+          <button type="button" data-rt="removeFormat" title="Clear formatting">Clear</button>
+        </div>
+        <div id="composePreview" class="rt-editor" contenteditable="true" role="textbox" aria-multiline="true"
+             data-placeholder="Write your email…" style="min-height:220px"></div>
       </div>
       <div class="cmp-draft">
         <span id="composeDraftNote" style="display:none"></span>
@@ -2197,6 +2209,13 @@ function rtToText(el){
   return out.join('').replace(/\n{3,}/g, '\n\n').replace(/[ \t]+\n/g, '\n').trim();
 }
 
+// Templates are stored as plain text; the editor needs blocks. One div per
+// line keeps paragraph spacing identical to what the template author wrote.
+function textToRichHtml(text){
+  return String(text || '').replace(/\r\n/g, '\n').split('\n')
+    .map(l => `<div>${escHtml(l) || '<br>'}</div>`).join('');
+}
+
 // A formatted reply is already HTML; it needs the shell and the footer, not
 // the escaping buildEmailHtml does to plain text.
 function wrapRichHtml(inner, sender){
@@ -2242,13 +2261,8 @@ async function handleComposeAttach(files){
   if(!urls.length) return;
   // Drop the links in above the signature, not after it, so the email does
   // not end on a bare URL.
-  const sig = (houseSender()?.signature || '').trim();
-  const text = box.value;
-  const at = sig ? text.lastIndexOf(sig) : -1;
-  const block = urls.join('\n');
-  box.value = at >= 0
-    ? text.slice(0, at).replace(/\s+$/, '') + '\n\n' + block + '\n\n' + text.slice(at)
-    : text.replace(/\s+$/, '') + '\n\n' + block;
+  box.insertAdjacentHTML('beforeend',
+    '<div><br></div>' + urls.map(u => `<div>${escHtml(u)}</div>`).join(''));
   box.dispatchEvent(new Event('input', { bubbles: true }));
   if(note) note.textContent = `${urls.length} file${urls.length>1?'s':''} added. Photos appear inside the email; other files go as a link.`;
   toast(`${urls.length} file${urls.length>1?'s':''} added`);
@@ -5859,23 +5873,6 @@ function openReplyCompose(a, contact){
     contact?.account_manager_id || CURRENT_TEAM_USER?.id);
   const ta = modal.querySelector('#replyBody');
 
-  // Formatting runs on the selection, so the editor must keep focus: the
-  // toolbar steals it on mousedown otherwise and the command applies to
-  // nothing.
-  modal.querySelectorAll('.rt-bar button[data-rt]').forEach(btn => {
-    btn.addEventListener('mousedown', e => e.preventDefault());
-    btn.addEventListener('click', () => {
-      const cmd = btn.dataset.rt;
-      ta.focus();
-      if(cmd === 'createLink'){
-        const url = prompt('Link to where?', 'https://');
-        if(!url || url === 'https://') return;
-        document.execCommand('createLink', false, url);
-        return;
-      }
-      document.execCommand(cmd, false, null);
-    });
-  });
   setTimeout(() => caretToStart(ta), 50);
   modal.querySelector('#replySend').addEventListener('click', async () => {
     const sender = TEAM_USERS.find(u => u.id === modal.querySelector('#replySendAs').value);
@@ -6490,7 +6487,8 @@ function saveComposeDraft(){
   const c = CURRENT_CONTACT;
   if(!c) return;
   const subject = document.getElementById('composeSubject')?.value || '';
-  const body = document.getElementById('composePreview')?.value || '';
+  const el = document.getElementById('composePreview');
+  const body = el ? el.innerHTML : '';
   const note = document.getElementById('composeDraftNote');
   if(!subject.trim() && !body.trim()){ clearComposeDraft(); return; }
   try {
@@ -6556,7 +6554,7 @@ function openCompose(preselectTemplateId){
     }
     if(draft.senderId) document.getElementById('composeSendAs').value = draft.senderId;
     document.getElementById('composeSubject').value = draft.subject || '';
-    document.getElementById('composePreview').value = draft.body || '';
+    document.getElementById('composePreview').innerHTML = draft.body || '';
     if(note){
       note.style.display = '';
       note.textContent = `Unsent draft from ${fmtDateTime(draft.at)} restored.`;
@@ -6578,7 +6576,7 @@ function refreshComposePreview(){
     const sender = pickedSender('composeSendAs');
     const sig = sender ? userSignatureFor(sender.id) : '';
     subjEl.value = '';
-    bodyEl.value = sig ? '\n\n' + sig : '';
+    bodyEl.innerHTML = textToRichHtml(sig ? '\n\n' + sig : '');
     return;
   }
   const tpl = TEMPLATES.find(t=>t.id===tplId);
@@ -6588,7 +6586,7 @@ function refreshComposePreview(){
   // user changes the Send-as dropdown.
   const sender = pickedSender('composeSendAs');
   subjEl.value = renderTemplate(tpl.subject, c, sender);
-  bodyEl.value = renderTemplate(tpl.body, c, sender);
+  bodyEl.innerHTML = textToRichHtml(renderTemplate(tpl.body, c, sender));
 }
 
 // Returns the primary contact (PEOPLE row) for a given company, or null.
@@ -6687,7 +6685,7 @@ document.getElementById('composeOpen').addEventListener('click', async ()=>{
   // typed sticks. Template render already populated them; we only
   // re-render if the user hasn't touched them yet.
   const subj = document.getElementById('composeSubject').value.trim();
-  const body = document.getElementById('composePreview').value;
+  const body = rtToText(document.getElementById('composePreview'));
   if(!subj || !body.trim()){ toast('Subject + body required'); return; }
   // Prefer the primary person's email when they have one — that's the
   // named human you've decided to talk to. Falls back to the company-
@@ -6745,7 +6743,7 @@ document.getElementById('composeSendNow').addEventListener('click', async () => 
   const c = CURRENT_CONTACT;
   // Read the editable fields directly so any per-contact tweak sticks.
   const subj = document.getElementById('composeSubject').value.trim();
-  const body = document.getElementById('composePreview').value;
+  const body = rtToText(document.getElementById('composePreview'));
   if(!subj || !body.trim()){ toast('Subject + body required'); return; }
   const primary = primaryPersonFor(c.id);
   const recipient = (primary?.email) || c.email;
@@ -6756,7 +6754,9 @@ document.getElementById('composeSendNow').addEventListener('click', async () => 
   const btn = document.getElementById('composeSendNow');
   btn.disabled = true; btn.style.opacity = '.6'; btn.textContent = 'Sending…';
   try {
-    await gmailSendOne({ to: recipient, subject: subj, body, companyId: c.id, contactId: primary?.id || null, senderUserId: sender.id });
+    await gmailSendOne({ to: recipient, subject: subj, body,
+      html: document.getElementById('composePreview').innerHTML,
+      companyId: c.id, contactId: primary?.id || null, senderUserId: sender.id });
     // Same pipeline auto-advance + activity log + last_contacted as
     // the Open-in-Gmail flow, so both paths leave identical state.
     let newStatus = c.status;
@@ -6843,6 +6843,29 @@ document.getElementById('composeDraftDiscard')?.addEventListener('click', () => 
   refreshComposePreview();           // back to the template as written
   toast('Draft discarded');
 });
+// Both compose and reply use .rt-bar; wiring it by delegation means a new
+// editor anywhere gets the buttons working with no extra code.
+document.addEventListener('mousedown', (e) => {
+  if(e.target.closest?.('.rt-bar button[data-rt]')) e.preventDefault();
+});
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest?.('.rt-bar button[data-rt]');
+  if(!btn) return;
+  const editor = btn.closest('.editor-field, .compose-body, div')?.querySelector('.rt-editor')
+    || document.querySelector('.compose-modal.open .rt-editor');
+  if(!editor) return;
+  editor.focus();
+  const cmd = btn.dataset.rt;
+  if(cmd === 'createLink'){
+    const url = prompt('Link to where?', 'https://');
+    if(!url || url === 'https://') return;
+    document.execCommand('createLink', false, url);
+  } else {
+    document.execCommand(cmd, false, null);
+  }
+  editor.dispatchEvent(new Event('input', { bubbles: true }));
+});
+
 document.getElementById('composeAttachBtn')?.addEventListener('click', () => {
   document.getElementById('composeAttachInput').click();
 });
