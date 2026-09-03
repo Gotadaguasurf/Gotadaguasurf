@@ -519,3 +519,31 @@ test('crm: a half-written email survives closing the window', async ({ page }) =
   expect(out.survivedClose).toBe(true);
   expect(out.afterClear).toBe(null);
 });
+
+test('crm: a formatted reply sends readable text alongside the HTML', async ({ page }) => {
+  // Spam filters read the text/plain half and text-only clients show it, so
+  // formatting must degrade into something a person can actually read —
+  // lists as dashes and numbers, links keeping their address.
+  await fakeOwnerSession(page);
+  await page.goto('/crm/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof window.rtToText === 'function');
+  const out = await page.evaluate(() => {
+    const el = document.createElement('div');
+    el.innerHTML = '<div>Hi Julia,</div><div><br></div>' +
+      '<div>A week with us includes:</div>' +
+      '<ul><li><b>Beds</b> and breakfast</li><li>Surf coaching</li></ul>' +
+      '<div>Prices here: <a href="https://gotadaguasurf.com/prices">our prices</a></div>';
+    document.body.appendChild(el);
+    const sender = { full_name:'João', email:'groups@gotadaguasurf.com', signature:'Best,\nJoão' };
+    return { text: rtToText(el), html: wrapRichHtml(el.innerHTML, sender),
+             sendTakesHtml: /html\s*\}/.test(window.gmailSendOne.toString().split(')')[0] + '}') ||
+                            window.gmailSendOne.toString().includes('html ? wrapRichHtml') };
+  });
+  expect(out.text).toContain('Hi Julia,');
+  expect(out.text).toContain('- Beds and breakfast');     // bullets survive as dashes
+  expect(out.text).toContain('our prices (https://gotadaguasurf.com/prices)');  // link keeps its address
+  expect(out.text).not.toContain('<');                     // no tags leak into the text half
+  expect(out.html).toContain('<li>');                      // the HTML half keeps the list
+  expect(out.html).toContain('logo-blue.png');             // and still gets the footer
+  expect(out.sendTakesHtml).toBe(true);
+});

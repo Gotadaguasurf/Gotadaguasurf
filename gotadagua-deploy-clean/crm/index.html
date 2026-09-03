@@ -560,6 +560,26 @@ body.dark .ed:hover{background:#1b2c3d;border-color:#2d4459}
 .cmp-draft button{background:none;border:none;padding:0;font:inherit;color:var(--ocean);
   font-weight:700;cursor:pointer;text-decoration:underline}
 .cmp-draft button:hover{color:var(--navy)}
+
+/* ── RICH TEXT REPLY ──────────────────────────────────────────────── */
+/* Deliberately short of Gmail's bar: fonts, sizes, colours and
+   alignment mostly produce emails that look worse and score worse with
+   spam filters. Bold, lists and links are the ones that carry meaning. */
+.rt-bar{display:flex;align-items:center;gap:2px;flex-wrap:wrap;padding:6px 8px;
+  border:1px solid var(--border);border-bottom:none;border-radius:8px 8px 0 0;background:#f7fafc}
+.rt-bar button{background:none;border:1px solid transparent;border-radius:6px;padding:4px 9px;
+  font-size:12.5px;font-family:'Outfit',sans-serif;color:var(--ink);cursor:pointer;line-height:1.2}
+.rt-bar button:hover{background:#e6eef6;border-color:var(--border)}
+.rt-bar button:active{background:var(--ocean);color:#fff}
+.rt-sep{width:1px;height:18px;background:var(--border);margin:0 5px}
+.rt-editor{min-height:200px;max-height:44vh;overflow-y:auto;padding:12px 14px;
+  border:1px solid var(--border);border-radius:0 0 8px 8px;background:#fff;
+  font-family:Arial,Helvetica,sans-serif;font-size:13.5px;line-height:1.55;color:var(--ink);
+  white-space:pre-wrap;outline:none}
+.rt-editor:focus{border-color:var(--ocean);box-shadow:0 0 0 3px rgba(42,122,178,.12)}
+.rt-editor:empty::before{content:attr(data-placeholder);color:var(--muted)}
+.rt-editor ul,.rt-editor ol{margin:6px 0;padding-left:22px}
+.rt-editor a{color:var(--ocean)}
 body.dark .ig-btn{background:var(--card)}
 body.dark .ig-btn--primary{background:var(--ocean);color:#fff}
 body.dark .ed-input{background:var(--card)}
@@ -2126,6 +2146,63 @@ function buildGmailRawMessage({ to, subject, body, fromAuthuser, cc }){
   return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
+// Put the caret at the top of a contenteditable — you write above the
+// quoted trail, not below it.
+function caretToStart(el){
+  el.focus();
+  const r = document.createRange();
+  r.setStart(el, 0);
+  r.collapse(true);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(r);
+}
+
+// The plain-text half of a formatted reply. Spam filters read this half and
+// text-only clients show it, so it has to be a faithful reading of the
+// message: lists become dashes and numbers, links keep their address.
+function rtToText(el){
+  const out = [];
+  const walk = (node) => {
+    node.childNodes.forEach(n => {
+      if(n.nodeType === 3){ out.push(n.nodeValue); return; }
+      if(n.nodeType !== 1) return;
+      const tag = n.tagName.toLowerCase();
+      if(tag === 'br'){ out.push('\n'); return; }
+      if(tag === 'ul' || tag === 'ol'){
+        out.push('\n');
+        let i = 1;
+        n.childNodes.forEach(li => {
+          if(li.nodeType === 1 && li.tagName.toLowerCase() === 'li'){
+            out.push(tag === 'ol' ? `${i++}. ` : '- ');
+            walk(li);
+            out.push('\n');
+          }
+        });
+        return;
+      }
+      if(tag === 'a'){
+        const txt = n.textContent || '';
+        const href = n.getAttribute('href') || '';
+        out.push(href && href !== txt ? `${txt} (${href})` : txt);
+        return;
+      }
+      const block = /^(div|p|li|h[1-6]|blockquote)$/.test(tag);
+      if(block && out.length && !/\n$/.test(out[out.length - 1])) out.push('\n');
+      walk(n);
+      if(block) out.push('\n');
+    });
+  };
+  walk(el);
+  return out.join('').replace(/\n{3,}/g, '\n\n').replace(/[ \t]+\n/g, '\n').trim();
+}
+
+// A formatted reply is already HTML; it needs the shell and the footer, not
+// the escaping buildEmailHtml does to plain text.
+function wrapRichHtml(inner, sender){
+  return `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#1f2a44;line-height:1.5">${inner}<br><br>${signatureHtml(sender)}</div>`;
+}
+
 // ── Attachments ─────────────────────────────────────────────────────
 // Files live in the public crm-assets bucket and travel as URLs, not as
 // MIME attachments. Two reasons: a first email dragging a 10 MB deck behind
@@ -2247,7 +2324,7 @@ function buildEmailHtml(body, sender){
 //      trail records who clicked Send
 // Returns { ok, message_id, thread_id, from_display } — shape adapted
 // below to match the legacy { id, threadId } the call sites expect.
-async function gmailSendOne({ to, subject, body, companyId, contactId, senderUserId, threadId, inReplyTo, references }){
+async function gmailSendOne({ to, subject, body, html, companyId, contactId, senderUserId, threadId, inReplyTo, references }){
   const supa = getClient();
   const { data: { session: s } } = await supa.auth.getSession();
   if(!s?.access_token) throw new Error('Not signed in — refresh and sign in to the CRM');
@@ -2260,7 +2337,7 @@ async function gmailSendOne({ to, subject, body, companyId, contactId, senderUse
   if(sigText && !bodyOut.includes(sigText)){
     bodyOut = bodyOut.replace(/\s+$/, '') + '\n\n' + sigText;
   }
-  const htmlBody = buildEmailHtml(bodyOut, senderRow);
+  const htmlBody = html ? wrapRichHtml(html, senderRow) : buildEmailHtml(bodyOut, senderRow);
   const resp = await fetch(`${cfg.url}/functions/v1/gmail-send`, {
     method: 'POST',
     headers: {
@@ -5751,8 +5828,20 @@ function openReplyCompose(a, contact){
         </div>
         <div class="editor-field">
           <label>Message</label>
-          <textarea id="replyBody" style="min-height:200px;font-family:'DM Mono',monospace;font-size:13px;line-height:1.5" placeholder="Type your reply…"></textarea>
-          <div class="editor-hint" style="margin-top:6px">Sends from <code>groups@gotadaguasurf.com</code> on the same thread. Signature comes from the picked sender's team_users row.</div>
+          <div class="rt-bar" role="toolbar" aria-label="Formatting">
+            <button type="button" data-rt="bold" title="Bold (Cmd+B)"><b>B</b></button>
+            <button type="button" data-rt="italic" title="Italic (Cmd+I)"><i>I</i></button>
+            <button type="button" data-rt="underline" title="Underline (Cmd+U)"><u>U</u></button>
+            <span class="rt-sep"></span>
+            <button type="button" data-rt="insertUnorderedList" title="Bulleted list">&#8226; List</button>
+            <button type="button" data-rt="insertOrderedList" title="Numbered list">1. List</button>
+            <span class="rt-sep"></span>
+            <button type="button" data-rt="createLink" title="Add a link">Link</button>
+            <button type="button" data-rt="removeFormat" title="Clear formatting">Clear</button>
+          </div>
+          <div id="replyBody" class="rt-editor" contenteditable="true" role="textbox" aria-multiline="true"
+               data-placeholder="Type your reply…"></div>
+          <div class="editor-hint" style="margin-top:6px">Sends from <code>groups@gotadaguasurf.com</code> on the same thread. Your signature is added automatically, so just write the message.</div>
         </div>
       </div>
       <div class="compose-footer">
@@ -5769,28 +5858,32 @@ function openReplyCompose(a, contact){
   populateSendAsPicker(modal.querySelector('#replySendAs'),
     contact?.account_manager_id || CURRENT_TEAM_USER?.id);
   const ta = modal.querySelector('#replyBody');
-  // Pre-fill the picked sender's signature; update live when the user
-  // changes the picker (only when they haven't typed anything yet, so
-  // we don't clobber drafted text).
-  const applySig = () => {
-    const sender = TEAM_USERS.find(u => u.id === modal.querySelector('#replySendAs').value);
-    const sig = userSignatureFor(sender?.id);
-    ta.value = sig ? `\n\n${sig}` : '';
-    ta.setSelectionRange(0, 0);
-  };
-  applySig();
-  modal.querySelector('#replySendAs').addEventListener('change', () => {
-    // Only auto-replace if the textarea hasn't been edited beyond the
-    // signature footer — heuristic: starts with 2 newlines (our prefill).
-    if(/^\s*\n\s*\n/.test(ta.value) || ta.value.trim() === '') applySig();
+
+  // Formatting runs on the selection, so the editor must keep focus: the
+  // toolbar steals it on mousedown otherwise and the command applies to
+  // nothing.
+  modal.querySelectorAll('.rt-bar button[data-rt]').forEach(btn => {
+    btn.addEventListener('mousedown', e => e.preventDefault());
+    btn.addEventListener('click', () => {
+      const cmd = btn.dataset.rt;
+      ta.focus();
+      if(cmd === 'createLink'){
+        const url = prompt('Link to where?', 'https://');
+        if(!url || url === 'https://') return;
+        document.execCommand('createLink', false, url);
+        return;
+      }
+      document.execCommand(cmd, false, null);
+    });
   });
-  setTimeout(() => { ta.focus(); ta.setSelectionRange(0, 0); }, 50);
+  setTimeout(() => caretToStart(ta), 50);
   modal.querySelector('#replySend').addEventListener('click', async () => {
     const sender = TEAM_USERS.find(u => u.id === modal.querySelector('#replySendAs').value);
     if(!sender){ toast('Pick a sender first'); return; }
     const to = modal.querySelector('#replyTo').value.trim();
     const subject = modal.querySelector('#replySubject').value.trim();
-    const body = ta.value;
+    const bodyHtml = ta.innerHTML;
+    const body = rtToText(ta);
     if(!to || !subject){ toast('To + Subject required'); return; }
     const btn = modal.querySelector('#replySend');
     btn.disabled = true; btn.style.opacity = '.6'; btn.textContent = 'Sending…';
@@ -5806,7 +5899,7 @@ function openReplyCompose(a, contact){
         ? (m.provider_msg_id.startsWith('<') ? m.provider_msg_id : `<${m.provider_msg_id}>`)
         : undefined;
       await gmailSendOne({
-        to, subject, body,
+        to, subject, body, html: bodyHtml,
         companyId: contact.id,
         contactId: primaryPersonFor(contact.id)?.id || null,
         senderUserId: sender.id,
