@@ -1,6 +1,6 @@
 ---
 name: gotadagua-platform
-description: Complete map of the Gota d'Água surf-camp platform — its 8 apps (camp-hub POS, HQ finance, CRM, prices, partners, surf-school, instructors, root/settings), the Supabase schema and RLS access model, the three money flows, deploy workflow, and the known traps that have caused real data loss. Use this skill for ANY work on this codebase: adding features, fixing bugs, writing SQL for Supabase, importing expenses or bookings, touching the POS/Camp Tab, the CRM email engine, invoices, pricing, or team access — even when the request sounds simple ("add a tab", "import this CSV", "why is this showing the wrong currency"). Also use it when asked how the platform works, where something lives, or what a table/column means.
+description: Complete map of the Gota d'Água surf-camp platform — its 8 apps (camp-hub POS, HQ finance, CRM, prices, partners, surf-school, instructors, root/settings), the Supabase schema and RLS access model, the three money flows, the finance and payroll rules, deploy workflow, and the known traps that have caused real data loss. Use this skill for ANY work on this codebase AND for any question about the money: adding features, fixing bugs, writing SQL for Supabase, importing a bank statement or a Bookinglayer CSV, reconciling expenses, categorising invoices, salaries and meal cards, partner commission, profit per camp, or "what did we spend on X" — even when the request sounds simple ("add a tab", "import this CSV", "is this a duplicate?", "why is this showing the wrong currency"). Also use it when asked how the platform works, where something lives, or what a table/column means.
 ---
 
 # Gota d'Água Platform
@@ -150,5 +150,15 @@ Read the one matching your task — each has the detail this map omits.
 - **`references/sql-recipes.md`** — the SQL patterns used over and over: importing
   camp expenses, seeding POS stock, restoring a corrupted menu, diagnosing access,
   sanity queries. Start here for any data task.
+- **`references/payroll.md`** — the Recibo_Geral payslips are the source of truth for
+  salaries AND meal cards: how to read one (net vs meal card vs recibo total), the
+  Water Movements roster with each person's net and location, who was employed when,
+  and the monthly totals that must reconcile. Read before touching any salary row.
+- **`references/finance-analysis.md`** — reconciling the Santander statement against
+  the Drive invoices, the supplier alias map (the same supplier is stored under
+  several names), which same-day repeats are real and which are duplicates, how to
+  infer categories without guessing, partner commission and the per-location split.
+  Read before importing a bank statement or a Bookinglayer CSV, and before
+  answering any question about what something cost.
 - **`ARCHITECTURE.md`** (repo root) — the older 2-page summary; this skill supersedes
   it but it stays as a quick orientation doc.

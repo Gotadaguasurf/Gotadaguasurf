@@ -588,3 +588,70 @@ test('crm: the tasks badge counts what is due today, not only what is late', asy
   expect(out.badge).toBe('2');            // late + today, not the future one, not the done one
   expect(out.title).toContain('(2)');     // and the browser tab says so too
 });
+
+test('crm: pasting plain text keeps its line breaks in the HTML that is sent', async ({ page }) => {
+  // A price list pasted into the editor arrived in Gmail as one solid block:
+  // the newlines went into a text node, and HTML renders those as spaces.
+  // The paste handler has to turn them into real blocks.
+  await fakeOwnerSession(page);
+  await page.goto('/crm/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof window.textToRichHtml === 'function');
+  const out = await page.evaluate(async () => {
+    const ed = document.createElement('div');
+    ed.className = 'rt-editor';
+    ed.contentEditable = 'true';
+    document.body.appendChild(ed);
+    const range = document.createRange();
+    range.selectNodeContents(ed);
+    const sel = window.getSelection();
+    sel.removeAllRanges(); sel.addRange(range);
+    const dt = new DataTransfer();
+    dt.setData('text/plain', 'Marrocos\n- Alojamento\n- Pequeno almoco\n\nPreco: 365 euros');
+    ed.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+    await new Promise(r => setTimeout(r, 30));
+    return { html: ed.innerHTML, text: rtToText(ed) };
+  });
+  // The HTML half must carry the structure, not raw newlines inside one node.
+  expect(out.html).toContain('<div>Marrocos</div>');
+  expect(out.html).toContain('<div>- Alojamento</div>');
+  expect(out.html).toContain('<div>- Pequeno almoco</div>');
+  expect(out.html).toContain('<div>Preco: 365 euros</div>');
+  // And the plain-text half still reads line by line.
+  expect(out.text).toContain('Marrocos\n- Alojamento\n- Pequeno almoco');
+});
+
+test('crm: a calendar invite is titled for the client and carries their email', async ({ page }) => {
+  // The event used to be called "Meeting — X" with no guest, so the address
+  // had to be pasted by hand every time.
+  await fakeOwnerSession(page);
+  await page.goto('/crm/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof window.gcalUrl === 'function');
+  const url = await page.evaluate(() => gcalUrl(
+    { met_at: '2026-09-04T13:00:00Z', attendees: 'chair', notes: 'intro call' },
+    'Brum Surf University', 'brumsurf-chair@society.guild.bham.ac.uk'));
+  expect(decodeURIComponent(url)).toContain('text=Gota Dagua > Brum Surf University');
+  expect(url).toContain('add=brumsurf-chair%40society.guild.bham.ac.uk');
+  expect(url).not.toContain('Meeting%20%E2%80%94');
+});
+
+test('crm: replying shows the email being answered', async ({ page }) => {
+  // Re-reading the original meant closing the reply, which threw the draft away.
+  await fakeOwnerSession(page);
+  await page.goto('/crm/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof window.openReplyCompose === 'function');
+  const out = await page.evaluate(() => {
+    openReplyCompose({
+      created_at: '2026-09-03T12:40:00Z',
+      meta: { from: 'Teresa <teresa@zulla.pt>', subject: 'uma surf trip?',
+              body: 'Ola! Queria saber os precos para 12 pessoas.' },
+    }, { id: 'c1', company: 'Zulla Surf' });
+    const modal = document.getElementById('replyModal');
+    const orig = modal.querySelector('.reply-orig');
+    return { hasOrig: !!orig, text: orig ? orig.textContent : '',
+             hasEditor: !!modal.querySelector('#replyBody') };
+  });
+  expect(out.hasOrig).toBe(true);
+  expect(out.text).toContain('Queria saber os precos para 12 pessoas');
+  expect(out.text).toContain('Teresa');
+  expect(out.hasEditor).toBe(true);   // the reply box is still there alongside it
+});

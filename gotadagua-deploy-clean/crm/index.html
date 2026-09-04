@@ -2216,6 +2216,35 @@ function textToRichHtml(text){
     .map(l => `<div>${escHtml(l) || '<br>'}</div>`).join('');
 }
 
+// Pasting plain text into a contenteditable drops the newlines INTO a text
+// node, and HTML renders those as spaces — which is how a carefully laid out
+// price list arrived in Gmail as one solid block. Convert the paste into real
+// blocks ourselves. Rich HTML pastes are left to the browser, which already
+// carries their structure.
+document.addEventListener('paste', (e) => {
+  const ed = e.target instanceof Element ? e.target.closest('.rt-editor') : null;
+  if(!ed) return;
+  const cb = e.clipboardData;
+  if(!cb) return;
+  if((cb.getData('text/html') || '').trim()) return;   // keep the browser's own handling
+  const text = cb.getData('text/plain');
+  if(!text) return;
+  e.preventDefault();
+  const frag = document.createRange().createContextualFragment(textToRichHtml(text));
+  const sel = window.getSelection();
+  if(!sel || !sel.rangeCount){ ed.appendChild(frag); return; }
+  const range = sel.getRangeAt(0);
+  range.deleteContents();
+  const last = frag.lastChild;
+  range.insertNode(frag);
+  if(last){
+    const after = document.createRange();
+    after.setStartAfter(last); after.collapse(true);
+    sel.removeAllRanges(); sel.addRange(after);
+  }
+  ed.dispatchEvent(new Event('input', { bubbles: true }));
+});
+
 // A formatted reply is already HTML; it needs the shell and the footer, not
 // the escaping buildEmailHtml does to plain text.
 function wrapRichHtml(inner, sender){
@@ -3533,16 +3562,20 @@ async function loadMeetings(){
 // Prefilled Google Calendar "create event" link — one click in the
 // opened tab saves it on the groups@ calendar (authuser preselects the
 // shared account when its Google session is active in the browser).
-function gcalUrl(m, company){
+function gcalUrl(m, company, guestEmail){
   const start = new Date(m.met_at);
   const end   = new Date(start.getTime() + 60 * 60 * 1000);
   const z = d => d.toISOString().replace(/[-:]|\.\d{3}/g, '');
   const details = (m.attendees ? 'With: ' + m.attendees + '\n' : '') +
     (m.notes || '') + '\n\nCRM: https://gotadaguasurf.vercel.app/crm';
+  // Title reads "Gota Dagua > Client" so it is obvious in the guest's own
+  // calendar who the meeting is with. &add= puts the contact on the invite
+  // so nobody has to paste the address by hand.
   return 'https://calendar.google.com/calendar/render?action=TEMPLATE' +
-    '&text=' + encodeURIComponent('Meeting — ' + (company || 'CRM contact')) +
+    '&text=' + encodeURIComponent('Gota Dagua > ' + (company || 'CRM contact')) +
     '&dates=' + z(start) + '/' + z(end) +
     '&details=' + encodeURIComponent(details) +
+    (guestEmail ? '&add=' + encodeURIComponent(guestEmail) : '') +
     '&authuser=' + encodeURIComponent(GMAIL_AUTHUSER);
 }
 
@@ -3553,7 +3586,7 @@ function meetingRowHtml(m, withCompany){
   return `<div class="meeting-row ${upcoming ? 'upcoming' : ''}" data-mtco="${m.company_id || ''}">
     <div class="meeting-when">${fmtDateTime(m.met_at)}</div>
     <div class="meeting-main">${withCompany ? `<b>${escHtml(co?.company || '?')}</b> ` : ''}${escHtml(m.attendees || '')}${m.notes ? ` <span style="color:var(--muted)">· ${escHtml(m.notes)}</span>` : ''}${owner ? ` <span style="color:var(--muted);font-size:10.5px">(${escHtml(owner.full_name)})</span>` : ''}</div>
-    <a class="meeting-gcal" href="${gcalUrl(m, co?.company)}" target="_blank" rel="noopener" title="Add to the groups@ Google Calendar" onclick="event.stopPropagation()">GCal</a>
+    <a class="meeting-gcal" href="${gcalUrl(m, co?.company, co ? recipientEmailFor(co) : null)}" target="_blank" rel="noopener" title="Add to the groups@ Google Calendar" onclick="event.stopPropagation()">GCal</a>
     <button type="button" class="meeting-del" data-mtdel="${m.id}" title="Delete meeting">&times;</button>
   </div>`;
 }
@@ -3637,7 +3670,7 @@ async function saveMeetingFromForm(companyId){
   }
   // Hand off to Google Calendar with everything prefilled — one click
   // ("Save") in the new tab puts it on the groups@ calendar.
-  window.open(gcalUrl(data, co?.company), '_blank', 'noopener');
+  window.open(gcalUrl(data, co?.company, co ? recipientEmailFor(co) : null), '_blank', 'noopener');
 }
 
 // ── Inbox (inbound replies with read/unread, Gmail-style) ──────────
@@ -5814,6 +5847,16 @@ function openReplyCompose(a, contact){
   // Strip + reuse the existing settings dialog's modal styles so the
   // reply matches the rest of the app. Built dynamically rather than
   // adding to the HTML body since this modal is only used here.
+  // The message being answered, kept in the modal. Without it the only way to
+  // re-read the original was to close the reply — which threw the draft away.
+  const origRaw  = splitQuoted(decodeEntities(m.body || m.snippet || ''));
+  const origWhen = a.created_at ? fmtDateTime(a.created_at) : '';
+  const origHtml = (origRaw.head || origRaw.quoted) ? `
+          <details class="reply-orig" open style="margin-top:10px;border:1px solid var(--border);border-radius:8px;background:var(--foam)">
+            <summary style="cursor:pointer;padding:8px 10px;font-size:11.5px;color:var(--muted)">Email de ${escHtml((m.from || '').replace(/<[^>]*>/g,'').trim() || 'contacto')}${origWhen ? ' · ' + escHtml(origWhen) : ''}</summary>
+            <div style="max-height:220px;overflow:auto;padding:0 12px 12px;font-size:12.5px;line-height:1.55;white-space:pre-wrap">${escHtml(origRaw.head || '')}${origRaw.quoted ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);color:var(--muted)">${escHtml(origRaw.quoted)}</div>` : ''}</div>
+          </details>` : '';
+
   let modal = document.getElementById('replyModal');
   if(modal) modal.remove();
   modal = document.createElement('div');
@@ -5855,6 +5898,7 @@ function openReplyCompose(a, contact){
           </div>
           <div id="replyBody" class="rt-editor" contenteditable="true" role="textbox" aria-multiline="true"
                data-placeholder="Type your reply…"></div>
+          ${origHtml}
           <div class="editor-hint" style="margin-top:6px">Sends from <code>groups@gotadaguasurf.com</code> on the same thread. Your signature is added automatically, so just write the message.</div>
         </div>
       </div>
