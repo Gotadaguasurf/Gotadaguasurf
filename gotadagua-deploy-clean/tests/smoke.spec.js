@@ -693,15 +693,46 @@ test('crm: documents go as real attachments, photos stay inside the email', asyn
     // a top-level const is not a window property — reach it by name
     hasQueue: Array.isArray(PENDING_ATTACH.composePreview)
               && Array.isArray(PENDING_ATTACH.replyBody),
-    // the send function forwards them to the Edge Function
-    sendTakesAttachments: /attachments/.test(window.gmailSendOne.toString()),
-    postsAttachments: /attachments:\s*\(attachments/.test(window.gmailSendOne.toString()),
+    // Declared as a parameter — not just mentioned in the body. Without this
+    // the send threw "attachments is not defined" at the user.
+    sendTakesAttachments: /^async function gmailSendOne\(\{[^}]*\battachments\b/
+                          .test(window.gmailSendOne.toString()),
     pdfIsNotImage: window.isImageUrl('https://x/y/portugal-groups.pdf') === false,
     jpgIsImage: window.isImageUrl('https://x/y/praia.jpg') === true,
   }));
   expect(out.hasQueue).toBe(true);
   expect(out.sendTakesAttachments).toBe(true);
-  expect(out.postsAttachments).toBe(true);
   expect(out.pdfIsNotImage).toBe(true);   // a PDF is queued as an attachment
   expect(out.jpgIsImage).toBe(true);      // a photo goes into the body
+});
+
+
+test('crm: sending with attachments does not blow up, and they reach the payload', async ({ page }) => {
+  // The bug the user hit: the payload referenced `attachments` but the
+  // function never took it as a parameter, so every send with a file
+  // attached died with "attachments is not defined".
+  await fakeOwnerSession(page);
+  await page.goto('/crm/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof window.gmailSendOne === 'function');
+  const out = await page.evaluate(async () => {
+    window.__SUPABASE_CONFIG = window.__SUPABASE_CONFIG || { url: 'https://stub.test', anonKey: 'k' };
+    const real = window.fetch;
+    let posted = null;
+    window.fetch = async (url, opts) => {
+      posted = JSON.parse(opts.body);
+      return { ok: true, json: async () => ({ ok: true, message_id: 'm1', thread_id: 't1' }) };
+    };
+    let err = null;
+    try {
+      await gmailSendOne({
+        to: 'a@b.pt', subject: 'x', body: 'y', html: '<div>y</div>',
+        attachments: [{ url: 'https://x/y/deck.pdf', name: 'deck.pdf', type: 'application/pdf' }],
+      });
+    } catch (e) { err = String(e && e.message || e); }
+    window.fetch = real;
+    return { err, sent: posted && posted.attachments };
+  });
+  expect(out.err).toBe(null);
+  expect(out.sent).toHaveLength(1);
+  expect(out.sent[0].name).toBe('deck.pdf');
 });

@@ -2399,7 +2399,7 @@ function buildEmailHtml(body, sender){
 //      trail records who clicked Send
 // Returns { ok, message_id, thread_id, from_display } — shape adapted
 // below to match the legacy { id, threadId } the call sites expect.
-async function gmailSendOne({ to, subject, body, html, companyId, contactId, senderUserId, threadId, inReplyTo, references }){
+async function gmailSendOne({ to, subject, body, html, companyId, contactId, senderUserId, threadId, inReplyTo, references, attachments }){
   const supa = getClient();
   const { data: { session: s } } = await supa.auth.getSession();
   if(!s?.access_token) throw new Error('Not signed in — refresh and sign in to the CRM');
