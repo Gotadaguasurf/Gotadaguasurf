@@ -87,46 +87,59 @@ export function buildEmailHtml(body: string, sender: Sender, trailer = ''): stri
 export interface MailAttachment {
   name: string
   type: string
-  b64: string      // já em base64, sem quebras de linha
+  bytes: Uint8Array
 }
 
-// Downloads the files the CRM uploaded to the public bucket and returns them
-// base64'd, ready to be embedded. A file that cannot be fetched is skipped
-// rather than failing the send — an email without one attachment beats no
-// email at all, and the caller logs what came back.
+// Base64 de um Uint8Array sem construir uma string binária gigante pelo meio.
+// O corte é múltiplo de 3, por isso o base64 dos pedaços concatenados é igual
+// ao base64 do todo.
+function b64FromBytes(buf: Uint8Array): string {
+  const CH = 3 * 4096
+  const out: string[] = []
+  for (let i = 0; i < buf.length; i += CH) {
+    const sub = buf.subarray(i, i + CH)
+    out.push(btoa(String.fromCharCode.apply(null, sub as unknown as number[])))
+  }
+  return out.join('')
+}
+
+// Limite total dos anexos. Acima disto a função fica sem memória a montar a
+// mensagem, e o erro que chega ao utilizador não explica nada.
+export const ATTACH_TOTAL_LIMIT = 12 * 1024 * 1024
+
+// Vai buscar ao bucket os ficheiros que a app carregou. Guarda os bytes; a
+// conversão para base64 acontece uma só vez, no fim, sobre a mensagem inteira.
 export async function fetchAttachments(
   list: Array<{ url: string; name?: string; type?: string }>,
-): Promise<MailAttachment[]> {
-  const out: MailAttachment[] = []
+): Promise<{ files: MailAttachment[]; skipped: string[] }> {
+  const files: MailAttachment[] = []
+  const skipped: string[] = []
+  let total = 0
   for (const f of list || []) {
     if (!f?.url) continue
+    const nome = f.name || (f.url.split('/').pop() || 'anexo')
     try {
       const resp = await fetch(f.url)
-      if (!resp.ok) continue
-      const buf = new Uint8Array(await resp.arrayBuffer())
-      // Chunked so a multi-MB file does not blow the argument limit of
-      // String.fromCharCode.
-      let bin = ''
-      const CH = 0x8000
-      for (let i = 0; i < buf.length; i += CH) {
-        bin += String.fromCharCode(...buf.subarray(i, i + CH))
-      }
-      out.push({
-        name: f.name || (f.url.split('/').pop() || 'anexo'),
+      if (!resp.ok) { skipped.push(nome); continue }
+      const bytes = new Uint8Array(await resp.arrayBuffer())
+      if (total + bytes.length > ATTACH_TOTAL_LIMIT) { skipped.push(nome); continue }
+      total += bytes.length
+      files.push({
+        name: nome,
         type: f.type || resp.headers.get('content-type') || 'application/octet-stream',
-        b64: btoa(bin),
+        bytes,
       })
-    } catch { /* ficheiro inacessível — segue sem ele */ }
+    } catch { skipped.push(nome) }
   }
-  return out
+  return { files, skipped }
 }
 
-// RFC 2045: base64 bodies wrap at 76 characters.
+// RFC 2045: corpos base64 quebram aos 76 caracteres.
 function wrap76(b64: string): string {
   return (b64.match(/.{1,76}/g) || []).join('\r\n')
 }
 
-// A filename with anything outside ASCII needs RFC 2047 in the header.
+// Um nome de ficheiro com acentos precisa de RFC 2047 no cabeçalho.
 function encodeFilename(name: string, toUtf8: (s: string) => string): string {
   return /[^\x20-\x7e]/.test(name)
     ? `=?utf-8?B?${btoa(toUtf8(name))}?=`
@@ -165,29 +178,42 @@ export function buildRaw(args: {
     // multipart/mixed
     //   ├── multipart/alternative  (texto + HTML)
     //   └── um part por ficheiro
-    // Sem o mixed exterior o cliente mostra o anexo mas perde o corpo.
+    // Montado em BYTES e convertido para base64 uma única vez no fim. A
+    // versão anterior construía a mensagem como string e corria
+    // encodeURIComponent + btoa por cima: com tres PDF a funcao ficava sem
+    // memoria e devolvia WORKER_RESOURCE_LIMIT.
     const outer = 'gds_mix_5a1e9d'
     const inner = 'gds_alt_7f3b2c'
     lines.push(`Content-Type: multipart/mixed; boundary="${outer}"`)
     if (args.inReplyTo) lines.push(`In-Reply-To: ${args.inReplyTo}`)
     if (args.references) lines.push(`References: ${args.references}`)
-    let body = lines.join('\r\n') + '\r\n\r\n' +
+    const enc = new TextEncoder()
+    const chunks: Uint8Array[] = []
+    chunks.push(enc.encode(
+      lines.join('\r\n') + '\r\n\r\n' +
       `--${outer}\r\nContent-Type: multipart/alternative; boundary="${inner}"\r\n\r\n` +
       `--${inner}\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n` +
       (args.body || '') + '\r\n\r\n' +
       `--${inner}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n` +
-      (args.html || (args.body || '')) + `\r\n\r\n--${inner}--\r\n`
+      (args.html || (args.body || '')) + `\r\n\r\n--${inner}--\r\n`,
+    ))
     for (const a of atts) {
       const fn = encodeFilename(a.name, toUtf8)
-      body += `\r\n--${outer}\r\n` +
+      chunks.push(enc.encode(
+        `\r\n--${outer}\r\n` +
         `Content-Type: ${a.type}; name="${fn}"\r\n` +
         `Content-Disposition: attachment; filename="${fn}"\r\n` +
-        `Content-Transfer-Encoding: base64\r\n\r\n` +
-        wrap76(a.b64) + '\r\n'
+        `Content-Transfer-Encoding: base64\r\n\r\n`,
+      ))
+      chunks.push(enc.encode(wrap76(b64FromBytes(a.bytes)) + '\r\n'))
     }
-    body += `\r\n--${outer}--\r\n`
-    // O corpo já é ASCII na parte base64; o toUtf8 só afeta texto e HTML.
-    return btoa(toUtf8(body)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+    chunks.push(enc.encode(`\r\n--${outer}--\r\n`))
+    let total = 0
+    for (const c of chunks) total += c.length
+    const buf = new Uint8Array(total)
+    let off = 0
+    for (const c of chunks) { buf.set(c, off); off += c.length }
+    return b64FromBytes(buf).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
   }
 
   if (args.html) {

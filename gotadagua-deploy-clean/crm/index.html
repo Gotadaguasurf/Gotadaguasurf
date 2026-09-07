@@ -2442,7 +2442,12 @@ async function gmailSendOne({ to, subject, body, html, companyId, contactId, sen
   const j = await resp.json();
   // Adapt to the { id, threadId } shape recordOutboundEmail + callers
   // expect from the legacy direct-API response.
-  return { id: j.message_id, threadId: j.thread_id, fromDisplay: j.from_display };
+  // A funcao salta um ficheiro que nao consiga ir buscar ou que estoire o
+  // limite total. Sem isto o email seguia sem ele e ninguem dava por nada.
+  if(Array.isArray(j.skipped) && j.skipped.length){
+    toast(`Enviado, mas sem ${j.skipped.length} anexo${j.skipped.length>1?'s':''}: ${j.skipped.join(', ')}`);
+  }
+  return { id: j.message_id, threadId: j.thread_id, fromDisplay: j.from_display, skipped: j.skipped || [] };
 }
 
 // No-op since the gmail-send Edge Function inserts the email_messages

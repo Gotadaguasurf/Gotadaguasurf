@@ -145,7 +145,8 @@ Deno.serve(async (req) => {
     // aqui voltam a ser bytes e seguem como anexo MIME a sério. O destinatário
     // recebe um PDF, não um link para um domínio que não conhece.
     const files = Array.isArray(attachments) ? attachments.slice(0, 10) : []
-    const atts = files.length ? await fetchAttachments(files) : []
+    const got = files.length ? await fetchAttachments(files) : { files: [], skipped: [] }
+    const atts = got.files
     const raw = buildRaw({
       fromEmail: account.email,
       fromDisplay: displayName,
@@ -187,7 +188,7 @@ Deno.serve(async (req) => {
         sender_user_id: effectiveSenderId,
       })
     }
-    return json({ ok: true, message_id: sent.id, thread_id: sent.threadId, from_display: displayName, attached: atts.length, attach_requested: files.length })
+    return json({ ok: true, message_id: sent.id, thread_id: sent.threadId, from_display: displayName, attached: atts.length, attach_requested: files.length, skipped: got.skipped })
   } catch (e) {
     return json({ error: (e as Error).message || 'send failed' }, 500)
   }
