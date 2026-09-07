@@ -655,3 +655,29 @@ test('crm: replying shows the email being answered', async ({ page }) => {
   expect(out.text).toContain('Teresa');
   expect(out.hasEditor).toBe(true);   // the reply box is still there alongside it
 });
+
+test('crm: attachments accept presentations, and the reply window has them too', async ({ page }) => {
+  // The picker only offered image/* and PDF, so a deck could not even be
+  // selected — and the reply window had no attach button at all.
+  await fakeOwnerSession(page);
+  await page.goto('/crm/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof window.openReplyCompose === 'function');
+  const out = await page.evaluate(() => {
+    const composeInput = document.getElementById('composeAttachInput');
+    openReplyCompose({ created_at: '2026-09-03T12:40:00Z',
+      meta: { from: 'a@b.pt', subject: 's', body: 'texto' } }, { id: 'c1', company: 'X' });
+    const modal = document.getElementById('replyModal');
+    return {
+      composeAccept: composeInput ? (composeInput.getAttribute('accept') || '') : 'MISSING',
+      replyBtn: !!modal.querySelector('#replyAttachBtn'),
+      replyInput: !!modal.querySelector('#replyAttachInput'),
+      replyAccept: modal.querySelector('#replyAttachInput')?.getAttribute('accept') || '',
+      takesTarget: window.handleComposeAttach.length >= 2,
+    };
+  });
+  expect(out.composeAccept).toBe('');      // no filter — a .pptx is selectable
+  expect(out.replyBtn).toBe(true);
+  expect(out.replyInput).toBe(true);
+  expect(out.replyAccept).toBe('');
+  expect(out.takesTarget).toBe(true);      // the handler can write into either editor
+});

@@ -1146,7 +1146,7 @@ body.dark .ed-input{background:var(--card)}
       </div>
       <div class="cmp-files">
         <button type="button" class="ig-btn" id="composeAttachBtn">Add photo or file</button>
-        <input type="file" id="composeAttachInput" multiple accept="image/*,application/pdf" style="display:none">
+        <input type="file" id="composeAttachInput" multiple style="display:none">
         <span class="ig-note" id="composeAttachNote">Photos show inside the email; PDFs and decks go as a link, which keeps the email light enough to reach the inbox.</span>
       </div>
       <div class="editor-hint">Pick <b>Custom</b> in the template dropdown to write from scratch. Edits stick until you switch template.</div>
@@ -2272,11 +2272,22 @@ async function uploadComposeFile(file){
   return data.publicUrl;
 }
 
-async function handleComposeAttach(files){
-  const btn = document.getElementById('composeAttachBtn');
-  const note = document.getElementById('composeAttachNote');
-  const box = document.getElementById('composePreview');
-  if(!files.length || !box) return;
+const ATTACH_MAX_MB = 25;   // o limite do bucket crm-assets
+
+async function handleComposeAttach(files, ids){
+  const { btnId = 'composeAttachBtn', noteId = 'composeAttachNote', boxId = 'composePreview' } = ids || {};
+  const btn = document.getElementById(btnId);
+  const note = document.getElementById(noteId);
+  const box = document.getElementById(boxId);
+  if(!files.length || !box || !btn) return;
+  // Um ficheiro acima do limite falha no servidor com uma mensagem opaca;
+  // mais vale dize-lo aqui.
+  const grandes = files.filter(f => f.size > ATTACH_MAX_MB * 1024 * 1024);
+  if(grandes.length){
+    toast(`${grandes[0].name} tem ${(grandes[0].size/1048576).toFixed(1)}MB — o limite sao ${ATTACH_MAX_MB}MB`);
+    files = files.filter(f => f.size <= ATTACH_MAX_MB * 1024 * 1024);
+    if(!files.length) return;
+  }
   const label = btn.textContent;
   btn.disabled = true;
   const urls = [];
@@ -5898,6 +5909,11 @@ function openReplyCompose(a, contact){
           </div>
           <div id="replyBody" class="rt-editor" contenteditable="true" role="textbox" aria-multiline="true"
                data-placeholder="Type your reply…"></div>
+          <div style="margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <button type="button" class="ig-btn" id="replyAttachBtn">Add photo or file</button>
+            <input type="file" id="replyAttachInput" multiple style="display:none">
+            <span class="ig-note" id="replyAttachNote">Photos show inside the email; other files go as a link.</span>
+          </div>
           ${origHtml}
           <div class="editor-hint" style="margin-top:6px">Sends from <code>groups@gotadaguasurf.com</code> on the same thread. Your signature is added automatically, so just write the message.</div>
         </div>
@@ -5911,6 +5927,15 @@ function openReplyCompose(a, contact){
   const close = () => modal.remove();
   modal.querySelector('#replyClose').addEventListener('click', close);
   modal.querySelector('#replyCancel').addEventListener('click', close);
+  // Anexos na resposta, iguais aos do compose — o mesmo bucket, o mesmo
+  // formato de link, so muda o editor onde o URL e escrito.
+  modal.querySelector('#replyAttachBtn').addEventListener('click', () =>
+    modal.querySelector('#replyAttachInput').click());
+  modal.querySelector('#replyAttachInput').addEventListener('change', async (ev) => {
+    const files = Array.from(ev.target.files || []);
+    ev.target.value = '';
+    await handleComposeAttach(files, { btnId:'replyAttachBtn', noteId:'replyAttachNote', boxId:'replyBody' });
+  });
   // Default to the contact's account_manager_id (the owner of the
   // relationship); fall back to logged-in user when unassigned.
   populateSendAsPicker(modal.querySelector('#replySendAs'),
