@@ -2269,10 +2269,21 @@ async function uploadComposeFile(file){
     .upload(path, file, { cacheControl: '31536000', upsert: false });
   if(error) throw new Error(error.message);
   const { data } = getClient().storage.from(CRM_FILES_BUCKET).getPublicUrl(path);
-  return data.publicUrl;
+  return { url: data.publicUrl, name: file.name, type: file.type || 'application/octet-stream' };
 }
 
 const ATTACH_MAX_MB = 25;   // o limite do bucket crm-assets
+
+// Ficheiros à espera de seguir no próximo envio, por editor. Uma foto continua
+// a ir pelo corpo (aparece dentro do email); um PDF ou uma apresentação vai
+// como anexo MIME a sério — ninguém quer receber um link para um domínio
+// estranho quando esperava um documento.
+const PENDING_ATTACH = { composePreview: [], replyBody: [] };
+function attachNoteText(boxId){
+  const n = (PENDING_ATTACH[boxId] || []).length;
+  return n ? `${n} ficheiro${n>1?'s':''} em anexo: ` + PENDING_ATTACH[boxId].map(f => f.name).join(', ')
+           : 'Photos show inside the email; other files go as a real attachment.';
+}
 
 async function handleComposeAttach(files, ids){
   const { btnId = 'composeAttachBtn', noteId = 'composeAttachNote', boxId = 'composePreview' } = ids || {};
@@ -2299,13 +2310,23 @@ async function handleComposeAttach(files, ids){
   btn.disabled = false;
   btn.textContent = label;
   if(!urls.length) return;
-  // Drop the links in above the signature, not after it, so the email does
-  // not end on a bare URL.
-  box.insertAdjacentHTML('beforeend',
-    '<div><br></div>' + urls.map(u => `<div>${escHtml(u)}</div>`).join(''));
-  box.dispatchEvent(new Event('input', { bubbles: true }));
-  if(note) note.textContent = `${urls.length} file${urls.length>1?'s':''} added. Photos appear inside the email; other files go as a link.`;
-  toast(`${urls.length} file${urls.length>1?'s':''} added`);
+  const fotos = urls.filter(u => isImageUrl(u.url));
+  const docs  = urls.filter(u => !isImageUrl(u.url));
+  // As fotos entram no corpo para aparecerem dentro do email.
+  if(fotos.length){
+    box.insertAdjacentHTML('beforeend',
+      '<div><br></div>' + fotos.map(f => `<div>${escHtml(f.url)}</div>`).join(''));
+    box.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  // Os documentos ficam na fila e seguem anexados no envio.
+  if(docs.length){
+    PENDING_ATTACH[boxId] = (PENDING_ATTACH[boxId] || []).concat(docs);
+  }
+  if(note) note.textContent = attachNoteText(boxId);
+  const partes = [];
+  if(fotos.length) partes.push(`${fotos.length} foto${fotos.length>1?'s':''} no corpo`);
+  if(docs.length)  partes.push(`${docs.length} anexo${docs.length>1?'s':''}`);
+  toast(partes.join(' + '));
 }
 
 // ── HTML signature (house layout: logo | name/role/email | socials) ─
@@ -2409,6 +2430,7 @@ async function gmailSendOne({ to, subject, body, html, companyId, contactId, sen
       company_id: companyId || null,
       contact_id: contactId || null,
       thread_id: threadId || undefined,
+      attachments: (attachments && attachments.length) ? attachments : undefined,
       in_reply_to: inReplyTo || undefined,
       references: references || undefined,
     }),
@@ -5868,6 +5890,7 @@ function openReplyCompose(a, contact){
             <div style="max-height:220px;overflow:auto;padding:0 12px 12px;font-size:12.5px;line-height:1.55;white-space:pre-wrap">${escHtml(origRaw.head || '')}${origRaw.quoted ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);color:var(--muted)">${escHtml(origRaw.quoted)}</div>` : ''}</div>
           </details>` : '';
 
+  PENDING_ATTACH.replyBody = [];   // cada resposta comeca sem anexos herdados
   let modal = document.getElementById('replyModal');
   if(modal) modal.remove();
   modal = document.createElement('div');
@@ -5966,6 +5989,7 @@ function openReplyCompose(a, contact){
         : undefined;
       await gmailSendOne({
         to, subject, body, html: bodyHtml,
+        attachments: PENDING_ATTACH.replyBody,
         companyId: contact.id,
         contactId: primaryPersonFor(contact.id)?.id || null,
         senderUserId: sender.id,
@@ -6825,7 +6849,11 @@ document.getElementById('composeSendNow').addEventListener('click', async () => 
   try {
     await gmailSendOne({ to: recipient, subject: subj, body,
       html: document.getElementById('composePreview').innerHTML,
+      attachments: PENDING_ATTACH.composePreview,
       companyId: c.id, contactId: primary?.id || null, senderUserId: sender.id });
+    PENDING_ATTACH.composePreview = [];
+    const cn = document.getElementById('composeAttachNote');
+    if(cn) cn.textContent = attachNoteText('composePreview');
     // Same pipeline auto-advance + activity log + last_contacted as
     // the Open-in-Gmail flow, so both paths leave identical state.
     let newStatus = c.status;

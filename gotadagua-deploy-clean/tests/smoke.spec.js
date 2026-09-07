@@ -681,3 +681,27 @@ test('crm: attachments accept presentations, and the reply window has them too',
   expect(out.replyAccept).toBe('');
   expect(out.takesTarget).toBe(true);      // the handler can write into either editor
 });
+
+test('crm: documents go as real attachments, photos stay inside the email', async ({ page }) => {
+  // Files used to travel as bare Supabase URLs — a recipient expecting a PDF
+  // got a link to a domain they had never heard of. Documents must be MIME
+  // attachments; photos still belong in the body so they render.
+  await fakeOwnerSession(page);
+  await page.goto('/crm/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof window.handleComposeAttach === 'function');
+  const out = await page.evaluate(() => ({
+    // a top-level const is not a window property — reach it by name
+    hasQueue: Array.isArray(PENDING_ATTACH.composePreview)
+              && Array.isArray(PENDING_ATTACH.replyBody),
+    // the send function forwards them to the Edge Function
+    sendTakesAttachments: /attachments/.test(window.gmailSendOne.toString()),
+    postsAttachments: /attachments:\s*\(attachments/.test(window.gmailSendOne.toString()),
+    pdfIsNotImage: window.isImageUrl('https://x/y/portugal-groups.pdf') === false,
+    jpgIsImage: window.isImageUrl('https://x/y/praia.jpg') === true,
+  }));
+  expect(out.hasQueue).toBe(true);
+  expect(out.sendTakesAttachments).toBe(true);
+  expect(out.postsAttachments).toBe(true);
+  expect(out.pdfIsNotImage).toBe(true);   // a PDF is queued as an attachment
+  expect(out.jpgIsImage).toBe(true);      // a photo goes into the body
+});

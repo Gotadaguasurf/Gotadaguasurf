@@ -21,7 +21,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 // Shared with email-dispatch so the two send paths cannot drift apart again.
-import { buildRaw } from '../_shared/mail.ts'
+import { buildRaw, fetchAttachments } from '../_shared/mail.ts'
 
 const CLIENT_ID     = Deno.env.get('GOOGLE_OAUTH_CLIENT_ID') || ''
 const CLIENT_SECRET = Deno.env.get('GOOGLE_OAUTH_CLIENT_SECRET') || ''
@@ -92,7 +92,7 @@ Deno.serve(async (req) => {
   // 2. Parse body + basic validation.
   let payload: any
   try { payload = await req.json() } catch { return json({ error: 'Invalid JSON' }, 400) }
-  const { to, cc, subject, body, html, sender_user_id, company_id, contact_id, in_reply_to, references, thread_id } = payload || {}
+  const { to, cc, subject, body, html, sender_user_id, company_id, contact_id, in_reply_to, references, thread_id, attachments } = payload || {}
   if (!to || !subject) return json({ error: 'to + subject required' }, 400)
 
   // 3. Look up the sender's display name from team_users (service-role
@@ -141,12 +141,18 @@ Deno.serve(async (req) => {
       } catch { /* threading headers are best-effort — threadId still groups on our side */ }
     }
 
+    // Ficheiros: a app carrega-os para o bucket público e manda-nos os URLs;
+    // aqui voltam a ser bytes e seguem como anexo MIME a sério. O destinatário
+    // recebe um PDF, não um link para um domínio que não conhece.
+    const files = Array.isArray(attachments) ? attachments.slice(0, 10) : []
+    const atts = files.length ? await fetchAttachments(files) : []
     const raw = buildRaw({
       fromEmail: account.email,
       fromDisplay: displayName,
       to, cc, subject, body, html,
       inReplyTo: looksRfc(effInReplyTo) ? effInReplyTo : undefined,
       references: looksRfc(effReferences) ? effReferences : undefined,
+      attachments: atts,
     })
     const sendBody: Record<string, unknown> = { raw }
     if (thread_id) sendBody.threadId = thread_id
@@ -181,7 +187,7 @@ Deno.serve(async (req) => {
         sender_user_id: effectiveSenderId,
       })
     }
-    return json({ ok: true, message_id: sent.id, thread_id: sent.threadId, from_display: displayName })
+    return json({ ok: true, message_id: sent.id, thread_id: sent.threadId, from_display: displayName, attached: atts.length, attach_requested: files.length })
   } catch (e) {
     return json({ error: (e as Error).message || 'send failed' }, 500)
   }

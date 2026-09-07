@@ -84,6 +84,55 @@ export function buildEmailHtml(body: string, sender: Sender, trailer = ''): stri
 // RFC 2822 message, base64url encoded for the Gmail API's `raw` field.
 // When `html` is given the message is multipart/alternative: plain text
 // first (spam filters read it, basic clients fall back to it), HTML second.
+export interface MailAttachment {
+  name: string
+  type: string
+  b64: string      // já em base64, sem quebras de linha
+}
+
+// Downloads the files the CRM uploaded to the public bucket and returns them
+// base64'd, ready to be embedded. A file that cannot be fetched is skipped
+// rather than failing the send — an email without one attachment beats no
+// email at all, and the caller logs what came back.
+export async function fetchAttachments(
+  list: Array<{ url: string; name?: string; type?: string }>,
+): Promise<MailAttachment[]> {
+  const out: MailAttachment[] = []
+  for (const f of list || []) {
+    if (!f?.url) continue
+    try {
+      const resp = await fetch(f.url)
+      if (!resp.ok) continue
+      const buf = new Uint8Array(await resp.arrayBuffer())
+      // Chunked so a multi-MB file does not blow the argument limit of
+      // String.fromCharCode.
+      let bin = ''
+      const CH = 0x8000
+      for (let i = 0; i < buf.length; i += CH) {
+        bin += String.fromCharCode(...buf.subarray(i, i + CH))
+      }
+      out.push({
+        name: f.name || (f.url.split('/').pop() || 'anexo'),
+        type: f.type || resp.headers.get('content-type') || 'application/octet-stream',
+        b64: btoa(bin),
+      })
+    } catch { /* ficheiro inacessível — segue sem ele */ }
+  }
+  return out
+}
+
+// RFC 2045: base64 bodies wrap at 76 characters.
+function wrap76(b64: string): string {
+  return (b64.match(/.{1,76}/g) || []).join('\r\n')
+}
+
+// A filename with anything outside ASCII needs RFC 2047 in the header.
+function encodeFilename(name: string, toUtf8: (s: string) => string): string {
+  return /[^\x20-\x7e]/.test(name)
+    ? `=?utf-8?B?${btoa(toUtf8(name))}?=`
+    : name.replace(/"/g, "'")
+}
+
 export function buildRaw(args: {
   fromEmail: string
   fromDisplay: string
@@ -94,6 +143,7 @@ export function buildRaw(args: {
   html?: string
   inReplyTo?: string
   references?: string
+  attachments?: MailAttachment[]
 }): string {
   const toUtf8 = (s: string) => unescape(encodeURIComponent(s || ''))
   const escapedDisplay = (args.fromDisplay || '').replace(/"/g, "'")
@@ -109,6 +159,37 @@ export function buildRaw(args: {
   ]
   if (args.cc) lines.push(`Cc: ${args.cc}`)
   lines.push(`Subject: =?utf-8?B?${btoa(toUtf8(args.subject || ''))}?=`, 'MIME-Version: 1.0')
+
+  const atts = args.attachments || []
+  if (atts.length) {
+    // multipart/mixed
+    //   ├── multipart/alternative  (texto + HTML)
+    //   └── um part por ficheiro
+    // Sem o mixed exterior o cliente mostra o anexo mas perde o corpo.
+    const outer = 'gds_mix_5a1e9d'
+    const inner = 'gds_alt_7f3b2c'
+    lines.push(`Content-Type: multipart/mixed; boundary="${outer}"`)
+    if (args.inReplyTo) lines.push(`In-Reply-To: ${args.inReplyTo}`)
+    if (args.references) lines.push(`References: ${args.references}`)
+    let body = lines.join('\r\n') + '\r\n\r\n' +
+      `--${outer}\r\nContent-Type: multipart/alternative; boundary="${inner}"\r\n\r\n` +
+      `--${inner}\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n` +
+      (args.body || '') + '\r\n\r\n' +
+      `--${inner}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n` +
+      (args.html || (args.body || '')) + `\r\n\r\n--${inner}--\r\n`
+    for (const a of atts) {
+      const fn = encodeFilename(a.name, toUtf8)
+      body += `\r\n--${outer}\r\n` +
+        `Content-Type: ${a.type}; name="${fn}"\r\n` +
+        `Content-Disposition: attachment; filename="${fn}"\r\n` +
+        `Content-Transfer-Encoding: base64\r\n\r\n` +
+        wrap76(a.b64) + '\r\n'
+    }
+    body += `\r\n--${outer}--\r\n`
+    // O corpo já é ASCII na parte base64; o toUtf8 só afeta texto e HTML.
+    return btoa(toUtf8(body)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+  }
+
   if (args.html) {
     const b = 'gds_alt_7f3b2c'
     lines.push(`Content-Type: multipart/alternative; boundary="${b}"`)
