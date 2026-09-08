@@ -91,6 +91,57 @@ overlap test misses single-word names like TORMENTA.
 | Uber | surf camp transport — Transport/portugal |
 | Almafogo | fire extinguishers for the camp — portugal |
 
+**Bank spelling → app supplier** (the export writes the payee its own way):
+
+| Bank writes | App supplier |
+|---|---|
+| `ITAUINSTITUTO TECNICO DE AL` | `itau (instituto tecnico de alimentacao)` — Food/junior-camp |
+| `LG-LEASING IMOBIL0010198…` | `lg leasing imobiliario (novo banco)` — Rent/portugal |
+| `EU.STORE.UI.COM` | `ubiquiti` — Services |
+| `ALMOUROLTEC S I I UNIPESSO` | `almourol tec (ptisp)` — Services |
+| `PA TRAFARIA` · `PA VILA CHA` · `PA A8 OESTE` · `A.S.POMBAL` · `PONTE 25 DE ABRIL` | fuel and tolls — Transport/portugal |
+| `SUPERM. NOVO RUMO` | `novo rumo` — Food/portugal |
+| `CARLOS AUGUSTO REYNAUD` | `carlos reynaud` — Salary/surf-school |
+| `RICARDO NUNO CARVAL` | the **V1 rent**, not salary — Rent/portugal |
+| `AGODA` · `VUELING` · `EASYJET` | Work Trips |
+| `LEONOR MARTINS MARQUES PINTO` | monitora do kids camp — Salary/kids-camp |
+| `Garagem 9` | the company garage where the gear is stored — Rent/general |
+| `PAG SERVICOS *0544 10611…` (Federação) | `fps`, the surf federation — Services/surf-school |
+| `Ivas de 3 meses que faltava` | `barbara sinalyova` — she is owed €246/month and €200 was paid for three months, so this is the €46 × 3 catch-up. Salary/general |
+| `CLAUDE.AI` · `QR-CODE-GENERATOR` · `SURFCLOUD` | Services/general |
+
+**What the utility suppliers actually are** — the category alone never answers
+"how much on electricity", so the supplier carries the meaning and the
+`description` says it in words:
+
+| Supplier | What it is |
+|---|---|
+| `edp`, `gold energy` | **Electricidade** |
+| `meo` | **Internet e telemóveis** (mobile subscriptions included) |
+| `smas almada` | **Água** |
+
+Keep those three descriptions literal — the Expenses breakdown reads them back.
+
+## Matching bank lines to app rows — dates matter
+
+**Never pool by amount alone.** The app books the *invoice* date, the bank the
+*payment* date, and they differ by one to three days. On 8 Sep 2026 an
+amount-only pass inserted 53 rows that duplicated existing ones dated a day or
+two earlier under the supplier's other name, **while the genuinely missing later
+payments stayed missing** — the counts matched, so nothing looked wrong. All 53
+had to be reverted.
+
+The method that works, per bank debit:
+
+1. Take free app rows with the same amount within **±10 days**.
+2. Score each: **+20** same supplier family, **+12** token overlap, **−1 per day**
+   of distance.
+3. Accept the best if it scores ≥2, or if it is within 2 days.
+4. What is left is genuinely missing.
+
+Guard inserts on `abs(invoice_date - <bank date>) <= 7 and amount and company`,
+not on an exact date — an exact-date guard lets the same expense in twice.
+
 **`ilike '%token%'` bites.** `'%uber%'` also matches **`exubercaravela`** (a
 surf-school instructor), and a bulk update sent six of his salary rows to
 Transport before it was caught. Before any bulk update by name, run the `select`

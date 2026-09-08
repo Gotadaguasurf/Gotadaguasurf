@@ -1300,6 +1300,10 @@ function invoicesTabHtml(){
           </select>
           <label>Month</label>
           <input id="filter_month" type="month" onchange="onFilterChanged()">
+          <label title="Um intervalo qualquer — um trimestre, o ano todo. Se estiver preenchido, manda sobre o mes.">From</label>
+          <input id="filter_from" type="date" onchange="onFilterChanged()">
+          <label>To</label>
+          <input id="filter_to" type="date" onchange="onFilterChanged()">
           <label>Category</label>
           <select id="filter_category" onchange="onFilterChanged()">
             <option value="__all__">All</option>
@@ -1320,11 +1324,81 @@ function invoicesTabHtml(){
           <button class="action-btn" onclick="clearAllFilters()" title="Reset all filters">Clear</button>
         </div>
       </div>
+      <div class="card-body" style="padding-bottom:0">
+        <details id="breakdownBox" class="add-block" style="margin:0 0 12px">
+          <summary class="add-block-sum">
+            <span class="add-block-title">📊 Onde foi o dinheiro</span>
+            <span class="add-block-hint">Por categoria e por fornecedor, sobre o que está filtrado — clica para abrir</span>
+            <span class="add-block-caret">▾</span>
+          </summary>
+          <div id="breakdownBody" style="margin-top:12px"></div>
+        </details>
+      </div>
       <div class="card-body" id="invListBody">
         <div class="loading">Loading…</div>
       </div>
     </div>
   `;
+}
+
+// Reparticao do que esta filtrado: categoria -> fornecedor. Existe porque a
+// categoria sozinha nao responde a "quanto gastei em luz" — a EDP e o MEO
+// caem ambos em rubricas largas, e a pergunta e sempre pelo fornecedor.
+function renderBreakdown(rows){
+  const box = document.getElementById('breakdownBody');
+  if (!box) return;
+  if (!rows || !rows.length){ box.innerHTML = '<div class="loading">Sem despesas no filtro actual.</div>'; return; }
+  const total = rows.reduce((s,r)=>s+Number(r.amount_eur||0), 0);
+  const porCat = new Map();
+  rows.forEach(r => {
+    const cat = r.category_name || '— sem categoria —';
+    if (!porCat.has(cat)) porCat.set(cat, { tot:0, n:0, forn:new Map() });
+    const c = porCat.get(cat);
+    const v = Number(r.amount_eur||0);
+    c.tot += v; c.n += 1;
+    const f = (r.company || '—').trim();
+    const cur = c.forn.get(f) || { tot:0, n:0 };
+    cur.tot += v; cur.n += 1;
+    c.forn.set(f, cur);
+  });
+  const cats = [...porCat.entries()].sort((a,b)=>b[1].tot-a[1].tot);
+  const eur = n => Number(n).toLocaleString('pt-PT', { minimumFractionDigits:2, maximumFractionDigits:2 });
+  box.innerHTML = `
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px">
+      ${rows.length} despesas · <b style="color:var(--navy)">€${eur(total)}</b> no filtro actual
+    </div>
+    ${cats.map(([cat, c]) => {
+      const pct = total ? (100*c.tot/total) : 0;
+      const forn = [...c.forn.entries()].sort((a,b)=>b[1].tot-a[1].tot);
+      return `<details style="border:1px solid var(--border);border-radius:8px;margin-bottom:6px;background:#fff">
+        <summary style="cursor:pointer;padding:9px 12px;display:flex;align-items:center;gap:10px;font-size:13px">
+          <span style="flex:1;font-weight:600;color:var(--navy)">${cat}</span>
+          <span style="color:var(--muted);font-size:11.5px">${c.n}</span>
+          <span style="width:56px;text-align:right;color:var(--muted);font-size:11.5px">${pct.toFixed(1)}%</span>
+          <span style="width:110px;text-align:right;font-weight:700">€${eur(c.tot)}</span>
+        </summary>
+        <div style="padding:0 12px 10px">
+          <div style="height:4px;background:var(--foam);border-radius:2px;margin:2px 0 8px">
+            <div style="height:100%;width:${pct.toFixed(1)}%;background:var(--ocean);border-radius:2px"></div>
+          </div>
+          ${forn.map(([f, d]) => `
+            <div style="display:flex;gap:10px;padding:4px 0;font-size:12.5px;border-top:1px solid var(--foam)">
+              <span style="flex:1"><a href="#" onclick="filtrarPorFornecedor(${JSON.stringify(f).replace(/"/g,'&quot;')});return false" style="color:var(--ocean);text-decoration:none">${f}</a></span>
+              <span style="color:var(--muted);font-size:11px">${d.n}</span>
+              <span style="width:110px;text-align:right">€${eur(d.tot)}</span>
+            </div>`).join('')}
+        </div>
+      </details>`;
+    }).join('')}`;
+}
+
+// Clicar num fornecedor no painel filtra a lista para ele.
+function filtrarPorFornecedor(nome){
+  const el = document.getElementById('filter_search');
+  if (!el) return;
+  el.value = nome;
+  onFilterChanged();
+  document.getElementById('invListBody')?.scrollIntoView({ behavior:'smooth', block:'start' });
 }
 
 function wireInvoiceForm(){
@@ -1962,6 +2036,8 @@ function clearAllFilters(){
   const set = (id, val) => { const el = $(id); if (el) { if (el.type === 'checkbox') el.checked = val; else el.value = val; } };
   set('filter_location', '__all__');
   set('filter_month', '');
+  set('filter_from', '');
+  set('filter_to', '');
   set('filter_category', '__all__');
   set('filter_review', false);
   set('filter_personal', false);
@@ -2997,7 +3073,14 @@ async function renderInvoiceList(){
         .order('invoice_date', { ascending:false });
       q = showDeleted ? q.not('deleted_at', 'is', null) : q.is('deleted_at', null);
       if (loc !== '__all__') q = q.eq('location_slug', loc);
-      if (month) {
+      // Um intervalo explicito manda sobre o mes — permite ver um trimestre
+      // ou o ano inteiro sem ter de somar mes a mes.
+      const from = $('filter_from')?.value || '';
+      const to   = $('filter_to')?.value || '';
+      if (from || to) {
+        if (from) q = q.gte('invoice_date', from);
+        if (to)   q = q.lte('invoice_date', to);
+      } else if (month) {
         const start = `${month}-01`;
         const [y,m] = month.split('-').map(Number);
         const endD = new Date(Date.UTC(y, m, 1));
@@ -3043,6 +3126,7 @@ async function renderInvoiceList(){
   // Cache the rendered set so batch actions (approve all, later delete all)
   // can act on exactly what the user sees without re-fetching from the DB.
   window.__lastRenderedRows = rows;
+  renderBreakdown(rows);
 
   if (!rows.length) {
     // Empty state as an invitation, not a dead end. The Excel import is the
