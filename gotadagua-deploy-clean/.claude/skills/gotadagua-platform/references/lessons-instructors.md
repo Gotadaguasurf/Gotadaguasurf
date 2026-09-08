@@ -136,6 +136,16 @@ from `instructor_directory`:
 - `extra_kind = reception` (Guilherme, Marcos) → only a note; reception hours are
   not in the lesson table and are booked straight into `hq_invoices`.
 
+**Entering a day: "Dia rápido"** (8 Sep 2026). The Add-lesson modal opens on a
+grid instructor × category; only the number of lessons is typed. The price is
+suggested from history — the most frequent price in that instructor's last 20
+lessons of that category (prices ≥ €100 are ignored so the Romi `Salary 250` row
+never becomes a price), else the category's usual price, else the directory
+rate. Instructors with lessons in the last 90 days come first, sorted by volume;
+the rest hide behind "Mostrar todos". Enter moves down a column. Rows are saved
+as `paid=false` — payment is marked later, per instructor and month, in the
+payroll tab. "Linha a linha" is the old one-field-at-a-time form, kept for edits.
+
 **"Mark paid" flips one instructor × one month** (the button key is
 `name|YYYY-MM`) and checks the number of rows the update returned — a viewer
 without write access gets an error, not a fake "updated". The first version

@@ -855,3 +855,48 @@ test('instructors: Mark paid touches one instructor-month only, payroll adds VAT
   expect(out.summaryHasTheoric).toBe(true);          // unknown category is shown, not hidden
   expect(out.catOptions).toContain('Theoric');
 });
+
+test('instructors: quick-day grid suggests each instructor\'s usual price and saves one row per filled cell', async ({ page }) => {
+  // Entering a day line by line was too slow for a school with 20 instructors,
+  // and the "Add to day list" button was white-on-white inside the modal. The
+  // quick grid needs only the number of lessons; the price is the one that
+  // instructor usually gets for that category.
+  await fakeOwnerSession(page);
+  await page.goto('/instructors/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof window.renderQuickDay === 'function');
+  const out = await page.evaluate(async () => {
+    const mk = (name, date, cat, n, price) => ({ id: name + date + cat + price, instructorId: 'x', date, instructorName: name, lessonCategory: cat, numberOfLessons: n, paymentType: 'Recibo Verde', priceUnit: price, total: n * price, paid: true, notes: '' });
+    entries = [
+      mk('Matilde', '2026-08-28', 'Surf School', 2, 25), mk('Matilde', '2026-08-20', 'Surf School', 1, 25), mk('Matilde', '2026-06-05', 'Surf School', 1, 30),
+      mk('Romildo Ramos', '2026-08-31', 'Surf Camp', 3, 30), mk('Romildo Ramos', '2026-04-01', 'Surf Camp', 1, 250),
+      mk('Heitor Souza', '2026-03-01', 'Junior Camp', 2, 30),
+    ];
+    instructorDirectory = [{ id: 'a', name: 'Matilde', rate: 30, paymentType: 'Recibo Verde', vatPct: 23 }, { id: 'b', name: 'Romildo Ramos', rate: 30, paymentType: 'Recibo Verde', vatPct: 23 }, { id: 'c', name: 'Heitor Souza', rate: 30, paymentType: 'Cash', vatPct: 0 }];
+    loadInstructorData = async () => {};
+    const saved = [];
+    insertLessonEntry = async (d) => { saved.push(d); return { duplicate: false }; };
+    document.getElementById('addLessonBtn').click();
+    const quickVisible = document.getElementById('quickDay').style.display !== 'none' && document.getElementById('modal').classList.contains('open');
+    const primaryBg = getComputedStyle(document.getElementById('qdSave')).backgroundColor;
+    const rows = [...document.querySelectorAll('#qdBody tr[data-row]')].map(tr => tr.dataset.row);
+    const price = (n, c) => document.querySelector(`.qd-price[data-pk="${n}|${c}"]`).textContent;
+    const p = { matildeSchool: price('Matilde', 'Surf School'), romiCamp: price('Romildo Ramos', 'Surf Camp') };
+    document.getElementById('qdDate').value = '2026-09-08';
+    const cell = document.querySelector('input.qd-n[data-k="Matilde|Surf School"]'); cell.value = '3'; cell.dispatchEvent(new Event('input'));
+    const cell2 = document.querySelector('input.qd-n[data-k="Romildo Ramos|Surf Camp"]'); cell2.value = '2'; cell2.dispatchEvent(new Event('input'));
+    const total = document.getElementById('qdTotal').textContent;
+    await saveQuickDay();
+    return { quickVisible, primaryBg, rows, p, total, saved, msg: document.getElementById('messageBox').textContent };
+  });
+  expect(out.quickVisible).toBe(true);
+  expect(out.primaryBg).not.toBe('rgba(255, 255, 255, 0.08)');   // the button is no longer invisible
+  expect(out.rows.slice(0, 2)).toEqual(['Matilde', 'Romildo Ramos']);   // most lessons in the last 90 days first (4 vs 3)
+  expect(out.rows).toContain('Matilde');
+  expect(out.rows).not.toContain('Heitor Souza');                 // no recent lessons → behind "Mostrar todos"
+  expect(out.p.matildeSchool).toBe('25€');                        // her usual, not the one-off 30
+  expect(out.p.romiCamp).toBe('30€');                             // the €250 salary row never becomes a price
+  expect(out.total).toBe('5 aulas · €135.00');
+  expect(out.saved).toHaveLength(2);
+  expect(out.saved.find(d => d.instructorName === 'Matilde')).toMatchObject({ date: '2026-09-08', lessonCategory: 'Surf School', numberOfLessons: 3, priceUnit: 25, paid: false, paymentType: 'Recibo Verde' });
+  expect(out.msg).toContain('5 aulas');
+});
