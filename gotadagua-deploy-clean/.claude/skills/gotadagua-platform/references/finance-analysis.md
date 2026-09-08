@@ -177,6 +177,10 @@ is often real:
 A true duplicate looks like this: the app has two rows, the bank has one debit, and
 one row carries a description from an automated pass (`— do extrato bancário
 (backfill)`, `— auditoria final (extrato)`) while the other came from the invoice.
+**That signature is reliable** — it is how the Alexandre Passos €90 double-entry was
+found on 8 Sep 2026, after two earlier passes had waved it through as "a matching
+artefact". When a supplier's app total exceeds the bank's, list every payment on
+both sides side by side; do not assume the matcher is at fault.
 Delete the automated one. Soft-delete only: `deleted_at = now()`,
 `deleted_by = 'miguel@gotadaguasurf.com'`, and say why in `notes`.
 

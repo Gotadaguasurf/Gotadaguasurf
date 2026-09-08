@@ -91,6 +91,26 @@ each expense was counted twice — €1.875,75 too much, removed on 8 Sep 2026.
 ±7 days is an invoice, not a payment. Check before entering anything from the
 Drive folder.
 
+## What is loaded, and what was deliberately left out
+
+`instructor_lessons` holds **2026 only: 1.728 rows, 3.117 lessons, €91.645**, every
+row `paid = true` because the year reconciles against the Santander. The 30
+instructors are in `instructor_directory` with three columns added on 8 Sep 2026:
+`vat_pct` (23 for Romi, André Maria, Matilde, Joaquim Gasalho — 0 for everyone
+else), `app_supplier` (the name the receipt is issued under, which is how a payment
+finds its `hq_invoices` row), and `extra_kind`/`extra_amount` for the head-coach and
+reception cases.
+
+Names in the app are **first + last name of the receipt** — except **Matilde** and
+**André Maria**, who keep the name everyone uses while `app_supplier` carries the
+company or legal name the money actually goes to.
+
+**Four rows of the sheet were left out on purpose** (€240, 8 lessons): exact
+repeats of another row — Heitor 23 Apr, and Nathan, Romi and Tiago Madeira all on
+2 Jun, each 2 Surf Camp lessons at €30. Miguel decided on 8 Sep 2026 to drop them.
+That is why the app reads 3.117 lessons against the sheet's 3.125, and €91.645
+against €91.885. **The gap is expected — do not "fix" it.**
+
 ## Two known data faults in the sheet
 
 - Two corrupted dates: `24/03/0204` (Cauê, €60 — probably 2024) and
