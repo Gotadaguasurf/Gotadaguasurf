@@ -145,6 +145,24 @@ td.loc-name{font-weight:700;color:var(--navy)}
 .chip-review{background:var(--amber-bg);color:var(--amber)}
 .chip-normal{background:var(--foam);color:var(--ocean)}
 .period-row{margin-bottom:16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.hq-search{width:260px;max-width:100%;padding:9px 14px;border:1.5px solid var(--border);border-radius:999px;font-family:'Outfit',sans-serif;font-size:13px;background:#fff}
+.hq-search:focus{outline:none;border-color:var(--ocean);box-shadow:0 0 0 4px rgba(30,111,168,.10)}
+.hq-menu{position:relative}.hq-menu summary::-webkit-details-marker{display:none}.hq-menu summary{cursor:pointer}
+.hq-menu-list{position:absolute;right:0;top:calc(100% + 6px);background:#fff;border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 40px rgba(40,57,75,.16);padding:6px;min-width:180px;z-index:30;display:flex;flex-direction:column}
+.hq-menu-list button{background:none;border:none;text-align:left;padding:9px 12px;border-radius:8px;font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;color:var(--navy);cursor:pointer}.hq-menu-list button:hover{background:var(--foam)}
+.hq-filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.hq-pills{display:flex;gap:6px;flex-wrap:wrap;margin-right:8px}
+.hq-pill{border:1.5px solid var(--border);background:#fff;color:var(--muted);padding:6px 14px;border-radius:999px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;transition:all .15s}
+.hq-pill:hover{border-color:var(--ocean);color:var(--ocean)}.hq-pill.active{background:var(--navy);color:#fff;border-color:var(--navy)}
+.hq-select{padding:7px 12px;font-size:13px;width:auto;min-width:0;border:1.5px solid var(--border);border-radius:999px;background:#fff;font-family:'Outfit',sans-serif;color:var(--navy);font-weight:600}
+.hq-more{padding:10px 12px;background:var(--foam);border-radius:12px}.hq-more label{font-size:12px;color:var(--muted);font-weight:600;margin:0 2px 0 6px;text-transform:none;letter-spacing:0}
+.hq-sep{width:1px;height:22px;background:var(--border);margin:0 6px}
+.hq-tog{display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;border:1.5px solid var(--border);background:#fff;border-radius:999px;padding:5px 12px;font-size:12px!important;color:var(--muted)!important;font-weight:700!important;margin:0!important}
+.hq-tog input{margin:0;accent-color:var(--ocean)}.hq-tog:has(input:checked){border-color:var(--ocean);color:var(--ocean)!important;background:#fff}
+.hq-summary{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:12.5px;color:var(--muted);min-height:18px}
+.hq-summary .hq-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:999px;padding:3px 10px;background:#fff;color:var(--navy);font-weight:600;cursor:pointer}
+.hq-summary .hq-chip:hover{border-color:var(--red,#c0392b);color:var(--red,#c0392b)}
+.hq-summary .hq-clear{background:none;border:none;color:var(--ocean);font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;font-size:12.5px;padding:3px 6px}
 .period-row label{font-size:12px;color:var(--muted);font-weight:600;margin:0;text-transform:none;letter-spacing:0}
 .period-row select,.period-row input{padding:8px 12px;font-size:13px;width:auto;min-width:140px}
 /* Unified Period picker — same shape across camp-hub and HQ so users always
@@ -1282,55 +1300,50 @@ function invoicesTabHtml(){
         <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
           <div>
             <div class="card-title">Registered invoices</div>
-            <div class="card-hint">Sorted by invoice date, newest first</div>
+            <div class="card-hint">Ordenado por data, mais recente primeiro</div>
           </div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-            <button class="btn" style="padding:8px 14px;font-size:12px" onclick="openImportModal()" title="Import an Excel/CSV master or link to Bookinglayer — one-off setup">⬆ Import CSV</button>
-            <button class="btn btn-ghost" style="padding:8px 14px;font-size:12px" onclick="exportInvoicesCsv()" title="Download the current filtered view as CSV — matches the Excel master column order">⬇ Export CSV</button>
-            <button class="btn btn-ghost" style="padding:8px 14px;font-size:12px" onclick="openRecurringPanel()" title="Rent, salaries, EDP, insurances — set them once, spawn them every month">⏰ Recurring</button>
-            <button class="btn btn-ghost" style="padding:8px 14px;font-size:12px" onclick="openCategoryPanel()">⚙ Categories</button>
-            <input id="filter_search" type="search" placeholder="🔎 Search supplier, invoice #, NIF…" oninput="onFilterChanged()" style="width:220px;max-width:100%;padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;font-family:'Outfit',sans-serif;font-size:13px">
+            <input id="filter_search" type="search" placeholder="🔎 Fornecedor, nº fatura, NIF…" oninput="onFilterChanged()" class="hq-search">
+            <details class="hq-menu">
+              <summary class="btn btn-ghost" style="padding:8px 14px;font-size:12px;list-style:none">Mais ▾</summary>
+              <div class="hq-menu-list">
+                <button onclick="openImportModal()">⬆ Import CSV</button>
+                <button onclick="exportInvoicesCsv()">⬇ Export CSV</button>
+                <button onclick="openRecurringPanel()">⏰ Recurring</button>
+                <button onclick="openCategoryPanel()">⚙ Categories</button>
+              </div>
+            </details>
           </div>
         </div>
-        <div class="period-row" style="margin:0 0 8px;flex-wrap:wrap;gap:6px">
-          <span style="font-size:11.5px;color:var(--muted);margin-right:2px">Período</span>
-          <button class="action-btn" onclick="periodoRapido('mes')">Este mês</button>
-          <button class="action-btn" onclick="periodoRapido('mespassado')">Mês passado</button>
-          <button class="action-btn" onclick="periodoRapido('trimestre')">Últimos 3 meses</button>
-          <button class="action-btn" onclick="periodoRapido('ano')">Este ano</button>
-          <button class="action-btn" onclick="periodoRapido('tudo')">Tudo</button>
-        </div>
-        <div class="period-row" style="margin:0;flex-wrap:wrap">
-          <label>Location</label>
-          <select id="filter_location" onchange="onFilterChanged()">
-            <option value="__all__">All</option>
+        <div class="hq-filters">
+          <div class="hq-pills" id="periodoPills">
+            <button class="hq-pill" data-periodo="mes" onclick="periodoRapido('mes')">Este mês</button>
+            <button class="hq-pill" data-periodo="mespassado" onclick="periodoRapido('mespassado')">Mês passado</button>
+            <button class="hq-pill" data-periodo="trimestre" onclick="periodoRapido('trimestre')">3 meses</button>
+            <button class="hq-pill" data-periodo="ano" onclick="periodoRapido('ano')">Este ano</button>
+            <button class="hq-pill" data-periodo="tudo" onclick="periodoRapido('tudo')">Tudo</button>
+          </div>
+          <select id="filter_location" onchange="onFilterChanged()" class="hq-select">
+            <option value="__all__">Todas as locations</option>
             ${HQ_LOCATIONS.map(l=>`<option value="${l.slug}">${l.label}</option>`).join('')}
           </select>
-          <label>Month</label>
-          <input id="filter_month" type="month" onchange="onFilterChanged()">
-          <label title="Um intervalo qualquer — um trimestre, o ano todo. Se estiver preenchido, manda sobre o mes.">From</label>
-          <input id="filter_from" type="date" onchange="onFilterChanged()">
-          <label>To</label>
-          <input id="filter_to" type="date" onchange="onFilterChanged()">
-          <label>Category</label>
-          <select id="filter_category" onchange="onFilterChanged()">
-            <option value="__all__">All</option>
+          <select id="filter_category" onchange="onFilterChanged()" class="hq-select">
+            <option value="__all__">Todas as categorias</option>
             ${CATEGORIES.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
           </select>
-          <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer">
-            <input type="checkbox" id="filter_review" onchange="onFilterChanged()"> Only review
-          </label>
-          <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer">
-            <input type="checkbox" id="filter_personal" onchange="onFilterChanged()"> Only personal
-          </label>
-          <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer" title="Rows flagged is_duplicate=true (LIMPO's TRUE marks + collisions caught at insert)">
-            <input type="checkbox" id="filter_duplicate" onchange="onFilterChanged()"> Only duplicates
-          </label>
-          <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer" title="Show soft-deleted invoices — restore them or delete forever">
-            <input type="checkbox" id="filter_deleted" onchange="onFilterChanged()"> 🗑 Deleted
-          </label>
-          <button class="action-btn" onclick="clearAllFilters()" title="Reset all filters">Clear</button>
+          <button class="hq-pill" id="moreFiltersBtn" onclick="toggleMoreFilters()">Mais filtros ▾</button>
         </div>
+        <div class="hq-filters hq-more" id="moreFilters" style="display:none">
+          <label>Mês</label><input id="filter_month" type="month" onchange="hqPeriodo=null;onFilterChanged()" class="hq-select">
+          <label title="Um intervalo qualquer — um trimestre, o ano todo. Se estiver preenchido, manda sobre o mês.">De</label><input id="filter_from" type="date" onchange="hqPeriodo=null;onFilterChanged()" class="hq-select">
+          <label>Até</label><input id="filter_to" type="date" onchange="hqPeriodo=null;onFilterChanged()" class="hq-select">
+          <span class="hq-sep"></span>
+          <label class="hq-tog"><input type="checkbox" id="filter_review" onchange="onFilterChanged()"> Só por rever</label>
+          <label class="hq-tog"><input type="checkbox" id="filter_personal" onchange="onFilterChanged()"> Só pessoais</label>
+          <label class="hq-tog" title="Rows flagged is_duplicate=true"><input type="checkbox" id="filter_duplicate" onchange="onFilterChanged()"> Duplicadas</label>
+          <label class="hq-tog" title="Faturas apagadas — restaurar ou apagar de vez"><input type="checkbox" id="filter_deleted" onchange="onFilterChanged()"> 🗑 Apagadas</label>
+        </div>
+        <div class="hq-summary" id="hqFilterSummary"></div>
       </div>
       <div class="card-body" style="padding-bottom:0">
         <details id="breakdownBox" class="add-block" style="margin:0 0 12px">
@@ -1362,7 +1375,45 @@ function nomeMes(ym){
 }
 
 // Botoes de periodo: escolher um trimestre a mao e chato e da erros.
+let hqPeriodo = null;
+function toggleMoreFilters(){
+  const box=$('moreFilters'), btn=$('moreFiltersBtn'); if(!box) return;
+  const open = box.style.display==='none'; box.style.display = open?'':'none';
+  if(btn) btn.textContent = open ? 'Menos filtros ▴' : 'Mais filtros ▾';
+}
+// Linha-resumo dos filtros activos, cada um com um × para o tirar — o que se
+// ve na lista deixa de ser um misterio de seis controlos espalhados.
+function renderHqFilterSummary(){
+  const box=$('hqFilterSummary'); if(!box) return;
+  document.querySelectorAll('#periodoPills .hq-pill').forEach(b=>b.classList.toggle('active', b.dataset.periodo===hqPeriodo));
+  const v=id=>{const el=$(id); return el ? (el.type==='checkbox' ? el.checked : el.value) : '';};
+  const chips=[];
+  const from=v('filter_from'), to=v('filter_to'), month=v('filter_month');
+  const lbl={mes:'Este mês',mespassado:'Mês passado',trimestre:'Últimos 3 meses',ano:'Este ano',tudo:'Tudo'};
+  if(hqPeriodo && hqPeriodo!=='tudo') chips.push(['periodo', lbl[hqPeriodo]]);
+  else if(from||to) chips.push(['periodo', `${from?fmtDia(from):'…'} → ${to?fmtDia(to):'…'}`]);
+  else if(month) chips.push(['periodo', nomeMes(month)]);
+  const loc=v('filter_location'); if(loc && loc!=='__all__'){const l=HQ_LOCATIONS.find(x=>x.slug===loc); chips.push(['filter_location', l?l.label:loc]);}
+  const cat=v('filter_category'); if(cat && cat!=='__all__'){const c=CATEGORIES.find(x=>String(x.id)===String(cat)); chips.push(['filter_category', c?c.name:cat]);}
+  if(v('filter_review')) chips.push(['filter_review','Só por rever']);
+  if(v('filter_personal')) chips.push(['filter_personal','Só pessoais']);
+  if(v('filter_duplicate')) chips.push(['filter_duplicate','Duplicadas']);
+  if(v('filter_deleted')) chips.push(['filter_deleted','🗑 Apagadas']);
+  const q=v('filter_search'); if(q) chips.push(['filter_search',`“${q}”`]);
+  const n=(window.__lastRenderedRows||[]).length;
+  const tot=(window.__lastRenderedRows||[]).reduce((s,r)=>s+Number(r.amount_eur ?? r.amount ?? 0),0);
+  box.innerHTML = `<span>${chips.length?'A ver':'A ver tudo'}${n?` · ${n} faturas · ${eur(tot)}`:''}</span>`
+    + chips.map(([k,t])=>`<span class="hq-chip" data-clear="${k}" title="Tirar este filtro">${t} <b>×</b></span>`).join('')
+    + (chips.length ? `<button class="hq-clear" onclick="clearAllFilters()">Limpar tudo</button>` : '');
+  box.querySelectorAll('[data-clear]').forEach(el=>el.onclick=()=>{
+    const k=el.dataset.clear;
+    if(k==='periodo'){ hqPeriodo=null; ['filter_from','filter_to','filter_month'].forEach(id=>{const e=$(id); if(e) e.value='';}); }
+    else { const e=$(k); if(e){ if(e.type==='checkbox') e.checked=false; else e.value = (k==='filter_search') ? '' : '__all__'; } }
+    onFilterChanged();
+  });
+}
 function periodoRapido(qual){
+  hqPeriodo = qual;
   const hoje = new Date();
   const iso = d => d.toISOString().slice(0,10);
   const set = (id,v) => { const el=$(id); if(el) el.value=v; };
@@ -2087,6 +2138,7 @@ function clearAllFilters(){
   set('filter_duplicate', false);
   set('filter_deleted', false);
   set('filter_search', '');
+  hqPeriodo = null;
   renderInvoiceList();
 }
 
@@ -3170,6 +3222,7 @@ async function renderInvoiceList(){
   // can act on exactly what the user sees without re-fetching from the DB.
   window.__lastRenderedRows = rows;
   renderBreakdown(rows);
+  renderHqFilterSummary();
 
   if (!rows.length) {
     // Empty state as an invitation, not a dead end. The Excel import is the
