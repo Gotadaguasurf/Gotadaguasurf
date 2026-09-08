@@ -31,6 +31,10 @@ FAMILIAS = {
  'blueish':       ['blueish green', 'blueish greenq'],
  'decathlon':     ['decathlon', 'decathlon almada'],
  'souk':          ['souk to surf', 'rxy3q8h referencia desconhecida'],
+ 'novorumo':      ['novo rumo', 'novo rumo supermercado', 'martinho filhas', 'martinho filhos', 'superm novo rumo', 'novo rumo supermerca'],
+ 'smas':          ['smas almada', 'smas pragal', 'smas de almada', 'smas'],
+ 'edp':           ['edp', 'edp comercial', 'edp comercial co', 'gold energy', 'goldenergy'],
+ 'meo':           ['meo', 'meo sa'],
 }
 _rev = {}
 for fam, nomes in FAMILIAS.items():

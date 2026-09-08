@@ -119,6 +119,8 @@ overlap test misses single-word names like TORMENTA.
 | `edp`, `gold energy` | **Electricidade** |
 | `meo` | **Internet e telemóveis** (mobile subscriptions included) |
 | `smas almada` | **Água** |
+| `novo rumo` (= `martinho & filhas` / `martinho & filhos`, the company behind it) | supermarket in Costa da Caparica — **always Food / portugal**, it is the surf camp's groceries |
+| `makro` | cash & carry — when `paying_company = water-movements` it is **always Food / junior-camp**, the colónias' groceries |
 
 Keep those three descriptions literal — the Expenses breakdown reads them back.
 
