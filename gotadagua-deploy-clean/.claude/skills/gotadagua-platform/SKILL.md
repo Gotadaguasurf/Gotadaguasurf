@@ -154,6 +154,11 @@ Read the one matching your task — each has the detail this map omits.
   salaries AND meal cards: how to read one (net vs meal card vs recibo total), the
   Water Movements roster with each person's net and location, who was employed when,
   and the monthly totals that must reconcile. Read before touching any salary row.
+- **`references/lessons-instructors.md`** — the surf-lesson log and how instructor
+  pay reconciles against it: the one-month lag, who invoices with VAT and who does
+  not, the head-coach extras, the reception work that hides inside a teaching
+  name, cash lessons, and the sheet-name → app-supplier map. Read before comparing
+  lessons to what was paid.
 - **`references/finance-analysis.md`** — reconciling the Santander statement against
   the Drive invoices, the supplier alias map (the same supplier is stored under
   several names), which same-day repeats are real and which are duplicates, how to

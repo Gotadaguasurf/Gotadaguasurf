@@ -1292,6 +1292,14 @@ function invoicesTabHtml(){
             <input id="filter_search" type="search" placeholder="🔎 Search supplier, invoice #, NIF…" oninput="onFilterChanged()" style="width:220px;max-width:100%;padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;font-family:'Outfit',sans-serif;font-size:13px">
           </div>
         </div>
+        <div class="period-row" style="margin:0 0 8px;flex-wrap:wrap;gap:6px">
+          <span style="font-size:11.5px;color:var(--muted);margin-right:2px">Período</span>
+          <button class="action-btn" onclick="periodoRapido('mes')">Este mês</button>
+          <button class="action-btn" onclick="periodoRapido('mespassado')">Mês passado</button>
+          <button class="action-btn" onclick="periodoRapido('trimestre')">Últimos 3 meses</button>
+          <button class="action-btn" onclick="periodoRapido('ano')">Este ano</button>
+          <button class="action-btn" onclick="periodoRapido('tudo')">Tudo</button>
+        </div>
         <div class="period-row" style="margin:0;flex-wrap:wrap">
           <label>Location</label>
           <select id="filter_location" onchange="onFilterChanged()">
@@ -1339,6 +1347,41 @@ function invoicesTabHtml(){
       </div>
     </div>
   `;
+}
+
+const MESES_PT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+const MESES_LONGO = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+// "2026-08-11" -> "11 Ago". O ISO fica no title, para quem precisar do ano.
+function fmtDia(iso){
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso||''));
+  return m ? `${m[3]} ${MESES_PT[Number(m[2])-1]}` : (iso || '—');
+}
+function nomeMes(ym){
+  const m = /^(\d{4})-(\d{2})/.exec(String(ym||''));
+  return m ? `${MESES_LONGO[Number(m[2])-1]} ${m[1]}` : ym;
+}
+
+// Botoes de periodo: escolher um trimestre a mao e chato e da erros.
+function periodoRapido(qual){
+  const hoje = new Date();
+  const iso = d => d.toISOString().slice(0,10);
+  const set = (id,v) => { const el=$(id); if(el) el.value=v; };
+  set('filter_month','');
+  if (qual === 'tudo'){ set('filter_from',''); set('filter_to',''); }
+  else if (qual === 'mes'){
+    set('filter_from', iso(new Date(Date.UTC(hoje.getFullYear(), hoje.getMonth(), 1))));
+    set('filter_to',   iso(new Date(Date.UTC(hoje.getFullYear(), hoje.getMonth()+1, 0))));
+  } else if (qual === 'mespassado'){
+    set('filter_from', iso(new Date(Date.UTC(hoje.getFullYear(), hoje.getMonth()-1, 1))));
+    set('filter_to',   iso(new Date(Date.UTC(hoje.getFullYear(), hoje.getMonth(), 0))));
+  } else if (qual === 'trimestre'){
+    set('filter_from', iso(new Date(Date.UTC(hoje.getFullYear(), hoje.getMonth()-2, 1))));
+    set('filter_to',   iso(new Date(Date.UTC(hoje.getFullYear(), hoje.getMonth()+1, 0))));
+  } else if (qual === 'ano'){
+    set('filter_from', `${hoje.getFullYear()}-01-01`);
+    set('filter_to',   `${hoje.getFullYear()}-12-31`);
+  }
+  onFilterChanged();
 }
 
 // Reparticao do que esta filtrado: categoria -> fornecedor. Existe porque a
@@ -3182,7 +3225,7 @@ async function renderInvoiceList(){
     const isSelected = window.__selectedInvoiceIds?.has(r.id);
     return `<tr class="${r.is_duplicate?'dup':''}${isSelected?' row-selected':''}" data-inv-id="${r.id}">
       <td><input type="checkbox" class="row-check" data-id="${r.id}" ${isSelected?'checked':''} onchange="onRowCheck('${r.id}', this.checked)"></td>
-      <td>${r.invoice_date}</td>
+      <td style="white-space:nowrap" title="${r.invoice_date}">${fmtDia(r.invoice_date)}</td>
       <td>
         <select class="inline-select" onchange="quickUpdateInvoice('${r.id}','location_slug',this.value,this)" title="Change location — paying company auto-updates unless overridden">${locSelect}</select>
       </td>
@@ -3259,7 +3302,28 @@ async function renderInvoiceList(){
     `).join('');
     tableBody = `<tbody>${groupSections}${otherSection}</tbody>`;
   } else {
-    tableBody = `<tbody>${rows.map(rowHtml).join('')}</tbody>`;
+    // Separador por mes: a lista ja vinha ordenada por data, mas 1.900 linhas
+    // seguidas nao deixam ver onde um mes acaba e o outro comeca.
+    let mesAtual = '';
+    const partes = [];
+    rows.forEach(r => {
+      const mes = String(r.invoice_date || '').slice(0,7);
+      if (mes && mes !== mesAtual) {
+        mesAtual = mes;
+        const doMes = rows.filter(x => String(x.invoice_date||'').slice(0,7) === mes);
+        const totMes = doMes.reduce((a,x)=>a+Number(x.amount_eur||0), 0);
+        partes.push(`
+          <tr style="background:var(--foam);border-top:2px solid var(--border)">
+            <td colspan="9" style="font-weight:700;color:var(--navy);font-size:12px;text-transform:uppercase;letter-spacing:.06em">
+              ${nomeMes(mes)} <span style="font-weight:500;text-transform:none;letter-spacing:0;color:var(--muted)">· ${doMes.length} despesa${doMes.length===1?'':'s'}</span>
+            </td>
+            <td class="r" style="font-weight:700;color:var(--navy)">${eur(totMes)}</td>
+            <td colspan="3"></td>
+          </tr>`);
+      }
+      partes.push(rowHtml(r));
+    });
+    tableBody = `<tbody>${partes.join('')}</tbody>`;
   }
 
   body.innerHTML = `

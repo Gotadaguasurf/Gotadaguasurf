@@ -736,3 +736,30 @@ test('crm: sending with attachments does not blow up, and they reach the payload
   expect(out.sent).toHaveLength(1);
   expect(out.sent[0].name).toBe('deck.pdf');
 });
+
+test('hq: expenses read by month — friendly dates, month separators, period presets', async ({ page }) => {
+  // 1.900 rows of "2026-08-11" in a flat list is unreadable: you cannot see
+  // where one month ends. Dates read as "11 Ago", each month gets a header
+  // with its own total, and the period is one click instead of two pickers.
+  await fakeOwnerSession(page);
+  await page.goto('/hq/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof window.fmtDia === 'function');
+  const out = await page.evaluate(() => ({
+    dia: fmtDia('2026-08-11'),
+    diaMau: fmtDia(''),
+    mes: nomeMes('2026-03'),
+    temPreset: typeof window.periodoRapido === 'function',
+    temBreakdown: typeof window.renderBreakdown === 'function',
+    // A aba Expenses so e desenhada quando se abre; testa-se o HTML que ela gera.
+    markup: (typeof window.invoicesTabHtml === 'function') ? invoicesTabHtml() : '',
+  }));
+  expect(out.dia).toBe('11 Ago');
+  expect(out.diaMau).toBe('—');           // uma data vazia nao rebenta a linha
+  expect(out.mes).toBe('Março 2026');
+  expect(out.temPreset).toBe(true);
+  expect(out.temBreakdown).toBe(true);
+  expect(out.markup).toContain('id="filter_from"');
+  expect(out.markup).toContain('id="filter_to"');
+  expect(out.markup).toContain('breakdownBody');
+  expect(out.markup).toContain("periodoRapido('trimestre')");
+});
