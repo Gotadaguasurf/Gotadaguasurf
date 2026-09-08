@@ -779,6 +779,7 @@ test('instructors: lessons load past 1000 rows, Kids Camp exists, and entries ha
     categories: lessonCategories,
     hasSummary: typeof window.renderEntriesSummary === 'function',
     catFilter: !!document.getElementById('categoryFilter'),
+    noCharts: typeof window.Chart === 'undefined' && !!document.getElementById('instructorMatrix') && !!document.getElementById('monthGrid'),
     paidFilter: !!document.getElementById('paidFilter'),
     viewButtons: !!document.getElementById('viewList') && !!document.getElementById('viewSummary'),
     summaryBox: !!document.getElementById('entriesSummary'),
@@ -788,6 +789,7 @@ test('instructors: lessons load past 1000 rows, Kids Camp exists, and entries ha
   expect(out.categories).toContain('Junior Camp');
   expect(out.hasSummary).toBe(true);
   expect(out.catFilter).toBe(true);
+  expect(out.noCharts).toBe(true);           // tables like the Excel DashBoard, no Chart.js
   expect(out.paidFilter).toBe(true);
   expect(out.viewButtons).toBe(true);
   expect(out.summaryBox).toBe(true);
@@ -835,9 +837,9 @@ test('instructors: Mark paid touches one instructor-month only, payroll adds VAT
     closeModal();
     // charts follow filters
     selectedCategory = 'Junior Camp'; render();
-    const chartTotal = lessonsChart.data.datasets[0].data.reduce((s, v) => s + v, 0);
+    const chartTotal = Number(document.querySelector('#instructorMatrix tfoot td:last-child .sub').textContent.replace(/\D/g, ''));
     const summaryHasTheoric = (selectedCategory = 'all', entriesView = 'summary', updateEntries(), document.getElementById('entriesSummary').textContent.includes('Theoric'));
-    return { buttons, rowText, touched, editOpened, chartTotal, summaryHasTheoric, catOptions: [...document.querySelectorAll('#categoryFilter option')].map(o => o.value) };
+    return { buttons, rowText, touched, editOpened, chartTotal, summaryHasTheoric, catOptions: [...document.querySelectorAll('#categoryFilter [data-cat]')].map(o => o.dataset.cat) };
   });
   expect(out.buttons).toContain('Romildo Ramos|2026-07');
   expect(out.buttons).toContain('Romildo Ramos|2026-08');
@@ -845,11 +847,11 @@ test('instructors: Mark paid touches one instructor-month only, payroll adds VAT
   expect(out.touched.ids).toEqual(['11111111-1111-4111-8111-111111111111']);
   expect(out.touched.v.paid).toBe(false);
   // Romildo July: 60 gross + 23% VAT (13.80) + 250 head coach = 323.80
-  expect(out.rowText.find(t => t.startsWith('Romildo Ramos') && t.includes('July'))).toContain('€323.80');
+  expect(out.rowText.find(t => t.startsWith('Romildo Ramos') && t.includes('Julho'))).toContain('€323.80');
   // Cauê July: 90 gross, two distinct Junior weeks × 62.50 = 125 → 215.00
   expect(out.rowText.find(t => t.startsWith('Cauê Flores'))).toContain('€215.00');
   expect(out.editOpened).toBe(true);
-  expect(out.chartTotal).toBe(3);                    // Junior Camp lessons only
+  expect(out.chartTotal).toBe(3);                    // matrix follows the filter: Junior Camp lessons only
   expect(out.summaryHasTheoric).toBe(true);          // unknown category is shown, not hidden
   expect(out.catOptions).toContain('Theoric');
 });

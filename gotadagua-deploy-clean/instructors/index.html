@@ -6,7 +6,6 @@
   <title>Gota Dagua — Instructors</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='-15 0 92 92'><path fill='%231e6fa8' d='M61.7,51.9c-.4-9-5.5-16.5-9.7-24.1-2.9-4.8-5.3-9.8-9.3-13.9-3.9-4.4-6.5-9.8-10.8-13.9C19.2,16.6-.5,39.9,0,61.9c9.4-7.9,20.1-17.7,33.1-17.8,3,0,7.2,0,9.5,2.2,1.7,1.7,3.2,4.2,2,6.5-.3.5-1.9,2.7-2.3,2.9-12.9,7.4-20.3,18.6-16.5,33.7,3.1,1.3,8,1,11.1-.3,2.7-.3,5.1-1.3,7.5-2.5,8.7-2.9,14.5-11.1,15.5-20.1,1.2-4.7,2.1-9.7,1.8-14.6h0Z'/></svg>">
   <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.4"></script>
   <script src="/supabase-config.js"></script>
@@ -36,7 +35,19 @@
     .btn.secondary:hover,.btn.outline:hover{border-color:var(--navy);color:var(--navy)}
     .btn.green{background:var(--green-bg);color:var(--green);border:1.5px solid var(--green-border)}
     .btn.green:hover{background:#d1fae5}
-    .toolbar{display:flex;flex-direction:column;gap:14px;margin-bottom:20px}
+    .toolbar{display:flex;flex-direction:column;gap:12px;margin-bottom:20px}
+    .filter-row{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;justify-content:space-between}
+    .quick{display:flex;flex-wrap:wrap;gap:8px}.quick .tab{border-style:dashed}
+    .chips{display:flex;flex-wrap:wrap;gap:8px}.chips .tab.active{background:var(--ocean);border-color:var(--ocean)}
+    .filters-right{display:flex;flex-wrap:wrap;gap:10px;align-items:center}.filters-right .search-btn{width:auto;min-width:170px}
+    .filter-summary{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px;color:var(--muted);min-height:20px}
+    .filter-summary .pill{cursor:pointer}.filter-summary .pill:hover{border-color:var(--red);color:var(--red)}
+    .loc-cards{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:22px}
+    .loc-card{padding:14px 16px;cursor:pointer;transition:all .15s}.loc-card:hover{border-color:var(--ocean)}.loc-card.active{border-color:var(--ocean);background:var(--foam)}
+    .loc-card .label{font-size:11px}.loc-card .value{font-size:22px}
+    .matrix td,.matrix th{white-space:nowrap}.matrix td.r div:first-child{font-weight:700}.matrix .sub{font-size:11px;color:var(--muted)}
+    .matrix tbody tr:hover td{background:var(--foam)}.matrix .name{cursor:pointer;color:var(--navy);font-weight:700}.matrix .name:hover{color:var(--ocean);text-decoration:underline}
+    .matrix tfoot td{font-weight:800;border-top:2px solid var(--border);background:#fafcfe}
     .year-tabs,.month-tabs{display:flex;flex-wrap:wrap;gap:8px}
     .tab{border:1.5px solid var(--border);background:#fff;color:var(--muted);padding:6px 14px;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;transition:all .2s}
     .tab:hover{border-color:var(--ocean);color:var(--ocean)}
@@ -70,7 +81,7 @@
     .modal-close{border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.08);color:#fff;border-radius:999px;padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0}
     .modal-close:hover{background:rgba(255,255,255,.16)}
     .overview-grid{display:grid;gap:12px;grid-template-columns:repeat(5,1fr);margin-bottom:18px}.overview-card{padding:14px}.daylist-item{border:1px solid var(--border);border-radius:14px;padding:12px;background:#fff}
-    @media (max-width:1100px){.kpis,.grid-2,.overview-grid{grid-template-columns:1fr 1fr}.modal-grid{grid-template-columns:1fr}}
+    @media (max-width:1100px){.kpis,.grid-2,.overview-grid{grid-template-columns:1fr 1fr}.loc-cards{grid-template-columns:repeat(3,1fr)}.modal-grid{grid-template-columns:1fr}}
     @media (max-width:760px){header{padding:16px;flex-direction:column;align-items:flex-start;gap:12px;height:auto}.header-left,.header-center,.top-actions{width:100%;min-width:0}.header-center,.header-nav{justify-content:flex-start}main{padding:16px}.kpis,.grid-2,.form-grid,.overview-grid{grid-template-columns:1fr}.searchable{width:100%}.filters{align-items:stretch}.entry-bottom{flex-direction:column}}
   </style>
 </head>
@@ -102,30 +113,41 @@
 <main>
   <div class="message" id="messageBox"></div>
   <div class="toolbar">
-    <div class="year-tabs" id="yearTabs"></div>
-    <div class="filters">
-      <div class="month-tabs" id="monthTabs"></div>
-      <select id="categoryFilter" class="search-btn" style="cursor:pointer"><option value="all">All categories</option></select>
-      <select id="paidFilter" class="search-btn" style="cursor:pointer">
-        <option value="all">Paid and unpaid</option>
-        <option value="unpaid">Unpaid only</option>
-        <option value="paid">Paid only</option>
-      </select>
-      <div class="searchable">
-        <button class="search-btn" id="instructorBtn">All instructors</button>
-        <div class="dropdown" id="instructorDropdown">
-          <input id="instructorSearch" placeholder="Search instructor..." />
-          <div id="instructorOptions"></div>
+    <div class="filter-row">
+      <div class="year-tabs" id="yearTabs"></div>
+      <div class="quick">
+        <button class="tab" data-periodo="mes">Este mês</button>
+        <button class="tab" data-periodo="mespassado">Mês passado</button>
+        <button class="tab" data-periodo="ano">Este ano</button>
+        <button class="tab" data-periodo="tudo">Tudo</button>
+      </div>
+    </div>
+    <div class="month-tabs" id="monthTabs"></div>
+    <div class="filter-row">
+      <div class="chips" id="categoryFilter"></div>
+      <div class="filters-right">
+        <select id="paidFilter" class="search-btn" style="cursor:pointer">
+          <option value="all">Pagas e por pagar</option>
+          <option value="unpaid">Só por pagar</option>
+          <option value="paid">Só pagas</option>
+        </select>
+        <div class="searchable">
+          <button class="search-btn" id="instructorBtn">Todos os instrutores</button>
+          <div class="dropdown" id="instructorDropdown">
+            <input id="instructorSearch" placeholder="Procurar instrutor..." />
+            <div id="instructorOptions"></div>
+          </div>
         </div>
       </div>
     </div>
+    <div class="filter-summary" id="filterSummary"></div>
   </div>
   <div id="categoryOverview" style="display:none"></div>
   <div class="kpis">
-    <div class="card kpi"><div class="label">Lessons this view</div><div class="value" id="kpiLessons">0</div><div class="hint" id="kpiHint">All years</div></div>
-    <div class="card kpi"><div class="label">Total payroll</div><div class="value" id="kpiPayroll">€0.00</div><div class="hint">Auto calculated</div></div>
-    <div class="card kpi"><div class="label">Active instructors</div><div class="value" id="kpiInstructors">0</div><div class="hint">With lesson entries</div></div>
-    <div class="card kpi"><div class="label">Average rate</div><div class="value" id="kpiRate">€0.00</div><div class="hint">Per lesson</div></div>
+    <div class="card kpi"><div class="label">Aulas nesta vista</div><div class="value" id="kpiLessons">0</div><div class="hint" id="kpiHint">All years</div></div>
+    <div class="card kpi"><div class="label">Valor das aulas</div><div class="value" id="kpiPayroll">€0.00</div><div class="hint">sem IVA nem extras</div></div>
+    <div class="card kpi"><div class="label">Instrutores</div><div class="value" id="kpiInstructors">0</div><div class="hint">com aulas nesta vista</div></div>
+    <div class="card kpi"><div class="label">Preço médio</div><div class="value" id="kpiRate">€0.00</div><div class="hint">por aula</div></div>
   </div>
   <div class="tabs">
     <button class="tab-trigger active" data-tab="dashboard">Dashboard</button>
@@ -133,15 +155,16 @@
     <button class="tab-trigger" data-tab="entries">Lesson entries</button>
   </div>
   <section class="panel active" id="panel-dashboard">
-    <div class="grid-2">
-      <div class="card"><div class="section-header" style="padding:20px 20px 0"><div class="section-title" style="font-size:18px">Lessons by month</div></div><div class="chart-wrap"><canvas id="lessonsChart"></canvas></div></div>
-      <div class="card"><div class="section-header" style="padding:20px 20px 0"><div class="section-title" style="font-size:18px">Payroll by month</div></div><div class="chart-wrap"><canvas id="payrollChart"></canvas></div></div>
-    </div>
+    <div class="loc-cards" id="locCards"></div>
+    <div class="section-header"><div class="section-title">Por mês e location</div><div class="muted" id="gridHint"></div></div>
+    <div id="monthGrid"></div>
+    <div class="section-header" style="margin-top:26px"><div class="section-title">Instrutores por location</div><div class="muted">clica no nome para filtrar</div></div>
+    <div id="instructorMatrix"></div>
   </section>
   <section class="panel" id="panel-payroll">
     <div class="card">
       <table>
-        <thead><tr><th>Instructor</th><th>Mês</th><th>Lessons</th><th>RecVerde/Cash</th><th class="r">Lessons €</th><th class="r">IVA</th><th class="r">Extras</th><th>Paid</th><th class="r">Amount due</th></tr></thead>
+        <thead><tr><th>Instrutor</th><th>Mês</th><th>Aulas</th><th>Pagamento</th><th class="r">Aulas €</th><th class="r">IVA</th><th class="r">Extras</th><th>Pago</th><th class="r">A pagar</th></tr></thead>
         <tbody id="payrollBody"></tbody>
       </table>
     </div>
@@ -222,9 +245,12 @@ const paymentTypes=["Recibo Verde","Cash"];
 const INSTRUCTOR_LOCATION_SLUG=new URLSearchParams(window.location.search).get('location')||"portugal";
 let entries=[];
 let instructorDirectory=[];
-let selectedYear="all",selectedMonth="all",selectedInstructor="all",activeTab="dashboard",editingId=null,formInstructor="",dayQueue=[],lessonsChart=null,payrollChart=null,supabaseClient=null,instructorLocationId=null;
+let selectedYear="all",selectedMonth="all",selectedInstructor="all",activeTab="dashboard",editingId=null,formInstructor="",dayQueue=[],supabaseClient=null,instructorLocationId=null;
 const euro=n=>new Intl.NumberFormat("en-IE",{style:"currency",currency:"EUR"}).format(Number(n||0));
-const monthLabel=key=>key==="all"?"All months":new Date(Number(key.split("-")[0]),Number(key.split("-")[1])-1,1).toLocaleDateString("en-GB",{month:"long",year:"numeric"});
+const MESES_CURTOS=["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+const MESES_LONGOS=["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+const monthLabel=key=>key==="all"?"Todos os meses":`${MESES_LONGOS[Number(key.split("-")[1])-1]} ${key.split("-")[0]}`;
+const monthShort=key=>`${MESES_CURTOS[Number(key.split("-")[1])-1]} ${key.slice(2,4)}`;
 const normalizeHeader=value=>String(value||"").trim().toLowerCase().replace(/\s+/g,"_").replace(/\//g,"_").replace(/[^a-z0-9_]/g,"");
 const toNumber=value=>{const n=Number(String(value??"").replace(/€/g,"").replace(/,/g,".").replace(/\s+/g,"").trim());return Number.isFinite(n)?n:0;};
 function excelDateToIso(value){if(value===undefined||value===null||value==="")return"";if(typeof value==="number"){const p=XLSX.SSF.parse_date_code(value);if(p)return`${p.y}-${String(p.m).padStart(2,"0")}-${String(p.d).padStart(2,"0")}`;}const t=String(value).trim();const m=t.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);if(m)return`${m[3].length===2?"20"+m[3]:m[3]}-${m[2].padStart(2,"0")}-${m[1].padStart(2,"0")}`;const d=new Date(t);return Number.isNaN(d.getTime())?"":d.toISOString().slice(0,10);}
@@ -250,8 +276,8 @@ function filteredEntries(){return sortByNewest(entries.filter(e=>
 
 // Resumo: mes x categoria, com aulas e valor. Uma lista de 1.728 linhas nao
 // responde a "quanto foi o Junior em Julho" — esta vista responde.
-function renderEntriesSummary(rows){
-  const box=document.getElementById("entriesSummary");
+function renderEntriesSummary(rows,targetId="entriesSummary"){
+  const box=document.getElementById(targetId);
   if(!box)return;
   if(!rows.length){box.innerHTML='<div class="card empty">Sem aulas neste filtro.</div>';return;}
   const cats=categoriesIn(rows);
@@ -283,8 +309,8 @@ function renderEntriesSummary(rows){
 }
 function categoryBreakdown(){const rows=selectedInstructor==="all"?[]:filteredEntries();const base=categoriesIn(rows.length?rows:entries).map(c=>({category:c,lessons:0}));rows.forEach(e=>{let f=base.find(x=>x.category===e.lessonCategory);if(!f){f={category:e.lessonCategory,lessons:0};base.push(f);}f.lessons+=Number(e.numberOfLessons)});return base;}
 function categoryIcon(){return"";}
-function showMessage(msg){const box=document.getElementById("messageBox");if(!box)return;box.textContent=msg;box.style.color="";box.style.display=msg?"block":"none";}
-function showError(msg){const box=document.getElementById("messageBox");if(!box)return;box.textContent=msg||"Something went wrong.";box.style.color="var(--red)";box.style.display="block";}
+function showMessage(msg){const box=document.getElementById("messageBox");if(!box)return;box.textContent=msg;box.style.color="";box.style.background="";box.style.borderColor="";box.style.display=msg?"block":"none";}
+function showError(msg){const box=document.getElementById("messageBox");if(!box)return;box.textContent=msg||"Something went wrong.";box.style.color="var(--red)";box.style.background="#fdecec";box.style.borderColor="#f5b5b5";box.style.display="block";}
 async function withRetry(fn,label,retries=3){
   for(let i=1;i<=retries;i++){
     try{return await fn();}
@@ -361,6 +387,7 @@ async function loadInstructorData(){
   if(lessonError)throw lessonError;
   if(directoryError)throw directoryError;
   instructorDirectory=(directoryRows||[]).filter(row=>row.active!==false).map(row=>({id:row.id,name:row.name,rate:Number(row.rate||0),paymentType:row.payment_type||"",vatPct:Number(row.vat_pct||0),appSupplier:row.app_supplier||"",extraKind:row.extra_kind||"",extraAmount:Number(row.extra_amount||0)}));
+  const firstLoad=!entries.length;
   entries=(lessonRows||[]).map(row=>({
     id:row.id,
     instructorId:row.instructor_id,
@@ -375,6 +402,7 @@ async function loadInstructorData(){
     paid:Boolean(row.paid)
   }));
   if(selectedInstructor!=="all"&&!instructorOptions().includes(selectedInstructor))selectedInstructor="all";
+  if(firstLoad&&selectedYear==="all"){const ys=Object.keys(buildYearMap());if(ys[0])selectedYear=ys[0];}
   if(!formInstructor)formInstructor=instructorOptions()[0]||"";
 }
 async function insertLessonEntry(draft){
@@ -419,16 +447,41 @@ async function updateLessonEntry(id,draft){
   if(error)throw error;
 }
 function renderTabs(){document.querySelectorAll(".tab-trigger,.header-tab").forEach(btn=>btn.classList.toggle("active",btn.dataset.tab===activeTab));document.querySelectorAll(".panel").forEach(p=>p.classList.toggle("active",p.id===`panel-${activeTab}`));}
-function renderYearTabs(){const years=Object.keys(buildYearMap());document.getElementById("yearTabs").innerHTML=`<button class="tab ${selectedYear==="all"?"active":""}" data-year="all">All years</button>`+years.map(y=>`<button class="tab ${selectedYear===y?"active":""}" data-year="${y}">${y}</button>`).join("");document.querySelectorAll("#yearTabs [data-year]").forEach(btn=>btn.onclick=()=>{selectedYear=btn.dataset.year;selectedMonth="all";render();});}
-function renderMonthTabs(){const months=selectedYear==="all"?[]:(buildYearMap()[selectedYear]||[]);document.getElementById("monthTabs").innerHTML=selectedYear==="all"?`<div class="tab">Click a year above to see its months from January to December</div>`:months.map(m=>`<button class="tab ${selectedMonth===m?"active":""}" data-month="${m}">${monthLabel(m)}</button>`).join("")+`<button class="tab ${selectedMonth==="all"?"active":""}" data-month="all">All months</button>`;document.querySelectorAll("#monthTabs [data-month]").forEach(btn=>btn.onclick=()=>{selectedMonth=btn.dataset.month;render();});}
-function renderSearchableDropdown(btnId,ddId,inputId,optionsId,currentValue,onSelect,includeAll){const btn=document.getElementById(btnId),dd=document.getElementById(ddId),input=document.getElementById(inputId),wrap=document.getElementById(optionsId);btn.textContent=currentValue==="all"?"All instructors":(currentValue||"Select instructor");function draw(term=""){const opts=instructorOptions().filter(n=>n.toLowerCase().includes(term.toLowerCase()));let html="";if(includeAll)html+=`<div class="dropdown-item" data-name="all">All instructors</div>`;html+=opts.map(n=>`<div class="dropdown-item" data-name="${esc(n)}">${esc(n)}</div>`).join("");if(!html)html=`<div class="dropdown-item">No instructor found.</div>`;wrap.innerHTML=html;wrap.querySelectorAll("[data-name]").forEach(el=>el.onclick=()=>{onSelect(el.dataset.name);dd.classList.remove("open");});}draw(input.value||"");btn.onclick=()=>{dd.classList.toggle("open");setTimeout(()=>input.focus(),10);};input.oninput=()=>draw(input.value||"");}
+function renderYearTabs(){const years=Object.keys(buildYearMap());document.getElementById("yearTabs").innerHTML=`<button class="tab ${selectedYear==="all"?"active":""}" data-year="all">Todos os anos</button>`+years.map(y=>`<button class="tab ${selectedYear===y?"active":""}" data-year="${y}">${y}</button>`).join("");document.querySelectorAll("#yearTabs [data-year]").forEach(btn=>btn.onclick=()=>{selectedYear=btn.dataset.year;selectedMonth="all";render();});}
+function renderMonthTabs(){const months=selectedYear==="all"?[]:(buildYearMap()[selectedYear]||[]);document.getElementById("monthTabs").innerHTML=selectedYear==="all"?`<div class="muted" style="font-size:13px">Escolhe um ano para ver os meses</div>`:months.map(m=>`<button class="tab ${selectedMonth===m?"active":""}" data-month="${m}">${MESES_CURTOS[Number(m.slice(5,7))-1]}</button>`).join("")+`<button class="tab ${selectedMonth==="all"?"active":""}" data-month="all">Ano inteiro</button>`;document.querySelectorAll("#monthTabs [data-month]").forEach(btn=>btn.onclick=()=>{selectedMonth=btn.dataset.month;render();});}
+function renderSearchableDropdown(btnId,ddId,inputId,optionsId,currentValue,onSelect,includeAll){const btn=document.getElementById(btnId),dd=document.getElementById(ddId),input=document.getElementById(inputId),wrap=document.getElementById(optionsId);btn.textContent=currentValue==="all"?"Todos os instrutores":(currentValue||"Escolher instrutor");function draw(term=""){const opts=instructorOptions().filter(n=>n.toLowerCase().includes(term.toLowerCase()));let html="";if(includeAll)html+=`<div class="dropdown-item" data-name="all">Todos os instrutores</div>`;html+=opts.map(n=>`<div class="dropdown-item" data-name="${esc(n)}">${esc(n)}</div>`).join("");if(!html)html=`<div class="dropdown-item">No instructor found.</div>`;wrap.innerHTML=html;wrap.querySelectorAll("[data-name]").forEach(el=>el.onclick=()=>{onSelect(el.dataset.name);dd.classList.remove("open");});}draw(input.value||"");btn.onclick=()=>{dd.classList.toggle("open");setTimeout(()=>input.focus(),10);};input.oninput=()=>draw(input.value||"");}
 function renderCategoryFilter(){
-  const sel=document.getElementById("categoryFilter"); if(!sel)return;
+  const box=document.getElementById("categoryFilter"); if(!box)return;
   const usadas=categoriesIn(entries);
-  sel.innerHTML='<option value="all">All categories</option>'+usadas.map(c=>`<option value="${c}"${selectedCategory===c?" selected":""}>${c}</option>`).join("");
+  box.innerHTML=`<button class="tab ${selectedCategory==="all"?"active":""}" data-cat="all">Todas</button>`+usadas.map(c=>`<button class="tab ${selectedCategory===c?"active":""}" data-cat="${esc(c)}">${esc(c)}</button>`).join("");
+  box.querySelectorAll("[data-cat]").forEach(b=>b.onclick=()=>{selectedCategory=b.dataset.cat;render();});
+}
+// Atalhos de periodo: o caso comum e "o mes passado" (aulas de Agosto pagam-se
+// no inicio de Setembro), por isso tem botao proprio.
+function periodo(qual){
+  const hoje=new Date();const y=hoje.getFullYear(),m=hoje.getMonth();
+  const key=(yy,mm)=>`${yy}-${String(mm+1).padStart(2,"0")}`;
+  if(qual==="mes"){selectedYear=String(y);selectedMonth=key(y,m);}
+  else if(qual==="mespassado"){const d=new Date(y,m-1,1);selectedYear=String(d.getFullYear());selectedMonth=key(d.getFullYear(),d.getMonth());}
+  else if(qual==="ano"){selectedYear=String(y);selectedMonth="all";}
+  else{selectedYear="all";selectedMonth="all";}
+  render();
+}
+function limparFiltros(){selectedInstructor="all";selectedCategory="all";selectedPaid="all";render();}
+function renderFilterSummary(){
+  const box=document.getElementById("filterSummary"); if(!box)return;
+  const chips=[];
+  if(selectedInstructor!=="all")chips.push(["instructor",selectedInstructor]);
+  if(selectedCategory!=="all")chips.push(["category",selectedCategory]);
+  if(selectedPaid!=="all")chips.push(["paid",selectedPaid==="paid"?"só pagas":"só por pagar"]);
+  const per=selectedMonth!=="all"?monthLabel(selectedMonth):(selectedYear!=="all"?`Ano ${selectedYear}`:"Todos os anos");
+  box.innerHTML=`<span>${esc(per)}</span>`+chips.map(([k,v])=>`<span class="pill" data-clear="${k}" title="Remover filtro">${esc(v)} ×</span>`).join("")+(chips.length?`<button class="btn outline" data-clear="all" style="padding:4px 10px">Limpar filtros</button>`:"");
+  box.querySelectorAll("[data-clear]").forEach(el=>el.onclick=()=>{const k=el.dataset.clear;if(k==="all")return limparFiltros();if(k==="instructor")selectedInstructor="all";if(k==="category")selectedCategory="all";if(k==="paid")selectedPaid="all";render();});
+  document.querySelectorAll("[data-periodo]").forEach(b=>b.onclick=()=>periodo(b.dataset.periodo));
+  const sel=document.getElementById("paidFilter");if(sel&&sel.value!==selectedPaid)sel.value=selectedPaid;
 }
 function renderCategoryOverview(){const wrap=document.getElementById("categoryOverview");if(selectedInstructor==="all"){wrap.style.display="none";wrap.innerHTML="";return;}const rows=categoryBreakdown();wrap.style.display="block";wrap.innerHTML=`<div class="card" style="padding:18px;margin-bottom:18px"><div style="font-family:'DM Serif Display',serif;font-size:18px;color:var(--navy);margin-bottom:12px">Category overview for ${esc(selectedInstructor)}</div><div class="overview-grid">${rows.map(r=>`<div class="card overview-card"><div style="font-size:14px;font-weight:700;color:var(--navy)">${esc(r.category)}</div><div style="font-family:'DM Serif Display',serif;font-size:28px;color:var(--navy);margin-top:6px">${r.lessons}</div><div class="muted" style="font-size:13px">lessons</div></div>`).join("")}</div></div>`;}
-function updateKpis(){const rows=filteredEntries();const totalLessons=rows.reduce((s,e)=>s+Number(e.numberOfLessons),0);const totalPayroll=rows.reduce((s,e)=>s+Number(e.total),0);const activeInstructors=new Set(rows.map(e=>e.instructorName)).size;const averageRate=totalLessons?totalPayroll/totalLessons:0;document.getElementById("kpiLessons").textContent=totalLessons;document.getElementById("kpiPayroll").textContent=euro(totalPayroll);document.getElementById("kpiInstructors").textContent=activeInstructors;document.getElementById("kpiRate").textContent=euro(averageRate);document.getElementById("kpiHint").textContent=[selectedMonth!=="all"?monthLabel(selectedMonth):(selectedYear!=="all"?selectedYear:"All years"),selectedInstructor!=="all"?selectedInstructor:"",selectedCategory!=="all"?selectedCategory:"",selectedPaid!=="all"?(selectedPaid==="paid"?"paid only":"unpaid only"):""].filter(Boolean).join(" · ");}
+function updateKpis(){const rows=filteredEntries();const totalLessons=rows.reduce((s,e)=>s+Number(e.numberOfLessons),0);const totalPayroll=rows.reduce((s,e)=>s+Number(e.total),0);const activeInstructors=new Set(rows.map(e=>e.instructorName)).size;const averageRate=totalLessons?totalPayroll/totalLessons:0;document.getElementById("kpiLessons").textContent=totalLessons;document.getElementById("kpiPayroll").textContent=euro(totalPayroll);document.getElementById("kpiInstructors").textContent=activeInstructors;document.getElementById("kpiRate").textContent=euro(averageRate);document.getElementById("kpiHint").textContent=[selectedMonth!=="all"?monthLabel(selectedMonth):(selectedYear!=="all"?selectedYear:"Todos os anos"),selectedInstructor!=="all"?selectedInstructor:"",selectedCategory!=="all"?selectedCategory:"",selectedPaid!=="all"?(selectedPaid==="paid"?"só pagas":"só por pagar"):""].filter(Boolean).join(" · ");}
 // Uma linha por instrutor e mes. O "Amount due" e o que se paga de facto:
 // aulas x (1+IVA do instrutor) + extras fixos (head coach). Lista de IVA e
 // extras em .claude/skills/gotadagua-platform/references/lessons-instructors.md
@@ -454,7 +507,7 @@ function updatePayroll(){
     const dir=instructorDirectory.find(d=>d.name===r.instructorName);
     r.vatPct=dir?dir.vatPct:0;r.vat=r.gross*r.vatPct/100;r.extra=payrollExtra(dir,r.rows);r.due=r.gross+r.vat+r.extra;r.extraKind=dir?dir.extraKind:"";
     return r;
-  }).sort((a,b)=>{if(a.month!==b.month)return b.month.localeCompare(a.month);if(a.lastDate===b.lastDate)return b.gross-a.gross;return b.lastDate.localeCompare(a.lastDate);});
+  }).sort((a,b)=>{if(a.month!==b.month)return b.month.localeCompare(a.month);return b.due-a.due;});
   const tot=rows.reduce((t,r)=>{t.lessons+=r.lessons;t.gross+=r.gross;t.vat+=r.vat;t.extra+=r.extra;t.due+=r.due;return t;},{lessons:0,gross:0,vat:0,extra:0,due:0});
   document.getElementById("payrollBody").innerHTML=rows.length?rows.map(r=>`<tr>
     <td><strong>${esc(r.instructorName)}</strong>${r.extraKind==="reception"?'<div class="muted" style="font-size:11px">+ receção (fora das aulas)</div>':""}</td>
@@ -464,7 +517,7 @@ function updatePayroll(){
     <td class="r">${euro(r.gross)}</td>
     <td class="r">${r.vatPct?`${euro(r.vat)}<div class="muted" style="font-size:11px">${r.vatPct}%</div>`:'<span class="muted">·</span>'}</td>
     <td class="r">${r.extra?`${euro(r.extra)}<div class="muted" style="font-size:11px">${r.extraKind==="head_coach_junior_week"?"head coach Junior":"head coach"}</div>`:'<span class="muted">·</span>'}</td>
-    <td><button class="btn ${r.isPaid?'green':'outline'}" data-paid-toggle="${esc(r.instructorName)}|${r.month}">${r.isPaid?'Paid':'Mark paid'}</button></td>
+    <td><button class="btn ${r.isPaid?'green':'outline'}" data-paid-toggle="${esc(r.instructorName)}|${r.month}">${r.isPaid?'Pago':'Marcar pago'}</button></td>
     <td class="r"><strong>${euro(r.due)}</strong></td>
   </tr>`).join("")+`<tr style="border-top:2px solid #ddd"><td><strong>Total</strong></td><td>${rows.length} linhas</td><td><strong>${tot.lessons}</strong></td><td></td><td class="r"><strong>${euro(tot.gross)}</strong></td><td class="r">${euro(tot.vat)}</td><td class="r">${euro(tot.extra)}</td><td></td><td class="r"><strong>${euro(tot.due)}</strong></td></tr>`
   :`<tr><td colspan="9" class="empty">No rows in this filter.</td></tr>`;
@@ -484,8 +537,41 @@ function updateEntries(){const rows=filteredEntries();
   lista.style.display=""; resumo.style.display="none";
   bL.className="btn"; bS.className="btn outline";
   document.getElementById("entriesList").innerHTML=rows.length?rows.map(e=>`<div class="card entry"><div class="entry-top"><div class="entry-name">${esc(e.instructorName)}</div><div class="entry-date">${e.date}</div></div><div class="entry-badges"><span class="pill">${esc(e.lessonCategory)}</span><span class="pill">${esc(e.paymentType)}</span><span class="pill ${e.paid?'paid':''}">${e.paid?'Paid':'Unpaid'}</span><span class="pill">${e.numberOfLessons} lessons</span></div><div class="entry-bottom"><div></div><div style="display:flex;gap:12px;align-items:center"><div class="r"><div class="muted" style="font-size:12px">Unit ${euro(e.priceUnit)}</div><div style="font-size:20px;font-weight:800">${euro(e.total)}</div></div><div class="actions"><button class="btn outline" data-edit="${e.id}">Edit</button><button class="btn outline" data-delete="${e.id}" style="color:var(--red)">Delete</button></div></div></div></div>`).join(""):`<div class="card empty">No lesson entries found for this filter.</div>`;document.querySelectorAll("[data-edit]").forEach(btn=>btn.onclick=()=>startEdit(btn.dataset.edit));document.querySelectorAll("[data-delete]").forEach(btn=>btn.onclick=()=>deleteEntry(btn.dataset.delete));}
-function updateCharts(){const grouped={};filteredEntries().forEach(e=>{const key=e.date.slice(0,7);if(!grouped[key])grouped[key]={month:key,lessons:0,payroll:0};grouped[key].lessons+=Number(e.numberOfLessons);grouped[key].payroll+=Number(e.total);});const data=Object.values(grouped).sort((a,b)=>a.month.localeCompare(b.month));if(lessonsChart)lessonsChart.destroy();if(payrollChart)payrollChart.destroy();lessonsChart=new Chart(document.getElementById("lessonsChart"),{type:"bar",data:{labels:data.map(d=>d.month),datasets:[{data:data.map(d=>d.lessons)}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}}}});payrollChart=new Chart(document.getElementById("payrollChart"),{type:"bar",data:{labels:data.map(d=>d.month),datasets:[{data:data.map(d=>d.payroll)}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:(ctx)=>euro(ctx.raw)}}}}});}
-function render(){renderTabs();renderYearTabs();renderMonthTabs();renderCategoryFilter();renderSearchableDropdown("instructorBtn","instructorDropdown","instructorSearch","instructorOptions",selectedInstructor,(v)=>{selectedInstructor=v;render();},true);renderCategoryOverview();updateKpis();updatePayroll();updateEntries();updateCharts();}
+// Dashboard sem graficos: cartoes por location, a grelha mes x location (a
+// mesma do DashBoard do Excel) e a matriz instrutor x location com aulas e valor.
+function renderLocCards(rows){
+  const box=document.getElementById("locCards"); if(!box)return;
+  const src=selectedCategory==="all"?rows:sortByNewest(entries.filter(e=>
+    (selectedYear==="all"||e.date.slice(0,4)===selectedYear)&&(selectedMonth==="all"||e.date.slice(0,7)===selectedMonth)&&
+    (selectedInstructor==="all"||e.instructorName===selectedInstructor)&&(selectedPaid==="all"||(selectedPaid==="paid"?Boolean(e.paid):!e.paid))));
+  const cats=categoriesIn(src);
+  box.innerHTML=cats.map(c=>{const r=src.filter(e=>e.lessonCategory===c);const n=r.reduce((s,e)=>s+Number(e.numberOfLessons),0),v=r.reduce((s,e)=>s+Number(e.total),0),p=new Set(r.map(e=>e.instructorName)).size;
+    return`<div class="card loc-card ${selectedCategory===c?"active":""}" data-loc="${esc(c)}"><div class="label">${esc(c)}</div><div class="value">${euro(v)}</div><div class="hint">${n} aulas · ${p} instrutor${p===1?"":"es"}</div></div>`;}).join("")||'<div class="muted">Sem aulas neste filtro.</div>';
+  box.querySelectorAll("[data-loc]").forEach(el=>el.onclick=()=>{selectedCategory=selectedCategory===el.dataset.loc?"all":el.dataset.loc;render();});
+}
+function renderInstructorMatrix(rows){
+  const box=document.getElementById("instructorMatrix"); if(!box)return;
+  if(!rows.length){box.innerHTML='<div class="card empty">Sem aulas neste filtro.</div>';return;}
+  const cats=categoriesIn(rows);
+  const por={};rows.forEach(e=>{const p=por[e.instructorName]=por[e.instructorName]||{n:0,v:0,c:{}};const k=p.c[e.lessonCategory]=p.c[e.lessonCategory]||{n:0,v:0};const n=Number(e.numberOfLessons),v=Number(e.total);k.n+=n;k.v+=v;p.n+=n;p.v+=v;});
+  const nomes=Object.keys(por).sort((a,b)=>por[b].v-por[a].v);
+  const tc={};let tn=0,tv=0;nomes.forEach(nm=>{tn+=por[nm].n;tv+=por[nm].v;cats.forEach(c=>{const k=por[nm].c[c];if(k){tc[c]=tc[c]||{n:0,v:0};tc[c].n+=k.n;tc[c].v+=k.v;}});});
+  const cel=o=>o?`<div>${euro(o.v)}</div><div class="sub">${o.n} aulas</div>`:'<span class="muted">·</span>';
+  box.innerHTML=`<div class="card" style="overflow-x:auto"><table class="matrix">
+    <thead><tr><th>Instrutor</th>${cats.map(c=>`<th class="r">${esc(c)}</th>`).join("")}<th class="r">Total</th></tr></thead>
+    <tbody>${nomes.map(nm=>`<tr><td><span class="name" data-instr="${esc(nm)}">${esc(nm)}</span></td>${cats.map(c=>`<td class="r">${cel(por[nm].c[c])}</td>`).join("")}<td class="r" style="background:var(--foam)">${cel(por[nm])}</td></tr>`).join("")}</tbody>
+    <tfoot><tr><td>Total · ${nomes.length} instrutores</td>${cats.map(c=>`<td class="r">${cel(tc[c])}</td>`).join("")}<td class="r">${cel({n:tn,v:tv})}</td></tr></tfoot>
+  </table></div>`;
+  box.querySelectorAll("[data-instr]").forEach(el=>el.onclick=()=>{selectedInstructor=selectedInstructor===el.dataset.instr?"all":el.dataset.instr;render();});
+}
+function updateDashboard(){
+  const rows=filteredEntries();
+  renderLocCards(rows);
+  renderEntriesSummary(rows,"monthGrid");
+  const h=document.getElementById("gridHint");if(h)h.textContent=`${rows.reduce((s,e)=>s+Number(e.numberOfLessons),0)} aulas · ${euro(rows.reduce((s,e)=>s+Number(e.total),0))}`;
+  renderInstructorMatrix(rows);
+}
+function render(){renderTabs();renderYearTabs();renderMonthTabs();renderCategoryFilter();renderSearchableDropdown("instructorBtn","instructorDropdown","instructorSearch","instructorOptions",selectedInstructor,(v)=>{selectedInstructor=v;render();},true);renderFilterSummary();renderCategoryOverview();updateKpis();updatePayroll();updateEntries();updateDashboard();}
 function fillSelects(){document.getElementById("fCategory").innerHTML=lessonCategories.map(v=>`<option value="${v}">${v}</option>`).join("");document.getElementById("fPayment").innerHTML=paymentTypes.map(v=>`<option value="${v}">${v}</option>`).join("");}
 function calcTotal(){document.getElementById("fTotal").textContent=euro(Number(document.getElementById("fLessons").value||0)*Number(document.getElementById("fPrice").value||0));}
 function resetDraft(keepDate=true){const currentDate=keepDate?(document.getElementById("fDate").value||new Date().toISOString().slice(0,10)):new Date().toISOString().slice(0,10);document.getElementById("fDate").value=currentDate;document.getElementById("fCategory").value="Surf School";document.getElementById("fLessons").value=1;document.getElementById("fNotes").value="";document.getElementById("fPaid").value="false";calcTotal();}
@@ -602,7 +688,6 @@ async function handleImport(file){
 }
 document.querySelectorAll(".tab-trigger,.header-tab").forEach(btn=>btn.onclick=()=>{activeTab=btn.dataset.tab;renderTabs();});
 document.getElementById("addLessonBtn").onclick=()=>{editingId=null;dayQueue=[];formInstructor=instructorOptions()[0]||"";openModal(false);document.getElementById("fDate").value=new Date().toISOString().slice(0,10);document.getElementById("fCategory").value="Surf School";document.getElementById("fLessons").value=1;document.getElementById("fPayment").value="Recibo Verde";document.getElementById("fPrice").value=25;document.getElementById("fNotes").value="";document.getElementById("fPaid").value="false";calcTotal();};
-document.getElementById("categoryFilter").onchange=e=>{selectedCategory=e.target.value;render();};
 document.getElementById("paidFilter").onchange=e=>{selectedPaid=e.target.value;render();};
 document.getElementById("viewList").onclick=()=>{entriesView="list";updateEntries();};
 document.getElementById("viewSummary").onclick=()=>{entriesView="summary";updateEntries();};

@@ -113,6 +113,13 @@ against €91.885. **The gap is expected — do not "fix" it.**
 
 ## The `/instructors` app — how the payroll tab pays
 
+Miguel does not like charts: the dashboard is tables only (8 Sep 2026) — six
+location cards, the month × location grid that mirrors the Excel DashBoard, and an
+instructor × location matrix (lessons + €). Filters are one bar: year pills, short
+month pills, "Este mês / Mês passado / Este ano / Tudo" shortcuts, category chips,
+paid select, instructor search, and a summary line with × to drop each filter.
+Clicking a location card or an instructor name filters; clicking again clears.
+
 `instructors/index.html` reads `instructor_lessons` **paginated in 1000-row pages**
 (PostgREST cap — the live site showed 2.019 lessons for 2026 and an empty April
 until the paginated version was deployed on 8 Sep 2026). Lessons are paid at the
