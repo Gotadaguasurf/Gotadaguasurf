@@ -763,3 +763,93 @@ test('hq: expenses read by month — friendly dates, month separators, period pr
   expect(out.markup).toContain('breakdownBody');
   expect(out.markup).toContain("periodoRapido('trimestre')");
 });
+
+test('instructors: lessons load past 1000 rows, Kids Camp exists, and entries have filters + two views', async ({ page }) => {
+  // Three faults in one page: the lesson query had no pagination (PostgREST caps
+  // at 1000 and 2026 alone has 1.728 rows — the same silent loss that hit the
+  // camp tab), "Kids Camp" was missing from the category list although it has
+  // 558 lessons, and the entries panel was a flat list with no way to filter.
+  await fakeOwnerSession(page);
+  await page.goto('/instructors/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof window.filteredEntries === 'function');
+  const out = await page.evaluate(() => ({
+    paginates: typeof window.fetchAllPagedLessons === 'function'
+               && /\.range\(/.test(window.fetchAllPagedLessons.toString())
+               && /order\("id"/.test(window.fetchAllPagedLessons.toString()),
+    categories: lessonCategories,
+    hasSummary: typeof window.renderEntriesSummary === 'function',
+    catFilter: !!document.getElementById('categoryFilter'),
+    paidFilter: !!document.getElementById('paidFilter'),
+    viewButtons: !!document.getElementById('viewList') && !!document.getElementById('viewSummary'),
+    summaryBox: !!document.getElementById('entriesSummary'),
+  }));
+  expect(out.paginates).toBe(true);              // paginated AND with a total sort order
+  expect(out.categories).toContain('Kids Camp');
+  expect(out.categories).toContain('Junior Camp');
+  expect(out.hasSummary).toBe(true);
+  expect(out.catFilter).toBe(true);
+  expect(out.paidFilter).toBe(true);
+  expect(out.viewButtons).toBe(true);
+  expect(out.summaryBox).toBe(true);
+});
+
+test('instructors: Mark paid touches one instructor-month only, payroll adds VAT and head-coach extras, edit works with uuid ids', async ({ page }) => {
+  // Fable's audit of 8 Sep 2026 found: the payroll button carried only the name,
+  // so with "All months" one click flipped every lesson of the instructor for
+  // the whole year; Edit/Delete did Number(uuid) → NaN; the payroll ignored the
+  // instructor's VAT and the head-coach extras stored in instructor_directory;
+  // charts ignored the filters. This locks all four.
+  await fakeOwnerSession(page);
+  await page.goto('/instructors/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof window.updatePayroll === 'function');
+  const out = await page.evaluate(async () => {
+    const mk = (id, name, date, cat, n, price, paid = true) =>
+      ({ id, instructorId: 'x', date, instructorName: name, lessonCategory: cat, numberOfLessons: n, paymentType: 'Recibo Verde', priceUnit: price, total: n * price, paid, notes: '' });
+    // `entries`, `instructorDirectory`, `supabaseClient` are top-level lets, not window properties — assign by name
+    entries = [
+      mk('11111111-1111-4111-8111-111111111111', 'Romildo Ramos', '2026-07-03', 'Surf Camp', 2, 30),
+      mk('22222222-2222-4222-8222-222222222222', 'Romildo Ramos', '2026-08-04', 'Surf Camp', 1, 30),
+      mk('33333333-3333-4333-8333-333333333333', 'Cauê Flores', '2026-07-06', 'Junior Camp', 2, 30),
+      mk('44444444-4444-4444-8444-444444444444', 'Cauê Flores', '2026-07-14', 'Junior Camp', 1, 30),
+      mk('55555555-5555-4555-8555-555555555555', 'Heitor Souza', '2026-07-08', 'Theoric', 1, 20),
+    ];
+    instructorDirectory = [
+      { id: 'a', name: 'Romildo Ramos', rate: 30, paymentType: '', vatPct: 23, appSupplier: 'romildo da costa ramos', extraKind: 'head_coach_month', extraAmount: 250 },
+      { id: 'b', name: 'Cauê Flores', rate: 30, paymentType: '', vatPct: 0, appSupplier: 'caue avila flores', extraKind: 'head_coach_junior_week', extraAmount: 62.5 },
+      { id: 'c', name: 'Heitor Souza', rate: 30, paymentType: '', vatPct: 0, appSupplier: '', extraKind: '', extraAmount: 0 },
+    ];
+    selectedYear = 'all'; selectedMonth = 'all'; selectedInstructor = 'all'; selectedCategory = 'all'; selectedPaid = 'all';
+    // stub the client: record what an update would touch, answer like PostgREST
+    let touched = null;
+    supabaseClient = { from: () => ({ update: (v) => ({ in: (_c, ids) => ({ select: async () => { touched = { ids, v }; return { data: ids.map(id => ({ id })), error: null }; } }) }) }) };
+    loadInstructorData = async () => {};
+    render();
+    const buttons = [...document.querySelectorAll('[data-paid-toggle]')].map(b => b.dataset.paidToggle);
+    const rowText = [...document.querySelectorAll('#payrollBody tr')].map(tr => tr.textContent.replace(/\s+/g, ' ').trim());
+    await togglePayrollPaid('Romildo Ramos|2026-07');
+    // edit with a uuid id must open the modal on the right row
+    const editBtn = document.querySelector('[data-edit="55555555-5555-4555-8555-555555555555"]');
+    if (!editBtn) return { fail: 'no edit button', msg: document.getElementById('messageBox').textContent, list: document.getElementById('entriesList').innerHTML.slice(0, 200) };
+    editBtn.click();
+    const editOpened = document.getElementById('modal').classList.contains('open') && editingId === '55555555-5555-4555-8555-555555555555';
+    closeModal();
+    // charts follow filters
+    selectedCategory = 'Junior Camp'; render();
+    const chartTotal = lessonsChart.data.datasets[0].data.reduce((s, v) => s + v, 0);
+    const summaryHasTheoric = (selectedCategory = 'all', entriesView = 'summary', updateEntries(), document.getElementById('entriesSummary').textContent.includes('Theoric'));
+    return { buttons, rowText, touched, editOpened, chartTotal, summaryHasTheoric, catOptions: [...document.querySelectorAll('#categoryFilter option')].map(o => o.value) };
+  });
+  expect(out.buttons).toContain('Romildo Ramos|2026-07');
+  expect(out.buttons).toContain('Romildo Ramos|2026-08');
+  // one click → only July's lesson of Romildo, not August's
+  expect(out.touched.ids).toEqual(['11111111-1111-4111-8111-111111111111']);
+  expect(out.touched.v.paid).toBe(false);
+  // Romildo July: 60 gross + 23% VAT (13.80) + 250 head coach = 323.80
+  expect(out.rowText.find(t => t.startsWith('Romildo Ramos') && t.includes('July'))).toContain('€323.80');
+  // Cauê July: 90 gross, two distinct Junior weeks × 62.50 = 125 → 215.00
+  expect(out.rowText.find(t => t.startsWith('Cauê Flores'))).toContain('€215.00');
+  expect(out.editOpened).toBe(true);
+  expect(out.chartTotal).toBe(3);                    // Junior Camp lessons only
+  expect(out.summaryHasTheoric).toBe(true);          // unknown category is shown, not hidden
+  expect(out.catOptions).toContain('Theoric');
+});

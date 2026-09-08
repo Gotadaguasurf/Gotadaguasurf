@@ -111,6 +111,43 @@ repeats of another row — Heitor 23 Apr, and Nathan, Romi and Tiago Madeira all
 That is why the app reads 3.117 lessons against the sheet's 3.125, and €91.645
 against €91.885. **The gap is expected — do not "fix" it.**
 
+## The `/instructors` app — how the payroll tab pays
+
+`instructors/index.html` reads `instructor_lessons` **paginated in 1000-row pages**
+(PostgREST cap — the live site showed 2.019 lessons for 2026 and an empty April
+until the paginated version was deployed on 8 Sep 2026). Lessons are paid at the
+start of the following month, so **the payroll tab groups by the month the lesson
+was given**: at the start of September, open August.
+
+**Amount due = lessons × (1 + `vat_pct`/100) + extras**, per instructor per month,
+from `instructor_directory`:
+
+- `vat_pct` 23 → Romildo, André Maria, Matilde, Joaquim Gasalho; 0 for everyone else.
+- `extra_kind = head_coach_month` (Romildo, €250) → added to every month with lessons.
+- `extra_kind = head_coach_junior_week` (Cauê, €62,50) → × distinct weeks with
+  Junior Camp lessons in that month.
+- `extra_kind = reception` (Guilherme, Marcos) → only a note; reception hours are
+  not in the lesson table and are booked straight into `hq_invoices`.
+
+**"Mark paid" flips one instructor × one month** (the button key is
+`name|YYYY-MM`) and checks the number of rows the update returned — a viewer
+without write access gets an error, not a fake "updated". The first version
+carried only the name and, with "All months", one click un-paid the whole year.
+
+**A lesson added from the app never rewrites `rate` / `payment_type` in
+`instructor_directory`** — that table is reference data (VAT, supplier, extras).
+
+Known oddity still in the data: Romildo's `Salary 250` sheet row sits in
+`instructor_lessons` as **1 Surf Camp lesson at €250 on 1 Apr 2026**. It inflates
+April's lesson count and, now that `extra_amount = 250` exists, would double the
+head-coach pay for April if the payroll tab were used to book April. Miguel to
+decide: delete the row (the extra covers it) or keep it with its own category.
+
+The xlsx importer in the page is unreachable (hidden input, nothing triggers it)
+and must stay that way until it maps sheet names to app names, normalises
+`RecVerde/Cash`, and refuses years outside the loaded range — as it stands it
+would re-insert every row of the sheet as unpaid.
+
 ## Two known data faults in the sheet
 
 - Two corrupted dates: `24/03/0204` (Cauê, €60 — probably 2024) and
