@@ -2811,13 +2811,25 @@ async function hydrateLedgerFromSupabase({mergeLocal=true}={}){
         handleLedgerSupabaseError('initial ledger push failed',error);
       }
     }
-    const { data,error } = await client
-      .from('ledger_entries')
-      .select(LEDGER_DB_SELECT)
-      .eq('location_id',locationId)
-      .order('entry_date',{ascending:false})
-      .order('created_at',{ascending:false});
-    if(error) throw error;
+    // PostgREST caps a select at 1000 rows. Sri Lanka crossed that on 9 Sep
+    // 2026 (1.119 rows) and the hub silently lost the oldest 119 — January's
+    // bar showed two weeks instead of five. Page through, with `id` as the
+    // final tiebreak so no page repeats or skips a row.
+    const data=[];
+    for(let page=0;page<200;page++){
+      const from=page*1000;
+      const { data:chunk,error } = await client
+        .from('ledger_entries')
+        .select(LEDGER_DB_SELECT)
+        .eq('location_id',locationId)
+        .order('entry_date',{ascending:false})
+        .order('created_at',{ascending:false})
+        .order('id',{ascending:true})
+        .range(from,from+999);
+      if(error) throw error;
+      data.push(...(chunk||[]));
+      if(!chunk||chunk.length<1000) break;
+    }
     // Ghost campclose check: rows the user (or another computer) intentionally
     // deleted that are still in Supabase because the original DELETE failed
     // silently (RLS, network, auth). Without this guard, every RT-triggered
