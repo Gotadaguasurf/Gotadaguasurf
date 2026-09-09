@@ -115,3 +115,26 @@ Base salary is **€1.400/month**. Anything above that in a Santander transfer i
 **bonus on the salary**, not a second payment and not an error: 3 Aug 2026 €2.550
 (= 1.400 + 1.150 bonus), 1 Sep 2026 €1.550 (= 1.400 + 150). Book the whole transfer
 as Salary with the Santander date; do not split the bonus into another category.
+
+
+## Junior Camp and Colónias monitors (summer 2026)
+
+The source for **who worked which camp and for how many weeks** is Miguel's Excel
+`JUNIOR CAMP 2026.xlsx` (sheets "Salary monitors JSC" and "Salary monitors DAY CAMP").
+Location in `hq_invoices` follows that sheet: JSC monitors → `junior-camp`, day-camp
+monitors → `kids-camp`; someone on both (Leonor 2026: 975 + 1.140) gets one row per camp.
+Rates: JSC 300/week first year, 325 second+, manager 400; colónias 175 / 190.
+
+- Monitors with an activity invoice add **23 % VAT** on top: Pol Lobo 1.950 → 2.398,50,
+  Rodrigo 1.500 → 1.845, Rebeca 5.500 base (4.000 + 1.500 bonus) + 1.265 VAT in a
+  separate transfer. "Paid more than the sheet" is usually just the VAT.
+- **Bea Fernandes** is invoiced by her father, **Vasco Bruno Raposeiro Alves Fernandes**
+  (NIF 220513864): 975 + 23 % VAT − 25 % IRS retention = 955,50 net per invoice. Book
+  under junior-camp; the 243,75 retention is paid to the AT later and is a real cost.
+- **António (day camp) = Gutemberg António dos Santos Júnior** ("Gutemberg Junior" on
+  the bank, NIF 328149128, VAT-exempt art. 53, no retention). 2026: 600 (6 Jul) + 1.200
+  (3 Aug) + 1.500 (2 Sep = 4 weeks of August + 1st week of September). One June week
+  (300) never paid.
+- **Catarina Ragageles** is a colónias monitor (kids-camp), not surf school.
+- The instructor section of that Excel ("30€ per day") is a plan — instructors are paid
+  per lesson, see lessons-instructors.md. Luca was paid in cash. Naroa: no invoice yet.
