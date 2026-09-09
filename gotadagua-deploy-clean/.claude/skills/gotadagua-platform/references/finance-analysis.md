@@ -309,3 +309,40 @@ rows. **The statement wins** (Miguel, 9 Sep 2026): keep the rows dated and split
 the bank paid them (6 Apr = 200 + 1.200, 14 May), drop the end-of-month duplicates,
 and re-date the remaining end-of-month rows to the Santander date. Shenal now reads
 3 Feb · 2 Mar · 6 Apr · 14 May · 1 Jun · 6 Jul · 3 Aug (2.550) · 1 Sep (1.550).
+
+
+## Sri Lanka bank statement (Sampath, account 015910003531) — how to read it
+
+Ask for the text export (`Fullstatement_*.txt`, LKR). Columns: debit ends before
+col 28, credit sits in cols 28–46. What the lines mean (Miguel, 9 Sep 2026):
+
+- **Credits `Remittance ID : [IR26EUR…]`** = money sent from Portugal, one a month.
+  Match to the Santander `TRF.CRÉD.N.SEPA+EMITIDA` of the same day or up to ~18 days
+  earlier at an implied rate of 350–380 LKR/€. In 2026: 18 Feb 13.440 · 19 Mar 13.440 ·
+  10 Apr 9.990 · 11 May 9.960 · 11 Jun 10.000 · 30 Jun 9.900 · 17 Aug 9.600. Any
+  Santander non-SEPA transfer that never lands here is Morocco. The 28 Jan 2026
+  remittance (5,85 M LKR ≈ €16.000) did not leave the Santander — probably the
+  **Caixa Geral de Depósitos** account; confirm with that statement.
+- **Big `SVC-…-Surf Camp` / `nadith surf camp expenses` / `Surfcamp money` (500k–2M)**
+  = cash for the operation, incl. ATM withdrawals. Not an expense — the expense is
+  recorded when the cash is spent (the Excel / camp-hub). Small ones to Nadith are
+  his salary.
+- **Local salaries on the 28th–31st**, by role: Helper 50k = Sahan Wellage · House
+  keeper 60k = Dilip Kumara · Manager 100k = Nadith · Bar 60k = Jude Rohan · Chef
+  assistants = Chinthaka Ramanayaka ("Sintaka"; 40k while repaying a loan, **book 60k
+  always**) and Anushka Botheju ("Botelho") · Chef 110k = Michael Sampath · Surf
+  instructors 120k + 120k (Ashan Dilruk, Gihan) + 30k (Male / Vihamga) · Pool 10k.
+  Bonuses in early April. `JAN SAL PAYMENT` / `SALARY MARCH` 511k = Lapo 286k +
+  Francisco Guimarães 155k + Shenal 35k + José Capitão ("Zé") 35k, the local part of
+  the people Portugal also pays. Lapo's rent is paid in cash on top.
+- **`Surf Camp Rent` 500k** = camp rent (Dilan). **`Staff House` 150k** (300k in Jan
+  2026) = staff house rent — the bank amount is the right one, the Excel had less.
+- **Bank-only costs that never reach the Excel**: Ceylon Securities ~150k/month
+  (security), staff-house electricity, Booking.com commission, fees. Book them from
+  the statement (done for Jan–Aug 2026, 59 rows, description ending "(banco)").
+- Jude is paid once a month; a second "bar - Jude" row in the ledger is a duplicate.
+  A "Shenal 1.400" row in the ledger is the HQ salary and belongs only in `hq_invoices`.
+
+Check that closes the month: opening balance + remittances − debits = closing balance,
+and ledger expenses ≈ bank debits (without remittances) + on-site cash revenue, ±2k of
+cash float carried over. Jan–May 2026 closes that way.
