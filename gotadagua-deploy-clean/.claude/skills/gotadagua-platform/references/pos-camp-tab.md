@@ -141,3 +141,14 @@ The hardcoded matrix in the page is the fallback; the
 live values are the `Surf Pack` / `Lesson` rows for `surf-school` in `pricing_catalog`,
 re-seeded from `supabase/seed-surf-school-prices.sql` whenever the card changes (row
 names carry the duration: `… — 3 days (Standard)`, `… — 1 week (Standard)`).
+
+
+## Camp-hub guests and weeks (9 Sep 2026)
+
+Guest-days in the camp-hub overview come from the `bookings` table (Bookinglayer
+import) since 9 Sep 2026 — check-in plus `raw_payload.nights` gives the check-out;
+a pasted CSV is only used when the DB has nothing for that camp. Guest-days are
+summed over `camp_weeks`, so a month with no weeks shows 0 guests: Sri Lanka's
+Jan–Jun 2026 weeks (Saturday → Friday) were backfilled as closed weeks with
+`meta.source = 'bookinglayer-backfill'`. Location labels: Surf Camp Ahangama,
+Tamraght Camp, Surf Camp Portugal, Junior/Kids Camp Caparica, Surf School Caparica.

@@ -2830,6 +2830,7 @@ async function hydrateLedgerFromSupabase({mergeLocal=true}={}){
       data.push(...(chunk||[]));
       if(!chunk||chunk.length<1000) break;
     }
+    if(!__ovBookingsFromDb) ovLoadBookingsFromSupabase().catch(e=>console.warn('[Hub] bookings',e));
     // Ghost campclose check: rows the user (or another computer) intentionally
     // deleted that are still in Supabase because the original DELETE failed
     // silently (RLS, network, auth). Without this guard, every RT-triggered
@@ -5057,6 +5058,44 @@ try{
   }
 }catch(e){}
 
+// ── Guests from the Bookinglayer import ─────────────────────────────
+// Guest-days used to come only from a CSV someone pasted into this browser
+// (or nothing: "0 guests" for Sri Lanka Jan–Jun 2026). The same bookings
+// already live in the `bookings` table (Miguel imports Bookinglayer into the
+// Partners app), so read them from there: check-in + nights → check-out.
+// A manually loaded CSV still wins when the DB has nothing for this camp.
+const OV_BL_LOCATION_LABELS={
+  'sri-lanka':['Surf Camp Ahangama'],
+  'morocco':['Tamraght Camp'],
+  'portugal':['Surf Camp Portugal'],
+  'junior-camp':['Junior Camp Caparica','Kids Camp Caparica'],
+  'surf-school':['Surf School Caparica'],
+};
+let __ovBookingsFromDb=false;
+async function ovLoadBookingsFromSupabase(){
+  const labels=OV_BL_LOCATION_LABELS[__HUB_LOCATION_SLUG]; if(!labels) return;
+  const client=(typeof getHubSupabaseClient==='function')?getHubSupabaseClient():null; if(!client) return;
+  const rows=[];
+  for(let page=0;page<50;page++){
+    const from=page*1000;
+    const {data,error}=await client.from('bookings')
+      .select('booking_ref,booker,check_in_on,pax,package,nights:raw_payload->>nights')
+      .in('location',labels).order('check_in_on',{ascending:true}).order('booking_ref',{ascending:true}).range(from,from+999);
+    if(error){ console.warn('[Hub] bookings load failed',error); return; }
+    rows.push(...(data||[]));
+    if(!data||data.length<1000) break;
+  }
+  if(!rows.length) return;
+  ovBookings=rows.map(r=>{
+    const ci=new Date(String(r.check_in_on)+'T00:00:00').getTime();
+    const nights=Math.max(1,parseInt(r.nights,10)||7);
+    return { ref:String(r.booking_ref||''), name:String(r.booker||'Guest'), status:'confirmed', ci, co:ci+nights*86400000, pax:Math.max(1,Number(r.pax)||1), accommodation:String(r.package||'') };
+  }).filter(b=>Number.isFinite(b.ci));
+  __ovBookingsFromDb=true;
+  const lbl=document.getElementById('ovCsvLabel');
+  if(lbl){ lbl.textContent='Bookinglayer · '+ovBookings.length+' bookings'; lbl.style.display=''; }
+  try{ renderOverview(); }catch(_e){}
+}
 function ovParseCsvRows(text){
   const rows=[];let row=[];let cur='';let inQ=false;
   for(let i=0;i<text.length;i++){
@@ -5403,7 +5442,7 @@ function renderOverview(){
     if(cur&&cur!=='all'&&!weeksForSelector.find(w=>w.id===cur)) sel.value='all';
   }
   const csvLbl=document.getElementById('ovCsvLabel');
-  if(csvLbl&&ovBookings.length)csvLbl.textContent=ovBookings.length+' bookings loaded';
+  if(csvLbl&&ovBookings.length&&!__ovBookingsFromDb)csvLbl.textContent=ovBookings.length+' bookings loaded';
 
   const selectedWid=sel?.value||'all';
   let weeks=selectedWid==='all'?weeksForSelector:[S.weeks.find(w=>w.id===selectedWid)].filter(Boolean);
