@@ -134,8 +134,8 @@ Students & Erasmus: Board & Wetsuit only, 15 (2h) / 20 (full day), **+€5 from 
 for at the counter. The Resident tier (15 / 25) is not on the new card and was left as it
 was — Miguel to confirm.
 
-The form has two kinds: **Rental** and **Lesson** (packs, `qty` = lessons bought,
-`is_returned = true` since nothing goes out). Both take the customer's **NIF** (column
+The form is **rentals only** — Miguel confirmed on 9 Sep 2026 that lessons are not
+checked in here (the lesson packs live only in the Prices seed). It takes the customer's **NIF** (column
 `surf_school_rentals.nif`, optional; a 9-digit number must pass the Portuguese check
 digit or the save refuses it). The hardcoded matrix in the page is the fallback; the
 live values are the `Surf Pack` / `Lesson` rows for `surf-school` in `pricing_catalog`,

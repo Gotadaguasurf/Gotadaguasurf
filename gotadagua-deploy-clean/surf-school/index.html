@@ -253,13 +253,8 @@ main{padding:16px;max-width:640px;margin:0 auto}
     <div class="card">
       <!-- Kind segment removed — Miguel confirmed the school only takes
            rentals through this form (lessons + activities aren't billed
-           this way). 9 Sep 2026: lessons are back — students buy packs at
-           the counter and need a NIF on the receipt, so the check-in
-           records both. -->
-      <div class="segment" style="grid-template-columns:1fr 1fr" id="kindSegment">
-        <button type="button" class="active" data-kind="rental" onclick="setKind('rental')">🏄 Rental</button>
-        <button type="button" data-kind="lesson" onclick="setKind('lesson')">🎓 Lesson</button>
-      </div>
+           this way — confirmed again 9 Sep 2026). The customer NIF is
+           taken here because the rental receipt needs it. -->
 
       <div class="grid2">
         <div class="field">
@@ -317,7 +312,7 @@ main{padding:16px;max-width:640px;margin:0 auto}
           <button type="button" class="chip-btn" data-val="Erasmus / Student" onclick="pickChip('fld_customer_type','Erasmus / Student')">Erasmus<small>/ Student</small></button>
           <button type="button" class="chip-btn" data-val="Resident" onclick="pickChip('fld_customer_type','Resident')">Resident</button>
         </div>
-        <select id="fld_customer_type" style="display:none" onchange="if(CURRENT_KIND==='lesson')renderLessonPacks();recalcRentalTotal()" aria-hidden="true">
+        <select id="fld_customer_type" style="display:none" onchange="recalcRentalTotal()" aria-hidden="true">
           <option value="">Choose…</option>
           <option value="Standard">Standard</option>
           <option value="Erasmus / Student">Erasmus / Student</option>
@@ -373,20 +368,6 @@ main{padding:16px;max-width:640px;margin:0 auto}
           <option value="Board">Board only</option>
           <option value="Wetsuit">Wetsuit only</option>
         </select>
-      </div>
-
-      <!-- Lesson packs — from the Students & Erasmus card + the standard list.
-           Chips are drawn by renderLessonPacks() for the picked customer type. -->
-      <div class="field" id="lessonWrap" style="display:none">
-        <label id="lessonTypeLbl">Lesson type</label>
-        <div class="segment" style="grid-template-columns:1fr 1fr" id="lessonTypeSeg">
-          <button type="button" class="active" data-ltype="Group" onclick="setLessonType('Group')">Group</button>
-          <button type="button" data-ltype="Private" onclick="setLessonType('Private')">Private</button>
-        </div>
-        <label>Pack</label>
-        <div class="chip-grid cols-2" id="lessonPackChips"></div>
-        <input id="fld_lesson_pack" type="hidden" value="">
-        <div class="hint" id="lessonHint" style="margin-top:6px"></div>
       </div>
 
       <!-- Big total preview — recalcRentalTotal() paints this AND fills the
@@ -798,14 +779,15 @@ function setLessonType(t){
   renderLessonPacks();
 }
 function renderLessonPacks(){
-  const wrap = document.getElementById('lessonPackChips'); if (!wrap) return;
+  const wrap = document.getElementById('lessonPackChips'); if (!wrap) return;   // no lesson UI in the form — kept for the Prices seed
   const customer = document.getElementById('fld_customer_type')?.value || '';
   const list = lessonListFor(customer);
   const packs = LESSON_PACKS[list] || [];
   const picked = document.getElementById('fld_lesson_pack').value;
   const showType = (customer === 'Standard' || !customer);
-  document.getElementById('lessonTypeSeg').style.display = showType ? '' : 'none';
-  document.getElementById('lessonTypeLbl').style.display = showType ? '' : 'none';
+  const seg = document.getElementById('lessonTypeSeg'), lbl = document.getElementById('lessonTypeLbl');
+  if (seg) seg.style.display = showType ? '' : 'none';
+  if (lbl) lbl.style.display = showType ? '' : 'none';
   wrap.innerHTML = packs.map(p => `<button type="button" class="chip-btn ${picked===p.key?'active':''}" data-val="${p.key}" onclick="pickLessonPack('${p.key}')">${p.label}<small>€${p.price}${p.sub?` · ${p.sub}`:''}</small></button>`).join('');
   document.getElementById('lessonHint').textContent = LESSON_NOTES[list] || '';
   recalcLessonTotal();
@@ -1277,7 +1259,7 @@ function setKind(k){
   document.getElementById('rentalTypeWrap').style.display  = isRental ? '' : 'none';
   document.getElementById('durationWrap').style.display    = isRental ? '' : 'none';
   document.getElementById('rentalItemsWrap').style.display = isRental ? '' : 'none';
-  document.getElementById('lessonWrap').style.display      = isRental ? 'none' : '';
+  const lw = document.getElementById('lessonWrap'); if (lw) lw.style.display = isRental ? 'none' : '';
   const rp = document.getElementById('returnPreview'); if (rp && !isRental) rp.style.display = 'none';
   const curHint = document.getElementById('curHint');
   if (curHint) curHint.innerHTML = isRental ? 'EUR · <strong>€250 deposit taken</strong> if the board leaves the shop.' : 'EUR · edit if you gave a discount';
@@ -1357,8 +1339,6 @@ function clearForm(){
   document.getElementById('fld_email').value = '';
   document.getElementById('fld_id').value = '';
   const nifEl = document.getElementById('fld_nif'); if (nifEl) { nifEl.value = ''; checkNif(); }
-  const lp = document.getElementById('fld_lesson_pack'); if (lp) lp.value = '';
-  document.querySelectorAll('#lessonPackChips .chip-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('fld_price').value = '';
   document.getElementById('fld_terms').checked = false;
   document.querySelectorAll('.item-cb').forEach(cb => cb.checked = false);
