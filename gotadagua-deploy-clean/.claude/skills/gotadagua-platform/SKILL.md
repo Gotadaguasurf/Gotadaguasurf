@@ -60,6 +60,14 @@ used to open the page and show the tile, so an owner without the pill saw bookin
 €0 of expenses). Proof query: simulate the user with `set local role authenticated` +
 `request.jwt.claims` and check `public.is_hq_member()`.
 
+**Bookings and partners are not public either** (9 Sep 2026, `supabase/bookings-partners-read-access.sql`):
+`bookings`, `partners` and `partner_month_status` read only for HQ members, the Partners
+workspace, the CRM workspace (sales sees bookings per partner), or a manager with edit on
+the camp — and then only that camp's bookings (`booking_location_id()` maps the
+Bookinglayer location text to `locations`; Kids Camp counts as junior-camp). Camp-tab
+and bar staff read none. `hq_invoice_audit` is HQ-only. The proof is the per-user
+simulation (`set local role authenticated` + `request.jwt.claims`).
+
 **HQ members see everything.** Miguel's rule (9 Sep 2026): anyone with access to the
 HQ workspace sees the real, complete numbers — `hq_invoices`, `internal_transfers`,
 `bookings` and, since that date, the whole `ledger_entries` table regardless of
