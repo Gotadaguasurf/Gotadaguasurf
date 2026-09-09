@@ -1,4 +1,61 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { buildRaw } from '../_shared/mail.ts';
+
+// ── Fallback mailer ──────────────────────────────────────────────────
+// Supabase Auth's own SMTP failed on 9 Sep 2026 ("Error sending invite
+// email", HTTP 500). Instead of depending on it, we generate the invite link
+// ourselves (admin.generateLink, no email) and send it through the shared
+// Gmail mailbox the CRM already uses (gmail_account, groups@).
+const GOOGLE_CLIENT_ID     = Deno.env.get('GOOGLE_OAUTH_CLIENT_ID') || '';
+const GOOGLE_CLIENT_SECRET = Deno.env.get('GOOGLE_OAUTH_CLIENT_SECRET') || '';
+
+// deno-lint-ignore no-explicit-any
+async function gmailAccessToken(supa: any): Promise<{ token: string; email: string; display: string }> {
+  const { data: acct, error } = await supa.from('gmail_account').select('*').limit(1).single();
+  if (error || !acct) throw new Error('No gmail_account row — connect the shared mailbox via /gmail-oauth/start first');
+  const expiresAt = acct.access_expires_at ? new Date(acct.access_expires_at).getTime() : 0;
+  if (acct.access_token && expiresAt > Date.now() + 60_000) {
+    return { token: acct.access_token, email: acct.email, display: acct.display_name || "Gota d'Água" };
+  }
+  const resp = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: GOOGLE_CLIENT_ID, client_secret: GOOGLE_CLIENT_SECRET,
+      refresh_token: acct.refresh_token, grant_type: 'refresh_token',
+    }),
+  });
+  if (!resp.ok) throw new Error(`Gmail token refresh failed: HTTP ${resp.status} ${await resp.text()}`);
+  const tk = await resp.json() as { access_token: string; expires_in: number };
+  const newExpiry = new Date(Date.now() + (tk.expires_in - 30) * 1000).toISOString();
+  await supa.from('gmail_account').update({ access_token: tk.access_token, access_expires_at: newExpiry, updated_at: new Date().toISOString() }).eq('id', acct.id);
+  return { token: tk.access_token, email: acct.email, display: acct.display_name || "Gota d'Água" };
+}
+
+const escHtml = (s: string) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+// deno-lint-ignore no-explicit-any
+async function sendInviteViaGmail(supa: any, args: { to: string; fullName: string; actionLink: string; invitedBy: string }) {
+  const { token, email: fromEmail, display } = await gmailAccessToken(supa);
+  const first = (args.fullName || '').trim().split(/\s+/)[0] || 'Olá';
+  const subject = "Convite para a plataforma Gota d'Água";
+  const body = `${first},\n\n${args.invitedBy} convidou-te para a plataforma da Gota d'Água.\n\nAbre este link para criares a tua password e entrares:\n${args.actionLink}\n\nO link é pessoal e expira em 7 dias.\n\nGota d'Água Surf`;
+  const html = `<div style="font-family:Outfit,Helvetica,Arial,sans-serif;font-size:15px;color:#14212e;line-height:1.55">
+    <p>${escHtml(first)},</p>
+    <p>${escHtml(args.invitedBy)} convidou-te para a plataforma da Gota d'Água.</p>
+    <p><a href="${escHtml(args.actionLink)}" style="display:inline-block;background:#1e6fa8;color:#fff;text-decoration:none;padding:11px 18px;border-radius:10px;font-weight:700">Criar password e entrar</a></p>
+    <p style="font-size:13px;color:#5d7185">Se o botão não abrir, copia este link: <br><span style="word-break:break-all">${escHtml(args.actionLink)}</span></p>
+    <p style="font-size:13px;color:#5d7185">O link é pessoal e expira em 7 dias.</p>
+    <p>Gota d'Água Surf</p>
+  </div>`;
+  const raw = buildRaw({ fromEmail, fromDisplay: display, to: args.to, subject, body, html });
+  const resp = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ raw }),
+  });
+  if (!resp.ok) throw new Error(`Gmail send failed: HTTP ${resp.status} ${(await resp.text()).slice(0, 300)}`);
+}
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -207,19 +264,41 @@ Deno.serve(async (req) => {
         }
       }
     );
+    let emailSent = !inviteEmailError;
+    let inviteLinkForAdmin: string | null = null;
     if (inviteEmailError) {
-      if (!inviteEmailError.message?.includes('already been registered')) {
-        // The invite never reached the person: drop the invitation row so the
-        // 5-minute per-email cooldown does not hide this error on the retry,
-        // and hand the real Auth message back to the screen.
-        await supabaseAdmin.from('invitation_workspace_access').delete().eq('invitation_id', invite.id);
-        await supabaseAdmin.from('workspace_invitations').delete().eq('id', invite.id);
-        console.error('create-platform-invite: inviteUserByEmail failed', inviteEmailError);
-        return new Response(JSON.stringify({
-          ok: false,
-          error: `Supabase Auth could not send the invite email: ${inviteEmailError.message || 'unknown error'}${inviteEmailError.status ? ` (HTTP ${inviteEmailError.status})` : ''}. Check Authentication → SMTP settings in the Supabase dashboard.`,
-          auth_error: inviteEmailError,
-        }), { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      if (inviteEmailError.message?.includes('already been registered')) {
+        // fine — the person exists; memberships are refreshed below
+      } else {
+        // Supabase Auth could not email. Make the link ourselves and send it
+        // through the shared Gmail mailbox; if even that fails, hand the link
+        // to the admin so it can be forwarded by hand.
+        console.error('create-platform-invite: inviteUserByEmail failed, falling back to generateLink + Gmail', inviteEmailError);
+        const { data: linkData, error: linkErr } = await supabaseAdmin.auth.admin.generateLink({
+          type: 'invite',
+          email: lowerEmail,
+          options: {
+            redirectTo: redirectTo || Deno.env.get('SITE_URL') || '',
+            data: { full_name: fullName || '', platform_role: role, invitation_id: invite.id },
+          },
+        });
+        if (linkErr || !linkData?.properties?.action_link) {
+          await supabaseAdmin.from('invitation_workspace_access').delete().eq('invitation_id', invite.id);
+          await supabaseAdmin.from('workspace_invitations').delete().eq('id', invite.id);
+          return new Response(JSON.stringify({
+            ok: false,
+            error: `Supabase Auth could not send the invite email (${inviteEmailError.message || 'unknown'}) and could not generate a link either (${linkErr?.message || 'no link'}). Check Authentication → SMTP settings in the Supabase dashboard.`,
+          }), { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        }
+        invitedUserId = linkData.user?.id ?? null;
+        inviteLinkForAdmin = linkData.properties.action_link;
+        try {
+          await sendInviteViaGmail(supabaseAdmin, { to: lowerEmail, fullName: fullName || '', actionLink: inviteLinkForAdmin, invitedBy: caller.email || "Gota d'Água" });
+          emailSent = true;
+        } catch (mailErr) {
+          console.error('create-platform-invite: Gmail fallback failed', mailErr);
+          emailSent = false;
+        }
       }
     } else {
       invitedUserId = inviteData?.user?.id ?? null;
@@ -267,7 +346,11 @@ Deno.serve(async (req) => {
 
     return new Response(JSON.stringify({
       ok: true,
-      invite: { id: invite.id, expires_at: expiresAt, user_id: invitedUserId }
+      invite: { id: invite.id, expires_at: expiresAt, user_id: invitedUserId },
+      email_sent: emailSent,
+      // Only present when neither Supabase Auth nor Gmail could deliver: the
+      // admin forwards it by hand. Never logged, never stored.
+      invite_link: emailSent ? undefined : inviteLinkForAdmin,
     }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }

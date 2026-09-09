@@ -1991,6 +1991,12 @@
           throw new Error(payload?.error || 'Could not create the invite.');
         }
         const inviteRow = payload?.invite || {};
+        if (payload?.email_sent === false && payload?.invite_link) {
+          // Neither Supabase Auth nor our Gmail could deliver — show the link so
+          // it can be sent by WhatsApp. It is the real one-time invite link.
+          try { await navigator.clipboard.writeText(payload.invite_link); } catch (_e) {}
+          window.prompt('O email não pôde ser enviado. Este é o link de convite (já copiado) — manda-o à pessoa por WhatsApp:', payload.invite_link);
+        }
         pendingInvites.unshift({
           id: inviteRow.id,
           email,
