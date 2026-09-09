@@ -107,3 +107,11 @@ cannot be attributed, so it sits on Francisco Duarte's row with `needs_review`.
 **Still missing from the app:** the meal-card batches for March, April, May and June
 2026 — no rows exist at all. Their values are known from the payslips (Mar €224,40,
 Abr €214,20) but the batches need the statements for those months to confirm.
+
+
+## Shenal (Sri Lanka, paid by Water via Santander SEPA)
+
+Base salary is **€1.400/month**. Anything above that in a Santander transfer is a
+**bonus on the salary**, not a second payment and not an error: 3 Aug 2026 €2.550
+(= 1.400 + 1.150 bonus), 1 Sep 2026 €1.550 (= 1.400 + 150). Book the whole transfer
+as Salary with the Santander date; do not split the bonus into another category.
