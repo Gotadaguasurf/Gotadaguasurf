@@ -54,11 +54,7 @@ begin
     (loc_id, 'Surf Lesson — 1 lesson (Erasmus/Student)',   'Lesson', 'group', 20,  'EUR', 30, '1h30 · ESN Erasmus document required'),
     (loc_id, 'Surf Lesson — 5 lessons (Erasmus/Student)',  'Lesson', 'group', 90,  'EUR', 31, '1h30 · ESN Erasmus document required'),
     (loc_id, 'Surf Lesson — 10 lessons (Erasmus/Student)', 'Lesson', 'group', 160, 'EUR', 32, '1h30 · ESN Erasmus document required'),
-    (loc_id, 'Surf Lesson — Friends, 1 lesson (Erasmus/Student)', 'Lesson', 'group', 25, 'EUR', 33, '1h30 · a friend of a student, no proof'),
-    -- Residents (needs Portuguese residency doc)
-    (loc_id, 'Group Lesson — 5 lessons (Resident)',   'Lesson', 'group',    125, 'EUR', 40, '1h30 · Portuguese residency document required'),
-    (loc_id, 'Group Lesson — 10 lessons (Resident)',  'Lesson', 'group',    190, 'EUR', 41, '1h30 · Portuguese residency document required'),
-    (loc_id, 'Group Lesson — 20 lessons (Resident)',  'Lesson', 'group',    320, 'EUR', 42, '1h30 · Portuguese residency document required');
+    (loc_id, 'Surf Lesson — Friends, 1 lesson (Erasmus/Student)', 'Lesson', 'group', 25, 'EUR', 33, '1h30 · a friend of a student, no proof');
 
   -- ── RENTALS ──────────────────────────────────────────────────────────
   -- Category 'Surf Pack' keeps them in the same tab as lessons.
@@ -86,10 +82,7 @@ begin
     (loc_id, 'Wetsuit — 1 week (Standard)',  'Surf Pack', 'group', 70, 'EUR', 124, '10€/day'),
     -- Students & Erasmus rentals (Board & Wetsuit) — +5€ from 1 Jul to 31 Aug, added by the check-in form
     (loc_id, 'Rental — 2h (Erasmus/Student)',       'Surf Pack', 'group', 15, 'EUR', 130, 'Student / Erasmus proof required · +5€ 1 Jul – 31 Aug'),
-    (loc_id, 'Rental — Full day (Erasmus/Student)', 'Surf Pack', 'group', 20, 'EUR', 131, 'Student / Erasmus proof required · +5€ 1 Jul – 31 Aug'),
-    -- Resident rentals (not on the 9 Sep 2026 card — kept as before)
-    (loc_id, 'Rental — 2h (Resident)',       'Surf Pack', 'group', 15, 'EUR', 140, 'Portuguese residency document required'),
-    (loc_id, 'Rental — Full day (Resident)', 'Surf Pack', 'group', 25, 'EUR', 141, 'Portuguese residency document required');
+    (loc_id, 'Rental — Full day (Erasmus/Student)', 'Surf Pack', 'group', 20, 'EUR', 131, 'Student / Erasmus proof required · +5€ 1 Jul – 31 Aug');
 end $$;
 
 -- Sanity check
@@ -99,4 +92,4 @@ select
   count(*)                                     as total
 from public.pricing_catalog
 where location_id = (select id from public.locations where slug='surf-school');
--- Expected: lessons = 16, rentals = 19, total = 35
+-- Expected: lessons = 13, rentals = 17, total = 30

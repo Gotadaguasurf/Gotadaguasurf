@@ -131,8 +131,8 @@ so 6 days costs the week and 2 days costs two full days. The old 3h option is go
 Students & Erasmus: Board & Wetsuit only, 15 (2h) / 20 (full day), **+€5 from 1 Jul to
 31 Aug** — the form adds it from the activity date. Lesson packs: 1 = 20, 5 = 90,
 10 = 160, Friends (1 lesson, no proof) = 25. Proof of student / Erasmus status is asked
-for at the counter. The Resident tier (15 / 25) is not on the new card and was left as it
-was — Miguel to confirm.
+for at the counter. **There is no Resident tier** — Miguel removed it on 9 Sep 2026; only
+Standard and Erasmus/Student exist.
 
 The form is **rentals only** — Miguel confirmed on 9 Sep 2026 that lessons are not
 checked in here (the lesson packs live only in the Prices seed) and asked for **no NIF

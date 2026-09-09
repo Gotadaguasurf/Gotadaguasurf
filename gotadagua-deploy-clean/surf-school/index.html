@@ -299,16 +299,14 @@ main{padding:16px;max-width:640px;margin:0 auto}
            "Choose" placeholder enforces an active pick (Google Form parity). -->
       <div class="field" id="custTypeWrap">
         <label>Customer type</label>
-        <div class="chip-grid cols-3">
+        <div class="chip-grid cols-2">
           <button type="button" class="chip-btn" data-val="Standard" onclick="pickChip('fld_customer_type','Standard')">Standard</button>
           <button type="button" class="chip-btn" data-val="Erasmus / Student" onclick="pickChip('fld_customer_type','Erasmus / Student')">Erasmus<small>/ Student</small></button>
-          <button type="button" class="chip-btn" data-val="Resident" onclick="pickChip('fld_customer_type','Resident')">Resident</button>
         </div>
         <select id="fld_customer_type" style="display:none" onchange="recalcRentalTotal()" aria-hidden="true">
           <option value="">Choose…</option>
           <option value="Standard">Standard</option>
           <option value="Erasmus / Student">Erasmus / Student</option>
-          <option value="Resident">Resident</option>
         </select>
         <div class="hint" id="customerTypeHint" style="display:none"></div>
       </div>
@@ -633,8 +631,8 @@ function onItemPick(){
 // Same-day: 1h / 2h / Full day. Multi-day: 3 days and 1 week have their
 // own price; multiDayPrice() never charges more than the next tier up.
 // Students & Erasmus: only the combo, 2h / Full day, +€5 from 1 Jul to
-// 31 Aug (STUDENT_SUMMER_SURCHARGE). Resident tier kept as before — it is
-// not on the new card; Miguel to confirm.
+// 31 Aug (STUDENT_SUMMER_SURCHARGE). No Resident tier any more (Miguel,
+// 9 Sep 2026) — old rows keep their customer_type, the form no longer offers it.
 const RENTAL_PRICING = {
   Standard: {
     'Board + Wetsuit': { '1H':20, '2H':25, 'Full day':30, d3:75,  week:140 },
@@ -643,9 +641,6 @@ const RENTAL_PRICING = {
   },
   'Erasmus / Student': {
     'Board + Wetsuit': { '2H':15, 'Full day':20 }
-  },
-  Resident: {
-    'Board + Wetsuit': { '2H':15, 'Full day':25 }
   }
 };
 const STUDENT_SUMMER_SURCHARGE = 5;   // 1 Jul – 31 Aug, Erasmus/Student, Board + Wetsuit
@@ -671,8 +666,7 @@ const LESSON_PRICING = Object.fromEntries(Object.entries(LESSON_PACKS).map(([k,p
 // Documents required by customer type — surfaced under the picker so
 // staff know to ask for the ID / student card before applying the tier.
 const CUSTOMER_TYPE_NOTES = {
-  'Erasmus / Student': 'Ask for the student / Erasmus proof to apply the student rate.',
-  'Resident':          'Ask for the PT residency document to apply the resident rate.'
+  'Erasmus / Student': 'Ask for the student / Erasmus proof to apply the student rate.'
 };
 
 function priceFor(customerType, combo, durationKey){
