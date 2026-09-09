@@ -7,6 +7,7 @@ def norm(s):
     return ' '.join(s.split())
 # Nomes diferentes para a mesma entidade. Chave = familia.
 FAMILIAS = {
+    'gustav': ['gustav sigmundstad', 'sigmundstad'],   # videografo HQ — Salary / general
  'tormenta':      ['tormenta', 'tormenta barreiros', 'easy transfer', 'easytransfer'],
  'manjar':        ['manjar alentejano', 'cathering'],
  'raimundo':      ['raimundo cenas', 'event solutions'],

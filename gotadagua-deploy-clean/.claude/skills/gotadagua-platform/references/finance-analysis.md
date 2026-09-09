@@ -346,3 +346,5 @@ col 28, credit sits in cols 28–46. What the lines mean (Miguel, 9 Sep 2026):
 Check that closes the month: opening balance + remittances − debits = closing balance,
 and ledger expenses ≈ bank debits (without remittances) + on-site cash revenue, ±2k of
 cash float carried over. Jan–May 2026 closes that way.
+
+- **Gustav Sigmundstad** = videógrafo do HQ → Salary, location `general` (Miguel, 9 Sep 2026). Not surf school.
