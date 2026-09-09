@@ -272,3 +272,37 @@ the same expense from two sides.
 State of play at 3 Sep 2026: 99,7% of expense value categorised; the Aug 5 – Sep 3
 statement reconciles except three non-SEPA transfers (€31.200) whose beneficiary the
 statement does not name; `drive-sync` has never run, so PDFs are attached by hand.
+
+
+## Sri Lanka: where the numbers live (9 Sep 2026)
+
+Sri Lanka has two homes in the app and they do not overlap:
+
+- **Local spending and on-site revenue → `ledger_entries`** (location `sri-lanka`,
+  `paid_from = attributed_location = 'sri-lanka'`, currency LKR with `fx_rate` and
+  `amount_eur`). The camp-hub has been writing there since **15 Jun 2026**
+  (`source_kind = 'manual'` for expenses, `camp_tab_per_item` for the POS). Revenue rows
+  are `type = 'revenue'` — `'income'` is a legacy value; the HQ "Profit per location"
+  view only counted `'income'` until 9 Sep 2026 and showed no on-site revenue.
+- **What Portugal pays for Sri Lanka → `hq_invoices`** with `location_slug = 'sri-lanka'`
+  and `paying_company = 'water-movements'`: Shenal (1.400/month, Santander SEPA on
+  the first days of the following month), Francisco Duarte (949,27, inside the
+  payroll batch), José Capitão (700, until May; then 975 / 650 / 325), visas.
+
+**Miguel's Excel "Gota SL – Análise Financeira" (sheet MOVIMENTOS) for Jan–May 2026
+was loaded into the ledger on 9 Sep 2026**: 568 expenses (€76.852,82) and 47 weekly
+revenue rows from the Extras sheet (€10.208,56: Drinks 4.593, Tours 4.093, Transport
+1.523). Reservations were **not** loaded — they are the Bookinglayer import in
+`bookings` (location "Surf Camp Ahangama"), which matches the Excel 225 of 227 refs.
+The 14 salary rows paid from Portugal (Shenal, Francisco Duarte, José Capitão, €14.546)
+were left out because they already sit in `hq_invoices`. Category map used:
+Activities → Tours; business_area Salary → Salaries, Setup/Rent/Special/Services/
+Cleaning → Utilities, Merchandising → Merch. Two Excel quirks went in as they are:
+"transfers" €352,86 twice on 3 Mar, and "Salary Lapo + 2mth Rent".
+
+**Same payment, two dates.** A salary appears once dated end-of-month (payslip /
+Excel) and once dated when the bank actually paid it (statement, 2–14 days later).
+The ±7-day matcher misses the 14-day ones and inserts a second row. Before trusting
+a beneficiary's total, **count the bank payments per beneficiary in the period** and
+compare with the number of rows: Shenal Feb–Jul had 6 Santander debits and 8 app
+rows; the 6 Apr (200 + 1.200) and 14 May rows were duplicates (removed 9 Sep 2026).

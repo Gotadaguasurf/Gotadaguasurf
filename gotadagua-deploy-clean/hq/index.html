@@ -4196,7 +4196,8 @@ async function loadPnlData(){
   (ledger||[]).forEach(l => {
     const m = String(l.entry_date||'').slice(0,7);
     const v = Number(l.amount_eur)||0;
-    if (l.type === 'income') bump(ledgerSlug(l), m, 'revOps', v);
+    // The POS and the camp-hub write type='revenue'; 'income' is the legacy value.
+    if (l.type === 'revenue' || l.type === 'income') bump(ledgerSlug(l), m, 'revOps', v);
     else if (l.type === 'expense') bump(ledgerSlug(l), m, 'expLocal', v);
     // transfers deliberately ignored — money moving, not made or spent
   });
