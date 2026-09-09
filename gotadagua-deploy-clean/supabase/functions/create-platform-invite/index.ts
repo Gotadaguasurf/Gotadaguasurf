@@ -209,7 +209,17 @@ Deno.serve(async (req) => {
     );
     if (inviteEmailError) {
       if (!inviteEmailError.message?.includes('already been registered')) {
-        throw inviteEmailError;
+        // The invite never reached the person: drop the invitation row so the
+        // 5-minute per-email cooldown does not hide this error on the retry,
+        // and hand the real Auth message back to the screen.
+        await supabaseAdmin.from('invitation_workspace_access').delete().eq('invitation_id', invite.id);
+        await supabaseAdmin.from('workspace_invitations').delete().eq('id', invite.id);
+        console.error('create-platform-invite: inviteUserByEmail failed', inviteEmailError);
+        return new Response(JSON.stringify({
+          ok: false,
+          error: `Supabase Auth could not send the invite email: ${inviteEmailError.message || 'unknown error'}${inviteEmailError.status ? ` (HTTP ${inviteEmailError.status})` : ''}. Check Authentication → SMTP settings in the Supabase dashboard.`,
+          auth_error: inviteEmailError,
+        }), { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
     } else {
       invitedUserId = inviteData?.user?.id ?? null;

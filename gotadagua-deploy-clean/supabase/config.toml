@@ -1,3 +1,6 @@
 
 [functions.gmail-send]
 verify_jwt = true
+
+[functions.create-platform-invite]
+verify_jwt = true
