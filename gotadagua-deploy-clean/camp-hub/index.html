@@ -2772,7 +2772,7 @@ async function pushLedgerEntriesToSupabase(entries){
   if(!locationId) return false;
   // Rows mirrored from hq_invoices belong to the HQ; the DB refuses writes to
   // them and the hub must never try (they come back on the next hydrate).
-  const own=entries.filter(e=>String(e?.sourceKind||'').toLowerCase()!=='hq_invoice');
+  const own=entries.filter(e=>!['hq_invoice','hq_transfer'].includes(String(e?.sourceKind||'').toLowerCase()));
   if(!own.length) return false;
   const rows=own.map(entry=>ledgerEntryToDbRow(entry,locationId));
   const { error } = await client.from('ledger_entries').upsert(rows,{onConflict:'id'});
@@ -9374,13 +9374,13 @@ function renderExpenses(){
         <td style="white-space:nowrap;font-size:12px">${fmtd(r.date)}</td>
         <td><span class="badge ${r.type==='expense'?'badge-red':r.type==='transfer'?'badge-amber':'badge-green'}">${r.type==='expense'?'Expense':r.type==='transfer'?'Money Sent':'Revenue'}</span></td>
         <td style="font-weight:600">${r.category}</td>
-        <td style="color:var(--muted);font-size:12px">${String(r.sourceKind||'').toLowerCase()==='hq_invoice'?'<span class="badge badge-amber" title="Factura paga por Portugal (HQ). Edita-se no HQ.">Pago pelo HQ</span>':(r.paymentMethod||'—')}</td>
+        <td style="color:var(--muted);font-size:12px">${String(r.sourceKind||'').toLowerCase()==='hq_invoice'?'<span class="badge badge-amber" title="Factura paga por Portugal (HQ). Edita-se no HQ.">Pago pelo HQ</span>':String(r.sourceKind||'').toLowerCase()==='hq_transfer'?'<span class="badge badge-amber" title="Transferência registada no HQ. Edita-se no HQ.">HQ Transfer · HQ</span>':(r.paymentMethod||'—')}</td>
         <td style="color:var(--muted);font-size:12px">${r.linkedItem||'—'}${transportEntryTourOverride(r)?`<div style="font-size:10px;color:var(--ocean);font-weight:600;margin-top:2px">↳ ${escapeHtml(transportEntryTourOverride(r))}</div>`:''}</td>
         <td style="color:var(--muted)">${escapeHtml(strippedTransportDescription(r))||'—'}</td>
         <td style="color:var(--muted);font-size:12px">${r.vendor||'—'}</td>
         <td class="r" style="font-weight:700">${r.currency&&r.currency!=='EUR'?`${r.currency} `+Number(r.amountLocal||0).toLocaleString('en-GB',{maximumFractionDigits:2}):`${LOCAL_CURRENCY||'LKR'} `+Number((Number(r.amount||0)*(LOCAL_PER_EUR||1))).toLocaleString('en-GB',{maximumFractionDigits:0})}</td>
         <td class="r" style="font-weight:700">${euro(r.amount)}</td>
-        <td>${String(r.sourceKind||'').toLowerCase()==='hq_invoice'?'<div class="exp-table-actions" style="justify-content:center;color:var(--muted)" title="Só se altera no HQ">🔒</div>':`<div class="exp-table-actions"><button class="icon-btn" onclick="openEditLedger('${r.id}')" title="Edit">✎</button><button class="icon-btn danger" onclick="delLedger('${r.id}')" title="Delete">✕</button></div>`}</td>
+        <td>${['hq_invoice','hq_transfer'].includes(String(r.sourceKind||'').toLowerCase())?'<div class="exp-table-actions" style="justify-content:center;color:var(--muted)" title="Só se altera no HQ">🔒</div>':`<div class="exp-table-actions"><button class="icon-btn" onclick="openEditLedger('${r.id}')" title="Edit">✎</button><button class="icon-btn danger" onclick="delLedger('${r.id}')" title="Delete">✕</button></div>`}</td>
       </tr>`).join(''):'<tr class="empty-row"><td colspan="10">No entries for this filter.</td></tr>'}
     </tbody>
   </table></div>`;
@@ -9405,7 +9405,7 @@ async function delLedger(id){
   // the user still gets a clear preview before any destructive action.
   const entry = S.ledger.find(x=>x.id===id);
   if(!entry) return;
-  if(String(entry.sourceKind||'').toLowerCase()==='hq_invoice'){ toast('Esta linha é uma factura paga pelo HQ — arquiva-a no HQ, não aqui.'); return; }
+  if(['hq_invoice','hq_transfer'].includes(String(entry.sourceKind||'').toLowerCase())){ toast('Esta linha vem do HQ — arquiva-a no HQ, não aqui.'); return; }
   const typeLbl = entry.type==='income' ? 'revenue' : entry.type==='transfer' ? 'transfer' : 'expense';
   const amount = entry.amountLocal && entry.currency && entry.currency!=='EUR' ? (`${entry.currency} `+Number(entry.amountLocal).toLocaleString('en-GB',{maximumFractionDigits:2})) : ('€'+Number(entry.amount||0).toFixed(2));
   const note = entry.description ? ` "${String(entry.description).slice(0,60)}"` : '';
@@ -9540,7 +9540,7 @@ function openExpModal(type,id=null,preset=null){
   openOv('expOv');
 }
 
-function openEditLedger(id){const entry=S.ledger.find(x=>x.id===id);if(!entry)return;if(String(entry.sourceKind||'').toLowerCase()==='hq_invoice'){toast('Esta linha é uma factura paga pelo HQ — altera-a no HQ.');return;}openExpModal(entry.type,id);}
+function openEditLedger(id){const entry=S.ledger.find(x=>x.id===id);if(!entry)return;if(['hq_invoice','hq_transfer'].includes(String(entry.sourceKind||'').toLowerCase())){toast('Esta linha vem do HQ — altera-a no HQ.');return;}openExpModal(entry.type,id);}
 function deleteEditingLedger(){if(!editingLedgerId)return;const id=editingLedgerId;editingLedgerId=null;closeOv('expOv');delLedger(id);}
 
 async function saveExpense(){

@@ -80,6 +80,13 @@ spent" and per-area costs but not in the Bank/Cash drawers ('HQ Paid' is neither
 Bank Transfer). The HQ ignores `source_kind='hq_invoice'` ledger rows so nothing counts
 twice. Adding an invoice in the HQ is enough — it lands in the camp automatically.
 
+**HQ transfers are mirrored too** (`supabase/internal-transfers-mirror-to-ledger.sql`): an
+`internal_transfers` row to `wave-movements` / `mgrp-sarl` becomes a locked `money_sent`
+'HQ Transfer' ledger row in sri-lanka / morocco (`source_kind='hq_transfer'`,
+`internal_transfer_id`), converted with `daily_fx_rates` (EUR→LKR/MAD, latest rate on or
+before the date) — that is what the camp-hub shows as "HQ Transferred (in)". Record the
+transfer in the HQ cash flow and it lands in the camp by itself.
+
 **HQ members see everything.** Miguel's rule (9 Sep 2026): anyone with access to the
 HQ workspace sees the real, complete numbers — `hq_invoices`, `internal_transfers`,
 `bookings` and, since that date, the whole `ledger_entries` table regardless of
