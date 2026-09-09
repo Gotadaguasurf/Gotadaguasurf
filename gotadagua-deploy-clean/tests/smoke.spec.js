@@ -62,44 +62,46 @@ test('root shows the login form when logged out', async ({ page }) => {
 // RENTAL_PRICING or breaks priceFor's fallback, this catches it before
 // a real rental gets mispriced.
 test('surf-school pricing matrix matches the price card', async ({ page }) => {
+  // The card of 9 Sep 2026: 1h / 2h / Full day, 3 days and 1 week per
+  // combo; students pay 15 / 20 for the combo, +5 in July and August.
   await fakeOwnerSession(page);
   await page.goto('/surf-school/', { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => typeof window.priceFor === 'function');
 
   const cases = await page.evaluate(() => {
     const t = (customer, combo, dur) => window.priceFor(customer, combo, dur);
+    const m = (customer, combo, days) => window.multiDayPrice(customer, combo, days);
     return {
-      // Standard column
-      bw1h: t('Standard', 'Board + Wetsuit', '1H'),
-      bw2h: t('Standard', 'Board + Wetsuit', '2H'),
-      bw3h: t('Standard', 'Board + Wetsuit', '3H'),
-      bwDay: t('Standard', 'Board + Wetsuit', 'Full day'),
-      b2h: t('Standard', 'Board', '2H'),
-      w2h: t('Standard', 'Wetsuit', '2H'),
-      // Discount tiers
-      erasmus2h: t('Erasmus / Student', 'Board + Wetsuit', '2H'),
-      erasmusDay: t('Erasmus / Student', 'Board + Wetsuit', 'Full day'),
-      resident2h: t('Resident', 'Board + Wetsuit', '2H'),
-      residentDay: t('Resident', 'Board + Wetsuit', 'Full day'),
-      // Fallback: tier without a specific entry falls back to Standard
+      bw1h: t('Standard', 'Board + Wetsuit', '1H'), bw2h: t('Standard', 'Board + Wetsuit', '2H'), bwDay: t('Standard', 'Board + Wetsuit', 'Full day'),
+      b1h: t('Standard', 'Board', '1H'), b2h: t('Standard', 'Board', '2H'), bDay: t('Standard', 'Board', 'Full day'),
+      w1h: t('Standard', 'Wetsuit', '1H'), w2h: t('Standard', 'Wetsuit', '2H'), wDay: t('Standard', 'Wetsuit', 'Full day'),
+      bw3d: m('Standard', 'Board + Wetsuit', 3), bwWeek: m('Standard', 'Board + Wetsuit', 7),
+      b3d: m('Standard', 'Board', 3), bWeek: m('Standard', 'Board', 7),
+      w3d: m('Standard', 'Wetsuit', 3), wWeek: m('Standard', 'Wetsuit', 7),
+      bw2d: m('Standard', 'Board + Wetsuit', 2), bw6d: m('Standard', 'Board + Wetsuit', 6), bw10d: m('Standard', 'Board + Wetsuit', 10),
+      erasmus2h: t('Erasmus / Student', 'Board + Wetsuit', '2H'), erasmusDay: t('Erasmus / Student', 'Board + Wetsuit', 'Full day'),
+      summer: window.studentSummerSurcharge('Erasmus / Student', 'Board + Wetsuit', '2026-07-15'),
+      offSeason: window.studentSummerSurcharge('Erasmus / Student', 'Board + Wetsuit', '2026-09-09'),
+      summerStandard: window.studentSummerSurcharge('Standard', 'Board + Wetsuit', '2026-07-15'),
       erasmusBoard1h: t('Erasmus / Student', 'Board', '1H'),
-      // Multi-day extra rate
-      extraBW: window.extraDayRateFor('Board + Wetsuit'),
+      packs: Object.fromEntries(LESSON_PACKS['Erasmus surf lessons'].map(p => [p.key, p.price])),
+      nifOk: window.validNif('123 456 789').ok, nifBad: window.validNif('123456780').ok, nifEmpty: window.validNif('').ok,
     };
   });
-
-  expect(cases.bw1h).toBe(20);
-  expect(cases.bw2h).toBe(30);
-  expect(cases.bw3h).toBe(40);
-  expect(cases.bwDay).toBe(45);
-  expect(cases.b2h).toBe(20);
-  expect(cases.w2h).toBe(12);
-  expect(cases.erasmus2h).toBe(20);
-  expect(cases.erasmusDay).toBe(25);
-  expect(cases.resident2h).toBe(15);
-  expect(cases.residentDay).toBe(25);
-  expect(cases.erasmusBoard1h).toBe(15); // Standard Board 1H fallback
-  expect(cases.extraBW).toBe(15);
+  expect([cases.bw1h, cases.bw2h, cases.bwDay]).toEqual([20, 25, 30]);
+  expect([cases.b1h, cases.b2h, cases.bDay]).toEqual([15, 20, 25]);
+  expect([cases.w1h, cases.w2h, cases.wDay]).toEqual([10, 12, 15]);
+  expect([cases.bw3d, cases.bwWeek]).toEqual([75, 140]);
+  expect([cases.b3d, cases.bWeek]).toEqual([60, 105]);
+  expect([cases.w3d, cases.wWeek]).toEqual([35, 70]);
+  expect(cases.bw2d).toBe(60);      // 2 × full day
+  expect(cases.bw6d).toBe(140);     // never more than the week
+  expect(cases.bw10d).toBe(200);    // week + 3 × 20
+  expect([cases.erasmus2h, cases.erasmusDay]).toEqual([15, 20]);
+  expect([cases.summer, cases.offSeason, cases.summerStandard]).toEqual([5, 0, 0]);
+  expect(cases.erasmusBoard1h).toBe(15);           // Standard fallback for Board only
+  expect(cases.packs).toEqual({ '1': 20, '5': 90, '10': 160, friends: 25 });
+  expect([cases.nifOk, cases.nifBad, cases.nifEmpty]).toEqual([true, false, true]);
 });
 
 // Live pricing overrides: /prices "Surf Pack" rows override matrix cells

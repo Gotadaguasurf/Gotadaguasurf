@@ -54,6 +54,7 @@ begin
     (loc_id, 'Surf Lesson — 1 lesson (Erasmus/Student)',   'Lesson', 'group', 20,  'EUR', 30, '1h30 · ESN Erasmus document required'),
     (loc_id, 'Surf Lesson — 5 lessons (Erasmus/Student)',  'Lesson', 'group', 90,  'EUR', 31, '1h30 · ESN Erasmus document required'),
     (loc_id, 'Surf Lesson — 10 lessons (Erasmus/Student)', 'Lesson', 'group', 160, 'EUR', 32, '1h30 · ESN Erasmus document required'),
+    (loc_id, 'Surf Lesson — Friends, 1 lesson (Erasmus/Student)', 'Lesson', 'group', 25, 'EUR', 33, '1h30 · a friend of a student, no proof'),
     -- Residents (needs Portuguese residency doc)
     (loc_id, 'Group Lesson — 5 lessons (Resident)',   'Lesson', 'group',    125, 'EUR', 40, '1h30 · Portuguese residency document required'),
     (loc_id, 'Group Lesson — 10 lessons (Resident)',  'Lesson', 'group',    190, 'EUR', 41, '1h30 · Portuguese residency document required'),
@@ -64,28 +65,29 @@ begin
   -- audience='group' = fixed price per rental (not per-guest).
   insert into public.pricing_catalog
     (location_id, name, category, audience, sell_price, currency, sort_order, notes) values
+    -- Card of 9 Sep 2026. Same day: 1h / 2h / All day. Multi-day: 3 days / 1 week.
     -- Board & Wetsuit combo — Standard
-    (loc_id, 'Board & Wetsuit — 1h (Standard)',        'Surf Pack', 'group', 20, 'EUR', 100, '€250 deposit if the customer takes the gear home'),
-    (loc_id, 'Board & Wetsuit — 2h (Standard)',        'Surf Pack', 'group', 30, 'EUR', 101, '€250 deposit if the customer takes the gear home'),
-    (loc_id, 'Board & Wetsuit — 3h (Standard)',        'Surf Pack', 'group', 40, 'EUR', 102, '€250 deposit if the customer takes the gear home'),
-    (loc_id, 'Board & Wetsuit — All day (Standard)',   'Surf Pack', 'group', 45, 'EUR', 103, '€250 deposit if the customer takes the gear home'),
-    (loc_id, 'Board & Wetsuit — Extra day (Standard)', 'Surf Pack', 'group', 15, 'EUR', 104, 'Per extra day beyond the first'),
+    (loc_id, 'Board & Wetsuit — 1h (Standard)',      'Surf Pack', 'group', 20,  'EUR', 100, '€250 deposit if the customer takes the gear home'),
+    (loc_id, 'Board & Wetsuit — 2h (Standard)',      'Surf Pack', 'group', 25,  'EUR', 101, '€250 deposit if the customer takes the gear home'),
+    (loc_id, 'Board & Wetsuit — All day (Standard)', 'Surf Pack', 'group', 30,  'EUR', 102, '€250 deposit if the customer takes the gear home'),
+    (loc_id, 'Board & Wetsuit — 3 days (Standard)',  'Surf Pack', 'group', 75,  'EUR', 103, '25€/day'),
+    (loc_id, 'Board & Wetsuit — 1 week (Standard)',  'Surf Pack', 'group', 140, 'EUR', 104, '20€/day'),
     -- Board only — Standard
-    (loc_id, 'Board — 1h (Standard)',        'Surf Pack', 'group', 15, 'EUR', 110, '€250 deposit if the customer takes the gear home'),
-    (loc_id, 'Board — 2h (Standard)',        'Surf Pack', 'group', 20, 'EUR', 111, '€250 deposit if the customer takes the gear home'),
-    (loc_id, 'Board — 3h (Standard)',        'Surf Pack', 'group', 30, 'EUR', 112, '€250 deposit if the customer takes the gear home'),
-    (loc_id, 'Board — All day (Standard)',   'Surf Pack', 'group', 40, 'EUR', 113, '€250 deposit if the customer takes the gear home'),
-    (loc_id, 'Board — Extra day (Standard)', 'Surf Pack', 'group', 10, 'EUR', 114, 'Per extra day beyond the first'),
+    (loc_id, 'Board — 1h (Standard)',      'Surf Pack', 'group', 15,  'EUR', 110, '€250 deposit if the customer takes the gear home'),
+    (loc_id, 'Board — 2h (Standard)',      'Surf Pack', 'group', 20,  'EUR', 111, '€250 deposit if the customer takes the gear home'),
+    (loc_id, 'Board — All day (Standard)', 'Surf Pack', 'group', 25,  'EUR', 112, '€250 deposit if the customer takes the gear home'),
+    (loc_id, 'Board — 3 days (Standard)',  'Surf Pack', 'group', 60,  'EUR', 113, '20€/day'),
+    (loc_id, 'Board — 1 week (Standard)',  'Surf Pack', 'group', 105, 'EUR', 114, '15€/day'),
     -- Wetsuit only — Standard
-    (loc_id, 'Wetsuit — 1h (Standard)',        'Surf Pack', 'group', 10, 'EUR', 120, '€250 deposit if the customer takes the gear home'),
-    (loc_id, 'Wetsuit — 2h (Standard)',        'Surf Pack', 'group', 12, 'EUR', 121, '€250 deposit if the customer takes the gear home'),
-    (loc_id, 'Wetsuit — 3h (Standard)',        'Surf Pack', 'group', 15, 'EUR', 122, '€250 deposit if the customer takes the gear home'),
-    (loc_id, 'Wetsuit — All day (Standard)',   'Surf Pack', 'group', 20, 'EUR', 123, '€250 deposit if the customer takes the gear home'),
-    (loc_id, 'Wetsuit — Extra day (Standard)', 'Surf Pack', 'group', 15, 'EUR', 124, 'Per extra day beyond the first'),
-    -- Erasmus / Student rentals
-    (loc_id, 'Rental — 2h (Erasmus/Student)',       'Surf Pack', 'group', 20, 'EUR', 130, 'ESN Erasmus document required'),
-    (loc_id, 'Rental — Full day (Erasmus/Student)', 'Surf Pack', 'group', 25, 'EUR', 131, 'ESN Erasmus document required'),
-    -- Resident rentals
+    (loc_id, 'Wetsuit — 1h (Standard)',      'Surf Pack', 'group', 10, 'EUR', 120, NULL),
+    (loc_id, 'Wetsuit — 2h (Standard)',      'Surf Pack', 'group', 12, 'EUR', 121, NULL),
+    (loc_id, 'Wetsuit — All day (Standard)', 'Surf Pack', 'group', 15, 'EUR', 122, NULL),
+    (loc_id, 'Wetsuit — 3 days (Standard)',  'Surf Pack', 'group', 35, 'EUR', 123, '11.60€/day'),
+    (loc_id, 'Wetsuit — 1 week (Standard)',  'Surf Pack', 'group', 70, 'EUR', 124, '10€/day'),
+    -- Students & Erasmus rentals (Board & Wetsuit) — +5€ from 1 Jul to 31 Aug, added by the check-in form
+    (loc_id, 'Rental — 2h (Erasmus/Student)',       'Surf Pack', 'group', 15, 'EUR', 130, 'Student / Erasmus proof required · +5€ 1 Jul – 31 Aug'),
+    (loc_id, 'Rental — Full day (Erasmus/Student)', 'Surf Pack', 'group', 20, 'EUR', 131, 'Student / Erasmus proof required · +5€ 1 Jul – 31 Aug'),
+    -- Resident rentals (not on the 9 Sep 2026 card — kept as before)
     (loc_id, 'Rental — 2h (Resident)',       'Surf Pack', 'group', 15, 'EUR', 140, 'Portuguese residency document required'),
     (loc_id, 'Rental — Full day (Resident)', 'Surf Pack', 'group', 25, 'EUR', 141, 'Portuguese residency document required');
 end $$;
@@ -97,4 +99,4 @@ select
   count(*)                                     as total
 from public.pricing_catalog
 where location_id = (select id from public.locations where slug='surf-school');
--- Expected: lessons = 15, rentals = 19, total = 34
+-- Expected: lessons = 16, rentals = 19, total = 35

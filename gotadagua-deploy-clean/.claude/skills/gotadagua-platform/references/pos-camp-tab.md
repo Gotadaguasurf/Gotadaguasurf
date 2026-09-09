@@ -118,3 +118,26 @@ against a dirty DB.
 
 Tables: `camp_weeks` → `camp_guests` → `camp_tab_items`, plus `location_menus`
 (the POS menu), `camp_staff_directory`, `tour_zones`.
+
+
+## Surf School check-in (`/surf-school`) — price card of 9 Sep 2026
+
+Rentals, same day: Board & Wetsuit 20 / 25 / 30 (1h / 2h / full day), Board 15 / 20 / 25,
+Wetsuit 10 / 12 / 15. Multi-day has two anchors per combo — **3 days** (75 / 60 / 35) and
+**1 week** (140 / 105 / 70); any other length is the cheapest of N × full day, the 3-day
+price plus its per-day rate, or the week price plus its per-day rate (`multiDayPrice`),
+so 6 days costs the week and 2 days costs two full days. The old 3h option is gone.
+
+Students & Erasmus: Board & Wetsuit only, 15 (2h) / 20 (full day), **+€5 from 1 Jul to
+31 Aug** — the form adds it from the activity date. Lesson packs: 1 = 20, 5 = 90,
+10 = 160, Friends (1 lesson, no proof) = 25. Proof of student / Erasmus status is asked
+for at the counter. The Resident tier (15 / 25) is not on the new card and was left as it
+was — Miguel to confirm.
+
+The form has two kinds: **Rental** and **Lesson** (packs, `qty` = lessons bought,
+`is_returned = true` since nothing goes out). Both take the customer's **NIF** (column
+`surf_school_rentals.nif`, optional; a 9-digit number must pass the Portuguese check
+digit or the save refuses it). The hardcoded matrix in the page is the fallback; the
+live values are the `Surf Pack` / `Lesson` rows for `surf-school` in `pricing_catalog`,
+re-seeded from `supabase/seed-surf-school-prices.sql` whenever the card changes (row
+names carry the duration: `… — 3 days (Standard)`, `… — 1 week (Standard)`).
