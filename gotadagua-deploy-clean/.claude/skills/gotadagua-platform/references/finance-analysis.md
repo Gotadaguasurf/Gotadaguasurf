@@ -348,3 +348,20 @@ and ledger expenses ≈ bank debits (without remittances) + on-site cash revenue
 cash float carried over. Jan–May 2026 closes that way.
 
 - **Gustav Sigmundstad** = videógrafo do HQ → Salary, location `general` (Miguel, 9 Sep 2026). Not surf school.
+
+
+### Camp-hub bank / cash drawers for Sri Lanka (9 Sep 2026)
+
+The camp-hub computes **Bank = HQ Transfer − bank/card spend − ATM Withdrawal** and
+**Cash = ATM Withdrawal + on-site revenue − cash spend** from `ledger_entries`
+`type = 'money_sent'` rows (`payment_method` 'HQ Transfer' = Portugal → Sampath,
+'ATM Withdrawal' = Sampath → cash). Loaded from the Sampath statement: the 8
+remittances, an opening-balance row on 1 Jan 2026 (3.569.615 LKR, money sent in
+2025) and every "Surf Camp / nadith surf camp expenses" withdrawal — except the
+500k on salary days (28 Feb, 29 Mar, 28 Apr, 28 May), which are the camp rent.
+Salaries, rent and security paid by the bank carry `payment_method = 'Bank
+Transfer'` even where the Excel said "Cash", otherwise the bank drawer drifts by
+~1,3 M LKR a month. The camp-hub pages the ledger in 1000-row chunks since 9 Sep
+2026; before that Sri Lanka (1.119 rows) lost the start of January.
+Everything before 2026 in `hq_invoices` (17 rows, €7.797) was soft-deleted on
+9 Sep 2026 — Miguel wants only 2026 in the app.
