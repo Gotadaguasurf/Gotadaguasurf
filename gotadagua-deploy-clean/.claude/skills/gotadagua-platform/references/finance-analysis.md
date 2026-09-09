@@ -305,4 +305,7 @@ Excel) and once dated when the bank actually paid it (statement, 2–14 days lat
 The ±7-day matcher misses the 14-day ones and inserts a second row. Before trusting
 a beneficiary's total, **count the bank payments per beneficiary in the period** and
 compare with the number of rows: Shenal Feb–Jul had 6 Santander debits and 8 app
-rows; the 6 Apr (200 + 1.200) and 14 May rows were duplicates (removed 9 Sep 2026).
+rows. **The statement wins** (Miguel, 9 Sep 2026): keep the rows dated and split as
+the bank paid them (6 Apr = 200 + 1.200, 14 May), drop the end-of-month duplicates,
+and re-date the remaining end-of-month rows to the Santander date. Shenal now reads
+3 Feb · 2 Mar · 6 Apr · 14 May · 1 Jun · 6 Jul · 3 Aug (2.550) · 1 Sep (1.550).
