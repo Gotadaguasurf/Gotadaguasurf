@@ -44,6 +44,15 @@ the Documents path before writing.
 | `/instructors` | Instructor hours | |
 
 **Locations** (slug → currency): `sri-lanka` LKR · `morocco` MAD · `portugal` EUR ·
+**HQ members see everything.** Miguel's rule (9 Sep 2026): anyone with access to the
+HQ workspace sees the real, complete numbers — `hq_invoices`, `internal_transfers`,
+`bookings` and, since that date, the whole `ledger_entries` table regardless of
+location memberships (`ledger_entries_select_location` = `has_location_access(...) or
+is_hq_member()`, file `supabase/ledger-hq-members-see-all.sql`). Before that, a manager
+with only the Portugal workspace saw "Local expenses €0" and a profit inflated by
+€174k. If someone must not see everything, do not give them HQ at all. Writing to the
+ledger still needs `can_edit` on that location.
+
 `junior-camp` EUR · `surf-school` EUR. Currency is **pinned in JS**
 (`LOCAL_CURRENCY_PINNED` in camp-hub) so a bad DB row can never stamp the wrong one.
 
