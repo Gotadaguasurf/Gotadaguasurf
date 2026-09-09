@@ -1220,7 +1220,13 @@
       const myEmail = String(__currentProfile?.email || '').toLowerCase();
       const previewIsSelf = currentPreviewUser && currentPreviewUser.toLowerCase() === myEmail;
       const role = String(__currentProfile?.role || '').toLowerCase();
-      if (previewIsSelf && (role === 'owner' || role === 'super_admin' || OWNER_EMAILS.has(myEmail))) {
+      // The HQ tile is never granted by the platform role — only by the HQ
+      // pill in Settings (Miguel, 9 Sep 2026). Owners keep the shortcut for
+      // everything else so no camp tile disappears for Ricardo or Gonçalo.
+      if (previewIsSelf && key !== 'hq' && (role === 'owner' || role === 'super_admin' || OWNER_EMAILS.has(myEmail))) {
+        return true;
+      }
+      if (previewIsSelf && key === 'hq' && (role === 'super_admin' || OWNER_EMAILS.has(myEmail))) {
         return true;
       }
       const user = accessUsers.find(entry=>entry.email===currentPreviewUser);

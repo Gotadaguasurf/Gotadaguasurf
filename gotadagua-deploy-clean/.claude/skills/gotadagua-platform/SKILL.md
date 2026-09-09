@@ -53,6 +53,13 @@ is forced to `auth.uid()` so a sale is always the seller's). Sales commissions c
 `opened_by`: History shows "Vendas por pessoa" with the email. Giving "Surf School"
 (the full area) is what allows deleting.
 
+**Only the HQ pill opens the HQ.** The platform role (`owner`, `admin`, …) grants nothing
+there: the HQ page and the hub tile check `super_admin`, the owner allow-list, or an
+active `hq` workspace membership — nothing else (fixed 9 Sep 2026: `role === 'owner'`
+used to open the page and show the tile, so an owner without the pill saw bookings and
+€0 of expenses). Proof query: simulate the user with `set local role authenticated` +
+`request.jwt.claims` and check `public.is_hq_member()`.
+
 **HQ members see everything.** Miguel's rule (9 Sep 2026): anyone with access to the
 HQ workspace sees the real, complete numbers — `hq_invoices`, `internal_transfers`,
 `bookings` and, since that date, the whole `ledger_entries` table regardless of

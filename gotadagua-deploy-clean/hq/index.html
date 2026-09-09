@@ -481,7 +481,11 @@ async function fetchAllPaged(build){
   CURRENT_USER = profile || {};
   $('userBadge').textContent = profile?.email || session.user.email || '';
 
-  let hasAccess = OWNER_EMAILS.has(myEmail) || role === 'owner' || role === 'super_admin';
+  // Miguel, 9 Sep 2026: the platform role does not open the HQ — only the
+  // HQ pill in Settings does (super_admin and the owner allow-list aside).
+  // With role === 'owner' here, an owner without the pill saw bookings
+  // revenue and €0 of expenses, because RLS hid hq_invoices from him.
+  let hasAccess = OWNER_EMAILS.has(myEmail) || role === 'super_admin';
   if (!hasAccess) {
     const { data: hqMembership } = await sb
       .from('workspace_memberships')
