@@ -846,8 +846,8 @@ test('instructors: Mark paid touches one instructor-month only, payroll adds VAT
   // one click → only July's lesson of Romildo, not August's
   expect(out.touched.ids).toEqual(['11111111-1111-4111-8111-111111111111']);
   expect(out.touched.v.paid).toBe(false);
-  // Romildo July: 60 gross + 23% VAT (13.80) + 250 head coach = 323.80
-  expect(out.rowText.find(t => t.startsWith('Romildo Ramos') && t.includes('Julho'))).toContain('€323.80');
+  // Romildo July: (60 gross + 250 head coach) × 1.23 = 381.30 — VAT applies to the extra too (Santander 2 Jun 2026: (1.600+250)×1.23 = 2.275,50 exact)
+  expect(out.rowText.find(t => t.startsWith('Romildo Ramos') && t.includes('Julho'))).toContain('€381.30');
   // Cauê July: 90 gross, two distinct Junior weeks × 62.50 = 125 → 215.00
   expect(out.rowText.find(t => t.startsWith('Cauê Flores'))).toContain('€215.00');
   expect(out.editOpened).toBe(true);

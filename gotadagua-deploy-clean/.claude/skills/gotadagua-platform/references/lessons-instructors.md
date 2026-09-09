@@ -126,7 +126,9 @@ until the paginated version was deployed on 8 Sep 2026). Lessons are paid at the
 start of the following month, so **the payroll tab groups by the month the lesson
 was given**: at the start of September, open August.
 
-**Amount due = lessons × (1 + `vat_pct`/100) + extras**, per instructor per month,
+**Amount due = (lessons + extras) × (1 + `vat_pct`/100)**, per instructor per month —
+the VAT applies to the head-coach extra too (Santander 2 Jun 2026 to Romildo:
+(1.600 + 250) × 1,23 = 2.275,50 exact; 6 Aug: (1.550 + 250) × 1,23 = 2.214,00 exact),
 from `instructor_directory`:
 
 - `vat_pct` 23 → Romildo, André Maria, Matilde, Joaquim Gasalho; 0 for everyone else.
@@ -154,11 +156,10 @@ carried only the name and, with "All months", one click un-paid the whole year.
 **A lesson added from the app never rewrites `rate` / `payment_type` in
 `instructor_directory`** — that table is reference data (VAT, supplier, extras).
 
-Known oddity still in the data: Romildo's `Salary 250` sheet row sits in
-`instructor_lessons` as **1 Surf Camp lesson at €250 on 1 Apr 2026**. It inflates
-April's lesson count and, now that `extra_amount = 250` exists, would double the
-head-coach pay for April if the payroll tab were used to book April. Miguel to
-decide: delete the row (the extra covers it) or keep it with its own category.
+Romildo's `Salary 250` sheet row (1 Apr 2026, booked as 1 Surf Camp lesson at €250)
+was **deleted on 9 Sep 2026**: the €250 goes inside every monthly transfer, and the
+app adds it per month from `extra_amount`. The table now reads 3.116 lessons /
+€91.395 against the sheet's 3.125 / €91.885 (4 duplicate rows + this one).
 
 The xlsx importer in the page is unreachable (hidden input, nothing triggers it)
 and must stay that way until it maps sheet names to app names, normalises

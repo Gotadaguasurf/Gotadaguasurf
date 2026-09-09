@@ -532,7 +532,8 @@ function updatePayroll(){
   });
   const rows=Array.from(map.values()).map(r=>{
     const dir=instructorDirectory.find(d=>d.name===r.instructorName);
-    r.vatPct=dir?dir.vatPct:0;r.vat=r.gross*r.vatPct/100;r.extra=payrollExtra(dir,r.rows);r.due=r.gross+r.vat+r.extra;r.extraKind=dir?dir.extraKind:"";
+    // O IVA aplica-se as aulas E ao extra: o Santander paga (aulas + 250) x 1,23 ao Romi (2 Jun 2026: (1.600+250)x1,23 = 2.275,50 exacto).
+    r.vatPct=dir?dir.vatPct:0;r.extra=payrollExtra(dir,r.rows);r.vat=(r.gross+r.extra)*r.vatPct/100;r.due=r.gross+r.extra+r.vat;r.extraKind=dir?dir.extraKind:"";
     return r;
   }).sort((a,b)=>{if(a.month!==b.month)return b.month.localeCompare(a.month);return b.due-a.due;});
   const tot=rows.reduce((t,r)=>{t.lessons+=r.lessons;t.gross+=r.gross;t.vat+=r.vat;t.extra+=r.extra;t.due+=r.due;return t;},{lessons:0,gross:0,vat:0,extra:0,due:0});
