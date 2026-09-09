@@ -900,3 +900,26 @@ test('instructors: quick-day grid suggests each instructor\'s usual price and sa
   expect(out.saved.find(d => d.instructorName === 'Matilde')).toMatchObject({ date: '2026-09-08', lessonCategory: 'Surf School', numberOfLessons: 3, priceUnit: 25, paid: false, paymentType: 'Recibo Verde' });
   expect(out.msg).toContain('5 aulas');
 });
+
+
+test('surf-school: history sums sales per seller with their email', async ({ page }) => {
+  // Sales commissions are paid per person, so every rental carries who
+  // opened it (opened_by, stamped by the server) and History shows a
+  // per-seller total with the email — no guessing from names.
+  await fakeOwnerSession(page);
+  await page.goto('/surf-school/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof window.sellerSummaryRows === 'function');
+  const out = await page.evaluate(() => {
+    PROFILE_NAMES.set('u1', 'Ana'); PROFILE_EMAILS.set('u1', 'ana@gotadaguasurf.com');
+    PROFILE_NAMES.set('u2', 'Rui');
+    const rows = [
+      { opened_by: 'u1', price_local: 25 }, { opened_by: 'u1', price_local: 30 }, { opened_by: 'u2', price_local: 15 },
+    ];
+    renderSellerSummary(rows);
+    return { rows: sellerSummaryRows(rows), html: document.getElementById('sellerSummary').textContent };
+  });
+  expect(out.rows[0]).toMatchObject({ name: 'Ana', email: 'ana@gotadaguasurf.com', n: 2, total: 55 });
+  expect(out.rows[1]).toMatchObject({ name: 'Rui', email: '', n: 1, total: 15 });
+  expect(out.html).toContain('ana@gotadaguasurf.com');
+  expect(out.html).toContain('€70');
+});

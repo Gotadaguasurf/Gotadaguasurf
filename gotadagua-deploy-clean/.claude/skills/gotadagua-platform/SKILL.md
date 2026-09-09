@@ -44,6 +44,15 @@ the Documents path before writing.
 | `/instructors` | Instructor hours | |
 
 **Locations** (slug → currency): `sri-lanka` LKR · `morocco` MAD · `portugal` EUR ·
+**Surf School rentals-only role** (9 Sep 2026): invite the person from the platform hub
+with the area "Surf School · Rentals" only (workspace `surf-school`, `can_edit=false`).
+They can create rentals and return/reopen boards; they cannot delete or change any
+value — the server enforces it (`supabase/surf-school-rentals-roles.sql`: DELETE needs
+`has_full_location_access`, a trigger rejects any other column change, and `opened_by`
+is forced to `auth.uid()` so a sale is always the seller's). Sales commissions come from
+`opened_by`: History shows "Vendas por pessoa" with the email. Giving "Surf School"
+(the full area) is what allows deleting.
+
 **HQ members see everything.** Miguel's rule (9 Sep 2026): anyone with access to the
 HQ workspace sees the real, complete numbers — `hq_invoices`, `internal_transfers`,
 `bookings` and, since that date, the whole `ledger_entries` table regardless of

@@ -426,6 +426,9 @@ main{padding:16px;max-width:640px;margin:0 auto}
         <option value="all">All time</option>
       </select>
     </div>
+    <!-- Vendas por pessoa — quem abriu cada rental recebe comissão de venda.
+         opened_by é gravado pelo servidor (auth.uid()), não pelo browser. -->
+    <div id="sellerSummary" style="margin-bottom:12px"></div>
     <div id="historyList"><div class="empty"><div class="empty-icon">⏳</div>Loading…</div></div>
   </div>
 </main>
@@ -448,6 +451,7 @@ let CURRENT_PAY = 'Cash';
 let CURRENT_RENTAL_TYPE = 'Same Day';
 let CURRENT_USER = null;
 let PROFILE_NAMES = new Map();
+const PROFILE_EMAILS = new Map();   // opened_by → email, for sales commissions
 // CAN_EDIT_HISTORY gates the Delete button on the History tab and any
 // after-the-fact edit paths. Only staff with full Surf School access
 // (workspace_memberships.can_edit=true) get these. The "Rentals only"
@@ -869,7 +873,7 @@ async function loadRentals(){
   if (missing.length) {
     try {
       const { data: profs } = await sb.from('platform_profiles').select('id, full_name, email').in('id', missing);
-      (profs||[]).forEach(p => PROFILE_NAMES.set(p.id, p.full_name || p.email || 'Unknown'));
+      (profs||[]).forEach(p => { PROFILE_NAMES.set(p.id, p.full_name || p.email || 'Unknown'); if (p.email) PROFILE_EMAILS.set(p.id, p.email); });
       missing.forEach(id => { if (!PROFILE_NAMES.has(id)) PROFILE_NAMES.set(id, 'Unknown'); });
     } catch { missing.forEach(id => PROFILE_NAMES.set(id, 'Unknown')); }
   }
@@ -1001,6 +1005,36 @@ function renderOpen(){
   }
 }
 
+// Sales by person for the filtered window — the basis for sales commissions.
+// Keyed on opened_by (stamped server-side), shown with the email so payroll
+// can match it without guessing names.
+function sellerSummaryRows(rows){
+  const by = new Map();
+  rows.forEach(r => {
+    const k = r.opened_by || 'unknown';
+    const v = by.get(k) || { uid:k, n:0, total:0 };
+    v.n += 1; v.total += Number(r.price_local || 0);
+    by.set(k, v);
+  });
+  return [...by.values()].sort((a,b) => b.total - a.total).map(v => ({
+    ...v,
+    name: PROFILE_NAMES.get(v.uid) || 'Unknown',
+    email: PROFILE_EMAILS.get(v.uid) || ''
+  }));
+}
+function renderSellerSummary(rows){
+  const box = document.getElementById('sellerSummary'); if (!box) return;
+  const sellers = sellerSummaryRows(rows);
+  if (!sellers.length) { box.innerHTML = ''; return; }
+  const tot = sellers.reduce((s,v) => s + v.total, 0);
+  box.innerHTML = `<div class="card" style="padding:12px 14px">
+    <div style="font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:700;margin-bottom:8px">Vendas por pessoa · ${rows.length} entradas · €${tot.toFixed(0)}</div>
+    ${sellers.map(v => `<div style="display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-top:1px solid var(--border);font-size:13px">
+      <div><strong>${escapeHtml(v.name)}</strong>${v.email?`<div style="font-size:11px;color:var(--muted)">${escapeHtml(v.email)}</div>`:''}</div>
+      <div style="text-align:right;white-space:nowrap"><strong>€${v.total.toFixed(0)}</strong><div style="font-size:11px;color:var(--muted)">${v.n} venda${v.n===1?'':'s'}</div></div>
+    </div>`).join('')}
+  </div>`;
+}
 function renderHistory(){
   const kindF = document.getElementById('filt_kind')?.value || 'all';
   const periodF = document.getElementById('filt_period')?.value || 'week';
@@ -1019,6 +1053,7 @@ function renderHistory(){
     return true;
   });
   const list = document.getElementById('historyList');
+  renderSellerSummary(rows);
   if (!rows.length) {
     list.innerHTML = `<div class="empty"><div class="empty-icon">📖</div>Nothing in this window.</div>`;
     return;
@@ -1037,8 +1072,9 @@ function renderHistory(){
       ? `Returned ${new Date(r.closed_at).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}${closedBy?` by ${escapeHtml(closedBy)}`:''}`
       : '';
     // Delete action — only for full-access staff. Rentals-only role
-    // never sees this button (server-side RLS also blocks the delete,
-    // so a manipulated request can't slip through either).
+    // never sees this button, and since 9 Sep 2026 the server refuses it
+    // too: DELETE needs has_full_location_access and a trigger blocks any
+    // change other than return/reopen (supabase/surf-school-rentals-roles.sql).
     const delBtn = CAN_EDIT_HISTORY
       ? `<button class="btn danger" style="margin-top:10px" onclick="deleteRental('${r.id}', '${escapeAttr(r.student_name)}')">🗑 Delete entry</button>`
       : '';
@@ -1049,7 +1085,7 @@ function renderHistory(){
       </div>
       <div class="rr-item">${escapeHtml(r.item_name)}${r.qty!=1?` · ${r.qty}x`:''} · ${escapeHtml(r.payment_method||'—')}</div>
       <div class="rr-meta">
-        <span>By <strong>${escapeHtml(staff)}</strong></span>
+        <span>By <strong>${escapeHtml(staff)}</strong>${PROFILE_EMAILS.get(r.opened_by)?` <span style="color:var(--muted)">· ${escapeHtml(PROFILE_EMAILS.get(r.opened_by))}</span>`:''}</span>
         ${closedInfo?`<span>${closedInfo}</span>`:''}
         <span class="rr-price">${escapeHtml(r.currency||'EUR')} ${Number(r.price_local||0).toFixed(0)}</span>
       </div>
