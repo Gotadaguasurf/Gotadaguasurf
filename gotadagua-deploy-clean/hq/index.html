@@ -599,11 +599,12 @@ async function renderOverview(){
   const [bkRowsAll, invRowsAll, lgRowsAll] = await Promise.all([
     fetchAllPaged(() => sb.from('bookings').select('total, net_amount, commission_amount, partner_name, booking_type, month_key, pax, location, check_in_on').order('check_in_on', {ascending:true})),
     fetchAllPaged(() => sb.from('hq_invoices').select('location_slug, amount_eur, category_id, invoice_date').is('deleted_at', null).order('invoice_date', {ascending:false})),
-    fetchAllPaged(() => sb.from('ledger_entries').select('type, amount_eur, entry_date, paid_from, attributed_location, location_id').order('entry_date', {ascending:false}))
+    fetchAllPaged(() => sb.from('ledger_entries').select('type, amount_eur, entry_date, paid_from, attributed_location, location_id, source_kind').order('entry_date', {ascending:false}))
   ]);
   const bkRows  = isAll ? bkRowsAll : bkRowsAll.filter(r => r.month_key === period);
   const invRows = invRowsAll.filter(r => isAll || String(r.invoice_date||'').slice(0,7) === period);
-  const lgRows  = lgRowsAll.filter(r => isAll || String(r.entry_date||'').slice(0,7) === period);
+  // Rows mirrored from hq_invoices (source_kind='hq_invoice') are already counted as HQ invoices — never twice.
+  const lgRows  = lgRowsAll.filter(r => r.source_kind !== 'hq_invoice' && (isAll || String(r.entry_date||'').slice(0,7) === period));
 
   // ── BL KPIs — same formula as /partners renderKPIs() ───────────────
   const isDirect = (b) => !b.partner_name || b.booking_type === 'direct';
@@ -687,7 +688,7 @@ async function renderOverview(){
     if (personalCatIds.has(r.category_id)) return;
     bumpMonth(String(r.invoice_date||'').slice(0,7), 'hqExp', r.amount_eur);
   });
-  lgRowsAll.forEach(r => {
+  lgRowsAll.filter(r => r.source_kind !== 'hq_invoice').forEach(r => {
     const m = String(r.entry_date||'').slice(0,7);
     if (r.type === 'revenue') bumpMonth(m, 'locRev', r.amount_eur);
     else if (r.type === 'expense') bumpMonth(m, 'locExp', r.amount_eur);
@@ -4176,7 +4177,7 @@ async function loadPnlData(){
   const personalCatIds = new Set(CATEGORIES.filter(c => c.is_personal).map(c => c.id));
   const [books, ledger, invoices] = await Promise.all([
     fetchAllPaged(() => sb.from('bookings').select('location, month_key, total, net_amount').order('check_in_on',{ascending:true})),
-    fetchAllPaged(() => sb.from('ledger_entries').select('type, amount_eur, entry_date, attributed_location, paid_from, location_id').order('entry_date',{ascending:false})),
+    fetchAllPaged(() => sb.from('ledger_entries').select('type, amount_eur, entry_date, attributed_location, paid_from, location_id, source_kind').order('entry_date',{ascending:false})),
     fetchAllPaged(() => sb.from('hq_invoices').select('amount_eur, location_slug, invoice_date, category_id').is('deleted_at', null).order('invoice_date',{ascending:false})),
   ]);
   // Income rows from the POS often carry only paid_from / location_id —
@@ -4197,7 +4198,7 @@ async function loadPnlData(){
     const v = Number(b.net_amount != null ? b.net_amount : b.total) || 0;
     bump(slug, b.month_key, 'revBook', v);
   });
-  (ledger||[]).forEach(l => {
+  (ledger||[]).filter(l => l.source_kind !== 'hq_invoice').forEach(l => {
     const m = String(l.entry_date||'').slice(0,7);
     const v = Number(l.amount_eur)||0;
     // The POS and the camp-hub write type='revenue'; 'income' is the legacy value.

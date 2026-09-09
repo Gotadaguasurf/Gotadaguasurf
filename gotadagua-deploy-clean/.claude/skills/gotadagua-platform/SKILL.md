@@ -68,6 +68,18 @@ Bookinglayer location text to `locations`; Kids Camp counts as junior-camp). Cam
 and bar staff read none. `hq_invoice_audit` is HQ-only. The proof is the per-user
 simulation (`set local role authenticated` + `request.jwt.claims`).
 
+**HQ invoices are mirrored into each camp's ledger** (9 Sep 2026,
+`supabase/hq-invoices-mirror-to-ledger.sql`). A trigger on `hq_invoices` writes/updates/
+removes one `ledger_entries` row per invoice (`source_kind='hq_invoice'`, `paid_from='hq'`,
+`payment_method='HQ Paid'`, `hq_invoice_id` link) for its `location_slug` (kids-camp →
+junior-camp). Excluded: location `general`, soft-deleted, duplicates, personal categories,
+and **Pedro Barata** (Miguel: Floriane must not see his salary). The camp-hub shows them
+with a "Pago pelo HQ" badge and a lock — they are edited only in the HQ (a DB guard refuses
+any other write) and the hub never pushes them back. They count in the camp's "Total
+spent" and per-area costs but not in the Bank/Cash drawers ('HQ Paid' is neither Cash nor
+Bank Transfer). The HQ ignores `source_kind='hq_invoice'` ledger rows so nothing counts
+twice. Adding an invoice in the HQ is enough — it lands in the camp automatically.
+
 **HQ members see everything.** Miguel's rule (9 Sep 2026): anyone with access to the
 HQ workspace sees the real, complete numbers — `hq_invoices`, `internal_transfers`,
 `bookings` and, since that date, the whole `ledger_entries` table regardless of
