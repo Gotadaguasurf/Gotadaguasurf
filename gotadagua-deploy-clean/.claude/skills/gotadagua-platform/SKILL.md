@@ -36,7 +36,7 @@ the Documents path before writing.
 | `/` | Login + app hub + **Settings → Team Access** (invites) | `index.html` at repo root |
 | `/camp-hub` | Per-location ops: Overview, Camp Tab (POS), Operations Ledger, Weekly P&L | location via `?location=<slug>` |
 | `/camp-hub/camp-tab-inner.html` | The POS itself, **an iframe** inside camp-hub | ⚠️ see POS trap below |
-| `/surf-school` | Mobile-first board/wetsuit rental check-in, with the customer NIF for the receipt — **rentals only, no lessons** (Miguel, 9 Sep 2026) | own app, embeds in camp-hub via `?embedded=1` |
+| `/surf-school` | Mobile-first board/wetsuit rental check-in — **rentals only, no lessons, no NIF** (Miguel, 9 Sep 2026) | own app, embeds in camp-hub via `?embedded=1` |
 | `/hq` | Consolidated finance: profit per location, Despesas HQ (invoices + AI extract), cash flow per company | owner-facing |
 | `/crm` | B2B outreach: contacts, pipeline, templates, drip campaigns, shared Gmail | see `references/crm-email.md` |
 | `/prices` | Pricing catalog per location — **the master source for POS menus** | |

@@ -253,8 +253,7 @@ main{padding:16px;max-width:640px;margin:0 auto}
     <div class="card">
       <!-- Kind segment removed — Miguel confirmed the school only takes
            rentals through this form (lessons + activities aren't billed
-           this way — confirmed again 9 Sep 2026). The customer NIF is
-           taken here because the rental receipt needs it. -->
+           this way — confirmed again 9 Sep 2026, and no NIF either). -->
 
       <div class="grid2">
         <div class="field">
@@ -270,16 +269,9 @@ main{padding:16px;max-width:640px;margin:0 auto}
         <strong id="returnPreviewTxt">Return by —</strong>
         <span id="returnPreviewHint" style="color:var(--muted);font-weight:500"> · staff will know if the student went over</span>
       </div>
-      <div class="grid2">
-        <div class="field">
-          <label>Student name</label>
-          <input id="fld_name" type="text" placeholder="e.g. Ana Costa" autocomplete="off" autocapitalize="words" inputmode="text">
-        </div>
-        <div class="field">
-          <label>NIF <span style="font-weight:500;color:var(--muted)">· for the receipt</span></label>
-          <input id="fld_nif" type="text" inputmode="numeric" placeholder="123 456 789" maxlength="12" autocomplete="off" oninput="checkNif()">
-          <div class="hint" id="nifHint" style="display:none;margin-top:6px"></div>
-        </div>
+      <div class="field">
+        <label>Student name</label>
+        <input id="fld_name" type="text" placeholder="e.g. Ana Costa" autocomplete="off" autocapitalize="words" inputmode="text">
       </div>
 
       <!-- Email + ID collapsed by default. Most rentals don't need them;
@@ -870,7 +862,7 @@ function updateReturnPreview(){
 // ── Rentals ──────────────────────────────────────────────────────
 async function loadRentals(){
   const { data, error } = await sb.from('surf_school_rentals')
-    .select('id, kind, student_name, student_email, id_card_number, nif, item_id, item_name, qty, price_local, currency, payment_method, opened_at, opened_by, closed_at, closed_by, is_returned, ledger_entry_id, terms_accepted, customer_type, rental_type, duration, items, start_time, expected_return_at')
+    .select('id, kind, student_name, student_email, id_card_number, item_id, item_name, qty, price_local, currency, payment_method, opened_at, opened_by, closed_at, closed_by, is_returned, ledger_entry_id, terms_accepted, customer_type, rental_type, duration, items, start_time, expected_return_at')
     .eq('location_id', LOCATION_ID)
     .order('opened_at', { ascending:false })
     .limit(500);
@@ -975,7 +967,6 @@ function renderOpen(){
       <div class="rr-meta">
         <span>Given by <strong>${escapeHtml(staff)}</strong></span>
         ${r.id_card_number?`<span>ID ${escapeHtml(r.id_card_number)}</span>`:''}
-        ${r.nif?`<span>NIF ${escapeHtml(r.nif)}</span>`:''}
         <span class="rr-price">${escapeHtml(r.currency||'EUR')} ${Number(r.price_local||0).toFixed(0)}</span>
       </div>
       <div class="rr-actions">
@@ -1103,8 +1094,6 @@ async function saveEntry(){
   const name  = document.getElementById('fld_name').value.trim();
   const email = document.getElementById('fld_email').value.trim() || null;
   const idCard= document.getElementById('fld_id').value.trim() || null;
-  const nifCheck = validNif(document.getElementById('fld_nif')?.value);
-  const nif   = nifCheck.nif;
   const price = Number(document.getElementById('fld_price').value) || 0;
   const terms = document.getElementById('fld_terms').checked;
 
@@ -1134,7 +1123,7 @@ async function saveEntry(){
   if (!document.getElementById('fld_customer_type').value) {
     toast('Pick a customer type', 'err'); return;
   }
-  if (!nifCheck.ok) { toast(`NIF inválido (${nifCheck.reason}) — corrige ou deixa vazio`, 'err'); return; }
+
   if (!(price > 0)) { toast('Amount must be > 0', 'err'); return; }
   if (!terms) { toast('Confirm terms accepted', 'err'); return; }
 
@@ -1187,7 +1176,6 @@ async function saveEntry(){
     student_name: name,
     student_email: email,
     id_card_number: idCard,
-    nif,
     item_id: primaryItem.item_id,
     item_name: itemName,
     qty,
@@ -1338,7 +1326,6 @@ function clearForm(){
   document.getElementById('fld_name').value = '';
   document.getElementById('fld_email').value = '';
   document.getElementById('fld_id').value = '';
-  const nifEl = document.getElementById('fld_nif'); if (nifEl) { nifEl.value = ''; checkNif(); }
   document.getElementById('fld_price').value = '';
   document.getElementById('fld_terms').checked = false;
   document.querySelectorAll('.item-cb').forEach(cb => cb.checked = false);

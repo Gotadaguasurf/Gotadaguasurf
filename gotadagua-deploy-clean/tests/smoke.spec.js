@@ -85,7 +85,6 @@ test('surf-school pricing matrix matches the price card', async ({ page }) => {
       summerStandard: window.studentSummerSurcharge('Standard', 'Board + Wetsuit', '2026-07-15'),
       erasmusBoard1h: t('Erasmus / Student', 'Board', '1H'),
       packs: Object.fromEntries(LESSON_PACKS['Erasmus surf lessons'].map(p => [p.key, p.price])),
-      nifOk: window.validNif('123 456 789').ok, nifBad: window.validNif('123456780').ok, nifEmpty: window.validNif('').ok,
     };
   });
   expect([cases.bw1h, cases.bw2h, cases.bwDay]).toEqual([20, 25, 30]);
@@ -101,7 +100,6 @@ test('surf-school pricing matrix matches the price card', async ({ page }) => {
   expect([cases.summer, cases.offSeason, cases.summerStandard]).toEqual([5, 0, 0]);
   expect(cases.erasmusBoard1h).toBe(15);           // Standard fallback for Board only
   expect(cases.packs).toEqual({ '1': 20, '5': 90, '10': 160, friends: 25 });
-  expect([cases.nifOk, cases.nifBad, cases.nifEmpty]).toEqual([true, false, true]);
 });
 
 // Live pricing overrides: /prices "Surf Pack" rows override matrix cells

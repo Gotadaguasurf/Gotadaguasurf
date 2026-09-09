@@ -135,9 +135,9 @@ for at the counter. The Resident tier (15 / 25) is not on the new card and was l
 was — Miguel to confirm.
 
 The form is **rentals only** — Miguel confirmed on 9 Sep 2026 that lessons are not
-checked in here (the lesson packs live only in the Prices seed). It takes the customer's **NIF** (column
-`surf_school_rentals.nif`, optional; a 9-digit number must pass the Portuguese check
-digit or the save refuses it). The hardcoded matrix in the page is the fallback; the
+checked in here (the lesson packs live only in the Prices seed) and asked for **no NIF
+field** either (a `nif` column exists on `surf_school_rentals` but nothing writes it).
+The hardcoded matrix in the page is the fallback; the
 live values are the `Surf Pack` / `Lesson` rows for `surf-school` in `pricing_catalog`,
 re-seeded from `supabase/seed-surf-school-prices.sql` whenever the card changes (row
 names carry the duration: `… — 3 days (Standard)`, `… — 1 week (Standard)`).
