@@ -393,3 +393,6 @@ statement block by block (a block starts with two dates; its first "x,xx M D" li
 amount; amounts use non-breaking spaces) — 611 movements, 87.294,87 + 13.384,29 = 100.679,16
 to the cent. In the Excel, Jackie's salary is typed "2.167.13" (text) — read it as 2.167,13
 MAD, not zero; the 20 date-less rows are empty formula residue.
+Morocco payees in the SG statement: **Ramou Lamia = riad rent to the owner (1.500 MAD/month, plus
+utilities), never a salary**; Bouzit Fatima / Najat Chhaib / Konne Nohayla / Radmi Othmane = staff
+salaries; Oubella = staff-house rent; Bouysalday = food.
