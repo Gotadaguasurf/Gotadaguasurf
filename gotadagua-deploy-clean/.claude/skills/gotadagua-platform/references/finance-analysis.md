@@ -365,3 +365,23 @@ Transfer'` even where the Excel said "Cash", otherwise the bank drawer drifts by
 2026; before that Sri Lanka (1.119 rows) lost the start of January.
 Everything before 2026 in `hq_invoices` (17 rows, €7.797) was soft-deleted on
 9 Sep 2026 — Miguel wants only 2026 in the app.
+
+
+## Morocco bank (Société Générale, MGPR, account …9665725) — 10 Sep 2026
+
+Export is a PDF "Historique"; amounts use non-breaking spaces ("15 250,00 M D"). Credits
+`RPTFIN … RAPATRIEMENT FINANCIER … DE EUR x D ORDRE DE WATER MOVEMENTS` are the remittances
+from Portugal (arrive 4–10 days after the Santander debit, minus ~0,4 % fees). In 2026 the
+Santander transfers 4.000 / 24.480 / 24.800 / 16.000 / 9.600 / 12.000 all arrived; the
+**€9.120 of 10 Apr 2026 never arrived in Morocco nor in Sri Lanka** — parked in
+`hq_invoices` as needs_review (location general) until the beneficiary is read in the
+homebanking; it is no longer an internal transfer. The bank also received €92.282 from
+Water between Dec 2025 and Mar 2026 that did not leave the Santander (CGD?) and €26.800 on
+5 Jun ("cession de devises") of unknown origin — not in the app yet.
+**Mauresk Services FZE (Dubai) = the Riad Dlim rent "paid in Dubai"**, half-yearly
+(≈ €13.6k = 146.560 MAD): June's is in hq_invoices, December's came from another account.
+The Excel "Morroco EXPENSES" (Nov 2025–18 May 2026) misses ~770k MAD of bank transfers to
+contractors and the staff-house rent (16.000/month, Said Oubella); salaries there are
+2.300 where the bank pays 3.193. Import plan (not done): Excel for cash + descriptions up to
+23 Apr, bank for transfers/cards, May only from the camp-hub, Nov+Dec dated 1 Jan 2026,
+Barata never named.
