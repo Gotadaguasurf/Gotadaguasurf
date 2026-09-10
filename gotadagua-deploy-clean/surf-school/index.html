@@ -531,8 +531,10 @@ async function boot(){
   updateReturnPreview();
   // Preview the Regular price for the default combo/duration so the
   // amount doesn't sit at 0 until staff opens the customer dropdown.
-  recalcRentalTotal();
-  await loadCatalog();
+  try { recalcRentalTotal(); } catch (e) { console.warn('[SurfSchool] price preview failed', e); }
+  // The rentals list is the job of this page. Prices are a nice-to-have:
+  // if the catalog step fails for any reason it must not stop the list.
+  try { await loadCatalog(); } catch (e) { console.warn('[SurfSchool] catalog failed', e); toast('Prices could not be loaded — using the built-in price card', 'err'); }
   await loadRentals();
   renderOpen();
   subscribeRealtime();
@@ -604,8 +606,12 @@ function renderItemPicker(){
   const items = CATALOG.filter(kindGuess);
 
   if (CURRENT_KIND === 'rental') {
-    // Multi-select: staff can tick Board + Wetsuit + …, price adds up.
+    // The rental form uses the price matrix + chips, not a catalog picker
+    // (fld_items_multi was removed in the mobile UX pass). Nothing to draw.
+    // This used to throw on a missing element and abort boot() before
+    // loadRentals() — every page load showed "No boards out" (10 Sep 2026).
     const box = document.getElementById('fld_items_multi');
+    if (!box) return;
     box.innerHTML = items.length
       ? items.map(c => `<label style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;margin-bottom:6px;cursor:pointer;background:#fff">
           <input type="checkbox" class="item-cb" data-id="${c.id}" data-price="${c.sell_price}" data-cur="${c.currency||'EUR'}" data-name="${escapeHtml(c.name)}" onchange="recalcRentalTotal()" style="width:20px;height:20px;accent-color:var(--ocean)">
@@ -618,6 +624,7 @@ function renderItemPicker(){
   } else {
     // Lessons / activities keep the single-select dropdown.
     const sel = document.getElementById('fld_item');
+    if (!sel) return;
     sel.innerHTML = items.length
       ? items.map(c => `<option value="${c.id}" data-price="${c.sell_price}" data-cur="${c.currency||'EUR'}" data-name="${escapeHtml(c.name)}">${escapeHtml(c.name)} · ${c.currency||'EUR'} ${Number(c.sell_price).toFixed(0)}</option>`).join('')
       : `<option value="">(no items in catalog for this type — add in Prices app)</option>`;

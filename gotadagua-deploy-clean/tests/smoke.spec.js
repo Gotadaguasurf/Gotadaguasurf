@@ -923,3 +923,24 @@ test('surf-school: history sums sales per seller with their email', async ({ pag
   expect(out.html).toContain('ana@gotadaguasurf.com');
   expect(out.html).toContain('€70');
 });
+
+
+test('surf-school: the catalog step can never hide the rentals list', async ({ page }) => {
+  // 10 Sep 2026: renderItemPicker wrote into #fld_items_multi, an element
+  // removed long ago. It threw on every boot, before loadRentals() ran, so
+  // opening the page always showed "No boards out" until a rental was
+  // created. The picker now tolerates missing elements and boot() shields
+  // the list from any catalog failure.
+  await fakeOwnerSession(page);
+  await page.goto('/surf-school/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof window.renderItemPicker === 'function');
+  const out = await page.evaluate(() => {
+    let err = null;
+    try { CATALOG = [{ id: 'x', name: 'Board & Wetsuit — 2h (Standard)', category: 'Surf Pack', sell_price: 25, currency: 'EUR', active: true }]; renderItemPicker(); applyLivePricing(); } catch (e) { err = e.message; }
+    const bootSrc = boot.toString();
+    return { err, shielded: /try\s*\{\s*await loadCatalog\(\)/.test(bootSrc), loadsRentalsAfter: bootSrc.indexOf('await loadRentals()') > bootSrc.indexOf('loadCatalog()') };
+  });
+  expect(out.err).toBeNull();
+  expect(out.shielded).toBe(true);
+  expect(out.loadsRentalsAfter).toBe(true);
+});
