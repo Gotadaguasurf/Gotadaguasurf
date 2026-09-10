@@ -373,9 +373,11 @@ Export is a PDF "Historique"; amounts use non-breaking spaces ("15 250,00 M D").
 `RPTFIN … RAPATRIEMENT FINANCIER … DE EUR x D ORDRE DE WATER MOVEMENTS` are the remittances
 from Portugal (arrive 4–10 days after the Santander debit, minus ~0,4 % fees). In 2026 the
 Santander transfers 4.000 / 24.480 / 24.800 / 16.000 / 9.600 / 12.000 all arrived; the
-**€9.120 of 10 Apr 2026 never arrived in Morocco nor in Sri Lanka** — parked in
-`hq_invoices` as needs_review (location general) until the beneficiary is read in the
-homebanking; it is no longer an internal transfer. The bank also received €92.282 from
+**€9.120 of 10 Apr 2026 was sent to the MGPR account but bounced**: Saham Bank returned it
+and the Santander shows `TRF RECEBID …1303901…` +9.047,00 on 24 Apr plus €50,75 of
+`DESPESAS`. Real cost = fees only (48,31 + 73,00 + 50,75 = €172,06), booked in
+`hq_invoices` as Services. **Rule: when a non-SEPA transfer never shows up abroad, search the
+Santander for a credit carrying the same reference digits before calling it lost.** The bank also received €92.282 from
 Water between Dec 2025 and Mar 2026 that did not leave the Santander (CGD?) and €26.800 on
 5 Jun ("cession de devises") of unknown origin — not in the app yet.
 **Mauresk Services FZE (Dubai) = the Riad Dlim rent "paid in Dubai"**, half-yearly
@@ -385,3 +387,9 @@ contractors and the staff-house rent (16.000/month, Said Oubella); salaries ther
 2.300 where the bank pays 3.193. Import plan (not done): Excel for cash + descriptions up to
 23 Apr, bank for transfers/cards, May only from the camp-hub, Nov+Dec dated 1 Jan 2026,
 Barata never named.
+
+Reading rules that made the Morocco files close without a gap (10 Sep 2026): parse the SG
+statement block by block (a block starts with two dates; its first "x,xx M D" line is the
+amount; amounts use non-breaking spaces) — 611 movements, 87.294,87 + 13.384,29 = 100.679,16
+to the cent. In the Excel, Jackie's salary is typed "2.167.13" (text) — read it as 2.167,13
+MAD, not zero; the 20 date-less rows are empty formula residue.
