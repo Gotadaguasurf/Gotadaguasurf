@@ -147,3 +147,15 @@ drop trigger if exists tr_surf_rental_reopen_cleanup on public.surf_school_renta
 create trigger tr_surf_rental_reopen_cleanup
   after update on public.surf_school_rentals
   for each row execute function public.fn_surf_rental_reopen_cleanup();
+
+-- Apagar uma rental apaga a sua linha do ledger; o cascade ledger→rental não
+-- pode voltar a tocar na rental que está a ser apagada (erro 27000).
+create or replace function public.fn_surf_rental_delete_ledger()
+returns trigger language plpgsql security definer set search_path to 'public' as $$
+begin
+  if old.ledger_entry_id is not null then
+    perform set_config('app.hq_mirror','1',true);
+    delete from public.ledger_entries where id = old.ledger_entry_id;
+  end if;
+  return old;
+end $$;
