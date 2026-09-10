@@ -944,3 +944,33 @@ test('surf-school: the catalog step can never hide the rentals list', async ({ p
   expect(out.shielded).toBe(true);
   expect(out.loadsRentalsAfter).toBe(true);
 });
+
+
+test('surf-school: a fresh page load lists the open boards (end-to-end boot with stubbed Supabase)', async ({ page }) => {
+  // The one that matters to the shop: open the page, see the boards out.
+  // Every Supabase call boot() makes is answered here, so this runs the
+  // real boot path — session, location, edit rights, catalog, rentals.
+  const rentals = [
+    { id: 'r1', kind: 'rental', student_name: 'Agathe Foret', item_name: 'Board + Wetsuit', qty: 1, price_local: 20, currency: 'EUR', payment_method: 'Cash', opened_at: new Date(Date.now() - 40 * 60000).toISOString(), opened_by: 'u2', is_returned: false, customer_type: 'Standard', rental_type: 'Same Day', duration: '1H', expected_return_at: new Date(Date.now() + 20 * 60000).toISOString() },
+    { id: 'r2', kind: 'rental', student_name: 'Tanguy Cayzac', item_name: 'Board + Wetsuit', qty: 1, price_local: 20, currency: 'EUR', payment_method: 'Cash', opened_at: new Date(Date.now() - 35 * 60000).toISOString(), opened_by: 'u2', is_returned: false, customer_type: 'Standard', rental_type: 'Same Day', duration: '1H', expected_return_at: new Date(Date.now() + 25 * 60000).toISOString() },
+  ];
+  await page.route(/supabase\.co\/(auth|rest)\/v1\/.*/, async route => {
+    const url = route.request().url();
+    const json = (body) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    if (url.includes('/auth/v1/user')) return json({ id: 'u1', email: 'miguel@gotadaguasurf.com', aud: 'authenticated', role: 'authenticated' });
+    if (url.includes('/rest/v1/platform_profiles')) return json([{ id: 'u1', full_name: 'Miguel', email: 'miguel@gotadaguasurf.com' }, { id: 'u2', full_name: 'Lotte', email: 'lotte@example.com' }]);
+    if (url.includes('/rest/v1/locations')) return json({ id: 'loc-ss', name: 'Surf School', slug: 'surf-school' });
+    if (url.includes('/rest/v1/pricing_catalog')) return json([{ id: 'c1', name: 'Board & Wetsuit — 2h (Standard)', category: 'Surf Pack', sell_price: 25, currency: 'EUR', active: true, sort_order: 1 }]);
+    if (url.includes('/rest/v1/surf_school_rentals')) return json(rentals);
+    if (url.includes('/rest/v1/workspace_memberships')) return json({ can_edit: true, workspaces: { slug: 'surf-school' } });
+    return json([]);
+  });
+  const errs = []; page.on('pageerror', e => errs.push(e.message));
+  await fakeOwnerSession(page);
+  await page.goto('/surf-school/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => document.getElementById('openBadge')?.textContent === '2', null, { timeout: 8000 });
+  const names = await page.evaluate(() => [...document.querySelectorAll('#openList .rr-name')].map(n => n.textContent.trim()));
+  expect(names.join(' | ')).toContain('Agathe Foret');
+  expect(names.join(' | ')).toContain('Tanguy Cayzac');
+  expect(errs).toEqual([]);
+});
