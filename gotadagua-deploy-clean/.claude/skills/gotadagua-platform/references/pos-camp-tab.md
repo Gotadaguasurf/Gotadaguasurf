@@ -152,3 +152,10 @@ summed over `camp_weeks`, so a month with no weeks shows 0 guests: Sri Lanka's
 Jan–Jun 2026 weeks (Saturday → Friday) were backfilled as closed weeks with
 `meta.source = 'bookinglayer-backfill'`. Location labels: Surf Camp Ahangama,
 Tamraght Camp, Surf Camp Portugal, Junior/Kids Camp Caparica, Surf School Caparica.
+
+
+**Rental revenue lands in the ledger on return, not on creation** (Miguel, 10 Sep 2026,
+`supabase/surf-school-revenue-on-return.sql`). Creating a rental writes nothing to
+`ledger_entries`; marking it returned creates the revenue row (dated the return day),
+and "Reopen" removes it again. Lessons/activities still post on creation. Open rentals
+are therefore not revenue yet — the Rentals tab (Open) is the place to see them.
