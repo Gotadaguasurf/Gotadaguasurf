@@ -159,3 +159,11 @@ Tamraght Camp, Surf Camp Portugal, Junior/Kids Camp Caparica, Surf School Capari
 `ledger_entries`; marking it returned creates the revenue row (dated the return day),
 and "Reopen" removes it again. Lessons/activities still post on creation. Open rentals
 are therefore not revenue yet — the Rentals tab (Open) is the place to see them.
+
+
+**Boot order in `/surf-school` is: session → location → edit rights → catalog → rentals.**
+Anything that throws before `loadRentals()` empties the Open tab on every page load
+while creating a rental still works (that path reloads the list) — which is how a
+missing `#fld_items_multi` hid all open boards for weeks until 10 Sep 2026. The catalog
+step is now wrapped in try/catch and the picker tolerates missing elements; keep it
+that way, and when "the list is empty but the DB has rows", suspect boot(), not RLS.
