@@ -167,3 +167,5 @@ while creating a rental still works (that path reloads the list) — which is ho
 missing `#fld_items_multi` hid all open boards for weeks until 10 Sep 2026. The catalog
 step is now wrapped in try/catch and the picker tolerates missing elements; keep it
 that way, and when "the list is empty but the DB has rows", suspect boot(), not RLS.
+
+**Full-day rentals are due back at 18:00** of the activity day (shop closing), not start + 8h (Miguel, 10 Sep 2026).

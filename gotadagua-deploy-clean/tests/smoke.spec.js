@@ -140,17 +140,21 @@ test('surf-school expected-return math', async ({ page }) => {
     document.getElementById('fld_start').value = '10:00';
     window.pickChip('fld_duration', '2H');
     const sameDay = window.computeExpectedReturn();
+    window.pickChip('fld_duration', 'Full day');
+    const fullDay = window.computeExpectedReturn();
     window.setRentalType('Multi-day');
     document.getElementById('fld_days').value = '3';
     const multi = window.computeExpectedReturn();
     return {
       sameDayReturn: sameDay ? sameDay.expected.toISOString() : null,
+      fullDayReturn: fullDay ? fullDay.expected.toISOString() : null,
       multiReturn: multi ? multi.expected.toISOString() : null,
     };
   });
 
   expect(result.sameDayReturn).toContain('2026-07-20T');
   expect(new Date(result.sameDayReturn).getHours()).toBe(12);
+  expect(new Date(result.fullDayReturn).getHours()).toBe(18);   // full day = until the shop closes at 18:00
   expect(result.multiReturn).toContain('2026-07-23T'); // +3 × 24h
 });
 

@@ -842,7 +842,13 @@ function computeExpectedReturn(){
     addMs = days * 24 * 60 * 60 * 1000;
   } else {
     const d = document.getElementById('fld_duration')?.value || '1H';
-    const hours = { '1H':1, '2H':2, 'Full day':8 }[d] || 1;
+    if (d === 'Full day') {
+      // Full day ends when the shop closes: 18:00 of the activity day
+      // (Miguel, 10 Sep 2026), whatever time the board went out.
+      const closing = new Date(`${dateStr}T18:00:00`);
+      return { start, expected: closing > start ? closing : start };
+    }
+    const hours = { '1H':1, '2H':2 }[d] || 1;
     addMs = hours * 60 * 60 * 1000;
   }
   return { start, expected: new Date(start.getTime() + addMs) };
