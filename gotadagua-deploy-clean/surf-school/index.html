@@ -1243,15 +1243,10 @@ async function saveEntry(){
 }
 
 async function closeRental(id, studentName){
-  // Two-step confirm — staff has to type the student's first name to
-  // confirm the board is really back. Prevents accidental returns.
-  const first = String(studentName || '').trim().split(/\s+/)[0] || '';
-  const typed = window.prompt(`Board back from ${studentName}?\n\nType "${first}" to confirm the return.`);
-  if (typed === null) return; // cancelled
-  if (String(typed).trim().toLowerCase() !== first.toLowerCase()) {
-    toast('Name didn\'t match — return cancelled', 'err');
-    return;
-  }
+  // One tap to confirm (Miguel, 10 Sep 2026). A return is reversible with
+  // "Reopen", so typing the name was friction without protection; the
+  // typed confirmation stays only on Delete, which is destructive.
+  if (!window.confirm(`Board back from ${studentName}?`)) return;
   const { error } = await sb.from('surf_school_rentals').update({ is_returned: true, closed_at: new Date().toISOString() }).eq('id', id);
   if (error) { toast('Close failed: '+error.message, 'err'); return; }
   toast('✓ Board returned', 'ok');
