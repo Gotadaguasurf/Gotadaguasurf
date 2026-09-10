@@ -95,3 +95,15 @@ which can invalidate it. Fix in GoDaddy DNS, then verify with mail-tester.com â€
 `email_campaign_stats` (view), `gmail_account`, `outreach_contacts`, `contacts`,
 `outreach_activity`, `outreach_sequences`, `outreach_sequence_runs`,
 `outreach_templates`, `pipelines`, `pipeline_stages`, `contact_pipeline`, `tasks`.
+
+
+## Follow-ups stay in the thread (10 Sep 2026)
+
+`openCompose` loads the company's latest `email_messages` row into `COMPOSE_THREAD`
+(subject without "Re:", Gmail `thread_id`, RFC message-id). `{{subject}}` in a template
+resolves to that subject; "Custom" pre-fills `Re: <last subject>`; and Send-now passes
+`threadId` / `inReplyTo` / `references` whenever the subject starts with "Re:", so the
+follow-up lands in the same Gmail conversation. **The signature is never typed into the
+body**: only the branded `signatureHtml` block goes out, and `wrapRichHtml` strips any
+plain-text signature lines left at the end of the editor (it was showing twice â€” text
+then image). The plain-text alternative still carries the text signature.

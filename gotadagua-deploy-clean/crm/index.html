@@ -2247,8 +2247,25 @@ document.addEventListener('paste', (e) => {
 
 // A formatted reply is already HTML; it needs the shell and the footer, not
 // the escaping buildEmailHtml does to plain text.
+// The branded signatureHtml block is always appended, so any copy of the
+// plain-text signature still sitting at the end of the editor is removed
+// first — otherwise the email carried both (text + image).
+function stripTextSignature(html, sender){
+  const sig = (sender?.signature || '').trim();
+  if(!sig) return html;
+  const lines = new Set(sig.split(/\r?\n/).map(l => l.replace(/\u00a0/g, ' ').trim()).filter(Boolean));
+  const tmp = document.createElement('div'); tmp.innerHTML = html;
+  const kids = [...tmp.childNodes];
+  for(let i = kids.length - 1; i >= 0; i--){
+    const n = kids[i];
+    const t = (n.textContent || '').replace(/\u00a0/g, ' ').trim();
+    if(!t || lines.has(t) || [...lines].some(l => l.length > 6 && t.includes(l))){ n.remove(); continue; }
+    break;
+  }
+  return tmp.innerHTML;
+}
 function wrapRichHtml(inner, sender){
-  return `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#1f2a44;line-height:1.5">${inner}<br><br>${signatureHtml(sender)}</div>`;
+  return `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#1f2a44;line-height:1.5">${stripTextSignature(inner, sender)}<br><br>${signatureHtml(sender)}</div>`;
 }
 
 // ── Attachments ─────────────────────────────────────────────────────
@@ -6618,7 +6635,8 @@ function queueDraftSave(){
   _draftTimer = setTimeout(saveComposeDraft, 400);
 }
 
-function openCompose(preselectTemplateId){
+async function openCompose(preselectTemplateId){
+  await loadComposeThread(CURRENT_CONTACT?.id);
   const c = CURRENT_CONTACT;
   const lang = c.language || 'en';
   const tplSelect = document.getElementById('composeTemplate');
@@ -6671,10 +6689,11 @@ function refreshComposePreview(){
   // still prefilled from the picked sender since almost every custom
   // email wants it anyway (delete if you don't).
   if(tplId === '__custom__'){
-    const sender = pickedSender('composeSendAs');
-    const sig = sender ? userSignatureFor(sender.id) : '';
-    subjEl.value = '';
-    bodyEl.innerHTML = textToRichHtml(sig ? '\n\n' + sig : '');
+    // Follow-up by default: same subject as the last email, so it lands in
+    // the same Gmail thread. The signature is NOT typed into the body any
+    // more — the branded block is appended on send (it was showing twice).
+    subjEl.value = COMPOSE_THREAD?.subject ? `Re: ${COMPOSE_THREAD.subject}` : '';
+    bodyEl.innerHTML = textToRichHtml('');
     return;
   }
   const tpl = TEMPLATES.find(t=>t.id===tplId);
@@ -6683,7 +6702,7 @@ function refreshComposePreview(){
   // Picked sender drives {{my_*}} so the preview updates live when the
   // user changes the Send-as dropdown.
   const sender = pickedSender('composeSendAs');
-  subjEl.value = renderTemplate(tpl.subject, c, sender);
+  subjEl.value = renderTemplate(tpl.subject, c, sender).replace(/^\s*re:\s*$/i, '');
   bodyEl.innerHTML = textToRichHtml(renderTemplate(tpl.body, c, sender));
 }
 
@@ -6730,6 +6749,30 @@ function userSignature(){
 // Send-as picker can render the preview with Ricardo's name + signature
 // even though Miguel is logged in. When omitted (legacy callers), falls
 // back to CURRENT_TEAM_USER.
+// ── Follow-ups stay in the same email thread ─────────────────────────
+// The compose modal used to start a brand-new thread and left "Re:
+// {{subject}}" unresolved (João Maria, 10 Sep 2026). COMPOSE_THREAD holds
+// the company's latest email (subject, Gmail thread, RFC id) so {{subject}}
+// resolves and Send-now threads onto it whenever the subject starts with Re:.
+let COMPOSE_THREAD = null;
+async function loadComposeThread(companyId){
+  COMPOSE_THREAD = null;
+  if(!companyId) return null;
+  try{
+    const { data } = await getClient().from('email_messages')
+      .select('subject, thread_id, provider_msg_id, direction, sent_at, created_at')
+      .eq('company_id', companyId).not('thread_id', 'is', null)
+      .order('created_at', { ascending: false }).limit(1);
+    const m = (data || [])[0];
+    if(!m) return null;
+    const rfcId = (m.provider_msg_id || '').includes('@')
+      ? (m.provider_msg_id.startsWith('<') ? m.provider_msg_id : `<${m.provider_msg_id}>`)
+      : undefined;
+    COMPOSE_THREAD = { threadId: m.thread_id, rfcId, subject: String(m.subject || '').replace(/^\s*(re|fwd?)\s*:\s*/i, '').trim() };
+  }catch(e){ console.warn('[CRM] compose thread lookup failed', e); }
+  return COMPOSE_THREAD;
+}
+function composeThreadSubject(){ return COMPOSE_THREAD?.subject || ''; }
 function renderTemplate(text, c, senderUser){
   // {{first_name}} was previously falling back to the first WORD of the
   // company name when no real contact name existed — i.e. the email to
@@ -6753,6 +6796,7 @@ function renderTemplate(text, c, senderUser){
   const mySig = userSignatureFor(sender?.id);
   return text
     .replace(/\{\{company\}\}/g, c.company||'')
+    .replace(/\{\{subject\}\}/g, composeThreadSubject())
     .replace(/\{\{first_name\}\}/g, firstName)
     .replace(/\{\{greeting\}\}/g, greeting)
     .replace(/\{\{country\}\}/g, c.country||'')
@@ -6852,10 +6896,14 @@ document.getElementById('composeSendNow').addEventListener('click', async () => 
   const btn = document.getElementById('composeSendNow');
   btn.disabled = true; btn.style.opacity = '.6'; btn.textContent = 'Sending…';
   try {
+    const isReply = /^\s*re:/i.test(subj) && COMPOSE_THREAD?.threadId;
     await gmailSendOne({ to: recipient, subject: subj, body,
       html: document.getElementById('composePreview').innerHTML,
       attachments: PENDING_ATTACH.composePreview,
-      companyId: c.id, contactId: primary?.id || null, senderUserId: sender.id });
+      companyId: c.id, contactId: primary?.id || null, senderUserId: sender.id,
+      threadId: isReply ? COMPOSE_THREAD.threadId : undefined,
+      inReplyTo: isReply ? COMPOSE_THREAD.rfcId : undefined,
+      references: isReply ? COMPOSE_THREAD.rfcId : undefined });
     PENDING_ATTACH.composePreview = [];
     const cn = document.getElementById('composeAttachNote');
     if(cn) cn.textContent = attachNoteText('composePreview');

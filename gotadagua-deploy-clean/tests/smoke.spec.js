@@ -978,3 +978,25 @@ test('surf-school: a fresh page load lists the open boards (end-to-end boot with
   expect(names.join(' | ')).toContain('Tanguy Cayzac');
   expect(errs).toEqual([]);
 });
+
+
+test('crm: a follow-up keeps the thread subject and carries one signature only', async ({ page }) => {
+  // João Maria, 10 Sep 2026: a custom follow-up went out as "Re: {{subject}}",
+  // started a new Gmail thread, and showed the signature twice (typed text
+  // + branded block). Now {{subject}} resolves to the company's last email,
+  // Send-now threads onto it, and the typed signature is stripped.
+  await fakeOwnerSession(page);
+  await page.goto('/crm/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof window.wrapRichHtml === 'function' && typeof window.renderTemplate === 'function');
+  const out = await page.evaluate(() => {
+    COMPOSE_THREAD = { threadId: 't1', rfcId: '<abc@mail.gmail.com>', subject: 'Nova Surf Festival' };
+    const sender = { id: 'u1', full_name: 'João Maria André', email: 'groups@gotadaguasurf.com', signature: 'Best,\nJoão Maria André\nSales Manager at Gota Dagua Surf\n+351 917 744 363' };
+    const subj = renderTemplate('Re: {{subject}}', { id: 'c1', company: 'Nova Surf Club' }, sender);
+    const html = wrapRichHtml('<div>Hi team,</div><div>Any news?</div><div><br></div><div>Best,</div><div>João Maria André</div><div>Sales Manager at Gota Dagua Surf</div><div>+351 917 744 363</div>', sender);
+    return { subj, textSigCount: (html.match(/Sales Manager at Gota Dagua Surf/g) || []).length, keepsBody: html.includes('Any news?'), hasBranded: html.includes('<table') };
+  });
+  expect(out.subj).toBe('Re: Nova Surf Festival');
+  expect(out.keepsBody).toBe(true);
+  expect(out.hasBranded).toBe(true);
+  expect(out.textSigCount).toBe(0);       // the typed text signature is gone; only the branded block remains
+});
