@@ -396,3 +396,8 @@ MAD, not zero; the 20 date-less rows are empty formula residue.
 Morocco payees in the SG statement: **Ramou Lamia = riad rent to the owner (1.500 MAD/month, plus
 utilities), never a salary**; Bouzit Fatima / Najat Chhaib / Konne Nohayla / Radmi Othmane = staff
 salaries; Oubella = staff-house rent; Bouysalday = food.
+
+**Morocco rent rule (Miguel, 10 Sep 2026): rent is always what left the bank.** Riad Dlim 150.000 MAD
+(5 Dec) / 141.000 MAD (5 Jun) + the Dubai half via HQ (Mauresk); staff house Said Oubella 16.000
+MAD on the SG dates (30 Mar, 30 Apr, 5 Jun, 6 Jul, 6 Aug, 2 Sep); Ramou Lamia 1.500/month. The
+manual "Surf Camp Rent €4.600/month" accrual rows were deleted — never re-create monthly estimates.
