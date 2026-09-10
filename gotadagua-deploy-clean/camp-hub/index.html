@@ -1619,6 +1619,25 @@ const DELETED_CAMPCLOSE_KEY='hub_deleted_campclose_ids'+__HUB_LOC_SUFFIX;
 const HUB_LEDGER_TS_KEY='hub_ledger_ts'+__HUB_LOC_SUFFIX;
 let deletedCampcloseIds=new Set();
 let everInLedgerIds=new Set(); // tracks every campclose ID ever fetched from Supabase this session
+// Every ledger id this browser has ever received from Supabase for this
+// location. A cached row whose id is here but no longer on the server was
+// deleted elsewhere and must not be re-pushed. null = never hydrated.
+const HUB_LEDGER_SEEN_KEY='hub_ledger_seen_ids'+__HUB_LOC_SUFFIX;
+function loadSeenLedgerIds(){
+  try{
+    const raw=localStorage.getItem(HUB_LEDGER_SEEN_KEY);
+    if(raw===null) return null;
+    const arr=JSON.parse(raw);
+    return new Set(Array.isArray(arr)?arr.map(String):[]);
+  }catch(_e){ return null; }
+}
+function saveSeenLedgerIds(ids){
+  try{
+    const prev=loadSeenLedgerIds()||new Set();
+    ids.forEach(id=>prev.add(String(id)));
+    localStorage.setItem(HUB_LEDGER_SEEN_KEY,JSON.stringify([...prev]));
+  }catch(_e){}
+}
 // Local currency + default FX rate are set per location. They start with the
 // Sri Lanka defaults so existing call sites keep working unchanged, then get
 // overwritten by applyLocationCurrency() after the location row is fetched.
@@ -2808,31 +2827,52 @@ async function hydrateLedgerFromSupabase({mergeLocal=true}={}){
     // transport across the tours in the zone. Await so the very first
     // Overview render already has the zones — no visual flicker.
     try{ await loadTourZones(); }catch(_e){}
-    if(mergeLocal&&Array.isArray(S.ledger)&&S.ledger.length){
-      try{
-        await pushLedgerEntriesToSupabase(S.ledger);
-      }catch(error){
-        handleLedgerSupabaseError('initial ledger push failed',error);
-      }
-    }
     // PostgREST caps a select at 1000 rows. Sri Lanka crossed that on 9 Sep
     // 2026 (1.119 rows) and the hub silently lost the oldest 119 — January's
     // bar showed two weeks instead of five. Page through, with `id` as the
     // final tiebreak so no page repeats or skips a row.
-    const data=[];
-    for(let page=0;page<200;page++){
-      const from=page*1000;
-      const { data:chunk,error } = await client
-        .from('ledger_entries')
-        .select(LEDGER_DB_SELECT)
-        .eq('location_id',locationId)
-        .order('entry_date',{ascending:false})
-        .order('created_at',{ascending:false})
-        .order('id',{ascending:true})
-        .range(from,from+999);
-      if(error) throw error;
-      data.push(...(chunk||[]));
-      if(!chunk||chunk.length<1000) break;
+    async function fetchAllLedgerRows(){
+      const out=[];
+      for(let page=0;page<200;page++){
+        const from=page*1000;
+        const { data:chunk,error } = await client
+          .from('ledger_entries')
+          .select(LEDGER_DB_SELECT)
+          .eq('location_id',locationId)
+          .order('entry_date',{ascending:false})
+          .order('created_at',{ascending:false})
+          .order('id',{ascending:true})
+          .range(from,from+999);
+        if(error) throw error;
+        out.push(...(chunk||[]));
+        if(!chunk||chunk.length<1000) break;
+      }
+      return out;
+    }
+    let data=await fetchAllLedgerRows();
+    // Supabase is the source of truth. Until 10 Sep 2026 this pushed the whole
+    // local cache back to the DB before reading it, so a row deleted or edited
+    // on the server (another computer, a SQL correction) came back on the next
+    // boot from any browser that still cached the old copy — exactly the bug
+    // the monthly-profile hydrate below already documents. Now only rows that
+    // this browser created and never managed to sync (not on the server, never
+    // seen from the server) are pushed; everything else the server decides.
+    if(mergeLocal&&Array.isArray(S.ledger)&&S.ledger.length){
+      const seen=loadSeenLedgerIds();
+      const firstRun=seen===null;
+      const serverIds=new Set(data.map(r=>String(r?.id||'')));
+      const offlineOnly=firstRun?[]:S.ledger.filter(e=>{
+        const id=String(e?.id||'');
+        return id&&!serverIds.has(id)&&!seen.has(id);
+      });
+      if(offlineOnly.length){
+        try{
+          await pushLedgerEntriesToSupabase(offlineOnly);
+          data=await fetchAllLedgerRows();
+        }catch(error){
+          handleLedgerSupabaseError('initial ledger push failed',error);
+        }
+      }
     }
     if(!__ovBookingsFromDb) ovLoadBookingsFromSupabase().catch(e=>console.warn('[Hub] bookings',e));
     // Ghost campclose check: rows the user (or another computer) intentionally
@@ -2858,6 +2898,7 @@ async function hydrateLedgerFromSupabase({mergeLocal=true}={}){
       .map(dbRowToLedgerEntry).filter(Boolean);
     // Track every campclose ID ever seen from Supabase so reconcile can detect intentional deletions
     (data||[]).forEach(row=>{ if(String(row.id||'').startsWith('campclose_')) everInLedgerIds.add(row.id); });
+    saveSeenLedgerIds((data||[]).map(r=>String(r?.id||'')).filter(Boolean));
     save_mem(); // only persist locally — don't re-trigger location_state_store write
     HUB_LEDGER_HYDRATED=true;
     return true;

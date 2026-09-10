@@ -1000,3 +1000,52 @@ test('crm: a follow-up keeps the thread subject and carries one signature only',
   expect(out.hasBranded).toBe(true);
   expect(out.textSigCount).toBe(0);       // the typed text signature is gone; only the branded block remains
 });
+
+
+test('camp-hub: boot takes the ledger from Supabase and pushes nothing back (server is the source of truth)', async ({ page }) => {
+  // 10 Sep 2026: rent rows corrected by SQL must not be undone by a browser
+  // boot. The hub's localStorage is an in-memory shim, so the only way a
+  // stale row could come back is the boot-time push of S.ledger; that push
+  // now only sends rows the browser created and never synced — never a row
+  // the server already decided about. Proven end-to-end with a stubbed
+  // Supabase: two rows on the server, none locally → no POST, both rendered.
+  const row = (id) => ({ id, location_id: 'loc-mo', type: 'expense', category: 'Rent', description: id, payment_method: 'Bank Transfer', qty: 1, amount_local: 16000, currency: 'MAD', entry_date: '2026-06-05', business_area: 'Utilities', fx_rate: 10.7, amount_eur: 1495.33, source_kind: 'manual', paid_from: 'morocco', attributed_location: 'morocco', created_at: '2026-06-05T10:00:00Z' });
+  const A = '11111111-1111-4111-8111-111111111111', B = '22222222-2222-4222-8222-222222222222';
+  const writes = [];
+  await page.route(/supabase\.co\/(auth|rest)\/v1\/.*/, async route => {
+    const req = route.request(); const url = req.url();
+    const json = (body) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    if (url.includes('/auth/v1/user')) return json({ id: 'u1', email: 'miguel@gotadaguasurf.com', aud: 'authenticated', role: 'authenticated' });
+    if (url.includes('/rest/v1/locations')) return json({ id: 'loc-mo', name: 'Morocco', slug: 'morocco' });
+    if (url.includes('/rest/v1/ledger_entries')) {
+      if (req.method() !== 'GET') { writes.push(req.method() + ' ' + (req.postData() || '').slice(0, 80)); return json([]); }
+      return json([row(A), row(B)]);
+    }
+    return json([]);
+  });
+  const errs = []; page.on('pageerror', e => errs.push(e.message));
+  await fakeOwnerSession(page);
+  await page.goto('/camp-hub/?location=morocco', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => HUB_LEDGER_HYDRATED === true, null, { timeout: 15000 });
+  const ids = await page.evaluate(() => (S.ledger || []).map(e => e.id).sort());
+  expect(ids).toEqual([A, B]);
+  expect(writes).toEqual([]);
+  // A row the server dropped must not be re-created from the local copy on
+  // the next hydrate, even though it is still in S.ledger right now.
+  await page.evaluate(() => { S.ledger = S.ledger.filter(e => e.id !== '11111111-1111-4111-8111-111111111111'); });
+  await page.unroute(/supabase\.co\/(auth|rest)\/v1\/.*/);
+  await page.route(/supabase\.co\/(auth|rest)\/v1\/.*/, async route => {
+    const req = route.request(); const url = req.url();
+    const json = (body) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    if (url.includes('/rest/v1/ledger_entries')) {
+      if (req.method() !== 'GET') { writes.push(req.method()); return json([]); }
+      return json([row(B)]);
+    }
+    return json([]);
+  });
+  await page.evaluate(() => hydrateLedgerFromSupabase({ mergeLocal: true }));
+  const after = await page.evaluate(() => (S.ledger || []).map(e => e.id));
+  expect(after).toEqual([B]);
+  expect(writes).toEqual([]);
+  expect(errs).toEqual([]);
+});
