@@ -81,3 +81,19 @@ begin
     delete from public.ledger_entries where id = r.ledger_entry_id;
   end loop;
 end $$;
+
+-- A reabertura apaga a linha do ledger de dentro do trigger da rental; o
+-- cascade ledger→rental não pode disparar nesse caso (apagaria a própria
+-- rental e dá "tuple already modified"). O flag app.hq_mirror marca-o.
+create or replace function public.fn_ledger_cascade_to_surf_rental()
+returns trigger language plpgsql security definer set search_path to 'public' as $$
+declare rental_ids uuid[];
+begin
+  if coalesce(current_setting('app.hq_mirror', true),'') = '1' then return old; end if;
+  if old.source_kind is distinct from 'surf_school' then return old; end if;
+  select array_agg(id) into rental_ids from public.surf_school_rentals where ledger_entry_id = old.id;
+  if rental_ids is null or array_length(rental_ids, 1) is null then return old; end if;
+  update public.surf_school_rentals set ledger_entry_id = null where id = any(rental_ids);
+  delete from public.surf_school_rentals where id = any(rental_ids);
+  return old;
+end $$;
