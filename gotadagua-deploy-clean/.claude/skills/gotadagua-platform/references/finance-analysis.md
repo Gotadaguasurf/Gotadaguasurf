@@ -401,3 +401,13 @@ salaries; Oubella = staff-house rent; Bouysalday = food.
 (5 Dec) / 141.000 MAD (5 Jun) + the Dubai half via HQ (Mauresk); staff house Said Oubella 16.000
 MAD on the SG dates (30 Mar, 30 Apr, 5 Jun, 6 Jul, 6 Aug, 2 Sep); Ramou Lamia 1.500/month. The
 manual "Surf Camp Rent €4.600/month" accrual rows were deleted — never re-create monthly estimates.
+
+**Morocco Nov 2025 → 23 Apr 2026 imported on 11 Sep 2026** (approved workbook "Marrocos — importação
+para aprovar.xlsx"): 360 `ledger_entries` rows (321 from the Excel, 39 bank-only transfers) + the
+Dubai half of the Dec rent as an `hq_invoices` row (mauresk services fze, €13.207,53, 1 Jan 2026,
+mirrored). Every imported row says "Excel Marrocos" or "extrato SG dd/mm/yyyy" in its description,
+and Nov/Dec rows carry "data original dd/mm/yyyy" and sit on 2026-01-01. Excluded on purpose:
+Excel May (camp-hub owns it), the 75.000 MAD deposit, Excel duplicates, Simmons bank instalments
+(covered by the Excel invoices), and the Excel salary rows of Fatima/Najat/Nouhelia/Othman in months
+where the bank shows the real transfer. FX for Jan–Apr = monthly rate from the bank remittances
+(daily_fx_rates only has MAD from 24 Apr 2026).
