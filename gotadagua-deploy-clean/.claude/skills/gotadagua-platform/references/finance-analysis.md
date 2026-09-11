@@ -411,3 +411,10 @@ Excel May (camp-hub owns it), the 75.000 MAD deposit, Excel duplicates, Simmons 
 (covered by the Excel invoices), and the Excel salary rows of Fatima/Najat/Nouhelia/Othman in months
 where the bank shows the real transfer. FX for Jan–Apr = monthly rate from the bank remittances
 (daily_fx_rates only has MAD from 24 Apr 2026).
+
+Santander → HQ conventions added 11 Sep 2026: Marina Micaela = yoga teacher, Salary/portugal;
+Ryanair = Work Trips/morocco unless told otherwise; Booking.com & Hostelworld = Work Trips/general;
+LG Leasing has a second contract (563,78, ref 001019807, Rent/portugal); a PayPal direct debit can
+be a supplier invoice paid through PayPal (check the Drive month folder before booking "paypal
+fees"). Drive month folders live under "2026 Expenses/<Month>_2026" with files named
+"Supplier - Mês 2026 - valor€.pdf"; attach `drive_link` when the invoice exists there.
