@@ -120,6 +120,7 @@ main{padding:16px;max-width:640px;margin:0 auto}
 .chip-returned{background:var(--green-bg);color:var(--green)}
 .chip-lesson{background:#eaf3fa;color:var(--ocean)}
 .chip-activity{background:#f5efe6;color:#a06430}
+.chip-camp{background:#e7f4ee;color:var(--green)}
 
 /* Empty state */
 .empty{padding:36px 20px;text-align:center;color:var(--muted);font-size:13px;background:#fff;border:1.5px dashed var(--border);border-radius:12px}
@@ -244,6 +245,7 @@ main{padding:16px;max-width:640px;margin:0 auto}
 <nav class="subnav">
   <button class="tabbtn active" data-page="new" onclick="showPage('new')">+ New</button>
   <button class="tabbtn" data-page="open" onclick="showPage('open')">Open <span class="badge" id="openBadge">0</span></button>
+  <button class="tabbtn" data-page="camp" onclick="showPage('camp')">🏕 Camp <span class="badge" id="campBadge">0</span></button>
   <button class="tabbtn" data-page="history" onclick="showPage('history')">History</button>
 </nav>
 
@@ -410,6 +412,50 @@ main{padding:16px;max-width:640px;margin:0 auto}
     <div id="openList"><div class="empty"><div class="empty-icon">🏄</div>No boards out right now.</div></div>
   </div>
 
+  <!-- ══════════════════ SURF CAMP GUESTS ══════════════════ -->
+  <!-- Camp guests borrow boards for free (it's in their package) and have
+       no return time — Miguel, 14 Sep 2026. The only thing staff need is
+       WHO went out, WHEN, and HOW MANY boards are in the water, so the
+       form is three fields and the list is one tap to bring boards back.
+       Rows live in surf_school_rentals with kind='camp', price 0; the
+       ledger trigger skips that kind (supabase/surf-school-camp-guests.sql). -->
+  <div class="page" id="page-camp">
+    <div class="kpi-strip">
+      <div class="kpi">
+        <div class="kpi-lbl">Camp boards in the water</div>
+        <div class="kpi-val" id="kpiCampBoards">0</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-lbl">Groups out</div>
+        <div class="kpi-val" id="kpiCampGroups">0</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="field">
+        <label>Guest / group name</label>
+        <input id="camp_name" type="text" placeholder="e.g. Hedi + 2 friends" autocomplete="off" autocapitalize="words" inputmode="text">
+      </div>
+      <div class="field">
+        <label>How many boards?</label>
+        <div class="stepper">
+          <button type="button" id="campMinus" onclick="stepCampBoards(-1)" aria-label="Fewer boards" disabled>−</button>
+          <div class="val"><span id="campBoardsDisplay">1</span><small>boards</small></div>
+          <button type="button" onclick="stepCampBoards(1)" aria-label="More boards">+</button>
+        </div>
+        <input id="camp_boards" type="hidden" value="1">
+      </div>
+      <div class="field">
+        <label>Started at</label>
+        <input id="camp_start" type="time">
+        <div class="hint">No price, no return time — camp package.</div>
+      </div>
+      <div class="sticky-save">
+        <button class="btn" id="campSaveBtn" onclick="saveCampEntry()">🏄 Boards in the water</button>
+      </div>
+    </div>
+    <div id="campList"><div class="empty"><div class="empty-icon">🏕</div>No camp boards out right now.</div></div>
+  </div>
+
   <!-- ══════════════════ HISTORY ══════════════════ -->
   <div class="page" id="page-history">
     <div class="filter-row">
@@ -418,6 +464,7 @@ main{padding:16px;max-width:640px;margin:0 auto}
         <option value="rental">Rentals</option>
         <option value="lesson">Lessons</option>
         <option value="activity">Activities</option>
+        <option value="camp">Surf camp guests</option>
       </select>
       <select id="filt_period" onchange="renderHistory()">
         <option value="today">Today</option>
@@ -528,6 +575,8 @@ async function boot(){
   if (dfld) dfld.value = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
   const sfld = document.getElementById('fld_start');
   if (sfld) sfld.value = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  const cfld = document.getElementById('camp_start');
+  if (cfld) cfld.value = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
   updateReturnPreview();
   // Preview the Regular price for the default combo/duration so the
   // amount doesn't sit at 0 until staff opens the customer dropdown.
@@ -892,6 +941,10 @@ async function loadRentals(){
   }
   const openCount = ALL_RENTALS.filter(r => r.kind === 'rental' && !r.is_returned).length;
   document.getElementById('openBadge').textContent = openCount;
+  // Camp badge counts BOARDS (qty), not rows — that's the number staff
+  // actually want when they look at the water.
+  const campBoards = ALL_RENTALS.filter(r => r.kind === 'camp' && !r.is_returned).reduce((s,r) => s + (Number(r.qty)||1), 0);
+  const cb = document.getElementById('campBadge'); if (cb) cb.textContent = campBoards;
 }
 
 function renderOpen(){
@@ -1037,7 +1090,8 @@ function sellerSummaryRows(rows){
 }
 function renderSellerSummary(rows){
   const box = document.getElementById('sellerSummary'); if (!box) return;
-  const sellers = sellerSummaryRows(rows);
+  // Camp guests don't pay — they're not sales and mustn't count as one.
+  const sellers = sellerSummaryRows(rows.filter(r => r.kind !== 'camp'));
   if (!sellers.length) { box.innerHTML = ''; return; }
   const tot = sellers.reduce((s,v) => s + v.total, 0);
   box.innerHTML = `<div class="card" style="padding:12px 14px">
@@ -1077,8 +1131,11 @@ function renderHistory(){
     const dateLbl = openedDate.toLocaleDateString('en-GB', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' });
     const staff = PROFILE_NAMES.get(r.opened_by) || 'Unknown';
     const closedBy = r.closed_by ? (PROFILE_NAMES.get(r.closed_by) || 'someone') : null;
-    const cls = r.kind === 'rental' ? (r.is_returned?'returned':'open') : 'returned';
-    const chip = r.kind === 'rental'
+    const isCamp = r.kind === 'camp';
+    const cls = (r.kind === 'rental' || isCamp) ? (r.is_returned?'returned':'open') : 'returned';
+    const chip = isCamp
+      ? `<span class="chip chip-camp">Camp</span>${r.is_returned ? '' : ` <span class="chip chip-open">In the water</span>`}`
+      : r.kind === 'rental'
       ? (r.is_returned ? `<span class="chip chip-returned">Returned</span>` : `<span class="chip chip-open">Open</span>`)
       : (r.kind === 'lesson' ? `<span class="chip chip-lesson">Lesson</span>` : `<span class="chip chip-activity">Activity</span>`);
     const closedInfo = r.is_returned && r.closed_at
@@ -1096,11 +1153,11 @@ function renderHistory(){
         <div class="rr-name">${escapeHtml(r.student_name)} ${chip}</div>
         <div class="rr-time">${dateLbl}</div>
       </div>
-      <div class="rr-item">${escapeHtml(r.item_name)}${r.qty!=1?` · ${r.qty}x`:''} · ${escapeHtml(r.payment_method||'—')}</div>
+      <div class="rr-item">${isCamp ? `${Number(r.qty)||1} board${(Number(r.qty)||1)===1?'':'s'} · free (camp package)` : `${escapeHtml(r.item_name)}${r.qty!=1?` · ${r.qty}x`:''} · ${escapeHtml(r.payment_method||'—')}`}</div>
       <div class="rr-meta">
         <span>By <strong>${escapeHtml(staff)}</strong>${PROFILE_EMAILS.get(r.opened_by)?` <span style="color:var(--muted)">· ${escapeHtml(PROFILE_EMAILS.get(r.opened_by))}</span>`:''}</span>
         ${closedInfo?`<span>${closedInfo}</span>`:''}
-        <span class="rr-price">${escapeHtml(r.currency||'EUR')} ${Number(r.price_local||0).toFixed(0)}</span>
+        ${isCamp ? '' : `<span class="rr-price">${escapeHtml(r.currency||'EUR')} ${Number(r.price_local||0).toFixed(0)}</span>`}
       </div>
       ${delBtn}
     </div>`;
@@ -1274,6 +1331,131 @@ async function reopenRental(id, studentName){
   toast('✓ Rental reopened', 'ok');
   await loadRentals();
   renderOpen();
+  renderCamp();
+}
+
+// ── Surf camp guests (free boards, no return time) ──────────────
+function stepCampBoards(delta){
+  const inp = document.getElementById('camp_boards');
+  if (!inp) return;
+  const next = Math.max(1, (Number(inp.value) || 1) + delta);
+  inp.value = next;
+  const disp = document.getElementById('campBoardsDisplay'); if (disp) disp.textContent = String(next);
+  const minus = document.getElementById('campMinus'); if (minus) minus.disabled = next <= 1;
+}
+
+async function saveCampEntry(){
+  const btn = document.getElementById('campSaveBtn');
+  const name = document.getElementById('camp_name').value.trim();
+  const boards = Math.max(1, Number(document.getElementById('camp_boards').value) || 1);
+  if (!name) { toast('Guest name required', 'err'); return; }
+  // Start time is today at the picked hour, local clock (same convention
+  // as the paid form). Blank field → now.
+  const pad = (n) => String(n).padStart(2,'0');
+  const now = new Date();
+  const today = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+  const startStr = document.getElementById('camp_start')?.value || `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  let start = new Date(`${today}T${startStr}`);
+  if (isNaN(start.getTime())) start = now;
+  btn.disabled = true; btn.textContent = 'Saving…';
+  const { error } = await sb.from('surf_school_rentals').insert({
+    location_id: LOCATION_ID,
+    kind: 'camp',
+    student_name: name,
+    item_id: null,
+    item_name: 'Board',
+    qty: boards,
+    price_local: 0,
+    currency: 'EUR',
+    payment_method: 'Camp package',
+    customer_type: null,
+    rental_type: null,
+    duration: null,
+    items: [{ item_id: null, name: 'Board', price: 0, qty: boards }],
+    terms_accepted: false,
+    opened_at: start.toISOString(),
+    start_time: start.toISOString(),
+    expected_return_at: null,
+    is_returned: false,
+    closed_at: null
+  });
+  btn.disabled = false; btn.textContent = '🏄 Boards in the water';
+  if (error) { toast('Save failed: '+error.message, 'err'); return; }
+  toast(`✓ ${boards} board${boards===1?'':'s'} out · ${name}`, 'ok');
+  document.getElementById('camp_name').value = '';
+  document.getElementById('camp_boards').value = 1;
+  stepCampBoards(0);
+  document.getElementById('camp_start').value = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  await loadRentals();
+  renderCamp();
+}
+
+async function closeCamp(id, name){
+  if (!window.confirm(`Boards back from ${name}?`)) return;
+  const { error } = await sb.from('surf_school_rentals').update({ is_returned: true, closed_at: new Date().toISOString() }).eq('id', id);
+  if (error) { toast('Close failed: '+error.message, 'err'); return; }
+  toast('✓ Boards back', 'ok');
+  await loadRentals();
+  renderCamp();
+}
+
+function renderCamp(){
+  const list = document.getElementById('campList');
+  if (!list) return;
+  const now = Date.now();
+  const open = ALL_RENTALS.filter(r => r.kind === 'camp' && !r.is_returned)
+    .sort((a,b) => new Date(a.opened_at).getTime() - new Date(b.opened_at).getTime());
+  const boards = open.reduce((s,r) => s + (Number(r.qty)||1), 0);
+  document.getElementById('kpiCampBoards').textContent = boards;
+  document.getElementById('kpiCampGroups').textContent = open.length;
+  const timeFmt = { hour:'2-digit', minute:'2-digit' };
+  const outFor = (ms) => { const m = Math.max(0, Math.round(ms/60000)); return m < 60 ? `${m} min` : `${Math.floor(m/60)}h ${m%60}m`; };
+  if (!open.length) {
+    list.innerHTML = `<div class="empty"><div class="empty-icon">🏕</div>No camp boards out right now.</div>`;
+  } else {
+    list.innerHTML = open.map(r => {
+      const started = new Date(r.opened_at);
+      const n = Number(r.qty) || 1;
+      const staff = PROFILE_NAMES.get(r.opened_by) || 'Unknown';
+      return `<div class="rental-row open" style="border-left-color:var(--green)">
+        <div class="rr-top">
+          <div class="rr-name">${escapeHtml(r.student_name)} <span class="chip chip-camp">Camp</span></div>
+          <div class="rr-time">${outFor(now - started.getTime())} in the water</div>
+        </div>
+        <div class="rr-item"><strong style="color:var(--navy)">${n} board${n===1?'':'s'}</strong> · started ${started.toLocaleTimeString('en-GB', timeFmt)}</div>
+        <div class="rr-meta"><span>Given by <strong>${escapeHtml(staff)}</strong></span></div>
+        <div class="rr-actions">
+          <button class="btn success" onclick="closeCamp('${r.id}', '${escapeAttr(r.student_name)}')">✓ Boards back</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+  // Recently returned camp groups (24h) — one tap to undo a mistaken return.
+  const dayAgo = now - 24*60*60*1000;
+  const recent = ALL_RENTALS
+    .filter(r => r.kind === 'camp' && r.is_returned && r.closed_at && new Date(r.closed_at).getTime() > dayAgo)
+    .sort((a,b) => new Date(b.closed_at).getTime() - new Date(a.closed_at).getTime())
+    .slice(0, 6);
+  if (recent.length) {
+    const rc = recent.map(r => {
+      const n = Number(r.qty) || 1;
+      return `<div class="rental-row returned" style="opacity:.9">
+        <div class="rr-top">
+          <div class="rr-name" style="color:var(--muted);text-decoration:line-through">${escapeHtml(r.student_name)}</div>
+          <div class="rr-time">back ${outFor(now - new Date(r.closed_at).getTime())} ago</div>
+        </div>
+        <div class="rr-item">${n} board${n===1?'':'s'} · ${new Date(r.opened_at).toLocaleTimeString('en-GB', timeFmt)} → ${new Date(r.closed_at).toLocaleTimeString('en-GB', timeFmt)}</div>
+        <div class="rr-actions">
+          <button class="btn secondary" onclick="reopenRental('${r.id}', '${escapeAttr(r.student_name)}')">↺ Still in the water (returned by mistake)</button>
+        </div>
+      </div>`;
+    }).join('');
+    list.insertAdjacentHTML('beforeend', `
+      <div style="margin-top:28px;padding-top:14px;border-top:1px solid var(--border)">
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;font-weight:800;margin-bottom:10px">Back on the beach · last 24h</div>
+        ${rc}
+      </div>`);
+  }
 }
 
 // ── UI helpers ──────────────────────────────────────────────────
@@ -1359,6 +1541,7 @@ function showPage(name){
   document.querySelectorAll('.tabbtn').forEach(b => b.classList.toggle('active', b.dataset.page === name));
   if (name === 'history') renderHistory();
   if (name === 'open')    renderOpen();
+  if (name === 'camp')    renderCamp();
 }
 function clearForm(){
   document.getElementById('fld_name').value = '';
@@ -1413,6 +1596,7 @@ function subscribeRealtime(){
       // Re-render whichever tab is visible.
       const active = document.querySelector('.page.active')?.id;
       if (active === 'page-open') renderOpen();
+      else if (active === 'page-camp') renderCamp();
       else if (active === 'page-history') renderHistory();
     })
     .subscribe();
