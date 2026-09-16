@@ -423,7 +423,8 @@ fees"). Drive month folders live under "2026 Expenses/<Month>_2026" with files n
 booking decide the direction: `paid` + Due 0 → the guest paid Gota, we owe the partner its
 commission; `confirmed` (or deposit_paid) + Due = total → the guest paid the partner, the partner
 owes us the net. `bookingPayRoute()` / `monthSplit()` in partners/index.html; the per-partner
-`collects_from_guest` flag is only the fallback when a row has no Status/Due. Month balances are
-signed (positive = partner owes us). Partial payments (0 < Due < total) fall back and are
+`collects_from_guest` flag is only the fallback when a row has no Status/Due. Balances are NEVER netted: `summarizePartnerBalances` returns outstandingToUs / outstandingToPartner
+(and paidToUs / paidToPartner) separately, and only the manual month status "Paid" moves an amount
+to paid. Every screen, email and PDF shows both directions. Partial payments (0 < Due < total) fall back and are
 flagged "check who collected". Surfwise Travel, The Surf Tribe and Sant Jordi mix both routes in
 2026; the old inactive `SURFWISE` partner record's month statuses were moved to Surfwise Travel.

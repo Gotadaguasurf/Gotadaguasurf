@@ -2209,21 +2209,37 @@ function summarizePartnerBalances(partner, bookings){
     if(!byMonth[m]) byMonth[m]=[];
     byMonth[m].push(b);
   });
-  let totalDue=0, paid=0, outstanding=0, owedToUs=0, owedToPartner=0, unresolved=0;
+  // Never net the two directions (Miguel, 16 Sep 2026): "tens de sempre
+  // dizer quem nos deve ou a quem nós devemos, e só fica pago quando eu
+  // pago e meto aí". Each direction is shown on its own and only the
+  // manual month status (Paid) moves it from outstanding to paid.
+  let owedToUs=0, owedToPartner=0, paidToUs=0, paidToPartner=0, outstandingToUs=0, outstandingToPartner=0, unresolved=0;
   Object.keys(byMonth).forEach(m=>{
     const sp = monthSplit(byMonth[m]);
-    totalDue += sp.due; owedToUs += sp.owedToUs; owedToPartner += sp.owedToPartner; unresolved += sp.unresolved;
-    if(monthIsPaid(partner,m)) paid += sp.due;
-    else outstanding += sp.due;
+    owedToUs += sp.owedToUs; owedToPartner += sp.owedToPartner; unresolved += sp.unresolved;
+    if(monthIsPaid(partner,m)){ paidToUs += sp.owedToUs; paidToPartner += sp.owedToPartner; }
+    else { outstandingToUs += sp.owedToUs; outstandingToPartner += sp.owedToPartner; }
   });
+  const r2 = x => +x.toFixed(2);
   return {
-    totalDue:+totalDue.toFixed(2),
-    paid:+paid.toFixed(2),
-    outstanding:+outstanding.toFixed(2),
-    owedToUs:+owedToUs.toFixed(2),
-    owedToPartner:+owedToPartner.toFixed(2),
+    owedToUs:r2(owedToUs), owedToPartner:r2(owedToPartner),
+    paidToUs:r2(paidToUs), paidToPartner:r2(paidToPartner),
+    outstandingToUs:r2(outstandingToUs), outstandingToPartner:r2(outstandingToPartner),
+    // legacy fields kept for callers that only read one number: the
+    // larger open direction, never a net of the two
+    outstanding: r2(outstandingToUs>=outstandingToPartner ? outstandingToUs : -outstandingToPartner),
+    paid: r2(paidToUs+paidToPartner),
     unresolved
   };
+}
+// Two-line balance (HTML) — one line per direction, only the non-zero ones.
+function balanceLinesHTML(toUs, toPartner, opts){
+  const o = opts||{}; const big = o.big!==false;
+  const lines=[];
+  if(toUs>0.004) lines.push(`<div><span style="color:var(--green-text);font-weight:700;${big?'':'font-size:12px'}">${eur(toUs)}</span><div style="font-size:10px;color:var(--green-text);opacity:.8">partner owes us</div></div>`);
+  if(toPartner>0.004) lines.push(`<div style="${lines.length?'margin-top:4px':''}"><span style="color:var(--amber-text);font-weight:700;${big?'':'font-size:12px'}">${eur(toPartner)}</span><div style="font-size:10px;color:var(--amber-text);opacity:.8">we owe partner</div></div>`);
+  if(!lines.length) lines.push(`<div><span style="color:var(--muted);font-weight:700">${eur(0)}</span><div style="font-size:10px;color:var(--muted);opacity:.8">nothing outstanding</div></div>`);
+  return lines.join('');
 }
 
 function statusSelectHTML(partner, month, stopProp) {
@@ -2332,12 +2348,11 @@ function renderPartnerRows(groups, tbodyId, headId, hintId, emptyLabel) {
     const sp=safeP(p.partner);
     const colspan = showStatus ? 7 : 6;
     const bal = summarizePartnerBalances(p.partner, p.bookings);
-    const paidText = Math.abs(bal.paid)>0 ? `<div style="font-size:10px;color:var(--muted);opacity:.9">paid ${eur(Math.abs(bal.paid))}</div>` : '';
-    const bi = balanceInfo(bal.outstanding);
-    const mixText = (bal.owedToUs>0 && bal.owedToPartner>0) ? `<div style="font-size:10px;color:var(--muted);opacity:.9">they owe ${eur(bal.owedToUs)} · we owe ${eur(bal.owedToPartner)}</div>` : '';
-    const balanceLabel = bi.dir!=='partner'
-      ? `<span style="color:var(--green-text);font-weight:700">${eur(bi.abs)}</span><div style="font-size:10px;color:var(--green-text);opacity:.8">${bi.dir==='none'?'nothing left to collect':'partner owes us'}</div>${mixText}${paidText}`
-      : `<span style="color:var(--amber-text);font-weight:700">${eur(bi.abs)}</span><div style="font-size:10px;color:var(--amber-text);opacity:.8">we owe partner</div>${mixText}${paidText}`;
+    const paidBits = [];
+    if(bal.paidToUs>0) paidBits.push(`they paid ${eur(bal.paidToUs)}`);
+    if(bal.paidToPartner>0) paidBits.push(`we paid ${eur(bal.paidToPartner)}`);
+    const paidText = paidBits.length ? `<div style="font-size:10px;color:var(--muted);opacity:.9">${paidBits.join(' · ')}</div>` : '';
+    const balanceLabel = balanceLinesHTML(bal.outstandingToUs, bal.outstandingToPartner) + paidText;
 
     h+=`<tr onclick="toggleExpand('${sp}')" class="${exp?'expanded':''}">
       <td><span class="chevron"></span></td>
@@ -2414,6 +2429,7 @@ function renderOverview(p) {
   let cards=Object.keys(byMonth).sort().map(m=>{
     const bs=byMonth[m], mg=bs.reduce((s,b)=>s+b.gross,0), mc=bs.reduce((s,b)=>s+b.com_amt,0);
     const due = monthDueAmount(p.partner, bs);
+    const msp = monthSplit(bs);
     const paid = monthIsPaid(p.partner,m);
     const locFilter = (hasMultipleLocations && activeLocKey) ? `,'${activeLocKey.replace(/'/g,"\\'")}'` : ',null';
     const sel=statusSelectHTML(p.partner, m, true);
@@ -2422,7 +2438,7 @@ function renderOverview(p) {
         <div class="mc-label">${monthLabel(m)}</div>
         <div class="mc-gross">${eur(mg)}</div>
         <div class="mc-com">Commission: ${eur(mc)}</div>
-        <div class="mc-hint">${bs.length} booking${bs.length!==1?'s':''} · ${paid ? 'paid · outstanding '+eur(0) : (balanceInfo(due).dir==='partner' ? 'we owe '+eur(Math.abs(due)) : 'they owe '+eur(Math.abs(due)))}</div>
+        <div class="mc-hint">${bs.length} booking${bs.length!==1?'s':''} · ${paid ? 'paid' : [ (msp.owedToUs>0?'they owe '+eur(msp.owedToUs):''), (msp.owedToPartner>0?'we owe '+eur(msp.owedToPartner):'') ].filter(Boolean).join(' · ') || 'nothing outstanding'}</div>
       </div>
       <div style="margin-top:7px;padding:0 2px" onclick="event.stopPropagation()">${sel}</div>
     </div>`;
@@ -2505,17 +2521,13 @@ function buildStatementEmailPayload(partner, periodLabel, bookings){
   const commissionTotal = bookings.reduce((s,r)=>s+(+r.com_amt||0),0);
   const netTotal = bookings.reduce((s,r)=>s+(+r.net||0),0);
   const split = monthSplit(bookings);
-  const bi = balanceInfo(split.due);
-  const collects = bi.dir!=='partner';
-  const dueTotal = bi.abs;
-  const mixPt = (split.owedToUs>0 && split.owedToPartner>0) ? ` (reservas cobradas pelo parceiro: ${eur(split.owedToUs)} a favor da Gota · reservas cobradas pela Gota: ${eur(split.owedToPartner)} de comissão a favor do parceiro)` : '';
-  const mixEn = (split.owedToUs>0 && split.owedToPartner>0) ? ` (bookings collected by the partner: ${eur(split.owedToUs)} due to Gota · bookings collected by Gota: ${eur(split.owedToPartner)} commission due to the partner)` : '';
-  const dueLinePt = (collects
-    ? `Valor em dívida à Gota Dagua: ${eur(dueTotal)}`
-    : `Valor que a Gota Dagua deve ao parceiro: ${eur(dueTotal)}`) + mixPt;
-  const dueLineEn = (collects
-    ? `Amount due to Gota Dagua: ${eur(dueTotal)}`
-    : `Amount that Gota Dagua owes the partner: ${eur(dueTotal)}`) + mixEn;
+  const collects = split.owedToUs >= split.owedToPartner; // colour/wording of the primary block only
+  const dueTotal = collects ? split.owedToUs : split.owedToPartner;
+  const ptParts = [], enParts = [];
+  if(split.owedToUs>0){ ptParts.push(`Valor em dívida à Gota Dagua (reservas cobradas pelo parceiro): ${eur(split.owedToUs)}`); enParts.push(`Amount due to Gota Dagua (bookings collected by the partner): ${eur(split.owedToUs)}`); }
+  if(split.owedToPartner>0){ ptParts.push(`Valor que a Gota Dagua deve ao parceiro (comissão das reservas cobradas pela Gota): ${eur(split.owedToPartner)}`); enParts.push(`Amount Gota Dagua owes the partner (commission on bookings collected by Gota): ${eur(split.owedToPartner)}`); }
+  const dueLinePt = ptParts.join('\n') || `Nada em dívida neste período.`;
+  const dueLineEn = enParts.join('\n') || `Nothing outstanding for this period.`;
 
   // Optional per-booking external reference (e.g., KILROY's own SE/NO
   // numbers that travel with each customer). Stored on the booking's
@@ -2637,14 +2649,18 @@ function buildStatementPdfMarkup(ctx) {
   const totalCom = bookings.reduce((s,b)=>s+b.com_amt,0);
   const totalNet = bookings.reduce((s,b)=>s+b.net,0);
   const statementSummary = summarizePartnerBalances(partner, bookings);
-  const _bi = balanceInfo(statementSummary.outstanding || 0);
-  const collects = _bi.dir!=='partner';
-  const outstanding = _bi.abs;
-  const paid = Math.abs(statementSummary.paid || 0);
+  const _toUs = statementSummary.outstandingToUs || 0, _toP = statementSummary.outstandingToPartner || 0;
+  const collects = _toUs >= _toP;
+  const outstanding = collects ? _toUs : _toP;
+  const paid = (statementSummary.paidToUs||0) + (statementSummary.paidToPartner||0);
   const activeLocations = [...new Set(bookings.map(b=>b.location).filter(Boolean))];
   const activeMonths = [...new Set(bookings.map(getMonth))].sort();
-  const amountLabel = _bi.long;
-  const amountNote = _bi.note + ((statementSummary.owedToUs>0 && statementSummary.owedToPartner>0) ? ` Bookings collected by the partner: ${eur(statementSummary.owedToUs)} due to Gota Dagua. Bookings collected by Gota Dagua: ${eur(statementSummary.owedToPartner)} commission due to the partner.` : '');
+  const amountLabel = (_toUs>0 && _toP>0) ? 'Outstanding — both directions' : (collects ? 'Outstanding Due to Gota Dagua Surf' : 'Outstanding We Owe to Partner');
+  const amountNote = [
+    _toUs>0 ? `Partner owes Gota Dagua ${eur(_toUs)} (bookings the partner collected).` : '',
+    _toP>0 ? `Gota Dagua owes the partner ${eur(_toP)} (commission on bookings Gota collected).` : '',
+    (!_toUs && !_toP) ? 'Nothing outstanding for this period.' : ''
+  ].filter(Boolean).join(' ');
 
   const byMonth = {};
   bookings.forEach(b => {
@@ -2784,7 +2800,7 @@ function buildStatementPdfMarkup(ctx) {
       </div>
       <div style="border:1px solid #d4e3f0;border-radius:14px;padding:16px 18px;background:${collects ? '#28394b' : '#7a4f00'};color:#fff;">
         <div style="font-size:10px;color:${collects ? '#9fc5df' : '#f7d48b'};text-transform:uppercase;letter-spacing:.1em;font-weight:700;">${amountLabel}</div>
-        <div style="font-family:'DM Serif Display',serif;font-size:28px;margin-top:10px;">${eur(outstanding)}</div>
+        <div style="font-family:'DM Serif Display',serif;font-size:28px;margin-top:10px;">${(_toUs>0 && _toP>0) ? `${eur(_toUs)} <span style="font-size:14px;opacity:.85">to us</span> · ${eur(_toP)} <span style="font-size:14px;opacity:.85">to partner</span>` : eur(outstanding)}</div>
         <div style="font-size:12px;color:${collects ? '#d4e8f6' : '#fff4d5'};margin-top:6px;line-height:1.5;">${amountNote}</div>
       </div>
     </section>
@@ -2901,10 +2917,12 @@ async function generateStatementPdfBlob(){
   const totalCom   = bookings.reduce((s,b)=>s+(b.com_amt||0),0);
   const totalNet   = bookings.reduce((s,b)=>s+(b.net||0),0);
   const summary    = summarizePartnerBalances(partner, bookings);
-  const _pbi = balanceInfo(summary.outstanding || 0);
-  const outstanding = _pbi.abs;
-  const collects = _pbi.dir!=='partner';
-  const owedLabel = _pbi.long.toUpperCase();
+  const _pToUs = summary.outstandingToUs || 0, _pToP = summary.outstandingToPartner || 0;
+  const collects = _pToUs >= _pToP;
+  const outstanding = collects ? _pToUs : _pToP;
+  const owedLabel = (_pToUs>0 && _pToP>0)
+    ? `PARTNER OWES US ${fmtEUR(_pToUs)} · WE OWE PARTNER ${fmtEUR(_pToP)}`
+    : (collects ? 'OUTSTANDING DUE TO GOTA DAGUA SURF' : 'OUTSTANDING WE OWE TO PARTNER');
 
   const safePartner = (partner || 'statement').replace(/[^a-z0-9]+/gi,'-').replace(/^-+|-+$/g,'');
   const filename = `${safePartner || 'statement'}-${period.replace(/[^a-z0-9]+/gi,'-')}.pdf`;
@@ -3016,7 +3034,7 @@ async function generateStatementPdfBlob(){
   setText('#ffffff');
   doc.setFont('helvetica','bold');
   doc.setFontSize(13);
-  doc.text(fmtEUR(outstanding), card3X + 4, cardY + 19);
+  doc.text((_pToUs>0 && _pToP>0) ? `${fmtEUR(_pToUs)} / ${fmtEUR(_pToP)}` : fmtEUR(outstanding), card3X + 4, cardY + 19);
 
   // ── 3. BOOKINGS TABLE ────────────────────────────────────────────────────
   let y = cardY + cardH + 12;
@@ -3302,32 +3320,23 @@ window.openStatement = function(partner, month, locationFilter) {
     }
   });
   const statementSummary = summarizePartnerBalances(partner, bks);
-  const _sbi = balanceInfo(statementSummary.outstanding);
-  const collects = _sbi.dir!=='partner';
-  const balanceAmt = _sbi.abs;
-  const balanceLabel = collects ? `Outstanding Due to Gota Dagua Surf` : `Outstanding We Owe to ${partner}`;
-  const mixed = statementSummary.owedToUs>0 && statementSummary.owedToPartner>0;
-  const balanceNote = Math.abs(statementSummary.paid)>0
-    ? `Paid already: ${eur(Math.abs(statementSummary.paid))} · Remaining outstanding shown here`
-    : (mixed
-      ? `Guest paid partner: ${eur(statementSummary.owedToUs)} due to us · Guest paid Gota: ${eur(statementSummary.owedToPartner)} commission due to them`
-      : (collects
-        ? `Partner keeps ${bks[0]?.com_pct?.toFixed(0)||0}% commission · They transfer the rest to us`
-        : `We collected the full amount · We pay their ${bks[0]?.com_pct?.toFixed(0)||0}% commission`))
-      + (statementSummary.unresolved ? ` · ${statementSummary.unresolved} booking(s) with a partial payment — check who collected` : '');
-  const secondaryLabel = mixed ? `They owe ${eur(statementSummary.owedToUs)} · we owe ${eur(statementSummary.owedToPartner)}` : (collects ? `Partner commission` : `Net revenue to Gota Dagua`);
-  const secondaryAmt = mixed ? tC : (collects ? tC : tN);
+  const _oUs = statementSummary.outstandingToUs, _oP = statementSummary.outstandingToPartner;
+  const collects = _oUs >= _oP;
+  const paidBits = [];
+  if(statementSummary.paidToUs>0) paidBits.push(`they already paid ${eur(statementSummary.paidToUs)}`);
+  if(statementSummary.paidToPartner>0) paidBits.push(`we already paid ${eur(statementSummary.paidToPartner)}`);
+  const balanceNote = [
+    paidBits.join(' · '),
+    statementSummary.unresolved ? `${statementSummary.unresolved} booking(s) with a partial payment — check who collected` : '',
+    `Only months you mark as Paid count as settled`
+  ].filter(Boolean).join(' · ');
+  const blockUs = `<div><div class="adu-label">Outstanding due to Gota Dagua Surf</div><div class="adu-value">${eur(_oUs)}</div><div class="adu-note">bookings the partner collected · they keep ${bks[0]?.com_pct?.toFixed(0)||0}%, transfer the rest to us</div></div>`;
+  const blockP  = `<div style="text-align:right"><div class="adu-label">Outstanding we owe to ${partner}</div><div class="adu-value">${eur(_oP)}</div><div class="adu-note">commission on bookings Gota collected</div></div>`;
 
-  body+=`<div class="amount-due-box" style="background:${collects?'var(--navy)':'#7a4f00'}">
-    <div>
-      <div class="adu-label">${balanceLabel}</div>
-      <div class="adu-value">${eur(balanceAmt)}</div>
-      <div class="adu-note">${balanceNote}</div>
-    </div>
-    <div style="text-align:right">
-      <div style="font-size:10px;color:#7aabcc;margin-bottom:4px">${secondaryLabel}</div>
-      <div style="font-family:'DM Mono',monospace;font-size:20px;color:#7aabcc">${eur(secondaryAmt)}</div>
-    </div>
+  body+=`<div class="amount-due-box" style="background:${collects?'var(--navy)':'#7a4f00'};flex-wrap:wrap;gap:14px">
+    ${blockUs}
+    ${blockP}
+    <div style="flex-basis:100%;font-size:11px;opacity:.85">${balanceNote}</div>
   </div>`;
   document.getElementById('stmtBody').innerHTML=body;
 

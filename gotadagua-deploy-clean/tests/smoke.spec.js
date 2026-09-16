@@ -1091,8 +1091,19 @@ test('partners: who collected is decided per booking from Bookinglayer Status/Du
   expect(out.sep.due).toBe(0);                       // expired booking counts nothing
   expect(out.sum.owedToUs).toBeCloseTo(1617.86, 2);
   expect(out.sum.owedToPartner).toBeCloseTo(122.22, 2);
-  expect(out.sum.outstanding).toBeCloseTo(1495.64, 2);
-  // The overview row says the partner owes us, not that we owe them.
+  // Never netted: both directions stay open on their own until Miguel
+  // marks the month as Paid by hand.
+  expect(out.sum.outstandingToUs).toBeCloseTo(1617.86, 2);
+  expect(out.sum.outstandingToPartner).toBeCloseTo(122.22, 2);
+  expect(out.sum.paidToUs).toBe(0);
+  expect(out.sum.paidToPartner).toBe(0);
+  // The overview row shows BOTH lines.
   const rowText = await page.evaluate(() => (document.body.innerText.match(/partner owes us|we owe partner/g) || []).join(','));
   expect(rowText).toContain('partner owes us');
+  expect(rowText).toContain('we owe partner');
+  // Marking January as Paid settles only the "they owe us" side.
+  const after = await page.evaluate(() => { setStatus('Surfwise Travel','2026-01','Paid'); return summarizePartnerBalances('Surfwise Travel', allBookings.filter(b => b.partner === 'Surfwise Travel')); });
+  expect(after.outstandingToUs).toBe(0);
+  expect(after.paidToUs).toBeCloseTo(1617.86, 2);
+  expect(after.outstandingToPartner).toBeCloseTo(122.22, 2);
 });
