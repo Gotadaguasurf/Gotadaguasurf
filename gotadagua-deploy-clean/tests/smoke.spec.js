@@ -1049,3 +1049,50 @@ test('camp-hub: boot takes the ledger from Supabase and pushes nothing back (ser
   expect(writes).toEqual([]);
   expect(errs).toEqual([]);
 });
+
+
+test('partners: who collected is decided per booking from Bookinglayer Status/Due (Surfwise mixes both)', async ({ page }) => {
+  // Miguel, 16 Sep 2026: Surfwise bookings are sometimes paid to us
+  // (status paid, Due 0 → we owe 18% commission) and sometimes paid to
+  // Surfwise (status confirmed, Due = total → they owe us the net). The
+  // per-partner "collects from guest" flag counted both the same way.
+  const bookings = [
+    { id: 'b1', booking_ref: '2025-4783', booker: 'Rahel Meier', check_in_on: '2026-01-24', month_key: '2026-01', total: 1973, pax: 1, location: 'Portugal', package: 'Surf Camp', partner_name: 'Surfwise Travel', booking_type: 'surfcamp', partner_commission_pct: 18, commission_amount: 355.14, net_amount: 1617.86, raw_payload: { status: 'Confirmed', due: '1973.00' } },
+    { id: 'b2', booking_ref: '2026-0164', booker: 'Oliver Schuemperli', check_in_on: '2026-02-28', month_key: '2026-02', total: 679, pax: 1, location: 'Portugal', package: 'Surf Camp', partner_name: 'Surfwise Travel', booking_type: 'surfcamp', partner_commission_pct: 18, commission_amount: 122.22, net_amount: 556.78, raw_payload: { status: 'Paid', due: '0.00' } },
+    { id: 'b3', booking_ref: '2026-2807', booker: 'Liana Bösch', check_in_on: '2026-09-12', month_key: '2026-09', total: 1566, pax: 2, location: 'Portugal', package: 'Surf Camp', partner_name: 'Surfwise Travel', booking_type: 'surfcamp', partner_commission_pct: 18, commission_amount: 281.88, net_amount: 1284.12, raw_payload: { status: 'Expired', due: '1566.00' } },
+  ];
+  await page.route(/supabase\.co\/(auth|rest)\/v1\/.*/, async route => {
+    const url = route.request().url();
+    const json = (body) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    if (url.includes('/auth/v1/user')) return json({ id: 'u1', email: 'miguel@gotadaguasurf.com', aud: 'authenticated', role: 'authenticated' });
+    if (url.includes('/rest/v1/bookings')) return json(bookings);
+    if (url.includes('/rest/v1/partners')) return json([{ id: 'p1', name: 'Surfwise Travel', email: 'info@surfwise.ch', commission_pct: 18, collects_from_guest: false, partner_type: 'surfcamp', is_active: true }]);
+    if (url.includes('/rest/v1/partner_month_status')) return json([]);
+    return json([]);
+  });
+  const errs = []; page.on('pageerror', e => errs.push(e.message));
+  await fakeOwnerSession(page);
+  await page.goto('/partners/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof summarizePartnerBalances === 'function' && Array.isArray(allBookings) && allBookings.some(b => b.ref === '2026-0164'), null, { timeout: 10000 });
+  const out = await page.evaluate(() => {
+    const bks = allBookings.filter(b => b.partner === 'Surfwise Travel');
+    const routes = Object.fromEntries(bks.map(b => [b.ref, bookingPayRoute(b)]));
+    const sum = summarizePartnerBalances('Surfwise Travel', bks);
+    const jan = monthSplit(bks.filter(b => b.checkin.startsWith('2026-01')));
+    const feb = monthSplit(bks.filter(b => b.checkin.startsWith('2026-02')));
+    const sep = monthSplit(bks.filter(b => b.checkin.startsWith('2026-09')));
+    return { routes, sum, jan, feb, sep };
+  });
+  expect(errs).toEqual([]);
+  expect(out.routes['2025-4783']).toBe('partner');   // guest paid Surfwise
+  expect(out.routes['2026-0164']).toBe('gota');      // guest paid us
+  expect(out.jan.due).toBeCloseTo(1617.86, 2);       // Surfwise owes us the net
+  expect(out.feb.due).toBeCloseTo(-122.22, 2);       // we owe the 18% commission
+  expect(out.sep.due).toBe(0);                       // expired booking counts nothing
+  expect(out.sum.owedToUs).toBeCloseTo(1617.86, 2);
+  expect(out.sum.owedToPartner).toBeCloseTo(122.22, 2);
+  expect(out.sum.outstanding).toBeCloseTo(1495.64, 2);
+  // The overview row says the partner owes us, not that we owe them.
+  const rowText = await page.evaluate(() => (document.body.innerText.match(/partner owes us|we owe partner/g) || []).join(','));
+  expect(rowText).toContain('partner owes us');
+});

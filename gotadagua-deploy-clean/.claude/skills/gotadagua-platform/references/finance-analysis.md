@@ -418,3 +418,12 @@ LG Leasing has a second contract (563,78, ref 001019807, Rent/portugal); a PayPa
 be a supplier invoice paid through PayPal (check the Drive month folder before booking "paypal
 fees"). Drive month folders live under "2026 Expenses/<Month>_2026" with files named
 "Supplier - Mês 2026 - valor€.pdf"; attach `drive_link` when the invoice exists there.
+
+**Partners — who collected is per booking (16 Sep 2026).** Bookinglayer's Status + Due on each
+booking decide the direction: `paid` + Due 0 → the guest paid Gota, we owe the partner its
+commission; `confirmed` (or deposit_paid) + Due = total → the guest paid the partner, the partner
+owes us the net. `bookingPayRoute()` / `monthSplit()` in partners/index.html; the per-partner
+`collects_from_guest` flag is only the fallback when a row has no Status/Due. Month balances are
+signed (positive = partner owes us). Partial payments (0 < Due < total) fall back and are
+flagged "check who collected". Surfwise Travel, The Surf Tribe and Sant Jordi mix both routes in
+2026; the old inactive `SURFWISE` partner record's month statuses were moved to Surfwise Travel.
