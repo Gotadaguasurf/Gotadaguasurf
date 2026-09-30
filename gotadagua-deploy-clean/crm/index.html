@@ -2479,7 +2479,58 @@ function recipientEmailFor(c){
   return (primary?.email) || c.email || null;
 }
 
-function openBatchSendModal(){
+// ── Follow-ups in a batch stay in each company's own thread ──────────
+// A batch used to render "Re: {{subject}}" against COMPOSE_THREAD — the
+// single-compose global, empty in a batch — so every follow-up went out as
+// a bare "Re:" in a brand-new Gmail thread (João Maria, 30 Sep 2026).
+// loadBatchThreads looks up each recipient's latest email in a few bulk
+// queries and keeps { threadId, rfcId, subject } on the recipient row; the
+// send paths (instant loop + drip queue) thread onto it whenever the
+// rendered subject starts with Re:.
+function isReplyTemplate(tpl){ return !!tpl && /^\s*re:/i.test(String(tpl.subject || '')); }
+function threadFromMessage(m){
+  const rfcId = (m.provider_msg_id || '').includes('@')
+    ? (m.provider_msg_id.startsWith('<') ? m.provider_msg_id : `<${m.provider_msg_id}>`)
+    : undefined;
+  return { threadId: m.thread_id, rfcId, subject: String(m.subject || '').replace(/^\s*(re|fwd?)\s*:\s*/i, '').trim() };
+}
+async function loadBatchThreads(recipients){
+  recipients.forEach(r => { r.thread = null; });
+  const ids = [...new Set(recipients.map(r => r.contact?.id).filter(Boolean))];
+  if(!ids.length) return;
+  const byCompany = new Map();
+  try{
+    // 50 companies per query, newest first: the first row seen per company
+    // is its latest email (inbound or outbound — replying to their reply is
+    // still the same thread).
+    for(let i = 0; i < ids.length; i += 50){
+      const { data, error } = await getClient().from('email_messages')
+        .select('company_id, subject, thread_id, provider_msg_id, created_at')
+        .in('company_id', ids.slice(i, i + 50)).not('thread_id', 'is', null)
+        .order('created_at', { ascending: false }).limit(2000);
+      if(error) throw error;
+      (data || []).forEach(m => { if(!byCompany.has(m.company_id)) byCompany.set(m.company_id, threadFromMessage(m)); });
+    }
+  }catch(e){ console.warn('[CRM] batch thread lookup failed', e); }
+  recipients.forEach(r => { r.thread = byCompany.get(r.contact?.id) || null; });
+}
+function batchSubjectFor(tpl, r, sender){
+  return renderTemplate(tpl.subject, r.contact, sender, { threadSubject: r.thread?.subject || '' });
+}
+// A Re: template has nothing to answer for a contact with no earlier
+// email: untick those rows (and re-tick them if the template changes back).
+function applyBatchThreadRule(){
+  const tpl = TEMPLATES.find(t => t.id === document.getElementById('batchTemplate').value);
+  const reply = isReplyTemplate(tpl);
+  BATCH_STATE.replyTemplate = reply;
+  BATCH_STATE.recipients.forEach(r => {
+    r.noThread = reply && !r.thread;
+    if(r.noThread && r.include){ r.include = false; r.autoUnticked = true; }
+    else if(!r.noThread && r.autoUnticked){ r.include = !!r.email && !r.recentlyContacted; r.autoUnticked = false; }
+  });
+}
+
+async function openBatchSendModal(){
   if(SELECTED.size === 0){ toast('Pick contacts first'); return; }
   // Shared mailbox is server-side; no per-user OAuth needed for send.
   // Refresh PEOPLE in case primary picks updated since last render.
@@ -2525,6 +2576,8 @@ function openBatchSendModal(){
     .map(t => `<option value="${t.id}">${escHtml(t.name)} (${t.language})</option>`).join('');
   tplSel.value = (en[0] || TEMPLATES[0]).id;
   populateSendAsPicker(document.getElementById('batchSendAs'), CURRENT_TEAM_USER?.id);
+  await loadBatchThreads(BATCH_STATE.recipients);
+  applyBatchThreadRule();
   refreshBatchPreview();
   renderBatchRecipientList();
   document.getElementById('batchDryRun').checked = false;
@@ -2540,7 +2593,7 @@ function refreshBatchPreview(){
     return;
   }
   const sender = pickedSender('batchSendAs');
-  document.getElementById('batchPreviewSubject').textContent = renderTemplate(tpl.subject, first.contact, sender);
+  document.getElementById('batchPreviewSubject').textContent = batchSubjectFor(tpl, first, sender);
   document.getElementById('batchPreviewBody').textContent    = renderTemplate(tpl.body, first.contact, sender);
 }
 
@@ -2561,6 +2614,8 @@ function renderBatchRecipientList(){
       if(r.status === 'sending') return `<span style="color:var(--ocean);font-size:11px;font-weight:700">sending…</span>`;
       if(r.status === 'sent')    return `<span style="color:var(--green-text);background:var(--green-bg);padding:2px 7px;border-radius:6px;font-size:11px;font-weight:700">sent</span>`;
       if(r.status === 'failed')  return `<span style="color:var(--red-text);background:var(--red-bg);padding:2px 7px;border-radius:6px;font-size:11px;font-weight:700" title="${escAttr(r.message||'')}">failed</span>`;
+      if(r.status === 'skipped') return `<span style="color:var(--amber-text);background:var(--amber-bg);padding:2px 7px;border-radius:6px;font-size:11px;font-weight:700" title="${escAttr(r.message||'')}">skipped</span>`;
+      if(r.noThread) return `<span title="This template replies to an earlier email, and this contact has none — pick a first-touch template for them" style="color:var(--amber-text);background:var(--amber-bg);padding:2px 7px;border-radius:6px;font-size:11px;font-weight:700">no email to reply to</span>`;
       // Show the recently-contacted hint when the row would normally
       // be skipped by the toggle but the user hasn't actively
       // included it. Doesn't fire on rows the user explicitly ticked
@@ -2660,12 +2715,25 @@ async function runBatchSend(){
       renderBatchRecipientList();
       continue;
     }
-    const subj = renderTemplate(tpl.subject, c, sender);
+    if(isReplyTemplate(tpl) && !r.thread){
+      r.status = 'skipped';
+      r.message = 'no earlier email to reply to';
+      skippedCount++;
+      renderBatchRecipientList();
+      continue;
+    }
+    const subj = batchSubjectFor(tpl, r, sender);
     const body = renderTemplate(tpl.body, c, sender);
     try {
       if(!dryRun){
         const primaryForBatch = primaryPersonFor(c.id);
-        await gmailSendOne({ to: r.email, subject: subj, body, companyId: c.id, contactId: primaryForBatch?.id || null, senderUserId: sender.id });
+        // Same rule as Send-now: a subject starting with Re: goes into the
+        // company's existing Gmail thread, with the real RFC id when known.
+        const isReply = /^\s*re:/i.test(subj) && !!r.thread?.threadId;
+        await gmailSendOne({ to: r.email, subject: subj, body, companyId: c.id, contactId: primaryForBatch?.id || null, senderUserId: sender.id,
+          threadId: isReply ? r.thread.threadId : undefined,
+          inReplyTo: isReply ? r.thread.rfcId : undefined,
+          references: isReply ? r.thread.rfcId : undefined });
         // Update local state + log activity + auto-advance status.
         let newStatus = c.status;
         if(c.status === 'not_started') newStatus = 'first_email';
@@ -2695,7 +2763,7 @@ async function runBatchSend(){
   }
   BATCH_STATE.inProgress = false;
   renderBatchRecipientList();
-  toast(`${dryRun?'Dry-run':'Batch send'} done · ${sentCount} sent${failedCount?` · ${failedCount} failed`:''}${skippedCount?` · ${skippedCount} skipped (already emailed today)`:''}`);
+  toast(`${dryRun?'Dry-run':'Batch send'} done · ${sentCount} sent${failedCount?` · ${failedCount} failed`:''}${skippedCount?` · ${skippedCount} skipped (see the row for why)`:''}`);
   if(CURRENT_TAB === 'dashboard') renderDashboard();
   if(CURRENT_TAB === 'contacts') renderContacts();
 }
@@ -2715,6 +2783,13 @@ function closeBatchSendModal(){
 // email-dispatch Edge Function does the actual sending on a 5-min cron.
 
 async function queueDripCampaign({ tpl, sender, targets }){
+  // A Re: template cannot reach a contact with no earlier email.
+  const noThread = isReplyTemplate(tpl) ? targets.filter(r => !r.thread).length : 0;
+  if(noThread){
+    targets = targets.filter(r => r.thread);
+    toast(`${noThread} contact${noThread>1?'s':''} left out — no earlier email to reply to`);
+    if(!targets.length) return;
+  }
   const dailyCap = Number(document.getElementById('batchDailyCap')?.value) || 80;
   const days = Math.ceil(targets.length / dailyCap);
   if(!confirm(
@@ -2741,14 +2816,22 @@ async function queueDripCampaign({ tpl, sender, targets }){
   if(campErr){ toast('Could not create campaign: ' + campErr.message); return; }
 
   // Render each recipient's subject+body against the template NOW.
-  const rows = targets.map(r => ({
-    campaign_id: campaign.id,
-    company_id: r.contact?.id || null,
-    contact_id: primaryPersonFor(r.contact?.id)?.id || null,
-    to_email: r.email,
-    subject: renderTemplate(tpl.subject, r.contact, sender),
-    body: renderTemplate(tpl.body, r.contact, sender),
-  }));
+  // thread_id here is the INPUT thread (the company's earlier email);
+  // email-dispatch sends into it and resolves In-Reply-To/References from
+  // Gmail, then overwrites the column with the sent message's thread id.
+  const rows = targets.map(r => {
+    const subject = batchSubjectFor(tpl, r, sender);
+    const isReply = /^\s*re:/i.test(subject) && !!r.thread?.threadId;
+    return {
+      campaign_id: campaign.id,
+      company_id: r.contact?.id || null,
+      contact_id: primaryPersonFor(r.contact?.id)?.id || null,
+      to_email: r.email,
+      subject,
+      body: renderTemplate(tpl.body, r.contact, sender),
+      thread_id: isReply ? r.thread.threadId : null,
+    };
+  });
   // Chunked insert — Supabase caps request payloads; 200-row chunks are
   // comfortably inside the limit even with long bodies.
   for(let i = 0; i < rows.length; i += 200){
@@ -2993,7 +3076,7 @@ document.getElementById('bulkSendEmail').addEventListener('click', openBatchSend
 document.getElementById('batchSendClose').addEventListener('click', closeBatchSendModal);
 document.getElementById('batchSendCancel').addEventListener('click', closeBatchSendModal);
 document.getElementById('batchSendStart').addEventListener('click', runBatchSend);
-document.getElementById('batchTemplate').addEventListener('change', refreshBatchPreview);
+document.getElementById('batchTemplate').addEventListener('change', () => { applyBatchThreadRule(); renderBatchRecipientList(); refreshBatchPreview(); });
 document.getElementById('batchSendAs')?.addEventListener('change', refreshBatchPreview);
 // Re-apply the skip-recent rule when the toggle flips. Off → tick
 // every row that has an email (ignore the recent flag). On → untick
@@ -3005,7 +3088,7 @@ document.getElementById('batchSkipRecent').addEventListener('change', (e) => {
   const skip = e.target.checked;
   BATCH_STATE.recipients.forEach(r => {
     if(!r.email) return;
-    r.include = skip ? !r.recentlyContacted : true;
+    r.include = r.noThread ? false : (skip ? !r.recentlyContacted : true);
   });
   renderBatchRecipientList();
   refreshBatchPreview();
@@ -6773,7 +6856,7 @@ async function loadComposeThread(companyId){
   return COMPOSE_THREAD;
 }
 function composeThreadSubject(){ return COMPOSE_THREAD?.subject || ''; }
-function renderTemplate(text, c, senderUser){
+function renderTemplate(text, c, senderUser, opts){
   // {{first_name}} was previously falling back to the first WORD of the
   // company name when no real contact name existed — i.e. the email to
   // "360 Surf Travel" began "Hi 360," and "7th Wave Surf School" got
@@ -6796,7 +6879,9 @@ function renderTemplate(text, c, senderUser){
   const mySig = userSignatureFor(sender?.id);
   return text
     .replace(/\{\{company\}\}/g, c.company||'')
-    .replace(/\{\{subject\}\}/g, composeThreadSubject())
+    // {{subject}} = the thread being answered. A batch passes it per
+    // recipient (opts.threadSubject); the single compose reads COMPOSE_THREAD.
+    .replace(/\{\{subject\}\}/g, (opts && Object.prototype.hasOwnProperty.call(opts, 'threadSubject')) ? (opts.threadSubject || '') : composeThreadSubject())
     .replace(/\{\{first_name\}\}/g, firstName)
     .replace(/\{\{greeting\}\}/g, greeting)
     .replace(/\{\{country\}\}/g, c.country||'')

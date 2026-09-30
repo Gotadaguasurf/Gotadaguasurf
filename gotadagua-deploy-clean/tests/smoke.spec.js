@@ -1002,6 +1002,51 @@ test('crm: a follow-up keeps the thread subject and carries one signature only',
 });
 
 
+test('crm: a batch follow-up keeps each company\'s own thread and subject', async ({ page }) => {
+  // João Maria, 30 Sep 2026: "Follow-up 1" sent as a batch went out as a
+  // bare "Re:" and started a new Gmail loop. The batch rendered {{subject}}
+  // against COMPOSE_THREAD (the single-compose global) and sent with no
+  // thread. Now each recipient carries its own latest email, the subject
+  // comes from it, both send paths thread onto it, and a contact with no
+  // earlier email is left out rather than emailed "Re: ".
+  await fakeOwnerSession(page);
+  await page.route(/supabase\.co\/rest\/v1\/email_messages.*/, route => route.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify([
+      { company_id: 'c1', subject: 'Re: Nova Surf Festival', thread_id: 't1', provider_msg_id: 'abc@mail.gmail.com', created_at: '2026-09-20T10:00:00Z' },
+      { company_id: 'c1', subject: 'Nova Surf Festival', thread_id: 't1', provider_msg_id: 'old@mail.gmail.com', created_at: '2026-09-10T10:00:00Z' },
+    ]),
+  }));
+  await page.goto('/crm/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof window.loadBatchThreads === 'function' && typeof window.queueDripCampaign === 'function');
+  const out = await page.evaluate(async () => {
+    COMPOSE_THREAD = null;
+    const sender = { id: 'u1', full_name: 'João Maria André', email: 'groups@gotadaguasurf.com' };
+    const recipients = [
+      { contact: { id: 'c1', company: 'Nova Surf Club' }, email: 'a@nova.pt', include: true },
+      { contact: { id: 'c2', company: 'Old School' }, email: 'b@old.pt', include: true },
+    ];
+    await loadBatchThreads(recipients);
+    const tpl = { subject: 'Re: {{subject}}' };
+    return {
+      s1: batchSubjectFor(tpl, recipients[0], sender), t1: recipients[0].thread,
+      s2: batchSubjectFor(tpl, recipients[1], sender), t2: recipients[1].thread,
+      replyTpl: isReplyTemplate(tpl), firstTouch: isReplyTemplate({ subject: 'Surf week for {{company}}' }),
+      instantThreads: /threadId:\s*isReply\s*\?\s*r\.thread\.threadId/.test(runBatchSend.toString()),
+      instantSkips: /no earlier email to reply to/.test(runBatchSend.toString()),
+      queueThreads: /thread_id:\s*isReply\s*\?\s*r\.thread\.threadId/.test(queueDripCampaign.toString()),
+    };
+  });
+  expect(out.s1).toBe('Re: Nova Surf Festival');
+  expect(out.t1).toEqual({ threadId: 't1', rfcId: '<abc@mail.gmail.com>', subject: 'Nova Surf Festival' });
+  expect(out.t2).toBeNull();
+  expect(out.s2).toBe('Re: ');            // nothing to answer — the send paths skip this row instead of sending it
+  expect(out.replyTpl).toBe(true);
+  expect(out.firstTouch).toBe(false);
+  expect(out.instantThreads).toBe(true);
+  expect(out.instantSkips).toBe(true);
+  expect(out.queueThreads).toBe(true);
+});
+
 test('camp-hub: boot takes the ledger from Supabase and pushes nothing back (server is the source of truth)', async ({ page }) => {
   // 10 Sep 2026: rent rows corrected by SQL must not be undone by a browser
   // boot. The hub's localStorage is an in-memory shim, so the only way a

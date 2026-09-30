@@ -100,6 +100,30 @@ function insideWindow(campaign: { window_start: string; window_end: string; time
 
 const sleep = (ms: number) => new Promise(res => setTimeout(res, ms))
 
+// A follow-up row carries the Gmail thread of the company's earlier email
+// (email_queue.thread_id, set by the CRM at queue time). Gmail groups the
+// send on our side from threadId alone, but the RECIPIENT's mail client
+// only threads on In-Reply-To/References carrying the real RFC 2822
+// Message-ID of the message being answered — so resolve it from the
+// thread's last message, exactly as gmail-send does. Best-effort: without
+// it the email still goes out, just as a new conversation for them.
+async function threadHeaders(token: string, threadId: string): Promise<{ inReplyTo?: string; references?: string }> {
+  try {
+    const tResp = await fetch(
+      `https://gmail.googleapis.com/gmail/v1/users/me/threads/${encodeURIComponent(threadId)}` +
+      `?format=metadata&metadataHeaders=Message-ID&metadataHeaders=Message-Id&metadataHeaders=References`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    )
+    if (!tResp.ok) return {}
+    const tj = await tResp.json() as { messages?: Array<{ payload?: { headers?: Array<{ name: string; value: string }> } }> }
+    const last = tj.messages?.[tj.messages.length - 1]
+    const h = (n: string) => last?.payload?.headers?.find(x => x.name.toLowerCase() === n.toLowerCase())?.value
+    const msgId = h('Message-ID') || h('Message-Id')
+    if (!msgId || !msgId.includes('@')) return {}
+    return { inReplyTo: msgId, references: ((h('References') || '') + ' ' + msgId).trim() }
+  } catch { return {} }
+}
+
 Deno.serve(async (req) => {
   if (req.method !== 'POST') return json({ error: 'POST only' }, 405)
   const supa = createClient(SUPABASE_URL, SERVICE_KEY)
@@ -231,16 +255,20 @@ Deno.serve(async (req) => {
       // 5. Send.
       try {
         const { token, account } = await ensureAccessToken(supa)
+        const thr = row.thread_id ? await threadHeaders(token, row.thread_id) : {}
         const raw = buildRaw({
           fromEmail: account.email, fromDisplay: displayName,
           to: row.to_email, subject: row.subject,
           body: (row.body || '') + UNSUB_FOOTER,
           html: buildEmailHtml(row.body || '', senderRow || { email: account.email }, UNSUB_FOOTER),
+          inReplyTo: thr.inReplyTo, references: thr.references,
         })
+        const sendBody: Record<string, unknown> = { raw }
+        if (row.thread_id) sendBody.threadId = row.thread_id
         const resp = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
           method: 'POST',
           headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ raw }),
+          body: JSON.stringify(sendBody),
         })
         if (!resp.ok) {
           const errTxt = (await resp.text()).slice(0, 300)
