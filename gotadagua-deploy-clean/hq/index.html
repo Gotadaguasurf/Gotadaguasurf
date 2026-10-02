@@ -372,6 +372,21 @@ td.loc-name{font-weight:700;color:var(--navy)}
   </div>
 </dialog>
 
+<dialog id="accountantModal" class="cat-modal" style="max-width:640px">
+  <div class="cat-modal-inner">
+    <div class="cat-modal-hdr">
+      <div>
+        <div class="card-title">Pacote para o contabilista</div>
+        <div class="card-hint">Um Excel com as despesas do período, o link de cada documento na Drive, o que falta e o extrato do Santander.</div>
+      </div>
+      <button class="action-btn" onclick="closeAccountantPanel()">✕ Close</button>
+    </div>
+    <div id="accountantModalBody" class="cat-modal-body">
+      <div class="loading">Loading…</div>
+    </div>
+  </div>
+</dialog>
+
 <dialog id="recurringModal" class="cat-modal" style="max-width:1020px">
   <div class="cat-modal-inner">
     <div class="cat-modal-hdr">
@@ -1309,11 +1324,13 @@ function invoicesTabHtml(){
           </div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <input id="filter_search" type="search" placeholder="🔎 Fornecedor, nº fatura, NIF…" oninput="onFilterChanged()" class="hq-search">
+            <button class="btn btn-ghost" style="padding:8px 14px;font-size:12px" onclick="openAccountantPanel()">📦 Contabilista</button>
             <details class="hq-menu">
               <summary class="btn btn-ghost" style="padding:8px 14px;font-size:12px;list-style:none">Mais ▾</summary>
               <div class="hq-menu-list">
                 <button onclick="openImportModal()">⬆ Import CSV</button>
                 <button onclick="exportInvoicesCsv()">⬇ Export CSV</button>
+                <button onclick="openAccountantPanel()">📦 Pacote contabilista</button>
                 <button onclick="openRecurringPanel()">⏰ Recurring</button>
                 <button onclick="openCategoryPanel()">⚙ Categories</button>
               </div>
@@ -2299,6 +2316,338 @@ function openImportModal(){
   modal.showModal();
   // Attach drag-drop + click listeners AFTER the drop zone lands in the DOM.
   wireExcelDropZone();
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//   Accountant pack — one Excel per period
+//
+//   What the accountant needs is not the app, it is a list: every expense
+//   of the month, the document behind it, what has no document yet, and
+//   the bank statement to cross it against. Money sent to the camps is
+//   funding (internal_transfers), never an expense, so it gets its own
+//   sheet instead of showing up as "missing".
+//   Only Water Movements lives here. Manjar Alentejano is another company
+//   and its documents exist only in the Drive.
+// ═══════════════════════════════════════════════════════════════════════
+const ACC_BANK_KIND = {
+  expense:'Despesa', internal_transfer:'Transferência para camp', bank_fee:'Comissão do banco',
+  card_settlement:'Liquidação do cartão', income:'Receita', other:'Outro'
+};
+const XLSX_CDN = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+
+function accPeriod(kind, value){
+  // kind 'month' → value 'YYYY-MM'; kind 'year' → value 'YYYY'
+  if (kind === 'year') {
+    const y = String(value).slice(0,4);
+    return { from: `${y}-01-01`, to: `${y}-12-31`, label: `Ano ${y}`, slug: y };
+  }
+  const [y, m] = String(value).split('-').map(Number);
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const mm = String(m).padStart(2,'0');
+  return { from: `${y}-${mm}-01`, to: `${y}-${mm}-${String(last).padStart(2,'0')}`, label: `${MESES_LONGO[m-1]} ${y}`, slug: `${y}-${mm}` };
+}
+
+function accEstado(r){
+  if (!r.drive_link) return 'SEM DOCUMENTO';
+  return r.needs_review ? 'A REVER' : 'OK';
+}
+
+// Statement lines are classified from the description alone, so a fresh
+// import needs no manual step. Camp funding is only recognised once the
+// transfer exists in internal_transfers with that reference.
+function classifyBankMovement(desc, amount, transferRefs){
+  const s = String(desc||'').toUpperCase();
+  if (Number(amount) > 0) return 'income';
+  if (s.includes('PAG.CTA.CART')) return 'card_settlement';
+  if (s.includes('N.SEPA+EMITIDA')) {
+    const ref = (s.match(/0018503869600\d+/)||[])[0];
+    return (ref && transferRefs && transferRefs.has(ref)) ? 'internal_transfer' : 'expense';
+  }
+  if (/IMP\.CPR|COMISSAO CPR|COMISS\. CAMBIO|IS \(17|COMISS|IS-VERBA|IMP\.SELO|IMP\.DE SELO|IMPOSTO DO SELO|DESPESAS|IMP\.S\/VALOR|DESP\.SHA|N\.SEPA\+ URGENTES|CARTÃO REFEIÇÃO\)/.test(s)) return 'bank_fee';
+  return 'expense';
+}
+
+// Movimentos_DO.xls → rows. First row is the header; dates come as
+// dd-mm-yyyy text. `seq` numbers identical lines of the same day so that
+// seven meal-card lots of 214,20 survive and a re-import stays a no-op.
+function parseSantanderRows(aoa, transferRefs){
+  const out = []; const seen = {};
+  (aoa||[]).forEach((row, i) => {
+    if (!row || i === 0) return;
+    const m = String(row[0]||'').trim().match(/^(\d{2})-(\d{2})-(\d{4})$/);
+    if (!m) return;
+    const v = String(row[1]||'').trim().match(/^(\d{2})-(\d{2})-(\d{4})$/);
+    const amount = Math.round(Number(row[4]) * 100) / 100;
+    if (!isFinite(amount)) return;
+    const description = String(row[2]||'').replace(/\s+/g,' ').trim();
+    const date = `${m[3]}-${m[2]}-${m[1]}`;
+    const key = `${date}|${amount}|${description}`;
+    seen[key] = (seen[key]||0) + 1;
+    out.push({
+      movement_date: date,
+      value_date: v ? `${v[3]}-${v[2]}-${v[1]}` : date,
+      description, amount,
+      currency: String(row[5]||'EUR').trim() || 'EUR',
+      balance: isFinite(Number(row[6])) ? Math.round(Number(row[6])*100)/100 : null,
+      kind: classifyBankMovement(description, amount, transferRefs),
+      seq: seen[key],
+    });
+  });
+  return out;
+}
+
+// Pure: data in, sheets out. Kept free of XLSX and of the DOM so the
+// smoke suite can check the numbers without downloading anything.
+function buildAccountantSheets({ invoices, transfers, bank, period }){
+  // Rows paid by another company (Wave Movements, MGPR) are not this
+  // accountant's books: counted in the summary, left out of the sheets.
+  const outras = (invoices||[]).filter(r => r.paying_company && r.paying_company !== 'water-movements');
+  const inv = (invoices||[]).filter(r => r.is_duplicate !== true && (!r.paying_company || r.paying_company === 'water-movements')).sort((a,b) => String(a.invoice_date).localeCompare(String(b.invoice_date)) || String(a.company).localeCompare(String(b.company)));
+  const expHeader = ['Data','Fornecedor','NIF','N.º documento','Descrição','Valor','Moeda','Valor EUR','Categoria','Local','Pagamento','Documento','Estado','Notas'];
+  const expWidths = [11,30,12,20,46,11,7,11,18,13,14,12,16,60];
+  const toRow = (r) => [
+    r.invoice_date || '', r.company || '', r.supplier_nif || '', r.invoice_number || '',
+    String(r.description||'').slice(0,250),
+    Number(r.amount||0), r.currency || 'EUR', Number(r.amount_eur||0),
+    r.category_name || '', locLabel(r.location_slug), r.payment_type || '',
+    r.drive_link ? 'abrir' : '—', accEstado(r),
+    // A flagged row with no note was filed by an import and nobody has
+    // confirmed it yet — say so, or "A REVER" reads as "something is wrong".
+    String(r.notes || (r.needs_review ? 'Lançada automaticamente; ainda não confirmada na app.' : '')).slice(0,400),
+  ];
+  const expSheet = (name, list) => ({
+    name, header: expHeader, widths: expWidths,
+    rows: list.map(toRow),
+    links: list.map((r,i) => r.drive_link ? { r: i+1, c: 11, url: r.drive_link } : null).filter(Boolean),
+    totalCol: 7,
+  });
+  const missing = inv.filter(r => !r.drive_link);
+  const review  = inv.filter(r => r.drive_link && r.needs_review);
+  const sum = (list, f) => Math.round(list.reduce((s,r) => s + Number(f(r)||0), 0) * 100) / 100;
+  const bankList = (bank||[]).slice().sort((a,b) => String(a.movement_date).localeCompare(String(b.movement_date)));
+  const debits  = bankList.filter(b => Number(b.amount) < 0);
+  const credits = bankList.filter(b => Number(b.amount) > 0);
+  const tr = (transfers||[]).slice().sort((a,b) => String(a.transfer_date).localeCompare(String(b.transfer_date)));
+
+  const resumo = {
+    name: 'Resumo', widths: [44,18],
+    header: ['Water Movements Lda (NIF 515059927)', period.label],
+    rows: [
+      ['Período', `${period.from} a ${period.to}`],
+      ['Gerado a', new Date().toISOString().slice(0,10)],
+      ['',''],
+      ['DESPESAS NA APP',''],
+      ['Linhas', inv.length],
+      ['Com documento', inv.length - missing.length],
+      ['Sem documento', missing.length],
+      ['Com documento mas a rever', review.length],
+      ['Total (EUR)', sum(inv, r => r.amount_eur)],
+      ['Sem documento (EUR)', sum(missing, r => r.amount_eur)],
+      ['Pagas por outra empresa (fora deste ficheiro)', outras.length],
+      ['',''],
+      ['TRANSFERÊNCIAS PARA OS CAMPS (não são despesa)',''],
+      ['Transferências', tr.length],
+      ['Total (EUR)', sum(tr, t => t.amount_eur ?? t.amount)],
+      ['',''],
+      ['EXTRATO SANTANDER',''],
+      ['Movimentos', bankList.length],
+      ['Débitos (EUR)', Math.abs(sum(debits, b => b.amount))],
+      ['Créditos (EUR)', sum(credits, b => b.amount)],
+      ['',''],
+      ['Estado: OK = tem documento · A REVER = tem documento mas há uma dúvida anotada · SEM DOCUMENTO = falta a fatura ou o recibo.',''],
+      ['A coluna «Documento» abre o ficheiro na Drive. Os documentos do Manjar Alentejano não entram aqui: estão só na Drive.',''],
+    ],
+    links: [],
+  };
+  return {
+    fileName: `Contabilista_WaterMovements_${period.slug}.xlsx`,
+    stats: { linhas: inv.length, semDocumento: missing.length, aRever: review.length, totalEur: sum(inv, r => r.amount_eur), banco: bankList.length, transferencias: tr.length },
+    sheets: [
+      resumo,
+      expSheet('Despesas', inv),
+      expSheet('Em falta', missing),
+      expSheet('A rever', review),
+      {
+        name: 'Transferências camps', header: ['Data','De','Para','Valor EUR','Finalidade','Referência','Notas'],
+        widths: [11,22,22,12,28,22,70],
+        rows: tr.map(t => [t.transfer_date, companyLabel(t.from_company), companyLabel(t.to_company), Number(t.amount_eur ?? t.amount ?? 0), t.purpose||'', t.reference||'', String(t.notes||'').slice(0,400)]),
+        links: [], totalCol: 3,
+      },
+      {
+        name: 'Extrato Santander', header: ['Data','Descrição','Montante','Saldo','Tipo'],
+        widths: [11,60,12,12,26],
+        rows: bankList.map(b => [b.movement_date, b.description, Number(b.amount), b.balance == null ? '' : Number(b.balance), ACC_BANK_KIND[b.kind] || b.kind || '']),
+        links: [], totalCol: 2,
+      },
+    ],
+  };
+}
+
+function loadXlsxLib(){
+  if (window.XLSX) return Promise.resolve(window.XLSX);
+  if (window.__xlsxLoading) return window.__xlsxLoading;
+  window.__xlsxLoading = new Promise((resolve, reject) => {
+    const el = document.createElement('script');
+    el.src = XLSX_CDN;
+    el.onload = () => window.XLSX ? resolve(window.XLSX) : reject(new Error('XLSX não carregou'));
+    el.onerror = () => { window.__xlsxLoading = null; reject(new Error('Sem acesso à biblioteca do Excel')); };
+    document.head.appendChild(el);
+  });
+  return window.__xlsxLoading;
+}
+
+function accWorkbook(XLSX, pack){
+  const wb = XLSX.utils.book_new();
+  pack.sheets.forEach(sh => {
+    const aoa = [sh.header].concat(sh.rows);
+    const n = sh.rows.length;
+    if (sh.totalCol != null && n) {
+      const total = new Array(sh.header.length).fill('');
+      const col = XLSX.utils.encode_col(sh.totalCol);
+      total[Math.max(0, sh.totalCol - 1)] = 'Total';
+      const v = Math.round(sh.rows.reduce((s,r) => s + Number(r[sh.totalCol]||0), 0) * 100) / 100;
+      // Formula plus its cached value: Excel recalculates, previews still show a number.
+      total[sh.totalCol] = { t:'n', v, f:`SUM(${col}2:${col}${n+1})`, z:'#,##0.00' };
+      aoa.push(new Array(sh.header.length).fill(''), total);
+    }
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    (sh.links||[]).forEach(l => {
+      const ref = XLSX.utils.encode_cell({ r: l.r, c: l.c });
+      if (ws[ref]) ws[ref].l = { Target: l.url, Tooltip: 'Abrir na Drive' };
+    });
+    Object.keys(ws).forEach(k => { if (k[0] !== '!' && ws[k].t === 'n' && !ws[k].z && !Number.isInteger(ws[k].v)) ws[k].z = '#,##0.00'; });
+    ws['!cols'] = (sh.widths||[]).map(w => ({ wch: w }));
+    if (sh.name !== 'Resumo' && n) ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s:{r:0,c:0}, e:{r:n, c:sh.header.length-1} }) };
+    XLSX.utils.book_append_sheet(wb, ws, sh.name.slice(0,31));
+  });
+  return wb;
+}
+
+function accountantPanelHtml(){
+  const now = new Date();
+  const prev = new Date(Date.UTC(now.getFullYear(), now.getMonth() - 1, 1));
+  const defM = prev.getUTCMonth() + 1, defY = prev.getUTCFullYear();
+  const years = []; for (let y = now.getFullYear(); y >= 2026; y--) years.push(y);
+  const sel = 'padding:8px 10px;border-radius:9px;border:1px solid var(--line,#d8dee6);font-size:14px';
+  return `
+    <div id="accToast"></div>
+    <div style="display:grid;gap:14px">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end">
+        <label style="display:grid;gap:4px;font-size:12px">Mês
+          <select id="acc_mes" style="${sel}">
+            ${MESES_LONGO.map((m,i) => `<option value="${String(i+1).padStart(2,'0')}"${i+1===defM?' selected':''}>${m}</option>`).join('')}
+            <option value="all">Ano inteiro</option>
+          </select>
+        </label>
+        <label style="display:grid;gap:4px;font-size:12px">Ano
+          <select id="acc_ano" style="${sel}">
+            ${years.map(y => `<option value="${y}"${y===defY?' selected':''}>${y}</option>`).join('')}
+          </select>
+        </label>
+        <button class="btn" id="acc_download" onclick="downloadAccountantPack()">⬇ Descarregar Excel</button>
+      </div>
+      <div id="acc_stats" class="card-hint"></div>
+      <hr style="border:none;border-top:1px solid var(--line,#e5e9ef);margin:2px 0">
+      <div>
+        <div style="font-weight:700;font-size:13px;margin-bottom:4px">Extrato do Santander</div>
+        <div class="card-hint" style="margin-bottom:8px">Escolhe o ficheiro <code>Movimentos_DO.xls</code> do homebanking. Só entram os movimentos que ainda não estão guardados.</div>
+        <input id="acc_bank_file" type="file" accept=".xls,.xlsx" onchange="importSantanderFile(this.files && this.files[0])">
+        <div id="acc_bank_status" class="card-hint" style="margin-top:6px"></div>
+      </div>
+    </div>`;
+}
+
+function openAccountantPanel(){
+  const modal = $('accountantModal');
+  if (!modal) return;
+  const body = $('accountantModalBody');
+  if (body) body.innerHTML = accountantPanelHtml();
+  modal.showModal();
+  refreshBankStatus();
+}
+function closeAccountantPanel(){ const m = $('accountantModal'); if (m && m.open) m.close(); }
+
+async function refreshBankStatus(){
+  const el = $('acc_bank_status');
+  if (!el) return;
+  try {
+    const { data, error } = await sb.from('hq_bank_movements').select('movement_date').order('movement_date', { ascending:false }).limit(1);
+    if (error) throw error;
+    el.textContent = (data && data[0]) ? `Extrato guardado até ${fmtDia(data[0].movement_date)} ${String(data[0].movement_date).slice(0,4)}.` : 'Ainda não há extrato guardado.';
+  } catch (e) {
+    el.textContent = 'Não foi possível ler o extrato guardado: ' + (e.message || e.code || 'erro');
+  }
+}
+
+async function fetchAccountantData(period){
+  const [invoices, transfers, bank] = await Promise.all([
+    fetchAllPaged(() => sb.from('hq_invoices')
+      .select('invoice_date, company, supplier_nif, invoice_number, description, amount, currency, amount_eur, category_name, location_slug, payment_type, drive_link, needs_review, notes, paying_company, is_duplicate')
+      .is('deleted_at', null)
+      .gte('invoice_date', period.from).lte('invoice_date', period.to)
+      .order('invoice_date', { ascending:true }).order('id', { ascending:true })),
+    fetchAllPaged(() => sb.from('internal_transfers')
+      .select('transfer_date, from_company, to_company, amount, amount_eur, purpose, reference, notes')
+      .gte('transfer_date', period.from).lte('transfer_date', period.to)
+      .order('transfer_date', { ascending:true }).order('id', { ascending:true })),
+    fetchAllPaged(() => sb.from('hq_bank_movements')
+      .select('movement_date, description, amount, balance, kind')
+      .eq('paying_company', 'water-movements')
+      .gte('movement_date', period.from).lte('movement_date', period.to)
+      .order('movement_date', { ascending:true }).order('id', { ascending:true })),
+  ]);
+  return { invoices, transfers, bank };
+}
+
+async function downloadAccountantPack(){
+  const btn = $('acc_download');
+  const mes = $('acc_mes')?.value, ano = $('acc_ano')?.value;
+  if (!mes || !ano) { toast('accToast','warn','Escolhe o mês e o ano.'); return; }
+  const period = mes === 'all' ? accPeriod('year', ano) : accPeriod('month', `${ano}-${mes}`);
+  if (btn) { btn.disabled = true; btn.textContent = 'A preparar…'; }
+  try {
+    const [XLSX, data] = await Promise.all([loadXlsxLib(), fetchAccountantData(period)]);
+    if (!data.invoices.length && !data.bank.length) { toast('accToast','warn',`Não há nada lançado em ${period.label}.`); return; }
+    const pack = buildAccountantSheets({ ...data, period });
+    XLSX.writeFile(accWorkbook(XLSX, pack), pack.fileName, { compression:true });
+    const s = pack.stats;
+    if ($('acc_stats')) $('acc_stats').textContent = `${period.label}: ${s.linhas} linhas, ${s.semDocumento} sem documento, ${s.aRever} a rever, ${s.banco} movimentos do banco.`;
+    toast('accToast','ok',`Descarregado: ${pack.fileName}`);
+  } catch (e) {
+    // Show the real cause — a silent failure here looks like "the button does nothing".
+    toast('accToast','err','Falhou: ' + (e.message || e.code || String(e)));
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '⬇ Descarregar Excel'; }
+  }
+}
+
+async function importSantanderFile(file){
+  const el = $('acc_bank_status');
+  if (!file) return;
+  try {
+    if (el) el.textContent = 'A ler o ficheiro…';
+    const XLSX = await loadXlsxLib();
+    const wb = XLSX.read(await file.arrayBuffer(), { type:'array' });
+    const aoa = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header:1, raw:true, defval:'' });
+    const { data: trs, error: e1 } = await sb.from('internal_transfers').select('id, reference');
+    if (e1) throw e1;
+    const refToId = {}; (trs||[]).forEach(t => { if (t.reference) refToId[t.reference] = t.id; });
+    const rows = parseSantanderRows(aoa, new Set(Object.keys(refToId)));
+    if (!rows.length) { if (el) el.textContent = 'O ficheiro não tem movimentos no formato do Santander.'; return; }
+    const payload = rows.map(r => {
+      const ref = (r.description.match(/0018503869600\d+/)||[])[0];
+      return { ...r, paying_company:'water-movements', bank:'santander', internal_transfer_id: r.kind === 'internal_transfer' ? (refToId[ref] || null) : null };
+    });
+    const { data: ins, error } = await sb.from('hq_bank_movements')
+      .upsert(payload, { onConflict:'paying_company,bank,movement_date,amount,description,seq', ignoreDuplicates:true })
+      .select('id');
+    if (error) throw error;
+    const novos = (ins||[]).length;
+    const datas = rows.map(r => r.movement_date).sort();
+    if (el) el.textContent = `${rows.length} movimentos no ficheiro (${fmtDia(datas[0])} a ${fmtDia(datas[datas.length-1])}): ${novos} novos, ${rows.length - novos} já estavam guardados.`;
+  } catch (e) {
+    if (el) el.textContent = 'Falhou: ' + (e.message || e.code || String(e));
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════

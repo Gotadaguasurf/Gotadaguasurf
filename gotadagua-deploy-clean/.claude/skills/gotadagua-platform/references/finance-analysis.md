@@ -428,3 +428,24 @@ owes us the net. `bookingPayRoute()` / `monthSplit()` in partners/index.html; th
 to paid. Every screen, email and PDF shows both directions. Partial payments (0 < Due < total) fall back and are
 flagged "check who collected". Surfwise Travel, The Surf Tribe and Sant Jordi mix both routes in
 2026; the old inactive `SURFWISE` partner record's month statuses were moved to Surfwise Travel.
+
+## Drive ↔ HQ linking and invoice-date duplicates (28 Sep 2026)
+
+- Every live `hq_invoices` row should carry a `drive_link`. Drive month folders hold two kinds of files: renamed ones (`Fornecedor - Mês 2026 - valor€.pdf`, match by supplier + amount) and original-name ones inside `Printed` subfolders (must be read to know supplier/amount).
+- Folder month = month of the bank payment, not of the invoice.
+- Split salary rows (`Aulas — parte X`) share the same document; payroll `Recibo_Geral` links to every net-salary and meal-card row of that month.
+- Direct debits (EDP, SMAS, MEO, Goldenergy, Chubb, RCI/Mobilize) are debited 13–45 days after the invoice date. A row dated on the invoice date plus a row dated on the debit date is a duplicate: keep the bank row, soft-delete the other, move the link.
+- Partner documents where the partner pays us (AASHA, Solid Surf House, `Fatura IN2 …` sent from accounting@) are income and never go to `hq_invoices`. Commissions we pay to partners (Juvigo, Surfwise, Surfawhile, Relax Adventure, Marketing Air Force) do, under Partners.
+- Bank station names: "PA TRAFARIA" is Prio. Fuel rows use the brand as company (`prio`, `galp`, `cepsa (moeve)`, `repsol`); the bridge toll is `lusoponte`.
+- Never trust the currency of an amount written in a renamed file title (Uber Feb = HUF, Ryanair Jun = MAD, OpenAI/DigitalOcean = USD). Read the document.
+- Google Ads monthly invoice N is debited during month N+1.
+- One document covering several debits gets the same `drive_link` on every row. Receipts in the Drive with no bank debit become rows with `needs_review = true` and a note, never silently skipped.
+- Green receipts must be addressed to Water Movements Lda (NIF 515059927); flag any issued to another entity.
+
+## Accountant hand-off (29 Sep 2026)
+
+- Two companies, two circuits. Water Movements (NIF 515059927): every document gets a row in `hq_invoices` and a file in `2026 Expenses/<Month>_2026`, linked by `drive_link`. Manjar Alentejano (NIF 502379723): Drive only (`MANJARALENTEJANO/Expenses/Invoices/<Month> 2026`), never a row in the app. Decide by the buyer's NIF printed on the document.
+- New documents are dropped in `EXPENSES/_ENTRADA` (subfolders per company). The accountant's entry point is `EXPENSES/Contabilista 2026` (LEIA-ME + one index workbook per company). Files are never copied there.
+- Regenerate the Water index with `references/contabilista_indice.py <year> <out.xlsx>` and replace the file in the accountant folder. Formulas are computed when the file is opened in Google Sheets or Excel.
+- Invoices not yet debited from direct-debit suppliers: file the document, create the row only when the debit shows up. Cancelled invoices ("Anulado") are never booked.
+- Order confirmations, delivery notes, supplier statements and payment notices are not invoices: they go to `Outros (não são faturas)` inside the month folder.
