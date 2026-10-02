@@ -2416,7 +2416,7 @@ function buildEmailHtml(body, sender){
 //      trail records who clicked Send
 // Returns { ok, message_id, thread_id, from_display } — shape adapted
 // below to match the legacy { id, threadId } the call sites expect.
-async function gmailSendOne({ to, subject, body, html, companyId, contactId, senderUserId, threadId, inReplyTo, references, attachments }){
+async function gmailSendOne({ to, subject, body, html, companyId, contactId, senderUserId, threadId, inReplyTo, references, attachments, quote }){
   const supa = getClient();
   const { data: { session: s } } = await supa.auth.getSession();
   if(!s?.access_token) throw new Error('Not signed in — refresh and sign in to the CRM');
@@ -2429,7 +2429,14 @@ async function gmailSendOne({ to, subject, body, html, companyId, contactId, sen
   if(sigText && !bodyOut.includes(sigText)){
     bodyOut = bodyOut.replace(/\s+$/, '') + '\n\n' + sigText;
   }
-  const htmlBody = html ? wrapRichHtml(html, senderRow) : buildEmailHtml(bodyOut, senderRow);
+  let htmlBody = html ? wrapRichHtml(html, senderRow) : buildEmailHtml(bodyOut, senderRow);
+  // A reply carries the message it answers below the signature, the way
+  // Gmail does — otherwise the other side gets a bare line with no
+  // context and the earlier exchange only exists on our screen.
+  if(quote && (quote.text || quote.html)){
+    if(quote.text) bodyOut = bodyOut.replace(/\s+$/, '') + '\n\n' + quote.text;
+    if(quote.html) htmlBody = /<\/div>\s*$/.test(htmlBody) ? htmlBody.replace(/<\/div>\s*$/, quote.html + '</div>') : htmlBody + quote.html;
+  }
   const resp = await fetch(`${cfg.url}/functions/v1/gmail-send`, {
     method: 'POST',
     headers: {
@@ -5980,8 +5987,7 @@ function openReplyCompose(a, contact){
     const match = raw.match(/<([^>]+)>/);
     return (match ? match[1] : raw).trim();
   })();
-  const origSubj = m.subject || '';
-  const replySubj = /^re:\s*/i.test(origSubj) ? origSubj : `Re: ${origSubj}`;
+  const replySubj = replySubjectFor(m, window._lastActivityRows || [], contact?.company);
   // Strip + reuse the existing settings dialog's modal styles so the
   // reply matches the rest of the app. Built dynamically rather than
   // adding to the HTML body since this modal is only used here.
@@ -6079,6 +6085,7 @@ function openReplyCompose(a, contact){
     const bodyHtml = ta.innerHTML;
     const body = rtToText(ta);
     if(!to || !subject){ toast('To + Subject required'); return; }
+    if(!baseSubject(subject)){ toast('Write a subject — a bare "Re:" loses the thread'); return; }
     const btn = modal.querySelector('#replySend');
     btn.disabled = true; btn.style.opacity = '.6'; btn.textContent = 'Sending…';
     try {
@@ -6101,6 +6108,7 @@ function openReplyCompose(a, contact){
         threadId: m.thread_id || undefined,
         inReplyTo: rfcId,
         references: rfcId,
+        quote: buildReplyQuote({ from: (m.from || '').trim(), when: origWhen, body: decodeEntities(m.body || m.snippet || '') }),
       });
       // Pipeline auto-advance same as Send Now / Batch — sending a
       // reply to an inbound counts as activity.
@@ -6130,6 +6138,41 @@ function openReplyCompose(a, contact){
 }
 
 // ── Conversation view helpers ───────────────────────────────────────
+// Subject for a reply. The row being answered sometimes carries an
+// empty subject (an earlier reply went out as a bare "Re: " and the
+// whole thread inherited it), so fall back to the newest real subject
+// in the same thread, then to any email with this contact, then to the
+// company name. Never returns a bare "Re:".
+function baseSubject(s){ return String(s || '').replace(/^\s*((re|fwd?)\s*:\s*)+/i, '').trim(); }
+function replySubjectFor(meta, rows, fallback){
+  const own = baseSubject(meta?.subject);
+  if(own) return `Re: ${own}`;
+  const emails = (rows || []).filter(a => a && a.meta && /^email_/.test(a.action || ''))
+    .slice().sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
+  const tid = meta?.thread_id;
+  const pick = list => { const hit = list.find(a => baseSubject(a.meta.subject)); return hit ? baseSubject(hit.meta.subject) : ''; };
+  const fromThread = tid ? pick(emails.filter(a => a.meta.thread_id === tid)) : '';
+  if(fromThread) return `Re: ${fromThread}`;
+  const any = pick(emails);
+  if(any) return `Re: ${any}`;
+  const fb = String(fallback || '').trim();
+  return fb ? `Re: ${fb}` : 'Re:';
+}
+// The quoted trail that goes under a reply: Gmail's "On …, … wrote:"
+// line and the whole original (its own quoted trail included), as plain
+// text with "> " and as a blockquote for the HTML part.
+function buildReplyQuote({ from, when, body }){
+  const text = String(body || '').replace(/\r\n/g, '\n').replace(/\s+$/, '');
+  if(!text) return { text: '', html: '' };
+  const who = String(from || '').trim() || 'contacto';
+  const head = `On ${when ? when + ', ' : ''}${who} wrote:`;
+  return {
+    text: head + '\n' + text.split('\n').map(l => '> ' + l).join('\n'),
+    html: `<br><br><div class="gmail_quote" style="color:#555"><div>${escHtml(head)}</div>` +
+          `<blockquote style="margin:0 0 0 .8ex;border-left:1px solid #ccc;padding-left:1ex">${escHtml(text).replace(/\n/g, '<br>')}</blockquote></div>`,
+  };
+}
+
 // Splits an email body into the fresh part and the quoted trail so
 // chat bubbles stay short. Cuts at the first "On … wrote:" line, the
 // first ">"-quoted line, or an "-- Original Message --" divider.
@@ -6845,13 +6888,16 @@ async function loadComposeThread(companyId){
     const { data } = await getClient().from('email_messages')
       .select('subject, thread_id, provider_msg_id, direction, sent_at, created_at')
       .eq('company_id', companyId).not('thread_id', 'is', null)
-      .order('created_at', { ascending: false }).limit(1);
+      .order('created_at', { ascending: false }).limit(20);
     const m = (data || [])[0];
     if(!m) return null;
     const rfcId = (m.provider_msg_id || '').includes('@')
       ? (m.provider_msg_id.startsWith('<') ? m.provider_msg_id : `<${m.provider_msg_id}>`)
       : undefined;
-    COMPOSE_THREAD = { threadId: m.thread_id, rfcId, subject: String(m.subject || '').replace(/^\s*(re|fwd?)\s*:\s*/i, '').trim() };
+    // The newest message may carry an empty "Re:" subject; the thread's
+    // real subject is on the first message that has one.
+    const withSubject = (data || []).find(x => x.thread_id === m.thread_id && baseSubject(x.subject)) || (data || []).find(x => baseSubject(x.subject));
+    COMPOSE_THREAD = { threadId: m.thread_id, rfcId, subject: withSubject ? baseSubject(withSubject.subject) : '' };
   }catch(e){ console.warn('[CRM] compose thread lookup failed', e); }
   return COMPOSE_THREAD;
 }
