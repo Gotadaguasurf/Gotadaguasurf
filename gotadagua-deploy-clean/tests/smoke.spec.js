@@ -1152,3 +1152,144 @@ test('partners: who collected is decided per booking from Bookinglayer Status/Du
   expect(after.paidToUs).toBeCloseTo(1617.86, 2);
   expect(after.outstandingToPartner).toBeCloseTo(122.22, 2);
 });
+
+test('hq: accountant pack lists every expense, what has no document, camp funding apart, and the bank statement', async ({ page }) => {
+  // Miguel, 29 Sep 2026: one button that downloads what the accountant
+  // needs — app rows, Drive links, what is missing and the Santander.
+  await fakeOwnerSession(page);
+  await page.goto('/hq/index.html');
+  await page.waitForFunction(() => typeof buildAccountantSheets === 'function');
+  const out = await page.evaluate(() => {
+    const period = accPeriod('month', '2026-09');
+    const pack = buildAccountantSheets({
+      period,
+      invoices: [
+        { invoice_date: '2026-09-29', company: 'Safari na Horta', amount: 890, currency: 'EUR', amount_eur: 890, category_name: 'Activities', location_slug: 'portugal', drive_link: 'https://drive.google.com/file/d/abc/view', needs_review: false, paying_company: 'water-movements' },
+        { invoice_date: '2026-09-02', company: 'Prio', amount: 40, currency: 'EUR', amount_eur: 40, category_name: 'Transport', location_slug: 'portugal', drive_link: null, needs_review: false, paying_company: 'water-movements' },
+        { invoice_date: '2026-09-10', company: 'DUC', amount: 158.29, currency: 'EUR', amount_eur: 158.29, category_name: 'Taxes', location_slug: 'general', drive_link: 'https://drive.google.com/file/d/def/view', needs_review: true, paying_company: 'water-movements' },
+        { invoice_date: '2026-09-11', company: 'Colombo supplier', amount: 400, currency: 'EUR', amount_eur: 400, location_slug: 'sri-lanka', drive_link: null, paying_company: 'wave-movements' },
+        { invoice_date: '2026-09-12', company: 'Prio', amount: 40, currency: 'EUR', amount_eur: 40, drive_link: null, paying_company: 'water-movements', is_duplicate: true },
+      ],
+      transfers: [{ transfer_date: '2026-09-28', from_company: 'water-movements', to_company: 'wave-movements', amount: 27200, amount_eur: 27200, reference: '001850386960013813' }],
+      bank: [
+        { movement_date: '2026-09-28', description: 'TRF.N.SEPA+EMITIDA 001850386960013813', amount: -27200, balance: 1000, kind: 'internal_transfer' },
+        { movement_date: '2026-09-02', description: 'COMPRA PRIO', amount: -40, balance: 28240, kind: 'expense' },
+        { movement_date: '2026-09-03', description: 'TRF DE STRIPE', amount: 500, balance: 28740, kind: 'income' },
+      ],
+    });
+    const refs = new Set(['001850386960013813']);
+    const parsed = parseSantanderRows([
+      ['Data da operação','Data valor','Descrição','Tipo','Montante','Moeda','Saldo','Moeda'],
+      ['29-09-2026','29-09-2026','CARREGAMENTO CARTAO REFEICAO','', -224.4,'EUR', 900,'EUR'],
+      ['29-09-2026','29-09-2026','CARREGAMENTO CARTAO REFEICAO','', -224.4,'EUR', 675.6,'EUR'],
+      ['28-09-2026','28-09-2026','TRF.N.SEPA+EMITIDA 001850386960013813','', -27200,'EUR', 1124.4,'EUR'],
+      ['28-09-2026','28-09-2026','TRF.N.SEPA+EMITIDA 001850386960099999','', -500,'EUR', 28324.4,'EUR'],
+      ['25-09-2026','25-09-2026','PAG.CTA.CARTAO 1234','', -300,'EUR', 28824.4,'EUR'],
+      ['Saldo disponível','','','','','','',''],
+    ], refs);
+    const byName = Object.fromEntries(pack.sheets.map(s => [s.name, s]));
+    return {
+      period, file: pack.fileName, stats: pack.stats, names: pack.sheets.map(s => s.name),
+      despesas: byName['Despesas'].rows.map(r => [r[1], r[11], r[12]]),
+      links: byName['Despesas'].links,
+      falta: byName['Em falta'].rows.map(r => r[1]),
+      rever: byName['A rever'].rows.map(r => r[1]),
+      camps: byName['Transferências camps'].rows.length,
+      banco: byName['Extrato Santander'].rows.map(r => r[4]),
+      parsed: parsed.map(r => [r.movement_date, r.amount, r.kind, r.seq]),
+      feb: accPeriod('month', '2028-02').to, year: accPeriod('year', '2026'),
+    };
+  });
+  expect(out.period).toMatchObject({ from: '2026-09-01', to: '2026-09-30', label: 'Setembro 2026' });
+  expect(out.feb).toBe('2028-02-29');
+  expect(out.year).toMatchObject({ from: '2026-01-01', to: '2026-12-31' });
+  expect(out.file).toBe('Contabilista_WaterMovements_2026-09.xlsx');
+  expect(out.names).toEqual(['Resumo', 'Despesas', 'Em falta', 'A rever', 'Transferências camps', 'Extrato Santander']);
+  // The Wave Movements row and the flagged duplicate stay out of the books.
+  expect(out.stats).toMatchObject({ linhas: 3, semDocumento: 1, aRever: 1, totalEur: 1088.29, banco: 3, transferencias: 1 });
+  expect(out.despesas).toEqual([['Prio', '—', 'SEM DOCUMENTO'], ['DUC', 'abrir', 'A REVER'], ['Safari na Horta', 'abrir', 'OK']]);
+  expect(out.links).toEqual([
+    { r: 2, c: 11, url: 'https://drive.google.com/file/d/def/view' },
+    { r: 3, c: 11, url: 'https://drive.google.com/file/d/abc/view' },
+  ]);
+  expect(out.falta).toEqual(['Prio']);
+  expect(out.rever).toEqual(['DUC']);
+  expect(out.camps).toBe(1);
+  expect(out.banco).toEqual(['Despesa', 'Receita', 'Transferência para camp']);
+  // Two identical meal-card lines survive as seq 1 and 2; a non-SEPA
+  // transfer is camp funding only when its reference is a known transfer.
+  expect(out.parsed).toEqual([
+    ['2026-09-29', -224.4, 'expense', 1],
+    ['2026-09-29', -224.4, 'expense', 2],
+    ['2026-09-28', -27200, 'internal_transfer', 1],
+    ['2026-09-28', -500, 'expense', 1],
+    ['2026-09-25', -300, 'card_settlement', 1],
+  ]);
+});
+
+test('crm: a reply keeps the thread subject even when the answered row has none, and carries the quoted original', async ({ page }) => {
+  // Miguel, 1 Oct 2026: a reply went out as a bare "Re: " and the whole
+  // NAD thread inherited it; replies also reached the contact without
+  // the earlier messages underneath.
+  await fakeOwnerSession(page);
+  await page.goto('/crm/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof replySubjectFor === 'function');
+  const out = await page.evaluate(() => {
+    const rows = [
+      { action: 'email_outbound', created_at: '2026-09-01T15:40:00Z', meta: { subject: 'uma surf trip para o pessoal da NAD', thread_id: 't1' } },
+      { action: 'email_outbound', created_at: '2026-09-17T09:25:00Z', meta: { subject: 'Re: ', thread_id: 't2' } },
+      { action: 'email_inbound',  created_at: '2026-09-22T13:18:00Z', meta: { subject: 'Re:', thread_id: 't2', from: 'NAD <nadesporto@gmail.com>' } },
+      { action: 'status_changed', created_at: '2026-09-23T00:00:00Z', meta: {} },
+    ];
+    const q = buildReplyQuote({ from: 'NAD <nadesporto@gmail.com>', when: '22 Sep 2026, 13:18', body: 'Olá,\nsim, temos interesse.\n\n> On 1 Sep, Gota wrote:\n> uma surf trip' });
+    return {
+      sameThread: replySubjectFor({ subject: 'Re:', thread_id: 't1' }, rows, 'NAD'),
+      otherThread: replySubjectFor(rows[2].meta, rows, 'NAD'),
+      own: replySubjectFor({ subject: 'RE: Fwd: Orçamento', thread_id: 'x' }, rows, 'NAD'),
+      nothing: replySubjectFor({ subject: '', thread_id: 'x' }, [], 'NAD - Nova Associação'),
+      bare: replySubjectFor({ subject: 'Re:' }, [], ''),
+      base: baseSubject('Re: RE: Fwd: Orçamento '),
+      quoteText: q.text,
+      quoteHtmlHasBlockquote: /<blockquote/.test(q.html) && q.html.includes('&gt; On 1 Sep') && q.html.includes('NAD &lt;nadesporto@gmail.com&gt;'),
+      empty: buildReplyQuote({ from: 'x', when: '', body: '  ' }),
+    };
+  });
+  expect(out.sameThread).toBe('Re: uma surf trip para o pessoal da NAD');
+  // The answered thread only has empty subjects → the newest real subject with this contact.
+  expect(out.otherThread).toBe('Re: uma surf trip para o pessoal da NAD');
+  expect(out.own).toBe('Re: Orçamento');
+  expect(out.nothing).toBe('Re: NAD - Nova Associação');
+  expect(out.bare).toBe('Re:');
+  expect(out.base).toBe('Orçamento');
+  expect(out.quoteText).toBe('On 22 Sep 2026, 13:18, NAD <nadesporto@gmail.com> wrote:\n> Olá,\n> sim, temos interesse.\n> \n> > On 1 Sep, Gota wrote:\n> > uma surf trip');
+  expect(out.quoteHtmlHasBlockquote).toBe(true);
+  expect(out.empty).toEqual({ text: '', html: '' });
+});
+
+test('surf-school: the Vendas tab sums a month per login with commission and leaves camp guests out', async ({ page }) => {
+  // Miguel, 2 Oct 2026: sales commissions are paid per login, so a
+  // dedicated monthly tab — not the 500-row History — shows who sold what.
+  await fakeOwnerSession(page);
+  await page.goto('/surf-school/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof window.salesSummaryRows === 'function');
+  const out = await page.evaluate(() => {
+    PROFILE_NAMES.set('u1', 'Ana'); PROFILE_EMAILS.set('u1', 'ana@gotadaguasurf.com');
+    PROFILE_NAMES.set('u2', 'Rui');
+    SALES_ROWS = [
+      { id:'a', opened_by:'u1', kind:'rental', price_local: 25, student_name:'Tom', item_name:'Board', opened_at:'2026-09-03T10:00:00Z' },
+      { id:'b', opened_by:'u1', kind:'lesson', price_local: 30.5, student_name:'Lea', item_name:'Lesson', opened_at:'2026-09-04T10:00:00Z' },
+      { id:'c', opened_by:'u2', kind:'rental', price_local: 15, student_name:'Max', item_name:'Wetsuit', opened_at:'2026-09-05T10:00:00Z' },
+      { id:'d', opened_by:'u2', kind:'camp',   price_local: 0,  student_name:'Guest', item_name:'Board', opened_at:'2026-09-05T11:00:00Z' },
+    ];
+    localStorage.setItem('ss_sales_commission_pct', '10');
+    renderSales();
+    const html = document.getElementById('salesBox').textContent;
+    return { rows: salesSummaryRows(SALES_ROWS, 10), html, tabHidden: document.getElementById('salesTabBtn').style.display };
+  });
+  expect(out.rows[0]).toMatchObject({ name: 'Ana', email: 'ana@gotadaguasurf.com', n: 2, total: 55.5, commission: 5.55, kinds: { rental: 1, lesson: 1 } });
+  expect(out.rows[1]).toMatchObject({ name: 'Rui', n: 1, total: 15, commission: 1.5 });
+  expect(out.html).toContain('3 vendas');
+  expect(out.html).toContain('€70.50');
+  expect(out.html).toContain('comissões €7.05 (10%)');
+  expect(out.html).not.toContain('Guest');
+});

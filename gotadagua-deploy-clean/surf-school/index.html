@@ -135,6 +135,7 @@ main{padding:16px;max-width:640px;margin:0 auto}
 
 /* Filter row */
 .filter-row{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+.btn-sm{background:#fff;border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:13px;font-weight:700;color:var(--navy);cursor:pointer}
 .filter-row select{background:#fff;border:1.5px solid var(--border);border-radius:10px;padding:8px 12px;font-size:12px;color:var(--ink);cursor:pointer}
 
 /* KPI strip on Open rentals */
@@ -247,6 +248,7 @@ main{padding:16px;max-width:640px;margin:0 auto}
   <button class="tabbtn" data-page="open" onclick="showPage('open')">Open <span class="badge" id="openBadge">0</span></button>
   <button class="tabbtn" data-page="camp" onclick="showPage('camp')">🏕 Camp <span class="badge" id="campBadge">0</span></button>
   <button class="tabbtn" data-page="history" onclick="showPage('history')">History</button>
+  <button class="tabbtn" data-page="sales" id="salesTabBtn" onclick="showPage('sales')" style="display:none">💶 Vendas</button>
 </nav>
 
 <main id="main">
@@ -478,6 +480,24 @@ main{padding:16px;max-width:640px;margin:0 auto}
     <div id="sellerSummary" style="margin-bottom:12px"></div>
     <div id="historyList"><div class="empty"><div class="empty-icon">⏳</div>Loading…</div></div>
   </div>
+
+  <!-- ══════════════════ VENDAS POR LOGIN ══════════════════
+       Comissões de venda pagam-se por pessoa e por mês. Cada venda leva
+       quem a abriu (opened_by, gravado pelo servidor), por isso aqui
+       lê-se o mês inteiro da base de dados — não a lista de 500 do
+       History — e soma-se por login. Só gestores/donos vêem este separador. -->
+  <div class="page" id="page-sales">
+    <div class="filter-row" style="align-items:center;flex-wrap:wrap">
+      <button class="btn-sm" type="button" onclick="salesShiftMonth(-1)">‹</button>
+      <strong id="salesMonthLabel" style="min-width:150px;text-align:center"></strong>
+      <button class="btn-sm" type="button" onclick="salesShiftMonth(1)">›</button>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-left:auto">Comissão
+        <input type="number" id="salesPct" min="0" max="100" step="0.5" style="width:64px;padding:6px 8px;border:1px solid var(--border);border-radius:8px" oninput="salesPctChanged()"> %
+      </label>
+      <button class="btn-sm" type="button" onclick="exportSalesCsv()">⬇ CSV</button>
+    </div>
+    <div id="salesBox"><div class="empty"><div class="empty-icon">⏳</div>Loading…</div></div>
+  </div>
 </main>
 
 <div class="toast-wrap"><div class="toast" id="toast"></div></div>
@@ -566,6 +586,9 @@ async function boot(){
       }
     } catch (_e) { CAN_EDIT_HISTORY = false; }
   }
+  // Sales commissions are pay information: the Vendas tab exists only
+  // for whoever can also edit History (owners and can_edit managers).
+  if (CAN_EDIT_HISTORY) { const st = document.getElementById('salesTabBtn'); if (st) st.style.display = ''; }
   // Default the "Date of activity" + "Start time" fields to now so staff
   // usually just tap through them. Uses LOCAL clock so a 14:30 pick means
   // 14:30 in the manager's timezone.
@@ -1102,6 +1125,119 @@ function renderSellerSummary(rows){
     </div>`).join('')}
   </div>`;
 }
+// ── Vendas por login (separador mensal) ─────────────────────────────
+let SALES_MONTH = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; })();
+let SALES_ROWS = [];
+const SALES_PCT_KEY = 'ss_sales_commission_pct';
+const MESES_PT = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+function salesPct(){ const v = parseFloat(localStorage.getItem(SALES_PCT_KEY)); return Number.isFinite(v) ? v : 0; }
+function salesPctChanged(){
+  const v = parseFloat(document.getElementById('salesPct')?.value);
+  localStorage.setItem(SALES_PCT_KEY, Number.isFinite(v) ? String(v) : '0');
+  renderSales();
+}
+function salesShiftMonth(delta){
+  const [y, m] = SALES_MONTH.split('-').map(Number);
+  const d = new Date(Date.UTC(y, m - 1 + delta, 1));
+  SALES_MONTH = `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}`;
+  loadSales();
+}
+// One line per login: sales count, split by kind, total and the commission
+// at `pct`. Camp guests never pay, so they are not sales.
+function salesSummaryRows(rows, pct){
+  const by = new Map();
+  rows.filter(r => r.kind !== 'camp').forEach(r => {
+    const k = r.opened_by || 'unknown';
+    const v = by.get(k) || { uid:k, n:0, total:0, kinds:{} };
+    v.n += 1; v.total += Number(r.price_local || 0);
+    v.kinds[r.kind || '?'] = (v.kinds[r.kind || '?'] || 0) + 1;
+    by.set(k, v);
+  });
+  const rate = Number(pct) || 0;
+  return [...by.values()].sort((a,b) => b.total - a.total).map(v => ({
+    ...v,
+    total: Math.round(v.total * 100) / 100,
+    commission: Math.round(v.total * rate) / 100,
+    name: PROFILE_NAMES.get(v.uid) || 'Unknown',
+    email: PROFILE_EMAILS.get(v.uid) || ''
+  }));
+}
+async function loadSales(){
+  const box = document.getElementById('salesBox'); if (!box) return;
+  const [y, m] = SALES_MONTH.split('-').map(Number);
+  document.getElementById('salesMonthLabel').textContent = `${MESES_PT[m-1]} ${y}`;
+  const from = new Date(Date.UTC(y, m - 1, 1)).toISOString();
+  const to   = new Date(Date.UTC(y, m, 1)).toISOString();
+  box.innerHTML = '<div class="empty"><div class="empty-icon">⏳</div>Loading…</div>';
+  let all = [], start = 0;
+  for (;;) {
+    const { data, error } = await sb.from('surf_school_rentals')
+      .select('id, kind, student_name, item_name, items, qty, price_local, payment_method, opened_at, opened_by')
+      .eq('location_id', LOCATION_ID).neq('kind', 'camp')
+      .gte('opened_at', from).lt('opened_at', to)
+      .order('opened_at', { ascending:true }).range(start, start + 999);
+    if (error) { box.innerHTML = `<div class="empty">Falhou: ${escapeHtml(error.message)}</div>`; return; }
+    all = all.concat(data || []);
+    if (!data || data.length < 1000) break;
+    start += 1000;
+  }
+  SALES_ROWS = all;
+  const missing = [...new Set(all.map(r => r.opened_by).filter(Boolean))].filter(id => !PROFILE_NAMES.has(id));
+  if (missing.length) {
+    try {
+      const { data: profs } = await sb.from('platform_profiles').select('id, full_name, email').in('id', missing);
+      (profs||[]).forEach(p => { PROFILE_NAMES.set(p.id, p.full_name || p.email || 'Unknown'); if (p.email) PROFILE_EMAILS.set(p.id, p.email); });
+      missing.forEach(id => { if (!PROFILE_NAMES.has(id)) PROFILE_NAMES.set(id, 'Unknown'); });
+    } catch { missing.forEach(id => PROFILE_NAMES.set(id, 'Unknown')); }
+  }
+  renderSales();
+}
+function renderSales(){
+  const box = document.getElementById('salesBox'); if (!box) return;
+  const pctInput = document.getElementById('salesPct');
+  if (pctInput && document.activeElement !== pctInput) pctInput.value = salesPct();
+  const pct = salesPct();
+  const sellers = salesSummaryRows(SALES_ROWS, pct);
+  if (!sellers.length) { box.innerHTML = '<div class="empty"><div class="empty-icon">💶</div>Sem vendas neste mês.</div>'; return; }
+  const eur = n => '€' + Number(n || 0).toFixed(2);
+  const tot = sellers.reduce((s,v) => s + v.total, 0);
+  const totCom = sellers.reduce((s,v) => s + v.commission, 0);
+  const kindLabel = { rental:'alugueres', lesson:'aulas', activity:'actividades' };
+  const dayFmt = iso => { const d = new Date(iso); return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`; };
+  box.innerHTML = `<div class="card" style="padding:12px 14px">
+    <div style="font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:700;margin-bottom:8px">${sellers.length} login${sellers.length===1?'':'s'} · ${SALES_ROWS.filter(r=>r.kind!=='camp').length} vendas · ${eur(tot)}${pct ? ` · comissões ${eur(totCom)} (${pct}%)` : ''}</div>
+    ${sellers.map((v, i) => `<details style="border-top:1px solid var(--border)">
+      <summary style="display:flex;justify-content:space-between;gap:10px;padding:8px 0;font-size:13px;cursor:pointer;list-style:none">
+        <div><strong>${escapeHtml(v.name)}</strong>${v.email?`<div style="font-size:11px;color:var(--muted)">${escapeHtml(v.email)}</div>`:''}
+          <div style="font-size:11px;color:var(--muted)">${Object.entries(v.kinds).map(([k,n]) => `${n} ${kindLabel[k] || k}`).join(' · ')}</div></div>
+        <div style="text-align:right;white-space:nowrap"><strong>${eur(v.total)}</strong>${pct ? `<div style="font-size:12px;color:var(--ocean);font-weight:700">comissão ${eur(v.commission)}</div>` : ''}<div style="font-size:11px;color:var(--muted)">${v.n} venda${v.n===1?'':'s'}</div></div>
+      </summary>
+      <table style="width:100%;font-size:12px;border-collapse:collapse;margin:0 0 10px">
+        ${SALES_ROWS.filter(r => (r.opened_by || 'unknown') === v.uid && r.kind !== 'camp').map(r => `<tr style="border-top:1px dashed var(--border)">
+          <td style="padding:4px 0;color:var(--muted);white-space:nowrap">${dayFmt(r.opened_at)}</td>
+          <td style="padding:4px 6px">${escapeHtml(r.student_name || '—')}</td>
+          <td style="padding:4px 6px;color:var(--muted)">${escapeHtml(r.item_name || (Array.isArray(r.items) ? r.items.map(x => x.name || x.item_name || '').filter(Boolean).join(', ') : '') || r.kind || '')}</td>
+          <td style="padding:4px 0;text-align:right;white-space:nowrap">${eur(r.price_local)}</td>
+        </tr>`).join('')}
+      </table>
+    </details>`).join('')}
+  </div>`;
+}
+function exportSalesCsv(){
+  const pct = salesPct();
+  const sellers = salesSummaryRows(SALES_ROWS, pct);
+  if (!sellers.length) { toast('Sem vendas para exportar', 'err'); return; }
+  const q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+  const lines = [['Mês','Vendedor','Email','Vendas','Total EUR','Comissão %','Comissão EUR'].map(q).join(';')];
+  sellers.forEach(v => lines.push([SALES_MONTH, v.name, v.email, v.n, v.total.toFixed(2), pct, v.commission.toFixed(2)].map(q).join(';')));
+  lines.push('');
+  lines.push(['Data','Vendedor','Cliente','Item','Tipo','Pagamento','EUR'].map(q).join(';'));
+  SALES_ROWS.filter(r => r.kind !== 'camp').forEach(r => lines.push([String(r.opened_at).slice(0,10), PROFILE_NAMES.get(r.opened_by) || 'Unknown', r.student_name || '', r.item_name || '', r.kind || '', r.payment_method || '', Number(r.price_local || 0).toFixed(2)].map(q).join(';')));
+  const blob = new Blob(['\ufeff' + lines.join('\n')], { type:'text/csv;charset=utf-8' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `vendas-surf-school-${SALES_MONTH}.csv`; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
 function renderHistory(){
   const kindF = document.getElementById('filt_kind')?.value || 'all';
   const periodF = document.getElementById('filt_period')?.value || 'week';
@@ -1542,6 +1678,7 @@ function showPage(name){
   if (name === 'history') renderHistory();
   if (name === 'open')    renderOpen();
   if (name === 'camp')    renderCamp();
+  if (name === 'sales')   loadSales();
 }
 function clearForm(){
   document.getElementById('fld_name').value = '';
