@@ -2180,7 +2180,9 @@ const setStatus = (partner,month,v) => {
 // Sales invoices (InvoiceXpress FT IN2/…) issued to a partner, per bookings
 // month. Rows live in partner_invoices; the PDF is in Drive under
 // "Partner INVOICES/<partner>". Miguel, 5 Oct 2026: "ter um link nos
-// partners com as faturas da Drive". Keys are case-insensitive like statuses.
+// partners com as faturas da Drive" — but not on the month cards (they
+// got cluttered): the card only counts them, the statement shows the
+// links and the "+ invoice" action. Keys are case-insensitive like statuses.
 let partnerInvoices = {};
 function normalizeInvoiceRows(rows){
   const map = {};
@@ -2568,9 +2570,9 @@ function renderOverview(p) {
         ${msp.owedToUs>0.004 ? `<div class="mc-due to-us">→ to Gota ${eur(msp.owedToUs)}</div>` : ''}
         ${msp.owedToPartner>0.004 ? `<div class="mc-due to-partner">→ to partner ${eur(msp.owedToPartner)}</div>` : ''}
         ${(msp.owedToUs<=0.004 && msp.owedToPartner<=0.004) ? `<div class="mc-due none">nothing to settle</div>` : ''}
-        <div class="mc-hint">${bs.length} booking${bs.length!==1?'s':''} · ${paid ? '✓ settled' : (getStatus(p.partner,m) || 'open')}</div>
+        <div class="mc-hint">${bs.length} booking${bs.length!==1?'s':''} · ${paid ? '✓ settled' : (getStatus(p.partner,m) || 'open')}${(n=>n?` · 🧾 ${n} invoice${n!==1?'s':''}`:'')(getInvoices(p.partner,m).length)}</div>
       </div>
-      <div style="margin-top:7px;padding:0 2px" onclick="event.stopPropagation()">${sel}${invoiceChipsHTML(p.partner, m)}</div>
+      <div style="margin-top:7px;padding:0 2px" onclick="event.stopPropagation()">${sel}</div>
     </div>`;
   }).join('');
 

@@ -1445,16 +1445,16 @@ test('partners: month status survives a case-only duplicate partner name and the
   await page.evaluate(() => toggleExpand('The Surf Tribe'));
   const card = await page.evaluate(() => [...document.querySelectorAll('.mc-due')].map(e => e.className + ':' + e.textContent.trim()));
   expect(card).toContain('mc-due to-us:→ to Gota €569.60');
-  // Invoice chips: AASHA August shows its FT IN2 with the Drive link; a month
-  // without an invoice only offers "+ invoice"; the statement header repeats them.
+  // Invoices: the month card only counts them (Miguel, 5 Oct 2026: chips on
+  // the cards cluttered the layout); the statement shows the link and "+ invoice".
   await page.evaluate(() => toggleExpand('AASHA'));
-  const chips = await page.evaluate(() => [...document.querySelectorAll('.month-card ~ div .inv-chip, .overview-months .inv-chip')].map(a => a.className + '|' + a.textContent.trim() + '|' + a.getAttribute('href')));
-  expect(chips).toContain('inv-chip|🧾 FT IN2/16770 · €1,884.80|https://drive.google.com/file/d/xyz/view');
-  expect(chips.some(c => c.startsWith('inv-chip add|+ invoice'))).toBe(true);
+  const hint = await page.evaluate(() => [...document.querySelectorAll('.overview-months .mc-hint')].map(e => e.textContent.trim()));
+  expect(hint).toContain('1 booking · ✓ settled · 🧾 1 invoice');
+  expect(await page.evaluate(() => document.querySelectorAll('.overview-months .inv-chip').length)).toBe(0);
   if (process.env.PARTNERS_SHOT2) { await page.setViewportSize({ width: 1400, height: 1000 }); await page.evaluate(() => window.scrollTo(0, 420)); await page.screenshot({ path: process.env.PARTNERS_SHOT2 }); }
   await page.evaluate(() => openStatement('AASHA', '2026-08', null));
-  const stmtChips = await page.evaluate(() => [...document.querySelectorAll('#stmtInvoices .inv-chip')].map(a => a.textContent.trim()));
-  expect(stmtChips).toEqual(['🧾 FT IN2/16770 · €1,884.80', '+ invoice']);
+  const stmtChips = await page.evaluate(() => [...document.querySelectorAll('#stmtInvoices .inv-chip')].map(a => a.className + '|' + a.textContent.trim() + '|' + a.getAttribute('href')));
+  expect(stmtChips).toEqual(['inv-chip|🧾 FT IN2/16770 · €1,884.80|https://drive.google.com/file/d/xyz/view', 'inv-chip add|+ invoice|#']);
   await page.evaluate(() => closeStatement());
   await page.evaluate(() => toggleExpand('AASHA'));
   await page.evaluate(() => toggleExpand('The Surf Tribe'));
