@@ -113,6 +113,7 @@
       <button class="header-tab active" data-tab="dashboard">Dashboard</button>
       <button class="header-tab" data-tab="payroll">Monthly payroll</button>
       <button class="header-tab" data-tab="entries">Lesson entries</button>
+      <button class="header-tab" data-tab="instructors">Instrutores</button>
     </div>
   </div>
   <div class="top-actions">
@@ -164,6 +165,7 @@
     <button class="tab-trigger active" data-tab="dashboard">Dashboard</button>
     <button class="tab-trigger" data-tab="payroll">Monthly payroll</button>
     <button class="tab-trigger" data-tab="entries">Lesson entries</button>
+    <button class="tab-trigger" data-tab="instructors">Instrutores</button>
   </div>
   <section class="panel active" id="panel-dashboard">
     <div class="loc-cards" id="locCards"></div>
@@ -192,7 +194,53 @@
     <div class="entries" id="entriesList"></div>
     <div id="entriesSummary" style="display:none"></div>
   </section>
+  <!-- Directório de instrutores: quem existe, a que preço, como factura
+       (IVA), com que nome aparece nas despesas do HQ e que extra fixo
+       recebe. Antes só se criava um instrutor ao gravar-lhe a primeira
+       aula, com o preço dessa aula como rate — agora cria-se aqui, antes
+       de dar aulas, e desactiva-se quando sai (as aulas antigas ficam). -->
+  <section class="panel" id="panel-instructors">
+    <div class="section-header">
+      <div class="section-title">Instrutores</div>
+      <div style="display:flex;gap:12px;align-items:center">
+        <label class="pill" style="cursor:pointer;gap:6px"><input type="checkbox" id="dirShowInactive" style="margin:0"> Mostrar inactivos</label>
+        <button class="btn outline" id="newInstructorBtn">+ Novo instrutor</button>
+      </div>
+    </div>
+    <div class="card">
+      <table>
+        <thead><tr><th>Nome</th><th class="r">Preço/aula</th><th>Pagamento</th><th class="r">IVA</th><th>Fornecedor na app (HQ)</th><th>Extra</th><th class="r">Aulas 2026</th><th></th></tr></thead>
+        <tbody id="directoryBody"></tbody>
+      </table>
+    </div>
+  </section>
 </main>
+
+<div class="modal-backdrop" id="instructorModal">
+  <div class="modal" style="max-width:640px">
+    <div class="modal-head">
+      <div>
+        <div style="font-size:22px;font-weight:700" id="instructorModalTitle">Novo instrutor</div>
+        <div style="font-size:12px;color:#b9d2e8;margin-top:4px">O nome é o que aparece nas aulas; o fornecedor é o nome com que ele factura e que está nas despesas do HQ.</div>
+      </div>
+      <button class="modal-close" id="instructorModalClose">Close</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="field"><label>Nome</label><input id="dirName" placeholder="Ex.: Tiago Madeira"></div>
+        <div class="field"><label>Preço por aula (€)</label><input type="number" min="0" step="0.5" id="dirRate" value="30"></div>
+        <div class="field"><label>Pagamento</label><select id="dirPayment"></select></div>
+        <div class="field"><label>IVA no recibo</label><select id="dirVat"><option value="0">Sem IVA (0%)</option><option value="23">Com IVA (23%)</option></select></div>
+        <div class="field"><label>Fornecedor na app (HQ)</label><input id="dirSupplier" placeholder="nome legal, como nas despesas"></div>
+        <div class="field"><label>Extra fixo</label><select id="dirExtraKind"><option value="">Nenhum</option><option value="head_coach_month">Head coach — valor por mês</option><option value="head_coach_junior_week">Head coach Junior — valor por semana</option><option value="reception">Também faz receção (não são aulas)</option></select></div>
+        <div class="field"><label>Valor do extra (€)</label><input type="number" min="0" step="0.5" id="dirExtraAmount" value="0"></div>
+        <div class="field"><label>Estado</label><select id="dirActive"><option value="true">Activo</option><option value="false">Inactivo (sai das listas; as aulas ficam)</option></select></div>
+      </div>
+      <div class="message" id="instructorModalMsg" style="display:none;margin-top:12px"></div>
+      <div class="modal-actions" style="margin-top:18px"><button class="btn outline" id="instructorModalCancel">Cancelar</button><button class="btn primary" id="instructorModalSave">Guardar</button></div>
+    </div>
+  </div>
+</div>
 
 <div class="modal-backdrop" id="modal">
   <div class="modal">
@@ -413,6 +461,7 @@ async function loadInstructorData(){
   ]);
   if(lessonError)throw lessonError;
   if(directoryError)throw directoryError;
+  allDirectoryRows=(directoryRows||[]).slice();
   instructorDirectory=(directoryRows||[]).filter(row=>row.active!==false).map(row=>({id:row.id,name:row.name,rate:Number(row.rate||0),paymentType:row.payment_type||"",vatPct:Number(row.vat_pct||0),appSupplier:row.app_supplier||"",extraKind:row.extra_kind||"",extraAmount:Number(row.extra_amount||0)}));
   const firstLoad=!entries.length;
   entries=(lessonRows||[]).map(row=>({
@@ -472,6 +521,86 @@ async function updateLessonEntry(id,draft){
   };
   const {error}=await client.from("instructor_lessons").update(payload).eq("id",id);
   if(error)throw error;
+}
+// ── Directório de instrutores ──────────────────────────────────────
+let allDirectoryRows=[];   // inclui inactivos; instructorDirectory só tem os activos
+let editingDirectoryId=null;
+function directoryLessons2026(name){const y=String(new Date().getFullYear());return entries.filter(e=>e.instructorName===name&&String(e.date).startsWith(y)).reduce((s,e)=>s+Number(e.numberOfLessons||0),0);}
+function extraLabel(kind,amount){if(kind==="head_coach_month")return`Head coach · ${euro(amount)}/mês`;if(kind==="head_coach_junior_week")return`Head coach Junior · ${euro(amount)}/semana`;if(kind==="reception")return"Receção";return"";}
+function renderDirectory(){
+  const body=document.getElementById("directoryBody");if(!body)return;
+  const showInactive=document.getElementById("dirShowInactive")?.checked;
+  const rows=allDirectoryRows.filter(r=>showInactive||r.active!==false).slice().sort((a,b)=>a.name.localeCompare(b.name));
+  body.innerHTML=rows.length?rows.map(r=>`<tr style="${r.active===false?"opacity:.55":""}">
+    <td><strong>${esc(r.name)}</strong>${r.active===false?' <span class="pill">inactivo</span>':""}</td>
+    <td class="r">${euro(r.rate)}</td>
+    <td>${esc(r.payment_type||"")}</td>
+    <td class="r">${Number(r.vat_pct||0)?Number(r.vat_pct)+"%":'<span class="muted">·</span>'}</td>
+    <td>${r.app_supplier?esc(r.app_supplier):'<span class="muted">—</span>'}</td>
+    <td>${extraLabel(r.extra_kind,r.extra_amount)||'<span class="muted">·</span>'}</td>
+    <td class="r">${directoryLessons2026(r.name)||'<span class="muted">0</span>'}</td>
+    <td class="r"><button class="btn outline" data-edit-instructor="${esc(r.id)}">Editar</button></td>
+  </tr>`).join(""):`<tr><td colspan="8" class="empty">Ainda não há instrutores. Cria o primeiro em “+ Novo instrutor”.</td></tr>`;
+  body.querySelectorAll("[data-edit-instructor]").forEach(btn=>btn.onclick=()=>openInstructorModal(btn.dataset.editInstructor));
+}
+function directoryMsg(msg,isError){const box=document.getElementById("instructorModalMsg");box.textContent=msg||"";box.style.display=msg?"block":"none";box.style.color=isError?"var(--red)":"";}
+function openInstructorModal(id){
+  editingDirectoryId=id||null;
+  const r=id?allDirectoryRows.find(x=>x.id===id):null;
+  document.getElementById("instructorModalTitle").textContent=r?`Editar ${r.name}`:"Novo instrutor";
+  document.getElementById("dirPayment").innerHTML=paymentTypes.map(v=>`<option value="${v}">${v}</option>`).join("");
+  document.getElementById("dirName").value=r?r.name:"";
+  document.getElementById("dirRate").value=r?Number(r.rate||0):30;
+  document.getElementById("dirPayment").value=(r&&r.payment_type)||"Recibo Verde";
+  document.getElementById("dirVat").value=String(Number(r?.vat_pct||0)===23?23:0);
+  document.getElementById("dirSupplier").value=r?(r.app_supplier||""):"";
+  document.getElementById("dirExtraKind").value=r?(r.extra_kind||""):"";
+  document.getElementById("dirExtraAmount").value=r?Number(r.extra_amount||0):0;
+  document.getElementById("dirActive").value=String(!(r&&r.active===false));
+  directoryMsg("");
+  document.getElementById("instructorModal").classList.add("open");
+  setTimeout(()=>document.getElementById("dirName").focus(),30);
+}
+function closeInstructorModal(){document.getElementById("instructorModal").classList.remove("open");editingDirectoryId=null;}
+// Lê o formulário e diz o que está mal antes de tocar na base de dados.
+function readInstructorForm(){
+  const name=String(document.getElementById("dirName").value||"").trim().replace(/\s+/g," ");
+  const rate=Number(document.getElementById("dirRate").value);
+  const extraKind=document.getElementById("dirExtraKind").value||null;
+  const extraAmount=Number(document.getElementById("dirExtraAmount").value||0);
+  if(!name)return{error:"Escreve o nome do instrutor."};
+  if(!Number.isFinite(rate)||rate<0)return{error:"O preço por aula tem de ser um número."};
+  const clash=allDirectoryRows.find(r=>r.id!==editingDirectoryId&&r.name.trim().toLowerCase()===name.toLowerCase());
+  if(clash)return{error:`Já existe um instrutor chamado “${clash.name}”${clash.active===false?" (inactivo — reactiva-o em vez de criar outro)":""}.`};
+  if((extraKind==="head_coach_month"||extraKind==="head_coach_junior_week")&&!(extraAmount>0))return{error:"Põe o valor do extra."};
+  return{row:{name,rate,payment_type:document.getElementById("dirPayment").value||null,vat_pct:Number(document.getElementById("dirVat").value||0),app_supplier:String(document.getElementById("dirSupplier").value||"").trim().toLowerCase()||null,extra_kind:extraKind,extra_amount:extraKind&&extraKind!=="reception"?extraAmount:null,active:document.getElementById("dirActive").value!=="false"}};
+}
+async function saveInstructor(){
+  const {row,error}=readInstructorForm();
+  if(error){directoryMsg(error,true);return;}
+  const btn=document.getElementById("instructorModalSave");btn.disabled=true;btn.textContent="A guardar…";
+  try{
+    const client=await getSupabaseClient();
+    const locationId=await ensureInstructorLocation();
+    if(editingDirectoryId){
+      const {error:e}=await client.from("instructor_directory").update(row).eq("id",editingDirectoryId);
+      if(e)throw e;
+      // O nome também vive em cada aula (instructor_name): renomear aqui sem
+      // renomear lá partiria o directório ao meio.
+      const before=allDirectoryRows.find(r=>r.id===editingDirectoryId);
+      if(before&&before.name!==row.name){const {error:e2}=await client.from("instructor_lessons").update({instructor_name:row.name}).eq("instructor_id",editingDirectoryId);if(e2)throw e2;}
+    }else{
+      const {error:e}=await client.from("instructor_directory").insert({...row,location_id:locationId});
+      if(e)throw e;
+    }
+    closeInstructorModal();
+    await loadInstructorData();
+    render();
+    showMessage(editingDirectoryId?`Instrutor actualizado: ${row.name}`:`Instrutor criado: ${row.name}`);
+  }catch(e){
+    // Mostra o erro real do Postgres — adivinhar custa horas.
+    directoryMsg(`Não guardou: ${e?.message||e}`,true);
+  }finally{btn.disabled=false;btn.textContent="Guardar";}
 }
 function renderTabs(){document.querySelectorAll(".tab-trigger,.header-tab").forEach(btn=>btn.classList.toggle("active",btn.dataset.tab===activeTab));document.querySelectorAll(".panel").forEach(p=>p.classList.toggle("active",p.id===`panel-${activeTab}`));}
 function renderYearTabs(){const years=Object.keys(buildYearMap());document.getElementById("yearTabs").innerHTML=`<button class="tab ${selectedYear==="all"?"active":""}" data-year="all">Todos os anos</button>`+years.map(y=>`<button class="tab ${selectedYear===y?"active":""}" data-year="${y}">${y}</button>`).join("");document.querySelectorAll("#yearTabs [data-year]").forEach(btn=>btn.onclick=()=>{selectedYear=btn.dataset.year;selectedMonth="all";render();});}
@@ -599,7 +728,7 @@ function updateDashboard(){
   const h=document.getElementById("gridHint");if(h)h.textContent=`${rows.reduce((s,e)=>s+Number(e.numberOfLessons),0)} aulas · ${euro(rows.reduce((s,e)=>s+Number(e.total),0))}`;
   renderInstructorMatrix(rows);
 }
-function render(){renderTabs();renderYearTabs();renderMonthTabs();renderCategoryFilter();renderSearchableDropdown("instructorBtn","instructorDropdown","instructorSearch","instructorOptions",selectedInstructor,(v)=>{selectedInstructor=v;render();},true);renderFilterSummary();renderCategoryOverview();updateKpis();updatePayroll();updateEntries();updateDashboard();}
+function render(){renderTabs();renderYearTabs();renderMonthTabs();renderCategoryFilter();renderSearchableDropdown("instructorBtn","instructorDropdown","instructorSearch","instructorOptions",selectedInstructor,(v)=>{selectedInstructor=v;render();},true);renderFilterSummary();renderCategoryOverview();updateKpis();updatePayroll();updateEntries();updateDashboard();renderDirectory();}
 function fillSelects(){document.getElementById("fCategory").innerHTML=lessonCategories.map(v=>`<option value="${v}">${v}</option>`).join("");document.getElementById("fPayment").innerHTML=paymentTypes.map(v=>`<option value="${v}">${v}</option>`).join("");}
 function calcTotal(){document.getElementById("fTotal").textContent=euro(Number(document.getElementById("fLessons").value||0)*Number(document.getElementById("fPrice").value||0));}
 function resetDraft(keepDate=true){const currentDate=keepDate?(document.getElementById("fDate").value||new Date().toISOString().slice(0,10)):new Date().toISOString().slice(0,10);document.getElementById("fDate").value=currentDate;document.getElementById("fCategory").value="Surf School";document.getElementById("fLessons").value=1;document.getElementById("fNotes").value="";document.getElementById("fPaid").value="false";calcTotal();}
@@ -804,6 +933,12 @@ document.getElementById("saveEditBtn").onclick=saveSingleEdit;
 document.getElementById("modeQuick").onclick=()=>{modalMode="quick";setModalMode("quick");};
 document.getElementById("modeLine").onclick=()=>{modalMode="line";setModalMode("line");};
 document.getElementById("qdAll").onchange=renderQuickDay;
+document.getElementById("newInstructorBtn").onclick=()=>openInstructorModal(null);
+document.getElementById("dirShowInactive").onchange=renderDirectory;
+document.getElementById("instructorModalClose").onclick=closeInstructorModal;
+document.getElementById("instructorModalCancel").onclick=closeInstructorModal;
+document.getElementById("instructorModalSave").onclick=saveInstructor;
+document.getElementById("instructorModal").addEventListener("click",ev=>{if(ev.target.id==="instructorModal")closeInstructorModal();});
 document.getElementById("qdClear").onclick=()=>{qdCounts={};renderQuickDay();};
 document.getElementById("qdSave").onclick=saveQuickDay;
 document.getElementById("qdDate").onchange=()=>{};
