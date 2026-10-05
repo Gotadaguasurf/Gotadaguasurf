@@ -1200,6 +1200,11 @@ test('hq: accountant pack lists every expense, what has no document, camp fundin
         { movement_date: '2026-09-02', description: 'COMPRA PRIO', amount: -40, balance: 28240, kind: 'expense' },
         { movement_date: '2026-09-03', description: 'TRF DE STRIPE', amount: 500, balance: 28740, kind: 'income' },
       ],
+      // Sales invoices to partners (Miguel, 5 Oct 2026): their own sheet, with the Drive link.
+      partnerInvoices: [
+        { invoice_date: '2026-09-10', partner_name: 'The Surf Tribe', invoice_number: 'FT IN2/16809', month_key: '2026-08', location: 'Portugal', amount: 7532, drive_link: 'https://drive.google.com/file/d/ghi/view' },
+        { invoice_date: '2026-09-07', partner_name: 'AIFS TRAVEL', invoice_number: 'FT IN2/16772', month_key: '2026-08', location: null, amount: 2504.1, drive_link: null },
+      ],
     });
     const refs = new Set(['001850386960013813']);
     const parsed = parseSantanderRows([
@@ -1220,6 +1225,8 @@ test('hq: accountant pack lists every expense, what has no document, camp fundin
       rever: byName['A rever'].rows.map(r => r[1]),
       camps: byName['Transferências camps'].rows.length,
       banco: byName['Extrato Santander'].rows.map(r => r[4]),
+      parceiros: byName['Faturas a parceiros'].rows.map(r => [r[1], r[2], r[3], r[5], r[6]]),
+      parceirosLinks: byName['Faturas a parceiros'].links,
       parsed: parsed.map(r => [r.movement_date, r.amount, r.kind, r.seq]),
       feb: accPeriod('month', '2028-02').to, year: accPeriod('year', '2026'),
     };
@@ -1228,9 +1235,11 @@ test('hq: accountant pack lists every expense, what has no document, camp fundin
   expect(out.feb).toBe('2028-02-29');
   expect(out.year).toMatchObject({ from: '2026-01-01', to: '2026-12-31' });
   expect(out.file).toBe('Contabilista_WaterMovements_2026-09.xlsx');
-  expect(out.names).toEqual(['Resumo', 'Despesas', 'Em falta', 'A rever', 'Transferências camps', 'Extrato Santander']);
+  expect(out.names).toEqual(['Resumo', 'Despesas', 'Em falta', 'A rever', 'Transferências camps', 'Faturas a parceiros', 'Extrato Santander']);
   // The Wave Movements row and the flagged duplicate stay out of the books.
-  expect(out.stats).toMatchObject({ linhas: 3, semDocumento: 1, aRever: 1, totalEur: 1088.29, banco: 3, transferencias: 1 });
+  expect(out.stats).toMatchObject({ linhas: 3, semDocumento: 1, aRever: 1, totalEur: 1088.29, banco: 3, transferencias: 1, faturasParceiros: 2 });
+  expect(out.parceiros).toEqual([['AIFS TRAVEL', 'FT IN2/16772', '2026-08', 2504.1, '—'], ['The Surf Tribe', 'FT IN2/16809', '2026-08', 7532, 'abrir']]);
+  expect(out.parceirosLinks).toEqual([{ r: 2, c: 6, url: 'https://drive.google.com/file/d/ghi/view' }]);
   expect(out.despesas).toEqual([['Prio', '—', 'SEM DOCUMENTO'], ['DUC', 'abrir', 'A REVER'], ['Safari na Horta', 'abrir', 'OK']]);
   expect(out.links).toEqual([
     { r: 2, c: 11, url: 'https://drive.google.com/file/d/def/view' },
@@ -1362,4 +1371,93 @@ test('instructors: the Instrutores tab lists the directory and the form refuses 
   expect(out.noExtra).toMatch(/valor do extra/i);
   expect(out.ok).toMatchObject({ name: 'Nova Instrutora', rate: 27.5, payment_type: 'Recibo Verde', vat_pct: 23, app_supplier: 'nova instrutora lda', extra_kind: 'head_coach_month', extra_amount: 100, active: true });
   expect(out.edit).toEqual({ title: 'Editar Romildo Ramos', vat: '23', extra: 'head_coach_month', amount: '250' });
+});
+
+test('partners: month status survives a case-only duplicate partner name and the old "PDF Sent" label', async ({ page }) => {
+  // Miguel, 5 Oct 2026: "PDF Sent" on The Surf Tribe September never
+  // showed. It was saved against a duplicate partner row "THE SURF TRIBE"
+  // and read back under "The Surf Tribe". Status keys now ignore case, and
+  // the label became "Overview Sent" (old rows still say "PDF Sent").
+  const bookings = [
+    { id: 'b1', booking_ref: '2026-3978', booker: 'Amélie Denizou Lund', check_in_on: '2026-09-06', month_key: '2026-09', total: 712, pax: 1, location: 'Portugal', package: 'Surf Camp', partner_name: 'The Surf Tribe', booking_type: 'surfcamp', partner_commission_pct: 20, commission_amount: 142.4, net_amount: 569.6, raw_payload: { status: 'Paid', due: '0.00', bookingSource: 'Connect: The Surf Tribe' } },
+    { id: 'b2', booking_ref: '2026-1478', booker: 'Ronja Stauss', check_in_on: '2026-08-01', month_key: '2026-08', total: 589, pax: 1, location: 'Ahangama', package: 'Surf Camp', partner_name: 'AASHA', booking_type: 'surfcamp', partner_commission_pct: 20, commission_amount: 117.8, net_amount: 471.2, raw_payload: { status: 'Confirmed', due: '589.00' } },
+    { id: 'b3', booking_ref: '2026-0164', booker: 'Oliver Schuemperli', check_in_on: '2026-08-28', month_key: '2026-08', total: 679, pax: 1, location: 'Portugal', package: 'Surf Camp', partner_name: 'Surfwise Travel', booking_type: 'surfcamp', partner_commission_pct: 18, commission_amount: 122.22, net_amount: 556.78, raw_payload: { status: 'Paid', due: '0.00' } },
+  ];
+  const rpcCalls = [];
+  await page.route(/supabase\.co\/(auth|rest)\/v1\/.*/, async route => {
+    const url = route.request().url();
+    const json = (body) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    if (url.includes('/auth/v1/user')) return json({ id: 'u1', email: 'miguel@gotadaguasurf.com', aud: 'authenticated', role: 'authenticated' });
+    if (url.includes('/rest/v1/bookings')) return json(bookings);
+    if (url.includes('/rest/v1/partners')) return json([
+      { id: 'p1', name: 'The Surf Tribe', email: 'ric@thesurftribe.com', commission_pct: 20, collects_from_guest: true, partner_type: 'surfcamp', is_active: true },
+      { id: 'p2', name: 'AASHA', email: 'amit@aashalanka.com', commission_pct: 20, collects_from_guest: true, partner_type: 'surfcamp', is_active: true },
+      { id: 'p3', name: 'Surfwise Travel', email: '', commission_pct: 18, collects_from_guest: false, partner_type: 'surfcamp', is_active: true },
+    ]);
+    // The status row comes back under the OTHER spelling, as it did in prod.
+    if (url.includes('/rest/v1/partner_month_status')) return json([
+      { month_key: '2026-09', status: 'PDF Sent', partner_id: 'p9', partners: { name: 'THE SURF TRIBE' } },
+      { month_key: '2026-08', status: 'Paid', partner_id: 'p2', partners: { name: 'AASHA' } },
+    ]);
+    if (url.includes('/rest/v1/rpc/upsert_partner_month_status')) { rpcCalls.push(route.request().postDataJSON()); return json(null); }
+    // Sales invoice already issued for August (Miguel, 5 Oct 2026: "ter um link nos partners com as faturas da Drive").
+    if (url.includes('/rest/v1/partner_invoices')) return json([
+      { id: 'i1', partner_id: 'p2', partner_name: 'AASHA', month_key: '2026-08', invoice_number: 'FT IN2/16770', invoice_date: '2026-09-07', amount: 1884.8, drive_link: 'https://drive.google.com/file/d/xyz/view', file_name: 'Fatura IN2 16770.pdf', location: null },
+    ]);
+    return json([]);
+  });
+  const errs = []; page.on('pageerror', e => errs.push(e.message));
+  await fakeOwnerSession(page);
+  await page.goto('/partners/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof getStatus === 'function' && Array.isArray(allBookings) && allBookings.some(b => b.ref === '2026-3978'), null, { timeout: 10000 });
+  await page.waitForFunction(() => Object.keys(partnerInvoices || {}).length > 0, null, { timeout: 10000 });
+  const out = await page.evaluate(() => ({
+    tribeSep: getStatus('The Surf Tribe', '2026-09'),
+    tribeSepUpper: getStatus('THE SURF TRIBE', '2026-09'),
+    aashaAug: getStatus('AASHA', '2026-08'),
+    opts: STATUS_OPTS.slice(),
+    legacy: normalizeStatusValue('PDF Sent'),
+  }));
+  expect(errs).toEqual([]);
+  expect(out.tribeSep).toBe('Overview Sent');       // found although saved under the other spelling, label migrated
+  expect(out.tribeSepUpper).toBe('Overview Sent');
+  expect(out.aashaAug).toBe('Paid');
+  expect(out.opts).toContain('Overview Sent');
+  expect(out.opts).not.toContain('PDF Sent');
+  expect(out.legacy).toBe('Overview Sent');
+
+  // Layout (Miguel, 5 Oct 2026): direction pill per partner, amount per
+  // month card, and two KPIs for what is still open in each direction.
+  const text = await page.evaluate(() => document.body.innerText.toLowerCase()); // labels are uppercased by CSS
+  expect(text).toContain('partners still owe us');
+  expect(text).toContain('we still owe partners');
+  const pills = await page.evaluate(() => [...document.querySelectorAll('.dir-pill')].map(e => e.className.replace('dir-pill ', '') + ':' + e.textContent.trim()));
+  expect(pills).toContain('to-us:They pay us · keep 20%');
+  expect(pills).toContain('to-partner:We pay them · 18% commission');
+  const kpi = await page.evaluate(() => {
+    const cards = [...document.querySelectorAll('.kpi')];
+    const pick = label => (cards.find(c => c.textContent.includes(label)) || {}).querySelector?.('.kpi-value')?.textContent;
+    return { owe: pick('Partners still owe us'), weOwe: pick('We still owe partners') };
+  });
+  expect(kpi.owe).toBe('€569.60');     // Tribe Sep open; AASHA Aug is Paid
+  expect(kpi.weOwe).toBe('€122.22');   // Surfwise Aug commission open
+  // Expand The Surf Tribe: the month card says where the money goes.
+  await page.evaluate(() => toggleExpand('The Surf Tribe'));
+  const card = await page.evaluate(() => [...document.querySelectorAll('.mc-due')].map(e => e.className + ':' + e.textContent.trim()));
+  expect(card).toContain('mc-due to-us:→ to Gota €569.60');
+  // Invoice chips: AASHA August shows its FT IN2 with the Drive link; a month
+  // without an invoice only offers "+ invoice"; the statement header repeats them.
+  await page.evaluate(() => toggleExpand('AASHA'));
+  const chips = await page.evaluate(() => [...document.querySelectorAll('.month-card ~ div .inv-chip, .overview-months .inv-chip')].map(a => a.className + '|' + a.textContent.trim() + '|' + a.getAttribute('href')));
+  expect(chips).toContain('inv-chip|🧾 FT IN2/16770 · €1,884.80|https://drive.google.com/file/d/xyz/view');
+  expect(chips.some(c => c.startsWith('inv-chip add|+ invoice'))).toBe(true);
+  if (process.env.PARTNERS_SHOT2) { await page.setViewportSize({ width: 1400, height: 1000 }); await page.evaluate(() => window.scrollTo(0, 420)); await page.screenshot({ path: process.env.PARTNERS_SHOT2 }); }
+  await page.evaluate(() => openStatement('AASHA', '2026-08', null));
+  const stmtChips = await page.evaluate(() => [...document.querySelectorAll('#stmtInvoices .inv-chip')].map(a => a.textContent.trim()));
+  expect(stmtChips).toEqual(['🧾 FT IN2/16770 · €1,884.80', '+ invoice']);
+  await page.evaluate(() => closeStatement());
+  await page.evaluate(() => toggleExpand('AASHA'));
+  await page.evaluate(() => toggleExpand('The Surf Tribe'));
+  await page.setViewportSize({ width: 1400, height: 1000 });
+  await page.screenshot({ path: process.env.PARTNERS_SHOT || 'test-results/partners-layout.png', fullPage: false });
 });

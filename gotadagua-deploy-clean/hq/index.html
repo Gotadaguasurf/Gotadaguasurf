@@ -2398,7 +2398,7 @@ function parseSantanderRows(aoa, transferRefs){
 
 // Pure: data in, sheets out. Kept free of XLSX and of the DOM so the
 // smoke suite can check the numbers without downloading anything.
-function buildAccountantSheets({ invoices, transfers, bank, period }){
+function buildAccountantSheets({ invoices, transfers, bank, period, partnerInvoices }){
   // Rows paid by another company (Wave Movements, MGPR) are not this
   // accountant's books: counted in the summary, left out of the sheets.
   const outras = (invoices||[]).filter(r => r.paying_company && r.paying_company !== 'water-movements');
@@ -2428,6 +2428,9 @@ function buildAccountantSheets({ invoices, transfers, bank, period }){
   const debits  = bankList.filter(b => Number(b.amount) < 0);
   const credits = bankList.filter(b => Number(b.amount) > 0);
   const tr = (transfers||[]).slice().sort((a,b) => String(a.transfer_date).localeCompare(String(b.transfer_date)));
+  // Sales invoices issued to partners (FT IN2/…), kept in partner_invoices
+  // by the Partners app and the Downloads task (Miguel, 5 Oct 2026).
+  const pi = (partnerInvoices||[]).slice().sort((a,b) => String(a.invoice_date).localeCompare(String(b.invoice_date)) || String(a.invoice_number).localeCompare(String(b.invoice_number)));
 
   const resumo = {
     name: 'Resumo', widths: [44,18],
@@ -2445,6 +2448,10 @@ function buildAccountantSheets({ invoices, transfers, bank, period }){
       ['Sem documento (EUR)', sum(missing, r => r.amount_eur)],
       ['Pagas por outra empresa (fora deste ficheiro)', outras.length],
       ['',''],
+      ['FATURAS DE VENDA A PARCEIROS (receita)',''],
+      ['Faturas', pi.length],
+      ['Total c/ IVA (EUR)', sum(pi, r => r.amount)],
+      ['',''],
       ['TRANSFERÊNCIAS PARA OS CAMPS (não são despesa)',''],
       ['Transferências', tr.length],
       ['Total (EUR)', sum(tr, t => t.amount_eur ?? t.amount)],
@@ -2461,7 +2468,7 @@ function buildAccountantSheets({ invoices, transfers, bank, period }){
   };
   return {
     fileName: `Contabilista_WaterMovements_${period.slug}.xlsx`,
-    stats: { linhas: inv.length, semDocumento: missing.length, aRever: review.length, totalEur: sum(inv, r => r.amount_eur), banco: bankList.length, transferencias: tr.length },
+    stats: { linhas: inv.length, semDocumento: missing.length, aRever: review.length, totalEur: sum(inv, r => r.amount_eur), banco: bankList.length, transferencias: tr.length, faturasParceiros: pi.length },
     sheets: [
       resumo,
       expSheet('Despesas', inv),
@@ -2472,6 +2479,13 @@ function buildAccountantSheets({ invoices, transfers, bank, period }){
         widths: [11,22,22,12,28,22,70],
         rows: tr.map(t => [t.transfer_date, companyLabel(t.from_company), companyLabel(t.to_company), Number(t.amount_eur ?? t.amount ?? 0), t.purpose||'', t.reference||'', String(t.notes||'').slice(0,400)]),
         links: [], totalCol: 3,
+      },
+      {
+        name: 'Faturas a parceiros', header: ['Data','Parceiro','N.º fatura','Mês das reservas','Local','Valor c/ IVA','Documento','Notas'],
+        widths: [11,28,16,16,14,12,12,60],
+        rows: pi.map(r => [r.invoice_date || '', r.partner_name || '', r.invoice_number || '', r.month_key || '', r.location || '', Number(r.amount||0), r.drive_link ? 'abrir' : '—', String(r.notes||'').slice(0,400)]),
+        links: pi.map((r,i) => r.drive_link ? { r: i+1, c: 6, url: r.drive_link } : null).filter(Boolean),
+        totalCol: 5,
       },
       {
         name: 'Extrato Santander', header: ['Data','Descrição','Montante','Saldo','Tipo'],
@@ -2580,7 +2594,7 @@ async function refreshBankStatus(){
 }
 
 async function fetchAccountantData(period){
-  const [invoices, transfers, bank] = await Promise.all([
+  const [invoices, transfers, bank, partnerInvoices] = await Promise.all([
     fetchAllPaged(() => sb.from('hq_invoices')
       .select('invoice_date, company, supplier_nif, invoice_number, description, amount, currency, amount_eur, category_name, location_slug, payment_type, drive_link, needs_review, notes, paying_company, is_duplicate')
       .is('deleted_at', null)
@@ -2595,8 +2609,12 @@ async function fetchAccountantData(period){
       .eq('paying_company', 'water-movements')
       .gte('movement_date', period.from).lte('movement_date', period.to)
       .order('movement_date', { ascending:true }).order('id', { ascending:true })),
+    fetchAllPaged(() => sb.from('partner_invoices')
+      .select('invoice_date, partner_name, invoice_number, month_key, location, amount, drive_link, file_name, notes')
+      .gte('invoice_date', period.from).lte('invoice_date', period.to)
+      .order('invoice_date', { ascending:true }).order('id', { ascending:true })),
   ]);
-  return { invoices, transfers, bank };
+  return { invoices, transfers, bank, partnerInvoices };
 }
 
 async function downloadAccountantPack(){
@@ -2611,7 +2629,7 @@ async function downloadAccountantPack(){
     const pack = buildAccountantSheets({ ...data, period });
     XLSX.writeFile(accWorkbook(XLSX, pack), pack.fileName, { compression:true });
     const s = pack.stats;
-    if ($('acc_stats')) $('acc_stats').textContent = `${period.label}: ${s.linhas} linhas, ${s.semDocumento} sem documento, ${s.aRever} a rever, ${s.banco} movimentos do banco.`;
+    if ($('acc_stats')) $('acc_stats').textContent = `${period.label}: ${s.linhas} linhas, ${s.semDocumento} sem documento, ${s.aRever} a rever, ${s.faturasParceiros} faturas a parceiros, ${s.banco} movimentos do banco.`;
     toast('accToast','ok',`Descarregado: ${pack.fileName}`);
   } catch (e) {
     // Show the real cause — a silent failure here looks like "the button does nothing".

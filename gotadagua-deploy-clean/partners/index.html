@@ -59,7 +59,7 @@ header{background:var(--navy);padding:0 24px;display:flex;align-items:center;jus
   .data-badge{display:none}
 }
 main{max-width:1400px;margin:0 auto;padding:32px 48px}
-.kpi-strip{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:28px}
+.kpi-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:14px;margin-bottom:28px}
 /* Keep all 5 KPIs on a single row at every desktop width. Only collapse on
    true mobile, where horizontal scrolling would be awkward. */
 @media (max-width: 720px){ .kpi-strip{grid-template-columns:repeat(2,1fr)} }
@@ -105,6 +105,20 @@ td{padding:13px 16px;font-size:13px;vertical-align:middle}td.r{text-align:right;
 .mc-label{font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.08em}
 .mc-gross{font-family:'DM Mono',monospace;font-size:16px;font-weight:500;color:var(--navy);margin:3px 0 2px}
 .mc-com{font-size:11px;color:var(--ocean);font-weight:600}.mc-hint{font-size:10px;color:#94a9be;margin-top:4px}
+.mc-due{font-family:'DM Mono',monospace;font-size:13px;font-weight:600;margin-top:5px}.mc-due.to-us{color:var(--green-text)}.mc-due.to-partner{color:var(--amber-text)}.mc-due.none{color:var(--muted)}
+/* Who pays whom — one glance per partner (Miguel, 5 Oct 2026: the small
+   grey "they paid" text did not make the direction obvious). */
+.dir-pill{display:inline-block;font-size:9.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;border-radius:6px;padding:2px 7px;margin-top:4px;border:1px solid transparent}
+.dir-pill.to-us{background:var(--green-bg);color:var(--green-text);border-color:#a3e6c0}
+.dir-pill.to-partner{background:var(--amber-bg);color:var(--amber-text);border-color:#f0d060}
+.dir-pill.mixed{background:var(--bg);color:var(--muted);border-color:var(--border)}
+.bal-total{font-size:10px;color:var(--muted);margin-top:4px}
+/* Sales invoices (FT IN2/…) issued to the partner for a month — number + Drive link. */
+.inv-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.inv-chip{display:inline-block;font-size:10px;font-weight:600;color:var(--navy);background:#fff;border:1px solid var(--border);border-radius:6px;padding:2px 7px;text-decoration:none;white-space:nowrap}
+.inv-chip:hover{border-color:var(--ocean);color:var(--ocean)}
+.inv-chip.add{color:var(--muted);border-style:dashed;background:transparent}
+.modal-inv{margin-top:8px}.modal-inv .inv-chip{background:rgba(255,255,255,.1);color:#fff;border-color:rgba(255,255,255,.25)}.modal-inv .inv-chip.add{color:#9fc5df}
 /* LOCATION TABS IN EXPANDED */
 .loc-tabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
 .loc-tab-btn{padding:5px 13px;border-radius:16px;border:1.5px solid var(--border);background:#fff;color:var(--muted);font-size:11px;font-weight:600;cursor:pointer;transition:all .2s;font-family:'Outfit',sans-serif}
@@ -313,7 +327,7 @@ td{padding:13px 16px;font-size:13px;vertical-align:middle}td.r{text-align:right;
         <div class="mc-com">Commission: €1,228.20</div>
         <div class="mc-hint">9 bookings · paid · outstanding €0.00</div>
       </div>
-      <div style="margin-top:7px;padding:0 2px" onclick="event.stopPropagation()"><select class="status-select s-paid" onclick="event.stopPropagation();" onchange="event.stopPropagation();handleStatusChange(&#39;AASHA&#39;,&#39;2026-01&#39;,this)"><option value="">— Set status</option><option value="PDF Sent">PDF Sent</option><option value="Confirmed">Confirmed</option><option value="Invoice Sent">Invoice Sent</option><option value="Paid" selected="">Paid</option><option value="Pending">Pending</option></select></div>
+      <div style="margin-top:7px;padding:0 2px" onclick="event.stopPropagation()"><select class="status-select s-paid" onclick="event.stopPropagation();" onchange="event.stopPropagation();handleStatusChange(&#39;AASHA&#39;,&#39;2026-01&#39;,this)"><option value="">— Set status</option><option value="Overview Sent">Overview Sent</option><option value="Confirmed">Confirmed</option><option value="Invoice Sent">Invoice Sent</option><option value="Paid" selected="">Paid</option><option value="Pending">Pending</option></select></div>
     </div><div>
       <div class="month-card" onclick="openStatement(&#39;AASHA&#39;,&#39;2026-02&#39;,null)">
         <div class="mc-label">February 2026</div>
@@ -321,7 +335,7 @@ td{padding:13px 16px;font-size:13px;vertical-align:middle}td.r{text-align:right;
         <div class="mc-com">Commission: €2,192.80</div>
         <div class="mc-hint">15 bookings · paid · outstanding €0.00</div>
       </div>
-      <div style="margin-top:7px;padding:0 2px" onclick="event.stopPropagation()"><select class="status-select s-paid" onclick="event.stopPropagation();" onchange="event.stopPropagation();handleStatusChange(&#39;AASHA&#39;,&#39;2026-02&#39;,this)"><option value="">— Set status</option><option value="PDF Sent">PDF Sent</option><option value="Confirmed">Confirmed</option><option value="Invoice Sent">Invoice Sent</option><option value="Paid" selected="">Paid</option><option value="Pending">Pending</option></select></div>
+      <div style="margin-top:7px;padding:0 2px" onclick="event.stopPropagation()"><select class="status-select s-paid" onclick="event.stopPropagation();" onchange="event.stopPropagation();handleStatusChange(&#39;AASHA&#39;,&#39;2026-02&#39;,this)"><option value="">— Set status</option><option value="Overview Sent">Overview Sent</option><option value="Confirmed">Confirmed</option><option value="Invoice Sent">Invoice Sent</option><option value="Paid" selected="">Paid</option><option value="Pending">Pending</option></select></div>
     </div><div>
       <div class="month-card" onclick="openStatement(&#39;AASHA&#39;,&#39;2026-03&#39;,null)">
         <div class="mc-label">March 2026</div>
@@ -329,7 +343,7 @@ td{padding:13px 16px;font-size:13px;vertical-align:middle}td.r{text-align:right;
         <div class="mc-com">Commission: €1,098.40</div>
         <div class="mc-hint">8 bookings · outstanding €4,393.60</div>
       </div>
-      <div style="margin-top:7px;padding:0 2px" onclick="event.stopPropagation()"><select class="status-select s-none" onclick="event.stopPropagation();" onchange="event.stopPropagation();handleStatusChange(&#39;AASHA&#39;,&#39;2026-03&#39;,this)"><option value="" selected="">— Set status</option><option value="PDF Sent">PDF Sent</option><option value="Confirmed">Confirmed</option><option value="Invoice Sent">Invoice Sent</option><option value="Paid">Paid</option><option value="Pending">Pending</option></select></div>
+      <div style="margin-top:7px;padding:0 2px" onclick="event.stopPropagation()"><select class="status-select s-none" onclick="event.stopPropagation();" onchange="event.stopPropagation();handleStatusChange(&#39;AASHA&#39;,&#39;2026-03&#39;,this)"><option value="" selected="">— Set status</option><option value="Overview Sent">Overview Sent</option><option value="Confirmed">Confirmed</option><option value="Invoice Sent">Invoice Sent</option><option value="Paid">Paid</option><option value="Pending">Pending</option></select></div>
     </div></div>
     <button onclick="event.stopPropagation();openStatement(&#39;AASHA&#39;,null)" style="margin-top:4px;background:var(--navy);color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:12px;font-weight:600;cursor:pointer;font-family:&#39;Outfit&#39;,sans-serif">View all months →</button></div></td></tr><tr onclick="toggleExpand(&#39;The Surf Tribe&#39;)" class="">
       <td><span class="chevron"></span></td>
@@ -1368,6 +1382,7 @@ td{padding:13px 16px;font-size:13px;vertical-align:middle}td.r{text-align:right;
     <div class="modal-hdr">
       <div class="modal-partner" id="stmtPartner">AASHA</div>
       <div class="modal-meta" id="stmtMeta">amit@aashalanka.com · March 2026 · Generated 31 March 2026</div>
+      <div class="modal-inv" id="stmtInvoices"></div>
       <div class="modal-acts">
         <button class="btn-print" onclick="saveStatementPDF()">Save PDF</button>
         <button class="btn-print" id="btnSendPartner" type="button" style="background: rgb(37, 99, 235);" title="Send statement email">Send email</button>
@@ -2144,12 +2159,75 @@ function partnerGroups(bks) {
 }
 
 // STATUS
-const STATUS_OPTS = ['','PDF Sent','Confirmed','Invoice Sent','Paid','Pending'];
-const STATUS_CLS  = {'Paid':'s-paid','Invoice Sent':'s-invoice','PDF Sent':'s-pdf','Confirmed':'s-confirmed','Pending':'s-pending','':'s-none'};
-const getStatus = (partner,month) => statusStore[partner+'||'+(month||'all')]||'';
+// "Overview Sent" = the monthly booking overview went to the partner and we
+// are waiting for their confirmation (Miguel, 5 Oct 2026: "PDF Sent" said
+// nothing). Rows saved before Oct 2026 still carry "PDF Sent";
+// normalizeStatusValue folds them into the new label.
+const STATUS_OPTS = ['','Overview Sent','Confirmed','Invoice Sent','Paid','Pending'];
+const STATUS_CLS  = {'Paid':'s-paid','Invoice Sent':'s-invoice','Overview Sent':'s-pdf','Confirmed':'s-confirmed','Pending':'s-pending','':'s-none'};
+const LEGACY_STATUS = {'PDF Sent':'Overview Sent'};
+function normalizeStatusValue(v){ const s=String(v||'').trim(); return LEGACY_STATUS[s]||s; }
+// Status keys ignore case: "The Surf Tribe" and "THE SURF TRIBE" were the
+// same partner under two spellings, and a status saved on one spelling was
+// invisible under the other (Sep 2026).
+const statusKey = (partner,month) => String(partner||'').trim().toLowerCase()+'||'+(month||'all');
+const getStatus = (partner,month) => statusStore[statusKey(partner,month)]||'';
 const setStatus = (partner,month,v) => {
-  statusStore[partner+'||'+(month||'all')] = v;
+  statusStore[statusKey(partner,month)] = normalizeStatusValue(v);
   saveState();
+};
+
+// Sales invoices (InvoiceXpress FT IN2/…) issued to a partner, per bookings
+// month. Rows live in partner_invoices; the PDF is in Drive under
+// "Partner INVOICES/<partner>". Miguel, 5 Oct 2026: "ter um link nos
+// partners com as faturas da Drive". Keys are case-insensitive like statuses.
+let partnerInvoices = {};
+function normalizeInvoiceRows(rows){
+  const map = {};
+  (rows||[]).forEach(r => {
+    const name = r.partner_name || (r.partners && r.partners.name);
+    if(!name || !r.month_key) return;
+    const k = statusKey(name, r.month_key);
+    (map[k] = map[k] || []).push(r);
+  });
+  Object.values(map).forEach(l => l.sort((a,b) => String(a.invoice_number).localeCompare(String(b.invoice_number))));
+  return map;
+}
+function getInvoices(partner, month){
+  if(month) return partnerInvoices[statusKey(partner, month)] || [];
+  const who = String(partner||'').trim().toLowerCase();
+  return Object.keys(partnerInvoices).filter(k => k.split('||')[0] === who).sort().flatMap(k => partnerInvoices[k]);
+}
+function invoiceChipsHTML(partner, month){
+  const list = getInvoices(partner, month);
+  const chips = list.map(i => `<a class="inv-chip" href="${i.drive_link || '#'}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="${(i.file_name||'').replace(/"/g,'&quot;')}">🧾 ${i.invoice_number}${i.location ? ' · ' + i.location : ''}${!month ? ' · ' + monthLabel(i.month_key) : ''} · ${eur(+i.amount || 0)}</a>`).join('');
+  const add = month ? `<a class="inv-chip add" href="#" onclick="event.preventDefault();event.stopPropagation();addPartnerInvoice('${safeP(partner)}','${month}')">+ invoice</a>` : '';
+  return `<div class="inv-chips">${chips}${add}</div>`;
+}
+async function reloadPartnerInvoices(){
+  const { data, error } = await getAuthClient().from('partner_invoices').select('*').order('invoice_number', { ascending: true });
+  if(error) throw error;
+  partnerInvoices = normalizeInvoiceRows(data);
+}
+window.addPartnerInvoice = async function(partner, month){
+  const num = prompt(`Invoice number for ${partner} · ${monthLabel(month)} (e.g. FT IN2/16809)`);
+  if(!num || !num.trim()) return;
+  const amt = prompt('Total incl. IVA (e.g. 7532.00)');
+  if(amt === null) return;
+  const link = prompt('Google Drive link of the PDF (folder Partner INVOICES/' + partner + ')') || '';
+  try{
+    const client = getAuthClient();
+    const { data: pr } = await client.from('partners').select('id').ilike('name', partner).limit(1);
+    const { error } = await client.from('partner_invoices').insert({
+      partner_id: (pr && pr[0] && pr[0].id) || null, partner_name: partner, month_key: month,
+      invoice_number: num.trim(), amount: Number(String(amt).replace(',', '.')) || null,
+      drive_link: link.trim() || null, invoice_date: new Date().toISOString().slice(0,10),
+      notes: 'added by hand in the Partners app'
+    });
+    if(error) throw error;
+    await reloadPartnerInvoices();
+    renderPartnersPage();
+  }catch(e){ alert('Could not save the invoice: ' + (e && e.message || e)); }
 };
 
 // Who collected the money for THIS booking. Bookinglayer tells us per
@@ -2304,9 +2382,36 @@ window.handleStatusChange = async function(partner, month, el) {
 };
 
 // ── KPIs ─────────────────────────────────────────────────────────────────────
+// Which way the money flows for a partner in the current view. Decided from
+// the bookings themselves (bookingPayRoute + the partner flag), not from a
+// setting, so a partner that collects some months and not others shows
+// "mixed".
+function partnerDirection(partner, bookings){
+  const sp = monthSplit(bookings);
+  const rate = getRate(partner);
+  if(sp.owedToUs>0.004 && sp.owedToPartner<=0.004) return {cls:'to-us', label:`They pay us · keep ${rate}%`};
+  if(sp.owedToPartner>0.004 && sp.owedToUs<=0.004) return {cls:'to-partner', label:`We pay them · ${rate}% commission`};
+  if(sp.owedToUs>0.004 && sp.owedToPartner>0.004) return {cls:'mixed', label:'Mixed · see months'};
+  return {cls:'mixed', label:partnerCollectsFromGuest(partner) ? `They pay us · keep ${rate}%` : `We pay them · ${rate}% commission`};
+}
+function directionPillHTML(partner, bookings){
+  const d = partnerDirection(partner, bookings);
+  return `<span class="dir-pill ${d.cls}">${d.label}</span>`;
+}
+// Open balances across every partner in the current view, both directions.
+function openBalanceTotals(bookings){
+  let toUs=0, toPartner=0, paidToUs=0, paidToPartner=0;
+  partnerGroups(bookings).forEach(g=>{
+    const b = summarizePartnerBalances(g.partner, g.bookings);
+    toUs+=b.outstandingToUs; toPartner+=b.outstandingToPartner; paidToUs+=b.paidToUs; paidToPartner+=b.paidToPartner;
+  });
+  const r2=x=>+x.toFixed(2);
+  return {toUs:r2(toUs), toPartner:r2(toPartner), paidToUs:r2(paidToUs), paidToPartner:r2(paidToPartner)};
+}
 function renderKPIs(id) {
   const fb=filtered();
   const tG=fb.reduce((s,b)=>s+b.gross,0), tC=fb.reduce((s,b)=>s+b.com_amt,0), tN=fb.reduce((s,b)=>s+b.net,0);
+  const open = openBalanceTotals(fb);
   const pCount=new Set(fb.map(b=>b.partner)).size;
   // Direct bookings for the same period
   const directBks = activeMonth==='all'
@@ -2321,7 +2426,9 @@ function renderKPIs(id) {
     <div class="kpi"><div class="kpi-label">Partner Gross Revenue</div><div class="kpi-value">${eur(tG)}</div><div class="kpi-sub">${activeMonth==='all'?'All months':monthLabel(activeMonth)}</div></div>
     <div class="kpi"><div class="kpi-label">Net from Partners</div><div class="kpi-value accent">${eur(tN)}</div><div class="kpi-sub">After commissions (−${eur(commissionPaid)})</div></div>
     <div class="kpi"><div class="kpi-label">Direct Bookings</div><div class="kpi-value accent">${eur(directTotal)}</div><div class="kpi-sub">${directBks.length} booking${directBks.length!==1?'s':''} · 100% ours</div></div>
-    <div class="kpi" style="border:2px solid var(--ocean)"><div class="kpi-label">Total Revenue GotaDagua</div><div class="kpi-value" style="color:var(--ocean)">${eur(totalRevenue)}</div><div class="kpi-sub">Your real take-home (partners net + direct)</div></div>`;
+    <div class="kpi" style="border:2px solid var(--ocean)"><div class="kpi-label">Total Revenue GotaDagua</div><div class="kpi-value" style="color:var(--ocean)">${eur(totalRevenue)}</div><div class="kpi-sub">Your real take-home (partners net + direct)</div></div>
+    <div class="kpi" style="border:2px solid #a3e6c0;background:var(--green-bg)"><div class="kpi-label" style="color:var(--green-text)">Partners still owe us</div><div class="kpi-value" style="color:var(--green-text)">${eur(open.toUs)}</div><div class="kpi-sub">months not marked Paid · received ${eur(open.paidToUs)}</div></div>
+    <div class="kpi" style="border:2px solid #f0d060;background:var(--amber-bg)"><div class="kpi-label" style="color:var(--amber-text)">We still owe partners</div><div class="kpi-value" style="color:var(--amber-text)">${eur(open.toPartner)}</div><div class="kpi-sub">commission not marked Paid · paid ${eur(open.paidToPartner)}</div></div>`;
 }
 
 // ── MONTH TABS ─────────────────────────────────────────────────────────────────
@@ -2342,7 +2449,7 @@ function renderPartnerRows(groups, tbodyId, headId, hintId, emptyLabel) {
   thead.innerHTML = `<tr>
     <th style="width:28px"></th><th>Partner</th>
     <th class="r">Bookings</th><th class="r">Gross Revenue</th>
-    <th class="r">Commission</th><th class="r">Outstanding</th>
+    <th class="r">Commission</th><th class="r">Balance · who pays whom</th>
     ${showStatus ? '<th>Invoice Status</th>' : ''}
   </tr>`;
 
@@ -2366,11 +2473,17 @@ function renderPartnerRows(groups, tbodyId, headId, hintId, emptyLabel) {
     if(bal.paidToUs>0) paidBits.push(`they paid ${eur(bal.paidToUs)}`);
     if(bal.paidToPartner>0) paidBits.push(`we paid ${eur(bal.paidToPartner)}`);
     const paidText = paidBits.length ? `<div style="font-size:10px;color:var(--muted);opacity:.9">${paidBits.join(' · ')}</div>` : '';
-    const balanceLabel = balanceLinesHTML(bal.outstandingToUs, bal.outstandingToPartner) + paidText;
+    // Total for the period in each direction, so "nothing outstanding" still
+    // tells how much the relationship was worth.
+    const totalBits = [];
+    if(bal.owedToUs>0.004) totalBits.push(`total to us ${eur(bal.owedToUs)}`);
+    if(bal.owedToPartner>0.004) totalBits.push(`total to them ${eur(bal.owedToPartner)}`);
+    const totalText = totalBits.length ? `<div class="bal-total">${totalBits.join(' · ')}</div>` : '';
+    const balanceLabel = balanceLinesHTML(bal.outstandingToUs, bal.outstandingToPartner) + paidText + totalText;
 
     h+=`<tr onclick="toggleExpand('${sp}')" class="${exp?'expanded':''}">
       <td><span class="chevron"></span></td>
-      <td><div class="pname">${p.partner}</div>${em?`<div class="pemail">${em}</div>`:''}</td>
+      <td><div class="pname">${p.partner}</div>${em?`<div class="pemail">${em}</div>`:''}${directionPillHTML(p.partner, p.bookings)}</td>
       <td class="r">${p.count}</td>
       <td class="r"><span class="amount-link" onclick="event.stopPropagation();openStatement('${sp}',null)">${eur(p.gross)}</span></td>
       <td class="r"><span class="amount-link" onclick="event.stopPropagation();openStatement('${sp}',${activeMonth==='all'?'null':`'${activeMonth}'`})">${eur(p.com)}</span></td>
@@ -2452,9 +2565,12 @@ function renderOverview(p) {
         <div class="mc-label">${monthLabel(m)}</div>
         <div class="mc-gross">${eur(mg)}</div>
         <div class="mc-com">Commission: ${eur(mc)}</div>
-        <div class="mc-hint">${bs.length} booking${bs.length!==1?'s':''} · ${paid ? 'paid' : [ (msp.owedToUs>0?'they owe '+eur(msp.owedToUs):''), (msp.owedToPartner>0?'we owe '+eur(msp.owedToPartner):'') ].filter(Boolean).join(' · ') || 'nothing outstanding'}</div>
+        ${msp.owedToUs>0.004 ? `<div class="mc-due to-us">→ to Gota ${eur(msp.owedToUs)}</div>` : ''}
+        ${msp.owedToPartner>0.004 ? `<div class="mc-due to-partner">→ to partner ${eur(msp.owedToPartner)}</div>` : ''}
+        ${(msp.owedToUs<=0.004 && msp.owedToPartner<=0.004) ? `<div class="mc-due none">nothing to settle</div>` : ''}
+        <div class="mc-hint">${bs.length} booking${bs.length!==1?'s':''} · ${paid ? '✓ settled' : (getStatus(p.partner,m) || 'open')}</div>
       </div>
-      <div style="margin-top:7px;padding:0 2px" onclick="event.stopPropagation()">${sel}</div>
+      <div style="margin-top:7px;padding:0 2px" onclick="event.stopPropagation()">${sel}${invoiceChipsHTML(p.partner, m)}</div>
     </div>`;
   }).join('');
 
@@ -3258,6 +3374,7 @@ window.openStatement = function(partner, month, locationFilter) {
   const locLabel = locationFilter ? ` · ${locationFilter}` : '';
   document.getElementById('stmtPartner').textContent=partner;
   document.getElementById('stmtMeta').textContent=(em?em+' · ':'')+(month?monthLabel(month):'All Months')+locLabel+' · Generated '+new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'});
+  const invBox=document.getElementById('stmtInvoices'); if(invBox) invBox.innerHTML=invoiceChipsHTML(partner, month);
   // Case-insensitive partner match so a statement built from the
   // canonical name (e.g., "The Surf Tribe") includes bookings stored
   // under any casing variant ("THE SURF TRIBE", etc.).
@@ -4195,7 +4312,7 @@ function normalizeStatusRows(rows) {
   (rows || []).forEach(row => {
     const partnerName = row.partners?.name || row.partner_name || row.partner?.name || row.partnerName;
     if (!partnerName || !row.month_key) return;
-    map[partnerName + '||' + row.month_key] = row.status || '';
+    map[statusKey(partnerName, row.month_key)] = normalizeStatusValue(row.status);
   });
   return map;
 }
@@ -4352,6 +4469,8 @@ async function loadFromSupabase() {
     partnerCollects = {};
     partnerTypes = {};
     statusStore = normalizeStatusRows(statusRows);
+    try { await reloadPartnerInvoices(); }
+    catch (e) { console.warn('[Partners] partner_invoices not loaded', e); partnerInvoices = {}; }
 
     partnerRows.forEach(row => {
       partnerRates[row.name] = Number(row.commission_pct ?? 20);
