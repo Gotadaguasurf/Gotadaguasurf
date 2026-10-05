@@ -2160,11 +2160,23 @@ const setStatus = (partner,month,v) => {
 // was wrong for them. The partner flag (collects_from_guest) is only the
 // fallback when the CSV row carries no usable Status/Due.
 //   returns 'partner' | 'gota' | null (null = fallback used)
+//
+// "Connect:" bookings are the exception (Miguel, 5 Oct 2026). They are
+// pushed from the PARTNER's own Bookinglayer account, so Status/Due
+// mirror the partner's books, not ours: The Surf Tribe collects from
+// the guest and still exports "Paid / Due 0". That told us we owed them
+// commission when they owe us the net. For Connect rows only the
+// partner's collects_from_guest flag knows who holds the money.
 function bookingPayRoute(b){
   const st = String(b.status||'').toLowerCase();
   const due = Number(b.due);
   const gross = Number(b.gross)||0;
   if(!Number.isFinite(due) || gross<=0) return null;
+  if(/^\s*connect\b/i.test(String(b.source||''))){
+    // Nothing paid at all is still unambiguous: the partner is collecting.
+    if((st==='confirmed'||st==='deposit_paid') && Math.abs(due-gross)<=0.01) return 'partner';
+    return null;
+  }
   if(st==='paid' && due<=0.01) return 'gota';
   if((st==='confirmed'||st==='deposit_paid') && Math.abs(due-gross)<=0.01) return 'partner';
   if(due<=0.01) return 'gota';
@@ -2182,7 +2194,9 @@ function monthSplit(bookings){
   let owedToUs=0, owedToPartner=0, unresolved=0;
   (bookings||[]).forEach(b=>{
     if(b.isRealized===false) return;
-    if(bookingPayRoute(b)===null && Number.isFinite(Number(b.due))) unresolved++;
+    // A Connect row resolved by the partner flag is not "unresolved": only
+    // a real partial payment is.
+    if(bookingPayRoute(b)===null && Number.isFinite(Number(b.due)) && !/^\s*connect\b/i.test(String(b.source||''))) unresolved++;
     if(bookingGuestPaidPartner(b)) owedToUs += (+b.net||0);
     else owedToPartner += (+b.com_amt||0);
   });
@@ -3863,6 +3877,9 @@ function processFile(file) {
         const _csvParsed = parseFloat(csvRateRaw);
         const csvRate = (csvRateRaw !== '' && Number.isFinite(_csvParsed)) ? _csvParsed : null;
         const rawPartner = getRowValue(r, ['Partner','Agent','Affiliate']);
+        // "Connect: <partner>" / "Partner: <partner>" / "Booking engine" /
+        // "Backoffice: <name>" — bookingPayRoute needs it (see there).
+        const csvSource  = getRowValue(r, ['Source','Booking source']);
         const partnerName = normalizePartnerName(rawPartner);
         const guest      = getRowValue(r, ['Booker','Guest','Customer']);
         // Who collected: Bookinglayer's Status + Due per booking (see
@@ -3916,6 +3933,7 @@ function processFile(file) {
           if(guest && b.guest !== guest){ b.guest = guest; changed = true; }
           if(csvStatus && b.status !== csvStatus){ b.status = csvStatus; changed = true; }
           if(csvDue !== null && b.due !== csvDue){ b.due = csvDue; changed = true; }
+          if(csvSource && b.source !== csvSource){ b.source = csvSource; changed = true; }
           if(checkin && b.checkin !== checkin){ b.checkin = checkin; changed = true; }
           // Only overwrite location when the CSV row actually carries one —
           // the 'Unknown' fallback must never clobber a known location.
@@ -4012,7 +4030,7 @@ function processFile(file) {
 
         if(shouldBeDirect) {
           if(!gross) return;
-          const b={partner:DIRECT_LABEL,guest,ref,checkin,location,pax,package:pkgCode,gross,com_pct:0,com_amt:0,net:gross,country,status:csvStatus||undefined,due:csvDue===null?undefined:csvDue};
+          const b={partner:DIRECT_LABEL,guest,ref,checkin,location,pax,package:pkgCode,gross,com_pct:0,com_amt:0,net:gross,country,status:csvStatus||undefined,due:csvDue===null?undefined:csvDue,source:csvSource||undefined};
           allBookings.push(b);
           bookingByRef.set(ref, { booking: b, index: allBookings.length - 1 });
           addedDirect++;
@@ -4037,7 +4055,7 @@ function processFile(file) {
           }
           partnerTypes[partnerName] = inferBookingTypeFromRow({location, package:pkgCode, locCode});
           const comAmt   = +(gross * useRate / 100).toFixed(2);
-          const b={partner:partnerName,guest,ref,checkin,location,pax,package:pkgCode,gross,com_pct:useRate,com_amt:comAmt,net:+(gross-comAmt).toFixed(2),country,status:csvStatus||undefined,due:csvDue===null?undefined:csvDue};
+          const b={partner:partnerName,guest,ref,checkin,location,pax,package:pkgCode,gross,com_pct:useRate,com_amt:comAmt,net:+(gross-comAmt).toFixed(2),country,status:csvStatus||undefined,due:csvDue===null?undefined:csvDue,source:csvSource||undefined};
           allBookings.push(b);
           bookingByRef.set(ref, { booking: b, index: allBookings.length - 1 });
           added++;
@@ -4210,6 +4228,7 @@ function mapBookingRowToApp(row) {
     com_amt: isRealized ? com_amt_full : 0,
     net: isRealized ? net_full : gross,
     status,
+    source: (row.raw_payload && (row.raw_payload.bookingSource || row.raw_payload.source)) || '',
     due: (row.raw_payload && row.raw_payload.due !== undefined && row.raw_payload.due !== null && row.raw_payload.due !== '') ? Number(row.raw_payload.due) : null,
     isRealized,
     country: row.country || '',

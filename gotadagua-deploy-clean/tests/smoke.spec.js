@@ -1105,13 +1105,22 @@ test('partners: who collected is decided per booking from Bookinglayer Status/Du
     { id: 'b1', booking_ref: '2025-4783', booker: 'Rahel Meier', check_in_on: '2026-01-24', month_key: '2026-01', total: 1973, pax: 1, location: 'Portugal', package: 'Surf Camp', partner_name: 'Surfwise Travel', booking_type: 'surfcamp', partner_commission_pct: 18, commission_amount: 355.14, net_amount: 1617.86, raw_payload: { status: 'Confirmed', due: '1973.00' } },
     { id: 'b2', booking_ref: '2026-0164', booker: 'Oliver Schuemperli', check_in_on: '2026-02-28', month_key: '2026-02', total: 679, pax: 1, location: 'Portugal', package: 'Surf Camp', partner_name: 'Surfwise Travel', booking_type: 'surfcamp', partner_commission_pct: 18, commission_amount: 122.22, net_amount: 556.78, raw_payload: { status: 'Paid', due: '0.00' } },
     { id: 'b3', booking_ref: '2026-2807', booker: 'Liana Bösch', check_in_on: '2026-09-12', month_key: '2026-09', total: 1566, pax: 2, location: 'Portugal', package: 'Surf Camp', partner_name: 'Surfwise Travel', booking_type: 'surfcamp', partner_commission_pct: 18, commission_amount: 281.88, net_amount: 1284.12, raw_payload: { status: 'Expired', due: '1566.00' } },
+    // Connect bookings (Miguel, 5 Oct 2026): "Paid / Due 0" comes from the
+    // partner's own Bookinglayer, so only the partner flag knows who holds
+    // the money — The Surf Tribe collects (owes us net), Surfawhile does not.
+    { id: 'b4', booking_ref: '2026-3978', booker: 'Amélie Denizou Lund', check_in_on: '2026-09-06', month_key: '2026-09', total: 712, pax: 1, location: 'Portugal', package: 'Surf Camp', partner_name: 'The Surf Tribe', booking_type: 'surfcamp', partner_commission_pct: 20, commission_amount: 142.4, net_amount: 569.6, raw_payload: { status: 'Paid', due: '0.00', bookingSource: 'Connect: The Surf Tribe' } },
+    { id: 'b5', booking_ref: '2026-4078', booker: 'Leslie Schokker', check_in_on: '2026-09-12', month_key: '2026-09', total: 932, pax: 1, location: 'Portugal', package: 'Surf Camp', partner_name: 'Surfawhile', booking_type: 'surfcamp', partner_commission_pct: 20, commission_amount: 186.4, net_amount: 745.6, raw_payload: { status: 'Paid', due: '0.00', bookingSource: 'Connect: Surfawhile' } },
   ];
   await page.route(/supabase\.co\/(auth|rest)\/v1\/.*/, async route => {
     const url = route.request().url();
     const json = (body) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
     if (url.includes('/auth/v1/user')) return json({ id: 'u1', email: 'miguel@gotadaguasurf.com', aud: 'authenticated', role: 'authenticated' });
     if (url.includes('/rest/v1/bookings')) return json(bookings);
-    if (url.includes('/rest/v1/partners')) return json([{ id: 'p1', name: 'Surfwise Travel', email: 'info@surfwise.ch', commission_pct: 18, collects_from_guest: false, partner_type: 'surfcamp', is_active: true }]);
+    if (url.includes('/rest/v1/partners')) return json([
+      { id: 'p1', name: 'Surfwise Travel', email: 'info@surfwise.ch', commission_pct: 18, collects_from_guest: false, partner_type: 'surfcamp', is_active: true },
+      { id: 'p2', name: 'The Surf Tribe', email: '', commission_pct: 20, collects_from_guest: true, partner_type: 'surfcamp', is_active: true },
+      { id: 'p3', name: 'Surfawhile', email: '', commission_pct: 20, collects_from_guest: false, partner_type: 'surfcamp', is_active: true },
+    ]);
     if (url.includes('/rest/v1/partner_month_status')) return json([]);
     return json([]);
   });
@@ -1126,8 +1135,23 @@ test('partners: who collected is decided per booking from Bookinglayer Status/Du
     const jan = monthSplit(bks.filter(b => b.checkin.startsWith('2026-01')));
     const feb = monthSplit(bks.filter(b => b.checkin.startsWith('2026-02')));
     const sep = monthSplit(bks.filter(b => b.checkin.startsWith('2026-09')));
-    return { routes, sum, jan, feb, sep };
+    const tribe = allBookings.filter(b => b.partner === 'The Surf Tribe');
+    const awhile = allBookings.filter(b => b.partner === 'Surfawhile');
+    const connect = {
+      tribeRoute: bookingPayRoute(tribe[0]), tribeSource: tribe[0].source, tribePaidPartner: bookingGuestPaidPartner(tribe[0]),
+      awhileRoute: bookingPayRoute(awhile[0]), awhilePaidPartner: bookingGuestPaidPartner(awhile[0]),
+      tribeSplit: monthSplit(tribe), awhileSplit: monthSplit(awhile),
+    };
+    return { routes, sum, jan, feb, sep, connect };
   });
+  expect(out.connect.tribeSource).toBe('Connect: The Surf Tribe');
+  expect(out.connect.tribeRoute).toBeNull();                  // Status/Due say nothing for Connect rows
+  expect(out.connect.tribePaidPartner).toBe(true);            // flag: The Surf Tribe collects → owes us the net
+  expect(out.connect.tribeSplit.owedToUs).toBeCloseTo(569.6, 2);
+  expect(out.connect.tribeSplit.owedToPartner).toBe(0);
+  expect(out.connect.tribeSplit.unresolved).toBe(0);         // resolved by the flag, not a partial payment
+  expect(out.connect.awhilePaidPartner).toBe(false);          // flag: we collect → we owe Surfawhile 20%
+  expect(out.connect.awhileSplit.owedToPartner).toBeCloseTo(186.4, 2);
   expect(errs).toEqual([]);
   expect(out.routes['2025-4783']).toBe('partner');   // guest paid Surfwise
   expect(out.routes['2026-0164']).toBe('gota');      // guest paid us
@@ -1292,4 +1316,50 @@ test('surf-school: the Vendas tab sums a month per login with commission and lea
   expect(out.html).toContain('€70.50');
   expect(out.html).toContain('comissões €7.05 (10%)');
   expect(out.html).not.toContain('Guest');
+});
+
+test('instructors: the Instrutores tab lists the directory and the form refuses blanks and duplicate names', async ({ page }) => {
+  // Miguel, 5 Oct 2026: instructors could only be created by saving their
+  // first lesson; now there is a tab to add, edit and deactivate them.
+  await fakeOwnerSession(page);
+  await page.goto('/instructors/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof window.readInstructorForm === 'function');
+  const out = await page.evaluate(() => {
+    allDirectoryRows = [
+      { id: 'i1', name: 'Tiago Madeira', rate: 30, payment_type: 'Recibo Verde', vat_pct: 0, app_supplier: 'tiago madeira', extra_kind: null, extra_amount: null, active: true },
+      { id: 'i2', name: 'Romildo Ramos', rate: 30, payment_type: 'Recibo Verde', vat_pct: 23, app_supplier: 'romildo da costa ramos', extra_kind: 'head_coach_month', extra_amount: 250, active: true },
+      { id: 'i3', name: 'Antigo', rate: 25, payment_type: 'Cash', vat_pct: 0, app_supplier: '', extra_kind: null, extra_amount: null, active: false },
+    ];
+    entries = [{ instructorName: 'Tiago Madeira', date: new Date().getFullYear() + '-03-02', numberOfLessons: 4 }];
+    renderDirectory();
+    const visible = document.getElementById('directoryBody').textContent;
+    document.getElementById('dirShowInactive').checked = true; renderDirectory();
+    const withInactive = document.getElementById('directoryBody').textContent;
+    openInstructorModal(null);
+    const blank = readInstructorForm().error;
+    document.getElementById('dirName').value = '  tiago   madeira ';
+    const dup = readInstructorForm().error;
+    document.getElementById('dirName').value = 'Nova Instrutora';
+    document.getElementById('dirRate').value = '27.5';
+    document.getElementById('dirVat').value = '23';
+    document.getElementById('dirSupplier').value = ' Nova Instrutora Lda ';
+    document.getElementById('dirExtraKind').value = 'head_coach_month';
+    document.getElementById('dirExtraAmount').value = '0';
+    const noExtra = readInstructorForm().error;
+    document.getElementById('dirExtraAmount').value = '100';
+    const ok = readInstructorForm().row;
+    openInstructorModal('i2');
+    const edit = { title: document.getElementById('instructorModalTitle').textContent, vat: document.getElementById('dirVat').value, extra: document.getElementById('dirExtraKind').value, amount: document.getElementById('dirExtraAmount').value };
+    return { visible, withInactive, blank, dup, noExtra, ok, edit, tab: !!document.querySelector('.tab-trigger[data-tab="instructors"]') };
+  });
+  expect(out.tab).toBe(true);
+  expect(out.visible).toContain('Tiago Madeira');
+  expect(out.visible).toContain('Head coach · €250.00/mês');
+  expect(out.visible).not.toContain('Antigo');
+  expect(out.withInactive).toContain('Antigo');
+  expect(out.blank).toMatch(/nome/i);
+  expect(out.dup).toMatch(/Já existe/);
+  expect(out.noExtra).toMatch(/valor do extra/i);
+  expect(out.ok).toMatchObject({ name: 'Nova Instrutora', rate: 27.5, payment_type: 'Recibo Verde', vat_pct: 23, app_supplier: 'nova instrutora lda', extra_kind: 'head_coach_month', extra_amount: 100, active: true });
+  expect(out.edit).toEqual({ title: 'Editar Romildo Ramos', vat: '23', extra: 'head_coach_month', amount: '250' });
 });
