@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Contabilidade — Water Movements</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><path fill='%231e6fa8' d='M32 4C22 18 12 28 12 40a20 20 0 0 0 40 0C52 28 42 18 32 4z'/></svg>">
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<!-- Página só de leitura para a contabilista. Sem login: abre com
+     /contabilista/?k=<token>. Os dados vêm das funções accountant_portal*
+     (supabase/accountant-portal.sql), que validam o token. -->
+<style>
+:root{
+  --navy:#28394b; --ocean:#1e6fa8; --ocean-2:#3b9dd4; --foam:#e8f4fd;
+  --ink:#0d1b2a; --muted:#6b8099; --line:#d9e5f0; --bg:#f2f6fa; --card:#fff;
+  --ok:#1f8a5b; --ok-bg:#e5f5ec; --warn:#c77700; --warn-bg:#fff3dc;
+  --bad:#c0392b; --bad-bg:#fdecea; --grey:#8a99ab; --grey-bg:#eef2f6;
+  --radius:14px; --shadow:0 1px 2px rgba(13,27,42,.05),0 6px 20px rgba(13,27,42,.06);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Outfit',system-ui,sans-serif;background:var(--bg);color:var(--ink);min-height:100vh;-webkit-font-smoothing:antialiased}
+a{color:var(--ocean)}
+.mono{font-family:'DM Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums}
+
+header{background:var(--navy);color:#fff;padding:22px 16px 26px}
+.wrap{max-width:1180px;margin:0 auto;padding:0 16px}
+header .wrap{padding:0}
+.brand{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#9cc3df;font-weight:700}
+h1{font-family:'DM Serif Display',serif;font-weight:400;font-size:clamp(26px,4vw,36px);margin-top:6px;line-height:1.1}
+.sub{color:#b9d3e6;font-size:14px;margin-top:6px}
+
+.hero{display:grid;grid-template-columns:auto 1fr auto;gap:22px;align-items:center;background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:20px 22px;margin:-18px auto 22px;position:relative}
+.big{font-family:'DM Serif Display',serif;font-size:46px;line-height:1}
+.big small{font-family:'Outfit';font-size:14px;color:var(--muted);display:block;margin-top:4px}
+.bar{height:12px;border-radius:99px;background:var(--grey-bg);overflow:hidden;display:flex}
+.bar i{display:block;height:100%}
+.bar .b-ok{background:var(--ok)} .bar .b-ex{background:#b8c4d1} .bar .b-bad{background:#f0b9b2}
+.legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:10px;font-size:13px;color:var(--muted)}
+.legend b{color:var(--ink);font-weight:600}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;vertical-align:middle}
+.links{display:flex;flex-direction:column;gap:8px}
+.btn{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:10px;padding:9px 13px;font:600 13px 'Outfit';text-decoration:none;cursor:pointer;white-space:nowrap;transition:background .15s,border-color .15s}
+.btn:hover{background:var(--foam);border-color:#b8d4ea}
+.btn.primary{background:var(--ocean);border-color:var(--ocean);color:#fff}
+.btn.primary:hover{background:#185d8e}
+.btn.ok{background:var(--ok-bg);border-color:#b7e1c9;color:var(--ok)}
+.btn[disabled]{opacity:.45;pointer-events:none}
+
+h2{font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:700;margin:6px 0 12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(205px,1fr));gap:14px;margin-bottom:28px}
+.month{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px;cursor:pointer;border:2px solid transparent;transition:transform .12s,border-color .12s;text-align:left;font:inherit;color:inherit}
+.month:hover{transform:translateY(-2px)}
+.month.sel{border-color:var(--ocean)}
+.month .top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.month .name{font-weight:700;font-size:16px;text-transform:capitalize}
+.pct{font-family:'DM Serif Display',serif;font-size:28px;line-height:1;margin:12px 0 8px}
+.month .bar{height:8px}
+.month .meta{display:flex;justify-content:space-between;font-size:12.5px;color:var(--muted);margin-top:10px}
+.pill{font-size:11px;font-weight:700;border-radius:99px;padding:3px 8px;white-space:nowrap}
+.p-ok{background:var(--ok-bg);color:var(--ok)} .p-warn{background:var(--warn-bg);color:var(--warn)} .p-bad{background:var(--bad-bg);color:var(--bad)} .p-grey{background:var(--grey-bg);color:var(--grey)}
+.seen{font-size:11.5px;color:var(--ok);font-weight:600;margin-top:8px}
+
+.detail{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:20px;margin-bottom:40px;scroll-margin-top:12px}
+.d-head{display:flex;flex-wrap:wrap;justify-content:space-between;gap:14px;align-items:flex-start}
+.d-head h3{font-family:'DM Serif Display',serif;font-weight:400;font-size:28px;text-transform:capitalize}
+.d-head .sum{color:var(--muted);font-size:14px;margin-top:4px}
+.folders{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}
+.mark{display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:var(--bg);border-radius:12px;padding:10px 12px;margin-bottom:16px}
+.mark input[type=text]{flex:1;min-width:180px;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font:14px 'Outfit'}
+.mark .who{font-size:12px;color:var(--muted)}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;border-bottom:1px solid var(--line);margin-bottom:12px}
+.tab{border:none;background:none;font:600 14px 'Outfit';color:var(--muted);padding:10px 12px;border-bottom:3px solid transparent;cursor:pointer;margin-bottom:-1px}
+.tab.on{color:var(--ink);border-bottom-color:var(--ocean)}
+.tab .n{font-family:'DM Mono';font-size:12px;background:var(--grey-bg);border-radius:99px;padding:1px 7px;margin-left:5px}
+.tools{display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
+.tools input{flex:1;min-width:200px;border:1px solid var(--line);border-radius:10px;padding:9px 12px;font:14px 'Outfit'}
+.tools .tot{font-size:13px;color:var(--muted)}
+
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{text-align:left;font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:700;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:10px;border-bottom:1px solid #edf2f7;vertical-align:top}
+tr:hover td{background:#fafcfe}
+td.num,th.num{text-align:right}
+.st{width:26px;height:26px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:700}
+.st-ok{background:var(--ok-bg);color:var(--ok)} .st-falta{background:var(--bad-bg);color:var(--bad)} .st-isento{background:var(--grey-bg);color:var(--grey)}
+.forn{font-weight:600;text-transform:capitalize}
+.desc{color:var(--muted);font-size:12.5px;margin-top:2px}
+.empty{text-align:center;color:var(--muted);padding:36px 10px}
+.foot{color:var(--muted);font-size:12.5px;text-align:center;padding:10px 0 40px;line-height:1.6}
+.err{max-width:520px;margin:80px auto;background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);padding:28px;text-align:center}
+.err h3{font-family:'DM Serif Display',serif;font-weight:400;font-size:26px;margin-bottom:8px}
+.loading{color:var(--muted);text-align:center;padding:60px 0}
+
+@media (max-width:760px){
+  .hero{grid-template-columns:1fr;gap:16px}
+  .links{flex-direction:row;flex-wrap:wrap}
+  table thead{display:none}
+  table,tbody,tr,td{display:block;width:100%}
+  tr{border-bottom:1px solid var(--line);padding:10px 0;display:grid;grid-template-columns:34px 1fr auto;gap:2px 8px}
+  td{border:none;padding:0}
+  td.c-st{grid-row:1/3}
+  td.c-date{grid-column:2;font-size:12px;color:var(--muted);order:-1}
+  td.c-forn{grid-column:2}
+  td.c-val{grid-column:3;grid-row:1}
+  td.c-num,td.c-cat{display:none}
+  td.c-link{grid-column:3;grid-row:2;text-align:right}
+}
+@media print{
+  header{background:#fff;color:#000}.hero,.month,.detail{box-shadow:none;border:1px solid #ccc}
+  .tools,.mark,.btn{display:none!important}
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div class="brand">Gota d'Água · Water Movements Lda · NIF 515059927</div>
+    <h1>Documentos para a contabilidade</h1>
+    <div class="sub" id="sub">A carregar…</div>
+  </div>
+</header>
+<main class="wrap" id="app"><div class="loading">A carregar…</div></main>
+
+<script src="/supabase-config.js"></script>
+<script>
+(() => {
+  const CFG = window.__SUPABASE_CONFIG || {};
+  const TOKEN = new URLSearchParams(location.search).get('k') || '';
+  const $app = document.getElementById('app');
+  const $sub = document.getElementById('sub');
+  const MESES = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+  const eur = (v) => (Number(v)||0).toLocaleString('pt-PT', { style:'currency', currency:'EUR' });
+  const money = (v, cur) => (Number(v)||0).toLocaleString('pt-PT', { style:'currency', currency: (cur||'EUR').length === 3 ? cur : 'EUR' });
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const monthName = (k) => { const [y,m] = k.split('-'); return `${MESES[Number(m)-1]} ${y}`; };
+  const fmtDate = (d) => d ? d.split('-').reverse().join('/') : '';
+  const folderUrl = (id) => `https://drive.google.com/drive/folders/${id}`;
+  const pctOf = (m) => { const base = m.linhas - m.isentas; return base > 0 ? Math.round(100 * m.com_doc / base) : (m.linhas ? 100 : null); };
+  const tone = (p) => p == null ? 'grey' : p >= 100 ? 'ok' : p >= 80 ? 'warn' : 'bad';
+
+  let summary = null, current = null, monthData = null, tab = 'falta', query = '';
+
+  async function rpc(fn, args) {
+    const r = await fetch(`${CFG.url}/rest/v1/rpc/${fn}`, {
+      method: 'POST',
+      headers: { apikey: CFG.anonKey, Authorization: `Bearer ${CFG.anonKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(args),
+    });
+    const body = await r.json().catch(() => null);
+    if (!r.ok) throw new Error((body && body.message) || `Erro ${r.status}`);
+    return body;
+  }
+
+  function showError(msg) {
+    $sub.textContent = '';
+    $app.innerHTML = `<div class="err"><h3>Não foi possível abrir</h3><p>${esc(msg)}</p>
+      <p style="margin-top:12px;color:var(--muted);font-size:14px">Confirme que abriu o link completo que recebeu por email. Se o problema continuar, contacte o Miguel.</p></div>`;
+  }
+
+  function bar(m) {
+    const t = Math.max(m.linhas, 1);
+    return `<div class="bar"><i class="b-ok" style="width:${100*m.com_doc/t}%"></i><i class="b-ex" style="width:${100*m.isentas/t}%"></i><i class="b-bad" style="width:${100*m.em_falta/t}%"></i></div>`;
+  }
+
+  function renderSummary() {
+    const ms = summary.months;
+    const T = ms.reduce((a, m) => ({ linhas: a.linhas + m.linhas, com_doc: a.com_doc + m.com_doc, isentas: a.isentas + m.isentas, em_falta: a.em_falta + m.em_falta, falta_eur: a.falta_eur + Number(m.falta_eur||0) }), { linhas:0, com_doc:0, isentas:0, em_falta:0, falta_eur:0 });
+    const p = pctOf(T);
+    const f = summary.folders || {};
+    $sub.textContent = `Atualizado automaticamente · ${new Date(summary.generated_at).toLocaleString('pt-PT', { dateStyle:'long', timeStyle:'short' })}${summary.extrato_ate ? ` · extrato Santander até ${fmtDate(summary.extrato_ate)}` : ''}`;
+    const cards = ms.map(m => {
+      const pc = pctOf(m), tn = tone(pc);
+      const label = m.linhas === 0 ? 'sem movimentos' : pc >= 100 ? 'completo' : `${m.em_falta} em falta`;
+      return `<button class="month ${current === m.month_key ? 'sel' : ''}" data-m="${m.month_key}">
+        <div class="top"><span class="name">${MESES[Number(m.month_key.slice(5))-1]}</span><span class="pill p-${m.linhas ? tn : 'grey'}">${label}</span></div>
+        <div class="pct" style="color:var(--${tn === 'grey' ? 'grey' : tn})">${pc == null ? '—' : pc + '%'}</div>
+        ${bar(m)}
+        <div class="meta"><span>✓ ${m.com_doc} de ${m.linhas - m.isentas}</span><span class="mono">${m.em_falta ? eur(m.falta_eur) : ''}</span></div>
+        ${m.banco_sem ? `<div class="meta"><span>🏦 ${m.banco_sem} do banco sem lançamento</span></div>` : ''}
+        ${m.seen ? `<div class="seen">✔ Visto pela contabilidade</div>` : ''}
+      </button>`;
+    }).join('');
+    $app.innerHTML = `
+      <section class="hero">
+        <div class="big">${p == null ? '—' : p + '%'}<small>dos documentos de 2026</small></div>
+        <div>
+          ${bar(T)}
+          <div class="legend">
+            <span><i class="dot" style="background:var(--ok)"></i><b>${T.com_doc}</b> com documento</span>
+            <span><i class="dot" style="background:#f0b9b2"></i><b>${T.em_falta}</b> em falta (${eur(T.falta_eur)})</span>
+            <span><i class="dot" style="background:#b8c4d1"></i><b>${T.isentas}</b> sem fatura (não aplicável)</span>
+          </div>
+        </div>
+        <div class="links">
+          ${f['water-movements'] ? `<a class="btn" target="_blank" rel="noopener" href="${folderUrl(f['water-movements'])}">📁 Despesas 2026 (Drive)</a>` : ''}
+          ${f.partners ? `<a class="btn" target="_blank" rel="noopener" href="${folderUrl(f.partners)}">📁 Faturas a parceiros</a>` : ''}
+        </div>
+      </section>
+      <h2>Meses</h2>
+      <div class="grid">${cards}</div>
+      <section id="detail"></section>
+      <p class="foot">Esta página atualiza-se sozinha à medida que os documentos são arquivados.<br>
+        ✓ tem documento na Drive · ✕ ainda falta o documento · — não há fatura (ex.: comissões bancárias, que estão no extrato).<br>
+        Os documentos do Manjar Alentejano estão só na Drive (botão em cada mês).</p>`;
+    $app.querySelectorAll('.month').forEach(b => b.addEventListener('click', () => openMonth(b.dataset.m, true)));
+    if (current) renderDetail();
+  }
+
+  async function openMonth(key, scroll) {
+    current = key; tab = 'falta'; query = ''; monthData = null;
+    try { history.replaceState(null, '', `${location.pathname}${location.search}#${key}`); } catch (_) {}
+    $app.querySelectorAll('.month').forEach(b => b.classList.toggle('sel', b.dataset.m === key));
+    const $d = document.getElementById('detail');
+    $d.className = 'detail';
+    $d.innerHTML = `<div class="loading">A carregar ${esc(monthName(key))}…</div>`;
+    if (scroll) $d.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    try {
+      monthData = await rpc('accountant_portal_month', { p_token: TOKEN, p_month: key });
+      const m = summary.months.find(x => x.month_key === key);
+      if (m && m.em_falta === 0) tab = m.banco_sem ? 'banco' : 'ok';
+      renderDetail();
+    } catch (e) { $d.innerHTML = `<div class="empty">Erro: ${esc(e.message)}</div>`; }
+  }
+
+  function rowsFor(t) {
+    if (!monthData) return [];
+    if (t === 'vendas') return monthData.vendas;
+    if (t === 'banco') return monthData.banco || [];
+    return monthData.despesas.filter(r => r.estado === t);
+  }
+
+  function renderDetail() {
+    const $d = document.getElementById('detail');
+    if (!$d || !monthData || monthData.month_key !== current) return;
+    const m = summary.months.find(x => x.month_key === current);
+    const mark = monthData.mark;
+    const counts = { falta: rowsFor('falta').length, banco: rowsFor('banco').length, ok: rowsFor('ok').length, isento: rowsFor('isento').length, vendas: rowsFor('vendas').length };
+    const q = query.trim().toLowerCase();
+    let list = rowsFor(tab);
+    if (q) list = list.filter(r => JSON.stringify(r).toLowerCase().includes(q));
+    const total = list.reduce((s, r) => s + (Number(tab === 'vendas' || tab === 'banco' ? r.valor : r.valor_eur) || 0), 0);
+
+    const table = tab === 'banco'
+      ? (list.length ? `<p class="desc" style="margin:0 0 10px">Débitos do extrato Santander que ainda não têm nenhuma despesa lançada com o mesmo valor. Lotes de salários estão documentados pelos recibos de vencimento.</p><table><thead><tr><th></th><th>Data</th><th>Descrição no extrato</th><th class="num">Valor</th></tr></thead><tbody>${
+          list.map(r => `<tr>
+            <td class="c-st"><span class="st st-falta">✕</span></td>
+            <td class="c-date mono">${fmtDate(r.data)}</td>
+            <td class="c-forn"><span class="forn" style="text-transform:none">${esc(r.descricao)}</span>${/sal[aá]rio/i.test(r.descricao) ? '<div class="desc">Salários — ver recibos de vencimento</div>' : ''}</td>
+            <td class="c-val num mono">${eur(r.valor)}</td></tr>`).join('')
+        }</tbody></table>` : `<div class="empty">🎉 Todos os débitos do banco deste mês têm despesa lançada.</div>`)
+      : tab === 'vendas'
+      ? (list.length ? `<table><thead><tr><th></th><th>Data</th><th>Parceiro</th><th>N.º</th><th>Reservas de</th><th class="num">Valor c/ IVA</th><th></th></tr></thead><tbody>${
+          list.map(r => `<tr>
+            <td class="c-st"><span class="st ${r.link ? 'st-ok' : 'st-falta'}">${r.link ? '✓' : '✕'}</span></td>
+            <td class="c-date mono">${fmtDate(r.data)}</td>
+            <td class="c-forn"><span class="forn">${esc(r.parceiro)}</span>${r.pais ? `<div class="desc">${esc(r.pais)}</div>` : ''}</td>
+            <td class="c-num mono">${esc(r.numero)}</td>
+            <td class="c-cat">${r.reservas_de ? esc(monthName(r.reservas_de)) : ''}</td>
+            <td class="c-val num mono">${eur(r.valor)}</td>
+            <td class="c-link">${r.link ? `<a target="_blank" rel="noopener" href="${esc(r.link)}">Abrir PDF</a>` : ''}</td></tr>`).join('')
+        }</tbody></table>` : `<div class="empty">Sem faturas de venda a parceiros emitidas neste mês.</div>`)
+      : (list.length ? `<table><thead><tr><th></th><th>Data</th><th>Fornecedor</th><th>N.º documento</th><th>Categoria</th><th class="num">Valor</th><th></th></tr></thead><tbody>${
+          list.map(r => `<tr>
+            <td class="c-st"><span class="st st-${r.estado}" title="${r.estado === 'ok' ? 'Tem documento' : r.estado === 'isento' ? esc(r.motivo) : 'Falta o documento'}">${r.estado === 'ok' ? '✓' : r.estado === 'isento' ? '—' : '✕'}</span></td>
+            <td class="c-date mono">${fmtDate(r.data)}</td>
+            <td class="c-forn"><span class="forn">${esc(r.fornecedor)}</span>${r.nif ? ` <span class="desc mono">${esc(r.nif)}</span>` : ''}<div class="desc">${esc(r.estado === 'isento' ? r.motivo : r.descricao)}</div></td>
+            <td class="c-num mono">${esc(r.numero || '')}</td>
+            <td class="c-cat">${esc(r.categoria || '')}</td>
+            <td class="c-val num mono">${r.moeda && r.moeda !== 'EUR' ? `${money(r.valor, r.moeda)}<div class="desc">${eur(r.valor_eur)}</div>` : eur(r.valor_eur)}</td>
+            <td class="c-link">${r.link ? `<a target="_blank" rel="noopener" href="${esc(r.link)}">Abrir PDF</a>` : ''}</td></tr>`).join('')
+        }</tbody></table>` : `<div class="empty">${tab === 'falta' ? '🎉 Não falta nenhum documento neste mês.' : 'Nada nesta lista.'}</div>`);
+
+    $d.innerHTML = `
+      <div class="d-head">
+        <div><h3>${esc(monthName(current))}</h3>
+          <div class="sum">${m.linhas} despesas · ${eur(m.total_eur)} · ${m.com_doc} com documento · ${m.em_falta} faturas em falta · ${m.banco_sem} débitos do banco sem lançamento${m.vendas ? ` · ${m.vendas} faturas de venda (${eur(m.vendas_eur)})` : ''}</div></div>
+      </div>
+      <div class="folders">
+        ${m.water_folder ? `<a class="btn primary" target="_blank" rel="noopener" href="${folderUrl(m.water_folder)}">📁 Despesas Water — ${esc(MESES[Number(current.slice(5))-1])}</a>` : `<span class="btn" disabled>📁 Despesas Water (sem pasta)</span>`}
+        ${m.manjar_folder ? `<a class="btn" target="_blank" rel="noopener" href="${folderUrl(m.manjar_folder)}">📁 Manjar Alentejano — ${esc(MESES[Number(current.slice(5))-1])}</a>` : ''}
+        ${summary.folders && summary.folders.partners ? `<a class="btn" target="_blank" rel="noopener" href="${folderUrl(summary.folders.partners)}">📁 Faturas a parceiros</a>` : ''}
+      </div>
+      <div class="mark">
+        <button class="btn ${mark && mark.seen ? 'ok' : ''}" id="markBtn">${mark && mark.seen ? '✔ Mês visto pela contabilidade' : 'Marcar mês como visto'}</button>
+        <input type="text" id="markNote" maxlength="500" placeholder="Nota para o Miguel (opcional) — ex.: falta o extrato da CGD" value="${esc(mark && mark.note || '')}">
+        <button class="btn" id="noteBtn">Guardar nota</button>
+        ${mark && mark.updated_at ? `<span class="who">${esc(mark.updated_by || '')} · ${new Date(mark.updated_at).toLocaleDateString('pt-PT')}</span>` : ''}
+      </div>
+      <div class="tabs">
+        <button class="tab ${tab==='falta'?'on':''}" data-t="falta">Em falta<span class="n">${counts.falta}</span></button>
+        <button class="tab ${tab==='banco'?'on':''}" data-t="banco">Banco sem lançamento<span class="n">${counts.banco}</span></button>
+        <button class="tab ${tab==='ok'?'on':''}" data-t="ok">Com documento<span class="n">${counts.ok}</span></button>
+        <button class="tab ${tab==='isento'?'on':''}" data-t="isento">Sem fatura<span class="n">${counts.isento}</span></button>
+        <button class="tab ${tab==='vendas'?'on':''}" data-t="vendas">Vendas a parceiros<span class="n">${counts.vendas}</span></button>
+      </div>
+      <div class="tools"><input type="search" id="q" placeholder="Procurar fornecedor, n.º ou valor…" value="${esc(query)}"><span class="tot">${list.length} linhas · <span class="mono">${eur(total)}</span></span></div>
+      ${table}`;
+
+    $d.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => { tab = b.dataset.t; renderDetail(); }));
+    const $q = document.getElementById('q');
+    $q.addEventListener('input', () => { query = $q.value; const pos = $q.selectionStart; renderDetail(); const n = document.getElementById('q'); n.focus(); n.setSelectionRange(pos, pos); });
+    const save = async (seen) => {
+      try {
+        const note = document.getElementById('markNote').value;
+        monthData.mark = await rpc('accountant_mark_month', { p_token: TOKEN, p_month: current, p_seen: seen, p_note: note || null });
+        const sm = summary.months.find(x => x.month_key === current);
+        if (sm) { sm.seen = monthData.mark.seen; }
+        renderSummary();
+      } catch (e) { alert('Não foi possível guardar: ' + e.message); }
+    };
+    document.getElementById('markBtn').addEventListener('click', () => save(!(mark && mark.seen)));
+    document.getElementById('noteBtn').addEventListener('click', () => save(!!(mark && mark.seen)));
+  }
+
+  async function boot() {
+    if (!TOKEN) return showError('Este link não está completo.');
+    try {
+      summary = await rpc('accountant_portal', { p_token: TOKEN });
+      renderSummary();
+      const want = (location.hash || '').slice(1);
+      const first = summary.months.find(m => m.month_key === want) || summary.months.find(m => m.em_falta > 0) || summary.months[0];
+      if (first) openMonth(first.month_key, !!want);
+    } catch (e) {
+      showError(/inválido/.test(e.message) ? 'Este link já não é válido.' : e.message);
+    }
+  }
+  boot();
+})();
+</script>
+</body>
+</html>

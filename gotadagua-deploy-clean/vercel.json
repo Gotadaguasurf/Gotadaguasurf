@@ -1,18 +1,50 @@
 {
   "redirects": [
-    { "source": "/hq", "destination": "/hq/", "permanent": false }
+    {
+      "source": "/hq",
+      "destination": "/hq/",
+      "permanent": false
+    },
+    {
+      "source": "/contabilista",
+      "destination": "/contabilista/",
+      "permanent": false
+    }
   ],
   "headers": [
     {
       "source": "/prices/(.*)",
       "headers": [
-        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        }
       ]
     },
     {
       "source": "/prices",
       "headers": [
-        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/contabilista/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        },
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "no-referrer"
+        }
       ]
     }
   ]

@@ -425,6 +425,7 @@ td.loc-name{font-weight:700;color:var(--navy)}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.4"></script>
 <script src="/supabase-config.js"></script>
 <script src="/owner-config.js"></script>
+<script src="/hq/accountant-excel.js"></script>
 <script>
 const cfg = window.__SUPABASE_CONFIG || {};
 const sb  = window.supabase.createClient(cfg.url, cfg.anonKey);
@@ -2334,6 +2335,20 @@ const ACC_BANK_KIND = {
   card_settlement:'Liquidação do cartão', income:'Receita', other:'Outro'
 };
 const XLSX_CDN = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+const EXCELJS_CDN = 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';
+// Onde procurar a fatura quando falta — por fornecedor (minúsculas, prefixo).
+const ACC_HINTS = [
+  ['google ads', 'Google Ads: a Google não manda PDF; sacar em ads.google.com › Faturação'],
+  ['meta ads', 'Meta Ads: business.facebook.com › Faturação'], ['facebook ads', 'Meta Ads: business.facebook.com › Faturação'],
+  ['lg leasing', 'Leasing LG: não há fatura mensal, só o débito'], ['rci', 'RCI/Mobilize: fatura no portal do leasing'], ['mobilize', 'RCI/Mobilize: fatura no portal do leasing'],
+  ['santander', 'Comissões do banco: só extrato'], ['paypal', 'Extrato PayPal (accounting@)'], ['getnet', 'Getnet: fatura no portal'],
+  ['via verde', 'Via Verde: extrato mensal no site'], ['uber', 'Conta Uber do Ricardo (riders.uber.com)'],
+  ['domestic', 'Domestic & General: só existe a apólice (accounting@)'], ['chubb', 'Chubb: recibo mensal por email'],
+  ['securitas', 'Securitas/Verisure: email ricardo.gasurfcamp@'], ['easy transfer', 'Moloni (easytransferericeira)'], ['tormenta', 'Moloni (easytransferericeira)'],
+  ['safari', 'TOConline (accounting@)'], ['edp', 'EDP: área de cliente / email'], ['meo', 'MEO: área de cliente / email'], ['smas', 'SMAS Almada: área de cliente'],
+  ['arribatejo', 'CSC: email ricardo.gasurfcamp@ (threads «CSC - Semana de…»)'], ['anthropic', 'Recibo no miguel@'], ['supabase', 'Recibo no miguel@'], ['openai', 'Recibo no miguel@ / accounting@'],
+];
+function accHint(company){ const c = String(company||'').toLowerCase(); const h = ACC_HINTS.find(([k]) => c.startsWith(k) || c.includes(k)); return h ? h[1] : ''; }
 
 function accPeriod(kind, value){
   // kind 'month' → value 'YYYY-MM'; kind 'year' → value 'YYYY'
@@ -2398,7 +2413,7 @@ function parseSantanderRows(aoa, transferRefs){
 
 // Pure: data in, sheets out. Kept free of XLSX and of the DOM so the
 // smoke suite can check the numbers without downloading anything.
-function buildAccountantSheets({ invoices, transfers, bank, period, partnerInvoices }){
+function buildAccountantSheets({ invoices, transfers, bank, period, partnerInvoices, folders, bankUnmatched }){
   // Rows paid by another company (Wave Movements, MGPR) are not this
   // accountant's books: counted in the summary, left out of the sheets.
   const outras = (invoices||[]).filter(r => r.paying_company && r.paying_company !== 'water-movements');
@@ -2431,21 +2446,52 @@ function buildAccountantSheets({ invoices, transfers, bank, period, partnerInvoi
   // Sales invoices issued to partners (FT IN2/…), kept in partner_invoices
   // by the Partners app and the Downloads task (Miguel, 5 Oct 2026).
   const pi = (partnerInvoices||[]).slice().sort((a,b) => String(a.invoice_date).localeCompare(String(b.invoice_date)) || String(a.invoice_number).localeCompare(String(b.invoice_number)));
+  // Débitos do Santander sem linha na app (RPC hq_bank_unmatched — a mesma
+  // regra do portal do contabilista). Miguel, 6 Out 2026.
+  const bu = (bankUnmatched||[]).slice().sort((a,b) => Number(a.amount) - Number(b.amount));
+  const monthKey = period.slug.length === 7 ? period.slug : null;
+  const folderOf = (company, key) => ((folders||[]).find(f => f.company === company && f.month_key === key) || {}).folder_id || null;
+  const folderUrl = (id) => id ? `https://drive.google.com/drive/folders/${id}` : null;
+  const fWater = folderUrl(monthKey ? folderOf('water-movements', monthKey) : folderOf('water-movements', '*'));
+  const fPartners = folderUrl(folderOf('partners', '*'));
+  // Checklist: primeiro o que falta (maior valor primeiro), depois o que já tem.
+  const temFatura = (r) => r.drive_link ? 'Sim' : 'Não';
+  const check = inv.slice().sort((a,b) => (a.drive_link ? 1 : 0) - (b.drive_link ? 1 : 0) || (a.drive_link ? String(a.invoice_date).localeCompare(String(b.invoice_date)) : Number(b.amount_eur||0) - Number(a.amount_eur||0)));
+  const checklist = {
+    name: 'Checklist', kind: 'checklist',
+    header: ['Tem fatura?','Data','Fornecedor','Valor EUR','Categoria','Local','N.º documento','Documento','Onde procurar / nota','Estado na app'],
+    widths: [13,11,30,12,16,13,20,11,52,16],
+    rows: check.map(r => [temFatura(r), r.invoice_date || '', r.company || '', Number(r.amount_eur||0), r.category_name || '', locLabel(r.location_slug), r.invoice_number || '', r.drive_link ? 'abrir' : '', r.drive_link ? '' : (accHint(r.company) || String(r.notes||'').slice(0,160)), accEstado(r)]),
+    links: check.map((r,i) => r.drive_link ? { r: i+1, c: 7, url: r.drive_link } : null).filter(Boolean),
+    dropdown: { col: 0, options: ['Sim','Não','Não existe'] }, statusCol: 0, totalCol: 3, wrapCol: 8,
+  };
+  const bancoSem = {
+    name: 'Banco sem lançamento', kind: 'bank',
+    header: ['Lançado?','Data','Descrição do Santander','Montante','Nota'],
+    widths: [13,11,62,12,48],
+    rows: bu.map(b => ['Não', b.movement_date || '', b.description || '', Number(b.amount||0), '']),
+    links: [], dropdown: { col: 0, options: ['Não','Sim','Não é despesa'] }, statusCol: 0, totalCol: 3, wrapCol: 4,
+  };
 
-  const resumo = {
-    name: 'Resumo', widths: [44,18],
-    header: ['Water Movements Lda (NIF 515059927)', period.label],
-    rows: [
+  const resumoRows = [
       ['Período', `${period.from} a ${period.to}`],
       ['Gerado a', new Date().toISOString().slice(0,10)],
+      ['',''],
+      ['PASTAS NA DRIVE',''],
+      ['Water Movements — despesas do mês', fWater ? 'abrir pasta' : '(sem pasta registada)'],
+      ['Faturas de venda a parceiros', fPartners ? 'abrir pasta' : '(sem pasta registada)'],
+      ['',''],
+      ['O QUE FALTA (ver folha «Checklist» e «Banco sem lançamento»)',''],
+      ['Despesas sem fatura', missing.length],
+      ['Despesas sem fatura (EUR)', sum(missing, r => r.amount_eur)],
+      ['Débitos do Santander sem linha na app', bu.length],
+      ['Débitos sem linha (EUR)', Math.abs(sum(bu, b => b.amount))],
+      ['Com documento mas a rever', review.length],
       ['',''],
       ['DESPESAS NA APP',''],
       ['Linhas', inv.length],
       ['Com documento', inv.length - missing.length],
-      ['Sem documento', missing.length],
-      ['Com documento mas a rever', review.length],
       ['Total (EUR)', sum(inv, r => r.amount_eur)],
-      ['Sem documento (EUR)', sum(missing, r => r.amount_eur)],
       ['Pagas por outra empresa (fora deste ficheiro)', outras.length],
       ['',''],
       ['FATURAS DE VENDA A PARCEIROS (receita)',''],
@@ -2461,18 +2507,34 @@ function buildAccountantSheets({ invoices, transfers, bank, period, partnerInvoi
       ['Débitos (EUR)', Math.abs(sum(debits, b => b.amount))],
       ['Créditos (EUR)', sum(credits, b => b.amount)],
       ['',''],
-      ['Estado: OK = tem documento · A REVER = tem documento mas há uma dúvida anotada · SEM DOCUMENTO = falta a fatura ou o recibo.',''],
-      ['A coluna «Documento» abre o ficheiro na Drive. Os documentos do Manjar Alentejano não entram aqui: estão só na Drive.',''],
+      ['COMO USAR',''],
+      ['«Checklist»: uma linha por despesa. O dropdown «Tem fatura?» vem preenchido pela app (Sim = está na Drive). Muda para «Não existe» quando o fornecedor não emite fatura (comissões, leasing, anúncios). As linhas a vermelho são as que faltam; a coluna «Onde procurar» diz onde costuma estar.',''],
+      ['«Banco sem lançamento»: débitos do Santander que não têm linha na app. Marca «Sim» depois de lançar, ou «Não é despesa» se for transferência interna ou devolução.',''],
+      ['A coluna «Documento» abre o ficheiro na Drive.',''],
+  ];
+  const rowIdx = (label) => resumoRows.findIndex(r => r[0] === label) + 1;
+  const resumo = {
+    name: 'Resumo', kind: 'resumo', widths: [48,22],
+    header: ['Water Movements Lda (NIF 515059927)', period.label],
+    rows: resumoRows,
+    links: [
+      fWater ? { r: rowIdx('Water Movements — despesas do mês'), c: 1, url: fWater } : null,
+      fPartners ? { r: rowIdx('Faturas de venda a parceiros'), c: 1, url: fPartners } : null,
+    ].filter(Boolean),
+    alerts: [
+      { r: rowIdx('Despesas sem fatura'), c: 1, level: missing.length ? 'bad' : 'ok' },
+      { r: rowIdx('Débitos do Santander sem linha na app'), c: 1, level: bu.length ? 'bad' : 'ok' },
+      { r: rowIdx('Com documento mas a rever'), c: 1, level: review.length ? 'warn' : 'ok' },
     ],
-    links: [],
   };
   return {
     fileName: `Contabilista_WaterMovements_${period.slug}.xlsx`,
-    stats: { linhas: inv.length, semDocumento: missing.length, aRever: review.length, totalEur: sum(inv, r => r.amount_eur), banco: bankList.length, transferencias: tr.length, faturasParceiros: pi.length },
+    stats: { linhas: inv.length, semDocumento: missing.length, aRever: review.length, totalEur: sum(inv, r => r.amount_eur), banco: bankList.length, transferencias: tr.length, faturasParceiros: pi.length, bancoSem: bu.length },
     sheets: [
       resumo,
+      checklist,
+      bancoSem,
       expSheet('Despesas', inv),
-      expSheet('Em falta', missing),
       expSheet('A rever', review),
       {
         name: 'Transferências camps', header: ['Data','De','Para','Valor EUR','Finalidade','Referência','Notas'],
@@ -2510,6 +2572,26 @@ function loadXlsxLib(){
   return window.__xlsxLoading;
 }
 
+function loadExcelJsLib(){
+  if (window.ExcelJS) return Promise.resolve(window.ExcelJS);
+  if (window.__exceljsLoading) return window.__exceljsLoading;
+  window.__exceljsLoading = new Promise((resolve, reject) => {
+    const el = document.createElement('script');
+    el.src = EXCELJS_CDN;
+    el.onload = () => window.ExcelJS ? resolve(window.ExcelJS) : reject(new Error('ExcelJS não carregou'));
+    el.onerror = () => { window.__exceljsLoading = null; reject(new Error('Sem acesso à biblioteca do Excel')); };
+    document.head.appendChild(el);
+  });
+  return window.__exceljsLoading;
+}
+function saveBlob(blob, name){
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+}
+
+// Fallback sem formatação (SheetJS) — só se o ExcelJS não carregar.
 function accWorkbook(XLSX, pack){
   const wb = XLSX.utils.book_new();
   pack.sheets.forEach(sh => {
@@ -2558,8 +2640,10 @@ function accountantPanelHtml(){
             ${years.map(y => `<option value="${y}"${y===defY?' selected':''}>${y}</option>`).join('')}
           </select>
         </label>
-        <button class="btn" id="acc_download" onclick="downloadAccountantPack()">⬇ Descarregar Excel</button>
+        <button class="btn" id="acc_view" onclick="openAccountantMonth()" style="background:var(--ocean,#1e6fa8);color:#fff;border-color:var(--ocean,#1e6fa8)">📋 Ver o mês — o que falta</button>
+        <button class="btn btn-ghost" id="acc_download" onclick="downloadAccountantPack()">⬇ Descarregar Excel</button>
       </div>
+      <div class="card-hint">O Excel traz a folha <b>Checklist</b> (uma linha por despesa, dropdown «Tem fatura?», a vermelho o que falta e onde procurar) e <b>Banco sem lançamento</b> (débitos do Santander sem linha na app), além das despesas, faturas a parceiros, transferências e extrato. «Ver o mês» abre a página da contabilidade: faturas em falta, débitos do banco sem lançamento, links das pastas da Drive. <a href="#" onclick="copyAccountantLink(event)">🔗 Copiar o link da Goretti</a> (abre a mesma página, só de leitura).</div>
       <div id="acc_stats" class="card-hint"></div>
       <hr style="border:none;border-top:1px solid var(--line,#e5e9ef);margin:2px 0">
       <div>
@@ -2594,7 +2678,8 @@ async function refreshBankStatus(){
 }
 
 async function fetchAccountantData(period){
-  const [invoices, transfers, bank, partnerInvoices] = await Promise.all([
+  const monthKey = period.slug.length === 7 ? period.slug : null;
+  const [invoices, transfers, bank, partnerInvoices, folders, bankUnmatched] = await Promise.all([
     fetchAllPaged(() => sb.from('hq_invoices')
       .select('invoice_date, company, supplier_nif, invoice_number, description, amount, currency, amount_eur, category_name, location_slug, payment_type, drive_link, needs_review, notes, paying_company, is_duplicate')
       .is('deleted_at', null)
@@ -2613,8 +2698,47 @@ async function fetchAccountantData(period){
       .select('invoice_date, partner_name, invoice_number, month_key, location, amount, drive_link, file_name, notes')
       .gte('invoice_date', period.from).lte('invoice_date', period.to)
       .order('invoice_date', { ascending:true }).order('id', { ascending:true })),
+    sb.from('accountant_drive_folders').select('company, month_key, folder_id').in('month_key', monthKey ? [monthKey, '*'] : ['*']).then(({ data, error }) => { if (error) throw error; return data || []; }),
+    sb.rpc('hq_bank_unmatched', { p_from: period.from, p_to: period.to }).then(({ data, error }) => { if (error) throw error; return data || []; }),
   ]);
-  return { invoices, transfers, bank, partnerInvoices };
+  return { invoices, transfers, bank, partnerInvoices, folders, bankUnmatched };
+}
+
+// Página /contabilista/ (supabase/accountant-portal.sql). O HQ pede os
+// links por RPC (só membros do HQ) — os tokens nunca ficam no código.
+let ACC_LINKS = null;
+async function accountantLinks(){
+  if (ACC_LINKS) return ACC_LINKS;
+  const { data, error } = await sb.rpc('accountant_hq_links');
+  if (error) throw error;
+  ACC_LINKS = data || {};
+  return ACC_LINKS;
+}
+async function openAccountantMonth(){
+  const mes = $('acc_mes')?.value, ano = $('acc_ano')?.value;
+  // Open the tab synchronously (inside the click) so popup blockers allow it.
+  const w = window.open('about:blank', '_blank');
+  try {
+    const links = await accountantLinks();
+    if (!links.hq) throw new Error('sem link');
+    const url = `${location.origin}/contabilista/?k=${links.hq}${mes && mes !== 'all' ? `#${ano}-${mes}` : ''}`;
+    if (w) w.location.href = url; else location.href = url;
+  } catch (e) {
+    if (w) w.close();
+    toast('accToast','err','Não foi possível abrir: ' + (e.message || e.code || String(e)));
+  }
+}
+async function copyAccountantLink(ev){
+  if (ev) ev.preventDefault();
+  try {
+    const links = await accountantLinks();
+    if (!links.goretti) throw new Error('não há link da Goretti');
+    const url = `${location.origin}/contabilista/?k=${links.goretti}`;
+    await navigator.clipboard.writeText(url);
+    toast('accToast','ok','Link da Goretti copiado — é só colar no email.');
+  } catch (e) {
+    toast('accToast','err','Não foi possível copiar: ' + (e.message || e.code || String(e)));
+  }
 }
 
 async function downloadAccountantPack(){
@@ -2624,12 +2748,21 @@ async function downloadAccountantPack(){
   const period = mes === 'all' ? accPeriod('year', ano) : accPeriod('month', `${ano}-${mes}`);
   if (btn) { btn.disabled = true; btn.textContent = 'A preparar…'; }
   try {
-    const [XLSX, data] = await Promise.all([loadXlsxLib(), fetchAccountantData(period)]);
+    const data = await fetchAccountantData(period);
     if (!data.invoices.length && !data.bank.length) { toast('accToast','warn',`Não há nada lançado em ${period.label}.`); return; }
     const pack = buildAccountantSheets({ ...data, period });
-    XLSX.writeFile(accWorkbook(XLSX, pack), pack.fileName, { compression:true });
+    try {
+      const ExcelJS = await loadExcelJsLib();
+      const buf = await accExcelWorkbook(ExcelJS, pack).xlsx.writeBuffer();
+      saveBlob(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), pack.fileName);
+    } catch (e) {
+      // Sem a biblioteca com formatação, sai o Excel simples em vez de nada.
+      console.warn('ExcelJS indisponível, a usar o Excel simples:', e);
+      const XLSX = await loadXlsxLib();
+      XLSX.writeFile(accWorkbook(XLSX, pack), pack.fileName, { compression:true });
+    }
     const s = pack.stats;
-    if ($('acc_stats')) $('acc_stats').textContent = `${period.label}: ${s.linhas} linhas, ${s.semDocumento} sem documento, ${s.aRever} a rever, ${s.faturasParceiros} faturas a parceiros, ${s.banco} movimentos do banco.`;
+    if ($('acc_stats')) $('acc_stats').textContent = `${period.label}: ${s.linhas} linhas, ${s.semDocumento} sem fatura, ${s.bancoSem} débitos do banco sem linha, ${s.aRever} a rever, ${s.faturasParceiros} faturas a parceiros.`;
     toast('accToast','ok',`Descarregado: ${pack.fileName}`);
   } catch (e) {
     // Show the real cause — a silent failure here looks like "the button does nothing".

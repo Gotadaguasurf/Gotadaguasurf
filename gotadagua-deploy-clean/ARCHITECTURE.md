@@ -31,6 +31,7 @@ Gmail API (shared mailbox groups@gotadaguasurf.com)
 | `/camp-hub` | Ops per location: Overview, Camp Tab POS, Operations Ledger, Weekly P&L. Location via `?location=<slug>` | camp managers + staff |
 | `/camp-hub/camp-tab-inner.html` | The POS iframe inside camp-hub (charge guests, bar tab) | camp staff |
 | `/surf-school` | Mobile-first rentals: new rental, open boards, history | school staff |
+| `/contabilista` | Read-only page for the accountant (Goretti), opened with `?k=<token>` — no login. Per month: invoices with/without PDF, Santander debits with no expense row, Drive folder links, "visto" mark. Only `accountant_portal*` SECURITY DEFINER RPCs (`supabase/accountant-portal.sql`); tokens in `accountant_portal_tokens`; HQ 📦 panel gets links via `accountant_hq_links()` | Goretti + Miguel |
 | `/hq` | Consolidated finance: profit per location, Despesas HQ (invoices + AI extract), cash flow per company | Miguel |
 | `/crm` | B2B outreach: contacts, pipeline, templates, **drip campaigns**, shared Gmail | Miguel + sales |
 | `/partners` | Partner commissions tracking | Miguel |

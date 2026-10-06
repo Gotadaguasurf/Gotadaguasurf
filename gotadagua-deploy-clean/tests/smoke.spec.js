@@ -1205,6 +1205,14 @@ test('hq: accountant pack lists every expense, what has no document, camp fundin
         { invoice_date: '2026-09-10', partner_name: 'The Surf Tribe', invoice_number: 'FT IN2/16809', month_key: '2026-08', location: 'Portugal', amount: 7532, drive_link: 'https://drive.google.com/file/d/ghi/view' },
         { invoice_date: '2026-09-07', partner_name: 'AIFS TRAVEL', invoice_number: 'FT IN2/16772', month_key: '2026-08', location: null, amount: 2504.1, drive_link: null },
       ],
+      // Miguel, 6 Oct 2026: the Excel is a checklist of what is missing —
+      // Drive folders of the month, and the Santander debits with no app row.
+      folders: [
+        { company: 'water-movements', month_key: '2026-09', folder_id: 'FW9' },
+        { company: 'water-movements', month_key: '*', folder_id: 'FWROOT' },
+        { company: 'partners', month_key: '*', folder_id: 'FP' },
+      ],
+      bankUnmatched: [{ movement_date: '2026-09-15', description: 'COMPRA LEROY MERLIN', amount: -274.19 }],
     });
     const refs = new Set(['001850386960013813']);
     const parsed = parseSantanderRows([
@@ -1221,7 +1229,12 @@ test('hq: accountant pack lists every expense, what has no document, camp fundin
       period, file: pack.fileName, stats: pack.stats, names: pack.sheets.map(s => s.name),
       despesas: byName['Despesas'].rows.map(r => [r[1], r[11], r[12]]),
       links: byName['Despesas'].links,
-      falta: byName['Em falta'].rows.map(r => r[1]),
+      checklist: byName['Checklist'].rows.map(r => [r[0], r[2], r[3], r[7], r[8]]),
+      checklistSpec: { dropdown: byName['Checklist'].dropdown, statusCol: byName['Checklist'].statusCol, links: byName['Checklist'].links },
+      bancoSem: byName['Banco sem lançamento'].rows,
+      bancoSemSpec: byName['Banco sem lançamento'].dropdown,
+      resumoLinks: byName['Resumo'].links.map(l => l.url),
+      resumoFalta: byName['Resumo'].rows.filter(r => /sem fatura$|sem linha na app/.test(r[0])).map(r => r[1]),
       rever: byName['A rever'].rows.map(r => r[1]),
       camps: byName['Transferências camps'].rows.length,
       banco: byName['Extrato Santander'].rows.map(r => r[4]),
@@ -1235,9 +1248,20 @@ test('hq: accountant pack lists every expense, what has no document, camp fundin
   expect(out.feb).toBe('2028-02-29');
   expect(out.year).toMatchObject({ from: '2026-01-01', to: '2026-12-31' });
   expect(out.file).toBe('Contabilista_WaterMovements_2026-09.xlsx');
-  expect(out.names).toEqual(['Resumo', 'Despesas', 'Em falta', 'A rever', 'Transferências camps', 'Faturas a parceiros', 'Extrato Santander']);
+  expect(out.names).toEqual(['Resumo', 'Checklist', 'Banco sem lançamento', 'Despesas', 'A rever', 'Transferências camps', 'Faturas a parceiros', 'Extrato Santander']);
   // The Wave Movements row and the flagged duplicate stay out of the books.
-  expect(out.stats).toMatchObject({ linhas: 3, semDocumento: 1, aRever: 1, totalEur: 1088.29, banco: 3, transferencias: 1, faturasParceiros: 2 });
+  expect(out.stats).toMatchObject({ linhas: 3, semDocumento: 1, aRever: 1, totalEur: 1088.29, banco: 3, transferencias: 1, faturasParceiros: 2, bancoSem: 1 });
+  // Checklist: what is missing comes first, the dropdown is pre-filled from the app, and a hint says where to look.
+  expect(out.checklist).toEqual([
+    ['Não', 'Prio', 40, '', ''],
+    ['Sim', 'DUC', 158.29, 'abrir', ''],
+    ['Sim', 'Safari na Horta', 890, 'abrir', ''],
+  ]);
+  expect(out.checklistSpec).toEqual({ dropdown: { col: 0, options: ['Sim', 'Não', 'Não existe'] }, statusCol: 0, links: [{ r: 2, c: 7, url: 'https://drive.google.com/file/d/def/view' }, { r: 3, c: 7, url: 'https://drive.google.com/file/d/abc/view' }] });
+  expect(out.bancoSem).toEqual([['Não', '2026-09-15', 'COMPRA LEROY MERLIN', -274.19, '']]);
+  expect(out.bancoSemSpec).toEqual({ col: 0, options: ['Não', 'Sim', 'Não é despesa'] });
+  expect(out.resumoLinks).toEqual(['https://drive.google.com/drive/folders/FW9', 'https://drive.google.com/drive/folders/FP']);
+  expect(out.resumoFalta).toEqual([1, 1]);
   expect(out.parceiros).toEqual([['AIFS TRAVEL', 'FT IN2/16772', '2026-08', 2504.1, '—'], ['The Surf Tribe', 'FT IN2/16809', '2026-08', 7532, 'abrir']]);
   expect(out.parceirosLinks).toEqual([{ r: 2, c: 6, url: 'https://drive.google.com/file/d/ghi/view' }]);
   expect(out.despesas).toEqual([['Prio', '—', 'SEM DOCUMENTO'], ['DUC', 'abrir', 'A REVER'], ['Safari na Horta', 'abrir', 'OK']]);
@@ -1245,7 +1269,6 @@ test('hq: accountant pack lists every expense, what has no document, camp fundin
     { r: 2, c: 11, url: 'https://drive.google.com/file/d/def/view' },
     { r: 3, c: 11, url: 'https://drive.google.com/file/d/abc/view' },
   ]);
-  expect(out.falta).toEqual(['Prio']);
   expect(out.rever).toEqual(['DUC']);
   expect(out.camps).toBe(1);
   expect(out.banco).toEqual(['Despesa', 'Receita', 'Transferência para camp']);
