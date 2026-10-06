@@ -57,6 +57,7 @@ main{max-width:1400px;margin:0 auto;padding:32px 48px}
 .card-hdr{padding:20px 24px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px}
 .card-title{font-family:'DM Serif Display',serif;font-size:20px;color:var(--navy)}
 .card-hint{font-size:12px;color:var(--muted)}
+.tbl{border-collapse:collapse;font-size:13px}.tbl th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);padding:6px 8px;border-bottom:2px solid var(--border,#d8dee6)}.tbl td{padding:7px 8px;border-bottom:1px solid var(--border,#eee);vertical-align:top}
 .card-body{padding:24px}
 textarea{width:100%;min-height:180px;border:1.5px solid var(--border);border-radius:8px;padding:14px;font-family:'DM Mono',monospace;font-size:12px;line-height:1.5;resize:vertical}
 textarea:focus{outline:none;border-color:var(--ocean);box-shadow:0 0 0 3px rgba(30,111,168,.1)}
@@ -333,6 +334,7 @@ td.loc-name{font-weight:700;color:var(--navy)}
       <button class="nav-tab" data-tab="invoices" onclick="switchTab('invoices')">Expenses</button>
       <button class="nav-tab" data-tab="cashflow" onclick="switchTab('cashflow')">Cash flow</button>
       <button class="nav-tab" data-tab="pnl" onclick="switchTab('pnl')">P&amp;L Report</button>
+      <button class="nav-tab" data-tab="fecho" onclick="switchTab('fecho')">Fecho do mês</button>
     </div>
   </div>
   <div class="header-right">
@@ -543,6 +545,7 @@ function render(){
     <div class="tab-pane" id="tab-invoices">${invoicesTabHtml()}</div>
     <div class="tab-pane" id="tab-cashflow">${cashflowTabHtml()}</div>
     <div class="tab-pane" id="tab-pnl">${pnlTabHtml()}</div>
+    <div class="tab-pane" id="tab-fecho">${fechoTabHtml()}</div>
   `;
   wireInvoiceForm();
   wireBulkUpload();
@@ -557,6 +560,7 @@ function switchTab(name){
   if (name === 'invoices') { renderInvoiceList(); }
   if (name === 'cashflow') { renderCashflow(); }
   if (name === 'pnl') { renderPnl(); }
+  if (name === 'fecho') { renderFecho(); }
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -2458,7 +2462,7 @@ function buildAccountantSheets({ invoices, transfers, bank, period, partnerInvoi
   const fWater = folderUrl(monthKey ? folderOf('water-movements', monthKey) : folderOf('water-movements', '*'));
   const fPartners = folderUrl(folderOf('partners', '*'));
   // Checklist: primeiro o que falta (maior valor primeiro), depois o que já tem.
-  const temFatura = (r) => r.drive_link ? 'Sim' : (accNoInvoice(r.company) ? 'Não existe' : 'Não');
+  const temFatura = (r) => r.drive_link ? 'Sim' : ((accNoInvoice(r.company) || /\[sem fatura/i.test(String(r.notes||''))) ? 'Não existe' : 'Não');
   const ordem = { 'Não': 0, 'Não existe': 1, 'Sim': 2 };
   const check = inv.slice().sort((a,b) => ordem[temFatura(a)] - ordem[temFatura(b)] || (a.drive_link ? String(a.invoice_date).localeCompare(String(b.invoice_date)) : Number(b.amount_eur||0) - Number(a.amount_eur||0)));
   const checklist = {
@@ -2623,6 +2627,252 @@ function accWorkbook(XLSX, pack){
   return wb;
 }
 
+// ═══════════════════════════════════════════════════════════════════
+//  Fecho do mês — a checklist viva do mês (Miguel, 6 Out 2026): o que
+//  falta de fatura, os débitos do banco sem linha, os links da Drive e
+//  três checks manuais. Cada linha a vermelho tem «Anexar» (o ficheiro vai
+//  pela Edge Function drive-upload direto para a pasta do mês — nada fica
+//  na app) e «Colar link». O Excel do contabilista é o mesmo mês.
+// ═══════════════════════════════════════════════════════════════════
+const FECHO_CHECKS = [
+  ['efatura', 'e-Fatura da Goretti conferido com a app'],
+  ['drive',   'Pasta da Drive do mês arrumada (nomes certos, sem repetidos)'],
+  ['pacote',  'Pacote enviado à contabilidade'],
+];
+let FECHO = { month: null, rows: [], bank: [], folders: [], checks: [], loading: false };
+
+function fechoDefaultMonth(){
+  const now = new Date();
+  const prev = new Date(Date.UTC(now.getFullYear(), now.getMonth() - 1, 1));
+  return `${prev.getUTCFullYear()}-${String(prev.getUTCMonth()+1).padStart(2,'0')}`;
+}
+function fechoMonthLabel(key){ const [y,m] = String(key||'').split('-').map(Number); return m ? `${MESES_LONGO[m-1]} ${y}` : key; }
+function fechoTabHtml(){
+  const months = [];
+  const now = new Date();
+  for (let i = 0; i < 14; i++) { const d = new Date(Date.UTC(now.getFullYear(), now.getMonth() - i, 1)); const k = `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}`; if (k >= '2026-01') months.push(k); }
+  const def = fechoDefaultMonth();
+  return `
+    <div id="fechoToast"></div>
+    <input id="fecho_file" type="file" accept="application/pdf,image/*" style="display:none" onchange="fechoFileChosen(this)">
+    <div class="card" style="padding:16px 18px;margin-bottom:16px">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+        <select id="fecho_mes" onchange="renderFecho()" style="padding:8px 10px;border-radius:9px;border:1px solid var(--border,#d8dee6);font-size:14px;font-weight:700">
+          ${months.map(k => `<option value="${k}"${k===def?' selected':''}>${fechoMonthLabel(k)}</option>`).join('')}
+        </select>
+        <button class="btn btn-ghost" onclick="fechoDownloadExcel()">⬇ Excel do contabilista</button>
+        <button class="btn btn-ghost" onclick="fechoOpenPortal()">📋 Página da Goretti</button>
+        <span id="fecho_links" style="display:flex;gap:8px;flex-wrap:wrap"></span>
+      </div>
+      <div id="fecho_kpis" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px"></div>
+    </div>
+    <div id="fechoBody"><div class="loading">A carregar…</div></div>`;
+}
+function fechoKpi(label, value, level){
+  const bg = level === 'bad' ? '#FFC7CE' : level === 'warn' ? '#FFEB9C' : level === 'ok' ? '#C6EFCE' : '#eef2f6';
+  return `<div style="background:${bg};border-radius:10px;padding:8px 12px;min-width:120px"><div style="font-size:11px;color:#444">${label}</div><div style="font-size:18px;font-weight:800">${value}</div></div>`;
+}
+function fechoHasInvoice(r){ return !!r.drive_link; }
+function fechoNoInvoice(r){ return !r.drive_link && (accNoInvoice(r.company) || /\[sem fatura/i.test(String(r.notes||''))); }
+
+async function renderFecho(){
+  const body = $('fechoBody'); if (!body) return;
+  const month = $('fecho_mes')?.value || fechoDefaultMonth();
+  FECHO.month = month; FECHO.loading = true;
+  body.innerHTML = `<div class="loading">A carregar ${fechoMonthLabel(month)}…</div>`;
+  const period = accPeriod('month', month);
+  try {
+    const [rows, folders, bank, checks] = await Promise.all([
+      fetchAllPaged(() => sb.from('hq_invoices')
+        .select('id, invoice_date, company, amount_eur, category_name, location_slug, invoice_number, drive_link, needs_review, notes, paying_company, is_duplicate')
+        .is('deleted_at', null).gte('invoice_date', period.from).lte('invoice_date', period.to)
+        .order('invoice_date', { ascending:true }).order('id', { ascending:true })),
+      sb.from('accountant_drive_folders').select('company, month_key, folder_id').in('month_key', [month, '*']).then(({ data, error }) => { if (error) throw error; return data || []; }),
+      sb.rpc('hq_bank_unmatched', { p_from: period.from, p_to: period.to }).then(({ data, error }) => { if (error) throw error; return data || []; }),
+      sb.from('hq_month_checks').select('item, done_at, done_by, note').eq('month_key', month).then(({ data, error }) => { if (error) throw error; return data || []; }),
+    ]);
+    FECHO.rows = rows.filter(r => r.is_duplicate !== true && (!r.paying_company || r.paying_company === 'water-movements'));
+    FECHO.folders = folders; FECHO.bank = bank; FECHO.checks = checks;
+  } catch (e) {
+    body.innerHTML = `<div class="loading">Não deu para carregar: ${e.message || e.code || e}</div>`;
+    return;
+  } finally { FECHO.loading = false; }
+  fechoPaint();
+}
+
+function fechoFolder(company, key){ return (FECHO.folders.find(f => f.company === company && f.month_key === key) || {}).folder_id || null; }
+
+function fechoPaint(){
+  const body = $('fechoBody'); if (!body) return;
+  const month = FECHO.month;
+  const rows = FECHO.rows;
+  const falta = rows.filter(r => !fechoHasInvoice(r) && !fechoNoInvoice(r)).sort((a,b) => Number(b.amount_eur||0) - Number(a.amount_eur||0));
+  const naoExiste = rows.filter(fechoNoInvoice);
+  const rever = rows.filter(r => r.drive_link && r.needs_review);
+  const sum = (l, f) => Math.round(l.reduce((s,r) => s + Number(f(r)||0), 0) * 100) / 100;
+  const bankSum = Math.abs(sum(FECHO.bank, b => b.amount));
+  const fWater = fechoFolder('water-movements', month), fPartners = fechoFolder('partners', '*');
+  const linkBtn = (id, label) => id ? `<a class="btn btn-ghost" target="_blank" rel="noopener" href="https://drive.google.com/drive/folders/${id}">${label}</a>` : '';
+  if ($('fecho_links')) $('fecho_links').innerHTML = linkBtn(fWater, '📁 Drive do mês') + linkBtn(fPartners, '📁 Faturas a parceiros');
+  if ($('fecho_kpis')) $('fecho_kpis').innerHTML =
+    fechoKpi('Despesas', rows.length) +
+    fechoKpi('Sem fatura', `${falta.length} · ${eur(sum(falta, r => r.amount_eur))}`, falta.length ? 'bad' : 'ok') +
+    fechoKpi('Não existe fatura', naoExiste.length) +
+    fechoKpi('Banco sem linha', `${FECHO.bank.length} · ${eur(bankSum)}`, FECHO.bank.length ? 'bad' : 'ok') +
+    fechoKpi('Com fatura mas a rever', rever.length, rever.length ? 'warn' : 'ok');
+
+  const checkOf = (item) => FECHO.checks.find(c => c.item === item);
+  const checksHtml = FECHO_CHECKS.map(([item, label]) => {
+    const c = checkOf(item); const done = !!(c && c.done_at);
+    return `<label style="display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border,#eee);cursor:pointer">
+      <input type="checkbox" ${done ? 'checked' : ''} onchange="fechoToggleCheck('${item}', this.checked)">
+      <span style="flex:1;${done ? 'color:#2a7a3b' : ''}">${label}</span>
+      <span class="card-hint">${done ? `✓ ${String(c.done_by||'').split('@')[0]} · ${fmtDia(String(c.done_at).slice(0,10))}` : ''}</span>
+    </label>`;
+  }).join('');
+
+  const rowHtml = (r) => `
+    <tr>
+      <td style="white-space:nowrap">${fmtDia(r.invoice_date)}</td>
+      <td><b>${esc(r.company||'')}</b><div class="card-hint">${esc(r.category_name||'')} · ${esc(locLabel(r.location_slug))}${r.invoice_number ? ' · ' + esc(r.invoice_number) : ''}</div></td>
+      <td style="text-align:right;white-space:nowrap">${eur(r.amount_eur)}</td>
+      <td class="card-hint" style="max-width:320px">${esc(accHint(r.company) || String(r.notes||'').slice(0,120))}</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-ghost" style="padding:6px 10px" onclick="fechoAttach('${r.id}')">📎 Anexar</button>
+        <button class="btn btn-ghost" style="padding:6px 10px" onclick="fechoPasteLink('${r.id}')">🔗 Link</button>
+        <button class="btn btn-ghost" style="padding:6px 10px" title="Este fornecedor não emite fatura" onclick="fechoMarkNoInvoice('${r.id}')">∅</button>
+      </td>
+    </tr>`;
+  const bankHtml = (b) => `
+    <tr>
+      <td style="white-space:nowrap">${fmtDia(b.movement_date)}</td>
+      <td>${esc(b.description||'')}</td>
+      <td style="text-align:right;white-space:nowrap">${eur(Math.abs(Number(b.amount||0)))}</td>
+      <td style="white-space:nowrap"><button class="btn btn-ghost" style="padding:6px 10px" onclick="fechoLaunch('${b.id}')">＋ Lançar</button></td>
+    </tr>`;
+
+  body.innerHTML = `
+    <div class="card" style="padding:14px 18px;margin-bottom:16px">
+      <div style="font-weight:800;margin-bottom:4px">Checks do mês</div>
+      ${checksHtml}
+    </div>
+    <div class="card" style="padding:14px 18px;margin-bottom:16px">
+      <div style="font-weight:800;margin-bottom:8px">Sem fatura <span class="chip chip-review">${falta.length}</span></div>
+      ${falta.length ? `<div style="overflow:auto"><table class="tbl" style="width:100%"><thead><tr><th>Data</th><th>Fornecedor</th><th style="text-align:right">Valor</th><th>Onde procurar</th><th></th></tr></thead><tbody>${falta.map(rowHtml).join('')}</tbody></table></div>`
+                     : `<div class="card-hint">Tudo com fatura. 🎉</div>`}
+    </div>
+    <div class="card" style="padding:14px 18px;margin-bottom:16px">
+      <div style="font-weight:800;margin-bottom:8px">Banco sem lançamento <span class="chip chip-review">${FECHO.bank.length}</span></div>
+      <div class="card-hint" style="margin-bottom:8px">Débitos do Santander que não têm linha na app (transferências internas, comissões e cartão de crédito já ficam de fora).</div>
+      ${FECHO.bank.length ? `<div style="overflow:auto"><table class="tbl" style="width:100%"><thead><tr><th>Data</th><th>Descrição</th><th style="text-align:right">Montante</th><th></th></tr></thead><tbody>${FECHO.bank.map(bankHtml).join('')}</tbody></table></div>`
+                           : `<div class="card-hint">Todos os débitos têm linha.</div>`}
+    </div>
+    <details class="card" style="padding:14px 18px;margin-bottom:16px">
+      <summary style="font-weight:800;cursor:pointer">Não existe fatura <span class="chip chip-normal">${naoExiste.length}</span> <span class="card-hint">comissões, leasing, anúncios, PayPal…</span></summary>
+      <div class="card-hint" style="margin-top:8px">${naoExiste.map(r => `${fmtDia(r.invoice_date)} · ${esc(r.company||'')} · ${eur(r.amount_eur)}`).join('<br>') || '—'}</div>
+    </details>`;
+}
+function esc(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+// ── ações ──
+let FECHO_ATTACH_ID = null;
+function fechoAttach(id){ FECHO_ATTACH_ID = id; const inp = $('fecho_file'); if (inp) { inp.value = ''; inp.click(); } }
+function fechoFileName(r, file){
+  const [y, m] = String(r.invoice_date||'').split('-').map(Number);
+  const mes = m ? MESES_LONGO[m-1] : '';
+  const ext = (file.name.match(/\.[a-z0-9]{3,4}$/i) || ['.pdf'])[0].toLowerCase();
+  const nome = String(r.company||'fatura').replace(/\b\w/g, c => c.toUpperCase());
+  const val = Number(r.amount_eur||0).toLocaleString('pt-PT', { minimumFractionDigits:2, maximumFractionDigits:2 });
+  return `${nome} - ${mes} ${y} - ${val}€${ext}`;
+}
+async function driveUpload(file, folderId, name){
+  const { data: sessionData } = await sb.auth.getSession();
+  const jwt = sessionData?.session?.access_token || '';
+  if (!jwt) throw new Error('Sessão expirada — volta a entrar.');
+  const b64 = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(',')[1] || ''); fr.onerror = () => rej(new Error('Não consegui ler o ficheiro')); fr.readAsDataURL(file); });
+  const resp = await fetch(`${cfg.url}/functions/v1/drive-upload`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${jwt}`, 'Content-Type': 'application/json', 'apikey': cfg.anonKey },
+    body: JSON.stringify({ folder_id: folderId, name, mime: file.type || 'application/pdf', data_base64: b64 }),
+  });
+  const out = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error(out.error || `drive-upload falhou (${resp.status})`);
+  return out;
+}
+async function fechoFileChosen(inp){
+  const file = inp.files && inp.files[0]; const id = FECHO_ATTACH_ID;
+  if (!file || !id) return;
+  const r = FECHO.rows.find(x => x.id === id); if (!r) return;
+  const folder = fechoFolder('water-movements', FECHO.month);
+  if (!folder) { toast('fechoToast','err',`Não há pasta da Drive registada para ${fechoMonthLabel(FECHO.month)} (tabela accountant_drive_folders).`); return; }
+  if (file.size > 20 * 1024 * 1024) { toast('fechoToast','err','Ficheiro acima de 20 MB.'); return; }
+  const name = fechoFileName(r, file);
+  toast('fechoToast','warn',`A enviar «${name}» para a Drive…`);
+  try {
+    const out = await driveUpload(file, folder, name);
+    const { error } = await sb.from('hq_invoices').update({
+      drive_link: out.link, file_name: out.name || name,
+      notes: `${r.notes ? r.notes + ' ' : ''}[fatura anexada pela app a ${new Date().toISOString().slice(0,10)}]`,
+    }).eq('id', id);
+    if (error) throw error;
+    toast('fechoToast','ok',`✓ Na Drive e ligada: ${out.name || name}`);
+    await renderFecho();
+  } catch (e) {
+    toast('fechoToast','err','Falhou: ' + (e.message || e.code || String(e)));
+  }
+}
+async function fechoPasteLink(id){
+  const r = FECHO.rows.find(x => x.id === id); if (!r) return;
+  const link = prompt(`Link da Drive para ${r.company} (${eur(r.amount_eur)}):`, '');
+  if (!link) return;
+  const m = String(link).match(/drive\.google\.com\/(?:file\/d\/|open\?id=)([A-Za-z0-9_-]{10,})/);
+  if (!m) { toast('fechoToast','err','Isso não parece um link de ficheiro da Drive.'); return; }
+  const { error } = await sb.from('hq_invoices').update({ drive_link: `https://drive.google.com/file/d/${m[1]}/view`, notes: `${r.notes ? r.notes + ' ' : ''}[link da Drive colado na app a ${new Date().toISOString().slice(0,10)}]` }).eq('id', id);
+  if (error) { toast('fechoToast','err','Falhou: ' + (error.message || error.code)); return; }
+  toast('fechoToast','ok','✓ Ligada.');
+  await renderFecho();
+}
+async function fechoMarkNoInvoice(id){
+  const r = FECHO.rows.find(x => x.id === id); if (!r) return;
+  if (!confirm(`${r.company} (${eur(r.amount_eur)}): marcar como «não existe fatura»? Deixa de contar como falta.`)) return;
+  const { error } = await sb.from('hq_invoices').update({ notes: `${r.notes ? r.notes + ' ' : ''}[sem fatura: o fornecedor não emite — marcado a ${new Date().toISOString().slice(0,10)}]` }).eq('id', id);
+  if (error) { toast('fechoToast','err','Falhou: ' + (error.message || error.code)); return; }
+  await renderFecho();
+}
+function fechoLaunch(bankId){
+  const b = FECHO.bank.find(x => x.id === bankId); if (!b) return;
+  switchTab('invoices');
+  setTimeout(() => {
+    const d = $('inv_date'), a = $('inv_amount'), c = $('inv_company'), ds = $('inv_description');
+    if (d) d.value = String(b.movement_date).slice(0,10);
+    if (a) a.value = Math.abs(Number(b.amount||0)).toFixed(2);
+    const guess = String(b.description||'').replace(/^(COMPRA(\s+ESTRANG)?\s*\*?\d*\s*|TRF\.?\s*IMED\.?\s*P\/\s*|TRF CRED INTRABANC P\/\s*|DÉBITO DIRETO-?\s*|PAG\.\s*SERVICOS\s*\*?\d*\s*)/i, '').replace(/-?E\d{7,9}.*$/, '').replace(/\s{2,}/g,' ').trim();
+    if (c && !c.value) c.value = guess.slice(0, 60).toLowerCase();
+    if (ds && !ds.value) ds.value = `${b.description} [do extrato Santander, ${fmtDia(b.movement_date)}]`;
+    (d || a)?.scrollIntoView({ behavior:'smooth', block:'center' });
+    toast('invToast','ok','Preenchido do extrato — confirma categoria e local e grava.');
+  }, 150);
+}
+async function fechoToggleCheck(item, checked){
+  const { data: sessionData } = await sb.auth.getSession();
+  const who = sessionData?.session?.user?.email || '';
+  const { error } = await sb.from('hq_month_checks').upsert({ month_key: FECHO.month, item, done_at: checked ? new Date().toISOString() : null, done_by: checked ? who : null, updated_at: new Date().toISOString() }, { onConflict: 'month_key,item' });
+  if (error) { toast('fechoToast','err','Falhou: ' + (error.message || error.code)); return; }
+  const { data } = await sb.from('hq_month_checks').select('item, done_at, done_by, note').eq('month_key', FECHO.month);
+  FECHO.checks = data || []; fechoPaint();
+}
+function fechoDownloadExcel(){ const m = $('fecho_mes')?.value || fechoDefaultMonth(); return downloadAccountantPack(accPeriod('month', m)); }
+async function fechoOpenPortal(){
+  const m = $('fecho_mes')?.value || fechoDefaultMonth();
+  const w = window.open('about:blank', '_blank');
+  try {
+    const links = await accountantLinks();
+    if (!links.hq) throw new Error('sem link');
+    const url = `${location.origin}/contabilista/?k=${links.hq}#${m}`;
+    if (w) w.location.href = url; else location.href = url;
+  } catch (e) { if (w) w.close(); toast('fechoToast','err','Não foi possível abrir: ' + (e.message || e.code || String(e))); }
+}
+
 function accountantPanelHtml(){
   const now = new Date();
   const prev = new Date(Date.UTC(now.getFullYear(), now.getMonth() - 1, 1));
@@ -2745,11 +2995,11 @@ async function copyAccountantLink(ev){
   }
 }
 
-async function downloadAccountantPack(){
+async function downloadAccountantPack(periodArg){
   const btn = $('acc_download');
   const mes = $('acc_mes')?.value, ano = $('acc_ano')?.value;
-  if (!mes || !ano) { toast('accToast','warn','Escolhe o mês e o ano.'); return; }
-  const period = mes === 'all' ? accPeriod('year', ano) : accPeriod('month', `${ano}-${mes}`);
+  if (!periodArg && (!mes || !ano)) { toast('accToast','warn','Escolhe o mês e o ano.'); return; }
+  const period = periodArg || (mes === 'all' ? accPeriod('year', ano) : accPeriod('month', `${ano}-${mes}`));
   if (btn) { btn.disabled = true; btn.textContent = 'A preparar…'; }
   try {
     const data = await fetchAccountantData(period);

@@ -1226,6 +1226,64 @@ test('hq: overview boots from one rollup request — grouped rows add up like th
   expect(errs).toEqual([]);
 });
 
+test('hq: Fecho do mês tab — what lacks an invoice, bank debits with no row, Drive links, manual checks, and "Lançar" prefills the expense form', async ({ page }) => {
+  // Miguel, 6 Oct 2026: the month's checklist lives in the app, with
+  // "Anexar" (file → drive-upload → Drive folder) and "Colar link" per row.
+  const updates = [];
+  await page.route(/supabase\.co\/(auth|rest)\/v1\/.*/, async route => {
+    const req = route.request(); const url = req.url();
+    const json = (body) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    if (url.includes('/auth/v1/user')) return json({ id: 'u1', email: 'miguel@gotadaguasurf.com', aud: 'authenticated', role: 'authenticated' });
+    if (url.includes('/rest/v1/rpc/hq_overview_rollup')) return json({ bookings: [], invoices: [], ledger: [] });
+    if (url.includes('/rest/v1/rpc/hq_bank_unmatched')) return json([{ id: 'bk1', movement_date: '2026-09-15', description: 'COMPRA *6962 LEROY MERLIN COVA PIEDADE', amount: -274.19 }]);
+    if (url.includes('/rest/v1/accountant_drive_folders')) return json([{ company: 'water-movements', month_key: '2026-09', folder_id: 'FW9' }, { company: 'partners', month_key: '*', folder_id: 'FP' }]);
+    if (url.includes('/rest/v1/hq_month_checks')) { if (req.method() !== 'GET') { updates.push('check:' + (req.postData() || '')); return json([]); } return json([{ item: 'efatura', done_at: '2026-09-10T10:00:00Z', done_by: 'miguel@gotadaguasurf.com' }]); }
+    if (url.includes('/rest/v1/hq_invoices')) {
+      if (req.method() === 'PATCH') { updates.push('inv:' + (req.postData() || '')); return json([]); }
+      return json([
+        { id: 'i1', invoice_date: '2026-09-02', company: 'prio', amount_eur: 40, category_name: 'Transport', location_slug: 'portugal', drive_link: null, needs_review: false, notes: '', paying_company: 'water-movements' },
+        { id: 'i2', invoice_date: '2026-09-03', company: 'google ads', amount_eur: 500, category_name: 'Services', location_slug: 'general', drive_link: null, needs_review: false, notes: '', paying_company: 'water-movements' },
+        { id: 'i3', invoice_date: '2026-09-07', company: 'edp', amount_eur: 107.3, category_name: 'Utilities', location_slug: 'portugal', drive_link: 'https://drive.google.com/file/d/x/view', needs_review: true, notes: '', paying_company: 'water-movements' },
+        { id: 'i4', invoice_date: '2026-09-09', company: 'safari na horta', amount_eur: 1000, category_name: 'Activities', location_slug: 'portugal', drive_link: null, needs_review: false, notes: '[sem fatura: o fornecedor não emite]', paying_company: 'water-movements' },
+      ]);
+    }
+    return json([]);
+  });
+  const errs = []; page.on('pageerror', e => errs.push(e.message));
+  await fakeOwnerSession(page);
+  await page.goto('/hq/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof renderFecho === 'function' && document.querySelector('[data-tab="fecho"]'));
+  await page.evaluate(() => switchTab('fecho'));
+  await page.selectOption('#fecho_mes', '2026-09');
+  await page.waitForFunction(() => /Sem fatura/.test(document.querySelector('#fechoBody')?.textContent || '') && !/A carregar/.test(document.querySelector('#fechoBody')?.textContent || ''), null, { timeout: 15000 });
+  const out = await page.evaluate(() => ({
+    kpis: [...document.querySelectorAll('#fecho_kpis > div')].map(d => [...d.children].map(c => c.textContent.trim()).join(' ')),
+    links: [...document.querySelectorAll('#fecho_links a')].map(a => a.getAttribute('href')),
+    falta: [...document.querySelectorAll('#fechoBody table')][0] ? [...document.querySelectorAll('#fechoBody table')][0].querySelectorAll('tbody tr').length : 0,
+    faltaFirst: document.querySelector('#fechoBody table tbody tr td:nth-child(2) b')?.textContent,
+    hasAttach: !!document.querySelector('#fechoBody button[onclick^="fechoAttach"]'),
+    checks: [...document.querySelectorAll('#fechoBody input[type=checkbox]')].map(c => c.checked),
+    bank: document.querySelector('#fechoBody').textContent.includes('LEROY MERLIN COVA PIEDADE'),
+  }));
+  expect(out.kpis[0]).toBe('Despesas 4');
+  expect(out.kpis[1]).toBe('Sem fatura 1 · €40.00');          // prio only: google ads never has one, safari was marked "sem fatura"
+  expect(out.kpis[2]).toBe('Não existe fatura 2');
+  expect(out.kpis[3]).toBe('Banco sem linha 1 · €274.19');
+  expect(out.kpis[4]).toBe('Com fatura mas a rever 1');
+  expect(out.links).toEqual(['https://drive.google.com/drive/folders/FW9', 'https://drive.google.com/drive/folders/FP']);
+  expect(out.falta).toBe(1);
+  expect(out.faltaFirst).toBe('prio');
+  expect(out.hasAttach).toBe(true);
+  expect(out.checks).toEqual([true, false, false]);
+  expect(out.bank).toBe(true);
+  // "Lançar" jumps to Expenses with date, amount and a supplier guess filled in.
+  await page.evaluate(() => fechoLaunch('bk1'));
+  await page.waitForFunction(() => document.querySelector('#inv_amount')?.value === '274.19', null, { timeout: 5000 });
+  const form = await page.evaluate(() => ({ date: document.querySelector('#inv_date').value, company: document.querySelector('#inv_company').value, active: document.querySelector('.nav-tab.active')?.dataset.tab }));
+  expect(form).toMatchObject({ date: '2026-09-15', company: 'leroy merlin cova piedade', active: 'invoices' });
+  expect(errs).toEqual([]);
+});
+
 test('hq: accountant pack lists every expense, what has no document, camp funding apart, and the bank statement', async ({ page }) => {
   // Miguel, 29 Sep 2026: one button that downloads what the accountant
   // needs — app rows, Drive links, what is missing and the Santander.
