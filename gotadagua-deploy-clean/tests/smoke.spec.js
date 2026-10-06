@@ -1255,7 +1255,7 @@ test('hq: Fecho do mês tab — what lacks an invoice, bank debits with no row, 
   await page.waitForFunction(() => typeof renderFecho === 'function' && document.querySelector('[data-tab="fecho"]'));
   await page.evaluate(() => switchTab('fecho'));
   await page.selectOption('#fecho_mes', '2026-09');
-  await page.waitForFunction(() => /Sem fatura/.test(document.querySelector('#fechoBody')?.textContent || '') && !/A carregar/.test(document.querySelector('#fechoBody')?.textContent || ''), null, { timeout: 15000 });
+  await page.waitForFunction(() => /Missing invoice/.test(document.querySelector('#fechoBody')?.textContent || '') && !/Loading/.test(document.querySelector('#fechoBody')?.textContent || ''), null, { timeout: 15000 });
   const out = await page.evaluate(() => ({
     kpis: [...document.querySelectorAll('#fecho_kpis > div')].map(d => [...d.children].map(c => c.textContent.trim()).join(' ')),
     links: [...document.querySelectorAll('#fecho_links a')].map(a => a.getAttribute('href')),
@@ -1265,11 +1265,11 @@ test('hq: Fecho do mês tab — what lacks an invoice, bank debits with no row, 
     checks: [...document.querySelectorAll('#fechoBody input[type=checkbox]')].map(c => c.checked),
     bank: document.querySelector('#fechoBody').textContent.includes('LEROY MERLIN COVA PIEDADE'),
   }));
-  expect(out.kpis[0]).toBe('Despesas 4');
-  expect(out.kpis[1]).toBe('Sem fatura 1 · €40.00');          // prio only: google ads never has one, safari was marked "sem fatura"
-  expect(out.kpis[2]).toBe('Não existe fatura 2');
-  expect(out.kpis[3]).toBe('Banco sem linha 1 · €274.19');
-  expect(out.kpis[4]).toBe('Com fatura mas a rever 1');
+  expect(out.kpis[0]).toBe('Expenses 4');
+  expect(out.kpis[1]).toBe('Missing invoice 1 · €40.00');          // prio only: google ads never has one, safari was marked "sem fatura"
+  expect(out.kpis[2]).toBe('No invoice exists 2');
+  expect(out.kpis[3]).toBe('Bank without a row 1 · €274.19');
+  expect(out.kpis[4]).toBe('Has invoice, to review 1');
   expect(out.links).toEqual(['https://drive.google.com/drive/folders/FW9', 'https://drive.google.com/drive/folders/FP']);
   expect(out.falta).toBe(1);
   expect(out.faltaFirst).toBe('prio');
