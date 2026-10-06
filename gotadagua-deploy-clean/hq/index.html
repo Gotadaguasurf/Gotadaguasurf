@@ -2348,6 +2348,10 @@ const ACC_HINTS = [
   ['safari', 'TOConline (accounting@)'], ['edp', 'EDP: área de cliente / email'], ['meo', 'MEO: área de cliente / email'], ['smas', 'SMAS Almada: área de cliente'],
   ['arribatejo', 'CSC: email ricardo.gasurfcamp@ (threads «CSC - Semana de…»)'], ['anthropic', 'Recibo no miguel@'], ['supabase', 'Recibo no miguel@'], ['openai', 'Recibo no miguel@ / accounting@'],
 ];
+// Fornecedores que nunca emitem fatura (comissões, leasing, anúncios, PayPal):
+// na Checklist entram como «Não existe» (cinzento), não como falta.
+const ACC_NO_INVOICE = ['google ads','meta ads','facebook ads','lg leasing','santander','paypal','getnet','domestic','cartao refeicao','cartão refeição'];
+function accNoInvoice(company){ const c = String(company||'').toLowerCase(); return ACC_NO_INVOICE.some(k => c.startsWith(k) || c.includes(k)); }
 function accHint(company){ const c = String(company||'').toLowerCase(); const h = ACC_HINTS.find(([k]) => c.startsWith(k) || c.includes(k)); return h ? h[1] : ''; }
 
 function accPeriod(kind, value){
@@ -2455,8 +2459,9 @@ function buildAccountantSheets({ invoices, transfers, bank, period, partnerInvoi
   const fWater = folderUrl(monthKey ? folderOf('water-movements', monthKey) : folderOf('water-movements', '*'));
   const fPartners = folderUrl(folderOf('partners', '*'));
   // Checklist: primeiro o que falta (maior valor primeiro), depois o que já tem.
-  const temFatura = (r) => r.drive_link ? 'Sim' : 'Não';
-  const check = inv.slice().sort((a,b) => (a.drive_link ? 1 : 0) - (b.drive_link ? 1 : 0) || (a.drive_link ? String(a.invoice_date).localeCompare(String(b.invoice_date)) : Number(b.amount_eur||0) - Number(a.amount_eur||0)));
+  const temFatura = (r) => r.drive_link ? 'Sim' : (accNoInvoice(r.company) ? 'Não existe' : 'Não');
+  const ordem = { 'Não': 0, 'Não existe': 1, 'Sim': 2 };
+  const check = inv.slice().sort((a,b) => ordem[temFatura(a)] - ordem[temFatura(b)] || (a.drive_link ? String(a.invoice_date).localeCompare(String(b.invoice_date)) : Number(b.amount_eur||0) - Number(a.amount_eur||0)));
   const checklist = {
     name: 'Checklist', kind: 'checklist',
     header: ['Tem fatura?','Data','Fornecedor','Valor EUR','Categoria','Local','N.º documento','Documento','Onde procurar / nota','Estado na app'],
@@ -2481,7 +2486,7 @@ function buildAccountantSheets({ invoices, transfers, bank, period, partnerInvoi
       ['Water Movements — despesas do mês', fWater ? 'abrir pasta' : '(sem pasta registada)'],
       ['Faturas de venda a parceiros', fPartners ? 'abrir pasta' : '(sem pasta registada)'],
       ['',''],
-      ['O QUE FALTA (ver folha «Checklist» e «Banco sem lançamento»)',''],
+      ['O QUE FALTA',''],
       ['Despesas sem fatura', missing.length],
       ['Despesas sem fatura (EUR)', sum(missing, r => r.amount_eur)],
       ['Débitos do Santander sem linha na app', bu.length],
@@ -2508,7 +2513,7 @@ function buildAccountantSheets({ invoices, transfers, bank, period, partnerInvoi
       ['Créditos (EUR)', sum(credits, b => b.amount)],
       ['',''],
       ['COMO USAR',''],
-      ['«Checklist»: uma linha por despesa. O dropdown «Tem fatura?» vem preenchido pela app (Sim = está na Drive). Muda para «Não existe» quando o fornecedor não emite fatura (comissões, leasing, anúncios). As linhas a vermelho são as que faltam; a coluna «Onde procurar» diz onde costuma estar.',''],
+      ['«Checklist»: uma linha por despesa. O dropdown «Tem fatura?» vem preenchido pela app: Sim (verde) = está na Drive; Não (vermelho) = falta; Não existe (cinzento) = o fornecedor não emite fatura (comissões, leasing, anúncios, PayPal). As que faltam vêm primeiro, por valor; a coluna «Onde procurar» diz onde costuma estar.',''],
       ['«Banco sem lançamento»: débitos do Santander que não têm linha na app. Marca «Sim» depois de lançar, ou «Não é despesa» se for transferência interna ou devolução.',''],
       ['A coluna «Documento» abre o ficheiro na Drive.',''],
   ];

@@ -83,18 +83,21 @@
       tr.eachCell((cell) => { cell.font = { bold: true }; cell.border = { top: { style: 'medium', color: { argb: NAVY } } }; });
     }
     ws.views = [{ state: 'frozen', ySplit: 1 }];
+    // Impressão: paisagem, cabeçalho repetido em cada página, largura ajustada.
+    ws.pageSetup = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, printTitlesRow: '1:1', paperSize: 9 };
     if (n) ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: n + 1, column: ncol } };
   }
 
   function writeResumo(ws, sh){
     ws.columns = [{ width: (sh.widths || [])[0] || 46 }, { width: (sh.widths || [])[1] || 22 }, { width: 60 }];
+    ws.pageSetup = { orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9 };
     const title = ws.addRow(sh.header);
     title.height = 28;
     title.eachCell((cell) => { cell.font = { bold: true, size: 14, color: { argb: WHITE } }; cell.fill = fill(NAVY); cell.alignment = { vertical: 'middle' }; });
     sh.rows.forEach((r) => {
       const row = ws.addRow(r);
       const a = String(r[0] || ''), b = r[1];
-      const isSection = a && a === a.toUpperCase() && /[A-ZÀ-Ú]/.test(a) && (b === '' || b == null);
+      const isSection = /^[A-ZÀ-Ú]{3,}( [A-ZÀ-Ú]+)*/.test(a) && a.length < 70 && (b === '' || b == null);
       if (isSection) { row.eachCell({ includeEmpty: true }, (cell, c) => { if (c <= 2) { cell.font = { bold: true, color: { argb: NAVY } }; cell.fill = fill(SECTION); } }); }
       if (typeof b === 'number' && /EUR/.test(a)) row.getCell(2).numFmt = MONEY;
       if (a.length > 70 && (b === '' || b == null)) { row.getCell(1).alignment = { wrapText: true, vertical: 'top' }; ws.mergeCells(row.number, 1, row.number, 3); row.height = 30; }

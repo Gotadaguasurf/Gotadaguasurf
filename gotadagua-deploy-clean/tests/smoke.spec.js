@@ -1190,6 +1190,8 @@ test('hq: accountant pack lists every expense, what has no document, camp fundin
       invoices: [
         { invoice_date: '2026-09-29', company: 'Safari na Horta', amount: 890, currency: 'EUR', amount_eur: 890, category_name: 'Activities', location_slug: 'portugal', drive_link: 'https://drive.google.com/file/d/abc/view', needs_review: false, paying_company: 'water-movements' },
         { invoice_date: '2026-09-02', company: 'Prio', amount: 40, currency: 'EUR', amount_eur: 40, category_name: 'Transport', location_slug: 'portugal', drive_link: null, needs_review: false, paying_company: 'water-movements' },
+        // Google never sends a PDF: the checklist says "Não existe", not "falta".
+        { invoice_date: '2026-09-03', company: 'Google Ads', amount: 500, currency: 'EUR', amount_eur: 500, category_name: 'Services', location_slug: 'general', drive_link: null, needs_review: false, paying_company: 'water-movements' },
         { invoice_date: '2026-09-10', company: 'DUC', amount: 158.29, currency: 'EUR', amount_eur: 158.29, category_name: 'Taxes', location_slug: 'general', drive_link: 'https://drive.google.com/file/d/def/view', needs_review: true, paying_company: 'water-movements' },
         { invoice_date: '2026-09-11', company: 'Colombo supplier', amount: 400, currency: 'EUR', amount_eur: 400, location_slug: 'sri-lanka', drive_link: null, paying_company: 'wave-movements' },
         { invoice_date: '2026-09-12', company: 'Prio', amount: 40, currency: 'EUR', amount_eur: 40, drive_link: null, paying_company: 'water-movements', is_duplicate: true },
@@ -1250,24 +1252,25 @@ test('hq: accountant pack lists every expense, what has no document, camp fundin
   expect(out.file).toBe('Contabilista_WaterMovements_2026-09.xlsx');
   expect(out.names).toEqual(['Resumo', 'Checklist', 'Banco sem lançamento', 'Despesas', 'A rever', 'Transferências camps', 'Faturas a parceiros', 'Extrato Santander']);
   // The Wave Movements row and the flagged duplicate stay out of the books.
-  expect(out.stats).toMatchObject({ linhas: 3, semDocumento: 1, aRever: 1, totalEur: 1088.29, banco: 3, transferencias: 1, faturasParceiros: 2, bancoSem: 1 });
-  // Checklist: what is missing comes first, the dropdown is pre-filled from the app, and a hint says where to look.
+  expect(out.stats).toMatchObject({ linhas: 4, semDocumento: 2, aRever: 1, totalEur: 1588.29, banco: 3, transferencias: 1, faturasParceiros: 2, bancoSem: 1 });
+  // Checklist: what is missing comes first, then what never has an invoice, then what is in. The dropdown is pre-filled from the app and a hint says where to look.
   expect(out.checklist).toEqual([
     ['Não', 'Prio', 40, '', ''],
+    ['Não existe', 'Google Ads', 500, '', 'Google Ads: a Google não manda PDF; sacar em ads.google.com › Faturação'],
     ['Sim', 'DUC', 158.29, 'abrir', ''],
     ['Sim', 'Safari na Horta', 890, 'abrir', ''],
   ]);
-  expect(out.checklistSpec).toEqual({ dropdown: { col: 0, options: ['Sim', 'Não', 'Não existe'] }, statusCol: 0, links: [{ r: 2, c: 7, url: 'https://drive.google.com/file/d/def/view' }, { r: 3, c: 7, url: 'https://drive.google.com/file/d/abc/view' }] });
+  expect(out.checklistSpec).toEqual({ dropdown: { col: 0, options: ['Sim', 'Não', 'Não existe'] }, statusCol: 0, links: [{ r: 3, c: 7, url: 'https://drive.google.com/file/d/def/view' }, { r: 4, c: 7, url: 'https://drive.google.com/file/d/abc/view' }] });
   expect(out.bancoSem).toEqual([['Não', '2026-09-15', 'COMPRA LEROY MERLIN', -274.19, '']]);
   expect(out.bancoSemSpec).toEqual({ col: 0, options: ['Não', 'Sim', 'Não é despesa'] });
   expect(out.resumoLinks).toEqual(['https://drive.google.com/drive/folders/FW9', 'https://drive.google.com/drive/folders/FP']);
-  expect(out.resumoFalta).toEqual([1, 1]);
+  expect(out.resumoFalta).toEqual([2, 1]);
   expect(out.parceiros).toEqual([['AIFS TRAVEL', 'FT IN2/16772', '2026-08', 2504.1, '—'], ['The Surf Tribe', 'FT IN2/16809', '2026-08', 7532, 'abrir']]);
   expect(out.parceirosLinks).toEqual([{ r: 2, c: 6, url: 'https://drive.google.com/file/d/ghi/view' }]);
-  expect(out.despesas).toEqual([['Prio', '—', 'SEM DOCUMENTO'], ['DUC', 'abrir', 'A REVER'], ['Safari na Horta', 'abrir', 'OK']]);
+  expect(out.despesas).toEqual([['Prio', '—', 'SEM DOCUMENTO'], ['Google Ads', '—', 'SEM DOCUMENTO'], ['DUC', 'abrir', 'A REVER'], ['Safari na Horta', 'abrir', 'OK']]);
   expect(out.links).toEqual([
-    { r: 2, c: 11, url: 'https://drive.google.com/file/d/def/view' },
-    { r: 3, c: 11, url: 'https://drive.google.com/file/d/abc/view' },
+    { r: 3, c: 11, url: 'https://drive.google.com/file/d/def/view' },
+    { r: 4, c: 11, url: 'https://drive.google.com/file/d/abc/view' },
   ]);
   expect(out.rever).toEqual(['DUC']);
   expect(out.camps).toBe(1);
