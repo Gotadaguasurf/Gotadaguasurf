@@ -2724,11 +2724,11 @@ function fechoPaint(){
   const checkOf = (item) => FECHO.checks.find(c => c.item === item);
   const checksHtml = FECHO_CHECKS.map(([item, label]) => {
     const c = checkOf(item); const done = !!(c && c.done_at);
-    return `<label style="display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border,#eee);cursor:pointer">
-      <input type="checkbox" ${done ? 'checked' : ''} onchange="fechoToggleCheck('${item}', this.checked)">
-      <span style="flex:1;${done ? 'color:#2a7a3b' : ''}">${label}</span>
-      <span class="card-hint">${done ? `✓ ${String(c.done_by||'').split('@')[0]} · ${fmtDia(String(c.done_at).slice(0,10))}` : ''}</span>
-    </label>`;
+    return `<div style="display:flex;flex-direction:row;gap:12px;align-items:center;padding:9px 0;border-bottom:1px solid var(--border,#eee)">
+      <input type="checkbox" id="fecho_chk_${item}" style="width:18px;height:18px;margin:0;flex:0 0 auto;cursor:pointer" ${done ? 'checked' : ''} onchange="fechoToggleCheck('${item}', this.checked)">
+      <span style="flex:1 1 auto;text-align:left;font-size:14px;cursor:pointer;${done ? 'color:#2a7a3b' : ''}" onclick="$('fecho_chk_${item}').click()">${label}</span>
+      <span class="card-hint" style="flex:0 0 auto;white-space:nowrap">${done ? `✓ ${String(c.done_by||'').split('@')[0]} · ${fmtDia(String(c.done_at).slice(0,10))}` : ''}</span>
+    </div>`;
   }).join('');
 
   const rowHtml = (r) => `
