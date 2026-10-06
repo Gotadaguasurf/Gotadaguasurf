@@ -590,14 +590,24 @@ async function renderOverview(){
 
   // ── Populate period dropdown from bookings.month_key + hq_invoices dates ──
   const perSel = $('ov_period');
+  body.innerHTML = `<div class="loading">Loading…</div>`;
+
+  // ── One round-trip: the database sums bookings, HQ invoices and ledger
+  //    entries by month (hq_overview_rollup, supabase/hq-overview-rollup.sql).
+  //    Before (Oct 2026) the browser pulled every row of the three tables in
+  //    1000-row pages — ~20 requests before the first number showed up.
+  //    The rows below carry the same field names the maths always used, so
+  //    each one stands for a group (month × location × …) instead of a line.
+  const { data: roll, error: rollErr } = await sb.rpc('hq_overview_rollup');
+  if (rollErr) { body.innerHTML = `<div class="loading">Não foi possível carregar o Overview: ${rollErr.message || rollErr.code || rollErr}</div>`; return; }
+  const bkRowsAll = (roll?.bookings || []).map(r => ({ ...r, partner_name: r.direct ? null : 'partner', booking_type: r.direct ? 'direct' : 'partner', n: Number(r.n || 0) }));
+  const invRowsAll = (roll?.invoices || []).map(r => ({ ...r, invoice_date: `${r.month}-01` }));
+  const lgRowsAll = (roll?.ledger || []).map(r => ({ ...r, entry_date: `${r.month}-01` }));
+
   if (perSel && perSel.options.length <= 1) {
-    const [bkMonths, invMonths] = await Promise.all([
-      fetchAllPaged(() => sb.from('bookings').select('month_key').order('check_in_on', {ascending:false})),
-      fetchAllPaged(() => sb.from('hq_invoices').select('invoice_date').is('deleted_at', null).order('invoice_date', {ascending:false}))
-    ]);
     const set = new Set();
-    bkMonths.forEach(r => r.month_key && set.add(r.month_key));
-    invMonths.forEach(r => r.invoice_date && set.add(String(r.invoice_date).slice(0,7)));
+    bkRowsAll.forEach(r => r.month_key && set.add(r.month_key));
+    invRowsAll.forEach(r => r.month && set.add(r.month));
     const months = [...set].sort().reverse();
     const cur = perSel.value;
     perSel.innerHTML = '<option value="__all__">All-time</option>' +
@@ -606,17 +616,6 @@ async function renderOverview(){
 
   const period = perSel?.value || '__all__';
   const isAll  = period === '__all__';
-
-  body.innerHTML = `<div class="loading">Loading…</div>`;
-
-  // ── Fetch ALL-time data (paginated) so the trend chart at the bottom
-  //    can render every month without a second round-trip. The current-
-  //    period KPIs are filtered client-side.
-  const [bkRowsAll, invRowsAll, lgRowsAll] = await Promise.all([
-    fetchAllPaged(() => sb.from('bookings').select('total, net_amount, commission_amount, partner_name, booking_type, month_key, pax, location, check_in_on').order('check_in_on', {ascending:true})),
-    fetchAllPaged(() => sb.from('hq_invoices').select('location_slug, amount_eur, category_id, invoice_date').is('deleted_at', null).order('invoice_date', {ascending:false})),
-    fetchAllPaged(() => sb.from('ledger_entries').select('type, amount_eur, entry_date, paid_from, attributed_location, location_id, source_kind').order('entry_date', {ascending:false}))
-  ]);
   const bkRows  = isAll ? bkRowsAll : bkRowsAll.filter(r => r.month_key === period);
   const invRows = invRowsAll.filter(r => isAll || String(r.invoice_date||'').slice(0,7) === period);
   // Rows mirrored from hq_invoices (source_kind='hq_invoice') are already counted as HQ invoices — never twice.
@@ -633,7 +632,7 @@ async function renderOverview(){
   const grossTotal   = partnerGross + directGross;       // Total Gross (Bookinglayer)
   const totalRevenue = partnerNet + directGross;         // Total Revenue GotaDagua
   const commissionPaid = grossTotal - totalRevenue;
-  const bkCount      = bkRows.length;
+  const bkCount      = bkRows.reduce((s,b) => s + Number(b.n ?? 1), 0);
 
   // ── HQ expenses + business profit (calculated FIRST so hero renders) ──
   const personalCatIds = new Set(CATEGORIES.filter(c => c.is_personal).map(c => c.id));

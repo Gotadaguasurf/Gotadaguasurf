@@ -1177,6 +1177,55 @@ test('partners: who collected is decided per booking from Bookinglayer Status/Du
   expect(after.outstandingToPartner).toBeCloseTo(122.22, 2);
 });
 
+test('hq: overview boots from one rollup request — grouped rows add up like the old per-line fetch', async ({ page }) => {
+  // Miguel, 6 Oct 2026: "a app demora a abrir". The Overview used to pull
+  // every booking, invoice and ledger line (~20 paged requests) just to sum
+  // them. Now hq_overview_rollup() returns month × location groups; the
+  // maths is unchanged, and a group counts as `n` bookings, not one.
+  const calls = [];
+  await page.route(/supabase\.co\/(auth|rest)\/v1\/.*/, async route => {
+    const url = route.request().url();
+    const json = (body) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    if (url.includes('/auth/v1/user')) return json({ id: 'u1', email: 'miguel@gotadaguasurf.com', aud: 'authenticated', role: 'authenticated' });
+    if (url.includes('/rest/v1/')) calls.push(url.replace(/.*\/rest\/v1\//, '').replace(/\?.*/, ''));
+    if (url.includes('/rest/v1/rpc/hq_overview_rollup')) return json({
+      bookings: [
+        { month_key: '2026-09', location: 'Portugal', direct: true,  total: 1000, net_amount: 1000, commission_amount: 0,   pax: 2, n: 3 },
+        { month_key: '2026-09', location: 'Portugal', direct: false, total: 500,  net_amount: 400,  commission_amount: 100, pax: 1, n: 1 },
+        { month_key: '2026-08', location: 'Morocco',  direct: true,  total: 700,  net_amount: 700,  commission_amount: 0,   pax: 1, n: 2 },
+      ],
+      invoices: [
+        { month: '2026-09', location_slug: 'portugal', category_id: 'c-food', amount_eur: 300 },
+        { month: '2026-08', location_slug: 'general',  category_id: 'c-food', amount_eur: 100 },
+      ],
+      ledger: [
+        { month: '2026-09', type: 'expense', attributed_location: 'morocco', location_id: null, source_kind: 'manual',     amount_eur: 50 },
+        { month: '2026-09', type: 'expense', attributed_location: 'portugal', location_id: null, source_kind: 'hq_invoice', amount_eur: 999 }, // mirrored HQ row: never counted twice
+      ],
+    });
+    return json([]);
+  });
+  const errs = []; page.on('pageerror', e => errs.push(e.message));
+  await fakeOwnerSession(page);
+  await page.goto('/hq/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => document.querySelector('#ov_period') && document.querySelector('#ov_period').options.length > 1, null, { timeout: 15000 });
+  await page.selectOption('#ov_period', '2026-09');
+  await page.waitForFunction(() => /4 bookings/.test(document.querySelector('#overviewBody')?.textContent || ''), null, { timeout: 15000 });
+  const out = await page.evaluate(() => ({
+    hero: document.querySelector('.hero-val')?.textContent.trim(),
+    months: [...document.querySelectorAll('#ov_period option')].map(o => o.value),
+    body: document.querySelector('#overviewBody').textContent,
+  }));
+  // revenue 1000 + 400, no on-site revenue, local expenses 50, HQ 300 → +€1,050.00
+  expect(out.hero).toBe('+€1,050.00');
+  expect(out.months).toEqual(['__all__', '2026-09', '2026-08']);
+  expect(out.body).toContain('4 bookings');
+  // One rollup call per render instead of paged table scans.
+  expect(calls.filter(c => c === 'rpc/hq_overview_rollup').length).toBeGreaterThanOrEqual(1);
+  expect(calls.filter(c => c === 'bookings' || c === 'ledger_entries')).toEqual([]);
+  expect(errs).toEqual([]);
+});
+
 test('hq: accountant pack lists every expense, what has no document, camp funding apart, and the bank statement', async ({ page }) => {
   // Miguel, 29 Sep 2026: one button that downloads what the accountant
   // needs — app rows, Drive links, what is missing and the Santander.
