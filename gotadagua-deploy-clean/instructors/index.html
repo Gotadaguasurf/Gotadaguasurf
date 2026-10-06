@@ -889,11 +889,61 @@ async function togglePayrollPaid(key){
     if(error)throw error;
     if(!data||data.length!==rows.length)throw new Error(`Só ${data?data.length:0} de ${rows.length} aulas foram atualizadas — sem permissão de escrita nesta localização?`);
     await loadInstructorData();
-    showMessage(`${instructorName} · ${monthLabel(month)}: ${rows.length} aulas marcadas como ${nextPaid?"pagas":"não pagas"}.`);
+    let msg=`${instructorName} · ${monthLabel(month)}: ${rows.length} aulas marcadas como ${nextPaid?"pagas":"não pagas"}.`;
+    // Miguel, 6 Out 2026: «quando carrego no botão pago, esse valor por mês é
+    // sempre o do recibo». Marcar pago = lançar no HQ o total (aulas + extras
+    // + IVA), repartido pelos sítios onde deu aulas. Uma vez por instrutor/mês.
+    if(nextPaid){
+      try{const r=await pushPayrollToHq(client,instructorName,month,rows);msg+=r.skipped?" Já estava lançado no HQ.":` Lançado no HQ: ${euro(r.due)} em ${r.rows} linha${r.rows===1?"":"s"} (${r.parts}).`;}
+      catch(e){msg+=" ⚠ Aulas pagas, mas o lançamento no HQ falhou: "+errMsg(e,"erro");}
+    }
+    showMessage(msg);
     render();
   }catch(error){
     showError(errMsg(error,"Could not update payment status."));
   }finally{_instrPending=false;}
+}
+// ── HQ: uma linha por local, total = aulas + extra, × (1 + IVA) — igual à coluna «A pagar» ──
+const HQ_LESSON_LOC={"Surf School":"surf-school","Surf Camp":"portugal","Kids Camp":"kids-camp","Junior Camp":"junior-camp"};
+const HQ_LOC_LABEL={"surf-school":"Surf School","portugal":"Surf Camp","kids-camp":"Kids Camp","junior-camp":"Junior Camp"};
+async function pushPayrollToHq(client,instructorName,month,rows){
+  const dir=instructorDirectory.find(d=>d.name===instructorName);
+  const supplier=String((dir&&dir.appSupplier)||instructorName).trim().toLowerCase();
+  const tag=`[instrutores: ${instructorName} ${month}]`;
+  const {data:exists,error:e0}=await client.from("hq_invoices").select("id").is("deleted_at",null).ilike("company",supplier).ilike("notes",`%${tag}%`).limit(1);
+  if(e0)throw e0;
+  if(exists&&exists.length)return{skipped:true};
+  const {data:cats}=await client.from("hq_invoice_categories").select("id,name").eq("name","Salary").limit(1);
+  const catId=cats&&cats[0]?cats[0].id:null;
+  const hasJunior=rows.some(e=>e.lessonCategory==="Junior Camp");
+  const parts={};
+  rows.forEach(e=>{
+    // Theory e Video Analysis contam para o camp do instrutor, nunca para a escola.
+    const slug=HQ_LESSON_LOC[e.lessonCategory]||(hasJunior?"junior-camp":"portugal");
+    const p=parts[slug]=parts[slug]||{slug,gross:0,extra:0,lessons:0,cats:new Set()};
+    p.gross+=Number(e.total||0);p.lessons+=Number(e.numberOfLessons||0);p.cats.add(e.lessonCategory);
+  });
+  const extra=payrollExtra(dir,rows),vat=dir?Number(dir.vatPct||0):0;
+  if(extra){
+    const slug=(dir&&dir.extraKind==="head_coach_junior_week")?"junior-camp":(Object.values(parts).sort((a,b)=>b.gross-a.gross)[0]||{slug:"portugal"}).slug;
+    const p=parts[slug]=parts[slug]||{slug,gross:0,extra:0,lessons:0,cats:new Set()};p.extra+=extra;
+  }
+  const list=Object.values(parts).map(p=>({...p,amount:Math.round((p.gross+p.extra)*(1+vat/100)*100)/100})).sort((a,b)=>b.amount-a.amount);
+  const due=Math.round((rows.reduce((s,e)=>s+Number(e.total||0),0)+extra)*(1+vat/100)*100)/100;
+  const diff=Math.round((due-list.reduce((s,p)=>s+p.amount,0))*100)/100;
+  if(diff&&list.length)list[0].amount=Math.round((list[0].amount+diff)*100)/100;
+  const today=new Date().toISOString().slice(0,10);
+  const split=list.map(q=>`${HQ_LOC_LABEL[q.slug]||q.slug} ${q.lessons} aulas`).join(", ");
+  const payload=list.map(p=>({
+    location_slug:p.slug,paying_company:"water-movements",invoice_date:today,company:supplier,
+    description:`Aulas ${monthLabel(month)} — parte ${HQ_LOC_LABEL[p.slug]||p.slug} (${p.lessons} aulas: ${[...p.cats].join("/")}${p.extra?`, + extra ${euro(p.extra)}`:""}${vat?`, IVA ${vat}%`:""})`,
+    amount:p.amount,currency:"EUR",fx_rate:1,amount_eur:p.amount,payment_type:"Bank Transfer",
+    category_id:catId,category_name:"Salary",needs_review:false,
+    notes:`${tag} [repartido pelas aulas de ${month}: ${split}] [marcado pago na app dos instrutores a ${today}]`
+  }));
+  const {error}=await client.from("hq_invoices").insert(payload);
+  if(error)throw error;
+  return{rows:payload.length,due,parts:list.map(q=>`${HQ_LOC_LABEL[q.slug]||q.slug} ${euro(q.amount)}`).join(" · ")};
 }
 async function handleImport(file){
   try{

@@ -98,8 +98,42 @@ Deno.serve(async (req) => {
   const { data: isHq, error: rpcErr } = await userClient.rpc('is_hq_member')
   if (rpcErr || !isHq) return json({ error: 'HQ member required' }, 403)
 
-  let body: { folder_id?: string; name?: string; mime?: string; data_base64?: string }
+  let body: { action?: string; folder_id?: string; name?: string; mime?: string; data_base64?: string; file_id?: string; parent_id?: string; trash?: boolean }
   try { body = await req.json() } catch { return json({ error: 'JSON inválido' }, 400) }
+
+  // ── Arrumação: mover / listar / renomear (6 Out 2026: «não quero os do
+  //    Manjar nas pastas da Water») — mesmas permissões do upload.
+  if (body.action === 'move' || body.action === 'list' || body.action === 'rename' || body.action === 'trash') {
+    try {
+      const token = await accessToken(db)
+      const h = { authorization: 'Bearer ' + token, 'content-type': 'application/json' }
+      if (body.action === 'list') {
+        const q = encodeURIComponent(`'${String(body.folder_id||'')}' in parents and trashed = false`)
+        const r = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,mimeType,parents,size)&pageSize=200&supportsAllDrives=true&includeItemsFromAllDrives=true`, { headers: h })
+        const out = await r.json(); if (!r.ok) return json({ error: out?.error?.message || 'list falhou' }, 502)
+        return json({ files: out.files || [] })
+      }
+      const fileId = String(body.file_id || '').trim(); if (!fileId) return json({ error: 'file_id obrigatório' }, 400)
+      if (body.action === 'move') {
+        const parent = String(body.parent_id || '').trim(); if (!parent) return json({ error: 'parent_id obrigatório' }, 400)
+        const cur = await (await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,parents&supportsAllDrives=true`, { headers: h })).json()
+        const r = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?addParents=${parent}&removeParents=${(cur.parents||[]).join(',')}&supportsAllDrives=true&fields=id,name,parents`, { method: 'PATCH', headers: h, body: '{}' })
+        const out = await r.json(); if (!r.ok) return json({ error: out?.error?.message || 'move falhou' }, 502)
+        return json(out)
+      }
+      if (body.action === 'rename') {
+        const r = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?supportsAllDrives=true&fields=id,name`, { method: 'PATCH', headers: h, body: JSON.stringify({ name: String(body.name||'').slice(0,200) }) })
+        const out = await r.json(); if (!r.ok) return json({ error: out?.error?.message || 'rename falhou' }, 502)
+        return json(out)
+      }
+      if (body.action === 'trash') {
+        const r = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?supportsAllDrives=true&fields=id,name,trashed`, { method: 'PATCH', headers: h, body: JSON.stringify({ trashed: true }) })
+        const out = await r.json(); if (!r.ok) return json({ error: out?.error?.message || 'trash falhou' }, 502)
+        return json(out)
+      }
+    } catch (e) { return json({ error: (e as Error).message || String(e) }, 500) }
+  }
+
   const folder = String(body.folder_id || '').trim(), name = String(body.name || '').trim().slice(0, 200)
   const mime = String(body.mime || 'application/pdf')
   if (!folder || !name || !body.data_base64) return json({ error: 'folder_id, name e data_base64 são obrigatórios' }, 400)

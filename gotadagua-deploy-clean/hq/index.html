@@ -1761,7 +1761,7 @@ const LESSON_LOC = { 'Surf School': 'surf-school', 'Surf Camp': 'portugal', 'Kid
 let INSTRUCTOR_DIR = null;
 async function instructorDirectory(){
   if (INSTRUCTOR_DIR) return INSTRUCTOR_DIR;
-  const { data, error } = await sb.from('instructor_directory').select('id, name, app_supplier, active');
+  const { data, error } = await sb.from('instructor_directory').select('id, name, app_supplier, active, vat_pct, extra_kind, extra_amount');
   INSTRUCTOR_DIR = error ? [] : (data || []);
   return INSTRUCTOR_DIR;
 }
@@ -1783,10 +1783,25 @@ async function instructorSplitFor(company, amount, invoice_date){
   data.forEach(l => { const m = String(l.lesson_date).slice(0,7); (byMonth[m] = byMonth[m] || []).push(l); });
   const order = [monthKeyShift(invoice_date, -1), monthKeyShift(invoice_date, 0), monthKeyShift(invoice_date, -2), monthKeyShift(invoice_date, 1), monthKeyShift(invoice_date, -3)];
   const target = Math.round(Number(amount||0) * 100);
+  const vat = Number(ins.vat_pct || 0);
+  // Extras do head coach, como na app dos instrutores: por mês, ou por semana de Junior.
+  const extraOf = (ls) => {
+    if (!ins.extra_kind || !Number(ins.extra_amount)) return 0;
+    if (ins.extra_kind === 'head_coach_month') return Number(ins.extra_amount);
+    if (ins.extra_kind === 'head_coach_junior_week') {
+      const weeks = new Set(ls.filter(l => l.lesson_category === 'Junior Camp').map(l => { const d = new Date(l.lesson_date + 'T00:00:00'); const day = (d.getDay() + 6) % 7; d.setDate(d.getDate() - day); return d.toISOString().slice(0,10); }));
+      return weeks.size * Number(ins.extra_amount);
+    }
+    return 0;
+  };
   for (const m of order) {
     const ls = byMonth[m]; if (!ls) continue;
-    const tot = Math.round(ls.reduce((s,l) => s + Number(l.total||0), 0) * 100);
-    if (tot !== target) continue;
+    const gross = ls.reduce((s,l) => s + Number(l.total||0), 0);
+    const extra = extraOf(ls);
+    // O recibo é (aulas + extra) × (1 + IVA); aceita-se também só as aulas (recibos antigos sem extra).
+    const candidates = [Math.round((gross + extra) * (1 + vat/100) * 100), Math.round(gross * 100)];
+    if (!candidates.includes(target)) continue;
+    const withExtra = candidates[0] === target;
     const hasJunior = ls.some(l => l.lesson_category === 'Junior Camp');
     const parts = {};
     ls.forEach(l => {
@@ -1795,7 +1810,12 @@ async function instructorSplitFor(company, amount, invoice_date){
       const p = parts[slug] = parts[slug] || { location_slug: slug, amount: 0, lessons: 0, cats: new Set() };
       p.amount += Number(l.total||0); p.lessons += Number(l.num_lessons||0); p.cats.add(cat);
     });
-    const list = Object.values(parts).map(p => ({ ...p, amount: Math.round(p.amount * 100) / 100, cats: [...p.cats].join('/') })).sort((a,b) => b.amount - a.amount);
+    if (withExtra && extra) {
+      const slug = ins.extra_kind === 'head_coach_junior_week' ? 'junior-camp' : (Object.values(parts).sort((a,b) => b.amount - a.amount)[0] || { location_slug: 'portugal' }).location_slug;
+      const p = parts[slug] = parts[slug] || { location_slug: slug, amount: 0, lessons: 0, cats: new Set() };
+      p.amount += extra; p.cats.add('extra');
+    }
+    const list = Object.values(parts).map(p => ({ ...p, amount: Math.round(p.amount * (withExtra ? 1 + vat/100 : 1) * 100) / 100, cats: [...p.cats].join('/') })).sort((a,b) => b.amount - a.amount);
     // Cêntimos de arredondamento vão para a parte maior.
     const diff = Math.round((Number(amount) - list.reduce((s,p) => s + p.amount, 0)) * 100) / 100;
     if (diff && list.length) list[0].amount = Math.round((list[0].amount + diff) * 100) / 100;

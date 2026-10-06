@@ -860,6 +860,60 @@ test('instructors: Mark paid touches one instructor-month only, payroll adds VAT
   expect(out.catOptions).toContain('Theoric');
 });
 
+test('instructors: "Marcar pago" books the month in the HQ — one row per place, extras and VAT included, never twice', async ({ page }) => {
+  // Miguel, 6 Oct 2026: "quando carrego no botão pago, esse valor por mês é
+  // sempre o do recibo" — the receipt is the payroll total (lessons + head-coach
+  // extra, × VAT), and the HQ wants it split by where the lessons were given.
+  await fakeOwnerSession(page);
+  await page.goto('/instructors/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof window.pushPayrollToHq === 'function');
+  const out = await page.evaluate(async () => {
+    const mk = (id, name, date, cat, n, price) =>
+      ({ id, instructorId: 'x', date, instructorName: name, lessonCategory: cat, numberOfLessons: n, paymentType: 'Recibo Verde', priceUnit: price, total: n * price, paid: false, notes: '' });
+    entries = [
+      mk('p1', 'Pietro Mandetta', '2026-07-03', 'Surf School', 17, 30),
+      mk('p2', 'Pietro Mandetta', '2026-07-08', 'Kids Camp', 21, 30),
+      mk('p3', 'Pietro Mandetta', '2026-07-15', 'Junior Camp', 4, 30),
+      mk('p4', 'Pietro Mandetta', '2026-07-20', 'Surf Camp', 2, 30),
+      mk('p5', 'Pietro Mandetta', '2026-07-21', 'Theory', 2, 30),          // → camp (junior this month)
+      mk('r1', 'Romildo Ramos', '2026-07-03', 'Surf Camp', 2, 30),         // 60 + 250 extra, × 1.23 = 381.30
+    ];
+    instructorDirectory = [
+      { id: 'a', name: 'Pietro Mandetta', rate: 30, paymentType: '', vatPct: 0, appSupplier: 'pietro mandetta', extraKind: '', extraAmount: 0 },
+      { id: 'b', name: 'Romildo Ramos', rate: 30, paymentType: '', vatPct: 23, appSupplier: 'romildo da costa ramos', extraKind: 'head_coach_month', extraAmount: 250 },
+    ];
+    selectedYear = 'all'; selectedMonth = 'all'; selectedInstructor = 'all'; selectedCategory = 'all'; selectedPaid = 'all';
+    // Stub PostgREST: lessons update ok; HQ has nothing for Pietro yet, but Romildo's July is already booked.
+    const inserted = []; let existsFor = null; let inIds = [];
+    const chain = (table) => {
+      const c = {};
+      ['select','is','ilike','eq','limit','in','update'].forEach(m => { c[m] = (...a) => { if (m === 'ilike' && String(a[1]).includes('[instrutores:')) existsFor = String(a[1]); if (m === 'in') inIds = a[1] || []; return c; }; });
+      c.insert = async (payload) => { inserted.push(...payload); return { error: null }; };
+      c.then = (res) => {
+        if (table === 'instructor_lessons') return res({ data: inIds.map(id => ({ id })), error: null });
+        if (table === 'hq_invoice_categories') return res({ data: [{ id: 'c-sal', name: 'Salary' }], error: null });
+        if (table === 'hq_invoices') return res({ data: /Romildo/.test(existsFor || '') ? [{ id: 'already' }] : [], error: null });
+        return res({ data: [], error: null });
+      };
+      return c;
+    };
+    supabaseClient = { from: (t) => chain(t) };
+    loadInstructorData = async () => {};
+    render();
+    await togglePayrollPaid('Pietro Mandetta|2026-07');
+    const msgPietro = document.getElementById('messageBox').textContent;
+    const n1 = inserted.length;
+    await togglePayrollPaid('Romildo Ramos|2026-07');
+    const msgRomildo = document.getElementById('messageBox').textContent;
+    return { rows: inserted.slice(0, n1).map(r => [r.location_slug, r.amount, r.category_name, r.company]), notes: inserted[0]?.notes, n1, n2: inserted.length - n1, msgPietro, msgRomildo };
+  });
+  expect(out.rows.sort()).toEqual([['junior-camp', 180, 'Salary', 'pietro mandetta'], ['kids-camp', 630, 'Salary', 'pietro mandetta'], ['portugal', 60, 'Salary', 'pietro mandetta'], ['surf-school', 510, 'Salary', 'pietro mandetta']].sort());
+  expect(out.notes).toContain('[instrutores: Pietro Mandetta 2026-07]');
+  expect(out.msgPietro).toContain('Lançado no HQ: €1,380.00 em 4 linhas');
+  expect(out.n2).toBe(0);                                      // Romildo's month was already in the HQ → not booked twice
+  expect(out.msgRomildo).toContain('Já estava lançado no HQ');
+});
+
 test('instructors: quick-day grid suggests each instructor\'s usual price and saves one row per filled cell', async ({ page }) => {
   // Entering a day line by line was too slow for a school with 20 instructors,
   // and the "Add to day list" button was white-on-white inside the modal. The
