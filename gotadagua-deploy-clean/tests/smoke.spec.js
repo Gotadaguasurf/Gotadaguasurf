@@ -1264,6 +1264,8 @@ test('hq: Fecho do mês tab — what lacks an invoice, bank debits with no row, 
     hasAttach: !!document.querySelector('#fechoBody button[onclick^="fechoAttach"]'),
     checks: [...document.querySelectorAll('#fechoBody input[type=checkbox]')].map(c => c.checked),
     bank: document.querySelector('#fechoBody').textContent.includes('LEROY MERLIN COVA PIEDADE'),
+    allRows: document.querySelectorAll('#fecho_all tbody tr').length,
+    allStates: [...document.querySelectorAll('#fecho_all tbody tr td:nth-child(4)')].map(td => td.textContent.trim().replace(/\s+/g, ' ')),
   }));
   expect(out.kpis[0]).toBe('Expenses 4');
   expect(out.kpis[1]).toBe('Missing invoice 1 · €40.00');          // prio only: google ads never has one, safari was marked "sem fatura"
@@ -1276,6 +1278,9 @@ test('hq: Fecho do mês tab — what lacks an invoice, bank debits with no row, 
   expect(out.hasAttach).toBe(true);
   expect(out.checks).toEqual([true, false, false]);
   expect(out.bank).toBe(true);
+  // Miguel, 6 Oct 2026: the whole month is also listed, with each row's invoice state.
+  expect(out.allRows).toBe(4);
+  expect(out.allStates).toEqual(['missing', 'no invoice', '✓ invoice review', 'no invoice']);
   // "Lançar" jumps to Expenses with date, amount and a supplier guess filled in.
   await page.evaluate(() => fechoLaunch('bk1'));
   await page.waitForFunction(() => document.querySelector('#inv_amount')?.value === '274.19', null, { timeout: 5000 });

@@ -2639,7 +2639,7 @@ const FECHO_CHECKS = [
   ['drive',   'Drive folder for the month tidy (proper names, no duplicates)'],
   ['pacote',  'Pack sent to the accountant'],
 ];
-let FECHO = { month: null, rows: [], bank: [], folders: [], checks: [], loading: false };
+let FECHO = { month: null, rows: [], bank: [], folders: [], checks: [], loading: false, showAll: false, filter: '' };
 
 function fechoDefaultMonth(){
   const now = new Date();
@@ -2770,7 +2770,36 @@ function fechoPaint(){
     <details class="card" style="padding:14px 18px;margin-bottom:16px">
       <summary style="font-weight:800;cursor:pointer">No invoice exists <span class="chip chip-normal">${naoExiste.length}</span> <span class="card-hint">bank fees, leasing, ads, PayPal…</span></summary>
       <div class="card-hint" style="margin-top:8px">${naoExiste.map(r => `${fmtDia(r.invoice_date)} · ${esc(r.company||'')} · ${eur(r.amount_eur)}`).join('<br>') || '—'}</div>
+    </details>
+    <details class="card" style="padding:14px 18px;margin-bottom:16px" ${FECHO.showAll ? 'open' : ''} ontoggle="FECHO.showAll=this.open">
+      <summary style="font-weight:800;cursor:pointer">All expenses of the month <span class="chip chip-normal">${rows.length}</span> <span class="card-hint">${eur(sum(rows, r => r.amount_eur))} · ${rows.length - falta.length - naoExiste.length} with invoice</span></summary>
+      <div style="display:flex;gap:8px;align-items:center;margin:10px 0 6px">
+        <input id="fecho_filter" type="search" placeholder="Filter by supplier, category or amount…" value="${esc(FECHO.filter||'')}" oninput="FECHO.filter=this.value;fechoPaintAll()" style="flex:1;max-width:360px;padding:7px 10px;border-radius:8px;border:1px solid var(--border,#d8dee6);font-size:13px">
+        <span class="card-hint" id="fecho_all_count"></span>
+      </div>
+      <div id="fecho_all" style="overflow:auto"></div>
     </details>`;
+  fechoPaintAll();
+}
+// Lista completa do mês (dentro do «All expenses»), com filtro de texto.
+function fechoPaintAll(){
+  const box = $('fecho_all'); if (!box) return;
+  const q = String(FECHO.filter||'').trim().toLowerCase();
+  const all = FECHO.rows.slice().sort((a,b) => String(a.invoice_date).localeCompare(String(b.invoice_date)) || String(a.company||'').localeCompare(String(b.company||'')));
+  const list = q ? all.filter(r => `${r.company||''} ${r.category_name||''} ${locLabel(r.location_slug)} ${r.invoice_number||''} ${Number(r.amount_eur||0).toFixed(2)} ${String(Number(r.amount_eur||0).toFixed(2)).replace('.',',')}`.toLowerCase().includes(q)) : all;
+  const state = (r) => r.drive_link ? '<span class="chip chip-normal" style="background:#C6EFCE;color:#1e5e2a">✓ invoice</span>'
+                      : fechoNoInvoice(r) ? '<span class="chip chip-normal" style="background:#E7E6E6;color:#555">no invoice</span>'
+                      : '<span class="chip chip-review">missing</span>';
+  const row = (r) => `
+    <tr>
+      <td style="white-space:nowrap">${fmtDia(r.invoice_date)}</td>
+      <td><b>${esc(r.company||'')}</b><div class="card-hint">${esc(r.category_name||'')} · ${esc(locLabel(r.location_slug))}${r.invoice_number ? ' · ' + esc(r.invoice_number) : ''}</div></td>
+      <td style="text-align:right;white-space:nowrap">${eur(r.amount_eur)}</td>
+      <td style="white-space:nowrap">${state(r)}${r.needs_review ? ' <span class="chip chip-review">review</span>' : ''}</td>
+      <td style="white-space:nowrap">${r.drive_link ? `<a class="btn btn-ghost" style="padding:6px 10px" target="_blank" rel="noopener" href="${esc(r.drive_link)}">open</a>` : (fechoNoInvoice(r) ? '' : `<button class="btn btn-ghost" style="padding:6px 10px" onclick="fechoAttach('${r.id}')">📎 Attach</button> <button class="btn btn-ghost" style="padding:6px 10px" onclick="fechoPasteLink('${r.id}')">🔗 Link</button>`)}</td>
+    </tr>`;
+  if ($('fecho_all_count')) $('fecho_all_count').textContent = q ? `${list.length} of ${all.length}` : `${all.length} rows`;
+  box.innerHTML = list.length ? `<table class="tbl" style="width:100%"><thead><tr><th>Date</th><th>Supplier</th><th style="text-align:right">Amount</th><th>Invoice</th><th></th></tr></thead><tbody>${list.map(row).join('')}</tbody></table>` : '<div class="card-hint">Nothing matches.</div>';
 }
 function esc(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
