@@ -109,9 +109,15 @@ Deno.serve(async (req) => {
       const h = { authorization: 'Bearer ' + token, 'content-type': 'application/json' }
       if (body.action === 'list') {
         const q = encodeURIComponent(`'${String(body.folder_id||'')}' in parents and trashed = false`)
-        const r = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,mimeType,parents,size)&pageSize=200&supportsAllDrives=true&includeItemsFromAllDrives=true`, { headers: h })
-        const out = await r.json(); if (!r.ok) return json({ error: out?.error?.message || 'list falhou' }, 502)
-        return json({ files: out.files || [] })
+        // 6 Out 2026: pagina até ao fim (pastas de Verão têm >200 ficheiros)
+        const files: unknown[] = []; let pageToken = ''
+        for (let i = 0; i < 20; i++) {
+          const r = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=nextPageToken,files(id,name,mimeType,parents,size)&pageSize=1000&supportsAllDrives=true&includeItemsFromAllDrives=true${pageToken ? '&pageToken=' + encodeURIComponent(pageToken) : ''}`, { headers: h })
+          const out = await r.json(); if (!r.ok) return json({ error: out?.error?.message || 'list falhou' }, 502)
+          files.push(...(out.files || [])); pageToken = out.nextPageToken || ''
+          if (!pageToken) break
+        }
+        return json({ files })
       }
       const fileId = String(body.file_id || '').trim(); if (!fileId) return json({ error: 'file_id obrigatório' }, 400)
       if (body.action === 'move') {
