@@ -2673,6 +2673,39 @@ function fechoKpi(label, value, level){
   return `<div style="background:${bg};border-radius:10px;padding:8px 12px;min-width:120px"><div style="font-size:11px;color:#444">${label}</div><div style="font-size:18px;font-weight:800">${value}</div></div>`;
 }
 function fechoHasInvoice(r){ return !!r.drive_link; }
+// Instrutores: um recibo, várias linhas (uma por sítio onde deram aulas —
+// surf school, surf camp, kids, junior). No fecho do mês contam como UMA
+// fatura: mesma pessoa, mesmo dia, categoria Salary → grupo. Anexar/Link
+// num grupo liga todas as partes. (Miguel, 6 Out 2026.)
+function fechoGroups(rows){
+  const map = new Map(); const out = [];
+  rows.forEach(r => {
+    const key = r.category_name === 'Salary' ? `${String(r.company||'').toLowerCase()}|${r.invoice_date}` : r.id;
+    if (!map.has(key)) { const g = { ...r, ids: [r.id], parts: [r], amount_eur: Number(r.amount_eur||0) }; map.set(key, g); out.push(g); return; }
+    const g = map.get(key);
+    g.ids.push(r.id); g.parts.push(r); g.amount_eur += Number(r.amount_eur||0);
+    if (!g.drive_link && r.drive_link) { g.drive_link = r.drive_link; g.file_name = r.file_name; }
+    if (!g.invoice_number && r.invoice_number) g.invoice_number = r.invoice_number;
+    g.needs_review = g.needs_review || r.needs_review;
+    g.notes = [g.notes, r.notes].filter(Boolean).join(' ');
+  });
+  out.forEach(g => { g.amount_eur = Math.round(g.amount_eur * 100) / 100; g.split = g.parts.length > 1; });
+  return out;
+}
+function fechoPartsHint(g){ return g.split ? g.parts.map(p => `${locLabel(p.location_slug)} ${eur(p.amount_eur)}`).join(' · ') : ''; }
+// Se uma parte já tem o recibo e as outras não, copia-o para as outras (é o mesmo documento).
+async function fechoPropagateLinks(){
+  const groups = fechoGroups(FECHO.rows).filter(g => g.split && g.drive_link && g.parts.some(p => !p.drive_link));
+  for (const g of groups) {
+    const ids = g.parts.filter(p => !p.drive_link).map(p => p.id);
+    for (const p of g.parts.filter(x => !x.drive_link)) {
+      await sb.from('hq_invoices').update({ drive_link: g.drive_link, file_name: g.file_name || null, notes: `${p.notes ? p.notes + ' ' : ''}[recibo copiado da outra parte do mesmo pagamento]` }).eq('id', p.id);
+    }
+    const error = null;
+    if (!error) g.parts.forEach(p => { if (ids.includes(p.id)) { p.drive_link = g.drive_link; p.file_name = g.file_name; } });
+  }
+  return groups.length;
+}
 function fechoNoInvoice(r){ return !r.drive_link && (accNoInvoice(r.company) || /\[sem fatura/i.test(String(r.notes||''))); }
 
 async function renderFecho(){
@@ -2693,6 +2726,7 @@ async function renderFecho(){
     ]);
     FECHO.rows = rows.filter(r => r.is_duplicate !== true && (!r.paying_company || r.paying_company === 'water-movements'));
     FECHO.folders = folders; FECHO.bank = bank; FECHO.checks = checks;
+    await fechoPropagateLinks();
   } catch (e) {
     body.innerHTML = `<div class="loading">Could not load: ${e.message || e.code || e}</div>`;
     return;
@@ -2705,7 +2739,7 @@ function fechoFolder(company, key){ return (FECHO.folders.find(f => f.company ==
 function fechoPaint(){
   const body = $('fechoBody'); if (!body) return;
   const month = FECHO.month;
-  const rows = FECHO.rows;
+  const rows = fechoGroups(FECHO.rows);
   const falta = rows.filter(r => !fechoHasInvoice(r) && !fechoNoInvoice(r)).sort((a,b) => Number(b.amount_eur||0) - Number(a.amount_eur||0));
   const naoExiste = rows.filter(fechoNoInvoice);
   const rever = rows.filter(r => r.drive_link && r.needs_review);
@@ -2715,7 +2749,7 @@ function fechoPaint(){
   const linkBtn = (id, label) => id ? `<a class="btn btn-ghost" target="_blank" rel="noopener" href="https://drive.google.com/drive/folders/${id}">${label}</a>` : '';
   if ($('fecho_links')) $('fecho_links').innerHTML = linkBtn(fWater, '📁 Drive folder') + linkBtn(fPartners, '📁 Partner invoices');
   if ($('fecho_kpis')) $('fecho_kpis').innerHTML =
-    fechoKpi('Expenses', rows.length) +
+    fechoKpi('Expenses', `${FECHO.rows.length}${rows.length !== FECHO.rows.length ? ` · ${rows.length} invoices` : ''}`) +
     fechoKpi('Missing invoice', `${falta.length} · ${eur(sum(falta, r => r.amount_eur))}`, falta.length ? 'bad' : 'ok') +
     fechoKpi('No invoice exists', naoExiste.length) +
     fechoKpi('Bank without a row', `${FECHO.bank.length} · ${eur(bankSum)}`, FECHO.bank.length ? 'bad' : 'ok') +
@@ -2734,13 +2768,13 @@ function fechoPaint(){
   const rowHtml = (r) => `
     <tr>
       <td style="white-space:nowrap">${fmtDia(r.invoice_date)}</td>
-      <td><b>${esc(r.company||'')}</b><div class="card-hint">${esc(r.category_name||'')} · ${esc(locLabel(r.location_slug))}${r.invoice_number ? ' · ' + esc(r.invoice_number) : ''}</div></td>
+      <td><b>${esc(r.company||'')}</b><div class="card-hint">${r.split ? `one receipt, ${r.parts.length} parts: ${esc(fechoPartsHint(r))}` : `${esc(r.category_name||'')} · ${esc(locLabel(r.location_slug))}`}${r.invoice_number ? ' · ' + esc(r.invoice_number) : ''}</div></td>
       <td style="text-align:right;white-space:nowrap">${eur(r.amount_eur)}</td>
       <td class="card-hint" style="max-width:320px">${esc(accHint(r.company) || String(r.notes||'').slice(0,120))}</td>
       <td style="white-space:nowrap">
-        <button class="btn btn-ghost" style="padding:6px 10px" onclick="fechoAttach('${r.id}')">📎 Attach</button>
-        <button class="btn btn-ghost" style="padding:6px 10px" onclick="fechoPasteLink('${r.id}')">🔗 Link</button>
-        <button class="btn btn-ghost" style="padding:6px 10px" title="This supplier never issues an invoice" onclick="fechoMarkNoInvoice('${r.id}')">∅</button>
+        <button class="btn btn-ghost" style="padding:6px 10px" onclick="fechoAttach('${r.ids.join(',')}')">📎 Attach</button>
+        <button class="btn btn-ghost" style="padding:6px 10px" onclick="fechoPasteLink('${r.ids.join(',')}')">🔗 Link</button>
+        <button class="btn btn-ghost" style="padding:6px 10px" title="This supplier never issues an invoice" onclick="fechoMarkNoInvoice('${r.ids.join(',')}')">∅</button>
       </td>
     </tr>`;
   const bankHtml = (b) => `
@@ -2772,7 +2806,7 @@ function fechoPaint(){
       <div class="card-hint" style="margin-top:8px">${naoExiste.map(r => `${fmtDia(r.invoice_date)} · ${esc(r.company||'')} · ${eur(r.amount_eur)}`).join('<br>') || '—'}</div>
     </details>
     <details class="card" style="padding:14px 18px;margin-bottom:16px" ${FECHO.showAll ? 'open' : ''} ontoggle="FECHO.showAll=this.open">
-      <summary style="font-weight:800;cursor:pointer">All expenses of the month <span class="chip chip-normal">${rows.length}</span> <span class="card-hint">${eur(sum(rows, r => r.amount_eur))} · ${rows.length - falta.length - naoExiste.length} with invoice</span></summary>
+      <summary style="font-weight:800;cursor:pointer">All expenses of the month <span class="chip chip-normal">${rows.length}</span> <span class="card-hint">${eur(sum(rows, r => r.amount_eur))} · ${rows.length - falta.length - naoExiste.length} with invoice · instructors' split payments count as one</span></summary>
       <div style="display:flex;gap:8px;align-items:center;margin:10px 0 6px">
         <input id="fecho_filter" type="search" placeholder="Filter by supplier, category or amount…" value="${esc(FECHO.filter||'')}" oninput="FECHO.filter=this.value;fechoPaintAll()" style="flex:1;max-width:360px;padding:7px 10px;border-radius:8px;border:1px solid var(--border,#d8dee6);font-size:13px">
         <span class="card-hint" id="fecho_all_count"></span>
@@ -2785,7 +2819,7 @@ function fechoPaint(){
 function fechoPaintAll(){
   const box = $('fecho_all'); if (!box) return;
   const q = String(FECHO.filter||'').trim().toLowerCase();
-  const all = FECHO.rows.slice().sort((a,b) => String(a.invoice_date).localeCompare(String(b.invoice_date)) || String(a.company||'').localeCompare(String(b.company||'')));
+  const all = fechoGroups(FECHO.rows).sort((a,b) => String(a.invoice_date).localeCompare(String(b.invoice_date)) || String(a.company||'').localeCompare(String(b.company||'')));
   const list = q ? all.filter(r => `${r.company||''} ${r.category_name||''} ${locLabel(r.location_slug)} ${r.invoice_number||''} ${Number(r.amount_eur||0).toFixed(2)} ${String(Number(r.amount_eur||0).toFixed(2)).replace('.',',')}`.toLowerCase().includes(q)) : all;
   const state = (r) => r.drive_link ? '<span class="chip chip-normal" style="background:#C6EFCE;color:#1e5e2a">✓ invoice</span>'
                       : fechoNoInvoice(r) ? '<span class="chip chip-normal" style="background:#E7E6E6;color:#555">no invoice</span>'
@@ -2793,10 +2827,10 @@ function fechoPaintAll(){
   const row = (r) => `
     <tr>
       <td style="white-space:nowrap">${fmtDia(r.invoice_date)}</td>
-      <td><b>${esc(r.company||'')}</b><div class="card-hint">${esc(r.category_name||'')} · ${esc(locLabel(r.location_slug))}${r.invoice_number ? ' · ' + esc(r.invoice_number) : ''}</div></td>
+      <td><b>${esc(r.company||'')}</b><div class="card-hint">${r.split ? `${esc(r.category_name||'')} · one receipt, ${r.parts.length} parts: ${esc(fechoPartsHint(r))}` : `${esc(r.category_name||'')} · ${esc(locLabel(r.location_slug))}`}${r.invoice_number ? ' · ' + esc(r.invoice_number) : ''}</div></td>
       <td style="text-align:right;white-space:nowrap">${eur(r.amount_eur)}</td>
       <td style="white-space:nowrap">${state(r)}${r.needs_review ? ' <span class="chip chip-review">review</span>' : ''}</td>
-      <td style="white-space:nowrap">${r.drive_link ? `<a class="btn btn-ghost" style="padding:6px 10px" target="_blank" rel="noopener" href="${esc(r.drive_link)}">open</a>` : (fechoNoInvoice(r) ? '' : `<button class="btn btn-ghost" style="padding:6px 10px" onclick="fechoAttach('${r.id}')">📎 Attach</button> <button class="btn btn-ghost" style="padding:6px 10px" onclick="fechoPasteLink('${r.id}')">🔗 Link</button>`)}</td>
+      <td style="white-space:nowrap">${r.drive_link ? `<a class="btn btn-ghost" style="padding:6px 10px" target="_blank" rel="noopener" href="${esc(r.drive_link)}">open</a>` : (fechoNoInvoice(r) ? '' : `<button class="btn btn-ghost" style="padding:6px 10px" onclick="fechoAttach('${r.ids.join(',')}')">📎 Attach</button> <button class="btn btn-ghost" style="padding:6px 10px" onclick="fechoPasteLink('${r.ids.join(',')}')">🔗 Link</button>`)}</td>
     </tr>`;
   if ($('fecho_all_count')) $('fecho_all_count').textContent = q ? `${list.length} of ${all.length}` : `${all.length} rows`;
   box.innerHTML = list.length ? `<table class="tbl" style="width:100%"><thead><tr><th>Date</th><th>Supplier</th><th style="text-align:right">Amount</th><th>Invoice</th><th></th></tr></thead><tbody>${list.map(row).join('')}</tbody></table>` : '<div class="card-hint">Nothing matches.</div>';
@@ -2805,6 +2839,8 @@ function esc(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&l
 
 // ── ações ──
 let FECHO_ATTACH_ID = null;
+function fechoIds(id){ return String(id||'').split(',').map(s => s.trim()).filter(Boolean); }
+function fechoGroupOf(id){ const ids = fechoIds(id); const parts = FECHO.rows.filter(x => ids.includes(x.id)); if (!parts.length) return null; const g = fechoGroups(parts)[0]; g.ids = ids; g.parts = parts; return g; }
 function fechoAttach(id){ FECHO_ATTACH_ID = id; const inp = $('fecho_file'); if (inp) { inp.value = ''; inp.click(); } }
 function fechoFileName(r, file){
   const [y, m] = String(r.invoice_date||'').split('-').map(Number);
@@ -2831,7 +2867,7 @@ async function driveUpload(file, folderId, name){
 async function fechoFileChosen(inp){
   const file = inp.files && inp.files[0]; const id = FECHO_ATTACH_ID;
   if (!file || !id) return;
-  const r = FECHO.rows.find(x => x.id === id); if (!r) return;
+  const r = fechoGroupOf(id); if (!r) return;
   const folder = fechoFolder('water-movements', FECHO.month);
   if (!folder) { toast('fechoToast','err',`No Drive folder registered for ${fechoMonthLabel(FECHO.month)} (table accountant_drive_folders).`); return; }
   if (file.size > 20 * 1024 * 1024) { toast('fechoToast','err','File is over 20 MB.'); return; }
@@ -2839,11 +2875,13 @@ async function fechoFileChosen(inp){
   toast('fechoToast','warn',`Sending “${name}” to the Drive…`);
   try {
     const out = await driveUpload(file, folder, name);
-    const { error } = await sb.from('hq_invoices').update({
-      drive_link: out.link, file_name: out.name || name,
-      notes: `${r.notes ? r.notes + ' ' : ''}[fatura anexada pela app a ${new Date().toISOString().slice(0,10)}]`,
-    }).eq('id', id);
-    if (error) throw error;
+    for (const p of r.parts) {
+      const { error } = await sb.from('hq_invoices').update({
+        drive_link: out.link, file_name: out.name || name,
+        notes: `${p.notes ? p.notes + ' ' : ''}[fatura anexada pela app a ${new Date().toISOString().slice(0,10)}${r.split ? ', recibo único repartido por ' + r.parts.length + ' partes' : ''}]`,
+      }).eq('id', p.id);
+      if (error) throw error;
+    }
     toast('fechoToast','ok',`✓ In the Drive and linked: ${out.name || name}`);
     await renderFecho();
   } catch (e) {
@@ -2851,21 +2889,25 @@ async function fechoFileChosen(inp){
   }
 }
 async function fechoPasteLink(id){
-  const r = FECHO.rows.find(x => x.id === id); if (!r) return;
-  const link = prompt(`Drive link for ${r.company} (${eur(r.amount_eur)}):`, '');
+  const r = fechoGroupOf(id); if (!r) return;
+  const link = prompt(`Drive link for ${r.company} (${eur(r.amount_eur)}${r.split ? ', ' + r.parts.length + ' parts' : ''}):`, '');
   if (!link) return;
   const m = String(link).match(/drive\.google\.com\/(?:file\/d\/|open\?id=)([A-Za-z0-9_-]{10,})/);
   if (!m) { toast('fechoToast','err','That does not look like a Drive file link.'); return; }
-  const { error } = await sb.from('hq_invoices').update({ drive_link: `https://drive.google.com/file/d/${m[1]}/view`, notes: `${r.notes ? r.notes + ' ' : ''}[link da Drive colado na app a ${new Date().toISOString().slice(0,10)}]` }).eq('id', id);
-  if (error) { toast('fechoToast','err','Failed: ' + (error.message || error.code)); return; }
+  for (const p of r.parts) {
+    const { error } = await sb.from('hq_invoices').update({ drive_link: `https://drive.google.com/file/d/${m[1]}/view`, notes: `${p.notes ? p.notes + ' ' : ''}[link da Drive colado na app a ${new Date().toISOString().slice(0,10)}]` }).eq('id', p.id);
+    if (error) { toast('fechoToast','err','Failed: ' + (error.message || error.code)); return; }
+  }
   toast('fechoToast','ok','✓ Linked.');
   await renderFecho();
 }
 async function fechoMarkNoInvoice(id){
-  const r = FECHO.rows.find(x => x.id === id); if (!r) return;
+  const r = fechoGroupOf(id); if (!r) return;
   if (!confirm(`${r.company} (${eur(r.amount_eur)}): mark as “no invoice exists”? It will stop counting as missing.`)) return;
-  const { error } = await sb.from('hq_invoices').update({ notes: `${r.notes ? r.notes + ' ' : ''}[sem fatura: o fornecedor não emite — marcado a ${new Date().toISOString().slice(0,10)}]` }).eq('id', id);
-  if (error) { toast('fechoToast','err','Failed: ' + (error.message || error.code)); return; }
+  for (const p of r.parts) {
+    const { error } = await sb.from('hq_invoices').update({ notes: `${p.notes ? p.notes + ' ' : ''}[sem fatura: o fornecedor não emite — marcado a ${new Date().toISOString().slice(0,10)}]` }).eq('id', p.id);
+    if (error) { toast('fechoToast','err','Failed: ' + (error.message || error.code)); return; }
+  }
   await renderFecho();
 }
 function fechoLaunch(bankId){

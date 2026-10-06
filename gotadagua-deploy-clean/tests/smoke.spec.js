@@ -1245,6 +1245,9 @@ test('hq: Fecho do mês tab — what lacks an invoice, bank debits with no row, 
         { id: 'i2', invoice_date: '2026-09-03', company: 'google ads', amount_eur: 500, category_name: 'Services', location_slug: 'general', drive_link: null, needs_review: false, notes: '', paying_company: 'water-movements' },
         { id: 'i3', invoice_date: '2026-09-07', company: 'edp', amount_eur: 107.3, category_name: 'Utilities', location_slug: 'portugal', drive_link: 'https://drive.google.com/file/d/x/view', needs_review: true, notes: '', paying_company: 'water-movements' },
         { id: 'i4', invoice_date: '2026-09-09', company: 'safari na horta', amount_eur: 1000, category_name: 'Activities', location_slug: 'portugal', drive_link: null, needs_review: false, notes: '[sem fatura: o fornecedor não emite]', paying_company: 'water-movements' },
+        // Instructors: one receipt, split by where they taught (Miguel, 6 Oct 2026) → one line, one Attach for both parts.
+        { id: 'i5', invoice_date: '2026-09-01', company: 'pietro mandetta', amount_eur: 510, category_name: 'Salary', location_slug: 'surf-school', drive_link: null, needs_review: false, notes: '', paying_company: 'water-movements' },
+        { id: 'i6', invoice_date: '2026-09-01', company: 'pietro mandetta', amount_eur: 120, category_name: 'Salary', location_slug: 'junior-camp', drive_link: null, needs_review: false, notes: '', paying_company: 'water-movements' },
       ]);
     }
     return json([]);
@@ -1262,25 +1265,28 @@ test('hq: Fecho do mês tab — what lacks an invoice, bank debits with no row, 
     falta: [...document.querySelectorAll('#fechoBody table')][0] ? [...document.querySelectorAll('#fechoBody table')][0].querySelectorAll('tbody tr').length : 0,
     faltaFirst: document.querySelector('#fechoBody table tbody tr td:nth-child(2) b')?.textContent,
     hasAttach: !!document.querySelector('#fechoBody button[onclick^="fechoAttach"]'),
+    splitAttach: [...document.querySelectorAll('#fechoBody button[onclick^="fechoAttach"]')].map(b => b.getAttribute('onclick')).find(s => s.includes('i5')),
+    faltaRows: [...document.querySelectorAll('#fechoBody table')][0] ? [...[...document.querySelectorAll('#fechoBody table')][0].querySelectorAll('tbody tr')].map(tr => tr.querySelector('td:nth-child(2) b').textContent + ' ' + tr.querySelector('td:nth-child(3)').textContent.trim()) : [],
     checks: [...document.querySelectorAll('#fechoBody input[type=checkbox]')].map(c => c.checked),
     bank: document.querySelector('#fechoBody').textContent.includes('LEROY MERLIN COVA PIEDADE'),
     allRows: document.querySelectorAll('#fecho_all tbody tr').length,
     allStates: [...document.querySelectorAll('#fecho_all tbody tr td:nth-child(4)')].map(td => td.textContent.trim().replace(/\s+/g, ' ')),
   }));
-  expect(out.kpis[0]).toBe('Expenses 4');
-  expect(out.kpis[1]).toBe('Missing invoice 1 · €40.00');          // prio only: google ads never has one, safari was marked "sem fatura"
+  expect(out.kpis[0]).toBe('Expenses 6 · 5 invoices');
+  expect(out.kpis[1]).toBe('Missing invoice 2 · €670.00');          // prio + pietro's split receipt (510 + 120): google ads never has one, safari was marked "sem fatura"
   expect(out.kpis[2]).toBe('No invoice exists 2');
   expect(out.kpis[3]).toBe('Bank without a row 1 · €274.19');
   expect(out.kpis[4]).toBe('Has invoice, to review 1');
   expect(out.links).toEqual(['https://drive.google.com/drive/folders/FW9', 'https://drive.google.com/drive/folders/FP']);
-  expect(out.falta).toBe(1);
-  expect(out.faltaFirst).toBe('prio');
+  expect(out.falta).toBe(2);
+  expect(out.faltaRows).toEqual(['pietro mandetta €630.00', 'prio €40.00']);
   expect(out.hasAttach).toBe(true);
+  expect(out.splitAttach).toBe("fechoAttach('i5,i6')");
   expect(out.checks).toEqual([true, false, false]);
   expect(out.bank).toBe(true);
   // Miguel, 6 Oct 2026: the whole month is also listed, with each row's invoice state.
-  expect(out.allRows).toBe(4);
-  expect(out.allStates).toEqual(['missing', 'no invoice', '✓ invoice review', 'no invoice']);
+  expect(out.allRows).toBe(5);
+  expect(out.allStates).toEqual(['missing', 'missing', 'no invoice', '✓ invoice review', 'no invoice']);
   // "Lançar" jumps to Expenses with date, amount and a supplier guess filled in.
   await page.evaluate(() => fechoLaunch('bk1'));
   await page.waitForFunction(() => document.querySelector('#inv_amount')?.value === '274.19', null, { timeout: 5000 });
