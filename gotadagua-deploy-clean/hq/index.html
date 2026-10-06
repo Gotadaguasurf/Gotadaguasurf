@@ -1235,10 +1235,11 @@ function invoicesTabHtml(){
             <input id="inv_date" type="date" value="${today}">
           </div>
           <div class="field"><label>Company / Supplier</label>
-            <input id="inv_company" type="text" placeholder="e.g. Auchan, EDP">
+            <input id="inv_company" type="text" placeholder="e.g. Auchan, EDP" onchange="refreshSplitHint()">
+            <div id="inv_split_hint" class="card-hint" style="margin-top:4px"></div>
           </div>
           <div class="field"><label>Amount</label>
-            <input id="inv_amount" type="number" step="0.01" min="0" placeholder="0.00">
+            <input id="inv_amount" type="number" step="0.01" min="0" placeholder="0.00" onchange="refreshSplitHint()">
           </div>
           <div class="field"><label>Cur</label>
             <select id="inv_currency">
@@ -1744,6 +1745,100 @@ async function fetchFxToEur(currency){
   return rate;
 }
 
+// ═══════════════════════════════════════════════════════════════════
+//  Instrutores: um recibo, várias linhas. O pagamento de um instrutor
+//  reparte-se pelos sítios onde deu aulas (instructor_lessons, que eles
+//  próprios registam na app /instructors). Miguel, 6 Out 2026: «quando
+//  eles adicionam as aulas aparece logo isso». Regras: Surf School →
+//  surf-school · Surf Camp → portugal · Kids Camp → kids-camp · Junior
+//  Camp → junior-camp · Theory e Video Analysis → o camp do instrutor
+//  (junior-camp se nesse mês deu aulas de Junior, senão portugal).
+//  O mês certo é o cujas aulas somam exatamente o valor pago (normalmente
+//  o mês anterior ao pagamento). Se nenhum bater, não se reparte e a
+//  linha fica com uma nota para rever.
+// ═══════════════════════════════════════════════════════════════════
+const LESSON_LOC = { 'Surf School': 'surf-school', 'Surf Camp': 'portugal', 'Kids Camp': 'kids-camp', 'Junior Camp': 'junior-camp' };
+let INSTRUCTOR_DIR = null;
+async function instructorDirectory(){
+  if (INSTRUCTOR_DIR) return INSTRUCTOR_DIR;
+  const { data, error } = await sb.from('instructor_directory').select('id, name, app_supplier, active');
+  INSTRUCTOR_DIR = error ? [] : (data || []);
+  return INSTRUCTOR_DIR;
+}
+const normName = (s) => String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z ]/g,' ').replace(/\s+/g,' ').trim();
+async function findInstructor(company){
+  const c = normName(company); if (!c) return null;
+  const dir = await instructorDirectory();
+  return dir.find(d => normName(d.app_supplier) === c) || dir.find(d => normName(d.name) === c)
+      || dir.find(d => { const n = normName(d.name).split(' '); return n.length > 1 && n.every(w => c.includes(w)); }) || null;
+}
+function monthKeyShift(dateStr, delta){ const [y,m] = String(dateStr).slice(0,7).split('-').map(Number); const d = new Date(Date.UTC(y, m - 1 + delta, 1)); return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}`; }
+// Devolve { month, parts:[{location_slug, amount, lessons, cats}] } ou null.
+async function instructorSplitFor(company, amount, invoice_date){
+  const ins = await findInstructor(company); if (!ins) return null;
+  const from = monthKeyShift(invoice_date, -3) + '-01', to = monthKeyShift(invoice_date, 1) + '-31';
+  const { data, error } = await sb.from('instructor_lessons').select('lesson_date, lesson_category, num_lessons, total').eq('instructor_id', ins.id).gte('lesson_date', from).lte('lesson_date', to);
+  if (error || !data || !data.length) return null;
+  const byMonth = {};
+  data.forEach(l => { const m = String(l.lesson_date).slice(0,7); (byMonth[m] = byMonth[m] || []).push(l); });
+  const order = [monthKeyShift(invoice_date, -1), monthKeyShift(invoice_date, 0), monthKeyShift(invoice_date, -2), monthKeyShift(invoice_date, 1), monthKeyShift(invoice_date, -3)];
+  const target = Math.round(Number(amount||0) * 100);
+  for (const m of order) {
+    const ls = byMonth[m]; if (!ls) continue;
+    const tot = Math.round(ls.reduce((s,l) => s + Number(l.total||0), 0) * 100);
+    if (tot !== target) continue;
+    const hasJunior = ls.some(l => l.lesson_category === 'Junior Camp');
+    const parts = {};
+    ls.forEach(l => {
+      const cat = l.lesson_category;
+      const slug = LESSON_LOC[cat] || (hasJunior ? 'junior-camp' : 'portugal');   // Theory / Video Analysis → camp do instrutor
+      const p = parts[slug] = parts[slug] || { location_slug: slug, amount: 0, lessons: 0, cats: new Set() };
+      p.amount += Number(l.total||0); p.lessons += Number(l.num_lessons||0); p.cats.add(cat);
+    });
+    const list = Object.values(parts).map(p => ({ ...p, amount: Math.round(p.amount * 100) / 100, cats: [...p.cats].join('/') })).sort((a,b) => b.amount - a.amount);
+    // Cêntimos de arredondamento vão para a parte maior.
+    const diff = Math.round((Number(amount) - list.reduce((s,p) => s + p.amount, 0)) * 100) / 100;
+    if (diff && list.length) list[0].amount = Math.round((list[0].amount + diff) * 100) / 100;
+    return { month: m, instructor: ins.name, parts: list };
+  }
+  return { month: null, instructor: ins.name, parts: [], months: Object.fromEntries(Object.entries(byMonth).map(([m, ls]) => [m, Math.round(ls.reduce((s,l) => s + Number(l.total||0), 0) * 100) / 100])) };
+}
+function splitHintText(sp, amount){
+  if (!sp) return '';
+  if (!sp.parts.length) {
+    const ms = Object.entries(sp.months||{}).map(([m,v]) => `${m}: ${eur(v)}`).join(' · ');
+    return `👤 ${sp.instructor} is an instructor, but no month of lessons adds up to ${eur(amount)} (${ms || 'no lessons recorded'}). Saved as one row — check the lessons in /instructors.`;
+  }
+  if (sp.parts.length === 1) return `👤 ${sp.instructor}: lessons of ${sp.month} all at ${locLabel(sp.parts[0].location_slug)} (${sp.parts[0].lessons} lessons).`;
+  return `👤 ${sp.instructor}: will be saved as ${sp.parts.length} rows from the lessons of ${sp.month} — ${sp.parts.map(p => `${locLabel(p.location_slug)} ${eur(p.amount)} (${p.lessons})`).join(' · ')}.`;
+}
+async function refreshSplitHint(){
+  const el = $('inv_split_hint'); if (!el) return;
+  const company = ($('inv_company')?.value||'').trim(), amount = Number($('inv_amount')?.value) || 0, date = $('inv_date')?.value;
+  if (!company || !amount || !date || window.__editingInvoiceId) { el.textContent = ''; return; }
+  try { el.textContent = splitHintText(await instructorSplitFor(company, amount, date), amount); } catch (_e) { el.textContent = ''; }
+}
+// Insere uma linha, ou N linhas se for um instrutor com aulas que somam o valor.
+async function insertInvoiceRows(payload){
+  let sp = null;
+  try { sp = await instructorSplitFor(payload.company, payload.amount_eur ?? payload.amount, payload.invoice_date); } catch (_e) { sp = null; }
+  if (!sp) return { data: await sb.from('hq_invoices').insert(payload), rows: 1, split: null };
+  if (!sp.parts.length) {
+    const note = `[instrutor ${sp.instructor}: nenhum mês de aulas soma ${eur(payload.amount)} — por repartir à mão]`;
+    return { data: await sb.from('hq_invoices').insert({ ...payload, needs_review: true, notes: [payload.notes, note].filter(Boolean).join(' ') }), rows: 1, split: sp };
+  }
+  const tag = `[repartido pelas aulas de ${sp.month}: ${sp.parts.map(p => `${locLabel(p.location_slug)} ${p.lessons} aulas`).join(', ')}]`;
+  const rows = sp.parts.map(p => ({
+    ...payload,
+    location_slug: p.location_slug,
+    paying_company: payload.paying_company || payingCompanyFor(p.location_slug),
+    amount: Math.round(p.amount / (payload.fx_rate || 1) * 100) / 100, amount_eur: p.amount,
+    description: `${payload.description ? payload.description + ' — ' : ''}parte ${locLabel(p.location_slug)} (${p.lessons} aulas: ${p.cats})`,
+    notes: [payload.notes, tag].filter(Boolean).join(' '),
+  }));
+  return { data: await sb.from('hq_invoices').insert(rows), rows: rows.length, split: sp };
+}
+
 async function saveInvoice(){
   const btn = $('saveInvBtn');
   btn.disabled = true;
@@ -1850,15 +1945,16 @@ async function saveInvoice(){
     payload.created_by = CURRENT_USER?.id || null;
   }
 
-  let error;
+  let error, savedRows = 1, splitInfo = null;
   if (isEditing) {
     ({ error } = await sb.from('hq_invoices').update(payload).eq('id', window.__editingInvoiceId));
   } else {
-    ({ error } = await sb.from('hq_invoices').insert(payload));
+    const r = await insertInvoiceRows(payload);
+    error = r.data.error; savedRows = r.rows; splitInfo = r.split;
   }
   if (error) { toast('invToast','err','Save failed: '+error.message); btn.disabled = false; return; }
 
-  toast('invToast','ok', isEditing ? 'Invoice updated · review cleared' : 'Invoice saved');
+  toast('invToast','ok', isEditing ? 'Invoice updated · review cleared' : (savedRows > 1 ? `Saved as ${savedRows} rows — ${splitInfo.instructor}'s lessons of ${splitInfo.month}: ${splitInfo.parts.map(p => `${locLabel(p.location_slug)} ${eur(p.amount)}`).join(' · ')}` : 'Invoice saved'));
   if (isEditing) cancelEditInvoice();
   else           clearInvoiceForm();
   btn.disabled = false;
@@ -2079,11 +2175,11 @@ async function bulkProcessInvoices(){
         is_duplicate: dupHit,
         created_by: CURRENT_USER?.id || null
       };
-      const { error: insErr } = await sb.from('hq_invoices').insert(payload);
-      if (insErr) throw new Error('save: '+insErr.message);
+      const ins = await insertInvoiceRows(payload);
+      if (ins.data.error) throw new Error('save: '+ins.data.error.message);
 
       s.state = 'saved';
-      const dupTag = dupHit ? ' · ⚠ possible duplicate' : '';
+      const dupTag = (dupHit ? ' · ⚠ possible duplicate' : '') + (ins.rows > 1 ? ` · split in ${ins.rows} rows by lessons of ${ins.split.month}` : '');
       s.message = `${payload.company} · ${amount.toFixed(2)} ${currency} · ${payload.category_name || 'no category'} · ${locLabel(finalLoc)}${dupTag}`;
       saved++;
     } catch (e) {

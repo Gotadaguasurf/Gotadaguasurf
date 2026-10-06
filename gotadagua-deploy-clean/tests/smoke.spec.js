@@ -1226,6 +1226,60 @@ test('hq: overview boots from one rollup request — grouped rows add up like th
   expect(errs).toEqual([]);
 });
 
+test('hq: saving an instructor payment splits it by the lessons they logged (one receipt, one row per place)', async ({ page }) => {
+  // Miguel, 6 Oct 2026: instructors log lessons in /instructors; the HQ
+  // must split their payment by where they taught, automatically, picking
+  // the month whose lessons add up to the amount. Theory/Video count for
+  // the instructor's camp, never the school.
+  const posted = [];
+  await page.route(/supabase\.co\/(auth|rest)\/v1\/.*/, async route => {
+    const req = route.request(); const url = req.url();
+    const json = (body) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    if (url.includes('/auth/v1/user')) return json({ id: 'u1', email: 'miguel@gotadaguasurf.com', aud: 'authenticated', role: 'authenticated' });
+    if (url.includes('/rest/v1/rpc/hq_overview_rollup')) return json({ bookings: [], invoices: [], ledger: [] });
+    if (url.includes('/rest/v1/hq_invoice_categories')) return json([{ id: 'c-sal', name: 'Salary', sort_order: 1, is_personal: false, active: true }, { id: 'c-food', name: 'Food', sort_order: 2, is_personal: false, active: true }]);
+    if (url.includes('/rest/v1/instructor_directory')) return json([{ id: 'ins-1', name: 'Pietro Mandetta', app_supplier: 'pietro mandetta', active: true }]);
+    if (url.includes('/rest/v1/instructor_lessons')) return json([
+      { lesson_date: '2026-07-03', lesson_category: 'Surf School', num_lessons: 17, total: 510 },
+      { lesson_date: '2026-07-08', lesson_category: 'Kids Camp', num_lessons: 21, total: 630 },
+      { lesson_date: '2026-07-15', lesson_category: 'Junior Camp', num_lessons: 4, total: 120 },
+      { lesson_date: '2026-07-20', lesson_category: 'Surf Camp', num_lessons: 2, total: 60 },
+      { lesson_date: '2026-07-21', lesson_category: 'Theory', num_lessons: 2, total: 60 },      // → camp (junior, because he taught Junior that month)
+      { lesson_date: '2026-08-10', lesson_category: 'Surf Camp', num_lessons: 16, total: 480 }, // August does not add up to 1380
+    ]);
+    if (url.includes('/rest/v1/hq_invoices')) {
+      if (req.method() === 'POST') { posted.push(req.postDataJSON()); return json([]); }
+      return json([]);
+    }
+    return json([]);
+  });
+  const errs = []; page.on('pageerror', e => errs.push(e.message));
+  await fakeOwnerSession(page);
+  await page.goto('/hq/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof saveInvoice === 'function' && Array.isArray(CATEGORIES) && CATEGORIES.length > 0);
+  await page.evaluate(() => switchTab('invoices'));
+  await page.waitForFunction(() => !!document.querySelector('#inv_company'));
+  // The form sits in a collapsed panel on the phone layout: set the fields directly.
+  await page.evaluate(() => {
+    document.querySelector('#inv_date').value = '2026-08-03';
+    document.querySelector('#inv_company').value = 'pietro mandetta';
+    document.querySelector('#inv_amount').value = '1380';
+    document.querySelector('#inv_location').value = 'portugal';
+    document.querySelector('#inv_category').value = 'c-sal';
+    const p = document.querySelector('#inv_payment'); p.value = p.options[0].value;
+    refreshSplitHint();
+  });
+  await page.waitForFunction(() => /4 rows/.test(document.querySelector('#inv_split_hint')?.textContent || ''), null, { timeout: 10000 });
+  const hint = await page.evaluate(() => document.querySelector('#inv_split_hint').textContent);
+  expect(hint).toContain('lessons of 2026-07');
+  await page.evaluate(() => saveInvoice());
+  await page.waitForFunction(() => /Saved as 4 rows/.test(document.querySelector('#invToast')?.textContent || ''), null, { timeout: 10000 });
+  const rows = posted.flat().map(r => [r.location_slug, r.amount_eur, r.amount]);
+  expect(rows.sort()).toEqual([['junior-camp', 180, 180], ['kids-camp', 630, 630], ['portugal', 60, 60], ['surf-school', 510, 510]].sort());
+  expect(posted.flat().every(r => /repartido pelas aulas de 2026-07/.test(r.notes))).toBe(true);
+  expect(errs).toEqual([]);
+});
+
 test('hq: Fecho do mês tab — what lacks an invoice, bank debits with no row, Drive links, manual checks, and "Lançar" prefills the expense form', async ({ page }) => {
   // Miguel, 6 Oct 2026: the month's checklist lives in the app, with
   // "Anexar" (file → drive-upload → Drive folder) and "Colar link" per row.
