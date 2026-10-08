@@ -335,6 +335,7 @@ td.loc-name{font-weight:700;color:var(--navy)}
       <button class="nav-tab" data-tab="cashflow" onclick="switchTab('cashflow')">Cash flow</button>
       <button class="nav-tab" data-tab="pnl" onclick="switchTab('pnl')">P&amp;L Report</button>
       <button class="nav-tab" data-tab="fecho" onclick="switchTab('fecho')">Month close</button>
+      <button class="nav-tab" data-tab="invest" onclick="switchTab('invest')">Investments</button>
     </div>
   </div>
   <div class="header-right">
@@ -546,6 +547,7 @@ function render(){
     <div class="tab-pane" id="tab-cashflow">${cashflowTabHtml()}</div>
     <div class="tab-pane" id="tab-pnl">${pnlTabHtml()}</div>
     <div class="tab-pane" id="tab-fecho">${fechoTabHtml()}</div>
+    <div class="tab-pane" id="tab-invest">${investTabHtml()}</div>
   `;
   wireInvoiceForm();
   wireBulkUpload();
@@ -561,6 +563,7 @@ function switchTab(name){
   if (name === 'cashflow') { renderCashflow(); }
   if (name === 'pnl') { renderPnl(); }
   if (name === 'fecho') { renderFecho(); }
+  if (name === 'invest') { renderInvest(); }
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -5565,6 +5568,245 @@ async function deleteTransfer(id){
   const { error } = await sb.from('internal_transfers').delete().eq('id', id);
   if (error) { alert('Delete failed: '+error.message); return; }
   renderCashflow();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//   TAB — INVESTMENTS  (Miguel, 8 Out 2026)
+//   Só o que é investimento (a loja que alugamos a terceiros). As casas
+//   do surf camp NÃO entram: o leasing/renda delas é renda do camp e vive
+//   nas Expenses. Fora do P&L: comprar a loja não é despesa do mês.
+//   Tabelas: hq_assets (o bem e o custo de compra) e hq_asset_income (as
+//   rendas que nos pagam). Custos correntes do bem (IMI, seguro…) podem
+//   vir das Expenses via `expense_match` (padrão ilike do company).
+// ═══════════════════════════════════════════════════════════════════
+const IVS = { assets: [], income: [], costs: [], year: null, loading: false };
+function ivsYears(){ const y = new Date().getFullYear(); const out = []; for (let k = y; k >= 2026; k--) out.push(k); return out; }
+function investTabHtml(){
+  return `
+    <div id="ivsToast"></div>
+    <div class="card" style="padding:16px 18px;margin-bottom:16px">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+        <select id="ivs_year" onchange="renderInvest()" style="padding:8px 10px;border-radius:9px;border:1px solid var(--border,#d8dee6);font-size:14px;font-weight:700">
+          ${ivsYears().map(y => `<option value="${y}">${y}</option>`).join('')}
+        </select>
+        <button class="btn" onclick="investIncomeForm()">+ Rent received</button>
+        <button class="btn btn-ghost" onclick="investAssetForm()">+ Investment</button>
+        <span class="card-hint">Investments only — the surf camp houses are camp rent and stay in Expenses.</span>
+      </div>
+      <div id="ivs_kpis" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px"></div>
+    </div>
+    <div id="investBody"><div class="loading">Loading…</div></div>
+    <dialog id="ivsDlg" style="border:none;border-radius:14px;padding:0;max-width:520px;width:calc(100% - 32px)"></dialog>`;
+}
+function ivsNum(v){
+  let s = String(v ?? '').trim().replace(/[€\s]/g, '');
+  if (!s) return null;
+  if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
+  const n = Number(s);
+  return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;
+}
+function ivsCost(a){ return ['purchase_price','imt','stamp_duty','other_costs'].reduce((s,k) => s + Number(a[k]||0), 0); }
+function ivsDate(iso){ return iso ? `${fmtDia(iso)} ${String(iso).slice(0,4)}` : '—'; }
+function ivsLikeToRe(p){ return new RegExp('^' + String(p).toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/%/g, '.*').replace(/_/g, '.') + '$'); }
+function ivsInvestments(){ return IVS.assets.filter(a => a.holding !== 'rented'); }
+
+async function renderInvest(){
+  const body = $('investBody'); if (!body) return;
+  IVS.year = Number($('ivs_year')?.value || new Date().getFullYear());
+  IVS.loading = true;
+  body.innerHTML = `<div class="loading">Loading…</div>`;
+  try {
+    const [assets, income] = await Promise.all([
+      sb.from('hq_assets').select('*').is('deleted_at', null).order('sort_order', { ascending: true }).order('created_at', { ascending: true })
+        .then(({ data, error }) => { if (error) throw error; return data || []; }),
+      sb.from('hq_asset_income').select('*').is('deleted_at', null).order('received_on', { ascending: false })
+        .then(({ data, error }) => { if (error) throw error; return data || []; }),
+    ]);
+    const patterns = [...new Set(assets.map(a => a.expense_match).filter(Boolean))];
+    const costs = (await Promise.all(patterns.map(p =>
+      sb.from('hq_invoices').select('id, company, amount_eur, invoice_date, category_name').is('deleted_at', null).ilike('company', p)
+        .then(({ data, error }) => { if (error) throw error; return data || []; })))).flat();
+    IVS.assets = assets; IVS.income = income; IVS.costs = costs;
+  } catch (e) {
+    body.innerHTML = `<div class="loading">Could not load: ${esc(e.message || e.code || String(e))}</div>`;
+    return;
+  } finally { IVS.loading = false; }
+  investPaint();
+}
+
+function ivsAssetCosts(a, year){
+  if (!a.expense_match) return [];
+  const re = ivsLikeToRe(a.expense_match);
+  const seen = new Set();
+  return IVS.costs.filter(c => re.test(String(c.company||'').toLowerCase()) && (!year || String(c.invoice_date).startsWith(String(year))) && !seen.has(c.id) && seen.add(c.id));
+}
+
+function investPaint(){
+  const body = $('investBody'); if (!body) return;
+  const year = IVS.year;
+  const inv = ivsInvestments();
+  const sum = (l, f) => Math.round(l.reduce((s, x) => s + Number(f(x)||0), 0) * 100) / 100;
+  const incYear = IVS.income.filter(i => String(i.received_on).startsWith(String(year)));
+  const invested = sum(inv, ivsCost);
+  const rentYear = sum(incYear, i => i.amount);
+  const rentAll = sum(IVS.income, i => i.amount);
+  const annualRent = sum(inv, a => Number(a.monthly_rent||0) * 12);
+  const costsYear = sum(inv.flatMap(a => ivsAssetCosts(a, year)), c => c.amount_eur);
+  const grossYield = invested ? (annualRent / invested * 100) : 0;
+  if ($('ivs_kpis')) $('ivs_kpis').innerHTML =
+    fechoKpi('Total invested', eur(invested)) +
+    fechoKpi(`Rent received ${year}`, `${eur(rentYear)} · ${incYear.length}×`, rentYear ? 'ok' : '') +
+    fechoKpi('Rent received (all)', eur(rentAll)) +
+    fechoKpi('Rent per year (contract)', eur(annualRent)) +
+    fechoKpi('Gross yield', `${grossYield.toFixed(1)} %`) +
+    (costsYear ? fechoKpi(`Running costs ${year}`, eur(costsYear), 'warn') : '');
+
+  const card = (a) => {
+    const total = ivsCost(a);
+    const got = IVS.income.filter(i => i.asset_id === a.id);
+    const gotYear = got.filter(i => String(i.received_on).startsWith(String(year)));
+    const costs = ivsAssetCosts(a, year);
+    const line = (k, v, strong) => v == null || v === '' ? '' : `<tr><td class="card-hint" style="padding:3px 12px 3px 0">${k}</td><td style="text-align:right;padding:3px 0;${strong ? 'font-weight:800' : ''}">${v}</td></tr>`;
+    return `
+      <div class="card" style="padding:16px 18px;margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start">
+          <div>
+            <div style="font-size:17px;font-weight:800">${a.kind === 'vehicle' ? '🚐' : '🏬'} ${esc(a.name)}</div>
+            <div class="card-hint">${esc(a.address || 'Address not set')} · bought ${ivsDate(a.acquired_on)}</div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            ${a.drive_link ? `<a class="btn btn-ghost" target="_blank" rel="noopener" href="${esc(a.drive_link)}">📁 Documents</a>` : ''}
+            <button class="btn btn-ghost" onclick="investIncomeForm('${a.id}')">+ Rent</button>
+            <button class="btn btn-ghost" onclick="investAssetForm('${a.id}')">Edit</button>
+          </div>
+        </div>
+        <div style="display:flex;gap:28px;flex-wrap:wrap;margin-top:12px">
+          <table style="border-collapse:collapse;font-size:14px">
+            ${line('Purchase price', a.purchase_price != null ? eur(a.purchase_price) : '')}
+            ${line('IMT', a.imt != null ? eur(a.imt) : '')}
+            ${line('Stamp duty', a.stamp_duty != null ? eur(a.stamp_duty) : '')}
+            ${line('Other costs', a.other_costs != null ? eur(a.other_costs) : '')}
+            ${line('Total cost', eur(total), true)}
+          </table>
+          <table style="border-collapse:collapse;font-size:14px">
+            ${line('Tenant', esc(a.tenant || '—'))}
+            ${line('Rent per month', a.monthly_rent != null ? eur(a.monthly_rent) : '—')}
+            ${line(`Received ${year}`, `${eur(sum(gotYear, i => i.amount))} · ${gotYear.length}×`, true)}
+            ${line('Received (all)', eur(sum(got, i => i.amount)))}
+            ${costs.length ? line(`Running costs ${year}`, `${eur(sum(costs, c => c.amount_eur))} · ${costs.length}×`) : ''}
+            ${a.lender ? line('Financing', `${esc(a.lender)}${a.contract_no ? ' · ' + esc(a.contract_no) : ''}`) : ''}
+            ${a.debt_amount != null ? line(`Debt left (${ivsDate(a.debt_as_of)})`, eur(a.debt_amount)) : ''}
+          </table>
+        </div>
+        ${a.notes ? `<div class="card-hint" style="margin-top:10px;max-width:760px">${esc(a.notes)}</div>` : ''}
+      </div>`;
+  };
+  const nameOf = (id) => (IVS.assets.find(a => a.id === id) || {}).name || '—';
+  const incomeRows = IVS.income.map(i => `
+    <tr>
+      <td style="white-space:nowrap">${ivsDate(i.received_on)}</td>
+      <td>${esc(nameOf(i.asset_id))}</td>
+      <td>${esc(i.payer || '')}<div class="card-hint">${esc(String(i.bank || '').toUpperCase())}${i.notes ? ' · ' + esc(i.notes) : ''}</div></td>
+      <td style="text-align:right;white-space:nowrap">${eur(i.amount)}</td>
+      <td><button class="btn btn-ghost" style="padding:6px 10px" title="Remove" onclick="investDeleteIncome('${i.id}')">🗑</button></td>
+    </tr>`).join('');
+  body.innerHTML =
+    (inv.length ? inv.map(card).join('') : `<div class="card" style="padding:18px">No investments yet. Use “+ Investment”.</div>`) +
+    `<div class="card" style="padding:16px 18px">
+       <div class="card-title" style="margin-bottom:8px">Rent received</div>
+       ${IVS.income.length ? `<div style="overflow-x:auto"><table class="tbl" id="ivs_income" style="width:100%"><thead><tr><th>Date</th><th>Investment</th><th>Paid by</th><th style="text-align:right">Amount</th><th></th></tr></thead><tbody>${incomeRows}</tbody></table></div>` : `<div class="card-hint">Nothing received yet.</div>`}
+     </div>`;
+}
+
+function ivsDialog(html){
+  const d = $('ivsDlg'); if (!d) return null;
+  d.innerHTML = `<form method="dialog" style="padding:18px 20px;display:flex;flex-direction:column;gap:10px">${html}</form>`;
+  if (typeof d.showModal === 'function') d.showModal(); else d.setAttribute('open', '');
+  return d;
+}
+function ivsField(id, label, value, type){
+  return `<label style="display:flex;flex-direction:column;gap:4px;font-size:13px">${label}<input id="${id}" type="${type || 'text'}" value="${esc(value ?? '')}" style="padding:8px 10px;border-radius:8px;border:1px solid var(--border,#d8dee6);font-size:14px"></label>`;
+}
+function ivsClose(){ const d = $('ivsDlg'); if (d) { if (typeof d.close === 'function') d.close(); else d.removeAttribute('open'); } }
+async function ivsEmail(){ try { const { data } = await sb.auth.getUser(); return data?.user?.email || null; } catch { return null; } }
+
+function investIncomeForm(assetId){
+  const list = ivsInvestments();
+  if (!list.length) { toast('ivsToast', 'warn', 'Add an investment first.'); return; }
+  const a = list.find(x => x.id === assetId) || list[0];
+  ivsDialog(`
+    <div style="font-size:16px;font-weight:800">Rent received</div>
+    <label style="display:flex;flex-direction:column;gap:4px;font-size:13px">Investment
+      <select id="ivs_f_asset" style="padding:8px 10px;border-radius:8px;border:1px solid var(--border,#d8dee6);font-size:14px">
+        ${list.map(x => `<option value="${x.id}"${x.id === a.id ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}
+      </select></label>
+    ${ivsField('ivs_f_date', 'Date received', new Date().toISOString().slice(0,10), 'date')}
+    ${ivsField('ivs_f_amount', 'Amount (€)', a.monthly_rent ?? '')}
+    ${ivsField('ivs_f_payer', 'Paid by', a.tenant ?? '')}
+    <label style="display:flex;flex-direction:column;gap:4px;font-size:13px">Bank account
+      <select id="ivs_f_bank" style="padding:8px 10px;border-radius:8px;border:1px solid var(--border,#d8dee6);font-size:14px">
+        <option value="cgd">Caixa Geral (CGD)</option><option value="santander">Santander</option><option value="other">Other</option>
+      </select></label>
+    ${ivsField('ivs_f_notes', 'Note (month it refers to, etc.)', '')}
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px">
+      <button type="button" class="btn btn-ghost" onclick="ivsClose()">Cancel</button>
+      <button type="button" class="btn" onclick="investSaveIncome()">Save</button>
+    </div>`);
+}
+async function investSaveIncome(){
+  const amount = ivsNum($('ivs_f_amount')?.value);
+  const date = $('ivs_f_date')?.value;
+  if (!amount || amount <= 0 || !date) { toast('ivsToast', 'err', 'Date and amount are required.'); return; }
+  const asset_id = $('ivs_f_asset').value;
+  // Never twice: same investment, same day, same amount.
+  if (IVS.income.some(i => i.asset_id === asset_id && i.received_on === date && Number(i.amount) === amount)) { ivsClose(); toast('ivsToast', 'warn', 'That payment is already registered.'); return; }
+  const row = { asset_id, received_on: date, amount, payer: $('ivs_f_payer').value.trim() || null, bank: $('ivs_f_bank').value, notes: $('ivs_f_notes').value.trim() || null, created_by: await ivsEmail() };
+  const { error } = await sb.from('hq_asset_income').insert(row);
+  if (error) { toast('ivsToast', 'err', 'Save failed: ' + (error.message || error.code)); return; }
+  ivsClose(); toast('ivsToast', 'ok', `Rent of ${eur(amount)} saved.`);
+  renderInvest();
+}
+async function investDeleteIncome(id){
+  const i = IVS.income.find(x => x.id === id); if (!i) return;
+  if (!confirm(`Remove the ${eur(i.amount)} received on ${ivsDate(i.received_on)}?`)) return;
+  const { error } = await sb.from('hq_asset_income').update({ deleted_at: new Date().toISOString(), deleted_by: await ivsEmail() }).eq('id', id);
+  if (error) { toast('ivsToast', 'err', 'Remove failed: ' + (error.message || error.code)); return; }
+  renderInvest();
+}
+function investAssetForm(id){
+  const a = IVS.assets.find(x => x.id === id) || {};
+  ivsDialog(`
+    <div style="font-size:16px;font-weight:800">${a.id ? 'Edit investment' : 'New investment'}</div>
+    ${ivsField('ivs_a_name', 'Name', a.name || '')}
+    ${ivsField('ivs_a_address', 'Address', a.address || '')}
+    ${ivsField('ivs_a_date', 'Bought on', a.acquired_on || '', 'date')}
+    ${ivsField('ivs_a_price', 'Purchase price (€)', a.purchase_price ?? '')}
+    ${ivsField('ivs_a_imt', 'IMT (€)', a.imt ?? '')}
+    ${ivsField('ivs_a_stamp', 'Stamp duty (€)', a.stamp_duty ?? '')}
+    ${ivsField('ivs_a_other', 'Other costs — notary, registry… (€)', a.other_costs ?? '')}
+    ${ivsField('ivs_a_tenant', 'Tenant', a.tenant || '')}
+    ${ivsField('ivs_a_rent', 'Rent per month (€)', a.monthly_rent ?? '')}
+    ${ivsField('ivs_a_drive', 'Documents link (Drive)', a.drive_link || '')}
+    ${ivsField('ivs_a_notes', 'Notes', a.notes || '')}
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px">
+      <button type="button" class="btn btn-ghost" onclick="ivsClose()">Cancel</button>
+      <button type="button" class="btn" onclick="investSaveAsset('${a.id || ''}')">Save</button>
+    </div>`);
+}
+async function investSaveAsset(id){
+  const name = ($('ivs_a_name')?.value || '').trim();
+  if (!name) { toast('ivsToast', 'err', 'The name is required.'); return; }
+  const row = {
+    name, address: $('ivs_a_address').value.trim() || null, acquired_on: $('ivs_a_date').value || null,
+    purchase_price: ivsNum($('ivs_a_price').value), imt: ivsNum($('ivs_a_imt').value), stamp_duty: ivsNum($('ivs_a_stamp').value), other_costs: ivsNum($('ivs_a_other').value),
+    tenant: $('ivs_a_tenant').value.trim() || null, monthly_rent: ivsNum($('ivs_a_rent').value),
+    drive_link: $('ivs_a_drive').value.trim() || null, notes: $('ivs_a_notes').value.trim() || null, updated_at: new Date().toISOString(),
+  };
+  const q = id ? sb.from('hq_assets').update(row).eq('id', id) : sb.from('hq_assets').insert({ ...row, kind: 'property', holding: 'owned', created_by: await ivsEmail() });
+  const { error } = await q;
+  if (error) { toast('ivsToast', 'err', 'Save failed: ' + (error.message || error.code)); return; }
+  ivsClose(); toast('ivsToast', 'ok', 'Saved.');
+  renderInvest();
 }
 
 // ── Utilities ───────────────────────────────────────────────────────

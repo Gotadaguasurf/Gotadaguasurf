@@ -1713,3 +1713,51 @@ test('partners: month status survives a case-only duplicate partner name and the
   await page.setViewportSize({ width: 1400, height: 1000 });
   await page.screenshot({ path: process.env.PARTNERS_SHOT || 'test-results/partners-layout.png', fullPage: false });
 });
+
+test('hq: Investments tab — only the shop, total cost with taxes, rent received per year, and a new rent is saved once', async ({ page }) => {
+  // Miguel, 8 Oct 2026: the surf camp houses are camp rent (Expenses); only the shop we rent out is an investment.
+  const posted = [];
+  const income = [1, 2, 3, 4, 5].map((n, k) => ({ id: 'r' + n, asset_id: 'loja', received_on: ['2026-08-25', '2026-08-03', '2026-07-06', '2026-07-02', '2026-05-06'][k], amount: 900, payer: 'Silêncio Lotado', bank: 'cgd', notes: null }));
+  await page.route(/supabase\.co\/(auth|rest)\/v1\/.*/, async route => {
+    const req = route.request(); const url = req.url();
+    const json = (body) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    if (url.includes('/auth/v1/user')) return json({ id: 'u1', email: 'miguel@gotadaguasurf.com', aud: 'authenticated', role: 'authenticated' });
+    if (url.includes('/rest/v1/rpc/hq_overview_rollup')) return json({ bookings: [], invoices: [], ledger: [] });
+    if (url.includes('/rest/v1/hq_assets')) return json([
+      { id: 'loja', kind: 'property', holding: 'owned', name: 'Loja (investimento)', acquired_on: '2026-01-13', purchase_price: 230000, imt: 14950, stamp_duty: 1840, other_costs: 20.85, tenant: 'Silêncio Lotado', monthly_rent: 900, expense_match: null, notes: 'CGD' },
+    ]);
+    if (url.includes('/rest/v1/hq_asset_income')) {
+      if (req.method() === 'POST') { posted.push(JSON.parse(req.postData() || '{}')); return json([]); }
+      return json(income);
+    }
+    return json([]);
+  });
+  const errs = []; page.on('pageerror', e => errs.push(e.message));
+  await fakeOwnerSession(page);
+  await page.goto('/hq/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof renderInvest === 'function' && document.querySelector('[data-tab="invest"]'));
+  await page.evaluate(() => switchTab('invest'));
+  await page.waitForFunction(() => /Total cost/.test(document.querySelector('#investBody')?.textContent || ''), null, { timeout: 15000 });
+  const out = await page.evaluate(() => ({
+    kpis: [...document.querySelectorAll('#ivs_kpis > div')].map(d => [...d.children].map(c => c.textContent.trim()).join(' ')),
+    cards: document.querySelectorAll('#investBody .card').length,
+    incomeRows: document.querySelectorAll('#ivs_income tbody tr').length,
+  }));
+  expect(out.kpis).toEqual(['Total invested €246,810.85', 'Rent received 2026 €4,500.00 · 5×', 'Rent received (all) €4,500.00', 'Rent per year (contract) €10,800.00', 'Gross yield 4.4 %']);
+  expect(out.cards).toBe(2);           // the shop + the rent-received list
+  expect(out.incomeRows).toBe(5);
+  // A new rent: prefilled with the tenant and the monthly rent; saving the same payment twice is refused.
+  await page.evaluate(() => investIncomeForm('loja'));
+  const pre = await page.evaluate(() => ({ amount: document.querySelector('#ivs_f_amount').value, payer: document.querySelector('#ivs_f_payer').value }));
+  expect(pre).toEqual({ amount: '900', payer: 'Silêncio Lotado' });
+  await page.evaluate(() => { document.querySelector('#ivs_f_date').value = '2026-10-01'; document.querySelector('#ivs_f_amount').value = '1.000,50'; });
+  await page.evaluate(() => investSaveIncome());
+  await page.waitForFunction(() => /saved/.test(document.querySelector('#ivsToast')?.textContent || ''), null, { timeout: 5000 });
+  expect(posted).toHaveLength(1);
+  expect(posted[0]).toMatchObject({ asset_id: 'loja', received_on: '2026-10-01', amount: 1000.5, payer: 'Silêncio Lotado', bank: 'cgd' });
+  await page.evaluate(() => { investIncomeForm('loja'); document.querySelector('#ivs_f_date').value = '2026-08-25'; document.querySelector('#ivs_f_amount').value = '900'; });
+  await page.evaluate(() => investSaveIncome());
+  await page.waitForFunction(() => /already registered/.test(document.querySelector('#ivsToast')?.textContent || ''), null, { timeout: 5000 });
+  expect(posted).toHaveLength(1);
+  expect(errs).toEqual([]);
+});
