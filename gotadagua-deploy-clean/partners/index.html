@@ -141,6 +141,10 @@ td{padding:13px 16px;font-size:13px;vertical-align:middle}td.r{text-align:right;
 .adv-actions{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
 .adv-actions button,.adv-start{font-size:11px;font-weight:600;border:1px dashed var(--border);background:transparent;color:var(--navy);border-radius:6px;padding:4px 10px;cursor:pointer;font-family:'Outfit',sans-serif}
 .adv-actions button:hover,.adv-start:hover{border-color:var(--ocean);color:var(--ocean)}
+.adv-bar{display:flex;align-items:center;gap:10px;width:100%;max-width:520px;background:#fff;border:1px solid var(--border);border-radius:8px;padding:8px 12px;margin:0 0 12px;cursor:pointer;font-family:'Outfit',sans-serif;font-size:12px;font-weight:600;color:var(--navy);text-align:left}
+.adv-bar:hover{border-color:var(--ocean)}
+.adv-bar-val{font-family:'DM Mono',monospace;font-weight:600}.adv-bar-val.credit{color:var(--green-text)}.adv-bar-val.owe{color:var(--amber-text)}.adv-bar-val.zero{color:var(--muted)}
+.adv-bar-more{margin-left:auto;color:var(--ocean);font-size:11px}
 .adv-pill{display:inline-block;font-size:10px;font-weight:700;margin-top:4px;border-radius:6px;padding:1px 6px}
 .adv-pill.credit{background:var(--green-bg);color:var(--green-text)}.adv-pill.owe{background:var(--amber-bg);color:var(--amber-text)}
 /* LOCATION TABS IN EXPANDED */
@@ -2314,12 +2318,19 @@ function advancePillHTML(partner){
   const l = advLabel(a.today);
   return l.cls === 'zero' ? '' : `<div class="adv-pill ${l.cls}" title="Advance balance up to ${monthLabel(new Date().toISOString().slice(0,7))}">💳 ${l.text}</div>`;
 }
+// Closed by default (Miguel, 13 Oct 2026: "não estar sempre aberto, só se eu
+// quiser") — one line with the balance; the month table opens on click.
+const advOpen = {};
+window.toggleAdvance = p => { const k = String(p||'').trim().toLowerCase(); advOpen[k] = !advOpen[k]; renderTable(); };
 function advancePanelHTML(partner){
   const sp = safeP(partner);
   const a = advanceBalance(partner);
-  if(!a) return `<button class="adv-start" onclick="event.stopPropagation();addLedgerEntry('${sp}','payment')">💳 Track advances / credit for ${partner}</button>`;
+  if(!a) return '';
   const now = advLabel(a.today);
   const nowLabel = monthLabel(new Date().toISOString().slice(0,7));
+  if(!advOpen[String(partner).trim().toLowerCase()]){
+    return `<button class="adv-bar" onclick="event.stopPropagation();toggleAdvance('${sp}')"><span>💳 Advance balance</span><span class="adv-bar-val ${now.cls}">${now.text}</span><span class="adv-bar-more">details ▸</span></button>`;
+  }
   const lines = [];
   lines.push(`Since ${monthLabel(a.start)} we paid ${eur(a.paid)}${a.received ? ` and received ${eur(a.received)}` : ''}.`);
   lines.push(`Bookings up to ${nowLabel} earned them ${eur(a.commission)} in commission${a.theyCollected ? ` (and they collected ${eur(a.theyCollected)} that is ours)` : ''}.`);
@@ -2327,6 +2338,7 @@ function advancePanelHTML(partner){
   lines.push(now.cls === 'credit' ? `<b>So we still have ${eur(a.today)} of credit</b> — new commission is covered until it runs out.`
     : now.cls === 'owe' ? `<b>So we still owe ${partner} ${eur(-a.today)}.</b>` : '<b>So nothing is owed either way.</b>');
   if(Math.abs(a.final - a.today) > 0.004) lines.push(`Counting future bookings already in Bookinglayer: ${advLabel(a.final).text}.`);
+  const hasAdj = a.months.some(x => x.adjust);
   const rowsHTML = a.months.map(x => {
     const l = advLabel(x.balance);
     const money = [x.paid ? `+${eur(x.paid)}` : '', x.received ? `−${eur(x.received)}` : ''].filter(Boolean).join('<br>') || '—';
@@ -2334,7 +2346,7 @@ function advancePanelHTML(partner){
       <td>${monthLabel(x.month)}${x.future?' · future':''}</td>
       <td>${x.commission ? eur(x.commission) : '—'}${x.theyCollected ? `<br><span style="color:var(--green-text)">they hold ${eur(x.theyCollected)}</span>` : ''}</td>
       <td>${money}</td>
-      <td>${x.adjust ? (x.adjust>0?'+':'−')+eur(Math.abs(x.adjust)) : '—'}</td>
+      ${hasAdj ? `<td>${x.adjust ? (x.adjust>0?'+':'−')+eur(Math.abs(x.adjust)) : '—'}</td>` : ''}
       <td class="${l.cls}">${l.text}</td>
     </tr>`;
   }).join('');
@@ -2346,10 +2358,10 @@ function advancePanelHTML(partner){
   }).join('');
   return `<div class="adv-panel" onclick="event.stopPropagation()">
     <div class="adv-head">
-      <div><div class="adv-title">💳 Advance balance · ${partner}</div><div class="adv-now ${now.cls}">${now.text}</div><div style="font-size:10px;color:var(--muted)">up to ${nowLabel}</div></div>
+      <div><div class="adv-title">💳 Advance balance · ${partner} <a href="#" onclick="event.preventDefault();toggleAdvance('${sp}')" style="color:var(--ocean);text-transform:none;letter-spacing:0;margin-left:6px">close ▴</a></div><div class="adv-now ${now.cls}">${now.text}</div><div style="font-size:10px;color:var(--muted)">up to ${nowLabel}</div></div>
       <div class="adv-explain">${lines.join(' ')}</div>
     </div>
-    <table class="adv-table"><thead><tr><th>Month</th><th>Commission earned</th><th>Bank (paid / received)</th><th>Correction</th><th>Balance after</th></tr></thead><tbody>${rowsHTML}</tbody></table>
+    <table class="adv-table"><thead><tr><th>Month</th><th>Commission</th><th>Paid</th>${hasAdj ? '<th>Correction</th>' : ''}<th>Balance</th></tr></thead><tbody>${rowsHTML}</tbody></table>
     <div class="adv-entries"><div class="adv-title" style="margin-bottom:4px">Movements behind the balance</div>${entries}</div>
     <div class="adv-actions">
       <button onclick="addLedgerEntry('${sp}','payment')">+ we paid (bank)</button>
@@ -2749,7 +2761,7 @@ function renderOverview(p) {
     ${locTabsHTML}
     <div class="overview-months">${cards}</div>
     <button onclick="event.stopPropagation();openStatement('${sp}',null)" style="margin-top:4px;background:var(--navy);color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif">View all months →</button>
-    ${getLedger(p.partner).length ? '' : `<div style="margin-top:10px">${advancePanelHTML(p.partner)}</div>`}`;
+`;
 }
 
 window.toggleExpand = p => { 
