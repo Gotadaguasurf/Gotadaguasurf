@@ -119,6 +119,30 @@ td{padding:13px 16px;font-size:13px;vertical-align:middle}td.r{text-align:right;
 .inv-chip:hover{border-color:var(--ocean);color:var(--ocean)}
 .inv-chip.add{color:var(--muted);border-style:dashed;background:transparent}
 .modal-inv{margin-top:8px}.modal-inv .inv-chip{background:rgba(255,255,255,.1);color:#fff;border-color:rgba(255,255,255,.25)}.modal-inv .inv-chip.add{color:#9fc5df}
+/* Advance balance (partner_ledger) — partners paid by advances (JUVIGO,
+   Ocean Adventure): commission earned month by month against what we paid. */
+.adv-panel{background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px 18px;margin:4px 0 14px;box-shadow:0 2px 8px rgba(40,57,75,.06)}
+.adv-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap;margin-bottom:10px}
+.adv-title{font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.08em}
+.adv-now{font-family:'DM Mono',monospace;font-size:20px;font-weight:600;margin-top:3px}
+.adv-now.credit{color:var(--green-text)}.adv-now.owe{color:var(--amber-text)}.adv-now.zero{color:var(--muted)}
+.adv-explain{font-size:12px;color:var(--navy);line-height:1.5;max-width:560px}
+.adv-table{width:100%;border-collapse:collapse;font-size:12px}
+.adv-table th{font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em;text-align:right;padding:5px 8px;border-bottom:1px solid var(--border)}
+.adv-table th:first-child,.adv-table td:first-child{text-align:left}
+.adv-table td{padding:6px 8px;border-bottom:1px solid #eef3f8;text-align:right;font-family:'DM Mono',monospace;vertical-align:top}
+.adv-table tr.future td{color:#94a9be}
+.adv-table td.credit{color:var(--green-text);font-weight:600}.adv-table td.owe{color:var(--amber-text);font-weight:600}
+.adv-entries{margin-top:12px;font-size:11px;color:var(--navy)}
+.adv-entry{display:flex;gap:8px;align-items:baseline;padding:3px 0;border-bottom:1px dashed #eef3f8}
+.adv-entry .amt{font-family:'DM Mono',monospace;font-weight:600;min-width:92px;text-align:right}
+.adv-entry .why{color:var(--muted);flex:1}
+.adv-entry .rm{border:none;background:none;color:#b7c4d1;cursor:pointer;font-size:13px;padding:0 4px}.adv-entry .rm:hover{color:var(--red-text)}
+.adv-actions{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+.adv-actions button,.adv-start{font-size:11px;font-weight:600;border:1px dashed var(--border);background:transparent;color:var(--navy);border-radius:6px;padding:4px 10px;cursor:pointer;font-family:'Outfit',sans-serif}
+.adv-actions button:hover,.adv-start:hover{border-color:var(--ocean);color:var(--ocean)}
+.adv-pill{display:inline-block;font-size:10px;font-weight:700;margin-top:4px;border-radius:6px;padding:1px 6px}
+.adv-pill.credit{background:var(--green-bg);color:var(--green-text)}.adv-pill.owe{background:var(--amber-bg);color:var(--amber-text)}
 /* LOCATION TABS IN EXPANDED */
 .loc-tabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
 .loc-tab-btn{padding:5px 13px;border-radius:16px;border:1.5px solid var(--border);background:#fff;color:var(--muted);font-size:11px;font-weight:600;cursor:pointer;transition:all .2s;font-family:'Outfit',sans-serif}
@@ -2232,6 +2256,150 @@ window.addPartnerInvoice = async function(partner, month){
   }catch(e){ alert('Could not save the invoice: ' + (e && e.message || e)); }
 };
 
+// ── ADVANCE BALANCE (partner_ledger) ──────────────────────────────────────────
+// Miguel, 13 Oct 2026: JUVIGO and Ocean Adventure are paid by advances, so
+// the monthly "we owe partner" figure alone does not say where we stand. The
+// ledger holds what really moved in the bank (payment / received) plus agreed
+// corrections (adjustment); the commission side comes from the bookings, the
+// same monthSplit the month cards use. Running balance > 0 = credit on our
+// side (we paid ahead, or they owe us); < 0 = we still owe the partner.
+// It starts at the first ledger month, so older seasons with no advances
+// recorded do not drag the balance down.
+let partnerLedger = {};
+async function reloadPartnerLedger(){
+  const { data, error } = await getAuthClient().from('partner_ledger').select('*').is('deleted_at', null).order('entry_date', { ascending: true });
+  if(error) throw error;
+  const map = {};
+  (data||[]).forEach(r => { const k = String(r.partner_name||'').trim().toLowerCase(); (map[k] = map[k] || []).push(r); });
+  partnerLedger = map;
+}
+const getLedger = p => partnerLedger[String(p||'').trim().toLowerCase()] || [];
+const ledgerMonth = r => r.applies_to || String(r.entry_date).slice(0,7);
+// Signed effect of one ledger row on the balance (see table comment).
+const ledgerEffect = r => r.kind === 'received' ? -(+r.amount||0) : (+r.amount||0);
+function advanceBalance(partner){
+  const rows = getLedger(partner);
+  if(!rows.length) return null;
+  const start = rows.map(ledgerMonth).sort()[0];
+  const nowMonth = new Date().toISOString().slice(0,7);
+  const byMonth = {};
+  const slot = m => (byMonth[m] = byMonth[m] || { bookings:[], entries:[] });
+  partnerBookings().filter(b => partnerNameEquals(b.partner, partner) && getMonth(b) >= start).forEach(b => slot(getMonth(b)).bookings.push(b));
+  rows.forEach(r => slot(ledgerMonth(r)).entries.push(r));
+  let run = 0, today = 0;
+  const months = Object.keys(byMonth).sort().map(m => {
+    const sp = monthSplit(byMonth[m].bookings);
+    const es = byMonth[m].entries;
+    const sum = k => +es.filter(r => r.kind === k).reduce((s,r) => s + (+r.amount||0), 0).toFixed(2);
+    const paid = sum('payment'), received = sum('received'), adjust = sum('adjustment');
+    run = +(run + paid - received + adjust - sp.owedToPartner + sp.owedToUs).toFixed(2);
+    if(m <= nowMonth) today = run;
+    return { month:m, commission:sp.owedToPartner, theyCollected:sp.owedToUs, paid, received, adjust, balance:run, future: m > nowMonth, entries:es };
+  });
+  const r2 = x => +x.toFixed(2);
+  const past = months.filter(x => !x.future);
+  return {
+    start, months, today, final: run,
+    commission: r2(past.reduce((s,x) => s + x.commission, 0)),
+    theyCollected: r2(past.reduce((s,x) => s + x.theyCollected, 0)),
+    paid: r2(rows.filter(r => r.kind === 'payment').reduce((s,r) => s + (+r.amount||0), 0)),
+    received: r2(rows.filter(r => r.kind === 'received').reduce((s,r) => s + (+r.amount||0), 0)),
+    adjust: r2(rows.filter(r => r.kind === 'adjustment').reduce((s,r) => s + (+r.amount||0), 0))
+  };
+}
+const advLabel = v => v > 0.004 ? { cls:'credit', text:`credit ${eur(v)}` } : v < -0.004 ? { cls:'owe', text:`we owe ${eur(-v)}` } : { cls:'zero', text:'settled · €0.00' };
+function advancePillHTML(partner){
+  const a = advanceBalance(partner);
+  if(!a) return '';
+  const l = advLabel(a.today);
+  return l.cls === 'zero' ? '' : `<div class="adv-pill ${l.cls}" title="Advance balance up to ${monthLabel(new Date().toISOString().slice(0,7))}">💳 ${l.text}</div>`;
+}
+function advancePanelHTML(partner){
+  const sp = safeP(partner);
+  const a = advanceBalance(partner);
+  if(!a) return `<button class="adv-start" onclick="event.stopPropagation();addLedgerEntry('${sp}','payment')">💳 Track advances / credit for ${partner}</button>`;
+  const now = advLabel(a.today);
+  const nowLabel = monthLabel(new Date().toISOString().slice(0,7));
+  const lines = [];
+  lines.push(`Since ${monthLabel(a.start)} we paid ${eur(a.paid)}${a.received ? ` and received ${eur(a.received)}` : ''}.`);
+  lines.push(`Bookings up to ${nowLabel} earned them ${eur(a.commission)} in commission${a.theyCollected ? ` (and they collected ${eur(a.theyCollected)} that is ours)` : ''}.`);
+  if(a.adjust) lines.push(`Agreed corrections: ${a.adjust>0?'+':'−'}${eur(Math.abs(a.adjust))} (listed below).`);
+  lines.push(now.cls === 'credit' ? `<b>So we still have ${eur(a.today)} of credit</b> — new commission is covered until it runs out.`
+    : now.cls === 'owe' ? `<b>So we still owe ${partner} ${eur(-a.today)}.</b>` : '<b>So nothing is owed either way.</b>');
+  if(Math.abs(a.final - a.today) > 0.004) lines.push(`Counting future bookings already in Bookinglayer: ${advLabel(a.final).text}.`);
+  const rowsHTML = a.months.map(x => {
+    const l = advLabel(x.balance);
+    const money = [x.paid ? `+${eur(x.paid)}` : '', x.received ? `−${eur(x.received)}` : ''].filter(Boolean).join('<br>') || '—';
+    return `<tr class="${x.future?'future':''}">
+      <td>${monthLabel(x.month)}${x.future?' · future':''}</td>
+      <td>${x.commission ? eur(x.commission) : '—'}${x.theyCollected ? `<br><span style="color:var(--green-text)">they hold ${eur(x.theyCollected)}</span>` : ''}</td>
+      <td>${money}</td>
+      <td>${x.adjust ? (x.adjust>0?'+':'−')+eur(Math.abs(x.adjust)) : '—'}</td>
+      <td class="${l.cls}">${l.text}</td>
+    </tr>`;
+  }).join('');
+  const entries = getLedger(partner).map(r => {
+    const e = ledgerEffect(r);
+    const what = r.kind === 'payment' ? 'we paid' : r.kind === 'received' ? 'they paid us' : 'correction';
+    const bank = r.bank ? ` · ${r.bank}${r.bank_ref ? ': ' + r.bank_ref : ''}` : '';
+    return `<div class="adv-entry"><span style="min-width:78px">${r.entry_date}</span><span class="amt" style="color:${e>=0?'var(--green-text)':'var(--amber-text)'}">${e>=0?'+':'−'}${eur(Math.abs(e))}</span><span class="why"><b style="color:var(--navy)">${what}</b>${r.ref ? ' · ' + r.ref : ''}${r.applies_to ? ' · for ' + monthLabel(r.applies_to) : ''}${bank}${r.notes ? '<br>' + r.notes : ''}</span><button class="rm" title="Remove" onclick="event.stopPropagation();removeLedgerEntry('${r.id}')">×</button></div>`;
+  }).join('');
+  return `<div class="adv-panel" onclick="event.stopPropagation()">
+    <div class="adv-head">
+      <div><div class="adv-title">💳 Advance balance · ${partner}</div><div class="adv-now ${now.cls}">${now.text}</div><div style="font-size:10px;color:var(--muted)">up to ${nowLabel}</div></div>
+      <div class="adv-explain">${lines.join(' ')}</div>
+    </div>
+    <table class="adv-table"><thead><tr><th>Month</th><th>Commission earned</th><th>Bank (paid / received)</th><th>Correction</th><th>Balance after</th></tr></thead><tbody>${rowsHTML}</tbody></table>
+    <div class="adv-entries"><div class="adv-title" style="margin-bottom:4px">Movements behind the balance</div>${entries}</div>
+    <div class="adv-actions">
+      <button onclick="addLedgerEntry('${sp}','payment')">+ we paid (bank)</button>
+      <button onclick="addLedgerEntry('${sp}','received')">+ they paid us (bank)</button>
+      <button onclick="addLedgerEntry('${sp}','adjustment')">+ agreed correction</button>
+    </div>
+  </div>`;
+}
+window.addLedgerEntry = async function(partner, kind){
+  const label = { payment:'Payment we made', received:'Payment they made to us', adjustment:'Agreed correction' }[kind];
+  const date = prompt(`${label} · ${partner}\nDate (YYYY-MM-DD)`, new Date().toISOString().slice(0,10));
+  if(!date) return;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date.trim())){ alert('Date must look like 2026-10-13'); return; }
+  const amt = prompt(kind === 'adjustment' ? 'Amount — positive = in our favour (less to pay / more credit), negative = we owe more' : 'Amount in € (as on the bank statement)');
+  if(amt === null) return;
+  const amount = Number(String(amt).replace(/\s/g,'').replace(',', '.'));
+  if(!Number.isFinite(amount) || amount === 0 || (kind !== 'adjustment' && amount < 0)){ alert('Not a valid amount'); return; }
+  let bank = null, bankRef = null;
+  if(kind !== 'adjustment'){
+    // Only money that really moved counts ("quando metes pago tem mesmo de estar pago no banco").
+    bank = (prompt('Bank: santander or cgd', 'santander') || '').trim().toLowerCase() || null;
+    bankRef = (prompt('Statement line as printed (e.g. TRF.IMED. P/ Juvigo-E01613117)') || '').trim();
+    if(!bank || !bankRef){ alert('A payment needs the bank and the statement line — only money that is on the statement goes in.'); return; }
+  }
+  const ref = (prompt(kind === 'adjustment' ? 'Short reference (e.g. "Acerto Nicolas 3 Set")' : 'Partner invoice number (optional)') || '').trim() || null;
+  const appliesTo = (prompt('Bookings month it belongs to, if not the month of the date (YYYY-MM, optional)') || '').trim() || null;
+  if(appliesTo && !/^\d{4}-\d{2}$/.test(appliesTo)){ alert('Month must look like 2026-08'); return; }
+  const notes = (prompt('Note (what it is / why)') || '').trim() || null;
+  try{
+    const client = getAuthClient();
+    const { data: pr } = await client.from('partners').select('id').ilike('name', partner).limit(1);
+    const { error } = await client.from('partner_ledger').insert({
+      partner_id: (pr && pr[0] && pr[0].id) || null, partner_name: partner, entry_date: date.trim(), kind, amount,
+      applies_to: appliesTo, ref, bank, bank_ref: bankRef, notes, created_by: 'partners app'
+    });
+    if(error) throw error;
+    await reloadPartnerLedger();
+    renderPartnersPage();
+  }catch(e){ alert('Could not save: ' + (e && e.message || e)); }
+};
+window.removeLedgerEntry = async function(id){
+  if(!confirm('Remove this movement from the advance balance? (it is kept in the database as removed)')) return;
+  try{
+    const { error } = await getAuthClient().from('partner_ledger').update({ deleted_at: new Date().toISOString() }).eq('id', id);
+    if(error) throw error;
+    await reloadPartnerLedger();
+    renderPartnersPage();
+  }catch(e){ alert('Could not remove: ' + (e && e.message || e)); }
+};
+
 // Who collected the money for THIS booking. Bookinglayer tells us per
 // booking (Miguel, 16 Sep 2026): status "paid" with Due 0 = the guest
 // paid Gota, so we owe the partner its commission; status "confirmed"
@@ -2489,7 +2657,7 @@ function renderPartnerRows(groups, tbodyId, headId, hintId, emptyLabel) {
       <td class="r">${p.count}</td>
       <td class="r"><span class="amount-link" onclick="event.stopPropagation();openStatement('${sp}',null)">${eur(p.gross)}</span></td>
       <td class="r"><span class="amount-link" onclick="event.stopPropagation();openStatement('${sp}',${activeMonth==='all'?'null':`'${activeMonth}'`})">${eur(p.com)}</span></td>
-      <td class="r">${balanceLabel}</td>
+      <td class="r">${balanceLabel}${advancePillHTML(p.partner)}</td>
       ${showStatus ? `<td onclick="event.stopPropagation()">${statusSelectHTML(p.partner, activeMonth, true)}</td>` : ''}
     </tr>`;
 
@@ -2577,9 +2745,11 @@ function renderOverview(p) {
   }).join('');
 
   return `<div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">${p.partner} — click a month to view & send statement · set status below each month</div>
+    ${getLedger(p.partner).length ? advancePanelHTML(p.partner) : ''}
     ${locTabsHTML}
     <div class="overview-months">${cards}</div>
-    <button onclick="event.stopPropagation();openStatement('${sp}',null)" style="margin-top:4px;background:var(--navy);color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif">View all months →</button>`;
+    <button onclick="event.stopPropagation();openStatement('${sp}',null)" style="margin-top:4px;background:var(--navy);color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif">View all months →</button>
+    ${getLedger(p.partner).length ? '' : `<div style="margin-top:10px">${advancePanelHTML(p.partner)}</div>`}`;
 }
 
 window.toggleExpand = p => { 
@@ -4471,8 +4641,12 @@ async function loadFromSupabase() {
     partnerCollects = {};
     partnerTypes = {};
     statusStore = normalizeStatusRows(statusRows);
-    try { await reloadPartnerInvoices(); }
-    catch (e) { console.warn('[Partners] partner_invoices not loaded', e); partnerInvoices = {}; }
+    // Invoices and the advance ledger load side by side: one round trip of
+    // wait, not two, before the partner settings below are applied.
+    await Promise.all([
+      reloadPartnerInvoices().catch(e => { console.warn('[Partners] partner_invoices not loaded', e); partnerInvoices = {}; }),
+      reloadPartnerLedger().catch(e => { console.warn('[Partners] partner_ledger not loaded', e); partnerLedger = {}; }),
+    ]);
 
     partnerRows.forEach(row => {
       partnerRates[row.name] = Number(row.commission_pct ?? 20);
