@@ -176,10 +176,10 @@ test('camp-hub currency pins: each location locked to its currency', async ({ pa
 
 // Wild Wednesday tickets sold on a Portugal guest's tab ("Beach Party") are
 // the party's money, not the camp's (Miguel, 20 Oct 2026: «não como tour
-// mas como Wild money»). The revenue row must be category 'Wild money',
+// mas como Wild money»). The revenue row must be category 'Wild · Gota',
 // area 'Wild', and attributed to the wild-wednesday location so HQ books it
 // there — while an ordinary tour on the same tab still goes to Tours.
-test('camp-hub routes Beach Party tab items to Wild money / wild-wednesday', async ({ page }) => {
+test('camp-hub routes Beach Party tab items to Wild · Gota / wild-wednesday', async ({ page }) => {
   await fakeOwnerSession(page);
   await page.goto('/camp-hub/?location=portugal', { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => { try { return typeof buildPaidItemRevenueEntry === 'function'; } catch (_) { return false; } });
@@ -194,7 +194,7 @@ test('camp-hub routes Beach Party tab items to Wild money / wild-wednesday', asy
       mapped: mapCampTabRevenueCategory({ c: 'Tours', n: 'Wild Wednesday ticket' }),
     };
   });
-  expect(result.wildCat).toBe('Wild money');
+  expect(result.wildCat).toBe('Wild · Gota');
   expect(result.wildArea).toBe('Wild');
   expect(result.wildLinked).toBe('Beach Party');
   expect(result.wildPaidFrom).toBe('wild-wednesday');
@@ -202,7 +202,7 @@ test('camp-hub routes Beach Party tab items to Wild money / wild-wednesday', asy
   expect(result.tourCat).toBe('Tours');
   expect(result.tourArea).toBe('Tours');
   expect(result.tourAttr).toBe('');          // caller fills the camp slug later
-  expect(result.mapped).toBe('Wild money');
+  expect(result.mapped).toBe('Wild · Gota');
 });
 
 // Regression: location_menus dupes (non-atomic DELETE+INSERT race between
