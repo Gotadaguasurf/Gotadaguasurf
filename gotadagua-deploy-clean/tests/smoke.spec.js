@@ -174,6 +174,37 @@ test('camp-hub currency pins: each location locked to its currency', async ({ pa
   expect(pins['surf-school']).toBe('EUR');
 });
 
+// Wild Wednesday tickets sold on a Portugal guest's tab ("Beach Party") are
+// the party's money, not the camp's (Miguel, 20 Oct 2026: «não como tour
+// mas como Wild money»). The revenue row must be category 'Wild money',
+// area 'Wild', and attributed to the wild-wednesday location so HQ books it
+// there — while an ordinary tour on the same tab still goes to Tours.
+test('camp-hub routes Beach Party tab items to Wild money / wild-wednesday', async ({ page }) => {
+  await fakeOwnerSession(page);
+  await page.goto('/camp-hub/?location=portugal', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => { try { return typeof buildPaidItemRevenueEntry === 'function'; } catch (_) { return false; } });
+  const result = await page.evaluate(() => {
+    const guest = { id: 'g1', name: 'Test Guest' };
+    const wild = buildPaidItemRevenueEntry(guest, { id: 'i1', c: 'Tours', n: 'Beach Party', p: 10 }, { date: '2026-07-15' });
+    const tour = buildPaidItemRevenueEntry(guest, { id: 'i2', c: 'Tours', n: 'Lisbon Day Trip', p: 40 }, { date: '2026-07-15' });
+    return {
+      wildCat: wild.category, wildArea: wild.businessArea, wildLinked: wild.linkedItem,
+      wildPaidFrom: wild.paidFrom, wildAttr: wild.attributedLocation,
+      tourCat: tour.category, tourArea: tour.businessArea, tourAttr: tour.attributedLocation,
+      mapped: mapCampTabRevenueCategory({ c: 'Tours', n: 'Wild Wednesday ticket' }),
+    };
+  });
+  expect(result.wildCat).toBe('Wild money');
+  expect(result.wildArea).toBe('Wild');
+  expect(result.wildLinked).toBe('Beach Party');
+  expect(result.wildPaidFrom).toBe('wild-wednesday');
+  expect(result.wildAttr).toBe('wild-wednesday');
+  expect(result.tourCat).toBe('Tours');
+  expect(result.tourArea).toBe('Tours');
+  expect(result.tourAttr).toBe('');          // caller fills the camp slug later
+  expect(result.mapped).toBe('Wild money');
+});
+
 // Regression: location_menus dupes (non-atomic DELETE+INSERT race between
 // two browsers) made every POS item show 2-3 times with mixed stock
 // snapshots. normalizeMenu must collapse duplicates and backfill fields
@@ -1249,8 +1280,9 @@ test('hq: overview boots from one rollup request — grouped rows add up like th
         { month_key: '2026-08', location: 'Morocco',  direct: true,  total: 700,  net_amount: 700,  commission_amount: 0,   pax: 1, n: 2 },
       ],
       invoices: [
-        { month: '2026-09', location_slug: 'portugal', category_id: 'c-food', amount_eur: 300 },
-        { month: '2026-08', location_slug: 'general',  category_id: 'c-food', amount_eur: 100 },
+        { month: '2026-09', location_slug: 'portugal', category_id: 'c-food', amount_eur: 300, n: 4 },
+        { month: '2026-09', location_slug: 'general',  category_id: 'c-food', amount_eur: 120, n: 5 },
+        { month: '2026-08', location_slug: 'general',  category_id: 'c-food', amount_eur: 100, n: 2 },
       ],
       ledger: [
         { month: '2026-09', type: 'expense', attributed_location: 'morocco', location_id: null, source_kind: 'manual',     amount_eur: 50 },
@@ -1270,8 +1302,11 @@ test('hq: overview boots from one rollup request — grouped rows add up like th
     months: [...document.querySelectorAll('#ov_period option')].map(o => o.value),
     body: document.querySelector('#overviewBody').textContent,
   }));
-  // revenue 1000 + 400, no on-site revenue, local expenses 50, HQ 300 → +€1,050.00
-  expect(out.hero).toBe('+€1,050.00');
+  // revenue 1000 + 400, no on-site revenue, local expenses 50, HQ 300 + 120 → +€930.00
+  expect(out.hero).toBe('+€930.00');
+  // Counts are bookings / invoices, not grouped rows (9 Oct 2026: the KPI said "39 bookings" for 2,628).
+  expect(out.body).toContain('3 bookings · 100% ours');
+  expect(out.body).toContain('5 invoice(s)');
   expect(out.months).toEqual(['__all__', '2026-09', '2026-08']);
   expect(out.body).toContain('4 bookings');
   // One rollup call per render instead of paged table scans.
@@ -1760,4 +1795,39 @@ test('hq: Investments tab — only the shop, total cost with taxes, rent receive
   await page.waitForFunction(() => /already registered/.test(document.querySelector('#ivsToast')?.textContent || ''), null, { timeout: 5000 });
   expect(posted).toHaveLength(1);
   expect(errs).toEqual([]);
+});
+
+// Clientes tab: the same person (name ignoring case/accents, or same
+// email) is one client; camp entries count as visits but not as spend.
+test('surf-school: Clientes groups the same person and searches by email or ID', async ({ page }) => {
+  await fakeOwnerSession(page);
+  await page.goto('/surf-school/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof window.groupClients === 'function');
+  const r = await page.evaluate(() => {
+    const rows = [
+      { kind:'rental', student_name:'Lucy Smith', student_email:'Lucy@Mail.com', id_card_number:'P123', price_local:25, opened_at:'2026-10-10T10:00:00Z' },
+      { kind:'lesson', student_name:'lucy  smith', student_email:null, price_local:40, opened_at:'2026-10-12T10:00:00Z' },
+      { kind:'rental', student_name:'L. Smith', student_email:'lucy@mail.com', price_local:15, opened_at:'2026-10-13T10:00:00Z' },
+      { kind:'camp', student_name:'Luca Céillan', price_local:0, opened_at:'2026-10-01T10:00:00Z' },
+      { kind:'rental', student_name:'Luca Ceillan', price_local:20, opened_at:'2026-10-02T10:00:00Z' },
+    ];
+    const cs = window.groupClients(rows);
+    CLIENTS = cs;
+    const search = q => { document.getElementById('clientsSearch').value = q; return window.clientsFiltered().map(c => c.name); };
+    return {
+      n: cs.length,
+      lucy: cs.filter(c => /lucy/i.test(c.name)).map(c => ({ visits: c.visits.length, total: c.total, emails: [...c.emails].length })),
+      luca: cs.filter(c => /luca/i.test(c.name)).map(c => ({ visits: c.visits.length, total: c.total })),
+      byId: search('p123'), byEmail: search('LUCY@mail'), byAccent: search('ceillan'),
+      html: (search(''), window.renderClients(), document.getElementById('clientsBox').innerText),
+    };
+  });
+  expect(r.n).toBe(2);
+  expect(r.lucy).toEqual([{ visits: 3, total: 80, emails: 1 }]);
+  expect(r.luca).toEqual([{ visits: 2, total: 20 }]);
+  expect(r.byId).toEqual(['Lucy Smith']);
+  expect(r.byEmail).toEqual(['Lucy Smith']);
+  expect(r.byAccent.length).toBe(1);
+  expect(r.html).toContain('2 clientes · 1 com email');
+  expect(r.html).toContain('Lucy@Mail.com');
 });

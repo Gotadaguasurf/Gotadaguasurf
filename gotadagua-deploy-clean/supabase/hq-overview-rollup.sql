@@ -28,9 +28,9 @@ language sql stable security invoker set search_path = public as $$
       ) b),
     'invoices', (
       select coalesce(jsonb_agg(jsonb_build_object(
-        'month', i.month, 'location_slug', i.location_slug, 'category_id', i.category_id, 'amount_eur', i.amount_eur)), '[]'::jsonb)
+        'month', i.month, 'location_slug', i.location_slug, 'category_id', i.category_id, 'amount_eur', i.amount_eur, 'n', i.n)), '[]'::jsonb)
       from (
-        select to_char(invoice_date, 'YYYY-MM') as month, location_slug, category_id, sum(coalesce(amount_eur, 0)) as amount_eur
+        select to_char(invoice_date, 'YYYY-MM') as month, location_slug, category_id, sum(coalesce(amount_eur, 0)) as amount_eur, count(*) as n
           from hq_invoices
          where deleted_at is null
          group by 1, 2, 3

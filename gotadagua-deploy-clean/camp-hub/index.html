@@ -1568,8 +1568,8 @@ const TRANSPORT_TOUR_COST_MAP={
 };
 const TRANSPORT_REVENUE_CATS=TRANSPORT_LINKED_ITEMS.slice();
 const TOUR_REVENUE_CATS=TOUR_MENU_ITEMS.map(item=>item.n);
-const REVENUE_CATS=['Drinks','Merchandise','Tours','Transport','Other Revenue'];
-const AREA_ORDER=['Food','Bar','Transport','Utilities','Laundry','Salaries','Merch','Tours','General'];
+const REVENUE_CATS=['Drinks','Merchandise','Tours','Transport','Wild money','Other Revenue'];
+const AREA_ORDER=['Food','Bar','Transport','Utilities','Laundry','Salaries','Merch','Tours','Wild','General'];
 // Operational payment channels for expenses. All three deduct from
 // the camp's operating balance (money sent by HQ + revenue collected).
 // They differ only in HOW the money left the operating account:
@@ -1590,6 +1590,11 @@ const AREA_CONFIG={
   Salaries:{expenseCats:['Salary'],incomeCats:[],linkedItems:[]},
   Merch:{expenseCats:['Merchandising'],incomeCats:['Merchandise'],linkedItems:MENU.Merch.map(i=>i.n)},
   Tours:{expenseCats:['Tours','Activities'],incomeCats:TOUR_REVENUE_CATS,linkedItems:MENU.Tours.map(i=>i.n)},
+  // Wild Wednesday party tickets sold on a guest's tab ("Beach Party"). The
+  // money is the party's, not the camp's — Miguel, 20 Oct 2026: «não como
+  // tour mas como Wild money». Rows carry attributed_location =
+  // 'wild-wednesday' so HQ books them under the Wild location.
+  Wild:{expenseCats:['Wild'],incomeCats:['Wild money'],linkedItems:['Beach Party']},
   General:{expenseCats:['Marketing','Other'],incomeCats:['Other Revenue'],linkedItems:[]}
 };
 
@@ -1709,6 +1714,7 @@ function inferArea(type,category,linkedItem=''){
     const revenueName=linkedItem||category;
     if(category==='Drinks') return 'Bar';
     if(category==='Merchandise') return 'Merch';
+    if(category==='Wild money') return 'Wild';
     if(isTransportRevenueName(revenueName)) return 'Transport';
     if(isTourRevenueName(revenueName)||category==='Tours') return 'Tours';
     return 'General';
@@ -4737,7 +4743,19 @@ async function removeOrphanedClosedWeekEntries(history){
   renderExpenses();renderOverview();renderWeeklyPL();
 }
 
+// Wild Wednesday tickets on the camp tab. Matched by name so a renamed
+// menu slot ("Beach Party", "Wild Wednesday ticket"…) still routes right.
+const WILD_LOCATION_SLUG='wild-wednesday';
+function isWildPartyItem(item){
+  return /beach\s*party|wild\s*wed/i.test(String(item?.n||''));
+}
+// paid_from / attributed_location for a camp-tab revenue row: Wild money
+// belongs to the Wild Wednesday location, everything else to this camp.
+function campTabRevenueAttribution(category){
+  return category==='Wild money' ? {paidFrom:WILD_LOCATION_SLUG, attributedLocation:WILD_LOCATION_SLUG} : {};
+}
 function mapCampTabRevenueCategory(item){
+  if(isWildPartyItem(item)) return 'Wild money';
   if(item.c==='Drinks') return 'Drinks';
   if(item.c==='Merch') return 'Merchandise';
   // Diploria (Portugal boardshorts) IS merchandise — same revenue bucket
@@ -4761,7 +4779,7 @@ function buildClosedWeekRevenueEntries(wk){
   const grouped={};
   paidItems.forEach(item=>{
     const category=mapCampTabRevenueCategory(item);
-    const linkedItem=item.c==='Tours'?item.n:'';
+    const linkedItem=(item.c==='Tours'||category==='Wild money')?item.n:'';
     // ID-stability trick: the legacy code used the tour name as the
     // category, so existing campclose_* ids look like
     // `campclose_<wk>_Ice_Bath_Ice_Bath`. We keep generating the SAME
@@ -4789,7 +4807,8 @@ function buildClosedWeekRevenueEntries(wk){
     sourceKind:'camp_tab',
     currency:LOCAL_CURRENCY||'LKR',
     fxRate:getBestFxRateForDate(revenueDate),
-    amountLocal:Number(group.total.toFixed(2))
+    amountLocal:Number(group.total.toFixed(2)),
+    ...campTabRevenueAttribution(group.category)
   }));
 }
 
@@ -4817,7 +4836,7 @@ function buildPaidItemRevenueEntry(guest, item, opts={}){
   if(!(amount>0)) return null;
   const revenueDate = (opts.date && String(opts.date).slice(0,10)) || today();
   const category = mapCampTabRevenueCategory(item);
-  const linkedItem = item.c === 'Tours' ? (item.n || '') : '';
+  const linkedItem = (item.c === 'Tours' || category === 'Wild money') ? (item.n || '') : '';
   const guestKey = String(guest.id || guest.name || 'guest').replace(/\s+/g,'_');
   const itemKey  = String(item.id || item.n || 'item').replace(/\s+/g,'_');
   return normalizeLedgerEntry({
@@ -4837,7 +4856,8 @@ function buildPaidItemRevenueEntry(guest, item, opts={}){
     sourceKind: 'camp_tab_per_item',
     currency: LOCAL_CURRENCY || 'LKR',
     fxRate: getBestFxRateForDate(revenueDate),
-    amountLocal: Number(amount.toFixed(2))
+    amountLocal: Number(amount.toFixed(2)),
+    ...campTabRevenueAttribution(category)
   });
 }
 
@@ -4849,7 +4869,7 @@ function buildPaidGuestRevenueEntries(guest, opts={}){
   const grouped = {};
   paidItems.forEach(item => {
     const category = mapCampTabRevenueCategory(item);
-    const linkedItem = item.c === 'Tours' ? item.n : '';
+    const linkedItem = (item.c === 'Tours' || category === 'Wild money') ? item.n : '';
     // Same id-stability trick as closed-week revenue — use the legacy
     // tour-name-as-category seed so we never collide with the weekly
     // close path's ids.
@@ -4876,7 +4896,8 @@ function buildPaidGuestRevenueEntries(guest, opts={}){
     sourceKind: 'camp_tab_per_guest',
     currency: LOCAL_CURRENCY || 'LKR',
     fxRate: getBestFxRateForDate(revenueDate),
-    amountLocal: Number(group.total.toFixed(2))
+    amountLocal: Number(group.total.toFixed(2)),
+    ...campTabRevenueAttribution(group.category)
   }));
 }
 

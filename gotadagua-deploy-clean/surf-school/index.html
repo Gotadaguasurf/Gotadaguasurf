@@ -249,6 +249,7 @@ main{padding:16px;max-width:640px;margin:0 auto}
   <button class="tabbtn" data-page="camp" onclick="showPage('camp')">🏕 Camp <span class="badge" id="campBadge">0</span></button>
   <button class="tabbtn" data-page="history" onclick="showPage('history')">History</button>
   <button class="tabbtn" data-page="sales" id="salesTabBtn" onclick="showPage('sales')" style="display:none">💶 Vendas</button>
+  <button class="tabbtn" data-page="clients" id="clientsTabBtn" onclick="showPage('clients')" style="display:none">👥 Clientes</button>
 </nav>
 
 <main id="main">
@@ -498,6 +499,18 @@ main{padding:16px;max-width:640px;margin:0 auto}
     </div>
     <div id="salesBox"><div class="empty"><div class="empty-icon">⏳</div>Loading…</div></div>
   </div>
+
+  <!-- ══════════════════ CLIENTES ══════════════════
+       Todos os clientes desta escola, de sempre (não só os 500 do
+       History): nome, email, ID, visitas e quanto gastaram. Tem números
+       de ID, por isso só gestores/donos vêem este separador. -->
+  <div class="page" id="page-clients">
+    <div class="filter-row" style="align-items:center">
+      <input type="search" id="clientsSearch" placeholder="Procurar nome, email ou ID…" oninput="renderClients()" autocomplete="off" style="flex:1;min-width:0;padding:9px 12px;border:1px solid var(--border);border-radius:10px;font:inherit;font-size:14px">
+      <button class="btn-sm" type="button" onclick="exportClientsCsv()">⬇ CSV</button>
+    </div>
+    <div id="clientsBox"><div class="empty"><div class="empty-icon">⏳</div>Loading…</div></div>
+  </div>
 </main>
 
 <div class="toast-wrap"><div class="toast" id="toast"></div></div>
@@ -589,6 +602,7 @@ async function boot(){
   // Sales commissions are pay information: the Vendas tab exists only
   // for whoever can also edit History (owners and can_edit managers).
   if (CAN_EDIT_HISTORY) { const st = document.getElementById('salesTabBtn'); if (st) st.style.display = ''; }
+  if (CAN_EDIT_HISTORY) { const ct = document.getElementById('clientsTabBtn'); if (ct) ct.style.display = ''; }
   // Default the "Date of activity" + "Start time" fields to now so staff
   // usually just tap through them. Uses LOCAL clock so a 14:30 pick means
   // 14:30 in the manager's timezone.
@@ -1051,6 +1065,7 @@ function renderOpen(){
         <div class="rr-time">${timeAgo}</div>
       </div>
       <div class="rr-item">${escapeHtml(r.item_name)}${r.duration?` · ${escapeHtml(r.duration)}`:''}</div>
+      ${r.student_email ? `<div class="rr-item">✉️ <a href="mailto:${escapeAttr(r.student_email)}" style="color:var(--ocean)">${escapeHtml(r.student_email)}</a></div>` : ''}
       <div class="rr-meta">
         <span>Given by <strong>${escapeHtml(staff)}</strong></span>
         ${r.id_card_number?`<span>ID ${escapeHtml(r.id_card_number)}</span>`:''}
@@ -1238,6 +1253,100 @@ function exportSalesCsv(){
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
+// ── Clientes ─────────────────────────────────────────────────────
+// Lê todas as entradas da escola (paginado) e junta por pessoa: o mesmo
+// nome (sem acentos/maiúsculas) ou o mesmo email é o mesmo cliente.
+let CLIENTS = [];
+async function loadClients(){
+  const box = document.getElementById('clientsBox'); if (!box) return;
+  if (!CAN_EDIT_HISTORY) { box.innerHTML = '<div class="empty">Sem acesso.</div>'; return; }
+  box.innerHTML = '<div class="empty"><div class="empty-icon">⏳</div>Loading…</div>';
+  let all = [], start = 0;
+  for (;;) {
+    const { data, error } = await sb.from('surf_school_rentals')
+      .select('id, kind, student_name, student_email, id_card_number, customer_type, item_name, items, qty, price_local, currency, payment_method, opened_at')
+      .eq('location_id', LOCATION_ID)
+      .order('opened_at', { ascending:false }).range(start, start + 999);
+    if (error) { box.innerHTML = `<div class="empty">Falhou: ${escapeHtml(error.message)}</div>`; return; }
+    all = all.concat(data || []);
+    if (!data || data.length < 1000) break;
+    start += 1000;
+  }
+  CLIENTS = groupClients(all);
+  renderClients();
+}
+function clientKey(name){
+  return String(name || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+function groupClients(rows){
+  const byKey = new Map(), byEmail = new Map(), out = [];
+  rows.forEach(r => {
+    const email = String(r.student_email || '').trim().toLowerCase();
+    const nk = clientKey(r.student_name);
+    if (!nk && !email) return;
+    let c = (email && byEmail.get(email)) || byKey.get(nk);
+    if (!c) {
+      c = { name: String(r.student_name || '').trim() || email, emails: new Set(), ids: new Set(), types: new Set(), visits: [], total: 0, last: r.opened_at, first: r.opened_at };
+      out.push(c);
+    }
+    if (nk && !byKey.has(nk)) byKey.set(nk, c);
+    if (email) { if (![...c.emails].some(e => e.toLowerCase() === email)) c.emails.add(String(r.student_email).trim()); byEmail.set(email, c); }
+    if (r.id_card_number) c.ids.add(String(r.id_card_number).trim());
+    if (r.customer_type) c.types.add(r.customer_type);
+    c.visits.push(r);
+    if (r.kind !== 'camp') c.total += Number(r.price_local || 0);
+    if (String(r.opened_at) > String(c.last)) c.last = r.opened_at;
+    if (String(r.opened_at) < String(c.first)) c.first = r.opened_at;
+  });
+  return out.sort((a, b) => String(b.last).localeCompare(String(a.last)));
+}
+function clientsFiltered(){
+  const q = clientKey(document.getElementById('clientsSearch')?.value || '');
+  if (!q) return CLIENTS;
+  return CLIENTS.filter(c => clientKey(`${c.name} ${[...c.emails].join(' ')} ${[...c.ids].join(' ')}`).includes(q));
+}
+function renderClients(){
+  const box = document.getElementById('clientsBox'); if (!box) return;
+  const list = clientsFiltered();
+  if (!list.length) { box.innerHTML = `<div class="empty"><div class="empty-icon">👥</div>${CLIENTS.length ? 'Ninguém com esse nome, email ou ID.' : 'Ainda sem clientes.'}</div>`; return; }
+  const eur = n => '€' + Number(n || 0).toFixed(0);
+  const day = iso => new Date(iso).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' });
+  const withEmail = list.filter(c => c.emails.size).length;
+  box.innerHTML = `<div style="font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:700;margin:2px 0 8px">${list.length} cliente${list.length===1?'':'s'} · ${withEmail} com email</div>` +
+    list.slice(0, 300).map(c => `<details class="rental-row returned" style="cursor:pointer">
+      <summary style="list-style:none">
+        <div class="rr-top">
+          <div class="rr-name">${escapeHtml(c.name)}${[...c.types].map(t => ` <span class="chip" style="background:var(--foam);color:var(--ocean)">${escapeHtml(t)}</span>`).join('')}</div>
+          <div class="rr-time">${day(c.last)}</div>
+        </div>
+        ${[...c.emails].map(e => `<div class="rr-item">✉️ <a href="mailto:${escapeAttr(e)}" style="color:var(--ocean)" onclick="event.stopPropagation()">${escapeHtml(e)}</a></div>`).join('') || '<div class="rr-item" style="color:var(--muted)">Sem email</div>'}
+        <div class="rr-meta">
+          ${c.ids.size ? `<span>ID ${escapeHtml([...c.ids].join(', '))}</span>` : ''}
+          <span>${c.visits.length} visita${c.visits.length===1?'':'s'}${c.visits.length > 1 ? ` · desde ${day(c.first)}` : ''}</span>
+          <span class="rr-price">${eur(c.total)}</span>
+        </div>
+      </summary>
+      <table style="width:100%;font-size:12px;border-collapse:collapse;margin-top:8px">
+        ${c.visits.map(r => `<tr style="border-top:1px dashed var(--border)">
+          <td style="padding:4px 0;color:var(--muted);white-space:nowrap">${day(r.opened_at)}</td>
+          <td style="padding:4px 6px">${escapeHtml(r.kind === 'camp' ? 'Camp' : (r.item_name || r.kind || ''))}</td>
+          <td style="padding:4px 6px;color:var(--muted)">${escapeHtml(r.kind === 'camp' ? '' : (r.payment_method || ''))}</td>
+          <td style="padding:4px 0;text-align:right;white-space:nowrap">${r.kind === 'camp' ? '—' : eur(r.price_local)}</td>
+        </tr>`).join('')}
+      </table>
+    </details>`).join('') + (list.length > 300 ? `<div class="empty" style="border:none;padding:14px 8px;font-size:11px">A mostrar 300 de ${list.length}. Procura pelo nome para ver os outros.</div>` : '');
+}
+function exportClientsCsv(){
+  const list = clientsFiltered();
+  if (!list.length) { toast('Sem clientes para exportar', 'err'); return; }
+  const q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+  const lines = [['Nome','Email','ID','Tipo','Visitas','Primeira','Última','Total EUR'].map(q).join(';')];
+  list.forEach(c => lines.push([c.name, [...c.emails].join(', '), [...c.ids].join(', '), [...c.types].join(', '), c.visits.length, String(c.first).slice(0,10), String(c.last).slice(0,10), c.total.toFixed(2)].map(q).join(';')));
+  const blob = new Blob(['\ufeff' + lines.join('\n')], { type:'text/csv;charset=utf-8' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'clientes-surf-school.csv'; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
 function renderHistory(){
   const kindF = document.getElementById('filt_kind')?.value || 'all';
   const periodF = document.getElementById('filt_period')?.value || 'week';
@@ -1290,6 +1399,7 @@ function renderHistory(){
         <div class="rr-time">${dateLbl}</div>
       </div>
       <div class="rr-item">${isCamp ? `${Number(r.qty)||1} board${(Number(r.qty)||1)===1?'':'s'} · free (camp package)` : `${escapeHtml(r.item_name)}${r.qty!=1?` · ${r.qty}x`:''} · ${escapeHtml(r.payment_method||'—')}`}</div>
+      ${r.student_email ? `<div class="rr-item">✉️ <a href="mailto:${escapeAttr(r.student_email)}" style="color:var(--ocean)">${escapeHtml(r.student_email)}</a></div>` : ''}
       <div class="rr-meta">
         <span>By <strong>${escapeHtml(staff)}</strong>${PROFILE_EMAILS.get(r.opened_by)?` <span style="color:var(--muted)">· ${escapeHtml(PROFILE_EMAILS.get(r.opened_by))}</span>`:''}</span>
         ${closedInfo?`<span>${closedInfo}</span>`:''}
@@ -1679,6 +1789,7 @@ function showPage(name){
   if (name === 'open')    renderOpen();
   if (name === 'camp')    renderCamp();
   if (name === 'sales')   loadSales();
+  if (name === 'clients') loadClients();
 }
 function clearForm(){
   document.getElementById('fld_name').value = '';

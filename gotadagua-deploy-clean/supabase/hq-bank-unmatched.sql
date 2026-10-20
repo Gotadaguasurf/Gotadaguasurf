@@ -25,6 +25,11 @@ language sql stable security definer set search_path = public as $$
      and b.movement_date between p_from and p_to
      and b.hq_invoice_id is null and b.internal_transfer_id is null
      and b.description not ilike 'LOTE TRF CRED SEPA%'
+     -- 20 Out 2026: CGD movements marked as an asset or financing (shop
+     -- purchase, IMT, van, extraordinary amortisation) are not expenses.
+     and coalesce(b.notes, '') not like '[ativo%'
+     and coalesce(b.notes, '') not like '[financiamento%'
+     and coalesce(b.notes, '') not like '[devolução%'
      and not exists (select 1 from inv i where abs(i.v - abs(b.amount)) < 0.011
                        and i.invoice_date between b.movement_date - 15 and b.movement_date + 5)
      and not exists (select 1 from grp g where abs(g.v - abs(b.amount)) < 0.011

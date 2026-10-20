@@ -4904,6 +4904,13 @@ let CONTACTS_OWNER_SCOPE = localStorage.getItem('crmContactsOwnerScope') || 'all
   document.getElementById(id).addEventListener('input', renderContacts);
 });
 
+// The HTML marks "All" active; the filter itself comes back from
+// localStorage, so sync the chips or the page shows "All" while still
+// filtering by the last preset (14 Oct 2026: a search found nothing
+// because "First touch" was silently on).
+if(!document.querySelector(`#presetChips .chip[data-preset="${CURRENT_PRESET}"]`)) CURRENT_PRESET = 'all';
+document.querySelectorAll('#presetChips .chip').forEach(c => c.classList.toggle('active', c.dataset.preset===CURRENT_PRESET));
+
 document.querySelectorAll('#presetChips .chip').forEach(chip => {
   chip.addEventListener('click', () => {
     CURRENT_PRESET = chip.dataset.preset;

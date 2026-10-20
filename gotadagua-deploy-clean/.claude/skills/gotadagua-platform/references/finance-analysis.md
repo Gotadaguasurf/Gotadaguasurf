@@ -449,3 +449,23 @@ flagged "check who collected". Surfwise Travel, The Surf Tribe and Sant Jordi mi
 - Regenerate the Water index with `references/contabilista_indice.py <year> <out.xlsx>` and replace the file in the accountant folder. Formulas are computed when the file is opened in Google Sheets or Excel.
 - Invoices not yet debited from direct-debit suppliers: file the document, create the row only when the debit shows up. Cancelled invoices ("Anulado") are never booked.
 - Order confirmations, delivery notes, supplier statements and payment notices are not invoices: they go to `Outros (não são faturas)` inside the month folder.
+
+## Supplier rulings from Miguel (13 Oct 2026) — apply without asking
+
+| Supplier / pattern | Category | Location |
+|---|---|---|
+| `rci portugal (leasing)` (RCI / Mobilize / RCI Connect, NIF 513961194) — company cars the partners drive for work; also the 15,50 € "Identificação de Locatário" fee (a fine/toll is coming) | Transport | general |
+| Ryanair | Work Trips | morocco (always) |
+| Fidelidade (also debited monthly on CGD) | Insurances | general |
+| Barão e Costa (NIF 500590737, building materials) | Setup | portugal |
+| Lebowski Budapest (trade fair) and other trade fairs abroad | Work Trips | general |
+| Influencer / video content for the Morocco launch (Nir Peper, Pinto Geada – Creativity) | Services | morocco |
+| AWSD Sports Equipment (surfboards) | Setup | morocco |
+| Condomínio Av. 1º Maio 48 (investment shop) | Rent | general |
+| Motorway tolls (Brisa, Auto-Estradas do Atlântico, Via Verde, Pap Jardim Falésia) | Transport | as booked |
+| Hardware / bazaar shops (Abundante, Tulipa Surpresa, Ferragens Avenida) | Setup | as booked |
+| Staff food & drink on tours with guests (e.g. DCEA, Heineken Lisboa) | Food | portugal |
+| Stray Santander fees (e.g. urgent SEPA transfer) | Services, company `santander (comissões)` | general |
+| Meal cards `cartao refeicao — <name>` | Benefits (never Salary) | the person's: HQ staff general; Maxime, Jenny portugal |
+
+`needs_review` means **category or location unknown**, nothing else — a missing PDF or bank debit lives in the note and in the Month close tab.

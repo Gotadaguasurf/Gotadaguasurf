@@ -632,6 +632,8 @@ async function renderOverview(){
   const isDirect = (b) => !b.partner_name || b.booking_type === 'direct';
   const partnerBks = bkRows.filter(b => !isDirect(b));
   const directBks  = bkRows.filter(isDirect);
+  // Each rollup row is a group (month × location × direct); n is how many bookings it holds.
+  const directCount = directBks.reduce((s, b) => s + Number(b.n || 1), 0);
 
   const partnerGross = partnerBks.reduce((s,b) => s + Number(b.total||0), 0);
   const partnerNet   = partnerBks.reduce((s,b) => s + Number(b.net_amount ?? b.total ?? 0), 0);
@@ -818,7 +820,7 @@ async function renderOverview(){
       <div class="summary-box pos">
         <div class="summary-lbl">Direct Bookings</div>
         <div class="summary-val">${eur(directGross)}</div>
-        <div class="hint" style="margin-top:4px">${directBks.length} booking${directBks.length===1?'':'s'} · 100% ours</div>
+        <div class="hint" style="margin-top:4px">${directCount} booking${directCount===1?'':'s'} · 100% ours</div>
       </div>
       <div class="summary-box pos">
         <div class="summary-lbl">On-site revenue (camps)</div>
@@ -842,7 +844,7 @@ async function renderOverview(){
       <div class="summary-box neutral" style="cursor:pointer" onclick="switchTab('invoices')">
         <div class="summary-lbl">HQ invoices · General</div>
         <div class="summary-val">${eur(hqGeneral)}</div>
-        <div class="hint" style="margin-top:4px">${invBusiness.filter(r => r.location_slug === 'general').length} invoice(s)</div>
+        <div class="hint" style="margin-top:4px">${invBusiness.filter(r => r.location_slug === 'general').reduce((s, r) => s + Number(r.n || 1), 0)} invoice(s)</div>
       </div>
       <div class="summary-box neutral" style="cursor:pointer" onclick="switchTab('invoices')">
         <div class="summary-lbl">HQ invoices · Attributed</div>
