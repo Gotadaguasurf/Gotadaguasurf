@@ -334,7 +334,7 @@ td.loc-name{font-weight:700;color:var(--navy)}
       <button class="nav-tab" data-tab="invoices" onclick="switchTab('invoices')">Expenses</button>
       <button class="nav-tab" data-tab="cashflow" onclick="switchTab('cashflow')">Cash flow</button>
       <button class="nav-tab" data-tab="pnl" onclick="switchTab('pnl')">P&amp;L Report</button>
-      <button class="nav-tab" data-tab="wild" onclick="switchTab('wild')">Wild</button>
+      <button class="nav-tab" data-tab="wild" onclick="switchTab('wild')">Businesses</button>
       <button class="nav-tab" data-tab="fecho" onclick="switchTab('fecho')">Month close</button>
       <button class="nav-tab" data-tab="invest" onclick="switchTab('invest')">Investments</button>
     </div>
@@ -429,6 +429,7 @@ td.loc-name{font-weight:700;color:var(--navy)}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.4"></script>
 <script src="/supabase-config.js"></script>
 <script src="/owner-config.js"></script>
+<script src="/lib/business-pnl.js"></script>
 <script src="/hq/accountant-excel.js"></script>
 <script>
 const cfg = window.__SUPABASE_CONFIG || {};
@@ -442,6 +443,7 @@ const HQ_LOCATIONS = [
   {slug:'junior-camp',    label:'Junior Camp'},
   {slug:'kids-camp',      label:'Kids Camp'},
   {slug:'wild-wednesday', label:'Wild Wednesday'},
+  {slug:'the-suk',        label:'The Suk'},
   {slug:'morocco',        label:'Morocco'},
   {slug:'sri-lanka',      label:'Sri Lanka'},
   {slug:'general',        label:'General (HQ)'},
@@ -455,6 +457,7 @@ const HQ_COMPANIES = [
   {slug:'water-movements', label:'Water Movements Lda', covers:['portugal','surf-school','junior-camp','kids-camp','wild-wednesday','general']},
   {slug:'mgrp-sarl',       label:'MGRP Sarl',           covers:['morocco']},
   {slug:'wave-movements',  label:'Wave Movements',      covers:['sri-lanka']},
+  {slug:'manjar',          label:'Manjar Lda',          covers:['the-suk']},
 ];
 const payingCompanyFor = (locationSlug) => {
   const c = HQ_COMPANIES.find(x => x.covers.includes(locationSlug));
@@ -5233,155 +5236,67 @@ async function renderPnl(){
   __pnlLastGrid = {period, per, tot, cols};
 }
 // ═══════════════════════════════════════════════════════════════════
-//   TAB — WILD WEDNESDAY  (the party as its own business, like Max's Excel)
-//   Everything comes from ledger_entries of the wild-wednesday location:
-//   HQ invoices are mirrored there (source_kind hq_invoice) and the cash
-//   side (tickets, door, Shotgun, cash-paid DJs, commissions) is manual.
-//   Categories: «Wild · Gota/Pure/Surfin/Porta/Online» (revenue) and
-//   «Wild · DJs/Som/luz/Foto/vídeo/Marketing/Porta/Comissões/Outros».
+//   TAB — BUSINESSES  (Wild Wednesday, The Suk… each its own P&L, like
+//   Max's Wild Excel: revenue by source, costs by rubric, commissions
+//   after the profit). Rendering lives in /lib/business-pnl.js and is
+//   shared with the business pages (/wild/, /suk/).
 // ═══════════════════════════════════════════════════════════════════
-const WILD_REV_ORDER = ['Wild · Gota','Wild · Pure','Wild · Surfin','Wild · Porta','Wild · Online'];
-const WILD_EXP_ORDER = ['Wild · DJs','Wild · Som/luz','Wild · Foto/vídeo','Wild · Marketing','Wild · Porta','Wild · Outros','Wild · Comissões'];
-const WILD_COMMISSION_CAT = 'Wild · Comissões';
-let __wildRows = null;
+const BUSINESSES = [
+  { slug:'wild-wednesday', label:'Wild Wednesday', dayLabel:'Night', snapWednesday:true,
+    revOrder:['Wild · Gota','Wild · Pure','Wild · Surfin','Wild · Porta','Wild · Online'],
+    expOrder:['Wild · DJs','Wild · Som/luz','Wild · Foto/vídeo','Wild · Marketing','Wild · Porta','Wild · Outros','Wild · Comissões'],
+    footnote:'Cash costs = DJs, door, photo/video paid from the door money. Sound/light, invoiced DJs, video and Meta ads are paid by bank and carry the payment date, so they only show by month and by rubric.' },
+  { slug:'the-suk', label:'The Suk', dayLabel:'Day', snapWednesday:false, revOrder:[], expOrder:[] },
+];
+let __bzRows = {};   // slug → ledger rows
 
 function wildTabHtml(){
   return `
     <div class="card">
       <div class="card-hdr" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
         <div>
-          <div class="card-title">Wild Wednesday</div>
-          <div class="card-hint">Revenue by source (Gota tickets from the camp tab, Pure, Surfin, door, Shotgun) vs costs by rubric — same lines as the Wild Excel. Commissions (Pure, Max) are shown after the profit.</div>
+          <div class="card-title">Businesses</div>
+          <div class="card-hint">Each business as its own P&L: revenue by source, costs by rubric, commissions after the profit — the same lines as the Wild Excel. Same numbers as the business pages.</div>
         </div>
-        <label class="period-picker" title="Season">
-          <span class="period-picker-lbl">Season</span>
-          <select id="wild_year" onchange="renderWild()"></select>
-        </label>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <label class="period-picker" title="Business"><span class="period-picker-lbl">Business</span>
+            <select id="bz_loc" onchange="renderWild(true)">${BUSINESSES.map(b => `<option value="${b.slug}">${b.label}</option>`).join('')}</select></label>
+          <label class="period-picker" title="Season"><span class="period-picker-lbl">Season</span><select id="bz_year" onchange="renderWild()"></select></label>
+        </div>
       </div>
-      <div class="card-body" id="wildBody" style="padding:0"><div class="loading">Loading…</div></div>
+      <div class="card-body" id="bzBody" style="padding:0"><div class="loading">Loading…</div></div>
     </div>`;
 }
 
-// The night a row belongs to: manual rows are dated on the Wednesday; camp-tab
-// tickets are marked paid the day(s) after, so snap back to the previous Wednesday.
-function wildNightOf(dateStr, sourceKind){
-  const d = new Date(dateStr + 'T12:00:00');
-  if (isNaN(d)) return String(dateStr || '').slice(0,10);
-  if (sourceKind === 'camp_tab_per_item' || sourceKind === 'camp_tab_per_guest' || sourceKind === 'camp_tab') {
-    const back = (d.getDay() + 4) % 7;          // Wed=3 → 0, Thu → 1, … Tue → 6
-    d.setDate(d.getDate() - back);
-  }
-  return d.toISOString().slice(0,10);
-}
-
-async function loadWildRows(){
-  const loc = LOCATIONS.find(l => l.slug === 'wild-wednesday');
+async function loadBusinessRows(slug){
+  const loc = LOCATIONS.find(l => l.slug === slug);
   if (!loc) return [];
   return fetchAllPaged(() => sb.from('ledger_entries')
-    .select('type, category, entry_date, amount_eur, source_kind, payment_method, description')
+    .select('type, category, entry_date, amount_eur, source_kind, payment_method, qty')
     .eq('location_id', loc.id)
     .order('entry_date', {ascending:true}));
 }
 
-function wildSummary(rows){
-  const sum = (arr) => arr.reduce((s, r) => s + Number(r.amount_eur || 0), 0);
-  const rev = rows.filter(r => r.type === 'revenue');
-  const exp = rows.filter(r => r.type === 'expense');
-  const byCat = (arr) => { const m = {}; arr.forEach(r => { const k = r.category || '—'; m[k] = (m[k] || 0) + Number(r.amount_eur || 0); }); return m; };
-  const revCat = byCat(rev), expCat = byCat(exp);
-  const commissions = expCat[WILD_COMMISSION_CAT] || 0;
-  const revenue = sum(rev);
-  const costs = sum(exp) - commissions;
-  const nights = [...new Set(rev.map(r => wildNightOf(r.entry_date, r.source_kind)))].sort();
-  return { revenue, costs, commissions, profit: revenue - costs, after: revenue - costs - commissions, revCat, expCat, nights, rev, exp };
-}
-
-async function renderWild(){
-  const body = $('wildBody');
+async function renderWild(changedBusiness){
+  const body = $('bzBody');
   if (!body) return;
-  if (!__wildRows) {
+  const slug = $('bz_loc')?.value || BUSINESSES[0].slug;
+  const biz = BUSINESSES.find(b => b.slug === slug) || BUSINESSES[0];
+  if (!__bzRows[slug]) {
     body.innerHTML = '<div class="loading">Loading…</div>';
-    try { __wildRows = await loadWildRows(); }
-    catch (e) { body.innerHTML = `<div class="hint" style="padding:18px 22px">Could not load the Wild ledger: ${e.message || e}</div>`; return; }
+    try { __bzRows[slug] = await loadBusinessRows(slug); }
+    catch (e) { body.innerHTML = `<div class="hint" style="padding:18px 22px">Could not load the ${biz.label} ledger: ${e.message || e}</div>`; return; }
   }
-  const years = [...new Set(__wildRows.map(r => String(r.entry_date || '').slice(0,4)))].filter(Boolean).sort().reverse();
-  const sel = $('wild_year');
-  if (sel && sel.options.length === 0) sel.innerHTML = years.map(y => `<option value="${y}">${y}</option>`).join('');
-  const year = sel?.value || years[0];
-  const rows = __wildRows.filter(r => String(r.entry_date || '').startsWith(year || ''));
-  if (!rows.length) {
-    body.innerHTML = `<div class="hint" style="padding:18px 22px">No Wild Wednesday rows yet${year ? ' for ' + year : ''}. The party's revenue is logged per night on the wild-wednesday location (Cash flow → Log manual revenue) and Beach Party tickets arrive from the Portugal camp tab.</div>`;
-    return;
-  }
-  const s = wildSummary(rows);
-  const pct = (v) => s.revenue ? (100 * v / s.revenue).toFixed(0) + ' %' : '—';
-  const money = (v) => v ? eur(v) : '<span style="color:var(--muted)">—</span>';
-  const catsIn = (order, map) => order.filter(c => map[c]).concat(Object.keys(map).filter(c => !order.includes(c)).sort());
-  const short = (c) => String(c).replace(/^Wild · /, '');
-  const perNight = s.nights.length ? s.revenue / s.nights.length : 0;
-
-  // ── Per night: revenue by source + cash-paid costs (bank-paid costs carry
-  //    the payment date, not the night, so they only appear by month).
-  const nightMap = {};
-  const night = (k) => nightMap[k] || (nightMap[k] = { rev:{}, cash:0, total:0 });
-  s.rev.forEach(r => { const n = night(wildNightOf(r.entry_date, r.source_kind)); n.rev[r.category] = (n.rev[r.category] || 0) + Number(r.amount_eur || 0); n.total += Number(r.amount_eur || 0); });
-  s.exp.filter(r => r.source_kind === 'manual' && r.category !== WILD_COMMISSION_CAT).forEach(r => { night(wildNightOf(r.entry_date, r.source_kind)).cash += Number(r.amount_eur || 0); });
-  const nightKeys = Object.keys(nightMap).sort();
-  const revCols = catsIn(WILD_REV_ORDER, s.revCat);
-
-  // ── Per month
-  const months = [...new Set(rows.map(r => String(r.entry_date).slice(0,7)))].sort();
-  const mSum = (m, type, pred = () => true) => rows.filter(r => r.type === type && String(r.entry_date).startsWith(m) && pred(r)).reduce((a, r) => a + Number(r.amount_eur || 0), 0);
-
-  body.innerHTML = `
-    <div class="hero-profit">
-      <div class="hero-lbl">Wild Wednesday ${year} · profit before commissions</div>
-      <div class="hero-val" style="font-size:38px;font-weight:800;color:${s.profit >= 0 ? '#7ee2a8' : '#ff9b8f'}">${eur(s.profit)}</div>
-      <div style="font-size:12px;color:#9fc3dd;margin-top:6px">${eur(s.revenue)} revenue − ${eur(s.costs)} costs · ${s.nights.length} night${s.nights.length === 1 ? '' : 's'} · ${eur(perNight)} per night</div>
-    </div>
-    <div class="summary-grid tight" style="margin-top:16px">
-      <div class="summary-box pos"><div class="summary-lbl">Revenue</div><div class="summary-val">${eur(s.revenue)}</div><div class="hint" style="margin-top:4px">tickets + door + Shotgun</div></div>
-      <div class="summary-box neg"><div class="summary-lbl">Costs</div><div class="summary-val">${eur(s.costs)}</div><div class="hint" style="margin-top:4px">${pct(s.costs)} of revenue</div></div>
-      <div class="summary-box neutral"><div class="summary-lbl">Commissions</div><div class="summary-val">${eur(s.commissions)}</div><div class="hint" style="margin-top:4px">Pure + Max</div></div>
-      <div class="summary-box ${s.after >= 0 ? 'pos' : 'neg'}"><div class="summary-lbl">Gota keeps</div><div class="summary-val">${eur(s.after)}</div><div class="hint" style="margin-top:4px">after commissions</div></div>
-    </div>
-    <div style="padding:0 22px 22px">
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:18px">
-        <div>
-          <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin:6px 0 8px">Revenue by source</div>
-          <table class="tbl" id="wildRevCats" style="width:100%"><tbody>
-            ${catsIn(WILD_REV_ORDER, s.revCat).map(c => `<tr><td>${short(c)}</td><td style="text-align:right;color:var(--green);font-weight:600">${eur(s.revCat[c])}</td><td style="text-align:right;color:var(--muted);width:56px">${pct(s.revCat[c])}</td></tr>`).join('')}
-            <tr style="border-top:2px solid var(--navy)"><td style="font-weight:800">Revenue</td><td style="text-align:right;font-weight:800;color:var(--green)">${eur(s.revenue)}</td><td></td></tr>
-          </tbody></table>
-        </div>
-        <div>
-          <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin:6px 0 8px">Costs by rubric</div>
-          <table class="tbl" id="wildExpCats" style="width:100%"><tbody>
-            ${catsIn(WILD_EXP_ORDER, s.expCat).filter(c => c !== WILD_COMMISSION_CAT).map(c => `<tr><td>${short(c)}</td><td style="text-align:right;font-weight:600">${eur(s.expCat[c])}</td><td style="text-align:right;color:var(--muted);width:56px">${pct(s.expCat[c])}</td></tr>`).join('')}
-            <tr style="border-top:2px solid var(--navy)"><td style="font-weight:800">Costs</td><td style="text-align:right;font-weight:800">${eur(s.costs)}</td><td style="text-align:right;color:var(--muted)">${pct(s.costs)}</td></tr>
-            <tr><td style="font-weight:800">Profit</td><td style="text-align:right;font-weight:800;color:${s.profit >= 0 ? 'var(--green)' : 'var(--red)'}">${eur(s.profit)}</td><td style="text-align:right;color:var(--muted)">${pct(s.profit)}</td></tr>
-            <tr><td>Commissions (Pure, Max)</td><td style="text-align:right;font-weight:600">${eur(s.commissions)}</td><td></td></tr>
-            <tr><td style="font-weight:800">Gota keeps</td><td style="text-align:right;font-weight:800;color:${s.after >= 0 ? 'var(--green)' : 'var(--red)'}">${eur(s.after)}</td><td style="text-align:right;color:var(--muted)">${pct(s.after)}</td></tr>
-          </tbody></table>
-        </div>
-      </div>
-
-      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin:22px 0 8px">By month</div>
-      <div style="overflow-x:auto"><table class="tbl" id="wildMonthly" style="min-width:520px"><thead><tr><th></th>${months.map(m => `<th style="text-align:right">${m}</th>`).join('')}<th style="text-align:right">Total</th></tr></thead><tbody>
-        <tr><td style="font-weight:600">Revenue</td>${months.map(m => `<td style="text-align:right;color:var(--green)">${money(mSum(m,'revenue'))}</td>`).join('')}<td style="text-align:right;font-weight:700;color:var(--green)">${eur(s.revenue)}</td></tr>
-        <tr><td style="font-weight:600">Costs</td>${months.map(m => `<td style="text-align:right">${money(mSum(m,'expense', r => r.category !== WILD_COMMISSION_CAT))}</td>`).join('')}<td style="text-align:right;font-weight:700">${eur(s.costs)}</td></tr>
-        <tr><td style="font-weight:600">Commissions</td>${months.map(m => `<td style="text-align:right">${money(mSum(m,'expense', r => r.category === WILD_COMMISSION_CAT))}</td>`).join('')}<td style="text-align:right;font-weight:700">${eur(s.commissions)}</td></tr>
-        <tr style="border-top:2px solid var(--navy)"><td style="font-weight:800">Result</td>${months.map(m => { const v = mSum(m,'revenue') - mSum(m,'expense'); return `<td style="text-align:right;font-weight:800;color:${v >= 0 ? 'var(--green)' : 'var(--red)'}">${eur(v)}</td>`; }).join('')}<td style="text-align:right;font-weight:800;color:${s.after >= 0 ? 'var(--green)' : 'var(--red)'}">${eur(s.after)}</td></tr>
-      </tbody></table></div>
-
-      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin:22px 0 8px">By night</div>
-      <div style="overflow-x:auto"><table class="tbl" id="wildNights" style="min-width:640px"><thead><tr><th>Night</th>${revCols.map(c => `<th style="text-align:right">${short(c)}</th>`).join('')}<th style="text-align:right">Revenue</th><th style="text-align:right">Cash costs</th></tr></thead><tbody>
-        ${nightKeys.map(k => { const n = nightMap[k]; return `<tr><td style="font-weight:600">${k}</td>${revCols.map(c => `<td style="text-align:right">${money(n.rev[c] || 0)}</td>`).join('')}<td style="text-align:right;font-weight:700;color:var(--green)">${eur(n.total)}</td><td style="text-align:right">${money(n.cash)}</td></tr>`; }).join('')}
-      </tbody></table></div>
-      <div class="hint" style="margin-top:8px">Cash costs = DJs, door, photo/video paid from the door money. Sound/light, invoiced DJs, video and Meta ads are paid by bank and carry the payment date, so they only show by month and by rubric.</div>
-    </div>`;
+  const rows = __bzRows[slug];
+  const years = [...new Set(rows.map(r => String(r.entry_date || '').slice(0,4)))].filter(Boolean).sort().reverse();
+  const sel = $('bz_year');
+  if (sel && (changedBusiness || !sel.options.length)) sel.innerHTML = years.map(y => `<option value="${y}">${y}</option>`).join('');
+  const year = sel?.value || years[0] || '';
+  BusinessPnl.render(body, rows.filter(r => String(r.entry_date || '').startsWith(year)), {
+    year, title: biz.label, dayLabel: biz.dayLabel, snapWednesday: biz.snapWednesday, revOrder: biz.revOrder, expOrder: biz.expOrder, footnote: biz.footnote,
+    emptyText: `No ${biz.label} rows yet${year ? ' for ' + year : ''}. ${slug === 'the-suk' ? 'The Suk is being set up (company Manjar Lda, location the-suk).' : 'Nights are closed on the business page (/wild/).'}`
+  });
 }
-
 function exportPnlCsv(){
   if (!__pnlAgg) return;
   const esc = v => { const s = String(v==null?'':v); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; };

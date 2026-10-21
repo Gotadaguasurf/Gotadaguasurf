@@ -709,6 +709,7 @@
             <a href="/camp-hub/"><span>Camp hub</span><small>Managers' float ledger</small></a>
             <a href="/prices/"><span>Prices</span><small>Catalog + packages</small></a>
             <a href="/surf-school/"><span>Surf School</span><small>Rentals + lessons</small></a>
+            <a href="/wild/"><span>Wild Wednesday</span><small>Fechar noite + época</small></a>
             <a href="/partners/"><span>Partners</span><small>Partner P&amp;L + statements</small></a>
             <a href="/crm/"><span>CRM</span><small>Outreach + pipeline</small></a>
           </nav>
@@ -737,6 +738,15 @@
             </div>
           </div>
           <div class="grid" id="campGrid"></div>
+        </div>
+
+        <div class="section">
+          <div class="section-head">
+            <div>
+              <div class="section-title">Businesses</div>
+            </div>
+          </div>
+          <div class="grid" id="businessGrid"></div>
         </div>
 
         <div class="section">
@@ -970,6 +980,37 @@
         href:'/camp-hub?location=surf-school',
         meta:[['Main use','Rentals + lessons'],['Currency','EUR']]
       },
+      // Businesses — the party and the restaurant are their own P&L, like a
+      // camp, with their own page. Access = the matching pill in Settings
+      // (workspaces row slug = location slug). Miguel, 21 Oct 2026.
+      {
+        key:'wild-wednesday',
+        type:'business',
+        title:'Wild Wednesday',
+        subtitle:'Costa da Caparica',
+        eyebrow:'Business',
+        copy:'Fechar a noite (bilhetes por camp, porta, Shotgun, custos em dinheiro) e ver a época, com as rubricas do Excel.',
+        status:'live',
+        statusLabel:'Live now',
+        icon:'wave',
+        action:'open',
+        href:'/wild/',
+        meta:[['Main use','Party P&L'],['Currency','EUR']]
+      },
+      {
+        key:'the-suk',
+        type:'business',
+        title:'The Suk',
+        subtitle:'Manjar · Costa da Caparica',
+        eyebrow:'Business',
+        copy:'O restaurante do Manjar. Fecho de dia e resultado — em preparação.',
+        status:'live',
+        statusLabel:'Setting up',
+        icon:'home',
+        action:'open',
+        href:'/suk/',
+        meta:[['Main use','Restaurant P&L'],['Currency','EUR']]
+      },
       {
         key:'prices-sri-lanka',
         type:'pricing',
@@ -1138,6 +1179,9 @@
       // unchanged. Only the label reads "Rentals" so it makes sense.
       { key:'surf-school',          label:'Surf School',          group:'Surf Camps' },
       { key:'surf-school-camp-tab', label:'Surf School · Rentals',group:'Surf Camps' },
+      // Businesses (own page each; slug = location slug = workspaces slug)
+      { key:'wild-wednesday',       label:'Wild Wednesday',       group:'Businesses' },
+      { key:'the-suk',              label:'The Suk',              group:'Businesses' },
       // Prices (Pricing Catalog per camp — Phase 4 access-control)
       { key:'prices-sri-lanka',   label:'Sri Lanka prices',    group:'Prices' },
       { key:'prices-morocco',     label:'Morocco prices',      group:'Prices' },
@@ -1527,6 +1571,8 @@
 
     function renderHub(){
       document.getElementById('campGrid').innerHTML = WORKSPACES.filter(x=>x.type==='camp').map(renderWorkspaceCard).join('');
+      const businessGrid = document.getElementById('businessGrid');
+      if (businessGrid) businessGrid.innerHTML = WORKSPACES.filter(x=>x.type==='business').map(renderWorkspaceCard).join('');
       // Pricing Catalog row — one card per camp. Lives between Surf Camps
       // and Management on the workspace home. Phase 1 is owner-only on
       // the prices/ page itself; cards remain visible to non-owners so

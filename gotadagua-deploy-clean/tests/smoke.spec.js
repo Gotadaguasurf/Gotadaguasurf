@@ -1749,10 +1749,65 @@ test('partners: month status survives a case-only duplicate partner name and the
   await page.screenshot({ path: process.env.PARTNERS_SHOT || 'test-results/partners-layout.png', fullPage: false });
 });
 
+// The Wild Wednesday business page (/wild/): closing a night writes one
+// ledger row per source and per cash cost, with the «Wild · …» categories
+// and qty = tickets; the Gota line is only the top-up over what the camp
+// tab already sold for that Wednesday. Re-saving a night replaces its rows.
+test('wild: close a night → ledger rows per source with ticket qty, Gota top-up over the camp tab', async ({ page }) => {
+  const W = 'wl-0000';
+  const posted = []; const deleted = [];
+  const ledger = [
+    { id: 't1', type: 'revenue', category: 'Wild · Gota', entry_date: '2026-07-16', amount_eur: 10, source_kind: 'camp_tab_per_item', payment_method: 'Cash', qty: 1, description: 'Camp Tab · A · Beach Party' },
+    { id: 't2', type: 'revenue', category: 'Wild · Gota', entry_date: '2026-07-17', amount_eur: 10, source_kind: 'camp_tab_per_item', payment_method: 'Cash', qty: 1, description: 'Camp Tab · B · Beach Party' },
+  ];
+  await page.route(/supabase\.co\/(auth|rest)\/v1\/.*/, async route => {
+    const req = route.request(); const url = req.url();
+    const json = (body) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    if (url.includes('/auth/v1/user')) return json({ id: 'u1', email: 'miguel@gotadaguasurf.com', aud: 'authenticated', role: 'authenticated' });
+    if (url.includes('/rest/v1/platform_profiles')) return json({ id: 'u1', email: 'miguel@gotadaguasurf.com', full_name: 'Miguel', platform_role: 'owner' });
+    if (url.includes('/rest/v1/locations')) return json({ id: W, slug: 'wild-wednesday', name: 'Wild Wednesday' });
+    if (url.includes('/rest/v1/ledger_entries')) {
+      if (req.method() === 'POST') { posted.push(...JSON.parse(req.postData() || '[]')); return json([]); }
+      if (req.method() === 'DELETE') { deleted.push(url); return json([]); }
+      return json(ledger);
+    }
+    return json([]);
+  });
+  const errs = []; page.on('pageerror', e => errs.push(e.message));
+  await fakeOwnerSession(page);
+  await page.goto('/wild/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => /bilhetes Gota no camp tab/.test(document.querySelector('#nightsList')?.textContent || ''), null, { timeout: 15000 });
+  await page.evaluate(() => {
+    document.getElementById('n_date').value = '2026-07-15'; loadNightIntoForm();
+    const set = (id, v) => { document.getElementById(id).value = v; };
+    set('n_theme', 'white party'); set('n_djs', 'Namor / Lavito');
+    set('n_gota', 48); set('n_pure', 29); set('n_surfin', 4); set('n_door', 20); set('n_online', 535);
+    set('n_dj_cash', 100); set('n_video_cash', 0); set('n_door_person', 40); set('n_other_cash', 0);
+    recalcNight();
+  });
+  const totals = await page.evaluate(() => document.getElementById('nightTotals').textContent);
+  expect(totals).toContain('2 no camp tab + 46 de acerto');   // the Thu/Fri tickets snapped back to 15 Jul
+  expect(totals).toContain('€1,365.00');                        // 480 + 290 + 40 + 20 + 535
+  page.on('dialog', d => d.accept());
+  await page.evaluate(() => saveNight());
+  await page.waitForFunction(() => window.__posted_done || /guardada/.test(document.querySelector('#toast')?.textContent || ''), null, { timeout: 15000 });
+  const byCat = Object.fromEntries(posted.map(r => [r.category + '/' + r.type, r]));
+  expect(deleted.length).toBe(0);                                 // nothing manual existed for that night yet
+  expect(posted.length).toBe(7);
+  expect(byCat['Wild · Gota/revenue'].amount_eur).toBe(460);      // 46 top-up × 10
+  expect(byCat['Wild · Gota/revenue'].qty).toBe(46);
+  expect(byCat['Wild · Pure/revenue'].qty).toBe(29);
+  expect(byCat['Wild · Online/revenue'].payment_method).toBe('Online');
+  expect(byCat['Wild · DJs/expense'].amount_eur).toBe(100);
+  expect(byCat['Wild · Porta/expense'].amount_eur).toBe(40);
+  expect(posted.every(r => r.location_id === 'wl-0000' && r.source_kind === 'manual' && r.attributed_location === 'wild-wednesday' && r.entry_date === '2026-07-15')).toBe(true);
+  expect(errs).toEqual([]);
+});
+
 // Wild Wednesday tab (Miguel, 20 Oct 2026): the party as its own business,
 // with the same lines as Max's Excel. Revenue by source, costs by rubric,
 // commissions after the profit; camp-tab tickets snap back to their Wednesday.
-test('hq: Wild tab — profit before/after commissions, revenue by source, nights from the camp tab', async ({ page }) => {
+test('hq: Businesses tab (Wild) — profit before/after commissions, revenue by source, nights from the camp tab', async ({ page }) => {
   const W = 'wl-0000';
   const row = (type, category, entry_date, amount_eur, source_kind = 'manual') => ({ type, category, entry_date, amount_eur, source_kind, payment_method: 'Cash', description: '' });
   const ledger = [
@@ -1783,13 +1838,14 @@ test('hq: Wild tab — profit before/after commissions, revenue by source, night
   await page.goto('/hq/', { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => typeof renderWild === 'function' && document.querySelector('[data-tab="wild"]'));
   await page.evaluate(() => switchTab('wild'));
-  await page.waitForFunction(() => /Gota keeps/.test(document.querySelector('#wildBody')?.textContent || ''), null, { timeout: 15000 });
+  await page.waitForFunction(() => /Gota keeps/.test(document.querySelector('#bzBody')?.textContent || ''), null, { timeout: 15000 });
   const out = await page.evaluate(() => ({
-    hero: document.querySelector('#wildBody .hero-val')?.textContent.trim(),
-    kpis: [...document.querySelectorAll('#wildBody .summary-box')].map(b => b.querySelector('.summary-lbl').textContent.trim() + ' ' + b.querySelector('.summary-val').textContent.trim()),
-    revCats: [...document.querySelectorAll('#wildRevCats tr')].map(tr => tr.children[0].textContent.trim() + ' ' + tr.children[1].textContent.trim()),
-    nights: [...document.querySelectorAll('#wildNights tbody tr')].map(tr => [...tr.children].map(td => td.textContent.trim())),
-    year: document.querySelector('#wild_year')?.value,
+    hero: document.querySelector('#bzBody .hero-val')?.textContent.trim(),
+    kpis: [...document.querySelectorAll('#bzBody .summary-box')].map(b => b.querySelector('.summary-lbl').textContent.trim() + ' ' + b.querySelector('.summary-val').textContent.trim()),
+    revCats: [...document.querySelectorAll('#bzBody .bz-rev-cats tr')].map(tr => tr.children[0].textContent.trim() + ' ' + tr.children[1].textContent.trim()),
+    nights: [...document.querySelectorAll('#bzBody .bz-days tbody tr')].map(tr => [...tr.children].map(td => td.firstChild.textContent.trim())),
+    year: document.querySelector('#bz_year')?.value,
+    business: document.querySelector('#bz_loc')?.value,
   }));
   // revenue 1,815 − costs 671.30 (sound 381.30 + DJ 250 + door 40) = 1,143.70; commissions 100 → 1,043.70
   expect(out.hero).toBe('€1,143.70');
@@ -1797,6 +1853,7 @@ test('hq: Wild tab — profit before/after commissions, revenue by source, night
   expect(out.revCats[0]).toBe('Gota €930.00');          // 10 + 10 + 460 + 450
   expect(out.revCats.at(-1)).toBe('Revenue €1,815.00');
   expect(out.year).toBe('2026');
+  expect(out.business).toBe('wild-wednesday');
   expect(out.nights.length).toBe(2);                     // 15 Jul and 22 Jul — the Thu/Fri tickets snapped back
   expect(out.nights[0][0]).toBe('2026-07-15');
   expect(out.nights[0].at(-2)).toBe('€1,365.00');        // 480 Gota + 290 + 40 + 20 + 535

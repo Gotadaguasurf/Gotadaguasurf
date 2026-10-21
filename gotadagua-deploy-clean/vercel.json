@@ -6,6 +6,16 @@
       "permanent": false
     },
     {
+      "source": "/wild",
+      "destination": "/wild/",
+      "permanent": false
+    },
+    {
+      "source": "/suk",
+      "destination": "/suk/",
+      "permanent": false
+    },
+    {
       "source": "/contabilista",
       "destination": "/contabilista/",
       "permanent": false
