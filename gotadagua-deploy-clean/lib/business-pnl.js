@@ -22,7 +22,7 @@
   const CAMP_TAB_KINDS = new Set(['camp_tab_per_item', 'camp_tab_per_guest', 'camp_tab']);
   // Five source colours + a neutral for costs. Distinct in hue and lightness
   // so the stacked bars read in both themes.
-  const PALETTE = ['#ff7a59', '#ffd166', '#4cc9f0', '#9b8cff', '#2ec4b6', '#f26ca7', '#a8dadc'];
+  const PALETTE = ['#1e6fa8', '#3b9dd4', '#2ec4b6', '#f2b134', '#9b8cff', '#f26ca7', '#a8dadc'];
   const COST = 'rgba(255,255,255,.28)';
   const esc = (s) => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
@@ -187,12 +187,12 @@
   // --bz-muted, --bz-border, --bz-pos, --bz-neg.
   const CSS = `
   .bz-empty{padding:22px;color:var(--bz-muted,#6b8099);font-size:13px}
-  .bz-hero{background:var(--bz-hero-bg,linear-gradient(135deg,#1b2735 0%,#0f1a24 100%));color:#fff;padding:22px 22px 10px;border-radius:14px 14px 0 0;position:relative;overflow:hidden}
-  .bz-hero::after{content:'';position:absolute;top:-30%;right:-10%;width:360px;height:360px;background:radial-gradient(circle,var(--bz-glow,rgba(255,122,89,.28)) 0%,transparent 70%);pointer-events:none}
+  .bz-hero{background:var(--bz-hero-bg,linear-gradient(135deg,#28394b 0%,#1f2c3b 100%));color:#fff;padding:22px 22px 10px;position:relative;overflow:hidden}
+  .bz-hero::after{content:'';position:absolute;top:-30%;right:-10%;width:360px;height:360px;background:radial-gradient(circle,var(--bz-glow,rgba(59,157,212,.25)) 0%,transparent 70%);pointer-events:none}
   .bz-hero-top{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;position:relative;z-index:1;margin-bottom:10px}
   .bz-eyebrow{font-size:10px;text-transform:uppercase;letter-spacing:.16em;color:rgba(255,255,255,.55);font-weight:700;margin-bottom:6px}
   .bz-hero-val{font-family:'DM Serif Display',Georgia,serif;font-size:50px;line-height:1;letter-spacing:-.02em}
-  .bz-hero-val.pos{color:var(--bz-accent,#ff9a7a)}.bz-hero-val.neg{color:#ff8f8f}
+  .bz-hero-val.pos{color:var(--bz-accent,#7ee2a8)}.bz-hero-val.neg{color:#ff9b8f}
   .bz-hero-sub{font-size:12px;color:rgba(255,255,255,.62);margin-top:8px}
   .bz-legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:11px;color:rgba(255,255,255,.75)}
   .bz-legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
@@ -217,7 +217,7 @@
   .bz-list .pos{color:var(--bz-pos,#118a5b)}.bz-list .neg{color:var(--bz-neg,#c94e42)}
   .bz-dot{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:8px;vertical-align:-1px}
   .bz-bar{height:5px;background:#eef2f6;border-radius:3px;margin-top:5px;overflow:hidden}
-  .bz-bar i{display:block;height:100%;background:var(--bz-accent,#ff7a59);border-radius:3px}
+  .bz-bar i{display:block;height:100%;background:var(--bz-bar,#3b9dd4);border-radius:3px}
   .bz-months{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px}
   .bz-month{background:#f6f9fc;border-radius:10px;padding:10px 12px}
   .bz-month-name{font-size:11px;font-weight:800;color:var(--bz-muted,#6b8099);text-transform:uppercase;letter-spacing:.06em}
@@ -231,11 +231,11 @@
   .bz-table th.num,.bz-table td.num{text-align:right;font-variant-numeric:tabular-nums}
   .bz-table td{padding:7px 8px;border-bottom:1px solid #eef2f6;vertical-align:top}
   .bz-table td.total{font-weight:800;color:var(--bz-pos,#118a5b)}
-  .bz-table tr.best td{background:#fff7f3}
+  .bz-table tr.best td{background:#edf5fb}
   .bz-table .dim{color:#c3cdd8}
   .bz-qty{font-size:10px;color:var(--bz-muted,#6b8099)}
   .bz-foot{font-size:11px;color:var(--bz-muted,#6b8099);margin-top:8px}
-  @media (max-width:640px){.bz-hero{padding:18px 14px 6px;border-radius:0}.bz-hero-val{font-size:40px}.bz-card{margin:12px 10px 0;padding:12px}.bz-grid,.bz-kpis{padding:12px 10px 0}}
+  @media (max-width:640px){.bz-hero{padding:18px 14px 6px}.bz-hero-val{font-size:40px}.bz-card{margin:12px 10px 0;padding:12px}.bz-grid,.bz-kpis{padding:12px 10px 0}}
   `;
   if (typeof document !== 'undefined' && !document.getElementById('bz-css')) {
     const st = document.createElement('style'); st.id = 'bz-css'; st.textContent = CSS; document.head.appendChild(st);
