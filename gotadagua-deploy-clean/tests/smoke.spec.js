@@ -1749,6 +1749,62 @@ test('partners: month status survives a case-only duplicate partner name and the
   await page.screenshot({ path: process.env.PARTNERS_SHOT || 'test-results/partners-layout.png', fullPage: false });
 });
 
+// Wild Wednesday tab (Miguel, 20 Oct 2026): the party as its own business,
+// with the same lines as Max's Excel. Revenue by source, costs by rubric,
+// commissions after the profit; camp-tab tickets snap back to their Wednesday.
+test('hq: Wild tab — profit before/after commissions, revenue by source, nights from the camp tab', async ({ page }) => {
+  const W = 'wl-0000';
+  const row = (type, category, entry_date, amount_eur, source_kind = 'manual') => ({ type, category, entry_date, amount_eur, source_kind, payment_method: 'Cash', description: '' });
+  const ledger = [
+    row('revenue', 'Wild · Gota', '2026-07-16', 10, 'camp_tab_per_item'),   // Thu → night of 15 Jul
+    row('revenue', 'Wild · Gota', '2026-07-17', 10, 'camp_tab_per_item'),   // Fri → night of 15 Jul
+    row('revenue', 'Wild · Gota', '2026-07-15', 460),                         // top-up on the night itself
+    row('revenue', 'Wild · Pure', '2026-07-15', 290),
+    row('revenue', 'Wild · Surfin', '2026-07-15', 40),
+    row('revenue', 'Wild · Porta', '2026-07-15', 20),
+    row('revenue', 'Wild · Online', '2026-07-15', 535),
+    row('revenue', 'Wild · Gota', '2026-07-22', 450),
+    row('expense', 'Wild · Som/luz', '2026-07-21', 381.3, 'hq_invoice'),
+    row('expense', 'Wild · DJs', '2026-07-22', 250),
+    row('expense', 'Wild · Porta', '2026-07-15', 40),
+    row('expense', 'Wild · Comissões', '2026-07-22', 100),
+  ];
+  await page.route(/supabase\.co\/(auth|rest)\/v1\/.*/, async route => {
+    const url = route.request().url();
+    const json = (body) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    if (url.includes('/auth/v1/user')) return json({ id: 'u1', email: 'miguel@gotadaguasurf.com', aud: 'authenticated', role: 'authenticated' });
+    if (url.includes('/rest/v1/rpc/hq_overview_rollup')) return json({ bookings: [], invoices: [], ledger: [] });
+    if (url.includes('/rest/v1/locations')) return json([{ id: W, slug: 'wild-wednesday', name: 'Wild Wednesday', currency: 'EUR' }]);
+    if (url.includes('/rest/v1/ledger_entries')) return json(url.includes('location_id=eq.' + W) ? ledger : []);
+    return json([]);
+  });
+  const errs = []; page.on('pageerror', e => errs.push(e.message));
+  await fakeOwnerSession(page);
+  await page.goto('/hq/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof renderWild === 'function' && document.querySelector('[data-tab="wild"]'));
+  await page.evaluate(() => switchTab('wild'));
+  await page.waitForFunction(() => /Gota keeps/.test(document.querySelector('#wildBody')?.textContent || ''), null, { timeout: 15000 });
+  const out = await page.evaluate(() => ({
+    hero: document.querySelector('#wildBody .hero-val')?.textContent.trim(),
+    kpis: [...document.querySelectorAll('#wildBody .summary-box')].map(b => b.querySelector('.summary-lbl').textContent.trim() + ' ' + b.querySelector('.summary-val').textContent.trim()),
+    revCats: [...document.querySelectorAll('#wildRevCats tr')].map(tr => tr.children[0].textContent.trim() + ' ' + tr.children[1].textContent.trim()),
+    nights: [...document.querySelectorAll('#wildNights tbody tr')].map(tr => [...tr.children].map(td => td.textContent.trim())),
+    year: document.querySelector('#wild_year')?.value,
+  }));
+  // revenue 1,815 − costs 671.30 (sound 381.30 + DJ 250 + door 40) = 1,143.70; commissions 100 → 1,043.70
+  expect(out.hero).toBe('€1,143.70');
+  expect(out.kpis).toEqual(['Revenue €1,815.00', 'Costs €671.30', 'Commissions €100.00', 'Gota keeps €1,043.70']);
+  expect(out.revCats[0]).toBe('Gota €930.00');          // 10 + 10 + 460 + 450
+  expect(out.revCats.at(-1)).toBe('Revenue €1,815.00');
+  expect(out.year).toBe('2026');
+  expect(out.nights.length).toBe(2);                     // 15 Jul and 22 Jul — the Thu/Fri tickets snapped back
+  expect(out.nights[0][0]).toBe('2026-07-15');
+  expect(out.nights[0].at(-2)).toBe('€1,365.00');        // 480 Gota + 290 + 40 + 20 + 535
+  expect(out.nights[0].at(-1)).toBe('€40.00');           // door person, cash
+  expect(out.nights[1].at(-1)).toBe('€250.00');          // DJ cash on 22 Jul (commission excluded)
+  expect(errs).toEqual([]);
+});
+
 test('hq: Investments tab — only the shop, total cost with taxes, rent received per year, and a new rent is saved once', async ({ page }) => {
   // Miguel, 8 Oct 2026: the surf camp houses are camp rent (Expenses); only the shop we rent out is an investment.
   const posted = [];
