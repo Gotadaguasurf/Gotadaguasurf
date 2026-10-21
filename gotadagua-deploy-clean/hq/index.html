@@ -334,7 +334,6 @@ td.loc-name{font-weight:700;color:var(--navy)}
       <button class="nav-tab" data-tab="invoices" onclick="switchTab('invoices')">Expenses</button>
       <button class="nav-tab" data-tab="cashflow" onclick="switchTab('cashflow')">Cash flow</button>
       <button class="nav-tab" data-tab="pnl" onclick="switchTab('pnl')">P&amp;L Report</button>
-      <button class="nav-tab" data-tab="wild" onclick="switchTab('wild')">Businesses</button>
       <button class="nav-tab" data-tab="fecho" onclick="switchTab('fecho')">Month close</button>
       <button class="nav-tab" data-tab="invest" onclick="switchTab('invest')">Investments</button>
     </div>
@@ -429,7 +428,6 @@ td.loc-name{font-weight:700;color:var(--navy)}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.4"></script>
 <script src="/supabase-config.js"></script>
 <script src="/owner-config.js"></script>
-<script src="/lib/business-pnl.js"></script>
 <script src="/hq/accountant-excel.js"></script>
 <script>
 const cfg = window.__SUPABASE_CONFIG || {};
@@ -550,7 +548,6 @@ function render(){
     <div class="tab-pane" id="tab-invoices">${invoicesTabHtml()}</div>
     <div class="tab-pane" id="tab-cashflow">${cashflowTabHtml()}</div>
     <div class="tab-pane" id="tab-pnl">${pnlTabHtml()}</div>
-    <div class="tab-pane" id="tab-wild">${wildTabHtml()}</div>
     <div class="tab-pane" id="tab-fecho">${fechoTabHtml()}</div>
     <div class="tab-pane" id="tab-invest">${investTabHtml()}</div>
   `;
@@ -567,7 +564,6 @@ function switchTab(name){
   if (name === 'invoices') { renderInvoiceList(); }
   if (name === 'cashflow') { renderCashflow(); }
   if (name === 'pnl') { renderPnl(); }
-  if (name === 'wild') { renderWild(); }
   if (name === 'fecho') { renderFecho(); }
   if (name === 'invest') { renderInvest(); }
 }
@@ -5235,68 +5231,8 @@ async function renderPnl(){
   }
   __pnlLastGrid = {period, per, tot, cols};
 }
-// ═══════════════════════════════════════════════════════════════════
-//   TAB — BUSINESSES  (Wild Wednesday, The Suk… each its own P&L, like
-//   Max's Wild Excel: revenue by source, costs by rubric, commissions
-//   after the profit). Rendering lives in /lib/business-pnl.js and is
-//   shared with the business pages (/wild/, /suk/).
-// ═══════════════════════════════════════════════════════════════════
-const BUSINESSES = [
-  { slug:'wild-wednesday', label:'Wild Wednesday', dayLabel:'Night', snapWednesday:true,
-    revOrder:['Wild · Gota','Wild · Pure','Wild · Surfin','Wild · Porta','Wild · Online'],
-    expOrder:['Wild · DJs','Wild · Som/luz','Wild · Foto/vídeo','Wild · Marketing','Wild · Porta','Wild · Outros','Wild · Comissões'],
-    footnote:'Cash costs = DJs, door, photo/video paid from the door money. Sound/light, invoiced DJs, video and Meta ads are paid by bank and carry the payment date, so they only show by month and by rubric.' },
-  { slug:'the-suk', label:'The Suk', dayLabel:'Day', snapWednesday:false, revOrder:[], expOrder:[] },
-];
-let __bzRows = {};   // slug → ledger rows
-
-function wildTabHtml(){
-  return `
-    <div class="card">
-      <div class="card-hdr" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
-        <div>
-          <div class="card-title">Businesses</div>
-          <div class="card-hint">Each business as its own P&L: revenue by source, costs by rubric, commissions after the profit — the same lines as the Wild Excel. Same numbers as the business pages.</div>
-        </div>
-        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-          <label class="period-picker" title="Business"><span class="period-picker-lbl">Business</span>
-            <select id="bz_loc" onchange="renderWild(true)">${BUSINESSES.map(b => `<option value="${b.slug}">${b.label}</option>`).join('')}</select></label>
-          <label class="period-picker" title="Season"><span class="period-picker-lbl">Season</span><select id="bz_year" onchange="renderWild()"></select></label>
-        </div>
-      </div>
-      <div class="card-body" id="bzBody" style="padding:0"><div class="loading">Loading…</div></div>
-    </div>`;
-}
-
-async function loadBusinessRows(slug){
-  const loc = LOCATIONS.find(l => l.slug === slug);
-  if (!loc) return [];
-  return fetchAllPaged(() => sb.from('ledger_entries')
-    .select('type, category, entry_date, amount_eur, source_kind, payment_method, qty')
-    .eq('location_id', loc.id)
-    .order('entry_date', {ascending:true}));
-}
-
-async function renderWild(changedBusiness){
-  const body = $('bzBody');
-  if (!body) return;
-  const slug = $('bz_loc')?.value || BUSINESSES[0].slug;
-  const biz = BUSINESSES.find(b => b.slug === slug) || BUSINESSES[0];
-  if (!__bzRows[slug]) {
-    body.innerHTML = '<div class="loading">Loading…</div>';
-    try { __bzRows[slug] = await loadBusinessRows(slug); }
-    catch (e) { body.innerHTML = `<div class="hint" style="padding:18px 22px">Could not load the ${biz.label} ledger: ${e.message || e}</div>`; return; }
-  }
-  const rows = __bzRows[slug];
-  const years = [...new Set(rows.map(r => String(r.entry_date || '').slice(0,4)))].filter(Boolean).sort().reverse();
-  const sel = $('bz_year');
-  if (sel && (changedBusiness || !sel.options.length)) sel.innerHTML = years.map(y => `<option value="${y}">${y}</option>`).join('');
-  const year = sel?.value || years[0] || '';
-  BusinessPnl.render(body, rows.filter(r => String(r.entry_date || '').startsWith(year)), {
-    year, title: biz.label, dayLabel: biz.dayLabel, snapWednesday: biz.snapWednesday, revOrder: biz.revOrder, expOrder: biz.expOrder, footnote: biz.footnote,
-    emptyText: `No ${biz.label} rows yet${year ? ' for ' + year : ''}. ${slug === 'the-suk' ? 'The Suk is being set up (company Manjar Lda, location the-suk).' : 'Nights are closed on the business page (/wild/).'}`
-  });
-}
+// Businesses (Wild Wednesday, The Suk) live on their own pages (/wild/, /suk/)
+// with /lib/business-pnl.js; the P&L Report keeps a column per business.
 function exportPnlCsv(){
   if (!__pnlAgg) return;
   const esc = v => { const s = String(v==null?'':v); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; };
