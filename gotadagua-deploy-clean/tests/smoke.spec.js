@@ -1842,7 +1842,7 @@ test('hq: Businesses tab (Wild) — profit before/after commissions, revenue by 
   const out = await page.evaluate(() => ({
     hero: document.querySelector('#bzBody .hero-val')?.textContent.trim(),
     kpis: [...document.querySelectorAll('#bzBody .summary-box')].map(b => b.querySelector('.summary-lbl').textContent.trim() + ' ' + b.querySelector('.summary-val').textContent.trim()),
-    revCats: [...document.querySelectorAll('#bzBody .bz-rev-cats tr')].map(tr => tr.children[0].textContent.trim() + ' ' + tr.children[1].textContent.trim()),
+    revCats: [...document.querySelectorAll('#bzBody .bz-rev-cats tr')].filter(tr => tr.children.length > 1).map(tr => tr.children[0].textContent.trim() + ' ' + tr.children[1].textContent.trim()),
     nights: [...document.querySelectorAll('#bzBody .bz-days tbody tr')].map(tr => [...tr.children].map(td => td.firstChild.textContent.trim())),
     year: document.querySelector('#bz_year')?.value,
     business: document.querySelector('#bz_loc')?.value,
@@ -1850,8 +1850,8 @@ test('hq: Businesses tab (Wild) — profit before/after commissions, revenue by 
   // revenue 1,815 − costs 671.30 (sound 381.30 + DJ 250 + door 40) = 1,143.70; commissions 100 → 1,043.70
   expect(out.hero).toBe('€1,143.70');
   expect(out.kpis).toEqual(['Revenue €1,815.00', 'Costs €671.30', 'Commissions €100.00', 'Gota keeps €1,043.70']);
-  expect(out.revCats[0]).toBe('Gota €930.00');          // 10 + 10 + 460 + 450
-  expect(out.revCats.at(-1)).toBe('Revenue €1,815.00');
+  expect(out.revCats[0]).toBe('Gota €930');             // 10 + 10 + 460 + 450 (season table is rounded)
+  expect(out.revCats.at(-1)).toBe('Revenue €1,815');
   expect(out.year).toBe('2026');
   expect(out.business).toBe('wild-wednesday');
   expect(out.nights.length).toBe(2);                     // 15 Jul and 22 Jul — the Thu/Fri tickets snapped back
