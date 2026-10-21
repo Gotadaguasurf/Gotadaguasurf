@@ -2,151 +2,169 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#28394b">
 <title>Wild Wednesday — Gota d'Água</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='-15 0 92 92'><path fill='%231e6fa8' d='M61.7,51.9c-.4-9-5.5-16.5-9.7-24.1-2.9-4.8-5.3-9.8-9.3-13.9-3.9-4.4-6.5-9.8-10.8-13.9C19.2,16.6-.5,39.9,0,61.9c9.4-7.9,20.1-17.7,33.1-17.8,3,0,7.2,0,9.5,2.2,1.7,1.7,3.2,4.2,2,6.5-.3.5-1.9,2.7-2.3,2.9-12.9,7.4-20.3,18.6-16.5,33.7,3.1,1.3,8,1,11.1-.3,2.7-.3,5.1-1.3,7.5-2.5,8.7-2.9,14.5-11.1,15.5-20.1,1.2-4.7,2.1-9.7,1.8-14.6h0Z'/></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Outfit:wght@400;500;600;700;800&family=DM+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/lib/business-shell.css">
 <style>
-:root{--navy:#28394b;--navy-dark:#1f2c3b;--ocean:#1e6fa8;--ocean-light:#3b9dd4;--foam:#edf5fb;--ink:#0d1b2a;--muted:#6b8099;--border:#d4e3f0;--bg:#f0f5fa;--green:#118a5b;--green-bg:#e6f5ec;--red:#c94e42;--red-bg:#fdf1ef;--amber:#b57508;--amber-bg:#fef4dc;--sh-soft:0 1px 3px rgba(0,0,0,.05),0 4px 12px rgba(31,44,59,.08)}
-*{box-sizing:border-box}
-html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:'Outfit',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:15px;line-height:1.4;-webkit-font-smoothing:antialiased}
-input,select,textarea,button{font-family:inherit;font-size:inherit}
-header{background:var(--navy);color:#fff;padding:12px 16px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:50;box-shadow:0 2px 12px rgba(0,0,0,.15)}
-.brand{display:flex;align-items:center;gap:10px;color:inherit;text-decoration:none;flex:1;min-width:0}
-.brand-title{font-family:'DM Serif Display',serif;font-size:19px;letter-spacing:.01em}
-.brand-sub{font-size:10px;color:#7aabcc;letter-spacing:.14em;text-transform:uppercase;font-weight:800;white-space:nowrap}
-.hdr-actions{display:flex;align-items:center;gap:8px}
-.hdr-btn{background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.16);color:#fff;border-radius:999px;padding:6px 12px;font-size:11px;font-weight:700;text-decoration:none;cursor:pointer;text-transform:uppercase;letter-spacing:.06em}
-.user-chip{font-size:10px;color:#a8c4db;background:rgba(255,255,255,.08);padding:5px 10px;border-radius:999px;font-weight:600;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.subnav{background:#fff;border-bottom:1px solid var(--border);padding:6px 6px 0;display:flex;gap:4px;overflow-x:auto}
-.tabbtn{background:none;border:none;color:var(--muted);padding:12px 18px;font-size:13px;font-weight:700;cursor:pointer;border-bottom:3px solid transparent;flex-shrink:0}
-.tabbtn.active{color:var(--navy);border-bottom-color:var(--ocean)}
-main{max-width:980px;margin:0 auto;padding:16px 12px 60px}
-.page{display:none}.page.active{display:block}
-.card{background:#fff;border-radius:12px;box-shadow:var(--sh-soft);padding:16px;margin-bottom:14px}
-.card-t{font-family:'DM Serif Display',serif;font-size:20px;color:var(--navy);margin:0 0 4px}
-.card-hint{font-size:12px;color:var(--muted);margin-bottom:12px}
-.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px 12px}
-.field{margin-bottom:10px}
-.field label{display:block;font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.09em;margin-bottom:5px}
-.field input,.field select,.field textarea{width:100%;border:1.5px solid var(--border);border-radius:10px;padding:11px 12px;font-size:15px;background:#fff;color:var(--ink);outline:none}
-.field input:focus,.field select:focus{border-color:var(--ocean);box-shadow:0 0 0 3px rgba(30,111,168,.10)}
-.field .hint{font-size:11px;color:var(--muted);margin-top:4px}
-.sect{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin:14px 0 8px}
-.btn{width:100%;background:var(--ocean);color:#fff;border:none;padding:14px;border-radius:12px;font-weight:800;font-size:15px;cursor:pointer}
-.btn:hover:not(:disabled){background:#175a8f}.btn:disabled{opacity:.55;cursor:not-allowed}
-.btn.secondary{background:#fff;color:var(--navy);border:1.5px solid var(--border)}
-.btn.small{width:auto;padding:8px 14px;font-size:12px;border-radius:9px}
-.total-strip{display:flex;flex-wrap:wrap;gap:8px 18px;background:var(--foam);border-radius:10px;padding:10px 14px;margin:8px 0 12px;font-size:13px}
-.total-strip b{color:var(--navy)}
-.tbl{border-collapse:collapse;font-size:13px;width:100%}.tbl th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);padding:6px 8px;border-bottom:2px solid var(--border)}.tbl td{padding:7px 8px;border-bottom:1px solid #eef2f6;vertical-align:top}
-.summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px;padding:0 16px}
-.summary-box{background:#fff;border:1px solid var(--border);border-radius:8px;padding:12px}
-.summary-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700}
-.summary-val{font-size:20px;font-weight:800;margin-top:4px;color:var(--ink)}
-.summary-box.pos{border-left:4px solid var(--green);background:#f5fbf7}.summary-box.pos .summary-val{color:var(--green)}
-.summary-box.neg{border-left:4px solid var(--red);background:#fdf6f5}.summary-box.neg .summary-val{color:var(--red)}
-.summary-box.neutral{border-left:4px solid #b8c8d6;background:#f7fafd}
-.summary-box .hint{font-size:11px;color:var(--muted)}
-.season-card{background:#fff;border-radius:12px;box-shadow:var(--sh-soft);overflow:hidden;padding-bottom:16px}
-.season-hdr{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;gap:10px;flex-wrap:wrap}
-.season-hdr select{border:1.5px solid var(--border);border-radius:9px;padding:8px 10px;font-weight:700}
-.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--navy);color:#fff;padding:12px 18px;border-radius:12px;font-size:13px;font-weight:600;box-shadow:0 8px 24px rgba(0,0,0,.25);opacity:0;pointer-events:none;transition:opacity .2s;z-index:100;max-width:90vw}
-.toast.show{opacity:1}.toast.err{background:var(--red)}
-.splash{max-width:420px;margin:80px auto;padding:32px;background:#fff;border-radius:14px;box-shadow:var(--sh-soft);text-align:center}
-.splash h1{font-family:'DM Serif Display',serif;color:var(--navy);margin:0 0 12px;font-size:24px}
-.splash p{color:var(--muted);font-size:13px;line-height:1.6;margin:0 0 18px}
-.splash a{color:var(--ocean);font-weight:800;text-decoration:none}
-.night-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #eef2f6;font-size:13px}
-.night-row:last-child{border-bottom:none}
-.pill{display:inline-block;background:var(--foam);color:var(--ocean);border-radius:999px;padding:2px 9px;font-size:11px;font-weight:700}
+/* Close-night form */
+.form-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap;margin-bottom:18px}
+.form-title{font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy)}
+.form-sub{font-size:12px;color:var(--muted);margin-top:2px;max-width:760px}
+.fblock{padding:18px 20px}
+.fblock h4{margin:0 0 12px;font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:800}
+.frow{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid #eef2f6}
+.frow:last-child{border-bottom:none}
+.frow label{font-size:13px;font-weight:600;color:var(--ink)}
+.frow label small{display:block;font-size:11px;color:var(--muted);font-weight:500}
+.frow input,.frow select,.fgrid input,.fgrid select{width:100%;border:1.5px solid var(--border);border-radius:9px;padding:8px 10px;font-size:13px;color:var(--ink);background:#fff;outline:none}
+.frow input:focus,.fgrid input:focus,.frow select:focus{border-color:var(--ocean);box-shadow:0 0 0 3px rgba(30,111,168,.10)}
+.frow input{text-align:right;font-family:'DM Mono',monospace;font-size:13px}
+.fgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.fgrid label{display:block;font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px}
+.sumbox{background:var(--navy);color:#fff;border-radius:12px;padding:16px 18px}
+.sumbox .row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.1);font-size:13px;color:#cfe1f0}
+.sumbox .row b{color:#fff;font-family:'DM Mono',monospace;font-size:13px}
+.sumbox .row.big{border:none;padding-top:10px}
+.sumbox .row.big b{font-family:'DM Serif Display',serif;font-size:26px;color:#7ee2a8}
+@media (max-width:900px){.fgrid{grid-template-columns:1fr 1fr}}
 </style>
 </head>
 <body>
-<header>
-  <a class="brand" href="/">
-    <span class="brand-title">Wild Wednesday</span>
-    <span class="brand-sub">Gota d'Água</span>
-  </a>
-  <div class="hdr-actions">
-    <span class="user-chip" id="userChip">—</span>
-    <a class="hdr-btn" href="/">Hub</a>
+<nav>
+  <div class="nav-logo">
+    <a class="nav-home" href="/"><div class="nav-logo-mark" id="gotaLogo"></div></a>
+    <details class="app-switch">
+      <summary><span>Businesses</span><span class="app-switch-caret">▾</span></summary>
+      <nav class="app-switch-menu">
+        <a href="/"><span>Overview</span><small>Camps + businesses home</small></a>
+        <a href="/hq/"><span>HQ</span><small>Finances, profit, cash flow</small></a>
+        <a href="/camp-hub/?location=portugal"><span>Camp hub</span><small>Managers' float ledger</small></a>
+        <a href="/partners/"><span>Partners</span><small>Partner P&amp;L + statements</small></a>
+      </nav>
+    </details>
+    <details class="app-switch loc-switch">
+      <summary><span>Wild Wednesday</span><span class="app-switch-caret">▾</span></summary>
+      <nav class="app-switch-menu">
+        <a href="/wild/" class="is-current"><span>Wild Wednesday</span><small>Weekly party · Costa da Caparica</small></a>
+        <a href="/suk/"><span>The Suk</span><small>Manjar restaurant</small></a>
+      </nav>
+    </details>
   </div>
-</header>
-
-<nav class="subnav">
-  <button class="tabbtn active" data-page="night" onclick="showPage('night')">Fechar noite</button>
-  <button class="tabbtn" data-page="season" onclick="showPage('season')">Época</button>
+  <div class="nav-tabs">
+    <button class="ntab active" data-page="overview" onclick="showPage('overview')">Overview</button>
+    <button class="ntab" data-page="night" onclick="showPage('night')">Close night</button>
+    <button class="ntab" data-page="ledger" onclick="showPage('ledger')">Ledger</button>
+  </div>
+  <div class="nav-actions">
+    <span class="user-chip" id="userChip">—</span>
+    <a class="nav-action-btn" href="/hq/" id="hqBtn" style="display:none">HQ</a>
+  </div>
 </nav>
 
-<main>
-  <div class="page active" id="page-night">
-    <div class="card" id="nightCard">
-      <div class="card-t">Fechar noite</div>
-      <div class="card-hint">Uma linha por fonte, como no Excel. Os bilhetes da Gota vendidos no camp tab já entram sozinhos; aqui só se acerta o número final. Som/luz, DJs com fatura, vídeo e Meta ads são pagos pelo banco e entram pelo HQ.</div>
-      <div class="grid2">
-        <div class="field"><label>Noite (quarta-feira)</label><input id="n_date" type="date" onchange="loadNightIntoForm()"></div>
-        <div class="field"><label>Tema</label><input id="n_theme" type="text" placeholder="white party, wild shades…"></div>
-        <div class="field" style="grid-column:1/-1"><label>DJs</label><input id="n_djs" type="text" placeholder="Namor / Lavito"></div>
-      </div>
-      <div class="sect">Receita</div>
-      <div class="grid2">
-        <div class="field"><label>Bilhetes Gota</label><input id="n_gota" type="number" min="0" step="1" oninput="recalcNight()"><div class="hint" id="n_gota_hint">no camp tab: —</div></div>
-        <div class="field"><label>Bilhetes Pure</label><input id="n_pure" type="number" min="0" step="1" oninput="recalcNight()"></div>
-        <div class="field"><label>Bilhetes Surfin/Base</label><input id="n_surfin" type="number" min="0" step="1" oninput="recalcNight()"></div>
-        <div class="field"><label>Porta (dinheiro, €)</label><input id="n_door" type="number" min="0" step="0.01" oninput="recalcNight()"></div>
-        <div class="field"><label>Online Shotgun (€)</label><input id="n_online" type="number" min="0" step="0.01" oninput="recalcNight()"><div class="hint">cai na CGD como “TRF STRIPE”</div></div>
-        <div class="field"><label>Preço do bilhete (€)</label><input id="n_price" type="number" min="0" step="0.5" value="10" oninput="recalcNight()"></div>
-      </div>
-      <div class="sect">Custos pagos em dinheiro</div>
-      <div class="grid2">
-        <div class="field"><label>DJs em dinheiro (€)</label><input id="n_dj_cash" type="number" min="0" step="0.01" oninput="recalcNight()"></div>
-        <div class="field"><label>Foto/vídeo em dinheiro (€)</label><input id="n_video_cash" type="number" min="0" step="0.01" oninput="recalcNight()"></div>
-        <div class="field"><label>Porta (pessoa, €)</label><input id="n_door_person" type="number" min="0" step="0.01" value="40" oninput="recalcNight()"></div>
-        <div class="field"><label>Outros em dinheiro (€)</label><input id="n_other_cash" type="number" min="0" step="0.01" oninput="recalcNight()"></div>
-        <div class="field" style="grid-column:1/-1"><label>Outros — o quê</label><input id="n_other_desc" type="text" placeholder="pulseiras, gelo…"></div>
-      </div>
-      <div class="total-strip" id="nightTotals"></div>
-      <button class="btn" id="saveNightBtn" onclick="saveNight()">Guardar noite</button>
-      <div class="hint" id="nightStatus" style="font-size:12px;color:var(--muted);margin-top:8px"></div>
+<!-- ═══════════ OVERVIEW ═══════════ -->
+<div class="page active" id="page-overview">
+  <div class="container">
+    <div class="ov-filters">
+      <label class="period-picker" title="Season"><span class="period-picker-lbl">Season</span><select id="seasonYear" onchange="renderSeason()"></select></label>
+      <span class="hint" style="margin-left:auto">Revenue by source, costs by rubric, commissions after the profit. Same lines as the Wild Excel.</span>
     </div>
-
-    <div class="card">
-      <div class="card-t">Noites fechadas</div>
-      <div id="nightsList" class="card-hint">A carregar…</div>
-    </div>
-
-    <div class="card" id="commCard">
-      <div class="card-t">Comissões da época</div>
-      <div class="card-hint">Pure recebe 2 € por bilhete dela; o Max 30 % do lucro. Lança-se quando se paga, em dinheiro.</div>
-      <div class="grid2">
-        <div class="field"><label>Data</label><input id="c_date" type="date"></div>
-        <div class="field"><label>Quem</label><select id="c_who"><option value="Pure Surf Camp">Pure Surf Camp</option><option value="Max">Max</option><option value="Outro">Outro</option></select></div>
-        <div class="field"><label>Valor (€)</label><input id="c_amount" type="number" min="0" step="0.01"></div>
-      </div>
-      <button class="btn secondary" onclick="saveCommission()">Lançar comissão</button>
-      <div id="commList" style="margin-top:10px"></div>
-    </div>
+    <div id="seasonBody"><div class="card card-pad hint">Loading…</div></div>
   </div>
+</div>
 
-  <div class="page" id="page-season">
-    <div class="season-card">
-      <div class="season-hdr">
-        <div><div class="card-t" style="margin:0">Época</div><div class="card-hint" style="margin:0">Mesmos números que o HQ → Businesses.</div></div>
-        <select id="seasonYear" onchange="renderSeason()"></select>
+<!-- ═══════════ CLOSE NIGHT ═══════════ -->
+<div class="page" id="page-night">
+  <div class="container">
+    <div class="form-head">
+      <div>
+        <div class="form-title">Close night</div>
+        <div class="form-sub">One line per source, with how it was paid. Gota tickets sold on the camp tab are already in — set the final count and the difference is added. Sound/light, invoiced DJs, video and Meta ads are paid by bank and come in through the HQ.</div>
       </div>
-      <div id="seasonBody"><div class="card-hint" style="padding:18px">A carregar…</div></div>
+      <label class="period-picker" title="Night"><span class="period-picker-lbl">Night</span><input id="n_date" type="date" onchange="loadNightIntoForm()" style="border:0;background:transparent;font-weight:700;color:var(--navy);padding:4px 6px;font-size:13px"></label>
     </div>
+
+    <div class="card card-pad" style="margin-bottom:14px">
+      <div class="fgrid">
+        <div><label>Theme</label><input id="n_theme" type="text" placeholder="white party, wild shades…"></div>
+        <div><label>DJs</label><input id="n_djs" type="text" placeholder="Namor / Lavito"></div>
+        <div><label>Ticket price (€)</label><input id="n_price" type="number" min="0" step="0.5" value="10" oninput="recalcNight()"></div>
+        <div><label>Gota tickets on the camp tab</label><input id="n_tab_display" type="text" readonly value="—" style="background:#f6f9fc"></div>
+      </div>
+    </div>
+
+    <div class="g3" style="align-items:start">
+      <div class="card fblock">
+        <h4>Revenue</h4>
+        <div class="frow"><label>Gota tickets<small>final count for the night</small></label><input id="n_gota" type="number" min="0" step="1" oninput="recalcNight()" placeholder="0"><select id="m_gota" onchange="recalcNight()"><option>Cash</option><option>Card</option></select></div>
+        <div class="frow"><label>Pure tickets</label><input id="n_pure" type="number" min="0" step="1" oninput="recalcNight()" placeholder="0"><select id="m_pure" onchange="recalcNight()"><option>Cash</option><option>Bank Transfer</option></select></div>
+        <div class="frow"><label>Surfin/Base tickets</label><input id="n_surfin" type="number" min="0" step="1" oninput="recalcNight()" placeholder="0"><select id="m_surfin" onchange="recalcNight()"><option>Cash</option><option>Bank Transfer</option></select></div>
+        <div class="frow"><label>Door (€)</label><input id="n_door" type="number" min="0" step="0.01" oninput="recalcNight()" placeholder="0"><select id="m_door" onchange="recalcNight()"><option>Cash</option><option>Card</option></select></div>
+        <div class="frow"><label>Shotgun online (€)<small>lands on CGD as “TRF STRIPE”</small></label><input id="n_online" type="number" min="0" step="0.01" oninput="recalcNight()" placeholder="0"><select id="m_online"><option>Online</option></select></div>
+      </div>
+      <div class="card fblock">
+        <h4>Costs paid on the night</h4>
+        <div class="frow"><label>DJs (€)<small>the ones without invoice</small></label><input id="n_dj_cash" type="number" min="0" step="0.01" oninput="recalcNight()" placeholder="0"><select id="m_dj" onchange="recalcNight()"><option>Cash</option><option>Card</option><option>Bank Transfer</option></select></div>
+        <div class="frow"><label>Photo / video (€)</label><input id="n_video_cash" type="number" min="0" step="0.01" oninput="recalcNight()" placeholder="0"><select id="m_video" onchange="recalcNight()"><option>Cash</option><option>Card</option><option>Bank Transfer</option></select></div>
+        <div class="frow"><label>Door person (€)</label><input id="n_door_person" type="number" min="0" step="0.01" value="40" oninput="recalcNight()"><select id="m_doorp" onchange="recalcNight()"><option>Cash</option><option>Bank Transfer</option></select></div>
+        <div class="frow"><label>Other (€)</label><input id="n_other_cash" type="number" min="0" step="0.01" oninput="recalcNight()" placeholder="0"><select id="m_other" onchange="recalcNight()"><option>Cash</option><option>Card</option><option>Bank Transfer</option></select></div>
+        <div class="frow" style="grid-template-columns:1fr"><input id="n_other_desc" type="text" placeholder="what the other cost was (wristbands, ice…)" style="text-align:left;font-family:'Outfit',sans-serif"></div>
+      </div>
+      <div>
+        <div class="sumbox" id="nightTotals"></div>
+        <button class="btn btn-p btn-lg" id="saveNightBtn" onclick="saveNight()" style="width:100%;justify-content:center;margin-top:12px">Save night</button>
+        <div class="hint" id="nightStatus" style="margin-top:8px"></div>
+      </div>
+    </div>
+
+    <section class="ov-section" style="margin-top:30px">
+      <div class="ov-section-head"><div class="ov-section-title">Nights</div><div class="ov-section-sub">Click a night to load it into the form</div></div>
+      <div class="card"><div class="tbl-wrap"><table>
+        <thead><tr><th>Night</th><th>Theme · DJs</th><th class="r">Gota tab</th><th class="r">Revenue</th><th class="r">Cash costs</th><th>Status</th><th></th></tr></thead>
+        <tbody id="nightsList"><tr class="empty-row"><td colspan="7">Loading…</td></tr></tbody>
+      </table></div></div>
+    </section>
+
+    <section class="ov-section">
+      <div class="ov-section-head"><div class="ov-section-title">Commissions</div><div class="ov-section-sub">Pure gets 2 € per ticket of theirs; Max 30 % of the profit. Logged when paid.</div></div>
+      <div class="card card-pad">
+        <div class="fgrid" style="grid-template-columns:1fr 1fr 1fr auto;align-items:end">
+          <div><label>Date</label><input id="c_date" type="date"></div>
+          <div><label>Who</label><select id="c_who"><option value="Pure Surf Camp">Pure Surf Camp</option><option value="Max">Max</option><option value="Other">Other</option></select></div>
+          <div><label>Amount (€)</label><input id="c_amount" type="number" min="0" step="0.01" placeholder="0"></div>
+          <div><label>&nbsp;</label><select id="c_method" style="width:auto"><option>Cash</option><option>Bank Transfer</option></select> <button class="btn btn-s" id="commBtn" onclick="saveCommission()">Log commission</button></div>
+        </div>
+        <div id="commList" style="margin-top:12px"></div>
+      </div>
+    </section>
   </div>
-</main>
+</div>
+
+<!-- ═══════════ LEDGER ═══════════ -->
+<div class="page" id="page-ledger">
+  <div class="container">
+    <div class="ov-filters">
+      <label class="period-picker"><span class="period-picker-lbl">Month</span><select id="lg_month" onchange="renderLedger()"><option value="all">All</option></select></label>
+      <label class="period-picker"><span class="period-picker-lbl">Type</span><select id="lg_type" onchange="renderLedger()"><option value="all">All</option><option value="revenue">Revenue</option><option value="expense">Costs</option></select></label>
+      <span class="hint" id="lg_count" style="margin-left:auto"></span>
+    </div>
+    <div class="card"><div class="tbl-wrap"><table>
+      <thead><tr><th>Date</th><th>Category</th><th>Description</th><th>Paid</th><th>Source</th><th class="r">Amount</th><th></th></tr></thead>
+      <tbody id="ledgerBody"><tr class="empty-row"><td colspan="7">Loading…</td></tr></tbody>
+    </table></div></div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.4"></script>
 <script src="/supabase-config.js"></script>
 <script src="/owner-config.js"></script>
+<script src="/lib/business-shell.js"></script>
 <script src="/lib/business-pnl.js"></script>
 <script>
 const cfg = window.__SUPABASE_CONFIG || {};
@@ -162,7 +180,7 @@ const EXP_ORDER = ['Wild · DJs','Wild · Som/luz','Wild · Foto/vídeo','Wild �
 
 let LOCATION_ID = null;
 let CAN_EDIT = false;
-let ROWS = [];           // every ledger row of the Wild location
+let ROWS = [];
 
 const $ = (id) => document.getElementById(id);
 const num = (id) => Number($(id).value) || 0;
@@ -171,57 +189,44 @@ const pad = (n) => String(n).padStart(2, '0');
 const iso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const lastWednesday = () => { const d = new Date(); d.setDate(d.getDate() - ((d.getDay() + 4) % 7)); return iso(d); };
 const dmy = (s) => { const [y, m, d] = String(s).split('-'); return `${d}/${m}`; };
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 function toast(msg, kind){ const t = $('toast'); t.textContent = msg; t.className = 'toast show' + (kind === 'err' ? ' err' : ''); clearTimeout(t._t); t._t = setTimeout(() => t.className = 'toast', 3200); }
 function showPage(name){
-  document.querySelectorAll('.tabbtn').forEach(b => b.classList.toggle('active', b.dataset.page === name));
+  if (name === 'season') name = 'overview';
+  document.querySelectorAll('.ntab').forEach(b => b.classList.toggle('active', b.dataset.page === name));
   document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === 'page-' + name));
-  if (name === 'season') renderSeason();
+  if (name === 'overview') renderSeason();
+  if (name === 'ledger') renderLedger();
 }
 
 // ── Boot ─────────────────────────────────────────────────────────
 async function boot(){
+  BusinessShell.mountLogo('gotaLogo');
   const { data:{ user } } = await sb.auth.getUser();
-  if (!user) {
-    document.body.innerHTML = `<div class="splash"><h1>Sign in required</h1><p>Open the Gota d'Água hub, sign in, then reopen this page.</p><a href="/">← Back to hub</a></div>`;
-    return;
-  }
+  if (!user) { document.body.innerHTML = BusinessShell.splash('Sign in required', "Open the Gota d'Água hub, sign in, then reopen this page."); return; }
   try {
     const { data } = await sb.from('platform_profiles').select('full_name,email,platform_role').eq('id', user.id).maybeSingle();
     $('userChip').textContent = data?.full_name || data?.email || user.email || 'you';
     const owners = new Set(window.__PLATFORM_OWNER_EMAILS || ['miguel@gotadaguasurf.com']);
-    const email = String(user.email || '').toLowerCase();
-    const role = String(data?.platform_role || '').toLowerCase();
-    if (owners.has(email) || role === 'super_admin') CAN_EDIT = true;
+    if (owners.has(String(user.email || '').toLowerCase()) || String(data?.platform_role || '').toLowerCase() === 'super_admin') { CAN_EDIT = true; $('hqBtn').style.display = ''; }
   } catch { $('userChip').textContent = user.email || 'you'; }
   const { data: loc } = await sb.from('locations').select('id, slug, name').eq('slug', SLUG).maybeSingle();
-  if (!loc) {
-    document.body.innerHTML = `<div class="splash"><h1>No access</h1><p>Your account isn't provisioned for Wild Wednesday. Ask Miguel to add you in Settings → Team access.</p><a href="/">← Back to hub</a></div>`;
-    return;
-  }
+  if (!loc) { document.body.innerHTML = BusinessShell.splash('No access', "Your account isn't provisioned for Wild Wednesday. Ask Miguel to add you in Settings → Team access."); return; }
   LOCATION_ID = loc.id;
   if (!CAN_EDIT) {
-    const { data: mem } = await sb.from('workspace_memberships')
-      .select('can_view, can_edit, workspaces!inner(slug)')
-      .eq('user_id', user.id).eq('active', true).eq('workspaces.slug', SLUG).maybeSingle();
-    if (!mem || !mem.can_view) {
-      document.body.innerHTML = `<div class="splash"><h1>No access</h1><p>Wild Wednesday is not in your allowed areas. Ask Miguel to add it in Settings → Team access.</p><a href="/">← Back to hub</a></div>`;
-      return;
-    }
+    const { data: mem } = await sb.from('workspace_memberships').select('can_view, can_edit, workspaces!inner(slug)').eq('user_id', user.id).eq('active', true).eq('workspaces.slug', SLUG).maybeSingle();
+    if (!mem || !mem.can_view) { document.body.innerHTML = BusinessShell.splash('No access', 'Wild Wednesday is not in your allowed areas. Ask Miguel to add it in Settings → Team access.'); return; }
     CAN_EDIT = !!mem.can_edit;
   }
-  if (!CAN_EDIT) {
-    $('saveNightBtn').disabled = true;
-    $('nightStatus').textContent = 'Só leitura — pede ao Miguel acesso de edição para fechar noites.';
-    $('commCard').querySelector('button').disabled = true;
-  }
+  if (!CAN_EDIT) { $('saveNightBtn').disabled = true; $('commBtn').disabled = true; $('nightStatus').textContent = 'Read only — ask Miguel for edit access to close nights.'; }
   $('n_date').value = lastWednesday();
   $('c_date').value = iso(new Date());
   await loadRows();
+  renderSeason();
   loadNightIntoForm();
   renderNightsList();
   renderCommissions();
-  recalcNight();
 }
 
 async function loadRows(){
@@ -241,37 +246,41 @@ async function loadRows(){
 // ── Night form ───────────────────────────────────────────────────
 function nightOf(r){ return BusinessPnl.dayOf(r.entry_date, r.source_kind, true); }
 function campTabTickets(date){
-  return ROWS.filter(r => r.type === 'revenue' && r.source_kind !== 'manual' && r.category === CAT.gota && nightOf(r) === date)
-             .reduce((s, r) => s + Number(r.qty || 1), 0);
+  return ROWS.filter(r => r.type === 'revenue' && r.source_kind !== 'manual' && r.category === CAT.gota && nightOf(r) === date).reduce((s, r) => s + Number(r.qty || 1), 0);
 }
 function manualRowsOf(date){ return ROWS.filter(r => r.source_kind === 'manual' && r.entry_date === date && r.category !== CAT.commission); }
+const methodSel = (id, m) => { const s = $(id); if (!s) return; const v = m || 'Cash'; if ([...s.options].some(o => o.value === v)) s.value = v; };
 
 function loadNightIntoForm(){
   const date = $('n_date').value;
   if (!date) return;
   const tab = campTabTickets(date);
-  $('n_gota_hint').textContent = `no camp tab: ${tab} bilhete${tab === 1 ? '' : 's'}`;
+  $('n_tab_display').value = `${tab} ticket${tab === 1 ? '' : 's'}`;
   const rows = manualRowsOf(date);
   const pick = (cat, type) => rows.filter(r => r.category === cat && r.type === type);
   const sumA = (arr) => arr.reduce((s, r) => s + Number(r.amount_eur || 0), 0);
   const sumQ = (arr) => arr.reduce((s, r) => s + Number(r.qty || 0), 0);
-  const gotaTop = pick(CAT.gota, 'revenue');
   const price = num('n_price') || 10;
-  $('n_gota').value = rows.length ? (tab + (sumQ(gotaTop) || Math.round(sumA(gotaTop) / price))) : (tab || '');
-  $('n_pure').value = rows.length ? (sumQ(pick(CAT.pure, 'revenue')) || Math.round(sumA(pick(CAT.pure, 'revenue')) / price)) : '';
-  $('n_surfin').value = rows.length ? (sumQ(pick(CAT.surfin, 'revenue')) || Math.round(sumA(pick(CAT.surfin, 'revenue')) / price)) : '';
-  $('n_door').value = rows.length ? sumA(pick(CAT.door, 'revenue')) : '';
-  $('n_online').value = rows.length ? sumA(pick(CAT.online, 'revenue')) : '';
-  $('n_dj_cash').value = rows.length ? sumA(pick(CAT.djs, 'expense')) : '';
-  $('n_video_cash').value = rows.length ? sumA(pick(CAT.video, 'expense')) : '';
-  $('n_door_person').value = rows.length ? sumA(pick(CAT.doorPerson, 'expense')) : 40;
-  $('n_other_cash').value = rows.length ? sumA(pick(CAT.other, 'expense')) : '';
-  const meta = rows.find(r => /tema:|DJs:/i.test(r.description || ''));
-  const m = meta ? (meta.description.match(/tema: ([^;]+)/i) || [])[1] : '';
-  const dj = meta ? (meta.description.match(/DJs: ([^;)]+)/i) || [])[1] : '';
-  $('n_theme').value = m ? m.trim() : '';
-  $('n_djs').value = dj ? dj.trim() : '';
-  $('nightStatus').textContent = rows.length ? `Noite já fechada (${rows.length} linhas). Guardar outra vez substitui as linhas desta noite.` : (CAN_EDIT ? '' : $('nightStatus').textContent);
+  const gotaTop = pick(CAT.gota, 'revenue');
+  const set = (id, v) => { $(id).value = v; };
+  set('n_gota', rows.length ? (tab + (sumQ(gotaTop) || Math.round(sumA(gotaTop) / price))) : (tab || ''));
+  set('n_pure', rows.length ? (sumQ(pick(CAT.pure, 'revenue')) || Math.round(sumA(pick(CAT.pure, 'revenue')) / price)) : '');
+  set('n_surfin', rows.length ? (sumQ(pick(CAT.surfin, 'revenue')) || Math.round(sumA(pick(CAT.surfin, 'revenue')) / price)) : '');
+  set('n_door', rows.length ? sumA(pick(CAT.door, 'revenue')) : '');
+  set('n_online', rows.length ? sumA(pick(CAT.online, 'revenue')) : '');
+  set('n_dj_cash', rows.length ? sumA(pick(CAT.djs, 'expense')) : '');
+  set('n_video_cash', rows.length ? sumA(pick(CAT.video, 'expense')) : '');
+  set('n_door_person', rows.length ? sumA(pick(CAT.doorPerson, 'expense')) : 40);
+  set('n_other_cash', rows.length ? sumA(pick(CAT.other, 'expense')) : '');
+  const pm = (arr) => arr[0]?.payment_method;
+  methodSel('m_gota', pm(gotaTop)); methodSel('m_pure', pm(pick(CAT.pure, 'revenue'))); methodSel('m_surfin', pm(pick(CAT.surfin, 'revenue'))); methodSel('m_door', pm(pick(CAT.door, 'revenue')));
+  methodSel('m_dj', pm(pick(CAT.djs, 'expense'))); methodSel('m_video', pm(pick(CAT.video, 'expense'))); methodSel('m_doorp', pm(pick(CAT.doorPerson, 'expense'))); methodSel('m_other', pm(pick(CAT.other, 'expense')));
+  const meta = rows.find(r => /tema:|theme:|DJs:/i.test(r.description || ''));
+  $('n_theme').value = meta ? ((meta.description.match(/(?:tema|theme): ([^;)]+)/i) || [])[1] || '').trim() : '';
+  $('n_djs').value = meta ? ((meta.description.match(/DJs: ([^;)]+)/i) || [])[1] || '').trim() : '';
+  const other = pick(CAT.other, 'expense')[0];
+  $('n_other_desc').value = other ? String(other.description || '').replace(/^Wild \d+\/\d+ — /, '') : '';
+  if (CAN_EDIT) $('nightStatus').textContent = rows.length ? `This night is closed (${rows.length} lines). Saving again replaces them.` : '';
   recalcNight();
 }
 
@@ -281,90 +290,91 @@ function recalcNight(){
   const gota = num('n_gota'), top = Math.max(0, gota - tab);
   const rev = gota * price + num('n_pure') * price + num('n_surfin') * price + num('n_door') + num('n_online');
   const cash = num('n_dj_cash') + num('n_video_cash') + num('n_door_person') + num('n_other_cash');
-  $('nightTotals').innerHTML = `<span>Receita <b>${eur(rev)}</b></span><span>Gota: ${tab} no camp tab + <b>${top}</b> de acerto</span><span>Custos em dinheiro <b>${eur(cash)}</b></span><span>Fica em caixa <b>${eur(rev - num('n_online') - cash)}</b></span>`;
+  const cashIn = (($('m_gota').value === 'Cash') ? top * price : 0) + (($('m_pure').value === 'Cash') ? num('n_pure') * price : 0) + (($('m_surfin').value === 'Cash') ? num('n_surfin') * price : 0) + (($('m_door').value === 'Cash') ? num('n_door') : 0);
+  const cashOut = [['n_dj_cash','m_dj'],['n_video_cash','m_video'],['n_door_person','m_doorp'],['n_other_cash','m_other']].reduce((s, [a, m]) => s + ($(m).value === 'Cash' ? num(a) : 0), 0);
+  $('nightTotals').innerHTML = `
+    <div class="row"><span>Gota tickets</span><b>${tab} on the camp tab + ${top} top-up</b></div>
+    <div class="row"><span>Revenue</span><b>${eur(rev)}</b></div>
+    <div class="row"><span>Costs paid on the night</span><b>${eur(cash)}</b></div>
+    <div class="row"><span>Cash in − cash out</span><b>${eur(cashIn - cashOut)}</b></div>
+    <div class="row big"><span>Night result</span><b>${eur(rev - cash)}</b></div>`;
 }
 
 async function saveNight(){
   if (!CAN_EDIT) return;
   const date = $('n_date').value;
-  if (!date) { toast('Escolhe a noite', 'err'); return; }
+  if (!date) { toast('Pick the night', 'err'); return; }
   const d = new Date(date + 'T12:00:00');
-  if (d.getDay() !== 3 && !confirm('Essa data não é uma quarta-feira. Guardar na mesma?')) return;
+  if (d.getDay() !== 3 && !confirm('That date is not a Wednesday. Save anyway?')) return;
   const price = num('n_price') || 10;
   const tab = campTabTickets(date);
   const gota = num('n_gota'), top = Math.max(0, gota - tab);
-  const meta = [$('n_theme').value.trim() ? 'tema: ' + $('n_theme').value.trim() : '', $('n_djs').value.trim() ? 'DJs: ' + $('n_djs').value.trim() : ''].filter(Boolean).join('; ');
+  const meta = [$('n_theme').value.trim() ? 'theme: ' + $('n_theme').value.trim() : '', $('n_djs').value.trim() ? 'DJs: ' + $('n_djs').value.trim() : ''].filter(Boolean).join('; ');
   const tag = `Wild ${dmy(date)}`;
   const base = { location_id: LOCATION_ID, entry_date: date, currency:'EUR', fx_rate:1, business_area:'Wild', source_kind:'manual', paid_from: SLUG, attributed_location: SLUG };
   const row = (type, category, amount, description, pm, qty) => ({ ...base, type, category, amount_eur: amount, amount_local: amount, description, payment_method: pm, qty: qty ?? null });
+  const m = (id) => $(id).value;
   const rows = [];
-  if (top > 0) rows.push(row('revenue', CAT.gota, top * price, `${tag} — bilhetes Gota ${gota}×${price} €; ${tab} já no camp tab, acerto de ${top} bilhetes${meta ? ' (' + meta + ')' : ''}`, 'Cash', top));
-  if (num('n_pure') > 0) rows.push(row('revenue', CAT.pure, num('n_pure') * price, `${tag} — bilhetes Pure Surf Camp ${num('n_pure')}×${price} € em dinheiro${meta && top <= 0 ? ' (' + meta + ')' : ''}`, 'Cash', num('n_pure')));
-  if (num('n_surfin') > 0) rows.push(row('revenue', CAT.surfin, num('n_surfin') * price, `${tag} — bilhetes Surfin/Base ${num('n_surfin')}×${price} € em dinheiro`, 'Cash', num('n_surfin')));
-  if (num('n_door') > 0) rows.push(row('revenue', CAT.door, num('n_door'), `${tag} — dinheiro na porta ${num('n_door')} €`, 'Cash'));
-  if (num('n_online') > 0) rows.push(row('revenue', CAT.online, num('n_online'), `${tag} — online Shotgun ${num('n_online')} € (CGD TRF STRIPE)`, 'Online'));
-  if (num('n_dj_cash') > 0) rows.push(row('expense', CAT.djs, num('n_dj_cash'), `${tag} — DJ pago em dinheiro${$('n_djs').value.trim() ? ': ' + $('n_djs').value.trim() : ''}`, 'Cash'));
-  if (num('n_video_cash') > 0) rows.push(row('expense', CAT.video, num('n_video_cash'), `${tag} — foto/vídeo em dinheiro`, 'Cash'));
-  if (num('n_door_person') > 0) rows.push(row('expense', CAT.doorPerson, num('n_door_person'), `Porta Wild — ${dmy(date)} (pago em dinheiro da porta)`, 'Cash'));
-  if (num('n_other_cash') > 0) rows.push(row('expense', CAT.other, num('n_other_cash'), `${tag} — ${$('n_other_desc').value.trim() || 'outros em dinheiro'}`, 'Cash'));
-  if (!rows.length) { toast('Nada para guardar', 'err'); return; }
+  let metaUsed = false; const withMeta = (s) => { if (meta && !metaUsed) { metaUsed = true; return s + ' (' + meta + ')'; } return s; };
+  if (top > 0) rows.push(row('revenue', CAT.gota, top * price, withMeta(`${tag} — Gota tickets ${gota}×${price} €; ${tab} already on the camp tab, top-up of ${top}`), m('m_gota'), top));
+  if (num('n_pure') > 0) rows.push(row('revenue', CAT.pure, num('n_pure') * price, withMeta(`${tag} — Pure Surf Camp tickets ${num('n_pure')}×${price} €`), m('m_pure'), num('n_pure')));
+  if (num('n_surfin') > 0) rows.push(row('revenue', CAT.surfin, num('n_surfin') * price, withMeta(`${tag} — Surfin/Base tickets ${num('n_surfin')}×${price} €`), m('m_surfin'), num('n_surfin')));
+  if (num('n_door') > 0) rows.push(row('revenue', CAT.door, num('n_door'), withMeta(`${tag} — door ${num('n_door')} €`), m('m_door')));
+  if (num('n_online') > 0) rows.push(row('revenue', CAT.online, num('n_online'), withMeta(`${tag} — Shotgun online ${num('n_online')} € (CGD TRF STRIPE)`), 'Online'));
+  if (num('n_dj_cash') > 0) rows.push(row('expense', CAT.djs, num('n_dj_cash'), `${tag} — DJs paid on the night${$('n_djs').value.trim() ? ': ' + $('n_djs').value.trim() : ''}`, m('m_dj')));
+  if (num('n_video_cash') > 0) rows.push(row('expense', CAT.video, num('n_video_cash'), `${tag} — photo/video paid on the night`, m('m_video')));
+  if (num('n_door_person') > 0) rows.push(row('expense', CAT.doorPerson, num('n_door_person'), `${tag} — door person`, m('m_doorp')));
+  if (num('n_other_cash') > 0) rows.push(row('expense', CAT.other, num('n_other_cash'), `${tag} — ${$('n_other_desc').value.trim() || 'other'}`, m('m_other')));
+  if (!rows.length) { toast('Nothing to save', 'err'); return; }
   $('saveNightBtn').disabled = true;
   try {
     const old = manualRowsOf(date);
-    if (old.length) {
-      const { error: delErr } = await sb.from('ledger_entries').delete().in('id', old.map(r => r.id));
-      if (delErr) throw delErr;
-    }
+    if (old.length) { const { error: delErr } = await sb.from('ledger_entries').delete().in('id', old.map(r => r.id)); if (delErr) throw delErr; }
     const { error } = await sb.from('ledger_entries').insert(rows);
     if (error) throw error;
-    toast(`Noite ${dmy(date)} guardada · ${rows.length} linhas`);
-    await loadRows();
-    loadNightIntoForm();
-    renderNightsList();
-  } catch (e) {
-    toast('Não guardou: ' + (e.message || e), 'err');
-  } finally { $('saveNightBtn').disabled = !CAN_EDIT; }
+    toast(`Night ${dmy(date)} saved · ${rows.length} lines`);
+    await loadRows(); loadNightIntoForm(); renderNightsList(); renderSeason();
+  } catch (e) { toast('Not saved: ' + (e.message || e), 'err'); }
+  finally { $('saveNightBtn').disabled = !CAN_EDIT; }
 }
 
 function renderNightsList(){
   const nights = {};
-  // Only nights: revenue rows and the manual cash rows. Bank-paid invoices
-  // (source_kind hq_invoice) carry the payment date, not a party date.
   ROWS.filter(r => r.category !== CAT.commission && r.source_kind !== 'hq_invoice').forEach(r => {
-    const k = nightOf(r); const n = nights[k] || (nights[k] = { rev:0, cash:0, manual:0, tab:0 });
+    const k = nightOf(r); const n = nights[k] || (nights[k] = { rev:0, cash:0, manual:0, tab:0, meta:'' });
     if (r.type === 'revenue') { n.rev += Number(r.amount_eur || 0); if (r.source_kind !== 'manual') n.tab += Number(r.qty || 1); }
     else if (r.source_kind === 'manual') n.cash += Number(r.amount_eur || 0);
-    if (r.source_kind === 'manual') n.manual++;
+    if (r.source_kind === 'manual') { n.manual++; const mm = String(r.description || '').match(/\(((?:tema|theme|DJs)[^)]*)\)/i); if (mm && !n.meta) n.meta = mm[1]; }
   });
   const keys = Object.keys(nights).sort().reverse();
-  if (!keys.length) { $('nightsList').textContent = 'Ainda não há noites fechadas.'; return; }
-  $('nightsList').innerHTML = keys.map(k => { const n = nights[k]; return `
-    <div class="night-row">
-      <div><b>${k}</b> <span class="pill">${n.manual ? 'fechada' : 'só camp tab'}</span><div style="font-size:11px;color:var(--muted)">${n.tab} bilhetes Gota no camp tab</div></div>
-      <div style="text-align:right"><div style="color:var(--green);font-weight:700">${eur(n.rev)}</div><div style="font-size:11px;color:var(--muted)">cash costs ${eur(n.cash)}</div></div>
-      <button class="btn secondary small" onclick="$('n_date').value='${k}';loadNightIntoForm();window.scrollTo({top:0,behavior:'smooth'})">${n.manual ? 'Editar' : 'Fechar'}</button>
-    </div>`; }).join('');
+  $('nightsList').innerHTML = keys.length ? keys.map(k => { const n = nights[k]; return `
+    <tr style="cursor:pointer" onclick="$('n_date').value='${k}';loadNightIntoForm();window.scrollTo({top:0,behavior:'smooth'})">
+      <td><b>${k}</b></td><td class="hint">${esc(n.meta.replace(/theme: |tema: /i, '').replace(/; DJs: /i, ' · '))}</td>
+      <td class="r">${n.tab}</td><td class="r" style="color:var(--green);font-weight:700">${eur(n.rev)}</td><td class="r">${n.cash ? eur(n.cash) : '—'}</td>
+      <td>${n.manual ? '<span class="badge badge-green">closed</span>' : '<span class="badge badge-amber">camp tab only</span>'}</td>
+      <td class="r"><button class="btn btn-s" onclick="event.stopPropagation();$('n_date').value='${k}';loadNightIntoForm();window.scrollTo({top:0,behavior:'smooth'})">${n.manual ? 'Edit' : 'Close'}</button></td>
+    </tr>`; }).join('') : '<tr class="empty-row"><td colspan="7">No nights yet.</td></tr>';
 }
 
 // ── Commissions ──────────────────────────────────────────────────
 async function saveCommission(){
   if (!CAN_EDIT) return;
   const date = $('c_date').value, who = $('c_who').value, amount = num('c_amount');
-  if (!date || amount <= 0) { toast('Data e valor', 'err'); return; }
+  if (!date || amount <= 0) { toast('Date and amount', 'err'); return; }
   const { error } = await sb.from('ledger_entries').insert({
     location_id: LOCATION_ID, type:'expense', entry_date: date, amount_eur: amount, amount_local: amount, currency:'EUR', fx_rate:1,
-    business_area:'Wild', category: CAT.commission, description:`Comissão ${who} — ${amount} € em dinheiro`, payment_method:'Cash', source_kind:'manual', paid_from: SLUG, attributed_location: SLUG
+    business_area:'Wild', category: CAT.commission, description:`Commission ${who} — ${amount} €`, payment_method: $('c_method').value, source_kind:'manual', paid_from: SLUG, attributed_location: SLUG
   });
-  if (error) { toast('Não guardou: ' + error.message, 'err'); return; }
-  toast(`Comissão ${who} lançada`); $('c_amount').value = '';
-  await loadRows(); renderCommissions();
+  if (error) { toast('Not saved: ' + error.message, 'err'); return; }
+  toast(`Commission ${who} logged`); $('c_amount').value = '';
+  await loadRows(); renderCommissions(); renderSeason();
 }
 function renderCommissions(){
   const rows = ROWS.filter(r => r.category === CAT.commission).sort((a, b) => a.entry_date < b.entry_date ? 1 : -1);
-  $('commList').innerHTML = rows.length ? rows.map(r => `<div class="night-row"><div>${r.entry_date} · ${r.description || ''}</div><div style="font-weight:700">${eur(r.amount_eur)}</div></div>`).join('') : '<div class="card-hint" style="margin:0">Sem comissões lançadas.</div>';
+  $('commList').innerHTML = rows.length ? `<table><thead><tr><th>Date</th><th>Description</th><th>Paid</th><th class="r">Amount</th></tr></thead><tbody>${rows.map(r => `<tr><td>${r.entry_date}</td><td>${esc(r.description)}</td><td>${esc(r.payment_method || 'Cash')}</td><td class="r"><b>${eur(r.amount_eur)}</b></td></tr>`).join('')}</tbody></table>` : '<div class="hint">No commissions logged.</div>';
 }
 
-// ── Season ───────────────────────────────────────────────────────
+// ── Overview ─────────────────────────────────────────────────────
 function renderSeason(){
   const years = [...new Set(ROWS.map(r => String(r.entry_date).slice(0, 4)))].sort().reverse();
   const sel = $('seasonYear');
@@ -372,8 +382,30 @@ function renderSeason(){
   const year = sel.value || years[0] || '';
   BusinessPnl.render($('seasonBody'), ROWS.filter(r => String(r.entry_date).startsWith(year)), {
     year, title:'Wild Wednesday', dayLabel:'Night', snapWednesday:true, revOrder: REV_ORDER, expOrder: EXP_ORDER,
-    emptyText:'Ainda não há noites nesta época.'
+    emptyText:'No nights in this season yet. Close the first one in “Close night”.'
   });
+}
+
+// ── Ledger ───────────────────────────────────────────────────────
+function renderLedger(){
+  const msel = $('lg_month');
+  if (msel.options.length <= 1) { const months = [...new Set(ROWS.map(r => String(r.entry_date).slice(0, 7)))].sort().reverse(); msel.innerHTML = '<option value="all">All</option>' + months.map(m => `<option value="${m}">${m}</option>`).join(''); }
+  const month = msel.value, type = $('lg_type').value;
+  const rows = ROWS.filter(r => (month === 'all' || String(r.entry_date).startsWith(month)) && (type === 'all' || r.type === type)).sort((a, b) => a.entry_date < b.entry_date ? 1 : -1);
+  const src = (r) => r.source_kind === 'hq_invoice' ? '<span class="badge badge-blue">HQ invoice</span>' : (r.source_kind === 'manual' ? '<span class="badge badge-green">night close</span>' : '<span class="badge badge-grey">camp tab</span>');
+  $('lg_count').textContent = `${rows.length} lines · revenue ${eur(rows.filter(r => r.type === 'revenue').reduce((s, r) => s + Number(r.amount_eur || 0), 0))} · costs ${eur(rows.filter(r => r.type === 'expense').reduce((s, r) => s + Number(r.amount_eur || 0), 0))}`;
+  $('ledgerBody').innerHTML = rows.length ? rows.map(r => `<tr>
+    <td>${r.entry_date}</td><td>${esc(String(r.category || '').replace(/^Wild · /, ''))}</td><td class="hint" style="max-width:460px">${esc(r.description || '')}</td>
+    <td>${esc(BusinessPnl.methodOf(r))}</td><td>${src(r)}</td>
+    <td class="r" style="font-weight:700;color:${r.type === 'revenue' ? 'var(--green)' : 'var(--ink)'}">${r.type === 'revenue' ? '+' : '−'}${eur(r.amount_eur)}</td>
+    <td class="r">${CAN_EDIT && r.source_kind === 'manual' ? `<button class="btn btn-d" style="padding:4px 10px" onclick="deleteRow('${r.id}')">Delete</button>` : ''}</td>
+  </tr>`).join('') : '<tr class="empty-row"><td colspan="7">Nothing here.</td></tr>';
+}
+async function deleteRow(id){
+  const r = ROWS.find(x => x.id === id); if (!r || !confirm(`Delete this line?\n${r.entry_date} · ${r.category} · ${eur(r.amount_eur)}`)) return;
+  const { error } = await sb.from('ledger_entries').delete().eq('id', id);
+  if (error) { toast('Not deleted: ' + error.message, 'err'); return; }
+  toast('Line deleted'); await loadRows(); renderLedger(); renderNightsList(); renderSeason();
 }
 
 boot();

@@ -1776,7 +1776,7 @@ test('wild: close a night → ledger rows per source with ticket qty, Gota top-u
   const errs = []; page.on('pageerror', e => errs.push(e.message));
   await fakeOwnerSession(page);
   await page.goto('/wild/', { waitUntil: 'domcontentloaded' });
-  await page.waitForFunction(() => /bilhetes Gota no camp tab/.test(document.querySelector('#nightsList')?.textContent || ''), null, { timeout: 15000 });
+  await page.waitForFunction(() => /camp tab only|closed/.test(document.querySelector('#nightsList')?.textContent || ''), null, { timeout: 15000 });
   await page.evaluate(() => {
     document.getElementById('n_date').value = '2026-07-15'; loadNightIntoForm();
     const set = (id, v) => { document.getElementById(id).value = v; };
@@ -1786,11 +1786,11 @@ test('wild: close a night → ledger rows per source with ticket qty, Gota top-u
     recalcNight();
   });
   const totals = await page.evaluate(() => document.getElementById('nightTotals').textContent);
-  expect(totals).toContain('2 no camp tab + 46 de acerto');   // the Thu/Fri tickets snapped back to 15 Jul
+  expect(totals).toContain('2 on the camp tab + 46 top-up');   // the Thu/Fri tickets snapped back to 15 Jul
   expect(totals).toContain('€1,365.00');                        // 480 + 290 + 40 + 20 + 535
   page.on('dialog', d => d.accept());
   await page.evaluate(() => saveNight());
-  await page.waitForFunction(() => window.__posted_done || /guardada/.test(document.querySelector('#toast')?.textContent || ''), null, { timeout: 15000 });
+  await page.waitForFunction(() => /saved/.test(document.querySelector('#toast')?.textContent || ''), null, { timeout: 15000 });
   const byCat = Object.fromEntries(posted.map(r => [r.category + '/' + r.type, r]));
   expect(deleted.length).toBe(0);                                 // nothing manual existed for that night yet
   expect(posted.length).toBe(7);
@@ -1807,14 +1807,14 @@ test('wild: close a night → ledger rows per source with ticket qty, Gota top-u
     return {
       hero: document.querySelector('#seasonBody .hero-val')?.textContent.trim(),
       kpis: [...document.querySelectorAll('#seasonBody .summary-box')].map(b => b.querySelector('.summary-lbl').textContent.trim() + ' ' + b.querySelector('.summary-val').textContent.trim()),
-      revCats: [...document.querySelectorAll('#seasonBody .bz-rev-cats tr')].filter(tr => tr.children.length > 1).map(tr => tr.children[0].textContent.trim() + ' ' + tr.children[1].textContent.trim()),
+      revCats: [...document.querySelectorAll('#seasonBody .bz-rev-cats tr')].filter(tr => tr.children.length > 1).map(tr => tr.children[0].firstChild.textContent.trim() + ' ' + tr.children[1].textContent.trim()),
       nights: [...document.querySelectorAll('#seasonBody .bz-days tbody tr')].map(tr => [...tr.children].map(td => td.firstChild.textContent.trim())),
     };
   });
   expect(season.hero).toBe('€20.00');                      // only the 2 camp-tab tickets are in the mocked ledger
   expect(season.kpis).toEqual(['Revenue €20.00', 'Costs €0.00', 'Commissions €0.00', 'Gota keeps €20.00']);
   expect(season.revCats[0]).toBe('Gota €20');
-  expect(season.nights).toEqual([['2026-07-15', '€20.00', '€20.00', '—']]);
+  expect(season.nights).toEqual([['2026-07-15', '€20.00', '€20.00', '—', '€20.00']]);   // + cash in
   expect(errs).toEqual([]);
 });
 
