@@ -104,15 +104,20 @@
         <div class="frow"><label>Pure tickets</label><input id="n_pure" type="number" min="0" step="1" oninput="recalcNight()" placeholder="0"><select id="m_pure" onchange="recalcNight()"><option>Cash</option><option>Bank Transfer</option></select></div>
         <div class="frow"><label>Surfin/Base tickets</label><input id="n_surfin" type="number" min="0" step="1" oninput="recalcNight()" placeholder="0"><select id="m_surfin" onchange="recalcNight()"><option>Cash</option><option>Bank Transfer</option></select></div>
         <div class="frow"><label>Door (€)</label><input id="n_door" type="number" min="0" step="0.01" oninput="recalcNight()" placeholder="0"><select id="m_door" onchange="recalcNight()"><option>Cash</option><option>Card</option></select></div>
+        <div class="frow"><label>Lisbon Surf Camp tickets</label><input id="n_lisbon" type="number" min="0" step="1" oninput="recalcNight()" placeholder="0"><select id="m_lisbon" onchange="recalcNight()"><option>Cash</option><option>Bank Transfer</option></select></div>
         <div class="frow"><label>Shotgun online (€)<small>lands on CGD as “TRF STRIPE”</small></label><input id="n_online" type="number" min="0" step="0.01" oninput="recalcNight()" placeholder="0"><select id="m_online"><option>Online</option></select></div>
+        <div class="frow"><label>Other revenue (€)<small>sponsors, bar share…</small></label><input id="n_other_rev" type="number" min="0" step="0.01" oninput="recalcNight()" placeholder="0"><select id="m_other_rev" onchange="recalcNight()"><option>Cash</option><option>Card</option><option>Bank Transfer</option></select></div>
       </div>
       <div class="card fblock">
-        <h4>Costs paid on the night</h4>
-        <div class="frow"><label>DJs (€)<small>the ones without invoice</small></label><input id="n_dj_cash" type="number" min="0" step="0.01" oninput="recalcNight()" placeholder="0"><select id="m_dj" onchange="recalcNight()"><option>Cash</option><option>Card</option><option>Bank Transfer</option></select></div>
+        <h4>Costs of the night</h4>
+        <div class="frow"><label>DJs (€)<small>invoiced DJs also come in through the HQ</small></label><input id="n_dj_cash" type="number" min="0" step="0.01" oninput="recalcNight()" placeholder="0"><select id="m_dj" onchange="recalcNight()"><option>Cash</option><option>Card</option><option>Bank Transfer</option></select></div>
+        <div class="frow"><label>Sound / light / technician (€)</label><input id="n_sound" type="number" min="0" step="0.01" oninput="recalcNight()" placeholder="0"><select id="m_sound" onchange="recalcNight()"><option>Bank Transfer</option><option>Cash</option><option>Card</option></select></div>
         <div class="frow"><label>Photo / video (€)</label><input id="n_video_cash" type="number" min="0" step="0.01" oninput="recalcNight()" placeholder="0"><select id="m_video" onchange="recalcNight()"><option>Cash</option><option>Card</option><option>Bank Transfer</option></select></div>
+        <div class="frow"><label>Marketing (€)<small>ads for this night</small></label><input id="n_marketing" type="number" min="0" step="0.01" oninput="recalcNight()" placeholder="0"><select id="m_marketing" onchange="recalcNight()"><option>Card</option><option>Cash</option><option>Bank Transfer</option></select></div>
         <div class="frow"><label>Door person (€)</label><input id="n_door_person" type="number" min="0" step="0.01" value="40" oninput="recalcNight()"><select id="m_doorp" onchange="recalcNight()"><option>Cash</option><option>Bank Transfer</option></select></div>
         <div class="frow"><label>Other (€)</label><input id="n_other_cash" type="number" min="0" step="0.01" oninput="recalcNight()" placeholder="0"><select id="m_other" onchange="recalcNight()"><option>Cash</option><option>Card</option><option>Bank Transfer</option></select></div>
         <div class="frow" style="grid-template-columns:1fr"><input id="n_other_desc" type="text" placeholder="what the other cost was (wristbands, ice…)" style="text-align:left;font-family:'Outfit',sans-serif"></div>
+        <div class="hint" style="margin-top:8px">Lines paid by bank or card are saved as <b>pending the invoice</b>: when the supplier's invoice is lanced in the HQ for this night, that pending line is replaced, so nothing counts twice.</div>
       </div>
       <div>
         <div class="sumbox" id="nightTotals"></div>
@@ -172,10 +177,11 @@ const sb = window.supabase.createClient(cfg.url, cfg.anonKey);
 
 const SLUG = 'wild-wednesday';
 const CAT = {
-  gota:'Wild · Gota', pure:'Wild · Pure', surfin:'Wild · Surfin', door:'Wild · Porta', online:'Wild · Online',
-  djs:'Wild · DJs', video:'Wild · Foto/vídeo', doorPerson:'Wild · Porta', other:'Wild · Outros', commission:'Wild · Comissões'
+  gota:'Wild · Gota', pure:'Wild · Pure', surfin:'Wild · Surfin', lisbon:'Wild · Lisbon Surf Camp', door:'Wild · Porta', online:'Wild · Online', otherRev:'Wild · Outras receitas',
+  djs:'Wild · DJs', sound:'Wild · Som/luz', video:'Wild · Foto/vídeo', marketing:'Wild · Marketing', doorPerson:'Wild · Porta', other:'Wild · Outros', commission:'Wild · Comissões'
 };
-const REV_ORDER = [CAT.gota, CAT.pure, CAT.surfin, CAT.door, CAT.online];
+const PENDING = '[pending HQ invoice]';
+const REV_ORDER = [CAT.gota, CAT.pure, CAT.surfin, CAT.lisbon, CAT.door, CAT.online, CAT.otherRev];
 const EXP_ORDER = ['Wild · DJs','Wild · Som/luz','Wild · Foto/vídeo','Wild · Marketing','Wild · Porta','Wild · Outros','Wild · Comissões'];
 
 let LOCATION_ID = null;
@@ -266,15 +272,19 @@ function loadNightIntoForm(){
   set('n_gota', rows.length ? (tab + (sumQ(gotaTop) || Math.round(sumA(gotaTop) / price))) : (tab || ''));
   set('n_pure', rows.length ? (sumQ(pick(CAT.pure, 'revenue')) || Math.round(sumA(pick(CAT.pure, 'revenue')) / price)) : '');
   set('n_surfin', rows.length ? (sumQ(pick(CAT.surfin, 'revenue')) || Math.round(sumA(pick(CAT.surfin, 'revenue')) / price)) : '');
+  set('n_lisbon', rows.length ? (sumQ(pick(CAT.lisbon, 'revenue')) || Math.round(sumA(pick(CAT.lisbon, 'revenue')) / price)) : '');
   set('n_door', rows.length ? sumA(pick(CAT.door, 'revenue')) : '');
   set('n_online', rows.length ? sumA(pick(CAT.online, 'revenue')) : '');
+  set('n_other_rev', rows.length ? sumA(pick(CAT.otherRev, 'revenue')) : '');
   set('n_dj_cash', rows.length ? sumA(pick(CAT.djs, 'expense')) : '');
+  set('n_sound', rows.length ? sumA(pick(CAT.sound, 'expense')) : '');
   set('n_video_cash', rows.length ? sumA(pick(CAT.video, 'expense')) : '');
+  set('n_marketing', rows.length ? sumA(pick(CAT.marketing, 'expense')) : '');
   set('n_door_person', rows.length ? sumA(pick(CAT.doorPerson, 'expense')) : 40);
   set('n_other_cash', rows.length ? sumA(pick(CAT.other, 'expense')) : '');
   const pm = (arr) => arr[0]?.payment_method;
-  methodSel('m_gota', pm(gotaTop)); methodSel('m_pure', pm(pick(CAT.pure, 'revenue'))); methodSel('m_surfin', pm(pick(CAT.surfin, 'revenue'))); methodSel('m_door', pm(pick(CAT.door, 'revenue')));
-  methodSel('m_dj', pm(pick(CAT.djs, 'expense'))); methodSel('m_video', pm(pick(CAT.video, 'expense'))); methodSel('m_doorp', pm(pick(CAT.doorPerson, 'expense'))); methodSel('m_other', pm(pick(CAT.other, 'expense')));
+  methodSel('m_gota', pm(gotaTop)); methodSel('m_pure', pm(pick(CAT.pure, 'revenue'))); methodSel('m_surfin', pm(pick(CAT.surfin, 'revenue'))); methodSel('m_lisbon', pm(pick(CAT.lisbon, 'revenue'))); methodSel('m_door', pm(pick(CAT.door, 'revenue'))); methodSel('m_other_rev', pm(pick(CAT.otherRev, 'revenue')));
+  methodSel('m_dj', pm(pick(CAT.djs, 'expense'))); methodSel('m_sound', pm(pick(CAT.sound, 'expense')) || 'Bank Transfer'); methodSel('m_video', pm(pick(CAT.video, 'expense'))); methodSel('m_marketing', pm(pick(CAT.marketing, 'expense')) || 'Card'); methodSel('m_doorp', pm(pick(CAT.doorPerson, 'expense'))); methodSel('m_other', pm(pick(CAT.other, 'expense')));
   const meta = rows.find(r => /tema:|theme:|DJs:/i.test(r.description || ''));
   $('n_theme').value = meta ? ((meta.description.match(/(?:tema|theme): ([^;)]+)/i) || [])[1] || '').trim() : '';
   $('n_djs').value = meta ? ((meta.description.match(/DJs: ([^;)]+)/i) || [])[1] || '').trim() : '';
@@ -288,14 +298,17 @@ function recalcNight(){
   const price = num('n_price') || 10;
   const tab = campTabTickets($('n_date').value);
   const gota = num('n_gota'), top = Math.max(0, gota - tab);
-  const rev = gota * price + num('n_pure') * price + num('n_surfin') * price + num('n_door') + num('n_online');
-  const cash = num('n_dj_cash') + num('n_video_cash') + num('n_door_person') + num('n_other_cash');
-  const cashIn = (($('m_gota').value === 'Cash') ? top * price : 0) + (($('m_pure').value === 'Cash') ? num('n_pure') * price : 0) + (($('m_surfin').value === 'Cash') ? num('n_surfin') * price : 0) + (($('m_door').value === 'Cash') ? num('n_door') : 0);
-  const cashOut = [['n_dj_cash','m_dj'],['n_video_cash','m_video'],['n_door_person','m_doorp'],['n_other_cash','m_other']].reduce((s, [a, m]) => s + ($(m).value === 'Cash' ? num(a) : 0), 0);
+  const rev = gota * price + num('n_pure') * price + num('n_surfin') * price + num('n_lisbon') * price + num('n_door') + num('n_online') + num('n_other_rev');
+  const costLines = [['n_dj_cash','m_dj'],['n_sound','m_sound'],['n_video_cash','m_video'],['n_marketing','m_marketing'],['n_door_person','m_doorp'],['n_other_cash','m_other']];
+  const cash = costLines.reduce((s, [a]) => s + num(a), 0);
+  const cashIn = (($('m_gota').value === 'Cash') ? top * price : 0) + (($('m_pure').value === 'Cash') ? num('n_pure') * price : 0) + (($('m_surfin').value === 'Cash') ? num('n_surfin') * price : 0) + (($('m_lisbon').value === 'Cash') ? num('n_lisbon') * price : 0) + (($('m_door').value === 'Cash') ? num('n_door') : 0) + (($('m_other_rev').value === 'Cash') ? num('n_other_rev') : 0);
+  const cashOut = costLines.reduce((s, [a, m]) => s + ($(m).value === 'Cash' ? num(a) : 0), 0);
+  const pending = costLines.reduce((s, [a, m]) => s + ($(m).value !== 'Cash' ? num(a) : 0), 0);
   $('nightTotals').innerHTML = `
     <div class="row"><span>Gota tickets</span><b>${tab} on the camp tab + ${top} top-up</b></div>
     <div class="row"><span>Revenue</span><b>${eur(rev)}</b></div>
-    <div class="row"><span>Costs paid on the night</span><b>${eur(cash)}</b></div>
+    <div class="row"><span>Costs of the night</span><b>${eur(cash)}</b></div>
+    ${pending ? `<div class="row"><span>of which pending invoice</span><b>${eur(pending)}</b></div>` : ''}
     <div class="row"><span>Cash in − cash out</span><b>${eur(cashIn - cashOut)}</b></div>
     <div class="row big"><span>Night result</span><b>${eur(rev - cash)}</b></div>`;
 }
@@ -319,12 +332,18 @@ async function saveNight(){
   if (top > 0) rows.push(row('revenue', CAT.gota, top * price, withMeta(`${tag} — Gota tickets ${gota}×${price} €; ${tab} already on the camp tab, top-up of ${top}`), m('m_gota'), top));
   if (num('n_pure') > 0) rows.push(row('revenue', CAT.pure, num('n_pure') * price, withMeta(`${tag} — Pure Surf Camp tickets ${num('n_pure')}×${price} €`), m('m_pure'), num('n_pure')));
   if (num('n_surfin') > 0) rows.push(row('revenue', CAT.surfin, num('n_surfin') * price, withMeta(`${tag} — Surfin/Base tickets ${num('n_surfin')}×${price} €`), m('m_surfin'), num('n_surfin')));
+  if (num('n_lisbon') > 0) rows.push(row('revenue', CAT.lisbon, num('n_lisbon') * price, withMeta(`${tag} — Lisbon Surf Camp tickets ${num('n_lisbon')}×${price} €`), m('m_lisbon'), num('n_lisbon')));
   if (num('n_door') > 0) rows.push(row('revenue', CAT.door, num('n_door'), withMeta(`${tag} — door ${num('n_door')} €`), m('m_door')));
   if (num('n_online') > 0) rows.push(row('revenue', CAT.online, num('n_online'), withMeta(`${tag} — Shotgun online ${num('n_online')} € (CGD TRF STRIPE)`), 'Online'));
-  if (num('n_dj_cash') > 0) rows.push(row('expense', CAT.djs, num('n_dj_cash'), `${tag} — DJs paid on the night${$('n_djs').value.trim() ? ': ' + $('n_djs').value.trim() : ''}`, m('m_dj')));
-  if (num('n_video_cash') > 0) rows.push(row('expense', CAT.video, num('n_video_cash'), `${tag} — photo/video paid on the night`, m('m_video')));
-  if (num('n_door_person') > 0) rows.push(row('expense', CAT.doorPerson, num('n_door_person'), `${tag} — door person`, m('m_doorp')));
-  if (num('n_other_cash') > 0) rows.push(row('expense', CAT.other, num('n_other_cash'), `${tag} — ${$('n_other_desc').value.trim() || 'other'}`, m('m_other')));
+  if (num('n_other_rev') > 0) rows.push(row('revenue', CAT.otherRev, num('n_other_rev'), withMeta(`${tag} — other revenue`), m('m_other_rev')));
+  // Costs: anything not paid in cash is a pending line — the HQ invoice replaces it.
+  const pend = (pm) => pm === 'Cash' ? '' : ' ' + PENDING;
+  if (num('n_dj_cash') > 0) rows.push(row('expense', CAT.djs, num('n_dj_cash'), `${tag} — DJs${$('n_djs').value.trim() ? ': ' + $('n_djs').value.trim() : ''}${pend(m('m_dj'))}`, m('m_dj')));
+  if (num('n_sound') > 0) rows.push(row('expense', CAT.sound, num('n_sound'), `${tag} — sound/light/technician${pend(m('m_sound'))}`, m('m_sound')));
+  if (num('n_video_cash') > 0) rows.push(row('expense', CAT.video, num('n_video_cash'), `${tag} — photo/video${pend(m('m_video'))}`, m('m_video')));
+  if (num('n_marketing') > 0) rows.push(row('expense', CAT.marketing, num('n_marketing'), `${tag} — marketing${pend(m('m_marketing'))}`, m('m_marketing')));
+  if (num('n_door_person') > 0) rows.push(row('expense', CAT.doorPerson, num('n_door_person'), `${tag} — door person${pend(m('m_doorp'))}`, m('m_doorp')));
+  if (num('n_other_cash') > 0) rows.push(row('expense', CAT.other, num('n_other_cash'), `${tag} — ${$('n_other_desc').value.trim() || 'other'}${pend(m('m_other'))}`, m('m_other')));
   if (!rows.length) { toast('Nothing to save', 'err'); return; }
   $('saveNightBtn').disabled = true;
   try {
@@ -392,7 +411,7 @@ function renderLedger(){
   if (msel.options.length <= 1) { const months = [...new Set(ROWS.map(r => String(r.entry_date).slice(0, 7)))].sort().reverse(); msel.innerHTML = '<option value="all">All</option>' + months.map(m => `<option value="${m}">${m}</option>`).join(''); }
   const month = msel.value, type = $('lg_type').value;
   const rows = ROWS.filter(r => (month === 'all' || String(r.entry_date).startsWith(month)) && (type === 'all' || r.type === type)).sort((a, b) => a.entry_date < b.entry_date ? 1 : -1);
-  const src = (r) => r.source_kind === 'hq_invoice' ? '<span class="badge badge-blue">HQ invoice</span>' : (r.source_kind === 'manual' ? '<span class="badge badge-green">night close</span>' : '<span class="badge badge-grey">camp tab</span>');
+  const src = (r) => r.source_kind === 'hq_invoice' ? '<span class="badge badge-blue">HQ invoice</span>' : (r.source_kind === 'manual' ? (String(r.description || '').includes(PENDING) ? '<span class="badge badge-amber">pending invoice</span>' : '<span class="badge badge-green">night close</span>') : '<span class="badge badge-grey">camp tab</span>');
   $('lg_count').textContent = `${rows.length} lines · revenue ${eur(rows.filter(r => r.type === 'revenue').reduce((s, r) => s + Number(r.amount_eur || 0), 0))} · costs ${eur(rows.filter(r => r.type === 'expense').reduce((s, r) => s + Number(r.amount_eur || 0), 0))}`;
   $('ledgerBody').innerHTML = rows.length ? rows.map(r => `<tr>
     <td>${r.entry_date}</td><td>${esc(String(r.category || '').replace(/^Wild · /, ''))}</td><td class="hint" style="max-width:460px">${esc(r.description || '')}</td>
