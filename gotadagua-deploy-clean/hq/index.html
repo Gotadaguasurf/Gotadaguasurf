@@ -60,7 +60,7 @@ input:focus,select:focus{outline:none;border-color:var(--ocean);box-shadow:0 0 0
 .batch-bar-inner select option{color:var(--ink)}
 @keyframes barIn{from{opacity:0;transform:translate(-50%,10px)}to{opacity:1;transform:translate(-50%,0)}}
 .inline-select{border:1px solid transparent;background:transparent;padding:3px 22px 3px 6px;font-size:12px;font-family:'Outfit',sans-serif;color:inherit;cursor:pointer;border-radius:4px;transition:background .12s, border-color .12s;min-width:108px;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%236b8099' stroke-width='2'><polyline points='6 9 12 15 18 9'/></svg>");background-repeat:no-repeat;background-position:right 4px center}
-.inline-select.wide{min-width:150px}
+.inline-select.wide{min-width:124px}
 .inline-select.narrow{min-width:96px}
 .inline-select:hover{background-color:var(--foam);border-color:var(--border)}
 .inline-select:focus{background-color:var(--foam);border-color:var(--ocean);outline:none}
@@ -70,6 +70,7 @@ input:focus,select:focus{outline:none;border-color:var(--ocean);box-shadow:0 0 0
    Note: HTML table cells ignore max-width unless the table itself has
    table-layout:fixed, so we set an explicit fixed width on the wrapping
    div and rely on the inner block spans for text-overflow ellipsis. */
+#invListBody{overflow-x:auto}
 #invListBody table tbody tr td{vertical-align:middle;padding-top:8px;padding-bottom:8px}
 .sup-cell{display:block;width:240px;overflow:hidden}
 .sup-name{display:block;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

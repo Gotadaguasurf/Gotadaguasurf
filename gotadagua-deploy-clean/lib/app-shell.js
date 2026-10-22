@@ -185,7 +185,7 @@
   const EMOJI = { '⬆':'upload', '⬇':'download', '📦':'package', '📋':'file-text', '⚠':'alert', '⚠️':'alert', '🤖':'zap', '📊':'bar-chart', '🔎':'search', '🔍':'search',
     '🏠':'home', '📁':'folder', '🏕':'tent', '🏕️':'tent', '💳':'card', '💶':'euro', '💰':'euro', '👥':'users', '✓':'check', '✅':'check', '✕':'x', '❌':'x', '⏰':'clock',
     '⚙':'settings', '⚙️':'settings', '✎':'edit', '✏️':'edit', '🗑':'trash', '🗑️':'trash', '📎':'paperclip', '📥':'inbox', '📤':'upload', '🧾':'receipt', '🚐':'truck', '🚌':'truck',
-    '🏄':'wave', '🏄‍♂️':'wave', '＋':'plus', '➕':'plus', '↻':'refresh', '🔄':'refresh', '📧':'mail', '✉️':'mail', '🗂':'archive', '🗂️':'archive', '📅':'calendar', '🕒':'clock' };
+    '🏄':'wave', '🏄‍♂️':'wave', '🚀':'zap', '↗':'external', '✔':'check', '🏷':'archive', '🏷️':'archive', '📈':'bar-chart', '📉':'bar-chart', '🏦':'card', '＋':'plus', '➕':'plus', '↻':'refresh', '🔄':'refresh', '📧':'mail', '✉️':'mail', '🗂':'archive', '🗂️':'archive', '📅':'calendar', '🕒':'clock' };
   const EMOJI_KEYS = Object.keys(EMOJI).sort((a, b) => b.length - a.length);
   const FLATTEN_SEL = 'button, summary, .ntab, .ntab-m, .health-chip, .card-title, .section-title, .ov-section-title, .form-title, a.btn, .nav-action-btn, .digest-btn, .kpi-label, .add-block-title, th, .badge, .chip, label.period-picker, .section-lbl, h1, h2, h3, h4';
   function flattenEmoji(root){
