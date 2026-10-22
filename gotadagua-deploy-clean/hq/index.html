@@ -435,13 +435,17 @@ const sb  = window.supabase.createClient(cfg.url, cfg.anonKey);
 const $   = (id) => document.getElementById(id);
 const OWNER_EMAILS = new Set(window.__PLATFORM_OWNER_EMAILS || ['miguel@gotadaguasurf.com']);
 
+// Manjar Lda (The Suk) is a separate company with its own books: it lives on
+// /suk/ and never shows in this HQ (Miguel, 22 Oct 2026). Rows tagged
+// paying_company='manjar' / location 'the-suk' are filtered out below.
+const NOT_HQ_COMPANY = 'manjar';
+const NOT_HQ_LOCATION = 'the-suk';
 const HQ_LOCATIONS = [
   {slug:'portugal',       label:'Surfcamp PT'},
   {slug:'surf-school',    label:'Surf School'},
   {slug:'junior-camp',    label:'Junior Camp'},
   {slug:'kids-camp',      label:'Kids Camp'},
   {slug:'wild-wednesday', label:'Wild Wednesday'},
-  {slug:'the-suk',        label:'The Suk'},
   {slug:'morocco',        label:'Morocco'},
   {slug:'sri-lanka',      label:'Sri Lanka'},
   {slug:'general',        label:'General (HQ)'},
@@ -455,7 +459,6 @@ const HQ_COMPANIES = [
   {slug:'water-movements', label:'Water Movements Lda', covers:['portugal','surf-school','junior-camp','kids-camp','wild-wednesday','general']},
   {slug:'mgrp-sarl',       label:'MGRP Sarl',           covers:['morocco']},
   {slug:'wave-movements',  label:'Wave Movements',      covers:['sri-lanka']},
-  {slug:'manjar',          label:'Manjar Lda',          covers:['the-suk']},
 ];
 const payingCompanyFor = (locationSlug) => {
   const c = HQ_COMPANIES.find(x => x.covers.includes(locationSlug));
@@ -610,8 +613,9 @@ async function renderOverview(){
   const { data: roll, error: rollErr } = await sb.rpc('hq_overview_rollup');
   if (rollErr) { body.innerHTML = `<div class="loading">Não foi possível carregar o Overview: ${rollErr.message || rollErr.code || rollErr}</div>`; return; }
   const bkRowsAll = (roll?.bookings || []).map(r => ({ ...r, partner_name: r.direct ? null : 'partner', booking_type: r.direct ? 'direct' : 'partner', n: Number(r.n || 0) }));
-  const invRowsAll = (roll?.invoices || []).map(r => ({ ...r, invoice_date: `${r.month}-01` }));
-  const lgRowsAll = (roll?.ledger || []).map(r => ({ ...r, entry_date: `${r.month}-01` }));
+  const sukLocId = (LOCATIONS.find(l => l.slug === NOT_HQ_LOCATION) || {}).id || null;
+  const invRowsAll = (roll?.invoices || []).filter(r => r.location_slug !== NOT_HQ_LOCATION).map(r => ({ ...r, invoice_date: `${r.month}-01` }));
+  const lgRowsAll = (roll?.ledger || []).filter(r => r.attributed_location !== NOT_HQ_LOCATION && !(sukLocId && r.location_id === sukLocId)).map(r => ({ ...r, entry_date: `${r.month}-01` }));
 
   if (perSel && perSel.options.length <= 1) {
     const set = new Set();
@@ -730,8 +734,8 @@ async function renderOverview(){
   // Health check — cheap counts + a fetch of the two tiny side tables so
   // the chip strip can flag what needs Miguel's attention right now.
   const [reviewRes, dupRes, recurRes, transfersAll] = await Promise.all([
-    sb.from('hq_invoices').select('id', { count:'exact', head:true }).eq('needs_review', true).is('deleted_at', null),
-    sb.from('hq_invoices').select('id', { count:'exact', head:true }).eq('is_duplicate', true).is('deleted_at', null),
+    sb.from('hq_invoices').select('id', { count:'exact', head:true }).eq('needs_review', true).is('deleted_at', null).neq('paying_company', NOT_HQ_COMPANY),
+    sb.from('hq_invoices').select('id', { count:'exact', head:true }).eq('is_duplicate', true).is('deleted_at', null).neq('paying_company', NOT_HQ_COMPANY),
     sb.from('hq_recurring_expenses').select('id, active, day_of_month, last_created_on').eq('active', true),
     fetchAllPaged(() => sb.from('internal_transfers').select('from_company, to_company, amount_eur'))
   ]);
@@ -4118,6 +4122,7 @@ async function renderInvoiceList(){
     rows = await fetchAllPaged(() => {
       let q = sb.from('hq_invoices')
         .select('id, location_slug, paying_company, invoice_date, company, description, amount, currency, amount_eur, payment_type, invoice_number, category_name, file_url, file_name, drive_link, needs_review, is_duplicate, category_id, notes, supplier_nif, fx_rate, deleted_at, deleted_by')
+        .neq('paying_company', NOT_HQ_COMPANY)
         .order('invoice_date', { ascending:false });
       q = showDeleted ? q.not('deleted_at', 'is', null) : q.is('deleted_at', null);
       if (loc !== '__all__') q = q.eq('location_slug', loc);
@@ -5126,8 +5131,10 @@ async function loadPnlData(){
   const [books, ledger, invoices] = await Promise.all([
     fetchAllPaged(() => sb.from('bookings').select('location, month_key, total, net_amount').order('check_in_on',{ascending:true})),
     fetchAllPaged(() => sb.from('ledger_entries').select('type, amount_eur, entry_date, attributed_location, paid_from, location_id, source_kind').order('entry_date',{ascending:false})),
-    fetchAllPaged(() => sb.from('hq_invoices').select('amount_eur, location_slug, invoice_date, category_id').is('deleted_at', null).order('invoice_date',{ascending:false})),
+    fetchAllPaged(() => sb.from('hq_invoices').select('amount_eur, location_slug, invoice_date, category_id').is('deleted_at', null).neq('paying_company', NOT_HQ_COMPANY).order('invoice_date',{ascending:false})),
   ]);
+  const sukLocIdPnl = (LOCATIONS.find(l => l.slug === NOT_HQ_LOCATION) || {}).id || null;
+  const ledgerHq = (ledger || []).filter(l => !(sukLocIdPnl && l.location_id === sukLocIdPnl) && l.attributed_location !== NOT_HQ_LOCATION && l.paid_from !== NOT_HQ_LOCATION);
   // Income rows from the POS often carry only paid_from / location_id —
   // attributed_location is an expense-side convention. Resolve through
   // the full chain so operations revenue lands on the right camp.
@@ -5146,7 +5153,7 @@ async function loadPnlData(){
     const v = Number(b.net_amount != null ? b.net_amount : b.total) || 0;
     bump(slug, b.month_key, 'revBook', v);
   });
-  (ledger||[]).filter(l => l.source_kind !== 'hq_invoice').forEach(l => {
+  ledgerHq.filter(l => l.source_kind !== 'hq_invoice').forEach(l => {
     const m = String(l.entry_date||'').slice(0,7);
     const v = Number(l.amount_eur)||0;
     // The POS and the camp-hub write type='revenue'; 'income' is the legacy value.
@@ -5285,7 +5292,7 @@ async function renderCashflow(){
   trBody.innerHTML = `<div class="loading">Loading…</div>`;
 
   const [invRows, transferRows, bkRows] = await Promise.all([
-    fetchAllPaged(() => sb.from('hq_invoices').select('paying_company, location_slug, amount_eur, category_id, invoice_date').order('invoice_date',{ascending:false})),
+    fetchAllPaged(() => sb.from('hq_invoices').select('paying_company, location_slug, amount_eur, category_id, invoice_date').neq('paying_company', NOT_HQ_COMPANY).order('invoice_date',{ascending:false})),
     fetchAllPaged(() => sb.from('internal_transfers').select('id, transfer_date, from_company, to_company, amount, currency, amount_eur, purpose, reference, notes').order('transfer_date',{ascending:false})),
     fetchAllPaged(() => sb.from('bookings').select('total, net_amount, month_key, location').order('check_in_on',{ascending:true}))
   ]);
