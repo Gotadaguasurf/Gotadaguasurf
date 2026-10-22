@@ -9268,20 +9268,20 @@ function renderWeeklyPL(){
         <th class="r">Operating Cash</th>
       </tr></thead>
       <tbody>
-        ${rows.map(r=>`<tr style="cursor:pointer" onclick="jumpToWeek('${r.ws}')">
+        ${rows.map(r=>{ const wk=(v,color,bold)=>`<td class="r" style="${Number(v)?`color:${color};${bold?'font-weight:700':''}`:'color:var(--muted-2)'}">${euro(v)}</td>`; return `<tr style="cursor:pointer" onclick="jumpToWeek('${r.ws}')">
           <td style="font-weight:600;white-space:nowrap">${fmtd(r.ws)} → ${fmtd(addDays(r.ws,6))}</td>
           <td class="r">${r.guests?`${r.paidGuests}/${r.guests}`:'—'}</td>
           <td class="r" style="color:var(--red)">${r.guestDays?perGuestDayMetric(r.foodExp,r.guestDays):'—'}</td>
-          <td class="r" style="color:var(--amber)">${euro(r.sent)}</td>
-          <td class="r" style="color:var(--red)">${euro(r.campSpend)}</td>
-          <td class="r" style="color:var(--red)">${euro(r.cardSpend||0)}</td>
-          <td class="r" style="color:var(--amber)">${euro(r.hqSpend)}</td>
-          <td class="r" style="font-weight:700;color:var(--green)">${euro(r.drinksSales)}</td>
-          <td class="r" style="font-weight:700;color:var(--green)">${euro(r.merchSales)}</td>
-          <td class="r" style="font-weight:700;color:var(--green)">${euro(r.tourSales)}</td>
-          <td class="r" style="font-weight:700;color:var(--green)">${euro(r.transportSales)}</td>
-          <td class="r" style="font-weight:700;color:${r.cash>=0?'var(--green)':'var(--red)'}">${euro(r.cash)}</td>
-        </tr>`).join('')}
+          ${wk(r.sent,'var(--amber)',false)}
+          ${wk(r.campSpend,'var(--red)',false)}
+          ${wk(r.cardSpend||0,'var(--red)',false)}
+          ${wk(r.hqSpend,'var(--amber)',false)}
+          ${wk(r.drinksSales,'var(--green)',true)}
+          ${wk(r.merchSales,'var(--green)',true)}
+          ${wk(r.tourSales,'var(--green)',true)}
+          ${wk(r.transportSales,'var(--green)',true)}
+          ${wk(r.cash, r.cash>=0?'var(--green)':'var(--red)', true)}
+        </tr>`;}).join('')}
       </tbody>
       <tfoot style="background:var(--sand)">
         <tr>

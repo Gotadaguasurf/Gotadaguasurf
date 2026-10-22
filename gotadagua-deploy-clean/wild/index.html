@@ -108,7 +108,7 @@
 <script src="/lib/app-shell.js"></script>
 <script src="/lib/business-pnl.js"></script>
 <script>
-AppShell.mount('appNav', { app:'wild', title:'Wild Wednesday', tabs:[{ id:'overview', label:'Overview', active:true }, { id:'night', label:'Close night' }], location:{ label:'Wild Wednesday', items:[{ href:'/wild/', label:'Wild Wednesday', sub:'Weekly party · Costa da Caparica', current:true }, { href:'/suk/', label:'The Suk', sub:'Manjar Lda · restaurant + catering', current:false }] }, actions:'<a class="nav-action-btn" href="/hq/" id="hqBtn" style="display:none">HQ</a>' });
+AppShell.mount('appNav', { app:'wild', title:'Businesses', tabs:[{ id:'overview', label:'Overview', active:true }, { id:'night', label:'Close night' }], location:{ label:'Wild Wednesday', items:[{ href:'/wild/', label:'Wild Wednesday', sub:'Weekly party · Costa da Caparica', current:true }, { href:'/suk/', label:'The Suk', sub:'Manjar Lda · restaurant + catering', current:false }] }, actions:'<a class="nav-action-btn" href="/hq/" id="hqBtn" style="display:none">HQ</a>' });
 const cfg = window.__SUPABASE_CONFIG || {};
 const sb = window.supabase.createClient(cfg.url, cfg.anonKey);
 

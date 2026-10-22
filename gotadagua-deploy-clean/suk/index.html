@@ -98,7 +98,7 @@
 <script src="/lib/business-pnl.js"></script>
 <script src="/lib/expense-form.js"></script>
 <script>
-AppShell.mount('appNav', { app:'suk', title:'The Suk', tabs:[{ id:'overview', label:'Overview', active:true }, { id:'invoices', label:'Expenses' }, { id:'bank', label:'Bank · Water ↔ Manjar' }], location:{ label:'The Suk', items:[{ href:'/wild/', label:'Wild Wednesday', sub:'Weekly party · Costa da Caparica', current:false }, { href:'/suk/', label:'The Suk', sub:'Manjar Lda · restaurant + catering', current:true }] }, actions:'<a class="nav-action-btn" href="/hq/" id="hqBtn" style="display:none">HQ</a>' });
+AppShell.mount('appNav', { app:'suk', title:'Businesses', tabs:[{ id:'overview', label:'Overview', active:true }, { id:'invoices', label:'Expenses' }, { id:'bank', label:'Bank · Water ↔ Manjar' }], location:{ label:'The Suk', items:[{ href:'/wild/', label:'Wild Wednesday', sub:'Weekly party · Costa da Caparica', current:false }, { href:'/suk/', label:'The Suk', sub:'Manjar Lda · restaurant + catering', current:true }] }, actions:'<a class="nav-action-btn" href="/hq/" id="hqBtn" style="display:none">HQ</a>' });
 const cfg = window.__SUPABASE_CONFIG || {};
 const sb = window.supabase.createClient(cfg.url, cfg.anonKey);
 const SLUG = 'the-suk', COMPANY = 'manjar', BANK = 'bcp';

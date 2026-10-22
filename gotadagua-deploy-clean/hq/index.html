@@ -4582,7 +4582,7 @@ async function renderCashflow(){
   }
 
   cfBody.innerHTML = `
-    <div style="overflow-x:auto"><table>
+    <div class="tbl-wrap"><table>
       <thead><tr>
         <th>Company</th>
         <th class="r">Bookings IN</th>
@@ -4609,7 +4609,7 @@ async function renderCashflow(){
         <div class="hint" style="margin-bottom:10px">Money one company advanced for another that hasn't been settled with a matching transfer. Positive number = <b>from</b> still needs to receive back from <b>to</b>.</div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px">
           ${netPairs.map(p => `
-            <div class="summary-box neutral" style="border-left-color:var(--amber);background:#fef9e7">
+            <div class="summary-box neutral">
               <div class="summary-lbl">${escapeHtml(companyLabel(p.from))} → ${escapeHtml(companyLabel(p.to))}</div>
               <div class="summary-val" style="color:var(--amber)">${eur(p.amount)}</div>
               <div class="hint" style="margin-top:4px">Owed by ${escapeHtml(companyLabel(p.to))} to ${escapeHtml(companyLabel(p.from))}</div>
