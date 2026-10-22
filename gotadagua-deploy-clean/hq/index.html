@@ -2648,7 +2648,57 @@ function fechoTabHtml(){
       </div>
       <div id="fecho_kpis" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px"></div>
     </div>
+    <div id="fechoMail" style="margin-bottom:16px"></div>
     <div id="fechoBody"><div class="loading">Loading…</div></div>`;
+}
+// ── Invoices that arrived by email (supabase/functions/mail-ingest): what the
+//    harvester did and what it could not decide (buyer unknown). «Water» /
+//    «Manjar» / «Ignorar» resolve a review item through the function, which
+//    refetches the PDF from Gmail, files it in the Drive and creates the line.
+async function renderFechoMail(){
+  const box = $('fechoMail'); if (!box) return;
+  const { data, error } = await sb.from('mail_ingest_items').select('id, account_email, received_at, filename, status, reason, company, gmail_link, drive_link, parsed, hq_invoice_id').in('status', ['review','inserted','linked','error']).order('created_at', { ascending:false }).limit(60);
+  if (error) { box.innerHTML = ''; return; }
+  const rows = data || [];
+  const review = rows.filter(r => r.status === 'review');
+  const recent = rows.filter(r => r.status !== 'review').slice(0, 12);
+  if (!rows.length) { box.innerHTML = ''; return; }
+  const money = (p) => p && p.amount != null ? `${Number(p.amount).toLocaleString('pt-PT', {minimumFractionDigits:2, maximumFractionDigits:2})} ${p.currency || 'EUR'}` : '—';
+  box.innerHTML = `
+    <div class="card" style="padding:16px 18px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap">
+        <div><b style="font-size:15px">Faturas do email</b> <span class="hint" style="margin:0 0 0 8px">lidas pela app nas caixas ligadas (só leitura)</span></div>
+        <button class="btn btn-ghost" onclick="mailIngestRunNow()">Ler agora</button>
+      </div>
+      ${review.length ? `<div style="margin-top:12px"><b>${review.length} por decidir</b> — a app não percebeu para quem é a fatura:</div>
+      <table class="tbl" style="margin-top:6px"><thead><tr><th>Recebida</th><th>Ficheiro</th><th>Fornecedor</th><th class="r">Valor</th><th>Porquê</th><th></th></tr></thead><tbody>
+        ${review.map(r => `<tr><td>${esc(String(r.received_at || '').slice(0,10))} <span class="hint">${esc(r.account_email)}</span></td><td>${r.gmail_link ? `<a href="${esc(r.gmail_link)}" target="_blank" rel="noopener">${esc(r.filename || 'PDF')}</a>` : esc(r.filename || '')}</td><td>${esc(r.parsed?.company || '')}${r.parsed?.buyer_name ? `<div class="hint">cliente: ${esc(r.parsed.buyer_name)}</div>` : ''}</td><td class="r">${money(r.parsed)}</td><td class="hint">${esc(r.reason || '')}</td>
+          <td style="white-space:nowrap"><button class="btn" style="padding:6px 10px" onclick="mailIngestDecide('${r.id}','water-movements')">Water</button> <button class="btn btn-ghost" style="padding:6px 10px" onclick="mailIngestDecide('${r.id}','manjar')">Manjar</button> <button class="btn btn-ghost" style="padding:6px 10px" onclick="mailIngestDecide('${r.id}','skip')">Ignorar</button></td></tr>`).join('')}
+      </tbody></table>` : '<div class="hint" style="margin-top:8px">Nada por decidir.</div>'}
+      ${recent.length ? `<details style="margin-top:10px"><summary class="hint" style="cursor:pointer">Últimas ${recent.length} tratadas</summary><table class="tbl" style="margin-top:6px"><tbody>
+        ${recent.map(r => `<tr><td>${esc(String(r.received_at || '').slice(0,10))}</td><td>${r.drive_link ? `<a href="${esc(r.drive_link)}" target="_blank" rel="noopener">${esc(r.filename || '')}</a>` : esc(r.filename || '')}</td><td><span class="badge ${r.status === 'error' ? 'badge-red' : 'badge-green'}">${esc(r.status)}</span></td><td class="hint">${esc(r.reason || '')}</td></tr>`).join('')}
+      </tbody></table></details>` : ''}
+    </div>`;
+}
+async function mailIngestCall(body){
+  const cfg = window.__SUPABASE_CONFIG || {};
+  const { data: sessionData } = await sb.auth.getSession();
+  const jwt = sessionData?.session?.access_token || '';
+  const resp = await fetch(`${cfg.url}/functions/v1/mail-ingest`, { method:'POST', headers: { 'Authorization': `Bearer ${jwt}`, 'Content-Type': 'application/json', 'apikey': cfg.anonKey }, body: JSON.stringify(body) });
+  const out = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error(out.error || `mail-ingest ${resp.status}`);
+  return out;
+}
+async function mailIngestRunNow(){
+  const box = $('fechoMail'); if (box) box.insertAdjacentHTML('afterbegin', '<div class="status-msg status-warn" id="mailRunMsg">A ler as caixas de email… (até 1 minuto)</div>');
+  try { const out = await mailIngestCall({ action:'run' }); const m = $('mailRunMsg'); if (m) m.outerHTML = `<div class="status-msg status-ok">${out.accounts ? `${out.processed} PDF lidos · ${out.inserted} linhas novas · ${out.linked} PDFs ligados · ${out.review} por decidir · ${out.skipped} ignorados${out.error ? ` · ${out.error} erros` : ''}` : 'Nenhuma caixa de email ligada ainda.'}</div>`; }
+  catch (e) { const m = $('mailRunMsg'); if (m) m.outerHTML = `<div class="status-msg status-err">${esc(e.message || String(e))}</div>`; }
+  renderFechoMail(); renderFecho();
+}
+async function mailIngestDecide(id, company){
+  try { const out = await mailIngestCall({ action:'decide', id, company }); toast('fechoToast', out.status === 'error' ? 'err' : 'ok', out.reason || out.status); }
+  catch (e) { toast('fechoToast', 'err', e.message || String(e)); }
+  renderFechoMail(); if (company !== 'skip') { renderFecho(); renderInvoiceList(); }
 }
 function fechoKpi(label, value, level){
   const bg = level === 'bad' ? '#FFC7CE' : level === 'warn' ? '#FFEB9C' : level === 'ok' ? '#C6EFCE' : '#eef2f6';
@@ -2691,6 +2741,7 @@ async function fechoPropagateLinks(){
 function fechoNoInvoice(r){ return !r.drive_link && (accNoInvoice(r.company) || /\[sem fatura/i.test(String(r.notes||''))); }
 
 async function renderFecho(){
+  renderFechoMail();
   const body = $('fechoBody'); if (!body) return;
   const month = $('fecho_mes')?.value || fechoDefaultMonth();
   FECHO.month = month; FECHO.loading = true;

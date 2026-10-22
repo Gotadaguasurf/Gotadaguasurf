@@ -1622,6 +1622,10 @@
       const pti = todo.partner_to_issue || [];
       if (pti.length) { const months = [...new Set(pti.map(x => x.month))].sort().reverse(); items.push({ n: pti.length, lbl: 'Faturas a parceiros por emitir', sub: `${months.join(', ')} · ${eur0(pti.reduce((s, x) => s + Number(x.commission || 0), 0))} de comissões · ${pti.slice(0, 3).map(x => x.partner).join(', ')}${pti.length > 3 ? '…' : ''}`, href: '/partners/', cls: 'warn' }); }
       (todo.bank_last || []).forEach(b => { if (b.days >= 7) items.push({ n: b.days + 'd', lbl: `Extrato ${b.bank === 'santander' ? 'Santander' : b.bank === 'cgd' ? 'CGD' : 'BCP'} parado`, sub: `último movimento ${b.last} · importar o extrato`, href: b.company === 'manjar' ? '/suk/#bank' : '/hq/?tab=invoices', cls: 'bad' }); });
+      try {
+        const { count } = await __supabaseClient.from('mail_ingest_items').select('id', { count:'exact', head:true }).eq('status', 'review');
+        if (count) items.push({ n: count, lbl: 'Faturas do email por decidir', sub: 'a app não percebeu para quem são · Water, Manjar ou ignorar', href: '/hq/?tab=fecho', cls: 'warn' });
+      } catch (_e) {}
       const mc = todo.month_close || {};
       if (mc.month && (mc.no_pdf || mc.bank_unlinked)) items.push({ n: (mc.no_pdf || 0) + (mc.bank_unlinked || 0), lbl: `Fecho de ${mc.month}`, sub: `${mc.no_pdf || 0} sem PDF · ${mc.bank_unlinked || 0} débitos sem linha`, href: '/hq/?tab=fecho', cls: 'warn' });
       document.getElementById('todaySub').textContent = `Lido agora · extratos: ${(todo.bank_last || []).map(b => `${b.bank.toUpperCase()} ${b.last}`).join(' · ')}`;
