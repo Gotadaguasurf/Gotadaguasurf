@@ -1856,7 +1856,7 @@ test('suk: bank-based overview, one expense line per debit, missing PDFs', async
     showPage('missing');
     return { kpis, missing: [...document.querySelectorAll('#msBody tr')].map(tr => [...tr.children].slice(0, 5).map(td => td.textContent.trim())), msKpis: [...document.querySelectorAll('#msKpis .kpi-value')].map(e => e.textContent.trim()), addBtn: !!document.querySelector('#msBody button') };
   });
-  expect(out.kpis).toEqual(['Sales €1,420.00', 'Costs paid from the account €1,383.85', 'Result on the account €36.15', 'Partner funding €500.00']);
+  expect(out.kpis).toEqual(['Sales €1,420.00', 'Costs €1,383.85', 'Result on the account €36.15', 'Partner funding €500.00']);   // costs = expense lines + bank fees
   // Makro has no PDF → missing; EDP has its PDF; the salary line never needs one; every debit has its line
   expect(out.missing).toEqual([['2026-07-10', 'makro palmela quint', 'MDB 800258 MAKRO PALMELA QUINT', 'Food', '€454.21']]);
   expect(out.msKpis).toEqual(['1', '€454.21', '1', '0']);

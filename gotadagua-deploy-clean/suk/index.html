@@ -17,6 +17,8 @@
 .mx tr.result td{color:var(--green)}.mx tr.result td.neg{color:var(--red)}
 .mx td.total{font-weight:700;color:var(--navy)}
 .dim{color:#c3cdd8}
+.catsel{border:1px solid var(--border);border-radius:8px;padding:4px 6px;font-size:12px;background:#fff;color:var(--ink);max-width:170px}
+.catsel.todo{border-color:var(--amber-border);background:var(--amber-bg);color:var(--amber);font-weight:700}
 .dropzone{border:2px dashed var(--border);border-radius:12px;padding:16px;text-align:center;color:var(--muted);font-size:13px;cursor:pointer;background:#fff}
 .dropzone:hover{border-color:var(--ocean);color:var(--navy)}
 .kpi-value.pos{color:var(--green)}.kpi-value.neg{color:var(--red)}
@@ -324,8 +326,14 @@ function renderOverview(){
   const isCost = (r) => r.amount < 0 && r.rubric !== 'Suprimentos do sócio';
   const sum = (pred, m) => rows.filter(r => pred(r) && (!m || r.month === m)).reduce((s, r) => s + Number(r.amount), 0);
   const revRub = [...new Set(rows.filter(isSales).map(r => r.rubric))].sort((a, b) => sum(r => r.rubric === b) - sum(r => r.rubric === a));
-  const costRub = [...new Set(rows.filter(isCost).map(r => r.rubric))].sort((a, b) => sum(r => r.rubric === a) - sum(r => r.rubric === b));
-  const revenue = sum(isSales), costs = -sum(isCost), result = revenue - costs;
+  // Costs come from the expense lines (one per debit, categorised like the HQ) + bank fees from the statement.
+  const lines = INVOICES.filter(i => String(i.invoice_date).startsWith(year));
+  const catOf = (i) => i.category_name || '— decide —';
+  const lsum = (pred, m) => lines.filter(i => pred(i) && (!m || String(i.invoice_date).startsWith(m))).reduce((s, i) => s + Number(i.amount_eur || 0), 0);
+  const costCats = [...new Set(lines.map(catOf))].sort((a, b) => lsum(i => catOf(i) === b) - lsum(i => catOf(i) === a));
+  const fees = (m) => -sum(r => r.rubric === 'Banco', m);
+  const costsOf = (m) => lsum(() => true, m) + fees(m);
+  const revenue = sum(isSales), costs = costsOf(), result = revenue - costs;
   const funding = sum(r => r.rubric === 'Suprimentos do sócio');
   const last = rows[rows.length - 1];
   const invYear = INVOICES.filter(i => String(i.invoice_date).startsWith(year));
@@ -339,7 +347,7 @@ function renderOverview(){
       <div class="ov-section-head"><div class="ov-section-title">Performance</div><div class="ov-section-sub">${year} · BCP account · balance ${eur(last.balance)} on ${last.movement_date}</div></div>
       <div class="g4">
         ${kpi('Sales', eur(revenue), `restaurant (TPA + cash) ${eur0(sum(r => r.rubric === 'Vendas TPA (cartão)' || r.rubric === 'Depósitos de numerário'))} · catering to Water ${eur0(sum(r => r.rubric === 'Vendas à Water (catering)'))}`, 'pos')}
-        ${kpi('Costs paid from the account', eur(costs), `purchases ${eur0(-sum(r => r.rubric === 'Compras (comida e bebida)'))} · salaries ${eur0(-sum(r => r.rubric === 'Salários'))}`, 'neg')}
+        ${kpi('Costs', eur(costs), `food ${eur0(lsum(i => i.category_name === 'Food'))} · salaries ${eur0(lsum(i => i.category_name === 'Salary'))} · ${lines.filter(i => !i.category_id).length ? `<b>${lines.filter(i => !i.category_id).length} lines to categorise</b>` : 'all categorised'}`, 'neg')}
         ${kpi('Result on the account', eur(result), 'sales − costs, before funding', result >= 0 ? 'pos' : 'neg')}
         ${kpi('Partner funding', eur(funding), 'transfers from Ricardo (not sales)')}
       </div>
@@ -351,17 +359,18 @@ function renderOverview(){
       </div>
     </section>
     <section class="ov-section">
-      <div class="ov-section-head"><div class="ov-section-title">By rubric and month</div><div class="ov-section-sub">Rubrics are read from the bank description — tell Miguel if one is wrong</div></div>
+      <div class="ov-section-head"><div class="ov-section-title">By category and month</div><div class="ov-section-sub">Sales read from the bank (TPA, cash deposits, catering to Water) · costs from the expense lines, with the HQ categories</div></div>
       <div class="card"><div class="tbl-wrap"><table class="mx">
         <thead><tr><th></th><th class="r">Total</th>${months.map(m => `<th class="r">${monthName(m)}</th>`).join('')}</tr></thead>
         <tbody>
           <tr class="group"><td colspan="${months.length + 2}">Sales</td></tr>
           ${revRub.map(rb => line(rb, r => isSales(r) && r.rubric === rb)).join('')}
           ${calc('Sales', (m) => sum(isSales, m), 'sum')}
-          <tr class="group"><td colspan="${months.length + 2}">Costs</td></tr>
-          ${costRub.map(rb => line(rb, r => isCost(r) && r.rubric === rb)).join('')}
-          ${calc('Costs', (m) => -sum(isCost, m), 'sum')}
-          ${calc('Result', (m) => sum(isSales, m) + sum(isCost, m), 'sum result')}
+          <tr class="group"><td colspan="${months.length + 2}">Costs (expense lines, by category)</td></tr>
+          ${costCats.map(c => `<tr><td>${c === '— decide —' ? '<span class="badge badge-amber">— decide —</span>' : esc(c)}</td><td class="r total">${money(lsum(i => catOf(i) === c))}</td>${months.map(m => `<td class="r">${money(lsum(i => catOf(i) === c, m))}</td>`).join('')}</tr>`).join('')}
+          ${line('Bank fees', r => r.rubric === 'Banco')}
+          ${calc('Costs', (m) => costsOf(m), 'sum')}
+          ${calc('Result', (m) => sum(isSales, m) - costsOf(m), 'sum result')}
           <tr class="group"><td colspan="${months.length + 2}">Funding (not sales)</td></tr>
           ${line('Suprimentos do sócio', r => r.rubric === 'Suprimentos do sócio')}
         </tbody>
@@ -377,13 +386,29 @@ function renderInvoices(){
   $('iv_count').textContent = `${rows.length} invoices · ${eur(rows.reduce((s, i) => s + Number(i.amount_eur || 0), 0))}`;
   $('invBody').innerHTML = rows.length ? rows.map(i => `<tr class="click" onclick="openInvoice('${i.id}')">
     <td>${i.invoice_date}</td><td><b>${esc(i.company)}</b></td><td class="hint">${esc(i.invoice_number || '')}</td><td class="hint" style="max-width:360px">${esc(i.description || '')}</td>
-    <td>${i.category_name ? esc(i.category_name) : '<span class="badge badge-amber">decide</span>'}</td><td class="hint">${esc(i.payment_type || '')}</td>
+    <td onclick="event.stopPropagation()">${CAN_EDIT ? catSelect(i) : (i.category_name ? esc(i.category_name) : '<span class="badge badge-amber">decide</span>')}</td><td class="hint">${esc(i.payment_type || '')}</td>
     <td>${i.bank ? `<span class="badge badge-green">${i.bank.movement_date}</span>` : (i.payment_type === 'Cash' ? '<span class="badge badge-grey">cash</span>' : '<span class="badge badge-amber">not linked</span>')}</td>
     <td>${i.drive_link ? `<a href="${esc(i.drive_link)}" target="_blank" onclick="event.stopPropagation()">open</a>` : (i.doc_exempt_reason ? `<span class="badge badge-grey" title="${esc(i.doc_exempt_reason)}">no invoice</span>` : (i.missing_pdf ? '<span class="badge badge-amber">missing</span>' : '<span class="dim">—</span>'))}</td>
     <td class="r" style="font-weight:700">${eur(i.amount_eur)}</td>
   </tr>`).join('') : '<tr class="empty-row"><td colspan="9">Nothing here.</td></tr>';
 }
 
+// Category straight from the table: a select per line; when the supplier has
+// other lines still without a category, offer to apply it to all of them.
+function catSelect(i){
+  return `<select class="catsel ${i.category_id ? '' : 'todo'}" onchange="setCategory('${i.id}', this.value)"><option value="">— decide —</option>${CATEGORIES.map(c => `<option value="${c.id}" ${c.id === i.category_id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>`;
+}
+async function setCategory(id, catId){
+  const i = INVOICES.find(x => x.id === id); const c = CATEGORIES.find(x => x.id === catId); if (!i || !c) return;
+  const sameSupplier = INVOICES.filter(x => x.id !== id && x.company === i.company && !x.category_id);
+  let ids = [id];
+  if (sameSupplier.length && confirm(`Set «${c.name}» on this line.\n\nApply it to the other ${sameSupplier.length} lines of «${i.company}» that still have no category?`)) ids = ids.concat(sameSupplier.map(x => x.id));
+  const { error } = await sb.from('hq_invoices').update({ category_id: c.id, category_name: c.name, needs_review: false }).in('id', ids);
+  if (error) { toast('Not saved: ' + error.message, 'err'); return; }
+  ids.forEach(x => { const l = INVOICES.find(y => y.id === x); if (l) { l.category_id = c.id; l.category_name = c.name; l.needs_review = false; l.missing_pdf = !l.drive_link && !l.doc_exempt_reason && !['Salary', 'Taxes'].includes(c.name); } });
+  toast(`${c.name} · ${ids.length} line${ids.length === 1 ? '' : 's'}`);
+  renderInvoices(); renderOverview();
+}
 let INV_EDIT = null, INV_FILE = null, INV_BANK_ID = null;
 function openInvoice(id, prefill){
   if (!CAN_EDIT) return;
