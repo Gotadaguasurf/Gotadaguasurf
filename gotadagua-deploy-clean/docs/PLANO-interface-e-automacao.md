@@ -34,10 +34,12 @@ Resultado da pesquisa (três auditorias: rotina diária, estrutura da app, fonte
 - `business-shell.css/.js` ficam como alias.
 - Infra: tabelas de faturas e extratos no backup diário; cron duplicado do gmail-sync removido; crons com segredo de exemplo desativados até serem refeitos.
 
-### Onda 2 — «Hoje»: um só sítio com o que falta fazer
-- Painel no hub (e no HQ) com as pendências reais, lidas da base de dados: linhas sem categoria, débitos sem linha, linhas sem PDF desde Setembro, faturas a parceiros por emitir, «[pending HQ invoice]» do Wild, linhas mensais em dinheiro em falta, extratos com mais de 7 dias. Cada item abre a tab certa já filtrada.
-- Linhas mensais fixas criadas automaticamente no dia 1 (pg_cron) a partir de `hq_recurring_expenses`.
-- Importador CGD no HQ (mesmo fluxo do Santander).
+### Onda 2 — «Hoje»: um só sítio com o que falta fazer (feito 22 Out, exceto CGD)
+- `hq_todo()` (supabase/hq-todo.sql): uma função devolve as pendências reais: linhas sem categoria (Water e Suk), duplicados, débitos sem linha por banco, linhas sem PDF desde Setembro, «[pending HQ invoice]» do Wild, linhas mensais por criar, idade de cada extrato, faturas a parceiros por emitir (reservas com comissão e mês fechado sem fatura; Juvigo, Ocean Adventure e os que pagam direto ficam fora), fecho do mês anterior.
+- Painel «Hoje» no topo do hub, só para quem abre o HQ: um cartão por pendência, cada um abre a tab certa já filtrada (`/hq/?tab=fecho`, `/hq/?tab=invoices&filter=review`, `/suk/#missing`, `/wild/#ledger`, `/partners/`).
+- Linhas mensais em dinheiro (renda do escritório 1.300 dia 1, renda da escola 400 dia 1, João Girbal +200 dia 28, Maxime +50 dia 28) são templates em `hq_recurring_expenses`; `hq_recurring_run()` corre todos os dias às 06:10 UTC (cron `hq-recurring-daily`) e cria a linha do mês uma única vez. Setembro e Outubro da renda da escola, que faltavam, foram criados.
+- Quando uma fatura «Wild · …» entra no HQ, a linha «[pending HQ invoice]» da Wild com o mesmo valor (±14 dias) é removida automaticamente (trigger `tr_wild_pending_cleanup`).
+- **Por fazer:** importador CGD no HQ — preciso de um export da CGD (CSV/Excel do homebanking) para escrever o parser; até lá a CGD carrega-se por SQL.
 
 ### Onda 3 — entrada automática de faturas (precisa de um consentimento OAuth do Miguel)
 - Função `mail-ingest`: lê accounting@ (e cafe@, ricardo@, miguel@) só em leitura, guarda os PDFs, chama o parse (com NIF do comprador, ATCUD, «anulado»), encaminha por NIF (Water → app + Drive; Manjar → /suk/ + Drive do Manjar; pessoal → ignora), arquiva na pasta do mês e cria/liga a linha. Nunca responde nem envia.

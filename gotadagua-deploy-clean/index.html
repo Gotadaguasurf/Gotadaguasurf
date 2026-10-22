@@ -258,6 +258,21 @@
       grid-template-columns:repeat(5,minmax(0,1fr));
       gap:14px;
     }
+    /* «Hoje» — pending items, one card each, click = the right tab already filtered */
+    .today-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+    .today-item{display:flex;flex-direction:column;gap:4px;background:#fff;border:1px solid var(--border);border-radius:14px;padding:14px 16px;text-decoration:none;color:var(--ink);box-shadow:var(--shadow);transition:transform .15s,box-shadow .15s}
+    .today-item:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg)}
+    .today-item.ok{opacity:.75}
+    .today-n{font-family:'DM Serif Display',serif;font-size:28px;line-height:1;color:var(--navy)}
+    .today-item.warn .today-n{color:var(--amber)}
+    .today-item.bad .today-n{color:#b91c1c}
+    .today-item.ok .today-n{color:var(--green)}
+    .today-lbl{font-size:13px;font-weight:700;color:var(--navy)}
+    .today-sub{font-size:11px;color:var(--muted);line-height:1.45}
+    .today-refresh{color:#fff;background:var(--navy);border-color:var(--navy)}
+    .today-all{grid-column:1/-1;background:var(--green-bg);border-color:#a3e6c0;color:var(--green);font-weight:700;padding:12px 16px;border-radius:14px;font-size:13px}
+    @media(max-width:1000px){.today-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+    @media(max-width:560px){.today-grid{grid-template-columns:1fr}}
     .workspace-card{
       background:var(--card);
       border:1px solid var(--border);
@@ -724,6 +739,17 @@
 
     <div class="page active" id="page-hub">
       <div class="container">
+        <div class="section" id="todaySection" style="display:none">
+          <div class="section-head">
+            <div>
+              <div class="section-title">Hoje</div>
+              <div class="section-sub" id="todaySub">O que falta fazer, lido da base de dados agora.</div>
+            </div>
+            <button class="ghost-btn today-refresh" type="button" onclick="renderToday()">Atualizar</button>
+          </div>
+          <div class="today-grid" id="todayGrid"></div>
+        </div>
+
         <div class="section">
           <div class="section-head">
             <div>
@@ -1560,6 +1586,48 @@
           ${allowed ? `` : `<div class="workspace-lock">Locked for this access</div>`}
         </div>
       `;
+    }
+
+    // ── «Hoje»: the day's pending items from hq_todo() (supabase/hq-todo.sql).
+    //    Only for people who can open the HQ; everyone else never sees the section.
+    async function renderToday(){
+      const sec = document.getElementById('todaySection'); if (!sec) return;
+      let allowed = false;
+      try { allowed = canAccessWorkspace('hq'); } catch (_e) { allowed = false; }
+      if (!allowed) { sec.style.display = 'none'; return; }
+      sec.style.display = '';
+      const grid = document.getElementById('todayGrid');
+      grid.innerHTML = '<div class="today-sub">A ler…</div>';
+      let todo = null;
+      try {
+        if (!__supabaseClient) throw new Error('sem ligação');
+        const { data, error } = await __supabaseClient.rpc('hq_todo');
+        if (error) throw error;
+        todo = (data && typeof data === 'object' && !Array.isArray(data)) ? data : null;
+      } catch (e) { grid.innerHTML = `<div class="today-sub">Não foi possível ler as pendências: ${escapeHtml(e.message || String(e))}</div>`; return; }
+      if (!todo) { grid.innerHTML = '<div class="today-sub">Sem dados.</div>'; return; }
+      const eur0 = (n) => '€' + Math.round(Number(n || 0)).toLocaleString('en-GB');
+      const items = [];
+      const by = (arr, key) => (arr || []).find(x => x.company === key) || null;
+      const rw = by(todo.review, 'water-movements'), rm = by(todo.review, 'manjar');
+      if (rw && rw.n) items.push({ n: rw.n, lbl: 'Linhas sem categoria · Water', sub: `${eur0(rw.sum)} · decide a categoria no HQ`, href: '/hq/?tab=invoices&filter=review', cls: 'warn' });
+      if (rm && rm.n) items.push({ n: rm.n, lbl: 'Linhas sem categoria · Suk', sub: `${eur0(rm.sum)} · Expenses → «Needs a category»`, href: '/suk/#invoices', cls: 'warn' });
+      (todo.bank_unlinked || []).forEach(b => items.push({ n: b.n, lbl: `Débitos sem linha · ${b.bank === 'santander' ? 'Santander' : b.bank === 'cgd' ? 'CGD' : 'BCP'}`, sub: `${eur0(b.sum)} desde ${b.oldest} · ligar ou criar a linha`, href: b.company === 'manjar' ? '/suk/#bank' : '/hq/?tab=fecho', cls: 'bad' }));
+      const pw = by(todo.no_pdf, 'water-movements'), pm = by(todo.no_pdf, 'manjar');
+      if (pw && pw.n) items.push({ n: pw.n, lbl: 'Sem PDF desde Set · Water', sub: `${eur0(pw.sum)} · anexar no Month close`, href: '/hq/?tab=fecho', cls: 'warn' });
+      if (pm && pm.n) items.push({ n: pm.n, lbl: 'Sem PDF desde Set · Suk', sub: `${eur0(pm.sum)} · Missing PDFs`, href: '/suk/#missing', cls: 'warn' });
+      if (todo.duplicates) items.push({ n: todo.duplicates, lbl: 'Possíveis duplicados', sub: 'confirmar ou arquivar no HQ', href: '/hq/?tab=invoices&filter=duplicate', cls: 'warn' });
+      if (todo.wild_pending) items.push({ n: todo.wild_pending, lbl: 'Wild · à espera da fatura', sub: 'linhas «pending HQ invoice»; somem quando a fatura entra no HQ', href: '/wild/#ledger', cls: 'warn' });
+      if (todo.recurring_due) items.push({ n: todo.recurring_due, lbl: 'Linhas mensais por criar', sub: 'o cron cria-as às 06:10; podes forçar no HQ', href: '/hq/?tab=invoices&recurring=1', cls: 'warn' });
+      const pti = todo.partner_to_issue || [];
+      if (pti.length) { const months = [...new Set(pti.map(x => x.month))].sort().reverse(); items.push({ n: pti.length, lbl: 'Faturas a parceiros por emitir', sub: `${months.join(', ')} · ${eur0(pti.reduce((s, x) => s + Number(x.commission || 0), 0))} de comissões · ${pti.slice(0, 3).map(x => x.partner).join(', ')}${pti.length > 3 ? '…' : ''}`, href: '/partners/', cls: 'warn' }); }
+      (todo.bank_last || []).forEach(b => { if (b.days >= 7) items.push({ n: b.days + 'd', lbl: `Extrato ${b.bank === 'santander' ? 'Santander' : b.bank === 'cgd' ? 'CGD' : 'BCP'} parado`, sub: `último movimento ${b.last} · importar o extrato`, href: b.company === 'manjar' ? '/suk/#bank' : '/hq/?tab=invoices', cls: 'bad' }); });
+      const mc = todo.month_close || {};
+      if (mc.month && (mc.no_pdf || mc.bank_unlinked)) items.push({ n: (mc.no_pdf || 0) + (mc.bank_unlinked || 0), lbl: `Fecho de ${mc.month}`, sub: `${mc.no_pdf || 0} sem PDF · ${mc.bank_unlinked || 0} débitos sem linha`, href: '/hq/?tab=fecho', cls: 'warn' });
+      document.getElementById('todaySub').textContent = `Lido agora · extratos: ${(todo.bank_last || []).map(b => `${b.bank.toUpperCase()} ${b.last}`).join(' · ')}`;
+      grid.innerHTML = items.length
+        ? items.map(i => `<a class="today-item ${i.cls}" href="${i.href}"><span class="today-n">${i.n}</span><span class="today-lbl">${escapeHtml(i.lbl)}</span><span class="today-sub">${escapeHtml(i.sub)}</span></a>`).join('')
+        : '<div class="today-all">Tudo em dia. Nada pendente nas faturas, nos bancos e nos parceiros.</div>';
     }
 
     function renderHub(){
@@ -2830,6 +2898,7 @@
       // owner-gated handler) can re-check without duplicating the rule.
       window.__isPlatformOwner=_isOwner;
       showLoggedInUI();
+      renderToday();
       setAuthMessage();
       setLoginState('login');
       renderAccessSettings();

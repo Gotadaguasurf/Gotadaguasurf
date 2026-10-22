@@ -184,6 +184,7 @@ async function boot(){
   loadNightIntoForm();
   renderNightsList();
   renderCommissions();
+  const h = location.hash.replace('#', ''); if (h && document.getElementById('page-' + h)) showPage(h);
 }
 
 async function loadRows(){

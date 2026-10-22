@@ -483,6 +483,14 @@ function render(){
   wireBulkUpload();
   renderOverview();
   renderInvoiceList();
+  // deep links from the hub «Hoje» panel: /hq/?tab=fecho · ?tab=invoices&filter=review · ?recurring=1
+  try {
+    const q = new URLSearchParams(location.search);
+    const tab = q.get('tab');
+    if (q.get('filter')) goToInvoicesFilter(q.get('filter'));
+    else if (tab && document.getElementById('tab-' + tab)) switchTab(tab);
+    if (q.get('recurring') === '1') setTimeout(() => { try { openRecurringPanel(); } catch (_e) {} }, 300);
+  } catch (_e) {}
 }
 
 // The shared expense form (lib/expense-form.js): same modal as The Suk. Field

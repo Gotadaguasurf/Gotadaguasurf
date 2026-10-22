@@ -195,6 +195,7 @@ async function boot(){
   await loadData();
   mountForm();
   renderOverview();
+  const h = location.hash.replace('#', ''); if (h && document.getElementById('page-' + h)) showPage(h);
 }
 function mountForm(){
   ExpenseForm.mount({
