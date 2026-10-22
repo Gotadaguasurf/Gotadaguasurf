@@ -1848,13 +1848,14 @@ test('suk: bank-based overview and missing invoices from the BCP statement', asy
   await page.goto('/suk/', { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => /Performance/.test(document.querySelector('#ovBody')?.textContent || ''), null, { timeout: 15000 });
   const out = await page.evaluate(() => {
-    const kpis = [...document.querySelectorAll('#ovBody .kpi')].map(k => k.querySelector('.kpi-label').textContent.trim() + ' ' + k.querySelector('.kpi-value').textContent.trim());
+    const kpis = [...document.querySelectorAll('#ovBody .kpi')].slice(0, 4).map(k => k.querySelector('.kpi-label').textContent.trim() + ' ' + k.querySelector('.kpi-value').textContent.trim());
     showPage('missing');
-    return { kpis, missing: [...document.querySelectorAll('#msBody tr')].map(tr => [...tr.children].map(td => td.textContent.trim())), msKpis: [...document.querySelectorAll('#msKpis .kpi-value')].map(e => e.textContent.trim()) };
+    return { kpis, missing: [...document.querySelectorAll('#msBody tr')].map(tr => [...tr.children].slice(0, 4).map(td => td.textContent.trim())), msKpis: [...document.querySelectorAll('#msKpis .kpi-value')].map(e => e.textContent.trim()), addBtn: !!document.querySelector('#msBody button') };
   });
   expect(out.kpis).toEqual(['Sales €1,420.00', 'Costs paid from the account €1,383.85', 'Result on the account €36.15', 'Partner funding €500.00']);
   expect(out.missing).toEqual([['2026-07-10', 'MDB 800258 MAKRO PALMELA QUINT', 'Compras (comida e bebida)', '€454.21']]);   // EDP matched by amount; salaries + fees never have invoices
   expect(out.msKpis[0]).toBe('1');
+  expect(out.addBtn).toBe(true);                         // «+ Add invoice» opens the form prefilled and linked to the debit
   expect(errs).toEqual([]);
 });
 

@@ -17,9 +17,33 @@
 .mx tr.result td{color:var(--green)}.mx tr.result td.neg{color:var(--red)}
 .mx td.total{font-weight:700;color:var(--navy)}
 .dim{color:#c3cdd8}
-.dropzone{border:2px dashed var(--border);border-radius:12px;padding:18px;text-align:center;color:var(--muted);font-size:13px;cursor:pointer;background:#fff}
+.dropzone{border:2px dashed var(--border);border-radius:12px;padding:16px;text-align:center;color:var(--muted);font-size:13px;cursor:pointer;background:#fff}
 .dropzone:hover{border-color:var(--ocean);color:var(--navy)}
 .kpi-value.pos{color:var(--green)}.kpi-value.neg{color:var(--red)}
+.search{border:1px solid var(--border);border-radius:20px;padding:7px 12px;font-size:12px;min-width:220px}
+tr.click{cursor:pointer}
+/* Modal — the HQ invoice form, condensed */
+.modal-bg{position:fixed;inset:0;background:rgba(13,27,42,.55);z-index:400;display:none;align-items:flex-start;justify-content:center;padding:40px 16px;overflow-y:auto}
+.modal-bg.open{display:flex}
+.modal{background:#fff;border-radius:16px;width:100%;max-width:820px;box-shadow:var(--sh-lg);overflow:hidden}
+.modal-hd{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--border)}
+.modal-hd h3{margin:0;font-family:'DM Serif Display',serif;font-size:20px;color:var(--navy)}
+.modal-bd{padding:18px 20px}
+.modal-ft{display:flex;justify-content:space-between;gap:10px;padding:14px 20px;border-top:1px solid var(--border);background:#f8fafc}
+.mgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.mfield{margin-bottom:4px}
+.mfield label{display:block;font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px}
+.mfield input,.mfield select,.mfield textarea{width:100%;border:1.5px solid var(--border);border-radius:9px;padding:8px 10px;font-size:13px;color:var(--ink);background:#fff;outline:none}
+.mfield input:focus,.mfield select:focus,.mfield textarea:focus{border-color:var(--ocean);box-shadow:0 0 0 3px rgba(30,111,168,.10)}
+.mfield .hint{margin-top:3px}
+.bankpick{max-height:180px;overflow:auto;border:1.5px solid var(--border);border-radius:9px}
+.bankpick label{display:flex;gap:10px;align-items:center;padding:7px 10px;border-bottom:1px solid #eef2f6;font-size:12px;cursor:pointer}
+.bankpick label:hover{background:var(--foam)}
+.bankpick label.sel{background:#e6f5ec}
+.bankpick .amt{margin-left:auto;font-family:'DM Mono',monospace;font-weight:700;white-space:nowrap}
+.x{background:none;border:none;font-size:24px;cursor:pointer;color:var(--muted);line-height:1}
+.ai-box{display:flex;gap:10px;align-items:center;background:#f6f9fc;border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:12px;color:var(--muted)}
+.ai-box b{color:var(--navy)}
 </style>
 </head>
 <body>
@@ -45,8 +69,10 @@
   </div>
   <div class="nav-tabs">
     <button class="ntab active" data-page="overview" onclick="showPage('overview')">Overview</button>
+    <button class="ntab" data-page="invoices" onclick="showPage('invoices')">Invoices</button>
     <button class="ntab" data-page="bank" onclick="showPage('bank')">Bank</button>
     <button class="ntab" data-page="missing" onclick="showPage('missing')">Missing invoices</button>
+    <button class="ntab" data-page="water" onclick="showPage('water')">Water ↔ Manjar</button>
   </div>
   <div class="nav-actions">
     <span class="user-chip" id="userChip">—</span>
@@ -59,9 +85,25 @@
   <div class="container">
     <div class="ov-filters">
       <label class="period-picker"><span class="period-picker-lbl">Year</span><select id="ov_year" onchange="renderOverview()"></select></label>
-      <span class="hint" style="margin-left:auto">Read from the Millennium BCP statement of Manjar Lda: what came in, what went out, by month and by rubric. Invoices come in through the HQ (company Manjar).</span>
+      <span class="hint" style="margin-left:auto">Read from the Millennium BCP statement of Manjar Lda: what came in, what went out, by month and by rubric.</span>
     </div>
     <div id="ovBody"><div class="card card-pad hint">Loading…</div></div>
+  </div>
+</div>
+
+<!-- ═══════════ INVOICES ═══════════ -->
+<div class="page" id="page-invoices">
+  <div class="container">
+    <div class="ov-filters">
+      <label class="period-picker"><span class="period-picker-lbl">Month</span><select id="iv_month" onchange="renderInvoices()"><option value="all">All</option></select></label>
+      <input id="iv_q" type="search" class="search" placeholder="Search supplier, number, description…" oninput="renderInvoices()">
+      <span class="hint" id="iv_count" style="margin-left:auto"></span>
+      <button class="btn btn-p" id="addInvBtn" onclick="openInvoice()">+ Add invoice</button>
+    </div>
+    <div class="card"><div class="tbl-wrap"><table>
+      <thead><tr><th>Date</th><th>Supplier</th><th>Nº</th><th>Description</th><th>Category</th><th>Paid</th><th>Bank</th><th>PDF</th><th class="r">Amount</th></tr></thead>
+      <tbody id="invBody"><tr class="empty-row"><td colspan="9">Loading…</td></tr></tbody>
+    </table></div></div>
   </div>
 </div>
 
@@ -71,7 +113,7 @@
     <div class="ov-filters">
       <label class="period-picker"><span class="period-picker-lbl">Month</span><select id="bk_month" onchange="renderBank()"><option value="all">All</option></select></label>
       <label class="period-picker"><span class="period-picker-lbl">Show</span><select id="bk_kind" onchange="renderBank()"><option value="all">Everything</option><option value="expense">Debits</option><option value="income">Credits</option><option value="unmatched">Debits without invoice</option></select></label>
-      <input id="bk_q" type="search" placeholder="Search description…" oninput="renderBank()" style="border:1px solid var(--border);border-radius:20px;padding:7px 12px;font-size:12px;min-width:220px">
+      <input id="bk_q" type="search" class="search" placeholder="Search description…" oninput="renderBank()">
       <span class="hint" id="bk_count" style="margin-left:auto"></span>
     </div>
     <details class="card card-pad" style="margin-bottom:14px" id="importBox">
@@ -81,8 +123,8 @@
       <div class="hint" id="bk_import_status" style="margin-top:8px"></div>
     </details>
     <div class="card"><div class="tbl-wrap"><table>
-      <thead><tr><th>Date</th><th>Description</th><th>Rubric</th><th>Invoice</th><th class="r">Amount</th><th class="r">Balance</th></tr></thead>
-      <tbody id="bankBody"><tr class="empty-row"><td colspan="6">Loading…</td></tr></tbody>
+      <thead><tr><th>Date</th><th>Description</th><th>Rubric</th><th>Invoice</th><th class="r">Amount</th><th class="r">Balance</th><th></th></tr></thead>
+      <tbody id="bankBody"><tr class="empty-row"><td colspan="7">Loading…</td></tr></tbody>
     </table></div></div>
   </div>
 </div>
@@ -92,7 +134,7 @@
   <div class="container">
     <div class="ov-filters">
       <label class="period-picker"><span class="period-picker-lbl">Month</span><select id="ms_month" onchange="renderMissing()"><option value="all">All</option></select></label>
-      <span class="hint" style="margin-left:auto">Debits of the BCP account with no invoice lanced in the app (company Manjar). Bank fees, salaries and taxes are not listed — they never have an invoice.</span>
+      <span class="hint" style="margin-left:auto">Debits of the BCP account with no invoice in the app. Salaries, taxes and bank fees are not listed — they never have an invoice. «Add invoice» opens the form already filled and linked to the debit.</span>
     </div>
     <div class="g4" id="msKpis" style="margin-bottom:14px"></div>
     <section class="ov-section">
@@ -101,8 +143,57 @@
     </section>
     <section class="ov-section">
       <div class="ov-section-head"><div class="ov-section-title">Every debit without invoice</div></div>
-      <div class="card"><div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Description</th><th>Rubric</th><th class="r">Amount</th></tr></thead><tbody id="msBody"></tbody></table></div></div>
+      <div class="card"><div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Description</th><th>Rubric</th><th class="r">Amount</th><th></th></tr></thead><tbody id="msBody"></tbody></table></div></div>
     </section>
+  </div>
+</div>
+
+<!-- ═══════════ WATER ↔ MANJAR ═══════════ -->
+<div class="page" id="page-water">
+  <div class="container">
+    <div class="ov-filters"><span class="hint">Everything Water Movements paid to Manjar: the catering invoices lanced in the Water HQ (company Manjar) against the transfers that landed on Manjar's BCP account.</span></div>
+    <div class="g4" id="wtKpis" style="margin-bottom:14px"></div>
+    <section class="ov-section">
+      <div class="ov-section-head"><div class="ov-section-title">Transfer by transfer</div><div class="ov-section-sub">A transfer is matched to a Water invoice of the same amount within 20 days</div></div>
+      <div class="card"><div class="tbl-wrap"><table><thead><tr><th>Received on BCP</th><th class="r">Amount</th><th>Water invoice (HQ)</th><th>Nº</th><th>PDF</th><th>Status</th></tr></thead><tbody id="wtBody"></tbody></table></div></div>
+    </section>
+    <section class="ov-section">
+      <div class="ov-section-head"><div class="ov-section-title">By month</div></div>
+      <div class="card"><div class="tbl-wrap"><table class="mx"><thead><tr><th>Month</th><th class="r">Water invoices (HQ)</th><th class="r">Received on BCP</th><th class="r">Difference</th></tr></thead><tbody id="wtMonths"></tbody></table></div></div>
+    </section>
+  </div>
+</div>
+
+<!-- ═══════════ INVOICE MODAL ═══════════ -->
+<div class="modal-bg" id="invModal" onclick="if(event.target===this)closeInvoice()">
+  <div class="modal">
+    <div class="modal-hd"><h3 id="invTitle">Add invoice</h3><button class="x" onclick="closeInvoice()">×</button></div>
+    <div class="modal-bd">
+      <div class="ai-box">
+        <input id="inv_file" type="file" accept="application/pdf,image/*" style="display:none" onchange="invFileChosen(this.files[0])">
+        <button class="btn btn-s" onclick="document.getElementById('inv_file').click()">📎 PDF / photo</button>
+        <span id="inv_file_lbl">No file — the PDF goes to the Manjar Drive folder of the invoice month and the fields are read by AI.</span>
+      </div>
+      <div class="mgrid">
+        <div class="mfield"><label>Date</label><input id="inv_date" type="date"></div>
+        <div class="mfield"><label>Supplier</label><input id="inv_company" type="text" placeholder="makro"></div>
+        <div class="mfield"><label>NIF</label><input id="inv_nif" type="text" placeholder="optional"></div>
+        <div class="mfield"><label>Invoice nº</label><input id="inv_number" type="text"></div>
+        <div class="mfield"><label>Amount (€)</label><input id="inv_amount" type="number" step="0.01" min="0" oninput="renderBankPick()"></div>
+        <div class="mfield"><label>Category</label><select id="inv_category"></select></div>
+        <div class="mfield"><label>Paid by</label><select id="inv_payment"><option>Bank Transfer</option><option>Card</option><option>Cash</option><option>Other</option></select></div>
+        <div class="mfield" style="grid-column:span 2"><label>Description</label><input id="inv_description" type="text" placeholder="what was bought"></div>
+        <div class="mfield" style="grid-column:span 3"><label>Notes</label><input id="inv_notes" type="text"></div>
+      </div>
+      <div class="mfield" style="margin-top:8px"><label>Bank movement (BCP) — the debit this invoice was paid with</label>
+        <div class="bankpick" id="inv_bankpick"></div>
+        <div class="hint">Debits of the same amount near the date come first; search the Bank tab if it is not here. Leave none selected for cash purchases.</div>
+      </div>
+    </div>
+    <div class="modal-ft">
+      <div><button class="btn btn-d" id="invDeleteBtn" onclick="deleteInvoice()" style="display:none">Delete</button></div>
+      <div style="display:flex;gap:8px"><button class="btn btn-s" onclick="closeInvoice()">Cancel</button><button class="btn btn-p" id="invSaveBtn" onclick="saveInvoice()">Save invoice</button></div>
+    </div>
   </div>
 </div>
 
@@ -117,23 +208,21 @@
 const cfg = window.__SUPABASE_CONFIG || {};
 const sb = window.supabase.createClient(cfg.url, cfg.anonKey);
 const SLUG = 'the-suk', COMPANY = 'manjar', BANK = 'bcp';
+const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 const $ = (id) => document.getElementById(id);
 const eur = (n) => BusinessPnl.eur(n);
 const eur0 = (n) => '€' + Math.round(Number(n || 0)).toLocaleString('en-GB');
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-let BANK_ROWS = [], INVOICES = [], CAN_EDIT = false;
+let BANK_ROWS = [], INVOICES = [], WATER_INV = [], CATEGORIES = [], FOLDERS = [], CAN_EDIT = false, USER = null;
 
-function toast(msg, kind){ const t = $('toast'); t.textContent = msg; t.className = 'toast show' + (kind === 'err' ? ' err' : ''); clearTimeout(t._t); t._t = setTimeout(() => t.className = 'toast', 3200); }
+function toast(msg, kind){ const t = $('toast'); t.textContent = msg; t.className = 'toast show' + (kind === 'err' ? ' err' : ''); clearTimeout(t._t); t._t = setTimeout(() => t.className = 'toast', 3600); }
 function showPage(name){
   document.querySelectorAll('.ntab').forEach(b => b.classList.toggle('active', b.dataset.page === name));
   document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === 'page-' + name));
-  if (name === 'overview') renderOverview();
-  if (name === 'bank') renderBank();
-  if (name === 'missing') renderMissing();
+  ({ overview: renderOverview, invoices: renderInvoices, bank: renderBank, missing: renderMissing, water: renderWater })[name]?.();
 }
 
-// ── Rubrics read from the bank description (Manjar has no ledger yet) ──
-// Revenue: 'Vendas TPA' (card terminal), 'Depósitos' (cash sales deposited).
+// ── Rubrics read from the bank description ──────────────────────
 // Transfers from Water Movements are the catering Water buys from Manjar (sales); the partner's transfers are funding.
 const RUBRICS = [
   ['Compras (comida e bebida)', /MAKRO|SUPERBOCK|SUPER BOCK|NEWCOFFEE|SILAU|PANICONGELADOS|CONTINENTE|LIDL|NOVO RUMO|MERCADONA|AUCHAN|PINGO DOCE|CONSOANTES|PASTE?LARIA|PADARIA|APH POS|BARAO E COSTA|GRUPO ATLANTA|TALHO|PEIXARIA|FRUTA|GELO/i],
@@ -162,12 +251,14 @@ function rubricOf(r){
 }
 const NO_INVOICE = new Set(['Banco', 'Salários', 'Impostos e Seg. Social', 'Vendas à Water (catering)', 'Suprimentos do sócio']);
 const supplierOf = (desc) => String(desc || '').replace(/^MDB \d+ /, '').replace(/^DD /, '').replace(/^TRF P\/ /, '').replace(/^PAG SERV \d+\/\d+ /, 'PAG SERV ').replace(/^MDB \d+ PAG REFERENCIA.*/, 'PAG REFERENCIA').replace(/\s+\d[\d\s\/-]*$/, '').replace(/\s+/g, ' ').trim().slice(0, 30);
+const guessCategory = (rubric) => ({ 'Compras (comida e bebida)':'Food', 'Salários':'Salary', 'Impostos e Seg. Social':'Taxes', 'Renda':'Rent', 'Utilities':'Utilities', 'Contabilidade':'Accounting', 'Higiene e limpeza':'Cleaning Supplies', 'Seguros':'Insurances', 'Manutenção e equipamento':'Setup' })[rubric] || 'Services';
 
 // ── Boot ─────────────────────────────────────────────────────────
 async function boot(){
   BusinessShell.mountLogo('gotaLogo');
   const { data:{ user } } = await sb.auth.getUser();
   if (!user) { document.body.innerHTML = BusinessShell.splash('Sign in required', "Open the Gota d'Água hub, sign in, then reopen this page."); return; }
+  USER = user;
   let allowed = false;
   try {
     const { data } = await sb.from('platform_profiles').select('full_name,email,platform_role').eq('id', user.id).maybeSingle();
@@ -183,7 +274,7 @@ async function boot(){
     if (!mem || !mem.can_view) { document.body.innerHTML = BusinessShell.splash('No access', 'The Suk is not in your allowed areas. Ask Miguel to add it in Settings → Team access.'); return; }
     CAN_EDIT = !!mem.can_edit;
   }
-  if (!CAN_EDIT) $('importBox').style.display = 'none';
+  if (!CAN_EDIT) { $('importBox').style.display = 'none'; $('addInvBtn').style.display = 'none'; }
   await loadData();
   renderOverview();
 }
@@ -191,25 +282,32 @@ async function boot(){
 async function fetchAll(build){ const PAGE = 1000; let from = 0, all = []; for (;;) { const { data, error } = await build().range(from, from + PAGE - 1); if (error) throw error; all = all.concat(data || []); if (!data || data.length < PAGE) break; from += PAGE; } return all; }
 async function loadData(){
   try {
-    [BANK_ROWS, INVOICES] = await Promise.all([
+    [BANK_ROWS, INVOICES, WATER_INV, CATEGORIES, FOLDERS] = await Promise.all([
       fetchAll(() => sb.from('hq_bank_movements').select('id, movement_date, value_date, description, amount, balance, kind, hq_invoice_id, notes').eq('paying_company', COMPANY).order('movement_date', {ascending:true}).order('seq', {ascending:true})),
-      fetchAll(() => sb.from('hq_invoices').select('id, invoice_date, company, amount_eur, category_name, invoice_number, drive_link, deleted_at').eq('paying_company', COMPANY).is('deleted_at', null).order('invoice_date', {ascending:true})),
+      fetchAll(() => sb.from('hq_invoices').select('id, invoice_date, company, supplier_nif, invoice_number, description, amount, currency, amount_eur, payment_type, category_id, category_name, drive_link, file_name, notes, needs_review').eq('paying_company', COMPANY).is('deleted_at', null).order('invoice_date', {ascending:true})),
+      fetchAll(() => sb.from('hq_invoices').select('id, invoice_date, company, invoice_number, amount_eur, drive_link, location_slug').eq('paying_company', 'water-movements').ilike('company', '%manjar%').is('deleted_at', null).order('invoice_date', {ascending:true})),
+      sb.from('hq_invoice_categories').select('id, name, sort_order').eq('active', true).eq('is_personal', false).order('sort_order').then(({ data, error }) => { if (error) throw error; return (data || []).filter(c => !/^Wild/.test(c.name)); }),
+      sb.from('accountant_drive_folders').select('company, month_key, folder_id').eq('company', COMPANY).then(({ data, error }) => { if (error) throw error; return data || []; }),
     ]);
   } catch (e) { toast('Could not load: ' + (e.message || e), 'err'); }
   BANK_ROWS.forEach(r => { r.rubric = rubricOf(r); r.month = String(r.movement_date).slice(0, 7); });
-  // Debits without an invoice: linked id, or an invoice of the same amount within 20 days.
+  // Debits without an invoice: linked id, an invoice of the same amount within 20 days, or marked «sem fatura».
   const byAmt = {}; INVOICES.forEach(i => { const k = Math.round(Number(i.amount_eur) * 100); (byAmt[k] = byAmt[k] || []).push(i); });
+  const linkedIds = new Set(BANK_ROWS.map(r => r.hq_invoice_id).filter(Boolean));
   BANK_ROWS.forEach(r => {
     if (r.amount >= 0 || r.kind !== 'expense') { r.has_invoice = null; return; }
     if (r.hq_invoice_id) { r.has_invoice = 'linked'; return; }
-    const cands = byAmt[Math.round(-r.amount * 100)] || [];
+    if (/\[sem fatura/i.test(r.notes || '')) { r.has_invoice = 'none'; return; }
+    const cands = (byAmt[Math.round(-r.amount * 100)] || []).filter(i => !linkedIds.has(i.id));
     const near = cands.find(i => Math.abs((new Date(i.invoice_date) - new Date(r.movement_date)) / 86400000) <= 20);
     r.has_invoice = near ? 'amount' : (NO_INVOICE.has(r.rubric) ? 'n/a' : 'missing');
   });
-  const months = [...new Set(BANK_ROWS.map(r => r.month))].sort().reverse();
-  ['bk_month', 'ms_month'].forEach(id => { $(id).innerHTML = '<option value="all">All</option>' + months.map(m => `<option value="${m}">${m}</option>`).join(''); });
+  INVOICES.forEach(i => { i.bank = BANK_ROWS.find(r => r.hq_invoice_id === i.id) || null; });
+  const months = [...new Set(BANK_ROWS.map(r => r.month).concat(INVOICES.map(i => String(i.invoice_date).slice(0, 7))))].sort().reverse();
+  ['bk_month', 'ms_month', 'iv_month'].forEach(id => { const cur = $(id).value; $(id).innerHTML = '<option value="all">All</option>' + months.map(m => `<option value="${m}">${m}</option>`).join(''); if ([...$(id).options].some(o => o.value === cur)) $(id).value = cur; });
   const years = [...new Set(months.map(m => m.slice(0, 4)))];
-  $('ov_year').innerHTML = years.map(y => `<option value="${y}">${y}</option>`).join('');
+  if (!$('ov_year').options.length) $('ov_year').innerHTML = years.map(y => `<option value="${y}">${y}</option>`).join('');
+  $('inv_category').innerHTML = CATEGORIES.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
 }
 
 // ── Overview: bank-based P&L by rubric and month ────────────────
@@ -228,10 +326,12 @@ function renderOverview(){
   const revenue = sum(isSales), costs = -sum(isCost), result = revenue - costs;
   const funding = sum(r => r.rubric === 'Suprimentos do sócio');
   const last = rows[rows.length - 1];
+  const invYear = INVOICES.filter(i => String(i.invoice_date).startsWith(year));
+  const missing = rows.filter(r => r.has_invoice === 'missing');
   const money = (v) => v ? eur0(Math.abs(v)) : '<span class="dim">—</span>';
   const line = (label, pred, cls = '') => `<tr class="${cls}"><td>${esc(label)}</td><td class="r total">${money(sum(pred))}</td>${months.map(m => `<td class="r">${money(sum(pred, m))}</td>`).join('')}</tr>`;
   const calc = (label, fn, cls) => `<tr class="${cls}"><td>${label}</td><td class="r total ${fn() < 0 ? 'neg' : ''}">${eur0(fn())}</td>${months.map(m => { const v = fn(m); return `<td class="r ${v < 0 ? 'neg' : ''}">${eur0(v)}</td>`; }).join('')}</tr>`;
-  const kpi = (label, value, sub, cls = '') => `<div class="card kpi"><div class="kpi-label">${label}</div><div class="kpi-value ${cls}">${value}</div><div class="kpi-sub">${sub}</div></div>`;
+  const kpi = (label, value, sub, cls = '', onclick = '') => `<div class="card kpi" ${onclick ? `style="cursor:pointer" onclick="${onclick}"` : ''}><div class="kpi-label">${label}</div><div class="kpi-value ${cls}">${value}</div><div class="kpi-sub">${sub}</div></div>`;
   body.innerHTML = `
     <section class="ov-section">
       <div class="ov-section-head"><div class="ov-section-title">Performance</div><div class="ov-section-sub">${year} · BCP account · balance ${eur(last.balance)} on ${last.movement_date}</div></div>
@@ -240,6 +340,12 @@ function renderOverview(){
         ${kpi('Costs paid from the account', eur(costs), `purchases ${eur0(-sum(r => r.rubric === 'Compras (comida e bebida)'))} · salaries ${eur0(-sum(r => r.rubric === 'Salários'))}`, 'neg')}
         ${kpi('Result on the account', eur(result), 'sales − costs, before funding', result >= 0 ? 'pos' : 'neg')}
         ${kpi('Partner funding', eur(funding), 'transfers from Ricardo (not sales)')}
+      </div>
+      <div class="g4" style="margin-top:14px">
+        ${kpi('Invoices in the app', String(invYear.length), eur(invYear.reduce((s, i) => s + Number(i.amount_eur || 0), 0)) + ' · company Manjar', '', "showPage('invoices')")}
+        ${kpi('Debits without invoice', String(missing.length), eur(-missing.reduce((s, r) => s + Number(r.amount), 0)) + ' · click to see them', missing.length ? 'neg' : 'pos', "showPage('missing')")}
+        ${kpi('Catering sold to Water', eur(sum(r => r.rubric === 'Vendas à Water (catering)')), `${rows.filter(r => r.rubric === 'Vendas à Water (catering)').length} transfers · click for the detail`, 'pos', "showPage('water')")}
+        ${kpi('Bank movements', String(rows.length), `${months[0]} → ${months[months.length - 1]}`, '', "showPage('bank')")}
       </div>
     </section>
     <section class="ov-section">
@@ -261,6 +367,141 @@ function renderOverview(){
     </section>`;
 }
 
+// ── Invoices ─────────────────────────────────────────────────────
+function renderInvoices(){
+  const month = $('iv_month').value, q = $('iv_q').value.trim().toLowerCase();
+  const rows = INVOICES.filter(i => (month === 'all' || String(i.invoice_date).startsWith(month)) && (!q || [i.company, i.invoice_number, i.description, i.category_name].join(' ').toLowerCase().includes(q))).slice().reverse();
+  $('iv_count').textContent = `${rows.length} invoices · ${eur(rows.reduce((s, i) => s + Number(i.amount_eur || 0), 0))}`;
+  $('invBody').innerHTML = rows.length ? rows.map(i => `<tr class="click" onclick="openInvoice('${i.id}')">
+    <td>${i.invoice_date}</td><td><b>${esc(i.company)}</b></td><td class="hint">${esc(i.invoice_number || '')}</td><td class="hint" style="max-width:360px">${esc(i.description || '')}</td>
+    <td>${esc(i.category_name || '')}</td><td class="hint">${esc(i.payment_type || '')}</td>
+    <td>${i.bank ? `<span class="badge badge-green">${i.bank.movement_date}</span>` : (i.payment_type === 'Cash' ? '<span class="badge badge-grey">cash</span>' : '<span class="badge badge-amber">not linked</span>')}</td>
+    <td>${i.drive_link ? `<a href="${esc(i.drive_link)}" target="_blank" onclick="event.stopPropagation()">open</a>` : '<span class="dim">—</span>'}</td>
+    <td class="r" style="font-weight:700">${eur(i.amount_eur)}</td>
+  </tr>`).join('') : '<tr class="empty-row"><td colspan="9">No invoices yet — add the first one, or open «Missing invoices».</td></tr>';
+}
+
+let INV_EDIT = null, INV_FILE = null, INV_BANK_ID = null;
+function openInvoice(id, prefill){
+  if (!CAN_EDIT) return;
+  INV_EDIT = id ? INVOICES.find(i => i.id === id) : null; INV_FILE = null; INV_BANK_ID = null;
+  const v = INV_EDIT || prefill || {};
+  $('invTitle').textContent = INV_EDIT ? 'Edit invoice' : 'Add invoice';
+  $('invDeleteBtn').style.display = INV_EDIT ? '' : 'none';
+  $('inv_file_lbl').textContent = INV_EDIT?.file_name ? `On Drive: ${INV_EDIT.file_name}` : 'No file — the PDF goes to the Manjar Drive folder of the invoice month and the fields are read by AI.';
+  $('inv_date').value = v.invoice_date || new Date().toISOString().slice(0, 10);
+  $('inv_company').value = v.company || '';
+  $('inv_nif').value = v.supplier_nif || '';
+  $('inv_number').value = v.invoice_number || '';
+  $('inv_amount').value = v.amount_eur != null ? Number(v.amount_eur) : '';
+  $('inv_description').value = v.description || '';
+  $('inv_notes').value = v.notes || '';
+  $('inv_payment').value = v.payment_type || 'Bank Transfer';
+  const cat = CATEGORIES.find(c => c.id === v.category_id) || CATEGORIES.find(c => c.name === v.category_name) || CATEGORIES.find(c => c.name === 'Food');
+  if (cat) $('inv_category').value = cat.id;
+  INV_BANK_ID = INV_EDIT?.bank?.id || prefill?.bank_id || null;
+  renderBankPick();
+  $('invModal').classList.add('open');
+}
+function closeInvoice(){ $('invModal').classList.remove('open'); }
+function renderBankPick(){
+  const amt = Number($('inv_amount').value) || 0, date = $('inv_date').value;
+  const d0 = date ? new Date(date) : null;
+  const cands = BANK_ROWS.filter(r => r.amount < 0 && r.kind === 'expense' && (!r.hq_invoice_id || r.id === INV_BANK_ID))
+    .map(r => ({ r, score: (Math.abs(-r.amount - amt) < 0.011 ? 0 : 1) * 1000 + (d0 ? Math.abs((new Date(r.movement_date) - d0) / 86400000) : 0) }))
+    .filter(x => x.r.id === INV_BANK_ID || (x.score < 1000 + 60 && (amt ? Math.abs(-x.r.amount - amt) < 0.011 || x.score < 45 : x.score < 15)))
+    .sort((a, b) => a.score - b.score).slice(0, 12);
+  $('inv_bankpick').innerHTML = cands.length ? cands.map(({ r }) => `<label class="${r.id === INV_BANK_ID ? 'sel' : ''}"><input type="radio" name="bankpick" ${r.id === INV_BANK_ID ? 'checked' : ''} onclick="INV_BANK_ID=(INV_BANK_ID==='${r.id}')?null:'${r.id}';renderBankPick()"><span>${r.movement_date}</span><span>${esc(r.description)}</span><span class="amt">${eur(-r.amount)}</span></label>`).join('') : '<div class="hint" style="padding:8px 10px">No debit of this amount near the date.</div>';
+}
+async function invFileChosen(file){
+  if (!file) return; INV_FILE = file; $('inv_file_lbl').textContent = `${file.name} — reading with AI…`;
+  try {
+    const b64 = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(',')[1] || ''); fr.onerror = () => rej(new Error('Could not read the file')); fr.readAsDataURL(file); });
+    const { data: s } = await sb.auth.getSession(); const jwt = s?.session?.access_token || '';
+    const resp = await fetch(`${cfg.url}/functions/v1/parse-invoice`, { method:'POST', headers:{ 'Authorization': `Bearer ${jwt}`, 'Content-Type':'application/json', 'apikey': cfg.anonKey }, body: JSON.stringify({ file_base64: b64, filename: file.name }) });
+    const out = await resp.json().catch(() => ({ error:'invalid JSON' }));
+    if (!resp.ok || out?.error) throw new Error(out?.error || resp.statusText);
+    const ex = out.extracted || {};
+    if (ex.invoice_date && !INV_EDIT) $('inv_date').value = ex.invoice_date;
+    if (ex.company && !$('inv_company').value) $('inv_company').value = String(ex.company).trim();
+    if (ex.supplier_nif && !$('inv_nif').value) $('inv_nif').value = ex.supplier_nif;
+    if (ex.invoice_number && !$('inv_number').value) $('inv_number').value = ex.invoice_number;
+    if (ex.amount && !$('inv_amount').value) $('inv_amount').value = Number(ex.amount);
+    if (ex.description && !$('inv_description').value) $('inv_description').value = ex.description;
+    if (ex.payment_type) $('inv_payment').value = ex.payment_type;
+    const cat = ex.category_hint && CATEGORIES.find(c => c.name.toLowerCase() === String(ex.category_hint).toLowerCase()); if (cat) $('inv_category').value = cat.id;
+    $('inv_file_lbl').textContent = `${file.name} — fields read, check them.`;
+    renderBankPick();
+  } catch (e) { $('inv_file_lbl').textContent = `${file.name} — AI could not read it (${e.message || e}); fill the fields by hand.`; }
+}
+function driveName(file, company, date, amount){
+  const [y, m] = String(date).split('-'); const ext = (file.name.match(/\.[a-z0-9]{3,4}$/i) || ['.pdf'])[0].toLowerCase();
+  const nome = String(company || 'fatura').replace(/\b\w/g, c => c.toUpperCase());
+  return `${nome} - ${MESES[Number(m) - 1] || ''} ${y} - ${Number(amount || 0).toLocaleString('pt-PT', { minimumFractionDigits:2, maximumFractionDigits:2 })}€${ext}`;
+}
+async function driveUpload(file, folderId, name){
+  const { data: s } = await sb.auth.getSession(); const jwt = s?.session?.access_token || '';
+  if (!jwt) throw new Error('Session expired — sign in again.');
+  const b64 = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(',')[1] || ''); fr.onerror = () => rej(new Error('Could not read the file')); fr.readAsDataURL(file); });
+  const resp = await fetch(`${cfg.url}/functions/v1/drive-upload`, { method:'POST', headers:{ 'Authorization': `Bearer ${jwt}`, 'Content-Type':'application/json', 'apikey': cfg.anonKey }, body: JSON.stringify({ folder_id: folderId, name, mime: file.type || 'application/pdf', data_base64: b64 }) });
+  const out = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error(out.error || `drive-upload failed (${resp.status})`);
+  return out;
+}
+async function saveInvoice(){
+  if (!CAN_EDIT) return;
+  const invoice_date = $('inv_date').value, company = $('inv_company').value.trim().toLowerCase(), amount = Number($('inv_amount').value) || 0;
+  const catSel = $('inv_category'); const category_id = catSel.value || null; const category_name = catSel.options[catSel.selectedIndex]?.textContent || null;
+  if (!invoice_date || !company || !amount || !category_id) { toast('Date, supplier, amount and category are required', 'err'); return; }
+  const btn = $('invSaveBtn'); btn.disabled = true;
+  try {
+    const payload = {
+      location_slug: SLUG, paying_company: COMPANY, invoice_date, company,
+      supplier_nif: $('inv_nif').value.trim() || null, invoice_number: $('inv_number').value.trim() || null,
+      description: $('inv_description').value.trim() || null, notes: $('inv_notes').value.trim() || null,
+      amount, currency:'EUR', fx_rate:1, amount_eur: amount, payment_type: $('inv_payment').value,
+      category_id, category_name, needs_review: false,
+    };
+    if (INV_FILE) {
+      const key = String(invoice_date).slice(0, 7);
+      const folder = FOLDERS.find(f => f.month_key === key)?.folder_id;
+      if (!folder) throw new Error(`No Manjar Drive folder for ${key} yet — ask Miguel to create it (accountant_drive_folders).`);
+      const up = await driveUpload(INV_FILE, folder, driveName(INV_FILE, company, invoice_date, amount));
+      payload.drive_link = up.web_view_link || up.webViewLink || up.link || (up.id ? `https://drive.google.com/file/d/${up.id}/view` : null);
+      payload.file_name = up.name || driveName(INV_FILE, company, invoice_date, amount);
+      payload.file_mime = INV_FILE.type || 'application/pdf';
+    }
+    let id = INV_EDIT?.id || null;
+    if (INV_EDIT) { const { error } = await sb.from('hq_invoices').update(payload).eq('id', INV_EDIT.id); if (error) throw error; }
+    else { const { data, error } = await sb.from('hq_invoices').insert({ ...payload, created_by: USER?.id || null }).select('id').single(); if (error) throw error; id = data.id; }
+    // Bank link: clear the old one, set the new one.
+    const old = BANK_ROWS.find(r => r.hq_invoice_id === id);
+    if (old && old.id !== INV_BANK_ID) { const { error } = await sb.from('hq_bank_movements').update({ hq_invoice_id: null }).eq('id', old.id); if (error) throw error; }
+    if (INV_BANK_ID) { const { error } = await sb.from('hq_bank_movements').update({ hq_invoice_id: id }).eq('id', INV_BANK_ID); if (error) throw error; }
+    toast(INV_EDIT ? 'Invoice updated' : 'Invoice added' + (INV_FILE ? ' · PDF on Drive' : ''));
+    closeInvoice(); await loadData(); renderInvoices(); renderMissing(); renderOverview();
+  } catch (e) { toast('Not saved: ' + (e.message || e), 'err'); }
+  finally { btn.disabled = false; }
+}
+async function deleteInvoice(){
+  if (!INV_EDIT || !confirm(`Delete this invoice?\n${INV_EDIT.invoice_date} · ${INV_EDIT.company} · ${eur(INV_EDIT.amount_eur)}\n(It is archived, not destroyed.)`)) return;
+  const { error } = await sb.from('hq_invoices').update({ deleted_at: new Date().toISOString(), deleted_by: USER?.email || null }).eq('id', INV_EDIT.id);
+  if (error) { toast('Not deleted: ' + error.message, 'err'); return; }
+  const b = BANK_ROWS.find(r => r.hq_invoice_id === INV_EDIT.id); if (b) await sb.from('hq_bank_movements').update({ hq_invoice_id: null }).eq('id', b.id);
+  toast('Invoice archived'); closeInvoice(); await loadData(); renderInvoices(); renderMissing(); renderOverview();
+}
+async function markNoInvoice(id){
+  const r = BANK_ROWS.find(x => x.id === id); if (!r) return;
+  const why = prompt(`No invoice for this debit — why?\n${r.movement_date} · ${r.description} · ${eur(-r.amount)}`, 'sem fatura'); if (why == null) return;
+  const { error } = await sb.from('hq_bank_movements').update({ notes: `[sem fatura: ${why}] ${r.notes || ''}`.trim() }).eq('id', id);
+  if (error) { toast('Not saved: ' + error.message, 'err'); return; }
+  toast('Marked'); await loadData(); renderMissing(); renderBank(); renderOverview();
+}
+function addFromBank(id){
+  const r = BANK_ROWS.find(x => x.id === id); if (!r) return;
+  openInvoice(null, { invoice_date: r.movement_date, company: supplierOf(r.description).toLowerCase(), amount_eur: -r.amount, payment_type: /^MDB/.test(r.description) ? 'Card' : 'Bank Transfer', category_name: guessCategory(r.rubric), description: '', bank_id: r.id });
+}
+
 // ── Bank list ────────────────────────────────────────────────────
 function renderBank(){
   const month = $('bk_month').value, kind = $('bk_kind').value, q = $('bk_q').value.trim().toLowerCase();
@@ -269,12 +510,13 @@ function renderBank(){
   if (kind === 'income') rows = rows.filter(r => r.amount > 0);
   if (kind === 'unmatched') rows = rows.filter(r => r.has_invoice === 'missing');
   rows = rows.slice().reverse();
-  const inv = (r) => r.has_invoice === 'linked' ? '<span class="badge badge-green">linked</span>' : r.has_invoice === 'amount' ? '<span class="badge badge-blue">by amount</span>' : r.has_invoice === 'missing' ? '<span class="badge badge-amber">missing</span>' : '';
+  const inv = (r) => r.has_invoice === 'linked' ? '<span class="badge badge-green">linked</span>' : r.has_invoice === 'amount' ? '<span class="badge badge-blue">by amount</span>' : r.has_invoice === 'missing' ? '<span class="badge badge-amber">missing</span>' : r.has_invoice === 'none' ? '<span class="badge badge-grey">no invoice</span>' : '';
   $('bk_count').textContent = `${rows.length} movements · in ${eur(rows.filter(r => r.amount > 0).reduce((s, r) => s + Number(r.amount), 0))} · out ${eur(-rows.filter(r => r.amount < 0).reduce((s, r) => s + Number(r.amount), 0))}`;
   $('bankBody').innerHTML = rows.length ? rows.slice(0, 600).map(r => `<tr>
     <td>${r.movement_date}</td><td>${esc(r.description)}</td><td class="hint">${esc(r.rubric)}</td><td>${inv(r)}</td>
     <td class="r" style="font-weight:700;color:${r.amount > 0 ? 'var(--green)' : 'var(--ink)'}">${r.amount > 0 ? '+' : ''}${eur(r.amount)}</td><td class="r hint">${r.balance != null ? eur(r.balance) : ''}</td>
-  </tr>`).join('') + (rows.length > 600 ? `<tr class="empty-row"><td colspan="6">Showing 600 of ${rows.length} — pick a month.</td></tr>` : '') : '<tr class="empty-row"><td colspan="6">Nothing here.</td></tr>';
+    <td class="r">${CAN_EDIT && r.has_invoice === 'missing' ? `<button class="btn btn-s" style="padding:4px 10px" onclick="addFromBank('${r.id}')">+ Invoice</button>` : ''}</td>
+  </tr>`).join('') + (rows.length > 600 ? `<tr class="empty-row"><td colspan="7">Showing 600 of ${rows.length} — pick a month.</td></tr>` : '') : '<tr class="empty-row"><td colspan="7">Nothing here.</td></tr>';
 }
 
 // ── Missing invoices ─────────────────────────────────────────────
@@ -288,7 +530,27 @@ function renderMissing(){
   const bySup = {}; rows.forEach(r => { const k = supplierOf(r.description); const b = bySup[k] || (bySup[k] = {n:0, eur:0, rubric:r.rubric}); b.n++; b.eur += -Number(r.amount); });
   const sups = Object.entries(bySup).sort((a, b) => b[1].eur - a[1].eur);
   $('msSuppliers').innerHTML = sups.length ? sups.map(([k, b]) => `<tr><td>${esc(k)}</td><td class="r">${b.n}</td><td class="r" style="font-weight:700">${eur(b.eur)}</td><td class="hint">${esc(b.rubric)}</td></tr>`).join('') : '<tr class="empty-row"><td colspan="4">Nothing missing.</td></tr>';
-  $('msBody').innerHTML = rows.length ? rows.slice().reverse().map(r => `<tr><td>${r.movement_date}</td><td>${esc(r.description)}</td><td class="hint">${esc(r.rubric)}</td><td class="r" style="font-weight:700">${eur(-r.amount)}</td></tr>`).join('') : '<tr class="empty-row"><td colspan="4">Nothing missing.</td></tr>';
+  $('msBody').innerHTML = rows.length ? rows.slice().reverse().map(r => `<tr><td>${r.movement_date}</td><td>${esc(r.description)}</td><td class="hint">${esc(r.rubric)}</td><td class="r" style="font-weight:700">${eur(-r.amount)}</td><td class="r" style="white-space:nowrap">${CAN_EDIT ? `<button class="btn btn-p" style="padding:4px 10px" onclick="addFromBank('${r.id}')">+ Add invoice</button> <button class="btn btn-s" style="padding:4px 10px" onclick="markNoInvoice('${r.id}')">No invoice</button>` : ''}</td></tr>`).join('') : '<tr class="empty-row"><td colspan="5">Nothing missing.</td></tr>';
+}
+
+// ── Water ↔ Manjar ───────────────────────────────────────────────
+function renderWater(){
+  const transfers = BANK_ROWS.filter(r => r.rubric === 'Vendas à Water (catering)');
+  const used = new Set();
+  const rows = transfers.map(t => {
+    const m = WATER_INV.find(i => !used.has(i.id) && Math.abs(Number(i.amount_eur) - Number(t.amount)) < 0.011 && Math.abs((new Date(i.invoice_date) - new Date(t.movement_date)) / 86400000) <= 20);
+    if (m) used.add(m.id);
+    return { t, m };
+  });
+  const unmatchedInv = WATER_INV.filter(i => !used.has(i.id));
+  const invTotal = WATER_INV.reduce((s, i) => s + Number(i.amount_eur || 0), 0), recTotal = transfers.reduce((s, t) => s + Number(t.amount), 0);
+  const kpi = (label, value, sub, cls = '') => `<div class="card kpi"><div class="kpi-label">${label}</div><div class="kpi-value ${cls}">${value}</div><div class="kpi-sub">${sub}</div></div>`;
+  $('wtKpis').innerHTML = kpi('Water invoices (HQ)', eur(invTotal), `${WATER_INV.length} lines lanced in the Water HQ as «manjar»`) + kpi('Received on BCP', eur(recTotal), `${transfers.length} transfers`, 'pos') + kpi('Difference', eur(invTotal - recTotal), invTotal - recTotal > 0 ? 'invoiced by Water, not yet on Manjar\'s account' : 'received, no Water invoice yet', Math.abs(invTotal - recTotal) < 1 ? 'pos' : 'neg') + kpi('Unmatched Water lines', String(unmatchedInv.length), eur(unmatchedInv.reduce((s, i) => s + Number(i.amount_eur || 0), 0)), unmatchedInv.length ? 'neg' : 'pos');
+  $('wtBody').innerHTML = rows.slice().reverse().map(({ t, m }) => `<tr><td>${t.movement_date}</td><td class="r" style="font-weight:700">${eur(t.amount)}</td><td>${m ? `${m.invoice_date} · ${esc(m.company)}` : '<span class="dim">—</span>'}</td><td class="hint">${m ? esc(m.invoice_number || '') : ''}</td><td>${m?.drive_link ? `<a href="${esc(m.drive_link)}" target="_blank">open</a>` : '<span class="dim">—</span>'}</td><td>${m ? '<span class="badge badge-green">matched</span>' : '<span class="badge badge-amber">no Water invoice</span>'}</td></tr>`).join('')
+    + unmatchedInv.map(i => `<tr><td class="dim">—</td><td class="r dim">—</td><td>${i.invoice_date} · ${esc(i.company)}</td><td class="hint">${esc(i.invoice_number || '')}</td><td>${i.drive_link ? `<a href="${esc(i.drive_link)}" target="_blank">open</a>` : '<span class="dim">—</span>'}</td><td><span class="badge badge-blue">${eur(i.amount_eur)} not received on BCP</span></td></tr>`).join('')
+    || '<tr class="empty-row"><td colspan="6">Nothing yet.</td></tr>';
+  const months = [...new Set(transfers.map(t => t.month).concat(WATER_INV.map(i => String(i.invoice_date).slice(0, 7))))].sort();
+  $('wtMonths').innerHTML = months.map(m => { const a = WATER_INV.filter(i => String(i.invoice_date).startsWith(m)).reduce((s, i) => s + Number(i.amount_eur || 0), 0), b = transfers.filter(t => t.month === m).reduce((s, t) => s + Number(t.amount), 0); return `<tr><td>${m}</td><td class="r">${eur(a)}</td><td class="r">${eur(b)}</td><td class="r ${Math.abs(a - b) < 1 ? '' : 'neg'}">${eur(a - b)}</td></tr>`; }).join('') + `<tr class="sum"><td>Total</td><td class="r">${eur(invTotal)}</td><td class="r">${eur(recTotal)}</td><td class="r">${eur(invTotal - recTotal)}</td></tr>`;
 }
 
 // ── Import a BCP statement (xlsx) ────────────────────────────────
