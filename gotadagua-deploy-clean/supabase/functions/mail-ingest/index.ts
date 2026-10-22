@@ -204,6 +204,8 @@ async function placeDocument(ctx: Ctx, parsed: Parsed, bytes: Uint8Array, compan
     const cands = (data || []).filter(r => {
       const sameAmt = Math.abs(Number(r.amount_eur ?? r.amount) - amount) < 0.011 || (r.currency && r.currency === parsed.currency && Math.abs(Number(r.amount) - amount) < 0.011)
       if (!sameAmt) return false
+      // SKILL rule 8: a different invoice number is a different document (two e-tickets of the same price, two Chubb policies…)
+      if (parsed.invoice_number && r.invoice_number && String(r.invoice_number).trim().toLowerCase() !== parsed.invoice_number.trim().toLowerCase()) return false
       if (parsed.supplier_nif && r.supplier_nif && String(r.supplier_nif).replace(/\s/g, '') === parsed.supplier_nif) return true
       if (tok.length >= 4 && String(r.company || '').toLowerCase().startsWith(tok)) return true
       if (String(r.notes || '').includes('[do extrato')) return true
@@ -305,6 +307,11 @@ async function run(db: Db) {
         for (const a of pdfs) {
           if (budget <= 0) break
           const ctx: Ctx = { ...marker, attachmentId: a.attachmentId.slice(0, 120), filename: a.filename.slice(0, 200) }
+          // claim the attachment first: two runs at once (cron + «Ler agora») created the same
+          // line twice on 22 Oct 2026; the unique (message_id, attachment_id) makes the second
+          // run skip it
+          const { error: claimErr } = await db.from('mail_ingest_items').insert({ account_email: account, message_id: id, attachment_id: ctx.attachmentId, filename: ctx.filename, received_at: receivedAt, from_addr: from.slice(0, 200), subject: subject.slice(0, 200), status: 'seen', reason: 'a processar', gmail_link: gmailLink })
+          if (claimErr) { perAccount.push(`${a.filename}: já tratado por outra execução`); continue }
           try {
             if (/factura-?in2|fatura\s*in2|FT\s*IN2/i.test(a.filename) || /FT IN2/i.test(subject)) { await record(ctx, { status: 'skipped', reason: 'fatura de venda a parceiro (rotina: partner_invoices)' }, null); continue }
             if (a.size > MAX_BYTES) { await record(ctx, { status: 'skipped', reason: 'anexo acima de 15 MB' }, null); continue }

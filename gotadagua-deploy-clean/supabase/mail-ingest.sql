@@ -90,10 +90,10 @@ end $$;
 revoke all on function public.hq_invoice_to_bank(uuid) from public, anon;
 grant execute on function public.hq_invoice_to_bank(uuid) to authenticated;
 
--- cron: every 30 minutes, 07–22 h UTC. The secret is substituted by the deploy
+-- cron: every 15 minutes, 07–22 h UTC. The secret is substituted by the deploy
 -- script (never commit the real value here).
-select cron.unschedule(jobid) from cron.job where jobname = 'mail-ingest-30min';
-select cron.schedule('mail-ingest-30min', '*/30 7-22 * * *', $$
+select cron.unschedule(jobid) from cron.job where jobname = 'mail-ingest-15min';
+select cron.schedule('mail-ingest-15min', '*/15 7-22 * * *', $$
   select net.http_post(
     url     := 'https://wnksmcjqnbxaagyhfxlt.supabase.co/functions/v1/mail-ingest',
     headers := jsonb_build_object('Content-Type', 'application/json', 'x-mail-ingest-secret', '__MAIL_INGEST_SECRET__'),
@@ -104,6 +104,6 @@ $$);
 
 select json_build_object(
   'tables', (select json_agg(table_name) from information_schema.tables where table_schema = 'public' and table_name like 'mail_ingest%'),
-  'cron', (select json_agg(json_build_object('name', jobname, 'schedule', schedule)) from cron.job where jobname = 'mail-ingest-30min'),
+  'cron', (select json_agg(json_build_object('name', jobname, 'schedule', schedule)) from cron.job where jobname = 'mail-ingest-15min'),
   'manjar_root', (select folder_id from accountant_drive_folders where company = 'manjar' and month_key = '*')
 ) j;
