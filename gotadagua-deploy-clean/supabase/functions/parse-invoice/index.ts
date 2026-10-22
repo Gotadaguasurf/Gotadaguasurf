@@ -49,7 +49,7 @@ Schema:
   "currency": "EUR | MAD | LKR | USD | GBP — inferred from currency symbol or country",
   "invoice_number": "invoice reference number, or null",
   "payment_type": "Cash | Card | Bank Transfer | Other — null if not visible on the document",
-  "category_hint": "best guess from: Food, Setup, Rent, Services, Insurances, Transport, Salary, Utilities, Partners, Benefits, Taxes, Work Trips, Accounting, Cleaning Supplies, Miguel - Personal",
+  "category_hint": "best guess from: Food, Drinks, Salary, Benefits, Taxes, Rent, Utilities, Services, Insurances, Equipment & maintenance, Cleaning, Laundry, Transport, Tours & activities, Merchandise, Marketing, Partners, Work Trips, Other",
   "location_hint": "best guess from: portugal, surf-school, junior-camp, kids-camp, morocco, sri-lanka, general"
 }
 

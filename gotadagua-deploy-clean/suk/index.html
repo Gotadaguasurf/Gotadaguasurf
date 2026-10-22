@@ -229,7 +229,8 @@ function showPage(name){
 // ── Rubrics read from the bank description ──────────────────────
 // Transfers from Water Movements are the catering Water buys from Manjar (sales); the partner's transfers are funding.
 const RUBRICS = [
-  ['Compras (comida e bebida)', /MAKRO|SUPERBOCK|SUPER BOCK|NEWCOFFEE|SILAU|PANICONGELADOS|CONTINENTE|LIDL|NOVO RUMO|MERCADONA|AUCHAN|PINGO DOCE|CONSOANTES|PASTE?LARIA|PADARIA|APH POS|BARAO E COSTA|GRUPO ATLANTA|TALHO|PEIXARIA|FRUTA|GELO/i],
+  ['Bebidas', /SUPERBOCK|SUPER BOCK|NEWCOFFEE|CONSOANTES|DELTA|ADEGA|VINHO|CERVEJA|COCA|BEBIDA|GARRAFEIRA|SUMOL|HEINEKEN|SAGRES|UNICER/i],
+  ['Compras (comida)', /MAKRO|SILAU|PANICONGELADOS|CONTINENTE|LIDL|NOVO RUMO|MERCADONA|AUCHAN|PINGO DOCE|PASTE?LARIA|PADARIA|APH POS|BARAO E COSTA|GRUPO ATLANTA|TALHO|PEIXARIA|FRUTA|GELO/i],
   ['Salários', /PAGAMENTO\s+VENCIMENTOS|VENCIMENTO/i],
   ['Impostos e Seg. Social', /TAXA SOCIAL|PAG\.DUC|INSTITUTO REGISTOS|AUTORIDADE TRIBUT|IRS|IVA/i],
   ['Renda', /LARANJEIRO|RENDA/i],
@@ -255,7 +256,7 @@ function rubricOf(r){
 }
 const NO_INVOICE = new Set(['Banco', 'Salários', 'Impostos e Seg. Social', 'Vendas à Water (catering)', 'Suprimentos do sócio']);
 const supplierOf = (desc) => String(desc || '').replace(/^MDB \d+ /, '').replace(/^DD /, '').replace(/^TRF P\/ /, '').replace(/^PAG SERV \d+\/\d+ /, 'PAG SERV ').replace(/^MDB \d+ PAG REFERENCIA.*/, 'PAG REFERENCIA').replace(/\s+\d[\d\s\/-]*$/, '').replace(/\s+/g, ' ').trim().slice(0, 30);
-const guessCategory = (rubric) => ({ 'Compras (comida e bebida)':'Food', 'Salários':'Salary', 'Impostos e Seg. Social':'Taxes', 'Renda':'Rent', 'Utilities':'Utilities', 'Contabilidade':'Accounting', 'Higiene e limpeza':'Cleaning Supplies', 'Seguros':'Insurances', 'Manutenção e equipamento':'Setup' })[rubric] || 'Services';
+const guessCategory = (rubric) => ({ 'Compras (comida)':'Food', 'Bebidas':'Drinks', 'Salários':'Salary', 'Impostos e Seg. Social':'Taxes', 'Renda':'Rent', 'Utilities':'Utilities', 'Contabilidade':'Services', 'Higiene e limpeza':'Cleaning', 'Seguros':'Insurances', 'Manutenção e equipamento':'Equipment & maintenance' })[rubric] || 'Other';
 
 // ── Boot ─────────────────────────────────────────────────────────
 async function boot(){
@@ -344,10 +345,10 @@ function renderOverview(){
   const kpi = (label, value, sub, cls = '', onclick = '') => `<div class="card kpi" ${onclick ? `style="cursor:pointer" onclick="${onclick}"` : ''}><div class="kpi-label">${label}</div><div class="kpi-value ${cls}">${value}</div><div class="kpi-sub">${sub}</div></div>`;
   body.innerHTML = `
     <section class="ov-section">
-      <div class="ov-section-head"><div class="ov-section-title">Performance</div><div class="ov-section-sub">${year} · BCP account · balance ${eur(last.balance)} on ${last.movement_date}</div></div>
+      <div class="ov-section-head"><div class="ov-section-title">Performance</div><div class="ov-section-sub">${year} · BCP account · balance ${eur(last.balance)} on ${last.movement_date} · food + drinks ${revenue ? Math.round(100 * lsum(i => i.category_name === 'Food' || i.category_name === 'Drinks') / revenue) : 0} % of sales · staff ${revenue ? Math.round(100 * lsum(i => i.category_name === 'Salary' || i.category_name === 'Benefits') / revenue) : 0} %</div></div>
       <div class="g4">
         ${kpi('Sales', eur(revenue), `restaurant (TPA + cash) ${eur0(sum(r => r.rubric === 'Vendas TPA (cartão)' || r.rubric === 'Depósitos de numerário'))} · catering to Water ${eur0(sum(r => r.rubric === 'Vendas à Water (catering)'))}`, 'pos')}
-        ${kpi('Costs', eur(costs), `food ${eur0(lsum(i => i.category_name === 'Food'))} · salaries ${eur0(lsum(i => i.category_name === 'Salary'))} · ${lines.filter(i => !i.category_id).length ? `<b>${lines.filter(i => !i.category_id).length} lines to categorise</b>` : 'all categorised'}`, 'neg')}
+        ${kpi('Costs', eur(costs), `food ${eur0(lsum(i => i.category_name === 'Food'))} · drinks ${eur0(lsum(i => i.category_name === 'Drinks'))} · staff ${eur0(lsum(i => i.category_name === 'Salary' || i.category_name === 'Benefits'))} · ${lines.filter(i => !i.category_id).length ? `<b>${lines.filter(i => !i.category_id).length} to categorise</b>` : 'all categorised'}`, 'neg')}
         ${kpi('Result on the account', eur(result), 'sales − costs, before funding', result >= 0 ? 'pos' : 'neg')}
         ${kpi('Partner funding', eur(funding), 'transfers from Ricardo (not sales)')}
       </div>

@@ -19,15 +19,16 @@ select bank_id, movement_date, description, amount,
       '^MDB \d+ ', ''), '^DD ', ''), '^TRF P/ ', ''), '^PAG SERV \d+/\d+ ', 'PAG SERV '), '\s+\d[\d\s/.-]*$', ''))) as company,
   case when u ~ '^MDB' then 'Card' else 'Bank Transfer' end as payment_type,
   case
-    when u ~ 'MAKRO|SUPERBOCK|SUPER BOCK|NEWCOFFEE|SILAU|PANICONGELADOS|CONTINENTE|LIDL|NOVO RUMO|MERCADONA|AUCHAN|PINGO DOCE|CONSOANTES|PASTE?LARIA|PADARIA|APH POS|BARAO E COSTA|GRUPO ATLANTA|TALHO|PEIXARIA|FRUTA|GELO' then 'Food'
+    when u ~ 'SUPERBOCK|SUPER BOCK|NEWCOFFEE|CONSOANTES|DELTA|ADEGA|VINHO|CERVEJA|COCA|BEBIDA|GARRAFEIRA|SUMOL|HEINEKEN|SAGRES|UNICER' then 'Drinks'
+    when u ~ 'MAKRO|SILAU|PANICONGELADOS|CONTINENTE|LIDL|NOVO RUMO|MERCADONA|AUCHAN|PINGO DOCE|PASTE?LARIA|PADARIA|APH POS|BARAO E COSTA|GRUPO ATLANTA|TALHO|PEIXARIA|FRUTA|GELO' then 'Food'
     when u ~ 'PAGAMENTO\s+VENCIMENTOS|VENCIMENTO' then 'Salary'
     when u ~ 'TAXA SOCIAL|PAG\.DUC|INSTITUTO REGISTOS|AUTORIDADE TRIBUT' then 'Taxes'
     when u ~ 'LARANJEIRO|RENDA' then 'Rent'
     when u ~ 'EDP|SMAS|NOS COMUNICA|PETROGAL|GALP|EUPAGO|MEO |VODAFONE|AGUAS' then 'Utilities'
-    when u ~ 'ESCALA DE PALAVRAS' then 'Accounting'
-    when u ~ 'ARABLAU|HIGIENE' then 'Cleaning Supplies'
+    when u ~ 'ESCALA DE PALAVRAS' then 'Services'
+    when u ~ 'ARABLAU|HIGIENE' then 'Cleaning'
     when u ~ 'GENERALI|FIDELIDADE|TRANQUILIDADE|ALLIANZ' then 'Insurances'
-    when u ~ 'LEROY MERLIN|BRICOTEJO|BRICOMARCHE|IKEA|WORTEN|FNAC' then 'Setup'
+    when u ~ 'LEROY MERLIN|BRICOTEJO|BRICOMARCHE|IKEA|WORTEN|FNAC' then 'Equipment & maintenance'
     else null end as category_name
   from _m;
 
