@@ -32,6 +32,10 @@ html{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
 body{margin:0;font-family:'Outfit',sans-serif;background:var(--bg);color:var(--ink);min-height:100vh;font-size:14px;line-height:1.45}
 input,select,textarea,button{font-family:inherit}
 a{color:var(--ocean)}
+.ic{width:15px;height:15px;flex-shrink:0;vertical-align:-2px;display:inline-block}
+.btn .ic,.nav-action-btn .ic,.ntab .ic{margin-right:2px}
+.health-chip .ic{width:13px;height:13px;margin-right:4px;vertical-align:-2px}
+th .ic,.kpi-label .ic{width:12px;height:12px;vertical-align:-2px}
 .num,td.r,th.r,.kpi-value,.summary-val,.hero-val{font-variant-numeric:tabular-nums}
 
 /* ── Header (.app-nav) ─────────────────────────────────────────────────── */
