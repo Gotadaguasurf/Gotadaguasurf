@@ -1834,7 +1834,7 @@ test('suk: bank-based overview, one expense line per debit, missing PDFs', async
   ];
   const invoices = [
     { id: 'i1', invoice_date: '2026-07-09', company: 'edp comercial', amount_eur: 14.64, category_name: 'Utilities', invoice_number: 'FT 1', drive_link: 'https://drive.google.com/x', deleted_at: null, notes: '' },
-    { id: 'i2', invoice_date: '2026-07-10', company: 'makro palmela quint', description: 'MDB 800258 MAKRO PALMELA QUINT', amount_eur: 454.21, category_name: 'Food', invoice_number: null, drive_link: null, deleted_at: null, notes: '[do extrato BCP Manjar 10 Jul 2026; sem fatura]' },
+    { id: 'i2', invoice_date: '2026-07-10', company: 'makro palmela quint', description: 'MDB 800258 MAKRO PALMELA QUINT', amount_eur: 454.21, category_name: 'Food', invoice_number: null, drive_link: null, deleted_at: null, notes: '[do extrato BCP Manjar 10 Jul 2026; sem fatura]', location_slug: 'suk-catering' },
     { id: 'i3', invoice_date: '2026-07-20', company: 'pagamento vencimentos', amount_eur: 900, category_name: 'Salary', invoice_number: null, drive_link: null, deleted_at: null, notes: '' },
   ];
   await page.route(/supabase\.co\/(auth|rest)\/v1\/.*/, async route => {
@@ -1853,10 +1853,16 @@ test('suk: bank-based overview, one expense line per debit, missing PDFs', async
   await page.waitForFunction(() => /Performance/.test(document.querySelector('#ovBody')?.textContent || ''), null, { timeout: 15000 });
   const out = await page.evaluate(() => {
     const kpis = [...document.querySelectorAll('#ovBody .kpi')].slice(0, 4).map(k => k.querySelector('.kpi-label').textContent.trim() + ' ' + k.querySelector('.kpi-value').textContent.trim());
+    const biz = [...document.querySelectorAll('#ovBody .g2 .card')].map(c => c.querySelector('.ov-section-title').textContent.trim() + ' ' + [...c.querySelectorAll('tr')].map(tr => tr.lastElementChild.textContent.trim().split(' · ')[0]).join(' | '));
+    showPage('invoices'); $('iv_filter').value = 'catering'; renderInvoices();
+    const catering = [...document.querySelectorAll('#invBody tr')].map(tr => tr.children[1]?.textContent.trim());
     showPage('missing');
-    return { kpis, missing: [...document.querySelectorAll('#msBody tr')].map(tr => [...tr.children].slice(0, 5).map(td => td.textContent.trim())), msKpis: [...document.querySelectorAll('#msKpis .kpi-value')].map(e => e.textContent.trim()), addBtn: !!document.querySelector('#msBody button') };
+    return { kpis, biz, catering, missing: [...document.querySelectorAll('#msBody tr')].map(tr => [...tr.children].slice(0, 5).map(td => td.textContent.trim())), msKpis: [...document.querySelectorAll('#msKpis .kpi-value')].map(e => e.textContent.trim()), addBtn: !!document.querySelector('#msBody button') };
   });
   expect(out.kpis).toEqual(['Sales €1,420.00', 'Costs €1,383.85', 'Result on the account €36.15', 'Partner funding €500.00']);   // costs = expense lines + bank fees
+  // Two businesses: restaurant = TPA + deposits minus its lines and the bank fees; catering = Water's transfers minus the lines marked «Catering» (Makro)
+  expect(out.biz).toEqual(['Restaurant €420.00 | €929.64 | €0 | €900 | €-509.64', 'Catering to Water €1,000.00 | €454.21 | €454 | €0 | €545.79']);
+  expect(out.catering).toEqual(['makro palmela quint']);  // the «Catering only» filter in Expenses
   // Makro has no PDF → missing; EDP has its PDF; the salary line never needs one; every debit has its line
   expect(out.missing).toEqual([['2026-07-10', 'makro palmela quint', 'MDB 800258 MAKRO PALMELA QUINT', 'Food', '€454.21']]);
   expect(out.msKpis).toEqual(['1', '€454.21', '1', '0']);

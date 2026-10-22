@@ -76,14 +76,14 @@ tr.click{cursor:pointer}
   <div class="container">
     <div class="ov-filters">
       <label class="period-picker"><span class="period-picker-lbl">Month</span><select id="iv_month" onchange="renderInvoices()"><option value="all">All</option></select></label>
-      <label class="period-picker"><span class="period-picker-lbl">Show</span><select id="iv_filter" onchange="renderInvoices()"><option value="all">Everything</option><option value="nopdf">Without PDF</option><option value="review">Needs a category</option><option value="cash">Cash (no bank debit)</option></select></label>
+      <label class="period-picker"><span class="period-picker-lbl">Show</span><select id="iv_filter" onchange="renderInvoices()"><option value="all">Everything</option><option value="nopdf">Without PDF</option><option value="review">Needs a category</option><option value="cash">Cash (no bank debit)</option><option value="restaurant">Restaurant only</option><option value="catering">Catering only</option></select></label>
       <input id="iv_q" type="search" class="search" placeholder="Search supplier, number, description…" oninput="renderInvoices()">
       <span class="hint" id="iv_count" style="margin-left:auto"></span>
       <button class="btn btn-p" id="addInvBtn" onclick="openInvoice()">+ Add expense</button>
     </div>
     <div class="card"><div class="tbl-wrap"><table>
-      <thead><tr><th>Date</th><th>Supplier</th><th>Nº</th><th>Description</th><th>Category</th><th>Paid</th><th>Bank</th><th>PDF</th><th class="r">Amount</th></tr></thead>
-      <tbody id="invBody"><tr class="empty-row"><td colspan="9">Loading…</td></tr></tbody>
+      <thead><tr><th>Date</th><th>Supplier</th><th>Nº</th><th>Description</th><th>Category</th><th>Business</th><th>Paid</th><th>Bank</th><th>PDF</th><th class="r">Amount</th></tr></thead>
+      <tbody id="invBody"><tr class="empty-row"><td colspan="10">Loading…</td></tr></tbody>
     </table></div></div>
     <div class="hint" style="margin-top:8px">Every debit of the BCP account is a line here, like the HQ does for Water. A missing invoice is a line without PDF: open it, attach the PDF and the fields are read by AI. Cash purchases are added with «+ Add expense».</div>
   </div>
@@ -246,7 +246,7 @@ async function loadData(){
   try {
     [BANK_ROWS, INVOICES, WATER_INV, CATEGORIES, FOLDERS] = await Promise.all([
       fetchAll(() => sb.from('hq_bank_movements').select('id, movement_date, value_date, description, amount, balance, kind, hq_invoice_id, notes').eq('paying_company', COMPANY).order('movement_date', {ascending:true}).order('seq', {ascending:true})),
-      fetchAll(() => sb.from('hq_invoices').select('id, invoice_date, company, supplier_nif, invoice_number, description, amount, currency, amount_eur, payment_type, category_id, category_name, drive_link, file_name, notes, needs_review, doc_exempt_reason').eq('paying_company', COMPANY).is('deleted_at', null).order('invoice_date', {ascending:true})),
+      fetchAll(() => sb.from('hq_invoices').select('id, invoice_date, company, supplier_nif, invoice_number, description, amount, currency, amount_eur, payment_type, category_id, category_name, drive_link, file_name, notes, needs_review, doc_exempt_reason, location_slug').eq('paying_company', COMPANY).is('deleted_at', null).order('invoice_date', {ascending:true})),
       fetchAll(() => sb.from('hq_invoices').select('id, invoice_date, company, invoice_number, amount_eur, drive_link, location_slug').eq('paying_company', 'water-movements').ilike('company', '%manjar%').is('deleted_at', null).order('invoice_date', {ascending:true})),
       sb.from('hq_invoice_categories').select('id, name, sort_order').eq('active', true).eq('is_personal', false).order('sort_order').then(({ data, error }) => { if (error) throw error; return (data || []).filter(c => !/^Wild/.test(c.name)); }),
       sb.from('accountant_drive_folders').select('company, month_key, folder_id').eq('company', COMPANY).then(({ data, error }) => { if (error) throw error; return data || []; }),
@@ -294,6 +294,22 @@ function renderOverview(){
   const revenue = sum(isSales), costs = costsOf(), result = revenue - costs;
   const funding = sum(r => r.rubric === 'Suprimentos do sócio');
   const last = rows[rows.length - 1];
+  // Two businesses of the same company: restaurant (sales = TPA + cash deposits, its POS to be connected later)
+  // and catering to Water (sales = Water's transfers). Costs split by the «Business» of each expense line; bank fees stay with the restaurant.
+  const restSales = (m) => sum(r => r.rubric === 'Vendas TPA (cartão)' || r.rubric === 'Depósitos de numerário' || r.rubric === 'Outras entradas', m);
+  const catSales = (m) => sum(r => r.rubric === 'Vendas à Water (catering)', m);
+  const restCosts = (m) => lsum(i => !isCatering(i), m) + fees(m);
+  const catCosts = (m) => lsum(i => isCatering(i), m);
+  const pct = (a, b) => b ? Math.round(100 * a / b) + ' %' : '—';
+  const bizCard = (name, sales, costs, foodDrinks, staff, note) => `<div class="card card-pad">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px"><div class="ov-section-title" style="font-size:16px">${name}</div><div class="hint">${note}</div></div>
+      <table style="width:100%;margin-top:8px"><tbody>
+        <tr><td>Sales</td><td class="r"><b>${eur(sales)}</b></td></tr>
+        <tr><td>Costs</td><td class="r">${eur(costs)}</td></tr>
+        <tr><td class="hint">&nbsp;&nbsp;food + drinks</td><td class="r hint">${eur0(foodDrinks)} · ${pct(foodDrinks, sales)} of sales</td></tr>
+        <tr><td class="hint">&nbsp;&nbsp;staff</td><td class="r hint">${eur0(staff)} · ${pct(staff, sales)} of sales</td></tr>
+        <tr><td><b>Result</b></td><td class="r"><b class="${sales - costs < 0 ? 'neg' : 'pos'}">${eur(sales - costs)}</b></td></tr>
+      </tbody></table></div>`;
   const invYear = INVOICES.filter(i => String(i.invoice_date).startsWith(year));
   const missing = rows.filter(r => r.has_invoice === 'missing');
   const money = (v) => v ? eur0(Math.abs(v)) : '<span class="dim">—</span>';
@@ -317,6 +333,13 @@ function renderOverview(){
       </div>
     </section>
     <section class="ov-section">
+      <div class="ov-section-head"><div class="ov-section-title">Restaurant and catering</div><div class="ov-section-sub">Same company, two businesses. Each expense line has a «Business» in the Expenses tab (default: restaurant). ${lines.filter(isCatering).length ? `${lines.filter(isCatering).length} lines are catering.` : 'No line is marked as catering yet — set the Business on the catering suppliers in Expenses.'}</div></div>
+      <div class="g2">
+        ${bizCard('Restaurant', restSales(), restCosts(), lsum(i => !isCatering(i) && (i.category_name === 'Food' || i.category_name === 'Drinks')), lsum(i => !isCatering(i) && (i.category_name === 'Salary' || i.category_name === 'Benefits')), 'sales = TPA + cash deposits on the BCP · POS to be connected')}
+        ${bizCard('Catering to Water', catSales(), catCosts(), lsum(i => isCatering(i) && (i.category_name === 'Food' || i.category_name === 'Drinks')), lsum(i => isCatering(i) && (i.category_name === 'Salary' || i.category_name === 'Benefits')), 'sales = transfers from Water Movements')}
+      </div>
+    </section>
+    <section class="ov-section">
       <div class="ov-section-head"><div class="ov-section-title">By category and month</div><div class="ov-section-sub">Sales read from the bank (TPA, cash deposits, catering to Water) · costs from the expense lines, with the HQ categories</div></div>
       <div class="card"><div class="tbl-wrap"><table class="mx">
         <thead><tr><th></th><th class="r">Total</th>${months.map(m => `<th class="r">${monthName(m)}</th>`).join('')}</tr></thead>
@@ -329,6 +352,9 @@ function renderOverview(){
           ${line('Bank fees', r => r.rubric === 'Banco')}
           ${calc('Costs', (m) => costsOf(m), 'sum')}
           ${calc('Result', (m) => sum(isSales, m) - costsOf(m), 'sum result')}
+          <tr class="group"><td colspan="${months.length + 2}">By business</td></tr>
+          ${calc('Restaurant · result', (m) => restSales(m) - restCosts(m))}
+          ${calc('Catering · result', (m) => catSales(m) - catCosts(m))}
           <tr class="group"><td colspan="${months.length + 2}">Funding (not sales)</td></tr>
           ${line('Suprimentos do sócio', r => r.rubric === 'Suprimentos do sócio')}
         </tbody>
@@ -340,15 +366,16 @@ function renderOverview(){
 function renderInvoices(){
   const month = $('iv_month').value, q = $('iv_q').value.trim().toLowerCase(), f = $('iv_filter').value;
   const rows = INVOICES.filter(i => (month === 'all' || String(i.invoice_date).startsWith(month)) && (!q || [i.company, i.invoice_number, i.description, i.category_name].join(' ').toLowerCase().includes(q))
-    && (f === 'all' || (f === 'nopdf' && i.missing_pdf) || (f === 'review' && i.needs_review) || (f === 'cash' && !i.bank))).slice().reverse();
+    && (f === 'all' || (f === 'nopdf' && i.missing_pdf) || (f === 'review' && i.needs_review) || (f === 'cash' && !i.bank) || (f === 'catering' && isCatering(i)) || (f === 'restaurant' && !isCatering(i)))).slice().reverse();
   $('iv_count').textContent = `${rows.length} invoices · ${eur(rows.reduce((s, i) => s + Number(i.amount_eur || 0), 0))}`;
   $('invBody').innerHTML = rows.length ? rows.map(i => `<tr class="click" onclick="openInvoice('${i.id}')">
     <td>${i.invoice_date}</td><td><b>${esc(i.company)}</b></td><td class="hint">${esc(i.invoice_number || '')}</td><td class="hint" style="max-width:360px">${esc(i.description || '')}</td>
-    <td onclick="event.stopPropagation()">${CAN_EDIT ? catSelect(i) : (i.category_name ? esc(i.category_name) : '<span class="badge badge-amber">decide</span>')}</td><td class="hint">${esc(i.payment_type || '')}</td>
+    <td onclick="event.stopPropagation()">${CAN_EDIT ? catSelect(i) : (i.category_name ? esc(i.category_name) : '<span class="badge badge-amber">decide</span>')}</td>
+    <td onclick="event.stopPropagation()">${CAN_EDIT ? bizSelect(i) : esc(bizName(i))}</td><td class="hint">${esc(i.payment_type || '')}</td>
     <td>${i.bank ? `<span class="badge badge-green">${i.bank.movement_date}</span>` : (i.payment_type === 'Cash' ? '<span class="badge badge-grey">cash</span>' : '<span class="badge badge-amber">not linked</span>')}</td>
     <td>${i.drive_link ? `<a href="${esc(i.drive_link)}" target="_blank" onclick="event.stopPropagation()">open</a>` : (i.doc_exempt_reason ? `<span class="badge badge-grey" title="${esc(i.doc_exempt_reason)}">no invoice</span>` : (i.missing_pdf ? '<span class="badge badge-amber">missing</span>' : '<span class="dim">—</span>'))}</td>
     <td class="r" style="font-weight:700">${eur(i.amount_eur)}</td>
-  </tr>`).join('') : '<tr class="empty-row"><td colspan="9">Nothing here.</td></tr>';
+  </tr>`).join('') : '<tr class="empty-row"><td colspan="10">Nothing here.</td></tr>';
 }
 
 // Category straight from the table: a select per line; when the supplier has
@@ -366,6 +393,24 @@ async function setCategory(id, catId){
   ids.forEach(x => { const l = INVOICES.find(y => y.id === x); if (l) { l.category_id = c.id; l.category_name = c.name; l.needs_review = false; l.missing_pdf = !l.drive_link && !l.doc_exempt_reason && !['Salary', 'Taxes'].includes(c.name); } });
   toast(`${c.name} · ${ids.length} line${ids.length === 1 ? '' : 's'}`);
   renderInvoices(); renderOverview();
+}
+// ── Business (restaurant / catering) per expense line ─────────────
+const CATERING = 'suk-catering';
+const isCatering = (i) => i.location_slug === CATERING;
+const bizName = (i) => isCatering(i) ? 'Catering' : 'Restaurant';
+function bizSelect(i){
+  return `<select class="catsel" onchange="setBusiness('${i.id}', this.value)"><option value="${SLUG}" ${isCatering(i) ? '' : 'selected'}>Restaurant</option><option value="${CATERING}" ${isCatering(i) ? 'selected' : ''}>Catering</option></select>`;
+}
+async function setBusiness(id, slug){
+  const i = INVOICES.find(x => x.id === id); if (!i) return;
+  const others = INVOICES.filter(x => x.id !== id && x.company && i.company && x.company.toLowerCase() === i.company.toLowerCase() && (x.location_slug || SLUG) !== slug);
+  const ids = [id];
+  if (others.length && confirm(`Also move the other ${others.length} lines of ${i.company} to ${slug === CATERING ? 'Catering' : 'Restaurant'}?`)) ids.push(...others.map(x => x.id));
+  const { error } = await sb.from('hq_invoices').update({ location_slug: slug }).in('id', ids);
+  if (error) { toast('Not saved: ' + error.message, 'err'); renderInvoices(); return; }
+  ids.forEach(x => { const r = INVOICES.find(y => y.id === x); if (r) r.location_slug = slug; });
+  toast(`${ids.length} line${ids.length > 1 ? 's' : ''} → ${slug === CATERING ? 'Catering' : 'Restaurant'}`);
+  renderInvoices(); if ($('page-overview').classList.contains('active')) renderOverview();
 }
 let INV_EDIT = null, INV_FILE = null, INV_BANK_ID = null;
 function openInvoice(id, prefill){

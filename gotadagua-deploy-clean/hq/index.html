@@ -440,7 +440,8 @@ const OWNER_EMAILS = new Set(window.__PLATFORM_OWNER_EMAILS || ['miguel@gotadagu
 // /suk/ and never shows in this HQ (Miguel, 22 Oct 2026). Rows tagged
 // paying_company='manjar' / location 'the-suk' are filtered out below.
 const NOT_HQ_COMPANY = 'manjar';
-const NOT_HQ_LOCATION = 'the-suk';
+const NOT_HQ_LOCATIONS = ['the-suk', 'suk-catering'];   // Manjar's restaurant + its catering business
+const isNotHqLoc = (slug) => NOT_HQ_LOCATIONS.includes(slug);
 const HQ_LOCATIONS = [
   {slug:'portugal',       label:'Surfcamp PT'},
   {slug:'surf-school',    label:'Surf School'},
@@ -634,9 +635,9 @@ async function renderOverview(){
   const { data: roll, error: rollErr } = await sb.rpc('hq_overview_rollup');
   if (rollErr) { body.innerHTML = `<div class="loading">Não foi possível carregar o Overview: ${rollErr.message || rollErr.code || rollErr}</div>`; return; }
   const bkRowsAll = (roll?.bookings || []).map(r => ({ ...r, partner_name: r.direct ? null : 'partner', booking_type: r.direct ? 'direct' : 'partner', n: Number(r.n || 0) }));
-  const sukLocId = (LOCATIONS.find(l => l.slug === NOT_HQ_LOCATION) || {}).id || null;
-  const invRowsAll = (roll?.invoices || []).filter(r => r.location_slug !== NOT_HQ_LOCATION).map(r => ({ ...r, invoice_date: `${r.month}-01` }));
-  const lgRowsAll = (roll?.ledger || []).filter(r => r.attributed_location !== NOT_HQ_LOCATION && !(sukLocId && r.location_id === sukLocId)).map(r => ({ ...r, entry_date: `${r.month}-01` }));
+  const sukLocIds = new Set(LOCATIONS.filter(l => isNotHqLoc(l.slug)).map(l => l.id));
+  const invRowsAll = (roll?.invoices || []).filter(r => !isNotHqLoc(r.location_slug)).map(r => ({ ...r, invoice_date: `${r.month}-01` }));
+  const lgRowsAll = (roll?.ledger || []).filter(r => !isNotHqLoc(r.attributed_location) && !sukLocIds.has(r.location_id)).map(r => ({ ...r, entry_date: `${r.month}-01` }));
 
   if (perSel && perSel.options.length <= 1) {
     const set = new Set();
@@ -5048,8 +5049,8 @@ async function loadPnlData(){
     fetchAllPaged(() => sb.from('ledger_entries').select('type, amount_eur, entry_date, attributed_location, paid_from, location_id, source_kind').order('entry_date',{ascending:false})),
     fetchAllPaged(() => sb.from('hq_invoices').select('amount_eur, location_slug, invoice_date, category_id').is('deleted_at', null).neq('paying_company', NOT_HQ_COMPANY).order('invoice_date',{ascending:false})),
   ]);
-  const sukLocIdPnl = (LOCATIONS.find(l => l.slug === NOT_HQ_LOCATION) || {}).id || null;
-  const ledgerHq = (ledger || []).filter(l => !(sukLocIdPnl && l.location_id === sukLocIdPnl) && l.attributed_location !== NOT_HQ_LOCATION && l.paid_from !== NOT_HQ_LOCATION);
+  const sukLocIdsPnl = new Set(LOCATIONS.filter(l => isNotHqLoc(l.slug)).map(l => l.id));
+  const ledgerHq = (ledger || []).filter(l => !sukLocIdsPnl.has(l.location_id) && !isNotHqLoc(l.attributed_location) && !isNotHqLoc(l.paid_from));
   // Income rows from the POS often carry only paid_from / location_id —
   // attributed_location is an expense-side convention. Resolve through
   // the full chain so operations revenue lands on the right camp.
