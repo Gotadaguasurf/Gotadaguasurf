@@ -37,9 +37,9 @@ begin
        and b.description not ilike 'LOTE TRF CRED SEPA%'
      order by b.movement_date, b.seq
   loop
-    v_supplier := lower(trim(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(r.description,
+    v_supplier := lower(trim(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(r.description,
         '^(COMPRA(\s+ESTRANG)?\s*\*?\d*\s*|TRF\.?\s*IMED\.?\s*P/\s*|TRF CRED INTRABANC P/\s*|TRF\.? P/\s*|D[ÉE]BITO DIRETO-?\s*|DD\s+|PAG\.?\s*SERVICOS\s*\*?\d*\s*|MDB \d+ |PAG SERV \d+/\d+ )', '', 'i'),
-        '-?E\d{7,9}.*$', ''), '\s+\d[\d\s/.-]*$', ''), '\s+PT\d+.*$', ''), '\s{2,}', ' '), '^\s+|\s+$', '')));
+        '[-\s]?E\d{4,9}.*$', ''), '\s+\d[\d\s/.-]*$', ''), '\s+PT\d+.*$', ''), '([a-z])\d{5,}$', '\1', 'i'), '\s{2,}', ' '), '^\s+|\s+$', '')));
     if v_supplier = '' then v_supplier := 'desconhecido'; end if;
 
     -- 1. an existing unlinked line of this amount, same books, nearby date
