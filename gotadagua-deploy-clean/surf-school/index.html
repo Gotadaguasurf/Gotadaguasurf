@@ -8,7 +8,7 @@
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='-15 0 92 92'><path fill='%231e6fa8' d='M61.7,51.9c-.4-9-5.5-16.5-9.7-24.1-2.9-4.8-5.3-9.8-9.3-13.9-3.9-4.4-6.5-9.8-10.8-13.9C19.2,16.6-.5,39.9,0,61.9c9.4-7.9,20.1-17.7,33.1-17.8,3,0,7.2,0,9.5,2.2,1.7,1.7,3.2,4.2,2,6.5-.3.5-1.9,2.7-2.3,2.9-12.9,7.4-20.3,18.6-16.5,33.7,3.1,1.3,8,1,11.1-.3,2.7-.3,5.1-1.3,7.5-2.5,8.7-2.9,14.5-11.1,15.5-20.1,1.2-4.7,2.1-9.7,1.8-14.6h0Z'/></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Outfit:wght@400;600;700;800&family=DM+Mono:wght@500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/lib/app-shell.css">
 <script src="/lib/app-shell.js"></script>
 <style>
@@ -19,22 +19,21 @@
    phone-first counter page adds (big touch targets, segmented pickers). */
 .muted{color:var(--muted)}
 
-/* ── Sub-nav: the shell's pill tabs (.nav-tabs/.ntab look) on a white bar ── */
-.subnav{background:#fff;border-bottom:1px solid var(--border);padding:8px 10px;display:flex;gap:2px;overflow-x:auto;position:sticky;top:60px;z-index:40}
+/* ── Sub-nav: the shell's .pill toggles on a sticky white bar. The header
+   has no tabs here on purpose — this is a phone-first counter page (header
+   tabs vanish into the drawer ≤820px) and it also runs embedded in the
+   camp hub with the header hidden. ── */
+.subnav{background:#fff;border-bottom:1px solid var(--border);padding:8px 12px;display:flex;gap:6px;overflow-x:auto;position:sticky;top:60px;z-index:40}
 .subnav::-webkit-scrollbar{display:none}
-.tabbtn{padding:9px 15px;border-radius:999px;font-size:13px;font-weight:700;cursor:pointer;border:none;font-family:'Outfit',sans-serif;transition:all .18s;color:var(--muted);background:transparent;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;flex-shrink:0}
-.tabbtn:hover{color:var(--navy);background:var(--foam)}
-.tabbtn.active{background:var(--ocean);color:#fff;box-shadow:0 2px 10px rgba(30,111,168,.3)}
-.tabbtn .badge{background:var(--navy);color:#fff;border:none;padding:1px 7px;font-size:10px;font-weight:800;min-width:18px;justify-content:center}
-.tabbtn.active .badge{background:rgba(255,255,255,.22)}
+.subnav .pill{flex-shrink:0}
 
 /* ── Content: one phone-wide column ── */
 main{padding:16px 16px 48px;max-width:640px}
 .page>.card{margin-bottom:14px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-/* touch-size fields for counter staff (the shell's are 13px / 9px padding) */
-.field{margin-bottom:14px}
-.field input,.field select,.field textarea{padding:12px 14px;font-size:15px}
+/* touch-size fields for counter staff: same look as the shell, taller */
+.page .field{margin-bottom:14px}
+.page .field input,.page .field select,.page .field textarea{height:46px;font-size:15px}
 
 /* Segment control (rental type) — segmented look on shell tokens */
 .segment{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;background:#fff;border:1px solid var(--border-2);padding:4px;border-radius:var(--r-sm);margin-bottom:14px}
@@ -47,32 +46,30 @@ main{padding:16px 16px 48px;max-width:640px}
 .terms-txt{font-size:12px;color:var(--muted);line-height:1.5}
 .terms-txt a{color:var(--ocean);font-weight:700}
 
-/* Open-rental / history item rows — a card with a status edge */
+/* Open-rental / history item rows — a card; state is a badge, never a coloured edge */
 .rental-row{background:#fff;border:1px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:10px;box-shadow:var(--sh)}
-.rental-row.open{border-left:4px solid var(--amber)}
 /* Big "Return by HH:MM" hero on every open rental card. Staff need to
    read the return time from across the shop, not squint at 12px meta. */
 .rr-return-hero{background:var(--ocean-soft);padding:12px 14px;border-radius:var(--r-sm);margin-bottom:12px;text-align:center;border:1px solid #cfe2f2}
 .rr-return-hero.overdue{background:var(--red-bg);border-color:var(--red-border)}
 .rr-return-lbl{font-size:10.5px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);font-weight:700}
-.rr-return-time{font-family:'DM Serif Display',serif;font-size:38px;color:var(--navy);line-height:1;margin-top:4px}
+.rr-return-time{font-size:36px;font-weight:700;letter-spacing:-.03em;font-variant-numeric:tabular-nums;color:var(--navy);line-height:1;margin-top:4px}
 .rr-return-hero.overdue .rr-return-time{color:var(--red)}
 .rr-return-sub{font-size:12px;color:var(--muted);margin-top:4px}
 .rr-return-hero.overdue .rr-return-sub{color:var(--red);font-weight:700}
-.rental-row.overdue{border-left-color:var(--red);background:var(--red-bg);border-color:var(--red-border)}
+.rental-row.overdue{background:var(--red-bg);border-color:var(--red-border)}
 .rental-row.overdue .rr-name{color:var(--red)}
-.rental-row.returned{border-left:4px solid var(--green);opacity:.72}
+.rental-row.returned{opacity:.72}
 .rr-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:6px}
-.rr-name{font-weight:800;color:var(--ink);font-size:15px}
+.rr-name{font-weight:700;color:var(--ink);font-size:15px}
 .rr-time{font-size:11.5px;color:var(--muted);white-space:nowrap;flex-shrink:0}
 .rr-item{color:var(--muted);font-size:13px;margin-bottom:4px}
 .rr-meta{font-size:11.5px;color:var(--muted);display:flex;flex-wrap:wrap;gap:10px}
-.rr-price{font-family:'DM Mono',monospace;font-weight:500;color:var(--navy);font-size:15px;margin-left:auto}
+.rr-price{font-weight:700;color:var(--navy);font-size:15px;margin-left:auto;font-variant-numeric:tabular-nums}
 .rr-actions{display:flex;gap:8px;margin-top:12px}
 
-/* Empty state */
-.empty{padding:36px 20px;text-align:center;color:var(--muted);font-size:13px;background:#fff;border:1px dashed var(--border-2);border-radius:var(--r)}
-.empty-icon{font-size:36px;margin-bottom:10px;line-height:1}
+/* Empty states use the shell's .empty-state inside a .card */
+.list-note{padding:12px 8px;text-align:center;color:var(--muted);font-size:12px}
 
 /* Filter row (History / Vendas / Clientes) */
 .filter-row{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center}
@@ -101,15 +98,15 @@ main{padding:16px 16px 48px;max-width:640px}
 .stepper button{background:#fff;border:none;font-size:24px;font-weight:800;color:var(--navy);cursor:pointer;padding:0;transition:background .15s;-webkit-tap-highlight-color:transparent;font-family:inherit}
 .stepper button:active{background:var(--foam)}
 .stepper button:disabled{opacity:.35;cursor:not-allowed}
-.stepper .val{display:flex;align-items:center;justify-content:center;font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy);border-left:1px solid var(--border);border-right:1px solid var(--border);min-height:52px}
-.stepper .val small{display:block;font-size:10px;color:var(--muted);font-family:'Outfit',sans-serif;font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-top:1px}
+.stepper .val{display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--navy);border-left:1px solid var(--border);border-right:1px solid var(--border);min-height:52px}
+.stepper .val small{display:block;font-size:10px;color:var(--muted);font-weight:600;letter-spacing:.06em;text-transform:uppercase;margin-top:1px}
 
 /* Live total preview — the big number staff read at a glance before
    pressing Save. Sits right above the editable Amount field so any
    manual override is obvious. */
-.total-preview{background:linear-gradient(135deg,var(--navy) 0%,#1b2a3a 100%);color:#fff;padding:14px 18px;border-radius:var(--r);margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;gap:12px}
-.total-preview-lbl{font-size:10.5px;text-transform:uppercase;letter-spacing:.14em;font-weight:700;color:#9fc0da}
-.total-preview-val{font-family:'DM Serif Display',serif;font-size:34px;line-height:1;margin-top:2px}
+.total-preview{background:linear-gradient(135deg,var(--navy) 0%,var(--navy-deep) 100%);color:#fff;padding:14px 18px;border-radius:var(--r-lg);margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;gap:12px}
+.total-preview-lbl{font-size:var(--fs-micro);text-transform:uppercase;letter-spacing:.08em;font-weight:600;color:#a9c4da}
+.total-preview-val{font-size:34px;font-weight:700;letter-spacing:-.03em;font-variant-numeric:tabular-nums;line-height:1;margin-top:2px}
 .total-preview-breakdown{font-size:11.5px;color:#cfe1f0;text-align:right;line-height:1.4;max-width:150px}
 
 /* Sticky save on mobile — the save button always sits at thumb-reach
@@ -119,9 +116,9 @@ main{padding:16px 16px 48px;max-width:640px}
 
 /* Optional-fields collapsible — hides Email + ID Card behind a
    toggle so the default rental flow is 4 fields shorter. */
-.optional-toggle{background:transparent;border:none;color:var(--ocean);font-weight:800;font-size:13px;cursor:pointer;padding:10px 0;display:flex;align-items:center;gap:6px;font-family:inherit}
+.optional-toggle{background:transparent;border:none;color:var(--ocean);font-weight:600;font-size:13px;cursor:pointer;padding:10px 0;display:flex;align-items:center;gap:6px;font-family:inherit}
 .optional-toggle:hover{color:var(--navy)}
-.optional-toggle .arrow{transition:transform .15s;display:inline-block}
+.optional-toggle .arrow{transition:transform .15s;display:inline-flex}
 .optional-toggle.open .arrow{transform:rotate(90deg)}
 .optional-body{display:none;padding-top:4px}
 .optional-body.open{display:block}
@@ -131,7 +128,7 @@ main{padding:16px 16px 48px;max-width:640px}
    viewport. Selects included for the ones still visible (Cash chip
    fake-input etc). */
 @media(max-width:640px){
-  .field input,.field select,.field textarea{font-size:16px}
+  .page .field input,.page .field select,.page .field textarea{font-size:16px}
   /* The subnav's fixed top offset (60px) is tuned for the header. On
      iOS momentum-scrolls it can jitter — set overscroll behavior so
      the scroll stays inside the container. */
@@ -151,15 +148,15 @@ main{padding:16px 16px 48px;max-width:640px}
 <body>
 
 <nav class="app-nav" id="appNav"></nav>
-<script>AppShell.mount('appNav', { app:'surf-school', tabs:[], mobile:false, actions:'<a class="nav-action-btn" href="/hq/">HQ</a>' });</script>
+<script>AppShell.mount('appNav', { app:'surf-school', tabs:[], mobile:false, actions:'<a class="nav-action-btn" id="hqShortcutBtn" href="/hq/" style="display:none">HQ</a>' });</script>
 
 <nav class="subnav">
-  <button class="tabbtn active" data-page="new" onclick="showPage('new')">+ New</button>
-  <button class="tabbtn" data-page="open" onclick="showPage('open')">Open <span class="badge" id="openBadge">0</span></button>
-  <button class="tabbtn" data-page="camp" onclick="showPage('camp')">🏕 Camp <span class="badge" id="campBadge">0</span></button>
-  <button class="tabbtn" data-page="history" onclick="showPage('history')">History</button>
-  <button class="tabbtn" data-page="sales" id="salesTabBtn" onclick="showPage('sales')" style="display:none">💶 Vendas</button>
-  <button class="tabbtn" data-page="clients" id="clientsTabBtn" onclick="showPage('clients')" style="display:none">👥 Clientes</button>
+  <button class="pill tabbtn active" data-page="new" onclick="showPage('new')">New rental</button>
+  <button class="pill tabbtn" data-page="open" onclick="showPage('open')">Boards out <span class="count" id="openBadge">0</span></button>
+  <button class="pill tabbtn" data-page="camp" onclick="showPage('camp')">Camp <span class="count" id="campBadge">0</span></button>
+  <button class="pill tabbtn" data-page="history" onclick="showPage('history')">History</button>
+  <button class="pill tabbtn" data-page="sales" id="salesTabBtn" onclick="showPage('sales')" style="display:none">Sales</button>
+  <button class="pill tabbtn" data-page="clients" id="clientsTabBtn" onclick="showPage('clients')" style="display:none">Customers</button>
 </nav>
 
 <main id="main">
@@ -193,7 +190,7 @@ main{padding:16px 16px 48px;max-width:640px}
            when the student wants a receipt or is leaving the board unsupervised
            the staff taps "Add contact info" to reveal them. Both stay optional. -->
       <button type="button" class="optional-toggle" id="contactToggle" onclick="toggleContactInfo()">
-        <span class="arrow">▸</span>
+        <span class="arrow" id="contactArrow"></span>
         <span id="contactToggleLbl">Add contact info (email · ID)</span>
       </button>
       <div class="optional-body" id="contactBody">
@@ -301,7 +298,7 @@ main{padding:16px 16px 48px;max-width:640px}
            the toggle back and wire setPay(). -->
       <div class="field">
         <label>Payment</label>
-        <div style="padding:11px 14px;background:var(--foam);border-radius:var(--r-sm);font-size:13px;color:var(--navy);font-weight:700">💵 Cash</div>
+        <div class="status-msg status-info">Cash — the school only takes cash at the counter.</div>
       </div>
       <label class="terms">
         <input id="fld_terms" type="checkbox">
@@ -325,7 +322,7 @@ main{padding:16px 16px 48px;max-width:640px}
         <div class="kpi-value neg" id="kpiOverdue">0</div>
       </div>
     </div>
-    <div id="openList"><div class="empty"><div class="empty-icon">🏄</div>No boards out right now.</div></div>
+    <div id="openList"><div class="card"><div class="empty-state"><div class="empty-title">No boards out right now.</div></div></div></div>
   </div>
 
   <!-- ══════════════════ SURF CAMP GUESTS ══════════════════ -->
@@ -366,10 +363,10 @@ main{padding:16px 16px 48px;max-width:640px}
         <div class="hint">No price, no return time — camp package.</div>
       </div>
       <div class="sticky-save">
-        <button class="btn btn-p btn-lg btn-block" id="campSaveBtn" onclick="saveCampEntry()">🏄 Boards in the water</button>
+        <button class="btn btn-p btn-lg btn-block" id="campSaveBtn" onclick="saveCampEntry()">Boards in the water</button>
       </div>
     </div>
-    <div id="campList"><div class="empty"><div class="empty-icon">🏕</div>No camp boards out right now.</div></div>
+    <div id="campList"><div class="card"><div class="empty-state"><div class="empty-title">No camp boards out right now.</div></div></div></div>
   </div>
 
   <!-- ══════════════════ HISTORY ══════════════════ -->
@@ -389,37 +386,37 @@ main{padding:16px 16px 48px;max-width:640px}
         <option value="all">All time</option>
       </select></label>
     </div>
-    <div id="historyList"><div class="empty"><div class="empty-icon">⏳</div>Loading…</div></div>
+    <div id="historyList"><div class="card"><div class="loading">Loading…</div></div></div>
   </div>
 
-  <!-- ══════════════════ VENDAS POR LOGIN ══════════════════
-       Comissões de venda pagam-se por pessoa e por mês. Cada venda leva
-       quem a abriu (opened_by, gravado pelo servidor), por isso aqui
-       lê-se o mês inteiro da base de dados — não a lista de 500 do
-       History — e soma-se por login. Só gestores/donos vêem este separador. -->
+  <!-- ══════════════════ SALES PER LOGIN ══════════════════
+       Sales commissions are paid per person and per month. Every sale
+       carries who opened it (opened_by, stamped by the server), so this
+       tab reads the whole month from the database — not History's last
+       500 — and sums per login. Only managers/owners see it. -->
   <div class="page" id="page-sales">
     <div class="filter-row">
       <button class="btn btn-s" type="button" onclick="salesShiftMonth(-1)">‹</button>
       <strong id="salesMonthLabel" style="min-width:150px;text-align:center"></strong>
       <button class="btn btn-s" type="button" onclick="salesShiftMonth(1)">›</button>
-      <label class="period-picker" style="margin-left:auto"><span class="period-picker-lbl">Comissão</span>
-        <input type="number" id="salesPct" min="0" max="100" step="0.5" style="width:56px;text-align:right;font-family:'DM Mono',monospace" oninput="salesPctChanged()"> %
+      <label class="period-picker" style="margin-left:auto"><span class="period-picker-lbl">Commission</span>
+        <input type="number" id="salesPct" min="0" max="100" step="0.5" style="width:56px;text-align:right;font-variant-numeric:tabular-nums" oninput="salesPctChanged()"> %
       </label>
-      <button class="btn btn-s" type="button" onclick="exportSalesCsv()">⬇ CSV</button>
+      <button class="btn btn-s" type="button" id="salesCsvBtn" onclick="exportSalesCsv()">CSV</button>
     </div>
-    <div id="salesBox"><div class="empty"><div class="empty-icon">⏳</div>Loading…</div></div>
+    <div id="salesBox"><div class="card"><div class="loading">Loading…</div></div></div>
   </div>
 
-  <!-- ══════════════════ CLIENTES ══════════════════
-       Todos os clientes desta escola, de sempre (não só os 500 do
-       History): nome, email, ID, visitas e quanto gastaram. Tem números
-       de ID, por isso só gestores/donos vêem este separador. -->
+  <!-- ══════════════════ CUSTOMERS ══════════════════
+       Every customer of the school, ever (not only History's last 500):
+       name, email, ID, visits and spend. It shows ID numbers, so only
+       managers/owners see this tab. -->
   <div class="page" id="page-clients">
     <div class="filter-row">
-      <input type="search" id="clientsSearch" class="search" placeholder="Procurar nome, email ou ID…" oninput="renderClients()" autocomplete="off" style="flex:1;min-width:0;width:auto">
-      <button class="btn btn-s" type="button" onclick="exportClientsCsv()">⬇ CSV</button>
+      <input type="search" id="clientsSearch" class="search" placeholder="Search name, email or ID…" oninput="renderClients()" autocomplete="off" style="flex:1;min-width:0;width:auto">
+      <button class="btn btn-s" type="button" id="clientsCsvBtn" onclick="exportClientsCsv()">CSV</button>
     </div>
-    <div id="clientsBox"><div class="empty"><div class="empty-icon">⏳</div>Loading…</div></div>
+    <div id="clientsBox"><div class="card"><div class="loading">Loading…</div></div></div>
   </div>
 </main>
 
@@ -512,7 +509,10 @@ async function boot(){
       }
     } catch (_e) { CAN_EDIT_HISTORY = false; }
   }
-  // Sales commissions are pay information: the Vendas tab exists only
+  // HQ shortcut only for people who can open HQ (owner email, or an
+  // active 'hq' membership) — same gate as camp-hub's hqShortcutBtn.
+  showHqShortcutIfAccessible(user).catch(() => {});
+  // Sales commissions are pay information: the Sales tab exists only
   // for whoever can also edit History (owners and can_edit managers).
   if (CAN_EDIT_HISTORY) { const st = document.getElementById('salesTabBtn'); if (st) st.style.display = ''; }
   if (CAN_EDIT_HISTORY) { const ct = document.getElementById('clientsTabBtn'); if (ct) ct.style.display = ''; }
@@ -542,6 +542,25 @@ async function boot(){
   renderOpen();
   subscribeRealtime();
 }
+
+async function showHqShortcutIfAccessible(user){
+  const btn = document.getElementById('hqShortcutBtn');
+  if (!btn || !user) return;
+  const ownerEmails = new Set(window.__PLATFORM_OWNER_EMAILS || ['miguel@gotadaguasurf.com']);
+  if (ownerEmails.has(String(user.email || '').toLowerCase())) { btn.style.display = ''; return; }
+  const { data: mem } = await sb.from('workspace_memberships')
+    .select('can_view, active, workspaces!inner(slug)')
+    .eq('user_id', user.id).eq('active', true)
+    .eq('workspaces.slug', 'hq').maybeSingle();
+  if (mem && mem.can_view) btn.style.display = '';
+}
+// Flat icons on the static buttons (the shell is loaded, so no emoji in markup).
+(function paintStaticIcons(){
+  const put = (id, name, text) => { const el = document.getElementById(id); if (el) el.innerHTML = AppShell.icon(name) + (text ? ' ' + text : ''); };
+  put('contactArrow', 'chevron-right', '');
+  put('salesCsvBtn', 'download', 'CSV');
+  put('clientsCsvBtn', 'download', 'CSV');
+})();
 
 // ── Catalog ──────────────────────────────────────────────────────
 async function loadCatalog(){
@@ -738,7 +757,7 @@ function paintPriceSource(missingNames){
   const el = document.getElementById('priceSourceNote');
   if (!el) return;
   if (!PRICING_READY || !missingNames.length) { el.style.display = 'none'; el.textContent = ''; return; }
-  el.textContent = `⚠ preço de tabela — não está no catálogo: ${missingNames.map(n => `«${n}»`).join(', ')}. Adicionar em Prices › Surf School (categoria Surf Pack).`;
+  el.textContent = `Price from the printed card — not in the catalog: ${missingNames.map(n => `«${n}»`).join(', ')}. Add it in Prices › Surf School (Surf Pack category).`;
   el.style.display = '';
 }
 // Multi-day: the card prices 3 days and 1 week. For any other length,
@@ -772,7 +791,7 @@ function updateCustomerTypeHint(){
   if (!hint) return;
   const note = CUSTOMER_TYPE_NOTES[val];
   if (note) {
-    hint.textContent = '⚠ ' + note;
+    hint.textContent = note;
     hint.style.display = '';
     hint.style.color = 'var(--amber)';
     hint.style.fontWeight = '600';
@@ -875,10 +894,10 @@ function recalcLessonTotal(){
 function validNif(raw){
   const d = String(raw || '').replace(/\D/g, '');
   if (!d) return { ok: true, empty: true, nif: null };
-  if (d.length !== 9) return { ok: false, nif: d, reason: '9 dígitos' };
+  if (d.length !== 9) return { ok: false, nif: d, reason: '9 digits' };
   const sum = d.slice(0, 8).split('').reduce((s, c, i) => s + Number(c) * (9 - i), 0);
   let chk = 11 - (sum % 11); if (chk >= 10) chk = 0;
-  return chk === Number(d[8]) ? { ok: true, nif: d } : { ok: false, nif: d, reason: 'dígito de controlo' };
+  return chk === Number(d[8]) ? { ok: true, nif: d } : { ok: false, nif: d, reason: 'check digit' };
 }
 function checkNif(){
   const inp = document.getElementById('fld_nif'), hint = document.getElementById('nifHint');
@@ -886,8 +905,8 @@ function checkNif(){
   const v = validNif(inp.value);
   if (v.empty) { hint.style.display = 'none'; inp.style.borderColor = ''; return; }
   hint.style.display = '';
-  if (v.ok) { hint.textContent = '✓ NIF válido'; hint.style.color = 'var(--green, #1b7f4c)'; inp.style.borderColor = ''; }
-  else { hint.textContent = `⚠ NIF inválido (${v.reason})`; hint.style.color = 'var(--amber)'; inp.style.borderColor = 'var(--amber)'; }
+  if (v.ok) { hint.textContent = 'Valid NIF'; hint.style.color = 'var(--green)'; inp.style.borderColor = ''; }
+  else { hint.textContent = `Invalid NIF (${v.reason})`; hint.style.color = 'var(--amber)'; inp.style.borderColor = 'var(--amber)'; }
 }
 function computeExpectedReturn(){
   const dateStr  = document.getElementById('fld_date')?.value;
@@ -971,7 +990,7 @@ function renderOpen(){
   document.getElementById('kpiOverdue').textContent = open.filter(isOverdueOf).length;
 
   if (!open.length) {
-    list.innerHTML = `<div class="empty"><div class="empty-icon">🏄</div>No boards out right now.</div>`;
+    list.innerHTML = emptyCard('No boards out right now.', 'Save a rental on the New rental tab and it shows up here.');
     return;
   }
   // Sort by expected_return_at asc so the most-imminent-return / overdue
@@ -1019,7 +1038,7 @@ function renderOpen(){
         const overMs = now - exp.getTime();
         const overMins = Math.max(1, Math.round(overMs/60000));
         const overStr = overMins < 60 ? `${overMins} min` : `${Math.floor(overMins/60)}h ${overMins%60}m`;
-        heroSubStr = sameDay ? `⚠ ${overStr} over` : `${dayStr} · ⚠ ${overStr} over`;
+        heroSubStr = sameDay ? `${overStr} over` : `${dayStr} · ${overStr} over`;
       } else {
         heroSubStr = sameDay ? 'today' : dayStr;
       }
@@ -1038,14 +1057,14 @@ function renderOpen(){
         <div class="rr-time">${timeAgo}</div>
       </div>
       <div class="rr-item">${escapeHtml(r.item_name)}${r.duration?` · ${escapeHtml(r.duration)}`:''}</div>
-      ${r.student_email ? `<div class="rr-item">✉️ <a href="mailto:${escapeAttr(r.student_email)}" style="color:var(--ocean)">${escapeHtml(r.student_email)}</a></div>` : ''}
+      ${r.student_email ? `<div class="rr-item">${AppShell.icon('mail')} <a href="mailto:${escapeAttr(r.student_email)}" style="color:var(--ocean)">${escapeHtml(r.student_email)}</a></div>` : ''}
       <div class="rr-meta">
         <span>Given by <strong>${escapeHtml(staff)}</strong></span>
         ${r.id_card_number?`<span>ID ${escapeHtml(r.id_card_number)}</span>`:''}
         <span class="rr-price">${escapeHtml(r.currency||'EUR')} ${Number(r.price_local||0).toFixed(0)}</span>
       </div>
       <div class="rr-actions">
-        <button class="btn btn-g btn-lg btn-block" onclick="closeRental('${r.id}', '${escapeAttr(r.student_name)}')">✓ Return board</button>
+        <button class="btn btn-g btn-lg btn-block" onclick="closeRental('${r.id}', '${escapeAttr(r.student_name)}')">${AppShell.icon('check')} Return board</button>
       </div>
     </div>`;
   }).join('');
@@ -1070,7 +1089,7 @@ function renderOpen(){
         </div>
         <div class="rr-item">${escapeHtml(r.item_name)}${r.duration?` · ${escapeHtml(r.duration)}`:''}</div>
         <div class="rr-actions">
-          <button class="btn btn-s btn-block" onclick="reopenRental('${r.id}', '${escapeAttr(r.student_name)}')">↺ Reopen (returned by mistake)</button>
+          <button class="btn btn-s btn-block" onclick="reopenRental('${r.id}', '${escapeAttr(r.student_name)}')">${AppShell.icon('refresh')} Reopen (returned by mistake)</button>
         </div>
       </div>`;
     }).join('');
@@ -1098,7 +1117,7 @@ const SALES_PCT_KEY = 'ss_sales_commission_pct';   // localStorage cache only
 const SALES_PCT_DEFAULT = 0;
 let SALES_PCT_DB = null;                           // value from the table; null = not loaded
 let salesPctSaveTimer = null;
-const MESES_PT = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+const MESES_PT = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 function salesPct(){
   if (Number.isFinite(SALES_PCT_DB)) return SALES_PCT_DB;
   let cached = NaN;
@@ -1127,7 +1146,7 @@ function salesPctChanged(){
 async function saveSalesPct(v){
   const { error } = await sb.from(SETTINGS_TABLE)
     .upsert({ key: 'sales_commission_pct', value: v, updated_at: new Date().toISOString() }, { onConflict: 'key' });
-  if (error) toast('Comissão não gravada: ' + error.message, 'err');
+  if (error) toast('Commission not saved: ' + error.message, 'err');
 }
 function salesShiftMonth(delta){
   const [y, m] = SALES_MONTH.split('-').map(Number);
@@ -1162,7 +1181,7 @@ async function loadSales(){
   document.getElementById('salesMonthLabel').textContent = `${MESES_PT[m-1]} ${y}`;
   const from = new Date(Date.UTC(y, m - 1, 1)).toISOString();
   const to   = new Date(Date.UTC(y, m, 1)).toISOString();
-  box.innerHTML = '<div class="empty"><div class="empty-icon">⏳</div>Loading…</div>';
+  box.innerHTML = '<div class="card"><div class="loading">Loading…</div></div>';
   let all = [], start = 0;
   for (;;) {
     const { data, error } = await sb.from('surf_school_rentals')
@@ -1170,7 +1189,7 @@ async function loadSales(){
       .eq('location_id', LOCATION_ID).neq('kind', 'camp')
       .gte('opened_at', from).lt('opened_at', to)
       .order('opened_at', { ascending:true }).range(start, start + 999);
-    if (error) { box.innerHTML = `<div class="empty">Falhou: ${escapeHtml(error.message)}</div>`; return; }
+    if (error) { box.innerHTML = `<div class="status-msg status-err">Couldn't load the month: ${escapeHtml(error.message)}</div>`; return; }
     all = all.concat(data || []);
     if (!data || data.length < 1000) break;
     start += 1000;
@@ -1192,19 +1211,19 @@ function renderSales(){
   if (pctInput && document.activeElement !== pctInput) pctInput.value = salesPct();
   const pct = salesPct();
   const sellers = salesSummaryRows(SALES_ROWS, pct);
-  if (!sellers.length) { box.innerHTML = '<div class="empty"><div class="empty-icon">💶</div>Sem vendas neste mês.</div>'; return; }
+  if (!sellers.length) { box.innerHTML = emptyCard('No sales this month.'); return; }
   const eur = n => '€' + Number(n || 0).toFixed(2);
   const tot = sellers.reduce((s,v) => s + v.total, 0);
   const totCom = sellers.reduce((s,v) => s + v.commission, 0);
-  const kindLabel = { rental:'alugueres', lesson:'aulas', activity:'actividades' };
+  const kindLabel = { rental:'rentals', lesson:'lessons', activity:'activities' };
   const dayFmt = iso => { const d = new Date(iso); return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`; };
   box.innerHTML = `<div class="card card-pad">
-    <div class="kpi-label" style="margin-bottom:8px">${sellers.length} login${sellers.length===1?'':'s'} · ${SALES_ROWS.filter(r=>r.kind!=='camp').length} vendas · ${eur(tot)}${pct ? ` · comissões ${eur(totCom)} (${pct}%)` : ''}</div>
+    <div class="kpi-label" style="margin-bottom:8px">${sellers.length} login${sellers.length===1?'':'s'} · ${SALES_ROWS.filter(r=>r.kind!=='camp').length} sales · ${eur(tot)}${pct ? ` · commission ${eur(totCom)} (${pct}%)` : ''}</div>
     ${sellers.map((v, i) => `<details style="border-top:1px solid var(--border)">
       <summary style="display:flex;justify-content:space-between;gap:10px;padding:8px 0;font-size:13px;cursor:pointer;list-style:none">
         <div><strong>${escapeHtml(v.name)}</strong>${v.email?`<div style="font-size:11px;color:var(--muted)">${escapeHtml(v.email)}</div>`:''}
           <div style="font-size:11px;color:var(--muted)">${Object.entries(v.kinds).map(([k,n]) => `${n} ${kindLabel[k] || k}`).join(' · ')}</div></div>
-        <div style="text-align:right;white-space:nowrap"><strong>${eur(v.total)}</strong>${pct ? `<div style="font-size:12px;color:var(--ocean);font-weight:700">comissão ${eur(v.commission)}</div>` : ''}<div style="font-size:11px;color:var(--muted)">${v.n} venda${v.n===1?'':'s'}</div></div>
+        <div class="num" style="text-align:right;white-space:nowrap"><strong>${eur(v.total)}</strong>${pct ? `<div style="font-size:12px;color:var(--ocean);font-weight:600">commission ${eur(v.commission)}</div>` : ''}<div style="font-size:11px;color:var(--muted)">${v.n} sale${v.n===1?'':'s'}</div></div>
       </summary>
       <div class="tbl-wrap" style="margin:0 0 10px"><table>
         <tbody>${SALES_ROWS.filter(r => (r.opened_by || 'unknown') === v.uid && r.kind !== 'camp').map(r => `<tr>
@@ -1220,33 +1239,33 @@ function renderSales(){
 function exportSalesCsv(){
   const pct = salesPct();
   const sellers = salesSummaryRows(SALES_ROWS, pct);
-  if (!sellers.length) { toast('Sem vendas para exportar', 'err'); return; }
+  if (!sellers.length) { toast('No sales to export', 'err'); return; }
   const q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
-  const lines = [['Mês','Vendedor','Email','Vendas','Total EUR','Comissão %','Comissão EUR'].map(q).join(';')];
+  const lines = [['Month','Seller','Email','Sales','Total EUR','Commission %','Commission EUR'].map(q).join(';')];
   sellers.forEach(v => lines.push([SALES_MONTH, v.name, v.email, v.n, v.total.toFixed(2), pct, v.commission.toFixed(2)].map(q).join(';')));
   lines.push('');
-  lines.push(['Data','Vendedor','Cliente','Item','Tipo','Pagamento','EUR'].map(q).join(';'));
+  lines.push(['Date','Seller','Customer','Item','Type','Payment','EUR'].map(q).join(';'));
   SALES_ROWS.filter(r => r.kind !== 'camp').forEach(r => lines.push([String(r.opened_at).slice(0,10), PROFILE_NAMES.get(r.opened_by) || 'Unknown', r.student_name || '', r.item_name || '', r.kind || '', r.payment_method || '', Number(r.price_local || 0).toFixed(2)].map(q).join(';')));
   const blob = new Blob(['\ufeff' + lines.join('\n')], { type:'text/csv;charset=utf-8' });
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `vendas-surf-school-${SALES_MONTH}.csv`; a.click();
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `sales-surf-school-${SALES_MONTH}.csv`; a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
-// ── Clientes ─────────────────────────────────────────────────────
-// Lê todas as entradas da escola (paginado) e junta por pessoa: o mesmo
-// nome (sem acentos/maiúsculas) ou o mesmo email é o mesmo cliente.
+// ── Customers ────────────────────────────────────────────────────
+// Reads every entry of the school (paged) and groups by person: the same
+// name (ignoring accents/case) or the same email is the same customer.
 let CLIENTS = [];
 async function loadClients(){
   const box = document.getElementById('clientsBox'); if (!box) return;
-  if (!CAN_EDIT_HISTORY) { box.innerHTML = '<div class="empty">Sem acesso.</div>'; return; }
-  box.innerHTML = '<div class="empty"><div class="empty-icon">⏳</div>Loading…</div>';
+  if (!CAN_EDIT_HISTORY) { box.innerHTML = '<div class="status-msg status-warn">No access.</div>'; return; }
+  box.innerHTML = '<div class="card"><div class="loading">Loading…</div></div>';
   let all = [], start = 0;
   for (;;) {
     const { data, error } = await sb.from('surf_school_rentals')
       .select('id, kind, student_name, student_email, id_card_number, customer_type, item_name, items, qty, price_local, currency, payment_method, opened_at')
       .eq('location_id', LOCATION_ID)
       .order('opened_at', { ascending:false }).range(start, start + 999);
-    if (error) { box.innerHTML = `<div class="empty">Falhou: ${escapeHtml(error.message)}</div>`; return; }
+    if (error) { box.innerHTML = `<div class="status-msg status-err">Couldn't load customers: ${escapeHtml(error.message)}</div>`; return; }
     all = all.concat(data || []);
     if (!data || data.length < 1000) break;
     start += 1000;
@@ -1287,21 +1306,21 @@ function clientsFiltered(){
 function renderClients(){
   const box = document.getElementById('clientsBox'); if (!box) return;
   const list = clientsFiltered();
-  if (!list.length) { box.innerHTML = `<div class="empty"><div class="empty-icon">👥</div>${CLIENTS.length ? 'Ninguém com esse nome, email ou ID.' : 'Ainda sem clientes.'}</div>`; return; }
+  if (!list.length) { box.innerHTML = CLIENTS.length ? emptyCard('No one matches that name, email or ID.', 'Try fewer letters.') : emptyCard('No customers yet.'); return; }
   const eur = n => '€' + Number(n || 0).toFixed(0);
   const day = iso => new Date(iso).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' });
   const withEmail = list.filter(c => c.emails.size).length;
-  box.innerHTML = `<div class="kpi-label" style="margin:2px 0 8px">${list.length} cliente${list.length===1?'':'s'} · ${withEmail} com email</div>` +
+  box.innerHTML = `<div class="kpi-label" style="margin:2px 0 8px">${list.length} customer${list.length===1?'':'s'} · ${withEmail} with email</div>` +
     list.slice(0, 300).map(c => `<details class="rental-row returned" style="cursor:pointer">
       <summary style="list-style:none">
         <div class="rr-top">
           <div class="rr-name">${escapeHtml(c.name)}${[...c.types].map(t => ` <span class="badge badge-blue">${escapeHtml(t)}</span>`).join('')}</div>
           <div class="rr-time">${day(c.last)}</div>
         </div>
-        ${[...c.emails].map(e => `<div class="rr-item">✉️ <a href="mailto:${escapeAttr(e)}" style="color:var(--ocean)" onclick="event.stopPropagation()">${escapeHtml(e)}</a></div>`).join('') || '<div class="rr-item" style="color:var(--muted)">Sem email</div>'}
+        ${[...c.emails].map(e => `<div class="rr-item">${AppShell.icon('mail')} <a href="mailto:${escapeAttr(e)}" style="color:var(--ocean)" onclick="event.stopPropagation()">${escapeHtml(e)}</a></div>`).join('') || '<div class="rr-item" style="color:var(--muted)">No email</div>'}
         <div class="rr-meta">
           ${c.ids.size ? `<span>ID ${escapeHtml([...c.ids].join(', '))}</span>` : ''}
-          <span>${c.visits.length} visita${c.visits.length===1?'':'s'}${c.visits.length > 1 ? ` · desde ${day(c.first)}` : ''}</span>
+          <span>${c.visits.length} visit${c.visits.length===1?'':'s'}${c.visits.length > 1 ? ` · since ${day(c.first)}` : ''}</span>
           <span class="rr-price">${eur(c.total)}</span>
         </div>
       </summary>
@@ -1313,16 +1332,16 @@ function renderClients(){
           <td class="r">${r.kind === 'camp' ? '—' : eur(r.price_local)}</td>
         </tr>`).join('')}</tbody>
       </table></div>
-    </details>`).join('') + (list.length > 300 ? `<div class="empty" style="border:none;padding:14px 8px;font-size:11px">A mostrar 300 de ${list.length}. Procura pelo nome para ver os outros.</div>` : '');
+    </details>`).join('') + (list.length > 300 ? `<div class="list-note">Showing 300 of ${list.length}. Search by name to see the others.</div>` : '');
 }
 function exportClientsCsv(){
   const list = clientsFiltered();
-  if (!list.length) { toast('Sem clientes para exportar', 'err'); return; }
+  if (!list.length) { toast('No customers to export', 'err'); return; }
   const q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
-  const lines = [['Nome','Email','ID','Tipo','Visitas','Primeira','Última','Total EUR'].map(q).join(';')];
+  const lines = [['Name','Email','ID','Type','Visits','First','Last','Total EUR'].map(q).join(';')];
   list.forEach(c => lines.push([c.name, [...c.emails].join(', '), [...c.ids].join(', '), [...c.types].join(', '), c.visits.length, String(c.first).slice(0,10), String(c.last).slice(0,10), c.total.toFixed(2)].map(q).join(';')));
   const blob = new Blob(['\ufeff' + lines.join('\n')], { type:'text/csv;charset=utf-8' });
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'clientes-surf-school.csv'; a.click();
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'customers-surf-school.csv'; a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
@@ -1345,7 +1364,7 @@ function renderHistory(){
   });
   const list = document.getElementById('historyList');
   if (!rows.length) {
-    list.innerHTML = `<div class="empty"><div class="empty-icon">📖</div>Nothing in this window.</div>`;
+    list.innerHTML = emptyCard('Nothing in this period.', 'Change the type or the period above.');
     return;
   }
   const now = Date.now();
@@ -1369,7 +1388,7 @@ function renderHistory(){
     // too: DELETE needs has_full_location_access and a trigger blocks any
     // change other than return/reopen (supabase/surf-school-rentals-roles.sql).
     const delBtn = CAN_EDIT_HISTORY
-      ? `<button class="btn btn-r" style="margin-top:10px" onclick="deleteRental('${r.id}', '${escapeAttr(r.student_name)}')">🗑 Delete entry</button>`
+      ? `<button class="btn btn-danger btn-sm" style="margin-top:10px" onclick="deleteRental('${r.id}', '${escapeAttr(r.student_name)}')">${AppShell.icon('trash')} Delete entry</button>`
       : '';
     return `<div class="rental-row ${cls}">
       <div class="rr-top">
@@ -1377,7 +1396,7 @@ function renderHistory(){
         <div class="rr-time">${dateLbl}</div>
       </div>
       <div class="rr-item">${isCamp ? `${Number(r.qty)||1} board${(Number(r.qty)||1)===1?'':'s'} · free (camp package)` : `${escapeHtml(r.item_name)}${r.qty!=1?` · ${r.qty}x`:''} · ${escapeHtml(r.payment_method||'—')}`}</div>
-      ${r.student_email ? `<div class="rr-item">✉️ <a href="mailto:${escapeAttr(r.student_email)}" style="color:var(--ocean)">${escapeHtml(r.student_email)}</a></div>` : ''}
+      ${r.student_email ? `<div class="rr-item">${AppShell.icon('mail')} <a href="mailto:${escapeAttr(r.student_email)}" style="color:var(--ocean)">${escapeHtml(r.student_email)}</a></div>` : ''}
       <div class="rr-meta">
         <span>By <strong>${escapeHtml(staff)}</strong>${PROFILE_EMAILS.get(r.opened_by)?` <span style="color:var(--muted)">· ${escapeHtml(PROFILE_EMAILS.get(r.opened_by))}</span>`:''}</span>
         ${closedInfo?`<span>${closedInfo}</span>`:''}
@@ -1385,7 +1404,7 @@ function renderHistory(){
       </div>
       ${delBtn}
     </div>`;
-  }).join('') + (rows.length > 300 ? `<div class="empty" style="border:none;padding:14px 8px;font-size:11px">Showing 300 of ${rows.length}. Narrow the filters to see more.</div>` : '');
+  }).join('') + (rows.length > 300 ? `<div class="list-note">Showing 300 of ${rows.length}. Narrow the filters to see more.</div>` : '');
 }
 
 // Hard-delete a rental + its ledger revenue line. Guarded by
@@ -1407,7 +1426,7 @@ async function deleteRental(id, studentName){
   }
   const { error } = await sb.from('surf_school_rentals').delete().eq('id', id);
   if (error) { toast('Delete failed: '+error.message, 'err'); return; }
-  toast('✓ Deleted', 'ok');
+  toast('Deleted', 'ok');
   await loadRentals();
   renderHistory();
 }
@@ -1448,8 +1467,8 @@ async function saveEntry(){
     toast('Pick a customer type', 'err'); return;
   }
 
-  if (!(price > 0)) { toast('Amount must be > 0', 'err'); return; }
-  if (!terms) { toast('Confirm terms accepted', 'err'); return; }
+  if (!(price > 0)) { toast('Enter the amount', 'err'); return; }
+  if (!terms) { toast('Tick the terms box to save', 'err'); return; }
 
   const customerType = document.getElementById('fld_customer_type').value || null;
   const rentalType   = CURRENT_KIND === 'rental' ? CURRENT_RENTAL_TYPE : null;
@@ -1523,17 +1542,17 @@ async function saveEntry(){
   };
   const { error: rentalErr } = await sb.from('surf_school_rentals').insert(rentalPayload);
   if (rentalErr) {
-    toast('Ledger saved but rental failed: '+rentalErr.message, 'err');
-    btn.disabled = false; btn.textContent = 'Save';
+    toast("Payment saved, but the rental didn't. Don't enter it again — tell a manager. (" + rentalErr.message + ')', 'err');
+    btn.disabled = false; btn.textContent = 'Save rental';
     return;
   }
 
-  toast(`✓ Saved · ${currency} ${price.toFixed(0)}`, 'ok');
+  toast(`Saved · ${currency} ${price.toFixed(0)}`, 'ok');
   clearForm();
   await loadRentals();
   renderOpen();
   if (CURRENT_KIND === 'rental') showPage('open');
-  btn.disabled = false; btn.textContent = 'Save';
+  btn.disabled = false; btn.textContent = 'Save rental';
 }
 
 async function closeRental(id, studentName){
@@ -1543,7 +1562,7 @@ async function closeRental(id, studentName){
   if (!window.confirm(`Board back from ${studentName}?`)) return;
   const { error } = await sb.from('surf_school_rentals').update({ is_returned: true, closed_at: new Date().toISOString() }).eq('id', id);
   if (error) { toast('Close failed: '+error.message, 'err'); return; }
-  toast('✓ Board returned', 'ok');
+  toast('Board returned', 'ok');
   await loadRentals();
   renderOpen();
 }
@@ -1552,7 +1571,7 @@ async function reopenRental(id, studentName){
   if (!confirm(`Reopen ${studentName}'s rental? (Board goes back to Open)`)) return;
   const { error } = await sb.from('surf_school_rentals').update({ is_returned: false, closed_at: null, closed_by: null }).eq('id', id);
   if (error) { toast('Reopen failed: '+error.message, 'err'); return; }
-  toast('✓ Rental reopened', 'ok');
+  toast('Rental reopened', 'ok');
   await loadRentals();
   renderOpen();
   renderCamp();
@@ -1603,9 +1622,9 @@ async function saveCampEntry(){
     is_returned: false,
     closed_at: null
   });
-  btn.disabled = false; btn.textContent = '🏄 Boards in the water';
+  btn.disabled = false; btn.textContent = 'Boards in the water';
   if (error) { toast('Save failed: '+error.message, 'err'); return; }
-  toast(`✓ ${boards} board${boards===1?'':'s'} out · ${name}`, 'ok');
+  toast(`${boards} board${boards===1?'':'s'} out · ${name}`, 'ok');
   document.getElementById('camp_name').value = '';
   document.getElementById('camp_boards').value = 1;
   stepCampBoards(0);
@@ -1618,7 +1637,7 @@ async function closeCamp(id, name){
   if (!window.confirm(`Boards back from ${name}?`)) return;
   const { error } = await sb.from('surf_school_rentals').update({ is_returned: true, closed_at: new Date().toISOString() }).eq('id', id);
   if (error) { toast('Close failed: '+error.message, 'err'); return; }
-  toast('✓ Boards back', 'ok');
+  toast('Boards back', 'ok');
   await loadRentals();
   renderCamp();
 }
@@ -1635,13 +1654,13 @@ function renderCamp(){
   const timeFmt = { hour:'2-digit', minute:'2-digit' };
   const outFor = (ms) => { const m = Math.max(0, Math.round(ms/60000)); return m < 60 ? `${m} min` : `${Math.floor(m/60)}h ${m%60}m`; };
   if (!open.length) {
-    list.innerHTML = `<div class="empty"><div class="empty-icon">🏕</div>No camp boards out right now.</div>`;
+    list.innerHTML = emptyCard('No camp boards out right now.');
   } else {
     list.innerHTML = open.map(r => {
       const started = new Date(r.opened_at);
       const n = Number(r.qty) || 1;
       const staff = PROFILE_NAMES.get(r.opened_by) || 'Unknown';
-      return `<div class="rental-row open" style="border-left-color:var(--green)">
+      return `<div class="rental-row open">
         <div class="rr-top">
           <div class="rr-name">${escapeHtml(r.student_name)} <span class="badge badge-green">Camp</span></div>
           <div class="rr-time">${outFor(now - started.getTime())} in the water</div>
@@ -1649,7 +1668,7 @@ function renderCamp(){
         <div class="rr-item"><strong style="color:var(--navy)">${n} board${n===1?'':'s'}</strong> · started ${started.toLocaleTimeString('en-GB', timeFmt)}</div>
         <div class="rr-meta"><span>Given by <strong>${escapeHtml(staff)}</strong></span></div>
         <div class="rr-actions">
-          <button class="btn btn-g btn-lg btn-block" onclick="closeCamp('${r.id}', '${escapeAttr(r.student_name)}')">✓ Boards back</button>
+          <button class="btn btn-g btn-lg btn-block" onclick="closeCamp('${r.id}', '${escapeAttr(r.student_name)}')">${AppShell.icon('check')} Boards back</button>
         </div>
       </div>`;
     }).join('');
@@ -1670,7 +1689,7 @@ function renderCamp(){
         </div>
         <div class="rr-item">${n} board${n===1?'':'s'} · ${new Date(r.opened_at).toLocaleTimeString('en-GB', timeFmt)} → ${new Date(r.closed_at).toLocaleTimeString('en-GB', timeFmt)}</div>
         <div class="rr-actions">
-          <button class="btn btn-s btn-block" onclick="reopenRental('${r.id}', '${escapeAttr(r.student_name)}')">↺ Still in the water (returned by mistake)</button>
+          <button class="btn btn-s btn-block" onclick="reopenRental('${r.id}', '${escapeAttr(r.student_name)}')">${AppShell.icon('refresh')} Still in the water (returned by mistake)</button>
         </div>
       </div>`;
     }).join('');
@@ -1828,6 +1847,10 @@ function subscribeRealtime(){
     .subscribe();
 }
 
+// Empty state inside a card, the shell way.
+function emptyCard(title, sub){
+  return `<div class="card"><div class="empty-state">${AppShell.icon('inbox')}<div class="empty-title">${escapeHtml(title)}</div>${sub ? `<p>${escapeHtml(sub)}</p>` : ''}</div></div>`;
+}
 // Escape helpers.
 function escapeHtml(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function escapeAttr(s){return String(s||'').replace(/'/g,"&#39;").replace(/"/g,'&quot;');}

@@ -10,13 +10,13 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>Pricing Catalog — Gota Dagua</title>
+<title>Prices — Gota d'Água</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='-15 0 92 92'><path fill='%231e6fa8' d='M61.7,51.9c-.4-9-5.5-16.5-9.7-24.1-2.9-4.8-5.3-9.8-9.3-13.9-3.9-4.4-6.5-9.8-10.8-13.9C19.2,16.6-.5,39.9,0,61.9c9.4-7.9,20.1-17.7,33.1-17.8,3,0,7.2,0,9.5,2.2,1.7,1.7,3.2,4.2,2,6.5-.3.5-1.9,2.7-2.3,2.9-12.9,7.4-20.3,18.6-16.5,33.7,3.1,1.3,8,1,11.1-.3,2.7-.3,5.1-1.3,7.5-2.5,8.7-2.9,14.5-11.1,15.5-20.1,1.2-4.7,2.1-9.7,1.8-14.6h0Z'/></svg>">
 <!-- ULTRA-EARLY canary: if JS is running at all, this script fires before
      anything else on the page. We change the document title so the user
      can verify from the browser tab alone whether JavaScript is executing.
-     If after loading the page the tab still says "Pricing Catalog — Gota
-     Dagua" instead of "[JS-OK] …", JavaScript is being blocked entirely
+     If after loading the page the tab still says "Prices — Gota
+     d'Água" instead of "[JS-OK] …", JavaScript is being blocked entirely
      (NoScript / extreme privacy extension / browser setting). -->
 <script>
   try {
@@ -24,7 +24,7 @@
     window.__JS_CANARY_FIRED = true;
   } catch(e) {}
 </script>
-<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <!-- Load supabase-js + the project config the same way every other working
      page in this app loads them: as plain <script src> tags. The dynamic
      loader we tried earlier was too clever and didn't reliably register
@@ -73,7 +73,6 @@ header{background:var(--navy);padding:0 22px;display:flex;align-items:center;jus
 .tbl-wrap th.c,.tbl-wrap td.c{text-align:center}
 .tbl-wrap td.muted{color:var(--muted);font-size:12px}
 .row-actions{display:inline-flex;gap:6px;flex-shrink:0}
-.row-actions .btn,.tf-row-actions .btn{padding:5px 9px;font-size:12px}
 
 div.empty{padding:48px 24px;text-align:center;color:var(--muted);background:var(--surface);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--sh)}
 .empty-icon{font-size:32px;margin-bottom:8px;opacity:.4}
@@ -103,7 +102,7 @@ div.empty{padding:48px 24px;text-align:center;color:var(--muted);background:var(
 .mtoggle .label{font-size:12.5px;color:var(--ink);font-weight:600;flex:1}
 
 /* ── Price-List view: one card per area, shell table inside ── */
-.pv-section-title{font-family:'DM Serif Display',serif;font-size:23px;color:var(--navy);letter-spacing:-.01em;margin:32px 0 14px 2px}
+.pv-section-title{font-size:var(--fs-section);font-weight:700;color:var(--navy);letter-spacing:-.01em;margin:32px 0 14px 2px}
 .pv-section-title:first-of-type{margin-top:0}
 .pv-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--sh);margin-bottom:14px;overflow:auto}
 .pv-price{font-weight:700;color:var(--ink)}
@@ -143,8 +142,8 @@ body.view-list .tf-cell-edit:hover{background:transparent}
 .area-tabs{display:flex;gap:4px;flex-wrap:wrap;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:4px;margin-bottom:16px;width:fit-content;max-width:100%}
 .area-tab{display:inline-flex;align-items:center;gap:8px;border:none;background:transparent;color:var(--muted);padding:8px 14px;border-radius:999px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif;transition:background .12s,color .12s}
 .area-tab:hover{color:var(--navy);background:var(--foam)}
-.area-tab.active{background:var(--navy);color:#fff;font-weight:700}
-.area-tab .count{font-size:11px;font-family:'DM Mono',monospace;background:rgba(255,255,255,.18);color:inherit;padding:1px 6px;border-radius:999px;min-width:18px;text-align:center}
+.area-tab.active{background:var(--ocean);color:#fff;font-weight:700}
+.area-tab .count{font-size:11px;font-variant-numeric:tabular-nums;background:rgba(255,255,255,.18);color:inherit;padding:1px 6px;border-radius:999px;min-width:18px;text-align:center}
 .area-tab:not(.active) .count{background:#f1f4f8;color:var(--muted)}
 .area-tab .ico{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px}
 .area-tab .ico svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
@@ -153,7 +152,7 @@ body.view-list .tf-cell-edit:hover{background:transparent}
    inline subtitle share one row on wide screens, stack on phones. */
 .accom-section-head{margin:28px 0 14px;padding:0 2px}
 .accom-section-head:first-of-type{margin-top:0}
-.accom-section-title{font-family:'DM Serif Display',serif;font-size:23px;color:var(--navy);letter-spacing:-.01em;display:inline;margin-right:14px}
+.accom-section-title{font-size:var(--fs-section);font-weight:700;color:var(--navy);letter-spacing:-.01em;display:inline;margin-right:14px}
 .accom-section-sub{font-size:12.5px;color:var(--muted);line-height:1.5;display:inline}
 @media (max-width: 720px){
   .accom-section-title{display:block;margin-right:0;margin-bottom:4px}
@@ -162,7 +161,7 @@ body.view-list .tf-cell-edit:hover{background:transparent}
 .accom-pack-tabs{display:inline-flex;gap:2px;margin:0 0 18px;background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:4px;width:fit-content}
 .accom-pack-tab{padding:7px 16px;border-radius:999px;border:none;font-size:12.5px;font-weight:600;cursor:pointer;color:var(--muted);background:transparent;font-family:'Outfit',sans-serif;transition:all .15s}
 .accom-pack-tab:hover{color:var(--navy);background:var(--foam)}
-.accom-pack-tab.active{background:var(--navy);color:#fff;font-weight:700}
+.accom-pack-tab.active{background:var(--ocean);color:#fff;font-weight:700}
 
 .accom-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--sh);padding:20px 22px;margin-bottom:14px}
 .accom-card-label{font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px}
@@ -247,7 +246,7 @@ tr.drag-over-bottom td{box-shadow:inset 0 -2px 0 0 var(--ocean)}
 body.view-list .drag-handle{display:none}
 
 .no-access{padding:64px 24px;text-align:center;color:var(--muted);max-width:560px;margin:0 auto}
-.no-access h2{font-family:'DM Serif Display',serif;color:var(--navy);font-size:23px;margin-bottom:8px}
+.no-access h2{color:var(--navy);font-size:var(--fs-page);font-weight:700;letter-spacing:-.02em;margin-bottom:8px}
 .no-access p{font-size:13px;line-height:1.55}
 .boot-log{margin-top:18px;text-align:left;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);padding:14px 16px;font-family:'DM Mono',monospace;font-size:11px;color:var(--ink);max-height:240px;overflow:auto}
 .boot-log .line{padding:3px 0;border-bottom:1px dotted var(--border)}
@@ -334,7 +333,7 @@ body.view-list .drag-handle{display:none}
   <div class="modal">
     <div class="mhdr">
       <div class="mhdr-title" id="modalTitle">New entry</div>
-      <div class="mhdr-sub" id="modalSub">Add an item to the pricing catalog</div>
+      <div class="mhdr-sub" id="modalSub">Add an item to the price list</div>
     </div>
     <div class="mbody">
 
@@ -420,7 +419,7 @@ body.view-list .drag-handle{display:none}
           <div class="mfield">
             <label>Staff price (optional)</label>
             <input type="number" id="em_alt_price" min="0" step="0.01" placeholder="e.g. 10 · leave empty to hide from Staff tab">
-            <div style="font-size:10px;color:var(--muted);margin-top:4px">Price shown on the Staff tab in the POS. Set 0 for a giveaway. Leave empty and the item stays guest-only. Currency matches the sell price. Stock is shared with the regular price.</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:4px">Price shown on the Staff tab in the Camp Tab. Set 0 for a giveaway. Leave empty and the item stays guest-only. Currency matches the sell price. Stock is shared with the regular price.</div>
           </div>
           <!-- Alt label input is now hidden — the alt price is always
                labelled 'Staff' server-side, matching the simplified
@@ -434,14 +433,14 @@ body.view-list .drag-handle{display:none}
         <div class="msection-title">Visibility</div>
         <label class="mtoggle" id="em_show_ct_row">
           <input type="checkbox" id="em_show_ct">
-          <span class="label">Show in Camp Tab POS
-            <br><span style="font-size:10px;color:var(--muted);font-weight:400">Guests can charge this item to their tab.</span>
+          <span class="label">Show in Camp Tab
+            <br><span style="font-size:11.5px;color:var(--muted);font-weight:400">Guests can charge this item to their tab.</span>
           </span>
         </label>
         <label class="mtoggle" id="em_show_tp_row" style="margin-top:8px">
           <input type="checkbox" id="em_show_tp">
-          <span class="label">Show in Hub Transport picker
-            <br><span style="font-size:10px;color:var(--muted);font-weight:400">Appears as a chip when logging Transport expenses.</span>
+          <span class="label">Show in Transport quick-add
+            <br><span style="font-size:11.5px;color:var(--muted);font-weight:400">Appears as a chip when logging transport expenses in the camp hub.</span>
           </span>
         </label>
       </div>
@@ -459,14 +458,14 @@ body.view-list .drag-handle{display:none}
 
         <!-- Transport-specific: which tab in the Hub picker -->
         <div class="mfield" id="em_picker_tab_row" style="display:none">
-          <label>Hub picker tab</label>
+          <label>Transport tab</label>
           <select id="em_picker_tab">
             <option value="airport">Airport</option>
             <option value="surf">Surf</option>
             <option value="tours">Tours</option>
-            <option value="tuktuk">Tuk Tuk (legacy)</option>
+            <option value="tuktuk">Tuk Tuk</option>
           </select>
-          <div class="help">Which tab this destination appears under inside the Hub's Transport quick-add modal. Use <b>Airport</b> for airport transfers, <b>Surf</b> for surf spots, <b>Tours</b> for excursion destinations (Dunes / Souk / Paradise Valley). "Tuk Tuk" is a legacy label kept only for backwards compatibility.</div>
+          <div class="help">Which tab this destination appears under in the Transport quick-add. Use <b>Airport</b> for airport transfers, <b>Surf</b> for surf spots, <b>Tours</b> for excursion destinations (Dunes / Souk / Paradise Valley).</div>
         </div>
 
         <!-- Transport-specific: vehicle capacity (so per-guest cost can be
@@ -1077,7 +1076,7 @@ async function openNewTabDialog(){
   // Category defaults to the label — the owner rarely wants a separate
   // category name and it keeps the pricing_catalog rows self-explanatory.
   const key = cleanLabel.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'');
-  if(!key){ alert('That label can\'t be turned into a valid key.'); return; }
+  if(!key){ alert('Use letters and numbers only.'); return; }
   if(AREA_BY_KEY[key]){ alert(`Tab "${cleanLabel}" already exists.`); return; }
   const sortOrder = 100 + AREAS.filter(a => a._custom).length * 10;
   const { error } = await sbClient.from('pricing_areas').insert({
@@ -1205,10 +1204,10 @@ function subscribeRealtime(){
 function renderShell(){
   const mainEl = $('mainContent');
   mainEl.innerHTML = `
-    <div class="section-head">
+    <div class="section-head page-head">
       <div>
         <div class="section-title">${escapeHtml(LOCATION_LABELS[LOCATION_SLUG] || LOCATION_SLUG)} prices</div>
-        <div class="section-sub" id="pageSub">Master catalog for tours, transports, surf packs, accommodation and other services. Changes here propagate to the Camp Tab POS and the Transport picker (when those items are flagged).</div>
+        <div class="section-sub" id="pageSub">Prices here also show in the Camp Tab and in Transport quick-add when ticked below.</div>
       </div>
     </div>
     <div class="area-tabs" id="areaTabs"></div>
@@ -1360,7 +1359,7 @@ function renderTable(){
     const isCosts = filterArea === 'costs';
     wrap.innerHTML = `<div class="empty">
       <div class="empty-icon">${area?.icon || '💰'}</div>
-      <div style="font-family:'DM Serif Display',serif;font-size:18px;color:var(--navy);margin-bottom:4px">${isCosts ? 'Costs view — coming soon' : 'No '+(area?.label||'entries')+' yet'}</div>
+      <div style="font-family:'Outfit',sans-serif;font-weight:700;font-size:18px;color:var(--navy);margin-bottom:4px">${isCosts ? 'Costs view — coming soon' : 'No '+(area?.label||'entries')+' yet'}</div>
       <div style="font-size:13px">${
         isCosts
           ? 'A dedicated operational-costs surface will live here. For now, costs are entered alongside each item in the other tabs (Cost per guest).'
@@ -1377,7 +1376,7 @@ function renderTable(){
     <th class="r">Sell</th>
     ${canViewCosts ? '<th class="r">Cost</th><th class="r">Margin</th>' : ''}
     <th class="c">Camp Tab</th>
-    <th class="c">Transport picker</th>
+    <th class="c">Transport quick-add</th>
     ${canEdit ? '<th class="c">Actions</th>' : ''}
   </tr></thead>`;
 
@@ -1437,10 +1436,10 @@ function renderTable(){
       <td class="r" data-label="Sell">${sellTxt}</td>
       ${canViewCosts ? `<td class="r" data-label="Cost">${costTxt}</td><td class="r" data-label="Margin">${marginTxt}</td>` : ''}
       <td class="c" data-label="Camp Tab"><span class="row-toggle ${r.show_in_camp_tab?'on':''}"><span class="dot"></span>${r.show_in_camp_tab?'On':'Off'}</span></td>
-      <td class="c" data-label="Transport picker"><span class="row-toggle ${r.show_in_transport_picker?'on':''}"><span class="dot"></span>${r.show_in_transport_picker?'On':'Off'}</span></td>
+      <td class="c" data-label="Transport quick-add"><span class="row-toggle ${r.show_in_transport_picker?'on':''}"><span class="dot"></span>${r.show_in_transport_picker?'On':'Off'}</span></td>
       ${canEdit ? `<td class="c" data-label="Actions"><div class="row-actions">
-        <button class="btn btn-s" title="Edit" onclick="openEdit('${r.id}')">✎</button>
-        <button class="btn btn-r" title="Delete" onclick="onDelete('${r.id}')">×</button>
+        <button class="btn btn-s btn-sm" onclick="openEdit('${r.id}')">Edit</button>
+        <button class="btn btn-danger btn-sm" onclick="onDelete('${r.id}')">Delete</button>
       </div></td>` : ''}
     </tr>`;
   }).join('');
@@ -1483,7 +1482,7 @@ async function renderAccommodation(){
   if (LOCATION_SLUG === 'surf-school') {
     wrap.innerHTML = `<div class="empty">
       <div class="empty-icon">🏄</div>
-      <div style="font-family:'DM Serif Display',serif;font-size:18px;color:var(--navy);margin-bottom:4px">The Surf School doesn't stock accommodation</div>
+      <div style="font-family:'Outfit',sans-serif;font-weight:700;font-size:18px;color:var(--navy);margin-bottom:4px">The Surf School doesn't stock accommodation</div>
       <div style="font-size:13px">Manage board + wetsuit rates in the <strong>Surf</strong> tab above. The Rentals form in the Camp Hub reads these <em>live</em> — edit a "Surf Pack" price here (keep the name format, e.g. "Board & Wetsuit — 2h (Standard)") and the rental form picks it up on its next load. Rows with unrecognised names fall back to the built-in matrix.</div>
     </div>`;
     return;
@@ -1491,7 +1490,7 @@ async function renderAccommodation(){
 
   // Lazy-load + subscribe on first open
   if (!accomData) {
-    wrap.innerHTML = `<div class="empty"><div class="empty-icon">🛏️</div><div style="font-size:13px;color:var(--muted)">Loading accommodation prices…</div></div>`;
+    wrap.innerHTML = `<div class="empty"><div style="font-size:13px;color:var(--muted)">Loading accommodation prices…</div></div>`;
     try {
       await loadAccommodation();
     } catch (err) {
@@ -1501,16 +1500,17 @@ async function renderAccommodation(){
       if (/relation .* does not exist|accommodation_/i.test(msg)) {
         hint = ' Run supabase/accommodation-schema.sql in the Supabase SQL Editor first, then refresh this page.';
       }
-      wrap.innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div><div style="font-size:13px;color:var(--red)">Could not load accommodation: ${escapeHtml(msg)}${hint}</div></div>`;
+      wrap.innerHTML = `<div class="empty"><div style="font-size:13px;color:var(--red)">Couldn't load accommodation prices — try again or tell Miguel. (${escapeHtml(msg)}${hint})</div></div>`;
       return;
     }
   }
+  if (!accomData) return;   // another call is still loading; it will render when done
 
   const { packs, seasons, rooms, prices } = accomData;
   if (!packs.length || !seasons.length || !rooms.length) {
     wrap.innerHTML = `<div class="empty">
-      <div class="empty-icon">🛏️</div>
-      <div style="font-family:'DM Serif Display',serif;font-size:18px;color:var(--navy);margin-bottom:4px">Accommodation not set up yet</div>
+      
+      <div style="font-family:'Outfit',sans-serif;font-weight:700;font-size:18px;color:var(--navy);margin-bottom:4px">Accommodation not set up yet</div>
       <div style="font-size:13px">Run <code>supabase/accommodation-schema.sql</code> in the Supabase SQL Editor to seed packs, seasons, and room types for this location.</div>
     </div>`;
     return;
@@ -1950,7 +1950,7 @@ window.onViewMode = (mode)=>{
   if (sub) {
     sub.textContent = (mode === 'list')
       ? 'Read-only view — what guests and partners see. Click Edit to change anything.'
-      : 'Master catalog. Changes here propagate to the Camp Tab POS and the Transport picker (when those items are flagged).';
+      : 'Prices here also show in the Camp Tab and in Transport quick-add when ticked below.';
   }
   // Sync the toggle pill states.
   document.querySelectorAll('#viewToggle .ntab').forEach((btn, i)=>{
@@ -2038,7 +2038,7 @@ function renderTransfersEdit(){
   if (!groups.length) {
     wrap.innerHTML = `<div class="empty">
       <div class="empty-icon">🚐</div>
-      <div style="font-family:'DM Serif Display',serif;font-size:18px;color:var(--ink);margin-bottom:4px">No transfers yet</div>
+      <div style="font-family:'Outfit',sans-serif;font-weight:700;font-size:18px;color:var(--ink);margin-bottom:4px">No transfers yet</div>
       <div style="font-size:13px">Click "+ New entry" to add a transfer destination.</div>
     </div>`;
     return;
@@ -2073,8 +2073,8 @@ function renderTransfersEdit(){
               const pickerCls = r.show_in_transport_picker ? 'on' : '';
               const pickerLabel = r.show_in_transport_picker ? 'On' : 'Off';
               const pickerTitle = r.show_in_transport_picker
-                ? 'In the Hub Transport picker · click to remove'
-                : 'Hidden from Hub Transport picker · click to add';
+                ? 'In Transport quick-add · click to remove'
+                : 'Hidden from Transport quick-add · click to add';
               const picker = `<span class="tf-picker-toggle ${pickerCls}" onclick="onTfTogglePicker('${r.id}')" title="${pickerTitle}"><span class="dot"></span>${pickerLabel}</span>`;
               return `
                 <tr data-row-id="${r.id}" ondragover="onRowDragOver(event)" ondragleave="onRowDragLeave(event)" ondrop="onRowDrop(event,'${r.id}')">
@@ -2085,8 +2085,8 @@ function renderTransfersEdit(){
                   <td class="r"><span class="tf-cell-edit tf-price" data-tf-id="${r.id}" data-tf-field="sell_price" onclick="onTfEditCell(this)">${priceCell}</span></td>
                   <td class="c">${picker}</td>
                   <td class="c"><div class="tf-row-actions">
-                    <button class="btn btn-s" title="More options" onclick="openEdit('${r.id}')">⋯</button>
-                    <button class="btn btn-r" title="Delete" onclick="onDelete('${r.id}')">×</button>
+                    <button class="btn btn-s btn-sm" onclick="openEdit('${r.id}')">More</button>
+                    <button class="btn btn-danger btn-sm" onclick="onDelete('${r.id}')">Delete</button>
                   </div></td>
                 </tr>
               `;
@@ -3234,8 +3234,8 @@ async function downloadPriceListPDF(){
     // belt-and-suspenders fallback so the user sees SOMETHING if the
     // toast container is missing or hidden.
     const msg = err && err.message ? err.message : String(err);
-    try { showToast(`Could not build the PDF: ${msg}`); } catch(_) {}
-    alert(`PDF export failed:\n\n${msg}\n\nCheck the browser console (⌥⌘I → Console) for the full stack.`);
+    try { showToast("PDF couldn't be created — try again or tell Miguel."); } catch(_) {}
+    alert(`PDF couldn't be created — try again or tell Miguel.\n\n(${msg})`);
   } finally {
     if (btn) btn.disabled = false;
   }

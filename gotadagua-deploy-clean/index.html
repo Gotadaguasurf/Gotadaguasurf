@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Gota Dagua</title>
+  <title>Gota d'Água</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='-15 0 92 92'><path fill='%231e6fa8' d='M61.7,51.9c-.4-9-5.5-16.5-9.7-24.1-2.9-4.8-5.3-9.8-9.3-13.9-3.9-4.4-6.5-9.8-10.8-13.9C19.2,16.6-.5,39.9,0,61.9c9.4-7.9,20.1-17.7,33.1-17.8,3,0,7.2,0,9.5,2.2,1.7,1.7,3.2,4.2,2,6.5-.3.5-1.9,2.7-2.3,2.9-12.9,7.4-20.3,18.6-16.5,33.7,3.1,1.3,8,1,11.1-.3,2.7-.3,5.1-1.3,7.5-2.5,8.7-2.9,14.5-11.1,15.5-20.1,1.2-4.7,2.1-9.7,1.8-14.6h0Z'/></svg>">
-  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.4"></script>
   <script src="/supabase-config.js"></script>
 <script src="/owner-config.js"></script>
@@ -13,9 +13,10 @@
   <script src="/error-monitor.js"></script>
   <link rel="stylesheet" href="/lib/app-shell.css">
   <style>
-    /* Page-specific rules only. Tokens, header pills (.nav-action-btn),
-       buttons (.btn), cards (.card), section heads, fields (.field),
-       badges and tables come from /lib/app-shell.css, loaded above. */
+    /* Page-specific rules only. Tokens, header (.app-nav), buttons (.btn),
+       cards (.card), section heads, pills (.pill), fields (.field), badges,
+       status messages and tables come from /lib/app-shell.css (v3), loaded
+       above. Spec: /docs/DESIGN-SYSTEM.md. */
     :root{
       --content-max:1380px;
       --page-pad:clamp(16px,2.2vw,24px);
@@ -23,71 +24,64 @@
     *{margin:0;padding:0}
     button,input{font:inherit}
     a{text-decoration:none;color:inherit}
+
+    /* ── Login ─────────────────────────────────────────────────────────── */
     #loginScreen{
       display:none;
       min-height:100vh;
       align-items:center;
       justify-content:center;
       padding:24px;
-      background:
-        radial-gradient(circle at top left, rgba(49,121,190,.12), transparent 28%),
-        radial-gradient(circle at bottom right, rgba(255,244,213,.72), transparent 30%),
-        linear-gradient(180deg, #f4f8fc 0%, #edf4fa 100%);
+      background:var(--bg);
     }
     .login-card{
       width:100%;
-      max-width:520px;
+      max-width:440px;
       background:var(--surface);
       border:1px solid var(--border);
       border-radius:var(--r-lg);
-      box-shadow:var(--sh-lg);
-      padding:34px 34px 30px;
+      box-shadow:var(--sh-soft);
+      padding:36px 32px 28px;
     }
     .brand{
       display:flex;
       flex-direction:column;
       align-items:center;
-      gap:22px;
-      margin-bottom:30px;
+      gap:14px;
+      margin-bottom:24px;
       text-align:center;
     }
     .login-logo-wrap{
       display:flex;
       align-items:center;
       justify-content:center;
-      width:176px;
-      height:56px;
+      width:150px;
+      height:48px;
     }
     .login-logo-wrap svg{width:100%;height:auto;display:block}
-    .brand-sub{font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:#6f8da8;font-weight:700;margin-top:2px}
-    .user-chip .user-role{font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;margin-left:6px;opacity:.8}
-    .login-mode-chip{
-      display:none;
-    }
-    .login-title{font-family:'DM Serif Display',serif;font-size:34px;color:var(--navy);line-height:1.05;text-align:center}
-    .login-copy{font-size:16px;color:var(--muted);margin:12px 0 24px;line-height:1.6;text-align:center;font-weight:600}
+    .brand-sub{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600}
+    .user-chip .user-role{font-size:10px;letter-spacing:.06em;text-transform:uppercase;margin-left:6px;opacity:.8;font-weight:600}
+    .login-mode-chip{display:none}
+    .login-title{font-size:24px;font-weight:700;letter-spacing:-.02em;color:var(--navy);line-height:1.15;text-align:center}
+    .login-copy{font-size:14px;color:var(--muted);margin:6px 0 20px;line-height:1.5;text-align:center;font-weight:400}
     .login-card .field{margin-bottom:14px}
     .login-card .btn-block{margin-top:8px}
     .auth-message{
       display:none;
-      margin:0 0 18px;
-      padding:14px 16px;
+      margin:0 0 16px;
+      padding:10px 14px;
       border-radius:var(--r-sm);
       border:1px solid transparent;
       font-size:13px;
-      line-height:1.65;
+      line-height:1.5;
     }
     .auth-message.show{display:block}
     .auth-message.info{background:var(--ocean-soft);border-color:#cfe2f2;color:var(--ocean)}
     .auth-message.success{background:var(--green-bg);border-color:var(--green-border);color:var(--green)}
     .auth-message.warning{background:var(--amber-bg);border-color:var(--amber-border);color:var(--amber)}
     .auth-message.error{background:var(--red-bg);border-color:var(--red-border);color:var(--red)}
-    .login-note{font-size:12px;color:var(--muted);text-align:center;margin-top:14px}
-    .login-link-row{
-      display:flex;
-      justify-content:center;
-      margin-top:12px;
-    }
+    .login-note{font-size:12.5px;color:var(--muted);text-align:center;margin-top:12px;line-height:1.5}
+    .login-link-row{display:flex;justify-content:center;margin-top:14px}
     .text-link-btn{
       border:none;
       background:transparent;
@@ -95,262 +89,167 @@
       color:var(--ocean);
       font-size:13px;
       font-weight:600;
-      text-decoration:underline;
-      text-underline-offset:3px;
       cursor:pointer;
     }
-    .text-link-btn:hover{color:var(--navy)}
+    .text-link-btn:hover{color:var(--navy);text-decoration:underline;text-underline-offset:3px}
+
+    /* ── App shell ─────────────────────────────────────────────────────── */
     #appShell{display:none;min-height:100vh}
     #appShell.visible{display:block}
     .container{
       width:min(100%, var(--content-max));
       margin:0 auto;
-      padding:26px var(--page-pad) 44px;
+      padding:32px var(--page-pad) 64px;
     }
-    .section{
-      margin-top:22px;
-    }
+    .section{margin-bottom:32px}
+    .section:last-child{margin-bottom:0}
+    .section .section-head{margin-bottom:12px}
     .grid{
       display:grid;
       grid-template-columns:repeat(5,minmax(0,1fr));
-      gap:14px;
+      gap:12px;
     }
 
-    /* Workspace cards — shell card surface (hairline border, --r radius,
-       --sh shadow, --sh-hover on hover); layout kept. */
+    /* Workspace cards — shell card surface, left-aligned, chevron on hover */
     .workspace-card{
       background:var(--surface);
       border:1px solid var(--border);
       border-radius:var(--r);
-      box-shadow:var(--sh);
-      padding:16px 18px;
-      min-height:86px;
-      transition:transform .16s ease, box-shadow .16s ease, border-color .16s ease;
+      min-height:84px;
+      display:flex;
+      flex-direction:column;
+      transition:border-color .15s ease, box-shadow .15s ease;
     }
     .workspace-card:hover{
-      transform:translateY(-2px);
-      box-shadow:var(--sh-hover);
       border-color:var(--border-2);
+      box-shadow:var(--sh-hover);
     }
-    .card-top{
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      gap:14px;
-      min-height:86px;
-      height:100%;
-    }
-    .workspace-card .card-title{
-      font-family:'Outfit',sans-serif;
-      font-size:18px;
-      font-weight:700;
-      color:var(--navy);
-      line-height:1.15;
-    }
-    .card-subtitle{
-      margin-top:12px;
-      font-size:10.5px;
-      color:var(--ocean);
-      letter-spacing:.12em;
-      text-transform:uppercase;
-      font-weight:700;
-      line-height:1.4;
-    }
-    .workspace-card.disabled{
-      opacity:.55;
-      background:var(--bg);
-      border-color:var(--border);
-      box-shadow:none;
-    }
-    .workspace-card.disabled:hover{
-      transform:none;
-      box-shadow:none;
-      border-color:var(--border);
-    }
+    .card-top{display:flex;flex:1;min-height:84px}
     .workspace-link{
       width:100%;
-      height:100%;
-      justify-content:center;
+      display:flex;
       align-items:center;
-      padding:0;
+      gap:12px;
+      padding:16px 14px 16px 18px;
       background:transparent;
       border:none;
+      border-radius:inherit;
       color:inherit;
-      text-align:center;
-      cursor:pointer;
-      display:flex;
-    }
-    .workspace-link.disabled{
+      text-align:left;
       cursor:pointer;
     }
-    .workspace-lock{
-      margin-top:12px;
-      font-size:10.5px;
+    .workspace-link:focus-visible{outline:none;box-shadow:var(--ring)}
+    .workspace-text{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1}
+    .workspace-card .card-title{
+      font-size:15px;
+      font-weight:700;
+      color:var(--navy);
+      line-height:1.25;
+      letter-spacing:-.005em;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
+    }
+    .card-subtitle{
+      font-size:12.5px;
       color:var(--muted);
-      font-weight:600;
-      text-align:center;
+      font-weight:400;
+      line-height:1.4;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
     }
+    .card-arrow{display:inline-flex;color:var(--muted-2);flex-shrink:0;transition:color .15s,transform .15s}
+    .card-arrow .ic{width:16px;height:16px}
+    .workspace-card:hover .card-arrow{color:var(--ocean);transform:translateX(2px)}
+    .workspace-card.disabled{
+      background:var(--surface-2);
+      border-color:var(--border);
+      box-shadow:none;
+    }
+    .workspace-card.disabled:hover{box-shadow:none;border-color:var(--border)}
+    .workspace-card.disabled .card-title{color:var(--muted)}
+    .workspace-card.disabled .card-arrow{display:none}
+    .workspace-link.disabled{cursor:pointer}
+    .workspace-lock{
+      display:inline-flex;
+      align-items:center;
+      gap:5px;
+      padding:0 18px 12px;
+      font-size:11px;
+      font-weight:600;
+      letter-spacing:.04em;
+      text-transform:uppercase;
+      color:var(--muted-2);
+    }
+    .workspace-lock .ic{width:12px;height:12px}
+
+    /* ── Settings ──────────────────────────────────────────────────────── */
     .access-grid{
       display:grid;
       grid-template-columns:minmax(0,1fr);
       gap:16px;
       max-width:980px;
     }
-    .settings-form{
-      display:grid;
-      gap:14px;
-      margin-top:16px;
-    }
-    .field-row{
-      display:grid;
-      grid-template-columns:1fr 180px;
-      gap:12px;
-    }
-    .field-row.access-top-row{
-      grid-template-columns:minmax(0,1.65fr) minmax(170px,.75fr);
-      align-items:end;
-    }
-    .field-row.team-access-row{
-      grid-template-columns:minmax(180px,.9fr) minmax(320px,1.5fr) minmax(170px,.75fr);
-      align-items:end;
-    }
-    .area-pills{
-      display:flex;
-      flex-direction:column;
-      gap:12px;
-    }
-    .area-group{
-      display:flex;
-      flex-direction:column;
-      gap:6px;
-    }
-    .area-group-label{
-      font-size:10.5px;
-      text-transform:uppercase;
-      letter-spacing:.1em;
-      font-weight:700;
-      color:var(--muted);
-    }
-    .area-group-chips{
-      display:flex;
-      flex-wrap:wrap;
-      gap:8px;
-    }
-    .area-pill{
-      display:inline-flex;
-      align-items:center;
-      gap:6px;
-      padding:6px 14px;
-      border:1px solid var(--border-2);
-      border-radius:999px;
-      background:#fff;
-      color:var(--muted);
-      font-size:12px;
-      font-weight:700;
-      cursor:pointer;
-      user-select:none;
-      transition:all .2s;
-    }
-    .area-pill:hover{border-color:var(--ocean);color:var(--ocean)}
-    .area-pill input{display:none}
-    .area-pill.active{
-      background:var(--navy);
-      border-color:var(--navy);
-      color:#fff;
-    }
-    .access-user-list{
-      display:grid;
-      gap:10px;
-      margin-top:16px;
-    }
-    .invite-list{
-      display:grid;
-      gap:10px;
-      margin-top:16px;
-    }
+    .settings-form{display:grid;gap:14px;margin-top:16px}
+    .field-row{display:grid;grid-template-columns:1fr 180px;gap:12px}
+    .field-row.access-top-row{grid-template-columns:minmax(0,1.65fr) minmax(170px,.75fr);align-items:end}
+    .field-row.team-access-row{grid-template-columns:minmax(180px,.9fr) minmax(320px,1.5fr) minmax(170px,.75fr);align-items:end}
+    .area-pills{display:flex;flex-direction:column;gap:12px}
+    .area-group{display:flex;flex-direction:column;gap:6px}
+    .area-group-label{font-size:11px;text-transform:uppercase;letter-spacing:.06em;font-weight:600;color:var(--muted)}
+    .area-group-chips{display:flex;flex-wrap:wrap;gap:6px}
+    /* .area-pill is styled by the shell (.pill rules) — active is ocean */
+    .access-user-list{display:grid;gap:8px;margin-top:16px}
+    .invite-list{display:grid;gap:8px;margin-top:16px}
     .access-user{
-      padding:14px;
+      padding:14px 16px;
       border:1px solid var(--border);
       border-radius:var(--r-sm);
-      background:var(--bg);
+      background:var(--surface);
     }
-    .access-user-top{
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:12px;
-    }
-    .access-email{
-      font-size:14px;
-      font-weight:700;
-      color:var(--navy);
-    }
-    .access-role{
-      margin-top:3px;
-      font-size:10.5px;
-      color:var(--muted);
-      text-transform:uppercase;
-      letter-spacing:.08em;
-      font-weight:700;
-    }
-    .access-meta{
-      margin-top:4px;
-      font-size:12px;
-      color:var(--muted);
-    }
-    .access-tags{
-      display:flex;
-      flex-wrap:wrap;
-      gap:6px;
-      margin-top:12px;
-    }
-    .inline-actions{
-      display:flex;
-      gap:8px;
-      flex-wrap:wrap;
-      margin-top:16px;
-    }
+    .access-user-top{display:flex;align-items:center;justify-content:space-between;gap:12px}
+    .access-email{font-size:14px;font-weight:600;color:var(--navy)}
+    .access-role{margin-top:2px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600}
+    .access-meta{margin-top:4px;font-size:12.5px;color:var(--muted);line-height:1.5}
+    .access-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+    .inline-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
     #toast{
       position:fixed;
       right:18px;
       bottom:18px;
       background:var(--navy);
       color:#fff;
-      border-radius:12px;
-      padding:12px 16px;
+      border-radius:var(--r-sm);
+      padding:11px 16px;
       font-size:13px;
-      font-weight:700;
+      font-weight:600;
       box-shadow:var(--sh-lg);
       display:none;
       z-index:50;
     }
     .ui-ic{display:inline-flex;width:18px;height:18px}
     .ui-ic svg{width:18px;height:18px;stroke:currentColor;stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round}
-    @media (max-width:1280px){
-      .grid{grid-template-columns:repeat(4,minmax(0,1fr))}
-    }
-    @media (max-width:1080px){
-      .access-grid{grid-template-columns:1fr}
-      .grid{grid-template-columns:repeat(3,minmax(0,1fr))}
-    }
-    @media (max-width:820px){
-      .grid{grid-template-columns:repeat(2,minmax(0,1fr))}
-    }
+
+    /* CSV import overlay (legacy inline styles kept; headings on the shell scale) */
+    .csv-title{font-size:18px;font-weight:700;letter-spacing:-.01em;color:var(--navy)}
+    .csv-sub{font-size:12.5px;color:var(--muted);margin-top:4px;line-height:1.5;max-width:560px}
+    .csv-tab{background:none;border:none;padding:12px 2px 10px;margin-right:16px;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;font-family:inherit}
+    .csv-tab.active{color:var(--navy);border-bottom-color:var(--ocean)}
+
+    @media (max-width:1280px){.grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+    @media (max-width:1080px){.access-grid{grid-template-columns:1fr}.grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+    @media (max-width:820px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
     @media (max-width:900px){
-      .access-user-top{
-        flex-direction:column;
-        align-items:flex-start;
-      }
-      .access-user-top .btn{
-        align-self:flex-start;
-      }
+      .access-user-top{flex-direction:column;align-items:flex-start}
+      .access-user-top .btn{align-self:flex-start}
     }
     @media (max-width:740px){
-      .container{padding:18px var(--page-pad) 34px}
+      .container{padding:20px var(--page-pad) 40px}
+      .section{margin-bottom:24px}
       .field-row{grid-template-columns:1fr}
       .grid{grid-template-columns:1fr}
-      .area-pills{gap:6px}
-      .area-pill{font-size:11px;padding:6px 12px}
+      .area-pills{gap:8px}
       .inline-actions{width:100%}
       .inline-actions .btn{width:100%;justify-content:center}
     }
@@ -376,9 +275,9 @@
         </div>
         <div class="brand-sub">Platform Access</div>
       </div>
-      <div id="loginModeChip" class="login-mode-chip">Secure access</div>
-      <div class="login-title" id="loginTitle">Welcome to Gota Dagua</div>
-      <div class="login-copy" id="loginCopy">Log in</div>
+      <div id="loginModeChip" class="login-mode-chip"></div>
+      <div class="login-title" id="loginTitle">Gota d'Água</div>
+      <div class="login-copy" id="loginCopy">Log in with your work email.</div>
       <div id="authMessageBox" class="auth-message"></div>
       <div class="field" id="loginEmailField">
         <label>Email</label>
@@ -388,15 +287,15 @@
         <label>Password</label>
         <input type="password" id="loginPassword" placeholder="Password" autocomplete="current-password">
       </div>
-      <button class="btn btn-p btn-lg btn-block" id="loginPrimaryButton" onclick="doLogin()">Enter platform</button>
+      <button class="btn btn-p btn-lg btn-block" id="loginPrimaryButton" onclick="doLogin()">Log in</button>
       <div class="login-link-row" id="loginSecondaryActions">
         <button class="text-link-btn" id="forgotPasswordButton" type="button" onclick="startForgotPasswordFlow()">Forgot password?</button>
       </div>
-      <div class="login-note" id="loginNotePrimary" style="margin-top:8px">Use the email above to receive a secure reset link if you need to change your password.</div>
-      <div class="login-note" id="loginNoteSecondary">Sign in with your Gota Dagua account.</div>
+      <div class="login-note" id="loginNotePrimary" style="margin-top:8px">No account yet? Ask Miguel for access.</div>
+      <div class="login-note" id="loginNoteSecondary" style="display:none"></div>
       <div id="passwordFlowBox" class="card card-body" style="display:none;margin-top:18px;text-align:center;padding:18px">
-        <div class="section-title" id="passwordFlowTitle" style="font-size:18px">Set your password</div>
-        <div class="section-sub" id="passwordFlowCopy" style="margin-top:6px;line-height:1.6">Finish your account setup.</div>
+        <div class="section-title" id="passwordFlowTitle">Set your password</div>
+        <div class="section-sub" id="passwordFlowCopy">Finish your account setup.</div>
         <div class="settings-form" style="margin-top:14px">
           <div class="field">
             <label>Full Name</label>
@@ -438,7 +337,7 @@
             </svg></div></a>
         <details class="app-switch">
           <summary>
-            <span>Overview</span>
+            <span>Home</span>
             <span class="app-switch-caret">▾</span>
           </summary>
           <nav class="app-switch-menu" data-app-menu="hub"></nav>
@@ -494,7 +393,7 @@
 
     <div class="page" id="page-settings">
       <div class="container">
-        <div class="section-head">
+        <div class="section-head page-head">
           <div>
             <div class="section-title">Settings</div>
             <div class="section-sub">Workspace access, team visibility, and connection control.</div>
@@ -502,9 +401,9 @@
         </div>
         <div class="access-grid">
           <div class="card card-body">
-            <div class="section-title" style="font-size:20px">Team Access</div>
-            <div class="section-sub" style="margin-top:8px;line-height:1.7">Invite people, define what they can open, and keep control of each workspace.</div>
-            <div id="teamAccessModeNotice" class="section-sub" style="margin-top:10px;line-height:1.7;padding:12px 14px;border-radius:14px;background:rgba(49,121,190,.10);border:1px solid rgba(49,121,190,.18)"></div>
+            <div class="section-title">Team Access</div>
+            <div class="section-sub">Invite people, define what they can open, and keep control of each workspace.</div>
+            <div id="teamAccessModeNotice" class="status-msg status-info" style="margin-top:12px"></div>
             <div class="settings-form">
               <div class="field-row team-access-row">
                 <div class="field">
@@ -518,14 +417,14 @@
                 <div class="field">
                   <label>Role</label>
                   <select id="accessRole">
-                    <option value="Owner">Owner</option>
-                    <option value="Admin">Admin</option>
-                    <option value="Location Manager">Location Manager</option>
-                    <option value="Head Social Host">Head Social Host</option>
-                    <option value="Camp Tab Staff">Camp Tab Staff</option>
-                    <option value="Bar Man">Bar Man</option>
-                    <option value="Finance">Finance</option>
                     <option value="Viewer">Viewer</option>
+                    <option value="Camp Tab Staff" selected>Camp Tab Staff</option>
+                    <option value="Bar Man">Bar Man</option>
+                    <option value="Head Social Host">Head Social Host</option>
+                    <option value="Location Manager">Location Manager</option>
+                    <option value="Finance">Finance</option>
+                    <option value="Admin">Admin</option>
+                    <option value="Owner">Owner</option>
                   </select>
                 </div>
               </div>
@@ -541,13 +440,13 @@
             <div class="access-user-list" id="accessUserList"></div>
           </div>
           <div class="card card-body">
-            <div class="section-title" style="font-size:20px">Pending Invites</div>
-            <div class="section-sub" style="margin-top:8px;line-height:1.7">These invites are waiting for people to finish setup and choose their password.</div>
+            <div class="section-title">Pending Invites</div>
+            <div class="section-sub">These invites are waiting for people to finish setup and choose their password.</div>
             <div class="invite-list" id="inviteList"></div>
           </div>
           <div class="card card-body">
-            <div class="section-title" style="font-size:20px">Account Security</div>
-            <div class="section-sub" style="margin-top:8px;line-height:1.7">Change your own password after logging in.</div>
+            <div class="section-title">Account Security</div>
+            <div class="section-sub">Change your own password after logging in.</div>
             <div class="settings-form">
               <div class="field-row">
                 <div class="field">
@@ -560,7 +459,7 @@
                 </div>
               </div>
               <div class="inline-actions">
-                <button class="btn btn-p" onclick="changeOwnPassword()">Update password</button>
+                <button class="btn btn-s" onclick="changeOwnPassword()">Update password</button>
               </div>
             </div>
           </div>
@@ -571,17 +470,17 @@
 
   <!-- ═══════════════ Global CSV Import overlay ═══════════════ -->
   <div id="globalCsvOv" style="display:none;position:fixed;inset:0;background:rgba(13,30,52,.55);backdrop-filter:blur(4px);z-index:9999;align-items:center;justify-content:center;padding:20px">
-    <div style="background:#fff;border-radius:18px;max-width:920px;width:100%;max-height:90vh;overflow:auto;box-shadow:0 24px 64px rgba(13,30,52,.35)">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;padding:22px 24px;border-bottom:1px solid #e6ecf2">
+    <div style="background:#fff;border:1px solid var(--border);border-radius:16px;max-width:920px;width:100%;max-height:90vh;overflow:auto;box-shadow:var(--sh-lg)">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;padding:16px 20px;border-bottom:1px solid var(--border)">
         <div>
-          <div style="font-family:'DM Serif Display',serif;font-size:22px;color:#0d1e34">Bookings imports</div>
-          <div style="font-size:13px;color:#6b7a8c;margin-top:4px;line-height:1.5;max-width:560px">Upload Bookinglayer exports — rows are split by location code (LK, MA, PT, JUN, SC, COL, CKC) and feed every camp hub + the partners view. Manage what's already in the system below.</div>
+          <div class="csv-title">Bookings imports</div>
+          <div class="csv-sub">Upload the Bookinglayer bookings export. Each booking goes to its camp and to Partners.</div>
         </div>
         <button onclick="closeGlobalCsvImport()" style="background:none;border:none;font-size:22px;color:#6b7a8c;cursor:pointer;padding:0;line-height:1">×</button>
       </div>
-      <div style="display:flex;border-bottom:1px solid #e6ecf2;padding:0 24px;gap:6px">
-        <button id="csvTabUploadBtn" onclick="switchGlobalCsvTab('upload')" style="background:none;border:none;padding:14px 14px 12px;font-size:13px;font-weight:700;color:#0d1e34;cursor:pointer;border-bottom:2px solid #0d1e34;font-family:inherit">Upload</button>
-        <button id="csvTabManageBtn" onclick="switchGlobalCsvTab('manage')" style="background:none;border:none;padding:14px 14px 12px;font-size:13px;font-weight:700;color:#6b7a8c;cursor:pointer;border-bottom:2px solid transparent;font-family:inherit">Manage imports</button>
+      <div style="display:flex;border-bottom:1px solid var(--border);padding:0 20px">
+        <button id="csvTabUploadBtn" class="csv-tab active" onclick="switchGlobalCsvTab('upload')">Upload</button>
+        <button id="csvTabManageBtn" class="csv-tab" onclick="switchGlobalCsvTab('manage')">Manage imports</button>
       </div>
 
       <!-- Upload tab -->
@@ -610,7 +509,7 @@
           <div id="csvManageStatus" style="font-size:12px;color:#6b7a8c;margin-left:auto"></div>
         </div>
         <div id="csvManageTableWrap" class="card tbl-wrap" style="overflow:auto">
-          <div style="padding:24px;text-align:center;color:#6b7a8c;font-size:13px">Click <b>Refresh</b> to load.</div>
+          <div style="padding:24px;text-align:center;color:#6b7a8c;font-size:13px">Loading bookings…</div>
         </div>
       </div>
     </div>
@@ -738,7 +637,7 @@
         key:'prices-sri-lanka',
         type:'pricing',
         title:'Sri Lanka',
-        subtitle:'Ahangama',
+        subtitle:'Prices · Ahangama',
         eyebrow:'Pricing Catalog',
         copy:'Master prices for tours, transports, surf packs, accommodation. Edit here → propagates to Camp Tab + Transport picker.',
         status:'live',
@@ -752,7 +651,7 @@
         key:'prices-portugal',
         type:'pricing',
         title:'Portugal',
-        subtitle:'Costa da Caparica',
+        subtitle:'Prices · Costa da Caparica',
         eyebrow:'Pricing Catalog',
         copy:'Master prices for the Portugal workspace. Independent catalog, EUR-denominated.',
         status:'live',
@@ -766,7 +665,7 @@
         key:'prices-junior',
         type:'pricing',
         title:'Junior Camp',
-        subtitle:'Costa da Caparica',
+        subtitle:'Prices · Costa da Caparica',
         eyebrow:'Pricing Catalog',
         copy:'Master prices for the Junior Camp programme. Separate catalog, EUR-denominated.',
         status:'live',
@@ -780,7 +679,7 @@
         key:'prices-morocco',
         type:'pricing',
         title:'Morocco',
-        subtitle:'Tamraght',
+        subtitle:'Prices · Tamraght',
         eyebrow:'Pricing Catalog',
         copy:'Master prices for Morocco. Tours, transports (Dunes / Agadir / Marrakech), accommodation.',
         status:'live',
@@ -794,7 +693,7 @@
         key:'prices-surf-school',
         type:'pricing',
         title:'Surf School',
-        subtitle:'Costa da Caparica',
+        subtitle:'Prices · Costa da Caparica',
         eyebrow:'Pricing Catalog',
         copy:'Master prices for the Surf School catalog. Independent from the Portugal / Junior catalogs, EUR-denominated.',
         status:'live',
@@ -948,10 +847,10 @@
 
     function getSupabaseClient(){
       if (!window.supabase || typeof window.supabase.createClient !== 'function') {
-        throw new Error('Supabase library did not load.');
+        throw new Error('No connection — check your internet and try again.');
       }
       if (!window.__SUPABASE_CONFIG?.url || !window.__SUPABASE_CONFIG?.anonKey) {
-        throw new Error('Supabase config is missing.');
+        throw new Error("The app isn't set up on this address — contact support.");
       }
       if (!__supabaseClient) {
         __supabaseClient = window.supabase.createClient(
@@ -1212,24 +1111,24 @@
           showPassword:true,
           showPrimary:true,
           showSecondary:true,
-          primaryNoteText:'If access is granted again, you can sign in normally with your password or use a fresh invite email.',
+          primaryNoteText:'If access is granted again, you can log in normally with your password or use a fresh invite email.',
           secondaryNoteText:''
         });
-        primaryButton.textContent = 'Enter platform';
+        primaryButton.textContent = 'Log in';
         document.getElementById('forgotPasswordButton').textContent = 'Forgot password?';
         return;
       }
       apply({
-          chipText:'',
-        titleText:'Welcome to Gota Dagua',
-        copyText:'Log in',
+        chipText:'',
+        titleText:'Gota d\'Água',
+        copyText:'Log in with your work email.',
         showPassword:true,
         showPrimary:true,
         showSecondary:true,
-        primaryNoteText:'Use the email above to receive a secure reset link if you need to change your password.',
-        secondaryNoteText:`Sign in with your Gota Dagua account.`
+        primaryNoteText:'No account yet? Ask Miguel for access.',
+        secondaryNoteText:''
       });
-      primaryButton.textContent = 'Enter platform';
+      primaryButton.textContent = 'Log in';
       document.getElementById('forgotPasswordButton').textContent = 'Forgot password?';
     }
 
@@ -1281,13 +1180,14 @@
         <div class="workspace-card ${allowed ? '' : 'disabled'}">
           <div class="card-top">
             <button class="workspace-link ${allowed ? '' : 'disabled'}" onclick="openWorkspace('${item.key}')">
-              <span style="display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;height:100%;width:100%">
+              <span class="workspace-text">
                 <span class="card-title">${item.title}</span>
                 ${item.subtitle ? `<span class="card-subtitle">${item.subtitle}</span>` : ``}
               </span>
+              <span class="card-arrow">${AppShell.icon('chevron-right')}</span>
             </button>
           </div>
-          ${allowed ? `` : `<div class="workspace-lock">Locked for this access</div>`}
+          ${allowed ? `` : `<div class="workspace-lock">${AppShell.icon('lock')} Ask Miguel for access</div>`}
         </div>
       `;
     }
@@ -1306,7 +1206,7 @@
     }
 
     function renderAreaPills(){
-      const selected = new Set((window.__draftAreas || ['sri-lanka']).filter(Boolean));
+      const selected = new Set((window.__draftAreas || []).filter(Boolean));
       // Bucket the flat list into ordered group sections — preserves the
       // ACCESS_AREAS ordering inside each group while keeping the three
       // labelled clusters visually distinct.
@@ -1346,7 +1246,7 @@
               ${user.meta ? `<div class="access-meta">${user.meta}</div>` : ``}
             </div>
             <div class="inline-actions">
-              <button class="btn btn-s" onclick="setPreviewAccess('${user.email}')">Preview</button>
+              <button class="btn btn-s" onclick="setPreviewAccess('${user.email}')">View as this person</button>
               <button class="btn btn-s" onclick="beginEditAccessUser('${user.email}')">Edit</button>
               ${user.email === (__currentProfile?.email || '') ? '' : `<button class="btn btn-r" onclick="removeAccessUser('${user.email}')">Remove access</button>`}
             </div>
@@ -1372,7 +1272,7 @@
             <div>
               <div class="access-email">${invite.email}</div>
               <div class="access-role">${invite.role}</div>
-              <div class="access-meta">${invite.fullName ? `${invite.fullName} · ` : ''}Status: ${invite.status}${invite.expiresAt ? ` · Expires ${invite.expiresAt}` : ''}</div>
+              <div class="access-meta">${invite.fullName ? `${invite.fullName} · ` : ''}${inviteStatusLabel(invite.status)}${invite.expiresAt ? ` · Expires ${invite.expiresAt}` : ''}</div>
             </div>
             <div class="inline-actions">
               <button class="btn btn-r" onclick="cancelPendingInvite('${invite.id}','${invite.email}')">Cancel invite</button>
@@ -1387,14 +1287,22 @@
       `).join('');
     }
 
+    function inviteStatusLabel(status){
+      const key = String(status || '').toLowerCase();
+      if(!key || key === 'pending' || key === 'sent') return 'Waiting for them to set a password';
+      return titleCaseWords(key);
+    }
+
     function renderTeamAccessModeNotice(){
       const el = document.getElementById('teamAccessModeNotice');
       if(!el) return;
       if(__accessModel === 'workspace-v2'){
-        el.innerHTML = `Invites are live. Each person receives an email link, creates their own password, and then enters the app. Password resets also go by email.`;
+        el.className = 'status-msg status-info';
+        el.innerHTML = `Each person gets an email link, sets their own password and can then log in. Password resets also go by email.`;
         return;
       }
-      el.innerHTML = `Invites are not active yet in this project. Run <strong>schema-v2.sql</strong> in Supabase first, then this page will send real invite emails and let each person create their own password.`;
+      el.className = 'status-msg status-warn';
+      el.innerHTML = `Invites aren't switched on yet — contact support.`;
     }
 
     function renderPreviewSelect(){
@@ -1416,7 +1324,7 @@
     }
 
     function toggleDraftArea(areaKey, checked){
-      const next = new Set(window.__draftAreas || ['sri-lanka']);
+      const next = new Set(window.__draftAreas || []);
       if(checked) next.add(areaKey);
       else next.delete(areaKey);
       window.__draftAreas = Array.from(next);
@@ -1430,8 +1338,8 @@
       document.getElementById('accessEmail').readOnly = false;
       const roleEl = document.getElementById('accessRole');
       roleEl.disabled = false;
-      roleEl.value = 'Location Manager';
-      window.__draftAreas = ['sri-lanka'];
+      roleEl.value = 'Camp Tab Staff';
+      window.__draftAreas = [];
       const primary = document.querySelector('#page-settings .card .inline-actions .btn-p');
       const secondary = document.querySelector('#page-settings .card .inline-actions .btn-s');
       if(primary) primary.textContent = 'Send invite email';
@@ -1466,7 +1374,7 @@
       if(secondary) secondary.textContent = 'Cancel';
       renderAreaPills();
       document.getElementById('accessFullName').scrollIntoView({ behavior:'smooth', block:'center' });
-      showToast(isSelfEdit ? 'Editing your name (role and areas locked for self-edits)' : `Editing access for ${email}`);
+      showToast(isSelfEdit ? "Editing your name — your own role and areas can't be changed here." : `Editing access for ${email}`);
     }
 
     function roleLabelToPlatformRole(value){
@@ -1528,7 +1436,7 @@
       if(dropped.length){
         console.warn('[Settings] buildWorkspaceAccessRows dropped areas with no matching workspaces row:', dropped);
         if(typeof showToast === 'function'){
-          showToast(`Heads up: these areas can't be granted yet (no workspaces row): ${dropped.join(', ')}. Run the matching seed SQL in Supabase.`);
+          showToast(`These areas can't be granted yet — contact support: ${dropped.map(areaLabel).join(', ')}.`);
         }
       }
       return Array.from(targetByWorkspace.values()).map(({ workspace, scope }) => ({
@@ -1557,7 +1465,7 @@
         return;
       }
       if(__accessModel !== 'workspace-v2'){
-        showToast('Run schema-v2.sql in Supabase first. Then Team Access will send the real invite emails.');
+        showToast("Invites aren't switched on yet — contact support.");
         return;
       }
       try{
@@ -1566,7 +1474,7 @@
         if(__editingAccessEmail){
           const existingUser = accessUsers.find(entry => entry.email === __editingAccessEmail);
           if(!existingUser){
-            throw new Error(`No local row for ${__editingAccessEmail}. Cancel and reopen the form so we can re-fetch the team list.`);
+            throw new Error(`Couldn't find ${__editingAccessEmail} in the team list — click Cancel and open Edit again.`);
           }
           // accessUsers entries are built from the workspace_memberships →
           // platform_profiles join (see hydrateFromSession). If the join
@@ -1585,7 +1493,7 @@
               throw lookupErr;
             }
             if(!profileLookup?.id){
-              throw new Error(`No platform_profiles row found for ${__editingAccessEmail}. The user may have been deleted — try inviting them again.`);
+              throw new Error(`${__editingAccessEmail} no longer has an account — invite them again.`);
             }
             existingUser.userId = profileLookup.id;
           }
@@ -1742,7 +1650,7 @@
         const accessRows = buildWorkspaceAccessRows(role, areas);
         const { data:{ session } } = await client.auth.getSession();
         const token = session?.access_token || '';
-        if(!token) throw new Error('Could not confirm your admin session. Please log in again and try once more.');
+        if(!token) throw new Error('Your session has expired — log in again and try once more.');
         const fnUrl = `${window.__SUPABASE_CONFIG.url.replace(/\/$/,'')}/functions/v1/create-platform-invite`;
         const response = await fetch(fnUrl, {
           method:'POST',
@@ -1761,7 +1669,7 @@
         const payload = await response.json().catch(()=>({}));
         if(!response.ok || payload?.ok === false){
           if(response.status === 404){
-            throw new Error('The invite function is not deployed yet in Supabase. Deploy create-platform-invite first and then try again.');
+            throw new Error("Invites aren't switched on yet — contact support.");
           }
           throw new Error(payload?.error || 'Could not create the invite.');
         }
@@ -1770,7 +1678,7 @@
           // Neither Supabase Auth nor our Gmail could deliver — show the link so
           // it can be sent by WhatsApp. It is the real one-time invite link.
           try { await navigator.clipboard.writeText(payload.invite_link); } catch (_e) {}
-          window.prompt('O email não pôde ser enviado. Este é o link de convite (já copiado) — manda-o à pessoa por WhatsApp:', payload.invite_link);
+          window.prompt("The email couldn't be sent. Here is the invite link (already copied) — send it by WhatsApp:", payload.invite_link);
         }
         pendingInvites.unshift({
           id: inviteRow.id,
@@ -1791,7 +1699,7 @@
 
     async function removeAccessUser(email){
       if(__accessModel !== 'workspace-v2'){
-        showToast('This remove flow needs the workspace-v2 access model.');
+        showToast("Removing access isn't switched on yet — contact support.");
         return;
       }
       const user = accessUsers.find(entry => entry.email === email);
@@ -1804,7 +1712,7 @@
         const client = getSupabaseClient();
         const { data:{ session } } = await client.auth.getSession();
         const token = session?.access_token || '';
-        if(!token) throw new Error('Could not confirm your admin session. Please log in again and try once more.');
+        if(!token) throw new Error('Your session has expired — log in again and try once more.');
         const fnUrl = `${window.__SUPABASE_CONFIG.url.replace(/\/$/,'')}/functions/v1/remove-platform-user`;
         const response = await fetch(fnUrl, {
           method:'POST',
@@ -1820,7 +1728,7 @@
         const payload = await response.json().catch(()=>({}));
         if(!response.ok || payload?.ok === false){
           if(response.status === 404){
-            throw new Error('The remove user function is not deployed yet in Supabase. Deploy remove-platform-user first and then try again.');
+            throw new Error("Removing access isn't switched on yet — contact support.");
           }
           throw new Error(payload?.error || 'Could not fully remove this user.');
         }
@@ -1834,7 +1742,7 @@
 
     async function cancelPendingInvite(inviteId, email){
       if(__accessModel !== 'workspace-v2'){
-        showToast('This cancel flow needs the workspace-v2 access model.');
+        showToast("Invites aren't switched on yet — contact support.");
         return;
       }
       if(!inviteId){
@@ -1866,7 +1774,7 @@
       renderPreviewSelect();
       renderHub();
       renderTeamAccessModeNotice();
-      showToast(`Previewing access for ${email}`);
+      showToast(`Viewing the home page as ${email}`);
     }
 
     function showPage(page, options={}){
@@ -2592,7 +2500,7 @@
       window.__initialAuthSearch = window.location.search || '';
       window.__currentPage = window.location.hash === '#settings' ? 'settings' : 'hub';
       renderStaticIcons();
-      window.__draftAreas = ['sri-lanka'];
+      window.__draftAreas = [];
       setLoginState('login');
       const inviteEmail = getInviteEmailParam();
       if(inviteEmail) document.getElementById('loginEmail').value = inviteEmail;
@@ -2686,10 +2594,8 @@
       const isUp = tab==='upload';
       upPane.style.display = isUp ? '' : 'none';
       mgPane.style.display = isUp ? 'none' : '';
-      upBtn.style.color = isUp ? '#0d1e34' : '#6b7a8c';
-      upBtn.style.borderBottom = isUp ? '2px solid #0d1e34' : '2px solid transparent';
-      mgBtn.style.color = isUp ? '#6b7a8c' : '#0d1e34';
-      mgBtn.style.borderBottom = isUp ? '2px solid transparent' : '2px solid #0d1e34';
+      upBtn.classList.toggle('active', isUp);
+      mgBtn.classList.toggle('active', !isUp);
       if(!isUp && !window.__csvManageLoaded) loadCsvManageData();
     }
 
@@ -2708,7 +2614,7 @@
       status.textContent = 'Loading…';
       wrap.innerHTML = '<div style="padding:24px;text-align:center;color:#6b7a8c;font-size:13px">Loading bookings…</div>';
       const client = getSupabaseClient();
-      if(!client){ status.textContent='Supabase not connected'; return; }
+      if(!client){ status.textContent='No connection — check your internet and try again.'; return; }
       try{
         // raw_payload included so we can read the real Bookinglayer status (paid/confirmed/
         // deposit_paid/draft/etc.) without needing a schema change.
@@ -2736,7 +2642,7 @@
         if(statusSel){
           statusSel.innerHTML='<option value="all">All statuses</option>'+statuses.map(s=>`<option value="${escapeAttr(s)}" ${curStatus===s?'selected':''}>${escapeHtml(s)}</option>`).join('');
         }
-        status.textContent = `${__csvManageRows.length} booking${__csvManageRows.length===1?'':'s'} in DB`;
+        status.textContent = `${__csvManageRows.length} booking${__csvManageRows.length===1?'':'s'} imported`;
         renderCsvManageTable();
       }catch(e){
         wrap.innerHTML = `<div style="padding:20px;color:#c43c3c;font-size:13px">Could not load: ${escapeHtml(e?.message||'unknown')}</div>`;
@@ -2804,7 +2710,7 @@
           (statusFilter==='all' || r.status===statusFilter)
         ).sort((a,b)=> (a.check_in_on||'').localeCompare(b.check_in_on||''));
         if(!matches.length){
-          return `<tr><td colspan="7" style="padding:14px 24px;background:#fafbfd;color:#6b7a8c;font-size:12px">No bookings match the current filters in this bucket.</td></tr>`;
+          return `<tr><td colspan="7" style="padding:14px 24px;background:#fafbfd;color:#6b7a8c;font-size:12px">No bookings match the current filters in this month and location.</td></tr>`;
         }
         const detailRows = matches.map(b=>{
           const c = statusColor(b.status);
@@ -2835,13 +2741,13 @@
               ) : ''}
             </td>
             <td style="padding:7px 14px;text-align:right;vertical-align:top">
-              <button onclick="event.stopPropagation();deleteCsvSingleBooking('${escapeAttr(b.booking_ref||'')}','${escapeAttr(b.booker||'')}')" title="Delete this booking (partners view). Camp hub keeps its data." class="btn btn-r" style="padding:4px 9px;font-size:11px">Delete</button>
+              <button onclick="event.stopPropagation();deleteCsvSingleBooking('${escapeAttr(b.booking_ref||'')}','${escapeAttr(b.booker||'')}')" title="Delete this booking from Partners. The camp hub keeps it." class="btn btn-r" style="padding:4px 9px;font-size:11px">Delete</button>
             </td>
           </tr>`;
         }).join('');
         return `<tr><td colspan="7" style="padding:0;background:#fafbfd">
           <div style="padding:10px 24px 18px">
-            <div style="font-size:11px;color:#6b7a8c;margin-bottom:6px">Showing ${matches.length} booking${matches.length===1?'':'s'} in this bucket · click email to compose · use Delete on the right to remove one at a time</div>
+            <div style="font-size:11px;color:#6b7a8c;margin-bottom:6px">${matches.length} booking${matches.length===1?'':'s'} in this month and location · click an email to write to the guest · Delete removes one booking from Partners</div>
             <table style="width:100%;border-collapse:collapse;font-size:12px;background:#fff;border-radius:8px;overflow:hidden;border:1px solid #e6ecf2">
               <thead>
                 <tr>
@@ -2870,7 +2776,7 @@
               <th>Status</th>
               <th class="r">Partner / Direct</th>
               <th class="r">Revenue</th>
-              <th class="r" style="min-width:280px">Delete from…</th>
+              <th class="r">Delete</th>
             </tr>
           </thead>
           <tbody>
@@ -2887,11 +2793,7 @@
                 <td style="padding:10px 14px;text-align:right;color:#6b7a8c;font-size:12px">${r.partnerCount} / ${r.directCount}</td>
                 <td style="padding:10px 14px;text-align:right;font-family:'DM Mono',monospace">€${r.revenue.toLocaleString('en-GB',{maximumFractionDigits:2})}</td>
                 <td style="padding:10px 14px;text-align:right" onclick="event.stopPropagation()">
-                  <div style="display:inline-flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
-                    <button onclick="event.stopPropagation();deleteCsvBucket('${escapeAttr(r.month)}','${escapeAttr(r.location)}',${r.count},'all')" title="Remove from both partners (bookings table) and camp hub (location_state_store)" class="btn btn-r" style="padding:5px 10px;font-size:12px">All</button>
-                    <button onclick="event.stopPropagation();deleteCsvBucket('${escapeAttr(r.month)}','${escapeAttr(r.location)}',${r.count},'partners')" title="Remove only from the partners view (bookings table). Camp hub keeps its data." class="btn btn-r" style="padding:5px 10px;font-size:12px">Partners</button>
-                    <button onclick="event.stopPropagation();deleteCsvBucket('${escapeAttr(r.month)}','${escapeAttr(r.location)}',${r.count},'camphub')" title="Remove only from the camp hub overview. Partners keeps its data." class="btn btn-r" style="padding:5px 10px;font-size:12px">Camp hub</button>
-                  </div>
+                  <button onclick="event.stopPropagation();deleteCsvBucket('${escapeAttr(r.month)}','${escapeAttr(r.location)}',${r.count})" title="Delete these bookings — you choose where from" class="btn btn-r" style="padding:5px 10px;font-size:12px">Delete…</button>
                 </td>
               </tr>
               ${isExpanded ? renderExpandedDetail(r) : ''}
@@ -2916,31 +2818,45 @@
     async function deleteCsvSingleBooking(bookingRef, booker){
       if(!bookingRef){ return; }
       const who = booker ? ` (${booker})` : '';
-      if(!confirm(`Delete booking ${bookingRef}${who}?\n\nRemoves the row from the partners view (bookings table). Camp hub keeps its data. Re-importing the CSV puts it back.`)) return;
+      if(!confirm(`Delete booking ${bookingRef}${who}?\n\nIt is removed from Partners only — the camp hub keeps it. Re-importing the CSV puts it back.`)) return;
       const status=document.getElementById('csvManageStatus');
       status.textContent = 'Deleting…';
       const client = getSupabaseClient();
-      if(!client){ status.textContent='Supabase not connected'; return; }
+      if(!client){ status.textContent='No connection — check your internet and try again.'; return; }
       try{
         const { error } = await client.from('bookings').delete().eq('booking_ref', bookingRef);
         if(error) throw error;
         status.textContent = `Deleted booking ${bookingRef}.`;
         await loadCsvManageData();
       }catch(e){
-        status.textContent = 'Delete failed: '+(e?.message||'unknown');
+        status.textContent = "Couldn't delete — "+(e?.message||'unknown error');
       }
     }
 
     async function deleteCsvBucket(month, location, count, scope){
-      scope = scope || 'all';
-      const scopeLabel = scope==='all' ? 'partners view AND camp hub overview'
-                       : scope==='partners' ? 'partners view only (camp hub keeps the data)'
-                       : 'camp hub overview only (partners keeps the data)';
-      if(!confirm(`Delete ${count} booking${count===1?'':'s'} for ${location} in ${month}?\n\nScope: ${scopeLabel}.\nThe CSV file itself is not changed — you can re-import any time.`)) return;
       const status=document.getElementById('csvManageStatus');
+      const plural = count===1 ? '' : 's';
+      if(!scope){
+        // One Delete… button per month and location: ask where to delete from.
+        const answer = window.prompt(
+          `Delete ${count} booking${plural} for ${location} in ${month}?\n\n` +
+          `Delete from where? Type 1, 2 or 3:\n` +
+          `1 = Camp hub and Partners\n` +
+          `2 = Partners only (the camp hub keeps them)\n` +
+          `3 = Camp hub only (Partners keeps them)\n\n` +
+          `The CSV file is not changed — you can re-import any time.`, '1');
+        if(answer === null) return;
+        scope = { '1':'all', '2':'partners', '3':'camphub' }[String(answer).trim()];
+        if(!scope){ status.textContent = 'Nothing deleted — type 1, 2 or 3.'; return; }
+      } else {
+        const scopeLabel = scope==='all' ? 'camp hub and Partners'
+                         : scope==='partners' ? 'Partners only (the camp hub keeps them)'
+                         : 'camp hub only (Partners keeps them)';
+        if(!confirm(`Delete ${count} booking${plural} for ${location} in ${month}?\n\nFrom: ${scopeLabel}.\nThe CSV file is not changed — you can re-import any time.`)) return;
+      }
       status.textContent = 'Deleting…';
       const client = getSupabaseClient();
-      if(!client){ status.textContent='Supabase not connected'; return; }
+      if(!client){ status.textContent='No connection — check your internet and try again.'; return; }
       try{
         // 1) Delete from global bookings (partners view) when scope includes partners
         if(scope==='all' || scope==='partners'){
@@ -2977,11 +2893,11 @@
             }
           }
         }
-        status.textContent = `Deleted ${count} booking${count===1?'':'s'} (${scope}).`;
+        status.textContent = `Deleted ${count} booking${count===1?'':'s'} from ${scope==='all' ? 'the camp hub and Partners' : scope==='partners' ? 'Partners' : 'the camp hub'}.`;
         // Reload the manage view
         await loadCsvManageData();
       }catch(e){
-        status.textContent = 'Delete failed: '+(e?.message||'unknown');
+        status.textContent = "Couldn't delete — "+(e?.message||'unknown error');
       }
     }
 
@@ -3138,7 +3054,7 @@
       }
       const rows = parseGlobalCsv(text);
       if(!rows.length){
-        summaryEl.innerHTML = '<div style="color:#c43c3c">No bookings found in the CSV. Check the column headers.</div>';
+        summaryEl.innerHTML = '<div style="color:#c43c3c">No bookings found. Use the Bookinglayer bookings export without editing it.</div>';
         return;
       }
       // Group by location code
@@ -3150,7 +3066,7 @@
       });
       const client = getSupabaseClient();
       if(!client){
-        summaryEl.innerHTML = '<div style="color:#c43c3c">Supabase not connected — cannot save.</div>';
+        summaryEl.innerHTML = '<div style="color:#c43c3c">No connection — check your internet and try again. Nothing was saved.</div>';
         return;
       }
       const parts = [];
@@ -3306,7 +3222,7 @@
       summaryEl.innerHTML = `
         <div style="font-weight:700;margin-bottom:10px;font-size:14px">${okBookings} booking${okBookings===1?'':'s'} imported across ${okLocations} camp hub${okLocations===1?'':'s'}</div>
         ${parts.join('')}
-        <div style="margin-top:14px;font-size:12px;color:#6b7a8c">Camp hubs and the partners app read this on next refresh. Re-importing the same file is safe — duplicates are upserted by booking ref.</div>
+        <div style="margin-top:14px;font-size:12px;color:#6b7a8c">Camp hubs and Partners show the bookings on their next refresh. Re-importing the same file is safe — a booking already in the app is updated, not duplicated.</div>
       `;
       try{ showToast(`Imported ${okBookings} bookings across ${okLocations} location${okLocations===1?'':'s'}`); }catch(_){}
       // Reset the file input so re-selecting the same file fires onchange again

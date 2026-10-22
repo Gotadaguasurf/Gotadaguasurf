@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Camp Hub — Gota d'Água</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='-15 0 92 92'><path fill='%231e6fa8' d='M61.7,51.9c-.4-9-5.5-16.5-9.7-24.1-2.9-4.8-5.3-9.8-9.3-13.9-3.9-4.4-6.5-9.8-10.8-13.9C19.2,16.6-.5,39.9,0,61.9c9.4-7.9,20.1-17.7,33.1-17.8,3,0,7.2,0,9.5,2.2,1.7,1.7,3.2,4.2,2,6.5-.3.5-1.9,2.7-2.3,2.9-12.9,7.4-20.3,18.6-16.5,33.7,3.1,1.3,8,1,11.1-.3,2.7-.3,5.1-1.3,7.5-2.5,8.7-2.9,14.5-11.1,15.5-20.1,1.2-4.7,2.1-9.7,1.8-14.6h0Z'/></svg>">
-<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/lib/app-shell.css">
 <script src="/lib/app-shell.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
@@ -15,56 +15,29 @@
 <script src="/error-monitor.js"></script>
 <style>
 /* tokens: /lib/app-shell.css */
-/* ──────── Overview — section + metric system (cards, tables, buttons, modal: /lib/app-shell.css) ──────── */
-.modal{max-width:none}
-.ov-card{background:#fff;border-radius:var(--r);box-shadow:var(--sh);padding:var(--card-pad-lg);border:1px solid var(--border);transition:box-shadow .15s}
-.ov-card:hover{box-shadow:var(--sh-hover)}
-.ov-card-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:14px}
-.ov-card-title{font-size:13px;font-weight:600;color:var(--navy);letter-spacing:.01em}
-.ov-card-eyebrow{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700}
-.ov-metric{display:flex;flex-direction:column;gap:2px}
-.ov-metric-value{font-family:'DM Serif Display',serif;font-size:30px;color:var(--navy);line-height:1.05;letter-spacing:-.01em}
-.ov-metric-sub{font-size:11px;color:var(--muted);font-weight:500}
-.ov-metric-trend{font-size:11px;color:var(--muted);font-weight:600;display:inline-flex;align-items:center;gap:4px}
-/* The hero — one figure that dominates the page */
-.ov-hero{background:linear-gradient(135deg,var(--navy) 0%,#1f2c3b 100%);color:#fff;border-radius:16px;padding:28px 28px 26px;box-shadow:var(--sh-soft);position:relative;overflow:hidden}
-.ov-hero::before{content:'';position:absolute;top:-40%;right:-15%;width:300px;height:300px;background:radial-gradient(circle,rgba(59,157,212,.25) 0%,transparent 70%);pointer-events:none}
-.ov-hero-eyebrow{font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:#7aabcc;font-weight:700;margin-bottom:8px;position:relative}
-.ov-hero-value{font-family:'DM Serif Display',serif;font-size:46px;color:#fff;line-height:1;letter-spacing:-.02em;position:relative}
-.ov-hero-sub{font-size:13px;color:#cfe1f0;margin-top:6px;position:relative}
-.ov-hero-tag{display:inline-flex;align-items:center;gap:5px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:999px;padding:4px 10px;font-size:11px;font-weight:600;margin-top:12px;position:relative}
-/* KPI row that sits next to the hero */
-.ov-kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}
-.ov-kpi{background:#fff;border-radius:12px;padding:16px 18px;box-shadow:var(--sh-soft);transition:box-shadow .15s}
-.ov-kpi:hover{box-shadow:0 2px 6px rgba(40,57,75,.08),0 10px 28px rgba(40,57,75,.1)}
-.ov-kpi-label{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700;margin-bottom:6px}
-.ov-kpi-value{font-family:'DM Serif Display',serif;font-size:24px;color:var(--navy);line-height:1.05;letter-spacing:-.01em}
-.ov-kpi-sub{font-size:11px;color:var(--muted);margin-top:3px}
+/* ──────── Overview (cards, tables, buttons, modal, KPI tiles: /lib/app-shell.css) ──────── */
 /* Area card — a per-business-area block (Bar, Merch, Tours…) */
-.ov-area-card{background:#fff;border-radius:14px;padding:20px 22px;box-shadow:var(--sh-soft);transition:transform .15s,box-shadow .15s}
-.ov-area-card:hover{transform:translateY(-1px);box-shadow:0 2px 6px rgba(40,57,75,.08),0 16px 40px rgba(40,57,75,.1)}
+.ov-area-card{background:#fff;border-radius:var(--r);padding:var(--card-pad);border:1px solid var(--border);box-shadow:var(--sh)}
 .ov-area-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;gap:10px}
-.ov-area-title{font-family:'DM Serif Display',serif;font-size:18px;color:var(--navy);display:flex;align-items:center;gap:8px;line-height:1}
-.ov-area-margin{font-family:'DM Mono',monospace;font-size:13px;font-weight:700;padding:4px 10px;border-radius:999px}
+.ov-area-title{font-weight:700;letter-spacing:-.01em;font-size:var(--fs-section);color:var(--navy);display:flex;align-items:center;gap:8px;line-height:1}
+.ov-area-margin{font-variant-numeric:tabular-nums;font-size:13px;font-weight:600;padding:4px 10px;border-radius:999px}
 .ov-area-margin.pos{background:var(--green-bg);color:var(--green)}
 .ov-area-margin.neg{background:var(--red-bg);color:var(--red)}
 .ov-area-margin.zero{background:var(--accent-soft);color:var(--ocean)}
 .ov-area-body{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
 .ov-area-cell{display:flex;flex-direction:column;gap:2px}
 .ov-area-cell-label{font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700}
-.ov-area-cell-value{font-family:'DM Mono',monospace;font-size:15px;font-weight:600;color:var(--navy);line-height:1.2}
+.ov-area-cell-value{font-variant-numeric:tabular-nums;font-size:15px;font-weight:700;color:var(--navy);line-height:1.2}
 .ov-area-cell-sub{font-size:10px;color:var(--muted)}
 /* Compact breakdown chip (used in Utilities / Payroll / Transport sub-grids) */
-.ov-chip{background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px 16px;transition:border-color .15s,box-shadow .15s}
-.ov-chip:hover{border-color:var(--accent);box-shadow:0 2px 12px rgba(30,111,168,.08)}
+.ov-chip{background:#fff;border:1px solid var(--border);border-radius:var(--r-sm);padding:14px 16px}
 .ov-chip-label{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700;margin-bottom:6px}
-.ov-chip-value{font-family:'DM Serif Display',serif;font-size:20px;color:var(--navy);line-height:1.1;letter-spacing:-.005em}
+.ov-chip-value{font-weight:700;letter-spacing:-.02em;font-size:20px;color:var(--navy);line-height:1.1;font-variant-numeric:tabular-nums}
 .ov-chip-sub{font-size:10px;color:var(--muted);margin-top:6px}
 .ov-chip-meta{display:flex;justify-content:space-between;gap:8px;font-size:10px;color:var(--muted);margin-top:8px}
-.ov-chip-meta b{color:var(--navy);font-weight:600;font-family:'DM Mono',monospace}
-/* Subtle filter pill — used at the very top */
-.ov-filters .fsel{background:transparent;border:1px solid var(--border)}
+.ov-chip-meta b{color:var(--navy);font-weight:600;font-variant-numeric:tabular-nums}
 .ov-filters .ov-week-info{font-size:12px;color:var(--muted);margin-left:auto;padding-left:8px}
+.ov-cat-title{font-size:var(--fs-card)!important}
 
 /* ──────── Transport quick-add modal ──────── */
 .tq-tabs{display:flex;gap:6px;align-items:center;border-bottom:1px solid var(--border);margin-bottom:14px;padding-bottom:0}
@@ -78,11 +51,11 @@
 .tq-chip{background:#fff;border:1.5px solid var(--border);border-radius:12px;padding:12px 14px;cursor:pointer;text-align:left;transition:border-color .15s,box-shadow .15s,transform .1s;display:flex;flex-direction:column;gap:4px;font-family:'Outfit',sans-serif}
 .tq-chip:hover{border-color:var(--ocean);box-shadow:0 4px 14px rgba(30,111,168,.12);transform:translateY(-1px)}
 .tq-chip-name{font-weight:700;font-size:14px;color:var(--navy);line-height:1.2}
-.tq-chip-price{font-family:'DM Mono',monospace;font-size:12px;color:var(--ocean);font-weight:600}
+.tq-chip-price{font-variant-numeric:tabular-nums;font-size:12px;color:var(--ocean);font-weight:600}
 .tq-chip-custom{border-style:dashed;border-color:var(--ocean);background:var(--foam);color:var(--ocean);align-items:center;justify-content:center;text-align:center;font-weight:700;font-size:13px}
 .tq-chip-edit{border:1.5px dashed var(--border);padding:10px 12px}
 .tq-chip-edit input{width:100%;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-family:'Outfit',sans-serif;font-size:13px;margin-bottom:6px}
-.tq-chip-edit input[type=number]{font-family:'DM Mono',monospace}
+.tq-chip-edit input[type=number]{font-variant-numeric:tabular-nums}
 .tq-chip-edit-actions{display:flex;gap:6px;margin-top:4px}
 .tq-chip-edit-actions button{flex:1;border:none;border-radius:6px;padding:5px 8px;font-size:11px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif}
 .tq-chip-edit-actions .save{background:var(--green);color:#fff}
@@ -93,14 +66,14 @@
 .tq-form{background:var(--foam);border:1px solid var(--border);border-radius:12px;padding:18px;margin-top:10px}
 .tq-form-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;gap:10px;flex-wrap:wrap}
 .tq-form-label{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700}
-.tq-form-name{font-family:'DM Serif Display',serif;font-size:20px;color:var(--navy);margin-top:2px}
+.tq-form-name{font-weight:700;letter-spacing:-.02em;font-size:20px;color:var(--navy);margin-top:2px}
 .tq-form-back{background:transparent;border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:11px;font-weight:600;color:var(--ocean);cursor:pointer;font-family:'Outfit',sans-serif}
 .tq-form-back:hover{background:#fff;border-color:var(--ocean)}
 .tq-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:14px}
 .tq-grid .mfield{margin-bottom:0}
 .tq-total-row{display:flex;justify-content:space-between;align-items:center;background:#fff;border-radius:10px;padding:14px 18px;border:1px solid var(--border)}
 .tq-total-label{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700}
-.tq-total-value{font-family:'DM Serif Display',serif;font-size:24px;color:var(--navy);line-height:1;margin-top:4px}
+.tq-total-value{font-weight:700;letter-spacing:-.02em;font-size:24px;color:var(--navy);line-height:1;margin-top:4px}
 .tq-total-sub{font-size:11px;color:var(--muted);margin-top:3px}
 .tq-empty{padding:24px;text-align:center;color:var(--muted);font-size:13px;background:var(--bg);border-radius:10px;border:1px dashed var(--border)}
 .tq-veh-chip{background:#fff;border:1.5px solid var(--border);border-radius:10px;padding:8px 14px;cursor:pointer;font-family:'Outfit',sans-serif;color:var(--navy);transition:border-color .15s,background .15s;text-align:left;min-width:110px}
@@ -113,10 +86,10 @@
 .tq-qty{display:inline-flex;align-items:center;gap:0;border:1px solid var(--border);border-radius:8px;background:#fff;overflow:hidden}
 .tq-qty button{background:transparent;border:none;width:30px;height:30px;font-size:16px;font-weight:700;color:var(--navy);cursor:pointer;transition:background .12s}
 .tq-qty button:hover{background:var(--foam);color:var(--ocean)}
-.tq-qty-num{min-width:32px;text-align:center;font-family:'DM Mono',monospace;font-weight:700;color:var(--navy);font-size:14px}
-*{box-sizing:border-box;margin:0;padding:0}
+.tq-qty-num{min-width:32px;text-align:center;font-variant-numeric:tabular-nums;font-weight:700;color:var(--navy);font-size:14px}
+*{margin:0;padding:0}
 html{scroll-behavior:smooth;min-height:100%;background:var(--bg)}
-body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--ink);min-height:100vh;min-height:100dvh}
+body{min-height:100dvh}
 
 /* header: /lib/app-shell.css */
 
@@ -125,26 +98,9 @@ body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--ink);min-h
 /* Breakdown line inside a KPI tile — shows the filtered spend that
    feeds the balance number above. Smaller than the main number,
    gets ink color so it stands out vs. the muted .kpi-sub line. */
-.kpi-breakdown{font-size:11px;color:var(--navy);font-weight:600;margin-top:10px;padding-top:8px;border-top:1px solid var(--border);line-height:1.4}
-/* Action button inside a KPI tile — used by the Cash tile to surface
-   the "Record ATM Withdrawal" shortcut when the balance is negative. */
-.kpi-action-btn{margin-top:10px;padding:7px 12px;font-size:11px;font-weight:700;border:none;border-radius:8px;background:var(--ocean);color:#fff;cursor:pointer;font-family:'Outfit',sans-serif;width:100%}
-.kpi-action-btn:hover{background:var(--navy)}
-
-
-
-.fsel,.mfield select{
-  appearance:none;-webkit-appearance:none;-moz-appearance:none;
-  border:1.5px solid var(--border);border-radius:11px;
-  padding:9px 40px 9px 13px;font-size:13px;font-family:'Outfit',sans-serif;color:var(--ink);
-  background-color:#fff;
-  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 14 14'%3E%3Cpath fill='%236b8099' d='M3.2 5.2a.75.75 0 0 1 1.06 0L7 7.94 9.74 5.2a.75.75 0 1 1 1.06 1.06l-3.27 3.27a.75.75 0 0 1-1.06 0L3.2 6.26a.75.75 0 0 1 0-1.06Z'/%3E%3C/svg%3E");
-  background-repeat:no-repeat;background-position:right 13px center;background-size:14px 14px;
-  box-shadow:0 2px 10px rgba(40,57,75,.04);
-  outline:none;transition:border-color .18s, box-shadow .18s, transform .18s
-}
-.fsel:hover,.mfield select:hover{border-color:#bfd3e5}
-.fsel:focus,.mfield select:focus{border-color:var(--ocean);box-shadow:0 0 0 4px rgba(30,111,168,.10)}
+.kpi-breakdown{font-size:11.5px;color:var(--navy);font-weight:600;margin-top:10px;padding-top:8px;border-top:1px solid var(--border);line-height:1.4}
+/* "Record ATM withdrawal" shortcut inside the Cash tile */
+.kpi-action-btn{margin-top:10px}
 
 .btn-icon-label,.exp-quick-btn .btn-icon-label{display:inline-flex;align-items:center;gap:8px}
 
@@ -154,24 +110,7 @@ body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--ink);min-h
 .ui-ic-lg{width:18px;height:18px}
 .ui-ic-lg svg{width:18px;height:18px}
 
-/* POS LAYOUT */
-.pos-wrap{display:flex;height:calc(100vh - 60px);overflow:hidden}
-.pos-sidebar{width:240px;flex-shrink:0;background:#fff;border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
-.pos-main{flex:1;display:flex;flex-direction:column;overflow:hidden;background:var(--bg)}
-.pos-right{width:275px;flex-shrink:0;background:#fff;border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
-
-/* SIDEBAR */
-.sb-head{padding:12px 14px;border-bottom:1px solid var(--border);flex-shrink:0}
-.sb-week-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:9px}
-.sb-week-label{font-size:11px;font-weight:700;color:var(--navy)}
-.sb-week-badge{font-size:10px;color:var(--muted);background:var(--bg);border-radius:5px;padding:2px 7px;font-family:'DM Mono',monospace}
-.sb-search{width:100%;border:1.5px solid var(--border);border-radius:8px;padding:7px 11px;font-size:13px;font-family:'Outfit',sans-serif;color:var(--ink);outline:none;margin-bottom:8px}
-.sb-search:focus{border-color:var(--ocean)}
-.sb-actions{display:flex;gap:6px}
-.sb-btn{flex:1;border:none;border-radius:8px;padding:7px 6px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;transition:all .2s;text-align:center}
-.sb-btn-p{background:var(--ocean);color:#fff}.sb-btn-p:hover{background:var(--ocean-light)}
-.sb-btn-s{background:var(--bg);color:var(--muted);border:1.5px solid var(--border)}.sb-btn-s:hover{color:var(--navy);border-color:var(--navy)}
-
+/* (the POS itself lives in camp-tab-inner.html — see .hub-embed-wrap) */
 /* WEEK TABS IN SIDEBAR */
 .week-tabs{border-bottom:1px solid var(--border);flex-shrink:0;overflow-x:auto}
 .week-tab-row{display:flex;padding:6px 8px;gap:5px}
@@ -186,44 +125,36 @@ body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--ink);min-h
 .guest-item:hover{background:var(--foam)}
 .guest-item.active{background:var(--ocean)}
 .guest-name{font-size:13px;font-weight:600;line-height:1.2;color:var(--navy)}
-.guest-sub{font-size:10px;color:var(--muted);margin-top:1px;font-family:'DM Mono',monospace}
+.guest-sub{font-size:10px;color:var(--muted);margin-top:1px;font-variant-numeric:tabular-nums}
 .guest-item.active .guest-name,.guest-item.active .guest-sub{color:#fff}
 .gpaid{width:7px;height:7px;border-radius:50%;background:var(--green);flex-shrink:0}
 
-/* POS CENTER */
-.pos-top{padding:12px 16px 10px;border-bottom:1px solid var(--border);background:#fff;flex-shrink:0}
-.pos-guest-name{font-family:'DM Serif Display',serif;font-size:19px;color:var(--navy)}
-.pos-guest-meta{font-size:12px;color:var(--muted);margin-top:2px}
 .cat-tabs{display:flex;gap:6px;padding:9px 14px;flex-shrink:0;background:#fff;border-bottom:1px solid var(--border);overflow-x:auto}
 .cat-tab{padding:6px 14px;border-radius:20px;border:1.5px solid var(--border);background:#fff;color:var(--muted);font-size:12px;font-weight:700;cursor:pointer;transition:all .2s;white-space:nowrap;font-family:'Outfit',sans-serif}
 .cat-tab:hover{border-color:var(--ocean);color:var(--ocean)}
 .cat-tab.active{background:var(--navy);color:#fff;border-color:var(--navy)}
-.items-grid{flex:1;overflow-y:auto;padding:11px 14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;align-content:start}
 .item-btn{background:#fff;border:1.5px solid var(--border);border-radius:11px;padding:11px 10px;cursor:pointer;transition:all .18s;text-align:left;font-family:'Outfit',sans-serif;display:flex;flex-direction:column;gap:2px;-webkit-tap-highlight-color:transparent}
 .item-btn:hover{border-color:var(--ocean);box-shadow:0 4px 14px rgba(30,111,168,.1);transform:translateY(-1px)}
 .item-btn:active{transform:scale(.97)}
 .iname{font-size:12px;font-weight:600;color:var(--navy);line-height:1.25}
 .idesc{font-size:10px;color:var(--muted);line-height:1.3;margin-top:1px}
-.iprice{font-family:'DM Mono',monospace;font-size:13px;color:var(--ocean);font-weight:500;margin-top:3px}
+.iprice{font-variant-numeric:tabular-nums;font-size:13px;color:var(--ocean);font-weight:500;margin-top:3px}
 .item-btn.flash{background:var(--ocean);border-color:var(--ocean)}
 .item-btn.flash .iname,.item-btn.flash .iprice,.item-btn.flash .idesc{color:#fff}
 .pos-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--muted);gap:10px;padding:32px}
 
 /* TAB PANEL */
-.tab-head{padding:12px 14px;border-bottom:1px solid var(--border);flex-shrink:0}
-.tab-title{font-family:'DM Serif Display',serif;font-size:16px;color:var(--navy);margin-bottom:2px}
-.tab-meta{font-size:11px;color:var(--muted)}
 .tab-items-list{flex:1;overflow-y:auto;padding:6px 8px}
 .tab-item{display:flex;justify-content:space-between;align-items:flex-start;padding:7px 8px;border-radius:8px;transition:background .12s;gap:6px}
 .tab-item:hover{background:var(--bg)}
 .tab-item.paid{background:var(--green-bg);border:1px solid var(--green-border)}
 .ti-name{font-size:12px;font-weight:600;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ti-time{font-size:10px;color:var(--muted);margin-top:1px}
-.ti-price{font-family:'DM Mono',monospace;font-size:12px;color:var(--ink);white-space:nowrap}
+.ti-price{font-variant-numeric:tabular-nums;font-size:12px;color:var(--ink);white-space:nowrap}
 .ti-del{border:none;background:none;cursor:pointer;color:var(--muted);font-size:15px;padding:2px 4px;border-radius:4px;transition:all .12s;line-height:1}
 .ti-del:hover{background:var(--red-bg);color:var(--red)}
 .tab-footer{border-top:1px solid var(--border);padding:12px 14px;flex-shrink:0}
-.tab-total-val{font-family:'DM Serif Display',serif;font-size:26px;color:var(--navy)}
+.tab-total-val{font-weight:700;letter-spacing:-.02em;font-size:26px;color:var(--navy)}
 .tab-btns{display:flex;gap:6px;margin-top:10px}
 .tab-btn{flex:1;border:none;border-radius:8px;padding:9px 4px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;transition:all .2s}
 .tab-btn-bill{background:var(--ocean);color:#fff}.tab-btn-bill:hover{background:var(--ocean-light)}
@@ -231,17 +162,13 @@ body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--ink);min-h
 .tab-btn-paid{background:var(--amber-bg);color:var(--amber);border:1.5px solid var(--amber-border)}.tab-btn-paid:hover{background:#fff1bf}
 
 /* CAMP TAB SUBPAGES */
-.pos-shell{background:#fff;border-radius:var(--r);border:1px solid var(--border);box-shadow:var(--sh);overflow:hidden}
-.pos-subnav{background:#fff;border-bottom:1px solid var(--border);display:flex;gap:2px;padding:0 14px;overflow-x:auto}
-.hub-pos-wrap{display:flex;height:calc(100vh - 176px);overflow:hidden}
-.week-panel,.history-panel,.sellers-panel{min-height:calc(100vh - 176px);background:var(--bg)}
 
 .tw-wrap{display:flex;flex-direction:column;min-height:calc(100vh - 176px)}
 .tw-header{padding:16px 20px 12px;flex-shrink:0;display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px}
 .tw-header-main{display:flex;flex-direction:column;gap:10px;min-width:280px;flex:1}
 .tw-week-kicker{font-size:10px;color:#7aabcc;text-transform:uppercase;letter-spacing:.12em;font-weight:700}
 .tw-week-date-line{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap}
-.tw-week-date-main{font-family:'DM Serif Display',serif;font-size:31px;line-height:1;color:var(--navy)}
+.tw-week-date-main{font-weight:700;letter-spacing:-.02em;font-size:31px;line-height:1;color:var(--navy)}
 .tw-week-date-end{font-size:14px;color:var(--muted);font-weight:700;padding-bottom:3px}
 .tw-week-summary{display:flex;gap:8px;flex-wrap:wrap}
 .tw-week-summary .tw-chip{background:#fff}
@@ -252,7 +179,7 @@ body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--ink);min-h
 .tw-week-status-btn.locked{background:#fff;color:var(--muted);border:1.5px solid var(--border);cursor:not-allowed}
 .tw-stats{display:flex;gap:16px;flex-wrap:wrap}
 .tw-stat{text-align:center}
-.tw-stat-val{font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy)}
+.tw-stat-val{font-weight:700;letter-spacing:-.02em;font-size:22px;color:var(--navy)}
 .tw-stat-val.green{color:var(--green)}
 .tw-stat-val.red{color:var(--red)}
 .tw-stat-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-top:2px}
@@ -261,7 +188,7 @@ body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--ink);min-h
 .tw-card-head{display:flex;justify-content:space-between;align-items:center;padding:11px 14px;cursor:pointer;gap:10px}
 .tw-card-name{font-size:14px;font-weight:700;color:var(--navy)}
 .tw-card-right{display:flex;align-items:center;gap:8px;flex-shrink:0}
-.tw-card-total{font-family:'DM Mono',monospace;font-size:13px;color:var(--ink)}
+.tw-card-total{font-variant-numeric:tabular-nums;font-size:13px;color:var(--ink)}
 .tw-card-body{padding:0 14px 12px;border-top:1px solid var(--border)}
 .tw-item-row{display:flex;justify-content:space-between;padding:5px 0;font-size:12px;border-bottom:1px solid rgba(0,0,0,.04)}
 .tw-item-row:last-child{border-bottom:none}
@@ -282,10 +209,10 @@ body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--ink);min-h
 .hist-week{background:#fff;border:1px solid var(--border);border-radius:11px;margin-bottom:10px;overflow:hidden;box-shadow:var(--sh)}
 .hist-week-head{display:flex;justify-content:space-between;align-items:center;padding:13px 16px;cursor:pointer;gap:10px;transition:background .12s}
 .hist-week-head:hover{background:var(--foam)}
-.hw-title{font-family:'DM Serif Display',serif;font-size:16px;color:var(--navy)}
+.hw-title{font-weight:700;letter-spacing:-.02em;font-size:16px;color:var(--navy)}
 .hw-sub{font-size:11px;color:var(--muted);margin-top:2px}
 .hw-right{display:flex;align-items:center;gap:10px;flex-shrink:0}
-.hw-total{font-family:'DM Serif Display',serif;font-size:18px;color:var(--green)}
+.hw-total{font-weight:700;letter-spacing:-.02em;font-size:18px;color:var(--green)}
 .hw-badge{font-size:10px;font-weight:700;padding:3px 9px;border-radius:20px;background:var(--bg);color:var(--muted);border:1px solid var(--border)}
 .hw-chevron{font-size:12px;color:var(--muted);transition:transform .2s}
 .hist-week.open .hw-chevron{transform:rotate(90deg)}
@@ -296,7 +223,7 @@ body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--ink);min-h
 .hw-guest-row:last-child{border-bottom:none}
 .hw-guest-name{font-size:13px;font-weight:600;color:var(--navy)}
 .hw-guest-items{font-size:11px;color:var(--muted);margin-top:1px}
-.hw-guest-total{font-family:'DM Mono',monospace;font-size:12px;color:var(--ink)}
+.hw-guest-total{font-variant-numeric:tabular-nums;font-size:12px;color:var(--ink)}
 .hw-items-detail{background:var(--bg);padding:10px 16px;border-top:1px solid var(--border)}
 .hw-item-line{display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid rgba(0,0,0,.05)}
 .hw-item-line:last-child{border-bottom:none}
@@ -309,14 +236,14 @@ body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--ink);min-h
 .ts-cat-btn.active{background:var(--navy);color:#fff;border-color:var(--navy)}
 .ts-body{flex:1;overflow-y:auto;padding:0 20px 20px}
 .ts-item{display:flex;align-items:center;gap:12px;padding:11px 14px;background:#fff;border:1px solid var(--border);border-radius:10px;margin-bottom:7px}
-.ts-rank{font-family:'DM Serif Display',serif;font-size:20px;color:var(--border);min-width:28px;text-align:center}
+.ts-rank{font-weight:700;letter-spacing:-.02em;font-size:20px;color:var(--border);min-width:28px;text-align:center}
 .ts-info{flex:1;min-width:0}
 .ts-name{font-size:13px;font-weight:700;color:var(--navy)}
 .ts-cat-label{font-size:10px;color:var(--muted);margin-top:1px}
 .ts-bar-wrap{flex:1;background:var(--bg);border-radius:4px;height:6px;overflow:hidden;min-width:60px}
 .ts-bar{height:100%;border-radius:4px;background:var(--ocean);transition:width .4s}
-.ts-qty{font-family:'DM Mono',monospace;font-size:12px;color:var(--muted);min-width:30px;text-align:right}
-.ts-rev{font-family:'DM Mono',monospace;font-size:12px;font-weight:700;color:var(--navy);min-width:60px;text-align:right}
+.ts-qty{font-variant-numeric:tabular-nums;font-size:12px;color:var(--muted);min-width:30px;text-align:right}
+.ts-rev{font-variant-numeric:tabular-nums;font-size:12px;font-weight:700;color:var(--navy);min-width:60px;text-align:right}
 
 .exp-top{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap;margin-bottom:18px}
 /* AI Bulk upload — drag PDF/photo invoices, parse-invoice extracts, row lands
@@ -332,7 +259,7 @@ body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--ink);min-h
 .ai-upload-body{padding:0 18px 18px}
 .ai-dropzone{border:2.5px dashed var(--border);border-radius:10px;padding:28px 20px;text-align:center;background:#fff;transition:border-color .18s, background .18s}
 .ai-dropzone.drag{border-color:var(--ocean);background:#eaf3fa}
-.ai-dropzone .ai-drop-icon{font-size:32px;line-height:1;margin-bottom:6px}
+.ai-dropzone .ai-drop-icon{color:var(--muted-2);margin-bottom:6px}.ai-dropzone .ai-drop-icon svg{width:28px;height:28px}
 .ai-dropzone .ai-drop-t{font-size:14px;font-weight:600;color:var(--navy)}
 .ai-dropzone .ai-drop-s{font-size:12px;color:var(--muted);margin-top:4px}
 .ai-upload-link{color:var(--ocean);font-weight:600;text-decoration:underline;cursor:pointer}
@@ -354,7 +281,7 @@ body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--ink);min-h
 .exp-recurring-block{margin-top:18px;padding-top:18px;border-top:1px solid var(--border)}
 .exp-recurring-block:first-of-type{margin-top:0;padding-top:0;border-top:none}
 .exp-recurring-block-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px}
-.exp-recurring-block-title{font-family:'DM Serif Display',serif;font-size:17px;color:var(--navy)}
+.exp-recurring-block-title{font-weight:700;letter-spacing:-.02em;font-size:17px;color:var(--navy)}
 .exp-recurring-block-sub{font-size:12px;color:var(--muted);margin-top:3px;line-height:1.55;max-width:760px}
 .exp-recurring-toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .exp-mode-toggle{display:flex;gap:6px;flex-wrap:wrap}
@@ -365,7 +292,7 @@ body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--ink);min-h
 .exp-salary-main{min-width:0;flex:1}
 .exp-salary-name{font-size:13px;font-weight:700;color:var(--navy)}
 .exp-salary-sub{font-size:11px;color:var(--muted);margin-top:3px;line-height:1.5}
-.exp-salary-amt{font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy);line-height:1}
+.exp-salary-amt{font-weight:700;letter-spacing:-.02em;font-size:22px;color:var(--navy);line-height:1}
 .exp-salary-badges{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
 .exp-salary-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
 .exp-inline-note{font-size:11px;color:var(--muted);margin-top:4px;line-height:1.45}
@@ -377,27 +304,24 @@ body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--ink);min-h
   .exp-salary-item,.exp-recurring-item{flex-direction:column;align-items:flex-start}
   .exp-salary-actions,.exp-recurring-actions{justify-content:flex-start}
 }
-.exp-period-btn{padding:6px 12px;border-radius:18px;border:1.5px solid var(--border);background:#fff;color:var(--muted);font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;transition:all .18s}
-.exp-period-btn.active{background:var(--navy);border-color:var(--navy);color:#fff}
 /* Unified Period picker — same shape across every view that has a time
    axis (camp-hub Overview + Operations Ledger, HQ Overview). Sits in the
    top-right of the view header. Single dropdown with quick presets + all
    real months in the data. */
 .period-picker option{color:var(--ink)}
-.exp-filters{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
-.exp-search{min-width:220px;flex:1;border:1.5px solid var(--border);border-radius:9px;padding:8px 12px;font-size:13px;font-family:'Outfit',sans-serif;color:var(--ink);background:#fff;outline:none}
-.exp-search:focus{border-color:var(--ocean)}
+.exp-filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:var(--sp-4)}
+.exp-filters .search{flex:1;min-width:200px}
+.exp-toggle{display:inline-flex;align-items:center;gap:6px;height:var(--h-btn);padding:0 12px;background:#fff;border:1px solid var(--border-2);border-radius:var(--r-sm);font-size:12.5px;font-weight:600;color:var(--navy);cursor:pointer;white-space:nowrap}
+.exp-toggle input{width:14px;height:14px;accent-color:var(--ocean);margin:0}
 .exp-quick{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
-.exp-quick-btn{display:inline-flex;align-items:center;gap:6px;border:none;border-radius:10px;padding:10px 12px;background:#fff;border:1.5px solid var(--border);font-size:12px;font-weight:700;color:var(--navy);cursor:pointer;font-family:'Outfit',sans-serif;transition:all .18s}
-.exp-quick-btn:hover{border-color:var(--ocean);color:var(--ocean);transform:translateY(-1px)}
+.exp-quick-btn{display:inline-flex;align-items:center;gap:6px;height:var(--h-btn);border-radius:var(--r-sm);padding:0 12px;background:#fff;border:1px solid var(--border-2);font-size:12.5px;font-weight:600;color:var(--navy);cursor:pointer;font-family:inherit;transition:border-color .15s,color .15s}
+.exp-quick-btn:hover{border-color:var(--ocean);color:var(--ocean)}
 .exp-inline{padding:14px 16px;margin-bottom:16px}
 .exp-inline-grid{display:grid;grid-template-columns:1fr 1.15fr 1.1fr 1.35fr .8fr 1.5fr 1.05fr 1.05fr;gap:10px;align-items:end}
 .exp-inline-full{grid-column:1 / -1}
-.exp-kpis{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:10px;margin-bottom:16px}
-.exp-table-actions{display:flex;justify-content:center;gap:6px}
-.icon-btn{border:none;background:none;cursor:pointer;color:var(--muted);font-size:14px;padding:4px 6px;border-radius:6px;line-height:1;transition:all .12s}
-.icon-btn:hover{background:var(--foam);color:var(--ocean)}
-.icon-btn.danger:hover{background:var(--red-bg);color:var(--red)}
+.exp-kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--sp-3);margin-bottom:var(--sp-4)}
+.exp-table-actions{display:flex;justify-content:flex-end;gap:6px}
+.icon-danger:hover{color:var(--red);border-color:var(--red);background:var(--red-bg)}
 .hub-embed-wrap{height:calc(100vh - 60px);padding:0}
 .hub-embed-frame{width:100%;height:100%;border:none;display:block;background:var(--bg)}
 
@@ -405,29 +329,24 @@ body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--ink);min-h
 .monthly-expenses-modal{max-width:1120px}
 .monthly-expenses-modal .mbody{background:var(--bg)}
 .monthly-expenses-shell{display:grid;gap:16px}
-@keyframes mIn{from{opacity:0;transform:scale(.93) translateY(10px)}to{opacity:1;transform:scale(1) translateY(0)}}
 
 /* BAR CHART */
 .bar-chart{display:flex;align-items:flex-end;gap:5px;height:100px;margin-top:10px}
 .bar-col{display:flex;flex-direction:column;align-items:center;gap:3px;flex:1;min-width:0}
 .bar-fill{width:100%;border-radius:4px 4px 0 0;min-height:3px}
 .bar-label{font-size:9px;color:var(--muted);text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%}
-.bar-val{font-family:'DM Mono',monospace;font-size:8px;color:var(--muted);text-align:center}
+.bar-val{font-variant-numeric:tabular-nums;font-size:8px;color:var(--muted);text-align:center}
 
 /* BILL */
 .bill-modal{max-width:580px}
 .btotal-box{background:var(--navy);border-radius:11px;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;margin-top:14px}
 
-/* TOAST */
-.toast{position:fixed;bottom:20px;right:20px;z-index:999;background:var(--navy);color:#fff;border-radius:10px;padding:10px 18px;font-size:13px;font-weight:600;box-shadow:var(--sh-lg);animation:mIn .25s ease;display:none;max-width:280px}
-.toast.show{display:block}
-
-::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+/* toast + scrollbar: /lib/app-shell.css */
 
 @media print{body>*{display:none!important}#billOv{display:block!important;position:static!important;background:none!important;backdrop-filter:none!important;padding:0!important}.modal{box-shadow:none!important;max-height:none!important;border-radius:0!important;width:100%!important;animation:none!important}.mhdr{background:var(--navy)!important;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;border-radius:0!important}.mfooter{display:none!important}.btotal-box{background:var(--navy)!important;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}@page{margin:1.2cm}}
-@media(max-width:1000px){.g4,.exp-kpis{grid-template-columns:1fr 1fr}.pos-right{width:240px}}
+@media(max-width:1000px){.exp-kpis{grid-template-columns:1fr 1fr}}
 @media(max-width:1200px){.exp-inline-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
-@media(max-width:700px){.g4,.g3,.g2,.exp-inline-grid,.exp-kpis{grid-template-columns:1fr}.pos-right{display:none}.hub-pos-wrap{height:auto;flex-direction:column}.pos-sidebar{width:100%;border-right:none;border-bottom:1px solid var(--border)}}
+@media(max-width:700px){.exp-inline-grid,.exp-kpis{grid-template-columns:1fr}.exp-filters .select,.exp-filters .period-picker,.exp-toggle{width:100%}}
 </style>
 </head>
 <body>
@@ -463,9 +382,9 @@ body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--ink);min-h
         <span class="app-switch-caret">▾</span>
       </summary>
       <nav class="app-switch-menu">
-        <a href="/camp-hub/?location=portugal"    data-loc="portugal"><span>Portugal</span><small>Ericeira surf camp</small></a>
-        <a href="/camp-hub/?location=morocco"     data-loc="morocco"><span>Morocco</span><small>Taghazout camp</small></a>
-        <a href="/camp-hub/?location=sri-lanka"   data-loc="sri-lanka"><span>Sri Lanka</span><small>Weligama camp</small></a>
+        <a href="/camp-hub/?location=portugal"    data-loc="portugal"><span>Portugal</span><small>Costa da Caparica</small></a>
+        <a href="/camp-hub/?location=morocco"     data-loc="morocco"><span>Morocco</span><small>Tamraght</small></a>
+        <a href="/camp-hub/?location=sri-lanka"   data-loc="sri-lanka"><span>Sri Lanka</span><small>Ahangama</small></a>
         <a href="/camp-hub/?location=junior-camp" data-loc="junior-camp"><span>Junior Camp</span><small>Summer junior camp</small></a>
         <a href="/camp-hub/?location=surf-school" data-loc="surf-school"><span>Surf School</span><small>Caparica rentals</small></a>
       </nav>
@@ -485,7 +404,6 @@ body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--ink);min-h
          the auth boot resolves. Prevents ops-camp managers from ever
          seeing a link they can't open. -->
     <a class="nav-action-btn" id="hqShortcutBtn" href="/hq/" style="display:none;text-decoration:none"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M3 10 10 3l7 7"/><path d="M5 9v8h10V9"/></svg></span><span>HQ</span></span></a>
-    <button class="nav-action-btn" onclick="exportBackup()"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M10 14V4"/><path d="m6.5 7.5 3.5-3.5 3.5 3.5"/><path d="M4 16h12"/></svg></span><span>Export backup</span></span></button>
   </div>
   <button class="nav-hamburger" onclick="toggleMobileNav()" aria-label="Open menu">☰</button>
 </nav>
@@ -502,8 +420,8 @@ body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--ink);min-h
   <button class="ntab-m" data-page="expenses" onclick="showPage('expenses');toggleMobileNav()">Operations Ledger</button>
   <button class="ntab-m" data-page="weekly" onclick="showPage('weekly');toggleMobileNav()">Weekly P&amp;L</button>
   <div class="nav-mob-lbl">Actions</div>
-  <a class="ntab-m" id="hqShortcutBtnMob" href="/hq/" style="display:none">🏠 HQ</a>
-  <button class="ntab-m" onclick="exportBackup();toggleMobileNav()">⤴ Export backup</button>
+  <a class="ntab-m" id="hqShortcutBtnMob" href="/hq/" style="display:none">HQ</a>
+  <button class="ntab-m" onclick="exportBackup();toggleMobileNav()">Download backup file</button>
 </aside>
 
 <!-- ═══════════ OVERVIEW ═══════════ -->
@@ -529,7 +447,7 @@ body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--ink);min-h
     <section class="ov-section">
       <div class="ov-section-head">
         <div class="ov-section-title">Performance</div>
-        <div class="ov-section-sub">Headline numbers for the current selection</div>
+        <div class="ov-section-sub">For the period picked above</div>
       </div>
       <div class="g4" id="ovKpis"></div>
     </section>
@@ -577,34 +495,27 @@ body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--ink);min-h
 <!-- ═══════════ EXPENSES ═══════════ -->
 <div class="page" id="page-expenses">
   <div class="container">
-    <div class="exp-top">
+    <div class="section-head page-head">
       <div>
-        <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy)">Operations Ledger</div>
-        <div style="font-size:12px;color:var(--muted);margin-top:2px">Faster daily logging in LKR. Category drives the reporting area automatically.</div>
+        <div class="section-title">Operations Ledger</div>
+        <div class="section-sub" id="expPageSub">Log what the camp spends and earns. Pick a category and it lands in the right report.</div>
       </div>
       <div class="exp-top-actions">
-        <label class="period-picker" title="Filter by period">
-          <span class="period-picker-lbl">Period</span>
-          <select id="expPeriodSel" onchange="setExpPeriodUnified(this.value)">
-            <option value="all">All time</option>
-            <option value="week">This week</option>
-            <option value="month">This month</option>
-          </select>
-        </label>
         <button class="btn btn-s" id="quickTransportBtn" onclick="openTransportQuickAdd()" style="display:none"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M3 13h14"/><path d="M5 13v-3a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v3"/><circle cx="7" cy="15" r="1.5"/><circle cx="13" cy="15" r="1.5"/></svg></span><span>Transport</span></span></button>
         <button class="btn btn-s" onclick="openMonthlyExpensesModal()"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M6 3h8l3 3v11H6z"/><path d="M14 3v4h4"/><path d="M9 10h5"/><path d="M9 13h5"/></svg></span><span>Monthly Expenses</span></span></button>
+        <button class="btn btn-s" onclick="exportBackup()" title="Download a backup file of this camp's data"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M10 4v10"/><path d="m6.5 10.5 3.5 3.5 3.5-3.5"/><path d="M4 16h12"/></svg></span><span>Download backup file</span></span></button>
       </div>
     </div>
 
     <details class="ai-upload-block" id="aiUploadBlock">
       <summary>
-        <span class="ai-upload-title">🤖 Bulk upload · AI reads the invoices</span>
+        <span class="ai-upload-title">Bulk upload · AI reads the invoices</span>
         <span class="ai-upload-hint">Drop PDFs/photos — each one is added to this camp's ledger automatically</span>
         <span class="ai-upload-caret">▾</span>
       </summary>
       <div class="ai-upload-body">
         <div id="aiDropzone" class="ai-dropzone" onclick="document.getElementById('aiFileInput').click()">
-          <div class="ai-drop-icon">📥</div>
+          <div class="ai-drop-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div>
           <div class="ai-drop-t">Drop invoices here</div>
           <div class="ai-drop-s">or <label for="aiFileInput" class="ai-upload-link" onclick="event.stopPropagation()">click to choose files</label> — you can pick many at once</div>
           <input id="aiFileInput" type="file" accept="application/pdf,image/*,.heic" multiple style="display:none">
@@ -624,7 +535,7 @@ body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--ink);min-h
       <button class="exp-quick-btn qcat-camp" data-cat="Drinks" onclick="quickCategoryShortcut('Drinks')"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M6 4h8"/><path d="M7 4v3c0 2 1.5 3.5 3 3.5S13 9 13 7V4"/><path d="M10 10.5V16"/><path d="M7.5 16h5"/></svg></span><span>Drinks</span></span></button>
       <button class="exp-quick-btn qcat-camp" data-cat="Cleaning" onclick="quickCategoryShortcut('Cleaning')"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M6 4h8"/><path d="M8 4v3"/><path d="M12 4v3"/><path d="M5 7h10l-1 9H6z"/></svg></span><span>Cleaning</span></span></button>
       <button class="exp-quick-btn" data-cat="Transport" onclick="quickCategoryShortcut('Transport')"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M3 12h11"/><path d="m11 8 4 4-4 4"/><path d="M4 8h4"/></svg></span><span>Transport</span></span></button>
-      <button class="exp-quick-btn" data-cat="Cash Float" onclick="startQuickExpense('transfer',{category:'Cash Float',description:'Cash sent to camp'})"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M3 10h10"/><path d="m10 6 4 4-4 4"/><path d="M14 5h3v10h-3"/></svg></span><span>Cash sent</span></span></button>
+      <button class="exp-quick-btn" data-cat="Cash Float" onclick="startQuickExpense('transfer',{category:'Cash Float',description:'Cash sent to camp'})"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M3 10h10"/><path d="m10 6 4 4-4 4"/><path d="M14 5h3v10h-3"/></svg></span><span>Money from HQ</span></span></button>
       <button class="exp-quick-btn qcat-camp" data-cat="Merchandise" onclick="quickCategoryShortcut('Merchandise')"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7h10l-.6 9H5.6z"/><path d="M7 7V5a3 3 0 0 1 6 0v2"/></svg></span><span>Merchandise</span></span></button>
       <!-- Surf School specific shortcuts — Rent / Salary / Gear. Toggled
            in by applyLocationSpecificExpUI() when the active hub is the
@@ -635,13 +546,13 @@ body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--ink);min-h
     </div>
 
     <div class="card exp-inline">
-      <div style="font-family:'DM Serif Display',serif;font-size:16px;color:var(--navy);margin-bottom:10px">Quick Add</div>
+      <div class="card-title" style="margin-bottom:12px">Quick add</div>
       <div class="exp-inline-grid">
         <div class="mfield" style="margin-bottom:0" id="qe_type_wrap">
           <label>Type</label>
           <select id="qe_type" onchange="renderQuickExpenseCategories()">
             <option value="expense">Expense</option>
-            <option value="transfer">Money Sent</option>
+            <option value="transfer">Money from HQ</option>
             <option value="income">Revenue</option>
           </select>
         </div>
@@ -703,7 +614,7 @@ body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--ink);min-h
       <div class="modal monthly-expenses-modal">
         <div class="mhdr">
           <div class="mhdr-title">Monthly Expenses</div>
-          <div class="mhdr-sub">One cleaner monthly popup for staff salaries and fixed monthly costs. Items are added automatically when you open the app on or after the last day of the month, and you can also run them manually anytime.</div>
+          <div class="mhdr-sub">Staff salaries and fixed monthly costs. Added automatically on the last day of each month; use 'Add all now' to post a month early.</div>
         </div>
         <div class="mbody">
           <div class="monthly-expenses-shell">
@@ -871,7 +782,7 @@ body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--ink);min-h
             </span>
             <div style="flex:1"></div>
             <label class="tq-edit-toggle" id="tqEditModeWrap"><input type="checkbox" id="tqEditMode" onchange="renderTransportChips()"> <span>Edit presets</span></label>
-            <a id="tqCatalogHint" href="/prices?location=__SLUG__" target="_blank" style="display:none;font-size:11px;color:var(--ocean);font-weight:600;text-decoration:none;padding:6px 10px;border-radius:8px;background:var(--foam)">↗ Edit in /prices</a>
+            <a id="tqCatalogHint" href="/prices?location=__SLUG__" target="_blank" class="btn btn-s btn-sm" style="display:none">Edit in Prices</a>
           </div>
 
           <div id="tqChipsWrap" class="tq-chips-wrap"></div>
@@ -905,7 +816,6 @@ body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--ink);min-h
               <div class="mfield" id="tqRoundTripNote" style="display:none">
                 <label>&nbsp;</label>
                 <div style="background:var(--foam);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:12px;color:var(--ocean);font-weight:600;display:flex;align-items:center;gap:6px">
-                  <span style="font-size:14px">↺</span>
                   <span>Round trip — both ways included</span>
                 </div>
               </div>
@@ -947,18 +857,26 @@ body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--ink);min-h
     </div>
 
     <div class="exp-filters">
-      <input class="exp-search" id="expSearch" placeholder="Search description, vendor, or category…" oninput="renderExpenses()">
-      <select class="fsel" id="expTypeF" onchange="renderExpenses()">
+      <label class="period-picker" title="Filter by period">
+        <span class="period-picker-lbl">Period</span>
+        <select id="expPeriodSel" onchange="setExpPeriodUnified(this.value)">
+          <option value="all">All time</option>
+          <option value="week">This week</option>
+          <option value="month">This month</option>
+        </select>
+      </label>
+      <select class="select" id="expTypeF" onchange="renderExpenses()">
         <option value="all">All types</option>
         <option value="expense">Expenses</option>
-        <option value="transfer">Money Sent</option>
+        <option value="transfer">Money from HQ</option>
         <option value="income">Revenue</option>
       </select>
-      <select class="fsel" id="expPayF" onchange="renderExpenses()"><option value="all">All payment methods</option></select>
-      <select class="fsel" id="expCatF" onchange="renderExpenses()"><option value="all">All categories</option></select>
-      <select class="fsel" id="expWeekF" onchange="renderExpenses()"><option value="all">All weeks</option></select>
-      <label class="fsel" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap" title="Invoices paid centrally by HQ and mirrored into this ledger (source hq_invoice). Untick to list only what was paid from the camp float. The totals below always include them."><input type="checkbox" id="expIncludeHq" checked onchange="renderExpenses()"> Include HQ-paid invoices</label>
-      <button onclick="exportLedgerCsv()" style="border:none;background:var(--navy);color:#fff;border-radius:9px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">⬇ Export CSV</button>
+      <select class="select" id="expPayF" onchange="renderExpenses()"><option value="all">All payment methods</option></select>
+      <select class="select" id="expCatF" onchange="renderExpenses()"><option value="all">All categories</option></select>
+      <select class="select" id="expWeekF" onchange="renderExpenses()"><option value="all">All weeks</option></select>
+      <label class="exp-toggle" title="Invoices paid by HQ and mirrored into this ledger. Untick to list only what the camp paid itself. The totals below always include them."><input type="checkbox" id="expIncludeHq" checked onchange="renderExpenses()"> Include HQ-paid invoices</label>
+      <input class="search" id="expSearch" placeholder="Search description, vendor or category…" oninput="renderExpenses()">
+      <button class="btn btn-s" id="expCsvBtn" onclick="exportLedgerCsv()">Export CSV</button>
     </div>
 
     <div class="card" id="expTable"></div>
@@ -974,13 +892,13 @@ body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--ink);min-h
     <div class="exp-totals" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-top:14px">
       <div class="card card-pad">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px">
-          <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">Expenses by month · Local / HQ</div>
-          <button onclick="exportLedgerTotalsCsv()" style="border:1.5px solid var(--border);background:#fff;border-radius:9px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;color:var(--navy);white-space:nowrap">⬇ Totals CSV</button>
+          <div class="card-title">Expenses by month · Local / HQ</div>
+          <button class="btn btn-s btn-sm" id="expTotalsCsvBtn" onclick="exportLedgerTotalsCsv()">Totals CSV</button>
         </div>
         <div id="expTotalsByMonth" style="overflow-x:auto"></div>
       </div>
       <div class="card card-pad">
-        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin-bottom:8px">Expenses by category · Local / HQ</div>
+        <div class="card-title" style="margin-bottom:8px">Expenses by category · Local / HQ</div>
         <div id="expTotalsByCat" style="overflow-x:auto"></div>
       </div>
     </div>
@@ -990,9 +908,11 @@ body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--ink);min-h
 <!-- ═══════════ WEEKLY P&L ═══════════ -->
 <div class="page active" id="page-weekly">
   <div class="container">
-    <div style="margin-bottom:18px">
-      <div style="font-family:&#39;DM Serif Display&#39;,serif;font-size:22px;color:var(--navy)">Weekly P&amp;L</div>
-      <div style="font-size:12px;color:var(--muted);margin-top:2px">Camp Tab revenue (paid guests) vs expenses — every Sat→Sat week</div>
+    <div class="section-head page-head">
+      <div>
+        <div class="section-title">Weekly P&amp;L</div>
+        <div class="section-sub">Cash control and sales by category — every Saturday-to-Saturday week</div>
+      </div>
     </div>
     <div id="weeklyContent"></div>
   </div>
@@ -1129,13 +1049,13 @@ Lina Costa
     <div class="mbody" id="billBody"></div>
     <div class="mfooter">
       <button class="btn btn-s" onclick="closeOv(&#39;billOv&#39;)">Close</button>
-      <button class="btn btn-g" id="billPaidBtn">✓ Mark paid</button>
-      <button class="btn btn-p" onclick="window.print()">🖨 Print</button>
+      <button class="btn btn-s" onclick="window.print()">Print</button>
+      <button class="btn btn-p" id="billPaidBtn">Mark paid</button>
     </div>
   </div>
 </div>
 
-<div class="toast" id="toast">Saved ✓</div>
+<div class="toast" id="toast"></div>
 
 <script>
 const __MEMORY_STORAGE__=new Map();
@@ -2012,7 +1932,7 @@ async function saveStateStore(stateKey,stateJson,{retries=3}={}){
           .from('location_state_store')
           .upsert({location_id:locationId,state_key:stateKey,state_json:stateJson,updated_at:new Date().toISOString()},{onConflict:'location_id,state_key'});
         if(error) throw error;
-        setSavePill('saved','Saved ✓');
+        setSavePill('saved','Saved');
         _pendingWeeksSave=false;
         return true;
       }catch(e){
@@ -2020,7 +1940,7 @@ async function saveStateStore(stateKey,stateJson,{retries=3}={}){
         if(attempt<retries) await new Promise(r=>setTimeout(r,500*attempt));
       }
     }
-    setSavePill('failed','⚠ Save failed — click to retry');
+    setSavePill('failed','Save failed — tap to retry');
     _pendingWeeksSave=true;
     return false;
   }finally{
@@ -2102,7 +2022,7 @@ function subscribeHubRealtime(){
           if(incoming.salaryMode) S.salaryMode=incoming.salaryMode;
           save_mem();
           rerenderActivePageData();
-          toast('Semana atualizada por outro computador ✓');
+          toast('Week updated on another device');
         }
       } else if(key===OV_CSV_REMOTE_KEY&&Array.isArray(json)){
         ovBookings=json;
@@ -2419,7 +2339,7 @@ function handleLedgerSupabaseError(context,error){
   if(HUB_LEDGER_SYNC_ERROR_SHOWN) return;
   HUB_LEDGER_SYNC_ERROR_SHOWN=true;
   // Show the actual error so problems are diagnosable instead of silent.
-  toast('Sync failed: '+context+' — '+msg.slice(0,90));
+  toast("Couldn't save — check your connection and tap the Saved/Error pill to retry. ("+msg.slice(0,80)+')','err');
 }
 function ledgerEntryToDbRow(entry,locationId){
   const normalized=normalizeLedgerEntry(entry);
@@ -2703,10 +2623,10 @@ async function commitLedgerEntry(payload,context='entry'){
     S.ledger.push(payload);
     save();
     notifyLedgerChanged();
-    setSavePill('saved','Saved ✓');
+    setSavePill('saved','Saved');
     return true;
   }catch(error){
-    setSavePill('failed','⚠ Save failed — click to retry');
+    setSavePill('failed','Save failed — tap to retry');
     handleLedgerSupabaseError(context,error);
     throw error; // re-throw so the caller skips its render/toast success path
   }finally{
@@ -2722,10 +2642,10 @@ async function commitLedgerEntries(entries,context='batch'){
     S.ledger.push(...entries);
     save();
     notifyLedgerChanged();
-    setSavePill('saved','Saved ✓');
+    setSavePill('saved','Saved');
     return true;
   }catch(error){
-    setSavePill('failed','⚠ Save failed — click to retry');
+    setSavePill('failed','Save failed — tap to retry');
     handleLedgerSupabaseError(context,error);
     throw error;
   }finally{
@@ -2810,11 +2730,11 @@ function applyLocationSpecificExpUI(){
   });
   // Swap the sub-line so "daily logging in LKR" isn't shown to the
   // school (which uses EUR). Camp copy stays intact everywhere else.
-  const sub = document.querySelector('#page-expenses .exp-top div div:nth-child(2)');
+  const sub = document.getElementById('expPageSub');
   if (sub) {
     sub.textContent = isSchool
       ? 'Rentals + Lessons revenue lands automatically. Add the school\'s general costs (Rent, Salaries, Gear, Utilities…) here.'
-      : 'Faster daily logging in LKR. Category drives the reporting area automatically.';
+      : 'Log what the camp spends and earns. Pick a category and it lands in the right report.';
   }
 }
 function _fileToBase64(file){
@@ -2904,7 +2824,7 @@ async function processAiInvoiceFiles(files){
       };
       state.textContent='Saving…';
       await commitLedgerEntry(payload, 'ai-invoice');
-      state.innerHTML=`<span style="color:#118a5b">✓ Added · €${Math.round(amountEur).toLocaleString('en-GB')}</span>`;
+      state.innerHTML=`<span style="color:var(--green)">Added · €${Math.round(amountEur).toLocaleString('en-GB')}</span>`;
     } catch (e) {
       state.innerHTML=`<span style="color:#c94e42">Error: ${escapeHtml(String(e?.message||e))}</span>`;
     }
@@ -3065,7 +2985,7 @@ async function backfillLocalMonthlyProfilesToSupabase(){
       const { error } = await client.from('monthly_cost_profiles').insert(inserts);
       if(error) throw error;
       window.__hubMonthlyBackfill={count:inserts.length,names:inserts.map(r=>r.name),at:new Date().toISOString()};
-      toast(`Synced ${inserts.length} fixed cost${inserts.length===1?'':'s'} / salar${inserts.length===1?'y':'ies'} to Supabase`);
+      toast('Saved.');
     }
     localStorage.setItem(MONTHLY_PROFILES_PUSH_VERSION_KEY,'done');
   }catch(e){
@@ -3404,8 +3324,8 @@ function dualCurrency(amount,large='eur',onDark=false){
   const mainCol=onDark?'#fff':'inherit';
   const subCol=onDark?'rgba(255,255,255,.75)':'inherit';
   return large==='lkr'
-    ? `<div style="font-family:'DM Serif Display',serif;font-size:26px;color:${mainCol};line-height:1.05">${lkr(toLkr(amount))}</div><div style="font-size:11px;color:${subCol};margin-top:4px">${euro(amount)}</div>`
-    : `<div style="font-family:'DM Serif Display',serif;font-size:26px;color:${mainCol};line-height:1.05">${euro(amount)}</div><div style="font-size:11px;color:${subCol};margin-top:4px">${lkr(toLkr(amount))}</div>`;
+    ? `<div style="font-weight:700;letter-spacing:-.02em;font-size:26px;color:${mainCol};line-height:1.05">${lkr(toLkr(amount))}</div><div style="font-size:11px;color:${subCol};margin-top:4px">${euro(amount)}</div>`
+    : `<div style="font-weight:700;letter-spacing:-.02em;font-size:26px;color:${mainCol};line-height:1.05">${euro(amount)}</div><div style="font-size:11px;color:${subCol};margin-top:4px">${lkr(toLkr(amount))}</div>`;
 }
 function moneyPair(amount){
   return `${lkr(toLkr(amount))} <span style="font-size:11px;color:var(--muted);font-weight:500">${euro(amount)}</span>`;
@@ -3455,7 +3375,7 @@ function dualCurrencyLocal(localAmount,eurAmount=null,onDark=false){
   const subCol=onDark?'rgba(255,255,255,.75)':'inherit';
   const local=Number(localAmount||0);
   const eurVal=eurAmount==null ? Number((local/(LOCAL_PER_EUR||1)).toFixed(2)) : Number(eurAmount||0);
-  return `<div style="font-family:'DM Serif Display',serif;font-size:26px;color:${mainCol};line-height:1.05">${lkr(local)}</div><div style="font-size:11px;color:${subCol};margin-top:4px">${euro(eurVal)}</div>`;
+  return `<div style="font-weight:700;letter-spacing:-.02em;font-size:26px;color:${mainCol};line-height:1.05">${lkr(local)}</div><div style="font-size:11px;color:${subCol};margin-top:4px">${euro(eurVal)}</div>`;
 }
 // ── Phase 4: pricing_catalog as master for Camp Tab Tours menu ──────────────
 //
@@ -4080,7 +4000,7 @@ function syncWeekSettlement(wk){
 }
 function recurringRuleSub(rule){
   const timing=rule.frequency==='monthly_end'?'Auto at month end':'Recurring';
-  const mode=rule.type==='transfer'?'Money Sent':rule.type==='income'?'Revenue':'Expense';
+  const mode=rule.type==='transfer'?'Money from HQ':rule.type==='income'?'Revenue':'Expense';
   // Amount display: show in the rule's own currency. EUR-denominated
   // rules (e.g., software subscriptions) display as €X.XX; local-
   // currency rules go through lkr() which formats with the active
@@ -4676,9 +4596,9 @@ async function upsertClosedWeekIncome(entry){
     });
     save();
     notifyLedgerChanged();
-    setSavePill('saved','Saved ✓');
+    setSavePill('saved','Saved');
   }catch(error){
-    setSavePill('failed','⚠ Save failed — close-week revenue will retry on reload');
+    setSavePill('failed','Save failed — close-week revenue will retry on reload');
     handleLedgerSupabaseError('camp tab ledger sync',error);
     return false;
   }finally{
@@ -5148,13 +5068,13 @@ async function renderSurfSchoolOverview(){
     box.innerHTML = `
       <div class="card card-pad" style="border-left:4px solid var(--ocean)">
         <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.14em;font-weight:800;margin-bottom:6px">Rentals</div>
-        <div style="font-family:'DM Serif Display',serif;font-size:32px;color:var(--navy);line-height:1">${fmtEur(rentalRev)}</div>
+        <div style="font-weight:700;letter-spacing:-.02em;font-size:32px;color:var(--navy);line-height:1">${fmtEur(rentalRev)}</div>
         <div style="font-size:12px;color:var(--muted);margin-top:6px">${rentals.length} rental${rentals.length===1?'':'s'} · ${openNow} still open</div>
         <button class="btn btn-s" style="margin-top:10px" onclick="showPage('pos')">Open Rentals tab →</button>
       </div>
       <div class="card card-pad" style="border-left:4px solid var(--amber-mid,#c98a1f);opacity:${lessons.length?1:.65}">
         <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.14em;font-weight:800;margin-bottom:6px">Lessons</div>
-        <div style="font-family:'DM Serif Display',serif;font-size:32px;color:var(--navy);line-height:1">${fmtEur(lessonRev)}</div>
+        <div style="font-weight:700;letter-spacing:-.02em;font-size:32px;color:var(--navy);line-height:1">${fmtEur(lessonRev)}</div>
         <div style="font-size:12px;color:var(--muted);margin-top:6px">${lessons.length} lesson${lessons.length===1?'':'s'}${lessons.length?'':' · not yet exposed on the form'}</div>
       </div>
     `;
@@ -5608,7 +5528,7 @@ function renderOverview(){
   const tourCardsMarkup=tourRows.length?`
     <div class="card card-pad" style="grid-column:1 / -1">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;gap:12px;flex-wrap:wrap">
-        <div style="font-family:'DM Serif Display',serif;font-size:17px;color:var(--navy);display:flex;align-items:center;gap:8px">${uiIcon('wave')}<span>Tours by product</span></div>
+        <div class="ov-cat-title" style="font-weight:700;letter-spacing:-.02em;font-size:17px;color:var(--navy);display:flex;align-items:center;gap:8px">${uiIcon('wave')}<span>Tours by product</span></div>
         <div style="font-size:11px;color:var(--muted)">${tourRows.length} tour line${tourRows.length!==1?'s':''} · profit per activity</div>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px">
@@ -5637,12 +5557,12 @@ function renderOverview(){
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
               <div style="background:#fff;border-radius:8px;padding:10px">
                 <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin-bottom:4px">Revenue</div>
-                <div style="font-family:'DM Serif Display',serif;font-size:18px;color:var(--green)">${lkr(r.revenueLocal)}</div>
+                <div style="font-weight:700;letter-spacing:-.02em;font-size:18px;color:var(--green)">${lkr(r.revenueLocal)}</div>
                 <div style="font-size:10px;color:var(--muted);margin-top:2px">${euro(r.revenueEur)}</div>
               </div>
               <div style="background:#fff;border-radius:8px;padding:10px">
                 <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin-bottom:4px">Direct cost</div>
-                <div style="font-family:'DM Serif Display',serif;font-size:18px;color:var(--navy)">${lkr(r.costLocal)}</div>
+                <div style="font-weight:700;letter-spacing:-.02em;font-size:18px;color:var(--navy)">${lkr(r.costLocal)}</div>
                 <div style="font-size:10px;color:var(--muted);margin-top:2px">${euro(r.costEur)}${hasComp?` · ${lkr(r.compCostLocal)} comp`:''}</div>
               </div>
             </div>
@@ -5670,14 +5590,13 @@ function renderOverview(){
   if (IS_PORTUGAL_HQ) {
     // Override the .g4 (4-column) grid so the 3 Portugal tiles stretch
     // full width instead of leaving an empty fourth column on the right.
-    ovKpisEl.style.gridTemplateColumns = 'repeat(3, minmax(0, 1fr))';
-    // Portugal is the HQ — no Bank/Cash drawer split, so only 4 chips
-    // exist. Use a single 4-column row instead of 3×2 so Balance doesn't
-    // sit orphaned in row 2. HQ Transferred is normally 0 here (money
-    // doesn't move to itself) but kept for visual parity across locations.
-    ovKpisEl.style.gridTemplateColumns = 'repeat(4, minmax(0,1fr))';
+    // Portugal is the HQ — no Bank/Cash drawer split, so only 4 tiles
+    // exist: one 4-column row (the shell's .g4 collapses on phones).
+    // Money from HQ is normally 0 here (money doesn't move to itself)
+    // but kept for visual parity across locations.
+    ovKpisEl.className = 'g4';
     ovKpisEl.innerHTML = `
-      ${kpi('HQ Transferred (in)','Money sent from HQ to this camp',lkr(moneySentLocal),'kv-ocean',euro(moneySentEur))}
+      ${kpi('Money from HQ','Money sent from HQ to this camp',lkr(moneySentLocal),'kv-ocean',euro(moneySentEur))}
       ${kpi('On-site revenue','Tours + merch + bar generated at the camp',lkr(totalRevenueLocal),'kv-green',euro(totalRevenueEur))}
       ${kpi('Total Spent','Everything that went out (expenses only)',lkr(totalExpLocal),'',euro(totalExpEur))}
       ${kpi('Balance','Bank + Cash drawers combined',lkr(totalBalanceLocal),totalBalanceLocal>=0?'kv-green':'kv-red',euro(totalBalanceEur))}
@@ -5687,9 +5606,9 @@ function renderOverview(){
     // happened this period), Row 2 = POSITION (where the money sits now).
     // Total Spent is neutral (default kpi-value colour) — spending isn't
     // a loss; red is reserved for actually-negative balances.
-    ovKpisEl.style.gridTemplateColumns = 'repeat(3, minmax(0,1fr))';
+    ovKpisEl.className = 'g3';
     ovKpisEl.innerHTML=`
-      ${kpi('HQ Transferred (in)','Money sent from HQ to this camp',lkr(moneySentLocal),'kv-ocean',euro(moneySentEur))}
+      ${kpi('Money from HQ','Money sent from HQ to this camp',lkr(moneySentLocal),'kv-ocean',euro(moneySentEur))}
       ${kpi('On-site revenue','Tours + merch + bar generated at the camp',lkr(totalRevenueLocal),'kv-green',euro(totalRevenueEur))}
       ${kpi('Total Spent','Everything that went out (expenses only)',lkr(totalExpLocal),'',euro(totalExpEur))}
       ${kpi('Balance','Bank + Cash drawers combined',lkr(totalBalanceLocal),totalBalanceLocal>=0?'kv-green':'kv-red',euro(totalBalanceEur))}
@@ -5702,7 +5621,6 @@ function renderOverview(){
   // 2-column grid: Food control sits in the first cell, then Bar / Merch /
   // Transport / Tours follow in reading order — Food next to Bar in row 1,
   // Merch next to Transport in row 2.
-  document.getElementById('ovCatPanels').style.gridTemplateColumns='1fr 1fr';
   document.getElementById('ovCatPanels').innerHTML=`
     ${foodControlHtml}
     ${profitAreas.map(p=>{
@@ -5789,7 +5707,7 @@ function renderOverview(){
     ? merchRows.map(group=>`
       <div class="card">
         <div class="card-pad" style="border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
-          <div style="font-family:'DM Serif Display',serif;font-size:17px;color:var(--navy)">${group.type} stock</div>
+          <div class="ov-cat-title" style="font-weight:700;letter-spacing:-.02em;font-size:17px;color:var(--navy)">${group.type} stock</div>
           <div style="font-size:11px;color:var(--muted)">Sizes and remaining units</div>
         </div>
         <div class="tbl-wrap"><table>
@@ -5803,13 +5721,13 @@ function renderOverview(){
     : `
       <div class="card">
         <div class="card-pad" style="border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
-          <div style="font-family:'DM Serif Display',serif;font-size:17px;color:var(--navy)">Merch stock</div>
+          <div class="ov-cat-title" style="font-weight:700;letter-spacing:-.02em;font-size:17px;color:var(--navy)">Merch stock</div>
           <div style="font-size:11px;color:var(--muted)">Sizes and remaining units</div>
         </div>
         <div class="tbl-wrap"><table>
           <thead><tr><th>Size</th><th class="r">Starting</th><th class="r">Sold</th><th class="r">Left</th></tr></thead>
           <tbody>
-            <tr class="empty-row"><td colspan="4">No merch stock configured yet — set sizes in /prices.</td></tr>
+            <tr class="empty-row"><td colspan="4">No merch stock yet. Set sizes in Prices → Merch.</td></tr>
           </tbody>
         </table></div>
       </div>
@@ -5823,7 +5741,7 @@ function renderOverview(){
     <div style="display:contents" id="__ovMerch" data-order="5">${merchStockCards.replace(/<div class="card"/g,'<div class="card" style="order:5"')}</div>
     <div class="card" style="order:3">
       <div class="card-pad" style="border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
-        <div style="font-family:'DM Serif Display',serif;font-size:17px;color:var(--navy)">Utilities control</div>
+        <div class="ov-cat-title" style="font-weight:700;letter-spacing:-.02em;font-size:17px;color:var(--navy)">Utilities control</div>
         <div style="font-size:11px;color:var(--muted)">Electricity, water, internet, and gas spend</div>
       </div>
       <div class="card-pad" style="padding:16px 20px 20px">
@@ -5831,7 +5749,7 @@ function renderOverview(){
           ? `<div class="g4">${utilityRows.map(r=>`
             <div class="ov-chip">
               <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">${r.name}</div>
-              <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy);margin-top:6px;line-height:1.1">${moneyPairLocal(r.spendLocal,r.spendEur)}</div>
+              <div style="font-weight:700;letter-spacing:-.02em;font-size:22px;color:var(--navy);margin-top:6px;line-height:1.1">${moneyPairLocal(r.spendLocal,r.spendEur)}</div>
               <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:10px;gap:8px">
                 <span>Camp-paid: <span style="color:var(--navy);font-weight:600">${r.campLocal?moneyPairLocal(r.campLocal,r.campEur):'—'}</span></span>
                 <span>HQ-paid: <span style="color:var(--navy);font-weight:600">${r.hqLocal?moneyPairLocal(r.hqLocal,r.hqEur):'—'}</span></span>
@@ -5844,10 +5762,10 @@ function renderOverview(){
     </div>
     <div class="card" style="order:4">
       <div class="card-pad" style="border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
-        <div style="font-family:'DM Serif Display',serif;font-size:17px;color:var(--navy)">Payroll</div>
+        <div class="ov-cat-title" style="font-weight:700;letter-spacing:-.02em;font-size:17px;color:var(--navy)">Payroll</div>
         <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
           <div style="font-size:11px;color:var(--muted)">${payrollRows.length} staff · ${salaryExpenses.length} payment${salaryExpenses.length===1?'':'s'}</div>
-          <div style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:var(--navy)">${payrollTotalLocal?moneyPairLocal(payrollTotalLocal,payrollTotalEur):'—'}</div>
+          <div style="font-variant-numeric:tabular-nums;font-size:13px;font-weight:700;color:var(--navy)">${payrollTotalLocal?moneyPairLocal(payrollTotalLocal,payrollTotalEur):'—'}</div>
         </div>
       </div>
       <div class="card-pad" style="padding:16px 20px 20px">
@@ -5858,7 +5776,7 @@ function renderOverview(){
           <div class="g4">${payrollMonthRows.map(m=>`
             <div class="ov-chip">
               <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">${m.month}</div>
-              <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy);margin-top:6px;line-height:1.1">${moneyPairLocal(m.local,m.eur)}</div>
+              <div style="font-weight:700;letter-spacing:-.02em;font-size:22px;color:var(--navy);margin-top:6px;line-height:1.1">${moneyPairLocal(m.local,m.eur)}</div>
               <div style="font-size:11px;color:var(--muted);margin-top:6px">${m.entries} payment${m.entries===1?'':'s'}</div>
             </div>`).join('')}</div>
           <details style="margin-top:14px">
@@ -5866,7 +5784,7 @@ function renderOverview(){
             <div class="g4" style="margin-top:12px">${payrollRows.map(r=>`
               <div class="ov-chip">
                 <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">${r.name}</div>
-                <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy);margin-top:6px;line-height:1.1">${moneyPairLocal(r.spendLocal,r.spendEur)}</div>
+                <div style="font-weight:700;letter-spacing:-.02em;font-size:22px;color:var(--navy);margin-top:6px;line-height:1.1">${moneyPairLocal(r.spendLocal,r.spendEur)}</div>
                 <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:10px;gap:8px">
                   <span>Camp-paid: <span style="color:var(--navy);font-weight:600">${r.campLocal?moneyPairLocal(r.campLocal,r.campEur):'—'}</span></span>
                   <span>HQ-paid: <span style="color:var(--navy);font-weight:600">${r.hqLocal?moneyPairLocal(r.hqLocal,r.hqEur):'—'}</span></span>
@@ -5912,10 +5830,10 @@ function renderOverview(){
     })()}
     <div class="card" style="order:1">
       <div class="card-pad" style="border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
-        <div style="font-family:'DM Serif Display',serif;font-size:17px;color:var(--navy)">Transport</div>
+        <div class="ov-cat-title" style="font-weight:700;letter-spacing:-.02em;font-size:17px;color:var(--navy)">Transport</div>
         <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
           <div style="font-size:11px;color:var(--muted)">${transportRows.length} line${transportRows.length===1?'':'s'} with spend</div>
-          <div style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:var(--navy)">${transportRows.length?moneyPairLocal(sum(transportRows,r=>r.spendLocal),sum(transportRows,r=>r.spendEur)):'—'}</div>
+          <div style="font-variant-numeric:tabular-nums;font-size:13px;font-weight:700;color:var(--navy)">${transportRows.length?moneyPairLocal(sum(transportRows,r=>r.spendLocal),sum(transportRows,r=>r.spendEur)):'—'}</div>
         </div>
       </div>
       ${transportRows.length ? (()=>{
@@ -5929,17 +5847,17 @@ function renderOverview(){
           <div class="g4">
             <div class="ov-chip">
               <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">Tours</div>
-              <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy);margin-top:6px;line-height:1.1">${s.tours.local?moneyPairLocal(s.tours.local,s.tours.eur):'—'}</div>
+              <div style="font-weight:700;letter-spacing:-.02em;font-size:22px;color:var(--navy);margin-top:6px;line-height:1.1">${s.tours.local?moneyPairLocal(s.tours.local,s.tours.eur):'—'}</div>
               <div style="font-size:11px;color:var(--muted);margin-top:6px">Dunes · Souk · Paradise · …</div>
             </div>
             <div class="ov-chip">
               <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">Surf</div>
-              <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy);margin-top:6px;line-height:1.1">${s.surf.local?moneyPairLocal(s.surf.local,s.surf.eur):'—'}</div>
+              <div style="font-weight:700;letter-spacing:-.02em;font-size:22px;color:var(--navy);margin-top:6px;line-height:1.1">${s.surf.local?moneyPairLocal(s.surf.local,s.surf.eur):'—'}</div>
               <div style="font-size:11px;color:var(--muted);margin-top:6px">Runs to surf spots</div>
             </div>
             <div class="ov-chip">
               <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">Airport</div>
-              <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy);margin-top:6px;line-height:1.1">${s.airport.local?moneyPairLocal(s.airport.local,s.airport.eur):'—'}</div>
+              <div style="font-weight:700;letter-spacing:-.02em;font-size:22px;color:var(--navy);margin-top:6px;line-height:1.1">${s.airport.local?moneyPairLocal(s.airport.local,s.airport.eur):'—'}</div>
               <div style="font-size:11px;color:var(--muted);margin-top:6px">Guest arrivals / departures</div>
             </div>
           </div>
@@ -5950,7 +5868,7 @@ function renderOverview(){
           ? `<div class="g4">${transportRows.map(r=>`
             <div class="ov-chip">
               <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">${r.name}</div>
-              <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy);margin-top:6px;line-height:1.1">${moneyPairLocal(r.spendLocal,r.spendEur)}</div>
+              <div style="font-weight:700;letter-spacing:-.02em;font-size:22px;color:var(--navy);margin-top:6px;line-height:1.1">${moneyPairLocal(r.spendLocal,r.spendEur)}</div>
               ${r.linkedTour?`<div style="font-size:10px;color:var(--ocean);margin-top:2px;font-weight:600">↳ ${r.linkedTour}</div>`:''}
               <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:10px;gap:8px">
                 <span>Camp-paid: <span style="color:var(--navy);font-weight:600">${r.campLocal?moneyPairLocal(r.campLocal,r.campEur):'—'}</span></span>
@@ -5964,10 +5882,10 @@ function renderOverview(){
     </div>
     <div class="card" style="order:2">
       <div class="card-pad" style="border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
-        <div style="font-family:'DM Serif Display',serif;font-size:17px;color:var(--navy)">Laundry</div>
+        <div class="ov-cat-title" style="font-weight:700;letter-spacing:-.02em;font-size:17px;color:var(--navy)">Laundry</div>
         <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
           <div style="font-size:11px;color:var(--muted)">${laundryExpenses.length} entr${laundryExpenses.length===1?'y':'ies'}</div>
-          <div style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:var(--navy)">${laundryTotalLocal?moneyPairLocal(laundryTotalLocal,laundryTotalEur):'—'}</div>
+          <div style="font-variant-numeric:tabular-nums;font-size:13px;font-weight:700;color:var(--navy)">${laundryTotalLocal?moneyPairLocal(laundryTotalLocal,laundryTotalEur):'—'}</div>
         </div>
       </div>
       <div class="card-pad" style="padding:16px 20px 20px">
@@ -5975,17 +5893,17 @@ function renderOverview(){
           ? `<div class="g4">
               <div class="ov-chip">
                 <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">Total spend</div>
-                <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy);margin-top:6px;line-height:1.1">${moneyPairLocal(laundryTotalLocal,laundryTotalEur)}</div>
+                <div style="font-weight:700;letter-spacing:-.02em;font-size:22px;color:var(--navy);margin-top:6px;line-height:1.1">${moneyPairLocal(laundryTotalLocal,laundryTotalEur)}</div>
                 <div style="font-size:11px;color:var(--muted);margin-top:6px">${laundryExpenses.length} payment${laundryExpenses.length===1?'':'s'}</div>
               </div>
               <div class="ov-chip">
                 <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">Camp-paid (cash)</div>
-                <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy);margin-top:6px;line-height:1.1">${laundryCampLocal?moneyPairLocal(laundryCampLocal,laundryCampEur):'—'}</div>
+                <div style="font-weight:700;letter-spacing:-.02em;font-size:22px;color:var(--navy);margin-top:6px;line-height:1.1">${laundryCampLocal?moneyPairLocal(laundryCampLocal,laundryCampEur):'—'}</div>
                 <div style="font-size:11px;color:var(--muted);margin-top:6px">Paid from on-site cash</div>
               </div>
               <div class="ov-chip">
                 <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">HQ-paid (bank)</div>
-                <div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy);margin-top:6px;line-height:1.1">${laundryHqLocal?moneyPairLocal(laundryHqLocal,laundryHqEur):'—'}</div>
+                <div style="font-weight:700;letter-spacing:-.02em;font-size:22px;color:var(--navy);margin-top:6px;line-height:1.1">${laundryHqLocal?moneyPairLocal(laundryHqLocal,laundryHqEur):'—'}</div>
                 <div style="font-size:11px;color:var(--muted);margin-top:6px">Direct HQ-covered</div>
               </div>
             </div>`
@@ -6008,7 +5926,7 @@ function renderOverview(){
     const merch = document.getElementById('__ovMerch');
     if (merch) merch.style.display = 'none';
     document.querySelectorAll('#ovCatCard > .card').forEach(card => {
-      const heading = card.querySelector('div[style*="DM Serif Display"]');
+      const heading = card.querySelector('.ov-cat-title');
       const txt = heading?.textContent?.trim() || '';
       if (CAMP_ONLY_CARD_TITLES.has(txt)) card.style.display = 'none';
     });
@@ -6582,11 +6500,11 @@ function renderTransportChips(){
         <div style="display:grid;grid-template-columns:46px 1fr;gap:6px;align-items:end">
           <div>
             <div style="font-size:8px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700;margin-bottom:2px">Pax</div>
-            <input type="number" min="0" step="1" value="${v.capacity!=null?v.capacity:''}" oninput="updateTqVehicleField('${p.id}','${v.id}','capacity',this.value)" onblur="flushTqSave()" placeholder="0" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:4px 4px;font-family:'DM Mono',monospace;font-size:12px;text-align:center;box-sizing:border-box">
+            <input type="number" min="0" step="1" value="${v.capacity!=null?v.capacity:''}" oninput="updateTqVehicleField('${p.id}','${v.id}','capacity',this.value)" onblur="flushTqSave()" placeholder="0" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:4px 4px;font-variant-numeric:tabular-nums;font-size:12px;text-align:center;box-sizing:border-box">
           </div>
           <div>
             <div style="font-size:8px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700;margin-bottom:2px">Price ${escapeHtml(cur)}</div>
-            <input type="number" min="0" step="50" value="${v.price||0}" oninput="updateTqVehicleField('${p.id}','${v.id}','price',this.value)" onblur="flushTqSave()" placeholder="0" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:4px 7px;font-family:'DM Mono',monospace;font-size:12px;text-align:right;box-sizing:border-box">
+            <input type="number" min="0" step="50" value="${v.price||0}" oninput="updateTqVehicleField('${p.id}','${v.id}','price',this.value)" onblur="flushTqSave()" placeholder="0" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:4px 7px;font-variant-numeric:tabular-nums;font-size:12px;text-align:right;box-sizing:border-box">
           </div>
         </div>
       </div>`).join('') : '';
@@ -6596,7 +6514,7 @@ function renderTransportChips(){
       const singlePriceBlock=!hasVehicles ? `
         <div style="background:#fafbfc;border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:8px">
           <div style="font-size:8px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700;margin-bottom:4px">Single price ${escapeHtml(cur)}</div>
-          <input type="number" min="0" step="100" value="${p.unitPrice||0}" oninput="updateTqPresetField('${p.id}','unitPrice',this.value)" onblur="flushTqSave()" placeholder="0" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:5px 7px;font-family:'DM Mono',monospace;font-size:13px;text-align:right;box-sizing:border-box">
+          <input type="number" min="0" step="100" value="${p.unitPrice||0}" oninput="updateTqPresetField('${p.id}','unitPrice',this.value)" onblur="flushTqSave()" placeholder="0" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:5px 7px;font-variant-numeric:tabular-nums;font-size:13px;text-align:right;box-sizing:border-box">
         </div>` : '';
       return `<div class="tq-chip-edit" data-id="${p.id}">
         <input type="text" value="${escapeAttr(p.name)}" oninput="updateTqPresetField('${p.id}','name',this.value)" onblur="flushTqSave()" placeholder="Destination" style="font-weight:700">
@@ -6724,13 +6642,13 @@ async function saveTransportStateOrRollback(candidatePresets){
     await saveStateStore(TRANSPORT_PRESETS_KEY,candidatePresets);
     transportPresets=candidatePresets;
     window.__transportSavePending=false;
-    setSavePill('saved','Saved ✓');
+    setSavePill('saved','Saved');
     notifyLedgerChanged();
     return true;
   }catch(e){
     console.warn('[Hub] saveTransportStateOrRollback failed',e);
-    setSavePill('failed','⚠ Save failed — try again');
-    toast('Could not save transport change to Supabase — try again');
+    setSavePill('failed','Save failed — try again');
+    toast("Couldn't save the transport change — try again.",'err');
     return false;
   }finally{
     setTimeout(()=>{ HUB_SUPPRESS_TRANSPORT_RT=false; },1000);
@@ -6819,7 +6737,7 @@ function renderTqVehicleQuantities(){
           <div style="flex:1;min-width:0">
             <div style="font-weight:700;color:var(--navy)">${escapeHtml(v.label||'—')}</div>
             ${v.capacity!=null?`<div style="font-size:10px;color:var(--muted)">up to ${v.capacity}p</div>`:''}
-            <div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--ocean);font-weight:600;margin-top:2px">${LOCAL_CURRENCY||'LKR'} ${Number(v.price||0).toLocaleString('en-GB')}</div>
+            <div style="font-variant-numeric:tabular-nums;font-size:11px;color:var(--ocean);font-weight:600;margin-top:2px">${LOCAL_CURRENCY||'LKR'} ${Number(v.price||0).toLocaleString('en-GB')}</div>
           </div>
           <div class="tq-qty">
             <button type="button" onclick="bumpTqVehicleQty('${v.id}',-1)" aria-label="−">−</button>
@@ -7149,7 +7067,7 @@ function kpi(label,sub,val,cls,secondary=''){
   return `<div class="card kpi"><div class="kpi-label">${label}</div><div class="kpi-value ${cls}">${val}</div>${secondary?`<div class="kpi-sub" style="margin-top:4px">${secondary}</div>`:''}<div class="kpi-sub">${sub}</div></div>`;
 }
 function cashRow(label,val,color){
-  return `<div style="display:flex;justify-content:space-between;font-size:13px;padding:6px 0;border-bottom:1px solid var(--border)"><span style="color:var(--muted)">${label}</span><span style="font-family:'DM Mono',monospace;color:${color}">${val}</span></div>`;
+  return `<div style="display:flex;justify-content:space-between;font-size:13px;padding:6px 0;border-bottom:1px solid var(--border)"><span style="color:var(--muted)">${label}</span><span style="font-variant-numeric:tabular-nums;color:${color}">${val}</span></div>`;
 }
 function barChart(data,color){
   if(!data.length) return '<div style="color:var(--muted);font-size:13px;padding:16px 0">No data yet.</div>';
@@ -7311,7 +7229,7 @@ function togglePaid(){
   const g=(wk.guests||[]).find(x=>x.name===AG);if(!g)return;
   g.paid=!g.paid;save();
   renderTab();renderGuestList();renderSidebarHead();renderThisWeek();renderHistory();renderSellers();renderOverview();renderWeeklyPL();
-  toast(g.paid?AG+' marked paid ✓':AG+' unmarked');
+  toast(g.paid?AG+' marked paid':AG+' unmarked');
 }
 
 function toggleGuestPaid(name){AG=name;togglePaid();}
@@ -7349,10 +7267,10 @@ function openBill(guestName){
   let html='';
   Object.keys(byCat).forEach(cat=>{
     html+=`<div style="margin-bottom:14px"><div style="font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--border)">${cat}</div>`;
-    byCat[cat].forEach(i=>{html+=`<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:13px;border-bottom:1px solid rgba(0,0,0,.04)"><span>${i.n}</span><span style="font-family:'DM Mono',monospace;font-size:12px;color:var(--muted)">${euro(i.p)}</span></div>`;});
+    byCat[cat].forEach(i=>{html+=`<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:13px;border-bottom:1px solid rgba(0,0,0,.04)"><span>${i.n}</span><span style="font-variant-numeric:tabular-nums;font-size:12px;color:var(--muted)">${euro(i.p)}</span></div>`;});
     html+=`</div>`;
   });
-  html+=`<div class="btotal-box"><div><div style="font-size:9px;color:#7aabcc;text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:3px">Total to pay</div><div style="font-family:'DM Serif Display',serif;font-size:28px;color:#fff">${euro(gtot(g))}</div></div><div style="text-align:right;font-size:11px;color:#7aabcc">${g.items.length} items<br>${fmtd(wk.start)} week</div></div>`;
+  html+=`<div class="btotal-box"><div><div style="font-size:9px;color:#7aabcc;text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:3px">Total to pay</div><div style="font-weight:700;letter-spacing:-.02em;font-size:28px;color:#fff">${euro(gtot(g))}</div></div><div style="text-align:right;font-size:11px;color:#7aabcc">${g.items.length} items<br>${fmtd(wk.start)} week</div></div>`;
   document.getElementById('billBody').innerHTML=html;
   document.getElementById('billPaidBtn').onclick=()=>{
     if(!g.paid){
@@ -7360,7 +7278,7 @@ function openBill(guestName){
       renderTab();renderGuestList();renderSidebarHead();renderThisWeek();renderHistory();renderSellers();renderOverview();renderWeeklyPL();
     }
     closeOv('billOv');
-    toast(src+' marked paid ✓');
+    toast(src+' marked paid');
   };
   openOv('billOv');
 }
@@ -7371,7 +7289,7 @@ function renderThisWeek(){
   const wk=activeWeek();
   if(!twHdr||!twEl)return;
   if(!wk){
-    twHdr.innerHTML=`<div><div style="font-family:'DM Serif Display',serif;font-size:20px;color:var(--navy)">This week</div><div style="font-size:12px;color:var(--muted);margin-top:2px">Select or create a week first.</div></div><button class="btn btn-p" onclick="openAddWeek()">+ New week</button>`;
+    twHdr.innerHTML=`<div><div style="font-weight:700;letter-spacing:-.02em;font-size:20px;color:var(--navy)">This week</div><div style="font-size:12px;color:var(--muted);margin-top:2px">Select or create a week first.</div></div><button class="btn btn-p" onclick="openAddWeek()">+ New week</button>`;
     twEl.innerHTML=`<div class="tw-empty"><div style="color:var(--border)">${uiIcon('stack','ui-ic-lg')}</div><div>No active week selected.</div></div>`;
     return;
   }
@@ -7425,10 +7343,10 @@ function renderThisWeek(){
         </div>
       </div>
       ${exp?`<div class="tw-card-body">
-        ${g.items.length?g.items.map((i,idx)=>`<div class="tw-item-row"><div class="tw-item-main"><span>${i.n}</span><span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted)">${euro(i.p)}</span></div><button class="tw-item-del" onclick="deleteGuestItem('${esc(g.name)}',${idx});event.stopPropagation()">×</button></div>`).join(''):'<div style="font-size:12px;color:var(--muted);padding:8px 0">No items yet.</div>'}
+        ${g.items.length?g.items.map((i,idx)=>`<div class="tw-item-row"><div class="tw-item-main"><span>${i.n}</span><span style="font-variant-numeric:tabular-nums;font-size:11px;color:var(--muted)">${euro(i.p)}</span></div><button class="tw-item-del" onclick="deleteGuestItem('${esc(g.name)}',${idx});event.stopPropagation()">×</button></div>`).join(''):'<div style="font-size:12px;color:var(--muted);padding:8px 0">No items yet.</div>'}
         <div class="tw-actions">
           ${!g.paid&&tot>0?`<button class="tw-btn tw-btn-bill" onclick="openBill('${esc(g.name)}')"><span class="btn-icon-label" style="justify-content:center">${uiIcon('bill')}<span>Bill</span></span></button>`:''}
-          <button class="tw-btn ${g.paid?'tw-btn-paid':'tw-btn-pay'}" onclick="toggleGuestPaid('${esc(g.name)}')">${g.paid?'Paid':'Pay'}</button>
+          ${g.paid?`<span class="badge badge-green">Paid</span><button class="btn btn-s btn-sm" onclick="toggleGuestPaid('${esc(g.name)}')">Mark unpaid</button>`:`<button class="btn btn-p btn-sm" onclick="toggleGuestPaid('${esc(g.name)}')">Pay</button>`}
         </div>
         <div style="display:flex;justify-content:flex-end;margin-top:8px">
           <button class="tw-guest-delete" onclick="deleteGuest('${esc(g.name)}')">Delete guest</button>
@@ -7450,7 +7368,7 @@ function settleActiveWeek(){
   save();
   renderThisWeek();
   renderHistory();
-  toast('Week marked as paid ✓');
+  toast('Week marked as paid');
 }
 
 function renderHistory(){
@@ -7458,7 +7376,7 @@ function renderHistory(){
   if(!el)return;
   const weeks=S.weeks.filter(w=>w.id!==AW).slice().sort((a,b)=>b.start.localeCompare(a.start));
   if(!weeks.length){
-    el.innerHTML=`<div class="hist-empty"><div style="font-size:36px;opacity:.2">🗂</div><div style="font-family:'DM Serif Display',serif;font-size:18px">No history yet</div><div style="font-size:13px;max-width:240px;line-height:1.6">Switch to a newer week and previous ones will show here.</div></div>`;
+    el.innerHTML=`<div class="hist-empty"><div style="font-weight:700;letter-spacing:-.02em;font-size:18px">No history yet</div><div style="font-size:13px;max-width:240px;line-height:1.6">Switch to a newer week and previous ones will show here.</div></div>`;
     return;
   }
   el.innerHTML=weeks.map(wk=>{
@@ -7478,7 +7396,7 @@ function renderHistory(){
               <div><div class="hw-guest-name">${g.name}</div><div class="hw-guest-items">${g.items.length} item${g.items.length!==1?'s':''}</div></div>
               <div style="display:flex;align-items:center;gap:8px"><div class="hw-guest-total">${gtot(g)>0?euro(gtot(g)):'—'}</div><span class="badge ${g.paid?'badge-amber':'badge-red'}">${g.paid?'Paid':'Unpaid'}</span><div style="font-size:10px;color:var(--muted)">${isGOpen?'▲':'▼'}</div></div>
             </div>
-            ${isGOpen&&g.items.length?`<div class="hw-items-detail">${g.items.map(i=>`<div class="hw-item-line"><span>${i.n}</span><span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted)">${euro(i.p)}</span></div>`).join('')}<div style="display:flex;justify-content:space-between;padding:7px 0 0;border-top:1px solid var(--border);margin-top:4px;font-weight:700;font-size:13px"><span>Total</span><span style="font-family:'DM Mono',monospace">${euro(gtot(g))}</span></div></div>`:''}
+            ${isGOpen&&g.items.length?`<div class="hw-items-detail">${g.items.map(i=>`<div class="hw-item-line"><span>${i.n}</span><span style="font-variant-numeric:tabular-nums;font-size:11px;color:var(--muted)">${euro(i.p)}</span></div>`).join('')}<div style="display:flex;justify-content:space-between;padding:7px 0 0;border-top:1px solid var(--border);margin-top:4px;font-weight:700;font-size:13px"><span>Total</span><span style="font-variant-numeric:tabular-nums">${euro(gtot(g))}</span></div></div>`:''}
           </div>`;
         }).join('')}
       </div>`:''}
@@ -7544,7 +7462,7 @@ function saveNewGuest(){
   wk.guests.push({name,items:[],paid:false});
   AG=name;twExpanded=name;save();closeOv('addGuestOv');
   renderPOS();renderOverview();renderWeeklyPL();
-  toast(name+' added ✓');
+  toast(name+' added');
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -8088,7 +8006,7 @@ async function saveQuickExpense(){
   }
   resetQuickExpense();
   renderExpenses();renderOverview();renderWeeklyPL();
-  toast('Entry added ✓');
+  toast('Entry added');
 }
 
 function refreshRecurringButton(){}
@@ -8204,7 +8122,7 @@ async function saveSalaryProfile(){
   const profile=salaryProfileFromForm();
   if(!profile){toast('Add a salary name and amount first');return;}
   const locationId=await ensureHubLocationId();
-  if(!locationId){toast('Supabase location missing');return;}
+  if(!locationId){toast("This camp isn't connected yet — refresh the page.",'err');return;}
   const saved=await upsertMonthlyCostRow(
     salaryProfileToMonthlyCostRow(profile,locationId),
     'salary profile save failed'
@@ -8218,7 +8136,7 @@ async function saveSalaryProfile(){
   save();
   resetSalaryForm();
   renderSalaryProfiles();
-  toast(isUuid(profile.id)?'Salary updated ✓':'Salary saved ✓');
+  toast(isUuid(profile.id)?'Salary updated':'Salary saved');
 }
 function editSalaryProfile(id){
   const profile=(S.salaryProfiles||[]).find(row=>row.id===id);
@@ -8287,7 +8205,7 @@ async function runSalaryNow(id){
     // Supabase-first commit. If the write fails, no local ghost.
     await commitLedgerEntry(normalized,'manual salary save');
     renderExpenses();renderOverview();renderWeeklyPL();
-    toast(`Salary added for ${month} ✓`);
+    toast(`Salary added for ${month}`);
   }catch(error){
     // FX enrichment OR commitLedgerEntry already toasted; nothing more to do.
   }
@@ -8403,7 +8321,7 @@ async function saveRecurringRule(){
     return;
   }
   const locationId=await ensureHubLocationId();
-  if(!locationId){toast('Supabase location missing');return;}
+  if(!locationId){toast("This camp isn't connected yet — refresh the page.",'err');return;}
   let profileId = rule.id;
   if(profileId && !isUuid(profileId)){
     profileId = await resolveMonthlyCostProfileId(profileId, 'fixed_cost', rule.name);
@@ -8424,7 +8342,7 @@ async function saveRecurringRule(){
   save();
   resetRecurringForm();
   renderRecurringEntries();
-  toast(isUuid(rule.id)?'Fixed cost updated ✓':'Fixed cost saved ✓');
+  toast(isUuid(rule.id)?'Fixed cost updated':'Fixed cost saved');
 }
 async function loadRecurringIntoMonthlyForm(id){
   const rule=S.recurring.find(r=>r.id===id);
@@ -8501,7 +8419,7 @@ async function runRecurringNow(id){
     const normalized=await enrichLedgerEntryFx(entry);
     await commitLedgerEntry(normalized,'manual fixed cost save');
     renderExpenses();renderOverview();renderWeeklyPL();
-    toast(`Fixed cost added for ${month} ✓`);
+    toast(`Fixed cost added for ${month}`);
   }catch(error){
     // Already toasted by commitLedgerEntry or enrichLedgerEntryFx.
   }
@@ -8555,7 +8473,7 @@ async function addAllMonthlyNow(){
     // is rolled back (no partial S.ledger inserts).
     await commitLedgerEntries(normalized,'monthly batch save');
     renderExpenses();renderOverview();renderWeeklyPL();
-    toast(`Added ${normalized.length} monthly entries for ${month} ✓`);
+    toast(`Added ${normalized.length} monthly entries for ${month}`);
   }catch(error){
     // Already toasted by commitLedgerEntries or enrichLedgerEntryFx.
   }
@@ -8884,24 +8802,22 @@ function renderExpenses(){
   // it summarised (HQ top-ups + revenue) are already captured by Bank
   // (HQ in) and Cash (revenue in) tiles, so the standalone tile was
   // duplicating information.
-  expKpisEl.style.gridTemplateColumns='repeat(3, minmax(0, 1fr))';
-  expKpisEl.style.gap='12px';
   // Bank breakdown: card spend + bank-transfer spend collapsed into one
   // number. The user pointed out the split was noise — from the bank's
   // perspective it's all "money out of the bank", regardless of whether
   // the channel was a card swipe or a wire. Same shape as the Cash tile.
   const bankBreakdownLocal = cardSpendLocal + hqSpendLocal;
   const bankBreakdown = bankBreakdownLocal > 0
-    ? `<div class="kpi-breakdown">Spent from bank · ${lkr(bankBreakdownLocal).replace(/\.00$/,'')} <span style="color:var(--muted)">(filtered)</span></div>`
-    : `<div class="kpi-breakdown" style="color:var(--muted)">No bank spend in filter</div>`;
+    ? `<div class="kpi-breakdown">Spent from bank · ${lkr(bankBreakdownLocal).replace(/\.00$/,'')} <span style="color:var(--muted)">· in this period</span></div>`
+    : `<div class="kpi-breakdown" style="color:var(--muted)">No bank spend in this period</div>`;
   const cashBreakdown = campSpendLocal > 0
-    ? `<div class="kpi-breakdown">Spent from cash · ${lkr(campSpendLocal).replace(/\.00$/,'')} <span style="color:var(--muted)">(filtered)</span></div>`
-    : `<div class="kpi-breakdown" style="color:var(--muted)">No cash spend in filter</div>`;
+    ? `<div class="kpi-breakdown">Spent from cash · ${lkr(campSpendLocal).replace(/\.00$/,'')} <span style="color:var(--muted)">· in this period</span></div>`
+    : `<div class="kpi-breakdown" style="color:var(--muted)">No cash spend in this period</div>`;
   // ATM Withdrawal shortcut — always visible. Used to only appear when
   // cashBalLocal<0 (treating it as a corrective hint), but the user needs
   // this as a regular daily action: walk to the ATM, withdraw 500 MAD,
   // log it. Button is permanent so it's never more than one click away.
-  const cashHint = `<button class="kpi-action-btn" onclick="openExpModal('transfer',null,{paymentMethod:'ATM Withdrawal'})">+ Record ATM Withdrawal</button>`;
+  const cashHint = `<button class="btn btn-s btn-sm btn-block kpi-action-btn" onclick="openExpModal('transfer',null,{paymentMethod:'ATM Withdrawal'})">Record ATM withdrawal</button>`;
   // Portugal is HQ — no HQ Transfer top-ups arrive, the camp account IS
   // the main account. Simplify the KPI strip to 3 tiles: Spent · Earned ·
   // Net. ATM Withdrawal shortcut is dropped too (irrelevant without a
@@ -8919,19 +8835,19 @@ function renderExpenses(){
         <div class="kpi-label">Total Expenses</div>
         <div class="kpi-value">${lkr(totalSpentLocal)}</div>
         <div class="kpi-sub" style="margin-top:4px">${euro(totalSpentEur)}</div>
-        <div class="kpi-sub">Cash + Card + Bank Transfer</div>
+        <div class="kpi-sub">Cash + card + bank transfer</div>
       </div>
       <div class="card kpi">
         <div class="kpi-label">Total Revenue</div>
         <div class="kpi-value kv-green">${lkr(earnedLocal)}</div>
         <div class="kpi-sub" style="margin-top:4px">${euro(earnedEur)}</div>
-        <div class="kpi-sub">Tudo que entrou no camp</div>
+        <div class="kpi-sub">Everything the camp took in</div>
       </div>
       <div class="card kpi">
         <div class="kpi-label">Net</div>
         <div class="kpi-value ${netLocal>=0?'kv-green':'kv-red'}">${lkr(netLocal)}</div>
         <div class="kpi-sub" style="margin-top:4px">${euro(netEur)}</div>
-        <div class="kpi-sub">Revenue − Expenses</div>
+        <div class="kpi-sub">Revenue − expenses</div>
       </div>
     `;
   } else {
@@ -8946,12 +8862,14 @@ function renderExpenses(){
         <div class="kpi-label">Bank</div>
         <div class="kpi-value ${bankBalLocal>=0?'kv-ocean':'kv-red'}">${lkr(bankBalLocal)}</div>
         <div class="kpi-sub" style="margin-top:4px">${euro(bankBalEur)}</div>
+        <div class="kpi-sub">Balance · all time</div>
         ${bankBreakdown}
       </div>
       <div class="card kpi">
         <div class="kpi-label">Cash</div>
         <div class="kpi-value ${cashBalLocal>=0?'kv-amber':'kv-red'}">${lkr(cashBalLocal)}</div>
         <div class="kpi-sub" style="margin-top:4px">${euro(cashBalEur)}</div>
+        <div class="kpi-sub">Balance · all time</div>
         ${cashBreakdown}
         ${cashHint}
       </div>
@@ -8960,25 +8878,33 @@ function renderExpenses(){
 
   const el=document.getElementById('expTable');
   if(!el)return;
+  const _fv=id=>document.getElementById(id)?.value||'';
+  const hasFilter=!!(search||[typeF,payF,catF,weekF].some(v=>v&&v!=='all')||(_fv('expPeriodSel')&&_fv('expPeriodSel')!=='all'));
   el.innerHTML=`<div class="tbl-wrap"><table>
-    <thead><tr><th>Date</th><th>Type</th><th>Category</th><th>Paid via</th><th>Linked item</th><th>Description</th><th>Vendor</th><th class="r">Local</th><th class="r">EUR</th><th style="text-align:center;width:88px">Actions</th></tr></thead>
+    <thead><tr><th>Date</th><th>Type</th><th>Category</th><th>Paid via</th><th>Linked item</th><th>Description</th><th>Vendor</th><th class="r">Local</th><th class="r">EUR</th><th class="r" style="width:88px">Actions</th></tr></thead>
     <tbody>
       ${rows.length?rows.map(r=>`<tr>
         <td style="white-space:nowrap;font-size:12px">${fmtd(r.date)}</td>
-        <td style="white-space:nowrap"><span class="badge ${r.type==='expense'?'badge-red':r.type==='transfer'?'badge-amber':'badge-green'}">${r.type==='expense'?'Expense':r.type==='transfer'?'Money Sent':'Revenue'}</span>${isHqInvoiceRow(r)?' <span class="badge badge-blue" title="Paid by HQ — mirrored from hq_invoices">HQ</span>':''}</td>
+        <td style="white-space:nowrap"><span class="badge ${r.type==='expense'?'badge-red':r.type==='transfer'?'badge-amber':'badge-green'}">${r.type==='expense'?'Expense':r.type==='transfer'?'Money from HQ':'Revenue'}</span>${isHqInvoiceRow(r)?' <span class="badge badge-blue" title="Paid by HQ — edit it in HQ → Expenses">HQ</span>':''}</td>
         <td style="font-weight:600">${r.category}</td>
-        <td style="color:var(--muted);font-size:12px">${String(r.sourceKind||'').toLowerCase()==='hq_invoice'?'<span class="badge badge-amber" title="Factura paga por Portugal (HQ). Edita-se no HQ.">Pago pelo HQ</span>':String(r.sourceKind||'').toLowerCase()==='hq_transfer'?'<span class="badge badge-amber" title="Transferência registada no HQ. Edita-se no HQ.">HQ Transfer · HQ</span>':(r.paymentMethod||'—')}</td>
+        <td style="color:var(--muted);font-size:12px">${String(r.sourceKind||'').toLowerCase()==='hq_invoice'?'<span class="badge badge-amber" title="Paid by HQ — edit it in HQ → Expenses">Paid by HQ</span>':String(r.sourceKind||'').toLowerCase()==='hq_transfer'?'<span class="badge badge-amber" title="Transfer recorded in HQ — edit it in HQ">Money from HQ</span>':(r.paymentMethod||'—')}</td>
         <td style="color:var(--muted);font-size:12px">${r.linkedItem||'—'}${transportEntryTourOverride(r)?`<div style="font-size:10px;color:var(--ocean);font-weight:600;margin-top:2px">↳ ${escapeHtml(transportEntryTourOverride(r))}</div>`:''}</td>
         <td style="color:var(--muted)">${escapeHtml(strippedTransportDescription(r))||'—'}</td>
         <td style="color:var(--muted);font-size:12px">${r.vendor||'—'}</td>
         <td class="r" style="font-weight:700">${r.currency&&r.currency!=='EUR'?`${r.currency} `+Number(r.amountLocal||0).toLocaleString('en-GB',{maximumFractionDigits:2}):`${LOCAL_CURRENCY||'LKR'} `+Number((Number(r.amount||0)*(LOCAL_PER_EUR||1))).toLocaleString('en-GB',{maximumFractionDigits:0})}</td>
         <td class="r" style="font-weight:700">${euro(r.amount)}</td>
-        <td>${['hq_invoice','hq_transfer'].includes(String(r.sourceKind||'').toLowerCase())?'<div class="exp-table-actions" style="justify-content:center;color:var(--muted)" title="Só se altera no HQ">🔒</div>':`<div class="exp-table-actions"><button class="icon-btn" onclick="openEditLedger('${r.id}')" title="Edit">✎</button><button class="icon-btn danger" onclick="delLedger('${r.id}')" title="Delete">✕</button></div>`}</td>
-      </tr>`).join(''):'<tr class="empty-row"><td colspan="10">No entries for this filter.</td></tr>'}
+        <td>${['hq_invoice','hq_transfer'].includes(String(r.sourceKind||'').toLowerCase())?`<div class="exp-table-actions" style="color:var(--muted-2)" title="Edit this in HQ">${AppShell.icon('lock')}</div>`:`<div class="exp-table-actions"><button class="btn btn-s btn-sm btn-icon" onclick="openEditLedger('${r.id}')" title="Edit">${AppShell.icon('edit')}</button><button class="btn btn-s btn-sm btn-icon icon-danger" onclick="delLedger('${r.id}')" title="Delete">${AppShell.icon('trash')}</button></div>`}</td>
+      </tr>`).join(''):`<tr class="empty-row"><td colspan="10">${hasFilter?`No entries match these filters. <button class="btn btn-s btn-sm" style="margin-left:8px" onclick="clearExpFilters()">Clear filters</button>`:'No entries yet. Use Quick add above to log the first one.'}</td></tr>`}
     </tbody>
   </table></div>`;
 }
 
+// "Clear filters" on the empty ledger: back to all types / methods / categories / weeks, no search, all time.
+function clearExpFilters(){
+  const s=document.getElementById('expSearch'); if(s) s.value='';
+  ['expTypeF','expPayF','expCatF','expWeekF'].forEach(id=>{const el=document.getElementById(id); if(el) el.value='all';});
+  setExpPeriodUnified('all');
+}
 function notifyCampTabRemoveHistoryWeek(weekRef){
   // Tell the camp tab iframe to remove the corresponding week from S.history.
   // This cascades: deleting a campclose entry in Operations Ledger removes the week from camp tab history.
@@ -8998,7 +8924,7 @@ async function delLedger(id){
   // the user still gets a clear preview before any destructive action.
   const entry = S.ledger.find(x=>x.id===id);
   if(!entry) return;
-  if(['hq_invoice','hq_transfer'].includes(String(entry.sourceKind||'').toLowerCase())){ toast('Esta linha vem do HQ — arquiva-a no HQ, não aqui.'); return; }
+  if(['hq_invoice','hq_transfer'].includes(String(entry.sourceKind||'').toLowerCase())){ toast('This line comes from HQ. Delete it in HQ → Expenses.','err'); return; }
   const typeLbl = entry.type==='income' ? 'revenue' : entry.type==='transfer' ? 'transfer' : 'expense';
   const amount = entry.amountLocal && entry.currency && entry.currency!=='EUR' ? (`${entry.currency} `+Number(entry.amountLocal).toLocaleString('en-GB',{maximumFractionDigits:2})) : ('€'+Number(entry.amount||0).toFixed(2));
   const note = entry.description ? ` "${String(entry.description).slice(0,60)}"` : '';
@@ -9091,7 +9017,7 @@ async function delLedger(id){
 function openExpModal(type,id=null,preset=null){
   editingLedgerId=id;
   expModalType=type;
-  const titles={expense:'Expense',transfer:'Money Sent',income:'Revenue'};
+  const titles={expense:'Expense',transfer:'Money from HQ',income:'Revenue'};
   document.getElementById('expModalTitle').textContent=(id?'Edit ':'Add ')+titles[type];
   document.getElementById('expModalSub').textContent=id?'Update this ledger entry':'Create a new ledger entry';
   const entry=id?S.ledger.find(x=>x.id===id):null;
@@ -9133,7 +9059,7 @@ function openExpModal(type,id=null,preset=null){
   openOv('expOv');
 }
 
-function openEditLedger(id){const entry=S.ledger.find(x=>x.id===id);if(!entry)return;if(['hq_invoice','hq_transfer'].includes(String(entry.sourceKind||'').toLowerCase())){toast('Esta linha vem do HQ — altera-a no HQ.');return;}openExpModal(entry.type,id);}
+function openEditLedger(id){const entry=S.ledger.find(x=>x.id===id);if(!entry)return;if(['hq_invoice','hq_transfer'].includes(String(entry.sourceKind||'').toLowerCase())){toast('This line comes from HQ. Edit it in HQ → Expenses.','err');return;}openExpModal(entry.type,id);}
 function deleteEditingLedger(){if(!editingLedgerId)return;const id=editingLedgerId;editingLedgerId=null;closeOv('expOv');delLedger(id);}
 
 async function saveExpense(){
@@ -9161,9 +9087,9 @@ async function saveExpense(){
       S.ledger=S.ledger.map(x=>x.id===editingLedgerId?payload:x);
       save();
       notifyLedgerChanged();
-      setSavePill('saved','Saved ✓');
+      setSavePill('saved','Saved');
     }catch(error){
-      setSavePill('failed','⚠ Save failed — click to retry');
+      setSavePill('failed','Save failed — tap to retry');
       handleLedgerSupabaseError('ledger modal edit',error);
       setTimeout(()=>{ HUB_SUPPRESS_LEDGER_RT=false; },600);
       return;
@@ -9176,7 +9102,7 @@ async function saveExpense(){
       return; // keep modal open so user can retry / fix
     }
   }
-  editingLedgerId=null;closeOv('expOv');renderExpenses();renderOverview();renderWeeklyPL();toast('Saved ✓');
+  editingLedgerId=null;closeOv('expOv');renderExpenses();renderOverview();renderWeeklyPL();toast('Saved');
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -9249,54 +9175,54 @@ function renderWeeklyPL(){
 
   el.innerHTML=`<div class="card">
     <div class="card-pad" style="border-bottom:1px solid var(--border)">
-      <div style="font-family:'DM Serif Display',serif;font-size:17px;color:var(--navy)">Weekly P&L — all weeks</div>
-      <div style="font-size:12px;color:var(--muted);margin-top:2px">Cash control, food cost per guest-day, and weekly sales split by category</div>
+      <div class="card-title">Weekly P&L — all weeks</div>
+      <div class="card-hint">Sales by category, what was spent and how, money from HQ, and the cash left — per week</div>
     </div>
     <div class="tbl-wrap"><table>
       <thead><tr>
         <th>Week</th>
-        <th class="r">Guests</th>
+        <th class="r">Guests (paid / total)</th>
+        <th class="r">Bar sales</th>
+        <th class="r">Merch sales</th>
+        <th class="r">Tour sales</th>
+        <th class="r">Transport sales</th>
+        <th class="r">Spent in cash</th>
+        <th class="r">Spent by card</th>
+        <th class="r">Paid by bank</th>
+        <th class="r">Money from HQ</th>
+        <th class="r">Cash left this week</th>
         <th class="r">Food / guest-day</th>
-        <th class="r">Cash Float In</th>
-        <th class="r">Cash Spend</th>
-        <th class="r">Card Spend</th>
-        <th class="r">Bank Transfer</th>
-        <th class="r">Drinks</th>
-        <th class="r">Merch</th>
-        <th class="r">Tours</th>
-        <th class="r">Transport</th>
-        <th class="r">Operating Cash</th>
       </tr></thead>
       <tbody>
-        ${rows.map(r=>{ const wk=(v,color,bold)=>`<td class="r" style="${Number(v)?`color:${color};${bold?'font-weight:700':''}`:'color:var(--muted-2)'}">${euro(v)}</td>`; return `<tr style="cursor:pointer" onclick="jumpToWeek('${r.ws}')">
+        ${rows.map(r=>{ const wk=(v,color,bold)=>`<td class="r" style="${Number(v)?`color:${color};${bold?'font-weight:700':''}`:'color:var(--muted-2)'}">${euro(v)}</td>`; return `<tr class="click" onclick="jumpToWeek('${r.ws}')">
           <td style="font-weight:600;white-space:nowrap">${fmtd(r.ws)} → ${fmtd(addDays(r.ws,6))}</td>
-          <td class="r">${r.guests?`${r.paidGuests}/${r.guests}`:'—'}</td>
-          <td class="r" style="color:var(--red)">${r.guestDays?perGuestDayMetric(r.foodExp,r.guestDays):'—'}</td>
-          ${wk(r.sent,'var(--amber)',false)}
-          ${wk(r.campSpend,'var(--red)',false)}
-          ${wk(r.cardSpend||0,'var(--red)',false)}
-          ${wk(r.hqSpend,'var(--amber)',false)}
+          <td class="r">${r.guests?`${r.paidGuests} / ${r.guests}`:'—'}</td>
           ${wk(r.drinksSales,'var(--green)',true)}
           ${wk(r.merchSales,'var(--green)',true)}
           ${wk(r.tourSales,'var(--green)',true)}
           ${wk(r.transportSales,'var(--green)',true)}
+          ${wk(r.campSpend,'var(--red)',false)}
+          ${wk(r.cardSpend||0,'var(--red)',false)}
+          ${wk(r.hqSpend,'var(--amber)',false)}
+          ${wk(r.sent,'var(--amber)',false)}
           ${wk(r.cash, r.cash>=0?'var(--green)':'var(--red)', true)}
+          <td class="r" style="color:var(--red)">${r.guestDays?perGuestDayMetric(r.foodExp,r.guestDays):'—'}</td>
         </tr>`;}).join('')}
       </tbody>
-      <tfoot style="background:var(--sand)">
+      <tfoot>
         <tr>
-          <td style="font-weight:700;padding:10px 13px">TOTAL</td>
-          <td class="r" style="padding:10px 13px;font-weight:700">${totals.paidGuests}/${totals.guests}</td>
-          <td class="r" style="padding:10px 13px;font-weight:700;color:var(--red)">${perGuestDayMetric(totals.foodExp,totals.guestDays)}</td>
-          <td class="r" style="padding:10px 13px;font-weight:700;color:var(--amber)">${euro(totals.sent)}</td>
-          <td class="r" style="padding:10px 13px;font-weight:700;color:var(--red)">${euro(totals.campSpend)}</td>
-          <td class="r" style="padding:10px 13px;font-weight:700;color:var(--red)">${euro(totals.cardSpend)}</td>
-          <td class="r" style="padding:10px 13px;font-weight:700;color:var(--amber)">${euro(totals.hqSpend)}</td>
-          <td class="r" style="padding:10px 13px;font-weight:700;color:var(--green)">${euro(totals.drinksSales)}</td>
-          <td class="r" style="padding:10px 13px;font-weight:700;color:var(--green)">${euro(totals.merchSales)}</td>
-          <td class="r" style="padding:10px 13px;font-weight:700;color:var(--green)">${euro(totals.tourSales)}</td>
-          <td class="r" style="padding:10px 13px;font-weight:700;color:var(--green)">${euro(totals.transportSales)}</td>
-          <td class="r" style="padding:10px 13px;font-weight:700;color:${totals.cash>=0?'var(--green)':'var(--red)'}">${euro(totals.cash)}</td>
+          <td>Total</td>
+          <td class="r">${totals.paidGuests} / ${totals.guests}</td>
+          <td class="r" style="color:var(--green)">${euro(totals.drinksSales)}</td>
+          <td class="r" style="color:var(--green)">${euro(totals.merchSales)}</td>
+          <td class="r" style="color:var(--green)">${euro(totals.tourSales)}</td>
+          <td class="r" style="color:var(--green)">${euro(totals.transportSales)}</td>
+          <td class="r" style="color:var(--red)">${euro(totals.campSpend)}</td>
+          <td class="r" style="color:var(--red)">${euro(totals.cardSpend)}</td>
+          <td class="r" style="color:var(--amber)">${euro(totals.hqSpend)}</td>
+          <td class="r" style="color:var(--amber)">${euro(totals.sent)}</td>
+          <td class="r" style="color:${totals.cash>=0?'var(--green)':'var(--red)'}">${euro(totals.cash)}</td>
+          <td class="r" style="color:var(--red)">${perGuestDayMetric(totals.foodExp,totals.guestDays)}</td>
         </tr>
       </tfoot>
     </table></div>
@@ -9660,7 +9586,8 @@ mountCampTabFrame();
 // ═══════════════════════════════════════════════════════════
 function openOv(id){document.getElementById(id).classList.add('open');}
 function closeOv(id){document.getElementById(id).classList.remove('open');}
-function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2200);}
+// toast(msg) 2.2s · toast(msg,'err') red and 4s — errors need time to be read.
+function toast(msg,kind){const t=document.getElementById('toast');if(!t)return;t.textContent=msg;t.classList.toggle('err',kind==='err');t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),kind==='err'?4000:2200);}
 ['addWeekOv','addGuestOv','customOv','expOv','billOv','monthlyExpensesOv','transportQuickOv'].forEach(id=>{
   document.getElementById(id).addEventListener('click',e=>{if(e.target.id===id)closeOv(id);});
 });
@@ -9902,7 +9829,7 @@ function renderAccessBlockScreen(result){
   const wanted = result.wanted || __HUB_LOCATION_SLUG;
   const accessible = Array.isArray(result.accessible) ? result.accessible : [];
   const links = accessible.length ? `
-    <div style="opacity:.7;margin-bottom:10px;font-size:14px">Locations que podes abrir:</div>
+    <div style="opacity:.7;margin-bottom:10px;font-size:14px">Camps you can open:</div>
     <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:24px">
       ${accessible.map(a => `
         <a href="/camp-hub/?location=${encodeURIComponent(a.slug)}${a.campTabOnly ? '&view=camp-tab-only' : ''}"
@@ -9910,17 +9837,17 @@ function renderAccessBlockScreen(result){
           ${a.name || a.slug}${a.campTabOnly ? ' <span style="opacity:.55;font-weight:400;font-size:12px">· camp tab only</span>' : ''}
         </a>`).join('')}
     </div>` : `
-    <div style="opacity:.6;margin-bottom:24px;font-size:14px">Ainda não tens acesso a nenhuma location. Pede ao owner para te conceder acesso.</div>`;
+    <div style="opacity:.6;margin-bottom:24px;font-size:14px">You don't have access to any camp yet. Ask the owner to give you access.</div>`;
   const errNote = (result.reason === 'query-error' || result.reason === 'threw') && result.message ?
     `<div style="opacity:.5;font-size:12px;margin-top:16px">${result.message}</div>` : '';
   document.body.innerHTML = `
-    <div style="position:fixed;inset:0;background:#0b1220;color:#e8ecf5;display:flex;align-items:center;justify-content:center;font-family:system-ui,-apple-system,sans-serif;padding:24px;z-index:99999">
+    <div style="position:fixed;inset:0;background:var(--navy-deep);color:#e8ecf5;display:flex;align-items:center;justify-content:center;font-family:'Outfit',system-ui,sans-serif;padding:24px;z-index:99999">
       <div style="max-width:520px;width:100%;text-align:center">
-        <div style="font-family:'DM Serif Display',Georgia,serif;font-size:32px;margin-bottom:10px">Sem acesso a esta location</div>
-        <div style="opacity:.7;margin-bottom:24px;font-size:15px;line-height:1.5">Não tens permissão para abrir <strong>${wanted}</strong>. Pede ao owner para te conceder acesso via Settings → Team Access.</div>
+        <div style="font-weight:700;letter-spacing:-.02em;font-size:28px;margin-bottom:10px">No access to this camp</div>
+        <div style="opacity:.7;margin-bottom:24px;font-size:15px;line-height:1.5">You don't have permission to open <strong>${wanted}</strong>. Ask the owner to give you access in Settings → Team Access.</div>
         ${links}
         <div style="display:flex;gap:10px;justify-content:center">
-          <a href="/" style="background:transparent;border:1px solid rgba(255,255,255,.2);padding:10px 18px;border-radius:10px;color:#e8ecf5;text-decoration:none;font-size:14px">Voltar</a>
+          <a href="/" style="background:transparent;border:1px solid rgba(255,255,255,.2);padding:10px 18px;border-radius:10px;color:#e8ecf5;text-decoration:none;font-size:14px">Back</a>
           <button id="hubAccessSignOut" style="background:transparent;border:1px solid rgba(255,255,255,.2);padding:10px 18px;border-radius:10px;color:#e8ecf5;font-family:inherit;font-size:14px;cursor:pointer">Sign out</button>
         </div>
         ${errNote}

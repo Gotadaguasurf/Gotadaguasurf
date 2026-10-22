@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Camp Tab — Gota d'Água</title>
-<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.4"></script>
 <script src="/supabase-config.js"></script>
 <link rel="stylesheet" href="/lib/app-shell.css">
@@ -25,14 +25,13 @@ header{display:none}
 .snav-btn:hover{color:var(--navy)}
 .snav-btn.active{color:var(--navy);border-bottom-color:var(--ocean)}
 
-/* ── Pills (category tabs, roster + top-sellers filters): white, hairline, ocean-soft when active ── */
-.c-cat,.ts-cat-btn{display:inline-flex;align-items:center;justify-content:center;padding:7px 14px;border-radius:999px;border:1px solid var(--border-2);background:#fff;color:var(--ink);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;font-family:'Outfit',sans-serif;transition:all .15s}
-.c-cat:hover,.ts-cat-btn:hover{background:var(--foam);border-color:var(--ocean)}
-.c-cat.active,.ts-cat-btn.active{background:var(--ocean-soft);border-color:var(--ocean);color:var(--ocean)}
+/* ── Pills (category tabs, roster + top-sellers filters) are the shell's .pill ── */
 .c-cat-manage{color:var(--ocean)}
+.c-link-danger{color:var(--red)}.c-link-danger:hover{background:var(--red-bg)}
 
 /* ── LAYOUT ── */
 .app{display:flex;height:calc(100vh - 46px);overflow:hidden}
+.c-row{flex:1;display:flex;min-height:0;overflow:hidden}
 .subpage{display:none;flex:1;overflow:hidden}
 .subpage.active{display:flex}
 
@@ -41,14 +40,14 @@ header{display:none}
 .c-sidebar{width:220px;flex-shrink:0;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
 .c-sb-head{padding:10px 12px;border-bottom:1px solid var(--border);flex-shrink:0}
 .c-sb-actions{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px}
-.c-sb-title{font-family:'DM Serif Display',serif;font-size:14px;color:var(--navy);margin-bottom:6px}
+.c-sb-title{font-weight:700;font-size:14px;color:var(--navy);margin-bottom:6px}
 .c-sb-search{width:100%}
 .c-sb-list{flex:1;overflow-y:auto;padding:5px}
 .c-guest{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border-radius:9px;cursor:pointer;margin-bottom:2px;transition:background .12s;gap:5px}
 .c-guest:hover{background:var(--foam)}
 .c-guest.active{background:var(--ocean-soft)}
 .c-guest-name{font-size:12px;font-weight:700;color:var(--navy);line-height:1.2}
-.c-guest-amt{font-family:'DM Mono',monospace;font-size:10px;color:var(--muted)}
+.c-guest-amt{font-variant-numeric:tabular-nums;font-size:10px;color:var(--muted)}
 .c-guest.active .c-guest-name,.c-guest.active .c-guest-amt{color:var(--ocean)}
 .c-gpaid{width:6px;height:6px;border-radius:50%;background:var(--green);flex-shrink:0}
 /* Per-row delete button. Hidden until row hover so it doesn't visually
@@ -67,7 +66,7 @@ header{display:none}
    gradient) so it sits clean against the rest of the layout. */
 .c-week-banner{flex-shrink:0;padding:10px 22px;background:var(--navy);color:#fff;display:flex;justify-content:center;align-items:center;gap:14px;border-bottom:1px solid var(--navy-deep)}
 .c-week-banner-label{font-size:10px;text-transform:uppercase;letter-spacing:.14em;color:#9fc0da;font-weight:700}
-.c-week-banner-range{font-family:'DM Serif Display',serif;font-size:20px;letter-spacing:.01em;line-height:1;color:#fff}
+.c-week-banner-range{font-weight:700;letter-spacing:-.02em;font-size:20px;letter-spacing:.01em;line-height:1;color:#fff}
 .c-cats{display:flex;gap:6px;padding:10px 14px;flex-shrink:0;background:var(--surface);border-bottom:1px solid var(--border);overflow-x:auto}
 .c-items{flex:1;overflow-y:auto;padding:10px 14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;align-content:start}
 /* Menu tile = a tappable .card (touch-sized padding) */
@@ -81,25 +80,26 @@ header{display:none}
 .c-item-empty{grid-column:1/-1;background:var(--surface);border:1px dashed var(--border-2);border-radius:var(--r);padding:22px 18px;text-align:center;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:10px}
 .ci-name{font-size:12px;font-weight:700;color:var(--navy);line-height:1.25}
 .ci-desc{font-size:10px;color:var(--muted);line-height:1.3;margin-top:1px}
-.ci-price{font-family:'DM Mono',monospace;font-size:13px;color:var(--ocean);margin-top:3px}
+.ci-price{font-variant-numeric:tabular-nums;font-size:13px;color:var(--ocean);margin-top:3px}
 /* Right panel */
 .c-right{width:260px;flex-shrink:0;background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
 .c-right-head{padding:11px 13px;border-bottom:1px solid var(--border);flex-shrink:0}
-.c-right-title{font-family:'DM Serif Display',serif;font-size:15px;color:var(--navy)}
+.c-right-title{font-weight:700;letter-spacing:-.02em;font-size:15px;color:var(--navy)}
 .c-right-meta{font-size:10px;color:var(--muted);margin-top:2px}
 .c-tab-list{flex:1;overflow-y:auto;padding:6px 8px}
 .c-tab-row{display:flex;justify-content:space-between;align-items:flex-start;padding:6px 7px;border-radius:7px;gap:6px;transition:background .12s}
 .c-tab-row:hover{background:var(--bg)}
 .ctr-name{font-size:11px;font-weight:600;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ctr-time{font-size:9px;color:var(--muted);margin-top:1px}
-.ctr-price{font-family:'DM Mono',monospace;font-size:11px;color:var(--ink);white-space:nowrap}
+.ctr-price{font-variant-numeric:tabular-nums;font-size:11px;color:var(--ink);white-space:nowrap}
 .ctr-del{border:none;background:none;cursor:pointer;color:var(--muted);font-size:14px;padding:1px 4px;border-radius:4px;line-height:1;transition:all .12s;flex-shrink:0}
 .ctr-del:hover{background:var(--red-bg);color:var(--red)}
 .c-right-foot{border-top:1px solid var(--border);padding:11px 13px;flex-shrink:0}
 .c-total-row{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px}
-.c-total-val{font-family:'DM Serif Display',serif;font-size:24px;color:var(--navy)}
-.c-btns{display:flex;gap:6px}
-.c-btns .btn{flex:1;padding:10px 4px;font-size:11.5px}
+.c-total-val{font-weight:700;letter-spacing:-.02em;font-size:24px;color:var(--navy)}
+.c-btns{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.c-btns .btn{flex:1 1 auto;padding:0 8px;font-size:12px}
+.c-pay-state{display:none;align-items:center;gap:8px;flex:1 1 100%;justify-content:space-between}
 
 /* ════════════════════════════════ THIS WEEK ════════════════════════════ */
 .tw-wrap{flex:1;display:flex;flex-direction:column;overflow:hidden}
@@ -107,13 +107,13 @@ header{display:none}
 .tw-header-main{display:flex;flex-direction:column;gap:10px;min-width:280px;flex:1}
 .tw-week-kicker{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.12em;font-weight:700}
 .tw-week-date-line{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap}
-.tw-week-date-main{font-family:'DM Serif Display',serif;font-size:31px;line-height:1;color:var(--navy)}
+.tw-week-date-main{font-weight:700;letter-spacing:-.02em;font-size:31px;line-height:1;color:var(--navy)}
 .tw-week-date-end{font-size:14px;color:var(--muted);font-weight:700;padding-bottom:3px}
 .tw-week-note{font-size:12px;color:var(--muted)}
 .tw-search{width:min(340px,100%)}
 .tw-stats{display:flex;gap:16px;flex-wrap:wrap}
 .tw-stat{text-align:center}
-.tw-stat-val{font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy)}
+.tw-stat-val{font-weight:700;letter-spacing:-.02em;font-size:22px;color:var(--navy)}
 .tw-stat-val.green{color:var(--green)}
 .tw-stat-val.red{color:var(--red)}
 .tw-stat-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-top:2px}
@@ -123,7 +123,7 @@ header{display:none}
 .tw-card-name{font-size:14px;font-weight:700;color:var(--navy)}
 .tw-guest-meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
 .tw-card-right{display:flex;align-items:center;gap:8px;flex-shrink:0}
-.tw-card-total{font-family:'DM Mono',monospace;font-size:13px;color:var(--ink)}
+.tw-card-total{font-variant-numeric:tabular-nums;font-size:13px;color:var(--ink)}
 .tw-card-body{padding:0 14px 12px;border-top:1px solid var(--border)}
 .tw-item-row{display:flex;justify-content:space-between;padding:5px 0;font-size:12px;border-bottom:1px solid var(--border)}
 .tw-item-row:last-child{border-bottom:none}
@@ -138,26 +138,16 @@ header{display:none}
    button, with a hover state that shifts to amber "↶" to signal reversal.
    Shared by the Charge sidebar and the This week expanded card. */
 .c-tab-row.paid,
-.tw-item-row.paid{
-  background:linear-gradient(90deg,var(--green-bg) 0%,transparent 100%);
-  border-left:3px solid var(--green);
-  padding-left:10px;
-  border-radius:0 8px 8px 0;
-}
-.tw-item-row.paid{padding:6px 0 6px 10px;margin:3px 0;border-bottom:none}
+.tw-item-row.paid{background:var(--green-bg);border-radius:8px;padding-left:8px}
+.tw-item-row.paid{padding:6px 8px;margin:3px 0;border-bottom:none}
 .c-tab-row.paid .ctr-name,
 .tw-item-row.paid .tw-item-main > span:first-child{color:var(--green)}
 .c-tab-row.paid .ctr-price,
 .tw-item-row.paid .tw-item-main > span:last-child{color:var(--green);font-weight:700}
 
-.ct-paid-pill{gap:5px;letter-spacing:.06em;text-transform:uppercase;cursor:pointer;user-select:none;font-family:'Outfit',sans-serif;transition:background .15s,color .15s,border-color .15s,transform .12s}
-.ct-paid-pill::before{content:'✓';font-size:11px;line-height:1;display:inline-block}
-.ct-paid-pill:hover{background:var(--amber-bg);color:var(--amber);border-color:var(--amber-border);transform:translateY(-1px)}
-.ct-paid-pill:hover::before{content:'↶'}
-.ct-paid-pill:active{transform:translateY(0)}
-.ct-pay-btn{padding:5px 14px;font-size:11px}
+.ct-unpay{height:22px;padding:0 6px;font-size:11px}
 .tw-actions{display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap}
-.tw-actions .btn{padding:8px 12px;font-size:11.5px}
+.tw-actions .c-link-danger{margin-left:auto}
 .tw-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;color:var(--muted);gap:10px;padding:40px;text-align:center}
 .tw-close-bar{padding:10px 20px;border-top:1px solid var(--border);background:var(--surface);display:flex;justify-content:space-between;align-items:center;flex-shrink:0;flex-wrap:wrap;gap:8px}
 .tw-next-week-bar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;background:var(--ocean-soft);border:1px solid #cfe2f2;border-radius:var(--r);padding:10px 12px;margin-top:10px}
@@ -169,10 +159,10 @@ header{display:none}
 .hist-week-head{display:flex;justify-content:space-between;align-items:center;padding:13px 16px;cursor:pointer;gap:10px;transition:background .12s}
 .hist-week-head:hover{background:var(--foam)}
 .hw-left{}
-.hw-title{font-family:'DM Serif Display',serif;font-size:16px;color:var(--navy)}
+.hw-title{font-weight:700;letter-spacing:-.02em;font-size:16px;color:var(--navy)}
 .hw-sub{font-size:11px;color:var(--muted);margin-top:2px}
 .hw-right{display:flex;align-items:center;gap:10px;flex-shrink:0}
-.hw-total{font-family:'DM Serif Display',serif;font-size:18px;color:var(--green)}
+.hw-total{font-weight:700;letter-spacing:-.02em;font-size:18px;color:var(--green)}
 .hw-chevron{font-size:12px;color:var(--muted);transition:transform .2s}
 .hist-week.open .hw-chevron{transform:rotate(90deg)}
 .hist-week-body{display:none;border-top:1px solid var(--border)}
@@ -182,7 +172,7 @@ header{display:none}
 .hw-guest-row:last-child{border-bottom:none}
 .hw-guest-name{font-size:13px;font-weight:600;color:var(--navy)}
 .hw-guest-items{font-size:11px;color:var(--muted);margin-top:1px}
-.hw-guest-total{font-family:'DM Mono',monospace;font-size:12px;color:var(--ink)}
+.hw-guest-total{font-variant-numeric:tabular-nums;font-size:12px;color:var(--ink)}
 .hw-items-detail{background:var(--bg);padding:10px 16px;border-top:1px solid var(--border)}
 .hw-item-line{display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid var(--border)}
 .hw-item-line:last-child{border-bottom:none}
@@ -195,19 +185,19 @@ header{display:none}
 .ts-header{padding:14px 20px 10px;flex-shrink:0;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .ts-body{flex:1;overflow-y:auto;padding:0 20px 20px}
 .ts-item{display:flex;align-items:center;gap:12px;padding:11px 14px;margin-bottom:7px}
-.ts-rank{font-family:'DM Serif Display',serif;font-size:20px;color:var(--muted-2);min-width:28px;text-align:center}
+.ts-rank{font-weight:700;letter-spacing:-.02em;font-size:20px;color:var(--muted-2);min-width:28px;text-align:center}
 .ts-info{flex:1;min-width:0}
 .ts-name{font-size:13px;font-weight:700;color:var(--navy)}
 .ts-cat-label{font-size:10px;color:var(--muted);margin-top:1px}
 .ts-bar-wrap{flex:1;background:var(--bg);border-radius:4px;height:6px;overflow:hidden;min-width:60px}
 .ts-bar{height:100%;border-radius:4px;background:var(--ocean);transition:width .4s}
-.ts-qty{font-family:'DM Mono',monospace;font-size:12px;color:var(--muted);min-width:30px;text-align:right}
-.ts-rev{font-family:'DM Mono',monospace;font-size:12px;font-weight:700;color:var(--navy);min-width:60px;text-align:right}
+.ts-qty{font-variant-numeric:tabular-nums;font-size:12px;color:var(--muted);min-width:30px;text-align:right}
+.ts-rev{font-variant-numeric:tabular-nums;font-size:12px;font-weight:700;color:var(--navy);min-width:60px;text-align:right}
 
 /* ── MENU SETTINGS modal (layout only; fields/buttons from the shell) ── */
 .menu-shell{display:grid;grid-template-columns:240px 1fr;gap:14px}
 .menu-side,.menu-main{background:var(--bg);border:1px solid var(--border);border-radius:var(--r);padding:14px}
-.menu-side-title,.menu-main-title{font-family:'DM Serif Display',serif;font-size:17px;color:var(--navy);margin-bottom:10px}
+.menu-side-title,.menu-main-title{font-weight:700;letter-spacing:-.02em;font-size:17px;color:var(--navy);margin-bottom:10px}
 .menu-cat-list{display:flex;flex-direction:column;gap:6px;margin-bottom:12px;max-height:280px;overflow:auto}
 .menu-cat-chip{display:flex;justify-content:space-between;align-items:center;gap:8px;background:#fff;border:1px solid var(--border-2);border-radius:var(--r-sm);padding:10px 12px;font-size:12px;font-weight:600;color:var(--ink);cursor:pointer;text-align:left;font-family:'Outfit',sans-serif;transition:all .15s}
 .menu-cat-chip:hover{background:var(--foam);border-color:var(--ocean)}
@@ -217,7 +207,7 @@ header{display:none}
 .menu-item-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 12px}
 .menu-item-name{font-size:13px;font-weight:700;color:var(--navy)}
 .menu-item-desc{font-size:11px;color:var(--muted);margin-top:2px}
-.menu-item-price{font-family:'DM Mono',monospace;font-size:12px;color:var(--ocean);margin-top:4px}
+.menu-item-price{font-variant-numeric:tabular-nums;font-size:12px;color:var(--ocean);margin-top:4px}
 .menu-item-actions{display:flex;gap:6px}
 .menu-item-actions .btn{padding:6px 11px;font-size:11.5px}
 .menu-grid{display:grid;grid-template-columns:1.2fr .7fr;gap:10px}
@@ -226,9 +216,19 @@ header{display:none}
 /* ── BILL PRINT ── */
 @media print{body>*{display:none!important}#billOv{display:block!important;position:static!important;background:none!important;backdrop-filter:none!important;padding:0!important}.modal{box-shadow:none!important;max-height:none!important;border-radius:0!important;width:100%!important;animation:none!important}.mhdr{background:var(--navy)!important;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}.mfooter{display:none!important}.bill-total-box{background:var(--navy)!important;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}@page{margin:1.2cm}}
 
-@media(max-width:800px){.c-right{display:none}.c-sidebar{width:190px}}
+/* Phones: nothing is hidden — the three columns stack. Guest list on top
+   (capped, scrolls), menu items in the middle, and the tab panel becomes a
+   sticky bottom sheet so Total / Bill / Pay stay in reach. */
+@media(max-width:800px){
+  .c-row{flex-direction:column;overflow-y:auto;-webkit-overflow-scrolling:touch}
+  .c-sidebar{width:100%;flex:0 0 auto;max-height:40vh;border-right:none;border-bottom:1px solid var(--border)}
+  .c-center{flex:0 0 auto;overflow:visible;min-height:240px}
+  .c-items{flex:0 0 auto;overflow:visible;max-height:none}
+  .c-right{width:100%;flex:0 0 auto;max-height:46vh;position:sticky;bottom:0;border-left:none;border-top:1px solid var(--border);box-shadow:0 -6px 20px rgba(22,36,58,.08);z-index:5}
+  .c-tab-list{max-height:22vh}
+  .subnav{padding:0 8px;overflow-x:auto}.snav-btn{padding:0 10px}
+}
 @media(max-width:700px){.menu-shell{grid-template-columns:1fr}.menu-grid{grid-template-columns:1fr}}
-@media(max-width:600px){.c-sidebar{display:none}}
 </style>
 </head>
 <body>
@@ -264,17 +264,17 @@ header{display:none}
     <div class="c-week-banner-label">Active week</div>
     <div class="c-week-banner-range" id="weekBannerRange">—</div>
   </div>
-  <!-- 3-column row inside the column-flexed subpage -->
-  <div style="flex:1;display:flex;min-height:0;overflow:hidden">
+  <!-- 3-column row inside the column-flexed subpage (stacks ≤800px) -->
+  <div class="c-row">
   <div class="c-sidebar">
     <div class="c-sb-head">
       <div class="c-sb-actions">
         <div class="c-sb-title" style="margin-bottom:0" id="consumerTitle">Guests</div>
-        <button class="btn btn-p" onclick="openAddGuest()" id="addConsumerBtn" style="padding:6px 10px;font-size:11px">+ Guest</button>
+        <button class="btn btn-s btn-sm" onclick="openAddGuest()" id="addConsumerBtn">+ Guest</button>
       </div>
       <div style="display:flex;gap:6px;margin-bottom:8px">
-        <button class="ts-cat-btn active" id="rosterGuestsBtn" onclick="setRoster('guests')" style="flex:1">Guests</button>
-        <button class="ts-cat-btn" id="rosterStaffBtn" onclick="setRoster('staff')" style="flex:1">Staff</button>
+        <button class="pill ts-cat-btn active" id="rosterGuestsBtn" onclick="setRoster('guests')" style="flex:1">Guests</button>
+        <button class="pill ts-cat-btn" id="rosterStaffBtn" onclick="setRoster('staff')" style="flex:1">Staff</button>
       </div>
       <input class="search c-sb-search" id="gsearch" placeholder="Search" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" oninput="renderGuestList()">
     </div>
@@ -283,12 +283,12 @@ header{display:none}
 
   <div class="c-center">
     <div class="c-center-empty" id="chargeEmpty">
-      <div style="font-family:'DM Serif Display',serif;font-size:18px">Select a guest</div>
+      <div style="font-weight:700;letter-spacing:-.02em;font-size:18px">Select a guest</div>
       <div style="font-size:12px;max-width:180px;line-height:1.6">Pick someone from the left to start adding items to their tab.</div>
     </div>
     <div id="chargeActive" style="display:none;flex-direction:column;flex:1;min-height:0;overflow:hidden">
       <div style="padding:10px 14px;border-bottom:1px solid var(--border);background:#fff;flex-shrink:0">
-        <div style="font-family:'DM Serif Display',serif;font-size:17px;color:var(--navy);line-height:1.15" id="chargeGuestName"></div>
+        <div style="font-weight:700;letter-spacing:-.02em;font-size:17px;color:var(--navy);line-height:1.15" id="chargeGuestName"></div>
         <div style="font-size:11px;color:var(--muted);margin-top:3px" id="chargeGuestMeta"></div>
       </div>
       <div class="c-cats" id="catTabs"></div>
@@ -310,12 +310,16 @@ header{display:none}
         <div class="c-total-val" id="tabTotal">€0.00</div>
       </div>
       <div class="c-btns">
-        <button class="btn btn-p c-btn-bill" onclick="openBill()">Bill</button>
-        <button class="btn btn-g" id="payBtn" onclick="togglePaid()">Paid</button>
+        <button class="btn btn-s c-btn-bill" onclick="openBill()">Bill</button>
+        <!-- Pay is the one primary action of this view. When the tab is paid the
+             button turns into a green "Paid" badge + a small "Mark unpaid" (weekly
+             mode only — in per-guest mode each line is un-paid on its own). -->
+        <button class="btn btn-p" id="payBtn" onclick="togglePaid()">Pay</button>
+        <span class="c-pay-state" id="payState"><span class="badge badge-green">Paid</span><button class="btn btn-link btn-sm" id="unpayBtn" onclick="togglePaid()">Mark unpaid</button></span>
         <!-- Per-guest mode only: closes the guest so they leave the active list.
              Hidden in weekly mode (Sri Lanka) where 'Close week' handles batch
              closing. Shown via JS when CAMP_TAB_MODE === 'per_guest'. -->
-        <button class="btn c-btn-close-guest" id="closeGuestBtn" onclick="closeActiveGuest()" style="display:none;background:var(--navy);color:#fff">Close guest</button>
+        <button class="btn btn-s c-btn-close-guest" id="closeGuestBtn" onclick="closeActiveGuest()" style="display:none">Close guest</button>
       </div>
     </div>
   </div>
@@ -333,7 +337,7 @@ header{display:none}
   </div>
   <div class="tw-wrap" style="flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column">
     <div class="tw-header" id="twHeader">
-      <div style="font-family:'DM Serif Display',serif;font-size:20px;color:var(--navy)">This week</div>
+      <div style="font-weight:700;letter-spacing:-.02em;font-size:20px;color:var(--navy)">This week</div>
     </div>
     <div class="tw-list" id="twList"></div>
     <div class="tw-close-bar" id="twCloseBar"></div>
@@ -351,7 +355,7 @@ header{display:none}
 <div class="subpage" id="sub-sellers">
   <div class="ts-wrap">
     <div class="ts-header">
-      <div style="font-family:'DM Serif Display',serif;font-size:18px;color:var(--navy);margin-right:6px">Top sellers</div>
+      <div style="font-weight:700;letter-spacing:-.02em;font-size:18px;color:var(--navy);margin-right:6px">Top sellers</div>
       <div id="tsCatRow" style="display:flex;gap:8px;flex-wrap:wrap"></div>
     </div>
     <div class="ts-body" id="tsBody"></div>
@@ -362,7 +366,7 @@ header{display:none}
 <div class="subpage" id="sub-activity">
   <div class="ts-wrap">
     <div class="ts-header" style="flex-wrap:wrap;gap:10px">
-      <div style="font-family:'DM Serif Display',serif;font-size:18px;color:var(--navy);margin-right:auto">Activity</div>
+      <div style="font-weight:700;letter-spacing:-.02em;font-size:18px;color:var(--navy);margin-right:auto">Activity</div>
       <label class="period-picker"><span class="period-picker-lbl">Staff</span>
         <select id="acStaff" onchange="renderPosActivity()"><option value="all">Everyone</option></select>
       </label>
@@ -430,8 +434,8 @@ header{display:none}
     <div class="mbody" id="billBody"></div>
     <div class="mfooter">
       <button class="btn btn-s" onclick="closeOv('billOv')">Close</button>
-      <button class="btn btn-g" id="billPayBtn">Mark paid</button>
-      <button class="btn btn-p" onclick="window.print()">Print</button>
+      <button class="btn btn-s" onclick="window.print()">Print</button>
+      <button class="btn btn-p" id="billPayBtn">Mark paid</button>
     </div>
   </div>
 </div>
@@ -505,7 +509,7 @@ header{display:none}
             <div style="font-size:11px;color:var(--muted);margin-top:4px;margin-left:24px">When you log a Transport expense, this tour will appear in the linked-item picker so the cost ties back to its margin.</div>
           </div>
           <div class="mfield" id="menuItemTransportAssocWrap" style="display:none">
-            <label>Transporte associado <span style="color:var(--muted);font-weight:400;font-size:11px">(optional)</span></label>
+            <label>Linked transport <span style="color:var(--muted);font-weight:400;font-size:11px">(optional)</span></label>
             <input type="text" id="menuItemTransportAssoc" list="menuItemTransportAssocList" placeholder="e.g. Dunes, Paradise Valley, Souk Tour">
             <datalist id="menuItemTransportAssocList"></datalist>
             <div style="font-size:11px;color:var(--muted);margin-top:4px">Which Transport subcategory pays for this tour. Multiple tours pointing to the same subcategory share the van cost by paying-guest count. Leave blank to fall back to auto-matching by tour name.</div>
@@ -2543,7 +2547,7 @@ function renderGuestList(){
       }
     }
     const bikeChip = (bikeNo != null)
-      ? `<span style="display:inline-block;background:var(--ocean);color:#fff;border-radius:6px;padding:1px 6px;font-family:'DM Mono',monospace;font-size:10px;font-weight:800;margin-right:6px;vertical-align:1px">${bikeNo}</span>`
+      ? `<span style="display:inline-block;background:var(--ocean);color:#fff;border-radius:6px;padding:1px 6px;font-variant-numeric:tabular-nums;font-size:10px;font-weight:800;margin-right:6px;vertical-align:1px">${bikeNo}</span>`
       : '';
     return `<div class="c-guest ${AG===g.id?'active':''}" onclick="selGuest('${esc(g.id)}')">
     <div style="min-width:0;flex:1">
@@ -2569,7 +2573,7 @@ function renderCatTabs(){
   // /prices — and Drinks heading the same way — there's no editable
   // category left to surface from the POS. The catalog is the single
   // source of truth, so the button would only invite confusion.
-  el.innerHTML=visibleCats().map(c=>`<button class="c-cat ${AC===c?'active':''}" onclick="setCat('${esc(c)}')">${esc(displayCatName(c))}</button>`).join('');
+  el.innerHTML=visibleCats().map(c=>`<button class="pill c-cat ${AC===c?'active':''}" onclick="setCat('${esc(c)}')">${esc(displayCatName(c))}</button>`).join('');
 }
 
 function renderItemGrid(){
@@ -2588,7 +2592,7 @@ function renderItemGrid(){
           <div style="font-size:11px;color:var(--muted);margin-top:2px;line-height:1.4">Freeform amount — bar sales route to the Bar area of the ledger, not Merch/Tours.</div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <div class="mfield" style="flex:1;min-width:110px;margin:0"><input type="number" step="0.01" min="0" id="barTabAmount" placeholder="Amount" style="font-family:'DM Mono',monospace"></div>
+          <div class="mfield" style="flex:1;min-width:110px;margin:0"><input type="number" step="0.01" min="0" id="barTabAmount" placeholder="Amount" style="font-variant-numeric:tabular-nums"></div>
           <div class="mfield" style="flex:2;min-width:140px;margin:0"><input type="text" id="barTabNote" placeholder="What (e.g. Beer, Wine)"></div>
         </div>
         <button id="barTabAdd" class="btn btn-p" style="align-self:flex-start">Add to tab</button>
@@ -2718,7 +2722,7 @@ function renderItemGrid(){
         </button>
         <button onclick="event.stopPropagation();addItemAtAltPrice('${esc(item.id||'')}', '${esc(item.n)}', this)" ${outOfStock?'disabled':''} class="btn btn-s" style="font-size:11px;padding:6px 12px;justify-content:space-between;gap:8px;width:100%">
           <span style="text-transform:uppercase;letter-spacing:.06em">${esc(altLabel)}</span>
-          <span style="font-family:'DM Mono',monospace">${euro(Number(item.altPrice||0))}</span>
+          <span style="font-variant-numeric:tabular-nums">${euro(Number(item.altPrice||0))}</span>
         </button>
       </div>`;
     }
@@ -2793,19 +2797,19 @@ function renderTabPanel(){
   // Bottom button label: in per_guest mode it's a "Pay all" bulk action
   // that loops payItem over every unpaid item. In Sri Lanka it stays
   // the original whole-guest Paid/Pay toggle.
+  // The button says what tapping it does ("Pay" / "Pay all (N)"); the paid
+  // state is a green badge, with a small "Mark unpaid" next to it (weekly
+  // mode only — per-guest lines are un-paid one by one).
   const payBtn=document.getElementById('payBtn');
+  const payState=document.getElementById('payState');
+  const unpayBtn=document.getElementById('unpayBtn');
   if(payBtn){
-    if(CAMP_TAB_MODE==='per_guest'){
-      payBtn.textContent = fullyPaid ? 'Paid' : (unpaidCount>1 ? `Pay all (${unpaidCount})` : 'Pay');
-      payBtn.disabled = fullyPaid || unpaidCount===0;
-      payBtn.style.opacity = payBtn.disabled ? '0.5' : '1';
-      payBtn.style.cursor  = payBtn.disabled ? 'not-allowed' : 'pointer';
-    } else {
-      payBtn.textContent = g.paid ? 'Paid' : 'Pay';
-      payBtn.disabled = false;
-      payBtn.style.opacity = '1';
-      payBtn.style.cursor = 'pointer';
-    }
+    const paidNow = CAMP_TAB_MODE==='per_guest' ? fullyPaid : !!g.paid;
+    payBtn.textContent = (CAMP_TAB_MODE==='per_guest' && unpaidCount>1) ? `Pay all (${unpaidCount})` : 'Pay';
+    payBtn.disabled = CAMP_TAB_MODE==='per_guest' && unpaidCount===0;
+    payBtn.style.display = paidNow ? 'none' : '';
+    if(payState) payState.style.display = paidNow ? 'flex' : 'none';
+    if(unpayBtn) unpayBtn.style.display = (paidNow && CAMP_TAB_MODE!=='per_guest') ? '' : 'none';
   }
   // Show the Close-guest button only in per_guest mode. Always enabled —
   // closeActiveGuest itself surfaces a confirmation when there are
@@ -2840,8 +2844,10 @@ function renderTabPanel(){
       document.getElementById('tabTotal').textContent = euro(0);
       const billBtn = foot.querySelector('.c-btn-bill');
       const payBtn2 = foot.querySelector('#payBtn');
+      const payState2 = foot.querySelector('#payState');
       if(billBtn) billBtn.style.display='none';
       if(payBtn2) payBtn2.style.display='none';
+      if(payState2) payState2.style.display='none';
       return;
     }
     if(foot)foot.style.display='none'; return;
@@ -2850,9 +2856,7 @@ function renderTabPanel(){
   // whenever items are present again.
   if(foot){
     const billBtn = foot.querySelector('.c-btn-bill');
-    const payBtn2 = foot.querySelector('#payBtn');
     if(billBtn) billBtn.style.display='';
-    if(payBtn2) payBtn2.style.display='';
   }
   document.getElementById('tabList').innerHTML=[...g.items].reverse().map((item,ri)=>{
     const idx=g.items.length-1-ri;
@@ -2869,8 +2873,8 @@ function renderTabPanel(){
     const isPaid = CAMP_TAB_MODE==='per_guest' && !!item.paidAt;
     const perItemPay = CAMP_TAB_MODE==='per_guest'
       ? (isPaid
-          ? `<button class="badge badge-green ct-paid-pill" onclick="event.stopPropagation();unpayItem(${idx})" title="Paid ${esc(String(item.paidAt).slice(0,10))} — click to mark unpaid">Paid</button>`
-          : `<button class="btn btn-p ct-pay-btn" onclick="event.stopPropagation();payItem(${idx})" title="Pay this item now">Pay</button>`)
+          ? `<span class="badge badge-green" title="Paid ${esc(String(item.paidAt).slice(0,10))}">Paid</span><button class="btn btn-link btn-sm ct-unpay" onclick="event.stopPropagation();unpayItem(${idx})" title="Mark this item unpaid">Mark unpaid</button>`
+          : `<button class="btn btn-s btn-sm" onclick="event.stopPropagation();payItem(${idx})" title="Pay this item now">Pay</button>`)
       : '';
     const delBtn = isPaid
       ? ''
@@ -2881,7 +2885,7 @@ function renderTabPanel(){
     // and the amount freezes like every other settled row.
     const isEditableBar = item.c==='Bar' && !isPaid;
     const priceCell = isEditableBar
-      ? `<button class="ctr-price" onclick="event.stopPropagation();openBarEditModal(${idx})" style="background:none;border:1px dashed var(--border-2);border-radius:var(--r-sm);padding:4px 8px;cursor:pointer;font-family:'DM Mono',monospace;font-size:inherit;color:inherit" title="Tap to add drinks or correct the amount">${euro(item.p)}</button>`
+      ? `<button class="ctr-price" onclick="event.stopPropagation();openBarEditModal(${idx})" style="background:none;border:1px dashed var(--border-2);border-radius:var(--r-sm);padding:4px 8px;cursor:pointer;font-family:inherit;font-size:inherit;color:inherit" title="Tap to add drinks or correct the amount">${euro(item.p)}</button>`
       : `<div class="ctr-price">${euro(item.p)}</div>`;
     return `<div class="c-tab-row${isPaid?' paid':''}">
       <div style="flex:1;min-width:0"><div class="ctr-name">${item.n}</div><div class="ctr-time">${item.c} · ${item.t}${item.s?' · '+item.s:''}</div></div>
@@ -2896,7 +2900,10 @@ function renderTabPanel(){
   if(foot)foot.style.display='block';
 }
 
-function selGuest(id){AG=id;renderGuestList();renderItemGrid();renderTabPanel();}
+function selGuest(id){AG=id;renderGuestList();renderItemGrid();renderTabPanel();
+  // Phones stack the columns: after picking a guest, bring the menu into view.
+  try{ if(window.matchMedia&&window.matchMedia('(max-width:800px)').matches){ document.querySelector('.c-center')?.scrollIntoView({block:'start',behavior:'smooth'}); } }catch(_){}
+}
 
 // Remove a guest from the active week's roster. Triggered by the × on
 // each row in the guest list — typically when the user typed the wrong
@@ -3014,7 +3021,7 @@ function openDiscountModal(id, name){
   m = document.createElement('div');
   m.id = 'discountModal';
   m.className = 'overlay open'; m.style.zIndex = '9999';
-  const button = (label, price, note) => `<button data-price="${price}" data-note="${esc(note)}" class="btn btn-s" style="flex:1;min-width:100px;flex-direction:column;gap:0;padding:12px 8px;font-size:13px"><div>${label}</div><div style="font-family:'DM Mono',monospace;color:var(--muted);font-weight:600;margin-top:4px">${cur(price)}</div></button>`;
+  const button = (label, price, note) => `<button data-price="${price}" data-note="${esc(note)}" class="btn btn-s" style="flex:1;min-width:100px;flex-direction:column;gap:0;padding:12px 8px;font-size:13px"><div>${label}</div><div style="font-variant-numeric:tabular-nums;color:var(--muted);font-weight:600;margin-top:4px">${cur(price)}</div></button>`;
   const p10 = Math.max(0, basePrice * 0.9);
   const p25 = Math.max(0, basePrice * 0.75);
   const p50 = Math.max(0, basePrice * 0.5);
@@ -3033,7 +3040,7 @@ function openDiscountModal(id, name){
       <div style="border-top:1px solid var(--border);padding-top:12px">
         <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:6px">Custom price</div>
         <div style="display:flex;gap:8px">
-          <div class="mfield" style="flex:1;margin:0"><input type="number" step="0.01" min="0" id="discountCustomPrice" placeholder="Amount" style="font-family:'DM Mono',monospace"></div>
+          <div class="mfield" style="flex:1;margin:0"><input type="number" step="0.01" min="0" id="discountCustomPrice" placeholder="Amount" style="font-variant-numeric:tabular-nums"></div>
           <div class="mfield" style="flex:1;margin:0"><input type="text" id="discountCustomNote" placeholder="Note (optional)"></div>
           <button id="discountCustomApply" class="btn btn-p">Apply</button>
         </div>
@@ -3047,7 +3054,7 @@ function openDiscountModal(id, name){
         </div>
         <button id="discountClose" style="background:none;border:0;font-size:24px;color:var(--muted);cursor:pointer;line-height:1">×</button>
       </div>
-      <div style="font-size:12px;color:var(--muted);margin-bottom:14px">${staffRoster ? 'Staff price' : 'Full price'}: <b style="font-family:'DM Mono',monospace;color:var(--navy)">${cur(basePrice)}</b></div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:14px">${staffRoster ? 'Staff price' : 'Full price'}: <b style="font-variant-numeric:tabular-nums;color:var(--navy)">${cur(basePrice)}</b></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
         ${quickButtons}
       </div>
@@ -3106,11 +3113,11 @@ function openBarEditModal(idx){
         </div>
         <button id="barEditClose" style="background:none;border:0;font-size:24px;color:var(--muted);cursor:pointer;line-height:1">×</button>
       </div>
-      <div style="font-size:12px;color:var(--muted);margin-bottom:14px">Current: <b style="font-family:'DM Mono',monospace;color:var(--navy)">${cur(item.p)}</b></div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:14px">Current: <b style="font-variant-numeric:tabular-nums;color:var(--navy)">${cur(item.p)}</b></div>
       <div style="margin-bottom:12px">
         <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:6px">Add drinks (+)</div>
         <div style="display:flex;gap:8px">
-          <div class="mfield" style="flex:1;margin:0"><input type="text" inputmode="decimal" id="barEditAdd" placeholder="Amount to add (e.g. 5.70)" style="font-family:'DM Mono',monospace"></div>
+          <div class="mfield" style="flex:1;margin:0"><input type="text" inputmode="decimal" id="barEditAdd" placeholder="Amount to add (e.g. 5.70)" style="font-variant-numeric:tabular-nums"></div>
           <button id="barEditAddBtn" class="btn btn-p">Add</button>
         </div>
         <div id="barEditPreview" style="font-size:12px;color:var(--muted);margin-top:6px;min-height:16px"></div>
@@ -3118,7 +3125,7 @@ function openBarEditModal(idx){
       <div style="border-top:1px solid var(--border);padding-top:12px">
         <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:6px">Or set new total</div>
         <div style="display:flex;gap:8px">
-          <div class="mfield" style="flex:1;margin:0"><input type="text" inputmode="decimal" id="barEditTotal" placeholder="New total (e.g. 9.30)" style="font-family:'DM Mono',monospace"></div>
+          <div class="mfield" style="flex:1;margin:0"><input type="text" inputmode="decimal" id="barEditTotal" placeholder="New total (e.g. 9.30)" style="font-variant-numeric:tabular-nums"></div>
           <button id="barEditTotalBtn" class="btn btn-p">Set</button>
         </div>
       </div>
@@ -3437,10 +3444,10 @@ function openBill(guestId){
   let html='';
   Object.keys(byCat).forEach(cat=>{
     html+=`<div style="margin-bottom:14px"><div style="font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--border)">${cat}</div>`;
-    byCat[cat].forEach(i=>{html+=`<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:13px;border-bottom:1px solid rgba(0,0,0,.04)"><span>${i.n}${i.s?` <span style="font-size:10px;color:var(--muted)">· ${i.s}</span>`:''}</span><span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted)">${euro(i.p)}</span></div>`;});
+    byCat[cat].forEach(i=>{html+=`<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:13px;border-bottom:1px solid rgba(0,0,0,.04)"><span>${i.n}${i.s?` <span style="font-size:10px;color:var(--muted)">· ${i.s}</span>`:''}</span><span style="font-variant-numeric:tabular-nums;font-size:11px;color:var(--muted)">${euro(i.p)}</span></div>`;});
     html+=`</div>`;
   });
-  html+=`<div class="bill-total-box" style="background:var(--navy);border-radius:var(--r);padding:14px 16px;display:flex;justify-content:space-between;align-items:center;margin-top:12px"><div><div style="font-size:9px;color:#9fc0da;text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:3px">Total to pay</div><div style="font-family:'DM Serif Display',serif;font-size:28px;color:#fff">${euro(gtot(g))}</div></div><div style="text-align:right;font-size:11px;color:#9fc0da">${g.items.length} items<br>${fmtd(S.activeWeek.start)} week</div></div>`;
+  html+=`<div class="bill-total-box" style="background:var(--navy);border-radius:var(--r);padding:14px 16px;display:flex;justify-content:space-between;align-items:center;margin-top:12px"><div><div style="font-size:9px;color:#9fc0da;text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:3px">Total to pay</div><div style="font-weight:700;letter-spacing:-.02em;font-size:28px;color:#fff">${euro(gtot(g))}</div></div><div style="text-align:right;font-size:11px;color:#9fc0da">${g.items.length} items<br>${fmtd(S.activeWeek.start)} week</div></div>`;
   document.getElementById('billBody').innerHTML=html;
   document.getElementById('billPayBtn').onclick=()=>{g.paid=true;AG=g.id||src;save();renderTabPanel();renderGuestList();closeOv('billOv');renderThisWeek();toast(g.name+' paid');};
   openOv('billOv');
@@ -3482,10 +3489,10 @@ function renderThisWeek(){
     // and the "+ New week" CTA is dropped (the container week is created
     // automatically when the user adds their first guest).
     if(CAMP_TAB_MODE==='per_guest'){
-      twHdr.innerHTML=`<div style="font-family:'DM Serif Display',serif;font-size:20px;color:var(--navy)">Guests</div>
+      twHdr.innerHTML=`<div style="font-weight:700;letter-spacing:-.02em;font-size:20px;color:var(--navy)">Guests</div>
         <button class="btn btn-p" onclick="openAddGuest()" style="padding:8px 16px;font-size:12px">+ Guest</button>`;
     } else {
-      twHdr.innerHTML=`<div style="font-family:'DM Serif Display',serif;font-size:20px;color:var(--navy)">This week</div>
+      twHdr.innerHTML=`<div style="font-weight:700;letter-spacing:-.02em;font-size:20px;color:var(--navy)">This week</div>
         <button class="btn btn-p" onclick="openAddWeek()" style="padding:8px 16px;font-size:12px">+ New week</button>`;
     }
     twBar.innerHTML='';
@@ -3522,8 +3529,8 @@ function renderThisWeek(){
     <div class="tw-header-row" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;width:100%">
       <input class="search tw-search" id="twSearch" placeholder="Search ${currentRoster==='staff'?'staff':'guest'}..." value="${esc(twSearch)}" oninput="setTwSearch(this.value)" style="flex:1;min-width:200px;margin:0">
       <div style="display:flex;gap:6px;flex-shrink:0">
-        <button class="ts-cat-btn ${currentRoster==='guests'?'active':''}" onclick="setRoster('guests')">Guests</button>
-        <button class="ts-cat-btn ${currentRoster==='staff'?'active':''}" onclick="setRoster('staff')">Staff</button>
+        <button class="pill ts-cat-btn ${currentRoster==='guests'?'active':''}" onclick="setRoster('guests')">Guests</button>
+        <button class="pill ts-cat-btn ${currentRoster==='staff'?'active':''}" onclick="setRoster('staff')">Staff</button>
       </div>
       <div class="tw-stat" style="flex-shrink:0">
         <div class="tw-stat-val green">${euro(totalCollected)}</div>
@@ -3567,7 +3574,7 @@ function renderThisWeek(){
         </div>
           <div class="tw-card-right">
             <div class="tw-card-total">${tot>0?euro(tot):'—'}</div>
-            <span style="display:inline-flex;padding:3px 9px;border-radius:20px;font-size:10px;font-weight:700;background:${isFullyPaid?'var(--green-bg)':'var(--red-bg)'};color:${isFullyPaid?'var(--green)':'var(--red)'}";border:1px solid ${isFullyPaid?'var(--green-border)':'#f0a0a0'}">${isFullyPaid?'Paid':'Unpaid'}</span>
+            <span class="badge ${isFullyPaid?'badge-green':'badge-red'}">${isFullyPaid?'Paid':'Unpaid'}</span>
             <div style="font-size:11px;color:var(--muted)">${exp?'Hide':'Open'}</div>
           </div>
         </div>
@@ -3579,8 +3586,8 @@ function renderThisWeek(){
             const itemPaid = CAMP_TAB_MODE==='per_guest' && !!i.paidAt;
             const perItemPay = CAMP_TAB_MODE==='per_guest'
               ? (itemPaid
-                  ? `<button class="badge badge-green ct-paid-pill" style="margin-right:8px" onclick="event.stopPropagation();unpayItemForGuestId('${esc(g.id)}',${idx})" title="Paid ${esc(String(i.paidAt).slice(0,10))} — click to mark unpaid">Paid</button>`
-                  : `<button class="btn btn-p ct-pay-btn" style="margin-right:8px" onclick="event.stopPropagation();payItemForGuestId('${esc(g.id)}',${idx})" title="Pay this item now">Pay</button>`)
+                  ? `<span class="badge badge-green" style="margin-left:8px" title="Paid ${esc(String(i.paidAt).slice(0,10))}">Paid</span><button class="btn btn-link btn-sm ct-unpay" onclick="event.stopPropagation();unpayItemForGuestId('${esc(g.id)}',${idx})" title="Mark this item unpaid">Mark unpaid</button>`
+                  : `<button class="btn btn-s btn-sm" style="margin-left:8px" onclick="event.stopPropagation();payItemForGuestId('${esc(g.id)}',${idx})" title="Pay this item now">Pay</button>`)
               : '';
             const delBtn = itemPaid
               ? ''
@@ -3589,7 +3596,7 @@ function renderThisWeek(){
             return `<div class="tw-item-row${itemPaid?' paid':''}"${auditTitle?` title="${esc(auditTitle)}"`:''}>
               <div class="tw-item-main">
                 <span>${i.n}${i.s?` <span style="font-size:10px;color:var(--muted)">· ${i.s}</span>`:''}</span>
-                <span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted)">${euro(i.p)}</span>
+                <span style="font-variant-numeric:tabular-nums;font-size:11px;color:var(--muted)">${euro(i.p)}</span>
               </div>
               ${perItemPay}
               ${delBtn}
@@ -3597,13 +3604,15 @@ function renderThisWeek(){
           }).join(''):'<div style="font-size:12px;color:var(--muted);padding:8px 0">No items yet.</div>'}
           <div class="tw-actions">
             ${CAMP_TAB_MODE==='per_guest'
-              ? `<button class="btn ${closeReady?'btn-a':'btn-p'}" onclick="closeGuestById('${esc(g.id)}')" title="${hasUnpaidItems?'Close — unpaid items will stay as an unpaid record in history':'Remove guest from active list'}">Close guest</button>
-                 <button class="btn btn-r" onclick="deleteGuest('${esc(g.id)}')">Delete ${rosterLabel().toLowerCase()}</button>
-                 ${!isFullyPaid&&tot>0?`<button class="btn btn-s" onclick="openBill('${esc(g.id)}')">Bill</button>`:''}`
-              : `<button class="btn ${g.paid?'btn-a':'btn-p'}" onclick="toggleGuestPaid('${esc(g.id)}')">${g.paid?'Paid':'Pay'}</button>
-                 <button class="btn btn-r" onclick="deleteGuest('${esc(g.id)}')">Delete ${rosterLabel().toLowerCase()}</button>
-                 ${currentRoster==='guests'?`<button class="btn btn-s" onclick="passGuestToNextWeek('${esc(g.id)}')">${isQueuedForNextWeek(g.name)?'Update next week':'Continue next week'}</button>`:''}
-                 ${!g.paid&&tot>0?`<button class="btn btn-s" onclick="openBill('${esc(g.id)}')">Bill</button>`:''}`
+              ? `${!isFullyPaid&&tot>0?`<button class="btn btn-s btn-sm" onclick="openBill('${esc(g.id)}')">Bill</button>`:''}
+                 <button class="btn ${closeReady?'btn-p':'btn-s'} btn-sm" onclick="closeGuestById('${esc(g.id)}')" title="${hasUnpaidItems?'Close — unpaid items will stay as an unpaid record in history':'Remove guest from active list'}">Close guest</button>
+                 <button class="btn btn-link btn-sm c-link-danger" onclick="deleteGuest('${esc(g.id)}')">Delete ${rosterLabel().toLowerCase()}</button>`
+              : `${currentRoster==='guests'?`<button class="btn btn-s btn-sm" onclick="passGuestToNextWeek('${esc(g.id)}')">${isQueuedForNextWeek(g.name)?'Update next week':'Continue next week'}</button>`:''}
+                 ${!g.paid&&tot>0?`<button class="btn btn-s btn-sm" onclick="openBill('${esc(g.id)}')">Bill</button>`:''}
+                 ${g.paid
+                   ? `<span class="badge badge-green">Paid</span><button class="btn btn-s btn-sm" onclick="toggleGuestPaid('${esc(g.id)}')">Mark unpaid</button>`
+                   : `<button class="btn btn-p btn-sm" onclick="toggleGuestPaid('${esc(g.id)}')">Pay</button>`}
+                 <button class="btn btn-link btn-sm c-link-danger" onclick="deleteGuest('${esc(g.id)}')">Delete ${rosterLabel().toLowerCase()}</button>`
             }
           </div>
         </div>`:''}
@@ -3622,15 +3631,15 @@ function renderThisWeek(){
     twBar.innerHTML = `
       <div></div>
       <div style="font-size:12px;color:var(--muted);padding:8px 14px;text-align:right;line-height:1.4">
-        Per-guest mode · revenue lands in the<br>ledger when a guest is paid.
+        Each guest is closed on their own. Their payment is recorded when you tap Pay.
       </div>
     `;
     return;
   }
   twBar.innerHTML=`
     <div></div>
-    <button class="btn ${allPaid?'btn-g':'btn-s'}" ${allPaid?'onclick="openCloseWeek()"':'disabled'}>
-      ${allPaid?'Close week':'Finish payments first'}
+    <button class="btn ${allPaid?'btn-p':'btn-s'}" ${allPaid?'onclick="openCloseWeek()"':'disabled'}>
+      ${allPaid?'Close week':`${unpaid.length} tab${unpaid.length===1?'':'s'} still unpaid — close week after they pay`}
     </button>
   `;
 }
@@ -3811,7 +3820,7 @@ function renderHistory(){
     return renderHistoryPerGuest(el);
   }
   if(!S.history.length){
-    el.innerHTML=`<div class="hist-empty"><div style="font-family:'DM Serif Display',serif;font-size:18px">No history yet</div><div style="font-size:13px;max-width:220px;line-height:1.6">Closed weeks will appear here. All guest tabs stay visible.</div></div>`;
+    el.innerHTML=`<div class="hist-empty"><div style="font-weight:700;letter-spacing:-.02em;font-size:18px">No history yet</div><div style="font-size:13px;max-width:220px;line-height:1.6">Closed weeks will appear here. All guest tabs stay visible.</div></div>`;
     return;
   }
   el.innerHTML=[...S.history].reverse().map(wk=>{
@@ -3851,9 +3860,9 @@ function renderHistory(){
               </div>
             </div>
             ${isGOpen&&g.items.length?`<div class="hw-items-detail">
-              ${g.items.map(i=>`<div class="hw-item-line"><span>${i.n}${i.s?` <span style="font-size:10px;color:var(--muted)">· ${i.s}</span>`:''}</span><span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted)">${euro(i.p)}</span></div>`).join('')}
+              ${g.items.map(i=>`<div class="hw-item-line"><span>${i.n}${i.s?` <span style="font-size:10px;color:var(--muted)">· ${i.s}</span>`:''}</span><span style="font-variant-numeric:tabular-nums;font-size:11px;color:var(--muted)">${euro(i.p)}</span></div>`).join('')}
               <div style="display:flex;justify-content:space-between;padding:7px 0 0;border-top:1px solid var(--border);margin-top:4px;font-weight:700;font-size:13px">
-                <span>Total</span><span style="font-family:'DM Mono',monospace">${euro(gt)}</span>
+                <span>Total</span><span style="font-variant-numeric:tabular-nums">${euro(gt)}</span>
               </div>
             </div>`:''}
           </div>`;
@@ -3889,7 +3898,7 @@ function renderHistoryPerGuest(el){
 
   if(!closed.length){
     el.innerHTML=`<div class="hist-empty">
-      <div style="font-family:'DM Serif Display',serif;font-size:18px">No closed guests yet</div>
+      <div style="font-weight:700;letter-spacing:-.02em;font-size:18px">No closed guests yet</div>
       <div style="font-size:13px;max-width:280px;line-height:1.6">Guests you close from the Charge or This week tabs land here. Their items + payment history stay intact, and you can re-open them if they come back.</div>
     </div>`;
     return;
@@ -3933,10 +3942,10 @@ function renderHistoryPerGuest(el){
             ${items.length?`<div class="hw-items-detail">
               ${items.map(i=>`<div class="hw-item-line" style="${i.paidAt?'opacity:.9':''}">
                 <span>${esc(i.n||'')}${i.paidAt?` <span style="font-size:9px;font-weight:700;background:var(--green-bg);color:var(--green);border:1px solid var(--green-border);border-radius:20px;padding:1px 7px;margin-left:6px;letter-spacing:.04em;text-transform:uppercase">Paid</span>`:''}</span>
-                <span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted)">${euro(Number(i.p||0))}</span>
+                <span style="font-variant-numeric:tabular-nums;font-size:11px;color:var(--muted)">${euro(Number(i.p||0))}</span>
               </div>`).join('')}
               <div style="display:flex;justify-content:space-between;padding:7px 0 0;border-top:1px solid var(--border);margin-top:4px;font-weight:700;font-size:13px">
-                <span>Collected</span><span style="font-family:'DM Mono',monospace">${euro(totalPaid)}</span>
+                <span>Collected</span><span style="font-variant-numeric:tabular-nums">${euro(totalPaid)}</span>
               </div>
             </div>`:'<div style="font-size:12px;color:var(--muted);padding:10px 0">No items on this guest.</div>'}
           </div>`:''}
@@ -4195,7 +4204,7 @@ async function renderPosActivity(){
         <div style="color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><strong>${who}</strong> added <strong>${r.item_name||'item'}</strong> to <strong>${guest}</strong></div>
         <div style="font-size:10px;color:var(--muted);margin-top:1px">${r.category||'—'} · ${when(r.added_at)}${edited?` · edited by ${editedByName} ${when(r.updated_at)}`:''}</div>
       </div>
-      <div style="font-family:'DM Mono',monospace;font-weight:700;color:var(--navy);text-align:right;white-space:nowrap">${cur} ${Number(r.price_local||0).toFixed(0)}</div>
+      <div style="font-variant-numeric:tabular-nums;font-weight:700;color:var(--navy);text-align:right;white-space:nowrap">${cur} ${Number(r.price_local||0).toFixed(0)}</div>
     </div>`;
   }).join('');
 
@@ -4221,7 +4230,7 @@ function renderSellerTabs(){
   ensureMenuState();
   const el=document.getElementById('tsCatRow');
   if(!el) return;
-  el.innerHTML=['All',...getCats()].map(cat=>`<button class="ts-cat-btn ${tsCat===cat?'active':''}" data-tscat="${cat}" onclick="setTsCat('${esc(cat)}')">${cat}</button>`).join('');
+  el.innerHTML=['All',...getCats()].map(cat=>`<button class="pill ts-cat-btn ${tsCat===cat?'active':''}" data-tscat="${cat}" onclick="setTsCat('${esc(cat)}')">${cat}</button>`).join('');
 }
 
 // ════════════════════════════════════════════════════════════
@@ -4251,7 +4260,7 @@ function renderMenuSettings(){
   if(catList){
     catList.innerHTML=cats.map(cat=>{
       const locked=isCatLocked(cat);
-      const lockIcon=locked?' <span style="font-size:10px;opacity:.6" title="Managed in /prices">🔒</span>':'';
+      const lockIcon=locked?' <span class="badge badge-grey" title="Managed in Prices">Prices</span>':'';
       return `<button class="menu-cat-chip ${menuEditCat===cat?'active':''}" onclick="pickMenuCategory('${esc(cat)}')">
         <span>${cat}${lockIcon}</span><span style="font-size:10px;opacity:.7">${(MENU[cat]||[]).length}</span>
       </button>`;
@@ -4265,12 +4274,12 @@ function renderMenuSettings(){
   const items=MENU[menuEditCat]||[];
   if(itemList){
     const lockBanner=isLockedCat?`<div style="background:var(--foam);border:1px solid var(--border);border-radius:9px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:var(--navy);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
-      <span><span style="opacity:.6">🔒</span> <strong>${esc(menuEditCat)} are managed in the Pricing Catalog.</strong> Edits made here don't sync.</span>
-      <a href="/prices?location=${esc(typeof CAMP_TAB_LOCATION_SLUG!=='undefined'?CAMP_TAB_LOCATION_SLUG:'')}" target="_blank" style="color:var(--ocean);font-weight:600;text-decoration:none">↗ Open Pricing Catalog</a>
+      <span><strong>${esc(menuEditCat)} are managed in Prices.</strong> Edits made here don't sync.</span>
+      <a href="/prices?location=${esc(typeof CAMP_TAB_LOCATION_SLUG!=='undefined'?CAMP_TAB_LOCATION_SLUG:'')}" target="_blank" style="color:var(--ocean);font-weight:600;text-decoration:none">Open Prices</a>
     </div>`:'';
     const rows=items.length?items.map((item,idx)=>`<div class="card menu-item-row">
       <div>
-        <div class="menu-item-name">${item.n}${item.hasTransport?` <span style="font-size:10px;color:var(--ocean);background:#e3f2fd;padding:2px 6px;border-radius:6px;margin-left:4px;font-weight:600">🚐 transport</span>`:''}${Number(item.costPerGuest||0)>0?` <span style="font-size:10px;color:#b46c00;background:#fff4d5;padding:2px 6px;border-radius:6px;margin-left:4px;font-weight:600">cost ${LOCAL_CURRENCY||'LKR'} ${Number(item.costPerGuest).toLocaleString('en-GB')}/g</span>`:''}</div>
+        <div class="menu-item-name">${item.n}${item.hasTransport?` <span class="badge badge-blue" style="margin-left:4px">transport</span>`:''}${Number(item.costPerGuest||0)>0?` <span style="font-size:10px;color:#b46c00;background:#fff4d5;padding:2px 6px;border-radius:6px;margin-left:4px;font-weight:600">cost ${LOCAL_CURRENCY||'LKR'} ${Number(item.costPerGuest).toLocaleString('en-GB')}/g</span>`:''}</div>
       ${item.d?`<div class="menu-item-desc">${item.d}</div>`:''}
       <div class="menu-item-price">${euro(item.p)}${item.sp?` <span style="font-size:10px;color:var(--muted)">· staff ${euro(item.sp)}</span>`:''}${Number.isFinite(Number(item.stk))?` <span style="font-size:10px;color:var(--muted)">· stock ${item.stk}</span>`:''}</div>
       </div>
@@ -4594,11 +4603,11 @@ function openCloseWeek(){
 
   document.getElementById('closeWeekBody').innerHTML=`
     <div style="background:var(--bg);border-radius:10px;padding:14px;margin-bottom:12px">
-      <div style="font-family:'DM Serif Display',serif;font-size:15px;color:var(--navy);margin-bottom:10px">${weekSpan(S.activeWeek.start)}</div>
+      <div style="font-weight:700;letter-spacing:-.02em;font-size:15px;color:var(--navy);margin-bottom:10px">${weekSpan(S.activeWeek.start)}</div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;text-align:center">
-        <div><div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy)">${guests.length}</div><div style="font-size:10px;color:var(--muted);margin-top:2px;text-transform:uppercase;letter-spacing:.06em">Guests</div></div>
-        <div><div style="font-family:'DM Serif Display',serif;font-size:22px;color:var(--green)">${euro(collected)}</div><div style="font-size:10px;color:var(--muted);margin-top:2px;text-transform:uppercase;letter-spacing:.06em">Collected</div></div>
-        <div><div style="font-family:'DM Serif Display',serif;font-size:22px;color:${outstanding>0?'var(--red)':'var(--green)'}">${outstanding>0?euro(outstanding):'All paid'}</div><div style="font-size:10px;color:var(--muted);margin-top:2px;text-transform:uppercase;letter-spacing:.06em">${outstanding>0?'Outstanding':'Status'}</div></div>
+        <div><div style="font-weight:700;letter-spacing:-.02em;font-size:22px;color:var(--navy)">${guests.length}</div><div style="font-size:10px;color:var(--muted);margin-top:2px;text-transform:uppercase;letter-spacing:.06em">Guests</div></div>
+        <div><div style="font-weight:700;letter-spacing:-.02em;font-size:22px;color:var(--green)">${euro(collected)}</div><div style="font-size:10px;color:var(--muted);margin-top:2px;text-transform:uppercase;letter-spacing:.06em">Collected</div></div>
+        <div><div style="font-weight:700;letter-spacing:-.02em;font-size:22px;color:${outstanding>0?'var(--red)':'var(--green)'}">${outstanding>0?euro(outstanding):'All paid'}</div><div style="font-size:10px;color:var(--muted);margin-top:2px;text-transform:uppercase;letter-spacing:.06em">${outstanding>0?'Outstanding':'Status'}</div></div>
       </div>
     </div>
     ${unpaid.length?`<div style="background:var(--red-bg);border-radius:9px;padding:11px 13px;margin-bottom:12px;font-size:13px;color:var(--red)">Still unpaid: <strong>${unpaid.map(g=>g.name).join(', ')}</strong></div>`:''}

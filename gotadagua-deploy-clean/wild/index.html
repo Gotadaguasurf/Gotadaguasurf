@@ -8,7 +8,7 @@
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='-15 0 92 92'><path fill='%231e6fa8' d='M61.7,51.9c-.4-9-5.5-16.5-9.7-24.1-2.9-4.8-5.3-9.8-9.3-13.9-3.9-4.4-6.5-9.8-10.8-13.9C19.2,16.6-.5,39.9,0,61.9c9.4-7.9,20.1-17.7,33.1-17.8,3,0,7.2,0,9.5,2.2,1.7,1.7,3.2,4.2,2,6.5-.3.5-1.9,2.7-2.3,2.9-12.9,7.4-20.3,18.6-16.5,33.7,3.1,1.3,8,1,11.1-.3,2.7-.3,5.1-1.3,7.5-2.5,8.7-2.9,14.5-11.1,15.5-20.1,1.2-4.7,2.1-9.7,1.8-14.6h0Z'/></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Outfit:wght@400;500;600;700;800&family=DM+Mono:wght@500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=DM+Mono:wght@500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/lib/app-shell.css">
 <style>
 /* page-specific only — everything else comes from /lib/app-shell.css */
@@ -20,9 +20,9 @@
 <!-- ═══════════ OVERVIEW ═══════════ -->
 <div class="page active" id="page-overview">
   <div class="container">
-    <div class="ov-filters">
-      <label class="period-picker" title="Season"><span class="period-picker-lbl">Season</span><select id="seasonYear" onchange="renderSeason()"></select></label>
-      <span class="hint" style="margin-left:auto">Revenue by source, costs by rubric, commissions after the profit. Same lines as the Wild Excel.</span>
+    <div class="ov-section-head page-head">
+      <div><div class="ov-section-title">Wild Wednesday</div><div class="ov-section-sub">Revenue by source, costs by category, commissions after the profit. Same lines as the Wild Excel.</div></div>
+      <div class="ov-filters" style="margin:0"><label class="period-picker" title="Season"><span class="period-picker-lbl">Season</span><select id="seasonYear" onchange="renderSeason()"></select></label></div>
     </div>
     <div id="seasonBody"><div class="card card-pad hint">Loading…</div></div>
   </div>
@@ -34,17 +34,17 @@
     <div class="form-head">
       <div>
         <div class="form-title">Close night</div>
-        <div class="form-sub">One line per source, with how it was paid. Gota tickets sold on the camp tab are already in — set the final count and the difference is added. Sound/light, invoiced DJs, video and Meta ads are paid by bank and come in through the HQ.</div>
+        <div class="form-sub">Enter tonight's tickets and cash costs. Bank and card costs arrive later from HQ.</div>
       </div>
-      <label class="period-picker" title="Night"><span class="period-picker-lbl">Night</span><input id="n_date" type="date" onchange="loadNightIntoForm()" style="border:0;background:transparent;font-weight:700;color:var(--navy);padding:4px 6px;font-size:13px"></label>
     </div>
 
-    <div class="card card-pad" style="margin-bottom:14px">
-      <div class="fgrid">
+    <div class="card card-pad" style="margin-bottom:16px">
+      <div class="fgrid" style="grid-template-columns:repeat(5,1fr)">
+        <div><label>Night</label><input id="n_date" type="date" onchange="loadNightIntoForm()"></div>
         <div><label>Theme</label><input id="n_theme" type="text" placeholder="white party, wild shades…"></div>
         <div><label>DJs</label><input id="n_djs" type="text" placeholder="Namor / Lavito"></div>
         <div><label>Ticket price (€)</label><input id="n_price" type="number" min="0" step="0.5" value="10" oninput="recalcNight()"></div>
-        <div><label>Gota tickets on the camp tab</label><input id="n_tab_display" type="text" readonly value="—" style="background:#f6f9fc"></div>
+        <div><label>Gota tickets on the camp tab</label><input id="n_tab_display" type="text" readonly value="—" style="background:var(--surface-2);color:var(--muted)"></div>
       </div>
     </div>
 
@@ -67,18 +67,18 @@
         <div class="frow"><label>Marketing (€)<small>ads for this night</small></label><input id="n_marketing" type="number" min="0" step="0.01" oninput="recalcNight()" placeholder="0"><select id="m_marketing" onchange="recalcNight()"><option>Card</option><option>Cash</option><option>Bank Transfer</option></select></div>
         <div class="frow"><label>Door person (€)</label><input id="n_door_person" type="number" min="0" step="0.01" value="40" oninput="recalcNight()"><select id="m_doorp" onchange="recalcNight()"><option>Cash</option><option>Bank Transfer</option></select></div>
         <div class="frow"><label>Other (€)</label><input id="n_other_cash" type="number" min="0" step="0.01" oninput="recalcNight()" placeholder="0"><select id="m_other" onchange="recalcNight()"><option>Cash</option><option>Card</option><option>Bank Transfer</option></select></div>
-        <div class="frow" style="grid-template-columns:1fr"><input id="n_other_desc" type="text" placeholder="what the other cost was (wristbands, ice…)" style="text-align:left;font-family:'Outfit',sans-serif"></div>
-        <div class="hint" style="margin-top:8px">Lines paid by bank or card are saved as <b>pending the invoice</b>: when the supplier's invoice is lanced in the HQ for this night, that pending line is replaced, so nothing counts twice.</div>
+        <div class="frow" style="grid-template-columns:1fr"><input id="n_other_desc" type="text" placeholder="what the other cost was (wristbands, ice…)" style="text-align:left"></div>
+        <div class="hint" style="margin-top:8px">Lines paid by bank or card are saved as <b>pending the invoice</b>: when the supplier's invoice is entered in HQ for this night, that pending line is replaced, so nothing counts twice.</div>
       </div>
       <div>
         <div class="sumbox" id="nightTotals"></div>
-        <button class="btn btn-p btn-lg" id="saveNightBtn" onclick="saveNight()" style="width:100%;justify-content:center;margin-top:12px">Save night</button>
+        <button class="btn btn-p btn-lg btn-block" id="saveNightBtn" onclick="saveNight()" style="margin-top:12px">Save night</button>
         <div class="hint" id="nightStatus" style="margin-top:8px"></div>
       </div>
     </div>
 
-    <section class="ov-section" style="margin-top:30px">
-      <div class="ov-section-head"><div class="ov-section-title">Nights</div><div class="ov-section-sub">Click a night to load it into the form</div></div>
+    <section class="ov-section" style="margin-top:32px">
+      <div class="ov-section-head"><div><div class="ov-section-title">Nights</div><div class="ov-section-sub">Tap a night to load it into the form</div></div></div>
       <div class="card"><div class="tbl-wrap"><table>
         <thead><tr><th>Night</th><th>Theme · DJs</th><th class="r">Gota tab</th><th class="r">Revenue</th><th class="r">Cash costs</th><th>Status</th><th></th></tr></thead>
         <tbody id="nightsList"><tr class="empty-row"><td colspan="7">Loading…</td></tr></tbody>
@@ -86,13 +86,14 @@
     </section>
 
     <section class="ov-section">
-      <div class="ov-section-head"><div class="ov-section-title">Commissions</div><div class="ov-section-sub">Pure gets 2 € per ticket of theirs; Max 30 % of the profit. Logged when paid.</div></div>
+      <div class="ov-section-head"><div><div class="ov-section-title">Commissions</div><div class="ov-section-sub">Pure gets 2 € per ticket of theirs; Max 30 % of the profit. Logged when paid.</div></div></div>
       <div class="card card-pad">
-        <div class="fgrid" style="grid-template-columns:1fr 1fr 1fr auto;align-items:end">
+        <div class="fgrid" style="grid-template-columns:1fr 1fr 1fr 1fr auto;align-items:end">
           <div><label>Date</label><input id="c_date" type="date"></div>
           <div><label>Who</label><select id="c_who"><option value="Pure Surf Camp">Pure Surf Camp</option><option value="Max">Max</option><option value="Other">Other</option></select></div>
           <div><label>Amount (€)</label><input id="c_amount" type="number" min="0" step="0.01" placeholder="0"></div>
-          <div><label>&nbsp;</label><select id="c_method" style="width:auto"><option>Cash</option><option>Bank Transfer</option></select> <button class="btn btn-s" id="commBtn" onclick="saveCommission()">Log commission</button></div>
+          <div><label>Paid by</label><select id="c_method"><option>Cash</option><option>Bank Transfer</option></select></div>
+          <div><label>&nbsp;</label><button class="btn btn-s" id="commBtn" onclick="saveCommission()">Log commission</button></div>
         </div>
         <div id="commList" style="margin-top:12px"></div>
       </div>
@@ -252,7 +253,7 @@ function recalcNight(){
 async function saveNight(){
   if (!CAN_EDIT) return;
   const date = $('n_date').value;
-  if (!date) { toast('Pick the night', 'err'); return; }
+  if (!date) { toast('Enter a date and an amount', 'err'); return; }
   const d = new Date(date + 'T12:00:00');
   if (d.getDay() !== 3 && !confirm('That date is not a Wednesday. Save anyway?')) return;
   const price = num('n_price') || 10;
@@ -280,7 +281,7 @@ async function saveNight(){
   if (num('n_marketing') > 0) rows.push(row('expense', CAT.marketing, num('n_marketing'), `${tag} — marketing${pend(m('m_marketing'))}`, m('m_marketing')));
   if (num('n_door_person') > 0) rows.push(row('expense', CAT.doorPerson, num('n_door_person'), `${tag} — door person${pend(m('m_doorp'))}`, m('m_doorp')));
   if (num('n_other_cash') > 0) rows.push(row('expense', CAT.other, num('n_other_cash'), `${tag} — ${$('n_other_desc').value.trim() || 'other'}${pend(m('m_other'))}`, m('m_other')));
-  if (!rows.length) { toast('Nothing to save', 'err'); return; }
+  if (!rows.length) { toast('Enter a date and an amount', 'err'); return; }
   $('saveNightBtn').disabled = true;
   try {
     const old = manualRowsOf(date);
@@ -289,7 +290,7 @@ async function saveNight(){
     if (error) throw error;
     toast(`Night ${dmy(date)} saved · ${rows.length} lines`);
     await loadRows(); loadNightIntoForm(); renderNightsList(); renderSeason();
-  } catch (e) { toast('Not saved: ' + (e.message || e), 'err'); }
+  } catch (e) { toast("Couldn't save the night — " + (e.message || e), 'err'); }
   finally { $('saveNightBtn').disabled = !CAN_EDIT; }
 }
 
@@ -303,11 +304,11 @@ function renderNightsList(){
   });
   const keys = Object.keys(nights).sort().reverse();
   $('nightsList').innerHTML = keys.length ? keys.map(k => { const n = nights[k]; return `
-    <tr style="cursor:pointer" onclick="$('n_date').value='${k}';loadNightIntoForm();window.scrollTo({top:0,behavior:'smooth'})">
+    <tr class="click" onclick="$('n_date').value='${k}';loadNightIntoForm();window.scrollTo({top:0,behavior:'smooth'})">
       <td><b>${k}</b></td><td class="hint">${esc(n.meta.replace(/theme: |tema: /i, '').replace(/; DJs: /i, ' · '))}</td>
-      <td class="r">${n.tab}</td><td class="r" style="color:var(--green);font-weight:700">${eur(n.rev)}</td><td class="r">${n.cash ? eur(n.cash) : '—'}</td>
-      <td>${n.manual ? '<span class="badge badge-green">closed</span>' : '<span class="badge badge-amber">camp tab only</span>'}</td>
-      <td class="r"><button class="btn btn-s" onclick="event.stopPropagation();$('n_date').value='${k}';loadNightIntoForm();window.scrollTo({top:0,behavior:'smooth'})">${n.manual ? 'Edit' : 'Close'}</button></td>
+      <td class="r">${n.tab}</td><td class="r pos">${eur(n.rev)}</td><td class="r">${n.cash ? eur(n.cash) : '—'}</td>
+      <td>${n.manual ? '<span class="badge badge-green">Closed</span>' : '<span class="badge badge-amber">Not closed yet</span>'}</td>
+      <td class="r"><button class="btn btn-s btn-sm" onclick="event.stopPropagation();$('n_date').value='${k}';loadNightIntoForm();window.scrollTo({top:0,behavior:'smooth'})">${n.manual ? 'Edit' : 'Close night'}</button></td>
     </tr>`; }).join('') : '<tr class="empty-row"><td colspan="7">No nights yet.</td></tr>';
 }
 
@@ -315,18 +316,18 @@ function renderNightsList(){
 async function saveCommission(){
   if (!CAN_EDIT) return;
   const date = $('c_date').value, who = $('c_who').value, amount = num('c_amount');
-  if (!date || amount <= 0) { toast('Date and amount', 'err'); return; }
+  if (!date || amount <= 0) { toast('Enter a date and an amount', 'err'); return; }
   const { error } = await sb.from('ledger_entries').insert({
     location_id: LOCATION_ID, type:'expense', entry_date: date, amount_eur: amount, amount_local: amount, currency:'EUR', fx_rate:1,
     business_area:'Wild', category: CAT.commission, description:`Commission ${who} — ${amount} €`, payment_method: $('c_method').value, source_kind:'manual', paid_from: SLUG, attributed_location: SLUG
   });
-  if (error) { toast('Not saved: ' + error.message, 'err'); return; }
+  if (error) { toast("Couldn't save the commission — " + error.message, 'err'); return; }
   toast(`Commission ${who} logged`); $('c_amount').value = '';
   await loadRows(); renderCommissions(); renderSeason();
 }
 function renderCommissions(){
   const rows = ROWS.filter(r => r.category === CAT.commission).sort((a, b) => a.entry_date < b.entry_date ? 1 : -1);
-  $('commList').innerHTML = rows.length ? `<div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Description</th><th>Paid</th><th class="r">Amount</th></tr></thead><tbody>${rows.map(r => `<tr><td>${r.entry_date}</td><td>${esc(r.description)}</td><td>${esc(r.payment_method || 'Cash')}</td><td class="r"><b>${eur(r.amount_eur)}</b></td></tr>`).join('')}</tbody></table></div>` : '<div class="hint">No commissions logged.</div>';
+  $('commList').innerHTML = rows.length ? `<div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Description</th><th>Paid by</th><th class="r">Amount</th></tr></thead><tbody>${rows.map(r => `<tr><td>${r.entry_date}</td><td>${esc(r.description)}</td><td>${esc(r.payment_method || 'Cash')}</td><td class="r"><b>${eur(r.amount_eur)}</b></td></tr>`).join('')}</tbody></table></div>` : '<div class="hint">No commissions logged yet.</div>';
 }
 
 // ── Overview ─────────────────────────────────────────────────────
@@ -337,7 +338,7 @@ function renderSeason(){
   const year = sel.value || years[0] || '';
   BusinessPnl.render($('seasonBody'), ROWS.filter(r => String(r.entry_date).startsWith(year)), {
     year, title:'Wild Wednesday', dayLabel:'Night', snapWednesday:true, revOrder: REV_ORDER, expOrder: EXP_ORDER,
-    emptyText:'No nights in this season yet. Close the first one in “Close night”.'
+    emptyText:'No nights in this season yet. Close the first one in "Close night".'
   });
 }
 

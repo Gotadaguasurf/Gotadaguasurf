@@ -8,7 +8,7 @@
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='-15 0 92 92'><path fill='%231e6fa8' d='M61.7,51.9c-.4-9-5.5-16.5-9.7-24.1-2.9-4.8-5.3-9.8-9.3-13.9-3.9-4.4-6.5-9.8-10.8-13.9C19.2,16.6-.5,39.9,0,61.9c9.4-7.9,20.1-17.7,33.1-17.8,3,0,7.2,0,9.5,2.2,1.7,1.7,3.2,4.2,2,6.5-.3.5-1.9,2.7-2.3,2.9-12.9,7.4-20.3,18.6-16.5,33.7,3.1,1.3,8,1,11.1-.3,2.7-.3,5.1-1.3,7.5-2.5,8.7-2.9,14.5-11.1,15.5-20.1,1.2-4.7,2.1-9.7,1.8-14.6h0Z'/></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Outfit:wght@400;500;600;700;800&family=DM+Mono:wght@500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=DM+Mono:wght@500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/lib/app-shell.css">
 <style>
 .mx td.r.neg{color:var(--red)}
@@ -16,11 +16,10 @@
 .mx tr.sum td{font-weight:800;border-top:2px solid var(--navy)}
 .mx tr.result td{color:var(--green)}.mx tr.result td.neg{color:var(--red)}
 .mx td.total{font-weight:700;color:var(--navy)}
-.catsel{border:1px solid var(--border);border-radius:8px;padding:4px 6px;font-size:12px;background:#fff;color:var(--ink);max-width:170px}
+.catsel{height:30px;border:1px solid var(--border-2);border-radius:8px;padding:0 8px;font-size:12px;font-family:inherit;background:#fff;color:var(--ink);max-width:170px}
 .catsel.todo{border-color:var(--amber-border);background:var(--amber-bg);color:var(--amber);font-weight:700}
 .dropzone{border:2px dashed var(--border);border-radius:12px;padding:16px;text-align:center;color:var(--muted);font-size:13px;cursor:pointer;background:#fff}
 .dropzone:hover{border-color:var(--ocean);color:var(--navy)}
-.search{border:1px solid var(--border);border-radius:20px;padding:7px 12px;font-size:12px;min-width:220px}
 </style>
 </head>
 <body>
@@ -29,9 +28,9 @@
 <!-- ═══════════ OVERVIEW ═══════════ -->
 <div class="page active" id="page-overview">
   <div class="container">
-    <div class="ov-filters">
-      <label class="period-picker"><span class="period-picker-lbl">Year</span><select id="ov_year" onchange="renderOverview()"></select></label>
-      <span class="hint" style="margin-left:auto">Read from the Millennium BCP statement of Manjar Lda: what came in, what went out, by month and by rubric.</span>
+    <div class="ov-section-head page-head">
+      <div><div class="ov-section-title">The Suk</div><div class="ov-section-sub">Manjar Lda · read from the Millennium BCP statement: what came in, what went out, by month and by category.</div></div>
+      <div class="ov-filters" style="margin:0"><label class="period-picker"><span class="period-picker-lbl">Year</span><select id="ov_year" onchange="renderOverview()"></select></label></div>
     </div>
     <div id="ovBody"><div class="card card-pad hint">Loading…</div></div>
   </div>
@@ -40,24 +39,30 @@
 <!-- ═══════════ INVOICES ═══════════ -->
 <div class="page" id="page-invoices">
   <div class="container">
+    <div class="ov-section-head page-head">
+      <div><div class="ov-section-title">Expenses</div><div class="ov-section-sub">One line per debit of the BCP account, like the HQ does for Water Movements. Cash purchases are added by hand.</div></div>
+      <button class="btn btn-p" id="addInvBtn" onclick="openInvoice()">Add expense</button>
+    </div>
     <div class="ov-filters">
       <label class="period-picker"><span class="period-picker-lbl">Month</span><select id="iv_month" onchange="renderInvoices()"><option value="all">All</option></select></label>
       <label class="period-picker"><span class="period-picker-lbl">Show</span><select id="iv_filter" onchange="renderInvoices()"><option value="all">Everything</option><option value="nopdf">Without PDF</option><option value="review">Needs a category</option><option value="cash">Cash (no bank debit)</option><option value="restaurant">Restaurant only</option><option value="catering">Catering only</option></select></label>
       <input id="iv_q" type="search" class="search" placeholder="Search supplier, number, description…" oninput="renderInvoices()">
       <span class="hint" id="iv_count" style="margin-left:auto"></span>
-      <button class="btn btn-p" id="addInvBtn" onclick="openInvoice()">+ Add expense</button>
     </div>
     <div class="card"><div class="tbl-wrap"><table>
-      <thead><tr><th>Date</th><th>Supplier</th><th>Nº</th><th>Description</th><th>Category</th><th>Business</th><th>Paid</th><th>Bank</th><th>PDF</th><th class="r">Amount</th></tr></thead>
+      <thead><tr><th>Date</th><th>Supplier</th><th>Number</th><th>Description</th><th>Category</th><th>Business</th><th>Payment</th><th>Matched to bank</th><th>PDF</th><th class="r">Amount</th></tr></thead>
       <tbody id="invBody"><tr class="empty-row"><td colspan="10">Loading…</td></tr></tbody>
     </table></div></div>
-    <div class="hint" style="margin-top:8px">Every debit of the BCP account is a line here, like the HQ does for Water. A missing invoice is a line without PDF: open it, attach the PDF and the fields are read by AI. Cash purchases are added with «+ Add expense».</div>
+    <div class="hint" style="margin-top:8px">A missing invoice is a line without PDF: open it, attach the PDF and the fields are read automatically. Cash purchases are added with «Add expense».</div>
   </div>
 </div>
 
 <!-- ═══════════ BANK ═══════════ -->
 <div class="page" id="page-bank">
   <div class="container">
+    <div class="ov-section-head page-head">
+      <div><div class="ov-section-title">Bank statement</div><div class="ov-section-sub">Millennium BCP account of Manjar Lda. Every debit should have an expense line.</div></div>
+    </div>
     <div class="ov-filters">
       <label class="period-picker"><span class="period-picker-lbl">Month</span><select id="bk_month" onchange="renderBank()"><option value="all">All</option></select></label>
       <label class="period-picker"><span class="period-picker-lbl">Show</span><select id="bk_kind" onchange="renderBank()"><option value="all">Everything</option><option value="expense">Debits</option><option value="income">Credits</option><option value="unmatched">Debits without invoice</option></select></label>
@@ -65,25 +70,24 @@
       <span class="hint" id="bk_count" style="margin-left:auto"></span>
     </div>
     <details class="card card-pad" style="margin-bottom:14px" id="importBox">
-      <summary style="cursor:pointer;font-weight:700;color:var(--navy);font-size:13px">⬆ Import a new BCP statement (xlsx)</summary>
+      <summary style="cursor:pointer;font-weight:700;color:var(--navy);font-size:13px">Import a new BCP statement (xlsx)</summary>
       <div class="hint" style="margin:8px 0 10px">Export from Millennium BCP (Movimentos → Exportar → Excel). Rows already in the app are skipped, so re-importing a longer period is safe.</div>
       <div class="dropzone" onclick="document.getElementById('bk_file').click()">Click to choose the file<input id="bk_file" type="file" accept=".xlsx,.xls" style="display:none" onchange="importBcp(this.files[0])"></div>
       <div class="hint" id="bk_import_status" style="margin-top:8px"></div>
     </details>
     <div class="card"><div class="tbl-wrap"><table>
-      <thead><tr><th>Date</th><th>Description</th><th>Rubric</th><th>Invoice</th><th class="r">Amount</th><th class="r">Balance</th><th></th></tr></thead>
+      <thead><tr><th>Date</th><th>Description</th><th>Category</th><th>Invoice</th><th class="r">Amount</th><th class="r">Balance</th><th></th></tr></thead>
       <tbody id="bankBody"><tr class="empty-row"><td colspan="7">Loading…</td></tr></tbody>
     </table></div></div>
-    <div class="ov-section-head" style="margin-top:30px"><div class="ov-section-title">Water ↔ Manjar</div></div>
-    <div class="ov-filters"><span class="hint">Everything Water Movements paid to Manjar: the catering invoices lanced in the Water HQ (company Manjar) against the transfers that landed on Manjar's BCP account.</span></div>
+    <div class="ov-section-head" style="margin-top:32px"><div><div class="ov-section-title">Catering paid by Water Movements</div><div class="ov-section-sub">The catering invoices entered in the Water Movements HQ (company Manjar) against the transfers that landed on Manjar's BCP account.</div></div></div>
     <div class="g4" id="wtKpis" style="margin-bottom:14px"></div>
     <section class="ov-section">
       <div class="ov-section-head"><div class="ov-section-title">Transfer by transfer</div><div class="ov-section-sub">A transfer is matched to a Water invoice of the same amount within 20 days</div></div>
-      <div class="card"><div class="tbl-wrap"><table><thead><tr><th>Received on BCP</th><th class="r">Amount</th><th>Water invoice (HQ)</th><th>Nº</th><th>PDF</th><th>Status</th></tr></thead><tbody id="wtBody"></tbody></table></div></div>
+      <div class="card"><div class="tbl-wrap"><table><thead><tr><th>Received on BCP</th><th class="r">Amount</th><th>Water Movements invoice (HQ)</th><th>Number</th><th>PDF</th><th>Status</th></tr></thead><tbody id="wtBody"></tbody></table></div></div>
     </section>
     <section class="ov-section">
       <div class="ov-section-head"><div class="ov-section-title">By month</div></div>
-      <div class="card"><div class="tbl-wrap"><table class="mx"><thead><tr><th>Month</th><th class="r">Water invoices (HQ)</th><th class="r">Received on BCP</th><th class="r">Difference</th></tr></thead><tbody id="wtMonths"></tbody></table></div></div>
+      <div class="card"><div class="tbl-wrap"><table class="mx"><thead><tr><th>Month</th><th class="r">Water Movements invoices (HQ)</th><th class="r">Received on BCP</th><th class="r">Difference</th></tr></thead><tbody id="wtMonths"></tbody></table></div></div>
     </section>
   </div>
 </div>
@@ -98,7 +102,7 @@
 <script src="/lib/business-pnl.js"></script>
 <script src="/lib/expense-form.js"></script>
 <script>
-AppShell.mount('appNav', { app:'suk', title:'Businesses', tabs:[{ id:'overview', label:'Overview', active:true }, { id:'invoices', label:'Expenses' }, { id:'bank', label:'Bank · Water ↔ Manjar' }], location:{ label:'The Suk', items:[{ href:'/wild/', label:'Wild Wednesday', sub:'Weekly party · Costa da Caparica', current:false }, { href:'/suk/', label:'The Suk', sub:'Manjar Lda · restaurant + catering', current:true }] }, actions:'<a class="nav-action-btn" href="/hq/" id="hqBtn" style="display:none">HQ</a>' });
+AppShell.mount('appNav', { app:'suk', title:'Businesses', tabs:[{ id:'overview', label:'Overview', active:true }, { id:'invoices', label:'Expenses' }, { id:'bank', label:'Bank statement' }], location:{ label:'The Suk', items:[{ href:'/wild/', label:'Wild Wednesday', sub:'Weekly party · Costa da Caparica', current:false }, { href:'/suk/', label:'The Suk', sub:'Manjar Lda · restaurant + catering', current:true }] }, actions:'<a class="nav-action-btn" href="/hq/" id="hqBtn" style="display:none">HQ</a>' });
 const cfg = window.__SUPABASE_CONFIG || {};
 const sb = window.supabase.createClient(cfg.url, cfg.anonKey);
 const SLUG = 'the-suk', COMPANY = 'manjar', BANK = 'bcp';
@@ -146,6 +150,9 @@ function rubricOf(r){
   for (const [name, re] of RUBRICS) if (re.test(d)) return name;
   return 'Outros';
 }
+// Display names of the categories read from the statement (the keys above stay as they are — they drive the logic).
+const RUBRIC_LABEL = { 'Bebidas':'Drinks', 'Compras (comida)':'Food purchases', 'Salários':'Salaries', 'Impostos e Seg. Social':'Taxes & social security', 'Renda':'Rent', 'Utilities':'Utilities', 'Contabilidade':'Accounting', 'Higiene e limpeza':'Cleaning & hygiene', 'Seguros':'Insurance', 'Manutenção e equipamento':'Equipment & maintenance', 'Pagamentos por referência':'Reference payments', 'Banco':'Bank fees', 'Vendas à Water (catering)':'Catering sold to Water Movements', 'Suprimentos do sócio':'Partner funding', 'Vendas TPA (cartão)':'Card sales (TPA)', 'Depósitos de numerário':'Cash deposits', 'Outras entradas':'Other income', 'Outros':'Other' };
+const rubricLabel = (name) => RUBRIC_LABEL[name] || name;
 const NO_INVOICE = new Set(['Banco', 'Salários', 'Impostos e Seg. Social', 'Vendas à Water (catering)', 'Suprimentos do sócio']);
 const supplierOf = (desc) => String(desc || '').replace(/^MDB \d+ /, '').replace(/^DD /, '').replace(/^TRF P\/ /, '').replace(/^PAG SERV \d+\/\d+ /, 'PAG SERV ').replace(/^MDB \d+ PAG REFERENCIA.*/, 'PAG REFERENCIA').replace(/\s+\d[\d\s\/-]*$/, '').replace(/\s+/g, ' ').trim().slice(0, 30);
 const guessCategory = (rubric) => ({ 'Compras (comida)':'Food', 'Bebidas':'Drinks', 'Salários':'Salary', 'Impostos e Seg. Social':'Taxes', 'Renda':'Rent', 'Utilities':'Utilities', 'Contabilidade':'Services', 'Higiene e limpeza':'Cleaning', 'Seguros':'Insurances', 'Manutenção e equipamento':'Equipment & maintenance' })[rubric] || 'Other';
@@ -225,7 +232,7 @@ function renderOverview(){
   const body = $('ovBody');
   const year = $('ov_year').value || String(new Date().getFullYear());
   const rows = BANK_ROWS.filter(r => r.month.startsWith(year));
-  if (!rows.length) { body.innerHTML = '<div class="card card-pad hint">No bank movements yet. Import the BCP statement in the Bank tab.</div>'; return; }
+  if (!rows.length) { body.innerHTML = `<div class="card"><div class="empty-state">${AppShell.icon('inbox')}<div class="empty-title">No bank movements yet</div><p>Import the BCP statement in the Bank statement tab.</p></div></div>`; return; }
   const months = [...new Set(rows.map(r => r.month))].sort();
   const monthName = (ym) => new Date(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)) - 1, 1).toLocaleString('en-GB', {month:'short'});
   const isSales = (r) => r.amount > 0 && (r.rubric === 'Vendas TPA (cartão)' || r.rubric === 'Depósitos de numerário' || r.rubric === 'Vendas à Water (catering)' || r.rubric === 'Outras entradas');
@@ -250,7 +257,7 @@ function renderOverview(){
   const catCosts = (m) => lsum(i => isCatering(i), m);
   const pct = (a, b) => b ? Math.round(100 * a / b) + ' %' : '—';
   const bizCard = (name, sales, costs, foodDrinks, staff, note) => `<div class="card card-pad">
-      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px"><div class="ov-section-title" style="font-size:16px">${name}</div><div class="hint">${note}</div></div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap"><div class="ov-section-title" style="font-size:15px">${name}</div><div class="hint">${note}</div></div>
       <table style="width:100%;margin-top:8px"><tbody>
         <tr><td>Sales</td><td class="r"><b>${eur(sales)}</b></td></tr>
         <tr><td>Costs</td><td class="r">${eur(costs)}</td></tr>
@@ -261,7 +268,7 @@ function renderOverview(){
   const invYear = INVOICES.filter(i => String(i.invoice_date).startsWith(year));
   const missing = rows.filter(r => r.has_invoice === 'missing');
   const money = (v) => v ? eur0(Math.abs(v)) : '<span class="dim">—</span>';
-  const line = (label, pred, cls = '') => `<tr class="${cls}"><td>${esc(label)}</td><td class="r total">${money(sum(pred))}</td>${months.map(m => `<td class="r">${money(sum(pred, m))}</td>`).join('')}</tr>`;
+  const line = (label, pred, cls = '') => `<tr class="${cls}"><td>${esc(rubricLabel(label))}</td><td class="r total">${money(sum(pred))}</td>${months.map(m => `<td class="r">${money(sum(pred, m))}</td>`).join('')}</tr>`;
   const calc = (label, fn, cls) => `<tr class="${cls}"><td>${label}</td><td class="r total ${fn() < 0 ? 'neg' : ''}">${eur0(fn())}</td>${months.map(m => { const v = fn(m); return `<td class="r ${v < 0 ? 'neg' : ''}">${eur0(v)}</td>`; }).join('')}</tr>`;
   const kpi = (label, value, sub, cls = '', onclick = '') => `<div class="card kpi" ${onclick ? `style="cursor:pointer" onclick="${onclick}"` : ''}><div class="kpi-label">${label}</div><div class="kpi-value ${cls}">${value}</div><div class="kpi-sub">${sub}</div></div>`;
   body.innerHTML = `
@@ -276,7 +283,7 @@ function renderOverview(){
       <div class="g4" style="margin-top:14px">
         ${kpi('Expense lines', String(invYear.length), eur(invYear.reduce((s, i) => s + Number(i.amount_eur || 0), 0)) + ' · one per debit, like the HQ', '', "showPage('invoices')")}
         ${kpi('Lines without PDF', String(invYear.filter(i => i.missing_pdf).length), eur(invYear.filter(i => i.missing_pdf).reduce((s, i) => s + Number(i.amount_eur || 0), 0)) + (invYear.filter(i => i.needs_review).length ? ` · ${invYear.filter(i => i.needs_review).length} need a category` : ''), invYear.some(i => i.missing_pdf) ? 'neg' : 'pos', "showInvoicesFilter('nopdf')")}
-        ${kpi('Catering sold to Water', eur(sum(r => r.rubric === 'Vendas à Water (catering)')), `${rows.filter(r => r.rubric === 'Vendas à Water (catering)').length} transfers · click for the detail`, 'pos', "showPage('bank')")}
+        ${kpi('Catering sold to Water Movements', eur(sum(r => r.rubric === 'Vendas à Water (catering)')), `${rows.filter(r => r.rubric === 'Vendas à Water (catering)').length} transfers · click for the detail`, 'pos', "showPage('bank')")}
         ${kpi('Bank movements', String(rows.length), `${months[0]} → ${months[months.length - 1]}`, '', "showPage('bank')")}
       </div>
     </section>
@@ -308,7 +315,7 @@ function renderOverview(){
           ${calc('Restaurant · result', (m) => restSales(m) - restCosts(m))}
           ${calc('Catering · result', (m) => catSales(m) - catCosts(m))}
           <tr class="group"><td colspan="${months.length + 2}">Funding (not sales)</td></tr>
-          ${line('Suprimentos do sócio', r => r.rubric === 'Suprimentos do sócio')}
+          ${line('Partner funding', r => r.rubric === 'Suprimentos do sócio')}
         </tbody>
       </table></div></div>
     </section>`;
@@ -327,7 +334,7 @@ function renderInvoices(){
     <td>${i.bank ? `<span class="badge badge-green">${i.bank.movement_date}</span>` : (i.payment_type === 'Cash' ? '<span class="badge badge-grey">cash</span>' : '<span class="badge badge-amber">not linked</span>')}</td>
     <td>${i.drive_link ? `<a href="${esc(i.drive_link)}" target="_blank" onclick="event.stopPropagation()">open</a>` : (i.doc_exempt_reason ? `<span class="badge badge-grey" title="${esc(i.doc_exempt_reason)}">no invoice</span>` : (i.missing_pdf ? '<span class="badge badge-amber">missing</span>' : '<span class="dim">—</span>'))}</td>
     <td class="r" style="font-weight:700">${eur(i.amount_eur)}</td>
-  </tr>`).join('') : '<tr class="empty-row"><td colspan="10">Nothing here.</td></tr>';
+  </tr>`).join('') : '<tr class="empty-row"><td colspan="10">No expenses match this filter.</td></tr>';
 }
 
 // Category straight from the table: a select per line; when the supplier has
@@ -377,7 +384,7 @@ function openInvoice(id, prefill){
     values: {
       date: v.invoice_date || new Date().toISOString().slice(0, 10), company: v.company || '', nif: v.supplier_nif || '', number: v.invoice_number || '',
       amount: v.amount_eur != null ? Number(v.amount_eur) : '', description: v.description || '', notes: v.notes || '', payment: v.payment_type || 'Bank Transfer',
-      category: cat ? cat.id : '', fileLabel: INV_EDIT?.file_name ? `On Drive: ${INV_EDIT.file_name}` : 'No PDF yet — choose it: it goes to the Manjar Drive folder of the invoice month and the fields (nº, NIF, supplier, date) are read by AI.',
+      category: cat ? cat.id : '', fileLabel: INV_EDIT?.file_name ? `On Drive: ${INV_EDIT.file_name}` : 'No PDF yet — choose it: it goes to the Manjar Drive folder of the invoice month and the fields (number, NIF, supplier, date) are read automatically.',
     },
   });
   renderBankPick();
@@ -393,7 +400,7 @@ function renderBankPick(){
   ExpenseForm.setBank(cands.map(x => x.r), INV_BANK_ID, (id) => { INV_BANK_ID = (INV_BANK_ID === id) ? null : id; renderBankPick(); });
 }
 async function invFileChosen(file){
-  if (!file) return; INV_FILE = file; $('inv_file_lbl').textContent = `${file.name} — reading with AI…`; ExpenseForm.setStatus('');
+  if (!file) return; INV_FILE = file; $('inv_file_lbl').textContent = `${file.name} — reading the file…`; ExpenseForm.setStatus('');
   try {
     const b64 = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(',')[1] || ''); fr.onerror = () => rej(new Error('Could not read the file')); fr.readAsDataURL(file); });
     const { data: s } = await sb.auth.getSession(); const jwt = s?.session?.access_token || '';
@@ -412,7 +419,7 @@ async function invFileChosen(file){
     const cat = ex.category_hint && CATEGORIES.find(c => c.name.toLowerCase() === String(ex.category_hint).toLowerCase()); if (cat) $('inv_category').value = cat.id;
     $('inv_file_lbl').textContent = `${file.name} — fields read, check them.`;
     renderBankPick();
-  } catch (e) { $('inv_file_lbl').textContent = `${file.name} — AI could not read it (${e.message || e}); fill the fields by hand.`; }
+  } catch (e) { $('inv_file_lbl').textContent = `${file.name} — couldn't read it (${e.message || e}); fill the fields by hand.`; }
 }
 function driveName(file, company, date, amount){
   const [y, m] = String(date).split('-'); const ext = (file.name.match(/\.[a-z0-9]{3,4}$/i) || ['.pdf'])[0].toLowerCase();
@@ -445,7 +452,7 @@ async function saveInvoice(){
     if (INV_FILE) {
       const key = String(invoice_date).slice(0, 7);
       const folder = FOLDERS.find(f => f.month_key === key)?.folder_id;
-      if (!folder) throw new Error(`No Manjar Drive folder for ${key} yet — ask Miguel to create it (accountant_drive_folders).`);
+      if (!folder) throw new Error(`No Manjar Drive folder for ${key} yet — ask Miguel to create it.`);
       const up = await driveUpload(INV_FILE, folder, driveName(INV_FILE, company, invoice_date, amount));
       payload.drive_link = up.web_view_link || up.webViewLink || up.link || (up.id ? `https://drive.google.com/file/d/${up.id}/view` : null);
       payload.file_name = up.name || driveName(INV_FILE, company, invoice_date, amount);
@@ -472,7 +479,7 @@ async function deleteInvoice(){
 }
 async function markNoInvoice(id){
   const i = INVOICES.find(x => x.id === id); if (!i) return;
-  const why = prompt(`No invoice for this expense — why?\n${i.invoice_date} · ${i.company} · ${eur(i.amount_eur)}`, 'sem fatura'); if (why == null || !why.trim()) return;
+  const why = prompt(`No invoice for this expense — why?\n${i.invoice_date} · ${i.company} · ${eur(i.amount_eur)}`, 'No invoice'); if (why == null || !why.trim()) return;
   const { error } = await sb.from('hq_invoices').update({ doc_exempt_reason: why.trim(), notes: `[sem fatura: ${why.trim()}] ${i.notes || ''}`.trim() }).eq('id', id);
   if (error) { toast('Not saved: ' + error.message, 'err'); return; }
   toast('Marked'); await loadData(); renderInvoices(); renderOverview();
@@ -493,10 +500,10 @@ function renderBank(){
   const inv = (r) => r.has_invoice === 'linked' ? '<span class="badge badge-green">linked</span>' : r.has_invoice === 'amount' ? '<span class="badge badge-blue">by amount</span>' : r.has_invoice === 'missing' ? '<span class="badge badge-amber">missing</span>' : r.has_invoice === 'none' ? '<span class="badge badge-grey">no invoice</span>' : '';
   $('bk_count').textContent = `${rows.length} movements · in ${eur(rows.filter(r => r.amount > 0).reduce((s, r) => s + Number(r.amount), 0))} · out ${eur(-rows.filter(r => r.amount < 0).reduce((s, r) => s + Number(r.amount), 0))}`;
   $('bankBody').innerHTML = rows.length ? rows.slice(0, 600).map(r => `<tr>
-    <td>${r.movement_date}</td><td>${esc(r.description)}</td><td class="hint">${esc(r.rubric)}</td><td>${inv(r)}</td>
+    <td>${r.movement_date}</td><td>${esc(r.description)}</td><td class="hint">${esc(rubricLabel(r.rubric))}</td><td>${inv(r)}</td>
     <td class="r" style="font-weight:700;color:${r.amount > 0 ? 'var(--green)' : 'var(--ink)'}">${r.amount > 0 ? '+' : ''}${eur(r.amount)}</td><td class="r hint">${r.balance != null ? eur(r.balance) : ''}</td>
-    <td class="r">${CAN_EDIT && r.has_invoice === 'missing' ? `<button class="btn btn-s" style="padding:4px 10px" onclick="addFromBank('${r.id}')">+ Invoice</button>` : ''}</td>
-  </tr>`).join('') + (rows.length > 600 ? `<tr class="empty-row"><td colspan="7">Showing 600 of ${rows.length} — pick a month.</td></tr>` : '') : '<tr class="empty-row"><td colspan="7">Nothing here.</td></tr>';
+    <td class="r">${CAN_EDIT && r.has_invoice === 'missing' ? `<button class="btn btn-s btn-sm" onclick="addFromBank('${r.id}')">Add invoice</button>` : ''}</td>
+  </tr>`).join('') + (rows.length > 600 ? `<tr class="empty-row"><td colspan="7">Showing 600 of ${rows.length} — pick a month.</td></tr>` : '') : '<tr class="empty-row"><td colspan="7">No movements match this filter.</td></tr>';
 }
 
 // ── Missing PDFs (lines without a document) ──────────────────────
@@ -519,10 +526,10 @@ function renderWater(){
   const unmatchedInv = WATER_INV.filter(i => !used.has(i.id));
   const invTotal = WATER_INV.reduce((s, i) => s + Number(i.amount_eur || 0), 0), recTotal = transfers.reduce((s, t) => s + Number(t.amount), 0);
   const kpi = (label, value, sub, cls = '') => `<div class="card kpi"><div class="kpi-label">${label}</div><div class="kpi-value ${cls}">${value}</div><div class="kpi-sub">${sub}</div></div>`;
-  $('wtKpis').innerHTML = kpi('Water invoices (HQ)', eur(invTotal), `${WATER_INV.length} lines lanced in the Water HQ as «manjar»`) + kpi('Received on BCP', eur(recTotal), `${transfers.length} transfers`, 'pos') + kpi('Difference', eur(invTotal - recTotal), invTotal - recTotal > 0 ? 'invoiced by Water, not yet on Manjar\'s account' : 'received, no Water invoice yet', Math.abs(invTotal - recTotal) < 1 ? 'pos' : 'neg') + kpi('Unmatched Water lines', String(unmatchedInv.length), eur(unmatchedInv.reduce((s, i) => s + Number(i.amount_eur || 0), 0)), unmatchedInv.length ? 'neg' : 'pos');
-  $('wtBody').innerHTML = rows.slice().reverse().map(({ t, m }) => `<tr><td>${t.movement_date}</td><td class="r" style="font-weight:700">${eur(t.amount)}</td><td>${m ? `${m.invoice_date} · ${esc(m.company)}` : '<span class="dim">—</span>'}</td><td class="hint">${m ? esc(m.invoice_number || '') : ''}</td><td>${m?.drive_link ? `<a href="${esc(m.drive_link)}" target="_blank">open</a>` : '<span class="dim">—</span>'}</td><td>${m ? '<span class="badge badge-green">matched</span>' : '<span class="badge badge-amber">no Water invoice</span>'}</td></tr>`).join('')
+  $('wtKpis').innerHTML = kpi('Water Movements invoices (HQ)', eur(invTotal), `${WATER_INV.length} lines entered in the Water Movements HQ as «manjar»`) + kpi('Received on BCP', eur(recTotal), `${transfers.length} transfers`, 'pos') + kpi('Difference', eur(invTotal - recTotal), invTotal - recTotal > 0 ? 'invoiced by Water Movements, not yet on Manjar\'s account' : 'received, no Water Movements invoice yet', Math.abs(invTotal - recTotal) < 1 ? 'pos' : 'neg') + kpi('Unmatched Water Movements lines', String(unmatchedInv.length), eur(unmatchedInv.reduce((s, i) => s + Number(i.amount_eur || 0), 0)), unmatchedInv.length ? 'neg' : 'pos');
+  $('wtBody').innerHTML = rows.slice().reverse().map(({ t, m }) => `<tr><td>${t.movement_date}</td><td class="r" style="font-weight:700">${eur(t.amount)}</td><td>${m ? `${m.invoice_date} · ${esc(m.company)}` : '<span class="dim">—</span>'}</td><td class="hint">${m ? esc(m.invoice_number || '') : ''}</td><td>${m?.drive_link ? `<a href="${esc(m.drive_link)}" target="_blank">open</a>` : '<span class="dim">—</span>'}</td><td>${m ? '<span class="badge badge-green">matched</span>' : '<span class="badge badge-amber">no Water Movements invoice</span>'}</td></tr>`).join('')
     + unmatchedInv.map(i => `<tr><td class="dim">—</td><td class="r dim">—</td><td>${i.invoice_date} · ${esc(i.company)}</td><td class="hint">${esc(i.invoice_number || '')}</td><td>${i.drive_link ? `<a href="${esc(i.drive_link)}" target="_blank">open</a>` : '<span class="dim">—</span>'}</td><td><span class="badge badge-blue">${eur(i.amount_eur)} not received on BCP</span></td></tr>`).join('')
-    || '<tr class="empty-row"><td colspan="6">Nothing yet.</td></tr>';
+    || '<tr class="empty-row"><td colspan="6">No transfers from Water Movements yet.</td></tr>';
   const months = [...new Set(transfers.map(t => t.month).concat(WATER_INV.map(i => String(i.invoice_date).slice(0, 7))))].sort();
   $('wtMonths').innerHTML = months.map(m => { const a = WATER_INV.filter(i => String(i.invoice_date).startsWith(m)).reduce((s, i) => s + Number(i.amount_eur || 0), 0), b = transfers.filter(t => t.month === m).reduce((s, t) => s + Number(t.amount), 0); return `<tr><td>${m}</td><td class="r">${eur(a)}</td><td class="r">${eur(b)}</td><td class="r ${Math.abs(a - b) < 1 ? '' : 'neg'}">${eur(a - b)}</td></tr>`; }).join('') + `<tr class="sum"><td>Total</td><td class="r">${eur(invTotal)}</td><td class="r">${eur(recTotal)}</td><td class="r">${eur(invTotal - recTotal)}</td></tr>`;
 }

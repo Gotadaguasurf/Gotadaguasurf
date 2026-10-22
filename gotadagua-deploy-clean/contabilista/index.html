@@ -7,7 +7,7 @@
 <meta name="referrer" content="no-referrer">
 <title>Contabilidade — Water Movements</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><path fill='%231e6fa8' d='M32 4C22 18 12 28 12 40a20 20 0 0 0 40 0C52 28 42 18 32 4z'/></svg>">
-<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <!-- Página só de leitura para a contabilista. Sem login: abre com
      /contabilista/?k=<token>. Os dados vêm das funções accountant_portal*
      (supabase/accountant-portal.sql), que validam o token. -->
@@ -28,11 +28,11 @@ header{background:var(--navy);color:#fff;padding:22px 16px 26px}
 .wrap{max-width:1180px;margin:0 auto;padding:0 16px}
 header .wrap{padding:0}
 .brand{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#9cc3df;font-weight:700}
-h1{font-family:'DM Serif Display',serif;font-weight:400;font-size:clamp(26px,4vw,36px);margin-top:6px;line-height:1.1}
+h1{font-weight:700;font-size:clamp(24px,4vw,32px);letter-spacing:-.02em;margin-top:6px;line-height:1.1}
 .sub{color:#b9d3e6;font-size:14px;margin-top:6px}
 
 .hero{display:grid;grid-template-columns:auto 1fr auto;gap:22px;align-items:center;background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:20px 22px;margin:-18px auto 22px;position:relative}
-.big{font-family:'DM Serif Display',serif;font-size:46px;line-height:1}
+.big{font-weight:700;font-size:44px;letter-spacing:-.03em;line-height:1;font-variant-numeric:tabular-nums}
 .big small{font-family:'Outfit';font-size:14px;color:var(--muted);display:block;margin-top:4px}
 .bar{height:12px;border-radius:99px;background:var(--grey-bg);overflow:hidden;display:flex}
 .bar i{display:block;height:100%}
@@ -55,7 +55,7 @@ h2{font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute
 .month.sel{border-color:var(--ocean)}
 .month .top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
 .month .name{font-weight:700;font-size:16px;text-transform:capitalize}
-.pct{font-family:'DM Serif Display',serif;font-size:28px;line-height:1;margin:12px 0 8px}
+.pct{font-weight:700;font-size:28px;letter-spacing:-.02em;line-height:1;margin:12px 0 8px;font-variant-numeric:tabular-nums}
 .month .bar{height:8px}
 .month .meta{display:flex;justify-content:space-between;font-size:12.5px;color:var(--muted);margin-top:10px}
 .pill{font-size:11px;font-weight:700;border-radius:99px;padding:3px 8px;white-space:nowrap}
@@ -64,7 +64,7 @@ h2{font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute
 
 .detail{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:20px;margin-bottom:40px;scroll-margin-top:12px}
 .d-head{display:flex;flex-wrap:wrap;justify-content:space-between;gap:14px;align-items:flex-start}
-.d-head h3{font-family:'DM Serif Display',serif;font-weight:400;font-size:28px;text-transform:capitalize}
+.d-head h3{font-weight:700;font-size:24px;letter-spacing:-.02em;text-transform:capitalize}
 .d-head .sum{color:var(--muted);font-size:14px;margin-top:4px}
 .folders{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}
 .mark{display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:var(--bg);border-radius:12px;padding:10px 12px;margin-bottom:16px}
@@ -90,7 +90,7 @@ td.num,th.num{text-align:right}
 .empty{text-align:center;color:var(--muted);padding:36px 10px}
 .foot{color:var(--muted);font-size:12.5px;text-align:center;padding:10px 0 40px;line-height:1.6}
 .err{max-width:520px;margin:80px auto;background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);padding:28px;text-align:center}
-.err h3{font-family:'DM Serif Display',serif;font-weight:400;font-size:26px;margin-bottom:8px}
+.err h3{font-weight:700;font-size:24px;letter-spacing:-.02em;margin-bottom:8px}
 .loading{color:var(--muted);text-align:center;padding:60px 0}
 
 @media (max-width:760px){
@@ -221,7 +221,7 @@ td.num,th.num{text-align:right}
       const m = summary.months.find(x => x.month_key === key);
       if (m && m.em_falta === 0) tab = m.banco_sem ? 'banco' : 'ok';
       renderDetail();
-    } catch (e) { $d.innerHTML = `<div class="empty">Erro: ${esc(e.message)}</div>`; }
+    } catch (e) { $d.innerHTML = `<div class="empty">Não foi possível carregar este mês. Tente de novo.</div>`; }
   }
 
   function rowsFor(t) {

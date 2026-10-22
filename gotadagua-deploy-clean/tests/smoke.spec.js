@@ -789,9 +789,9 @@ test('hq: expenses read by month — friendly dates, month separators, period pr
     // A aba Expenses so e desenhada quando se abre; testa-se o HTML que ela gera.
     markup: (typeof window.invoicesTabHtml === 'function') ? invoicesTabHtml() : '',
   }));
-  expect(out.dia).toBe('11 Ago');
+  expect(out.dia).toBe('11 Aug');           // UI is English since 22 Oct 2026 (the Excel keeps Portuguese months)
   expect(out.diaMau).toBe('—');           // uma data vazia nao rebenta a linha
-  expect(out.mes).toBe('Março 2026');
+  expect(out.mes).toBe('March 2026');
   expect(out.temPreset).toBe(true);
   expect(out.temBreakdown).toBe(true);
   expect(out.markup).toContain('id="filter_from"');
@@ -883,7 +883,7 @@ test('instructors: Mark paid touches one instructor-month only, payroll adds VAT
   expect(out.touched.ids).toEqual(['11111111-1111-4111-8111-111111111111']);
   expect(out.touched.v.paid).toBe(false);
   // Romildo July: (60 gross + 250 head coach) × 1.23 = 381.30 — VAT applies to the extra too (Santander 2 Jun 2026: (1.600+250)×1.23 = 2.275,50 exact)
-  expect(out.rowText.find(t => t.startsWith('Romildo Ramos') && t.includes('Julho'))).toContain('€381.30');
+  expect(out.rowText.find(t => t.startsWith('Romildo Ramos') && t.includes('July'))).toContain('€381.30');
   // Cauê July: 90 gross, two distinct Junior weeks × 62.50 = 125 → 215.00
   expect(out.rowText.find(t => t.startsWith('Cauê Flores'))).toContain('€215.00');
   expect(out.editOpened).toBe(true);
@@ -941,9 +941,9 @@ test('instructors: "Marcar pago" books the month in the HQ — one row per place
   });
   expect(out.rows.sort()).toEqual([['junior-camp', 180, 'Salary', 'pietro mandetta'], ['kids-camp', 630, 'Salary', 'pietro mandetta'], ['portugal', 60, 'Salary', 'pietro mandetta'], ['surf-school', 510, 'Salary', 'pietro mandetta']].sort());
   expect(out.notes).toContain('[instrutores: Pietro Mandetta 2026-07]');
-  expect(out.msgPietro).toContain('Lançado no HQ: €1,380.00 em 4 linhas');
+  expect(out.msgPietro).toContain('Booked in HQ: €1,380.00 in 4 lines');
   expect(out.n2).toBe(0);                                      // Romildo's month was already in the HQ → not booked twice
-  expect(out.msgRomildo).toContain('Já estava lançado no HQ');
+  expect(out.msgRomildo).toContain('Already booked in HQ');
 });
 
 test('instructors: quick-day grid suggests each instructor\'s usual price and saves one row per filled cell', async ({ page }) => {
@@ -985,10 +985,10 @@ test('instructors: quick-day grid suggests each instructor\'s usual price and sa
   expect(out.rows).not.toContain('Heitor Souza');                 // no recent lessons → behind "Mostrar todos"
   expect(out.p.matildeSchool).toBe('25€');                        // her usual, not the one-off 30
   expect(out.p.romiCamp).toBe('30€');                             // the €250 salary row never becomes a price
-  expect(out.total).toBe('5 aulas · €135.00');
+  expect(out.total).toBe('5 lessons · €135.00');
   expect(out.saved).toHaveLength(2);
   expect(out.saved.find(d => d.instructorName === 'Matilde')).toMatchObject({ date: '2026-09-08', lessonCategory: 'Surf School', numberOfLessons: 3, priceUnit: 25, paid: false, paymentType: 'Recibo Verde' });
-  expect(out.msg).toContain('5 aulas');
+  expect(out.msg).toContain('5 lessons');
 });
 
 
@@ -1410,7 +1410,7 @@ test('hq: Fecho do mês tab — what lacks an invoice, bank debits with no row, 
   expect(out.bank).toBe(true);
   // Miguel, 6 Oct 2026: the whole month is also listed, with each row's invoice state.
   expect(out.allRows).toBe(5);
-  expect(out.allStates).toEqual(['missing', 'missing', 'no invoice', '✓ invoice review', 'no invoice']);
+  expect(out.allStates).toEqual(['Missing', 'Missing', 'No invoice', 'Has invoice Review', 'No invoice']);
   // "Lançar" jumps to Expenses with date, amount and a supplier guess filled in.
   await page.evaluate(() => fechoLaunch('bk1'));
   await page.waitForFunction(() => document.querySelector('#inv_amount')?.value === '274.19', null, { timeout: 5000 });
@@ -1590,9 +1590,9 @@ test('surf-school: the Vendas tab sums a month per login with commission and lea
   });
   expect(out.rows[0]).toMatchObject({ name: 'Ana', email: 'ana@gotadaguasurf.com', n: 2, total: 55.5, commission: 5.55, kinds: { rental: 1, lesson: 1 } });
   expect(out.rows[1]).toMatchObject({ name: 'Rui', n: 1, total: 15, commission: 1.5 });
-  expect(out.html).toContain('3 vendas');
+  expect(out.html).toContain('3 sales');
   expect(out.html).toContain('€70.50');
-  expect(out.html).toContain('comissões €7.05 (10%)');
+  expect(out.html).toContain('commission €7.05 (10%)');
   expect(out.html).not.toContain('Guest');
 });
 
@@ -1632,14 +1632,14 @@ test('instructors: the Instrutores tab lists the directory and the form refuses 
   });
   expect(out.tab).toBe(true);
   expect(out.visible).toContain('Tiago Madeira');
-  expect(out.visible).toContain('Head coach · €250.00/mês');
+  expect(out.visible).toContain('Head coach · €250.00/month');
   expect(out.visible).not.toContain('Antigo');
   expect(out.withInactive).toContain('Antigo');
-  expect(out.blank).toMatch(/nome/i);
-  expect(out.dup).toMatch(/Já existe/);
-  expect(out.noExtra).toMatch(/valor do extra/i);
+  expect(out.blank).toMatch(/name/i);
+  expect(out.dup).toMatch(/already/i);
+  expect(out.noExtra).toMatch(/extra amount/i);
   expect(out.ok).toMatchObject({ name: 'Nova Instrutora', rate: 27.5, payment_type: 'Recibo Verde', vat_pct: 23, app_supplier: 'nova instrutora lda', extra_kind: 'head_coach_month', extra_amount: 100, active: true });
-  expect(out.edit).toEqual({ title: 'Editar Romildo Ramos', vat: '23', extra: 'head_coach_month', amount: '250' });
+  expect(out.edit).toEqual({ title: 'Edit Romildo Ramos', vat: '23', extra: 'head_coach_month', amount: '250' });
 });
 
 test('partners: month status survives a case-only duplicate partner name and the old "PDF Sent" label', async ({ page }) => {
@@ -1758,7 +1758,7 @@ test('wild: close a night → ledger rows per source with ticket qty, Gota top-u
   const errs = []; page.on('pageerror', e => errs.push(e.message));
   await fakeOwnerSession(page);
   await page.goto('/wild/', { waitUntil: 'domcontentloaded' });
-  await page.waitForFunction(() => /camp tab only|closed/.test(document.querySelector('#nightsList')?.textContent || ''), null, { timeout: 15000 });
+  await page.waitForFunction(() => /Not closed yet|closed/.test(document.querySelector('#nightsList')?.textContent || ''), null, { timeout: 15000 });
   await page.evaluate(() => {
     document.getElementById('n_date').value = '2026-07-15'; loadNightIntoForm();
     const set = (id, v) => { document.getElementById(id).value = v; };
@@ -1852,7 +1852,7 @@ test('suk: bank-based overview, one expense line per debit, missing PDFs', async
   // (22 Oct 2026: the Missing PDFs tab was folded into Expenses + an Overview section; Water ↔ Manjar into Bank)
   expect(out.missing.map(r => r.slice(0, 2))).toEqual([['2026-07-10', 'makro palmela quint']]);
   expect(out.suppliers).toEqual([['makro palmela quint', '1', '€454.21', 'Food']]);
-  expect(out.tabs).toEqual(['Overview', 'Expenses', 'Bank · Water ↔ Manjar']);
+  expect(out.tabs).toEqual(['Overview', 'Expenses', 'Bank statement']);
   expect(errs).toEqual([]);
 });
 
@@ -1975,7 +1975,7 @@ test('surf-school: Clientes groups the same person and searches by email or ID',
   expect(r.byId).toEqual(['Lucy Smith']);
   expect(r.byEmail).toEqual(['Lucy Smith']);
   expect(r.byAccent.length).toBe(1);
-  expect(r.html).toContain('2 clientes · 1 com email');
+  expect(r.html).toContain('2 customers · 1 with email');
   expect(r.html).toContain('Lucy@Mail.com');
 });
 

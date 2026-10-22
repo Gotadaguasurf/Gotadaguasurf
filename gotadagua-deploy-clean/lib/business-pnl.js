@@ -80,7 +80,7 @@
     const cashRev = (s.byMethod.Cash || {}).rev || 0, onlineRev = ((s.byMethod.Online || {}).rev || 0) + ((s.byMethod.Card || {}).rev || 0) + ((s.byMethod['Bank Transfer'] || {}).rev || 0);
     const cashExp = (s.byMethod.Cash || {}).exp || 0, bankExp = ((s.byMethod['Bank Transfer'] || {}).exp || 0) + ((s.byMethod.Card || {}).exp || 0) + ((s.byMethod.Online || {}).exp || 0);
 
-    // Rubric × month
+    // Category × month
     const months = [...new Set(rows.map(r => String(r.entry_date).slice(0, 7)))].sort();
     const cell = (type, pred, m) => rows.filter(r => r.type === type && (!m || String(r.entry_date).startsWith(m)) && pred(r)).reduce((a, r) => a + Number(r.amount_eur || 0), 0);
     const methodsOf = (type, pred) => { const t = {}; rows.filter(r => r.type === type && pred(r)).forEach(r => { const m = methodOf(r); t[m] = (t[m] || 0) + Number(r.amount_eur || 0); }); return METHODS.filter(m => t[m]).map(m => `${m.toLowerCase()} ${eur0(t[m])}`).join(' · '); };
@@ -116,8 +116,8 @@
 
       <section class="ov-section">
         <div class="ov-section-head">
-          <div class="ov-section-title">Season by rubric</div>
-          <div class="ov-section-sub">Totals first, then month by month · under each rubric, how it was paid</div>
+          <div class="ov-section-title">Season by category</div>
+          <div class="ov-section-sub">Totals first, then month by month · under each category, how it was paid</div>
         </div>
         <div class="card"><div class="tbl-wrap"><table class="bz-matrix">
           <thead><tr><th></th><th class="r">Total</th>${months.map(m => `<th class="r">${esc(monthName(m))}</th>`).join('')}</tr></thead>
@@ -162,7 +162,7 @@
   .bz-profit .kpi-value{font-size:38px}
   .kpi-value.pos{color:var(--green,#1a7a40)}.kpi-value.neg{color:var(--red,#b91c1c)}
   .bz-matrix td,.bz-days td{font-size:13px}
-  .bz-matrix td.r,.bz-days td.r{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;font-family:'DM Mono',monospace;font-size:12px}
+  .bz-matrix td.r,.bz-days td.r{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;font-size:13px}
   .bz-matrix td.total,.bz-days td.total{font-weight:700;color:var(--navy,#28394b)}
   .bz-matrix td.neg{color:var(--red,#b91c1c)}
   .bz-matrix tr.group td{background:#f6f9fc;font-size:10px;text-transform:uppercase;letter-spacing:.1em;font-weight:800;color:var(--muted,#6b8099);padding:7px 13px}

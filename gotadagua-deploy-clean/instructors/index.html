@@ -1,11 +1,11 @@
 <!DOCTYPE html>
-<html lang="pt">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Gota Dagua — Instructors</title>
+  <title>Instructors — Gota d'Água</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='-15 0 92 92'><path fill='%231e6fa8' d='M61.7,51.9c-.4-9-5.5-16.5-9.7-24.1-2.9-4.8-5.3-9.8-9.3-13.9-3.9-4.4-6.5-9.8-10.8-13.9C19.2,16.6-.5,39.9,0,61.9c9.4-7.9,20.1-17.7,33.1-17.8,3,0,7.2,0,9.5,2.2,1.7,1.7,3.2,4.2,2,6.5-.3.5-1.9,2.7-2.3,2.9-12.9,7.4-20.3,18.6-16.5,33.7,3.1,1.3,8,1,11.1-.3,2.7-.3,5.1-1.3,7.5-2.5,8.7-2.9,14.5-11.1,15.5-20.1,1.2-4.7,2.1-9.7,1.8-14.6h0Z'/></svg>">
-  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.4"></script>
   <script src="/supabase-config.js"></script>
@@ -13,98 +13,97 @@
   <link rel="stylesheet" href="/lib/app-shell.css">
   <script src="/lib/app-shell.js"></script>
   <style>
-    /* Tokens, body, header, cards, KPI tiles (.card.kpi), tables (.tbl-wrap),
-       badges, buttons (.btn-p/.btn-s/.btn-g/.btn-r), fields (.field),
-       modal (.overlay/.modal/.mhdr/.mbody/.mfooter) and status messages all
-       come from /lib/app-shell.css. Below: only what this page adds. */
+    /* Tokens, body, header, page head, cards, KPI tiles (.card.kpi), tables
+       (.tbl-wrap), badges, buttons, pills, fields, modal and status messages
+       all come from /lib/app-shell.css. Below: only what this page adds. */
     .muted{color:var(--muted)}.r{text-align:right}
-    #messageBox{display:none;margin-bottom:16px}
-    .toolbar{display:flex;flex-direction:column;gap:12px;margin-bottom:20px}
-    .filter-row{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;justify-content:space-between}
-    .quick,.chips,.year-tabs,.month-tabs{display:flex;flex-wrap:wrap;gap:8px}
-    /* filter chips: the shell's white pill; "active" on a light background = ocean-soft / ocean */
-    .toolbar .btn{border-radius:999px;padding:7px 14px;font-size:12px}
-    .btn-s.active{background:var(--ocean-soft);color:var(--ocean);border-color:var(--ocean)}
-    .filters-right{display:flex;flex-wrap:wrap;gap:10px;align-items:center}.filters-right .search-btn{width:auto;min-width:170px}
-    .filter-summary{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:12.5px;color:var(--muted);min-height:20px}
+    #messageBox{display:none;margin-bottom:var(--sp-4)}
+    .toolbar{display:flex;flex-direction:column;gap:var(--sp-3);margin-bottom:var(--sp-5)}
+    .filter-row{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between}
+    .quick,.chips,.year-tabs,.month-tabs{display:flex;flex-wrap:wrap;gap:6px}
+    .filters-right{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+    .filter-summary{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:var(--fs-sec);color:var(--muted);min-height:20px}
     .filter-summary .badge{cursor:pointer}.filter-summary .badge:hover{border-color:var(--red);color:var(--red);background:var(--red-bg)}
-    .loc-cards{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:22px}
-    .loc-card{cursor:pointer}.loc-card:hover{border-color:var(--ocean);box-shadow:var(--sh-hover)}.loc-card.active{border-color:var(--ocean);background:var(--ocean-soft)}
+    .loc-cards{display:grid;grid-template-columns:repeat(6,1fr);gap:var(--sp-3);margin-bottom:var(--sp-5)}
+    .loc-card{cursor:pointer}.loc-card:hover{border-color:var(--border-2);box-shadow:var(--sh-hover)}.loc-card.active{border-color:var(--ocean);background:var(--ocean-soft)}
     .loc-card .kpi-value{font-size:22px}
-    .matrix td,.matrix th{white-space:nowrap}.matrix td.r div:first-child{font-weight:700}.matrix .sub{font-size:11px;color:var(--muted)}
-    .matrix .name{cursor:pointer;color:var(--navy);font-weight:700}.matrix .name:hover{color:var(--ocean);text-decoration:underline}
-    .matrix tfoot td,.tbl-wrap tr.total-row td{font-weight:800;border-top:2px solid var(--border-2);background:#f7f9fc}
-    .matrix tfoot td.r{text-align:right;font-family:'DM Mono',monospace;font-size:12.5px}
-    .searchable{position:relative;width:320px}
-    .search-btn{width:100%;appearance:none;-webkit-appearance:none;-moz-appearance:none;border:1px solid var(--border-2);border-radius:var(--r-sm);background-color:#fff;background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 14 14'%3E%3Cpath fill='%236b8099' d='M3.2 5.2a.75.75 0 0 1 1.06 0L7 7.94 9.74 5.2a.75.75 0 1 1 1.06 1.06l-3.27 3.27a.75.75 0 0 1-1.06 0L3.2 6.26a.75.75 0 0 1 0-1.06Z'/%3E%3C/svg%3E\");background-repeat:no-repeat;background-position:right 12px center;background-size:14px 14px;padding:9px 36px 9px 12px;font-size:13px;font-weight:600;color:var(--navy);text-align:left;cursor:pointer;transition:border-color .2s,box-shadow .2s}
-    .search-btn:hover{border-color:var(--ocean)}.search-btn:focus{outline:none;border-color:var(--ocean);box-shadow:0 0 0 3px rgba(30,111,168,.12)}
+    .matrix td,.matrix th{white-space:nowrap}.matrix td.r div:first-child{font-weight:600}.matrix .sub{font-size:11px;color:var(--muted)}
+    .matrix .name{cursor:pointer;color:var(--navy);font-weight:600}.matrix .name:hover{color:var(--ocean);text-decoration:underline}
+    .tbl-wrap tr.total-row td{font-weight:700;color:var(--navy);border-top:1px solid var(--border-2);background:var(--surface-2)}
+    .searchable{position:relative;width:320px;max-width:100%}
+    .search-btn{width:100%;appearance:none;-webkit-appearance:none;-moz-appearance:none;height:var(--h-btn);border:1px solid var(--border-2);border-radius:var(--r-sm);background-color:#fff;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");background-repeat:no-repeat;background-position:right 10px center;padding:0 28px 0 12px;font-size:13px;font-weight:600;color:var(--navy);text-align:left;cursor:pointer;font-family:inherit;transition:border-color .15s,box-shadow .15s}
+    .search-btn:hover{border-color:var(--ocean)}.search-btn:focus{outline:none;border-color:var(--ocean);box-shadow:var(--ring)}
     .dropdown{position:absolute;top:calc(100% + 6px);left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--sh-lg);display:none;z-index:30;max-height:320px;overflow:auto}.dropdown.open{display:block}
-    .dropdown input{width:100%;padding:11px 12px;border:none;border-bottom:1px solid var(--border);outline:none;font-family:'Outfit',sans-serif;font-size:13px}.dropdown-item{padding:10px 12px;cursor:pointer;font-size:13px}.dropdown-item:hover{background:var(--foam)}
+    .dropdown input{width:100%;padding:11px 12px;border:none;border-bottom:1px solid var(--border);outline:none;font-family:inherit;font-size:13px}.dropdown-item{padding:10px 12px;cursor:pointer;font-size:13px}.dropdown-item:hover{background:var(--surface-2)}
     /* hidden duplicate tab bar — the header .ntab[data-tab] drive the panels; kept for the smoke test */
     .tabs{display:none}
-    .tab-trigger{padding:12px 14px;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;font-weight:700;font-family:'Outfit',sans-serif;color:var(--muted);transition:all .18s}
-    .tab-trigger:hover{color:var(--navy)}
-    .tab-trigger.active{background:none;color:var(--ocean);border-bottom-color:var(--ocean)}
+    .tab-trigger{padding:12px 14px;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;font-weight:600;font-family:inherit;color:var(--muted)}
+    .tab-trigger.active{color:var(--ocean);border-bottom-color:var(--ocean)}
     .panel{display:none}.panel.active{display:block}
-    .entries{display:grid;gap:12px}.entry-top{display:flex;flex-wrap:wrap;align-items:center;gap:12px}.entry-name{font-size:17px;font-weight:700;color:var(--navy)}.entry-date{font-size:13px;font-weight:600;color:var(--muted)}.entry-badges{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+    .entries{display:grid;gap:var(--sp-3)}.entry-top{display:flex;flex-wrap:wrap;align-items:center;gap:12px}.entry-name{font-size:15px;font-weight:700;color:var(--navy)}.entry-date{font-size:13px;font-weight:600;color:var(--muted)}.entry-badges{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
     .entry-bottom{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-top:12px}.actions{display:flex;gap:8px}
-    .entry-total{font-family:'DM Mono',monospace;font-size:18px;font-weight:500;color:var(--navy)}
-    .mhdr{display:flex;align-items:flex-start;justify-content:space-between;gap:18px}
+    .entry-total{font-size:18px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums}
+    .mhdr-row{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding-right:32px}
     .mhdr-tools{display:flex;gap:12px;align-items:center;flex-shrink:0}
-    .modal-grid{display:grid;grid-template-columns:1.1fr .9fr;gap:24px}.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-    .modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px}
+    .modal-grid{display:grid;grid-template-columns:1.1fr .9fr;gap:var(--sp-5)}.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-4)}
+    .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:var(--sp-4)}
     .total-box{grid-column:1/-1}
-    .qd-top{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;margin-bottom:14px}.qd-top .field{min-width:160px}
+    .qd-top{display:flex;flex-wrap:wrap;gap:var(--sp-4);align-items:flex-end;margin-bottom:var(--sp-4)}.qd-top .field{min-width:160px}
     .qd-wrap{max-height:52vh;overflow:auto;border:1px solid var(--border);border-radius:var(--r)}
     .qd-table{width:100%;border-collapse:separate;border-spacing:0}
-    .qd-table th{position:sticky;top:0;z-index:2;background:#f7f9fc;padding:10px 8px;font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;text-align:center;border-bottom:1px solid var(--border);white-space:nowrap}
-    .qd-table th:first-child,.qd-table td:first-child{text-align:left;position:sticky;left:0;background:#fff;z-index:1}.qd-table th:first-child{background:#f7f9fc;z-index:3}
-    .qd-table td{padding:6px;border-bottom:1px solid var(--border);text-align:center;vertical-align:middle;font-size:13px}.qd-table tr:hover td{background:#f7f9fc}
-    .qd-name{font-weight:700;color:var(--navy);white-space:nowrap;font-size:13px}.qd-name .sub{display:block;font-size:10.5px;color:var(--muted);font-weight:500}
-    .qd-table input.qd-n{width:54px;text-align:center;padding:7px 4px;border:1px solid var(--border-2);border-radius:8px;font-family:'DM Mono',monospace;font-size:14px;font-weight:500;color:var(--ink);-moz-appearance:textfield}.qd-table input.qd-n::-webkit-inner-spin-button{-webkit-appearance:none}
-    .qd-table input.qd-n:focus{border-color:var(--ocean);box-shadow:0 0 0 3px rgba(30,111,168,.12);outline:none}.qd-table input.qd-n.has{background:var(--ocean-soft);border-color:var(--ocean)}
-    .qd-price{display:block;font-size:10.5px;color:var(--muted);margin-top:3px;cursor:pointer}.qd-price:hover{color:var(--ocean);text-decoration:underline}.qd-price input{width:48px;font-size:11px;padding:2px 4px;text-align:center;border:1px solid var(--ocean);border-radius:6px;font-family:'DM Mono',monospace}
-    .qd-rowtotal{font-weight:700;color:var(--navy);white-space:nowrap;font-family:'DM Mono',monospace;font-size:12.5px}.qd-foot{display:flex;justify-content:space-between;align-items:center;gap:14px;margin-top:14px;flex-wrap:wrap}
+    .qd-table th{position:sticky;top:0;z-index:2;background:var(--surface-2);padding:10px 8px;font-size:var(--fs-micro);text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600;text-align:center;border-bottom:1px solid var(--border);white-space:nowrap}
+    .qd-table th:first-child,.qd-table td:first-child{text-align:left;position:sticky;left:0;background:#fff;z-index:1}.qd-table th:first-child{background:var(--surface-2);z-index:3}
+    .qd-table td{padding:6px;border-bottom:1px solid var(--border);text-align:center;vertical-align:middle;font-size:13px}.qd-table tr:hover td{background:var(--surface-2)}
+    .qd-name{font-weight:600;color:var(--navy);white-space:nowrap;font-size:13px}.qd-name .sub{display:block;font-size:11px;color:var(--muted);font-weight:400}
+    .qd-table input.qd-n{width:54px;height:34px;text-align:center;padding:0 4px;border:1px solid var(--border-2);border-radius:8px;font-family:inherit;font-size:14px;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums;-moz-appearance:textfield}.qd-table input.qd-n::-webkit-inner-spin-button{-webkit-appearance:none}
+    .qd-table input.qd-n:focus{border-color:var(--ocean);box-shadow:var(--ring);outline:none}.qd-table input.qd-n.has{background:var(--ocean-soft);border-color:var(--ocean)}
+    .qd-price{display:block;font-size:11px;color:var(--muted);margin-top:3px;cursor:pointer;font-variant-numeric:tabular-nums}.qd-price:hover{color:var(--ocean);text-decoration:underline}.qd-price input{width:48px;font-size:11px;padding:2px 4px;text-align:center;border:1px solid var(--ocean);border-radius:6px;font-family:inherit}
+    .qd-rowtotal{font-weight:700;color:var(--navy);white-space:nowrap;font-size:12.5px;font-variant-numeric:tabular-nums}.qd-foot{display:flex;justify-content:space-between;align-items:center;gap:var(--sp-4);margin-top:var(--sp-4);flex-wrap:wrap}
     .daylist-item{border:1px solid var(--border);border-radius:var(--r);padding:12px;background:#fff}
-    .empty{padding:28px;text-align:center;color:var(--muted)}
-    .overview-grid{display:grid;gap:12px;grid-template-columns:repeat(5,1fr);margin-bottom:18px}
+    .overview-grid{display:grid;gap:var(--sp-3);grid-template-columns:repeat(5,1fr);margin-bottom:var(--sp-4)}
     @media (max-width:1100px){.overview-grid{grid-template-columns:1fr 1fr}.loc-cards{grid-template-columns:repeat(3,1fr)}.modal-grid{grid-template-columns:1fr}}
-    @media (max-width:760px){.form-grid,.overview-grid{grid-template-columns:1fr}.loc-cards{grid-template-columns:1fr 1fr}.searchable{width:100%}.entry-bottom{flex-direction:column}}
+    @media (max-width:760px){.form-grid,.overview-grid{grid-template-columns:1fr}.loc-cards{grid-template-columns:1fr 1fr}.searchable{width:100%}.entry-bottom{flex-direction:column}.filters-right,.filters-right .select{width:100%}.mhdr-row{flex-direction:column}}
   </style>
 </head>
 <body>
 <nav class="app-nav" id="appNav"></nav>
 <script>
 AppShell.mount('appNav', { app:'instructors', tabAttr:'data-tab', user:false,
-  tabs:[{ id:'dashboard', label:'Dashboard', active:true }, { id:'payroll', label:'Monthly payroll' }, { id:'entries', label:'Lesson entries' }, { id:'instructors', label:'Instructors' }].map(t => ({ ...t, onclick:`activeTab='${t.id}';renderTabs()` })),
-  actions:'<input type="file" id="fileInput" accept=".xlsx,.xls" hidden><button class="nav-action-btn" id="addLessonBtn">+ Add lesson</button>' });
+  tabs:[{ id:'dashboard', label:'Dashboard', active:true }, { id:'payroll', label:'Monthly payroll' }, { id:'entries', label:'Lesson entries' }, { id:'instructors', label:'Instructors' }].map(t => ({ ...t, onclick:`activeTab='${t.id}';renderTabs()` })) });
 </script>
 
 <main>
+  <div class="section-head page-head">
+    <div><div class="section-title" id="pageTitle">Instructors</div><div class="section-sub">Lessons, monthly payroll and the instructor list</div></div>
+    <div class="row">
+      <input type="file" id="fileInput" accept=".xlsx,.xls" hidden>
+      <button class="btn btn-p" id="addLessonBtn">Add lessons</button>
+    </div>
+  </div>
   <div class="status-msg status-ok" id="messageBox"></div>
-  <div class="toolbar">
+  <div class="toolbar" id="lessonFilters">
     <div class="filter-row">
       <div class="year-tabs" id="yearTabs"></div>
       <div class="quick">
-        <button class="btn btn-s" data-periodo="mes">Este mês</button>
-        <button class="btn btn-s" data-periodo="mespassado">Mês passado</button>
-        <button class="btn btn-s" data-periodo="ano">Este ano</button>
-        <button class="btn btn-s" data-periodo="tudo">Tudo</button>
+        <button class="pill" data-periodo="mes">This month</button>
+        <button class="pill" data-periodo="mespassado">Last month</button>
+        <button class="pill" data-periodo="ano">This year</button>
+        <button class="pill" data-periodo="tudo">All time</button>
       </div>
     </div>
     <div class="month-tabs" id="monthTabs"></div>
     <div class="filter-row">
       <div class="chips" id="categoryFilter"></div>
       <div class="filters-right">
-        <select id="paidFilter" class="search-btn" style="cursor:pointer">
-          <option value="all">Pagas e por pagar</option>
-          <option value="unpaid">Só por pagar</option>
-          <option value="paid">Só pagas</option>
+        <select id="paidFilter" class="select">
+          <option value="all">Paid and unpaid</option>
+          <option value="unpaid">Unpaid only</option>
+          <option value="paid">Paid only</option>
         </select>
         <div class="searchable">
-          <button class="search-btn" id="instructorBtn">Todos os instrutores</button>
+          <button class="search-btn" id="instructorBtn">All instructors</button>
           <div class="dropdown" id="instructorDropdown">
-            <input id="instructorSearch" placeholder="Procurar instrutor..." />
+            <input id="instructorSearch" placeholder="Search instructor…" />
             <div id="instructorOptions"></div>
           </div>
         </div>
@@ -113,61 +112,60 @@ AppShell.mount('appNav', { app:'instructors', tabAttr:'data-tab', user:false,
     <div class="filter-summary" id="filterSummary"></div>
   </div>
   <div id="categoryOverview" style="display:none"></div>
-  <div class="summary-grid">
-    <div class="card kpi"><div class="kpi-label">Aulas nesta vista</div><div class="kpi-value" id="kpiLessons">0</div><div class="kpi-sub" id="kpiHint">All years</div></div>
-    <div class="card kpi"><div class="kpi-label">Valor das aulas</div><div class="kpi-value" id="kpiPayroll">€0.00</div><div class="kpi-sub">sem IVA nem extras</div></div>
-    <div class="card kpi"><div class="kpi-label">Instrutores</div><div class="kpi-value" id="kpiInstructors">0</div><div class="kpi-sub">com aulas nesta vista</div></div>
-    <div class="card kpi"><div class="kpi-label">Preço médio</div><div class="kpi-value" id="kpiRate">€0.00</div><div class="kpi-sub">por aula</div></div>
+  <div class="summary-grid" id="lessonKpis">
+    <div class="card kpi"><div class="kpi-label">Lessons in this view</div><div class="kpi-value" id="kpiLessons">0</div><div class="kpi-sub" id="kpiHint">All years</div></div>
+    <div class="card kpi"><div class="kpi-label">Lesson value</div><div class="kpi-value" id="kpiPayroll">€0.00</div><div class="kpi-sub">before VAT and extras</div></div>
+    <div class="card kpi"><div class="kpi-label">Instructors</div><div class="kpi-value" id="kpiInstructors">0</div><div class="kpi-sub">with lessons in this view</div></div>
+    <div class="card kpi"><div class="kpi-label">Average price</div><div class="kpi-value" id="kpiRate">€0.00</div><div class="kpi-sub">per lesson</div></div>
   </div>
   <div class="tabs">
     <button class="tab-trigger active" data-tab="dashboard">Dashboard</button>
     <button class="tab-trigger" data-tab="payroll">Monthly payroll</button>
     <button class="tab-trigger" data-tab="entries">Lesson entries</button>
-    <button class="tab-trigger" data-tab="instructors">Instrutores</button>
+    <button class="tab-trigger" data-tab="instructors">Instructors</button>
   </div>
   <section class="panel active" id="panel-dashboard">
     <div class="loc-cards" id="locCards"></div>
-    <div class="section-head"><div class="section-title">Por mês e location</div><div class="muted" id="gridHint"></div></div>
+    <div class="section-head"><div class="section-title">By month and category</div><div class="hint" id="gridHint"></div></div>
     <div id="monthGrid"></div>
-    <div class="section-head" style="margin-top:26px"><div class="section-title">Instrutores por location</div><div class="muted">clica no nome para filtrar</div></div>
+    <div class="section-head" style="margin-top:var(--sp-6)"><div class="section-title">Instructors by category</div><div class="hint">Tap a name to filter</div></div>
     <div id="instructorMatrix"></div>
   </section>
   <section class="panel" id="panel-payroll">
+    <div class="section-head"><div><div class="section-title">Monthly payroll</div><div class="section-sub">One line per instructor and month. Amount due = lessons + extras, plus VAT where it applies.</div></div></div>
     <div class="card tbl-wrap">
       <table>
-        <thead><tr><th>Instrutor</th><th>Mês</th><th>Aulas</th><th>Pagamento</th><th class="r">Aulas €</th><th class="r">IVA</th><th class="r">Extras</th><th>Pago</th><th class="r">A pagar</th></tr></thead>
+        <thead><tr><th>Instructor</th><th>Month</th><th class="r">Lessons</th><th>Paid by</th><th class="r">Lessons €</th><th class="r">VAT</th><th class="r">Extras</th><th>Status</th><th class="r">Amount due</th></tr></thead>
         <tbody id="payrollBody"></tbody>
       </table>
     </div>
   </section>
   <section class="panel" id="panel-entries">
     <div class="section-head">
-      <div class="section-title">Lesson entries</div>
-      <div style="display:flex;gap:12px;align-items:center">
-        <div class="muted" id="entryCount"></div>
-        <button class="btn btn-p" id="viewList" data-view="list">Lista</button>
-        <button class="btn btn-s" id="viewSummary" data-view="summary">Resumo</button>
+      <div><div class="section-title">Lesson entries</div><div class="section-sub" id="entryCount"></div></div>
+      <div class="pills">
+        <button class="pill active" id="viewList" data-view="list">List</button>
+        <button class="pill" id="viewSummary" data-view="summary">Summary</button>
       </div>
     </div>
     <div class="entries" id="entriesList"></div>
     <div id="entriesSummary" style="display:none"></div>
   </section>
-  <!-- Directório de instrutores: quem existe, a que preço, como factura
-       (IVA), com que nome aparece nas despesas do HQ e que extra fixo
-       recebe. Antes só se criava um instrutor ao gravar-lhe a primeira
-       aula, com o preço dessa aula como rate — agora cria-se aqui, antes
-       de dar aulas, e desactiva-se quando sai (as aulas antigas ficam). -->
+  <!-- Instructor directory: who exists, at what price, how they invoice
+       (VAT), the supplier name they appear under in HQ expenses and any
+       fixed extra. Instructors are created here before they teach and
+       deactivated when they leave (their lessons stay). -->
   <section class="panel" id="panel-instructors">
     <div class="section-head">
-      <div class="section-title">Instrutores</div>
-      <div style="display:flex;gap:12px;align-items:center">
-        <label class="btn btn-s"><input type="checkbox" id="dirShowInactive" style="margin:0"> Mostrar inactivos</label>
-        <button class="btn btn-s" id="newInstructorBtn">+ Novo instrutor</button>
+      <div><div class="section-title">Instructors</div><div class="section-sub">Price per lesson, VAT, supplier name in HQ and fixed extras</div></div>
+      <div class="row">
+        <label class="pill"><input type="checkbox" id="dirShowInactive" style="display:inline-block;margin:0;width:14px;height:14px;accent-color:var(--ocean)"> Show inactive</label>
+        <button class="btn btn-s" id="newInstructorBtn">New instructor</button>
       </div>
     </div>
     <div class="card tbl-wrap">
       <table>
-        <thead><tr><th>Nome</th><th class="r">Preço/aula</th><th>Pagamento</th><th class="r">IVA</th><th>Fornecedor na app (HQ)</th><th>Extra</th><th class="r">Aulas 2026</th><th></th></tr></thead>
+        <thead><tr><th>Name</th><th class="r">Price / lesson</th><th>Paid by</th><th class="r">VAT</th><th>Supplier in HQ</th><th>Extra</th><th class="r" id="dirLessonsHead">Lessons this year</th><th></th></tr></thead>
         <tbody id="directoryBody"></tbody>
       </table>
     </div>
@@ -177,53 +175,53 @@ AppShell.mount('appNav', { app:'instructors', tabAttr:'data-tab', user:false,
 <div class="overlay" id="instructorModal">
   <div class="modal">
     <div class="mhdr">
-      <div>
-        <div class="mhdr-title" id="instructorModalTitle">Novo instrutor</div>
-        <div class="mhdr-sub">O nome é o que aparece nas aulas; o fornecedor é o nome com que ele factura e que está nas despesas do HQ.</div>
-      </div>
-      <button class="nav-action-btn" id="instructorModalClose">Close</button>
+      <div class="mhdr-title" id="instructorModalTitle">New instructor</div>
+      <div class="mhdr-sub">The name is what shows on lessons; the supplier is the name they invoice under and that appears in HQ expenses.</div>
+      <button class="mclose" id="instructorModalClose" aria-label="Close">×</button>
     </div>
     <div class="mbody">
       <div class="form-grid">
-        <div class="field"><label>Nome</label><input id="dirName" placeholder="Ex.: Tiago Madeira"></div>
-        <div class="field"><label>Preço por aula (€)</label><input type="number" min="0" step="0.5" id="dirRate" value="30"></div>
-        <div class="field"><label>Pagamento</label><select id="dirPayment"></select></div>
-        <div class="field"><label>IVA no recibo</label><select id="dirVat"><option value="0">Sem IVA (0%)</option><option value="23">Com IVA (23%)</option></select></div>
-        <div class="field"><label>Fornecedor na app (HQ)</label><input id="dirSupplier" placeholder="nome legal, como nas despesas"></div>
-        <div class="field"><label>Extra fixo</label><select id="dirExtraKind"><option value="">Nenhum</option><option value="head_coach_month">Head coach — valor por mês</option><option value="head_coach_junior_week">Head coach Junior — valor por semana</option><option value="reception">Também faz receção (não são aulas)</option></select></div>
-        <div class="field"><label>Valor do extra (€)</label><input type="number" min="0" step="0.5" id="dirExtraAmount" value="0"></div>
-        <div class="field"><label>Estado</label><select id="dirActive"><option value="true">Activo</option><option value="false">Inactivo (sai das listas; as aulas ficam)</option></select></div>
+        <div class="field"><label>Name</label><input id="dirName" placeholder="e.g. Tiago Madeira"></div>
+        <div class="field"><label>Price per lesson (€)</label><input type="number" min="0" step="0.5" id="dirRate" value="30"></div>
+        <div class="field"><label>Paid by</label><select id="dirPayment"></select></div>
+        <div class="field"><label>VAT on the receipt</label><select id="dirVat"><option value="0">No VAT (0%)</option><option value="23">With VAT (23%)</option></select></div>
+        <div class="field"><label>Supplier in HQ</label><input id="dirSupplier" placeholder="legal name, as in HQ expenses"></div>
+        <div class="field"><label>Fixed extra</label><select id="dirExtraKind"><option value="">None</option><option value="head_coach_month">Head coach — amount per month</option><option value="head_coach_junior_week">Head coach Junior — amount per week</option><option value="reception">Also works reception (not lessons)</option></select></div>
+        <div class="field"><label>Extra amount (€)</label><input type="number" min="0" step="0.5" id="dirExtraAmount" value="0"></div>
+        <div class="field"><label>Status</label><select id="dirActive"><option value="true">Active</option><option value="false">Inactive (leaves the lists; lessons stay)</option></select></div>
       </div>
       <div class="status-msg status-ok" id="instructorModalMsg" style="display:none;margin-top:12px"></div>
     </div>
-    <div class="mfooter"><button class="btn btn-s" id="instructorModalCancel">Cancelar</button><button class="btn btn-p" id="instructorModalSave">Guardar</button></div>
+    <div class="mfooter"><button class="btn btn-s" id="instructorModalCancel">Cancel</button><button class="btn btn-p" id="instructorModalSave">Save</button></div>
   </div>
 </div>
 
 <div class="overlay" id="modal">
   <div class="modal" style="max-width:980px">
     <div class="mhdr">
-      <div>
-        <div class="mhdr-title" id="modalTitle">Add lessons for the day</div>
-        <div class="mhdr-sub" id="modalSub">Escreve só o número de aulas — os preços já estão postos.</div>
+      <div class="mhdr-row">
+        <div>
+          <div class="mhdr-title" id="modalTitle">Add lessons for the day</div>
+          <div class="mhdr-sub" id="modalSub">Type only the number of lessons — the prices are already filled in.</div>
+        </div>
+        <div class="mhdr-tools">
+          <div class="pills" id="modeSwitch"><button id="modeQuick" class="pill active">Quick day</button><button id="modeLine" class="pill">Line by line</button></div>
+        </div>
       </div>
-      <div class="mhdr-tools">
-        <div class="nav-tabs" id="modeSwitch"><button id="modeQuick" class="ntab active">Dia rápido</button><button id="modeLine" class="ntab">Linha a linha</button></div>
-        <button class="nav-action-btn" id="closeModalBtn">Close</button>
-      </div>
+      <button class="mclose" id="closeModalBtn" aria-label="Close">×</button>
     </div>
     <div class="mbody">
       <div id="quickDay">
         <div class="qd-top">
-          <div class="field"><label>Dia</label><input type="date" id="qdDate"></div>
-          <div class="field"><label>Estado</label><select id="qdPaid"><option value="false">Por pagar</option><option value="true">Pago</option></select></div>
-          <label class="btn btn-s"><input type="checkbox" id="qdAll" style="margin:0"> Mostrar todos os instrutores</label>
-          <div class="muted" style="font-size:12px;flex:1;text-align:right">Preço por aula sugerido pelo histórico de cada instrutor — clica no preço para o mudar. Enter salta para o instrutor seguinte.</div>
+          <div class="field"><label>Day</label><input type="date" id="qdDate"></div>
+          <div class="field"><label>Status</label><select id="qdPaid"><option value="false">Unpaid</option><option value="true">Paid</option></select></div>
+          <label class="pill"><input type="checkbox" id="qdAll" style="display:inline-block;margin:0;width:14px;height:14px;accent-color:var(--ocean)"> Show all instructors</label>
+          <div class="hint" style="flex:1;text-align:right">Price per lesson suggested from each instructor's history — tap the price to change it. Enter jumps to the next instructor.</div>
         </div>
         <div class="qd-wrap"><table class="qd-table"><thead id="qdHead"></thead><tbody id="qdBody"></tbody></table></div>
         <div class="qd-foot">
-          <div><span class="muted">Este dia:</span> <strong id="qdTotal">0 aulas · €0.00</strong></div>
-          <div style="display:flex;gap:10px"><button class="btn btn-s" id="qdClear">Limpar</button><button class="btn btn-p" id="qdSave">Guardar dia</button></div>
+          <div><span class="muted">This day:</span> <strong id="qdTotal">0 lessons · €0.00</strong></div>
+          <div style="display:flex;gap:8px"><button class="btn btn-s" id="qdClear">Clear</button><button class="btn btn-p" id="qdSave">Save day</button></div>
         </div>
       </div>
       <div class="modal-grid" id="lineMode" style="display:none">
@@ -231,24 +229,24 @@ AppShell.mount('appNav', { app:'instructors', tabAttr:'data-tab', user:false,
           <div class="form-grid">
             <div class="field"><label>Date</label><input type="date" id="fDate"></div>
             <div class="field">
-              <label>Instructor_Name</label>
+              <label>Instructor</label>
               <div class="searchable" style="width:100%">
                 <button class="search-btn" id="formInstructorBtn">Select instructor</button>
                 <div class="dropdown" id="formInstructorDropdown">
-                  <input id="formInstructorSearch" placeholder="Search instructor..." />
+                  <input id="formInstructorSearch" placeholder="Search instructor…" />
                   <div id="formInstructorOptions"></div>
                 </div>
               </div>
             </div>
             <div class="field"><label>Category</label><select id="fCategory"></select></div>
-            <div class="field"><label>Number_of_Lessons</label><input type="number" min="1" id="fLessons" value="1"></div>
-            <div class="field"><label>Price_unit (€)</label><input type="number" min="0" step="0.01" id="fPrice" value="25"></div>
-            <div class="field"><label>RecVerde/Cash</label><select id="fPayment"></select></div>
+            <div class="field"><label>Lessons</label><input type="number" min="1" id="fLessons" value="1"></div>
+            <div class="field"><label>Price per lesson (€)</label><input type="number" min="0" step="0.01" id="fPrice" value="25"></div>
+            <div class="field"><label>Paid by (green receipt / cash)</label><select id="fPayment"></select></div>
             <div class="field"><label>Payment status</label><select id="fPaid"><option value="false">Unpaid</option><option value="true">Paid</option></select></div>
             <div class="field"><label>Notes</label><input id="fNotes" placeholder="Optional note"></div>
-            <div class="card kpi total-box"><div class="kpi-label">Current line total</div><div class="kpi-value" id="fTotal">€25.00</div><div class="kpi-sub">Auto calculated from Number_of_Lessons × Price_unit</div></div>
+            <div class="card kpi total-box"><div class="kpi-label">Current line total</div><div class="kpi-value" id="fTotal">€25.00</div><div class="kpi-sub">Lessons × price</div></div>
           </div>
-          <div class="modal-actions" id="lineActions"><button class="btn btn-s" id="clearLineBtn">Clear current line</button><button class="btn btn-p" id="addToDayListBtn">Add to day list</button></div>
+          <div class="modal-actions" id="lineActions"><button class="btn btn-s" id="clearLineBtn">Clear current line</button><button class="btn btn-s" id="addToDayListBtn">Add to day list</button></div>
           <div class="modal-actions" id="editActions" style="display:none"><button class="btn btn-s" id="cancelBtn">Cancel</button><button class="btn btn-p" id="saveEditBtn">Save changes</button></div>
         </div>
         <div>
@@ -280,9 +278,9 @@ let entries=[];
 let instructorDirectory=[];
 let selectedYear="all",selectedMonth="all",selectedInstructor="all",activeTab="dashboard",editingId=null,formInstructor="",dayQueue=[],supabaseClient=null,instructorLocationId=null;
 const euro=n=>new Intl.NumberFormat("en-IE",{style:"currency",currency:"EUR"}).format(Number(n||0));
-const MESES_CURTOS=["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
-const MESES_LONGOS=["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
-const monthLabel=key=>key==="all"?"Todos os meses":`${MESES_LONGOS[Number(key.split("-")[1])-1]} ${key.split("-")[0]}`;
+const MESES_CURTOS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const MESES_LONGOS=["January","February","March","April","May","June","July","August","September","October","November","December"];
+const monthLabel=key=>key==="all"?"All months":`${MESES_LONGOS[Number(key.split("-")[1])-1]} ${key.split("-")[0]}`;
 const monthShort=key=>`${MESES_CURTOS[Number(key.split("-")[1])-1]} ${key.slice(2,4)}`;
 const normalizeHeader=value=>String(value||"").trim().toLowerCase().replace(/\s+/g,"_").replace(/\//g,"_").replace(/[^a-z0-9_]/g,"");
 const toNumber=value=>{const n=Number(String(value??"").replace(/€/g,"").replace(/,/g,".").replace(/\s+/g,"").trim());return Number.isFinite(n)?n:0;};
@@ -312,7 +310,7 @@ function filteredEntries(){return sortByNewest(entries.filter(e=>
 function renderEntriesSummary(rows,targetId="entriesSummary"){
   const box=document.getElementById(targetId);
   if(!box)return;
-  if(!rows.length){box.innerHTML='<div class="card empty">Sem aulas neste filtro.</div>';return;}
+  if(!rows.length){box.innerHTML=emptyCard("No lessons in this filter");return;}
   const cats=categoriesIn(rows);
   const meses=[...new Set(rows.map(e=>e.date.slice(0,7)))].sort().reverse();
   const cel={},tm={},tc={};let tn=0,tv=0;
@@ -324,24 +322,26 @@ function renderEntriesSummary(rows,targetId="entriesSummary"){
     tc[e.lessonCategory]=tc[e.lessonCategory]||{n:0,v:0};tc[e.lessonCategory].n+=n;tc[e.lessonCategory].v+=v;
     tn+=n;tv+=v;
   });
-  const cel2=(o)=>o?`<div style="font-weight:700">${euro(o.v)}</div><div class="muted" style="font-size:11px">${o.n} aulas</div>`:'<span class="muted">·</span>';
+  const cel2=(o)=>o?`<div style="font-weight:600">${euro(o.v)}</div><div class="muted" style="font-size:11px">${o.n} lessons</div>`:'<span class="muted">·</span>';
   box.innerHTML=`<div class="card tbl-wrap"><table>
-    <thead><tr><th>Mês</th>${cats.map(c=>`<th class="r">${c}</th>`).join("")}<th class="r">Total</th></tr></thead>
+    <thead><tr><th>Month</th>${cats.map(c=>`<th class="r">${c}</th>`).join("")}<th class="r">Total</th></tr></thead>
     <tbody>
       ${meses.map(m=>`<tr>
         <td><strong>${monthLabel(m)}</strong></td>
         ${cats.map(c=>`<td class="r">${cel2(cel[m+"|"+c])}</td>`).join("")}
-        <td class="r" style="background:var(--foam,#f2f7fb)">${cel2(tm[m])}</td>
+        <td class="r" style="background:var(--surface-2)">${cel2(tm[m])}</td>
       </tr>`).join("")}
       <tr class="total-row">
         <td><strong>Total</strong></td>
         ${cats.map(c=>`<td class="r">${cel2(tc[c])}</td>`).join("")}
-        <td class="r"><div style="font-weight:800">${euro(tv)}</div><div class="muted" style="font-size:11px">${tn} aulas</div></td>
+        <td class="r"><div style="font-weight:700">${euro(tv)}</div><div class="muted" style="font-size:11px">${tn} lessons</div></td>
       </tr>
     </tbody></table></div>`;
 }
 function categoryBreakdown(){const rows=selectedInstructor==="all"?[]:filteredEntries();const base=categoriesIn(rows.length?rows:entries).map(c=>({category:c,lessons:0}));rows.forEach(e=>{let f=base.find(x=>x.category===e.lessonCategory);if(!f){f={category:e.lessonCategory,lessons:0};base.push(f);}f.lessons+=Number(e.numberOfLessons)});return base;}
 function categoryIcon(){return"";}
+// Empty state inside a card, the shell way (icon + one line + optional sentence).
+function emptyCard(title,sub){return`<div class="card"><div class="empty-state">${AppShell.icon("inbox")}<div class="empty-title">${esc(title)}</div>${sub?`<p>${esc(sub)}</p>`:""}</div></div>`;}
 function showMessage(msg){const box=document.getElementById("messageBox");if(!box)return;box.textContent=msg;box.className="status-msg status-ok";box.style.display=msg?"block":"none";}
 function showError(msg){const box=document.getElementById("messageBox");if(!box)return;box.textContent=msg||"Something went wrong.";box.className="status-msg status-err";box.style.display="block";}
 async function withRetry(fn,label,retries=3){
@@ -354,7 +354,7 @@ async function withRetry(fn,label,retries=3){
   }
 }
 let _instrPending=false;
-window.addEventListener('beforeunload',e=>{if(_instrPending){e.preventDefault();e.returnValue='A guardar dados. Tens a certeza?';}});
+window.addEventListener('beforeunload',e=>{if(_instrPending){e.preventDefault();e.returnValue='Still saving. Are you sure you want to leave?';}});
 function locationDisplayName(slug){const map={"sri-lanka":"Sri Lanka",portugal:"Portugal",morocco:"Morocco","junior-camp":"Junior Camp"};return map[slug]||String(slug||"").replace(/-/g," ").replace(/\b\w/g,m=>m.toUpperCase());}
 async function getSupabaseClient(){
   if(supabaseClient)return supabaseClient;
@@ -484,28 +484,28 @@ async function updateLessonEntry(id,draft){
 let allDirectoryRows=[];   // inclui inactivos; instructorDirectory só tem os activos
 let editingDirectoryId=null;
 function directoryLessons2026(name){const y=String(new Date().getFullYear());return entries.filter(e=>e.instructorName===name&&String(e.date).startsWith(y)).reduce((s,e)=>s+Number(e.numberOfLessons||0),0);}
-function extraLabel(kind,amount){if(kind==="head_coach_month")return`Head coach · ${euro(amount)}/mês`;if(kind==="head_coach_junior_week")return`Head coach Junior · ${euro(amount)}/semana`;if(kind==="reception")return"Receção";return"";}
+function extraLabel(kind,amount){if(kind==="head_coach_month")return`Head coach · ${euro(amount)}/month`;if(kind==="head_coach_junior_week")return`Head coach Junior · ${euro(amount)}/week`;if(kind==="reception")return"Reception";return"";}
 function renderDirectory(){
   const body=document.getElementById("directoryBody");if(!body)return;
   const showInactive=document.getElementById("dirShowInactive")?.checked;
   const rows=allDirectoryRows.filter(r=>showInactive||r.active!==false).slice().sort((a,b)=>a.name.localeCompare(b.name));
   body.innerHTML=rows.length?rows.map(r=>`<tr style="${r.active===false?"opacity:.55":""}">
-    <td><strong>${esc(r.name)}</strong>${r.active===false?' <span class="badge badge-grey">inactivo</span>':""}</td>
+    <td><strong>${esc(r.name)}</strong>${r.active===false?' <span class="badge badge-grey">Inactive</span>':""}</td>
     <td class="r">${euro(r.rate)}</td>
     <td>${esc(r.payment_type||"")}</td>
     <td class="r">${Number(r.vat_pct||0)?Number(r.vat_pct)+"%":'<span class="muted">·</span>'}</td>
     <td>${r.app_supplier?esc(r.app_supplier):'<span class="muted">—</span>'}</td>
     <td>${extraLabel(r.extra_kind,r.extra_amount)||'<span class="muted">·</span>'}</td>
     <td class="r">${directoryLessons2026(r.name)||'<span class="muted">0</span>'}</td>
-    <td class="r"><button class="btn btn-s" data-edit-instructor="${esc(r.id)}">Editar</button></td>
-  </tr>`).join(""):`<tr><td colspan="8" class="empty">Ainda não há instrutores. Cria o primeiro em “+ Novo instrutor”.</td></tr>`;
+    <td class="r"><button class="btn btn-s btn-sm" data-edit-instructor="${esc(r.id)}">Edit</button></td>
+  </tr>`).join(""):`<tr class="empty-row"><td colspan="8">No instructors yet. Add the first one with "New instructor".</td></tr>`;
   body.querySelectorAll("[data-edit-instructor]").forEach(btn=>btn.onclick=()=>openInstructorModal(btn.dataset.editInstructor));
 }
 function directoryMsg(msg,isError){const box=document.getElementById("instructorModalMsg");box.textContent=msg||"";box.style.display=msg?"block":"none";box.className="status-msg "+(isError?"status-err":"status-ok");}
 function openInstructorModal(id){
   editingDirectoryId=id||null;
   const r=id?allDirectoryRows.find(x=>x.id===id):null;
-  document.getElementById("instructorModalTitle").textContent=r?`Editar ${r.name}`:"Novo instrutor";
+  document.getElementById("instructorModalTitle").textContent=r?`Edit ${r.name}`:"New instructor";
   document.getElementById("dirPayment").innerHTML=paymentTypes.map(v=>`<option value="${v}">${v}</option>`).join("");
   document.getElementById("dirName").value=r?r.name:"";
   document.getElementById("dirRate").value=r?Number(r.rate||0):30;
@@ -526,17 +526,17 @@ function readInstructorForm(){
   const rate=Number(document.getElementById("dirRate").value);
   const extraKind=document.getElementById("dirExtraKind").value||null;
   const extraAmount=Number(document.getElementById("dirExtraAmount").value||0);
-  if(!name)return{error:"Escreve o nome do instrutor."};
-  if(!Number.isFinite(rate)||rate<0)return{error:"O preço por aula tem de ser um número."};
+  if(!name)return{error:"Enter the instructor's name."};
+  if(!Number.isFinite(rate)||rate<0)return{error:"The price per lesson must be a number."};
   const clash=allDirectoryRows.find(r=>r.id!==editingDirectoryId&&r.name.trim().toLowerCase()===name.toLowerCase());
-  if(clash)return{error:`Já existe um instrutor chamado “${clash.name}”${clash.active===false?" (inactivo — reactiva-o em vez de criar outro)":""}.`};
-  if((extraKind==="head_coach_month"||extraKind==="head_coach_junior_week")&&!(extraAmount>0))return{error:"Põe o valor do extra."};
+  if(clash)return{error:`There is already an instructor called “${clash.name}”${clash.active===false?" (inactive — reactivate them instead of creating another)":""}.`};
+  if((extraKind==="head_coach_month"||extraKind==="head_coach_junior_week")&&!(extraAmount>0))return{error:"Enter the extra amount."};
   return{row:{name,rate,payment_type:document.getElementById("dirPayment").value||null,vat_pct:Number(document.getElementById("dirVat").value||0),app_supplier:String(document.getElementById("dirSupplier").value||"").trim().toLowerCase()||null,extra_kind:extraKind,extra_amount:extraKind&&extraKind!=="reception"?extraAmount:null,active:document.getElementById("dirActive").value!=="false"}};
 }
 async function saveInstructor(){
   const {row,error}=readInstructorForm();
   if(error){directoryMsg(error,true);return;}
-  const btn=document.getElementById("instructorModalSave");btn.disabled=true;btn.textContent="A guardar…";
+  const btn=document.getElementById("instructorModalSave");btn.disabled=true;btn.textContent="Saving…";
   try{
     const client=await getSupabaseClient();
     const locationId=await ensureInstructorLocation();
@@ -554,20 +554,24 @@ async function saveInstructor(){
     closeInstructorModal();
     await loadInstructorData();
     render();
-    showMessage(editingDirectoryId?`Instrutor actualizado: ${row.name}`:`Instrutor criado: ${row.name}`);
+    showMessage(editingDirectoryId?`Instructor updated: ${row.name}`:`Instructor added: ${row.name}`);
   }catch(e){
     // Mostra o erro real do Postgres — adivinhar custa horas.
-    directoryMsg(`Não guardou: ${e?.message||e}`,true);
-  }finally{btn.disabled=false;btn.textContent="Guardar";}
+    directoryMsg(`Not saved: ${e?.message||e}`,true);
+  }finally{btn.disabled=false;btn.textContent="Save";}
 }
-function renderTabs(){document.querySelectorAll(".tab-trigger,.header-tab,.ntab[data-tab],.ntab-m[data-tab]").forEach(btn=>btn.classList.toggle("active",btn.dataset.tab===activeTab));document.querySelectorAll(".panel").forEach(p=>p.classList.toggle("active",p.id===`panel-${activeTab}`));}
-function renderYearTabs(){const years=Object.keys(buildYearMap());document.getElementById("yearTabs").innerHTML=`<button class="btn btn-s ${selectedYear==="all"?"active":""}" data-year="all">Todos os anos</button>`+years.map(y=>`<button class="btn btn-s ${selectedYear===y?"active":""}" data-year="${y}">${y}</button>`).join("");document.querySelectorAll("#yearTabs [data-year]").forEach(btn=>btn.onclick=()=>{selectedYear=btn.dataset.year;selectedMonth="all";render();});}
-function renderMonthTabs(){const months=selectedYear==="all"?[]:(buildYearMap()[selectedYear]||[]);document.getElementById("monthTabs").innerHTML=selectedYear==="all"?`<div class="muted" style="font-size:13px">Escolhe um ano para ver os meses</div>`:months.map(m=>`<button class="btn btn-s ${selectedMonth===m?"active":""}" data-month="${m}">${MESES_CURTOS[Number(m.slice(5,7))-1]}</button>`).join("")+`<button class="btn btn-s ${selectedMonth==="all"?"active":""}" data-month="all">Ano inteiro</button>`;document.querySelectorAll("#monthTabs [data-month]").forEach(btn=>btn.onclick=()=>{selectedMonth=btn.dataset.month;render();});}
-function renderSearchableDropdown(btnId,ddId,inputId,optionsId,currentValue,onSelect,includeAll){const btn=document.getElementById(btnId),dd=document.getElementById(ddId),input=document.getElementById(inputId),wrap=document.getElementById(optionsId);btn.textContent=currentValue==="all"?"Todos os instrutores":(currentValue||"Escolher instrutor");function draw(term=""){const opts=instructorOptions().filter(n=>n.toLowerCase().includes(term.toLowerCase()));let html="";if(includeAll)html+=`<div class="dropdown-item" data-name="all">Todos os instrutores</div>`;html+=opts.map(n=>`<div class="dropdown-item" data-name="${esc(n)}">${esc(n)}</div>`).join("");if(!html)html=`<div class="dropdown-item">No instructor found.</div>`;wrap.innerHTML=html;wrap.querySelectorAll("[data-name]").forEach(el=>el.onclick=()=>{onSelect(el.dataset.name);dd.classList.remove("open");});}draw(input.value||"");btn.onclick=()=>{dd.classList.toggle("open");setTimeout(()=>input.focus(),10);};input.oninput=()=>draw(input.value||"");}
+function renderTabs(){document.querySelectorAll(".tab-trigger,.header-tab,.ntab[data-tab],.ntab-m[data-tab]").forEach(btn=>btn.classList.toggle("active",btn.dataset.tab===activeTab));document.querySelectorAll(".panel").forEach(p=>p.classList.toggle("active",p.id===`panel-${activeTab}`));
+  // The lesson filters and KPIs mean nothing on the directory tab — hide them there.
+  const onDirectory=activeTab==="instructors";
+  ["lessonFilters","lessonKpis"].forEach(id=>{const el=document.getElementById(id);if(el)el.style.display=onDirectory?"none":"";});
+  if(onDirectory){const ov=document.getElementById("categoryOverview");if(ov)ov.style.display="none";}}
+function renderYearTabs(){const years=Object.keys(buildYearMap());document.getElementById("yearTabs").innerHTML=`<button class="pill ${selectedYear==="all"?"active":""}" data-year="all">All years</button>`+years.map(y=>`<button class="pill ${selectedYear===y?"active":""}" data-year="${y}">${y}</button>`).join("");document.querySelectorAll("#yearTabs [data-year]").forEach(btn=>btn.onclick=()=>{selectedYear=btn.dataset.year;selectedMonth="all";render();});}
+function renderMonthTabs(){const months=selectedYear==="all"?[]:(buildYearMap()[selectedYear]||[]);document.getElementById("monthTabs").innerHTML=selectedYear==="all"?`<div class="hint">Pick a year to see its months</div>`:months.map(m=>`<button class="pill ${selectedMonth===m?"active":""}" data-month="${m}">${MESES_CURTOS[Number(m.slice(5,7))-1]}</button>`).join("")+`<button class="pill ${selectedMonth==="all"?"active":""}" data-month="all">Whole year</button>`;document.querySelectorAll("#monthTabs [data-month]").forEach(btn=>btn.onclick=()=>{selectedMonth=btn.dataset.month;render();});}
+function renderSearchableDropdown(btnId,ddId,inputId,optionsId,currentValue,onSelect,includeAll){const btn=document.getElementById(btnId),dd=document.getElementById(ddId),input=document.getElementById(inputId),wrap=document.getElementById(optionsId);btn.textContent=currentValue==="all"?"All instructors":(currentValue||"Choose instructor");function draw(term=""){const opts=instructorOptions().filter(n=>n.toLowerCase().includes(term.toLowerCase()));let html="";if(includeAll)html+=`<div class="dropdown-item" data-name="all">All instructors</div>`;html+=opts.map(n=>`<div class="dropdown-item" data-name="${esc(n)}">${esc(n)}</div>`).join("");if(!html)html=`<div class="dropdown-item">No instructor found.</div>`;wrap.innerHTML=html;wrap.querySelectorAll("[data-name]").forEach(el=>el.onclick=()=>{onSelect(el.dataset.name);dd.classList.remove("open");});}draw(input.value||"");btn.onclick=()=>{dd.classList.toggle("open");setTimeout(()=>input.focus(),10);};input.oninput=()=>draw(input.value||"");}
 function renderCategoryFilter(){
   const box=document.getElementById("categoryFilter"); if(!box)return;
   const usadas=categoriesIn(entries);
-  box.innerHTML=`<button class="btn btn-s ${selectedCategory==="all"?"active":""}" data-cat="all">Todas</button>`+usadas.map(c=>`<button class="btn btn-s ${selectedCategory===c?"active":""}" data-cat="${esc(c)}">${esc(c)}</button>`).join("");
+  box.innerHTML=`<button class="pill ${selectedCategory==="all"?"active":""}" data-cat="all">All</button>`+usadas.map(c=>`<button class="pill ${selectedCategory===c?"active":""}" data-cat="${esc(c)}">${esc(c)}</button>`).join("");
   box.querySelectorAll("[data-cat]").forEach(b=>b.onclick=()=>{selectedCategory=b.dataset.cat;render();});
 }
 // Atalhos de periodo: o caso comum e "o mes passado" (aulas de Agosto pagam-se
@@ -587,15 +591,15 @@ function renderFilterSummary(){
   const chips=[];
   if(selectedInstructor!=="all")chips.push(["instructor",selectedInstructor]);
   if(selectedCategory!=="all")chips.push(["category",selectedCategory]);
-  if(selectedPaid!=="all")chips.push(["paid",selectedPaid==="paid"?"só pagas":"só por pagar"]);
-  const per=selectedMonth!=="all"?monthLabel(selectedMonth):(selectedYear!=="all"?`Ano ${selectedYear}`:"Todos os anos");
-  box.innerHTML=`<span>${esc(per)}</span>`+chips.map(([k,v])=>`<span class="badge badge-blue" data-clear="${k}" title="Remover filtro">${esc(v)} ×</span>`).join("")+(chips.length?`<button class="btn btn-s" data-clear="all">Limpar filtros</button>`:"");
+  if(selectedPaid!=="all")chips.push(["paid",selectedPaid==="paid"?"paid only":"unpaid only"]);
+  const per=selectedMonth!=="all"?monthLabel(selectedMonth):(selectedYear!=="all"?`Year ${selectedYear}`:"All years");
+  box.innerHTML=`<span>${esc(per)}</span>`+chips.map(([k,v])=>`<span class="badge badge-blue" data-clear="${k}" title="Remove filter">${esc(v)} ×</span>`).join("")+(chips.length?`<button class="btn btn-s btn-sm" data-clear="all">Clear filters</button>`:"");
   box.querySelectorAll("[data-clear]").forEach(el=>el.onclick=()=>{const k=el.dataset.clear;if(k==="all")return limparFiltros();if(k==="instructor")selectedInstructor="all";if(k==="category")selectedCategory="all";if(k==="paid")selectedPaid="all";render();});
   document.querySelectorAll("[data-periodo]").forEach(b=>b.onclick=()=>periodo(b.dataset.periodo));
   const sel=document.getElementById("paidFilter");if(sel&&sel.value!==selectedPaid)sel.value=selectedPaid;
 }
-function renderCategoryOverview(){const wrap=document.getElementById("categoryOverview");if(selectedInstructor==="all"){wrap.style.display="none";wrap.innerHTML="";return;}const rows=categoryBreakdown();wrap.style.display="block";wrap.innerHTML=`<div class="card card-pad" style="margin-bottom:18px"><div class="card-title" style="margin-bottom:12px">Category overview for ${esc(selectedInstructor)}</div><div class="overview-grid">${rows.map(r=>`<div class="card kpi"><div class="kpi-label">${esc(r.category)}</div><div class="kpi-value">${r.lessons}</div><div class="kpi-sub">lessons</div></div>`).join("")}</div></div>`;}
-function updateKpis(){const rows=filteredEntries();const totalLessons=rows.reduce((s,e)=>s+Number(e.numberOfLessons),0);const totalPayroll=rows.reduce((s,e)=>s+Number(e.total),0);const activeInstructors=new Set(rows.map(e=>e.instructorName)).size;const averageRate=totalLessons?totalPayroll/totalLessons:0;document.getElementById("kpiLessons").textContent=totalLessons;document.getElementById("kpiPayroll").textContent=euro(totalPayroll);document.getElementById("kpiInstructors").textContent=activeInstructors;document.getElementById("kpiRate").textContent=euro(averageRate);document.getElementById("kpiHint").textContent=[selectedMonth!=="all"?monthLabel(selectedMonth):(selectedYear!=="all"?selectedYear:"Todos os anos"),selectedInstructor!=="all"?selectedInstructor:"",selectedCategory!=="all"?selectedCategory:"",selectedPaid!=="all"?(selectedPaid==="paid"?"só pagas":"só por pagar"):""].filter(Boolean).join(" · ");}
+function renderCategoryOverview(){const wrap=document.getElementById("categoryOverview");if(selectedInstructor==="all"||activeTab==="instructors"){wrap.style.display="none";wrap.innerHTML="";return;}const rows=categoryBreakdown();wrap.style.display="block";wrap.innerHTML=`<div class="card card-pad" style="margin-bottom:18px"><div class="card-title" style="margin-bottom:12px">Category overview for ${esc(selectedInstructor)}</div><div class="overview-grid">${rows.map(r=>`<div class="card kpi"><div class="kpi-label">${esc(r.category)}</div><div class="kpi-value">${r.lessons}</div><div class="kpi-sub">lessons</div></div>`).join("")}</div></div>`;}
+function updateKpis(){const rows=filteredEntries();const totalLessons=rows.reduce((s,e)=>s+Number(e.numberOfLessons),0);const totalPayroll=rows.reduce((s,e)=>s+Number(e.total),0);const activeInstructors=new Set(rows.map(e=>e.instructorName)).size;const averageRate=totalLessons?totalPayroll/totalLessons:0;document.getElementById("kpiLessons").textContent=totalLessons;document.getElementById("kpiPayroll").textContent=euro(totalPayroll);document.getElementById("kpiInstructors").textContent=activeInstructors;document.getElementById("kpiRate").textContent=euro(averageRate);document.getElementById("kpiHint").textContent=[selectedMonth!=="all"?monthLabel(selectedMonth):(selectedYear!=="all"?selectedYear:"All years"),selectedInstructor!=="all"?selectedInstructor:"",selectedCategory!=="all"?selectedCategory:"",selectedPaid!=="all"?(selectedPaid==="paid"?"paid only":"unpaid only"):""].filter(Boolean).join(" · ");}
 // Uma linha por instrutor e mes. O "Amount due" e o que se paga de facto:
 // aulas x (1+IVA do instrutor) + extras fixos (head coach). Lista de IVA e
 // extras em .claude/skills/gotadagua-platform/references/lessons-instructors.md
@@ -625,33 +629,33 @@ function updatePayroll(){
   }).sort((a,b)=>{if(a.month!==b.month)return b.month.localeCompare(a.month);return b.due-a.due;});
   const tot=rows.reduce((t,r)=>{t.lessons+=r.lessons;t.gross+=r.gross;t.vat+=r.vat;t.extra+=r.extra;t.due+=r.due;return t;},{lessons:0,gross:0,vat:0,extra:0,due:0});
   document.getElementById("payrollBody").innerHTML=rows.length?rows.map(r=>`<tr>
-    <td><strong>${esc(r.instructorName)}</strong>${r.extraKind==="reception"?'<div class="muted" style="font-size:11px">+ receção (fora das aulas)</div>':""}</td>
+    <td><strong>${esc(r.instructorName)}</strong>${r.extraKind==="reception"?'<div class="muted" style="font-size:11px">+ reception (outside lessons)</div>':""}</td>
     <td>${monthLabel(r.month)}</td>
-    <td>${r.lessons}</td>
+    <td class="r">${r.lessons}</td>
     <td>${esc(Array.from(r.paymentTypes).join(", "))}</td>
     <td class="r">${euro(r.gross)}</td>
     <td class="r">${r.vatPct?`${euro(r.vat)}<div class="muted" style="font-size:11px">${r.vatPct}%</div>`:'<span class="muted">·</span>'}</td>
     <td class="r">${r.extra?`${euro(r.extra)}<div class="muted" style="font-size:11px">${r.extraKind==="head_coach_junior_week"?"head coach Junior":"head coach"}</div>`:'<span class="muted">·</span>'}</td>
-    <td><button class="btn ${r.isPaid?'btn-g':'btn-s'}" data-paid-toggle="${esc(r.instructorName)}|${r.month}">${r.isPaid?'Pago':'Marcar pago'}</button></td>
+    <td style="white-space:nowrap">${r.isPaid?`<span class="badge badge-green">Paid</span> <button class="btn btn-s btn-sm" data-paid-toggle="${esc(r.instructorName)}|${r.month}">Mark unpaid</button>`:`<button class="btn btn-s btn-sm" data-paid-toggle="${esc(r.instructorName)}|${r.month}">Mark paid</button>`}</td>
     <td class="r"><strong>${euro(r.due)}</strong></td>
-  </tr>`).join("")+`<tr class="total-row"><td><strong>Total</strong></td><td>${rows.length} linhas</td><td><strong>${tot.lessons}</strong></td><td></td><td class="r"><strong>${euro(tot.gross)}</strong></td><td class="r">${euro(tot.vat)}</td><td class="r">${euro(tot.extra)}</td><td></td><td class="r"><strong>${euro(tot.due)}</strong></td></tr>`
-  :`<tr><td colspan="9" class="empty">No rows in this filter.</td></tr>`;
+  </tr>`).join("")+`<tr class="total-row"><td><strong>Total</strong></td><td>${rows.length} lines</td><td class="r"><strong>${tot.lessons}</strong></td><td></td><td class="r"><strong>${euro(tot.gross)}</strong></td><td class="r">${euro(tot.vat)}</td><td class="r">${euro(tot.extra)}</td><td></td><td class="r"><strong>${euro(tot.due)}</strong></td></tr>`
+  :`<tr class="empty-row"><td colspan="9">No payroll lines in this filter.</td></tr>`;
   document.querySelectorAll("[data-paid-toggle]").forEach(btn=>btn.onclick=()=>togglePayrollPaid(btn.dataset.paidToggle));
 }
 function updateEntries(){const rows=filteredEntries();
   const nAulas=rows.reduce((s,e)=>s+Number(e.numberOfLessons),0);
   const val=rows.reduce((s,e)=>s+Number(e.total),0);
-  document.getElementById("entryCount").textContent=`${rows.length} linhas · ${nAulas} aulas · ${euro(val)}`;
+  document.getElementById("entryCount").textContent=`${rows.length} lines · ${nAulas} lessons · ${euro(val)}`;
   const lista=document.getElementById("entriesList"), resumo=document.getElementById("entriesSummary");
   const bL=document.getElementById("viewList"), bS=document.getElementById("viewSummary");
   if(entriesView==="summary"){
     lista.style.display="none"; resumo.style.display="";
-    bL.className="btn btn-s"; bS.className="btn btn-p";
+    bL.className="pill"; bS.className="pill active";
     renderEntriesSummary(rows); return;
   }
   lista.style.display=""; resumo.style.display="none";
-  bL.className="btn btn-p"; bS.className="btn btn-s";
-  document.getElementById("entriesList").innerHTML=rows.length?rows.map(e=>`<div class="card card-pad entry"><div class="entry-top"><div class="entry-name">${esc(e.instructorName)}</div><div class="entry-date">${e.date}</div></div><div class="entry-badges"><span class="badge badge-grey">${esc(e.lessonCategory)}</span><span class="badge badge-grey">${esc(e.paymentType)}</span><span class="badge ${e.paid?'badge-green':'badge-grey'}">${e.paid?'Paid':'Unpaid'}</span><span class="badge badge-grey">${e.numberOfLessons} lessons</span></div><div class="entry-bottom"><div></div><div style="display:flex;gap:12px;align-items:center"><div class="r"><div class="muted" style="font-size:12px">Unit ${euro(e.priceUnit)}</div><div class="entry-total">${euro(e.total)}</div></div><div class="actions"><button class="btn btn-s" data-edit="${e.id}">Edit</button><button class="btn btn-r" data-delete="${e.id}">Delete</button></div></div></div></div>`).join(""):`<div class="card empty">No lesson entries found for this filter.</div>`;document.querySelectorAll("[data-edit]").forEach(btn=>btn.onclick=()=>startEdit(btn.dataset.edit));document.querySelectorAll("[data-delete]").forEach(btn=>btn.onclick=()=>deleteEntry(btn.dataset.delete));}
+  bL.className="pill active"; bS.className="pill";
+  document.getElementById("entriesList").innerHTML=rows.length?rows.map(e=>`<div class="card card-pad entry"><div class="entry-top"><div class="entry-name">${esc(e.instructorName)}</div><div class="entry-date">${e.date}</div></div><div class="entry-badges"><span class="badge badge-grey">${esc(e.lessonCategory)}</span><span class="badge badge-grey">${esc(e.paymentType)}</span><span class="badge ${e.paid?'badge-green':'badge-grey'}">${e.paid?'Paid':'Unpaid'}</span><span class="badge badge-grey">${e.numberOfLessons} lessons</span></div><div class="entry-bottom"><div></div><div style="display:flex;gap:12px;align-items:center"><div class="r"><div class="muted" style="font-size:12px">Unit ${euro(e.priceUnit)}</div><div class="entry-total">${euro(e.total)}</div></div><div class="actions"><button class="btn btn-s btn-sm" data-edit="${e.id}">Edit</button><button class="btn btn-danger btn-sm" data-delete="${e.id}">Delete</button></div></div></div></div>`).join(""):emptyCard("No lesson entries in this filter","Change the period or clear the filters above.");document.querySelectorAll("[data-edit]").forEach(btn=>btn.onclick=()=>startEdit(btn.dataset.edit));document.querySelectorAll("[data-delete]").forEach(btn=>btn.onclick=()=>deleteEntry(btn.dataset.delete));}
 // Dashboard sem graficos: cartoes por location, a grelha mes x location (a
 // mesma do DashBoard do Excel) e a matriz instrutor x location com aulas e valor.
 function renderLocCards(rows){
@@ -661,21 +665,21 @@ function renderLocCards(rows){
     (selectedInstructor==="all"||e.instructorName===selectedInstructor)&&(selectedPaid==="all"||(selectedPaid==="paid"?Boolean(e.paid):!e.paid))));
   const cats=categoriesIn(src);
   box.innerHTML=cats.map(c=>{const r=src.filter(e=>e.lessonCategory===c);const n=r.reduce((s,e)=>s+Number(e.numberOfLessons),0),v=r.reduce((s,e)=>s+Number(e.total),0),p=new Set(r.map(e=>e.instructorName)).size;
-    return`<div class="card kpi loc-card ${selectedCategory===c?"active":""}" data-loc="${esc(c)}"><div class="kpi-label">${esc(c)}</div><div class="kpi-value">${euro(v)}</div><div class="kpi-sub">${n} aulas · ${p} instrutor${p===1?"":"es"}</div></div>`;}).join("")||'<div class="muted">Sem aulas neste filtro.</div>';
+    return`<div class="card kpi loc-card ${selectedCategory===c?"active":""}" data-loc="${esc(c)}"><div class="kpi-label">${esc(c)}</div><div class="kpi-value">${euro(v)}</div><div class="kpi-sub">${n} lessons · ${p} instructor${p===1?"":"s"}</div></div>`;}).join("")||'<div class="hint">No lessons in this filter.</div>';
   box.querySelectorAll("[data-loc]").forEach(el=>el.onclick=()=>{selectedCategory=selectedCategory===el.dataset.loc?"all":el.dataset.loc;render();});
 }
 function renderInstructorMatrix(rows){
   const box=document.getElementById("instructorMatrix"); if(!box)return;
-  if(!rows.length){box.innerHTML='<div class="card empty">Sem aulas neste filtro.</div>';return;}
+  if(!rows.length){box.innerHTML=emptyCard("No lessons in this filter");return;}
   const cats=categoriesIn(rows);
   const por={};rows.forEach(e=>{const p=por[e.instructorName]=por[e.instructorName]||{n:0,v:0,c:{}};const k=p.c[e.lessonCategory]=p.c[e.lessonCategory]||{n:0,v:0};const n=Number(e.numberOfLessons),v=Number(e.total);k.n+=n;k.v+=v;p.n+=n;p.v+=v;});
   const nomes=Object.keys(por).sort((a,b)=>por[b].v-por[a].v);
   const tc={};let tn=0,tv=0;nomes.forEach(nm=>{tn+=por[nm].n;tv+=por[nm].v;cats.forEach(c=>{const k=por[nm].c[c];if(k){tc[c]=tc[c]||{n:0,v:0};tc[c].n+=k.n;tc[c].v+=k.v;}});});
-  const cel=o=>o?`<div>${euro(o.v)}</div><div class="sub">${o.n} aulas</div>`:'<span class="muted">·</span>';
+  const cel=o=>o?`<div>${euro(o.v)}</div><div class="sub">${o.n} lessons</div>`:'<span class="muted">·</span>';
   box.innerHTML=`<div class="card tbl-wrap"><table class="matrix">
-    <thead><tr><th>Instrutor</th>${cats.map(c=>`<th class="r">${esc(c)}</th>`).join("")}<th class="r">Total</th></tr></thead>
-    <tbody>${nomes.map(nm=>`<tr><td><span class="name" data-instr="${esc(nm)}">${esc(nm)}</span></td>${cats.map(c=>`<td class="r">${cel(por[nm].c[c])}</td>`).join("")}<td class="r" style="background:var(--foam)">${cel(por[nm])}</td></tr>`).join("")}</tbody>
-    <tfoot><tr><td>Total · ${nomes.length} instrutores</td>${cats.map(c=>`<td class="r">${cel(tc[c])}</td>`).join("")}<td class="r">${cel({n:tn,v:tv})}</td></tr></tfoot>
+    <thead><tr><th>Instructor</th>${cats.map(c=>`<th class="r">${esc(c)}</th>`).join("")}<th class="r">Total</th></tr></thead>
+    <tbody>${nomes.map(nm=>`<tr><td><span class="name" data-instr="${esc(nm)}">${esc(nm)}</span></td>${cats.map(c=>`<td class="r">${cel(por[nm].c[c])}</td>`).join("")}<td class="r" style="background:var(--surface-2)">${cel(por[nm])}</td></tr>`).join("")}</tbody>
+    <tfoot><tr><td>Total · ${nomes.length} instructors</td>${cats.map(c=>`<td class="r">${cel(tc[c])}</td>`).join("")}<td class="r">${cel({n:tn,v:tv})}</td></tr></tfoot>
   </table></div>`;
   box.querySelectorAll("[data-instr]").forEach(el=>el.onclick=()=>{selectedInstructor=selectedInstructor===el.dataset.instr?"all":el.dataset.instr;render();});
 }
@@ -683,16 +687,16 @@ function updateDashboard(){
   const rows=filteredEntries();
   renderLocCards(rows);
   renderEntriesSummary(rows,"monthGrid");
-  const h=document.getElementById("gridHint");if(h)h.textContent=`${rows.reduce((s,e)=>s+Number(e.numberOfLessons),0)} aulas · ${euro(rows.reduce((s,e)=>s+Number(e.total),0))}`;
+  const h=document.getElementById("gridHint");if(h)h.textContent=`${rows.reduce((s,e)=>s+Number(e.numberOfLessons),0)} lessons · ${euro(rows.reduce((s,e)=>s+Number(e.total),0))}`;
   renderInstructorMatrix(rows);
 }
 function render(){renderTabs();renderYearTabs();renderMonthTabs();renderCategoryFilter();renderSearchableDropdown("instructorBtn","instructorDropdown","instructorSearch","instructorOptions",selectedInstructor,(v)=>{selectedInstructor=v;render();},true);renderFilterSummary();renderCategoryOverview();updateKpis();updatePayroll();updateEntries();updateDashboard();renderDirectory();}
 function fillSelects(){document.getElementById("fCategory").innerHTML=lessonCategories.map(v=>`<option value="${v}">${v}</option>`).join("");document.getElementById("fPayment").innerHTML=paymentTypes.map(v=>`<option value="${v}">${v}</option>`).join("");}
 function calcTotal(){document.getElementById("fTotal").textContent=euro(Number(document.getElementById("fLessons").value||0)*Number(document.getElementById("fPrice").value||0));}
 function resetDraft(keepDate=true){const currentDate=keepDate?(document.getElementById("fDate").value||new Date().toISOString().slice(0,10)):new Date().toISOString().slice(0,10);document.getElementById("fDate").value=currentDate;document.getElementById("fCategory").value="Surf School";document.getElementById("fLessons").value=1;document.getElementById("fNotes").value="";document.getElementById("fPaid").value="false";calcTotal();}
-function openModal(edit=false){fillSelects();document.getElementById("modal").classList.add("open");setModalMode(edit?"line":modalMode);document.getElementById("modalTitle").textContent=edit?"Editar aula":"Aulas do dia";document.getElementById("lineActions").style.display=edit?"none":"flex";document.getElementById("editActions").style.display=edit?"flex":"none";renderSearchableDropdown("formInstructorBtn","formInstructorDropdown","formInstructorSearch","formInstructorOptions",formInstructor,(v)=>{formInstructor=v;openModal(Boolean(editingId));},false);renderDayQueue();calcTotal();}
+function openModal(edit=false){fillSelects();document.getElementById("modal").classList.add("open");setModalMode(edit?"line":modalMode);document.getElementById("modalTitle").textContent=edit?"Edit lesson":"Lessons for the day";document.getElementById("lineActions").style.display=edit?"none":"flex";document.getElementById("editActions").style.display=edit?"flex":"none";renderSearchableDropdown("formInstructorBtn","formInstructorDropdown","formInstructorSearch","formInstructorOptions",formInstructor,(v)=>{formInstructor=v;openModal(Boolean(editingId));},false);renderDayQueue();calcTotal();}
 function closeModal(){document.getElementById("modal").classList.remove("open");editingId=null;dayQueue=[];}
-function renderDayQueue(){document.getElementById("dayListCount").textContent=`${dayQueue.length} lines`;document.getElementById("dayQueueTotal").textContent=dayQueue.reduce((s,i)=>s+Number(i.numberOfLessons),0);document.getElementById("dayListWrap").innerHTML=dayQueue.length?dayQueue.map((item,index)=>`<div class="daylist-item"><div style="display:flex;justify-content:space-between;gap:12px"><div><div style="font-weight:700">${item.instructorName}</div><div class="muted" style="font-size:14px;margin-top:4px">${item.date} · ${item.lessonCategory} · ${item.numberOfLessons} lessons</div></div><button class="btn btn-r" data-remove-draft="${index}">Remove</button></div></div>`).join(""):`<div class="empty" style="padding:20px">No lines added yet for this day.</div>`;document.querySelectorAll("[data-remove-draft]").forEach(btn=>btn.onclick=()=>{dayQueue=dayQueue.filter((_,i)=>i!==Number(btn.dataset.removeDraft));renderDayQueue();});}
+function renderDayQueue(){document.getElementById("dayListCount").textContent=`${dayQueue.length} lines`;document.getElementById("dayQueueTotal").textContent=dayQueue.reduce((s,i)=>s+Number(i.numberOfLessons),0);document.getElementById("dayListWrap").innerHTML=dayQueue.length?dayQueue.map((item,index)=>`<div class="daylist-item"><div style="display:flex;justify-content:space-between;gap:12px"><div><div style="font-weight:700">${item.instructorName}</div><div class="muted" style="font-size:14px;margin-top:4px">${item.date} · ${item.lessonCategory} · ${item.numberOfLessons} lessons</div></div><button class="btn btn-danger btn-sm" data-remove-draft="${index}">Remove</button></div></div>`).join(""):`<div class="hint" style="padding:12px 0">No lines added yet for this day.</div>`;document.querySelectorAll("[data-remove-draft]").forEach(btn=>btn.onclick=()=>{dayQueue=dayQueue.filter((_,i)=>i!==Number(btn.dataset.removeDraft));renderDayQueue();});}
 function buildCurrentDraft(){return{date:document.getElementById("fDate").value,instructorName:formInstructor,lessonCategory:document.getElementById("fCategory").value,numberOfLessons:Number(document.getElementById("fLessons").value||0),paymentType:document.getElementById("fPayment").value,priceUnit:Number(document.getElementById("fPrice").value||0),notes:document.getElementById("fNotes").value,paid:document.getElementById("fPaid").value==="true"};}
 function addDraftToDayQueue(){const draft=buildCurrentDraft();if(!draft.date||!draft.instructorName||!draft.numberOfLessons)return;dayQueue.push(draft);showMessage(`Added to day list. ${dayQueue.length} items ready.`);resetDraft(true);renderDayQueue();}
 async function saveDayList(){
@@ -749,8 +753,8 @@ function renderQuickDay(){
   const head=document.getElementById("qdHead"),body=document.getElementById("qdBody");if(!head||!body)return;
   const cats=qdCats();const {recentes,outros,cnt}=instrutoresRecentes();
   const nomes=document.getElementById("qdAll").checked?[...recentes,...outros]:(recentes.length?recentes:outros);
-  head.innerHTML=`<tr><th>Instrutor</th>${cats.map(c=>`<th>${esc(c)}</th>`).join("")}<th>Total</th></tr>`;
-  body.innerHTML=nomes.map(n=>`<tr data-row="${esc(n)}"><td><span class="qd-name">${esc(n)}<span class="sub">${cnt[n]?`${cnt[n]} aulas nos últimos 90 dias`:"sem aulas recentes"}</span></span></td>${cats.map(c=>{const k=n+"|"+c;if(qdPrices[k]===undefined)qdPrices[k]=precoSugerido(n,c);const v=qdCounts[k]||"";return`<td><input class="qd-n ${v?"has":""}" type="number" min="0" step="1" inputmode="numeric" data-k="${esc(k)}" value="${v}"><span class="qd-price" data-pk="${esc(k)}" title="Clica para mudar o preço">${qdPrices[k]}€</span></td>`;}).join("")}<td class="qd-rowtotal" data-rt="${esc(n)}">·</td></tr>`).join("")||`<tr><td colspan="${cats.length+2}" class="empty">Sem instrutores. Adiciona um em "Linha a linha".</td></tr>`;
+  head.innerHTML=`<tr><th>Instructor</th>${cats.map(c=>`<th>${esc(c)}</th>`).join("")}<th>Total</th></tr>`;
+  body.innerHTML=nomes.map(n=>`<tr data-row="${esc(n)}"><td><span class="qd-name">${esc(n)}<span class="sub">${cnt[n]?`${cnt[n]} lessons in the last 90 days`:"no recent lessons"}</span></span></td>${cats.map(c=>{const k=n+"|"+c;if(qdPrices[k]===undefined)qdPrices[k]=precoSugerido(n,c);const v=qdCounts[k]||"";return`<td><input class="qd-n ${v?"has":""}" type="number" min="0" step="1" inputmode="numeric" data-k="${esc(k)}" value="${v}"><span class="qd-price" data-pk="${esc(k)}" title="Tap to change the price">${qdPrices[k]}€</span></td>`;}).join("")}<td class="qd-rowtotal" data-rt="${esc(n)}">·</td></tr>`).join("")||`<tr class="empty-row"><td colspan="${cats.length+2}">No instructors yet. Add one in "Line by line".</td></tr>`;
   body.querySelectorAll("input.qd-n").forEach(inp=>{
     inp.oninput=()=>{const k=inp.dataset.k;const v=Math.max(0,Math.floor(Number(inp.value)||0));if(v)qdCounts[k]=v;else delete qdCounts[k];inp.classList.toggle("has",!!v);qdTotais();};
     inp.onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();const col=[...inp.parentElement.parentElement.children].indexOf(inp.parentElement);const next=inp.closest("tr").nextElementSibling;const t=next&&next.children[col]&&next.children[col].querySelector("input.qd-n");if(t){t.focus();t.select();}}};
@@ -769,14 +773,14 @@ function qdTotais(){
   const linhas=qdLinhas();const porNome={};let n=0,v=0;
   linhas.forEach(l=>{porNome[l.name]=(porNome[l.name]||0)+l.n*l.price;n+=l.n;v+=l.n*l.price;});
   document.querySelectorAll("[data-rt]").forEach(td=>{const t=porNome[td.dataset.rt];td.textContent=t?euro(t):"·";});
-  const tot=document.getElementById("qdTotal");if(tot)tot.textContent=`${n} aulas · ${euro(v)}`;
+  const tot=document.getElementById("qdTotal");if(tot)tot.textContent=`${n} lessons · ${euro(v)}`;
   const btn=document.getElementById("qdSave");if(btn)btn.disabled=!linhas.length;
 }
 async function saveQuickDay(){
   const linhas=qdLinhas();const date=document.getElementById("qdDate").value;
-  if(!linhas.length||!date){showError("Escolhe o dia e escreve pelo menos um número de aulas.");return;}
+  if(!linhas.length||!date){showError("Pick the day and enter at least one number of lessons.");return;}
   const paid=document.getElementById("qdPaid").value==="true";
-  _instrPending=true;const btn=document.getElementById("qdSave");if(btn){btn.disabled=true;btn.textContent="A guardar…";}
+  _instrPending=true;const btn=document.getElementById("qdSave");if(btn){btn.disabled=true;btn.textContent="Saving…";}
   try{
     const drafts=linhas.map(l=>{const d=instructorDirectory.find(x=>x.name===l.name);return{date,instructorName:l.name,lessonCategory:l.cat,numberOfLessons:l.n,paymentType:(d&&d.paymentType)||"Recibo Verde",priceUnit:l.price,notes:"",paid};});
     const results=await Promise.all(drafts.map(d=>withRetry(()=>insertLessonEntry(d),"insert lesson")));
@@ -784,10 +788,10 @@ async function saveQuickDay(){
     selectedYear=date.slice(0,4);selectedMonth=date.slice(0,7);
     await loadInstructorData();
     const n=linhas.reduce((s,l)=>s+l.n,0),v=linhas.reduce((s,l)=>s+l.n*l.price,0);
-    showMessage(`${date}: ${n} aulas guardadas (${euro(v)}, ${drafts.length-dup} linhas)${dup?` · ${dup} já existiam e foram ignoradas`:""}.`);
+    showMessage(`${date}: ${n} lessons saved (${euro(v)}, ${drafts.length-dup} lines)${dup?` · ${dup} already existed and were skipped`:""}.`);
     qdCounts={};closeModal();render();
-  }catch(error){showError(errMsg(error,"Não foi possível guardar o dia."));}
-  finally{_instrPending=false;if(btn){btn.disabled=false;btn.textContent="Guardar dia";}}
+  }catch(error){showError(errMsg(error,"Couldn't save the day."));}
+  finally{_instrPending=false;if(btn){btn.disabled=false;btn.textContent="Save day";}}
 }
 function setModalMode(mode){
   document.getElementById("quickDay").style.display=mode==="quick"?"":"none";
@@ -795,7 +799,7 @@ function setModalMode(mode){
   document.getElementById("modeQuick").classList.toggle("active",mode==="quick");
   document.getElementById("modeLine").classList.toggle("active",mode!=="quick");
   document.getElementById("modeSwitch").style.display=editingId?"none":"";
-  document.getElementById("modalSub").textContent=mode==="quick"?"Escreve só o número de aulas — os preços já estão postos.":"Uma linha de cada vez, com todos os campos.";
+  document.getElementById("modalSub").textContent=mode==="quick"?"Type only the number of lessons — the prices are already filled in.":"One line at a time, with every field.";
   if(mode==="quick"){const d=document.getElementById("qdDate");if(!d.value)d.value=new Date().toISOString().slice(0,10);renderQuickDay();setTimeout(()=>{const f=document.querySelector("#qdBody input.qd-n");if(f)f.focus();},30);}
 }
 function startEdit(id){const entry=entries.find(e=>e.id===id);if(!entry)return;editingId=id;dayQueue=[];formInstructor=entry.instructorName;openModal(true);document.getElementById("fDate").value=entry.date;document.getElementById("fCategory").value=entry.lessonCategory;document.getElementById("fLessons").value=entry.numberOfLessons;document.getElementById("fPayment").value=entry.paymentType;document.getElementById("fPrice").value=entry.priceUnit;document.getElementById("fNotes").value=entry.notes||"";document.getElementById("fPaid").value=String(Boolean(entry.paid));calcTotal();}
@@ -818,7 +822,7 @@ async function saveSingleEdit(){
 function duplicateLast(){const last=entries[0];if(!last)return;editingId=null;dayQueue=[];formInstructor=last.instructorName;openModal(false);document.getElementById("fDate").value=new Date().toISOString().slice(0,10);document.getElementById("fCategory").value=last.lessonCategory;document.getElementById("fLessons").value=last.numberOfLessons;document.getElementById("fPayment").value=last.paymentType;document.getElementById("fPrice").value=last.priceUnit;document.getElementById("fNotes").value=last.notes||"";document.getElementById("fPaid").value=String(Boolean(last.paid));calcTotal();}
 async function deleteEntry(id){
   const entry=entries.find(e=>e.id===id);
-  if(entry&&!window.confirm(`Apagar ${entry.numberOfLessons} aula(s) de ${entry.instructorName} em ${entry.date} (${euro(entry.total)})?`))return;
+  if(entry&&!window.confirm(`Delete ${entry.numberOfLessons} lesson(s) by ${entry.instructorName} on ${entry.date} (${euro(entry.total)})?`))return;
   _instrPending=true;
   try{
     const client=await getSupabaseClient();
@@ -845,15 +849,15 @@ async function togglePayrollPaid(key){
     const nextPaid=!rows.every(e=>Boolean(e.paid));
     const {data,error}=await client.from("instructor_lessons").update({paid:nextPaid}).in("id",rows.map(e=>e.id)).select("id");
     if(error)throw error;
-    if(!data||data.length!==rows.length)throw new Error(`Só ${data?data.length:0} de ${rows.length} aulas foram atualizadas — sem permissão de escrita nesta localização?`);
+    if(!data||data.length!==rows.length)throw new Error(`Only ${data?data.length:0} of ${rows.length} lessons were updated — no write permission for this location?`);
     await loadInstructorData();
-    let msg=`${instructorName} · ${monthLabel(month)}: ${rows.length} aulas marcadas como ${nextPaid?"pagas":"não pagas"}.`;
+    let msg=`${instructorName} · ${monthLabel(month)}: ${rows.length} lessons marked as ${nextPaid?"paid":"unpaid"}.`;
     // Miguel, 6 Out 2026: «quando carrego no botão pago, esse valor por mês é
     // sempre o do recibo». Marcar pago = lançar no HQ o total (aulas + extras
     // + IVA), repartido pelos sítios onde deu aulas. Uma vez por instrutor/mês.
     if(nextPaid){
-      try{const r=await pushPayrollToHq(client,instructorName,month,rows);msg+=r.skipped?" Já estava lançado no HQ.":` Lançado no HQ: ${euro(r.due)} em ${r.rows} linha${r.rows===1?"":"s"} (${r.parts}).`;}
-      catch(e){msg+=" ⚠ Aulas pagas, mas o lançamento no HQ falhou: "+errMsg(e,"erro");}
+      try{const r=await pushPayrollToHq(client,instructorName,month,rows);msg+=r.skipped?" Already booked in HQ.":` Booked in HQ: ${euro(r.due)} in ${r.rows} line${r.rows===1?"":"s"} (${r.parts}).`;}
+      catch(e){msg+=" Lessons paid, but booking in HQ failed: "+errMsg(e,"error");}
     }
     showMessage(msg);
     render();
@@ -894,7 +898,7 @@ async function pushPayrollToHq(client,instructorName,month,rows){
   const split=list.map(q=>`${HQ_LOC_LABEL[q.slug]||q.slug} ${q.lessons} aulas`).join(", ");
   const payload=list.map(p=>({
     location_slug:p.slug,paying_company:"water-movements",invoice_date:today,company:supplier,
-    description:`Aulas ${monthLabel(month)} — parte ${HQ_LOC_LABEL[p.slug]||p.slug} (${p.lessons} aulas: ${[...p.cats].join("/")}${p.extra?`, + extra ${euro(p.extra)}`:""}${vat?`, IVA ${vat}%`:""})`,
+    description:`Lessons ${monthLabel(month)} — ${HQ_LOC_LABEL[p.slug]||p.slug} share (${p.lessons} lessons: ${[...p.cats].join("/")}${p.extra?`, + extra ${euro(p.extra)}`:""}${vat?`, VAT ${vat}%`:""})`,
     amount:p.amount,currency:"EUR",fx_rate:1,amount_eur:p.amount,payment_type:"Bank Transfer",
     category_id:catId,category_name:"Salary",needs_review:false,
     notes:`${tag} [repartido pelas aulas de ${month}: ${split}] [marcado pago na app dos instrutores a ${today}]`
@@ -928,6 +932,7 @@ async function handleImport(file){
   }
 }
 document.querySelectorAll(".tab-trigger,.header-tab,.ntab[data-tab],.ntab-m[data-tab]").forEach(btn=>btn.onclick=()=>{activeTab=btn.dataset.tab;renderTabs();});
+(function(){const b=document.getElementById("addLessonBtn");if(b)b.innerHTML=AppShell.icon("plus")+" Add lessons";const n=document.getElementById("newInstructorBtn");if(n)n.innerHTML=AppShell.icon("plus")+" New instructor";})();
 document.getElementById("addLessonBtn").onclick=()=>{editingId=null;dayQueue=[];formInstructor=instructorOptions()[0]||"";openModal(false);document.getElementById("fDate").value=new Date().toISOString().slice(0,10);document.getElementById("fCategory").value="Surf School";document.getElementById("fLessons").value=1;document.getElementById("fPayment").value="Recibo Verde";document.getElementById("fPrice").value=25;document.getElementById("fNotes").value="";document.getElementById("fPaid").value="false";calcTotal();};
 document.getElementById("paidFilter").onchange=e=>{selectedPaid=e.target.value;render();};
 document.getElementById("viewList").onclick=()=>{entriesView="list";updateEntries();};
@@ -991,9 +996,9 @@ async function subscribeInstructorRealtime(){
 async function bootstrapInstructors(){
   try{
     await requirePlatformSession();
-    const title=document.querySelector('.title');
-    if(title) title.textContent=`Instructor Control · ${locationDisplayName(INSTRUCTOR_LOCATION_SLUG)}`;
-    document.title=`Instructor Control · ${locationDisplayName(INSTRUCTOR_LOCATION_SLUG)}`;
+    const title=document.getElementById('pageTitle');
+    if(title) title.textContent=`Instructors · ${locationDisplayName(INSTRUCTOR_LOCATION_SLUG)}`;
+    document.title=`Instructors · ${locationDisplayName(INSTRUCTOR_LOCATION_SLUG)} — Gota d'Água`;
     await loadInstructorData();
     render();
     // Wire up live sync after the first paint so the user always sees
