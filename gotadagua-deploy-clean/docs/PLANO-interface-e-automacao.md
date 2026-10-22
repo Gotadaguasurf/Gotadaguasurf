@@ -36,7 +36,7 @@ Resultado da pesquisa (três auditorias: rotina diária, estrutura da app, fonte
 
 ### Onda 2 — «Hoje»: um só sítio com o que falta fazer (feito 22 Out, exceto CGD)
 - `hq_todo()` (supabase/hq-todo.sql): uma função devolve as pendências reais: linhas sem categoria (Water e Suk), duplicados, débitos sem linha por banco, linhas sem PDF desde Setembro, «[pending HQ invoice]» do Wild, linhas mensais por criar, idade de cada extrato, faturas a parceiros por emitir (reservas com comissão e mês fechado sem fatura; Juvigo, Ocean Adventure e os que pagam direto ficam fora), fecho do mês anterior.
-- Painel «Hoje» no topo do hub, só para quem abre o HQ: um cartão por pendência, cada um abre a tab certa já filtrada (`/hq/?tab=fecho`, `/hq/?tab=invoices&filter=review`, `/suk/#missing`, `/wild/#ledger`, `/partners/`).
+- ~~Painel «Hoje» no topo do hub~~ — rejeitado pelo Miguel no próprio dia («não gosto nada disto»); as pendências ficam nos chips «Needs attention» do Overview do HQ, que lêem `hq_todo()`.
 - Linhas mensais em dinheiro (renda do escritório 1.300 dia 1, renda da escola 400 dia 1, João Girbal +200 dia 28, Maxime +50 dia 28) são templates em `hq_recurring_expenses`; `hq_recurring_run()` corre todos os dias às 06:10 UTC (cron `hq-recurring-daily`) e cria a linha do mês uma única vez. Setembro e Outubro da renda da escola, que faltavam, foram criados.
 - Quando uma fatura «Wild · …» entra no HQ, a linha «[pending HQ invoice]» da Wild com o mesmo valor (±14 dias) é removida automaticamente (trigger `tr_wild_pending_cleanup`).
 - Extratos bancários: decisão do Miguel (22 Out) — ficam manuais; ele entrega os extratos ao assistente, que os lança e bate (Santander/BCP pelos importadores das páginas, CGD por SQL). Não se faz importador CGD na app.

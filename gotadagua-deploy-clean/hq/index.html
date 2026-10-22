@@ -707,6 +707,21 @@ async function renderOverview(){
   if (reviewCount)  healthChips.push({label:`${reviewCount} to review`,        onclick:"goToInvoicesFilter('review')"});
   if (dupCount)     healthChips.push({label:`${dupCount} duplicates`,          onclick:"goToInvoicesFilter('duplicate')"});
   if (recDue)       healthChips.push({label:`${recDue} recurring due`,         onclick:"openRecurringPanel()"});
+  // The rest of the day's pending items come from hq_todo() (supabase/hq-todo.sql) — same chips, no separate panel
+  // (Miguel, 22 Oct 2026: the hub «Hoje» panel was too much; this strip is enough).
+  try {
+    const { data: todo } = await sb.rpc('hq_todo');
+    if (todo && typeof todo === 'object' && !Array.isArray(todo)) {
+      (todo.bank_unlinked || []).filter(b => b.company === 'water-movements' && b.n).forEach(b => healthChips.push({label:`${b.n} ${b.bank === 'cgd' ? 'CGD' : 'Santander'} debits without a line`, onclick:"switchTab('fecho')"}));
+      const pw = (todo.no_pdf || []).find(x => x.company === 'water-movements');
+      if (pw && pw.n) healthChips.push({label:`${pw.n} without PDF since Sept`, onclick:"switchTab('fecho')"});
+      const pti = todo.partner_to_issue || [];
+      if (pti.length) healthChips.push({label:`${pti.length} partner invoices to issue`, onclick:"window.open('/partners/','_self')"});
+      (todo.bank_last || []).filter(b => b.company === 'water-movements' && b.days >= 7).forEach(b => healthChips.push({label:`${b.bank === 'cgd' ? 'CGD' : 'Santander'} statement ${b.days}d old`, onclick:"switchTab('fecho')"}));
+      const { count: mailReview } = await sb.from('mail_ingest_items').select('id', { count:'exact', head:true }).eq('status', 'review');
+      if (mailReview) healthChips.push({label:`${mailReview} emailed invoices to decide`, onclick:"switchTab('fecho')"});
+    }
+  } catch (_e) {}
 
   body.innerHTML = `
     <div class="hero-profit ${businessProfit>=0?'pos':'neg'}">

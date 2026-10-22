@@ -27,7 +27,7 @@ O problema não é só haver tabs a mais. É que o mesmo número é calculado em
 Legenda: **mantém** · *funde-se em* · ~~sai~~ (a informação vai para onde se diz).
 
 ### Hub (/)
-- **Hoje** · **Cartões das apps** · **Settings → Team access** — mantêm.
+- **Cartões das apps** · **Settings → Team access** — mantêm. (O painel «Hoje» foi retirado a pedido do Miguel; as pendências vivem nos chips do HQ.)
 - ~~número "Contacts 628" fixo no cartão do CRM~~ → lê a contagem real ou não mostra número.
 - ~~Import CSV do Bookinglayer no hub~~ → vai para o HQ (é finança, e o HQ já tem a janela de importações).
 
