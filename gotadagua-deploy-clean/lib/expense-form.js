@@ -25,8 +25,8 @@
   const CSS = `
   .xf-bg{position:fixed;inset:0;background:rgba(13,27,42,.55);z-index:400;display:none;align-items:flex-start;justify-content:center;padding:36px 16px;overflow-y:auto}
   .xf-bg.open{display:flex}
-  .xf{background:#fff;border-radius:16px;width:100%;max-width:860px;box-shadow:0 12px 48px rgba(40,57,75,.25);overflow:hidden;font-family:'Outfit',sans-serif;color:#0d1b2a}
-  .xf-hd{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid #d4e3f0}
+  .xf{background:#fff;border-radius:var(--r-lg,18px);width:100%;max-width:860px;box-shadow:var(--sh-lg,0 12px 48px rgba(40,57,75,.25));border:1px solid var(--border,#e4eaf1);overflow:hidden;font-family:'Outfit',sans-serif;color:var(--ink,#16243a)}
+  .xf-hd{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--border,#e4eaf1)}
   .xf-hd h3{margin:0;font-family:'DM Serif Display',serif;font-size:20px;color:#28394b;font-weight:400}
   .xf-x{background:none;border:none;font-size:24px;cursor:pointer;color:#6b8099;line-height:1}
   .xf-bd{padding:18px 20px}
@@ -37,13 +37,13 @@
   .xf-grid{display:grid;grid-template-columns:repeat(12,1fr);gap:12px}
   .xf-f{display:flex;flex-direction:column;gap:5px;grid-column:span 4}
   .xf-f.c3{grid-column:span 3}.xf-f.c4{grid-column:span 4}.xf-f.c6{grid-column:span 6}.xf-f.c8{grid-column:span 8}.xf-f.c12{grid-column:span 12}
-  .xf-f label{font-size:10px;font-weight:800;color:#6b8099;text-transform:uppercase;letter-spacing:.08em}
+  .xf-f label{font-size:10.5px;font-weight:700;color:var(--muted,#6b7d92);text-transform:uppercase;letter-spacing:.08em}
   .xf-f label small{font-weight:500;text-transform:none;letter-spacing:0}
-  .xf-f input,.xf-f select,.xf-f textarea{width:100%;border:1.5px solid #d4e3f0;border-radius:9px;padding:8px 10px;font-size:13px;color:#0d1b2a;background:#fff;outline:none;font-family:inherit;box-sizing:border-box}
+  .xf-f input,.xf-f select,.xf-f textarea{width:100%;border:1px solid var(--border-2,#d3dde7);border-radius:var(--r-sm,10px);padding:8px 10px;font-size:13px;color:#0d1b2a;background:#fff;outline:none;font-family:inherit;box-sizing:border-box}
   .xf-f input:focus,.xf-f select:focus{border-color:#1e6fa8;box-shadow:0 0 0 3px rgba(30,111,168,.10)}
   .xf-f input[readonly]{background:#f7fafd}
   .xf-hint{font-size:11px;color:#6b8099;margin-top:3px}
-  .xf-pick{max-height:170px;overflow:auto;border:1.5px solid #d4e3f0;border-radius:9px}
+  .xf-pick{max-height:170px;overflow:auto;border:1px solid var(--border-2,#d3dde7);border-radius:var(--r-sm,10px)}
   .xf-pick label{display:flex;gap:10px;align-items:center;padding:7px 10px;border-bottom:1px solid #eef2f6;font-size:12px;cursor:pointer;text-transform:none;letter-spacing:0;font-weight:500;color:#0d1b2a}
   .xf-pick label:hover{background:#edf5fb}
   .xf-pick label.sel{background:#e6f5ec}
@@ -56,12 +56,7 @@
   .xf-dup{background:#fef9e7;color:#9a6f00;padding:10px 14px;border-radius:8px;font-size:12px;font-weight:600;margin-top:10px;display:none}
   .xf-dup.show{display:block}
   .xf-dup ul{margin:6px 0 0 20px}
-  .xf-ft{display:flex;justify-content:space-between;gap:10px;padding:14px 20px;border-top:1px solid #d4e3f0;background:#f8fafc}
-  .xf-btn{display:inline-flex;align-items:center;gap:6px;border:none;border-radius:9px;padding:9px 16px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit}
-  .xf-btn-p{background:#1e6fa8;color:#fff}.xf-btn-p:hover{background:#3b9dd4}
-  .xf-btn-s{background:#fff;color:#6b8099;border:1.5px solid #d4e3f0}.xf-btn-s:hover{border-color:#28394b;color:#28394b}
-  .xf-btn-d{background:#fdecea;color:#b91c1c;border:1.5px solid #f0a0a0}
-  .xf-btn:disabled{opacity:.5;cursor:not-allowed}
+  .xf-ft{display:flex;justify-content:space-between;gap:10px;padding:14px 20px;border-top:1px solid var(--border,#e4eaf1);background:#f7f9fc}
   @media (max-width:720px){.xf-f,.xf-f.c3,.xf-f.c4,.xf-f.c6,.xf-f.c8{grid-column:span 6}.xf-bg{padding:12px 8px}}
   `;
 
@@ -83,7 +78,7 @@
         <div class="xf-hd"><h3 id="xf_title">Add expense</h3><button class="xf-x" type="button" onclick="ExpenseForm.cancel()">×</button></div>
         <div class="xf-bd">
           <div class="xf-banner" id="xf_banner"></div>
-          ${f.file ? `<div class="xf-ai"><input id="inv_file" type="file" accept="application/pdf,image/*,.heic" style="display:none"><button type="button" class="xf-btn xf-btn-s" onclick="document.getElementById('inv_file').click()">📎 PDF / photo</button><span id="inv_file_lbl">No file — choose the invoice and the fields are read by AI.</span></div>` : ''}
+          ${f.file ? `<div class="xf-ai"><input id="inv_file" type="file" accept="application/pdf,image/*,.heic" style="display:none"><button type="button" class="btn btn-s" onclick="document.getElementById('inv_file').click()">📎 PDF / photo</button><span id="inv_file_lbl">No file — choose the invoice and the fields are read by AI.</span></div>` : ''}
           <div class="xf-grid">
             ${f.location ? fieldHtml('c3', 'inv_location', 'Location', `<select id="inv_location">${opt(CFG.locations, 'slug', 'label')}</select>`) : ''}
             ${fieldHtml('c3', 'inv_date', 'Date', `<input id="inv_date" type="date" value="${today}">`)}
@@ -108,8 +103,8 @@
           <div id="invToast" class="xf-toast"></div>
         </div>
         <div class="xf-ft">
-          <div><button type="button" class="xf-btn xf-btn-d" id="xf_delete" style="display:none" onclick="ExpenseForm.del()">Delete</button></div>
-          <div style="display:flex;gap:8px"><button type="button" class="xf-btn xf-btn-s" onclick="ExpenseForm.cancel()">Cancel</button><button type="button" class="xf-btn xf-btn-p" id="saveInvBtn" onclick="ExpenseForm.save()">Save</button></div>
+          <div><button type="button" class="btn btn-r" id="xf_delete" style="display:none" onclick="ExpenseForm.del()">Delete</button></div>
+          <div style="display:flex;gap:8px"><button type="button" class="btn btn-s" onclick="ExpenseForm.cancel()">Cancel</button><button type="button" class="btn btn-p" id="saveInvBtn" onclick="ExpenseForm.save()">Save</button></div>
         </div>
       </div>`;
     document.body.appendChild(ROOT);
