@@ -13,78 +13,63 @@
   <link rel="stylesheet" href="/lib/app-shell.css">
   <script src="/lib/app-shell.js"></script>
   <style>
-    :root{--navy:#28394b;--ocean:#1e6fa8;--ocean-light:#3b9dd4;--bg:#f0f5fa;--ink:#0d1b2a;--muted:#6b8099;--border:#d4e3f0;--card:#fff;--foam:#e8f4fd;--sand:#f5f0e8;--shadow:0 4px 24px rgba(40,57,75,.08);--shadow-lg:0 12px 48px rgba(40,57,75,.18);--radius:12px;--green:#1a7a40;--green-bg:#eafaf1;--green-border:#a3e6c0;--red:#b91c1c;--red-bg:#fdecea}
-    *{box-sizing:border-box}
-    body{margin:0;font-family:'Outfit',sans-serif;background:var(--bg);color:var(--ink)}
-    /* header: /lib/app-shell.css */
-    main{max-width:1400px;margin:0 auto;padding:24px}
-    .top-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;flex-shrink:0;justify-content:flex-end;min-width:220px}
-    .btn{display:inline-flex;align-items:center;gap:6px;border:none;border-radius:9px;padding:8px 15px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;transition:all .2s}
-    .btn.primary{background:rgba(255,255,255,.08);color:#fff;border:1px solid rgba(255,255,255,.16);border-radius:999px;padding:8px 18px}
-    .btn.primary:hover{background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.28)}
-    .btn.secondary,.btn.outline{background:#fff;color:var(--muted);border:1.5px solid var(--border)}
-    .btn.secondary:hover,.btn.outline:hover{border-color:var(--navy);color:var(--navy)}
-    .btn.green{background:var(--green-bg);color:var(--green);border:1.5px solid var(--green-border)}
-    .btn.green:hover{background:#d1fae5}
+    /* Tokens, body, header, cards, KPI tiles (.card.kpi), tables (.tbl-wrap),
+       badges, buttons (.btn-p/.btn-s/.btn-g/.btn-r), fields (.field),
+       modal (.overlay/.modal/.mhdr/.mbody/.mfooter) and status messages all
+       come from /lib/app-shell.css. Below: only what this page adds. */
+    .muted{color:var(--muted)}.r{text-align:right}
+    #messageBox{display:none;margin-bottom:16px}
     .toolbar{display:flex;flex-direction:column;gap:12px;margin-bottom:20px}
     .filter-row{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;justify-content:space-between}
-    .quick{display:flex;flex-wrap:wrap;gap:8px}.quick .tab{border-style:dashed}
-    .chips{display:flex;flex-wrap:wrap;gap:8px}.chips .tab.active{background:var(--ocean);border-color:var(--ocean)}
+    .quick,.chips,.year-tabs,.month-tabs{display:flex;flex-wrap:wrap;gap:8px}
+    /* filter chips: the shell's white pill; "active" on a light background = ocean-soft / ocean */
+    .toolbar .btn{border-radius:999px;padding:7px 14px;font-size:12px}
+    .btn-s.active{background:var(--ocean-soft);color:var(--ocean);border-color:var(--ocean)}
     .filters-right{display:flex;flex-wrap:wrap;gap:10px;align-items:center}.filters-right .search-btn{width:auto;min-width:170px}
-    .filter-summary{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px;color:var(--muted);min-height:20px}
-    .filter-summary .pill{cursor:pointer}.filter-summary .pill:hover{border-color:var(--red);color:var(--red)}
+    .filter-summary{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:12.5px;color:var(--muted);min-height:20px}
+    .filter-summary .badge{cursor:pointer}.filter-summary .badge:hover{border-color:var(--red);color:var(--red);background:var(--red-bg)}
     .loc-cards{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:22px}
-    .loc-card{padding:14px 16px;cursor:pointer;transition:all .15s}.loc-card:hover{border-color:var(--ocean)}.loc-card.active{border-color:var(--ocean);background:var(--foam)}
-    .loc-card .label{font-size:11px}.loc-card .value{font-size:22px}
+    .loc-card{cursor:pointer}.loc-card:hover{border-color:var(--ocean);box-shadow:var(--sh-hover)}.loc-card.active{border-color:var(--ocean);background:var(--ocean-soft)}
+    .loc-card .kpi-value{font-size:22px}
     .matrix td,.matrix th{white-space:nowrap}.matrix td.r div:first-child{font-weight:700}.matrix .sub{font-size:11px;color:var(--muted)}
-    .matrix tbody tr:hover td{background:var(--foam)}.matrix .name{cursor:pointer;color:var(--navy);font-weight:700}.matrix .name:hover{color:var(--ocean);text-decoration:underline}
-    .matrix tfoot td{font-weight:800;border-top:2px solid var(--border);background:#fafcfe}
-    .year-tabs,.month-tabs{display:flex;flex-wrap:wrap;gap:8px}
-    .tab{border:1.5px solid var(--border);background:#fff;color:var(--muted);padding:6px 14px;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;transition:all .2s}
-    .tab:hover{border-color:var(--ocean);color:var(--ocean)}
-    .tab.active{background:var(--navy);color:#fff;border-color:var(--navy)}
-    .filters{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}.searchable{position:relative;width:320px}.search-btn{width:100%;appearance:none;-webkit-appearance:none;-moz-appearance:none;border:1.5px solid var(--border);border-radius:11px;background-color:#fff;background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 14 14'%3E%3Cpath fill='%236b8099' d='M3.2 5.2a.75.75 0 0 1 1.06 0L7 7.94 9.74 5.2a.75.75 0 1 1 1.06 1.06l-3.27 3.27a.75.75 0 0 1-1.06 0L3.2 6.26a.75.75 0 0 1 0-1.06Z'/%3E%3C/svg%3E\");background-repeat:no-repeat;background-position:right 13px center;background-size:14px 14px;box-shadow:0 2px 10px rgba(40,57,75,.04);padding:9px 40px 9px 13px;text-align:left;cursor:pointer;transition:border-color .18s, box-shadow .18s}
-    .search-btn:hover{border-color:#bfd3e5}.search-btn:focus{border-color:var(--ocean);box-shadow:0 0 0 4px rgba(30,111,168,.10)}
-    .dropdown{position:absolute;top:calc(100% + 6px);left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow);display:none;z-index:30;max-height:320px;overflow:auto}.dropdown.open{display:block}.dropdown input{width:100%;padding:12px;border:none;border-bottom:1px solid var(--border);outline:none;font-family:'Outfit',sans-serif}.dropdown-item{padding:10px 12px;cursor:pointer}.dropdown-item:hover{background:var(--foam)}
-    .message{margin-bottom:16px;padding:12px 14px;border-radius:14px;background:var(--green-bg);border:1px solid #bbf7d0;color:var(--green);display:none}
-    .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin:18px 0 24px}
-    .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow)}
-    .kpi{padding:18px 20px}
-    .label{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:700}
-    .value{margin-top:8px;font-family:'DM Serif Display',serif;font-size:28px;color:var(--navy);line-height:1}
-    .hint{margin-top:6px;font-size:11px;color:var(--muted)}
-    .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:22px}.chart-wrap{padding:10px 18px 20px;height:320px}
+    .matrix .name{cursor:pointer;color:var(--navy);font-weight:700}.matrix .name:hover{color:var(--ocean);text-decoration:underline}
+    .matrix tfoot td,.tbl-wrap tr.total-row td{font-weight:800;border-top:2px solid var(--border-2);background:#f7f9fc}
+    .matrix tfoot td.r{text-align:right;font-family:'DM Mono',monospace;font-size:12.5px}
+    .searchable{position:relative;width:320px}
+    .search-btn{width:100%;appearance:none;-webkit-appearance:none;-moz-appearance:none;border:1px solid var(--border-2);border-radius:var(--r-sm);background-color:#fff;background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 14 14'%3E%3Cpath fill='%236b8099' d='M3.2 5.2a.75.75 0 0 1 1.06 0L7 7.94 9.74 5.2a.75.75 0 1 1 1.06 1.06l-3.27 3.27a.75.75 0 0 1-1.06 0L3.2 6.26a.75.75 0 0 1 0-1.06Z'/%3E%3C/svg%3E\");background-repeat:no-repeat;background-position:right 12px center;background-size:14px 14px;padding:9px 36px 9px 12px;font-size:13px;font-weight:600;color:var(--navy);text-align:left;cursor:pointer;transition:border-color .2s,box-shadow .2s}
+    .search-btn:hover{border-color:var(--ocean)}.search-btn:focus{outline:none;border-color:var(--ocean);box-shadow:0 0 0 3px rgba(30,111,168,.12)}
+    .dropdown{position:absolute;top:calc(100% + 6px);left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--sh-lg);display:none;z-index:30;max-height:320px;overflow:auto}.dropdown.open{display:block}
+    .dropdown input{width:100%;padding:11px 12px;border:none;border-bottom:1px solid var(--border);outline:none;font-family:'Outfit',sans-serif;font-size:13px}.dropdown-item{padding:10px 12px;cursor:pointer;font-size:13px}.dropdown-item:hover{background:var(--foam)}
+    /* hidden duplicate tab bar — the header .ntab[data-tab] drive the panels; kept for the smoke test */
     .tabs{display:none}
     .tab-trigger{padding:12px 14px;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;font-weight:700;font-family:'Outfit',sans-serif;color:var(--muted);transition:all .18s}
     .tab-trigger:hover{color:var(--navy)}
     .tab-trigger.active{background:none;color:var(--ocean);border-bottom-color:var(--ocean)}
-    .panel{display:none}.panel.active{display:block}.section-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.section-title{font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy)}
-    table{width:100%;border-collapse:collapse} th{text-align:left;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#7aabcc;background:var(--navy);padding:12px 14px} td{padding:13px 14px;border-bottom:1px solid var(--border);font-size:14px}.r{text-align:right}
-    .entries{display:grid;gap:12px}.entry{padding:16px 18px}.entry-top{display:flex;flex-wrap:wrap;align-items:center;gap:12px}.entry-name{font-size:18px;font-weight:700}.entry-date{font-size:14px;font-weight:600;color:var(--muted)}.entry-badges{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
-    .pill{display:inline-flex;align-items:center;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:700;border:1px solid var(--border);background:#fff}.pill.paid{background:var(--green);color:#fff;border-color:var(--green)}.muted{color:var(--muted)}
+    .panel{display:none}.panel.active{display:block}
+    .entries{display:grid;gap:12px}.entry-top{display:flex;flex-wrap:wrap;align-items:center;gap:12px}.entry-name{font-size:17px;font-weight:700;color:var(--navy)}.entry-date{font-size:13px;font-weight:600;color:var(--muted)}.entry-badges{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
     .entry-bottom{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-top:12px}.actions{display:flex;gap:8px}
-    .modal-backdrop{position:fixed;inset:0;background:rgba(20,30,45,.55);display:none;align-items:center;justify-content:center;padding:24px;z-index:40}.modal-backdrop.open{display:flex}.modal{width:100%;max-width:980px;background:#fff;border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,.2);overflow:hidden}.modal-head{background:var(--navy);color:#fff;padding:18px 22px;display:flex;align-items:flex-start;justify-content:space-between;gap:18px}.modal-body{padding:22px}
-    .modal-grid{display:grid;grid-template-columns:1.1fr .9fr;gap:24px}.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.field label{display:block;font-size:12px;font-weight:700;color:var(--muted);margin-bottom:6px}.field input,.field select{width:100%;appearance:none;-webkit-appearance:none;-moz-appearance:none;border:1.5px solid var(--border);border-radius:11px;padding:9px 40px 9px 13px;font-size:13px;font-family:'Outfit',sans-serif;color:var(--ink);background-color:#fff;background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 14 14'%3E%3Cpath fill='%236b8099' d='M3.2 5.2a.75.75 0 0 1 1.06 0L7 7.94 9.74 5.2a.75.75 0 1 1 1.06 1.06l-3.27 3.27a.75.75 0 0 1-1.06 0L3.2 6.26a.75.75 0 0 1 0-1.06Z'/%3E%3C/svg%3E\");background-repeat:no-repeat;background-position:right 13px center;background-size:14px 14px;box-shadow:0 2px 10px rgba(40,57,75,.04);outline:none;transition:border-color .18s, box-shadow .18s}
-    .field input{background-image:none;padding-right:13px}
-    .field input:hover,.field select:hover{border-color:#bfd3e5}
-    .field input:focus,.field select:focus{border-color:var(--ocean);box-shadow:0 0 0 4px rgba(30,111,168,.10)}
-    .modal .btn.primary{background:var(--ocean);color:#fff;border:1px solid var(--ocean);border-radius:11px;padding:10px 18px}.modal .btn.primary:hover{background:#185c8c;border-color:#185c8c}
-    .mode-switch{display:inline-flex;background:rgba(255,255,255,.1);border-radius:999px;padding:3px;gap:2px}.mode-switch button{border:none;background:none;color:#b9d2e8;font-family:'Outfit',sans-serif;font-weight:700;font-size:12px;padding:6px 14px;border-radius:999px;cursor:pointer}.mode-switch button.active{background:#fff;color:var(--navy)}
+    .entry-total{font-family:'DM Mono',monospace;font-size:18px;font-weight:500;color:var(--navy)}
+    .mhdr{display:flex;align-items:flex-start;justify-content:space-between;gap:18px}
+    .mhdr-tools{display:flex;gap:12px;align-items:center;flex-shrink:0}
+    .modal-grid{display:grid;grid-template-columns:1.1fr .9fr;gap:24px}.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    .modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px}
+    .total-box{grid-column:1/-1}
     .qd-top{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;margin-bottom:14px}.qd-top .field{min-width:160px}
-    .qd-wrap{max-height:52vh;overflow:auto;border:1px solid var(--border);border-radius:14px}
-    .qd-table{width:100%;border-collapse:separate;border-spacing:0}.qd-table th{position:sticky;top:0;z-index:2;font-size:10px;padding:10px 8px;text-align:center}.qd-table th:first-child,.qd-table td:first-child{text-align:left;position:sticky;left:0;background:#fff;z-index:1}.qd-table th:first-child{background:var(--navy);z-index:3}
-    .qd-table td{padding:6px 6px;border-bottom:1px solid var(--border);text-align:center;vertical-align:middle}.qd-table tr:hover td{background:#f8fbfe}.qd-table tr:hover td:first-child{background:#f8fbfe}
+    .qd-wrap{max-height:52vh;overflow:auto;border:1px solid var(--border);border-radius:var(--r)}
+    .qd-table{width:100%;border-collapse:separate;border-spacing:0}
+    .qd-table th{position:sticky;top:0;z-index:2;background:#f7f9fc;padding:10px 8px;font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;text-align:center;border-bottom:1px solid var(--border);white-space:nowrap}
+    .qd-table th:first-child,.qd-table td:first-child{text-align:left;position:sticky;left:0;background:#fff;z-index:1}.qd-table th:first-child{background:#f7f9fc;z-index:3}
+    .qd-table td{padding:6px;border-bottom:1px solid var(--border);text-align:center;vertical-align:middle;font-size:13px}.qd-table tr:hover td{background:#f7f9fc}
     .qd-name{font-weight:700;color:var(--navy);white-space:nowrap;font-size:13px}.qd-name .sub{display:block;font-size:10.5px;color:var(--muted);font-weight:500}
-    .qd-table input.qd-n{width:54px;text-align:center;padding:7px 4px;border:1.5px solid var(--border);border-radius:8px;font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;color:var(--ink);-moz-appearance:textfield}.qd-table input.qd-n::-webkit-inner-spin-button{-webkit-appearance:none}
-    .qd-table input.qd-n:focus{border-color:var(--ocean);box-shadow:0 0 0 3px rgba(30,111,168,.12);outline:none}.qd-table input.qd-n.has{background:var(--foam);border-color:var(--ocean)}
-    .qd-price{display:block;font-size:10.5px;color:var(--muted);margin-top:3px;cursor:pointer}.qd-price:hover{color:var(--ocean);text-decoration:underline}.qd-price input{width:48px;font-size:11px;padding:2px 4px;text-align:center;border:1px solid var(--ocean);border-radius:6px}
-    .qd-rowtotal{font-weight:800;color:var(--navy);white-space:nowrap}.qd-foot{display:flex;justify-content:space-between;align-items:center;gap:14px;margin-top:14px;flex-wrap:wrap}
-    .total-box{grid-column:1/-1;border:1px solid var(--border);border-radius:16px;background:#f8fbfe;padding:16px}.modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px}.empty{padding:28px;text-align:center;color:var(--muted)}
-    .modal-close{border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.08);color:#fff;border-radius:999px;padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0}
-    .modal-close:hover{background:rgba(255,255,255,.16)}
-    .overview-grid{display:grid;gap:12px;grid-template-columns:repeat(5,1fr);margin-bottom:18px}.overview-card{padding:14px}.daylist-item{border:1px solid var(--border);border-radius:14px;padding:12px;background:#fff}
-    @media (max-width:1100px){.kpis,.grid-2,.overview-grid{grid-template-columns:1fr 1fr}.loc-cards{grid-template-columns:repeat(3,1fr)}.modal-grid{grid-template-columns:1fr}}
-    @media (max-width:760px){header{padding:16px;flex-direction:column;align-items:flex-start;gap:12px;height:auto}.header-left,.header-center,.top-actions{width:100%;min-width:0}.header-center,.header-nav{justify-content:flex-start}main{padding:16px}.kpis,.grid-2,.form-grid,.overview-grid{grid-template-columns:1fr}.searchable{width:100%}.filters{align-items:stretch}.entry-bottom{flex-direction:column}}
+    .qd-table input.qd-n{width:54px;text-align:center;padding:7px 4px;border:1px solid var(--border-2);border-radius:8px;font-family:'DM Mono',monospace;font-size:14px;font-weight:500;color:var(--ink);-moz-appearance:textfield}.qd-table input.qd-n::-webkit-inner-spin-button{-webkit-appearance:none}
+    .qd-table input.qd-n:focus{border-color:var(--ocean);box-shadow:0 0 0 3px rgba(30,111,168,.12);outline:none}.qd-table input.qd-n.has{background:var(--ocean-soft);border-color:var(--ocean)}
+    .qd-price{display:block;font-size:10.5px;color:var(--muted);margin-top:3px;cursor:pointer}.qd-price:hover{color:var(--ocean);text-decoration:underline}.qd-price input{width:48px;font-size:11px;padding:2px 4px;text-align:center;border:1px solid var(--ocean);border-radius:6px;font-family:'DM Mono',monospace}
+    .qd-rowtotal{font-weight:700;color:var(--navy);white-space:nowrap;font-family:'DM Mono',monospace;font-size:12.5px}.qd-foot{display:flex;justify-content:space-between;align-items:center;gap:14px;margin-top:14px;flex-wrap:wrap}
+    .daylist-item{border:1px solid var(--border);border-radius:var(--r);padding:12px;background:#fff}
+    .empty{padding:28px;text-align:center;color:var(--muted)}
+    .overview-grid{display:grid;gap:12px;grid-template-columns:repeat(5,1fr);margin-bottom:18px}
+    @media (max-width:1100px){.overview-grid{grid-template-columns:1fr 1fr}.loc-cards{grid-template-columns:repeat(3,1fr)}.modal-grid{grid-template-columns:1fr}}
+    @media (max-width:760px){.form-grid,.overview-grid{grid-template-columns:1fr}.loc-cards{grid-template-columns:1fr 1fr}.searchable{width:100%}.entry-bottom{flex-direction:column}}
   </style>
 </head>
 <body>
@@ -96,15 +81,15 @@ AppShell.mount('appNav', { app:'instructors', tabAttr:'data-tab', user:false,
 </script>
 
 <main>
-  <div class="message" id="messageBox"></div>
+  <div class="status-msg status-ok" id="messageBox"></div>
   <div class="toolbar">
     <div class="filter-row">
       <div class="year-tabs" id="yearTabs"></div>
       <div class="quick">
-        <button class="tab" data-periodo="mes">Este mês</button>
-        <button class="tab" data-periodo="mespassado">Mês passado</button>
-        <button class="tab" data-periodo="ano">Este ano</button>
-        <button class="tab" data-periodo="tudo">Tudo</button>
+        <button class="btn btn-s" data-periodo="mes">Este mês</button>
+        <button class="btn btn-s" data-periodo="mespassado">Mês passado</button>
+        <button class="btn btn-s" data-periodo="ano">Este ano</button>
+        <button class="btn btn-s" data-periodo="tudo">Tudo</button>
       </div>
     </div>
     <div class="month-tabs" id="monthTabs"></div>
@@ -128,11 +113,11 @@ AppShell.mount('appNav', { app:'instructors', tabAttr:'data-tab', user:false,
     <div class="filter-summary" id="filterSummary"></div>
   </div>
   <div id="categoryOverview" style="display:none"></div>
-  <div class="kpis">
-    <div class="card kpi"><div class="label">Aulas nesta vista</div><div class="value" id="kpiLessons">0</div><div class="hint" id="kpiHint">All years</div></div>
-    <div class="card kpi"><div class="label">Valor das aulas</div><div class="value" id="kpiPayroll">€0.00</div><div class="hint">sem IVA nem extras</div></div>
-    <div class="card kpi"><div class="label">Instrutores</div><div class="value" id="kpiInstructors">0</div><div class="hint">com aulas nesta vista</div></div>
-    <div class="card kpi"><div class="label">Preço médio</div><div class="value" id="kpiRate">€0.00</div><div class="hint">por aula</div></div>
+  <div class="summary-grid">
+    <div class="card kpi"><div class="kpi-label">Aulas nesta vista</div><div class="kpi-value" id="kpiLessons">0</div><div class="kpi-sub" id="kpiHint">All years</div></div>
+    <div class="card kpi"><div class="kpi-label">Valor das aulas</div><div class="kpi-value" id="kpiPayroll">€0.00</div><div class="kpi-sub">sem IVA nem extras</div></div>
+    <div class="card kpi"><div class="kpi-label">Instrutores</div><div class="kpi-value" id="kpiInstructors">0</div><div class="kpi-sub">com aulas nesta vista</div></div>
+    <div class="card kpi"><div class="kpi-label">Preço médio</div><div class="kpi-value" id="kpiRate">€0.00</div><div class="kpi-sub">por aula</div></div>
   </div>
   <div class="tabs">
     <button class="tab-trigger active" data-tab="dashboard">Dashboard</button>
@@ -142,13 +127,13 @@ AppShell.mount('appNav', { app:'instructors', tabAttr:'data-tab', user:false,
   </div>
   <section class="panel active" id="panel-dashboard">
     <div class="loc-cards" id="locCards"></div>
-    <div class="section-header"><div class="section-title">Por mês e location</div><div class="muted" id="gridHint"></div></div>
+    <div class="section-head"><div class="section-title">Por mês e location</div><div class="muted" id="gridHint"></div></div>
     <div id="monthGrid"></div>
-    <div class="section-header" style="margin-top:26px"><div class="section-title">Instrutores por location</div><div class="muted">clica no nome para filtrar</div></div>
+    <div class="section-head" style="margin-top:26px"><div class="section-title">Instrutores por location</div><div class="muted">clica no nome para filtrar</div></div>
     <div id="instructorMatrix"></div>
   </section>
   <section class="panel" id="panel-payroll">
-    <div class="card">
+    <div class="card tbl-wrap">
       <table>
         <thead><tr><th>Instrutor</th><th>Mês</th><th>Aulas</th><th>Pagamento</th><th class="r">Aulas €</th><th class="r">IVA</th><th class="r">Extras</th><th>Pago</th><th class="r">A pagar</th></tr></thead>
         <tbody id="payrollBody"></tbody>
@@ -156,12 +141,12 @@ AppShell.mount('appNav', { app:'instructors', tabAttr:'data-tab', user:false,
     </div>
   </section>
   <section class="panel" id="panel-entries">
-    <div class="section-header">
+    <div class="section-head">
       <div class="section-title">Lesson entries</div>
       <div style="display:flex;gap:12px;align-items:center">
         <div class="muted" id="entryCount"></div>
-        <button class="btn outline" id="viewList" data-view="list">Lista</button>
-        <button class="btn" id="viewSummary" data-view="summary">Resumo</button>
+        <button class="btn btn-p" id="viewList" data-view="list">Lista</button>
+        <button class="btn btn-s" id="viewSummary" data-view="summary">Resumo</button>
       </div>
     </div>
     <div class="entries" id="entriesList"></div>
@@ -173,14 +158,14 @@ AppShell.mount('appNav', { app:'instructors', tabAttr:'data-tab', user:false,
        aula, com o preço dessa aula como rate — agora cria-se aqui, antes
        de dar aulas, e desactiva-se quando sai (as aulas antigas ficam). -->
   <section class="panel" id="panel-instructors">
-    <div class="section-header">
+    <div class="section-head">
       <div class="section-title">Instrutores</div>
       <div style="display:flex;gap:12px;align-items:center">
-        <label class="pill" style="cursor:pointer;gap:6px"><input type="checkbox" id="dirShowInactive" style="margin:0"> Mostrar inactivos</label>
-        <button class="btn outline" id="newInstructorBtn">+ Novo instrutor</button>
+        <label class="btn btn-s"><input type="checkbox" id="dirShowInactive" style="margin:0"> Mostrar inactivos</label>
+        <button class="btn btn-s" id="newInstructorBtn">+ Novo instrutor</button>
       </div>
     </div>
-    <div class="card">
+    <div class="card tbl-wrap">
       <table>
         <thead><tr><th>Nome</th><th class="r">Preço/aula</th><th>Pagamento</th><th class="r">IVA</th><th>Fornecedor na app (HQ)</th><th>Extra</th><th class="r">Aulas 2026</th><th></th></tr></thead>
         <tbody id="directoryBody"></tbody>
@@ -189,16 +174,16 @@ AppShell.mount('appNav', { app:'instructors', tabAttr:'data-tab', user:false,
   </section>
 </main>
 
-<div class="modal-backdrop" id="instructorModal">
-  <div class="modal" style="max-width:640px">
-    <div class="modal-head">
+<div class="overlay" id="instructorModal">
+  <div class="modal">
+    <div class="mhdr">
       <div>
-        <div style="font-size:22px;font-weight:700" id="instructorModalTitle">Novo instrutor</div>
-        <div style="font-size:12px;color:#b9d2e8;margin-top:4px">O nome é o que aparece nas aulas; o fornecedor é o nome com que ele factura e que está nas despesas do HQ.</div>
+        <div class="mhdr-title" id="instructorModalTitle">Novo instrutor</div>
+        <div class="mhdr-sub">O nome é o que aparece nas aulas; o fornecedor é o nome com que ele factura e que está nas despesas do HQ.</div>
       </div>
-      <button class="modal-close" id="instructorModalClose">Close</button>
+      <button class="nav-action-btn" id="instructorModalClose">Close</button>
     </div>
-    <div class="modal-body">
+    <div class="mbody">
       <div class="form-grid">
         <div class="field"><label>Nome</label><input id="dirName" placeholder="Ex.: Tiago Madeira"></div>
         <div class="field"><label>Preço por aula (€)</label><input type="number" min="0" step="0.5" id="dirRate" value="30"></div>
@@ -209,36 +194,36 @@ AppShell.mount('appNav', { app:'instructors', tabAttr:'data-tab', user:false,
         <div class="field"><label>Valor do extra (€)</label><input type="number" min="0" step="0.5" id="dirExtraAmount" value="0"></div>
         <div class="field"><label>Estado</label><select id="dirActive"><option value="true">Activo</option><option value="false">Inactivo (sai das listas; as aulas ficam)</option></select></div>
       </div>
-      <div class="message" id="instructorModalMsg" style="display:none;margin-top:12px"></div>
-      <div class="modal-actions" style="margin-top:18px"><button class="btn outline" id="instructorModalCancel">Cancelar</button><button class="btn primary" id="instructorModalSave">Guardar</button></div>
+      <div class="status-msg status-ok" id="instructorModalMsg" style="display:none;margin-top:12px"></div>
     </div>
+    <div class="mfooter"><button class="btn btn-s" id="instructorModalCancel">Cancelar</button><button class="btn btn-p" id="instructorModalSave">Guardar</button></div>
   </div>
 </div>
 
-<div class="modal-backdrop" id="modal">
-  <div class="modal">
-    <div class="modal-head">
+<div class="overlay" id="modal">
+  <div class="modal" style="max-width:980px">
+    <div class="mhdr">
       <div>
-        <div style="font-size:22px;font-weight:700" id="modalTitle">Add lessons for the day</div>
-        <div style="font-size:12px;color:#b9d2e8;margin-top:4px" id="modalSub">Escreve só o número de aulas — os preços já estão postos.</div>
+        <div class="mhdr-title" id="modalTitle">Add lessons for the day</div>
+        <div class="mhdr-sub" id="modalSub">Escreve só o número de aulas — os preços já estão postos.</div>
       </div>
-      <div style="display:flex;gap:12px;align-items:center">
-        <div class="mode-switch" id="modeSwitch"><button id="modeQuick" class="active">Dia rápido</button><button id="modeLine">Linha a linha</button></div>
-        <button class="modal-close" id="closeModalBtn">Close</button>
+      <div class="mhdr-tools">
+        <div class="nav-tabs" id="modeSwitch"><button id="modeQuick" class="ntab active">Dia rápido</button><button id="modeLine" class="ntab">Linha a linha</button></div>
+        <button class="nav-action-btn" id="closeModalBtn">Close</button>
       </div>
     </div>
-    <div class="modal-body">
+    <div class="mbody">
       <div id="quickDay">
         <div class="qd-top">
           <div class="field"><label>Dia</label><input type="date" id="qdDate"></div>
           <div class="field"><label>Estado</label><select id="qdPaid"><option value="false">Por pagar</option><option value="true">Pago</option></select></div>
-          <label class="pill" style="cursor:pointer;gap:6px"><input type="checkbox" id="qdAll" style="margin:0"> Mostrar todos os instrutores</label>
+          <label class="btn btn-s"><input type="checkbox" id="qdAll" style="margin:0"> Mostrar todos os instrutores</label>
           <div class="muted" style="font-size:12px;flex:1;text-align:right">Preço por aula sugerido pelo histórico de cada instrutor — clica no preço para o mudar. Enter salta para o instrutor seguinte.</div>
         </div>
         <div class="qd-wrap"><table class="qd-table"><thead id="qdHead"></thead><tbody id="qdBody"></tbody></table></div>
         <div class="qd-foot">
           <div><span class="muted">Este dia:</span> <strong id="qdTotal">0 aulas · €0.00</strong></div>
-          <div style="display:flex;gap:10px"><button class="btn outline" id="qdClear">Limpar</button><button class="btn primary" id="qdSave">Guardar dia</button></div>
+          <div style="display:flex;gap:10px"><button class="btn btn-s" id="qdClear">Limpar</button><button class="btn btn-p" id="qdSave">Guardar dia</button></div>
         </div>
       </div>
       <div class="modal-grid" id="lineMode" style="display:none">
@@ -261,22 +246,22 @@ AppShell.mount('appNav', { app:'instructors', tabAttr:'data-tab', user:false,
             <div class="field"><label>RecVerde/Cash</label><select id="fPayment"></select></div>
             <div class="field"><label>Payment status</label><select id="fPaid"><option value="false">Unpaid</option><option value="true">Paid</option></select></div>
             <div class="field"><label>Notes</label><input id="fNotes" placeholder="Optional note"></div>
-            <div class="total-box"><div class="label">Current line total</div><div class="value" id="fTotal">€25.00</div><div class="hint">Auto calculated from Number_of_Lessons × Price_unit</div></div>
+            <div class="card kpi total-box"><div class="kpi-label">Current line total</div><div class="kpi-value" id="fTotal">€25.00</div><div class="kpi-sub">Auto calculated from Number_of_Lessons × Price_unit</div></div>
           </div>
-          <div class="modal-actions" id="lineActions"><button class="btn outline" id="clearLineBtn">Clear current line</button><button class="btn primary" id="addToDayListBtn">Add to day list</button></div>
-          <div class="modal-actions" id="editActions" style="display:none"><button class="btn outline" id="cancelBtn">Cancel</button><button class="btn primary" id="saveEditBtn">Save changes</button></div>
+          <div class="modal-actions" id="lineActions"><button class="btn btn-s" id="clearLineBtn">Clear current line</button><button class="btn btn-p" id="addToDayListBtn">Add to day list</button></div>
+          <div class="modal-actions" id="editActions" style="display:none"><button class="btn btn-s" id="cancelBtn">Cancel</button><button class="btn btn-p" id="saveEditBtn">Save changes</button></div>
         </div>
         <div>
-          <div class="card" style="padding:16px">
+          <div class="card card-pad">
             <div style="display:flex;justify-content:space-between;align-items:center">
-              <div><div style="font-size:18px;font-weight:700">Day list</div><div class="muted" style="font-size:14px">Build the full day first, then save all at once.</div></div>
-              <div class="pill" id="dayListCount">0 lines</div>
+              <div><div class="card-title">Day list</div><div class="card-hint">Build the full day first, then save all at once.</div></div>
+              <div class="badge badge-grey" id="dayListCount">0 lines</div>
             </div>
             <div id="dayListWrap" style="margin-top:14px"></div>
-            <div style="margin-top:14px;border:1px solid var(--border);border-radius:14px;padding:14px;background:#fff">
-              <div class="muted">Total lessons queued</div>
-              <div style="font-size:28px;font-weight:800;margin-top:6px" id="dayQueueTotal">0</div>
-              <button class="btn primary" style="width:100%;margin-top:14px" id="saveDayListBtn">Save day list</button>
+            <div class="card kpi" style="margin-top:14px">
+              <div class="kpi-label">Total lessons queued</div>
+              <div class="kpi-value" id="dayQueueTotal">0</div>
+              <button class="btn btn-p btn-block" style="margin-top:14px" id="saveDayListBtn">Save day list</button>
             </div>
           </div>
         </div>
@@ -340,15 +325,15 @@ function renderEntriesSummary(rows,targetId="entriesSummary"){
     tn+=n;tv+=v;
   });
   const cel2=(o)=>o?`<div style="font-weight:700">${euro(o.v)}</div><div class="muted" style="font-size:11px">${o.n} aulas</div>`:'<span class="muted">·</span>';
-  box.innerHTML=`<div class="card" style="overflow-x:auto"><table style="width:100%">
-    <thead><tr><th style="text-align:left">Mês</th>${cats.map(c=>`<th class="r">${c}</th>`).join("")}<th class="r">Total</th></tr></thead>
+  box.innerHTML=`<div class="card tbl-wrap"><table>
+    <thead><tr><th>Mês</th>${cats.map(c=>`<th class="r">${c}</th>`).join("")}<th class="r">Total</th></tr></thead>
     <tbody>
       ${meses.map(m=>`<tr>
         <td><strong>${monthLabel(m)}</strong></td>
         ${cats.map(c=>`<td class="r">${cel2(cel[m+"|"+c])}</td>`).join("")}
         <td class="r" style="background:var(--foam,#f2f7fb)">${cel2(tm[m])}</td>
       </tr>`).join("")}
-      <tr style="border-top:2px solid #ddd">
+      <tr class="total-row">
         <td><strong>Total</strong></td>
         ${cats.map(c=>`<td class="r">${cel2(tc[c])}</td>`).join("")}
         <td class="r"><div style="font-weight:800">${euro(tv)}</div><div class="muted" style="font-size:11px">${tn} aulas</div></td>
@@ -357,8 +342,8 @@ function renderEntriesSummary(rows,targetId="entriesSummary"){
 }
 function categoryBreakdown(){const rows=selectedInstructor==="all"?[]:filteredEntries();const base=categoriesIn(rows.length?rows:entries).map(c=>({category:c,lessons:0}));rows.forEach(e=>{let f=base.find(x=>x.category===e.lessonCategory);if(!f){f={category:e.lessonCategory,lessons:0};base.push(f);}f.lessons+=Number(e.numberOfLessons)});return base;}
 function categoryIcon(){return"";}
-function showMessage(msg){const box=document.getElementById("messageBox");if(!box)return;box.textContent=msg;box.style.color="";box.style.background="";box.style.borderColor="";box.style.display=msg?"block":"none";}
-function showError(msg){const box=document.getElementById("messageBox");if(!box)return;box.textContent=msg||"Something went wrong.";box.style.color="var(--red)";box.style.background="#fdecec";box.style.borderColor="#f5b5b5";box.style.display="block";}
+function showMessage(msg){const box=document.getElementById("messageBox");if(!box)return;box.textContent=msg;box.className="status-msg status-ok";box.style.display=msg?"block":"none";}
+function showError(msg){const box=document.getElementById("messageBox");if(!box)return;box.textContent=msg||"Something went wrong.";box.className="status-msg status-err";box.style.display="block";}
 async function withRetry(fn,label,retries=3){
   for(let i=1;i<=retries;i++){
     try{return await fn();}
@@ -505,18 +490,18 @@ function renderDirectory(){
   const showInactive=document.getElementById("dirShowInactive")?.checked;
   const rows=allDirectoryRows.filter(r=>showInactive||r.active!==false).slice().sort((a,b)=>a.name.localeCompare(b.name));
   body.innerHTML=rows.length?rows.map(r=>`<tr style="${r.active===false?"opacity:.55":""}">
-    <td><strong>${esc(r.name)}</strong>${r.active===false?' <span class="pill">inactivo</span>':""}</td>
+    <td><strong>${esc(r.name)}</strong>${r.active===false?' <span class="badge badge-grey">inactivo</span>':""}</td>
     <td class="r">${euro(r.rate)}</td>
     <td>${esc(r.payment_type||"")}</td>
     <td class="r">${Number(r.vat_pct||0)?Number(r.vat_pct)+"%":'<span class="muted">·</span>'}</td>
     <td>${r.app_supplier?esc(r.app_supplier):'<span class="muted">—</span>'}</td>
     <td>${extraLabel(r.extra_kind,r.extra_amount)||'<span class="muted">·</span>'}</td>
     <td class="r">${directoryLessons2026(r.name)||'<span class="muted">0</span>'}</td>
-    <td class="r"><button class="btn outline" data-edit-instructor="${esc(r.id)}">Editar</button></td>
+    <td class="r"><button class="btn btn-s" data-edit-instructor="${esc(r.id)}">Editar</button></td>
   </tr>`).join(""):`<tr><td colspan="8" class="empty">Ainda não há instrutores. Cria o primeiro em “+ Novo instrutor”.</td></tr>`;
   body.querySelectorAll("[data-edit-instructor]").forEach(btn=>btn.onclick=()=>openInstructorModal(btn.dataset.editInstructor));
 }
-function directoryMsg(msg,isError){const box=document.getElementById("instructorModalMsg");box.textContent=msg||"";box.style.display=msg?"block":"none";box.style.color=isError?"var(--red)":"";}
+function directoryMsg(msg,isError){const box=document.getElementById("instructorModalMsg");box.textContent=msg||"";box.style.display=msg?"block":"none";box.className="status-msg "+(isError?"status-err":"status-ok");}
 function openInstructorModal(id){
   editingDirectoryId=id||null;
   const r=id?allDirectoryRows.find(x=>x.id===id):null;
@@ -576,13 +561,13 @@ async function saveInstructor(){
   }finally{btn.disabled=false;btn.textContent="Guardar";}
 }
 function renderTabs(){document.querySelectorAll(".tab-trigger,.header-tab,.ntab[data-tab],.ntab-m[data-tab]").forEach(btn=>btn.classList.toggle("active",btn.dataset.tab===activeTab));document.querySelectorAll(".panel").forEach(p=>p.classList.toggle("active",p.id===`panel-${activeTab}`));}
-function renderYearTabs(){const years=Object.keys(buildYearMap());document.getElementById("yearTabs").innerHTML=`<button class="tab ${selectedYear==="all"?"active":""}" data-year="all">Todos os anos</button>`+years.map(y=>`<button class="tab ${selectedYear===y?"active":""}" data-year="${y}">${y}</button>`).join("");document.querySelectorAll("#yearTabs [data-year]").forEach(btn=>btn.onclick=()=>{selectedYear=btn.dataset.year;selectedMonth="all";render();});}
-function renderMonthTabs(){const months=selectedYear==="all"?[]:(buildYearMap()[selectedYear]||[]);document.getElementById("monthTabs").innerHTML=selectedYear==="all"?`<div class="muted" style="font-size:13px">Escolhe um ano para ver os meses</div>`:months.map(m=>`<button class="tab ${selectedMonth===m?"active":""}" data-month="${m}">${MESES_CURTOS[Number(m.slice(5,7))-1]}</button>`).join("")+`<button class="tab ${selectedMonth==="all"?"active":""}" data-month="all">Ano inteiro</button>`;document.querySelectorAll("#monthTabs [data-month]").forEach(btn=>btn.onclick=()=>{selectedMonth=btn.dataset.month;render();});}
+function renderYearTabs(){const years=Object.keys(buildYearMap());document.getElementById("yearTabs").innerHTML=`<button class="btn btn-s ${selectedYear==="all"?"active":""}" data-year="all">Todos os anos</button>`+years.map(y=>`<button class="btn btn-s ${selectedYear===y?"active":""}" data-year="${y}">${y}</button>`).join("");document.querySelectorAll("#yearTabs [data-year]").forEach(btn=>btn.onclick=()=>{selectedYear=btn.dataset.year;selectedMonth="all";render();});}
+function renderMonthTabs(){const months=selectedYear==="all"?[]:(buildYearMap()[selectedYear]||[]);document.getElementById("monthTabs").innerHTML=selectedYear==="all"?`<div class="muted" style="font-size:13px">Escolhe um ano para ver os meses</div>`:months.map(m=>`<button class="btn btn-s ${selectedMonth===m?"active":""}" data-month="${m}">${MESES_CURTOS[Number(m.slice(5,7))-1]}</button>`).join("")+`<button class="btn btn-s ${selectedMonth==="all"?"active":""}" data-month="all">Ano inteiro</button>`;document.querySelectorAll("#monthTabs [data-month]").forEach(btn=>btn.onclick=()=>{selectedMonth=btn.dataset.month;render();});}
 function renderSearchableDropdown(btnId,ddId,inputId,optionsId,currentValue,onSelect,includeAll){const btn=document.getElementById(btnId),dd=document.getElementById(ddId),input=document.getElementById(inputId),wrap=document.getElementById(optionsId);btn.textContent=currentValue==="all"?"Todos os instrutores":(currentValue||"Escolher instrutor");function draw(term=""){const opts=instructorOptions().filter(n=>n.toLowerCase().includes(term.toLowerCase()));let html="";if(includeAll)html+=`<div class="dropdown-item" data-name="all">Todos os instrutores</div>`;html+=opts.map(n=>`<div class="dropdown-item" data-name="${esc(n)}">${esc(n)}</div>`).join("");if(!html)html=`<div class="dropdown-item">No instructor found.</div>`;wrap.innerHTML=html;wrap.querySelectorAll("[data-name]").forEach(el=>el.onclick=()=>{onSelect(el.dataset.name);dd.classList.remove("open");});}draw(input.value||"");btn.onclick=()=>{dd.classList.toggle("open");setTimeout(()=>input.focus(),10);};input.oninput=()=>draw(input.value||"");}
 function renderCategoryFilter(){
   const box=document.getElementById("categoryFilter"); if(!box)return;
   const usadas=categoriesIn(entries);
-  box.innerHTML=`<button class="tab ${selectedCategory==="all"?"active":""}" data-cat="all">Todas</button>`+usadas.map(c=>`<button class="tab ${selectedCategory===c?"active":""}" data-cat="${esc(c)}">${esc(c)}</button>`).join("");
+  box.innerHTML=`<button class="btn btn-s ${selectedCategory==="all"?"active":""}" data-cat="all">Todas</button>`+usadas.map(c=>`<button class="btn btn-s ${selectedCategory===c?"active":""}" data-cat="${esc(c)}">${esc(c)}</button>`).join("");
   box.querySelectorAll("[data-cat]").forEach(b=>b.onclick=()=>{selectedCategory=b.dataset.cat;render();});
 }
 // Atalhos de periodo: o caso comum e "o mes passado" (aulas de Agosto pagam-se
@@ -604,12 +589,12 @@ function renderFilterSummary(){
   if(selectedCategory!=="all")chips.push(["category",selectedCategory]);
   if(selectedPaid!=="all")chips.push(["paid",selectedPaid==="paid"?"só pagas":"só por pagar"]);
   const per=selectedMonth!=="all"?monthLabel(selectedMonth):(selectedYear!=="all"?`Ano ${selectedYear}`:"Todos os anos");
-  box.innerHTML=`<span>${esc(per)}</span>`+chips.map(([k,v])=>`<span class="pill" data-clear="${k}" title="Remover filtro">${esc(v)} ×</span>`).join("")+(chips.length?`<button class="btn outline" data-clear="all" style="padding:4px 10px">Limpar filtros</button>`:"");
+  box.innerHTML=`<span>${esc(per)}</span>`+chips.map(([k,v])=>`<span class="badge badge-blue" data-clear="${k}" title="Remover filtro">${esc(v)} ×</span>`).join("")+(chips.length?`<button class="btn btn-s" data-clear="all">Limpar filtros</button>`:"");
   box.querySelectorAll("[data-clear]").forEach(el=>el.onclick=()=>{const k=el.dataset.clear;if(k==="all")return limparFiltros();if(k==="instructor")selectedInstructor="all";if(k==="category")selectedCategory="all";if(k==="paid")selectedPaid="all";render();});
   document.querySelectorAll("[data-periodo]").forEach(b=>b.onclick=()=>periodo(b.dataset.periodo));
   const sel=document.getElementById("paidFilter");if(sel&&sel.value!==selectedPaid)sel.value=selectedPaid;
 }
-function renderCategoryOverview(){const wrap=document.getElementById("categoryOverview");if(selectedInstructor==="all"){wrap.style.display="none";wrap.innerHTML="";return;}const rows=categoryBreakdown();wrap.style.display="block";wrap.innerHTML=`<div class="card" style="padding:18px;margin-bottom:18px"><div style="font-family:'DM Serif Display',serif;font-size:18px;color:var(--navy);margin-bottom:12px">Category overview for ${esc(selectedInstructor)}</div><div class="overview-grid">${rows.map(r=>`<div class="card overview-card"><div style="font-size:14px;font-weight:700;color:var(--navy)">${esc(r.category)}</div><div style="font-family:'DM Serif Display',serif;font-size:28px;color:var(--navy);margin-top:6px">${r.lessons}</div><div class="muted" style="font-size:13px">lessons</div></div>`).join("")}</div></div>`;}
+function renderCategoryOverview(){const wrap=document.getElementById("categoryOverview");if(selectedInstructor==="all"){wrap.style.display="none";wrap.innerHTML="";return;}const rows=categoryBreakdown();wrap.style.display="block";wrap.innerHTML=`<div class="card card-pad" style="margin-bottom:18px"><div class="card-title" style="margin-bottom:12px">Category overview for ${esc(selectedInstructor)}</div><div class="overview-grid">${rows.map(r=>`<div class="card kpi"><div class="kpi-label">${esc(r.category)}</div><div class="kpi-value">${r.lessons}</div><div class="kpi-sub">lessons</div></div>`).join("")}</div></div>`;}
 function updateKpis(){const rows=filteredEntries();const totalLessons=rows.reduce((s,e)=>s+Number(e.numberOfLessons),0);const totalPayroll=rows.reduce((s,e)=>s+Number(e.total),0);const activeInstructors=new Set(rows.map(e=>e.instructorName)).size;const averageRate=totalLessons?totalPayroll/totalLessons:0;document.getElementById("kpiLessons").textContent=totalLessons;document.getElementById("kpiPayroll").textContent=euro(totalPayroll);document.getElementById("kpiInstructors").textContent=activeInstructors;document.getElementById("kpiRate").textContent=euro(averageRate);document.getElementById("kpiHint").textContent=[selectedMonth!=="all"?monthLabel(selectedMonth):(selectedYear!=="all"?selectedYear:"Todos os anos"),selectedInstructor!=="all"?selectedInstructor:"",selectedCategory!=="all"?selectedCategory:"",selectedPaid!=="all"?(selectedPaid==="paid"?"só pagas":"só por pagar"):""].filter(Boolean).join(" · ");}
 // Uma linha por instrutor e mes. O "Amount due" e o que se paga de facto:
 // aulas x (1+IVA do instrutor) + extras fixos (head coach). Lista de IVA e
@@ -647,9 +632,9 @@ function updatePayroll(){
     <td class="r">${euro(r.gross)}</td>
     <td class="r">${r.vatPct?`${euro(r.vat)}<div class="muted" style="font-size:11px">${r.vatPct}%</div>`:'<span class="muted">·</span>'}</td>
     <td class="r">${r.extra?`${euro(r.extra)}<div class="muted" style="font-size:11px">${r.extraKind==="head_coach_junior_week"?"head coach Junior":"head coach"}</div>`:'<span class="muted">·</span>'}</td>
-    <td><button class="btn ${r.isPaid?'green':'outline'}" data-paid-toggle="${esc(r.instructorName)}|${r.month}">${r.isPaid?'Pago':'Marcar pago'}</button></td>
+    <td><button class="btn ${r.isPaid?'btn-g':'btn-s'}" data-paid-toggle="${esc(r.instructorName)}|${r.month}">${r.isPaid?'Pago':'Marcar pago'}</button></td>
     <td class="r"><strong>${euro(r.due)}</strong></td>
-  </tr>`).join("")+`<tr style="border-top:2px solid #ddd"><td><strong>Total</strong></td><td>${rows.length} linhas</td><td><strong>${tot.lessons}</strong></td><td></td><td class="r"><strong>${euro(tot.gross)}</strong></td><td class="r">${euro(tot.vat)}</td><td class="r">${euro(tot.extra)}</td><td></td><td class="r"><strong>${euro(tot.due)}</strong></td></tr>`
+  </tr>`).join("")+`<tr class="total-row"><td><strong>Total</strong></td><td>${rows.length} linhas</td><td><strong>${tot.lessons}</strong></td><td></td><td class="r"><strong>${euro(tot.gross)}</strong></td><td class="r">${euro(tot.vat)}</td><td class="r">${euro(tot.extra)}</td><td></td><td class="r"><strong>${euro(tot.due)}</strong></td></tr>`
   :`<tr><td colspan="9" class="empty">No rows in this filter.</td></tr>`;
   document.querySelectorAll("[data-paid-toggle]").forEach(btn=>btn.onclick=()=>togglePayrollPaid(btn.dataset.paidToggle));
 }
@@ -661,12 +646,12 @@ function updateEntries(){const rows=filteredEntries();
   const bL=document.getElementById("viewList"), bS=document.getElementById("viewSummary");
   if(entriesView==="summary"){
     lista.style.display="none"; resumo.style.display="";
-    bL.className="btn outline"; bS.className="btn";
+    bL.className="btn btn-s"; bS.className="btn btn-p";
     renderEntriesSummary(rows); return;
   }
   lista.style.display=""; resumo.style.display="none";
-  bL.className="btn"; bS.className="btn outline";
-  document.getElementById("entriesList").innerHTML=rows.length?rows.map(e=>`<div class="card entry"><div class="entry-top"><div class="entry-name">${esc(e.instructorName)}</div><div class="entry-date">${e.date}</div></div><div class="entry-badges"><span class="pill">${esc(e.lessonCategory)}</span><span class="pill">${esc(e.paymentType)}</span><span class="pill ${e.paid?'paid':''}">${e.paid?'Paid':'Unpaid'}</span><span class="pill">${e.numberOfLessons} lessons</span></div><div class="entry-bottom"><div></div><div style="display:flex;gap:12px;align-items:center"><div class="r"><div class="muted" style="font-size:12px">Unit ${euro(e.priceUnit)}</div><div style="font-size:20px;font-weight:800">${euro(e.total)}</div></div><div class="actions"><button class="btn outline" data-edit="${e.id}">Edit</button><button class="btn outline" data-delete="${e.id}" style="color:var(--red)">Delete</button></div></div></div></div>`).join(""):`<div class="card empty">No lesson entries found for this filter.</div>`;document.querySelectorAll("[data-edit]").forEach(btn=>btn.onclick=()=>startEdit(btn.dataset.edit));document.querySelectorAll("[data-delete]").forEach(btn=>btn.onclick=()=>deleteEntry(btn.dataset.delete));}
+  bL.className="btn btn-p"; bS.className="btn btn-s";
+  document.getElementById("entriesList").innerHTML=rows.length?rows.map(e=>`<div class="card card-pad entry"><div class="entry-top"><div class="entry-name">${esc(e.instructorName)}</div><div class="entry-date">${e.date}</div></div><div class="entry-badges"><span class="badge badge-grey">${esc(e.lessonCategory)}</span><span class="badge badge-grey">${esc(e.paymentType)}</span><span class="badge ${e.paid?'badge-green':'badge-grey'}">${e.paid?'Paid':'Unpaid'}</span><span class="badge badge-grey">${e.numberOfLessons} lessons</span></div><div class="entry-bottom"><div></div><div style="display:flex;gap:12px;align-items:center"><div class="r"><div class="muted" style="font-size:12px">Unit ${euro(e.priceUnit)}</div><div class="entry-total">${euro(e.total)}</div></div><div class="actions"><button class="btn btn-s" data-edit="${e.id}">Edit</button><button class="btn btn-r" data-delete="${e.id}">Delete</button></div></div></div></div>`).join(""):`<div class="card empty">No lesson entries found for this filter.</div>`;document.querySelectorAll("[data-edit]").forEach(btn=>btn.onclick=()=>startEdit(btn.dataset.edit));document.querySelectorAll("[data-delete]").forEach(btn=>btn.onclick=()=>deleteEntry(btn.dataset.delete));}
 // Dashboard sem graficos: cartoes por location, a grelha mes x location (a
 // mesma do DashBoard do Excel) e a matriz instrutor x location com aulas e valor.
 function renderLocCards(rows){
@@ -676,7 +661,7 @@ function renderLocCards(rows){
     (selectedInstructor==="all"||e.instructorName===selectedInstructor)&&(selectedPaid==="all"||(selectedPaid==="paid"?Boolean(e.paid):!e.paid))));
   const cats=categoriesIn(src);
   box.innerHTML=cats.map(c=>{const r=src.filter(e=>e.lessonCategory===c);const n=r.reduce((s,e)=>s+Number(e.numberOfLessons),0),v=r.reduce((s,e)=>s+Number(e.total),0),p=new Set(r.map(e=>e.instructorName)).size;
-    return`<div class="card loc-card ${selectedCategory===c?"active":""}" data-loc="${esc(c)}"><div class="label">${esc(c)}</div><div class="value">${euro(v)}</div><div class="hint">${n} aulas · ${p} instrutor${p===1?"":"es"}</div></div>`;}).join("")||'<div class="muted">Sem aulas neste filtro.</div>';
+    return`<div class="card kpi loc-card ${selectedCategory===c?"active":""}" data-loc="${esc(c)}"><div class="kpi-label">${esc(c)}</div><div class="kpi-value">${euro(v)}</div><div class="kpi-sub">${n} aulas · ${p} instrutor${p===1?"":"es"}</div></div>`;}).join("")||'<div class="muted">Sem aulas neste filtro.</div>';
   box.querySelectorAll("[data-loc]").forEach(el=>el.onclick=()=>{selectedCategory=selectedCategory===el.dataset.loc?"all":el.dataset.loc;render();});
 }
 function renderInstructorMatrix(rows){
@@ -687,7 +672,7 @@ function renderInstructorMatrix(rows){
   const nomes=Object.keys(por).sort((a,b)=>por[b].v-por[a].v);
   const tc={};let tn=0,tv=0;nomes.forEach(nm=>{tn+=por[nm].n;tv+=por[nm].v;cats.forEach(c=>{const k=por[nm].c[c];if(k){tc[c]=tc[c]||{n:0,v:0};tc[c].n+=k.n;tc[c].v+=k.v;}});});
   const cel=o=>o?`<div>${euro(o.v)}</div><div class="sub">${o.n} aulas</div>`:'<span class="muted">·</span>';
-  box.innerHTML=`<div class="card" style="overflow-x:auto"><table class="matrix">
+  box.innerHTML=`<div class="card tbl-wrap"><table class="matrix">
     <thead><tr><th>Instrutor</th>${cats.map(c=>`<th class="r">${esc(c)}</th>`).join("")}<th class="r">Total</th></tr></thead>
     <tbody>${nomes.map(nm=>`<tr><td><span class="name" data-instr="${esc(nm)}">${esc(nm)}</span></td>${cats.map(c=>`<td class="r">${cel(por[nm].c[c])}</td>`).join("")}<td class="r" style="background:var(--foam)">${cel(por[nm])}</td></tr>`).join("")}</tbody>
     <tfoot><tr><td>Total · ${nomes.length} instrutores</td>${cats.map(c=>`<td class="r">${cel(tc[c])}</td>`).join("")}<td class="r">${cel({n:tn,v:tv})}</td></tr></tfoot>
@@ -707,7 +692,7 @@ function calcTotal(){document.getElementById("fTotal").textContent=euro(Number(d
 function resetDraft(keepDate=true){const currentDate=keepDate?(document.getElementById("fDate").value||new Date().toISOString().slice(0,10)):new Date().toISOString().slice(0,10);document.getElementById("fDate").value=currentDate;document.getElementById("fCategory").value="Surf School";document.getElementById("fLessons").value=1;document.getElementById("fNotes").value="";document.getElementById("fPaid").value="false";calcTotal();}
 function openModal(edit=false){fillSelects();document.getElementById("modal").classList.add("open");setModalMode(edit?"line":modalMode);document.getElementById("modalTitle").textContent=edit?"Editar aula":"Aulas do dia";document.getElementById("lineActions").style.display=edit?"none":"flex";document.getElementById("editActions").style.display=edit?"flex":"none";renderSearchableDropdown("formInstructorBtn","formInstructorDropdown","formInstructorSearch","formInstructorOptions",formInstructor,(v)=>{formInstructor=v;openModal(Boolean(editingId));},false);renderDayQueue();calcTotal();}
 function closeModal(){document.getElementById("modal").classList.remove("open");editingId=null;dayQueue=[];}
-function renderDayQueue(){document.getElementById("dayListCount").textContent=`${dayQueue.length} lines`;document.getElementById("dayQueueTotal").textContent=dayQueue.reduce((s,i)=>s+Number(i.numberOfLessons),0);document.getElementById("dayListWrap").innerHTML=dayQueue.length?dayQueue.map((item,index)=>`<div class="daylist-item"><div style="display:flex;justify-content:space-between;gap:12px"><div><div style="font-weight:700">${item.instructorName}</div><div class="muted" style="font-size:14px;margin-top:4px">${item.date} · ${item.lessonCategory} · ${item.numberOfLessons} lessons</div></div><button class="btn outline" data-remove-draft="${index}" style="color:var(--red)">Remove</button></div></div>`).join(""):`<div class="empty" style="padding:20px">No lines added yet for this day.</div>`;document.querySelectorAll("[data-remove-draft]").forEach(btn=>btn.onclick=()=>{dayQueue=dayQueue.filter((_,i)=>i!==Number(btn.dataset.removeDraft));renderDayQueue();});}
+function renderDayQueue(){document.getElementById("dayListCount").textContent=`${dayQueue.length} lines`;document.getElementById("dayQueueTotal").textContent=dayQueue.reduce((s,i)=>s+Number(i.numberOfLessons),0);document.getElementById("dayListWrap").innerHTML=dayQueue.length?dayQueue.map((item,index)=>`<div class="daylist-item"><div style="display:flex;justify-content:space-between;gap:12px"><div><div style="font-weight:700">${item.instructorName}</div><div class="muted" style="font-size:14px;margin-top:4px">${item.date} · ${item.lessonCategory} · ${item.numberOfLessons} lessons</div></div><button class="btn btn-r" data-remove-draft="${index}">Remove</button></div></div>`).join(""):`<div class="empty" style="padding:20px">No lines added yet for this day.</div>`;document.querySelectorAll("[data-remove-draft]").forEach(btn=>btn.onclick=()=>{dayQueue=dayQueue.filter((_,i)=>i!==Number(btn.dataset.removeDraft));renderDayQueue();});}
 function buildCurrentDraft(){return{date:document.getElementById("fDate").value,instructorName:formInstructor,lessonCategory:document.getElementById("fCategory").value,numberOfLessons:Number(document.getElementById("fLessons").value||0),paymentType:document.getElementById("fPayment").value,priceUnit:Number(document.getElementById("fPrice").value||0),notes:document.getElementById("fNotes").value,paid:document.getElementById("fPaid").value==="true"};}
 function addDraftToDayQueue(){const draft=buildCurrentDraft();if(!draft.date||!draft.instructorName||!draft.numberOfLessons)return;dayQueue.push(draft);showMessage(`Added to day list. ${dayQueue.length} items ready.`);resetDraft(true);renderDayQueue();}
 async function saveDayList(){

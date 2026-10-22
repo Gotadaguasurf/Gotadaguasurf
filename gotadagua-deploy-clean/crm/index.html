@@ -10,21 +10,11 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="/supabase-config.js"></script>
 <script src="/lib/app-shell.js"></script>
+<link rel="stylesheet" href="/lib/app-shell.css">
 <style>
-:root{
-  --navy:#28394b;--navy-mid:#344d63;--navy-deep:#1c2b3a;
-  --ocean:#1e6fa8;--ocean-light:#3b9dd4;--foam:#e8f4fd;
-  --sand:#fff4d5;--ink:#0d1b2a;--muted:#6b8099;--border:#d4e3f0;
-  --bg:#f0f5fa;--card:#fff;
-  --green-bg:#eafaf1;--green-text:#1a7a40;
-  --amber-bg:#fef9e7;--amber-text:#9a6f00;
-  --orange-bg:#fef0e6;--orange-text:#c05400;
-  --red-bg:#fdecea;--red-text:#b91c1c;
-  --purple-bg:#f0e8ff;--purple-text:#5a2ba0;
-  --r:12px;--r-lg:18px;
-  --sh:0 4px 24px rgba(40,57,75,.10);
-  --sh-lg:0 12px 48px rgba(40,57,75,.18);
-}
+/* Page-specific rules only — tokens, header, cards, KPI tiles, tables,
+   badges, buttons, fields and modals come from /lib/app-shell.css. */
+:root{--navy-mid:#344d63;--purple-bg:#f0e8ff;--purple-text:#5a2ba0}
 /* Dark mode overrides — applied when <body class="dark"> via the
    Settings toggle. Keeps the navy header (already dark) but inverts
    the page bg + card surfaces + ink/muted text. Status pill
@@ -39,7 +29,7 @@ body.dark{
 body.dark .kanban-col,body.dark .dash-card,body.dark .detail-panel,body.dark .compose-card{background:var(--card);color:var(--ink)}
 body.dark .kanban-card,body.dark .group-card{background:#1a2a3c;border-color:var(--border)}
 body.dark input,body.dark textarea,body.dark select{background:#1a2a3c;color:var(--ink);border-color:var(--border)}
-body.dark .action-btn.ghost{background:transparent;color:var(--ink)}
+body.dark .btn-s{background:transparent;color:var(--ink)}
 body.dark .kanban-empty{background:#152535;color:var(--muted)}
 body.dark .funnel-track{background:#1a2a3c}
 body.dark .empty-state{color:var(--muted)}
@@ -54,23 +44,7 @@ body.dark .empty-state{color:var(--muted)}
    scroll (3-line header, tabs cut off), everything collapses into a
    right-side drawer. Drawer buttons DELEGATE to the real .nav-tab /
    header buttons via .click() so there's a single source of behaviour. */
-.nav-hamburger{display:none;background:transparent;border:none;color:#fff;font-size:22px;cursor:pointer;padding:4px 10px;border-radius:8px;font-family:inherit}
-.nav-hamburger:hover{background:rgba(255,255,255,.10)}
-.nav-mob-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:150;opacity:0;pointer-events:none;transition:opacity .22s}
-.nav-mob-backdrop.open{opacity:1;pointer-events:auto}
-.nav-mob-drawer{position:fixed;top:0;right:-320px;width:280px;height:100vh;background:var(--navy);z-index:200;display:flex;flex-direction:column;padding:56px 16px 20px;transition:right .25s cubic-bezier(.16,.7,.3,1);box-shadow:-8px 0 24px rgba(0,0,0,.3);overflow-y:auto}
-.nav-mob-drawer.open{right:0}
-.nav-mob-close{position:absolute;top:12px;right:14px;color:#fff;background:transparent;border:none;font-size:28px;cursor:pointer;line-height:1;padding:6px 10px;border-radius:8px;font-family:inherit}
-.nav-mob-close:hover{background:rgba(255,255,255,.10)}
-.nav-mob-lbl{font-size:10px;color:#7aabcc;text-transform:uppercase;letter-spacing:.12em;font-weight:800;margin:14px 8px 6px}
-.ntab-m{padding:12px 14px;color:#fff;background:transparent;border:none;text-align:left;font-size:15px;font-weight:600;border-radius:9px;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:10px;width:100%}
-.ntab-m:hover{background:rgba(255,255,255,.08)}
-.ntab-m.active{background:var(--ocean)}
 @media (max-width: 820px){
-  header{padding:0 12px}
-  .header-left{min-width:0}
-  .header-center,.header-right{display:none}
-  .nav-hamburger{display:block}
   main, .container, #page-dashboard, #page-contacts, #page-pipeline, #page-templates, #page-tasks{padding:12px}
   .kpi-strip{grid-template-columns:1fr 1fr;gap:8px}
   .kpi-strip .kpi{padding:12px}
@@ -96,100 +70,44 @@ body.dark .empty-state{color:var(--muted)}
 }
 @media (max-width: 480px){
   .kpi-strip{grid-template-columns:1fr}
-  .nav-tab{padding:5px 8px;font-size:11px}
 }
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--ink);min-height:100vh}
+*{margin:0;padding:0}
 .hidden{display:none!important}
 
-/* ── HEADER ───────────────────────────────────────────────────────── */
-header{background:var(--navy);padding:0 24px;display:flex;align-items:center;justify-content:space-between;height:60px;position:sticky;top:0;z-index:100;box-shadow:0 2px 20px rgba(0,0,0,.25);gap:20px}
-.header-left{display:flex;align-items:center;gap:16px;min-width:220px}
-.brand-home{display:flex;align-items:center;gap:10px;color:inherit;text-decoration:none}
-.brand-logo{display:flex;align-items:center;width:134px;height:30px;flex-shrink:0}
-.brand-logo svg{height:30px;width:auto;display:block}
-.header-sub{font-size:10px;color:#7aabcc;font-weight:700;letter-spacing:.1em;text-transform:uppercase;white-space:nowrap}
-/* Unified app switcher — same component across every top-level page.
-   Keep this block byte-for-byte identical everywhere so the nav grammar
-   stays synced. Menu stays a light card even here on the dark CRM
-   theme — dropdowns feel like distinct surfaces, which is on purpose. */
-.app-switch{position:relative}
-.app-switch summary{list-style:none;cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:5px 10px 5px 12px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:999px;color:#fff;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;transition:background .15s, border-color .15s}
-.app-switch summary::-webkit-details-marker{display:none}
-.app-switch summary::marker{content:''}
-.app-switch summary:hover{background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.28)}
-.app-switch[open] summary{background:rgba(255,255,255,.20);border-color:rgba(255,255,255,.32)}
-.app-switch-caret{font-size:9px;transition:transform .2s;opacity:.8}
-.app-switch[open] .app-switch-caret{transform:rotate(180deg)}
-.app-switch-menu{position:absolute;top:calc(100% + 6px);left:0;background:#fff;border:1px solid #d4e3f0;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.18);padding:6px;min-width:220px;z-index:200}
-.app-switch-menu a{display:flex;flex-direction:column;padding:8px 12px;border-radius:8px;color:#0d1b2a;text-decoration:none;font-size:13px;font-weight:600;transition:background .1s}
-.app-switch-menu a small{font-size:11px;color:#6b8099;font-weight:500;margin-top:1px}
-.app-switch-menu a:hover{background:#edf5fb}
-.app-switch-menu a.is-current{background:#edf5fb;color:#1e6fa8}
-.app-switch-group{font-size:9px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#6b8099;padding:8px 12px 3px;border-top:1px solid #edf2f7;margin-top:4px}
-.app-switch-menu a.is-current small{color:#1e6fa8;opacity:.7}
-.header-center{display:flex;align-items:center;justify-content:center;gap:4px;flex:1}
-.header-right{display:flex;align-items:center;gap:12px;flex-shrink:0;justify-content:flex-end;min-width:220px}
-.nav-tab{padding:7px 14px;font-size:12px;font-weight:700;color:#7aabcc;cursor:pointer;border:none;border-radius:8px;background:transparent;transition:all .2s;font-family:'Outfit',sans-serif}
-.nav-tab:hover{color:#fff;background:rgba(255,255,255,.08)}
-.nav-tab.active{color:#fff;background:var(--ocean)}
-.header-btn{display:inline-flex;align-items:center;gap:8px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.08);color:#fff;border-radius:999px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;transition:all .18s;font-family:'Outfit',sans-serif}
-.header-btn:hover{background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.28)}
-.header-btn.primary{background:var(--ocean);border-color:var(--ocean)}
-.header-btn.primary:hover{background:#1a5a8a}
 
 /* ── LOGIN ────────────────────────────────────────────────────────── */
 #loginScreen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:radial-gradient(circle at top left, rgba(49,121,190,.12), transparent 28%),radial-gradient(circle at bottom right, rgba(255,244,213,.72), transparent 30%),linear-gradient(180deg, #f4f8fc 0%, #edf4fa 100%)}
 .login-card{width:100%;max-width:460px;background:rgba(255,255,255,.98);border-radius:30px;box-shadow:var(--sh-lg);padding:34px}
 .login-title{font-family:'DM Serif Display',serif;font-size:30px;color:var(--navy);text-align:center;margin-bottom:8px}
 .login-sub{font-size:13px;color:var(--muted);text-align:center;margin-bottom:24px}
-.field{margin-bottom:14px}
-.field label{display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:6px}
-.field input{width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;font-family:'Outfit',sans-serif;background:#fff;transition:border-color .18s}
-.field input:focus{outline:none;border-color:var(--ocean);box-shadow:0 0 0 4px rgba(30,111,168,.10)}
-.login-submit{width:100%;padding:12px;background:var(--navy);color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;transition:background .18s;font-family:'Outfit',sans-serif}
-.login-submit:hover{background:var(--navy-mid)}
+.login-card .field{margin-bottom:14px}
 .login-error{font-size:12px;color:var(--red-text);text-align:center;margin-top:10px;min-height:16px}
 
 /* ── MAIN LAYOUT ──────────────────────────────────────────────────── */
-main{max-width:1400px;margin:0 auto;padding:28px 32px}
-.section-hdr{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px;gap:16px;flex-wrap:wrap}
-.section-title{font-family:'DM Serif Display',serif;font-size:24px;color:var(--navy)}
-.section-hint{font-size:11px;color:var(--muted)}
 
 /* ── KPI STRIP ────────────────────────────────────────────────────── */
 .kpi-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin-bottom:28px}
-.kpi{background:#fff;border-radius:var(--r);padding:18px;border:1px solid var(--border);box-shadow:var(--sh);transition:transform .2s}
-.kpi:hover{transform:translateY(-2px)}
-.kpi-label{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:600;margin-bottom:6px}
-.kpi-value{font-family:'DM Serif Display',serif;font-size:30px;color:var(--navy);line-height:1.15}
-.kpi-value.accent{color:var(--ocean)}
-.kpi-value.green{color:var(--green-text)}
-.kpi-value.amber{color:var(--amber-text)}
-.kpi-sub{font-size:11px;color:var(--muted);margin-top:4px}
 
 /* ── FILTERS ──────────────────────────────────────────────────────── */
-.filter-bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;background:#fff;border:1px solid var(--border);border-radius:var(--r);padding:12px 14px;margin-bottom:16px;box-shadow:var(--sh)}
-.filter-select{appearance:none;-webkit-appearance:none;border:1.5px solid var(--border);border-radius:10px;padding:8px 32px 8px 12px;font-size:12px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer;background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 14 14'%3E%3Cpath fill='%236b8099' d='M3.2 5.2a.75.75 0 0 1 1.06 0L7 7.94 9.74 5.2a.75.75 0 1 1 1.06 1.06l-3.27 3.27a.75.75 0 0 1-1.06 0L3.2 6.26a.75.75 0 0 1 0-1.06Z'/%3E%3C/svg%3E") no-repeat right 10px center;min-width:130px}
-.filter-search{flex:1;min-width:180px;border:1.5px solid var(--border);border-radius:10px;padding:8px 12px;font-size:12px;font-family:'Outfit',sans-serif}
-.filter-search:focus{outline:none;border-color:var(--ocean)}
+.filter-bar{margin-bottom:16px}
+.filter-select{appearance:none;-webkit-appearance:none;border:1px solid var(--border-2);border-radius:999px;padding:8px 32px 8px 14px;font-size:12.5px;font-weight:600;color:var(--navy);font-family:'Outfit',sans-serif;cursor:pointer;background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 14 14'%3E%3Cpath fill='%236b8099' d='M3.2 5.2a.75.75 0 0 1 1.06 0L7 7.94 9.74 5.2a.75.75 0 1 1 1.06 1.06l-3.27 3.27a.75.75 0 0 1-1.06 0L3.2 6.26a.75.75 0 0 1 0-1.06Z'/%3E%3C/svg%3E") no-repeat right 12px center;min-width:130px}
+.filter-select:focus{outline:none;border-color:var(--ocean);box-shadow:0 0 0 3px rgba(30,111,168,.12)}
+.filter-search{flex:1;min-width:180px;border:1px solid var(--border-2);border-radius:999px;padding:8px 14px;font-size:13px;font-family:'Outfit',sans-serif;background:#fff}
+.filter-search:focus{outline:none;border-color:var(--ocean);box-shadow:0 0 0 3px rgba(30,111,168,.12)}
 .filter-count{font-size:11px;color:var(--muted);margin-left:auto;font-weight:600}
 
 /* ── TABLE ────────────────────────────────────────────────────────── */
-.table-wrap{background:#fff;border-radius:var(--r);border:1px solid var(--border);box-shadow:var(--sh);overflow:visible}
-table{width:100%;border-collapse:separate;border-spacing:0}
-/* z-index 50 keeps the column header above all tbody rows and above the
-   filter chips above the table — without it, a scrolling row could be seen
-   bleeding through the header area. Solid background already; explicit
-   shadow on the bottom edge to crisp the separation when row content
-   approaches the sticky band. */
-thead{background:var(--navy);position:sticky;top:60px;z-index:50;box-shadow:0 4px 0 -1px var(--navy), 0 6px 16px rgba(40,57,75,.18)}
-thead th{padding:11px 14px;font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:#7aabcc;font-weight:600;text-align:left;white-space:nowrap}
-tbody tr{border-bottom:1px solid var(--border);transition:background .15s;cursor:pointer}
-tbody tr:last-child{border-bottom:none}
-tbody tr:hover{background:var(--foam)}
-tbody tr.selected{background:var(--foam)}
-td{padding:11px 14px;font-size:13px;vertical-align:middle}
+.table-wrap{overflow:visible}
+.table-wrap table.tbl{border-collapse:separate;border-spacing:0}
+/* The column header stays pinned under the app header while the list
+   scrolls (z-index 50 keeps it above the rows and the filter chips). */
+.table-wrap table.tbl thead{position:sticky;top:60px;z-index:50;box-shadow:0 1px 0 var(--border)}
+.table-wrap table.tbl thead th:first-child{border-top-left-radius:var(--r)}
+.table-wrap table.tbl thead th:last-child{border-top-right-radius:var(--r)}
+.table-wrap table.tbl tbody td{border-bottom:1px solid var(--border)}
+.table-wrap table.tbl tbody tr:last-child td{border-bottom:none}
+table.tbl tbody tr{cursor:pointer}
+table.tbl tbody tr.selected{background:var(--foam)}
 .cname{font-weight:700;color:var(--navy);font-size:13.5px}
 .cmeta{font-size:11px;color:var(--muted);margin-top:1px}
 
@@ -214,7 +132,7 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
 }
 /* Horizontal scroll on smaller widths; columns keep a comfortable minimum. */
 .kanban{display:flex;gap:12px;overflow-x:auto;overflow-y:visible;padding:4px 8px 18px;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch}
-.kanban-col{flex:0 0 280px;background:#fafdff;border:1px solid var(--border);border-radius:14px;padding:10px;display:flex;flex-direction:column;max-height:calc(100vh - 200px);scroll-snap-align:start}
+.kanban-col{flex:0 0 280px;background:#fafdff;border:1px solid var(--border);border-radius:var(--r);padding:10px;display:flex;flex-direction:column;max-height:calc(100vh - 200px);scroll-snap-align:start}
 .kanban-col-header{display:flex;align-items:center;justify-content:space-between;padding:6px 8px 10px;border-bottom:1px solid var(--border);margin-bottom:8px}
 .kanban-col-title{font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--navy);display:flex;align-items:center;gap:6px}
 .kanban-col-title::before{content:"";display:inline-block;width:8px;height:8px;border-radius:999px}
@@ -273,7 +191,7 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
 .bulk-bar .filter-select,.bulk-bar .filter-search{background:rgba(255,255,255,.12);color:#fff;border-color:rgba(255,255,255,.25)}
 .bulk-bar .filter-select option{color:var(--ink)}
 .row-check{cursor:pointer;accent-color:var(--ocean);width:16px;height:16px}
-tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),transparent);box-shadow:inset 3px 0 0 var(--ocean)}
+table.tbl tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),transparent);box-shadow:inset 3px 0 0 var(--ocean)}
 .s-not_started{background:#f0f4f8;color:var(--muted)}
 /* New 9-stage pipeline. Warm-to-green progression through the pipe so the
    colour itself communicates how far down the funnel a contact is. */
@@ -323,30 +241,24 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
 .activity-time{font-size:10.5px;color:var(--muted);margin-top:2px}
 .activity-meta{font-size:11.5px;color:var(--ink);margin-top:4px}
 .detail-actions{padding:18px 22px;border-top:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr;gap:8px;background:#fafdff;flex-shrink:0}
-.action-btn{padding:11px 14px;border:none;border-radius:10px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;transition:all .18s}
-.action-btn.primary{background:var(--navy);color:#fff;grid-column:1/-1}
-.action-btn.primary:hover{background:var(--navy-mid)}
-.action-btn.ghost{background:#fff;color:var(--navy);border:1.5px solid var(--border)}
-.action-btn.ghost:hover{border-color:var(--ocean);color:var(--ocean)}
-.action-btn.green{background:var(--green-bg);color:var(--green-text);border:1.5px solid #a3e6c0}
-.action-btn.green:hover{background:#d1f4e0}
+.detail-actions .btn-p{grid-column:1/-1}
 
 /* ── TEMPLATES ────────────────────────────────────────────────────── */
 .template-grid{display:grid;grid-template-columns:300px 1fr;gap:18px}
 @media (max-width:760px){.template-grid{grid-template-columns:1fr}}
-.template-list{background:#fff;border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--sh);overflow:hidden}
+.template-list{overflow:hidden}
 .template-item{padding:14px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s}
 .template-item:last-child{border-bottom:none}
 .template-item:hover{background:var(--foam)}
 .template-item.selected{background:var(--foam);border-left:3px solid var(--ocean);padding-left:13px}
 .template-name{font-weight:700;color:var(--navy);font-size:13.5px}
 .template-meta{font-size:11px;color:var(--muted);margin-top:2px}
-.template-editor{background:#fff;border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--sh);padding:20px}
+.template-editor{padding:20px}
 .editor-field{margin-bottom:14px}
 .editor-field label{display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:6px}
-.editor-field input,.editor-field textarea,.editor-field select{width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;font-family:'Outfit',sans-serif;background:#fff}
+.editor-field input,.editor-field textarea,.editor-field select{width:100%;padding:9px 12px;border:1px solid var(--border-2);border-radius:var(--r-sm);font-size:13px;font-family:'Outfit',sans-serif;color:var(--ink);background:#fff;transition:border-color .2s,box-shadow .2s}
 .editor-field textarea{min-height:220px;resize:vertical;font-family:'DM Mono',monospace;font-size:12.5px;line-height:1.6}
-.editor-field input:focus,.editor-field textarea:focus,.editor-field select:focus{outline:none;border-color:var(--ocean)}
+.editor-field input:focus,.editor-field textarea:focus,.editor-field select:focus{outline:none;border-color:var(--ocean);box-shadow:0 0 0 3px rgba(30,111,168,.12)}
 .editor-hint{font-size:11px;color:var(--muted);margin-top:4px}
 .editor-hint code{font-family:'DM Mono',monospace;background:var(--foam);padding:1px 5px;border-radius:4px;color:var(--ocean);font-size:11px}
 
@@ -380,17 +292,11 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
 
 /* ── PRESET FILTER CHIPS ──────────────────────────────────────────── */
 .preset-chips{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
-.chip{padding:7px 14px;border-radius:999px;border:1.5px solid var(--border);background:#fff;font-size:12px;font-weight:700;color:var(--muted);cursor:pointer;transition:all .18s;font-family:'Outfit',sans-serif;display:inline-flex;align-items:center;gap:6px}
-.chip:hover{border-color:var(--ocean);color:var(--ocean)}
-.chip.active{background:var(--navy);color:#fff;border-color:var(--navy)}
+.preset-chips .chip{padding:6px 14px;border-radius:999px;border:1px solid var(--border-2);background:#fff;font-size:12px;font-weight:600;color:var(--ink);text-transform:none;letter-spacing:0;cursor:pointer;transition:all .15s;font-family:'Outfit',sans-serif;display:inline-flex;align-items:center;gap:6px}
+.preset-chips .chip:hover{background:var(--foam);border-color:var(--ocean)}
+.preset-chips .chip.active{background:var(--ocean);color:#fff;border-color:var(--ocean)}
 .chip-count{background:rgba(255,255,255,.18);padding:1px 7px;border-radius:999px;font-size:10.5px;font-weight:800}
 .chip:not(.active) .chip-count{background:var(--foam);color:var(--ocean)}
-
-/* ── DAYS SINCE BADGE ─────────────────────────────────────────────── */
-.since-badge{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:6px;background:#f0f4f8;color:var(--muted);font-family:'DM Mono',monospace}
-.since-badge.hot{background:#fee2e2;color:#b91c1c}
-.since-badge.warm{background:#fef3c7;color:#92400e}
-.since-badge.cold{background:#e0e7ff;color:#3730a3}
 
 /* ── Mobile: flip the contacts table into a stack of cards ───────────────
    Below 720px the wide table stops fitting and the user is scrolling left
@@ -401,10 +307,10 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
 @media (max-width:720px){
   /* Lift the table card framing so each row can become its own card. */
   .table-wrap{background:transparent;border:none;box-shadow:none;border-radius:0;padding:0}
-  table{display:block}
-  thead{display:none}
-  tbody{display:block}
-  tbody tr[data-id]{
+  .table-wrap table{display:block}
+  .table-wrap thead{display:none}
+  .table-wrap tbody{display:block}
+  .table-wrap tbody tr[data-id]{
     display:grid;
     grid-template-columns:auto 1fr auto;
     grid-template-areas:
@@ -421,37 +327,37 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
     margin-bottom:10px;
     cursor:pointer;
   }
-  tbody tr[data-id]:hover{background:#fff}     /* override desktop foam hover */
-  tbody tr[data-id] td{display:block;padding:0;font-size:13px;border:none}
+  .table-wrap tbody tr[data-id]:hover{background:#fff}     /* override desktop foam hover */
+  .table-wrap tbody tr[data-id] td{display:block;padding:0;font-size:13px;border:none}
   /* First TD = checkbox cell — sticks to the left column across all rows. */
-  tbody tr[data-id] td:nth-child(1){grid-area:check;align-self:center}
+  .table-wrap tbody tr[data-id] td:nth-child(1){grid-area:check;align-self:center}
   /* Company name + email row stays the headline. */
-  tbody tr[data-id] td:nth-child(2){grid-area:name;min-width:0}
-  tbody tr[data-id] td:nth-child(2) .cname{font-size:14.5px}
+  .table-wrap tbody tr[data-id] td:nth-child(2){grid-area:name;min-width:0}
+  .table-wrap tbody tr[data-id] td:nth-child(2) .cname{font-size:14.5px}
   /* Status pill goes in the top-right of the card. */
-  tbody tr[data-id] td:nth-child(5){grid-area:status;justify-self:end;align-self:center}
+  .table-wrap tbody tr[data-id] td:nth-child(5){grid-area:status;justify-self:end;align-self:center}
   /* Country/segment join into one meta line right under the name. */
-  tbody tr[data-id] td:nth-child(3),
-  tbody tr[data-id] td:nth-child(4){
+  .table-wrap tbody tr[data-id] td:nth-child(3),
+  .table-wrap tbody tr[data-id] td:nth-child(4){
     grid-area:meta; display:inline; font-size:11.5px; color:var(--muted)
   }
-  tbody tr[data-id] td:nth-child(3):empty,
-  tbody tr[data-id] td:nth-child(4):empty{display:none}
-  tbody tr[data-id] td:nth-child(3)::after{content:" · "; color:#bcc8d3}
-  tbody tr[data-id] td:nth-child(3):empty::after{content:""}
+  .table-wrap tbody tr[data-id] td:nth-child(3):empty,
+  .table-wrap tbody tr[data-id] td:nth-child(4):empty{display:none}
+  .table-wrap tbody tr[data-id] td:nth-child(3)::after{content:" · "; color:#bcc8d3}
+  .table-wrap tbody tr[data-id] td:nth-child(3):empty::after{content:""}
   /* Last contacted + Follow-up share the bottom row with small inline labels. */
-  tbody tr[data-id] td:nth-child(6){grid-area:bottom;font-size:11.5px;color:var(--muted);margin-top:4px;padding-top:6px;border-top:1px dashed #eef3f8}
-  tbody tr[data-id] td:nth-child(6)::before{content:"Last contacted "; color:#94a3b8; font-weight:700; font-size:10px; text-transform:uppercase; letter-spacing:.06em; margin-right:4px}
-  tbody tr[data-id] td:nth-child(7){display:none}     /* Follow-up gets folded into the badge in name area below */
+  .table-wrap tbody tr[data-id] td:nth-child(6){grid-area:bottom;font-size:11.5px;color:var(--muted);margin-top:4px;padding-top:6px;border-top:1px dashed #eef3f8}
+  .table-wrap tbody tr[data-id] td:nth-child(6)::before{content:"Last contacted "; color:#94a3b8; font-weight:700; font-size:10px; text-transform:uppercase; letter-spacing:.06em; margin-right:4px}
+  .table-wrap tbody tr[data-id] td:nth-child(7){display:none}     /* Follow-up gets folded into the badge in name area below */
   /* Render the Follow-up date next to "Last contacted" by promoting it via JS
      instead of hiding — easier to keep it: append a span inside td(6) at JS
      time. For now we hide it on mobile to avoid layout jank when a follow-up
      is overdue and the cell wraps. Power users can open the detail. */
   /* Selected row gets an accent. */
-  tbody tr.row-selected{box-shadow:inset 3px 0 0 var(--ocean), var(--sh) !important}
+  .table-wrap tbody tr.row-selected{box-shadow:inset 3px 0 0 var(--ocean), var(--sh) !important}
 
   /* Tighter section header on mobile + button row wraps. */
-  .section-hdr{flex-direction:column;align-items:flex-start;gap:10px}
+  .section-head{flex-direction:column;align-items:flex-start;gap:10px}
   .filter-bar{padding:10px}
   .preset-chips{gap:6px}
   .preset-chips .chip{font-size:11px;padding:6px 11px}
@@ -463,7 +369,7 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
 /* ── DASHBOARD ────────────────────────────────────────────────────── */
 .dash-row{display:grid;grid-template-columns:1.4fr 1fr;gap:18px;margin-bottom:18px}
 @media (max-width:840px){.dash-row{grid-template-columns:1fr}}
-.dash-card{background:#fff;border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--sh);padding:20px}
+.dash-card{padding:20px}
 .dash-card-title{font-family:'DM Serif Display',serif;font-size:18px;color:var(--navy);margin-bottom:14px}
 .followup-item{display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-bottom:1px solid #eef3f8;gap:10px}
 .followup-item:last-child{border-bottom:none}
@@ -481,19 +387,15 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
 .empty-state{text-align:center;padding:30px 18px;color:var(--muted);font-size:13px}
 
 /* ── COMPOSE MODAL ────────────────────────────────────────────────── */
-.compose-modal{position:fixed;inset:0;background:rgba(28,43,58,.6);z-index:300;display:flex;align-items:center;justify-content:center;padding:20px;opacity:0;pointer-events:none;transition:opacity .25s}
-.compose-modal.open{opacity:1;pointer-events:auto}
-.compose-card{background:#fff;border-radius:var(--r-lg);max-width:660px;width:100%;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:var(--sh-lg);transform:scale(.95);transition:transform .25s}
-.compose-modal.open .compose-card{transform:scale(1)}
-.compose-header{padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
-.compose-title{font-family:'DM Serif Display',serif;font-size:20px;color:var(--navy);display:inline-flex;align-items:center;gap:8px}
-.compose-body{padding:20px 22px;overflow-y:auto;flex:1}
-.compose-footer{padding:14px 22px;border-top:1px solid var(--border);display:flex;justify-content:space-between;gap:10px;background:#fafdff}
+.overlay.compose-modal{z-index:300}   /* above the detail panel (201) */
+.modal.compose-card{max-width:660px}
+.mhdr{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.mhdr-title{display:inline-flex;align-items:center;gap:8px}
+.mhdr .detail-close{color:#cfe1f0}
+.mhdr .detail-close:hover{background:rgba(255,255,255,.12);color:#fff}
+.mfooter{padding-top:14px}
+#toast.toast{z-index:500}   /* above the compose overlay (300), as before */
 .compose-preview{background:#fafdff;border:1px solid var(--border);border-radius:10px;padding:14px;font-family:'DM Mono',monospace;font-size:12.5px;line-height:1.6;white-space:pre-wrap;color:var(--ink);max-height:280px;overflow-y:auto}
-
-/* ── TOAST ────────────────────────────────────────────────────────── */
-#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--navy);color:#fff;padding:12px 22px;border-radius:999px;font-size:13px;font-weight:600;box-shadow:var(--sh-lg);opacity:0;pointer-events:none;transition:all .25s;z-index:500}
-#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 
 /* ── CONVERSATION VIEW (chat-style contact timeline) ─────────────── */
 .convo-wrap{display:flex;flex-direction:column;gap:10px;padding:4px 2px 0;max-height:480px;overflow-y:auto}
@@ -512,8 +414,7 @@ tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168,.08),tran
 .convo-quote[open] summary{margin-bottom:4px}
 .convo-quote .q{color:var(--muted);border-left:2px solid var(--border);padding-left:8px;white-space:pre-wrap;font-size:11.5px}
 .convo-replybar{margin-top:10px;display:flex;gap:8px}
-.convo-replybar button{flex:1;background:var(--ocean);color:#fff;border:0;border-radius:10px;padding:11px 14px;font-size:13px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif}
-.convo-replybar button.secondary{flex:0 0 auto;background:#fff;color:var(--ocean);border:1px solid var(--border)}
+.convo-replybar .btn-p{flex:1}
 .act-view-chip{background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:999px;padding:3px 10px;font-size:10.5px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif}
 .act-view-chip.active{background:var(--ocean);color:#fff;border-color:var(--ocean)}
 
@@ -549,12 +450,6 @@ body.dark .ed:hover{background:#1b2c3d;border-color:#2d4459}
 /* ── INSTAGRAM-FIRST OUTREACH ─────────────────────────────────────── */
 .ig-handle{font-weight:600;color:var(--ink)}
 .ig-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:12px 0 4px}
-.ig-btn{background:#fff;color:var(--ocean);border:1px solid var(--ocean);border-radius:8px;
-  padding:6px 13px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif}
-.ig-btn:hover{background:#eef5fb}
-.ig-btn--primary{background:var(--ocean);color:#fff}
-.ig-btn--primary:hover{background:#24689a}
-.ig-btn:disabled{opacity:.55;cursor:default}
 .ig-note{flex:1 1 100%;font-size:11.5px;color:var(--muted);line-height:1.45}
 .cmp-files{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:10px 0 4px}
 .cmp-draft{display:flex;align-items:center;gap:10px;min-height:20px;margin-top:8px;
@@ -582,8 +477,6 @@ body.dark .ed:hover{background:#1b2c3d;border-color:#2d4459}
 .rt-editor:empty::before{content:attr(data-placeholder);color:var(--muted)}
 .rt-editor ul,.rt-editor ol{margin:6px 0;padding-left:22px}
 .rt-editor a{color:var(--ocean)}
-body.dark .ig-btn{background:var(--card)}
-body.dark .ig-btn--primary{background:var(--ocean);color:#fff}
 body.dark .ed-input{background:var(--card)}
 
 /* ── INBOX TAB (unread inbound replies, Gmail-style) ─────────────── */
@@ -663,7 +556,7 @@ body.dark .ed-input{background:var(--card)}
         <label>Password</label>
         <input type="password" id="loginPassword" required autocomplete="current-password">
       </div>
-      <button class="login-submit" type="submit">Sign in</button>
+      <button class="btn btn-p btn-lg btn-block" type="submit">Sign in</button>
       <div class="login-error" id="loginError"></div>
     </form>
   </div>
@@ -671,42 +564,33 @@ body.dark .ed-input{background:var(--card)}
 
 <!-- ─────────────────────────── MAIN APP ─────────────────────────────── -->
 <div id="app" class="hidden">
-<header>
-  <div class="header-left">
-    <a class="brand-home" href="/">
-      <div class="brand-logo">
-        <!-- Same drop-mark + Gota d'Agua wordmark used in partners/instructors;
-             fill #fff4d5 (sand) for readability on the navy header. -->
-        <svg viewBox="0 0 197.4 91" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path fill="#fff4d5" d="M61.7,51.9c-.4-9-5.5-16.5-9.7-24.1-2.9-4.8-5.3-9.8-9.3-13.9-3.9-4.4-6.5-9.8-10.8-13.9C19.2,16.6-.5,39.9,0,61.9c9.4-7.9,20.1-17.7,33.1-17.8,3,0,7.2,0,9.5,2.2,1.7,1.7,3.2,4.2,2,6.5-.3.5-1.9,2.7-2.3,2.9-12.9,7.4-20.3,18.6-16.5,33.7,3.1,1.3,8,1,11.1-.3,2.7-.3,5.1-1.3,7.5-2.5,8.7-2.9,14.5-11.1,15.5-20.1,1.2-4.7,2.1-9.7,1.8-14.6h0Z"/><path fill="#fff4d5" d="M69.7,90.6l-.3-1.9c-.7-5.9-.5-11.9-.4-17.9,0-6.7-.3-13.7,0-20.3v-2.3c.5,0,1.1,0,1.7,0,3.3-.3,6.9-.3,10.2,0,.7,0,1.7,0,2.4,0,1.5.3,4,2.2,5,3.3,2.2,2.7,4.9,8.2,5.5,11.7,1.1,7.7-1.8,18.8-6.7,24.8-.4.5-1.4,1.9-1.7,2.1-.2,0-1.5.4-1.9.4-3.3.5-13.7,0-13.7,0h0v.2ZM77.2,61.3v.8c.4,4.6,0,9.3.3,13.9,0,.9-.3,1.7.9,1.8,2.2.3,4.1-.4,5.3-2.3,2.4-3.5,2.3-5.9,1.4-9.9-.3-1.1-1-2.6-1.7-3.5-.8-1-1.4-.8-2.5-.9-.2,0-.3,0-.6,0-1.1,0-2.1,0-3.3,0h.2Z"/><path fill="#fff4d5" d="M124.1.2c2.7,0,4.5.8,7,1.9,6.3,2.9,4.6,10.5,5.1,16.2.5,6.7.9,13.3-1.7,19.7-.9,2.1-3.1,4.1-5.4,4.5-3.5.5-6.3,1-9.8.3-5.6-1.2-7.1-5.7-7.5-10.9-.3-3.7-.4-7.5-.7-11.3-.3-3.5.3-9.2,1.1-12.7,1.5-6.5,6.1-7.6,12.1-7.7h-.2ZM124.1,8.4c-1.4.1-2.7.7-3.7,1.7-.9.8-2.1,3.8-2.4,5-1.1,4.5-.7,9.9.4,14.5.5,2.3,1.9,5.4,4.6,5.7,1.5,0,2.7-.3,3.9-1.1,2-1.4,2-4.9,2.1-7.1.1-1.4.2-2.7.3-4.1,0-1.7,0-3.5-.1-5.1-.3-2.5-.9-7.1-3.1-8.6-.5-.3-1.3-.7-1.9-.7h0v-.2Z"/><path fill="#fff4d5" d="M163.1,48.3c.2-.3,4.1-.3,4.3-.3h3.1v10.8c-.1,5.1-.9,10.1-.7,15.2.1,3.2-.2,5.8-1.1,8.9-.8,2.9-1.7,5.4-4.6,6.8-4.5,2.3-10,1.4-14.4-.9-1.1-.6-2.5-2.7-3-3.8-1.9-4.6-1.2-9.7-1-14.4.1-3.2.4-12.1.4-13.7s.1-6.4.1-8.5,1.5-.3,1.8-.2c.3,0,3.4,0,4.5,0,.2,0,.3,0,.3.2v6.1c-.1,5.9-.1,11.9.1,17.9.1,2.4.3,7.4,1.9,9.3.2.2.6.7.8.7.3,0,1.8.3,2.2.3s2.5-1,2.8-1.3c.1,0,.7-1.6.8-1.9.9-2.8.7-5.9.8-8.7.1-4,.1-7.9.4-11.9.1-1.9.3-9.5.3-10.5h0l.2-.2Z"/><path fill="#fff4d5" d="M176.3.4c.3,1.1.2,2.4.5,3.5.3,1.6.9,3.2,1.2,4.8.9,4.1,1.3,8.3,2.3,12.3.5,2.2,1.3,4.5,1.9,6.7,1.3,4.6,2.3,9.3,3.4,13.9.1.7.3,1,.5,1.6h-8.5c-.1-1.3-.5-2.6-.9-3.9-.3-1.3-.5-2.8-.9-4.1-.3-.9-.5-1.4-.7-2.5,0,0-4.1,0-5.3,0h-.2c-.2,1.2-.4,2.2-.6,3.3-.3,1.5-.7,3.1-1.1,4.7-.1.7-.3,1.7-.4,2.5-1,0-8.3-.2-9,0-.1-.5,5.7-24.6,8.4-36.2.5-2.2.9-4.4,1.4-6.6,0,0,3.5.1,3.7.1h4.3v-.2ZM172.4,11.8q-.3,0-.3.2c-.2.9-.5,1.9-.7,2.8-.5,2.5-.9,5.3-1.3,7.9-.1.9-.3,1.8-.3,2.7,1.6,0,3.2,0,4.7-.3.1-.9-.2-1.7-.3-2.5-.3-2.4-.5-5-1-7.3-.2-1.1-.7-2.3-.9-3.4h.1Z"/><path fill="#fff4d5" d="M162.6,8.9h-.8c-.9.1-2,.3-2.9.4h-4.3c-.3,1.2-.1,2.5-.1,3.7-.3,8.1,0,16.5-.3,24.6,0,1.7.1,3.3.1,4.9s0,.3.1.5c0,.3-7.8,0-8.5,0,0-.9-.3-4.9-.3-6.1-.4-6.9.5-14.1-.3-21,0-.8-.4-1.8-.5-2.6-.1-1.4,0-2.9,0-4.3v-.2c-.8-.1-1.5,0-2.3,0s-.5-.1-.7-.1c-1.5,0-2.9.1-4.4.1V.5h1.3c3.8-.3,7.5.1,11.3,0,3.5,0,6.5.2,10,.4.5,0,2.4-.1,2.6.1.2.3,0,.6,0,.9,0,1,0,2.1-.1,3.1,0,1.3.3,2.5.1,3.9h0Z"/><path fill="#fff4d5" d="M109.8,48c.3,1.1.2,2.4.5,3.5.3,1.6.9,3.2,1.2,4.8.9,4.1,1.3,8.3,2.3,12.3.5,2.2,1.3,4.5,1.9,6.7,1.3,4.6,2.3,9.3,3.4,13.9,0,.7.3,1,.5,1.6h-8.5c0-1.3-.5-2.6-.9-3.9-.3-1.3-.5-2.8-.9-4.1-.3-.9-.5-1.4-.7-2.5,0,0-4.1,0-5.3,0h-.2c-.2,1.2-.4,2.2-.6,3.3-.3,1.5-.7,3.1-1.1,4.7,0,.7-.3,1.7-.4,2.5-1,0-8.3-.2-9,0,0-.5,5.7-24.6,8.4-36.2.5-2.2.9-4.4,1.4-6.6,0,0,3.5,0,3.7,0h4.3v-.2ZM105.9,59.5q-.3,0-.3.2c-.2.9-.5,1.9-.7,2.8-.5,2.5-.9,5.3-1.3,7.9,0,.9-.3,1.8-.3,2.7,1.6,0,3.2,0,4.7-.3,0-.9-.2-1.7-.3-2.5-.3-2.4-.5-5-1-7.3-.2-1.1-.7-2.3-.9-3.4h.1Z"/><path fill="#fff4d5" d="M187.6,48c.3,1.1.2,2.4.5,3.5.3,1.6.9,3.2,1.2,4.8.9,4.1,1.3,8.3,2.3,12.3.5,2.2,1.3,4.5,1.9,6.7,1.3,4.6,2.3,9.3,3.4,13.9.1.7.3,1,.5,1.6h-8.5c-.1-1.3-.5-2.6-.9-3.9-.3-1.3-.5-2.8-.9-4.1-.3-.9-.5-1.4-.7-2.5,0,0-4.1,0-5.3,0h-.2c-.2,1.2-.4,2.2-.6,3.3-.3,1.5-.7,3.1-1.1,4.7-.1.7-.3,1.7-.4,2.5-1,0-8.3-.2-9,0-.1-.5,5.7-24.6,8.4-36.2.5-2.2.9-4.4,1.4-6.6,0,0,3.5,0,3.7,0h4.3v-.2ZM183.7,59.5q-.3,0-.3.2c-.2.9-.5,1.9-.7,2.8-.5,2.5-.9,5.3-1.3,7.9-.1.9-.3,1.8-.3,2.7,1.6,0,3.2,0,4.7-.3.1-.9-.2-1.7-.3-2.5-.3-2.4-.5-5-1-7.3-.2-1.1-.7-2.3-.9-3.4h.1Z"/><path fill="#fff4d5" d="M108.3,13.8h-6.9c-.2-.5,0-1-.2-1.4,0-.5-1.3-2.3-1.5-2.8-.5-.7-1.4-1.5-2.3-1.5-1.3-.1-3.2,0-4.3.8-.5.3-1.1,2.1-1.4,2.7-1.1,3.3-1.3,6.6-1.5,10.1,0,3.6.2,8.1,1.7,11.4,0,.3.5.9.6,1.1.2.3,1.7,1.1,2,1.1.9,0,2.5,0,3.4-.3.3,0,1.7-1,2-1.3.6-.6,1.3-3.3,1.3-4.2s-.3-1.9-.4-2l-4.5-.2c-.3-1.9,0-3.9,0-5.8v-.2c.9,0,6.9.3,9.1.5h2.2c0,.7.2,1.3.3,2,.4,3.1.4,5.2,0,8.3s-.5,6.5-3.1,8.5c-1.1.9-1.8,1.5-3.3,1.9-1.9.6-2.8.6-4.7.7-1.3,0-2.3,0-3.6-.2-3.9-.8-6.3-2.8-7.5-6.5-2.7-8.8-3.1-18.8-.9-27.8.7-3,1.3-4.6,3.9-6.5,2.1-1.5,7-2.3,9.4-1.6,2.7.8,6.6,2.7,8.1,4.4.7.8,1.5,2.7,1.7,3.8.2,1.2,0,5,0,5h.2Z"/><path fill="#fff4d5" d="M142.8,61.3h-6.9c-.2-.5-.1-1-.2-1.4-.1-.5-1.3-2.4-1.5-2.8-.5-.7-1.5-1.5-2.3-1.5-1.3,0-3.2,0-4.3.8-.5.3-1.2,2.1-1.4,2.7-1.1,3.3-1.3,6.7-1.5,10.1,0,3.6.2,8.1,1.7,11.5,0,.3.5.9.6,1.1.2.3,1.7,1.1,2,1.1.9,0,2.5,0,3.5-.3.4,0,1.7-1,2-1.3.6-.7,1.3-3.3,1.3-4.3s-.3-1.9-.4-2l-4.5-.2c-.3-1.9-.1-3.9.1-5.8v-.2c.9,0,6.9.3,9.1.5h2.2c0,.7.2,1.3.3,2.1.5,3.1.4,5.2.1,8.3-.3,3.1-.5,6.5-3.1,8.6-1.1.9-1.8,1.5-3.3,1.9-1.9.6-2.8.6-4.7.7-1.3,0-2.3,0-3.6-.2-3.9-.8-6.3-2.8-7.5-6.6-2.7-8.9-3.1-18.9-.9-27.9.8-3.1,1.3-4.7,3.9-6.5,2.1-1.5,7.1-2.3,9.5-1.6,2.7.8,6.6,2.7,8.1,4.4.7.8,1.5,2.8,1.7,3.8.2,1.3,0,5,0,5h0Z"/></svg>
-      </div>
-    </a>
+<nav class="app-nav" id="appNav">
+  <div class="nav-logo">
+    <a class="nav-home" href="/" title="Back to hub"><div class="nav-logo-mark"><svg viewBox="0 0 197.4 91" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path fill="#fff4d5" d="M61.7,51.9c-.4-9-5.5-16.5-9.7-24.1-2.9-4.8-5.3-9.8-9.3-13.9-3.9-4.4-6.5-9.8-10.8-13.9C19.2,16.6-.5,39.9,0,61.9c9.4-7.9,20.1-17.7,33.1-17.8,3,0,7.2,0,9.5,2.2,1.7,1.7,3.2,4.2,2,6.5-.3.5-1.9,2.7-2.3,2.9-12.9,7.4-20.3,18.6-16.5,33.7,3.1,1.3,8,1,11.1-.3,2.7-.3,5.1-1.3,7.5-2.5,8.7-2.9,14.5-11.1,15.5-20.1,1.2-4.7,2.1-9.7,1.8-14.6h0Z"/><path fill="#fff4d5" d="M69.7,90.6l-.3-1.9c-.7-5.9-.5-11.9-.4-17.9,0-6.7-.3-13.7,0-20.3v-2.3c.5,0,1.1,0,1.7,0,3.3-.3,6.9-.3,10.2,0,.7,0,1.7,0,2.4,0,1.5.3,4,2.2,5,3.3,2.2,2.7,4.9,8.2,5.5,11.7,1.1,7.7-1.8,18.8-6.7,24.8-.4.5-1.4,1.9-1.7,2.1-.2,0-1.5.4-1.9.4-3.3.5-13.7,0-13.7,0h0v.2ZM77.2,61.3v.8c.4,4.6,0,9.3.3,13.9,0,.9-.3,1.7.9,1.8,2.2.3,4.1-.4,5.3-2.3,2.4-3.5,2.3-5.9,1.4-9.9-.3-1.1-1-2.6-1.7-3.5-.8-1-1.4-.8-2.5-.9-.2,0-.3,0-.6,0-1.1,0-2.1,0-3.3,0h.2Z"/><path fill="#fff4d5" d="M124.1.2c2.7,0,4.5.8,7,1.9,6.3,2.9,4.6,10.5,5.1,16.2.5,6.7.9,13.3-1.7,19.7-.9,2.1-3.1,4.1-5.4,4.5-3.5.5-6.3,1-9.8.3-5.6-1.2-7.1-5.7-7.5-10.9-.3-3.7-.4-7.5-.7-11.3-.3-3.5.3-9.2,1.1-12.7,1.5-6.5,6.1-7.6,12.1-7.7h-.2ZM124.1,8.4c-1.4.1-2.7.7-3.7,1.7-.9.8-2.1,3.8-2.4,5-1.1,4.5-.7,9.9.4,14.5.5,2.3,1.9,5.4,4.6,5.7,1.5,0,2.7-.3,3.9-1.1,2-1.4,2-4.9,2.1-7.1.1-1.4.2-2.7.3-4.1,0-1.7,0-3.5-.1-5.1-.3-2.5-.9-7.1-3.1-8.6-.5-.3-1.3-.7-1.9-.7h0v-.2Z"/><path fill="#fff4d5" d="M163.1,48.3c.2-.3,4.1-.3,4.3-.3h3.1v10.8c-.1,5.1-.9,10.1-.7,15.2.1,3.2-.2,5.8-1.1,8.9-.8,2.9-1.7,5.4-4.6,6.8-4.5,2.3-10,1.4-14.4-.9-1.1-.6-2.5-2.7-3-3.8-1.9-4.6-1.2-9.7-1-14.4.1-3.2.4-12.1.4-13.7s.1-6.4.1-8.5,1.5-.3,1.8-.2c.3,0,3.4,0,4.5,0,.2,0,.3,0,.3.2v6.1c-.1,5.9-.1,11.9.1,17.9.1,2.4.3,7.4,1.9,9.3.2.2.6.7.8.7.3,0,1.8.3,2.2.3s2.5-1,2.8-1.3c.1,0,.7-1.6.8-1.9.9-2.8.7-5.9.8-8.7.1-4,.1-7.9.4-11.9.1-1.9.3-9.5.3-10.5h0l.2-.2Z"/><path fill="#fff4d5" d="M176.3.4c.3,1.1.2,2.4.5,3.5.3,1.6.9,3.2,1.2,4.8.9,4.1,1.3,8.3,2.3,12.3.5,2.2,1.3,4.5,1.9,6.7,1.3,4.6,2.3,9.3,3.4,13.9.1.7.3,1,.5,1.6h-8.5c-.1-1.3-.5-2.6-.9-3.9-.3-1.3-.5-2.8-.9-4.1-.3-.9-.5-1.4-.7-2.5,0,0-4.1,0-5.3,0h-.2c-.2,1.2-.4,2.2-.6,3.3-.3,1.5-.7,3.1-1.1,4.7-.1.7-.3,1.7-.4,2.5-1,0-8.3-.2-9,0-.1-.5,5.7-24.6,8.4-36.2.5-2.2.9-4.4,1.4-6.6,0,0,3.5.1,3.7.1h4.3v-.2ZM172.4,11.8q-.3,0-.3.2c-.2.9-.5,1.9-.7,2.8-.5,2.5-.9,5.3-1.3,7.9-.1.9-.3,1.8-.3,2.7,1.6,0,3.2,0,4.7-.3.1-.9-.2-1.7-.3-2.5-.3-2.4-.5-5-1-7.3-.2-1.1-.7-2.3-.9-3.4h.1Z"/><path fill="#fff4d5" d="M162.6,8.9h-.8c-.9.1-2,.3-2.9.4h-4.3c-.3,1.2-.1,2.5-.1,3.7-.3,8.1,0,16.5-.3,24.6,0,1.7.1,3.3.1,4.9s0,.3.1.5c0,.3-7.8,0-8.5,0,0-.9-.3-4.9-.3-6.1-.4-6.9.5-14.1-.3-21,0-.8-.4-1.8-.5-2.6-.1-1.4,0-2.9,0-4.3v-.2c-.8-.1-1.5,0-2.3,0s-.5-.1-.7-.1c-1.5,0-2.9.1-4.4.1V.5h1.3c3.8-.3,7.5.1,11.3,0,3.5,0,6.5.2,10,.4.5,0,2.4-.1,2.6.1.2.3,0,.6,0,.9,0,1,0,2.1-.1,3.1,0,1.3.3,2.5.1,3.9h0Z"/><path fill="#fff4d5" d="M109.8,48c.3,1.1.2,2.4.5,3.5.3,1.6.9,3.2,1.2,4.8.9,4.1,1.3,8.3,2.3,12.3.5,2.2,1.3,4.5,1.9,6.7,1.3,4.6,2.3,9.3,3.4,13.9,0,.7.3,1,.5,1.6h-8.5c0-1.3-.5-2.6-.9-3.9-.3-1.3-.5-2.8-.9-4.1-.3-.9-.5-1.4-.7-2.5,0,0-4.1,0-5.3,0h-.2c-.2,1.2-.4,2.2-.6,3.3-.3,1.5-.7,3.1-1.1,4.7,0,.7-.3,1.7-.4,2.5-1,0-8.3-.2-9,0,0-.5,5.7-24.6,8.4-36.2.5-2.2.9-4.4,1.4-6.6,0,0,3.5,0,3.7,0h4.3v-.2ZM105.9,59.5q-.3,0-.3.2c-.2.9-.5,1.9-.7,2.8-.5,2.5-.9,5.3-1.3,7.9,0,.9-.3,1.8-.3,2.7,1.6,0,3.2,0,4.7-.3,0-.9-.2-1.7-.3-2.5-.3-2.4-.5-5-1-7.3-.2-1.1-.7-2.3-.9-3.4h.1Z"/><path fill="#fff4d5" d="M187.6,48c.3,1.1.2,2.4.5,3.5.3,1.6.9,3.2,1.2,4.8.9,4.1,1.3,8.3,2.3,12.3.5,2.2,1.3,4.5,1.9,6.7,1.3,4.6,2.3,9.3,3.4,13.9.1.7.3,1,.5,1.6h-8.5c-.1-1.3-.5-2.6-.9-3.9-.3-1.3-.5-2.8-.9-4.1-.3-.9-.5-1.4-.7-2.5,0,0-4.1,0-5.3,0h-.2c-.2,1.2-.4,2.2-.6,3.3-.3,1.5-.7,3.1-1.1,4.7-.1.7-.3,1.7-.4,2.5-1,0-8.3-.2-9,0-.1-.5,5.7-24.6,8.4-36.2.5-2.2.9-4.4,1.4-6.6,0,0,3.5,0,3.7,0h4.3v-.2ZM183.7,59.5q-.3,0-.3.2c-.2.9-.5,1.9-.7,2.8-.5,2.5-.9,5.3-1.3,7.9-.1.9-.3,1.8-.3,2.7,1.6,0,3.2,0,4.7-.3.1-.9-.2-1.7-.3-2.5-.3-2.4-.5-5-1-7.3-.2-1.1-.7-2.3-.9-3.4h.1Z"/><path fill="#fff4d5" d="M108.3,13.8h-6.9c-.2-.5,0-1-.2-1.4,0-.5-1.3-2.3-1.5-2.8-.5-.7-1.4-1.5-2.3-1.5-1.3-.1-3.2,0-4.3.8-.5.3-1.1,2.1-1.4,2.7-1.1,3.3-1.3,6.6-1.5,10.1,0,3.6.2,8.1,1.7,11.4,0,.3.5.9.6,1.1.2.3,1.7,1.1,2,1.1.9,0,2.5,0,3.4-.3.3,0,1.7-1,2-1.3.6-.6,1.3-3.3,1.3-4.2s-.3-1.9-.4-2l-4.5-.2c-.3-1.9,0-3.9,0-5.8v-.2c.9,0,6.9.3,9.1.5h2.2c0,.7.2,1.3.3,2,.4,3.1.4,5.2,0,8.3s-.5,6.5-3.1,8.5c-1.1.9-1.8,1.5-3.3,1.9-1.9.6-2.8.6-4.7.7-1.3,0-2.3,0-3.6-.2-3.9-.8-6.3-2.8-7.5-6.5-2.7-8.8-3.1-18.8-.9-27.8.7-3,1.3-4.6,3.9-6.5,2.1-1.5,7-2.3,9.4-1.6,2.7.8,6.6,2.7,8.1,4.4.7.8,1.5,2.7,1.7,3.8.2,1.2,0,5,0,5h.2Z"/><path fill="#fff4d5" d="M142.8,61.3h-6.9c-.2-.5-.1-1-.2-1.4-.1-.5-1.3-2.4-1.5-2.8-.5-.7-1.5-1.5-2.3-1.5-1.3,0-3.2,0-4.3.8-.5.3-1.2,2.1-1.4,2.7-1.1,3.3-1.3,6.7-1.5,10.1,0,3.6.2,8.1,1.7,11.5,0,.3.5.9.6,1.1.2.3,1.7,1.1,2,1.1.9,0,2.5,0,3.5-.3.4,0,1.7-1,2-1.3.6-.7,1.3-3.3,1.3-4.3s-.3-1.9-.4-2l-4.5-.2c-.3-1.9-.1-3.9.1-5.8v-.2c.9,0,6.9.3,9.1.5h2.2c0,.7.2,1.3.3,2.1.5,3.1.4,5.2.1,8.3-.3,3.1-.5,6.5-3.1,8.6-1.1.9-1.8,1.5-3.3,1.9-1.9.6-2.8.6-4.7.7-1.3,0-2.3,0-3.6-.2-3.9-.8-6.3-2.8-7.5-6.6-2.7-8.9-3.1-18.9-.9-27.9.8-3.1,1.3-4.7,3.9-6.5,2.1-1.5,7.1-2.3,9.5-1.6,2.7.8,6.6,2.7,8.1,4.4.7.8,1.5,2.8,1.7,3.8.2,1.3,0,5,0,5h0Z"/></svg></div></a>
     <details class="app-switch">
-      <summary>
-        <span>CRM</span>
-        <span class="app-switch-caret">▾</span>
-      </summary>
+      <summary><span>CRM</span><span class="app-switch-caret">▾</span></summary>
       <nav class="app-switch-menu" data-app-menu="crm"></nav>
     </details>
   </div>
-  <div class="header-center">
-    <button class="nav-tab active" data-tab="dashboard">Dashboard</button>
-    <button class="nav-tab" data-tab="inbox">Inbox <span id="navInboxCount" style="margin-left:6px;font-size:10px;background:#dc2626;color:#fff;padding:2px 7px;border-radius:999px;font-weight:700;display:none">0</span></button>
-    <button class="nav-tab" data-tab="contacts">Contacts</button>
-    <button class="nav-tab" data-tab="tasks">Tasks <span id="navTasksCount" style="margin-left:6px;font-size:10px;background:#dc2626;color:#fff;padding:2px 7px;border-radius:999px;font-weight:700;display:none">0</span></button>
-    <button class="nav-tab" data-tab="pipeline">Pipeline</button>
-    <button class="nav-tab" data-tab="templates">Templates</button>
-    <button class="nav-tab" data-tab="sequences">Sequences</button>
+  <div class="nav-tabs" id="navTabs">
+    <button class="ntab nav-tab active" data-tab="dashboard">Dashboard</button>
+    <button class="ntab nav-tab" data-tab="inbox">Inbox <span class="count" id="navInboxCount" style="display:none">0</span></button>
+    <button class="ntab nav-tab" data-tab="contacts">Contacts</button>
+    <button class="ntab nav-tab" data-tab="tasks">Tasks <span class="count" id="navTasksCount" style="display:none">0</span></button>
+    <button class="ntab nav-tab" data-tab="pipeline">Pipeline</button>
+    <button class="ntab nav-tab" data-tab="templates">Templates</button>
+    <button class="ntab nav-tab" data-tab="sequences">Sequences</button>
   </div>
-  <div class="header-right">
-    <button class="header-btn" id="headerAddTask" title="Add a task from anywhere — picks the company inside the modal" style="background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.25)">+ Task</button>
-    <button class="header-btn" id="gmailConnectBtn" title="Authorise Gmail API access to pull replies into the CRM" style="display:none">Connect Gmail</button>
-    <button class="header-btn" id="gmailSyncBtn" title="Pull new inbound replies from Gmail into the CRM" style="display:none">Sync inbox</button>
-    <button class="header-btn" id="checkInboxBtn" title="Open Gmail filtered by every CRM contact in the last 7 days">Check inbox</button>
-    <button class="header-btn" id="settingsBtn" title="Settings / Gmail integration" style="padding:6px 10px">⚙</button>
-    <button class="header-btn" id="signOutBtn">Sign out</button>
+  <div class="nav-actions" id="navActions">
+    <button class="nav-action-btn" id="headerAddTask" title="Add a task from anywhere — picks the company inside the modal">+ Task</button>
+    <button class="nav-action-btn" id="gmailConnectBtn" title="Authorise Gmail API access to pull replies into the CRM" style="display:none">Connect Gmail</button>
+    <button class="nav-action-btn" id="gmailSyncBtn" title="Pull new inbound replies from Gmail into the CRM" style="display:none">Sync inbox</button>
+    <button class="nav-action-btn" id="checkInboxBtn" title="Open Gmail filtered by every CRM contact in the last 7 days">Check inbox</button>
+    <button class="nav-action-btn" id="settingsBtn" title="Settings / Gmail integration">⚙</button>
+    <button class="nav-action-btn" id="signOutBtn">Sign out</button>
   </div>
   <button class="nav-hamburger" onclick="toggleMobileNav()" aria-label="Open menu">☰</button>
-</header>
+</nav>
 
 <!-- Mobile drawer. Buttons delegate to the REAL controls via .click()
      so tab-switching / modals / sign-out logic stays in one place. -->
@@ -715,9 +599,9 @@ body.dark .ed-input{background:var(--card)}
   <button class="nav-mob-close" onclick="toggleMobileNav()" aria-label="Close menu">×</button>
   <div class="nav-mob-lbl">CRM</div>
   <button class="ntab-m active" data-tab="dashboard" onclick="mobGoTab('dashboard')">Dashboard</button>
-  <button class="ntab-m" data-tab="inbox" onclick="mobGoTab('inbox')">Inbox <span id="navInboxCountMob" style="font-size:10px;background:#dc2626;color:#fff;padding:2px 7px;border-radius:999px;font-weight:700;display:none">0</span></button>
+  <button class="ntab-m" data-tab="inbox" onclick="mobGoTab('inbox')">Inbox <span class="count" id="navInboxCountMob" style="display:none">0</span></button>
   <button class="ntab-m" data-tab="contacts" onclick="mobGoTab('contacts')">Contacts</button>
-  <button class="ntab-m" data-tab="tasks" onclick="mobGoTab('tasks')">Tasks <span id="navTasksCountMob" style="font-size:10px;background:#dc2626;color:#fff;padding:2px 7px;border-radius:999px;font-weight:700;display:none">0</span></button>
+  <button class="ntab-m" data-tab="tasks" onclick="mobGoTab('tasks')">Tasks <span class="count" id="navTasksCountMob" style="display:none">0</span></button>
   <button class="ntab-m" data-tab="pipeline" onclick="mobGoTab('pipeline')">Pipeline</button>
   <button class="ntab-m" data-tab="templates" onclick="mobGoTab('templates')">Templates</button>
   <button class="ntab-m" data-tab="sequences" onclick="mobGoTab('sequences')">Sequences</button>
@@ -739,8 +623,8 @@ body.dark .ed-input{background:var(--card)}
         <div style="font-size:12.5px;color:var(--muted)">Clean your pipeline — mark them as "No reply" so they stop counting as active leads.</div>
       </div>
       <div style="display:flex;gap:8px;flex-shrink:0">
-        <button class="action-btn ghost" id="snoozeReviewBtn" style="grid-column:auto">Review them</button>
-        <button class="action-btn primary" id="snoozeAllBtn" style="grid-column:auto">Mark all as No reply</button>
+        <button class="btn btn-s" id="snoozeReviewBtn">Review them</button>
+        <button class="btn btn-p" id="snoozeAllBtn">Mark all as No reply</button>
       </div>
     </div>
 
@@ -750,7 +634,7 @@ body.dark .ed-input{background:var(--card)}
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap">
           <div class="hero-today-eyebrow">Today · <span id="todayDate"></span></div>
           <div style="display:flex;gap:8px;align-items:center">
-            <button id="heroQuickAddTask" title="Add a task without opening a company first" style="background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:999px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">+ Task</button>
+            <button class="btn btn-p" id="heroQuickAddTask" title="Add a task without opening a company first" style="padding:5px 12px;font-size:11px;border-radius:999px">+ Task</button>
             <!-- Scope toggle — hidden on solo deploys via JS. -->
             <div id="dashboardScopeToggle" class="hidden" style="display:flex;gap:4px;align-items:center">
               <button data-dash-scope="mine" class="dash-scope-btn" style="background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.25);border-radius:999px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">Mine</button>
@@ -764,58 +648,58 @@ body.dark .ed-input{background:var(--card)}
       </div>
     </div>
 
-    <div class="section-hdr">
+    <div class="section-head">
       <div class="section-title">Pipeline overview</div>
-      <div class="section-hint">Live counts from <code>outreach_contacts</code></div>
+      <div class="section-sub">Live counts from <code>outreach_contacts</code></div>
     </div>
     <div class="kpi-strip" id="kpiStrip"></div>
     <!-- Per-team report tile — auto-shown only when the team has 2+
          active sales people. Filled by renderTeamReports. -->
-    <div id="teamReports" class="hidden" style="background:#fff;border:1px solid var(--border);border-radius:var(--r-md);padding:16px 20px;margin-bottom:24px"></div>
+    <div id="teamReports" class="card hidden" style="padding:16px 20px;margin-bottom:24px"></div>
 
-    <div class="dash-card" style="margin-bottom:24px">
+    <div class="card dash-card" style="margin-bottom:24px">
       <div class="dash-card-title"><span class="ui-ic lg">__ICN_CALENDAR__</span>  Upcoming meetings</div>
       <div id="dashMeetingsList"></div>
     </div>
 
     <div class="dash-row">
-      <div class="dash-card">
+      <div class="card dash-card">
         <div class="dash-card-title"><span class="ui-ic lg">__ICN_CALENDAR__</span>  Upcoming follow-ups (next 7 days)</div>
         <div id="followupsList"></div>
       </div>
-      <div class="dash-card">
+      <div class="card dash-card">
         <div class="dash-card-title"><span class="ui-ic lg">__ICN_CHART__</span>  Pipeline funnel</div>
         <div id="funnelChart"></div>
       </div>
     </div>
 
     <div class="dash-row">
-      <div class="dash-card">
+      <div class="card dash-card">
         <div class="dash-card-title"><span class="ui-ic lg">__ICN_MOON__</span>  No reply > 14 days</div>
         <div id="noReplyList"></div>
       </div>
-      <div class="dash-card">
+      <div class="card dash-card">
         <div class="dash-card-title"><span class="ui-ic lg">__ICN_PARTY__</span>  Recently closed (last 30 days)</div>
         <div id="recentClosedList"></div>
       </div>
     </div>
 
     <div class="dash-row" style="grid-template-columns:1fr">
-      <div class="dash-card">
+      <div class="card dash-card">
         <div class="dash-card-title"><span class="ui-ic lg">__ICN_MOON__</span>  Cold accounts — no movement in 60+ days</div>
         <div id="coldList"></div>
       </div>
     </div>
 
     <div class="dash-row" style="grid-template-columns:1fr">
-      <div class="dash-card">
+      <div class="card dash-card">
         <div class="dash-card-title"><span class="ui-ic lg">__ICN_FIRE__</span>  Stuck deals — 30+ days in current stage</div>
         <div id="stuckList"></div>
       </div>
     </div>
 
     <div class="dash-row" style="grid-template-columns:1fr">
-      <div class="dash-card">
+      <div class="card dash-card">
         <div class="dash-card-title"><span class="ui-ic lg">__ICN_CALENDAR__</span>  Contracts expiring (next 60 days)</div>
         <div id="expiringList"></div>
       </div>
@@ -827,31 +711,31 @@ body.dark .ed-input{background:var(--card)}
          pipeline-value doughnut and the funnel-conversion table.
          Filled by renderDashboardAnalytics() at the end of the same
          render pass as the rest of the Dashboard. -->
-    <div class="section-hdr" style="margin-top:8px">
+    <div class="section-head" style="margin-top:8px">
       <div class="section-title">Analytics</div>
-      <div class="section-hint">Breakdown by country and segment · funnel conversion</div>
+      <div class="section-sub">Breakdown by country and segment · funnel conversion</div>
     </div>
     <div class="dash-row">
-      <div class="dash-card">
+      <div class="card dash-card">
         <div class="dash-card-title">Contacts by country</div>
         <div style="position:relative;height:280px"><canvas id="chartCountry"></canvas></div>
       </div>
-      <div class="dash-card">
+      <div class="card dash-card">
         <div class="dash-card-title">Reply rate by country</div>
         <div style="position:relative;height:280px"><canvas id="chartReplyRate"></canvas></div>
       </div>
     </div>
     <div class="dash-row">
-      <div class="dash-card">
+      <div class="card dash-card">
         <div class="dash-card-title">Contacts by segment</div>
         <div style="position:relative;height:280px"><canvas id="chartSegment"></canvas></div>
       </div>
-      <div class="dash-card">
+      <div class="card dash-card">
         <div class="dash-card-title" id="chartPipelineValueTitle">Pipeline value by status</div>
         <div style="position:relative;height:280px"><canvas id="chartPipelineValue"></canvas></div>
       </div>
     </div>
-    <div class="dash-card">
+    <div class="card dash-card">
       <div class="dash-card-title">Funnel conversion</div>
       <div id="conversionTable" style="font-family:'DM Mono',monospace;font-size:13px;line-height:1.8"></div>
     </div>
@@ -859,17 +743,17 @@ body.dark .ed-input{background:var(--card)}
 
   <!-- ─── INBOX TAB ─── -->
   <div id="page-inbox" class="hidden">
-    <div class="section-hdr">
+    <div class="section-head">
       <div class="section-title">Inbox</div>
       <div style="display:flex;gap:10px;align-items:center">
-        <button class="action-btn ghost" id="inboxSyncBtn">Check now</button>
-        <button class="action-btn ghost" id="inboxMarkAllBtn">Mark all as read</button>
+        <button class="btn btn-s" id="inboxSyncBtn">Check now</button>
+        <button class="btn btn-s" id="inboxMarkAllBtn">Mark all as read</button>
       </div>
     </div>
     <div style="display:flex;gap:6px;margin-bottom:12px;align-items:center;flex-wrap:wrap">
       <button type="button" class="act-view-chip" data-inbox-filter="todo">Needs reply</button>
       <button type="button" class="act-view-chip" data-inbox-filter="all">All received</button>
-      <input type="search" id="inboxSearch" placeholder="Search sender, subject or text…" style="margin-left:auto;flex:0 1 300px;border:1px solid var(--border);border-radius:8px;padding:7px 10px;font:inherit;font-size:13px">
+      <input type="search" class="search" id="inboxSearch" placeholder="Search sender, subject or text…" style="margin-left:auto;flex:0 1 300px;width:auto">
       <span id="inboxCount" style="font-family:'DM Mono',monospace;font-size:12px;color:var(--muted)"></span>
     </div>
     <div id="inboxHint" class="editor-hint" style="display:none;margin-bottom:10px"></div>
@@ -878,17 +762,17 @@ body.dark .ed-input{background:var(--card)}
 
   <!-- ─── CONTACTS TAB ─── -->
   <div id="page-contacts" class="hidden">
-    <div class="section-hdr">
+    <div class="section-head">
       <div class="section-title">Contacts</div>
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-        <button class="header-btn primary" id="addContactBtn" style="background:var(--navy);border:none;color:#fff">+ New contact</button>
-        <button class="header-btn" id="importCsvBtn" style="background:transparent;color:var(--navy);border:1.5px solid var(--border)"><span class="ui-ic">__ICN_DOWNLOAD__</span> Import CSV</button>
-        <button class="header-btn" id="exportContactsBtn" title="Download the current filtered list as CSV" style="background:transparent;color:var(--ocean);border:1.5px solid var(--ocean)">Export CSV</button>
+        <button class="btn btn-p" id="addContactBtn">+ New contact</button>
+        <button class="btn btn-s" id="importCsvBtn"><span class="ui-ic">__ICN_DOWNLOAD__</span> Import CSV</button>
+        <button class="btn btn-s" id="exportContactsBtn" title="Download the current filtered list as CSV">Export CSV</button>
         <select id="savedViewSelect" class="filter-select" style="min-width:180px">
           <option value="">— Saved views —</option>
         </select>
-        <button class="header-btn" id="saveViewBtn" style="background:var(--ocean);color:#fff;border:none">💾 Save view</button>
-        <button class="header-btn" id="deleteViewBtn" style="background:transparent;color:var(--red-text);border:1px solid var(--border);display:none">Delete view</button>
+        <button class="btn btn-p" id="saveViewBtn">💾 Save view</button>
+        <button class="btn btn-r" id="deleteViewBtn" style="display:none">Delete view</button>
       </div>
     </div>
 
@@ -905,7 +789,7 @@ body.dark .ed-input{background:var(--card)}
       <button class="chip" data-preset="closed"><span class="ui-ic">__ICN_FLAG__</span> Closed (won + lost) <span class="chip-count" id="cn-closed">0</span></button>
     </div>
 
-    <div class="filter-bar">
+    <div class="ov-filters filter-bar">
       <select class="filter-select" id="filterStatus">
         <option value="">All statuses</option>
       </select>
@@ -939,14 +823,14 @@ body.dark .ed-input{background:var(--card)}
         <option value="lost">Lost</option>
       </select>
       <input type="date" id="bulkFollowup" class="filter-search" style="max-width:180px" placeholder="Set follow-up date">
-      <button class="header-btn" id="bulkClear" style="background:transparent;color:var(--muted);border:1px solid var(--border)">Clear selection</button>
-      <button class="header-btn" id="bulkSendEmail" style="background:var(--ocean);color:#fff;border:none">Send email batch</button>
+      <button class="btn btn-s" id="bulkClear">Clear selection</button>
+      <button class="btn btn-p" id="bulkSendEmail">Send email batch</button>
       <select id="bulkReassign" class="filter-select" style="max-width:200px"><option value="">Reassign to…</option></select>
-      <button class="header-btn" id="bulkDelete" style="background:transparent;color:#fca5a5;border:1px solid rgba(252,165,165,.4)"><span class="ui-ic">__ICN_TRASH__</span> Delete selected</button>
+      <button class="btn btn-r" id="bulkDelete"><span class="ui-ic">__ICN_TRASH__</span> Delete selected</button>
     </div>
 
-    <div class="table-wrap">
-      <table>
+    <div class="card table-wrap">
+      <table class="tbl">
         <thead><tr>
           <th style="width:34px;padding-right:0"><input type="checkbox" id="selectAll" style="cursor:pointer;accent-color:var(--ocean)" aria-label="Select all on this page"></th>
           <th>Company</th>
@@ -963,54 +847,54 @@ body.dark .ed-input{background:var(--card)}
 
   <!-- ─── TASKS TAB ─── -->
   <div id="page-tasks" class="hidden">
-    <div class="section-hdr">
+    <div class="section-head">
       <div class="section-title">Tasks</div>
-      <div class="section-hint">Every open TODO across the whole pipeline. Add a task from any company's detail panel.</div>
+      <div class="section-sub">Every open TODO across the whole pipeline. Add a task from any company's detail panel.</div>
     </div>
     <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
       <div id="tasksTabFilters" style="display:flex;gap:6px;flex-wrap:wrap"></div>
       <div style="margin-left:auto;font-family:'DM Mono',monospace;font-size:12px;color:var(--muted)" id="tasksTabCount">—</div>
-      <button type="button" id="tasksTabGroupBtn" title="Group rows under a header per company" style="background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:999px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">Group by company</button>
-      <button type="button" id="tasksTabExportBtn" title="Download the current filtered view as CSV" style="background:transparent;color:var(--ocean);border:1px solid var(--ocean);border-radius:8px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">Export CSV</button>
-      <button type="button" id="tasksTabAddBtn" style="background:var(--ocean);color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">+ Task</button>
+      <button type="button" class="btn btn-s" id="tasksTabGroupBtn" title="Group rows under a header per company">Group by company</button>
+      <button type="button" class="btn btn-s" id="tasksTabExportBtn" title="Download the current filtered view as CSV">Export CSV</button>
+      <button type="button" class="btn btn-p" id="tasksTabAddBtn">+ Task</button>
     </div>
     <!-- Bulk action bar — hidden when nothing selected. Appears above
          the list when 1+ rows are checked. -->
-    <div id="tasksTabBulkBar" class="hidden" style="position:sticky;top:60px;z-index:55;display:flex;gap:10px;align-items:center;background:var(--navy);color:#fff;padding:10px 14px;border-radius:var(--r-md);margin-bottom:10px;box-shadow:0 8px 24px rgba(40,57,75,.22);flex-wrap:wrap">
+    <div id="tasksTabBulkBar" class="hidden" style="position:sticky;top:60px;z-index:55;display:flex;gap:10px;align-items:center;background:var(--navy);color:#fff;padding:10px 14px;border-radius:var(--r);margin-bottom:10px;box-shadow:0 8px 24px rgba(40,57,75,.22);flex-wrap:wrap">
       <span style="font-family:'DM Mono',monospace;font-size:12.5px"><span id="tasksTabBulkCount">0</span> selected</span>
-      <button type="button" id="tasksTabBulkDone" style="background:var(--ocean);color:#fff;border:none;border-radius:8px;padding:6px 12px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">Mark done</button>
-      <button type="button" id="tasksTabBulkReopen" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:8px;padding:6px 12px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">Reopen</button>
+      <button type="button" class="btn btn-p" id="tasksTabBulkDone">Mark done</button>
+      <button type="button" class="btn btn-s" id="tasksTabBulkReopen">Reopen</button>
       <span style="width:1px;height:18px;background:rgba(255,255,255,.2)"></span>
       <span style="font-size:11px;color:#bdd4e8;font-weight:600">Snooze</span>
-      <button type="button" data-snooze-days="1" class="tk-snooze-btn" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:8px;padding:6px 10px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">+1d</button>
-      <button type="button" data-snooze-days="3" class="tk-snooze-btn" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:8px;padding:6px 10px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">+3d</button>
-      <button type="button" data-snooze-days="7" class="tk-snooze-btn" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:8px;padding:6px 10px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">+1w</button>
+      <button type="button" data-snooze-days="1" class="btn btn-s tk-snooze-btn">+1d</button>
+      <button type="button" data-snooze-days="3" class="btn btn-s tk-snooze-btn">+3d</button>
+      <button type="button" data-snooze-days="7" class="btn btn-s tk-snooze-btn">+1w</button>
       <input type="date" id="tasksTabBulkSnoozeDate" title="Snooze selected tasks to a specific date" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:8px;padding:5px 8px;font-size:11.5px;font-family:inherit;color-scheme:dark">
-      <button type="button" id="tasksTabBulkClear" style="margin-left:auto;background:transparent;color:#bdd4e8;border:none;font-size:11.5px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif">Clear</button>
+      <button type="button" class="btn btn-s" id="tasksTabBulkClear" style="margin-left:auto">Clear</button>
     </div>
-    <div id="tasksTabList" style="background:#fff;border:1px solid var(--border);border-radius:var(--r-md);overflow:hidden"></div>
+    <div id="tasksTabList" class="card" style="overflow:hidden"></div>
   </div>
 
   <!-- ─── PIPELINE (KANBAN) TAB ─── -->
   <div id="page-pipeline" class="hidden">
-    <div class="section-hdr" style="display:flex;justify-content:space-between;align-items:flex-end;gap:14px;flex-wrap:wrap">
+    <div class="section-head">
       <div>
         <div class="section-title">Pipeline</div>
-        <div class="section-hint">Columns are the contact statuses — drag a card (or change a contact's status anywhere) and it moves here automatically, on every device.</div>
+        <div class="section-sub">Columns are the contact statuses — drag a card (or change a contact's status anywhere) and it moves here automatically, on every device.</div>
       </div>
     </div>
     <!-- Filter row — narrows the Kanban so 500+ cards become manageable.
          Sticky so it stays reachable while scrolling the Kanban. -->
-    <div style="position:sticky;top:60px;z-index:50;background:#f5f8fb;padding:8px 0;display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px;border-bottom:1px solid var(--border)">
-      <input type="search" id="pipelineFilterText" placeholder="Search company / city / email…" style="flex:1;min-width:200px;border:1px solid var(--border);border-radius:8px;padding:7px 10px;font:inherit;font-size:13px">
-      <select id="pipelineFilterCountry" style="border:1px solid var(--border);border-radius:8px;padding:7px 10px;font:inherit;font-size:13px">
+    <div style="position:sticky;top:60px;z-index:50;background:var(--bg);padding:8px 0;display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px;border-bottom:1px solid var(--border)">
+      <input type="search" class="search" id="pipelineFilterText" placeholder="Search company / city / email…" style="flex:1;min-width:200px;width:auto">
+      <select class="filter-select" id="pipelineFilterCountry">
         <option value="">All countries</option>
       </select>
-      <select id="pipelineFilterSegment" style="border:1px solid var(--border);border-radius:8px;padding:7px 10px;font:inherit;font-size:13px">
+      <select class="filter-select" id="pipelineFilterSegment">
         <option value="">All segments</option>
       </select>
-      <button id="pipelineFilterClear" type="button" style="background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font:inherit;font-size:12px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif">Clear</button>
-      <button id="pipelineExportBtn" type="button" title="Download the current filtered Kanban as CSV" style="background:transparent;color:var(--ocean);border:1px solid var(--ocean);border-radius:8px;padding:7px 12px;font:inherit;font-size:12px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">Export CSV</button>
+      <button id="pipelineFilterClear" type="button" class="btn btn-s">Clear</button>
+      <button id="pipelineExportBtn" type="button" class="btn btn-s" title="Download the current filtered Kanban as CSV">Export CSV</button>
       <div id="pipelineFilterCount" style="margin-left:auto;font-family:'DM Mono',monospace;font-size:12px;color:var(--muted)"></div>
     </div>
     <div class="kanban-wrap">
@@ -1020,13 +904,13 @@ body.dark .ed-input{background:var(--card)}
 
   <!-- ─── TEMPLATES TAB ─── -->
   <div id="page-templates" class="hidden">
-    <div class="section-hdr">
+    <div class="section-head">
       <div class="section-title">Email templates</div>
-      <button class="header-btn primary" id="newTemplateBtn" style="background:var(--ocean);border:none">+ New template</button>
+      <button class="btn btn-p" id="newTemplateBtn">+ New template</button>
     </div>
     <div class="template-grid">
-      <div class="template-list" id="templateList"></div>
-      <div class="template-editor" id="templateEditor">
+      <div class="card template-list" id="templateList"></div>
+      <div class="card template-editor" id="templateEditor">
         <div class="empty-state">Select a template on the left, or create a new one.</div>
       </div>
     </div>
@@ -1034,25 +918,25 @@ body.dark .ed-input{background:var(--card)}
 
   <!-- ─── SEQUENCES TAB ─── -->
   <div id="page-sequences" class="hidden">
-    <div class="section-hdr">
+    <div class="section-head">
       <div>
         <div class="section-title">Campaigns</div>
-        <div class="section-hint">Server-side drip queues. Batches of 6+ from "Send email batch" land here — dripped ~1 email/2 min inside 08:30–19:30, auto-stopping per contact on reply. Survives closing the browser.</div>
+        <div class="section-sub">Server-side drip queues. Batches of 6+ from "Send email batch" land here — dripped ~1 email/2 min inside 08:30–19:30, auto-stopping per contact on reply. Survives closing the browser.</div>
       </div>
-      <button class="header-btn" id="refreshCampaignsBtn" onclick="renderCampaigns()">↻ Refresh</button>
+      <button class="btn btn-s" id="refreshCampaignsBtn" onclick="renderCampaigns()">↻ Refresh</button>
     </div>
     <div id="campaignList" style="margin-bottom:26px"></div>
 
-    <div class="section-hdr">
+    <div class="section-head">
       <div>
         <div class="section-title">Email sequences</div>
-        <div class="section-hint">Multi-step drip campaigns. Pick templates, set day offsets, then "Start" from any company.</div>
+        <div class="section-sub">Multi-step drip campaigns. Pick templates, set day offsets, then "Start" from any company.</div>
       </div>
-      <button class="header-btn primary" id="newSequenceBtn" style="background:var(--ocean);border:none">+ New sequence</button>
+      <button class="btn btn-p" id="newSequenceBtn">+ New sequence</button>
     </div>
     <div class="template-grid">
-      <div class="template-list" id="sequenceList"></div>
-      <div class="template-editor" id="sequenceEditor">
+      <div class="card template-list" id="sequenceList"></div>
+      <div class="card template-editor" id="sequenceEditor">
         <div class="empty-state">Select a sequence on the left, or create a new one.</div>
       </div>
     </div>
@@ -1068,28 +952,28 @@ body.dark .ed-input{background:var(--card)}
   </div>
   <div class="detail-body" id="detailBody"></div>
   <div class="detail-actions">
-    <button class="action-btn primary" id="composeBtn"><span class="ui-ic">__ICN_MAIL__</span>  Compose email</button>
-    <button class="action-btn green" id="markRepliedBtn"><span class="ui-ic">__ICN_CHECK__</span>  Mark replied</button>
-    <button class="action-btn ghost" id="setFollowupBtn" title="Set a follow-up date. Pick 30 days to effectively snooze the contact — Cold accounts scan skips contacts with a future follow-up."><span class="ui-ic">__ICN_CALENDAR__</span>  Follow-up / snooze</button>
-    <button class="action-btn ghost" id="checkGmailBtn" title="Open Gmail filtered by every email address linked to this company"><span class="ui-ic">__ICN_SEARCH__</span>  Check Gmail</button>
+    <button class="btn btn-p" id="composeBtn"><span class="ui-ic">__ICN_MAIL__</span>  Compose email</button>
+    <button class="btn btn-g" id="markRepliedBtn"><span class="ui-ic">__ICN_CHECK__</span>  Mark replied</button>
+    <button class="btn btn-s" id="setFollowupBtn" title="Set a follow-up date. Pick 30 days to effectively snooze the contact — Cold accounts scan skips contacts with a future follow-up."><span class="ui-ic">__ICN_CALENDAR__</span>  Follow-up / snooze</button>
+    <button class="btn btn-s" id="checkGmailBtn" title="Open Gmail filtered by every email address linked to this company"><span class="ui-ic">__ICN_SEARCH__</span>  Check Gmail</button>
     <!-- No standalone "Snooze 30d" button — the Follow-up modal has 30 days
          as a preset. The Cold-accounts card on the Dashboard keeps its own
          per-row Snooze 30d where it makes sense. -->
     <!-- Delete is intentionally last + styled red so it's hard to hit by
          accident. Two-confirm flow (confirm + retype) before the DB
          delete actually fires. -->
-    <button class="action-btn" id="deleteContactBtn" title="Delete this contact (asks for confirmation)" style="grid-column:1/-1;background:transparent;color:var(--muted);border:none;font-size:11px;padding:6px;margin-top:8px;text-decoration:underline;text-underline-offset:3px">Delete this contact</button>
+    <button class="btn" id="deleteContactBtn" title="Delete this contact (asks for confirmation)" style="grid-column:1/-1;background:transparent;color:var(--muted);border:none;font-size:11px;padding:6px;margin-top:8px;text-decoration:underline;text-underline-offset:3px">Delete this contact</button>
   </div>
 </aside>
 
 <!-- ─── COMPOSE MODAL ─── -->
-<div class="compose-modal" id="composeModal">
-  <div class="compose-card">
-    <div class="compose-header">
-      <div class="compose-title">Compose email</div>
+<div class="overlay compose-modal" id="composeModal">
+  <div class="modal compose-card">
+    <div class="mhdr">
+      <div class="mhdr-title">Compose email</div>
       <button class="detail-close" id="composeClose" aria-label="Close">×</button>
     </div>
-    <div class="compose-body">
+    <div class="mbody">
       <div class="editor-field">
         <label>Send as <span style="color:var(--red-text)">*</span></label>
         <select id="composeSendAs" required>
@@ -1126,55 +1010,55 @@ body.dark .ed-input{background:var(--card)}
         <button type="button" id="composeDraftDiscard">Start fresh</button>
       </div>
       <div class="cmp-files">
-        <button type="button" class="ig-btn" id="composeAttachBtn">Add photo or file</button>
+        <button type="button" class="btn btn-s" id="composeAttachBtn">Add photo or file</button>
         <input type="file" id="composeAttachInput" multiple style="display:none">
         <span class="ig-note" id="composeAttachNote">Photos show inside the email; PDFs and decks go as a link, which keeps the email light enough to reach the inbox.</span>
       </div>
       <div class="editor-hint">Pick <b>Custom</b> in the template dropdown to write from scratch. Edits stick until you switch template.</div>
     </div>
-    <div class="compose-footer">
-      <button class="action-btn ghost" id="composeCancel">Cancel</button>
-      <button class="action-btn ghost" id="composeOpen" style="grid-column:auto">Open in Gmail →</button>
-      <button class="action-btn primary" id="composeSendNow" style="grid-column:auto;background:var(--green-text);border-color:var(--green-text)">Send now</button>
+    <div class="mfooter">
+      <button class="btn btn-s" id="composeCancel">Cancel</button>
+      <button class="btn btn-s" id="composeOpen">Open in Gmail →</button>
+      <button class="btn btn-p" id="composeSendNow">Send now</button>
     </div>
   </div>
 </div>
 
 <!-- ─── FOLLOW-UP PROMPT MODAL (fires after sending email) ─── -->
-<div class="compose-modal" id="followupModal">
-  <div class="compose-card" style="max-width:480px">
-    <div class="compose-header">
-      <div class="compose-title"><span class="ui-ic xl">__ICN_CALENDAR__</span> Schedule follow-up</div>
+<div class="overlay compose-modal" id="followupModal">
+  <div class="modal compose-card" style="max-width:480px">
+    <div class="mhdr">
+      <div class="mhdr-title"><span class="ui-ic xl">__ICN_CALENDAR__</span> Schedule follow-up</div>
       <button class="detail-close" id="followupSkip" aria-label="Skip">×</button>
     </div>
-    <div class="compose-body">
+    <div class="mbody">
       <p style="font-size:14px;color:var(--muted);margin-bottom:18px">When do you want to follow up with <b style="color:var(--navy)" id="followupContactName"></b> if they don't reply?</p>
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px">
-        <button class="action-btn ghost" data-days="3" style="grid-column:auto">3 days</button>
-        <button class="action-btn ghost" data-days="7" style="grid-column:auto">7 days</button>
-        <button class="action-btn ghost" data-days="14" style="grid-column:auto">14 days</button>
-        <button class="action-btn ghost" data-days="30" style="grid-column:auto">30 days</button>
+        <button class="btn btn-s" data-days="3">3 days</button>
+        <button class="btn btn-s" data-days="7">7 days</button>
+        <button class="btn btn-s" data-days="14">14 days</button>
+        <button class="btn btn-s" data-days="30">30 days</button>
       </div>
       <div class="editor-field" style="margin-top:14px">
         <label>Or pick a custom date</label>
         <input type="date" id="followupCustomDate">
       </div>
     </div>
-    <div class="compose-footer">
-      <button class="action-btn ghost" id="followupSkipBtn">Skip</button>
-      <button class="action-btn primary" id="followupSaveBtn" style="grid-column:auto">Save follow-up</button>
+    <div class="mfooter">
+      <button class="btn btn-s" id="followupSkipBtn">Skip</button>
+      <button class="btn btn-p" id="followupSaveBtn">Save follow-up</button>
     </div>
   </div>
 </div>
 
 <!-- ─── ADD CONTACT MODAL ─────────────────────────────────────────────── -->
-<div class="compose-modal" id="addContactModal">
-  <div class="compose-card" style="max-width:560px">
-    <div class="compose-header">
-      <div class="compose-title">+ New contact</div>
+<div class="overlay compose-modal" id="addContactModal">
+  <div class="modal compose-card" style="max-width:560px">
+    <div class="mhdr">
+      <div class="mhdr-title">+ New contact</div>
       <button class="detail-close" id="addContactClose" aria-label="Close">×</button>
     </div>
-    <div class="compose-body">
+    <div class="mbody">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <div class="editor-field" style="grid-column:1 / -1">
           <label>Company name *</label>
@@ -1234,21 +1118,21 @@ body.dark .ed-input{background:var(--card)}
         </div>
       </div>
     </div>
-    <div class="compose-footer">
-      <button class="action-btn ghost" id="addContactCancel">Cancel</button>
-      <button class="action-btn primary" id="addContactSave" style="grid-column:auto">Add contact</button>
+    <div class="mfooter">
+      <button class="btn btn-s" id="addContactCancel">Cancel</button>
+      <button class="btn btn-p" id="addContactSave">Add contact</button>
     </div>
   </div>
 </div>
 
 <!-- ─── IMPORT CSV MODAL ───────────────────────────────────────────────── -->
-<div class="compose-modal" id="importCsvModal">
-  <div class="compose-card" style="max-width:760px">
-    <div class="compose-header">
-      <div class="compose-title"><span class="ui-ic xl">__ICN_DOWNLOAD__</span> Import CSV</div>
+<div class="overlay compose-modal" id="importCsvModal">
+  <div class="modal compose-card" style="max-width:760px">
+    <div class="mhdr">
+      <div class="mhdr-title"><span class="ui-ic xl">__ICN_DOWNLOAD__</span> Import CSV</div>
       <button class="detail-close" id="importCsvClose" aria-label="Close">×</button>
     </div>
-    <div class="compose-body">
+    <div class="mbody">
       <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Paste a CSV below. <b>First row must be a header.</b> Recognised columns (any order, extras ignored):
         <code style="font-family:'DM Mono',monospace;font-size:11.5px;background:var(--foam);padding:2px 6px;border-radius:4px">company</code>
         <code style="font-family:'DM Mono',monospace;font-size:11.5px;background:var(--foam);padding:2px 6px;border-radius:4px">email</code>
@@ -1264,24 +1148,24 @@ body.dark .ed-input{background:var(--card)}
         <label>CSV content</label>
         <textarea id="csvPaste" style="min-height:180px;font-family:'DM Mono',monospace;font-size:12px" placeholder="company,email,country,segment&#10;Bristol Uni Surf Club,surf@bris.ac.uk,UK,University surf club"></textarea>
       </div>
-      <button class="action-btn ghost" id="csvPreviewBtn" style="grid-column:auto;width:auto">Parse & preview</button>
+      <button class="btn btn-s" id="csvPreviewBtn">Parse & preview</button>
       <div id="csvPreview" style="margin-top:14px"></div>
     </div>
-    <div class="compose-footer">
-      <button class="action-btn ghost" id="importCsvCancel">Cancel</button>
-      <button class="action-btn primary" id="csvImportBtn" disabled style="grid-column:auto;opacity:.5">Import</button>
+    <div class="mfooter">
+      <button class="btn btn-s" id="importCsvCancel">Cancel</button>
+      <button class="btn btn-p" id="csvImportBtn" disabled>Import</button>
     </div>
   </div>
 </div>
 
 <!-- ─── GROUP MODAL (create / edit) ────────────────────────────────────── -->
-<div class="compose-modal" id="groupModal">
-  <div class="compose-card" style="max-width:560px">
-    <div class="compose-header">
-      <div class="compose-title" id="groupModalTitle">+ New group</div>
+<div class="overlay compose-modal" id="groupModal">
+  <div class="modal compose-card" style="max-width:560px">
+    <div class="mhdr">
+      <div class="mhdr-title" id="groupModalTitle">+ New group</div>
       <button class="detail-close" id="groupModalClose" aria-label="Close">×</button>
     </div>
-    <div class="compose-body">
+    <div class="mbody">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <div class="editor-field" style="grid-column:1 / -1">
           <label>Title *</label>
@@ -1340,10 +1224,10 @@ body.dark .ed-input{background:var(--card)}
         </div>
       </div>
     </div>
-    <div class="compose-footer">
-      <button class="action-btn ghost" id="groupDeleteBtn" style="margin-right:auto;color:var(--red-text);border-color:#f0a0a0;display:none">Delete</button>
-      <button class="action-btn ghost" id="groupCancelBtn">Cancel</button>
-      <button class="action-btn primary" id="groupSaveBtn" style="grid-column:auto">Save</button>
+    <div class="mfooter">
+      <button class="btn btn-r" id="groupDeleteBtn" style="margin-right:auto;display:none">Delete</button>
+      <button class="btn btn-s" id="groupCancelBtn">Cancel</button>
+      <button class="btn btn-p" id="groupSaveBtn">Save</button>
     </div>
   </div>
 </div>
@@ -1353,13 +1237,13 @@ body.dark .ed-input{background:var(--card)}
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 
 <!-- ─── BATCH SEND MODAL ─── -->
-<div class="compose-modal" id="batchSendModal">
-  <div class="compose-card" style="max-width:720px">
-    <div class="compose-header">
-      <div class="compose-title" id="batchSendTitle">Send email batch</div>
+<div class="overlay compose-modal" id="batchSendModal">
+  <div class="modal compose-card" style="max-width:720px">
+    <div class="mhdr">
+      <div class="mhdr-title" id="batchSendTitle">Send email batch</div>
       <button class="detail-close" id="batchSendClose" aria-label="Close">×</button>
     </div>
-    <div class="compose-body">
+    <div class="mbody">
       <div class="editor-field">
         <label>Send as <span style="color:var(--red-text)">*</span></label>
         <select id="batchSendAs" required>
@@ -1398,21 +1282,21 @@ body.dark .ed-input{background:var(--card)}
         </div>
       </div>
     </div>
-    <div class="compose-footer">
-      <button class="action-btn ghost" id="batchSendCancel">Cancel</button>
-      <button class="action-btn primary" id="batchSendStart" style="grid-column:auto">Send 0 emails</button>
+    <div class="mfooter">
+      <button class="btn btn-s" id="batchSendCancel">Cancel</button>
+      <button class="btn btn-p" id="batchSendStart">Send 0 emails</button>
     </div>
   </div>
 </div>
 
 <!-- ─── GMAIL / SETTINGS MODAL ─── -->
-<div class="compose-modal" id="settingsModal">
-  <div class="compose-card" style="max-width:520px">
-    <div class="compose-header">
-      <div class="compose-title">Settings · Gmail integration</div>
+<div class="overlay compose-modal" id="settingsModal">
+  <div class="modal compose-card" style="max-width:520px">
+    <div class="mhdr">
+      <div class="mhdr-title">Settings · Gmail integration</div>
       <button class="detail-close" id="settingsClose" aria-label="Close">×</button>
     </div>
-    <div class="compose-body">
+    <div class="mbody">
       <div style="padding:12px 14px;background:#eafaf1;border:1px solid #b6e7c9;border-radius:10px;font-size:12.5px;color:#1a7a40;margin-bottom:14px">
         <div style="font-weight:700;margin-bottom:4px">✓ Shared Gmail: <code style="background:#d6f3df;padding:1px 6px;border-radius:4px">groups@gotadaguasurf.com</code></div>
         <div style="color:#2d6a4f">Every Send Now / Batch Send goes from this mailbox with <b>your</b> display name in the From. Replies land in <code>groups@</code> and link back to the contact via thread id.</div>
@@ -1462,22 +1346,22 @@ body.dark .ed-input{background:var(--card)}
         <div class="editor-hint" style="margin-top:6px">Stored in <code>team_users.signature</code> — any team member's browser can pick you in Send-as and your signature shows up. Use <code>{{my_signature}}</code> in any template, plus <code>{{my_first_name}}</code> / <code>{{my_name}}</code> / <code>{{my_email}}</code>.</div>
       </div>
     </div>
-    <div class="compose-footer">
-      <button class="action-btn ghost" id="settingsDisconnectBtn" style="margin-right:auto;color:var(--red-text);border-color:#f0a0a0;display:none">Disconnect Gmail</button>
-      <button class="action-btn ghost" id="settingsCancelBtn">Close</button>
-      <button class="action-btn primary" id="settingsSaveBtn" style="grid-column:auto">Save</button>
+    <div class="mfooter">
+      <button class="btn btn-r" id="settingsDisconnectBtn" style="margin-right:auto;display:none">Disconnect Gmail</button>
+      <button class="btn btn-s" id="settingsCancelBtn">Close</button>
+      <button class="btn btn-p" id="settingsSaveBtn">Save</button>
     </div>
   </div>
 </div>
 
 <!-- ─── TASK MODAL ─── -->
-<div class="compose-modal" id="taskModal">
-  <div class="compose-card" style="max-width:480px">
-    <div class="compose-header">
-      <div class="compose-title" id="taskModalTitle">+ New task</div>
+<div class="overlay compose-modal" id="taskModal">
+  <div class="modal compose-card" style="max-width:480px">
+    <div class="mhdr">
+      <div class="mhdr-title" id="taskModalTitle">+ New task</div>
       <button class="detail-close" id="taskModalClose" aria-label="Close">×</button>
     </div>
-    <div class="compose-body">
+    <div class="mbody">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <!-- Company picker — hidden when the modal is opened from a
              company's detail panel (the company is already known). Shown
@@ -1516,22 +1400,22 @@ body.dark .ed-input{background:var(--card)}
         </div>
       </div>
     </div>
-    <div class="compose-footer">
-      <button class="action-btn ghost" id="taskDeleteBtn" style="margin-right:auto;color:var(--red-text);border-color:#f0a0a0;display:none">Delete</button>
-      <button class="action-btn ghost" id="taskCancelBtn">Cancel</button>
-      <button class="action-btn primary" id="taskSaveBtn" style="grid-column:auto">Save</button>
+    <div class="mfooter">
+      <button class="btn btn-r" id="taskDeleteBtn" style="margin-right:auto;display:none">Delete</button>
+      <button class="btn btn-s" id="taskCancelBtn">Cancel</button>
+      <button class="btn btn-p" id="taskSaveBtn">Save</button>
     </div>
   </div>
 </div>
 
 <!-- ─── PEOPLE MODAL ─── -->
-<div class="compose-modal" id="peopleModal">
-  <div class="compose-card" style="max-width:480px">
-    <div class="compose-header">
-      <div class="compose-title" id="peopleModalTitle">+ New person</div>
+<div class="overlay compose-modal" id="peopleModal">
+  <div class="modal compose-card" style="max-width:480px">
+    <div class="mhdr">
+      <div class="mhdr-title" id="peopleModalTitle">+ New person</div>
       <button class="detail-close" id="peopleModalClose" aria-label="Close">×</button>
     </div>
-    <div class="compose-body">
+    <div class="mbody">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <div class="editor-field" style="grid-column:1 / -1">
           <label>Name *</label>
@@ -1560,16 +1444,16 @@ body.dark .ed-input{background:var(--card)}
         </div>
       </div>
     </div>
-    <div class="compose-footer">
-      <button class="action-btn ghost" id="peopleDeleteBtn" style="margin-right:auto;color:var(--red-text);border-color:#f0a0a0;display:none">Delete</button>
-      <button class="action-btn ghost" id="peopleCancelBtn">Cancel</button>
-      <button class="action-btn primary" id="peopleSaveBtn" style="grid-column:auto">Save</button>
+    <div class="mfooter">
+      <button class="btn btn-r" id="peopleDeleteBtn" style="margin-right:auto;display:none">Delete</button>
+      <button class="btn btn-s" id="peopleCancelBtn">Cancel</button>
+      <button class="btn btn-p" id="peopleSaveBtn">Save</button>
     </div>
   </div>
 </div>
 
 <!-- ─── TOAST ─── -->
-<div id="toast"></div>
+<div id="toast" class="toast"></div>
 </div>
 
 <script>
@@ -2857,10 +2741,10 @@ async function renderCampaigns(){
     return;
   }
   const chip = (s) => ({
-    running:   '<span class="chip" style="background:#eafaf1;color:#1a7a40">● running</span>',
-    paused:    '<span class="chip" style="background:#fef4dc;color:#b57508">‖ paused</span>',
-    done:      '<span class="chip" style="background:#eaf3fa;color:#1e6fa8">✓ done</span>',
-    cancelled: '<span class="chip" style="background:#f3f4f6;color:#6b7280">× cancelled</span>',
+    running:   '<span class="badge badge-green">● running</span>',
+    paused:    '<span class="badge badge-amber">‖ paused</span>',
+    done:      '<span class="badge badge-blue">✓ done</span>',
+    cancelled: '<span class="badge badge-grey">× cancelled</span>',
   }[s] || s);
   el.innerHTML = campaigns.map(c => {
     const t = c.counts;
@@ -2871,13 +2755,13 @@ async function renderCampaigns(){
       ? `<span style="font-weight:800;color:${replyRate >= 5 ? '#1a7a40' : 'var(--muted)'}">↩ ${c.replied} repl${c.replied === 1 ? 'y' : 'ies'} · ${replyRate}%</span>`
       : '';
     const actions = c.status === 'running'
-      ? `<button class="header-btn" onclick="setCampaignStatus('${c.id}','paused')">Pause</button>
-         <button class="header-btn" style="color:#c94e42" onclick="cancelCampaign('${c.id}')">Cancel</button>`
+      ? `<button class="btn btn-s" onclick="setCampaignStatus('${c.id}','paused')">Pause</button>
+         <button class="btn btn-r" onclick="cancelCampaign('${c.id}')">Cancel</button>`
       : c.status === 'paused'
-      ? `<button class="header-btn" onclick="setCampaignStatus('${c.id}','running')">Resume</button>
-         <button class="header-btn" style="color:#c94e42" onclick="cancelCampaign('${c.id}')">Cancel</button>`
+      ? `<button class="btn btn-s" onclick="setCampaignStatus('${c.id}','running')">Resume</button>
+         <button class="btn btn-r" onclick="cancelCampaign('${c.id}')">Cancel</button>`
       : '';
-    return `<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:8px">
+    return `<div class="card" style="padding:12px 14px;margin-bottom:8px">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
         <div style="font-weight:700;font-size:13px;color:var(--ink)">${escapeHtml(c.name)}</div>
         <div style="display:flex;gap:6px;align-items:center">${chip(c.status)}${actions}</div>
@@ -4380,19 +4264,19 @@ function renderDashboard(){
   // open / weighted / won / lost € + deal coverage.
   const hasAnyDealValue = withDealValue > 0;
   const moneyKpis = hasAnyDealValue ? `
-    <div class="kpi"><div class="kpi-label">Pipeline value</div><div class="kpi-value accent">€${fmtMoney(totalValue)}</div><div class="kpi-sub">weighted €${fmtMoney(weightedValue)} · ${openDeals.filter(c=>Number(c.deal_value||0)>0).length} of ${openDeals.length} open valued</div></div>
-    <div class="kpi"><div class="kpi-label">Won (€)</div><div class="kpi-value green">€${fmtMoney(wonValue)}</div><div class="kpi-sub">${activePartners} active partners · ${byStatus.lost||0} lost (€${fmtMoney(lostValue)})</div></div>
+    <div class="kpi"><div class="kpi-label">Pipeline value</div><div class="kpi-value kv-ocean">€${fmtMoney(totalValue)}</div><div class="kpi-sub">weighted €${fmtMoney(weightedValue)} · ${openDeals.filter(c=>Number(c.deal_value||0)>0).length} of ${openDeals.length} open valued</div></div>
+    <div class="kpi"><div class="kpi-label">Won (€)</div><div class="kpi-value kv-green">€${fmtMoney(wonValue)}</div><div class="kpi-sub">${activePartners} active partners · ${byStatus.lost||0} lost (€${fmtMoney(lostValue)})</div></div>
     <div class="kpi"><div class="kpi-label">Deal coverage</div><div class="kpi-value">${withDealValue}</div><div class="kpi-sub">/ ${CONTACTS.length} have a value</div></div>
   ` : `
-    <div class="kpi"><div class="kpi-label">Active partners</div><div class="kpi-value green">${activePartners}</div><div class="kpi-sub">${byStatus.lost||0} lost</div></div>
+    <div class="kpi"><div class="kpi-label">Active partners</div><div class="kpi-value kv-green">${activePartners}</div><div class="kpi-sub">${byStatus.lost||0} lost</div></div>
   `;
 
   // ── Group-focused KPIs (replace the old €0 cards) ──
   const groupKpis = computeGroupKpis();
   document.getElementById('kpiStrip').innerHTML = `
     <div class="kpi"><div class="kpi-label">Total contacts</div><div class="kpi-value">${CONTACTS.length}</div><div class="kpi-sub">${CONTACTS.filter(c=>c.email).length} with email</div></div>
-    <div class="kpi"><div class="kpi-label">Reached</div><div class="kpi-value accent">${reached}</div><div class="kpi-sub">at least one touch</div></div>
-    <div class="kpi"><div class="kpi-label">In discussion</div><div class="kpi-value green">${inDiscussion}</div><div class="kpi-sub">${replyRate}% reply rate</div></div>
+    <div class="kpi"><div class="kpi-label">Reached</div><div class="kpi-value kv-ocean">${reached}</div><div class="kpi-sub">at least one touch</div></div>
+    <div class="kpi"><div class="kpi-label">In discussion</div><div class="kpi-value kv-green">${inDiscussion}</div><div class="kpi-sub">${replyRate}% reply rate</div></div>
     <div class="kpi"><div class="kpi-label">Confirmed groups</div><div class="kpi-value">${groupKpis.confirmed}</div><div class="kpi-sub">${groupKpis.confirmedPax} pax${groupKpis.confirmedValue?' · €'+fmtMoney(groupKpis.confirmedValue):''}</div></div>
     <div class="kpi"><div class="kpi-label">Possibilities</div><div class="kpi-value" style="color:var(--ocean)">${groupKpis.possibilities}</div><div class="kpi-sub">${groupKpis.possibilityPax} pax in pipeline</div></div>
     ${moneyKpis}
@@ -5062,7 +4946,7 @@ function renderContactRow(c, today){
   if(c.last_contacted_at){
     const days = daysBetween(c.last_contacted_at.slice(0,10), today);
     const cls = days <= 3 ? 'hot' : days <= 14 ? 'warm' : 'cold';
-    sinceBadge = `<span class="since-badge ${cls}">${days}d</span>`;
+    sinceBadge = `<span class="badge ${cls === 'hot' ? 'badge-red' : cls === 'warm' ? 'badge-amber' : 'badge-blue'}">${days}d</span>`;
   }
   let followCell = '—';
   if(c.follow_up_at){
@@ -5565,9 +5449,9 @@ async function openContact(id){
         ${convoHtml}
         <div class="convo-replybar">
           ${lastInbound
-            ? `<button type="button" data-em-reply="${lastInbound.id}">↩ Reply</button>`
-            : `<button type="button" id="convoComposeBtn">✉ Write email</button>`}
-          ${lastInbound ? `<button type="button" class="secondary" id="convoComposeBtn" title="New email (not a reply)">✉ New</button>` : ''}
+            ? `<button type="button" class="btn btn-p" data-em-reply="${lastInbound.id}">↩ Reply</button>`
+            : `<button type="button" class="btn btn-p" id="convoComposeBtn">✉ Write email</button>`}
+          ${lastInbound ? `<button type="button" class="btn btn-s" id="convoComposeBtn" title="New email (not a reply)">✉ New</button>` : ''}
         </div>
       </div>` : ''}
       <div id="fullLogView" style="${actView === 'log' || !convoHtml ? '' : 'display:none'}">
@@ -5994,14 +5878,14 @@ function openReplyCompose(a, contact){
   if(modal) modal.remove();
   modal = document.createElement('div');
   modal.id = 'replyModal';
-  modal.className = 'compose-modal open';
+  modal.className = 'overlay compose-modal open';
   modal.innerHTML = `
-    <div class="compose-card" style="max-width:680px">
-      <div class="compose-header">
-        <div class="compose-title">↩ Reply to ${escHtml(fromEmail || 'contact')}</div>
+    <div class="modal compose-card" style="max-width:680px">
+      <div class="mhdr">
+        <div class="mhdr-title">↩ Reply to ${escHtml(fromEmail || 'contact')}</div>
         <button class="detail-close" id="replyClose" aria-label="Close">×</button>
       </div>
-      <div class="compose-body">
+      <div class="mbody">
         <div class="editor-field">
           <label>Send as <span style="color:var(--red-text)">*</span></label>
           <select id="replySendAs" required>
@@ -6032,7 +5916,7 @@ function openReplyCompose(a, contact){
           <div id="replyBody" class="rt-editor" contenteditable="true" role="textbox" aria-multiline="true"
                data-placeholder="Type your reply…"></div>
           <div style="margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <button type="button" class="ig-btn" id="replyAttachBtn">Add photo or file</button>
+            <button type="button" class="btn btn-s" id="replyAttachBtn">Add photo or file</button>
             <input type="file" id="replyAttachInput" multiple style="display:none">
             <span class="ig-note" id="replyAttachNote">Photos show inside the email; other files go as a link.</span>
           </div>
@@ -6040,9 +5924,9 @@ function openReplyCompose(a, contact){
           <div class="editor-hint" style="margin-top:6px">Sends from <code>groups@gotadaguasurf.com</code> on the same thread. Your signature is added automatically, so just write the message.</div>
         </div>
       </div>
-      <div class="compose-footer">
-        <button class="action-btn ghost" id="replyCancel">Cancel</button>
-        <button class="action-btn primary" id="replySend" style="grid-column:auto">Send reply</button>
+      <div class="mfooter">
+        <button class="btn btn-s" id="replyCancel">Cancel</button>
+        <button class="btn btn-p" id="replySend">Send reply</button>
       </div>
     </div>`;
   document.body.appendChild(modal);
@@ -6358,9 +6242,9 @@ function igRow(c){
     `</span></div>`;
   if(c.email) return row;   // email exists, normal flow applies
   return row + `<div class="ig-actions">
-      <button type="button" class="ig-btn" id="igCopyBtn">Copy DM</button>
-      <button type="button" class="ig-btn ig-btn--primary" id="igSentBtn">I sent the DM</button>
-      <button type="button" class="ig-btn" id="igRepliedBtn">They replied</button>
+      <button type="button" class="btn btn-s" id="igCopyBtn">Copy DM</button>
+      <button type="button" class="btn btn-p" id="igSentBtn">I sent the DM</button>
+      <button type="button" class="btn btn-s" id="igRepliedBtn">They replied</button>
       <span class="ig-note">Instagram DMs can't be read from here, so check the app and press "They replied" when they answer. Add their email above and the templates take over.</span>
     </div>`;
 }
@@ -7099,7 +6983,7 @@ document.addEventListener('mousedown', (e) => {
 document.addEventListener('click', (e) => {
   const btn = e.target.closest?.('.rt-bar button[data-rt]');
   if(!btn) return;
-  const editor = btn.closest('.editor-field, .compose-body, div')?.querySelector('.rt-editor')
+  const editor = btn.closest('.editor-field, .mbody, div')?.querySelector('.rt-editor')
     || document.querySelector('.compose-modal.open .rt-editor');
   if(!editor) return;
   editor.focus();
@@ -7177,8 +7061,8 @@ function renderTemplateEditor(){
       <div id="tplPreviewBody" style="color:var(--ink);font-size:12.5px;padding:10px;background:#fff;border:1px solid var(--border);border-radius:8px;max-height:320px;overflow:auto"></div>
     </div>
     <div style="display:flex;gap:10px;margin-top:18px">
-      <button class="action-btn primary" id="tplSave" style="grid-column:auto">Save changes</button>
-      <button class="action-btn ghost" id="tplDelete" style="color:var(--red-text);border-color:#f0a0a0">Delete</button>
+      <button class="btn btn-p" id="tplSave">Save changes</button>
+      <button class="btn btn-r" id="tplDelete">Delete</button>
     </div>
   `;
   // Live preview — rebinds on every keystroke in subject + body so
@@ -7363,8 +7247,8 @@ function renderSequenceEditor(){
       <div class="editor-hint" style="margin-top:6px">"Day N" = days after the sequence starts. Step 1 typically Day 0 (immediate), follow-ups at Day 3, Day 7, Day 14…</div>
     </div>
     <div style="display:flex;gap:10px;margin-top:18px">
-      <button class="action-btn primary" id="seqSave" style="grid-column:auto">Save changes</button>
-      <button class="action-btn ghost" id="seqDelete" style="color:var(--red-text);border-color:#f0a0a0;margin-left:auto">Delete sequence</button>
+      <button class="btn btn-p" id="seqSave">Save changes</button>
+      <button class="btn btn-r" id="seqDelete" style="margin-left:auto">Delete sequence</button>
     </div>
   `;
   document.getElementById('seqAddStep').addEventListener('click', () => {
@@ -8076,7 +7960,7 @@ document.getElementById('csvPreviewBtn').addEventListener('click', ()=>{
       <span style="color:var(--green-text)">✓ ${newCount} new</span>
       <span style="color:var(--amber-text)">⚠ ${dupeCount} duplicate${dupeCount===1?'':'s'} (will be skipped)</span>
     </div>
-    <table style="width:100%;border-collapse:collapse;border:1px solid var(--border);border-radius:8px;overflow:hidden">
+    <table class="tbl" style="border:1px solid var(--border);border-radius:var(--r-sm);overflow:hidden">
       <thead style="background:var(--foam)"><tr><th style="padding:8px 10px;text-align:left;width:30px"></th><th style="padding:8px 10px;text-align:left">Company</th><th style="padding:8px 10px;text-align:left">Country</th><th style="padding:8px 10px;text-align:left">Email</th></tr></thead>
       <tbody>${preview}</tbody>
     </table>

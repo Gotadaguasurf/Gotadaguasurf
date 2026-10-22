@@ -13,139 +13,72 @@
 <script src="/lib/app-shell.js"></script>
 <style>
 @media(max-width:820px){.app-nav .nav-actions{display:flex;min-width:0}}
-:root{
-  --navy:#28394b;
-  --navy-dark:#1f2c3b;
-  --ocean:#1e6fa8;
-  --ocean-light:#3b9dd4;
-  --foam:#edf5fb;
-  --ink:#0d1b2a;
-  --muted:#6b8099;
-  --border:#d4e3f0;
-  --bg:#f0f5fa;
-  --green:#118a5b;
-  --green-bg:#e6f5ec;
-  --red:#c94e42;
-  --red-bg:#fdf1ef;
-  --amber:#b57508;
-  --amber-bg:#fef4dc;
-  --sh-soft:0 1px 3px rgba(0,0,0,.05),0 4px 12px rgba(31,44,59,.08);
-}
-*{box-sizing:border-box}
-html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:'Outfit',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:15px;line-height:1.4;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
-input,select,textarea,button{font-family:inherit;font-size:inherit}
+/* Tokens, body (Outfit 14px), header, cards, KPI tiles (.card.kpi), tables
+   (.tbl-wrap), badges, buttons (.btn-p/.btn-s/.btn-g/.btn-r), fields (.field),
+   toast and splash all come from /lib/app-shell.css. Below: only what this
+   phone-first counter page adds (big touch targets, segmented pickers). */
+.muted{color:var(--muted)}
 
-/* ── Header (dark navy) ─────────────────────────────────────────── */
-/* header: /lib/app-shell.css */
-.user-chip{font-size:10px;color:#a8c4db;background:rgba(255,255,255,.08);padding:5px 10px;border-radius:999px;font-weight:600;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-
-/* ── Sub-nav (mobile-first tabs) ─────────────────────────────────── */
-.subnav{background:#fff;border-bottom:1px solid var(--border);padding:6px 6px 0;display:flex;gap:4px;overflow-x:auto;position:sticky;top:60px;z-index:40}
+/* ── Sub-nav: the shell's pill tabs (.nav-tabs/.ntab look) on a white bar ── */
+.subnav{background:#fff;border-bottom:1px solid var(--border);padding:8px 10px;display:flex;gap:2px;overflow-x:auto;position:sticky;top:60px;z-index:40}
 .subnav::-webkit-scrollbar{display:none}
-.tabbtn{background:none;border:none;color:var(--muted);padding:12px 18px;font-size:13px;font-weight:700;cursor:pointer;border-bottom:3px solid transparent;flex-shrink:0;position:relative;transition:color .15s, border-color .15s}
-.tabbtn.active{color:var(--navy);border-bottom-color:var(--ocean)}
-.tabbtn .badge{background:var(--ocean);color:#fff;font-size:10px;font-weight:800;padding:1px 7px;border-radius:999px;margin-left:6px;min-width:18px;display:inline-block;text-align:center}
+.tabbtn{padding:9px 15px;border-radius:999px;font-size:13px;font-weight:700;cursor:pointer;border:none;font-family:'Outfit',sans-serif;transition:all .18s;color:var(--muted);background:transparent;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;flex-shrink:0}
+.tabbtn:hover{color:var(--navy);background:var(--foam)}
+.tabbtn.active{background:var(--ocean);color:#fff;box-shadow:0 2px 10px rgba(30,111,168,.3)}
+.tabbtn .badge{background:var(--navy);color:#fff;border:none;padding:1px 7px;font-size:10px;font-weight:800;min-width:18px;justify-content:center}
+.tabbtn.active .badge{background:rgba(255,255,255,.22)}
 
-/* ── Content sections ───────────────────────────────────────────── */
-main{padding:16px;max-width:640px;margin:0 auto}
-.page{display:none}
-.page.active{display:block}
-
-/* ── Cards + form primitives ────────────────────────────────────── */
-.card{background:#fff;border-radius:12px;box-shadow:var(--sh-soft);padding:16px;margin-bottom:14px}
-.card-t{font-family:'DM Serif Display',serif;font-size:20px;color:var(--navy);margin:0 0 12px}
-.field{margin-bottom:14px}
-.field label{display:block;font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.09em;margin-bottom:5px}
-.field input,.field select,.field textarea{width:100%;border:1.5px solid var(--border);border-radius:10px;padding:12px 14px;font-size:15px;background:#fff;color:var(--ink);transition:border-color .15s;outline:none}
-.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--ocean);box-shadow:0 0 0 3px rgba(30,111,168,.10)}
-.field .hint{font-size:11px;color:var(--muted);margin-top:4px}
+/* ── Content: one phone-wide column ── */
+main{padding:16px 16px 48px;max-width:640px}
+.page>.card{margin-bottom:14px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+/* touch-size fields for counter staff (the shell's are 13px / 9px padding) */
+.field{margin-bottom:14px}
+.field input,.field select,.field textarea{padding:12px 14px;font-size:15px}
 
-/* Segment control (Kind: rental / lesson / activity) */
-.segment{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;background:var(--foam);padding:4px;border-radius:12px;margin-bottom:14px}
-.segment button{background:none;border:none;padding:11px 8px;font-size:13px;font-weight:700;color:var(--muted);border-radius:9px;cursor:pointer;transition:background .15s, color .15s}
-.segment button.active{background:#fff;color:var(--navy);box-shadow:0 1px 3px rgba(0,0,0,.08)}
-
-/* Payment method toggle */
-.pay-toggle{display:grid;grid-template-columns:1fr 1fr;gap:6px}
-.pay-toggle button{background:#fff;border:1.5px solid var(--border);padding:11px;border-radius:10px;font-size:13px;font-weight:700;color:var(--muted);cursor:pointer;transition:all .15s}
-.pay-toggle button.active{background:var(--navy);border-color:var(--navy);color:#fff}
-
-/* Buttons */
-.btn{width:100%;background:var(--ocean);color:#fff;border:none;padding:14px;border-radius:12px;font-weight:800;font-size:15px;cursor:pointer;transition:background .15s;letter-spacing:.02em}
-.btn:hover:not(:disabled){background:#175a8f}
-.btn:disabled{opacity:.55;cursor:not-allowed}
-.btn.secondary{background:#fff;color:var(--navy);border:1.5px solid var(--border)}
-.btn.secondary:hover:not(:disabled){background:var(--foam)}
-.btn.success{background:var(--green)}
-.btn.success:hover:not(:disabled){background:#0d6d47}
-.btn.danger{background:var(--red)}
-.btn-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+/* Segment control (rental type) — segmented look on shell tokens */
+.segment{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;background:#fff;border:1px solid var(--border-2);padding:4px;border-radius:var(--r-sm);margin-bottom:14px}
+.segment button{background:none;border:none;padding:11px 8px;font-size:13px;font-weight:700;color:var(--muted);border-radius:8px;cursor:pointer;font-family:inherit;transition:background .15s, color .15s}
+.segment button.active{background:var(--ocean-soft);color:var(--ocean)}
 
 /* Checkbox (terms) */
-.terms{display:flex;gap:10px;align-items:flex-start;padding:12px;background:var(--foam);border-radius:10px;cursor:pointer}
+.terms{display:flex;gap:10px;align-items:flex-start;padding:12px;background:var(--foam);border-radius:var(--r-sm);cursor:pointer}
 .terms input{margin-top:2px;width:20px;height:20px;accent-color:var(--ocean);flex-shrink:0}
 .terms-txt{font-size:12px;color:var(--muted);line-height:1.5}
 .terms-txt a{color:var(--ocean);font-weight:700}
 
-/* Open-rental / history item rows */
-.rental-row{background:#fff;border:1.5px solid var(--border);border-radius:12px;padding:14px;margin-bottom:10px;box-shadow:var(--sh-soft)}
+/* Open-rental / history item rows — a card with a status edge */
+.rental-row{background:#fff;border:1px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:10px;box-shadow:var(--sh)}
 .rental-row.open{border-left:4px solid var(--amber)}
 /* Big "Return by HH:MM" hero on every open rental card. Staff need to
    read the return time from across the shop, not squint at 12px meta. */
-.rr-return-hero{background:var(--foam);padding:12px 14px;border-radius:10px;margin-bottom:12px;text-align:center;border:1px solid #dce8f2}
-.rr-return-hero.overdue{background:#fef4f2;border-color:#f4c3bd}
-.rr-return-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.14em;color:var(--muted);font-weight:800}
+.rr-return-hero{background:var(--ocean-soft);padding:12px 14px;border-radius:var(--r-sm);margin-bottom:12px;text-align:center;border:1px solid #cfe2f2}
+.rr-return-hero.overdue{background:var(--red-bg);border-color:var(--red-border)}
+.rr-return-lbl{font-size:10.5px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);font-weight:700}
 .rr-return-time{font-family:'DM Serif Display',serif;font-size:38px;color:var(--navy);line-height:1;margin-top:4px}
 .rr-return-hero.overdue .rr-return-time{color:var(--red)}
 .rr-return-sub{font-size:12px;color:var(--muted);margin-top:4px}
 .rr-return-hero.overdue .rr-return-sub{color:var(--red);font-weight:700}
-.rental-row.overdue{border-left-color:var(--red);background:#fef4f2;border-color:#f4c3bd}
+.rental-row.overdue{border-left-color:var(--red);background:var(--red-bg);border-color:var(--red-border)}
 .rental-row.overdue .rr-name{color:var(--red)}
 .rental-row.returned{border-left:4px solid var(--green);opacity:.72}
 .rr-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:6px}
 .rr-name{font-weight:800;color:var(--ink);font-size:15px}
-.rr-time{font-size:11px;color:var(--muted);white-space:nowrap;flex-shrink:0}
+.rr-time{font-size:11.5px;color:var(--muted);white-space:nowrap;flex-shrink:0}
 .rr-item{color:var(--muted);font-size:13px;margin-bottom:4px}
-.rr-meta{font-size:11px;color:var(--muted);display:flex;flex-wrap:wrap;gap:10px}
-.rr-price{font-family:'DM Mono',monospace;font-weight:800;color:var(--navy);font-size:15px}
+.rr-meta{font-size:11.5px;color:var(--muted);display:flex;flex-wrap:wrap;gap:10px}
+.rr-price{font-family:'DM Mono',monospace;font-weight:500;color:var(--navy);font-size:15px;margin-left:auto}
 .rr-actions{display:flex;gap:8px;margin-top:12px}
 
-/* Chips */
-.chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em}
-.chip-open{background:var(--amber-bg);color:var(--amber)}
-.chip-returned{background:var(--green-bg);color:var(--green)}
-.chip-lesson{background:#eaf3fa;color:var(--ocean)}
-.chip-activity{background:#f5efe6;color:#a06430}
-.chip-camp{background:#e7f4ee;color:var(--green)}
-
 /* Empty state */
-.empty{padding:36px 20px;text-align:center;color:var(--muted);font-size:13px;background:#fff;border:1.5px dashed var(--border);border-radius:12px}
+.empty{padding:36px 20px;text-align:center;color:var(--muted);font-size:13px;background:#fff;border:1px dashed var(--border-2);border-radius:var(--r)}
 .empty-icon{font-size:36px;margin-bottom:10px;line-height:1}
 
-/* Toast */
-.toast-wrap{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:100;pointer-events:none}
-.toast{background:var(--navy);color:#fff;padding:12px 20px;border-radius:999px;font-weight:700;font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,.24);opacity:0;transition:opacity .2s, transform .2s;transform:translateY(20px)}
-.toast.ok{background:var(--green)}
-.toast.err{background:var(--red)}
-.toast.show{opacity:1;transform:translateY(0)}
+/* Filter row (History / Vendas / Clientes) */
+.filter-row{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center}
 
-/* Filter row */
-.filter-row{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
-.btn-sm{background:#fff;border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:13px;font-weight:700;color:var(--navy);cursor:pointer}
-.filter-row select{background:#fff;border:1.5px solid var(--border);border-radius:10px;padding:8px 12px;font-size:12px;color:var(--ink);cursor:pointer}
-
-/* KPI strip on Open rentals */
+/* KPI strip on Open rentals / Camp */
 .kpi-strip{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
-.kpi{background:#fff;padding:12px;border-radius:10px;box-shadow:var(--sh-soft)}
-.kpi-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700}
-.kpi-val{font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy);margin-top:2px;line-height:1}
-
-/* Access denied splash */
-.splash{max-width:420px;margin:80px auto;padding:32px;background:#fff;border-radius:14px;box-shadow:var(--sh-soft);text-align:center}
-.splash h1{font-family:'DM Serif Display',serif;color:var(--navy);margin:0 0 12px;font-size:24px}
-.splash p{color:var(--muted);font-size:13px;line-height:1.6;margin:0 0 18px}
-.splash a{color:var(--ocean);font-weight:800;text-decoration:none}
 
 /* ── Mobile-first chip selectors ─────────────────────────────────────
    Tap-once picks that replace <select> for enum fields. The hidden
@@ -156,33 +89,33 @@ main{padding:16px;max-width:640px;margin:0 auto}
 .chip-grid.cols-2{grid-template-columns:1fr 1fr}
 .chip-grid.cols-3{grid-template-columns:1fr 1fr 1fr}
 .chip-grid.cols-4{grid-template-columns:1fr 1fr 1fr 1fr}
-.chip-btn{background:#fff;border:1.5px solid var(--border);padding:14px 6px;border-radius:12px;font-size:14px;font-weight:800;color:var(--muted);cursor:pointer;transition:transform .1s, background .15s, border-color .15s, color .15s;line-height:1.15;-webkit-tap-highlight-color:transparent;font-family:inherit}
+.chip-btn{background:#fff;border:1px solid var(--border-2);padding:14px 6px;border-radius:var(--r-sm);font-size:14px;font-weight:700;color:var(--navy);cursor:pointer;transition:transform .1s, background .15s, border-color .15s, color .15s;line-height:1.15;-webkit-tap-highlight-color:transparent;font-family:inherit}
 .chip-btn:active{transform:scale(.97)}
-.chip-btn.active{background:var(--navy);border-color:var(--navy);color:#fff;box-shadow:0 2px 8px rgba(40,57,75,.18)}
-.chip-btn small{display:block;font-size:11px;font-weight:600;opacity:.75;margin-top:2px}
-.chip-btn.active small{opacity:.9}
+.chip-btn.active{background:var(--ocean-soft);border-color:var(--ocean);color:var(--ocean)}
+.chip-btn small{display:block;font-size:11px;font-weight:600;color:var(--muted);margin-top:2px}
+.chip-btn.active small{color:var(--ocean);opacity:.85}
 
 /* Days stepper — thumb-friendly +/− controls for Multi-day rentals.
    Replaces the number spinner which is fiddly on mobile Safari. */
-.stepper{display:grid;grid-template-columns:56px 1fr 56px;border:1.5px solid var(--border);border-radius:12px;overflow:hidden;background:#fff;max-width:220px}
+.stepper{display:grid;grid-template-columns:56px 1fr 56px;border:1px solid var(--border-2);border-radius:var(--r-sm);overflow:hidden;background:#fff;max-width:220px}
 .stepper button{background:#fff;border:none;font-size:24px;font-weight:800;color:var(--navy);cursor:pointer;padding:0;transition:background .15s;-webkit-tap-highlight-color:transparent;font-family:inherit}
 .stepper button:active{background:var(--foam)}
 .stepper button:disabled{opacity:.35;cursor:not-allowed}
-.stepper .val{display:flex;align-items:center;justify-content:center;font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy);border-left:1.5px solid var(--border);border-right:1.5px solid var(--border);min-height:52px}
+.stepper .val{display:flex;align-items:center;justify-content:center;font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy);border-left:1px solid var(--border);border-right:1px solid var(--border);min-height:52px}
 .stepper .val small{display:block;font-size:10px;color:var(--muted);font-family:'Outfit',sans-serif;font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-top:1px}
 
 /* Live total preview — the big number staff read at a glance before
    pressing Save. Sits right above the editable Amount field so any
    manual override is obvious. */
-.total-preview{background:linear-gradient(135deg,var(--navy),#3a5570);color:#fff;padding:14px 18px;border-radius:14px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;gap:12px;box-shadow:0 4px 14px rgba(40,57,75,.18)}
-.total-preview-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.14em;font-weight:800;opacity:.72}
+.total-preview{background:linear-gradient(135deg,var(--navy) 0%,#1b2a3a 100%);color:#fff;padding:14px 18px;border-radius:var(--r);margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;gap:12px}
+.total-preview-lbl{font-size:10.5px;text-transform:uppercase;letter-spacing:.14em;font-weight:700;color:#9fc0da}
 .total-preview-val{font-family:'DM Serif Display',serif;font-size:34px;line-height:1;margin-top:2px}
-.total-preview-breakdown{font-size:11px;opacity:.78;text-align:right;line-height:1.4;max-width:150px}
+.total-preview-breakdown{font-size:11.5px;color:#cfe1f0;text-align:right;line-height:1.4;max-width:150px}
 
 /* Sticky save on mobile — the save button always sits at thumb-reach
    without the user having to scroll to the bottom of the card. Fades
    into the page background so it doesn't feel like a hard bar. */
-.sticky-save{position:sticky;bottom:0;padding:14px 0 8px;margin-top:14px;background:linear-gradient(to top,var(--bg) 60%,rgba(240,245,250,0));z-index:20}
+.sticky-save{position:sticky;bottom:0;padding:14px 0 8px;margin-top:14px;background:linear-gradient(to top,var(--bg) 60%,rgba(244,246,249,0));z-index:20}
 
 /* Optional-fields collapsible — hides Email + ID Card behind a
    toggle so the default rental flow is 4 fields shorter. */
@@ -199,7 +132,7 @@ main{padding:16px;max-width:640px;margin:0 auto}
    fake-input etc). */
 @media(max-width:640px){
   .field input,.field select,.field textarea{font-size:16px}
-  /* The subnav's fixed top offset (52px) is Tuned for the header. On
+  /* The subnav's fixed top offset (60px) is tuned for the header. On
      iOS momentum-scrolls it can jitter — set overscroll behavior so
      the scroll stays inside the container. */
   .subnav{overscroll-behavior:contain}
@@ -211,7 +144,6 @@ main{padding:16px;max-width:640px;margin:0 auto}
 }
 
 @media(min-width:640px){
-  .btn-row{grid-template-columns:1fr 1fr 1fr}
   .kpi-strip{grid-template-columns:repeat(4,1fr)}
 }
 </style>
@@ -233,7 +165,7 @@ main{padding:16px;max-width:640px;margin:0 auto}
 <main id="main">
   <!-- ══════════════════ NEW ENTRY ══════════════════ -->
   <div class="page active" id="page-new">
-    <div class="card">
+    <div class="card card-pad">
       <!-- Kind segment removed — Miguel confirmed the school only takes
            rentals through this form (lessons + activities aren't billed
            this way — confirmed again 9 Sep 2026, and no NIF either). -->
@@ -248,7 +180,7 @@ main{padding:16px;max-width:640px;margin:0 auto}
           <input id="fld_start" type="time" onchange="updateReturnPreview()">
         </div>
       </div>
-      <div id="returnPreview" style="margin:-6px 0 14px;padding:10px 12px;background:var(--foam);border-radius:10px;font-size:12px;color:var(--navy);display:none">
+      <div id="returnPreview" style="margin:-6px 0 14px;padding:10px 12px;background:var(--foam);border-radius:var(--r-sm);font-size:12px;color:var(--navy);display:none">
         <strong id="returnPreviewTxt">Return by —</strong>
         <span id="returnPreviewHint" style="color:var(--muted);font-weight:500"> · staff will know if the student went over</span>
       </div>
@@ -355,7 +287,7 @@ main{padding:16px;max-width:640px;margin:0 auto}
       </div>
       <!-- Shown when a price did not come from the Prices app (pricing_catalog)
            and the built-in card was used instead — tells Miguel what to add. -->
-      <div class="hint" id="priceSourceNote" style="display:none;margin:-8px 0 12px;color:var(--amber);font-weight:600;line-height:1.4"></div>
+      <div class="status-msg status-warn" id="priceSourceNote" style="display:none;margin:-8px 0 12px;line-height:1.4"></div>
 
       <div class="field">
         <label>Amount (edit for discount)</label>
@@ -369,14 +301,14 @@ main{padding:16px;max-width:640px;margin:0 auto}
            the toggle back and wire setPay(). -->
       <div class="field">
         <label>Payment</label>
-        <div style="padding:11px 14px;background:var(--foam);border-radius:10px;font-size:13px;color:var(--navy);font-weight:700">💵 Cash</div>
+        <div style="padding:11px 14px;background:var(--foam);border-radius:var(--r-sm);font-size:13px;color:var(--navy);font-weight:700">💵 Cash</div>
       </div>
       <label class="terms">
         <input id="fld_terms" type="checkbox">
         <span class="terms-txt">Student agrees to the <a href="https://gotadaguasurf.com/terms-and-conditions/" target="_blank" rel="noopener">terms &amp; conditions</a> and consents to their info being recorded.</span>
       </label>
       <div class="sticky-save">
-        <button class="btn" id="saveBtn" onclick="saveEntry()">Save rental</button>
+        <button class="btn btn-p btn-lg btn-block" id="saveBtn" onclick="saveEntry()">Save rental</button>
       </div>
     </div>
   </div>
@@ -384,13 +316,13 @@ main{padding:16px;max-width:640px;margin:0 auto}
   <!-- ══════════════════ OPEN RENTALS ══════════════════ -->
   <div class="page" id="page-open">
     <div class="kpi-strip">
-      <div class="kpi">
-        <div class="kpi-lbl">Boards out</div>
-        <div class="kpi-val" id="kpiOut">0</div>
+      <div class="card kpi">
+        <div class="kpi-label">Boards out</div>
+        <div class="kpi-value" id="kpiOut">0</div>
       </div>
-      <div class="kpi">
-        <div class="kpi-lbl">Overdue &gt;2h</div>
-        <div class="kpi-val" id="kpiOverdue" style="color:var(--red)">0</div>
+      <div class="card kpi">
+        <div class="kpi-label">Overdue &gt;2h</div>
+        <div class="kpi-value neg" id="kpiOverdue">0</div>
       </div>
     </div>
     <div id="openList"><div class="empty"><div class="empty-icon">🏄</div>No boards out right now.</div></div>
@@ -405,16 +337,16 @@ main{padding:16px;max-width:640px;margin:0 auto}
        ledger trigger skips that kind (supabase/surf-school-camp-guests.sql). -->
   <div class="page" id="page-camp">
     <div class="kpi-strip">
-      <div class="kpi">
-        <div class="kpi-lbl">Camp boards in the water</div>
-        <div class="kpi-val" id="kpiCampBoards">0</div>
+      <div class="card kpi">
+        <div class="kpi-label">Camp boards in the water</div>
+        <div class="kpi-value" id="kpiCampBoards">0</div>
       </div>
-      <div class="kpi">
-        <div class="kpi-lbl">Groups out</div>
-        <div class="kpi-val" id="kpiCampGroups">0</div>
+      <div class="card kpi">
+        <div class="kpi-label">Groups out</div>
+        <div class="kpi-value" id="kpiCampGroups">0</div>
       </div>
     </div>
-    <div class="card">
+    <div class="card card-pad">
       <div class="field">
         <label>Guest / group name</label>
         <input id="camp_name" type="text" placeholder="e.g. Hedi + 2 friends" autocomplete="off" autocapitalize="words" inputmode="text">
@@ -434,7 +366,7 @@ main{padding:16px;max-width:640px;margin:0 auto}
         <div class="hint">No price, no return time — camp package.</div>
       </div>
       <div class="sticky-save">
-        <button class="btn" id="campSaveBtn" onclick="saveCampEntry()">🏄 Boards in the water</button>
+        <button class="btn btn-p btn-lg btn-block" id="campSaveBtn" onclick="saveCampEntry()">🏄 Boards in the water</button>
       </div>
     </div>
     <div id="campList"><div class="empty"><div class="empty-icon">🏕</div>No camp boards out right now.</div></div>
@@ -443,19 +375,19 @@ main{padding:16px;max-width:640px;margin:0 auto}
   <!-- ══════════════════ HISTORY ══════════════════ -->
   <div class="page" id="page-history">
     <div class="filter-row">
-      <select id="filt_kind" onchange="renderHistory()">
+      <label class="period-picker"><span class="period-picker-lbl">Type</span><select id="filt_kind" onchange="renderHistory()">
         <option value="all">All types</option>
         <option value="rental">Rentals</option>
         <option value="lesson">Lessons</option>
         <option value="activity">Activities</option>
         <option value="camp">Surf camp guests</option>
-      </select>
-      <select id="filt_period" onchange="renderHistory()">
+      </select></label>
+      <label class="period-picker"><span class="period-picker-lbl">Period</span><select id="filt_period" onchange="renderHistory()">
         <option value="today">Today</option>
         <option value="week" selected>Last 7 days</option>
         <option value="month">Last 30 days</option>
         <option value="all">All time</option>
-      </select>
+      </select></label>
     </div>
     <div id="historyList"><div class="empty"><div class="empty-icon">⏳</div>Loading…</div></div>
   </div>
@@ -466,14 +398,14 @@ main{padding:16px;max-width:640px;margin:0 auto}
        lê-se o mês inteiro da base de dados — não a lista de 500 do
        History — e soma-se por login. Só gestores/donos vêem este separador. -->
   <div class="page" id="page-sales">
-    <div class="filter-row" style="align-items:center;flex-wrap:wrap">
-      <button class="btn-sm" type="button" onclick="salesShiftMonth(-1)">‹</button>
+    <div class="filter-row">
+      <button class="btn btn-s" type="button" onclick="salesShiftMonth(-1)">‹</button>
       <strong id="salesMonthLabel" style="min-width:150px;text-align:center"></strong>
-      <button class="btn-sm" type="button" onclick="salesShiftMonth(1)">›</button>
-      <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-left:auto">Comissão
-        <input type="number" id="salesPct" min="0" max="100" step="0.5" style="width:64px;padding:6px 8px;border:1px solid var(--border);border-radius:8px" oninput="salesPctChanged()"> %
+      <button class="btn btn-s" type="button" onclick="salesShiftMonth(1)">›</button>
+      <label class="period-picker" style="margin-left:auto"><span class="period-picker-lbl">Comissão</span>
+        <input type="number" id="salesPct" min="0" max="100" step="0.5" style="width:56px;text-align:right;font-family:'DM Mono',monospace" oninput="salesPctChanged()"> %
       </label>
-      <button class="btn-sm" type="button" onclick="exportSalesCsv()">⬇ CSV</button>
+      <button class="btn btn-s" type="button" onclick="exportSalesCsv()">⬇ CSV</button>
     </div>
     <div id="salesBox"><div class="empty"><div class="empty-icon">⏳</div>Loading…</div></div>
   </div>
@@ -483,15 +415,15 @@ main{padding:16px;max-width:640px;margin:0 auto}
        History): nome, email, ID, visitas e quanto gastaram. Tem números
        de ID, por isso só gestores/donos vêem este separador. -->
   <div class="page" id="page-clients">
-    <div class="filter-row" style="align-items:center">
-      <input type="search" id="clientsSearch" placeholder="Procurar nome, email ou ID…" oninput="renderClients()" autocomplete="off" style="flex:1;min-width:0;padding:9px 12px;border:1px solid var(--border);border-radius:10px;font:inherit;font-size:14px">
-      <button class="btn-sm" type="button" onclick="exportClientsCsv()">⬇ CSV</button>
+    <div class="filter-row">
+      <input type="search" id="clientsSearch" class="search" placeholder="Procurar nome, email ou ID…" oninput="renderClients()" autocomplete="off" style="flex:1;min-width:0;width:auto">
+      <button class="btn btn-s" type="button" onclick="exportClientsCsv()">⬇ CSV</button>
     </div>
     <div id="clientsBox"><div class="empty"><div class="empty-icon">⏳</div>Loading…</div></div>
   </div>
 </main>
 
-<div class="toast-wrap"><div class="toast" id="toast"></div></div>
+<div class="toast" id="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.4"></script>
 <script src="/supabase-config.js"></script>
@@ -685,12 +617,12 @@ function renderItemPicker(){
     const box = document.getElementById('fld_items_multi');
     if (!box) return;
     box.innerHTML = items.length
-      ? items.map(c => `<label style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;margin-bottom:6px;cursor:pointer;background:#fff">
+      ? items.map(c => `<label style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border-2);border-radius:var(--r-sm);margin-bottom:6px;cursor:pointer;background:#fff">
           <input type="checkbox" class="item-cb" data-id="${c.id}" data-price="${c.sell_price}" data-cur="${c.currency||'EUR'}" data-name="${escapeHtml(c.name)}" onchange="recalcRentalTotal()" style="width:20px;height:20px;accent-color:var(--ocean)">
           <span style="flex:1;font-weight:700">${escapeHtml(c.name)}</span>
           <span style="font-family:'DM Mono',monospace;font-size:12px;color:var(--muted)">${c.currency||'EUR'} ${Number(c.sell_price).toFixed(0)}</span>
         </label>`).join('')
-      : `<div class="hint" style="padding:12px;background:var(--foam);border-radius:10px">No rental items in the catalog yet. Add them in the Prices app under Surf School.</div>`;
+      : `<div class="hint" style="padding:12px;background:var(--foam);border-radius:var(--r-sm)">No rental items in the catalog yet. Add them in the Prices app under Surf School.</div>`;
     document.getElementById('fld_price').value = '';
     document.getElementById('curHint').textContent = items.length ? `${items[0].currency || 'EUR'} · edit if you gave a discount` : '—';
   } else {
@@ -1102,7 +1034,7 @@ function renderOpen(){
     return `<div class="rental-row ${cls}">
       ${returnHero}
       <div class="rr-top">
-        <div class="rr-name">${escapeHtml(r.student_name)}${r.customer_type?` <span class="chip" style="background:var(--foam);color:var(--ocean)">${escapeHtml(r.customer_type)}</span>`:''}</div>
+        <div class="rr-name">${escapeHtml(r.student_name)}${r.customer_type?` <span class="badge badge-blue">${escapeHtml(r.customer_type)}</span>`:''}</div>
         <div class="rr-time">${timeAgo}</div>
       </div>
       <div class="rr-item">${escapeHtml(r.item_name)}${r.duration?` · ${escapeHtml(r.duration)}`:''}</div>
@@ -1113,7 +1045,7 @@ function renderOpen(){
         <span class="rr-price">${escapeHtml(r.currency||'EUR')} ${Number(r.price_local||0).toFixed(0)}</span>
       </div>
       <div class="rr-actions">
-        <button class="btn success" onclick="closeRental('${r.id}', '${escapeAttr(r.student_name)}')">✓ Return board</button>
+        <button class="btn btn-g btn-lg btn-block" onclick="closeRental('${r.id}', '${escapeAttr(r.student_name)}')">✓ Return board</button>
       </div>
     </div>`;
   }).join('');
@@ -1138,13 +1070,13 @@ function renderOpen(){
         </div>
         <div class="rr-item">${escapeHtml(r.item_name)}${r.duration?` · ${escapeHtml(r.duration)}`:''}</div>
         <div class="rr-actions">
-          <button class="btn secondary" onclick="reopenRental('${r.id}', '${escapeAttr(r.student_name)}')">↺ Reopen (returned by mistake)</button>
+          <button class="btn btn-s btn-block" onclick="reopenRental('${r.id}', '${escapeAttr(r.student_name)}')">↺ Reopen (returned by mistake)</button>
         </div>
       </div>`;
     }).join('');
     list.insertAdjacentHTML('beforeend', `
       <div style="margin-top:28px;padding-top:14px;border-top:1px solid var(--border)">
-        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;font-weight:800;margin-bottom:10px">Recently returned · last 24h</div>
+        <div class="kpi-label" style="margin-bottom:10px">Recently returned · last 24h</div>
         ${rc}
       </div>`);
   }
@@ -1266,22 +1198,22 @@ function renderSales(){
   const totCom = sellers.reduce((s,v) => s + v.commission, 0);
   const kindLabel = { rental:'alugueres', lesson:'aulas', activity:'actividades' };
   const dayFmt = iso => { const d = new Date(iso); return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`; };
-  box.innerHTML = `<div class="card" style="padding:12px 14px">
-    <div style="font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:700;margin-bottom:8px">${sellers.length} login${sellers.length===1?'':'s'} · ${SALES_ROWS.filter(r=>r.kind!=='camp').length} vendas · ${eur(tot)}${pct ? ` · comissões ${eur(totCom)} (${pct}%)` : ''}</div>
+  box.innerHTML = `<div class="card card-pad">
+    <div class="kpi-label" style="margin-bottom:8px">${sellers.length} login${sellers.length===1?'':'s'} · ${SALES_ROWS.filter(r=>r.kind!=='camp').length} vendas · ${eur(tot)}${pct ? ` · comissões ${eur(totCom)} (${pct}%)` : ''}</div>
     ${sellers.map((v, i) => `<details style="border-top:1px solid var(--border)">
       <summary style="display:flex;justify-content:space-between;gap:10px;padding:8px 0;font-size:13px;cursor:pointer;list-style:none">
         <div><strong>${escapeHtml(v.name)}</strong>${v.email?`<div style="font-size:11px;color:var(--muted)">${escapeHtml(v.email)}</div>`:''}
           <div style="font-size:11px;color:var(--muted)">${Object.entries(v.kinds).map(([k,n]) => `${n} ${kindLabel[k] || k}`).join(' · ')}</div></div>
         <div style="text-align:right;white-space:nowrap"><strong>${eur(v.total)}</strong>${pct ? `<div style="font-size:12px;color:var(--ocean);font-weight:700">comissão ${eur(v.commission)}</div>` : ''}<div style="font-size:11px;color:var(--muted)">${v.n} venda${v.n===1?'':'s'}</div></div>
       </summary>
-      <table style="width:100%;font-size:12px;border-collapse:collapse;margin:0 0 10px">
-        ${SALES_ROWS.filter(r => (r.opened_by || 'unknown') === v.uid && r.kind !== 'camp').map(r => `<tr style="border-top:1px dashed var(--border)">
-          <td style="padding:4px 0;color:var(--muted);white-space:nowrap">${dayFmt(r.opened_at)}</td>
-          <td style="padding:4px 6px">${escapeHtml(r.student_name || '—')}</td>
-          <td style="padding:4px 6px;color:var(--muted)">${escapeHtml(r.item_name || (Array.isArray(r.items) ? r.items.map(x => x.name || x.item_name || '').filter(Boolean).join(', ') : '') || r.kind || '')}</td>
-          <td style="padding:4px 0;text-align:right;white-space:nowrap">${eur(r.price_local)}</td>
-        </tr>`).join('')}
-      </table>
+      <div class="tbl-wrap" style="margin:0 0 10px"><table>
+        <tbody>${SALES_ROWS.filter(r => (r.opened_by || 'unknown') === v.uid && r.kind !== 'camp').map(r => `<tr>
+          <td class="muted" style="white-space:nowrap">${dayFmt(r.opened_at)}</td>
+          <td>${escapeHtml(r.student_name || '—')}</td>
+          <td class="muted">${escapeHtml(r.item_name || (Array.isArray(r.items) ? r.items.map(x => x.name || x.item_name || '').filter(Boolean).join(', ') : '') || r.kind || '')}</td>
+          <td class="r">${eur(r.price_local)}</td>
+        </tr>`).join('')}</tbody>
+      </table></div>
     </details>`).join('')}
   </div>`;
 }
@@ -1359,11 +1291,11 @@ function renderClients(){
   const eur = n => '€' + Number(n || 0).toFixed(0);
   const day = iso => new Date(iso).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' });
   const withEmail = list.filter(c => c.emails.size).length;
-  box.innerHTML = `<div style="font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:700;margin:2px 0 8px">${list.length} cliente${list.length===1?'':'s'} · ${withEmail} com email</div>` +
+  box.innerHTML = `<div class="kpi-label" style="margin:2px 0 8px">${list.length} cliente${list.length===1?'':'s'} · ${withEmail} com email</div>` +
     list.slice(0, 300).map(c => `<details class="rental-row returned" style="cursor:pointer">
       <summary style="list-style:none">
         <div class="rr-top">
-          <div class="rr-name">${escapeHtml(c.name)}${[...c.types].map(t => ` <span class="chip" style="background:var(--foam);color:var(--ocean)">${escapeHtml(t)}</span>`).join('')}</div>
+          <div class="rr-name">${escapeHtml(c.name)}${[...c.types].map(t => ` <span class="badge badge-blue">${escapeHtml(t)}</span>`).join('')}</div>
           <div class="rr-time">${day(c.last)}</div>
         </div>
         ${[...c.emails].map(e => `<div class="rr-item">✉️ <a href="mailto:${escapeAttr(e)}" style="color:var(--ocean)" onclick="event.stopPropagation()">${escapeHtml(e)}</a></div>`).join('') || '<div class="rr-item" style="color:var(--muted)">Sem email</div>'}
@@ -1373,14 +1305,14 @@ function renderClients(){
           <span class="rr-price">${eur(c.total)}</span>
         </div>
       </summary>
-      <table style="width:100%;font-size:12px;border-collapse:collapse;margin-top:8px">
-        ${c.visits.map(r => `<tr style="border-top:1px dashed var(--border)">
-          <td style="padding:4px 0;color:var(--muted);white-space:nowrap">${day(r.opened_at)}</td>
-          <td style="padding:4px 6px">${escapeHtml(r.kind === 'camp' ? 'Camp' : (r.item_name || r.kind || ''))}</td>
-          <td style="padding:4px 6px;color:var(--muted)">${escapeHtml(r.kind === 'camp' ? '' : (r.payment_method || ''))}</td>
-          <td style="padding:4px 0;text-align:right;white-space:nowrap">${r.kind === 'camp' ? '—' : eur(r.price_local)}</td>
-        </tr>`).join('')}
-      </table>
+      <div class="tbl-wrap" style="margin-top:8px"><table>
+        <tbody>${c.visits.map(r => `<tr>
+          <td class="muted" style="white-space:nowrap">${day(r.opened_at)}</td>
+          <td>${escapeHtml(r.kind === 'camp' ? 'Camp' : (r.item_name || r.kind || ''))}</td>
+          <td class="muted">${escapeHtml(r.kind === 'camp' ? '' : (r.payment_method || ''))}</td>
+          <td class="r">${r.kind === 'camp' ? '—' : eur(r.price_local)}</td>
+        </tr>`).join('')}</tbody>
+      </table></div>
     </details>`).join('') + (list.length > 300 ? `<div class="empty" style="border:none;padding:14px 8px;font-size:11px">A mostrar 300 de ${list.length}. Procura pelo nome para ver os outros.</div>` : '');
 }
 function exportClientsCsv(){
@@ -1425,10 +1357,10 @@ function renderHistory(){
     const isCamp = r.kind === 'camp';
     const cls = (r.kind === 'rental' || isCamp) ? (r.is_returned?'returned':'open') : 'returned';
     const chip = isCamp
-      ? `<span class="chip chip-camp">Camp</span>${r.is_returned ? '' : ` <span class="chip chip-open">In the water</span>`}`
+      ? `<span class="badge badge-green">Camp</span>${r.is_returned ? '' : ` <span class="badge badge-amber">In the water</span>`}`
       : r.kind === 'rental'
-      ? (r.is_returned ? `<span class="chip chip-returned">Returned</span>` : `<span class="chip chip-open">Open</span>`)
-      : (r.kind === 'lesson' ? `<span class="chip chip-lesson">Lesson</span>` : `<span class="chip chip-activity">Activity</span>`);
+      ? (r.is_returned ? `<span class="badge badge-green">Returned</span>` : `<span class="badge badge-amber">Open</span>`)
+      : (r.kind === 'lesson' ? `<span class="badge badge-blue">Lesson</span>` : `<span class="badge badge-grey">Activity</span>`);
     const closedInfo = r.is_returned && r.closed_at
       ? `Returned ${new Date(r.closed_at).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}${closedBy?` by ${escapeHtml(closedBy)}`:''}`
       : '';
@@ -1437,7 +1369,7 @@ function renderHistory(){
     // too: DELETE needs has_full_location_access and a trigger blocks any
     // change other than return/reopen (supabase/surf-school-rentals-roles.sql).
     const delBtn = CAN_EDIT_HISTORY
-      ? `<button class="btn danger" style="margin-top:10px" onclick="deleteRental('${r.id}', '${escapeAttr(r.student_name)}')">🗑 Delete entry</button>`
+      ? `<button class="btn btn-r" style="margin-top:10px" onclick="deleteRental('${r.id}', '${escapeAttr(r.student_name)}')">🗑 Delete entry</button>`
       : '';
     return `<div class="rental-row ${cls}">
       <div class="rr-top">
@@ -1711,13 +1643,13 @@ function renderCamp(){
       const staff = PROFILE_NAMES.get(r.opened_by) || 'Unknown';
       return `<div class="rental-row open" style="border-left-color:var(--green)">
         <div class="rr-top">
-          <div class="rr-name">${escapeHtml(r.student_name)} <span class="chip chip-camp">Camp</span></div>
+          <div class="rr-name">${escapeHtml(r.student_name)} <span class="badge badge-green">Camp</span></div>
           <div class="rr-time">${outFor(now - started.getTime())} in the water</div>
         </div>
         <div class="rr-item"><strong style="color:var(--navy)">${n} board${n===1?'':'s'}</strong> · started ${started.toLocaleTimeString('en-GB', timeFmt)}</div>
         <div class="rr-meta"><span>Given by <strong>${escapeHtml(staff)}</strong></span></div>
         <div class="rr-actions">
-          <button class="btn success" onclick="closeCamp('${r.id}', '${escapeAttr(r.student_name)}')">✓ Boards back</button>
+          <button class="btn btn-g btn-lg btn-block" onclick="closeCamp('${r.id}', '${escapeAttr(r.student_name)}')">✓ Boards back</button>
         </div>
       </div>`;
     }).join('');
@@ -1738,13 +1670,13 @@ function renderCamp(){
         </div>
         <div class="rr-item">${n} board${n===1?'':'s'} · ${new Date(r.opened_at).toLocaleTimeString('en-GB', timeFmt)} → ${new Date(r.closed_at).toLocaleTimeString('en-GB', timeFmt)}</div>
         <div class="rr-actions">
-          <button class="btn secondary" onclick="reopenRental('${r.id}', '${escapeAttr(r.student_name)}')">↺ Still in the water (returned by mistake)</button>
+          <button class="btn btn-s btn-block" onclick="reopenRental('${r.id}', '${escapeAttr(r.student_name)}')">↺ Still in the water (returned by mistake)</button>
         </div>
       </div>`;
     }).join('');
     list.insertAdjacentHTML('beforeend', `
       <div style="margin-top:28px;padding-top:14px;border-top:1px solid var(--border)">
-        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;font-weight:800;margin-bottom:10px">Back on the beach · last 24h</div>
+        <div class="kpi-label" style="margin-bottom:10px">Back on the beach · last 24h</div>
         ${rc}
       </div>`);
   }

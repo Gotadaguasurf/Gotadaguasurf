@@ -349,7 +349,8 @@ test('crm: every tab panel has a nav button and actually opens', async ({ page }
   expect([...panels].sort()).toEqual([...tabs].sort());
 
   for (const tab of tabs) {
-    await page.click(`.nav-tab[data-tab="${tab}"]`);
+    // The shell hides the desktop tab row on phone widths (hamburger instead), so click through the DOM — the intent is «every panel has a button that opens it».
+    await page.evaluate(t => document.querySelector(`.nav-tab[data-tab="${t}"]`).click(), tab);
     const hidden = await page.evaluate(
       t => document.getElementById('page-' + t).classList.contains('hidden'), tab);
     expect(hidden, `panel page-${tab} stayed hidden after clicking its tab`).toBe(false);
