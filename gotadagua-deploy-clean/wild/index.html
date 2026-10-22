@@ -9,62 +9,13 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Outfit:wght@400;500;600;700;800&family=DM+Mono:wght@500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/lib/business-shell.css">
+<link rel="stylesheet" href="/lib/app-shell.css">
 <style>
-/* Close-night form */
-.form-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap;margin-bottom:18px}
-.form-title{font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy)}
-.form-sub{font-size:12px;color:var(--muted);margin-top:2px;max-width:760px}
-.fblock{padding:18px 20px}
-.fblock h4{margin:0 0 12px;font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:800}
-.frow{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid #eef2f6}
-.frow:last-child{border-bottom:none}
-.frow label{font-size:13px;font-weight:600;color:var(--ink)}
-.frow label small{display:block;font-size:11px;color:var(--muted);font-weight:500}
-.frow input,.frow select,.fgrid input,.fgrid select{width:100%;border:1.5px solid var(--border);border-radius:9px;padding:8px 10px;font-size:13px;color:var(--ink);background:#fff;outline:none}
-.frow input:focus,.fgrid input:focus,.frow select:focus{border-color:var(--ocean);box-shadow:0 0 0 3px rgba(30,111,168,.10)}
-.frow input{text-align:right;font-family:'DM Mono',monospace;font-size:13px}
-.fgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
-.fgrid label{display:block;font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px}
-.sumbox{background:var(--navy);color:#fff;border-radius:12px;padding:16px 18px}
-.sumbox .row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.1);font-size:13px;color:#cfe1f0}
-.sumbox .row b{color:#fff;font-family:'DM Mono',monospace;font-size:13px}
-.sumbox .row.big{border:none;padding-top:10px}
-.sumbox .row.big b{font-family:'DM Serif Display',serif;font-size:26px;color:#7ee2a8}
-@media (max-width:900px){.fgrid{grid-template-columns:1fr 1fr}}
+/* page-specific only — everything else comes from /lib/app-shell.css */
 </style>
 </head>
 <body>
-<nav>
-  <div class="nav-logo">
-    <a class="nav-home" href="/"><div class="nav-logo-mark" id="gotaLogo"></div></a>
-    <details class="app-switch">
-      <summary><span>Businesses</span><span class="app-switch-caret">▾</span></summary>
-      <nav class="app-switch-menu">
-        <a href="/"><span>Overview</span><small>Camps + businesses home</small></a>
-        <a href="/hq/"><span>HQ</span><small>Finances, profit, cash flow</small></a>
-        <a href="/camp-hub/?location=portugal"><span>Camp hub</span><small>Managers' float ledger</small></a>
-        <a href="/partners/"><span>Partners</span><small>Partner P&amp;L + statements</small></a>
-      </nav>
-    </details>
-    <details class="app-switch loc-switch">
-      <summary><span>Wild Wednesday</span><span class="app-switch-caret">▾</span></summary>
-      <nav class="app-switch-menu">
-        <a href="/wild/" class="is-current"><span>Wild Wednesday</span><small>Weekly party · Costa da Caparica</small></a>
-        <a href="/suk/"><span>The Suk</span><small>Manjar restaurant</small></a>
-      </nav>
-    </details>
-  </div>
-  <div class="nav-tabs">
-    <button class="ntab active" data-page="overview" onclick="showPage('overview')">Overview</button>
-    <button class="ntab" data-page="night" onclick="showPage('night')">Close night</button>
-    <button class="ntab" data-page="ledger" onclick="showPage('ledger')">Ledger</button>
-  </div>
-  <div class="nav-actions">
-    <span class="user-chip" id="userChip">—</span>
-    <a class="nav-action-btn" href="/hq/" id="hqBtn" style="display:none">HQ</a>
-  </div>
-</nav>
+<nav class="app-nav" id="appNav"></nav>
 
 <!-- ═══════════ OVERVIEW ═══════════ -->
 <div class="page active" id="page-overview">
@@ -169,9 +120,10 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.4"></script>
 <script src="/supabase-config.js"></script>
 <script src="/owner-config.js"></script>
-<script src="/lib/business-shell.js"></script>
+<script src="/lib/app-shell.js"></script>
 <script src="/lib/business-pnl.js"></script>
 <script>
+AppShell.mount('appNav', { app:'wild', title:'Wild Wednesday', tabs:[{ id:'overview', label:'Overview', active:true }, { id:'night', label:'Close night' }, { id:'ledger', label:'Ledger' }], location:{ label:'Wild Wednesday', items:[{ href:'/wild/', label:'Wild Wednesday', sub:'Weekly party · Costa da Caparica', current:true }, { href:'/suk/', label:'The Suk', sub:'Manjar Lda · restaurant + catering', current:false }] }, actions:'<a class="nav-action-btn" href="/hq/" id="hqBtn" style="display:none">HQ</a>' });
 const cfg = window.__SUPABASE_CONFIG || {};
 const sb = window.supabase.createClient(cfg.url, cfg.anonKey);
 
@@ -208,9 +160,8 @@ function showPage(name){
 
 // ── Boot ─────────────────────────────────────────────────────────
 async function boot(){
-  BusinessShell.mountLogo('gotaLogo');
   const { data:{ user } } = await sb.auth.getUser();
-  if (!user) { document.body.innerHTML = BusinessShell.splash('Sign in required', "Open the Gota d'Água hub, sign in, then reopen this page."); return; }
+  if (!user) { document.body.innerHTML = AppShell.splash('Sign in required', "Open the Gota d'Água hub, sign in, then reopen this page."); return; }
   try {
     const { data } = await sb.from('platform_profiles').select('full_name,email,platform_role').eq('id', user.id).maybeSingle();
     $('userChip').textContent = data?.full_name || data?.email || user.email || 'you';
@@ -218,11 +169,11 @@ async function boot(){
     if (owners.has(String(user.email || '').toLowerCase()) || String(data?.platform_role || '').toLowerCase() === 'super_admin') { CAN_EDIT = true; $('hqBtn').style.display = ''; }
   } catch { $('userChip').textContent = user.email || 'you'; }
   const { data: loc } = await sb.from('locations').select('id, slug, name').eq('slug', SLUG).maybeSingle();
-  if (!loc) { document.body.innerHTML = BusinessShell.splash('No access', "Your account isn't provisioned for Wild Wednesday. Ask Miguel to add you in Settings → Team access."); return; }
+  if (!loc) { document.body.innerHTML = AppShell.splash('No access', "Your account isn't provisioned for Wild Wednesday. Ask Miguel to add you in Settings → Team access."); return; }
   LOCATION_ID = loc.id;
   if (!CAN_EDIT) {
     const { data: mem } = await sb.from('workspace_memberships').select('can_view, can_edit, workspaces!inner(slug)').eq('user_id', user.id).eq('active', true).eq('workspaces.slug', SLUG).maybeSingle();
-    if (!mem || !mem.can_view) { document.body.innerHTML = BusinessShell.splash('No access', 'Wild Wednesday is not in your allowed areas. Ask Miguel to add it in Settings → Team access.'); return; }
+    if (!mem || !mem.can_view) { document.body.innerHTML = AppShell.splash('No access', 'Wild Wednesday is not in your allowed areas. Ask Miguel to add it in Settings → Team access.'); return; }
     CAN_EDIT = !!mem.can_edit;
   }
   if (!CAN_EDIT) { $('saveNightBtn').disabled = true; $('commBtn').disabled = true; $('nightStatus').textContent = 'Read only — ask Miguel for edit access to close nights.'; }
@@ -390,7 +341,7 @@ async function saveCommission(){
 }
 function renderCommissions(){
   const rows = ROWS.filter(r => r.category === CAT.commission).sort((a, b) => a.entry_date < b.entry_date ? 1 : -1);
-  $('commList').innerHTML = rows.length ? `<table><thead><tr><th>Date</th><th>Description</th><th>Paid</th><th class="r">Amount</th></tr></thead><tbody>${rows.map(r => `<tr><td>${r.entry_date}</td><td>${esc(r.description)}</td><td>${esc(r.payment_method || 'Cash')}</td><td class="r"><b>${eur(r.amount_eur)}</b></td></tr>`).join('')}</tbody></table>` : '<div class="hint">No commissions logged.</div>';
+  $('commList').innerHTML = rows.length ? `<div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Description</th><th>Paid</th><th class="r">Amount</th></tr></thead><tbody>${rows.map(r => `<tr><td>${r.entry_date}</td><td>${esc(r.description)}</td><td>${esc(r.payment_method || 'Cash')}</td><td class="r"><b>${eur(r.amount_eur)}</b></td></tr>`).join('')}</tbody></table></div>` : '<div class="hint">No commissions logged.</div>';
 }
 
 // ── Overview ─────────────────────────────────────────────────────

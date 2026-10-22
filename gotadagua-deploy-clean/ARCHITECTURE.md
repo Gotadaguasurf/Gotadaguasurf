@@ -37,6 +37,10 @@ Gmail API (shared mailbox groups@gotadaguasurf.com)
 | `/partners` | Partner commissions tracking | Miguel |
 | `/prices` | Pricing catalog per location (tours, transfers, accommodation grid) | Miguel + managers |
 | `/instructors` | Instructor hours/payroll helper | Miguel |
+| `/wild` | Wild Wednesday (weekly party): close the night, season P&L, ledger | Miguel + Max |
+| `/suk` | The Suk (Manjar Lda restaurant + catering): BCP statement, one expense line per debit, missing PDFs, Water ↔ Manjar | Miguel |
+
+**One shell for every page (22 Oct 2026):** `lib/app-shell.css` is the design system (tokens, `.app-nav` header, cards, KPIs, scoped tables `.tbl-wrap table`/`table.tbl`, badges, buttons, fields, modal, toast, splash) and `lib/app-shell.js` holds the single app registry (`APPS`) plus `AppShell.mount(el, {app, tabs, location, actions})`, `AppShell.menu()`, `mountMenus()` (fills every `<nav class="app-switch-menu" data-app-menu>`), `setTab`, `toast`, `splash`, helpers. HQ, camp-hub, wild, suk, surf-school and instructors mount the shared nav; hub, prices, partners and CRM still keep their own header markup but take the menu from the registry. `business-shell.css/.js` are aliases. Rule: every page loads `/lib/app-shell.css` BEFORE its own `<style>` and `/lib/app-shell.js` in `<head>` (the mount script runs inline right after the `<nav id="appNav">`).
 
 **Locations** (slug → currency): `sri-lanka` LKR · `morocco` MAD · `portugal`
 EUR · `junior-camp` EUR · `surf-school` EUR. Currency is **pinned in JS**
@@ -105,8 +109,12 @@ Movements (LK).
 |---|---|---|
 | `gmail-sync-5min` | */5 min | inbox pull + reply/bounce/unsub detection |
 | `email-dispatch-5min` | */5 min | drip campaign sender |
-| daily backup | daily | `daily-backup` |
-| weekly digest | weekly | `hq-weekly-digest` |
+| `gotadagua_daily_backup` | 03:00 UTC | `daily-backup` (since 22 Oct 2026 also hq_invoices, hq_bank_movements, categories, Drive folders, partner invoices) |
+| `drive-sync-4x` | 07,12,17,21 h | `drive-sync` — **has never run**: the cron command still carries the placeholder secret (401 on every call). To be rebuilt in wave 3 of docs/PLANO-interface-e-automacao.md |
+| `run-sri-lanka-month-end` | 28–31 18:25 | `run-month-end` — same placeholder-secret problem, never ran |
+| weekly digest | not scheduled | `hq-weekly-digest` (preview only from the HQ) |
+
+The duplicate `gmail-sync-10min` job was removed on 22 Oct 2026.
 
 ## Development workflow
 

@@ -9,56 +9,22 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Outfit:wght@400;500;600;700;800&family=DM+Mono:wght@500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/lib/business-shell.css">
+<link rel="stylesheet" href="/lib/app-shell.css">
 <style>
 .mx td.r.neg{color:var(--red)}
 .mx tr.group td{background:#f6f9fc;font-size:10px;text-transform:uppercase;letter-spacing:.1em;font-weight:800;color:var(--muted);padding:7px 13px}
 .mx tr.sum td{font-weight:800;border-top:2px solid var(--navy)}
 .mx tr.result td{color:var(--green)}.mx tr.result td.neg{color:var(--red)}
 .mx td.total{font-weight:700;color:var(--navy)}
-.dim{color:#c3cdd8}
 .catsel{border:1px solid var(--border);border-radius:8px;padding:4px 6px;font-size:12px;background:#fff;color:var(--ink);max-width:170px}
 .catsel.todo{border-color:var(--amber-border);background:var(--amber-bg);color:var(--amber);font-weight:700}
 .dropzone{border:2px dashed var(--border);border-radius:12px;padding:16px;text-align:center;color:var(--muted);font-size:13px;cursor:pointer;background:#fff}
 .dropzone:hover{border-color:var(--ocean);color:var(--navy)}
-.kpi-value.pos{color:var(--green)}.kpi-value.neg{color:var(--red)}
 .search{border:1px solid var(--border);border-radius:20px;padding:7px 12px;font-size:12px;min-width:220px}
-tr.click{cursor:pointer}
 </style>
 </head>
 <body>
-<nav>
-  <div class="nav-logo">
-    <a class="nav-home" href="/"><div class="nav-logo-mark" id="gotaLogo"></div></a>
-    <details class="app-switch">
-      <summary><span>Businesses</span><span class="app-switch-caret">▾</span></summary>
-      <nav class="app-switch-menu">
-        <a href="/"><span>Overview</span><small>Camps + businesses home</small></a>
-        <a href="/hq/"><span>HQ</span><small>Finances, profit, cash flow</small></a>
-        <a href="/camp-hub/?location=portugal"><span>Camp hub</span><small>Managers' float ledger</small></a>
-        <a href="/partners/"><span>Partners</span><small>Partner P&amp;L + statements</small></a>
-      </nav>
-    </details>
-    <details class="app-switch loc-switch">
-      <summary><span>The Suk</span><span class="app-switch-caret">▾</span></summary>
-      <nav class="app-switch-menu">
-        <a href="/wild/"><span>Wild Wednesday</span><small>Weekly party · Costa da Caparica</small></a>
-        <a href="/suk/" class="is-current"><span>The Suk</span><small>Manjar Lda · restaurant</small></a>
-      </nav>
-    </details>
-  </div>
-  <div class="nav-tabs">
-    <button class="ntab active" data-page="overview" onclick="showPage('overview')">Overview</button>
-    <button class="ntab" data-page="invoices" onclick="showPage('invoices')">Expenses</button>
-    <button class="ntab" data-page="bank" onclick="showPage('bank')">Bank</button>
-    <button class="ntab" data-page="missing" onclick="showPage('missing')">Missing PDFs</button>
-    <button class="ntab" data-page="water" onclick="showPage('water')">Water ↔ Manjar</button>
-  </div>
-  <div class="nav-actions">
-    <span class="user-chip" id="userChip">—</span>
-    <a class="nav-action-btn" href="/hq/" id="hqBtn" style="display:none">HQ</a>
-  </div>
-</nav>
+<nav class="app-nav" id="appNav"></nav>
 
 <!-- ═══════════ OVERVIEW ═══════════ -->
 <div class="page active" id="page-overview">
@@ -151,10 +117,11 @@ tr.click{cursor:pointer}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.4"></script>
 <script src="/supabase-config.js"></script>
 <script src="/owner-config.js"></script>
-<script src="/lib/business-shell.js"></script>
+<script src="/lib/app-shell.js"></script>
 <script src="/lib/business-pnl.js"></script>
 <script src="/lib/expense-form.js"></script>
 <script>
+AppShell.mount('appNav', { app:'suk', title:'The Suk', tabs:[{ id:'overview', label:'Overview', active:true }, { id:'invoices', label:'Expenses' }, { id:'bank', label:'Bank' }, { id:'missing', label:'Missing PDFs' }, { id:'water', label:'Water ↔ Manjar' }], location:{ label:'The Suk', items:[{ href:'/wild/', label:'Wild Wednesday', sub:'Weekly party · Costa da Caparica', current:false }, { href:'/suk/', label:'The Suk', sub:'Manjar Lda · restaurant + catering', current:true }] }, actions:'<a class="nav-action-btn" href="/hq/" id="hqBtn" style="display:none">HQ</a>' });
 const cfg = window.__SUPABASE_CONFIG || {};
 const sb = window.supabase.createClient(cfg.url, cfg.anonKey);
 const SLUG = 'the-suk', COMPANY = 'manjar', BANK = 'bcp';
@@ -206,9 +173,8 @@ const guessCategory = (rubric) => ({ 'Compras (comida)':'Food', 'Bebidas':'Drink
 
 // ── Boot ─────────────────────────────────────────────────────────
 async function boot(){
-  BusinessShell.mountLogo('gotaLogo');
   const { data:{ user } } = await sb.auth.getUser();
-  if (!user) { document.body.innerHTML = BusinessShell.splash('Sign in required', "Open the Gota d'Água hub, sign in, then reopen this page."); return; }
+  if (!user) { document.body.innerHTML = AppShell.splash('Sign in required', "Open the Gota d'Água hub, sign in, then reopen this page."); return; }
   USER = user;
   let allowed = false;
   try {
@@ -219,10 +185,10 @@ async function boot(){
     if (allowed) { $('hqBtn').style.display = ''; CAN_EDIT = true; }
   } catch { $('userChip').textContent = user.email || 'you'; }
   const { data: loc } = await sb.from('locations').select('id, slug, name').eq('slug', SLUG).maybeSingle();
-  if (!loc) { document.body.innerHTML = BusinessShell.splash('No access', 'The Suk is not set up for your account yet. Ask Miguel to add it in Settings → Team access.'); return; }
+  if (!loc) { document.body.innerHTML = AppShell.splash('No access', 'The Suk is not set up for your account yet. Ask Miguel to add it in Settings → Team access.'); return; }
   if (!allowed) {
     const { data: mem } = await sb.from('workspace_memberships').select('can_view, can_edit, workspaces!inner(slug)').eq('user_id', user.id).eq('active', true).eq('workspaces.slug', SLUG).maybeSingle();
-    if (!mem || !mem.can_view) { document.body.innerHTML = BusinessShell.splash('No access', 'The Suk is not in your allowed areas. Ask Miguel to add it in Settings → Team access.'); return; }
+    if (!mem || !mem.can_view) { document.body.innerHTML = AppShell.splash('No access', 'The Suk is not in your allowed areas. Ask Miguel to add it in Settings → Team access.'); return; }
     CAN_EDIT = !!mem.can_edit;
   }
   if (!CAN_EDIT) { $('importBox').style.display = 'none'; $('addInvBtn').style.display = 'none'; }

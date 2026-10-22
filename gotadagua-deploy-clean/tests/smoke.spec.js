@@ -1433,7 +1433,7 @@ test('hq: Fecho do mês tab — what lacks an invoice, bank debits with no row, 
   // "Lançar" jumps to Expenses with date, amount and a supplier guess filled in.
   await page.evaluate(() => fechoLaunch('bk1'));
   await page.waitForFunction(() => document.querySelector('#inv_amount')?.value === '274.19', null, { timeout: 5000 });
-  const form = await page.evaluate(() => ({ date: document.querySelector('#inv_date').value, company: document.querySelector('#inv_company').value, active: document.querySelector('.nav-tab.active')?.dataset.tab }));
+  const form = await page.evaluate(() => ({ date: document.querySelector('#inv_date').value, company: document.querySelector('#inv_company').value, active: document.querySelector('.ntab.active')?.dataset.tab }));
   expect(form).toMatchObject({ date: '2026-09-15', company: 'leroy merlin cova piedade', active: 'invoices' });
   expect(errs).toEqual([]);
 });

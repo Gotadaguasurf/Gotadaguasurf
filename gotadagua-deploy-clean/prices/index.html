@@ -33,6 +33,7 @@
 <script src="/lib/supabase.min.js?v=6" onerror="window.__SUPABASE_SDK_FAILED=true"></script>
 <script src="/supabase-config.js?v=6" onerror="window.__SUPABASE_CFG_FAILED=true"></script>
 <script src="/owner-config.js"></script>
+<script src="/lib/app-shell.js"></script>
 <style>
 :root{
   --navy:#28394b;--navy-mid:#344d63;--ocean:#1e6fa8;--ocean-light:#3b9dd4;
@@ -72,6 +73,7 @@ header{background:var(--navy);padding:0 24px;display:flex;align-items:center;jus
 .app-switch-menu a small{font-size:11px;color:#6b8099;font-weight:500;margin-top:1px}
 .app-switch-menu a:hover{background:#edf5fb}
 .app-switch-menu a.is-current{background:#edf5fb;color:#1e6fa8}
+.app-switch-group{font-size:9px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#6b8099;padding:8px 12px 3px;border-top:1px solid #edf2f7;margin-top:4px}
 .app-switch-menu a.is-current small{color:#1e6fa8;opacity:.7}
 /* Location switcher — same shape as the app pill but a subtle amber tint so
    the two contexts (section vs location) read as distinct at a glance. */
@@ -437,15 +439,7 @@ body.view-list .drag-handle{display:none}
         <span>Prices</span>
         <span class="app-switch-caret">▾</span>
       </summary>
-      <nav class="app-switch-menu">
-        <a href="/"><span>Overview</span><small>Camps + prices home</small></a>
-        <a href="/hq/"><span>HQ</span><small>Finances, profit, cash flow</small></a>
-        <a href="/camp-hub/"><span>Camp hub</span><small>Managers' float ledger</small></a>
-        <a href="/prices/" class="is-current"><span>Prices</span><small>Catalog + packages</small></a>
-        <a href="/surf-school/"><span>Surf School</span><small>Rentals + lessons</small></a>
-        <a href="/partners/"><span>Partners</span><small>Partner P&amp;L + statements</small></a>
-        <a href="/crm/"><span>CRM</span><small>Outreach + pipeline</small></a>
-      </nav>
+      <nav class="app-switch-menu" data-app-menu="prices"></nav>
     </details>
     <details class="app-switch loc-switch" id="pricesLocSwitch">
       <summary>

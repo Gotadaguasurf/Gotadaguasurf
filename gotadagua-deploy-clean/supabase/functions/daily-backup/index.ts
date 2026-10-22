@@ -45,6 +45,18 @@ const BACKUP_TABLES = [
   'instructor_directory',
   'instructor_lessons',
   'location_state_store',
+  // Finance (HQ + The Suk): expense lines, bank statements, categories, Drive folders, recurring templates, month checks, partner invoices
+  'hq_invoices',
+  'hq_bank_movements',
+  'hq_invoice_categories',
+  'hq_companies',
+  'hq_recurring_expenses',
+  'hq_month_checks',
+  'hq_asset_income',
+  'accountant_drive_folders',
+  'partner_invoices',
+  'partner_ledger',
+  'internal_transfers',
   // Auth-adjacent metadata (does NOT include auth.users itself)
   'platform_profiles',
   'workspace_memberships',
