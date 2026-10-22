@@ -353,6 +353,9 @@ main{padding:16px;max-width:640px;margin:0 auto}
         </div>
         <div class="total-preview-breakdown" id="totalPreviewBreakdown">Pick a customer type</div>
       </div>
+      <!-- Shown when a price did not come from the Prices app (pricing_catalog)
+           and the built-in card was used instead — tells Miguel what to add. -->
+      <div class="hint" id="priceSourceNote" style="display:none;margin:-8px 0 12px;color:var(--amber);font-weight:600;line-height:1.4"></div>
 
       <div class="field">
         <label>Amount (edit for discount)</label>
@@ -500,6 +503,8 @@ const sb = window.supabase.createClient(cfg.url, cfg.anonKey);
 // State
 let LOCATION_ID = null;
 let CATALOG = [];
+let LIVE_PRICING = {};        // rental cells read from pricing_catalog (the Prices app) — the source of truth
+let PRICING_READY = false;    // true once loadCatalog() has run (ok or failed); gates the "not in catalog" note
 let ALL_RENTALS = [];
 let CURRENT_KIND = 'rental';
 let CURRENT_PAY = 'Cash';
@@ -597,6 +602,10 @@ async function boot(){
   // The rentals list is the job of this page. Prices are a nice-to-have:
   // if the catalog step fails for any reason it must not stop the list.
   try { await loadCatalog(); } catch (e) { console.warn('[SurfSchool] catalog failed', e); toast('Prices could not be loaded — using the built-in price card', 'err'); }
+  PRICING_READY = true;
+  try { recalcRentalTotal(); } catch (_e) {}
+  // Shared settings (sales commission %) — same number on every device.
+  try { await loadSettings(); } catch (e) { console.warn('[SurfSchool] settings failed', e); }
   await loadRentals();
   renderOpen();
   subscribeRealtime();
@@ -615,27 +624,29 @@ async function loadCatalog(){
   applyLivePricing();
 }
 
-// ── Live pricing overrides ───────────────────────────────────────
-// Miguel edits rental prices in /prices?location=surf-school (category
+// ── Live pricing (the source of truth) ───────────────────────────
+// Miguel maintains rental prices in /prices?location=surf-school (category
 // "Surf Pack", seeded by supabase/seed-surf-school-prices.sql). This
-// parses those rows BACK into RENTAL_PRICING cells using the seed's
-// naming convention:
+// parses those rows into LIVE_PRICING cells using the seed's naming
+// convention:
 //     "Board & Wetsuit — 2h (Standard)"        → Standard  / combo / 2H
 //     "Board — All day (Standard)"             → Standard  / Board / Full day
 //     "Board & Wetsuit — 3 days (Standard)"    → Standard  / combo / d3
 //     "Wetsuit — 1 week (Standard)"            → Standard  / Wetsuit / week
 //     "Rental — 2h (Erasmus/Student)"          → discount tier / combo / 2H
-// Per-cell override: a row that doesn't parse (renamed, new custom item)
-// is simply ignored and that cell keeps the hardcoded value — same
-// fail-safe philosophy as LOCAL_CURRENCY_PINNED in camp-hub. If the
-// fetch itself fails, the whole hardcoded matrix stands. Result: price
-// changes land without a deploy, but a broken catalog can never zero
-// out a rental.
+// A row that doesn't parse (renamed, new custom item) is simply ignored
+// and that cell falls back to the printed card (RENTAL_PRICING) — and the
+// form then says «preço de tabela — não está no catálogo» so Miguel knows
+// which row to add in Prices. If the fetch itself fails, the whole card
+// stands. Result: price changes land without a deploy, but a broken
+// catalog can never zero out a rental. (22 Oct 2026: the catalog is the
+// one source of truth; the card is only the fallback.)
 function applyLivePricing(){
   const COMBO = { 'board & wetsuit':'Board + Wetsuit', 'board':'Board', 'wetsuit':'Wetsuit', 'rental':'Board + Wetsuit' };
   const DUR   = { '1h':'1H', '2h':'2H', '3h':'3H', 'all day':'Full day', 'full day':'Full day', 'extra day':'extra', '3 days':'d3', '1 week':'week' };
   const TIER  = { 'standard':'Standard', 'erasmus/student':'Erasmus / Student', 'resident':'Resident' };
   const re = /^(Board & Wetsuit|Board|Wetsuit|Rental)\s*[—–-]\s*(1h|2h|3h|All day|Full day|Extra day|3 days|1 week)\s*\((Standard|Erasmus\s*\/\s*Student|Resident)\)\s*$/i;
+  const live = {};
   let applied = 0;
   CATALOG.forEach(c => {
     if (String(c.category||'').toLowerCase() !== 'surf pack') return;
@@ -646,15 +657,14 @@ function applyLivePricing(){
     const tier  = TIER[m[3].toLowerCase().replace(/\s*\/\s*/, '/')];
     const price = Number(c.sell_price);
     if (!combo || !dur || !tier || !Number.isFinite(price) || price < 0) return;
-    if (!RENTAL_PRICING[tier]) RENTAL_PRICING[tier] = {};
-    if (!RENTAL_PRICING[tier][combo]) RENTAL_PRICING[tier][combo] = {};
-    RENTAL_PRICING[tier][combo][dur] = price;
+    if (!live[tier]) live[tier] = {};
+    if (!live[tier][combo]) live[tier][combo] = {};
+    live[tier][combo][dur] = price;
     applied++;
   });
-  if (applied) {
-    console.info(`[SurfSchool] live pricing: ${applied} cells from /prices catalog`);
-    try { recalcRentalTotal(); } catch(_e){}
-  }
+  LIVE_PRICING = live;
+  if (applied) console.info(`[SurfSchool] live pricing: ${applied} cells from /prices catalog`);
+  try { recalcRentalTotal(); } catch(_e){}
 }
 
 function renderItemPicker(){
@@ -700,7 +710,9 @@ function onItemPick(){
   document.getElementById('fld_price').value = Number(opt.dataset.price || 0).toFixed(2);
   document.getElementById('curHint').textContent = (opt.dataset.cur || 'EUR') + ' · edit if you gave a discount';
 }
-// Surf School rental price matrix — the printed card of 9 Sep 2026.
+// Surf School rental price card of 9 Sep 2026 — FALLBACK ONLY. The real
+// prices come from pricing_catalog (LIVE_PRICING); a cell is read from
+// here only when the catalog has no row for it, and the form says so.
 // Same-day: 1h / 2h / Full day. Multi-day: 3 days and 1 week have their
 // own price; multiDayPrice() never charges more than the next tier up.
 // Students & Erasmus: only the combo, 2h / Full day, +€5 from 1 Jul to
@@ -742,13 +754,60 @@ const CUSTOMER_TYPE_NOTES = {
   'Erasmus / Student': 'Ask for the student / Erasmus proof to apply the student rate.'
 };
 
+// One cell of the rental matrix. Lookup order: catalog tier cell → card
+// tier cell → catalog Standard → card Standard (Standard covers any
+// (tier, combo, duration) the discount tier doesn't — e.g. Erasmus +
+// Board only). Returns { price, live, tier } or null; `live` is false
+// when the printed card was used because the catalog has no such row.
+function resolveRentalCell(customerType, combo, durationKey){
+  const tiers = customerType === 'Standard' ? ['Standard'] : [customerType, 'Standard'];
+  for (const tier of tiers) {
+    const live = LIVE_PRICING[tier]?.[combo]?.[durationKey];
+    if (typeof live === 'number') return { price: live, live: true, tier };
+    const card = RENTAL_PRICING[tier]?.[combo]?.[durationKey];
+    if (typeof card === 'number') return { price: card, live: false, tier };
+  }
+  return null;
+}
 function priceFor(customerType, combo, durationKey){
-  const tier = RENTAL_PRICING[customerType];
-  const tierPrice = tier?.[combo]?.[durationKey];
-  if (typeof tierPrice === 'number') return tierPrice;
-  // Fall back to Standard for any (tier, combo, duration) the discount
-  // table doesn't cover — e.g. Erasmus + Board only, Resident + 3H.
-  return RENTAL_PRICING.Standard[combo]?.[durationKey] ?? 0;
+  return resolveRentalCell(customerType, combo, durationKey)?.price ?? 0;
+}
+// The pricing_catalog name a cell is expected under (the seed's convention),
+// so the fallback note tells Miguel exactly which row to add in Prices.
+const CATALOG_NAME = {
+  combo: { 'Board + Wetsuit':'Board & Wetsuit', 'Board':'Board', 'Wetsuit':'Wetsuit' },
+  dur:   { '1H':'1h', '2H':'2h', '3H':'3h', 'Full day':'All day', d3:'3 days', week:'1 week', extra:'Extra day' },
+  tier:  { 'Standard':'Standard', 'Erasmus / Student':'Erasmus/Student', 'Resident':'Resident' }
+};
+function catalogNameFor(tier, combo, durationKey){
+  const comboName = (tier === 'Erasmus / Student' && combo === 'Board + Wetsuit') ? 'Rental' : (CATALOG_NAME.combo[combo] || combo);
+  return `${comboName} — ${CATALOG_NAME.dur[durationKey] || durationKey} (${CATALOG_NAME.tier[tier] || tier})`;
+}
+// Catalog names of the cells the current form reads that did NOT come
+// from pricing_catalog (empty = every price shown is live).
+function rentalFallbackNames(customerType, combo, rentalType, durationKey, days){
+  const cells = [];
+  if (rentalType === 'Multi-day') {
+    const n = Math.max(1, Number(days) || 1);
+    cells.push([customerType, combo, 'Full day']);
+    if (n >= 3) cells.push(['Standard', combo, 'd3']);
+    cells.push(['Standard', combo, 'week']);
+  } else {
+    cells.push([customerType, combo, durationKey]);
+  }
+  const names = [];
+  cells.forEach(([t, c, d]) => {
+    const r = resolveRentalCell(t, c, d);
+    if (!r || !r.live) names.push(catalogNameFor(r ? r.tier : t, c, d));
+  });
+  return [...new Set(names)];
+}
+function paintPriceSource(missingNames){
+  const el = document.getElementById('priceSourceNote');
+  if (!el) return;
+  if (!PRICING_READY || !missingNames.length) { el.style.display = 'none'; el.textContent = ''; return; }
+  el.textContent = `⚠ preço de tabela — não está no catálogo: ${missingNames.map(n => `«${n}»`).join(', ')}. Adicionar em Prices › Surf School (categoria Surf Pack).`;
+  el.style.display = '';
 }
 // Multi-day: the card prices 3 days and 1 week. For any other length,
 // charge the cheapest of: N × full day, the 3-day price plus its per-day
@@ -757,11 +816,12 @@ function priceFor(customerType, combo, durationKey){
 // more than 7 days would cost), 10 days = week + 3 × week/7.
 function multiDayPrice(customerType, combo, days){
   const n = Math.max(1, Number(days) || 1);
-  const std = RENTAL_PRICING.Standard[combo] || {};
+  const d3   = resolveRentalCell('Standard', combo, 'd3')?.price;
+  const week = resolveRentalCell('Standard', combo, 'week')?.price;
   const full = priceFor(customerType, combo, 'Full day');
   const cands = [n * full];
-  if (std.d3 && n >= 3)  cands.push(std.d3 + (n - 3) * std.d3 / 3);
-  if (std.week)          cands.push(std.week + Math.max(0, n - 7) * std.week / 7);
+  if (d3 && n >= 3)  cands.push(d3 + (n - 3) * d3 / 3);
+  if (week)          cands.push(week + Math.max(0, n - 7) * week / 7);
   return Math.round(Math.min(...cands) * 100) / 100;
 }
 function studentSummerSurcharge(customerType, combo, dateStr){
@@ -771,8 +831,8 @@ function studentSummerSurcharge(customerType, combo, dateStr){
 }
 // Legacy name — the old "extra day" rate is now the 3-day per-day rate.
 function extraDayRateFor(combo){
-  const std = RENTAL_PRICING.Standard[combo];
-  return std?.d3 ? Math.round(std.d3 / 3 * 100) / 100 : 0;
+  const d3 = resolveRentalCell('Standard', combo, 'd3')?.price;
+  return d3 ? Math.round(d3 / 3 * 100) / 100 : 0;
 }
 function updateCustomerTypeHint(){
   const hint = document.getElementById('customerTypeHint');
@@ -800,12 +860,15 @@ function recalcRentalTotal(){
   const dateStr = document.getElementById('fld_date')?.value || '';
   let total = 0;
   let breakdown = '';
+  let missing = [];
   if (CURRENT_RENTAL_TYPE === 'Multi-day') {
     const days = Math.max(1, Number(document.getElementById('fld_days')?.value) || 1);
     total = multiDayPrice(customer, combo, days);
-    const std = RENTAL_PRICING.Standard[combo] || {};
-    const tier = std.week && total === std.week + Math.max(0, days - 7) * std.week / 7 && days >= 6 ? '1 week' : (days >= 3 && std.d3 ? '3 days' : null);
+    const d3   = resolveRentalCell('Standard', combo, 'd3')?.price;
+    const week = resolveRentalCell('Standard', combo, 'week')?.price;
+    const tier = week && total === week + Math.max(0, days - 7) * week / 7 && days >= 6 ? '1 week' : (days >= 3 && d3 ? '3 days' : null);
     breakdown = `${days} day${days===1?'':'s'} · ${combo}${tier?` · ${tier} rate`:''}`;
+    missing = rentalFallbackNames(customer, combo, 'Multi-day', null, days);
   } else {
     const d = document.getElementById('fld_duration')?.value || '1H';
     total = priceFor(customer, combo, d);
@@ -813,7 +876,9 @@ function recalcRentalTotal(){
     total += sur;
     const durLabel = { '1H':'1h', '2H':'2h', 'Full day':'Full day' }[d] || d;
     breakdown = `${combo} · ${durLabel}${sur?` · +€${sur} summer (1 Jul – 31 Aug)`:''}`;
+    missing = rentalFallbackNames(customer, combo, 'Same Day', d, 1);
   }
+  paintPriceSource(missing);
   document.getElementById('fld_price').value = total.toFixed(2);
   paintTotal(total, customerRaw ? `${breakdown}<br><span style="opacity:.72">${customerRaw}</span>` : 'Pick a customer type');
 }
@@ -1091,13 +1156,46 @@ function renderOpen(){
 // ── Vendas por login (separador mensal) ─────────────────────────────
 let SALES_MONTH = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; })();
 let SALES_ROWS = [];
-const SALES_PCT_KEY = 'ss_sales_commission_pct';
+// Comissão %: até 22 Out 2026 vivia em localStorage e cada browser mostrava
+// um número diferente. Agora é uma linha da tabela surf_school_settings
+// (supabase/surf-school-settings.sql, key 'sales_commission_pct'): lê-se na
+// abertura e ao abrir o separador, grava-se quando um gestor a muda;
+// localStorage fica só como cache para o caso de a leitura falhar.
+const SETTINGS_TABLE = 'surf_school_settings';
+const SALES_PCT_KEY = 'ss_sales_commission_pct';   // localStorage cache only
+const SALES_PCT_DEFAULT = 0;
+let SALES_PCT_DB = null;                           // value from the table; null = not loaded
+let salesPctSaveTimer = null;
 const MESES_PT = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
-function salesPct(){ const v = parseFloat(localStorage.getItem(SALES_PCT_KEY)); return Number.isFinite(v) ? v : 0; }
+function salesPct(){
+  if (Number.isFinite(SALES_PCT_DB)) return SALES_PCT_DB;
+  let cached = NaN;
+  try { cached = parseFloat(localStorage.getItem(SALES_PCT_KEY)); } catch(_e){}
+  return Number.isFinite(cached) ? cached : SALES_PCT_DEFAULT;
+}
+async function loadSettings(){
+  const { data, error } = await sb.from(SETTINGS_TABLE).select('key, value').eq('key', 'sales_commission_pct');
+  if (error) { console.warn('[SurfSchool] settings load failed:', error.message); return; }
+  const row = (data || [])[0];
+  if (!row) return;
+  const v = parseFloat(row.value);
+  if (!Number.isFinite(v)) return;
+  SALES_PCT_DB = v;
+  try { localStorage.setItem(SALES_PCT_KEY, String(v)); } catch(_e){}
+}
 function salesPctChanged(){
-  const v = parseFloat(document.getElementById('salesPct')?.value);
-  localStorage.setItem(SALES_PCT_KEY, Number.isFinite(v) ? String(v) : '0');
+  const raw = parseFloat(document.getElementById('salesPct')?.value);
+  const v = Number.isFinite(raw) ? raw : 0;
+  SALES_PCT_DB = v;
+  try { localStorage.setItem(SALES_PCT_KEY, String(v)); } catch(_e){}
   renderSales();
+  clearTimeout(salesPctSaveTimer);
+  salesPctSaveTimer = setTimeout(() => saveSalesPct(v), 600);
+}
+async function saveSalesPct(v){
+  const { error } = await sb.from(SETTINGS_TABLE)
+    .upsert({ key: 'sales_commission_pct', value: v, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+  if (error) toast('Comissão não gravada: ' + error.message, 'err');
 }
 function salesShiftMonth(delta){
   const [y, m] = SALES_MONTH.split('-').map(Number);
@@ -1127,6 +1225,7 @@ function salesSummaryRows(rows, pct){
 }
 async function loadSales(){
   const box = document.getElementById('salesBox'); if (!box) return;
+  try { await loadSettings(); } catch (e) { console.warn('[SurfSchool] settings failed', e); }
   const [y, m] = SALES_MONTH.split('-').map(Number);
   document.getElementById('salesMonthLabel').textContent = `${MESES_PT[m-1]} ${y}`;
   const from = new Date(Date.UTC(y, m - 1, 1)).toISOString();
