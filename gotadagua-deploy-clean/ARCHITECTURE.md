@@ -28,17 +28,19 @@ Gmail API (shared mailbox groups@gotadaguasurf.com)
 | Path | What it is | Who uses it |
 |---|---|---|
 | `/` (root) | Login + app hub + **Settings → Team Access** (invites) | everyone |
-| `/camp-hub` | Ops per location: Overview, Camp Tab POS, Operations Ledger, Weekly P&L. Location via `?location=<slug>` | camp managers + staff |
+| `/camp-hub` | Ops per location: Overview, Camp Tab POS, Ledger (local + HQ-paid invoices, totals by month/category), Weekly P&L. Location via `?location=<slug>` | camp managers + staff |
 | `/camp-hub/camp-tab-inner.html` | The POS iframe inside camp-hub (charge guests, bar tab) | camp staff |
 | `/surf-school` | Mobile-first rentals: new rental, open boards, history | school staff |
 | `/contabilista` | Read-only page for the accountant (Goretti), opened with `?k=<token>` — no login. Per month: invoices with/without PDF, Santander debits with no expense row, Drive folder links, "visto" mark. Only `accountant_portal*` SECURITY DEFINER RPCs (`supabase/accountant-portal.sql`); tokens in `accountant_portal_tokens`; HQ 📦 panel gets links via `accountant_hq_links()` | Goretti + Miguel |
-| `/hq` | Consolidated finance: profit per location, Despesas HQ (invoices + AI extract), cash flow per company | Miguel |
+| `/hq` | Consolidated finance: Overview (profit, needs attention, result by month × location + CSV, Import bookings), Expenses, Month close (incl. «Faturas do email»), Cash flow, Investments | Miguel |
 | `/crm` | B2B outreach: contacts, pipeline, templates, **drip campaigns**, shared Gmail | Miguel + sales |
-| `/partners` | Partner commissions tracking | Miguel |
+| `/partners` | Partner commissions: who owes whom, month status, invoices, advances, statements (one page since 22 Oct 2026) | Miguel |
 | `/prices` | Pricing catalog per location (tours, transfers, accommodation grid) | Miguel + managers |
 | `/instructors` | Instructor hours/payroll helper | Miguel |
-| `/wild` | Wild Wednesday (weekly party): close the night, season P&L, ledger | Miguel + Max |
-| `/suk` | The Suk (Manjar Lda restaurant + catering): BCP statement, one expense line per debit, missing PDFs, Water ↔ Manjar | Miguel |
+| `/wild` | Wild Wednesday (weekly party): Overview (season P&L), Close night | Miguel + Max |
+| `/suk` | The Suk (Manjar Lda restaurant + catering): Overview, Expenses (with «Without PDF»), Bank · Water ↔ Manjar | Miguel |
+
+**One number, one formula (22 Oct 2026, `supabase/one-formula.sql`):** `hq_overview_rollup()` is the single source for revenue / expenses / profit per location and month (bookings realized only = Paid/Confirmed/Deposit paid; invoices not deleted, not duplicate, not Manjar, personal flagged; ledger slug resolved attributed_location → paid_from → location). `hq_doc_status(invoice)` is the single «has a document» rule (ok / isento / n/a / falta) used by the accountant view, `hq_todo`, the Month close, the Excel and the Suk. `hq_bank_unmatched_co(company, from, to)` is the single «bank debit without a line» rule (Suk uses it; Water keeps `hq_bank_unmatched`). The weekly digest reads the same rules. Never re-derive these in a page.
 
 **One shell for every page (22 Oct 2026):** `lib/app-shell.css` is the design system (tokens, `.app-nav` header, cards, KPIs, scoped tables `.tbl-wrap table`/`table.tbl`, badges, buttons, fields, modal, toast, splash) and `lib/app-shell.js` holds the single app registry (`APPS`) plus `AppShell.mount(el, {app, tabs, location, actions})`, `AppShell.menu()`, `mountMenus()` (fills every `<nav class="app-switch-menu" data-app-menu>`), `setTab`, `toast`, `splash`, helpers. HQ, camp-hub, wild, suk, surf-school and instructors mount the shared nav; hub, prices, partners and CRM still keep their own header markup but take the menu from the registry. `business-shell.css/.js` are aliases. Rule: every page loads `/lib/app-shell.css` BEFORE its own `<style>` and `/lib/app-shell.js` in `<head>` (the mount script runs inline right after the `<nav id="appNav">`).
 

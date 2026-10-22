@@ -56,9 +56,8 @@ begin
     -- lines without a document since September (salaries/taxes/benefits never need one)
     'no_pdf', (select json_agg(json_build_object('company', paying_company, 'n', n, 'sum', s)) from (
         select paying_company, count(*) n, round(coalesce(sum(amount_eur), 0)::numeric, 2) s
-          from hq_invoices
-         where deleted_at is null and drive_link is null and doc_exempt_reason is null and invoice_date >= v_since
-           and coalesce(category_name, '') not in ('Salary', 'Taxes', 'Benefits')
+          from hq_invoices i
+         where i.deleted_at is null and i.invoice_date >= v_since and public.hq_doc_status(i) = 'falta'
          group by 1) c),
     'wild_pending', (select count(*) from ledger_entries l join locations o on o.id = l.location_id
                       where o.slug = 'wild-wednesday' and l.description ilike '%[pending HQ invoice]%'),
@@ -81,9 +80,8 @@ begin
                             where pi.month_key = b.month_key and lower(p.name) = lower(b.partner_name))) e),
     'month_close', json_build_object('month', v_prev,
         'checks', (select json_agg(json_build_object('item', item, 'done', done_at is not null)) from hq_month_checks where month_key = v_prev),
-        'no_pdf', (select count(*) from hq_invoices where deleted_at is null and drive_link is null and doc_exempt_reason is null
-                     and paying_company = 'water-movements' and to_char(invoice_date, 'YYYY-MM') = v_prev
-                     and coalesce(category_name, '') not in ('Salary', 'Taxes', 'Benefits')),
+        'no_pdf', (select count(*) from hq_invoices i where i.deleted_at is null and public.hq_doc_status(i) = 'falta'
+                     and i.paying_company = 'water-movements' and to_char(i.invoice_date, 'YYYY-MM') = v_prev),
         'bank_unlinked', (select count(*) from hq_bank_movements
                            where paying_company = 'water-movements' and kind = 'expense' and amount < 0 and hq_invoice_id is null and internal_transfer_id is null
                              and to_char(movement_date, 'YYYY-MM') = v_prev and description not ilike 'LOTE TRF CRED SEPA%'

@@ -261,7 +261,7 @@ td.loc-name{font-weight:700;color:var(--navy)}
 <nav class="app-nav" id="appNav"></nav>
 <script>
 AppShell.mount('appNav', { app:'hq', tabAttr:'data-tab', tabsId:'hqNavTabs', tabsHidden:true, user:false,
-  tabs:[{ id:'overview', label:'Overview', onclick:"switchTab('overview')", active:true }, { id:'invoices', label:'Expenses', onclick:"switchTab('invoices')" }, { id:'cashflow', label:'Cash flow', onclick:"switchTab('cashflow')" }, { id:'pnl', label:'P&amp;L Report', onclick:"switchTab('pnl')" }, { id:'fecho', label:'Month close', onclick:"switchTab('fecho')" }, { id:'invest', label:'Investments', onclick:"switchTab('invest')" }],
+  tabs:[{ id:'overview', label:'Overview', onclick:"switchTab('overview')", active:true }, { id:'invoices', label:'Expenses', onclick:"switchTab('invoices')" }, { id:'cashflow', label:'Cash flow', onclick:"switchTab('cashflow')" }, { id:'fecho', label:'Month close', onclick:"switchTab('fecho')" }, { id:'invest', label:'Investments', onclick:"switchTab('invest')" }],
   actions:'<span class="user-chip" id="userBadge">…</span>' });
 </script>
 
@@ -277,21 +277,6 @@ AppShell.mount('appNav', { app:'hq', tabAttr:'data-tab', tabsId:'hqNavTabs', tab
       <button class="action-btn" onclick="closeCategoryPanel()">✕ Close</button>
     </div>
     <div id="catModalBody" class="cat-modal-body">
-      <div class="loading">Loading…</div>
-    </div>
-  </div>
-</dialog>
-
-<dialog id="importModal" class="cat-modal" style="max-width:960px">
-  <div class="cat-modal-inner">
-    <div class="cat-modal-hdr">
-      <div>
-        <div class="card-title">Import CSV</div>
-        <div class="card-hint">One-off tools — Excel history (Miguel's master) and Bookinglayer (via the hub-level import).</div>
-      </div>
-      <button class="action-btn" onclick="closeImportModal()">✕ Close</button>
-    </div>
-    <div id="importModalBody" class="cat-modal-body">
       <div class="loading">Loading…</div>
     </div>
   </div>
@@ -474,7 +459,6 @@ function render(){
     <div class="tab-pane active" id="tab-overview">${overviewTabHtml()}</div>
     <div class="tab-pane" id="tab-invoices">${invoicesTabHtml()}</div>
     <div class="tab-pane" id="tab-cashflow">${cashflowTabHtml()}</div>
-    <div class="tab-pane" id="tab-pnl">${pnlTabHtml()}</div>
     <div class="tab-pane" id="tab-fecho">${fechoTabHtml()}</div>
     <div class="tab-pane" id="tab-invest">${investTabHtml()}</div>
   `;
@@ -518,7 +502,6 @@ function switchTab(name){
   if (name === 'overview') { renderOverview(); }
   if (name === 'invoices') { renderInvoiceList(); }
   if (name === 'cashflow') { renderCashflow(); }
-  if (name === 'pnl') { renderPnl(); }
   if (name === 'fecho') { renderFecho(); }
   if (name === 'invest') { renderInvest(); }
 }
@@ -534,6 +517,7 @@ function overviewTabHtml(){
           <div class="card-title">Overview</div>
           <div class="card-hint">Revenue in green, expenses in gray, profit big and colour-coded</div>
         </div>
+        <a class="btn btn-ghost" href="/?openImport=1" title="Bookinglayer CSV → bookings per location, partners, camp hubs" style="margin-left:auto">⬆ Import bookings</a>
         <label class="period-picker" title="Filter by period">
           <span class="period-picker-lbl">Period</span>
           <select id="ov_period" onchange="renderOverview()">
@@ -619,13 +603,14 @@ async function renderOverview(){
   // its own tab, now folded into the aggregate view so the story reads top-
   // down: business profit → revenue tiles → expense tiles → who contributed.
   const locIdToSlug = new Map(LOCATIONS.map(l => [l.id, l.slug]));
-  const attribOf = (r) => r.attributed_location || locIdToSlug.get(r.location_id) || 'unknown';
+  // the rollup (supabase/one-formula.sql) resolves attributed_location → paid_from → location; same slug everywhere
+  const attribOf = (r) => r.slug || r.attributed_location || locIdToSlug.get(r.location_id) || 'unknown';
   const byLoc = {};
   const ensureLoc = (key) => { if (!byLoc[key]) byLoc[key] = {slug:key, blRev:0, localRev:0, expenses:0, hqExpenses:0}; return byLoc[key]; };
   HQ_LOCATIONS.forEach(l => ensureLoc(l.slug));
 
   bkRows.forEach(r => {
-    const slug = locNameToSlug(r.location);
+    const slug = r.slug || locNameToSlug(r.location);
     if (!slug) return;
     ensureLoc(slug).blRev += Number(r.net_amount ?? r.total ?? 0);
   });
@@ -685,32 +670,14 @@ async function renderOverview(){
 
   // Health check — cheap counts + a fetch of the two tiny side tables so
   // the chip strip can flag what needs Miguel's attention right now.
-  const [reviewRes, dupRes, recurRes, transfersAll] = await Promise.all([
+  const [reviewRes, dupRes, recurRes] = await Promise.all([
     sb.from('hq_invoices').select('id', { count:'exact', head:true }).eq('needs_review', true).is('deleted_at', null).neq('paying_company', NOT_HQ_COMPANY),
     sb.from('hq_invoices').select('id', { count:'exact', head:true }).eq('is_duplicate', true).is('deleted_at', null).neq('paying_company', NOT_HQ_COMPANY),
     sb.from('hq_recurring_expenses').select('id, active, day_of_month, last_created_on').eq('active', true),
-    fetchAllPaged(() => sb.from('internal_transfers').select('from_company, to_company, amount_eur'))
   ]);
   const reviewCount = reviewRes.count || 0;
   const dupCount    = dupRes.count    || 0;
   const recDue      = (recurRes.data || []).filter(isRecurringDue).length;
-  // Inter-company net: any surviving pair with |amount| > €1 is unreconciled.
-  const pairSums = {};
-  (transfersAll || []).forEach(t => {
-    if (t.from_company && t.to_company && t.from_company !== t.to_company) {
-      const k = `${t.from_company}|${t.to_company}`;
-      pairSums[k] = (pairSums[k] || 0) + Number(t.amount_eur || 0);
-    }
-  });
-  let interCoCount = 0;
-  const seenPair = new Set();
-  for (const k of Object.keys(pairSums)) {
-    const [from, to] = k.split('|');
-    const rev = `${to}|${from}`;
-    if (seenPair.has(rev)) continue;
-    seenPair.add(k);
-    if (Math.abs((pairSums[k]||0) - (pairSums[rev]||0)) > 1) interCoCount++;
-  }
 
   // Period-over-period delta for the hero. Only meaningful when a specific
   // YYYY-MM is picked; All-time has nothing to compare against.
@@ -740,7 +707,6 @@ async function renderOverview(){
   if (reviewCount)  healthChips.push({label:`${reviewCount} to review`,        onclick:"goToInvoicesFilter('review')"});
   if (dupCount)     healthChips.push({label:`${dupCount} duplicates`,          onclick:"goToInvoicesFilter('duplicate')"});
   if (recDue)       healthChips.push({label:`${recDue} recurring due`,         onclick:"openRecurringPanel()"});
-  if (interCoCount) healthChips.push({label:`${interCoCount} inter-co unreconciled`, onclick:"switchTab('cashflow')"});
 
   body.innerHTML = `
     <div class="hero-profit ${businessProfit>=0?'pos':'neg'}">
@@ -850,6 +816,18 @@ async function renderOverview(){
         </tr>
       </tbody>
     </table></div>
+
+    <details class="card" style="padding:14px 18px;margin-top:18px" ontoggle="if(this.open) renderPnl()">
+      <summary style="font-weight:800;cursor:pointer">Result by month and location <span class="card-hint">bookings net + operations − local expenses − HQ invoices · one column per location · CSV</span></summary>
+      <div style="display:flex;gap:8px;align-items:center;margin:10px 0">
+        <select id="pnl_period" onchange="renderPnl()" style="width:auto"><option value="all">All months</option></select>
+        <button class="btn btn-ghost" onclick="exportPnlCsv()">⬇ Export CSV</button>
+      </div>
+      <div id="pnlGrid" style="overflow-x:auto"></div>
+      <div id="pnlNote" style="font-size:11px;color:var(--muted);margin-top:10px"></div>
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin:18px 0 8px">Result by month</div>
+      <div id="pnlMonthly" style="overflow-x:auto"></div>
+    </details>
 
     ${trendData.length > 1 ? `
       <div class="section-lbl">Monthly trend · business profit</div>
@@ -1198,9 +1176,7 @@ function invoicesTabHtml(){
             <details class="hq-menu">
               <summary class="btn btn-ghost" style="padding:8px 14px;font-size:12px;list-style:none">Mais ▾</summary>
               <div class="hq-menu-list">
-                <button onclick="openImportModal()">⬆ Import CSV</button>
                 <button onclick="exportInvoicesCsv()">⬇ Export CSV</button>
-                <button onclick="openAccountantPanel()">📦 Pacote contabilista</button>
                 <button onclick="openRecurringPanel()">⏰ Recurring</button>
                 <button onclick="openCategoryPanel()">⚙ Categories</button>
               </div>
@@ -2239,27 +2215,6 @@ function closeCategoryPanel(){
 // ─── Excel/CSV file picker for the Import modal ───────────────────────
 // Miguel: "eu quero so importar um ficheiro" — file picker + drag-drop is
 // the primary path now. Textarea kept behind a <details> as fallback.
-function loadExcelFile(file){
-  if (!file) return;
-  const picked = $('excelFilePicked');
-  if (picked) {
-    picked.textContent = `✓ ${file.name} (${(file.size/1024).toFixed(1)} KB) — running preview…`;
-    picked.style.display = '';
-  }
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    const txt = String(e.target.result || '');
-    const box = $('excelBox');
-    if (box) box.value = txt;
-    // Auto-preview so the user immediately sees the row counts + errors.
-    previewExcel();
-    if (picked) picked.textContent = `✓ ${file.name} (${(file.size/1024).toFixed(1)} KB)`;
-  };
-  reader.onerror = () => {
-    if (picked) { picked.textContent = `✗ Could not read ${file.name}`; picked.style.color = 'var(--red)'; }
-  };
-  reader.readAsText(file);
-}
 
 function clearExcelImport(){
   const box = $('excelBox');       if (box) box.value = '';
@@ -2271,39 +2226,11 @@ function clearExcelImport(){
 
 // Drag-drop wiring only — click is handled natively via <label for>.
 // Called every time the import modal opens (drop zone is re-created).
-function wireExcelDropZone(){
-  const drop = $('excelDrop');
-  if (!drop) return;
-  ['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, (e) => {
-    e.preventDefault(); e.stopPropagation();
-    drop.style.borderColor = 'var(--ocean)';
-    drop.style.background  = 'var(--foam)';
-  }));
-  ['dragleave','drop'].forEach(ev => drop.addEventListener(ev, (e) => {
-    e.preventDefault(); e.stopPropagation();
-    drop.style.borderColor = '';
-    drop.style.background  = '';
-  }));
-  drop.addEventListener('drop', (e) => {
-    const f = e.dataTransfer.files?.[0];
-    if (f) loadExcelFile(f);
-  });
-}
 
 // ─── Import CSV modal — hosts the old Import tab content ──────────────
 // Miguel: "por que na realidade eu so vou usar agora depois vou sempre
 // usar invoices para arrastar" — bulk PDF drop is the daily flow, CSV
 // import is a rare setup step. So it lives behind a button now.
-function openImportModal(){
-  const modal = $('importModal');
-  if (!modal) return;
-  const body = $('importModalBody');
-  if (body) body.innerHTML = importTabHtml();
-  modal.showModal();
-  // Attach drag-drop + click listeners AFTER the drop zone lands in the DOM.
-  wireExcelDropZone();
-}
-
 // ═══════════════════════════════════════════════════════════════════════
 //   Accountant pack — one Excel per period
 //
@@ -2351,8 +2278,20 @@ function accPeriod(kind, value){
   return { from: `${y}-${mm}-01`, to: `${y}-${mm}-${String(last).padStart(2,'0')}`, label: `${MESES_LONGO[m-1]} ${y}`, slug: `${y}-${mm}` };
 }
 
+// One rule for «has a document» — identical to public.hq_doc_status() (supabase/one-formula.sql):
+// ok (PDF) · isento (no document exists: doc_exempt_reason or «[sem fatura» note) · falta
+function docStatus(r){
+  if (r.drive_link) return 'ok';
+  if (r.doc_exempt_reason) return 'isento';
+  if (/\[sem fatura/i.test(String(r.notes||''))) return 'isento';
+  if (accNoInvoice(r.company)) return 'isento';   // suppliers that never issue one (ACC_NO_INVOICE — same list in hq_doc_status)
+  // (Water: payroll, instructor receipts and tax forms all have a document — no 'n/a' here; Manjar's salaries are 'n/a' on /suk/)
+  return 'falta';
+}
 function accEstado(r){
-  if (!r.drive_link) return 'SEM DOCUMENTO';
+  const s = docStatus(r);
+  if (s === 'falta') return 'SEM DOCUMENTO';
+  if (s !== 'ok') return 'ISENTO';
   return r.needs_review ? 'A REVER' : 'OK';
 }
 
@@ -2425,7 +2364,7 @@ function buildAccountantSheets({ invoices, transfers, bank, period, partnerInvoi
     links: list.map((r,i) => r.drive_link ? { r: i+1, c: 11, url: r.drive_link } : null).filter(Boolean),
     totalCol: 7,
   });
-  const missing = inv.filter(r => !r.drive_link);
+  const missing = inv.filter(r => docStatus(r) === 'falta');
   const review  = inv.filter(r => r.drive_link && r.needs_review);
   const sum = (list, f) => Math.round(list.reduce((s,r) => s + Number(f(r)||0), 0) * 100) / 100;
   const bankList = (bank||[]).slice().sort((a,b) => String(a.movement_date).localeCompare(String(b.movement_date)));
@@ -2444,7 +2383,7 @@ function buildAccountantSheets({ invoices, transfers, bank, period, partnerInvoi
   const fWater = folderUrl(monthKey ? folderOf('water-movements', monthKey) : folderOf('water-movements', '*'));
   const fPartners = folderUrl(folderOf('partners', '*'));
   // Checklist: primeiro o que falta (maior valor primeiro), depois o que já tem.
-  const temFatura = (r) => r.drive_link ? 'Sim' : ((accNoInvoice(r.company) || /\[sem fatura/i.test(String(r.notes||''))) ? 'Não existe' : 'Não');
+  const temFatura = (r) => { const s = docStatus(r); return s === 'ok' ? 'Sim' : s === 'falta' ? 'Não' : 'Não existe'; };
   const ordem = { 'Não': 0, 'Não existe': 1, 'Sim': 2 };
   const check = inv.slice().sort((a,b) => ordem[temFatura(a)] - ordem[temFatura(b)] || (a.drive_link ? String(a.invoice_date).localeCompare(String(b.invoice_date)) : Number(b.amount_eur||0) - Number(a.amount_eur||0)));
   const checklist = {
@@ -2738,7 +2677,7 @@ async function fechoPropagateLinks(){
   }
   return groups.length;
 }
-function fechoNoInvoice(r){ return !r.drive_link && (accNoInvoice(r.company) || /\[sem fatura/i.test(String(r.notes||''))); }
+function fechoNoInvoice(r){ const s = docStatus(r); return s === 'isento' || s === 'n/a'; }
 
 async function renderFecho(){
   renderFechoMail();
@@ -2750,7 +2689,7 @@ async function renderFecho(){
   try {
     const [rows, folders, bank, checks] = await Promise.all([
       fetchAllPaged(() => sb.from('hq_invoices')
-        .select('id, invoice_date, company, amount_eur, category_name, location_slug, invoice_number, drive_link, needs_review, notes, paying_company, is_duplicate')
+        .select('id, invoice_date, company, amount_eur, category_name, location_slug, invoice_number, drive_link, needs_review, notes, paying_company, is_duplicate, doc_exempt_reason')
         .is('deleted_at', null).gte('invoice_date', period.from).lte('invoice_date', period.to)
         .order('invoice_date', { ascending:true }).order('id', { ascending:true })),
       sb.from('accountant_drive_folders').select('company, month_key, folder_id').in('month_key', [month, '*']).then(({ data, error }) => { if (error) throw error; return data || []; }),
@@ -2843,6 +2782,7 @@ function fechoPaint(){
       <div style="display:flex;gap:8px;align-items:center;margin:10px 0 6px">
         <input id="fecho_filter" type="search" placeholder="Filter by supplier, category or amount…" value="${esc(FECHO.filter||'')}" oninput="FECHO.filter=this.value;fechoPaintAll()" style="flex:1;max-width:360px;padding:7px 10px;border-radius:8px;border:1px solid var(--border,#d8dee6);font-size:13px">
         <span class="card-hint" id="fecho_all_count"></span>
+        <button class="btn btn-ghost" style="margin-left:auto" onclick="goToMonthExpenses('${month}')">Open in Expenses →</button>
       </div>
       <div id="fecho_all" style="overflow:auto"></div>
     </details>`;
@@ -2934,11 +2874,16 @@ async function fechoPasteLink(id){
   toast('fechoToast','ok','✓ Linked.');
   await renderFecho();
 }
+function goToMonthExpenses(month){
+  switchTab('invoices'); clearAllFilters();
+  const m = $('filter_month'); if (m) { m.value = month; }
+  hqPeriodo = null; renderInvoiceList();
+}
 async function fechoMarkNoInvoice(id){
   const r = fechoGroupOf(id); if (!r) return;
   if (!confirm(`${r.company} (${eur(r.amount_eur)}): mark as “no invoice exists”? It will stop counting as missing.`)) return;
   for (const p of r.parts) {
-    const { error } = await sb.from('hq_invoices').update({ notes: `${p.notes ? p.notes + ' ' : ''}[sem fatura: o fornecedor não emite — marcado a ${new Date().toISOString().slice(0,10)}]` }).eq('id', p.id);
+    const { error } = await sb.from('hq_invoices').update({ doc_exempt_reason: 'o fornecedor não emite fatura', notes: `${p.notes ? p.notes + ' ' : ''}[sem fatura: o fornecedor não emite — marcado a ${new Date().toISOString().slice(0,10)}]` }).eq('id', p.id);
     if (error) { toast('fechoToast','err','Failed: ' + (error.message || error.code)); return; }
   }
   await renderFecho();
@@ -3040,7 +2985,7 @@ async function fetchAccountantData(period){
   const monthKey = period.slug.length === 7 ? period.slug : null;
   const [invoices, transfers, bank, partnerInvoices, folders, bankUnmatched] = await Promise.all([
     fetchAllPaged(() => sb.from('hq_invoices')
-      .select('invoice_date, company, supplier_nif, invoice_number, description, amount, currency, amount_eur, category_name, location_slug, payment_type, drive_link, needs_review, notes, paying_company, is_duplicate')
+      .select('invoice_date, company, supplier_nif, invoice_number, description, amount, currency, amount_eur, category_name, location_slug, payment_type, drive_link, needs_review, notes, paying_company, is_duplicate, doc_exempt_reason')
       .is('deleted_at', null)
       .gte('invoice_date', period.from).lte('invoice_date', period.to)
       .order('invoice_date', { ascending:true }).order('id', { ascending:true })),
@@ -3478,10 +3423,6 @@ async function spawnAllDueFromBanner(){
   }
   await spawnAllDueRecurring();
   checkRecurringDueBanner();
-}
-function closeImportModal(){
-  const modal = $('importModal');
-  if (modal && modal.open) modal.close();
 }
 // Close on backdrop click. Native <dialog>::backdrop clicks bubble with
 // e.target === the dialog element itself; clicks on any child (button,
@@ -4323,462 +4264,7 @@ async function purgeInvoice(id){
 // ═══════════════════════════════════════════════════════════════════
 //   TAB 2 — IMPORT  (Bookinglayer CSV — kept from previous version)
 // ═══════════════════════════════════════════════════════════════════
-function importTabHtml(){
-  return `
-    <div class="card">
-      <div class="card-hdr">
-        <div>
-          <div class="card-title">Import Excel history · Expenses</div>
-          <div class="card-hint">Pick your master expenses CSV file (or paste the contents)</div>
-        </div>
-        <div class="card-hint">Safe: only inserts new rows, never touches existing data</div>
-      </div>
-      <div class="card-body">
-        <!-- Native <label for> means the click reliably opens the file picker
-             without any JS wiring — no click handler race with the modal
-             backdrop-close handler. Drag-drop is layered on top via JS. -->
-        <input id="excelFile" type="file" accept=".csv,.txt,text/csv" style="display:none" onchange="loadExcelFile(this.files[0])">
-        <label id="excelDrop" for="excelFile" style="display:block;border:2.5px dashed var(--border);border-radius:10px;padding:28px 20px;text-align:center;cursor:pointer;transition:border-color .18s, background .18s">
-          <div style="font-size:34px;line-height:1;margin-bottom:6px">📄</div>
-          <div style="font-size:15px;font-weight:600;color:var(--navy)">Drop your CSV here</div>
-          <div style="font-size:12px;color:var(--muted);margin-top:4px">or click anywhere in this box to choose a file — .csv / .txt</div>
-          <div id="excelFilePicked" style="font-size:12px;color:var(--green);margin-top:8px;display:none"></div>
-        </label>
-
-        <div style="margin-top:10px;text-align:center">
-          <button class="btn" onclick="document.getElementById('excelFile').click()" style="padding:10px 22px">📂 Choose CSV file</button>
-        </div>
-
-        <details style="margin-top:14px">
-          <summary style="cursor:pointer;font-size:12px;color:var(--muted)">Or paste the CSV manually…</summary>
-          <textarea id="excelBox" style="margin-top:8px" placeholder="Location,Invoice Date,Company Name,Description,Tax Reg. Num.,Amount,Currency Converter,Payment Type,Invoice Number,Category,Duplicate check
-Surfcamp PT,14/12/2025,auchan,,,€20.09,,Cash,35710152025120001/000520,Food,FALSE
-Morroco,29/12/2025,IKEA,,,€761.08,,Card,,Setup,FALSE"></textarea>
-        </details>
-
-        <div class="hint" style="margin-top:12px">
-          <b>Location</b> maps: Surfcamp PT → portugal · Morroco/Morocco → morocco · Surfschool → surf-school · Sri Lanka → sri-lanka · Junior Camp → junior-camp · General → general.<br>
-          <b>Invoice Date</b>: DD/MM/YYYY. <b>Amount</b>: <code>€2,232.07</code> or <code>2232.07</code>. <b>Currency</b>: EUR unless the Currency Converter column is filled.<br>
-          <b>Duplicate check</b>: TRUE marks the row for review (still imported). Rows already in the database (same invoice#, amount, company, date) are flagged as duplicates too.
-        </div>
-        <div class="btn-row">
-          <button class="btn" onclick="previewExcel()">Preview</button>
-          <button class="btn btn-ghost" onclick="clearExcelImport()">Clear</button>
-          <span id="excelToast"></span>
-        </div>
-        <div id="excelPreview" style="margin-top:16px"></div>
-      </div>
-    </div>
-
-  `;
-}
-
-// ═══════════════════════════════════════════════════════════════════
-//   EXCEL HISTORY IMPORT (master file with 11 columns)
-// ═══════════════════════════════════════════════════════════════════
-const EXCEL_LOCATION_MAP = {
-  'surfcamp pt':'portugal', 'surfcamppt':'portugal', 'portugal':'portugal',
-  'morocco':'morocco', 'morroco':'morocco',  // user's spelling in the sheet
-  'surfschool':'surf-school', 'surf school':'surf-school', 'surf-school':'surf-school',
-  'sri lanka':'sri-lanka', 'srilanka':'sri-lanka', 'sri-lanka':'sri-lanka',
-  'junior camp':'junior-camp', 'juniorcamp':'junior-camp', 'junior-camp':'junior-camp',
-  'kids camp':'kids-camp', 'kidscamp':'kids-camp', 'kids-camp':'kids-camp',
-  'wild wednesday':'wild-wednesday','wildwednesday':'wild-wednesday','wild-wednesday':'wild-wednesday','wild':'wild-wednesday',
-  'general':'general', 'hq':'general'
-};
-const EXCEL_CATEGORY_FIXES = {
-  'utulities':'Utilities'   // known typo
-};
-
-function parseExcelAmount(cell){
-  if (!cell) return null;
-  // Strip €, spaces, thousands commas (European "€2,232.07" uses . decimal + , thousands)
-  const s = String(cell).replace(/€/g,'').replace(/\s/g,'').replace(/,/g, (m, i, all) => {
-    // Ambiguity: comma could be decimal separator in some locales. In Miguel's sheet,
-    // format is always €X,XXX.XX so comma = thousands. Strip all commas.
-    return '';
-  });
-  const n = Number(s);
-  return isNaN(n) ? null : n;
-}
-
-function parseExcelDate(cell){
-  // Expected DD/MM/YYYY. Return YYYY-MM-DD or null.
-  const s = String(cell||'').trim();
-  const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (!m) return null;
-  const [_, d, mo, y] = m;
-  return `${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-}
-
-// CSV row splitter that honors "quoted, cells" — the sheet exports amounts like
-// "€2,232.07" wrapped in quotes because of the internal comma.
-function splitCsvRow(line){
-  const out = [];
-  let cur = '', inQ = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (ch === '"') {
-      if (inQ && line[i+1] === '"') { cur += '"'; i++; }
-      else inQ = !inQ;
-    } else if (ch === ',' && !inQ) {
-      out.push(cur); cur = '';
-    } else {
-      cur += ch;
-    }
-  }
-  out.push(cur);
-  return out.map(c => c.trim());
-}
-
-async function previewExcel(){
-  const raw = ($('excelBox').value || '').trim();
-  const preview = $('excelPreview');
-  if (!raw) { preview.innerHTML = '<div class="status-msg status-err">Paste your CSV first</div>'; return; }
-
-  const lines = raw.split(/\r?\n/).filter(l => l.trim().length);
-  if (lines.length < 2) { preview.innerHTML = '<div class="status-msg status-err">Need header + at least one data row</div>'; return; }
-
-  // Normalize headers: treat underscores + dots + multi-space as single space
-  // so both Miguel's original Excel ("Invoice Date", "Tax Reg. Num.") and
-  // the pre-processed CSV ("invoice_date", "supplier_nif", "amount_eur")
-  // parse via the same detection rules.
-  const norm = (s) => String(s||'').toLowerCase().replace(/[._]+/g,' ').replace(/\s+/g,' ').trim();
-  const header = splitCsvRow(lines[0]).map(norm);
-  // findBest prefers the first exact match in the candidate list, then falls
-  // back to a substring hit. Order candidates from most-specific first
-  // (e.g. "location slug" > "location original" > bare "location").
-  const findBest = (candidates) => {
-    for (const c of candidates) {
-      const i = header.indexOf(c);
-      if (i >= 0) return i;
-    }
-    for (const c of candidates) {
-      const i = header.findIndex(h => h.includes(c));
-      if (i >= 0) return i;
-    }
-    return -1;
-  };
-
-  const idx = {
-    location:    findBest(['location slug', 'location', 'location original']),
-    date:        findBest(['invoice date', 'date']),
-    company:     findBest(['company name', 'company', 'supplier']),
-    description: findBest(['description']),
-    nif:         findBest(['supplier nif', 'tax reg num', 'tax reg number', 'nif']),
-    amount:      findBest(['amount eur', 'amount']),
-    currency:    findBest(['currency converter', 'currency']),
-    payment:     findBest(['payment type', 'payment']),
-    invnum:      findBest(['invoice number']),
-    category:    findBest(['category']),
-    dup:         findBest(['duplicate check original', 'duplicate check', 'duplicate'])
-  };
-
-  // Was the amount column the pre-normalized "amount_eur"? Then we trust it as
-  // EUR without fetching FX, regardless of the (usually absent) currency column.
-  const amountIsEur = idx.amount >= 0 && header[idx.amount] === 'amount eur';
-  // The LIMPO CSV already has the slug — when the column matched is exactly
-  // "location slug", skip the EXCEL_LOCATION_MAP lookup so we don't discard
-  // valid slugs. Otherwise use the alias map for raw names ("Surfcamp PT").
-  const locationIsSlug = idx.location >= 0 && header[idx.location] === 'location slug';
-
-  const missing = ['location','date','company','amount'].filter(k => idx[k] < 0);
-  if (missing.length) {
-    preview.innerHTML = `<div class="status-msg status-err">Header missing required columns: ${missing.join(', ')}</div>`;
-    return;
-  }
-
-  const catByName = new Map(CATEGORIES.map(c => [c.name.toLowerCase(), c]));
-  const applyCatFix = (raw) => {
-    const key = String(raw||'').trim().toLowerCase();
-    const fixed = EXCEL_CATEGORY_FIXES[key] || raw;
-    return String(fixed||'').trim();
-  };
-
-  const rows = [];
-  const errors = [];
-  const warnings = [];
-  for (let i = 1; i < lines.length; i++) {
-    const cells = splitCsvRow(lines[i]);
-    if (cells.length < 3) continue;
-    const rowNum = i + 1;
-    const rawLoc = (cells[idx.location]||'').trim();
-    const rawDate = (cells[idx.date]||'').trim();
-    const rawAmt = (cells[idx.amount]||'').trim();
-    const rawCat = idx.category >= 0 ? applyCatFix(cells[idx.category]) : '';
-
-    // Location: LIMPO passes canonical slugs already; anything else goes
-    // through the alias map. Empty → row imports with fallback 'general'
-    // + needs_review=true (Miguel's 93-row bucket to fix later).
-    let location_slug;
-    if (locationIsSlug) {
-      location_slug = rawLoc || null;
-      if (location_slug && !HQ_LOCATIONS.some(l => l.slug === location_slug)) {
-        location_slug = null;    // slug not in our known set → treat as missing
-      }
-    } else {
-      location_slug = EXCEL_LOCATION_MAP[rawLoc.toLowerCase()] || null;
-    }
-    const missingLocation = !location_slug;
-    if (missingLocation) location_slug = 'general';
-
-    const invoice_date  = parseExcelDate(rawDate);
-    const amount        = parseExcelAmount(rawAmt);
-    const category      = rawCat ? catByName.get(String(rawCat).toLowerCase()) : null;
-
-    const rowErrors = [];
-    if (!invoice_date)  rowErrors.push(`bad date "${rawDate}"`);
-    if (!amount || amount <= 0) rowErrors.push(`bad amount "${rawAmt}"`);
-
-    // Missing location or category is no longer fatal — the row still imports
-    // with needs_review=true so Miguel can filter/review + fix in bulk later.
-    const rowWarnings = [];
-    if (missingLocation && rawLoc) rowWarnings.push(`unknown location "${rawLoc}" → general`);
-    else if (missingLocation)      rowWarnings.push(`empty location → general`);
-    if (rawCat && !category)       rowWarnings.push(`unknown category "${rawCat}" → left blank`);
-    if (!rawCat)                   rowWarnings.push(`no category → left blank`);
-
-    // Currency handling: amountIsEur wins (LIMPO); otherwise fall back to
-    // the currency column if present, else default EUR.
-    const currency = amountIsEur ? 'EUR'
-                   : ((idx.currency >= 0 && cells[idx.currency]) ? String(cells[idx.currency]).trim().toUpperCase() : 'EUR');
-    const fx_rate  = currency === 'EUR' ? 1 : null;
-
-    // Miguel's own duplicate_check_original TRUE → import with is_duplicate=true
-    // AND needs_review=true so it lands flagged rather than silently in the pile.
-    const preFlaggedDup = idx.dup >= 0 && String(cells[idx.dup]||'').trim().toUpperCase() === 'TRUE';
-
-    const record = {
-      _row: rowNum,
-      _errors: rowErrors,
-      _warnings: rowWarnings,
-      location_slug,
-      paying_company: payingCompanyFor(location_slug),
-      invoice_date: invoice_date || null,
-      company: (cells[idx.company]||'').trim(),
-      description: idx.description >= 0 ? (cells[idx.description]||'').trim() || null : null,
-      supplier_nif: idx.nif >= 0 ? (cells[idx.nif]||'').trim() || null : null,
-      amount: amount || 0,
-      currency,
-      fx_rate,
-      amount_eur: currency === 'EUR' ? (amount||0) : null,
-      payment_type: idx.payment >= 0 ? mapPaymentType((cells[idx.payment]||'').trim()) : 'Other',
-      invoice_number: idx.invnum >= 0 ? (cells[idx.invnum]||'').trim() || null : null,
-      category_id: category?.id || null,
-      category_name: category?.name || rawCat || null,
-      // needs_review is ORTHOGONAL to is_duplicate: only flip it when the
-      // row itself is incomplete (missing location or missing category).
-      // Pre-flagged duplicates land with is_duplicate=true but stay clear
-      // of the review chip unless they also miss data — otherwise the
-      // "Only review" filter would be dominated by known-duplicate noise
-      // (194+ instead of the ~101 rows that actually need eyes).
-      needs_review: missingLocation || !category,
-      _preFlaggedDup: preFlaggedDup
-    };
-    if (currency !== 'EUR') rowErrors.push(`non-EUR row (${currency}) needs manual FX — skipped`);
-    rows.push(record);
-    if (rowErrors.length) errors.push({row: rowNum, errors: rowErrors, company: record.company});
-    if (rowWarnings.length && !rowErrors.length) warnings.push({row: rowNum, warnings: rowWarnings, company: record.company});
-  }
-
-  // Dedup against existing DB rows. Key: invoice_number + amount + company + date.
-  // Paginated: Supabase caps .select() at 1000 per request — without paging,
-  // dedup silently lets duplicates through once the table crosses 1000 rows.
-  const validRows = rows.filter(r => !r._errors.length);
-  const existing = await fetchAllPaged(() =>
-    sb.from('hq_invoices').select('invoice_number, amount, company, invoice_date').order('invoice_date',{ascending:false})
-  );
-  const existingKeys = new Set(existing.map(r => sigKey(r)));
-
-  const dupRows = [];
-  const newRows = [];
-  for (const r of validRows) {
-    if (existingKeys.has(sigKey(r))) dupRows.push(r);
-    else newRows.push(r);
-  }
-
-  // On the insert path we set is_duplicate=true for rows that:
-  //   a) Miguel already flagged in the sheet (duplicate_check_original TRUE), OR
-  //   b) match an existing row already in hq_invoices by signature.
-  // For (b) we also stamp duplicate_of pointing at the earlier row so the
-  // "review the flagged ones" workflow gets the pair for free.
-  //
-  // We DON'T skip either — the row imports so the count matches Miguel's
-  // sheet and so the file survives. He filters by is_duplicate afterwards
-  // to decide what to keep vs delete in bulk.
-  const existingBySig = new Map();
-  existing.forEach(r => {
-    const k = sigKey(r);
-    if (!existingBySig.has(k) && r.id) existingBySig.set(k, r.id);
-  });
-  // Intra-batch dedup: catch pairs within the CSV itself (Miguel's 98
-  // internal duplicates). The FIRST occurrence in the file lands clean;
-  // every subsequent row with the same signature flags is_duplicate=true.
-  // duplicate_of stays null for these because the target doesn't have a
-  // DB id yet — a follow-up post-import SQL can resolve them if needed.
-  const seenInBatch = new Set();
-  const importAll = validRows.map(r => {
-    const k = sigKey(r);
-    const dupAgainstDb    = existingBySig.has(k);
-    const dupInBatch      = seenInBatch.has(k);
-    seenInBatch.add(k);
-    return {
-      ...r,
-      is_duplicate: r._preFlaggedDup || dupAgainstDb || dupInBatch,
-      duplicate_of: existingBySig.get(k) || null
-    };
-  });
-  const dupCount = importAll.filter(r => r.is_duplicate).length;
-  const reviewCount = importAll.filter(r => r.needs_review).length;
-
-  window.__excelImportBuffer = importAll;
-
-  // Fetch actual IDs from existing signatures for the duplicate_of link.
-  // The existing paginated fetch above only has invoice_number/amount/company/date,
-  // not id — do a targeted lookup for signatures that actually collide.
-  const collisions = importAll.filter(r => r.is_duplicate && !r._preFlaggedDup);
-  if (collisions.length) {
-    const { data: existingIds } = await sb.from('hq_invoices')
-      .select('id, invoice_number, amount, company, invoice_date');
-    const byId = new Map();
-    (existingIds || []).forEach(r => {
-      const k = sigKey(r);
-      if (!byId.has(k)) byId.set(k, r.id);
-    });
-    importAll.forEach(r => {
-      if (r.is_duplicate && !r._preFlaggedDup) {
-        r.duplicate_of = byId.get(sigKey(r)) || null;
-      }
-    });
-  }
-
-  const nonEurCount = importAll.filter(r => r.currency !== 'EUR').length;
-
-  preview.innerHTML = `
-    <div class="summary-grid">
-      <div class="summary-box"><div class="summary-lbl">Rows parsed</div><div class="summary-val">${rows.length}</div></div>
-      <div class="summary-box" style="border-left:4px solid var(--green)"><div class="summary-lbl">Will import</div><div class="summary-val">${importAll.length}</div></div>
-      <div class="summary-box" style="border-left:4px solid var(--amber)"><div class="summary-lbl">Flagged duplicate</div><div class="summary-val">${dupCount}</div></div>
-      <div class="summary-box" style="border-left:4px solid var(--amber)"><div class="summary-lbl">Needs review</div><div class="summary-val">${reviewCount}</div></div>
-      <div class="summary-box" style="border-left:4px solid var(--red)"><div class="summary-lbl">Skipped (errors)</div><div class="summary-val">${errors.length}</div></div>
-    </div>
-
-    ${errors.length ? `
-      <div class="status-msg status-warn" style="margin-bottom:10px"><b>${errors.length} row(s) with errors — will be skipped:</b>
-        <ul style="margin-top:6px;margin-left:20px;font-weight:400;line-height:1.7">
-          ${errors.slice(0, 15).map(e => `<li>Row ${e.row} (${escapeHtml(e.company||'?')}): ${e.errors.join(' · ')}</li>`).join('')}
-          ${errors.length > 15 ? `<li>… and ${errors.length - 15} more</li>` : ''}
-        </ul>
-      </div>` : ''}
-
-    ${warnings.length ? `
-      <div class="status-msg status-warn" style="margin-bottom:14px;background:#fef9e7;color:#9a6f00"><b>${warnings.length} row(s) imported with warnings (flagged for review):</b>
-        <ul style="margin-top:6px;margin-left:20px;font-weight:400;line-height:1.5;font-size:12px">
-          ${warnings.slice(0, 8).map(w => `<li>Row ${w.row} (${escapeHtml(w.company||'?')}): ${w.warnings.join(' · ')}</li>`).join('')}
-          ${warnings.length > 8 ? `<li>… and ${warnings.length - 8} more</li>` : ''}
-        </ul>
-      </div>` : ''}
-
-    <div style="overflow-x:auto;max-height:380px;overflow-y:auto;border:1px solid var(--border);border-radius:8px">
-      <table style="min-width:900px">
-        <thead style="position:sticky;top:0"><tr>
-          <th>#</th><th>Date</th><th>Location</th><th>Company</th><th>Category</th>
-          <th class="r">Amount</th><th>Pay</th><th>Inv #</th><th>Status</th>
-        </tr></thead>
-        <tbody>
-          ${importAll.slice(0, 40).map(r => `<tr${r.is_duplicate?' style="background:#fef3c7"':''}>
-            <td>${r._row}</td><td>${r.invoice_date||'—'}</td><td>${locLabel(r.location_slug)}</td>
-            <td>${escapeHtml(r.company)}</td><td>${escapeHtml(r.category_name||'—')}</td>
-            <td class="r">${r.amount.toFixed(2)} ${r.currency}</td>
-            <td>${escapeHtml(r.payment_type||'')}</td><td style="font-family:'DM Mono',monospace;font-size:11px">${escapeHtml(r.invoice_number||'—')}</td>
-            <td>
-              ${r.is_duplicate?'<span class="chip chip-review" title="Duplicate of an existing/marked row">dup</span>':'<span class="chip chip-normal">new</span>'}
-              ${r.needs_review?'<span class="chip chip-review">review</span>':''}
-            </td>
-          </tr>`).join('')}
-          ${importAll.length > 40 ? `<tr><td colspan="9" style="text-align:center;color:var(--muted);font-style:italic">… and ${importAll.length - 40} more rows to import</td></tr>` : ''}
-        </tbody>
-      </table>
-    </div>
-
-    <div class="btn-row" style="margin-top:16px;flex-wrap:wrap">
-      <button class="btn" onclick="commitExcelImport(10)" ${importAll.length ? '' : 'disabled'} title="Insert the first 10 rows only, to verify mapping before committing the rest">🧪 Test batch (first 10)</button>
-      <button class="btn" onclick="commitExcelImport()" ${importAll.length ? '' : 'disabled'} style="background:var(--green)">Import all ${importAll.length} row(s)</button>
-      <button class="btn btn-ghost" onclick="$('excelPreview').innerHTML=''">Cancel</button>
-    </div>
-    <div class="hint" style="margin-top:8px">
-      Duplicates are <b>saved with a flag</b> (not silently dropped) — filter by <code>duplicate</code> in the list afterwards.
-      ${nonEurCount ? `<br>${nonEurCount} non-EUR row(s) will import with placeholder FX=1 — open each afterwards to set the real rate.` : ''}
-    </div>
-  `;
-}
-
-function sigKey(r){
-  const num = String(r.invoice_number||'').trim().toLowerCase();
-  const co  = String(r.company||'').trim().toLowerCase();
-  const amt = Number(r.amount||0).toFixed(2);
-  const dt  = String(r.invoice_date||'').trim();
-  return `${num}|${amt}|${co}|${dt}`;
-}
-
-function mapPaymentType(raw){
-  const s = String(raw||'').trim().toLowerCase();
-  if (s.includes('bank') || s.includes('transfer')) return 'Bank Transfer';
-  if (s.includes('card')) return 'Card';
-  if (s.includes('cash')) return 'Cash';
-  return 'Other';
-}
-
-async function commitExcelImport(limit){
-  const buffer = window.__excelImportBuffer || [];
-  if (!buffer.length) { toast('excelToast','err','Nothing to import — run Preview first'); return; }
-  // Optional limit lets the user run a small test batch first (J.4 of the
-  // spec: "primeiro um lote de teste (5–10 linhas) para confirmar mapeamento").
-  const slice = typeof limit === 'number' ? buffer.slice(0, limit) : buffer;
-  const isTest = typeof limit === 'number';
-
-  if (isTest && !confirm(`Import a test batch of ${slice.length} rows first? The remaining ${buffer.length - slice.length} will stay in the preview so you can commit them after verifying.`)) return;
-
-  // Strip internal preview-only keys and stamp created_by.
-  const clean = slice.map(r => {
-    const { _row, _errors, _warnings, _preFlaggedDup, ...rest } = r;
-    return { ...rest, created_by: CURRENT_USER?.id || null };
-  });
-
-  const BATCH = 100;
-  let inserted = 0;
-  for (let i = 0; i < clean.length; i += BATCH) {
-    const chunk = clean.slice(i, i + BATCH);
-    const { error } = await sb.from('hq_invoices').insert(chunk);
-    if (error) {
-      toast('excelToast','err',`Failed at row batch ${i}-${i+chunk.length}: ${error.message}`);
-      return;
-    }
-    inserted += chunk.length;
-  }
-  // Test batches keep the remainder in the buffer so the user can commit
-  // the rest with a second click after verifying. Full imports clear it.
-  if (isTest) {
-    window.__excelImportBuffer = buffer.slice(inserted);
-    const remaining = window.__excelImportBuffer.length;
-    toast('excelToast','ok', `Test batch: ${inserted} row(s) imported · ${remaining} remaining in buffer`);
-    // Nudge the preview so the "Import all N" button now reads the remainder.
-    $('excelPreview').insertAdjacentHTML('afterbegin',
-      `<div class="status-msg status-ok" style="margin-bottom:10px">✓ Test batch of ${inserted} imported — verify in the list below, then click <b>Import all ${remaining}</b> to commit the rest.</div>`
-    );
-  } else {
-    window.__excelImportBuffer = [];
-    toast('excelToast','ok',`Imported ${inserted} row(s)`);
-    $('excelPreview').innerHTML = `<div class="status-msg status-ok" style="margin-top:12px">Import complete · ${inserted} row(s) added to Expenses.</div>`;
-  }
-  renderInvoiceList();
-  renderOverview();
-}
-
-// Booking revenue helper — reads directly from the `bookings` table populated
-// by the hub-level CSV import. Maps location NAMES (e.g. "Morocco") to slugs
-// via LOCATIONS. Uses net_amount (gross − partner commission) so the number
-// represents what the camp actually receives.
+// (the one-off Excel importer of the 2025 master sheet was removed on 22 Oct 2026 — the sheet is retired)
 function locNameToSlug(name){
   const s = String(name||'').trim().toLowerCase();
   if (!s) return null;
@@ -4833,75 +4319,11 @@ function cashflowTabHtml(){
   return `
     <details class="add-block">
       <summary class="add-block-sum">
-        <span class="add-block-title">+ Log revenue or transfer</span>
-        <span class="add-block-hint">Non-Bookinglayer revenue · Inter-company transfers — click to expand</span>
+        <span class="add-block-title">+ Log inter-company transfer</span>
+        <span class="add-block-hint">Money moved between Water Movements, MGRP and Wave — click to expand</span>
         <span class="add-block-caret">▾</span>
       </summary>
     <div class="card" style="margin-top:14px">
-      <div class="card-hdr">
-        <div>
-          <div class="card-title">Log manual revenue</div>
-          <div class="card-hint">Revenue that doesn't come via Bookinglayer — Wild Wednesday cash/app, one-off events, etc.</div>
-        </div>
-      </div>
-      <div class="card-body">
-        <div class="form-grid">
-          <div class="field col-3">
-            <label>Location</label>
-            <select id="rev_location">${locOptions}</select>
-          </div>
-          <div class="field col-3">
-            <label>Month</label>
-            <input id="rev_month" type="month" value="${thisMonth}">
-          </div>
-          <div class="field col-3">
-            <label>Source</label>
-            <select id="rev_source">
-              <option value="cash-door">Cash at door</option>
-              <option value="app">App</option>
-              <option value="bank-transfer">Bank transfer</option>
-              <option value="other">Other</option>
-            </select>
-          </div>
-          <div class="field col-3">
-            <label>Amount</label>
-            <input id="rev_amount" type="number" step="0.01" min="0" placeholder="0.00">
-          </div>
-          <div class="field col-3">
-            <label>Currency</label>
-            <select id="rev_currency">
-              <option value="EUR">EUR</option>
-              <option value="MAD">MAD</option>
-              <option value="LKR">LKR</option>
-              <option value="USD">USD</option>
-              <option value="GBP">GBP</option>
-            </select>
-          </div>
-          <div class="field col-3">
-            <label>FX rate → EUR</label>
-            <input id="rev_fx" type="number" step="0.000001" min="0" placeholder="1.000000">
-          </div>
-          <div class="field col-3">
-            <label>Amount in EUR</label>
-            <input id="rev_amount_eur" type="number" step="0.01" min="0" readonly style="background:#f7fafd">
-          </div>
-          <div class="field col-3">
-            <label>&nbsp;</label>
-            <button class="btn" style="width:100%;height:38px" onclick="saveManualRevenue()">Save revenue</button>
-          </div>
-          <div class="field col-12">
-            <label>Notes (optional)</label>
-            <input id="rev_notes" type="text" placeholder="e.g. 3 events in July · door + app breakdown">
-          </div>
-        </div>
-        <div id="rev_toast" style="margin-top:10px"></div>
-        <div class="hint" style="margin-top:8px">
-          The row lands in <code>ledger_entries</code> (type=revenue, dated first day of the month) and flows automatically into <b>Profit per location</b> under On-site revenue.
-        </div>
-      </div>
-    </div>
-
-    <div class="card">
       <div class="card-hdr">
         <div>
           <div class="card-title">Log inter-company transfer</div>
@@ -4996,76 +4418,25 @@ function cashflowTabHtml(){
   `;
 }
 
-function pnlTabHtml(){
-  return `
-    <div class="card">
-      <div class="card-hdr" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
-        <div>
-          <div class="card-title">P&amp;L Report — all locations</div>
-          <div class="card-hint">Revenue (bookings net + operations) vs expenses (local ledger + HQ invoices). General/HQ overhead stays in its own column — no allocation.</div>
-        </div>
-        <div style="display:flex;gap:8px;align-items:center">
-          <select id="pnl_period" onchange="renderPnl()"><option value="all">All months</option></select>
-          <button class="btn" onclick="exportPnlCsv()">⬇ Export CSV</button>
-        </div>
-      </div>
-      <div class="card-body">
-        <div id="pnlGrid" style="overflow-x:auto"><div class="loading">Loading…</div></div>
-        <div id="pnlNote" style="font-size:11px;color:var(--muted);margin-top:10px"></div>
-        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin:18px 0 8px">Result by month</div>
-        <div id="pnlMonthly" style="overflow-x:auto"></div>
-      </div>
-    </div>`;
-}
-
 // ── P&L data: one aggregate map per stream, keyed slug|month ──────────────
 let __pnlAgg=null;      // {key:{revBook,revOps,expLocal,expHq}}
 let __pnlMonths=[];
 let __pnlPersonal=0;
 let __pnlLastGrid=null; // for CSV export
 async function loadPnlData(){
-  const personalCatIds = new Set(CATEGORIES.filter(c => c.is_personal).map(c => c.id));
-  const [books, ledger, invoices] = await Promise.all([
-    fetchAllPaged(() => sb.from('bookings').select('location, month_key, total, net_amount').order('check_in_on',{ascending:true})),
-    fetchAllPaged(() => sb.from('ledger_entries').select('type, amount_eur, entry_date, attributed_location, paid_from, location_id, source_kind').order('entry_date',{ascending:false})),
-    fetchAllPaged(() => sb.from('hq_invoices').select('amount_eur, location_slug, invoice_date, category_id').is('deleted_at', null).neq('paying_company', NOT_HQ_COMPANY).order('invoice_date',{ascending:false})),
-  ]);
-  const sukLocIdsPnl = new Set(LOCATIONS.filter(l => isNotHqLoc(l.slug)).map(l => l.id));
-  const ledgerHq = (ledger || []).filter(l => !sukLocIdsPnl.has(l.location_id) && !isNotHqLoc(l.attributed_location) && !isNotHqLoc(l.paid_from));
-  // Income rows from the POS often carry only paid_from / location_id —
-  // attributed_location is an expense-side convention. Resolve through
-  // the full chain so operations revenue lands on the right camp.
-  const locIdToSlug = {};
-  (LOCATIONS||[]).forEach(l => { if (l.id && l.slug) locIdToSlug[l.id] = l.slug; });
-  const ledgerSlug = (l) => l.attributed_location || l.paid_from || locIdToSlug[l.location_id] || null;
-  const agg = {}; const months = new Set(); let personal = 0;
-  const bump = (slug, month, field, v) => {
-    if (!slug || !month || !Number.isFinite(v)) return;
-    const k = slug + '|' + month;
-    (agg[k] = agg[k] || {revBook:0, revOps:0, expLocal:0, expHq:0})[field] += v;
-    months.add(month);
-  };
-  (books||[]).forEach(b => {
-    const slug = locNameToSlug(b.location);
-    const v = Number(b.net_amount != null ? b.net_amount : b.total) || 0;
-    bump(slug, b.month_key, 'revBook', v);
-  });
-  ledgerHq.filter(l => l.source_kind !== 'hq_invoice').forEach(l => {
-    const m = String(l.entry_date||'').slice(0,7);
-    const v = Number(l.amount_eur)||0;
-    // The POS and the camp-hub write type='revenue'; 'income' is the legacy value.
-    if (l.type === 'revenue' || l.type === 'income') bump(ledgerSlug(l), m, 'revOps', v);
-    else if (l.type === 'expense') bump(ledgerSlug(l), m, 'expLocal', v);
-    // transfers deliberately ignored — money moving, not made or spent
-  });
-  (invoices||[]).forEach(i => {
-    const v = Number(i.amount_eur)||0;
-    if (personalCatIds.has(i.category_id)) { personal += v; return; }
-    bump(i.location_slug || 'general', String(i.invoice_date||'').slice(0,7), 'expHq', v);
+  // One formula (supabase/one-formula.sql): the grid comes from hq_overview_rollup().pnl —
+  // bookings realized + operations revenue − local expenses − HQ invoices, per resolved location and month.
+  const { data: roll, error } = await sb.rpc('hq_overview_rollup');
+  if (error) throw error;
+  const agg = {}; const months = new Set();
+  (roll?.pnl || []).forEach(r => {
+    if (!r.slug || !r.month) return;
+    agg[r.slug + '|' + r.month] = { revBook: Number(r.rev_book||0), revOps: Number(r.rev_ops||0), expLocal: Number(r.exp_local||0), expHq: Number(r.exp_hq||0) };
+    months.add(r.month);
   });
   __pnlAgg = agg;
   __pnlMonths = [...months].sort().reverse();
-  __pnlPersonal = personal;
+  __pnlPersonal = (roll?.invoices || []).filter(r => r.personal).reduce((s, r) => s + Number(r.amount_eur || 0), 0);
 }
 async function renderPnl(){
   const grid = document.getElementById('pnlGrid');
@@ -5170,7 +4541,7 @@ async function renderCashflow(){
   if (perSel && perSel.options.length <= 1) {
     const [bkMonths, invMonths, trMonths] = await Promise.all([
       fetchAllPaged(() => sb.from('bookings').select('month_key').order('check_in_on',{ascending:false})),
-      fetchAllPaged(() => sb.from('hq_invoices').select('invoice_date').order('invoice_date',{ascending:false})),
+      fetchAllPaged(() => sb.from('hq_invoices').select('invoice_date').is('deleted_at', null).order('invoice_date',{ascending:false})),
       fetchAllPaged(() => sb.from('internal_transfers').select('transfer_date').order('transfer_date',{ascending:false}))
     ]);
     const set = new Set();
@@ -5189,7 +4560,7 @@ async function renderCashflow(){
   trBody.innerHTML = `<div class="loading">Loading…</div>`;
 
   const [invRows, transferRows, bkRows] = await Promise.all([
-    fetchAllPaged(() => sb.from('hq_invoices').select('paying_company, location_slug, amount_eur, category_id, invoice_date').neq('paying_company', NOT_HQ_COMPANY).order('invoice_date',{ascending:false})),
+    fetchAllPaged(() => sb.from('hq_invoices').select('paying_company, location_slug, amount_eur, category_id, invoice_date').is('deleted_at', null).neq('paying_company', NOT_HQ_COMPANY).order('invoice_date',{ascending:false})),
     fetchAllPaged(() => sb.from('internal_transfers').select('id, transfer_date, from_company, to_company, amount, currency, amount_eur, purpose, reference, notes').order('transfer_date',{ascending:false})),
     fetchAllPaged(() => sb.from('bookings').select('total, net_amount, month_key, location').order('check_in_on',{ascending:true}))
   ]);
@@ -5365,81 +4736,6 @@ function wireTransferForm(){
   inpFx.addEventListener('input', recalc);
   refreshFx();
 
-  // Also wire the manual revenue form that lives above the transfer one.
-  // Same behaviour — auto-fetch FX for non-EUR, recompute EUR on any edit.
-  const rCur = $('rev_currency');
-  if (rCur && !window.__revWired) {
-    window.__revWired = true;
-    const rAmt = $('rev_amount');
-    const rFx  = $('rev_fx');
-    const rEur = $('rev_amount_eur');
-    const rRecalc = () => {
-      const amt = Number(rAmt.value) || 0;
-      const fx  = Number(rFx.value) || 0;
-      rEur.value = fx > 0 ? (amt * fx).toFixed(2) : '';
-    };
-    const rRefreshFx = async () => {
-      const cur = rCur.value || 'EUR';
-      if (cur === 'EUR') { rFx.value = '1'; rRecalc(); return; }
-      try { rFx.value = (await fetchFxToEur(cur)).toFixed(6); } catch(e){}
-      rRecalc();
-    };
-    rCur.addEventListener('change', rRefreshFx);
-    rAmt.addEventListener('input', rRecalc);
-    rFx.addEventListener('input', rRecalc);
-    rRefreshFx();
-  }
-}
-
-async function saveManualRevenue(){
-  const location_slug = $('rev_location').value;
-  const month         = $('rev_month').value;   // YYYY-MM
-  const source        = $('rev_source').value;
-  const amount        = Number($('rev_amount').value) || 0;
-  const currency      = $('rev_currency').value || 'EUR';
-  const fx_rate       = Number($('rev_fx').value) || (currency==='EUR' ? 1 : null);
-  const amount_eur    = Number($('rev_amount_eur').value) || (amount * (fx_rate||1));
-  const notes         = ($('rev_notes').value||'').trim() || null;
-
-  if (!location_slug || !month || amount <= 0 || !fx_rate) {
-    toast('rev_toast','err','Fill location, month, amount and FX rate');
-    return;
-  }
-
-  // Resolve location UUID from LOCATIONS. Fresh rows created via SQL land
-  // there at boot; if the user just ran the migration, prompt to reload
-  // so LOCATIONS picks up the new wild-wednesday row.
-  const loc = LOCATIONS.find(l => l.slug === location_slug);
-  if (!loc) {
-    toast('rev_toast','err',`Location "${location_slug}" not found in the locations table. Refresh the page if you just ran the SQL.`);
-    return;
-  }
-
-  // Anchor the ledger row at the first day of the picked month so the
-  // Profit view's month filter buckets it cleanly.
-  const entry_date = `${month}-01`;
-
-  // Only include columns we've confirmed exist on ledger_entries from HQ
-  // read paths (type, amount_eur, entry_date, business_area, category,
-  // paid_from, attributed_location, location_id). Notes / amount / currency
-  // may exist too but we don't rely on them here — if the insert errors on
-  // a missing column, the message surfaces immediately in the toast.
-  const payload = {
-    location_id: loc.id,
-    type: 'revenue',
-    entry_date,
-    amount_eur,
-    business_area: 'wild',              // free-text label; groups Wild's rows
-    category: source,                   // 'cash-door' / 'app' / 'bank-transfer' / 'other'
-    attributed_location: location_slug,
-    paid_from: location_slug
-  };
-  const { error } = await sb.from('ledger_entries').insert(payload);
-  if (error) { toast('rev_toast','err','Save failed: '+error.message); return; }
-
-  toast('rev_toast','ok', `Saved ${eur(amount_eur)} for ${locLabel(location_slug)} · ${month}`);
-  ['rev_amount','rev_amount_eur','rev_notes'].forEach(id => $(id).value = '');
-  renderCashflow();   // refresh so the totals + inter-co balance reflect
 }
 
 async function saveTransfer(){

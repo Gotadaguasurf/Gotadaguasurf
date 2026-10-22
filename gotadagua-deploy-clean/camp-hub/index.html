@@ -80,25 +80,6 @@
 .ov-chip-meta b{color:var(--navy);font-weight:600;font-family:'DM Mono',monospace}
 /* Subtle filter pill — used at the very top */
 .ov-filters{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:#fff;border-radius:12px;padding:10px 14px;box-shadow:var(--sh-soft);margin-bottom:24px}
-/* Activity tab — POS audit feed. Filter bar + KPI strip + timeline. */
-.act-filters{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:#fff;border-radius:12px;padding:10px 14px;box-shadow:var(--sh-soft);margin-bottom:16px}
-.act-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:16px}
-.act-kpi{background:#fff;border-radius:12px;padding:12px 14px;box-shadow:var(--sh-soft)}
-.act-kpi-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700}
-.act-kpi-val{font-family:'DM Serif Display',serif;font-size:22px;color:var(--navy);margin-top:2px;line-height:1}
-.act-kpi-sub{font-size:11px;color:var(--muted);margin-top:3px}
-.act-feed{background:#fff;border-radius:12px;box-shadow:var(--sh-soft);overflow:hidden}
-.act-row{display:grid;grid-template-columns:36px 1fr auto;gap:12px;align-items:center;padding:11px 16px;border-bottom:1px solid var(--border);font-size:13px}
-.act-row:last-child{border-bottom:0}
-.act-row.act-edit{background:#fdf9ee}
-.act-avatar{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--ocean),#3b9dd4);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;font-family:'Outfit',sans-serif;flex-shrink:0}
-.act-body{min-width:0}
-.act-line{color:var(--ink);line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.act-line b{color:var(--navy)}
-.act-meta{font-size:11px;color:var(--muted);margin-top:1px}
-.act-amt{font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:var(--navy);text-align:right;white-space:nowrap}
-.act-amt.act-neg{color:var(--red)}
-.act-empty{padding:36px 16px;text-align:center;color:var(--muted);font-size:13px;font-style:italic}
 .ov-filters .fsel{background:transparent;border:1px solid var(--border)}
 .ov-filters .ov-week-info{font-size:12px;color:var(--muted);margin-left:auto;padding-left:8px}
 
@@ -303,11 +284,6 @@ td.r{text-align:right;font-family:'DM Mono',monospace;font-size:12px}
 /* CAMP TAB SUBPAGES */
 .pos-shell{background:#fff;border-radius:var(--r);border:1px solid var(--border);box-shadow:var(--sh);overflow:hidden}
 .pos-subnav{background:#fff;border-bottom:1px solid var(--border);display:flex;gap:2px;padding:0 14px;overflow-x:auto}
-.psub-btn{display:flex;align-items:center;gap:6px;padding:12px 14px;font-size:12px;font-weight:700;color:var(--muted);border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;font-family:'Outfit',sans-serif;white-space:nowrap}
-.psub-btn:hover{color:var(--navy)}
-.psub-btn.active{color:var(--ocean);border-bottom-color:var(--ocean)}
-.pos-subpage{display:none}
-.pos-subpage.active{display:block}
 .hub-pos-wrap{display:flex;height:calc(100vh - 176px);overflow:hidden}
 .week-panel,.history-panel,.sellers-panel{min-height:calc(100vh - 176px);background:var(--bg)}
 
@@ -567,7 +543,6 @@ td.r{text-align:right;font-family:'DM Mono',monospace;font-size:12px}
     <button class="ntab" data-page="pos" onclick="showPage(&#39;pos&#39;)"><span class="nav-btn-label"><span class="ui-ic ui-ic-lg"><svg viewBox="0 0 20 20"><rect x="3" y="5" width="14" height="10" rx="2"/><path d="M6 9h8"/><path d="M6 12h5"/></svg></span><span id="posTabLabel">Camp Tab</span></span></button>
     <button class="ntab" data-page="expenses" onclick="showPage(&#39;expenses&#39;)"><span class="nav-btn-label"><span class="ui-ic ui-ic-lg"><svg viewBox="0 0 20 20"><path d="M6 3h8l3 3v11H6z"/><path d="M14 3v4h4"/><path d="M9 10h5"/><path d="M9 13h5"/></svg></span><span>Operations Ledger</span></span></button>
     <button class="ntab" data-page="weekly" onclick="showPage(&#39;weekly&#39;)"><span class="nav-btn-label"><span class="ui-ic ui-ic-lg"><svg viewBox="0 0 20 20"><rect x="3" y="4" width="14" height="13" rx="2"/><path d="M7 2v4"/><path d="M13 2v4"/><path d="M3 8h14"/></svg></span><span>Weekly P&amp;L</span></span></button>
-    <button class="ntab" data-page="allexp" onclick="showPage(&#39;allexp&#39;)"><span class="nav-btn-label"><span class="ui-ic ui-ic-lg"><svg viewBox="0 0 20 20"><rect x="3" y="3" width="14" height="14" rx="2"/><path d="M7 8h6"/><path d="M7 11h6"/><path d="M7 14h4"/></svg></span><span>All Expenses</span></span></button>
   </div>
   <div class="nav-actions">
     <span class="save-pill saved" id="savePill" title="Click to retry if failed" onclick="retrySave()"><span class="save-dot"></span><span id="savePillTxt">Saved</span></span>
@@ -593,7 +568,6 @@ td.r{text-align:right;font-family:'DM Mono',monospace;font-size:12px}
   <button class="ntab-m" data-page="pos" onclick="showPage('pos');toggleMobileNav()"><span id="posTabLabelMob">Camp Tab</span></button>
   <button class="ntab-m" data-page="expenses" onclick="showPage('expenses');toggleMobileNav()">Operations Ledger</button>
   <button class="ntab-m" data-page="weekly" onclick="showPage('weekly');toggleMobileNav()">Weekly P&amp;L</button>
-  <button class="ntab-m" data-page="allexp" onclick="showPage('allexp');toggleMobileNav()">All Expenses</button>
   <div class="nav-mob-lbl">Actions</div>
   <a class="ntab-m" id="hqShortcutBtnMob" href="/hq/" style="display:none">🏠 HQ</a>
   <button class="ntab-m" onclick="exportBackup();toggleMobileNav()">⤴ Export backup</button>
@@ -627,9 +601,6 @@ td.r{text-align:right;font-family:'DM Mono',monospace;font-size:12px}
       <div class="g4" id="ovKpis"></div>
     </section>
 
-    <!-- Hidden — kept so legacy renderers don't break if they target the ID. -->
-    <div class="card card-pad" id="ovBookingsPanel" style="display:none"></div>
-
     <!-- ────── Revenue & Food ────── -->
     <section class="ov-section" id="ovRevCentersSection">
       <div class="ov-section-head">
@@ -650,12 +621,6 @@ td.r{text-align:right;font-family:'DM Mono',monospace;font-size:12px}
       </div>
       <div class="g2" id="ovSurfSchoolCards"></div>
     </section>
-
-    <!-- Hidden remnants of the old cash + chart row -->
-    <div style="display:none">
-      <div id="ovCashCard"></div>
-      <div id="ovRevChart"></div>
-    </div>
 
     <!-- ────── Costs & Stock ────── -->
     <section class="ov-section">
@@ -900,16 +865,23 @@ td.r{text-align:right;font-family:'DM Mono',monospace;font-size:12px}
           <div class="mfield" style="margin-bottom:0">
             <label>Category</label>
             <select id="recurring_category">
-              <option value="Rent">Rent</option>
-              <option value="Services">Services</option>
-              <option value="Utilities">Utilities</option>
-              <option value="Setup">Setup</option>
-              <option value="Cleaning Supplies">Cleaning Supplies</option>
-              <option value="Transport">Transport</option>
-              <option value="Bar">Bar</option>
-              <option value="Tours">Tours</option>
               <option value="Food">Food</option>
-              <option value="Special">Special</option>
+              <option value="Drinks">Drinks</option>
+              <option value="Salary">Salary</option>
+              <option value="Benefits">Benefits</option>
+              <option value="Taxes">Taxes</option>
+              <option value="Rent">Rent</option>
+              <option value="Utilities">Utilities</option>
+              <option value="Services">Services</option>
+              <option value="Insurances">Insurances</option>
+              <option value="Equipment &amp; maintenance">Equipment &amp; maintenance</option>
+              <option value="Cleaning">Cleaning</option>
+              <option value="Laundry">Laundry</option>
+              <option value="Transport">Transport</option>
+              <option value="Tours &amp; activities">Tours &amp; activities</option>
+              <option value="Merchandise">Merchandise</option>
+              <option value="Marketing">Marketing</option>
+              <option value="Other">Other</option>
             </select>
           </div>
           <div class="mfield" style="margin-bottom:0">
@@ -1052,150 +1024,44 @@ td.r{text-align:right;font-family:'DM Mono',monospace;font-size:12px}
       <select class="fsel" id="expPayF" onchange="renderExpenses()"><option value="all">All payment methods</option></select>
       <select class="fsel" id="expCatF" onchange="renderExpenses()"><option value="all">All categories</option></select>
       <select class="fsel" id="expWeekF" onchange="renderExpenses()"><option value="all">All weeks</option></select>
+      <label class="fsel" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap" title="Invoices paid centrally by HQ and mirrored into this ledger (source hq_invoice). Untick to list only what was paid from the camp float. The totals below always include them."><input type="checkbox" id="expIncludeHq" checked onchange="renderExpenses()"> Include HQ-paid invoices</label>
       <button onclick="exportLedgerCsv()" style="border:none;background:var(--navy);color:#fff;border-radius:9px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">⬇ Export CSV</button>
     </div>
 
     <div class="card" id="expTable"></div>
+
+    <!-- Totals · by month and by category — computed from ledger_entries
+         only (Local = every expense row that is not an HQ mirror, HQ =
+         source_kind 'hq_invoice'). Replaces the old «All Expenses» tab,
+         which re-added hq_invoices on top of their ledger mirrors and so
+         double-counted every HQ-paid invoice. Follows the filters above
+         (period / search / type / payment / category / week); the
+         «Include HQ-paid invoices» toggle only hides list rows — the HQ
+         column here always shows them so nothing is lost. -->
+    <div class="exp-totals" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-top:14px">
+      <div class="card card-pad">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">Expenses by month · Local / HQ</div>
+          <button onclick="exportLedgerTotalsCsv()" style="border:1.5px solid var(--border);background:#fff;border-radius:9px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;color:var(--navy);white-space:nowrap">⬇ Totals CSV</button>
+        </div>
+        <div id="expTotalsByMonth" style="overflow-x:auto"></div>
+      </div>
+      <div class="card card-pad">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin-bottom:8px">Expenses by category · Local / HQ</div>
+        <div id="expTotalsByCat" style="overflow-x:auto"></div>
+      </div>
+    </div>
   </div>
 </div>
 
 <!-- ═══════════ WEEKLY P&L ═══════════ -->
-<div class="page" id="page-allexp">
-  <section class="ov-section">
-    <div class="ov-section-head" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
-      <div>
-        <div class="ov-section-title">All expenses — Local float + HQ-paid</div>
-        <div style="font-size:12px;color:var(--muted);margin-top:2px">Operations Ledger expenses plus HQ invoices filed to this location. Amounts in EUR.</div>
-      </div>
-      <div style="display:flex;gap:8px">
-        <button onclick="refreshAllExpenses()" style="border:1.5px solid var(--border);background:#fff;border-radius:9px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;color:var(--navy)">↻ Refresh</button>
-        <button onclick="exportAllExpensesCsv()" style="border:none;background:var(--navy);color:#fff;border-radius:9px;padding:8px 16px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">⬇ Export CSV</button>
-      </div>
-    </div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0">
-      <input class="exp-search" id="allexpSearch" placeholder="Search description or category…" oninput="renderAllExpenses()" style="flex:1;min-width:180px">
-      <select class="fsel" id="allexpMonthF" onchange="renderAllExpenses()"><option value="all">All months</option></select>
-      <select class="fsel" id="allexpCatF" onchange="renderAllExpenses()"><option value="all">All categories</option></select>
-      <select class="fsel" id="allexpSrcF" onchange="renderAllExpenses()">
-        <option value="all">Local + HQ</option>
-        <option value="Local">Local only</option>
-        <option value="HQ">HQ only</option>
-      </select>
-    </div>
-    <div id="allexpNote" style="font-size:11px;color:var(--muted);margin-bottom:10px"></div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-bottom:14px">
-      <div class="card card-pad">
-        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin-bottom:8px">Totals by month</div>
-        <div id="allexpByMonth" style="overflow-x:auto"></div>
-      </div>
-      <div class="card card-pad">
-        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin-bottom:8px">Totals by category</div>
-        <div id="allexpByCat" style="overflow-x:auto"></div>
-      </div>
-    </div>
-    <div class="card card-pad" style="overflow-x:auto">
-      <div id="allexpBody"></div>
-    </div>
-  </section>
-</div>
 <div class="page active" id="page-weekly">
   <div class="container">
     <div style="margin-bottom:18px">
       <div style="font-family:&#39;DM Serif Display&#39;,serif;font-size:22px;color:var(--navy)">Weekly P&amp;L</div>
       <div style="font-size:12px;color:var(--muted);margin-top:2px">Camp Tab revenue (paid guests) vs expenses — every Sat→Sat week</div>
     </div>
-    <div id="weeklyContent"><div class="card">
-    <div class="card-pad" style="border-bottom:1px solid var(--border)">
-      <div style="font-family:&#39;DM Serif Display&#39;,serif;font-size:17px;color:var(--navy)">Weekly P&amp;L — all weeks</div>
-      <div style="font-size:12px;color:var(--muted);margin-top:2px">Tab revenue only counts when guests are marked as paid · Click a week to filter</div>
-    </div>
-    <div class="tbl-wrap"><table>
-      <thead><tr>
-        <th>Week</th>
-        <th class="r">Guests</th>
-        <th class="r">Tab Revenue</th>
-        <th class="r">Revenue</th>
-        <th class="r">Total Revenue</th>
-        <th class="r">Expenses</th>
-        <th class="r">Food Cost</th>
-        <th class="r">Money Sent</th>
-        <th class="r">Gross Profit</th>
-        <th class="r">Cash Balance</th>
-      </tr></thead>
-      <tbody>
-        <tr style="cursor:pointer" onclick="jumpToWeek(&#39;2026-04-04&#39;)">
-          <td style="font-weight:600;white-space:nowrap">4 Apr 2026 → 9 Apr 2026</td>
-          <td class="r">2/5</td>
-          <td class="r" style="color:var(--green)">€15.80</td>
-          <td class="r" style="color:var(--green)">€0.00</td>
-          <td class="r" style="font-weight:700">€15.80</td>
-          <td class="r" style="color:var(--red)">€0.00</td>
-          <td class="r" style="color:var(--red)">€0.00</td>
-          <td class="r" style="color:var(--amber)">€0.00</td>
-          <td class="r" style="font-weight:700;color:var(--green)">€15.80</td>
-          <td class="r" style="font-weight:700;color:var(--green)">€15.80</td>
-        </tr><tr style="cursor:pointer" onclick="jumpToWeek(&#39;2026-04-03&#39;)">
-          <td style="font-weight:600;white-space:nowrap">3 Apr 2026 → 8 Apr 2026</td>
-          <td class="r">—</td>
-          <td class="r" style="color:var(--green)">€0.00</td>
-          <td class="r" style="color:var(--green)">€0.00</td>
-          <td class="r" style="font-weight:700">€0.00</td>
-          <td class="r" style="color:var(--red)">€1,200.00</td>
-          <td class="r" style="color:var(--red)">€0.00</td>
-          <td class="r" style="color:var(--amber)">€0.00</td>
-          <td class="r" style="font-weight:700;color:var(--red)">-€1,200.00</td>
-          <td class="r" style="font-weight:700;color:var(--red)">-€1,200.00</td>
-        </tr><tr style="cursor:pointer" onclick="jumpToWeek(&#39;2026-03-28&#39;)">
-          <td style="font-weight:600;white-space:nowrap">28 Mar 2026 → 2 Apr 2026</td>
-          <td class="r">0/6</td>
-          <td class="r" style="color:var(--green)">€0.00</td>
-          <td class="r" style="color:var(--green)">€0.00</td>
-          <td class="r" style="font-weight:700">€0.00</td>
-          <td class="r" style="color:var(--red)">€0.00</td>
-          <td class="r" style="color:var(--red)">€0.00</td>
-          <td class="r" style="color:var(--amber)">€0.00</td>
-          <td class="r" style="font-weight:700;color:var(--green)">€0.00</td>
-          <td class="r" style="font-weight:700;color:var(--green)">€0.00</td>
-        </tr><tr style="cursor:pointer" onclick="jumpToWeek(&#39;2026-03-19&#39;)">
-          <td style="font-weight:600;white-space:nowrap">19 Mar 2026 → 24 Mar 2026</td>
-          <td class="r">0/1</td>
-          <td class="r" style="color:var(--green)">€0.00</td>
-          <td class="r" style="color:var(--green)">€0.00</td>
-          <td class="r" style="font-weight:700">€0.00</td>
-          <td class="r" style="color:var(--red)">€0.00</td>
-          <td class="r" style="color:var(--red)">€0.00</td>
-          <td class="r" style="color:var(--amber)">€0.00</td>
-          <td class="r" style="font-weight:700;color:var(--green)">€0.00</td>
-          <td class="r" style="font-weight:700;color:var(--green)">€0.00</td>
-        </tr><tr style="cursor:pointer" onclick="jumpToWeek(&#39;2026-03-05&#39;)">
-          <td style="font-weight:600;white-space:nowrap">5 Mar 2026 → 10 Mar 2026</td>
-          <td class="r">0/2</td>
-          <td class="r" style="color:var(--green)">€0.00</td>
-          <td class="r" style="color:var(--green)">€0.00</td>
-          <td class="r" style="font-weight:700">€0.00</td>
-          <td class="r" style="color:var(--red)">€0.00</td>
-          <td class="r" style="color:var(--red)">€0.00</td>
-          <td class="r" style="color:var(--amber)">€0.00</td>
-          <td class="r" style="font-weight:700;color:var(--green)">€0.00</td>
-          <td class="r" style="font-weight:700;color:var(--green)">€0.00</td>
-        </tr>
-      </tbody>
-      <tfoot style="background:var(--sand)">
-        <tr>
-          <td style="font-weight:700;padding:10px 13px">TOTAL</td>
-          <td class="r" style="padding:10px 13px;font-weight:700">2/14</td>
-          <td class="r" style="padding:10px 13px;font-weight:700;color:var(--green)">€15.80</td>
-          <td class="r" style="padding:10px 13px;font-weight:700;color:var(--green)">€0.00</td>
-          <td class="r" style="padding:10px 13px;font-weight:700">€15.80</td>
-          <td class="r" style="padding:10px 13px;font-weight:700;color:var(--red)">€1,200.00</td>
-          <td class="r" style="padding:10px 13px;font-weight:700;color:var(--red)">€0.00</td>
-          <td class="r" style="padding:10px 13px;font-weight:700;color:var(--amber)">€0.00</td>
-          <td class="r" style="padding:10px 13px;font-weight:700;color:var(--red)">-€1,184.20</td>
-          <td class="r" style="padding:10px 13px;font-weight:700;color:var(--red)">-€1,184.20</td>
-        </tr>
-      </tfoot>
-    </table></div>
-  </div></div>
+    <div id="weeklyContent"></div>
   </div>
 </div>
 
@@ -1264,7 +1130,7 @@ Lina Costa
     <div class="mbody">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <div class="mfield" id="em_date_wrap"><label>Date</label><input type="date" id="em_date"></div>
-        <div class="mfield" id="em_cat_wrap"><label>Category</label><select id="em_cat" onchange="renderEntryCategorySelection('em')"><option>Food</option><option>Transport</option><option>Tours</option><option>Salary</option><option>Utilities</option><option>Bar</option><option>Services</option><option>Rent</option><option>Setup</option><option>Cleaning Supplies</option><option>Merchandising</option><option>Repairs</option><option>Marketing</option><option>Supplies</option><option>Taxes</option><option>Special</option><option>Other</option></select></div>
+        <div class="mfield" id="em_cat_wrap"><label>Category</label><select id="em_cat" onchange="renderEntryCategorySelection('em')"><option>Food</option><option>Drinks</option><option>Salary</option><option>Benefits</option><option>Taxes</option><option>Rent</option><option>Utilities</option><option>Services</option><option>Insurances</option><option>Equipment &amp; maintenance</option><option>Cleaning</option><option>Laundry</option><option>Transport</option><option>Tours &amp; activities</option><option>Merchandise</option><option>Marketing</option><option>Other</option></select></div>
         <div class="mfield" id="em_amount_wrap"><label>Amount (LKR)</label><input type="number" id="em_amount" step="0.01" min="0" placeholder="0.00" oninput="updateCurrencyUi('em',expModalType)"></div>
         <div class="mfield" id="em_currency_wrap" style="display:none"><label>Currency</label><select id="em_currency" onchange="updateCurrencyUi('em',expModalType)"><option value="LKR" selected>LKR</option></select></div>
         <div class="mfield" id="em_fx_wrap" style="display:none"><label>LKR per EUR</label><input type="number" id="em_fx" step="0.01" min="0.01" placeholder="330" oninput="updateCurrencyUi('em',expModalType)"></div>
@@ -2056,7 +1922,6 @@ function exportBackup(){
 let AW=null; // active week id
 let AG=null; // active guest name
 let AC='Drinks'; // active category
-let posSub='charge';
 let tsCat='All';
 let twExpanded=null;
 let histOpenWeek=null;
@@ -2308,7 +2173,6 @@ function subscribeHubRealtime(){
         }
       } else if(key===OV_CSV_REMOTE_KEY&&Array.isArray(json)){
         ovBookings=json;
-        try{ localStorage.setItem(OV_CSV_LOCAL_KEY,JSON.stringify(json)); }catch(_e){}
         rerenderActivePageData();
       } else if(key===DELETED_CAMPCLOSE_KEY&&Array.isArray(json)){
         deletedCampcloseIds=new Set(json);
@@ -5015,20 +4879,6 @@ function showPage(p){
   else if(p==='pos'){ mountCampTabFrame(); return; }
   else if(p==='expenses'){ renderExpenses(); ensureAiUploadWired(); applyLocationSpecificExpUI(); }
   else if(p==='weekly') renderWeeklyPL();
-  else if(p==='allexp') renderAllExpenses();
-}
-
-function showPosSub(sub){
-  posSub=sub;
-  const target=document.getElementById('possub-'+sub);
-  if(!target) return;
-  document.querySelectorAll('.pos-subpage').forEach(el=>el.classList.remove('active'));
-  target.classList.add('active');
-  document.querySelectorAll('.psub-btn').forEach(btn=>btn.classList.toggle('active',btn.dataset.possub===sub));
-  if(sub==='charge'){renderWeekTabs();renderSidebarHead();renderGuestList();renderCatTabs();renderGrid();renderTab();}
-  else if(sub==='week') renderThisWeek();
-  else if(sub==='history') renderHistory();
-  else if(sub==='sellers') renderSellers();
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -5038,25 +4888,13 @@ function showPosSub(sub){
 // about location_id), but the Supabase state_store row is already isolated by
 // (location_id, state_key) so the remote key stays unscoped — that's also the
 // key existing rows were stored under, so renaming it would orphan that data.
-const OV_CSV_LOCAL_KEY='camphub_ov_bookings_v3'+__HUB_LOC_SUFFIX;
+const OV_CSV_LOCAL_KEY='camphub_ov_bookings_v3'+__HUB_LOC_SUFFIX; // name only (backup manifest); no longer read or written
 const OV_CSV_REMOTE_KEY='camphub_ov_bookings_v3';
+// Guest-days come from the `bookings` table (ovLoadBookingsFromSupabase)
+// or, when that camp has none, from a CSV kept in state_store. The old
+// per-browser localStorage copy is gone — an empty list simply falls back
+// to the auto estimate (guests × 7).
 let ovBookings=[];
-try{
-  const s=localStorage.getItem(OV_CSV_LOCAL_KEY);
-  if(s) ovBookings=JSON.parse(s);
-  else if(__HUB_LOCATION_SLUG==='sri-lanka'){
-    // One-time migration of the legacy unscoped localStorage key (Sri Lanka
-    // is the only location that wrote to it pre-multi-location).
-    const legacy=localStorage.getItem(OV_CSV_REMOTE_KEY);
-    if(legacy){
-      ovBookings=JSON.parse(legacy);
-      localStorage.setItem(OV_CSV_LOCAL_KEY,legacy);
-      localStorage.removeItem(OV_CSV_REMOTE_KEY);
-    }
-  } else {
-    localStorage.removeItem(OV_CSV_REMOTE_KEY);
-  }
-}catch(e){}
 
 // ── Guests from the Bookinglayer import ─────────────────────────────
 // Guest-days used to come only from a CSV someone pasted into this browser
@@ -5183,19 +5021,6 @@ function ovParseCSV(text){
   }
   return result;
 }
-function ovLoadCSV(input){
-  const f=input.files[0];if(!f)return;
-  const r=new FileReader();
-  r.onload=ev=>{
-    ovBookings=ovParseCSV(ev.target.result);
-    localStorage.setItem(OV_CSV_LOCAL_KEY,JSON.stringify(ovBookings));
-    saveStateStore(OV_CSV_REMOTE_KEY,ovBookings).catch(e=>console.warn('[Hub] ovBookings save failed',e));
-    const lbl=document.getElementById('ovCsvLabel');
-    if(lbl)lbl.textContent=f.name+' ('+ovBookings.length+' bookings)';
-    renderOverview();toast('CSV imported: '+ovBookings.length+' active bookings ✓');
-  };
-  r.readAsText(f);
-}
 function ovGuestDaysForWeek(weekStart){
   // weekStart is ISO string like '2026-03-14'
   const ws=new Date(weekStart+'T00:00:00').getTime();
@@ -5317,13 +5142,6 @@ function buildFoodControlCardHtml(weeks,allLedger){
     </div>
   </div>`;
 }
-function renderOverviewBookingsPanel(weeks,selectedWeekValue,allLedger){
-  // Standalone panel is now empty — the Food control card moved into
-  // ovCatPanels so it sits next to Bar / Merch / Transport in the 2×2 grid.
-  const panel=document.getElementById('ovBookingsPanel');
-  if(panel){ panel.style.display='none'; panel.innerHTML=''; }
-}
-
 function fallbackGuestDaysForWeeks(weeks){
   return sum(weeks,w=>(w.guests||[]).length*7);
 }
@@ -5367,20 +5185,30 @@ async function renderSurfSchoolOverview(){
   const monthSel = document.getElementById('ovMonthSel');
   const selectedMonth = monthSel?.value || 'all';
   try {
-    const { data, error } = await client
-      .from('surf_school_rentals')
-      .select('id, kind, price_local, is_returned, opened_at, closed_at')
-      .eq('location_id', locationId)
-      .limit(2000);
-    if (error) throw error;
-    const rows = (data || []).filter(r => {
+    // PostgREST caps a response at 1000 rows — page through everything.
+    const all = [];
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await client
+        .from('surf_school_rentals')
+        .select('id, kind, price_local, is_returned, opened_at, closed_at')
+        .eq('location_id', locationId)
+        .order('opened_at', { ascending: false })
+        .order('id', { ascending: true })
+        .range(from, from + 999);
+      if (error) throw error;
+      all.push(...(data || []));
+      if (!data || data.length < 1000) break;
+    }
+    // «Still open» is live stock — boards out right now — so it is counted
+    // over every rental, never over the selected month.
+    const openNow = all.filter(r => (r.kind || 'rental') === 'rental' && !r.is_returned).length;
+    const rows = all.filter(r => {
       if (selectedMonth === 'all') return true;
       const d = String(r.opened_at || '').slice(0, 7);
       return d === selectedMonth;
     });
     const rentals = rows.filter(r => (r.kind || 'rental') === 'rental');
     const lessons = rows.filter(r => r.kind === 'lesson');
-    const openNow = rentals.filter(r => !r.is_returned).length;
     const rentalRev = rentals.reduce((s,r) => s + Number(r.price_local || 0), 0);
     const lessonRev = lessons.reduce((s,r) => s + Number(r.price_local || 0), 0);
     const fmtEur = (n) => `€${Math.round(n).toLocaleString('en-GB')}`;
@@ -5661,52 +5489,6 @@ function renderOverview(){
   const laundryCampEur=sum(laundryExpenses.filter(x=>x.paymentMethod==='Cash'),x=>entryEurAmount(x));
   const laundryHqLocal=sum(laundryExpenses.filter(x=>x.paymentMethod==='Bank Transfer'),x=>entryLocalDisplayAmount(x));
   const laundryHqEur=sum(laundryExpenses.filter(x=>x.paymentMethod==='Bank Transfer'),x=>entryEurAmount(x));
-  // "Transport by line" card (below) is intentionally short-circuited
-  // to empty — the consolidated "Transport" block further down shows
-  // the same per-line detail plus the Tours/Surf/Airport split, so the
-  // top card was pure duplication that made the Overview scroll wider
-  // and confused managers by rendering red per-line "margin" badges on
-  // a cost-only area.
-  const transportCardsMarkup=false && transportRows.length?`
-    <div class="card card-pad" style="grid-column:1 / -1">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;gap:12px;flex-wrap:wrap">
-        <div style="font-family:'DM Serif Display',serif;font-size:17px;color:var(--navy);display:flex;align-items:center;gap:8px">${uiIcon('send')}<span>Transport by line</span></div>
-        <div style="font-size:11px;color:var(--muted)">${transportRows.length} transport line${transportRows.length!==1?'s':''} · linked to tours when mapped</div>
-      </div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px">
-        ${transportRows.map(r=>{
-          const profitLocal=r.revenueLocal-r.spendLocal;
-          const profitEur=r.revenueEur-r.spendEur;
-          const pct=r.revenueLocal>0?((profitLocal/r.revenueLocal)*100).toFixed(0):'—';
-          return `<div style="background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:12px">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:10px">
-              <div>
-                <div style="font-weight:700;color:var(--navy)">${r.name}</div>
-                <div style="font-size:11px;color:var(--muted);margin-top:2px">${r.linkedTour||'Direct transport / lessons'}</div>
-              </div>
-              <span class="badge ${profitLocal>=0?'badge-green':'badge-red'}">${profitLocal>=0?'+':''}${lkr(profitLocal)}</span>
-            </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-              <div style="background:#fff;border-radius:8px;padding:10px">
-                <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin-bottom:4px">Revenue</div>
-                <div style="font-family:'DM Serif Display',serif;font-size:18px;color:var(--green)">${lkr(r.revenueLocal)}</div>
-                <div style="font-size:10px;color:var(--muted);margin-top:2px">${euro(r.revenueEur)}</div>
-              </div>
-              <div style="background:#fff;border-radius:8px;padding:10px">
-                <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin-bottom:4px">Direct cost</div>
-                <div style="font-family:'DM Serif Display',serif;font-size:18px;color:var(--navy)">${lkr(r.spendLocal)}</div>
-                <div style="font-size:10px;color:var(--muted);margin-top:2px">${euro(r.spendEur)}</div>
-              </div>
-            </div>
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:12px;color:var(--muted)">
-              <span>Margin</span>
-              <span style="font-weight:700;color:${profitLocal>=0?'var(--green)':'var(--red)'}">${pct==='—'?'—':pct+'%'}</span>
-            </div>
-            <div style="font-size:11px;color:${profitLocal>=0?'var(--green)':'var(--red)'};font-weight:700;margin-top:4px">${moneyPairLocal(profitLocal,profitEur)}</div>
-          </div>`;
-        }).join('')}
-      </div>
-    </div>`:'';
   // Tour rows carry two cost streams so the display can split
   // "paying-guest margin" from "total margin":
   //   costLocal / costEur           = total cost (all rows, comp + paying)
@@ -5714,13 +5496,10 @@ function renderOverview(){
   // payingCost = costLocal - compCostLocal → margin against actual sales.
   const tourMap={};
   const blankTour = (key) => ({name:key,qty:0,revenueLocal:0,revenueEur:0,costLocal:0,costEur:0,compCostLocal:0,compCostEur:0});
-  paidItems.filter(i=>i.category==='Tours').forEach(i=>{
-    const key=i.name;
-    tourMap[key]=tourMap[key]||blankTour(key);
-    tourMap[key].qty+=1;
-    tourMap[key].revenueLocal+=i.revenue;
-    tourMap[key].revenueEur+=Number((Number(i.revenue||0)/(DEFAULT_LKR_PER_EUR||1)).toFixed(2));
-  });
+  // Ledger only — same single-source rule as the drawer KPIs and the
+  // per-area tiles above. Every paid Camp Tab item already lands a ledger
+  // income row (camp_tab_per_item / campclose_*), so adding paidItems here
+  // as well counted each tour sale twice.
   revenueEntries.filter(x=>x.businessArea==='Tours').forEach(x=>{
     const key=x.linkedItem||x.category;
     tourMap[key]=tourMap[key]||blankTour(key);
@@ -5985,7 +5764,6 @@ function renderOverview(){
       ${kpi('Cash','ATM withdrawals + on-site revenue − cash spend',lkr(cashBalanceLocal),cashBalanceLocal>=0?'kv-amber':'kv-red',euro(cashBalanceEur))}
     `;
   }
-  renderOverviewBookingsPanel(weeks,selectedWid,allLedger);
   const foodControlHtml=buildFoodControlCardHtml(weeks,allLedger);
 
   // 2-column grid: Food control sits in the first cell, then Bar / Merch /
@@ -6048,20 +5826,6 @@ function renderOverview(){
     </div>`:''}
     ${tourCardsMarkup}
   `;
-
-  // Operations cash + Profit center snapshot removed by request — the KPI
-  // strip at the top of the Overview already shows the headline cash and
-  // gross-profit figures, and the per-area cards (Bar / Merch / Tours /
-  // Transport) carry the same revenue/cost/margin breakdown the snapshot
-  // was duplicating. Hide both cards and skip the innerHTML work.
-  const ovCashCard=document.getElementById('ovCashCard');
-  if(ovCashCard){ ovCashCard.style.display='none'; ovCashCard.innerHTML=''; }
-  const ovRevChart=document.getElementById('ovRevChart');
-  if(ovRevChart){ ovRevChart.style.display='none'; ovRevChart.innerHTML=''; }
-  // Their wrapper is the next-sibling .g2 grid above ovCatCard. Hide it so
-  // the layout doesn't leave a phantom margin where the cards used to be.
-  const ovCashWrap=ovCashCard?.parentElement;
-  if(ovCashWrap) ovCashWrap.style.display='none';
 
   const areaRows=AREA_ORDER.map(area=>{
     const rows=expenses.filter(x=>x.businessArea===area);
@@ -7477,7 +7241,6 @@ function renderPOS(){
   renderThisWeek();
   renderHistory();
   renderSellers();
-  showPosSub(posSub);
 }
 
 function renderWeekTabs(){
@@ -7827,7 +7590,7 @@ function saveNewWeek(){
   const names=document.getElementById('newWeekNames').value.split('\n').map(s=>s.trim()).filter(Boolean);
   const id='w'+Date.now();
   S.weeks.push({id,start:ws,guests:names.map(n=>({name:n,items:[],paid:false}))});
-  AW=id;AG=null;twExpanded=null;posSub='charge';save();closeOv('addWeekOv');
+  AW=id;AG=null;twExpanded=null;save();closeOv('addWeekOv');
   renderPOS();renderOverview();renderWeeklyPL();renderExpenses();
   toast('Week '+weekLabel(ws)+' created');
 }
@@ -9004,146 +8767,6 @@ function getLedgerRowsForPeriod(){
 }
 
 
-// ═══════════════════ ALL EXPENSES (Local + HQ) ═══════════════════
-// Aggregates this location's TWO expense streams into one view:
-//   Local — ledger_entries expenses (paid from the camp float; already
-//           hydrated into S.ledger)
-//   HQ    — hq_invoices rows filed to this location_slug (paid centrally;
-//           fetched here, soft-deleted rows excluded)
-// RLS note: hq_invoices SELECT is HQ-members-only, so a location manager
-// without HQ access sees the Local stream plus a note — not an error.
-let __hqInvCache=null;
-let __hqInvErr=null;
-let __allexpFiltered=[];
-async function loadHqInvoicesForLocation(force){
-  if(__hqInvCache && !force) return __hqInvCache;
-  try{
-    const client=getHubSupabaseClient();
-    if(!client){ __hqInvCache=[]; return __hqInvCache; }
-    let catById={};
-    try{
-      const {data:cats}=await client.from('hq_invoice_categories').select('id,name');
-      (cats||[]).forEach(c=>{ catById[c.id]=c.name; });
-    }catch(_e){}
-    const all=[];
-    for(let from=0;;from+=1000){
-      const {data,error}=await client.from('hq_invoices')
-        .select('invoice_date,company,invoice_number,amount,currency,amount_eur,category_id,payment_type')
-        .eq('location_slug',__HUB_LOCATION_SLUG)
-        .is('deleted_at',null)
-        .order('invoice_date',{ascending:false})
-        .range(from,from+999);
-      if(error) throw error;
-      all.push(...(data||[]));
-      if(!data||data.length<1000) break;
-    }
-    __hqInvErr=null;
-    __hqInvCache=all.map(r=>({
-      date:String(r.invoice_date||'').slice(0,10),
-      desc:[r.company,r.invoice_number].filter(Boolean).join(' · ')||'HQ invoice',
-      cat:catById[r.category_id]||'Uncategorised',
-      src:'HQ',
-      pay:r.payment_type||'',
-      localAmt:Number(r.amount)||0,
-      cur:r.currency||'EUR',
-      eur:(r.amount_eur!=null?Number(r.amount_eur):Number(r.amount))||0
-    })).filter(r=>r.date);
-  }catch(e){
-    console.warn('[Hub] loadHqInvoicesForLocation failed',e);
-    __hqInvErr=e?.message||'error';
-    __hqInvCache=[];
-  }
-  return __hqInvCache;
-}
-function allexpLocalRows(){
-  return (S.ledger||[]).filter(x=>x.type==='expense').map(x=>({
-    date:String(x.date||'').slice(0,10),
-    desc:[x.description,x.vendor].filter(Boolean).join(' · ')||'—',
-    cat:x.category||'Other',
-    src:'Local',
-    pay:x.paymentMethod||'',
-    localAmt:entryLocalDisplayAmount(x),
-    cur:x.currency||'',
-    eur:entryEurAmount(x)
-  })).filter(r=>r.date);
-}
-function refreshAllExpenses(){ __hqInvCache=null; renderAllExpenses(); }
-async function renderAllExpenses(){
-  const body=document.getElementById('allexpBody');
-  if(!body) return;
-  if(!__hqInvCache) body.innerHTML='<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px">Loading HQ invoices…</div>';
-  const hq=await loadHqInvoicesForLocation();
-  const rows=[...allexpLocalRows(),...hq].sort((a,b)=>b.date.localeCompare(a.date));
-
-  const note=document.getElementById('allexpNote');
-  if(note){
-    if(__hqInvErr) note.textContent='HQ invoices could not be loaded ('+__hqInvErr+') — showing Local only.';
-    else if(!hq.length) note.textContent='No HQ-paid invoices visible for this location (either none exist or this account has no HQ access).';
-    else note.textContent=hq.length+' HQ invoice'+(hq.length===1?'':'s')+' + '+ (rows.length-hq.length) +' local ledger expenses.';
-  }
-
-  // Filter selects — options rebuilt from data, current pick preserved.
-  const monthSel=document.getElementById('allexpMonthF');
-  const catSel=document.getElementById('allexpCatF');
-  const srcF=document.getElementById('allexpSrcF')?.value||'all';
-  const search=(document.getElementById('allexpSearch')?.value||'').trim().toLowerCase();
-  const months=[...new Set(rows.map(r=>r.date.slice(0,7)))].sort().reverse();
-  if(monthSel){
-    const cur=monthSel.value;
-    monthSel.innerHTML='<option value="all">All months</option>'+months.map(m=>`<option value="${m}" ${cur===m?'selected':''}>${m}</option>`).join('');
-    if(cur!=='all'&&!months.includes(cur)) monthSel.value='all';
-  }
-  const cats=[...new Set(rows.map(r=>r.cat))].sort();
-  if(catSel){
-    const cur=catSel.value;
-    catSel.innerHTML='<option value="all">All categories</option>'+cats.map(c=>`<option value="${c}" ${cur===c?'selected':''}>${escapeHtml(c)}</option>`).join('');
-    if(cur!=='all'&&!cats.includes(cur)) catSel.value='all';
-  }
-  const monthF=monthSel?.value||'all';
-  const catF=catSel?.value||'all';
-  let filtered=rows;
-  if(monthF!=='all') filtered=filtered.filter(r=>r.date.slice(0,7)===monthF);
-  if(catF!=='all') filtered=filtered.filter(r=>r.cat===catF);
-  if(srcF!=='all') filtered=filtered.filter(r=>r.src===srcF);
-  if(search) filtered=filtered.filter(r=>[r.desc,r.cat,r.pay].join(' ').toLowerCase().includes(search));
-  __allexpFiltered=filtered;
-
-  // ── Report: month × source, and per-category — over the FILTERED set,
-  // so filtering (e.g. one category) re-focuses both summaries.
-  const byMonth={};
-  filtered.forEach(r=>{
-    const m=r.date.slice(0,7);
-    byMonth[m]=byMonth[m]||{local:0,hq:0};
-    byMonth[m][r.src==='HQ'?'hq':'local']+=r.eur;
-  });
-  const mEl=document.getElementById('allexpByMonth');
-  if(mEl){
-    const ms=Object.keys(byMonth).sort().reverse();
-    let tl=0,th=0;
-    mEl.innerHTML='<table style="width:100%;border-collapse:collapse;font-size:12px"><tr style="color:var(--muted);text-transform:uppercase;font-size:9px;letter-spacing:.06em"><th style="text-align:left;padding:4px 6px">Month</th><th style="text-align:right;padding:4px 6px">Local</th><th style="text-align:right;padding:4px 6px">HQ</th><th style="text-align:right;padding:4px 6px">Total</th></tr>'+
-      ms.map(m=>{const v=byMonth[m];tl+=v.local;th+=v.hq;return `<tr style="border-top:1px solid var(--border)"><td style="padding:5px 6px;font-weight:600">${m}</td><td style="text-align:right;padding:5px 6px">${euro(v.local)}</td><td style="text-align:right;padding:5px 6px">${euro(v.hq)}</td><td style="text-align:right;padding:5px 6px;font-weight:700;color:var(--navy)">${euro(v.local+v.hq)}</td></tr>`;}).join('')+
-      `<tr style="border-top:2px solid var(--navy)"><td style="padding:6px;font-weight:800">Total</td><td style="text-align:right;padding:6px;font-weight:700">${euro(tl)}</td><td style="text-align:right;padding:6px;font-weight:700">${euro(th)}</td><td style="text-align:right;padding:6px;font-weight:800;color:var(--navy)">${euro(tl+th)}</td></tr></table>`;
-  }
-  const byCat={};
-  filtered.forEach(r=>{ byCat[r.cat]=(byCat[r.cat]||0)+r.eur; });
-  const cEl=document.getElementById('allexpByCat');
-  if(cEl){
-    const total=Object.values(byCat).reduce((a,b)=>a+b,0)||1;
-    const list=Object.entries(byCat).sort((a,b)=>b[1]-a[1]);
-    cEl.innerHTML='<table style="width:100%;border-collapse:collapse;font-size:12px">'+
-      list.map(([c,v])=>`<tr style="border-top:1px solid var(--border)"><td style="padding:5px 6px;font-weight:600">${escapeHtml(c)}</td><td style="text-align:right;padding:5px 6px">${euro(v)}</td><td style="text-align:right;padding:5px 6px;color:var(--muted);width:48px">${((v/total)*100).toFixed(0)}%</td></tr>`).join('')+
-      `<tr style="border-top:2px solid var(--navy)"><td style="padding:6px;font-weight:800">Total</td><td style="text-align:right;padding:6px;font-weight:800;color:var(--navy)">${euro(total===1?0:total)}</td><td></td></tr></table>`;
-  }
-
-  // ── List (display capped; export always carries everything filtered) ──
-  const CAP=400;
-  const shown=filtered.slice(0,CAP);
-  body.innerHTML='<table style="width:100%;border-collapse:collapse;font-size:12px"><tr style="color:var(--muted);text-transform:uppercase;font-size:9px;letter-spacing:.06em"><th style="text-align:left;padding:6px">Date</th><th style="text-align:left;padding:6px">Description</th><th style="text-align:left;padding:6px">Category</th><th style="text-align:left;padding:6px">Source</th><th style="text-align:left;padding:6px">Payment</th><th style="text-align:right;padding:6px">EUR</th></tr>'+
-    shown.map(r=>`<tr style="border-top:1px solid var(--border)"><td style="padding:6px;white-space:nowrap">${r.date}</td><td style="padding:6px">${escapeHtml(r.desc)}</td><td style="padding:6px">${escapeHtml(r.cat)}</td><td style="padding:6px"><span style="font-size:10px;font-weight:700;border-radius:20px;padding:2px 8px;${r.src==='HQ'?'background:#eef6ff;color:var(--ocean);border:1px solid #bfdcf2':'background:var(--green-bg);color:var(--green);border:1px solid var(--green-border)'}">${r.src}</span></td><td style="padding:6px">${escapeHtml(r.pay)}</td><td style="padding:6px;text-align:right;font-family:'DM Mono',monospace">${euro(r.eur)}</td></tr>`).join('')+
-    (filtered.length>CAP?`<tr><td colspan="6" style="padding:8px;text-align:center;color:var(--muted)">Showing ${CAP} of ${filtered.length} — narrow the filters or use Export CSV for the full list.</td></tr>`:'')+
-    `<tr style="border-top:2px solid var(--navy)"><td colspan="5" style="padding:8px;font-weight:800">Total (${filtered.length} rows)</td><td style="padding:8px;text-align:right;font-weight:800;font-family:'DM Mono',monospace;color:var(--navy)">${euro(filtered.reduce((a,r)=>a+r.eur,0))}</td></tr></table>`;
-}
-
 // Shared CSV download — UTF-8 BOM so Excel renders accents correctly.
 function hubDownloadCsv(filename, headers, rows){
   const esc=(v)=>{const s=String(v==null?'':v);return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};
@@ -9155,15 +8778,6 @@ function hubDownloadCsv(filename, headers, rows){
   document.body.appendChild(a); a.click();
   setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url);},200);
 }
-function exportAllExpensesCsv(){
-  const rows=__allexpFiltered||[];
-  if(!rows.length){ toast('Nothing to export with the current filters'); return; }
-  hubDownloadCsv(
-    `all-expenses-${__HUB_LOCATION_SLUG}-${new Date().toISOString().slice(0,10)}-${rows.length}rows.csv`,
-    ['Date','Source','Description','Category','Payment','Amount','Currency','Amount EUR'],
-    rows.map(r=>[r.date,r.src,r.desc,r.cat,r.pay,r.localAmt.toFixed(2),r.cur,r.eur.toFixed(2)])
-  );
-}
 function exportLedgerCsv(){
   const rows=__ledgerExportRows||[];
   if(!rows.length){ toast('Nothing to export with the current filters'); return; }
@@ -9174,6 +8788,50 @@ function exportLedgerCsv(){
   );
 }
 let __ledgerExportRows=[];
+let __ledgerTotalsCsvRows=[];
+const isHqInvoiceRow=(x)=>String(x?.sourceKind||'').toLowerCase()==='hq_invoice';
+
+// ── Totals by month / by category (Local vs HQ) ─────────────────────
+// Replaces the «All Expenses» tab. Reads ONLY ledger_entries: HQ-paid
+// invoices are already mirrored here (source_kind='hq_invoice', see
+// supabase/hq-invoices-mirror-to-ledger.sql), so re-reading hq_invoices
+// on top counted every one of them twice. Local = every other expense row.
+function renderLedgerTotals(expenseRows){
+  const mEl=document.getElementById('expTotalsByMonth');
+  const cEl=document.getElementById('expTotalsByCat');
+  if(!mEl&&!cEl) return;
+  const byMonth={},byCat={};
+  (expenseRows||[]).forEach(x=>{
+    const m=String(x.date||'').slice(0,7); if(!m) return;
+    const eur=entryEurAmount(x);
+    const side=isHqInvoiceRow(x)?'hq':'local';
+    byMonth[m]=byMonth[m]||{local:0,hq:0}; byMonth[m][side]+=eur;
+    const c=x.category||'Other';
+    byCat[c]=byCat[c]||{local:0,hq:0}; byCat[c][side]+=eur;
+  });
+  const th='<tr style="color:var(--muted);text-transform:uppercase;font-size:9px;letter-spacing:.06em"><th style="text-align:left;padding:4px 6px">__K__</th><th style="text-align:right;padding:4px 6px">Local</th><th style="text-align:right;padding:4px 6px">HQ</th><th style="text-align:right;padding:4px 6px">Total</th></tr>';
+  const line=(k,v,bold)=>`<tr style="border-top:1px solid var(--border)"><td style="padding:5px 6px;font-weight:${bold?800:600}">${escapeHtml(k)}</td><td style="text-align:right;padding:5px 6px">${euro(v.local)}</td><td style="text-align:right;padding:5px 6px">${euro(v.hq)}</td><td style="text-align:right;padding:5px 6px;font-weight:${bold?800:700};color:var(--navy)">${euro(v.local+v.hq)}</td></tr>`;
+  const empty='<div style="color:var(--muted);font-size:12px;padding:4px 0">No expenses for this filter.</div>';
+  const months=Object.keys(byMonth).sort().reverse();
+  const grand=months.reduce((t,m)=>({local:t.local+byMonth[m].local,hq:t.hq+byMonth[m].hq}),{local:0,hq:0});
+  if(mEl) mEl.innerHTML=months.length?'<table style="width:100%;border-collapse:collapse;font-size:12px">'+th.replace('__K__','Month')+months.map(m=>line(m,byMonth[m],false)).join('')+line('Total',grand,true).replace('border-top:1px solid var(--border)','border-top:2px solid var(--navy)')+'</table>':empty;
+  const cats=Object.entries(byCat).sort((a,b)=>(b[1].local+b[1].hq)-(a[1].local+a[1].hq));
+  if(cEl) cEl.innerHTML=cats.length?'<table style="width:100%;border-collapse:collapse;font-size:12px">'+th.replace('__K__','Category')+cats.map(([c,v])=>line(c,v,false)).join('')+line('Total',grand,true).replace('border-top:1px solid var(--border)','border-top:2px solid var(--navy)')+'</table>':empty;
+  __ledgerTotalsCsvRows=[
+    ...months.map(m=>['Month',m,byMonth[m].local.toFixed(2),byMonth[m].hq.toFixed(2),(byMonth[m].local+byMonth[m].hq).toFixed(2)]),
+    ...cats.map(([c,v])=>['Category',c,v.local.toFixed(2),v.hq.toFixed(2),(v.local+v.hq).toFixed(2)]),
+    ['Total','',grand.local.toFixed(2),grand.hq.toFixed(2),(grand.local+grand.hq).toFixed(2)]
+  ];
+}
+function exportLedgerTotalsCsv(){
+  const rows=__ledgerTotalsCsvRows||[];
+  if(rows.length<=1){ toast('Nothing to export with the current filters'); return; }
+  hubDownloadCsv(
+    `expense-totals-${__HUB_LOCATION_SLUG}-${new Date().toISOString().slice(0,10)}.csv`,
+    ['Section','Key','Local EUR','HQ EUR','Total EUR'],
+    rows
+  );
+}
 
 function renderExpenses(){
   renderRecurringEntries();
@@ -9220,6 +8878,12 @@ function renderExpenses(){
     if(d!==0) return d;
     return String(a.id||'').localeCompare(String(b.id||'')); // stable secondary sort by id
   });
+  // Totals tables see every expense row that passed the filters above —
+  // HQ mirrors included — so the HQ column is always complete. The
+  // «Include HQ-paid invoices» toggle only trims the list below it.
+  renderLedgerTotals(rows.filter(x=>x.type==='expense'));
+  const includeHq=document.getElementById('expIncludeHq')?.checked!==false;
+  if(!includeHq) rows=rows.filter(x=>!isHqInvoiceRow(x));
   __ledgerExportRows=rows;
   const visibleExpenses=rows.filter(x=>x.type==='expense');
   // ── FILTERED totals (reflect the current search / type / payment / week filter) ──
@@ -9368,7 +9032,7 @@ function renderExpenses(){
     <tbody>
       ${rows.length?rows.map(r=>`<tr>
         <td style="white-space:nowrap;font-size:12px">${fmtd(r.date)}</td>
-        <td><span class="badge ${r.type==='expense'?'badge-red':r.type==='transfer'?'badge-amber':'badge-green'}">${r.type==='expense'?'Expense':r.type==='transfer'?'Money Sent':'Revenue'}</span></td>
+        <td style="white-space:nowrap"><span class="badge ${r.type==='expense'?'badge-red':r.type==='transfer'?'badge-amber':'badge-green'}">${r.type==='expense'?'Expense':r.type==='transfer'?'Money Sent':'Revenue'}</span>${isHqInvoiceRow(r)?' <span class="badge badge-blue" title="Paid by HQ — mirrored from hq_invoices">HQ</span>':''}</td>
         <td style="font-weight:600">${r.category}</td>
         <td style="color:var(--muted);font-size:12px">${String(r.sourceKind||'').toLowerCase()==='hq_invoice'?'<span class="badge badge-amber" title="Factura paga por Portugal (HQ). Edita-se no HQ.">Pago pelo HQ</span>':String(r.sourceKind||'').toLowerCase()==='hq_transfer'?'<span class="badge badge-amber" title="Transferência registada no HQ. Edita-se no HQ.">HQ Transfer · HQ</span>':(r.paymentMethod||'—')}</td>
         <td style="color:var(--muted);font-size:12px">${r.linkedItem||'—'}${transportEntryTourOverride(r)?`<div style="font-size:10px;color:var(--ocean);font-weight:600;margin-top:2px">↳ ${escapeHtml(transportEntryTourOverride(r))}</div>`:''}</td>
@@ -9585,160 +9249,6 @@ async function saveExpense(){
 // ═══════════════════════════════════════════════════════════
 //  WEEKLY P&L  — connected to both weeks AND ledger
 // ═══════════════════════════════════════════════════════════
-// ═══════════════════════════════════════════════════════════════════
-//   ACTIVITY — POS audit feed
-//   Reads camp_tab_items directly from Supabase (bypasses the local S
-//   cache so we get the created_by/updated_by columns the trigger fills
-//   server-side) and joins with platform_profiles for human names.
-//   RLS already scopes the query to this location — a Morocco manager
-//   couldn't read Sri Lanka rows even if they knew this endpoint.
-// ═══════════════════════════════════════════════════════════════════
-let _actLastLoad = 0;
-let _actCache = null;
-
-async function renderActivity(){
-  const feed = document.getElementById('actFeed');
-  const kpis = document.getElementById('actKpis');
-  if (!feed) return;
-
-  const client = getHubSupabaseClient();
-  const locationId = await ensureHubLocationId();
-  if (!client || !locationId) {
-    feed.innerHTML = `<div class="act-empty">Not connected. Refresh the page.</div>`;
-    return;
-  }
-
-  const now = Date.now();
-  // Re-fetch every 30s at most so tab-switching feels instant.
-  if (!_actCache || (now - _actLastLoad) > 30_000) {
-    feed.innerHTML = `<div class="act-empty">Loading recent Camp Tab activity…</div>`;
-    try {
-      // Latest 500 items should be plenty for the "who did what" audit
-      // view — order by added_at DESC. Joining guest name via camp_guests
-      // (which is location-scoped too) keeps rows compact.
-      const { data: items, error } = await client
-        .from('camp_tab_items')
-        .select('id, item_name, category, price_local, currency, added_at, updated_at, created_by, updated_by, guest_id, camp_guests(id, guest_name)')
-        .eq('location_id', locationId)
-        .order('added_at', { ascending:false })
-        .limit(500);
-      if (error) throw error;
-
-      // Resolve staff names in one round-trip. The set includes both
-      // creators and editors so an edit-only row still shows a name.
-      const uids = [...new Set((items||[])
-        .flatMap(r => [r.created_by, r.updated_by])
-        .filter(Boolean))];
-      let byId = new Map();
-      if (uids.length) {
-        const { data: profs } = await client
-          .from('platform_profiles')
-          .select('id, full_name, email')
-          .in('id', uids);
-        (profs||[]).forEach(p => byId.set(p.id, p.full_name || p.email || 'Unknown'));
-      }
-      _actCache = { items: items||[], byId };
-      _actLastLoad = now;
-    } catch (e) {
-      feed.innerHTML = `<div class="act-empty" style="color:var(--red)">Load failed: ${escapeHtml(e?.message||e)}</div>`;
-      return;
-    }
-  }
-
-  const { items, byId } = _actCache;
-
-  // Populate staff + category filters from actual rows before first render.
-  const staffSel = document.getElementById('actStaffSel');
-  const catSel   = document.getElementById('actCatSel');
-  if (staffSel && staffSel.options.length <= 1) {
-    const staffIds = [...new Set(items.map(r => r.created_by).filter(Boolean))];
-    staffSel.innerHTML = '<option value="all">Everyone</option>' +
-      staffIds.map(id => `<option value="${id}">${escapeHtml(byId.get(id) || 'Unknown')}</option>`).join('');
-  }
-  if (catSel && catSel.options.length <= 1) {
-    const cats = [...new Set(items.map(r => r.category).filter(Boolean))].sort();
-    catSel.innerHTML = '<option value="all">All categories</option>' +
-      cats.map(c => `<option value="${c}">${escapeHtml(c)}</option>`).join('');
-  }
-
-  const staffF  = staffSel?.value  || 'all';
-  const catF    = catSel?.value    || 'all';
-  const periodF = document.getElementById('actPeriodSel')?.value || 'week';
-
-  const cutoff = (() => {
-    const d = new Date();
-    if (periodF === 'today') d.setUTCHours(0,0,0,0);
-    else if (periodF === 'week')  d.setUTCDate(d.getUTCDate() - 7);
-    else if (periodF === 'month') d.setUTCDate(d.getUTCDate() - 30);
-    else return null;
-    return d.toISOString();
-  })();
-
-  const filtered = items.filter(r => {
-    if (staffF !== 'all' && r.created_by !== staffF) return false;
-    if (catF   !== 'all' && r.category !== catF)     return false;
-    if (cutoff && String(r.added_at || '') < cutoff) return false;
-    return true;
-  });
-
-  // KPIs — total items, total value in LOCAL currency, unique staff/guests.
-  const total = filtered.reduce((s,r) => s + Number(r.price_local||0), 0);
-  const staffCount = new Set(filtered.map(r => r.created_by).filter(Boolean)).size;
-  const guestCount = new Set(filtered.map(r => r.guest_id).filter(Boolean)).size;
-  const cur = filtered[0]?.currency || (LOCAL_CURRENCY || 'LKR');
-  const fmtLocal = (n) => `${cur} ${Math.round(n).toLocaleString('en-GB')}`;
-
-  kpis.innerHTML = `
-    <div class="act-kpi"><div class="act-kpi-lbl">Items added</div><div class="act-kpi-val">${filtered.length}</div><div class="act-kpi-sub">In this period</div></div>
-    <div class="act-kpi"><div class="act-kpi-lbl">Total value</div><div class="act-kpi-val">${fmtLocal(total)}</div><div class="act-kpi-sub">Sum of price_local</div></div>
-    <div class="act-kpi"><div class="act-kpi-lbl">Staff active</div><div class="act-kpi-val">${staffCount}</div><div class="act-kpi-sub">Distinct sellers</div></div>
-    <div class="act-kpi"><div class="act-kpi-lbl">Guests touched</div><div class="act-kpi-val">${guestCount}</div><div class="act-kpi-sub">Distinct tabs</div></div>
-  `;
-
-  if (!filtered.length) {
-    feed.innerHTML = `<div class="act-empty">No activity in this window. Change the filters above or come back after some items are added.</div>`;
-    return;
-  }
-
-  // Row renderer. Show "edited" separately when updated_by differs from
-  // the creator, so tampering is visible without opening the row.
-  const rowHtml = (r) => {
-    const who = byId.get(r.created_by) || 'Unknown';
-    const initials = who.split(/\s+/).filter(Boolean).slice(0,2).map(s => s[0]?.toUpperCase()||'').join('') || '?';
-    const guest = r.camp_guests?.guest_name || '—';
-    const edited = r.updated_by && r.updated_by !== r.created_by;
-    const editedByName = edited ? (byId.get(r.updated_by) || 'someone else') : null;
-    const when = _actWhen(r.added_at);
-    const editedWhen = edited ? _actWhen(r.updated_at) : null;
-    return `<div class="act-row${edited?' act-edit':''}">
-      <div class="act-avatar">${escapeHtml(initials)}</div>
-      <div class="act-body">
-        <div class="act-line"><b>${escapeHtml(who)}</b> added <b>${escapeHtml(r.item_name||'item')}</b> to <b>${escapeHtml(guest)}</b></div>
-        <div class="act-meta">${escapeHtml(r.category||'—')} · ${when}${edited ? ` · edited by ${escapeHtml(editedByName)} ${editedWhen}` : ''}</div>
-      </div>
-      <div class="act-amt">${cur} ${Number(r.price_local||0).toFixed(0)}</div>
-    </div>`;
-  };
-  feed.innerHTML = filtered.slice(0, 200).map(rowHtml).join('') +
-    (filtered.length > 200 ? `<div class="act-empty">Showing 200 most recent of ${filtered.length}. Narrow the filters to see older rows.</div>` : '');
-}
-
-function _actWhen(iso) {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  const now = new Date();
-  const diffMs = now - d;
-  if (diffMs < 0) return d.toLocaleString('en-GB', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' });
-  const mins = Math.round(diffMs / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins} min ago`;
-  const hrs = Math.round(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.round(hrs / 24);
-  if (days < 7) return `${days}d ago`;
-  return d.toLocaleDateString('en-GB', { day:'numeric', month:'short', year: (d.getUTCFullYear() !== now.getUTCFullYear() ? 'numeric' : undefined) });
-}
-
 function renderWeeklyPL(){
   const el=document.getElementById('weeklyContent');
   if(!el)return;
@@ -9757,7 +9267,10 @@ function renderWeeklyPL(){
   const rows=sortedWS.map(ws=>{
     const wk=S.weeks.find(w=>w.start===ws);
     const ledger=ledgerForWeek(ws);
-    const sent=sum(ledger.filter(x=>x.type==='transfer'),x=>x.amount);
+    // Money in = HQ top-ups only. ATM withdrawals and cash deposits are
+    // internal moves between the camp's bank and cash drawers — counting
+    // them here inflated «Cash Float In» and Operating Cash.
+    const sent=sum(ledger.filter(x=>x.type==='transfer'&&(x.paymentMethod==='HQ Transfer'||String(x.sourceKind||'').toLowerCase()==='hq_transfer')),x=>x.amount);
     const campSpend=sum(ledger.filter(x=>x.type==='expense'&&x.paymentMethod==='Cash'),x=>x.amount);
     const cardSpend=sum(ledger.filter(x=>x.type==='expense'&&x.paymentMethod==='Card'),x=>x.amount);
     const hqSpend=sum(ledger.filter(x=>x.type==='expense'&&x.paymentMethod==='Bank Transfer'),x=>x.amount);
@@ -9818,6 +9331,7 @@ function renderWeeklyPL(){
         <th class="r">Drinks</th>
         <th class="r">Merch</th>
         <th class="r">Tours</th>
+        <th class="r">Transport</th>
         <th class="r">Operating Cash</th>
       </tr></thead>
       <tbody>
@@ -10226,13 +9740,7 @@ function applyCampTabOnlyMode(){
   });
   const navActionWrap=document.querySelector('.nav-actions');
   if(navActionWrap) navActionWrap.style.display='none';
-  const posSubButtons=document.querySelectorAll('.psub-btn');
-  posSubButtons.forEach(btn=>{
-    const allowed = ['charge','week'].includes(btn.dataset.possub || '');
-    btn.style.display = allowed ? '' : 'none';
-  });
   showPage('pos');
-  showPosSub('charge');
 }
 
 // ═══════════════════════════════════════════════════════════

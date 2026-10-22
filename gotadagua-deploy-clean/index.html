@@ -725,7 +725,7 @@
       </div>
       <div class="topbar-center"></div>
       <div class="topbar-right">
-        <button class="ghost-btn" id="csvImportBtn" type="button" onclick="openGlobalCsvImport()" title="Import a Bookinglayer CSV — splits rows by location and feeds every camp hub + partners" style="display:none">Import CSV</button>
+        <!-- the Bookinglayer CSV import is launched from the HQ (Overview → «Import bookings»), which opens /?openImport=1 -->
         <button class="ghost-btn" type="button" onclick="doSignOut()">Log out</button>
         <div class="user-meta">
           <div class="user-name" id="userName">—</div>
@@ -1126,7 +1126,7 @@
         icon:'partner',
         action:'open',
         href:'/crm',
-        meta:[['Main use','Outreach'],['Contacts','628']]
+        meta:[['Main use','Outreach'],['Team','Sales']]
       },
       {
         key:'instructors',
@@ -1615,9 +1615,9 @@
       (todo.bank_unlinked || []).forEach(b => items.push({ n: b.n, lbl: `Débitos sem linha · ${b.bank === 'santander' ? 'Santander' : b.bank === 'cgd' ? 'CGD' : 'BCP'}`, sub: `${eur0(b.sum)} desde ${b.oldest} · ligar ou criar a linha`, href: b.company === 'manjar' ? '/suk/#bank' : '/hq/?tab=fecho', cls: 'bad' }));
       const pw = by(todo.no_pdf, 'water-movements'), pm = by(todo.no_pdf, 'manjar');
       if (pw && pw.n) items.push({ n: pw.n, lbl: 'Sem PDF desde Set · Water', sub: `${eur0(pw.sum)} · anexar no Month close`, href: '/hq/?tab=fecho', cls: 'warn' });
-      if (pm && pm.n) items.push({ n: pm.n, lbl: 'Sem PDF desde Set · Suk', sub: `${eur0(pm.sum)} · Missing PDFs`, href: '/suk/#missing', cls: 'warn' });
+      if (pm && pm.n) items.push({ n: pm.n, lbl: 'Sem PDF desde Set · Suk', sub: `${eur0(pm.sum)} · Missing PDFs`, href: '/suk/#invoices', cls: 'warn' });
       if (todo.duplicates) items.push({ n: todo.duplicates, lbl: 'Possíveis duplicados', sub: 'confirmar ou arquivar no HQ', href: '/hq/?tab=invoices&filter=duplicate', cls: 'warn' });
-      if (todo.wild_pending) items.push({ n: todo.wild_pending, lbl: 'Wild · à espera da fatura', sub: 'linhas «pending HQ invoice»; somem quando a fatura entra no HQ', href: '/wild/#ledger', cls: 'warn' });
+      if (todo.wild_pending) items.push({ n: todo.wild_pending, lbl: 'Wild · à espera da fatura', sub: 'linhas «pending HQ invoice»; somem quando a fatura entra no HQ', href: '/wild/#night', cls: 'warn' });
       if (todo.recurring_due) items.push({ n: todo.recurring_due, lbl: 'Linhas mensais por criar', sub: 'o cron cria-as às 06:10; podes forçar no HQ', href: '/hq/?tab=invoices&recurring=1', cls: 'warn' });
       const pti = todo.partner_to_issue || [];
       if (pti.length) { const months = [...new Set(pti.map(x => x.month))].sort().reverse(); items.push({ n: pti.length, lbl: 'Faturas a parceiros por emitir', sub: `${months.join(', ')} · ${eur0(pti.reduce((s, x) => s + Number(x.commission || 0), 0))} de comissões · ${pti.slice(0, 3).map(x => x.partner).join(', ')}${pti.length > 3 ? '…' : ''}`, href: '/partners/', cls: 'warn' }); }

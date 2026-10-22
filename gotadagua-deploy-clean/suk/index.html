@@ -74,31 +74,7 @@
       <thead><tr><th>Date</th><th>Description</th><th>Rubric</th><th>Invoice</th><th class="r">Amount</th><th class="r">Balance</th><th></th></tr></thead>
       <tbody id="bankBody"><tr class="empty-row"><td colspan="7">Loading…</td></tr></tbody>
     </table></div></div>
-  </div>
-</div>
-
-<!-- ═══════════ MISSING ═══════════ -->
-<div class="page" id="page-missing">
-  <div class="container">
-    <div class="ov-filters">
-      <label class="period-picker"><span class="period-picker-lbl">Month</span><select id="ms_month" onchange="renderMissing()"><option value="all">All</option></select></label>
-      <span class="hint" style="margin-left:auto">Expense lines without a PDF. Salaries and taxes are not listed — they never have an invoice. «Attach PDF» opens the line; «No invoice» records why there is none.</span>
-    </div>
-    <div class="g4" id="msKpis" style="margin-bottom:14px"></div>
-    <section class="ov-section">
-      <div class="ov-section-head"><div class="ov-section-title">By supplier</div><div class="ov-section-sub">Where to look first</div></div>
-      <div class="card"><div class="tbl-wrap"><table><thead><tr><th>Supplier</th><th class="r">Lines</th><th class="r">Amount</th><th>Category</th></tr></thead><tbody id="msSuppliers"></tbody></table></div></div>
-    </section>
-    <section class="ov-section">
-      <div class="ov-section-head"><div class="ov-section-title">Every line without PDF</div></div>
-      <div class="card"><div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Supplier</th><th>Description</th><th>Category</th><th class="r">Amount</th><th></th></tr></thead><tbody id="msBody"></tbody></table></div></div>
-    </section>
-  </div>
-</div>
-
-<!-- ═══════════ WATER ↔ MANJAR ═══════════ -->
-<div class="page" id="page-water">
-  <div class="container">
+    <div class="ov-section-head" style="margin-top:30px"><div class="ov-section-title">Water ↔ Manjar</div></div>
     <div class="ov-filters"><span class="hint">Everything Water Movements paid to Manjar: the catering invoices lanced in the Water HQ (company Manjar) against the transfers that landed on Manjar's BCP account.</span></div>
     <div class="g4" id="wtKpis" style="margin-bottom:14px"></div>
     <section class="ov-section">
@@ -112,6 +88,7 @@
   </div>
 </div>
 
+
 <div class="toast" id="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.4"></script>
@@ -121,7 +98,7 @@
 <script src="/lib/business-pnl.js"></script>
 <script src="/lib/expense-form.js"></script>
 <script>
-AppShell.mount('appNav', { app:'suk', title:'The Suk', tabs:[{ id:'overview', label:'Overview', active:true }, { id:'invoices', label:'Expenses' }, { id:'bank', label:'Bank' }, { id:'missing', label:'Missing PDFs' }, { id:'water', label:'Water ↔ Manjar' }], location:{ label:'The Suk', items:[{ href:'/wild/', label:'Wild Wednesday', sub:'Weekly party · Costa da Caparica', current:false }, { href:'/suk/', label:'The Suk', sub:'Manjar Lda · restaurant + catering', current:true }] }, actions:'<a class="nav-action-btn" href="/hq/" id="hqBtn" style="display:none">HQ</a>' });
+AppShell.mount('appNav', { app:'suk', title:'The Suk', tabs:[{ id:'overview', label:'Overview', active:true }, { id:'invoices', label:'Expenses' }, { id:'bank', label:'Bank · Water ↔ Manjar' }], location:{ label:'The Suk', items:[{ href:'/wild/', label:'Wild Wednesday', sub:'Weekly party · Costa da Caparica', current:false }, { href:'/suk/', label:'The Suk', sub:'Manjar Lda · restaurant + catering', current:true }] }, actions:'<a class="nav-action-btn" href="/hq/" id="hqBtn" style="display:none">HQ</a>' });
 const cfg = window.__SUPABASE_CONFIG || {};
 const sb = window.supabase.createClient(cfg.url, cfg.anonKey);
 const SLUG = 'the-suk', COMPANY = 'manjar', BANK = 'bcp';
@@ -130,13 +107,15 @@ const $ = (id) => document.getElementById(id);
 const eur = (n) => BusinessPnl.eur(n);
 const eur0 = (n) => '€' + Math.round(Number(n || 0)).toLocaleString('en-GB');
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+// same rule as public.hq_doc_status() (supabase/one-formula.sql): a line needs a PDF unless it is exempt or a salary/benefit/tax
+const docMissing = (i) => !i.drive_link && !i.doc_exempt_reason && !/\[sem fatura/i.test(String(i.notes || '')) && !['Salary', 'Benefits', 'Taxes'].includes(i.category_name || '');
 let BANK_ROWS = [], INVOICES = [], WATER_INV = [], CATEGORIES = [], FOLDERS = [], CAN_EDIT = false, USER = null;
 
 function toast(msg, kind){ const t = $('toast'); t.textContent = msg; t.className = 'toast show' + (kind === 'err' ? ' err' : ''); clearTimeout(t._t); t._t = setTimeout(() => t.className = 'toast', 3600); }
 function showPage(name){
   document.querySelectorAll('.ntab').forEach(b => b.classList.toggle('active', b.dataset.page === name));
   document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === 'page-' + name));
-  ({ overview: renderOverview, invoices: renderInvoices, bank: renderBank, missing: renderMissing, water: renderWater })[name]?.();
+  ({ overview: renderOverview, invoices: renderInvoices, bank: () => { renderBank(); renderWater(); } })[name]?.();
 }
 
 // ── Rubrics read from the bank description ──────────────────────
@@ -220,20 +199,22 @@ async function loadData(){
     ]);
   } catch (e) { toast('Could not load: ' + (e.message || e), 'err'); }
   BANK_ROWS.forEach(r => { r.rubric = rubricOf(r); r.month = String(r.movement_date).slice(0, 7); });
-  // Debits without an invoice: linked id, an invoice of the same amount within 20 days, or marked «sem fatura».
-  const byAmt = {}; INVOICES.forEach(i => { const k = Math.round(Number(i.amount_eur) * 100); (byAmt[k] = byAmt[k] || []).push(i); });
-  const linkedIds = new Set(BANK_ROWS.map(r => r.hq_invoice_id).filter(Boolean));
+  // Debits without a line: ONE rule for every company — hq_bank_unmatched_co() (supabase/bank-unmatched-company.sql),
+  // the same the HQ Month close, the accountant page and the Excel use for Water.
+  let unmatched = new Set();
+  try {
+    const dates = BANK_ROWS.map(r => r.movement_date).filter(Boolean).sort();
+    if (dates.length) { const { data, error } = await sb.rpc('hq_bank_unmatched_co', { p_company: COMPANY, p_from: dates[0], p_to: dates[dates.length - 1] }); if (error) throw error; unmatched = new Set((data || []).map(r => r.id)); }
+  } catch (e) { toast('Bank check: ' + (e.message || e), 'err'); }
   BANK_ROWS.forEach(r => {
     if (r.amount >= 0 || r.kind !== 'expense') { r.has_invoice = null; return; }
     if (r.hq_invoice_id) { r.has_invoice = 'linked'; return; }
     if (/\[sem fatura/i.test(r.notes || '')) { r.has_invoice = 'none'; return; }
-    const cands = (byAmt[Math.round(-r.amount * 100)] || []).filter(i => !linkedIds.has(i.id));
-    const near = cands.find(i => Math.abs((new Date(i.invoice_date) - new Date(r.movement_date)) / 86400000) <= 20);
-    r.has_invoice = near ? 'amount' : (NO_INVOICE.has(r.rubric) ? 'n/a' : 'missing');
+    r.has_invoice = unmatched.has(r.id) ? 'missing' : (NO_INVOICE.has(r.rubric) ? 'n/a' : 'amount');
   });
-  INVOICES.forEach(i => { i.bank = BANK_ROWS.find(r => r.hq_invoice_id === i.id) || null; i.missing_pdf = !i.drive_link && !i.doc_exempt_reason && !['Salary', 'Taxes'].includes(i.category_name || ''); });
+  INVOICES.forEach(i => { i.bank = BANK_ROWS.find(r => r.hq_invoice_id === i.id) || null; i.missing_pdf = docMissing(i); });
   const months = [...new Set(BANK_ROWS.map(r => r.month).concat(INVOICES.map(i => String(i.invoice_date).slice(0, 7))))].sort().reverse();
-  ['bk_month', 'ms_month', 'iv_month'].forEach(id => { const cur = $(id).value; $(id).innerHTML = '<option value="all">All</option>' + months.map(m => `<option value="${m}">${m}</option>`).join(''); if ([...$(id).options].some(o => o.value === cur)) $(id).value = cur; });
+  ['bk_month', 'iv_month'].forEach(id => { const cur = $(id).value; $(id).innerHTML = '<option value="all">All</option>' + months.map(m => `<option value="${m}">${m}</option>`).join(''); if ([...$(id).options].some(o => o.value === cur)) $(id).value = cur; });
   const years = [...new Set(months.map(m => m.slice(0, 4)))];
   if (!$('ov_year').options.length) $('ov_year').innerHTML = years.map(y => `<option value="${y}">${y}</option>`).join('');
   const catSel = $('inv_category'); if (catSel) catSel.innerHTML = CATEGORIES.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
@@ -294,11 +275,15 @@ function renderOverview(){
       </div>
       <div class="g4" style="margin-top:14px">
         ${kpi('Expense lines', String(invYear.length), eur(invYear.reduce((s, i) => s + Number(i.amount_eur || 0), 0)) + ' · one per debit, like the HQ', '', "showPage('invoices')")}
-        ${kpi('Lines without PDF', String(invYear.filter(i => i.missing_pdf).length), eur(invYear.filter(i => i.missing_pdf).reduce((s, i) => s + Number(i.amount_eur || 0), 0)) + (invYear.filter(i => i.needs_review).length ? ` · ${invYear.filter(i => i.needs_review).length} need a category` : ''), invYear.some(i => i.missing_pdf) ? 'neg' : 'pos', "showPage('missing')")}
-        ${kpi('Catering sold to Water', eur(sum(r => r.rubric === 'Vendas à Water (catering)')), `${rows.filter(r => r.rubric === 'Vendas à Water (catering)').length} transfers · click for the detail`, 'pos', "showPage('water')")}
+        ${kpi('Lines without PDF', String(invYear.filter(i => i.missing_pdf).length), eur(invYear.filter(i => i.missing_pdf).reduce((s, i) => s + Number(i.amount_eur || 0), 0)) + (invYear.filter(i => i.needs_review).length ? ` · ${invYear.filter(i => i.needs_review).length} need a category` : ''), invYear.some(i => i.missing_pdf) ? 'neg' : 'pos', "showInvoicesFilter('nopdf')")}
+        ${kpi('Catering sold to Water', eur(sum(r => r.rubric === 'Vendas à Water (catering)')), `${rows.filter(r => r.rubric === 'Vendas à Water (catering)').length} transfers · click for the detail`, 'pos', "showPage('bank')")}
         ${kpi('Bank movements', String(rows.length), `${months[0]} → ${months[months.length - 1]}`, '', "showPage('bank')")}
       </div>
     </section>
+    ${missing.length || invYear.some(i => i.missing_pdf) ? `<section class="ov-section">
+      <div class="ov-section-head"><div class="ov-section-title">Without PDF · by supplier</div><div class="ov-section-sub">Where to look first · click a supplier to open its lines</div></div>
+      ${missingBySupplierHtml(invYear.filter(i => i.missing_pdf))}
+    </section>` : ''}
     <section class="ov-section">
       <div class="ov-section-head"><div class="ov-section-title">Restaurant and catering</div><div class="ov-section-sub">Same company, two businesses. Each expense line has a «Business» in the Expenses tab (default: restaurant). ${lines.filter(isCatering).length ? `${lines.filter(isCatering).length} lines are catering.` : 'No line is marked as catering yet — set the Business on the catering suppliers in Expenses.'}</div></div>
       <div class="g2">
@@ -357,7 +342,7 @@ async function setCategory(id, catId){
   if (sameSupplier.length && confirm(`Set «${c.name}» on this line.\n\nApply it to the other ${sameSupplier.length} lines of «${i.company}» that still have no category?`)) ids = ids.concat(sameSupplier.map(x => x.id));
   const { error } = await sb.from('hq_invoices').update({ category_id: c.id, category_name: c.name, needs_review: false }).in('id', ids);
   if (error) { toast('Not saved: ' + error.message, 'err'); return; }
-  ids.forEach(x => { const l = INVOICES.find(y => y.id === x); if (l) { l.category_id = c.id; l.category_name = c.name; l.needs_review = false; l.missing_pdf = !l.drive_link && !l.doc_exempt_reason && !['Salary', 'Taxes'].includes(c.name); } });
+  ids.forEach(x => { const l = INVOICES.find(y => y.id === x); if (l) { l.category_id = c.id; l.category_name = c.name; l.needs_review = false; l.missing_pdf = docMissing(l); } });
   toast(`${c.name} · ${ids.length} line${ids.length === 1 ? '' : 's'}`);
   renderInvoices(); renderOverview();
 }
@@ -474,7 +459,7 @@ async function saveInvoice(){
     if (old && old.id !== INV_BANK_ID) { const { error } = await sb.from('hq_bank_movements').update({ hq_invoice_id: null }).eq('id', old.id); if (error) throw error; }
     if (INV_BANK_ID) { const { error } = await sb.from('hq_bank_movements').update({ hq_invoice_id: id }).eq('id', INV_BANK_ID); if (error) throw error; }
     toast((INV_EDIT ? 'Expense updated' : 'Expense added') + (INV_FILE ? ' · PDF on Drive' : ''));
-    closeInvoice(); await loadData(); renderInvoices(); renderMissing(); renderOverview();
+    closeInvoice(); await loadData(); renderInvoices(); renderOverview();
   } catch (e) { toast('Not saved: ' + (e.message || e), 'err'); }
   finally { ExpenseForm.busy(false); }
 }
@@ -483,14 +468,14 @@ async function deleteInvoice(){
   const { error } = await sb.from('hq_invoices').update({ deleted_at: new Date().toISOString(), deleted_by: USER?.email || null }).eq('id', INV_EDIT.id);
   if (error) { toast('Not deleted: ' + error.message, 'err'); return; }
   const b = BANK_ROWS.find(r => r.hq_invoice_id === INV_EDIT.id); if (b) await sb.from('hq_bank_movements').update({ hq_invoice_id: null }).eq('id', b.id);
-  toast('Expense archived'); closeInvoice(); await loadData(); renderInvoices(); renderMissing(); renderOverview();
+  toast('Expense archived'); closeInvoice(); await loadData(); renderInvoices(); renderOverview();
 }
 async function markNoInvoice(id){
   const i = INVOICES.find(x => x.id === id); if (!i) return;
   const why = prompt(`No invoice for this expense — why?\n${i.invoice_date} · ${i.company} · ${eur(i.amount_eur)}`, 'sem fatura'); if (why == null || !why.trim()) return;
   const { error } = await sb.from('hq_invoices').update({ doc_exempt_reason: why.trim(), notes: `[sem fatura: ${why.trim()}] ${i.notes || ''}`.trim() }).eq('id', id);
   if (error) { toast('Not saved: ' + error.message, 'err'); return; }
-  toast('Marked'); await loadData(); renderMissing(); renderInvoices(); renderOverview();
+  toast('Marked'); await loadData(); renderInvoices(); renderOverview();
 }
 function addFromBank(id){
   const r = BANK_ROWS.find(x => x.id === id); if (!r) return;
@@ -515,20 +500,11 @@ function renderBank(){
 }
 
 // ── Missing PDFs (lines without a document) ──────────────────────
-function renderMissing(){
-  const month = $('ms_month').value;
-  const rows = INVOICES.filter(i => i.missing_pdf && (month === 'all' || String(i.invoice_date).startsWith(month)));
-  const total = rows.reduce((s, i) => s + Number(i.amount_eur || 0), 0);
-  const withPdf = INVOICES.filter(i => i.drive_link && (month === 'all' || String(i.invoice_date).startsWith(month)));
-  const unlinked = BANK_ROWS.filter(r => r.has_invoice === 'missing' && (month === 'all' || r.month === month));
-  const kpi = (label, value, sub, cls = '') => `<div class="card kpi"><div class="kpi-label">${label}</div><div class="kpi-value ${cls}">${value}</div><div class="kpi-sub">${sub}</div></div>`;
-  $('msKpis').innerHTML = kpi('Lines without PDF', String(rows.length), month === 'all' ? 'whole year' : month, rows.length ? 'neg' : 'pos') + kpi('Amount without PDF', eur(total), 'to find on Drive or ask the supplier', rows.length ? 'neg' : 'pos') + kpi('Lines with PDF', String(withPdf.length), eur(withPdf.reduce((s, i) => s + Number(i.amount_eur || 0), 0)), 'pos') + kpi('Bank debits without a line', String(unlinked.length), unlinked.length ? 'add them below' : 'every debit has its line', unlinked.length ? 'neg' : 'pos');
+function showInvoicesFilter(f){ showPage('invoices'); const s = $('iv_filter'); if (s) s.value = f; renderInvoices(); }
+function missingBySupplierHtml(rows){
   const bySup = {}; rows.forEach(i => { const k = i.company || '—'; const b = bySup[k] || (bySup[k] = {n:0, eur:0, cat:i.category_name}); b.n++; b.eur += Number(i.amount_eur || 0); });
-  const sups = Object.entries(bySup).sort((a, b) => b[1].eur - a[1].eur);
-  $('msSuppliers').innerHTML = sups.length ? sups.map(([k, b]) => `<tr><td>${esc(k)}</td><td class="r">${b.n}</td><td class="r" style="font-weight:700">${eur(b.eur)}</td><td>${b.cat ? esc(b.cat) : '<span class="badge badge-amber">decide</span>'}</td></tr>`).join('') : '<tr class="empty-row"><td colspan="4">Nothing missing.</td></tr>';
-  $('msBody').innerHTML = (rows.slice().reverse().map(i => `<tr class="click" onclick="openInvoice('${i.id}')"><td>${i.invoice_date}</td><td><b>${esc(i.company)}</b></td><td class="hint" style="max-width:380px">${esc(i.description || '')}</td><td>${i.category_name ? esc(i.category_name) : '<span class="badge badge-amber">decide</span>'}</td><td class="r" style="font-weight:700">${eur(i.amount_eur)}</td><td class="r" style="white-space:nowrap">${CAN_EDIT ? `<button class="btn btn-p" style="padding:4px 10px" onclick="event.stopPropagation();openInvoice('${i.id}')">Attach PDF</button> <button class="btn btn-s" style="padding:4px 10px" onclick="event.stopPropagation();markNoInvoice('${i.id}')">No invoice</button>` : ''}</td></tr>`).join('')
-    + unlinked.slice().reverse().map(r => `<tr><td>${r.movement_date}</td><td><b>${esc(supplierOf(r.description))}</b></td><td class="hint">${esc(r.description)} <span class="badge badge-amber">bank debit without a line</span></td><td class="hint">${esc(r.rubric)}</td><td class="r" style="font-weight:700">${eur(-r.amount)}</td><td class="r">${CAN_EDIT ? `<button class="btn btn-p" style="padding:4px 10px" onclick="addFromBank('${r.id}')">+ Add line</button>` : ''}</td></tr>`).join(''))
-    || '<tr class="empty-row"><td colspan="6">Nothing missing.</td></tr>';
+  const sups = Object.entries(bySup).sort((a, b) => b[1].eur - a[1].eur).slice(0, 12);
+  return sups.length ? `<div class="card"><div class="tbl-wrap"><table><thead><tr><th>Supplier</th><th class="r">Lines</th><th class="r">Without PDF</th><th>Category</th></tr></thead><tbody>${sups.map(([k, b]) => `<tr class="click" onclick="$('iv_q').value=${JSON.stringify(k)};showInvoicesFilter('nopdf')"><td>${esc(k)}</td><td class="r">${b.n}</td><td class="r" style="font-weight:700">${eur(b.eur)}</td><td>${b.cat ? esc(b.cat) : '<span class="badge badge-amber">decide</span>'}</td></tr>`).join('')}</tbody></table></div></div>` : '';
 }
 
 // ── Water ↔ Manjar ───────────────────────────────────────────────

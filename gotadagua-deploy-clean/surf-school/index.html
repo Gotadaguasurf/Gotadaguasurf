@@ -454,9 +454,6 @@ main{padding:16px;max-width:640px;margin:0 auto}
         <option value="all">All time</option>
       </select>
     </div>
-    <!-- Vendas por pessoa — quem abriu cada rental recebe comissão de venda.
-         opened_by é gravado pelo servidor (auth.uid()), não pelo browser. -->
-    <div id="sellerSummary" style="margin-bottom:12px"></div>
     <div id="historyList"><div class="empty"><div class="empty-icon">⏳</div>Loading…</div></div>
   </div>
 
@@ -520,11 +517,12 @@ let CAN_EDIT_HISTORY = false;
 
 // When embedded inside camp-hub (iframe with ?embedded=1) the parent
 // already has its own dark navy header + location switcher, so hiding
-// ours prevents the double-header look. Same page works standalone at
-// gotadaguasurf.com/surf-school/ where the header shows normally.
+// ours prevents the double-header look. The header is the AppShell
+// <nav class="app-nav"> (it used to be a <header>; both are covered).
+// Same page works standalone at gotadaguasurf.com/surf-school/ where
+// the header shows normally.
 if (new URLSearchParams(location.search).get('embedded') === '1') {
-  const hdr = document.querySelector('header');
-  if (hdr) hdr.style.display = 'none';
+  document.querySelectorAll('header, .app-nav, #appNav').forEach(el => { el.style.display = 'none'; });
   const sub = document.querySelector('.subnav');
   if (sub) sub.style.top = '0';
   document.body.style.background = 'var(--bg)';
@@ -1087,37 +1085,9 @@ function renderOpen(){
   }
 }
 
-// Sales by person for the filtered window — the basis for sales commissions.
-// Keyed on opened_by (stamped server-side), shown with the email so payroll
-// can match it without guessing names.
-function sellerSummaryRows(rows){
-  const by = new Map();
-  rows.forEach(r => {
-    const k = r.opened_by || 'unknown';
-    const v = by.get(k) || { uid:k, n:0, total:0 };
-    v.n += 1; v.total += Number(r.price_local || 0);
-    by.set(k, v);
-  });
-  return [...by.values()].sort((a,b) => b.total - a.total).map(v => ({
-    ...v,
-    name: PROFILE_NAMES.get(v.uid) || 'Unknown',
-    email: PROFILE_EMAILS.get(v.uid) || ''
-  }));
-}
-function renderSellerSummary(rows){
-  const box = document.getElementById('sellerSummary'); if (!box) return;
-  // Camp guests don't pay — they're not sales and mustn't count as one.
-  const sellers = sellerSummaryRows(rows.filter(r => r.kind !== 'camp'));
-  if (!sellers.length) { box.innerHTML = ''; return; }
-  const tot = sellers.reduce((s,v) => s + v.total, 0);
-  box.innerHTML = `<div class="card" style="padding:12px 14px">
-    <div style="font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:700;margin-bottom:8px">Vendas por pessoa · ${rows.length} entradas · €${tot.toFixed(0)}</div>
-    ${sellers.map(v => `<div style="display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-top:1px solid var(--border);font-size:13px">
-      <div><strong>${escapeHtml(v.name)}</strong>${v.email?`<div style="font-size:11px;color:var(--muted)">${escapeHtml(v.email)}</div>`:''}</div>
-      <div style="text-align:right;white-space:nowrap"><strong>€${v.total.toFixed(0)}</strong><div style="font-size:11px;color:var(--muted)">${v.n} venda${v.n===1?'':'s'}</div></div>
-    </div>`).join('')}
-  </div>`;
-}
+// Sales per person live in the Vendas tab (whole month from the DB).
+// The History tab used to repeat them from its last-500 window — removed
+// 22 Oct 2026 because that partial view disagreed with the real one.
 // ── Vendas por login (separador mensal) ─────────────────────────────
 let SALES_MONTH = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; })();
 let SALES_ROWS = [];
@@ -1343,7 +1313,6 @@ function renderHistory(){
     return true;
   });
   const list = document.getElementById('historyList');
-  renderSellerSummary(rows);
   if (!rows.length) {
     list.innerHTML = `<div class="empty"><div class="empty-icon">📖</div>Nothing in this window.</div>`;
     return;

@@ -100,21 +100,6 @@
   </div>
 </div>
 
-<!-- ═══════════ LEDGER ═══════════ -->
-<div class="page" id="page-ledger">
-  <div class="container">
-    <div class="ov-filters">
-      <label class="period-picker"><span class="period-picker-lbl">Month</span><select id="lg_month" onchange="renderLedger()"><option value="all">All</option></select></label>
-      <label class="period-picker"><span class="period-picker-lbl">Type</span><select id="lg_type" onchange="renderLedger()"><option value="all">All</option><option value="revenue">Revenue</option><option value="expense">Costs</option></select></label>
-      <span class="hint" id="lg_count" style="margin-left:auto"></span>
-    </div>
-    <div class="card"><div class="tbl-wrap"><table>
-      <thead><tr><th>Date</th><th>Category</th><th>Description</th><th>Paid</th><th>Source</th><th class="r">Amount</th><th></th></tr></thead>
-      <tbody id="ledgerBody"><tr class="empty-row"><td colspan="7">Loading…</td></tr></tbody>
-    </table></div></div>
-  </div>
-</div>
-
 <div class="toast" id="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.4"></script>
@@ -123,7 +108,7 @@
 <script src="/lib/app-shell.js"></script>
 <script src="/lib/business-pnl.js"></script>
 <script>
-AppShell.mount('appNav', { app:'wild', title:'Wild Wednesday', tabs:[{ id:'overview', label:'Overview', active:true }, { id:'night', label:'Close night' }, { id:'ledger', label:'Ledger' }], location:{ label:'Wild Wednesday', items:[{ href:'/wild/', label:'Wild Wednesday', sub:'Weekly party · Costa da Caparica', current:true }, { href:'/suk/', label:'The Suk', sub:'Manjar Lda · restaurant + catering', current:false }] }, actions:'<a class="nav-action-btn" href="/hq/" id="hqBtn" style="display:none">HQ</a>' });
+AppShell.mount('appNav', { app:'wild', title:'Wild Wednesday', tabs:[{ id:'overview', label:'Overview', active:true }, { id:'night', label:'Close night' }], location:{ label:'Wild Wednesday', items:[{ href:'/wild/', label:'Wild Wednesday', sub:'Weekly party · Costa da Caparica', current:true }, { href:'/suk/', label:'The Suk', sub:'Manjar Lda · restaurant + catering', current:false }] }, actions:'<a class="nav-action-btn" href="/hq/" id="hqBtn" style="display:none">HQ</a>' });
 const cfg = window.__SUPABASE_CONFIG || {};
 const sb = window.supabase.createClient(cfg.url, cfg.anonKey);
 
@@ -155,7 +140,6 @@ function showPage(name){
   document.querySelectorAll('.ntab').forEach(b => b.classList.toggle('active', b.dataset.page === name));
   document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === 'page-' + name));
   if (name === 'overview') renderSeason();
-  if (name === 'ledger') renderLedger();
 }
 
 // ── Boot ─────────────────────────────────────────────────────────
@@ -357,27 +341,6 @@ function renderSeason(){
   });
 }
 
-// ── Ledger ───────────────────────────────────────────────────────
-function renderLedger(){
-  const msel = $('lg_month');
-  if (msel.options.length <= 1) { const months = [...new Set(ROWS.map(r => String(r.entry_date).slice(0, 7)))].sort().reverse(); msel.innerHTML = '<option value="all">All</option>' + months.map(m => `<option value="${m}">${m}</option>`).join(''); }
-  const month = msel.value, type = $('lg_type').value;
-  const rows = ROWS.filter(r => (month === 'all' || String(r.entry_date).startsWith(month)) && (type === 'all' || r.type === type)).sort((a, b) => a.entry_date < b.entry_date ? 1 : -1);
-  const src = (r) => r.source_kind === 'hq_invoice' ? '<span class="badge badge-blue">HQ invoice</span>' : (r.source_kind === 'manual' ? (String(r.description || '').includes(PENDING) ? '<span class="badge badge-amber">pending invoice</span>' : '<span class="badge badge-green">night close</span>') : '<span class="badge badge-grey">camp tab</span>');
-  $('lg_count').textContent = `${rows.length} lines · revenue ${eur(rows.filter(r => r.type === 'revenue').reduce((s, r) => s + Number(r.amount_eur || 0), 0))} · costs ${eur(rows.filter(r => r.type === 'expense').reduce((s, r) => s + Number(r.amount_eur || 0), 0))}`;
-  $('ledgerBody').innerHTML = rows.length ? rows.map(r => `<tr>
-    <td>${r.entry_date}</td><td>${esc(String(r.category || '').replace(/^Wild · /, ''))}</td><td class="hint" style="max-width:460px">${esc(r.description || '')}</td>
-    <td>${esc(BusinessPnl.methodOf(r))}</td><td>${src(r)}</td>
-    <td class="r" style="font-weight:700;color:${r.type === 'revenue' ? 'var(--green)' : 'var(--ink)'}">${r.type === 'revenue' ? '+' : '−'}${eur(r.amount_eur)}</td>
-    <td class="r">${CAN_EDIT && r.source_kind === 'manual' ? `<button class="btn btn-d" style="padding:4px 10px" onclick="deleteRow('${r.id}')">Delete</button>` : ''}</td>
-  </tr>`).join('') : '<tr class="empty-row"><td colspan="7">Nothing here.</td></tr>';
-}
-async function deleteRow(id){
-  const r = ROWS.find(x => x.id === id); if (!r || !confirm(`Delete this line?\n${r.entry_date} · ${r.category} · ${eur(r.amount_eur)}`)) return;
-  const { error } = await sb.from('ledger_entries').delete().eq('id', id);
-  if (error) { toast('Not deleted: ' + error.message, 'err'); return; }
-  toast('Line deleted'); await loadRows(); renderLedger(); renderNightsList(); renderSeason();
-}
 
 boot();
 </script>

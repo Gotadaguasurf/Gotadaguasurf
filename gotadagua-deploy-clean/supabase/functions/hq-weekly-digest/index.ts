@@ -158,29 +158,35 @@ interface WeekNumbers {
 
 async function computeWeek(supa: ReturnType<typeof createClient>, start: Date, end: Date): Promise<WeekNumbers> {
   const s = iso(start); const e = iso(end)
-  // Bookings — sum(total) where check_in_on ∈ [s, e). Non-duplicates only.
+  // Bookings — net (coalesce(net_amount, total)) by check-in week, realized only
+  // (Paid / Confirmed / Deposit paid): the same rule as hq_overview_rollup() and
+  // /partners (supabase/one-formula.sql, 22 Oct 2026). Before, the digest used
+  // gross and every status, so it never matched the HQ.
   const bookingsRes = await supa
     .from('bookings')
-    .select('total, location, check_in_on')
+    .select('total, net_amount, location, check_in_on, raw_payload')
     .gte('check_in_on', s).lt('check_in_on', e)
-  const bookings = bookingsRes.data || []
+  const REALIZED = new Set(['paid', 'confirmed', 'deposit paid', 'deposit_paid'])
+  const bookings = (bookingsRes.data || []).filter((b: any) => { const st = String(b.raw_payload?.status || 'Paid').toLowerCase(); return REALIZED.has(st) })
   const bookingsByLoc = new Map<string, { count: number; gross: number }>()
   let revenue = 0, bookingsCount = 0
   for (const b of bookings) {
     const loc = (b.location as string) || 'unknown'
-    const gross = Number(b.total) || 0
+    const gross = Number(b.net_amount ?? b.total) || 0
     revenue += gross
     bookingsCount++
     const prev = bookingsByLoc.get(loc) || { count: 0, gross: 0 }
     bookingsByLoc.set(loc, { count: prev.count + 1, gross: prev.gross + gross })
   }
-  // Invoices — sum(amount_eur) where invoice_date ∈ [s, e) AND is_duplicate=false.
+  // Invoices — same books as the HQ: not deleted, not duplicate, not Manjar, not personal.
   const invRes = await supa
     .from('hq_invoices')
-    .select('amount_eur, paying_company, invoice_date, company, category_name, location_slug, is_duplicate, needs_review')
+    .select('amount_eur, paying_company, invoice_date, company, category_name, location_slug, is_duplicate, needs_review, deleted_at')
     .gte('invoice_date', s).lt('invoice_date', e)
     .eq('is_duplicate', false)
-  const invoices = invRes.data || []
+    .is('deleted_at', null)
+    .neq('paying_company', 'manjar')
+  const invoices = (invRes.data || []).filter((i: any) => !/personal/i.test(String(i.category_name || '')))
   const spendByCompany = new Map<string, number>()
   let spend = 0
   for (const i of invoices) {
@@ -215,8 +221,8 @@ async function computeWeek(supa: ReturnType<typeof createClient>, start: Date, e
   }
   // Health chips are AS-OF-NOW counts (backlog), not weekly.
   const [reviewRes, dupRes, recurRes] = await Promise.all([
-    supa.from('hq_invoices').select('id', { count: 'exact', head: true }).eq('needs_review', true),
-    supa.from('hq_invoices').select('id', { count: 'exact', head: true }).eq('is_duplicate', true),
+    supa.from('hq_invoices').select('id', { count: 'exact', head: true }).eq('needs_review', true).is('deleted_at', null).neq('paying_company', 'manjar'),
+    supa.from('hq_invoices').select('id', { count: 'exact', head: true }).eq('is_duplicate', true).is('deleted_at', null).neq('paying_company', 'manjar'),
     supa.from('hq_recurring_expenses').select('id, active, day_of_month, last_created_on').eq('active', true),
   ])
   const now = new Date()

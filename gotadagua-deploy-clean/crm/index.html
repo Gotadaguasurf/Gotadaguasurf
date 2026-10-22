@@ -71,7 +71,7 @@ body.dark .empty-state{color:var(--muted)}
   .header-left{min-width:0}
   .header-center,.header-right{display:none}
   .nav-hamburger{display:block}
-  main, .container, #page-dashboard, #page-contacts, #page-pipeline, #page-analytics, #page-templates, #page-tasks{padding:12px}
+  main, .container, #page-dashboard, #page-contacts, #page-pipeline, #page-templates, #page-tasks{padding:12px}
   .kpi-strip{grid-template-columns:1fr 1fr;gap:8px}
   .kpi-strip .kpi{padding:12px}
   .dash-row{grid-template-columns:1fr !important;gap:14px}
@@ -694,7 +694,6 @@ body.dark .ed-input{background:var(--card)}
     <button class="nav-tab" data-tab="contacts">Contacts</button>
     <button class="nav-tab" data-tab="tasks">Tasks <span id="navTasksCount" style="margin-left:6px;font-size:10px;background:#dc2626;color:#fff;padding:2px 7px;border-radius:999px;font-weight:700;display:none">0</span></button>
     <button class="nav-tab" data-tab="pipeline">Pipeline</button>
-    <button class="nav-tab" data-tab="analytics">Analytics</button>
     <button class="nav-tab" data-tab="templates">Templates</button>
     <button class="nav-tab" data-tab="sequences">Sequences</button>
   </div>
@@ -720,7 +719,6 @@ body.dark .ed-input{background:var(--card)}
   <button class="ntab-m" data-tab="contacts" onclick="mobGoTab('contacts')">Contacts</button>
   <button class="ntab-m" data-tab="tasks" onclick="mobGoTab('tasks')">Tasks <span id="navTasksCountMob" style="font-size:10px;background:#dc2626;color:#fff;padding:2px 7px;border-radius:999px;font-weight:700;display:none">0</span></button>
   <button class="ntab-m" data-tab="pipeline" onclick="mobGoTab('pipeline')">Pipeline</button>
-  <button class="ntab-m" data-tab="analytics" onclick="mobGoTab('analytics')">Analytics</button>
   <button class="ntab-m" data-tab="templates" onclick="mobGoTab('templates')">Templates</button>
   <button class="ntab-m" data-tab="sequences" onclick="mobGoTab('sequences')">Sequences</button>
   <div class="nav-mob-lbl">Actions</div>
@@ -821,6 +819,41 @@ body.dark .ed-input{background:var(--card)}
         <div class="dash-card-title"><span class="ui-ic lg">__ICN_CALENDAR__</span>  Contracts expiring (next 60 days)</div>
         <div id="expiringList"></div>
       </div>
+    </div>
+
+    <!-- ─── Analytics — merged from the old Analytics tab (22 Oct 2026).
+         The money KPIs that tab carried live in the KPI strip above;
+         this block keeps the by-country / by-segment breakdown, the
+         pipeline-value doughnut and the funnel-conversion table.
+         Filled by renderDashboardAnalytics() at the end of the same
+         render pass as the rest of the Dashboard. -->
+    <div class="section-hdr" style="margin-top:8px">
+      <div class="section-title">Analytics</div>
+      <div class="section-hint">Breakdown by country and segment · funnel conversion</div>
+    </div>
+    <div class="dash-row">
+      <div class="dash-card">
+        <div class="dash-card-title">Contacts by country</div>
+        <div style="position:relative;height:280px"><canvas id="chartCountry"></canvas></div>
+      </div>
+      <div class="dash-card">
+        <div class="dash-card-title">Reply rate by country</div>
+        <div style="position:relative;height:280px"><canvas id="chartReplyRate"></canvas></div>
+      </div>
+    </div>
+    <div class="dash-row">
+      <div class="dash-card">
+        <div class="dash-card-title">Contacts by segment</div>
+        <div style="position:relative;height:280px"><canvas id="chartSegment"></canvas></div>
+      </div>
+      <div class="dash-card">
+        <div class="dash-card-title" id="chartPipelineValueTitle">Pipeline value by status</div>
+        <div style="position:relative;height:280px"><canvas id="chartPipelineValue"></canvas></div>
+      </div>
+    </div>
+    <div class="dash-card">
+      <div class="dash-card-title">Funnel conversion</div>
+      <div id="conversionTable" style="font-family:'DM Mono',monospace;font-size:13px;line-height:1.8"></div>
     </div>
   </div>
 
@@ -967,7 +1000,7 @@ body.dark .ed-input{background:var(--card)}
       </div>
     </div>
     <!-- Filter row — narrows the Kanban so 500+ cards become manageable.
-         Sticky so it stays reachable while scrolling the funnel + Kanban. -->
+         Sticky so it stays reachable while scrolling the Kanban. -->
     <div style="position:sticky;top:60px;z-index:50;background:#f5f8fb;padding:8px 0;display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px;border-bottom:1px solid var(--border)">
       <input type="search" id="pipelineFilterText" placeholder="Search company / city / email…" style="flex:1;min-width:200px;border:1px solid var(--border);border-radius:8px;padding:7px 10px;font:inherit;font-size:13px">
       <select id="pipelineFilterCountry" style="border:1px solid var(--border);border-radius:8px;padding:7px 10px;font:inherit;font-size:13px">
@@ -976,56 +1009,12 @@ body.dark .ed-input{background:var(--card)}
       <select id="pipelineFilterSegment" style="border:1px solid var(--border);border-radius:8px;padding:7px 10px;font:inherit;font-size:13px">
         <option value="">All segments</option>
       </select>
-      <button id="pipelineFilterStuck" type="button" title="Show only cards 30+ days in current stage (pipeline mode)" style="background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:999px;padding:7px 12px;font:inherit;font-size:12px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">Stuck only</button>
       <button id="pipelineFilterClear" type="button" style="background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font:inherit;font-size:12px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif">Clear</button>
       <button id="pipelineExportBtn" type="button" title="Download the current filtered Kanban as CSV" style="background:transparent;color:var(--ocean);border:1px solid var(--ocean);border-radius:8px;padding:7px 12px;font:inherit;font-size:12px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">Export CSV</button>
       <div id="pipelineFilterCount" style="margin-left:auto;font-family:'DM Mono',monospace;font-size:12px;color:var(--muted)"></div>
     </div>
-    <!-- Pipeline summary strip — populated by renderPipelineSummary,
-         hidden in legacy status mode. -->
-    <div id="pipelineSummary" class="hidden" style="display:flex;gap:14px;flex-wrap:wrap;padding:14px 18px;background:linear-gradient(135deg,var(--navy),#1e3a52);color:#fff;border-radius:var(--r-md);margin-bottom:14px"></div>
-    <!-- Horizontal-bar funnel showing per-stage counts (also pipeline-mode only). -->
-    <div id="pipelineFunnel" class="hidden" style="background:#fff;border:1px solid var(--border);border-radius:var(--r-md);padding:16px 18px;margin-bottom:14px"></div>
     <div class="kanban-wrap">
       <div class="kanban" id="kanban"></div>
-    </div>
-  </div>
-
-  <!-- ─── ANALYTICS TAB ─── -->
-  <div id="page-analytics" class="hidden">
-    <div class="section-hdr">
-      <div class="section-title">Analytics</div>
-      <div class="section-hint">Conversion + breakdown by country and segment</div>
-    </div>
-
-    <!-- Pipeline value KPI strip -->
-    <div class="kpi-strip" id="pipelineKpis"></div>
-
-    <div class="dash-row">
-      <div class="dash-card">
-        <div class="dash-card-title">Contacts by country</div>
-        <div style="position:relative;height:280px"><canvas id="chartCountry"></canvas></div>
-      </div>
-      <div class="dash-card">
-        <div class="dash-card-title">Reply rate by country</div>
-        <div style="position:relative;height:280px"><canvas id="chartReplyRate"></canvas></div>
-      </div>
-    </div>
-
-    <div class="dash-row">
-      <div class="dash-card">
-        <div class="dash-card-title">Contacts by segment</div>
-        <div style="position:relative;height:280px"><canvas id="chartSegment"></canvas></div>
-      </div>
-      <div class="dash-card">
-        <div class="dash-card-title">Pipeline value by status</div>
-        <div style="position:relative;height:280px"><canvas id="chartPipelineValue"></canvas></div>
-      </div>
-    </div>
-
-    <div class="dash-card">
-      <div class="dash-card-title">Funnel conversion</div>
-      <div id="conversionTable" style="font-family:'DM Mono',monospace;font-size:13px;line-height:1.8"></div>
     </div>
   </div>
 
@@ -1083,11 +1072,9 @@ body.dark .ed-input{background:var(--card)}
     <button class="action-btn green" id="markRepliedBtn"><span class="ui-ic">__ICN_CHECK__</span>  Mark replied</button>
     <button class="action-btn ghost" id="setFollowupBtn" title="Set a follow-up date. Pick 30 days to effectively snooze the contact — Cold accounts scan skips contacts with a future follow-up."><span class="ui-ic">__ICN_CALENDAR__</span>  Follow-up / snooze</button>
     <button class="action-btn ghost" id="checkGmailBtn" title="Open Gmail filtered by every email address linked to this company"><span class="ui-ic">__ICN_SEARCH__</span>  Check Gmail</button>
-    <!-- Standalone "Snooze 30d" button removed — the Follow-up modal has
-         30 days as a preset, so the two actions are the same click count
-         through a single control. Cold-accounts list still has its own
-         Snooze 30d button per row (line ~3311) where it makes sense. -->
-    <button class="action-btn ghost" id="snoozeContactBtn" style="display:none">Snooze 30d</button>
+    <!-- No standalone "Snooze 30d" button — the Follow-up modal has 30 days
+         as a preset. The Cold-accounts card on the Dashboard keeps its own
+         per-row Snooze 30d where it makes sense. -->
     <!-- Delete is intentionally last + styled red so it's hard to hit by
          accident. Two-confirm flow (confirm + retype) before the DB
          delete actually fires. -->
@@ -1361,23 +1348,6 @@ body.dark .ed-input{background:var(--card)}
   </div>
 </div>
 
-<!-- ─── MY-DAY DIGEST MODAL ─── -->
-<div class="compose-modal" id="myDayModal">
-  <div class="compose-card" style="max-width:440px">
-    <div class="compose-header">
-      <div class="compose-title" id="myDayTitle">Good morning</div>
-      <button class="detail-close" id="myDayCloseX" aria-label="Close">×</button>
-    </div>
-    <div class="compose-body">
-      <div id="myDayBody" style="font-size:14px;color:var(--ink);line-height:1.55"></div>
-    </div>
-    <div class="compose-footer">
-      <button class="action-btn ghost" id="myDayDismiss">Já vi, obrigado</button>
-      <button class="action-btn primary" id="myDayGo" style="grid-column:auto">Open Tasks tab →</button>
-    </div>
-  </div>
-</div>
-
 <!-- Google Identity Services — for Gmail API OAuth. Async load; the
      JS checks for window.google.accounts.oauth2 before using it. -->
 <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -1621,16 +1591,14 @@ let OUTREACH_ACTIVITY_RECENT = []; // last 7 days of outreach_activity for per-t
 let SEQUENCES = [];          // outreach_sequences — drip-campaign definitions
 let SEQUENCE_RUNS = [];      // outreach_sequence_runs — active + historic runs per company
 let CURRENT_SEQUENCE = null; // for the Sequences-tab editor
-// Which Kanban view is active. 'status' = the legacy single-pipeline
-// view that drives c.status; otherwise a pipeline id from PIPELINES.
 // The Kanban is driven by outreach_contacts.status — the same field as
 // the contact panel's Status dropdown, so board and dropdown can never
-// disagree. The old per-pipelines-table views were retired from this tab.
-let CURRENT_PIPELINE_VIEW = 'status';
+// disagree. The old per-pipelines-table views (and their view switcher,
+// summary strip, funnel and stuck-only filter) were retired from this tab.
 // Pipeline tab filter state — persists across tab switches so the
 // user can flip away and come back without losing their narrowing.
 let PIPELINE_FILTER = {
-  text: '', country: '', segment: '', stuckOnly: false, stageId: null,
+  text: '', country: '', segment: '',
   // Owner scope on the Pipeline tab — 'mine' / 'theirs' / 'all'.
   // Filter is by outreach_contacts.account_manager_id (the
   // overall account ownership). Persisted per-browser.
@@ -3413,7 +3381,6 @@ function scheduleRtRender(){
     if(CURRENT_TAB === 'dashboard') renderDashboard();
     if(CURRENT_TAB === 'tasks') renderTasksTab();
     if(CURRENT_TAB === 'pipeline') renderPipeline();
-    if(CURRENT_TAB === 'analytics') renderAnalytics();
     updateNavTasksCount();
   }, 250);
 }
@@ -3477,7 +3444,6 @@ function subscribeRealtime(){
       }
       const companyId = nw?.company_id || ol?.company_id;
       if(CURRENT_CONTACT?.id === companyId) renderPipelinesSection(companyId);
-      if(CURRENT_TAB === 'pipeline' && CURRENT_PIPELINE_VIEW !== 'status') renderPipeline();
     })
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'email_messages' }, (payload)=>{
       // Auto-poll inserts inbound replies into email_messages. When
@@ -3541,7 +3507,6 @@ async function loadAll(){
   renderContacts();
   renderTemplateList();
   updateNavTasksCount();
-  maybeShowMyDayDigest();
   // Kick off realtime AFTER the initial render so the first paint doesn't
   // race with incoming events. Re-callable; subscribeRealtime() no-ops if
   // already subscribed (so re-login doesn't double-bind).
@@ -4147,7 +4112,7 @@ document.querySelectorAll('.nav-tab').forEach(t=>{
   t.addEventListener('click', ()=>{
     CURRENT_TAB = t.dataset.tab;
     document.querySelectorAll('.nav-tab').forEach(x=>x.classList.toggle('active', x===t));
-    ['dashboard','inbox','contacts','tasks','pipeline','analytics','templates','sequences'].forEach(p=>{
+    ['dashboard','inbox','contacts','tasks','pipeline','templates','sequences'].forEach(p=>{
       document.getElementById('page-'+p).classList.toggle('hidden', p!==CURRENT_TAB);
     });
     if(CURRENT_TAB==='dashboard') renderDashboard();
@@ -4155,7 +4120,6 @@ document.querySelectorAll('.nav-tab').forEach(t=>{
     if(CURRENT_TAB==='contacts') renderContacts();
     if(CURRENT_TAB==='tasks') renderTasksTab();
     if(CURRENT_TAB==='pipeline') renderPipeline();
-    if(CURRENT_TAB==='analytics') renderAnalytics();
     if(CURRENT_TAB==='templates') renderTemplateList();
     if(CURRENT_TAB==='sequences'){ renderSequenceList(); renderCampaigns(); }
     // Keep the mobile drawer's tab list in sync with the active tab.
@@ -4289,6 +4253,12 @@ function renderDashboard(){
     .sort((a,b)=>a.follow_up_at.localeCompare(b.follow_up_at));
   const todayFollowups = CONTACTS
     .filter(c => c.follow_up_at === today && companyBelongsToScope(c));
+  // Contracts ending (or already ended) within 7 days — same horizon as
+  // the rest of the hero so it stays a "this week" list. The 60-day
+  // preview lives in the Contracts expiring card further down.
+  const endingSoon = CONTACTS
+    .filter(c => c.contract_end && c.contract_end <= addDays(today, 7) && companyBelongsToScope(c))
+    .sort((a,b)=>a.contract_end.localeCompare(b.contract_end));
   const stale = CONTACTS
     .filter(c => (c.status === 'first_email' || c.status === 'follow_up') && c.last_contacted_at && c.last_contacted_at.slice(0,10) < addDays(today,-14) && companyBelongsToScope(c))
     .sort((a,b)=>(a.last_contacted_at||'').localeCompare(b.last_contacted_at||''));
@@ -4307,6 +4277,11 @@ function renderDashboard(){
   });
   overdueFollowups.forEach(c => tasks.push({c, kind:'overdue', icon:'fire', actionLabel:`${Math.abs(daysBetween(today,c.follow_up_at))}d overdue`, actionClass:'overdue', meta:`Follow up — was due ${fmtDate(c.follow_up_at)}`}));
   todayFollowups.forEach(c => tasks.push({c, kind:'today', icon:'calendar', actionLabel:'Today', actionClass:'', meta:'Follow up today'}));
+  endingSoon.forEach(c => {
+    const d = daysBetween(today, c.contract_end);
+    const label = d < 0 ? `expired ${Math.abs(d)}d ago` : (d === 0 ? 'Ends today' : `ends in ${d}d`);
+    tasks.push({c, kind:'contract', icon:'flag', actionLabel: label, actionClass: d <= 0 ? 'overdue' : '', meta:`Contract ends ${fmtDate(c.contract_end)}`});
+  });
   stale.slice(0, 5).forEach(c => tasks.push({c, kind:'stale', icon:'moon', actionLabel:`${daysBetween(c.last_contacted_at.slice(0,10), today)}d silent`, actionClass:'', meta:`No reply since ${fmtDate(c.last_contacted_at)}`}));
 
   // Fall back to "needs first touch" if nothing urgent today.
@@ -4321,7 +4296,7 @@ function renderDashboard(){
   const heroList = document.getElementById('heroTodayList');
 
   const explicitTodos = overdueTaskRows.length + todayTaskRows.length;
-  const totalUrgent = explicitTodos + overdueFollowups.length + todayFollowups.length;
+  const totalUrgent = explicitTodos + overdueFollowups.length + todayFollowups.length + endingSoon.length;
   if(totalUrgent > 0){
     heroTitle.textContent = `You have ${totalUrgent} thing${totalUrgent>1?'s':''} to handle today`;
     const parts = [];
@@ -4329,6 +4304,10 @@ function renderDashboard(){
     if(todayTaskRows.length)   parts.push(`${todayTaskRows.length} task${todayTaskRows.length>1?'s':''} due today`);
     if(overdueFollowups.length) parts.push(`${overdueFollowups.length} overdue follow-up${overdueFollowups.length>1?'s':''}`);
     if(todayFollowups.length)   parts.push(`${todayFollowups.length} follow-up${todayFollowups.length>1?'s':''} today`);
+    if(endingSoon.length){
+      const expired = endingSoon.filter(c => c.contract_end < today).length;
+      parts.push(`${endingSoon.length} contract${endingSoon.length>1?'s':''} ending within 7 days${expired ? ` (${expired} already expired)` : ''}`);
+    }
     if(stale.length)            parts.push(`${stale.length} silent 14d+`);
     heroSub.textContent = parts.join(' · ');
   } else if(stale.length > 0){
@@ -4393,12 +4372,17 @@ function renderDashboard(){
   const weightedValue = openDeals.reduce((sum,c) => sum + (Number(c.deal_value||0) * Number(c.probability||0)/100), 0);
   const totalValue = openDeals.reduce((sum,c) => sum + Number(c.deal_value||0), 0);
   const wonValue = CONTACTS.filter(c=>c.status==='active_partner').reduce((s,c)=>s+Number(c.deal_value||0),0);
+  const lostValue = CONTACTS.filter(c=>c.status==='lost').reduce((s,c)=>s+Number(c.deal_value||0),0);
+  const withDealValue = CONTACTS.filter(c => Number(c.deal_value||0) > 0).length;
   // Hide the financial cards while nobody has filled in a deal_value yet.
   // Showing five €0 KPIs is depressing and reads as "app is broken".
-  const hasAnyDealValue = CONTACTS.some(c => Number(c.deal_value||0) > 0);
+  // When values exist these carry what the old Analytics tab showed:
+  // open / weighted / won / lost € + deal coverage.
+  const hasAnyDealValue = withDealValue > 0;
   const moneyKpis = hasAnyDealValue ? `
-    <div class="kpi"><div class="kpi-label">Pipeline value</div><div class="kpi-value accent">€${fmtMoney(totalValue)}</div><div class="kpi-sub">weighted €${fmtMoney(weightedValue)}</div></div>
-    <div class="kpi"><div class="kpi-label">Won (€)</div><div class="kpi-value green">€${fmtMoney(wonValue)}</div><div class="kpi-sub">${activePartners} active partners · ${byStatus.lost||0} lost</div></div>
+    <div class="kpi"><div class="kpi-label">Pipeline value</div><div class="kpi-value accent">€${fmtMoney(totalValue)}</div><div class="kpi-sub">weighted €${fmtMoney(weightedValue)} · ${openDeals.filter(c=>Number(c.deal_value||0)>0).length} of ${openDeals.length} open valued</div></div>
+    <div class="kpi"><div class="kpi-label">Won (€)</div><div class="kpi-value green">€${fmtMoney(wonValue)}</div><div class="kpi-sub">${activePartners} active partners · ${byStatus.lost||0} lost (€${fmtMoney(lostValue)})</div></div>
+    <div class="kpi"><div class="kpi-label">Deal coverage</div><div class="kpi-value">${withDealValue}</div><div class="kpi-sub">/ ${CONTACTS.length} have a value</div></div>
   ` : `
     <div class="kpi"><div class="kpi-label">Active partners</div><div class="kpi-value green">${activePartners}</div><div class="kpi-sub">${byStatus.lost||0} lost</div></div>
   `;
@@ -4411,6 +4395,7 @@ function renderDashboard(){
     <div class="kpi"><div class="kpi-label">In discussion</div><div class="kpi-value green">${inDiscussion}</div><div class="kpi-sub">${replyRate}% reply rate</div></div>
     <div class="kpi"><div class="kpi-label">Confirmed groups</div><div class="kpi-value">${groupKpis.confirmed}</div><div class="kpi-sub">${groupKpis.confirmedPax} pax${groupKpis.confirmedValue?' · €'+fmtMoney(groupKpis.confirmedValue):''}</div></div>
     <div class="kpi"><div class="kpi-label">Possibilities</div><div class="kpi-value" style="color:var(--ocean)">${groupKpis.possibilities}</div><div class="kpi-sub">${groupKpis.possibilityPax} pax in pipeline</div></div>
+    ${moneyKpis}
   `;
 
   // ── Upcoming follow-ups (next 7 days, excluding overdue which are in hero) ──
@@ -4814,10 +4799,12 @@ function renderDashboard(){
         toast(`${company?.company || 'Deal'} → ${newStage?.name || 'next stage'}`);
         renderDashboard();
         if(CURRENT_CONTACT?.id === row.company_id) renderPipelinesSection(row.company_id);
-        if(CURRENT_TAB === 'pipeline' && CURRENT_PIPELINE_VIEW !== 'status') renderPipeline();
       });
     });
   }
+
+  // ── Analytics section (charts + funnel conversion) ──────────────────
+  renderDashboardAnalytics();
 }
 
 function addDays(iso, n){
@@ -6506,27 +6493,6 @@ document.getElementById('setFollowupBtn').addEventListener('click', ()=>{
   document.getElementById('followupInput')?.showPicker?.();
 });
 
-// Snooze current contact for 30 days — same logic the dashboard's
-// Cold accounts card uses (set last_interaction_at to today-30d so
-// the cold filter < today-60d no longer matches). Trigger-based
-// last_interaction_at updates on any real activity override the
-// snooze, so the contact reappears the moment anything happens
-// — by design.
-document.getElementById('snoozeContactBtn').addEventListener('click', async ()=>{
-  if(!CURRENT_CONTACT) return;
-  const c = CURRENT_CONTACT;
-  if(!confirm(`Hide "${c.company}" from Cold accounts for 30 days?\n\nAny real activity (status change, task, email) will end the snooze automatically.`)) return;
-  const today = new Date().toISOString().slice(0,10);
-  const snoozedIso = new Date(addDays(today, -30) + 'T12:00:00Z').toISOString();
-  const supa = getClient();
-  const { error } = await supa.from('outreach_contacts')
-    .update({ last_interaction_at: snoozedIso }).eq('id', c.id);
-  if(error){ toast('Snooze failed: '+error.message); return; }
-  c.last_interaction_at = snoozedIso;
-  toast(`Snoozed ${c.company} for 30 days`);
-  if(CURRENT_TAB === 'dashboard') renderDashboard();
-});
-
 // Delete a single contact from the detail panel. Double-confirm because
 // it's irreversible — cascade-deletes the contact's activity and groups
 // via the FK constraints we set up.
@@ -7806,47 +7772,45 @@ document.getElementById('snoozeAllBtn').addEventListener('click', async ()=>{
 });
 
 // ════════════════════════════════════════════════════════════════════════
-//  ANALYTICS
+//  DASHBOARD · ANALYTICS SECTION
 // ════════════════════════════════════════════════════════════════════════
-function renderAnalytics(){
-  // Status counts — reused by the empty-pipeline fallback view below.
+// Formerly its own "Analytics" tab — merged into the Dashboard on
+// 22 Oct 2026 (fewer tabs, no duplicated views). The money KPIs the old
+// tab carried (open / weighted / won / lost € + deal coverage) are in the
+// Dashboard KPI strip; this block renders the by-country / by-segment
+// breakdown, the pipeline-value doughnut and the funnel-conversion
+// table. Called at the end of renderDashboard() so one render pass
+// refreshes the whole page.
+function renderDashboardAnalytics(){
+  const tableEl = document.getElementById('conversionTable');
+  if(!tableEl) return;
   const byStatus = {};
   STATUS_ORDER.forEach(s=>byStatus[s]=0);
   CONTACTS.forEach(c=>{ byStatus[c.status] = (byStatus[c.status]||0)+1; });
-
-  // Pipeline value KPIs (more detailed than the dashboard strip)
   const openDeals = CONTACTS.filter(c => !['active_partner','lost','no_reply','excluded'].includes(c.status));
-  const totalValue = openDeals.reduce((s,c)=>s+Number(c.deal_value||0),0);
-  const weighted = openDeals.reduce((s,c)=>s+(Number(c.deal_value||0)*Number(c.probability||0)/100),0);
-  const wonValue = CONTACTS.filter(c=>c.status==='active_partner').reduce((s,c)=>s+Number(c.deal_value||0),0);
-  const lostValue = CONTACTS.filter(c=>c.status==='lost').reduce((s,c)=>s+Number(c.deal_value||0),0);
-  const withDealValue = CONTACTS.filter(c=>c.deal_value).length;
-  // Replace the five-€0-cards strip with a single non-financial summary
-  // while the user hasn't started filling in deal values. Avoids the
-  // "app looks broken" effect the reviewer flagged.
-  if(withDealValue > 0){
-    document.getElementById('pipelineKpis').innerHTML = `
-      <div class="kpi"><div class="kpi-label">Open pipeline (€)</div><div class="kpi-value accent">€${fmtMoney(totalValue)}</div><div class="kpi-sub">${openDeals.filter(c=>c.deal_value).length} valued / ${openDeals.length} open</div></div>
-      <div class="kpi"><div class="kpi-label">Weighted (€)</div><div class="kpi-value">€${fmtMoney(weighted)}</div><div class="kpi-sub">probability × value</div></div>
-      <div class="kpi"><div class="kpi-label">Won (€)</div><div class="kpi-value green">€${fmtMoney(wonValue)}</div><div class="kpi-sub">all-time</div></div>
-      <div class="kpi"><div class="kpi-label">Lost (€)</div><div class="kpi-value" style="color:var(--red-text)">€${fmtMoney(lostValue)}</div><div class="kpi-sub">all-time</div></div>
-      <div class="kpi"><div class="kpi-label">Deal coverage</div><div class="kpi-value">${withDealValue}</div><div class="kpi-sub">/ ${CONTACTS.length} have a value</div></div>
-    `;
-  } else {
-    const byStat = {};
-    STATUS_ORDER.forEach(s=>byStat[s]=0);
-    CONTACTS.forEach(c=>{ byStat[c.status]=(byStat[c.status]||0)+1; });
-    const contacted = (byStat.first_email||0)+(byStat.follow_up||0)+(byStat.in_conversation||0)+(byStat.meeting||0)+(byStat.proposal_sent||0)+(byStat.active_partner||0)+(byStat.no_reply||0)+(byStat.lost||0);
-    const replied = (byStat.in_conversation||0)+(byStat.meeting||0)+(byStat.proposal_sent||0)+(byStat.active_partner||0);
-    const inDiscussion = (byStat.in_conversation||0)+(byStat.meeting||0)+(byStat.proposal_sent||0);
-    document.getElementById('pipelineKpis').innerHTML = `
-      <div class="kpi"><div class="kpi-label">Total contacts</div><div class="kpi-value">${CONTACTS.length}</div><div class="kpi-sub">${CONTACTS.filter(c=>c.email).length} with email</div></div>
-      <div class="kpi"><div class="kpi-label">Contacted</div><div class="kpi-value accent">${contacted}</div><div class="kpi-sub">of ${CONTACTS.length}</div></div>
-      <div class="kpi"><div class="kpi-label">Replied</div><div class="kpi-value green">${replied}</div><div class="kpi-sub">${contacted > 0 ? Math.round((replied/contacted)*100) : 0}% reply rate</div></div>
-      <div class="kpi"><div class="kpi-label">In discussion</div><div class="kpi-value">${inDiscussion}</div><div class="kpi-sub">in convo · meeting · proposal</div></div>
-      <div class="kpi"><div class="kpi-label">Active partners</div><div class="kpi-value green">${byStat.active_partner||0}</div><div class="kpi-sub">${byStat.lost||0} lost</div></div>
-    `;
-  }
+
+  // Conversion funnel — cumulative share of contacts that reached each
+  // milestone. A contact in "Meeting" has also been reached + replied,
+  // so each row counts every status at or past that milestone (same
+  // groupings as the Reached / Replied KPIs above).
+  const total = CONTACTS.length;
+  const sum = (...keys) => keys.reduce((n,k)=>n+(byStatus[k]||0),0);
+  const stages = [
+    ['Not started',          byStatus.not_started||0],
+    ['Reached (first touch)', sum('first_email','follow_up','in_conversation','meeting','proposal_sent','active_partner','no_reply','lost')],
+    ['Replied',              sum('in_conversation','meeting','proposal_sent','active_partner')],
+    ['Meeting booked',       sum('meeting','proposal_sent','active_partner')],
+    ['Active partner',       byStatus.active_partner||0],
+  ];
+  tableEl.innerHTML = stages.map(([label,n])=>{
+    const pct = total>0 ? ((n/total)*100).toFixed(1) : '0.0';
+    const bar = '█'.repeat(Math.max(1, Math.round(pct/2)));
+    return `<div><span style="color:var(--muted);display:inline-block;width:160px">${label}</span><span style="color:var(--ocean)">${bar}</span> <span style="color:var(--navy)">${n} (${pct}%)</span></div>`;
+  }).join('');
+
+  // Charts need Chart.js (CDN) — if it failed to load, the table above
+  // still renders and the canvases just stay blank.
+  if(typeof Chart === 'undefined') return;
 
   // Group contacts by country & by segment, count engagement levels
   const RESPONDED = ['in_conversation','meeting','proposal_sent','active_partner'];
@@ -7864,7 +7828,7 @@ function renderAnalytics(){
     if(RESPONDED.includes(c.status)) bySegment[sg].replied++;
   });
 
-  // Top 10 countries by contact count
+  // Top 10 countries / segments by contact count
   const topCountries = Object.entries(byCountry).sort((a,b)=>b[1].total-a[1].total).slice(0,10);
   const topSegments = Object.entries(bySegment).sort((a,b)=>b[1].total-a[1].total).slice(0,10);
 
@@ -7873,6 +7837,9 @@ function renderAnalytics(){
   CHARTS = {};
 
   const ocean = '#1e6fa8', oceanLight = '#3b9dd4', green = '#15803d', amber = '#9a6f00';
+  // renderDashboard re-runs on every realtime event — no entry
+  // animation so the charts don't pulse each time a row changes.
+  const base = { responsive:true, maintainAspectRatio:false, animation:false };
 
   CHARTS.country = new Chart(document.getElementById('chartCountry'), {
     type: 'bar',
@@ -7880,7 +7847,7 @@ function renderAnalytics(){
       labels: topCountries.map(([k])=>k),
       datasets: [{ label:'Contacts', data: topCountries.map(([,v])=>v.total), backgroundColor: ocean, borderRadius: 6 }]
     },
-    options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true}} }
+    options: { ...base, plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true}} }
   });
 
   CHARTS.replyRate = new Chart(document.getElementById('chartReplyRate'), {
@@ -7896,7 +7863,7 @@ function renderAnalytics(){
         backgroundColor: green, borderRadius: 6
       }]
     },
-    options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true,max:100,ticks:{callback:v=>v+'%'}}} }
+    options: { ...base, plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true,max:100,ticks:{callback:v=>v+'%'}}} }
   });
 
   CHARTS.segment = new Chart(document.getElementById('chartSegment'), {
@@ -7905,7 +7872,7 @@ function renderAnalytics(){
       labels: topSegments.map(([k])=>k),
       datasets: [{ label:'Contacts', data: topSegments.map(([,v])=>v.total), backgroundColor: oceanLight, borderRadius: 6 }]
     },
-    options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, indexAxis:'y', scales:{x:{beginAtZero:true}} }
+    options: { ...base, plugins:{legend:{display:false}}, indexAxis:'y', scales:{x:{beginAtZero:true}} }
   });
 
   // Pipeline value by status (open deals only). If nobody has set a
@@ -7916,7 +7883,7 @@ function renderAnalytics(){
   openDeals.forEach(c=>{ valueByStatus[c.status] = (valueByStatus[c.status]||0) + Number(c.deal_value||0); });
   const hasValueData = STATUS_ORDER.some(s=>valueByStatus[s]>0);
   // Update the card title accordingly so the chart legend matches reality.
-  const pipelineValueTitle = document.querySelector('#page-analytics .dash-row:nth-of-type(2) .dash-card:last-child .dash-card-title');
+  const pipelineValueTitle = document.getElementById('chartPipelineValueTitle');
   if(pipelineValueTitle) pipelineValueTitle.textContent = hasValueData ? 'Pipeline value by status' : 'Contacts by status';
   const labels = hasValueData
     ? STATUS_ORDER.filter(s=>valueByStatus[s]>0).map(s=>STATUS_LABELS[s])
@@ -7933,30 +7900,12 @@ function renderAnalytics(){
         backgroundColor: ['#94a3b8',amber,green,'#8b5cf6','#22c55e','#ef4444','#737373']
       }]
     },
-    options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'right',labels:{font:{size:11}}}} }
+    options: { ...base, plugins:{legend:{position:'right',labels:{font:{size:11}}}} }
   });
-
-  // Conversion funnel (% of total at each stage)
-  const total = CONTACTS.length;
-  const byStat = {};
-  STATUS_ORDER.forEach(s=>byStat[s]=0);
-  CONTACTS.forEach(c=>{ byStat[c.status]=(byStat[c.status]||0)+1; });
-  const stages = [
-    ['not_started', 'Not started'],
-    ['sent', 'Sent (first touch)'],
-    ['replied', 'Replied'],
-    ['meeting', 'Meeting booked'],
-    ['closed_won', 'Closed Won']
-  ];
-  document.getElementById('conversionTable').innerHTML = stages.map(([s,label])=>{
-    const n = byStat[s]||0;
-    const pct = total>0 ? ((n/total)*100).toFixed(1) : '0.0';
-    const bar = '█'.repeat(Math.max(1, Math.round(pct/2)));
-    return `<div><span style="color:var(--muted);display:inline-block;width:160px">${label}</span><span style="color:var(--ocean)">${bar}</span> <span style="color:var(--navy)">${n} (${pct}%)</span></div>`;
-  }).join('');
 }
 
 // ════════════════════════════════════════════════════════════════════════
+//  ADD CONTACT (manual entry)// ════════════════════════════════════════════════════════════════════════
 //  ADD CONTACT (manual entry)
 // ════════════════════════════════════════════════════════════════════════
 // Reset the form to defaults so the next "+ New contact" doesn't show
@@ -8656,82 +8605,6 @@ function exportTasksCsv(){
   toast(`Exported ${rows.length} task${rows.length===1?'':'s'} · ${TASKS_TAB_FILTER}`);
 }
 
-// ── MY-DAY DIGEST ────────────────────────────────────────────────────
-// Fires once at the first sign-in of each calendar day, IF there's
-// anything worth surfacing. Gated by a localStorage key so multiple
-// page refreshes / tab opens on the same day don't pile up popups.
-// User can dismiss to close, or "Open Tasks tab" to jump straight to
-// the today filter.
-const MY_DAY_LS_KEY = 'crmMyDayLastShown';
-
-function maybeShowMyDayDigest(){
-  const today = new Date().toISOString().slice(0,10);
-  if(localStorage.getItem(MY_DAY_LS_KEY) === today) return;
-  // Scope to the current user on multi-user deploys so Miguel
-  // doesn't see Ricardo's overdue and vice versa. Tasks scope by
-  // owner_id, follow-ups + contracts by account_manager_id.
-  // Solo deploys (single team_user) skip the scope and show
-  // everything as before.
-  const meId = CURRENT_TEAM_USER?.id || null;
-  const multi = TEAM_USERS.length >= 2 && meId;
-  const isMine = (t) => !multi || t.owner_id === meId;
-  const isMyAccount = (c) => !multi || c.account_manager_id === meId;
-  const overdueTasks = TASKS.filter(t => !t.done_at && t.due_at && t.due_at.slice(0,10) < today && isMine(t));
-  const todayTasks   = TASKS.filter(t => !t.done_at && t.due_at && t.due_at.slice(0,10) === today && isMine(t));
-  const overdueFollowups = CONTACTS.filter(c => c.follow_up_at && c.follow_up_at < today && isMyAccount(c));
-  const todayFollowups   = CONTACTS.filter(c => c.follow_up_at === today && isMyAccount(c));
-  // Contracts expiring or already expired in the next 7 days — same
-  // 7d horizon as the rest of the digest so the user gets a unified
-  // "this week" view, not a 60d preview. Already-expired ones count
-  // as urgent (negative day count, render same line).
-  const next7 = addDays(today, 7);
-  const expiringSoon = CONTACTS.filter(c => c.contract_end && c.contract_end <= next7 && isMyAccount(c));
-  const total = overdueTasks.length + todayTasks.length + overdueFollowups.length + todayFollowups.length + expiringSoon.length;
-  // Quiet days don't get a popup — nothing more annoying than a
-  // modal interrupting you to say "you have 0 things to do".
-  if(total === 0){
-    localStorage.setItem(MY_DAY_LS_KEY, today);
-    return;
-  }
-  const hour = new Date().getHours();
-  const greeting = hour < 12 ? 'Good morning' : (hour < 18 ? 'Good afternoon' : 'Good evening');
-  document.getElementById('myDayTitle').textContent =
-    `${greeting}, ${total} thing${total>1?'s':''} for today`;
-  const lines = [];
-  if(overdueTasks.length)
-    lines.push(`<div style="color:var(--red-text);font-weight:700">${uiIcon('fire')} ${overdueTasks.length} overdue task${overdueTasks.length>1?'s':''}</div>`);
-  if(todayTasks.length)
-    lines.push(`<div>${uiIcon('calendar')} ${todayTasks.length} task${todayTasks.length>1?'s':''} due today</div>`);
-  if(overdueFollowups.length)
-    lines.push(`<div style="color:var(--red-text);font-weight:700">${uiIcon('fire')} ${overdueFollowups.length} overdue follow-up${overdueFollowups.length>1?'s':''}</div>`);
-  if(todayFollowups.length)
-    lines.push(`<div>${uiIcon('calendar')} ${todayFollowups.length} follow-up${todayFollowups.length>1?'s':''} today</div>`);
-  if(expiringSoon.length){
-    const expired = expiringSoon.filter(c => c.contract_end < today).length;
-    const sub = expired > 0 ? ` (${expired} already expired)` : '';
-    const cls = expired > 0 ? 'style="color:var(--red-text);font-weight:700"' : '';
-    lines.push(`<div ${cls}>${uiIcon('flag')} ${expiringSoon.length} contract${expiringSoon.length>1?'s':''} ending within 7 days${sub}</div>`);
-  }
-  document.getElementById('myDayBody').innerHTML = lines.join('');
-  document.getElementById('myDayModal').classList.add('open');
-}
-
-function closeMyDayDigest(){
-  document.getElementById('myDayModal').classList.remove('open');
-  localStorage.setItem(MY_DAY_LS_KEY, new Date().toISOString().slice(0,10));
-}
-
-document.getElementById('myDayDismiss').addEventListener('click', closeMyDayDigest);
-document.getElementById('myDayCloseX').addEventListener('click', closeMyDayDigest);
-document.getElementById('myDayGo').addEventListener('click', () => {
-  closeMyDayDigest();
-  // Switch to the Tasks tab with the "today" filter pre-applied so
-  // the user lands exactly on the rows the digest was telling them
-  // about. The tab switcher itself fires renderTasksTab.
-  TASKS_TAB_FILTER = 'today';
-  document.querySelector('.nav-tab[data-tab="tasks"]').click();
-});
-
 // ── TASKS TAB (cross-company view of every open TODO) ──────────────────
 // State for the tab's filter. Persists across renders so flipping in
 // and out of the tab keeps your filter selection.
@@ -9306,7 +9179,6 @@ function renderPipelinesSection(companyId){
       if(row) row.owner_id = newOwnerId;
       const u = newOwnerId ? TEAM_USERS.find(x => x.id === newOwnerId) : null;
       toast(u ? `Deal owner → ${u.full_name || u.email}` : 'Deal owner cleared');
-      if(CURRENT_TAB === 'pipeline' && CURRENT_PIPELINE_VIEW !== 'status') renderPipeline();
     });
   });
   root.querySelectorAll('[data-pl-stage]').forEach(sel => {
@@ -9321,7 +9193,6 @@ function renderPipelinesSection(companyId){
       if(row){ row.stage_id = newStageId; row.entered_stage_at = new Date().toISOString(); }
       toast('Stage updated');
       renderPipelinesSection(companyId);
-      if(CURRENT_TAB === 'pipeline' && CURRENT_PIPELINE_VIEW !== 'status') renderPipeline();
     });
   });
   // Remove the assignment entirely (company leaves the pipeline).
@@ -9337,7 +9208,6 @@ function renderPipelinesSection(companyId){
       CONTACT_PIPELINE = CONTACT_PIPELINE.filter(x => x.id !== id);
       toast('Removed from pipeline');
       renderPipelinesSection(companyId);
-      if(CURRENT_TAB === 'pipeline' && CURRENT_PIPELINE_VIEW !== 'status') renderPipeline();
     });
   });
   // Add to pipeline — picks the first stage by sort_order automatically
@@ -9360,7 +9230,6 @@ function renderPipelinesSection(companyId){
       const pipeline = PIPELINES.find(p => p.id === pipelineId);
       toast(`Added to ${pipeline?.name || 'pipeline'}`);
       renderPipelinesSection(companyId);
-      if(CURRENT_TAB === 'pipeline' && CURRENT_PIPELINE_VIEW !== 'status') renderPipeline();
     });
   }
 }
@@ -9824,62 +9693,24 @@ function updatePipelineFilterCount(visible, total){
   else                  el.textContent = `${visible} of ${total}`;
 }
 
-// Pipeline-tab CSV export. Mirrors the Kanban renderer's filter
-// chain (text / country / segment / stuckOnly / stageId) so the
-// export always matches what's on screen — including the active
-// View (status vs each pipeline). Same RFC 4180 + UTF-8 BOM rules
-// as the Tasks export.
+// Pipeline-tab CSV export. Mirrors the Kanban renderer's filter chain
+// (text / country / segment / owner scope) so the export always matches
+// what's on screen. Same RFC 4180 + UTF-8 BOM rules as the Tasks export.
 function exportPipelineCsv(){
-  const todayStr = new Date().toISOString().slice(0,10);
   const baseFiltered = filteredContactsForPipeline();
-  const baseIds = new Set(baseFiltered.map(c => c.id));
-  let rows = [];
-  let viewLabel = '';
-  if(CURRENT_PIPELINE_VIEW === 'status'){
-    viewLabel = 'status';
-    STATUS_ORDER.forEach(stage => {
-      baseFiltered.filter(c => (c.status || 'not_started') === stage).forEach(c => {
-        rows.push({
-          company: c,
-          viewName: 'Status',
-          stageName: STATUS_LABELS[stage] || stage,
-          daysInStage: '',          // legacy status has no honest stamp
-          enteredAt: '',
-        });
+  const viewLabel = 'status';
+  const rows = [];
+  STATUS_ORDER.forEach(stage => {
+    baseFiltered.filter(c => (c.status || 'not_started') === stage).forEach(c => {
+      rows.push({
+        company: c,
+        viewName: 'Status',
+        stageName: STATUS_LABELS[stage] || stage,
+        daysInStage: '',          // status has no per-stage entry stamp
+        enteredAt: '',
       });
     });
-  } else {
-    const pipeline = PIPELINES.find(p => p.id === CURRENT_PIPELINE_VIEW);
-    viewLabel = (pipeline?.key || pipeline?.name || 'pipeline').toLowerCase().replace(/[^a-z0-9]+/g,'-');
-    const stages = stagesForPipeline(CURRENT_PIPELINE_VIEW);
-    const visibleStages = PIPELINE_FILTER.stageId
-      ? stages.filter(s => s.id === PIPELINE_FILTER.stageId)
-      : stages;
-    visibleStages.forEach(stage => {
-      CONTACT_PIPELINE
-        .filter(cp => cp.pipeline_id === CURRENT_PIPELINE_VIEW && cp.stage_id === stage.id)
-        .forEach(cp => {
-          const c = CONTACTS.find(x => x.id === cp.company_id);
-          if(!c || !baseIds.has(c.id)) return;
-          // Apply stuck-only the same way the Kanban does.
-          if(PIPELINE_FILTER.stuckOnly){
-            if(stage.is_won || stage.is_lost) return;
-            if(!cp.entered_stage_at) return;
-            if(daysBetween(cp.entered_stage_at.slice(0,10), todayStr) < 30) return;
-          }
-          const days = cp.entered_stage_at
-            ? daysBetween(cp.entered_stage_at.slice(0,10), todayStr)
-            : '';
-          rows.push({
-            company: c,
-            viewName: pipeline?.name || '',
-            stageName: stage.name,
-            daysInStage: days,
-            enteredAt: cp.entered_stage_at ? cp.entered_stage_at.slice(0,10) : '',
-          });
-        });
-    });
-  }
+  });
   if(rows.length === 0){ toast('Nothing to export — current filter is empty'); return; }
   const esc = (v) => {
     if(v == null) return '""';
@@ -9947,21 +9778,6 @@ function filteredContactsForPipeline(){
 }
 
 function renderPipeline(){
-  // Refresh the dropdown options each call so a newly seeded pipeline
-  // shows up without a page reload.
-  const sel = document.getElementById('pipelineViewSelect');
-  if(sel){
-    const desired = CURRENT_PIPELINE_VIEW;
-    sel.innerHTML = `<option value="status">Status (legacy)</option>` +
-      PIPELINES.sort((a,b)=>(a.sort_order||0)-(b.sort_order||0))
-        .map(p => `<option value="${p.id}">${escHtml(p.name)}</option>`).join('');
-    sel.value = (desired === 'status' || PIPELINES.find(p => p.id === desired)) ? desired : 'status';
-    sel.onchange = () => {
-      CURRENT_PIPELINE_VIEW = sel.value;
-      localStorage.setItem('crmPipelineView', CURRENT_PIPELINE_VIEW);
-      renderPipeline();
-    };
-  }
   // Repopulate the country/segment dropdowns from the current CONTACTS
   // set so a newly imported country shows up without a reload.
   const cEl = document.getElementById('pipelineFilterCountry');
@@ -9987,7 +9803,7 @@ function renderPipeline(){
   const clearBtn = document.getElementById('pipelineFilterClear');
   if(clearBtn){
     clearBtn.onclick = () => {
-      PIPELINE_FILTER = { text:'', country:'', segment:'', stuckOnly:false, stageId:null, ownerScope: 'all' };
+      PIPELINE_FILTER = { text:'', country:'', segment:'', ownerScope: 'all' };
       localStorage.setItem('crmPipelineOwnerScope', PIPELINE_FILTER.ownerScope);
       if(tEl) tEl.value = '';
       renderPipeline();
@@ -10002,15 +9818,15 @@ function renderPipeline(){
   // Owner scope pills — same Mine/Theirs/All pattern as Tasks tab,
   // hidden on solo deploys (would be one row showing the user
   // their own counts they already see elsewhere). Inserted before
-  // the Stuck-only toggle inside the filter wrapper.
+  // the Clear button inside the filter wrapper.
   if(TEAM_USERS.length >= 2){
-    const wrap = document.getElementById('pipelineFilterStuck')?.parentElement;
+    const wrap = document.getElementById('pipelineFilterClear')?.parentElement;
     let scopeWrap = document.getElementById('pipelineFilterScope');
     if(!scopeWrap && wrap){
       scopeWrap = document.createElement('span');
       scopeWrap.id = 'pipelineFilterScope';
       scopeWrap.style.cssText = 'display:inline-flex;gap:4px;margin-right:6px';
-      wrap.insertBefore(scopeWrap, document.getElementById('pipelineFilterStuck'));
+      wrap.insertBefore(scopeWrap, document.getElementById('pipelineFilterClear'));
     }
     if(scopeWrap){
       scopeWrap.innerHTML = ['mine','theirs','all'].map(k => `
@@ -10025,180 +9841,11 @@ function renderPipeline(){
       });
     }
   }
-  // Stuck-only toggle — chip styled pill that flips active state on
-  // click. Only meaningful in pipeline mode (legacy status has no
-  // entered_stage_at stamp); shown but disabled in legacy.
-  const stuckBtn = document.getElementById('pipelineFilterStuck');
-  if(stuckBtn){
-    const pipelineMode = CURRENT_PIPELINE_VIEW !== 'status';
-    stuckBtn.disabled = !pipelineMode;
-    if(!pipelineMode){
-      stuckBtn.style.opacity = '.4';
-      stuckBtn.style.cursor = 'not-allowed';
-      stuckBtn.title = 'Pipeline mode only — switch View to Sales / Account Mgmt / Partnerships';
-    } else {
-      stuckBtn.style.opacity = '';
-      stuckBtn.style.cursor = 'pointer';
-      stuckBtn.title = 'Show only cards 30+ days in current stage';
-    }
-    if(PIPELINE_FILTER.stuckOnly){
-      stuckBtn.style.background = 'var(--red-bg)';
-      stuckBtn.style.color = 'var(--red-text)';
-      stuckBtn.style.borderColor = '#f0a0a0';
-    } else {
-      stuckBtn.style.background = '';
-      stuckBtn.style.color = pipelineMode ? '' : '';
-      stuckBtn.style.borderColor = '';
-    }
-    stuckBtn.onclick = () => {
-      if(stuckBtn.disabled) return;
-      PIPELINE_FILTER.stuckOnly = !PIPELINE_FILTER.stuckOnly;
-      renderPipeline();
-    };
-  }
-  if(CURRENT_PIPELINE_VIEW === 'status'){
-    document.getElementById('pipelineSummary')?.classList.add('hidden');
-    document.getElementById('pipelineFunnel')?.classList.add('hidden');
-    renderPipelineByStatus();
-  } else {
-    renderPipelineByPipeline(CURRENT_PIPELINE_VIEW);
-    renderPipelineSummary(CURRENT_PIPELINE_VIEW);
-    renderPipelineFunnel(CURRENT_PIPELINE_VIEW);
-  }
+  renderPipelineByStatus();
 }
 
-// Horizontal-bar funnel for the selected pipeline. Each stage row
-// shows label + bar (length = count / max) + count, sourced from the
-// same filtered set as the Kanban so the visuals never disagree with
-// what's on screen below. Won = green fill, lost = red, in-flight =
-// the default ocean gradient via .funnel-fill.
-function renderPipelineFunnel(pipelineId){
-  const el = document.getElementById('pipelineFunnel');
-  if(!el) return;
-  const stages = stagesForPipeline(pipelineId);
-  if(stages.length === 0){ el.classList.add('hidden'); return; }
-  el.classList.remove('hidden');
-  const visibleSet = new Set(filteredContactsForPipeline().map(c => c.id));
-  const today = new Date().toISOString().slice(0,10);
-  // Tally count + cumulative days-in-stage per stage in one pass.
-  // Days-in-stage = today - entered_stage_at, computed only for
-  // non-terminal stages (won/lost don't accumulate "time stuck"
-  // because the stage IS the resolution).
-  const counts = new Map(stages.map(s => [s.id, 0]));
-  const daysSum = new Map(stages.map(s => [s.id, 0]));
-  const daysN   = new Map(stages.map(s => [s.id, 0]));
-  CONTACT_PIPELINE.filter(cp => cp.pipeline_id === pipelineId).forEach(cp => {
-    if(!visibleSet.has(cp.company_id)) return;
-    counts.set(cp.stage_id, (counts.get(cp.stage_id) || 0) + 1);
-    const stage = PIPELINE_STAGES.find(s => s.id === cp.stage_id);
-    if(!stage || stage.is_won || stage.is_lost) return;
-    if(!cp.entered_stage_at) return;
-    const d = daysBetween(cp.entered_stage_at.slice(0,10), today);
-    if(d < 0) return;                   // future-dated rows shouldn't skew
-    daysSum.set(cp.stage_id, (daysSum.get(cp.stage_id) || 0) + d);
-    daysN.set(cp.stage_id, (daysN.get(cp.stage_id) || 0) + 1);
-  });
-  const maxCount = Math.max(1, ...counts.values());
-  el.innerHTML = stages.map(s => {
-    const n = counts.get(s.id) || 0;
-    const pct = (n / maxCount) * 100;
-    let fillStyle = '';
-    if(s.is_won)       fillStyle = 'background:linear-gradient(90deg,#22c55e,#16a34a)';
-    else if(s.is_lost) fillStyle = 'background:linear-gradient(90deg,#ef4444,#dc2626)';
-    // Avg days subtitle — only meaningful for in-flight stages with
-    // at least one row. Tints red when avg > 30 to flag bottlenecks
-    // at a glance.
-    const dN = daysN.get(s.id) || 0;
-    const avg = dN > 0 ? Math.round(daysSum.get(s.id) / dN) : null;
-    const avgChip = avg !== null
-      ? `<span style="margin-left:8px;font-size:10px;font-weight:700;color:${avg>=30?'var(--red-text)':'var(--muted)'};font-family:'DM Mono',monospace">${avg}d avg</span>`
-      : '';
-    // Clickable to filter the Kanban down to this single stage —
-    // selected bar gets a pill background so the active stage is
-    // visible even when the user has scrolled away from the Kanban.
-    const active = PIPELINE_FILTER.stageId === s.id;
-    const rowStyle = active
-      ? 'cursor:pointer;background:#eef6fb;border-radius:8px;padding:4px 6px;margin:0 -6px 4px'
-      : 'cursor:pointer;border-radius:8px;padding:4px 6px;margin:0 -6px 4px';
-    return `<div class="funnel-bar" data-funnel-stage="${s.id}" style="${rowStyle}">
-      <div class="funnel-label">${escHtml(s.name)}</div>
-      <div class="funnel-track"><div class="funnel-fill" style="width:${pct}%;${fillStyle}"></div></div>
-      <div class="funnel-count" style="width:auto;min-width:36px;display:flex;align-items:center;justify-content:flex-end">${n}${avgChip}</div>
-    </div>`;
-  }).join('');
-  // Wire click-to-filter on every bar. Clicking the active bar
-  // clears the stage filter (toggle behaviour) — no need for a
-  // separate "show all stages" button.
-  el.querySelectorAll('[data-funnel-stage]').forEach(row => {
-    row.addEventListener('click', () => {
-      const id = row.dataset.funnelStage;
-      PIPELINE_FILTER.stageId = (PIPELINE_FILTER.stageId === id) ? null : id;
-      renderPipeline();
-    });
-  });
-}
-
-// Strip of KPIs above the Kanban when a real pipeline is selected.
-// Respects the active filter so the numbers match what's on screen.
-// Skipped in legacy status mode — the dashboard already carries the
-// equivalent breakdown for status, and showing both would feel
-// redundant.
-function renderPipelineSummary(pipelineId){
-  const el = document.getElementById('pipelineSummary');
-  if(!el) return;
-  el.classList.remove('hidden');
-  const stages = stagesForPipeline(pipelineId);
-  if(stages.length === 0){ el.classList.add('hidden'); return; }
-  const visibleSet = new Set(filteredContactsForPipeline().map(c => c.id));
-  // Collect every assignment in this pipeline that survives the
-  // filter, then partition by stage role (won / lost / in-flight).
-  let inFlight = 0, won = 0, lost = 0;
-  let inFlightValue = 0, weighted = 0, wonValue = 0;
-  CONTACT_PIPELINE.filter(cp => cp.pipeline_id === pipelineId).forEach(cp => {
-    const c = CONTACTS.find(x => x.id === cp.company_id);
-    if(!c || !visibleSet.has(c.id)) return;
-    const stage = PIPELINE_STAGES.find(s => s.id === cp.stage_id);
-    if(!stage) return;
-    const dv = Number(c.deal_value || 0);
-    const pr = Number(c.probability || 0);
-    if(stage.is_won){
-      won++;
-      wonValue += dv;
-    } else if(stage.is_lost){
-      lost++;
-    } else {
-      inFlight++;
-      inFlightValue += dv;
-      weighted += dv * (pr / 100);
-    }
-  });
-  const closed = won + lost;
-  const convPct = closed > 0 ? Math.round((won / closed) * 100) : null;
-  const fmtMoneyShort = (n) => n >= 10000 ? `€${Math.round(n/1000)}k` : `€${Math.round(n).toLocaleString('en-GB')}`;
-  const pipeline = PIPELINES.find(p => p.id === pipelineId);
-  const tile = (label, value, sub) => `
-    <div style="flex:1;min-width:120px">
-      <div style="font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:#9bbed9;font-weight:700">${label}</div>
-      <div style="font-family:'DM Mono',monospace;font-size:22px;font-weight:700;color:#fff;margin-top:2px">${value}</div>
-      ${sub ? `<div style="font-size:11px;color:#bdd4e8;margin-top:1px">${sub}</div>` : ''}
-    </div>
-  `;
-  el.innerHTML = `
-    <div style="display:flex;align-items:center;gap:8px;padding-right:14px;border-right:1px solid rgba(255,255,255,.15)">
-      <div>
-        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:#9bbed9;font-weight:700">Pipeline</div>
-        <div style="font-family:'DM Serif Display',serif;font-size:20px;color:#fff;margin-top:2px">${escHtml(pipeline?.name || '')}</div>
-      </div>
-    </div>
-    ${tile('In flight', inFlight, inFlightValue ? fmtMoneyShort(inFlightValue) + ' total' : null)}
-    ${tile('Weighted', inFlightValue ? fmtMoneyShort(weighted) : '—', inFlightValue ? 'by probability' : null)}
-    ${tile('Won', won, wonValue ? fmtMoneyShort(wonValue) + ' closed' : null)}
-    ${tile('Lost', lost, null)}
-    ${tile('Conversion', convPct !== null ? `${convPct}%` : '—', closed ? `${won} of ${closed} closed` : 'no closes yet')}
-  `;
-}
-
-// Legacy view — Kanban driven by outreach_contacts.status.
+// Kanban driven by outreach_contacts.status — the only view since the
+// per-pipeline boards were retired.
 function renderPipelineByStatus(){
   const board = document.getElementById('kanban');
   const visibleContacts = filteredContactsForPipeline();
@@ -10211,8 +9858,7 @@ function renderPipelineByStatus(){
   const visibleStages = STATUS_ORDER.filter(s => s !== 'not_started');
   board.innerHTML = visibleStages.map(stage => {
     const inStage = visibleContacts.filter(c => (c.status || 'not_started') === stage);
-    // Same → push button concept as pipeline mode, driven by the
-    // hand-curated STATUS_NEXT mapping above. Terminal statuses
+    // → push button driven by the hand-curated STATUS_NEXT mapping above. Terminal statuses
     // (active_partner / no_reply / lost) get no button.
     const nextStatusKey = STATUS_NEXT[stage];
     const nextStatusLabel = nextStatusKey ? (STATUS_LABELS[nextStatusKey] || nextStatusKey) : null;
@@ -10234,104 +9880,6 @@ function renderPipelineByStatus(){
     `;
   }).join('');
   wireKanbanInteractions(board, 'status');
-}
-
-// New view — Kanban driven by contact_pipeline.stage_id for the picked
-// pipeline. Empty column at the front to "remove from pipeline" (when
-// dropped, the row is deleted from contact_pipeline rather than just
-// re-staged) — but for now we skip that and keep removal in the detail
-// panel. The cards are companies WITH an assignment in this pipeline.
-function renderPipelineByPipeline(pipelineId){
-  const board = document.getElementById('kanban');
-  const stages = stagesForPipeline(pipelineId);
-  if(stages.length === 0){
-    board.innerHTML = '<div class="empty-state" style="padding:40px;text-align:center;width:100%">This pipeline has no stages configured.</div>';
-    updatePipelineFilterCount(0, 0);
-    return;
-  }
-  // Filter happens at the company level so the count badge reflects
-  // companies in the pipeline that pass the filter — not all 600+.
-  const visibleSet = new Set(filteredContactsForPipeline().map(c => c.id));
-  const todayStr = new Date().toISOString().slice(0,10);
-  const rowsByStage = new Map(stages.map(s => [s.id, []]));
-  const assignmentByCompany = new Map();
-  let totalInPipeline = 0, visibleInPipeline = 0;
-  CONTACT_PIPELINE.filter(cp => cp.pipeline_id === pipelineId).forEach(cp => {
-    if(!cp.stage_id) return;
-    const c = CONTACTS.find(x => x.id === cp.company_id);
-    if(!c) return;
-    totalInPipeline++;
-    if(!visibleSet.has(c.id)) return;
-    // Stuck-only filter — exclude cards <30 days in stage. Won/lost
-    // stages are also excluded (they're terminal; "stuck on Won" is
-    // nonsense). Skips rows with no entered_stage_at since we can't
-    // judge them.
-    if(PIPELINE_FILTER.stuckOnly){
-      const stage = PIPELINE_STAGES.find(s => s.id === cp.stage_id);
-      if(!stage || stage.is_won || stage.is_lost) return;
-      if(!cp.entered_stage_at) return;
-      if(daysBetween(cp.entered_stage_at.slice(0,10), todayStr) < 30) return;
-    }
-    visibleInPipeline++;
-    rowsByStage.get(cp.stage_id)?.push(c);
-    assignmentByCompany.set(c.id, cp);
-  });
-  updatePipelineFilterCount(visibleInPipeline, totalInPipeline);
-  const today = new Date().toISOString().slice(0,10);
-  // Stage filter — when set, render only the selected column. Other
-  // stages still count toward the funnel + summary above; this is a
-  // Kanban-focus view, not a "stage doesn't exist" view.
-  const renderableStages = PIPELINE_FILTER.stageId
-    ? stages.filter(s => s.id === PIPELINE_FILTER.stageId)
-    : stages;
-  // Pre-compute the next non-lost stage per stage_id so the per-card
-  // → push button knows where to advance to. Same rule as the Stuck
-  // deals card (next sort_order, exclude is_lost).
-  const nextStageByCurrentId = new Map();
-  stages.forEach(s => {
-    const next = stages
-      .filter(x => (x.sort_order||0) > (s.sort_order||0) && !x.is_lost)
-      .sort((a,b) => (a.sort_order||0) - (b.sort_order||0))[0];
-    if(next) nextStageByCurrentId.set(s.id, next);
-  });
-  board.innerHTML = renderableStages.map(s => {
-    const cards = (rowsByStage.get(s.id) || []).map(c => {
-      const cp = assignmentByCompany.get(c.id);
-      const enteredDate = cp?.entered_stage_at ? cp.entered_stage_at.slice(0,10) : null;
-      const daysInStage = enteredDate ? daysBetween(enteredDate, today) : undefined;
-      const next = nextStageByCurrentId.get(s.id);
-      const pushOpts = (next && cp?.id)
-        ? { mode:'pipeline', stageId:next.id, stageName:next.name, cpId:cp.id, ownerId: cp.owner_id || null }
-        : (cp?.owner_id ? { ownerId: cp.owner_id } : undefined);
-      return pipelineCardHtml(c, daysInStage, pushOpts);
-    }).join('') ||
-      '<div class="kanban-empty">drop a card here</div>';
-    // Inline dot since stage CSS keys are hardcoded to legacy status —
-    // the dynamic stages need an inline color (green/red/gray).
-    const dot = `<span style="display:inline-block;width:8px;height:8px;border-radius:999px;background:${stageDotColor(s)};margin-right:6px"></span>`;
-    return `
-      <div class="kanban-col" data-stage="pipeline-${s.id}">
-        <div class="kanban-col-header">
-          <div class="kanban-col-title" style="--no-before:1"><span style="display:inline-flex;align-items:center">${dot}${escHtml(s.name)}</span></div>
-          <div class="kanban-col-count">${(rowsByStage.get(s.id)||[]).length}</div>
-        </div>
-        <div class="kanban-list" data-drop-stage="${s.id}">${cards}</div>
-      </div>
-    `;
-  }).join('');
-  // Hide the ::before dot on pipeline columns (it would render on top
-  // of our inline dot for legacy stages). Cheap inline override.
-  board.querySelectorAll('.kanban-col[data-stage^="pipeline-"] .kanban-col-title').forEach(el => {
-    el.style.setProperty('--none', '1');
-    // Inject one-shot style to neutralise the ::before for these cols.
-    if(!document.getElementById('pipeline-mode-dot-fix')){
-      const st = document.createElement('style');
-      st.id = 'pipeline-mode-dot-fix';
-      st.textContent = '.kanban-col[data-stage^="pipeline-"] .kanban-col-title::before{display:none !important}';
-      document.head.appendChild(st);
-    }
-  });
-  wireKanbanInteractions(board, 'pipeline', { pipelineId, assignmentByCompany });
 }
 
 // Track the contact id whose card should flash after the next render

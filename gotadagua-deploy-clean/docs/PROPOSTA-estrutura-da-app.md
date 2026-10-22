@@ -1,5 +1,7 @@
 # Proposta: a app com menos tabs e um só número para cada coisa
 
+**Estado (22 Out 2026, fim do dia): ondas A e B feitas e publicadas; da onda C ficou feito o Import no HQ, o Ledger do camp hub com faturas do HQ e o Bank do Suk com a regra única; falta só a escola de surf (preços do catálogo, % de comissão na base de dados).** Decisões assumidas: reservas realizadas em todo o lado; Weekly P&L fica (corrigida); Wild Ledger saiu.
+
 Data: 22 Out 2026. Pedido do Miguel: «tens mesmo a certeza que não tenho tabs desnecessárias? … quero a info necessária sem tabs com basicamente o mesmo … olha para a app como a melhor de contabilidade e gestão de uma empresa, que facilite a vida e seja simples».
 
 Base: inventário tab a tab de todas as páginas (o que cada uma mostra, de onde vêm os números, que ações tem), cruzado com os dados ao vivo.

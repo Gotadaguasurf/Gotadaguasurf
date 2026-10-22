@@ -991,27 +991,7 @@ test('instructors: quick-day grid suggests each instructor\'s usual price and sa
 });
 
 
-test('surf-school: history sums sales per seller with their email', async ({ page }) => {
-  // Sales commissions are paid per person, so every rental carries who
-  // opened it (opened_by, stamped by the server) and History shows a
-  // per-seller total with the email — no guessing from names.
-  await fakeOwnerSession(page);
-  await page.goto('/surf-school/', { waitUntil: 'domcontentloaded' });
-  await page.waitForFunction(() => typeof window.sellerSummaryRows === 'function');
-  const out = await page.evaluate(() => {
-    PROFILE_NAMES.set('u1', 'Ana'); PROFILE_EMAILS.set('u1', 'ana@gotadaguasurf.com');
-    PROFILE_NAMES.set('u2', 'Rui');
-    const rows = [
-      { opened_by: 'u1', price_local: 25 }, { opened_by: 'u1', price_local: 30 }, { opened_by: 'u2', price_local: 15 },
-    ];
-    renderSellerSummary(rows);
-    return { rows: sellerSummaryRows(rows), html: document.getElementById('sellerSummary').textContent };
-  });
-  expect(out.rows[0]).toMatchObject({ name: 'Ana', email: 'ana@gotadaguasurf.com', n: 2, total: 55 });
-  expect(out.rows[1]).toMatchObject({ name: 'Rui', email: '', n: 1, total: 15 });
-  expect(out.html).toContain('ana@gotadaguasurf.com');
-  expect(out.html).toContain('€70');
-});
+// (the per-seller history summary was removed on 22 Oct 2026 — the Vendas tab is the one monthly per-login view, tested below)
 
 
 test('surf-school: the catalog step can never hide the rentals list', async ({ page }) => {
@@ -1513,7 +1493,8 @@ test('hq: accountant pack lists every expense, what has no document, camp fundin
   expect(out.file).toBe('Contabilista_WaterMovements_2026-09.xlsx');
   expect(out.names).toEqual(['Resumo', 'Checklist', 'Banco sem lançamento', 'Despesas', 'A rever', 'Transferências camps', 'Faturas a parceiros', 'Extrato Santander']);
   // The Wave Movements row and the flagged duplicate stay out of the books.
-  expect(out.stats).toMatchObject({ linhas: 4, semDocumento: 2, aRever: 1, totalEur: 1588.29, banco: 3, transferencias: 1, faturasParceiros: 2, bancoSem: 1 });
+  // semDocumento = 1: since 22 Oct 2026 the Resumo uses the same rule as the Checklist (docStatus): Google Ads never issues a document → «Não existe», not «sem documento»
+  expect(out.stats).toMatchObject({ linhas: 4, semDocumento: 1, aRever: 1, totalEur: 1588.29, banco: 3, transferencias: 1, faturasParceiros: 2, bancoSem: 1 });
   // Checklist: what is missing comes first, then what never has an invoice, then what is in. The dropdown is pre-filled from the app and a hint says where to look.
   expect(out.checklist).toEqual([
     ['Não', 'Prio', 40, '', ''],
@@ -1525,10 +1506,10 @@ test('hq: accountant pack lists every expense, what has no document, camp fundin
   expect(out.bancoSem).toEqual([['Não', '2026-09-15', 'COMPRA LEROY MERLIN', -274.19, '']]);
   expect(out.bancoSemSpec).toEqual({ col: 0, options: ['Não', 'Sim', 'Não é despesa'] });
   expect(out.resumoLinks).toEqual(['https://drive.google.com/drive/folders/FW9', 'https://drive.google.com/drive/folders/FP']);
-  expect(out.resumoFalta).toEqual([2, 1]);
+  expect(out.resumoFalta).toEqual([1, 1]);   // one rule: Google Ads is «não existe», not missing
   expect(out.parceiros).toEqual([['AIFS TRAVEL', 'FT IN2/16772', '2026-08', 2504.1, '—'], ['The Surf Tribe', 'FT IN2/16809', '2026-08', 7532, 'abrir']]);
   expect(out.parceirosLinks).toEqual([{ r: 2, c: 6, url: 'https://drive.google.com/file/d/ghi/view' }]);
-  expect(out.despesas).toEqual([['Prio', '—', 'SEM DOCUMENTO'], ['Google Ads', '—', 'SEM DOCUMENTO'], ['DUC', 'abrir', 'A REVER'], ['Safari na Horta', 'abrir', 'OK']]);
+  expect(out.despesas).toEqual([['Prio', '—', 'SEM DOCUMENTO'], ['Google Ads', '—', 'ISENTO'], ['DUC', 'abrir', 'A REVER'], ['Safari na Horta', 'abrir', 'OK']]);
   expect(out.links).toEqual([
     { r: 3, c: 11, url: 'https://drive.google.com/file/d/def/view' },
     { r: 4, c: 11, url: 'https://drive.google.com/file/d/abc/view' },
@@ -1856,17 +1837,21 @@ test('suk: bank-based overview, one expense line per debit, missing PDFs', async
     const biz = [...document.querySelectorAll('#ovBody .g2 .card')].map(c => c.querySelector('.ov-section-title').textContent.trim() + ' ' + [...c.querySelectorAll('tr')].map(tr => tr.lastElementChild.textContent.trim().split(' · ')[0]).join(' | '));
     showPage('invoices'); $('iv_filter').value = 'catering'; renderInvoices();
     const catering = [...document.querySelectorAll('#invBody tr')].map(tr => tr.children[1]?.textContent.trim());
-    showPage('missing');
-    return { kpis, biz, catering, missing: [...document.querySelectorAll('#msBody tr')].map(tr => [...tr.children].slice(0, 5).map(td => td.textContent.trim())), msKpis: [...document.querySelectorAll('#msKpis .kpi-value')].map(e => e.textContent.trim()), addBtn: !!document.querySelector('#msBody button') };
+    showInvoicesFilter('nopdf');
+    const missing = [...document.querySelectorAll('#invBody tr')].map(tr => [...tr.children].slice(0, 5).map(td => td.textContent.trim().replace(/\s+/g, ' ')));
+    showPage('overview');
+    const bySupplier = [...document.querySelectorAll('#ovBody .ov-section')].find(s => /Without PDF/.test(s.textContent));
+    return { kpis, biz, catering, missing, suppliers: bySupplier ? [...bySupplier.querySelectorAll('tbody tr')].map(tr => [...tr.children].map(td => td.textContent.trim())) : null, tabs: [...document.querySelectorAll('.ntab')].map(b => b.textContent.trim()) };
   });
   expect(out.kpis).toEqual(['Sales €1,420.00', 'Costs €1,383.85', 'Result on the account €36.15', 'Partner funding €500.00']);   // costs = expense lines + bank fees
   // Two businesses: restaurant = TPA + deposits minus its lines and the bank fees; catering = Water's transfers minus the lines marked «Catering» (Makro)
   expect(out.biz).toEqual(['Restaurant €420.00 | €929.64 | €0 | €900 | €-509.64', 'Catering to Water €1,000.00 | €454.21 | €454 | €0 | €545.79']);
   expect(out.catering).toEqual(['makro palmela quint']);  // the «Catering only» filter in Expenses
-  // Makro has no PDF → missing; EDP has its PDF; the salary line never needs one; every debit has its line
-  expect(out.missing).toEqual([['2026-07-10', 'makro palmela quint', 'MDB 800258 MAKRO PALMELA QUINT', 'Food', '€454.21']]);
-  expect(out.msKpis).toEqual(['1', '€454.21', '1', '0']);
-  expect(out.addBtn).toBe(true);                         // «Attach PDF» opens the line
+  // Makro has no PDF → the «Without PDF» filter in Expenses lists it; EDP has its PDF; the salary line never needs one.
+  // (22 Oct 2026: the Missing PDFs tab was folded into Expenses + an Overview section; Water ↔ Manjar into Bank)
+  expect(out.missing.map(r => r.slice(0, 2))).toEqual([['2026-07-10', 'makro palmela quint']]);
+  expect(out.suppliers).toEqual([['makro palmela quint', '1', '€454.21', 'Food']]);
+  expect(out.tabs).toEqual(['Overview', 'Expenses', 'Bank · Water ↔ Manjar']);
   expect(errs).toEqual([]);
 });
 
@@ -2031,7 +2016,7 @@ test('hub: «Hoje» panel lists the pending items from hq_todo and links to the 
     ['1', 'Débitos sem linha · Santander', '/hq/?tab=fecho'],
     ['104', 'Sem PDF desde Set · Water', '/hq/?tab=fecho'],
     ['1', 'Possíveis duplicados', '/hq/?tab=invoices&filter=duplicate'],
-    ['2', 'Wild · à espera da fatura', '/wild/#ledger'],
+    ['2', 'Wild · à espera da fatura', '/wild/#night'],
     ['1', 'Faturas a parceiros por emitir', '/partners/'],
     ['21d', 'Extrato Santander parado', '/hq/?tab=invoices'],
     ['64', 'Fecho de 2026-09', '/hq/?tab=fecho'],
