@@ -1818,6 +1818,46 @@ test('wild: close a night → ledger rows per source with ticket qty, Gota top-u
   expect(errs).toEqual([]);
 });
 
+// The Suk (Manjar Lda) page reads the BCP statement: sales = TPA + cash
+// deposits + catering sold to Water; partner transfers are funding; debits
+// without a Manjar invoice in the app are listed as missing.
+test('suk: bank-based overview and missing invoices from the BCP statement', async ({ page }) => {
+  const bank = [
+    { id: 'b1', movement_date: '2026-07-02', value_date: '2026-07-02', description: 'CREDITO TPA BCP 1535824 MOV N 10', amount: 120, balance: 1120, kind: 'income', hq_invoice_id: null, notes: null },
+    { id: 'b2', movement_date: '2026-07-03', value_date: '2026-07-03', description: 'DEP NUM MTM2 COSTA DA CAPARICA', amount: 300, balance: 1420, kind: 'income', hq_invoice_id: null, notes: null },
+    { id: 'b3', movement_date: '2026-07-22', value_date: '2026-07-22', description: 'TRF. P/O WATER MOVEMENTS LDA', amount: 1000, balance: 2420, kind: 'internal_transfer', hq_invoice_id: null, notes: null },
+    { id: 'b4', movement_date: '2026-07-10', value_date: '2026-07-10', description: 'MDB 800258 MAKRO PALMELA QUINT', amount: -454.21, balance: 1965.79, kind: 'expense', hq_invoice_id: null, notes: null },
+    { id: 'b5', movement_date: '2026-07-11', value_date: '2026-07-11', description: 'DD EDP COMERCIAL- 1601 PT34', amount: -14.64, balance: 1951.15, kind: 'expense', hq_invoice_id: null, notes: null },
+    { id: 'b6', movement_date: '2026-07-20', value_date: '2026-07-20', description: 'PAGAMENTO VENCIMENTOS -MLEC1B', amount: -900, balance: 1051.15, kind: 'expense', hq_invoice_id: null, notes: null },
+    { id: 'b7', movement_date: '2026-07-21', value_date: '2026-07-21', description: 'COM.MAN.CONTA PACOTE M EMPRESA', amount: -15, balance: 1036.15, kind: 'bank_fee', hq_invoice_id: null, notes: null },
+    { id: 'b8', movement_date: '2026-07-25', value_date: '2026-07-25', description: 'TRF. P/O RICARDO NUNO CARVALHO JES', amount: 500, balance: 1536.15, kind: 'other', hq_invoice_id: null, notes: null },
+  ];
+  const invoices = [{ id: 'i1', invoice_date: '2026-07-09', company: 'edp comercial', amount_eur: 14.64, category_name: 'Utilities', invoice_number: 'FT 1', drive_link: null, deleted_at: null }];
+  await page.route(/supabase\.co\/(auth|rest)\/v1\/.*/, async route => {
+    const url = route.request().url();
+    const json = (body) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    if (url.includes('/auth/v1/user')) return json({ id: 'u1', email: 'miguel@gotadaguasurf.com', aud: 'authenticated', role: 'authenticated' });
+    if (url.includes('/rest/v1/platform_profiles')) return json({ id: 'u1', email: 'miguel@gotadaguasurf.com', full_name: 'Miguel', platform_role: 'owner' });
+    if (url.includes('/rest/v1/locations')) return json({ id: 'suk-0', slug: 'the-suk', name: 'The Suk' });
+    if (url.includes('/rest/v1/hq_bank_movements')) return json(bank);
+    if (url.includes('/rest/v1/hq_invoices')) return json(invoices);
+    return json([]);
+  });
+  const errs = []; page.on('pageerror', e => errs.push(e.message));
+  await fakeOwnerSession(page);
+  await page.goto('/suk/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => /Performance/.test(document.querySelector('#ovBody')?.textContent || ''), null, { timeout: 15000 });
+  const out = await page.evaluate(() => {
+    const kpis = [...document.querySelectorAll('#ovBody .kpi')].map(k => k.querySelector('.kpi-label').textContent.trim() + ' ' + k.querySelector('.kpi-value').textContent.trim());
+    showPage('missing');
+    return { kpis, missing: [...document.querySelectorAll('#msBody tr')].map(tr => [...tr.children].map(td => td.textContent.trim())), msKpis: [...document.querySelectorAll('#msKpis .kpi-value')].map(e => e.textContent.trim()) };
+  });
+  expect(out.kpis).toEqual(['Sales €1,420.00', 'Costs paid from the account €1,383.85', 'Result on the account €36.15', 'Partner funding €500.00']);
+  expect(out.missing).toEqual([['2026-07-10', 'MDB 800258 MAKRO PALMELA QUINT', 'Compras (comida e bebida)', '€454.21']]);   // EDP matched by amount; salaries + fees never have invoices
+  expect(out.msKpis[0]).toBe('1');
+  expect(errs).toEqual([]);
+});
+
 test('hq: Investments tab — only the shop, total cost with taxes, rent received per year, and a new rent is saved once', async ({ page }) => {
   // Miguel, 8 Oct 2026: the surf camp houses are camp rent (Expenses); only the shop we rent out is an investment.
   const posted = [];

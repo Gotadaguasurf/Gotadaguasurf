@@ -10,7 +10,17 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Outfit:wght@400;500;600;700;800&family=DM+Mono:wght@500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/lib/business-shell.css">
-<style>.card ul{margin:0;padding-left:18px;font-size:13px;line-height:1.8}</style>
+<style>
+.mx td.r.neg{color:var(--red)}
+.mx tr.group td{background:#f6f9fc;font-size:10px;text-transform:uppercase;letter-spacing:.1em;font-weight:800;color:var(--muted);padding:7px 13px}
+.mx tr.sum td{font-weight:800;border-top:2px solid var(--navy)}
+.mx tr.result td{color:var(--green)}.mx tr.result td.neg{color:var(--red)}
+.mx td.total{font-weight:700;color:var(--navy)}
+.dim{color:#c3cdd8}
+.dropzone{border:2px dashed var(--border);border-radius:12px;padding:18px;text-align:center;color:var(--muted);font-size:13px;cursor:pointer;background:#fff}
+.dropzone:hover{border-color:var(--ocean);color:var(--navy)}
+.kpi-value.pos{color:var(--green)}.kpi-value.neg{color:var(--red)}
+</style>
 </head>
 <body>
 <nav>
@@ -29,12 +39,14 @@
       <summary><span>The Suk</span><span class="app-switch-caret">▾</span></summary>
       <nav class="app-switch-menu">
         <a href="/wild/"><span>Wild Wednesday</span><small>Weekly party · Costa da Caparica</small></a>
-        <a href="/suk/" class="is-current"><span>The Suk</span><small>Manjar restaurant</small></a>
+        <a href="/suk/" class="is-current"><span>The Suk</span><small>Manjar Lda · restaurant</small></a>
       </nav>
     </details>
   </div>
   <div class="nav-tabs">
-    <button class="ntab active" data-page="overview">Overview</button>
+    <button class="ntab active" data-page="overview" onclick="showPage('overview')">Overview</button>
+    <button class="ntab" data-page="bank" onclick="showPage('bank')">Bank</button>
+    <button class="ntab" data-page="missing" onclick="showPage('missing')">Missing invoices</button>
   </div>
   <div class="nav-actions">
     <span class="user-chip" id="userChip">—</span>
@@ -42,20 +54,59 @@
   </div>
 </nav>
 
+<!-- ═══════════ OVERVIEW ═══════════ -->
 <div class="page active" id="page-overview">
   <div class="container">
-    <section class="ov-section">
-      <div class="ov-section-head"><div class="ov-section-title">Setting up</div><div class="ov-section-sub">The Suk is a location of the app (the-suk, company Manjar Lda). Before the P&amp;L shows here, decide:</div></div>
-      <div class="card card-pad"><ul>
-        <li><b>Revenue:</b> a daily close logged here (cash + card), or imported from the restaurant's POS.</li>
-        <li><b>Costs:</b> Manjar's invoices start entering the app with the PDF on Drive (today the rule is «Manjar só Drive»).</li>
-        <li><b>Bank:</b> Manjar's statement comes into the app like Santander and CGD, so «paid only with the bank» works.</li>
-        <li><b>Rubrics:</b> «Suk · Food», «Suk · Staff», «Suk · Rent», «Suk · Other» — to confirm.</li>
-      </ul></div>
-    </section>
-    <div id="seasonBody"><div class="card card-pad hint">Loading…</div></div>
+    <div class="ov-filters">
+      <label class="period-picker"><span class="period-picker-lbl">Year</span><select id="ov_year" onchange="renderOverview()"></select></label>
+      <span class="hint" style="margin-left:auto">Read from the Millennium BCP statement of Manjar Lda: what came in, what went out, by month and by rubric. Invoices come in through the HQ (company Manjar).</span>
+    </div>
+    <div id="ovBody"><div class="card card-pad hint">Loading…</div></div>
   </div>
 </div>
+
+<!-- ═══════════ BANK ═══════════ -->
+<div class="page" id="page-bank">
+  <div class="container">
+    <div class="ov-filters">
+      <label class="period-picker"><span class="period-picker-lbl">Month</span><select id="bk_month" onchange="renderBank()"><option value="all">All</option></select></label>
+      <label class="period-picker"><span class="period-picker-lbl">Show</span><select id="bk_kind" onchange="renderBank()"><option value="all">Everything</option><option value="expense">Debits</option><option value="income">Credits</option><option value="unmatched">Debits without invoice</option></select></label>
+      <input id="bk_q" type="search" placeholder="Search description…" oninput="renderBank()" style="border:1px solid var(--border);border-radius:20px;padding:7px 12px;font-size:12px;min-width:220px">
+      <span class="hint" id="bk_count" style="margin-left:auto"></span>
+    </div>
+    <details class="card card-pad" style="margin-bottom:14px" id="importBox">
+      <summary style="cursor:pointer;font-weight:700;color:var(--navy);font-size:13px">⬆ Import a new BCP statement (xlsx)</summary>
+      <div class="hint" style="margin:8px 0 10px">Export from Millennium BCP (Movimentos → Exportar → Excel). Rows already in the app are skipped, so re-importing a longer period is safe.</div>
+      <div class="dropzone" onclick="document.getElementById('bk_file').click()">Click to choose the file<input id="bk_file" type="file" accept=".xlsx,.xls" style="display:none" onchange="importBcp(this.files[0])"></div>
+      <div class="hint" id="bk_import_status" style="margin-top:8px"></div>
+    </details>
+    <div class="card"><div class="tbl-wrap"><table>
+      <thead><tr><th>Date</th><th>Description</th><th>Rubric</th><th>Invoice</th><th class="r">Amount</th><th class="r">Balance</th></tr></thead>
+      <tbody id="bankBody"><tr class="empty-row"><td colspan="6">Loading…</td></tr></tbody>
+    </table></div></div>
+  </div>
+</div>
+
+<!-- ═══════════ MISSING ═══════════ -->
+<div class="page" id="page-missing">
+  <div class="container">
+    <div class="ov-filters">
+      <label class="period-picker"><span class="period-picker-lbl">Month</span><select id="ms_month" onchange="renderMissing()"><option value="all">All</option></select></label>
+      <span class="hint" style="margin-left:auto">Debits of the BCP account with no invoice lanced in the app (company Manjar). Bank fees, salaries and taxes are not listed — they never have an invoice.</span>
+    </div>
+    <div class="g4" id="msKpis" style="margin-bottom:14px"></div>
+    <section class="ov-section">
+      <div class="ov-section-head"><div class="ov-section-title">By supplier</div><div class="ov-section-sub">Where to look first</div></div>
+      <div class="card"><div class="tbl-wrap"><table><thead><tr><th>Supplier (from the description)</th><th class="r">Debits</th><th class="r">Amount</th><th>Rubric</th></tr></thead><tbody id="msSuppliers"></tbody></table></div></div>
+    </section>
+    <section class="ov-section">
+      <div class="ov-section-head"><div class="ov-section-title">Every debit without invoice</div></div>
+      <div class="card"><div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Description</th><th>Rubric</th><th class="r">Amount</th></tr></thead><tbody id="msBody"></tbody></table></div></div>
+    </section>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.4"></script>
 <script src="/supabase-config.js"></script>
@@ -65,9 +116,54 @@
 <script>
 const cfg = window.__SUPABASE_CONFIG || {};
 const sb = window.supabase.createClient(cfg.url, cfg.anonKey);
-const SLUG = 'the-suk';
+const SLUG = 'the-suk', COMPANY = 'manjar', BANK = 'bcp';
 const $ = (id) => document.getElementById(id);
+const eur = (n) => BusinessPnl.eur(n);
+const eur0 = (n) => '€' + Math.round(Number(n || 0)).toLocaleString('en-GB');
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let BANK_ROWS = [], INVOICES = [], CAN_EDIT = false;
 
+function toast(msg, kind){ const t = $('toast'); t.textContent = msg; t.className = 'toast show' + (kind === 'err' ? ' err' : ''); clearTimeout(t._t); t._t = setTimeout(() => t.className = 'toast', 3200); }
+function showPage(name){
+  document.querySelectorAll('.ntab').forEach(b => b.classList.toggle('active', b.dataset.page === name));
+  document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === 'page-' + name));
+  if (name === 'overview') renderOverview();
+  if (name === 'bank') renderBank();
+  if (name === 'missing') renderMissing();
+}
+
+// ── Rubrics read from the bank description (Manjar has no ledger yet) ──
+// Revenue: 'Vendas TPA' (card terminal), 'Depósitos' (cash sales deposited).
+// Transfers from Water Movements are the catering Water buys from Manjar (sales); the partner's transfers are funding.
+const RUBRICS = [
+  ['Compras (comida e bebida)', /MAKRO|SUPERBOCK|SUPER BOCK|NEWCOFFEE|SILAU|PANICONGELADOS|CONTINENTE|LIDL|NOVO RUMO|MERCADONA|AUCHAN|PINGO DOCE|CONSOANTES|PASTE?LARIA|PADARIA|APH POS|BARAO E COSTA|GRUPO ATLANTA|TALHO|PEIXARIA|FRUTA|GELO/i],
+  ['Salários', /PAGAMENTO\s+VENCIMENTOS|VENCIMENTO/i],
+  ['Impostos e Seg. Social', /TAXA SOCIAL|PAG\.DUC|INSTITUTO REGISTOS|AUTORIDADE TRIBUT|IRS|IVA/i],
+  ['Renda', /LARANJEIRO|RENDA/i],
+  ['Utilities', /EDP|SMAS|NOS COMUNICA|PETROGAL|GALP|EUPAGO|MEO|VODAFONE|AGUAS/i],
+  ['Contabilidade', /ESCALA DE PALAVRAS/i],
+  ['Higiene e limpeza', /ARABLAU|HIGIENE/i],
+  ['Seguros', /GENERALI|FIDELIDADE|TRANQUILIDADE|ALLIANZ/i],
+  ['Manutenção e equipamento', /LEROY MERLIN|BRICOTEJO|BRICOMARCHE|AKI|IKEA|WORTEN|FNAC/i],
+  ['Pagamentos por referência', /PAG REFERENCIA|PAG SERV|PAGSERV/i],
+];
+function rubricOf(r){
+  const d = String(r.description || '').toUpperCase();
+  if (r.kind === 'bank_fee') return 'Banco';
+  if (r.kind === 'internal_transfer' || /WATER MOVEMENTS/.test(d)) return 'Vendas à Water (catering)';
+  if (/RICARDO NUNO/.test(d)) return 'Suprimentos do sócio';
+  if (r.amount > 0) {
+    if (/TPA|UNICRE/.test(d)) return 'Vendas TPA (cartão)';
+    if (/DEP NUM|DEPOSITO NUMERARIO|DEPOSITO/.test(d)) return 'Depósitos de numerário';
+    return 'Outras entradas';
+  }
+  for (const [name, re] of RUBRICS) if (re.test(d)) return name;
+  return 'Outros';
+}
+const NO_INVOICE = new Set(['Banco', 'Salários', 'Impostos e Seg. Social', 'Vendas à Water (catering)', 'Suprimentos do sócio']);
+const supplierOf = (desc) => String(desc || '').replace(/^MDB \d+ /, '').replace(/^DD /, '').replace(/^TRF P\/ /, '').replace(/^PAG SERV \d+\/\d+ /, 'PAG SERV ').replace(/^MDB \d+ PAG REFERENCIA.*/, 'PAG REFERENCIA').replace(/\s+\d[\d\s\/-]*$/, '').replace(/\s+/g, ' ').trim().slice(0, 30);
+
+// ── Boot ─────────────────────────────────────────────────────────
 async function boot(){
   BusinessShell.mountLogo('gotaLogo');
   const { data:{ user } } = await sb.auth.getUser();
@@ -78,19 +174,162 @@ async function boot(){
     $('userChip').textContent = data?.full_name || data?.email || user.email || 'you';
     const owners = new Set(window.__PLATFORM_OWNER_EMAILS || ['miguel@gotadaguasurf.com']);
     allowed = owners.has(String(user.email || '').toLowerCase()) || String(data?.platform_role || '').toLowerCase() === 'super_admin';
-    if (allowed) $('hqBtn').style.display = '';
+    if (allowed) { $('hqBtn').style.display = ''; CAN_EDIT = true; }
   } catch { $('userChip').textContent = user.email || 'you'; }
   const { data: loc } = await sb.from('locations').select('id, slug, name').eq('slug', SLUG).maybeSingle();
   if (!loc) { document.body.innerHTML = BusinessShell.splash('No access', 'The Suk is not set up for your account yet. Ask Miguel to add it in Settings → Team access.'); return; }
   if (!allowed) {
-    const { data: mem } = await sb.from('workspace_memberships').select('can_view, workspaces!inner(slug)').eq('user_id', user.id).eq('active', true).eq('workspaces.slug', SLUG).maybeSingle();
+    const { data: mem } = await sb.from('workspace_memberships').select('can_view, can_edit, workspaces!inner(slug)').eq('user_id', user.id).eq('active', true).eq('workspaces.slug', SLUG).maybeSingle();
     if (!mem || !mem.can_view) { document.body.innerHTML = BusinessShell.splash('No access', 'The Suk is not in your allowed areas. Ask Miguel to add it in Settings → Team access.'); return; }
+    CAN_EDIT = !!mem.can_edit;
   }
-  const { data: rows, error } = await sb.from('ledger_entries').select('type, category, entry_date, amount_eur, source_kind, payment_method, qty').eq('location_id', loc.id).order('entry_date', {ascending:true}).range(0, 4999);
-  if (error) { $('seasonBody').innerHTML = `<div class="card card-pad hint">Ledger: ${error.message}</div>`; return; }
-  const year = String(new Date().getFullYear());
-  BusinessPnl.render($('seasonBody'), (rows || []).filter(r => String(r.entry_date).startsWith(year)), { year, title:'The Suk', dayLabel:'Day', emptyText:'No The Suk movements in the app yet.' });
+  if (!CAN_EDIT) $('importBox').style.display = 'none';
+  await loadData();
+  renderOverview();
 }
+
+async function fetchAll(build){ const PAGE = 1000; let from = 0, all = []; for (;;) { const { data, error } = await build().range(from, from + PAGE - 1); if (error) throw error; all = all.concat(data || []); if (!data || data.length < PAGE) break; from += PAGE; } return all; }
+async function loadData(){
+  try {
+    [BANK_ROWS, INVOICES] = await Promise.all([
+      fetchAll(() => sb.from('hq_bank_movements').select('id, movement_date, value_date, description, amount, balance, kind, hq_invoice_id, notes').eq('paying_company', COMPANY).order('movement_date', {ascending:true}).order('seq', {ascending:true})),
+      fetchAll(() => sb.from('hq_invoices').select('id, invoice_date, company, amount_eur, category_name, invoice_number, drive_link, deleted_at').eq('paying_company', COMPANY).is('deleted_at', null).order('invoice_date', {ascending:true})),
+    ]);
+  } catch (e) { toast('Could not load: ' + (e.message || e), 'err'); }
+  BANK_ROWS.forEach(r => { r.rubric = rubricOf(r); r.month = String(r.movement_date).slice(0, 7); });
+  // Debits without an invoice: linked id, or an invoice of the same amount within 20 days.
+  const byAmt = {}; INVOICES.forEach(i => { const k = Math.round(Number(i.amount_eur) * 100); (byAmt[k] = byAmt[k] || []).push(i); });
+  BANK_ROWS.forEach(r => {
+    if (r.amount >= 0 || r.kind !== 'expense') { r.has_invoice = null; return; }
+    if (r.hq_invoice_id) { r.has_invoice = 'linked'; return; }
+    const cands = byAmt[Math.round(-r.amount * 100)] || [];
+    const near = cands.find(i => Math.abs((new Date(i.invoice_date) - new Date(r.movement_date)) / 86400000) <= 20);
+    r.has_invoice = near ? 'amount' : (NO_INVOICE.has(r.rubric) ? 'n/a' : 'missing');
+  });
+  const months = [...new Set(BANK_ROWS.map(r => r.month))].sort().reverse();
+  ['bk_month', 'ms_month'].forEach(id => { $(id).innerHTML = '<option value="all">All</option>' + months.map(m => `<option value="${m}">${m}</option>`).join(''); });
+  const years = [...new Set(months.map(m => m.slice(0, 4)))];
+  $('ov_year').innerHTML = years.map(y => `<option value="${y}">${y}</option>`).join('');
+}
+
+// ── Overview: bank-based P&L by rubric and month ────────────────
+function renderOverview(){
+  const body = $('ovBody');
+  const year = $('ov_year').value || String(new Date().getFullYear());
+  const rows = BANK_ROWS.filter(r => r.month.startsWith(year));
+  if (!rows.length) { body.innerHTML = '<div class="card card-pad hint">No bank movements yet. Import the BCP statement in the Bank tab.</div>'; return; }
+  const months = [...new Set(rows.map(r => r.month))].sort();
+  const monthName = (ym) => new Date(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)) - 1, 1).toLocaleString('en-GB', {month:'short'});
+  const isSales = (r) => r.amount > 0 && (r.rubric === 'Vendas TPA (cartão)' || r.rubric === 'Depósitos de numerário' || r.rubric === 'Vendas à Water (catering)' || r.rubric === 'Outras entradas');
+  const isCost = (r) => r.amount < 0 && r.rubric !== 'Suprimentos do sócio';
+  const sum = (pred, m) => rows.filter(r => pred(r) && (!m || r.month === m)).reduce((s, r) => s + Number(r.amount), 0);
+  const revRub = [...new Set(rows.filter(isSales).map(r => r.rubric))].sort((a, b) => sum(r => r.rubric === b) - sum(r => r.rubric === a));
+  const costRub = [...new Set(rows.filter(isCost).map(r => r.rubric))].sort((a, b) => sum(r => r.rubric === a) - sum(r => r.rubric === b));
+  const revenue = sum(isSales), costs = -sum(isCost), result = revenue - costs;
+  const funding = sum(r => r.rubric === 'Suprimentos do sócio');
+  const last = rows[rows.length - 1];
+  const money = (v) => v ? eur0(Math.abs(v)) : '<span class="dim">—</span>';
+  const line = (label, pred, cls = '') => `<tr class="${cls}"><td>${esc(label)}</td><td class="r total">${money(sum(pred))}</td>${months.map(m => `<td class="r">${money(sum(pred, m))}</td>`).join('')}</tr>`;
+  const calc = (label, fn, cls) => `<tr class="${cls}"><td>${label}</td><td class="r total ${fn() < 0 ? 'neg' : ''}">${eur0(fn())}</td>${months.map(m => { const v = fn(m); return `<td class="r ${v < 0 ? 'neg' : ''}">${eur0(v)}</td>`; }).join('')}</tr>`;
+  const kpi = (label, value, sub, cls = '') => `<div class="card kpi"><div class="kpi-label">${label}</div><div class="kpi-value ${cls}">${value}</div><div class="kpi-sub">${sub}</div></div>`;
+  body.innerHTML = `
+    <section class="ov-section">
+      <div class="ov-section-head"><div class="ov-section-title">Performance</div><div class="ov-section-sub">${year} · BCP account · balance ${eur(last.balance)} on ${last.movement_date}</div></div>
+      <div class="g4">
+        ${kpi('Sales', eur(revenue), `restaurant (TPA + cash) ${eur0(sum(r => r.rubric === 'Vendas TPA (cartão)' || r.rubric === 'Depósitos de numerário'))} · catering to Water ${eur0(sum(r => r.rubric === 'Vendas à Water (catering)'))}`, 'pos')}
+        ${kpi('Costs paid from the account', eur(costs), `purchases ${eur0(-sum(r => r.rubric === 'Compras (comida e bebida)'))} · salaries ${eur0(-sum(r => r.rubric === 'Salários'))}`, 'neg')}
+        ${kpi('Result on the account', eur(result), 'sales − costs, before funding', result >= 0 ? 'pos' : 'neg')}
+        ${kpi('Partner funding', eur(funding), 'transfers from Ricardo (not sales)')}
+      </div>
+    </section>
+    <section class="ov-section">
+      <div class="ov-section-head"><div class="ov-section-title">By rubric and month</div><div class="ov-section-sub">Rubrics are read from the bank description — tell Miguel if one is wrong</div></div>
+      <div class="card"><div class="tbl-wrap"><table class="mx">
+        <thead><tr><th></th><th class="r">Total</th>${months.map(m => `<th class="r">${monthName(m)}</th>`).join('')}</tr></thead>
+        <tbody>
+          <tr class="group"><td colspan="${months.length + 2}">Sales</td></tr>
+          ${revRub.map(rb => line(rb, r => isSales(r) && r.rubric === rb)).join('')}
+          ${calc('Sales', (m) => sum(isSales, m), 'sum')}
+          <tr class="group"><td colspan="${months.length + 2}">Costs</td></tr>
+          ${costRub.map(rb => line(rb, r => isCost(r) && r.rubric === rb)).join('')}
+          ${calc('Costs', (m) => -sum(isCost, m), 'sum')}
+          ${calc('Result', (m) => sum(isSales, m) + sum(isCost, m), 'sum result')}
+          <tr class="group"><td colspan="${months.length + 2}">Funding (not sales)</td></tr>
+          ${line('Suprimentos do sócio', r => r.rubric === 'Suprimentos do sócio')}
+        </tbody>
+      </table></div></div>
+    </section>`;
+}
+
+// ── Bank list ────────────────────────────────────────────────────
+function renderBank(){
+  const month = $('bk_month').value, kind = $('bk_kind').value, q = $('bk_q').value.trim().toLowerCase();
+  let rows = BANK_ROWS.filter(r => (month === 'all' || r.month === month) && (!q || String(r.description).toLowerCase().includes(q)));
+  if (kind === 'expense') rows = rows.filter(r => r.amount < 0);
+  if (kind === 'income') rows = rows.filter(r => r.amount > 0);
+  if (kind === 'unmatched') rows = rows.filter(r => r.has_invoice === 'missing');
+  rows = rows.slice().reverse();
+  const inv = (r) => r.has_invoice === 'linked' ? '<span class="badge badge-green">linked</span>' : r.has_invoice === 'amount' ? '<span class="badge badge-blue">by amount</span>' : r.has_invoice === 'missing' ? '<span class="badge badge-amber">missing</span>' : '';
+  $('bk_count').textContent = `${rows.length} movements · in ${eur(rows.filter(r => r.amount > 0).reduce((s, r) => s + Number(r.amount), 0))} · out ${eur(-rows.filter(r => r.amount < 0).reduce((s, r) => s + Number(r.amount), 0))}`;
+  $('bankBody').innerHTML = rows.length ? rows.slice(0, 600).map(r => `<tr>
+    <td>${r.movement_date}</td><td>${esc(r.description)}</td><td class="hint">${esc(r.rubric)}</td><td>${inv(r)}</td>
+    <td class="r" style="font-weight:700;color:${r.amount > 0 ? 'var(--green)' : 'var(--ink)'}">${r.amount > 0 ? '+' : ''}${eur(r.amount)}</td><td class="r hint">${r.balance != null ? eur(r.balance) : ''}</td>
+  </tr>`).join('') + (rows.length > 600 ? `<tr class="empty-row"><td colspan="6">Showing 600 of ${rows.length} — pick a month.</td></tr>` : '') : '<tr class="empty-row"><td colspan="6">Nothing here.</td></tr>';
+}
+
+// ── Missing invoices ─────────────────────────────────────────────
+function renderMissing(){
+  const month = $('ms_month').value;
+  const rows = BANK_ROWS.filter(r => r.has_invoice === 'missing' && (month === 'all' || r.month === month));
+  const total = -rows.reduce((s, r) => s + Number(r.amount), 0);
+  const covered = BANK_ROWS.filter(r => (r.has_invoice === 'linked' || r.has_invoice === 'amount') && (month === 'all' || r.month === month));
+  const kpi = (label, value, sub, cls = '') => `<div class="card kpi"><div class="kpi-label">${label}</div><div class="kpi-value ${cls}">${value}</div><div class="kpi-sub">${sub}</div></div>`;
+  $('msKpis').innerHTML = kpi('Debits without invoice', String(rows.length), month === 'all' ? 'whole statement' : month, rows.length ? 'neg' : 'pos') + kpi('Amount without invoice', eur(total), 'to find on Drive or ask the supplier', rows.length ? 'neg' : 'pos') + kpi('Debits with invoice', String(covered.length), eur(-covered.reduce((s, r) => s + Number(r.amount), 0)), 'pos') + kpi('Invoices in the app', String(INVOICES.length), 'company Manjar');
+  const bySup = {}; rows.forEach(r => { const k = supplierOf(r.description); const b = bySup[k] || (bySup[k] = {n:0, eur:0, rubric:r.rubric}); b.n++; b.eur += -Number(r.amount); });
+  const sups = Object.entries(bySup).sort((a, b) => b[1].eur - a[1].eur);
+  $('msSuppliers').innerHTML = sups.length ? sups.map(([k, b]) => `<tr><td>${esc(k)}</td><td class="r">${b.n}</td><td class="r" style="font-weight:700">${eur(b.eur)}</td><td class="hint">${esc(b.rubric)}</td></tr>`).join('') : '<tr class="empty-row"><td colspan="4">Nothing missing.</td></tr>';
+  $('msBody').innerHTML = rows.length ? rows.slice().reverse().map(r => `<tr><td>${r.movement_date}</td><td>${esc(r.description)}</td><td class="hint">${esc(r.rubric)}</td><td class="r" style="font-weight:700">${eur(-r.amount)}</td></tr>`).join('') : '<tr class="empty-row"><td colspan="4">Nothing missing.</td></tr>';
+}
+
+// ── Import a BCP statement (xlsx) ────────────────────────────────
+let __xlsx = null;
+async function loadXlsx(){ if (__xlsx) return __xlsx; await new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js'; s.onload = res; s.onerror = rej; document.head.appendChild(s); }); __xlsx = window.XLSX; return __xlsx; }
+function parseBcpRows(aoa){
+  const hdr = aoa.findIndex(r => String(r[0] || '').trim() === 'Data Lançamento');
+  if (hdr < 0) throw new Error('Not a BCP export: no "Data Lançamento" header');
+  const seen = {}; const out = [];
+  for (let i = hdr + 1; i < aoa.length; i++) {
+    const r = aoa[i]; const m = String(r[0] || '').trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/); if (!m) continue;
+    const v = String(r[1] || '').trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    const amount = Math.round(Number(r[3]) * 100) / 100; if (!isFinite(amount)) continue;
+    const description = String(r[2] || '').replace(/\s+/g, ' ').trim();
+    const date = `${m[3]}-${m[2]}-${m[1]}`; const key = `${date}|${amount}|${description}`; seen[key] = (seen[key] || 0) + 1;
+    const d = description.toUpperCase();
+    const kind = /WATER MOVEMENTS/.test(d) ? 'internal_transfer' : /COM\.MAN\.CONTA|IMPOSTO SELO|IMPOSTO DO SELO|TARIFA MENSAL|COM\. TPA|COMISSAO DISPONIBILIZACAO|OPDE DEVOL COM/.test(d) ? 'bank_fee' : /RICARDO NUNO/.test(d) ? 'other' : amount > 0 ? 'income' : 'expense';
+    out.push({ paying_company: COMPANY, bank: BANK, movement_date: date, value_date: v ? `${v[3]}-${v[2]}-${v[1]}` : date, description, amount, currency: String(r[5] || 'EUR').trim() || 'EUR', balance: isFinite(Number(r[4])) ? Math.round(Number(r[4]) * 100) / 100 : null, kind, seq: seen[key] });
+  }
+  return out;
+}
+async function importBcp(file){
+  if (!file) return;
+  const st = $('bk_import_status'); st.textContent = 'Reading…';
+  try {
+    const XLSX = await loadXlsx();
+    const wb = XLSX.read(await file.arrayBuffer(), { type:'array' });
+    const aoa = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header:1, raw:true, defval:'' });
+    const rows = parseBcpRows(aoa);
+    const before = BANK_ROWS.length;
+    for (let i = 0; i < rows.length; i += 500) {
+      const { error } = await sb.from('hq_bank_movements').upsert(rows.slice(i, i + 500), { onConflict:'paying_company,bank,movement_date,amount,description,seq', ignoreDuplicates:true });
+      if (error) throw error;
+    }
+    await loadData();
+    st.textContent = `${rows.length} rows in the file · ${BANK_ROWS.length - before} new · ${rows.length - (BANK_ROWS.length - before)} already in the app.`;
+    toast('Statement imported'); renderBank(); renderOverview();
+  } catch (e) { st.textContent = 'Import failed: ' + (e.message || e); toast('Import failed: ' + (e.message || e), 'err'); }
+  $('bk_file').value = '';
+}
+
 boot();
 </script>
 </body>
