@@ -1864,6 +1864,46 @@ test('suk: bank-based overview, one expense line per debit, missing PDFs', async
   expect(errs).toEqual([]);
 });
 
+// One expense form for the whole app (lib/expense-form.js): the HQ opens it
+// for «+ Add expense», for Edit and for «Lançar» from the month close; The
+// Suk opens the same modal. Field ids are the historical HQ ones.
+test('expense form: the HQ and The Suk open the same shared modal with the same fields', async ({ page }) => {
+  await page.route(/supabase\.co\/(auth|rest)\/v1\/.*/, async route => {
+    const url = route.request().url();
+    const json = (body) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    if (url.includes('/auth/v1/user')) return json({ id: 'u1', email: 'miguel@gotadaguasurf.com', aud: 'authenticated', role: 'authenticated' });
+    if (url.includes('/rest/v1/platform_profiles')) return json({ id: 'u1', email: 'miguel@gotadaguasurf.com', full_name: 'Miguel', platform_role: 'owner' });
+    if (url.includes('/rest/v1/hq_invoice_categories')) return json([{ id: 'c-food', name: 'Food', sort_order: 10, is_personal: false, active: true }, { id: 'c-drinks', name: 'Drinks', sort_order: 20, is_personal: false, active: true }]);
+    if (url.includes('/rest/v1/locations')) return json(url.includes('slug=eq.the-suk') ? { id: 'suk-0', slug: 'the-suk', name: 'The Suk' } : [{ id: 'suk-0', slug: 'the-suk', name: 'The Suk', currency: 'EUR' }]);
+    if (url.includes('/rest/v1/rpc/hq_overview_rollup')) return json({ bookings: [], invoices: [], ledger: [] });
+    return json([]);
+  });
+  const errs = []; page.on('pageerror', e => errs.push(e.message));
+  await fakeOwnerSession(page);
+  // HQ
+  await page.goto('/hq/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof openAddExpense === 'function' && document.querySelector('#xfModal'));
+  const hq = await page.evaluate(() => {
+    openAddExpense();
+    const ids = ['inv_location','inv_date','inv_company','inv_amount','inv_currency','inv_category','inv_payment','inv_paying_company','inv_nif','inv_number','inv_description','inv_drive_link','inv_notes','inv_file','saveInvBtn'];
+    return { open: document.querySelector('#xfModal').classList.contains('open'), ids: ids.filter(id => !document.getElementById(id)), title: document.querySelector('#xf_title').textContent, cats: [...document.querySelectorAll('#inv_category option')].map(o => o.textContent) };
+  });
+  expect(hq.open).toBe(true);
+  expect(hq.ids).toEqual([]);
+  expect(hq.title).toBe('Add expense');
+  expect(hq.cats).toEqual(['Food', 'Drinks']);
+  // The Suk — same modal, without location / currency, with the bank picker
+  await page.goto('/suk/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof openInvoice === 'function' && document.querySelector('#xfModal'));
+  const suk = await page.evaluate(() => {
+    openInvoice(null, { company: 'makro', amount_eur: 12.5, category_name: 'Food' });
+    return { open: document.querySelector('#xfModal').classList.contains('open'), company: document.getElementById('inv_company').value, amount: document.getElementById('inv_amount').value, hasLocation: !!document.getElementById('inv_location'), hasBank: !!document.getElementById('inv_bankpick'), cat: document.getElementById('inv_category').selectedOptions[0]?.textContent };
+  });
+  expect(suk.open).toBe(true);
+  expect(suk).toMatchObject({ company: 'makro', amount: '12.5', hasLocation: false, hasBank: true, cat: 'Food' });
+  expect(errs).toEqual([]);
+});
+
 test('hq: Investments tab — only the shop, total cost with taxes, rent received per year, and a new rent is saved once', async ({ page }) => {
   // Miguel, 8 Oct 2026: the surf camp houses are camp rent (Expenses); only the shop we rent out is an investment.
   const posted = [];
