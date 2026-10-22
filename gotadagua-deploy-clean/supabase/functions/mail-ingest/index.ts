@@ -239,12 +239,14 @@ async function placeDocument(ctx: Ctx, parsed: Parsed, bytes: Uint8Array, compan
     : (forcedLocation && WATER_LOCATIONS.has(forcedLocation)) ? forcedLocation
     : (parsed.location_hint && WATER_LOCATIONS.has(parsed.location_hint)) ? parsed.location_hint : 'general'
   const notes = [`[do email ${ctx.account} ${(ctx.receivedAt || '').slice(0, 10)} · "${ctx.subject.slice(0, 70)}" · de ${ctx.from.slice(0, 60)}]`,
-    cat ? '' : '[categoria por decidir]', fx == null ? '[câmbio por confirmar]' : '', parsed.service_month ? `[serviço: ${parsed.service_month}]` : '', parsed.atcud ? `[ATCUD ${parsed.atcud}]` : ''].filter(Boolean).join(' ')
+    cat ? '' : '[categoria por decidir]', fx == null ? '[câmbio por confirmar]' : '',
+    ['Cash', 'Card', 'Bank Transfer', 'Other'].includes(String(parsed.payment_type)) ? '' : '[forma de pagamento por confirmar]', parsed.service_month ? `[serviço: ${parsed.service_month}]` : '', parsed.atcud ? `[ATCUD ${parsed.atcud}]` : ''].filter(Boolean).join(' ')
   const row = {
     location_slug: location, paying_company: payingCompany, invoice_date: parsed.invoice_date,
     company: String(parsed.company || 'fornecedor').toLowerCase().slice(0, 120), supplier_nif: parsed.supplier_nif, description: parsed.description,
     amount, currency: (parsed.currency || 'EUR').toUpperCase(), fx_rate: fx ?? 1, amount_eur: fx == null ? amount : Math.round(amount * fx * 100) / 100,
-    payment_type: ['Cash', 'Card', 'Bank Transfer', 'Other'].includes(String(parsed.payment_type)) ? parsed.payment_type : null,
+    // hq_invoices.payment_type is NOT NULL (an insert failed on 22 Oct); unknown → 'Bank Transfer' + note, the bank link corrects it
+    payment_type: ['Cash', 'Card', 'Bank Transfer', 'Other'].includes(String(parsed.payment_type)) ? parsed.payment_type : 'Bank Transfer',
     invoice_number: parsed.invoice_number, category_id: cat?.id || null, category_name: cat?.name || null,
     needs_review: !cat || fx == null, drive_link: up.link, file_name: fileName, notes,
   }
@@ -263,7 +265,7 @@ function routeByBuyer(parsed: Parsed): { company: string | null; outcome?: Outco
   if (nif === WATER_NIF) return { company: 'water-movements' }
   if (nif === MANJAR_NIF) return { company: 'manjar' }
   const buyer = String(parsed.buyer_name || '').toLowerCase()
-  if (/water\s*movements/.test(buyer)) return { company: 'water-movements' }
+  if (/water\s*movements|gota\s*d.?\s*[aá]gua|gotadagua/.test(buyer)) return { company: 'water-movements' }   // partners invoice us as «Gota d'Água Camps»
   if (/manjar/.test(buyer)) return { company: 'manjar' }
   return { company: null, outcome: { status: 'review', reason: nif ? `comprador desconhecido (NIF ${nif}${buyer ? ', ' + buyer : ''})` : 'comprador não identificado' } }
 }
