@@ -3172,7 +3172,14 @@ async function importSantanderFile(file){
     if (error) throw error;
     const novos = (ins||[]).length;
     const datas = rows.map(r => r.movement_date).sort();
-    if (el) el.textContent = `${rows.length} movimentos no ficheiro (${fmtDia(datas[0])} a ${fmtDia(datas[datas.length-1])}): ${novos} novos, ${rows.length - novos} já estavam guardados.`;
+    // Every debit becomes a line: link to an existing one or create it (hq_bank_to_expenses).
+    let lines = '';
+    try {
+      const { data: res, error: lErr } = await sb.rpc('hq_bank_to_expenses', { p_company: 'water-movements', p_since: datas[0] || null });
+      if (lErr) throw lErr;
+      lines = ` Linhas: ${res?.linked || 0} ligadas, ${res?.created || 0} criadas${res?.skipped_split ? `, ${res.skipped_split} recibos repartidos por ligar` : ''}.`;
+    } catch (e) { lines = ' (ligação às linhas falhou: ' + (e.message || e) + ')'; }
+    if (el) el.textContent = `${rows.length} movimentos no ficheiro (${fmtDia(datas[0])} a ${fmtDia(datas[datas.length-1])}): ${novos} novos, ${rows.length - novos} já estavam guardados.${lines}`;
   } catch (e) {
     if (el) el.textContent = 'Falhou: ' + (e.message || e.code || String(e));
   }
