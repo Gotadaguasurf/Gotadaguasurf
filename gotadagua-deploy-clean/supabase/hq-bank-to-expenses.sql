@@ -68,7 +68,8 @@ begin
     if v_supplier <> 'desconhecido' and exists (
       select 1 from hq_invoices i
        where i.paying_company = p_company and i.deleted_at is null and i.invoice_date between r.movement_date - 20 and r.movement_date + 5
-         and (lower(i.company) = v_supplier or lower(i.company) like left(v_supplier, 10) || '%')
+         and (lower(i.company) = v_supplier or lower(i.company) like left(v_supplier, 10) || '%'
+              or (length(split_part(v_supplier, ' ', 1)) >= 4 and lower(i.company) like split_part(v_supplier, ' ', 1) || '%'))
          and not exists (select 1 from hq_bank_movements b2 where b2.hq_invoice_id = i.id)
     ) then v_skipped_sup := v_skipped_sup + 1; continue; end if;
 
