@@ -41,7 +41,10 @@ Resultado da pesquisa (três auditorias: rotina diária, estrutura da app, fonte
 - Quando uma fatura «Wild · …» entra no HQ, a linha «[pending HQ invoice]» da Wild com o mesmo valor (±14 dias) é removida automaticamente (trigger `tr_wild_pending_cleanup`).
 - **Por fazer:** importador CGD no HQ — preciso de um export da CGD (CSV/Excel do homebanking) para escrever o parser; até lá a CGD carrega-se por SQL.
 
-### Onda 3 — entrada automática de faturas (precisa de um consentimento OAuth do Miguel)
+### Onda 3 — entrada automática de faturas (código feito 22 Out; falta o deploy e os consentimentos)
+Estado: `supabase/functions/mail-ingest` escrita e no repositório; SQL aplicado (tabelas `mail_ingest_account`, `mail_ingest_items`, função `hq_invoice_to_bank`, cron `mail-ingest-30min` de 30 em 30 min das 7 às 22 UTC); segredo `MAIL_INGEST_SECRET` definido. **Falta (só o Miguel pode):** (1) `supabase functions deploy mail-ingest --no-verify-jwt` (o assistente não tem permissão para esta flag); (2) no Google Cloud Console, juntar `https://wnksmcjqnbxaagyhfxlt.supabase.co/functions/v1/mail-ingest` aos «Authorized redirect URIs» do cliente OAuth; (3) abrir o link de consentimento uma vez por caixa (accounting@, cafe@, miguel@, info@, ricardo.gasurfcamp@) com sessão nessa caixa. Depois, as faturas entram sozinhas; o que a app não percebe fica «por decidir» no Month close (botões Water / Manjar / Ignorar).
+
+Desenho original:
 - Função `mail-ingest`: lê accounting@ (e cafe@, ricardo@, miguel@) só em leitura, guarda os PDFs, chama o parse (com NIF do comprador, ATCUD, «anulado»), encaminha por NIF (Water → app + Drive; Manjar → /suk/ + Drive do Manjar; pessoal → ignora), arquiva na pasta do mês e cria/liga a linha. Nunca responde nem envia.
 - `hq_invoice_to_bank`: ao entrar uma fatura, procura o débito no extrato (valor ±0,01, ±20 dias, fornecedor) e liga. Contrário do `hq_bank_to_expenses`.
 - `drive-sync` refeito para as pastas do mês (renomear + ligar/criar), com a lista de categorias atual, e ligado com o segredo certo.
