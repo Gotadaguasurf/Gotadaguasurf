@@ -202,7 +202,7 @@ async function loadData(){
   try {
     [BANK_ROWS, INVOICES, WATER_INV, CATEGORIES, FOLDERS] = await Promise.all([
       fetchAll(() => sb.from('hq_bank_movements').select('id, movement_date, value_date, description, amount, balance, kind, hq_invoice_id, notes').eq('paying_company', COMPANY).order('movement_date', {ascending:true}).order('seq', {ascending:true})),
-      fetchAll(() => sb.from('hq_invoices').select('id, invoice_date, company, supplier_nif, invoice_number, description, amount, currency, amount_eur, payment_type, category_id, category_name, drive_link, file_name, notes, needs_review, doc_exempt_reason, location_slug').eq('paying_company', COMPANY).is('deleted_at', null).order('invoice_date', {ascending:true})),
+      fetchAll(() => sb.from('hq_invoices').select('id, invoice_date, company, supplier_nif, invoice_number, description, amount, currency, amount_eur, payment_type, category_id, category_name, drive_link, file_name, notes, needs_review, doc_exempt_reason, location_slug, bank_movement_id').eq('paying_company', COMPANY).is('deleted_at', null).order('invoice_date', {ascending:true})),
       fetchAll(() => sb.from('hq_invoices').select('id, invoice_date, company, invoice_number, amount_eur, drive_link, location_slug').eq('paying_company', 'water-movements').ilike('company', '%manjar%').is('deleted_at', null).order('invoice_date', {ascending:true})),
       sb.from('hq_invoice_categories').select('id, name, sort_order').eq('active', true).eq('is_personal', false).order('sort_order').then(({ data, error }) => { if (error) throw error; return (data || []).filter(c => !/^Wild/.test(c.name)); }),
       sb.from('accountant_drive_folders').select('company, month_key, folder_id').eq('company', COMPANY).then(({ data, error }) => { if (error) throw error; return data || []; }),
@@ -222,7 +222,7 @@ async function loadData(){
     if (/\[sem fatura/i.test(r.notes || '')) { r.has_invoice = 'none'; return; }
     r.has_invoice = unmatched.has(r.id) ? 'missing' : (NO_INVOICE.has(r.rubric) ? 'n/a' : 'amount');
   });
-  INVOICES.forEach(i => { i.bank = BANK_ROWS.find(r => r.hq_invoice_id === i.id) || null; i.missing_pdf = docMissing(i); });
+  INVOICES.forEach(i => { i.bank = BANK_ROWS.find(r => r.hq_invoice_id === i.id) || (i.bank_movement_id ? BANK_ROWS.find(r => r.id === i.bank_movement_id) : null) || null; i.missing_pdf = docMissing(i); });
   const months = [...new Set(BANK_ROWS.map(r => r.month).concat(INVOICES.map(i => String(i.invoice_date).slice(0, 7))))].sort().reverse();
   ['bk_month', 'iv_month'].forEach(id => { const cur = $(id).value; $(id).innerHTML = '<option value="all">All</option>' + months.map(m => `<option value="${m}">${m}</option>`).join(''); if ([...$(id).options].some(o => o.value === cur)) $(id).value = cur; });
   const years = [...new Set(months.map(m => m.slice(0, 4)))];

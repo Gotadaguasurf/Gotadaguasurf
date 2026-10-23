@@ -3889,7 +3889,7 @@ async function renderInvoiceList(){
     const showDeleted = $('filter_deleted')?.checked;
     rows = await fetchAllPaged(() => {
       let q = sb.from('hq_invoices')
-        .select('id, location_slug, paying_company, invoice_date, company, description, amount, currency, amount_eur, payment_type, invoice_number, category_name, file_url, file_name, drive_link, needs_review, is_duplicate, category_id, notes, supplier_nif, fx_rate, doc_exempt_reason, deleted_at, deleted_by')
+        .select('id, location_slug, paying_company, invoice_date, company, description, amount, currency, amount_eur, payment_type, invoice_number, category_name, file_url, file_name, drive_link, needs_review, is_duplicate, category_id, notes, supplier_nif, fx_rate, doc_exempt_reason, bank_movement_id, deleted_at, deleted_by')
         .neq('paying_company', NOT_HQ_COMPANY)
         .order('invoice_date', { ascending:false });
       q = showDeleted ? q.not('deleted_at', 'is', null) : q.is('deleted_at', null);
@@ -3919,6 +3919,15 @@ async function renderInvoiceList(){
   try {
     const links = await fetchAllPaged(() => sb.from('hq_bank_movements').select('hq_invoice_id, movement_date').not('hq_invoice_id', 'is', null));
     links.forEach(b => { if (!bankByInv.has(b.hq_invoice_id)) bankByInv.set(b.hq_invoice_id, b.movement_date); });
+    // Lines paid together with others (salary / meal-card lots, two invoices in one transfer, split receipts)
+    // point to the shared debit through hq_invoices.bank_movement_id.
+    const shared = [...new Set(rows.filter(r => r.bank_movement_id && !bankByInv.has(r.id)).map(r => r.bank_movement_id))];
+    for (let k = 0; k < shared.length; k += 100) {
+      const { data, error } = await sb.from('hq_bank_movements').select('id, movement_date').in('id', shared.slice(k, k + 100));
+      if (error) throw error;
+      const dt = new Map((data || []).map(m => [m.id, m.movement_date]));
+      rows.forEach(r => { if (r.bank_movement_id && dt.has(r.bank_movement_id) && !bankByInv.has(r.id)) bankByInv.set(r.id, dt.get(r.bank_movement_id)); });
+    }
   } catch (_) { /* column missing or no access: the column simply shows no link */ }
   const personalCatIds = new Set(CATEGORIES.filter(c => c.is_personal).map(c => c.id));
 
