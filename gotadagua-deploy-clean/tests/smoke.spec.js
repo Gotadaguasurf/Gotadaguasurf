@@ -1837,9 +1837,9 @@ test('suk: bank-based overview, one expense line per debit, missing PDFs', async
     const kpis = [...document.querySelectorAll('#ovBody .kpi')].slice(0, 4).map(k => k.querySelector('.kpi-label').textContent.trim() + ' ' + k.querySelector('.kpi-value').textContent.trim());
     const biz = [...document.querySelectorAll('#ovBody .g2 .card')].map(c => c.querySelector('.ov-section-title').textContent.trim() + ' ' + [...c.querySelectorAll('tr')].map(tr => tr.lastElementChild.textContent.trim().split(' · ')[0]).join(' | '));
     showPage('invoices'); $('iv_filter').value = 'catering'; renderInvoices();
-    const catering = [...document.querySelectorAll('#invBody tr')].map(tr => tr.children[1]?.textContent.trim());
+    const catering = [...document.querySelectorAll('#invBody tr')].map(tr => (tr.children[1]?.querySelector('.sup-name') || tr.children[1])?.textContent.trim());   // supplier name only (description sits under it since 23 Oct 2026)
     showInvoicesFilter('nopdf');
-    const missing = [...document.querySelectorAll('#invBody tr')].map(tr => [...tr.children].slice(0, 5).map(td => td.textContent.trim().replace(/\s+/g, ' ')));
+    const missing = [...document.querySelectorAll('#invBody tr')].map(tr => [...tr.children].slice(0, 5).map(td => (td.querySelector('.sup-name') || td).textContent.trim().replace(/\s+/g, ' ')));
     showPage('overview');
     const bySupplier = [...document.querySelectorAll('#ovBody .ov-section')].find(s => /Without PDF/.test(s.textContent));
     return { kpis, biz, catering, missing, suppliers: bySupplier ? [...bySupplier.querySelectorAll('tbody tr')].map(tr => [...tr.children].map(td => td.textContent.trim())) : null, tabs: [...document.querySelectorAll('.ntab')].map(b => b.textContent.trim()) };

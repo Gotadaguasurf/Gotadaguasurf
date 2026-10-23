@@ -30,10 +30,13 @@
 /* expense list */
 .tbl-wrap tbody tr.row-selected td{background:var(--ocean-soft)}
 .tbl-wrap tbody tr.dup td,.tbl-wrap tbody tr.due td{background:var(--amber-bg)}
-#invListBody table{min-width:1520px}
-.sup-cell{display:block;width:240px;overflow:hidden}
+#invListBody table{min-width:980px}
+#invListBody th.sel,#invListBody td.sel{display:none;width:28px}
+#invListBody.select-mode th.sel,#invListBody.select-mode td.sel{display:table-cell}
+.sup-cell{display:block;max-width:300px;overflow:hidden}
 .sup-name{display:block;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sup-desc{display:block;font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px}
+.sup-tags{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px}
 .cell-save-flash{animation:cellFlash .9s ease-out}
 @keyframes cellFlash{0%{background-color:var(--green-bg)}100%{background-color:transparent}}
 td.loc-name{font-weight:600;color:var(--navy)}
@@ -3603,6 +3606,14 @@ function renderBatchBar(){
   `;
 }
 
+function toggleInvSelectMode(){
+  window.__invSelectMode = !window.__invSelectMode;
+  if (!window.__invSelectMode) clearSelection();
+  $('invListBody')?.classList.toggle('select-mode', !!window.__invSelectMode);
+  renderInvoiceList();
+}
+window.toggleInvSelectMode = toggleInvSelectMode;
+
 function clearSelection(){
   window.__selectedInvoiceIds.clear();
   document.querySelectorAll('.row-check').forEach(cb => {
@@ -3875,7 +3886,7 @@ async function renderInvoiceList(){
     const showDeleted = $('filter_deleted')?.checked;
     rows = await fetchAllPaged(() => {
       let q = sb.from('hq_invoices')
-        .select('id, location_slug, paying_company, invoice_date, company, description, amount, currency, amount_eur, payment_type, invoice_number, category_name, file_url, file_name, drive_link, needs_review, is_duplicate, category_id, notes, supplier_nif, fx_rate, deleted_at, deleted_by')
+        .select('id, location_slug, paying_company, invoice_date, company, description, amount, currency, amount_eur, payment_type, invoice_number, category_name, file_url, file_name, drive_link, needs_review, is_duplicate, category_id, notes, supplier_nif, fx_rate, doc_exempt_reason, deleted_at, deleted_by')
         .neq('paying_company', NOT_HQ_COMPANY)
         .order('invoice_date', { ascending:false });
       q = showDeleted ? q.not('deleted_at', 'is', null) : q.is('deleted_at', null);
@@ -3900,6 +3911,12 @@ async function renderInvoiceList(){
     body.innerHTML = `<div class="card"><div class="empty-state">${AppShell.icon('alert')}<div class="empty-title">Could not load the expenses</div><p>${escapeHtml(error.message)}</p></div></div>`;
     return;
   }
+  // Bank link per expense (hq_bank_movements.hq_invoice_id) — same «Matched to bank» column as /suk/.
+  let bankByInv = new Map();
+  try {
+    const links = await fetchAllPaged(() => sb.from('hq_bank_movements').select('hq_invoice_id, movement_date').not('hq_invoice_id', 'is', null));
+    links.forEach(b => { if (!bankByInv.has(b.hq_invoice_id)) bankByInv.set(b.hq_invoice_id, b.movement_date); });
+  } catch (_) { /* column missing or no access: the column simply shows no link */ }
   const personalCatIds = new Set(CATEGORIES.filter(c => c.is_personal).map(c => c.id));
 
   // Apply client-side filters (Location + Month already ran server-side).
@@ -3961,69 +3978,50 @@ async function renderInvoiceList(){
   });
   const showGrouped = (loc === '__all__');
 
+  const COLS = 10;   // sel · date · supplier · number · category · location · payment · bank · pdf · amount · actions = 11 cells; group rows span all but Amount+actions
   const rowHtml = (r) => {
     const isPersonal = personalCatIds.has(r.category_id);
-    // Inter-company chip shows on rows where paying_company diverges
-    // from the location's default company (Water Movements paid for a
-    // Morocco expense, etc.). Chip updates automatically as the user
-    // changes the dropdowns in this row.
+    // «paid by other company» = paying_company differs from the location's usual one (Water paid a Morocco cost, etc.)
     const derivedPayCo = payingCompanyFor(r.location_slug);
     const isInterCo = r.paying_company && r.paying_company !== derivedPayCo;
-
-    const locSelect = HQ_LOCATIONS.map(l =>
-      `<option value="${l.slug}" ${l.slug===r.location_slug?'selected':''}>${l.label}</option>`
-    ).join('');
-    const payCoSelect = HQ_COMPANIES.map(c =>
-      `<option value="${c.slug}" ${c.slug===r.paying_company?'selected':''}>${c.label}</option>`
-    ).join('');
-    const catSelect = CATEGORIES.map(c =>
-      `<option value="${c.id}" ${c.id===r.category_id?'selected':''}>${c.name}</option>`
-    ).join('');
-    const payTypeSelect = PAYMENT_TYPES.map(p =>
-      `<option value="${p}" ${p===r.payment_type?'selected':''}>${p}</option>`
-    ).join('');
-
+    const locSelect = HQ_LOCATIONS.map(l => `<option value="${l.slug}" ${l.slug===r.location_slug?'selected':''}>${l.label}</option>`).join('');
+    const catSelect = CATEGORIES.map(c => `<option value="${c.id}" ${c.id===r.category_id?'selected':''}>${c.name}</option>`).join('');
     const isSelected = window.__selectedInvoiceIds?.has(r.id);
     const ic = AppShell.icon;
-    // On phones the inline selects are hidden and the text shows instead; editing goes through the Edit button.
+    const bankDate = bankByInv.get(r.id);
+    const bankCell = bankDate
+      ? `<span class="badge badge-green" title="Matched to the bank statement">${bankDate}</span>`
+      : r.payment_type === 'Cash' ? '<span class="badge badge-grey">cash</span>' : '<span class="badge badge-amber" title="No bank movement linked yet">not linked</span>';
+    const ds = docStatus(r);
+    const pdfCell = r.drive_link
+      ? `<a class="file-link" href="${escapeHtml(r.drive_link)}" target="_blank" rel="noopener" title="${escapeHtml(r.file_name||'')}">open</a>`
+      : r.file_url
+        ? `<a class="file-link" href="#" onclick="openInvoiceFile('${r.file_url}');return false;" title="${escapeHtml(r.file_name||'')}">open</a>`
+        : ds === 'isento' ? `<span class="badge badge-grey" title="${escapeHtml(r.doc_exempt_reason||'No document exists for this expense')}">no invoice</span>`
+        : '<span class="badge badge-amber">missing</span>';
+    const tags = [
+      r.needs_review ? '<span class="badge badge-amber">Review</span>' : '',
+      r.is_duplicate ? '<span class="badge badge-amber">Possible duplicate</span>' : '',
+      isPersonal ? '<span class="badge badge-grey">Personal</span>' : '',
+      isInterCo ? `<span class="badge badge-grey" title="Paid by ${escapeHtml(companyLabel(r.paying_company))}, not the location's usual company">paid by other company</span>` : '',
+    ].filter(Boolean).join(' ');
+    // Category and Location change in the row (like /suk/); everything else is edited in the form.
     return `<tr class="${r.is_duplicate?'dup':''}${isSelected?' row-selected':''}" data-inv-id="${r.id}">
-      <td><input type="checkbox" class="row-check" data-id="${r.id}" ${isSelected?'checked':''} onchange="onRowCheck('${r.id}', this.checked)"></td>
+      <td class="sel"><input type="checkbox" class="row-check" data-id="${r.id}" ${isSelected?'checked':''} onchange="onRowCheck('${r.id}', this.checked)"></td>
       <td style="white-space:nowrap" title="${r.invoice_date}">${fmtDia(r.invoice_date)}</td>
-      <td>
-        <select class="inline-select" onchange="quickUpdateInvoice('${r.id}','location_slug',this.value,this)" title="Change location — the paying company follows unless you set it yourself">${locSelect}</select>
-        <span class="inline-txt">${escapeHtml(locLabel(r.location_slug))}</span>
-      </td>
-      <td>
-        <select class="inline-select wide" onchange="quickUpdateInvoice('${r.id}','paying_company',this.value,this)" title="Change the company that actually paid">${payCoSelect}</select>
-        <span class="inline-txt">${escapeHtml(companyLabel(r.paying_company))}</span>
-        ${isInterCo?' <span class="badge badge-grey" title="Paid by a different company than the location\'s usual one">paid by other company</span>':''}
-      </td>
-      <td><div class="sup-cell"><span class="sup-name" title="${escapeHtml(r.company||'')}">${escapeHtml(r.company||'')}</span>${r.description?`<span class="sup-desc" title="${escapeHtml(r.description)}">${escapeHtml(r.description)}</span>`:''}${r.is_duplicate?'<span class="badge badge-amber" style="margin-top:3px">Possible duplicate</span>':''}</div></td>
-      <td class="mono">${escapeHtml(r.supplier_nif||'—')}</td>
-      <td>
-        <select class="inline-select wide" onchange="quickUpdateInvoice('${r.id}','category_id',this.value,this)">${catSelect}</select>
-        <span class="inline-txt">${escapeHtml(r.category_name||'—')}</span>
-        ${isPersonal?'<span class="chip chip-personal">personal</span>':''}
-        ${r.needs_review?'<span class="chip chip-review">review</span>':''}
-      </td>
+      <td><div class="sup-cell"><span class="sup-name" title="${escapeHtml(r.company||'')}">${escapeHtml(r.company||'')}</span>${r.description?`<span class="sup-desc" title="${escapeHtml(r.description)}">${escapeHtml(r.description)}</span>`:''}${tags?`<span class="sup-tags">${tags}</span>`:''}</div></td>
       <td class="mono">${escapeHtml(r.invoice_number||'—')}</td>
-      <td class="r">${eur(r.amount_eur)}${r.currency && r.currency !== 'EUR' ? `<div class="sup-desc" style="text-align:right">${Number(r.amount).toFixed(2)} ${escapeHtml(r.currency)}</div>` : ''}</td>
-      <td>
-        <select class="inline-select narrow" onchange="quickUpdateInvoice('${r.id}','payment_type',this.value,this)">${payTypeSelect}</select>
-        <span class="inline-txt">${escapeHtml(r.payment_type||'—')}</span>
-      </td>
-      <td>${r.drive_link
-        ? `<a class="file-link" href="${escapeHtml(r.drive_link)}" target="_blank" rel="noopener" title="${escapeHtml(r.file_name||'')}">${ic('external')} Drive</a>`
-        : r.file_url
-          ? `<a class="file-link" href="#" onclick="openInvoiceFile('${r.file_url}');return false;">${escapeHtml(r.file_name||'view')}</a>`
-          : r.file_name
-            ? `<span class="sup-desc" title="${escapeHtml(r.file_name)}">${escapeHtml(r.file_name)}</span>`
-            : '<span class="dim">—</span>'}</td>
+      <td><select class="inline-select wide" onchange="quickUpdateInvoice('${r.id}','category_id',this.value,this)">${catSelect}</select><span class="inline-txt">${escapeHtml(r.category_name||'—')}</span></td>
+      <td><select class="inline-select" onchange="quickUpdateInvoice('${r.id}','location_slug',this.value,this)" title="Change location — the paying company follows unless you set it yourself">${locSelect}</select><span class="inline-txt">${escapeHtml(locLabel(r.location_slug))}</span></td>
+      <td class="hint" style="white-space:nowrap">${escapeHtml(r.payment_type||'—')}</td>
+      <td>${bankCell}</td>
+      <td>${pdfCell}</td>
+      <td class="r" style="font-weight:700;white-space:nowrap">${eur(r.amount_eur)}${r.currency && r.currency !== 'EUR' ? `<div class="sup-desc" style="text-align:right;font-weight:400">${Number(r.amount).toFixed(2)} ${escapeHtml(r.currency)}</div>` : ''}</td>
       <td style="white-space:nowrap;text-align:right">
         ${r.deleted_at
           ? `<button class="btn btn-s btn-sm" onclick="restoreInvoice('${r.id}')" title="Restore — it comes back to every list and total">${ic('refresh')} Restore</button>
              <button class="btn btn-danger btn-sm" onclick="purgeInvoice('${r.id}')" title="Delete for good — the row and its file are removed">Delete forever</button>`
-          : `${r.needs_review?`<button class="btn btn-s btn-sm btn-icon" onclick="approveInvoice('${r.id}')" title="Approve — clears the review badge">${ic('check')}</button>`:''}
+          : `${r.needs_review?`<button class="btn btn-s btn-sm btn-icon" onclick="approveInvoice('${r.id}')" title="Approve — clears the Review badge">${ic('check')}</button>`:''}
              <button class="btn btn-s btn-sm btn-icon" onclick="openEditInvoice('${r.id}')" title="Edit">${ic('edit')}</button>
              <button class="btn btn-s btn-sm btn-icon" onclick="deleteInvoice('${r.id}')" title="Archive — you can restore it from the Archived filter">${ic('archive')}</button>`}
       </td>
@@ -4032,13 +4030,17 @@ async function renderInvoiceList(){
 
   const tableHead = `
     <thead><tr>
-      <th style="width:28px"><input type="checkbox" id="selectAllRows" onchange="onSelectAllVisible(this.checked)" title="Select / clear all visible rows"></th>
-      <th>Date</th><th>Location</th>
-      <th title="Which company's bank paid — Water Movements Lda · MGRP Sarl · Wave Movements">Paid by</th>
-      <th>Supplier</th><th>NIF</th><th>Category</th>
-      <th>Invoice no.</th><th class="r">Amount</th>
-      <th>Method</th><th>Invoice</th><th></th>
+      <th class="sel"><input type="checkbox" id="selectAllRows" onchange="onSelectAllVisible(this.checked)" title="Select / clear all visible rows"></th>
+      <th>Date</th><th>Supplier</th><th>Invoice no.</th><th>Category</th><th>Location</th>
+      <th>Payment</th><th>Matched to bank</th><th>PDF</th><th class="r">Amount</th><th></th>
     </tr></thead>`;
+  const groupRow = (label, total, sub) => `
+    <tr class="grp-row">
+      <td class="sel"></td>
+      <td colspan="8">${label}${sub ? ` <span class="grp-sub">· ${sub}</span>` : ''}</td>
+      <td class="r">${eur(total)}</td>
+      <td></td>
+    </tr>`;
 
   let tableBody;
   if (showGrouped) {
@@ -4048,28 +4050,15 @@ async function renderInvoiceList(){
         const gRows = grouped[slug];
         const gTotal = gRows.reduce((s,r)=>s+Number(r.amount_eur||0), 0);
         const label = slug === 'general' ? 'General HQ · not attributed to a camp' : `Attributed to ${locLabel(slug)}`;
-        return `
-          <tr class="grp-row">
-            <td colspan="8">${label}</td>
-            <td class="r">${eur(gTotal)}</td>
-            <td colspan="3" class="grp-sub">${gRows.length} expense${gRows.length===1?'':'s'}</td>
-          </tr>
-          ${gRows.map(rowHtml).join('')}
-        `;
+        return groupRow(label, gTotal, `${gRows.length} expense${gRows.length===1?'':'s'}`) + gRows.map(rowHtml).join('');
       }).join('');
-    // Any unexpected slugs go to a fallback bucket
     const knownSlugs = new Set(groupsOrder);
-    const otherSlugs = Object.keys(grouped).filter(s => !knownSlugs.has(s));
-    const otherSection = otherSlugs.map(slug => `
-      <tr class="grp-row">
-        <td colspan="12">Other · ${escapeHtml(slug)}</td>
-      </tr>
-      ${grouped[slug].map(rowHtml).join('')}
-    `).join('');
+    const otherSection = Object.keys(grouped).filter(s => !knownSlugs.has(s)).map(slug =>
+      groupRow(`Other · ${escapeHtml(slug)}`, grouped[slug].reduce((s,r)=>s+Number(r.amount_eur||0),0), '') + grouped[slug].map(rowHtml).join('')
+    ).join('');
     tableBody = `<tbody>${groupSections}${otherSection}</tbody>`;
   } else {
-    // Separador por mes: a lista ja vinha ordenada por data, mas 1.900 linhas
-    // seguidas nao deixam ver onde um mes acaba e o outro comeca.
+    // One header per month with its total: 1,900 rows in a row would not show where a month ends.
     let mesAtual = '';
     const partes = [];
     rows.forEach(r => {
@@ -4077,13 +4066,7 @@ async function renderInvoiceList(){
       if (mes && mes !== mesAtual) {
         mesAtual = mes;
         const doMes = rows.filter(x => String(x.invoice_date||'').slice(0,7) === mes);
-        const totMes = doMes.reduce((a,x)=>a+Number(x.amount_eur||0), 0);
-        partes.push(`
-          <tr class="grp-row">
-            <td colspan="8">${nomeMes(mes)} <span class="grp-sub">· ${doMes.length} expense${doMes.length===1?'':'s'}</span></td>
-            <td class="r">${eur(totMes)}</td>
-            <td colspan="3"></td>
-          </tr>`);
+        partes.push(groupRow(nomeMes(mes), doMes.reduce((a,x)=>a+Number(x.amount_eur||0), 0), `${doMes.length} expense${doMes.length===1?'':'s'}`));
       }
       partes.push(rowHtml(r));
     });
@@ -4097,14 +4080,17 @@ async function renderInvoiceList(){
       <div class="summary-box neutral"><div class="summary-lbl">Business</div><div class="summary-val">${eur(businessEur)}</div><div class="summary-sub">Personal not included</div></div>
       <div class="summary-box neutral"><div class="summary-lbl">Miguel — Personal</div><div class="summary-val">${eur(personalEur)}</div></div>
     </div>`;
+  const selectOn = !!window.__invSelectMode;
+  body.classList.toggle('select-mode', selectOn);
   body.innerHTML = `
     <div id="recurringDueBanner"></div>
-    ${reviewCount ? `
-      <div class="status-msg status-warn" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px">
-        <span><b>${reviewCount}</b> row${reviewCount===1?'':'s'} marked <span class="chip chip-review">review</span>. Check each one, or approve them all.</span>
-        <button class="btn btn-s btn-sm" onclick="approveAllReviews()">${AppShell.icon('check')} Approve all ${reviewCount}</button>
-      </div>
-    ` : ''}
+    <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:12px;gap:12px">
+      <span class="hint">${reviewCount ? `<b>${reviewCount}</b> marked <span class="badge badge-amber">Review</span> — check each one, or approve them all.` : `${totalCount} expense${totalCount===1?'':'s'} · ${eur(totalEur)}`}</span>
+      <span class="row">
+        ${reviewCount ? `<button class="btn btn-s btn-sm" onclick="approveAllReviews()">${AppShell.icon('check')} Approve all ${reviewCount}</button>` : ''}
+        <button class="btn btn-s btn-sm${selectOn?' active':''}" onclick="toggleInvSelectMode()" title="Tick several rows to approve, re-categorise or archive them together">${AppShell.icon(selectOn?'x':'check-circle')} ${selectOn?'Done selecting':'Select'}</button>
+      </span>
+    </div>
     <div class="card"><div class="tbl-wrap"><table>${tableHead}${tableBody}</table></div></div>
     <div class="hint">
       <b>General HQ</b> = expenses that belong to the company as a whole (accounting, global insurance, software…).<br>

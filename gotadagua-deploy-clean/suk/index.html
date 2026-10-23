@@ -20,6 +20,9 @@
 .catsel.todo{border-color:var(--amber-border);background:var(--amber-bg);color:var(--amber);font-weight:700}
 .dropzone{border:2px dashed var(--border);border-radius:12px;padding:16px;text-align:center;color:var(--muted);font-size:13px;cursor:pointer;background:#fff}
 .dropzone:hover{border-color:var(--ocean);color:var(--navy)}
+.sup-cell{display:block;max-width:320px;overflow:hidden}
+.sup-name{display:block;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sup-desc{display:block;font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px}
 </style>
 </head>
 <body>
@@ -50,8 +53,8 @@
       <span class="hint" id="iv_count" style="margin-left:auto"></span>
     </div>
     <div class="card"><div class="tbl-wrap"><table>
-      <thead><tr><th>Date</th><th>Supplier</th><th>Number</th><th>Description</th><th>Category</th><th>Business</th><th>Payment</th><th>Matched to bank</th><th>PDF</th><th class="r">Amount</th></tr></thead>
-      <tbody id="invBody"><tr class="empty-row"><td colspan="10">Loading…</td></tr></tbody>
+      <thead><tr><th>Date</th><th>Supplier</th><th>Number</th><th>Category</th><th>Business</th><th>Payment</th><th>Matched to bank</th><th>PDF</th><th class="r">Amount</th></tr></thead>
+      <tbody id="invBody"><tr class="empty-row"><td colspan="9">Loading…</td></tr></tbody>
     </table></div></div>
     <div class="hint" style="margin-top:8px">A missing invoice is a line without PDF: open it, attach the PDF and the fields are read automatically. Cash purchases are added with «Add expense».</div>
   </div>
@@ -328,13 +331,13 @@ function renderInvoices(){
     && (f === 'all' || (f === 'nopdf' && i.missing_pdf) || (f === 'review' && i.needs_review) || (f === 'cash' && !i.bank) || (f === 'catering' && isCatering(i)) || (f === 'restaurant' && !isCatering(i)))).slice().reverse();
   $('iv_count').textContent = `${rows.length} invoices · ${eur(rows.reduce((s, i) => s + Number(i.amount_eur || 0), 0))}`;
   $('invBody').innerHTML = rows.length ? rows.map(i => `<tr class="click" onclick="openInvoice('${i.id}')">
-    <td>${i.invoice_date}</td><td><b>${esc(i.company)}</b></td><td class="hint">${esc(i.invoice_number || '')}</td><td class="hint" style="max-width:360px">${esc(i.description || '')}</td>
+    <td style="white-space:nowrap">${i.invoice_date}</td><td><div class="sup-cell"><span class="sup-name" title="${esc(i.company)}">${esc(i.company)}</span>${i.description ? `<span class="sup-desc" title="${esc(i.description)}">${esc(i.description)}</span>` : ''}</div></td><td class="hint">${esc(i.invoice_number || '')}</td>
     <td onclick="event.stopPropagation()">${CAN_EDIT ? catSelect(i) : (i.category_name ? esc(i.category_name) : '<span class="badge badge-amber">decide</span>')}</td>
     <td onclick="event.stopPropagation()">${CAN_EDIT ? bizSelect(i) : esc(bizName(i))}</td><td class="hint">${esc(i.payment_type || '')}</td>
     <td>${i.bank ? `<span class="badge badge-green">${i.bank.movement_date}</span>` : (i.payment_type === 'Cash' ? '<span class="badge badge-grey">cash</span>' : '<span class="badge badge-amber">not linked</span>')}</td>
     <td>${i.drive_link ? `<a href="${esc(i.drive_link)}" target="_blank" onclick="event.stopPropagation()">open</a>` : (i.doc_exempt_reason ? `<span class="badge badge-grey" title="${esc(i.doc_exempt_reason)}">no invoice</span>` : (i.missing_pdf ? '<span class="badge badge-amber">missing</span>' : '<span class="dim">—</span>'))}</td>
-    <td class="r" style="font-weight:700">${eur(i.amount_eur)}</td>
-  </tr>`).join('') : '<tr class="empty-row"><td colspan="10">No expenses match this filter.</td></tr>';
+    <td class="r" style="font-weight:700;white-space:nowrap">${eur(i.amount_eur)}</td>
+  </tr>`).join('') : '<tr class="empty-row"><td colspan="9">No expenses match this filter.</td></tr>';
 }
 
 // Category straight from the table: a select per line; when the supplier has
