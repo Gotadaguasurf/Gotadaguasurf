@@ -31,9 +31,12 @@
 .tbl-wrap tbody tr.row-selected td{background:var(--ocean-soft)}
 .tbl-wrap tbody tr.dup td,.tbl-wrap tbody tr.due td{background:var(--amber-bg)}
 #invListBody table{min-width:980px}
+#invListBody th,#invListBody td{padding-left:8px;padding-right:8px}
+#invListBody .inline-select{max-width:170px}
+.inv-no{display:block;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #invListBody th.sel,#invListBody td.sel{display:none;width:28px}
 #invListBody.select-mode th.sel,#invListBody.select-mode td.sel{display:table-cell}
-.sup-cell{display:block;max-width:300px;overflow:hidden}
+.sup-cell{display:block;max-width:260px;overflow:hidden}
 .sup-name{display:block;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sup-desc{display:block;font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px}
 .sup-tags{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px}
@@ -4010,7 +4013,7 @@ async function renderInvoiceList(){
       <td class="sel"><input type="checkbox" class="row-check" data-id="${r.id}" ${isSelected?'checked':''} onchange="onRowCheck('${r.id}', this.checked)"></td>
       <td style="white-space:nowrap" title="${r.invoice_date}">${fmtDia(r.invoice_date)}</td>
       <td><div class="sup-cell"><span class="sup-name" title="${escapeHtml(r.company||'')}">${escapeHtml(r.company||'')}</span>${r.description?`<span class="sup-desc" title="${escapeHtml(r.description)}">${escapeHtml(r.description)}</span>`:''}${tags?`<span class="sup-tags">${tags}</span>`:''}</div></td>
-      <td class="mono">${escapeHtml(r.invoice_number||'—')}</td>
+      <td><span class="mono inv-no" title="${escapeHtml(r.invoice_number||'')}">${escapeHtml(r.invoice_number||'—')}</span></td>
       <td><select class="inline-select wide" onchange="quickUpdateInvoice('${r.id}','category_id',this.value,this)">${catSelect}</select><span class="inline-txt">${escapeHtml(r.category_name||'—')}</span></td>
       <td><select class="inline-select" onchange="quickUpdateInvoice('${r.id}','location_slug',this.value,this)" title="Change location — the paying company follows unless you set it yourself">${locSelect}</select><span class="inline-txt">${escapeHtml(locLabel(r.location_slug))}</span></td>
       <td class="hint" style="white-space:nowrap">${escapeHtml(r.payment_type||'—')}</td>
@@ -4032,7 +4035,7 @@ async function renderInvoiceList(){
     <thead><tr>
       <th class="sel"><input type="checkbox" id="selectAllRows" onchange="onSelectAllVisible(this.checked)" title="Select / clear all visible rows"></th>
       <th>Date</th><th>Supplier</th><th>Invoice no.</th><th>Category</th><th>Location</th>
-      <th>Payment</th><th>Matched to bank</th><th>PDF</th><th class="r">Amount</th><th></th>
+      <th>Payment</th><th title="Matched to a bank movement">Bank</th><th>PDF</th><th class="r">Amount</th><th></th>
     </tr></thead>`;
   const groupRow = (label, total, sub) => `
     <tr class="grp-row">
