@@ -623,7 +623,7 @@ async function renderOverview(){
     if (todo && typeof todo === 'object' && !Array.isArray(todo)) {
       (todo.bank_unlinked || []).filter(b => b.company === 'water-movements' && b.n).forEach(b => healthChips.push({label:`${b.n} ${b.bank === 'cgd' ? 'CGD' : 'Santander'} debits without a line`, onclick:"switchTab('fecho')"}));
       const pw = (todo.no_pdf || []).find(x => x.company === 'water-movements');
-      if (pw && pw.n) healthChips.push({label:`${pw.n} without PDF since Sept`, onclick:"switchTab('fecho')"});
+      if (pw && pw.n) healthChips.push({label:`${pw.n} without PDF since Sept`, onclick:"goToInvoicesFilter('nopdf')"});
       const pti = todo.partner_to_issue || [];
       if (pti.length) healthChips.push({label:`${pti.length} partner invoices to issue`, onclick:"window.open('/partners/','_self')"});
       (todo.bank_last || []).filter(b => b.company === 'water-movements' && b.days >= 7).forEach(b => healthChips.push({label:`${b.bank === 'cgd' ? 'CGD' : 'Santander'} statement ${b.days}d old`, onclick:"switchTab('fecho')"}));
@@ -1072,6 +1072,8 @@ function invoicesTabHtml(){
         <option value="__all__">All categories</option>
         ${CATEGORIES.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
       </select>
+      <label class="hq-tog" title="Lines with an open question (category, location or payment unknown)"><input type="checkbox" id="filter_review" onchange="onFilterChanged()"> To review</label>
+      <label class="hq-tog" title="Lines that need an invoice and have no PDF yet (suppliers that never invoice are not counted)"><input type="checkbox" id="filter_nopdf" onchange="onFilterChanged()"> Missing PDF</label>
       <button class="hq-pill" id="moreFiltersBtn" onclick="toggleMoreFilters()">More filters ${ic('chevron-down')}</button>
       <input id="filter_search" type="search" placeholder="Search supplier, invoice number, NIF…" oninput="onFilterChanged()" class="hq-search" style="margin-left:auto">
     </div>
@@ -1080,7 +1082,6 @@ function invoicesTabHtml(){
       <label class="period-picker" title="Any range — a quarter, the whole year. When set, it wins over the month."><span class="period-picker-lbl">From</span><input id="filter_from" type="date" onchange="hqPeriodo=null;onFilterChanged()"></label>
       <label class="period-picker"><span class="period-picker-lbl">To</span><input id="filter_to" type="date" onchange="hqPeriodo=null;onFilterChanged()"></label>
       <span class="hq-sep"></span>
-      <label class="hq-tog"><input type="checkbox" id="filter_review" onchange="onFilterChanged()"> To review only</label>
       <label class="hq-tog"><input type="checkbox" id="filter_personal" onchange="onFilterChanged()"> Personal only</label>
       <label class="hq-tog" title="Rows that look like a repeat of another one"><input type="checkbox" id="filter_duplicate" onchange="onFilterChanged()"> Possible duplicates</label>
       <label class="hq-tog" title="Archived expenses — restore or delete for good"><input type="checkbox" id="filter_deleted" onchange="onFilterChanged()"> Archived</label>
@@ -1163,7 +1164,7 @@ function hqFiltersActive(){
   if (hqPeriodo && hqPeriodo !== 'tudo') return true;
   if (v('filter_from') || v('filter_to') || v('filter_month') || v('filter_search')) return true;
   if ((v('filter_location') || '__all__') !== '__all__' || (v('filter_category') || '__all__') !== '__all__') return true;
-  return !!(v('filter_review') || v('filter_personal') || v('filter_duplicate') || v('filter_deleted'));
+  return !!(v('filter_review') || v('filter_nopdf') || v('filter_personal') || v('filter_duplicate') || v('filter_deleted'));
 }
 
 // Botoes de periodo: escolher um trimestre a mao e chato e da erros.
@@ -1188,6 +1189,7 @@ function renderHqFilterSummary(){
   const loc=v('filter_location'); if(loc && loc!=='__all__'){const l=HQ_LOCATIONS.find(x=>x.slug===loc); chips.push(['filter_location', l?l.label:loc]);}
   const cat=v('filter_category'); if(cat && cat!=='__all__'){const c=CATEGORIES.find(x=>String(x.id)===String(cat)); chips.push(['filter_category', c?c.name:cat]);}
   if(v('filter_review')) chips.push(['filter_review','To review']);
+  if(v('filter_nopdf')) chips.push(['filter_nopdf','Missing PDF']);
   if(v('filter_personal')) chips.push(['filter_personal','Personal']);
   if(v('filter_duplicate')) chips.push(['filter_duplicate','Duplicates']);
   if(v('filter_deleted')) chips.push(['filter_deleted','Archived']);
@@ -2003,11 +2005,15 @@ function goToInvoicesFilter(which){
   switchTab('invoices');
   clearAllFilters();
   const target = which === 'review' ? 'filter_review'
+              :  which === 'nopdf' ? 'filter_nopdf'
               :  which === 'duplicate' ? 'filter_duplicate'
               :  which === 'personal' ? 'filter_personal' : null;
   if (target) {
     const el = document.getElementById(target);
-    if (el) { el.checked = true; renderInvoiceList(); }
+    if (el) el.checked = true;
+    // The «without PDF since Sept» chip counts from 1 Sep — show the same lines.
+    if (which === 'nopdf') { const f = document.getElementById('filter_from'); if (f) f.value = new Date().getFullYear() + '-09-01'; }
+    renderInvoiceList();
   }
 }
 
@@ -2022,6 +2028,7 @@ function clearAllFilters(){
   set('filter_to', '');
   set('filter_category', '__all__');
   set('filter_review', false);
+  set('filter_nopdf', false);
   set('filter_personal', false);
   set('filter_duplicate', false);
   set('filter_deleted', false);
@@ -3949,6 +3956,7 @@ async function renderInvoiceList(){
     rows = rows.filter(r => r.category_id === catFilter);
   }
   if (reviewOnly)    rows = rows.filter(r => r.needs_review);
+  if ($('filter_nopdf')?.checked) rows = rows.filter(r => !r.file_url && docStatus(r) === 'falta');
   if (personalOnly)  rows = rows.filter(r => personalCatIds.has(r.category_id));
   if (duplicateOnly) rows = rows.filter(r => r.is_duplicate);
   if (search) {
