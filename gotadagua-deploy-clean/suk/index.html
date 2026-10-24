@@ -23,6 +23,7 @@
 .sup-cell{display:block;max-width:320px;overflow:hidden}
 .sup-name{display:block;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sup-desc{display:block;font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px}
+.review-q{display:block;margin-top:4px;font-size:12px;color:var(--amber);white-space:normal}
 </style>
 </head>
 <body>
@@ -48,7 +49,7 @@
     </div>
     <div class="ov-filters">
       <label class="period-picker"><span class="period-picker-lbl">Month</span><select id="iv_month" onchange="renderInvoices()"><option value="all">All</option></select></label>
-      <label class="period-picker"><span class="period-picker-lbl">Show</span><select id="iv_filter" onchange="renderInvoices()"><option value="all">Everything</option><option value="nopdf">Without PDF</option><option value="review">Needs a category</option><option value="cash">Cash (no bank debit)</option><option value="restaurant">Restaurant only</option><option value="catering">Catering only</option></select></label>
+      <label class="period-picker"><span class="period-picker-lbl">Show</span><select id="iv_filter" onchange="renderInvoices()"><option value="all">Everything</option><option value="nopdf">Without PDF</option><option value="review">To review</option><option value="cash">Cash (no bank debit)</option><option value="restaurant">Restaurant only</option><option value="catering">Catering only</option></select></label>
       <input id="iv_q" type="search" class="search" placeholder="Search supplier, number, description…" oninput="renderInvoices()">
       <span class="hint" id="iv_count" style="margin-left:auto"></span>
     </div>
@@ -285,7 +286,8 @@ function renderOverview(){
       </div>
       <div class="g4" style="margin-top:14px">
         ${kpi('Expense lines', String(invYear.length), eur(invYear.reduce((s, i) => s + Number(i.amount_eur || 0), 0)) + ' · one per debit, like the HQ', '', "showPage('invoices')")}
-        ${kpi('Lines without PDF', String(invYear.filter(i => i.missing_pdf).length), eur(invYear.filter(i => i.missing_pdf).reduce((s, i) => s + Number(i.amount_eur || 0), 0)) + (invYear.filter(i => i.needs_review).length ? ` · ${invYear.filter(i => i.needs_review).length} need a category` : ''), invYear.some(i => i.missing_pdf) ? 'neg' : 'pos', "showInvoicesFilter('nopdf')")}
+        ${kpi('To review', String(invYear.filter(i => i.needs_review).length), invYear.filter(i => i.needs_review).length ? 'lines with an open question — click to see them' : 'nothing to review', invYear.some(i => i.needs_review) ? 'neg' : 'pos', "showInvoicesFilter('review')")}
+        ${kpi('Lines without PDF', String(invYear.filter(i => i.missing_pdf).length), eur(invYear.filter(i => i.missing_pdf).reduce((s, i) => s + Number(i.amount_eur || 0), 0)), invYear.some(i => i.missing_pdf) ? 'neg' : 'pos', "showInvoicesFilter('nopdf')")}
         ${kpi('Catering sold to Water Movements', eur(sum(r => r.rubric === 'Vendas à Water (catering)')), `${rows.filter(r => r.rubric === 'Vendas à Water (catering)').length} transfers · click for the detail`, 'pos', "showPage('bank')")}
         ${kpi('Bank movements', String(rows.length), `${months[0]} → ${months[months.length - 1]}`, '', "showPage('bank')")}
       </div>
@@ -331,7 +333,7 @@ function renderInvoices(){
     && (f === 'all' || (f === 'nopdf' && i.missing_pdf) || (f === 'review' && i.needs_review) || (f === 'cash' && !i.bank) || (f === 'catering' && isCatering(i)) || (f === 'restaurant' && !isCatering(i)))).slice().reverse();
   $('iv_count').textContent = `${rows.length} invoices · ${eur(rows.reduce((s, i) => s + Number(i.amount_eur || 0), 0))}`;
   $('invBody').innerHTML = rows.length ? rows.map(i => `<tr class="click" onclick="openInvoice('${i.id}')">
-    <td style="white-space:nowrap">${i.invoice_date}</td><td><div class="sup-cell"><span class="sup-name" title="${esc(i.company)}">${esc(i.company)}</span>${i.description ? `<span class="sup-desc" title="${esc(i.description)}">${esc(i.description)}</span>` : ''}</div></td><td class="hint">${esc(i.invoice_number || '')}</td>
+    <td style="white-space:nowrap">${i.invoice_date}</td><td><div class="sup-cell"><span class="sup-name" title="${esc(i.company)}">${esc(i.company)}</span>${i.description ? `<span class="sup-desc" title="${esc(i.description)}">${esc(i.description)}</span>` : ''}${i.needs_review ? `<span class="review-q"><span class="badge badge-amber">Review</span> ${esc(reviewQuestion(i.notes))}</span>` : ''}</div></td><td class="hint">${esc(i.invoice_number || '')}</td>
     <td onclick="event.stopPropagation()">${CAN_EDIT ? catSelect(i) : (i.category_name ? esc(i.category_name) : '<span class="badge badge-amber">decide</span>')}</td>
     <td onclick="event.stopPropagation()">${CAN_EDIT ? bizSelect(i) : esc(bizName(i))}</td><td class="hint">${esc(i.payment_type || '')}</td>
     <td>${i.bank ? `<span class="badge badge-green">${i.bank.movement_date}</span>` : (i.payment_type === 'Cash' ? '<span class="badge badge-grey">cash</span>' : '<span class="badge badge-amber">not linked</span>')}</td>
@@ -510,6 +512,12 @@ function renderBank(){
 }
 
 // ── Missing PDFs (lines without a document) ──────────────────────
+// The open question of a line marked for review: the last «[… REVIEW … — question]» in its notes.
+function reviewQuestion(notes){
+  const m = String(notes || '').match(/REVIEW[^—\]]*—\s*([^\]]+)\]/g);
+  if (!m) return 'category or location unknown';
+  return m[m.length - 1].replace(/^REVIEW[^—\]]*—\s*/, '').replace(/\]$/, '');
+}
 function showInvoicesFilter(f){ showPage('invoices'); const s = $('iv_filter'); if (s) s.value = f; renderInvoices(); }
 function missingBySupplierHtml(rows){
   const bySup = {}; rows.forEach(i => { const k = i.company || '—'; const b = bySup[k] || (bySup[k] = {n:0, eur:0, cat:i.category_name}); b.n++; b.eur += Number(i.amount_eur || 0); });
