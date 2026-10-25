@@ -8880,10 +8880,14 @@ function renderExpenses(){
   if(!el)return;
   const _fv=id=>document.getElementById(id)?.value||'';
   const hasFilter=!!(search||[typeF,payF,catF,weekF].some(v=>v&&v!=='all')||(_fv('expPeriodSel')&&_fv('expPeriodSel')!=='all'));
-  el.innerHTML=`<div class="tbl-wrap"><table>
-    <thead><tr><th>Date</th><th>Type</th><th>Category</th><th>Paid via</th><th>Linked item</th><th>Description</th><th>Vendor</th><th class="r">Local</th><th class="r">EUR</th><th class="r" style="width:88px">Actions</th></tr></thead>
-    <tbody>
-      ${rows.length?rows.map(r=>`<tr>
+  // Entries dated after today (e.g. rent paid in advance for next year)
+  // stay out of the main list and sit in a closed «Upcoming» block below
+  // it; each one joins the list on its own date (Miguel, 25 Oct 2026).
+  const _t=new Date();
+  const todayIso=`${_t.getFullYear()}-${String(_t.getMonth()+1).padStart(2,'0')}-${String(_t.getDate()).padStart(2,'0')}`;
+  const upcoming=rows.filter(r=>String(r.date||'')>todayIso).sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+  const current=rows.filter(r=>!(String(r.date||'')>todayIso));
+  const rowHtml=r=>`<tr>
         <td style="white-space:nowrap;font-size:12px">${fmtd(r.date)}</td>
         <td style="white-space:nowrap"><span class="badge ${r.type==='expense'?'badge-red':r.type==='transfer'?'badge-amber':'badge-green'}">${r.type==='expense'?'Expense':r.type==='transfer'?'Money from HQ':'Revenue'}</span>${isHqInvoiceRow(r)?' <span class="badge badge-blue" title="Paid by HQ — edit it in HQ → Expenses">HQ</span>':''}</td>
         <td style="font-weight:600">${r.category}</td>
@@ -8894,9 +8898,18 @@ function renderExpenses(){
         <td class="r" style="font-weight:700">${r.currency&&r.currency!=='EUR'?`${r.currency} `+Number(r.amountLocal||0).toLocaleString('en-GB',{maximumFractionDigits:2}):`${LOCAL_CURRENCY||'LKR'} `+Number((Number(r.amount||0)*(LOCAL_PER_EUR||1))).toLocaleString('en-GB',{maximumFractionDigits:0})}</td>
         <td class="r" style="font-weight:700">${euro(r.amount)}</td>
         <td>${['hq_invoice','hq_transfer'].includes(String(r.sourceKind||'').toLowerCase())?`<div class="exp-table-actions" style="color:var(--muted-2)" title="Edit this in HQ">${AppShell.icon('lock')}</div>`:`<div class="exp-table-actions"><button class="btn btn-s btn-sm btn-icon" onclick="openEditLedger('${r.id}')" title="Edit">${AppShell.icon('edit')}</button><button class="btn btn-s btn-sm btn-icon icon-danger" onclick="delLedger('${r.id}')" title="Delete">${AppShell.icon('trash')}</button></div>`}</td>
-      </tr>`).join(''):`<tr class="empty-row"><td colspan="10">${hasFilter?`No entries match these filters. <button class="btn btn-s btn-sm" style="margin-left:8px" onclick="clearExpFilters()">Clear filters</button>`:'No entries yet. Use Quick add above to log the first one.'}</td></tr>`}
+      </tr>`;
+  const head=`<thead><tr><th>Date</th><th>Type</th><th>Category</th><th>Paid via</th><th>Linked item</th><th>Description</th><th>Vendor</th><th class="r">Local</th><th class="r">EUR</th><th class="r" style="width:88px">Actions</th></tr></thead>`;
+  const upcomingEur=sum(upcoming,x=>Number(x.amount||0));
+  el.innerHTML=`<div class="tbl-wrap"><table>
+    ${head}
+    <tbody>
+      ${current.length?current.map(rowHtml).join(''):`<tr class="empty-row"><td colspan="10">${hasFilter?`No entries match these filters. <button class="btn btn-s btn-sm" style="margin-left:8px" onclick="clearExpFilters()">Clear filters</button>`:'No entries yet. Use Quick add above to log the first one.'}</td></tr>`}
     </tbody>
-  </table></div>`;
+  </table></div>${upcoming.length?`<details class="card" style="margin-top:12px;padding:0">
+    <summary style="cursor:pointer;padding:14px 16px;font-weight:600;color:var(--navy)">Upcoming · ${upcoming.length} ${upcoming.length===1?'entry':'entries'} · ${euro(upcomingEur)} <span style="font-weight:400;color:var(--muted);font-size:12px">· each one moves into the list above on its date</span></summary>
+    <div class="tbl-wrap"><table>${head}<tbody>${upcoming.map(rowHtml).join('')}</tbody></table></div>
+  </details>`:''}`;
 }
 
 // "Clear filters" on the empty ledger: back to all types / methods / categories / weeks, no search, all time.
