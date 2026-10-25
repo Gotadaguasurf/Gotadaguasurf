@@ -18,6 +18,10 @@
 --                             the row's location) excluding Manjar, plus the
 --                             P&L grid (slug × month) computed here.
 --  3. The accountant view and hq_todo use hq_doc_status.
+--  5. Partner commissions are counted once, in the booking: bookings come in
+--     net of commission, so a commission invoice (category Partners, 2026+)
+--     is left out of the P&L unless commission_in_booking = false (bookings
+--     from earlier years). See supabase/partner-commission-in-booking.sql.
 --  4. Suppliers that never issue an invoice get doc_exempt_reason written on
 --     their existing lines, so the rule is data, not a list in one page.
 -- ════════════════════════════════════════════════════════════════════════════
@@ -97,6 +101,7 @@ language sql stable security invoker set search_path = public as $$
      where i.deleted_at is null and coalesce(i.is_duplicate, false) = false
        and coalesce(i.paying_company, 'water-movements') <> 'manjar'
        and coalesce(i.location_slug, 'general') not in (select slug from manjar_locs)
+       and not public.hq_commission_in_booking(i)
      group by 1, 2, 3, 4
   ), lg as (
     select to_char(l.entry_date, 'YYYY-MM') as month, l.type,

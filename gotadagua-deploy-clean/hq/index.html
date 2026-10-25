@@ -3903,7 +3903,7 @@ async function renderInvoiceList(){
     const showDeleted = $('filter_deleted')?.checked;
     rows = await fetchAllPaged(() => {
       let q = sb.from('hq_invoices')
-        .select('id, location_slug, paying_company, invoice_date, company, description, amount, currency, amount_eur, payment_type, invoice_number, category_name, file_url, file_name, drive_link, needs_review, is_duplicate, category_id, notes, supplier_nif, fx_rate, doc_exempt_reason, bank_movement_id, deleted_at, deleted_by')
+        .select('id, location_slug, paying_company, invoice_date, company, description, amount, currency, amount_eur, payment_type, invoice_number, category_name, file_url, file_name, drive_link, needs_review, is_duplicate, category_id, notes, supplier_nif, fx_rate, doc_exempt_reason, bank_movement_id, commission_in_booking, deleted_at, deleted_by')
         .neq('paying_company', NOT_HQ_COMPANY)
         .order('invoice_date', { ascending:false });
       q = showDeleted ? q.not('deleted_at', 'is', null) : q.is('deleted_at', null);
@@ -4030,6 +4030,8 @@ async function renderInvoiceList(){
       r.needs_review ? '<span class="badge badge-amber">Review</span>' : '',
       r.is_duplicate ? '<span class="badge badge-amber">Possible duplicate</span>' : '',
       isPersonal ? '<span class="badge badge-grey">Personal</span>' : '',
+      // Partner commissions are already taken off the booking revenue (supabase/partner-commission-in-booking.sql).
+      (r.commission_in_booking ?? (r.category_name === 'Partners' && String(r.invoice_date || '') >= '2026-01-01')) ? '<span class="badge badge-grey" title="Already deducted from the booking revenue, so it is not counted again in the profit">in booking revenue</span>' : '',
       isInterCo ? `<span class="badge badge-grey" title="Paid by ${escapeHtml(companyLabel(r.paying_company))}, not the location's usual company">paid by other company</span>` : '',
     ].filter(Boolean).join(' ');
     // Category and Location change in the row (like /suk/); everything else is edited in the form.

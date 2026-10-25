@@ -37,7 +37,8 @@ begin
              or v_loc is null
              or new.location_slug in ('general')
              or coalesce(new.category_name,'') ilike '%personal%'
-             or lower(coalesce(new.company,'')) like '%barata%';
+             or lower(coalesce(new.company,'')) like '%barata%'
+             or public.hq_commission_in_booking(new);
   perform set_config('app.hq_mirror','1',true);
   if v_excluded then
     delete from public.ledger_entries where hq_invoice_id = new.id;
