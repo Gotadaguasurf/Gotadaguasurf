@@ -3021,7 +3021,7 @@
         rows.push({
           ref,
           guest: get('guest'),
-          status: (get('status') || 'confirmed').toLowerCase(),
+          status: (get('status') || 'confirmed').trim().toLowerCase().replace(/\s+/g, '_'), // 'Deposit paid' → 'deposit_paid', the value the P&L and Partners read
           checkinMs: ciMs,
           checkoutMs: coMs,
           nights,
