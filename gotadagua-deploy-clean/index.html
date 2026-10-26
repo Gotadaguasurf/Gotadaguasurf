@@ -3226,15 +3226,21 @@
         const chunk = bookingRows.slice(i, i + CHUNK);
         try{
           // Keep notes written in the app (e.g. how a group paid) — the upsert replaces raw_payload.
-          const { data: prev } = await client.from('bookings').select('booking_ref, raw_payload').in('booking_ref', chunk.map(b => b.booking_ref));
-          const kept = {};
+          const { data: prev } = await client.from('bookings').select('booking_ref, raw_payload, total, net_amount, commission_amount').in('booking_ref', chunk.map(b => b.booking_ref));
+          const kept = {}, eurValue = {};
           (prev || []).forEach(p => {
             const rp = p.raw_payload || {};
             const keep = {};
-            ['note','payment'].forEach(k => { if(rp[k] != null) keep[k] = rp[k]; });
+            ['note','payment','currency','total_chf','total_usd'].forEach(k => { if(rp[k] != null) keep[k] = rp[k]; });
             if(Object.keys(keep).length) kept[p.booking_ref] = keep;
+            // The export has no currency column: a CHF/USD booking arrives as if it were euros,
+            // so keep the euro value already set in the app.
+            if(rp.currency && rp.currency !== 'EUR') eurValue[p.booking_ref] = { total: p.total, net_amount: p.net_amount, commission_amount: p.commission_amount };
           });
-          chunk.forEach(b => { if(kept[b.booking_ref]) Object.assign(b.raw_payload, kept[b.booking_ref]); });
+          chunk.forEach(b => {
+            if(kept[b.booking_ref]) Object.assign(b.raw_payload, kept[b.booking_ref]);
+            if(eurValue[b.booking_ref]) Object.assign(b, eurValue[b.booking_ref]);
+          });
           const { error: bkErr } = await client.from('bookings').upsert(chunk, { onConflict: 'booking_ref' });
           if(bkErr) partnerSyncErrs.push(bkErr.message);
           else partnerSyncOk += chunk.length;
