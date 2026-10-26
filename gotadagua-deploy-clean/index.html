@@ -3231,11 +3231,12 @@
           (prev || []).forEach(p => {
             const rp = p.raw_payload || {};
             const keep = {};
-            ['note','payment','currency','total_chf','total_usd'].forEach(k => { if(rp[k] != null) keep[k] = rp[k]; });
+            ['note','payment','currency','total_chf','total_usd','total_override'].forEach(k => { if(rp[k] != null) keep[k] = rp[k]; });
             if(Object.keys(keep).length) kept[p.booking_ref] = keep;
             // The export has no currency column: a CHF/USD booking arrives as if it were euros,
             // so keep the euro value already set in the app.
-            if(rp.currency && rp.currency !== 'EUR') eurValue[p.booking_ref] = { total: p.total, net_amount: p.net_amount, commission_amount: p.commission_amount };
+            // Same for a value Miguel corrected in the app (raw_payload.total_override), e.g. a group that paid more than Bookinglayer shows.
+            if((rp.currency && rp.currency !== 'EUR') || rp.total_override) eurValue[p.booking_ref] = { total: p.total, net_amount: p.net_amount, commission_amount: p.commission_amount };
           });
           chunk.forEach(b => {
             if(kept[b.booking_ref]) Object.assign(b.raw_payload, kept[b.booking_ref]);
