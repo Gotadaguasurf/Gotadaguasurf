@@ -2340,7 +2340,7 @@ const REALIZED_BOOKING_STATUSES = new Set(['paid','confirmed','deposit_paid']);
 
 function mapBookingRowToApp(row) {
   const partner = row.partner_name && row.partner_name.trim() ? row.partner_name.trim() : DIRECT_LABEL;
-  const status = (row.raw_payload && row.raw_payload.status) ? String(row.raw_payload.status).toLowerCase() : '';
+  const status = (row.raw_payload && row.raw_payload.status) ? String(row.raw_payload.status).trim().toLowerCase().replace(/\s+/g, '_') : ''; // 'Deposit paid' → 'deposit_paid'
   const isRealized = !status || REALIZED_BOOKING_STATUSES.has(status); // empty status = legacy data, treat as realized
   const gross = Number(row.total || 0);
   const com_pct = Number(row.partner_commission_pct || 0);
