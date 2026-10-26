@@ -2981,7 +2981,11 @@
         // New columns from the latest Bookinglayer export format:
         email: findCol('email','booker email','guest email','customer email'),
         country: findCol('country','nationality','guest country'),
-        paid: findCol('paid amount','amount paid','paid')
+        paid: findCol('paid amount','amount paid','paid'),
+        // Partners decides who collected from Status + Due, and Connect bookings by Source
+        due: findCol('due','amount due'),
+        source: findCol('source','channel'),
+        created: findCol('created on','created')
       };
       const rows = [];
       for(let i = 1; i < lines.length; i++){
@@ -3016,7 +3020,13 @@
             return name.split(/\s+/).some(tok => tok.length > 3 && GENERIC_LOC_TOKENS.indexOf(tok) === -1 && pkgLower.includes(tok));
           });
           if(byPackage) locationCode = byPackage;
-          else console.warn('[Global import] multi-location booking without package match:', ref, allCodes.join(','), pkgVal);
+          else {
+            // The Bookinglayer export has no package column, and it tags the extras
+            // too (a PT insurance on an Ahangama stay, surf lessons on a Kids Camp
+            // week), so the main stay wins in this order.
+            const STAY_FIRST = ['LK','MA','PT','JUN','COLON','SC'];
+            locationCode = STAY_FIRST.find(c => campCodes.includes(c)) || locationCode;
+          }
         }
         rows.push({
           ref,
@@ -3027,7 +3037,8 @@
           nights,
           pax: parseInt(get('pax'), 10) || 1,
           locationCode,
-          partner: get('partner') || 'Direct Bookings',
+          // No Partner column in some exports: the Source says "Partner: X" / "Connect: X"
+          partner: get('partner') || ((get('source').match(/^(?:Partner|Connect):\s*(.+)$/i) || [])[1] || '').trim() || 'Direct Bookings',
           commissionPct: parseFloat(String(get('commission')).replace(',','.')) || 0,
           package: pkgVal,
           gross: parseFloat(String(get('total')).replace(/[^\d.\-]/g,'')) || 0,
@@ -3036,7 +3047,11 @@
           // Partners & Rates and are preserved by the import (ignoreDuplicates:true).)
           bookerEmail: get('email').toLowerCase(),
           country: get('country'),
-          paidAmount: parseFloat(String(get('paid')).replace(/[^\d.\-]/g,'')) || 0
+          paidAmount: parseFloat(String(get('paid')).replace(/[^\d.\-]/g,'')) || 0,
+          due: get('due'),
+          bookingSource: get('source'),
+          createdOn: get('created'),
+          locationTags: locCell
         });
       }
       return rows;
@@ -3069,6 +3084,14 @@
         summaryEl.innerHTML = '<div style="color:#c43c3c">No connection — check your internet and try again. Nothing was saved.</div>';
         return;
       }
+      // Bookinglayer spells some partners differently from Partners & Rates
+      // ("THE SURF TRIBE" vs "The Surf Tribe") — use the existing name so no duplicate partner appears.
+      try{
+        const { data: known } = await client.from('partners').select('name');
+        const byLower = {};
+        (known || []).forEach(p => { if(p.name) byLower[p.name.trim().toLowerCase()] = p.name; });
+        rows.forEach(r => { const hit = byLower[String(r.partner || '').trim().toLowerCase()]; if(hit) r.partner = hit; });
+      }catch(e){ /* keep the CSV spelling */ }
       const parts = [];
       let okBookings = 0;
       let okLocations = 0;
@@ -3202,6 +3225,16 @@
       for(let i = 0; i < bookingRows.length; i += CHUNK){
         const chunk = bookingRows.slice(i, i + CHUNK);
         try{
+          // Keep notes written in the app (e.g. how a group paid) — the upsert replaces raw_payload.
+          const { data: prev } = await client.from('bookings').select('booking_ref, raw_payload').in('booking_ref', chunk.map(b => b.booking_ref));
+          const kept = {};
+          (prev || []).forEach(p => {
+            const rp = p.raw_payload || {};
+            const keep = {};
+            ['note','payment'].forEach(k => { if(rp[k] != null) keep[k] = rp[k]; });
+            if(Object.keys(keep).length) kept[p.booking_ref] = keep;
+          });
+          chunk.forEach(b => { if(kept[b.booking_ref]) Object.assign(b.raw_payload, kept[b.booking_ref]); });
           const { error: bkErr } = await client.from('bookings').upsert(chunk, { onConflict: 'booking_ref' });
           if(bkErr) partnerSyncErrs.push(bkErr.message);
           else partnerSyncOk += chunk.length;
