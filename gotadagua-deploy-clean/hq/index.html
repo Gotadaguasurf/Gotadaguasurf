@@ -4694,13 +4694,13 @@ function reconStatus(m, lines, group){
   const amt = Number(m.amount || 0);
   if (lines.length) {
     const sum = lines.reduce((s, l) => s + Number(l.amount_eur || 0), 0);
-    const near = (a, b) => Math.abs(Math.abs(a) - Math.abs(b)) <= 0.01;
+    const near = (a, b) => Math.abs(Math.abs(a) - Math.abs(b)) < 0.015;  // 1 cent of rounding is not a difference
     if (!near(amt, sum) && group && group.length > 1) {
       const sameBank = group.filter(g => g.bank === m.bank).reduce((t, g) => t + Math.abs(Number(g.amount || 0)), 0);
       if (near(sameBank, sum)) return { done: true, key: 'matched', label: 'Matched' };
     }
     const diff = Math.abs(amt) - Math.abs(sum);
-    return Math.abs(diff) > 0.01
+    return Math.abs(diff) >= 0.015
       ? { done: false, key: 'diff', label: 'Amounts differ', hint: `Lines ${eur(Math.abs(sum))}, bank ${eur(Math.abs(amt))}` }
       : { done: true, key: 'matched', label: 'Matched' };
   }
