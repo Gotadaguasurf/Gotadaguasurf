@@ -4687,10 +4687,18 @@ async function renderCashflow(){
 // ═══════════════════════════════════════════════════════════════════════
 let RECON_ROWS = [];
 
-function reconStatus(m, lines){
+// `group` (optional): every movement linked to the same line(s) — a monthly
+// fee line paid by many small PayPal debits, or a purchase paid with a PayPal
+// top-up where the bank debit and the PayPal payment point to one line.
+function reconStatus(m, lines, group){
   const amt = Number(m.amount || 0);
   if (lines.length) {
     const sum = lines.reduce((s, l) => s + Number(l.amount_eur || 0), 0);
+    const near = (a, b) => Math.abs(Math.abs(a) - Math.abs(b)) <= 0.01;
+    if (!near(amt, sum) && group && group.length > 1) {
+      const sameBank = group.filter(g => g.bank === m.bank).reduce((t, g) => t + Math.abs(Number(g.amount || 0)), 0);
+      if (near(sameBank, sum)) return { done: true, key: 'matched', label: 'Matched' };
+    }
     const diff = Math.abs(amt) - Math.abs(sum);
     return Math.abs(diff) > 0.01
       ? { done: false, key: 'diff', label: 'Amounts differ', hint: `Lines ${eur(Math.abs(sum))}, bank ${eur(Math.abs(amt))}` }
@@ -4738,10 +4746,15 @@ async function renderBankRecon(){
   const byId = new Map(lines.map(l => [l.id, l]));
   const byMv = new Map();
   lines.forEach(l => { if (l.bank_movement_id) { if (!byMv.has(l.bank_movement_id)) byMv.set(l.bank_movement_id, []); byMv.get(l.bank_movement_id).push(l); } });
-  const all = mv.map(m => {
+  const linkedOf = m => {
     const own = m.hq_invoice_id && byId.has(m.hq_invoice_id) ? [byId.get(m.hq_invoice_id)] : [];
-    const linked = own.concat((byMv.get(m.id) || []).filter(l => l.id !== m.hq_invoice_id));
-    return { m, lines: linked, s: reconStatus(m, linked) };
+    return own.concat((byMv.get(m.id) || []).filter(l => l.id !== m.hq_invoice_id));
+  };
+  const mvByLine = new Map();
+  const withLines = mv.map(m => { const ls = linkedOf(m); ls.forEach(l => { if (!mvByLine.has(l.id)) mvByLine.set(l.id, []); mvByLine.get(l.id).push(m); }); return { m, lines: ls }; });
+  const all = withLines.map(({ m, lines }) => {
+    const group = lines.length === 1 ? mvByLine.get(lines[0].id) : null;
+    return { m, lines, s: reconStatus(m, lines, group) };
   });
   // Summary per bank, before the bank and status filters, after the direction filter.
   const inDir = r => dir === '__all__' || (dir === 'out' ? Number(r.m.amount) < 0 : Number(r.m.amount) > 0);

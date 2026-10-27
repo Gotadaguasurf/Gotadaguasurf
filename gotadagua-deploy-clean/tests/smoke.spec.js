@@ -2013,3 +2013,23 @@ test('hq: bank reconciliation — each movement is matched, explained, or left t
   expect(out.open).toBe(false);
   expect(out.moneyIn).toBe('Money in — say what it is');
 });
+
+test('hq: bank reconciliation — many small debits paying one monthly line count as matched', async ({ page }) => {
+  await fakeOwnerSession(page);
+  await page.goto('/hq/index.html');
+  await page.waitForFunction(() => typeof reconStatus === 'function');
+  const out = await page.evaluate(() => {
+    const feeLine = { id: 'fee', company: 'paypal (taxas)', amount_eur: 6.5 };
+    const g = [{ bank: 'paypal', amount: -2.5 }, { bank: 'paypal', amount: -4 }];
+    const topUpLine = { id: 'buy', company: 'meta', amount_eur: 50 };
+    const t = [{ bank: 'santander', amount: -50 }, { bank: 'paypal', amount: -50 }];
+    return {
+      fee: reconStatus(g[0], [feeLine], g).key,
+      topUp: reconStatus(t[1], [topUpLine], t).key,
+      wrong: reconStatus({ bank: 'paypal', amount: -9 }, [feeLine], [{ bank: 'paypal', amount: -9 }, { bank: 'paypal', amount: -9 }]).key,
+    };
+  });
+  expect(out.fee).toBe('matched');
+  expect(out.topUp).toBe('matched');
+  expect(out.wrong).toBe('diff');
+});
