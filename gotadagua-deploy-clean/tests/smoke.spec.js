@@ -1980,56 +1980,28 @@ test('surf-school: Clientes groups the same person and searches by email or ID',
 });
 
 
-test('hq: bank reconciliation — each movement is matched, explained, or left to reconcile', async ({ page }) => {
-  // Miguel, 27 Oct 2026: see per bank which payments are reconciled, filter by bank,
-  // and the invoice each one pays.
+test('hq: expenses show the bank reconciliation — bank lines matched, cash apart, bank fees count, the rest to reconcile', async ({ page }) => {
+  // Miguel, 27 Oct 2026: in Expenses, see which payments are reconciled with the bank,
+  // which bank paid, filter by bank; cash never reconciles.
   await fakeOwnerSession(page);
   await page.goto('/hq/index.html');
-  await page.waitForFunction(() => typeof reconStatus === 'function');
+  await page.waitForFunction(() => typeof reconSummary === 'function');
   const out = await page.evaluate(() => {
-    const line = (amt) => ({ id: 'l' + amt, company: 'x', amount_eur: amt });
-    return {
-      matched: reconStatus({ amount: -208.21, kind: 'expense' }, [line(208.21)]).key,
-      split: reconStatus({ amount: -418.2, kind: 'expense' }, [line(209.1), line(209.1)]).key,
-      diff: reconStatus({ amount: -276.5, kind: 'expense' }, [line(266.5)]).key,
-      creditNote: reconStatus({ amount: 479, kind: 'income' }, [line(-479)]).key,
-      transfer: reconStatus({ amount: -5000, kind: 'internal_transfer' }, []).label,
-      cards: reconStatus({ amount: -168.89, kind: 'card_settlement' }, []).done,
-      stripe: reconStatus({ amount: 3007.55, kind: 'income', description: 'TRF CRED SEPA+ DE STRIPE TECHNOLOGY EUROP' }, []).done,
-      noted: reconStatus({ amount: -703.13, kind: 'expense', notes: '[empréstimo Turismo de Portugal]' }, []).key,
-      open: reconStatus({ amount: -90, kind: 'expense', description: 'TRF.IMED. P/ X' }, []).done,
-      moneyIn: reconStatus({ amount: 540, kind: 'income', description: 'TRF S JOAO SUNSET CLU' }, []).label,
-      bankFilter: !!document.getElementById('filter_bank') && [...document.querySelectorAll('#filter_bank option')].map(o => o.value).join(','),
-    };
+    const rows = [
+      { id: 'a', company: 'leroy merlin', payment_type: 'Card', amount_eur: 50 },
+      { id: 'b', company: 'edp', payment_type: 'Bank Transfer', amount_eur: 80 },
+      { id: 'c', company: 'pastelaria', payment_type: 'Cash', amount_eur: 12 },
+      { id: 'd', company: 'santander (comissões)', payment_type: 'Bank Transfer', amount_eur: 120 },
+      { id: 'e', company: 'safari na horta', payment_type: 'Other', amount_eur: 880 },
+    ];
+    const bank = new Map([['a', { bank: 'santander', date: '2026-10-26' }], ['b', { bank: 'cgd', date: '2026-10-20' }]]);
+    return { x: reconSummary(rows, bank), opt: [...document.querySelectorAll('#filter_bank option')].map(o => o.value) };
   });
-  expect(out.matched).toBe('matched');
-  expect(out.split).toBe('matched');
-  expect(out.diff).toBe('diff');
-  expect(out.creditNote).toBe('matched');
-  expect(out.transfer).toBe('Between own accounts');
-  expect(out.cards).toBe(true);
-  expect(out.stripe).toBe(true);
-  expect(out.noted).toBe('note');
-  expect(out.open).toBe(false);
-  expect(out.moneyIn).toBe('Money in — say what it is');
-});
-
-test('hq: bank reconciliation — many small debits paying one monthly line count as matched', async ({ page }) => {
-  await fakeOwnerSession(page);
-  await page.goto('/hq/index.html');
-  await page.waitForFunction(() => typeof reconStatus === 'function');
-  const out = await page.evaluate(() => {
-    const feeLine = { id: 'fee', company: 'paypal (taxas)', amount_eur: 6.5 };
-    const g = [{ bank: 'paypal', amount: -2.5 }, { bank: 'paypal', amount: -4 }];
-    const topUpLine = { id: 'buy', company: 'meta', amount_eur: 50 };
-    const t = [{ bank: 'santander', amount: -50 }, { bank: 'paypal', amount: -50 }];
-    return {
-      fee: reconStatus(g[0], [feeLine], g).key,
-      topUp: reconStatus(t[1], [topUpLine], t).key,
-      wrong: reconStatus({ bank: 'paypal', amount: -9 }, [feeLine], [{ bank: 'paypal', amount: -9 }, { bank: 'paypal', amount: -9 }]).key,
-    };
-  });
-  expect(out.fee).toBe('matched');
-  expect(out.topUp).toBe('matched');
-  expect(out.wrong).toBe('diff');
+  expect(out.x.total).toBe(4);
+  expect(out.x.done).toBe(3);
+  expect(out.x.cash).toBe(1);
+  expect(out.x.fees).toBe(1);
+  expect(out.x.open).toBe(1);
+  expect(out.x.openEur).toBe(880);
+  expect(out.x.byBank).toEqual({ santander: 1, cgd: 1, paypal: 0 });
 });
