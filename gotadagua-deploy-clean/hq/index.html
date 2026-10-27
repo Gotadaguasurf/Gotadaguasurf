@@ -291,6 +291,7 @@ let FX_CACHE     = { date:null, rates:{ EUR:1 } };
 // that can grow past that (bookings, hq_invoices, ledger_entries) MUST be
 // fetched with pagination — otherwise numbers silently truncate. This
 // mirrors fetchAllBookings() in /partners/index.html.
+const BANK_LABEL = { santander:'Santander', cgd:'CGD', paypal:'PayPal' };
 async function fetchAllPaged(build){
   const PAGE = 1000;
   let all = [];
@@ -1072,6 +1073,14 @@ function invoicesTabHtml(){
         <option value="__all__">All categories</option>
         ${CATEGORIES.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
       </select>
+      <select id="filter_bank" onchange="onFilterChanged()" class="hq-select" title="Which bank paid the expense">
+        <option value="__all__">All banks</option>
+        <option value="santander">Santander</option>
+        <option value="cgd">CGD</option>
+        <option value="paypal">PayPal</option>
+        <option value="none">Not linked to a bank</option>
+        <option value="cash">Cash</option>
+      </select>
       <label class="hq-tog" title="Lines with an open question (category, location or payment unknown)"><input type="checkbox" id="filter_review" onchange="onFilterChanged()"> To review</label>
       <label class="hq-tog" title="Lines that need an invoice and have no PDF yet (suppliers that never invoice are not counted)"><input type="checkbox" id="filter_nopdf" onchange="onFilterChanged()"> Missing PDF</label>
       <button class="hq-pill" id="moreFiltersBtn" onclick="toggleMoreFilters()">More filters ${ic('chevron-down')}</button>
@@ -1163,7 +1172,7 @@ function hqFiltersActive(){
   const v = id => { const el = $(id); return el ? (el.type === 'checkbox' ? el.checked : el.value) : ''; };
   if (hqPeriodo && hqPeriodo !== 'tudo') return true;
   if (v('filter_from') || v('filter_to') || v('filter_month') || v('filter_search')) return true;
-  if ((v('filter_location') || '__all__') !== '__all__' || (v('filter_category') || '__all__') !== '__all__') return true;
+  if ((v('filter_location') || '__all__') !== '__all__' || (v('filter_category') || '__all__') !== '__all__' || (v('filter_bank') || '__all__') !== '__all__') return true;
   return !!(v('filter_review') || v('filter_nopdf') || v('filter_personal') || v('filter_duplicate') || v('filter_deleted'));
 }
 
@@ -1188,6 +1197,7 @@ function renderHqFilterSummary(){
   else if(month) chips.push(['periodo', nomeMes(month)]);
   const loc=v('filter_location'); if(loc && loc!=='__all__'){const l=HQ_LOCATIONS.find(x=>x.slug===loc); chips.push(['filter_location', l?l.label:loc]);}
   const cat=v('filter_category'); if(cat && cat!=='__all__'){const c=CATEGORIES.find(x=>String(x.id)===String(cat)); chips.push(['filter_category', c?c.name:cat]);}
+  const bk=v('filter_bank'); if(bk && bk!=='__all__') chips.push(['filter_bank', bk==='none' ? 'Not linked to a bank' : bk==='cash' ? 'Cash' : (BANK_LABEL[bk]||bk)]);
   if(v('filter_review')) chips.push(['filter_review','To review']);
   if(v('filter_nopdf')) chips.push(['filter_nopdf','Missing PDF']);
   if(v('filter_personal')) chips.push(['filter_personal','Personal']);
@@ -3931,15 +3941,15 @@ async function renderInvoiceList(){
   // Bank link per expense (hq_bank_movements.hq_invoice_id) — same «Matched to bank» column as /suk/.
   let bankByInv = new Map();
   try {
-    const links = await fetchAllPaged(() => sb.from('hq_bank_movements').select('hq_invoice_id, movement_date').not('hq_invoice_id', 'is', null));
-    links.forEach(b => { if (!bankByInv.has(b.hq_invoice_id)) bankByInv.set(b.hq_invoice_id, b.movement_date); });
+    const links = await fetchAllPaged(() => sb.from('hq_bank_movements').select('hq_invoice_id, movement_date, bank').not('hq_invoice_id', 'is', null));
+    links.forEach(b => { if (!bankByInv.has(b.hq_invoice_id)) bankByInv.set(b.hq_invoice_id, { date: b.movement_date, bank: b.bank }); });
     // Lines paid together with others (salary / meal-card lots, two invoices in one transfer, split receipts)
     // point to the shared debit through hq_invoices.bank_movement_id.
     const shared = [...new Set(rows.filter(r => r.bank_movement_id && !bankByInv.has(r.id)).map(r => r.bank_movement_id))];
     for (let k = 0; k < shared.length; k += 100) {
-      const { data, error } = await sb.from('hq_bank_movements').select('id, movement_date').in('id', shared.slice(k, k + 100));
+      const { data, error } = await sb.from('hq_bank_movements').select('id, movement_date, bank').in('id', shared.slice(k, k + 100));
       if (error) throw error;
-      const dt = new Map((data || []).map(m => [m.id, m.movement_date]));
+      const dt = new Map((data || []).map(m => [m.id, { date: m.movement_date, bank: m.bank }]));
       rows.forEach(r => { if (r.bank_movement_id && dt.has(r.bank_movement_id) && !bankByInv.has(r.id)) bankByInv.set(r.id, dt.get(r.bank_movement_id)); });
     }
   } catch (_) { /* column missing or no access: the column simply shows no link */ }
@@ -3956,6 +3966,10 @@ async function renderInvoiceList(){
     rows = rows.filter(r => r.category_id === catFilter);
   }
   if (reviewOnly)    rows = rows.filter(r => r.needs_review);
+  const bankFilter = $('filter_bank')?.value || '__all__';
+  if (bankFilter === 'none') rows = rows.filter(r => !bankByInv.has(r.id) && r.payment_type !== 'Cash');
+  else if (bankFilter === 'cash') rows = rows.filter(r => !bankByInv.has(r.id) && r.payment_type === 'Cash');
+  else if (bankFilter !== '__all__') rows = rows.filter(r => bankByInv.get(r.id)?.bank === bankFilter);
   if ($('filter_nopdf')?.checked) rows = rows.filter(r => !r.file_url && docStatus(r) === 'falta');
   if (personalOnly)  rows = rows.filter(r => personalCatIds.has(r.category_id));
   if (duplicateOnly) rows = rows.filter(r => r.is_duplicate);
@@ -4015,9 +4029,9 @@ async function renderInvoiceList(){
     const catSelect = CATEGORIES.map(c => `<option value="${c.id}" ${c.id===r.category_id?'selected':''}>${c.name}</option>`).join('');
     const isSelected = window.__selectedInvoiceIds?.has(r.id);
     const ic = AppShell.icon;
-    const bankDate = bankByInv.get(r.id);
-    const bankCell = bankDate
-      ? `<span class="badge badge-green" title="Matched to the bank statement">${bankDate}</span>`
+    const bankLink = bankByInv.get(r.id);
+    const bankCell = bankLink
+      ? `<span class="badge badge-green" title="Matched to the ${escapeHtml(BANK_LABEL[bankLink.bank] || bankLink.bank || '')} statement, ${bankLink.date}">${escapeHtml(BANK_LABEL[bankLink.bank] || bankLink.bank || 'Bank')} · ${fmtDia(bankLink.date)}</span>`
       : r.payment_type === 'Cash' ? '<span class="badge badge-grey">cash</span>' : '<span class="badge badge-amber" title="No bank movement linked yet">not linked</span>';
     const ds = docStatus(r);
     const pdfCell = r.drive_link
@@ -4276,6 +4290,30 @@ function cashflowTabHtml(){
     <div class="card">
       <div class="card-hdr">
         <div>
+          <div class="card-title">Bank reconciliation</div>
+          <div class="card-hint">Every movement in Santander, CGD and PayPal: the expense it pays, or why it needs none</div>
+        </div>
+        <div class="hq-filters">
+          <select id="rc_bank" class="hq-select" onchange="renderBankRecon()">
+            <option value="__all__">All banks</option><option value="santander">Santander</option><option value="cgd">CGD</option><option value="paypal">PayPal</option>
+          </select>
+          <select id="rc_dir" class="hq-select" onchange="renderBankRecon()">
+            <option value="out">Money out</option><option value="in">Money in</option><option value="__all__">In and out</option>
+          </select>
+          <select id="rc_status" class="hq-select" onchange="renderBankRecon()">
+            <option value="__all__">Any status</option><option value="open">To reconcile</option><option value="done">Reconciled</option>
+          </select>
+          <button class="btn btn-sm" onclick="downloadBankRecon()" title="The filtered list as a spreadsheet, for the accountant">${ic('download')} Download</button>
+        </div>
+      </div>
+      <div id="reconBody">
+        <div class="loading">Loading…</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-hdr">
+        <div>
           <div class="card-title">Transfer history</div>
           <div class="card-hint">Last 200 transfers between companies, newest first</div>
         </div>
@@ -4487,6 +4525,7 @@ async function renderCashflow(){
 
   cfBody.innerHTML = `<div class="loading">Loading…</div>`;
   trBody.innerHTML = `<div class="loading">Loading…</div>`;
+  renderBankRecon();
 
   const [invRows, transferRows, bkRows] = await Promise.all([
     fetchAllPaged(() => sb.from('hq_invoices').select('paying_company, location_slug, amount_eur, category_id, invoice_date').is('deleted_at', null).neq('paying_company', NOT_HQ_COMPANY).order('invoice_date',{ascending:false})),
@@ -4640,6 +4679,137 @@ async function renderCashflow(){
       </table></div>
     `;
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//   Bank reconciliation — each bank movement with the line(s) it pays,
+//   or the reason it needs none. Period = the Cash flow period picker.
+// ═══════════════════════════════════════════════════════════════════════
+let RECON_ROWS = [];
+
+function reconStatus(m, lines){
+  const amt = Number(m.amount || 0);
+  if (lines.length) {
+    const sum = lines.reduce((s, l) => s + Number(l.amount_eur || 0), 0);
+    const diff = Math.abs(amt) - Math.abs(sum);
+    return Math.abs(diff) > 0.01
+      ? { done: false, key: 'diff', label: 'Amounts differ', hint: `Lines ${eur(Math.abs(sum))}, bank ${eur(Math.abs(amt))}` }
+      : { done: true, key: 'matched', label: 'Matched' };
+  }
+  const d = String(m.description || '');
+  if (m.kind === 'internal_transfer') return { done: true, key: 'why', label: 'Between own accounts' };
+  if (m.kind === 'card_settlement') return { done: true, key: 'why', label: "Partners' credit cards" };
+  if (m.kind === 'bank_fee') return { done: true, key: 'why', label: 'Bank fee (monthly line)' };
+  if (amt > 0 && /STRIPE/i.test(d)) return { done: true, key: 'why', label: 'Booking payments (Stripe)' };
+  if (amt > 0 && m.bank === 'paypal' && /Website Payment|Payment Received|Pagamento recebido/i.test(d)) return { done: true, key: 'why', label: 'Booking payment (PayPal)' };
+  if (String(m.notes || '').trim()) return { done: true, key: 'note', label: 'Explained in a note', hint: String(m.notes).trim() };
+  return amt > 0
+    ? { done: false, key: 'open', label: 'Money in — say what it is' }
+    : { done: false, key: 'open', label: 'To reconcile' };
+}
+
+async function renderBankRecon(){
+  const body = $('reconBody'); if (!body) return;
+  const period = $('cf_period')?.value || '__all__';
+  const bank = $('rc_bank')?.value || '__all__';
+  const dir = $('rc_dir')?.value || 'out';
+  const st = $('rc_status')?.value || '__all__';
+  body.innerHTML = `<div class="loading">Loading…</div>`;
+  let mv, lines;
+  try {
+    [mv, lines] = await Promise.all([
+      fetchAllPaged(() => {
+        let q = sb.from('hq_bank_movements').select('id, bank, movement_date, description, amount, kind, notes, balance, hq_invoice_id')
+          .eq('paying_company', 'water-movements').in('bank', ['santander','cgd','paypal'])
+          .order('movement_date', { ascending:false }).order('id');
+        if (period !== '__all__') {
+          const [y, m] = period.split('-').map(Number);
+          q = q.gte('movement_date', `${period}-01`).lte('movement_date', new Date(Date.UTC(y, m, 0)).toISOString().slice(0,10));
+        }
+        return q;
+      }),
+      fetchAllPaged(() => sb.from('hq_invoices').select('id, company, amount_eur, invoice_number, drive_link, file_url, file_name, bank_movement_id')
+        .is('deleted_at', null).order('id'))
+    ]);
+  } catch (e) {
+    body.innerHTML = `<div class="empty-state">${AppShell.icon('alert')}<div class="empty-title">Could not load the bank movements</div><p>${escapeHtml(e.message || String(e))}</p></div>`;
+    return;
+  }
+  const byId = new Map(lines.map(l => [l.id, l]));
+  const byMv = new Map();
+  lines.forEach(l => { if (l.bank_movement_id) { if (!byMv.has(l.bank_movement_id)) byMv.set(l.bank_movement_id, []); byMv.get(l.bank_movement_id).push(l); } });
+  const all = mv.map(m => {
+    const own = m.hq_invoice_id && byId.has(m.hq_invoice_id) ? [byId.get(m.hq_invoice_id)] : [];
+    const linked = own.concat((byMv.get(m.id) || []).filter(l => l.id !== m.hq_invoice_id));
+    return { m, lines: linked, s: reconStatus(m, linked) };
+  });
+  // Summary per bank, before the bank and status filters, after the direction filter.
+  const inDir = r => dir === '__all__' || (dir === 'out' ? Number(r.m.amount) < 0 : Number(r.m.amount) > 0);
+  const banks = ['santander','cgd','paypal'].map(b => {
+    const rs = all.filter(r => r.m.bank === b && inDir(r));
+    const open = rs.filter(r => !r.s.done);
+    const last = all.find(r => r.m.bank === b);
+    const lastBal = all.find(r => r.m.bank === b && r.m.balance != null);
+    return { b, n: rs.length, done: rs.length - open.length, open: open.length, openEur: open.reduce((s, r) => s + Math.abs(Number(r.m.amount)), 0), last: last?.m.movement_date, bal: lastBal?.m.balance };
+  });
+  RECON_ROWS = all.filter(r => inDir(r) && (bank === '__all__' || r.m.bank === bank)
+    && (st === '__all__' || (st === 'done' ? r.s.done : !r.s.done)));
+  const pct = x => x.n ? Math.floor(x.done / x.n * 100) : 100;
+  const summary = `<div class="tbl-wrap"><table>
+      <thead><tr><th>Bank</th><th class="r">Movements</th><th class="r">Reconciled</th><th class="r">To reconcile</th><th>Last movement</th><th class="r">Balance</th></tr></thead>
+      <tbody>${banks.map(x => `<tr>
+        <td>${BANK_LABEL[x.b]}</td>
+        <td class="r">${x.n}</td>
+        <td class="r">${x.done} <span class="muted">(${pct(x)} %)</span></td>
+        <td class="r">${x.open ? `<span class="badge badge-amber">${x.open} · ${eur(x.openEur)}</span>` : '<span class="badge badge-green">none</span>'}</td>
+        <td>${x.last ? fmtDia(x.last) : '—'}</td>
+        <td class="r">${x.bal != null ? eur(x.bal) : '—'}</td>
+      </tr>`).join('')}</tbody></table></div>`;
+  const badge = s => s.done
+    ? (s.key === 'matched' ? '<span class="badge badge-green">Matched</span>' : `<span class="badge badge-grey" title="${escapeHtml(s.hint || '')}">${escapeHtml(s.label)}</span>`)
+    : `<span class="badge badge-amber" title="${escapeHtml(s.hint || '')}">${escapeHtml(s.label)}</span>`;
+  const linkCell = r => {
+    if (!r.lines.length) return r.s.hint && r.s.key === 'note' ? `<span class="muted">${escapeHtml(r.s.hint.slice(0, 90))}</span>` : '';
+    return r.lines.slice(0, 3).map(l => {
+      const doc = l.drive_link ? ` <a class="file-link" href="${escapeHtml(l.drive_link)}" target="_blank" rel="noopener" title="${escapeHtml(l.file_name || '')}">PDF</a>`
+        : l.file_url ? ` <a class="file-link" href="#" onclick="openInvoiceFile('${l.file_url}');return false;">PDF</a>` : ' <span class="badge badge-amber">no PDF</span>';
+      return `${escapeHtml(l.company || '—')}${l.invoice_number ? ` <span class="mono muted">${escapeHtml(l.invoice_number)}</span>` : ''} · ${eur(l.amount_eur)}${doc}`;
+    }).join('<br>') + (r.lines.length > 3 ? `<br><span class="muted">+${r.lines.length - 3} more</span>` : '');
+  };
+  const shown = RECON_ROWS.slice(0, 500);
+  body.innerHTML = summary + (RECON_ROWS.length ? `
+    <div class="tbl-wrap" style="margin-top:var(--sp-3)"><table>
+      <thead><tr><th>Date</th><th>Bank</th><th>Description</th><th class="r">Amount</th><th>Status</th><th>Pays / reason</th></tr></thead>
+      <tbody>${shown.map(r => `<tr>
+        <td style="white-space:nowrap">${fmtDia(r.m.movement_date)}</td>
+        <td>${BANK_LABEL[r.m.bank] || r.m.bank}</td>
+        <td class="mono" style="max-width:320px;white-space:normal">${escapeHtml(r.m.description || '')}</td>
+        <td class="r" style="white-space:nowrap">${eur(r.m.amount)}</td>
+        <td>${badge(r.s)}</td>
+        <td style="white-space:normal;min-width:220px">${linkCell(r)}</td>
+      </tr>`).join('')}</tbody></table></div>
+    ${RECON_ROWS.length > shown.length ? `<p class="muted" style="margin-top:var(--sp-2)">Showing the latest 500 of ${RECON_ROWS.length}. Pick a month or a bank, or download the full list.</p>` : ''}`
+    : `<div class="empty-state">${AppShell.icon('check')}<div class="empty-title">Nothing here</div><p>No movement matches these filters.</p></div>`);
+}
+
+function downloadBankRecon(){
+  const esc = v => { const t = String(v ?? ''); return /[",;\r\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; };
+  const head = ['Data','Banco','Descrição','Montante','Saldo','Estado','Fornecedor','N.º documento','Valor das linhas','PDF','Nota'];
+  const lines = [head.join(',')];
+  RECON_ROWS.forEach(r => {
+    const sum = r.lines.reduce((s, l) => s + Number(l.amount_eur || 0), 0);
+    lines.push([
+      r.m.movement_date, BANK_LABEL[r.m.bank] || r.m.bank, r.m.description, Number(r.m.amount).toFixed(2),
+      r.m.balance != null ? Number(r.m.balance).toFixed(2) : '', r.s.label,
+      r.lines.map(l => l.company).join(' + '), r.lines.map(l => l.invoice_number || '').filter(Boolean).join(' + '),
+      r.lines.length ? sum.toFixed(2) : '', r.lines.map(l => l.drive_link || '').filter(Boolean).join(' '),
+      r.lines.length ? '' : (r.m.notes || '')
+    ].map(esc).join(','));
+  });
+  const period = $('cf_period')?.value || '__all__';
+  const bank = $('rc_bank')?.value || '__all__';
+  saveBlob(new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' }),
+    `banco-${bank === '__all__' ? 'todos' : bank}-${period === '__all__' ? 'tudo' : period}-${RECON_ROWS.length}mov.csv`);
 }
 
 function wireTransferForm(){

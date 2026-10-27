@@ -1979,3 +1979,37 @@ test('surf-school: Clientes groups the same person and searches by email or ID',
   expect(r.html).toContain('Lucy@Mail.com');
 });
 
+
+test('hq: bank reconciliation — each movement is matched, explained, or left to reconcile', async ({ page }) => {
+  // Miguel, 27 Oct 2026: see per bank which payments are reconciled, filter by bank,
+  // and the invoice each one pays.
+  await fakeOwnerSession(page);
+  await page.goto('/hq/index.html');
+  await page.waitForFunction(() => typeof reconStatus === 'function');
+  const out = await page.evaluate(() => {
+    const line = (amt) => ({ id: 'l' + amt, company: 'x', amount_eur: amt });
+    return {
+      matched: reconStatus({ amount: -208.21, kind: 'expense' }, [line(208.21)]).key,
+      split: reconStatus({ amount: -418.2, kind: 'expense' }, [line(209.1), line(209.1)]).key,
+      diff: reconStatus({ amount: -276.5, kind: 'expense' }, [line(266.5)]).key,
+      creditNote: reconStatus({ amount: 479, kind: 'income' }, [line(-479)]).key,
+      transfer: reconStatus({ amount: -5000, kind: 'internal_transfer' }, []).label,
+      cards: reconStatus({ amount: -168.89, kind: 'card_settlement' }, []).done,
+      stripe: reconStatus({ amount: 3007.55, kind: 'income', description: 'TRF CRED SEPA+ DE STRIPE TECHNOLOGY EUROP' }, []).done,
+      noted: reconStatus({ amount: -703.13, kind: 'expense', notes: '[empréstimo Turismo de Portugal]' }, []).key,
+      open: reconStatus({ amount: -90, kind: 'expense', description: 'TRF.IMED. P/ X' }, []).done,
+      moneyIn: reconStatus({ amount: 540, kind: 'income', description: 'TRF S JOAO SUNSET CLU' }, []).label,
+      bankFilter: !!document.getElementById('filter_bank') && [...document.querySelectorAll('#filter_bank option')].map(o => o.value).join(','),
+    };
+  });
+  expect(out.matched).toBe('matched');
+  expect(out.split).toBe('matched');
+  expect(out.diff).toBe('diff');
+  expect(out.creditNote).toBe('matched');
+  expect(out.transfer).toBe('Between own accounts');
+  expect(out.cards).toBe(true);
+  expect(out.stripe).toBe(true);
+  expect(out.noted).toBe('note');
+  expect(out.open).toBe(false);
+  expect(out.moneyIn).toBe('Money in — say what it is');
+});
