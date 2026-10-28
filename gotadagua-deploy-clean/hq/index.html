@@ -174,7 +174,7 @@ td.loc-name{font-weight:600;color:var(--navy)}
 <nav class="app-nav" id="appNav"></nav>
 <script>
 AppShell.mount('appNav', { app:'hq', tabAttr:'data-tab', tabsId:'hqNavTabs', tabsHidden:true, user:false,
-  tabs:[{ id:'overview', label:'Overview', onclick:"switchTab('overview')", active:true }, { id:'invoices', label:'Expenses', onclick:"switchTab('invoices')" }, { id:'cashflow', label:'Cash flow', onclick:"switchTab('cashflow')" }, { id:'invest', label:'Investments', onclick:"switchTab('invest')" }],
+  tabs:[{ id:'overview', label:'Overview', onclick:"switchTab('overview')", active:true }, { id:'invoices', label:'Expenses', onclick:"switchTab('invoices')" }, { id:'cashflow', label:'Cash flow', onclick:"switchTab('cashflow')" }, { id:'fecho', label:'Month close', onclick:"switchTab('fecho')" }, { id:'invest', label:'Investments', onclick:"switchTab('invest')" }],
   actions:'<span class="user-chip" id="userBadge">…</span>' });
 </script>
 
@@ -367,6 +367,7 @@ function render(){
     <div class="tab-pane active" id="tab-overview">${overviewTabHtml()}</div>
     <div class="tab-pane" id="tab-invoices">${invoicesTabHtml()}</div>
     <div class="tab-pane" id="tab-cashflow">${cashflowTabHtml()}</div>
+    <div class="tab-pane" id="tab-fecho">${fechoTabHtml()}</div>
     <div class="tab-pane" id="tab-invest">${investTabHtml()}</div>
   `;
   mountExpenseForm();
@@ -379,7 +380,7 @@ function render(){
     const q = new URLSearchParams(location.search);
     const tab = q.get('tab');
     if (q.get('filter')) goToInvoicesFilter(q.get('filter'));
-    else if (tab === 'fecho' || (tab && document.getElementById('tab-' + tab))) switchTab(tab);
+    else if (tab && document.getElementById('tab-' + tab)) switchTab(tab);
     if (q.get('recurring') === '1') setTimeout(() => { try { openRecurringPanel(); } catch (_e) {} }, 300);
   } catch (_e) {}
 }
@@ -404,13 +405,11 @@ function openAddExpense(){
 }
 
 function switchTab(name){
-  // Month close lives at the top of Expenses since 28 Oct 2026 (one tab for
-  // «what is missing → attach → send the pack»); old links still work.
-  if (name === 'fecho') { switchTab('invoices'); setTimeout(() => { const c = $('fechoCard'); if (c) c.scrollIntoView({ behavior:'smooth', block:'start' }); }, 60); return; }
   document.querySelectorAll('.ntab[data-tab],.ntab-m[data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
   document.querySelectorAll('.tab-pane').forEach(p => p.classList.toggle('active', p.id === 'tab-'+name));
   if (name === 'overview') { renderOverview(); }
-  if (name === 'invoices') { renderInvoiceList(); renderFecho(); }
+  if (name === 'invoices') { renderInvoiceList(); }
+  if (name === 'fecho') { renderFecho(); }
   if (name === 'cashflow') { renderCashflow(); }
   if (name === 'invest') { renderInvest(); }
 }
@@ -1057,8 +1056,6 @@ function invoicesTabHtml(){
         <button type="button" class="btn btn-p" onclick="openAddExpense()">${ic('plus')} Add expense</button>
       </div>
     </div>
-
-    ${fechoBlockHtml()}
 
     <div class="hq-filters" style="margin-bottom:var(--sp-3)">
       <div class="hq-pills" id="periodoPills">
@@ -2607,54 +2604,45 @@ function fechoDefaultMonth(){
   return `${prev.getUTCFullYear()}-${String(prev.getUTCMonth()+1).padStart(2,'0')}`;
 }
 function fechoMonthLabel(key){ const [y,m] = String(key||'').split('-').map(Number); return m ? `${MONTHS_EN[m-1]} ${y}` : key; }
-function fechoBlockHtml(){
+function fechoTabHtml(){
   const months = [];
   const now = new Date();
   for (let i = 0; i < 14; i++) { const d = new Date(Date.UTC(now.getFullYear(), now.getMonth() - i, 1)); const k = `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}`; if (k >= '2026-01') months.push(k); }
   const def = fechoDefaultMonth();
   const ic = (n) => AppShell.icon(n);
   return `
-    <section id="fechoCard" class="fecho-block" style="margin-bottom:var(--sp-5)">
-      <div class="section-head" style="margin-bottom:var(--sp-3)">
+    <div class="section-head page-head">
+      <div>
+        <div class="section-title">Month close</div>
+        <div class="section-sub">1 · see what is missing &nbsp; 2 · attach the invoices or add the debits &nbsp; 3 · send the pack to the accountant.</div>
+      </div>
+      <div class="hq-filters">
+        <label class="period-picker"><span class="period-picker-lbl">Month</span>
+          <select id="fecho_mes" onchange="renderFecho()">
+            ${months.map(k => `<option value="${k}"${k===def?' selected':''}>${fechoMonthLabel(k)}</option>`).join('')}
+          </select>
+        </label>
+      </div>
+    </div>
+    <div id="fechoToast" style="margin-bottom:var(--sp-3)"></div>
+    <input id="fecho_file" type="file" accept="application/pdf,image/*" style="display:none" onchange="fechoFileChosen(this)">
+    <div id="fecho_kpis" class="summary-grid"></div>
+    <div id="fechoMail"></div>
+    <div id="fechoBody"><div class="loading">Loading…</div></div>
+    <div class="card" id="fechoSend">
+      <div class="card-hdr">
         <div>
-          <div class="card-title">Month close</div>
-          <div class="card-hint">What is missing for the month — attach the invoices or add the debits, then send the pack to the accountant.</div>
-        </div>
-        <div class="hq-filters">
-          <label class="period-picker"><span class="period-picker-lbl">Month</span>
-            <select id="fecho_mes" onchange="renderFecho();fechoSyncList()">
-              ${months.map(k => `<option value="${k}"${k===def?' selected':''}>${fechoMonthLabel(k)}</option>`).join('')}
-            </select>
-          </label>
+          <div class="card-title">Send to the accountant</div>
+          <div class="card-hint">The Excel of the month and its invoices (Drive folder) — print or send, then tick it.</div>
         </div>
       </div>
-      <div id="fechoToast" style="margin-bottom:var(--sp-3)"></div>
-      <input id="fecho_file" type="file" accept="application/pdf,image/*" style="display:none" onchange="fechoFileChosen(this)">
-      <div id="fecho_kpis" class="summary-grid"></div>
-      <div id="fechoMail"></div>
-      <div id="fechoBody"><div class="loading">Loading…</div></div>
-      <div class="card">
-        <div class="card-hdr">
-          <div>
-            <div class="card-title">Send to the accountant</div>
-            <div class="card-hint">The Excel of the month and its invoices (Drive folder) — print or send, then tick it.</div>
-          </div>
-        </div>
-        <div class="card-body hq-filters" style="padding-top:4px">
-          <button class="btn btn-s" onclick="fechoDownloadExcel()">${ic('download')} Download Excel</button>
-          <button class="btn btn-s" onclick="fechoOpenPortal()">${ic('external')} Accountant page</button>
-          <span id="fecho_links" class="hq-filters"></span>
-          <span id="fecho_pack" style="margin-left:auto"></span>
-        </div>
+      <div class="card-body hq-filters" style="padding-top:4px">
+        <button class="btn btn-p" onclick="fechoDownloadExcel()">${ic('download')} Download Excel</button>
+        <button class="btn btn-s" onclick="fechoOpenPortal()">${ic('external')} Accountant page</button>
+        <span id="fecho_links" class="hq-filters"></span>
+        <span id="fecho_pack" style="margin-left:auto"></span>
       </div>
-    </section>`;
-}
-// The month picked in Month close also filters the expense list below it.
-function fechoSyncList(){
-  const m = $('fecho_mes')?.value; if (!m) return;
-  if (typeof clearAllFilters === 'function') clearAllFilters();
-  const f = $('filter_month'); if (f) f.value = m;
-  hqPeriodo = null; renderInvoiceList();
+    </div>`;
 }
 // ── Invoices that arrived by email (supabase/functions/mail-ingest): what the
 //    harvester did and what it could not decide (buyer unknown). «Water» /
@@ -2853,6 +2841,7 @@ function fechoPaint(){
       <summary class="sum-title" style="padding:16px var(--card-pad)">No invoice exists <span class="badge badge-grey">${naoExiste.length}</span> <span class="card-hint">bank fees, leasing, ads, PayPal…</span></summary>
       <div class="card-body hint" style="padding-top:0">${naoExiste.map(r => `${fmtDia(r.invoice_date)} · ${esc(r.company||'')} · ${eur(r.amount_eur)}`).join('<br>') || '—'}</div>
     </details>
+    <div class="hq-filters" style="margin:0 0 var(--sp-4)"><button class="btn btn-s" onclick="goToMonthExpenses('${month}')">All ${FECHO.rows.length} expenses of ${fechoMonthLabel(month)} in Expenses ${ic('arrow-right')}</button></div>
 `;
 }
 function esc(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }

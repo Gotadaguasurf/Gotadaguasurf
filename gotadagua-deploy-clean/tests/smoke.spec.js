@@ -1350,7 +1350,7 @@ test('hq: saving an instructor payment splits it by the lessons they logged (one
   expect(errs).toEqual([]);
 });
 
-test('hq: Month close on top of Expenses — what lacks an invoice, bank debits with no row, Drive links, the «pack sent» tick, and "Lançar" prefills the expense form', async ({ page }) => {
+test('hq: Month close tab — what lacks an invoice, bank debits with no row, Drive links, the «pack sent» tick, and "Lançar" prefills the expense form', async ({ page }) => {
   // Miguel, 6 Oct 2026: the month's checklist lives in the app, with
   // "Anexar" (file → drive-upload → Drive folder) and "Colar link" per row.
   const updates = [];
@@ -1379,9 +1379,9 @@ test('hq: Month close on top of Expenses — what lacks an invoice, bank debits 
   const errs = []; page.on('pageerror', e => errs.push(e.message));
   await fakeOwnerSession(page);
   await page.goto('/hq/', { waitUntil: 'domcontentloaded' });
-  await page.waitForFunction(() => typeof renderFecho === 'function' && document.querySelector('#tab-invoices #fecho_mes'));
-  // Miguel, 28 Oct 2026: one tab — no separate «Month close» tab; old links open Expenses.
-  expect(await page.evaluate(() => !!document.querySelector('[data-tab="fecho"]'))).toBe(false);
+  await page.waitForFunction(() => typeof renderFecho === 'function' && document.querySelector('[data-tab="fecho"]'));
+  // Miguel, 28 Oct 2026: two tabs (merged was confusing) — Expenses stays the list, without the month-close block.
+  expect(await page.evaluate(() => !!document.querySelector('#tab-invoices #fecho_mes'))).toBe(false);
   await page.evaluate(() => switchTab('fecho'));
   await page.selectOption('#fecho_mes', '2026-09');
   await page.waitForFunction(() => /Missing invoice/.test(document.querySelector('#fechoBody')?.textContent || '') && !/Loading/.test(document.querySelector('#fechoBody')?.textContent || ''), null, { timeout: 15000 });
@@ -1396,7 +1396,7 @@ test('hq: Month close on top of Expenses — what lacks an invoice, bank debits 
     checks: [...document.querySelectorAll('#fecho_pack input[type=checkbox]')].map(c => c.checked),
     bank: document.querySelector('#fechoBody').textContent.includes('LEROY MERLIN COVA PIEDADE'),
     active: document.querySelector('.ntab.active')?.dataset.tab,
-    blue: [...document.querySelectorAll('#tab-invoices .page-head .btn-p, #fechoCard .btn-p')].map(b => b.textContent.trim()),
+    blue: [...document.querySelectorAll('#tab-fecho .btn-p')].map(b => b.textContent.trim()),
   }));
   expect(out.kpis[0]).toBe('Expenses 6 · 5 invoices');
   expect(out.kpis[1]).toBe('Missing invoice 2 · €670.00');          // prio + pietro's split receipt (510 + 120): google ads never has one, safari was marked "sem fatura"
@@ -1410,8 +1410,8 @@ test('hq: Month close on top of Expenses — what lacks an invoice, bank debits 
   expect(out.splitAttach).toBe("fechoAttach('i5,i6')");
   expect(out.checks).toEqual([false]);          // only «Pack sent to the accountant» (the e-Fatura/Drive ticks were never used)
   expect(out.bank).toBe(true);
-  expect(out.active).toBe('invoices');
-  expect(out.blue).toEqual(['Add expense']);     // one blue button per view
+  expect(out.active).toBe('fecho');
+  expect(out.blue).toEqual(['Download Excel']);  // one blue button per view: the last step of the job
   // "Lançar" jumps to Expenses with date, amount and a supplier guess filled in.
   await page.evaluate(() => fechoLaunch('bk1'));
   await page.waitForFunction(() => document.querySelector('#inv_amount')?.value === '274.19', null, { timeout: 5000 });
