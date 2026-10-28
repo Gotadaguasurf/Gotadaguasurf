@@ -614,7 +614,7 @@ body{min-height:100dvh}
       <div class="modal monthly-expenses-modal">
         <div class="mhdr">
           <div class="mhdr-title">Monthly Expenses</div>
-          <div class="mhdr-sub">Staff salaries and fixed monthly costs. Added automatically on the last day of each month; use 'Add all now' to post a month early.</div>
+          <div class="mhdr-sub">Fixed monthly costs (rent, internet…). Added automatically on the last day of each month; use 'Add all now' to post a month early. Salaries are added by hand in the ledger.</div>
         </div>
         <div class="mbody">
           <div class="monthly-expenses-shell">
@@ -634,65 +634,6 @@ body{min-height:100dvh}
             <button class="btn btn-p" id="monthlyAddAllBtn" onclick="addAllMonthlyNow()">Add all now</button>
           </div>
         </div>
-      </div>
-      <div class="exp-recurring-block" id="salarySection">
-        <div class="exp-recurring-block-head">
-          <div>
-            <div class="exp-recurring-block-title">Staff salaries</div>
-            <div class="exp-recurring-block-sub">Keep the team here with season and off-season amounts. Salaries are always added as bank transfer entries, using the salary mode you choose for that month.</div>
-          </div>
-          <div class="exp-recurring-toolbar">
-            <div class="exp-inline-note">Salary month mode</div>
-            <div class="exp-mode-toggle">
-              <button class="btn btn-s" id="salaryModeSeasonBtn" onclick="setSalaryMode('season')">Season</button>
-              <button class="btn btn-s" id="salaryModeOffBtn" onclick="setSalaryMode('off')">Off-season</button>
-            </div>
-          </div>
-        </div>
-        <div class="exp-recurring-form" id="salaryForm">
-          <div class="mfield" style="margin-bottom:0">
-            <label>Name</label>
-            <input id="salary_name" placeholder="Name">
-          </div>
-          <div class="mfield" style="margin-bottom:0" id="salary_type_wrap">
-            <label>Type</label>
-            <select id="salary_type" onchange="toggleSalaryTypeFields()">
-              <option value="seasonal">Seasonal</option>
-              <option value="fixed">Fixed</option>
-            </select>
-          </div>
-          <div class="mfield" style="margin-bottom:0">
-            <label>Currency</label>
-            <select id="salary_currency" onchange="toggleSalaryTypeFields()">
-              <option value="LKR" id="salary_currency_local">LKR</option>
-              <option value="EUR">EUR</option>
-            </select>
-          </div>
-          <div class="mfield" style="margin-bottom:0" id="salary_season_wrap">
-            <label>Season (LKR)</label>
-            <input type="number" id="salary_season" min="0" step="0.01" placeholder="000">
-          </div>
-          <div class="mfield" style="margin-bottom:0" id="salary_off_wrap">
-            <label>Off-season (LKR)</label>
-            <input type="number" id="salary_off" min="0" step="0.01" placeholder="000">
-          </div>
-          <div class="mfield" style="margin-bottom:0;display:none" id="salary_fixed_wrap">
-            <label>Fixed monthly (LKR)</label>
-            <input type="number" id="salary_fixed" min="0" step="0.01" placeholder="000">
-          </div>
-          <div class="mfield" style="margin-bottom:0">
-            <label>Paid via</label>
-            <select id="salary_payment">
-              <option value="Bank Transfer">Bank Transfer</option>
-              <option value="Cash">Cash</option>
-            </select>
-          </div>
-          <div class="exp-recurring-form-actions">
-            <button class="btn btn-s" onclick="resetSalaryForm()">Clear</button>
-            <button class="btn btn-p" id="salarySaveBtn" onclick="saveSalaryProfile()">Save salary</button>
-          </div>
-        </div>
-        <div id="salaryProfilesList"></div>
       </div>
       <div class="exp-recurring-block" id="fixedCostsSection">
         <div class="exp-recurring-block-head">
@@ -1579,7 +1520,9 @@ function normalizeState(raw){
     weeks:Array.isArray(base.weeks)?base.weeks:[],
     ledger:(Array.isArray(base.ledger)?base.ledger:[]).map(normalizeLedgerEntry).filter(Boolean),
     recurring:(Array.isArray(base.recurring)?base.recurring:[]).map(normalizeRecurringRule).filter(Boolean),
-    salaryProfiles:(Array.isArray(base.salaryProfiles)?base.salaryProfiles:[]).map(normalizeSalaryProfile).filter(profile=>profile&&profile.name),
+    // Salaries are no longer automatic (Miguel, 28 Oct 2026): they are added by hand
+    // from the bank / cash, so the hub never keeps salary profiles.
+    salaryProfiles:[],
     salaryMode:base.salaryMode==='off'?'off':'season'
   };
 }
@@ -1638,11 +1581,6 @@ function ensureRecurringDefaults(){
   FIXED_MONTHLY_DEFAULTS.forEach(rule=>{
     if(existingRecurringNames.has(rule.name.toLowerCase())) return;
     S.recurring.push(normalizeRecurringRule(rule));
-  });
-  const existingSalaryNames=new Set((S.salaryProfiles||[]).map(profile=>String(profile.name||'').trim().toLowerCase()));
-  SALARY_PROFILE_DEFAULTS.forEach(profile=>{
-    if(existingSalaryNames.has(profile.name.toLowerCase())) return;
-    S.salaryProfiles.push(normalizeSalaryProfile(profile));
   });
   if(!S.salaryMode) S.salaryMode='season';
   save();
@@ -3023,8 +2961,8 @@ async function hydrateMonthlyProfilesFromSupabase({mergeLocal=true}={}){
   existing.forEach(row=>{
     const mapped=monthlyCostRowToLocal(row);
     if(!mapped?.profile) return;
-    if(mapped.kind==='salary') salaries.push(mapped.profile);
-    else recurring.push(mapped.profile);
+    if(mapped.kind==='salary') return;
+    recurring.push(mapped.profile);
   });
   S.salaryProfiles=salaries;
   S.recurring=recurring;
@@ -8218,6 +8156,7 @@ function setSalaryMode(mode){
   toast(`Salary mode set to ${salaryModeLabel()}`);
 }
 function renderSalaryProfiles(){
+  if(!document.getElementById('salaryProfilesList')) return;
   refreshSalaryModeButtons();
   refreshSalarySaveButton();
   toggleSalaryTypeFields();
