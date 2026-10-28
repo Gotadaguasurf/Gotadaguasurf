@@ -7834,6 +7834,17 @@ function buildMonthlyLedgerEntry(sourceId,dueDate,fields){
     ...fields
   });
 }
+// Same day, same amount, same category and type already in this ledger? Ask
+// before saving a second one (Miguel, 28 Oct 2026: no repeated lines).
+function similarLedgerEntry(p){
+  const amt=Number(p?.amountLocal??p?.amount??0);
+  return (S.ledger||[]).find(e=>e&&e.id!==p.id&&e.type===p.type&&e.date===p.date&&(e.category||'')===(p.category||'')&&Math.abs(Number(e.amountLocal??e.amount??0)-amt)<0.01)||null;
+}
+function confirmNotRepeated(p){
+  const twin=similarLedgerEntry(p);
+  if(!twin) return true;
+  return confirm(`There is already a ${twin.category||twin.type} line of ${Number(twin.amountLocal??twin.amount??0)} on ${twin.date}${twin.description?` (${twin.description})`:''}.\n\nSave this one too?`);
+}
 async function saveQuickExpense(){
   if(!await requireHubReady()) return;
   const type=document.getElementById('qe_type')?.value||'expense';
@@ -7845,6 +7856,7 @@ async function saveQuickExpense(){
   await syncFxRateForPrefix('qe');
   let payload=buildLedgerPayload('qe',type,'qe'+Date.now()+Math.random().toString(36).slice(2,5));
   if(!payload){toast('Date and amount required');return;}
+  if(!confirmNotRepeated(payload)) return;
   payload=await enrichLedgerEntryFx(payload);
   try{
     await commitLedgerEntry(payload,'quick ledger save');
@@ -8933,6 +8945,7 @@ async function saveExpense(){
   await syncFxRateForPrefix('em');
   let payload=buildLedgerPayload('em',expModalType,editingLedgerId||('e'+Date.now()+Math.random().toString(36).slice(2,6)));
   if(!payload){toast('Date and amount required');return;}
+  if(!editingLedgerId&&!confirmNotRepeated(payload)) return;
   payload=await enrichLedgerEntryFx(payload);
   // Supabase-first: write to Supabase BEFORE mutating S.ledger. For
   // edits, capture the old entry first so we can restore it if the

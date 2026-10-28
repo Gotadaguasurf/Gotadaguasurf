@@ -174,7 +174,7 @@ td.loc-name{font-weight:600;color:var(--navy)}
 <nav class="app-nav" id="appNav"></nav>
 <script>
 AppShell.mount('appNav', { app:'hq', tabAttr:'data-tab', tabsId:'hqNavTabs', tabsHidden:true, user:false,
-  tabs:[{ id:'overview', label:'Overview', onclick:"switchTab('overview')", active:true }, { id:'invoices', label:'Expenses', onclick:"switchTab('invoices')" }, { id:'cashflow', label:'Cash flow', onclick:"switchTab('cashflow')" }, { id:'fecho', label:'Month close', onclick:"switchTab('fecho')" }, { id:'invest', label:'Investments', onclick:"switchTab('invest')" }],
+  tabs:[{ id:'overview', label:'Overview', onclick:"switchTab('overview')", active:true }, { id:'invoices', label:'Expenses', onclick:"switchTab('invoices')" }, { id:'cashflow', label:'Cash flow', onclick:"switchTab('cashflow')" }, { id:'invest', label:'Investments', onclick:"switchTab('invest')" }],
   actions:'<span class="user-chip" id="userBadge">…</span>' });
 </script>
 
@@ -367,7 +367,6 @@ function render(){
     <div class="tab-pane active" id="tab-overview">${overviewTabHtml()}</div>
     <div class="tab-pane" id="tab-invoices">${invoicesTabHtml()}</div>
     <div class="tab-pane" id="tab-cashflow">${cashflowTabHtml()}</div>
-    <div class="tab-pane" id="tab-fecho">${fechoTabHtml()}</div>
     <div class="tab-pane" id="tab-invest">${investTabHtml()}</div>
   `;
   mountExpenseForm();
@@ -380,7 +379,7 @@ function render(){
     const q = new URLSearchParams(location.search);
     const tab = q.get('tab');
     if (q.get('filter')) goToInvoicesFilter(q.get('filter'));
-    else if (tab && document.getElementById('tab-' + tab)) switchTab(tab);
+    else if (tab === 'fecho' || (tab && document.getElementById('tab-' + tab))) switchTab(tab);
     if (q.get('recurring') === '1') setTimeout(() => { try { openRecurringPanel(); } catch (_e) {} }, 300);
   } catch (_e) {}
 }
@@ -405,12 +404,14 @@ function openAddExpense(){
 }
 
 function switchTab(name){
+  // Month close lives at the top of Expenses since 28 Oct 2026 (one tab for
+  // «what is missing → attach → send the pack»); old links still work.
+  if (name === 'fecho') { switchTab('invoices'); setTimeout(() => { const c = $('fechoCard'); if (c) c.scrollIntoView({ behavior:'smooth', block:'start' }); }, 60); return; }
   document.querySelectorAll('.ntab[data-tab],.ntab-m[data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
   document.querySelectorAll('.tab-pane').forEach(p => p.classList.toggle('active', p.id === 'tab-'+name));
   if (name === 'overview') { renderOverview(); }
-  if (name === 'invoices') { renderInvoiceList(); }
+  if (name === 'invoices') { renderInvoiceList(); renderFecho(); }
   if (name === 'cashflow') { renderCashflow(); }
-  if (name === 'fecho') { renderFecho(); }
   if (name === 'invest') { renderInvest(); }
 }
 
@@ -1041,13 +1042,13 @@ function invoicesTabHtml(){
     <div class="section-head page-head">
       <div>
         <div class="section-title">Expenses</div>
-        <div class="section-sub">Everything paid by HQ — one row per expense, with its invoice. Bulk upload reads many PDFs at once.</div>
+        <div class="section-sub">Everything paid by HQ — one row per expense, with its invoice.</div>
       </div>
       <div class="hq-filters">
-        <button class="btn btn-s" onclick="openAccountantPanel()">${ic('package')} Accountant pack</button>
         <details class="hq-menu">
           <summary class="btn btn-s">More ${ic('chevron-down')}</summary>
           <div class="hq-menu-list">
+            <button onclick="openAccountantPanel()">${ic('package')} Accountant pack (any period)</button>
             <button onclick="exportInvoicesCsv()">${ic('download')} Export CSV</button>
             <button onclick="openRecurringPanel()">${ic('clock')} Recurring expenses</button>
             <button onclick="openCategoryPanel()">${ic('settings')} Categories</button>
@@ -1056,6 +1057,8 @@ function invoicesTabHtml(){
         <button type="button" class="btn btn-p" onclick="openAddExpense()">${ic('plus')} Add expense</button>
       </div>
     </div>
+
+    ${fechoBlockHtml()}
 
     <div class="hq-filters" style="margin-bottom:var(--sp-3)">
       <div class="hq-pills" id="periodoPills">
@@ -1628,6 +1631,65 @@ async function insertInvoiceRows(payload){
   return { data: await sb.from('hq_invoices').insert(rows), rows: rows.length, split: sp };
 }
 
+// ── Repeated expenses (Miguel, 28 Out 2026). The same file is always caught by
+//    its SHA-256, even when the invoice reader spells the supplier differently.
+//    A line with the same € amount, a date within 10 days and the same
+//    supplier word is the line the invoice belongs to: when it has no document
+//    yet, the invoice is attached to it instead of creating a second row (the
+//    usual case: the row came from the bank debit before the invoice arrived).
+async function fileSha256(file){
+  try {
+    if (!file || !window.crypto?.subtle) return null;
+    const h = await crypto.subtle.digest('SHA-256', await file.arrayBuffer());
+    return [...new Uint8Array(h)].map(b => b.toString(16).padStart(2, '0')).join('');
+  } catch (_e) { return null; }
+}
+const SUPPLIER_STOPWORDS = new Set(['sociedade','unipessoal','lda','ltda','ltd','limited','the','sarl','cia','unip','compra','trf','imed','sepa','emitida']);
+function supplierKey(name){
+  return String(name||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]/g, ' ')
+    .split(/\s+/).find(w => w.length >= 3 && !SUPPLIER_STOPWORDS.has(w) && !/^\d+$/.test(w)) || '';
+}
+function expenseHasDoc(r){ return !!(r && (r.drive_link || r.file_name || r.file_url)); }
+async function findExistingExpense({ sha, invoice_number, amount, amount_eur, company, invoice_date, excludeIds = [] }){
+  const out = { sameFile: null, sameNumber: null, similar: [] };
+  const skip = new Set(excludeIds);
+  const cols = 'id, invoice_date, company, amount_eur, drive_link, file_name, file_url, invoice_number, supplier_nif, notes, location_slug';
+  if (sha) {
+    const { data } = await sb.from('hq_invoices').select(cols).eq('file_sha256', sha).is('deleted_at', null).limit(5);
+    out.sameFile = (data || []).find(r => !skip.has(r.id)) || null;
+  }
+  if (invoice_number && amount > 0 && company) {
+    const { data } = await sb.from('hq_invoices').select(cols).eq('invoice_number', invoice_number).eq('amount', amount)
+      .ilike('company', company).is('deleted_at', null).order('created_at', { ascending: true }).limit(5);
+    out.sameNumber = (data || []).find(r => !skip.has(r.id)) || null;
+  }
+  const v = Math.round((Number(amount_eur) || 0) * 100) / 100;
+  if (v > 0 && /^\d{4}-\d{2}-\d{2}$/.test(String(invoice_date || ''))) {
+    const d = Date.parse(invoice_date + 'T00:00:00Z');
+    const day = (t) => new Date(t).toISOString().slice(0, 10);
+    const { data } = await sb.from('hq_invoices').select(cols).is('deleted_at', null).eq('is_duplicate', false)
+      .gte('amount_eur', v - 0.011).lte('amount_eur', v + 0.011)
+      .gte('invoice_date', day(d - 10 * 864e5)).lte('invoice_date', day(d + 10 * 864e5)).limit(20);
+    const k = supplierKey(company);
+    out.similar = (data || []).filter(r => !skip.has(r.id) && (!k || supplierKey(r.company) === k || String(r.company || '').toLowerCase().includes(k)));
+  }
+  return out;
+}
+// Put a just-read invoice on the row that already exists (instead of a second row).
+async function attachInvoiceToExisting(target, f){
+  const day = new Date().toISOString().slice(0, 10);
+  const patch = {
+    file_name: f.file_name || target.file_name || null,
+    file_mime: f.file_mime || null,
+    file_sha256: f.file_sha256 || null,
+    notes: `${target.notes ? target.notes + ' ' : ''}[fatura anexada a esta linha em vez de criar outra — ${day}${f.file_name ? ': ' + f.file_name : ''}]`,
+  };
+  if (f.drive_link && !target.drive_link) patch.drive_link = f.drive_link;
+  if (f.invoice_number && !target.invoice_number) patch.invoice_number = f.invoice_number;
+  if (f.supplier_nif && !target.supplier_nif) patch.supplier_nif = f.supplier_nif;
+  return sb.from('hq_invoices').update(patch).eq('id', target.id);
+}
+
 async function saveInvoice(){
   const btn = $('saveInvBtn');
   btn.disabled = true;
@@ -1700,18 +1762,30 @@ async function saveInvoice(){
   // suddenly flag the row against itself.
   let is_duplicate = false;
   let duplicate_of = null;
-  if (!isEditing && invoice_number && amount > 0 && company) {
-    const { data: existing } = await sb.from('hq_invoices')
-      .select('id')
-      .eq('invoice_number', invoice_number)
-      .eq('amount', amount)
-      .ilike('company', company)
-      .is('deleted_at', null)
-      .order('created_at', { ascending: true })
-      .limit(1);
-    if (existing && existing.length) {
-      is_duplicate = true;
-      duplicate_of = existing[0].id;
+  let dupNote = null;
+  const pickedFile = fileInput?.files?.[0] || null;
+  const file_sha256 = pickedFile ? await fileSha256(pickedFile) : null;
+  if (!isEditing) {
+    const found = await findExistingExpense({ sha: file_sha256, invoice_number, amount, amount_eur, company, invoice_date });
+    const ref = (r) => `${fmtDia(r.invoice_date)} · ${r.company} · ${eur(r.amount_eur)}`;
+    if (found.sameFile) {
+      if (!confirm(`This file is already in the app:\n${ref(found.sameFile)}\n\nSave it again anyway? It will be marked as a duplicate and not counted.`)) { btn.disabled = false; return; }
+      is_duplicate = true; duplicate_of = found.sameFile.id;
+    } else if (found.sameNumber) {
+      is_duplicate = true; duplicate_of = found.sameNumber.id;
+    } else {
+      const target = found.similar.find(r => !expenseHasDoc(r));
+      if (target && confirm(`This expense is already in the app without an invoice:\n${ref(target)}\n\nAttach this invoice to that line instead of creating a new one?`)) {
+        const { error } = await attachInvoiceToExisting(target, { file_name, file_mime, file_sha256, drive_link, invoice_number, supplier_nif });
+        if (error) { toast('invToast','err',"Couldn't attach: " + error.message); btn.disabled = false; return; }
+        toast('invToast','ok', `Invoice attached to the existing line — ${ref(target)}`);
+        clearInvoiceForm(); btn.disabled = false;
+        if (typeof ExpenseForm !== 'undefined') ExpenseForm.close();
+        renderInvoiceList(); renderFecho();
+        return;
+      }
+      const twin = target || found.similar[0];
+      if (twin) dupNote = `[possível repetido de ${ref(twin)} — confirmar]`;
     }
   }
 
@@ -1727,10 +1801,12 @@ async function saveInvoice(){
     // Fresh manual save = clean, no review needed.
     needs_review: isEditing ? false : wasExtracted
   };
+  if (file_sha256) payload.file_sha256 = file_sha256;
   // Only stamp dedup fields on fresh inserts (editing preserves the DB state).
   if (!isEditing) {
     payload.is_duplicate = is_duplicate;
     payload.duplicate_of = duplicate_of;
+    if (dupNote) { payload.notes = [payload.notes, dupNote].filter(Boolean).join(' '); payload.needs_review = true; }
     payload.created_by = CURRENT_USER?.id || null;
   }
 
@@ -1748,7 +1824,7 @@ async function saveInvoice(){
   else           clearInvoiceForm();
   btn.disabled = false;
   if (typeof ExpenseForm !== 'undefined') ExpenseForm.close();
-  renderInvoiceList();
+  renderInvoiceList(); renderFecho();
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1849,6 +1925,7 @@ async function bulkProcessInvoices(){
                 ${s.state==='working'  ? '<span class="badge badge-amber">Reading…</span>' : ''}
                 ${s.state==='saved'    ? '<span class="badge badge-green">Saved</span>' : ''}
                 ${s.state==='error'    ? '<span class="badge badge-red">Failed</span>' : ''}
+                ${s.state==='skipped'  ? '<span class="badge badge-grey">Already in</span>' : ''}
               </td>
               <td class="hint">${escapeHtml(s.message||'')}</td>
             </tr>`).join('')}
@@ -1865,6 +1942,7 @@ async function bulkProcessInvoices(){
   let cursor = 0;
   let saved = 0;
   let failed = 0;
+  let skipped = 0;
 
   const processOne = async (idx) => {
     const file = files[idx];
@@ -1921,16 +1999,24 @@ async function bulkProcessInvoices(){
       //    linked + user can see the duplicate) but flag is_duplicate=true
       //    so the amber row + chip highlight it in the list.
       const cleanCompany = (ex.company || 'unknown').toString().trim();
-      let dupHit = false;
-      if (ex.invoice_number && amount > 0 && cleanCompany) {
-        const { data: existing } = await sb.from('hq_invoices')
-          .select('id')
-          .eq('invoice_number', ex.invoice_number)
-          .eq('amount', amount)
-          .ilike('company', cleanCompany)
-          .is('deleted_at', null)
-          .limit(1);
-        dupHit = !!(existing && existing.length);
+      const invDate = ex.invoice_date || new Date().toISOString().slice(0,10);
+      const sha = await fileSha256(file);
+      const found = await findExistingExpense({ sha, invoice_number: ex.invoice_number || null, amount, amount_eur, company: cleanCompany, invoice_date: invDate });
+      const ref = (r) => `${fmtDia(r.invoice_date)} · ${r.company} · ${eur(r.amount_eur)}`;
+      // The very same file is already in the app → nothing to add.
+      if (found.sameFile) { s.state = 'skipped'; s.message = `Already in the app (same file): ${ref(found.sameFile)}`; skipped++; renderStatus(); return; }
+      let dupHit = !!found.sameNumber;
+      let dupNote = null;
+      if (!dupHit) {
+        // A row for this expense exists without an invoice (usually made from
+        // the bank debit) → the invoice goes onto that row.
+        const target = found.similar.find(r => !expenseHasDoc(r));
+        if (target) {
+          const { error } = await attachInvoiceToExisting(target, { file_name: file.name, file_mime: file.type || null, file_sha256: sha, invoice_number: ex.invoice_number || null, supplier_nif: ex.supplier_nif || null });
+          if (error) throw new Error('attach: ' + error.message);
+          s.state = 'saved'; s.message = `Attached to the existing line: ${ref(target)}`; saved++; renderStatus(); return;
+        }
+        if (found.similar.length) dupNote = `[possível repetido de ${ref(found.similar[0])} — confirmar]`;
       }
 
       // 7. Build the row and insert. Everything is saved as needs_review
@@ -1938,7 +2024,7 @@ async function bulkProcessInvoices(){
       const payload = {
         location_slug: finalLoc,
         paying_company: finalPayCo,
-        invoice_date: ex.invoice_date || new Date().toISOString().slice(0,10),
+        invoice_date: invDate,
         company: cleanCompany,
         supplier_nif: ex.supplier_nif || null,
         description: ex.description || null,
@@ -1953,13 +2039,15 @@ async function bulkProcessInvoices(){
         drive_link: null,
         needs_review: true,
         is_duplicate: dupHit,
+        file_sha256: sha,
+        notes: dupNote,
         created_by: CURRENT_USER?.id || null
       };
       const ins = await insertInvoiceRows(payload);
       if (ins.data.error) throw new Error('save: '+ins.data.error.message);
 
       s.state = 'saved';
-      const dupTag = (dupHit ? ' · possible duplicate' : '') + (ins.rows > 1 ? ` · split in ${ins.rows} rows by lessons of ${ins.split.month}` : '');
+      const dupTag = (dupHit ? ' · possible duplicate' : (dupNote ? ' · possible repeat, check it' : '')) + (ins.rows > 1 ? ` · split in ${ins.rows} rows by lessons of ${ins.split.month}` : '');
       s.message = `${payload.company} · ${amount.toFixed(2)} ${currency} · ${payload.category_name || 'no category'} · ${locLabel(finalLoc)}${dupTag}`;
       saved++;
     } catch (e) {
@@ -1968,7 +2056,7 @@ async function bulkProcessInvoices(){
       failed++;
     }
     renderStatus();
-    btn.textContent = `Processing ${saved+failed} / ${files.length}…`;
+    btn.textContent = `Processing ${saved+failed+skipped} / ${files.length}…`;
   };
 
   // Run with a rolling window of CONCURRENCY workers pulling from the queue.
@@ -1991,10 +2079,10 @@ async function bulkProcessInvoices(){
 
   results.insertAdjacentHTML('afterbegin',
     `<div class="status-msg ${failed?'status-warn':'status-ok'}" style="margin-bottom:10px">
-      ${saved} imported${failed?` · ${failed} failed`:''} — each row is marked 'review': check it in the list below and approve.
+      ${saved} imported${skipped?` · ${skipped} already in the app (same file)`:''}${failed?` · ${failed} failed`:''} — each row is marked 'review': check it in the list below and approve.
     </div>`
   );
-  renderInvoiceList();
+  renderInvoiceList(); renderFecho();
 }
 
 function toggleManualExtras(){
@@ -2506,15 +2594,11 @@ function accWorkbook(XLSX, pack){
 // ═══════════════════════════════════════════════════════════════════
 //  Fecho do mês — a checklist viva do mês (Miguel, 6 Out 2026): o que
 //  falta de fatura, os débitos do banco sem linha, os links da Drive e
-//  três checks manuais. Cada linha a vermelho tem «Anexar» (o ficheiro vai
+//  o visto «pacote enviado». Desde 28 Out 2026 vive no topo de Expenses
+//  (uma tab só: ver o que falta → anexar → enviar). Cada linha a vermelho tem «Anexar» (o ficheiro vai
 //  pela Edge Function drive-upload direto para a pasta do mês — nada fica
 //  na app) e «Colar link». O Excel do contabilista é o mesmo mês.
 // ═══════════════════════════════════════════════════════════════════
-const FECHO_CHECKS = [
-  ['efatura', 'e-Fatura list from the accountant checked against the app'],
-  ['drive',   'Drive folder for the month tidy (proper names, no duplicates)'],
-  ['pacote',  'Pack sent to the accountant'],
-];
 let FECHO = { month: null, rows: [], bank: [], folders: [], checks: [], loading: false, showAll: false, filter: '' };
 
 function fechoDefaultMonth(){
@@ -2523,34 +2607,54 @@ function fechoDefaultMonth(){
   return `${prev.getUTCFullYear()}-${String(prev.getUTCMonth()+1).padStart(2,'0')}`;
 }
 function fechoMonthLabel(key){ const [y,m] = String(key||'').split('-').map(Number); return m ? `${MONTHS_EN[m-1]} ${y}` : key; }
-function fechoTabHtml(){
+function fechoBlockHtml(){
   const months = [];
   const now = new Date();
   for (let i = 0; i < 14; i++) { const d = new Date(Date.UTC(now.getFullYear(), now.getMonth() - i, 1)); const k = `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}`; if (k >= '2026-01') months.push(k); }
   const def = fechoDefaultMonth();
   const ic = (n) => AppShell.icon(n);
   return `
-    <div class="section-head page-head">
-      <div>
-        <div class="section-title">Month close</div>
-        <div class="section-sub">Check every expense has its invoice, then send the pack to the accountant.</div>
+    <section id="fechoCard" class="fecho-block" style="margin-bottom:var(--sp-5)">
+      <div class="section-head" style="margin-bottom:var(--sp-3)">
+        <div>
+          <div class="card-title">Month close</div>
+          <div class="card-hint">What is missing for the month — attach the invoices or add the debits, then send the pack to the accountant.</div>
+        </div>
+        <div class="hq-filters">
+          <label class="period-picker"><span class="period-picker-lbl">Month</span>
+            <select id="fecho_mes" onchange="renderFecho();fechoSyncList()">
+              ${months.map(k => `<option value="${k}"${k===def?' selected':''}>${fechoMonthLabel(k)}</option>`).join('')}
+            </select>
+          </label>
+        </div>
       </div>
-      <div class="hq-filters">
-        <label class="period-picker"><span class="period-picker-lbl">Month</span>
-          <select id="fecho_mes" onchange="renderFecho()">
-            ${months.map(k => `<option value="${k}"${k===def?' selected':''}>${fechoMonthLabel(k)}</option>`).join('')}
-          </select>
-        </label>
-        <span id="fecho_links" class="hq-filters"></span>
-        <button class="btn btn-s" onclick="fechoOpenPortal()">${ic('external')} Accountant page</button>
-        <button class="btn btn-p" onclick="fechoDownloadExcel()">${ic('download')} Download Excel</button>
+      <div id="fechoToast" style="margin-bottom:var(--sp-3)"></div>
+      <input id="fecho_file" type="file" accept="application/pdf,image/*" style="display:none" onchange="fechoFileChosen(this)">
+      <div id="fecho_kpis" class="summary-grid"></div>
+      <div id="fechoMail"></div>
+      <div id="fechoBody"><div class="loading">Loading…</div></div>
+      <div class="card">
+        <div class="card-hdr">
+          <div>
+            <div class="card-title">Send to the accountant</div>
+            <div class="card-hint">The Excel of the month and its invoices (Drive folder) — print or send, then tick it.</div>
+          </div>
+        </div>
+        <div class="card-body hq-filters" style="padding-top:4px">
+          <button class="btn btn-s" onclick="fechoDownloadExcel()">${ic('download')} Download Excel</button>
+          <button class="btn btn-s" onclick="fechoOpenPortal()">${ic('external')} Accountant page</button>
+          <span id="fecho_links" class="hq-filters"></span>
+          <span id="fecho_pack" style="margin-left:auto"></span>
+        </div>
       </div>
-    </div>
-    <div id="fechoToast" style="margin-bottom:var(--sp-3)"></div>
-    <input id="fecho_file" type="file" accept="application/pdf,image/*" style="display:none" onchange="fechoFileChosen(this)">
-    <div id="fecho_kpis" class="summary-grid"></div>
-    <div id="fechoMail"></div>
-    <div id="fechoBody"><div class="loading">Loading…</div></div>`;
+    </section>`;
+}
+// The month picked in Month close also filters the expense list below it.
+function fechoSyncList(){
+  const m = $('fecho_mes')?.value; if (!m) return;
+  if (typeof clearAllFilters === 'function') clearAllFilters();
+  const f = $('filter_month'); if (f) f.value = m;
+  hqPeriodo = null; renderInvoiceList();
 }
 // ── Invoices that arrived by email (supabase/functions/mail-ingest): what the
 //    harvester did and what it could not decide (buyer unknown). «Water» /
@@ -2649,6 +2753,9 @@ async function renderFecho(){
   renderFechoMail();
   const body = $('fechoBody'); if (!body) return;
   const month = $('fecho_mes')?.value || fechoDefaultMonth();
+  // Opening Expenses loads the default month; picking another one right away
+  // must not be overwritten by the slower, older answer.
+  const seq = FECHO.seq = (FECHO.seq || 0) + 1;
   FECHO.month = month; FECHO.loading = true;
   body.innerHTML = `<div class="loading">Loading ${fechoMonthLabel(month)}…</div>`;
   const period = accPeriod('month', month);
@@ -2662,13 +2769,16 @@ async function renderFecho(){
       sb.rpc('hq_bank_unmatched', { p_from: period.from, p_to: period.to }).then(({ data, error }) => { if (error) throw error; return data || []; }),
       sb.from('hq_month_checks').select('item, done_at, done_by, note').eq('month_key', month).then(({ data, error }) => { if (error) throw error; return data || []; }),
     ]);
+    if (seq !== FECHO.seq) return;
     FECHO.rows = rows.filter(r => r.is_duplicate !== true && (!r.paying_company || r.paying_company === 'water-movements'));
     FECHO.folders = folders; FECHO.bank = bank; FECHO.checks = checks;
     await fechoPropagateLinks();
   } catch (e) {
+    if (seq !== FECHO.seq) return;
     body.innerHTML = `<div class="card"><div class="empty-state">${AppShell.icon('alert')}<div class="empty-title">Could not load the month</div><p>${esc(e.message || e.code || String(e))}</p></div></div>`;
     return;
-  } finally { FECHO.loading = false; }
+  } finally { if (seq === FECHO.seq) FECHO.loading = false; }
+  if (seq !== FECHO.seq) return;
   fechoPaint();
 }
 
@@ -2695,14 +2805,6 @@ function fechoPaint(){
 
   const checkOf = (item) => FECHO.checks.find(c => c.item === item);
   const ic = (n) => AppShell.icon(n);
-  const checksHtml = FECHO_CHECKS.map(([item, label]) => {
-    const c = checkOf(item); const done = !!(c && c.done_at);
-    return `<div class="fecho-check${done ? ' done' : ''}">
-      <input type="checkbox" id="fecho_chk_${item}" ${done ? 'checked' : ''} onchange="fechoToggleCheck('${item}', this.checked)">
-      <span onclick="$('fecho_chk_${item}').click()">${label}</span>
-      <span class="hint" style="white-space:nowrap">${done ? `${String(c.done_by||'').split('@')[0]} · ${fmtDia(String(c.done_at).slice(0,10))}` : ''}</span>
-    </div>`;
-  }).join('');
 
   const actBtns = (r) => `
         <button class="btn btn-s btn-sm" onclick="fechoAttach('${r.ids.join(',')}')">${ic('paperclip')} Attach</button>
@@ -2732,11 +2834,11 @@ function fechoPaint(){
         </div>
       </div>`;
 
+  const ready = !falta.length && !FECHO.bank.length;
+  const pack = checkOf('pacote'); const packDone = !!(pack && pack.done_at);
+  if ($('fecho_pack')) $('fecho_pack').innerHTML = `<label class="hq-tog${packDone ? ' done' : ''}"><input type="checkbox" id="fecho_chk_pacote" ${packDone ? 'checked' : ''} onchange="fechoToggleCheck('pacote', this.checked)"> Pack sent to the accountant${packDone ? ` <span class="hint">· ${esc(String(pack.done_by||'').split('@')[0])} · ${fmtDia(String(pack.done_at).slice(0,10))}</span>` : ''}</label>`;
   body.innerHTML = `
-    <div class="card">
-      ${cardHead('Month checks')}
-      <div class="card-body" style="padding-top:4px;padding-bottom:4px">${checksHtml}</div>
-    </div>
+    ${ready ? `<div class="card"><div class="empty-state">${ic('check-circle')}<div class="empty-title">${fechoMonthLabel(month)} is ready — every expense has its invoice and every debit has a row</div><p>Send the pack to the accountant below.</p></div></div>` : ''}
     <div class="card">
       ${cardHead('Missing invoice', falta.length, 'Expenses with no document yet — attach the PDF or paste the Drive link.', falta.length ? 'badge-red' : 'badge-green')}
       ${falta.length ? `<div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Supplier</th><th class="r">Amount</th><th>Where to look</th><th></th></tr></thead><tbody>${falta.map(rowHtml).join('')}</tbody></table></div>`
@@ -2751,37 +2853,7 @@ function fechoPaint(){
       <summary class="sum-title" style="padding:16px var(--card-pad)">No invoice exists <span class="badge badge-grey">${naoExiste.length}</span> <span class="card-hint">bank fees, leasing, ads, PayPal…</span></summary>
       <div class="card-body hint" style="padding-top:0">${naoExiste.map(r => `${fmtDia(r.invoice_date)} · ${esc(r.company||'')} · ${eur(r.amount_eur)}`).join('<br>') || '—'}</div>
     </details>
-    <details class="card" ${FECHO.showAll ? 'open' : ''} ontoggle="FECHO.showAll=this.open">
-      <summary class="sum-title" style="padding:16px var(--card-pad)">All expenses of the month <span class="badge badge-grey">${rows.length}</span> <span class="card-hint">${eur(sum(rows, r => r.amount_eur))} · ${rows.length - falta.length - naoExiste.length} with invoice · instructors' split payments count as one</span></summary>
-      <div class="hq-filters" style="padding:0 var(--card-pad) var(--sp-3)">
-        <input id="fecho_filter" type="search" class="hq-search" placeholder="Filter by supplier, category or amount…" value="${esc(FECHO.filter||'')}" oninput="FECHO.filter=this.value;fechoPaintAll()">
-        <span class="hint" id="fecho_all_count"></span>
-        <button class="btn btn-s" style="margin-left:auto" onclick="goToMonthExpenses('${month}')">Open in Expenses ${ic('arrow-right')}</button>
-      </div>
-      <div id="fecho_all" class="tbl-wrap"></div>
-    </details>`;
-  fechoPaintAll();
-}
-// Lista completa do mês (dentro do «All expenses»), com filtro de texto.
-function fechoPaintAll(){
-  const box = $('fecho_all'); if (!box) return;
-  const q = String(FECHO.filter||'').trim().toLowerCase();
-  const all = fechoGroups(FECHO.rows).sort((a,b) => String(a.invoice_date).localeCompare(String(b.invoice_date)) || String(a.company||'').localeCompare(String(b.company||'')));
-  const list = q ? all.filter(r => `${r.company||''} ${r.category_name||''} ${locLabel(r.location_slug)} ${r.invoice_number||''} ${Number(r.amount_eur||0).toFixed(2)} ${String(Number(r.amount_eur||0).toFixed(2)).replace('.',',')}`.toLowerCase().includes(q)) : all;
-  const ic = (n) => AppShell.icon(n);
-  const state = (r) => r.drive_link ? '<span class="badge badge-green">Has invoice</span>'
-                      : fechoNoInvoice(r) ? '<span class="badge badge-grey">No invoice</span>'
-                      : '<span class="badge badge-red">Missing</span>';
-  const row = (r) => `
-    <tr>
-      <td style="white-space:nowrap">${fmtDia(r.invoice_date)}</td>
-      <td><b>${esc(r.company||'')}</b><span class="cell-sub">${r.split ? `${esc(r.category_name||'')} · one receipt, ${r.parts.length} parts: ${esc(fechoPartsHint(r))}` : `${esc(r.category_name||'')} · ${esc(locLabel(r.location_slug))}`}${r.invoice_number ? ' · ' + esc(r.invoice_number) : ''}</span></td>
-      <td class="r">${eur(r.amount_eur)}</td>
-      <td style="white-space:nowrap">${state(r)}${r.needs_review ? ' <span class="badge badge-amber">Review</span>' : ''}</td>
-      <td style="white-space:nowrap;text-align:right">${r.drive_link ? `<a class="btn btn-s btn-sm" target="_blank" rel="noopener" href="${esc(r.drive_link)}">${ic('external')} Open</a>` : (fechoNoInvoice(r) ? '' : `<button class="btn btn-s btn-sm" onclick="fechoAttach('${r.ids.join(',')}')">${ic('paperclip')} Attach</button> <button class="btn btn-s btn-sm" onclick="fechoPasteLink('${r.ids.join(',')}')">${ic('link')} Link</button>`)}</td>
-    </tr>`;
-  if ($('fecho_all_count')) $('fecho_all_count').textContent = q ? `${list.length} of ${all.length}` : `${all.length} rows`;
-  box.innerHTML = list.length ? `<table><thead><tr><th>Date</th><th>Supplier</th><th class="r">Amount</th><th>Invoice</th><th></th></tr></thead><tbody>${list.map(row).join('')}</tbody></table>` : '<div class="empty-state"><div class="empty-title">Nothing matches.</div></div>';
+`;
 }
 function esc(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
@@ -2820,12 +2892,17 @@ async function fechoFileChosen(inp){
   if (!folder) { toast('fechoToast','err',`No Drive folder registered for ${fechoMonthLabel(FECHO.month)} — ask Miguel to add it in the Drive folder list.`); return; }
   if (file.size > 20 * 1024 * 1024) { toast('fechoToast','err','File is over 20 MB.'); return; }
   const name = fechoFileName(r, file);
+  const sha = await fileSha256(file);
+  if (sha) {
+    const found = await findExistingExpense({ sha, excludeIds: r.parts.map(p => p.id) });
+    if (found.sameFile && !confirm(`This file is already attached to another line:\n${fmtDia(found.sameFile.invoice_date)} · ${found.sameFile.company} · ${eur(found.sameFile.amount_eur)}\n\nAttach it here too?`)) return;
+  }
   toast('fechoToast','warn',`Sending “${name}” to the Drive…`);
   try {
     const out = await driveUpload(file, folder, name);
     for (const p of r.parts) {
       const { error } = await sb.from('hq_invoices').update({
-        drive_link: out.link, file_name: out.name || name,
+        drive_link: out.link, file_name: out.name || name, file_sha256: sha,
         notes: `${p.notes ? p.notes + ' ' : ''}[fatura anexada pela app a ${new Date().toISOString().slice(0,10)}${r.split ? ', recibo único repartido por ' + r.parts.length + ' partes' : ''}]`,
       }).eq('id', p.id);
       if (error) throw error;

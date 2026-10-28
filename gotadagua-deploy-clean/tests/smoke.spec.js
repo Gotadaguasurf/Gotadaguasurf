@@ -1350,7 +1350,7 @@ test('hq: saving an instructor payment splits it by the lessons they logged (one
   expect(errs).toEqual([]);
 });
 
-test('hq: Fecho do mês tab — what lacks an invoice, bank debits with no row, Drive links, manual checks, and "Lançar" prefills the expense form', async ({ page }) => {
+test('hq: Month close on top of Expenses — what lacks an invoice, bank debits with no row, Drive links, the «pack sent» tick, and "Lançar" prefills the expense form', async ({ page }) => {
   // Miguel, 6 Oct 2026: the month's checklist lives in the app, with
   // "Anexar" (file → drive-upload → Drive folder) and "Colar link" per row.
   const updates = [];
@@ -1379,7 +1379,9 @@ test('hq: Fecho do mês tab — what lacks an invoice, bank debits with no row, 
   const errs = []; page.on('pageerror', e => errs.push(e.message));
   await fakeOwnerSession(page);
   await page.goto('/hq/', { waitUntil: 'domcontentloaded' });
-  await page.waitForFunction(() => typeof renderFecho === 'function' && document.querySelector('[data-tab="fecho"]'));
+  await page.waitForFunction(() => typeof renderFecho === 'function' && document.querySelector('#tab-invoices #fecho_mes'));
+  // Miguel, 28 Oct 2026: one tab — no separate «Month close» tab; old links open Expenses.
+  expect(await page.evaluate(() => !!document.querySelector('[data-tab="fecho"]'))).toBe(false);
   await page.evaluate(() => switchTab('fecho'));
   await page.selectOption('#fecho_mes', '2026-09');
   await page.waitForFunction(() => /Missing invoice/.test(document.querySelector('#fechoBody')?.textContent || '') && !/Loading/.test(document.querySelector('#fechoBody')?.textContent || ''), null, { timeout: 15000 });
@@ -1391,10 +1393,10 @@ test('hq: Fecho do mês tab — what lacks an invoice, bank debits with no row, 
     hasAttach: !!document.querySelector('#fechoBody button[onclick^="fechoAttach"]'),
     splitAttach: [...document.querySelectorAll('#fechoBody button[onclick^="fechoAttach"]')].map(b => b.getAttribute('onclick')).find(s => s.includes('i5')),
     faltaRows: [...document.querySelectorAll('#fechoBody table')][0] ? [...[...document.querySelectorAll('#fechoBody table')][0].querySelectorAll('tbody tr')].map(tr => tr.querySelector('td:nth-child(2) b').textContent + ' ' + tr.querySelector('td:nth-child(3)').textContent.trim()) : [],
-    checks: [...document.querySelectorAll('#fechoBody input[type=checkbox]')].map(c => c.checked),
+    checks: [...document.querySelectorAll('#fecho_pack input[type=checkbox]')].map(c => c.checked),
     bank: document.querySelector('#fechoBody').textContent.includes('LEROY MERLIN COVA PIEDADE'),
-    allRows: document.querySelectorAll('#fecho_all tbody tr').length,
-    allStates: [...document.querySelectorAll('#fecho_all tbody tr td:nth-child(4)')].map(td => td.textContent.trim().replace(/\s+/g, ' ')),
+    active: document.querySelector('.ntab.active')?.dataset.tab,
+    blue: [...document.querySelectorAll('#tab-invoices .page-head .btn-p, #fechoCard .btn-p')].map(b => b.textContent.trim()),
   }));
   expect(out.kpis[0]).toBe('Expenses 6 · 5 invoices');
   expect(out.kpis[1]).toBe('Missing invoice 2 · €670.00');          // prio + pietro's split receipt (510 + 120): google ads never has one, safari was marked "sem fatura"
@@ -1406,16 +1408,55 @@ test('hq: Fecho do mês tab — what lacks an invoice, bank debits with no row, 
   expect(out.faltaRows).toEqual(['pietro mandetta €630.00', 'prio €40.00']);
   expect(out.hasAttach).toBe(true);
   expect(out.splitAttach).toBe("fechoAttach('i5,i6')");
-  expect(out.checks).toEqual([true, false, false]);
+  expect(out.checks).toEqual([false]);          // only «Pack sent to the accountant» (the e-Fatura/Drive ticks were never used)
   expect(out.bank).toBe(true);
-  // Miguel, 6 Oct 2026: the whole month is also listed, with each row's invoice state.
-  expect(out.allRows).toBe(5);
-  expect(out.allStates).toEqual(['Missing', 'Missing', 'No invoice', 'Has invoice Review', 'No invoice']);
+  expect(out.active).toBe('invoices');
+  expect(out.blue).toEqual(['Add expense']);     // one blue button per view
   // "Lançar" jumps to Expenses with date, amount and a supplier guess filled in.
   await page.evaluate(() => fechoLaunch('bk1'));
   await page.waitForFunction(() => document.querySelector('#inv_amount')?.value === '274.19', null, { timeout: 5000 });
   const form = await page.evaluate(() => ({ date: document.querySelector('#inv_date').value, company: document.querySelector('#inv_company').value, active: document.querySelector('.ntab.active')?.dataset.tab }));
   expect(form).toMatchObject({ date: '2026-09-15', company: 'leroy merlin cova piedade', active: 'invoices' });
+  expect(errs).toEqual([]);
+});
+
+test('hq: an invoice for an expense that is already in the app (from the bank debit, no PDF) is attached to that line instead of creating a second one', async ({ page }) => {
+  // Miguel, 28 Oct 2026: «se alguém adiciona uma fatura que já lá está, a app reconhece logo».
+  const writes = [];
+  await page.route(/supabase\.co\/(auth|rest)\/v1\/.*/, async route => {
+    const req = route.request(); const url = req.url();
+    const json = (body) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    if (url.includes('/auth/v1/user')) return json({ id: 'u1', email: 'miguel@gotadaguasurf.com', aud: 'authenticated', role: 'authenticated' });
+    if (url.includes('/rest/v1/rpc/')) return json([]);
+    if (url.includes('/rest/v1/hq_invoices')) {
+      if (['PATCH', 'POST', 'DELETE'].includes(req.method())) { writes.push(req.method() + ' ' + decodeURIComponent(url.split('?')[1] || '') + ' ' + (req.postData() || '')); return json([]); }
+      if (req.method() !== 'GET') return json([]);
+      // the similar-line lookup (amount window + date window) finds the row made from the bank debit
+      if (url.includes('amount_eur=gte')) return json([{ id: 'row-bank', invoice_date: '2026-09-30', company: 'escala de palavras', amount_eur: 922.5, drive_link: null, file_name: null, file_url: null, invoice_number: null, notes: '[do extrato]' }]);
+      return json([]);
+    }
+    return json([]);
+  });
+  const errs = []; page.on('pageerror', e => errs.push(e.message));
+  page.on('dialog', d => d.accept());
+  await fakeOwnerSession(page);
+  await page.goto('/hq/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof findExistingExpense === 'function' && typeof attachInvoiceToExisting === 'function');
+  const found = await page.evaluate(() => findExistingExpense({ invoice_number: 'FT 2026/301', amount: 922.5, amount_eur: 922.5, company: 'Escala de Palavras, Unipessoal Lda', invoice_date: '2026-10-02' }));
+  expect(found.similar.map(r => r.id)).toEqual(['row-bank']);
+  expect(await page.evaluate(() => [supplierKey('Escala de Palavras, Unipessoal Lda'), supplierKey('TRF.IMED. P/ ESCALA PALAVRAS'), supplierKey('LIDL & CIA'), supplierKey('Lidl')])).toEqual(['escala', 'escala', 'lidl', 'lidl']);
+  // attaching patches the existing row (keeps its date and amount), no new row
+  const before = writes.length;
+  await page.evaluate(() => attachInvoiceToExisting({ id: 'row-bank', notes: '[do extrato]' }, { file_name: 'escala-set.pdf', file_sha256: 'abc', invoice_number: 'FT 2026/301' }));
+  writes.splice(0, before);
+  expect(writes.length).toBe(1);
+  expect(writes[0]).toMatch(/^PATCH id=eq\.row-bank /);
+  expect(writes[0]).toContain('"file_sha256":"abc"');
+  expect(writes[0]).toContain('"invoice_number":"FT 2026/301"');
+  // the same bytes always give the same fingerprint
+  const shas = await page.evaluate(async () => { const f = () => new File([new TextEncoder().encode('%PDF-1.4 same invoice')], 'a.pdf'); return [await fileSha256(f()), await fileSha256(f())]; });
+  expect(shas[0]).toMatch(/^[0-9a-f]{64}$/);
+  expect(shas[0]).toBe(shas[1]);
   expect(errs).toEqual([]);
 });
 
