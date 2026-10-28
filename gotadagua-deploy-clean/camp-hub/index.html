@@ -502,7 +502,6 @@ body{min-height:100dvh}
       </div>
       <div class="exp-top-actions">
         <button class="btn btn-s" id="quickTransportBtn" onclick="openTransportQuickAdd()" style="display:none"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M3 13h14"/><path d="M5 13v-3a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v3"/><circle cx="7" cy="15" r="1.5"/><circle cx="13" cy="15" r="1.5"/></svg></span><span>Transport</span></span></button>
-        <button class="btn btn-s" onclick="openMonthlyExpensesModal()"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M6 3h8l3 3v11H6z"/><path d="M14 3v4h4"/><path d="M9 10h5"/><path d="M9 13h5"/></svg></span><span>Monthly Expenses</span></span></button>
         <button class="btn btn-s" onclick="exportBackup()" title="Download a backup file of this camp's data"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M10 4v10"/><path d="m6.5 10.5 3.5 3.5 3.5-3.5"/><path d="M4 16h12"/></svg></span><span>Download backup file</span></span></button>
       </div>
     </div>
@@ -606,104 +605,6 @@ body{min-height:100dvh}
         </div>
         <div class="exp-inline-full" style="display:flex;justify-content:flex-end;gap:8px">
           <button class="btn btn-p" onclick="saveQuickExpense()">Add entry</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="overlay" id="monthlyExpensesOv">
-      <div class="modal monthly-expenses-modal">
-        <div class="mhdr">
-          <div class="mhdr-title">Monthly Expenses</div>
-          <div class="mhdr-sub">Fixed monthly costs (rent, internet…). Added automatically on the last day of each month; use 'Add all now' to post a month early. Salaries are added by hand in the ledger.</div>
-        </div>
-        <div class="mbody">
-          <div class="monthly-expenses-shell">
-            <div id="monthlyExpensesSection">
-      <div class="exp-recurring-block">
-        <div class="exp-recurring-block-head">
-          <div>
-            <div class="exp-recurring-block-title">Month to add</div>
-            <div class="exp-recurring-block-sub">Choose the month you want to post. Salaries and fixed monthly costs will be created on the last day of that selected month.</div>
-          </div>
-          <div class="exp-recurring-toolbar" style="align-items:flex-end;gap:12px;flex-wrap:wrap">
-            <div class="mfield" style="margin-bottom:0;min-width:180px">
-              <label>Target month</label>
-              <input type="month" id="monthlyTargetMonth" onchange="refreshMonthlyTargetUi()">
-            </div>
-            <div class="exp-inline-note" id="monthlyTargetHint" style="min-width:220px">Entries will use that month's last day.</div>
-            <button class="btn btn-p" id="monthlyAddAllBtn" onclick="addAllMonthlyNow()">Add all now</button>
-          </div>
-        </div>
-      </div>
-      <div class="exp-recurring-block" id="fixedCostsSection">
-        <div class="exp-recurring-block-head">
-          <div>
-            <div class="exp-recurring-block-title">Fixed monthly costs</div>
-            <div class="exp-recurring-block-sub">Keep rents and other fixed monthly costs here. They are added automatically at month end, or you can trigger them manually anytime.</div>
-          </div>
-        </div>
-        <div class="exp-recurring-form" id="recurringForm">
-          <div class="mfield" style="margin-bottom:0">
-            <label>Name</label>
-            <input id="recurring_name" placeholder="Name">
-          </div>
-          <div class="mfield" style="margin-bottom:0">
-            <label>Category</label>
-            <select id="recurring_category">
-              <option value="Food">Food</option>
-              <option value="Drinks">Drinks</option>
-              <option value="Salary">Salary</option>
-              <option value="Benefits">Benefits</option>
-              <option value="Taxes">Taxes</option>
-              <option value="Rent">Rent</option>
-              <option value="Utilities">Utilities</option>
-              <option value="Services">Services</option>
-              <option value="Insurances">Insurances</option>
-              <option value="Equipment &amp; maintenance">Equipment &amp; maintenance</option>
-              <option value="Cleaning">Cleaning</option>
-              <option value="Laundry">Laundry</option>
-              <option value="Transport">Transport</option>
-              <option value="Tours &amp; activities">Tours &amp; activities</option>
-              <option value="Merchandise">Merchandise</option>
-              <option value="Marketing">Marketing</option>
-              <option value="Other">Other</option>
-            </select>
-          </div>
-          <div class="mfield" style="margin-bottom:0">
-            <label>Amount</label>
-            <input type="number" id="recurring_amount" min="0" step="0.01" placeholder="000">
-          </div>
-          <div class="mfield" style="margin-bottom:0">
-            <label>Currency</label>
-            <select id="recurring_currency">
-              <option value="LKR" selected>LKR</option>
-              <option value="EUR">EUR</option>
-            </select>
-          </div>
-          <div class="mfield" style="margin-bottom:0">
-            <label>Paid via</label>
-            <select id="recurring_payment">
-              <option value="Bank Transfer">Bank Transfer</option>
-              <option value="Card">Card</option>
-              <option value="Cash">Cash</option>
-            </select>
-          </div>
-          <div class="mfield" style="margin-bottom:0">
-            <label>Note</label>
-            <input id="recurring_description" placeholder="Optional note">
-          </div>
-          <div class="exp-recurring-form-actions">
-            <button class="btn btn-s" onclick="resetRecurringForm()">Clear</button>
-            <button class="btn btn-p" id="recurringSaveBtn" onclick="saveRecurringRule()">Save fixed cost</button>
-          </div>
-        </div>
-        <div id="recurringList"></div>
-      </div>
-            </div>
-          </div>
-        </div>
-        <div class="mfooter">
-          <button class="btn btn-s" onclick="closeOv('monthlyExpensesOv')">Close</button>
         </div>
       </div>
     </div>
@@ -1519,7 +1420,9 @@ function normalizeState(raw){
   return {
     weeks:Array.isArray(base.weeks)?base.weeks:[],
     ledger:(Array.isArray(base.ledger)?base.ledger:[]).map(normalizeLedgerEntry).filter(Boolean),
-    recurring:(Array.isArray(base.recurring)?base.recurring:[]).map(normalizeRecurringRule).filter(Boolean),
+    // Monthly costs are no longer automatic (Miguel, 28 Oct 2026): rents, pool,
+    // internet etc. are added from the bank statements / by the manager.
+    recurring:[],
     // Salaries are no longer automatic (Miguel, 28 Oct 2026): they are added by hand
     // from the bank / cash, so the hub never keeps salary profiles.
     salaryProfiles:[],
@@ -1571,6 +1474,7 @@ window.addEventListener('beforeunload',e=>{
 ensureRecurringDefaults();
 function refreshStateFromStorage(){S=loadS();}
 function ensureRecurringDefaults(){
+  return; // monthly automation removed 28 Oct 2026
   // Sri Lanka is the only location these defaults belong to (the rents and
   // staff names are Sri-Lanka-specific). Skip seeding entirely on every
   // other location so Morocco / Portugal / Junior Camp start clean and
@@ -2895,6 +2799,7 @@ async function fetchMonthlyProfilesFromSupabase(){
 // flag) so a future delete by the user doesn't get undone.
 const MONTHLY_PROFILES_PUSH_VERSION_KEY='camphub_monthly_profiles_push_v1'+__HUB_LOC_SUFFIX;
 async function backfillLocalMonthlyProfilesToSupabase(){
+  return; // monthly automation removed 28 Oct 2026
   if(localStorage.getItem(MONTHLY_PROFILES_PUSH_VERSION_KEY)==='done') return;
   const client=getHubSupabaseClient();
   const locationId=await ensureHubLocationId();
@@ -2933,6 +2838,10 @@ async function backfillLocalMonthlyProfilesToSupabase(){
 }
 
 async function hydrateMonthlyProfilesFromSupabase({mergeLocal=true}={}){
+  // Monthly automation removed 28 Oct 2026: salaries and fixed costs are
+  // added by hand, so nothing is loaded and nothing is applied at month end.
+  S.salaryProfiles=[];S.recurring=[];
+  return true;
   const client=getHubSupabaseClient();
   const locationId=await ensureHubLocationId();
   if(!client||!locationId) return false;
@@ -9540,7 +9449,7 @@ function openOv(id){document.getElementById(id).classList.add('open');}
 function closeOv(id){document.getElementById(id).classList.remove('open');}
 // toast(msg) 2.2s · toast(msg,'err') red and 4s — errors need time to be read.
 function toast(msg,kind){const t=document.getElementById('toast');if(!t)return;t.textContent=msg;t.classList.toggle('err',kind==='err');t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),kind==='err'?4000:2200);}
-['addWeekOv','addGuestOv','customOv','expOv','billOv','monthlyExpensesOv','transportQuickOv'].forEach(id=>{
+['addWeekOv','addGuestOv','customOv','expOv','billOv','transportQuickOv'].forEach(id=>{
   document.getElementById(id).addEventListener('click',e=>{if(e.target.id===id)closeOv(id);});
 });
 
