@@ -1384,7 +1384,7 @@ test('hq: Month close tab — what lacks an invoice, bank debits with no row, Dr
   expect(await page.evaluate(() => !!document.querySelector('#tab-invoices #fecho_mes'))).toBe(false);
   await page.evaluate(() => switchTab('fecho'));
   await page.selectOption('#fecho_mes', '2026-09');
-  await page.waitForFunction(() => /Missing invoice/.test(document.querySelector('#fechoBody')?.textContent || '') && !/Loading/.test(document.querySelector('#fechoBody')?.textContent || ''), null, { timeout: 15000 });
+  await page.waitForFunction(() => /Invoices to attach/.test(document.querySelector('#fechoBody')?.textContent || '') && !/Loading/.test(document.querySelector('#fechoBody')?.textContent || ''), null, { timeout: 15000 });
   const out = await page.evaluate(() => ({
     kpis: [...document.querySelectorAll('#fecho_kpis > div')].map(d => [...d.children].map(c => c.textContent.trim()).join(' ')),
     links: [...document.querySelectorAll('#fecho_links a')].map(a => a.getAttribute('href')),
@@ -1398,11 +1398,9 @@ test('hq: Month close tab — what lacks an invoice, bank debits with no row, Dr
     active: document.querySelector('.ntab.active')?.dataset.tab,
     blue: [...document.querySelectorAll('#tab-fecho .btn-p')].map(b => b.textContent.trim()),
   }));
-  expect(out.kpis[0]).toBe('Expenses 6 · 5 invoices');
-  expect(out.kpis[1]).toBe('Missing invoice 2 · €670.00');          // prio + pietro's split receipt (510 + 120): google ads never has one, safari was marked "sem fatura"
-  expect(out.kpis[2]).toBe('No invoice exists 2');
-  expect(out.kpis[3]).toBe('Bank without a row 1 · €274.19');
-  expect(out.kpis[4]).toBe('Has invoice, to review 1');
+  // One box per step (UX review 28 Oct 2026): what to attach, what to add, pack sent.
+  expect(out.kpis).toEqual(['Invoices to attach 2 €670.00', 'Bank debits to add 1 €274.19', 'Pack sent No']);   // prio + pietro's split receipt (510 + 120): google ads never has one, safari was marked "sem fatura"
+  expect(await page.evaluate(() => document.querySelector('#fechoNoInv summary')?.textContent.trim())).toBe('2 expenses with no invoice by nature (bank fees, leasing, ads…)');
   expect(out.links).toEqual(['https://drive.google.com/drive/folders/FW9', 'https://drive.google.com/drive/folders/FP']);
   expect(out.falta).toBe(2);
   expect(out.faltaRows).toEqual(['pietro mandetta €630.00', 'prio €40.00']);

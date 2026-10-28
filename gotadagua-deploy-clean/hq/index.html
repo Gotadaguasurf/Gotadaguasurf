@@ -8,6 +8,18 @@
 <link rel="stylesheet" href="/lib/app-shell.css">
 <script src="/lib/app-shell.js"></script>
 <style>
+/* Month close on a phone: each row is a small card with its buttons under it. */
+@media (max-width: 640px){
+  .fecho-tbl{min-width:0 !important}
+  .fecho-tbl thead{display:none}
+  .fecho-tbl, .fecho-tbl tbody, .fecho-tbl tr, .fecho-tbl td{display:block;width:100%}
+  .fecho-tbl tr{padding:12px var(--card-pad, 16px);border-bottom:1px solid var(--border)}
+  .fecho-tbl td{padding:2px 0 !important;border:0 !important;text-align:left !important;white-space:normal !important;max-width:none !important}
+  .fecho-tbl td.r{font-weight:700}
+  .fecho-tbl td:last-child{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+}
+.fecho-done{padding:14px var(--card-pad, 16px)}
+.fecho-done .card-title{display:flex;align-items:center;gap:8px;font-size:15px}
 /* tokens, header, buttons, cards, KPI tiles, tables, pills, fields, modals, toasts: /lib/app-shell.css */
 *{margin:0;padding:0}
 .card{margin-bottom:var(--sp-5);overflow:hidden}
@@ -2617,6 +2629,7 @@ function fechoTabHtml(){
         <div class="section-sub">1 · see what is missing &nbsp; 2 · attach the invoices or add the debits &nbsp; 3 · send the pack to the accountant.</div>
       </div>
       <div class="hq-filters">
+        <span id="fecho_all_link" class="hint"></span>
         <label class="period-picker"><span class="period-picker-lbl">Month</span>
           <select id="fecho_mes" onchange="renderFecho()">
             ${months.map(k => `<option value="${k}"${k===def?' selected':''}>${fechoMonthLabel(k)}</option>`).join('')}
@@ -2632,17 +2645,18 @@ function fechoTabHtml(){
     <div class="card" id="fechoSend">
       <div class="card-hdr">
         <div>
-          <div class="card-title">Send to the accountant</div>
-          <div class="card-hint">The Excel of the month and its invoices (Drive folder) — print or send, then tick it.</div>
+          <div class="card-title">3 · Send to the accountant</div>
+          <div class="card-hint">Download the Excel, send it with the Drive folder, then tick «Pack sent».</div>
         </div>
       </div>
       <div class="card-body hq-filters" style="padding-top:4px">
         <button class="btn btn-p" onclick="fechoDownloadExcel()">${ic('download')} Download Excel</button>
-        <button class="btn btn-s" onclick="fechoOpenPortal()">${ic('external')} Accountant page</button>
         <span id="fecho_links" class="hq-filters"></span>
-        <span id="fecho_pack" style="margin-left:auto"></span>
+        <span id="fecho_pack"></span>
+        <a href="#" class="hint" style="margin-left:auto" onclick="fechoOpenPortal();return false">Accountant page ${ic('external')}</a>
       </div>
-    </div>`;
+    </div>
+    <div id="fechoNoInv" style="margin:var(--sp-2) 0 var(--sp-5)"></div>`;
 }
 // ── Invoices that arrived by email (supabase/functions/mail-ingest): what the
 //    harvester did and what it could not decide (buyer unknown). «Water» /
@@ -2697,9 +2711,9 @@ async function mailIngestDecide(id, company){
   catch (e) { toast('fechoToast', 'err', e.message || String(e)); }
   renderFechoMail(); if (company !== 'skip') { renderFecho(); renderInvoiceList(); }
 }
-function fechoKpi(label, value, level){
+function fechoKpi(label, value, level, sub){
   const cls = level === 'bad' ? ' neg' : level === 'warn' ? ' kv-amber' : level === 'ok' ? ' pos' : '';
-  return `<div class="kpi"><div class="kpi-label">${label}</div><div class="kpi-value${cls}" style="font-size:22px">${value}</div></div>`;
+  return `<div class="kpi"><div class="kpi-label">${label}</div><div class="kpi-value${cls}" style="font-size:22px">${value}</div>${sub ? `<div class="kpi-sub">${sub}</div>` : ''}</div>`;
 }
 function fechoHasInvoice(r){ return !!r.drive_link; }
 // Instrutores: um recibo, várias linhas (uma por sítio onde deram aulas —
@@ -2778,33 +2792,34 @@ function fechoPaint(){
   const rows = fechoGroups(FECHO.rows);
   const falta = rows.filter(r => !fechoHasInvoice(r) && !fechoNoInvoice(r)).sort((a,b) => Number(b.amount_eur||0) - Number(a.amount_eur||0));
   const naoExiste = rows.filter(fechoNoInvoice);
-  const rever = rows.filter(r => r.drive_link && r.needs_review);
   const sum = (l, f) => Math.round(l.reduce((s,r) => s + Number(f(r)||0), 0) * 100) / 100;
   const bankSum = Math.abs(sum(FECHO.bank, b => b.amount));
   const fWater = fechoFolder('water-movements', month), fPartners = fechoFolder('partners', '*');
   const linkBtn = (id, label) => id ? `<a class="btn btn-s" target="_blank" rel="noopener" href="https://drive.google.com/drive/folders/${id}">${AppShell.icon('folder')} ${label}</a>` : '';
   if ($('fecho_links')) $('fecho_links').innerHTML = linkBtn(fWater, 'Drive folder') + linkBtn(fPartners, 'Partner invoices');
-  if ($('fecho_kpis')) $('fecho_kpis').innerHTML =
-    fechoKpi('Expenses', `${FECHO.rows.length}${rows.length !== FECHO.rows.length ? ` · ${rows.length} invoices` : ''}`) +
-    fechoKpi('Missing invoice', `${falta.length} · ${eur(sum(falta, r => r.amount_eur))}`, falta.length ? 'bad' : 'ok') +
-    fechoKpi('No invoice exists', naoExiste.length) +
-    fechoKpi('Bank without a row', `${FECHO.bank.length} · ${eur(bankSum)}`, FECHO.bank.length ? 'bad' : 'ok') +
-    fechoKpi('Has invoice, to review', rever.length, rever.length ? 'warn' : 'ok');
-
   const checkOf = (item) => FECHO.checks.find(c => c.item === item);
   const ic = (n) => AppShell.icon(n);
+  const pack = checkOf('pacote'); const packDone = !!(pack && pack.done_at);
+  const packWho = packDone ? `${esc(String(pack.done_by||'').split('@')[0])} · ${fmtDia(String(pack.done_at).slice(0,10))}` : '';
+  if ($('fecho_kpis')) $('fecho_kpis').innerHTML =
+    fechoKpi('Invoices to attach', falta.length, falta.length ? 'bad' : 'ok', falta.length ? eur(sum(falta, r => r.amount_eur)) : 'all attached') +
+    fechoKpi('Bank debits to add', FECHO.bank.length, FECHO.bank.length ? 'bad' : 'ok', FECHO.bank.length ? eur(bankSum) : 'all added') +
+    fechoKpi('Pack sent', packDone ? 'Yes' : 'No', packDone ? 'ok' : '', packWho);
+  if ($('fecho_pack')) $('fecho_pack').innerHTML = `<label class="hq-tog${packDone ? ' done' : ''}"><input type="checkbox" id="fecho_chk_pacote" ${packDone ? 'checked' : ''} onchange="fechoToggleCheck('pacote', this.checked)"> Pack sent${packDone ? ` <span class="hint">· ${packWho}</span>` : ''}</label>`;
+  if ($('fecho_all_link')) $('fecho_all_link').innerHTML = `<a href="#" onclick="goToMonthExpenses('${month}');return false">All ${FECHO.rows.length} expenses ${ic('arrow-right')}</a>`;
 
-  const actBtns = (r) => `
-        <button class="btn btn-s btn-sm" onclick="fechoAttach('${r.ids.join(',')}')">${ic('paperclip')} Attach</button>
-        <button class="btn btn-s btn-sm" onclick="fechoPasteLink('${r.ids.join(',')}')">${ic('link')} Link</button>`;
+  const hintOf = (r) => accHint(r.company) || String(r.notes||'').slice(0,120);
+  const showWhere = falta.some(r => hintOf(r));
   const rowHtml = (r) => `
     <tr>
       <td style="white-space:nowrap">${fmtDia(r.invoice_date)}</td>
       <td><b>${esc(r.company||'')}</b><span class="cell-sub">${r.split ? `one receipt, ${r.parts.length} parts: ${esc(fechoPartsHint(r))}` : `${esc(r.category_name||'')} · ${esc(locLabel(r.location_slug))}`}${r.invoice_number ? ' · ' + esc(r.invoice_number) : ''}</span></td>
       <td class="r">${eur(r.amount_eur)}</td>
-      <td class="hint" style="max-width:320px">${esc(accHint(r.company) || String(r.notes||'').slice(0,120))}</td>
-      <td style="white-space:nowrap;text-align:right">${actBtns(r)}
-        <button class="btn btn-s btn-sm" title="This supplier never issues an invoice — stop counting it as missing" onclick="fechoMarkNoInvoice('${r.ids.join(',')}')">No invoice</button>
+      ${showWhere ? `<td class="hint" style="max-width:320px">${esc(hintOf(r))}</td>` : ''}
+      <td style="white-space:nowrap;text-align:right">
+        <button class="btn btn-s btn-sm" onclick="fechoAttach('${r.ids.join(',')}')">${ic('paperclip')} Attach</button>
+        <button class="btn btn-s btn-sm" onclick="fechoPasteLink('${r.ids.join(',')}')">${ic('link')} Link</button>
+        <button class="btn btn-s btn-sm" title="This supplier never issues an invoice — stop counting it as missing" onclick="fechoMarkNoInvoice('${r.ids.join(',')}')">No invoice needed</button>
       </td>
     </tr>`;
   const bankHtml = (b) => `
@@ -2814,35 +2829,28 @@ function fechoPaint(){
       <td class="r">${eur(Math.abs(Number(b.amount||0)))}</td>
       <td style="white-space:nowrap;text-align:right"><button class="btn btn-s btn-sm" onclick="fechoLaunch('${b.id}')">${ic('plus')} Add expense</button></td>
     </tr>`;
-  const cardHead = (title, count, hint, cls) => `
-      <div class="card-hdr">
-        <div>
-          <div class="card-title">${title}${count != null ? ` <span class="badge ${cls || 'badge-grey'}" style="margin-left:6px">${count}</span>` : ''}</div>
-          ${hint ? `<div class="card-hint">${hint}</div>` : ''}
-        </div>
-      </div>`;
+  const stepCard = (title, count, hint, table) => `
+    <div class="card">
+      <div class="card-hdr"><div>
+        <div class="card-title">${title} <span class="badge badge-red" style="margin-left:6px">${count}</span></div>
+        <div class="card-hint">${hint}</div>
+      </div></div>
+      <div class="tbl-wrap">${table}</div>
+    </div>`;
+  const stepDone = (text) => `<div class="card fecho-done"><div class="card-title" style="color:var(--green, #1a7f4b)">${ic('check-circle')} ${text}</div></div>`;
+  const BANK_LEFT_OUT = 'Left out: internal transfers, bank fees, the credit-card bill, and the salary and meal-card batches (those are booked per person, with the payslips).';
 
-  const ready = !falta.length && !FECHO.bank.length;
-  const pack = checkOf('pacote'); const packDone = !!(pack && pack.done_at);
-  if ($('fecho_pack')) $('fecho_pack').innerHTML = `<label class="hq-tog${packDone ? ' done' : ''}"><input type="checkbox" id="fecho_chk_pacote" ${packDone ? 'checked' : ''} onchange="fechoToggleCheck('pacote', this.checked)"> Pack sent to the accountant${packDone ? ` <span class="hint">· ${esc(String(pack.done_by||'').split('@')[0])} · ${fmtDia(String(pack.done_at).slice(0,10))}</span>` : ''}</label>`;
   body.innerHTML = `
-    ${ready ? `<div class="card"><div class="empty-state">${ic('check-circle')}<div class="empty-title">${fechoMonthLabel(month)} is ready — every expense has its invoice and every debit has a row</div><p>Send the pack to the accountant below.</p></div></div>` : ''}
-    <div class="card">
-      ${cardHead('Missing invoice', falta.length, 'Expenses with no document yet — attach the PDF or paste the Drive link.', falta.length ? 'badge-red' : 'badge-green')}
-      ${falta.length ? `<div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Supplier</th><th class="r">Amount</th><th>Where to look</th><th></th></tr></thead><tbody>${falta.map(rowHtml).join('')}</tbody></table></div>`
-                     : `<div class="empty-state">${ic('check-circle')}<div class="empty-title">Everything has an invoice</div></div>`}
-    </div>
-    <div class="card">
-      ${cardHead('Bank debits without a row', FECHO.bank.length, 'Santander debits with no expense in the app. Left out: internal transfers, bank fees, the credit-card bill, and the salary and meal-card batches (those are booked per person, with the payslips).', FECHO.bank.length ? 'badge-red' : 'badge-green')}
-      ${FECHO.bank.length ? `<div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Description</th><th class="r">Amount</th><th></th></tr></thead><tbody>${FECHO.bank.map(bankHtml).join('')}</tbody></table></div>`
-                           : `<div class="empty-state">${ic('check-circle')}<div class="empty-title">Every debit has a row</div></div>`}
-    </div>
-    <details class="card">
-      <summary class="sum-title" style="padding:16px var(--card-pad)">No invoice exists <span class="badge badge-grey">${naoExiste.length}</span> <span class="card-hint">bank fees, leasing, ads, PayPal…</span></summary>
-      <div class="card-body hint" style="padding-top:0">${naoExiste.map(r => `${fmtDia(r.invoice_date)} · ${esc(r.company||'')} · ${eur(r.amount_eur)}`).join('<br>') || '—'}</div>
-    </details>
-    <div class="hq-filters" style="margin:0 0 var(--sp-4)"><button class="btn btn-s" onclick="goToMonthExpenses('${month}')">All ${FECHO.rows.length} expenses of ${fechoMonthLabel(month)} in Expenses ${ic('arrow-right')}</button></div>
+    ${falta.length
+      ? stepCard('1 · Invoices to attach', falta.length, 'Attach the PDF or paste the Drive link.',
+          `<table class="fecho-tbl"><thead><tr><th>Date</th><th>Supplier</th><th class="r">Amount</th>${showWhere ? '<th>Where to look</th>' : ''}<th></th></tr></thead><tbody>${falta.map(rowHtml).join('')}</tbody></table>`)
+      : stepDone('1 · All invoices attached')}
+    ${FECHO.bank.length
+      ? stepCard('2 · Bank debits to add', FECHO.bank.length, `Santander debits with no expense yet. <span title="${BANK_LEFT_OUT}" style="cursor:help">ⓘ</span>`,
+          `<table class="fecho-tbl"><thead><tr><th>Date</th><th>Description</th><th class="r">Amount</th><th></th></tr></thead><tbody>${FECHO.bank.map(bankHtml).join('')}</tbody></table>`)
+      : stepDone('2 · Every bank debit has an expense')}
 `;
+  if ($('fechoNoInv')) $('fechoNoInv').innerHTML = naoExiste.length ? `<details><summary class="hint">${naoExiste.length} expense${naoExiste.length === 1 ? '' : 's'} with no invoice by nature (bank fees, leasing, ads…)</summary><div class="hint" style="margin-top:6px">${naoExiste.map(r => `${fmtDia(r.invoice_date)} · ${esc(r.company||'')} · ${eur(r.amount_eur)}`).join('<br>')}</div></details>` : '';
 }
 function esc(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
