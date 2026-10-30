@@ -892,6 +892,44 @@ test('instructors: Mark paid touches one instructor-month only, payroll adds VAT
   expect(out.catOptions).toContain('Theoric');
 });
 
+test('instructors: monthly statement per instructor — every day, by category, extras, VAT and amount due, copyable', async ({ page }) => {
+  // Maxime, 30 Oct 2026: send each instructor their month when they ask.
+  await fakeOwnerSession(page);
+  await page.goto('/instructors/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof window.updatePayroll === 'function');
+  const out = await page.evaluate(() => {
+    const mk = (id, name, date, cat, n, price, paid = true) =>
+      ({ id, instructorId: 'x', date, instructorName: name, lessonCategory: cat, numberOfLessons: n, paymentType: 'Recibo Verde', priceUnit: price, total: n * price, paid, notes: '' });
+    entries = [
+      mk('1', 'Romildo Ramos', '2026-07-03', 'Surf Camp', 2, 30),
+      mk('2', 'Romildo Ramos', '2026-07-10', 'Video Analysis', 1, 20, false),
+      mk('3', 'Romildo Ramos', '2026-08-04', 'Surf Camp', 1, 30),
+      mk('4', 'Yuri Medeiros', '2026-07-03', 'Surf Camp', 5, 30),
+    ];
+    instructorDirectory = [{ id: 'a', name: 'Romildo Ramos', rate: 30, paymentType: '', vatPct: 23, appSupplier: '', extraKind: 'head_coach_month', extraAmount: 250 }];
+    selectedYear = 'all'; selectedMonth = 'all'; selectedInstructor = 'all'; selectedCategory = 'Video Analysis'; selectedPaid = 'all';
+    render();
+    const btn = document.querySelector('[data-statement="Romildo Ramos|2026-07"]');
+    btn.click();
+    const open = document.getElementById('statementModal').classList.contains('open');
+    const body = document.getElementById('statementBody').textContent.replace(/\s+/g, ' ');
+    const text = statementText(currentStatement);
+    closeStatement();
+    return { open, body, text, due: currentStatement };
+  });
+  expect(out.open).toBe(true);
+  // the whole month, not the screen filter (Video Analysis only): both July days, not August, not Yuri
+  expect(out.body).toContain('Surf Camp');
+  expect(out.body).toContain('Video Analysis');
+  expect(out.body).not.toContain('Yuri');
+  // (60 + 20 + 250 head coach) × 1.23 = 405.90; one lesson unpaid → not paid yet
+  expect(out.body).toContain('€405.90');
+  expect(out.body).toContain('Not paid yet');
+  expect(out.text).toContain('Amount due: €405.90');
+  expect(out.text).toContain('Head coach: €250.00');
+  expect(out.text.split('\n')[0]).toBe('Romildo Ramos — July 2026');
+});
+
 test('instructors: "Marcar pago" books the month in the HQ — one row per place, extras and VAT included, never twice', async ({ page }) => {
   // Miguel, 6 Oct 2026: "quando carrego no botão pago, esse valor por mês é
   // sempre o do recibo" — the receipt is the payroll total (lessons + head-coach

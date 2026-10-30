@@ -63,7 +63,10 @@
     .overview-grid{display:grid;gap:var(--sp-3);grid-template-columns:repeat(5,1fr);margin-bottom:var(--sp-4)}
     @media (max-width:1100px){.overview-grid{grid-template-columns:1fr 1fr}.loc-cards{grid-template-columns:repeat(3,1fr)}.modal-grid{grid-template-columns:1fr}}
     @media (max-width:760px){.form-grid,.overview-grid{grid-template-columns:1fr}.loc-cards{grid-template-columns:1fr 1fr}.searchable{width:100%}.entry-bottom{flex-direction:column}.filters-right,.filters-right .select{width:100%}.mhdr-row{flex-direction:column}}
-  </style>
+  .st-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:var(--sp-4)}.st-name{font-size:18px;font-weight:600}
+.st-tbl{width:100%;border-collapse:collapse;margin-bottom:var(--sp-4);font-size:13px}.st-tbl th,.st-tbl td{padding:6px 8px;border-bottom:1px solid var(--border);text-align:left}.st-tbl .r{text-align:right}
+.st-tbl th{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted,#666)}.st-line td{border-top:2px solid currentColor}.st-due td{font-size:15px}
+</style>
 </head>
 <body>
 <nav class="app-nav" id="appNav"></nav>
@@ -193,6 +196,18 @@ AppShell.mount('appNav', { app:'instructors', tabAttr:'data-tab', user:false,
       <div class="status-msg status-ok" id="instructorModalMsg" style="display:none;margin-top:12px"></div>
     </div>
     <div class="mfooter"><button class="btn btn-s" id="instructorModalCancel">Cancel</button><button class="btn btn-p" id="instructorModalSave">Save</button></div>
+  </div>
+</div>
+
+<div class="overlay" id="statementModal">
+  <div class="modal" style="max-width:640px">
+    <div class="mhdr">
+      <div class="mhdr-title" id="statementTitle">Monthly statement</div>
+      <div class="mhdr-sub">The month's lessons and what we owe — to send to the instructor when they ask.</div>
+      <button class="mclose" id="statementClose" aria-label="Close">×</button>
+    </div>
+    <div class="mbody" id="statementBody"></div>
+    <div class="mfooter"><span class="status-msg" id="statementMsg" style="display:none;margin-right:auto"></span><button class="btn btn-s" id="statementCopy">Copy text</button><button class="btn btn-p" id="statementPrint">Print / PDF</button></div>
   </div>
 </div>
 
@@ -636,11 +651,73 @@ function updatePayroll(){
     <td class="r">${euro(r.gross)}</td>
     <td class="r">${r.vatPct?`${euro(r.vat)}<div class="muted" style="font-size:11px">${r.vatPct}%</div>`:'<span class="muted">·</span>'}</td>
     <td class="r">${r.extra?`${euro(r.extra)}<div class="muted" style="font-size:11px">${r.extraKind==="head_coach_junior_week"?"head coach Junior":"head coach"}</div>`:'<span class="muted">·</span>'}</td>
-    <td style="white-space:nowrap">${r.isPaid?`<span class="badge badge-green">Paid</span> <button class="btn btn-s btn-sm" data-paid-toggle="${esc(r.instructorName)}|${r.month}">Mark unpaid</button>`:`<button class="btn btn-s btn-sm" data-paid-toggle="${esc(r.instructorName)}|${r.month}">Mark paid</button>`}</td>
+    <td style="white-space:nowrap">${r.isPaid?`<span class="badge badge-green">Paid</span> <button class="btn btn-s btn-sm" data-paid-toggle="${esc(r.instructorName)}|${r.month}">Mark unpaid</button>`:`<button class="btn btn-s btn-sm" data-paid-toggle="${esc(r.instructorName)}|${r.month}">Mark paid</button>`} <button class="btn btn-s btn-sm" data-statement="${esc(r.instructorName)}|${r.month}" title="The month's lessons and amount, to send to the instructor">Statement</button></td>
     <td class="r"><strong>${euro(r.due)}</strong></td>
   </tr>`).join("")+`<tr class="total-row"><td><strong>Total</strong></td><td>${rows.length} lines</td><td class="r"><strong>${tot.lessons}</strong></td><td></td><td class="r"><strong>${euro(tot.gross)}</strong></td><td class="r">${euro(tot.vat)}</td><td class="r">${euro(tot.extra)}</td><td></td><td class="r"><strong>${euro(tot.due)}</strong></td></tr>`
   :`<tr class="empty-row"><td colspan="9">No payroll lines in this filter.</td></tr>`;
   document.querySelectorAll("[data-paid-toggle]").forEach(btn=>btn.onclick=()=>togglePayrollPaid(btn.dataset.paidToggle));
+  document.querySelectorAll("[data-statement]").forEach(btn=>btn.onclick=()=>openStatement(btn.dataset.statement));
+}
+// Monthly statement per instructor (Maxime, 30 Oct 2026): when an instructor
+// asks, send them the month — every day, lessons by category, extras, VAT and
+// the amount due. Built from all of the month's lessons, not the screen filters.
+function statementData(name,month){
+  const rows=entries.filter(e=>e.instructorName===name&&String(e.date).slice(0,7)===month).sort((a,b)=>a.date.localeCompare(b.date));
+  const dir=instructorDirectory.find(d=>d.name===name);
+  const lessons=rows.reduce((t,e)=>t+Number(e.numberOfLessons),0), gross=rows.reduce((t,e)=>t+Number(e.total),0);
+  const extra=payrollExtra(dir,rows), vatPct=dir?dir.vatPct:0, vat=(gross+extra)*vatPct/100;
+  const byCat=categoriesIn(rows).map(c=>{const r=rows.filter(e=>e.lessonCategory===c);return{cat:c,lessons:r.reduce((t,e)=>t+Number(e.numberOfLessons),0),total:r.reduce((t,e)=>t+Number(e.total),0)};});
+  const extraName=dir&&dir.extraKind==="head_coach_junior_week"?"Head coach · Junior camp weeks":"Head coach";
+  return{name,month,rows,byCat,lessons,gross,extra,extraName,vatPct,vat,due:gross+extra+vat,paid:rows.length>0&&rows.every(e=>e.paid)};
+}
+function statementHtml(s){
+  const day=d=>new Date(d+"T00:00:00").toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short"});
+  return `<div class="st-head"><div><div class="st-name">${esc(s.name)}</div><div class="muted">${monthLabel(s.month)} · Gota d'Água Surf</div></div><span class="badge ${s.paid?"badge-green":"badge-amber"}">${s.paid?"Paid":"Not paid yet"}</span></div>
+  <table class="st-tbl"><thead><tr><th>Day</th><th>Lesson</th><th class="r">Lessons</th><th class="r">Price</th><th class="r">Total</th></tr></thead><tbody>
+  ${s.rows.map(e=>`<tr><td>${day(e.date)}</td><td>${esc(e.lessonCategory)}</td><td class="r">${Number(e.numberOfLessons)}</td><td class="r">${euro(e.priceUnit)}</td><td class="r">${euro(e.total)}</td></tr>`).join("")}
+  </tbody></table>
+  <table class="st-tbl st-sum"><tbody>
+  ${s.byCat.map(c=>`<tr><td>${esc(c.cat)}</td><td class="r">${c.lessons} lesson${c.lessons===1?"":"s"}</td><td class="r">${euro(c.total)}</td></tr>`).join("")}
+  <tr class="st-line"><td><strong>Lessons</strong></td><td class="r"><strong>${s.lessons}</strong></td><td class="r"><strong>${euro(s.gross)}</strong></td></tr>
+  ${s.extra?`<tr><td>${esc(s.extraName)}</td><td></td><td class="r">${euro(s.extra)}</td></tr>`:""}
+  ${s.vatPct?`<tr><td>VAT ${s.vatPct}%</td><td></td><td class="r">${euro(s.vat)}</td></tr>`:""}
+  <tr class="st-line st-due"><td><strong>Amount due</strong></td><td></td><td class="r"><strong>${euro(s.due)}</strong></td></tr>
+  </tbody></table>`;
+}
+function statementText(s){
+  const day=d=>new Date(d+"T00:00:00").toLocaleDateString("en-GB",{day:"2-digit",month:"2-digit"});
+  return [`${s.name} — ${monthLabel(s.month)}`,"",
+    ...s.rows.map(e=>`${day(e.date)} · ${e.lessonCategory} · ${Number(e.numberOfLessons)} × ${euro(e.priceUnit)} = ${euro(e.total)}`),"",
+    ...s.byCat.map(c=>`${c.cat}: ${c.lessons} lesson${c.lessons===1?"":"s"} · ${euro(c.total)}`),
+    `Lessons: ${s.lessons} · ${euro(s.gross)}`,
+    ...(s.extra?[`${s.extraName}: ${euro(s.extra)}`]:[]),
+    ...(s.vatPct?[`VAT ${s.vatPct}%: ${euro(s.vat)}`]:[]),
+    `Amount due: ${euro(s.due)}${s.paid?" (paid)":""}`].join("\n");
+}
+let currentStatement=null;
+function openStatement(key){
+  const i=key.lastIndexOf("|");currentStatement=statementData(key.slice(0,i),key.slice(i+1));
+  document.getElementById("statementTitle").textContent=`${currentStatement.name} · ${monthLabel(currentStatement.month)}`;
+  document.getElementById("statementBody").innerHTML=statementHtml(currentStatement);
+  document.getElementById("statementMsg").style.display="none";
+  document.getElementById("statementModal").classList.add("open");
+}
+function closeStatement(){document.getElementById("statementModal").classList.remove("open");currentStatement=null;}
+async function copyStatement(){
+  const msg=document.getElementById("statementMsg");
+  try{await navigator.clipboard.writeText(statementText(currentStatement));msg.textContent="Copied — paste it in WhatsApp or an email.";msg.className="status-msg status-ok";}
+  catch(e){msg.textContent="Could not copy: "+(e.message||e);msg.className="status-msg status-err";}
+  msg.style.display="inline-block";
+}
+function printStatement(){
+  const s=currentStatement;if(!s)return;
+  const f=document.createElement("iframe");f.style.cssText="position:fixed;width:0;height:0;border:0;right:0;bottom:0";document.body.appendChild(f);
+  const d=f.contentDocument;d.open();d.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(s.name)} — ${monthLabel(s.month)}</title><style>
+    body{font-family:Outfit,Arial,sans-serif;color:#111;margin:32px;font-size:13px}.muted{color:#666}.st-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px}
+    .st-name{font-size:20px;font-weight:600}.badge{border:1px solid #999;border-radius:999px;padding:2px 10px;font-size:12px}
+    table{width:100%;border-collapse:collapse;margin-bottom:18px}th,td{padding:5px 6px;border-bottom:1px solid #e5e5e5;text-align:left}th{font-size:11px;text-transform:uppercase;color:#666}
+    .r{text-align:right}.st-line td{border-top:2px solid #111}.st-due td{font-size:15px}</style></head><body>${statementHtml(s)}</body></html>`);d.close();
+  setTimeout(()=>{f.contentWindow.focus();f.contentWindow.print();setTimeout(()=>f.remove(),1000);},150);
 }
 function updateEntries(){const rows=filteredEntries();
   const nAulas=rows.reduce((s,e)=>s+Number(e.numberOfLessons),0);
@@ -949,6 +1026,9 @@ document.getElementById("qdAll").onchange=renderQuickDay;
 document.getElementById("newInstructorBtn").onclick=()=>openInstructorModal(null);
 document.getElementById("dirShowInactive").onchange=renderDirectory;
 document.getElementById("instructorModalClose").onclick=closeInstructorModal;
+document.getElementById("statementClose").onclick=closeStatement;
+document.getElementById("statementCopy").onclick=copyStatement;
+document.getElementById("statementPrint").onclick=printStatement;
 document.getElementById("instructorModalCancel").onclick=closeInstructorModal;
 document.getElementById("instructorModalSave").onclick=saveInstructor;
 document.getElementById("instructorModal").addEventListener("click",ev=>{if(ev.target.id==="instructorModal")closeInstructorModal();});
