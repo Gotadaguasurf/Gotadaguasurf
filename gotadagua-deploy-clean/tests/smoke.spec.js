@@ -798,6 +798,12 @@ test('hq: expenses read by month — friendly dates, month separators, period pr
   expect(out.markup).toContain('id="filter_to"');
   expect(out.markup).toContain('breakdownBody');
   expect(out.markup).toContain("periodoRapido('trimestre')");
+  // 30 Oct 2026: one list by date (no more location groups that hid Portugal under 800 General rows);
+  // location tabs above the list drive the hidden #filter_location select
+  expect(out.markup).toContain('id="locPills"');
+  expect(out.markup).toContain(`pickLocation('portugal')`);
+  expect(out.markup).toContain(`pickLocation('__all__')`);
+  expect(out.markup).toMatch(/id="filter_location"[^>]*display:none/);
 });
 
 test('instructors: lessons load past 1000 rows, Kids Camp exists, and entries have filters + two views', async ({ page }) => {

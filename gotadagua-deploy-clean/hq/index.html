@@ -1077,7 +1077,7 @@ function invoicesTabHtml(){
         <button class="hq-pill" data-periodo="ano" onclick="periodoRapido('ano')">This year</button>
         <button class="hq-pill" data-periodo="tudo" onclick="periodoRapido('tudo')">All</button>
       </div>
-      <select id="filter_location" onchange="onFilterChanged()" class="hq-select">
+      <select id="filter_location" onchange="onFilterChanged()" class="hq-select" style="display:none">
         <option value="__all__">All locations</option>
         ${locOptions}
       </select>
@@ -1161,11 +1161,18 @@ function invoicesTabHtml(){
       <div id="breakdownBody" class="add-block-body"></div>
     </details>
 
+    <div class="hq-pills" id="locPills" style="margin-bottom:var(--sp-3);flex-wrap:wrap">
+      <button class="hq-pill active" data-loc="__all__" onclick="pickLocation('__all__')">All</button>
+      ${HQ_LOCATIONS.map(l => `<button class="hq-pill" data-loc="${l.slug}" onclick="pickLocation('${l.slug}')">${l.label}</button>`).join('')}
+    </div>
     <div id="invListBody">
       <div class="loading">Loading…</div>
     </div>
   `;
 }
+// Location tabs above the list (Miguel, 30 Oct 2026: «tudo junto e depois escolher a localização»):
+// they drive the old #filter_location select, so every filter, chip and export keeps working.
+function pickLocation(slug){ const el = $('filter_location'); if (el) el.value = slug; renderInvoiceList(); }
 
 // The UI is English; MESES_LONGO (Portuguese) stays for what the accountant reads: the Excel labels and the Drive file names.
 const MESES_LONGO = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
@@ -1201,6 +1208,8 @@ function toggleMoreFilters(){
 function renderHqFilterSummary(){
   const box=$('hqFilterSummary'); if(!box) return;
   document.querySelectorAll('#periodoPills .hq-pill').forEach(b=>b.classList.toggle('active', b.dataset.periodo===hqPeriodo));
+  const locNow = $('filter_location')?.value || '__all__';
+  document.querySelectorAll('#locPills .hq-pill').forEach(b=>b.classList.toggle('active', b.dataset.loc===locNow));
   const v=id=>{const el=$(id); return el ? (el.type==='checkbox' ? el.checked : el.value) : '';};
   const chips=[];
   const from=v('filter_from'), to=v('filter_to'), month=v('filter_month');
@@ -4121,15 +4130,6 @@ async function renderInvoiceList(){
     return;
   }
 
-  // Group by location_slug when "All" is selected. General first, then camps by size.
-  const groupsOrder = ['general','portugal','surf-school','junior-camp','kids-camp','wild-wednesday','morocco','sri-lanka'];
-  const grouped = {};
-  rows.forEach(r => {
-    const k = r.location_slug || 'general';
-    if (!grouped[k]) grouped[k] = [];
-    grouped[k].push(r);
-  });
-  const showGrouped = (loc === '__all__');
 
   const COLS = 10;   // sel · date · supplier · number · category · location · payment · bank · pdf · amount · actions = 11 cells; group rows span all but Amount+actions
   const rowHtml = (r) => {
@@ -4199,21 +4199,7 @@ async function renderInvoiceList(){
     </tr>`;
 
   let tableBody;
-  if (showGrouped) {
-    const groupSections = groupsOrder
-      .filter(slug => grouped[slug] && grouped[slug].length)
-      .map(slug => {
-        const gRows = grouped[slug];
-        const gTotal = gRows.reduce((s,r)=>s+Number(r.amount_eur||0), 0);
-        const label = slug === 'general' ? 'General HQ · not attributed to a camp' : `Attributed to ${locLabel(slug)}`;
-        return groupRow(label, gTotal, `${gRows.length} expense${gRows.length===1?'':'s'}`) + gRows.map(rowHtml).join('');
-      }).join('');
-    const knownSlugs = new Set(groupsOrder);
-    const otherSection = Object.keys(grouped).filter(s => !knownSlugs.has(s)).map(slug =>
-      groupRow(`Other · ${escapeHtml(slug)}`, grouped[slug].reduce((s,r)=>s+Number(r.amount_eur||0),0), '') + grouped[slug].map(rowHtml).join('')
-    ).join('');
-    tableBody = `<tbody>${groupSections}${otherSection}</tbody>`;
-  } else {
+  {
     // One header per month with its total: 1,900 rows in a row would not show where a month ends.
     let mesAtual = '';
     const partes = [];
