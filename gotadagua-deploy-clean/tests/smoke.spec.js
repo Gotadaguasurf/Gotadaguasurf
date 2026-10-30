@@ -1942,11 +1942,11 @@ test('suk: bank-based overview, one expense line per debit, missing PDFs', async
     const kpis = [...document.querySelectorAll('#ovBody .kpi')].slice(0, 4).map(k => k.querySelector('.kpi-label').textContent.trim() + ' ' + k.querySelector('.kpi-value').textContent.trim());
     const biz = [...document.querySelectorAll('#ovBody .g2 .card')].map(c => c.querySelector('.ov-section-title').textContent.trim() + ' ' + [...c.querySelectorAll('tr')].map(tr => tr.lastElementChild.textContent.trim().split(' · ')[0]).join(' | '));
     showPage('invoices'); $('iv_filter').value = 'catering'; renderInvoices();
-    const catering = [...document.querySelectorAll('#invBody tr:not(.mgroup)')].map(tr => (tr.children[1]?.querySelector('.sup-name') || tr.children[1])?.textContent.trim());   // supplier name only (description sits under it since 23 Oct 2026)
+    const catering = [...document.querySelectorAll('#invBody tr:not(.grp-row)')].map(tr => (tr.children[1]?.querySelector('.sup-name') || tr.children[1])?.textContent.trim());   // supplier name only (description sits under it since 23 Oct 2026)
     showInvoicesFilter('nopdf');
-    const monthHeads = [...document.querySelectorAll('#invBody tr.mgroup')].map(tr => tr.textContent.trim());
+    const monthHeads = [...document.querySelectorAll('#invBody tr.grp-row')].map(tr => [...tr.children].map(td => td.textContent.trim()).filter(Boolean).join(' | '));
     const pills = [...document.querySelectorAll('#iv_month_pills .hq-pill')].map(b => b.textContent.trim() + (b.classList.contains('active') ? '*' : ''));
-    const missing = [...document.querySelectorAll('#invBody tr:not(.mgroup)')].map(tr => [...tr.children].slice(0, 5).map(td => (td.querySelector('.sup-name') || td).textContent.trim().replace(/\s+/g, ' ')));
+    const missing = [...document.querySelectorAll('#invBody tr:not(.grp-row)')].map(tr => [...tr.children].slice(0, 5).map(td => (td.querySelector('.sup-name') || td).textContent.trim().replace(/\s+/g, ' ')));
     showPage('overview');
     const bySupplier = [...document.querySelectorAll('#ovBody .ov-section')].find(s => /Without PDF/.test(s.textContent));
     return { kpis, biz, catering, missing, monthHeads, pills, suppliers: bySupplier ? [...bySupplier.querySelectorAll('tbody tr')].map(tr => [...tr.children].map(td => td.textContent.trim())) : null, tabs: [...document.querySelectorAll('.ntab')].map(b => b.textContent.trim()) };
@@ -1957,12 +1957,12 @@ test('suk: bank-based overview, one expense line per debit, missing PDFs', async
   expect(out.catering).toEqual(['makro palmela quint']);  // the «Catering only» filter in Expenses
   // Makro has no PDF → the «Without PDF» filter in Expenses lists it; EDP has its PDF; the salary line never needs one.
   // (22 Oct 2026: the Missing PDFs tab was folded into Expenses + an Overview section; Water ↔ Manjar into Bank)
-  expect(out.missing.map(r => r.slice(0, 2))).toEqual([['2026-07-10', 'makro palmela quint']]);
+  expect(out.missing.map(r => r.slice(0, 2))).toEqual([['10 Jul', 'makro palmela quint']]);   // HQ date style since 30 Oct 2026
   expect(out.suppliers).toEqual([['makro palmela quint', '1', '€454.21', 'Food']]);
   expect(out.tabs).toEqual(['Overview', 'Expenses', 'Bank statement', 'Month close']);
   // 30 Oct 2026: month buttons above the list (they drive the hidden #iv_month) and a header per month with its total
   expect(out.pills).toEqual(['All*', 'Jul 2026']);
-  expect(out.monthHeads).toEqual(['July 2026 · 1 · €454.21']);
+  expect(out.monthHeads).toEqual(['July 2026 · 1 expense | €454.21']);   // same month row as the HQ (30 Oct 2026)
   expect(errs).toEqual([]);
 });
 
@@ -2013,7 +2013,7 @@ test('suk: month close — invoices to attach, bank debits to add, Drive folder,
         const pack = mcPack('2026-07');
         $('mc_month').value = 'all'; await renderClose();
         return {
-          groups: [...document.querySelectorAll('#mcBody tr.mgroup')].map(tr => tr.textContent.trim()),
+          groups: [...document.querySelectorAll('#mcBody tr.grp-row')].map(tr => [...tr.children].map(td => td.textContent.trim()).filter(Boolean).join(' | ')),
           sheets: pack.sheets.map(sh => sh.name),
           checklist: pack.sheets[1].rows.map(r => [r[1], r[7]]),
           unmatched: pack.sheets[2].rows.map(r => r[1]),
@@ -2028,7 +2028,7 @@ test('suk: month close — invoices to attach, bank debits to add, Drive folder,
   expect(out.folder).toBe('https://drive.google.com/drive/folders/FOLDER07');
   expect(out.sentTick).toBe(true);
   // «All months» (the default) groups the missing invoices and debits by month
-  expect(out.groups).toEqual(['July 2026 · 1 · €454.21', 'July 2026 · 1 · €230.00']);
+  expect(out.groups).toEqual(['July 2026 · 1 invoice | €454.21', 'July 2026 · 1 debit | €230.00']);
   // Excel for the accountant, same writer as Water's: cash and «[por fora» lines stay out; salary = «Não existe»
   expect(out.sheets).toEqual(['Resumo', 'Checklist', 'Banco sem lançamento', 'Extrato BCP']);
   expect(out.checklist).toEqual([['makro', 'Não'], ['pagamento vencimentos', 'Não existe'], ['edp', 'Sim']]);
@@ -2185,4 +2185,36 @@ test('hq: expenses show the bank reconciliation — bank lines matched, cash apa
   expect(out.x.open).toBe(1);
   expect(out.x.openEur).toBe(880);
   expect(out.x.byBank).toEqual({ santander: 1, cgd: 1, paypal: 0 });
+});
+
+// 30 Oct 2026 (Miguel: «tentar não ter scroll horizontal nas expenses»): the HQ and
+// The Suk Expenses tables share one design and fit a ~1000px window — invoice no.
+// under the supplier, category over location/business, payment under the bank badge.
+for (const [name, url] of [['hq', '/hq/'], ['suk', '/suk/#invoices']]) test(`${name}: expenses table fits 1000px without sideways scroll`, async ({ page }) => {
+  const inv = [
+    { id: 'i1', invoice_date: '2026-10-28', company: 'arablau - higiene profissional', description: 'Cleaning supplies: detergent, degreaser, hand towels, food labels', invoice_number: 'FT F7.2026/8838', category_name: 'Cleaning', location_slug: 'portugal', paying_company: 'water-movements', payment_type: 'Bank Transfer', amount_eur: 172.68, amount: 172.68, currency: 'EUR', drive_link: 'https://drive.google.com/x', needs_review: false, notes: '' },
+    { id: 'i2', invoice_date: '2026-10-20', company: 'superbock bebidas s', description: 'MDB 800258 SUPERBOCK BEBIDAS S', category_name: 'Drinks', location_slug: 'portugal', paying_company: 'water-movements', payment_type: 'Card', amount_eur: 418.2, amount: 418.2, currency: 'EUR', drive_link: null, needs_review: true, notes: '[REVIEW — which camp?]' },
+  ];
+  await page.setViewportSize({ width: 1000, height: 900 });
+  await page.route(/supabase\.co\/(auth|rest)\/v1\/.*/, async route => {
+    const u = route.request().url();
+    const json = (b) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(b) });
+    if (u.includes('/auth/v1/user')) return json({ id: 'u1', email: 'miguel@gotadaguasurf.com', aud: 'authenticated', role: 'authenticated' });
+    if (u.includes('/rest/v1/platform_profiles')) return json({ id: 'u1', email: 'miguel@gotadaguasurf.com', full_name: 'Miguel', platform_role: 'owner' });
+    if (u.includes('/rest/v1/locations')) return json(u.includes('slug=eq.the-suk') ? { id: 'suk-0', slug: 'the-suk', name: 'The Suk' } : []);
+    if (u.includes('/rest/v1/hq_invoices')) return json(name === 'suk' ? (u.includes('paying_company=eq.manjar') ? inv.map(i => ({ ...i, paying_company: 'manjar', location_slug: 'the-suk' })) : []) : inv);
+    if (u.includes('/rest/v1/hq_bank_movements')) return json(name === 'suk' ? [{ id: 'b1', movement_date: '2026-10-20', description: 'MDB 800258 SUPERBOCK', amount: -418.2, kind: 'expense', hq_invoice_id: 'i2' }] : [{ hq_invoice_id: 'i1', movement_date: '2026-10-30', bank: 'santander' }]);
+    return json([]);
+  });
+  const errs = []; page.on('pageerror', e => errs.push(e.message));
+  await fakeOwnerSession(page);
+  await page.goto(url, { waitUntil: 'domcontentloaded' });
+  const wrapSel = name === 'hq' ? '#invListBody .tbl-wrap' : '#page-invoices .tbl-wrap';
+  if (name === 'hq') { await page.waitForFunction(() => typeof switchTab === 'function'); await page.evaluate(() => switchTab('invoices')); }
+  await page.waitForFunction((sel) => document.querySelectorAll(`${sel} tbody tr:not(.grp-row)`).length >= 2 && !document.querySelector(`${sel} .empty-row`), wrapSel, { timeout: 15000 });
+  if (process.env.SHOT_DIR) { await page.evaluate((sel) => document.querySelector(sel).scrollIntoView(), wrapSel); await page.screenshot({ path: `${process.env.SHOT_DIR}/expenses_${name}.png` }); }
+  const fit = await page.evaluate((sel) => { const w = document.querySelector(sel); return { scroll: w.scrollWidth, client: w.clientWidth, heads: [...w.querySelectorAll('thead th')].map(th => th.textContent.trim()).filter(Boolean) }; }, wrapSel);
+  expect(fit.scroll).toBeLessThanOrEqual(fit.client + 1);
+  expect(fit.heads).toEqual(['Date', 'Supplier', name === 'hq' ? 'Category · location' : 'Category · business', 'Bank · payment', 'PDF', 'Amount']);
+  expect(errs).toEqual([]);
 });

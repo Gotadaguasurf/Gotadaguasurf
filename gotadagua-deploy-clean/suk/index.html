@@ -16,18 +16,31 @@
 .mx tr.sum td{font-weight:800;border-top:2px solid var(--navy)}
 .mx tr.result td{color:var(--green)}.mx tr.result td.neg{color:var(--red)}
 .mx td.total{font-weight:700;color:var(--navy)}
-.catsel{height:30px;border:1px solid var(--border-2);border-radius:8px;padding:0 8px;font-size:12px;font-family:inherit;background:#fff;color:var(--ink);max-width:170px}
-.catsel.todo{border-color:var(--amber-border);background:var(--amber-bg);color:var(--amber);font-weight:700}
+.catsel{border:1px solid transparent;background:transparent;padding:3px 22px 3px 6px;font-size:12.5px;font-family:inherit;color:inherit;cursor:pointer;border-radius:6px;max-width:100%;display:block;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'><polyline points='6 9 12 15 18 9'/></svg>");background-repeat:no-repeat;background-position:right 4px center}
+.catsel:hover{background-color:var(--surface-2);border-color:var(--border-2)}
+.catsel:focus{background-color:#fff;border-color:var(--ocean);outline:none}
+.catsel.todo{border-color:var(--amber-border);background-color:var(--amber-bg);color:var(--amber);font-weight:700}
+/* Expenses: same table as the HQ — fits the page, no sideways scroll from ~800px up */
+#invTable{table-layout:fixed}
+#invTable th,#invTable td{padding-left:8px;padding-right:8px}
+#invTable col.c-date{width:66px}#invTable col.c-cat{width:150px}#invTable col.c-bank{width:118px}#invTable col.c-pdf{width:92px}#invTable col.c-amt{width:104px}#invTable col.c-act{width:52px}
+@media(max-width:760px){#invTable{table-layout:auto;min-width:700px}}
+.cell-stack{display:flex;flex-direction:column;gap:2px;align-items:flex-start;min-width:0}
+.cell-stack .sub{font-size:11.5px;color:var(--muted)}
+.file-link{color:var(--ocean);text-decoration:none;font-weight:600;font-size:12px}
+.file-link:hover{text-decoration:underline}
+.grp-row td{background:var(--surface-2);font-size:var(--fs-micro);text-transform:uppercase;letter-spacing:.06em;font-weight:600;color:var(--muted);border-top:1px solid var(--border-2)}
+.grp-row td.r{color:var(--navy);text-transform:none;letter-spacing:0;font-size:13px;font-weight:700}
+.grp-row .grp-sub{text-transform:none;letter-spacing:0;font-weight:400;color:var(--muted-2)}
 .dropzone{border:2px dashed var(--border);border-radius:12px;padding:16px;text-align:center;color:var(--muted);font-size:13px;cursor:pointer;background:#fff}
 .dropzone:hover{border-color:var(--ocean);color:var(--navy)}
-.sup-cell{display:block;max-width:320px;overflow:hidden}
+.sup-cell{display:block;max-width:none;overflow:hidden}
 .sup-name{display:block;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sup-desc{display:block;font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px}
 .review-q{display:block;margin-top:4px;font-size:12px;color:var(--amber);white-space:normal}
 /* Month close — same look as the HQ one */
 .fecho-done{padding:14px var(--card-pad, 16px)}
 .month-pills{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px}
-tr.mgroup td{background:#f6f9fc;font-size:11px;text-transform:uppercase;letter-spacing:.08em;font-weight:800;color:var(--navy);padding:8px 13px}
 .fecho-done .card-title{display:flex;align-items:center;gap:8px;font-size:15px}
 .hq-tog{display:inline-flex;align-items:center;gap:6px;height:var(--h-pill);padding:0 12px;border:1px solid var(--border-2);border-radius:999px;background:#fff;color:var(--muted);font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap;user-select:none}
 .hq-tog input{margin:0;width:14px;height:14px;accent-color:var(--ocean)}
@@ -72,9 +85,10 @@ tr.mgroup td{background:#f6f9fc;font-size:11px;text-transform:uppercase;letter-s
       <span class="hint" id="iv_count" style="margin-left:auto"></span>
     </div>
     <div class="hq-pills month-pills" id="iv_month_pills"></div>
-    <div class="card"><div class="tbl-wrap"><table>
-      <thead><tr><th>Date</th><th>Supplier</th><th>Number</th><th>Category</th><th>Business</th><th>Payment</th><th>Matched to bank</th><th>PDF</th><th class="r">Amount</th></tr></thead>
-      <tbody id="invBody"><tr class="empty-row"><td colspan="9">Loading…</td></tr></tbody>
+    <div class="card"><div class="tbl-wrap"><table id="invTable">
+      <colgroup><col class="c-date"><col><col class="c-cat"><col class="c-bank"><col class="c-pdf"><col class="c-amt"><col class="c-act"></colgroup>
+      <thead><tr><th>Date</th><th>Supplier</th><th>Category · business</th><th title="Matched to a BCP debit">Bank · payment</th><th>PDF</th><th class="r">Amount</th><th></th></tr></thead>
+      <tbody id="invBody"><tr class="empty-row"><td colspan="7">Loading…</td></tr></tbody>
     </table></div></div>
     <div class="hint" style="margin-top:8px">A missing invoice is a line without PDF: open it, attach the PDF and the fields are read automatically. Cash purchases are added with «Add expense».</div>
   </div>
@@ -155,6 +169,7 @@ const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Ag
 const $ = (id) => document.getElementById(id);
 const eur = (n) => BusinessPnl.eur(n);
 const eur0 = (n) => '€' + Math.round(Number(n || 0)).toLocaleString('en-GB');
+const fmtDay = (d) => { const [y, m, dd] = String(d || '').slice(0, 10).split('-').map(Number); return m ? `${dd} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m - 1]}` : '—'; };
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 // same rule as public.hq_doc_status() (supabase/one-formula.sql): a line needs a PDF unless it is exempt, a salary/benefit/tax,
 // or off the books («[por fora» note, or paid in cash with no invoice — counts in the P&L, never goes to the accountant)
@@ -383,14 +398,21 @@ function renderInvoices(){
   const rows = INVOICES.filter(i => (month === 'all' || String(i.invoice_date).startsWith(month)) && (!q || [i.company, i.invoice_number, i.description, i.category_name].join(' ').toLowerCase().includes(q))
     && (f === 'all' || (f === 'nopdf' && i.missing_pdf) || (f === 'review' && i.needs_review) || (f === 'cash' && !i.bank) || (f === 'catering' && isCatering(i)) || (f === 'restaurant' && !isCatering(i)))).slice().reverse();
   $('iv_count').textContent = `${rows.length} invoices · ${eur(rows.reduce((s, i) => s + Number(i.amount_eur || 0), 0))}`;
-  $('invBody').innerHTML = rows.length ? withMonthRows(rows, i => i.invoice_date, 9, month === 'all', i => i.amount_eur, i => `<tr class="click" onclick="openInvoice('${i.id}')">
-    <td style="white-space:nowrap">${i.invoice_date}</td><td><div class="sup-cell"><span class="sup-name" title="${esc(i.company)}">${esc(i.company)}</span>${i.description ? `<span class="sup-desc" title="${esc(i.description)}">${esc(i.description)}</span>` : ''}${i.needs_review ? `<span class="review-q"><span class="badge badge-amber">Review</span> ${esc(reviewQuestion(i.notes))}</span>` : ''}</div></td><td class="hint">${esc(i.invoice_number || '')}</td>
-    <td onclick="event.stopPropagation()">${CAN_EDIT ? catSelect(i) : (i.category_name ? esc(i.category_name) : '<span class="badge badge-amber">decide</span>')}</td>
-    <td onclick="event.stopPropagation()">${CAN_EDIT ? bizSelect(i) : esc(bizName(i))}</td><td class="hint">${esc(i.payment_type || '')}</td>
-    <td>${i.bank ? `<span class="badge badge-green">${i.bank.movement_date}</span>` : (i.payment_type === 'Cash' ? '<span class="badge badge-grey">cash</span>' : '<span class="badge badge-amber">not linked</span>')}</td>
-    <td>${i.drive_link ? `<a href="${esc(i.drive_link)}" target="_blank" onclick="event.stopPropagation()">open</a>` : (i.doc_exempt_reason ? `<span class="badge badge-grey" title="${esc(i.doc_exempt_reason)}">no invoice</span>` : (i.missing_pdf ? '<span class="badge badge-amber">missing</span>' : '<span class="dim">—</span>'))}</td>
+  const pdfCell = (i) => i.drive_link ? `<a class="file-link" href="${esc(i.drive_link)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="${esc(i.file_name || '')}">open</a>`
+    : i.doc_exempt_reason ? `<span class="badge badge-grey" title="${esc(i.doc_exempt_reason)}">no invoice</span>`
+    : i.missing_pdf ? '<span class="badge badge-amber">missing</span>'
+    : (i.payment_type === 'Cash' || /\[por fora/i.test(String(i.notes || ''))) ? '<span class="badge badge-grey" title="Off the books — counts here, stays out of the accountant pack">cash · no invoice</span>'
+    : '<span class="badge badge-grey" title="Salaries, taxes and benefits need no invoice">no invoice</span>';
+  const bankCell = (i) => i.bank ? `<span class="badge badge-green" title="Matched to the BCP debit of ${i.bank.movement_date}">BCP · ${fmtDay(i.bank.movement_date)}</span>` : (i.payment_type === 'Cash' ? '<span class="badge badge-grey">cash</span>' : '<span class="badge badge-amber" title="No BCP debit linked yet">not linked</span>');
+  $('invBody').innerHTML = rows.length ? withMonthRows(rows, i => i.invoice_date, 7, month === 'all', i => i.amount_eur, i => `<tr class="click" onclick="openInvoice('${i.id}')">
+    <td style="white-space:nowrap" title="${i.invoice_date}">${fmtDay(i.invoice_date)}</td>
+    <td><div class="sup-cell"><span class="sup-name" title="${esc(i.company)}">${esc(i.company)}</span>${(i.invoice_number || i.description) ? `<span class="sup-desc" title="${esc([i.invoice_number, i.description].filter(Boolean).join(' · '))}">${i.invoice_number ? `<span class="mono">${esc(i.invoice_number)}</span>${i.description ? ' · ' : ''}` : ''}${esc(i.description || '')}</span>` : ''}${i.needs_review ? `<span class="review-q"><span class="badge badge-amber">Review</span> ${esc(reviewQuestion(i.notes))}</span>` : ''}</div></td>
+    <td onclick="event.stopPropagation()"><div class="cell-stack">${CAN_EDIT ? catSelect(i) + bizSelect(i) : `<span>${i.category_name ? esc(i.category_name) : '<span class="badge badge-amber">decide</span>'}</span><span class="sub">${esc(bizName(i))}</span>`}</div></td>
+    <td><div class="cell-stack">${bankCell(i)}<span class="sub">${esc(i.payment_type || '—')}</span></div></td>
+    <td>${pdfCell(i)}</td>
     <td class="r" style="font-weight:700;white-space:nowrap">${eur(i.amount_eur)}</td>
-  </tr>`) : '<tr class="empty-row"><td colspan="9">No expenses match this filter.</td></tr>';
+    <td style="text-align:right">${CAN_EDIT ? `<button class="btn btn-s btn-sm btn-icon" onclick="event.stopPropagation();openInvoice('${i.id}')" title="Edit — archive is in the form">${AppShell.icon('edit')}</button>` : ''}</td>
+  </tr>`, 5, 'expense') : '<tr class="empty-row"><td colspan="7">No expenses match this filter.</td></tr>';
 }
 
 // Category straight from the table: a select per line; when the supplier has
@@ -556,10 +578,10 @@ function renderBank(){
   const inv = (r) => r.has_invoice === 'linked' ? '<span class="badge badge-green">linked</span>' : r.has_invoice === 'amount' ? '<span class="badge badge-blue">by amount</span>' : r.has_invoice === 'missing' ? '<span class="badge badge-amber">missing</span>' : r.has_invoice === 'none' ? '<span class="badge badge-grey">no invoice</span>' : '';
   $('bk_count').textContent = `${rows.length} movements · in ${eur(rows.filter(r => r.amount > 0).reduce((s, r) => s + Number(r.amount), 0))} · out ${eur(-rows.filter(r => r.amount < 0).reduce((s, r) => s + Number(r.amount), 0))}`;
   $('bankBody').innerHTML = rows.length ? withMonthRows(rows.slice(0, 600), r => r.movement_date, 7, month === 'all', r => r.amount, r => `<tr>
-    <td>${r.movement_date}</td><td>${esc(r.description)}</td><td class="hint">${esc(rubricLabel(r.rubric))}</td><td>${inv(r)}</td>
+    <td style="white-space:nowrap" title="${r.movement_date}">${fmtDay(r.movement_date)}</td><td>${esc(r.description)}</td><td class="hint">${esc(rubricLabel(r.rubric))}</td><td>${inv(r)}</td>
     <td class="r" style="font-weight:700;color:${r.amount > 0 ? 'var(--green)' : 'var(--ink)'}">${r.amount > 0 ? '+' : ''}${eur(r.amount)}</td><td class="r hint">${r.balance != null ? eur(r.balance) : ''}</td>
     <td class="r">${CAN_EDIT && r.has_invoice === 'missing' ? `<button class="btn btn-s btn-sm" onclick="addFromBank('${r.id}')">Add invoice</button>` : ''}</td>
-  </tr>`) + (rows.length > 600 ? `<tr class="empty-row"><td colspan="7">Showing 600 of ${rows.length} — pick a month.</td></tr>` : '') : '<tr class="empty-row"><td colspan="7">No movements match this filter.</td></tr>';
+  </tr>`, 4, 'movement') + (rows.length > 600 ? `<tr class="empty-row"><td colspan="7">Showing 600 of ${rows.length} — pick a month.</td></tr>` : '') : '<tr class="empty-row"><td colspan="7">No movements match this filter.</td></tr>';
 }
 
 // ── Missing PDFs (lines without a document) ──────────────────────
@@ -614,24 +636,28 @@ async function renderClose(){
   const done = (text) => `<div class="card fecho-done"><div class="card-title" style="color:var(--green)">${ic('check-circle')} ${text}</div></div>`;
   $('mcBody').innerHTML = (missing.length
       ? step('1 · Invoices to attach', missing.length, 'Attach the PDF (it goes to the Manjar Drive folder of the month) or paste the Drive link.', '<th>Date</th><th>Supplier</th><th class="r">Amount</th><th></th>',
-          withMonthRows(missing, i => i.invoice_date, 4, all, i => i.amount_eur, i => `<tr><td style="white-space:nowrap">${i.invoice_date}</td><td><b>${esc(i.company || '')}</b><span class="cell-sub">${esc(i.category_name || 'no category')} · ${esc(bizName(i))}${i.invoice_number ? ' · ' + esc(i.invoice_number) : ''}</span></td><td class="r">${eur(i.amount_eur)}</td>
-            <td style="white-space:nowrap;text-align:right">${CAN_EDIT ? `<button class="btn btn-s btn-sm" onclick="mcAttach('${i.id}')">${ic('paperclip')} Attach</button> <button class="btn btn-s btn-sm" onclick="mcLink('${i.id}')">${ic('link')} Link</button> <button class="btn btn-s btn-sm" title="This supplier never issues an invoice — stop counting it as missing" onclick="markNoInvoice('${i.id}')">No invoice needed</button>` : ''}</td></tr>`))
+          withMonthRows(missing, i => i.invoice_date, 4, all, i => i.amount_eur, i => `<tr><td style="white-space:nowrap" title="${i.invoice_date}">${fmtDay(i.invoice_date)}</td><td><b>${esc(i.company || '')}</b><span class="cell-sub">${esc(i.category_name || 'no category')} · ${esc(bizName(i))}${i.invoice_number ? ' · ' + esc(i.invoice_number) : ''}</span></td><td class="r">${eur(i.amount_eur)}</td>
+            <td style="white-space:nowrap;text-align:right">${CAN_EDIT ? `<button class="btn btn-s btn-sm" onclick="mcAttach('${i.id}')">${ic('paperclip')} Attach</button> <button class="btn btn-s btn-sm" onclick="mcLink('${i.id}')">${ic('link')} Link</button> <button class="btn btn-s btn-sm" title="This supplier never issues an invoice — stop counting it as missing" onclick="markNoInvoice('${i.id}')">No invoice needed</button>` : ''}</td></tr>`, 2, 'invoice'))
       : done('1 · All invoices attached'))
     + (debits.length
       ? step('2 · Bank debits to add', debits.length, 'BCP debits with no expense yet. Left out: bank fees, salaries, taxes, transfers.', '<th>Date</th><th>Description</th><th class="r">Amount</th><th></th>',
-          withMonthRows(debits, r => r.movement_date, 4, all, r => -r.amount, r => `<tr><td style="white-space:nowrap">${r.movement_date}</td><td>${esc(r.description)}</td><td class="r">${eur(-r.amount)}</td><td style="white-space:nowrap;text-align:right">${CAN_EDIT ? `<button class="btn btn-s btn-sm" onclick="addFromBank('${r.id}')">${ic('plus')} Add expense</button>` : ''}</td></tr>`))
+          withMonthRows(debits, r => r.movement_date, 4, all, r => -r.amount, r => `<tr><td style="white-space:nowrap" title="${r.movement_date}">${fmtDay(r.movement_date)}</td><td>${esc(r.description)}</td><td class="r">${eur(-r.amount)}</td><td style="white-space:nowrap;text-align:right">${CAN_EDIT ? `<button class="btn btn-s btn-sm" onclick="addFromBank('${r.id}')">${ic('plus')} Add expense</button>` : ''}</td></tr>`, 2, 'debit'))
       : done('2 · Every bank debit has an expense'));
   $('mc_folder').innerHTML = folder ? `<a class="btn btn-s" target="_blank" rel="noopener" href="https://drive.google.com/drive/folders/${folder}">${ic('folder')} ${all ? 'Manjar invoices on Drive' : `Drive folder · ${mcLabel(month)}`}</a>` : `<span class="hint">No Manjar Drive folder registered for ${mcLabel(month)}.</span>`;
   $('mc_pack').innerHTML = CAN_EDIT && !all ? `<label class="hq-tog"><input type="checkbox" ${sent ? 'checked' : ''} onchange="mcToggleSent(this.checked)"> Sent${sent ? ` <span class="hint">· ${who}</span>` : ''}</label>` : '';
   $('mcNoInv').innerHTML = exempt.length ? `<details><summary>${exempt.length} line${exempt.length === 1 ? '' : 's'} with no invoice by nature (salaries, taxes, cash, marked «no invoice»)</summary><div style="margin-top:6px">${exempt.map(i => `${i.invoice_date} · ${esc(i.company || '')} · ${eur(i.amount_eur)}`).join('<br>')}</div></details>` : '';
 }
-// «All months»: a header row per month (count and total) above that month's rows.
-function withMonthRows(list, dateOf, cols, grouped, amountOf, rowHtml){
+// «All»: a header row per month like the HQ's (month · count on the left, total under the Amount column).
+function withMonthRows(list, dateOf, cols, grouped, amountOf, rowHtml, amountCol, noun){
   if (!grouped) return list.map(rowHtml).join('');
   let out = '', cur = null;
   list.forEach(x => {
     const k = String(dateOf(x)).slice(0, 7);
-    if (k !== cur) { cur = k; const same = list.filter(y => String(dateOf(y)).slice(0, 7) === k); out += `<tr class="mgroup"><td colspan="${cols}">${mcLabel(k)} · ${same.length} · ${eur(same.reduce((s, y) => s + Number(amountOf(y) || 0), 0))}</td></tr>`; }
+    if (k !== cur) {
+      cur = k; const same = list.filter(y => String(dateOf(y)).slice(0, 7) === k);
+      const rest = cols - amountCol - 1;
+      out += `<tr class="grp-row"><td colspan="${amountCol}">${mcLabel(k)} <span class="grp-sub">· ${same.length} ${noun}${same.length === 1 ? '' : 's'}</span></td><td class="r">${eur(same.reduce((s, y) => s + Number(amountOf(y) || 0), 0))}</td>${rest > 0 ? `<td colspan="${rest}"></td>` : ''}</tr>`;
+    }
     out += rowHtml(x);
   });
   return out;

@@ -42,12 +42,24 @@
 /* expense list */
 .tbl-wrap tbody tr.row-selected td{background:var(--ocean-soft)}
 .tbl-wrap tbody tr.dup td,.tbl-wrap tbody tr.due td{background:var(--amber-bg)}
-#invListBody table{min-width:980px}
+/* Expenses table fits the page (no sideways scroll from ~800px up): invoice no. sits under the supplier,
+   category over location, payment under the bank badge; archive lives in the edit form. */
+#invListBody table{table-layout:fixed}
 #invListBody th,#invListBody td{padding-left:8px;padding-right:8px}
-#invListBody .inline-select{max-width:160px}
+#invListBody col.c-date{width:66px}#invListBody col.c-cat{width:156px}#invListBody col.c-bank{width:146px}
+#invListBody col.c-pdf{width:92px}#invListBody col.c-amt{width:104px}#invListBody col.c-act{width:84px}#invListBody col.c-sel{width:0}
+#invListBody.select-mode col.c-sel{width:32px}
+#invListBody .inline-select{max-width:100%;min-width:0;display:block}
+#invListBody .sup-cell{max-width:none}
+.cell-stack{display:flex;flex-direction:column;gap:2px;align-items:flex-start;min-width:0}
+.cell-stack .sub{font-size:11.5px;color:var(--muted)}
+@media(max-width:760px){#invListBody table{table-layout:auto;min-width:720px}}
 .inv-no{display:block;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#invListBody th.sel,#invListBody td.sel{display:none;width:28px}
-#invListBody.select-mode th.sel,#invListBody.select-mode td.sel{display:table-cell}
+/* the select column stays in the table (the <colgroup> counts it) but is 0px wide until Select is on */
+#invListBody th.sel,#invListBody td.sel{padding:0;overflow:hidden}
+#invListBody th.sel input,#invListBody td.sel input{display:none}
+#invListBody.select-mode th.sel,#invListBody.select-mode td.sel{padding-left:8px}
+#invListBody.select-mode th.sel input,#invListBody.select-mode td.sel input{display:inline-block}
 .sup-cell{display:block;max-width:232px;overflow:hidden}
 .sup-name{display:block;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sup-desc{display:block;font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px}
@@ -4135,7 +4147,6 @@ async function renderInvoiceList(){
   }
 
 
-  const COLS = 10;   // sel · date · supplier · number · category · location · payment · bank · pdf · amount · actions = 11 cells; group rows span all but Amount+actions
   const rowHtml = (r) => {
     const isPersonal = personalCatIds.has(r.category_id);
     // «paid by other company» = paying_company differs from the location's usual one (Water paid a Morocco cost, etc.)
@@ -4169,21 +4180,17 @@ async function renderInvoiceList(){
     return `<tr class="${r.is_duplicate?'dup':''}${isSelected?' row-selected':''}" data-inv-id="${r.id}">
       <td class="sel"><input type="checkbox" class="row-check" data-id="${r.id}" ${isSelected?'checked':''} onchange="onRowCheck('${r.id}', this.checked)"></td>
       <td style="white-space:nowrap" title="${r.invoice_date}">${fmtDia(r.invoice_date)}</td>
-      <td><div class="sup-cell"><span class="sup-name" title="${escapeHtml(r.company||'')}">${escapeHtml(r.company||'')}</span>${r.description?`<span class="sup-desc" title="${escapeHtml(r.description)}">${escapeHtml(r.description)}</span>`:''}${tags?`<span class="sup-tags">${tags}</span>`:''}${r.needs_review?`<span class="review-q">${escapeHtml(reviewQuestion(r.notes))}</span>`:''}</div></td>
-      <td><span class="mono inv-no" title="${escapeHtml(r.invoice_number||'')}">${escapeHtml(r.invoice_number||'—')}</span></td>
-      <td><select class="inline-select wide" onchange="quickUpdateInvoice('${r.id}','category_id',this.value,this)">${catSelect}</select><span class="inline-txt">${escapeHtml(r.category_name||'—')}</span></td>
-      <td><select class="inline-select" onchange="quickUpdateInvoice('${r.id}','location_slug',this.value,this)" title="Change location — the paying company follows unless you set it yourself">${locSelect}</select><span class="inline-txt">${escapeHtml(locLabel(r.location_slug))}</span></td>
-      <td class="hint" style="white-space:nowrap">${escapeHtml(r.payment_type||'—')}</td>
-      <td>${bankCell}</td>
+      <td><div class="sup-cell"><span class="sup-name" title="${escapeHtml(r.company||'')}">${escapeHtml(r.company||'')}</span>${(r.invoice_number||r.description)?`<span class="sup-desc" title="${escapeHtml([r.invoice_number, r.description].filter(Boolean).join(' · '))}">${r.invoice_number?`<span class="mono">${escapeHtml(r.invoice_number)}</span>${r.description?' · ':''}`:''}${escapeHtml(r.description||'')}</span>`:''}${tags?`<span class="sup-tags">${tags}</span>`:''}${r.needs_review?`<span class="review-q">${escapeHtml(reviewQuestion(r.notes))}</span>`:''}</div></td>
+      <td><div class="cell-stack"><select class="inline-select wide" onchange="quickUpdateInvoice('${r.id}','category_id',this.value,this)">${catSelect}</select><span class="inline-txt">${escapeHtml(r.category_name||'—')}</span><select class="inline-select" onchange="quickUpdateInvoice('${r.id}','location_slug',this.value,this)" title="Change location — the paying company follows unless you set it yourself">${locSelect}</select><span class="inline-txt">${escapeHtml(locLabel(r.location_slug))}</span></div></td>
+      <td><div class="cell-stack">${bankCell}<span class="sub">${escapeHtml(r.payment_type||'—')}</span></div></td>
       <td>${pdfCell}</td>
       <td class="r" style="font-weight:700;white-space:nowrap">${eur(r.amount_eur)}${r.currency && r.currency !== 'EUR' ? `<div class="sup-desc" style="text-align:right;font-weight:400">${Number(r.amount).toFixed(2)} ${escapeHtml(r.currency)}</div>` : ''}</td>
       <td style="white-space:nowrap;text-align:right">
         ${r.deleted_at
-          ? `<button class="btn btn-s btn-sm" onclick="restoreInvoice('${r.id}')" title="Restore — it comes back to every list and total">${ic('refresh')} Restore</button>
-             <button class="btn btn-danger btn-sm" onclick="purgeInvoice('${r.id}')" title="Delete for good — the row and its file are removed">Delete forever</button>`
+          ? `<button class="btn btn-s btn-sm btn-icon" onclick="restoreInvoice('${r.id}')" title="Restore — it comes back to every list and total">${ic('refresh')}</button>
+             <button class="btn btn-danger btn-sm btn-icon" onclick="purgeInvoice('${r.id}')" title="Delete for good — the row and its file are removed">${ic('trash')}</button>`
           : `${r.needs_review?`<button class="btn btn-s btn-sm btn-icon" onclick="approveInvoice('${r.id}')" title="Approve — clears the Review badge">${ic('check')}</button>`:''}
-             <button class="btn btn-s btn-sm btn-icon" onclick="openEditInvoice('${r.id}')" title="Edit">${ic('edit')}</button>
-             <button class="btn btn-s btn-sm btn-icon" onclick="deleteInvoice('${r.id}')" title="Archive — you can restore it from the Archived filter">${ic('archive')}</button>`}
+             <button class="btn btn-s btn-sm btn-icon" onclick="openEditInvoice('${r.id}')" title="Edit — archive is in the form">${ic('edit')}</button>`}
       </td>
     </tr>`;
   };
@@ -4191,13 +4198,14 @@ async function renderInvoiceList(){
   const tableHead = `
     <thead><tr>
       <th class="sel"><input type="checkbox" id="selectAllRows" onchange="onSelectAllVisible(this.checked)" title="Select / clear all visible rows"></th>
-      <th>Date</th><th>Supplier</th><th>Invoice no.</th><th>Category</th><th>Location</th>
-      <th>Payment</th><th title="Matched to a bank movement">Bank</th><th>PDF</th><th class="r">Amount</th><th></th>
+      <th>Date</th><th>Supplier</th><th>Category · location</th>
+      <th title="Matched to a bank movement">Bank · payment</th><th>PDF</th><th class="r">Amount</th><th></th>
     </tr></thead>`;
+  const colGroup = `<colgroup><col class="c-sel"><col class="c-date"><col><col class="c-cat"><col class="c-bank"><col class="c-pdf"><col class="c-amt"><col class="c-act"></colgroup>`;
   const groupRow = (label, total, sub) => `
     <tr class="grp-row">
       <td class="sel"></td>
-      <td colspan="8">${label}${sub ? ` <span class="grp-sub">· ${sub}</span>` : ''}</td>
+      <td colspan="5">${label}${sub ? ` <span class="grp-sub">· ${sub}</span>` : ''}</td>
       <td class="r">${eur(total)}</td>
       <td></td>
     </tr>`;
@@ -4237,7 +4245,7 @@ async function renderInvoiceList(){
         <button class="btn btn-s btn-sm${selectOn?' active':''}" onclick="toggleInvSelectMode()" title="Tick several rows to approve, re-categorise or archive them together">${AppShell.icon(selectOn?'x':'check-circle')} ${selectOn?'Done selecting':'Select'}</button>
       </span>
     </div>
-    <div class="card"><div class="tbl-wrap"><table>${tableHead}${tableBody}</table></div></div>
+    <div class="card"><div class="tbl-wrap"><table>${colGroup}${tableHead}${tableBody}</table></div></div>
     <div class="hint">
       <b>General HQ</b> = expenses that belong to the company as a whole (accounting, global insurance, software…).<br>
       <b>Attributed to a camp</b> = paid by HQ but allocated to the camp for profit purposes (e.g. a Morocco insurance paid from the HQ account).<br>
