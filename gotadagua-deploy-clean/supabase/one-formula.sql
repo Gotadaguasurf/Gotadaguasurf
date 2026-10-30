@@ -31,6 +31,8 @@
 create or replace function public.hq_doc_status(i public.hq_invoices)
 returns text language sql immutable as $$
   select case
+    -- «[por fora» note: our expense, document not in Water's name (a partner's beach licence) — P&L only (Miguel, 30 Oct 2026)
+    when coalesce(i.notes, '') ilike '%[por fora%' then 'por_fora'
     when i.drive_link is not null and i.drive_link <> '' then 'ok'
     when i.doc_exempt_reason is not null then 'isento'
     when coalesce(i.notes, '') ilike '%[sem fatura%' then 'isento'

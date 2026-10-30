@@ -1469,12 +1469,14 @@ test('hq: cash with no invoice stays off the books — in the expenses, out of t
       { ...base, company: 'renda escritorio portugal', amount: 1300, amount_eur: 1300, payment_type: 'Cash', drive_link: null },
       { ...base, company: 'Feira com fatura', amount: 30, amount_eur: 30, payment_type: 'Cash', drive_link: 'https://drive.google.com/file/d/x/view' },
       { ...base, company: 'Prio', amount: 40, amount_eur: 40, payment_type: 'Card', drive_link: null },
+      // a partner's beach licence: has a PDF, but not in Water's name
+      { ...base, company: 'camara municipal de almada', amount: 159.5, amount_eur: 159.5, payment_type: 'Cash', drive_link: 'https://drive.google.com/file/d/y/view', notes: '[por fora — licença em nome de sócio]' },
     ];
     const pack = buildAccountantSheets({ period: accPeriod('month', '2026-09'), invoices: rows, transfers: [], bank: [], partnerInvoices: [], folders: [], bankUnmatched: [] });
     const check = pack.sheets.find(s => s.name === 'Checklist');
     return { status: rows.map(docStatus), checklist: check.rows.map(r => r[2]) };
   });
-  expect(out.status).toEqual(['por_fora', 'ok', 'falta']);
+  expect(out.status).toEqual(['por_fora', 'ok', 'falta', 'por_fora']);
   expect(out.checklist.sort()).toEqual(['Feira com fatura', 'Prio']);
 });
 

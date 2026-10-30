@@ -2333,6 +2333,8 @@ function accLabelEn(period){ return period.slug.length === 7 ? fechoMonthLabel(p
 // One rule for «has a document» — identical to public.hq_doc_status() (supabase/one-formula.sql):
 // ok (PDF) · isento (no document exists: doc_exempt_reason or «[sem fatura» note) · falta
 function docStatus(r){
+  // «[por fora» in the note: an expense of ours whose document is not in Water's name (e.g. a partner's beach licence) — P&L only
+  if (/\[por fora/i.test(String(r.notes||''))) return 'por_fora';
   if (r.drive_link) return 'ok';
   if (r.doc_exempt_reason) return 'isento';
   if (/\[sem fatura/i.test(String(r.notes||''))) return 'isento';
