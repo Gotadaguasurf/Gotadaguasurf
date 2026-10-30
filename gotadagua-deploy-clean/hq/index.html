@@ -4022,6 +4022,8 @@ async function renderInvoiceList(){
   if (!body) return;
   const loc = $('filter_location')?.value || '__all__';
   const month = $('filter_month')?.value || '';
+  // Switching location or period quickly: only the latest request may draw the list.
+  const seq = window.__invListSeq = (window.__invListSeq || 0) + 1;
 
   body.innerHTML = `<div class="loading">Loading…</div>`;
   let rows;
@@ -4054,6 +4056,7 @@ async function renderInvoiceList(){
       return q;
     });
   } catch (error) {
+    if (seq !== window.__invListSeq) return;
     body.innerHTML = `<div class="card"><div class="empty-state">${AppShell.icon('alert')}<div class="empty-title">Could not load the expenses</div><p>${escapeHtml(error.message)}</p></div></div>`;
     return;
   }
@@ -4072,6 +4075,7 @@ async function renderInvoiceList(){
       rows.forEach(r => { if (r.bank_movement_id && dt.has(r.bank_movement_id) && !bankByInv.has(r.id)) bankByInv.set(r.id, dt.get(r.bank_movement_id)); });
     }
   } catch (_) { /* column missing or no access: the column simply shows no link */ }
+  if (seq !== window.__invListSeq) return;
   const personalCatIds = new Set(CATEGORIES.filter(c => c.is_personal).map(c => c.id));
 
   // Apply client-side filters (Location + Month already ran server-side).
