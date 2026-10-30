@@ -2187,15 +2187,15 @@ test('hq: expenses show the bank reconciliation — bank lines matched, cash apa
   expect(out.x.byBank).toEqual({ santander: 1, cgd: 1, paypal: 0 });
 });
 
-// 30 Oct 2026 (Miguel: «tentar não ter scroll horizontal nas expenses»): the HQ and
-// The Suk Expenses tables share one design and fit a ~1000px window — invoice no.
-// under the supplier, category over location/business, payment under the bank badge.
-for (const [name, url] of [['hq', '/hq/'], ['suk', '/suk/#invoices']]) test(`${name}: expenses table fits 1000px without sideways scroll`, async ({ page }) => {
+// 30 Oct 2026 (Miguel: «tentar não ter scroll horizontal nas expenses»; «aquilo estava bem
+// como estava… meter o delete na linha»): same columns as before, fixed widths so the
+// HQ and The Suk tables fit a laptop page; edit and archive stay in the row.
+for (const [name, url] of [['hq', '/hq/'], ['suk', '/suk/#invoices']]) test(`${name}: expenses table fits a laptop page without sideways scroll`, async ({ page }) => {
   const inv = [
     { id: 'i1', invoice_date: '2026-10-28', company: 'arablau - higiene profissional', description: 'Cleaning supplies: detergent, degreaser, hand towels, food labels', invoice_number: 'FT F7.2026/8838', category_name: 'Cleaning', location_slug: 'portugal', paying_company: 'water-movements', payment_type: 'Bank Transfer', amount_eur: 172.68, amount: 172.68, currency: 'EUR', drive_link: 'https://drive.google.com/x', needs_review: false, notes: '' },
     { id: 'i2', invoice_date: '2026-10-20', company: 'superbock bebidas s', description: 'MDB 800258 SUPERBOCK BEBIDAS S', category_name: 'Drinks', location_slug: 'portugal', paying_company: 'water-movements', payment_type: 'Card', amount_eur: 418.2, amount: 418.2, currency: 'EUR', drive_link: null, needs_review: true, notes: '[REVIEW — which camp?]' },
   ];
-  await page.setViewportSize({ width: 1000, height: 900 });
+  await page.setViewportSize({ width: 1440, height: 900 });
   await page.route(/supabase\.co\/(auth|rest)\/v1\/.*/, async route => {
     const u = route.request().url();
     const json = (b) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(b) });
@@ -2215,6 +2215,8 @@ for (const [name, url] of [['hq', '/hq/'], ['suk', '/suk/#invoices']]) test(`${n
   if (process.env.SHOT_DIR) { await page.evaluate((sel) => document.querySelector(sel).scrollIntoView(), wrapSel); await page.screenshot({ path: `${process.env.SHOT_DIR}/expenses_${name}.png` }); }
   const fit = await page.evaluate((sel) => { const w = document.querySelector(sel); return { scroll: w.scrollWidth, client: w.clientWidth, heads: [...w.querySelectorAll('thead th')].map(th => th.textContent.trim()).filter(Boolean) }; }, wrapSel);
   expect(fit.scroll).toBeLessThanOrEqual(fit.client + 1);
-  expect(fit.heads).toEqual(['Date', 'Supplier', name === 'hq' ? 'Category · location' : 'Category · business', 'Bank · payment', 'PDF', 'Amount']);
+  expect(fit.heads).toEqual(['Date', 'Supplier', 'Invoice no.', 'Category', name === 'hq' ? 'Location' : 'Business', 'Payment', 'Bank', 'PDF', 'Amount']);
+  const archive = await page.evaluate((sel) => document.querySelectorAll(`${sel} tbody tr:not(.grp-row) button[title^="Archive"]`).length, wrapSel);
+  expect(archive).toBe(2);
   expect(errs).toEqual([]);
 });

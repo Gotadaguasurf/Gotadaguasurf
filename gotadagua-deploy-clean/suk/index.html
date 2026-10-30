@@ -20,11 +20,12 @@
 .catsel:hover{background-color:var(--surface-2);border-color:var(--border-2)}
 .catsel:focus{background-color:#fff;border-color:var(--ocean);outline:none}
 .catsel.todo{border-color:var(--amber-border);background-color:var(--amber-bg);color:var(--amber);font-weight:700}
-/* Expenses: same table as the HQ — fits the page, no sideways scroll from ~800px up */
-#invTable{table-layout:fixed}
+/* Expenses: same columns and widths as the HQ table — fits a laptop page without sideways scroll */
+#invTable{table-layout:fixed;min-width:1100px}
 #invTable th,#invTable td{padding-left:8px;padding-right:8px}
-#invTable col.c-date{width:66px}#invTable col.c-cat{width:150px}#invTable col.c-bank{width:118px}#invTable col.c-pdf{width:92px}#invTable col.c-amt{width:104px}#invTable col.c-act{width:52px}
-@media(max-width:760px){#invTable{table-layout:auto;min-width:700px}}
+#invTable col.c-date{width:62px}#invTable col.c-no{width:104px}#invTable col.c-cat{width:128px}#invTable col.c-biz{width:112px}
+#invTable col.c-pay{width:92px}#invTable col.c-bank{width:112px}#invTable col.c-pdf{width:82px}#invTable col.c-amt{width:100px}#invTable col.c-act{width:84px}
+.inv-no{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cell-stack{display:flex;flex-direction:column;gap:2px;align-items:flex-start;min-width:0}
 .cell-stack .sub{font-size:11.5px;color:var(--muted)}
 .file-link{color:var(--ocean);text-decoration:none;font-weight:600;font-size:12px}
@@ -86,9 +87,9 @@
     </div>
     <div class="hq-pills month-pills" id="iv_month_pills"></div>
     <div class="card"><div class="tbl-wrap"><table id="invTable">
-      <colgroup><col class="c-date"><col><col class="c-cat"><col class="c-bank"><col class="c-pdf"><col class="c-amt"><col class="c-act"></colgroup>
-      <thead><tr><th>Date</th><th>Supplier</th><th>Category · business</th><th title="Matched to a BCP debit">Bank · payment</th><th>PDF</th><th class="r">Amount</th><th></th></tr></thead>
-      <tbody id="invBody"><tr class="empty-row"><td colspan="7">Loading…</td></tr></tbody>
+      <colgroup><col class="c-date"><col><col class="c-no"><col class="c-cat"><col class="c-biz"><col class="c-pay"><col class="c-bank"><col class="c-pdf"><col class="c-amt"><col class="c-act"></colgroup>
+      <thead><tr><th>Date</th><th>Supplier</th><th>Invoice no.</th><th>Category</th><th>Business</th><th>Payment</th><th title="Matched to a BCP debit">Bank</th><th>PDF</th><th class="r">Amount</th><th></th></tr></thead>
+      <tbody id="invBody"><tr class="empty-row"><td colspan="10">Loading…</td></tr></tbody>
     </table></div></div>
     <div class="hint" style="margin-top:8px">A missing invoice is a line without PDF: open it, attach the PDF and the fields are read automatically. Cash purchases are added with «Add expense».</div>
   </div>
@@ -404,15 +405,18 @@ function renderInvoices(){
     : (i.payment_type === 'Cash' || /\[por fora/i.test(String(i.notes || ''))) ? '<span class="badge badge-grey" title="Off the books — counts here, stays out of the accountant pack">cash · no invoice</span>'
     : '<span class="badge badge-grey" title="Salaries, taxes and benefits need no invoice">no invoice</span>';
   const bankCell = (i) => i.bank ? `<span class="badge badge-green" title="Matched to the BCP debit of ${i.bank.movement_date}">BCP · ${fmtDay(i.bank.movement_date)}</span>` : (i.payment_type === 'Cash' ? '<span class="badge badge-grey">cash</span>' : '<span class="badge badge-amber" title="No BCP debit linked yet">not linked</span>');
-  $('invBody').innerHTML = rows.length ? withMonthRows(rows, i => i.invoice_date, 7, month === 'all', i => i.amount_eur, i => `<tr class="click" onclick="openInvoice('${i.id}')">
+  $('invBody').innerHTML = rows.length ? withMonthRows(rows, i => i.invoice_date, 10, month === 'all', i => i.amount_eur, i => `<tr class="click" onclick="openInvoice('${i.id}')">
     <td style="white-space:nowrap" title="${i.invoice_date}">${fmtDay(i.invoice_date)}</td>
-    <td><div class="sup-cell"><span class="sup-name" title="${esc(i.company)}">${esc(i.company)}</span>${(i.invoice_number || i.description) ? `<span class="sup-desc" title="${esc([i.invoice_number, i.description].filter(Boolean).join(' · '))}">${i.invoice_number ? `<span class="mono">${esc(i.invoice_number)}</span>${i.description ? ' · ' : ''}` : ''}${esc(i.description || '')}</span>` : ''}${i.needs_review ? `<span class="review-q"><span class="badge badge-amber">Review</span> ${esc(reviewQuestion(i.notes))}</span>` : ''}</div></td>
-    <td onclick="event.stopPropagation()"><div class="cell-stack">${CAN_EDIT ? catSelect(i) + bizSelect(i) : `<span>${i.category_name ? esc(i.category_name) : '<span class="badge badge-amber">decide</span>'}</span><span class="sub">${esc(bizName(i))}</span>`}</div></td>
-    <td><div class="cell-stack">${bankCell(i)}<span class="sub">${esc(i.payment_type || '—')}</span></div></td>
+    <td><div class="sup-cell"><span class="sup-name" title="${esc(i.company)}">${esc(i.company)}</span>${i.description ? `<span class="sup-desc" title="${esc(i.description)}">${esc(i.description)}</span>` : ''}${i.needs_review ? `<span class="review-q"><span class="badge badge-amber">Review</span> ${esc(reviewQuestion(i.notes))}</span>` : ''}</div></td>
+    <td><span class="mono inv-no" title="${esc(i.invoice_number || '')}">${esc(i.invoice_number || '—')}</span></td>
+    <td onclick="event.stopPropagation()">${CAN_EDIT ? catSelect(i) : (i.category_name ? esc(i.category_name) : '<span class="badge badge-amber">decide</span>')}</td>
+    <td onclick="event.stopPropagation()">${CAN_EDIT ? bizSelect(i) : esc(bizName(i))}</td>
+    <td class="hint">${esc(i.payment_type || '—')}</td>
+    <td>${bankCell(i)}</td>
     <td>${pdfCell(i)}</td>
     <td class="r" style="font-weight:700;white-space:nowrap">${eur(i.amount_eur)}</td>
-    <td style="text-align:right">${CAN_EDIT ? `<button class="btn btn-s btn-sm btn-icon" onclick="event.stopPropagation();openInvoice('${i.id}')" title="Edit — archive is in the form">${AppShell.icon('edit')}</button>` : ''}</td>
-  </tr>`, 5, 'expense') : '<tr class="empty-row"><td colspan="7">No expenses match this filter.</td></tr>';
+    <td style="white-space:nowrap;text-align:right">${CAN_EDIT ? `<button class="btn btn-s btn-sm btn-icon" onclick="event.stopPropagation();openInvoice('${i.id}')" title="Edit">${AppShell.icon('edit')}</button> <button class="btn btn-s btn-sm btn-icon" onclick="event.stopPropagation();archiveRow('${i.id}')" title="Archive — it can be restored">${AppShell.icon('archive')}</button>` : ''}</td>
+  </tr>`, 8, 'expense') : '<tr class="empty-row"><td colspan="10">No expenses match this filter.</td></tr>';
 }
 
 // Category straight from the table: a select per line; when the supplier has
@@ -548,6 +552,7 @@ async function saveInvoice(){
   } catch (e) { toast('Not saved: ' + (e.message || e), 'err'); }
   finally { ExpenseForm.busy(false); }
 }
+function archiveRow(id){ INV_EDIT = INVOICES.find(x => x.id === id) || null; if (INV_EDIT) deleteInvoice(); }
 async function deleteInvoice(){
   if (!INV_EDIT || !confirm(`Delete this expense?\n${INV_EDIT.invoice_date} · ${INV_EDIT.company} · ${eur(INV_EDIT.amount_eur)}\n(It is archived, not destroyed.)`)) return;
   const { error } = await sb.from('hq_invoices').update({ deleted_at: new Date().toISOString(), deleted_by: USER?.email || null }).eq('id', INV_EDIT.id);
