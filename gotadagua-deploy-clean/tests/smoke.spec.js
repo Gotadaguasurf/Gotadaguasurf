@@ -1951,7 +1951,60 @@ test('suk: bank-based overview, one expense line per debit, missing PDFs', async
   // (22 Oct 2026: the Missing PDFs tab was folded into Expenses + an Overview section; Water ↔ Manjar into Bank)
   expect(out.missing.map(r => r.slice(0, 2))).toEqual([['2026-07-10', 'makro palmela quint']]);
   expect(out.suppliers).toEqual([['makro palmela quint', '1', '€454.21', 'Food']]);
-  expect(out.tabs).toEqual(['Overview', 'Expenses', 'Bank statement']);
+  expect(out.tabs).toEqual(['Overview', 'Expenses', 'Bank statement', 'Month close']);
+  expect(errs).toEqual([]);
+});
+
+// Manjar gets the HQ's Month close (Miguel, 30 Oct 2026): per month, lines
+// without a PDF (attach → Manjar Drive folder of the month), BCP debits with
+// no line (hq_bank_unmatched_co), the Drive folder and a «Sent» tick. Cash
+// with no invoice and «[por fora» lines never count as missing.
+test('suk: month close — invoices to attach, bank debits to add, Drive folder, sent tick', async ({ page }) => {
+  const bank = [
+    { id: 'b1', movement_date: '2026-07-10', description: 'MDB 800258 MAKRO PALMELA QUINT', amount: -454.21, kind: 'expense', hq_invoice_id: 'i1', notes: null },
+    { id: 'b2', movement_date: '2026-07-15', description: 'DD SUPER BOCK BEBIDAS', amount: -230, kind: 'expense', hq_invoice_id: null, notes: null },
+    { id: 'b3', movement_date: '2026-07-20', description: 'PAGAMENTO VENCIMENTOS -MLEC1B', amount: -900, kind: 'expense', hq_invoice_id: 'i3', notes: null },
+  ];
+  const invoices = [
+    { id: 'i1', invoice_date: '2026-07-10', company: 'makro', amount_eur: 454.21, category_name: 'Food', payment_type: 'Card', drive_link: null, notes: '[do extrato BCP Manjar 10 Jul 2026]' },
+    { id: 'i2', invoice_date: '2026-07-12', company: 'peixaria', amount_eur: 80, category_name: 'Food', payment_type: 'Cash', drive_link: null, notes: '' },
+    { id: 'i3', invoice_date: '2026-07-20', company: 'pagamento vencimentos', amount_eur: 900, category_name: 'Salary', payment_type: 'Bank Transfer', drive_link: null, notes: '' },
+    { id: 'i4', invoice_date: '2026-07-21', company: 'edp', amount_eur: 61.5, category_name: 'Utilities', payment_type: 'Bank Transfer', drive_link: 'https://drive.google.com/file/d/x/view', notes: '' },
+    { id: 'i5', invoice_date: '2026-07-22', company: 'licenca', amount_eur: 40, category_name: 'Other', payment_type: 'Bank Transfer', drive_link: null, notes: '[por fora — não está em nome do Manjar]' },
+  ];
+  await page.route(/supabase\.co\/(auth|rest)\/v1\/.*/, async route => {
+    const url = route.request().url();
+    const json = (body) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    if (url.includes('/auth/v1/user')) return json({ id: 'u1', email: 'miguel@gotadaguasurf.com', aud: 'authenticated', role: 'authenticated' });
+    if (url.includes('/rest/v1/platform_profiles')) return json({ id: 'u1', email: 'miguel@gotadaguasurf.com', full_name: 'Miguel', platform_role: 'owner' });
+    if (url.includes('/rest/v1/locations')) return json({ id: 'suk-0', slug: 'the-suk', name: 'The Suk' });
+    if (url.includes('/rest/v1/rpc/hq_bank_unmatched_co')) return json([{ id: 'b2', movement_date: '2026-07-15', description: 'DD SUPER BOCK BEBIDAS', amount: -230 }]);
+    if (url.includes('/rest/v1/accountant_drive_folders')) return json([{ company: 'manjar', month_key: '2026-07', folder_id: 'FOLDER07' }]);
+    if (url.includes('/rest/v1/hq_bank_movements')) return json(bank);
+    if (url.includes('/rest/v1/hq_invoices')) return json(url.includes('paying_company=eq.manjar') ? invoices : []);
+    return json([]);
+  });
+  const errs = []; page.on('pageerror', e => errs.push(e.message));
+  await fakeOwnerSession(page);
+  await page.goto('/suk/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => /Performance/.test(document.querySelector('#ovBody')?.textContent || ''), null, { timeout: 15000 });
+  const out = await page.evaluate(async () => {
+    showPage('close'); await new Promise(r => setTimeout(r, 50));
+    $('mc_month').value = '2026-07'; await renderClose();
+    const cards = [...document.querySelectorAll('#mcBody .card')];
+    return {
+      kpis: [...document.querySelectorAll('#mc_kpis .kpi')].map(k => k.querySelector('.kpi-label').textContent.trim() + ' ' + k.querySelector('.kpi-value').textContent.trim()),
+      attach: [...cards[0].querySelectorAll('tbody tr')].map(tr => tr.querySelector('b').textContent.trim()),
+      debits: [...cards[1].querySelectorAll('tbody tr')].map(tr => tr.children[1].textContent.trim()),
+      folder: document.querySelector('#mc_folder a')?.getAttribute('href'),
+      sentTick: !!document.querySelector('#mc_pack input[type=checkbox]'),
+    };
+  });
+  expect(out.kpis).toEqual(['Invoices to attach 1', 'Bank debits to add 1', 'Sent to the accountant No']);
+  expect(out.attach).toEqual(['makro']);                    // cash peixaria and the «[por fora» licence are off the books; salary needs no PDF
+  expect(out.debits).toEqual(['DD SUPER BOCK BEBIDAS']);
+  expect(out.folder).toBe('https://drive.google.com/drive/folders/FOLDER07');
+  expect(out.sentTick).toBe(true);
   expect(errs).toEqual([]);
 });
 
