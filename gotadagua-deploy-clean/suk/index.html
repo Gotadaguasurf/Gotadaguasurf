@@ -26,6 +26,7 @@
 .review-q{display:block;margin-top:4px;font-size:12px;color:var(--amber);white-space:normal}
 /* Month close — same look as the HQ one */
 .fecho-done{padding:14px var(--card-pad, 16px)}
+.fecho-tbl tr.mgroup td{background:#f6f9fc;font-size:11px;text-transform:uppercase;letter-spacing:.08em;font-weight:800;color:var(--navy);padding:8px 13px}
 .fecho-done .card-title{display:flex;align-items:center;gap:8px;font-size:15px}
 .hq-tog{display:inline-flex;align-items:center;gap:6px;height:var(--h-pill);padding:0 12px;border:1px solid var(--border-2);border-radius:999px;background:#fff;color:var(--muted);font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap;user-select:none}
 .hq-tog input{margin:0;width:14px;height:14px;accent-color:var(--ocean)}
@@ -125,9 +126,9 @@
     <div class="card" id="mcSend">
       <div class="card-hdr"><div>
         <div class="card-title">3 · Send to the accountant</div>
-        <div class="card-hint">The invoices are in the Manjar Drive folder of the month. Share it with the accountant, then tick «Sent».</div>
+        <div class="card-hint">Download the Excel (what has an invoice, what is missing, the BCP statement), send it with the Drive folder, then tick «Sent».</div>
       </div></div>
-      <div class="card-body hq-filters" style="padding-top:4px;display:flex;flex-wrap:wrap;gap:8px;align-items:center"><span id="mc_folder"></span><span id="mc_pack"></span></div>
+      <div class="card-body hq-filters" style="padding-top:4px;display:flex;flex-wrap:wrap;gap:8px;align-items:center"><button class="btn btn-p" id="mc_excel" onclick="mcDownloadExcel()">Download Excel</button><span id="mc_folder"></span><span id="mc_pack"></span></div>
     </div>
     <div id="mcNoInv" class="hint" style="margin:12px 0 24px"></div>
   </div>
@@ -141,6 +142,7 @@
 <script src="/lib/app-shell.js"></script>
 <script src="/lib/business-pnl.js"></script>
 <script src="/lib/expense-form.js"></script>
+<script src="/hq/accountant-excel.js"></script>
 <script>
 AppShell.mount('appNav', { app:'suk', title:'Businesses', tabs:[{ id:'overview', label:'Overview', active:true }, { id:'invoices', label:'Expenses' }, { id:'bank', label:'Bank statement' }, { id:'close', label:'Month close' }], location:{ label:'The Suk', items:[{ href:'/wild/', label:'Wild Wednesday', sub:'Weekly party · Costa da Caparica', current:false }, { href:'/suk/', label:'The Suk', sub:'Manjar Lda · restaurant + catering', current:true }] }, actions:'<a class="nav-action-btn" href="/hq/" id="hqBtn" style="display:none">HQ</a>' });
 const cfg = window.__SUPABASE_CONFIG || {};
@@ -571,23 +573,24 @@ let MC_CHECK = null, MC_ATTACH = null;
 const closeOpen = () => $('page-close')?.classList.contains('active');
 const mcLabel = (k) => { const [y, m] = String(k).split('-').map(Number); return m ? `${['January','February','March','April','May','June','July','August','September','October','November','December'][m - 1]} ${y}` : k; };
 function mcMonths(){
-  const now = new Date(), prev = new Date(Date.UTC(now.getFullYear(), now.getMonth() - 1, 1));
-  const def = `${prev.getUTCFullYear()}-${String(prev.getUTCMonth() + 1).padStart(2, '0')}`;
   const data = BANK_ROWS.map(r => r.month).concat(INVOICES.map(i => String(i.invoice_date).slice(0, 7)));
-  return { def, list: [...new Set(data.concat(def))].filter(Boolean).sort().reverse() };
+  return { list: [...new Set(data)].filter(Boolean).sort().reverse() };
 }
 async function renderClose(){
   const sel = $('mc_month'); if (!sel) return;
-  if (!sel.options.length) { const { def, list } = mcMonths(); sel.innerHTML = list.map(k => `<option value="${k}"${k === def ? ' selected' : ''}>${mcLabel(k)}</option>`).join(''); }
-  const month = sel.value;
+  if (!sel.options.length) { const { list } = mcMonths(); sel.innerHTML = `<option value="all" selected>All months</option>` + list.map(k => `<option value="${k}">${mcLabel(k)}</option>`).join(''); }
+  const month = sel.value, all = month === 'all';
+  const inMonth = (d) => all || String(d).startsWith(month);
   const ic = (n) => AppShell.icon(n);
   const sum = (l, f) => l.reduce((s, x) => s + Number(f(x) || 0), 0);
-  const lines = INVOICES.filter(i => String(i.invoice_date).startsWith(month));
-  const missing = lines.filter(i => i.missing_pdf).sort((a, b) => Number(b.amount_eur || 0) - Number(a.amount_eur || 0));
+  const lines = INVOICES.filter(i => inMonth(i.invoice_date));
+  // one month: biggest first; all months: newest month first, biggest first inside each month
+  const missing = lines.filter(i => i.missing_pdf).sort((a, b) => (all ? String(b.invoice_date).slice(0, 7).localeCompare(String(a.invoice_date).slice(0, 7)) : 0) || Number(b.amount_eur || 0) - Number(a.amount_eur || 0));
   const exempt = lines.filter(i => !i.drive_link && !i.missing_pdf);
-  const debits = BANK_ROWS.filter(r => r.month === month && r.has_invoice === 'missing');
-  const folder = FOLDERS.find(f => f.month_key === month)?.folder_id;
-  try { const { data, error } = await sb.from('hq_month_checks').select('item, done_at, done_by').eq('month_key', month).eq('item', MC_SENT).maybeSingle(); if (error) throw error; MC_CHECK = data; } catch { MC_CHECK = null; }
+  const debits = BANK_ROWS.filter(r => inMonth(r.movement_date) && r.has_invoice === 'missing').slice().reverse();
+  const folder = all ? MANJAR_DRIVE_ROOT : FOLDERS.find(f => f.month_key === month)?.folder_id;
+  MC_CHECK = null;
+  if (!all) try { const { data, error } = await sb.from('hq_month_checks').select('item, done_at, done_by').eq('month_key', month).eq('item', MC_SENT).maybeSingle(); if (error) throw error; MC_CHECK = data; } catch { MC_CHECK = null; }
   if (sel.value !== month) return;
   const sent = !!MC_CHECK?.done_at;
   const who = sent ? `${esc(String(MC_CHECK.done_by || '').split('@')[0])} · ${String(MC_CHECK.done_at).slice(0, 10)}` : '';
@@ -599,16 +602,76 @@ async function renderClose(){
   const done = (text) => `<div class="card fecho-done"><div class="card-title" style="color:var(--green)">${ic('check-circle')} ${text}</div></div>`;
   $('mcBody').innerHTML = (missing.length
       ? step('1 · Invoices to attach', missing.length, 'Attach the PDF (it goes to the Manjar Drive folder of the month) or paste the Drive link.', '<th>Date</th><th>Supplier</th><th class="r">Amount</th><th></th>',
-          missing.map(i => `<tr><td style="white-space:nowrap">${i.invoice_date}</td><td><b>${esc(i.company || '')}</b><span class="cell-sub">${esc(i.category_name || 'no category')} · ${esc(bizName(i))}${i.invoice_number ? ' · ' + esc(i.invoice_number) : ''}</span></td><td class="r">${eur(i.amount_eur)}</td>
-            <td style="white-space:nowrap;text-align:right">${CAN_EDIT ? `<button class="btn btn-s btn-sm" onclick="mcAttach('${i.id}')">${ic('paperclip')} Attach</button> <button class="btn btn-s btn-sm" onclick="mcLink('${i.id}')">${ic('link')} Link</button> <button class="btn btn-s btn-sm" title="This supplier never issues an invoice — stop counting it as missing" onclick="markNoInvoice('${i.id}')">No invoice needed</button>` : ''}</td></tr>`).join(''))
+          withMonthRows(missing, i => i.invoice_date, 4, all, i => i.amount_eur, i => `<tr><td style="white-space:nowrap">${i.invoice_date}</td><td><b>${esc(i.company || '')}</b><span class="cell-sub">${esc(i.category_name || 'no category')} · ${esc(bizName(i))}${i.invoice_number ? ' · ' + esc(i.invoice_number) : ''}</span></td><td class="r">${eur(i.amount_eur)}</td>
+            <td style="white-space:nowrap;text-align:right">${CAN_EDIT ? `<button class="btn btn-s btn-sm" onclick="mcAttach('${i.id}')">${ic('paperclip')} Attach</button> <button class="btn btn-s btn-sm" onclick="mcLink('${i.id}')">${ic('link')} Link</button> <button class="btn btn-s btn-sm" title="This supplier never issues an invoice — stop counting it as missing" onclick="markNoInvoice('${i.id}')">No invoice needed</button>` : ''}</td></tr>`))
       : done('1 · All invoices attached'))
     + (debits.length
       ? step('2 · Bank debits to add', debits.length, 'BCP debits with no expense yet. Left out: bank fees, salaries, taxes, transfers.', '<th>Date</th><th>Description</th><th class="r">Amount</th><th></th>',
-          debits.map(r => `<tr><td style="white-space:nowrap">${r.movement_date}</td><td>${esc(r.description)}</td><td class="r">${eur(-r.amount)}</td><td style="white-space:nowrap;text-align:right">${CAN_EDIT ? `<button class="btn btn-s btn-sm" onclick="addFromBank('${r.id}')">${ic('plus')} Add expense</button>` : ''}</td></tr>`).join(''))
+          withMonthRows(debits, r => r.movement_date, 4, all, r => -r.amount, r => `<tr><td style="white-space:nowrap">${r.movement_date}</td><td>${esc(r.description)}</td><td class="r">${eur(-r.amount)}</td><td style="white-space:nowrap;text-align:right">${CAN_EDIT ? `<button class="btn btn-s btn-sm" onclick="addFromBank('${r.id}')">${ic('plus')} Add expense</button>` : ''}</td></tr>`))
       : done('2 · Every bank debit has an expense'));
-  $('mc_folder').innerHTML = folder ? `<a class="btn btn-p" target="_blank" rel="noopener" href="https://drive.google.com/drive/folders/${folder}">${ic('folder')} Drive folder · ${mcLabel(month)}</a>` : `<span class="hint">No Manjar Drive folder registered for ${mcLabel(month)}.</span>`;
-  $('mc_pack').innerHTML = CAN_EDIT ? `<label class="hq-tog"><input type="checkbox" ${sent ? 'checked' : ''} onchange="mcToggleSent(this.checked)"> Sent${sent ? ` <span class="hint">· ${who}</span>` : ''}</label>` : '';
+  $('mc_folder').innerHTML = folder ? `<a class="btn btn-s" target="_blank" rel="noopener" href="https://drive.google.com/drive/folders/${folder}">${ic('folder')} ${all ? 'Manjar invoices on Drive' : `Drive folder · ${mcLabel(month)}`}</a>` : `<span class="hint">No Manjar Drive folder registered for ${mcLabel(month)}.</span>`;
+  $('mc_pack').innerHTML = CAN_EDIT && !all ? `<label class="hq-tog"><input type="checkbox" ${sent ? 'checked' : ''} onchange="mcToggleSent(this.checked)"> Sent${sent ? ` <span class="hint">· ${who}</span>` : ''}</label>` : '';
   $('mcNoInv').innerHTML = exempt.length ? `<details><summary>${exempt.length} line${exempt.length === 1 ? '' : 's'} with no invoice by nature (salaries, taxes, cash, marked «no invoice»)</summary><div style="margin-top:6px">${exempt.map(i => `${i.invoice_date} · ${esc(i.company || '')} · ${eur(i.amount_eur)}`).join('<br>')}</div></details>` : '';
+}
+// «All months»: a header row per month (count and total) above that month's rows.
+function withMonthRows(list, dateOf, cols, grouped, amountOf, rowHtml){
+  if (!grouped) return list.map(rowHtml).join('');
+  let out = '', cur = null;
+  list.forEach(x => {
+    const k = String(dateOf(x)).slice(0, 7);
+    if (k !== cur) { cur = k; const same = list.filter(y => String(dateOf(y)).slice(0, 7) === k); out += `<tr class="mgroup"><td colspan="${cols}">${mcLabel(k)} · ${same.length} · ${eur(same.reduce((s, y) => s + Number(amountOf(y) || 0), 0))}</td></tr>`; }
+    out += rowHtml(x);
+  });
+  return out;
+}
+const MANJAR_DRIVE_ROOT = '16Uqrg_7gRZWBLWW4AriG2xvk-pSiMeiM';   // MANJARALENTEJANO/Expenses/Invoices (one folder per month inside)
+// Excel for the accountant — same writer as Water's (hq/accountant-excel.js), Portuguese like Water's pack.
+function mcPack(month){
+  const all = month === 'all', inMonth = (d) => all || String(d).startsWith(month);
+  const label = all ? 'Todos os meses' : `${MESES[Number(month.slice(5)) - 1]} ${month.slice(0, 4)}`;
+  const offBooks = (i) => /\[por fora/i.test(String(i.notes || '')) || (i.payment_type === 'Cash' && !i.drive_link);
+  const lines = INVOICES.filter(i => inMonth(i.invoice_date) && !offBooks(i)).slice().sort((a, b) => String(a.invoice_date).localeCompare(String(b.invoice_date)));
+  const status = (i) => i.drive_link ? 'Sim' : i.missing_pdf ? 'Não' : 'Não existe';
+  const bank = BANK_ROWS.filter(r => inMonth(r.movement_date));
+  const debits = bank.filter(r => r.has_invoice === 'missing');
+  const sum = (l, f) => Math.round(l.reduce((s, x) => s + Number(f(x) || 0), 0) * 100) / 100;
+  const nao = lines.filter(i => status(i) === 'Não');
+  const checklist = { name: 'Checklist', kind: 'checklist',
+    header: ['Data', 'Fornecedor', 'Nº fatura', 'Categoria', 'Negócio', 'Pagamento', 'Valor (EUR)', 'Tem fatura?', 'Ficheiro na Drive', 'Notas'],
+    widths: [12, 30, 16, 20, 12, 14, 13, 13, 18, 50], wrapCol: 9, totalCol: 6, statusCol: 7, dropdown: { col: 7, options: ['Sim', 'Não', 'Não existe'] },
+    rows: lines.map(i => [i.invoice_date, i.company || '', i.invoice_number || '', i.category_name || '', bizName(i), i.payment_type || '', Number(i.amount_eur || 0), status(i), i.drive_link ? 'abrir' : '', i.notes || '']),
+    links: lines.map((i, k) => i.drive_link ? { r: k + 1, c: 8, url: i.drive_link } : null).filter(Boolean) };
+  const unmatched = { name: 'Banco sem lançamento', kind: 'bank', header: ['Data', 'Descrição', 'Valor (EUR)', 'Lançado?'], widths: [12, 50, 14, 14],
+    totalCol: 2, statusCol: 3, dropdown: { col: 3, options: ['Não', 'Sim', 'Não é despesa'] }, rows: debits.map(r => [r.movement_date, r.description, -Number(r.amount), 'Não']) };
+  const statement = { name: 'Extrato BCP', kind: 'table', header: ['Data', 'Data valor', 'Descrição', 'Valor (EUR)', 'Saldo', 'Rubrica', 'Fatura'], widths: [12, 12, 50, 13, 13, 26, 12],
+    moneyCols: [3, 4], rows: bank.map(r => [r.movement_date, r.value_date || '', r.description, Number(r.amount), r.balance != null ? Number(r.balance) : '', rubricLabel(r.rubric), ({ linked: 'ligada', amount: 'por valor', missing: 'em falta', none: 'sem fatura' })[r.has_invoice] || '']) };
+  const months = [...new Set(lines.map(i => String(i.invoice_date).slice(0, 7)))].sort();
+  const resumoRows = [
+    ['PERÍODO', ''], ['Empresa', 'Manjar Lda (The Suk)'], ['Período', label], ['Gerado em', new Date().toISOString().slice(0, 10)],
+    ['DESPESAS', ''], ['Linhas', lines.length], ['Com fatura', lines.filter(i => status(i) === 'Sim').length], ['Faturas em falta', nao.length], ['Faturas em falta (EUR)', sum(nao, i => i.amount_eur)],
+    ['Sem fatura por natureza (salários, impostos, «não existe»)', lines.filter(i => status(i) === 'Não existe').length],
+    ['BANCO', ''], ['Débitos do BCP sem lançamento', debits.length], ['Débitos sem lançamento (EUR)', -sum(debits, r => r.amount)],
+    ['PASTAS NA DRIVE', ''],
+  ];
+  const links = [];
+  months.forEach(k => { const f = FOLDERS.find(x => x.month_key === k)?.folder_id; resumoRows.push([`Faturas ${MESES[Number(k.slice(5)) - 1]} ${k.slice(0, 4)}`, f ? 'abrir' : 'sem pasta']); if (f) links.push({ r: resumoRows.length, c: 1, url: `https://drive.google.com/drive/folders/${f}` }); });
+  const resumo = { name: 'Resumo', kind: 'resumo', header: ['Manjar Lda — pacote para a contabilidade', label], widths: [52, 22], rows: resumoRows, links };
+  return { fileName: `Contabilista_Manjar_${all ? 'todos-os-meses' : month}.xlsx`, sheets: [resumo, checklist, unmatched, statement] };
+}
+function loadExcelJs(){
+  if (window.ExcelJS) return Promise.resolve(window.ExcelJS);
+  return new Promise((res, rej) => { const el = document.createElement('script'); el.src = 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js'; el.onload = () => window.ExcelJS ? res(window.ExcelJS) : rej(new Error('The Excel library did not load')); el.onerror = () => rej(new Error('No access to the Excel library')); document.head.appendChild(el); });
+}
+async function mcDownloadExcel(){
+  const btn = $('mc_excel'); btn.disabled = true; btn.textContent = 'Preparing…';
+  try {
+    const pack = mcPack($('mc_month').value);
+    const buf = await window.accExcelWorkbook(await loadExcelJs(), pack).xlsx.writeBuffer();
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })); a.download = pack.fileName;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    toast('Downloaded: ' + pack.fileName);
+  } catch (e) { toast('Failed: ' + (e.message || e), 'err'); }
+  finally { btn.disabled = false; btn.textContent = 'Download Excel'; }
 }
 function mcAttach(id){ MC_ATTACH = id; const inp = $('mc_file'); inp.value = ''; inp.click(); }
 async function closeFileChosen(inp){

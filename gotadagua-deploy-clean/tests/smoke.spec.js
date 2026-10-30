@@ -1998,6 +1998,17 @@ test('suk: month close — invoices to attach, bank debits to add, Drive folder,
       debits: [...cards[1].querySelectorAll('tbody tr')].map(tr => tr.children[1].textContent.trim()),
       folder: document.querySelector('#mc_folder a')?.getAttribute('href'),
       sentTick: !!document.querySelector('#mc_pack input[type=checkbox]'),
+      ...(await (async () => {
+        const pack = mcPack('2026-07');
+        $('mc_month').value = 'all'; await renderClose();
+        return {
+          groups: [...document.querySelectorAll('#mcBody tr.mgroup')].map(tr => tr.textContent.trim()),
+          sheets: pack.sheets.map(sh => sh.name),
+          checklist: pack.sheets[1].rows.map(r => [r[1], r[7]]),
+          unmatched: pack.sheets[2].rows.map(r => r[1]),
+          wb: typeof window.accExcelWorkbook,
+        };
+      })()),
     };
   });
   expect(out.kpis).toEqual(['Invoices to attach 1', 'Bank debits to add 1', 'Sent to the accountant No']);
@@ -2005,6 +2016,13 @@ test('suk: month close — invoices to attach, bank debits to add, Drive folder,
   expect(out.debits).toEqual(['DD SUPER BOCK BEBIDAS']);
   expect(out.folder).toBe('https://drive.google.com/drive/folders/FOLDER07');
   expect(out.sentTick).toBe(true);
+  // «All months» (the default) groups the missing invoices and debits by month
+  expect(out.groups).toEqual(['July 2026 · 1 · €454.21', 'July 2026 · 1 · €230.00']);
+  // Excel for the accountant, same writer as Water's: cash and «[por fora» lines stay out; salary = «Não existe»
+  expect(out.sheets).toEqual(['Resumo', 'Checklist', 'Banco sem lançamento', 'Extrato BCP']);
+  expect(out.checklist).toEqual([['makro', 'Não'], ['pagamento vencimentos', 'Não existe'], ['edp', 'Sim']]);
+  expect(out.unmatched).toEqual(['DD SUPER BOCK BEBIDAS']);
+  expect(out.wb).toBe('function');
   expect(errs).toEqual([]);
 });
 
