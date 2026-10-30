@@ -2337,6 +2337,8 @@ function docStatus(r){
   if (r.doc_exempt_reason) return 'isento';
   if (/\[sem fatura/i.test(String(r.notes||''))) return 'isento';
   if (accNoInvoice(r.company)) return 'isento';   // suppliers that never issue one (ACC_NO_INVOICE — same list in hq_doc_status)
+  // Paid in cash with no invoice = off the books: counts in the P&L, never goes to the accountant (Miguel, 30 Oct 2026)
+  if (r.payment_type === 'Cash') return 'por_fora';
   // (Water: payroll, instructor receipts and tax forms all have a document — no 'n/a' here; Manjar's salaries are 'n/a' on /suk/)
   return 'falta';
 }
@@ -2397,7 +2399,7 @@ function buildAccountantSheets({ invoices, transfers, bank, period, partnerInvoi
   // Rows paid by another company (Wave Movements, MGPR) are not this
   // accountant's books: counted in the summary, left out of the sheets.
   const outras = (invoices||[]).filter(r => r.paying_company && r.paying_company !== 'water-movements');
-  const inv = (invoices||[]).filter(r => r.is_duplicate !== true && (!r.paying_company || r.paying_company === 'water-movements')).sort((a,b) => String(a.invoice_date).localeCompare(String(b.invoice_date)) || String(a.company).localeCompare(String(b.company)));
+  const inv = (invoices||[]).filter(r => r.is_duplicate !== true && (!r.paying_company || r.paying_company === 'water-movements') && docStatus(r) !== 'por_fora').sort((a,b) => String(a.invoice_date).localeCompare(String(b.invoice_date)) || String(a.company).localeCompare(String(b.company)));
   const expHeader = ['Data','Fornecedor','NIF','N.º documento','Descrição','Valor','Moeda','Valor EUR','Categoria','Local','Pagamento','Documento','Estado','Notas'];
   const expWidths = [11,30,12,20,46,11,7,11,18,13,14,12,16,60];
   const toRow = (r) => [
@@ -2764,7 +2766,7 @@ async function renderFecho(){
   try {
     const [rows, folders, bank, checks] = await Promise.all([
       fetchAllPaged(() => sb.from('hq_invoices')
-        .select('id, invoice_date, company, amount_eur, category_name, location_slug, invoice_number, drive_link, needs_review, notes, paying_company, is_duplicate, doc_exempt_reason')
+        .select('id, invoice_date, company, amount_eur, category_name, location_slug, invoice_number, drive_link, needs_review, notes, paying_company, is_duplicate, doc_exempt_reason, payment_type')
         .is('deleted_at', null).gte('invoice_date', period.from).lte('invoice_date', period.to)
         .order('invoice_date', { ascending:true }).order('id', { ascending:true })),
       sb.from('accountant_drive_folders').select('company, month_key, folder_id').in('month_key', [month, '*']).then(({ data, error }) => { if (error) throw error; return data || []; }),
@@ -2772,7 +2774,7 @@ async function renderFecho(){
       sb.from('hq_month_checks').select('item, done_at, done_by, note').eq('month_key', month).then(({ data, error }) => { if (error) throw error; return data || []; }),
     ]);
     if (seq !== FECHO.seq) return;
-    FECHO.rows = rows.filter(r => r.is_duplicate !== true && (!r.paying_company || r.paying_company === 'water-movements'));
+    FECHO.rows = rows.filter(r => r.is_duplicate !== true && (!r.paying_company || r.paying_company === 'water-movements') && docStatus(r) !== 'por_fora');
     FECHO.folders = folders; FECHO.bank = bank; FECHO.checks = checks;
     await fechoPropagateLinks();
   } catch (e) {
@@ -4147,6 +4149,7 @@ async function renderInvoiceList(){
       : r.file_url
         ? `<a class="file-link" href="#" onclick="openInvoiceFile('${r.file_url}');return false;" title="${escapeHtml(r.file_name||'')}">open</a>`
         : ds === 'isento' ? `<span class="badge badge-grey" title="${escapeHtml(r.doc_exempt_reason||'No document exists for this expense')}">no invoice</span>`
+        : ds === 'por_fora' ? '<span class="badge badge-grey" title="Paid in cash with no invoice — counts here, stays out of the accountant pack">cash · no invoice</span>'
         : '<span class="badge badge-amber">missing</span>';
     const tags = [
       r.needs_review ? '<span class="badge badge-amber">Review</span>' : '',

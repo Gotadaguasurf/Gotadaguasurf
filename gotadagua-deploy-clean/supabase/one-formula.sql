@@ -8,6 +8,7 @@
 --                             doc_exempt_reason, «[sem fatura» note, or a
 --                             supplier that never issues one) · 'n/a'
 --                             (Manjar salaries, benefits, taxes — no payslip in the app) ·
+--                             'por_fora' (paid in cash, no invoice: P&L only) ·
 --                             'falta' (missing). Used by the accountant view,
 --                             hq_todo, the Suk and the Month close.
 --  2. hq_overview_rollup()    one call for the HQ: bookings (realized only:
@@ -37,6 +38,8 @@ returns text language sql immutable as $$
     when lower(coalesce(i.company, '')) ~ '^(google ads|meta ads|facebook ads|lg leasing|santander|paypal|getnet|domestic|cartao refeicao|cartão refeição)' then 'isento'
     -- Manjar's salaries/taxes come from the bank with no payslip in the app; Water's payroll, instructor receipts and tax forms DO have documents
     when coalesce(i.paying_company, 'water-movements') = 'manjar' and coalesce(i.category_name, '') in ('Salary', 'Benefits', 'Taxes') then 'n/a'
+    -- paid in cash with no invoice = off the books: in the P&L, never in the accountant pack (Miguel, 30 Oct 2026)
+    when coalesce(i.payment_type, '') = 'Cash' then 'por_fora'
     else 'falta' end
 $$;
 
@@ -51,12 +54,18 @@ update public.hq_invoices i
 
 -- 3a. accountant page: same rule
 create or replace view public._accountant_rows as
-  select i.*, to_char(i.invoice_date, 'YYYY-MM') as month_key,
+  -- explicit columns: hq_invoices grew file_sha256 after this view was made, and i.* would reorder it
+  select i.id, i.location_slug, i.invoice_date, i.company, i.supplier_nif, i.description, i.amount, i.currency, i.fx_rate, i.amount_eur,
+         i.payment_type, i.invoice_number, i.category_id, i.category_name, i.file_url, i.file_name, i.file_mime, i.needs_review,
+         i.is_duplicate, i.duplicate_of, i.notes, i.created_at, i.created_by, i.updated_at, i.paying_company, i.drive_link,
+         i.deleted_at, i.deleted_by, i.doc_exempt_reason,
+         to_char(i.invoice_date, 'YYYY-MM') as month_key,
          case public.hq_doc_status(i) when 'ok' then 'ok' when 'falta' then 'falta' else 'isento' end as doc_status
     from public.hq_invoices i
    where i.deleted_at is null
      and coalesce(i.is_duplicate, false) = false
      and coalesce(i.paying_company, 'water-movements') = 'water-movements'
+     and public.hq_doc_status(i) <> 'por_fora'
      and i.invoice_date >= date '2026-01-01';
 revoke all on public._accountant_rows from public, anon, authenticated;
 

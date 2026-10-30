@@ -1458,6 +1458,26 @@ test('hq: an invoice for an expense that is already in the app (from the bank de
   expect(errs).toEqual([]);
 });
 
+test('hq: cash with no invoice stays off the books — in the expenses, out of the accountant pack and Month close', async ({ page }) => {
+  // Miguel, 30 Oct 2026: «tudo o que é pago em cash e sem fatura é por fora».
+  await fakeOwnerSession(page);
+  await page.goto('/hq/index.html');
+  await page.waitForFunction(() => typeof buildAccountantSheets === 'function');
+  const out = await page.evaluate(() => {
+    const base = { invoice_date: '2026-09-01', currency: 'EUR', category_name: 'Rent', location_slug: 'general', needs_review: false, paying_company: 'water-movements' };
+    const rows = [
+      { ...base, company: 'renda escritorio portugal', amount: 1300, amount_eur: 1300, payment_type: 'Cash', drive_link: null },
+      { ...base, company: 'Feira com fatura', amount: 30, amount_eur: 30, payment_type: 'Cash', drive_link: 'https://drive.google.com/file/d/x/view' },
+      { ...base, company: 'Prio', amount: 40, amount_eur: 40, payment_type: 'Card', drive_link: null },
+    ];
+    const pack = buildAccountantSheets({ period: accPeriod('month', '2026-09'), invoices: rows, transfers: [], bank: [], partnerInvoices: [], folders: [], bankUnmatched: [] });
+    const check = pack.sheets.find(s => s.name === 'Checklist');
+    return { status: rows.map(docStatus), checklist: check.rows.map(r => r[2]) };
+  });
+  expect(out.status).toEqual(['por_fora', 'ok', 'falta']);
+  expect(out.checklist.sort()).toEqual(['Feira com fatura', 'Prio']);
+});
+
 test('hq: accountant pack lists every expense, what has no document, camp funding apart, and the bank statement', async ({ page }) => {
   // Miguel, 29 Sep 2026: one button that downloads what the accountant
   // needs — app rows, Drive links, what is missing and the Santander.
