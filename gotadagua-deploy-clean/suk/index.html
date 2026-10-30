@@ -26,7 +26,8 @@
 .review-q{display:block;margin-top:4px;font-size:12px;color:var(--amber);white-space:normal}
 /* Month close — same look as the HQ one */
 .fecho-done{padding:14px var(--card-pad, 16px)}
-.fecho-tbl tr.mgroup td{background:#f6f9fc;font-size:11px;text-transform:uppercase;letter-spacing:.08em;font-weight:800;color:var(--navy);padding:8px 13px}
+.month-pills{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px}
+tr.mgroup td{background:#f6f9fc;font-size:11px;text-transform:uppercase;letter-spacing:.08em;font-weight:800;color:var(--navy);padding:8px 13px}
 .fecho-done .card-title{display:flex;align-items:center;gap:8px;font-size:15px}
 .hq-tog{display:inline-flex;align-items:center;gap:6px;height:var(--h-pill);padding:0 12px;border:1px solid var(--border-2);border-radius:999px;background:#fff;color:var(--muted);font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap;user-select:none}
 .hq-tog input{margin:0;width:14px;height:14px;accent-color:var(--ocean)}
@@ -65,11 +66,12 @@
       <button class="btn btn-p" id="addInvBtn" onclick="openInvoice()">Add expense</button>
     </div>
     <div class="ov-filters">
-      <label class="period-picker"><span class="period-picker-lbl">Month</span><select id="iv_month" onchange="renderInvoices()"><option value="all">All</option></select></label>
+      <select id="iv_month" onchange="renderInvoices()" style="display:none"><option value="all">All</option></select>
       <label class="period-picker"><span class="period-picker-lbl">Show</span><select id="iv_filter" onchange="renderInvoices()"><option value="all">Everything</option><option value="nopdf">Without PDF</option><option value="review">To review</option><option value="cash">Cash (no bank debit)</option><option value="restaurant">Restaurant only</option><option value="catering">Catering only</option></select></label>
       <input id="iv_q" type="search" class="search" placeholder="Search supplier, number, description…" oninput="renderInvoices()">
       <span class="hint" id="iv_count" style="margin-left:auto"></span>
     </div>
+    <div class="hq-pills month-pills" id="iv_month_pills"></div>
     <div class="card"><div class="tbl-wrap"><table>
       <thead><tr><th>Date</th><th>Supplier</th><th>Number</th><th>Category</th><th>Business</th><th>Payment</th><th>Matched to bank</th><th>PDF</th><th class="r">Amount</th></tr></thead>
       <tbody id="invBody"><tr class="empty-row"><td colspan="9">Loading…</td></tr></tbody>
@@ -85,7 +87,7 @@
       <div><div class="ov-section-title">Bank statement</div><div class="ov-section-sub">Millennium BCP account of Manjar Lda. Every debit should have an expense line.</div></div>
     </div>
     <div class="ov-filters">
-      <label class="period-picker"><span class="period-picker-lbl">Month</span><select id="bk_month" onchange="renderBank()"><option value="all">All</option></select></label>
+      <select id="bk_month" onchange="renderBank()" style="display:none"><option value="all">All</option></select>
       <label class="period-picker"><span class="period-picker-lbl">Show</span><select id="bk_kind" onchange="renderBank()"><option value="all">Everything</option><option value="expense">Debits</option><option value="income">Credits</option><option value="unmatched">Debits without invoice</option></select></label>
       <input id="bk_q" type="search" class="search" placeholder="Search description…" oninput="renderBank()">
       <span class="hint" id="bk_count" style="margin-left:auto"></span>
@@ -96,6 +98,7 @@
       <div class="dropzone" onclick="document.getElementById('bk_file').click()">Click to choose the file<input id="bk_file" type="file" accept=".xlsx,.xls" style="display:none" onchange="importBcp(this.files[0])"></div>
       <div class="hint" id="bk_import_status" style="margin-top:8px"></div>
     </details>
+    <div class="hq-pills month-pills" id="bk_month_pills"></div>
     <div class="card"><div class="tbl-wrap"><table>
       <thead><tr><th>Date</th><th>Description</th><th>Category</th><th>Invoice</th><th class="r">Amount</th><th class="r">Balance</th><th></th></tr></thead>
       <tbody id="bankBody"><tr class="empty-row"><td colspan="7">Loading…</td></tr></tbody>
@@ -264,7 +267,7 @@ async function loadData(){
   });
   INVOICES.forEach(i => { i.bank = BANK_ROWS.find(r => r.hq_invoice_id === i.id) || (i.bank_movement_id ? BANK_ROWS.find(r => r.id === i.bank_movement_id) : null) || null; i.missing_pdf = docMissing(i); });
   const months = [...new Set(BANK_ROWS.map(r => r.month).concat(INVOICES.map(i => String(i.invoice_date).slice(0, 7))))].sort().reverse();
-  ['bk_month', 'iv_month'].forEach(id => { const cur = $(id).value; $(id).innerHTML = '<option value="all">All</option>' + months.map(m => `<option value="${m}">${m}</option>`).join(''); if ([...$(id).options].some(o => o.value === cur)) $(id).value = cur; });
+  ['bk_month', 'iv_month'].forEach(id => { const cur = $(id).value; $(id).innerHTML = '<option value="all">All</option>' + months.map(m => `<option value="${m}">${m}</option>`).join(''); if ([...$(id).options].some(o => o.value === cur)) $(id).value = cur; monthPills(id); });
   const years = [...new Set(months.map(m => m.slice(0, 4)))];
   if (!$('ov_year').options.length) $('ov_year').innerHTML = years.map(y => `<option value="${y}">${y}</option>`).join('');
   const catSel = $('inv_category'); if (catSel) catSel.innerHTML = CATEGORIES.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
@@ -365,20 +368,29 @@ function renderOverview(){
     </section>`;
 }
 
+// Month buttons above the Expenses and Bank lists (Miguel, 30 Oct 2026: «o manjar tem de ter o filtro por mês»);
+// they drive the hidden #iv_month / #bk_month selects.
+function monthPills(id){
+  const box = $(id + '_pills'), sel = $(id); if (!box || !sel) return;
+  const short = (k) => k === 'all' ? 'All' : `${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][Number(k.slice(5)) - 1]} ${k.slice(0, 4)}`;
+  box.innerHTML = [...sel.options].map(o => `<button class="hq-pill${o.value === sel.value ? ' active' : ''}" onclick="pickMonth('${id}','${o.value}')">${short(o.value)}</button>`).join('');
+}
+function pickMonth(id, k){ $(id).value = k; monthPills(id); (id === 'iv_month' ? renderInvoices : renderBank)(); }
+
 // ── Invoices ─────────────────────────────────────────────────────
 function renderInvoices(){
   const month = $('iv_month').value, q = $('iv_q').value.trim().toLowerCase(), f = $('iv_filter').value;
   const rows = INVOICES.filter(i => (month === 'all' || String(i.invoice_date).startsWith(month)) && (!q || [i.company, i.invoice_number, i.description, i.category_name].join(' ').toLowerCase().includes(q))
     && (f === 'all' || (f === 'nopdf' && i.missing_pdf) || (f === 'review' && i.needs_review) || (f === 'cash' && !i.bank) || (f === 'catering' && isCatering(i)) || (f === 'restaurant' && !isCatering(i)))).slice().reverse();
   $('iv_count').textContent = `${rows.length} invoices · ${eur(rows.reduce((s, i) => s + Number(i.amount_eur || 0), 0))}`;
-  $('invBody').innerHTML = rows.length ? rows.map(i => `<tr class="click" onclick="openInvoice('${i.id}')">
+  $('invBody').innerHTML = rows.length ? withMonthRows(rows, i => i.invoice_date, 9, month === 'all', i => i.amount_eur, i => `<tr class="click" onclick="openInvoice('${i.id}')">
     <td style="white-space:nowrap">${i.invoice_date}</td><td><div class="sup-cell"><span class="sup-name" title="${esc(i.company)}">${esc(i.company)}</span>${i.description ? `<span class="sup-desc" title="${esc(i.description)}">${esc(i.description)}</span>` : ''}${i.needs_review ? `<span class="review-q"><span class="badge badge-amber">Review</span> ${esc(reviewQuestion(i.notes))}</span>` : ''}</div></td><td class="hint">${esc(i.invoice_number || '')}</td>
     <td onclick="event.stopPropagation()">${CAN_EDIT ? catSelect(i) : (i.category_name ? esc(i.category_name) : '<span class="badge badge-amber">decide</span>')}</td>
     <td onclick="event.stopPropagation()">${CAN_EDIT ? bizSelect(i) : esc(bizName(i))}</td><td class="hint">${esc(i.payment_type || '')}</td>
     <td>${i.bank ? `<span class="badge badge-green">${i.bank.movement_date}</span>` : (i.payment_type === 'Cash' ? '<span class="badge badge-grey">cash</span>' : '<span class="badge badge-amber">not linked</span>')}</td>
     <td>${i.drive_link ? `<a href="${esc(i.drive_link)}" target="_blank" onclick="event.stopPropagation()">open</a>` : (i.doc_exempt_reason ? `<span class="badge badge-grey" title="${esc(i.doc_exempt_reason)}">no invoice</span>` : (i.missing_pdf ? '<span class="badge badge-amber">missing</span>' : '<span class="dim">—</span>'))}</td>
     <td class="r" style="font-weight:700;white-space:nowrap">${eur(i.amount_eur)}</td>
-  </tr>`).join('') : '<tr class="empty-row"><td colspan="9">No expenses match this filter.</td></tr>';
+  </tr>`) : '<tr class="empty-row"><td colspan="9">No expenses match this filter.</td></tr>';
 }
 
 // Category straight from the table: a select per line; when the supplier has
@@ -543,11 +555,11 @@ function renderBank(){
   rows = rows.slice().reverse();
   const inv = (r) => r.has_invoice === 'linked' ? '<span class="badge badge-green">linked</span>' : r.has_invoice === 'amount' ? '<span class="badge badge-blue">by amount</span>' : r.has_invoice === 'missing' ? '<span class="badge badge-amber">missing</span>' : r.has_invoice === 'none' ? '<span class="badge badge-grey">no invoice</span>' : '';
   $('bk_count').textContent = `${rows.length} movements · in ${eur(rows.filter(r => r.amount > 0).reduce((s, r) => s + Number(r.amount), 0))} · out ${eur(-rows.filter(r => r.amount < 0).reduce((s, r) => s + Number(r.amount), 0))}`;
-  $('bankBody').innerHTML = rows.length ? rows.slice(0, 600).map(r => `<tr>
+  $('bankBody').innerHTML = rows.length ? withMonthRows(rows.slice(0, 600), r => r.movement_date, 7, month === 'all', r => r.amount, r => `<tr>
     <td>${r.movement_date}</td><td>${esc(r.description)}</td><td class="hint">${esc(rubricLabel(r.rubric))}</td><td>${inv(r)}</td>
     <td class="r" style="font-weight:700;color:${r.amount > 0 ? 'var(--green)' : 'var(--ink)'}">${r.amount > 0 ? '+' : ''}${eur(r.amount)}</td><td class="r hint">${r.balance != null ? eur(r.balance) : ''}</td>
     <td class="r">${CAN_EDIT && r.has_invoice === 'missing' ? `<button class="btn btn-s btn-sm" onclick="addFromBank('${r.id}')">Add invoice</button>` : ''}</td>
-  </tr>`).join('') + (rows.length > 600 ? `<tr class="empty-row"><td colspan="7">Showing 600 of ${rows.length} — pick a month.</td></tr>` : '') : '<tr class="empty-row"><td colspan="7">No movements match this filter.</td></tr>';
+  </tr>`) + (rows.length > 600 ? `<tr class="empty-row"><td colspan="7">Showing 600 of ${rows.length} — pick a month.</td></tr>` : '') : '<tr class="empty-row"><td colspan="7">No movements match this filter.</td></tr>';
 }
 
 // ── Missing PDFs (lines without a document) ──────────────────────

@@ -1942,12 +1942,14 @@ test('suk: bank-based overview, one expense line per debit, missing PDFs', async
     const kpis = [...document.querySelectorAll('#ovBody .kpi')].slice(0, 4).map(k => k.querySelector('.kpi-label').textContent.trim() + ' ' + k.querySelector('.kpi-value').textContent.trim());
     const biz = [...document.querySelectorAll('#ovBody .g2 .card')].map(c => c.querySelector('.ov-section-title').textContent.trim() + ' ' + [...c.querySelectorAll('tr')].map(tr => tr.lastElementChild.textContent.trim().split(' · ')[0]).join(' | '));
     showPage('invoices'); $('iv_filter').value = 'catering'; renderInvoices();
-    const catering = [...document.querySelectorAll('#invBody tr')].map(tr => (tr.children[1]?.querySelector('.sup-name') || tr.children[1])?.textContent.trim());   // supplier name only (description sits under it since 23 Oct 2026)
+    const catering = [...document.querySelectorAll('#invBody tr:not(.mgroup)')].map(tr => (tr.children[1]?.querySelector('.sup-name') || tr.children[1])?.textContent.trim());   // supplier name only (description sits under it since 23 Oct 2026)
     showInvoicesFilter('nopdf');
-    const missing = [...document.querySelectorAll('#invBody tr')].map(tr => [...tr.children].slice(0, 5).map(td => (td.querySelector('.sup-name') || td).textContent.trim().replace(/\s+/g, ' ')));
+    const monthHeads = [...document.querySelectorAll('#invBody tr.mgroup')].map(tr => tr.textContent.trim());
+    const pills = [...document.querySelectorAll('#iv_month_pills .hq-pill')].map(b => b.textContent.trim() + (b.classList.contains('active') ? '*' : ''));
+    const missing = [...document.querySelectorAll('#invBody tr:not(.mgroup)')].map(tr => [...tr.children].slice(0, 5).map(td => (td.querySelector('.sup-name') || td).textContent.trim().replace(/\s+/g, ' ')));
     showPage('overview');
     const bySupplier = [...document.querySelectorAll('#ovBody .ov-section')].find(s => /Without PDF/.test(s.textContent));
-    return { kpis, biz, catering, missing, suppliers: bySupplier ? [...bySupplier.querySelectorAll('tbody tr')].map(tr => [...tr.children].map(td => td.textContent.trim())) : null, tabs: [...document.querySelectorAll('.ntab')].map(b => b.textContent.trim()) };
+    return { kpis, biz, catering, missing, monthHeads, pills, suppliers: bySupplier ? [...bySupplier.querySelectorAll('tbody tr')].map(tr => [...tr.children].map(td => td.textContent.trim())) : null, tabs: [...document.querySelectorAll('.ntab')].map(b => b.textContent.trim()) };
   });
   expect(out.kpis).toEqual(['Sales €1,420.00', 'Costs €1,383.85', 'Result on the account €36.15', 'Partner funding €500.00']);   // costs = expense lines + bank fees
   // Two businesses: restaurant = TPA + deposits minus its lines and the bank fees; catering = Water's transfers minus the lines marked «Catering» (Makro)
@@ -1958,6 +1960,9 @@ test('suk: bank-based overview, one expense line per debit, missing PDFs', async
   expect(out.missing.map(r => r.slice(0, 2))).toEqual([['2026-07-10', 'makro palmela quint']]);
   expect(out.suppliers).toEqual([['makro palmela quint', '1', '€454.21', 'Food']]);
   expect(out.tabs).toEqual(['Overview', 'Expenses', 'Bank statement', 'Month close']);
+  // 30 Oct 2026: month buttons above the list (they drive the hidden #iv_month) and a header per month with its total
+  expect(out.pills).toEqual(['All*', 'Jul 2026']);
+  expect(out.monthHeads).toEqual(['July 2026 · 1 · €454.21']);
   expect(errs).toEqual([]);
 });
 
