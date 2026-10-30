@@ -241,6 +241,7 @@ async function boot(){
   }
   if (!CAN_EDIT) { $('importBox').style.display = 'none'; $('addInvBtn').style.display = 'none'; }
   await loadData();
+  if (closeOpen()) renderClose();   // the tab may have been opened while the data was loading
   mountForm();
   renderOverview();
   const h = location.hash.replace('#', ''); if (h && document.getElementById('page-' + h)) showPage(h);
@@ -617,7 +618,9 @@ function mcMonths(){
 }
 async function renderClose(){
   const sel = $('mc_month'); if (!sel) return;
-  if (!sel.options.length) { const { list } = mcMonths(); sel.innerHTML = `<option value="all" selected>All months</option>` + list.map(k => `<option value="${k}">${mcLabel(k)}</option>`).join(''); }
+  // Rebuilt whenever the months in the data change: opening the tab before the data had loaded left only «All months».
+  const { list } = mcMonths();
+  if (sel.options.length !== list.length + 1) { const cur = sel.value || 'all'; sel.innerHTML = `<option value="all">All months</option>` + list.map(k => `<option value="${k}">${mcLabel(k)}</option>`).join(''); sel.value = [...sel.options].some(o => o.value === cur) ? cur : 'all'; }
   const month = sel.value, all = month === 'all';
   const inMonth = (d) => all || String(d).startsWith(month);
   const ic = (n) => AppShell.icon(n);

@@ -2000,7 +2000,12 @@ test('suk: month close — invoices to attach, bank debits to add, Drive folder,
   await page.goto('/suk/', { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => /Performance/.test(document.querySelector('#ovBody')?.textContent || ''), null, { timeout: 15000 });
   const out = await page.evaluate(async () => {
+    // Opened before the data loaded: the month list must still fill in once it arrives (30 Oct 2026 bug: only «All months»)
+    const saved = [BANK_ROWS, INVOICES]; BANK_ROWS = []; INVOICES = [];
     showPage('close'); await new Promise(r => setTimeout(r, 50));
+    const before = $('mc_month').options.length;
+    [BANK_ROWS, INVOICES] = saved; await renderClose();
+    const months = [...$('mc_month').options].map(o => o.value);
     $('mc_month').value = '2026-07'; await renderClose();
     const cards = [...document.querySelectorAll('#mcBody .card')];
     return {
@@ -2009,6 +2014,7 @@ test('suk: month close — invoices to attach, bank debits to add, Drive folder,
       debits: [...cards[1].querySelectorAll('tbody tr')].map(tr => tr.children[1].textContent.trim()),
       folder: document.querySelector('#mc_folder a')?.getAttribute('href'),
       sentTick: !!document.querySelector('#mc_pack input[type=checkbox]'),
+      before, months,
       ...(await (async () => {
         const pack = mcPack('2026-07');
         $('mc_month').value = 'all'; await renderClose();
@@ -2027,6 +2033,8 @@ test('suk: month close — invoices to attach, bank debits to add, Drive folder,
   expect(out.debits).toEqual(['DD SUPER BOCK BEBIDAS']);
   expect(out.folder).toBe('https://drive.google.com/drive/folders/FOLDER07');
   expect(out.sentTick).toBe(true);
+  expect(out.before).toBe(1);
+  expect(out.months).toEqual(['all', '2026-07']);
   // «All months» (the default) groups the missing invoices and debits by month
   expect(out.groups).toEqual(['July 2026 · 1 invoice | €454.21', 'July 2026 · 1 debit | €230.00']);
   // Excel for the accountant, same writer as Water's: cash and «[por fora» lines stay out; salary = «Não existe»
