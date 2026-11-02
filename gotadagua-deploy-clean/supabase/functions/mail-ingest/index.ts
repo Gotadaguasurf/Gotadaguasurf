@@ -177,7 +177,7 @@ async function fxToEur(currency: string, date: string): Promise<number | null> {
 }
 
 // ── The pipeline for one document ────────────────────────────────────────
-interface Ctx { db: Db; account: string; messageId: string; attachmentId: string; filename: string; sha: string; receivedAt: string | null; from: string; subject: string; gmailLink: string }
+interface Ctx { db: Db; account: string; messageId: string; attachmentId: string; filename: string; sha: string; receivedAt: string | null; from: string; subject: string; gmailLink: string; backfill?: boolean }
 interface Outcome { status: 'inserted' | 'linked' | 'skipped' | 'review' | 'error'; reason: string; company?: string | null; hq_invoice_id?: string | null; bank_movement_id?: string | null; drive_file_id?: string | null; drive_link?: string | null }
 
 function firstToken(s: string): string { return String(s || '').toLowerCase().replace(/[^a-z0-9àáâãçéêíóôõú ]/g, ' ').trim().split(/\s+/)[0] || '' }
@@ -196,8 +196,9 @@ async function placeDocument(ctx: Ctx, parsed: Parsed, bytes: Uint8Array, compan
     if (data?.length) existing = data[0]
   }
   if (!existing) {
+    // backfill of old mail: a supplier is often paid weeks after the invoice date (direct debits, «pag referencia»)
     const lo = new Date(parsed.invoice_date); lo.setDate(lo.getDate() - 10)
-    const hi = new Date(parsed.invoice_date); hi.setDate(hi.getDate() + 10)
+    const hi = new Date(parsed.invoice_date); hi.setDate(hi.getDate() + (ctx.backfill ? 45 : 10))
     const { data } = await db.from('hq_invoices').select('id, drive_link, invoice_number, supplier_nif, company, amount_eur, amount, currency, invoice_date, notes')
       .eq('paying_company', payingCompany).is('deleted_at', null).gte('invoice_date', lo.toISOString().slice(0, 10)).lte('invoice_date', hi.toISOString().slice(0, 10))
     const tok = firstToken(parsed.company || '')
@@ -214,6 +215,8 @@ async function placeDocument(ctx: Ctx, parsed: Parsed, bytes: Uint8Array, compan
     if (cands.length) existing = cands.sort((a, b) => Math.abs(new Date(String(a.invoice_date)).getTime() - new Date(parsed.invoice_date!).getTime()) - Math.abs(new Date(String(b.invoice_date)).getTime() - new Date(parsed.invoice_date!).getTime()))[0]
   }
   if (existing && existing.drive_link) return { status: 'skipped', reason: `já na app com PDF (linha ${String(existing.id).slice(0, 8)}, ${existing.invoice_number || 'sem nº'})`, company, hq_invoice_id: String(existing.id) }
+  // backfill never creates lines: old documents only complete the lines the bank already made
+  if (!existing && ctx.backfill) return { status: 'review', reason: `backfill: nenhuma linha sem PDF com ${amount} € perto de ${parsed.invoice_date}`, company }
 
   // 2. Drive
   const dtoken = await driveToken(db)
@@ -280,17 +283,26 @@ async function record(ctx: Ctx, o: Outcome, parsed: Parsed | null) {
 }
 
 // ── One run over every connected mailbox ─────────────────────────────────
-async function run(db: Db) {
-  const { data: accounts } = await db.from('mail_ingest_account').select('*').eq('active', true)
+interface RunOpts { account?: string; query?: string; maxMessages?: number; budget?: number; backfill?: boolean }
+async function run(db: Db, opts: RunOpts = {}) {
+  let q0 = db.from('mail_ingest_account').select('*').eq('active', true)
+  if (opts.account) q0 = q0.eq('email', opts.account)
+  const { data: accounts } = await q0
   const summary: Record<string, unknown> = { accounts: (accounts || []).length, processed: 0, inserted: 0, linked: 0, skipped: 0, review: 0, error: 0, details: [] as string[] }
-  let budget = MAX_ATTACHMENTS_PER_RUN
+  let budget = opts.budget || MAX_ATTACHMENTS_PER_RUN
   for (const acct of accounts || []) {
     const account = String(acct.email)
     const perAccount: string[] = []
     try {
       const token = await mailToken(db, acct)
-      const list = await gmail(token, `messages?q=${encodeURIComponent(GMAIL_QUERY)}&maxResults=40`)
-      const ids: string[] = (list.messages || []).map((m: { id: string }) => m.id)
+      // backfill pages through an explicit date range (oldest unseen first is not needed: seen ones are skipped)
+      const ids: string[] = []
+      let pageToken = ''
+      do {
+        const list = await gmail(token, `messages?q=${encodeURIComponent(opts.query || GMAIL_QUERY)}&maxResults=${Math.min(opts.maxMessages || 40, 100)}${pageToken ? '&pageToken=' + pageToken : ''}`)
+        ;(list.messages || []).forEach((m: { id: string }) => ids.push(m.id))
+        pageToken = opts.query ? String(list.nextPageToken || '') : ''
+      } while (pageToken && ids.length < (opts.maxMessages || 40))
       if (!ids.length) { perAccount.push('sem mensagens com anexo'); continue }
       const { data: seen } = await db.from('mail_ingest_items').select('message_id').in('message_id', ids)
       const seenSet = new Set((seen || []).map(r => r.message_id))
@@ -303,7 +315,7 @@ async function run(db: Db) {
         const gmailLink = `https://mail.google.com/mail/?authuser=${encodeURIComponent(account)}#all/${id}`
         const atts: Att[] = []; collectAttachments(msg.payload, atts)
         const pdfs = atts.filter(a => /\.pdf$/i.test(a.filename) || a.mime === 'application/pdf')
-        const marker: Ctx = { db, account, messageId: id, attachmentId: '-', filename: '', sha: '', receivedAt, from, subject, gmailLink }
+        const marker: Ctx = { db, account, messageId: id, attachmentId: '-', filename: '', sha: '', receivedAt, from, subject, gmailLink, backfill: !!opts.backfill }
         if (/sistema de manjar/i.test(subject)) { await record(marker, { status: 'skipped', reason: 'relatório do POS do Manjar' }, null); continue }
         if (!pdfs.length) { await record(marker, { status: 'skipped', reason: 'sem PDF em anexo' }, null); continue }
         for (const a of pdfs) {
@@ -439,6 +451,14 @@ Deno.serve(async (req) => {
 
   try {
     if (action === 'decide') return await decide(db, body, who)
+    // backfill: one mailbox, an explicit Gmail date range, link-only (never creates lines)
+    if (action === 'backfill') {
+      const after = String(body.after || ''), before = String(body.before || '')
+      if (!body.account || !/^\d{4}\/\d{2}\/\d{2}$/.test(after) || !/^\d{4}\/\d{2}\/\d{2}$/.test(before)) return json({ error: 'backfill needs account, after and before (YYYY/MM/DD)' }, 400)
+      const query = `has:attachment after:${after} before:${before} -in:spam -in:trash -"Sistema de MANJAR"`
+      const summary = await run(db, { account: String(body.account), query, maxMessages: 400, budget: Math.min(Number(body.budget) || 20, 30), backfill: true })
+      return json({ ok: true, by: who, backfill: { after, before }, ...summary })
+    }
     const summary = await run(db)
     return json({ ok: true, by: who, ...summary })
   } catch (e) {
