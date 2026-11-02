@@ -1,7 +1,7 @@
 name: Supabase Backup
 
 # Daily pg_dump of the Supabase Postgres. Primary destination is the
-# Gota d'Água company Google Drive folder (via rclone). Secondary copy
+# Gota Dagua company Google Drive folder (via rclone). Secondary copy
 # stays as a GitHub Actions artifact so we always have two independent
 # locations.
 #
@@ -149,7 +149,7 @@ jobs:
             echo ""
             echo "- File: \`${{ steps.ts.outputs.FILENAME }}\`"
             echo "- Kind: **${{ steps.ts.outputs.KIND }}**"
-            echo "- Primary: Google Drive · Gota d'Água company folder"
+            echo "- Primary: Google Drive · Gota Dagua company folder"
             echo "- Secondary: GitHub Artifact (30d retention)"
             echo ""
             echo "Restore: download from Drive, \`gunzip\`, then"

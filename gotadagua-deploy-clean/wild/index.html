@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#28394b">
-<title>Wild Wednesday — Gota d'Água</title>
+<title>Wild Wednesday — Gota Dagua</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='-15 0 92 92'><path fill='%231e6fa8' d='M61.7,51.9c-.4-9-5.5-16.5-9.7-24.1-2.9-4.8-5.3-9.8-9.3-13.9-3.9-4.4-6.5-9.8-10.8-13.9C19.2,16.6-.5,39.9,0,61.9c9.4-7.9,20.1-17.7,33.1-17.8,3,0,7.2,0,9.5,2.2,1.7,1.7,3.2,4.2,2,6.5-.3.5-1.9,2.7-2.3,2.9-12.9,7.4-20.3,18.6-16.5,33.7,3.1,1.3,8,1,11.1-.3,2.7-.3,5.1-1.3,7.5-2.5,8.7-2.9,14.5-11.1,15.5-20.1,1.2-4.7,2.1-9.7,1.8-14.6h0Z'/></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -146,7 +146,7 @@ function showPage(name){
 // ── Boot ─────────────────────────────────────────────────────────
 async function boot(){
   const { data:{ user } } = await sb.auth.getUser();
-  if (!user) { document.body.innerHTML = AppShell.splash('Sign in required', "Open the Gota d'Água hub, sign in, then reopen this page."); return; }
+  if (!user) { document.body.innerHTML = AppShell.splash('Sign in required', "Open the Gota Dagua hub, sign in, then reopen this page."); return; }
   try {
     const { data } = await sb.from('platform_profiles').select('full_name,email,platform_role').eq('id', user.id).maybeSingle();
     $('userChip').textContent = data?.full_name || data?.email || user.email || 'you';

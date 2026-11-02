@@ -1,7 +1,7 @@
 {
   "name": "gotadagua-platform",
   "private": true,
-  "description": "Gota d'Água surf platform — static apps on Vercel + Supabase. Tests only; the apps themselves have no build step.",
+  "description": "Gota Dagua surf platform — static apps on Vercel + Supabase. Tests only; the apps themselves have no build step.",
   "scripts": {
     "test": "playwright test",
     "test:headed": "playwright test --headed"

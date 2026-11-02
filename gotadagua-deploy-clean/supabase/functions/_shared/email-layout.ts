@@ -1,7 +1,7 @@
 // ════════════════════════════════════════════════════════════════════════════
 //  The house look for every email the app sends on its own (invite, weekly
 //  digest…): logo on top, white card on the light ocean background, one
-//  ocean-blue button, the Gota d'Água footer. Table layout + inline styles so
+//  ocean-blue button, the Gota Dagua footer. Table layout + inline styles so
 //  Gmail, Apple Mail and Outlook all draw it the same. Outfit where the client
 //  has it, Helvetica/Arial otherwise (no serif — docs/DESIGN-SYSTEM.md).
 // ════════════════════════════════════════════════════════════════════════════
@@ -41,14 +41,14 @@ export function brandedEmail(o: EmailLayout): string {
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${C.bg}"><tr><td align="center" style="padding:28px 12px">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:${w}px">
     <tr><td align="center" style="padding:4px 0 22px">
-      <a href="https://www.gotadaguasurf.com" style="text-decoration:none"><img src="${ASSET_BASE}/assets/logos/logo-blue.png" width="132" alt="Gota d'Água Surf" style="display:block;border:0;width:132px;height:auto"></a>
+      <a href="https://www.gotadaguasurf.com" style="text-decoration:none"><img src="${ASSET_BASE}/assets/logos/logo-blue.png" width="132" alt="Gota Dagua Surf" style="display:block;border:0;width:132px;height:auto"></a>
     </td></tr>
     <tr><td style="background:#ffffff;border-radius:18px;overflow:hidden;border:1px solid ${C.line}">
       ${o.hero || ''}
       <div style="padding:${o.flush ? '0' : '32px 32px 30px'};font-family:${FONT};font-size:15px;line-height:1.6;color:${C.ink}">${o.bodyHtml}</div>
     </td></tr>
     <tr><td align="center" style="padding:22px 12px 0;font-family:${FONT};font-size:12px;line-height:1.6;color:${C.faint}">
-      Gota d'Água Surf · Costa da Caparica · Ahangama · Tamraght<br>
+      Gota Dagua Surf · Costa da Caparica · Ahangama · Tamraght<br>
       <a href="https://www.gotadaguasurf.com" style="color:${C.faint};text-decoration:underline">gotadaguasurf.com</a> ·
       <a href="https://www.instagram.com/gotadagua_surf" style="color:${C.faint};text-decoration:underline">Instagram</a>
     </td></tr>

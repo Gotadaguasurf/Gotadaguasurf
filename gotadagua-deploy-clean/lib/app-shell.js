@@ -1,5 +1,5 @@
 /* ════════════════════════════════════════════════════════════════════════════
-   AppShell — the one header + app registry of the Gota d'Água app
+   AppShell — the one header + app registry of the Gota Dagua app
    (22 Oct 2026, Miguel: «o header devia ser sempre igual… preciso de
    consistência… tudo homogéneo»).
 

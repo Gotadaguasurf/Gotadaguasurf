@@ -116,7 +116,7 @@
 
   return function accExcelWorkbook(ExcelJS, pack){
     const wb = new ExcelJS.Workbook();
-    wb.creator = 'Gota d\'Água HQ';
+    wb.creator = 'Gota Dagua HQ';
     wb.created = new Date();
     pack.sheets.forEach(sh => {
       const ws = wb.addWorksheet(sh.name.slice(0, 31), { properties: { tabColor: { argb: sh.kind === 'checklist' ? 'FFFFC7CE' : sh.kind === 'bank' ? 'FFFFEB9C' : sh.kind === 'resumo' ? NAVY : 'FFD8DEE6' } } });

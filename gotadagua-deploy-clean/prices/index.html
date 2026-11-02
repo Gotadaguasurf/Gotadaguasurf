@@ -10,7 +10,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>Prices — Gota d'Água</title>
+<title>Prices — Gota Dagua</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='-15 0 92 92'><path fill='%231e6fa8' d='M61.7,51.9c-.4-9-5.5-16.5-9.7-24.1-2.9-4.8-5.3-9.8-9.3-13.9-3.9-4.4-6.5-9.8-10.8-13.9C19.2,16.6-.5,39.9,0,61.9c9.4-7.9,20.1-17.7,33.1-17.8,3,0,7.2,0,9.5,2.2,1.7,1.7,3.2,4.2,2,6.5-.3.5-1.9,2.7-2.3,2.9-12.9,7.4-20.3,18.6-16.5,33.7,3.1,1.3,8,1,11.1-.3,2.7-.3,5.1-1.3,7.5-2.5,8.7-2.9,14.5-11.1,15.5-20.1,1.2-4.7,2.1-9.7,1.8-14.6h0Z'/></svg>">
 <!-- ULTRA-EARLY canary: if JS is running at all, this script fires before
      anything else on the page. We change the document title so the user
@@ -822,7 +822,7 @@ function withTimeout(promise, ms, label){
       } catch (_e) { /* silent-fail */ }
     })();
   }
-  document.title = `${_locLabel} prices · Gota d'Água`;
+  document.title = `${_locLabel} prices · Gota Dagua`;
   markStep('step-location','ok','Location: '+(LOCATION_LABELS[LOCATION_SLUG] || locRow.name));
 
   // 5. Access gate — owner gets full edit; everyone else needs the
@@ -2867,7 +2867,7 @@ window.addEventListener('beforeunload', e=>{
 //  PDF EXPORT — "Download PDF" button in the header
 // ════════════════════════════════════════════════════════════════════════════
 //
-//  Builds a single PDF that mirrors the Gota d'Água printed price-list style:
+//  Builds a single PDF that mirrors the Gota Dagua printed price-list style:
 //  navy droplet logo header on every page, narrow-tall page (200×330mm),
 //  filled-navy section chips, alternating-shade row tables, contact footer.
 //
@@ -2882,7 +2882,7 @@ window.addEventListener('beforeunload', e=>{
 //  are used so vfs_fonts.js — the 600KB Roboto bundle — is NOT loaded.
 // ════════════════════════════════════════════════════════════════════════════
 
-// Inline SVG of the Gota d'Água wordmark + droplet, recolored navy for
+// Inline SVG of the Gota Dagua wordmark + droplet, recolored navy for
 // rendering on the light PDF background. Original site CSS uses #fff4d5
 // (cream) because it sits on the dark navy header bar — we swap that for
 // the navy ink so it reads on the cream/grey PDF page.

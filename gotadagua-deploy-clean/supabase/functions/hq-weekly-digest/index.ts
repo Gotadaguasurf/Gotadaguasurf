@@ -132,7 +132,7 @@ function buildRawMultipart(args: { from: string; fromName: string; to: string; s
 
 async function sendViaGmail(supa: ReturnType<typeof createClient>, to: string, subject: string, html: string, text: string) {
   const { token, email } = await ensureAccessToken(supa)
-  const raw = buildRawMultipart({ from: email, fromName: "Gota d'Água HQ", to, subject, html, text })
+  const raw = buildRawMultipart({ from: email, fromName: "Gota Dagua HQ", to, subject, html, text })
   const resp = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
     method: 'POST',
     headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
@@ -344,7 +344,7 @@ function renderHtml(label: string, wk: WeekNumbers, prev: WeekNumbers): string {
 
 function renderText(label: string, wk: WeekNumbers): string {
   return [
-    `Gota d'Água — weekly digest · ${label}`,
+    `Gota Dagua — weekly digest · ${label}`,
     ``,
     `Business profit: ${eur(wk.profit)}  (revenue ${eur(wk.revenue)} − spend ${eur(wk.spend)})`,
     `Bookings: ${wk.bookingsCount}`,
@@ -398,7 +398,7 @@ Deno.serve(async (req) => {
     ])
     const html = renderHtml(label, wk, prev)
     const text = renderText(label, wk)
-    const subject = `Gota d'Água — weekly digest · ${label} · profit ${eur(wk.profit)}`
+    const subject = `Gota Dagua — weekly digest · ${label} · profit ${eur(wk.profit)}`
 
     if (preview) {
       return new Response(html, { status: 200, headers: { 'content-type': 'text/html; charset=utf-8', ...CORS } })

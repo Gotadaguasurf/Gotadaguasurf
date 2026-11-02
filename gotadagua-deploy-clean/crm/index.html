@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Gota d'Água — CRM</title>
+<title>Gota Dagua — CRM</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='-15 0 92 92'><path fill='%231e6fa8' d='M61.7,51.9c-.4-9-5.5-16.5-9.7-24.1-2.9-4.8-5.3-9.8-9.3-13.9-3.9-4.4-6.5-9.8-10.8-13.9C19.2,16.6-.5,39.9,0,61.9c9.4-7.9,20.1-17.7,33.1-17.8,3,0,7.2,0,9.5,2.2,1.7,1.7,3.2,4.2,2,6.5-.3.5-1.9,2.7-2.3,2.9-12.9,7.4-20.3,18.6-16.5,33.7,3.1,1.3,8,1,11.1-.3,2.7-.3,5.1-1.3,7.5-2.5,8.7-2.9,14.5-11.1,15.5-20.1,1.2-4.7,2.1-9.7,1.8-14.6h0Z'/></svg>">
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.4"></script>
@@ -546,7 +546,7 @@ body.dark .ed-input{background:var(--card)}
 <!-- ─────────────────────────── LOGIN SCREEN ─────────────────────────── -->
 <div id="loginScreen" class="hidden">
   <div class="login-card">
-    <div class="login-title">Gota d'Água · CRM</div>
+    <div class="login-title">Gota Dagua · CRM</div>
     <div class="login-sub">Sign in with your team account</div>
     <form id="loginForm">
       <div class="field">
@@ -1343,7 +1343,7 @@ body.dark .ed-input{background:var(--card)}
       </div>
       <div class="editor-field" style="margin-top:14px">
         <label>Your signature</label>
-        <textarea id="settingsSignature" style="min-height:90px;font-family:'DM Mono',monospace;font-size:12px" placeholder="Best,&#10;Miguel Pereira&#10;Co-Founder · Gota d'Água&#10;+351 916 290 842"></textarea>
+        <textarea id="settingsSignature" style="min-height:90px;font-family:'DM Mono',monospace;font-size:12px" placeholder="Best,&#10;Miguel Pereira&#10;Co-Founder · Gota Dagua&#10;+351 916 290 842"></textarea>
         <div class="editor-hint" style="margin-top:6px">Stored in <code>team_users.signature</code> — any team member's browser can pick you in Send-as and your signature shows up. Use <code>{{my_signature}}</code> in any template, plus <code>{{my_first_name}}</code> / <code>{{my_name}}</code> / <code>{{my_email}}</code>.</div>
       </div>
     </div>
@@ -6097,7 +6097,7 @@ function conversationHtml(activity){
     const senderRow = !inb && a.meta?.sender_user_id ? TEAM_USERS.find(u => u.id === a.meta.sender_user_id) : null;
     const fromName = inb
       ? escHtml((a.meta?.from || '').replace(/<[^>]*>/g, '').trim() || 'Contact')
-      : escHtml(senderRow?.full_name || 'Gota d’Água');
+      : escHtml(senderRow?.full_name || 'Gota Dagua');
     const quoteBlock = quoted ? `<details class="convo-quote"><summary>··· earlier messages</summary><div class="q">${escHtml(quoted)}</div></details>` : '';
     return `<div class="convo-bubble ${inb ? 'in' : 'out'}"><div class="convo-meta"><span class="who">${fromName}</span><span class="when">${fmtDateTime(a.created_at)}</span></div>${showSubj ? `<div class="convo-subject">${escHtml(subj)}</div>` : ''}<div class="convo-msg">${escHtml(head || '(empty)')}</div>${quoteBlock}</div>`;
   });

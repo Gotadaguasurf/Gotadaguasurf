@@ -265,7 +265,7 @@ function routeByBuyer(parsed: Parsed): { company: string | null; outcome?: Outco
   if (nif === WATER_NIF) return { company: 'water-movements' }
   if (nif === MANJAR_NIF) return { company: 'manjar' }
   const buyer = String(parsed.buyer_name || '').toLowerCase()
-  if (/water\s*movements|gota\s*d.?\s*[aá]gua|gotadagua/.test(buyer)) return { company: 'water-movements' }   // partners invoice us as «Gota d'Água Camps»
+  if (/water\s*movements|gota\s*d.?\s*[aá]gua|gotadagua/.test(buyer)) return { company: 'water-movements' }   // partners invoice us as «Gota Dagua Camps»
   if (/manjar/.test(buyer)) return { company: 'manjar' }
   return { company: null, outcome: { status: 'review', reason: nif ? `comprador desconhecido (NIF ${nif}${buyer ? ', ' + buyer : ''})` : 'comprador não identificado' } }
 }

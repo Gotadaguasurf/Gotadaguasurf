@@ -16,7 +16,7 @@ async function gmailAccessToken(supa: any): Promise<{ token: string; email: stri
   if (error || !acct) throw new Error('No gmail_account row — connect the shared mailbox via /gmail-oauth/start first');
   const expiresAt = acct.access_expires_at ? new Date(acct.access_expires_at).getTime() : 0;
   if (acct.access_token && expiresAt > Date.now() + 60_000) {
-    return { token: acct.access_token, email: acct.email, display: acct.display_name || "Gota d'Água" };
+    return { token: acct.access_token, email: acct.email, display: acct.display_name || "Gota Dagua" };
   }
   const resp = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
@@ -30,7 +30,7 @@ async function gmailAccessToken(supa: any): Promise<{ token: string; email: stri
   const tk = await resp.json() as { access_token: string; expires_in: number };
   const newExpiry = new Date(Date.now() + (tk.expires_in - 30) * 1000).toISOString();
   await supa.from('gmail_account').update({ access_token: tk.access_token, access_expires_at: newExpiry, updated_at: new Date().toISOString() }).eq('id', acct.id);
-  return { token: tk.access_token, email: acct.email, display: acct.display_name || "Gota d'Água" };
+  return { token: tk.access_token, email: acct.email, display: acct.display_name || "Gota Dagua" };
 }
 
 const escHtml = (s: string) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -39,13 +39,13 @@ const escHtml = (s: string) => String(s ?? '').replace(/&/g, '&amp;').replace(/<
 async function sendInviteViaGmail(supa: any, args: { to: string; fullName: string; actionLink: string; invitedBy: string }) {
   const { token, email: fromEmail, display } = await gmailAccessToken(supa);
   const first = (args.fullName || '').trim().split(/\s+/)[0] || 'Olá';
-  const subject = "Convite para a plataforma Gota d'Água";
-  const body = `${first},\n\n${args.invitedBy} convidou-te para a plataforma da Gota d'Água.\n\nAbre este link para criares a tua password e entrares:\n${args.actionLink}\n\nO link é pessoal e expira em 7 dias.\n\nGota d'Água Surf`;
+  const subject = "Convite para a plataforma Gota Dagua";
+  const body = `${first},\n\n${args.invitedBy} convidou-te para a plataforma da Gota Dagua.\n\nAbre este link para criares a tua password e entrares:\n${args.actionLink}\n\nO link é pessoal e expira em 7 dias.\n\nGota Dagua Surf`;
   const html = brandedEmail({
-    preheader: `${args.invitedBy} convidou-te para a plataforma da Gota d'Água.`,
+    preheader: `${args.invitedBy} convidou-te para a plataforma da Gota Dagua.`,
     bodyHtml: `
       <h1 style="margin:0 0 14px;font-size:22px;line-height:1.3;font-weight:700;color:${C.navy}">${(args.fullName || '').trim() ? `Olá, ${escHtml(first)}` : 'Olá'}</h1>
-      <p style="margin:0 0 20px">${escHtml(args.invitedBy)} convidou-te para a plataforma da Gota d'Água.</p>
+      <p style="margin:0 0 20px">${escHtml(args.invitedBy)} convidou-te para a plataforma da Gota Dagua.</p>
       ${emailButton('Criar password e entrar', args.actionLink)}
       <p style="margin:22px 0 0;font-size:13px;color:${C.muted}">O link é pessoal e expira em 7 dias.</p>
       <p style="margin:18px 0 0;padding-top:16px;border-top:1px solid ${C.line};font-size:12px;color:${C.faint}">Se o botão não abrir, copia este link:<br><span style="word-break:break-all">${escHtml(args.actionLink)}</span></p>`,
@@ -295,7 +295,7 @@ Deno.serve(async (req) => {
         invitedUserId = linkData.user?.id ?? null;
         inviteLinkForAdmin = linkData.properties.action_link;
         try {
-          await sendInviteViaGmail(supabaseAdmin, { to: lowerEmail, fullName: fullName || '', actionLink: inviteLinkForAdmin, invitedBy: caller.email || "Gota d'Água" });
+          await sendInviteViaGmail(supabaseAdmin, { to: lowerEmail, fullName: fullName || '', actionLink: inviteLinkForAdmin, invitedBy: caller.email || "Gota Dagua" });
           emailSent = true;
         } catch (mailErr) {
           console.error('create-platform-invite: Gmail fallback failed', mailErr);
