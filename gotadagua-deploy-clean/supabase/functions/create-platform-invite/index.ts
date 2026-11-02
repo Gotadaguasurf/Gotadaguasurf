@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { buildRaw } from '../_shared/mail.ts';
+import { brandedEmail, emailButton, C } from '../_shared/email-layout.ts';
 
 // ── Fallback mailer ──────────────────────────────────────────────────
 // Supabase Auth's own SMTP failed on 9 Sep 2026 ("Error sending invite
@@ -40,14 +41,15 @@ async function sendInviteViaGmail(supa: any, args: { to: string; fullName: strin
   const first = (args.fullName || '').trim().split(/\s+/)[0] || 'Olá';
   const subject = "Convite para a plataforma Gota d'Água";
   const body = `${first},\n\n${args.invitedBy} convidou-te para a plataforma da Gota d'Água.\n\nAbre este link para criares a tua password e entrares:\n${args.actionLink}\n\nO link é pessoal e expira em 7 dias.\n\nGota d'Água Surf`;
-  const html = `<div style="font-family:Outfit,Helvetica,Arial,sans-serif;font-size:15px;color:#14212e;line-height:1.55">
-    <p>${escHtml(first)},</p>
-    <p>${escHtml(args.invitedBy)} convidou-te para a plataforma da Gota d'Água.</p>
-    <p><a href="${escHtml(args.actionLink)}" style="display:inline-block;background:#1e6fa8;color:#fff;text-decoration:none;padding:11px 18px;border-radius:10px;font-weight:700">Criar password e entrar</a></p>
-    <p style="font-size:13px;color:#5d7185">Se o botão não abrir, copia este link: <br><span style="word-break:break-all">${escHtml(args.actionLink)}</span></p>
-    <p style="font-size:13px;color:#5d7185">O link é pessoal e expira em 7 dias.</p>
-    <p>Gota d'Água Surf</p>
-  </div>`;
+  const html = brandedEmail({
+    preheader: `${args.invitedBy} convidou-te para a plataforma da Gota d'Água.`,
+    bodyHtml: `
+      <h1 style="margin:0 0 14px;font-size:22px;line-height:1.3;font-weight:700;color:${C.navy}">${(args.fullName || '').trim() ? `Olá, ${escHtml(first)}` : 'Olá'}</h1>
+      <p style="margin:0 0 20px">${escHtml(args.invitedBy)} convidou-te para a plataforma da Gota d'Água.</p>
+      ${emailButton('Criar password e entrar', args.actionLink)}
+      <p style="margin:22px 0 0;font-size:13px;color:${C.muted}">O link é pessoal e expira em 7 dias.</p>
+      <p style="margin:18px 0 0;padding-top:16px;border-top:1px solid ${C.line};font-size:12px;color:${C.faint}">Se o botão não abrir, copia este link:<br><span style="word-break:break-all">${escHtml(args.actionLink)}</span></p>`,
+  });
   const raw = buildRaw({ fromEmail, fromDisplay: display, to: args.to, subject, body, html });
   const resp = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
     method: 'POST',

@@ -22,6 +22,7 @@
 //    SUPABASE_SERVICE_ROLE_KEY (auto)
 // ════════════════════════════════════════════════════════════════════════════
 
+import { brandedEmail, FONT } from '../_shared/email-layout.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const CLIENT_ID     = Deno.env.get('GOOGLE_OAUTH_CLIENT_ID') || ''
@@ -297,15 +298,14 @@ function renderHtml(label: string, wk: WeekNumbers, prev: WeekNumbers): string {
     healthChip('recurring due', wk.recurringDue, '#1e6fa8'),
   ].join('') || `<span style="color:#118a5b;font-weight:700;font-size:13px">✓ All clear</span>`
 
-  return `<!doctype html><html><body style="margin:0;padding:0;background:#f0f5fa;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#0d1b2a;line-height:1.45">
-<div style="max-width:640px;margin:0 auto;background:#fff">
-  <div style="background:linear-gradient(135deg,#28394b 0%,#1f2c3b 100%);color:#fff;padding:32px 28px;text-align:center">
+  const hero = `<div style="background:#28394b;background:linear-gradient(135deg,#28394b 0%,#1f2c3b 100%);color:#fff;padding:32px 28px;text-align:center;font-family:${FONT}">
     <div style="font-size:10px;text-transform:uppercase;letter-spacing:.14em;color:#7aabcc;font-weight:700;margin-bottom:8px">Weekly digest · ${label}</div>
-    <div style="font-family:Georgia,serif;font-size:14px;color:#a8c4db;margin-bottom:4px">Business profit</div>
-    <div style="font-family:Georgia,serif;font-size:52px;line-height:1;color:${heroColor};margin:6px 0">${eur(wk.profit)}</div>
+    <div style="font-size:14px;color:#a8c4db;margin-bottom:4px">Business profit</div>
+    <div style="font-size:48px;font-weight:700;line-height:1;color:${heroColor};margin:6px 0">${eur(wk.profit)}</div>
     <div style="font-size:12px;color:${deltaColor};font-weight:600;margin-top:6px">${deltaTxt}</div>
     <div style="font-size:12px;color:#a8c4db;margin-top:10px">Revenue ${eur(wk.revenue)} · Spend ${eur(wk.spend)}</div>
-  </div>
+  </div>`
+  const sections = `
 
   <div style="padding:24px 28px;border-bottom:1px solid #eef2f7">
     <div style="font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:#8595a8;font-weight:700;margin-bottom:12px">Health check</div>
@@ -337,9 +337,9 @@ function renderHtml(label: string, wk: WeekNumbers, prev: WeekNumbers): string {
   </div>
 
   <div style="padding:20px 28px 28px;text-align:center;color:#8595a8;font-size:12px">
-    <a href="https://gotadaguasurf.com/hq/" style="color:#1e6fa8;text-decoration:none;font-weight:600">Open HQ →</a>
-  </div>
-</div></body></html>`
+    <a href="https://gotadaguasurf.com/hq/" style="display:inline-block;background:#1e6fa8;color:#fff;text-decoration:none;font-weight:700;padding:12px 22px;border-radius:12px">Open HQ</a>
+  </div>`
+  return brandedEmail({ width: 640, flush: true, hero, preheader: `Profit ${eur(wk.profit)} · revenue ${eur(wk.revenue)} · spend ${eur(wk.spend)}`, bodyHtml: sections })
 }
 
 function renderText(label: string, wk: WeekNumbers): string {
