@@ -216,7 +216,8 @@ async function placeDocument(ctx: Ctx, parsed: Parsed, bytes: Uint8Array, compan
   }
   if (existing && existing.drive_link) return { status: 'skipped', reason: `já na app com PDF (linha ${String(existing.id).slice(0, 8)}, ${existing.invoice_number || 'sem nº'})`, company, hq_invoice_id: String(existing.id) }
   // backfill never creates lines: old documents only complete the lines the bank already made
-  if (!existing && ctx.backfill) return { status: 'review', reason: `backfill: nenhuma linha sem PDF com ${amount} € perto de ${parsed.invoice_date}`, company }
+  // recorded as skipped, not review: the «to decide» buttons would create a line and duplicate the bank's
+  if (!existing && ctx.backfill) return { status: 'skipped', reason: `backfill: nenhuma linha sem PDF com ${amount} € perto de ${parsed.invoice_date}`, company }
 
   // 2. Drive
   const dtoken = await driveToken(db)
