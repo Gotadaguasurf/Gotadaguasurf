@@ -36,8 +36,10 @@ returns text language sql immutable as $$
     when i.drive_link is not null and i.drive_link <> '' then 'ok'
     when i.doc_exempt_reason is not null then 'isento'
     when coalesce(i.notes, '') ilike '%[sem fatura%' then 'isento'
-    -- suppliers that never issue a document (same list as ACC_NO_INVOICE in hq/index.html)
-    when lower(coalesce(i.company, '')) ~ '^(google ads|meta ads|facebook ads|lg leasing|santander|paypal|getnet|domestic|cartao refeicao|cartão refeição)' then 'isento'
+    -- bank movements: the statement is the document (same list as ACC_NO_INVOICE in hq/index.html).
+    -- 3 Nov 2026, accountant review: Google/Meta ads, leasing, Getnet, insurers, airlines, PayPal fees (monthly
+    -- statement) and meal cards (payslip) DO have a document — they are no longer exempt by name.
+    when lower(coalesce(i.company, '')) ~ '^(santander|cgd \(comiss)' then 'isento'
     -- Manjar's salaries/taxes come from the bank with no payslip in the app; Water's payroll, instructor receipts and tax forms DO have documents
     when coalesce(i.paying_company, 'water-movements') = 'manjar' and coalesce(i.category_name, '') in ('Salary', 'Benefits', 'Taxes') then 'n/a'
     -- paid in cash with no invoice = off the books: in the P&L, never in the accountant pack (Miguel, 30 Oct 2026)
@@ -45,14 +47,11 @@ returns text language sql immutable as $$
     else 'falta' end
 $$;
 
--- 4 (first, so the view below sees it): suppliers that never issue a document
+-- 4 (first, so the view below sees it): bank movements are documented by the statement
 update public.hq_invoices i
-   set doc_exempt_reason = 'o fornecedor não emite fatura'
+   set doc_exempt_reason = 'Movimento bancário (o extrato é o documento)'
  where i.deleted_at is null and i.drive_link is null and i.doc_exempt_reason is null
-   and (lower(i.company) like 'google ads%' or lower(i.company) like 'meta ads%' or lower(i.company) like 'facebook ads%'
-        or lower(i.company) like 'lg leasing%' or lower(i.company) like 'santander%' or lower(i.company) like 'paypal%'
-        or lower(i.company) like 'getnet%' or lower(i.company) like 'domestic%' or lower(i.company) like 'cartao refeicao%'
-        or lower(i.company) like 'cartão refeição%');
+   and (lower(i.company) like 'santander%' or lower(i.company) like 'cgd (comiss%');
 
 -- 3a. accountant page: same rule
 create or replace view public._accountant_rows as

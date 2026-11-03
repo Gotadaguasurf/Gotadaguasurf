@@ -563,7 +563,7 @@ async function deleteInvoice(){
 }
 async function markNoInvoice(id){
   const i = INVOICES.find(x => x.id === id); if (!i) return;
-  const why = prompt(`No invoice for this expense — why?\n${i.invoice_date} · ${i.company} · ${eur(i.amount_eur)}`, 'No invoice'); if (why == null || !why.trim()) return;
+  const why = prompt(`No invoice for this expense — why?\n${i.invoice_date} · ${i.company} · ${eur(i.amount_eur)}`, ''); if (why == null || !why.trim()) return;
   const { error } = await sb.from('hq_invoices').update({ doc_exempt_reason: why.trim(), notes: `[sem fatura: ${why.trim()}] ${i.notes || ''}`.trim() }).eq('id', id);
   if (error) { toast('Not saved: ' + error.message, 'err'); return; }
   toast('Marked'); await loadData(); renderInvoices(); renderOverview(); if (closeOpen()) renderClose();
@@ -744,7 +744,7 @@ function renderCloseBanks(month){
   const viewPills = pill(view === 'missing', `Missing${badge(items.length)}`, `MC_VIEW='missing';renderCloseBanks('${month}')`)
     + (all ? '' : pill(view === 'bcp', `Millennium BCP · ${stmt.length}${badge(todo.length)}`, `MC_VIEW='bcp';renderCloseBanks('${month}')`)
       + pill(view === 'nobank', `No bank movement · ${noBank.length}${badge(noBank.filter(i => i.missing_pdf).length, 'badge-amber')}`, `MC_VIEW='nobank';renderCloseBanks('${month}')`));
-  const docBtns = (id) => CAN_EDIT ? `<button class="btn btn-s btn-sm" onclick="mcAttach('${id}')">${ic('paperclip')} Attach</button> <button class="btn btn-s btn-sm" onclick="mcLink('${id}')">${ic('link')} Link</button> <button class="btn btn-s btn-sm" title="This supplier never issues an invoice — stop counting it as missing" onclick="markNoInvoice('${id}')">No invoice needed</button>` : '';
+  const docBtns = (id) => CAN_EDIT ? `<button class="btn btn-s btn-sm" onclick="mcAttach('${id}')">${ic('paperclip')} Attach</button> <button class="btn btn-s btn-sm" onclick="mcLink('${id}')">${ic('link')} Link</button> <button class="btn btn-s btn-sm" title="Only when no document exists (bank fee, personal expense) — you will be asked why" onclick="markNoInvoice('${id}')">No invoice needed</button>` : '';
   let hint = '', table = '', right = '';
   if (view === 'missing') {
     hint = all ? 'Everything still missing, newest month first. Pick a month to check the Millennium statement line by line.' : `Everything ${mcLabel(month)} still needs: invoices to attach (the PDF goes to the Manjar Drive folder of the month) and BCP debits with no expense — biggest first.`;

@@ -2318,19 +2318,19 @@ const XLSX_CDN = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js
 const EXCELJS_CDN = 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';
 // Onde procurar a fatura quando falta — por fornecedor (minúsculas, prefixo).
 const ACC_HINTS = [
-  ['google ads', 'Google Ads: a Google não manda PDF; sacar em ads.google.com › Faturação'],
+  ['google ads', 'Google Ads: fatura mensal em ads.google.com › Faturação › Documentos'],
   ['meta ads', 'Meta Ads: business.facebook.com › Faturação'], ['facebook ads', 'Meta Ads: business.facebook.com › Faturação'],
-  ['lg leasing', 'Leasing LG: não há fatura mensal, só o débito'], ['rci', 'RCI/Mobilize: fatura no portal do leasing'], ['mobilize', 'RCI/Mobilize: fatura no portal do leasing'],
-  ['santander', 'Comissões do banco: só extrato'], ['paypal', 'Extrato PayPal (accounting@)'], ['getnet', 'Getnet: fatura no portal'],
+  ['lg leasing', 'Leasing imobiliário Novo Banco: pedir a fatura/aviso de cada renda'], ['caixa geral (leasing', 'Leasing CGD: pedir a fatura/aviso de cada renda'], ['rci', 'RCI/Mobilize: fatura no portal do leasing'], ['mobilize', 'RCI/Mobilize: fatura no portal do leasing'],
+  ['santander', 'Comissões do banco: só extrato'], ['paypal', 'Extrato mensal PayPal (paypal.com › Relatórios › Extratos, accounting@)'], ['getnet', 'Getnet: fatura no portal'],
   ['via verde', 'Via Verde: extrato mensal no site'], ['uber', 'Conta Uber do Ricardo (riders.uber.com)'],
-  ['domestic', 'Domestic & General: só existe a apólice (accounting@)'], ['chubb', 'Chubb: recibo mensal por email'],
+  ['domestic', 'Domestic & General: aviso/recibo do prémio (accounting@)'], ['cartao refeicao', 'Recibo de vencimento do mês (Drive › recibos)'], ['ricardo nuno carvalho', 'Recibo de renda eletrónico do Portal das Finanças (emitido pelo Ricardo)'], ['stripe fees', 'Stripe: fatura mensal em dashboard.stripe.com › Settings › Documents'], ['chubb', 'Chubb: recibo mensal por email'],
   ['securitas', 'Securitas/Verisure: email ricardo.gasurfcamp@'], ['easy transfer', 'Moloni (easytransferericeira)'], ['tormenta', 'Moloni (easytransferericeira)'],
   ['safari', 'TOConline (accounting@)'], ['edp', 'EDP: área de cliente / email'], ['meo', 'MEO: área de cliente / email'], ['smas', 'SMAS Almada: área de cliente'],
   ['arribatejo', 'CSC: email ricardo.gasurfcamp@ (threads «CSC - Semana de…»)'], ['anthropic', 'Recibo no miguel@'], ['supabase', 'Recibo no miguel@'], ['openai', 'Recibo no miguel@ / accounting@'],
 ];
-// Fornecedores que nunca emitem fatura (comissões, leasing, anúncios, PayPal):
-// na Checklist entram como «Não existe» (cinzento), não como falta.
-const ACC_NO_INVOICE = ['google ads','meta ads','facebook ads','lg leasing','santander','paypal','getnet','domestic','cartao refeicao','cartão refeição'];
+// Only bank movements (the statement is the document). 3 Nov 2026, accountant review: ads, leasing, Getnet,
+// insurers, airlines, PayPal fees (monthly statement) and meal cards (payslip) all have a document to attach.
+const ACC_NO_INVOICE = ['santander','cgd (comiss'];
 function accNoInvoice(company){ const c = String(company||'').toLowerCase(); return ACC_NO_INVOICE.some(k => c.startsWith(k) || c.includes(k)); }
 function accHint(company){ const c = String(company||'').toLowerCase(); const h = ACC_HINTS.find(([k]) => c.startsWith(k) || c.includes(k)); return h ? h[1] : ''; }
 
@@ -2821,7 +2821,7 @@ function fechoPaint(){
   const pack = fechoPack();
   if ($('fecho_pack')) $('fecho_pack').innerHTML = `<label class="hq-tog${pack.done ? ' done' : ''}"><input type="checkbox" id="fecho_chk_pacote" ${pack.done ? 'checked' : ''} onchange="fechoToggleCheck('pacote', this.checked)"> Pack sent${pack.done ? ` <span class="hint">· ${pack.who}</span>` : ''}</label>`;
   if ($('fecho_all_link')) $('fecho_all_link').innerHTML = `<a href="#" onclick="goToMonthExpenses('${month}');return false">All ${FECHO.rows.length} expenses ${ic('arrow-right')}</a>`;
-  if ($('fechoNoInv')) $('fechoNoInv').innerHTML = naoExiste.length ? `<details><summary class="hint">${naoExiste.length} expense${naoExiste.length === 1 ? '' : 's'} with no invoice by nature (bank fees, leasing, ads…)</summary><div class="hint" style="margin-top:6px">${naoExiste.map(r => `${fmtDia(r.invoice_date)} · ${esc(r.company||'')} · ${eur(r.amount_eur)}`).join('<br>')}</div></details>` : '';
+  if ($('fechoNoInv')) $('fechoNoInv').innerHTML = naoExiste.length ? `<details><summary class="hint">${naoExiste.length} expense${naoExiste.length === 1 ? '' : 's'} with no document by nature (bank movements, personal expenses…)</summary><div class="hint" style="margin-top:6px">${naoExiste.map(r => `${fmtDia(r.invoice_date)} · ${esc(r.company||'')} · ${eur(r.amount_eur)}`).join('<br>')}</div></details>` : '';
   if (FECHO.bankRows && FECHO.bankMonth === month) fechoBanksPaint();
 }
 function fechoPack(){
@@ -2906,9 +2906,11 @@ function goToMonthExpenses(month){
 }
 async function fechoMarkNoInvoice(id){
   const r = fechoGroupOf(id); if (!r) return;
-  if (!confirm(`${r.company} (${eur(r.amount_eur)}): mark as “no invoice exists”? It will stop counting as missing.`)) return;
+  // The accountant needs a document for almost every cost (3 Nov 2026 review) — say what replaces it.
+  const why = prompt(`${r.company} (${eur(r.amount_eur)}): why is there no invoice?\n(e.g. «bank fee — the statement is the document», «partner's personal expense»)`, '');
+  if (why == null || !why.trim()) return;
   for (const p of r.parts) {
-    const { error } = await sb.from('hq_invoices').update({ doc_exempt_reason: 'o fornecedor não emite fatura', notes: `${p.notes ? p.notes + ' ' : ''}[sem fatura: o fornecedor não emite — marcado a ${new Date().toISOString().slice(0,10)}]` }).eq('id', p.id);
+    const { error } = await sb.from('hq_invoices').update({ doc_exempt_reason: why.trim(), notes: `${p.notes ? p.notes + ' ' : ''}[sem fatura: ${why.trim()} — marcado a ${new Date().toISOString().slice(0,10)}]` }).eq('id', p.id);
     if (error) { toast('fechoToast','err','Failed: ' + (error.message || error.code)); return; }
   }
   await renderFecho();
@@ -3005,7 +3007,7 @@ function fechoBanksPaint(){
   const viewPills = pill(view === 'missing', `Missing${badge(missing.length)}`, `FECHO.bankSel='missing';fechoBanksPaint()`) +
     FECHO_BANKS.map(b => { const n = FECHO.bankRows.filter(r => r.m.bank === b); return pill(view === b, `${BANK_LABEL[b]} · ${n.length}${badge(n.filter(r => !r.st.ok).length)}`, `FECHO.bankSel='${b}';fechoBanksPaint()`); }).join('') +
     pill(view === 'nobank', `No bank movement · ${nb.length}${badge(nb.filter(l => docStatus(l) === 'falta').length, 'badge-amber')}`, `FECHO.bankSel='nobank';fechoBanksPaint()`);
-  const docBtns = (ids) => `<button class="btn btn-s btn-sm" onclick="fechoAttach('${ids}')">${ic('paperclip')} Attach</button> <button class="btn btn-s btn-sm" onclick="fechoPasteLink('${ids}')">${ic('link')} Link</button> <button class="btn btn-s btn-sm" title="This supplier never issues an invoice — stop counting it as missing" onclick="fechoMarkNoInvoice('${ids}')">No invoice needed</button>`;
+  const docBtns = (ids) => `<button class="btn btn-s btn-sm" onclick="fechoAttach('${ids}')">${ic('paperclip')} Attach</button> <button class="btn btn-s btn-sm" onclick="fechoPasteLink('${ids}')">${ic('link')} Link</button> <button class="btn btn-s btn-sm" title="Only when no document exists (bank fee, personal expense) — you will be asked why" onclick="fechoMarkNoInvoice('${ids}')">No invoice needed</button>`;
   let hint = '', table = '', right = '';
   if (view === 'missing') {
     const showWhere = missing.some(r => r.hint);
