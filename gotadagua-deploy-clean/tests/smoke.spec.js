@@ -2266,7 +2266,8 @@ test('hq: Month close bank by bank — every movement ✓/✗, filters, and invo
   await page.evaluate(() => switchTab('fecho'));
   await page.selectOption('#fecho_mes', '2026-09');
   await page.waitForFunction(() => document.querySelectorAll('#fechoBanks .hq-pill').length >= 3 && /September 2026/.test(document.querySelector('#fechoBanks')?.textContent || ''), null, { timeout: 15000 });
-  const out = await page.evaluate(() => {
+  const out = await page.evaluate(async () => {
+    FECHO.month = '2026-09'; await renderFechoBanks();   // one settled render (the tab first draws the default month)
     const read = () => [...document.querySelectorAll('#fechoBanks .card')[0].querySelectorAll('tbody tr')].map(tr => [tr.children[2].textContent.trim(), tr.children[5].textContent.trim()]);
     const pills = [...document.querySelectorAll('#fechoBanks .hq-pill')].map(b => b.textContent.replace(/\s+/g, ' ').trim());
     const all = read();
