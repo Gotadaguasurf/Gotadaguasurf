@@ -2982,6 +2982,12 @@ function fechoMissing(){
   });
   return out.sort((a, b) => b.amount - a.amount);
 }
+// «Invoice attached» opens the PDF(s) on the Drive (Miguel, 3 Nov 2026: «não é necessário aparecer o link?»).
+function fechoStatusCell(r){
+  const docs = r.linked.filter(l => l.drive_link);
+  if (!r.st.ok || !docs.length) return esc(r.st.label);
+  return docs.map((l, k) => `<a class="file-link" href="${esc(l.drive_link)}" target="_blank" rel="noopener" title="${esc(l.company || '')}${l.invoice_number ? ' · ' + esc(l.invoice_number) : ''}">${k ? 'Invoice ' + (k + 1) : 'Invoice'} ${AppShell.icon('external')}</a>`).join(' ');
+}
 function fechoBanksPaint(){
   const box = $('fechoBanks'); if (!box || !FECHO.bankRows) return;
   const ic = (n) => AppShell.icon(n);
@@ -3035,7 +3041,7 @@ function fechoBanksPaint(){
         <td>${esc(r.m.description || '')}</td>
         <td class="r" style="white-space:nowrap;${Number(r.m.amount) > 0 ? 'color:var(--green,#1a7f4b)' : ''}">${eur(Math.abs(Number(r.m.amount)))}${r.m.currency && r.m.currency !== 'EUR' ? ` ${esc(r.m.currency)}` : ''}</td>
         <td>${lineTxt(r)}</td>
-        <td class="hint" style="white-space:nowrap">${esc(r.st.label)}</td>
+        <td class="hint" style="white-space:nowrap">${fechoStatusCell(r)}</td>
         <td style="white-space:nowrap;text-align:right">${action(r)}</td>
       </tr>`).join('')}</tbody></table>` : `<div class="card-body hint">${all.length ? 'Nothing here with this filter.' : `No ${BANK_LABEL[view]} movements in ${fechoMonthLabel(FECHO.month)} yet — import the statement.`}</div>`;
   }

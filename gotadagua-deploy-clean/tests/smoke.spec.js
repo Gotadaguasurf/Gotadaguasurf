@@ -2281,16 +2281,17 @@ test('hq: Month close bank by bank — every movement ✓/✗, filters, and invo
     const missing = [...document.querySelectorAll('#fechoBanks tbody tr')].map(tr => tr.querySelector('b').textContent.trim());
     FECHO.bankSel = 'santander'; fechoBanksPaint(); const all = read();
     FECHO.bankFilter = 'todo'; fechoBanksPaint(); const todo = read();
-    FECHO.bankSel = 'cgd'; FECHO.bankFilter = 'all'; fechoBanksPaint(); const cgd = read();
+    FECHO.bankSel = 'cgd'; FECHO.bankFilter = 'all'; fechoBanksPaint(); const cgd = read(); const cgdLink = document.querySelector('#fechoBanks tbody a.file-link')?.getAttribute('href');
     FECHO.bankSel = 'nobank'; fechoBanksPaint();
     const noBank = [...document.querySelectorAll('#fechoBanks tbody tr')].map(tr => tr.querySelector('b').textContent.trim());
-    return { pills, missing, all, todo, cgd, noBank };
+    return { pills, missing, all, todo, cgd, cgdLink, noBank };
   });
   expect(out.pills.slice(0, 5)).toEqual(['Missing 2', 'Santander · 5 2', 'CGD · 1', 'PayPal · 1', 'No bank movement · 1']);   // the PayPal guest refund is less income, not a debit to add
   expect(out.missing).toEqual(['COMPRA *6962 LEROY MERLIN', 'prio']);   // biggest first, from every bank
   expect(out.all).toEqual([['COMPRA *6962 PRIO', 'Invoice missing'], ['COMPRA ESTRANG*9103 Google ADS', 'No invoice needed'], ['COMPRA *6962 LEROY MERLIN', 'No expense line'], ['IMP.DE SELO', 'Bank fee'], ['TRF CRED SEPA+ DE STRIPE', 'Income']]);
   expect(out.todo.map(r => r[0])).toEqual(['COMPRA *6962 PRIO', 'COMPRA *6962 LEROY MERLIN']);
-  expect(out.cgd).toEqual([['DD EDP', 'Invoice attached']]);
+  expect(out.cgd).toEqual([['DD EDP', 'Invoice']]);   // a reconciled line opens its PDF
+  expect(out.cgdLink).toBe('https://drive.google.com/file/d/x/view');
   expect(out.noBank).toEqual(['anthropic']);   // the cash pastelaria stays out
   expect(errs).toEqual([]);
 });

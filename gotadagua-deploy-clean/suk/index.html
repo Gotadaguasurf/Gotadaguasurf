@@ -771,7 +771,7 @@ function renderCloseBanks(month){
         <td>${esc(x.r.description)}</td>
         <td class="r" style="white-space:nowrap;${x.r.amount > 0 ? 'color:var(--green)' : ''}">${eur(Math.abs(x.r.amount))}</td>
         <td>${x.st.line ? `${esc(x.st.line.company || '')}<span class="cell-sub">${esc(x.st.line.category_name || 'no category')} · ${esc(bizName(x.st.line))}</span>` : '<span class="hint">—</span>'}</td>
-        <td class="hint" style="white-space:nowrap">${esc(x.st.label)}</td>
+        <td class="hint" style="white-space:nowrap">${x.st.ok && x.st.line && x.st.line.drive_link ? `<a class="file-link" href="${esc(x.st.line.drive_link)}" target="_blank" rel="noopener">Invoice ${ic('external')}</a>` : esc(x.st.label)}</td>
         <td style="white-space:nowrap;text-align:right">${action(x)}</td>
       </tr>`).join('')}</tbody></table>` : `<div class="card-body hint">${stmt.length ? 'Nothing here with this filter.' : `No Millennium movements in ${mcLabel(month)} yet — import the statement in Bank statement.`}</div>`;
   }
