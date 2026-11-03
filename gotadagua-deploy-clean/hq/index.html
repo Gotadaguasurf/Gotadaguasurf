@@ -2664,6 +2664,7 @@ function fechoTabHtml(){
     <div id="fecho_kpis" class="summary-grid"></div>
     <div id="fechoMail"></div>
     <div id="fechoBody"><div class="loading">Loading…</div></div>
+    <div id="fechoBanks"></div>
     <div class="card" id="fechoSend">
       <div class="card-hdr">
         <div>
@@ -2804,6 +2805,7 @@ async function renderFecho(){
   } finally { if (seq === FECHO.seq) FECHO.loading = false; }
   if (seq !== FECHO.seq) return;
   fechoPaint();
+  renderFechoBanks();
 }
 
 function fechoFolder(company, key){ return (FECHO.folders.find(f => f.company === company && f.month_key === key) || {}).folder_id || null; }
@@ -2879,7 +2881,7 @@ function esc(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&l
 // ── ações ──
 let FECHO_ATTACH_ID = null;
 function fechoIds(id){ return String(id||'').split(',').map(s => s.trim()).filter(Boolean); }
-function fechoGroupOf(id){ const ids = fechoIds(id); const parts = FECHO.rows.filter(x => ids.includes(x.id)); if (!parts.length) return null; const g = fechoGroups(parts)[0]; g.ids = ids; g.parts = parts; return g; }
+function fechoGroupOf(id){ const ids = fechoIds(id); const parts = FECHO.rows.concat(FECHO.bankLines || []).filter((x, i, a) => ids.includes(x.id) && a.findIndex(y => y.id === x.id) === i); if (!parts.length) return null; const g = fechoGroups(parts)[0]; g.ids = ids; g.parts = parts; return g; }
 function fechoAttach(id){ FECHO_ATTACH_ID = id; const inp = $('fecho_file'); if (inp) { inp.value = ''; inp.click(); } }
 function fechoFileName(r, file){
   const [y, m] = String(r.invoice_date||'').split('-').map(Number);
@@ -2959,8 +2961,102 @@ async function fechoMarkNoInvoice(id){
   }
   await renderFecho();
 }
+// ── Bank by bank (Miguel, 3 Nov 2026: «ver por extrato… linha a linha… e os que são só fatura sem banco»).
+//    Every movement of the month on one statement, in date order, ✓ or ✗, for whoever reconciles the banks
+//    and the invoices; then the month's expenses that no bank movement pays.
+const FECHO_BANKS = ['santander', 'cgd', 'paypal'];
+function fechoBankStatus(m, linked){
+  if (Number(m.amount) > 0) return { ok:true, label:'Income' };
+  if (m.kind === 'bank_fee') return { ok:true, label:'Bank fee' };
+  if (m.kind === 'internal_transfer' || m.internal_transfer_id) return { ok:true, label:'Transfer between accounts' };
+  if (m.kind === 'card_settlement') return { ok:true, label:'Card bill' };
+  if (!linked.length) return /^\[sem fatura/i.test(String(m.notes || '')) ? { ok:true, label:'No invoice (noted)' } : { ok:false, label:'No expense line', action:'add' };
+  const missing = linked.filter(l => docStatus(l) === 'falta');
+  if (missing.length) return { ok:false, label:'Invoice missing', action:'attach', line: missing[0] };
+  return { ok:true, label: linked.some(l => l.drive_link) ? 'Invoice attached' : 'No invoice needed' };
+}
+async function renderFechoBanks(){
+  const box = $('fechoBanks'); if (!box) return;
+  const month = FECHO.month, period = accPeriod('month', month);
+  const seq = FECHO.bseq = (FECHO.bseq || 0) + 1;
+  box.innerHTML = `<div class="card"><div class="card-body hint">Loading the statements…</div></div>`;
+  const LINE_COLS = 'id, invoice_date, company, amount_eur, category_name, location_slug, invoice_number, drive_link, notes, paying_company, is_duplicate, doc_exempt_reason, payment_type, bank_movement_id';
+  const inChunks = async (ids, build) => { let out = []; for (let k = 0; k < ids.length; k += 100) { const { data, error } = await build(ids.slice(k, k + 100)); if (error) throw error; out = out.concat(data || []); } return out; };
+  try {
+    const mv = await fetchAllPaged(() => sb.from('hq_bank_movements').select('id, bank, movement_date, description, amount, currency, kind, hq_invoice_id, internal_transfer_id, notes')
+      .eq('paying_company', 'water-movements').gte('movement_date', period.from).lte('movement_date', period.to).order('movement_date').order('id'));
+    const mvIds = mv.map(m => m.id), invIds = [...new Set(mv.map(m => m.hq_invoice_id).filter(Boolean))];
+    const [byId, byMv, monthLines] = await Promise.all([
+      inChunks(invIds, (c) => sb.from('hq_invoices').select(LINE_COLS).in('id', c).is('deleted_at', null)),
+      inChunks(mvIds, (c) => sb.from('hq_invoices').select(LINE_COLS).in('bank_movement_id', c).is('deleted_at', null)),
+      fetchAllPaged(() => sb.from('hq_invoices').select(LINE_COLS).is('deleted_at', null).eq('paying_company', 'water-movements').gte('invoice_date', period.from).lte('invoice_date', period.to).order('invoice_date').order('id')),
+    ]);
+    // a line of this month can be paid by a movement of another month: ask the bank side for those links too
+    const monthIds = monthLines.map(l => l.id);
+    const paidElsewhere = await inChunks(monthIds, (c) => sb.from('hq_bank_movements').select('hq_invoice_id').in('hq_invoice_id', c));
+    if (seq !== FECHO.bseq) return;
+    const invSet = new Set(invIds), mvSet = new Set(mvIds);
+    const lines = new Map(); byId.concat(byMv).filter(l => invSet.has(l.id) || mvSet.has(l.bank_movement_id)).forEach(l => lines.set(l.id, l));
+    FECHO.mvAll = mv; FECHO.bankLines = [...lines.values()];
+    FECHO.bankRows = mv.map(m => { const linked = [...lines.values()].filter(l => l.id === m.hq_invoice_id || l.bank_movement_id === m.id); return { m, linked, st: fechoBankStatus(m, linked) }; });
+    const linkedIds = new Set([...lines.keys(), ...paidElsewhere.map(r => r.hq_invoice_id)]);
+    FECHO.noBank = monthLines.filter(l => !linkedIds.has(l.id) && !l.bank_movement_id && l.is_duplicate !== true && l.payment_type !== 'Cash' && docStatus(l) !== 'por_fora');
+  } catch (e) {
+    if (seq !== FECHO.bseq) return;
+    box.innerHTML = `<div class="card"><div class="card-body status-msg status-err">Could not load the statements: ${esc(e.message || String(e))}</div></div>`; return;
+  }
+  fechoBanksPaint();
+}
+function fechoBanksPaint(){
+  const box = $('fechoBanks'); if (!box || !FECHO.bankRows) return;
+  const ic = (n) => AppShell.icon(n);
+  const bank = FECHO.bankSel || 'santander', filter = FECHO.bankFilter || 'all';
+  const all = FECHO.bankRows.filter(r => r.m.bank === bank);
+  const todo = all.filter(r => !r.st.ok);
+  const rows = filter === 'todo' ? todo : filter === 'done' ? all.filter(r => r.st.ok) : all;
+  const pill = (on, label, js) => `<button class="hq-pill${on ? ' active' : ''}" onclick="${js}">${label}</button>`;
+  const bankPills = FECHO_BANKS.map(b => { const n = FECHO.bankRows.filter(r => r.m.bank === b); const t = n.filter(r => !r.st.ok).length;
+    return pill(b === bank, `${BANK_LABEL[b]} · ${n.length}${t ? ` <span class="badge badge-red" style="margin-left:4px">${t}</span>` : ''}`, `FECHO.bankSel='${b}';fechoBanksPaint()`); }).join('');
+  const filterPills = pill(filter === 'all', `All ${all.length}`, `FECHO.bankFilter='all';fechoBanksPaint()`) + pill(filter === 'todo', `To do ${todo.length}`, `FECHO.bankFilter='todo';fechoBanksPaint()`) + pill(filter === 'done', `Done ${all.length - todo.length}`, `FECHO.bankFilter='done';fechoBanksPaint()`);
+  const lineTxt = (r) => r.linked.length ? r.linked.map(l => `${esc(l.company || '')}<span class="cell-sub">${esc(l.category_name || 'no category')} · ${esc(locLabel(l.location_slug))}${l.invoice_number ? ' · ' + esc(l.invoice_number) : ''}</span>`).join('') : '<span class="hint">—</span>';
+  const action = (r) => r.st.action === 'attach' ? `<button class="btn btn-s btn-sm" onclick="fechoAttach('${r.st.line.id}')">${ic('paperclip')} Attach</button> <button class="btn btn-s btn-sm" onclick="fechoPasteLink('${r.st.line.id}')">${ic('link')} Link</button>`
+    : r.st.action === 'add' ? `<button class="btn btn-s btn-sm" onclick="fechoLaunch('${r.m.id}')">${ic('plus')} Add expense</button>` : '';
+  const rowHtml = (r) => `<tr>
+      <td style="width:28px">${r.st.ok ? `<span style="color:var(--green,#1a7f4b)">${ic('check-circle')}</span>` : `<span style="color:var(--red,#c43c3c)">${ic('alert')}</span>`}</td>
+      <td style="white-space:nowrap">${fmtDia(r.m.movement_date)}</td>
+      <td>${esc(r.m.description || '')}</td>
+      <td class="r" style="white-space:nowrap;${Number(r.m.amount) > 0 ? 'color:var(--green,#1a7f4b)' : ''}">${eur(Math.abs(Number(r.m.amount)))}${r.m.currency && r.m.currency !== 'EUR' ? ` ${esc(r.m.currency)}` : ''}</td>
+      <td>${lineTxt(r)}</td>
+      <td class="hint" style="white-space:nowrap">${esc(r.st.label)}</td>
+      <td style="white-space:nowrap;text-align:right">${action(r)}</td>
+    </tr>`;
+  const nb = FECHO.noBank || [];
+  const nbRow = (l) => `<tr>
+      <td style="white-space:nowrap">${fmtDia(l.invoice_date)}</td>
+      <td><b>${esc(l.company || '')}</b><span class="cell-sub">${esc(l.category_name || 'no category')} · ${esc(locLabel(l.location_slug))}${l.invoice_number ? ' · ' + esc(l.invoice_number) : ''}</span></td>
+      <td class="hint">${esc(l.payment_type || '')}</td>
+      <td class="r">${eur(l.amount_eur)}</td>
+      <td>${l.drive_link ? `<a class="file-link" href="${esc(l.drive_link)}" target="_blank" rel="noopener">open</a>` : docStatus(l) === 'falta' ? '<span class="badge badge-amber">missing</span>' : '<span class="badge badge-grey">no invoice</span>'}</td>
+    </tr>`;
+  box.innerHTML = `
+    <div class="card">
+      <div class="card-hdr"><div>
+        <div class="card-title">Bank by bank</div>
+        <div class="card-hint">Every movement of ${fechoMonthLabel(FECHO.month)} on the statement, in date order. ✓ = expense with its invoice (or none needed) · ✗ = invoice or expense line missing.</div>
+      </div></div>
+      <div class="card-body hq-filters" style="padding-top:4px;gap:8px;flex-wrap:wrap"><div class="hq-pills">${bankPills}</div><div class="hq-pills" style="margin-left:auto">${filterPills}</div></div>
+      <div class="tbl-wrap">${rows.length ? `<table class="fecho-tbl"><thead><tr><th></th><th>Date</th><th>Bank movement</th><th class="r">Amount</th><th>Expense in the app</th><th>Status</th><th></th></tr></thead><tbody>${rows.map(rowHtml).join('')}</tbody></table>` : `<div class="card-body hint">${all.length ? 'Nothing here with this filter.' : `No ${BANK_LABEL[bank]} movements in ${fechoMonthLabel(FECHO.month)} yet — import the statement.`}</div>`}</div>
+    </div>
+    <div class="card">
+      <div class="card-hdr"><div>
+        <div class="card-title">Invoices with no bank movement <span class="badge ${nb.length ? 'badge-amber' : 'badge-green'}" style="margin-left:6px">${nb.length}</span></div>
+        <div class="card-hint">Expenses of ${fechoMonthLabel(FECHO.month)} that no Santander, CGD or PayPal movement pays yet (cash and «por fora» left out).</div>
+      </div></div>
+      <div class="tbl-wrap">${nb.length ? `<table class="fecho-tbl"><thead><tr><th>Date</th><th>Supplier</th><th>Payment</th><th class="r">Amount</th><th>PDF</th></tr></thead><tbody>${nb.map(nbRow).join('')}</tbody></table>` : '<div class="card-body hint">Every expense of the month is matched to a bank movement.</div>'}</div>
+    </div>`;
+}
 function fechoLaunch(bankId){
-  const b = FECHO.bank.find(x => x.id === bankId); if (!b) return;
+  const b = FECHO.bank.find(x => x.id === bankId) || (FECHO.mvAll || []).find(x => x.id === bankId); if (!b) return;
   switchTab('invoices');
   setTimeout(() => {
     const d = $('inv_date'), a = $('inv_amount'), c = $('inv_company'), ds = $('inv_description');

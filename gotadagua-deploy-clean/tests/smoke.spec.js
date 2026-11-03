@@ -2015,6 +2015,7 @@ test('suk: month close — invoices to attach, bank debits to add, Drive folder,
       folder: document.querySelector('#mc_folder a')?.getAttribute('href'),
       sentTick: !!document.querySelector('#mc_pack input[type=checkbox]'),
       before, months,
+      bankRows: [...document.querySelectorAll('#mcBanks .card')[0].querySelectorAll('tbody tr')].map(tr => [tr.children[2].textContent.trim(), tr.children[5].textContent.trim()]),
       ...(await (async () => {
         const pack = mcPack('2026-07');
         $('mc_month').value = 'all'; await renderClose();
@@ -2033,6 +2034,8 @@ test('suk: month close — invoices to attach, bank debits to add, Drive folder,
   expect(out.debits).toEqual(['DD SUPER BOCK BEBIDAS']);
   expect(out.folder).toBe('https://drive.google.com/drive/folders/FOLDER07');
   expect(out.sentTick).toBe(true);
+  // 3 Nov 2026: bank by bank — every BCP movement of July with ✓/✗ (Makro linked without PDF ✗, Super Bock with no line ✗, salary ✓)
+  expect(out.bankRows).toEqual([['MDB 800258 MAKRO PALMELA QUINT', 'Invoice missing'], ['DD SUPER BOCK BEBIDAS', 'No expense line'], ['PAGAMENTO VENCIMENTOS -MLEC1B', 'No invoice needed']]);
   expect(out.before).toBe(1);
   expect(out.months).toEqual(['all', '2026-07']);
   // «All months» (the default) groups the missing invoices and debits by month
@@ -2226,5 +2229,56 @@ for (const [name, url] of [['hq', '/hq/'], ['suk', '/suk/#invoices']]) test(`${n
   expect(fit.heads).toEqual(['Date', 'Supplier', 'Invoice no.', 'Category', name === 'hq' ? 'Location' : 'Business', 'Payment', 'Bank', 'PDF', 'Amount']);
   const archive = await page.evaluate((sel) => document.querySelectorAll(`${sel} tbody tr:not(.grp-row) button[title^="Archive"]`).length, wrapSel);
   expect(archive).toBe(2);
+  expect(errs).toEqual([]);
+});
+
+// Miguel, 3 Nov 2026: in the Month close, reconcile statement by statement — every movement of the
+// month in date order with ✓/✗, filters «To do / Done», and the expenses that no bank pays.
+test('hq: Month close bank by bank — every movement ✓/✗, filters, and invoices with no bank movement', async ({ page }) => {
+  const bank = [
+    { id: 'm1', bank: 'santander', movement_date: '2026-09-02', description: 'COMPRA *6962 PRIO', amount: -40, currency: 'EUR', kind: 'expense', hq_invoice_id: 'i1', internal_transfer_id: null, notes: null },
+    { id: 'm2', bank: 'santander', movement_date: '2026-09-03', description: 'COMPRA ESTRANG*9103 Google ADS', amount: -500, currency: 'EUR', kind: 'expense', hq_invoice_id: 'i2', internal_transfer_id: null, notes: null },
+    { id: 'm3', bank: 'santander', movement_date: '2026-09-05', description: 'COMPRA *6962 LEROY MERLIN', amount: -274.19, currency: 'EUR', kind: 'expense', hq_invoice_id: null, internal_transfer_id: null, notes: null },
+    { id: 'm4', bank: 'santander', movement_date: '2026-09-06', description: 'IMP.DE SELO', amount: -0.8, currency: 'EUR', kind: 'bank_fee', hq_invoice_id: null, internal_transfer_id: null, notes: null },
+    { id: 'm5', bank: 'santander', movement_date: '2026-09-07', description: 'TRF CRED SEPA+ DE STRIPE', amount: 900, currency: 'EUR', kind: 'income', hq_invoice_id: null, internal_transfer_id: null, notes: null },
+    { id: 'm6', bank: 'cgd', movement_date: '2026-09-08', description: 'DD EDP', amount: -107.3, currency: 'EUR', kind: 'expense', hq_invoice_id: 'i3', internal_transfer_id: null, notes: null },
+  ];
+  const inv = [
+    { id: 'i1', invoice_date: '2026-09-02', company: 'prio', amount_eur: 40, category_name: 'Transport', location_slug: 'portugal', drive_link: null, notes: '', paying_company: 'water-movements', payment_type: 'Card', bank_movement_id: null },
+    { id: 'i2', invoice_date: '2026-09-03', company: 'google ads', amount_eur: 500, category_name: 'Marketing', location_slug: 'general', drive_link: null, doc_exempt_reason: 'o fornecedor não emite fatura', notes: '', paying_company: 'water-movements', payment_type: 'Card', bank_movement_id: null },
+    { id: 'i3', invoice_date: '2026-09-07', company: 'edp', amount_eur: 107.3, category_name: 'Utilities', location_slug: 'portugal', drive_link: 'https://drive.google.com/file/d/x/view', notes: '', paying_company: 'water-movements', payment_type: 'Bank Transfer', bank_movement_id: null },
+    { id: 'i9', invoice_date: '2026-09-20', company: 'anthropic', amount_eur: 180, category_name: 'Services', location_slug: 'general', drive_link: 'https://drive.google.com/file/d/y/view', notes: '', paying_company: 'water-movements', payment_type: 'Card', bank_movement_id: null },
+    { id: 'i10', invoice_date: '2026-09-21', company: 'pastelaria', amount_eur: 12, category_name: 'Food', location_slug: 'portugal', drive_link: null, notes: '', paying_company: 'water-movements', payment_type: 'Cash', bank_movement_id: null },
+  ];
+  await page.route(/supabase\.co\/(auth|rest)\/v1\/.*/, async route => {
+    const url = route.request().url();
+    const json = (b) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(b) });
+    if (url.includes('/auth/v1/user')) return json({ id: 'u1', email: 'miguel@gotadaguasurf.com', aud: 'authenticated', role: 'authenticated' });
+    if (url.includes('/rest/v1/rpc/hq_overview_rollup')) return json({ bookings: [], invoices: [], ledger: [] });
+    if (url.includes('/rest/v1/hq_bank_movements')) return json(bank);
+    if (url.includes('/rest/v1/hq_invoices')) return json(inv);
+    return json([]);
+  });
+  const errs = []; page.on('pageerror', e => errs.push(e.message));
+  await fakeOwnerSession(page);
+  await page.goto('/hq/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof renderFecho === 'function' && document.querySelector('[data-tab="fecho"]'));
+  await page.evaluate(() => switchTab('fecho'));
+  await page.selectOption('#fecho_mes', '2026-09');
+  await page.waitForFunction(() => document.querySelectorAll('#fechoBanks .hq-pill').length >= 3 && /September 2026/.test(document.querySelector('#fechoBanks')?.textContent || ''), null, { timeout: 15000 });
+  const out = await page.evaluate(() => {
+    const read = () => [...document.querySelectorAll('#fechoBanks .card')[0].querySelectorAll('tbody tr')].map(tr => [tr.children[2].textContent.trim(), tr.children[5].textContent.trim()]);
+    const pills = [...document.querySelectorAll('#fechoBanks .hq-pill')].map(b => b.textContent.replace(/\s+/g, ' ').trim());
+    const all = read();
+    FECHO.bankFilter = 'todo'; fechoBanksPaint(); const todo = read();
+    FECHO.bankSel = 'cgd'; FECHO.bankFilter = 'all'; fechoBanksPaint(); const cgd = read();
+    const noBank = [...document.querySelectorAll('#fechoBanks .card')[1].querySelectorAll('tbody tr')].map(tr => tr.querySelector('b').textContent.trim());
+    return { pills, all, todo, cgd, noBank };
+  });
+  expect(out.pills.slice(0, 3)).toEqual(['Santander · 5 2', 'CGD · 1', 'PayPal · 0']);
+  expect(out.all).toEqual([['COMPRA *6962 PRIO', 'Invoice missing'], ['COMPRA ESTRANG*9103 Google ADS', 'No invoice needed'], ['COMPRA *6962 LEROY MERLIN', 'No expense line'], ['IMP.DE SELO', 'Bank fee'], ['TRF CRED SEPA+ DE STRIPE', 'Income']]);
+  expect(out.todo.map(r => r[0])).toEqual(['COMPRA *6962 PRIO', 'COMPRA *6962 LEROY MERLIN']);
+  expect(out.cgd).toEqual([['DD EDP', 'Invoice attached']]);
+  expect(out.noBank).toEqual(['anthropic']);   // the cash pastelaria stays out
   expect(errs).toEqual([]);
 });
