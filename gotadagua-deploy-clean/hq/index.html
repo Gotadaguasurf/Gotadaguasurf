@@ -2919,6 +2919,7 @@ async function fechoMarkNoInvoice(id){
 const FECHO_BANKS = ['santander', 'cgd', 'paypal'];
 function fechoBankStatus(m, linked){
   if (Number(m.amount) > 0) return { ok:true, label:'Income' };
+  if (m.kind === 'income') return { ok:true, label:'Refund (less income)' };   // guest refunds: booked against the revenue, not an expense
   if (m.kind === 'bank_fee') return { ok:true, label:'Bank fee' };
   if (m.kind === 'internal_transfer' || m.internal_transfer_id) return { ok:true, label:'Transfer between accounts' };
   if (m.kind === 'card_settlement') return { ok:true, label:'Card bill' };

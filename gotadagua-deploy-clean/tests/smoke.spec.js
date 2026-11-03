@@ -2249,6 +2249,7 @@ test('hq: Month close bank by bank — every movement ✓/✗, filters, and invo
     { id: 'm4', bank: 'santander', movement_date: '2026-09-06', description: 'IMP.DE SELO', amount: -0.8, currency: 'EUR', kind: 'bank_fee', hq_invoice_id: null, internal_transfer_id: null, notes: null },
     { id: 'm5', bank: 'santander', movement_date: '2026-09-07', description: 'TRF CRED SEPA+ DE STRIPE', amount: 900, currency: 'EUR', kind: 'income', hq_invoice_id: null, internal_transfer_id: null, notes: null },
     { id: 'm6', bank: 'cgd', movement_date: '2026-09-08', description: 'DD EDP', amount: -107.3, currency: 'EUR', kind: 'expense', hq_invoice_id: 'i3', internal_transfer_id: null, notes: null },
+    { id: 'm7', bank: 'paypal', movement_date: '2026-09-09', description: 'Reembolso a hóspede: Ana', amount: -70, currency: 'EUR', kind: 'income', hq_invoice_id: null, internal_transfer_id: null, notes: null },
   ];
   const inv = [
     { id: 'i1', invoice_date: '2026-09-02', company: 'prio', amount_eur: 40, category_name: 'Transport', location_slug: 'portugal', drive_link: null, notes: '', paying_company: 'water-movements', payment_type: 'Card', bank_movement_id: null },
@@ -2285,7 +2286,7 @@ test('hq: Month close bank by bank — every movement ✓/✗, filters, and invo
     const noBank = [...document.querySelectorAll('#fechoBanks tbody tr')].map(tr => tr.querySelector('b').textContent.trim());
     return { pills, missing, all, todo, cgd, noBank };
   });
-  expect(out.pills.slice(0, 5)).toEqual(['Missing 2', 'Santander · 5 2', 'CGD · 1', 'PayPal · 0', 'No bank movement · 1']);
+  expect(out.pills.slice(0, 5)).toEqual(['Missing 2', 'Santander · 5 2', 'CGD · 1', 'PayPal · 1', 'No bank movement · 1']);   // the PayPal guest refund is less income, not a debit to add
   expect(out.missing).toEqual(['COMPRA *6962 LEROY MERLIN', 'prio']);   // biggest first, from every bank
   expect(out.all).toEqual([['COMPRA *6962 PRIO', 'Invoice missing'], ['COMPRA ESTRANG*9103 Google ADS', 'No invoice needed'], ['COMPRA *6962 LEROY MERLIN', 'No expense line'], ['IMP.DE SELO', 'Bank fee'], ['TRF CRED SEPA+ DE STRIPE', 'Income']]);
   expect(out.todo.map(r => r[0])).toEqual(['COMPRA *6962 PRIO', 'COMPRA *6962 LEROY MERLIN']);
