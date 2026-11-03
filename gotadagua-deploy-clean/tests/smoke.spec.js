@@ -1403,7 +1403,7 @@ test('hq: Month close tab — what lacks an invoice, bank debits with no row, Dr
     const json = (body) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
     if (url.includes('/auth/v1/user')) return json({ id: 'u1', email: 'miguel@gotadaguasurf.com', aud: 'authenticated', role: 'authenticated' });
     if (url.includes('/rest/v1/rpc/hq_overview_rollup')) return json({ bookings: [], invoices: [], ledger: [] });
-    if (url.includes('/rest/v1/rpc/hq_bank_unmatched')) return json([{ id: 'bk1', movement_date: '2026-09-15', description: 'COMPRA *6962 LEROY MERLIN COVA PIEDADE', amount: -274.19 }]);
+    if (url.includes('/rest/v1/hq_bank_movements')) return json([{ id: 'bk1', bank: 'santander', movement_date: '2026-09-15', description: 'COMPRA *6962 LEROY MERLIN COVA PIEDADE', amount: -274.19, currency: 'EUR', kind: 'expense', hq_invoice_id: null, internal_transfer_id: null, notes: null }]);
     if (url.includes('/rest/v1/accountant_drive_folders')) return json([{ company: 'water-movements', month_key: '2026-09', folder_id: 'FW9' }, { company: 'partners', month_key: '*', folder_id: 'FP' }]);
     if (url.includes('/rest/v1/hq_month_checks')) { if (req.method() !== 'GET') { updates.push('check:' + (req.postData() || '')); return json([]); } return json([{ item: 'efatura', done_at: '2026-09-10T10:00:00Z', done_by: 'miguel@gotadaguasurf.com' }]); }
     if (url.includes('/rest/v1/hq_invoices')) {
@@ -1428,30 +1428,32 @@ test('hq: Month close tab — what lacks an invoice, bank debits with no row, Dr
   expect(await page.evaluate(() => !!document.querySelector('#tab-invoices #fecho_mes'))).toBe(false);
   await page.evaluate(() => switchTab('fecho'));
   await page.selectOption('#fecho_mes', '2026-09');
-  await page.waitForFunction(() => /Invoices to attach/.test(document.querySelector('#fechoBody')?.textContent || '') && !/Loading/.test(document.querySelector('#fechoBody')?.textContent || ''), null, { timeout: 15000 });
-  const out = await page.evaluate(() => ({
-    kpis: [...document.querySelectorAll('#fecho_kpis > div')].map(d => [...d.children].map(c => c.textContent.trim()).join(' ')),
-    links: [...document.querySelectorAll('#fecho_links a')].map(a => a.getAttribute('href')),
-    falta: [...document.querySelectorAll('#fechoBody table')][0] ? [...document.querySelectorAll('#fechoBody table')][0].querySelectorAll('tbody tr').length : 0,
-    faltaFirst: document.querySelector('#fechoBody table tbody tr td:nth-child(2) b')?.textContent,
-    hasAttach: !!document.querySelector('#fechoBody button[onclick^="fechoAttach"]'),
-    splitAttach: [...document.querySelectorAll('#fechoBody button[onclick^="fechoAttach"]')].map(b => b.getAttribute('onclick')).find(s => s.includes('i5')),
-    faltaRows: [...document.querySelectorAll('#fechoBody table')][0] ? [...[...document.querySelectorAll('#fechoBody table')][0].querySelectorAll('tbody tr')].map(tr => tr.querySelector('td:nth-child(2) b').textContent + ' ' + tr.querySelector('td:nth-child(3)').textContent.trim()) : [],
-    checks: [...document.querySelectorAll('#fecho_pack input[type=checkbox]')].map(c => c.checked),
-    bank: document.querySelector('#fechoBody').textContent.includes('LEROY MERLIN COVA PIEDADE'),
-    active: document.querySelector('.ntab.active')?.dataset.tab,
-    blue: [...document.querySelectorAll('#tab-fecho .btn-p')].map(b => b.textContent.trim()),
-  }));
-  // One box per step (UX review 28 Oct 2026): what to attach, what to add, pack sent.
+  await page.waitForFunction(() => /Reconcile September 2026/.test(document.querySelector('#fechoBanks')?.textContent || ''), null, { timeout: 15000 });
+  const out = await page.evaluate(() => {
+    const rows = [...document.querySelectorAll('#fechoBanks table tbody tr')];
+    return {
+      kpis: [...document.querySelectorAll('#fecho_kpis > div')].map(d => [...d.children].map(c => c.textContent.trim()).join(' ')),
+      links: [...document.querySelectorAll('#fecho_links a')].map(a => a.getAttribute('href')),
+      pills: [...document.querySelectorAll('#fechoBanks .hq-pill')].map(b => b.textContent.replace(/\s+/g, ' ').trim()),
+      missing: rows.map(tr => [tr.querySelector('td:nth-child(2) b').textContent, tr.querySelector('td:nth-child(3)').textContent.trim(), tr.querySelector('td:nth-child(4)').textContent.trim()]),
+      splitAttach: [...document.querySelectorAll('#fechoBanks button[onclick^="fechoAttach"]')].map(b => b.getAttribute('onclick')).find(s => s.includes('i5')),
+      add: [...document.querySelectorAll('#fechoBanks button[onclick^="fechoLaunch"]')].map(b => b.getAttribute('onclick')),
+      checks: [...document.querySelectorAll('#fecho_pack input[type=checkbox]')].map(c => c.checked),
+      active: document.querySelector('.ntab.active')?.dataset.tab,
+      blue: [...document.querySelectorAll('#tab-fecho .btn-p')].map(b => b.textContent.trim()),
+      steps: !!document.querySelector('#fechoBody'),
+    };
+  });
+  // Miguel, 3 Nov 2026: one reconcile card — «Missing» first (all banks + expenses no bank pays), then each statement.
   expect(out.kpis).toEqual(['Invoices to attach 2 €670.00', 'Bank debits to add 1 €274.19', 'Pack sent No']);   // prio + pietro's split receipt (510 + 120): google ads never has one, safari was marked "sem fatura"
   expect(await page.evaluate(() => document.querySelector('#fechoNoInv summary')?.textContent.trim())).toBe('2 expenses with no invoice by nature (bank fees, leasing, ads…)');
   expect(out.links).toEqual(['https://drive.google.com/drive/folders/FW9', 'https://drive.google.com/drive/folders/FP']);
-  expect(out.falta).toBe(2);
-  expect(out.faltaRows).toEqual(['pietro mandetta €630.00', 'prio €40.00']);
-  expect(out.hasAttach).toBe(true);
+  expect(out.steps).toBe(false);   // the old «1 · Invoices to attach / 2 · Bank debits to add» boxes are gone
+  expect(out.pills[0]).toBe('Missing 3');
+  expect(out.missing).toEqual([['pietro mandetta', 'No bank movement', '€630.00'], ['COMPRA *6962 LEROY MERLIN COVA PIEDADE', 'Santander', '€274.19'], ['prio', 'No bank movement', '€40.00']]);
   expect(out.splitAttach).toBe("fechoAttach('i5,i6')");
+  expect(out.add).toEqual(["fechoLaunch('bk1')"]);
   expect(out.checks).toEqual([false]);          // only «Pack sent to the accountant» (the e-Fatura/Drive ticks were never used)
-  expect(out.bank).toBe(true);
   expect(out.active).toBe('fecho');
   expect(out.blue).toEqual(['Download Excel']);  // one blue button per view: the last step of the job
   // "Lançar" jumps to Expenses with date, amount and a supplier guess filled in.
@@ -2007,20 +2009,23 @@ test('suk: month close — invoices to attach, bank debits to add, Drive folder,
     [BANK_ROWS, INVOICES] = saved; await renderClose();
     const months = [...$('mc_month').options].map(o => o.value);
     $('mc_month').value = '2026-07'; await renderClose();
-    const cards = [...document.querySelectorAll('#mcBody .card')];
+    const missing = [...document.querySelectorAll('#mcBanks tbody tr')].map(tr => [tr.querySelector('b').textContent.trim(), tr.children[2].textContent.trim()]);
+    const pills = [...document.querySelectorAll('#mcBanks .hq-pill')].map(b => b.textContent.replace(/\s+/g, ' ').trim());
+    MC_VIEW = 'bcp'; renderCloseBanks('2026-07');
+    const bankRows = [...document.querySelectorAll('#mcBanks tbody tr')].map(tr => [tr.children[2].textContent.trim(), tr.children[5].textContent.trim()]);
+    MC_VIEW = 'missing';
     return {
       kpis: [...document.querySelectorAll('#mc_kpis .kpi')].map(k => k.querySelector('.kpi-label').textContent.trim() + ' ' + k.querySelector('.kpi-value').textContent.trim()),
-      attach: [...cards[0].querySelectorAll('tbody tr')].map(tr => tr.querySelector('b').textContent.trim()),
-      debits: [...cards[1].querySelectorAll('tbody tr')].map(tr => tr.children[1].textContent.trim()),
+      missing, pills, bankRows,
+      steps: !!document.querySelector('#mcBody'),
       folder: document.querySelector('#mc_folder a')?.getAttribute('href'),
       sentTick: !!document.querySelector('#mc_pack input[type=checkbox]'),
       before, months,
-      bankRows: [...document.querySelectorAll('#mcBanks .card')[0].querySelectorAll('tbody tr')].map(tr => [tr.children[2].textContent.trim(), tr.children[5].textContent.trim()]),
       ...(await (async () => {
         const pack = mcPack('2026-07');
         $('mc_month').value = 'all'; await renderClose();
         return {
-          groups: [...document.querySelectorAll('#mcBody tr.grp-row')].map(tr => [...tr.children].map(td => td.textContent.trim()).filter(Boolean).join(' | ')),
+          groups: [...document.querySelectorAll('#mcBanks tr.grp-row')].map(tr => [...tr.children].map(td => td.textContent.trim()).filter(Boolean).join(' | ')),
           sheets: pack.sheets.map(sh => sh.name),
           checklist: pack.sheets[1].rows.map(r => [r[1], r[7]]),
           unmatched: pack.sheets[2].rows.map(r => r[1]),
@@ -2030,16 +2035,18 @@ test('suk: month close — invoices to attach, bank debits to add, Drive folder,
     };
   });
   expect(out.kpis).toEqual(['Invoices to attach 1', 'Bank debits to add 1', 'Sent to the accountant No']);
-  expect(out.attach).toEqual(['makro']);                    // cash peixaria and the «[por fora» licence are off the books; salary needs no PDF
-  expect(out.debits).toEqual(['DD SUPER BOCK BEBIDAS']);
+  // 3 Nov 2026: one reconcile card — «Missing» (invoices to attach + BCP debits with no expense, biggest first)
+  expect(out.steps).toBe(false);
+  expect(out.pills).toEqual(['Missing 2', 'Millennium BCP · 3 2', 'No bank movement · 1']);   // edp: paid by transfer, not on the BCP statement yet
+  expect(out.missing).toEqual([['makro', 'Millennium BCP'], ['DD SUPER BOCK BEBIDAS', 'Millennium BCP']]);   // cash peixaria and the «[por fora» licence are off the books; salary needs no PDF
   expect(out.folder).toBe('https://drive.google.com/drive/folders/FOLDER07');
   expect(out.sentTick).toBe(true);
   // 3 Nov 2026: bank by bank — every BCP movement of July with ✓/✗ (Makro linked without PDF ✗, Super Bock with no line ✗, salary ✓)
   expect(out.bankRows).toEqual([['MDB 800258 MAKRO PALMELA QUINT', 'Invoice missing'], ['DD SUPER BOCK BEBIDAS', 'No expense line'], ['PAGAMENTO VENCIMENTOS -MLEC1B', 'No invoice needed']]);
   expect(out.before).toBe(1);
   expect(out.months).toEqual(['all', '2026-07']);
-  // «All months» (the default) groups the missing invoices and debits by month
-  expect(out.groups).toEqual(['July 2026 · 1 invoice | €454.21', 'July 2026 · 1 debit | €230.00']);
+  // «All months» (the default) groups everything missing by month
+  expect(out.groups).toEqual(['July 2026 · 2 items | €684.21']);
   // Excel for the accountant, same writer as Water's: cash and «[por fora» lines stay out; salary = «Não existe»
   expect(out.sheets).toEqual(['Resumo', 'Checklist', 'Banco sem lançamento', 'Extrato BCP']);
   expect(out.checklist).toEqual([['makro', 'Não'], ['pagamento vencimentos', 'Não existe'], ['edp', 'Sim']]);
@@ -2268,15 +2275,18 @@ test('hq: Month close bank by bank — every movement ✓/✗, filters, and invo
   await page.waitForFunction(() => document.querySelectorAll('#fechoBanks .hq-pill').length >= 3 && /September 2026/.test(document.querySelector('#fechoBanks')?.textContent || ''), null, { timeout: 15000 });
   const out = await page.evaluate(async () => {
     FECHO.month = '2026-09'; await renderFechoBanks();   // one settled render (the tab first draws the default month)
-    const read = () => [...document.querySelectorAll('#fechoBanks .card')[0].querySelectorAll('tbody tr')].map(tr => [tr.children[2].textContent.trim(), tr.children[5].textContent.trim()]);
+    const read = () => [...document.querySelectorAll('#fechoBanks tbody tr')].map(tr => [tr.children[2].textContent.trim(), tr.children[5].textContent.trim()]);
     const pills = [...document.querySelectorAll('#fechoBanks .hq-pill')].map(b => b.textContent.replace(/\s+/g, ' ').trim());
-    const all = read();
+    const missing = [...document.querySelectorAll('#fechoBanks tbody tr')].map(tr => tr.querySelector('b').textContent.trim());
+    FECHO.bankSel = 'santander'; fechoBanksPaint(); const all = read();
     FECHO.bankFilter = 'todo'; fechoBanksPaint(); const todo = read();
     FECHO.bankSel = 'cgd'; FECHO.bankFilter = 'all'; fechoBanksPaint(); const cgd = read();
-    const noBank = [...document.querySelectorAll('#fechoBanks .card')[1].querySelectorAll('tbody tr')].map(tr => tr.querySelector('b').textContent.trim());
-    return { pills, all, todo, cgd, noBank };
+    FECHO.bankSel = 'nobank'; fechoBanksPaint();
+    const noBank = [...document.querySelectorAll('#fechoBanks tbody tr')].map(tr => tr.querySelector('b').textContent.trim());
+    return { pills, missing, all, todo, cgd, noBank };
   });
-  expect(out.pills.slice(0, 3)).toEqual(['Santander · 5 2', 'CGD · 1', 'PayPal · 0']);
+  expect(out.pills.slice(0, 5)).toEqual(['Missing 2', 'Santander · 5 2', 'CGD · 1', 'PayPal · 0', 'No bank movement · 1']);
+  expect(out.missing).toEqual(['COMPRA *6962 LEROY MERLIN', 'prio']);   // biggest first, from every bank
   expect(out.all).toEqual([['COMPRA *6962 PRIO', 'Invoice missing'], ['COMPRA ESTRANG*9103 Google ADS', 'No invoice needed'], ['COMPRA *6962 LEROY MERLIN', 'No expense line'], ['IMP.DE SELO', 'Bank fee'], ['TRF CRED SEPA+ DE STRIPE', 'Income']]);
   expect(out.todo.map(r => r[0])).toEqual(['COMPRA *6962 PRIO', 'COMPRA *6962 LEROY MERLIN']);
   expect(out.cgd).toEqual([['DD EDP', 'Invoice attached']]);

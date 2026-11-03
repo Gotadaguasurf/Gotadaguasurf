@@ -140,8 +140,7 @@
     </div>
     <input id="mc_file" type="file" accept="application/pdf,image/*" style="display:none" onchange="closeFileChosen(this)">
     <div id="mc_kpis" class="summary-grid"></div>
-    <div id="mcBody"><div class="card card-pad hint">Loading…</div></div>
-    <div id="mcBanks"></div>
+    <div id="mcBanks"><div class="card card-pad hint">Loading…</div></div>
     <div class="card" id="mcSend">
       <div class="card-hdr"><div>
         <div class="card-title">3 · Send to the accountant</div>
@@ -641,17 +640,7 @@ async function renderClose(){
   $('mc_kpis').innerHTML = kpi('Invoices to attach', missing.length, missing.length ? 'bad' : 'ok', missing.length ? eur(sum(missing, i => i.amount_eur)) : 'all attached')
     + kpi('Bank debits to add', debits.length, debits.length ? 'bad' : 'ok', debits.length ? eur(-sum(debits, r => r.amount)) : 'all added')
     + kpi('Sent to the accountant', sent ? 'Yes' : 'No', sent ? 'ok' : '', who);
-  const step = (title, n, hint, head, rows) => `<div class="card"><div class="card-hdr"><div><div class="card-title">${title} <span class="badge badge-red" style="margin-left:6px">${n}</span></div><div class="card-hint">${hint}</div></div></div><div class="tbl-wrap"><table class="fecho-tbl"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table></div></div>`;
-  const done = (text) => `<div class="card fecho-done"><div class="card-title" style="color:var(--green)">${ic('check-circle')} ${text}</div></div>`;
-  $('mcBody').innerHTML = (missing.length
-      ? step('1 · Invoices to attach', missing.length, 'Attach the PDF (it goes to the Manjar Drive folder of the month) or paste the Drive link.', '<th>Date</th><th>Supplier</th><th class="r">Amount</th><th></th>',
-          withMonthRows(missing, i => i.invoice_date, 4, all, i => i.amount_eur, i => `<tr><td style="white-space:nowrap" title="${i.invoice_date}">${fmtDay(i.invoice_date)}</td><td><b>${esc(i.company || '')}</b><span class="cell-sub">${esc(i.category_name || 'no category')} · ${esc(bizName(i))}${i.invoice_number ? ' · ' + esc(i.invoice_number) : ''}</span></td><td class="r">${eur(i.amount_eur)}</td>
-            <td style="white-space:nowrap;text-align:right">${CAN_EDIT ? `<button class="btn btn-s btn-sm" onclick="mcAttach('${i.id}')">${ic('paperclip')} Attach</button> <button class="btn btn-s btn-sm" onclick="mcLink('${i.id}')">${ic('link')} Link</button> <button class="btn btn-s btn-sm" title="This supplier never issues an invoice — stop counting it as missing" onclick="markNoInvoice('${i.id}')">No invoice needed</button>` : ''}</td></tr>`, 2, 'invoice'))
-      : done('1 · All invoices attached'))
-    + (debits.length
-      ? step('2 · Bank debits to add', debits.length, 'BCP debits with no expense yet. Left out: bank fees, salaries, taxes, transfers.', '<th>Date</th><th>Description</th><th class="r">Amount</th><th></th>',
-          withMonthRows(debits, r => r.movement_date, 4, all, r => -r.amount, r => `<tr><td style="white-space:nowrap" title="${r.movement_date}">${fmtDay(r.movement_date)}</td><td>${esc(r.description)}</td><td class="r">${eur(-r.amount)}</td><td style="white-space:nowrap;text-align:right">${CAN_EDIT ? `<button class="btn btn-s btn-sm" onclick="addFromBank('${r.id}')">${ic('plus')} Add expense</button>` : ''}</td></tr>`, 2, 'debit'))
-      : done('2 · Every bank debit has an expense'));
+  MC_MISSING = { missing, debits };
   $('mc_folder').innerHTML = folder ? `<a class="btn btn-s" target="_blank" rel="noopener" href="https://drive.google.com/drive/folders/${folder}">${ic('folder')} ${all ? 'Manjar invoices on Drive' : `Drive folder · ${mcLabel(month)}`}</a>` : `<span class="hint">No Manjar Drive folder registered for ${mcLabel(month)}.</span>`;
   $('mc_pack').innerHTML = CAN_EDIT && !all ? `<label class="hq-tog"><input type="checkbox" ${sent ? 'checked' : ''} onchange="mcToggleSent(this.checked)"> Sent${sent ? ` <span class="hint">· ${who}</span>` : ''}</label>` : '';
   renderCloseBanks(month);
@@ -723,7 +712,7 @@ async function mcDownloadExcel(){
 }
 // ── Bank by bank (Miguel, 3 Nov 2026): every Millennium movement of the month in date order, ✓ or ✗,
 //    for whoever reconciles; then the month's expenses that no BCP movement pays.
-let MC_BF = 'all';
+let MC_BF = 'all', MC_VIEW = 'missing', MC_MISSING = { missing: [], debits: [] };
 function mcBankStatus(r){
   if (Number(r.amount) > 0) return { ok:true, label: r.kind === 'internal_transfer' ? 'Catering from Water' : 'Income' };
   if (r.kind === 'bank_fee') return { ok:true, label:'Bank fee' };
@@ -736,41 +725,64 @@ function mcBankStatus(r){
   if (r.has_invoice === 'none') return { ok:true, label:'No invoice (noted)' };
   return { ok:true, label: r.has_invoice === 'amount' ? 'Matched by amount' : 'No invoice needed' };
 }
+// One reconcile card, as in the HQ (Miguel, 3 Nov 2026): «Missing» first (invoices to attach + BCP
+// debits with no expense, biggest first), then the Millennium statement line by line, then the
+// expenses that no movement pays.
 function renderCloseBanks(month){
   const box = $('mcBanks'); if (!box) return;
-  if (month === 'all') { box.innerHTML = `<div class="card card-pad hint">Pick a month to reconcile the Millennium statement line by line.</div>`; return; }
   const ic = (n) => AppShell.icon(n);
-  const all = BANK_ROWS.filter(r => r.month === month).map(r => ({ r, st: mcBankStatus(r) }));
-  const todo = all.filter(x => !x.st.ok);
-  const rows = MC_BF === 'todo' ? todo : MC_BF === 'done' ? all.filter(x => x.st.ok) : all;
-  const pill = (k, label) => `<button class="hq-pill${MC_BF === k ? ' active' : ''}" onclick="MC_BF='${k}';renderCloseBanks('${month}')">${label}</button>`;
-  const action = (x) => !CAN_EDIT ? '' : x.st.action === 'attach' ? `<button class="btn btn-s btn-sm" onclick="mcAttach('${x.st.line.id}')">${ic('paperclip')} Attach</button> <button class="btn btn-s btn-sm" onclick="mcLink('${x.st.line.id}')">${ic('link')} Link</button>`
-    : x.st.action === 'add' ? `<button class="btn btn-s btn-sm" onclick="addFromBank('${x.r.id}')">${ic('plus')} Add expense</button>` : '';
-  const rowHtml = (x) => `<tr>
-      <td style="width:28px">${x.st.ok ? `<span style="color:var(--green)">${ic('check-circle')}</span>` : `<span style="color:var(--red)">${ic('alert')}</span>`}</td>
-      <td style="white-space:nowrap" title="${x.r.movement_date}">${fmtDay(x.r.movement_date)}</td>
-      <td>${esc(x.r.description)}</td>
-      <td class="r" style="white-space:nowrap;${x.r.amount > 0 ? 'color:var(--green)' : ''}">${eur(Math.abs(x.r.amount))}</td>
-      <td>${x.st.line ? `${esc(x.st.line.company || '')}<span class="cell-sub">${esc(x.st.line.category_name || 'no category')} · ${esc(bizName(x.st.line))}</span>` : '<span class="hint">—</span>'}</td>
-      <td class="hint" style="white-space:nowrap">${esc(x.st.label)}</td>
-      <td style="white-space:nowrap;text-align:right">${action(x)}</td>
-    </tr>`;
-  const noBank = INVOICES.filter(i => String(i.invoice_date).startsWith(month) && !i.bank && i.payment_type !== 'Cash' && !/\[por fora/i.test(String(i.notes || '')));
+  const all = month === 'all';
+  const view = all ? 'missing' : MC_VIEW;
+  const items = MC_MISSING.missing.map(i => ({ kind:'attach', id: i.id, date: i.invoice_date, title: i.company || '', sub: `${i.category_name || 'no category'} · ${bizName(i)}${i.invoice_number ? ' · ' + i.invoice_number : ''}`, from: i.bank ? 'Millennium BCP' : 'No bank movement', amount: Number(i.amount_eur || 0) }))
+    .concat(MC_MISSING.debits.map(r => ({ kind:'add', id: r.id, date: r.movement_date, title: r.description, sub: 'No expense line in the app yet', from: 'Millennium BCP', amount: -Number(r.amount) })))
+    .sort((a, b) => (all ? String(b.date).slice(0, 7).localeCompare(String(a.date).slice(0, 7)) : 0) || b.amount - a.amount);
+  const stmt = all ? [] : BANK_ROWS.filter(r => r.month === month).map(r => ({ r, st: mcBankStatus(r) }));
+  const todo = stmt.filter(x => !x.st.ok);
+  const noBank = all ? [] : INVOICES.filter(i => String(i.invoice_date).startsWith(month) && !i.bank && i.payment_type !== 'Cash' && !/\[por fora/i.test(String(i.notes || '')));
+  const pill = (on, label, js) => `<button class="hq-pill${on ? ' active' : ''}" onclick="${js}">${label}</button>`;
+  const badge = (n, cls) => n ? ` <span class="badge ${cls || 'badge-red'}" style="margin-left:4px">${n}</span>` : '';
+  const viewPills = pill(view === 'missing', `Missing${badge(items.length)}`, `MC_VIEW='missing';renderCloseBanks('${month}')`)
+    + (all ? '' : pill(view === 'bcp', `Millennium BCP · ${stmt.length}${badge(todo.length)}`, `MC_VIEW='bcp';renderCloseBanks('${month}')`)
+      + pill(view === 'nobank', `No bank movement · ${noBank.length}${badge(noBank.filter(i => i.missing_pdf).length, 'badge-amber')}`, `MC_VIEW='nobank';renderCloseBanks('${month}')`));
+  const docBtns = (id) => CAN_EDIT ? `<button class="btn btn-s btn-sm" onclick="mcAttach('${id}')">${ic('paperclip')} Attach</button> <button class="btn btn-s btn-sm" onclick="mcLink('${id}')">${ic('link')} Link</button> <button class="btn btn-s btn-sm" title="This supplier never issues an invoice — stop counting it as missing" onclick="markNoInvoice('${id}')">No invoice needed</button>` : '';
+  let hint = '', table = '', right = '';
+  if (view === 'missing') {
+    hint = all ? 'Everything still missing, newest month first. Pick a month to check the Millennium statement line by line.' : `Everything ${mcLabel(month)} still needs: invoices to attach (the PDF goes to the Manjar Drive folder of the month) and BCP debits with no expense — biggest first.`;
+    table = items.length ? `<table class="fecho-tbl"><thead><tr><th>Date</th><th>Expense</th><th>Paid from</th><th class="r">Amount</th><th></th></tr></thead><tbody>${withMonthRows(items, x => x.date, 5, all, x => x.amount, x => `<tr>
+        <td style="white-space:nowrap" title="${x.date}">${fmtDay(x.date)}</td>
+        <td><b>${esc(x.title)}</b><span class="cell-sub">${esc(x.sub)}</span></td>
+        <td class="hint" style="white-space:nowrap">${esc(x.from)}</td>
+        <td class="r">${eur(x.amount)}</td>
+        <td style="white-space:nowrap;text-align:right">${x.kind === 'attach' ? docBtns(x.id) : CAN_EDIT ? `<button class="btn btn-s btn-sm" onclick="addFromBank('${x.id}')">${ic('plus')} Add expense</button>` : ''}</td>
+      </tr>`, 3, 'item')}</tbody></table>` : `<div class="card-body" style="color:var(--green)">${ic('check-circle')} Nothing missing — every BCP debit has its expense and every expense its invoice.</div>`;
+  } else if (view === 'nobank') {
+    hint = `Expenses of ${mcLabel(month)} that no Millennium movement pays yet (cash and «por fora» left out).`;
+    table = noBank.length ? `<table class="fecho-tbl"><thead><tr><th>Date</th><th>Supplier</th><th>Payment</th><th class="r">Amount</th><th>PDF</th></tr></thead><tbody>${noBank.map(i => `<tr><td style="white-space:nowrap">${fmtDay(i.invoice_date)}</td><td><b>${esc(i.company || '')}</b><span class="cell-sub">${esc(i.category_name || 'no category')} · ${esc(bizName(i))}${i.invoice_number ? ' · ' + esc(i.invoice_number) : ''}</span></td><td class="hint">${esc(i.payment_type || '')}</td><td class="r">${eur(i.amount_eur)}</td><td style="white-space:nowrap">${i.drive_link ? `<a class="file-link" href="${esc(i.drive_link)}" target="_blank" rel="noopener">open</a>` : i.missing_pdf ? docBtns(i.id) : '<span class="badge badge-grey">no invoice</span>'}</td></tr>`).join('')}</tbody></table>` : '<div class="card-body hint">Every expense of the month is matched to a bank movement.</div>';
+  } else {
+    const rows = MC_BF === 'todo' ? todo : MC_BF === 'done' ? stmt.filter(x => x.st.ok) : stmt;
+    const fpill = (k, label) => pill(MC_BF === k, label, `MC_BF='${k}';renderCloseBanks('${month}')`);
+    right = fpill('all', `All ${stmt.length}`) + fpill('todo', `To do ${todo.length}`) + fpill('done', `Done ${stmt.length - todo.length}`);
+    hint = `Every movement of ${mcLabel(month)} on the Millennium statement, in date order. ✓ = expense with its invoice (or none needed) · ✗ = invoice or expense line missing.`;
+    const action = (x) => !CAN_EDIT ? '' : x.st.action === 'attach' ? `<button class="btn btn-s btn-sm" onclick="mcAttach('${x.st.line.id}')">${ic('paperclip')} Attach</button> <button class="btn btn-s btn-sm" onclick="mcLink('${x.st.line.id}')">${ic('link')} Link</button>`
+      : x.st.action === 'add' ? `<button class="btn btn-s btn-sm" onclick="addFromBank('${x.r.id}')">${ic('plus')} Add expense</button>` : '';
+    table = rows.length ? `<table class="fecho-tbl"><thead><tr><th></th><th>Date</th><th>Bank movement</th><th class="r">Amount</th><th>Expense in the app</th><th>Status</th><th></th></tr></thead><tbody>${rows.map(x => `<tr>
+        <td style="width:28px">${x.st.ok ? `<span style="color:var(--green)">${ic('check-circle')}</span>` : `<span style="color:var(--red)">${ic('alert')}</span>`}</td>
+        <td style="white-space:nowrap" title="${x.r.movement_date}">${fmtDay(x.r.movement_date)}</td>
+        <td>${esc(x.r.description)}</td>
+        <td class="r" style="white-space:nowrap;${x.r.amount > 0 ? 'color:var(--green)' : ''}">${eur(Math.abs(x.r.amount))}</td>
+        <td>${x.st.line ? `${esc(x.st.line.company || '')}<span class="cell-sub">${esc(x.st.line.category_name || 'no category')} · ${esc(bizName(x.st.line))}</span>` : '<span class="hint">—</span>'}</td>
+        <td class="hint" style="white-space:nowrap">${esc(x.st.label)}</td>
+        <td style="white-space:nowrap;text-align:right">${action(x)}</td>
+      </tr>`).join('')}</tbody></table>` : `<div class="card-body hint">${stmt.length ? 'Nothing here with this filter.' : `No Millennium movements in ${mcLabel(month)} yet — import the statement in Bank statement.`}</div>`;
+  }
   box.innerHTML = `
     <div class="card">
       <div class="card-hdr"><div>
-        <div class="card-title">Bank by bank · Millennium BCP</div>
-        <div class="card-hint">Every movement of ${mcLabel(month)} on the statement, in date order. ✓ = expense with its invoice (or none needed) · ✗ = invoice or expense line missing.</div>
+        <div class="card-title">Reconcile ${all ? 'all months' : mcLabel(month)}</div>
+        <div class="card-hint">${hint}</div>
       </div></div>
-      <div class="card-body month-pills" style="padding-top:4px">${pill('all', `All ${all.length}`)}${pill('todo', `To do ${todo.length}`)}${pill('done', `Done ${all.length - todo.length}`)}</div>
-      <div class="tbl-wrap">${rows.length ? `<table class="fecho-tbl"><thead><tr><th></th><th>Date</th><th>Bank movement</th><th class="r">Amount</th><th>Expense in the app</th><th>Status</th><th></th></tr></thead><tbody>${rows.map(rowHtml).join('')}</tbody></table>` : `<div class="card-body hint">${all.length ? 'Nothing here with this filter.' : `No Millennium movements in ${mcLabel(month)} yet — import the statement in Bank statement.`}</div>`}</div>
-    </div>
-    <div class="card">
-      <div class="card-hdr"><div>
-        <div class="card-title">Invoices with no bank movement <span class="badge ${noBank.length ? 'badge-amber' : 'badge-green'}" style="margin-left:6px">${noBank.length}</span></div>
-        <div class="card-hint">Expenses of ${mcLabel(month)} that no Millennium movement pays yet (cash and «por fora» left out).</div>
-      </div></div>
-      <div class="tbl-wrap">${noBank.length ? `<table class="fecho-tbl"><thead><tr><th>Date</th><th>Supplier</th><th>Payment</th><th class="r">Amount</th><th>PDF</th></tr></thead><tbody>${noBank.map(i => `<tr><td style="white-space:nowrap">${fmtDay(i.invoice_date)}</td><td><b>${esc(i.company || '')}</b><span class="cell-sub">${esc(i.category_name || 'no category')} · ${esc(bizName(i))}${i.invoice_number ? ' · ' + esc(i.invoice_number) : ''}</span></td><td class="hint">${esc(i.payment_type || '')}</td><td class="r">${eur(i.amount_eur)}</td><td>${i.drive_link ? `<a class="file-link" href="${esc(i.drive_link)}" target="_blank" rel="noopener">open</a>` : i.missing_pdf ? '<span class="badge badge-amber">missing</span>' : '<span class="badge badge-grey">no invoice</span>'}</td></tr>`).join('')}</tbody></table>` : '<div class="card-body hint">Every expense of the month is matched to a bank movement.</div>'}</div>
+      <div class="card-body hq-filters" style="padding-top:4px;gap:8px;flex-wrap:wrap"><div class="hq-pills">${viewPills}</div>${right ? `<div class="hq-pills" style="margin-left:auto">${right}</div>` : ''}</div>
+      <div class="tbl-wrap">${table}</div>
     </div>`;
 }
 function mcAttach(id){ MC_ATTACH = id; const inp = $('mc_file'); inp.value = ''; inp.click(); }
