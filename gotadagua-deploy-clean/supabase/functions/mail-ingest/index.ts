@@ -192,8 +192,15 @@ async function placeDocument(ctx: Ctx, parsed: Parsed, bytes: Uint8Array, compan
   const base = db.from('hq_invoices').select('id, drive_link, invoice_number, supplier_nif, company, amount_eur, invoice_date, notes').eq('paying_company', payingCompany).is('deleted_at', null)
   let existing: Record<string, unknown> | null = null
   if (parsed.invoice_number) {
-    const { data } = await base.ilike('invoice_number', parsed.invoice_number.trim()).limit(2)
-    if (data?.length) existing = data[0]
+    // a number is only unique per supplier: every freelancer's Portal das Finanças receipt is «FR ATSIRE01FR/<n>»,
+    // so FR/36 of Heitor (Oct) is not FR/36 of Alexandre (Jan) — same NIF, or the same name when a NIF is missing
+    const { data } = await base.ilike('invoice_number', parsed.invoice_number.trim()).limit(20)
+    const nif = String(parsed.supplier_nif || '').replace(/\s/g, ''), tok = firstToken(parsed.company || '')
+    existing = (data || []).find(r => {
+      const rn = String(r.supplier_nif || '').replace(/\s/g, '')
+      if (nif && rn) return nif === rn
+      return tok.length >= 3 && String(r.company || '').toLowerCase().startsWith(tok)
+    }) || null
   }
   if (!existing) {
     // backfill of old mail: a supplier is often paid weeks after the invoice date (direct debits, «pag referencia»)
