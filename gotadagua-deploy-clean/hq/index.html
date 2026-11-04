@@ -22,6 +22,9 @@
 .fecho-act{width:1%;text-align:right}
 .fecho-act>div{display:flex;flex-direction:column;align-items:stretch;gap:4px}
 .fecho-act .btn{white-space:nowrap;justify-content:flex-start}
+/* a movement that pays many lines (salaries, a PayPal batch) lists its PDFs over several lines instead of one long row */
+.fecho-st{min-width:110px}
+.fecho-st .file-link{display:inline-block;white-space:nowrap;margin:0 8px 2px 0}
 @media (max-width: 640px){ .fecho-act>div{flex-direction:row;flex-wrap:wrap} }
 .fecho-done{padding:14px var(--card-pad, 16px)}
 .fecho-done .card-title{display:flex;align-items:center;gap:8px;font-size:15px}
@@ -3048,7 +3051,7 @@ function fechoBanksPaint(){
         <td>${esc(r.m.description || '')}</td>
         <td class="r" style="white-space:nowrap;${Number(r.m.amount) > 0 ? 'color:var(--green,#1a7f4b)' : ''}">${eur(Math.abs(Number(r.m.amount)))}${r.m.currency && r.m.currency !== 'EUR' ? ` ${esc(r.m.currency)}` : ''}</td>
         <td>${lineTxt(r)}</td>
-        <td class="hint" style="white-space:nowrap">${fechoStatusCell(r)}</td>
+        <td class="hint fecho-st">${fechoStatusCell(r)}</td>
         <td class="fecho-act"><div>${action(r)}</div></td>
       </tr>`).join('')}</tbody></table>` : `<div class="card-body hint">${all.length ? 'Nothing here with this filter.' : `No ${BANK_LABEL[view]} movements in ${fechoMonthLabel(FECHO.month)} yet — import the statement.`}</div>`;
   }

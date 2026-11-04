@@ -2267,6 +2267,7 @@ test('hq: Month close bank by bank — every movement ✓/✗, filters, and invo
     if (url.includes('/rest/v1/hq_invoices')) return json(inv);
     return json([]);
   });
+  await page.setViewportSize({ width: 1280, height: 800 });   // the desktop table, not the phone cards
   const errs = []; page.on('pageerror', e => errs.push(e.message));
   await fakeOwnerSession(page);
   await page.goto('/hq/', { waitUntil: 'domcontentloaded' });
@@ -2279,12 +2280,19 @@ test('hq: Month close bank by bank — every movement ✓/✗, filters, and invo
     const read = () => [...document.querySelectorAll('#fechoBanks tbody tr')].map(tr => [tr.children[2].textContent.trim(), tr.children[5].textContent.trim()]);
     const pills = [...document.querySelectorAll('#fechoBanks .hq-pill')].map(b => b.textContent.replace(/\s+/g, ' ').trim());
     const missing = [...document.querySelectorAll('#fechoBanks tbody tr')].map(tr => tr.querySelector('b').textContent.trim());
-    FECHO.bankSel = 'santander'; fechoBanksPaint(); const all = read();
+    document.querySelector('#fechoBanks').style.width = '900px';   // a laptop window with the side menu open
+    const overflow = () => { const w = document.querySelector('#fechoBanks .tbl-wrap'); return w.scrollWidth - w.clientWidth; };
+    const scroll = [overflow()];
+    FECHO.bankSel = 'santander'; fechoBanksPaint(); const all = read(); scroll.push(overflow());
+    // one salary debit that pays 15 lines, each with its PDF: the status cell wraps instead of widening the table
+    const rowsBefore = FECHO.bankRows;
+    FECHO.bankRows = rowsBefore.concat([{ m: { id: 'mx', bank: 'santander', movement_date: '2026-09-30', description: 'TRF ORDENADOS SETEMBRO', amount: -15000, currency: 'EUR', kind: 'expense' }, linked: Array.from({ length: 15 }, (_, k) => ({ id: 'x' + k, company: 'salario ' + k, drive_link: 'https://drive.google.com/file/d/s' + k + '/view', category_name: 'Salary', location_slug: 'portugal' })), st: { ok: true, label: 'Invoice attached' } }]);
+    fechoBanksPaint(); scroll.push(overflow()); FECHO.bankRows = rowsBefore;
     FECHO.bankFilter = 'todo'; fechoBanksPaint(); const todo = read();
     FECHO.bankSel = 'cgd'; FECHO.bankFilter = 'all'; fechoBanksPaint(); const cgd = read(); const cgdLink = document.querySelector('#fechoBanks tbody a.file-link')?.getAttribute('href');
     FECHO.bankSel = 'nobank'; fechoBanksPaint();
     const noBank = [...document.querySelectorAll('#fechoBanks tbody tr')].map(tr => tr.querySelector('b').textContent.trim());
-    return { pills, missing, all, todo, cgd, cgdLink, noBank };
+    return { pills, missing, all, todo, cgd, cgdLink, noBank, scroll };
   });
   expect(out.pills.slice(0, 5)).toEqual(['Missing 2', 'Santander · 5 2', 'CGD · 1', 'PayPal · 1', 'No bank movement · 1']);   // the PayPal guest refund is less income, not a debit to add
   expect(out.missing).toEqual(['COMPRA *6962 LEROY MERLIN', 'prio']);   // biggest first, from every bank
@@ -2293,5 +2301,6 @@ test('hq: Month close bank by bank — every movement ✓/✗, filters, and invo
   expect(out.cgd).toEqual([['DD EDP', 'Invoice']]);   // a reconciled line opens its PDF
   expect(out.cgdLink).toBe('https://drive.google.com/file/d/x/view');
   expect(out.noBank).toEqual(['anthropic']);   // the cash pastelaria stays out
+  expect(out.scroll).toEqual([0, 0, 0]);   // the row buttons stack, so no horizontal scroll on a 900px card
   expect(errs).toEqual([]);
 });
