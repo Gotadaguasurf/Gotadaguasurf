@@ -18,6 +18,11 @@
   .fecho-tbl td.r{font-weight:700}
   .fecho-tbl td:last-child{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 }
+/* Month close row buttons stack in their own narrow column, so the table never needs a horizontal scroll. */
+.fecho-act{width:1%;text-align:right}
+.fecho-act>div{display:flex;flex-direction:column;align-items:stretch;gap:4px}
+.fecho-act .btn{white-space:nowrap;justify-content:flex-start}
+@media (max-width: 640px){ .fecho-act>div{flex-direction:row;flex-wrap:wrap} }
 .fecho-done{padding:14px var(--card-pad, 16px)}
 .fecho-done .card-title{display:flex;align-items:center;gap:8px;font-size:15px}
 /* tokens, header, buttons, cards, KPI tiles, tables, pills, fields, modals, toasts: /lib/app-shell.css */
@@ -3018,7 +3023,7 @@ function fechoBanksPaint(){
         <td class="hint" style="white-space:nowrap">${esc(r.from)}</td>
         <td class="r" style="white-space:nowrap">${eur(r.amount)}</td>
         ${showWhere ? `<td class="hint" style="max-width:320px">${esc(r.hint)}</td>` : ''}
-        <td style="white-space:nowrap;text-align:right">${r.kind === 'attach' ? docBtns(r.ids.join(',')) : `<button class="btn btn-s btn-sm" onclick="fechoLaunch('${r.mvId}')">${ic('plus')} Add expense</button>`}</td>
+        <td class="fecho-act"><div>${r.kind === 'attach' ? docBtns(r.ids.join(',')) : `<button class="btn btn-s btn-sm" onclick="fechoLaunch('${r.mvId}')">${ic('plus')} Add expense</button>`}</div></td>
       </tr>`).join('')}</tbody></table>` : `<div class="card-body" style="color:var(--green,#1a7f4b)">${ic('check-circle')} Nothing missing — every bank movement has its expense and every expense its invoice.</div>`;
   } else if (view === 'nobank') {
     hint = `Expenses of ${fechoMonthLabel(FECHO.month)} that no Santander, CGD or PayPal movement pays yet (cash and «por fora» left out).`;
@@ -3027,7 +3032,7 @@ function fechoBanksPaint(){
         <td><b>${esc(l.company || '')}</b><span class="cell-sub">${esc(l.category_name || 'no category')} · ${esc(locLabel(l.location_slug))}${l.invoice_number ? ' · ' + esc(l.invoice_number) : ''}</span></td>
         <td class="hint">${esc(l.payment_type || '')}</td>
         <td class="r">${eur(l.amount_eur)}</td>
-        <td style="white-space:nowrap">${l.drive_link ? `<a class="file-link" href="${esc(l.drive_link)}" target="_blank" rel="noopener">open</a>` : docStatus(l) === 'falta' ? docBtns(l.id) : '<span class="badge badge-grey">no invoice</span>'}</td>
+        <td class="fecho-act"><div>${l.drive_link ? `<a class="file-link" href="${esc(l.drive_link)}" target="_blank" rel="noopener">open</a>` : docStatus(l) === 'falta' ? docBtns(l.id) : '<span class="badge badge-grey">no invoice</span>'}</div></td>
       </tr>`).join('')}</tbody></table>` : '<div class="card-body hint">Every expense of the month is matched to a bank movement.</div>';
   } else {
     const all = FECHO.bankRows.filter(r => r.m.bank === view), todo = all.filter(r => !r.st.ok);
@@ -3044,7 +3049,7 @@ function fechoBanksPaint(){
         <td class="r" style="white-space:nowrap;${Number(r.m.amount) > 0 ? 'color:var(--green,#1a7f4b)' : ''}">${eur(Math.abs(Number(r.m.amount)))}${r.m.currency && r.m.currency !== 'EUR' ? ` ${esc(r.m.currency)}` : ''}</td>
         <td>${lineTxt(r)}</td>
         <td class="hint" style="white-space:nowrap">${fechoStatusCell(r)}</td>
-        <td style="white-space:nowrap;text-align:right">${action(r)}</td>
+        <td class="fecho-act"><div>${action(r)}</div></td>
       </tr>`).join('')}</tbody></table>` : `<div class="card-body hint">${all.length ? 'Nothing here with this filter.' : `No ${BANK_LABEL[view]} movements in ${fechoMonthLabel(FECHO.month)} yet — import the statement.`}</div>`;
   }
   box.innerHTML = `
