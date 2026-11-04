@@ -974,6 +974,9 @@ const MENU={
 // so the operations ledger quick-add, the camp tab Tours category, and the
 // Overview tour-performance board all see the right list for the active
 // location. Prices are in the location's local currency.
+// Old hub links had a second «?» (…?location=surf-school?view=camp-tab-only&…), which read as the
+// location «surf-school?view=…» and blocked rentals-only staff: turn any extra «?» into «&» first.
+(function(){ const s = window.location.search; if (s.indexOf('?', 1) > 0) history.replaceState(history.state, '', window.location.pathname + '?' + s.slice(1).replace(/\?/g, '&') + window.location.hash); })();
 const __HUB_LOCATION_SLUG=(new URLSearchParams(window.location.search).get('location')||'sri-lanka').trim().toLowerCase();
 const TOUR_MENU_BY_LOCATION={
   'sri-lanka':[

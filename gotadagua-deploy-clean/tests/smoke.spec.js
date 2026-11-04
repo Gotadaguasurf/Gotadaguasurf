@@ -159,6 +159,19 @@ test('surf-school expected-return math', async ({ page }) => {
 });
 
 // ── Tier 3: guards that have regressed before ──────────────────────────
+// 4 Nov 2026: the hub sent rentals-only staff (Lotte) to «…?location=surf-school?view=camp-tab-only&…»;
+// the hub read the location as «surf-school?view=…» and showed «No access to this camp».
+test('camp-hub repairs a link with a second «?» and opens the rentals-only view', async ({ page }) => {
+  await fakeOwnerSession(page);
+  await page.goto('/camp-hub?location=surf-school?view=camp-tab-only&location=surf-school', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => { try { return typeof CAMP_TAB_ONLY_MODE === 'boolean'; } catch (_) { return false; } });
+  const r = await page.evaluate(() => ({ slug: __HUB_LOCATION_SLUG, campTab: CAMP_TAB_ONLY_MODE, ledger: LEDGER_LOCATION_SLUG, search: location.search }));
+  expect(r.slug).toBe('surf-school');
+  expect(r.ledger).toBe('surf-school');
+  expect(r.campTab).toBe(true);
+  expect(r.search.indexOf('?', 1)).toBe(-1);
+});
+
 test('camp-hub currency pins: each location locked to its currency', async ({ page }) => {
   await fakeOwnerSession(page);
   await page.goto('/camp-hub/?location=portugal', { waitUntil: 'domcontentloaded' });

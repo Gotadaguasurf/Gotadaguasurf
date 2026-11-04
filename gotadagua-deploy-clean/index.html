@@ -1798,9 +1798,15 @@
       const workspaceRole = getCurrentWorkspaceRole(key);
       const campTabOnlyRoles = new Set(['camp_tab_staff','bar_man','head_social_host']);
       if(item.action==='open' && item.href){
-        const nextHref = (item.type === 'camp' && (campTabOnlyRoles.has(workspaceRole) || hasCampTabOnlyScope(key)))
-          ? `${item.href}?view=camp-tab-only&location=${encodeURIComponent(key)}`
-          : item.href;
+        // the camp hrefs already carry ?location=…, so add the scope as a real query
+        // parameter (a second «?» made the hub read «surf-school?view=…» and block the user)
+        let nextHref = item.href;
+        if (item.type === 'camp' && (campTabOnlyRoles.has(workspaceRole) || hasCampTabOnlyScope(key))) {
+          const u = new URL(item.href, window.location.origin);
+          u.searchParams.set('location', u.searchParams.get('location') || key);
+          u.searchParams.set('view', 'camp-tab-only');
+          nextHref = u.pathname + u.search;
+        }
         window.location.href = nextHref;
         return;
       }
