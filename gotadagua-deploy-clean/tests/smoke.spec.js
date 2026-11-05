@@ -2262,6 +2262,7 @@ test('hq: Month close bank by bank — every movement ✓/✗, filters, and invo
     { id: 'm4', bank: 'santander', movement_date: '2026-09-06', description: 'IMP.DE SELO', amount: -0.8, currency: 'EUR', kind: 'bank_fee', hq_invoice_id: null, internal_transfer_id: null, notes: null },
     { id: 'm5', bank: 'santander', movement_date: '2026-09-07', description: 'TRF CRED SEPA+ DE STRIPE', amount: 900, currency: 'EUR', kind: 'income', hq_invoice_id: null, internal_transfer_id: null, notes: null },
     { id: 'm6', bank: 'cgd', movement_date: '2026-09-08', description: 'DD EDP', amount: -107.3, currency: 'EUR', kind: 'expense', hq_invoice_id: 'i3', internal_transfer_id: null, notes: null },
+    { id: 'm8', bank: 'cgd', movement_date: '2026-09-10', description: 'TFI Solid Surf Co Li', amount: 1941.6, currency: 'EUR', kind: 'income', hq_invoice_id: null, internal_transfer_id: null, notes: null },
     { id: 'm7', bank: 'paypal', movement_date: '2026-09-09', description: 'Reembolso a hóspede: Ana', amount: -70, currency: 'EUR', kind: 'income', hq_invoice_id: null, internal_transfer_id: null, notes: null },
   ];
   const inv = [
@@ -2276,6 +2277,8 @@ test('hq: Month close bank by bank — every movement ✓/✗, filters, and invo
     const json = (b) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(b) });
     if (url.includes('/auth/v1/user')) return json({ id: 'u1', email: 'miguel@gotadaguasurf.com', aud: 'authenticated', role: 'authenticated' });
     if (url.includes('/rest/v1/rpc/hq_overview_rollup')) return json({ bookings: [], invoices: [], ledger: [] });
+    if (url.includes('/rest/v1/partner_ledger')) return json([{ bank_movement_id: 'm8', ref: 'FT IN2/13856', partner_name: 'SOLID SURF HOUSE CAPARICA', amount: 1941.6 }]);
+    if (url.includes('/rest/v1/partner_invoices')) return json([{ invoice_number: 'FT IN2/13856', drive_link: 'https://drive.google.com/file/d/pi/view' }]);
     if (url.includes('/rest/v1/hq_bank_movements')) return json(bank);
     if (url.includes('/rest/v1/hq_invoices')) return json(inv);
     return json([]);
@@ -2302,16 +2305,18 @@ test('hq: Month close bank by bank — every movement ✓/✗, filters, and invo
     FECHO.bankRows = rowsBefore.concat([{ m: { id: 'mx', bank: 'santander', movement_date: '2026-09-30', description: 'TRF ORDENADOS SETEMBRO', amount: -15000, currency: 'EUR', kind: 'expense' }, linked: Array.from({ length: 15 }, (_, k) => ({ id: 'x' + k, company: 'salario ' + k, drive_link: 'https://drive.google.com/file/d/s' + k + '/view', category_name: 'Salary', location_slug: 'portugal' })), st: { ok: true, label: 'Invoice attached' } }]);
     fechoBanksPaint(); scroll.push(overflow()); FECHO.bankRows = rowsBefore;
     FECHO.bankFilter = 'todo'; fechoBanksPaint(); const todo = read();
-    FECHO.bankSel = 'cgd'; FECHO.bankFilter = 'all'; fechoBanksPaint(); const cgd = read(); const cgdLink = document.querySelector('#fechoBanks tbody a.file-link')?.getAttribute('href');
+    FECHO.bankSel = 'cgd'; FECHO.bankFilter = 'all'; fechoBanksPaint(); const cgd = read(); const cgdLink = document.querySelector('#fechoBanks tbody a.file-link')?.getAttribute('href'); const salesLink = [...document.querySelectorAll('#fechoBanks tbody a.file-link')].map(a => a.getAttribute('href'))[1]; const salesWho = document.querySelectorAll('#fechoBanks tbody tr')[1]?.children[4].textContent.trim();
     FECHO.bankSel = 'nobank'; fechoBanksPaint();
     const noBank = [...document.querySelectorAll('#fechoBanks tbody tr')].map(tr => tr.querySelector('b').textContent.trim());
-    return { pills, missing, all, todo, cgd, cgdLink, noBank, scroll };
+    return { pills, missing, all, todo, cgd, cgdLink, salesLink, salesWho, noBank, scroll };
   });
-  expect(out.pills.slice(0, 5)).toEqual(['Missing 2', 'Santander · 5 2', 'CGD · 1', 'PayPal · 1', 'No bank movement · 1']);   // the PayPal guest refund is less income, not a debit to add
+  expect(out.pills.slice(0, 5)).toEqual(['Missing 2', 'Santander · 5 2', 'CGD · 2', 'PayPal · 1', 'No bank movement · 1']);   // the PayPal guest refund is less income, not a debit to add
   expect(out.missing).toEqual(['COMPRA *6962 LEROY MERLIN', 'prio']);   // biggest first, from every bank
   expect(out.all).toEqual([['COMPRA *6962 PRIO', 'Invoice missing'], ['COMPRA ESTRANG*9103 Google ADS', 'No invoice needed'], ['COMPRA *6962 LEROY MERLIN', 'No expense line'], ['IMP.DE SELO', 'Bank fee'], ['TRF CRED SEPA+ DE STRIPE', 'Income']]);
   expect(out.todo.map(r => r[0])).toEqual(['COMPRA *6962 PRIO', 'COMPRA *6962 LEROY MERLIN']);
-  expect(out.cgd).toEqual([['DD EDP', 'Invoice']]);   // a reconciled line opens its PDF
+  expect(out.cgd).toEqual([['DD EDP', 'Invoice'], ['TFI Solid Surf Co Li', 'Invoice']]);   // a reconciled line opens its PDF; a partner payment opens the sales invoice it pays
+  expect(out.salesLink).toBe('https://drive.google.com/file/d/pi/view');
+  expect(out.salesWho).toBe('SOLID SURF HOUSE CAPARICAPartner invoice · FT IN2/13856');
   expect(out.cgdLink).toBe('https://drive.google.com/file/d/x/view');
   expect(out.noBank).toEqual(['anthropic']);   // the cash pastelaria stays out
   expect(out.scroll).toEqual([0, 0, 0]);   // the row buttons stack, so no horizontal scroll on a 900px card

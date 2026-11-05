@@ -2958,11 +2958,19 @@ async function renderFechoBanks(){
     // a line of this month can be paid by a movement of another month: ask the bank side for those links too
     const monthIds = monthLines.map(l => l.id);
     const paidElsewhere = await inChunks(monthIds, (c) => sb.from('hq_bank_movements').select('hq_invoice_id').in('hq_invoice_id', c));
+    // money in from partners: the sales invoices (FT IN2/…) each transfer pays, via partner_ledger «received»
+    const incIds = mv.filter(m => Number(m.amount) > 0).map(m => m.id);
+    const recv = await inChunks(incIds, (c) => sb.from('partner_ledger').select('bank_movement_id, ref, partner_name, amount').in('bank_movement_id', c).eq('kind', 'received').is('deleted_at', null));
+    const refs = [...new Set(recv.map(r => r.ref).filter(Boolean))];
+    const pinv = await inChunks(refs, (c) => sb.from('partner_invoices').select('invoice_number, drive_link').in('invoice_number', c));
+    const pinvLink = new Map(pinv.map(p => [p.invoice_number, p.drive_link]));
     if (seq !== FECHO.bseq || month !== FECHO.month) return;   // a slower answer for the month picked before
     const invSet = new Set(invIds), mvSet = new Set(mvIds);
     const lines = new Map(); byId.concat(byMv).filter(l => invSet.has(l.id) || mvSet.has(l.bank_movement_id)).forEach(l => lines.set(l.id, l));
     FECHO.mvAll = mv; FECHO.bankLines = [...lines.values()]; FECHO.bankMonth = month;
-    FECHO.bankRows = mv.map(m => { const linked = [...lines.values()].filter(l => l.id === m.hq_invoice_id || l.bank_movement_id === m.id); return { m, linked, st: fechoBankStatus(m, linked) }; });
+    FECHO.bankRows = mv.map(m => { const linked = [...lines.values()].filter(l => l.id === m.hq_invoice_id || l.bank_movement_id === m.id);
+      const sales = recv.filter(r => r.bank_movement_id === m.id).map(r => ({ company: r.partner_name, invoice_number: r.ref, drive_link: pinvLink.get(r.ref) || null }));
+      return { m, linked, sales, st: fechoBankStatus(m, linked) }; });
     const linkedIds = new Set([...lines.keys(), ...paidElsewhere.map(r => r.hq_invoice_id)]);
     FECHO.noBank = monthLines.filter(l => !linkedIds.has(l.id) && !l.bank_movement_id && l.is_duplicate !== true && l.payment_type !== 'Cash' && docStatus(l) !== 'por_fora');
   } catch (e) {
@@ -2994,7 +3002,7 @@ function fechoMissing(){
 }
 // «Invoice attached» opens the PDF(s) on the Drive (Miguel, 3 Nov 2026: «não é necessário aparecer o link?»).
 function fechoStatusCell(r){
-  const docs = r.linked.filter(l => l.drive_link);
+  const docs = r.linked.filter(l => l.drive_link).concat((r.sales || []).filter(l => l.drive_link));
   if (!r.st.ok || !docs.length) return esc(r.st.label);
   return docs.map((l, k) => `<a class="file-link" href="${esc(l.drive_link)}" target="_blank" rel="noopener" title="${esc(l.company || '')}${l.invoice_number ? ' · ' + esc(l.invoice_number) : ''}">${k ? 'Invoice ' + (k + 1) : 'Invoice'} ${AppShell.icon('external')}</a>`).join(' ');
 }
@@ -3042,7 +3050,8 @@ function fechoBanksPaint(){
     const rows = filter === 'todo' ? todo : filter === 'done' ? all.filter(r => r.st.ok) : all;
     right = pill(filter === 'all', `All ${all.length}`, `FECHO.bankFilter='all';fechoBanksPaint()`) + pill(filter === 'todo', `To do ${todo.length}`, `FECHO.bankFilter='todo';fechoBanksPaint()`) + pill(filter === 'done', `Done ${all.length - todo.length}`, `FECHO.bankFilter='done';fechoBanksPaint()`);
     hint = `Every movement of ${fechoMonthLabel(FECHO.month)} on the ${BANK_LABEL[view]} statement, in date order. ✓ = expense with its invoice (or none needed) · ✗ = invoice or expense line missing.`;
-    const lineTxt = (r) => r.linked.length ? r.linked.map(l => `${esc(l.company || '')}<span class="cell-sub">${esc(l.category_name || 'no category')} · ${esc(locLabel(l.location_slug))}${l.invoice_number ? ' · ' + esc(l.invoice_number) : ''}</span>`).join('') : '<span class="hint">—</span>';
+    const lineTxt = (r) => r.linked.length ? r.linked.map(l => `${esc(l.company || '')}<span class="cell-sub">${esc(l.category_name || 'no category')} · ${esc(locLabel(l.location_slug))}${l.invoice_number ? ' · ' + esc(l.invoice_number) : ''}</span>`).join('')
+      : (r.sales || []).length ? r.sales.map(l => `${esc(l.company || '')}<span class="cell-sub">Partner invoice · ${esc(l.invoice_number || '')}</span>`).join('') : '<span class="hint">—</span>';
     const action = (r) => r.st.action === 'attach' ? `<button class="btn btn-s btn-sm" onclick="fechoAttach('${r.st.line.id}')">${ic('paperclip')} Attach</button> <button class="btn btn-s btn-sm" onclick="fechoPasteLink('${r.st.line.id}')">${ic('link')} Link</button>`
       : r.st.action === 'add' ? `<button class="btn btn-s btn-sm" onclick="fechoLaunch('${r.m.id}')">${ic('plus')} Add expense</button>` : '';
     table = rows.length ? `<table class="fecho-tbl"><thead><tr><th></th><th>Date</th><th>Bank movement</th><th class="r">Amount</th><th>Expense in the app</th><th>Status</th><th></th></tr></thead><tbody>${rows.map(r => `<tr>
