@@ -2964,6 +2964,9 @@ async function renderFechoBanks(){
     const refs = [...new Set(recv.map(r => r.ref).filter(Boolean))];
     const pinv = await inChunks(refs, (c) => sb.from('partner_invoices').select('invoice_number, drive_link').in('invoice_number', c));
     const pinvLink = new Map(pinv.map(p => [p.invoice_number, p.drive_link]));
+    // a partner that invoices us (Juvigo) refers to its own invoice: show that document
+    const otherRefs = refs.filter(r => !pinvLink.get(r));
+    if (otherRefs.length) (await inChunks(otherRefs, (c) => sb.from('hq_invoices').select('invoice_number, drive_link').in('invoice_number', c).is('deleted_at', null))).forEach(i => { if (i.drive_link && !pinvLink.get(i.invoice_number)) pinvLink.set(i.invoice_number, i.drive_link); });
     if (seq !== FECHO.bseq || month !== FECHO.month) return;   // a slower answer for the month picked before
     const invSet = new Set(invIds), mvSet = new Set(mvIds);
     const lines = new Map(); byId.concat(byMv).filter(l => invSet.has(l.id) || mvSet.has(l.bank_movement_id)).forEach(l => lines.set(l.id, l));
