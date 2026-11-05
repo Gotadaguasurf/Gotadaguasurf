@@ -2947,7 +2947,7 @@ async function renderFechoBanks(){
   const LINE_COLS = 'id, invoice_date, company, amount_eur, category_name, location_slug, invoice_number, drive_link, notes, paying_company, is_duplicate, doc_exempt_reason, payment_type, bank_movement_id';
   const inChunks = async (ids, build) => { let out = []; for (let k = 0; k < ids.length; k += 100) { const { data, error } = await build(ids.slice(k, k + 100)); if (error) throw error; out = out.concat(data || []); } return out; };
   try {
-    const mv = await fetchAllPaged(() => sb.from('hq_bank_movements').select('id, bank, movement_date, description, amount, currency, kind, hq_invoice_id, internal_transfer_id, notes')
+    const mv = await fetchAllPaged(() => sb.from('hq_bank_movements').select('id, bank, movement_date, description, amount, currency, kind, hq_invoice_id, internal_transfer_id, notes, sales_invoice_ref, sales_invoice_link')
       .eq('paying_company', 'water-movements').gte('movement_date', period.from).lte('movement_date', period.to).order('movement_date').order('id'));
     const mvIds = mv.map(m => m.id), invIds = [...new Set(mv.map(m => m.hq_invoice_id).filter(Boolean))];
     const [byId, byMv, monthLines] = await Promise.all([
@@ -2970,6 +2970,7 @@ async function renderFechoBanks(){
     FECHO.mvAll = mv; FECHO.bankLines = [...lines.values()]; FECHO.bankMonth = month;
     FECHO.bankRows = mv.map(m => { const linked = [...lines.values()].filter(l => l.id === m.hq_invoice_id || l.bank_movement_id === m.id);
       const sales = recv.filter(r => r.bank_movement_id === m.id).map(r => ({ company: r.partner_name, invoice_number: r.ref, drive_link: pinvLink.get(r.ref) || null }));
+      if (m.sales_invoice_ref) sales.push({ company: 'Sales invoice', invoice_number: m.sales_invoice_ref, drive_link: m.sales_invoice_link || null });
       return { m, linked, sales, st: fechoBankStatus(m, linked) }; });
     const linkedIds = new Set([...lines.keys(), ...paidElsewhere.map(r => r.hq_invoice_id)]);
     FECHO.noBank = monthLines.filter(l => !linkedIds.has(l.id) && !l.bank_movement_id && l.is_duplicate !== true && l.payment_type !== 'Cash' && docStatus(l) !== 'por_fora');
@@ -3140,11 +3141,17 @@ async function fechoPrintPack(bank){
     // the documents, each stamped with its number
     const { data: { session } } = await sb.auth.getSession();
     const failed = [];
-    for (const d of plan.docs) {
-      say(`Invoice ${d.no}/${plan.docs.length}…`);
+    // fetch 4 at a time, add to the PDF in order
+    let done = 0;
+    const getDoc = async (d) => {
+      const r = await fetch(`${cfg.url}/functions/v1/drive-upload`, { method: 'POST', headers: { 'Authorization': 'Bearer ' + session.access_token, 'Content-Type': 'application/json', 'apikey': cfg.anonKey }, body: JSON.stringify({ action: 'download', file_id: d.id }) });
+      const j = await r.json(); say(`Invoice ${++done}/${plan.docs.length}…`); if (!r.ok || !j.data_base64) throw new Error(j.error || r.status); return j;
+    };
+    const jobs = new Array(plan.docs.length); let next = 0;
+    await Promise.all(Array.from({ length: Math.min(4, plan.docs.length) }, async () => { while (next < plan.docs.length) { const k = next++; jobs[k] = await getDoc(plan.docs[k]).then(j => ({ j }), e => ({ e })); } }));
+    for (const [k, d] of plan.docs.entries()) {
       try {
-        const r = await fetch(`${cfg.url}/functions/v1/drive-upload`, { method: 'POST', headers: { 'Authorization': 'Bearer ' + session.access_token, 'Content-Type': 'application/json', 'apikey': cfg.anonKey }, body: JSON.stringify({ action: 'download', file_id: d.id }) });
-        const j = await r.json(); if (!r.ok || !j.data_base64) throw new Error(j.error || r.status);
+        if (jobs[k].e) throw jobs[k].e; const j = jobs[k].j;
         const bytes = Uint8Array.from(atob(j.data_base64), c => c.charCodeAt(0));
         const stamp = clean(`#${d.no} · ${fmtDia(d.date)} · ${eurTxt(d.amount)} · ${d.who}${d.n ? ' · ' + d.n : ''}`);
         const mark = (pg) => { const { width, height } = pg.getSize(); pg.drawRectangle({ x: 0, y: height - 18, width, height: 18, color: rgb(1, 1, 1), opacity: .85 }); pg.drawText(fit(stamp, width - 20, bold, 9), { x: 10, y: height - 13, size: 9, font: bold, color: rgb(.12, .43, .66) }); };

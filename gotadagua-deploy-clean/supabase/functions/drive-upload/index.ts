@@ -103,6 +103,27 @@ Deno.serve(async (req) => {
 
   // ── Arrumação: mover / listar / renomear (6 Out 2026: «não quero os do
   //    Manjar nas pastas da Water») — mesmas permissões do upload.
+  // 5 Nov 2026: our sales invoices live in InvoiceXpress; its PDF links (signed S3 URLs) can't be read
+  // from the browser (CORS), so the server fetches the PDF and files it in the Drive.
+  if (body.action === 'import_url') {
+    try {
+      const src = new URL(String((body as { url?: string }).url || ''))
+      if (src.protocol !== 'https:' || !/\.amazonaws\.com$/.test(src.hostname) || !/invoicexpress/i.test(src.hostname + src.pathname)) return json({ error: 'só PDFs do InvoiceXpress' }, 400)
+      const folder = String(body.folder_id || '').trim(), name = String(body.name || '').trim().slice(0, 200)
+      if (!folder || !name) return json({ error: 'folder_id e name são obrigatórios' }, 400)
+      const r = await fetch(src.toString()); if (!r.ok) return json({ error: 'download falhou (' + r.status + ')' }, 502)
+      const bytes = new Uint8Array(await r.arrayBuffer()); if (bytes.length > MAX_BYTES) return json({ error: 'Ficheiro acima de 20 MB' }, 413)
+      const token = await accessToken(db)
+      const boundary = 'gota' + crypto.randomUUID().replace(/-/g, ''), enc = new TextEncoder()
+      const head = enc.encode(`--${boundary}\r\ncontent-type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify({ name, parents: [folder] })}\r\n--${boundary}\r\ncontent-type: application/pdf\r\n\r\n`)
+      const tail = enc.encode(`\r\n--${boundary}--`), payload = new Uint8Array(head.length + bytes.length + tail.length)
+      payload.set(head, 0); payload.set(bytes, head.length); payload.set(tail, head.length + bytes.length)
+      const up = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,name', { method: 'POST', headers: { authorization: 'Bearer ' + token, 'content-type': `multipart/related; boundary=${boundary}` }, body: payload })
+      const out = await up.json(); if (!up.ok) return json({ error: 'Drive recusou: ' + (out?.error?.message || '') }, 502)
+      return json({ id: out.id, name: out.name, link: `https://drive.google.com/file/d/${out.id}/view` })
+    } catch (e) { return json({ error: (e as Error).message || String(e) }, 500) }
+  }
+
   if (body.action === 'move' || body.action === 'list' || body.action === 'rename' || body.action === 'trash' || body.action === 'download') {
     try {
       const token = await accessToken(db)
