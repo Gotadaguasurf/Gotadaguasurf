@@ -2305,10 +2305,10 @@ test('hq: Month close bank by bank — every movement ✓/✗, filters, and invo
     FECHO.bankRows = rowsBefore.concat([{ m: { id: 'mx', bank: 'santander', movement_date: '2026-09-30', description: 'TRF ORDENADOS SETEMBRO', amount: -15000, currency: 'EUR', kind: 'expense' }, linked: Array.from({ length: 15 }, (_, k) => ({ id: 'x' + k, company: 'salario ' + k, drive_link: 'https://drive.google.com/file/d/s' + k + '/view', category_name: 'Salary', location_slug: 'portugal' })), st: { ok: true, label: 'Invoice attached' } }]);
     fechoBanksPaint(); scroll.push(overflow()); FECHO.bankRows = rowsBefore;
     FECHO.bankFilter = 'todo'; fechoBanksPaint(); const todo = read();
-    FECHO.bankSel = 'cgd'; FECHO.bankFilter = 'all'; fechoBanksPaint(); const cgd = read(); const cgdLink = document.querySelector('#fechoBanks tbody a.file-link')?.getAttribute('href'); const salesLink = [...document.querySelectorAll('#fechoBanks tbody a.file-link')].map(a => a.getAttribute('href'))[1]; const salesWho = document.querySelectorAll('#fechoBanks tbody tr')[1]?.children[4].textContent.trim();
+    FECHO.bankSel = 'cgd'; FECHO.bankFilter = 'all'; fechoBanksPaint(); const cgd = read(); const cgdLink = document.querySelector('#fechoBanks tbody a.file-link')?.getAttribute('href'); const salesLink = [...document.querySelectorAll('#fechoBanks tbody a.file-link')].map(a => a.getAttribute('href'))[1]; const salesWho = document.querySelectorAll('#fechoBanks tbody tr')[1]?.children[4].textContent.trim(); const printBtn = !!document.getElementById('fechoPrintBtn'); const plan = fechoPackPlan(FECHO.bankRows.filter(r => r.m.bank === 'cgd')); const pack = { docs: plan.docs.map(d => [d.no, d.id, d.who]), lines: plan.lines.map(l => l.nums) };
     FECHO.bankSel = 'nobank'; fechoBanksPaint();
     const noBank = [...document.querySelectorAll('#fechoBanks tbody tr')].map(tr => tr.querySelector('b').textContent.trim());
-    return { pills, missing, all, todo, cgd, cgdLink, salesLink, salesWho, noBank, scroll };
+    return { pills, missing, all, todo, cgd, cgdLink, salesLink, salesWho, printBtn, pack, noBank, scroll };
   });
   expect(out.pills.slice(0, 5)).toEqual(['Missing 2', 'Santander · 5 2', 'CGD · 2', 'PayPal · 1', 'No bank movement · 1']);   // the PayPal guest refund is less income, not a debit to add
   expect(out.missing).toEqual(['COMPRA *6962 LEROY MERLIN', 'prio']);   // biggest first, from every bank
@@ -2316,6 +2316,8 @@ test('hq: Month close bank by bank — every movement ✓/✗, filters, and invo
   expect(out.todo.map(r => r[0])).toEqual(['COMPRA *6962 PRIO', 'COMPRA *6962 LEROY MERLIN']);
   expect(out.cgd).toEqual([['DD EDP', 'Invoice'], ['TFI Solid Surf Co Li', 'Invoice']]);   // a reconciled line opens its PDF; a partner payment opens the sales invoice it pays
   expect(out.salesLink).toBe('https://drive.google.com/file/d/pi/view');
+  expect(out.printBtn).toBe(true);   // «Print pack» on each bank view
+  expect(out.pack).toEqual({ docs: [[1, 'x', 'edp'], [2, 'pi', 'SOLID SURF HOUSE CAPARICA']], lines: [[1], [2]] });   // statement lines carry the number of the document printed after them
   expect(out.salesWho).toBe('SOLID SURF HOUSE CAPARICAPartner invoice · FT IN2/13856');
   expect(out.cgdLink).toBe('https://drive.google.com/file/d/x/view');
   expect(out.noBank).toEqual(['anthropic']);   // the cash pastelaria stays out

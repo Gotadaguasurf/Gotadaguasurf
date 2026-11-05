@@ -103,10 +103,26 @@ Deno.serve(async (req) => {
 
   // ── Arrumação: mover / listar / renomear (6 Out 2026: «não quero os do
   //    Manjar nas pastas da Water») — mesmas permissões do upload.
-  if (body.action === 'move' || body.action === 'list' || body.action === 'rename' || body.action === 'trash') {
+  if (body.action === 'move' || body.action === 'list' || body.action === 'rename' || body.action === 'trash' || body.action === 'download') {
     try {
       const token = await accessToken(db)
       const h = { authorization: 'Bearer ' + token, 'content-type': 'application/json' }
+      // 5 Nov 2026: the Month close «Print pack» merges every invoice of a bank statement into one PDF
+      if (body.action === 'download') {
+        const fileId = String(body.file_id || '').trim(); if (!fileId) return json({ error: 'file_id obrigatório' }, 400)
+        const meta = await (await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,mimeType,size&supportsAllDrives=true`, { headers: h })).json()
+        if (meta?.error) return json({ error: meta.error.message || 'ficheiro não encontrado' }, 404)
+        if (Number(meta.size || 0) > MAX_BYTES) return json({ error: 'Ficheiro acima de 20 MB' }, 413)
+        const native = String(meta.mimeType || '').startsWith('application/vnd.google-apps')
+        const url = native
+          ? `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=application/pdf`
+          : `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&supportsAllDrives=true`
+        const r = await fetch(url, { headers: { authorization: 'Bearer ' + token } })
+        if (!r.ok) return json({ error: 'download falhou (' + r.status + ')' }, 502)
+        const buf = new Uint8Array(await r.arrayBuffer())
+        let bin = ''; for (let i = 0; i < buf.length; i += 8192) bin += String.fromCharCode(...buf.subarray(i, i + 8192))
+        return json({ id: meta.id, name: meta.name, mime: native ? 'application/pdf' : meta.mimeType, data_base64: btoa(bin) })
+      }
       if (body.action === 'list') {
         const q = encodeURIComponent(`'${String(body.folder_id||'')}' in parents and trashed = false`)
         // 6 Out 2026: pagina até ao fim (pastas de Verão têm >200 ficheiros)

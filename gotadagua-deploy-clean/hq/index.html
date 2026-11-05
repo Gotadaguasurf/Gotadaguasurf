@@ -3048,7 +3048,8 @@ function fechoBanksPaint(){
   } else {
     const all = FECHO.bankRows.filter(r => r.m.bank === view), todo = all.filter(r => !r.st.ok);
     const rows = filter === 'todo' ? todo : filter === 'done' ? all.filter(r => r.st.ok) : all;
-    right = pill(filter === 'all', `All ${all.length}`, `FECHO.bankFilter='all';fechoBanksPaint()`) + pill(filter === 'todo', `To do ${todo.length}`, `FECHO.bankFilter='todo';fechoBanksPaint()`) + pill(filter === 'done', `Done ${all.length - todo.length}`, `FECHO.bankFilter='done';fechoBanksPaint()`);
+    right = pill(filter === 'all', `All ${all.length}`, `FECHO.bankFilter='all';fechoBanksPaint()`) + pill(filter === 'todo', `To do ${todo.length}`, `FECHO.bankFilter='todo';fechoBanksPaint()`) + pill(filter === 'done', `Done ${all.length - todo.length}`, `FECHO.bankFilter='done';fechoBanksPaint()`)
+      + (all.length ? ` <button class="btn btn-s btn-sm" id="fechoPrintBtn" title="One PDF: the ${BANK_LABEL[view]} statement of the month with a mark on each line, then every invoice in the same order" onclick="fechoPrintPack('${view}')">${ic('printer')} Print pack</button>` : '');
     hint = `Every movement of ${fechoMonthLabel(FECHO.month)} on the ${BANK_LABEL[view]} statement, in date order. ✓ = expense with its invoice (or none needed) · ✗ = invoice or expense line missing.`;
     const lineTxt = (r) => r.linked.length ? r.linked.map(l => `${esc(l.company || '')}<span class="cell-sub">${esc(l.category_name || 'no category')} · ${esc(locLabel(l.location_slug))}${l.invoice_number ? ' · ' + esc(l.invoice_number) : ''}</span>`).join('')
       : (r.sales || []).length ? r.sales.map(l => `${esc(l.company || '')}<span class="cell-sub">Partner invoice · ${esc(l.invoice_number || '')}</span>`).join('') : '<span class="hint">—</span>';
@@ -3073,6 +3074,104 @@ function fechoBanksPaint(){
       <div class="card-body hq-filters" style="padding-top:4px;gap:8px;flex-wrap:wrap"><div class="hq-pills">${viewPills}</div>${right ? `<div class="hq-pills" style="margin-left:auto">${right}</div>` : ''}</div>
       <div class="tbl-wrap">${table}</div>
     </div>`;
+}
+// ── Print pack: one PDF per bank and month — the statement with OK/FALTA and the
+//    document number on each line, then every invoice in that order, each stamped
+//    with its number. Miguel, 5 Nov 2026: «imprimir por banco todas as faturas de
+//    uma vez e o extrato do banco com os certos do que está lá impresso».
+function fechoDriveId(link){ const m = String(link || '').match(/\/d\/([\w-]+)|[?&]id=([\w-]+)/); return m ? (m[1] || m[2]) : null; }
+function fechoPackPlan(rows){
+  const docs = [], byFile = new Map();
+  const out = rows.map(r => {
+    const files = r.linked.concat(r.sales || []).filter(l => l.drive_link).map(l => ({ id: fechoDriveId(l.drive_link), who: l.company || '', n: l.invoice_number || '' })).filter(f => f.id);
+    const nums = [];
+    files.forEach(f => {
+      if (!byFile.has(f.id)) { byFile.set(f.id, docs.length + 1); docs.push({ ...f, no: docs.length + 1, date: r.m.movement_date, amount: Math.abs(Number(r.m.amount)), desc: r.m.description || '' }); }
+      nums.push(byFile.get(f.id));
+    });
+    return { r, nums: [...new Set(nums)] };
+  });
+  return { lines: out, docs };
+}
+async function fechoLoadPdfLib(){
+  if (window.PDFLib) return window.PDFLib;
+  await new Promise((ok, ko) => { const s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js'; s.onload = ok; s.onerror = () => ko(new Error('pdf-lib did not load')); document.head.appendChild(s); });
+  return window.PDFLib;
+}
+async function fechoPrintPack(bank){
+  const btn = $('fechoPrintBtn'); const label = btn ? btn.innerHTML : '';
+  const say = (s) => { if (btn) btn.textContent = s; };
+  try {
+    const rows = FECHO.bankRows.filter(r => r.m.bank === bank).slice().sort((a, b) => String(a.m.movement_date).localeCompare(String(b.m.movement_date)));
+    const plan = fechoPackPlan(rows);
+    say('Loading…');
+    const { PDFDocument, StandardFonts, rgb } = await fechoLoadPdfLib();
+    const pdf = await PDFDocument.create();
+    const font = await pdf.embedFont(StandardFonts.Helvetica), bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+    const clean = (s) => String(s || '').normalize('NFC').replace(/[^\x20-\x7E -ÿ€]/g, ' ');
+    const fit = (s, w, f, size) => { s = clean(s); while (s && f.widthOfTextAtSize(s, size) > w) s = s.slice(0, -1); return s; };
+    const eurTxt = (n) => '€' + Number(n).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    // statement pages (A4 landscape)
+    const W = 842, H = 595, M = 32, cols = [[M, 'Date', 62], [M + 62, 'Bank movement', 250], [M + 312, 'Amount', 70], [M + 392, 'Expense in the app', 230], [M + 632, 'Status', 120], [M + 752, 'Doc', 58]];
+    let page, y;
+    const head = () => {
+      page = pdf.addPage([W, H]); y = H - M;
+      page.drawText(clean(`${BANK_LABEL[bank] || bank} — ${fechoMonthLabel(FECHO.month)}`), { x: M, y, size: 15, font: bold }); y -= 16;
+      page.drawText(clean(`Water Movements · ${rows.length} movements · ${plan.docs.length} documents attached after this statement · printed ${new Date().toLocaleDateString('en-GB')}`), { x: M, y, size: 8.5, font, color: rgb(.35, .38, .45) }); y -= 18;
+      cols.forEach(([x, t]) => page.drawText(t.toUpperCase(), { x, y, size: 7.5, font: bold, color: rgb(.35, .38, .45) })); y -= 6;
+      page.drawLine({ start: { x: M, y }, end: { x: W - M, y }, thickness: .6, color: rgb(.8, .82, .86) }); y -= 13;
+    };
+    head();
+    let ok = 0;
+    for (const { r, nums } of plan.lines) {
+      if (y < M + 20) head();
+      const amt = Number(r.m.amount), who = r.linked.length ? r.linked.map(l => l.company).join(', ') : (r.sales || []).map(l => `${l.company} ${l.invoice_number}`).join(', ');
+      const status = r.st.ok ? 'OK' : 'FALTA'; if (r.st.ok) ok++;
+      page.drawText(clean(fmtDia(r.m.movement_date)), { x: cols[0][0], y, size: 8.5, font });
+      page.drawText(fit(r.m.description, cols[1][2] - 8, font, 8.5), { x: cols[1][0], y, size: 8.5, font });
+      const at = (amt > 0 ? '+' : '') + eurTxt(Math.abs(amt)); page.drawText(at, { x: cols[2][0] + cols[2][2] - 10 - font.widthOfTextAtSize(at, 8.5), y, size: 8.5, font, color: amt > 0 ? rgb(.1, .5, .29) : rgb(0, 0, 0) });
+      page.drawText(fit(who || '—', cols[3][2] - 8, font, 8.5), { x: cols[3][0], y, size: 8.5, font });
+      page.drawText(fit(`${status} · ${r.st.label}`, cols[4][2] - 6, bold, 8.5), { x: cols[4][0], y, size: 8.5, font: bold, color: r.st.ok ? rgb(.1, .5, .29) : rgb(.77, .24, .24) });
+      page.drawText(nums.length ? nums.map(n => '#' + n).join(' ') : '', { x: cols[5][0], y, size: 8.5, font: bold });
+      y -= 4; page.drawLine({ start: { x: M, y }, end: { x: W - M, y }, thickness: .3, color: rgb(.9, .91, .93) }); y -= 11;
+    }
+    if (y < M + 30) head();
+    y -= 6; page.drawText(clean(`${ok} of ${rows.length} lines OK · ${rows.length - ok} FALTA`), { x: M, y, size: 9.5, font: bold });
+    // the documents, each stamped with its number
+    const { data: { session } } = await sb.auth.getSession();
+    const failed = [];
+    for (const d of plan.docs) {
+      say(`Invoice ${d.no}/${plan.docs.length}…`);
+      try {
+        const r = await fetch(`${cfg.url}/functions/v1/drive-upload`, { method: 'POST', headers: { 'Authorization': 'Bearer ' + session.access_token, 'Content-Type': 'application/json', 'apikey': cfg.anonKey }, body: JSON.stringify({ action: 'download', file_id: d.id }) });
+        const j = await r.json(); if (!r.ok || !j.data_base64) throw new Error(j.error || r.status);
+        const bytes = Uint8Array.from(atob(j.data_base64), c => c.charCodeAt(0));
+        const stamp = clean(`#${d.no} · ${fmtDia(d.date)} · ${eurTxt(d.amount)} · ${d.who}${d.n ? ' · ' + d.n : ''}`);
+        const mark = (pg) => { const { width, height } = pg.getSize(); pg.drawRectangle({ x: 0, y: height - 18, width, height: 18, color: rgb(1, 1, 1), opacity: .85 }); pg.drawText(fit(stamp, width - 20, bold, 9), { x: 10, y: height - 13, size: 9, font: bold, color: rgb(.12, .43, .66) }); };
+        if (/pdf/i.test(j.mime)) {
+          const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
+          const pages = await pdf.copyPages(src, src.getPageIndices());
+          pages.forEach((pg, k) => { pdf.addPage(pg); if (k === 0) mark(pg); });
+        } else if (/png|jpe?g/i.test(j.mime)) {
+          const img = /png/i.test(j.mime) ? await pdf.embedPng(bytes) : await pdf.embedJpg(bytes);
+          const pg = pdf.addPage([595, 842]); const s = Math.min(555 / img.width, 790 / img.height);
+          pg.drawImage(img, { x: (595 - img.width * s) / 2, y: (820 - img.height * s) / 2, width: img.width * s, height: img.height * s }); mark(pg);
+        } else throw new Error('not a PDF or image (' + j.mime + ')');
+      } catch (e) { failed.push(`#${d.no} ${d.who}: ${e.message || e}`); }
+    }
+    if (failed.length) {
+      const pg = pdf.addPage([W, H]); let yy = H - M;
+      pg.drawText('Documents that could not be added', { x: M, y: yy, size: 13, font: bold }); yy -= 20;
+      failed.forEach(f => { pg.drawText(fit(f, W - 2 * M, font, 9), { x: M, y: yy, size: 9, font }); yy -= 13; });
+    }
+    const blob = new Blob([await pdf.save()], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    const w = window.open(url, '_blank');
+    if (!w) { const a = document.createElement('a'); a.href = url; a.download = `${BANK_LABEL[bank] || bank} ${FECHO.month} - pack.pdf`; a.click(); }
+    toast('fechoToast', failed.length ? 'warn' : 'ok', `${BANK_LABEL[bank] || bank} pack: ${rows.length} lines, ${plan.docs.length - failed.length} invoices${failed.length ? `, ${failed.length} could not be added (listed on the last page)` : ''}`);
+  } catch (e) {
+    toast('fechoToast', 'err', 'Print pack failed: ' + (e.message || e));
+  } finally { if (btn) btn.innerHTML = label; }
 }
 function fechoLaunch(bankId){
   const b = (FECHO.mvAll || []).find(x => x.id === bankId); if (!b) return;
