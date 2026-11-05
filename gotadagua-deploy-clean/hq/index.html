@@ -320,7 +320,7 @@ let FX_CACHE     = { date:null, rates:{ EUR:1 } };
 // that can grow past that (bookings, hq_invoices, ledger_entries) MUST be
 // fetched with pagination — otherwise numbers silently truncate. This
 // mirrors fetchAllBookings() in /partners/index.html.
-const BANK_LABEL = { santander:'Santander', cgd:'CGD', paypal:'PayPal' };
+const BANK_LABEL = { santander:'Santander', cgd:'CGD', paypal:'PayPal', santander_card:'Santander card' };
 async function fetchAllPaged(build){
   const PAGE = 1000;
   let all = [];
@@ -2926,7 +2926,7 @@ async function fechoMarkNoInvoice(id){
 // ── Bank by bank (Miguel, 3 Nov 2026: «ver por extrato… linha a linha… e os que são só fatura sem banco»).
 //    Every movement of the month on one statement, in date order, ✓ or ✗, for whoever reconciles the banks
 //    and the invoices; then the month's expenses that no bank movement pays.
-const FECHO_BANKS = ['santander', 'cgd', 'paypal'];
+const FECHO_BANKS = ['santander', 'cgd', 'paypal', 'santander_card'];   // the card (Pedro Paiva *0391) is paid off by PAG.CTA.CARTAO on the Santander statement
 function fechoBankStatus(m, linked){
   if (Number(m.amount) > 0) return { ok:true, label:'Income' };
   if (m.kind === 'income') return { ok:true, label:'Refund (less income)' };   // guest refunds: booked against the revenue, not an expense
@@ -2934,6 +2934,7 @@ function fechoBankStatus(m, linked){
   if (m.kind === 'internal_transfer' || m.internal_transfer_id) return { ok:true, label:'Transfer between accounts' };
   if (m.kind === 'card_settlement') return { ok:true, label:'Card bill' };
   if (m.kind === 'other') return { ok:true, label:'Not an expense (see note)' };
+  if (!linked.length && /\[no ledger /.test(String(m.notes || ''))) return { ok:true, label:'In the camp ledger' };   // camp purchases paid with the company card
   if (!linked.length) return /^\[sem fatura/i.test(String(m.notes || '')) ? { ok:true, label:'No invoice (noted)' } : { ok:false, label:'No expense line', action:'add' };
   const missing = linked.filter(l => docStatus(l) === 'falta');
   if (missing.length) return { ok:false, label:'Invoice missing', action:'attach', line: missing[0] };
@@ -3025,7 +3026,7 @@ function fechoBanksPaint(){
   const pill = (on, label, js) => `<button class="hq-pill${on ? ' active' : ''}" onclick="${js}">${label}</button>`;
   const badge = (n, cls) => n ? ` <span class="badge ${cls || 'badge-red'}" style="margin-left:4px">${n}</span>` : '';
   const viewPills = pill(view === 'missing', `Missing${badge(missing.length)}`, `FECHO.bankSel='missing';fechoBanksPaint()`) +
-    FECHO_BANKS.map(b => { const n = FECHO.bankRows.filter(r => r.m.bank === b); return pill(view === b, `${BANK_LABEL[b]} · ${n.length}${badge(n.filter(r => !r.st.ok).length)}`, `FECHO.bankSel='${b}';fechoBanksPaint()`); }).join('') +
+    FECHO_BANKS.filter(b => b !== 'santander_card' || FECHO.bankRows.some(r => r.m.bank === b)).map(b => { const n = FECHO.bankRows.filter(r => r.m.bank === b); return pill(view === b, `${BANK_LABEL[b]} · ${n.length}${badge(n.filter(r => !r.st.ok).length)}`, `FECHO.bankSel='${b}';fechoBanksPaint()`); }).join('') +
     pill(view === 'nobank', `No bank movement · ${nb.length}${badge(nb.filter(l => docStatus(l) === 'falta').length, 'badge-amber')}`, `FECHO.bankSel='nobank';fechoBanksPaint()`);
   const docBtns = (ids) => `<button class="btn btn-s btn-sm" onclick="fechoAttach('${ids}')">${ic('paperclip')} Attach</button> <button class="btn btn-s btn-sm" onclick="fechoPasteLink('${ids}')">${ic('link')} Link</button> <button class="btn btn-s btn-sm" title="Only when no document exists (bank fee, personal expense) — you will be asked why" onclick="fechoMarkNoInvoice('${ids}')">No invoice needed</button>`;
   let hint = '', table = '', right = '';
