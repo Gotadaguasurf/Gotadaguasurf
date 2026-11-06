@@ -270,7 +270,23 @@ Deno.serve(async (req) => {
     let inviteLinkForAdmin: string | null = null;
     if (inviteEmailError) {
       if (inviteEmailError.message?.includes('already been registered')) {
-        // fine — the person exists; memberships are refreshed below
+        // The person exists; memberships are refreshed below. If they never set a
+        // password (6 Nov 2026: Francisco's invite link had expired), send a fresh
+        // «choose your password» link — otherwise a re-invite sent nothing at all.
+        const { data: prof } = await supabaseAdmin.from('platform_profiles').select('password_set_at').eq('email', lowerEmail).maybeSingle();
+        if (!prof?.password_set_at) {
+          const base = (redirectTo || Deno.env.get('SITE_URL') || '').split('?')[0];
+          const { data: linkData, error: linkErr } = await supabaseAdmin.auth.admin.generateLink({
+            type: 'recovery', email: lowerEmail, options: { redirectTo: base ? `${base}?reset=1` : undefined },
+          });
+          if (!linkErr && linkData?.properties?.action_link) {
+            inviteLinkForAdmin = linkData.properties.action_link;
+            try {
+              await sendInviteViaGmail(supabaseAdmin, { to: lowerEmail, fullName: fullName || '', actionLink: inviteLinkForAdmin, invitedBy: caller.email || "Gota Dagua" });
+              emailSent = true;
+            } catch (mailErr) { console.error('create-platform-invite: re-invite Gmail send failed', mailErr); }
+          } else console.error('create-platform-invite: re-invite link failed', linkErr);
+        }
       } else {
         // Supabase Auth could not email. Make the link ourselves and send it
         // through the shared Gmail mailbox; if even that fails, hand the link
