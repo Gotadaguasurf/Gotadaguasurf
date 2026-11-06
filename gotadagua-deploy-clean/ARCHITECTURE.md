@@ -68,9 +68,18 @@ Movements (LK).
 - RLS helper functions in Postgres: `has_location_access(location_id)`,
   `is_hq_member()`. Never query `auth.users` inside a policy (permission
   denied for non-admin roles — bit us once).
-- Invites: Settings → `create-platform-invite` Edge Function →
-  `workspace_invitations` + `invitation_workspace_access`; the person sets a
-  password via the invite link.
+- Invites (since 6 Nov 2026, `supabase/team-access-invites.sql`): Settings →
+  `create-platform-invite` (one open invite per email, same token on resend;
+  creates the auth user without any Supabase email, pre-creates memberships,
+  sends `/?accept=<invitation_token>` through the shared Gmail) → the person
+  opens the link and `accept-invite` (`--no-verify-jwt`) sets the password,
+  stamps `password_set_at`, adds missing memberships, marks the invite
+  accepted. The link has no 24 h limit: open until the password is created or
+  the invite is cancelled (`expires_at` = 60-day safety net, `INVITE_VALID_DAYS`).
+  Old Supabase links (`?invite=1`, `type=invite|recovery`) still work.
+  Settings → Team lists each person as Active (last sign-in, from
+  `team_access_people()`), Invited or Never signed in; Cancel invite /
+  Deactivate are soft (invite canceled, profile + memberships inactive).
 
 ## The money flows (the three that matter)
 

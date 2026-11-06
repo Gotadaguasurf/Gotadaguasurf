@@ -213,6 +213,11 @@
     .access-role{margin-top:2px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600}
     .access-meta{margin-top:4px;font-size:12.5px;color:var(--muted);line-height:1.5}
     .access-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+    .access-status{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:8px;font-size:12.5px;color:var(--muted)}
+    .access-actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}
+    .role-hint{font-size:12.5px;color:var(--muted);line-height:1.5;margin-top:-4px}
+    .role-hint b{color:var(--ink);font-weight:600}
+    .team-summary{font-size:12.5px;color:var(--muted);margin-top:4px}
     .inline-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
     #toast{
       position:fixed;
@@ -243,11 +248,12 @@
     @media (max-width:900px){
       .access-user-top{flex-direction:column;align-items:flex-start}
       .access-user-top .btn{align-self:flex-start}
+      .access-actions{justify-content:flex-start}
     }
     @media (max-width:740px){
       .container{padding:20px var(--page-pad) 40px}
       .section{margin-bottom:24px}
-      .field-row{grid-template-columns:1fr}
+      .field-row,.field-row.team-access-row{grid-template-columns:1fr}
       .grid{grid-template-columns:1fr}
       .area-pills{gap:8px}
       .inline-actions{width:100%}
@@ -312,7 +318,7 @@
             </div>
           </div>
           <div class="inline-actions">
-            <button class="btn btn-p" type="button" onclick="completePasswordFlow()">Save password</button>
+            <button class="btn btn-p" id="passwordFlowSaveButton" type="button" onclick="completePasswordFlow()">Save password</button>
             <button class="btn btn-s" id="passwordFlowCloseButton" type="button" onclick="hidePasswordFlow()">Close</button>
           </div>
         </div>
@@ -396,13 +402,13 @@
         <div class="section-head page-head">
           <div>
             <div class="section-title">Settings</div>
-            <div class="section-sub">Workspace access, team visibility, and connection control.</div>
+            <div class="section-sub">Who can open what, and your own password.</div>
           </div>
         </div>
         <div class="access-grid">
-          <div class="card card-body">
+          <div class="card card-body" id="teamAccessCard">
             <div class="section-title">Team Access</div>
-            <div class="section-sub">Invite people, define what they can open, and keep control of each workspace.</div>
+            <div class="section-sub">Invite someone, choose their role and the areas they can open.</div>
             <div id="teamAccessModeNotice" class="status-msg status-info" style="margin-top:12px"></div>
             <div class="settings-form">
               <div class="field-row team-access-row">
@@ -416,34 +422,34 @@
                 </div>
                 <div class="field">
                   <label>Role</label>
-                  <select id="accessRole">
+                  <select id="accessRole" onchange="renderRoleHint()">
                     <option value="Viewer">Viewer</option>
                     <option value="Camp Tab Staff" selected>Camp Tab Staff</option>
                     <option value="Bar Man">Bar Man</option>
                     <option value="Head Social Host">Head Social Host</option>
                     <option value="Location Manager">Location Manager</option>
-                    <option value="Local Manager">Local Manager (Camp Tab + Ledger, no HQ lines)</option>
+                    <option value="Local Manager">Local Manager</option>
                     <option value="Finance">Finance</option>
                     <option value="Admin">Admin</option>
                     <option value="Owner">Owner</option>
                   </select>
                 </div>
               </div>
+              <div class="role-hint" id="accessRoleHint"></div>
               <div class="field">
                 <label>Allowed Areas</label>
                 <div class="area-pills" id="areaPills"></div>
               </div>
               <div class="inline-actions">
-                <button class="btn btn-p" onclick="addAccessUser()">Send invite email</button>
-                <button class="btn btn-s" onclick="resetAccessForm()">Clear</button>
+                <button class="btn btn-p" id="accessPrimaryBtn" onclick="addAccessUser()">Send invite</button>
+                <button class="btn btn-s" id="accessSecondaryBtn" onclick="resetAccessForm()">Clear</button>
               </div>
             </div>
-            <div class="access-user-list" id="accessUserList"></div>
           </div>
-          <div class="card card-body">
-            <div class="section-title">Pending Invites</div>
-            <div class="section-sub">These invites are waiting for people to finish setup and choose their password.</div>
-            <div class="invite-list" id="inviteList"></div>
+          <div class="card card-body" id="teamListCard">
+            <div class="section-title">Team</div>
+            <div class="section-sub" id="teamListSub">Everyone with access. Invited people stay here until they create their password.</div>
+            <div class="access-user-list" id="accessUserList"></div>
           </div>
           <div class="card card-body">
             <div class="section-title">Account Security</div>
@@ -828,6 +834,71 @@
     let __workspaceRows = [];
     let __accessModel = 'legacy';
     let __editingAccessEmail = '';
+    // email → { user_id, password_set_at, last_sign_in_at, active } for the Team list
+    // (team_access_people() RPC; falls back to platform_profiles without sign-in dates)
+    let __teamProfiles = new Map();
+
+    // One line per role so the invite form says what the person will see.
+    // Areas still decide WHICH camps / pages; the role decides what they get there.
+    const ROLE_HINTS = {
+      'Viewer':           'Opens the ticked areas, nothing else.',
+      'Camp Tab Staff':   'At a camp: only the Camp Tab (charge guests). Other ticked areas open normally.',
+      'Bar Man':          'At a camp: only the Camp Tab, for the bar.',
+      'Head Social Host': 'At a camp: only the Camp Tab, for activities and guests.',
+      'Location Manager': 'Runs the camp: the whole camp hub, Ledger with the lines HQ pays included.',
+      'Local Manager':    'Camp Tab + Operations Ledger of the camp, without the lines HQ pays (salaries, flights, transfers).',
+      'Finance':          'Opens the ticked areas and manages their finance.',
+      'Admin':            'Opens the ticked areas and can invite and manage the team.',
+      'Owner':            'Opens the ticked areas and can invite and manage the team. HQ only with the HQ area.'
+    };
+
+    function roleHintText(label){
+      return ROLE_HINTS[label] || '';
+    }
+
+    function renderRoleHint(){
+      const el = document.getElementById('accessRoleHint');
+      const sel = document.getElementById('accessRole');
+      if(!el || !sel) return;
+      const hint = roleHintText(sel.value);
+      el.innerHTML = hint ? `<b>${escapeHtml(sel.value)}</b> — ${escapeHtml(hint)}` : '';
+    }
+
+    // ?accept=<invitation_token> — our own invite link (no time limit, see accept-invite)
+    const INVITE_TOKEN_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    function getAcceptToken(){
+      const raw = (getAuthParams().get('accept') || '').trim();
+      return INVITE_TOKEN_RE.test(raw) ? raw.toLowerCase() : '';
+    }
+
+    function inviteAcceptLink(token){
+      return `${window.location.origin}/?accept=${encodeURIComponent(token)}`;
+    }
+
+    // The state shown next to each person in Settings → Team.
+    //   active  — has a password (with the last sign-in date when known)
+    //   invited — no password yet, an invite is open (the link still works)
+    //   never   — no password and no open invite (e.g. an old Supabase link that expired)
+    function teamMemberStatus({ passwordSetAt=null, lastSignInAt=null, invite=null } = {}){
+      const open = !!invite && ['pending','sent'].includes(String(invite.status || '').toLowerCase());
+      if(passwordSetAt){
+        return { key:'active', badge:'Active', tone:'green', detail: lastSignInAt ? `Last sign-in ${formatDateShort(lastSignInAt)}` : 'No sign-in yet' };
+      }
+      if(open){
+        const sent = invite.lastSentAt || invite.createdAt || '';
+        return { key:'invited', badge:'Invited', tone:'amber', detail: `Not accepted yet${sent ? ` · invite sent ${formatDateShort(sent)}` : ''}` };
+      }
+      return { key:'never', badge:'Never signed in', tone:'grey', detail: 'No password yet — resend the invite' };
+    }
+
+    // Settings → Team Access is for people who can manage the team: the owner,
+    // a super_admin, or anyone with can_manage_team on a workspace.
+    function canManageTeam(){
+      const OWNER_EMAILS = new Set(window.__PLATFORM_OWNER_EMAILS || ['miguel@gotadaguasurf.com']);
+      const role = String(__currentProfile?.role || '').toLowerCase();
+      const email = String(__currentProfile?.email || '').toLowerCase();
+      return role === 'super_admin' || OWNER_EMAILS.has(email) || (__currentAccessRows || []).some(row => row.can_manage_team === true);
+    }
 
     function isCampWorkspaceKey(key=''){
       return WORKSPACES.some(item => item.key === key && item.type === 'camp');
@@ -963,6 +1034,7 @@
         query.get('type') ||
         query.get('invite') === '1' ||
         query.get('reset') === '1' ||
+        query.get('accept') ||
         hash.get('access_token') ||
         hash.get('refresh_token')
       );
@@ -1033,6 +1105,38 @@
           primaryNoteText:'',
           secondaryNoteText:'This step only appears once for a new invited account.'
         });
+        return;
+      }
+      if(state === 'accept-loading'){
+        apply({
+          chipText:'',
+          titleText:'Create your password',
+          copyText:'Opening your invite…',
+          showPassword:false, showPrimary:false, showSecondary:false,
+          primaryNoteText:'', secondaryNoteText:''
+        });
+        return;
+      }
+      if(state === 'accept-setup'){
+        apply({
+          chipText:'',
+          titleText:'Create your password',
+          copyText:`Welcome to Gota Dagua. Choose the password you will use with ${meta.email || 'this email'} to log in.`,
+          showPassword:false, showPrimary:false, showSecondary:false,
+          primaryNoteText:'',
+          secondaryNoteText:'This link keeps working until you create your password.'
+        });
+        return;
+      }
+      if(state === 'invite-closed'){
+        apply({
+          chipText:'',
+          titleText:'This invite link is no longer active',
+          copyText: meta.text || 'Ask Miguel to send you a new invite.',
+          showPassword:false, showPrimary:false, showSecondary:true,
+          primaryNoteText:'', secondaryNoteText:''
+        });
+        document.getElementById('forgotPasswordButton').textContent = 'Back to login';
         return;
       }
       if(state === 'reset-setup'){
@@ -1233,65 +1337,92 @@
       `).join('');
     }
 
+    // One row per person: everyone with active memberships, plus open invites
+    // whose person has no membership row yet. Status from the password stamp,
+    // the last sign-in (team_access_people) and the open invite.
+    function teamPeople(){
+      const invByEmail = new Map();
+      pendingInvites.forEach(inv => {
+        const key = String(inv.email || '').toLowerCase();
+        if(key && !invByEmail.has(key)) invByEmail.set(key, inv); // newest first
+      });
+      const people = [];
+      const seen = new Set();
+      accessUsers.forEach(user => {
+        const key = String(user.email || '').toLowerCase();
+        const profile = __teamProfiles.get(key) || null;
+        if(profile && profile.active === false) return; // deactivated
+        seen.add(key);
+        people.push({ ...user, invite: invByEmail.get(key) || null, profile });
+      });
+      pendingInvites.forEach(inv => {
+        const key = String(inv.email || '').toLowerCase();
+        if(!key || seen.has(key)) return;
+        seen.add(key);
+        const profile = __teamProfiles.get(key) || null;
+        people.push({ userId: profile?.user_id || '', email: inv.email, meta: inv.fullName || profile?.full_name || '', role: inv.role, areas: inv.areas || [], workspaceRoles:{}, invite: inv, profile, inviteOnly: true });
+      });
+      people.forEach(p => {
+        // Without the profile row we cannot tell — show «Active» with no date
+        // rather than telling the owner that everyone «never signed in».
+        const unknown = !p.profile && !p.inviteOnly;
+        p.status = teamMemberStatus({ passwordSetAt: unknown ? 'unknown' : (p.profile?.password_set_at || null), lastSignInAt: p.profile?.last_sign_in_at || null, invite: p.invite });
+        if(unknown) p.status.detail = '';
+      });
+      const order = { invited:0, never:1, active:2 };
+      people.sort((x, y) => (order[x.status.key] - order[y.status.key])
+        || String(y.profile?.last_sign_in_at || '').localeCompare(String(x.profile?.last_sign_in_at || ''))
+        || String(x.meta || x.email).localeCompare(String(y.meta || y.email)));
+      return people;
+    }
+
     function renderAccessUsers(){
-      if(!accessUsers.length){
-        document.getElementById('accessUserList').innerHTML = `<div class="access-user"><div class="access-email">No active team access loaded yet.</div><div class="access-meta">Once memberships exist, they will appear here.</div></div>`;
+      const list = document.getElementById('accessUserList');
+      const sub = document.getElementById('teamListSub');
+      if(!list) return;
+      const people = teamPeople();
+      if(!people.length){
+        list.innerHTML = `<div class="empty-state">${AppShell.icon('users')}<div class="empty-title">No one here yet</div><p>Invite someone with the form above.</p></div>`;
         return;
       }
-      document.getElementById('accessUserList').innerHTML = accessUsers.map(user=>`
-        <div class="access-user">
+      const waiting = people.filter(p => p.status.key !== 'active').length;
+      if(sub) sub.innerHTML = `Everyone with access. Invited people stay here until they create their password.<div class="team-summary">${people.length} ${people.length === 1 ? 'person' : 'people'}${waiting ? ` · ${waiting} without a password yet` : ''}</div>`;
+      const myEmail = String(__currentProfile?.email || '').toLowerCase();
+      const OWNER_EMAILS = new Set(window.__PLATFORM_OWNER_EMAILS || ['miguel@gotadaguasurf.com']);
+      list.innerHTML = people.map(person => {
+        const email = person.email;
+        const key = String(email).toLowerCase();
+        const name = person.meta || '';
+        const st = person.status;
+        const attr = escapeAttr(email);
+        const btn = (label, fn, cls='btn-s') => `<button class="btn ${cls} btn-sm" type="button" data-email="${attr}" onclick="${fn}(this.dataset.email)">${label}</button>`;
+        const actions = [];
+        if(st.key === 'active'){
+          if(!person.inviteOnly) actions.push(btn('View as', 'setPreviewAccess'));
+          if(!person.inviteOnly) actions.push(btn('Edit', 'beginEditAccessUser'));
+          if(key !== myEmail && !OWNER_EMAILS.has(key) && person.userId) actions.push(btn('Deactivate', 'deactivateAccessUser', 'btn-r'));
+        } else {
+          actions.push(btn('Resend invite', 'resendInvite'));
+          if(person.invite?.token) actions.push(btn('Copy link', 'copyInviteLink'));
+          if(!person.inviteOnly) actions.push(btn('Edit', 'beginEditAccessUser'));
+          if(key !== myEmail && !OWNER_EMAILS.has(key)) actions.push(btn('Cancel invite', 'cancelPendingInvite', 'btn-r'));
+        }
+        return `
+        <div class="access-user" data-person="${attr}" data-status="${st.key}">
           <div class="access-user-top">
             <div>
-              <div class="access-email">${user.email}</div>
-              <div class="access-role">${user.role}</div>
-              ${user.meta ? `<div class="access-meta">${user.meta}</div>` : ``}
+              <div class="access-email">${escapeHtml(name || email)}</div>
+              ${name ? `<div class="access-meta" style="margin-top:2px">${escapeHtml(email)}</div>` : ``}
+              <div class="access-role">${escapeHtml(person.role || '')}</div>
+              <div class="access-status"><span class="badge badge-${st.tone}">${st.badge}</span>${st.detail ? `<span>${escapeHtml(st.detail)}</span>` : ``}</div>
             </div>
-            <div class="inline-actions">
-              <button class="btn btn-s" onclick="setPreviewAccess('${user.email}')">View as this person</button>
-              <button class="btn btn-s" onclick="beginEditAccessUser('${user.email}')">Edit</button>
-              ${user.email === (__currentProfile?.email || '') ? '' : `<button class="btn btn-r" onclick="removeAccessUser('${user.email}')">Remove access</button>`}
-            </div>
+            <div class="access-actions">${actions.join('')}</div>
           </div>
           <div class="access-tags">
-            ${user.areas.map(areaKey=>{
-              return `<span class="badge badge-grey">${areaLabel(areaKey)}</span>`;
-            }).join('')}
+            ${(person.areas || []).filter(a => a !== 'settings').map(areaKey => `<span class="badge badge-grey">${escapeHtml(areaLabel(areaKey))}</span>`).join('') || `<span class="access-meta">No areas</span>`}
           </div>
-        </div>
-      `).join('');
-    }
-
-    function renderInviteList(){
-      const el = document.getElementById('inviteList');
-      if(!pendingInvites.length){
-        el.innerHTML = `<div class="access-user"><div class="access-email">No pending invites.</div><div class="access-meta">When you invite someone, their setup status will appear here.</div></div>`;
-        return;
-      }
-      el.innerHTML = pendingInvites.map(invite=>`
-        <div class="access-user">
-          <div class="access-user-top">
-            <div>
-              <div class="access-email">${invite.email}</div>
-              <div class="access-role">${invite.role}</div>
-              <div class="access-meta">${invite.fullName ? `${invite.fullName} · ` : ''}${inviteStatusLabel(invite.status)}${invite.expiresAt ? ` · Expires ${invite.expiresAt}` : ''}</div>
-            </div>
-            <div class="inline-actions">
-              <button class="btn btn-r" onclick="cancelPendingInvite('${invite.id}','${invite.email}')">Cancel invite</button>
-            </div>
-          </div>
-          <div class="access-tags">
-            ${invite.areas.map(areaKey=>{
-              return `<span class="badge badge-grey">${areaLabel(areaKey)}</span>`;
-            }).join('')}
-          </div>
-        </div>
-      `).join('');
-    }
-
-    function inviteStatusLabel(status){
-      const key = String(status || '').toLowerCase();
-      if(!key || key === 'pending' || key === 'sent') return 'Waiting for them to set a password';
-      return titleCaseWords(key);
+        </div>`;
+      }).join('');
     }
 
     function renderTeamAccessModeNotice(){
@@ -1299,7 +1430,7 @@
       if(!el) return;
       if(__accessModel === 'workspace-v2'){
         el.className = 'status-msg status-info';
-        el.innerHTML = `Each person gets an email link, sets their own password and can then log in. Password resets also go by email.`;
+        el.innerHTML = `The person gets an email with a personal link to create their password. The link keeps working until they do it, or until you cancel the invite.`;
         return;
       }
       el.className = 'status-msg status-warn';
@@ -1317,9 +1448,14 @@
     }
 
     function renderAccessSettings(){
+      const manage = !__currentProfile || canManageTeam();
+      ['teamAccessCard','teamListCard'].forEach(id => {
+        const el = document.getElementById(id);
+        if(el) el.style.display = manage ? '' : 'none';
+      });
       renderAreaPills();
+      renderRoleHint();
       renderAccessUsers();
-      renderInviteList();
       renderPreviewSelect();
       renderTeamAccessModeNotice();
     }
@@ -1341,11 +1477,12 @@
       roleEl.disabled = false;
       roleEl.value = 'Camp Tab Staff';
       window.__draftAreas = [];
-      const primary = document.querySelector('#page-settings .card .inline-actions .btn-p');
-      const secondary = document.querySelector('#page-settings .card .inline-actions .btn-s');
-      if(primary) primary.textContent = 'Send invite email';
+      const primary = document.getElementById('accessPrimaryBtn');
+      const secondary = document.getElementById('accessSecondaryBtn');
+      if(primary) primary.textContent = 'Send invite';
       if(secondary) secondary.textContent = 'Clear';
       renderAreaPills();
+      renderRoleHint();
     }
 
     function beginEditAccessUser(email){
@@ -1369,11 +1506,12 @@
         roleEl.value = user.role || 'Viewer';
         window.__draftAreas = [...(user.areas || [])];
       }
-      const primary = document.querySelector('#page-settings .card .inline-actions .btn-p');
-      const secondary = document.querySelector('#page-settings .card .inline-actions .btn-s');
+      const primary = document.getElementById('accessPrimaryBtn');
+      const secondary = document.getElementById('accessSecondaryBtn');
       if(primary) primary.textContent = isSelfEdit ? 'Save name' : 'Save access';
       if(secondary) secondary.textContent = 'Cancel';
       renderAreaPills();
+      renderRoleHint();
       document.getElementById('accessFullName').scrollIntoView({ behavior:'smooth', block:'center' });
       showToast(isSelfEdit ? "Editing your name — your own role and areas can't be changed here." : `Editing access for ${email}`);
     }
@@ -1411,7 +1549,11 @@
     function formatDateShort(value){
       if(!value) return '';
       try{
-        return new Date(value).toLocaleDateString('en-GB',{day:'2-digit',month:'short'});
+        const d = new Date(value);
+        if(isNaN(d.getTime())) return String(value);
+        const opts = { day:'numeric', month:'short' };
+        if(d.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric';
+        return d.toLocaleDateString('en-GB', opts);
       }catch(_error){
         return value;
       }
@@ -1436,11 +1578,11 @@
           targetByWorkspace.set(workspace.id,{ workspace, scope, areaKey });
         }
       });
+      // The callers put the dropped areas in their own result toast (a toast
+      // here was overwritten by the «saved» one a moment later).
+      buildWorkspaceAccessRows.lastDropped = dropped;
       if(dropped.length){
         console.warn('[Settings] buildWorkspaceAccessRows dropped areas with no matching workspaces row:', dropped);
-        if(typeof showToast === 'function'){
-          showToast(`These areas can't be granted yet — contact support: ${dropped.map(areaLabel).join(', ')}.`);
-        }
       }
       return Array.from(targetByWorkspace.values()).map(({ workspace, scope }) => ({
         workspace_id: workspace.id,
@@ -1599,6 +1741,7 @@
             showToast(`Saved — name and ${rows.length} area${rows.length === 1 ? '' : 's'} updated.`);
             return;
           }
+          const before = { role: existingUser.role, areas: [...(existingUser.areas || [])].sort().join('|'), name: existingUser.meta || '' };
           const profilePayload = {
             id: existingUser.userId,
             email,
@@ -1607,10 +1750,12 @@
             active: true,
             updated_at: new Date().toISOString()
           };
-          const { error: profileError } = await client
+          const { data: profileSaved, error: profileError } = await client
             .from('platform_profiles')
-            .upsert(profilePayload, { onConflict:'id' });
+            .upsert(profilePayload, { onConflict:'id' })
+            .select('id');
           if(profileError) throw profileError;
+          if(!profileSaved?.length) throw new Error(NO_PERMISSION_MSG);
           // Membership sync — UPSERT first, deactivate diff after. The
           // earlier "deactivate-then-upsert" ordering left users with zero
           // active memberships (and invisible in the team list) whenever
@@ -1620,11 +1765,14 @@
               user_id: existingUser.userId,
               ...row
             }));
+          const dropped = buildWorkspaceAccessRows.lastDropped || [];
           if(rows.length){
-            const { error: membershipError } = await client
+            const { data: upserted, error: membershipError } = await client
               .from('workspace_memberships')
-              .upsert(rows, { onConflict:'user_id,workspace_id' });
+              .upsert(rows, { onConflict:'user_id,workspace_id' })
+              .select('workspace_id');
             if(membershipError) throw membershipError;
+            if((upserted || []).length < rows.length) throw new Error(NO_PERMISSION_MSG);
           }
           const keepIds = new Set(rows.map(r => r.workspace_id));
           const { data: existingActive, error: readErr } = await client
@@ -1637,137 +1785,194 @@
             .map(r => r.workspace_id)
             .filter(id => !keepIds.has(id));
           if(dropIds.length){
-            const { error: deactivateError } = await client
+            const { data: deactivated, error: deactivateError } = await client
               .from('workspace_memberships')
               .update({ active:false, updated_at:new Date().toISOString() })
               .eq('user_id', existingUser.userId)
-              .in('workspace_id', dropIds);
+              .in('workspace_id', dropIds)
+              .select('workspace_id');
             if(deactivateError) throw deactivateError;
+            if((deactivated || []).length < dropIds.length) throw new Error(NO_PERMISSION_MSG);
           }
+          const who = fullName || email;
+          const grantedAreas = areas.filter(a => a !== 'settings' && !dropped.includes(a));
+          const unchanged = before.role === roleLabel && before.name === fullName
+            && before.areas === [...areas].sort().join('|');
           await hydrateFromSession();
           resetAccessForm();
-          showToast(`Access updated for ${email}.`);
+          showToast(unchanged
+            ? `Nothing changed for ${who}.`
+            : `Saved — ${who}: ${roleLabel} · ${grantedAreas.map(areaLabel).join(', ') || 'no areas'}.${dropped.length ? ` Not granted (missing in the app): ${dropped.map(areaLabel).join(', ')}.` : ''}`);
           return;
         }
-        const inviteLink = `${window.location.origin}${window.location.pathname}?invite=1&email=${encodeURIComponent(email)}`;
         const accessRows = buildWorkspaceAccessRows(role, areas);
-        const { data:{ session } } = await client.auth.getSession();
-        const token = session?.access_token || '';
-        if(!token) throw new Error('Your session has expired — log in again and try once more.');
-        const fnUrl = `${window.__SUPABASE_CONFIG.url.replace(/\/$/,'')}/functions/v1/create-platform-invite`;
-        const response = await fetch(fnUrl, {
-          method:'POST',
-          headers:{
-            'Content-Type':'application/json',
-            'Authorization':`Bearer ${token}`
-          },
-          body:JSON.stringify({
-            email,
-            fullName,
-            role,
-            accessRows,
-            redirectTo: inviteLink
-          })
-        });
-        const payload = await response.json().catch(()=>({}));
-        if(!response.ok || payload?.ok === false){
-          if(response.status === 404){
-            throw new Error("Invites aren't switched on yet — contact support.");
-          }
-          throw new Error(payload?.error || 'Could not create the invite.');
-        }
-        const inviteRow = payload?.invite || {};
-        if (payload?.email_sent === false && payload?.invite_link) {
-          // Neither Supabase Auth nor our Gmail could deliver — show the link so
-          // it can be sent by WhatsApp. It is the real one-time invite link.
-          try { await navigator.clipboard.writeText(payload.invite_link); } catch (_e) {}
-          window.prompt("The email couldn't be sent. Here is the invite link (already copied) — send it by WhatsApp:", payload.invite_link);
-        }
-        pendingInvites.unshift({
-          id: inviteRow.id,
+        const dropped = buildWorkspaceAccessRows.lastDropped || [];
+        if(!accessRows.length) throw new Error(`These areas can't be granted yet — contact support: ${dropped.map(areaLabel).join(', ')}.`);
+        const payload = await sendPlatformInvite({ email, fullName, role, accessRows });
+        resetAccessForm();
+        try{ await hydrateFromSession(); }catch(_e){}
+        showToast(inviteResultMessage(payload, email, fullName) + (dropped.length ? ` Not granted (missing in the app): ${dropped.map(areaLabel).join(', ')}.` : ''));
+      }catch(error){
+        showToast(friendlyAccessError(error, 'Could not create the invite.'));
+      }
+    }
+
+    const NO_PERMISSION_MSG = "You don't have permission to change team access — ask Miguel.";
+
+    function friendlyAccessError(error, fallback){
+      const msg = error?.message || '';
+      if(/row-level security|permission denied|violates row/i.test(msg)) return NO_PERMISSION_MSG;
+      return msg || fallback;
+    }
+
+    // create-platform-invite: one call for «Send invite» and «Resend invite».
+    // The email links to /?accept=<token>; the link works until the password is created.
+    async function sendPlatformInvite({ email, fullName='', role, accessRows=[] }){
+      const client = getSupabaseClient();
+      const { data:{ session } } = await client.auth.getSession();
+      const token = session?.access_token || '';
+      if(!token) throw new Error('Your session has expired — log in again and try once more.');
+      const fnUrl = `${window.__SUPABASE_CONFIG.url.replace(/\/$/,'')}/functions/v1/create-platform-invite`;
+      const response = await fetch(fnUrl, {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json', 'Authorization':`Bearer ${token}` },
+        body:JSON.stringify({
           email,
           fullName,
-          role: titleCaseWords(role.replaceAll('_',' ')),
-          status: 'sent',
-          expiresAt: formatDateShort(inviteRow.expires_at),
-          areas
-        });
-        renderAccessSettings();
-        resetAccessForm();
-        showToast(`Invite email sent to ${email}.`);
-      }catch(error){
-        showToast(error?.message || 'Could not create the invite.');
+          role,
+          accessRows,
+          siteUrl: `${window.location.origin}/`,
+          // older deployments of the function still read redirectTo
+          redirectTo: `${window.location.origin}/?invite=1&email=${encodeURIComponent(email)}`
+        })
+      });
+      const payload = await response.json().catch(()=>({}));
+      if(!response.ok || payload?.ok === false){
+        if(response.status === 404) throw new Error("Invites aren't switched on yet — contact support.");
+        throw new Error(payload?.error || 'Could not create the invite.');
       }
+      if(payload?.email_sent === false && payload?.invite_link){
+        // The email could not go out — hand the link over to send by WhatsApp.
+        try{ await navigator.clipboard.writeText(payload.invite_link); }catch(_e){}
+        window.prompt("The email couldn't be sent. Here is the invite link (already copied) — send it by WhatsApp. It works until they create their password:", payload.invite_link);
+      }
+      return payload;
     }
 
-    async function removeAccessUser(email){
-      if(__accessModel !== 'workspace-v2'){
-        showToast("Removing access isn't switched on yet — contact support.");
-        return;
-      }
-      const user = accessUsers.find(entry => entry.email === email);
-      if(!user?.userId){
-        showToast('Could not find this user in the workspace members list.');
-        return;
-      }
-      if(!window.confirm(`Remove all app access for ${email}?`)) return;
+    function inviteResultMessage(payload, email, fullName=''){
+      const who = fullName || email;
+      if(payload?.already_active) return `${who} already has an account — access updated. They log in with their password.`;
+      if(payload?.email_sent === false) return `Invite ready for ${who} — the email failed, send the copied link instead.`;
+      if(payload?.reused) return `Invite sent again to ${email}. The link works until they create their password.`;
+      return `Invite sent to ${email}. The link works until they create their password.`;
+    }
+
+    function findTeamPerson(email){
+      const key = String(email || '').toLowerCase();
+      return teamPeople().find(p => String(p.email).toLowerCase() === key) || null;
+    }
+
+    async function resendInvite(email){
+      const person = findTeamPerson(email);
+      if(!person){ showToast(`Couldn't find ${email} in the team list.`); return; }
+      const areas = (person.areas || []).filter(a => a !== 'settings');
+      if(!areas.length){ showToast(`${person.meta || email} has no areas — click Edit, tick the areas, then resend.`); return; }
+      const role = roleLabelToPlatformRole(person.role);
       try{
-        const client = getSupabaseClient();
-        const { data:{ session } } = await client.auth.getSession();
-        const token = session?.access_token || '';
-        if(!token) throw new Error('Your session has expired — log in again and try once more.');
-        const fnUrl = `${window.__SUPABASE_CONFIG.url.replace(/\/$/,'')}/functions/v1/remove-platform-user`;
-        const response = await fetch(fnUrl, {
-          method:'POST',
-          headers:{
-            'Content-Type':'application/json',
-            'Authorization':`Bearer ${token}`
-          },
-          body:JSON.stringify({
-            targetUserId: user.userId,
-            targetEmail: email
-          })
-        });
-        const payload = await response.json().catch(()=>({}));
-        if(!response.ok || payload?.ok === false){
-          if(response.status === 404){
-            throw new Error("Removing access isn't switched on yet — contact support.");
-          }
-          throw new Error(payload?.error || 'Could not fully remove this user.');
-        }
-        await hydrateFromSession();
-        if(__editingAccessEmail === email) resetAccessForm();
-        showToast(`Access removed for ${email}. They can no longer log in until invited again.`);
+        const accessRows = buildWorkspaceAccessRows(role, areas);
+        if(!accessRows.length) throw new Error("These areas can't be granted yet — contact support.");
+        const payload = await sendPlatformInvite({ email: person.email, fullName: person.meta || '', role, accessRows });
+        try{ await hydrateFromSession(); }catch(_e){}
+        showToast(inviteResultMessage(payload, person.email, person.meta || ''));
       }catch(error){
-        showToast(error?.message || 'Could not remove this user access.');
+        showToast(friendlyAccessError(error, 'Could not resend the invite.'));
       }
     }
 
-    async function cancelPendingInvite(inviteId, email){
+    async function copyInviteLink(email){
+      const person = findTeamPerson(email);
+      const token = person?.invite?.token;
+      if(!token){ showToast('No open invite for this person — use Resend invite.'); return; }
+      const link = inviteAcceptLink(token);
+      let copied = false;
+      try{ await navigator.clipboard.writeText(link); copied = true; }catch(_e){}
+      if(copied) showToast(`Invite link for ${person.meta || email} copied. It works until they create their password.`);
+      else window.prompt('Invite link — it works until they create their password:', link);
+    }
+
+    // Soft: the profile and memberships go inactive (re-inviting brings them
+    // back) and any open invite is cancelled. Nothing is deleted.
+    async function setPersonInactive(person){
+      const client = getSupabaseClient();
+      const now = new Date().toISOString();
+      const email = String(person.email || '').toLowerCase();
+      const { data: canceled, error: invErr } = await client
+        .from('workspace_invitations')
+        .update({ status:'canceled', updated_at: now })
+        .eq('email', email)
+        .in('status',['pending','sent'])
+        .select('id');
+      if(invErr) throw invErr;
+      let userId = person.userId || person.profile?.user_id || '';
+      if(!userId){
+        const { data: prof } = await client.from('platform_profiles').select('id').eq('email', email).maybeSingle();
+        userId = prof?.id || '';
+      }
+      if(userId){
+        const { error: memErr } = await client
+          .from('workspace_memberships')
+          .update({ active:false, updated_at: now })
+          .eq('user_id', userId)
+          .eq('active', true);
+        if(memErr) throw memErr;
+        const { data: prof, error: profErr } = await client
+          .from('platform_profiles')
+          .update({ active:false, updated_at: now })
+          .eq('id', userId)
+          .select('id');
+        if(profErr) throw profErr;
+        if(!prof?.length) throw new Error(NO_PERMISSION_MSG);
+      } else if(!canceled?.length){
+        throw new Error(NO_PERMISSION_MSG);
+      }
+    }
+
+    async function cancelPendingInvite(email){
       if(__accessModel !== 'workspace-v2'){
         showToast("Invites aren't switched on yet — contact support.");
         return;
       }
-      if(!inviteId){
-        showToast('Could not find this pending invite.');
+      const person = findTeamPerson(email);
+      if(!person){ showToast('Could not find this invite.'); return; }
+      const who = person.meta || person.email;
+      if(!window.confirm(`Cancel the invite for ${who}? The link stops working and the access you gave them is switched off. You can invite them again later.`)) return;
+      try{
+        await setPersonInactive(person);
+        if(__editingAccessEmail === person.email) resetAccessForm();
+        await hydrateFromSession();
+        showToast(`Invite cancelled for ${who}.`);
+      }catch(error){
+        showToast(friendlyAccessError(error, 'Could not cancel this invite.'));
+      }
+    }
+
+    async function deactivateAccessUser(email){
+      if(__accessModel !== 'workspace-v2'){
+        showToast("Deactivating isn't switched on yet — contact support.");
         return;
       }
-      if(!window.confirm(`Cancel the pending invite for ${email}?`)) return;
+      const person = findTeamPerson(email);
+      if(!person?.userId){ showToast('Could not find this person in the team list.'); return; }
+      if(String(email).toLowerCase() === String(__currentProfile?.email || '').toLowerCase()){ showToast("You can't deactivate your own account."); return; }
+      const who = person.meta || person.email;
+      if(!window.confirm(`Deactivate ${who}? They can no longer log in. Their account is kept — invite them again to give access back.`)) return;
       try{
-        const client = getSupabaseClient();
-        const { error } = await client
-          .from('workspace_invitations')
-          .update({
-            status:'canceled',
-            updated_at:new Date().toISOString()
-          })
-          .eq('id', inviteId)
-          .in('status',['pending','sent']);
-        if(error) throw error;
+        await setPersonInactive(person);
+        if(__editingAccessEmail === person.email) resetAccessForm();
         await hydrateFromSession();
-        showToast(`Invite canceled for ${email}.`);
+        showToast(`${who} deactivated — they can no longer log in.`);
       }catch(error){
-        showToast(error?.message || 'Could not cancel this invite.');
+        showToast(friendlyAccessError(error, 'Could not deactivate this person.'));
       }
     }
 
@@ -1831,12 +2036,27 @@
       el.textContent=text;
       el.style.display='block';
       clearTimeout(showToast._timer);
-      showToast._timer=setTimeout(()=>{el.style.display='none';},2400);
+      showToast._timer=setTimeout(()=>{el.style.display='none';},Math.max(2600, String(text||'').length*55));
     }
 
     function showPasswordFlow(mode='invite', presetName=''){
       window.__passwordFlowMode = mode;
       document.getElementById('passwordFlowBox').style.display='block';
+      const saveBtn = document.getElementById('passwordFlowSaveButton');
+      if(saveBtn){ saveBtn.disabled = false; saveBtn.textContent = mode === 'accept' ? 'Create password and log in' : 'Save password'; }
+      if(mode === 'accept'){
+        const emailEl = document.getElementById('loginEmail');
+        emailEl.readOnly = true;
+        document.getElementById('passwordFlowTitle').textContent = 'Your name and password';
+        document.getElementById('passwordFlowCopy').textContent = 'At least 8 characters. You will log in with your email and this password.';
+        const nameField = document.getElementById('passwordFlowName');
+        nameField.value = presetName || '';
+        nameField.closest('.field').style.display = '';
+        const closeBtn = document.getElementById('passwordFlowCloseButton');
+        if(closeBtn) closeBtn.style.display = 'none';
+        setLoginState('accept-setup', { email: emailEl.value.trim() });
+        return;
+      }
       document.getElementById('passwordFlowTitle').textContent = mode === 'reset' ? 'New password' : 'New password';
       document.getElementById('passwordFlowCopy').textContent = mode === 'reset'
         ? 'Set the new password for this account and then enter the platform normally.'
@@ -1851,6 +2071,7 @@
 
     function hidePasswordFlow(){
       document.getElementById('passwordFlowBox').style.display='none';
+      document.getElementById('loginEmail').readOnly = false;
       document.getElementById('passwordFlowName').value = '';
       document.getElementById('passwordFlowPassword').value = '';
       document.getElementById('passwordFlowPassword2').value = '';
@@ -1858,7 +2079,7 @@
     }
 
     function startForgotPasswordFlow(){
-      if(['forgot-entry','reset-requested'].includes(window.__loginUiState || '')){
+      if(['forgot-entry','reset-requested','invite-closed'].includes(window.__loginUiState || '')){
         setAuthMessage();
         setLoginState('login');
         return;
@@ -1946,6 +2167,10 @@
         showToast('Passwords do not match.');
         return;
       }
+      if(flowMode === 'accept'){
+        await completeAcceptInvite(fullName, password);
+        return;
+      }
       try{
         const { data: sessionData } = await client.auth.getSession();
         const userId = sessionData?.session?.user?.id;
@@ -2005,6 +2230,101 @@
         await hydrateFromSession();
       }catch(error){
         showToast(error?.message || 'Could not update password.');
+      }
+    }
+
+    // ── Our own invite link: /?accept=<invitation_token> ───────────────────
+    // accept-invite (Edge Function, no login needed) checks the token and sets
+    // the password; then we log in with email + password. Works for as long as
+    // the invite is open — no 24-hour Supabase link involved.
+    async function callAcceptInvite(body){
+      const cfg = window.__SUPABASE_CONFIG || {};
+      const url = `${String(cfg.url || '').replace(/\/$/,'')}/functions/v1/accept-invite`;
+      let response;
+      try{
+        response = await fetch(url, {
+          method:'POST',
+          headers:{ 'Content-Type':'application/json', 'apikey': cfg.anonKey || '', 'Authorization': `Bearer ${cfg.anonKey || ''}` },
+          body: JSON.stringify(body)
+        });
+      }catch(_e){
+        return { ok:false, code:'network', error:'No connection — check your internet and open the link again.' };
+      }
+      const payload = await response.json().catch(()=>({}));
+      if(response.status === 404 && !payload?.code) return { ok:false, code:'not_deployed', error:"Invites can't be opened yet — ask Miguel to check the invite setup." };
+      return { ...payload, ok: response.ok && payload?.ok !== false };
+    }
+
+    async function openAcceptInviteFlow(){
+      if(window.__acceptFlowPromise) return window.__acceptFlowPromise;
+      window.__acceptFlowPromise = (async () => {
+        const token = getAcceptToken();
+        showLoggedOutUI();
+        document.getElementById('passwordFlowBox').style.display='none';
+        setAuthMessage();
+        setLoginState('accept-loading');
+        const info = await callAcceptInvite({ action:'check', token });
+        if(!info.ok){
+          window.__acceptInvite = null;
+          window.__acceptDone = true; // stop re-entering the accept screen
+          clearAuthParams();
+          if(info.email) document.getElementById('loginEmail').value = info.email;
+          if(info.code === 'already_set'){
+            setLoginState('login');
+            setAuthMessage('info', info.error);
+          } else {
+            setLoginState('invite-closed', { text: info.error || 'Ask Miguel to send you a new invite.' });
+          }
+          return;
+        }
+        window.__acceptInvite = { token, email: info.email };
+        document.getElementById('loginEmail').value = info.email || '';
+        document.getElementById('loginPassword').value = '';
+        showPasswordFlow('accept', info.full_name || '');
+      })();
+      return window.__acceptFlowPromise;
+    }
+
+    async function completeAcceptInvite(fullName, password){
+      const inv = window.__acceptInvite;
+      if(!inv?.token){ showToast('Open the invite link from your email again.'); return; }
+      const btn = document.getElementById('passwordFlowSaveButton');
+      if(btn){ btn.disabled = true; btn.textContent = 'Creating…'; }
+      try{
+        const res = await callAcceptInvite({ action:'accept', token: inv.token, password, full_name: fullName });
+        if(!res.ok){
+          if(['canceled','expired','invalid','already_set'].includes(res.code)){
+            window.__acceptInvite = null;
+            window.__acceptDone = true;
+            hidePasswordFlow();
+            clearAuthParams();
+            if(res.code === 'already_set'){ setLoginState('login'); setAuthMessage('info', res.error); }
+            else setLoginState('invite-closed', { text: res.error });
+            return;
+          }
+          throw new Error(res.error || 'Could not create the password.');
+        }
+        const email = res.email || inv.email;
+        window.__acceptInvite = null;
+        window.__acceptDone = true;
+        hidePasswordFlow();
+        clearAuthParams();
+        const client = getSupabaseClient();
+        // Another account may still be open in this browser.
+        try{ await client.auth.signOut({ scope:'local' }); }catch(_e){}
+        document.getElementById('loginEmail').value = email;
+        const { error } = await client.auth.signInWithPassword({ email, password });
+        if(error){
+          setLoginState('login');
+          setAuthMessage('success', 'Password created. Log in with your email and the new password.');
+          return;
+        }
+        showToast('Welcome — your account is ready.');
+        await hydrateFromSession();
+      }catch(error){
+        showToast(error?.message || 'Could not create the password.');
+      }finally{
+        if(btn){ btn.disabled = false; btn.textContent = 'Create password and log in'; }
       }
     }
 
@@ -2179,6 +2499,10 @@
     }
 
     async function hydrateFromSession(){
+      if(getAcceptToken() && !window.__acceptDone){
+        await openAcceptInviteFlow();
+        return;
+      }
       const client = getSupabaseClient();
       const { data: { session } } = await client.auth.getSession();
       if(!session?.user){
@@ -2282,7 +2606,7 @@
       }
       const [platformProfileRes, membershipRes, workspaceRes] = await Promise.all([
         client.from('platform_profiles').select('*').eq('id', userId).maybeSingle(),
-        client.from('workspace_memberships').select('workspace_id, member_role, can_view, can_edit').eq('user_id', userId).eq('active', true),
+        client.from('workspace_memberships').select('workspace_id, member_role, can_view, can_edit, can_manage_team').eq('user_id', userId).eq('active', true),
         client.from('workspaces').select('id, slug, name').eq('active', true)
       ]);
       if(!platformProfileRes.error && !membershipRes.error && !workspaceRes.error && platformProfileRes.data){
@@ -2365,11 +2689,19 @@
           if(!slug) return;
           areas.add((isCampWorkspaceKey(slug) && row.can_edit === false) ? campTabOnlyAreaKey(slug) : slug);
         });
-        const [membersRes, invitesRes, inviteAccessRes] = await Promise.all([
+        const [membersRes, invitesRes, inviteAccessRes, peopleRes] = await Promise.all([
           client.from('workspace_memberships').select('member_role, workspace_id, user_id, can_edit, platform_profiles(email, full_name)').eq('active', true),
           client.from('workspace_invitations').select('*').in('status',['pending','sent']).order('created_at',{ascending:false}),
-          client.from('invitation_workspace_access').select('invitation_id, workspace_id, can_edit')
+          client.from('invitation_workspace_access').select('invitation_id, workspace_id, can_edit'),
+          // last sign-in per person (auth.users) — only answers for team managers
+          client.rpc('team_access_people')
         ]);
+        let peopleRows = (!peopleRes?.error && Array.isArray(peopleRes?.data)) ? peopleRes.data : null;
+        if(!peopleRows || !peopleRows.length){
+          const fallback = await client.from('platform_profiles').select('id, email, full_name, active, password_set_at');
+          peopleRows = (fallback.data || []).map(r => ({ user_id: r.id, email: r.email, full_name: r.full_name, active: r.active, password_set_at: r.password_set_at, last_sign_in_at: null }));
+        }
+        __teamProfiles = new Map((peopleRows || []).map(r => [String(r.email || '').toLowerCase(), r]));
         if(membersRes.error) throw membersRes.error;
         if(invitesRes.error) throw invitesRes.error;
         if(inviteAccessRes.error) throw inviteAccessRes.error;
@@ -2408,8 +2740,11 @@
           id: invite.id,
           email: invite.email,
           fullName: invite.full_name || '',
-          role: titleCaseWords((invite.platform_role || 'viewer').replaceAll('_',' ')),
+          role: platformRoleToLabel(invite.platform_role || 'viewer'),
           status: invite.status,
+          token: invite.invitation_token || '',
+          createdAt: invite.created_at || '',
+          lastSentAt: invite.last_sent_at || '',
           expiresAt: formatDateShort(invite.expires_at),
           areas: inviteAreaMap.get(invite.id) || []
         }));

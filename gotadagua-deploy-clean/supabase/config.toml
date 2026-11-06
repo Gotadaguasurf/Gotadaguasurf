@@ -5,6 +5,10 @@ verify_jwt = true
 [functions.create-platform-invite]
 verify_jwt = true
 
+# /?accept=<token> — the invitee has no account yet (6 Nov 2026)
+[functions.accept-invite]
+verify_jwt = false
+
 # Password-recovery email in the Gota Dagua layout (same as the invite and the
 # weekly digest — supabase/functions/_shared/email-layout.ts). Push with
 # `supabase config push`; only the declared properties change.
