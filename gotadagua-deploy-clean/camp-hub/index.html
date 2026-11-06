@@ -1636,6 +1636,8 @@ let editingRecurringSourceName='';
 let activePage='overview';
 const HUB_QUERY=new URLSearchParams(window.location.search);
 const CAMP_TAB_ONLY_MODE=HUB_QUERY.get('view')==='camp-tab-only';
+// Local manager (Nadith, 6 Nov 2026): Camp Tab + Operations Ledger only; the database hides the HQ-paid lines (supabase/local-manager.sql)
+const LOCAL_MANAGER_MODE=HUB_QUERY.get('view')==='local';
 const LEDGER_LOCATION_SLUG=(HUB_QUERY.get('location')||'sri-lanka').trim().toLowerCase();
 const LEDGER_DB_SELECT='id,location_id,week_id,type,category,linked_item,description,payment_method,qty,amount_local,currency,entry_date,business_area,fx_rate,amount_eur,recurring_source_id,recurring_month,source_kind,is_comp,zone_id,paid_from,attributed_location,created_at';
 let HUB_SB=null;
@@ -4573,6 +4575,7 @@ async function removeClosedWeekIncome(payload={}){
 // ═══════════════════════════════════════════════════════════
 function showPage(p){
   if(CAMP_TAB_ONLY_MODE && p!=='pos') p='pos';
+  if(LOCAL_MANAGER_MODE && p!=='pos' && p!=='expenses') p='expenses';
   activePage=p;
   document.querySelectorAll('.page').forEach(el=>el.classList.remove('active'));
   document.getElementById('page-'+p).classList.add('active');
@@ -9469,6 +9472,11 @@ function toast(msg,kind){const t=document.getElementById('toast');if(!t)return;t
   document.getElementById(id).addEventListener('click',e=>{if(e.target.id===id)closeOv(id);});
 });
 
+function applyLocalManagerMode(){
+  if(!LOCAL_MANAGER_MODE) return;
+  document.querySelectorAll('.ntab, .ntab-m').forEach(btn=>{ btn.style.display = (btn.dataset.page==='pos' || btn.dataset.page==='expenses') ? '' : 'none'; });
+  showPage('expenses');
+}
 function applyCampTabOnlyMode(){
   if(!CAMP_TAB_ONLY_MODE) return;
   document.querySelectorAll('.ntab').forEach(btn=>{
@@ -9513,6 +9521,8 @@ setInterval(()=>{
 }, 30*60*1000);
 if(CAMP_TAB_ONLY_MODE){
   applyCampTabOnlyMode();
+} else if(LOCAL_MANAGER_MODE){
+  applyLocalManagerMode();
 } else {
   showPage('overview');
 }
@@ -9665,7 +9675,7 @@ async function enforceLocationAccess(client, session){
   try{
     const { data: memberships, error } = await client
       .from('workspace_memberships')
-      .select('workspace_id, can_view, can_edit, active, workspaces(slug, name, workspace_type)')
+      .select('workspace_id, can_view, can_edit, member_role, active, workspaces(slug, name, workspace_type)')
       .eq('user_id', userId)
       .eq('active', true);
     if(error){
@@ -9678,7 +9688,7 @@ async function enforceLocationAccess(client, session){
     // ONLY in can_edit: full → can_edit=true, camp-tab-only → can_edit=false.
     // See buildWorkspaceAccessRows in root index.html.
     const hit = rows.find(m => m.workspaces.slug === wanted && m.can_view !== false);
-    if(hit) return { ok:true, campTabOnly: hit.can_edit === false };
+    if(hit) return { ok:true, campTabOnly: hit.can_edit === false, localManager: hit.member_role === 'local_manager' };
     // No access → build a picker of the locations this user CAN open,
     // labelling each with its scope so the user sees whether the button
     // will drop them into the full hub or the camp-tab-only view.
@@ -9753,6 +9763,13 @@ async function requirePlatformSession(){
   const access = await enforceLocationAccess(client, data.session);
   if(!access.ok){
     renderAccessBlockScreen(access);
+    return;
+  }
+  if(access.localManager && !LOCAL_MANAGER_MODE){
+    // Local manager → Camp Tab + Ledger view (the HQ lines are already filtered out by the database)
+    const q = new URLSearchParams(window.location.search);
+    q.set('location', __HUB_LOCATION_SLUG); q.set('view', 'local');
+    window.location.replace(window.location.pathname + '?' + q.toString());
     return;
   }
   if(access.campTabOnly && !CAMP_TAB_ONLY_MODE){

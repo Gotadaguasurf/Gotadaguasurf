@@ -422,6 +422,7 @@
                     <option value="Bar Man">Bar Man</option>
                     <option value="Head Social Host">Head Social Host</option>
                     <option value="Location Manager">Location Manager</option>
+                    <option value="Local Manager">Local Manager (Camp Tab + Ledger, no HQ lines)</option>
                     <option value="Finance">Finance</option>
                     <option value="Admin">Admin</option>
                     <option value="Owner">Owner</option>
@@ -1382,6 +1383,7 @@
         'Owner':'owner',
         'Admin':'admin',
         'Location Manager':'location_manager',
+        'Local Manager':'local_manager',
         'Head Social Host':'head_social_host',
         'Camp Tab Staff':'camp_tab_staff',
         'Bar Man':'bar_man',
@@ -1396,6 +1398,7 @@
         owner:'Owner',
         admin:'Admin',
         location_manager:'Location Manager',
+        local_manager:'Local Manager',
         head_social_host:'Head Social Host',
         camp_tab_staff:'Camp Tab Staff',
         bar_man:'Bar Man',
@@ -1801,7 +1804,13 @@
         // the camp hrefs already carry ?location=…, so add the scope as a real query
         // parameter (a second «?» made the hub read «surf-school?view=…» and block the user)
         let nextHref = item.href;
-        if (item.type === 'camp' && (campTabOnlyRoles.has(workspaceRole) || hasCampTabOnlyScope(key))) {
+        if (item.type === 'camp' && workspaceRole === 'local_manager') {
+          // local manager: Camp Tab + Operations Ledger, without the HQ-paid lines (filtered by the database)
+          const u = new URL(item.href, window.location.origin);
+          u.searchParams.set('location', u.searchParams.get('location') || key);
+          u.searchParams.set('view', 'local');
+          nextHref = u.pathname + u.search;
+        } else if (item.type === 'camp' && (campTabOnlyRoles.has(workspaceRole) || hasCampTabOnlyScope(key))) {
           const u = new URL(item.href, window.location.origin);
           u.searchParams.set('location', u.searchParams.get('location') || key);
           u.searchParams.set('view', 'camp-tab-only');
