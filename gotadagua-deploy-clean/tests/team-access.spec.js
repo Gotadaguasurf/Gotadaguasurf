@@ -266,3 +266,53 @@ test('invite server rules (supabase/functions/_shared/invite.ts): open until the
   expect(out.mail.html).toContain('Create password');
   expect(out.mail.text + out.mail.html).not.toMatch(/expira|expires in|24 h|7 dias|d'Água|d&#39;Água/);
 });
+
+// ── Forgot password (7 Nov 2026): the reset link goes out through our Gmail
+//    (send-password-reset) because Supabase's mailer only reaches team members.
+async function openForgot(page) {
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.click('#forgotPasswordButton');
+  await page.fill('#loginEmail', 'Staff@Example.com');
+  await page.click('#loginPrimaryButton');
+}
+
+test('forgot password: sends through send-password-reset (Gmail), not the Supabase mailer', async ({ page }) => {
+  const calls = [];
+  await page.route(/supabase\.co\/(auth|rest|functions)\/v1\/.*/, async route => {
+    const url = route.request().url();
+    if (url.includes('/functions/v1/send-password-reset')) { calls.push({ fn: JSON.parse(route.request().postData() || '{}') }); return json(route, { ok: true }); }
+    if (url.includes('/auth/v1/recover')) { calls.push({ recover: true }); return json(route, {}); }
+    return json(route, []);
+  });
+  await openForgot(page);
+  await expect(page.locator('#authMessageBox')).toContainText('staff@example.com', { timeout: 10000 });
+  expect(calls.length).toBe(1);
+  expect(calls[0].fn.email).toBe('staff@example.com');
+  expect(calls[0].fn.redirectTo).toMatch(/\?reset=1$/);
+});
+
+test('forgot password: if the function is not there, falls back to the Supabase email', async ({ page }) => {
+  const calls = [];
+  await page.route(/supabase\.co\/(auth|rest|functions)\/v1\/.*/, async route => {
+    const url = route.request().url();
+    if (url.includes('/functions/v1/send-password-reset')) { calls.push('fn'); return json(route, { error: 'not found' }, 404); }
+    if (url.includes('/auth/v1/recover')) { calls.push('recover'); return json(route, {}); }
+    return json(route, []);
+  });
+  await openForgot(page);
+  await expect(page.locator('#authMessageBox')).toContainText('staff@example.com', { timeout: 10000 });
+  expect(calls).toEqual(['fn', 'recover']);
+});
+
+test('forgot password: too many requests shows the message and does not fall back', async ({ page }) => {
+  const calls = [];
+  await page.route(/supabase\.co\/(auth|rest|functions)\/v1\/.*/, async route => {
+    const url = route.request().url();
+    if (url.includes('/functions/v1/send-password-reset')) { calls.push('fn'); return json(route, { ok: false, error: 'Too many reset emails — wait a few minutes and try again.' }, 429); }
+    if (url.includes('/auth/v1/recover')) { calls.push('recover'); return json(route, {}); }
+    return json(route, []);
+  });
+  await openForgot(page);
+  await expect(page.locator('body')).toContainText('Too many reset emails', { timeout: 10000 });
+  expect(calls).toEqual(['fn']);
+});

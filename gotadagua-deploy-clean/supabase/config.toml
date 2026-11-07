@@ -9,6 +9,10 @@ verify_jwt = true
 [functions.accept-invite]
 verify_jwt = false
 
+# Login → «Forgot password?» — the person is not logged in (7 Nov 2026)
+[functions.send-password-reset]
+verify_jwt = false
+
 # Password-recovery email in the Gota Dagua layout (same as the invite and the
 # weekly digest — supabase/functions/_shared/email-layout.ts). Push with
 # `supabase config push`; only the declared properties change.

@@ -2334,12 +2334,30 @@
         showToast('Add your email first.');
         return;
       }
+      const redirectTo = `${window.location.origin}${window.location.pathname}?reset=1`;
       try{
         const client = getSupabaseClient();
-        const { error } = await client.auth.resetPasswordForEmail(email, {
-          redirectTo: `${window.location.origin}${window.location.pathname}?reset=1`
-        });
-        if(error) throw error;
+        // 7 Nov 2026: Supabase's own mailer only reaches the project's team
+        // members, so the link goes out through our Gmail (send-password-reset).
+        // If that function is missing or Gmail fails, fall back to Supabase.
+        let viaGmail = false;
+        try{
+          const cfg = window.__SUPABASE_CONFIG;
+          const resp = await fetch(`${cfg.url}/functions/v1/send-password-reset`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', apikey: cfg.anonKey, Authorization: `Bearer ${cfg.anonKey}` },
+            body: JSON.stringify({ email, redirectTo }),
+          });
+          const out = await resp.json().catch(() => ({}));
+          if(resp.status === 429 || resp.status === 400) throw Object.assign(new Error(out.error || 'Could not send reset email.'), { final: true });
+          viaGmail = resp.ok && out.ok === true;
+        }catch(e){
+          if(e?.final) throw e;
+        }
+        if(!viaGmail){
+          const { error } = await client.auth.resetPasswordForEmail(email, { redirectTo });
+          if(error) throw error;
+        }
         setLoginState('reset-requested', { email });
         setAuthMessage('success', `We sent a reset link to ${email}. Open the newest email and choose your new password there.`);
         showToast(`Reset email sent to ${email}.`);
