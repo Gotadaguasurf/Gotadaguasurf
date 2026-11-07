@@ -61,7 +61,7 @@ body{overflow-x:hidden}
 .inv-chip{display:inline-block;font-size:10px;font-weight:600;color:var(--navy);background:#fff;border:1px solid var(--border);border-radius:999px;padding:2px 9px;text-decoration:none;white-space:nowrap}
 .inv-chip:hover{border-color:var(--ocean);color:var(--ocean)}
 .inv-chip.add{color:var(--muted);border-style:dashed;background:transparent}
-.modal-inv{margin-top:8px}.modal-inv .inv-chip{background:rgba(255,255,255,.1);color:#fff;border-color:rgba(255,255,255,.25)}.modal-inv .inv-chip.add{color:#9fc0da}
+.modal-inv{margin-top:8px}.modal-inv .inv-chip{font-size:11px;padding:3px 10px}
 /* Advance balance (partner_ledger) — partners paid by advances (JUVIGO,
    Ocean Adventure): commission earned month by month against what we paid. */
 .adv-panel{background:#fff;border:1px solid var(--border);border-radius:var(--r-sm);padding:16px 18px;margin:4px 0 14px;box-shadow:var(--sh)}
@@ -1236,8 +1236,7 @@ function buildStatementEmailPayload(partner, periodLabel, bookings){
         `Total bruto: ${eur(grossTotal)}`,
         `Total de comissão: ${eur(commissionTotal)}`,
         dueLinePt,'',
-        'Cumprimentos,',
-        'Gota Dagua Surf School'
+        'Cumprimentos,'
       ].join('\n')
     };
   }
@@ -1262,8 +1261,7 @@ function buildStatementEmailPayload(partner, periodLabel, bookings){
       ...bookingLines,
       ...(trailingTotals.length ? ['', ...trailingTotals] : []),
       '',
-      'Best regards,',
-      "Gota Dagua Surf Camp"
+      'Best regards,'   // name/logo come from the Gmail signature (Miguel, 7 Nov 2026)
     ].join('\n')
   };
 }
