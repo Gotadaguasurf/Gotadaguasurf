@@ -1865,6 +1865,16 @@ test('partners: month status survives a case-only duplicate partner name and the
   await page.evaluate(() => closeStatement());
   await page.evaluate(() => toggleExpand('AASHA'));
   await page.evaluate(() => toggleExpand('The Surf Tribe'));
+  // Sending the statement email marks the month "Overview Sent" (Miguel,
+  // 7 Nov 2026) — only from an empty/Pending month, never backwards from Paid.
+  const statusRpc = []; page.on('request', r => { if (r.url().includes('/rpc/upsert_partner_month_status')) statusRpc.push(JSON.parse(r.postData() || '{}')); });
+  const auto = await page.evaluate(async () => {
+    await markOverviewSent('The Surf Tribe', '2026-10');
+    await markOverviewSent('AASHA', '2026-08');
+    return { tribeOct: getStatus('The Surf Tribe', '2026-10'), aashaAug: getStatus('AASHA', '2026-08') };
+  });
+  expect(auto).toEqual({ tribeOct: 'Overview Sent', aashaAug: 'Paid' });
+  expect(statusRpc.map(c => c.p_partner_name + '|' + c.p_month_key + '|' + c.p_status)).toEqual(['The Surf Tribe|2026-10|Overview Sent']);
   await page.setViewportSize({ width: 1400, height: 1000 });
   await page.screenshot({ path: process.env.PARTNERS_SHOT || 'test-results/partners-layout.png', fullPage: false });
 });

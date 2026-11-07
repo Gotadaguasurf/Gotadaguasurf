@@ -577,6 +577,12 @@ const ledgerEffect = r => r.kind === 'received' ? -(+r.amount||0) : (+r.amount||
 function advanceBalance(partner){
   const rows = getLedger(partner);
   if(!rows.length) return null;
+  // Only partners we pay ahead (JUVIGO, Ocean…) have an advance balance.
+  // A ledger with nothing but 'received' rows is a partner that pays our
+  // invoices month by month (AASHA, Surf Tribe…): the month cards already
+  // show that, and a payment for a month whose bookings are not in the app
+  // (e.g. AASHA Dec 2025) would wrongly read as "we owe" (7 Nov 2026).
+  if(!rows.some(r => r.kind !== 'received')) return null;
   const start = rows.map(ledgerMonth).sort()[0];
   const nowMonth = new Date().toISOString().slice(0,7);
   const byMonth = {};
@@ -1857,6 +1863,27 @@ async function sendStatementEmail(){
     + '&body=' + encodeURIComponent(payload.body);
 
   window.open(gmailUrl, '_blank');
+  await markOverviewSent(ctx.partner, ctx.month);
+}
+
+// Opening the statement email moves the month to "Overview Sent" (Miguel,
+// 7 Nov 2026: "quando envio o email devia ser automático"). Only from an
+// empty / Pending status — a month already Confirmed, Invoice Sent or Paid
+// never goes backwards.
+async function markOverviewSent(partner, month){
+  if(!partner || !month) return;
+  const previous = getStatus(partner, month);
+  if(previous && previous !== 'Pending') return;
+  setStatus(partner, month, 'Overview Sent');
+  renderPartnersPage();
+  try {
+    await syncStatusToSupabase(partner, month, 'Overview Sent');
+  } catch (err) {
+    console.error('[Partners] could not mark Overview Sent', err);
+    setStatus(partner, month, previous);
+    renderPartnersPage();
+    alert('The email opened, but the month could not be marked "Overview Sent". ' + (err?.message || ''));
+  }
 }
 
 // ── STATEMENT ────────────────────────────────────────────────────────────────
