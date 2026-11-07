@@ -1888,7 +1888,7 @@ async function markOverviewSent(partner, month){
 // ── STATEMENT ────────────────────────────────────────────────────────────────
 window.openStatement = function(partner, month, locationFilter) {
   const em=getEmail(partner);
-  const locLabel = locationFilter ? ` · ${locationFilter}` : '';
+  const locLabel = locationFilter ? ` · showing ${locationFilter} (email and PDF include every camp)` : '';
   document.getElementById('stmtPartner').textContent=partner;
   document.getElementById('stmtMeta').textContent=(em?em+' · ':'')+(month?monthLabel(month):'All Months')+locLabel+' · Generated '+new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'});
   const invBox=document.getElementById('stmtInvoices'); if(invBox) invBox.innerHTML=invoiceChipsHTML(partner, month);
@@ -1898,6 +1898,11 @@ window.openStatement = function(partner, month, locationFilter) {
   const partnerLc = String(partner||'').trim().toLowerCase();
   let bks=allBookings.filter(b=>String(b.partner||'').trim().toLowerCase()===partnerLc);
   if(month)bks=bks.filter(b=>getMonth(b)===month);
+  // What goes to the partner (email + PDF) is always the whole month, every
+  // camp — the partner is invoiced per month (KILROY per country, The Surf
+  // Tribe per camp, both grouped inside the email). The location filter only
+  // narrows what is shown here (Miguel, 7 Nov 2026).
+  const sendBks = bks.slice().sort((a,b)=>a.checkin.localeCompare(b.checkin));
   if(locationFilter)bks=bks.filter(b=>b.location===locationFilter);
   bks.sort((a,b)=>a.checkin.localeCompare(b.checkin));
 
@@ -2002,7 +2007,7 @@ window.openStatement = function(partner, month, locationFilter) {
     sendBtn.onclick=function(){alert('No email for '+partner+'.\nAdd it in Partners & Rates.');};
   }
 
-  window.currentStatementContext = { partner, month, locationFilter, email: em, bookings: bks, periodLabel: period2 };
+  window.currentStatementContext = { partner, month, locationFilter, email: em, bookings: sendBks, viewBookings: bks, periodLabel: period2 };
   document.getElementById('stmtModal').classList.add('open');
   document.body.style.overflow='hidden';
 };

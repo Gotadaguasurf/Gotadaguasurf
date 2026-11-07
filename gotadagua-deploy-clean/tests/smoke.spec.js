@@ -1874,6 +1874,21 @@ test('partners: month status survives a case-only duplicate partner name and the
     return { tribeOct: getStatus('The Surf Tribe', '2026-10'), aashaAug: getStatus('AASHA', '2026-08') };
   });
   expect(auto).toEqual({ tribeOct: 'Overview Sent', aashaAug: 'Paid' });
+  // The location filter only narrows the screen: the email/PDF bookings are
+  // always the whole month for that partner (Miguel, 7 Nov 2026).
+  const sendScope = await page.evaluate(() => {
+    openStatement('The Surf Tribe', '2026-09', null);
+    const all = window.currentStatementContext.bookings.map(b => b.ref).sort();
+    const loc = window.currentStatementContext.bookings[0].location;
+    openStatement('The Surf Tribe', '2026-09', loc);
+    const ctx = window.currentStatementContext;
+    const out = { all, sent: ctx.bookings.map(b => b.ref).sort(), shownOnlyLoc: ctx.viewBookings.every(b => b.location === loc), meta: document.getElementById('stmtMeta').textContent };
+    closeStatement();
+    return out;
+  });
+  expect(sendScope.sent).toEqual(sendScope.all);
+  expect(sendScope.shownOnlyLoc).toBe(true);
+  expect(sendScope.meta).toContain('email and PDF include every camp');
   expect(statusRpc.map(c => c.p_partner_name + '|' + c.p_month_key + '|' + c.p_status)).toEqual(['The Surf Tribe|2026-10|Overview Sent']);
   await page.setViewportSize({ width: 1400, height: 1000 });
   await page.screenshot({ path: process.env.PARTNERS_SHOT || 'test-results/partners-layout.png', fullPage: false });
