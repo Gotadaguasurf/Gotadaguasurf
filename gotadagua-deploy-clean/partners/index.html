@@ -361,6 +361,7 @@ function saveState() {
 // ── INIT STATE ───────────────────────────────────────────────────────────────
 // A fresh load starts empty; loadFromSupabase() fills everything a moment later.
 let allBookings, partnerEmails, partnerContacts, partnerRates, partnerCollects, partnerTypes, statusStore;
+let partnersHaveContactCol = false;
 const saved = loadState();
 if (saved && (saved.version === 2 || saved.version === 3 || saved.version === 4 || saved.version === 5)) {
   allBookings = saved.bookings;
@@ -2448,6 +2449,7 @@ function buildPartnerRowsFromState() {
     commission_pct: Number(partnerRates[name] ?? 20),
     collects_from_guest: partnerCollects[name] !== false,
     partner_type: partnerTypes[name] || 'surfcamp',
+    ...(partnersHaveContactCol ? { contact_name: getContactName(name) || null } : {}),
     is_active: true
   }));
 }
@@ -2528,7 +2530,12 @@ async function loadFromSupabase() {
       reloadPartnerLedger().catch(e => { console.warn('[Partners] partner_ledger not loaded', e); partnerLedger = {}; }),
     ]);
 
+    // contact_name lives in Supabase since 7 Nov 2026 (before: localStorage
+    // only, lost in incognito). Cloud value wins; the column check keeps the
+    // page working before supabase/partners-contact-name.sql is applied.
+    partnersHaveContactCol = partnerRows.some(r => Object.prototype.hasOwnProperty.call(r, 'contact_name'));
     partnerRows.forEach(row => {
+      if (row.contact_name) partnerContacts[row.name] = row.contact_name;
       partnerRates[row.name] = Number(row.commission_pct ?? 20);
       if (row.email) partnerEmails[row.name] = row.email;
       partnerCollects[row.name] = row.collects_from_guest !== false;
