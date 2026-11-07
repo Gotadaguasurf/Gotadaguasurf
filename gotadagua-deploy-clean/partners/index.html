@@ -1121,6 +1121,18 @@ function groupBookingsByLocation(bookings){
   });
 }
 
+// Plain-text "bold": maps A–Z, a–z, 0–9 to Unicode Mathematical
+// Sans-Serif Bold so section headers look bold in a Gmail compose
+// body (which only takes plain text). Other characters pass through.
+function boldPlain(s){
+  return String(s||'').replace(/[A-Za-z0-9]/g, ch=>{
+    const c=ch.charCodeAt(0);
+    if(c>=65&&c<=90) return String.fromCodePoint(0x1D5D4+c-65);
+    if(c>=97&&c<=122) return String.fromCodePoint(0x1D5EE+c-97);
+    return String.fromCodePoint(0x1D7EC+c-48);
+  });
+}
+
 function buildStatementEmailPayload(partner, periodLabel, bookings){
   const isSchool = isSurfSchoolPartner(partner);
   const contactName = getContactName(partner);
@@ -1188,9 +1200,9 @@ function buildStatementEmailPayload(partner, periodLabel, bookings){
       // Spacer line between groups (skipped before the first one).
       if(i>0) bookingLines.push('');
       // Gmail compose URL strips formatting from the body= param, so
-      // bold/HTML isn't an option here. UPPERCASE is the plain-text
-      // equivalent and reads as the section header at a glance.
-      bookingLines.push(`${groupLabel.toUpperCase()}:`);
+      // HTML isn't an option here. The header is written in Unicode
+      // bold letters (𝗕𝗘𝗟𝗚𝗜𝗨𝗠:) so it still reads bold in plain text.
+      bookingLines.push(`${boldPlain(groupLabel.toUpperCase())}:`);
       group.slice().sort((a,b)=>(a.checkin||'').localeCompare(b.checkin||''))
         .forEach(r=>bookingLines.push(formatBookingLine(r)));
       bookingLines.push('');
