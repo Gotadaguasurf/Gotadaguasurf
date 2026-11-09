@@ -550,6 +550,14 @@ window.addPartnerInvoice = async function(partner, month){
     });
     if(error) throw error;
     await reloadPartnerInvoices();
+    // An invoice on the month = "Invoice Sent" (Miguel, 9 Nov 2026: «estas
+    // coisas têm de ser automáticas»). The DB trigger does the same; this
+    // keeps the screen in step and covers a database without the trigger.
+    const cur = getStatus(partner, month);
+    if(cur !== 'Paid' && cur !== 'Invoice Sent'){
+      try { setStatus(partner, month, await advanceStatusOnServer(partner, month, 'Invoice Sent')); }
+      catch(err){ console.error('[Partners] could not mark Invoice Sent', err); }
+    }
     renderPartnersPage();
   }catch(e){ alert('Could not save the invoice: ' + (e && e.message || e)); }
 };
@@ -1869,6 +1877,9 @@ async function sendStatementEmail(){
 // 7 Nov 2026: "quando envio o email devia ser automático"). Only from an
 // empty / Pending status — a month already Confirmed, Invoice Sent or Paid
 // never goes backwards.
+// The server has the last word (advance_partner_month_status only moves
+// forward), so a tab opened before someone set "Confirmed" can no longer
+// push the month back (KILROY 2026-10, 9 Nov 2026).
 async function markOverviewSent(partner, month){
   if(!partner || !month) return;
   const previous = getStatus(partner, month);
@@ -1876,7 +1887,11 @@ async function markOverviewSent(partner, month){
   setStatus(partner, month, 'Overview Sent');
   renderPartnersPage();
   try {
-    await syncStatusToSupabase(partner, month, 'Overview Sent');
+    const status = await advanceStatusOnServer(partner, month, 'Overview Sent');
+    if(status && status !== 'Overview Sent'){
+      setStatus(partner, month, status);
+      renderPartnersPage();
+    }
   } catch (err) {
     console.error('[Partners] could not mark Overview Sent', err);
     setStatus(partner, month, previous);
@@ -2647,6 +2662,26 @@ async function persistRateChangeToBookings(partnerName, oldRate, newRate, target
     }));
   }
   return rows.length;
+}
+// Automatic marks go through advance_partner_month_status (never moves a
+// month backwards, never wipes notes) and return the status the server
+// kept. Falls back to the plain upsert while that function is not deployed.
+async function advanceStatusOnServer(partner, month, value) {
+  if (__cloudMode !== 'cloud') throw new Error('Cloud sync is unavailable right now.');
+  const { data, error } = await getAuthClient().rpc('advance_partner_month_status', {
+    p_partner_name: partner,
+    p_month_key: month,
+    p_status: value,
+    p_notes: null
+  });
+  if (error) {
+    if (error.code === 'PGRST202' || /advance_partner_month_status/.test(error.message || '')) {
+      await syncStatusToSupabase(partner, month, value);
+      return value;
+    }
+    throw error;
+  }
+  return typeof data === 'string' ? data : value;
 }
 async function syncStatusToSupabase(partner, month, value) {
   if (__cloudMode !== 'cloud') throw new Error('Cloud sync is unavailable right now.');

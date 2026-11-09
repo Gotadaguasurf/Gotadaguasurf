@@ -1807,6 +1807,12 @@ test('partners: month status survives a case-only duplicate partner name and the
       { month_key: '2026-08', status: 'Paid', partner_id: 'p2', partners: { name: 'AASHA' } },
     ]);
     if (url.includes('/rest/v1/rpc/upsert_partner_month_status')) { rpcCalls.push(route.request().postDataJSON()); return json(null); }
+    // advance_partner_month_status: the server only moves forward. AASHA
+    // 2026-10 is already Confirmed on the server although this tab never saw it.
+    if (url.includes('/rest/v1/rpc/advance_partner_month_status')) {
+      const b = route.request().postDataJSON();
+      return json(b.p_partner_name === 'AASHA' && b.p_month_key === '2026-10' ? 'Confirmed' : b.p_status);
+    }
     // Sales invoice already issued for August (Miguel, 5 Oct 2026: "ter um link nos partners com as faturas da Drive").
     if (url.includes('/rest/v1/partner_invoices')) return json([
       { id: 'i1', partner_id: 'p2', partner_name: 'AASHA', month_key: '2026-08', invoice_number: 'FT IN2/16770', invoice_date: '2026-09-07', amount: 1884.8, drive_link: 'https://drive.google.com/file/d/xyz/view', file_name: 'Fatura IN2 16770.pdf', location: null },
@@ -1867,13 +1873,16 @@ test('partners: month status survives a case-only duplicate partner name and the
   await page.evaluate(() => toggleExpand('The Surf Tribe'));
   // Sending the statement email marks the month "Overview Sent" (Miguel,
   // 7 Nov 2026) — only from an empty/Pending month, never backwards from Paid.
-  const statusRpc = []; page.on('request', r => { if (r.url().includes('/rpc/upsert_partner_month_status')) statusRpc.push(JSON.parse(r.postData() || '{}')); });
+  const statusRpc = []; page.on('request', r => { if (r.url().includes('/rpc/advance_partner_month_status')) statusRpc.push(JSON.parse(r.postData() || '{}')); });
   const auto = await page.evaluate(async () => {
     await markOverviewSent('The Surf Tribe', '2026-10');
     await markOverviewSent('AASHA', '2026-08');
-    return { tribeOct: getStatus('The Surf Tribe', '2026-10'), aashaAug: getStatus('AASHA', '2026-08') };
+    // Stale tab (9 Nov 2026, KILROY): the screen thinks October is empty but
+    // the server already has Confirmed — the month must not go backwards.
+    await markOverviewSent('AASHA', '2026-10');
+    return { tribeOct: getStatus('The Surf Tribe', '2026-10'), aashaAug: getStatus('AASHA', '2026-08'), aashaOct: getStatus('AASHA', '2026-10') };
   });
-  expect(auto).toEqual({ tribeOct: 'Overview Sent', aashaAug: 'Paid' });
+  expect(auto).toEqual({ tribeOct: 'Overview Sent', aashaAug: 'Paid', aashaOct: 'Confirmed' });
   // The location filter only narrows the screen: the email/PDF bookings are
   // always the whole month for that partner (Miguel, 7 Nov 2026).
   const sendScope = await page.evaluate(() => {
@@ -1889,7 +1898,7 @@ test('partners: month status survives a case-only duplicate partner name and the
   expect(sendScope.sent).toEqual(sendScope.all);
   expect(sendScope.shownOnlyLoc).toBe(true);
   expect(sendScope.meta).toContain('email and PDF include every camp');
-  expect(statusRpc.map(c => c.p_partner_name + '|' + c.p_month_key + '|' + c.p_status)).toEqual(['The Surf Tribe|2026-10|Overview Sent']);
+  expect(statusRpc.map(c => c.p_partner_name + '|' + c.p_month_key + '|' + c.p_status)).toEqual(['The Surf Tribe|2026-10|Overview Sent', 'AASHA|2026-10|Overview Sent']);
   await page.setViewportSize({ width: 1400, height: 1000 });
   await page.screenshot({ path: process.env.PARTNERS_SHOT || 'test-results/partners-layout.png', fullPage: false });
 });
