@@ -1312,7 +1312,13 @@ function normalizeLedgerEntry(entry){
   //                        bank; moves funds from CASH to BANK.
   // Default to 'HQ Transfer' for back-compat with legacy entries that
   // didn't carry an explicit kind.
-  if(type==='transfer' && !['HQ Transfer','ATM Withdrawal','Cash Deposit'].includes(paymentMethod)){
+  // Since 10 Nov 2026 (Miguel) a withdrawal is TWO symmetrical rows:
+  //   • 'Bank Transfer' — money out of the camp bank (paid by bank)
+  //   • 'Cash'          — the same amount into the cash drawer (paid by cash)
+  // so «everything paid via Cash» is the physical cash. A lone 'Bank
+  // Transfer' transfer is money that left the bank without reaching the
+  // drawer (e.g. a loan). Legacy single 'ATM Withdrawal' rows still count.
+  if(type==='transfer' && !['HQ Transfer','ATM Withdrawal','Cash Deposit','Bank Transfer','Cash'].includes(paymentMethod)){
     paymentMethod='HQ Transfer';
   }
   // New model: only top-up transfers (type='transfer') count as
@@ -5056,6 +5062,11 @@ function renderOverview(){
   const atmWithdrawnEur  =sum(transfers.filter(x=>x.paymentMethod==='ATM Withdrawal'),x=>entryEurAmount(x));
   const cashDepositedLocal=sum(transfers.filter(x=>x.paymentMethod==='Cash Deposit'),x=>entryLocalDisplayAmount(x));
   const cashDepositedEur  =sum(transfers.filter(x=>x.paymentMethod==='Cash Deposit'),x=>entryEurAmount(x));
+  // Withdrawal halves (10 Nov 2026): 'Bank Transfer' = out of bank, 'Cash' = into cash.
+  const wdBankOutLocal=sum(transfers.filter(x=>x.paymentMethod==='Bank Transfer'),x=>entryLocalDisplayAmount(x));
+  const wdBankOutEur  =sum(transfers.filter(x=>x.paymentMethod==='Bank Transfer'),x=>entryEurAmount(x));
+  const wdCashInLocal =sum(transfers.filter(x=>x.paymentMethod==='Cash'),x=>entryLocalDisplayAmount(x));
+  const wdCashInEur   =sum(transfers.filter(x=>x.paymentMethod==='Cash'),x=>entryEurAmount(x));
   // Keep totalSent as the legacy "all transfers" pool — used by other
   // surfaces (e.g. Weekly P&L) that pre-date the split.
   const totalSentLocal=sum(transfers,x=>entryLocalDisplayAmount(x));
@@ -5066,17 +5077,17 @@ function renderOverview(){
   //   IN:  HQ transfers (money sent) + cash deposits back into bank
   //   OUT: card spend + bank-transfer spend + ATM withdrawals
   const bankBalanceLocal = moneySentLocal + cashDepositedLocal
-                         - cardSpendLocal - hqSpendLocal - atmWithdrawnLocal;
+                         - cardSpendLocal - hqSpendLocal - atmWithdrawnLocal - wdBankOutLocal;
   const bankBalanceEur   = moneySentEur   + cashDepositedEur
-                         - cardSpendEur   - hqSpendEur   - atmWithdrawnEur;
+                         - cardSpendEur   - hqSpendEur   - atmWithdrawnEur   - wdBankOutEur;
   // ── Cash drawer ──────────────────────────────────────────────────────────
   //   IN:  ATM withdrawals + all revenue (camp tab + extra) — guests pay
   //        cash by default; if you ever take card revenue, refine this
   //        to filter revenueEntries by paymentMethod.
   //   OUT: cash spend + cash deposits back into bank
-  const cashBalanceLocal = atmWithdrawnLocal + totalRevenueLocal
+  const cashBalanceLocal = atmWithdrawnLocal + wdCashInLocal + totalRevenueLocal
                          - campSpendLocal   - cashDepositedLocal;
-  const cashBalanceEur   = atmWithdrawnEur   + totalRevenueEur
+  const cashBalanceEur   = atmWithdrawnEur   + wdCashInEur   + totalRevenueEur
                          - campSpendEur     - cashDepositedEur;
   // Total wallet = Bank + Cash. Mathematically equal to the legacy
   // campCashBalance below (kept for back-compat with older surfaces).
@@ -5086,8 +5097,10 @@ function renderOverview(){
   // migrated to the Bank/Cash split yet.
   const opSpendLocal=campSpendLocal+cardSpendLocal+hqSpendLocal;
   const opSpendEur=campSpendEur+cardSpendEur+hqSpendEur;
-  const campCashBalanceLocal=totalSentLocal+totalRevenueLocal-opSpendLocal;
-  const campCashBalanceEur=totalSentEur+totalRevenueEur-opSpendEur;
+  // = Bank + Cash. Was totalSent (every transfer, incl. bank→cash moves)
+  // + revenue − spend, which counted withdrawals as new money.
+  const campCashBalanceLocal=totalBalanceLocal;
+  const campCashBalanceEur=totalBalanceEur;
 
   const guestCount=sum(weeks,w=>(w.guests||[]).length);
   const paidCount=sum(weeks,w=>(w.guests||[]).filter(g=>g.paid).length);
@@ -7419,6 +7432,15 @@ function linkedItemOptionsFor(type,area,category=''){
   const items=AREA_CONFIG[area]?.linkedItems||[];
   return [''].concat(items);
 }
+function transferKindLabel(r){
+  switch(r&&r.paymentMethod){
+    case 'ATM Withdrawal': return 'ATM withdrawal';
+    case 'Cash Deposit':   return 'Cash deposit';
+    case 'Bank Transfer':  return 'Out of bank';
+    case 'Cash':           return 'Into cash';
+    default:               return 'Money from HQ';
+  }
+}
 function paymentOptionsFor(type){
   if(type==='transfer'){
     // Three transfer kinds — chosen via the "Paid via" select on the
@@ -7426,7 +7448,7 @@ function paymentOptionsFor(type){
     //   HQ Transfer    = HQ → Camp Bank   (money sent to camp)
     //   ATM Withdrawal = Bank → Cash       (cash withdrawn from ATM)
     //   Cash Deposit   = Cash → Bank       (cash deposited into bank)
-    return ['HQ Transfer','ATM Withdrawal','Cash Deposit'];
+    return ['HQ Transfer','ATM Withdrawal','Cash Deposit','Bank Transfer','Cash'];
   }
   // Revenue accepts every canonical channel (Cash / Card / Bank Transfer)
   // — same list as expenses. This mirrors reality: guests pay in card at
@@ -8630,6 +8652,8 @@ function renderExpenses(){
   const aHQ      = sumL(aTrans.filter(x=>x.paymentMethod==='HQ Transfer'),x=>entryLocalDisplayAmount(x));
   const aATM     = sumL(aTrans.filter(x=>x.paymentMethod==='ATM Withdrawal'),x=>entryLocalDisplayAmount(x));
   const aDeposit = sumL(aTrans.filter(x=>x.paymentMethod==='Cash Deposit'),x=>entryLocalDisplayAmount(x));
+  const aWdBank  = sumL(aTrans.filter(x=>x.paymentMethod==='Bank Transfer'),x=>entryLocalDisplayAmount(x));
+  const aWdCash  = sumL(aTrans.filter(x=>x.paymentMethod==='Cash'),x=>entryLocalDisplayAmount(x));
   const aRev     = sumL(aInc, x=>entryLocalDisplayAmount(x));
   // Same in EUR
   const aCashE    = sumL(aExp.filter(x=>x.paymentMethod==='Cash'),         x=>entryEurAmount(x));
@@ -8638,19 +8662,21 @@ function renderExpenses(){
   const aHQE      = sumL(aTrans.filter(x=>x.paymentMethod==='HQ Transfer'),x=>entryEurAmount(x));
   const aATME     = sumL(aTrans.filter(x=>x.paymentMethod==='ATM Withdrawal'),x=>entryEurAmount(x));
   const aDepositE = sumL(aTrans.filter(x=>x.paymentMethod==='Cash Deposit'),x=>entryEurAmount(x));
+  const aWdBankE  = sumL(aTrans.filter(x=>x.paymentMethod==='Bank Transfer'),x=>entryEurAmount(x));
+  const aWdCashE  = sumL(aTrans.filter(x=>x.paymentMethod==='Cash'),x=>entryEurAmount(x));
   const aRevE     = sumL(aInc, x=>entryEurAmount(x));
   // Bank drawer = HQ transfers in + cash deposits in − card spend − bank
   // transfer spend − ATM withdrawals out.
-  const bankBalLocal = aHQ + aDeposit - aCard - aBankXfer - aATM;
-  const bankBalEur   = aHQE + aDepositE - aCardE - aBankXferE - aATME;
+  const bankBalLocal = aHQ + aDeposit - aCard - aBankXfer - aATM - aWdBank;
+  const bankBalEur   = aHQE + aDepositE - aCardE - aBankXferE - aATME - aWdBankE;
   // Cash drawer = ATM withdrawals in + revenue in − cash spend − cash
   // deposits out.
-  const cashBalLocal = aATM + aRev - aCash - aDeposit;
+  const cashBalLocal = aATM + aWdCash + aRev - aCash - aDeposit;
   // BUG FIX: was subtracting `aDeposit` (LKR/MAD value) from a EUR sum,
   // which made the Cash drawer's EUR figure wildly off whenever a
   // Cash Deposit existed (e.g. depositing MAD 1000 deducted 1000 from
   // the EUR balance instead of ~€94). Now uses aDepositE.
-  const cashBalEur   = aATME + aRevE - aCashE - aDepositE;
+  const cashBalEur   = aATME + aWdCashE + aRevE - aCashE - aDepositE;
   const totalBalLocal = bankBalLocal + cashBalLocal;
   const totalBalEur   = bankBalEur + cashBalEur;
 
@@ -8755,7 +8781,7 @@ function renderExpenses(){
   const current=rows.filter(r=>!(String(r.date||'')>todayIso));
   const rowHtml=r=>`<tr>
         <td style="white-space:nowrap;font-size:12px">${fmtd(r.date)}</td>
-        <td style="white-space:nowrap"><span class="badge ${r.type==='expense'?'badge-red':r.type==='transfer'?'badge-amber':'badge-green'}">${r.type==='expense'?'Expense':r.type==='transfer'?'Money from HQ':'Revenue'}</span>${isHqInvoiceRow(r)?' <span class="badge badge-blue" title="Paid by HQ — edit it in HQ → Expenses">HQ</span>':''}</td>
+        <td style="white-space:nowrap"><span class="badge ${r.type==='expense'?'badge-red':r.type==='transfer'?'badge-amber':'badge-green'}">${r.type==='expense'?'Expense':r.type==='transfer'?transferKindLabel(r):'Revenue'}</span>${isHqInvoiceRow(r)?' <span class="badge badge-blue" title="Paid by HQ — edit it in HQ → Expenses">HQ</span>':''}</td>
         <td style="font-weight:600">${r.category}</td>
         <td style="color:var(--muted);font-size:12px">${String(r.sourceKind||'').toLowerCase()==='hq_invoice'?'<span class="badge badge-amber" title="Paid by HQ — edit it in HQ → Expenses">Paid by HQ</span>':String(r.sourceKind||'').toLowerCase()==='hq_transfer'?'<span class="badge badge-amber" title="Transfer recorded in HQ — edit it in HQ">Money from HQ</span>':(r.paymentMethod||'—')}</td>
         <td style="color:var(--muted);font-size:12px">${r.linkedItem||'—'}${transportEntryTourOverride(r)?`<div style="font-size:10px;color:var(--ocean);font-weight:600;margin-top:2px">↳ ${escapeHtml(transportEntryTourOverride(r))}</div>`:''}</td>
@@ -8953,6 +8979,19 @@ async function saveExpense(){
   if(!payload){toast('Date and amount required');return;}
   if(!editingLedgerId&&!confirmNotRepeated(payload)) return;
   payload=await enrichLedgerEntryFx(payload);
+  // New ATM withdrawal → two symmetrical rows (Miguel, 10 Nov 2026): one
+  // out of the bank (paid by bank), one into the cash drawer (paid by cash).
+  if(!editingLedgerId && expModalType==='transfer' && payload.paymentMethod==='ATM Withdrawal'){
+    const base=String(payload.description||'ATM withdrawal').replace(/\s*—\s*bank to cash$/,'')||'ATM withdrawal';
+    const bankRow=normalizeLedgerEntry({...payload,id:payload.id+'_bank',paymentMethod:'Bank Transfer',paidBy:'Camp',description:base+' — out of bank'});
+    const cashRow=normalizeLedgerEntry({...payload,id:payload.id+'_cash',paymentMethod:'Cash',paidBy:'Camp',description:base+' — into cash'});
+    try{
+      await commitLedgerEntry(bankRow,'atm withdrawal (bank)');
+      await commitLedgerEntry(cashRow,'atm withdrawal (cash)');
+    }catch(_e){ return; }
+    editingLedgerId=null;closeOv('expOv');renderExpenses();renderOverview();renderWeeklyPL();toast('Saved — out of bank and into cash');
+    return;
+  }
   // Supabase-first: write to Supabase BEFORE mutating S.ledger. For
   // edits, capture the old entry first so we can restore it if the
   // upsert fails (since "edit" replaces in-place we'd otherwise lose
