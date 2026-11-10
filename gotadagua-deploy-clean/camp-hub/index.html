@@ -7432,6 +7432,24 @@ function linkedItemOptionsFor(type,area,category=''){
   const items=AREA_CONFIG[area]?.linkedItems||[];
   return [''].concat(items);
 }
+// Sign of a ledger row for the wallet it touches (Miguel, 10 Nov 2026:
+// «quando é expense é negativo… os outros positivos»): money out of the
+// bank or the cash drawer shows −, money in shows +. Cash Deposit and the
+// legacy single ATM row move money between drawers, so they stay unsigned.
+function ledgerSign(r){
+  if(!r) return '';
+  if(r.type==='expense') return '−';
+  if(r.type==='income') return '+';
+  if(r.type==='transfer'){
+    if(r.paymentMethod==='Bank Transfer') return '−';
+    if(r.paymentMethod==='Cash'||r.paymentMethod==='HQ Transfer') return '+';
+  }
+  return '';
+}
+function ledgerSignStyle(r){
+  const s=ledgerSign(r);
+  return s==='−'?'color:var(--red,#c0392b)':s==='+'?'color:var(--green,#1e8e5a)':'';
+}
 function transferKindLabel(r){
   switch(r&&r.paymentMethod){
     case 'ATM Withdrawal': return 'ATM withdrawal';
@@ -8787,8 +8805,8 @@ function renderExpenses(){
         <td style="color:var(--muted);font-size:12px">${r.linkedItem||'—'}${transportEntryTourOverride(r)?`<div style="font-size:10px;color:var(--ocean);font-weight:600;margin-top:2px">↳ ${escapeHtml(transportEntryTourOverride(r))}</div>`:''}</td>
         <td style="color:var(--muted)">${escapeHtml(strippedTransportDescription(r))||'—'}</td>
         <td style="color:var(--muted);font-size:12px">${r.vendor||'—'}</td>
-        <td class="r" style="font-weight:700">${r.currency&&r.currency!=='EUR'?`${r.currency} `+Number(r.amountLocal||0).toLocaleString('en-GB',{maximumFractionDigits:2}):`${LOCAL_CURRENCY||'LKR'} `+Number((Number(r.amount||0)*(LOCAL_PER_EUR||1))).toLocaleString('en-GB',{maximumFractionDigits:0})}</td>
-        <td class="r" style="font-weight:700">${euro(r.amount)}</td>
+        <td class="r" style="font-weight:700;white-space:nowrap;${ledgerSignStyle(r)}">${ledgerSign(r)}${r.currency&&r.currency!=='EUR'?`${r.currency} `+Number(r.amountLocal||0).toLocaleString('en-GB',{maximumFractionDigits:2}):`${LOCAL_CURRENCY||'LKR'} `+Number((Number(r.amount||0)*(LOCAL_PER_EUR||1))).toLocaleString('en-GB',{maximumFractionDigits:0})}</td>
+        <td class="r" style="font-weight:700;white-space:nowrap;${ledgerSignStyle(r)}">${ledgerSign(r)}${euro(r.amount)}</td>
         <td>${['hq_invoice','hq_transfer'].includes(String(r.sourceKind||'').toLowerCase())?`<div class="exp-table-actions" style="color:var(--muted-2)" title="Edit this in HQ">${AppShell.icon('lock')}</div>`:`<div class="exp-table-actions"><button class="btn btn-s btn-sm btn-icon" onclick="openEditLedger('${r.id}')" title="Edit">${AppShell.icon('edit')}</button><button class="btn btn-s btn-sm btn-icon icon-danger" onclick="delLedger('${r.id}')" title="Delete">${AppShell.icon('trash')}</button></div>`}</td>
       </tr>`;
   const head=`<thead><tr><th>Date</th><th>Type</th><th>Category</th><th>Paid via</th><th>Linked item</th><th>Description</th><th>Vendor</th><th class="r">Local</th><th class="r">EUR</th><th class="r" style="width:88px">Actions</th></tr></thead>`;
