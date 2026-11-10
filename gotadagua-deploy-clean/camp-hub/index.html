@@ -321,6 +321,23 @@ body{min-height:100dvh}
 .exp-inline-full{grid-column:1 / -1}
 .exp-kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--sp-3);margin-bottom:var(--sp-4)}
 .exp-table-actions{display:flex;justify-content:flex-end;gap:6px}
+/* Money kind of a ledger row (10 Nov 2026) — one colour per kind, same in
+   every view: expense red · paid by HQ ocean · revenue green · transfer slate. */
+.amt{font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums}
+/* .tbl-wrap td sets color:var(--ink) — repeat the selector so it wins */
+.amt-expense,.tbl-wrap td.amt-expense{color:var(--red)}
+.amt-hq,.tbl-wrap td.amt-hq{color:var(--ocean)}
+.amt-revenue,.tbl-wrap td.amt-revenue{color:var(--green)}
+.amt-transfer,.tbl-wrap td.amt-transfer{color:var(--muted)}
+.badge .ic{width:12px;height:12px;vertical-align:0}
+.ledger-legend{display:flex;flex-wrap:wrap;gap:4px 16px;padding:10px 16px;border-bottom:1px solid var(--border);font-size:12px;font-weight:600}
+.ledger-legend span{display:inline-flex;align-items:center;gap:4px;cursor:help}
+.ledger-legend b{font-weight:800;font-size:14px;line-height:1}
+.ledger-legend .ic{width:13px;height:13px}
+/* Phones: the amount columns sit off-screen to the right, so the signed,
+   coloured amount is repeated under the Type badge. */
+.amt-mob{display:none}
+@media(max-width:700px){.amt-mob{display:block;font-size:12.5px;margin-top:4px}}
 .icon-danger:hover{color:var(--red);border-color:var(--red);background:var(--red-bg)}
 .hub-embed-wrap{height:calc(100vh - 60px);padding:0}
 .hub-embed-frame{width:100%;height:100%;border:none;display:block;background:var(--bg)}
@@ -710,7 +727,7 @@ body{min-height:100dvh}
       <select class="select" id="expTypeF" onchange="renderExpenses()">
         <option value="all">All types</option>
         <option value="expense">Expenses</option>
-        <option value="transfer">Money from HQ</option>
+        <option value="transfer">Transfers</option>
         <option value="income">Revenue</option>
       </select>
       <select class="select" id="expPayF" onchange="renderExpenses()"><option value="all">All payment methods</option></select>
@@ -7432,23 +7449,45 @@ function linkedItemOptionsFor(type,area,category=''){
   const items=AREA_CONFIG[area]?.linkedItems||[];
   return [''].concat(items);
 }
-// Sign of a ledger row for the wallet it touches (Miguel, 10 Nov 2026:
-// «quando é expense é negativo… os outros positivos»): money out of the
-// bank or the cash drawer shows −, money in shows +. Cash Deposit and the
-// legacy single ATM row move money between drawers, so they stay unsigned.
+// Money kind of a ledger row — four looks, one per kind, the same in every
+// place a row's amount is shown (Miguel, 10 Nov 2026: «tens de ter a cor
+// paga por HQ e quando é transferência tem de ter outra coisa»):
+//   expense  — paid by the camp from cash or the camp bank   → red, −
+//   hq       — expense paid by HQ in Portugal: a real camp cost that never
+//              touches the camp's bank or cash               → ocean, −, «HQ» badge
+//   revenue  — bar / activities money in                       → green, +
+//   transfer — money moving between HQ, bank and cash; neither cost nor
+//              revenue                                         → slate, arrow, from → to
+function isHqPaidRow(r){
+  return !!r && r.type==='expense' && (String(r.sourceKind||'').toLowerCase()==='hq_invoice' || r.paymentMethod==='HQ Paid');
+}
+function ledgerKind(r){
+  if(!r) return '';
+  if(r.type==='transfer') return 'transfer';
+  if(r.type==='income'||r.type==='revenue') return 'revenue';
+  if(r.type==='expense') return isHqPaidRow(r)?'hq':'expense';
+  return '';
+}
+// Sign of a ledger row for the wallet it touches («se for expense, no número
+// um −, e quando é revenue ou a entrar, um +»): money out of the bank or the
+// cash drawer shows −, money in shows +. HQ-paid expenses are − too (a cost
+// of the camp). Cash Deposit and the legacy single ATM row move money
+// between the camp's own drawers in one line, so they stay unsigned.
 function ledgerSign(r){
   if(!r) return '';
-  if(r.type==='expense') return '−';
-  if(r.type==='income') return '+';
-  if(r.type==='transfer'){
+  const k=ledgerKind(r);
+  if(k==='expense'||k==='hq') return '−';
+  if(k==='revenue') return '+';
+  if(k==='transfer'){
     if(r.paymentMethod==='Bank Transfer') return '−';
     if(r.paymentMethod==='Cash'||r.paymentMethod==='HQ Transfer') return '+';
   }
   return '';
 }
-function ledgerSignStyle(r){
-  const s=ledgerSign(r);
-  return s==='−'?'color:var(--red,#c0392b)':s==='+'?'color:var(--green,#1e8e5a)':'';
+// Class for an amount: colour by kind (see .amt-* in the page CSS).
+function ledgerAmtClass(r){
+  const k=ledgerKind(r);
+  return k?`amt amt-${k}`:'amt';
 }
 function transferKindLabel(r){
   switch(r&&r.paymentMethod){
@@ -7458,6 +7497,50 @@ function transferKindLabel(r){
     case 'Cash':           return 'Into cash';
     default:               return 'Money from HQ';
   }
+}
+// «from → to» of a transfer row. An «Out of bank» row with its «Into cash»
+// twin (same day, same amount) is an ATM withdrawal: Bank → Cash. A lone one
+// left the camp (e.g. a loan): Bank → Outside.
+function transferHasTwin(r){
+  const other=r.paymentMethod==='Bank Transfer'?'Cash':'Bank Transfer';
+  const amt=Number(r.amountLocal??r.amount??0);
+  return (S.ledger||[]).some(e=>e&&e.id!==r.id&&e.type==='transfer'&&e.paymentMethod===other&&e.date===r.date&&Math.abs(Number(e.amountLocal??e.amount??0)-amt)<0.01);
+}
+function transferFlowLabel(r){
+  switch(r&&r.paymentMethod){
+    case 'ATM Withdrawal': return 'Bank → Cash';
+    case 'Cash Deposit':   return 'Cash → Bank';
+    case 'Bank Transfer':  return transferHasTwin(r)?'Bank → Cash':'Bank → Outside';
+    case 'Cash':           return transferHasTwin(r)?'Bank → Cash':'Outside → Cash';
+    default:               return 'HQ → Bank';
+  }
+}
+// Type cell of a ledger row: kind badge (+ «HQ» marker, + from → to line).
+function ledgerTypeCell(r){
+  const k=ledgerKind(r);
+  if(k==='transfer') return `<span class="badge badge-grey" title="Moves money — not a cost, not revenue">${AppShell.icon('arrow-right')}${transferKindLabel(r)}</span><span class="cell-sub">${transferFlowLabel(r)}</span>`;
+  if(k==='revenue') return '<span class="badge badge-green">Revenue</span>';
+  if(k==='hq') return '<span class="badge badge-red">Expense</span> <span class="badge badge-blue" title="Paid by HQ in Portugal — a camp cost, not in the camp bank or cash. Edit it in HQ → Expenses">HQ</span>';
+  return '<span class="badge badge-red">Expense</span>';
+}
+// Signed local amount of a row (Local column, and the phone line under Type).
+function ledgerLocalAmtText(r){
+  const v=r.currency&&r.currency!=='EUR'
+    ? `${r.currency} `+Number(r.amountLocal||0).toLocaleString('en-GB',{maximumFractionDigits:2})
+    : `${LOCAL_CURRENCY||'LKR'} `+Number((Number(r.amount||0)*(LOCAL_PER_EUR||1))).toLocaleString('en-GB',{maximumFractionDigits:0});
+  return ledgerSign(r)+v;
+}
+// Tiny legend over the ledger table — only the kinds present in the list.
+function ledgerLegendHtml(rows){
+  const has=new Set((rows||[]).map(ledgerKind));
+  const items=[
+    ['expense','<b>−</b> Expense','Paid by the camp from cash or the camp bank'],
+    ['hq','<b>−</b> Paid by HQ','A camp cost paid in Portugal — not in the camp bank or cash'],
+    ['revenue','<b>+</b> Revenue','Money the camp took in'],
+    ['transfer',`${AppShell.icon('arrow-right')} Transfer`,'Money moving between HQ, bank and cash — + adds to, − takes from the row\'s bank or cash'],
+  ].filter(([k])=>has.has(k));
+  if(items.length<2) return '';
+  return `<div class="ledger-legend">${items.map(([k,lbl,t])=>`<span class="amt-${k}" title="${t}">${lbl}</span>`).join('')}</div>`;
 }
 function paymentOptionsFor(type){
   if(type==='transfer'){
@@ -8718,10 +8801,10 @@ function renderExpenses(){
   // the channel was a card swipe or a wire. Same shape as the Cash tile.
   const bankBreakdownLocal = cardSpendLocal + hqSpendLocal;
   const bankBreakdown = bankBreakdownLocal > 0
-    ? `<div class="kpi-breakdown">Spent from bank · ${lkr(bankBreakdownLocal).replace(/\.00$/,'')} <span style="color:var(--muted)">· in this period</span></div>`
+    ? `<div class="kpi-breakdown">Spent from bank · <span class="amt amt-expense">−${lkr(bankBreakdownLocal).replace(/\.00$/,'')}</span> <span style="color:var(--muted)">· in this period</span></div>`
     : `<div class="kpi-breakdown" style="color:var(--muted)">No bank spend in this period</div>`;
   const cashBreakdown = campSpendLocal > 0
-    ? `<div class="kpi-breakdown">Spent from cash · ${lkr(campSpendLocal).replace(/\.00$/,'')} <span style="color:var(--muted)">· in this period</span></div>`
+    ? `<div class="kpi-breakdown">Spent from cash · <span class="amt amt-expense">−${lkr(campSpendLocal).replace(/\.00$/,'')}</span> <span style="color:var(--muted)">· in this period</span></div>`
     : `<div class="kpi-breakdown" style="color:var(--muted)">No cash spend in this period</div>`;
   // ATM Withdrawal shortcut — always visible. Used to only appear when
   // cashBalLocal<0 (treating it as a corrective hint), but the user needs
@@ -8799,19 +8882,19 @@ function renderExpenses(){
   const current=rows.filter(r=>!(String(r.date||'')>todayIso));
   const rowHtml=r=>`<tr>
         <td style="white-space:nowrap;font-size:12px">${fmtd(r.date)}</td>
-        <td style="white-space:nowrap"><span class="badge ${r.type==='expense'?'badge-red':r.type==='transfer'?'badge-amber':'badge-green'}">${r.type==='expense'?'Expense':r.type==='transfer'?transferKindLabel(r):'Revenue'}</span>${isHqInvoiceRow(r)?' <span class="badge badge-blue" title="Paid by HQ — edit it in HQ → Expenses">HQ</span>':''}</td>
+        <td style="white-space:nowrap">${ledgerTypeCell(r)}<span class="amt-mob ${ledgerAmtClass(r)}">${ledgerLocalAmtText(r)}</span></td>
         <td style="font-weight:600">${r.category}</td>
-        <td style="color:var(--muted);font-size:12px">${String(r.sourceKind||'').toLowerCase()==='hq_invoice'?'<span class="badge badge-amber" title="Paid by HQ — edit it in HQ → Expenses">Paid by HQ</span>':String(r.sourceKind||'').toLowerCase()==='hq_transfer'?'<span class="badge badge-amber" title="Transfer recorded in HQ — edit it in HQ">Money from HQ</span>':(r.paymentMethod||'—')}</td>
+        <td style="color:var(--muted);font-size:12px">${String(r.sourceKind||'').toLowerCase()==='hq_invoice'?'<span class="badge badge-blue" title="Paid by HQ — edit it in HQ → Expenses">Paid by HQ</span>':String(r.sourceKind||'').toLowerCase()==='hq_transfer'?'<span class="badge badge-grey" title="Transfer recorded in HQ — edit it in HQ">Money from HQ</span>':(r.paymentMethod||'—')}</td>
         <td style="color:var(--muted);font-size:12px">${r.linkedItem||'—'}${transportEntryTourOverride(r)?`<div style="font-size:10px;color:var(--ocean);font-weight:600;margin-top:2px">↳ ${escapeHtml(transportEntryTourOverride(r))}</div>`:''}</td>
         <td style="color:var(--muted)">${escapeHtml(strippedTransportDescription(r))||'—'}</td>
         <td style="color:var(--muted);font-size:12px">${r.vendor||'—'}</td>
-        <td class="r" style="font-weight:700;white-space:nowrap;${ledgerSignStyle(r)}">${ledgerSign(r)}${r.currency&&r.currency!=='EUR'?`${r.currency} `+Number(r.amountLocal||0).toLocaleString('en-GB',{maximumFractionDigits:2}):`${LOCAL_CURRENCY||'LKR'} `+Number((Number(r.amount||0)*(LOCAL_PER_EUR||1))).toLocaleString('en-GB',{maximumFractionDigits:0})}</td>
-        <td class="r" style="font-weight:700;white-space:nowrap;${ledgerSignStyle(r)}">${ledgerSign(r)}${euro(r.amount)}</td>
+        <td class="r ${ledgerAmtClass(r)}">${ledgerLocalAmtText(r)}</td>
+        <td class="r ${ledgerAmtClass(r)}">${ledgerSign(r)}${euro(r.amount)}</td>
         <td>${['hq_invoice','hq_transfer'].includes(String(r.sourceKind||'').toLowerCase())?`<div class="exp-table-actions" style="color:var(--muted-2)" title="Edit this in HQ">${AppShell.icon('lock')}</div>`:`<div class="exp-table-actions"><button class="btn btn-s btn-sm btn-icon" onclick="openEditLedger('${r.id}')" title="Edit">${AppShell.icon('edit')}</button><button class="btn btn-s btn-sm btn-icon icon-danger" onclick="delLedger('${r.id}')" title="Delete">${AppShell.icon('trash')}</button></div>`}</td>
       </tr>`;
   const head=`<thead><tr><th>Date</th><th>Type</th><th>Category</th><th>Paid via</th><th>Linked item</th><th>Description</th><th>Vendor</th><th class="r">Local</th><th class="r">EUR</th><th class="r" style="width:88px">Actions</th></tr></thead>`;
   const upcomingEur=sum(upcoming,x=>Number(x.amount||0));
-  el.innerHTML=`<div class="tbl-wrap"><table>
+  el.innerHTML=`${ledgerLegendHtml(rows)}<div class="tbl-wrap"><table>
     ${head}
     <tbody>
       ${current.length?current.map(rowHtml).join(''):`<tr class="empty-row"><td colspan="10">${hasFilter?`No entries match these filters. <button class="btn btn-s btn-sm" style="margin-left:8px" onclick="clearExpFilters()">Clear filters</button>`:'No entries yet. Use Quick add above to log the first one.'}</td></tr>`}
