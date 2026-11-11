@@ -4323,7 +4323,9 @@ function mapCampTabRevenueCategory(item){
 
 function buildClosedWeekRevenueEntries(wk){
   if(!wk) return null;
-  const paidItems=[...(wk.guests||[]),...(wk.staff||[])].filter(g=>g.paid).flatMap(g=>g.items||[]);
+  // Items paid one by one (per_guest «Pay») already have their own
+  // camp_tab_per_item row — never add them again as a weekly total.
+  const paidItems=[...(wk.guests||[]),...(wk.staff||[])].filter(g=>g.paid).flatMap(g=>g.items||[]).filter(i=>!i.paidAt);
   if(!paidItems.length) return [];
   // Revenue is always dated to the LAST DAY of the camp week — i.e. the
   // Friday that closes the Sat→Fri cycle. Previously this used closedAt
@@ -4685,7 +4687,9 @@ async function ovLoadBookingsFromSupabase(){
   ovBookings=rows.map(r=>{
     const ci=new Date(String(r.check_in_on)+'T00:00:00').getTime();
     const nights=Math.max(1,parseInt(r.nights,10)||7);
-    return { ref:String(r.booking_ref||''), name:String(r.booker||'Guest'), status:'confirmed', ci, co:ci+nights*86400000, pax:Math.max(1,Number(r.pax)||1), accommodation:String(r.package||'') };
+    // Check-out = local midnight `nights` days later (ci + n×24h lands at 01:00
+    // after the March clock change in Lisbon and leaks into the next week).
+    return { ref:String(r.booking_ref||''), name:String(r.booker||'Guest'), status:'confirmed', ci, co:new Date(addDays(String(r.check_in_on),nights)+'T00:00:00').getTime(), pax:Math.max(1,Number(r.pax)||1), accommodation:String(r.package||'') };
   }).filter(b=>Number.isFinite(b.ci));
   __ovBookingsFromDb=true;
   const lbl=document.getElementById('ovCsvLabel');
@@ -4817,7 +4821,7 @@ function ovBookingsForWeeks(weeks){
   if(!weeks.length) return [];
   const ranges=weeks.map(w=>{
     const start=new Date(w.start+'T00:00:00').getTime();
-    return {start,end:start+7*86400000};
+    return {start,end:new Date(addDays(w.start,7)+'T00:00:00').getTime()};
   });
   return ovBookings.filter(b=>ranges.some(r=>b.co>r.start&&b.ci<r.end)).sort((a,b)=>a.ci-b.ci);
 }
@@ -9350,7 +9354,9 @@ function renderWeeklyPL(){
     const cardSpend=sum(ledger.filter(x=>x.type==='expense'&&x.paymentMethod==='Card'),x=>x.amount);
     const hqSpend=sum(ledger.filter(x=>x.type==='expense'&&x.paymentMethod==='Bank Transfer'),x=>x.amount);
     const manualRevenue=sum(ledger.filter(x=>x.type==='income'),x=>x.amount);
-    const foodExp=sum(ledger.filter(x=>x.type==='expense'&&x.businessArea==='Food'),x=>x.amount);
+    // In local currency: «Food / guest-day» is shown with lkr() (as in the
+    // Overview's Food control). Summing € here showed €9 as «LKR 9».
+    const foodExp=sum(ledger.filter(x=>x.type==='expense'&&x.businessArea==='Food'),x=>entryLocalDisplayAmount(x));
     const tabRevenue=wk?weekRevenue(wk):0;
     // Same fix as Overview's double-count: every per_guest item Pay AND
     // every Sri Lanka legacy close-week writes campitem_* / campclose_*
@@ -9362,8 +9368,13 @@ function renderWeeklyPL(){
     // Operating balance — every spend channel (Cash + Card + Bank
     // Transfer) draws from the same pool funded by HQ top-ups +
     // collected revenue.
-    const cash=sent+totalRevenue-(campSpend+cardSpend+hqSpend);
+    // = what the week did to Bank + Cash, by the one drawer rule
+    // (ledgerDrawerDelta): a loan paid out of the bank, cash put in or taken
+    // out count too; withdrawals and deposits only move money between the two.
+    const cash=sum(ledger,x=>{const d=ledgerDrawerDelta(x);return (d.bank+d.cash)*Number(x.amount||0);});
     const guests=wk?(wk.guests||[]).length:0;
+    // No Camp Tab week in the hub (per_guest camps): guests come from Bookinglayer.
+    const bookingGuests=!wk&&ovBookings.length?ovBookingGuestCount(ovBookingsForWeeks([{start:ws}])):0;
     const paidGuests=wk?(wk.guests||[]).filter(g=>g.paid).length:0;
     const guestDays=wk?guestDaysForWeeks([wk]).value:(ovBookings.length?ovGuestDaysForWeek(ws):0);
     // Per-area split: ledger-only too. The businessArea on each ledger
@@ -9379,7 +9390,7 @@ function renderWeeklyPL(){
       Tours:sum(ledger.filter(x=>x.type==='income'&&x.businessArea==='Tours'),x=>x.amount),
       Transport:sum(ledger.filter(x=>x.type==='income'&&x.businessArea==='Transport'),x=>x.amount)
     };
-    return{ws,sent,campSpend,cardSpend,hqSpend,foodExp,tabRevenue,totalRevenue,cash,guests,paidGuests,guestDays,drinksSales:areaRevenue.Bar,merchSales:areaRevenue.Merch,tourSales:areaRevenue.Tours,transportSales:areaRevenue.Transport};
+    return{ws,sent,campSpend,cardSpend,hqSpend,foodExp,tabRevenue,totalRevenue,cash,guests,paidGuests,bookingGuests,guestDays,drinksSales:areaRevenue.Bar,merchSales:areaRevenue.Merch,tourSales:areaRevenue.Tours,transportSales:areaRevenue.Transport};
   });
 
   const totals=rows.reduce((t,r)=>({
@@ -9412,7 +9423,7 @@ function renderWeeklyPL(){
       <tbody>
         ${rows.map(r=>{ const wk=(v,color,bold)=>`<td class="r" style="${Number(v)?`color:${color};${bold?'font-weight:700':''}`:'color:var(--muted-2)'}">${euro(v)}</td>`; return `<tr class="click" onclick="jumpToWeek('${r.ws}')">
           <td style="font-weight:600;white-space:nowrap">${fmtd(r.ws)} → ${fmtd(addDays(r.ws,6))}</td>
-          <td class="r">${r.guests?`${r.paidGuests} / ${r.guests}`:'—'}</td>
+          <td class="r">${r.guests?`${r.paidGuests} / ${r.guests}`:(r.bookingGuests?`<span title="Guests from Bookinglayer">${r.bookingGuests}</span>`:'—')}</td>
           ${wk(r.drinksSales,'var(--green)',true)}
           ${wk(r.merchSales,'var(--green)',true)}
           ${wk(r.tourSales,'var(--green)',true)}
@@ -9428,7 +9439,7 @@ function renderWeeklyPL(){
       <tfoot>
         <tr>
           <td>Total</td>
-          <td class="r">${totals.paidGuests} / ${totals.guests}</td>
+          <td class="r">${totals.guests||!ovBookings.length?`${totals.paidGuests} / ${totals.guests}`:`<span title="Guests from Bookinglayer">${ovBookingGuestCount(ovBookingsForWeeks(sortedWS.map(start=>({start}))))}</span>`}</td>
           <td class="r" style="color:var(--green)">${euro(totals.drinksSales)}</td>
           <td class="r" style="color:var(--green)">${euro(totals.merchSales)}</td>
           <td class="r" style="color:var(--green)">${euro(totals.tourSales)}</td>
@@ -9452,6 +9463,14 @@ function jumpToWeek(ws){
     showPage('overview');
     const sel=document.getElementById('ovWeekSel');
     if(sel){sel.value=wk.id;renderOverview();}
+  }else{
+    // Week known only from the ledger / Bookinglayer (per_guest camps keep no
+    // hub weeks): open the Overview on its month, then on the week itself.
+    showPage('overview');
+    const ms=document.getElementById('ovMonthSel');
+    if(ms){ms.value=monthKey(ws);renderOverview();}
+    const sel=document.getElementById('ovWeekSel');
+    if(sel&&[...sel.options].some(o=>o.value==='csv:'+ws)){sel.value='csv:'+ws;renderOverview();}
   }
 }
 
