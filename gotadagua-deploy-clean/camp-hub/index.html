@@ -8918,7 +8918,10 @@ function renderExpenses(){
   // cashBalLocal<0 (treating it as a corrective hint), but the user needs
   // this as a regular daily action: walk to the ATM, withdraw 500 MAD,
   // log it. Button is permanent so it's never more than one click away.
-  const cashHint = `<button class="btn btn-s btn-sm btn-block kpi-action-btn" onclick="openExpModal('transfer',null,{paymentMethod:'ATM Withdrawal'})">Record ATM withdrawal</button>`;
+  // No «Record ATM withdrawal» button (Miguel, 11 Nov 2026): withdrawals come
+  // from the bank statement, which HQ loads every few days — a manager
+  // recording them too would count each one twice.
+  const cashHint = '';
   // Portugal is HQ — no HQ Transfer top-ups arrive, the camp account IS
   // the main account. Simplify the KPI strip to 3 tiles: Spent · Earned ·
   // Net. ATM Withdrawal shortcut is dropped too (irrelevant without a
