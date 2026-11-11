@@ -599,7 +599,7 @@ async function renderOverview(){
     if (r.type === 'revenue') bumpMonth(m, 'locRev', r.amount_eur);
     else if (r.type === 'expense') bumpMonth(m, 'locExp', r.amount_eur);
   });
-  const allMonths = Object.keys(monthly).sort();
+  const allMonths = Object.keys(monthly).filter(m => m <= currentMonth()).sort();   // prepaid rent dated in later years must not push the window into the future
   const trendMonths = allMonths.slice(-12);
   const trendData = trendMonths.map(m => {
     const b = monthly[m];
@@ -949,7 +949,7 @@ async function openLocDrilldown(slug, period, label, profit) {
       })(),
       (async () => {
         let q = sb.from('hq_invoices')
-          .select('invoice_date, company, description, amount_eur, currency, amount, paying_company, category_name, is_duplicate')
+          .select('invoice_date, company, description, amount_eur, currency, amount, paying_company, category_name, category_id, commission_in_booking, is_duplicate')
           .eq('location_slug', slug)
           .eq('is_duplicate', false)
           .is('deleted_at', null);
@@ -957,8 +957,12 @@ async function openLocDrilldown(slug, period, label, profit) {
         return await fetchAllPaged(() => q.order('amount_eur', { ascending:false }));
       })()
     ]);
-    ledgerRows  = lRes || [];
-    invoiceRows = iRes || [];
+    // Same books as the Overview row (hq_overview_rollup): the ledger mirror of an HQ invoice is listed under
+    // «Paid by HQ», never also as camp spending; 2026 partner commissions (netted in the booking), Manjar and personal stay out.
+    const personalIds = new Set(CATEGORIES.filter(c => c.is_personal).map(c => c.id));
+    ledgerRows  = (lRes || []).filter(r => r.source_kind !== 'hq_invoice');
+    invoiceRows = (iRes || []).filter(r => r.paying_company !== NOT_HQ_COMPANY && !personalIds.has(r.category_id)
+      && !(r.commission_in_booking ?? (r.category_name === 'Partners' && String(r.invoice_date || '') >= '2026-01-01')));
   } catch (e) {
     body.innerHTML = `<div class="status-msg status-err">Could not load: ${escapeHtml(e?.message||e)}</div>`;
     return;
