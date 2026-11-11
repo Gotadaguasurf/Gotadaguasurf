@@ -733,6 +733,7 @@ body{min-height:100dvh}
       <select class="select" id="expPayF" onchange="renderExpenses()"><option value="all">All payment methods</option></select>
       <select class="select" id="expCatF" onchange="renderExpenses()"><option value="all">All categories</option></select>
       <select class="select" id="expWeekF" onchange="renderExpenses()"><option value="all">All weeks</option></select>
+      <select class="select" id="expSortF" onchange="renderExpenses()" title="Order of the list"><option value="date">Sort: date</option><option value="added">Sort: last added</option></select>
       <label class="exp-toggle" title="Invoices paid by HQ and mirrored into this ledger. Untick to list only what the camp paid itself. The totals below always include them."><input type="checkbox" id="expIncludeHq" checked onchange="renderExpenses()"> Include HQ-paid invoices</label>
       <input class="search" id="expSearch" placeholder="Search description, vendor or category…" oninput="renderExpenses()">
       <button class="btn btn-s" id="expCsvBtn" onclick="exportLedgerCsv()">Export CSV</button>
@@ -1389,6 +1390,10 @@ function normalizeLedgerEntry(entry){
     amount,
     recurringSourceId:entry.recurringSourceId||'',
     recurringMonth:entry.recurringMonth||'',
+    // When the row was first saved (DB created_at). Shown in the ledger
+    // «Added» column so whoever checks the books sees what the manager
+    // entered each day (Miguel, 11 Nov 2026).
+    createdAt:entry.createdAt||'',
     sourceKind:entry.sourceKind||'manual'
   };
 }
@@ -2271,7 +2276,8 @@ function dbRowToLedgerEntry(row){
     isComp:!!row.is_comp,
     zoneId:row.zone_id||'',
     paidFrom:row.paid_from||'',
-    attributedLocation:row.attributed_location||''
+    attributedLocation:row.attributed_location||'',
+    createdAt:row.created_at||''
   });
 }
 async function readSupabaseFxRate(date,quoteCurrency){
@@ -3847,6 +3853,9 @@ function isoLocal(d){
 }
 const today=()=>isoLocal(new Date());
 const fmtd=d=>d?new Date(d+'T00:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}):'—';
+// «Added» column: when a ledger line was entered — «11 Nov 14:05».
+const fmtAdded=ts=>{ if(!ts) return '—'; const d=new Date(ts); if(isNaN(d)) return '—';
+  return d.toLocaleDateString('en-GB',{day:'numeric',month:'short'})+' '+d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}); };
 const esc=s=>String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');
 const sum=(arr,fn)=>arr.reduce((s,x)=>s+(fn?fn(x):x),0);
 const gtot=g=>g.items.reduce((s,i)=>s+Number(i.p),0);
@@ -7919,6 +7928,7 @@ function buildLedgerPayload(prefix,type,id=null){
       : 'Cash sent to camp';
   return normalizeLedgerEntry({
     id:id||('e'+Date.now()+Math.random().toString(36).slice(2,6)),
+    createdAt:id?((S.ledger||[]).find(x=>x&&x.id===id)?.createdAt||''):new Date().toISOString(),
     date,
     type,
     category,
@@ -8720,7 +8730,12 @@ function renderExpenses(){
   if(catF!=='all')rows=rows.filter(x=>x.category===catF);
   if(weekF!=='all')rows=rows.filter(x=>weekStartSat(x.date)===weekF);
   if(search)rows=rows.filter(x=>[x.category,x.businessArea,x.linkedItem,x.description,x.vendor,x.paymentMethod].join(' ').toLowerCase().includes(search));
+  const sortAdded=(document.getElementById('expSortF')?.value||'date')==='added';
   rows.sort((a,b)=>{
+    if(sortAdded){
+      const c=String(b.createdAt||'').localeCompare(String(a.createdAt||''));
+      if(c!==0) return c;
+    }
     const d=b.date.localeCompare(a.date);
     if(d!==0) return d;
     return String(a.id||'').localeCompare(String(b.id||'')); // stable secondary sort by id
@@ -8891,6 +8906,7 @@ function renderExpenses(){
   const current=rows.filter(r=>!(String(r.date||'')>todayIso));
   const rowHtml=r=>`<tr>
         <td style="white-space:nowrap;font-size:12px">${fmtd(r.date)}</td>
+        <td style="white-space:nowrap;font-size:12px;color:var(--muted)" title="When this line was entered">${fmtAdded(r.createdAt)}</td>
         <td style="white-space:nowrap">${ledgerTypeCell(r)}<span class="amt-mob ${ledgerAmtClass(r)}">${ledgerLocalAmtText(r)}</span></td>
         <td style="font-weight:600">${r.category}</td>
         <td style="color:var(--muted);font-size:12px">${String(r.sourceKind||'').toLowerCase()==='hq_invoice'?'<span class="badge badge-blue" title="Paid by HQ — edit it in HQ → Expenses">Paid by HQ</span>':String(r.sourceKind||'').toLowerCase()==='hq_transfer'?'<span class="badge badge-grey" title="Transfer recorded in HQ — edit it in HQ">Money from HQ</span>':(r.paymentMethod||'—')}</td>
@@ -8901,12 +8917,12 @@ function renderExpenses(){
         <td class="r ${ledgerAmtClass(r)}">${ledgerSign(r)}${euro(r.amount)}</td>
         <td>${['hq_invoice','hq_transfer'].includes(String(r.sourceKind||'').toLowerCase())?`<div class="exp-table-actions" style="color:var(--muted-2)" title="Edit this in HQ">${AppShell.icon('lock')}</div>`:`<div class="exp-table-actions"><button class="btn btn-s btn-sm btn-icon" onclick="openEditLedger('${r.id}')" title="Edit">${AppShell.icon('edit')}</button><button class="btn btn-s btn-sm btn-icon icon-danger" onclick="delLedger('${r.id}')" title="Delete">${AppShell.icon('trash')}</button></div>`}</td>
       </tr>`;
-  const head=`<thead><tr><th>Date</th><th>Type</th><th>Category</th><th>Paid via</th><th>Linked item</th><th>Description</th><th>Vendor</th><th class="r">Local</th><th class="r">EUR</th><th class="r" style="width:88px">Actions</th></tr></thead>`;
+  const head=`<thead><tr><th>Date</th><th title="When the line was entered in the app">Added</th><th>Type</th><th>Category</th><th>Paid via</th><th>Linked item</th><th>Description</th><th>Vendor</th><th class="r">Local</th><th class="r">EUR</th><th class="r" style="width:88px">Actions</th></tr></thead>`;
   const upcomingEur=sum(upcoming,x=>Number(x.amount||0));
   el.innerHTML=`${ledgerLegendHtml(rows)}<div class="tbl-wrap"><table>
     ${head}
     <tbody>
-      ${current.length?current.map(rowHtml).join(''):`<tr class="empty-row"><td colspan="10">${hasFilter?`No entries match these filters. <button class="btn btn-s btn-sm" style="margin-left:8px" onclick="clearExpFilters()">Clear filters</button>`:'No entries yet. Use Quick add above to log the first one.'}</td></tr>`}
+      ${current.length?current.map(rowHtml).join(''):`<tr class="empty-row"><td colspan="11">${hasFilter?`No entries match these filters. <button class="btn btn-s btn-sm" style="margin-left:8px" onclick="clearExpFilters()">Clear filters</button>`:'No entries yet. Use Quick add above to log the first one.'}</td></tr>`}
     </tbody>
   </table></div>${upcoming.length?`<details class="card" style="margin-top:12px;padding:0">
     <summary style="cursor:pointer;padding:14px 16px;font-weight:600;color:var(--navy)">Upcoming · ${upcoming.length} ${upcoming.length===1?'entry':'entries'} · ${euro(upcomingEur)} <span style="font-weight:400;color:var(--muted);font-size:12px">· each one moves into the list above on its date</span></summary>
