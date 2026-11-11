@@ -94,6 +94,9 @@ header{display:none}
 .ctr-price{font-variant-numeric:tabular-nums;font-size:11px;color:var(--ink);white-space:nowrap}
 .ctr-del{border:none;background:none;cursor:pointer;color:var(--muted);font-size:14px;padding:1px 4px;border-radius:4px;line-height:1;transition:all .12s;flex-shrink:0}
 .ctr-del:hover{background:var(--red-bg);color:var(--red)}
+/* Touch screens have no hover: the guest × was invisible (opacity 0) and the
+   item × was a 16 px target next to «Pay». Visible and finger-sized there. */
+@media (pointer:coarse){.c-guest-del{opacity:.55;width:32px;height:32px}.ctr-del{min-width:32px;min-height:32px}}
 .c-right-foot{border-top:1px solid var(--border);padding:11px 13px;flex-shrink:0}
 .c-total-row{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px}
 .c-total-val{font-weight:700;letter-spacing:-.02em;font-size:24px;color:var(--navy)}

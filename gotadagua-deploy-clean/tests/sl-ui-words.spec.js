@@ -209,3 +209,30 @@ test('sl ui: Camp Tab history — «1 item», readable closed date, newest first
   const src = await frame.evaluate(() => openDiscountModal.toString());
   expect(src).not.toMatch(/`€\$\{price\}`/);
 });
+
+test.describe('touch screen', () => {
+  test.use({ hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 } });
+  test('sl ui: Camp Tab delete buttons are visible and finger-sized on a phone', async ({ page }) => {
+    await boot(page);
+    await page.evaluate(() => showPage('pos'));
+    let frame = null;
+    for (let i = 0; i < 60 && !frame; i++) {
+      const f = page.frames().find(fr => /camp-tab-inner/.test(fr.url()));
+      if (f && await f.evaluate(() => document.readyState === 'complete').catch(() => false)) frame = f;
+      else await page.waitForTimeout(250);
+    }
+    const out = await frame.evaluate(() => {
+      const box = document.createElement('div');
+      box.innerHTML = '<div class="c-guest"><button class="c-guest-del">×</button></div><button class="ctr-del">×</button>';
+      document.body.appendChild(box);
+      const g = box.querySelector('.c-guest-del').getBoundingClientRect();
+      const d = box.querySelector('.ctr-del').getBoundingClientRect();
+      const op = getComputedStyle(box.querySelector('.c-guest-del')).opacity;
+      box.remove();
+      return { g: [g.width, g.height], d: [d.width, d.height], op: Number(op) };
+    });
+    expect(out.op).toBeGreaterThan(0);
+    expect(Math.min(...out.g)).toBeGreaterThanOrEqual(32);
+    expect(Math.min(...out.d)).toBeGreaterThanOrEqual(32);
+  });
+});
