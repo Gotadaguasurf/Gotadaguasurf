@@ -236,3 +236,11 @@ test.describe('touch screen', () => {
     expect(Math.min(...out.d)).toBeGreaterThanOrEqual(32);
   });
 });
+
+test('sl ui: Overview months read «August 2026» like the Ledger, not «2026-08»', async ({ page }) => {
+  await boot(page, { width: 1440, height: 900 });
+  await page.evaluate(() => showPage('overview'));
+  const opts = await page.evaluate(() => [...document.getElementById('ovMonthSel').options].map(o => o.text));
+  expect(opts).toContain('August 2026');
+  expect(opts.join('|')).not.toMatch(/\b2026-08\b/);
+});
