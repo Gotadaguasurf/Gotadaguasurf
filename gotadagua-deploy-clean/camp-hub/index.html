@@ -7591,6 +7591,23 @@ function ledgerAmtClass(r){
   const k=ledgerKind(r);
   return k?`amt amt-${k}`:'amt';
 }
+// «Paid via» cell. For a transfer it names the wallet the row moves, not a
+// payment method: an ATM withdrawal is «Out of bank» → Bank and «Into cash»
+// → Cash — reading «Bank Transfer» there looked like a second payment
+// (Miguel, 11 Nov 2026).
+function ledgerPaidViaText(r){
+  if(r&&r.type==='transfer'){
+    switch(r.paymentMethod){
+      case 'Bank Transfer':
+      case 'HQ Transfer':    return 'Bank';
+      case 'Cash':
+      case 'Cash Out':       return 'Cash';
+      case 'Cash Deposit':   return 'Cash → Bank';
+      case 'ATM Withdrawal': return 'Bank → Cash';
+    }
+  }
+  return (r&&r.paymentMethod)||'—';
+}
 function transferKindLabel(r){
   switch(r&&r.paymentMethod){
     case 'ATM Withdrawal': return 'ATM withdrawal';
@@ -8996,7 +9013,7 @@ function renderExpenses(){
         <td style="white-space:nowrap;font-size:12px;color:var(--muted)" title="When this line was entered">${fmtAdded(r.createdAt)}</td>
         <td style="white-space:nowrap">${ledgerTypeCell(r)}<span class="amt-mob ${ledgerAmtClass(r)}">${ledgerLocalAmtText(r)}</span></td>
         <td style="font-weight:600">${r.category}</td>
-        <td style="color:var(--muted);font-size:12px">${String(r.sourceKind||'').toLowerCase()==='hq_invoice'?'<span class="badge badge-blue" title="Paid by HQ — edit it in HQ → Expenses">Paid by HQ</span>':String(r.sourceKind||'').toLowerCase()==='hq_transfer'?'<span class="badge badge-grey" title="Transfer recorded in HQ — edit it in HQ">Money from HQ</span>':(r.paymentMethod||'—')}</td>
+        <td style="color:var(--muted);font-size:12px">${String(r.sourceKind||'').toLowerCase()==='hq_invoice'?'<span class="badge badge-blue" title="Paid by HQ — edit it in HQ → Expenses">Paid by HQ</span>':String(r.sourceKind||'').toLowerCase()==='hq_transfer'?'<span class="badge badge-grey" title="Transfer recorded in HQ — edit it in HQ">Money from HQ</span>':ledgerPaidViaText(r)}</td>
         <td style="color:var(--muted);font-size:12px">${r.linkedItem||'—'}${transportEntryTourOverride(r)?`<div style="font-size:10px;color:var(--ocean);font-weight:600;margin-top:2px">↳ ${escapeHtml(transportEntryTourOverride(r))}</div>`:''}</td>
         <td style="color:var(--muted)">${escapeHtml(strippedTransportDescription(r))||'—'}</td>
         <td style="color:var(--muted);font-size:12px">${r.vendor||'—'}</td>
