@@ -5104,22 +5104,15 @@ function renderOverview(){
   const totalSentEur=sum(transfers,x=>entryEurAmount(x));
   const grossProfitLocal=totalRevenueLocal-totalExpLocal;
   const grossProfitEur=totalRevenueEur-totalExpEur;
-  // ── Bank drawer ──────────────────────────────────────────────────────────
-  //   IN:  HQ transfers (money sent) + cash deposits back into bank
-  //   OUT: card spend + bank-transfer spend + ATM withdrawals
-  const bankBalanceLocal = moneySentLocal + cashDepositedLocal
-                         - cardSpendLocal - hqSpendLocal - atmWithdrawnLocal - wdBankOutLocal;
-  const bankBalanceEur   = moneySentEur   + cashDepositedEur
-                         - cardSpendEur   - hqSpendEur   - atmWithdrawnEur   - wdBankOutEur;
-  // ── Cash drawer ──────────────────────────────────────────────────────────
-  //   IN:  ATM withdrawals + all revenue (camp tab + extra) — guests pay
-  //        cash by default; if you ever take card revenue, refine this
-  //        to filter revenueEntries by paymentMethod.
-  //   OUT: cash spend + cash deposits back into bank
-  const cashBalanceLocal = atmWithdrawnLocal + wdCashInLocal + totalRevenueLocal
-                         - campSpendLocal   - cashDepositedLocal - cashOutLocal;
-  const cashBalanceEur   = atmWithdrawnEur   + wdCashInEur   + totalRevenueEur
-                         - campSpendEur     - cashDepositedEur   - cashOutEur;
+  // ── Bank / Cash drawers ──────────────────────────────────────────────────
+  // One rule for every surface — see ledgerDrawerDelta(). Revenue paid by
+  // Card / Bank Transfer lands in the bank (11 Nov 2026), HQ-paid and
+  // Loan-offset expenses touch neither drawer.
+  const _drawers = ledgerDrawerBalances(allLedger);
+  const bankBalanceLocal = _drawers.bankLocal;
+  const bankBalanceEur   = _drawers.bankEur;
+  const cashBalanceLocal = _drawers.cashLocal;
+  const cashBalanceEur   = _drawers.cashEur;
   // Total wallet = Bank + Cash. Mathematically equal to the legacy
   // campCashBalance below (kept for back-compat with older surfaces).
   const totalBalanceLocal = bankBalanceLocal + cashBalanceLocal;
@@ -5509,8 +5502,8 @@ function renderOverview(){
       ${kpi('On-site revenue','Tours + merch + bar generated at the camp',lkr(totalRevenueLocal),'kv-green',euro(totalRevenueEur))}
       ${kpi('Total Spent','Everything that went out (expenses only)',lkr(totalExpLocal),'',euro(totalExpEur))}
       ${kpi('Balance','Bank + Cash drawers combined',lkr(totalBalanceLocal),totalBalanceLocal>=0?'kv-green':'kv-red',euro(totalBalanceEur))}
-      ${kpi('Bank','HQ transfers − card/bank spend − ATM withdrawals',lkr(bankBalanceLocal),bankBalanceLocal>=0?'kv-ocean':'kv-red',euro(bankBalanceEur))}
-      ${kpi('Cash','ATM withdrawals + on-site revenue − cash spend',lkr(cashBalanceLocal),cashBalanceLocal>=0?'kv-amber':'kv-red',euro(cashBalanceEur))}
+      ${kpi('Bank','Money from HQ + card/bank revenue − card/bank spend − out of bank',lkr(bankBalanceLocal),bankBalanceLocal>=0?'kv-ocean':'kv-red',euro(bankBalanceEur))}
+      ${kpi('Cash','Into cash + cash revenue − cash spend − out of cash',lkr(cashBalanceLocal),cashBalanceLocal>=0?'kv-amber':'kv-red',euro(cashBalanceEur))}
     `;
   }
   const foodControlHtml=buildFoodControlCardHtml(weeks,allLedger);
@@ -7482,6 +7475,56 @@ function ledgerKind(r){
   if(r.type==='expense') return isHqPaidRow(r)?'hq':'expense';
   return '';
 }
+// Which drawer a ledger row moves, and which way — the ONE rule behind every
+// Bank / Cash figure (Overview period KPIs and the ledger's all-time tiles),
+// so the two can never disagree again (Miguel, 11 Nov 2026):
+//   Bank (camp account): + HQ Transfer, + Cash Deposit, − expense by Bank
+//     Transfer or Card, − transfer «Out of bank» ('Bank Transfer'), − legacy
+//     'ATM Withdrawal', + revenue paid by Card or Bank Transfer.
+//   Cash (manager + bar box): + transfer «Into cash» ('Cash'), + legacy ATM,
+//     + revenue paid in cash, − expense by Cash, − Cash Deposit, − «Out of
+//     cash» ('Cash Out').
+//   Neither: expenses paid by HQ ('HQ Paid' / hq_invoice) and 'Loan offset'
+//     (salary part kept against a staff loan) — real costs, no money moved.
+// Returns multipliers {bank, cash} in {-1, 0, 1}.
+function ledgerDrawerDelta(r){
+  const none={bank:0,cash:0};
+  if(!r) return none;
+  const m=r.paymentMethod;
+  const t=r.type==='revenue'?'income':r.type;
+  if(t==='expense'){
+    if(isHqPaidRow(r)) return none;
+    if(m==='Cash') return {bank:0,cash:-1};
+    if(m==='Card'||m==='Bank Transfer') return {bank:-1,cash:0};
+    return none; // 'Loan offset' and any other non-money channel
+  }
+  if(t==='income'){
+    if(m==='Card'||m==='Bank Transfer') return {bank:1,cash:0};
+    return {bank:0,cash:1};
+  }
+  if(t==='transfer'){
+    switch(m){
+      case 'HQ Transfer':    return {bank:1,cash:0};
+      case 'Cash Deposit':   return {bank:1,cash:-1};
+      case 'ATM Withdrawal': return {bank:-1,cash:1};
+      case 'Bank Transfer':  return {bank:-1,cash:0};
+      case 'Cash':           return {bank:0,cash:1};
+      case 'Cash Out':       return {bank:0,cash:-1};
+    }
+  }
+  return none;
+}
+function ledgerDrawerBalances(rows){
+  const out={bankLocal:0,bankEur:0,cashLocal:0,cashEur:0};
+  (rows||[]).forEach(r=>{
+    const d=ledgerDrawerDelta(r);
+    if(!d.bank&&!d.cash) return;
+    const l=entryLocalDisplayAmount(r), e=entryEurAmount(r);
+    out.bankLocal+=d.bank*l; out.bankEur+=d.bank*e;
+    out.cashLocal+=d.cash*l; out.cashEur+=d.cash*e;
+  });
+  return out;
+}
 // Sign of a ledger row for the wallet it touches («se for expense, no número
 // um −, e quando é revenue ou a entrar, um +»): money out of the bank or the
 // cash drawer shows −, money in shows +. HQ-paid expenses are − too (a cost
@@ -7628,7 +7671,11 @@ function updateCurrencyUi(prefix,type){
 }
 function toggleEntryUi(prefix,type){
   const showCategory=type!=='transfer';
-  const showPay=type==='expense';
+  // Revenue shows «Paid via» too: card / bank-transfer revenue goes to the
+  // bank, not the cash box. The edit modal also shows a transfer's kind
+  // (Money from HQ / Out of bank / Into cash / Out of cash …) so it can be
+  // corrected; Quick add keeps «Money from HQ» simple.
+  const showPay=type==='expense'||type==='income'||(type==='transfer'&&prefix==='em');
   const showDesc=type==='expense'||type==='income'||type==='transfer';
   const categoryValue=document.getElementById(prefix+'_cat')?.value||'';
   // Income: always show the linked dropdown so the user can attach a tour
@@ -7712,9 +7759,14 @@ function fillEntryFields(prefix,type,preset=null,entry=null){
     catEl.innerHTML=cats.map(c=>`<option value="${c}">${c}</option>`).join('');
     catEl.value=cats.includes(desiredCategory)?desiredCategory:cats[0];
   }
-  const payOpts=paymentOptionsFor(type);
+  // Editing a row paid by HQ or as a loan offset keeps that channel: the
+  // list only offers Cash / Card / Bank Transfer, so the row used to be
+  // re-saved as Cash and wrongly taken out of the cash drawer.
+  const payOpts=paymentOptionsFor(type).slice();
+  const keepPay=entry?.paymentMethod||preset?.paymentMethod||'';
+  if(type==='expense'&&['HQ Paid','Loan offset'].includes(keepPay)&&!payOpts.includes(keepPay)) payOpts.push(keepPay);
   if(payEl){
-    payEl.innerHTML=payOpts.map(v=>`<option value="${v}">${v}</option>`).join('');
+    payEl.innerHTML=payOpts.map(v=>`<option value="${v}">${type==='transfer'?transferKindLabel({paymentMethod:v}):v}</option>`).join('');
     const desiredPay=entry?.paymentMethod||preset?.paymentMethod||payEl.value||defaultPaymentMethod(type,activeArea);
     payEl.value=payOpts.includes(desiredPay)?desiredPay:payOpts[0];
   }
@@ -7913,9 +7965,10 @@ function buildLedgerPayload(prefix,type,id=null){
   // Read the paymentMethod from the form for both expenses AND transfers —
   // transfers now have three kinds (HQ Transfer / ATM Withdrawal / Cash
   // Deposit) and the user picks one from the same select.
-  const paymentMethod=(type==='expense'||type==='transfer')
-    ?(document.getElementById(prefix+'_pay')?.value||defaultPaymentMethod(type,area))
-    :defaultPaymentMethod(type,area);
+  // Revenue too (11 Nov 2026): it used to be forced to Cash here, so a card
+  // payment landed in the cash drawer and editing a Card revenue row turned
+  // it into Cash.
+  const paymentMethod=document.getElementById(prefix+'_pay')?.value||defaultPaymentMethod(type,area);
   // paidBy: only HQ Transfer is sourced from HQ. ATM Withdrawal and Cash
   // Deposit are internal camp movements between the bank and cash drawer.
   const paidBy = (type==='transfer' && paymentMethod==='HQ Transfer') ? 'HQ' : 'Camp';
@@ -8767,41 +8820,24 @@ function renderExpenses(){
   const allLedgerRows = S.ledger || [];
   const aExp = allLedgerRows.filter(x=>x.type==='expense');
   const aInc = allLedgerRows.filter(x=>x.type==='income');
-  const aTrans = allLedgerRows.filter(x=>x.type==='transfer');
   const sumL = (arr,f) => sum(arr, f);
   const aCash    = sumL(aExp.filter(x=>x.paymentMethod==='Cash'),         x=>entryLocalDisplayAmount(x));
   const aCard    = sumL(aExp.filter(x=>x.paymentMethod==='Card'),         x=>entryLocalDisplayAmount(x));
   const aBankXfer= sumL(aExp.filter(x=>x.paymentMethod==='Bank Transfer'),x=>entryLocalDisplayAmount(x));
-  const aHQ      = sumL(aTrans.filter(x=>x.paymentMethod==='HQ Transfer'),x=>entryLocalDisplayAmount(x));
-  const aATM     = sumL(aTrans.filter(x=>x.paymentMethod==='ATM Withdrawal'),x=>entryLocalDisplayAmount(x));
-  const aDeposit = sumL(aTrans.filter(x=>x.paymentMethod==='Cash Deposit'),x=>entryLocalDisplayAmount(x));
-  const aWdBank  = sumL(aTrans.filter(x=>x.paymentMethod==='Bank Transfer'),x=>entryLocalDisplayAmount(x));
-  const aWdCash  = sumL(aTrans.filter(x=>x.paymentMethod==='Cash'),x=>entryLocalDisplayAmount(x));
-  const aCashOut = sumL(aTrans.filter(x=>x.paymentMethod==='Cash Out'),x=>entryLocalDisplayAmount(x));
   const aRev     = sumL(aInc, x=>entryLocalDisplayAmount(x));
   // Same in EUR
   const aCashE    = sumL(aExp.filter(x=>x.paymentMethod==='Cash'),         x=>entryEurAmount(x));
   const aCardE    = sumL(aExp.filter(x=>x.paymentMethod==='Card'),         x=>entryEurAmount(x));
   const aBankXferE= sumL(aExp.filter(x=>x.paymentMethod==='Bank Transfer'),x=>entryEurAmount(x));
-  const aHQE      = sumL(aTrans.filter(x=>x.paymentMethod==='HQ Transfer'),x=>entryEurAmount(x));
-  const aATME     = sumL(aTrans.filter(x=>x.paymentMethod==='ATM Withdrawal'),x=>entryEurAmount(x));
-  const aDepositE = sumL(aTrans.filter(x=>x.paymentMethod==='Cash Deposit'),x=>entryEurAmount(x));
-  const aWdBankE  = sumL(aTrans.filter(x=>x.paymentMethod==='Bank Transfer'),x=>entryEurAmount(x));
-  const aWdCashE  = sumL(aTrans.filter(x=>x.paymentMethod==='Cash'),x=>entryEurAmount(x));
-  const aCashOutE = sumL(aTrans.filter(x=>x.paymentMethod==='Cash Out'),x=>entryEurAmount(x));
   const aRevE     = sumL(aInc, x=>entryEurAmount(x));
-  // Bank drawer = HQ transfers in + cash deposits in − card spend − bank
-  // transfer spend − ATM withdrawals out.
-  const bankBalLocal = aHQ + aDeposit - aCard - aBankXfer - aATM - aWdBank;
-  const bankBalEur   = aHQE + aDepositE - aCardE - aBankXferE - aATME - aWdBankE;
-  // Cash drawer = ATM withdrawals in + revenue in − cash spend − cash
-  // deposits out.
-  const cashBalLocal = aATM + aWdCash + aRev - aCash - aDeposit - aCashOut;
-  // BUG FIX: was subtracting `aDeposit` (LKR/MAD value) from a EUR sum,
-  // which made the Cash drawer's EUR figure wildly off whenever a
-  // Cash Deposit existed (e.g. depositing MAD 1000 deducted 1000 from
-  // the EUR balance instead of ~€94). Now uses aDepositE.
-  const cashBalEur   = aATME + aWdCashE + aRevE - aCashE - aDepositE - aCashOutE;
+  // Bank / Cash drawers — the same rule as the Overview (ledgerDrawerDelta):
+  // revenue by Card / Bank Transfer goes to the bank, HQ-paid and
+  // Loan-offset expenses touch neither drawer.
+  const _aDrawers    = ledgerDrawerBalances(allLedgerRows);
+  const bankBalLocal = _aDrawers.bankLocal;
+  const bankBalEur   = _aDrawers.bankEur;
+  const cashBalLocal = _aDrawers.cashLocal;
+  const cashBalEur   = _aDrawers.cashEur;
   const totalBalLocal = bankBalLocal + cashBalLocal;
   const totalBalEur   = bankBalEur + cashBalEur;
 
