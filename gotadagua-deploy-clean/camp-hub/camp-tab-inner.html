@@ -3382,6 +3382,17 @@ function payItem(idx){
   const g=findConsumer(AG,currentRoster);
   payItemOnGuest(g, idx);
 }
+// This week expanded card — «Pay all»: pays every unpaid line of the named
+// guest (each line its own revenue row), same as «Pay all» on Charge.
+function payAllForGuestId(guestId){
+  if(CAMP_TAB_MODE !== 'per_guest') return;
+  const g=findConsumer(guestId,currentRoster);
+  if(!g) return;
+  const idxs=(g.items||[]).map((it,idx)=>(!it?.paidAt && Number(it?.p||0)>0)?idx:-1).filter(idx=>idx>=0);
+  if(!idxs.length){ toast('Nothing to pay'); return; }
+  // re-read the guest each time: paying a line saves and rebuilds the rows
+  idxs.forEach(idx=>payItemOnGuest(findConsumer(guestId,currentRoster), idx));
+}
 // This week expanded card — pays an item on the named guest.
 function payItemForGuestId(guestId, idx){
   if(CAMP_TAB_MODE !== 'per_guest') return;
@@ -3667,6 +3678,7 @@ function renderThisWeek(){
           <div class="tw-actions">
             ${CAMP_TAB_MODE==='per_guest'
               ? `${!isFullyPaid&&tot>0?`<button class="btn btn-s btn-sm" onclick="openBill('${esc(g.id)}')">Bill</button>`:''}
+                 ${(()=>{ const n=(g.items||[]).filter(it=>!it?.paidAt&&Number(it?.p||0)>0).length; return n?`<button class="btn btn-p btn-sm" onclick="payAllForGuestId('${esc(g.id)}')">${n>1?`Pay all (${n})`:'Pay'}</button>`:''; })()}
                  <button class="btn ${closeReady?'btn-p':'btn-s'} btn-sm" onclick="closeGuestById('${esc(g.id)}')" title="${hasUnpaidItems?'Close — unpaid items will stay as an unpaid record in history':'Remove guest from active list'}">Close guest</button>
                  <button class="btn btn-link btn-sm c-link-danger" onclick="deleteGuest('${esc(g.id)}')">Delete ${rosterLabel().toLowerCase()}</button>`
               : `${currentRoster==='guests'?`<button class="btn btn-s btn-sm" onclick="passGuestToNextWeek('${esc(g.id)}')">${isQueuedForNextWeek(g.name)?'Update next week':'Continue next week'}</button>`:''}

@@ -647,3 +647,32 @@ test('camp tab: an old unpaid «Gift» line saved with a price shows LKR 0; a pa
   ]).map(i => i.p));
   expect(out).toEqual([0, 300, 300]);
 });
+
+// «This week» expanded card has «Pay all» too (12 Nov 2026): every unpaid
+// line paid, one revenue row each, gifts (LKR 0) left alone.
+test('camp tab: This week «Pay all» pays every unpaid line of that guest', async ({ page }) => {
+  await openHub(page, Object.values(fixture()));
+  const frameHandle = await page.waitForSelector('iframe[src*="camp-tab-inner"][src*="mode=per_guest"]', { state: 'attached', timeout: 15000 });
+  const frame = await frameHandle.contentFrame();
+  await frame.waitForFunction(() => { try { return typeof payAllForGuestId === 'function' && CAMP_TAB_MODE === 'per_guest'; } catch (_) { return false; } }, null, { timeout: 15000 });
+  const out = await frame.evaluate(async () => {
+    window.confirm = () => true;
+    await ensurePerGuestWeek();
+    currentRoster = 'guests';
+    document.getElementById('newGuestName').value = 'Week Guest';
+    saveNewGuest();
+    AC = 'Drinks';
+    MENU.Drinks = [...(MENU.Drinks || []), { id: 'w-beer', n: 'Lion Lager', p: 900 }];
+    addResolvedItem({ id: 'w-beer', n: 'Lion Lager', p: 900 });
+    addResolvedItem({ id: 'w-soft', n: 'Soft Drink', p: 400 });
+    addItemAtCustomPrice('w-beer', 'Lion Lager', 0, 'Gift', null);
+    const g = findConsumer('Week Guest', 'guests');
+    twExpanded = g.id; renderThisWeek();
+    const btn = [...document.querySelectorAll('.tw-actions button')].find(b => /^Pay all/.test(b.textContent));
+    const label = btn && btn.textContent;
+    btn.click();
+    return { label, paid: findConsumer('Week Guest', 'guests').items.map(i => [i.p, !!i.paidAt]) };
+  });
+  expect(out.label).toBe('Pay all (2)');
+  expect(out.paid).toEqual([[900, true], [400, true], [0, false]]);
+});
