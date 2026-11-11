@@ -73,7 +73,7 @@ async function stubSupabase(page, rows) {
     const req = route.request(); const url = req.url(); const method = req.method();
     const json = (body) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
     if (url.includes('/auth/v1/user')) return json({ id: 'u1', email: 'miguel@gotadaguasurf.com', aud: 'authenticated', role: 'authenticated' });
-    if (url.includes('/rest/v1/locations')) return json({ id: LOC, name: 'Sri Lanka', slug: 'sri-lanka', currency: 'LKR', default_fx_to_eur: 340, camp_tab_mode: 'weekly' });
+    if (url.includes('/rest/v1/locations')) return json({ id: LOC, name: 'Sri Lanka', slug: 'sri-lanka', currency: 'LKR', default_fx_to_eur: 340, camp_tab_mode: 'per_guest' }); // Sri Lanka runs per_guest (locations table, 11 Nov 2026)
     if (url.includes('/rest/v1/ledger_entries')) {
       if (method === 'GET') return json([...server.values()]);
       if (method === 'POST') {
@@ -365,4 +365,55 @@ test('camp cash: ledger look — kind, sign and labels for every method; «Added
   expect(table.firstAdded[0]).not.toBe('—');
   expect(table.firstDesc).toEqual(['expense Cash 12000', '2025 shop debt']);
   expect(table.byDate).not.toBe('');
+});
+
+// Camp Tab → ledger, end to end (Miguel, 11 Nov 2026): the social host runs
+// the bar/activities box and enters every sale in the Camp Tab; each paid
+// item must reach the ledger by itself as Cash revenue. Today the Camp Tab
+// has no payment-method choice at checkout («Pay» / «Pay all» only), so every
+// sale is recorded as Cash — this test pins that down.
+test('camp cash: Camp Tab sale → Pay all → Cash revenue rows in the ledger → Cash up; unpay takes it back', async ({ page }) => {
+  const errors = collectFatalErrors(page);
+  const { writes } = await openHub(page, Object.values(fixture()));
+  await page.waitForFunction(() => { const f = document.querySelector('iframe[src*="camp-tab-inner"]'); return !!f && /mode=per_guest/.test(f.getAttribute('src') || ''); }, null, { timeout: 15000 });
+  const frameHandle = await page.waitForSelector('iframe[src*="camp-tab-inner"][src*="mode=per_guest"]', { state: 'attached' });
+  const frame = await frameHandle.contentFrame();
+  await frame.waitForFunction(() => { try { return typeof togglePaid === 'function' && typeof addResolvedItem === 'function' && CAMP_TAB_MODE === 'per_guest'; } catch (_) { return false; } }, null, { timeout: 15000 });
+
+  // The social host: pick a guest, ring up a beer and a tuk-tuk, tap «Pay all».
+  const tab = await frame.evaluate(async () => {
+    window.confirm = () => true;
+    await ensurePerGuestWeek();
+    currentRoster = 'guests';
+    document.getElementById('newGuestName').value = 'Test Guest';
+    saveNewGuest(); // the «Add guest» form — sets AG to the new guest
+    const g = findConsumer('Test Guest', 'guests');
+    AC = 'Drinks'; addResolvedItem({ id: 'm-beer', n: 'Lion Lager', p: 900 });
+    AC = 'Tours';  addResolvedItem({ id: 'm-tuk', n: 'Temple Run Tuk Tuk', p: 1500 });
+    togglePaid(); // «Pay all (2)»
+    const fg = findConsumer(g.id, 'guests');
+    return { paid: fg.items.map(i => !!i.paidAt), methodFields: fg.items.map(i => Object.keys(i).filter(k => /method|card|transfer|via/i.test(k))) };
+  });
+  expect(tab.paid).toEqual([true, true]);
+  expect(tab.methodFields).toEqual([[], []]); // the Camp Tab stores no payment method at all
+
+  await page.waitForFunction(() => S.ledger.filter(r => r.sourceKind === 'camp_tab_per_item' && /Test Guest/.test(r.description || '')).length === 2, null, { timeout: 10000 });
+  const rows = writes.filter(w => w.op === 'upsert' && w.row.source_kind === 'camp_tab_per_item' && /Test Guest/.test(w.row.description || ''))
+    .map(w => [w.row.type, w.row.payment_method, w.row.amount_local, w.row.description]);
+  expect(rows).toEqual([
+    ['revenue', 'Cash', 900, 'Camp Tab · Test Guest · Lion Lager'],
+    ['revenue', 'Cash', 1500, 'Camp Tab · Test Guest · Temple Run Tuk Tuk'],
+  ]);
+  let d = await drawers(page);
+  expect(d.ledgerCash).toBe(EXPECTED_CASH + 2400);
+  expect(d.ledgerBank).toBe(EXPECTED_BANK);
+  expect(d.ovCash).toBe(EXPECTED_CASH + 2400);
+
+  // The host reverses the beer («Paid» pill) → its ledger row goes, Cash back down.
+  await frame.evaluate(() => { window.confirm = () => true; unpayItemOnGuest(findConsumer('Test Guest', 'guests'), 0); });
+  await page.waitForFunction(() => S.ledger.filter(r => r.sourceKind === 'camp_tab_per_item' && /Test Guest/.test(r.description || '')).length === 1, null, { timeout: 10000 });
+  d = await drawers(page);
+  expect(d.ledgerCash).toBe(EXPECTED_CASH + 1500);
+  expect(writes.some(w => w.op === 'delete')).toBe(true);
+  expect(errors).toEqual([]);
 });
