@@ -1239,7 +1239,7 @@ function inferArea(type,category,linkedItem=''){
     if(category==='Drinks') return 'Bar';
     if(category==='Merchandise') return 'Merch';
     if(String(category||'').startsWith('Wild')) return 'Wild';
-    if(isTransportRevenueName(revenueName)) return 'Transport';
+    if(isTransportRevenueName(revenueName)||category==='Transport') return 'Transport';
     if(isTourRevenueName(revenueName)||category==='Tours') return 'Tours';
     return 'General';
   }
@@ -4317,6 +4317,10 @@ function mapCampTabRevenueCategory(item){
   // and Merch business area. The SKU name rides along on linked_item, so
   // per-model reporting stays available without a new revenue category.
   if(item.c==='Diploria') return 'Merchandise';
+  // A transfer sold from the Tours menu («Dr House Transfer») is Transport
+  // revenue (Miguel, 11 Nov 2026 — the old rows were moved by hand, new
+  // sales still landed in Tours).
+  if(item.c==='Tours' && /\btransfer\b/i.test(String(item.n||''))) return 'Transport';
   if(item.c==='Tours') return 'Tours';
   return 'Other Revenue';
 }
@@ -9639,7 +9643,12 @@ window.addEventListener('message',e=>{
       const {guest,item,date}=e.data;
       if(guest && item){
         const entry=buildPaidItemRevenueEntry(guest,item,{date});
-        if(entry) upsertClosedWeekIncome([entry]);
+        // Nothing retries a per-item row later: if the save fails the Camp
+        // Tab must take the «Paid» back, or the money never reaches the books.
+        if(entry) upsertClosedWeekIncome([entry]).then(ok=>{
+          if(ok) return;
+          try{ e.source?.postMessage({type:'camp-tab-item-paid-failed',guestId:guest.id,itemId:item.id},'*'); }catch(_){}
+        });
       }
     }catch(err){ console.warn('[Hub] item-paid handler failed',err); }
     rerenderActivePageData();
@@ -9661,24 +9670,29 @@ window.addEventListener('message',e=>{
     try{
       const guestName = String(e.data?.guest?.name||'').trim();
       if(!guestName){ rerenderActivePageData(); return; }
-      const expectedPrefix = `Camp Tab · ${guestName} · `;
+      // Only THIS guest's paid lines go. The old sweep removed every row
+      // starting «Camp Tab · <name> ·», so deleting one closed «Jules»
+      // wiped the revenue of every other Jules (4 in Sri Lanka) too.
+      // Per line: its own id; if that row is not here, one row with the
+      // same description + day + amount.
       const matched = [];
       const sizeBefore = S.ledger.length;
-      S.ledger = S.ledger.filter(row => {
-        if(String(row?.sourceKind||'') !== 'camp_tab_per_item') return true;
-        if(!String(row?.description||'').startsWith(expectedPrefix)) return true;
-        matched.push(String(row?.id||''));
-        return false;
-      });
-      // Per-item UUID deletes — covers any row that survived the prefix
-      // sweep (legacy description, manually edited). Items array carries
-      // {id, n, p, date} for each paid line.
       const guestKey = String(e.data?.guest?.id||guestName||'guest').replace(/\s+/g,'_');
       (Array.isArray(e.data?.items) ? e.data.items : []).forEach(item => {
         const itemKey = String(item?.id||item?.n||'item').replace(/\s+/g,'_');
-        const seed    = `campitem_${guestKey}_${itemKey}_${String(item?.date||'').slice(0,10)}`;
+        const dateStr = String(item?.date||'').slice(0,10);
+        const seed    = `campitem_${guestKey}_${itemKey}_${dateStr}`;
         const uuid    = stableUuidFromSeed(seed);
         matched.push(seed, uuid);
+        let idx = S.ledger.findIndex(row => row?.id===uuid || row?.id===seed);
+        if(idx<0){
+          const desc = `Camp Tab · ${guestName} · ${String(item?.n||'').trim()}`;
+          idx = S.ledger.findIndex(row => String(row?.sourceKind||'')==='camp_tab_per_item'
+            && String(row?.description||'').trim()===desc
+            && String(row?.date||'').slice(0,10)===dateStr
+            && Math.abs(Number(row?.amountLocal||0)-Number(item?.p||0))<0.01);
+        }
+        if(idx>=0){ matched.push(String(S.ledger[idx].id||'')); S.ledger.splice(idx,1); }
       });
       if(S.ledger.length !== sizeBefore){
         save();
@@ -9725,14 +9739,22 @@ window.addEventListener('message',e=>{
         const targetAmount = Number(item.p||0);
         const matchedIds   = [];
         const sizeBefore   = S.ledger.length;
+        // ONE line was unpaid → ONE row goes. The sweep used to drop EVERY
+        // row with the same guest + item + day + amount, so un-paying one of
+        // two beers wiped both and the beer still «Paid» had no revenue
+        // (Marie, 6 Oct 2026). Fallback only when the id is not found.
+        const hasExact = S.ledger.some(row => idsToRemove.has(String(row?.id||'')));
+        let swept = false;
         S.ledger = S.ledger.filter(row => {
           if(idsToRemove.has(String(row?.id||''))) return false;
+          if(hasExact || swept) return true;
           if(String(row?.sourceKind||'') !== 'camp_tab_per_item') return true;
           const sameDate   = String(row?.date||'').slice(0,10) === dateStr;
           const sameDesc   = String(row?.description||'').trim() === targetDesc;
           const sameAmount = Math.abs(Number(row?.amountLocal||0) - targetAmount) < 0.01;
           if(sameDate && sameDesc && sameAmount){
             matchedIds.push(String(row.id));
+            swept = true;
             return false;
           }
           return true;
