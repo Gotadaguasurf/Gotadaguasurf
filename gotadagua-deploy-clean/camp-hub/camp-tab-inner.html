@@ -693,6 +693,17 @@ let MENU=loadMenu();
 // seed). Everything else (parent bootstrap, catalog pushes, menu edits)
 // queues a sync that no-ops until then.
 let MENU_HYDRATED=false;
+// Same rule for the staff directory: the bootstrap message queued a staff
+// sync (DELETE every camp_staff_directory row of the location, then insert
+// STAFF) before the staff hydrate had answered, so a slow or failed load
+// wiped the list. And the menu sync is a DELETE-all + upsert: run on every
+// boot it emptied location_menus whenever the upsert failed after the
+// delete. _menuRowsKey = what the DB is known to hold; equal → no write.
+let STAFF_HYDRATED=false;
+let _menuRowsKey=null;
+function menuRowsKey(rows){
+  return JSON.stringify((rows||[]).map(r=>[r.category,r.item_name,Number(r.price_local||0),r.stock_qty==null?null:Number(r.stock_qty),r.description||'',r.staff_price_local==null?null:Number(r.staff_price_local),Number(r.sort_order||0)]).sort((a,b)=>JSON.stringify(a)<JSON.stringify(b)?-1:1));
+}
 // Phase 5: rename any legacy "Activities" category back to "Tours" so the
 // catalog-driven Tours menu (from /prices) lands in the right bucket. The
 // user may have renamed Tours → Activities at some point in the Menu editor;
@@ -818,6 +829,17 @@ function isUuid(value){
 }
 function makeUuid(){
   if(globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  // randomUUID only exists on secure pages / newer phones (a phone in Sri
+  // Lanka had none on 9 Nov 2026). The seed below keeps only the first 12
+  // digits of Date.now(), so ids made in the same 10 ms were IDENTICAL —
+  // three guests added at once became one row. getRandomValues is
+  // everywhere: build a real v4 id from it.
+  if(globalThis.crypto?.getRandomValues){
+    const b=globalThis.crypto.getRandomValues(new Uint8Array(16));
+    b[6]=(b[6]&15)|64; b[8]=(b[8]&63)|128;
+    const h=[...b].map(x=>x.toString(16).padStart(2,'0')).join('');
+    return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20,32)}`;
+  }
   const seed=`${Date.now()}_${Math.random().toString(16).slice(2)}`;
   return `00000000-0000-4000-8000-${seed.padEnd(12,'0').slice(0,12)}`;
 }
@@ -1429,6 +1451,7 @@ async function hydrateCampTabMenuFromSupabase({mergeLocal=false}={}){
   }
   if(data?.length){
     MENU=menuRowsToState(data);
+    _menuRowsKey=menuRowsKey(data);
     MENU_HYDRATED=true;   // we know what the DB holds — writes are safe now
     return true;
   }
@@ -1453,12 +1476,15 @@ async function syncCampTabMenuToSupabase(){
   const client=getCampTabSupabaseClient();
   const locationId=await ensureCampTabLocationId();
   if(!client||!locationId) return false;
+  const rows=menuStateToRows(locationId);
+  const rowsKey=menuRowsKey(rows);
+  if(rowsKey===_menuRowsKey) return true; // the DB already holds exactly this menu
   const _gen=++_suppressGeneration;
   suppressRemoteSync=true;
   try{
-    const rows=menuStateToRows(locationId);
     const { error: deleteError } = await client.from('location_menus').delete().eq('location_id',locationId);
     if(deleteError) throw deleteError;
+    _menuRowsKey=null; // emptied — a failed upsert below must be retried
     if(rows.length){
       // upsert (NOT insert): DELETE+INSERT from two browsers interleaves
       // as "A deletes, B deletes, A inserts, B inserts" — plain insert
@@ -1470,6 +1496,7 @@ async function syncCampTabMenuToSupabase(){
         .upsert(rows,{onConflict:'location_id,category,item_name,price_local'});
       if(error) throw error;
     }
+    _menuRowsKey=rowsKey;
     return true;
   }finally{
     setTimeout(()=>{ if(_suppressGeneration===_gen) suppressRemoteSync=false; },800);
@@ -1489,6 +1516,7 @@ async function hydrateCampTabStaffFromSupabase({mergeLocal=false}={}){
     console.warn('Camp Tab staff hydrate failed',error);
     return false;
   }
+  STAFF_HYDRATED=true;
   if(data?.length){
     STAFF=normalizeStaff(data.map((row)=>({id:row.id,name:row.name})));
     activeStaffId=STAFF[0]?.id||'';
@@ -1500,6 +1528,10 @@ async function hydrateCampTabStaffFromSupabase({mergeLocal=false}={}){
   return false;
 }
 async function syncCampTabStaffToSupabase(){
+  if(!STAFF_HYDRATED){
+    console.warn('[CampTab] staff sync skipped — staff not hydrated from the DB yet');
+    return false;
+  }
   const client=getCampTabSupabaseClient();
   const locationId=await ensureCampTabLocationId();
   if(!client||!locationId) return false;
@@ -2001,7 +2033,8 @@ function merchSoldCounts(){
   return counts;
 }
 function merchStockKey(name=''){
-  const match=String(name||'').match(/(S|M|L|XL)$/i);
+  // 2XL / 3XL / XXL / XS before XL / S — «T-Shirt 2XL» had no stock count.
+  const match=String(name||'').match(/(2XL|3XL|XXL|XL|XS|S|M|L)$/i);
   return match?match[1].toUpperCase():'';
 }
 // Extract the product family from a merch item name. Naming convention:
@@ -2020,16 +2053,19 @@ function merchStockKey(name=''){
 // keeps its own stock counter.
 function merchProductType(name=''){
   const s=String(name||'').trim();
-  const m=s.match(/^(.+?)\s+(?:Offer|Staff|Sale|Promo|Discount)?\s*(?:S|M|L|XL)$/i);
+  const m=s.match(/^(.+?)\s+(?:Offer|Staff|Sale|Promo|Discount)?\s*(?:2XL|3XL|XXL|XL|XS|S|M|L)$/i);
   return m?m[1].trim():'';
 }
 function merchStockLeft(item){
   if(!item) return null;
   const sizeKey=merchStockKey(item.n);
   const typeKey=merchProductType(item.n);
-  // No size suffix (e.g. legacy "Sticker" without sizing) → no shared
-  // stock pool; treat the item as standalone.
-  if(!sizeKey || !typeKey) return null;
+  // No size suffix (e.g. "Zink Stick") → no shared stock pool; the item is
+  // its own counter (it returned null, so its catalog stock never showed).
+  if(!sizeKey || !typeKey){
+    if(!Number.isFinite(Number(item.stk)) || item.stk===null || item.stk===undefined) return null;
+    return Math.max(0,Math.round(Number(item.stk))-(merchSoldCounts()[item.n]||0));
+  }
   const soldCounts=merchSoldCounts();
   const merchItems=currentMerchMenu();
   // Items sharing the same (product, size) pool — base + Offer + Staff
@@ -3081,7 +3117,7 @@ function openDiscountModal(id, name){
       const raw = m.querySelector('#discountCustomPrice').value;
       const price = Number(raw);
       if(!Number.isFinite(price) || price < 0){ toast('Enter a valid amount'); return; }
-      const note = (m.querySelector('#discountCustomNote').value || '').trim() || `€${price}`;
+      const note = (m.querySelector('#discountCustomNote').value || '').trim() || euro(price);
       addItemAtCustomPrice(id, name, price, note, null);
       close();
     });
@@ -3291,7 +3327,9 @@ function isGuestFullyPaid(g){
   if(CAMP_TAB_MODE !== 'per_guest') return !!g.paid;
   const items = Array.isArray(g.items) ? g.items : [];
   if(!items.length) return !!g.paid;
-  return items.every(i => !!i?.paidAt) || !!g.paid;
+  // A gift / LKR 0 line can't be paid (payItemOnGuest refuses it), so it
+  // must not keep the guest «Unpaid» forever once every priced line is paid.
+  return items.every(i => !!i?.paidAt || !(Number(i?.p||0)>0)) || !!g.paid;
 }
 
 // per_guest mode only — mark a single item on a SPECIFIC guest as
@@ -3309,7 +3347,7 @@ function payItemOnGuest(g, idx){
   if(!(Number(item.p)>0)){ toast('Item has no price'); return false; }
   const nowIso=new Date().toISOString();
   item.paidAt=nowIso;
-  if(g.items.every(i => !!i.paidAt)){
+  if(g.items.every(i => !!i.paidAt || !(Number(i?.p||0)>0))){
     g.paid=true;
     g.paidAt = g.paidAt || nowIso;
   }
@@ -3452,9 +3490,13 @@ function openBill(guestId){
     byCat[cat].forEach(i=>{html+=`<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:13px;border-bottom:1px solid rgba(0,0,0,.04)"><span>${i.n}${i.s?` <span style="font-size:10px;color:var(--muted)">· ${i.s}</span>`:''}</span><span style="font-variant-numeric:tabular-nums;font-size:11px;color:var(--muted)">${euro(i.p)}</span></div>`;});
     html+=`</div>`;
   });
-  html+=`<div class="bill-total-box" style="background:var(--navy);border-radius:var(--r);padding:14px 16px;display:flex;justify-content:space-between;align-items:center;margin-top:12px"><div><div style="font-size:9px;color:#9fc0da;text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:3px">Total to pay</div><div style="font-weight:700;letter-spacing:-.02em;font-size:28px;color:#fff">${euro(gtot(g))}</div></div><div style="text-align:right;font-size:11px;color:#9fc0da">${g.items.length} items<br>${fmtd(S.activeWeek.start)} week</div></div>`;
+  // per_guest: lines already paid one by one are not «to pay» any more.
+  const billDue=CAMP_TAB_MODE==='per_guest'?g.items.filter(i=>!i.paidAt).reduce((s,i)=>s+Number(i.p||0),0):gtot(g);
+  html+=`<div class="bill-total-box" style="background:var(--navy);border-radius:var(--r);padding:14px 16px;display:flex;justify-content:space-between;align-items:center;margin-top:12px"><div><div style="font-size:9px;color:#9fc0da;text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:3px">Total to pay</div><div style="font-weight:700;letter-spacing:-.02em;font-size:28px;color:#fff">${euro(billDue)}</div></div><div style="text-align:right;font-size:11px;color:#9fc0da">${g.items.length} items<br>${fmtd(S.activeWeek.start)} week</div></div>`;
   document.getElementById('billBody').innerHTML=html;
-  document.getElementById('billPayBtn').onclick=()=>{g.paid=true;AG=g.id||src;save();renderTabPanel();renderGuestList();closeOv('billOv');renderThisWeek();toast(g.name+' paid');};
+  // per_guest: «Mark paid» = «Pay all» — each line gets paid and its ledger
+  // row. Only flipping g.paid wrote no revenue at all (toast said «paid»).
+  document.getElementById('billPayBtn').onclick=()=>{if(CAMP_TAB_MODE==='per_guest'){AG=g.id||src;closeOv('billOv');togglePaid();return;}g.paid=true;AG=g.id||src;save();renderTabPanel();renderGuestList();closeOv('billOv');renderThisWeek();toast(g.name+' paid');};
   openOv('billOv');
 }
 
@@ -3510,8 +3552,13 @@ function renderThisWeek(){
   const paid=guests.filter(g=>g.paid);
   const unpaid=guests.filter(g=>!g.paid);
   const term=twSearch.trim().toLowerCase();
-  const totalCollected=paid.reduce((s,g)=>s+gtot(g),0);
-  const totalOutstanding=unpaid.reduce((s,g)=>s+gtot(g),0);
+  // per_guest: lines are paid one by one, so count lines, not the guest's
+  // paid flag (only set when every line is paid) — a half-paid tab showed
+  // everything as Outstanding and nothing as Collected.
+  const perLine=CAMP_TAB_MODE==='per_guest';
+  const lines=perLine?guests.flatMap(g=>g.items||[]):[];
+  const totalCollected=perLine?lines.filter(i=>i.paidAt).reduce((s,i)=>s+Number(i.p||0),0):paid.reduce((s,g)=>s+gtot(g),0);
+  const totalOutstanding=perLine?lines.filter(i=>!i.paidAt).reduce((s,i)=>s+Number(i.p||0),0):unpaid.reduce((s,g)=>s+gtot(g),0);
   const chargeableUnpaid=unpaid.filter(g=>gtot(g)>0);
   const allPaid=guests.length>0&&chargeableUnpaid.length===0;
   const nextDraft=nextWeekDraft();
@@ -3892,7 +3939,9 @@ function renderHistoryPerGuest(el){
   const wk=currentWeek();
   // Search box header. Keeps the same shell the weekly History uses
   // so the layout stays familiar — only the body changes.
-  const all=Array.isArray(wk?.guests)?wk.guests:[];
+  // Closed staff live in wk.staff — leaving them out hid their tabs (and
+  // their paid lines) from History, with no way to re-open them.
+  const all=[...(Array.isArray(wk?.guests)?wk.guests:[]),...(Array.isArray(wk?.staff)?wk.staff:[])];
   const closed=all.filter(g=>g?.closedAt||g?.closed_at);
   // Total collected across closed guests (paid items only). Surfaces
   // a quick "how much have we made from these closed guests" stat.
@@ -4154,19 +4203,24 @@ async function renderPosActivity(){
   const catF    = catSel?.value    || 'all';
   const periodF = document.getElementById('acPeriod')?.value || 'week';
 
+  // added_at is written as the device's LOCAL date + time with a «Z»
+  // (buildCampTabSyncRows), so read it back as local time — taken as UTC,
+  // every sale in Sri Lanka (UTC+5:30) read «just now» for 5½ hours and
+  // «Today» began at 05:30.
+  const addedAt = (iso) => iso ? new Date(String(iso).replace(/(Z|[+-]00:?00)$/,'')) : null;
   const cutoff = (() => {
     const d = new Date();
-    if (periodF === 'today') d.setUTCHours(0,0,0,0);
-    else if (periodF === 'week')  d.setUTCDate(d.getUTCDate() - 7);
-    else if (periodF === 'month') d.setUTCDate(d.getUTCDate() - 30);
+    if (periodF === 'today') d.setHours(0,0,0,0);
+    else if (periodF === 'week')  d.setDate(d.getDate() - 7);
+    else if (periodF === 'month') d.setDate(d.getDate() - 30);
     else return null;
-    return d.toISOString();
+    return d;
   })();
 
   const filtered = items.filter(r => {
     if (staffF !== 'all' && r.created_by !== staffF) return false;
     if (catF   !== 'all' && r.category !== catF)     return false;
-    if (cutoff && String(r.added_at || '') < cutoff) return false;
+    if (cutoff && !(addedAt(r.added_at) >= cutoff)) return false;
     return true;
   });
 
@@ -4207,7 +4261,7 @@ async function renderPosActivity(){
     return `<div style="display:grid;grid-template-columns:1fr auto;gap:10px;padding:9px 14px;border-bottom:1px solid var(--border);font-size:12px${edited?';background:#fdf9ee':''}">
       <div style="min-width:0">
         <div style="color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><strong>${who}</strong> added <strong>${r.item_name||'item'}</strong> to <strong>${guest}</strong></div>
-        <div style="font-size:10px;color:var(--muted);margin-top:1px">${r.category||'—'} · ${when(r.added_at)}${edited?` · edited by ${editedByName} ${when(r.updated_at)}`:''}</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:1px">${r.category||'—'} · ${when(addedAt(r.added_at))}${edited?` · edited by ${editedByName} ${when(r.updated_at)}`:''}</div>
       </div>
       <div style="font-variant-numeric:tabular-nums;font-weight:700;color:var(--navy);text-align:right;white-space:nowrap">${cur} ${Number(r.price_local||0).toFixed(0)}</div>
     </div>`;
@@ -4763,10 +4817,12 @@ window.addEventListener('message',async e=>{
       migrateMerchMenu();
       changed=true;
     }
+    let staffAdopted=false;
     if((!Array.isArray(STAFF)||!STAFF.length) && Array.isArray(e.data?.staff) && e.data.staff.length){
       STAFF=normalizeStaff(cloneCampTabPayload(e.data.staff));
       activeStaffId=STAFF[0]?.id||'';
       changed=true;
+      staffAdopted=true;
     }
     // Phase 5: the parent bootstrap message now carries the catalog-driven
     // Tours menu in e.data.menu.Tours regardless of whether MENU.Merch was
@@ -4789,7 +4845,7 @@ window.addEventListener('message',async e=>{
       renderAllCampTabViews();
       notifyParentStateChanged();
       queueMenuSync();
-      queueStaffSync();
+      if(staffAdopted) queueStaffSync();
       queueCampTabSync();
     }
     return;
@@ -4910,6 +4966,22 @@ window.addEventListener('message',async e=>{
       renderAllCampTabViews();
       notifyParentStateChanged();
       queueMenuSync();
+    }
+    return;
+  }
+  // Hub could not save the revenue row of a line just paid (no signal, DB
+  // error). Nothing retries a per-item row, so a line left «Paid» here was
+  // money that never reached the ledger. Put it back to unpaid so the host
+  // sees it and taps Pay again.
+  if(e.data?.type==='camp-tab-item-paid-failed'){
+    const wk=currentWeek();
+    const g=wk?[...(wk.guests||[]),...(wk.staff||[])].find(x=>x.id===e.data.guestId):null;
+    const it=g?(g.items||[]).find(x=>x.id===e.data.itemId):null;
+    if(it&&it.paidAt){
+      delete it.paidAt;
+      if(g.paid){g.paid=false;delete g.paidAt;}
+      save();renderAllCampTabViews();
+      toast(`${it.n} NOT saved — check the connection and tap Pay again`);
     }
     return;
   }
