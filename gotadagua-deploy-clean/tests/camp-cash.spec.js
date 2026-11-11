@@ -10,10 +10,16 @@
 //
 // The rules (Miguel, all confirmed):
 //   Bank: + HQ Transfer + Cash Deposit + revenue by Card/Bank Transfer
-//         − expense by Bank Transfer/Card − transfer «Out of bank» − legacy ATM
-//   Cash: + transfer «Into cash» + legacy ATM + cash revenue (Camp Tab included)
+//         − expense by Bank Transfer/Card − cash withdrawal − transfer «Out of bank»
+//   Cash: + cash withdrawal + transfer «Into cash» + cash revenue (Camp Tab included)
 //         − expense by Cash − Cash Deposit − «Out of cash» (Cash Out)
 //   Neither: HQ Paid / hq_invoice expenses and Loan offset (still P&L costs).
+//
+// A cash withdrawal is ONE row (payment_method 'ATM Withdrawal': bank −,
+// cash +) since 11 Nov 2026 — Miguel: «quando se levanta dinheiro vai direto
+// para a caixa, não é preciso ter outra linha». For one day it was saved as a
+// pair («Out of bank» + «Into cash»); the fixture keeps one such pair because
+// old pairs must add up the same until the data is converted.
 const { test, expect } = require('@playwright/test');
 const { fakeOwnerSession, collectFatalErrors } = require('./helpers');
 
@@ -43,9 +49,9 @@ function fixture() {
     cashDeposit:  row('money_sent', 'Cash Deposit', 10000),                                 // bank + / cash −
     expBank:      row('expense', 'Bank Transfer', 100000, { category: 'Rent' }),            // bank −
     expCard:      row('expense', 'Card', 20000),                                            // bank − (bank card purchase)
-    atmOut:       row('money_sent', 'Bank Transfer', 50000, { date: '2026-10-21' }),        // ATM pair: bank −
-    atmIn:        row('money_sent', 'Cash', 50000, { date: '2026-10-21' }),                 //           cash +
-    legacyAtm:    row('money_sent', 'ATM Withdrawal', 5000),                                // bank − / cash +
+    atmOut:       row('money_sent', 'Bank Transfer', 50000, { date: '2026-10-21', description: 'ATM withdrawal · Sampath card 21/10 — out of bank' }), // OLD pair: bank −
+    atmIn:        row('money_sent', 'Cash', 50000, { date: '2026-10-21', description: 'ATM withdrawal · Sampath card 21/10 — into cash' }),         //           cash +
+    legacyAtm:    row('money_sent', 'ATM Withdrawal', 5000, { description: 'ATM withdrawal · Sampath card 20/10' }), // ONE row: bank − / cash +
     loanOut:      row('money_sent', 'Bank Transfer', 30000, { category: 'Loan', date: '2026-09-14' }), // lone out of bank
     revCard:      row('revenue', 'Card', 7000),                                             // bank +
     revBank:      row('revenue', 'Bank Transfer', 3000),                                    // bank +
@@ -242,25 +248,184 @@ test('camp cash: local manager Quick add — Cash expense lowers Cash, Bank Tran
   expect(errors).toEqual([]);
 });
 
-test('camp cash: «Record ATM withdrawal» saves out-of-bank + into-cash and moves Bank → Cash', async ({ page }) => {
+test('camp cash: a cash withdrawal is saved as ONE row and moves Bank → Cash', async ({ page }) => {
+  const errors = collectFatalErrors(page);
   const { writes } = await openHub(page, Object.values(fixture()));
-  await page.evaluate(async () => {
+  const before = await page.evaluate(() => S.ledger.length);
+  const modal = await page.evaluate(async () => {
     showPage('expenses');
     openExpModal('transfer', null, { paymentMethod: 'ATM Withdrawal' });
+    const out = {
+      title: document.getElementById('expModalTitle').textContent,
+      label: document.querySelector('#em_pay_wrap label').textContent,
+      visible: document.getElementById('em_pay_wrap').style.display !== 'none',
+      kinds: [...document.getElementById('em_pay').options].map(o => [o.value, o.textContent]),
+      chosen: document.getElementById('em_pay').value,
+    };
     document.getElementById('em_date').value = '2026-11-10';
     document.getElementById('em_amount').value = '25000';
     await saveExpense();
+    return out;
   });
-  const pair = writes.filter(w => w.op === 'upsert').map(w => [w.row.type, w.row.payment_method, w.row.amount_local, w.row.entry_date]);
-  expect(pair).toEqual([
-    ['money_sent', 'Bank Transfer', 25000, '2026-11-10'],
-    ['money_sent', 'Cash', 25000, '2026-11-10'],
+  // The modal names the kind in plain words, with its from → to.
+  expect(modal.title).toBe('Add Transfer');
+  expect(modal.label).toBe('Kind of transfer');
+  expect(modal.visible).toBe(true);
+  expect(modal.chosen).toBe('ATM Withdrawal');
+  expect(modal.kinds).toEqual([
+    ['HQ Transfer', 'Money from HQ · HQ → Bank'],
+    ['ATM Withdrawal', 'Cash withdrawal · Bank → Cash'],
+    ['Cash Deposit', 'Cash deposit · Cash → Bank'],
+    ['Bank Transfer', 'Out of bank · Bank → Outside'],
+    ['Cash', 'Into cash · Outside → Cash'],
+    ['Cash Out', 'Out of cash · Cash → Outside'],
   ]);
+  // ONE row reaches the server — not the old out-of-bank + into-cash pair.
+  const saved = writes.filter(w => w.op === 'upsert').map(w => [w.row.type, w.row.payment_method, w.row.amount_local, w.row.entry_date, w.row.description]);
+  expect(saved).toEqual([['money_sent', 'ATM Withdrawal', 25000, '2026-11-10', 'Cash withdrawal']]);
+  expect(await page.evaluate(() => S.ledger.length)).toBe(before + 1);
   const d = await drawers(page);
   expect(d.ledgerBank).toBe(EXPECTED_BANK - 25000);
   expect(d.ledgerCash).toBe(EXPECTED_CASH + 25000);
-  const flows = await page.evaluate(() => S.ledger.filter(r => r.date === '2026-11-10').map(r => transferFlowLabel(r)));
-  expect(flows).toEqual(['Bank → Cash', 'Bank → Cash']);
+  expect(d.ledgerTotal).toBe(EXPECTED_BANK + EXPECTED_CASH); // a withdrawal never changes the total
+  expect(d.ovBank).toBe(d.ledgerBank);
+  expect(d.ovCash).toBe(d.ledgerCash);
+  // The list shows it once: grey «Cash withdrawal» badge, «Bank → Cash», the amount without a sign.
+  const shown = await page.evaluate(() => {
+    const ps = document.getElementById('expPeriodSel'); if (ps) ps.value = 'all';
+    renderExpenses();
+    return [...document.querySelectorAll('#expTable tbody tr')].filter(tr => tr.children[0].textContent.trim() === fmtd('2026-11-10'))
+      .map(tr => ({ badge: tr.children[2].querySelector('.badge')?.textContent.trim(), grey: !!tr.children[2].querySelector('.badge.badge-grey'), flow: tr.children[2].querySelector('.cell-sub')?.textContent.trim(), via: tr.children[4].textContent.trim(), local: tr.children[8].textContent.trim(), mob: tr.children[2].querySelector('.amt-mob')?.textContent.trim() }));
+  });
+  expect(shown).toEqual([{ badge: 'Cash withdrawal', grey: true, flow: 'Bank → Cash', via: 'Bank → Cash', local: 'LKR 25,000', mob: 'LKR 25,000' }]);
+  expect(errors).toEqual([]);
+});
+
+// Cash control (Miguel, 10 Nov 2026: «the total balance of the operations
+// ledger paid via Cash»): filtering the ledger by Cash must list everything
+// that moves the cash box — withdrawals included, as + — and add up to the
+// Cash tile. Filtering by Bank Transfer shows the same withdrawal as −.
+test('camp cash: payment filter — Cash lists the withdrawal as +, Bank Transfer as −, no filter shows it once without a sign', async ({ page }) => {
+  const R = fixture();
+  await openHub(page, Object.values(R));
+  const view = (pay) => page.evaluate(([pay, ids]) => {
+    showPage('expenses');
+    const ps = document.getElementById('expPeriodSel'); if (ps) ps.value = 'all';
+    ['expTypeF', 'expCatF', 'expWeekF'].forEach(id => { document.getElementById(id).value = 'all'; });
+    document.getElementById('expSearch').value = '';
+    renderExpenses();
+    const sel = document.getElementById('expPayF');
+    const options = [...sel.options].map(o => o.value);
+    sel.value = pay; renderExpenses();
+    const num = (t) => { const n = Number(String(t).replace(/[^0-9.]/g, '')) || 0; return /−/.test(t) ? -n : n; };
+    const rows = [...document.querySelectorAll('#expTable tbody tr:not(.empty-row)')].map(tr => ({
+      desc: tr.children[6].textContent.trim(), badge: tr.children[2].querySelector('.badge')?.textContent.trim(),
+      flow: tr.children[2].querySelector('.cell-sub')?.textContent.trim() || '', local: tr.children[8].textContent.trim(),
+      eur: tr.children[9].textContent.trim(), mob: tr.children[2].querySelector('.amt-mob')?.textContent.trim(),
+    }));
+    const byDesc = (d) => rows.filter(r => r.desc === d);
+    return {
+      options, n: rows.length, sum: rows.reduce((t, r) => t + num(r.local), 0),
+      single: byDesc('ATM withdrawal · Sampath card 20/10'),
+      pairOut: byDesc('ATM withdrawal · Sampath card 21/10 — out of bank'), pairIn: byDesc('ATM withdrawal · Sampath card 21/10 — into cash'),
+      deposit: byDesc('money_sent Cash Deposit 10000'), hq: byDesc('money_sent HQ Transfer 1000000'), loan: byDesc('money_sent Bank Transfer 30000'),
+      cashOut: byDesc('2025 shop debt'), opening: byDesc('Opening cash'),
+    };
+  }, [pay, null]);
+
+  // No filter: the withdrawal is ONE line, no sign, «Bank → Cash».
+  const all = await view('all');
+  expect(all.n).toBe(18);
+  expect(all.single).toHaveLength(1);
+  expect(all.single[0]).toMatchObject({ badge: 'Cash withdrawal', flow: 'Bank → Cash', local: 'LKR 5,000', mob: 'LKR 5,000' });
+  expect(all.single[0].eur).not.toMatch(/[+−]/);
+  // The filter offers payment methods only — a transfer sits under the wallet it moves.
+  expect(all.options).toEqual(['all', 'Bank Transfer', 'Card', 'Cash', 'HQ Paid', 'Loan offset']);
+
+  // Cash: everything that moves the cash box, each with its sign for cash.
+  const cash = await view('Cash');
+  expect(cash.single).toHaveLength(1);
+  expect(cash.single[0]).toMatchObject({ badge: 'Cash withdrawal', flow: 'Bank → Cash', local: '+LKR 5,000', mob: '+LKR 5,000' });
+  expect(cash.single[0].eur).toMatch(/^\+/);
+  expect(cash.pairIn.map(r => r.local)).toEqual(['+LKR 50,000']);   // old pair: only its cash half
+  expect(cash.pairOut).toEqual([]);
+  expect(cash.deposit.map(r => r.local)).toEqual(['−LKR 10,000']);  // cash deposit takes from cash
+  expect(cash.cashOut.map(r => r.local)).toEqual(['−LKR 6,000']);
+  expect(cash.opening.map(r => r.local)).toEqual(['+LKR 80,000']);
+  expect(cash.hq).toEqual([]);
+  expect(cash.loan).toEqual([]);
+  expect(cash.n).toBe(8);
+  expect(cash.sum).toBe(EXPECTED_CASH); // the Cash list adds up to the Cash tile
+
+  // Bank Transfer: the same withdrawal, now − out of the bank.
+  const bank = await view('Bank Transfer');
+  expect(bank.single).toHaveLength(1);
+  expect(bank.single[0]).toMatchObject({ badge: 'Cash withdrawal', flow: 'Bank → Cash', local: '−LKR 5,000', mob: '−LKR 5,000' });
+  expect(bank.single[0].eur).toMatch(/^−/);
+  expect(bank.pairOut.map(r => r.local)).toEqual(['−LKR 50,000']);  // old pair: only its bank half
+  expect(bank.pairIn).toEqual([]);
+  expect(bank.deposit.map(r => r.local)).toEqual(['+LKR 10,000']);  // cash deposit adds to the bank
+  expect(bank.hq.map(r => r.local)).toEqual(['+LKR 1,000,000']);
+  expect(bank.loan.map(r => r.local)).toEqual(['−LKR 30,000']);
+  expect(bank.cashOut).toEqual([]);
+  // Bank Transfer + Card lists = the Bank tile.
+  const card = await view('Card');
+  expect(bank.sum + card.sum).toBe(EXPECTED_BANK);
+
+  await view('all');
+  const d = await drawers(page);
+  expect(d.ledgerBank).toBe(EXPECTED_BANK);
+  expect(d.ledgerCash).toBe(EXPECTED_CASH);
+});
+
+test('camp cash: old pairs and single-row withdrawals give the same Bank and Cash; merging a pair in the edit modal keeps them', async ({ page }) => {
+  // The same ledger three ways: as loaded (one old pair + one single row),
+  // with the pair converted to one row (what the data migration does), and
+  // with one more pair and one more single row of the same day and amount.
+  const R = fixture();
+  const converted = Object.values(fixture()).filter(r => r.description !== R.atmIn.description)
+    .map(r => r.description === R.atmOut.description ? { ...r, payment_method: 'ATM Withdrawal', description: 'ATM withdrawal · Sampath card 21/10' } : r);
+  expect(converted).toHaveLength(17);
+  const { writes } = await openHub(page, Object.values(R));
+  const sums = await page.evaluate(([converted]) => {
+    const asLoaded = ledgerDrawerBalances(S.ledger);
+    const conv = ledgerDrawerBalances(converted.map(r => normalizeLedgerEntry({ id: r.id, date: r.entry_date, type: r.type === 'money_sent' ? 'transfer' : r.type === 'revenue' ? 'income' : 'expense', paymentMethod: r.payment_method, amountLocal: Number(r.amount_local), currency: r.currency, fxRate: Number(r.fx_rate), amount: Number(r.amount_eur), category: r.category, sourceKind: r.source_kind, description: r.description })));
+    const T = (paymentMethod, id) => normalizeLedgerEntry({ id, date: '2026-10-21', type: 'transfer', paymentMethod, amountLocal: 50000, currency: 'LKR', fxRate: 340, amount: 147.06, category: 'Cash Float' });
+    const mixed = ledgerDrawerBalances([...S.ledger, T('Bank Transfer', 'p2a'), T('Cash', 'p2b'), T('ATM Withdrawal', 's2')]);
+    const r = (o) => ({ bank: Math.round(o.bankLocal), cash: Math.round(o.cashLocal) });
+    return { asLoaded: r(asLoaded), conv: r(conv), mixed: r(mixed) };
+  }, [converted]);
+  expect(sums.asLoaded).toEqual({ bank: EXPECTED_BANK, cash: EXPECTED_CASH });
+  expect(sums.conv).toEqual({ bank: EXPECTED_BANK, cash: EXPECTED_CASH });
+  expect(sums.mixed).toEqual({ bank: EXPECTED_BANK - 100000, cash: EXPECTED_CASH + 100000 });
+
+  // Lone rows keep their meaning next to the pair.
+  const flows = await page.evaluate(([a, b, c, d]) => [a, b, c, d].map(id => { const r = S.ledger.find(x => x.id === id); return [transferKindLabel(r), transferFlowLabel(r), ledgerSign(r)]; }), [R.atmOut.id, R.atmIn.id, R.loanOut.id, R.opening.id]);
+  expect(flows).toEqual([
+    ['Out of bank', 'Bank → Cash', '−'], ['Into cash', 'Bank → Cash', '+'],
+    ['Out of bank', 'Bank → Outside', '−'], ['Into cash', 'Outside → Cash', '+'],
+  ]);
+
+  // Correcting the bank half of the old pair to «Cash withdrawal» in the edit
+  // modal makes it ONE line: the cash half is removed, balances do not move.
+  const merged = await page.evaluate(async (id) => {
+    showPage('expenses');
+    openEditLedger(id);
+    const title = document.getElementById('expModalTitle').textContent;
+    const chosen = document.getElementById('em_pay').selectedOptions[0].textContent;
+    document.getElementById('em_pay').value = 'ATM Withdrawal';
+    await saveExpense();
+    const r = S.ledger.find(x => x.id === id);
+    return { title, chosen, n: S.ledger.length, method: r.paymentMethod, desc: r.description, kind: transferKindLabel(r), flow: transferFlowLabel(r), sign: ledgerSign(r) };
+  }, R.atmOut.id);
+  expect(merged).toEqual({ title: 'Edit Transfer', chosen: 'Out of bank · Bank → Outside', n: 17, method: 'ATM Withdrawal', desc: 'ATM withdrawal · Sampath card 21/10', kind: 'Cash withdrawal', flow: 'Bank → Cash', sign: '' });
+  expect(writes.filter(w => w.op === 'upsert').map(w => [w.row.id, w.row.payment_method])).toEqual([[R.atmOut.id, 'ATM Withdrawal']]);
+  expect(writes.filter(w => w.op === 'delete').map(w => w.id)).toEqual([R.atmIn.id]);
+  const d = await drawers(page);
+  expect(d.ledgerBank).toBe(EXPECTED_BANK);
+  expect(d.ledgerCash).toBe(EXPECTED_CASH);
+  expect(d.ovBank).toBe(EXPECTED_BANK);
+  expect(d.ovCash).toBe(EXPECTED_CASH);
 });
 
 test('camp cash: editing method/amount and deleting move the drawers; HQ Paid, Loan offset and card revenue keep their channel', async ({ page }) => {
@@ -320,12 +485,17 @@ test('camp cash: ledger look — kind, sign and labels for every method; «Added
       const r = { id: 'x', type, paymentMethod, sourceKind, date: '2026-10-01', amountLocal: 1 };
       return [ledgerKind(r), ledgerSign(r), type === 'transfer' ? transferKindLabel(r) : '', type === 'transfer' ? transferFlowLabel(r) : ''];
     };
+    // Sign of a row for one wallet (the list filtered by Cash / Bank Transfer).
+    const W = (type, paymentMethod) => { const r = { id: 'x', type, paymentMethod, sourceKind: 'manual' }; return [ledgerSign(r, 'cash'), ledgerSign(r, 'bank'), ledgerPaidViaText(r), ledgerPayFilterKeys(r).join('+')]; };
     return {
       expCash: T('expense', 'Cash'), expCard: T('expense', 'Card'), expBank: T('expense', 'Bank Transfer'),
       hqPaid: T('expense', 'HQ Paid'), hqInv: T('expense', 'Bank Transfer', 'hq_invoice'), loan: T('expense', 'Loan offset'),
       revCash: T('income', 'Cash'), revCard: T('income', 'Card'),
       hq: T('transfer', 'HQ Transfer'), dep: T('transfer', 'Cash Deposit'), atm: T('transfer', 'ATM Withdrawal'),
       outBank: T('transfer', 'Bank Transfer'), inCash: T('transfer', 'Cash'), cashOut: T('transfer', 'Cash Out'),
+      wAtm: W('transfer', 'ATM Withdrawal'), wDep: W('transfer', 'Cash Deposit'), wHq: W('transfer', 'HQ Transfer'),
+      wOutBank: W('transfer', 'Bank Transfer'), wInCash: W('transfer', 'Cash'), wCashOut: W('transfer', 'Cash Out'),
+      wExpCash: W('expense', 'Cash'), wRevCard: W('income', 'Card'),
     };
   });
   expect(looks.expCash).toEqual(['expense', '−', '', '']);
@@ -338,12 +508,21 @@ test('camp cash: ledger look — kind, sign and labels for every method; «Added
   expect(looks.revCard).toEqual(['revenue', '+', '', '']);
   expect(looks.hq).toEqual(['transfer', '+', 'Money from HQ', 'HQ → Bank']);
   expect(looks.dep).toEqual(['transfer', '', 'Cash deposit', 'Cash → Bank']);
-  expect(looks.atm).toEqual(['transfer', '', 'ATM withdrawal', 'Bank → Cash']);
+  expect(looks.atm).toEqual(['transfer', '', 'Cash withdrawal', 'Bank → Cash']);
   expect(looks.outBank).toEqual(['transfer', '−', 'Out of bank', 'Bank → Outside']); // no twin
   expect(looks.inCash).toEqual(['transfer', '+', 'Into cash', 'Outside → Cash']);   // no twin
   expect(looks.cashOut).toEqual(['transfer', '−', 'Out of cash', 'Cash → Outside']);
+  // [sign under Cash, sign under Bank Transfer, «Paid via», filter it is listed under]
+  expect(looks.wAtm).toEqual(['+', '−', 'Bank → Cash', 'Bank Transfer+Cash']);
+  expect(looks.wDep).toEqual(['−', '+', 'Cash → Bank', 'Bank Transfer+Cash']);
+  expect(looks.wHq).toEqual(['+', '+', 'Bank', 'Bank Transfer']);
+  expect(looks.wOutBank).toEqual(['−', '−', 'Bank', 'Bank Transfer']);
+  expect(looks.wInCash).toEqual(['+', '+', 'Cash', 'Cash']);
+  expect(looks.wCashOut).toEqual(['−', '−', 'Cash', 'Cash']);
+  expect(looks.wExpCash).toEqual(['−', '−', 'Cash', 'Cash']);
+  expect(looks.wRevCard).toEqual(['+', '+', 'Card', 'Card']);
 
-  // ATM pair in the fixture is recognised as Bank → Cash; the lone loan is Bank → Outside.
+  // The old pair in the fixture is recognised as Bank → Cash; the lone loan is Bank → Outside.
   const pairFlows = await page.evaluate(([a, b, c]) => [a, b, c].map(id => transferFlowLabel(S.ledger.find(r => r.id === id))), [R.atmOut.id, R.atmIn.id, R.loanOut.id]);
   expect(pairFlows).toEqual(['Bank → Cash', 'Bank → Cash', 'Bank → Outside']);
 
