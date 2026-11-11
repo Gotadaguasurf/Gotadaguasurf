@@ -1307,6 +1307,8 @@ function normalizeLedgerEntry(entry){
         currency = LOCAL_CURRENCY;
         fxRate = safeRate;
       } else if (safeRate>0 && Number(fxRate||0)>0) {
+        // € per unit (hq_invoices' convention, copied by the mirror) → invert.
+        if(fxRate<1) fxRate=Number((1/fxRate).toFixed(6));
         const drift=Math.abs(fxRate-safeRate)/safeRate;
         // Same currency: only heal egregious drift (>50%) so legitimate
         // historical rates (a few % off today's) survive.
@@ -2662,7 +2664,6 @@ async function processAiInvoiceFiles(files){
   if(!jwt){ box.innerHTML=`<div class="ai-row"><span class="ai-row-state" style="color:#c94e42">Sign in first — session expired.</span></div>`; return; }
 
   const local=String(LOCAL_CURRENCY||'LKR').toUpperCase();
-  const fx=Number(DEFAULT_LKR_PER_EUR||1);
 
   for (const f of files) {
     const row=document.createElement('div');
@@ -2690,6 +2691,7 @@ async function processAiInvoiceFiles(files){
       const x=result.extracted||{};
       const invCur=_pickCurrencyForInvoice(x.currency);
       const invAmt=Number(x.amount||0);
+      const fx=Number(await fetchFxRateForDate(x.invoice_date||today())||LOCAL_PER_EUR||1);
       // Currency policy — camp ledger stores amount_local in the camp's
       // LOCAL_CURRENCY and amount_eur as the FX-converted value.
       //   invoice EUR   → local = amt * fx, eur = amt
@@ -3047,6 +3049,10 @@ async function fetchFxRateForDate(date){
   if(!date) return 0;
   // EUR locations don't need conversion — rate is always 1.
   if (LOCAL_CURRENCY === 'EUR') return 1;
+  // A day that has not happened yet has no rate: answer with today's and
+  // store nothing (the API returns its latest rate for a future date, which
+  // then stuck in daily_fx_rates as that day's rate).
+  if (date > today()) return fetchFxRateForDate(today());
   // When the requested date IS today, the result is the authoritative
   // live rate for the current session and must update LOCAL_PER_EUR.
   // Without this assignment the runtime variable stays at the
@@ -3059,7 +3065,10 @@ async function fetchFxRateForDate(date){
   const isToday=(date===today());
   const applyIfToday=(rate)=>{
     if(isToday && Number(rate)>0){
+      const changed=Number(rate)!==LOCAL_PER_EUR;
       LOCAL_PER_EUR=Number(rate);
+      // Balances' € use this rate — redraw what was drawn at the default.
+      if(changed && HUB_LEDGER_HYDRATED) try{ rerenderActivePageData(); }catch(_e){}
     }
   };
   const cached=cachedFxRateForDate(date);
@@ -3250,11 +3259,12 @@ function entryEurAmount(entry){
   // is idempotent: healthy rows produce the same number; broken rows get
   // the right number on every render.
   if(entry.currency && entry.currency !== 'EUR'){
-    // Prefer the cached daily rate for the entry's date over the row's
-    // stamped fxRate so a wrong stamp can't poison the display. Falls
-    // through to entry.fxRate, then to LOCAL_PER_EUR, then to 1.
-    const fx = (typeof cachedFxRateForDate==='function' ? cachedFxRateForDate(entry.date) : 0)
-             || Number(entry.fxRate||0)
+    // The row's own rate first (normalizeLedgerEntry already heals a wrong
+    // stamp): an HQ transfer's rate is LKR received ÷ € sent, and preferring
+    // the cached rate of the day showed 9,000 € sent as 8,841 € (12 Nov 2026).
+    // Falls through to the cached daily rate, then LOCAL_PER_EUR, then 1.
+    const fx = Number(entry.fxRate||0)
+             || (typeof cachedFxRateForDate==='function' ? cachedFxRateForDate(entry.date) : 0)
              || Number(LOCAL_PER_EUR||0)
              || 1;
     return Number((Number(entry.amountLocal||0)/fx).toFixed(2));
