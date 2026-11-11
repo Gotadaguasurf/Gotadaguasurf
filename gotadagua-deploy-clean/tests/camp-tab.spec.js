@@ -130,7 +130,8 @@ test('camp tab: a gift does not keep the tab «Unpaid»; This week counts Collec
   await cat(frame, 'Drinks'); await tap(frame, 'Lion Lager'); await tap(frame, 'Cocktail');
   await discount(frame, 'Shot');
   await frame.locator('#discountModal button', { hasText: 'Gift' }).click();
-  await row(frame, 'Lion Lager').locator('button', { hasText: /^Pay$/ }).click(); // pay one line
+  // pay one line (Sri Lanka has no per-line Pay button since 12 Nov 2026 — the function still exists)
+  await frame.evaluate(() => { const g = findConsumer(AG, currentRoster); payItem(g.items.findIndex(i => i.n === 'Lion Lager' && !i.paidAt)); });
   await expect.poll(() => revenue(ctl).length).toBe(1);
   await frame.locator('.snav-btn[data-sub="week"]').click();
   let head = (await frame.locator('#twHeader .tw-header-row').innerText()).replace(/[^\S\n]/g, ' ');
@@ -154,7 +155,7 @@ test('camp tab: Bill shows what is still to pay, and its «Mark paid» pays ever
   const { ctl, frame } = await openCampTab(page);
   await addConsumer(frame, 'Bill Guest');
   await cat(frame, 'Drinks'); await tap(frame, 'Cocktail'); await tap(frame, 'Soft Drink');
-  await row(frame, 'Soft Drink').locator('button', { hasText: /^Pay$/ }).click();
+  await frame.evaluate(() => { const g = findConsumer(AG, currentRoster); payItem(g.items.findIndex(i => i.n === 'Soft Drink' && !i.paidAt)); });
   await expect.poll(() => revenue(ctl).length).toBe(1);
   await frame.locator('.c-btn-bill').click();
   await expect(frame.locator('#billOv .bill-total-box')).toContainText('LKR 2,000');

@@ -676,3 +676,28 @@ test('camp tab: This week «Pay all» pays every unpaid line of that guest', asy
   expect(out.label).toBe('Pay all (2)');
   expect(out.paid).toEqual([[900, true], [400, true], [0, false]]);
 });
+
+// Sri Lanka pays a tab in one go (12 Nov 2026): no «Pay» on each line, only «Pay all».
+test('camp tab: Sri Lanka shows no per-line «Pay» — only «Pay all» on Charge and This week', async ({ page }) => {
+  await openHub(page, Object.values(fixture()));
+  const frameHandle = await page.waitForSelector('iframe[src*="camp-tab-inner"][src*="mode=per_guest"]', { state: 'attached', timeout: 15000 });
+  const frame = await frameHandle.contentFrame();
+  await frame.waitForFunction(() => { try { return typeof payAllForGuestId === 'function' && CAMP_TAB_MODE === 'per_guest'; } catch (_) { return false; } }, null, { timeout: 15000 });
+  const out = await frame.evaluate(async () => {
+    await ensurePerGuestWeek();
+    currentRoster = 'guests';
+    document.getElementById('newGuestName').value = 'Line Guest';
+    saveNewGuest();
+    AC = 'Drinks';
+    addResolvedItem({ id: 'l-a', n: 'Soft Drink', p: 400 });
+    addResolvedItem({ id: 'l-b', n: 'Soft Drink', p: 400 });
+    const g = findConsumer('Line Guest', 'guests');
+    renderAllCampTabViews();
+    twExpanded = g.id; renderThisWeek();
+    const twButtons = [...document.querySelectorAll('.tw-item-row button')].map(b => b.textContent.trim());
+    const twActions = [...document.querySelectorAll('.tw-actions button')].map(b => b.textContent.trim());
+    return { twButtons, twActions };
+  });
+  expect(out.twButtons).not.toContain('Pay');
+  expect(out.twActions).toContain('Pay all (2)');
+});

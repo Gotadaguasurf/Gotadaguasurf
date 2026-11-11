@@ -785,6 +785,9 @@ const DEFAULT_STAFF=[];
 // this slug through ensureCampTabLocationId(), so getting it right here
 // is what isolates the two locations.
 const CAMP_TAB_LOCATION_SLUG=(new URLSearchParams(window.location.search).get('location')||'sri-lanka').trim().toLowerCase();
+// Sri Lanka settles a tab in one go — no «Pay» per line, only «Pay all»
+// (Miguel, 12 Nov 2026). Other per_guest camps keep the per-line button.
+const PAY_PER_LINE=CAMP_TAB_LOCATION_SLUG!=='sri-lanka';
 // Operating mode passed in by the hub via URL. 'weekly' is the default
 // Sri Lanka behaviour (Sat→Fri close week generates revenue). 'per_guest'
 // is the Morocco behaviour — marking a guest paid writes revenue to the
@@ -2920,7 +2923,7 @@ function renderTabPanel(){
     const perItemPay = CAMP_TAB_MODE==='per_guest'
       ? (isPaid
           ? `<span class="badge badge-green" title="Paid ${esc(String(item.paidAt).slice(0,10))}">Paid</span><button class="btn btn-link btn-sm ct-unpay" onclick="event.stopPropagation();unpayItem(${idx})" title="Mark this item unpaid">Mark unpaid</button>`
-          : `<button class="btn btn-s btn-sm" onclick="event.stopPropagation();payItem(${idx})" title="Pay this item now">Pay</button>`)
+          : (PAY_PER_LINE?`<button class="btn btn-s btn-sm" onclick="event.stopPropagation();payItem(${idx})" title="Pay this item now">Pay</button>`:''))
       : '';
     const delBtn = isPaid
       ? ''
@@ -3660,7 +3663,7 @@ function renderThisWeek(){
             const perItemPay = CAMP_TAB_MODE==='per_guest'
               ? (itemPaid
                   ? `<span class="badge badge-green" style="margin-left:8px" title="Paid ${esc(String(i.paidAt).slice(0,10))}">Paid</span><button class="btn btn-link btn-sm ct-unpay" onclick="event.stopPropagation();unpayItemForGuestId('${esc(g.id)}',${idx})" title="Mark this item unpaid">Mark unpaid</button>`
-                  : `<button class="btn btn-s btn-sm" style="margin-left:8px" onclick="event.stopPropagation();payItemForGuestId('${esc(g.id)}',${idx})" title="Pay this item now">Pay</button>`)
+                  : (PAY_PER_LINE?`<button class="btn btn-s btn-sm" style="margin-left:8px" onclick="event.stopPropagation();payItemForGuestId('${esc(g.id)}',${idx})" title="Pay this item now">Pay</button>`:''))
               : '';
             const delBtn = itemPaid
               ? ''
