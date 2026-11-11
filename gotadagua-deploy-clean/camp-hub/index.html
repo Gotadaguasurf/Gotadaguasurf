@@ -7575,6 +7575,14 @@ function ledgerDrawerBalances(rows){
     out.bankLocal+=d.bank*l; out.bankEur+=d.bank*e;
     out.cashLocal+=d.cash*l; out.cashEur+=d.cash*e;
   });
+  // The € of a BALANCE is what the money left is worth today — the local
+  // balance at the current rate. Adding up each row's own € (every row has
+  // the rate of its day) left a meaningless remainder: LKR 217,830 in the
+  // bank showed as €4,318 instead of ~€595 (Miguel, 11 Nov 2026).
+  if((LOCAL_CURRENCY||'EUR')!=='EUR' && Number(LOCAL_PER_EUR)>0){
+    out.bankEur=out.bankLocal/LOCAL_PER_EUR;
+    out.cashEur=out.cashLocal/LOCAL_PER_EUR;
+  }
   return out;
 }
 // Sign of a ledger row for the wallet it touches («se for expense, no número
