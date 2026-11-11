@@ -547,7 +547,7 @@ body{min-height:100dvh}
       <button class="exp-quick-btn qcat-camp" data-cat="Equipment & maintenance" onclick="quickCategoryShortcut('Equipment & maintenance')"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M4 14h12"/><path d="M6 14V8"/><path d="M10 14V5"/><path d="M14 14v-3"/></svg></span><span>Equipment</span></span></button>
       <button class="exp-quick-btn" data-cat="Services" onclick="quickCategoryShortcut('Services')"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M4 10h12"/><path d="M10 4v12"/><circle cx="10" cy="10" r="5.5"/></svg></span><span>Services</span></span></button>
       <button class="exp-quick-btn" data-cat="Utilities" onclick="quickCategoryShortcut('Utilities')"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M11 3 5 11h4l-1 6 6-9h-4z"/></svg></span><span>Utilities</span></span></button>
-      <button class="exp-quick-btn qcat-camp" data-cat="Tours" onclick="quickCategoryShortcut('Tours')"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M3 15c2-4 5-6 8-6s6 2 6 6"/><path d="M10 9V4"/><path d="M7.5 6.5 10 4l2.5 2.5"/></svg></span><span>Tours</span></span></button>
+      <button class="exp-quick-btn qcat-camp" data-cat="Tours &amp; activities" onclick="quickCategoryShortcut('Tours &amp; activities')"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M3 15c2-4 5-6 8-6s6 2 6 6"/><path d="M10 9V4"/><path d="M7.5 6.5 10 4l2.5 2.5"/></svg></span><span>Tours</span></span></button>
       <button class="exp-quick-btn qcat-camp" data-cat="Drinks" onclick="quickCategoryShortcut('Drinks')"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M6 4h8"/><path d="M7 4v3c0 2 1.5 3.5 3 3.5S13 9 13 7V4"/><path d="M10 10.5V16"/><path d="M7.5 16h5"/></svg></span><span>Drinks</span></span></button>
       <button class="exp-quick-btn qcat-camp" data-cat="Cleaning" onclick="quickCategoryShortcut('Cleaning')"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M6 4h8"/><path d="M8 4v3"/><path d="M12 4v3"/><path d="M5 7h10l-1 9H6z"/></svg></span><span>Cleaning</span></span></button>
       <button class="exp-quick-btn" data-cat="Transport" onclick="quickCategoryShortcut('Transport')"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M3 12h11"/><path d="m11 8 4 4-4 4"/><path d="M4 8h4"/></svg></span><span>Transport</span></span></button>
@@ -1057,6 +1057,11 @@ const CATS=Object.keys(MENU);
 const EXP_CATS=['Food','Drinks','Salary','Benefits','Taxes','Rent','Utilities','Services','Insurances','Equipment & maintenance','Cleaning','Laundry','Transport','Tours & activities','Merchandise','Marketing','Other'];
 const LEGACY_EXP_CAT={Bar:'Drinks',Setup:'Equipment & maintenance',Repairs:'Equipment & maintenance',Supplies:'Equipment & maintenance',Special:'Other','Cleaning Supplies':'Cleaning',Activities:'Tours & activities',Tours:'Tours & activities',Merchandising:'Merchandise',Merch:'Merchandise',Accounting:'Services'};
 const modernExpCat=(c)=>LEGACY_EXP_CAT[c]||c;
+// Tour cost rows: «Tours & activities» since 22 Oct 2026 (legacy «Tours» /
+// «Activities» map onto it). The entry form used to test category==='Tours',
+// so after the rename the tour picker, Guests field and «Staff / offered»
+// box never showed for a tour cost — every cost landed unlinked.
+const isTourExpenseCat=(c)=>modernExpCat(c)==='Tours & activities';
 // Manually-loggable transport lines. The Tuk-Tuk lines were removed because
 // from now on tours that include transport should attach their transport
 // portion automatically via the tour menu's "with transport" flag — they
@@ -1083,6 +1088,11 @@ const TRANSPORT_REVENUE_CATS=TRANSPORT_LINKED_ITEMS.slice();
 const TOUR_REVENUE_CATS=TOUR_MENU_ITEMS.map(item=>item.n);
 const REVENUE_CATS=['Drinks','Merchandise','Tours','Transport','Wild · Gota','Other Revenue'];
 const AREA_ORDER=['Food','Bar','Transport','Utilities','Laundry','Salaries','Merch','Tours','Wild','General'];
+// Business areas the hub understands. A row whose business_area holds
+// anything else (rows imported with business_area = category, e.g.
+// 'Tours & activities', 'Drinks', 'Cleaning') is re-derived from its
+// category on read — otherwise it fell out of every per-area figure.
+const KNOWN_BUSINESS_AREAS=new Set([...AREA_ORDER,'Surf School']);
 // Operational payment channels for expenses. All three deduct from
 // the camp's operating balance (money sent by HQ + revenue collected).
 // They differ only in HOW the money left the operating account:
@@ -1260,7 +1270,7 @@ function normalizeLedgerEntry(entry){
   const type=entry.type||'expense';
   const normalizedCategory=type==='expense'?modernExpCat(entry.category):entry.category;
   const linkedItem=entry.linkedItem||'';
-  const area=entry.businessArea||inferArea(type,normalizedCategory,linkedItem);
+  const area=(entry.businessArea&&KNOWN_BUSINESS_AREAS.has(entry.businessArea))?entry.businessArea:inferArea(type,normalizedCategory,linkedItem);
   let currency=entry.currency||'EUR';
   let fxRate=Number(entry.fxRate||DEFAULT_LKR_PER_EUR);
   // ── Aggressive currency + fxRate heal ────────────────────────────────────
@@ -4971,6 +4981,193 @@ async function renderSurfSchoolOverview(){
   }
 }
 
+// Tours by product — the per-tour profit cards of the Overview, as a pure
+// function of the ledger rows in the selected period (testable on its own).
+//   rows   — one card per tour (sub-tours «X — Y» grouped under X); the
+//            unlinked-cost bucket is always last
+//   sold   — totals of every card except the unlinked-cost one = the profit
+//            of the tours actually sold
+//   unlinked — tour-area cost with no tour picked (included activities, or
+//            a tour cost still waiting for its tour)
+const TOUR_UNSPLIT_REVENUE_KEY='Tours (not split by tour)';
+const TOUR_UNLINKED_COST_KEY='Not linked to a tour';
+function tourProfitRows(revenueEntries,expenses){
+  // Tour rows carry two cost streams so the display can split
+  // "paying-guest margin" from "total margin":
+  //   costLocal / costEur           = total cost (all rows, comp + paying)
+  //   compCostLocal / compCostEur   = subset flagged is_comp (staff/offered)
+  // payingCost = costLocal - compCostLocal → margin against actual sales.
+  const tourMap={};
+  const blankTour = (key) => ({name:key,qty:0,revenueLocal:0,revenueEur:0,costLocal:0,costEur:0,compCostLocal:0,compCostEur:0});
+  // Ledger only — same single-source rule as the drawer KPIs and the
+  // per-area tiles above. Every paid Camp Tab item already lands a ledger
+  // income row (camp_tab_per_item / campclose_*), so adding paidItems here
+  // as well counted each tour sale twice.
+  revenueEntries.filter(x=>x.businessArea==='Tours').forEach(x=>{
+    // Revenue with no tour picked (e.g. the Jan–May weekly «Actividades»
+    // totals) used to be keyed by its category — a card called «Tours»
+    // that looked like a real tour with a 100% margin.
+    const key=String(x.linkedItem||'').trim()||TOUR_UNSPLIT_REVENUE_KEY;
+    tourMap[key]=tourMap[key]||blankTour(key);
+    tourMap[key].qty+=Math.max(1,parseInt(x.quantity||'1',10)||1);
+    tourMap[key].revenueLocal+=entryLocalDisplayAmount(x);
+    tourMap[key].revenueEur+=entryEurAmount(x);
+  });
+  expenses.filter(x=>x.businessArea==='Tours').forEach(x=>{
+    // A tour cost with no tour picked: included activities (yoga, games
+    // night, photographer…) or a sold-tour cost nobody linked. It is NOT
+    // part of any tour's margin — shown apart, outside «Sold tours».
+    const key=String(x.linkedItem||'').trim()||TOUR_UNLINKED_COST_KEY;
+    tourMap[key]=tourMap[key]||blankTour(key);
+    const l=entryLocalDisplayAmount(x), e=entryEurAmount(x);
+    tourMap[key].costLocal+=l;
+    tourMap[key].costEur+=e;
+    if(x.isComp){ tourMap[key].compCostLocal+=l; tourMap[key].compCostEur+=e; }
+  });
+  // Cross-area sweep: revenue OR expense tagged with a linkedItem that
+  // matches a real tour name (menu tour item, or already in tourMap from
+  // an earlier pass) but sitting under a NON-Tours businessArea. This
+  // catches revenue lines someone booked as "General / Other Revenue"
+  // (e.g., "Paradise Valley Transfer", "Package Souk+Paradise") — they
+  // used to fall out of the Tours-by-product margin entirely, making a
+  // negative-margin tour look positive. Transport-area rows are skipped
+  // here — they go through the smarter linkedTransportTours() splitter
+  // below, which handles shared-van cost splitting across sub-tours.
+  const tourNamesForCrossSweep=new Set([...currentTourItems(),...Object.keys(tourMap)].filter(Boolean));
+  revenueEntries.filter(x=>x.businessArea!=='Tours'&&x.businessArea!=='Transport').forEach(x=>{
+    const key=String(x.linkedItem||'').trim();
+    if(!key||!tourNamesForCrossSweep.has(key)) return;
+    tourMap[key]=tourMap[key]||blankTour(key);
+    tourMap[key].qty+=Math.max(1,parseInt(x.quantity||'1',10)||1);
+    tourMap[key].revenueLocal+=entryLocalDisplayAmount(x);
+    tourMap[key].revenueEur+=entryEurAmount(x);
+  });
+  expenses.filter(x=>x.businessArea!=='Tours'&&x.businessArea!=='Transport').forEach(x=>{
+    const key=String(x.linkedItem||'').trim();
+    if(!key||!tourNamesForCrossSweep.has(key)) return;
+    tourMap[key]=tourMap[key]||blankTour(key);
+    const l=entryLocalDisplayAmount(x), e=entryEurAmount(x);
+    tourMap[key].costLocal+=l;
+    tourMap[key].costEur+=e;
+    if(x.isComp){ tourMap[key].compCostLocal+=l; tourMap[key].compCostEur+=e; }
+  });
+  // Only roll up Transport-area spend into the Tours-by-product card if the
+  // linked label is an actual tour (camp-tab menu item OR a tour that
+  // already has revenue/expenses in this period). Non-tour display labels
+  // like "Surf Lessons" stay tagged on the Transport line but don't create
+  // a phantom tour row with cost-only / zero revenue.
+  const knownTourNames=new Set([
+    ...currentTourItems(),
+    ...Object.keys(tourMap)
+  ]);
+  // ── Transport rollup: group by linked_item, distribute by paying guests ──
+  // Unified model: every Transport row carries the subcategory in
+  // linked_item (e.g. "Dunes", "Paradise Valley", "Souk Tour", "Airport",
+  // "Transport Surf Lesson"). The aggregator resolves that subcategory
+  // to one or more tours via linkedTransportTours() — direct name match,
+  // display-group match, preset.linkedTour, or the TRANSPORT_TOUR_COST_MAP.
+  // The cost then splits WEIGHTED BY PAYING-GUEST COUNT across the
+  // matched tours: the shared "Dunes" van absorbs into Sandboarding,
+  // Camel Ride and Quad Bike proportional to how many guests each ran.
+  expenses.filter(x=>x.businessArea==='Transport').forEach(x=>{
+    // Per-entry override (set via the Transport quick-add form's linked-tour
+    // dropdown) wins over the preset's default linkedTour. Useful when a
+    // shared destination's van served only one sub-tour and you want to
+    // attribute the full cost manually.
+    const override=transportEntryTourOverride(x);
+    const candidates = override
+      ? [override]
+      : linkedTransportTours(x.linkedItem||'');
+    // Filter to tours that are either (a) in the menu, or (b) already
+    // accumulating data in tourMap from revenue/cost in this period.
+    // Then narrow to those that actually had guests this period (qty>0)
+    // so the transport cost only splits across sub-tours that really
+    // ran. If none of the candidates ran this period (no revenue),
+    // fall back to attributing the full cost to the first menu match
+    // — keeps the cost visible somewhere instead of vanishing.
+    const validInMenuOrTourMap = candidates.filter(t => t && knownTourNames.has(t));
+    if(!validInMenuOrTourMap.length) return;
+    const ranThisPeriod = validInMenuOrTourMap.filter(t => (tourMap[t]?.qty||0) > 0);
+    const targets = ranThisPeriod.length ? ranThisPeriod : [validInMenuOrTourMap[0]];
+    const rowLocal = entryLocalDisplayAmount(x);
+    const rowEur = entryEurAmount(x);
+    // Weight by paying-guest count when the transport is shared across
+    // multiple tours (e.g., one "Dunes" van absorbed into Sandboarding,
+    // Camel Ride and Quad Bike by how many pagantes each put in the
+    // van). With a single target the full cost lands there. If nobody
+    // paid a matched tour this period we fall back to an equal split so
+    // the cost never silently vanishes.
+    const totalGuests = targets.reduce((s, t) => s + (tourMap[t]?.qty || 0), 0);
+    if(totalGuests > 0){
+      const perGuestLocal = rowLocal / totalGuests;
+      const perGuestEur = rowEur / totalGuests;
+      targets.forEach(t => {
+        tourMap[t] = tourMap[t] || blankTour(t);
+        const guests = tourMap[t].qty || 0;
+        tourMap[t].costLocal += guests * perGuestLocal;
+        tourMap[t].costEur += guests * perGuestEur;
+      });
+    } else {
+      const shareLocal = rowLocal / targets.length;
+      const shareEur = rowEur / targets.length;
+      targets.forEach(t => {
+        tourMap[t] = tourMap[t] || blankTour(t);
+        tourMap[t].costLocal += shareLocal;
+        tourMap[t].costEur += shareEur;
+      });
+    }
+    // Transport rows are never comps (van cost is the same whether the
+    // seat carries a paying guest or a staff comp), so compCostLocal/Eur
+    // stay untouched here.
+  });
+  // Consolidate sub-tour cards by activity. Tours whose names follow the
+  // pattern "<Activity> — <Variant>" (em-dash or " - ") are merged into a
+  // single card keyed by the activity name. So "Dunes — Quad Bike (with
+  // transport)", "Dunes — Camel Ride (with transport)", and the
+  // activity-only variants all roll up into one "Dunes" card showing the
+  // combined revenue, cost, and margin — same physical activity, the
+  // variant is just guest choice. Tours without a separator (Souk Tour,
+  // Paradise Valley, Ice Bath, etc.) keep their own name.
+  function tourDisplayGroup(name){
+    const s = String(name||'').trim();
+    if(!s) return name;
+    const sep = s.indexOf(' — ') !== -1 ? ' — ' : (s.indexOf(' - ') !== -1 ? ' - ' : null);
+    if(!sep) return s;
+    return s.slice(0, s.indexOf(sep)).trim() || s;
+  }
+  const groupedTourMap = {};
+  Object.values(tourMap).forEach(r => {
+    const groupKey = tourDisplayGroup(r.name);
+    if(!groupedTourMap[groupKey]){
+      groupedTourMap[groupKey] = {name:groupKey,qty:0,revenueLocal:0,revenueEur:0,costLocal:0,costEur:0,compCostLocal:0,compCostEur:0,variants:[]};
+    }
+    const g = groupedTourMap[groupKey];
+    g.qty += r.qty;
+    g.revenueLocal += r.revenueLocal;
+    g.revenueEur += r.revenueEur;
+    g.costLocal += r.costLocal;
+    g.costEur += r.costEur;
+    g.compCostLocal += (r.compCostLocal||0);
+    g.compCostEur += (r.compCostEur||0);
+    if(r.name !== groupKey) g.variants.push(r.name);
+  });
+  const sortedRows=Object.values(groupedTourMap).sort((a,b)=>{
+    const au=a.name===TOUR_UNLINKED_COST_KEY, bu=b.name===TOUR_UNLINKED_COST_KEY;
+    if(au!==bu) return au?1:-1;
+    return b.revenueLocal-a.revenueLocal;
+  });
+  const soldRows=sortedRows.filter(r=>r.name!==TOUR_UNLINKED_COST_KEY);
+  const unlinkedRow=sortedRows.find(r=>r.name===TOUR_UNLINKED_COST_KEY);
+  const sold={
+    revenueLocal:sum(soldRows,r=>r.revenueLocal),revenueEur:sum(soldRows,r=>r.revenueEur),
+    costLocal:sum(soldRows,r=>r.costLocal),costEur:sum(soldRows,r=>r.costEur),
+    compCostLocal:sum(soldRows,r=>r.compCostLocal||0),compCostEur:sum(soldRows,r=>r.compCostEur||0)
+  };
+  sold.profitLocal=sold.revenueLocal-sold.costLocal;
+  sold.profitEur=sold.revenueEur-sold.costEur;
+  const unlinked={costLocal:unlinkedRow?.costLocal||0,costEur:unlinkedRow?.costEur||0,revenueLocal:unlinkedRow?.revenueLocal||0};
+  return {rows:sortedRows,sold,unlinked};
+}
 function renderOverview(){
   // Surf School isn't a camp — the camp-centric Revenue centers
   // (Food / Bar / Merch / Tours / Laundry) don't apply. Toggle the
@@ -5232,160 +5429,8 @@ function renderOverview(){
   const laundryCampEur=sum(laundryExpenses.filter(x=>x.paymentMethod==='Cash'),x=>entryEurAmount(x));
   const laundryHqLocal=sum(laundryExpenses.filter(x=>x.paymentMethod==='Bank Transfer'),x=>entryLocalDisplayAmount(x));
   const laundryHqEur=sum(laundryExpenses.filter(x=>x.paymentMethod==='Bank Transfer'),x=>entryEurAmount(x));
-  // Tour rows carry two cost streams so the display can split
-  // "paying-guest margin" from "total margin":
-  //   costLocal / costEur           = total cost (all rows, comp + paying)
-  //   compCostLocal / compCostEur   = subset flagged is_comp (staff/offered)
-  // payingCost = costLocal - compCostLocal → margin against actual sales.
-  const tourMap={};
-  const blankTour = (key) => ({name:key,qty:0,revenueLocal:0,revenueEur:0,costLocal:0,costEur:0,compCostLocal:0,compCostEur:0});
-  // Ledger only — same single-source rule as the drawer KPIs and the
-  // per-area tiles above. Every paid Camp Tab item already lands a ledger
-  // income row (camp_tab_per_item / campclose_*), so adding paidItems here
-  // as well counted each tour sale twice.
-  revenueEntries.filter(x=>x.businessArea==='Tours').forEach(x=>{
-    const key=x.linkedItem||x.category;
-    tourMap[key]=tourMap[key]||blankTour(key);
-    tourMap[key].qty+=Math.max(1,parseInt(x.quantity||'1',10)||1);
-    tourMap[key].revenueLocal+=entryLocalDisplayAmount(x);
-    tourMap[key].revenueEur+=entryEurAmount(x);
-  });
-  expenses.filter(x=>x.businessArea==='Tours').forEach(x=>{
-    const key=x.linkedItem||'General Tours';
-    tourMap[key]=tourMap[key]||blankTour(key);
-    const l=entryLocalDisplayAmount(x), e=entryEurAmount(x);
-    tourMap[key].costLocal+=l;
-    tourMap[key].costEur+=e;
-    if(x.isComp){ tourMap[key].compCostLocal+=l; tourMap[key].compCostEur+=e; }
-  });
-  // Cross-area sweep: revenue OR expense tagged with a linkedItem that
-  // matches a real tour name (menu tour item, or already in tourMap from
-  // an earlier pass) but sitting under a NON-Tours businessArea. This
-  // catches revenue lines someone booked as "General / Other Revenue"
-  // (e.g., "Paradise Valley Transfer", "Package Souk+Paradise") — they
-  // used to fall out of the Tours-by-product margin entirely, making a
-  // negative-margin tour look positive. Transport-area rows are skipped
-  // here — they go through the smarter linkedTransportTours() splitter
-  // below, which handles shared-van cost splitting across sub-tours.
-  const tourNamesForCrossSweep=new Set([...currentTourItems(),...Object.keys(tourMap)].filter(Boolean));
-  revenueEntries.filter(x=>x.businessArea!=='Tours'&&x.businessArea!=='Transport').forEach(x=>{
-    const key=String(x.linkedItem||'').trim();
-    if(!key||!tourNamesForCrossSweep.has(key)) return;
-    tourMap[key]=tourMap[key]||blankTour(key);
-    tourMap[key].qty+=Math.max(1,parseInt(x.quantity||'1',10)||1);
-    tourMap[key].revenueLocal+=entryLocalDisplayAmount(x);
-    tourMap[key].revenueEur+=entryEurAmount(x);
-  });
-  expenses.filter(x=>x.businessArea!=='Tours'&&x.businessArea!=='Transport').forEach(x=>{
-    const key=String(x.linkedItem||'').trim();
-    if(!key||!tourNamesForCrossSweep.has(key)) return;
-    tourMap[key]=tourMap[key]||blankTour(key);
-    const l=entryLocalDisplayAmount(x), e=entryEurAmount(x);
-    tourMap[key].costLocal+=l;
-    tourMap[key].costEur+=e;
-    if(x.isComp){ tourMap[key].compCostLocal+=l; tourMap[key].compCostEur+=e; }
-  });
-  // Only roll up Transport-area spend into the Tours-by-product card if the
-  // linked label is an actual tour (camp-tab menu item OR a tour that
-  // already has revenue/expenses in this period). Non-tour display labels
-  // like "Surf Lessons" stay tagged on the Transport line but don't create
-  // a phantom tour row with cost-only / zero revenue.
-  const knownTourNames=new Set([
-    ...currentTourItems(),
-    ...Object.keys(tourMap)
-  ]);
-  // ── Transport rollup: group by linked_item, distribute by paying guests ──
-  // Unified model: every Transport row carries the subcategory in
-  // linked_item (e.g. "Dunes", "Paradise Valley", "Souk Tour", "Airport",
-  // "Transport Surf Lesson"). The aggregator resolves that subcategory
-  // to one or more tours via linkedTransportTours() — direct name match,
-  // display-group match, preset.linkedTour, or the TRANSPORT_TOUR_COST_MAP.
-  // The cost then splits WEIGHTED BY PAYING-GUEST COUNT across the
-  // matched tours: the shared "Dunes" van absorbs into Sandboarding,
-  // Camel Ride and Quad Bike proportional to how many guests each ran.
-  expenses.filter(x=>x.businessArea==='Transport').forEach(x=>{
-    // Per-entry override (set via the Transport quick-add form's linked-tour
-    // dropdown) wins over the preset's default linkedTour. Useful when a
-    // shared destination's van served only one sub-tour and you want to
-    // attribute the full cost manually.
-    const override=transportEntryTourOverride(x);
-    const candidates = override
-      ? [override]
-      : linkedTransportTours(x.linkedItem||'');
-    // Filter to tours that are either (a) in the menu, or (b) already
-    // accumulating data in tourMap from revenue/cost in this period.
-    // Then narrow to those that actually had guests this period (qty>0)
-    // so the transport cost only splits across sub-tours that really
-    // ran. If none of the candidates ran this period (no revenue),
-    // fall back to attributing the full cost to the first menu match
-    // — keeps the cost visible somewhere instead of vanishing.
-    const validInMenuOrTourMap = candidates.filter(t => t && knownTourNames.has(t));
-    if(!validInMenuOrTourMap.length) return;
-    const ranThisPeriod = validInMenuOrTourMap.filter(t => (tourMap[t]?.qty||0) > 0);
-    const targets = ranThisPeriod.length ? ranThisPeriod : [validInMenuOrTourMap[0]];
-    const rowLocal = entryLocalDisplayAmount(x);
-    const rowEur = entryEurAmount(x);
-    // Weight by paying-guest count when the transport is shared across
-    // multiple tours (e.g., one "Dunes" van absorbed into Sandboarding,
-    // Camel Ride and Quad Bike by how many pagantes each put in the
-    // van). With a single target the full cost lands there. If nobody
-    // paid a matched tour this period we fall back to an equal split so
-    // the cost never silently vanishes.
-    const totalGuests = targets.reduce((s, t) => s + (tourMap[t]?.qty || 0), 0);
-    if(totalGuests > 0){
-      const perGuestLocal = rowLocal / totalGuests;
-      const perGuestEur = rowEur / totalGuests;
-      targets.forEach(t => {
-        tourMap[t] = tourMap[t] || blankTour(t);
-        const guests = tourMap[t].qty || 0;
-        tourMap[t].costLocal += guests * perGuestLocal;
-        tourMap[t].costEur += guests * perGuestEur;
-      });
-    } else {
-      const shareLocal = rowLocal / targets.length;
-      const shareEur = rowEur / targets.length;
-      targets.forEach(t => {
-        tourMap[t] = tourMap[t] || blankTour(t);
-        tourMap[t].costLocal += shareLocal;
-        tourMap[t].costEur += shareEur;
-      });
-    }
-    // Transport rows are never comps (van cost is the same whether the
-    // seat carries a paying guest or a staff comp), so compCostLocal/Eur
-    // stay untouched here.
-  });
-  // Consolidate sub-tour cards by activity. Tours whose names follow the
-  // pattern "<Activity> — <Variant>" (em-dash or " - ") are merged into a
-  // single card keyed by the activity name. So "Dunes — Quad Bike (with
-  // transport)", "Dunes — Camel Ride (with transport)", and the
-  // activity-only variants all roll up into one "Dunes" card showing the
-  // combined revenue, cost, and margin — same physical activity, the
-  // variant is just guest choice. Tours without a separator (Souk Tour,
-  // Paradise Valley, Ice Bath, etc.) keep their own name.
-  function tourDisplayGroup(name){
-    const s = String(name||'').trim();
-    if(!s) return name;
-    const sep = s.indexOf(' — ') !== -1 ? ' — ' : (s.indexOf(' - ') !== -1 ? ' - ' : null);
-    if(!sep) return s;
-    return s.slice(0, s.indexOf(sep)).trim() || s;
-  }
-  const groupedTourMap = {};
-  Object.values(tourMap).forEach(r => {
-    const groupKey = tourDisplayGroup(r.name);
-    if(!groupedTourMap[groupKey]){
-      groupedTourMap[groupKey] = {name:groupKey,qty:0,revenueLocal:0,revenueEur:0,costLocal:0,costEur:0,compCostLocal:0,compCostEur:0,variants:[]};
-    }
-    const g = groupedTourMap[groupKey];
-    g.qty += r.qty;
-    g.revenueLocal += r.revenueLocal;
-    g.revenueEur += r.revenueEur;
-    g.costLocal += r.costLocal;
-    g.costEur += r.costEur;
-    g.compCostLocal += (r.compCostLocal||0);
-    g.compCostEur += (r.compCostEur||0);
-    if(r.name !== groupKey) g.variants.push(r.name);
-  });
-  const tourRows=Object.values(groupedTourMap).sort((a,b)=>b.revenueLocal-a.revenueLocal);
+  const tourSummary=tourProfitRows(revenueEntries,expenses);
+  const tourRows=tourSummary.rows;
   // Merch COGS: cost of goods SOLD, not the whole stock bought. For each
   // Merch item that appeared on a paid tab, look up its unit cost from
   // the menu (falls back to 0 when the menu row has no costPerGuest
@@ -5419,7 +5464,7 @@ function renderOverview(){
     <div class="card card-pad" style="grid-column:1 / -1">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;gap:12px;flex-wrap:wrap">
         <div class="ov-cat-title" style="font-weight:700;letter-spacing:-.02em;font-size:17px;color:var(--navy);display:flex;align-items:center;gap:8px">${uiIcon('wave')}<span>Tours by product</span></div>
-        <div style="font-size:11px;color:var(--muted)">${tourRows.length} tour line${tourRows.length!==1?'s':''} · profit per activity</div>
+        <div style="font-size:11px;color:var(--muted);text-align:right" id="ovTourTotals">Sold tours: revenue ${lkr(tourSummary.sold.revenueLocal)} · cost ${lkr(tourSummary.sold.costLocal)} · profit <b style="color:${tourSummary.sold.profitLocal>=0?'var(--green)':'var(--red)'}">${moneyPairLocal(tourSummary.sold.profitLocal,tourSummary.sold.profitEur)}</b>${tourSummary.unlinked.costLocal>0.005?`<br>Not linked to a tour: cost ${lkr(tourSummary.unlinked.costLocal)}`:''}</div>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px">
         ${tourRows.map(r=>{
@@ -5440,7 +5485,7 @@ function renderOverview(){
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:10px">
               <div>
                 <div style="font-weight:700;color:var(--navy)">${r.name}</div>
-                <div style="font-size:11px;color:var(--muted);margin-top:2px">${r.qty||0} paid guest${r.qty===1?'':'s'}${(r.variants&&r.variants.length>1)?` · ${r.variants.length} variants`:''}</div>
+                <div style="font-size:11px;color:var(--muted);margin-top:2px">${r.name===TOUR_UNLINKED_COST_KEY?'Included activities, or a tour cost with no tour picked':r.name===TOUR_UNSPLIT_REVENUE_KEY?`${r.qty||0} entr${r.qty===1?'y':'ies'} with no tour picked`:`${r.qty||0} paid guest${r.qty===1?'':'s'}`}${(r.variants&&r.variants.length>1)?` · ${r.variants.length} variants`:''}</div>
               </div>
               <span class="badge ${payingMarginLocal>=0?'badge-green':'badge-red'}" title="Paying-guest margin (excludes comp seats)">${payingMarginLocal>=0?'+':''}${lkr(payingMarginLocal)}</span>
             </div>
@@ -7443,7 +7488,7 @@ function categoryOptionsFor(type,area){
 function linkedItemOptionsFor(type,area,category=''){
   if(type==='income'&&category==='Tours') return [''].concat(currentTourItems());
   if(type==='income'&&category==='Transport') return [''].concat(currentTransportItems());
-  if(type==='expense'&&category==='Tours') return [''].concat(currentTourItems());
+  if(type==='expense'&&isTourExpenseCat(category)) return [''].concat(currentTourItems());
   if(type==='expense'&&category==='Transport') return [''].concat(currentTransportItems());
   if(type==='expense'&&category==='Utilities') return [''].concat(UTILITIES_LINKED_ITEMS);
   // Income under any other category (Other Revenue, Drinks, Merchandise…):
@@ -7684,12 +7729,12 @@ function toggleEntryUi(prefix,type){
   // as "Other Revenue" falls out of the Tours-by-product margin entirely.
   const showLinked=type==='income'
     ? true
-    : type==='expense'&&['Tours','Transport','Utilities'].includes(categoryValue);
+    : type==='expense'&&(isTourExpenseCat(categoryValue)||['Transport','Utilities'].includes(categoryValue));
   // Income on Tours/Transport keeps the qty field (existing). Expense on
   // Tours also gets a qty field so the user can enter Guests and let
   // applyLinkedPrice auto-fill Amount from the tour's cost-per-guest.
   const showQty=(type==='income'&&['Tours','Transport'].includes(categoryValue))
-              ||(type==='expense'&&categoryValue==='Tours');
+              ||(type==='expense'&&isTourExpenseCat(categoryValue));
   const categoryWrap=document.getElementById(prefix+'_cat_wrap');
   const payWrap=document.getElementById(prefix+'_pay_wrap');
   const currencyWrap=document.getElementById(prefix+'_currency_wrap');
@@ -7714,7 +7759,7 @@ function toggleEntryUi(prefix,type){
     if(linkedLabel){
       if(categoryValue==='Utilities') linkedLabel.textContent='Utility type';
       else if(categoryValue==='Transport') linkedLabel.textContent='Transport item';
-      else if(categoryValue==='Tours') linkedLabel.textContent='Tour item';
+      else if(categoryValue==='Tours'||(type==='expense'&&isTourExpenseCat(categoryValue))) linkedLabel.textContent='Tour item';
       else if(type==='income') linkedLabel.textContent='Related tour (optional)';
       else linkedLabel.textContent='Sub-category';
     }
@@ -7725,14 +7770,14 @@ function toggleEntryUi(prefix,type){
     // multiplier represents how many guests went on a tour.
     const qtyLabel=qtyWrap.querySelector('label');
     if(qtyLabel){
-      qtyLabel.textContent=(type==='expense' && categoryValue==='Tours') ? 'Guests' : 'Qty';
+      qtyLabel.textContent=(type==='expense' && isTourExpenseCat(categoryValue)) ? 'Guests' : 'Qty';
     }
   }
   if(descWrap) descWrap.style.display=showDesc?'':'none';
   // is_comp checkbox: only makes sense for Tour expenses (staff/offered spots).
   const iscompWrap=document.getElementById(prefix+'_iscomp_wrap');
   if(iscompWrap){
-    iscompWrap.style.display=(type==='expense' && categoryValue==='Tours') ? '' : 'none';
+    iscompWrap.style.display=(type==='expense' && isTourExpenseCat(categoryValue)) ? '' : 'none';
   }
   // HQ layer fields — visible only when the current camp is Portugal
   // (the HQ hub). Never surface these in an ops-camp hub; the manager
@@ -7751,7 +7796,10 @@ function fillEntryFields(prefix,type,preset=null,entry=null){
   const payEl=document.getElementById(prefix+'_pay');
   const linkedEl=document.getElementById(prefix+'_linked');
   const defaultCategory=type==='transfer'?'Cash Float':type==='income'?'Other Revenue':'Other';
-  const desiredCategory=entry?.category||preset?.category||defaultCategory;
+  const rawCategory=entry?.category||preset?.category||defaultCategory;
+  // Legacy expense names (e.g. the «Tours» shortcut) select their modern
+  // category instead of silently falling back to the first one (Food).
+  const desiredCategory=type==='expense'?modernExpCat(rawCategory):rawCategory;
   const desiredLinked=entry?.linkedItem||preset?.linkedItem||linkedEl?.value||'';
   const activeArea=entry?.businessArea||preset?.area||inferArea(type,desiredCategory,desiredLinked);
   const cats=categoryOptionsFor(type,activeArea);
@@ -7844,7 +7892,7 @@ function applyLinkedPrice(prefix){
   // Expense on Tours: auto-fill from the tour's cost-per-guest (configured
   // in the camp tab menu editor). Free-entrance tours have cost 0 and we
   // don't touch the amount — user types it manually.
-  if(type==='expense' && category==='Tours'){
+  if(type==='expense' && isTourExpenseCat(category)){
     const costPerGuest=tourCostPerGuest(linked);
     if(amountEl && costPerGuest>0) amountEl.value=String(costPerGuest*qty);
     updateCurrencyUi(prefix,type);
@@ -7998,7 +8046,7 @@ function buildLedgerPayload(prefix,type,id=null){
     // isComp: staff / offered spots. Ticked = row is excluded from the
     // paying-guest margin so tours don't read as loss-making just because
     // of comps. Only surfaced for Tour expenses in the form UI.
-    isComp:!!(type==='expense' && category==='Tours' && document.getElementById(prefix+'_iscomp')?.checked),
+    isComp:!!(type==='expense' && isTourExpenseCat(category) && document.getElementById(prefix+'_iscomp')?.checked),
     // HQ layer — read from the form when the fields are shown (Portugal
     // hub only), otherwise fall back to the current camp slug so ops
     // hubs keep working without ever surfacing the two axes to their
