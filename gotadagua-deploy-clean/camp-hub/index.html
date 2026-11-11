@@ -5213,6 +5213,12 @@ function renderOverview(){
     if(selectedMonth!=='all'&&monthKey(ws)!==selectedMonth) return;
     if(!weekMap.has(ws)) weekMap.set(ws,{id:`csv:${ws}`,start:ws,csvOnly:true,guests:[]});
   });
+  // Weeks with ledger rows but no booking (closed season, e.g. 5 Sep 2026 with
+  // 31 rows) were missing from the Week picker (12 Nov 2026).
+  if(selectedMonth!=='all') S.ledger.forEach(x=>{
+    const ws=x?.date?weekStartSat(x.date):'';
+    if(ws&&monthKey(ws)===selectedMonth&&!weekMap.has(ws)) weekMap.set(ws,{id:`csv:${ws}`,start:ws,csvOnly:true,guests:[]});
+  });
   const weeksForSelector=[...weekMap.values()].sort((a,b)=>a.start.localeCompare(b.start));
   if(sel){
     const cur=sel.value;

@@ -14,7 +14,8 @@
 //   • Merch «Direct cost» was always 0 (it read the hub's empty weekly guests
 //     and the static menu seed, never the Camp Tab sales / catalog cost);
 //   • «T-Shirt 2XL» (19 in stock) had no row in the stock table;
-//   • the week line always ended «· 0 paid» in per-guest camps.
+//   • the week line always ended «· 0 paid» in per-guest camps;
+//   • weeks with ledger rows but no booking were missing from the Week picker.
 //
 //  Hermetic like the smoke suite: Supabase is stubbed, nothing is written.
 // ════════════════════════════════════════════════════════════════════════════
@@ -103,6 +104,7 @@ test('overview cost cards: camp vs HQ split, unlinked transport / utilities, foo
     const merch = [...document.querySelectorAll('#ovCatPanels .ov-area-card')].find(c => /\bMerch\b/.test(c.querySelector('.ov-area-title')?.textContent || ''))?.innerText || '';
     return {
       info: document.getElementById('ovWeekInfo').textContent,
+      weekOptions: [...document.getElementById('ovWeekSel').options].map(x => x.value).join(','),
       payrollAna: chip('Payroll', 'Salary Ana'),
       laundryCamp: chip('Laundry', 'Camp-paid'), laundryHq: chip('Laundry', 'HQ-paid'),
       transport: card('Transport'), transportUnlinked: chip('Transport', 'Not linked to a line'),
@@ -136,6 +138,9 @@ test('overview cost cards: camp vs HQ split, unlinked transport / utilities, foo
   expect(o.stock).toContain('Size 2XL');
   // No meaningless «· 0 paid» in a per-guest camp
   expect(o.info).not.toContain('paid');
+  // The week of 10 Oct has ledger rows but no booking — it must still be pickable
+  expect(o.weekOptions).toContain('csv:2026-10-10');
+  expect(o.weekOptions).toContain('csv:2026-10-03');
   expect(writes).toEqual([]);
   expect(errs).toEqual([]);
 });
