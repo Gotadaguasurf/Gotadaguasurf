@@ -106,7 +106,7 @@ test('overview cost cards: camp vs HQ split, unlinked transport / utilities, foo
       info: document.getElementById('ovWeekInfo').textContent,
       weekOptions: [...document.getElementById('ovWeekSel').options].map(x => x.value).join(','),
       payrollAna: chip('Payroll', 'Salary Ana'),
-      laundryCamp: chip('Laundry', 'Camp-paid'), laundryHq: chip('Laundry', 'HQ-paid'),
+      laundryCamp: chip('Laundry', 'Paid by camp'), laundryHq: chip('Laundry', 'Paid by HQ'),
       transport: card('Transport'), transportUnlinked: chip('Transport', 'Not linked to a line'),
       utilities: card('Utilities control'), utilitiesUnsplit: chip('Utilities control', 'Not split by type'),
       food, merch, stock: card('T-Shirt stock'),
@@ -114,8 +114,8 @@ test('overview cost cards: camp vs HQ split, unlinked transport / utilities, foo
   });
   const o = Object.fromEntries(Object.entries(out).map(([k, v]) => [k, norm(v)]));
   // Payroll: bank + cash = camp-paid (120,000), the HQ Paid row = HQ-paid (400,000)
-  expect(o.payrollAna).toContain('Camp-paid: LKR 120,000');
-  expect(o.payrollAna).toContain('HQ-paid: LKR 400,000');
+  expect(o.payrollAna).toContain('Camp: LKR 120,000');
+  expect(o.payrollAna).toContain('Paid by HQ: LKR 400,000');
   // Laundry paid by the camp bank is camp money, not HQ
   expect(o.laundryCamp).toContain('LKR 9,000');
   expect(o.laundryHq).not.toContain('LKR 9,000');

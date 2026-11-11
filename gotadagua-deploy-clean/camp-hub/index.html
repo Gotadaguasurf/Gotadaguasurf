@@ -338,6 +338,12 @@ body{min-height:100dvh}
    coloured amount is repeated under the Type badge. */
 .amt-mob{display:none}
 @media(max-width:700px){.amt-mob{display:block;font-size:12.5px;margin-top:4px}}
+/* Phones: Category and Description sit off-screen too — one muted line under
+   the amount says what the row is. Desktop: long tokens in Description
+   (e.g. «FEE:VISH_CORP_CHG_30072026») may break so Actions stay on screen. */
+.what-mob{display:none}
+@media(max-width:700px){.what-mob{display:block;max-width:150px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11.5px;color:var(--muted);margin-top:2px}}
+#expTable td:nth-child(7){overflow-wrap:anywhere}
 .icon-danger:hover{color:var(--red);border-color:var(--red);background:var(--red-bg)}
 .hub-embed-wrap{height:calc(100vh - 60px);padding:0}
 .hub-embed-frame{width:100%;height:100%;border:none;display:block;background:var(--bg)}
@@ -551,7 +557,7 @@ body{min-height:100dvh}
       <button class="exp-quick-btn qcat-camp" data-cat="Drinks" onclick="quickCategoryShortcut('Drinks')"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M6 4h8"/><path d="M7 4v3c0 2 1.5 3.5 3 3.5S13 9 13 7V4"/><path d="M10 10.5V16"/><path d="M7.5 16h5"/></svg></span><span>Drinks</span></span></button>
       <button class="exp-quick-btn qcat-camp" data-cat="Cleaning" onclick="quickCategoryShortcut('Cleaning')"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M6 4h8"/><path d="M8 4v3"/><path d="M12 4v3"/><path d="M5 7h10l-1 9H6z"/></svg></span><span>Cleaning</span></span></button>
       <button class="exp-quick-btn" data-cat="Transport" onclick="quickCategoryShortcut('Transport')"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M3 12h11"/><path d="m11 8 4 4-4 4"/><path d="M4 8h4"/></svg></span><span>Transport</span></span></button>
-      <button class="exp-quick-btn" data-cat="Cash Float" onclick="startQuickExpense('transfer',{category:'Cash Float',description:'Cash sent to camp'})"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M3 10h10"/><path d="m10 6 4 4-4 4"/><path d="M14 5h3v10h-3"/></svg></span><span>Money from HQ</span></span></button>
+      <button class="exp-quick-btn" data-cat="Cash Float" onclick="startQuickExpense('transfer',{category:'Cash Float',description:'Money from HQ'})"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M3 10h10"/><path d="m10 6 4 4-4 4"/><path d="M14 5h3v10h-3"/></svg></span><span>Money from HQ</span></span></button>
       <button class="exp-quick-btn qcat-camp" data-cat="Merchandise" onclick="quickCategoryShortcut('Merchandise')"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7h10l-.6 9H5.6z"/><path d="M7 7V5a3 3 0 0 1 6 0v2"/></svg></span><span>Merchandise</span></span></button>
       <!-- Surf School specific shortcuts — Rent / Salary / Gear. Toggled
            in by applyLocationSpecificExpUI() when the active hub is the
@@ -685,8 +691,8 @@ body{min-height:100dvh}
               <div class="mfield">
                 <label>Paid via</label>
                 <select id="tqPaidVia">
-                  <option value="Cash">Cash (camp-paid)</option>
-                  <option value="Bank Transfer">Bank Transfer (HQ-paid)</option>
+                  <option value="Cash">Cash</option>
+                  <option value="Bank Transfer">Bank Transfer (camp bank)</option>
                 </select>
               </div>
               <div class="mfield">
@@ -771,7 +777,7 @@ body{min-height:100dvh}
     <div class="section-head page-head">
       <div>
         <div class="section-title">Weekly P&amp;L</div>
-        <div class="section-sub">Cash control and sales by category — every Saturday-to-Saturday week</div>
+        <div class="section-sub">Cash control and sales by category — every week, Saturday to Friday</div>
       </div>
     </div>
     <div id="weeklyContent"></div>
@@ -1721,7 +1727,10 @@ let HUB_LEDGER_SYNC_ERROR_SHOWN=false;
 // ═══════════════════════════════════════════════════════════
 //  HELPERS
 // ═══════════════════════════════════════════════════════════
-const euro=n=>new Intl.NumberFormat('en-IE',{style:'currency',currency:'EUR'}).format(Number(n||0));
+// Formatters are built once: making a new Intl object per call cost ~40% of a
+// ledger render with 1.800 rows (search lagged ~1 s per key on a phone).
+const _euroFmt=new Intl.NumberFormat('en-IE',{style:'currency',currency:'EUR'});
+const euro=n=>_euroFmt.format(Number(n||0));
 // Local-currency formatter. Uses LOCAL_CURRENCY (LKR / MAD / EUR) which is
 // set from the active location row. Function name kept as `lkr` for
 // backwards compatibility with the hundreds of existing call sites — the
@@ -3880,20 +3889,30 @@ function isoLocal(d){
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 const today=()=>isoLocal(new Date());
-const fmtd=d=>d?new Date(d+'T00:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}):'—';
+const _fmtdFmt=new Intl.DateTimeFormat('en-GB',{day:'numeric',month:'short',year:'numeric'});
+const fmtd=d=>{ if(!d) return '—'; const x=new Date(d+'T00:00:00'); return isNaN(x)?'Invalid Date':_fmtdFmt.format(x); };
 // «Added» column: when a ledger line was entered — «11 Nov 14:05».
+const _addedDayFmt=new Intl.DateTimeFormat('en-GB',{day:'numeric',month:'short'});
+const _addedTimeFmt=new Intl.DateTimeFormat('en-GB',{hour:'2-digit',minute:'2-digit'});
 const fmtAdded=ts=>{ if(!ts) return '—'; const d=new Date(ts); if(isNaN(d)) return '—';
-  return d.toLocaleDateString('en-GB',{day:'numeric',month:'short'})+' '+d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}); };
+  return _addedDayFmt.format(d)+' '+_addedTimeFmt.format(d); };
 const esc=s=>String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');
 const sum=(arr,fn)=>arr.reduce((s,x)=>s+(fn?fn(x):x),0);
 const gtot=g=>g.items.reduce((s,i)=>s+Number(i.p),0);
 const monthKey=iso=>iso?.slice(0,7)||'';
 const plainJoin=(parts,sep=' — ')=>(parts||[]).filter(Boolean).join(sep);
 
+// Memoised: Weekly P&L calls it weeks × rows times (~110k with 1.800 rows).
+// The cache lives on the function so it works even if called before this line runs.
 function weekStartSat(iso){
+  const _weekStartSatCache=weekStartSat._c||(weekStartSat._c=new Map());
+  if(_weekStartSatCache.has(iso)) return _weekStartSatCache.get(iso);
   const d=new Date(iso+'T00:00:00');const day=d.getDay();
-  const diff=day===6?0:day+1;d.setDate(d.getDate()-diff);return isoLocal(d);
+  const diff=day===6?0:day+1;d.setDate(d.getDate()-diff);
+  const ws=isoLocal(d); _weekStartSatCache.set(iso,ws); return ws;
 }
+// «2026-10» → «October 2026», the same words as the Ledger's Period list.
+function ymLabel(ym){const [y,mo]=String(ym||'').split('-').map(Number);if(!y||!mo)return String(ym||'');return new Date(Date.UTC(y,mo-1,1)).toLocaleDateString('en-GB',{month:'long',year:'numeric',timeZone:'UTC'});}
 function addDays(iso,n){const d=new Date(iso+'T00:00:00');d.setDate(d.getDate()+n);return isoLocal(d);}
 function weekLabel(ws){return fmtd(ws)+' → '+fmtd(addDays(ws,6));}
 function monthEndDate(ym){
@@ -5216,7 +5235,7 @@ function renderOverview(){
   const monthOptions=[...new Set([...S.weeks.map(w=>monthKey(w.start)),...S.ledger.map(x=>monthKey(x.date)),...ovBookingMonths()].filter(Boolean))].sort().reverse();
   if(monthSel){
     const curMonth=monthSel.value;
-    monthSel.innerHTML='<option value="all">All months</option>'+monthOptions.map(m=>`<option value="${m}" ${curMonth===m?'selected':''}>${m}</option>`).join('');
+    monthSel.innerHTML='<option value="all">All months</option>'+monthOptions.map(m=>`<option value="${m}" ${curMonth===m?'selected':''}>${ymLabel(m)}</option>`).join('');
     if(curMonth&&curMonth!=='all'&&!monthOptions.includes(curMonth)) monthSel.value='all';
   }
   const selectedMonth=monthSel?.value||'all';
@@ -5513,7 +5532,7 @@ function renderOverview(){
   // get its own idle-zero card.
   const HIDE_BAR=(typeof __HUB_LOCATION_SLUG!=='undefined') && ['morocco','surf-school'].includes(__HUB_LOCATION_SLUG);
   const profitAreas=[
-    ...(HIDE_BAR ? [] : [{icon:'cup',name:'Bar',revenueLocal:areaRevenues.Bar.local,revenueEur:areaRevenues.Bar.eur,costLocal:areaCosts.Bar.local,costEur:areaCosts.Bar.eur}]),
+    ...(HIDE_BAR ? [] : [{icon:'cup',name:'Drinks',revenueLocal:areaRevenues.Bar.local,revenueEur:areaRevenues.Bar.eur,costLocal:areaCosts.Bar.local,costEur:areaCosts.Bar.eur}]),
     {icon:'shirt',name:'Merch',revenueLocal:areaRevenues.Merch.local,revenueEur:areaRevenues.Merch.eur,costLocal:merchCogsLocal,costEur:merchCogsEur}
   ];
   const tourCardsMarkup=tourRows.length?`
@@ -5545,13 +5564,13 @@ function renderOverview(){
               </div>
               <span class="badge ${payingMarginLocal>=0?'badge-green':'badge-red'}" title="Paying-guest margin (excludes comp seats)">${payingMarginLocal>=0?'+':''}${lkr(payingMarginLocal)}</span>
             </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-              <div style="background:#fff;border-radius:8px;padding:10px">
+            <div style="display:flex;flex-wrap:wrap;gap:8px">
+              <div style="background:#fff;border-radius:8px;padding:10px;flex:1 1 auto">
                 <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin-bottom:4px">Revenue</div>
                 <div style="font-weight:700;letter-spacing:-.02em;font-size:18px;color:var(--green)">${lkr(r.revenueLocal)}</div>
                 <div style="font-size:10px;color:var(--muted);margin-top:2px">${euro(r.revenueEur)}</div>
               </div>
-              <div style="background:#fff;border-radius:8px;padding:10px">
+              <div style="background:#fff;border-radius:8px;padding:10px;flex:1 1 auto">
                 <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin-bottom:4px">Direct cost</div>
                 <div style="font-weight:700;letter-spacing:-.02em;font-size:18px;color:var(--navy)">${lkr(r.costLocal)}</div>
                 <div style="font-size:10px;color:var(--muted);margin-top:2px">${euro(r.costEur)}${hasComp?` · ${lkr(r.compCostLocal)} comp`:''}</div>
@@ -5588,7 +5607,7 @@ function renderOverview(){
     ovKpisEl.className = 'g4';
     ovKpisEl.innerHTML = `
       ${kpi('Money from HQ','Money sent from HQ to this camp',lkr(moneySentLocal),'kv-ocean',euro(moneySentEur))}
-      ${kpi('On-site revenue','Tours + merch + bar generated at the camp',lkr(totalRevenueLocal),'kv-green',euro(totalRevenueEur))}
+      ${kpi('On-site revenue','Bar, tours, transport and merch sold at the camp',lkr(totalRevenueLocal),'kv-green',euro(totalRevenueEur))}
       ${kpi('Total Spent','Everything that went out (expenses only)',lkr(totalExpLocal),'',euro(totalExpEur))}
       ${kpi('Balance','Bank + Cash drawers combined',lkr(totalBalanceLocal),totalBalanceLocal>=0?'kv-green':'kv-red',euro(totalBalanceEur))}
     `;
@@ -5600,11 +5619,11 @@ function renderOverview(){
     ovKpisEl.className = 'g3';
     ovKpisEl.innerHTML=`
       ${kpi('Money from HQ','Money sent from HQ to this camp',lkr(moneySentLocal),'kv-ocean',euro(moneySentEur))}
-      ${kpi('On-site revenue','Tours + merch + bar generated at the camp',lkr(totalRevenueLocal),'kv-green',euro(totalRevenueEur))}
+      ${kpi('On-site revenue','Bar, tours, transport and merch sold at the camp',lkr(totalRevenueLocal),'kv-green',euro(totalRevenueEur))}
       ${kpi('Total Spent','Everything that went out (expenses only)',lkr(totalExpLocal),'',euro(totalExpEur))}
       ${kpi('Balance','Bank + Cash drawers combined',lkr(totalBalanceLocal),totalBalanceLocal>=0?'kv-green':'kv-red',euro(totalBalanceEur))}
-      ${kpi('Bank','Money from HQ + card/bank revenue − card/bank spend − cash withdrawals',lkr(bankBalanceLocal),bankBalanceLocal>=0?'kv-ocean':'kv-red',euro(bankBalanceEur))}
-      ${kpi('Cash','Cash withdrawals + cash revenue − cash spend − out of cash',lkr(cashBalanceLocal),cashBalanceLocal>=0?'kv-amber':'kv-red',euro(cashBalanceEur))}
+      ${kpi('Bank','Money from HQ + cash deposits + card/bank sales − card/bank spend − withdrawals',lkr(bankBalanceLocal),bankBalanceLocal>=0?'kv-ocean':'kv-red',euro(bankBalanceEur))}
+      ${kpi('Cash','Withdrawals + cash sales − cash spend − deposits',lkr(cashBalanceLocal),cashBalanceLocal>=0?'kv-amber':'kv-red',euro(cashBalanceEur))}
     `;
   }
   const foodSpan=(selectedMonth!=='all'&&selectedWid==='all')
@@ -5744,8 +5763,8 @@ function renderOverview(){
               <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">${r.name}</div>
               <div style="font-weight:700;letter-spacing:-.02em;font-size:22px;color:var(--navy);margin-top:6px;line-height:1.1">${moneyPairLocal(r.spendLocal,r.spendEur)}</div>
               <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:10px;gap:8px">
-                <span>Camp-paid: <span style="color:var(--navy);font-weight:600">${r.campLocal?moneyPairLocal(r.campLocal,r.campEur):'—'}</span></span>
-                <span>HQ-paid: <span style="color:var(--navy);font-weight:600">${r.hqLocal?moneyPairLocal(r.hqLocal,r.hqEur):'—'}</span></span>
+                <span title="Paid by the camp — cash box or camp bank account">Camp: <span style="color:var(--navy);font-weight:600">${r.campLocal?moneyPairLocal(r.campLocal,r.campEur):'—'}</span></span>
+                <span title="Paid by HQ in Portugal — not from the camp bank or cash">Paid by HQ: <span style="color:var(--navy);font-weight:600">${r.hqLocal?moneyPairLocal(r.hqLocal,r.hqEur):'—'}</span></span>
               </div>
               <div style="font-size:11px;color:var(--muted);margin-top:6px">${r.entries||0} entr${(r.entries||0)===1?'y':'ies'}</div>
             </div>`).join('')}</div>`
@@ -5768,7 +5787,7 @@ function renderOverview(){
                the per-person breakdown. -->
           <div class="g4">${payrollMonthRows.map(m=>`
             <div class="ov-chip">
-              <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">${m.month}</div>
+              <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">${ymLabel(m.month)}</div>
               <div style="font-weight:700;letter-spacing:-.02em;font-size:22px;color:var(--navy);margin-top:6px;line-height:1.1">${moneyPairLocal(m.local,m.eur)}</div>
               <div style="font-size:11px;color:var(--muted);margin-top:6px">${m.entries} payment${m.entries===1?'':'s'}</div>
             </div>`).join('')}</div>
@@ -5779,8 +5798,8 @@ function renderOverview(){
                 <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">${r.name}</div>
                 <div style="font-weight:700;letter-spacing:-.02em;font-size:22px;color:var(--navy);margin-top:6px;line-height:1.1">${moneyPairLocal(r.spendLocal,r.spendEur)}</div>
                 <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:10px;gap:8px">
-                  <span>Camp-paid: <span style="color:var(--navy);font-weight:600">${r.campLocal?moneyPairLocal(r.campLocal,r.campEur):'—'}</span></span>
-                  <span>HQ-paid: <span style="color:var(--navy);font-weight:600">${r.hqLocal?moneyPairLocal(r.hqLocal,r.hqEur):'—'}</span></span>
+                  <span title="Paid by the camp — cash box or camp bank account">Camp: <span style="color:var(--navy);font-weight:600">${r.campLocal?moneyPairLocal(r.campLocal,r.campEur):'—'}</span></span>
+                  <span title="Paid by HQ in Portugal — not from the camp bank or cash">Paid by HQ: <span style="color:var(--navy);font-weight:600">${r.hqLocal?moneyPairLocal(r.hqLocal,r.hqEur):'—'}</span></span>
                 </div>
                 <div style="font-size:11px;color:var(--muted);margin-top:6px">${r.entries||0} payment${r.entries===1?'':'s'}</div>
               </div>`).join('')}</div>
@@ -5841,17 +5860,17 @@ function renderOverview(){
             <div class="ov-chip">
               <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">Tours</div>
               <div style="font-weight:700;letter-spacing:-.02em;font-size:22px;color:var(--navy);margin-top:6px;line-height:1.1">${s.tours.local?moneyPairLocal(s.tours.local,s.tours.eur):'—'}</div>
-              <div style="font-size:11px;color:var(--muted);margin-top:6px">Dunes · Souk · Paradise · …</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:6px">All runs to tours and activities</div>
             </div>
             <div class="ov-chip">
               <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">Surf</div>
               <div style="font-weight:700;letter-spacing:-.02em;font-size:22px;color:var(--navy);margin-top:6px;line-height:1.1">${s.surf.local?moneyPairLocal(s.surf.local,s.surf.eur):'—'}</div>
-              <div style="font-size:11px;color:var(--muted);margin-top:6px">Runs to surf spots</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:6px">All runs to surf spots</div>
             </div>
             <div class="ov-chip">
               <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">Airport</div>
               <div style="font-weight:700;letter-spacing:-.02em;font-size:22px;color:var(--navy);margin-top:6px;line-height:1.1">${s.airport.local?moneyPairLocal(s.airport.local,s.airport.eur):'—'}</div>
-              <div style="font-size:11px;color:var(--muted);margin-top:6px">Guest arrivals / departures</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:6px">All airport runs (routes below)</div>
             </div>
           </div>
         </div>`;
@@ -5864,8 +5883,8 @@ function renderOverview(){
               <div style="font-weight:700;letter-spacing:-.02em;font-size:22px;color:var(--navy);margin-top:6px;line-height:1.1">${moneyPairLocal(r.spendLocal,r.spendEur)}</div>
               ${r.linkedTour?`<div style="font-size:10px;color:var(--ocean);margin-top:2px;font-weight:600">↳ ${r.linkedTour}</div>`:''}
               <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:10px;gap:8px">
-                <span>Camp-paid: <span style="color:var(--navy);font-weight:600">${r.campLocal?moneyPairLocal(r.campLocal,r.campEur):'—'}</span></span>
-                <span>HQ-paid: <span style="color:var(--navy);font-weight:600">${r.hqLocal?moneyPairLocal(r.hqLocal,r.hqEur):'—'}</span></span>
+                <span title="Paid by the camp — cash box or camp bank account">Camp: <span style="color:var(--navy);font-weight:600">${r.campLocal?moneyPairLocal(r.campLocal,r.campEur):'—'}</span></span>
+                <span title="Paid by HQ in Portugal — not from the camp bank or cash">Paid by HQ: <span style="color:var(--navy);font-weight:600">${r.hqLocal?moneyPairLocal(r.hqLocal,r.hqEur):'—'}</span></span>
               </div>
               <div style="font-size:11px;color:var(--muted);margin-top:6px">${r.entries||0} ${(r.entries||0)===1?'entry':'entries'}${r.revenueLocal?` · revenue ${moneyPairLocal(r.revenueLocal,r.revenueEur)}`:''}</div>
             </div>`).join('')}</div>`
@@ -5890,12 +5909,12 @@ function renderOverview(){
                 <div style="font-size:11px;color:var(--muted);margin-top:6px">${laundryExpenses.length} payment${laundryExpenses.length===1?'':'s'}</div>
               </div>
               <div class="ov-chip">
-                <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">Camp-paid</div>
+                <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">Paid by camp</div>
                 <div style="font-weight:700;letter-spacing:-.02em;font-size:22px;color:var(--navy);margin-top:6px;line-height:1.1">${laundryCampLocal?moneyPairLocal(laundryCampLocal,laundryCampEur):'—'}</div>
                 <div style="font-size:11px;color:var(--muted);margin-top:6px">Camp cash or camp bank</div>
               </div>
               <div class="ov-chip">
-                <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">HQ-paid</div>
+                <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">Paid by HQ</div>
                 <div style="font-weight:700;letter-spacing:-.02em;font-size:22px;color:var(--navy);margin-top:6px;line-height:1.1">${laundryHqLocal?moneyPairLocal(laundryHqLocal,laundryHqEur):'—'}</div>
                 <div style="font-size:11px;color:var(--muted);margin-top:6px">Paid by HQ (Portugal)</div>
               </div>
@@ -7701,6 +7720,8 @@ function ledgerPaidViaText(r){
       case 'ATM Withdrawal': return 'Bank → Cash';
     }
   }
+  // 'HQ Paid' reads «Paid by HQ», the same words as the HQ badge and the legend.
+  if(r&&r.paymentMethod==='HQ Paid') return 'Paid by HQ';
   return (r&&r.paymentMethod)||'—';
 }
 function transferKindLabel(r){
@@ -7945,7 +7966,7 @@ function fillEntryFields(prefix,type,preset=null,entry=null){
   if(payEl){
     // Transfer kinds read in plain words with their from → to, e.g.
     // «ATM withdrawal · Bank → Cash».
-    payEl.innerHTML=payOpts.map(v=>`<option value="${v}">${type==='transfer'?`${transferKindLabel({paymentMethod:v})} · ${transferFlowLabel({paymentMethod:v})}`:v}</option>`).join('');
+    payEl.innerHTML=payOpts.map(v=>`<option value="${v}">${type==='transfer'?`${transferKindLabel({paymentMethod:v})} · ${transferFlowLabel({paymentMethod:v})}`:(v==='HQ Paid'?'Paid by HQ':v)}</option>`).join('');
     const desiredPay=entry?.paymentMethod||preset?.paymentMethod||payEl.value||defaultPaymentMethod(type,activeArea);
     payEl.value=payOpts.includes(desiredPay)?desiredPay:payOpts[0];
   }
@@ -8157,7 +8178,7 @@ function buildLedgerPayload(prefix,type,id=null){
     ? 'ATM withdrawal'
     : paymentMethod==='Cash Deposit'
       ? 'Cash deposit — cash to bank'
-      : 'Cash sent to camp';
+      : transferKindLabel({paymentMethod});
   return normalizeLedgerEntry({
     id:id||('e'+Date.now()+Math.random().toString(36).slice(2,6)),
     createdAt:id?((S.ledger||[]).find(x=>x&&x.id===id)?.createdAt||''):new Date().toISOString(),
@@ -8952,7 +8973,7 @@ function renderExpenses(){
   const pays=[...new Set(baseRows.flatMap(ledgerPayFilterKeys))].sort();
   if(paySel){
     const cur=paySel.value;
-    paySel.innerHTML='<option value="all">All payment methods</option>'+pays.map(p=>`<option value="${p}" ${cur===p?'selected':''}>${p}</option>`).join('');
+    paySel.innerHTML='<option value="all">All payment methods</option>'+pays.map(p=>`<option value="${p}" ${cur===p?'selected':''}>${p==='HQ Paid'?'Paid by HQ':p}</option>`).join('');
     if(payF!=='all'&&!pays.includes(payF)){payF='all';paySel.value='all';}
   }
   const tsel=document.getElementById('expTypeF');
@@ -9130,12 +9151,12 @@ function renderExpenses(){
   const rowHtml=r=>`<tr>
         <td style="white-space:nowrap;font-size:12px">${fmtd(r.date)}</td>
         <td style="white-space:nowrap;font-size:12px;color:var(--muted)" title="When this line was entered">${fmtAdded(r.createdAt)}</td>
-        <td style="white-space:nowrap">${ledgerTypeCell(r)}<span class="amt-mob ${ledgerAmtClass(r)}">${ledgerLocalAmtText(r,payWallet)}</span></td>
-        <td style="font-weight:600">${r.category}</td>
+        <td style="white-space:nowrap">${ledgerTypeCell(r)}<span class="amt-mob ${ledgerAmtClass(r)}">${ledgerLocalAmtText(r,payWallet)}</span><span class="what-mob">${escapeHtml([r.category,strippedTransportDescription(r)].filter(Boolean).join(' · '))}</span></td>
+        <td style="font-weight:600">${escapeHtml(r.category||'—')}</td>
         <td style="color:var(--muted);font-size:12px${r.type==='transfer'?';white-space:nowrap':''}">${String(r.sourceKind||'').toLowerCase()==='hq_invoice'?'<span class="badge badge-blue" title="Paid by HQ — edit it in HQ → Expenses">Paid by HQ</span>':String(r.sourceKind||'').toLowerCase()==='hq_transfer'?'<span class="badge badge-grey" title="Transfer recorded in HQ — edit it in HQ">Money from HQ</span>':ledgerPaidViaText(r)}</td>
-        <td style="color:var(--muted);font-size:12px">${r.linkedItem||'—'}${transportEntryTourOverride(r)?`<div style="font-size:10px;color:var(--ocean);font-weight:600;margin-top:2px">↳ ${escapeHtml(transportEntryTourOverride(r))}</div>`:''}</td>
+        <td style="color:var(--muted);font-size:12px">${escapeHtml(r.linkedItem||'—')}${transportEntryTourOverride(r)?`<div style="font-size:10px;color:var(--ocean);font-weight:600;margin-top:2px">↳ ${escapeHtml(transportEntryTourOverride(r))}</div>`:''}</td>
         <td style="color:var(--muted)">${escapeHtml(strippedTransportDescription(r))||'—'}</td>
-        <td style="color:var(--muted);font-size:12px">${r.vendor||'—'}</td>
+        <td style="color:var(--muted);font-size:12px">${escapeHtml(r.vendor||'—')}</td>
         <td class="r ${ledgerAmtClass(r)}">${ledgerLocalAmtText(r,payWallet)}</td>
         <td class="r ${ledgerAmtClass(r)}">${ledgerSign(r,payWallet)}${euro(r.amount)}</td>
         <td>${['hq_invoice','hq_transfer'].includes(String(r.sourceKind||'').toLowerCase())?`<div class="exp-table-actions" style="color:var(--muted-2)" title="Edit this in HQ">${AppShell.icon('lock')}</div>`:`<div class="exp-table-actions"><button class="btn btn-s btn-sm btn-icon" onclick="openEditLedger('${r.id}')" title="Edit">${AppShell.icon('edit')}</button><button class="btn btn-s btn-sm btn-icon icon-danger" onclick="delLedger('${r.id}')" title="Delete">${AppShell.icon('trash')}</button></div>`}</td>
@@ -9148,7 +9169,7 @@ function renderExpenses(){
       ${current.length?current.map(rowHtml).join(''):`<tr class="empty-row"><td colspan="11">${hasFilter?`No entries match these filters. <button class="btn btn-s btn-sm" style="margin-left:8px" onclick="clearExpFilters()">Clear filters</button>`:'No entries yet. Use Quick add above to log the first one.'}</td></tr>`}
     </tbody>
   </table></div>${upcoming.length?`<details class="card" style="margin-top:12px;padding:0">
-    <summary style="cursor:pointer;padding:14px 16px;font-weight:600;color:var(--navy)">Upcoming · ${upcoming.length} ${upcoming.length===1?'entry':'entries'} · ${euro(upcomingEur)} <span style="font-weight:400;color:var(--muted);font-size:12px">· each one moves into the list above on its date</span></summary>
+    <summary style="cursor:pointer;padding:14px 16px;font-weight:600;color:var(--navy)">Upcoming · ${upcoming.length} ${upcoming.length===1?'entry':'entries'} · ${lkr(sum(upcoming,x=>entryLocalDisplayAmount(x)))} ${euro(upcomingEur)} <span style="font-weight:400;color:var(--muted);font-size:12px">· each one moves into the list above on its date</span></summary>
     <div class="tbl-wrap"><table>${head}<tbody>${upcoming.map(rowHtml).join('')}</tbody></table></div>
   </details>`:''}`;
 }
@@ -9450,13 +9471,13 @@ function renderWeeklyPL(){
   el.innerHTML=`<div class="card">
     <div class="card-pad" style="border-bottom:1px solid var(--border)">
       <div class="card-title">Weekly P&L — all weeks</div>
-      <div class="card-hint">Sales by category, what was spent and how, money from HQ, and the cash left — per week</div>
+      <div class="card-hint">Sales by category, what was spent and how, money from HQ, and the net result — per week</div>
     </div>
     <div class="tbl-wrap"><table>
       <thead><tr>
         <th>Week</th>
         <th class="r">Guests (paid / total)</th>
-        <th class="r">Bar sales</th>
+        <th class="r">Drinks sales</th>
         <th class="r">Merch sales</th>
         <th class="r">Tour sales</th>
         <th class="r">Transport sales</th>
@@ -9464,7 +9485,7 @@ function renderWeeklyPL(){
         <th class="r">Spent by card</th>
         <th class="r">Paid by bank</th>
         <th class="r">Money from HQ</th>
-        <th class="r">Cash left this week</th>
+        <th class="r" title="Money from HQ + sales − everything spent (cash, card, bank). Costs paid by HQ are not in it.">Net this week</th>
         <th class="r">Food / guest-day</th>
       </tr></thead>
       <tbody>

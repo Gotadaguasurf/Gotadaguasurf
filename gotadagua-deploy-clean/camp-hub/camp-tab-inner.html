@@ -94,6 +94,9 @@ header{display:none}
 .ctr-price{font-variant-numeric:tabular-nums;font-size:11px;color:var(--ink);white-space:nowrap}
 .ctr-del{border:none;background:none;cursor:pointer;color:var(--muted);font-size:14px;padding:1px 4px;border-radius:4px;line-height:1;transition:all .12s;flex-shrink:0}
 .ctr-del:hover{background:var(--red-bg);color:var(--red)}
+/* Touch screens have no hover: the guest × was invisible (opacity 0) and the
+   item × was a 16 px target next to «Pay». Visible and finger-sized there. */
+@media (pointer:coarse){.c-guest-del{opacity:.55;width:32px;height:32px}.ctr-del{min-width:32px;min-height:32px}}
 .c-right-foot{border-top:1px solid var(--border);padding:11px 13px;flex-shrink:0}
 .c-total-row{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px}
 .c-total-val{font-weight:700;letter-spacing:-.02em;font-size:24px;color:var(--navy)}
@@ -2829,7 +2832,7 @@ function renderTabPanel(){
   document.getElementById('chargeGuestMeta').textContent=(currentRoster==='staff'?'Staff tab':'Guest tab')+' — '+(fullyPaid?'Paid / '+euro(gtot(g)):g.items.length+' item'+(g.items.length===1?'':'s')+' / '+euro(gtot(g)));
   // per_guest mode: drop the week prefix from the tab status line.
   const tabMetaLeft = CAMP_TAB_MODE==='per_guest' ? g.name : weekLabel;
-  document.getElementById('tabMeta').textContent=tabMetaLeft+' — '+(fullyPaid?'Paid':g.items.length+' items');
+  document.getElementById('tabMeta').textContent=tabMetaLeft+' — '+(fullyPaid?'Paid':g.items.length+(g.items.length===1?' item':' items'));
   // Bottom button label: in per_guest mode it's a "Pay all" bulk action
   // that loops payItem over every unpaid item. In Sri Lanka it stays
   // the original whole-guest Paid/Pay toggle.
@@ -3482,7 +3485,7 @@ function openBill(guestId){
   const g=findConsumer(src,currentRoster);
   if(!g||!g.items.length){toast('No items on this tab.');return;}
   document.getElementById('billName').textContent=g.name;
-  document.getElementById('billMeta').textContent=g.items.length+' items — '+weekSpan(S.activeWeek.start)+(stayMeta(g)?` — ${stayMeta(g)}`:'');
+  document.getElementById('billMeta').textContent=g.items.length+(g.items.length===1?' item':' items')+' — '+weekSpan(S.activeWeek.start)+(stayMeta(g)?` — ${stayMeta(g)}`:'');
   const byCat={};g.items.forEach(i=>{if(!byCat[i.c])byCat[i.c]=[];byCat[i.c].push(i);});
   let html='';
   Object.keys(byCat).forEach(cat=>{
@@ -3948,7 +3951,8 @@ function renderHistoryPerGuest(el){
   const allItemsClosed=closed.flatMap(g=>Array.isArray(g.items)?g.items:[]);
   const totalCollected=allItemsClosed.filter(i=>!!i?.paidAt).reduce((s,i)=>s+Number(i?.p||0),0);
   const term=histPerGuestSearch.trim().toLowerCase();
-  const filtered=term?closed.filter(g=>String(g.name||'').toLowerCase().includes(term)):closed;
+  // Newest closed first — it was database order, so the guest closed today sat at the bottom.
+  const filtered=(term?closed.filter(g=>String(g.name||'').toLowerCase().includes(term)):closed).slice().sort((a,b)=>String(b.closedAt||b.closed_at||'').localeCompare(String(a.closedAt||a.closed_at||'')));
 
   if(!closed.length){
     el.innerHTML=`<div class="hist-empty">
@@ -3981,7 +3985,7 @@ function renderHistoryPerGuest(el){
           <div class="hist-week-head" onclick="toggleHistPerGuest('${esc(g.id)}')">
             <div class="hw-left">
               <div class="hw-title">${esc(g.name)}</div>
-              <div class="hw-sub">${paid.length} paid item${paid.length===1?'':'s'} · closed ${closedDate||'—'}</div>
+              <div class="hw-sub">${paid.length} paid item${paid.length===1?'':'s'} · closed ${closedDate?fmtd(closedDate):'—'}</div>
             </div>
             <div class="hw-right">
               <div class="hw-mini-actions">

@@ -81,17 +81,17 @@ test('weekly P&L: «Cash left this week» = what the week did to Bank + Cash (on
   // Bank +1,000,000 −100,000 −5,000 −30,000; Cash +4,000 −12,000 +5,000 +80,000 −6,000.
   const net = 1000000 - 100000 - 30000 + 4000 - 12000 + 80000 - 6000; // 936,000
   const rowEur = [1000000, -100000, -30000, 4000, -12000, 80000, -6000].reduce((s, a) => s + Math.sign(a) * Number((Math.abs(a) / FX).toFixed(2)), 0);
-  expect(r['Cash left this week']).toBe(eur(rowEur));
+  expect(r['Net this week']).toBe(eur(rowEur));
   // Same local number as the drawers of that week.
   const drawers = await page.evaluate(ws => { const d = ledgerDrawerBalances(ledgerForWeek(ws)); return d.bankLocal + d.cashLocal; }, WS);
   expect(drawers).toBe(net);
   expect(Math.abs(rowEur - net / FX)).toBeLessThan(0.05);
   // The other columns are unchanged.
-  expect(r['Bar sales']).toBe(eur(4000 / FX));
+  expect(r['Drinks sales']).toBe(eur(4000 / FX));
   expect(r['Spent in cash']).toBe(eur(12000 / FX));
   expect(r['Paid by bank']).toBe(eur(100000 / FX));
   expect(r['Money from HQ']).toBe(eur(1000000 / FX));
-  expect(t.foot['Cash left this week']).toBe(eur(rowEur));
+  expect(t.foot['Net this week']).toBe(eur(rowEur));
   expect(errors).toEqual([]);
 });
 
