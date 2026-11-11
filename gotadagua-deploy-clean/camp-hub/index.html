@@ -1340,12 +1340,19 @@ function normalizeLedgerEntry(entry){
   //                        bank; moves funds from CASH to BANK.
   // Default to 'HQ Transfer' for back-compat with legacy entries that
   // didn't carry an explicit kind.
-  // Since 10 Nov 2026 (Miguel) a withdrawal is TWO symmetrical rows:
-  //   • 'Bank Transfer' — money out of the camp bank (paid by bank)
-  //   • 'Cash'          — the same amount into the cash drawer (paid by cash)
-  // so «everything paid via Cash» is the physical cash. A lone 'Bank
-  // Transfer' transfer is money that left the bank without reaching the
-  // drawer (e.g. a loan). Legacy single 'ATM Withdrawal' rows still count.
+  // A withdrawal is ONE row, 'ATM Withdrawal' (Miguel, 11 Nov 2026 — «quando
+  // se levanta dinheiro vai direto para a caixa»): it takes the amount out
+  // of the bank and puts it into the cash drawer. The payment-method filter
+  // lists it under Cash (+) and under Bank Transfer (−), so «everything
+  // paid via Cash» is still the physical cash.
+  // Two more transfer kinds, each touching ONE drawer:
+  //   • 'Bank Transfer' — money that left the bank without reaching the
+  //                       drawer (e.g. a loan)
+  //   • 'Cash'          — money into the cash drawer from outside (e.g.
+  //                       opening cash)
+  // For one day (10 Nov 2026) a withdrawal was saved as a pair of those two
+  // rows; pairs still add up right until the data is converted
+  // (supabase/atm-pairs-to-single-row.sql).
   // 'Cash Out' (10 Nov 2026) = cash that left the drawer for something that
   // is not a cost of this ledger's year — e.g. repaying a 2025 loan from a
   // local shop or paying December 2025 salaries in January.
@@ -5547,8 +5554,8 @@ function renderOverview(){
       ${kpi('On-site revenue','Tours + merch + bar generated at the camp',lkr(totalRevenueLocal),'kv-green',euro(totalRevenueEur))}
       ${kpi('Total Spent','Everything that went out (expenses only)',lkr(totalExpLocal),'',euro(totalExpEur))}
       ${kpi('Balance','Bank + Cash drawers combined',lkr(totalBalanceLocal),totalBalanceLocal>=0?'kv-green':'kv-red',euro(totalBalanceEur))}
-      ${kpi('Bank','Money from HQ + card/bank revenue − card/bank spend − out of bank',lkr(bankBalanceLocal),bankBalanceLocal>=0?'kv-ocean':'kv-red',euro(bankBalanceEur))}
-      ${kpi('Cash','Into cash + cash revenue − cash spend − out of cash',lkr(cashBalanceLocal),cashBalanceLocal>=0?'kv-amber':'kv-red',euro(cashBalanceEur))}
+      ${kpi('Bank','Money from HQ + card/bank revenue − card/bank spend − cash withdrawals',lkr(bankBalanceLocal),bankBalanceLocal>=0?'kv-ocean':'kv-red',euro(bankBalanceEur))}
+      ${kpi('Cash','Cash withdrawals + cash revenue − cash spend − out of cash',lkr(cashBalanceLocal),cashBalanceLocal>=0?'kv-amber':'kv-red',euro(cashBalanceEur))}
     `;
   }
   const foodControlHtml=buildFoodControlCardHtml(weeks,allLedger);
@@ -7524,11 +7531,11 @@ function ledgerKind(r){
 // Bank / Cash figure (Overview period KPIs and the ledger's all-time tiles),
 // so the two can never disagree again (Miguel, 11 Nov 2026):
 //   Bank (camp account): + HQ Transfer, + Cash Deposit, − expense by Bank
-//     Transfer or Card, − transfer «Out of bank» ('Bank Transfer'), − legacy
-//     'ATM Withdrawal', + revenue paid by Card or Bank Transfer.
-//   Cash (manager + bar box): + transfer «Into cash» ('Cash'), + legacy ATM,
-//     + revenue paid in cash, − expense by Cash, − Cash Deposit, − «Out of
-//     cash» ('Cash Out').
+//     Transfer or Card, − cash withdrawal ('ATM Withdrawal'), − transfer
+//     «Out of bank» ('Bank Transfer'), + revenue paid by Card or Bank Transfer.
+//   Cash (manager + bar box): + cash withdrawal ('ATM Withdrawal'), +
+//     transfer «Into cash» ('Cash'), + revenue paid in cash, − expense by
+//     Cash, − Cash Deposit, − «Out of cash» ('Cash Out').
 //   Neither: expenses paid by HQ ('HQ Paid' / hq_invoice) and 'Loan offset'
 //     (salary part kept against a staff loan) — real costs, no money moved.
 // Returns multipliers {bank, cash} in {-1, 0, 1}.
@@ -7573,28 +7580,57 @@ function ledgerDrawerBalances(rows){
 // Sign of a ledger row for the wallet it touches («se for expense, no número
 // um −, e quando é revenue ou a entrar, um +»): money out of the bank or the
 // cash drawer shows −, money in shows +. HQ-paid expenses are − too (a cost
-// of the camp). Cash Deposit and the legacy single ATM row move money
-// between the camp's own drawers in one line, so they stay unsigned.
-function ledgerSign(r){
+// of the camp). A cash withdrawal and a cash deposit move money between the
+// camp's own two drawers in one line, so they stay unsigned — unless the
+// list is filtered to one wallet (`wallet` = 'cash' | 'bank', see
+// ledgerPayWallet): then the row shows what it does to THAT wallet, e.g. a
+// withdrawal is + under Cash and − under Bank Transfer.
+function ledgerSign(r,wallet){
   if(!r) return '';
   const k=ledgerKind(r);
   if(k==='expense'||k==='hq') return '−';
   if(k==='revenue') return '+';
   if(k==='transfer'){
-    if(r.paymentMethod==='Bank Transfer'||r.paymentMethod==='Cash Out') return '−';
-    if(r.paymentMethod==='Cash'||r.paymentMethod==='HQ Transfer') return '+';
+    const d=ledgerDrawerDelta(r);
+    if(d.bank&&d.cash){
+      const w=wallet==='cash'?d.cash:wallet==='bank'?d.bank:0;
+      return w>0?'+':w<0?'−':'';
+    }
+    const one=d.bank||d.cash;
+    return one>0?'+':one<0?'−':'';
   }
   return '';
+}
+// The wallet a payment-method filter stands for: «Cash» is the cash drawer,
+// «Bank Transfer» the camp bank account. Other methods name no wallet.
+function ledgerPayWallet(payF){
+  return payF==='Cash'?'cash':payF==='Bank Transfer'?'bank':'';
+}
+// Payment methods a row is listed under in the «All payment methods»
+// filter. Expenses and revenue: their own method. A transfer has no payment
+// method — it is listed under the wallet(s) it moves, the same words its
+// «Paid via» cell shows: a cash withdrawal under Cash AND Bank Transfer,
+// money from HQ under Bank Transfer, «Out of cash» under Cash… So filtering
+// by Cash lists everything that moves the cash box (Miguel, 10 Nov 2026).
+function ledgerPayFilterKeys(r){
+  if(!r) return [];
+  if(r.type==='transfer'){
+    const d=ledgerDrawerDelta(r), keys=[];
+    if(d.bank) keys.push('Bank Transfer');
+    if(d.cash) keys.push('Cash');
+    return keys;
+  }
+  return r.paymentMethod?[r.paymentMethod]:[];
 }
 // Class for an amount: colour by kind (see .amt-* in the page CSS).
 function ledgerAmtClass(r){
   const k=ledgerKind(r);
   return k?`amt amt-${k}`:'amt';
 }
-// «Paid via» cell. For a transfer it names the wallet the row moves, not a
-// payment method: an ATM withdrawal is «Out of bank» → Bank and «Into cash»
-// → Cash — reading «Bank Transfer» there looked like a second payment
-// (Miguel, 11 Nov 2026).
+// «Paid via» cell. For a transfer it names the wallet(s) the row moves, not
+// a payment method: a cash withdrawal reads «Bank → Cash», a lone «Out of
+// bank» → Bank, «Into cash» → Cash — reading «Bank Transfer» there looked
+// like a second payment (Miguel, 11 Nov 2026).
 function ledgerPaidViaText(r){
   if(r&&r.type==='transfer'){
     switch(r.paymentMethod){
@@ -7610,7 +7646,9 @@ function ledgerPaidViaText(r){
 }
 function transferKindLabel(r){
   switch(r&&r.paymentMethod){
-    case 'ATM Withdrawal': return 'ATM withdrawal';
+    // «Cash withdrawal», not «ATM»: the row also covers bank transfers to
+    // the manager that become cash (Sri Lanka, Jan–Aug 2026).
+    case 'ATM Withdrawal': return 'Cash withdrawal';
     case 'Cash Deposit':   return 'Cash deposit';
     case 'Bank Transfer':  return 'Out of bank';
     case 'Cash':           return 'Into cash';
@@ -7618,20 +7656,23 @@ function transferKindLabel(r){
     default:               return 'Money from HQ';
   }
 }
-// «from → to» of a transfer row. An «Out of bank» row with its «Into cash»
-// twin (same day, same amount) is an ATM withdrawal: Bank → Cash. A lone one
-// left the camp (e.g. a loan): Bank → Outside.
-function transferHasTwin(r){
+// «from → to» of a transfer row. A cash withdrawal is one row: Bank → Cash.
+// Old data (10 Nov 2026) may still hold it as a pair — an «Out of bank» row
+// with an «Into cash» twin of the same day and amount: both read Bank →
+// Cash. A lone one left the camp (e.g. a loan): Bank → Outside.
+function transferTwin(r){
+  if(!r||r.type!=='transfer'||!['Bank Transfer','Cash'].includes(r.paymentMethod)) return null;
   const other=r.paymentMethod==='Bank Transfer'?'Cash':'Bank Transfer';
   const amt=Number(r.amountLocal??r.amount??0);
-  return (S.ledger||[]).some(e=>e&&e.id!==r.id&&e.type==='transfer'&&e.paymentMethod===other&&e.date===r.date&&Math.abs(Number(e.amountLocal??e.amount??0)-amt)<0.01);
+  return (S.ledger||[]).find(e=>e&&e.id!==r.id&&e.type==='transfer'&&e.paymentMethod===other&&e.date===r.date&&Math.abs(Number(e.amountLocal??e.amount??0)-amt)<0.01)||null;
 }
+function transferHasTwin(r){ return !!transferTwin(r); }
 function transferFlowLabel(r){
   switch(r&&r.paymentMethod){
     case 'ATM Withdrawal': return 'Bank → Cash';
     case 'Cash Deposit':   return 'Cash → Bank';
-    case 'Bank Transfer':  return transferHasTwin(r)?'Bank → Cash':'Bank → Outside';
-    case 'Cash':           return transferHasTwin(r)?'Bank → Cash':'Outside → Cash';
+    case 'Bank Transfer':  return transferHasTwin({...r,type:'transfer'})?'Bank → Cash':'Bank → Outside';
+    case 'Cash':           return transferHasTwin({...r,type:'transfer'})?'Bank → Cash':'Outside → Cash';
     case 'Cash Out':       return 'Cash → Outside';
     default:               return 'HQ → Bank';
   }
@@ -7639,17 +7680,17 @@ function transferFlowLabel(r){
 // Type cell of a ledger row: kind badge (+ «HQ» marker, + from → to line).
 function ledgerTypeCell(r){
   const k=ledgerKind(r);
-  if(k==='transfer') return `<span class="badge badge-grey" title="Moves money — not a cost, not revenue">${AppShell.icon('arrow-right')}${transferKindLabel(r)}</span><span class="cell-sub">${transferFlowLabel(r)}</span>`;
+  if(k==='transfer') return `<span class="badge badge-grey" title="${r.paymentMethod==='ATM Withdrawal'?'Cash taken out of the bank — the bank goes down and the cash box goes up by the same amount. Not a cost, not revenue':'Moves money — not a cost, not revenue'}">${AppShell.icon('arrow-right')}${transferKindLabel(r)}</span><span class="cell-sub">${transferFlowLabel(r)}</span>`;
   if(k==='revenue') return '<span class="badge badge-green">Revenue</span>';
   if(k==='hq') return '<span class="badge badge-red">Expense</span> <span class="badge badge-blue" title="Paid by HQ in Portugal — a camp cost, not in the camp bank or cash. Edit it in HQ → Expenses">HQ</span>';
   return '<span class="badge badge-red">Expense</span>';
 }
 // Signed local amount of a row (Local column, and the phone line under Type).
-function ledgerLocalAmtText(r){
+function ledgerLocalAmtText(r,wallet){
   const v=r.currency&&r.currency!=='EUR'
     ? `${r.currency} `+Number(r.amountLocal||0).toLocaleString('en-GB',{maximumFractionDigits:2})
     : `${LOCAL_CURRENCY||'LKR'} `+Number((Number(r.amount||0)*(LOCAL_PER_EUR||1))).toLocaleString('en-GB',{maximumFractionDigits:0});
-  return ledgerSign(r)+v;
+  return ledgerSign(r,wallet)+v;
 }
 // Tiny legend over the ledger table — only the kinds present in the list.
 function ledgerLegendHtml(rows){
@@ -7658,18 +7699,21 @@ function ledgerLegendHtml(rows){
     ['expense','<b>−</b> Expense','Paid by the camp from cash or the camp bank'],
     ['hq','<b>−</b> Paid by HQ','A camp cost paid in Portugal — not in the camp bank or cash'],
     ['revenue','<b>+</b> Revenue','Money the camp took in'],
-    ['transfer',`${AppShell.icon('arrow-right')} Transfer`,'Money moving between HQ, bank and cash — + adds to, − takes from the row\'s bank or cash'],
+    ['transfer',`${AppShell.icon('arrow-right')} Transfer`,'Money moving between HQ, bank and cash — + adds to, − takes from the row\'s bank or cash. A cash withdrawal (Bank → Cash) has no sign: it leaves the bank and enters the cash box; filter by Cash or Bank Transfer to see it as + or −'],
   ].filter(([k])=>has.has(k));
   if(items.length<2) return '';
   return `<div class="ledger-legend">${items.map(([k,lbl,t])=>`<span class="amt-${k}" title="${t}">${lbl}</span>`).join('')}</div>`;
 }
 function paymentOptionsFor(type){
   if(type==='transfer'){
-    // Three transfer kinds — chosen via the "Paid via" select on the
-    // Add Entry form when type=Transfer:
+    // Transfer kinds — chosen via the «Kind of transfer» select of the
+    // entry modal when type=Transfer:
     //   HQ Transfer    = HQ → Camp Bank   (money sent to camp)
-    //   ATM Withdrawal = Bank → Cash       (cash withdrawn from ATM)
+    //   ATM Withdrawal = Bank → Cash       (cash withdrawal — ONE row)
     //   Cash Deposit   = Cash → Bank       (cash deposited into bank)
+    //   Bank Transfer  = Bank → Outside    (left the bank, e.g. a loan)
+    //   Cash           = Outside → Cash    (e.g. opening cash)
+    //   Cash Out       = Cash → Outside    (e.g. an old debt paid in cash)
     return ['HQ Transfer','ATM Withdrawal','Cash Deposit','Bank Transfer','Cash','Cash Out'];
   }
   // Revenue accepts every canonical channel (Cash / Card / Bank Transfer)
@@ -7763,7 +7807,14 @@ function toggleEntryUi(prefix,type){
   const qtyWrap=document.getElementById(prefix+'_qty_wrap');
   const descWrap=document.getElementById(prefix+'_desc_wrap');
   if(categoryWrap) categoryWrap.style.display=showCategory?'':'none';
-  if(payWrap) payWrap.style.display=showPay?'':'none';
+  if(payWrap){
+    payWrap.style.display=showPay?'':'none';
+    // A transfer has no payment method — the select picks what kind it is.
+    const payLabel=payWrap.querySelector('label');
+    if(payLabel) payLabel.textContent=type==='transfer'?'Kind of transfer':'Paid via';
+    // Full width in the modal so «Cash withdrawal · Bank → Cash» is not cut.
+    payWrap.style.gridColumn=(type==='transfer'&&prefix==='em')?'1 / -1':'';
+  }
   if(currencyWrap) currencyWrap.style.display='none';
   if(fxWrap) fxWrap.style.display='none';
   if(eurWrap) eurWrap.style.display='none';
@@ -7831,7 +7882,9 @@ function fillEntryFields(prefix,type,preset=null,entry=null){
   const keepPay=entry?.paymentMethod||preset?.paymentMethod||'';
   if(type==='expense'&&['HQ Paid','Loan offset'].includes(keepPay)&&!payOpts.includes(keepPay)) payOpts.push(keepPay);
   if(payEl){
-    payEl.innerHTML=payOpts.map(v=>`<option value="${v}">${type==='transfer'?transferKindLabel({paymentMethod:v}):v}</option>`).join('');
+    // Transfer kinds read in plain words with their from → to, e.g.
+    // «Cash withdrawal · Bank → Cash».
+    payEl.innerHTML=payOpts.map(v=>`<option value="${v}">${type==='transfer'?`${transferKindLabel({paymentMethod:v})} · ${transferFlowLabel({paymentMethod:v})}`:v}</option>`).join('');
     const desiredPay=entry?.paymentMethod||preset?.paymentMethod||payEl.value||defaultPaymentMethod(type,activeArea);
     payEl.value=payOpts.includes(desiredPay)?desiredPay:payOpts[0];
   }
@@ -8040,7 +8093,7 @@ function buildLedgerPayload(prefix,type,id=null){
   // Default description per transfer kind so the ledger row is self-
   // explanatory at a glance.
   const transferDescDefault = paymentMethod==='ATM Withdrawal'
-    ? 'ATM withdrawal — bank to cash'
+    ? 'Cash withdrawal'
     : paymentMethod==='Cash Deposit'
       ? 'Cash deposit — cash to bank'
       : 'Cash sent to camp';
@@ -8833,7 +8886,9 @@ function renderExpenses(){
     if(catF!=='all'&&!cats.includes(catF)){catF='all';csel.value='all';}
   }
   const paySel=document.getElementById('expPayF');
-  const pays=[...new Set(baseRows.map(x=>x.paymentMethod).filter(Boolean))].sort();
+  // A transfer is listed under the wallet(s) it moves (ledgerPayFilterKeys),
+  // so the list offers payment methods only — no transfer kinds.
+  const pays=[...new Set(baseRows.flatMap(ledgerPayFilterKeys))].sort();
   if(paySel){
     const cur=paySel.value;
     paySel.innerHTML='<option value="all">All payment methods</option>'+pays.map(p=>`<option value="${p}" ${cur===p?'selected':''}>${p}</option>`).join('');
@@ -8844,10 +8899,13 @@ function renderExpenses(){
 
   let rows=[...baseRows];
   if(typeF!=='all')rows=rows.filter(x=>x.type===typeF);
-  if(payF!=='all')rows=rows.filter(x=>x.paymentMethod===payF);
+  if(payF!=='all')rows=rows.filter(x=>ledgerPayFilterKeys(x).includes(payF));
+  // Filtered to Cash or Bank Transfer, a row that moves both drawers (cash
+  // withdrawal, cash deposit) shows its sign for that wallet.
+  const payWallet=payF!=='all'?ledgerPayWallet(payF):'';
   if(catF!=='all')rows=rows.filter(x=>x.category===catF);
   if(weekF!=='all')rows=rows.filter(x=>weekStartSat(x.date)===weekF);
-  if(search)rows=rows.filter(x=>[x.category,x.businessArea,x.linkedItem,x.description,x.vendor,x.paymentMethod].join(' ').toLowerCase().includes(search));
+  if(search)rows=rows.filter(x=>[x.category,x.businessArea,x.linkedItem,x.description,x.vendor,x.paymentMethod,x.type==='transfer'?transferKindLabel(x):''].join(' ').toLowerCase().includes(search));
   const sortAdded=(document.getElementById('expSortF')?.value||'date')==='added';
   rows.sort((a,b)=>{
     if(sortAdded){
@@ -9011,14 +9069,14 @@ function renderExpenses(){
   const rowHtml=r=>`<tr>
         <td style="white-space:nowrap;font-size:12px">${fmtd(r.date)}</td>
         <td style="white-space:nowrap;font-size:12px;color:var(--muted)" title="When this line was entered">${fmtAdded(r.createdAt)}</td>
-        <td style="white-space:nowrap">${ledgerTypeCell(r)}<span class="amt-mob ${ledgerAmtClass(r)}">${ledgerLocalAmtText(r)}</span></td>
+        <td style="white-space:nowrap">${ledgerTypeCell(r)}<span class="amt-mob ${ledgerAmtClass(r)}">${ledgerLocalAmtText(r,payWallet)}</span></td>
         <td style="font-weight:600">${r.category}</td>
-        <td style="color:var(--muted);font-size:12px">${String(r.sourceKind||'').toLowerCase()==='hq_invoice'?'<span class="badge badge-blue" title="Paid by HQ — edit it in HQ → Expenses">Paid by HQ</span>':String(r.sourceKind||'').toLowerCase()==='hq_transfer'?'<span class="badge badge-grey" title="Transfer recorded in HQ — edit it in HQ">Money from HQ</span>':ledgerPaidViaText(r)}</td>
+        <td style="color:var(--muted);font-size:12px${r.type==='transfer'?';white-space:nowrap':''}">${String(r.sourceKind||'').toLowerCase()==='hq_invoice'?'<span class="badge badge-blue" title="Paid by HQ — edit it in HQ → Expenses">Paid by HQ</span>':String(r.sourceKind||'').toLowerCase()==='hq_transfer'?'<span class="badge badge-grey" title="Transfer recorded in HQ — edit it in HQ">Money from HQ</span>':ledgerPaidViaText(r)}</td>
         <td style="color:var(--muted);font-size:12px">${r.linkedItem||'—'}${transportEntryTourOverride(r)?`<div style="font-size:10px;color:var(--ocean);font-weight:600;margin-top:2px">↳ ${escapeHtml(transportEntryTourOverride(r))}</div>`:''}</td>
         <td style="color:var(--muted)">${escapeHtml(strippedTransportDescription(r))||'—'}</td>
         <td style="color:var(--muted);font-size:12px">${r.vendor||'—'}</td>
-        <td class="r ${ledgerAmtClass(r)}">${ledgerLocalAmtText(r)}</td>
-        <td class="r ${ledgerAmtClass(r)}">${ledgerSign(r)}${euro(r.amount)}</td>
+        <td class="r ${ledgerAmtClass(r)}">${ledgerLocalAmtText(r,payWallet)}</td>
+        <td class="r ${ledgerAmtClass(r)}">${ledgerSign(r,payWallet)}${euro(r.amount)}</td>
         <td>${['hq_invoice','hq_transfer'].includes(String(r.sourceKind||'').toLowerCase())?`<div class="exp-table-actions" style="color:var(--muted-2)" title="Edit this in HQ">${AppShell.icon('lock')}</div>`:`<div class="exp-table-actions"><button class="btn btn-s btn-sm btn-icon" onclick="openEditLedger('${r.id}')" title="Edit">${AppShell.icon('edit')}</button><button class="btn btn-s btn-sm btn-icon icon-danger" onclick="delLedger('${r.id}')" title="Delete">${AppShell.icon('trash')}</button></div>`}</td>
       </tr>`;
   const head=`<thead><tr><th>Date</th><th title="When the line was entered in the app">Added</th><th>Type</th><th>Category</th><th>Paid via</th><th>Linked item</th><th>Description</th><th>Vendor</th><th class="r">Local</th><th class="r">EUR</th><th class="r" style="width:88px">Actions</th></tr></thead>`;
@@ -9152,7 +9210,7 @@ async function delLedger(id){
 function openExpModal(type,id=null,preset=null){
   editingLedgerId=id;
   expModalType=type;
-  const titles={expense:'Expense',transfer:'Money from HQ',income:'Revenue'};
+  const titles={expense:'Expense',transfer:'Transfer',income:'Revenue'};
   document.getElementById('expModalTitle').textContent=(id?'Edit ':'Add ')+titles[type];
   document.getElementById('expModalSub').textContent=id?'Update this ledger entry':'Create a new ledger entry';
   const entry=id?S.ledger.find(x=>x.id===id):null;
@@ -9209,18 +9267,16 @@ async function saveExpense(){
   if(!payload){toast('Date and amount required');return;}
   if(!editingLedgerId&&!confirmNotRepeated(payload)) return;
   payload=await enrichLedgerEntryFx(payload);
-  // New ATM withdrawal → two symmetrical rows (Miguel, 10 Nov 2026): one
-  // out of the bank (paid by bank), one into the cash drawer (paid by cash).
-  if(!editingLedgerId && expModalType==='transfer' && payload.paymentMethod==='ATM Withdrawal'){
-    const base=String(payload.description||'ATM withdrawal').replace(/\s*—\s*bank to cash$/,'')||'ATM withdrawal';
-    const bankRow=normalizeLedgerEntry({...payload,id:payload.id+'_bank',paymentMethod:'Bank Transfer',paidBy:'Camp',description:base+' — out of bank'});
-    const cashRow=normalizeLedgerEntry({...payload,id:payload.id+'_cash',paymentMethod:'Cash',paidBy:'Camp',description:base+' — into cash'});
-    try{
-      await commitLedgerEntry(bankRow,'atm withdrawal (bank)');
-      await commitLedgerEntry(cashRow,'atm withdrawal (cash)');
-    }catch(_e){ return; }
-    editingLedgerId=null;closeOv('expOv');renderExpenses();renderOverview();renderWeeklyPL();toast('Saved — out of bank and into cash');
-    return;
+  // A cash withdrawal is ONE row ('ATM Withdrawal': bank −, cash +) — it is
+  // saved like any other entry (Miguel, 11 Nov 2026). Old data may still
+  // hold a withdrawal as a pair («Out of bank» + «Into cash», same day and
+  // amount): turning one half into a cash withdrawal would count the money
+  // twice, so its twin is removed in the same save.
+  let pairTwin=null;
+  if(editingLedgerId && expModalType==='transfer' && payload.paymentMethod==='ATM Withdrawal'){
+    pairTwin=transferTwin(S.ledger.find(x=>x.id===editingLedgerId));
+    if(pairTwin && !confirm('This withdrawal is stored as two lines (out of bank + into cash).\n\nSave it as ONE cash withdrawal line and remove the other line? Bank and Cash balances stay the same.')) return;
+    if(pairTwin) payload.description=String(payload.description||'').replace(/\s*—\s*(out of bank|into cash)$/i,'')||'Cash withdrawal';
   }
   // Supabase-first: write to Supabase BEFORE mutating S.ledger. For
   // edits, capture the old entry first so we can restore it if the
@@ -9233,7 +9289,8 @@ async function saveExpense(){
     HUB_SUPPRESS_LEDGER_RT=true;
     try{
       await pushLedgerEntriesToSupabase([payload]);
-      S.ledger=S.ledger.map(x=>x.id===editingLedgerId?payload:x);
+      if(pairTwin) await deleteLedgerEntryFromSupabase(pairTwin.id);
+      S.ledger=S.ledger.filter(x=>!pairTwin||x.id!==pairTwin.id).map(x=>x.id===editingLedgerId?payload:x);
       save();
       notifyLedgerChanged();
       setSavePill('saved','Saved');
