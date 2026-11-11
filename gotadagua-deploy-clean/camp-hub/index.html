@@ -1153,6 +1153,7 @@ const RECURRING_DEFAULTS_VERSION_KEY='camphub_recurring_defaults_v1'+__HUB_LOC_S
 const DELETED_CAMPCLOSE_KEY='hub_deleted_campclose_ids'+__HUB_LOC_SUFFIX;
 const HUB_LEDGER_TS_KEY='hub_ledger_ts'+__HUB_LOC_SUFFIX;
 let deletedCampcloseIds=new Set();
+let DELETED_CAMPCLOSE_LOADED=false; // true once the saved list was read (an unread list must not resurrect rows)
 let everInLedgerIds=new Set(); // tracks every campclose ID ever fetched from Supabase this session
 // Every ledger id this browser has ever received from Supabase for this
 // location. A cached row whose id is here but no longer on the server was
@@ -1802,7 +1803,7 @@ function getHubSupabaseClient(){
   HUB_SB=window.supabase.createClient(window.__SUPABASE_CONFIG.url,window.__SUPABASE_CONFIG.anonKey);
   return HUB_SB;
 }
-async function loadStateStore(stateKey){
+async function loadStateStore(stateKey,{throwOnError=false}={}){
   try{
     const client=getHubSupabaseClient();
     const locationId=await ensureHubLocationId();
@@ -1815,7 +1816,7 @@ async function loadStateStore(stateKey){
       .maybeSingle();
     if(error) throw error;
     return data?.state_json||null;
-  }catch(e){console.warn('[Hub] loadStateStore failed',e);return null;}
+  }catch(e){console.warn('[Hub] loadStateStore failed',e);if(throwOnError) throw e;return null;}
 }
 let _pendingWeeksSave=false;
 function setSavePill(state,txt){
@@ -1872,8 +1873,9 @@ function markCampcloseDeleted(id){
 }
 async function loadDeletedCampcloseIds(){
   try{
-    const data=await loadStateStore(DELETED_CAMPCLOSE_KEY);
+    const data=await loadStateStore(DELETED_CAMPCLOSE_KEY,{throwOnError:true});
     if(Array.isArray(data)) deletedCampcloseIds=new Set(data);
+    DELETED_CAMPCLOSE_LOADED=true;
   }catch(e){console.warn('[Hub] loadDeletedCampcloseIds failed',e);}
   // Also load from localStorage as fast fallback (survives page refresh before Supabase responds)
   try{
@@ -4155,6 +4157,10 @@ async function syncClosedWeekIncome(){
 // that were created before UUIDs were used for week IDs.
 async function reconcileClosedWeeksWithLedger(history){
   if(!Array.isArray(history)||!history.length) return;
+  // per_guest camps (Sri Lanka): revenue is one row per paid item, so an old
+  // closed week must not add week rows on top. And if the list of deleted
+  // week rows could not be read, every deleted row would come back.
+  if(HUB_CAMP_TAB_MODE==='per_guest'||!DELETED_CAMPCLOSE_LOADED) return;
   const existingIds=new Set(S.ledger.map(x=>x.id));
   const missing=[];
   const healed=[];
@@ -7950,7 +7956,9 @@ function fillEntryFields(prefix,type,preset=null,entry=null){
   // Legacy expense names (e.g. the «Tours» shortcut) select their modern
   // category instead of silently falling back to the first one (Food).
   const desiredCategory=type==='expense'?modernExpCat(rawCategory):rawCategory;
-  const desiredLinked=entry?.linkedItem||preset?.linkedItem||linkedEl?.value||'';
+  // Editing a row: its own linked item only — the shared modal still holds the
+  // previous row's pick, which used to land on rows that have none.
+  const desiredLinked=entry?(entry.linkedItem||''):(preset?.linkedItem||linkedEl?.value||'');
   const activeArea=entry?.businessArea||preset?.area||inferArea(type,desiredCategory,desiredLinked);
   const cats=categoryOptionsFor(type,activeArea);
   if(catEl){
@@ -7972,6 +7980,8 @@ function fillEntryFields(prefix,type,preset=null,entry=null){
   }
   if(linkedEl){
     const opts=linkedItemOptionsFor(type,activeArea,catEl?.value||desiredCategory);
+    // A saved item no longer in the list (renamed preset) stays selectable, so re-saving keeps it.
+    if(entry&&desiredLinked&&!opts.includes(desiredLinked)) opts.push(desiredLinked);
     linkedEl.innerHTML=opts.map(v=>`<option value="${v}">${v||'None / general'}</option>`).join('');
     linkedEl.value=opts.includes(desiredLinked)?desiredLinked:'';
     linkedEl.disabled=opts.length<=1;
@@ -8150,10 +8160,14 @@ function resetQuickExpense(){
 function buildLedgerPayload(prefix,type,id=null){
   const date=document.getElementById(prefix+'_date')?.value;
   const amountInput=parseFloat(document.getElementById(prefix+'_amount')?.value||'0')||0;
-  if(!date||!amountInput) return null;
-  const category=type==='transfer'?'Cash Float':(document.getElementById(prefix+'_cat')?.value||(type==='income'?'Other Revenue':'Other'));
+  if(!date||!(amountInput>0)) return null; // a negative amount turned an expense into money in
+  // Editing: what the form does not show (source, monthly link, a transfer's
+  // category, paid from) stays as saved — re-saving used to rewrite it.
+  const prev=id?(S.ledger||[]).find(x=>x&&x.id===id):null;
+  const category=type==='transfer'?((prev?.type==='transfer'&&prev.category)||'Cash Float'):(document.getElementById(prefix+'_cat')?.value||(type==='income'?'Other Revenue':'Other'));
   const selectedLinked=(document.getElementById(prefix+'_linked')?.value||'').trim();
-  const qty=Math.max(1,parseInt(document.getElementById(prefix+'_qty')?.value||'1',10)||1);
+  const qtyEl=document.getElementById(prefix+'_qty'); // the edit modal has no Qty / Guests field: keep the saved one
+  const qty=Math.max(1,parseInt((qtyEl?qtyEl.value:prev?.quantity)||'1',10)||1);
   const linkedItem=selectedLinked||defaultLinkedItem(type,inferArea(type,category,selectedLinked),category);
   const area=inferArea(type,category,linkedItem);
   // Currency comes from the form's selector when present, else the active
@@ -8206,11 +8220,15 @@ function buildLedgerPayload(prefix,type,id=null){
     paidFrom:((__HUB_LOCATION_SLUG==='portugal' && type==='expense'
                 ? (document.getElementById(prefix+'_paid_from')?.value||'').trim()
                 : '')
-              || (__HUB_LOCATION_SLUG==='portugal'?'hq':(__HUB_LOCATION_SLUG||''))),
+              || prev?.paidFrom || (__HUB_LOCATION_SLUG==='portugal'?'hq':(__HUB_LOCATION_SLUG||''))),
     attributedLocation:((__HUB_LOCATION_SLUG==='portugal' && type==='expense'
                           ? (document.getElementById(prefix+'_attrib_loc')?.value||'').trim()
                           : '')
-                        || (__HUB_LOCATION_SLUG==='portugal'?'hq-general':(__HUB_LOCATION_SLUG||''))),
+                        || prev?.attributedLocation || (__HUB_LOCATION_SLUG==='portugal'?'hq-general':(__HUB_LOCATION_SLUG||''))),
+    sourceKind:prev?.sourceKind||'manual',
+    recurringSourceId:prev?.recurringSourceId||'',
+    recurringMonth:prev?.recurringMonth||'',
+    zoneId:prev?.zoneId||'',
     description:(document.getElementById(prefix+'_desc')?.value||'').trim()||((type==='income'&&linkedItem&&qty>1)?`${qty} x ${linkedItem}`:'')||(type==='transfer'?transferDescDefault:''),
     vendor:'',
     amount
@@ -8899,7 +8917,7 @@ function exportLedgerCsv(){
 }
 let __ledgerExportRows=[];
 let __ledgerTotalsCsvRows=[];
-const isHqInvoiceRow=(x)=>String(x?.sourceKind||'').toLowerCase()==='hq_invoice';
+const isHqInvoiceRow=(x)=>String(x?.sourceKind||'').toLowerCase()==='hq_invoice'||x?.paymentMethod==='HQ Paid'; // HQ Paid typed in the hub is paid by HQ too
 
 // ── Totals by month / by category (Local vs HQ) ─────────────────────
 // Replaces the «All Expenses» tab. Reads ONLY ledger_entries: HQ-paid
