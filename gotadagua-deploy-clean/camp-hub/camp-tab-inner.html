@@ -4679,7 +4679,8 @@ function mapRevenueCategory(item){
 
 function syncClosedWeekToHubLedger(wk){
   if(!wk) return;
-  const paidItems=allConsumers(wk).filter(g=>g.paid).flatMap(g=>g.items||[]);
+  // Items paid one by one (per_guest «Pay») already have their own ledger row.
+  const paidItems=allConsumers(wk).filter(g=>g.paid).flatMap(g=>g.items||[]).filter(i=>!i.paidAt);
   if(!paidItems.length) return;
   const grouped={};
   const revenueDate=(wk.closedAt&&String(wk.closedAt).slice(0,10))||wk.start||today();
