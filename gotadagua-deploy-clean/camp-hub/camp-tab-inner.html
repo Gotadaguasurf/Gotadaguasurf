@@ -980,11 +980,18 @@ window.addEventListener('beforeunload',e=>{
     e.returnValue='Há alterações ainda a guardar. Tem a certeza?';
   }
 });
+function isGiftLine(item){
+  return /^gift$/i.test(String(item?.priceType||'').trim()) || /^gift$/i.test(String(item?.s||'').trim());
+}
 function normalizeItemRows(items){
   return (Array.isArray(items)?items:[]).map((item,idx)=>({
     id:isUuid(item?.id)?item.id:makeUuid(),
     n:String(item?.n||'').trim(),
-    p:Number(item?.p||0),
+    // A «Gift» line is free by definition. Lines given as a gift on the
+    // Staff tab before 12 Nov 2026 were saved at the staff price (bug fixed
+    // in 01abcdd); heal the unpaid ones on read so the tab shows 0 — a paid
+    // line keeps its amount, it already has its revenue row.
+    p:(isGiftLine(item)&&!(item?.paidAt||item?.paid_at))?0:Number(item?.p||0),
     c:String(item?.c||'Other').trim()||'Other',
     t:String(item?.t||'').trim(),
     // d = date the item was added (YYYY-MM-DD), preserved for per-day grouping

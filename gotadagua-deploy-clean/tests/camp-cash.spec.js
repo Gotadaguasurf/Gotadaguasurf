@@ -632,3 +632,18 @@ test('camp tab: «Gift · free» is LKR 0 on the Staff and Guests tabs, and the 
   expect(out.staff).toEqual([[0, 'Gift'], [300, 'staff']]);
   expect(out.guest).toEqual([[0, 'Gift'], [450, '-50%']]);
 });
+
+// Gift lines saved at the staff price before the fix (Jude, 12 Nov 2026) are
+// healed on read: unpaid → LKR 0; a paid gift line keeps its amount.
+test('camp tab: an old unpaid «Gift» line saved with a price shows LKR 0; a paid one is left alone', async ({ page }) => {
+  await openHub(page, Object.values(fixture()));
+  const frameHandle = await page.waitForSelector('iframe[src*="camp-tab-inner"][src*="mode=per_guest"]', { state: 'attached', timeout: 15000 });
+  const frame = await frameHandle.contentFrame();
+  await frame.waitForFunction(() => { try { return typeof normalizeItemRows === 'function'; } catch (_) { return false; } }, null, { timeout: 15000 });
+  const out = await frame.evaluate(() => normalizeItemRows([
+    { n: 'Lion Lager', p: 300, c: 'Drinks', priceType: 'Gift', s: 'Gift' },
+    { n: 'Lion Lager', p: 300, c: 'Drinks', priceType: 'Gift', s: 'Gift', paidAt: '2026-11-10T08:00:00Z' },
+    { n: 'Lion Lager', p: 300, c: 'Drinks', priceType: 'staff' },
+  ]).map(i => i.p));
+  expect(out).toEqual([0, 300, 300]);
+});
