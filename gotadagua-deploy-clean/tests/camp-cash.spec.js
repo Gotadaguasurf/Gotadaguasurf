@@ -596,3 +596,37 @@ test('camp cash: Camp Tab sale → Pay all → Cash revenue rows in the ledger �
   expect(writes.some(w => w.op === 'delete')).toBe(true);
   expect(errors).toEqual([]);
 });
+
+// A gift is free on both rosters (12 Nov 2026): «Gift · free» on the Staff
+// tab used to come back at the staff price whenever the catalog item had a
+// «Staff» alt price, so a gifted beer still asked for LKR 300.
+test('camp tab: «Gift · free» is LKR 0 on the Staff and Guests tabs, and the staff price still applies to a normal tap', async ({ page }) => {
+  await openHub(page, Object.values(fixture()));
+  const frameHandle = await page.waitForSelector('iframe[src*="camp-tab-inner"][src*="mode=per_guest"]', { state: 'attached', timeout: 15000 });
+  const frame = await frameHandle.contentFrame();
+  await frame.waitForFunction(() => { try { return typeof addItemAtCustomPrice === 'function' && typeof addResolvedItem === 'function' && CAMP_TAB_MODE === 'per_guest'; } catch (_) { return false; } }, null, { timeout: 15000 });
+  const out = await frame.evaluate(async () => {
+    window.confirm = () => true;
+    await ensurePerGuestWeek();
+    const beer = { id: 'm-gift-beer', n: 'Gift Test Lager', p: 900, altPrice: 300, altLabel: 'Staff' };
+    MENU.Drinks = [...(MENU.Drinks || []), beer];
+    AC = 'Drinks';
+    // Staff tab
+    currentRoster = 'staff';
+    document.getElementById('newGuestName').value = 'Jude Test';
+    saveNewGuest(); // same form as «+ Staff» — adds to the current roster and selects it
+    addItemAtCustomPrice(beer.id, beer.n, 0, 'Gift', null);   // «Gift · free»
+    addResolvedItem(beer);                                      // normal staff tap
+    const staff = findConsumer('Jude Test', 'staff').items.map(i => [i.p, i.priceType]);
+    // Guests tab
+    currentRoster = 'guests';
+    document.getElementById('newGuestName').value = 'Gift Guest';
+    saveNewGuest();
+    addItemAtCustomPrice(beer.id, beer.n, 0, 'Gift', null);
+    addItemAtCustomPrice(beer.id, beer.n, 450, '-50%', null);
+    const guest = findConsumer('Gift Guest', 'guests').items.map(i => [i.p, i.priceType]);
+    return { staff, guest };
+  });
+  expect(out.staff).toEqual([[0, 'Gift'], [300, 'staff']]);
+  expect(out.guest).toEqual([[0, 'Gift'], [450, '-50%']]);
+});

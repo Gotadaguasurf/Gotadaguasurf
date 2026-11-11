@@ -3187,7 +3187,12 @@ function addResolvedItem(item,btn){
     const stockLeft=stockLeftForCategory(item, AC);
     if(stockLeft!==null&&stockLeft<=0){toast(item.n+' is out of stock');return;}
   }
-  const price=displayPriceFor(item);
+  // A gift / discount / alt-price tap carries its own price in item.p and it
+  // must stand, even when it is 0. Going through displayPriceFor() here put
+  // the staff price back on a «Gift · free» given on the Staff tab: sp=0 is
+  // read as «no staff price», so the catalog's Staff alt price was charged
+  // (a gifted Lion Lager showed LKR 300 — 12 Nov 2026).
+  const price=item._altUsed ? Math.max(0,Number(item.p||0)) : displayPriceFor(item);
   // Alt-price taps stamp the line with a descriptive priceType (the
   // alt label, e.g. "Offer") + a small `s` annotation that surfaces in
   // bills / history so the user can tell at a glance which sale used
