@@ -6,7 +6,8 @@
 // picked up the tour of the row edited before them, 3 transfers became
 // 'Cash Float', a «Money from HQ» row paid from HQ became paid from the camp
 // (and so visible to the local manager), and 4 transport rows lost their
-// item. A negative amount was accepted (an expense that adds money). Closed
+// item. The edit modal has no Qty / Guests field, so a tour sold to 3 guests
+// went back to 1. A negative amount was accepted (an expense that adds money). Closed
 // Camp Tab weeks were turned into revenue rows again in per_guest mode, or
 // whenever the list of deleted week rows failed to load.
 const { test, expect } = require('@playwright/test');
@@ -18,7 +19,7 @@ function uuid() { seq += 1; return `00000000-0000-4000-9000-${String(seq).padSta
 function row(type, method, amount, extra = {}) {
   return {
     id: uuid(), location_id: LOC, week_id: null, type, category: extra.category || 'Food',
-    linked_item: extra.linked || null, description: extra.description || `${type} ${method} ${amount}`, payment_method: method, qty: 1,
+    linked_item: extra.linked || null, description: extra.description || `${type} ${method} ${amount}`, payment_method: method, qty: extra.qty || 1,
     amount_local: amount, currency: 'LKR', entry_date: extra.date || '2026-10-20',
     business_area: extra.area || null, fx_rate: 370, amount_eur: Number((amount / 370).toFixed(2)),
     recurring_source_id: extra.recurringSourceId || null, recurring_month: extra.recurringMonth || null,
@@ -64,7 +65,7 @@ test('ledger: opening a row in the edit modal and saving without changes keeps e
   const errors = collectFatalErrors(page);
   seq = 0;
   const R = {
-    tourRevenue: row('revenue', 'Cash', 6000, { category: 'Tours', linked: 'Ice Bath', area: 'Tours' }),
+    tourRevenue: row('revenue', 'Cash', 18000, { category: 'Tours', linked: 'Ice Bath', area: 'Tours', qty: 3, description: '3 x Ice Bath' }),
     campTabDrink: row('revenue', 'Cash', 400, { category: 'Drinks', area: 'Bar', sourceKind: 'camp_tab_per_item', description: 'Camp Tab · Julia · Soft Drink' }),
     drHouse: row('revenue', 'Cash', 3000, { category: 'Transport', linked: 'Dr House Transfer', area: 'Transport', sourceKind: 'camp_tab_per_item', description: 'Camp Tab · Julia · Dr House Transfer' }),
     rentMonthly: row('expense', 'Bank Transfer', 500000, { category: 'Rent', area: 'Utilities', recurringSourceId: '0cdc0446-eda8-405b-8ae5-f8035d8b6645', recurringMonth: '2026-10', date: '2026-10-31' }),

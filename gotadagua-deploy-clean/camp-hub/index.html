@@ -8094,7 +8094,8 @@ function buildLedgerPayload(prefix,type,id=null){
   const prev=id?(S.ledger||[]).find(x=>x&&x.id===id):null;
   const category=type==='transfer'?((prev?.type==='transfer'&&prev.category)||'Cash Float'):(document.getElementById(prefix+'_cat')?.value||(type==='income'?'Other Revenue':'Other'));
   const selectedLinked=(document.getElementById(prefix+'_linked')?.value||'').trim();
-  const qty=Math.max(1,parseInt(document.getElementById(prefix+'_qty')?.value||'1',10)||1);
+  const qtyEl=document.getElementById(prefix+'_qty'); // the edit modal has no Qty / Guests field: keep the saved one
+  const qty=Math.max(1,parseInt((qtyEl?qtyEl.value:prev?.quantity)||'1',10)||1);
   const linkedItem=selectedLinked||defaultLinkedItem(type,inferArea(type,category,selectedLinked),category);
   const area=inferArea(type,category,linkedItem);
   // Currency comes from the form's selector when present, else the active
