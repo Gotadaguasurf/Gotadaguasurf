@@ -7654,9 +7654,11 @@ function ledgerPaidViaText(r){
 }
 function transferKindLabel(r){
   switch(r&&r.paymentMethod){
-    // «Cash withdrawal», not «ATM»: the row also covers bank transfers to
-    // the manager that become cash (Sri Lanka, Jan–Aug 2026).
-    case 'ATM Withdrawal': return 'Cash withdrawal';
+    // Two ways the bank becomes cash, same effect (bank −, cash +), named
+    // apart (Miguel, 12 Nov 2026): a withdrawal with the bank card, or —
+    // Sri Lanka until Aug 2026 — a bank transfer to the manager, who took
+    // it out as cash. From now on it is card withdrawals only.
+    case 'ATM Withdrawal': return /transfer to /i.test(String(r.description||''))?'Transfer to manager':'ATM withdrawal';
     case 'Cash Deposit':   return 'Cash deposit';
     case 'Bank Transfer':  return 'Out of bank';
     case 'Cash':           return 'Into cash';
@@ -7820,7 +7822,7 @@ function toggleEntryUi(prefix,type){
     // A transfer has no payment method — the select picks what kind it is.
     const payLabel=payWrap.querySelector('label');
     if(payLabel) payLabel.textContent=type==='transfer'?'Kind of transfer':'Paid via';
-    // Full width in the modal so «Cash withdrawal · Bank → Cash» is not cut.
+    // Full width in the modal so «ATM withdrawal · Bank → Cash» is not cut.
     payWrap.style.gridColumn=(type==='transfer'&&prefix==='em')?'1 / -1':'';
   }
   if(currencyWrap) currencyWrap.style.display='none';
@@ -7891,7 +7893,7 @@ function fillEntryFields(prefix,type,preset=null,entry=null){
   if(type==='expense'&&['HQ Paid','Loan offset'].includes(keepPay)&&!payOpts.includes(keepPay)) payOpts.push(keepPay);
   if(payEl){
     // Transfer kinds read in plain words with their from → to, e.g.
-    // «Cash withdrawal · Bank → Cash».
+    // «ATM withdrawal · Bank → Cash».
     payEl.innerHTML=payOpts.map(v=>`<option value="${v}">${type==='transfer'?`${transferKindLabel({paymentMethod:v})} · ${transferFlowLabel({paymentMethod:v})}`:v}</option>`).join('');
     const desiredPay=entry?.paymentMethod||preset?.paymentMethod||payEl.value||defaultPaymentMethod(type,activeArea);
     payEl.value=payOpts.includes(desiredPay)?desiredPay:payOpts[0];
@@ -8101,7 +8103,7 @@ function buildLedgerPayload(prefix,type,id=null){
   // Default description per transfer kind so the ledger row is self-
   // explanatory at a glance.
   const transferDescDefault = paymentMethod==='ATM Withdrawal'
-    ? 'Cash withdrawal'
+    ? 'ATM withdrawal'
     : paymentMethod==='Cash Deposit'
       ? 'Cash deposit — cash to bank'
       : 'Cash sent to camp';
@@ -9284,7 +9286,7 @@ async function saveExpense(){
   if(editingLedgerId && expModalType==='transfer' && payload.paymentMethod==='ATM Withdrawal'){
     pairTwin=transferTwin(S.ledger.find(x=>x.id===editingLedgerId));
     if(pairTwin && !confirm('This withdrawal is stored as two lines (out of bank + into cash).\n\nSave it as ONE cash withdrawal line and remove the other line? Bank and Cash balances stay the same.')) return;
-    if(pairTwin) payload.description=String(payload.description||'').replace(/\s*—\s*(out of bank|into cash)$/i,'')||'Cash withdrawal';
+    if(pairTwin) payload.description=String(payload.description||'').replace(/\s*—\s*(out of bank|into cash)$/i,'')||'ATM withdrawal';
   }
   // Supabase-first: write to Supabase BEFORE mutating S.ledger. For
   // edits, capture the old entry first so we can restore it if the
