@@ -3655,7 +3655,8 @@ function currentCampTabState(){
 }
 const menuItemNames=cat=>Array.isArray(currentCampTabMenu()?.[cat])?currentCampTabMenu()[cat].map(item=>item.n):[];
 function merchStockKey(name=''){
-  const match=String(name||'').match(/(S|M|L|XL)$/i);
+  // 2XL / XXL / XS too — «T-Shirt 2XL» (19 in stock) had no row (12 Nov 2026).
+  const match=String(name||'').match(/(?:^|\s)(XS|S|M|L|XL|XXL|2XL|3XL)$/i);
   return match?match[1].toUpperCase():'';
 }
 // Product family from a sized merch name. Same contract as the
@@ -3666,7 +3667,7 @@ function merchStockKey(name=''){
 // Anything that doesn't end in a known size returns ''.
 function merchProductType(name=''){
   const s=String(name||'').trim();
-  const m=s.match(/^(.+?)\s+(?:Offer|Staff|Sale|Promo|Discount)?\s*(?:S|M|L|XL)$/i);
+  const m=s.match(/^(.+?)\s+(?:Offer|Staff|Sale|Promo|Discount)?\s*(?:XS|S|M|L|XL|XXL|2XL|3XL)$/i);
   return m?m[1].trim():'';
 }
 const isTransportRevenueName=name=>TRANSPORT_REVENUE_CATS.includes(name);
@@ -4863,13 +4864,18 @@ function syncSelectedBookingsToCampTab(){
   },'*');
   toast('Sending bookings to Camp Tab...');
 }
-function buildFoodControlCardHtml(weeks,allLedger){
+function buildFoodControlCardHtml(weeks,allLedger,span){
   if(!Array.isArray(allLedger)){
     const selectedMonth=document.getElementById('ovMonthSel')?.value||'all';
     allLedger=selectedMonth==='all'?S.ledger:S.ledger.filter(x=>monthKey(x.date)===selectedMonth);
   }
-  const bookings=ovBookings.length?ovBookingsForWeeks(weeks):[];
-  const totalGuestDays=sum(bookings,b=>ovBookingOverlapNights(b,weeks)*(b.pax||1));
+  // A month: guest-nights inside that calendar month — the same days as the
+  // Food spend. The weeks of a month start on its Saturdays, so they missed
+  // the 1st–Friday and ran into the next month (Oct 2026: 229 g-d for 167).
+  const bookings=ovBookings.length?(span?ovBookings.filter(b=>b.co>span.start&&b.ci<span.end):ovBookingsForWeeks(weeks)):[];
+  const totalGuestDays=span
+    ?sum(bookings,b=>Math.round((Math.min(b.co,span.end)-Math.max(b.ci,span.start))/86400000)*(b.pax||1))
+    :sum(bookings,b=>ovBookingOverlapNights(b,weeks)*(b.pax||1));
   const foodExp=sum(allLedger.filter(x=>x.type==='expense'&&x.businessArea==='Food'),x=>entryLocalDisplayAmount(x));
   const foodExpEur=sum(allLedger.filter(x=>x.type==='expense'&&x.businessArea==='Food'),x=>entryEurAmount(x));
   const foodPerDay=totalGuestDays>0?Math.round(foodExp/totalGuestDays):0;
@@ -5225,6 +5231,11 @@ function renderOverview(){
   let allLedger=selectedWid==='all'?S.ledger:weeks.flatMap(w=>ledgerForWeek(w.start));
   if(selectedMonth!=='all'&&selectedWid==='all') allLedger=allLedger.filter(x=>monthKey(x.date)===selectedMonth);
   const expenses=allLedger.filter(x=>x.type==='expense');
+  // «Camp-paid» / «HQ-paid» on the cost cards: camp = its own cash or bank
+  // (Cash / Card / Bank Transfer); HQ = paid in Portugal ('HQ Paid' or an HQ
+  // invoice). Was Cash vs 'Bank Transfer', so every Sampath payment showed
+  // as HQ-paid and real HQ payments in neither (12 Nov 2026).
+  const ovCampPaid=x=>!isHqPaidRow(x)&&['Cash','Card','Bank Transfer'].includes(x.paymentMethod);
   const transfers=allLedger.filter(x=>x.type==='transfer');
   const revenueEntries=allLedger.filter(x=>x.type==='income');
   const importedBookings=ovBookingsForWeeks(weeks);
@@ -5333,7 +5344,7 @@ function renderOverview(){
   const guestCount=sum(weeks,w=>(w.guests||[]).length);
   const paidCount=sum(weeks,w=>(w.guests||[]).filter(g=>g.paid).length);
   const importedGuestCount=ovBookingGuestCount(importedBookings);
-  document.getElementById('ovWeekInfo').textContent=`${weeks.length} week${weeks.length!==1?'s':''} · ${importedGuestCount||guestCount} ${importedGuestCount?'booked guests':'guests'} · ${paidCount} paid`;
+  document.getElementById('ovWeekInfo').textContent=`${weeks.length} week${weeks.length!==1?'s':''} · ${importedGuestCount||guestCount} ${importedGuestCount?'booked guests':'guests'}${guestCount?` · ${paidCount} paid`:''}`;
 
   const guestDayData=guestDaysForWeeks(weeks);
   const guestDays=guestDayData.value;
@@ -5361,35 +5372,44 @@ function renderOverview(){
     Tours:{local:sum(expenses.filter(x=>x.businessArea==='Tours'),x=>entryLocalDisplayAmount(x)),eur:sum(expenses.filter(x=>x.businessArea==='Tours'),x=>entryEurAmount(x))},
     Transport:{local:sum(expenses.filter(x=>x.businessArea==='Transport'),x=>entryLocalDisplayAmount(x)),eur:sum(expenses.filter(x=>x.businessArea==='Transport'),x=>entryEurAmount(x))}
   };
-  const transportRows=currentTransportItems().map(name=>{
-    const rows=expenses.filter(x=>x.businessArea==='Transport'&&(x.linkedItem||'')===name);
-    const revenue=sum(revenueEntries.filter(x=>x.businessArea==='Transport'&&(x.linkedItem||'')===name),x=>x.amount);
+  // Transport rows with no line picked (scooter fuel, tuk-tuk weeks, driver
+  // transfers…) fell out of the card — its total and «No transport spend
+  // yet» ignored most of the money. They get one extra line (12 Nov 2026).
+  const trNames=new Set(currentTransportItems());
+  const OV_TR_UNLINKED='Not linked to a line';
+  const onTrLine=(x,name)=>name===OV_TR_UNLINKED?!trNames.has(x.linkedItem||''):(x.linkedItem||'')===name;
+  const transportRows=[...trNames,OV_TR_UNLINKED].map(name=>{
+    const rows=expenses.filter(x=>x.businessArea==='Transport'&&onTrLine(x,name));
+    const revenue=sum(revenueEntries.filter(x=>x.businessArea==='Transport'&&onTrLine(x,name)),x=>x.amount);
     const linkedTour=linkedTransportTour(name);
     return {
       name,
       linkedTour,
       spendLocal:sum(rows,x=>entryLocalDisplayAmount(x)),
       spendEur:sum(rows,x=>entryEurAmount(x)),
-      campLocal:sum(rows.filter(x=>x.paymentMethod==='Cash'),x=>entryLocalDisplayAmount(x)),
-      campEur:sum(rows.filter(x=>x.paymentMethod==='Cash'),x=>entryEurAmount(x)),
-      hqLocal:sum(rows.filter(x=>x.paymentMethod==='Bank Transfer'),x=>entryLocalDisplayAmount(x)),
-      hqEur:sum(rows.filter(x=>x.paymentMethod==='Bank Transfer'),x=>entryEurAmount(x)),
-      revenueLocal:sum(revenueEntries.filter(x=>x.businessArea==='Transport'&&(x.linkedItem||'')===name),x=>entryLocalDisplayAmount(x)),
-      revenueEur:sum(revenueEntries.filter(x=>x.businessArea==='Transport'&&(x.linkedItem||'')===name),x=>entryEurAmount(x)),
+      campLocal:sum(rows.filter(x=>ovCampPaid(x)),x=>entryLocalDisplayAmount(x)),
+      campEur:sum(rows.filter(x=>ovCampPaid(x)),x=>entryEurAmount(x)),
+      hqLocal:sum(rows.filter(x=>isHqPaidRow(x)),x=>entryLocalDisplayAmount(x)),
+      hqEur:sum(rows.filter(x=>isHqPaidRow(x)),x=>entryEurAmount(x)),
+      revenueLocal:sum(revenueEntries.filter(x=>x.businessArea==='Transport'&&onTrLine(x,name)),x=>entryLocalDisplayAmount(x)),
+      revenueEur:sum(revenueEntries.filter(x=>x.businessArea==='Transport'&&onTrLine(x,name)),x=>entryEurAmount(x)),
       entries:rows.length
     };
   }).filter(row=>row.spendLocal>0||row.revenueLocal>0);
   // Utilities breakdown by sub-category (Electricity / Water / Internet / Gas)
-  const utilityRows=UTILITIES_LINKED_ITEMS.map(name=>{
-    const rows=expenses.filter(x=>x.category==='Utilities'&&(x.linkedItem||'')===name);
+  // …and Utilities rows with no type picked (gas bottles, water bowser, most
+  // bills before June) get their own line instead of vanishing.
+  const OV_UT_UNSPLIT='Not split by type';
+  const utilityRows=[...UTILITIES_LINKED_ITEMS,OV_UT_UNSPLIT].map(name=>{
+    const rows=expenses.filter(x=>x.category==='Utilities'&&(name===OV_UT_UNSPLIT?!UTILITIES_LINKED_ITEMS.includes(x.linkedItem||''):(x.linkedItem||'')===name));
     return {
       name,
       spendLocal:sum(rows,x=>entryLocalDisplayAmount(x)),
       spendEur:sum(rows,x=>entryEurAmount(x)),
-      campLocal:sum(rows.filter(x=>x.paymentMethod==='Cash'),x=>entryLocalDisplayAmount(x)),
-      campEur:sum(rows.filter(x=>x.paymentMethod==='Cash'),x=>entryEurAmount(x)),
-      hqLocal:sum(rows.filter(x=>x.paymentMethod==='Bank Transfer'),x=>entryLocalDisplayAmount(x)),
-      hqEur:sum(rows.filter(x=>x.paymentMethod==='Bank Transfer'),x=>entryEurAmount(x)),
+      campLocal:sum(rows.filter(x=>ovCampPaid(x)),x=>entryLocalDisplayAmount(x)),
+      campEur:sum(rows.filter(x=>ovCampPaid(x)),x=>entryEurAmount(x)),
+      hqLocal:sum(rows.filter(x=>isHqPaidRow(x)),x=>entryLocalDisplayAmount(x)),
+      hqEur:sum(rows.filter(x=>isHqPaidRow(x)),x=>entryEurAmount(x)),
       entries:rows.length
     };
   }).filter(row=>row.spendLocal>0);
@@ -5405,8 +5425,8 @@ function renderOverview(){
     const g=payrollGroups[key];
     g.spendLocal+=entryLocalDisplayAmount(x);
     g.spendEur+=entryEurAmount(x);
-    if(x.paymentMethod==='Cash'){ g.campLocal+=entryLocalDisplayAmount(x); g.campEur+=entryEurAmount(x); }
-    if(x.paymentMethod==='Bank Transfer'){ g.hqLocal+=entryLocalDisplayAmount(x); g.hqEur+=entryEurAmount(x); }
+    if(ovCampPaid(x)){ g.campLocal+=entryLocalDisplayAmount(x); g.campEur+=entryEurAmount(x); }
+    if(isHqPaidRow(x)){ g.hqLocal+=entryLocalDisplayAmount(x); g.hqEur+=entryEurAmount(x); }
     g.entries+=1;
   });
   const payrollRows=Object.values(payrollGroups).sort((a,b)=>b.spendLocal-a.spendLocal);
@@ -5432,10 +5452,10 @@ function renderOverview(){
   const laundryExpenses=expenses.filter(x=>x.category==='Laundry');
   const laundryTotalLocal=sum(laundryExpenses,x=>entryLocalDisplayAmount(x));
   const laundryTotalEur=sum(laundryExpenses,x=>entryEurAmount(x));
-  const laundryCampLocal=sum(laundryExpenses.filter(x=>x.paymentMethod==='Cash'),x=>entryLocalDisplayAmount(x));
-  const laundryCampEur=sum(laundryExpenses.filter(x=>x.paymentMethod==='Cash'),x=>entryEurAmount(x));
-  const laundryHqLocal=sum(laundryExpenses.filter(x=>x.paymentMethod==='Bank Transfer'),x=>entryLocalDisplayAmount(x));
-  const laundryHqEur=sum(laundryExpenses.filter(x=>x.paymentMethod==='Bank Transfer'),x=>entryEurAmount(x));
+  const laundryCampLocal=sum(laundryExpenses.filter(x=>ovCampPaid(x)),x=>entryLocalDisplayAmount(x));
+  const laundryCampEur=sum(laundryExpenses.filter(x=>ovCampPaid(x)),x=>entryEurAmount(x));
+  const laundryHqLocal=sum(laundryExpenses.filter(x=>isHqPaidRow(x)),x=>entryLocalDisplayAmount(x));
+  const laundryHqEur=sum(laundryExpenses.filter(x=>isHqPaidRow(x)),x=>entryEurAmount(x));
   const tourSummary=tourProfitRows(revenueEntries,expenses);
   const tourRows=tourSummary.rows;
   // Merch COGS: cost of goods SOLD, not the whole stock bought. For each
@@ -5443,12 +5463,17 @@ function renderOverview(){
   // the menu (falls back to 0 when the menu row has no costPerGuest
   // set). Prevents the "-1004% margin" trap where a fresh Merch stock
   // purchase drags an early-season card into fake losses.
-  const merchMenu=Array.isArray(MENU?.Merch)?MENU.Merch:[];
+  // Unit cost from the Camp Tab menu (= pricing_catalog cost_per_guest);
+  // items sold = the period's Merch revenue rows (one per paid item, name =
+  // linked item or the last part of «Camp Tab · guest · item»). The hub's
+  // own weekly guests (paidItems) are empty in per-guest camps and MENU is
+  // the static seed, so Direct cost was always 0 (12 Nov 2026).
+  const merchMenu=Array.isArray(currentCampTabMenu()?.Merch)?currentCampTabMenu().Merch:[];
   const merchUnitCost=(name)=>{
-    const it=merchMenu.find(m=>String(m?.n||'')===String(name||''));
+    const it=merchMenu.find(m=>String(m?.n||'').trim()===String(name||'').trim());
     return Number(it?.costPerGuest||0)||0;
   };
-  const merchCogsLocal=sum(paidItems.filter(i=>i.category==='Merch'),i=>merchUnitCost(i.name));
+  const merchCogsLocal=sum(revenueEntries.filter(x=>x.businessArea==='Merch'),x=>merchUnitCost(x.linkedItem||String(x.description||'').split(' · ').pop())*Math.max(1,parseInt(x.quantity||'1',10)||1));
   const merchCogsEur=Number((merchCogsLocal/(DEFAULT_LKR_PER_EUR||1)).toFixed(2));
   // Revenue centers: only areas that actually have BOTH revenue and cost
   // (Bar and Merch). Transport is a cost-only area — it's already shown
@@ -5558,7 +5583,9 @@ function renderOverview(){
       ${kpi('Cash','Cash withdrawals + cash revenue − cash spend − out of cash',lkr(cashBalanceLocal),cashBalanceLocal>=0?'kv-amber':'kv-red',euro(cashBalanceEur))}
     `;
   }
-  const foodControlHtml=buildFoodControlCardHtml(weeks,allLedger);
+  const foodSpan=(selectedMonth!=='all'&&selectedWid==='all')
+    ?{start:new Date(selectedMonth+'-01T00:00:00').getTime(),end:new Date(addDays(monthEndDate(selectedMonth),1)+'T00:00:00').getTime()}:null;
+  const foodControlHtml=buildFoodControlCardHtml(weeks,allLedger,foodSpan);
 
   // 2-column grid: Food control sits in the first cell, then Bar / Merch /
   // Transport / Tours follow in reading order — Food next to Bar in row 1,
@@ -5839,14 +5866,14 @@ function renderOverview(){
                 <div style="font-size:11px;color:var(--muted);margin-top:6px">${laundryExpenses.length} payment${laundryExpenses.length===1?'':'s'}</div>
               </div>
               <div class="ov-chip">
-                <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">Camp-paid (cash)</div>
+                <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">Camp-paid</div>
                 <div style="font-weight:700;letter-spacing:-.02em;font-size:22px;color:var(--navy);margin-top:6px;line-height:1.1">${laundryCampLocal?moneyPairLocal(laundryCampLocal,laundryCampEur):'—'}</div>
-                <div style="font-size:11px;color:var(--muted);margin-top:6px">Paid from on-site cash</div>
+                <div style="font-size:11px;color:var(--muted);margin-top:6px">Camp cash or camp bank</div>
               </div>
               <div class="ov-chip">
-                <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">HQ-paid (bank)</div>
+                <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">HQ-paid</div>
                 <div style="font-weight:700;letter-spacing:-.02em;font-size:22px;color:var(--navy);margin-top:6px;line-height:1.1">${laundryHqLocal?moneyPairLocal(laundryHqLocal,laundryHqEur):'—'}</div>
-                <div style="font-size:11px;color:var(--muted);margin-top:6px">Direct HQ-covered</div>
+                <div style="font-size:11px;color:var(--muted);margin-top:6px">Paid by HQ (Portugal)</div>
               </div>
             </div>`
           : `<div style="color:var(--muted);font-size:13px;padding:12px 0">No laundry spend yet — pick the Laundry category when adding an expense to track it here.</div>`
