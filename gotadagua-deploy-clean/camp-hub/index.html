@@ -8262,7 +8262,19 @@ function confirmNotRepeated(p){
   if(!twin) return true;
   return confirm(`There is already a ${twin.category||twin.type} line of ${Number(twin.amountLocal??twin.amount??0)} on ${twin.date}${twin.description?` (${twin.description})`:''}.\n\nSave this one too?`);
 }
+let __ledgerSaveBusy=false;
 async function saveQuickExpense(){
+  // One save at a time: a double tap on a slow phone used to start a second
+  // save before the first had landed, so the same entry was written twice
+  // with two ids (Sri Lanka, 12 Nov 2026: tuna, AC repair, loan — each ×2).
+  if(__ledgerSaveBusy) return;
+  __ledgerSaveBusy=true;
+  const _btns=[...document.querySelectorAll('#expSaveBtn,[onclick="saveQuickExpense()"]')];
+  _btns.forEach(b=>{b.disabled=true;});
+  try{ return await __saveQuickExpenseRun(); }
+  finally{ __ledgerSaveBusy=false; _btns.forEach(b=>{b.disabled=false;}); }
+}
+async function __saveQuickExpenseRun(){
   if(!await requireHubReady()) return;
   const type=document.getElementById('qe_type')?.value||'expense';
   const category=document.getElementById('qe_cat')?.value||'';
@@ -9356,6 +9368,17 @@ function openEditLedger(id){const entry=S.ledger.find(x=>x.id===id);if(!entry)re
 function deleteEditingLedger(){if(!editingLedgerId)return;const id=editingLedgerId;editingLedgerId=null;closeOv('expOv');delLedger(id);}
 
 async function saveExpense(){
+  // One save at a time: a double tap on a slow phone used to start a second
+  // save before the first had landed, so the same entry was written twice
+  // with two ids (Sri Lanka, 12 Nov 2026: tuna, AC repair, loan — each ×2).
+  if(__ledgerSaveBusy) return;
+  __ledgerSaveBusy=true;
+  const _btns=[...document.querySelectorAll('#expSaveBtn,[onclick="saveQuickExpense()"]')];
+  _btns.forEach(b=>{b.disabled=true;});
+  try{ return await __saveExpenseRun(); }
+  finally{ __ledgerSaveBusy=false; _btns.forEach(b=>{b.disabled=false;}); }
+}
+async function __saveExpenseRun(){
   if(!await requireHubReady()) return;
   const category=document.getElementById('em_cat')?.value||'';
   if(expModalType==='income'&&['Tours','Transport'].includes(category)&&!(document.getElementById('em_linked')?.value||'').trim()){

@@ -701,3 +701,20 @@ test('camp tab: Sri Lanka shows no per-line «Pay» — only «Pay all» on Char
   expect(out.twButtons).not.toContain('Pay');
   expect(out.twActions).toContain('Pay all (2)');
 });
+
+// A double tap on «Add entry» writes ONE row (Sri Lanka, 12 Nov 2026: three
+// entries were saved twice within the same second).
+test('camp ledger: double tap on Quick add saves the entry once', async ({ page }) => {
+  const { writes } = await openHub(page, Object.values(fixture()), '&view=local');
+  await page.evaluate(async () => {
+    showPage('expenses');
+    resetQuickExpense();
+    document.getElementById('qe_type').value = 'expense'; renderQuickExpenseCategories();
+    document.getElementById('qe_pay').value = 'Cash';
+    document.getElementById('qe_amount').value = '45000';
+    document.getElementById('qe_desc').value = 'Tuna double tap';
+    await Promise.all([saveQuickExpense(), saveQuickExpense()]);
+  });
+  const saved = writes.filter(w => w.op === 'upsert' && /Tuna double tap/.test(w.row.description || ''));
+  expect(saved.length).toBe(1);
+});
