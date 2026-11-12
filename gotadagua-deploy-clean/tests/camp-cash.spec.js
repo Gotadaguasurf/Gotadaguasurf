@@ -183,68 +183,44 @@ test('camp cash: drawer rule per method (revenue by card/bank → bank; HQ Paid,
   expect(r.tCashOut).toEqual({ bank: 0, cash: -1 });
 });
 
-test('camp cash: local manager Quick add — Cash expense lowers Cash, Bank Transfer lowers Bank, card revenue goes to Bank', async ({ page }) => {
+test('camp cash: local manager — cash only (no bank or card lines, no Money from HQ), and his screen shows the Cash box only', async ({ page }) => {
   const errors = collectFatalErrors(page);
   const { writes } = await openHub(page, Object.values(fixture()), '&view=local');
-  // Defaults a local manager gets: expense → Cash, revenue → Cash.
-  const defaults = await page.evaluate(() => {
+  const ui = await page.evaluate(() => {
     showPage('expenses');
     resetQuickExpense();
-    const exp = document.getElementById('qe_pay').value;
+    const types = [...document.getElementById('qe_type').options].map(o => o.value);
+    const expOptions = [...document.getElementById('qe_pay').options].map(o => o.value);
     document.getElementById('qe_type').value = 'income'; renderQuickExpenseCategories();
-    const rev = document.getElementById('qe_pay').value;
-    const revVisible = document.getElementById('qe_pay_wrap').style.display !== 'none';
     const revOptions = [...document.getElementById('qe_pay').options].map(o => o.value);
     resetQuickExpense();
-    return { mode: LOCAL_MANAGER_MODE, exp, rev, revVisible, revOptions };
+    const tiles = [...document.querySelectorAll('#expKpis .kpi-label')].map(e => e.textContent.trim());
+    return { mode: LOCAL_MANAGER_MODE, types, expOptions, revOptions, tiles };
   });
-  expect(defaults.mode).toBe(true);
-  expect(defaults.exp).toBe('Cash');
-  expect(defaults.rev).toBe('Cash');
-  expect(defaults.revVisible).toBe(true);
-  expect(defaults.revOptions).toEqual(['Cash', 'Card', 'Bank Transfer']);
+  expect(ui.mode).toBe(true);
+  expect(ui.types).not.toContain('transfer');
+  expect(ui.expOptions).toEqual(['Cash']);
+  expect(ui.revOptions).toEqual(['Cash']);
+  expect(ui.tiles).toEqual(['Cash']);
 
-  const quickAdd = async (type, pay, amount, cat) => {
-    await page.evaluate(async ([type, pay, amount, cat]) => {
+  const quickAdd = async (type, amount, cat) => {
+    await page.evaluate(async ([type, amount, cat]) => {
       resetQuickExpense();
       document.getElementById('qe_type').value = type; renderQuickExpenseCategories();
       if (cat) { document.getElementById('qe_cat').value = cat; renderEntryCategorySelection('qe'); }
-      document.getElementById('qe_pay').value = pay;
       document.getElementById('qe_amount').value = String(amount);
-      document.getElementById('qe_desc').value = `test ${type} ${pay} ${amount}`;
+      document.getElementById('qe_desc').value = `test ${type} ${amount}`;
       await saveQuickExpense();
-    }, [type, pay, amount, cat]);
+    }, [type, amount, cat]);
   };
-
-  await quickAdd('expense', 'Cash', 1000);
+  await quickAdd('expense', 1000);
   let d = await drawers(page);
   expect(d.ledgerCash).toBe(EXPECTED_CASH - 1000);
-  expect(d.ledgerBank).toBe(EXPECTED_BANK);
-
-  await quickAdd('expense', 'Bank Transfer', 2000);
-  d = await drawers(page);
-  expect(d.ledgerBank).toBe(EXPECTED_BANK - 2000);
-  expect(d.ledgerCash).toBe(EXPECTED_CASH - 1000);
-
-  await quickAdd('income', 'Card', 3000, 'Other Revenue');
-  d = await drawers(page);
-  expect(d.ledgerBank).toBe(EXPECTED_BANK - 2000 + 3000);
-  expect(d.ledgerCash).toBe(EXPECTED_CASH - 1000);
-
-  await quickAdd('income', 'Cash', 500, 'Other Revenue');
+  await quickAdd('income', 500, 'Other Revenue');
   d = await drawers(page);
   expect(d.ledgerCash).toBe(EXPECTED_CASH - 1000 + 500);
-  expect(d.ovCash).toBe(d.ledgerCash);
-  expect(d.ovBank).toBe(d.ledgerBank);
-
-  // What reached the (stubbed) server carries the method the manager chose.
   const saved = writes.filter(w => w.op === 'upsert').map(w => [w.row.type, w.row.payment_method, w.row.amount_local]);
-  expect(saved).toEqual([
-    ['expense', 'Cash', 1000],
-    ['expense', 'Bank Transfer', 2000],
-    ['revenue', 'Card', 3000],
-    ['revenue', 'Cash', 500],
-  ]);
+  expect(saved).toEqual([['expense', 'Cash', 1000], ['revenue', 'Cash', 500]]);
   expect(errors).toEqual([]);
 });
 

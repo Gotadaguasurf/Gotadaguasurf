@@ -7802,11 +7802,18 @@ function paymentOptionsFor(type){
     //   Bank Transfer  = Bank → Outside    (left the bank, e.g. a loan)
     //   Cash           = Outside → Cash    (e.g. opening cash)
     //   Cash Out       = Cash → Outside    (e.g. an old debt paid in cash)
+    // The local manager can only record cash leaving the box (e.g. a loan
+    // to staff); every other transfer comes from the bank statement.
+    if(LOCAL_MANAGER_MODE) return ['Cash Out'];
     return ['HQ Transfer','ATM Withdrawal','Cash Deposit','Bank Transfer','Cash','Cash Out'];
   }
   // Revenue accepts every canonical channel (Cash / Card / Bank Transfer)
   // — same list as expenses. This mirrors reality: guests pay in card at
   // the desk, transfer for pre-bookings, cash at Portugal beach cabin, etc.
+  // Local manager (12 Nov 2026): he pays and collects in cash only — every
+  // bank or card line comes from the bank statement, loaded by HQ (the
+  // database refuses them from him too).
+  if(LOCAL_MANAGER_MODE) return ['Cash'];
   if(type==='income') return PAYMENT_METHODS;
   return PAYMENT_METHODS;
 }
@@ -9141,6 +9148,20 @@ function renderExpenses(){
         <div class="kpi-sub">Revenue − expenses</div>
       </div>
     `;
+  } else if(LOCAL_MANAGER_MODE){
+    // The local manager sees the cash box only: the database hides the
+    // money HQ sends into the bank from him, so a Bank figure on his screen
+    // was always wrong (−LKR 52 M on 12 Nov 2026). HQ checks the bank
+    // against the statement.
+    expKpisEl.innerHTML=`
+      <div class="card kpi">
+        <div class="kpi-label">Cash</div>
+        <div class="kpi-value ${cashBalLocal>=0?'kv-amber':'kv-red'}">${lkr(cashBalLocal)}</div>
+        <div class="kpi-sub" style="margin-top:4px">${euro(cashBalEur)}</div>
+        <div class="kpi-sub">Balance · all time</div>
+        ${cashBreakdown}
+      </div>
+    `;
   } else {
     expKpisEl.innerHTML=`
       <div class="card kpi">
@@ -9956,6 +9977,8 @@ function toast(msg,kind){const t=document.getElementById('toast');if(!t)return;t
 
 function applyLocalManagerMode(){
   if(!LOCAL_MANAGER_MODE) return;
+  // Money from HQ arrives through the bank statement, not from him.
+  const qeHq=document.querySelector('#qe_type option[value="transfer"]'); if(qeHq) qeHq.remove();
   document.querySelectorAll('.ntab, .ntab-m').forEach(btn=>{ btn.style.display = (btn.dataset.page==='pos' || btn.dataset.page==='expenses') ? '' : 'none'; });
   showPage('expenses');
 }
