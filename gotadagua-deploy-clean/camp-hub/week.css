@@ -300,3 +300,8 @@
 #weekRoot .wk-people { display: flex; align-items: center; gap: 6px; margin: 0 0 var(--sp-3); }
 #weekRoot .wk-people svg { width: 14px; height: 14px; flex: none; color: var(--green, #1a7f4e); }
 #weekRoot .wk-people.bad { display: block; }
+
+/* Transfers booked: arrivals and departures apart, date + time first */
+.wk-bookedcard .wk-bsec + .wk-bsec { border-top: 1px solid var(--border, #dde5ee); }
+.wk-booked .wk-bwhen { display: flex; flex-direction: column; min-width: 86px; gap: 1px; font-size: 13px; }
+.wk-booked .wk-bwhen .num { color: var(--text-muted, #5b6b7b); }

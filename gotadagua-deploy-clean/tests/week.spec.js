@@ -892,3 +892,17 @@ test('people check: a row the lists cannot place turns the line red and adds a T
   expect(pc.ok).toBe(false);
   expect(pc.nights).toEqual([1, 1, 1, 1, 1, 1, 1]);
 });
+
+test('transfers: «Transfers booked» lists arrivals and departures apart, date and time first', async ({ page }) => {
+  const errors = collectFatalErrors(page);
+  await openWeek(page);
+  await pick(page, 'Transfers', 'week');
+  const secs = page.locator('.wk-bookedcard .wk-bsec');
+  await expect(secs).toHaveCount(2);
+  await expect(secs.nth(0).locator('.wk-tdh')).toContainText('Arrivals');
+  await expect(secs.nth(1).locator('.wk-tdh')).toContainText('Departures');
+  await expect(secs.nth(1)).toContainText('Beliz Kuyumcuoglu');
+  await expect(secs.nth(1).locator('.wk-booked').first()).toContainText('Sat 21 Nov');
+  await expect(secs.nth(0)).not.toContainText('Beliz Kuyumcuoglu');                        // her departure is not an arrival
+  expect(errors).toEqual([]);
+});

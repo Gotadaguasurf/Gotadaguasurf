@@ -1060,9 +1060,21 @@
       const rows = [...x.trips.map(t => [t.trip_time || '99', tripRow(t)]), ...timed.map(g => [arriveAt(g), ownRow(g)])].sort((a, b) => a[0].localeCompare(b[0])).map(r => r[1]).join('');
       return `<div class="wk-tday" id="wkTr-${x.d}"><div class="wk-tdh"><b>${h(fdm(x.d))}</b>${isToday(x.d) ? ' <span class="badge badge-blue">Today</span>' : ''}<span class="cell-sub">${[x.trips.length ? plural(x.trips.length, 'transfer') : '', x.own.length ? `${x.own.length} on their own` : ''].filter(Boolean).join(' · ')}</span></div>
         <div class="wk-rows">${rows}${untimed.length ? `<div class="wk-g wk-untimed"><span class="section-lbl">On their own, no arrival time given</span><span class="cell-sub">${untimed.map(g => h(g.guest_name)).join(', ')}</span></div>` : ''}</div></div>`; };
-    const card = `<div class="card wk-card">${cardHead('Airport transfers', `${plural(all.length, 'transfer')} this week${cost ? ` · ${h(money(cost))} expected` : ''} · tuk-tuks and paying drivers stay in Transport`, toMsgBtn('Transfers message'))}
+    // Who has an airport transfer booked, arrivals and departures apart (Miguel, 13 Nov:
+    // «I need to see good who has the transfers from the airport booked»).
+    const byWhen = (a, b) => (a.trip_date + (a.trip_time || '99')).localeCompare(b.trip_date + (b.trip_time || '99'));
+    const arrT = all.filter(t => t.kind === 'airport_arrival').sort(byWhen), depT = all.filter(t => t.kind === 'airport_departure').sort(byWhen);
+    const people = list => list.filter(t => !['cancelled', 'no_show'].includes(t.status)).reduce((s, t) => s + (Number(t.pax) || 1), 0);
+    const bookedRow = t => { const [st, cls] = tripBadge(t);
+      return `<div class="wk-g wk-trip wk-booked"><span class="wk-bwhen"><b>${h(fdm(t.trip_date))}</b><span class="num">${h(t.trip_time || 'time?')}</span></span><span class="wk-tmain"><span class="wk-g1"><b>${h(t.guest_names || 'Guest')}</b> <span class="hint">· ${t.pax} ${t.pax === 1 ? 'person' : 'persons'}</span></span>
+        <span class="cell-sub">${h(t.flight || 'flight?')}${t.vehicle ? ' · ' + h(t.vehicle) : ''}${t.guest_phone ? ' · ' + h(t.guest_phone) : ''}</span>${askBtn(t)}</span><span class="badge ${cls}">${st}</span></div>`; };
+    const sect = (title, sub, list) => `<div class="wk-bsec"><div class="wk-tdh"><b>${title}</b><span class="cell-sub">${list.length ? `${plural(list.length, 'transfer')} · ${plural(people(list), 'person')}` : 'none booked'} · ${sub}</span></div>
+      <div class="wk-rows">${list.length ? list.map(bookedRow).join('') : '<div class="wk-g hint">No transfer booked.</div>'}</div></div>`;
+    const booked = `<div class="card wk-card wk-bookedcard">${cardHead('Transfers booked', 'Everyone with an airport transfer this week — from the Guests file')}
+      ${sect(`${ic('login')} Arrivals`, 'airport → camp', arrT)}${sect(`${ic('logout')} Departures`, 'camp → airport', depT)}</div>`;
+    const card = `<div class="card wk-card">${cardHead('Day by day', `${plural(all.length, 'transfer')} this week${cost ? ` · ${h(money(cost))} expected` : ''} · tuk-tuks and paying drivers stay in Transport`, toMsgBtn('Transfers message'))}
       ${days.length ? days.map(dayHtml).join('') : '<div class="card-body hint">No airport transfers and no arrivals this week.</div>'}</div>`;
-    return checkBlock(ctx, 'transfers') + card + messageCard(ctx, 'transfers');
+    return checkBlock(ctx, 'transfers') + booked + card + messageCard(ctx, 'transfers');
   }
 
   // ── Guests ──────────────────────────────────────────────────────────────
