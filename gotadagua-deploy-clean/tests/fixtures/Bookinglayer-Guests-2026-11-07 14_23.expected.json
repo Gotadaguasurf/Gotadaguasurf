@@ -1,0 +1,158 @@
+{
+ "file": "Bookinglayer-Guests-2026-11-07 14_23.csv",
+ "export_date": "2026-11-07",
+ "has_transfers_col": true,
+ "counts": {
+  "no transfer": 15
+ },
+ "trips": [
+  {
+   "key": "bl:2026-4070:arr",
+   "kind": "airport_arrival",
+   "date": "2026-11-14",
+   "time": null,
+   "flight": "",
+   "place": "CMB",
+   "pax": 1,
+   "guests": [
+    "Beliz Kuyumcuoglu"
+   ],
+   "boards": true,
+   "charge": "bookinglayer",
+   "flags": [
+    "no time yet: ask the guest"
+   ],
+   "ambiguous": false,
+   "csv_lines": [
+    5
+   ]
+  },
+  {
+   "key": "bl:2026-4070:dep",
+   "kind": "airport_departure",
+   "date": "2026-11-21",
+   "time": null,
+   "flight": "",
+   "place": "CMB",
+   "pax": 1,
+   "guests": [
+    "Beliz Kuyumcuoglu"
+   ],
+   "boards": true,
+   "charge": "bookinglayer",
+   "flags": [
+    "2 transfers booked: return assumed",
+    "no time yet: ask the guest"
+   ],
+   "ambiguous": false,
+   "csv_lines": [
+    5
+   ]
+  },
+  {
+   "key": "bl:2026-4936:arr",
+   "kind": "airport_arrival",
+   "date": "2026-11-14",
+   "time": null,
+   "flight": "",
+   "place": "CMB",
+   "pax": 1,
+   "guests": [
+    "Maximilian Ehrler"
+   ],
+   "boards": false,
+   "charge": "bookinglayer",
+   "flags": [
+    "1 transfer booked: arrival assumed",
+    "no time yet: ask the guest"
+   ],
+   "ambiguous": false,
+   "csv_lines": [
+    11
+   ]
+  },
+  {
+   "key": "bl:2026-4660:arr",
+   "kind": "airport_arrival",
+   "date": "2026-11-14",
+   "time": "01:55",
+   "flight": "QR658",
+   "place": "CMB",
+   "pax": 1,
+   "guests": [
+    "Lorena Marie Glas"
+   ],
+   "boards": false,
+   "charge": null,
+   "flags": [
+    "Has transfer = Yes but no transfer product listed",
+    "night arrival: lands 01:55 on Sat 14 Nov, driver leaves camp Fri 13 Nov evening — confirm the night"
+   ],
+   "ambiguous": true,
+   "csv_lines": [
+    15
+   ]
+  }
+ ],
+ "cancel_refs": [],
+ "skipped": [],
+ "dirty_no_transfer": [
+  [
+   8,
+   "Lea Brennig",
+   "2026-4867",
+   [
+    "flight field carries a date 12/11"
+   ]
+  ],
+  [
+   9,
+   "Lilly Krüger",
+   "2026-4891",
+   [
+    "time 13:00 typed in the flight field"
+   ]
+  ],
+  [
+   10,
+   "Zara Palmer",
+   "2026-4932",
+   [
+    "flight «No transfer» = empty"
+   ]
+  ],
+  [
+   13,
+   "Riley Denning",
+   "2026-5003",
+   [
+    "flight «N/A» = empty"
+   ]
+  ],
+  [
+   16,
+   "Laurine Corneille",
+   "2026-3370",
+   [
+    "two times 14:00 / 02:50"
+   ]
+  ],
+  [
+   17,
+   "Peter Mongey",
+   "2026-4357",
+   [
+    "flight «N/A» = empty"
+   ]
+  ],
+  [
+   18,
+   "Sinéad O'Farrell",
+   "2026-4357",
+   [
+    "flight «N/A» = empty"
+   ]
+  ]
+ ],
+ "other_location_names": []
+}

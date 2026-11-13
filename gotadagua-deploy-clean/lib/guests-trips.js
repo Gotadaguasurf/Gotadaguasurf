@@ -1,0 +1,308 @@
+// Bookinglayer «Guests» export → airport trips (Sri Lanka). 13 Nov 2026.
+//
+// Pure functions, no DOM and no Supabase: the camp hub (Transport → Next week)
+// and the Node test (tests/guests-trips.spec.js) run the same code. It is a
+// one-to-one port of the reference parser sl_design/trips/guests_to_trips.py
+// (trips.md §1.3) and must give the same output on the same file.
+//
+// Dates are strings ('YYYY-MM-DD') built from the text of the file and are
+// never passed through new Date(str) or UTC: a 01:55 landing on the check-in
+// day must stay on that day (the Camp Tab once shifted days this way).
+(function (root, factory) {
+  const api = factory();
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  else root.GuestsTrips = api;
+})(typeof self !== 'undefined' ? self : this, function () {
+  'use strict';
+
+  const MONTHS = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+  const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const DAY_ABBR = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const OK_STATUS = new Set(['paid', 'confirmed', 'deposit_paid', 'deposit paid']);
+  const DEAD_STATUS = new Set(['cancelled', 'canceled', 'expired']);
+  const JUNK = new Set(['', 'n/a', 'na', '-', '--', 'none', 'no', 'no transfer', 'tbc', 'tbd', '?', 'unknown']);
+  const TIME_RE = /^\s*(\d{1,2})\s*[:h.]\s*(\d{2})\s*(am|pm)?\s*$/i;
+  const FLIGHT_RE = /^([A-Z][A-Z0-9]|[A-Z0-9][A-Z])\s?-?\s?(\d{1,4})[A-Z]?$/;
+  const FLIGHT_DATE_RE = /\s+(\d{1,2})[/.](\d{1,2})(?:[/.](\d{2,4}))?\s*$/;
+  const PLACES = { cmb: 'CMB', colombo: 'CMB', bandaranaike: 'CMB', hri: 'HRI', mattala: 'HRI', agadir: 'AGA', marrakech: 'RAK', lisbon: 'LIS' };
+  const TEST_NAME = /\b(test|delete after|qa)\b/i;
+  const SL_ROOMS = ['hiriketeya', 'kabalana', 'marissa', 'unawatuna', 'madiha', 'midigama', 'welligama', 'weligama', 'ahangama'];
+  // A Guests export has these headers; the bookings export never does (HQ import guard).
+  const GUESTS_HEADER_MARKERS = ['has transfer', 'arrival flight'];
+
+  // ── CSV (quote-aware, newlines inside quotes, blank lines kept as [] so
+  //    line numbers match Python's csv.reader) ────────────────────────────
+  function parseCsv(text) {
+    text = String(text || '').replace(/^﻿/, '').replace(/\r\n?/g, '\n');
+    const rows = []; let row = []; let cur = ''; let inQ = false; let any = false;
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (inQ) {
+        if (ch === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else inQ = false; }
+        else cur += ch;
+      } else if (ch === '"') { inQ = true; any = true; }
+      else if (ch === ',') { row.push(cur); cur = ''; any = true; }
+      else if (ch === '\n') { if (any || cur) row.push(cur); rows.push(row); row = []; cur = ''; any = false; }
+      else { cur += ch; any = true; }
+    }
+    if (any || cur) { row.push(cur); rows.push(row); }
+    return rows;
+  }
+
+  function isGuestsExportHeader(text) {
+    const first = String(text || '').replace(/^﻿/, '').split(/\r?\n/, 1)[0] || '';
+    const cells = (parseCsv(first)[0] || []).map(s => s.trim().toLowerCase());
+    return GUESTS_HEADER_MARKERS.some(m => cells.includes(m));
+  }
+
+  // ── small helpers (Python semantics) ───────────────────────────────────
+  const pyStrip = s => String(s == null ? '' : s).trim();
+  const hasCased = s => s.toLowerCase() !== s.toUpperCase();
+  const isUpper = s => hasCased(s) && s === s.toUpperCase();
+  const isLower = s => hasCased(s) && s === s.toLowerCase();
+  const pyTitle = s => s.toLowerCase().replace(/(^|[^\p{L}])(\p{L})/gu, (m, a, b) => a + b.toUpperCase());
+  const pad2 = n => String(n).padStart(2, '0');
+
+  function isSriLanka(pk, acc) {
+    const p = pk.toLowerCase();
+    if (p.includes('ahangama') || p.includes('sri lanka')) return 'yes';
+    if (!pk.trim() && SL_ROOMS.some(r => acc.toLowerCase().includes(r))) return 'room';
+    return '';
+  }
+
+  function ymd(s) {
+    const m = String(s || '').match(/^\s*(?:[A-Za-z]{3,}\s+)?(\d{1,2})\s+([A-Za-z]{3})[a-z]*\s+(\d{4})/);
+    if (!m) return '';
+    const mo = MONTHS[m[2].toLowerCase()]; if (!mo) return '';
+    return `${m[3]}-${pad2(mo)}-${pad2(parseInt(m[1], 10))}`;
+  }
+
+  function hhmm(s) {
+    const m = TIME_RE.exec(String(s || ''));
+    if (!m) return null;
+    let h = parseInt(m[1], 10); const mi = parseInt(m[2], 10); const ap = (m[3] || '').toLowerCase();
+    if (ap === 'pm' && h < 12) h += 12;
+    if (ap === 'am' && h === 12) h = 0;
+    if (h > 23 || mi > 59) return null;
+    return `${pad2(h)}:${pad2(mi)}`;
+  }
+
+  // Weekday / day arithmetic on the date string only (UTC math on y-m-d parts,
+  // no time of day involved, so no zone can shift it).
+  function dateParts(iso) { const [y, m, d] = String(iso).split('-').map(Number); return { y, m, d }; }
+  function addDaysIso(iso, n) {
+    const { y, m, d } = dateParts(iso);
+    const t = new Date(Date.UTC(y, m - 1, d + n));
+    return `${t.getUTCFullYear()}-${pad2(t.getUTCMonth() + 1)}-${pad2(t.getUTCDate())}`;
+  }
+  function weekday(iso) { const { y, m, d } = dateParts(iso); return new Date(Date.UTC(y, m - 1, d)).getUTCDay(); }
+  // Python strftime('%a %d %b') → 'Sat 14 Nov'
+  function strfADB(iso) { const { m, d } = dateParts(iso); return `${DAY_ABBR[weekday(iso)]} ${pad2(d)} ${MONTH_ABBR[m - 1]}`; }
+  // 'D Mon' for the WhatsApp message → '25 Feb'
+  function dMon(iso) { if (!iso) return ''; const { m, d } = dateParts(iso); return `${d} ${MONTH_ABBR[m - 1]}`; }
+  // Saturday that starts the Sat–Fri week holding iso.
+  function weekStart(iso) { return addDaysIso(iso, -((weekday(iso) + 1) % 7)); }
+
+  // Guest phone: no spaces; drop the extra 0 after the country code (gen_from_guests.py).
+  function cleanPhone(s) {
+    let ph = String(s || '').replace(/\s+/g, '');
+    const mm = ph.match(/^\+(41|44|33|49|43|61|353|39|31|32|48)0(\d+)$/);
+    if (mm) ph = '+' + mm[1] + mm[2];
+    return ph;
+  }
+
+  function classifyField(raw, flags, label) {
+    let v = pyStrip(raw);
+    if (JUNK.has(v.toLowerCase())) return ['', null, '', ''];
+    const t = hhmm(v);
+    if (t) return ['', t, '', ''];
+    const place = PLACES[v.toLowerCase()] || '';
+    if (place) return ['', null, place, ''];
+    let fd = '';
+    const m = FLIGHT_DATE_RE.exec(v);
+    if (m) { fd = [parseInt(m[1], 10), parseInt(m[2], 10)]; v = v.slice(0, m.index); }
+    const u = v.toUpperCase().replace(/\s+/g, ' ').trim();
+    const fm = FLIGHT_RE.exec(u);
+    if (fm) return [fm[1] + fm[2], null, '', fd];
+    flags.push(`${label} «${raw}» not understood`);
+    return ['', null, '', fd];
+  }
+
+  function vehicleFor(pax, boards) {
+    const n = Number(pax) || 1;
+    let v = n <= 4 ? 'Car' : n <= 8 ? 'Minivan' : 'Large Van';
+    if (boards && v === 'Car') v = 'Minivan';
+    return v;
+  }
+
+  // ── main ───────────────────────────────────────────────────────────────
+  // parse(text, fileName, exportDate?) → same shape as guests_to_trips.py,
+  // plus app fields on each trip (phone, booking_ref, booking_checkout,
+  // vehicle) and `refs_active`, `is_preset`.
+  function parse(text, fileName, exportDate) {
+    const all = parseCsv(text);
+    const H = (all[0] || []).map(h => h.trim());
+    const idx = name => H.indexOf(name);
+    const get = (r, ...names) => {
+      for (const n of names) { const i = idx(n); if (i >= 0) return i < r.length ? pyStrip(r[i]) : ''; }
+      return '';
+    };
+    const hasTransfersCol = H.includes('Transfers');
+    const base = String(fileName || '').split('/').pop();
+    const fm = base.match(/(\d{4}-\d{2}-\d{2})/);
+    exportDate = exportDate || (fm ? fm[1] : null);
+
+    const report = {}; const bump = k => { report[k] = (report[k] || 0) + 1; };
+    const people = new Map(); const skipped = []; const other = [];
+    all.slice(1).forEach((r, n) => {
+      if (!r.some(c => String(c).trim())) return;
+      const line = n + 2;
+      const name = get(r, 'Guest').replace(/\s+/g, ' ').trim();
+      const ref = get(r, 'Booking', 'Booking #');
+      const st = get(r, 'Booking status').toLowerCase().replace(/ /g, '_');
+      const pk = get(r, 'Packages'), acc = get(r, 'Accommodations');
+      const loc = isSriLanka(pk, acc);
+      if (!loc) { bump('other location'); other.push(name); return; }
+      if (loc === 'room') bump('Sri Lanka by room name (Packages empty)');
+      if (TEST_NAME.test(name)) { bump('test booking'); skipped.push([line, name, 'test']); return; }
+      const key = ref + '\u0000' + name.toLowerCase();
+      if (people.has(key)) { bump('duplicate row'); return; }
+      people.set(key, {
+        line, name: (isUpper(name) || isLower(name)) ? pyTitle(name) : name, ref, status: st,
+        ci: ymd(get(r, 'Check-in on', 'Arrives on')), co: ymd(get(r, 'Check-out on', 'Departure date', 'Departs on')),
+        has: get(r, 'Has transfer').toLowerCase() === 'yes', transfers: get(r, 'Transfers'), tcomment: get(r, 'Transfer comment'),
+        arr_time: get(r, 'Arrival time'), arr_flight: get(r, 'Arrival flight'), arr_loc: get(r, 'Arrival location'),
+        dep_time: get(r, 'Departure time'), dep_flight: get(r, 'Departure flight'), dep_loc: get(r, 'Departure location'),
+        phone: get(r, 'Phone').replace(/ /g, ''),
+      });
+    });
+
+    const legs = []; const cancels = new Set(); const dirty = []; const refsActive = new Set();
+    for (const p of people.values()) {
+      if (DEAD_STATUS.has(p.status)) { cancels.add(p.ref); bump('cancelled/expired (cancels planned trips)'); continue; }
+      if (!OK_STATUS.has(p.status)) { bump(`status ${p.status} (ignored)`); continue; }
+      refsActive.add(p.ref);
+      if (!p.has) {
+        bump('no transfer');
+        const dflags = [];
+        const [, t1, , fd1] = classifyField(p.arr_flight, dflags, 'flight');
+        let t0 = hhmm(p.arr_time); if (t0 === '00:00') t0 = null;
+        if (t1 && t0 && t1 !== t0) dflags.push(`two times ${t0} / ${t1}`);
+        else if (t1) dflags.push(`time ${t1} typed in the flight field`);
+        if (fd1) dflags.push(`flight field carries a date ${fd1[0]}/${fd1[1]}`);
+        const af = p.arr_flight.trim();
+        if (JUNK.has(af.toLowerCase()) && af) dflags.push(`flight «${p.arr_flight}» = empty`);
+        if (dflags.length) dirty.push([p.line, p.name, p.ref, dflags]);
+        continue;
+      }
+      const nProducts = hasTransfersCol ? (p.transfers.match(/airport transfer/gi) || []).length : null;
+      const boards = p.transfers.toLowerCase().includes('surfboard') || p.tcomment.toLowerCase().includes('surfboard');
+      const comment = p.tcomment.toLowerCase();
+      for (const direction of ['arrival', 'departure']) {
+        const flags = []; let date, time, fl, pl, amb;
+        if (direction === 'arrival') {
+          if (nProducts === 1 && /\b(return|departure|drop|back to (the )?airport)\b/.test(comment)) continue;
+          if (nProducts === null) flags.push('file has no Transfers column: count and direction assumed (arrival)');
+          else if (nProducts === 0) flags.push('Has transfer = Yes but no transfer product listed');
+          else if (nProducts === 1) flags.push('1 transfer booked: arrival assumed');
+          date = p.ci;
+          const [f1, t1, pl1, fd1] = classifyField(p.arr_flight, flags, 'flight');
+          let t0 = hhmm(p.arr_time); if (t0 === '00:00') t0 = null;
+          if (t0 && t1 && t0 !== t1) { flags.push(`two times: ${t0} (arrival time) and ${t1} (flight field)`); time = t0; amb = true; }
+          else { time = t0 || t1; amb = false; }
+          if (t1 && !t0) flags.push('time taken from the flight field');
+          fl = f1; pl = pl1 || PLACES[p.arr_loc.toLowerCase()] || 'CMB';
+          if (fd1 && date && (fd1[0] !== parseInt(date.slice(8), 10) || fd1[1] !== parseInt(date.slice(5, 7), 10))) {
+            flags.push(`flight date ${fd1[0]}/${fd1[1]} differs from check-in ${date.slice(8)}/${date.slice(5, 7)}`); amb = true;
+          }
+        } else {
+          const want = (nProducts !== null && nProducts >= 2) || (nProducts === 1 && /\b(return|departure|drop)\b/.test(comment));
+          if (!want) continue;
+          date = p.co;
+          const [f1, t1, pl1] = classifyField(p.dep_flight, flags, 'departure flight');
+          time = hhmm(p.dep_time) || t1; fl = f1; pl = pl1 || PLACES[p.dep_loc.toLowerCase()] || 'CMB'; amb = false;
+          if (nProducts && nProducts >= 2) flags.push('2 transfers booked: return assumed');
+        }
+        if (pl !== 'CMB' && pl !== 'HRI') { flags.push(`airport ${pl} is not a Sri Lanka airport`); amb = true; }
+        if (!time) flags.push('no time yet: ask the guest');
+        else if (direction === 'arrival' && time < '05:00') {
+          flags.push(`night arrival: lands ${time} on ${strfADB(date)}, driver leaves camp ${strfADB(addDaysIso(date, -1))} evening — confirm the night`); amb = true;
+        }
+        const charge = (nProducts || 0) >= 1 ? 'bookinglayer' : null;
+        legs.push({ charge, ref: p.ref, direction, date, time: time || null, flight: fl, place: pl, guest: p.name, phone: cleanPhone(p.phone), co: p.co,
+          boards, flags, ambiguous: amb, line: p.line });
+      }
+    }
+
+    // group: same booking + direction + same (date, time, flight) → one trip
+    const trips = new Map(); const byBd = new Map();
+    for (const l of legs) { const k = l.ref + '\u0000' + l.direction; if (!byBd.has(k)) byBd.set(k, []); byBd.get(k).push(l); }
+    for (const ls of byBd.values()) {
+      const ref = ls[0].ref, d = ls[0].direction;
+      const variants = new Map();
+      for (const l of ls) { const k = [l.date, l.time, l.flight].join('\u0000'); if (!variants.has(k)) variants.set(k, []); variants.get(k).push(l); }
+      const split = variants.size > 1;
+      for (const group of variants.values()) {
+        const g0 = group[0];
+        const gkey = `bl:${ref}:${d.slice(0, 3)}` + (split ? `:${g0.guest.toLowerCase().replace(/[^a-z]/g, '')}` : '');
+        const fl = [...new Set(group.flatMap(l => l.flags))].sort();
+        if (split) fl.push('guests of this booking travel separately');
+        const pax = group.length; const boards = group.some(l => l.boards);
+        trips.set(gkey, {
+          key: gkey, kind: `airport_${d}`, date: g0.date, time: g0.time, flight: g0.flight, place: g0.place,
+          pax, guests: group.map(l => l.guest), boards, charge: g0.charge, flags: fl,
+          ambiguous: group.some(l => l.ambiguous) || fl.some(f => f.includes('two times') || f.includes('not understood')),
+          csv_lines: group.map(l => l.line),
+          // app fields (not in the Python output)
+          booking_ref: ref, booking_checkout: g0.co || null, phone: (group.find(l => l.phone) || {}).phone || '',
+          vehicle: vehicleFor(pax, boards),
+        });
+      }
+    }
+    // cross-booking: same date + same flight (or same time when no flight) → suggestion only
+    const share = new Map();
+    for (const t of trips.values()) {
+      if (t.time || t.flight) { const k = [t.kind, t.date, t.flight || t.time].join('\u0000'); if (!share.has(k)) share.set(k, []); share.get(k).push(t.key); }
+    }
+    for (const ks of share.values()) {
+      if (ks.length > 1) for (const kk of ks) trips.get(kk).flags.push('same flight as ' + ks.filter(x => x !== kk).join(', ') + ': one van?');
+    }
+    // A «preset» file = Sri Lanka only, active bookings only (the saved «Semana Sri Lanka» view):
+    // only then can a trip that is absent from the file be flagged «missing».
+    const isPreset = !report['other location'] && !report['test booking'] && !cancels.size && !Object.keys(report).some(k => k.startsWith('status '));
+    return {
+      file: base, export_date: exportDate, has_transfers_col: hasTransfersCol,
+      counts: report, trips: [...trips.values()], cancel_refs: [...cancels].sort(), skipped, dirty_no_transfer: dirty, other_location_names: other,
+      refs_active: [...refsActive], is_preset: isPreset, guests_total: people.size,
+    };
+  }
+
+  // ── WhatsApp message (format fixed by Miguel, 13 Nov 2026) ───────────────
+  const WA_VEHICLE_LABEL = { 'Car': 'Small Car', 'Minivan': 'Minivan', 'Large Van': 'Large Van' };
+  const WA_UNKNOWN = 'TBC';
+  function whatsappText(t) {
+    const dep = t.kind === 'airport_departure';
+    const pax = Number(t.pax) || 1;
+    const time = (dep && t.pickup_time) ? t.pickup_time : t.trip_time;
+    return [
+      dep ? 'Camp to Airport' : 'Airport to Camp',
+      t.guest_names || WA_UNKNOWN,
+      t.guest_phone || WA_UNKNOWN,
+      `${pax} ${pax === 1 ? 'person' : 'persons'}`,
+      `Flight Number: ${t.flight || WA_UNKNOWN}`,
+      `Time: ${time || WA_UNKNOWN}`,
+      `Date: ${dMon(t.trip_date)}`,
+      WA_VEHICLE_LABEL[t.vehicle] || t.vehicle || WA_VEHICLE_LABEL[vehicleFor(pax, false)],
+    ].join('\n');
+  }
+  function whatsappDayText(trips) { return trips.map(whatsappText).join('\n\n'); }
+  function whatsappUrl(phone, text) {
+    const digits = String(phone || '').replace(/\D/g, '');
+    return `https://wa.me/${digits}?text=${encodeURIComponent(text)}`;
+  }
+
+  return {
+    parseCsv, isGuestsExportHeader, parse, hhmm, ymd, cleanPhone, vehicleFor, addDaysIso, weekday, weekStart, dMon,
+    whatsappText, whatsappDayText, whatsappUrl, OK_STATUS, DEAD_STATUS,
+  };
+});
