@@ -175,3 +175,12 @@ test('guest audit: rows in the file = guests imported + rows left out, each with
   for (const f of [PRESET, ALL]) { const x = G.guestAudit(read(f + '.csv'), f + '.csv'); expect(x.rows).toBe(x.guests + x.left.length); }
   expect(G.guestAudit(read(PRESET + '.csv'), PRESET + '.csv')).toMatchObject({ rows: 18, guests: 18, left: [] });
 });
+
+test('a transfer comment saying it is not needed flags the trip (guest\'s own words beat the guess)', () => {
+  const H = ['Arrives on', 'Guest', 'Booking status', 'Booking', 'Arrival status', 'Arrival time', 'Arrival location', 'Arrival flight', 'Arrival airline', 'Departure date', 'Checked in', 'Language', 'Phone', 'Accommodations', 'Check-in on', 'Check-out on', 'Bed number', 'Packages', 'Activities', 'Level', 'Has transfer', 'Transfers', 'Transfer comment', 'Departure time', 'Departure flight', 'Booking due', 'Email', 'Nights'];
+  const row = ['Sat 7 Nov 2026', 'Ana Exemplo', 'paid', '2026-9001', 'Partial', '15:00', '', '', '', 'Sat 21 Nov 2026', 'No', 'English', '+491700000099', 'Unawatuna Beach Shared Room (only girls)', 'Sat 7 Nov 2026', 'Sat 21 Nov 2026', '3', 'Surf Camp Ahangama, Sri Lanka', 'Surf Equipment', '', 'Yes', 'Airport Transfer Sri Lanka', 'Don’t need airport transfer, I’ll arrive a day earlier', '', '', '0.00', 'x@example.com', '14'];
+  const csv = [H, row].map(r => r.map(c => `"${c}"`).join(',')).join('\n');
+  const p = G.parse(csv, 'Bookinglayer-Guests-2026-11-07 14_23.csv');
+  expect(p.trips).toHaveLength(1);
+  expect(p.trips[0].flags.join(' | ')).toContain('guest says: «Don’t need airport transfer, I’ll arrive a day earlier»');
+});

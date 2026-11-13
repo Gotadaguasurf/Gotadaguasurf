@@ -226,6 +226,8 @@
           if (nProducts && nProducts >= 2) flags.push('2 transfers booked: return assumed');
         }
         if (pl !== 'CMB' && pl !== 'HRI') { flags.push(`airport ${pl} is not a Sri Lanka airport`); amb = true; }
+        // The guest's own words beat our guess (13 Nov: «Don't need airport transfer, I'll arrive a day earlier»).
+        if (/\b(don.?t|do not|no) need\b|\bno transfer\b|\bnot needed\b|\bcancel/i.test(p.tcomment)) { flags.push(`guest says: «${p.tcomment.trim()}» — check if this transfer is still needed`); amb = true; }
         if (!time) flags.push('no time yet: ask the guest');
         else if (direction === 'arrival' && time < '05:00') {
           flags.push(`night arrival: lands ${time} on ${strfADB(date)}, driver leaves camp ${strfADB(addDaysIso(date, -1))} evening — confirm the night`); amb = true;
