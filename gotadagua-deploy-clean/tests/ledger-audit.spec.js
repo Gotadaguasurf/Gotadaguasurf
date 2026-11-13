@@ -51,6 +51,11 @@ async function openHub(page, rows, opts = {}) {
     }
     return json([]);
   });
+  // The Camp Tab iframe posts its own (empty) history when it boots, and the
+  // hub then removes closed-week rows that are not in it. For tests that call
+  // reconcileClosedWeeksWithLedger directly, that boot message racing the
+  // test's own call made the result depend on load timing — keep the frame out.
+  if (opts.noCampTabFrame) await page.route(/camp-tab-inner\.html/, route => route.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><title>stub</title>' }));
   page.on('dialog', d => d.accept());
   await fakeOwnerSession(page);
   await page.goto('/camp-hub/?location=sri-lanka', { waitUntil: 'domcontentloaded' });
@@ -144,7 +149,7 @@ test('ledger: weekly camp — deleted week rows are not re-created when their li
 });
 
 test('ledger: weekly camp — with the list loaded, a missing closed-week row is still added (control)', async ({ page }) => {
-  const { writes } = await openHub(page, [], { mode: 'weekly' });
+  const { writes } = await openHub(page, [], { mode: 'weekly', noCampTabFrame: true });
   expect(await reconcile(page)).toBe(2);
   expect(writes.filter(w => w.op === 'upsert').map(w => [w.row.category, w.row.amount_local, w.row.source_kind]).sort())
     .toEqual([['Drinks', 900, 'camp_tab'], ['Tours', 6000, 'camp_tab']]);

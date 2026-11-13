@@ -340,7 +340,32 @@ test.describe('cash count', () => {
     expect(v).toMatchObject({ ledgerCash: EXPECTED_CASH, real: 200000, declaredUsed: 0, expected: EXPECTED_CASH, counted: 361600, diff: 0 });
     // Before the statement covered 12 Nov, the declared figure was used.
     const before = await page.evaluate(() => CampCash.expectedFor('2026-11-13', 200000, '2026-11-12'));
-    expect(before).toMatchObject({ real: 0, declaredUsed: 200000, expected: EXPECTED_CASH + 200000 });
+    expect(before).toMatchObject({ real: 0, covered: false, declaredUsed: 200000, expected: EXPECTED_CASH + 200000 });
+  });
+
+  test('statement loaded only part of the way: the missing part of the declared cash still counts', async ({ page }) => {
+    // Counted 13 Nov (snapshot 11 Nov), declaring 300,000: 200,000 on 12 Nov (now
+    // in the ledger) + 100,000 on 13 Nov (not loaded yet). Expected must be the
+    // ledger + 100,000, and the settle sheet must say so.
+    const c = { ...openCount, statement_through: '2026-11-11', declared_unloaded_withdrawals: 300000, bar_box: 161600, counted_total: 461600 };
+    await openHub(page, { counts: [c] });
+    const v = await page.evaluate(() => CampCash.countView(CampCash.state.counts[0]));
+    expect(v).toMatchObject({ real: 200000, covered: false, declaredUsed: 100000, expected: EXPECTED_CASH + 100000, diff: 0 });
+    await page.evaluate(() => { showPage('expenses'); CampCash.openSettle('count-1'); });
+    const ov = page.locator('#cashSettleOv');
+    await expect(ov.locator('#csDeclUsed')).toHaveText('100,000.00');
+    await expect(ov.locator('#csDiff')).toHaveText('0.00');
+    await expect(ov.locator('.cc-warn')).toContainText('100,000.00 of the cash Nadith said he took is not in the ledger yet');
+    // Once a withdrawal dated after the count day is loaded, the statement covers
+    // the count day: every real withdrawal up to it is in the ledger, so the
+    // declared figure is no longer used (here the 13 Nov 100,000 never came:
+    // he over-declared, and the count now shows it).
+    await page.evaluate(() => {
+      const r = { ...S.ledger.find(x => x.paymentMethod === 'ATM Withdrawal'), id: 'atm-14', date: '2026-11-14' };
+      S.ledger.push(r);
+    });
+    const after = await page.evaluate(() => CampCash.countView(CampCash.state.counts[0]));
+    expect(after).toMatchObject({ covered: true, declaredUsed: 0, expected: EXPECTED_CASH });
   });
 
   test('table not created yet: no count button, no «not counted» chip, no errors', async ({ page }) => {

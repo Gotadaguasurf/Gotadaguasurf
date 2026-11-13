@@ -29,10 +29,10 @@ create table if not exists public.camp_cash_counts (
   -- the bank statement).
   declared_unloaded_withdrawals numeric not null default 0 check (declared_unloaded_withdrawals >= 0),
   -- «The bank statement in the app goes up to …» when the count was saved
-  -- (last ATM Withdrawal row dated on or before the count day). Once the
-  -- statement covers (statement_through, count_date], the real withdrawals
-  -- replace the declared figure — otherwise a statement loaded between the
-  -- count and the settle would count them twice.
+  -- (last ATM Withdrawal row dated on or before the count day). Real
+  -- withdrawals later loaded in (statement_through, count_date] are taken
+  -- off the declared figure — otherwise a statement loaded between the count
+  -- and the settle would count them twice (see camp_cash_settle).
   statement_through             date,
   expected_at_save              numeric,          -- what the manager's screen showed (history only)
   reason                        text check (reason is null or reason in ('payments_not_entered','revenue_not_entered','unknown')),
@@ -157,10 +157,14 @@ create policy ledger_local_no_cash_count_delete on public.ledger_entries as rest
 );
 
 -- ── RPC: settle a count ────────────────────────────────────────────────────
--- Expected = cash rule up to count_date + declared unloaded withdrawals,
--- unless the statement has since brought real withdrawals dated in
--- (statement_through, count_date] — then those (already in the ledger)
--- replace the declared figure. |difference| ≤ tolerance → settled, no row.
+-- Expected = cash rule up to count_date + the declared unloaded withdrawals
+-- that the statement hasn't brought yet:
+--   real    = ATM Withdrawal rows dated in (statement_through, count_date]
+--   covered = an ATM Withdrawal row dated after count_date exists
+--   declared used = covered ? 0 : greatest(declared − real, 0)
+-- (same rule as expectedFor in camp-hub/cash-count.js). A statement loaded
+-- only part of the way never drops the part still missing.
+-- |difference| ≤ tolerance → settled, no row.
 -- Returns {status, expected, difference, declared_used, real_withdrawals,
 --          adjustment: <ledger row as json> | null}.
 create or replace function public.camp_cash_settle(p_count uuid, p_note text default null)
@@ -170,6 +174,7 @@ declare
   loc      public.locations;
   v_bal    numeric;
   v_real   numeric;
+  v_cov    boolean;
   v_decl   numeric;
   v_exp    numeric;
   v_diff   numeric;
@@ -203,7 +208,10 @@ begin
     from public.ledger_entries e
    where e.location_id = c.location_id and e.type = 'money_sent' and e.payment_method = 'ATM Withdrawal'
      and e.entry_date > coalesce(c.statement_through, '-infinity'::date) and e.entry_date <= c.count_date;
-  v_decl := case when v_real > 0 then 0 else coalesce(c.declared_unloaded_withdrawals, 0) end;
+  select exists (select 1 from public.ledger_entries e
+                  where e.location_id = c.location_id and e.type = 'money_sent' and e.payment_method = 'ATM Withdrawal'
+                    and e.entry_date > c.count_date) into v_cov;
+  v_decl := case when v_cov then 0 else greatest(coalesce(c.declared_unloaded_withdrawals, 0) - v_real, 0) end;
   v_exp  := round(v_bal + v_decl, 2);
   v_diff := round(c.counted_total - v_exp, 2);
 

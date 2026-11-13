@@ -96,15 +96,22 @@ window.CAMP_CHECKS = window.CAMP_CHECKS || [];
   }
 
   // Expected cash for a count — the ONE drawer rule, rows dated ≤ the count day.
-  // Declared ATM withdrawals count until the statement brings the real ones
-  // (dated after the snapshot, up to the count day); then those replace them.
+  // Declared ATM withdrawals count until the statement brings the real ones:
+  //   real    = withdrawals now in the ledger dated (snapshot, count day]
+  //   covered = the statement reaches past the count day (an ATM row dated after it)
+  //   declared used = covered ? 0 : max(0, declared − real)
+  // so a statement loaded only part of the way (e.g. through the day before
+  // the count) never drops the part still missing. Same rule in SQL
+  // (camp_cash_settle).
   function expectedFor(countDate, declared, snapshotThrough) {
-    const rows = ledger().filter((r) => String(r.date || '') <= countDate);
+    const all = ledger();
+    const rows = all.filter((r) => String(r.date || '') <= countDate);
     const ledgerCash = round2(ledgerDrawerBalances(rows).cashLocal);
     const from = snapshotThrough || '';
     const real = round2(rows.filter((r) => isAtm(r) && String(r.date || '') > from).reduce((s, r) => s + localAmt(r), 0));
-    const declaredUsed = real > 0 ? 0 : round2(declared || 0);
-    return { ledgerCash, real, declaredUsed, expected: round2(ledgerCash + declaredUsed) };
+    const covered = all.some((r) => isAtm(r) && String(r.date || '') > countDate);
+    const declaredUsed = covered ? 0 : round2(Math.max(0, Number(declared || 0) - real));
+    return { ledgerCash, real, covered, declaredUsed, expected: round2(ledgerCash + declaredUsed) };
   }
   function countView(c) {
     const e = expectedFor(c.count_date, Number(c.declared_unloaded_withdrawals || 0), c.statement_through);
@@ -378,7 +385,7 @@ window.CAMP_CHECKS = window.CAMP_CHECKS || [];
     const v = countView(c);
     const thr = c.statement_through ? dMon(c.statement_through) : '';
     const nowThrough = statementThrough(colombo().date);
-    const covered = nowThrough && nowThrough >= c.count_date;
+    const covered = v.covered;
     const at = c.created_at ? colombo(new Date(c.created_at)).time : '';
     q('.mhdr-title').textContent = `Count of ${dMon(c.count_date)}`;
     q('.mhdr-sub').textContent = `Counted ${dMon(colomboDateOf(c.created_at) || c.count_date)}${at ? ` ${at}` : ''} · ${covered ? 'statement covers it' : 'open'}`;
@@ -388,12 +395,13 @@ window.CAMP_CHECKS = window.CAMP_CHECKS || [];
       ? `Within ${short(TOLERANCE)}: settling closes the count with no ledger line.`
       : `Settling writes one ledger line: <strong>${v.diff < 0 ? 'Cash Out' : 'Into cash'} · Cash count · ${v.diff < 0 ? '−' : '+'}${num(Math.abs(v.diff))}</strong>.`;
     q('.mbody').innerHTML = `
-      ${covered ? '' : `<div class="cc-warn">The bank statement in the app goes up to ${nowThrough ? dMon(nowThrough) : '—'}. Until it covers ${dMon(c.count_date)}, the cash ${c.declared_unloaded_withdrawals > 0 ? `Nadith said he took (${num(c.declared_unloaded_withdrawals)})` : 'taken from the ATM'} is not checked against the bank.</div>`}
+      ${covered ? '' : `<div class="cc-warn">The bank statement in the app goes up to ${nowThrough ? dMon(nowThrough) : '—'}, not past ${dMon(c.count_date)} yet. ${v.declaredUsed > 0 ? `${num(v.declaredUsed)} of the cash Nadith said he took is not in the ledger yet and counts as expected cash.` : 'Cash taken from the ATM since then is not checked against the bank yet.'}</div>`}
       <table class="cc-sum">
         <tr><td>Counted (bar ${short(c.bar_box)} + pocket ${short(c.pocket)})</td><td class="r">${num(v.counted)}</td></tr>
         <tr><td>Expected (ledger to ${dMon(c.count_date)})</td><td class="r">${num(v.ledgerCash)}</td></tr>
         <tr><td>Said taken ${thr ? `after ${thr}` : 'from the ATM'}</td><td class="r">${num(c.declared_unloaded_withdrawals)}</td></tr>
         ${v.real > 0 ? `<tr><td>Statement shows ${thr ? `after ${thr}` : ''} (in the ledger)</td><td class="r">${num(v.real)}</td></tr>` : ''}
+        ${v.declaredUsed > 0 ? `<tr><td>+ said taken, not in the ledger yet</td><td class="r" id="csDeclUsed">${num(v.declaredUsed)}</td></tr>` : ''}
         <tr class="tot"><td>Difference</td><td class="r" id="csDiff">${v.diff < 0 ? '−' : v.diff > 0 ? '+' : ''}${num(Math.abs(v.diff))}</td></tr>
       </table>
       ${reason ? `<div class="cc-hint">Reason: ${esc(reason.t)}.${c.note ? ` «${esc(c.note)}»` : ''}</div>` : (c.note ? `<div class="cc-hint">«${esc(c.note)}»</div>` : '')}
