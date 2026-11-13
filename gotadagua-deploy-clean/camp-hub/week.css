@@ -290,3 +290,4 @@
 #weekRoot .wk-gsec { padding-left: 0; padding-right: 0; }
 .wk-untimed .section-lbl { display: block; margin: 0 0 2px; padding: 0; }
 .wk-untimed .cell-sub { display: block; font-size: 12.5px; color: var(--muted); }
+#weekRoot .empty-state .btn .ic { width: 16px; height: 16px; margin: 0; color: inherit; }

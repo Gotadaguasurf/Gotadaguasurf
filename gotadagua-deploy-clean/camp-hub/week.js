@@ -952,7 +952,7 @@
       <span class="wk-gc" data-l="Room">${r ? h(room) : `<span class="badge badge-grey">${OUTSIDE}</span>`}${movedRooms(g) ? `<span class="cell-sub">from ${h(movedRooms(g)[0])}${moveDay(g) ? ', ' + h(fd(moveDay(g))) : ''}</span>` : !r ? '<span class="cell-sub">meals only</span>' : ''}</span>
       <span class="wk-gc" data-l="Surf">${h(c ? c : 'no lessons')}${c ? `<span class="cell-sub">${h(levelOf(g))}${isYoga(g) ? ' · Yoga' : ''}</span>` : isYoga(g) ? '<span class="cell-sub">Yoga</span>' : ''}</span>
       <span class="wk-gc" data-l="Diet">${h(d === 'none' ? 'no special diet' : d || 'diet ?')}${al ? ` <span class="badge badge-red">allergies: ${h(al)}</span>` : ''}</span>
-      <span class="wk-gc" data-l="Phone">${g.phone ? `<a href="tel:${h(g.phone)}">${h(g.phone)}</a>` : '<span class="wk-nil">no phone</span>'}</span>
+      <span class="wk-gc" data-l="Phone">${(g.phone || phoneOf(g)) ? `<a href="tel:${h(g.phone || phoneOf(g))}">${h(g.phone || phoneOf(g))}</a>` : '<span class="wk-nil">no phone</span>'}</span>
       <span class="wk-gc" data-l="Arrival">${h(arrive)}</span><span class="wk-gc wk-ginv">${inviteCell(g, ws)}</span></div>`;
   }
   // ── Week group (WhatsApp) ───────────────────────────────────────────────
@@ -978,12 +978,14 @@
     p = GT.cleanPhone(p);
     return /^\+[1-9]\d{7,14}$/.test(p) ? p : '';
   }
+  // The guest's phone as E.164; a guest on a second booking may only have it on the first one.
+  const phoneOf = g => { let p = e164(g.phone); for (let x = g._prev; x && !p; x = x._prev) p = e164(x.phone); return p; };
   // Every guest of the week once (a guest on two bookings back to back is one person), with the phone if there is a valid one.
   function groupPeople(ws, rows, withOutside) {
     const seen = new Map();
     rows.filter(g => counted(g) && inWeek(g, ws)).sort(byStay).forEach(g => {
       const k = personKey(g.guest_name) || g.guest_name;
-      let phone = e164(g.phone); for (let x = g._prev; x && !phone; x = x._prev) phone = e164(x.phone);   // the earlier booking may hold the phone
+      const phone = phoneOf(g);
       const outside = !segments(g).some(x => x.r && x.from < add(ws, 7) && x.to > ws);
       if (!seen.has(k)) seen.set(k, { key: k, g, phone, outside });
       else { const x = seen.get(k); if (!x.phone && phone) { x.phone = phone; } x.outside = x.outside && outside; }
@@ -1036,7 +1038,7 @@
   function inviteCell(g, ws) {
     const st = groupStore(ws); if (!inviteLinkOk(st.link)) return '';
     const k = personKey(g.guest_name) || g.guest_name;
-    if (!e164(g.phone)) return '<span class="wk-nil">no phone</span>';
+    if (!phoneOf(g)) return '<span class="wk-nil">no phone</span>';
     return st.invited[k] ? `<button class="btn btn-s btn-sm wk-invited" title="Send again" onclick="WeekUI.invite('${g.id}')">${ic('check')} Invited</button>`
       : `<button class="btn btn-s btn-sm" onclick="WeekUI.invite('${g.id}')">${ic('send')} Send invite</button>`;
   }
@@ -1251,7 +1253,7 @@
     async copyGroupDescription() { const el = $('wkDesc'); if (el) W.group.description = el.value; const ok = await clip(groupDescription(W.week)); say(ok ? 'Description copied' : "Couldn't copy", ok ? 'ok' : 'err'); },
     setInviteLink(v) { const ws = W.week; return groupEdit(g => { const o = groupStore(ws); o.link = String(v || '').trim(); g.weeks = { ...(g.weeks || {}), [ws]: o }; }); },
     invite(id) { const ws = W.week; const g = rowsOf(ws).find(x => x.id === id); const st = groupStore(ws); if (!g || !inviteLinkOk(st.link)) return;
-      window.open(GT.whatsappUrl(e164(g.phone), inviteText(g, st.link)), '_blank', 'noopener');
+      window.open(GT.whatsappUrl(phoneOf(g), inviteText(g, st.link)), '_blank', 'noopener');
       return groupEdit(grp => { const o = groupStore(ws); o.invited[personKey(g.guest_name) || g.guest_name] = new Date().toISOString(); grp.weeks = { ...(grp.weeks || {}), [ws]: o }; }); },
     findGuest(name) { W.q = name; W.tab = 'guests'; W.team = 'guests'; W.day = 'week'; render(); },
     shiftWeek(n) { W.week = add(W.week, n); W.day = 'week'; W.undo = null; render(); loadWeek(W.week).then(render); },
