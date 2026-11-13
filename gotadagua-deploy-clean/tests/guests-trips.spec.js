@@ -129,3 +129,13 @@ test('guest rows (for the weekly staff lists): one normalised row per Sri Lanka 
   expect(one.diet).toBe('Vegetarian / Gluten free');
   expect(one.allergies).toBe('Nuts / nuts, severe');
 });
+
+test('guest rows: partner («don\'t charge») from Booking due > 0, named by the email domain and carried to the whole booking', () => {
+  const head = '"Guest","Booking status","Booking","Packages","Check-in on","Check-out on","Booking due","Email"';
+  const rows = G.guestRows([head,
+    '"Ana","paid","2026-1","Surf Camp Ahangama","Sat 14 Nov 2026","Sat 21 Nov 2026","599.00","ana@oceanadventure.surf"',
+    '"Rui","paid","2026-1","Surf Camp Ahangama","Sat 14 Nov 2026","Sat 21 Nov 2026","599.00",""',
+    '"Eva","paid","2026-2","Surf Camp Ahangama","Sat 14 Nov 2026","Sat 21 Nov 2026","0.00","eva@gmail.com"'].join('\n'), 'x.csv');
+  expect(rows.map(g => [g.guest_name, g.partner, g.booking_due])).toEqual([['Ana', 'Ocean Adventure', 599], ['Rui', 'Ocean Adventure', 599], ['Eva', '', 0]]);
+  expect(rows[0].email).toBeUndefined(); // the email stays only in raw
+});
