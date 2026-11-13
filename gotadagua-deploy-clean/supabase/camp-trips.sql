@@ -224,6 +224,7 @@ declare
   e public.ledger_entries%rowtype;
   l public.camp_transport_payments%rowtype;
   v_sig text; v_driver uuid; v_sum numeric := 0; v_n int := 0; t record; v_ids uuid[] := '{}';
+  v_txt text; v_want_arr int; v_want_dep int; v_have_arr int := 0; v_have_dep int := 0; v_reason text;
   v_go date := public.camp_trips_go_live();
 begin
   perform set_config('app.trip_pay', 'on', true);
@@ -269,6 +270,14 @@ begin
     return 'unchanged';
   end if;
   v_driver := public.camp_transport__driver_in(e.location_id, e.description);
+  -- No name typed: the airport is Dilan's run and the camp errands are Sampath's,
+  -- so the linked item picks the default driver for that kind (Transport → Drivers).
+  if v_driver is null and coalesce(e.linked_item, '') in ('Airport', 'Transport Surf Lesson', 'Food Supply', 'Laundry') then
+    select id into v_driver from public.camp_drivers
+     where location_id = e.location_id and active
+       and (case when e.linked_item = 'Airport' then 'airport' else 'tuktuk' end) = any(default_for)
+     order by created_at limit 1;
+  end if;
   -- Only driver payments are reconciled: a named driver, or a driver-run linked item.
   -- Fuel, scooter, deliveries etc. (no driver, no such item) are left alone.
   if v_driver is null and coalesce(e.linked_item, '') not in ('Airport', 'Transport Surf Lesson', 'Food Supply', 'Laundry') then
@@ -279,6 +288,50 @@ begin
     return 'not_driver';
   end if;
   update public.camp_trips set payment_entry_id = null where payment_entry_id = p_entry;
+  -- Counts typed by Nadith («Dilan 1 arrival 3 departures», «11 Arrivals, 2Drops»):
+  -- when present, the payment takes exactly that many of the driver's oldest unpaid
+  -- arrivals / departures, and must match both the counts and the amount.
+  v_txt := lower(coalesce(e.description, ''));
+  v_want_arr := substring(v_txt from '(\d+)\s*x?\s*(?:arrivals?|arr\M|pick\s*-?\s*ups?)')::int;
+  v_want_dep := substring(v_txt from '(\d+)\s*x?\s*(?:departures?|deps?\M|drops?|drop\s*-?\s*offs?)')::int;
+  if v_driver is not null and (v_want_arr is not null or v_want_dep is not null) then
+    for t in
+      select id, kind, expected_price from (
+        (select id, kind, expected_price, trip_date, trip_time, created_at from public.camp_trips
+          where location_id = e.location_id and driver_id = v_driver and payment_entry_id is null and kind = 'airport_arrival'
+            and status not in ('cancelled','no_show','merged') and public.camp_trip_is_done(status, trip_date, trip_time)
+            and trip_date <= e.entry_date and trip_date >= v_go
+          order by trip_date, trip_time nulls last, created_at, id limit coalesce(v_want_arr, 0))
+        union all
+        (select id, kind, expected_price, trip_date, trip_time, created_at from public.camp_trips
+          where location_id = e.location_id and driver_id = v_driver and payment_entry_id is null and kind = 'airport_departure'
+            and status not in ('cancelled','no_show','merged') and public.camp_trip_is_done(status, trip_date, trip_time)
+            and trip_date <= e.entry_date and trip_date >= v_go
+          order by trip_date, trip_time nulls last, created_at, id limit coalesce(v_want_dep, 0))
+      ) x
+    loop
+      v_sum := v_sum + t.expected_price; v_n := v_n + 1; v_ids := v_ids || t.id;
+      if t.kind = 'airport_arrival' then v_have_arr := v_have_arr + 1; else v_have_dep := v_have_dep + 1; end if;
+    end loop;
+    if v_n > 0 then
+      perform 1 from public.camp_trips where id = any(v_ids) for update;
+      update public.camp_trips set payment_entry_id = p_entry where id = any(v_ids) and payment_entry_id is null;
+    end if;
+    v_reason := case
+      when v_have_arr < coalesce(v_want_arr, 0) or v_have_dep < coalesce(v_want_dep, 0) then
+        'counts: ' || concat_ws(', ',
+          case when v_want_arr is not null then v_have_arr || ' of ' || v_want_arr || ' arrivals found' end,
+          case when v_want_dep is not null then v_have_dep || ' of ' || v_want_dep || ' departures found' end)
+      when v_sum <> e.amount_local then 'counts match, amounts differ'
+    end;
+    insert into public.camp_transport_payments as p (entry_id, location_id, driver_id, entry_amount, trips_amount, trips_count, state, reason, linked_by, signature, updated_at)
+    values (p_entry, e.location_id, v_driver, e.amount_local, v_sum, v_n,
+            case when v_reason is null then 'matched' else 'review' end, v_reason, 'auto', v_sig, now())
+    on conflict (entry_id) do update set driver_id = excluded.driver_id, entry_amount = excluded.entry_amount,
+      trips_amount = excluded.trips_amount, trips_count = excluded.trips_count, state = excluded.state,
+      reason = excluded.reason, signature = excluded.signature, updated_at = now(), note = null;
+    return case when v_reason is null then 'matched' else 'review' end;
+  end if;
   if v_driver is not null then
     for t in
       select id, expected_price from public.camp_trips
