@@ -19,6 +19,8 @@
 --  saved as done. Francisco can still mark no-show or cancel.
 --
 --  Tables: camp_drivers, camp_trips, camp_transport_payments, camp_week_guests.
+--  NOTE: supabase/camp-trips-v2.sql replaces camp_transport__link, camp_trips_import and
+--  camp_transport_link_own. After re-running this file, run camp-trips-v2.sql again.
 --  Idempotent: safe to run again. NOT run against production by the agent —
 --  Miguel runs it after his OK. Check queries at the bottom (SELECT only).
 -- ════════════════════════════════════════════════════════════════════════════

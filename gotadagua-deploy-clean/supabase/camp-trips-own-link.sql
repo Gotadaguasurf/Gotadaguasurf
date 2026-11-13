@@ -29,6 +29,8 @@
 --      the local manager has can_edit = true too) for any Transport expense.
 --  The local manager cannot overwrite a link Francisco or «Pay a driver» made.
 --
+--  NOTE: supabase/camp-trips-v2.sql replaces camp_transport__link, camp_trips_import and
+--  camp_transport_link_own. After re-running this file, run camp-trips-v2.sql again.
 --  Requires supabase/camp-trips.sql (live since 13 Nov). Idempotent.
 --  NOT run against production by the agent — Miguel runs it after his OK.
 -- ════════════════════════════════════════════════════════════════════════════

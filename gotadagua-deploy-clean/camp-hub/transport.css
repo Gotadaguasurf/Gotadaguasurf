@@ -63,6 +63,7 @@
 .tr-plan-add .btn { grid-column: 1 / -1; justify-content: center; }
 .tr-run-n { margin-bottom: var(--sp-3); }
 .tr-paid-note .btn { margin-left: var(--sp-2); }
+.tr-modal .tr-paid-note { margin-bottom: var(--sp-4); }
 .tr-free-why .hint { margin-top: 6px; }
 
 .tr-modal .tr-seg { margin-bottom: var(--sp-4); }
@@ -113,8 +114,13 @@
   #transportRoot .tr-totals { grid-template-columns: 1fr; gap: var(--sp-2); }
   .tr-totals .kpi { padding: var(--sp-3) var(--sp-4); }
   .tr-pay { flex-direction: row; align-items: center; gap: var(--sp-2); text-align: left; flex-wrap: wrap; }
-  .tr-tuk-line { grid-template-columns: 1fr auto; padding: var(--sp-2) var(--sp-4); }
-  .tr-tuk-line .tr-tuk-amt { grid-column: 1 / -1; text-align: left; color: var(--muted); font-size: 13px; }
+  .tr-tuk-line { grid-template-columns: 1fr auto auto; gap: var(--sp-2); padding: var(--sp-2) var(--sp-4); }
+  .tr-tuk-line .tr-tuk-amt { font-size: 13px; min-width: 64px; }
+  .tr-totals .kpi { display: grid; grid-template-columns: 1fr auto; align-items: baseline; column-gap: var(--sp-3); }
+  .tr-totals .kpi-label { margin-bottom: 0; }
+  .tr-totals .kpi-value { font-size: 18px; }
+  .tr-totals .kpi-sub { grid-column: 1 / -1; margin-top: 4px; }
+  .tr-modal .tr-paid-note { margin-bottom: var(--sp-3); }
   .tr-plan-add { grid-template-columns: 1fr 1fr; }
   .tr-plan-add .mfield:nth-child(2) { grid-column: 1 / -1; grid-row: 1; }
   .tr-row { grid-template-columns: 48px 1fr; }

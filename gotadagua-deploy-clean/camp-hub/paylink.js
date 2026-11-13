@@ -134,14 +134,14 @@
       return v ? Number(v.price) || 0 : 0;
     } catch (_) { return 0; }
   }
-  const newDraft = () => ({ name: '', date: entryDate(), kind: 'airport_arrival', reason: 'staff' });
+  const newDraft = () => ({ name: '', date: entryDate() < goLive() ? goLive() : entryDate(), kind: 'airport_arrival', reason: 'staff' });   // never a date before go-live
   function addForm() {
     const d = P.draft || (P.draft = newDraft());
     const pills = (act, list, cur) => `<div class="pills">${list.map(([v, l]) => `<button type="button" class="pill${v === cur ? ' active' : ''}" data-act="${act}" data-v="${v}">${l}</button>`).join('')}</div>`;
     return `<div class="pl-add" id="pl_add">
       <div class="pl-full"><div class="pl-lbl">Name</div><input id="pl_name" data-draft="name" value="${h(d.name)}" placeholder="Who was it for?" autocomplete="off"></div>
-      <div><div class="pl-lbl">Date</div><input type="date" id="pl_date" data-draft="date" value="${h(d.date)}"></div>
-      <div><div class="pl-lbl">Trip</div>${pills('kind', [['airport_arrival', 'Arrival'], ['airport_departure', 'Departure']], d.kind)}</div>
+      <div class="pl-full"><div class="pl-lbl">Date</div><input type="date" id="pl_date" data-draft="date" value="${h(d.date)}"></div>
+      <div class="pl-full"><div class="pl-lbl">Trip</div>${pills('kind', [['airport_arrival', 'Arrival'], ['airport_departure', 'Departure']], d.kind)}</div>
       <div class="pl-full"><div class="pl-lbl">Why is it free?</div>${pills('reason', FREE_REASONS, d.reason)}</div>
       <div class="pl-full pl-add-btns"><button type="button" class="btn btn-s btn-sm" data-act="cancel">Cancel</button><button type="button" class="btn btn-s btn-sm" id="pl_add_ok" data-act="add">Add to this payment</button></div></div>`;
   }
