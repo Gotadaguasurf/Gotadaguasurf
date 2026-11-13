@@ -54,18 +54,31 @@
   // The rooms of the camp, so a room that is empty all week still shows in the grid.
   // `beds` only for shared rooms (free beds are counted); private rooms are free or taken as a whole.
   const CAMP_ROOMS = [
-    { w: 'marissa', label: 'Marissa', beds: 4, note: '4 beds' }, { w: 'kabalana', label: 'Kabalana', beds: 4, note: '4 beds' }, { w: 'unawatuna', label: 'Unawatuna', beds: 6, note: 'girls' },
-    { w: 'hiriketeya', label: 'Hiriketeya Ensuite' }, { w: 'ahangama', label: 'Ahangama Ensuite' }, { w: 'madiha', label: 'Madiha Ensuite' },
-    { w: 'midigama', label: 'Midigama Ensuite' }, { w: 'welligama', label: 'Welligama Sea View Ensuite' },
+    { w: 'marissa', beds: 4, note: '4 beds' }, { w: 'kabalana', beds: 4, note: '4 beds' }, { w: 'unawatuna', beds: 6, note: 'girls' },
+    { w: 'hiriketeya' }, { w: 'ahangama' }, { w: 'madiha' }, { w: 'midigama' }, { w: 'welligama' },
   ];
   const NO_ALLERGY = /^(none|none known|no|n\/a|na|nothing|nope|-)$/i;   // answers that are not an allergy
-  const LEVELS = ['Beginner', 'Experienced beginner', 'Intermediate', 'Advanced', 'Level not set'];
+  // The names the camp uses for the rooms (Miguel's own messages), by the first word of the
+  // Bookinglayer accommodation name. Edit here.
+  const ROOM_SHORT = {
+    marissa: 'Mirissa room', kabalana: 'Kabalana room', unawatuna: 'Unawatuna room', hiriketeya: 'Hiriketeya room', ahangama: 'Ahangama room',
+    madiha: 'Madiha room', midigama: 'Midigama room', welligama: 'Weligama room', weligama: 'Weligama room',
+  };
+  const CAMP_NAME = { 'sri-lanka': 'Sri Lanka' };  // the WhatsApp group is named after the camp
+  // Week group settings, kept per location in location_state_store (key GROUP_KEY): the season's first
+  // Saturday (week 1), the group description template, and per week the invite link and who was invited.
+  const GROUP_KEY = 'week_group_v1';
+  const SEASON_WEEK1_DEFAULT = '2026-08-15';       // a Saturday → Sat 14 Nov 2026 is week 14
+  const GROUP_DESC_DEFAULT = '📅 YOUR WEEKLY SCHEDULE - WEEK {week} ({dates})\n\nEdit me: write the weekly schedule here once. It is kept for the next weeks; {week} and {dates} fill themselves in.';
+  const CHANGEOVER_WEEKDAY = 6;         // Saturday (Date.getDay): the camp's weeks run Sat–Sat
+  const LEVELS = ['Beginner', 'Experienced beginner', 'Intermediate', 'Experienced intermediate', 'Advanced', 'Level not set'];
 
   const SLUG = (typeof __HUB_LOCATION_SLUG !== 'undefined') ? __HUB_LOCATION_SLUG : '';
   const enabled = () => WEEK_ENABLED_LOCATIONS.has(SLUG) && !LOCAL_MANAGER_MODE && !CAMP_TAB_ONLY_MODE;
 
   const W = {
-    week: null, day: null, tab: 'overview', team: 'cleaning', mode: 'lists', q: '', scrollTo: '',
+    week: null, day: null, tab: 'overview', team: 'cleaning', mode: 'lists', q: '', scrollTo: '', groupOutside: true,
+    group: { season_start: SEASON_WEEK1_DEFAULT, description: GROUP_DESC_DEFAULT, weeks: {} },
     cache: {},                 // ws → { rows, msgs, msgsOk }
     meta: null,                // latest import { id, at, min, max } | null
     metaLoaded: false, error: '', loading: null, undo: null, busy: new Set(),
@@ -112,6 +125,7 @@
     let label = w1, note = '';
     if (shared) { const m = n.match(/\((\d+)\s*p\)/i); note = /girls/.test(low) ? 'girls' : m ? `${m[1]} beds` : ''; }
     else label = w1 + (/sea view/.test(low) ? ' Sea View' : '') + ' Ensuite';
+    label = ROOM_SHORT[w1.toLowerCase()] || label;      // the name the camp says
     const o = ROOM_ORDER.indexOf(w1.toLowerCase());
     return { key: label.toLowerCase(), label, shared, note, order: o < 0 ? 99 : o };
   }
@@ -127,6 +141,7 @@
   function levelOf(g) {
     const l = String(g.level || '').toLowerCase();
     if (!l.trim()) return 'Level not set';
+    if (/exp\w*\s+inter/.test(l)) return 'Experienced intermediate';
     if (/exp/.test(l)) return 'Experienced beginner';
     if (/beginner/.test(l)) return 'Beginner';
     if (/intermediate/.test(l)) return 'Intermediate';
@@ -140,10 +155,13 @@
     if (!String(g.diet || '').trim()) return '';
     return d.length ? d.join(' / ') : 'none';
   }
+  const allergyOf = g => String(g.allergies || '').split(' / ').map(s => s.trim()).filter(s => s && !NO_ALLERGY.test(s)).join(' / ');
   const isYoga = g => /yoga/i.test(String(g.activities || '') + ' ' + String(g.packages || ''));
   const inCamp = (g, d) => g.check_in && g.check_out && g.check_in <= d && d < g.check_out;
   const inWeek = (g, ws) => g.check_in && g.check_out && g.check_in <= add(ws, 6) && g.check_out > ws;
+  const bedNum = b => parseInt(b, 10) || 99;
   const byStay = (a, b) => (a.check_in || '').localeCompare(b.check_in || '') || String(a.booking_ref).localeCompare(String(b.booking_ref)) || String(a.bed_number || '').localeCompare(String(b.bed_number || ''), undefined, { numeric: true }) || a.guest_name.localeCompare(b.guest_name);
+  const nameSort = (a, b) => a.guest_name.localeCompare(b.guest_name);
 
   // Who counts, against the latest import (the file holds live guests only, so a
   // cancellation shows up as absence):
@@ -152,7 +170,7 @@
   //   dropped  check-in inside the file's range but not in it → not counted, «cancelled?»
   //   gone     marked «Not here» (booking_status not live) → left out
   function classify(rows, meta) {
-    return rows.map(g => {
+    return link(rows.map(g => {
       let st = 'in';
       if (!GT.OK_STATUS.has(String(g.booking_status || '').toLowerCase())) st = 'gone';
       else if (meta && meta.id && (g.raw || {})._kept === meta.id) st = 'in';    // Francisco answered «Still here» for this import
@@ -161,86 +179,143 @@
         else if (g.check_in <= meta.max) st = 'dropped';
       }
       return { ...g, _st: st };
-    });
+    }));
   }
   const counted = g => g._st === 'in' || g._st === 'carry';
 
+  // The same person on two bookings back to back (check-out of one = check-in of the
+  // next) is one stay: no check-out that day, and «from last week» on the check-in list.
+  // Names match without accents or case, on first + last name.
+  function personKey(name) {
+    const w = String(name || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z\s]/g, ' ').split(/\s+/).filter(Boolean);
+    return w.length ? w[0] + ' ' + w[w.length - 1] : '';
+  }
+  function link(rows) {
+    const by = new Map();
+    rows.filter(counted).forEach(g => { const k = personKey(g.guest_name); if (k) { if (!by.has(k)) by.set(k, []); by.get(k).push(g); } });
+    by.forEach(list => list.forEach(a => { const b = list.find(x => x !== a && x.check_in === a.check_out && a.check_in < a.check_out); if (b && !b._prev && !a._next) { a._next = b; b._prev = a; } }));
+    return rows;
+  }
+  const stayStart = g => { let x = g; while (x._prev) x = x._prev; return x.check_in; };
+  const stayEnd = g => { let x = g; while (x._next) x = x._next; return x.check_out; };
+
+  // Where a guest sleeps, night by night. Two rooms on one booking = a room move; the
+  // file has no move date, so the move is taken on the changeover Saturday inside the
+  // stay (the camp's weeks run Sat–Sat). With no Saturday inside, the last room counts
+  // for the whole stay and the move stays in «To check».
+  function moveDay(g) {
+    if (!g.check_in || !g.check_out) return null;
+    for (let d = add(g.check_in, 1); d < g.check_out; d = add(d, 1)) if (GT.weekday(d) === CHANGEOVER_WEEKDAY) return d;
+    return null;
+  }
+  function segments(g) {
+    const names = roomNames(g.accommodation);
+    const beds = String(g.bed_number || '').split(',').map(s => s.trim());
+    const seg = (i, from, to) => ({ g, r: roomInfo(names[i]), bed: beds[Math.min(i, beds.length - 1)] || '', from, to });
+    if (!names.length) return [{ g, r: null, bed: '', from: g.check_in, to: g.check_out }];
+    const md = names.length > 1 ? moveDay(g) : null;
+    return md ? [seg(0, g.check_in, md), seg(names.length - 1, md, g.check_out)] : [seg(names.length - 1, g.check_in, g.check_out)];
+  }
+  const roomOn = (g, d) => { const s = segments(g).find(x => x.from <= d && d < x.to); return s ? s.r : null; };
+  const firstRoom = g => segments(g)[0].r;
+  const moveUnknown = g => roomNames(g.accommodation).length > 1 && !moveDay(g);
+  const sameRoom = (a, b) => (a ? a.key : '') === (b ? b.key : '');
+  const OUTSIDE = 'Outside of camp';
+  const nightsNote = n => `${n} ${n === 1 ? 'night' : 'nights'}`;
+
+  // One day for the cleaning team: who leaves a room, who comes into a room, who eats but sleeps outside.
+  //   outs     leaving the camp, or leaving this room for another one (with where they go)
+  //   ins      new guests, guests coming from another room, and — on the changeover Saturday —
+  //            the guests who stay on in the same room («from last week»)
+  //   outside  the same, for guests with no room in the file
+  function dayMoves(rows, d) {
+    const outs = [], ins = [], outside = [];
+    const changeover = GT.weekday(d) === CHANGEOVER_WEEKDAY;
+    rows.filter(counted).forEach(g => {
+      const segs = segments(g); const end = stayEnd(g); const left = daysBetween(d, end);
+      segs.forEach((s, i) => {
+        if (s.to === d) {
+          const next = segs[i + 1] || (g._next ? segments(g._next)[0] : null);
+          if (!next) { if (s.r) outs.push({ g, r: s.r, bed: s.bed, note: '', leaves: true }); }
+          else if (!sameRoom(next.r, s.r) && s.r) outs.push({ g, r: s.r, bed: s.bed, note: `stays ${nightsNote(left).replace(' ', ' more ')}, in ${next.r ? next.r.label : 'no room yet'}`, move: true });
+        }
+        if (s.from === d) {
+          const prev = segs[i - 1] || (g._prev ? segments(g._prev).slice(-1)[0] : null);
+          const short = left < 7 ? nightsNote(left) : '';
+          let note = short, kind = 'new';
+          if (prev && !sameRoom(prev.r, s.r)) { note = [`from ${prev.r ? prev.r.label : 'outside'}`, short || 'one more week with us'].join(', '); kind = 'move'; }
+          else if (prev) { if (!changeover) return; note = stayOn(left); kind = 'stay'; }
+          (s.r ? ins : outside).push({ g, r: s.r, bed: s.bed, note, kind });
+        } else if (changeover && s.from < d && d < s.to) (s.r ? ins : outside).push({ g, r: s.r, bed: s.bed, note: stayOn(left), kind: 'stay' });
+      });
+    });
+    return { outs, ins, outside };
+  }
+  const stayOn = left => left >= 7 ? 'from last week, one more week with us' : `from last week, ${nightsNote(left).replace(' ', ' more ')}`;
+
   // ── Message builders (pure): parts = [{t:'title'|'h'|'l'|'gap', s}] ─────
+  // The camp's own WhatsApp style (Miguel, 13 Nov): a bold title, one block per room or
+  // group (bold), guests as «- Name», short notes in brackets (italic). No counts, codes or booking refs.
   const T = s => ({ t: 'title', s }), H = s => ({ t: 'h', s }), L = s => ({ t: 'l', s }), G = { t: 'gap', s: '' };
   const toText = parts => parts.map(p => p.s).join('\n').replace(/\n{3,}/g, '\n\n').trim();
-  // Room lines: shared rooms list each guest (with the bed when the file has one) or a comma list;
-  // private rooms join the people of one booking with «+».
-  function roomLines(list) {
+  const UP = s => String(s).toUpperCase();
+  const dayTitle = (what, d) => `*${what} - ${UP(fdm(d))}*`;                       // *CHECK IN - SAT 14 NOV*
+  const weekTitle = (what, ws) => `*${what} - ${Number(ws.slice(8))} TO ${UP(GT.dMon(add(ws, 7)))}*`;   // *ROOMS - 14 TO 21 NOV* («week 14» is the season's week number)
+  const dash = (name, note) => `- ${name}${note ? ` _(${note})_` : ''}`;                 // WhatsApp: _italic_ notes
+  const B = s => L(`*${s}*`);                                                       // WhatsApp: *bold* headings
+  // Stored and compared with the neutral title; sent with «TODAY» / «TOMORROW» when the day is today or tomorrow
+  // (the message for a day normally goes out the evening before).
+  function dress(text, today) {
+    return String(text).replace(/^\*([A-Z ]+) - ([A-Z]{3}) (\d{1,2}) ([A-Z]{3})\*$/gm, (m, what, wd, n, mon) => {
+      const hit = [[today, 'TODAY'], [add(today, 1), 'TOMORROW']].find(([d]) => UP(fdm(d)) === `${wd} ${n} ${mon}`);
+      return hit ? `*${what} ${hit[1]} - ${n} ${mon}*` : m;
+    });
+  }
+  // Blocks by room: the room name, then «- Name (note)» by bed.
+  function roomBlocks(list) {
     const rooms = new Map();
-    list.slice().sort(byStay).forEach(g => { const r = roomOf(g) || { key: '?', label: 'No room yet', shared: true, order: 100 }; if (!rooms.has(r.key)) rooms.set(r.key, { r, gs: [] }); rooms.get(r.key).gs.push(g); });
+    list.forEach(x => { if (!rooms.has(x.r.key)) rooms.set(x.r.key, { r: x.r, xs: [] }); rooms.get(x.r.key).xs.push(x); });
     const out = [];
-    [...rooms.values()].sort((a, b) => a.r.order - b.r.order || a.r.label.localeCompare(b.r.label)).forEach(({ r, gs }) => {
-      if (r.shared && gs.some(g => String(g.bed_number || '').trim())) gs.forEach(g => out.push(`${r.label}${g.bed_number ? ' bed ' + g.bed_number : ''} – ${g.guest_name}`));
-      else out.push(`${r.label} – ${r.shared ? gs.map(g => g.guest_name).join(', ') : joinBookings(gs, ' + ', ', ')}`);
+    [...rooms.values()].sort((a, b) => a.r.order - b.r.order || a.r.label.localeCompare(b.r.label)).forEach(({ r, xs }) => {
+      out.push(B(r.label), ...xs.slice().sort((a, b) => bedNum(a.bed) - bedNum(b.bed) || nameSort(a.g, b.g)).map(x => L(dash(x.g.guest_name, x.note))), G);
     });
     return out;
   }
-  function joinBookings(gs, within, between, nameFn) {
-    const nm = nameFn || (g => g.guest_name);
-    const by = new Map(); gs.forEach(g => { const k = g.booking_ref || g.guest_name; if (!by.has(k)) by.set(k, []); by.get(k).push(nm(g)); });
-    return [...by.values()].map(x => x.join(within)).join(between);
-  }
-  function moveLine(g) { const m = movedRooms(g); return m ? `${g.guest_name}: ${m.join(' → ')} (check day)` : ''; }
+  const outsideBlock = xs => xs.length ? [L(`*${OUTSIDE}* _(also guests coming for breakfast and dinner)_`), ...xs.slice().sort((a, b) => nameSort(a.g, b.g)).map(x => L(dash(x.g.guest_name, x.note))), G] : [];
 
-  function cleaningDay(rows, d, ws) {
-    const gs = rows.filter(counted);
-    const outs = gs.filter(g => g.check_out === d), ins = gs.filter(g => g.check_in === d);
-    const moves = gs.filter(g => movedRooms(g) && (g.check_in >= ws ? g.check_in : ws) === d && inCamp(g, d)).map(moveLine);
-    const p = [T(`Cleaning – ${fdm(d)}`), G];
-    if (outs.length) p.push(H('Check-out (clean + new sheets)'), ...roomLines(outs).map(L), G);
-    if (ins.length) p.push(H(`Check-in (${ins.length})`), ...roomLines(ins).map(L), G);
-    if (!outs.length && !ins.length) p.push(L('No check-in or check-out'), G);
-    if (moves.length) p.push(H('Room moves'), ...moves.map(L), G);
-    p.push(L(`In camp tonight: ${plural(gs.filter(g => inCamp(g, d)).length, 'guest')}`));
+  function cleaningDay(rows, d) {
+    const m = dayMoves(rows, d);
+    const p = [];
+    if (m.outs.length) p.push(T(dayTitle('CHECK OUT', d)), G, ...roomBlocks(m.outs));
+    if (m.ins.length || m.outside.length) p.push(T(dayTitle('CHECK IN', d)), G, ...roomBlocks(m.ins), ...outsideBlock(m.outside));
+    if (!p.length) p.push(T(dayTitle('ROOMS', d)), G, L('No check-in or check-out'));
     return p;
   }
-  function stayText(g, ws) { return `${g.check_in < ws ? 'here' : fd(g.check_in)} → ${fd(g.check_out)}`; }
-  function cleaningWeek(rows, ws) {
+  function stayText(g, ws) { return `${stayStart(g) < ws ? 'here' : fd(g.check_in)} → ${fd(g.check_out)}`; }
+  // «from last week», «from Tue 17», «until Mon 16», «Mon 16 to Fri 20»: only what differs from the full week.
+  function partOf(from, to, ws, before) {
     const we = add(ws, 7);
-    const gs = rows.filter(g => counted(g) && inWeek(g, ws)).sort(byStay);
-    const p = [T(`Cleaning – week ${range(ws, we)} (${plural(gs.length, 'guest')})`), G];
-    const rooms = new Map();
-    gs.forEach(g => { const r = roomOf(g) || { key: '?', label: 'No room yet', shared: true, order: 100, note: '' }; if (!rooms.has(r.key)) rooms.set(r.key, { r, gs: [] }); rooms.get(r.key).gs.push(g); });
-    const sorted = [...rooms.values()].sort((a, b) => a.r.order - b.r.order || a.r.label.localeCompare(b.r.label));
-    const shared = sorted.filter(x => x.r.shared && x.r.key !== '?'), priv = sorted.filter(x => !x.r.shared), none = sorted.filter(x => x.r.key === '?');
-    if (shared.length) {
-      p.push(H('SHARED ROOMS'));
-      shared.forEach(({ r, gs: list }) => {
-        p.push(L(`${r.label}${r.note ? ` (${r.note})` : ''}`));
-        if (list.some(g => String(g.bed_number || '').trim())) list.forEach(g => p.push(L(`- ${g.bed_number ? 'bed ' + g.bed_number + ' ' : ''}${g.guest_name}: ${stayText(g, ws)}`)));
-        else {
-          const by = new Map(); list.forEach(g => { const k = stayText(g, ws); if (!by.has(k)) by.set(k, []); by.get(k).push(g.guest_name); });
-          by.forEach((names, k) => p.push(L(`- ${names.join(', ')}: ${k}`)));
-        }
-      });
-      p.push(G);
-    }
-    if (priv.length) {
-      p.push(H('PRIVATE ROOMS'));
-      priv.forEach(({ r, gs: list }) => {
-        const groups = new Map(); list.forEach(g => { const k = (g.booking_ref || g.guest_name) + '|' + stayText(g, ws); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(g); });
-        p.push(L(`${r.label} – ${[...groups.values()].map(x => `${x.map(g => g.guest_name).join(' + ')}: ${stayText(x[0], ws)}`).join('; ')}`));
-      });
-      p.push(G);
-    }
-    if (none.length) { p.push(H('NO ROOM YET')); none[0].gs.forEach(g => p.push(L(`- ${g.guest_name}: ${stayText(g, ws)}`))); p.push(G); }
-    const moves = gs.filter(g => movedRooms(g)).map(moveLine);
-    if (moves.length) p.push(H('Room moves'), ...moves.map(L), G);
-    const changes = [];
-    for (let i = 1; i <= 7; i++) {
-      const d = add(ws, i);
-      const outs = gs.filter(g => g.check_out === d), ins = i < 7 ? gs.filter(g => g.check_in === d) : [];
-      const parts = [];
-      if (outs.length) parts.push(i === 7 && outs.length === gs.filter(g => inCamp(g, add(d, -1))).length ? 'everyone out' : `${joinBookings(outs, ' + ', ', ', g => first(g.guest_name))} out`);
-      if (ins.length) parts.push(`${joinBookings(ins, ' + ', ', ', g => first(g.guest_name))} in`);
-      if (parts.length) changes.push(`${fd(d)}: ${parts.join(', ')}`);
-    }
-    if (changes.length) p.push(L(changes.join(' · ')));
+    const a = from > ws ? fd(from) : '', b = to < we ? fd(to) : '';
+    return a && b ? `${a} to ${b}` : a ? `from ${a}` : b ? `${before ? 'from last week, ' : ''}until ${b}` : before ? 'from last week' : '';
+  }
+  // The week's stays by room: [{ g, r, bed, from, to, before, note }] (one per room a guest sleeps in).
+  function weekStays(rows, ws) {
+    const we = add(ws, 7); const out = [];
+    rows.filter(counted).forEach(g => segments(g).forEach((s, i, all) => {
+      if (!(s.from < we && s.to > ws)) return;
+      const before = i === 0 ? stayStart(g) < ws : false;
+      const bits = [partOf(s.from, s.to, ws, before)];
+      if (all[i + 1]) bits.push(`then ${all[i + 1].r ? all[i + 1].r.label : OUTSIDE.toLowerCase()}`);
+      if (i > 0 && all[i - 1].r) bits.unshift(`from ${all[i - 1].r.label}`);
+      out.push({ ...s, before, note: bits.filter(Boolean).join(', ') });
+    }));
+    return out;
+  }
+  function cleaningWeek(rows, ws) {
+    const st = weekStays(rows, ws);
+    const p = [T(weekTitle('ROOMS', ws)), G, ...roomBlocks(st.filter(x => x.r)), ...outsideBlock(st.filter(x => !x.r))];
+    const unknown = rows.filter(g => counted(g) && inWeek(g, ws) && moveUnknown(g));
+    if (unknown.length) p.push(B('Room moves (ask the day)'), ...unknown.map(g => L(dash(g.guest_name, movedRooms(g).join(' → ')))));
     return p;
   }
 
@@ -248,76 +323,54 @@
     const by = new Map(); gs.forEach(g => { const d = dietOf(g); if (d && d !== 'none') { if (!by.has(d)) by.set(d, []); by.get(d).push(g); } });
     return [...by.entries()].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]));
   }
-  const allergyLine = gs => { const a = gs.filter(g => String(g.allergies || '').trim()); return a.length ? `Allergies: ${a.map(g => `${g.guest_name} – ${g.allergies}`).join('; ')}` : 'Allergies: none in Bookinglayer'; };
-  const nameSort = (a, b) => a.guest_name.localeCompare(b.guest_name);
+  function foodBlocks(gs, note) {
+    const p = [];
+    dietGroups(gs).forEach(([diet, list]) => p.push(B(diet), ...list.map(g => L(dash(g.guest_name, note ? note(g) : ''))), G));
+    const al = gs.filter(g => allergyOf(g));
+    if (al.length) p.push(B('Allergies'), ...al.map(g => L(dash(g.guest_name, allergyOf(g).toLowerCase()))), G);
+    return p;
+  }
   function kitchenDay(rows, d) {
     const gs = rows.filter(g => counted(g) && inCamp(g, d)).sort(nameSort);
-    const p = [T(`Kitchen – ${fdm(d)}`), G, L(`Dinner: ${plural(gs.length, 'person', 'people')}`), L(`Breakfast ${fd(add(d, 1))}: ${plural(gs.length, 'person', 'people')}`), G];
-    dietGroups(gs).forEach(([diet, list]) => p.push(L(`${diet}: ${list.length} – ${list.map(g => g.guest_name).join(', ')}`)));
-    p.push(L(allergyLine(gs)), G, L('Staff not included'));
-    return p;
+    return [T(dayTitle('KITCHEN', d)), G, L(`*Dinner:* ${plural(gs.length, 'person', 'people')}`), L(`*Breakfast ${fd(add(d, 1))}:* ${plural(gs.length, 'person', 'people')}`), G, ...foodBlocks(gs)];
   }
   function kitchenWeek(rows, ws) {
     const we = add(ws, 7);
     const gs = rows.filter(g => counted(g) && inWeek(g, ws)).sort(nameSort);
-    const p = [T(`Kitchen – week ${range(ws, we)}`), G, H('Dinner (breakfast next morning = same number)')];
-    for (let i = 0; i < 7; i++) { const d = add(ws, i); p.push(L(`${fd(d)}: ${gs.filter(g => inCamp(g, d)).length}`)); }
-    const lastNight = gs.filter(g => inCamp(g, add(ws, 6)));
-    p.push(L(`${fd(we)}: breakfast ${lastNight.length}${lastNight.every(g => g.check_out <= we) ? ', then everyone leaves' : ''}`), G);
-    const allWeek = g => g.check_in <= ws && g.check_out >= we;
-    dietGroups(gs).forEach(([diet, list]) => {
-      if (list.every(allWeek)) p.push(L(`${diet} (all week): ${list.map(g => g.guest_name).join(', ')}`));
-      else p.push(L(`${diet}: ${list.map(g => allWeek(g) ? `${g.guest_name} (all week)` : `${g.guest_name} (${stayText(g, ws)})`).join(', ')}`));
-    });
-    p.push(L(allergyLine(gs)), G);
-    const unanswered = gs.filter(g => !dietOf(g)).length;
-    p.push(L(`Staff not included.${unanswered ? ` Ask diets at the welcome dinner ${fd(ws)}.` : ''}`));
+    const p = [T(weekTitle('KITCHEN', ws)), G, B('Dinner'), L('_(breakfast next morning is the same number)_')];
+    for (let i = 0; i < 7; i++) { const d = add(ws, i); p.push(L(`- ${fd(d)}: ${gs.filter(g => inCamp(g, d)).length}`)); }
+    p.push(L(`- ${fd(we)}: breakfast only`), G);
+    p.push(...foodBlocks(gs, g => partOf(g.check_in, g.check_out, ws, false)));
     return p;
   }
 
-  function levelGroups(students, note) {
-    return LEVELS.map(lv => [lv, students.filter(g => levelOf(g) === lv)]).filter(([, l]) => l.length)
-      .map(([lv, l]) => `${lv} (${l.length}): ${l.map(g => g.guest_name + (note ? note(g) : '')).join(', ')}`);
-  }
   const courseCounts = gs => ({ S: gs.filter(g => course(g) === 'Standard').length, I: gs.filter(g => course(g) === 'Intensive').length, C: gs.filter(g => course(g) === 'Coaching').length });
-  function firstNames(gs) {
-    const n = gs.map(g => first(g.guest_name));
-    return gs.map((g, i) => n.filter(x => x === n[i]).length > 1 ? g.guest_name : n[i]).join(', ');
+  const courseNote = g => course(g) === 'Standard' ? '' : course(g).toLowerCase();
+  function levelBlocks(students, note) {
+    const p = [];
+    LEVELS.map(lv => [lv, students.filter(g => levelOf(g) === lv)]).filter(([, l]) => l.length)
+      .forEach(([lv, l]) => p.push(B(lv), ...l.map(g => L(dash(g.guest_name, note(g)))), G));
+    return p;
   }
   function surfDay(rows, d) {
     const here = rows.filter(g => counted(g) && inCamp(g, d)).sort(byStay);
     const st = here.filter(g => course(g));
-    const c = courseCounts(st);
-    const p = [T(`Surf – ${fdm(d)}`), G, L(`Morning: ${plural(st.length, 'student')}`)];
-    const cc = [['Standard', c.S], ['Intensive', c.I], ['Coaching', c.C]].filter(x => x[1]).map(x => `${x[0]} ${x[1]}`).join(' · ');
-    if (cc) p.push(L(cc));
-    p.push(G, ...levelGroups(st).map(L), G);
-    const inten = st.filter(g => course(g) === 'Intensive');
-    if (inten.length) p.push(L(`Intensive afternoon group (3 afternoons, head coach picks): ${inten.map(g => g.guest_name).join(', ')}`));
+    const p = [T(dayTitle('SURF', d)), G, ...levelBlocks(st, courseNote)];
+    if (!st.length) p.push(L('No surf students'), G);
     const yoga = here.filter(isYoga).length;
-    if (yoga) p.push(L(`Yoga ${YOGA_TIME}: ${yoga}`));
+    if (yoga) p.push(L(`*Yoga ${YOGA_TIME}:* ${plural(yoga, 'guest')}`));
     return p;
   }
-  function partOfWeek(g, ws) {
-    const we = add(ws, 7);
-    const from = g.check_in > ws, until = g.check_out < we;
-    return from && until ? `${fd(g.check_in)} → ${fd(g.check_out)}` : from ? `from ${fd(g.check_in)}` : until ? `until ${fd(g.check_out)}` : '';
-  }
+  function partOfWeek(g, ws) { return partOf(g.check_in, g.check_out, ws, false); }
   function surfWeek(rows, ws) {
-    const we = add(ws, 7);
     const gs = rows.filter(g => counted(g) && inWeek(g, ws)).sort(byStay);
     const st = gs.filter(g => course(g));
-    const p = [T(`Surf – week ${range(ws, we)} (${plural(st.length, 'student')})`), G, H('Morning students per day (Standard / Intensive / Coaching)')];
-    for (let i = 0; i < 7; i++) { const d = add(ws, i); const day = st.filter(g => inCamp(g, d)); const c = courseCounts(day); p.push(L(`${fd(d)}: ${day.length} (${c.S} / ${c.I} / ${c.C})`)); }
-    p.push(G, H('Groups by level'));
-    const note = g => { const bits = []; if (course(g) === 'Intensive') bits.push('I'); if (course(g) === 'Coaching') bits.push('coaching'); const w = partOfWeek(g, ws); if (w) bits.push(w); return bits.length ? ` (${bits.join(', ')})` : ''; };
-    p.push(...levelGroups(st, note).map(L), G);
-    const inten = st.filter(g => course(g) === 'Intensive');
-    if (inten.length) p.push(L(`Intensive afternoons (3 this week, head coach picks): ${firstNames(inten)}`));
+    const p = [T(weekTitle('SURF', ws)), G, ...levelBlocks(st, g => [courseNote(g), partOfWeek(g, ws)].filter(Boolean).join(', '))];
+    if (!st.length) p.push(L('No surf students'), G);
     const none = gs.filter(g => !course(g));
-    if (none.length) p.push(L(`No lessons: ${none.map(g => { const w = partOfWeek(g, ws); return g.guest_name + (w ? ` (${w})` : ''); }).join(', ')}`));
+    if (none.length) p.push(B('No lessons'), ...none.map(g => L(dash(g.guest_name, partOfWeek(g, ws)))), G);
     const yoga = gs.filter(isYoga).length;
-    if (yoga) p.push(L(`Yoga ${YOGA_TIME}: ${plural(yoga, 'guest')}`));
+    if (yoga) p.push(L(`*Yoga ${YOGA_TIME}:* ${plural(yoga, 'guest')}`));
     return p;
   }
 
@@ -343,7 +396,7 @@
 
   // body(team, day) for the viewed week — the text compared with what was sent.
   function parts(team, day, ws, rows) {
-    if (team === 'cleaning') return day === 'week' ? cleaningWeek(rows, ws) : cleaningDay(rows, day, ws);
+    if (team === 'cleaning') return day === 'week' ? cleaningWeek(rows, ws) : cleaningDay(rows, day);
     if (team === 'kitchen') return day === 'week' ? kitchenWeek(rows, ws) : kitchenDay(rows, day);
     if (team === 'surf') return day === 'week' ? surfWeek(rows, ws) : surfDay(rows, day);
     if (team === 'transfers') { const list = tripsFor(day, ws); return list.length ? [L(GT.whatsappDayText(list))] : [L('No transfers')]; }
@@ -412,7 +465,7 @@
     if (W.loading && !force) return W.loading;
     W.loading = (async () => {
       if (force) W.cache = {};
-      await loadMeta();
+      await Promise.all([loadMeta(), loadGroup()]);
       const ws = W.week || GT.weekStart(cToday());
       await Promise.all([loadWeek(ws, force), loadWeek(GT.weekStart(cToday()), force), loadWeek(add(GT.weekStart(cToday()), -7), force)]);
       if (window.TransportUI && !TR().loaded && TransportUI.load) { try { await TransportUI.load(); } catch (_) {} }
@@ -453,7 +506,7 @@
     const noDiet = live.filter(g => !dietOf(g));
     if (noDiet.length) items.push({ tab: 'kitchen', short: `${noDiet.length} without diet answer`, text: `${plural(noDiet.length, 'guest')} didn't answer diet – ask at the welcome dinner`, who: names(noDiet) });
     const noRoom = live.filter(g => !roomOf(g));
-    if (noRoom.length) items.push({ tab: 'rooms', short: `${noRoom.length} without a room`, text: `${plural(noRoom.length, 'guest')} without a room – check Bookinglayer`, who: names(noRoom) });
+    if (noRoom.length) items.push({ tab: 'rooms', short: `${noRoom.length} without a room`, text: `${plural(noRoom.length, 'guest')} without a room in the file – counted as outside of camp (meals only)`, who: names(noRoom) });
     const noTime = tripsFor('week', ws).filter(t => !t.trip_time);
     if (noTime.length) items.push({ tab: 'transfers', short: `${plural(noTime.length, 'transfer')} without time`, text: `${plural(noTime.length, 'transfer')} without flight time – ask the guest`, who: noTime.map(t => t.guest_names || 'Guest').join(', ') });
     const carry = wk.filter(g => g._st === 'carry');
@@ -462,8 +515,12 @@
     if (dropped.length) items.push({ tab: 'guests', short: `${dropped.length} cancelled?`, text: `${plural(dropped.length, 'guest')} dropped out of the latest Guests file – cancelled? Not counted`, guests: dropped, kind: 'dropped' });
     const zero = live.filter(g => { const raw = String((g.raw || {}).Phone || '').replace(/\s+/g, ''); return raw && g.phone && raw !== g.phone; });
     if (zero.length) items.push({ tab: 'guests', short: `${plural(zero.length, 'phone')} fixed`, text: `${plural(zero.length, 'phone')} had a wrong 0 after the country code – fixed, check before sending`, who: zero.map(g => `${g.guest_name} ${g.phone}`).join(', ') });
+    const noPhone = groupPeople(ws, rows, true).filter(x => !x.phone);
+    if (noPhone.length) items.push({ tab: 'guests', short: `${noPhone.length} without a phone`, text: `${plural(noPhone.length, 'guest')} without a valid phone – not in the week group contacts`, who: noPhone.map(x => x.g.guest_name + (x.g.phone ? ` (${x.g.phone})` : '')).join(', ') });
     const moves = live.filter(g => movedRooms(g));
-    if (moves.length) items.push({ tab: 'rooms', short: `${plural(moves.length, 'room move')} without date`, text: `${plural(moves.length, 'room move')} without a date – check the Day Planner`, who: moves.map(g => `${g.guest_name} (${movedRooms(g).join(' → ')})`).join(', ') });
+    const fixed = moves.filter(g => !moveUnknown(g)), open = moves.filter(moveUnknown);
+    if (fixed.length) items.push({ tab: 'rooms', short: `${plural(fixed.length, 'room move')} to confirm`, text: `${plural(fixed.length, 'room move')} taken on the Saturday – the file has no move date, check the Day Planner`, who: fixed.map(g => `${g.guest_name} (${movedRooms(g).join(' → ')}, ${fd(moveDay(g))})`).join(', ') });
+    if (open.length) items.push({ tab: 'rooms', short: `${plural(open.length, 'room move')} without date`, text: `${plural(open.length, 'room move')} without a date – check the Day Planner`, who: open.map(g => `${g.guest_name} (${movedRooms(g).join(' → ')})`).join(', ') });
     return items;
   }
 
@@ -472,6 +529,9 @@
   // Arrivals and departures come from every counted row, so the people leaving on the
   // opening Saturday (last week's guests) are there too. Breakfast of a day = who slept
   // the night before; dinner = who sleeps tonight — the numbers of the Kitchen message.
+  // When a guest coming on their own arrives: the Arrival time, or a time typed in the flight field («13:00», «02h50»).
+  const arriveAt = g => g.arrival_time || ((String(g.arrival_flight || '').trim().match(/^(\d{1,2})[:h](\d{2})$/i) || []).slice(1).map(x => x.padStart(2, '0')).join(':')) || '';
+  const flightOf = g => { const f = String(g.arrival_flight || '').trim(); return /^[A-Za-z]{2}\s?\d{2,4}\b/.test(f) ? f : ''; };
   const airportTrip = t => (t.kind === 'airport_arrival' || t.kind === 'airport_departure') && !['cancelled', 'merged'].includes(t.status);
   function weekModel(ws, rows) {
     const live = rows.filter(counted);
@@ -479,22 +539,27 @@
     const days = [];
     for (let i = 0; i <= 7; i++) {
       const d = add(ws, i);
-      const night = live.filter(g => inCamp(g, d)).sort(byStay);
+      const night = live.filter(g => inCamp(g, d)).sort(byStay);          // eats in camp tonight
+      const sleep = night.filter(g => roomOn(g, d));                       // sleeps in camp tonight
       const students = night.filter(g => course(g));
       const dayTrips = trips.filter(t => t.trip_date === d).sort(tripSort);
       const refs = new Set(dayTrips.filter(t => t.kind === 'airport_arrival').map(t => t.booking_ref).filter(Boolean));
-      const arrivals = live.filter(g => g.check_in === d).sort(byStay);
+      const arrivals = live.filter(g => g.check_in === d && !g._prev).sort(byStay);       // new in camp
+      const mv = dayMoves(rows, d);
       days.push({
-        d, i, closing: i === 7, night, arrivals, departures: live.filter(g => g.check_out === d).sort(byStay),
+        d, i, closing: i === 7, night, sleep: sleep.length, outside: night.length - sleep.length,
+        arrivals, departures: live.filter(g => g.check_out === d && !g._next).sort(byStay),
+        staying: live.filter(g => g.check_in === d && g._prev).sort(byStay),               // new booking, same stay
+        moves: mv.ins.filter(x => x.kind === 'move'),
         breakfast: live.filter(g => inCamp(g, add(d, -1))).length, dinner: night.length,
         students, courses: courseCounts(students), yoga: night.filter(isYoga).length,
-        trips: dayTrips, own: arrivals.filter(g => !g.has_transfer && !refs.has(g.booking_ref)),
+        trips: dayTrips, own: i === 7 ? [] : arrivals.filter(g => !g.has_transfer && !refs.has(g.booking_ref)),
       });
     }
     const wk = days.slice(0, 7);
     const guests = live.filter(g => inWeek(g, ws));
     return {
-      ws, days, guests, peak: Math.max(0, ...wk.map(x => x.dinner)),
+      ws, days, guests, peak: Math.max(0, ...wk.map(x => x.sleep)),
       arrivals: wk.reduce((s, x) => s + x.arrivals.length, 0), departures: wk.reduce((s, x) => s + x.departures.length, 0),
       students: guests.filter(g => course(g)),
     };
@@ -502,31 +567,31 @@
 
   // Rooms: beds (shared) or stays (private) as lanes, nights 0…6 as columns.
   function roomPlan(ws, rows) {
-    const gs = rows.filter(g => counted(g) && inWeek(g, ws)).sort(byStay);
+    const st = weekStays(rows, ws);
     const w1 = s => { const x = String(s || '').split(/\s+/)[0].toLowerCase(); return x === 'weligama' ? 'welligama' : x; };
     const rooms = new Map();
-    CAMP_ROOMS.forEach((c, i) => rooms.set(c.w, { key: c.w, label: c.label, shared: !!c.beds, note: c.note || '', beds: c.beds || 0, order: i, stays: [] }));
-    gs.forEach(g => {
-      const r = roomOf(g); const k = r ? w1(r.label) : '?';
-      if (!rooms.has(k)) rooms.set(k, r ? { key: k, label: r.label, shared: r.shared, note: r.note, beds: r.shared ? (parseInt(r.note, 10) || 0) : 0, order: 50 + r.order, stays: [] }
-        : { key: '?', label: 'No room yet', shared: false, none: true, note: '', beds: 0, order: 999, stays: [] });
-      const room = rooms.get(k); if (r && !r.shared) room.label = r.label;
-      const beds = String(g.bed_number || '').split(',').map(s => parseInt(s, 10)).filter(n => n > 0);
-      room.stays.push({ g, a: Math.max(0, daysBetween(ws, g.check_in)), b: Math.min(7, daysBetween(ws, g.check_out)), bed: beds.length ? beds[beds.length - 1] : 0 });
+    CAMP_ROOMS.forEach((c, i) => rooms.set(ROOM_SHORT[c.w].toLowerCase(), { key: c.w, label: ROOM_SHORT[c.w], shared: !!c.beds, note: c.note || '', beds: c.beds || 0, order: i, stays: [] }));
+    st.forEach(x => {
+      const k = x.r ? x.r.key : '?';
+      if (!rooms.has(k)) rooms.set(k, x.r ? { key: k, label: x.r.label, shared: x.r.shared, note: x.r.note, beds: x.r.shared ? (parseInt(x.r.note, 10) || 0) : 0, order: 50 + x.r.order, stays: [] }
+        : { key: '?', label: OUTSIDE, shared: false, none: true, note: '', beds: 0, order: 999, stays: [] });
+      rooms.get(k).stays.push({ ...x, a: Math.max(0, daysBetween(ws, x.from)), b: Math.min(7, daysBetween(ws, x.to)), bedN: parseInt(x.bed, 10) || 0,
+        cutL: x.before, cutR: stayEnd(x.g) > add(ws, 7) && x.to >= add(ws, 7), moved: x.from > x.g.check_in || x.to < x.g.check_out });
     });
     const free = (lane, s) => lane.items.every(x => x.b <= s.a || x.a >= s.b);
     const out = [...rooms.values()].sort((x, y) => x.order - y.order).map(room => {
       let lanes = [];
       if (room.shared) {
-        const cap = Math.max(room.beds, ...room.stays.map(s => s.bed));
+        const cap = Math.max(room.beds, ...room.stays.map(s => s.bedN));
         for (let n = 1; n <= cap; n++) lanes.push({ bed: n, items: [] });
-        const place = s => { let lane = s.bed && free(lanes[s.bed - 1], s) ? lanes[s.bed - 1] : lanes.find(l => free(l, s));
+        const place = s => { let lane = s.bedN && free(lanes[s.bedN - 1], s) ? lanes[s.bedN - 1] : lanes.find(l => free(l, s));
           if (!lane) { lane = { bed: 0, extra: true, items: [] }; lanes.push(lane); }
-          lane.items.push({ a: s.a, b: s.b, gs: [s.g] }); };
-        room.stays.filter(s => s.bed).forEach(place); room.stays.filter(s => !s.bed).forEach(place);
+          lane.items.push({ a: s.a, b: s.b, gs: [s.g], cutL: s.cutL, cutR: s.cutR, moved: s.moved }); };
+        room.stays.filter(s => s.bedN).forEach(place); room.stays.filter(s => !s.bedN).forEach(place);
       } else {
         const groups = new Map();   // the people of one booking with the same dates share a bar
-        room.stays.forEach(s => { const k = (room.none ? s.g.id || s.g.guest_name : s.g.booking_ref || s.g.guest_name) + '|' + s.a + '|' + s.b; if (!groups.has(k)) groups.set(k, { a: s.a, b: s.b, gs: [] }); groups.get(k).gs.push(s.g); });
+        room.stays.forEach(s => { const k = (room.none ? s.g.id || s.g.guest_name : s.g.booking_ref || s.g.guest_name) + '|' + s.a + '|' + s.b;
+          if (!groups.has(k)) groups.set(k, { a: s.a, b: s.b, gs: [], cutL: s.cutL, cutR: s.cutR, moved: s.moved }); groups.get(k).gs.push(s.g); });
         [...groups.values()].forEach(it => { let lane = lanes.find(l => free(l, it)); if (!lane) { lane = { bed: 0, items: [] }; lanes.push(lane); } lane.items.push(it); });
         if (!lanes.length) lanes.push({ bed: 0, items: [] });
       }
@@ -576,7 +641,7 @@
     const M = weekModel(ws, rows);
     const nGuests = M.guests.length;
     const filters = `<div class="ov-filters wk-filters"><div class="period-picker"><button class="btn btn-s btn-sm btn-icon" title="Previous week" onclick="WeekUI.shiftWeek(-7)">${ic('chevron-left')}</button>
-        <span class="period-picker-lbl wk-week">${fdm(ws)} – ${fdm(add(ws, 6))}</span>
+        <span class="period-picker-lbl wk-week">${h(weekLabel(ws))}</span>
         <button class="btn btn-s btn-sm btn-icon" title="Next week" onclick="WeekUI.shiftWeek(7)">${ic('chevron-right')}</button></div>
       <span class="wk-count">${plural(nGuests, 'guest')}</span>
       <span class="hint wk-file">${W.meta ? `Guests file imported ${h(fileStamp(W.meta.at))}` : 'No Guests file imported yet'}</span></div>`;
@@ -598,6 +663,8 @@
       : W.tab === 'transfers' ? transfersTab(ctx) : W.tab === 'guests' ? guestsTab(ctx) : overviewTab(ctx);
     root.innerHTML = head + filters + notSaved + tabs + chHtml + `<div class="wk-view wk-view-${W.tab}">${view}</div>`;
     if (W.tab === 'guests' && W.q) filterGuests(W.q);
+    const tabsEl = root.querySelector('.wk-tabs'), on = tabsEl && tabsEl.querySelector('.pill.active');   // keep the active tab in sight on a phone
+    if (on && tabsEl.scrollWidth > tabsEl.clientWidth) tabsEl.scrollLeft = on.offsetLeft - tabsEl.offsetLeft - (tabsEl.clientWidth - on.offsetWidth) / 2;
     if (W.scrollTo) { const el = $(W.scrollTo); W.scrollTo = ''; if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start' }); }
   }
   function fileStamp(at) {
@@ -627,11 +694,11 @@
   const dayHead = d => `<span class="wk-dw">${DAY[GT.weekday(d)]}</span><span class="wk-dn">${Number(d.slice(8))}</span>`;
   const isToday = d => d === cToday();
   // Names grouped by room: «Unawatuna  Lea Brennig, Lorena Marie Glas».
-  function byRoom(list) {
+  function byRoom(list, roomFn) {
     const rooms = new Map();
-    list.forEach(g => { const r = roomOf(g) || { key: '?', label: 'No room yet', order: 100 }; if (!rooms.has(r.key)) rooms.set(r.key, { r, gs: [] }); rooms.get(r.key).gs.push(g); });
+    list.forEach(g => { const r = roomFn(g) || { key: '?', label: OUTSIDE, order: 100 }; if (!rooms.has(r.key)) rooms.set(r.key, { r, gs: [] }); rooms.get(r.key).gs.push(g); });
     return [...rooms.values()].sort((a, b) => a.r.order - b.r.order || a.r.label.localeCompare(b.r.label))
-      .map(({ r, gs }) => `<div class="wk-rl"><span class="wk-rm">${h(r.label)}</span><span>${gs.map(g => h(g.guest_name)).join(', ')}</span></div>`).join('');
+      .map(({ r, gs }) => `<div class="wk-rl"><span class="wk-rm">${h(r.label.replace(/ room$/, ''))}</span><span>${gs.map(g => h(g.guest_name)).join(', ')}</span></div>`).join('');
   }
   // Bars to scale: height in % of the tallest value of the chart.
   const pct = (n, max) => max ? Math.round(n / max * 1000) / 10 : 0;
@@ -665,10 +732,12 @@
     const text = body(team, day, ws, rows);
     const sent = sentOf(team, day, ws);
     const changed = sent && sent.hash !== hash(text);
-    const msg = changed ? updateText(sent.text, text, day, ws) : text;
+    const msg = dress(changed ? updateText(sent.text, text, day, ws) : text, cToday());
     return `<div class="card wk-card wk-msgcard" id="wkMessage">${cardHead('Message', `WhatsApp text${c ? ` for ${h(c.name)}` : ''} · ${h(when)}`)}
-      <div class="card-body">${dayPills}<div class="wk-msg" id="wkMsg">${h(msg)}</div>${footer(team, day, sent, changed, c, t)}</div></div>`;
+      <div class="card-body">${dayPills}<div class="wk-msg" id="wkMsg">${waHtml(msg)}</div>${footer(team, day, sent, changed, c, t)}</div></div>`;
   }
+  // The preview shows WhatsApp's formatting (*bold*, _notes_); Copy and Send keep the raw text.
+  const waHtml = text => h(text).replace(/\*([^*\n]+)\*/g, '<b>$1</b>').replace(/_(\([^_\n]+\))_/g, '<span class="wk-mnote">$1</span>');
   function footer(team, day, sent, changed, c, t) {
     const who = c ? c.name : t.role;
     const noPhone = !(c && c.phone);
@@ -684,7 +753,7 @@
   function overviewTab(ctx) {
     const { ws, M, checks } = ctx;
     const last = M.days[7];
-    const peakDays = M.days.slice(0, 7).filter(x => x.dinner === M.peak).map(x => DAY[GT.weekday(x.d)]);
+    const peakDays = M.days.slice(0, 7).filter(x => x.sleep === M.peak).map(x => DAY[GT.weekday(x.d)]);
     const tiles = `<div class="wk-kpis">
       <div class="kpi"><div class="kpi-label">Guests this week</div><div class="kpi-value num">${M.guests.length}</div><div class="kpi-sub">${plural(M.students.length, 'surf student')}</div></div>
       <div class="kpi"><div class="kpi-label">Arrivals</div><div class="kpi-value num kv-ocean">${M.arrivals}</div><div class="kpi-sub">${M.days[0].arrivals.length ? `${M.days[0].arrivals.length} on ${fd(ws)}` : 'Sat – Fri'}</div></div>
@@ -694,7 +763,7 @@
     const max = Math.max(M.peak, 1);
     const strip = `<div class="card wk-card">${cardHead('Guests in camp each night', 'Arrivals and departures under each day')}
       <div class="card-body"><div class="wk-strip">${M.days.map(x => `<button class="wk-sc${x.closing ? ' closing' : ''}${isToday(x.d) ? ' today' : ''}" onclick="WeekUI.toDay('${x.d}')" title="${h(fdm(x.d))}">
-        <span class="wk-sbar">${x.closing ? '' : `<span class="wk-sfill" style="height:${pct(x.dinner, max)}%"><span class="wk-sv num">${x.dinner}</span></span>`}</span>
+        <span class="wk-sbar">${x.closing ? '' : `<span class="wk-sfill" style="height:${pct(x.sleep, max)}%"><span class="wk-sv num">${x.sleep}</span></span>`}</span>
         <span class="wk-sday">${dayHead(x.d)}</span>
         <span class="wk-sio"><span class="wk-in num">${x.arrivals.length && !x.closing ? '+' + x.arrivals.length : '&nbsp;'}</span><span class="wk-out num">${x.departures.length ? '−' + x.departures.length : '&nbsp;'}</span></span></button>`).join('')}</div>
         <div class="wk-legend"><span><i class="wk-sw sw-ocean"></i>sleeping in camp</span><span><b class="wk-in">+</b> arrivals</span><span><b class="wk-out">−</b> departures</span><span>last column = check-out day ${h(fd(last.d))}</span></div></div></div>`;
@@ -705,19 +774,21 @@
   }
   function dayRow(x, M) {
     const arr = x.arrivals.length, dep = x.departures.length;
-    const blk = (cls, icon, label, n, sign, inner) => `<div class="wk-bc ${cls}"><div class="wk-bl"><span class="wk-blt">${ic(icon)} ${label}</span>${n ? `<b class="wk-bn num">${sign}${n}</b>` : ''}</div><div class="wk-bi">${inner}</div></div>`;
+    const blk = (cls, icon, label, n, sign, inner) => `<div class="wk-bc ${cls}${/^<span class="wk-nil">/.test(inner) ? ' empty' : ''}"><div class="wk-bl"><span class="wk-blt">${ic(icon)} ${label}</span>${n ? `<b class="wk-bn num">${sign}${n}</b>` : ''}</div><div class="wk-bi">${inner}</div></div>`;
     const trips = x.trips.map(t => { const [st, cls] = tripBadge(t); return `<div class="wk-tl"><b class="num">${h(t.trip_time || 'time?')}</b> <span class="wk-dir ${t.kind === 'airport_departure' ? 'out' : 'in'}">${t.kind === 'airport_departure' ? 'out' : 'in'}</span> ${h(t.guest_names || 'Guest')} <span class="badge ${cls}">${st}</span></div>`; }).join('');
-    const own = x.own.filter(g => g.arrival_time);
-    const ownHtml = own.length ? `<div class="wk-tl wk-own">On their own: ${own.slice().sort((a, b) => a.arrival_time.localeCompare(b.arrival_time)).map(g => `${h(g.arrival_time)} ${h(g.guest_name)}`).join(', ')}</div>` : '';
+    const own = x.own.filter(arriveAt);
+    const ownHtml = own.length ? `<div class="wk-tl wk-own">On their own: ${own.slice().sort((a, b) => arriveAt(a).localeCompare(arriveAt(b))).map(g => `${h(arriveAt(g))} ${h(g.guest_name)}`).join(', ')}</div>` : '';
+    const extra = x.closing ? '' : (x.staying.length ? `<div class="wk-tl wk-own">Staying on (new booking): ${x.staying.map(g => h(g.guest_name)).join(', ')}</div>` : '')
+      + x.moves.map(m => `<div class="wk-tl wk-own">Room move: ${h(m.g.guest_name)} → ${h(m.r.label)}</div>`).join('');
     const c = x.courses; const st = x.students.length;
     const surf = x.closing ? '<span class="wk-nil">–</span>' : st ? `<b class="num">${st}</b> ${st === 1 ? 'student' : 'students'}
       <span class="wk-stack" title="Standard ${c.S} · Intensive ${c.I} · Coaching ${c.C}">${[['s', c.S], ['i', c.I], ['c', c.C]].filter(k => k[1]).map(k => `<i class="sk-${k[0]}" style="flex:${k[1]}"></i>`).join('')}</span>
       <span class="cell-sub">${[['Standard', c.S], ['Intensive', c.I], ['Coaching', c.C]].filter(k => k[1]).map(k => `${k[0]} ${k[1]}`).join(' · ')}${x.yoga ? ` · Yoga ${x.yoga}` : ''}</span>` : '<span class="wk-nil">No lessons</span>';
     return `<div class="wk-brow${x.closing ? ' closing' : ''}${isToday(x.d) ? ' today' : ''}" id="wkDay-${x.d}">
       <div class="wk-bday"><div class="wk-bdate">${h(fdm(x.d))}${isToday(x.d) ? ' <span class="badge badge-blue">Today</span>' : ''}</div>
-        <div class="wk-bnight">${x.closing ? 'Check-out day' : `<b class="num">${x.dinner}</b> in camp tonight`}</div></div>
-      ${blk('arr', 'login', 'Arrivals', x.closing ? 0 : arr, '+', x.closing ? (arr ? `<span class="wk-nil">${arr} arriving · next week</span>` : '<span class="wk-nil">–</span>') : arr ? byRoom(x.arrivals) : '<span class="wk-nil">None</span>')}
-      ${blk('dep', 'logout', 'Departures', dep, '−', dep ? byRoom(x.departures) : '<span class="wk-nil">None</span>')}
+        <div class="wk-bnight">${x.closing ? 'Check-out day' : `<b class="num">${x.sleep}</b> in camp tonight${x.outside ? `<span class="wk-bout">+ ${x.outside} outside, for meals</span>` : ''}`}</div></div>
+      ${blk('arr', 'login', 'Arrivals', x.closing ? 0 : arr, '+', x.closing ? (arr ? `<span class="wk-nil">${arr} arriving · next week</span>` : '<span class="wk-nil">–</span>') : (arr ? byRoom(x.arrivals, firstRoom) : '<span class="wk-nil">None</span>') + extra)}
+      ${blk('dep', 'logout', 'Departures', dep, '−', dep ? byRoom(x.departures, roomOf) : '<span class="wk-nil">None</span>')}
       ${blk('trf', 'truck', 'Transfers', 0, '', trips || ownHtml ? trips + ownHtml : '<span class="wk-nil">None</span>')}
       ${blk('meal', 'coffee', 'Meals', 0, '', `<span class="wk-meal"><b class="num">${x.breakfast}</b> breakfast</span>${x.closing ? '' : `<span class="wk-meal"><b class="num">${x.dinner}</b> dinner</span>`}`)}
       ${blk('srf', 'wave', 'Surf', 0, '', surf)}</div>`;
@@ -740,43 +811,51 @@
   function roomsTab(ctx) {
     const { ws, rows } = ctx;
     const P = roomPlan(ws, rows);
+    const we = add(ws, 7);
     const nights = [0, 1, 2, 3, 4, 5, 6];
+    // 1 · By room, plain: who is in each room, in and out.
+    const person = s => { const g = s.g; const segs = segments(g); const i = segs.findIndex(x => x.from === s.from);
+      const from = i > 0 && segs[i - 1].r ? segs[i - 1].r.label : '', to = segs[i + 1] ? (segs[i + 1].r ? segs[i + 1].r.label : OUTSIDE) : '';
+      const inTxt = s.before ? '<span class="wk-here">here</span>' : `<span class="wk-in">${h(fd(s.from))}</span>`;
+      const outTxt = s.to > we || (s.to === we && stayEnd(g) > we) ? '<span class="wk-here">stays</span>' : `<span class="wk-out">${h(fd(s.to))}</span>`;
+      return `<div class="wk-br"><span class="wk-brn">${h(g.guest_name)}${s.bedN && s.r && s.r.shared ? `<span class="wk-bed">bed ${s.bedN}</span>` : ''}${from ? `<span class="cell-sub">from ${h(from)}</span>` : ''}${to ? `<span class="cell-sub">then ${h(to)}</span>` : ''}</span><span>${inTxt}</span><span>${outTxt}</span></div>`; };
+    const block = r => `<div class="wk-broom"><div class="wk-brh"><b>${h(r.label)}</b><span class="cell-sub">${r.none ? 'meals only' : r.shared ? `shared${r.note ? ' · ' + h(r.note) : ''}` : 'private'}</span></div>
+      ${r.stays.length ? r.stays.slice().sort((a, b) => (a.bedN || 99) - (b.bedN || 99) || a.a - b.a || nameSort(a.g, b.g)).map(person).join('') : '<div class="wk-br"><span class="wk-nil">Empty all week</span></div>'}</div>`;
+    const plain = `<div class="card wk-card">${cardHead('By room', `Who is in each room this week · <span class="wk-here">here</span> = already in camp`, toMsgBtn('Cleaning message'))}
+      <div class="wk-brhd"><span>Guest</span><span>In</span><span>Out</span></div>
+      <div class="wk-byroom">${P.rooms.map(block).join('')}</div></div>`;
+    // 2 · The grid: beds × nights.
     const hd = `<div class="wk-gl wk-ghead"><span class="wk-glb"></span>${nights.map(n => `<span class="wk-gh${isToday(add(ws, n)) ? ' today' : ''}">${dayHead(add(ws, n))}</span>`).join('')}</div>`;
-    const bar = (it, room) => {
-      const g0 = it.gs[0]; const moved = it.gs.some(g => movedRooms(g));
-      const before = g0.check_in < ws, after = g0.check_out > add(ws, 7);
-      const tip = `${it.gs.map(g => g.guest_name).join(' + ')} · ${stayText(g0, ws)}${moved ? ' · room move, date not in the file' : ''}`;
-      return `<button class="wk-bar${before ? ' before' : ''}${after ? ' after' : ''}${g0._st === 'carry' ? ' carry' : ''}" style="grid-column:${it.a + 2} / ${it.b + 2}" title="${h(tip)}" onclick="WeekUI.findGuest(decodeURIComponent('${encodeURIComponent(g0.guest_name)}'))">
-        <span class="wk-bt"><span class="wk-bfull">${it.gs.map(g => h(g.guest_name)).join(' + ')}</span><span class="wk-bshort">${it.gs.map(g => h(first(g.guest_name))).join(' + ')}</span></span>${moved ? '<span class="wk-dot" title="Room move"></span>' : ''}</button>`;
+    const bar = it => {
+      const g0 = it.gs[0];
+      const tip = `${it.gs.map(g => g.guest_name).join(' + ')} · ${stayText(g0, ws)}${it.moved ? ' · room move' : ''}`;
+      return `<button class="wk-bar${it.cutL ? ' before' : ''}${it.cutR ? ' after' : ''}${g0._st === 'carry' ? ' carry' : ''}" style="grid-column:${it.a + 2} / ${it.b + 2}" title="${h(tip)}" onclick="WeekUI.findGuest(decodeURIComponent('${encodeURIComponent(g0.guest_name)}'))">
+        ${it.cutL ? ic('chevron-left') : ''}<span class="wk-bt"><span class="wk-bfull">${it.gs.map(g => h(g.guest_name)).join(' + ')}</span><span class="wk-bshort">${it.gs.map(g => h(first(g.guest_name))).join(' + ')}</span></span>${it.cutR ? ic('chevron-right') : ''}${it.moved ? '<span class="wk-dot" title="Room move"></span>' : ''}</button>`;
     };
     const lane = (l, room, li) => {
-      const cells = nights.map(n => l.items.some(x => x.a <= n && n < x.b) ? '' : `<span class="wk-cell${room.shared || li === 0 ? ' free' : ''}" style="grid-column:${n + 2}"></span>`).join('');
-      return `<div class="wk-gl${l.extra ? ' extra' : ''}"><span class="wk-glb">${room.shared ? (l.extra ? 'extra' : `<span class="wk-bedw">Bed </span>${l.bed}`) : ''}</span>${cells}${l.items.map(it => bar(it, room)).join('')}</div>`;
+      const cells = nights.map(n => l.items.some(x => x.a <= n && n < x.b) ? '' : `<span class="wk-cell${!room.none && (room.shared || li === 0) ? ' free' : ''}" style="grid-column:${n + 2}"></span>`).join('');
+      return `<div class="wk-gl${l.extra ? ' extra' : ''}"><span class="wk-glb">${room.shared ? (l.extra ? 'extra' : `<span class="wk-bedw">Bed </span>${l.bed}`) : ''}</span>${cells}${l.items.map(bar).join('')}</div>`;
     };
-    const roomHtml = r => {
-      const inRoom = r.stays.length;
-      return `<div class="wk-room"><div class="wk-rhead"><b>${h(r.label)}</b><span class="cell-sub">${r.none ? 'check Bookinglayer' : r.shared ? `shared${r.note ? ' · ' + h(r.note) : ''}` : 'private'} · ${inRoom ? plural(inRoom, 'guest') + ' this week' : 'empty all week'}</span></div>
+    const roomHtml = r => `<div class="wk-room"><div class="wk-rhead"><b>${h(r.label)}</b><span class="cell-sub">${r.none ? 'meals only' : r.shared ? `shared${r.note ? ' · ' + h(r.note) : ''}` : 'private'}</span></div>
         ${r.lanes.map((l, i) => lane(l, r, i)).join('')}</div>`;
-    };
     const shared = P.rooms.filter(r => r.shared), priv = P.rooms.filter(r => !r.shared && !r.none), none = P.rooms.filter(r => r.none);
     const freeRow = (label, arr) => `<div class="wk-gl wk-gfree"><span class="wk-glb">${label}</span>${arr.map((n, i) => `<span class="wk-fc num${n ? '' : ' zero'}" style="grid-column:${i + 2}">${n}</span>`).join('')}</div>`;
-    const grid = `<div class="card wk-card">${cardHead('Rooms and beds', 'One bar per stay · columns are nights · dashed = free', toMsgBtn('Cleaning message'))}
+    const grid = `<div class="card wk-card">${cardHead('Beds and nights', 'One bar per stay · a column is a night · dashed = free')}
       <div class="wk-grid">${hd}
         ${shared.length ? `<div class="section-lbl wk-gsec">Shared rooms</div>${shared.map(roomHtml).join('')}` : ''}
         ${priv.length ? `<div class="section-lbl wk-gsec">Private rooms</div>${priv.map(roomHtml).join('')}` : ''}
-        ${none.length ? `<div class="section-lbl wk-gsec">No room yet</div>${none.map(roomHtml).join('')}` : ''}
+        ${none.length ? `<div class="section-lbl wk-gsec">${OUTSIDE}</div>${none.map(roomHtml).join('')}` : ''}
         <div class="section-lbl wk-gsec">Free each night</div>
         ${freeRow('<span class="wk-bedw">Shared </span>beds', P.freeBeds)}${freeRow('<span class="wk-bedw">Private </span>rooms', P.freeRooms)}</div>
-      <div class="wk-legend wk-glegend"><span><i class="wk-sw sw-bar"></i>stay</span><span><i class="wk-sw sw-cut"></i>here before / stays after this week</span><span><i class="wk-sw sw-free"></i>free</span><span><span class="wk-dot"></span> room move</span></div></div>`;
-    return checkBlock(ctx, 'rooms') + grid + messageCard(ctx, 'cleaning');
+      <div class="wk-legend wk-glegend"><span><i class="wk-sw sw-bar"></i>stay</span><span>${ic('chevron-left')} here before this week</span><span>${ic('chevron-right')} stays after it</span><span><i class="wk-sw sw-free"></i>free</span><span><span class="wk-dot"></span> room move</span></div></div>`;
+    return checkBlock(ctx, 'rooms') + plain + grid + messageCard(ctx, 'cleaning');
   }
 
   // ── Kitchen ─────────────────────────────────────────────────────────────
-  const allergyOf = g => String(g.allergies || '').split(' / ').map(s => s.trim()).filter(s => s && !NO_ALLERGY.test(s)).join(' / ');
   function kitchenTab(ctx) {
     const { ws, M } = ctx;
     const gs = M.guests.slice().sort(nameSort);
-    const where = g => { const r = roomOf(g); return `${r ? r.label : 'no room'} · ${stayText(g, ws)}`; };
+    const where = g => { const r = roomOf(g); return `${r ? r.label : OUTSIDE} · ${stayText(g, ws)}`; };
     const allergic = gs.filter(g => allergyOf(g));
     const diets = dietGroups(gs);
     const none = gs.filter(g => dietOf(g) === 'none').length, unanswered = gs.filter(g => !dietOf(g)).length;
@@ -835,11 +914,13 @@
     const tripRow = t => { const [st, cls] = tripBadge(t);
       return `<div class="wk-g wk-trip"><span class="wk-time num">${h(t.trip_time || 'time?')}</span><span class="wk-tmain"><span class="wk-g1">${dirBadge(t)} <b>${h(t.guest_names || 'Guest')}</b></span>
         <span class="cell-sub">${h(t.flight || 'flight?')} · ${t.pax} ${t.pax === 1 ? 'person' : 'persons'}${t.vehicle ? ' · ' + h(t.vehicle) : ''}${t.guest_phone ? ' · ' + h(t.guest_phone) : ''}</span></span><span class="badge ${cls}">${st}</span></div>`; };
-    const ownRow = g => `<div class="wk-g wk-trip own"><span class="wk-time num">${h(g.arrival_time || '–')}</span><span class="wk-tmain"><span class="wk-g1"><b>${h(g.guest_name)}</b></span>
-      <span class="cell-sub">${g.arrival_time ? 'arrives around this time' : 'no arrival time given'}${g.arrival_flight ? ' · ' + h(g.arrival_flight) : ''}${g.phone ? ' · ' + h(g.phone) : ''}</span></span><span class="badge badge-grey">Own way</span></div>`;
-    const dayHtml = x => { const own = x.own.slice().sort((a, b) => (a.arrival_time || '99').localeCompare(b.arrival_time || '99'));
-      return `<div class="wk-tday" id="wkTr-${x.d}"><div class="wk-tdh"><b>${h(fdm(x.d))}</b>${isToday(x.d) ? ' <span class="badge badge-blue">Today</span>' : ''}<span class="cell-sub">${[x.trips.length ? plural(x.trips.length, 'transfer') : '', own.length ? `${own.length} on their own` : ''].filter(Boolean).join(' · ')}</span></div>
-        <div class="wk-rows">${x.trips.map(tripRow).join('')}${own.map(ownRow).join('')}</div></div>`; };
+    const ownRow = g => `<div class="wk-g wk-trip own"><span class="wk-time num">${h(arriveAt(g))}</span><span class="wk-tmain"><span class="wk-g1"><b>${h(g.guest_name)}</b></span>
+      <span class="cell-sub">arrives around this time${flightOf(g) ? ' · ' + h(flightOf(g)) : ''}${g.phone ? ' · ' + h(g.phone) : ''}</span></span><span class="badge badge-grey">Own way</span></div>`;
+    const dayHtml = x => {
+      const timed = x.own.filter(arriveAt), untimed = x.own.filter(g => !arriveAt(g));
+      const rows = [...x.trips.map(t => [t.trip_time || '99', tripRow(t)]), ...timed.map(g => [arriveAt(g), ownRow(g)])].sort((a, b) => a[0].localeCompare(b[0])).map(r => r[1]).join('');
+      return `<div class="wk-tday" id="wkTr-${x.d}"><div class="wk-tdh"><b>${h(fdm(x.d))}</b>${isToday(x.d) ? ' <span class="badge badge-blue">Today</span>' : ''}<span class="cell-sub">${[x.trips.length ? plural(x.trips.length, 'transfer') : '', x.own.length ? `${x.own.length} on their own` : ''].filter(Boolean).join(' · ')}</span></div>
+        <div class="wk-rows">${rows}${untimed.length ? `<div class="wk-g wk-untimed"><span class="section-lbl">On their own, no arrival time given</span><span class="cell-sub">${untimed.map(g => h(g.guest_name)).join(', ')}</span></div>` : ''}</div></div>`; };
     const card = `<div class="card wk-card">${cardHead('Airport transfers', `${plural(all.length, 'transfer')} this week${cost ? ` · ${h(money(cost))} expected` : ''} · tuk-tuks and paying drivers stay in Transport`, toMsgBtn('Transfers message'))}
       ${days.length ? days.map(dayHtml).join('') : '<div class="card-body hint">No airport transfers and no arrivals this week.</div>'}</div>`;
     return checkBlock(ctx, 'transfers') + card + messageCard(ctx, 'transfers');
@@ -852,27 +933,119 @@
     const days = [0, 1, 2, 3, 4, 5, 6].map(i => add(ws, i));
     const dayPills = `<div class="pills wk-days">${days.map(d => `<button class="pill${day === d ? ' active' : ''}" data-day="${d}" onclick="WeekUI.setDay('${d}')">${fd(d)}</button>`).join('')}<button class="pill${day === 'week' ? ' active' : ''}" data-day="week" onclick="WeekUI.setDay('week')">Week</button></div>`;
     const list = gs.length ? gs.map(g => guestRow(g, ws)).join('') : '';
-    return checkBlock(ctx, 'guests') + `<div class="card wk-card">${cardHead(`Guests · ${day === 'week' ? 'week' : fdm(day)} · <span id="wkGuestN">${gs.length}</span>`, 'For you only — no message to the team.')}
+    const copyBtn = `<span class="row"><button class="btn btn-s btn-sm" onclick="WeekUI.toGroup()">${ic('users')} Week group</button><button class="btn btn-s btn-sm" onclick="WeekUI.copy()">${ic('copy')} Copy list</button></span>`;
+    return checkBlock(ctx, 'guests') + `<div class="card wk-card${inviteLinkOk(groupStore(ws).link) ? ' has-invite' : ''}">${cardHead(`Guests · ${day === 'week' ? 'week' : fdm(day)} · <span id="wkGuestN">${gs.length}</span>`, 'For you only — no message to the team.', copyBtn)}
         <div class="wk-gtools"><input class="search wk-search" id="wkSearch" type="search" placeholder="Search name, room, phone, diet…" value="${h(W.q || '')}" oninput="WeekUI.search(this.value)">${dayPills}</div>
-        <div class="wk-ghd"><span>Guest</span><span>Stay</span><span>Room</span><span>Surf</span><span>Diet</span><span>Phone</span><span>Arrival</span></div>
-        <div class="wk-rows wk-guests">${list}</div><div class="card-body hint wk-noguests"${gs.length ? ' hidden' : ''}>${gs.length ? 'No guest matches the search.' : 'No guests on this day.'}</div></div>
-      <div class="wk-foot"><button class="btn btn-p" onclick="WeekUI.copy()">${ic('copy')} Copy list</button></div>`;
+        <div class="wk-ghd"><span>Guest</span><span>Stay</span><span>Room</span><span>Surf</span><span>Diet</span><span>Phone</span><span>Arrival</span><span class="wk-ginv">Group</span></div>
+        <div class="wk-rows wk-guests">${list}</div><div class="card-body hint wk-noguests"${gs.length ? ' hidden' : ''}>${gs.length ? 'No guest matches the search.' : 'No guests on this day.'}</div></div>` + groupCard(ctx);
   }
   function guestRow(g, ws) {
     const r = roomOf(g); const c = course(g); const d = dietOf(g); const al = allergyOf(g);
-    const room = r ? r.label + (r.shared && g.bed_number ? ' bed ' + g.bed_number : '') : 'no room';
+    const bed = String(g.bed_number || '').split(',').pop().trim();
+    const room = r ? r.label + (r.shared && bed ? ' · bed ' + bed : '') : OUTSIDE;
     const nights = (g.check_in && g.check_out) ? daysBetween(g.check_in, g.check_out) : 0;
-    const pack = String(g.packages || '').split(/\s*,\s*/).filter(Boolean).slice(-1)[0] || '';
-    const arrive = g.has_transfer ? 'transfer' + (g.arrival_time ? ' ' + g.arrival_time : '') : g.arrival_time ? 'own way ' + g.arrival_time : 'own way';
+    const pack = String(g.packages || '').trim();
+    const arrive = (g.has_transfer ? 'transfer' : 'own way') + (arriveAt(g) ? ' ' + arriveAt(g) : '');
     const q = [g.guest_name, room, g.phone, c, levelOf(g), d, al, g.partner, pack, g.booking_ref].join(' ').toLowerCase();
-    return `<div class="wk-g wk-grow" data-q="${h(q)}"><span class="wk-gc name"><span class="wk-g1"><b>${h(g.guest_name)}</b>${g.partner ? ` <span class="badge badge-amber">partner – don't charge</span>` : ''}${g._st === 'carry' ? ' <span class="badge badge-grey">still here?</span>' : ''}</span>${pack || g.partner ? `<span class="cell-sub">${h([pack, g.partner && g.partner !== 'partner' ? 'via ' + g.partner : ''].filter(Boolean).join(' · '))}</span>` : ''}</span>
+    return `<div class="wk-g wk-grow" data-q="${h(q)}"><span class="wk-gc name"><span class="wk-g1"><b>${h(g.guest_name)}</b>${g.partner ? ` <span class="badge badge-amber">partner – don't charge</span>` : ''}${g._st === 'carry' ? ' <span class="badge badge-grey">still here?</span>' : ''}${g._prev ? ' <span class="badge badge-blue">stays on</span>' : ''}</span>${pack || g.partner ? `<span class="cell-sub">${h([pack, g.partner && g.partner !== 'partner' ? 'via ' + g.partner : ''].filter(Boolean).join(' · '))}</span>` : ''}</span>
       <span class="wk-gc" data-l="Stay">${h(stayText(g, ws))}${nights ? `<span class="cell-sub">${plural(nights, 'night')}</span>` : ''}</span>
-      <span class="wk-gc" data-l="Room">${h(room)}${movedRooms(g) ? `<span class="cell-sub">moved from ${h(movedRooms(g)[0])}</span>` : ''}</span>
+      <span class="wk-gc" data-l="Room">${r ? h(room) : `<span class="badge badge-grey">${OUTSIDE}</span>`}${movedRooms(g) ? `<span class="cell-sub">from ${h(movedRooms(g)[0])}${moveDay(g) ? ', ' + h(fd(moveDay(g))) : ''}</span>` : !r ? '<span class="cell-sub">meals only</span>' : ''}</span>
       <span class="wk-gc" data-l="Surf">${h(c ? c : 'no lessons')}${c ? `<span class="cell-sub">${h(levelOf(g))}${isYoga(g) ? ' · Yoga' : ''}</span>` : isYoga(g) ? '<span class="cell-sub">Yoga</span>' : ''}</span>
       <span class="wk-gc" data-l="Diet">${h(d === 'none' ? 'no special diet' : d || 'diet ?')}${al ? ` <span class="badge badge-red">allergies: ${h(al)}</span>` : ''}</span>
       <span class="wk-gc" data-l="Phone">${g.phone ? `<a href="tel:${h(g.phone)}">${h(g.phone)}</a>` : '<span class="wk-nil">no phone</span>'}</span>
-      <span class="wk-gc" data-l="Arrival">${h(arrive)}</span></div>`;
+      <span class="wk-gc" data-l="Arrival">${h(arrive)}</span><span class="wk-gc wk-ginv">${inviteCell(g, ws)}</span></div>`;
   }
+  // ── Week group (WhatsApp) ───────────────────────────────────────────────
+  // WhatsApp has no link or API to create a group, so the app prepares everything around it:
+  // the group name, the week's phones as contacts (.vcf) to import on the phone and add in one go,
+  // the bare numbers, and — once the group exists — a one-tap invite per guest.
+  // The invite link and who was invited are kept in this browser (localStorage, per week):
+  // camp_week_messages only takes the three team messages, and a tick per guest is not worth a
+  // table change; the invites go out from one phone anyway.
+  const campName = () => CAMP_NAME[SLUG] || '';
+  const dayMon = iso => `${Number(iso.slice(8))} ${MON[Number(iso.slice(5, 7)) - 1]}`;
+  const span = (a, b) => a.slice(0, 7) === b.slice(0, 7) ? `${Number(a.slice(8))}–${dayMon(b)}` : `${dayMon(a)} – ${dayMon(b)}`;   // 14–20 Nov
+  // The season's week number: week 1 starts on the Saturday in the settings.
+  const weekNo = ws => Math.floor(daysBetween(W.group.season_start || SEASON_WEEK1_DEFAULT, ws) / 7) + 1;
+  const weekLabel = ws => { const n = weekNo(ws); return n >= 1 ? `Week ${n} · ${span(ws, add(ws, 6))}` : `${fdm(ws)} – ${fdm(add(ws, 6))}`; };
+  const groupName = ws => `Gota Dagua ${campName()} - week ${weekNo(ws)}`;
+  const contactName = (g, ws) => `${g.guest_name} - Week ${weekNo(ws)}`;          // as the camp saves them
+  const groupDescription = ws => String(W.group.description || '').replace(/\{week\}/g, weekNo(ws)).replace(/\{dates\}/g, span(ws, add(ws, 7)));
+  // E.164: spaces, dashes and brackets out, 00 → +, the extra 0 after the country code out. '' when it is not a phone.
+  function e164(raw) {
+    let p = String(raw || '').replace(/[\s().\-]/g, '');
+    if (/^00\d/.test(p)) p = '+' + p.slice(2);
+    p = GT.cleanPhone(p);
+    return /^\+[1-9]\d{7,14}$/.test(p) ? p : '';
+  }
+  // Every guest of the week once (a guest on two bookings back to back is one person), with the phone if there is a valid one.
+  function groupPeople(ws, rows, withOutside) {
+    const seen = new Map();
+    rows.filter(g => counted(g) && inWeek(g, ws)).sort(byStay).forEach(g => {
+      const k = personKey(g.guest_name) || g.guest_name;
+      let phone = e164(g.phone); for (let x = g._prev; x && !phone; x = x._prev) phone = e164(x.phone);   // the earlier booking may hold the phone
+      const outside = !segments(g).some(x => x.r && x.from < add(ws, 7) && x.to > ws);
+      if (!seen.has(k)) seen.set(k, { key: k, g, phone, outside });
+      else { const x = seen.get(k); if (!x.phone && phone) { x.phone = phone; } x.outside = x.outside && outside; }
+    });
+    return [...seen.values()].filter(x => withOutside || !x.outside);
+  }
+  function vcfText(people, ws) {
+    return people.filter(x => x.phone).map(x => { const n = contactName(x.g, ws).replace(/([,;\\])/g, '\\$1');
+      return ['BEGIN:VCARD', 'VERSION:3.0', `N:;${n};;;`, `FN:${n}`, `TEL;TYPE=CELL:${x.phone}`, 'END:VCARD'].join('\r\n'); }).join('\r\n') + '\r\n';
+  }
+  const inviteText = (g, link) => `Hi ${first(g.guest_name)}, welcome to Gota Dagua ${campName()}! Join the group for your week: ${link}`;
+  function groupStore(ws) { const o = (W.group.weeks || {})[ws] || {}; return { link: o.link || '', invited: { ...(o.invited || {}) } }; }
+  // Every write re-reads the row first and changes one thing, so the laptop and the phone do not overwrite each other.
+  async function groupEdit(change) { await loadGroup(); change(W.group); render(); return saveGroup(); }
+  async function loadGroup() {
+    const c = client(); const loc = await ensureHubLocationId().catch(() => '');
+    if (!c || !loc) return;
+    const { data, error } = await c.from('location_state_store').select('state_json').eq('location_id', loc).eq('state_key', GROUP_KEY).limit(1);
+    const j = !error && data && data[0] && data[0].state_json;
+    if (j && typeof j === 'object') W.group = { season_start: j.season_start || SEASON_WEEK1_DEFAULT, description: j.description == null ? GROUP_DESC_DEFAULT : j.description, weeks: j.weeks || {} };
+  }
+  async function saveGroup() {
+    const c = client(); const loc = await ensureHubLocationId().catch(() => '');
+    if (!c || !loc) return;
+    const { error } = await c.from('location_state_store').upsert({ location_id: loc, state_key: GROUP_KEY, state_json: W.group, updated_at: new Date().toISOString() }, { onConflict: 'location_id,state_key' });
+    if (error) say("Couldn't save the group settings — " + (error.message || 'error'), 'err');
+  }
+  const inviteLinkOk = l => /^https:\/\/chat\.whatsapp\.com\/[A-Za-z0-9_-]+/.test(String(l || '').trim());
+  function groupCard(ctx) {
+    const { ws, rows } = ctx;
+    const all = groupPeople(ws, rows, true); const list = groupPeople(ws, rows, W.groupOutside);
+    const withPhone = list.filter(x => x.phone).length, without = list.length - withPhone, nOut = all.filter(x => x.outside).length;
+    const st = groupStore(ws); const invited = list.filter(x => st.invited[x.key]).length;
+    return `<div class="card wk-card wk-group" id="wkGroup">${cardHead('Week group', 'WhatsApp cannot create a group from a link: import the contacts on your phone, then add them all to a new group')}
+      <div class="card-body wk-gcols"><div>
+        <div class="wk-gname"><span><span class="micro">Group name</span><b id="wkGroupName">${h(groupName(ws))}</b></span><button class="btn btn-s btn-sm" onclick="WeekUI.copyGroupName()">${ic('copy')} Copy name</button></div>
+        <div class="wk-gstat"><b class="num">${withPhone}</b> ${withPhone === 1 ? 'guest' : 'guests'} with a phone${without ? ` · <span class="wk-warn">${without} without</span>` : ''} · saved as «${h(contactName({ guest_name: 'Name' }, ws))}»${nOut ? `<label class="wk-gtoggle"><input type="checkbox" id="wkGroupOutside" ${W.groupOutside ? 'checked' : ''} onchange="WeekUI.setGroupOutside(this.checked)"> include ${nOut} outside of camp</label>` : ''}</div>
+        <div class="wk-gbtns"><button class="btn btn-p" id="wkVcf" onclick="WeekUI.downloadVcf()" ${withPhone ? '' : 'disabled'}>${ic('download')} Download contacts (.vcf)</button>
+          <button class="btn btn-s" onclick="WeekUI.copyNumbers()" ${withPhone ? '' : 'disabled'}>${ic('copy')} Copy all numbers</button></div>
+        <div class="field wk-glink"><label for="wkInvite">Group invite link (optional)</label><input id="wkInvite" type="url" inputmode="url" placeholder="https://chat.whatsapp.com/…" value="${h(st.link)}" onchange="WeekUI.setInviteLink(this.value)">
+          <div class="hint">${inviteLinkOk(st.link) ? `«Send invite» is next to each guest below · ${invited} of ${withPhone} invited` : st.link ? 'This does not look like a WhatsApp group link (https://chat.whatsapp.com/…).' : 'Paste it once the group exists to get a one-tap «Send invite» next to each guest.'}</div></div>
+        <div class="field wk-gseason"><label for="wkSeason">Season week 1 starts on (a Saturday)</label><input id="wkSeason" type="date" value="${h(W.group.season_start)}" onchange="WeekUI.setSeasonStart(this.value)">
+          <div class="hint">This week is week ${weekNo(ws)}.</div></div>
+      </div><div>
+        <div class="field wk-gdesc"><label for="wkDesc">Group description</label><textarea id="wkDesc" rows="9" onchange="WeekUI.setGroupDescription(this.value)">${h(W.group.description)}</textarea>
+          <div class="hint">Written once, kept for every week. {week} and {dates} become «${weekNo(ws)}» and «${h(span(ws, add(ws, 7)))}» when you copy.</div></div>
+        <button class="btn btn-s btn-sm" onclick="WeekUI.copyGroupDescription()">${ic('copy')} Copy description</button>
+      </div></div></div>`;
+  }
+  function inviteCell(g, ws) {
+    const st = groupStore(ws); if (!inviteLinkOk(st.link)) return '';
+    const k = personKey(g.guest_name) || g.guest_name;
+    if (!e164(g.phone)) return '<span class="wk-nil">no phone</span>';
+    return st.invited[k] ? `<button class="btn btn-s btn-sm wk-invited" title="Send again" onclick="WeekUI.invite('${g.id}')">${ic('check')} Invited</button>`
+      : `<button class="btn btn-s btn-sm" onclick="WeekUI.invite('${g.id}')">${ic('send')} Send invite</button>`;
+  }
+  function download(name, text, type) {
+    const url = URL.createObjectURL(new Blob([text], { type }));
+    const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  }
+
   function filterGuests(q) {
     const words = String(q || '').toLowerCase().split(/\s+/).filter(Boolean);
     let n = 0;
@@ -896,7 +1069,7 @@
     if (W.team === 'guests') return body('guests', W.day, ws, rows);
     if (W.team === 'transfers') { const list = tripsFor(W.day, ws); return list.some(t => t.needs_resend) ? transfersUpdate(list, W.day, ws) : GT.whatsappDayText(list); }
     const text = body(W.team, W.day, ws, rows); const sent = sentOf(W.team, W.day, ws);
-    return { text, out: sent && sent.hash !== hash(text) ? updateText(sent.text, text, W.day, ws) : text };
+    return { text, out: dress(sent && sent.hash !== hash(text) ? updateText(sent.text, text, W.day, ws) : text, cToday()) };
   }
   async function clip(text) {
     try { await navigator.clipboard.writeText(text); return true; } catch (_) {}
@@ -1064,14 +1237,28 @@
     setTab(t) { if (!TABS.some(x => x.k === t)) return; W.tab = t; W.team = teamOfTab(t) || W.team; W.undo = null; render(); },
     setTeam(t) { W.team = t; W.tab = tabOf(t); W.undo = null; render(); }, setDay(d) { W.day = d; W.undo = null; render(); },
     go(team, day) { W.team = team; W.tab = tabOf(team); W.day = day; W.scrollTo = 'wkMessage'; render(); },
+    toGroup() { const el = $('wkGroup'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); },
     toMessage() { const el = $('wkMessage'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); },
     toDay(d) { const el = $('wkDay-' + d); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); },
     search(q) { W.q = q; filterGuests(q); },
+    // Week group
+    async copyGroupName() { const ok = await clip(groupName(W.week)); say(ok ? 'Group name copied' : "Couldn't copy", ok ? 'ok' : 'err'); },
+    async copyNumbers() { const t = groupPeople(W.week, rowsOf(W.week), W.groupOutside).filter(x => x.phone).map(x => x.phone).join('\n'); const ok = await clip(t); say(ok ? 'Numbers copied' : "Couldn't copy", ok ? 'ok' : 'err'); },
+    downloadVcf() { const ws = W.week; download(`gota-dagua-week-${weekNo(ws)}.vcf`, vcfText(groupPeople(ws, rowsOf(ws), W.groupOutside), ws), 'text/vcard;charset=utf-8'); say('Contacts downloaded — open the file on your phone'); },
+    setGroupOutside(on) { W.groupOutside = !!on; render(); },
+    setSeasonStart(v) { if (!/^\d{4}-\d{2}-\d{2}$/.test(v || '')) return; return groupEdit(g => { g.season_start = GT.weekStart(v); }); },
+    setGroupDescription(v) { return groupEdit(g => { g.description = String(v || ''); }); },
+    async copyGroupDescription() { const el = $('wkDesc'); if (el) W.group.description = el.value; const ok = await clip(groupDescription(W.week)); say(ok ? 'Description copied' : "Couldn't copy", ok ? 'ok' : 'err'); },
+    setInviteLink(v) { const ws = W.week; return groupEdit(g => { const o = groupStore(ws); o.link = String(v || '').trim(); g.weeks = { ...(g.weeks || {}), [ws]: o }; }); },
+    invite(id) { const ws = W.week; const g = rowsOf(ws).find(x => x.id === id); const st = groupStore(ws); if (!g || !inviteLinkOk(st.link)) return;
+      window.open(GT.whatsappUrl(e164(g.phone), inviteText(g, st.link)), '_blank', 'noopener');
+      return groupEdit(grp => { const o = groupStore(ws); o.invited[personKey(g.guest_name) || g.guest_name] = new Date().toISOString(); grp.weeks = { ...(grp.weeks || {}), [ws]: o }; }); },
     findGuest(name) { W.q = name; W.tab = 'guests'; W.team = 'guests'; W.day = 'week'; render(); },
     shiftWeek(n) { W.week = add(W.week, n); W.day = 'week'; W.undo = null; render(); loadWeek(W.week).then(render); },
     // for tests
-    _state: W, loadAll, classify, body, parts, toText, updateText, lineDiff, hash, toCheck: () => toCheck(W.week), changes: () => changes(W.week),
-    checks: { file: fileCheck, yoga: yogaCheck }, roomInfo, course, levelOf, dietOf,
+    _state: W, loadAll, classify, body, bodyOf: (team, day) => body(team, day, W.week, rowsOf(W.week)), parts, toText, updateText, lineDiff, hash, toCheck: () => toCheck(W.week), changes: () => changes(W.week),
+    checks: { file: fileCheck, yoga: yogaCheck }, roomInfo, course, levelOf, dietOf, dress, dayMoves: d => dayMoves(rowsOf(W.week), d), e164, groupName: () => groupName(W.week), weekNo, weekLabel, groupDescription: () => groupDescription(W.week),
+    vcf: () => vcfText(groupPeople(W.week, rowsOf(W.week), W.groupOutside), W.week), groupPeople: () => groupPeople(W.week, rowsOf(W.week), W.groupOutside),
     model: () => weekModel(W.week, rowsOf(W.week)), roomPlan: () => roomPlan(W.week, rowsOf(W.week)),
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();

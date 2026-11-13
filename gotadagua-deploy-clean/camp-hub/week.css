@@ -2,7 +2,7 @@
    and control comes from /lib/app-shell.css (docs/DESIGN-SYSTEM.md).
    Chart colours: ocean, navy and grey from the tokens; arrivals = ocean,
    departures = navy (as the Arrival / Departure badges of Transport). */
-#weekRoot { --wk-in: var(--ocean); --wk-out: var(--navy); --wk-lbl: 64px; }
+#weekRoot { --wk-in: var(--ocean); --wk-out: var(--navy); --wk-lbl: 88px; }
 #weekRoot .wk-actions { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
 #weekRoot .wk-filters { display: flex; gap: var(--sp-3); flex-wrap: wrap; align-items: center; margin: var(--sp-4) 0 var(--sp-3); }
 #weekRoot .wk-filters .period-picker { display: inline-flex; align-items: center; gap: var(--sp-2); }
@@ -92,7 +92,7 @@
 .wk-bn { font-size: 15px; font-weight: 700; line-height: 1.3; }
 .wk-bc.arr .wk-bn, .wk-bc.arr .wk-blt .ic { color: var(--wk-in); }
 .wk-bc.dep .wk-bn, .wk-bc.dep .wk-blt .ic { color: var(--wk-out); }
-.wk-rl { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: var(--sp-2); padding: 1px 0; }
+.wk-rl { display: grid; grid-template-columns: 78px minmax(0, 1fr); gap: var(--sp-2); padding: 1px 0; }
 .wk-rm { color: var(--muted); font-size: 12px; padding-top: 1px; }
 .wk-tl { padding: 1px 0; }
 .wk-tl .badge { height: 18px; font-size: 10.5px; padding: 0 6px; vertical-align: 1px; }
@@ -133,6 +133,10 @@
 .wk-bar.carry { background: var(--surface-2); border-color: var(--border-2); }
 .wk-bt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wk-bshort { display: none; }
+.wk-bar > .ic { width: 12px; height: 12px; flex: 0 0 auto; color: var(--muted); }
+.wk-bedw { margin-right: .3em; }
+.wk-group { scroll-margin-top: 72px; }
+.wk-glegend .ic { width: 12px; height: 12px; }
 @container (max-width: 150px) { .wk-bfull { display: none; } .wk-bshort { display: inline; } }
 .wk-bar .wk-dot { margin-left: 0; }
 .wk-gl.extra .wk-glb { color: var(--amber); }
@@ -207,6 +211,7 @@
   .wk-bnight { margin: 0; }
   .wk-blt { display: inline-flex; }
   .wk-bl { margin-bottom: 4px; }
+  .wk-bc.empty { display: none; }
   .wk-plist.cols { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .wk-ghd { display: none; }
   .wk-grow { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--sp-2) var(--sp-3); }
@@ -214,7 +219,7 @@
   .wk-gc[data-l]::before { content: attr(data-l); display: block; font-size: 10.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-2); }
 }
 @media (max-width: 700px) {
-  #weekRoot { --wk-lbl: 30px; }
+  #weekRoot { --wk-lbl: 34px; }
   #weekRoot .wk-week { min-width: 0; }
   #weekRoot .wk-days .pill { padding-left: 10px; padding-right: 10px; }
   #weekRoot .wk-file { flex-basis: 100%; }
@@ -237,3 +242,51 @@
   .wk-search { width: 100%; }
   .wk-rl { grid-template-columns: 76px minmax(0, 1fr); }
 }
+
+/* Rooms · by room, plain (leads the tab) */
+.wk-here { color: var(--muted); font-weight: 600; }
+.wk-brhd, .wk-br { display: grid; grid-template-columns: minmax(0, 1fr) 64px 64px; gap: var(--sp-3); align-items: baseline; }
+.wk-brhd { display: none; }
+.wk-byroom { columns: 2; column-gap: var(--sp-6); padding: 0 var(--card-pad) var(--sp-3); border-top: 1px solid var(--border); }
+.wk-broom { break-inside: avoid; padding: var(--sp-3) 0 var(--sp-2); }
+.wk-brh { display: flex; align-items: baseline; gap: var(--sp-2); padding: 6px 10px; margin-bottom: 2px; background: var(--ocean-soft); border-radius: var(--r-xs); color: var(--ocean); font-size: 13.5px; }
+.wk-brh .cell-sub { display: inline; font-size: 12px; color: var(--muted); }
+.wk-br { padding: 7px 10px; border-bottom: 1px solid var(--border); font-size: 13.5px; }
+.wk-br:last-child { border-bottom: 0; }
+.wk-br > span:nth-child(n+2) { font-weight: 600; font-size: 13px; white-space: nowrap; }
+.wk-brn .cell-sub { display: block; font-size: 12px; color: var(--muted); }
+.wk-bed { margin-left: 6px; font-size: 11.5px; color: var(--muted-2); white-space: nowrap; }
+.wk-bout { display: block; font-size: 12px; }
+@media (max-width: 1000px) { .wk-byroom { columns: 1; } }
+@media (max-width: 700px) { .wk-byroom { padding: 0 var(--sp-3) var(--sp-2); } .wk-brhd, .wk-br { grid-template-columns: minmax(0, 1fr) 52px 52px; gap: var(--sp-2); } }
+.wk-msg b { color: var(--navy); font-weight: 700; } .wk-mnote { color: var(--muted); }
+
+/* Guests · week group (WhatsApp) */
+.wk-gname { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--sp-3); flex-wrap: wrap; }
+.wk-gname .micro { display: block; margin-bottom: 2px; }
+.wk-gname b { font-size: 16px; color: var(--navy); }
+.wk-gstat { margin: var(--sp-3) 0; font-size: 13.5px; color: var(--muted); }
+.wk-gstat b { color: var(--navy); font-size: 15px; }
+.wk-gtoggle { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.wk-gbtns { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
+.wk-glink { margin-top: var(--sp-4); max-width: 520px; }
+.wk-glink .hint { margin-top: 6px; }
+.wk-ginv { display: none; }
+.has-invite .wk-ginv { display: block; }
+.has-invite .wk-ghd, .has-invite .wk-grow { grid-template-columns: minmax(0, 2fr) minmax(0, 1.1fr) minmax(0, 1.1fr) minmax(0, 1.1fr) minmax(0, 1.2fr) minmax(0, 1.2fr) minmax(0, .9fr) 118px; }
+.wk-invited { color: var(--green); border-color: var(--green-border); background: var(--green-bg); }
+@media (max-width: 1000px) {
+  .has-invite .wk-grow { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .has-invite .wk-grow .wk-ginv { grid-column: 1 / -1; }
+}
+@media (max-width: 700px) { .wk-gbtns .btn { flex: 1 1 100%; justify-content: center; } }
+.wk-gcols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--sp-5); }
+.wk-gtoggle { display: flex; margin-top: 6px; }
+.wk-gseason { margin-top: var(--sp-4); max-width: 260px; }
+.wk-gdesc textarea { width: 100%; min-height: 190px; font: inherit; font-size: 13.5px; line-height: 1.5; }
+.wk-gdesc { margin-bottom: var(--sp-2); }
+@media (max-width: 1000px) { .wk-gcols { grid-template-columns: minmax(0, 1fr); } }
+.wk-gtools { padding-top: var(--sp-3); border-top: 1px solid var(--border); }
+#weekRoot .wk-gsec { padding-left: 0; padding-right: 0; }
+.wk-untimed .section-lbl { display: block; margin: 0 0 2px; padding: 0; }
+.wk-untimed .cell-sub { display: block; font-size: 12.5px; color: var(--muted); }
