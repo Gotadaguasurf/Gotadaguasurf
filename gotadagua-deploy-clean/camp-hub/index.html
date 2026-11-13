@@ -9595,6 +9595,7 @@ function renderWeeklyPL(){
       </tfoot>
     </table></div>
   </div>`;
+  if(typeof campExtrasAfterWeekly==='function') campExtrasAfterWeekly(); // camp-hub/extras.js («This week» card)
 }
 
 function jumpToWeek(ws){
@@ -10416,4 +10417,5 @@ document.addEventListener('keydown', function(e){
 
 
 <script src="/camp-hub/cash-count.js"></script>
+<script src="/camp-hub/extras.js"></script>
 </body></html>
