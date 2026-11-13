@@ -8,6 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/lib/app-shell.css">
 <link rel="stylesheet" href="/camp-hub/transport.css">
+<link rel="stylesheet" href="/camp-hub/week.css">
 <script src="/lib/app-shell.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.4"></script>
@@ -418,6 +419,7 @@ body{min-height:100dvh}
     <button class="ntab" data-page="overview" onclick="showPage(&#39;overview&#39;)"><span class="nav-btn-label"><span class="ui-ic ui-ic-lg"><svg viewBox="0 0 20 20"><path d="M3 17h14"/><path d="M6 14V8"/><path d="M10 14V4"/><path d="M14 14v-6"/></svg></span><span>Overview</span></span></button>
     <button class="ntab" data-page="pos" onclick="showPage(&#39;pos&#39;)"><span class="nav-btn-label"><span class="ui-ic ui-ic-lg"><svg viewBox="0 0 20 20"><rect x="3" y="5" width="14" height="10" rx="2"/><path d="M6 9h8"/><path d="M6 12h5"/></svg></span><span id="posTabLabel">Camp Tab</span></span></button>
     <button class="ntab" data-page="expenses" onclick="showPage(&#39;expenses&#39;)"><span class="nav-btn-label"><span class="ui-ic ui-ic-lg"><svg viewBox="0 0 20 20"><path d="M6 3h8l3 3v11H6z"/><path d="M14 3v4h4"/><path d="M9 10h5"/><path d="M9 13h5"/></svg></span><span>Operations Ledger</span></span></button>
+    <button class="ntab" data-page="week" onclick="showPage(&#39;week&#39;)" style="display:none"><span class="nav-btn-label"><span class="ui-ic ui-ic-lg"><svg viewBox="0 0 20 20"><path d="M7 5h10"/><path d="M7 10h10"/><path d="M7 15h10"/><circle cx="3.5" cy="5" r="1"/><circle cx="3.5" cy="10" r="1"/><circle cx="3.5" cy="15" r="1"/></svg></span><span>Week</span></span></button>
     <button class="ntab" data-page="transport" onclick="showPage(&#39;transport&#39;)" style="display:none"><span class="nav-btn-label"><span class="ui-ic ui-ic-lg"><svg viewBox="0 0 20 20"><path d="M3 13h14"/><path d="M5 13v-3a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v3"/><circle cx="7" cy="15" r="1.5"/><circle cx="13" cy="15" r="1.5"/></svg></span><span>Transport</span></span></button>
     <button class="ntab" data-page="weekly" onclick="showPage(&#39;weekly&#39;)"><span class="nav-btn-label"><span class="ui-ic ui-ic-lg"><svg viewBox="0 0 20 20"><rect x="3" y="4" width="14" height="13" rx="2"/><path d="M7 2v4"/><path d="M13 2v4"/><path d="M3 8h14"/></svg></span><span>Weekly P&amp;L</span></span></button>
   </div>
@@ -443,6 +445,7 @@ body{min-height:100dvh}
   <button class="ntab-m" data-page="overview" onclick="showPage('overview');toggleMobileNav()">Overview</button>
   <button class="ntab-m" data-page="pos" onclick="showPage('pos');toggleMobileNav()"><span id="posTabLabelMob">Camp Tab</span></button>
   <button class="ntab-m" data-page="expenses" onclick="showPage('expenses');toggleMobileNav()">Operations Ledger</button>
+  <button class="ntab-m" data-page="week" onclick="showPage('week');toggleMobileNav()" style="display:none">Week</button>
   <button class="ntab-m" data-page="transport" onclick="showPage('transport');toggleMobileNav()" style="display:none">Transport</button>
   <button class="ntab-m" data-page="weekly" onclick="showPage('weekly');toggleMobileNav()">Weekly P&amp;L</button>
   <div class="nav-mob-lbl">Actions</div>
@@ -778,6 +781,7 @@ body{min-height:100dvh}
 
 <!-- ═══════════ WEEKLY P&L ═══════════ -->
 <div class="page" id="page-transport"><div class="container" id="transportRoot"></div></div>
+<div class="page" id="page-week"><div class="container" id="weekRoot"></div></div>
 
 <div class="page active" id="page-weekly">
   <div class="container">
@@ -4687,6 +4691,7 @@ function showPage(p){
   else if(p==='expenses'){ renderExpenses(); ensureAiUploadWired(); applyLocationSpecificExpUI(); }
   else if(p==='weekly') renderWeeklyPL();
   else if(p==='transport' && typeof renderTransportPage==='function') renderTransportPage();
+  else if(p==='week' && typeof renderWeekPage==='function') renderWeekPage();
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -10413,6 +10418,7 @@ document.addEventListener('keydown', function(e){
 </script>
 <script src="/lib/guests-trips.js"></script>
 <script src="/camp-hub/transport.js"></script>
+<script src="/camp-hub/week.js"></script>
 
 
 <script src="/camp-hub/cash-count.js"></script>

@@ -1,0 +1,56 @@
+/* Camp hub · Week (Sri Lanka). Page-specific layout only; every colour, radius
+   and control comes from /lib/app-shell.css (docs/DESIGN-SYSTEM.md). */
+#weekRoot .wk-actions { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
+#weekRoot .wk-filters { display: flex; gap: var(--sp-3); flex-wrap: wrap; align-items: center; margin: var(--sp-4) 0 var(--sp-2); }
+#weekRoot .wk-filters .period-picker { display: inline-flex; align-items: center; gap: var(--sp-2); }
+#weekRoot .wk-week { min-width: 150px; text-align: center; }
+#weekRoot .wk-count { font-weight: 600; }
+#weekRoot .wk-file { margin-bottom: var(--sp-3); }
+#weekRoot .wk-soft { margin-bottom: var(--sp-3); }
+#weekRoot .card { margin-bottom: var(--sp-4); }
+#weekRoot .card-hdr { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--sp-3); flex-wrap: wrap; }
+#weekRoot .wk-teams, #weekRoot .wk-days { margin-bottom: var(--sp-3); flex-wrap: wrap; }
+#weekRoot .wk-days .pill { min-width: 0; }
+#weekRoot .wk-changed { padding: 0; margin-bottom: var(--sp-3); }
+
+.wk-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--amber); margin-left: 6px; vertical-align: middle; }
+
+.wk-check { border: 1px solid var(--border); border-radius: var(--r-sm, 10px); background: var(--surface); margin-bottom: var(--sp-3); }
+.wk-check-hd { display: flex; align-items: center; gap: 6px; width: 100%; padding: var(--sp-3); border: 0; background: none; font: inherit; font-weight: 600; color: var(--ink); text-align: left; cursor: pointer; }
+.wk-check-list { border-top: 1px solid var(--border); }
+.wk-ci { padding: var(--sp-3); border-bottom: 1px solid var(--border); }
+.wk-ci:last-child { border-bottom: 0; }
+.wk-ci-t { font-size: 13.5px; }
+.wk-ci-g { display: flex; justify-content: space-between; align-items: center; gap: var(--sp-2); flex-wrap: wrap; padding-top: var(--sp-2); font-size: 13.5px; }
+
+.wk-list { padding-top: var(--sp-2); }
+.wk-line { padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 14px; line-height: 1.4; }
+.wk-line:last-child { border-bottom: 0; }
+.wk-h { margin-top: var(--sp-3); }
+.wk-h:first-child { margin-top: 0; }
+.wk-rows { border-top: 1px solid var(--border); }
+.wk-g { padding: var(--sp-3) var(--card-pad); border-bottom: 1px solid var(--border); }
+.wk-g:last-child { border-bottom: 0; }
+.wk-g1 { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.wk-yoga { margin-top: 4px; }
+
+/* The message: grey box, normal Outfit text (not monospace), kept line breaks. */
+.wk-msg { white-space: pre-wrap; word-break: break-word; font: inherit; font-size: 14px; line-height: 1.5; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r-sm, 10px); padding: var(--sp-3) var(--sp-4); max-height: 360px; overflow: auto; }
+
+/* Footer: Copy + the one blue Send, kept in reach on a phone. */
+.wk-foot { position: sticky; bottom: 0; z-index: 5; background: var(--bg, #f6f8fa); padding: var(--sp-3) 0; border-top: 1px solid var(--border); margin-top: var(--sp-2); }
+.wk-foot-btns { display: flex; gap: var(--sp-2); }
+.wk-foot-btns .btn-p { flex: 1; justify-content: center; }
+.wk-state { margin-top: 6px; }
+.wk-state .btn-link { padding: 0; border: 0; font: inherit; color: var(--ocean); cursor: pointer; text-decoration: underline; }
+.wk-after { margin-top: var(--sp-3); }
+.wk-contact { padding-bottom: var(--sp-3); margin-bottom: var(--sp-3); border-bottom: 1px solid var(--border); }
+.wk-contact:last-child { border-bottom: 0; margin-bottom: 0; }
+
+/* The import shown inside Week reuses Transport's markup (camp-hub/transport.css). */
+#weekRoot .wk-import { margin-top: var(--sp-4); }
+
+@media (max-width: 700px) {
+  #weekRoot .wk-week { min-width: 0; }
+  #weekRoot .wk-days .pill { padding-left: 10px; padding-right: 10px; }
+}
