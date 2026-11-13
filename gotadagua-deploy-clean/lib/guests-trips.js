@@ -66,7 +66,9 @@
   function isSriLanka(pk, acc) {
     const p = pk.toLowerCase();
     if (p.includes('ahangama') || p.includes('sri lanka')) return 'yes';
-    if (!pk.trim() && SL_ROOMS.some(r => acc.toLowerCase().includes(r))) return 'room';
+    // A room of the camp is enough, whatever the package is called (13 Nov audit: a guest on a package
+    // with another name must not drop out of the lists). 'room' = Packages empty (counted in the report).
+    if (SL_ROOMS.some(r => acc.toLowerCase().includes(r))) return pk.trim() ? 'yes' : 'room';
     return '';
   }
 
@@ -285,21 +287,44 @@
   // week_start = the Saturday of the Sat–Fri week of the check-in; a list for a
   // week must still select by overlap (check_in < week end and check_out > week start).
   const NO_ALLERGY = new Set(['', 'no', 'none', '-', 'n/a', 'na', 'nope', 'nothing']);
-  function guestRows(text, fileName) {
+  // guestRows = the rows to store. guestAudit = the same pass with every row of the file accounted
+  // for: rows in the file = guests to import + rows left out, each with its reason (nobody lost
+  // without a line on the import screen).
+  function guestRows(text, fileName) { return scanGuests(text, fileName).out; }
+  function guestAudit(text, fileName) {
+    const { out, left, total } = scanGuests(text, fileName);
+    const live = out.filter(g => OK_STATUS.has(g.booking_status) && g.check_in && g.check_out);
+    out.filter(g => !OK_STATUS.has(g.booking_status)).forEach(g => left.push({ line: g.csv_line, name: g.guest_name, ref: g.booking_ref, kind: DEAD_STATUS.has(g.booking_status) ? 'cancelled' : 'status', reason: `status «${g.booking_status.replace(/_/g, ' ') || 'empty'}»` }));
+    out.filter(g => OK_STATUS.has(g.booking_status) && !(g.check_in && g.check_out)).forEach(g => left.push({ line: g.csv_line, name: g.guest_name, ref: g.booking_ref, kind: 'no_dates', reason: 'no check-in or check-out date: on no list' }));
+    left.sort((a, b) => a.line - b.line);
+    return { rows: total, guests: live.length, left, renamed: out.filter(g => g.renamed).map(g => ({ line: g.csv_line, name: g.guest_name, ref: g.booking_ref })) };
+  }
+  function scanGuests(text, fileName) {
+    const left = []; let total = 0;
     const all = parseCsv(text);
     const H = (all[0] || []).map(h => h.trim());
     const nth = (name, k) => { let c = -1; for (let i = 0; i < H.length; i++) if (H[i] === name && ++c === k) return i; return -1; };
     const val = (r, name, k = 0) => { const i = nth(name, k); return i >= 0 && i < r.length ? pyStrip(r[i]) : ''; };
     const get = (r, ...names) => { for (const n of names) if (H.includes(n)) return val(r, n); return ''; };
-    const out = []; const seen = new Set();
+    const out = []; const seen = new Set(); const seenRow = new Set();
     all.slice(1).forEach((r, n) => {
       if (!r.some(c => String(c).trim())) return;
-      const rawName = get(r, 'Guest').replace(/\s+/g, ' ').trim();
+      total++;
+      let rawName = get(r, 'Guest').replace(/\s+/g, ' ').trim();
       const ref = get(r, 'Booking', 'Booking #');
-      if (!isSriLanka(get(r, 'Packages'), get(r, 'Accommodations'))) return;
-      if (TEST_NAME.test(rawName)) return;
-      const key = ref + '\u0000' + rawName.toLowerCase();
-      if (seen.has(key)) return; seen.add(key);
+      const leave = (kind, reason) => left.push({ line: n + 2, name: rawName || '(no name)', ref, kind, reason });
+      if (!isSriLanka(get(r, 'Packages'), get(r, 'Accommodations'))) { leave('other_camp', `other camp (${get(r, 'Accommodations') || get(r, 'Packages') || 'no room, no package'})`); return; }
+      if (TEST_NAME.test(rawName)) { leave('test', 'test booking'); return; }
+      // The +1 of a booking can come with no name, or with the same name as the booker. Only a row
+      // that repeats name, dates, room and bed is a duplicate; any other one is another person.
+      let renamed = false;
+      const same = ref + '\u0000' + rawName.toLowerCase() + '\u0000' + [get(r, 'Check-in on', 'Arrives on'), get(r, 'Check-out on', 'Departure date', 'Departs on'), get(r, 'Accommodations'), get(r, 'Bed number')].join('|');
+      if (rawName && seenRow.has(same)) { leave('duplicate', 'same guest, dates, room and bed twice in the file'); return; }
+      seenRow.add(same);
+      if (!rawName) { rawName = `Guest without name (booking ${ref || '?'})`; renamed = true; }
+      let key = ref + '\u0000' + rawName.toLowerCase();
+      for (let k = 2; seen.has(key); k++) { if (k === 2) renamed = true; key = ref + '\u0000' + `${rawName} (${k})`.toLowerCase(); if (!seen.has(key)) rawName = `${rawName} (${k})`; }
+      seen.add(key);
       const raw = {}; const count = {};
       H.forEach((h, i) => { count[h] = (count[h] || 0) + 1; raw[count[h] > 1 ? `${h} (${count[h]})` : h] = i < r.length ? r[i] : ''; });
       const join = (vals, skip) => [...new Set(vals.map(pyStrip).filter(v => v && !(skip && skip.has(v.toLowerCase()))))].join(' / ');
@@ -320,7 +345,7 @@
         has_transfer: get(r, 'Has transfer').toLowerCase() === 'yes',
         booking_status: get(r, 'Booking status').toLowerCase().replace(/ /g, '_'),
         booking_due: dueOf(get(r, 'Booking due')), email: get(r, 'Email'),
-        raw,
+        ...(renamed ? { renamed: true } : {}), raw,
       });
     });
     // Partner («don't charge»): Booking due > 0 means a partner collects (gen_from_guests.py);
@@ -328,7 +353,7 @@
     const byRef = {};
     out.forEach(g => { const p = partnerOf(g); if (p && p !== 'partner') byRef[g.booking_ref] = p; });
     out.forEach(g => { const p = partnerOf(g); g.partner = p ? (byRef[g.booking_ref] || p) : (byRef[g.booking_ref] || ''); delete g.email; });
-    return out;
+    return { out, left, total };
   }
   const PARTNER_DOMAINS = { 'oceanadventure.surf': 'Ocean Adventure', 'aashalanka.com': 'AASHA' };
   function dueOf(v) { const n = parseFloat(String(v || '').replace(/[^0-9.\-]/g, '')); return Number.isFinite(n) ? n : 0; }
@@ -363,7 +388,7 @@
   }
 
   return {
-    parseCsv, isGuestsExportHeader, parse, guestRows, hhmm, ymd, cleanPhone, vehicleFor, addDaysIso, weekday, weekStart, dMon,
+    parseCsv, isGuestsExportHeader, parse, guestRows, guestAudit, hhmm, ymd, cleanPhone, vehicleFor, addDaysIso, weekday, weekStart, dMon,
     whatsappText, whatsappDayText, whatsappUrl, OK_STATUS, DEAD_STATUS,
   };
 });

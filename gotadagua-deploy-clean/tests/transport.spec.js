@@ -192,6 +192,39 @@ test('next week import: the Guests file stands alone — HQ bookings are never r
   expect(errors).toEqual([]);
 });
 
+test('next week import: every row of the file is accounted for — imported, or left out with its reason (audit of 13 Nov)', async ({ page }) => {
+  const st = await openTab(page);
+  await page.click('button.pill:has-text("Next week")');
+  await page.setInputFiles('#trGuestsFile', GUESTS_CSV);
+  await expect(page.locator('#transportRoot .tr-audit')).toHaveText('18 rows in the file = 18 guests imported + 0 left out');
+  await expect(page.locator('#transportRoot .tr-audit')).toHaveClass(/hint/);
+  await expect(page.locator('#transportRoot .tr-leftout')).toHaveCount(0);
+  // invented rows: a +1 with no name, a request, another camp, a row with no dates
+  const head = '"Guest","Booking status","Booking","Accommodations","Bed number","Packages","Check-in on","Check-out on","Has transfer"';
+  const csv = [head,
+    '"Kai Kopp","paid","2026-9007","Hiriketeya Beach Superior Ensuite Room","1","Surf Camp Ahangama","Sat 14 Nov 2026","Sat 21 Nov 2026","No"',
+    '"","paid","2026-9007","Hiriketeya Beach Superior Ensuite Room","2","Surf Camp Ahangama","Sat 14 Nov 2026","Sat 21 Nov 2026","No"',
+    '"Nora Nagel","request","2026-9010","Unawatuna Beach Shared Room (only girls)","1","Surf Camp Ahangama","Sat 14 Nov 2026","Sat 21 Nov 2026","No"',
+    '"Pia Pohl","paid","2026-9012","17 - Castelo beach mixed dorm","1","Offseason Custom Package","Fri 27 Nov 2026","Sun 29 Nov 2026","No"',
+    '"Quin Quast","paid","2026-9013","Madiha Beach Standard Ensuite Room","1","Surf Camp Ahangama","","","No"'].join('\n');
+  await page.setInputFiles('#trGuestsFile', { name: 'Bookinglayer-Guests-2026-11-13 10_00.csv', mimeType: 'text/csv', buffer: Buffer.from(csv, 'utf8') });
+  await expect(page.locator('#transportRoot .tr-audit')).toHaveText('5 rows in the file = 2 guests imported + 3 left out · 2 to look at');
+  await expect(page.locator('#transportRoot .tr-audit')).toHaveClass(/status-warn/);
+  const left = page.locator('#transportRoot .tr-leftout .tr-row');
+  await expect(left).toHaveCount(3);
+  await expect(left.nth(0)).toContainText('Nora Nagel');
+  await expect(left.nth(0)).toContainText('status «request»');
+  await expect(left.nth(0).locator('.badge')).toHaveText('Check');
+  await expect(left.nth(1)).toContainText('other camp (17 - Castelo beach mixed dorm)');
+  await expect(left.nth(1).locator('.badge')).toHaveCount(0);
+  await expect(left.nth(2)).toContainText('Quin Quast');
+  await expect(left.nth(2)).toContainText('no check-in or check-out date: on no list');
+  await expect(page.locator('#transportRoot .tr-soft')).toContainText('1 guest with no name or a repeated name on the booking, kept as separate people: Guest without name (booking 2026-9007)');
+  await page.click('#trImportSave');
+  const imp = (await call(st, 'import')).body;
+  expect(imp.p_guests.map(g => g.guest_key)).toEqual(['kai kopp', 'guest without name (booking 2026-9007)']);
+});
+
 test('next week import: a file without a date in its name asks when it was downloaded', async ({ page }) => {
   await openTab(page);
   await page.click('button.pill:has-text("Next week")');

@@ -139,3 +139,39 @@ test('guest rows: partner («don\'t charge») from Booking due > 0, named by the
   expect(rows.map(g => [g.guest_name, g.partner, g.booking_due])).toEqual([['Ana', 'Ocean Adventure', 599], ['Rui', 'Ocean Adventure', 599], ['Eva', '', 0]]);
   expect(rows[0].email).toBeUndefined(); // the email stays only in raw
 });
+
+// ── Audit of 13 Nov 2026: no guest row is lost without a line ──────────────
+// Invented rows, shaped like the cases a Guests export can hold.
+const AUDIT_HEAD = '"Guest","Booking status","Booking","Accommodations","Bed number","Packages","Check-in on","Check-out on"';
+const AUDIT_ROWS = [
+  '"Kai Kopp","paid","2026-9007","Hiriketeya Beach Superior Ensuite Room","1","Surf Camp Ahangama","Sat 14 Nov 2026","Sat 21 Nov 2026"',
+  '"","paid","2026-9007","Hiriketeya Beach Superior Ensuite Room","2","Surf Camp Ahangama","Sat 14 Nov 2026","Sat 21 Nov 2026"',                 // +1 with no name
+  '"Lena Lund","paid","2026-9008","Kabalana Beach Shared Room (4p)","1","Surf Camp Ahangama","Sat 14 Nov 2026","Sat 21 Nov 2026"',
+  '"Lena Lund","paid","2026-9008","Kabalana Beach Shared Room (4p)","2","Surf Camp Ahangama","Sat 14 Nov 2026","Sat 21 Nov 2026"',               // +1 under the booker's name, another bed
+  '"Lena Lund","paid","2026-9008","Kabalana Beach Shared Room (4p)","2","Surf Camp Ahangama","Sat 14 Nov 2026","Sat 21 Nov 2026"',               // the same row twice
+  '"Mats Moor","paid","2026-9009","Marissa Shared Room (4p)","3","Yoga Retreat November","Sat 14 Nov 2026","Sat 21 Nov 2026"',                  // a package with another name, a room of the camp
+  '"Nora Nagel","request","2026-9010","Unawatuna Beach Shared Room (only girls)","1","Surf Camp Ahangama","Sat 14 Nov 2026","Sat 21 Nov 2026"',
+  '"Otto Olsen","cancelled","2026-9011","Marissa Shared Room (4p)","1","Surf Camp Ahangama","Sat 14 Nov 2026","Sat 21 Nov 2026"',
+  '"Pia Pohl","paid","2026-9012","17 - Castelo beach mixed dorm","1","Offseason Custom Package","Fri 27 Nov 2026","Sun 29 Nov 2026"',
+  '"Quin Quast","paid","2026-9013","Madiha Beach Standard Ensuite Room","1","Surf Camp Ahangama","",""',                                       // no dates
+];
+test('guest audit: rows in the file = guests imported + rows left out, each with its reason; a +1 with no name or the booker\'s name is kept', () => {
+  const csv = [AUDIT_HEAD, ...AUDIT_ROWS].join('\n');
+  const rows = G.guestRows(csv, 'x.csv');
+  const live = rows.filter(g => G.OK_STATUS.has(g.booking_status));
+  expect(live.map(g => [g.guest_name, g.guest_key, g.bed_number])).toEqual([
+    ['Kai Kopp', 'kai kopp', '1'], ['Guest without name (booking 2026-9007)', 'guest without name (booking 2026-9007)', '2'],
+    ['Lena Lund', 'lena lund', '1'], ['Lena Lund (2)', 'lena lund (2)', '2'], ['Mats Moor', 'mats moor', '3'], ['Quin Quast', 'quin quast', '1']]);
+  expect(new Set(live.map(g => g.booking_ref + '|' + g.guest_key)).size).toBe(live.length);   // the unique key of camp_week_guests
+  const a = G.guestAudit(csv, 'x.csv');
+  expect(a.rows).toBe(10);
+  expect(a.guests).toBe(5);
+  expect(a.left.map(x => [x.line, x.name, x.kind])).toEqual([[6, 'Lena Lund', 'duplicate'], [8, 'Nora Nagel', 'status'], [9, 'Otto Olsen', 'cancelled'], [10, 'Pia Pohl', 'other_camp'], [11, 'Quin Quast', 'no_dates']]);
+  expect(a.left[1].reason).toBe('status «request»');
+  expect(a.left[3].reason).toBe('other camp (17 - Castelo beach mixed dorm)');
+  expect(a.rows).toBe(a.guests + a.left.length);
+  expect(a.renamed.map(x => x.name)).toEqual(['Guest without name (booking 2026-9007)', 'Lena Lund (2)']);
+  // the real files: every row accounted for
+  for (const f of [PRESET, ALL]) { const x = G.guestAudit(read(f + '.csv'), f + '.csv'); expect(x.rows).toBe(x.guests + x.left.length); }
+  expect(G.guestAudit(read(PRESET + '.csv'), PRESET + '.csv')).toMatchObject({ rows: 18, guests: 18, left: [] });
+});

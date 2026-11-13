@@ -545,6 +545,7 @@
     const P = I.parsed;
     const groups = I.groups;
     out += `<div class="hint tr-file">${h(P.file)} · exported ${fmtShort(P.export_date)} · ${groups.guests.length} guest${groups.guests.length === 1 ? '' : 's'} confirmed, deposit paid or paid${P.counts['other location'] ? ` · ${P.counts['other location']} from other camps left out` : ''}</div>`;
+    out += auditHtml(groups);
     if (groups.missingRefs) out += `<div class="status-msg status-info tr-soft">${groups.missingRefs} booking${groups.missingRefs === 1 ? '' : 's'} not yet in HQ — import bookings</div>`;
     out += `<div class="card"><div class="card-hdr"><div><div class="card-title">Airport trips from this file · ${groups.trips.length}</div><div class="card-hint">From the Guests export (the source for upcoming weeks), checked against HQ bookings when the booking is there.</div></div></div>
       <div class="tr-rows">${groups.trips.length ? groups.trips.map(t => impRow(t)).join('') : '<div class="card-body hint">No transfer booked in this file.</div>'}</div>
@@ -600,6 +601,22 @@
     TR.imp.needDate = false;
     await buildImport(GT.parse(TR.imp.text, TR.imp.name, d));
   }
+  // Nobody lost at the import: rows in the file = guests imported + rows left out, each with its reason.
+  // Other camps and cancelled bookings are expected; a status that is not live, a row without dates or
+  // a repeated row is worth a look, so the block turns amber.
+  function auditHtml(groups) {
+    const A = groups.audit; if (!A) return '';
+    const hq = groups.hqCancelled.length;
+    const leftN = A.left.length + hq;
+    const sum = `${A.rows} row${A.rows === 1 ? '' : 's'} in the file = ${groups.guests.length} guest${groups.guests.length === 1 ? '' : 's'} imported + ${leftN} left out`;
+    const adds = A.rows === groups.guests.length + leftN;
+    const look = A.left.filter(x => x.kind === 'status' || x.kind === 'no_dates' || x.kind === 'duplicate');
+    let out = `<div class="${adds && !look.length ? 'hint' : 'status-msg status-warn'} tr-audit">${adds ? '' : 'The rows do not add up — tell Miguel before using the lists. '}${h(sum)}${look.length ? ` · ${look.length} to look at` : ''}</div>`;
+    if (A.left.length) out += `<div class="card tr-leftout"><div class="card-hdr"><div><div class="card-title">Left out of the import · ${A.left.length}</div><div class="card-hint">Every row of the file that is not imported, with the reason.</div></div></div>
+      <div class="tr-rows">${A.left.map(x => `<div class="tr-row tr-static"><div class="tr-main"><b>${h(x.name)}</b><div class="cell-sub">${h(x.ref || 'no booking number')} · line ${x.line} · ${h(x.reason)}</div></div>${look.includes(x) ? '<span class="badge badge-amber">Check</span>' : ''}</div>`).join('')}</div></div>`;
+    if (A.renamed.length) out += `<div class="status-msg status-info tr-soft">${A.renamed.length} guest${A.renamed.length === 1 ? '' : 's'} with no name or a repeated name on the booking, kept as separate people: ${h(A.renamed.map(x => x.name).join(', '))}</div>`;
+    return out;
+  }
   async function buildImport(parsed) {
     const c = client();
     const refs = [...new Set(parsed.trips.map(t => t.booking_ref).concat(parsed.refs_active).concat(parsed.cancel_refs))].filter(Boolean);
@@ -620,7 +637,7 @@
     const cancelledRefs = new Set(refs.filter(r => byRef.has(r) && HQ_DEAD_STATUSES.has(hqStatus(r))));
     const matchOf = r => !HQ_CROSSCHECK ? null : (byRef.has(r) ? 'ok' : 'missing');
     const allGuests = GT.guestRows(TR.imp.text, parsed.file);
-    const okGuests = allGuests.filter(g => GT.OK_STATUS.has(g.booking_status));
+    const okGuests = allGuests.filter(g => GT.OK_STATUS.has(g.booking_status) && g.check_in && g.check_out);   // no dates = on no list: shown under «Left out»
     const partnerOf = r => { const b = byRef.get(r); if (b) { const p = String(b.partner_name || ''); return p && !/^direct/i.test(p) ? p : ''; } const g = okGuests.find(x => x.booking_ref === r && x.partner); return g ? g.partner : ''; };
     const trips = parsed.trips.filter(t => !cancelledRefs.has(t.booking_ref))
       .map(t => ({ ...t, expected_price: presetPrice(t.kind, t.vehicle), hq_match: matchOf(t.booking_ref), partner: partnerOf(t.booking_ref) || null }));
@@ -638,7 +655,7 @@
       hqMissing = (data || []).filter(b => HQ_LIVE_STATUSES.has(String((b.raw_payload || {}).status || '').toLowerCase()) && !inFile.has(String(b.booking_ref)) && /airport transfer/i.test(String(b.package || '') + ' ' + JSON.stringify(b.raw_payload || {})));
     } catch (_) {}
     TR.imp = { ...TR.imp, parsed, stage: 'preview',
-      groups: { trips, guests, hqCancelled, hqMissing, missingRefs, cancelledRefs, cancelRefs: [...new Set(parsed.cancel_refs.concat([...cancelledRefs]))] } };
+      groups: { audit: GT.guestAudit(TR.imp.text, parsed.file), trips, guests, hqCancelled, hqMissing, missingRefs, cancelledRefs, cancelRefs: [...new Set(parsed.cancel_refs.concat([...cancelledRefs]))] } };
     render();
   }
   async function saveImport() {
