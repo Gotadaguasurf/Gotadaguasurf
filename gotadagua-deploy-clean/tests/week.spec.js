@@ -200,7 +200,9 @@ test('overview: tiles, guests per night, and arrivals / departures / transfers /
   await expect(day('2026-11-14').locator('.wk-bc.arr')).toContainText('HiriketeyaLanny Karine, Patrick Baggary');
   await expect(day('2026-11-14').locator('.wk-bc.arr')).toContainText('Lanny Karine, Patrick Baggary');
   await expect(day('2026-11-14').locator('.wk-bc.arr')).toContainText('Room move: João Lavado → Ahangama room');
-  await expect(day('2026-11-14').locator('.wk-bc.dep')).toContainText('None');
+  await expect(day('2026-11-14').locator('.wk-bc.dep')).toContainText('−1');          // nobody leaves the camp, one bed is freed
+  await expect(day('2026-11-14').locator('.wk-bc.dep')).toContainText('MirissaJoão Lavado (stays 2 more nights, in Ahangama room)');
+  await expect(page.locator('#weekRoot .wk-people')).toHaveText(/People check: 22 guests in the Guests file for this week, all on the lists/);
   await expect(day('2026-11-16').locator('.wk-bc.arr')).toContainText('+2');
   await expect(day('2026-11-16').locator('.wk-bc.dep')).toContainText('−1');
   await expect(day('2026-11-16').locator('.wk-bc.dep')).toContainText('João Lavado');
@@ -402,13 +404,15 @@ test('to check: a count on the tab it concerns, a compact list inside the tab, c
   const guests = [...guestsFromFile(), ...CARRY()];
   const st = await openWeek(page, { guests });
   const n = k => page.locator(`#weekRoot .wk-tabs .pill[data-tab="${k}"] .wk-n`);
-  await expect(n('rooms')).toHaveText('1');
+  await expect(n('rooms')).toHaveText('2');
   await expect(n('kitchen')).toHaveText('1');
   await expect(n('surf')).toHaveText('1');
   await expect(n('transfers')).toHaveText('1');
   await expect(n('guests')).toHaveText('3');
   await expect(n('overview')).toHaveCount(0);
-  await expect(page.locator('.wk-tocheck .health-chip')).toHaveText(['3 without level', '16 without diet answer', '1 transfer without time', '4 still here?', '5 phones fixed', '10 without a phone', '1 room move to confirm']);
+  await expect(page.locator('.wk-tocheck .health-chip')).toHaveText(['3 without level', '16 without diet answer', '2 without a bed', '1 transfer without time', '4 still here?', '5 phones fixed', '10 without a phone', '1 room move to confirm']);
+  // the two guests carried from the earlier file sit in a shared room with no bed number
+  expect((await page.evaluate(() => WeekUI.toCheck())).find(c => /without a bed number/.test(c.text)).who).toBe('Alexander Straub, Alicia Pohl');
   await page.click('.wk-tocheck .health-chip:has-text("without level")');
   await expect(page.locator('.wk-view-surf .wk-check')).toContainText('3 surf students without level – ask at check-in');
   await tab(page, 'kitchen');
@@ -782,4 +786,100 @@ test('chips: a fresh Guests file shows no age chip; a missing table shows a set-
   await expect(p2.locator('#weekRoot .status-msg')).toContainText('Week is not set up yet');
   expect(await p2.evaluate(() => WeekUI.checks.file.run({ ledger: [], location: 'sri-lanka', isLocal: false, today: '2026-11-17' }))).toBeNull();
   expect(errors).toEqual([]);
+});
+
+// ── Audit of 13 Nov 2026: nobody lost ──────────────────────────────────────
+// Invented guests shaped like the real case of Sat 14 Nov: three people leave the Mirissa
+// room that day — one leaves the camp, one stays on a new booking in another bed, one moves
+// to a private room — and the +1 of a private booking has no room in the file.
+const MIR = 'Marissa Shared Room (4p)', KAB = 'Kabalana Beach Shared Room (4p)', UNA = 'Unawatuna Beach Shared Room (only girls)';
+const AHA = 'Ahangama Beach Standard Ensuite Room', HIR = 'Hiriketeya Beach Superior Ensuite Room', MAD = 'Madiha Beach Standard Ensuite Room';
+function gRow(o) {
+  return { ...carry({ ref: o.ref, name: o.name, acc: o.acc || '', act: o.act || 'Surf Equipment', out: o.out || '2026-11-21' }), check_in: o.in || '2026-11-14', bed_number: o.bed || '',
+    week_start: GT.weekStart(o.in || '2026-11-14'), raw: o.raw || {}, import_id: IMPORT_NEW, updated_at: '2026-11-13T12:00:00Z' };
+}
+const CHANGEOVER = () => [
+  gRow({ ref: '2026-9001', name: 'Falk Hansen', acc: MIR, bed: '2', in: '2026-11-07', out: '2026-11-14' }),
+  gRow({ ref: '2026-9002', name: 'Yorick Keller', acc: MIR, bed: '1', in: '2026-11-07', out: '2026-11-14' }),
+  gRow({ ref: '2026-9003', name: 'Yorick Keller', acc: MIR, bed: '4', in: '2026-11-14', out: '2026-11-21' }),
+  gRow({ ref: '2026-9004', name: 'Joel Lima', acc: `${MIR}, ${AHA}`, bed: '1, 4', in: '2026-11-08', out: '2026-11-16' }),   // Bookinglayer lists the beds in number order
+  gRow({ ref: '2026-9005', name: 'Axel Sturm', acc: MIR, bed: '3', in: '2026-11-07', out: '2026-11-21' }),
+  gRow({ ref: '2026-9006', name: 'Sven Kraus', acc: MIR, bed: '1', in: '2026-11-14', out: '2026-11-21' }),
+  gRow({ ref: '2026-9007', name: 'Kai Kopp', acc: HIR, bed: '1', in: '2026-11-06', out: '2026-11-14' }),
+  gRow({ ref: '2026-9007', name: 'Sira Hart', acc: '', bed: '', in: '2026-11-06', out: '2026-11-14' }),
+];
+
+test('departures: everyone who leaves a room or a bed is listed — leaving the camp, room move, bed change, and the guest with no room', async ({ page }) => {
+  const errors = collectFatalErrors(page);
+  await openWeek(page, { guests: CHANGEOVER(), trips: [] });
+  // Overview · Departures of Sat 14: the three who leave the Mirissa room, one per line, with a short note
+  const dep = page.locator('#wkDay-2026-11-14 .wk-bc.dep');
+  await expect(dep).toContainText('−5');
+  await expect(dep.locator('.wk-rl', { hasText: 'Mirissa' }).locator('.wk-out1')).toHaveText(['Yorick Keller (stays, moves to bed 4)', 'Falk Hansen', 'Joel Lima (stays 2 more nights, in Ahangama room)']);
+  await expect(dep.locator('.wk-rl', { hasText: 'Hiriketeya' })).toContainText('Kai Kopp');
+  await expect(dep.locator('.wk-rl', { hasText: 'Outside of camp' })).toContainText('Sira Hart');
+  // the count of people leaving the camp stays its own number (tile and strip)
+  const d0 = await page.evaluate(() => { const x = WeekUI.model().days[0]; return { dep: x.departures.map(g => g.guest_name).sort(), arr: x.arrivals.map(g => g.guest_name), stay: x.staying.map(g => g.guest_name), sleep: x.sleep }; });
+  expect(d0).toEqual({ dep: ['Falk Hansen', 'Kai Kopp', 'Sira Hart'], arr: ['Sven Kraus'], stay: ['Yorick Keller'], sleep: 4 });
+  // the beds of the two-room booking: «1, 4» is Mirissa bed 4 (bed 1 is Yorick's, Ahangama has two beds), then Ahangama bed 1
+  const segs = await page.evaluate(() => { const g = WeekUI.classify(WeekUI._state.cache['2026-11-14'].rows, WeekUI._state.meta).find(x => x.guest_name === 'Joel Lima');
+    return WeekUI.segments(g).map(s => [s.r.label, s.bed, s.from, s.to]); });
+  expect(segs).toEqual([['Mirissa room', '4', '2026-11-08', '2026-11-14'], ['Ahangama room', '1', '2026-11-14', '2026-11-16']]);
+  // the Cleaning message: every bed freed is on CHECK OUT, the guest with no room too
+  expect(await rawMsg(page, 'cleaning', '2026-11-14')).toBe([
+    '*CHECK OUT - SAT 14 NOV*', '', '*Mirissa room*', '- Yorick Keller _(stays, moves to bed 4)_', '- Falk Hansen', '- Joel Lima _(stays 2 more nights, in Ahangama room)_', '',
+    '*Hiriketeya room*', '- Kai Kopp', '', '*Outside of camp* _(also guests coming for breakfast and dinner)_', '- Sira Hart', '',
+    '*CHECK IN - SAT 14 NOV*', '', '*Mirissa room*', '- Sven Kraus', '- Axel Sturm _(from last week, one more week with us)_', '- Yorick Keller _(from last week, one more week with us, now in bed 4)_', '',
+    '*Ahangama room*', '- Joel Lima _(from Mirissa room, 2 nights)_'].join('\n'));
+  expect(await rawMsg(page, 'cleaning', '2026-11-16')).toBe('*CHECK OUT - MON 16 NOV*\n\n*Ahangama room*\n- Joel Lima');
+  // the week before: the grid has Joel in bed 4 and Yorick in bed 1 (no bar pushed to another bed)
+  await page.evaluate(() => WeekUI.shiftWeek(-7));
+  await expect(page.locator('#weekRoot .wk-week')).toContainText('7–13 Nov');
+  const lanes = await page.evaluate(() => WeekUI.roomPlan().rooms.find(r => r.label === 'Mirissa room').lanes.map(l => [l.bed, l.items.map(it => it.gs[0].guest_name).join('+')]));
+  expect(lanes).toEqual([[1, 'Yorick Keller'], [2, 'Falk Hansen'], [3, 'Axel Sturm'], [4, 'Joel Lima']]);
+  // the +1 with no room: on To check with the room of her booking; the people check adds up
+  await tab(page, 'rooms');
+  await expect(page.locator('.wk-view-rooms .wk-check')).toContainText('Sira Hart (same booking as Kai Kopp, Hiriketeya room)');
+  expect((await page.evaluate(() => WeekUI.people())).ok).toBe(true);
+  expect(errors).toEqual([]);
+});
+
+test('to check · nobody lost: two guests in a bed, a room over its beds, a private room with two bookings, no bed, unclear beds, a gap between two bookings, other arrival dates', async ({ page }) => {
+  const guests = [
+    gRow({ ref: '2026-9101', name: 'Ana Abel', acc: KAB, bed: '2' }), gRow({ ref: '2026-9102', name: 'Bea Bauer', acc: KAB, bed: '2', in: '2026-11-16' }),      // same bed from Mon 16
+    gRow({ ref: '2026-9103', name: 'Cas Claes', acc: KAB, bed: '1' }), gRow({ ref: '2026-9104', name: 'Dov Dahl', acc: KAB, bed: '3' }), gRow({ ref: '2026-9105', name: 'Eli Eck', acc: KAB, bed: '4' }),   // 5 guests for 4 beds
+    gRow({ ref: '2026-9106', name: 'Finn Falk', acc: MAD, bed: '1' }), gRow({ ref: '2026-9107', name: 'Gus Gall', acc: MAD, bed: '1', in: '2026-11-18' }),       // two bookings in one private room
+    gRow({ ref: '2026-9108', name: 'Hana Holm', acc: UNA, bed: '' }),                                                                                           // shared room, no bed number
+    gRow({ ref: '2026-9109', name: 'Ines Iber', acc: `${MIR}, ${UNA}`, bed: '2, 3', in: '2026-11-10', out: '2026-11-20' }),                                     // either order fits: not clear
+    gRow({ ref: '2026-9110', name: 'Jan Jost', acc: MIR, bed: '1', in: '2026-11-07', out: '2026-11-14' }), gRow({ ref: '2026-9111', name: 'Jan Jost', acc: MIR, bed: '1', in: '2026-11-21', out: '2026-11-28' }),   // out 14, back 21
+    gRow({ ref: '2026-9112', name: 'Kim Kahl', acc: MIR, bed: '4', raw: { 'Arrives on': 'Mon 16 Nov 2026', 'Departure date': 'Sat 21 Nov 2026' } }),              // bed from Sat 14, arrives Mon 16
+  ];
+  await openWeek(page, { guests, trips: [] });
+  const checks = await page.evaluate(() => WeekUI.toCheck().map(c => [c.tab, c.text, c.who]));
+  const has = (text, who) => expect(checks.find(c => c[1].includes(text)) || [text, 'MISSING']).toEqual([expect.any(String), expect.stringContaining(text), who]);
+  has('1 bed with two guests on the same night', 'Kabalana room bed 2: Ana Abel, Bea Bauer (Mon 16)');
+  has('1 room with more guests than beds', 'Kabalana room: 5 guests for 4 beds (Mon 16)');
+  has('1 private room with two bookings on the same night', 'Madiha room: Finn Falk, Gus Gall (Wed 18)');
+  has('2 guests in a shared room without a bed number', 'Hana Holm, Ines Iber (beds «2, 3» for Mirissa room → Unawatuna room: not clear which is which)');
+  has('1 guest with two bookings and nights with no booking in between', 'Jan Jost (out Sat 14 Nov, back Sat 21 Nov)');
+  has('1 guest with arrival or departure dates that differ from the room dates', 'Kim Kahl (room from Sat 14, arrives Mon 16)');
+  expect(checks.some(c => c[1].includes('people count'))).toBe(false);
+  await expect(page.locator('#weekRoot .wk-people')).toContainText('People check: 10 guests in the Guests file for this week, all on the lists');
+  await tab(page, 'rooms');
+  await expect(page.locator('.wk-view-rooms .wk-check .wk-ci')).toHaveCount(5);     // bed, private room, over, no bed, room move
+  // Jan is not «staying on»: he leaves on Sat 14 (Departures) — the To check line asks which it is
+  await tab(page, 'overview');
+  await expect(page.locator('#wkDay-2026-11-14 .wk-bc.dep')).toContainText('Jan Jost');
+});
+
+test('people check: a row the lists cannot place turns the line red and adds a To check chip — never silent', async ({ page }) => {
+  const guests = [gRow({ ref: '2026-9201', name: 'Ola Okay', acc: KAB, bed: '1' }),
+    gRow({ ref: '2026-9202', name: 'Uwe Upside', acc: KAB, bed: '2', in: '2026-11-18', out: '2026-11-15' })];   // check-out before check-in
+  await openWeek(page, { guests, trips: [] });
+  await expect(page.locator('#weekRoot .wk-people.bad')).toContainText('The people count does not add up — tell Miguel before sending any list.');
+  await expect(page.locator('#weekRoot .wk-people.bad')).toContainText('check-out is not after check-in: Uwe Upside');
+  await expect(page.locator('.wk-tocheck .health-chip')).toContainText(['People count does not add up']);
+  const pc = await page.evaluate(() => WeekUI.people());
+  expect(pc.ok).toBe(false);
+  expect(pc.nights).toEqual([1, 1, 1, 1, 1, 1, 1]);
 });

@@ -71,6 +71,7 @@
   const SEASON_WEEK1_DEFAULT = '2026-08-15';       // a Saturday → Sat 14 Nov 2026 is week 14
   const GROUP_DESC_DEFAULT = '📅 YOUR WEEKLY SCHEDULE - WEEK {week} ({dates})\n\nEdit me: write the weekly schedule here once. It is kept for the next weeks; {week} and {dates} fill themselves in.';
   const CHANGEOVER_WEEKDAY = 6;         // Saturday (Date.getDay): the camp's weeks run Sat–Sat
+  const PRIVATE_ROOM_BEDS = 2;          // beds of a private room (the Day Planner shows two per room)
   const LEVELS = ['Beginner', 'Experienced beginner', 'Intermediate', 'Experienced intermediate', 'Advanced', 'Level not set'];
 
   const SLUG = (typeof __HUB_LOCATION_SLUG !== 'undefined') ? __HUB_LOCATION_SLUG : '';
@@ -194,7 +195,34 @@
     const by = new Map();
     rows.filter(counted).forEach(g => { const k = personKey(g.guest_name); if (k) { if (!by.has(k)) by.set(k, []); by.get(k).push(g); } });
     by.forEach(list => list.forEach(a => { const b = list.find(x => x !== a && x.check_in === a.check_out && a.check_in < a.check_out); if (b && !b._prev && !a._next) { a._next = b; b._prev = a; } }));
+    resolveBeds(rows);
     return rows;
+  }
+  // Beds of a booking with two rooms. Bookinglayer lists the beds as «1, 4» in number order, not
+  // in room order (13 Nov: João Lavado, «Marissa, Ahangama» + «1, 4» = Mirissa bed 4, then Ahangama
+  // bed 1). So each order is tried against the size of the room and the beds of the other guests;
+  // one order fits → used; otherwise no bed is shown and the move goes to «To check».
+  const bedList = g => String(g.bed_number || '').split(',').map(s => s.trim()).filter(Boolean);
+  function roomCap(r) {
+    if (!r) return 0;
+    const c = CAMP_ROOMS.find(x => ROOM_SHORT[x.w].toLowerCase() === r.key);
+    return c ? (c.beds || PRIVATE_ROOM_BEDS) : r.shared ? (parseInt(r.note, 10) || 0) : PRIVATE_ROOM_BEDS;
+  }
+  function resolveBeds(rows) {
+    const live = rows.filter(counted);
+    const fixed = live.filter(g => roomNames(g.accommodation).length === 1 && bedList(g).length === 1);
+    const taken = (r, bed, from, to, me) => fixed.some(o => o !== me && sameRoom(roomOf(o), r) && bedList(o)[0] === String(bed) && o.check_in < to && from < o.check_out);
+    live.forEach(g => {
+      const names = roomNames(g.accommodation); if (names.length < 2) return;
+      const beds = bedList(g), md = moveDay(g);
+      const rs = [roomInfo(names[0]), roomInfo(names[names.length - 1])];
+      const spans = md ? [[g.check_in, md], [md, g.check_out]] : [[g.check_in, g.check_out], [g.check_in, g.check_out]];
+      const fits = (i, bed) => { const cap = roomCap(rs[i]); return !(cap && parseInt(bed, 10) > cap) && !taken(rs[i], bed, spans[i][0], spans[i][1], g); };
+      const a = beds[0], b = beds[beds.length - 1];
+      const ok = (beds.length ? (a === b ? [[a, b]] : [[a, b], [b, a]]) : []).filter(o => fits(0, o[0]) && fits(1, o[1]));
+      g._beds = ok.length === 1 ? ok[0] : null;
+      g._bedsUnclear = !g._beds && beds.length > 0;
+    });
   }
   const stayStart = g => { let x = g; while (x._prev) x = x._prev; return x.check_in; };
   const stayEnd = g => { let x = g; while (x._next) x = x._next; return x.check_out; };
@@ -211,13 +239,15 @@
   function segments(g) {
     const names = roomNames(g.accommodation);
     const beds = String(g.bed_number || '').split(',').map(s => s.trim());
-    const seg = (i, from, to) => ({ g, r: roomInfo(names[i]), bed: beds[Math.min(i, beds.length - 1)] || '', from, to });
+    const two = names.length > 1 && g._beds !== undefined;   // beds matched to the rooms by resolveBeds
+    const seg = (i, from, to) => ({ g, r: roomInfo(names[i]), bed: two ? (g._beds ? g._beds[i ? 1 : 0] : '') : beds[Math.min(i, beds.length - 1)] || '', from, to });
     if (!names.length) return [{ g, r: null, bed: '', from: g.check_in, to: g.check_out }];
     const md = names.length > 1 ? moveDay(g) : null;
     return md ? [seg(0, g.check_in, md), seg(names.length - 1, md, g.check_out)] : [seg(names.length - 1, g.check_in, g.check_out)];
   }
   const roomOn = (g, d) => { const s = segments(g).find(x => x.from <= d && d < x.to); return s ? s.r : null; };
   const firstRoom = g => segments(g)[0].r;
+  const lastBed = g => { const s = segments(g); return s[s.length - 1].bed; };   // the bed of the room roomOf() names
   const moveUnknown = g => roomNames(g.accommodation).length > 1 && !moveDay(g);
   const sameRoom = (a, b) => (a ? a.key : '') === (b ? b.key : '');
   const OUTSIDE = 'Outside of camp';
@@ -229,14 +259,14 @@
   //            the guests who stay on in the same room («from last week»)
   //   outside  the same, for guests with no room in the file
   function dayMoves(rows, d) {
-    const outs = [], ins = [], outside = [], bedChanges = [];
+    const outs = [], ins = [], outside = [], bedChanges = [], outsideOuts = [];
     const changeover = GT.weekday(d) === CHANGEOVER_WEEKDAY;
     rows.filter(counted).forEach(g => {
       const segs = segments(g); const end = stayEnd(g); const left = daysBetween(d, end);
       segs.forEach((s, i) => {
         if (s.to === d) {
           const next = segs[i + 1] || (g._next ? segments(g._next)[0] : null);
-          if (!next) { if (s.r) outs.push({ g, r: s.r, bed: s.bed, note: '', leaves: true }); }
+          if (!next) (s.r ? outs : outsideOuts).push({ g, r: s.r, bed: s.bed, note: '', leaves: true });   // no room in the file: still on a list
           else if (!sameRoom(next.r, s.r) && s.r) outs.push({ g, r: s.r, bed: s.bed, note: `stays ${nightsNote(left).replace(' ', ' more ')}, in ${next.r ? next.r.label : 'no room yet'}`, move: true });
           // Same room, other bed (a new booking for the next week): the bed is freed for the cleaning team.
           else if (s.r && next.bed && s.bed && String(next.bed) !== String(s.bed)) bedChanges.push({ g, r: s.r, bed: s.bed, note: `stays, moves to bed ${next.bed}`, bedChange: true });
@@ -246,12 +276,13 @@
           const short = left < 7 ? nightsNote(left) : '';
           let note = short, kind = 'new';
           if (prev && !sameRoom(prev.r, s.r)) { note = [`from ${prev.r ? prev.r.label : 'outside'}`, short || 'one more week with us'].join(', '); kind = 'move'; }
-          else if (prev) { if (!changeover) return; note = stayOn(left); kind = 'stay'; }
+          else if (prev) { const newBed = prev.bed && s.bed && String(prev.bed) !== String(s.bed) ? `, now in bed ${s.bed}` : '';
+            if (!changeover && !newBed) return; note = stayOn(left) + newBed; kind = 'stay'; }
           (s.r ? ins : outside).push({ g, r: s.r, bed: s.bed, note, kind });
         } else if (changeover && s.from < d && d < s.to) (s.r ? ins : outside).push({ g, r: s.r, bed: s.bed, note: stayOn(left), kind: 'stay' });
       });
     });
-    return { outs, ins, outside, bedChanges };
+    return { outs, ins, outside, bedChanges, outsideOuts };
   }
   const stayOn = left => left >= 7 ? 'from last week, one more week with us' : `from last week, ${nightsNote(left).replace(' ', ' more ')}`;
 
@@ -288,7 +319,9 @@
   function cleaningDay(rows, d) {
     const m = dayMoves(rows, d);
     const p = [];
-    if (m.outs.length) p.push(T(dayTitle('CHECK OUT', d)), G, ...roomBlocks(m.outs));
+    // Every bed that is freed: leaving the camp, moving room, changing bed — and the guests with no room in the file.
+    const outs = [...m.outs, ...m.bedChanges];
+    if (outs.length || m.outsideOuts.length) p.push(T(dayTitle('CHECK OUT', d)), G, ...roomBlocks(outs), ...outsideBlock(m.outsideOuts));
     if (m.ins.length || m.outside.length) p.push(T(dayTitle('CHECK IN', d)), G, ...roomBlocks(m.ins), ...outsideBlock(m.outside));
     if (!p.length) p.push(T(dayTitle('ROOMS', d)), G, L('No check-in or check-out'));
     return p;
@@ -391,7 +424,7 @@
   }
   function guestLine(g, ws) {
     const r = roomOf(g); const c = course(g); const d = dietOf(g);
-    return [g.guest_name, r ? r.label + (r.shared && g.bed_number ? ' bed ' + g.bed_number : '') : 'no room', stayText(g, ws), g.phone || 'no phone',
+    return [g.guest_name, r ? r.label + (r.shared && lastBed(g) ? ' bed ' + lastBed(g) : '') : 'no room', stayText(g, ws), g.phone || 'no phone',
       c ? `${c} · ${levelOf(g)}` : 'no lessons', d === 'none' ? 'no special diet' : d || 'diet ?', g.has_transfer ? 'transfer' : 'own way',
       g.partner ? `partner (${g.partner}) – don't charge` : ''].filter(Boolean).join(' · ');
   }
@@ -507,8 +540,20 @@
     if (noLevel.length) items.push({ tab: 'surf', short: `${noLevel.length} without level`, text: `${plural(noLevel.length, 'surf student')} without level – ask at check-in`, who: names(noLevel) });
     const noDiet = live.filter(g => !dietOf(g));
     if (noDiet.length) items.push({ tab: 'kitchen', short: `${noDiet.length} without diet answer`, text: `${plural(noDiet.length, 'guest')} didn't answer diet – ask at the welcome dinner`, who: names(noDiet) });
-    const noRoom = live.filter(g => !roomOf(g));
-    if (noRoom.length) items.push({ tab: 'rooms', short: `${noRoom.length} without a room`, text: `${plural(noRoom.length, 'guest')} without a room in the file – counted as outside of camp (meals only)`, who: names(noRoom) });
+    // Nobody lost: every live guest of the week must have a room on every night (placement()).
+    const pl = placement(ws, rows);
+    const mate = g => { const m = rows.find(x => x !== g && counted(x) && x.booking_ref === g.booking_ref && roomOf(x)); return m ? ` (same booking as ${m.guest_name}, ${roomOf(m).label})` : ''; };
+    if (pl.noRoom.length) items.push({ tab: 'rooms', short: `${pl.noRoom.length} without a room`, text: `${plural(pl.noRoom.length, 'guest')} without a room in the file – counted as outside of camp (meals only)`, who: pl.noRoom.map(g => g.guest_name + mate(g)).join(', ') });
+    if (pl.clash.length) items.push({ tab: 'rooms', short: `${plural(pl.clash.length, 'bed')} with 2 guests`, text: `${plural(pl.clash.length, 'bed')} with two guests on the same night – check the Day Planner`, who: pl.clash.map(c => `${c.r.label} bed ${c.bed}: ${names(c.gs)} (${fd(c.d)})`).join('; ') });
+    if (pl.double.length) items.push({ tab: 'rooms', short: `${plural(pl.double.length, 'room')} with 2 bookings`, text: `${plural(pl.double.length, 'private room')} with two bookings on the same night – check the Day Planner`, who: pl.double.map(c => `${c.r.label}: ${names(c.gs)} (${fd(c.d)})`).join('; ') });
+    if (pl.over.length) items.push({ tab: 'rooms', short: `${plural(pl.over.length, 'room')} over its beds`, text: `${plural(pl.over.length, 'room')} with more guests than beds – check the Day Planner`, who: pl.over.map(c => `${c.r.label}: ${c.gs.length} guests for ${c.cap} beds (${fd(c.d)})`).join('; ') });
+    if (pl.noBed.length) items.push({ tab: 'rooms', short: `${pl.noBed.length} without a bed`, text: `${plural(pl.noBed.length, 'guest')} in a shared room without a bed number`, who: pl.noBed.map(g => `${g.guest_name}${g._bedsUnclear ? ` (beds «${g.bed_number}» for ${movedRooms(g).join(' → ')}: not clear which is which)` : ''}`).join(', ') });
+    const pc = peopleCheck(ws, rows);
+    if (!pc.ok) items.push({ tab: 'overview', short: 'People count does not add up', text: 'The people count does not add up – tell Miguel before sending any list', who: pc.problems.join(' · '), kind: 'count' });
+    const gaps = stayGaps(ws, rows);
+    if (gaps.length) items.push({ tab: 'guests', short: `${plural(gaps.length, 'guest')} leaving and coming back?`, text: `${plural(gaps.length, 'guest')} with two bookings and nights with no booking in between – leaving and coming back, or staying?`, who: gaps.map(x => `${x.a.guest_name} (out ${fdm(x.a.check_out)}, back ${fdm(x.b.check_in)})`).join(', ') });
+    const dates = live.filter(dateDiff);
+    if (dates.length) items.push({ tab: 'guests', short: `${plural(dates.length, 'guest')} with other arrival dates`, text: `${plural(dates.length, 'guest')} with arrival or departure dates that differ from the room dates – counted by the room dates`, who: dates.map(g => `${g.guest_name} (${dateDiff(g)})`).join(', ') });
     const noTime = tripsFor('week', ws).filter(t => !t.trip_time);
     if (noTime.length) items.push({ tab: 'transfers', short: `${plural(noTime.length, 'transfer')} without time`, text: `${plural(noTime.length, 'transfer')} without flight time – ask the guest`, who: noTime.map(t => t.guest_names || 'Guest').join(', ') });
     const carry = wk.filter(g => g._st === 'carry');
@@ -524,6 +569,73 @@
     if (fixed.length) items.push({ tab: 'rooms', short: `${plural(fixed.length, 'room move')} to confirm`, text: `${plural(fixed.length, 'room move')} taken on the Saturday – the file has no move date, check the Day Planner`, who: fixed.map(g => `${g.guest_name} (${movedRooms(g).join(' → ')}, ${fd(moveDay(g))})`).join(', ') });
     if (open.length) items.push({ tab: 'rooms', short: `${plural(open.length, 'room move')} without date`, text: `${plural(open.length, 'room move')} without a date – check the Day Planner`, who: open.map(g => `${g.guest_name} (${movedRooms(g).join(' → ')})`).join(', ') });
     return items;
+  }
+
+  // ── Nobody lost ─────────────────────────────────────────────────────────
+  // Where every live guest of the week sleeps, night by night — straight from the rows (dates,
+  // room, bed), not from the lists. What cannot be placed goes to «To check».
+  function placement(ws, rows) {
+    const live = rows.filter(g => counted(g) && inWeek(g, ws));
+    const noRoom = new Set(), noBed = new Set(), clash = new Map(), dbl = new Map(), over = new Map();
+    for (let i = 0; i < 7; i++) {
+      const d = add(ws, i); const beds = new Map(), rooms = new Map();
+      live.filter(g => inCamp(g, d)).forEach(g => {
+        const s = segments(g).find(x => x.from <= d && d < x.to);
+        if (!s || !s.r) { noRoom.add(g); return; }
+        if (!rooms.has(s.r.key)) rooms.set(s.r.key, { r: s.r, gs: [] }); rooms.get(s.r.key).gs.push(g);
+        if (!s.r.shared) return;
+        if (!s.bed) { noBed.add(g); return; }
+        const k = s.r.key + '|' + s.bed; if (!beds.has(k)) beds.set(k, { r: s.r, bed: s.bed, gs: [] }); beds.get(k).gs.push(g);
+      });
+      beds.forEach((x, k) => { if (x.gs.length > 1 && !clash.has(k)) clash.set(k, { ...x, d }); });
+      rooms.forEach((x, k) => {
+        const cap = roomCap(x.r);
+        if (cap && x.gs.length > cap && !over.has(k)) over.set(k, { ...x, cap, d });
+        if (!x.r.shared && new Set(x.gs.map(g => g.booking_ref)).size > 1 && !dbl.has(k)) dbl.set(k, { ...x, d });
+      });
+    }
+    return { noRoom: [...noRoom], noBed: [...noBed], clash: [...clash.values()], double: [...dbl.values()], over: [...over.values()] };
+  }
+  // The same person on two bookings with nights in between that have no booking (13 Nov: Florentin
+  // Hollert, out Sat 14, back Sat 21): the file cannot say whether he leaves or stays.
+  const GAP_MAX_NIGHTS = 14;
+  function stayGaps(ws, rows) {
+    const by = new Map(); const out = [];
+    rows.filter(counted).forEach(g => { const k = personKey(g.guest_name); if (k && g.check_in && g.check_out) { if (!by.has(k)) by.set(k, []); by.get(k).push(g); } });
+    by.forEach(list => { list.sort(byStay); for (let i = 1; i < list.length; i++) { const a = list[i - 1], b = list[i]; const n = daysBetween(a.check_out, b.check_in);
+      if (n > 0 && n <= GAP_MAX_NIGHTS && a.check_out <= add(ws, 7) && b.check_in >= ws) out.push({ a, b, nights: n }); } });
+    return out;
+  }
+  // «Arrives on» / «Departure date» of the file against the room dates (13 Nov: Yanneck Kumli, bed from Sat 7, arrives Mon 9).
+  function dateDiff(g) {
+    const raw = g.raw || {}; const arr = GT.ymd(raw['Arrives on']), dep = GT.ymd(raw['Departure date']);
+    return [arr && g.check_in && arr !== g.check_in ? `room from ${fd(g.check_in)}, arrives ${fd(arr)}` : '', dep && g.check_out && dep !== g.check_out ? `room until ${fd(g.check_out)}, leaves ${fd(dep)}` : ''].filter(Boolean).join('; ');
+  }
+  // The cross-check behind «people count»: the live guests of the week, counted from the rows by
+  // their dates alone, against what the lists show — the Guests list, the night counts, the meals
+  // and the Rooms grid (people, not bars). Any difference is a bug in the lists: shown, never hidden.
+  function peopleCheck(ws, rows) {
+    const live = rows.filter(counted);
+    const want = live.filter(g => g.check_in && g.check_out && g.check_in <= add(ws, 6) && g.check_out > ws);
+    const M = weekModel(ws, rows), P = roomPlan(ws, rows);
+    const problems = []; const ids = list => new Set(list.map(g => g.id || g.booking_ref + '|' + g.guest_name));
+    const missing = (list, label) => { const have = ids(list); const lost = want.filter(g => !have.has(g.id || g.booking_ref + '|' + g.guest_name));
+      if (lost.length) problems.push(`not in ${label}: ${lost.map(g => g.guest_name).join(', ')}`); };
+    missing(M.guests, 'the week'); missing(guestsList(rows, 'week', ws), 'Guests');
+    missing(P.rooms.flatMap(r => r.lanes.flatMap(l => l.items.flatMap(it => it.gs))), 'Rooms');
+    const upside = want.filter(g => g.check_in >= g.check_out);
+    if (upside.length) problems.push(`check-out is not after check-in: ${upside.map(g => g.guest_name).join(', ')}`);
+    const nights = [];
+    for (let i = 0; i < 7; i++) {
+      const d = add(ws, i); const n = want.filter(g => g.check_in <= d && d < g.check_out).length; const x = M.days[i];
+      const grid = P.rooms.reduce((s, r) => s + r.lanes.reduce((s2, l) => s2 + l.items.filter(it => it.a <= i && i < it.b).reduce((s3, it) => s3 + it.gs.length, 0), 0), 0);
+      nights.push(n);
+      if (x.sleep + x.outside !== n) problems.push(`${fd(d)}: ${n} guests by their dates, ${x.sleep + x.outside} in camp + outside`);
+      if (x.dinner !== n) problems.push(`${fd(d)}: ${n} guests, ${x.dinner} for dinner`);
+      if (M.days[i + 1].breakfast !== n) problems.push(`${fd(add(d, 1))}: ${n} slept, ${M.days[i + 1].breakfast} for breakfast`);
+      if (grid !== n) problems.push(`${fd(d)}: ${n} guests, ${grid} in the Rooms grid`);
+    }
+    return { ok: !problems.length, guests: want.length, nights, problems };
   }
 
   // ── Week model (pure): what every tab draws ─────────────────────────────
@@ -554,8 +666,7 @@
         staying: live.filter(g => g.check_in === d && g._prev).sort(byStay),               // new booking, same stay
         moves: mv.ins.filter(x => x.kind === 'move'),
         // Everyone who leaves a room or a bed that day: leaving the camp, moving room, changing bed.
-        roomOuts: [...mv.outs, ...mv.bedChanges,
-          ...live.filter(g => g.check_out === d && !g._next && !segments(g).some(s => s.r)).map(g => ({ g, r: null, note: '' }))],   // no room in the file: «Outside of camp»
+        roomOuts: [...mv.outs, ...mv.bedChanges, ...mv.outsideOuts],   // outsideOuts = no room in the file: «Outside of camp»
         breakfast: live.filter(g => inCamp(g, add(d, -1))).length, dinner: night.length,
         students, courses: courseCounts(students), yoga: night.filter(isYoga).length,
         trips: dayTrips, own: i === 7 ? [] : arrivals.filter(g => !g.has_transfer && !refs.has(g.booking_ref)),
@@ -711,7 +822,7 @@
     const rooms = new Map();
     list.forEach(o => { const r = o.r || { key: '?', label: OUTSIDE, order: 100 }; if (!rooms.has(r.key)) rooms.set(r.key, { r, os: [] }); rooms.get(r.key).os.push(o); });
     return [...rooms.values()].sort((a, b) => a.r.order - b.r.order || a.r.label.localeCompare(b.r.label))
-      .map(({ r, os }) => `<div class="wk-rl"><span class="wk-rm">${h(r.label.replace(/ room$/, ''))}</span><span class="wk-outs">${os.map(o => `<span class="wk-out1">${h(o.g.guest_name)}${o.note ? ` <i class="wk-onote">(${h(o.note)})</i>` : ''}</span>`).join('')}</span></div>`).join('');
+      .map(({ r, os }) => `<div class="wk-rl"><span class="wk-rm">${h(r.label.replace(/ room$/, ''))}</span><span class="wk-outs">${os.slice().sort((a, b) => bedNum(a.bed) - bedNum(b.bed) || nameSort(a.g, b.g)).map(o => `<span class="wk-out1">${h(o.g.guest_name)}${o.note ? ` <i class="wk-onote">(${h(o.note)})</i>` : ''}</span>`).join('')}</span></div>`).join('');
   }
   // Bars to scale: height in % of the tallest value of the chart.
   const pct = (n, max) => max ? Math.round(n / max * 1000) / 10 : 0;
@@ -783,7 +894,11 @@
     const board = `<div class="card wk-card wk-board"><div class="wk-bhead"><span>Day</span><span>${ic('login')} Arrivals</span><span>${ic('logout')} Departures</span><span>${ic('truck')} Transfers</span><span>Meals</span><span>Surf</span></div>
       ${M.days.map(x => dayRow(x, M)).join('')}</div>`;
     const teams = `<div class="card wk-card">${cardHead('Team messages', 'One WhatsApp text per team, for a day or the whole week')}<div class="wk-teamrows">${TEAMS.filter(t => t.contact).map(t => teamRow(t, ctx)).join('')}</div></div>`;
-    return tiles + checkChips + strip + board + teams;
+    // Nobody lost: the count of the file against every list (peopleCheck).
+    const pc = peopleCheck(ws, ctx.rows);
+    const people = pc.ok ? `<div class="hint wk-people">${ic('check-circle')} People check: ${plural(pc.guests, 'guest')} in the Guests file for this week, all on the lists · every night, meal and room adds up</div>`
+      : `<div class="status-msg status-err wk-people bad">The people count does not add up — tell Miguel before sending any list. ${h(pc.problems.join(' · '))}</div>`;
+    return tiles + checkChips + people + strip + board + teams;
   }
   function dayRow(x, M) {
     const arr = x.arrivals.length, dep = x.departures.length;
@@ -961,7 +1076,7 @@
   }
   function guestRow(g, ws) {
     const r = roomOf(g); const c = course(g); const d = dietOf(g); const al = allergyOf(g);
-    const bed = String(g.bed_number || '').split(',').pop().trim();
+    const bed = lastBed(g);
     const room = r ? r.label + (r.shared && bed ? ' · bed ' + bed : '') : OUTSIDE;
     const nights = (g.check_in && g.check_out) ? daysBetween(g.check_in, g.check_out) : 0;
     const pack = String(g.packages || '').trim();
@@ -1282,6 +1397,7 @@
     checks: { file: fileCheck, yoga: yogaCheck }, roomInfo, course, levelOf, dietOf, dress, dayMoves: d => dayMoves(rowsOf(W.week), d), e164, groupName: () => groupName(W.week), weekNo, weekLabel, groupDescription: () => groupDescription(W.week),
     vcf: () => vcfText(groupPeople(W.week, rowsOf(W.week), W.groupOutside), W.week), groupPeople: () => groupPeople(W.week, rowsOf(W.week), W.groupOutside),
     model: () => weekModel(W.week, rowsOf(W.week)), roomPlan: () => roomPlan(W.week, rowsOf(W.week)),
+    people: () => peopleCheck(W.week, rowsOf(W.week)), placement: () => placement(W.week, rowsOf(W.week)), segments,
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 })();
