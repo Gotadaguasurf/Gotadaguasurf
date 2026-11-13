@@ -249,8 +249,13 @@ test('to check: one compact list — no level, no diet, no flight time, still he
   expect((await call(st, 'guest_update')).body).toEqual({ booking_status: 'not_here' });
   await expect(page.locator('#weekRoot .wk-count')).toHaveText('21 guests');
   await list.locator('.wk-ci-g', { hasText: 'Alexander Straub' }).locator('button:has-text("Still here")').click();
-  expect((await call(st, 'guest_update', 2)).body).toEqual({ import_id: IMPORT_NEW });
+  expect((await call(st, 'guest_update', 2)).body.raw).toEqual({ _kept: IMPORT_NEW });
   await expect(list).toContainText('2 guests in camp are not in the latest Guests file');
+  // after a reload the answers hold and the file's range is unchanged: 21 counted, 2 still to answer
+  await page.evaluate(() => WeekUI.loadAll(true));
+  await expect(page.locator('#weekRoot .wk-count')).toHaveText('21 guests');
+  await expect(page.locator('.wk-check-list')).toContainText('2 guests in camp are not in the latest Guests file');
+  await expect(page.locator('.wk-check-list')).not.toContainText('dropped');
 });
 
 test('dropped from the latest file (cancelled?) is not counted and shows in To check', async ({ page }) => {
@@ -341,6 +346,19 @@ test('transfers: the trips of Transport in Miguel\'s format, Send to Nadith, Mar
   expect(await visiblePrimary(page)).toBe(1);
 });
 
+test('transfers: a trip already done (time passed) or paid is not in the message, and not «to mark sent»', async ({ page }) => {
+  const trips = [...TRIPS(),
+    trip({ id: 'aaaaaaaa-0000-4000-8000-00000000a009', guest_names: 'Early Bird', trip_date: '2026-11-17', trip_time: '06:30', flight: 'UL504' }),
+    trip({ id: 'aaaaaaaa-0000-4000-8000-00000000a010', guest_names: 'Paid Already', trip_date: '2026-11-17', trip_time: '22:00', payment_entry_id: 'pay-1' })];
+  await openWeek(page, { trips });
+  await pick(page, 'Transfers', '2026-11-17');
+  const msg = await msgText(page);
+  expect(msg).not.toContain('Early Bird');
+  expect(msg).not.toContain('Paid Already');
+  await expect(page.locator('#weekRoot .wk-g')).toHaveCount(2);
+  await expect(page.locator('.wk-state')).toContainText('2 transfers not marked sent');
+});
+
 test('guests: one line per guest with room, dates, course, diet and partner; Copy list is the one blue button', async ({ page }) => {
   await openWeek(page);
   await pick(page, 'Guests', 'week');
@@ -361,6 +379,7 @@ test('import: Week shows the Transport import (one copy of the inputs, one blue 
   await page.evaluate(() => { showPage('transport'); TransportUI.setView('next'); showPage('week'); });
   await page.click('#weekRoot button:has-text("Import Guests file")');
   await expect(page.locator('#weekRoot .wk-import')).toContainText('Choose Guests file');
+  await expect(page.locator('#weekRoot .wk-import .card-title').first()).toHaveText('Guests file');
   expect(await page.locator('#trGuestsFile').count()).toBe(1);
   expect(await visiblePrimary(page)).toBe(1);
   const before = st.calls.filter(c => c.t === 'guests_get').length;
@@ -396,6 +415,11 @@ test('contacts: four rows; a phone is checked (E.164); the cleaning contact is c
   expect(ins).toMatchObject({ location_id: LOC, name: 'Kumari', phone: '+94771234567', kinds: ['contact'], default_for: ['cleaning_contact'] });
   await pick(page, 'Cleaning', '2026-11-17');
   await expect(page.locator('#wkSend')).toHaveText(/Send to Kumari/);
+  // Transport → Drivers lists drivers only: the team contacts are edited here
+  await page.evaluate(() => { showPage('transport'); TransportUI.openDrivers(); });
+  await expect(page.locator('#trOv .tr-driver')).toHaveCount(2);                   // Dilan + Nadith
+  await expect(page.locator('#dv_contact option')).toHaveText([/Dilan/, /Nadith/]);
+  await page.evaluate(() => { TransportUI.closeModal(); showPage('week'); });
   // the transfers contact's name is Transport's choice: read-only here
   await page.click('#weekRoot button:has-text("Contacts")');
   await expect(page.locator('#wkOv .wk-contact[data-team="transfers"] [data-f="name"]')).toBeDisabled();

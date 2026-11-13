@@ -504,10 +504,10 @@
 
   // ── Next week: Monday Guests import ────────────────────────────────────
   function nextWeekStart() { return GT.addDaysIso(GT.weekStart(cToday()), 7); }
-  function renderNext() {
+  function renderNext(opts) {
     const ws = nextWeekStart(), we = GT.addDaysIso(ws, 6);
     const I = TR.imp;
-    let out = `<div class="card tr-import"><div class="card-hdr"><div><div class="card-title">Next week · ${fmtRange(ws, we)}</div>
+    let out = `<div class="card tr-import"><div class="card-hdr"><div><div class="card-title">${opts && opts.title ? h(opts.title) : `Next week · ${fmtRange(ws, we)}`}</div>
       <div class="card-hint">Download the Guests export with the «Semana Sri Lanka» preset and drop it here. Importing again during the week updates the trips — nothing is duplicated.</div></div></div>
       <div class="card-body"><label class="btn ${I && I.stage === 'preview' ? 'btn-s' : 'btn-p'}">${ic('upload')} Choose Guests file<input type="file" accept=".csv" id="trGuestsFile" style="display:none" onchange="TransportUI.pickFile(this)"></label>
       ${I && I.needDate ? `<div class="mfield tr-date-ask"><label>When did you download this file?</label><input type="date" id="trExportDate" value="${cToday()}"><button class="btn btn-s btn-sm" onclick="TransportUI.setExportDate()">Continue</button></div>` : ''}
@@ -848,12 +848,14 @@
   // ── Drivers and the «Send transfers to» contact ────────────────────────
   function openDrivers() {
     const c = contact();
-    const rows = TR.drivers.map(d => `<div class="tr-driver" data-driver="${d.id}"><div class="g2"><div class="mfield"><label>Name</label><input data-f="name" value="${h(d.name)}"></div>
+    const teamContact = d => (d.default_for || []).some(x => /^(cleaning|kitchen|surf)_contact$/.test(x));   // edited in Week → Contacts
+    const list = TR.drivers.filter(d => !teamContact(d));
+    const rows = list.map(d => `<div class="tr-driver" data-driver="${d.id}"><div class="g2"><div class="mfield"><label>Name</label><input data-f="name" value="${h(d.name)}"></div>
         <div class="mfield"><label>Phone (+94…)</label><input data-f="phone" value="${h(d.phone || '')}" placeholder="+94771234567"></div></div>
         <div class="g2"><div class="mfield"><label>Label</label><input data-f="label" value="${h(d.label || '')}"></div>
         <div class="mfield"><label>Default vehicle</label><select data-f="default_vehicle"><option value=""></option>${VEHICLES.concat('Tuk-tuk').map(v => `<option${v === d.default_vehicle ? ' selected' : ''}>${v}</option>`).join('')}</select></div></div>
         <div class="mfield"><label>Named in payments as (comma separated)</label><input data-f="aliases" value="${h((d.aliases || []).join(', '))}"></div></div>`).join('');
-    const body = `<div class="mfield"><label>Send transfers to</label><select id="dv_contact">${TR.drivers.map(d => `<option value="${d.id}"${c && c.id === d.id ? ' selected' : ''}>${h(d.name)}${d.phone ? ' · ' + h(d.phone) : ' · no phone'}</option>`).join('')}</select>
+    const body = `<div class="mfield"><label>Send transfers to</label><select id="dv_contact">${list.map(d => `<option value="${d.id}"${c && c.id === d.id ? ' selected' : ''}>${h(d.name)}${d.phone ? ' · ' + h(d.phone) : ' · no phone'}</option>`).join('')}</select>
         <div class="hint">WhatsApp messages go to this person, who passes them to the driver.</div></div>${rows}
       <button class="btn btn-s" onclick="TransportUI.addDriver()">${ic('plus')} Add driver</button>`;
     modal('Drivers', 'Name, phone and default vehicle', body, `<button class="btn btn-s" onclick="TransportUI.closeModal()">Cancel</button><button class="btn btn-p" onclick="TransportUI.saveDrivers()">Save</button>`);

@@ -138,6 +138,7 @@
     return rows.map(g => {
       let st = 'in';
       if (!GT.OK_STATUS.has(String(g.booking_status || '').toLowerCase())) st = 'gone';
+      else if (meta && meta.id && (g.raw || {})._kept === meta.id) st = 'in';    // Francisco answered «Still here» for this import
       else if (meta && meta.id && g.import_id !== meta.id && meta.min) {
         if (g.check_in < meta.min) st = g.check_out > meta.min ? 'carry' : 'in';
         else if (g.check_in <= meta.max) st = 'dropped';
@@ -304,7 +305,9 @@
   }
 
   // Transfers: the trips of Transport, Miguel's fixed format (GuestsTrips.whatsappText).
-  const liveTrip = t => (t.kind === 'airport_arrival' || t.kind === 'airport_departure') && !['cancelled', 'no_show', 'merged'].includes(t.status);
+  const tripDone = t => (window.TransportUI && TransportUI.isDone) ? TransportUI.isDone(t) : t.status === 'done';
+  const liveTrip = t => (t.kind === 'airport_arrival' || t.kind === 'airport_departure') && !['cancelled', 'no_show', 'merged'].includes(t.status)
+    && !t.payment_entry_id && !tripDone(t);   // still to do — the same trips Transport's «Send the whole day» sends
   const tripSort = (a, b) => (a.trip_date + (a.trip_time || '99')).localeCompare(b.trip_date + (b.trip_time || '99'));
   function tripsFor(day, ws) {
     const all = (TR().trips || []).filter(liveTrip);
@@ -471,7 +474,7 @@
       let inner = '';
       if (!window.TransportUI || !TransportUI.importHtml) inner = '<div class="status-msg status-warn">Import not available.</div>';
       else if (!S.loaded) inner = S.error ? `<div class="status-msg status-warn">Transport is not set up yet (${h(S.error)}). Ask Miguel to run supabase/camp-trips.sql.</div>` : '<div class="loading">Loading…</div>';
-      else inner = TransportUI.importHtml();
+      else inner = TransportUI.importHtml({ title: 'Guests file' });
       const done = S.imp && S.imp.stage === 'done';
       root.innerHTML = head + `<div class="wk-import">${inner}</div>` + (done ? `<div class="wk-after"><button class="btn btn-s" onclick="WeekUI.afterImport()">${ic('list')} See the week</button></div>` : '');
       if (!S.loaded && !S.error && window.TransportUI) TransportUI.load().then(render);
@@ -570,9 +573,9 @@
     const rowsHtml = list.length ? list.map(t => { const [st, cls] = state(t); const dep = t.kind === 'airport_departure';
       return `<div class="wk-g"><div class="wk-g1"><b class="num">${h(t.trip_time || 'time?')}</b> <span class="badge ${dep ? 'badge-navy' : 'badge-blue'}">${dep ? 'Departure' : 'Arrival'}</span> <b>${h(t.guest_names || 'Guest')}</b> <span class="badge ${cls}">${st}</span></div>
         <div class="cell-sub">${day === 'week' ? h(fd(t.trip_date)) + ' · ' : ''}${h(t.flight || 'flight?')} · ${t.pax} ${t.pax === 1 ? 'person' : 'persons'} · ${h(t.vehicle || '')}</div></div>`; }).join('')
-      : `<div class="card-body hint">No transfers ${day === 'week' ? 'this week' : 'on this day'}.</div>`;
+      : `<div class="card-body hint">No transfers still to do ${day === 'week' ? 'this week' : 'on this day'}.</div>`;
     const toTick = list.filter(t => t.status === 'planned' || t.needs_resend).length;
-    return `<div class="card wk-card"><div class="card-hdr"><div><div class="card-title">Transfers · ${day === 'week' ? 'week' : fdm(day)} · ${list.length}</div><div class="card-hint">From Transport. Tuk-tuks and paying drivers stay in Transport.</div></div></div>
+    return `<div class="card wk-card"><div class="card-hdr"><div><div class="card-title">Transfers · ${day === 'week' ? 'week' : fdm(day)} · ${list.length}</div><div class="card-hint">Still to do, from Transport. Tuk-tuks and paying drivers stay in Transport.</div></div></div>
         <div class="wk-rows">${rowsHtml}</div>
         ${own.length ? `<div class="card-body"><div class="section-lbl">Coming on their own</div><div class="cell-sub">${h(own.map(g => g.guest_name).join(', '))}</div></div>` : ''}</div>
       ${list.length ? `<div class="card wk-card"><div class="card-hdr"><div><div class="card-title">Message</div><div class="card-hint">Miguel's format, one block per transfer</div></div></div><div class="card-body"><div class="wk-msg" id="wkMsg">${h(text)}</div></div></div>
@@ -653,9 +656,13 @@
     render(); say(msg);
     try { window.dispatchEvent(new CustomEvent('camp-checks-changed')); } catch (_) {}
   }
-  // «Still here / still coming» adopts the row into the latest import (asked again after the next one);
-  // «Not here» takes it out of every list until a later file has the guest again.
-  const keep = id => patchGuest(id, { import_id: W.meta && W.meta.id }, 'Kept in the week');
+  // «Still here / still coming» is remembered in raw._kept for the latest import (a re-import rewrites raw,
+  // so the question comes back after the next file); import_id is left alone so the file's date range stays true.
+  // «Not here» takes the guest out of every list until a later file has them again.
+  function keep(id) {
+    const g = Object.values(W.cache).flatMap(e => e.rows).find(x => x.id === id); if (!g || !W.meta) return;
+    return patchGuest(id, { raw: { ...(g.raw || {}), _kept: W.meta.id } }, 'Kept in the week');
+  }
   const notHere = id => patchGuest(id, { booking_status: 'not_here' }, 'Taken out of the week');
 
   // ── Contacts modal (4 rows: name + phone) ───────────────────────────────
