@@ -107,6 +107,7 @@ function weekGuests() {
     g('2026-4701', 'Tom Müller', '2026-11-15', '2026-11-17'),       // same booking, his own line
     g('2026-4590', 'Gonçalo Pina', '2026-11-08', '2026-11-16'),     // typed by the host, leaves today
     g('2026-4800', 'Maximilian Ehrler', '2026-11-14', '2026-11-21', 'cancelled'),
+    g('2026-4810', 'Lorena Glas', '2026-11-14', '2026-11-21', 'not_here'),   // dropped out of a later Guests file
     g('2026-4500', 'Old Guest', '2026-11-07', '2026-11-14'),        // left on Saturday
     g('2026-4999', 'Next Week', '2026-11-21', '2026-11-28'),        // next week
   ];
@@ -118,7 +119,7 @@ const G_JULIA = '0000c0c0-0000-4000-8000-000000000001', G_GONCALO = '0000c0c0-00
 // In-memory PostgREST: GET filters eq/is/in, POST upserts by id/on_conflict, PATCH, DELETE.
 async function stub(page, tables) {
   const T = {}; Object.entries(tables).forEach(([k, v]) => { T[k] = v.map(r => ({ ...r })); });
-  const ctl = { T, gets: [] };
+  const ctl = { T, gets: [], posts: [], fail: null };
   const match = (row, url) => [...new URL(url).searchParams.entries()].every(([k, v]) => {
     if (['select', 'order', 'limit', 'offset', 'on_conflict', 'columns'].includes(k)) return true;
     const m = v.match(/^(eq|is|in)\.(.*)$/s); if (!m) return true;
@@ -135,7 +136,9 @@ async function stub(page, tables) {
     if (url.includes('/rest/v1/rpc/')) return json(null);
     const t = (url.match(/\/rest\/v1\/([a-z_]+)/) || [])[1]; if (!t) return json([]);
     if (t === 'locations') return json({ id: LOC, name: 'Sri Lanka', slug: 'sri-lanka', currency: 'LKR', default_fx_to_eur: 372, camp_tab_mode: 'per_guest' });
+    if (ctl.fail && ctl.fail(t, method)) return json({ message: 'stub failure', code: '500' }, 500);
     const rows = T[t] || (T[t] = []);
+    if (method !== 'GET') ctl.posts.push([method, t]);
     if (method === 'GET') {
       ctl.gets.push(t);
       const out = rows.filter(r => match(r, url));
@@ -155,7 +158,7 @@ async function stub(page, tables) {
   return ctl;
 }
 
-async function openHub(page, { query = '', at = MON_16_NOV, ledger = ledgerRows(), tables = {}, waitFrame = true } = {}) {
+async function openHub(page, { query = '', at = MON_16_NOV, ledger = ledgerRows(), tables = {}, waitFrame = true, fail = null } = {}) {
   await page.clock.setFixedTime(new Date(at));
   const ctl = await stub(page, {
     ledger_entries: ledger, pricing_catalog: [], location_state_store: [], location_menus: [], camp_staff_directory: [],
@@ -168,6 +171,7 @@ async function openHub(page, { query = '', at = MON_16_NOV, ledger = ledgerRows(
     camp_week_guests: weekGuests(), camp_cash_counts: [], camp_trips: [], camp_drivers: [], camp_transport_payments: [], bookings: [],
     ...tables,
   });
+  ctl.fail = fail;
   page.on('dialog', d => d.accept());
   await page.addInitScript(() => { window.TRIPS_GO_LIVE_OVERRIDE = '2026-11-01'; });
   await fakeOwnerSession(page);
@@ -177,7 +181,8 @@ async function openHub(page, { query = '', at = MON_16_NOV, ledger = ledgerRows(
   if (waitFrame) {
     const fh = await page.waitForSelector('iframe[src*="camp-tab-inner"][src*="mode=per_guest"]', { state: 'attached', timeout: 20000 });
     frame = await fh.contentFrame();
-    await frame.waitForFunction(() => { try { return campTabStateReady === true; } catch (_) { return false; } }, null, { timeout: 20000 });
+    if (!fail) await frame.waitForFunction(() => { try { return campTabStateReady === true; } catch (_) { return false; } }, null, { timeout: 20000 });
+    else await frame.waitForFunction(() => { try { return campTabBootstrapped === true; } catch (_) { return false; } }, null, { timeout: 20000 });
   }
   return { ctl, frame };
 }
@@ -189,7 +194,7 @@ async function noWiderThanPhone(page) {
 }
 
 // ── B3 · Camp Tab prefill ────────────────────────────────────────────────────
-test('camp tab prefill: this week\'s guests, one per guest, matched by name — no duplicates on a second run, a deleted guest stays deleted', async ({ page }) => {
+test('camp tab prefill: this week\'s guests, one per guest, matched by name — no duplicates on a second run, a guest deleted after this browser sent him is not re-added', async ({ page }) => {
   const errors = collectFatalErrors(page);
   const { ctl, frame } = await openHub(page);
   await expect.poll(async () => (await roster(frame)).map(g => g.name).sort(), { timeout: 15000 })
@@ -208,7 +213,7 @@ test('camp tab prefill: this week\'s guests, one per guest, matched by name — 
   expect(ctl.T.camp_guests.find(g => g.id === G_JULIA)).toMatchObject({ booking_ref: '2026-4660', checkout: '2026-11-21' });
   // Not sent: cancelled, already left, next week.
   expect(ctl.T.camp_guests.map(g => g.name)).not.toEqual(expect.arrayContaining(['Maximilian Ehrler']));
-  expect(ctl.T.camp_guests.some(g => /Old Guest|Next Week|Maximilian/.test(g.name))).toBe(false);
+  expect(ctl.T.camp_guests.some(g => /Old Guest|Next Week|Maximilian|Lorena/.test(g.name))).toBe(false);
 
   // A second run (another computer / a re-import) adds nothing.
   await page.evaluate(() => CampExtras.prefillCampTab(true));
@@ -241,6 +246,28 @@ test('camp tab prefill: refused until the Camp Tab has loaded its guests; two «
   expect(r.a).toMatchObject({ ok: false, reason: 'not-ready' });
   expect(r.b).toMatchObject({ ok: true, added: 0, skipped: 2 });
   expect(r.julias).toEqual([['Julia', '']]);
+});
+
+test('camp tab prefill: a failed read of the Camp Tab guests never lets the prefill in (no duplicates beside the typed tabs)', async ({ page }) => {
+  const { ctl, frame } = await openHub(page, { fail: (t, m) => t === 'camp_guests' && m === 'GET' });
+  await page.waitForTimeout(4000);   // a few prefill retries
+  const r = await frame.evaluate(() => ({ ready: campTabStateReady, names: S.activeWeek ? rosterRows(S.activeWeek, 'guests').map(g => g.name) : [] }));
+  expect(r.ready).toBe(false);
+  expect(r.names).not.toEqual(expect.arrayContaining(['Anna Müller']));
+  expect(ctl.posts.filter(([, t]) => t === 'camp_guests')).toEqual([]);
+  expect(ctl.T.camp_guests.length).toBe(3);
+});
+
+test('camp tab prefill: a new Guests import (camp-checks-changed) brings the new guest in once', async ({ page }) => {
+  const { ctl, frame } = await openHub(page);
+  await expect.poll(async () => (await roster(frame)).length, { timeout: 15000 }).toBe(5);
+  ctl.T.camp_week_guests.push({ id: 'late-1', location_id: LOC, week_start: '2026-11-14', booking_ref: '2026-5010', guest_key: 'lina berg', guest_name: 'Lina Berg', check_in: '2026-11-17', check_out: '2026-11-21', booking_status: 'paid', updated_at: '2026-11-16T05:00:00Z' });
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('camp-checks-changed')));
+  await expect.poll(async () => (await roster(frame)).filter(g => g.name === 'Lina Berg').length, { timeout: 10000 }).toBe(1);
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('camp-checks-changed')));
+  await page.waitForTimeout(1500);
+  expect((await roster(frame)).filter(g => g.name === 'Lina Berg').length).toBe(1);
+  expect((await roster(frame)).length).toBe(6);
 });
 
 test('camp tab: nothing new in ?view=local — no prefill read, no leaving chips', async ({ page }) => {
@@ -322,6 +349,8 @@ test('salary chip: September as the expected list, October complete → no chip;
   const nov = await p2.evaluate(() => { const s = CampExtras.salaryStatus(S.ledger, '2026-11-28'); return [s.target, s.have, s.total]; });
   expect(nov[0]).toBe('2026-11');
   expect(nov[1]).toBe(0);
+  const chip28 = await p2.evaluate(() => CampExtras.checks.salaryCheck.run({ ledger: S.ledger, location: 'sri-lanka', isLocal: false, today: '2026-11-28' }).text);
+  expect(chip28).toMatch(/^November salaries: 0 of \d+ in the ledger – missing [^,]+, [^,]+, [^,]+ \+\d+$/);
   expect(errors).toEqual([]);
 });
 

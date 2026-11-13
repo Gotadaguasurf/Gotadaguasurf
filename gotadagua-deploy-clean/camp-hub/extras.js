@@ -41,7 +41,7 @@ window.CAMP_CHECKS = window.CAMP_CHECKS || [];
   const MONEY_CHIP_FROM_DAY = 15;     // «Money from HQ needed» from the 15th of the month
   const TOUR_COST_LOOKBACK_DAYS = 3;  // a tour cost paid up to 3 days before the week still counts
   const TOURS_WITHOUT_COST = [];      // tours that never have a cost (none known yet)
-  const DEAD_STATUSES = ['cancelled', 'canceled', 'expired'];
+  const DEAD_STATUSES = ['cancelled', 'canceled', 'expired', 'not_here'];   // not_here = dropped out of a later Guests file (build/sl-week)
   const PREFILL_RETRY_MS = 1500;
   const PREFILL_MAX_TRIES = 20;
 
@@ -297,7 +297,8 @@ window.CAMP_CHECKS = window.CAMP_CHECKS || [];
       if (!ctx || ctx.isLocal || !EXTRAS_LOCATIONS.includes(ctx.location) || !fullView()) return null;
       const st = salaryStatus(ctx.ledger || [], ctx.today);
       if (!st.total || !st.missing.length) return null;
-      return { text: `${monthName(st.target)} salaries: ${st.have} of ${st.total} in the ledger – missing ${st.missing.map(missingLabel).join(', ')}`, level: 'warn', onClick: openSalaries };
+      const names = st.missing.slice(0, 3).map(missingLabel).join(', ') + (st.missing.length > 3 ? ` +${st.missing.length - 3}` : '');   // the modal has the full list
+      return { text: `${monthName(st.target)} salaries: ${st.have} of ${st.total} in the ledger – missing ${names}`, level: 'warn', onClick: openSalaries };
     },
   };
 

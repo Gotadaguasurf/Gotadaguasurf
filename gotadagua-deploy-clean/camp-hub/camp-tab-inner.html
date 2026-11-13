@@ -801,7 +801,7 @@ let campTabSyncTimer=null;
 let campMenuSyncTimer=null;
 let campStaffSyncTimer=null;
 let campTabBootstrapped=false;
-let campTabStateReady=false; // true once the bootstrap has loaded this camp's guests (a prefill never lands before)
+let campTabStateReady=false; // true once a read of this camp's guests succeeded (a prefill never lands before; a failed read keeps it false)
 let suppressRemoteSync=false;
 let campTabRehydrateTimer=null; // module-level so syncCampTabStateToSupabase can cancel it
 let _suppressGeneration=0; // incremented on each sync so stale timeouts don't clear a new suppress
@@ -1689,6 +1689,7 @@ async function hydrateCampTabStateFromSupabase({mergeLocal=false}={}){
       });
     }catch(mergeErr){ console.warn('[CampTab] pending-local merge failed',mergeErr); }
     S=hydrated;
+    campTabStateReady=true; // the DB answered: a prefill may match against these guests now
     // Baseline = what the DB CONFIRMED (pre-merge), so still-pending rows
     // stay classified as pending across repeated hydrates until a sync
     // actually lands (sync success advances the baseline itself).
@@ -1730,6 +1731,7 @@ async function hydrateCampTabStateFromSupabase({mergeLocal=false}={}){
   if(mergeLocal && (S.activeWeek || S.nextWeek || (S.history||[]).length)){
     await syncCampTabStateToSupabase();
   }
+  campTabStateReady=true; // read OK, the camp has no guests yet
   return false;
 }
 function weeksSnapshot(){
@@ -5253,7 +5255,6 @@ async function bootstrapCampTabFromSupabase(){
     // (otherwise the initial render uses the in-memory placeholder id and
     // the next save creates a duplicate row).
     await ensurePerGuestWeek();
-    campTabStateReady=true;
     renderAllCampTabViews();
     notifyParentStateChanged();
     const locationId=await ensureCampTabLocationId();
