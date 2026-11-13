@@ -39,6 +39,7 @@
   const LINKED_ITEM_BY_PURPOSE = { surf: 'Transport Surf Lesson', food: 'Food Supply', laundry: 'Laundry', staff: 'Staff', errand: 'Errand', other: 'Errand' };
   const DIFF_REASONS = ['Waiting time', 'Extra stop', 'Tip', 'Price changed', 'Other'];
   const CHARGE_LABEL = { bookinglayer: 'In booking', camp_tab: 'Camp Tab', free: 'Free' };
+  const LOCAL_MANAGER_NAME = 'Nadith';             // who pays the drivers in ?view=local («linked by Nadith» in Reconcile)
 
   const SLUG = (typeof __HUB_LOCATION_SLUG !== 'undefined') ? __HUB_LOCATION_SLUG : '';
   const enabled = () => TRIPS_ENABLED_LOCATIONS.has(SLUG) && !LOCAL_MANAGER_MODE && !CAMP_TAB_ONLY_MODE;
@@ -703,7 +704,7 @@
     if (!l) return '';
     if (l.linked_by === 'auto') return 'linked automatically';
     if (l.linked_by === 'pay') return 'Pay a driver';
-    if (l.linked_by === 'manual' && !l.reviewed_by) return `linked by ${(contact() || {}).name || 'the local manager'}`;
+    if (l.linked_by === 'manual' && !l.reviewed_by) return `linked by ${LOCAL_MANAGER_NAME}`;
     return 'linked by hand';
   }
   function paidCell(t) {

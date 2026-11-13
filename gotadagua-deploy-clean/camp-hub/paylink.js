@@ -76,6 +76,9 @@
         ]);
         if (t.error || d.error) throw (t.error || d.error);
         P.trips = t.data || []; P.drivers = d.data || []; P.error = ''; P.loadedAt = Date.now();
+        // A tick on a trip paid meanwhile (another phone) is dropped.
+        const open = new Set(P.trips.filter(x => !x.payment_entry_id).map(x => x.id));
+        if ([...P.picked].some(id => !open.has(id))) { P.picked = new Set([...P.picked].filter(id => open.has(id))); applyAmount(); }
       } catch (e) {
         P.error = (e && e.message) || 'error'; P.trips = P.trips || null;
       }
@@ -163,6 +166,7 @@
       if (!res || res.error) throw (res && res.error) || new Error('no answer');
       P.trips = (P.trips || []).map(t => ids.includes(t.id) ? { ...t, payment_entry_id: payload.id } : t);
       const n = ids.length; const differs = res.data && res.data.state === 'review';
+      try { if (window.TransportUI && TransportUI._state && TransportUI._state.loaded) TransportUI.load(true); } catch (_) {}   // full view: Reconcile up to date
       return { ok: true, text: `Entry added · ${n} transfer${n === 1 ? '' : 's'} linked${differs ? ' · the amount differs, Francisco will check' : ''}` };
     } catch (e) {
       try { console.warn('[paylink] link failed — the expense is saved', e); } catch (_) {}
