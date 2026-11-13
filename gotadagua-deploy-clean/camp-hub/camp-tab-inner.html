@@ -801,6 +801,7 @@ let campTabSyncTimer=null;
 let campMenuSyncTimer=null;
 let campStaffSyncTimer=null;
 let campTabBootstrapped=false;
+let campTabStateReady=false; // true once a read of this camp's guests succeeded (a prefill never lands before; a failed read keeps it false)
 let suppressRemoteSync=false;
 let campTabRehydrateTimer=null; // module-level so syncCampTabStateToSupabase can cancel it
 let _suppressGeneration=0; // incremented on each sync so stale timeouts don't clear a new suppress
@@ -1688,6 +1689,7 @@ async function hydrateCampTabStateFromSupabase({mergeLocal=false}={}){
       });
     }catch(mergeErr){ console.warn('[CampTab] pending-local merge failed',mergeErr); }
     S=hydrated;
+    campTabStateReady=true; // the DB answered: a prefill may match against these guests now
     // Baseline = what the DB CONFIRMED (pre-merge), so still-pending rows
     // stay classified as pending across repeated hydrates until a sync
     // actually lands (sync success advances the baseline itself).
@@ -1729,6 +1731,7 @@ async function hydrateCampTabStateFromSupabase({mergeLocal=false}={}){
   if(mergeLocal && (S.activeWeek || S.nextWeek || (S.history||[]).length)){
     await syncCampTabStateToSupabase();
   }
+  campTabStateReady=true; // read OK, the camp has no guests yet
   return false;
 }
 function weeksSnapshot(){
@@ -1913,7 +1916,59 @@ async function syncCampTabStateToSupabase(){
     setTimeout(()=>{ if(_suppressGeneration===_gen) suppressRemoteSync=false; },800);
   }
 }
+// per_guest (Sri Lanka): the hub sends this week's guests from the Guests
+// import (camp-hub/extras.js), one entry per guest. Match ref + name, then
+// name (open guests, or closed during this stay), then a unique first name on
+// an open guest without ref. Never deletes, never renames; a guest the hub
+// already sent once (noAdd) only gets his dates. Ids are stable so two
+// computers prefilling at once write the same rows.
+async function applyIncomingGuestsPerGuest(payload){
+  const list=Array.isArray(payload?.bookings)?payload.bookings:[];
+  if(!campTabStateReady) return {ok:false,added:0,reason:'not-ready',perGuest:true};
+  if(!list.length) return {ok:false,added:0,reason:'missing-data',perGuest:true};
+  if(!S.activeWeek) await ensurePerGuestWeek();
+  if(!S.activeWeek) return {ok:false,added:0,reason:'no-week',perGuest:true};
+  const rows=rosterRows(S.activeWeek,'guests');
+  const nm=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
+  const isOpen=g=>!g.closedAt&&!g.closed_at;
+  const closedDay=g=>{const t=g.closedAt||g.closed_at;const d=t?new Date(t):null;return d&&!isNaN(d)?isoLocal(d):'';};
+  const first=s=>nm(s).split(' ')[0]||'';
+  const firstsIn=new Map();list.forEach(b=>firstsIn.set(first(b.name),(firstsIn.get(first(b.name))||0)+1));
+  let added=0,updated=0,skipped=0;const keys=[];
+  list.forEach(b=>{
+    const ref=String(b.ref||'').trim(),name=String(b.name||'').trim();if(!name) return;
+    const ciDay=b.ci?isoLocal(new Date(Number(b.ci))):'';
+    const seed=`camp-guest|${CAMP_LOCATION_ID||CAMP_TAB_LOCATION_SLUG||'loc'}|${ref}|${nm(name)}`;
+    const hx=['a','b','c','d'].map(k=>simpleStableUuid(seed+'|'+k).replace(/-/g,'').slice(0,8)).join(''); // 4 × 32-bit hashes: no collisions in practice
+    const id=`${hx.slice(0,8)}-${hx.slice(8,12)}-4${hx.slice(13,16)}-a${hx.slice(17,20)}-${hx.slice(20,32)}`;
+    let g=rows.find(x=>x.id===id); // added by an earlier prefill (maybe renamed since)
+    if(!g) g=rows.find(x=>ref&&String(x.bookingRef||'').trim()===ref&&nm(x.name)===nm(name));
+    if(!g) g=rows.find(x=>nm(x.name)===nm(name)&&(!x.bookingRef||String(x.bookingRef).trim()===ref)&&(isOpen(x)||(ciDay&&closedDay(x)>=ciDay)));
+    if(!g){
+      const f=first(name);
+      const cands=rows.filter(x=>isOpen(x)&&!String(x.bookingRef||'').trim()&&nm(x.name)===f);
+      if(f&&cands.length===1&&firstsIn.get(f)===1) g=cands[0];
+      else if(f&&cands.length){skipped++;return;} // more than one possible «Julia»: add nothing, the host adds by hand
+    }
+    if(g){
+      const before=JSON.stringify([g.bookingRef||'',g.bookingCi||null,g.bookingCo||null]);
+      if(!String(g.bookingRef||'').trim()&&ref) g.bookingRef=ref;
+      if(isOpen(g)){ if(b.ci) g.bookingCi=Number(b.ci); if(b.co) g.bookingCo=Number(b.co); }
+      if(JSON.stringify([g.bookingRef||'',g.bookingCi||null,g.bookingCo||null])!==before) updated++;
+      keys.push(b.key);
+      return;
+    }
+    if(b.noAdd){skipped++;return;}
+    let candidate=name,n=2;
+    while(rows.some(x=>isOpen(x)&&nm(x.name)===nm(candidate))) candidate=`${name} ${n++}`;
+    rows.push({id,name:candidate,items:[],paid:false,bookingRef:ref,bookingCi:Number(b.ci)||null,bookingCo:Number(b.co)||null,bookingPax:1});
+    keys.push(b.key);added++;
+  });
+  if(added||updated){ save(); await syncCampTabStateToSupabase(); renderAllCampTabViews(); }
+  return {ok:true,added,updated,skipped,keys,perGuest:true};
+}
 async function applyIncomingBookingsToCampTab(payload){
+  if(CAMP_TAB_MODE==='per_guest') return applyIncomingGuestsPerGuest(payload);
   const weekStart=String(payload?.weekStart||'').trim();
   const bookings=Array.isArray(payload?.bookings)?payload.bookings:[];
   if(!weekStart||!bookings.length) return { ok:false, added:0, reason:'missing-data' };
@@ -5106,7 +5161,7 @@ window.addEventListener('message',async e=>{
     const result=await applyIncomingBookingsToCampTab(e.data);
     try{window.parent?.postMessage({type:'camp-tab-bookings-synced',...result,weekStart:e.data?.weekStart||''},'*');}catch(_){}
     if(result.ok&&result.added){
-      toast(result.added===1?'1 booking synced to Camp Tab':`${result.added} bookings synced to Camp Tab`);
+      toast(result.perGuest?`${result.added} guest${result.added===1?'':'s'} from the Guests file added`:(result.added===1?'1 booking synced to Camp Tab':`${result.added} bookings synced to Camp Tab`));
     }else if(result.reason==='different-active-week'){
       toast('Camp Tab already has another active week open');
     }
