@@ -39,6 +39,7 @@
   const LINKED_ITEM_BY_PURPOSE = { surf: 'Transport Surf Lesson', food: 'Food Supply', laundry: 'Laundry', staff: 'Staff', errand: 'Errand', other: 'Errand' };
   const DIFF_REASONS = ['Waiting time', 'Extra stop', 'Tip', 'Price changed', 'Other'];
   const CHARGE_LABEL = { bookinglayer: 'In booking', camp_tab: 'Camp Tab', free: 'Free' };
+  const LOCAL_MANAGER_NAME = 'Nadith';             // who pays the drivers in ?view=local («linked by Nadith» in Reconcile)
 
   const SLUG = (typeof __HUB_LOCATION_SLUG !== 'undefined') ? __HUB_LOCATION_SLUG : '';
   const enabled = () => TRIPS_ENABLED_LOCATIONS.has(SLUG) && !LOCAL_MANAGER_MODE && !CAMP_TAB_ONLY_MODE;
@@ -698,7 +699,7 @@
     const right = pill(filter === 'all', 'All', "TransportUI.recFilter('all')") + pill(filter === 'todo', 'To do', "TransportUI.recFilter('todo')") + pill(filter === 'done', 'Done', "TransportUI.recFilter('done')");
     let table = '', hint = '';
     if (tab === 'payments') {
-      hint = 'Every Transport cash payment the ledger has since go-live. Nadith enters them as today; they link to the driver\'s trips by themselves. ✓ = the trips add up · ✗ = to review.';
+      hint = 'Every Transport cash payment the ledger has since go-live. Nadith enters them as today; they link to the driver\'s trips by themselves, or to the transfers he ticked when paying. ✓ = the trips add up · ✗ = to review.';
       let rows = D.pays.slice().sort((a, b) => String((ledgerById(a.entry_id) || {}).date || '').localeCompare(String((ledgerById(b.entry_id) || {}).date || '')));
       if (filter === 'todo') rows = rows.filter(l => l.state === 'review'); else if (filter === 'done') rows = rows.filter(l => l.state !== 'review');
       table = rows.length ? `<table class="tr-tbl"><thead><tr><th></th><th>Date</th><th>Payment</th><th class="r">Amount</th><th>Trips</th><th>Status</th><th></th></tr></thead><tbody>${rows.map(payRow).join('')}</tbody></table>`
@@ -718,10 +719,20 @@
       <div class="card-body hq-filters tr-rec-pills"><div class="pills">${viewPills}</div><div class="pills tr-rec-right">${right}</div></div>
       <div class="tbl-wrap">${table}</div></div>`;
   }
+  // Who linked a payment to its trips. A manual link with no reviewer is the local
+  // manager's own pick when he paid (camp_transport_link_own: «Which transfers is this
+  // for?»); Francisco's links and «Pay a driver» always carry reviewed_by.
+  function linkedByLabel(l) {
+    if (!l) return '';
+    if (l.linked_by === 'auto') return 'linked automatically';
+    if (l.linked_by === 'pay') return 'Pay a driver';
+    if (l.linked_by === 'manual' && !l.reviewed_by) return `linked by ${LOCAL_MANAGER_NAME}`;
+    return 'linked by hand';
+  }
   function paidCell(t) {
     if (!t.payment_entry_id) return '<span class="hint">—</span>';
-    const e = ledgerById(t.payment_entry_id);
-    return e ? `${fmtShort(e.date)} · ${money(e.amountLocal)}<span class="cell-sub">${h(e.description || '')}</span>` : '<span class="hint">payment</span>';
+    const e = ledgerById(t.payment_entry_id); const by = linkedByLabel(linkOf(t.payment_entry_id));
+    return e ? `${fmtShort(e.date)} · ${money(e.amountLocal)}<span class="cell-sub">${h(e.description || '')}${by ? ` · ${h(by)}` : ''}</span>` : `<span class="hint">payment${by ? ` · ${h(by)}` : ''}</span>`;
   }
   function recRow(t) {
     const s = reconcileStatus(t); const [label, cls] = REC_LABEL[s];
@@ -745,7 +756,7 @@
     const why = l.state === 'review' ? ({ 'no driver named': 'no driver named in the description', 'no unpaid trips': 'no unpaid trips of this driver', 'amounts differ': `trips ${money(l.trips_amount)} · difference ${money(Number(l.entry_amount) - Number(l.trips_amount))}`, unlinked: 'unlinked', 'no trips linked': 'no trips linked' }[l.reason] || l.reason || '')
       : l.state === 'explained' ? (l.note || '') : '';
     return `<tr data-pay="${l.entry_id}" data-state="${l.state}"><td class="tr-ok">${ok ? `<span class="tr-ok-y">${ic('check-circle')}</span>` : `<span class="tr-ok-n">${ic('alert')}</span>`}</td>
-      <td class="tr-nowrap tr-c-date">${fmtShort(e.date)}</td><td class="tr-c-what">${h(e.description || '')}<span class="cell-sub">${h(d ? d.name : 'no driver')} · ${l.linked_by === 'auto' ? 'linked automatically' : l.linked_by === 'pay' ? 'Pay a driver' : 'linked by hand'}</span></td>
+      <td class="tr-nowrap tr-c-date">${fmtShort(e.date)}</td><td class="tr-c-what">${h(e.description || '')}<span class="cell-sub">${h(d ? d.name : 'no driver')} · ${h(linkedByLabel(l))}</span></td>
       <td class="r tr-nowrap tr-c-k" data-l="Amount">${money(l.entry_amount)}</td><td class="tr-c-k" data-l="Trips">${l.trips_count} trip${l.trips_count === 1 ? '' : 's'} · ${money(l.trips_amount)}</td>
       <td class="tr-c-st"><span class="badge ${label[1]}">${label[0]}</span>${why ? `<span class="cell-sub">${h(why)}</span>` : ''}</td>
       <td class="tr-act"><div class="row"><button class="btn btn-s btn-sm" onclick="TransportUI.openLink('${l.entry_id}')">${ic('link')} Link trips</button>

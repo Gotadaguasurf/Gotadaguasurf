@@ -79,3 +79,15 @@
 /* Trip sheet footer: up to five buttons wrap on phones instead of running off the left edge. */
 .tr-modal .mfooter { flex-wrap: wrap; justify-content: flex-end; }
 .tr-modal .mfooter .btn { flex: 0 1 auto; }
+
+/* ── Quick add · «Which transfers is this for?» (camp-hub/paylink.js) ── */
+.pl-wrap { margin-bottom: 0; }
+.pl-list { display: flex; flex-direction: column; gap: 6px; }
+.mfield label.pl-row { display: grid; grid-template-columns: auto 1fr auto; gap: var(--sp-3); align-items: center; min-height: 48px; padding: 10px var(--sp-3); border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--surface); font-size: 14px; font-weight: 400; line-height: 1.35; color: var(--ink); text-transform: none; letter-spacing: 0; cursor: pointer; margin: 0; }
+.mfield .pl-row input { width: 22px; height: 22px; min-height: 0; margin: 0; padding: 0; cursor: pointer; accent-color: var(--ocean); }
+.mfield label.pl-row:has(input:checked) { border-color: var(--border-2); background: var(--surface-2); }
+.pl-txt { line-height: 1.35; }
+.pl-sep { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.pl-amt { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pl-note, .pl-hint { font-size: 13px; color: var(--muted); padding: 4px 0; }
+.pl-sum { font-size: 13px; font-weight: 600; padding: 6px 0 0; }
