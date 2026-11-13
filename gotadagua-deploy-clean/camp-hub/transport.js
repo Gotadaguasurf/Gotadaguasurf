@@ -967,6 +967,7 @@
     openDrivers, addDriver, saveDrivers,
     // for tests and the coordinator
     importHtml: renderNext,   // the Week tab renders the same import
+    tripState,                // the Week tab shows the same status badge
     _state: TR, load, isDone, reconcileStatus, colomboNow, check: unlinkedCheck, TRIPS_GO_LIVE, goLive,
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();

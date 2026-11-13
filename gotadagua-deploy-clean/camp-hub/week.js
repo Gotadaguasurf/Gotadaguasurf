@@ -1,17 +1,21 @@
 // Camp hub · Week (Sri Lanka, 13 Nov 2026)
 //
-// Francisco's back office for the week (full view only; Nadith's ?view=local
-// has no Week tab). The Monday Bookinglayer Guests import lands in
-// camp_week_guests (supabase/camp-trips.sql) and becomes one WhatsApp text per
-// team and day:
+// Francisco's overview of the week (full view only; Nadith's ?view=local has
+// no Week tab). The Monday Bookinglayer Guests import lands in camp_week_guests
+// (supabase/camp-trips.sql) and fills six tabs:
 //
-//   Cleaning · Kitchen · Surf   message per day or for the whole week, Copy or
-//                               «Send to <contact>» (wa.me); each send is stored
-//                               in camp_week_messages (supabase/camp-week.sql) so a
-//                               re-import shows «Changed since sent → Send update».
-//   Transfers                   the trips of Transport (camp_trips), Miguel's fixed
-//                               format; sent state stays on the trips.
-//   Guests                      one line per guest, «Copy list».
+//   Overview    guests in camp per night, and per day: arrivals, departures,
+//               transfers, meals, surf students
+//   Rooms       occupancy grid (beds × nights)        + the Cleaning message
+//   Kitchen     allergies, diets, meals per day       + the Kitchen message
+//   Surf        students per day, groups by level     + the Surf message
+//   Transfers   every airport trip with its status    + the Transfers message
+//   Guests      searchable list, «Copy list»
+//
+// A message is one WhatsApp text per team, for a day or the whole week: Copy or
+// «Send to <contact>» (wa.me). Each send is stored in camp_week_messages
+// (supabase/camp-week.sql) so a re-import shows «Changed since sent → Send
+// update». Transfers keep their sent state on the trips (camp_trips).
 //
 // Where the import lives: the Guests import is the first thing Francisco does
 // on Monday, so Week has the «Import Guests file» button at the top and shows
@@ -42,13 +46,26 @@
     { k: 'transfers', label: 'Transfers', contact: 'transfers_contact', role: 'Transfers' },
     { k: 'guests', label: 'Guests' },
   ];
+  // The tabs of the page; `team` = whose message sits at the bottom of the tab.
+  const TABS = [
+    { k: 'overview', label: 'Overview' }, { k: 'rooms', label: 'Rooms', team: 'cleaning' }, { k: 'kitchen', label: 'Kitchen', team: 'kitchen' },
+    { k: 'surf', label: 'Surf', team: 'surf' }, { k: 'transfers', label: 'Transfers', team: 'transfers' }, { k: 'guests', label: 'Guests', team: 'guests' },
+  ];
+  // The rooms of the camp, so a room that is empty all week still shows in the grid.
+  // `beds` only for shared rooms (free beds are counted); private rooms are free or taken as a whole.
+  const CAMP_ROOMS = [
+    { w: 'marissa', label: 'Marissa', beds: 4, note: '4 beds' }, { w: 'kabalana', label: 'Kabalana', beds: 4, note: '4 beds' }, { w: 'unawatuna', label: 'Unawatuna', beds: 6, note: 'girls' },
+    { w: 'hiriketeya', label: 'Hiriketeya Ensuite' }, { w: 'ahangama', label: 'Ahangama Ensuite' }, { w: 'madiha', label: 'Madiha Ensuite' },
+    { w: 'midigama', label: 'Midigama Ensuite' }, { w: 'welligama', label: 'Welligama Sea View Ensuite' },
+  ];
+  const NO_ALLERGY = /^(none|none known|no|n\/a|na|nothing|nope|-)$/i;   // answers that are not an allergy
   const LEVELS = ['Beginner', 'Experienced beginner', 'Intermediate', 'Advanced', 'Level not set'];
 
   const SLUG = (typeof __HUB_LOCATION_SLUG !== 'undefined') ? __HUB_LOCATION_SLUG : '';
   const enabled = () => WEEK_ENABLED_LOCATIONS.has(SLUG) && !LOCAL_MANAGER_MODE && !CAMP_TAB_ONLY_MODE;
 
   const W = {
-    week: null, day: null, team: 'cleaning', mode: 'lists', showCheck: false,
+    week: null, day: null, tab: 'overview', team: 'cleaning', mode: 'lists', q: '', scrollTo: '',
     cache: {},                 // ws → { rows, msgs, msgsOk }
     meta: null,                // latest import { id, at, min, max } | null
     metaLoaded: false, error: '', loading: null, undo: null, busy: new Set(),
@@ -425,29 +442,101 @@
   const changeLabel = c => `${TEAMS.find(t => t.k === c.team).label} (${c.day === 'week' ? 'Week' : DAY[GT.weekday(c.day)]})`;
   function sentOf(team, day, ws) { return latestMsgs(ws).find(m => m.team === team && m.day === day) || null; }
 
-  // ── To check (one compact list) ─────────────────────────────────────────
+  // ── To check: each gap belongs to one tab ───────────────────────────────
   function toCheck(ws) {
     const rows = rowsOf(ws); const wk = rows.filter(g => inWeek(g, ws));
     const live = wk.filter(counted);
     const items = [];
     const names = gs => gs.map(g => g.guest_name).join(', ');
     const noLevel = live.filter(g => course(g) && levelOf(g) === 'Level not set');
-    if (noLevel.length) items.push({ text: `${plural(noLevel.length, 'surf student')} without level – ask at check-in`, who: names(noLevel) });
+    if (noLevel.length) items.push({ tab: 'surf', short: `${noLevel.length} without level`, text: `${plural(noLevel.length, 'surf student')} without level – ask at check-in`, who: names(noLevel) });
     const noDiet = live.filter(g => !dietOf(g));
-    if (noDiet.length) items.push({ text: `${plural(noDiet.length, 'guest')} didn't answer diet – ask at the welcome dinner`, who: names(noDiet) });
+    if (noDiet.length) items.push({ tab: 'kitchen', short: `${noDiet.length} without diet answer`, text: `${plural(noDiet.length, 'guest')} didn't answer diet – ask at the welcome dinner`, who: names(noDiet) });
     const noRoom = live.filter(g => !roomOf(g));
-    if (noRoom.length) items.push({ text: `${plural(noRoom.length, 'guest')} without a room – check Bookinglayer`, who: names(noRoom) });
+    if (noRoom.length) items.push({ tab: 'rooms', short: `${noRoom.length} without a room`, text: `${plural(noRoom.length, 'guest')} without a room – check Bookinglayer`, who: names(noRoom) });
     const noTime = tripsFor('week', ws).filter(t => !t.trip_time);
-    if (noTime.length) items.push({ text: `${plural(noTime.length, 'transfer')} without flight time – ask the guest`, who: noTime.map(t => t.guest_names || 'Guest').join(', ') });
+    if (noTime.length) items.push({ tab: 'transfers', short: `${plural(noTime.length, 'transfer')} without time`, text: `${plural(noTime.length, 'transfer')} without flight time – ask the guest`, who: noTime.map(t => t.guest_names || 'Guest').join(', ') });
     const carry = wk.filter(g => g._st === 'carry');
-    if (carry.length) items.push({ text: `${plural(carry.length, 'guest')} in camp ${carry.length === 1 ? 'is' : 'are'} not in the latest Guests file – still here?`, guests: carry, kind: 'carry' });
+    if (carry.length) items.push({ tab: 'guests', short: `${carry.length} still here?`, text: `${plural(carry.length, 'guest')} in camp ${carry.length === 1 ? 'is' : 'are'} not in the latest Guests file – still here?`, guests: carry, kind: 'carry' });
     const dropped = wk.filter(g => g._st === 'dropped');
-    if (dropped.length) items.push({ text: `${plural(dropped.length, 'guest')} dropped out of the latest Guests file – cancelled? Not counted`, guests: dropped, kind: 'dropped' });
+    if (dropped.length) items.push({ tab: 'guests', short: `${dropped.length} cancelled?`, text: `${plural(dropped.length, 'guest')} dropped out of the latest Guests file – cancelled? Not counted`, guests: dropped, kind: 'dropped' });
     const zero = live.filter(g => { const raw = String((g.raw || {}).Phone || '').replace(/\s+/g, ''); return raw && g.phone && raw !== g.phone; });
-    if (zero.length) items.push({ text: `${plural(zero.length, 'phone')} had a wrong 0 after the country code – fixed, check before sending`, who: zero.map(g => `${g.guest_name} ${g.phone}`).join(', ') });
+    if (zero.length) items.push({ tab: 'guests', short: `${plural(zero.length, 'phone')} fixed`, text: `${plural(zero.length, 'phone')} had a wrong 0 after the country code – fixed, check before sending`, who: zero.map(g => `${g.guest_name} ${g.phone}`).join(', ') });
     const moves = live.filter(g => movedRooms(g));
-    if (moves.length) items.push({ text: `${plural(moves.length, 'room move')} without a date – check the Day Planner`, who: names(moves) });
+    if (moves.length) items.push({ tab: 'rooms', short: `${plural(moves.length, 'room move')} without date`, text: `${plural(moves.length, 'room move')} without a date – check the Day Planner`, who: moves.map(g => `${g.guest_name} (${movedRooms(g).join(' → ')})`).join(', ') });
     return items;
+  }
+
+  // ── Week model (pure): what every tab draws ─────────────────────────────
+  // Eight days: Sat…Fri plus the closing Saturday (check-outs and the last breakfast).
+  // Arrivals and departures come from every counted row, so the people leaving on the
+  // opening Saturday (last week's guests) are there too. Breakfast of a day = who slept
+  // the night before; dinner = who sleeps tonight — the numbers of the Kitchen message.
+  const airportTrip = t => (t.kind === 'airport_arrival' || t.kind === 'airport_departure') && !['cancelled', 'merged'].includes(t.status);
+  function weekModel(ws, rows) {
+    const live = rows.filter(counted);
+    const trips = (TR().trips || []).filter(airportTrip);
+    const days = [];
+    for (let i = 0; i <= 7; i++) {
+      const d = add(ws, i);
+      const night = live.filter(g => inCamp(g, d)).sort(byStay);
+      const students = night.filter(g => course(g));
+      const dayTrips = trips.filter(t => t.trip_date === d).sort(tripSort);
+      const refs = new Set(dayTrips.filter(t => t.kind === 'airport_arrival').map(t => t.booking_ref).filter(Boolean));
+      const arrivals = live.filter(g => g.check_in === d).sort(byStay);
+      days.push({
+        d, i, closing: i === 7, night, arrivals, departures: live.filter(g => g.check_out === d).sort(byStay),
+        breakfast: live.filter(g => inCamp(g, add(d, -1))).length, dinner: night.length,
+        students, courses: courseCounts(students), yoga: night.filter(isYoga).length,
+        trips: dayTrips, own: arrivals.filter(g => !g.has_transfer && !refs.has(g.booking_ref)),
+      });
+    }
+    const wk = days.slice(0, 7);
+    const guests = live.filter(g => inWeek(g, ws));
+    return {
+      ws, days, guests, peak: Math.max(0, ...wk.map(x => x.dinner)),
+      arrivals: wk.reduce((s, x) => s + x.arrivals.length, 0), departures: wk.reduce((s, x) => s + x.departures.length, 0),
+      students: guests.filter(g => course(g)),
+    };
+  }
+
+  // Rooms: beds (shared) or stays (private) as lanes, nights 0…6 as columns.
+  function roomPlan(ws, rows) {
+    const gs = rows.filter(g => counted(g) && inWeek(g, ws)).sort(byStay);
+    const w1 = s => { const x = String(s || '').split(/\s+/)[0].toLowerCase(); return x === 'weligama' ? 'welligama' : x; };
+    const rooms = new Map();
+    CAMP_ROOMS.forEach((c, i) => rooms.set(c.w, { key: c.w, label: c.label, shared: !!c.beds, note: c.note || '', beds: c.beds || 0, order: i, stays: [] }));
+    gs.forEach(g => {
+      const r = roomOf(g); const k = r ? w1(r.label) : '?';
+      if (!rooms.has(k)) rooms.set(k, r ? { key: k, label: r.label, shared: r.shared, note: r.note, beds: r.shared ? (parseInt(r.note, 10) || 0) : 0, order: 50 + r.order, stays: [] }
+        : { key: '?', label: 'No room yet', shared: false, none: true, note: '', beds: 0, order: 999, stays: [] });
+      const room = rooms.get(k); if (r && !r.shared) room.label = r.label;
+      const beds = String(g.bed_number || '').split(',').map(s => parseInt(s, 10)).filter(n => n > 0);
+      room.stays.push({ g, a: Math.max(0, daysBetween(ws, g.check_in)), b: Math.min(7, daysBetween(ws, g.check_out)), bed: beds.length ? beds[beds.length - 1] : 0 });
+    });
+    const free = (lane, s) => lane.items.every(x => x.b <= s.a || x.a >= s.b);
+    const out = [...rooms.values()].sort((x, y) => x.order - y.order).map(room => {
+      let lanes = [];
+      if (room.shared) {
+        const cap = Math.max(room.beds, ...room.stays.map(s => s.bed));
+        for (let n = 1; n <= cap; n++) lanes.push({ bed: n, items: [] });
+        const place = s => { let lane = s.bed && free(lanes[s.bed - 1], s) ? lanes[s.bed - 1] : lanes.find(l => free(l, s));
+          if (!lane) { lane = { bed: 0, extra: true, items: [] }; lanes.push(lane); }
+          lane.items.push({ a: s.a, b: s.b, gs: [s.g] }); };
+        room.stays.filter(s => s.bed).forEach(place); room.stays.filter(s => !s.bed).forEach(place);
+      } else {
+        const groups = new Map();   // the people of one booking with the same dates share a bar
+        room.stays.forEach(s => { const k = (room.none ? s.g.id || s.g.guest_name : s.g.booking_ref || s.g.guest_name) + '|' + s.a + '|' + s.b; if (!groups.has(k)) groups.set(k, { a: s.a, b: s.b, gs: [] }); groups.get(k).gs.push(s.g); });
+        [...groups.values()].forEach(it => { let lane = lanes.find(l => free(l, it)); if (!lane) { lane = { bed: 0, items: [] }; lanes.push(lane); } lane.items.push(it); });
+        if (!lanes.length) lanes.push({ bed: 0, items: [] });
+      }
+      const used = n => lanes.filter(l => l.items.some(x => x.a <= n && n < x.b)).length;
+      const nights = [0, 1, 2, 3, 4, 5, 6].map(n => ({ used: used(n), free: room.shared ? Math.max(0, lanes.filter(l => !l.extra).length - used(n)) : (used(n) ? 0 : 1) }));
+      return { ...room, lanes, nights };
+    }).filter(r => !r.none || r.stays.length);
+    const real = out.filter(r => !r.none);
+    return { rooms: out, freeBeds: [0, 1, 2, 3, 4, 5, 6].map(n => real.filter(r => r.shared).reduce((s, r) => s + r.nights[n].free, 0)),
+      freeRooms: [0, 1, 2, 3, 4, 5, 6].map(n => real.filter(r => !r.shared).reduce((s, r) => s + r.nights[n].free, 0)) };
   }
 
   // ════════════════════════════════════════════════════════════════════════
@@ -456,15 +545,16 @@
   function renderWeekPage() {
     if (!enabled()) return;
     if (!W.week) W.week = GT.weekStart(cToday());
-    if (!W.day) W.day = defaultDay(W.week);
+    if (!W.day) W.day = 'week';
     if (!W.metaLoaded || !W.cache[W.week]) loadAll().then(render);
     render();
   }
-  function defaultDay(ws) { const t = cToday(); return t >= ws && t <= add(ws, 6) ? t : ws; }
+  const tabOf = team => (TABS.find(t => t.team === team) || TABS[0]).k;
+  const teamOfTab = tab => (TABS.find(t => t.k === tab) || {}).team || '';
   function render() {
     const root = $('weekRoot'); if (!root || !enabled()) return;
     const ws = W.week;
-    const head = `<div class="section-head page-head"><div><div class="section-title">Week</div><div class="section-sub">Guests, rooms, meals, surf and transfers · messages for the team</div></div>
+    const head = `<div class="section-head page-head"><div><div class="section-title">Week</div><div class="section-sub">Arrivals, departures, rooms, meals, surf and transfers · messages for the team</div></div>
       <div class="exp-top-actions wk-actions">
         <button class="btn btn-s" onclick="WeekUI.setMode('${W.mode === 'import' ? 'lists' : 'import'}')">${ic(W.mode === 'import' ? 'arrow-left' : 'upload')} ${W.mode === 'import' ? 'Back to the week' : 'Import Guests file'}</button>
         <button class="btn btn-s" onclick="WeekUI.openContacts()">${ic('phone')} Contacts</button></div></div>`;
@@ -483,34 +573,46 @@
     if (W.error && !W.cache[ws]) { root.innerHTML = head + `<div class="status-msg status-warn">Week is not set up yet (${h(W.error)}). Ask Miguel to run supabase/camp-trips.sql.</div>`; return; }
     if (!W.cache[ws]) { root.innerHTML = head + '<div class="loading">Loading the week…</div>'; return; }
     const rows = rowsOf(ws);
-    const nGuests = rows.filter(g => counted(g) && inWeek(g, ws)).length;
+    const M = weekModel(ws, rows);
+    const nGuests = M.guests.length;
     const filters = `<div class="ov-filters wk-filters"><div class="period-picker"><button class="btn btn-s btn-sm btn-icon" title="Previous week" onclick="WeekUI.shiftWeek(-7)">${ic('chevron-left')}</button>
         <span class="period-picker-lbl wk-week">${fdm(ws)} – ${fdm(add(ws, 6))}</span>
         <button class="btn btn-s btn-sm btn-icon" title="Next week" onclick="WeekUI.shiftWeek(7)">${ic('chevron-right')}</button></div>
-      <span class="wk-count">${plural(nGuests, 'guest')}</span></div>`;
-    const file = W.meta ? `<div class="hint wk-file">Guests file imported ${h(fileStamp(W.meta.at))}</div>` : `<div class="hint wk-file">No Guests file imported yet</div>`;
+      <span class="wk-count">${plural(nGuests, 'guest')}</span>
+      <span class="hint wk-file">${W.meta ? `Guests file imported ${h(fileStamp(W.meta.at))}` : 'No Guests file imported yet'}</span></div>`;
     if (!nGuests && !rows.length) {
-      root.innerHTML = head + filters + file + `<div class="empty-state">${ic('users')}<div class="empty-title">No guests this week</div><p>Download the Guests export with the «Semana Sri Lanka» preset and import it.</p>
+      root.innerHTML = head + filters + `<div class="empty-state">${ic('users')}<div class="empty-title">No guests this week</div><p>Download the Guests export with the «Semana Sri Lanka» preset and import it.</p>
         <button class="btn btn-p" onclick="WeekUI.setMode('import')">${ic('upload')} Import Guests file</button></div>`;
       return;
     }
     const checks = toCheck(ws);
-    const checkHtml = checks.length ? `<div class="wk-check${W.showCheck ? ' open' : ''}"><button class="wk-check-hd" onclick="WeekUI.toggleCheck()">${ic(W.showCheck ? 'chevron-down' : 'chevron-right')} To check (${checks.length})</button>
-      ${W.showCheck ? `<div class="wk-check-list">${checks.map(checkItem).join('')}</div>` : ''}</div>` : '';
     const ch = changes(ws);
     const chHtml = ch.length ? `<div class="health-strip wk-changed"><span class="health-lbl">Changed since sent</span>${ch.map(c => `<button class="health-chip" onclick="WeekUI.go('${c.team}','${c.day}')">${h(changeLabel(c))}</button>`).join('')}</div>` : '';
     const notSaved = (W.cache[ws].msgsMissing) ? `<div class="status-msg status-info wk-soft">Sent messages are not remembered yet — ask Miguel to run supabase/camp-week.sql.</div>` : '';
-    const dot = (team, day) => ch.some(c => c.team === team && (day == null || c.day === day)) ? '<span class="wk-dot" title="Changed since sent"></span>' : '';
-    const teamPills = `<div class="pills wk-teams">${TEAMS.map(t => `<button class="pill${W.team === t.k ? ' active' : ''}" onclick="WeekUI.setTeam('${t.k}')">${t.label}${dot(t.k)}</button>`).join('')}</div>`;
-    const days = [0, 1, 2, 3, 4, 5, 6].map(i => add(ws, i));
-    const dayPills = `<div class="pills wk-days">${days.map(d => `<button class="pill${W.day === d ? ' active' : ''}" data-day="${d}" onclick="WeekUI.setDay('${d}')">${fd(d)}${dot(W.team, d)}</button>`).join('')}<button class="pill${W.day === 'week' ? ' active' : ''}" data-day="week" onclick="WeekUI.setDay('week')">Week${dot(W.team, 'week')}</button></div>`;
-    root.innerHTML = head + filters + file + notSaved + checkHtml + chHtml + teamPills + dayPills + teamView(ws, rows);
+    const tabs = `<div class="pills wk-tabs" role="tablist">${TABS.map(t => {
+      const n = checks.filter(c => c.tab === t.k).length;
+      const dot = t.team && ch.some(c => c.team === t.team) ? '<span class="wk-dot" title="Changed since sent"></span>' : '';
+      return `<button class="pill${W.tab === t.k ? ' active' : ''}" role="tab" data-tab="${t.k}" onclick="WeekUI.setTab('${t.k}')">${t.label}${n ? `<span class="count wk-n" title="To check">${n}</span>` : ''}${dot}</button>`; }).join('')}</div>`;
+    const ctx = { ws, rows, M, checks, ch };
+    const view = W.tab === 'rooms' ? roomsTab(ctx) : W.tab === 'kitchen' ? kitchenTab(ctx) : W.tab === 'surf' ? surfTab(ctx)
+      : W.tab === 'transfers' ? transfersTab(ctx) : W.tab === 'guests' ? guestsTab(ctx) : overviewTab(ctx);
+    root.innerHTML = head + filters + notSaved + tabs + chHtml + `<div class="wk-view wk-view-${W.tab}">${view}</div>`;
+    if (W.tab === 'guests' && W.q) filterGuests(W.q);
+    if (W.scrollTo) { const el = $(W.scrollTo); W.scrollTo = ''; if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start' }); }
   }
   function fileStamp(at) {
     if (!at) return '';
     const s = colomboStamp(new Date(at)); const d = s.slice(0, 10);
     const age = daysBetween(d, cToday());
     return `${fdm(d)} ${s.slice(11, 16)}${age > 0 ? ` · ${plural(age, 'day')} ago` : ''}`;
+  }
+
+  // ── Shared pieces ───────────────────────────────────────────────────────
+  // To check, for one tab: a compact amber list (always open, no accordion).
+  function checkBlock(ctx, tab) {
+    const list = ctx.checks.filter(c => c.tab === tab);
+    if (!list.length) return '';
+    return `<div class="wk-check"><div class="wk-check-hd">${ic('alert')} To check</div><div class="wk-check-list">${list.map(checkItem).join('')}</div></div>`;
   }
   function checkItem(it) {
     if (it.guests) {
@@ -520,30 +622,52 @@
     }
     return `<div class="wk-ci"><div class="wk-ci-t">${h(it.text)}</div><div class="cell-sub">${h(it.who || '')}</div></div>`;
   }
+  const toMsgBtn = label => `<button class="btn btn-s btn-sm wk-tomsg" onclick="WeekUI.toMessage()">${ic('send')} ${h(label)}</button>`;
+  const cardHead = (title, hint, right) => `<div class="card-hdr"><div><div class="card-title">${title}</div>${hint ? `<div class="card-hint">${hint}</div>` : ''}</div>${right || ''}</div>`;
+  const dayHead = d => `<span class="wk-dw">${DAY[GT.weekday(d)]}</span><span class="wk-dn">${Number(d.slice(8))}</span>`;
+  const isToday = d => d === cToday();
+  // Names grouped by room: «Unawatuna  Lea Brennig, Lorena Marie Glas».
+  function byRoom(list) {
+    const rooms = new Map();
+    list.forEach(g => { const r = roomOf(g) || { key: '?', label: 'No room yet', order: 100 }; if (!rooms.has(r.key)) rooms.set(r.key, { r, gs: [] }); rooms.get(r.key).gs.push(g); });
+    return [...rooms.values()].sort((a, b) => a.r.order - b.r.order || a.r.label.localeCompare(b.r.label))
+      .map(({ r, gs }) => `<div class="wk-rl"><span class="wk-rm">${h(r.label)}</span><span>${gs.map(g => h(g.guest_name)).join(', ')}</span></div>`).join('');
+  }
+  // Bars to scale: height in % of the tallest value of the chart.
+  const pct = (n, max) => max ? Math.round(n / max * 1000) / 10 : 0;
+  function tripBadge(t) {
+    if (t.needs_resend && !tripDone(t) && !t.payment_entry_id && t.status !== 'no_show') return ['Time changed', 'badge-amber'];
+    if (window.TransportUI && TransportUI.tripState) return TransportUI.tripState(t);
+    return t.status === 'no_show' ? ['No-show', 'badge-grey'] : t.status === 'confirmed' ? ['Confirmed', 'badge-green'] : t.status === 'sent' ? ['Sent', 'badge-blue'] : ['Planned', 'badge-grey'];
+  }
+  const dirBadge = t => t.kind === 'airport_departure' ? '<span class="badge badge-navy">Departure</span>' : '<span class="badge badge-blue">Arrival</span>';
 
-  // One team, one day: the list (= the message), the preview, Copy + one blue Send.
-  function teamView(ws, rows) {
-    const team = W.team, day = W.day;
-    const yogaLine = team === 'surf' ? yogaInfo(ws, rows) : '';
-    if (team === 'guests') {
-      const gs = guestsList(rows, day, ws);
-      const list = gs.length ? gs.map(g => guestRow(g, ws)).join('') : '<div class="card-body hint">No guests on this day.</div>';
-      return `<div class="card wk-card"><div class="card-hdr"><div><div class="card-title">Guests · ${day === 'week' ? 'week' : fdm(day)} · ${gs.length}</div><div class="card-hint">For you only — no message to the team.</div></div></div><div class="wk-rows">${list}</div></div>
-        <div class="wk-foot"><button class="btn btn-p" onclick="WeekUI.copy()">${ic('copy')} Copy list</button></div>`;
+  // The message of a tab's team: day pills, the text, Copy + the one blue Send.
+  function messageCard(ctx, team) {
+    const { ws, rows, ch } = ctx; const day = W.day;
+    const dot = d => ch.some(c => c.team === team && c.day === d) ? '<span class="wk-dot" title="Changed since sent"></span>' : '';
+    const days = [0, 1, 2, 3, 4, 5, 6].map(i => add(ws, i));
+    const dayPills = `<div class="pills wk-days">${days.map(d => `<button class="pill${day === d ? ' active' : ''}" data-day="${d}" onclick="WeekUI.setDay('${d}')">${fd(d)}${dot(d)}</button>`).join('')}<button class="pill${day === 'week' ? ' active' : ''}" data-day="week" onclick="WeekUI.setDay('week')">Week${dot('week')}</button></div>`;
+    const when = day === 'week' ? 'the week' : fdm(day);
+    const t = TEAMS.find(x => x.k === team); const c = contactOf(team);
+    if (team === 'transfers') {
+      const list = tripsFor(day, ws);
+      const resend = list.some(x => x.needs_resend);
+      const text = list.length ? (resend ? transfersUpdate(list, day, ws) : GT.whatsappDayText(list)) : '';
+      const toTick = list.filter(x => x.status === 'planned' || x.needs_resend).length;
+      return `<div class="card wk-card wk-msgcard" id="wkMessage">${cardHead('Message', `Transfers still to do · ${h(when)} · Miguel's format, one block per transfer`)}
+        <div class="card-body">${dayPills}${list.length ? `<div class="wk-msg" id="wkMsg">${h(text)}</div>
+        <div class="wk-foot"><div class="wk-foot-btns"><button class="btn btn-s" onclick="WeekUI.copy()">${ic('copy')} Copy</button>
+          <button class="btn btn-p" id="wkSend" onclick="WeekUI.send()">${ic('send')} ${resend ? 'Send update' : 'Send to ' + h(c ? c.name : 'Transfers')}</button></div>
+          <div class="hint wk-state">${toTick ? `${plural(toTick, 'transfer')} not marked sent · <button class="btn-link" onclick="WeekUI.tickTransfers()">Mark sent ✓</button>` : 'All marked sent'}${c && c.phone ? '' : ` · <button class="btn-link" onclick="WeekUI.openContacts()">add phone</button>`}</div></div>`
+        : `<div class="hint wk-none">No transfers still to do ${day === 'week' ? 'this week' : 'on this day'}.</div>`}</div></div>`;
     }
-    if (team === 'transfers') return transfersView(ws, rows);
-    const p = parts(team, day, ws, rows);
-    const text = toText(p);
+    const text = body(team, day, ws, rows);
     const sent = sentOf(team, day, ws);
     const changed = sent && sent.hash !== hash(text);
-    const c = contactOf(team); const t = TEAMS.find(x => x.k === team);
-    const listHtml = p.filter(x => x.t !== 'title' && x.t !== 'gap').map(x => x.t === 'h' ? `<div class="section-lbl wk-h">${h(x.s)}</div>` : `<div class="wk-line">${h(x.s)}</div>`).join('');
     const msg = changed ? updateText(sent.text, text, day, ws) : text;
-    return `<div class="card wk-card"><div class="card-hdr"><div><div class="card-title">${h(t.label)} · ${day === 'week' ? 'week' : fdm(day)}</div>${yogaLine ? `<div class="card-hint wk-yoga">${yogaLine}</div>` : ''}</div></div>
-        <div class="card-body wk-list">${listHtml}</div></div>
-      <div class="card wk-card"><div class="card-hdr"><div><div class="card-title">Message</div><div class="card-hint">WhatsApp text${c ? ` for ${h(c.name)}` : ''}</div></div></div>
-        <div class="card-body"><div class="wk-msg" id="wkMsg">${h(msg)}</div></div></div>
-      ${footer(team, day, sent, changed, c, t)}`;
+    return `<div class="card wk-card wk-msgcard" id="wkMessage">${cardHead('Message', `WhatsApp text${c ? ` for ${h(c.name)}` : ''} · ${h(when)}`)}
+      <div class="card-body">${dayPills}<div class="wk-msg" id="wkMsg">${h(msg)}</div>${footer(team, day, sent, changed, c, t)}</div></div>`;
   }
   function footer(team, day, sent, changed, c, t) {
     const who = c ? c.name : t.role;
@@ -555,33 +679,206 @@
       <div class="hint wk-state">${state}${noPhone ? ` · <button class="btn-link" onclick="WeekUI.openContacts()">add phone</button>` : ''}</div></div>`;
   }
   function stampOf(at) { const s = colomboStamp(new Date(at)); return `${fd(s.slice(0, 10))} ${s.slice(11, 16)}`; }
-  function guestRow(g, ws) {
-    const r = roomOf(g); const c = course(g); const d = dietOf(g);
-    return `<div class="wk-g"><div class="wk-g1"><b>${h(g.guest_name)}</b>${g.partner ? ` <span class="badge badge-amber">partner – don't charge</span>` : ''}${g._st === 'carry' ? ' <span class="badge badge-grey">still here?</span>' : ''}</div>
-      <div class="cell-sub">${h(r ? r.label + (r.shared && g.bed_number ? ' bed ' + g.bed_number : '') : 'no room')} · ${h(stayText(g, ws))} · ${h(g.phone || 'no phone')}</div>
-      <div class="cell-sub">${h(c ? c + ' · ' + levelOf(g) : 'no lessons')} · ${h(d === 'none' ? 'no special diet' : d || 'diet ?')}${g.allergies ? ' · allergies: ' + h(g.allergies) : ''} · ${g.has_transfer ? 'transfer' : 'own way'}</div></div>`;
+
+  // ── Overview ────────────────────────────────────────────────────────────
+  function overviewTab(ctx) {
+    const { ws, M, checks } = ctx;
+    const last = M.days[7];
+    const peakDays = M.days.slice(0, 7).filter(x => x.dinner === M.peak).map(x => DAY[GT.weekday(x.d)]);
+    const tiles = `<div class="wk-kpis">
+      <div class="kpi"><div class="kpi-label">Guests this week</div><div class="kpi-value num">${M.guests.length}</div><div class="kpi-sub">${plural(M.students.length, 'surf student')}</div></div>
+      <div class="kpi"><div class="kpi-label">Arrivals</div><div class="kpi-value num kv-ocean">${M.arrivals}</div><div class="kpi-sub">${M.days[0].arrivals.length ? `${M.days[0].arrivals.length} on ${fd(ws)}` : 'Sat – Fri'}</div></div>
+      <div class="kpi"><div class="kpi-label">Departures</div><div class="kpi-value num">${M.departures}</div><div class="kpi-sub">${last.departures.length ? `then ${last.departures.length} on ${fd(last.d)}` : 'Sat – Fri'}</div></div>
+      <div class="kpi"><div class="kpi-label">Most in camp</div><div class="kpi-value num">${M.peak}</div><div class="kpi-sub">${M.peak ? h(peakDays.length > 3 ? `${peakDays[0]} – ${peakDays[peakDays.length - 1]}` : peakDays.join(', ')) : 'no one yet'}</div></div></div>`;
+    const checkChips = checks.length ? `<div class="health-strip wk-tocheck"><span class="health-lbl">To check</span>${checks.map(c => `<button class="health-chip" onclick="WeekUI.setTab('${c.tab}')">${h(c.short)}</button>`).join('')}</div>` : '';
+    const max = Math.max(M.peak, 1);
+    const strip = `<div class="card wk-card">${cardHead('Guests in camp each night', 'Arrivals and departures under each day')}
+      <div class="card-body"><div class="wk-strip">${M.days.map(x => `<button class="wk-sc${x.closing ? ' closing' : ''}${isToday(x.d) ? ' today' : ''}" onclick="WeekUI.toDay('${x.d}')" title="${h(fdm(x.d))}">
+        <span class="wk-sbar">${x.closing ? '' : `<span class="wk-sfill" style="height:${pct(x.dinner, max)}%"><span class="wk-sv num">${x.dinner}</span></span>`}</span>
+        <span class="wk-sday">${dayHead(x.d)}</span>
+        <span class="wk-sio"><span class="wk-in num">${x.arrivals.length && !x.closing ? '+' + x.arrivals.length : '&nbsp;'}</span><span class="wk-out num">${x.departures.length ? '−' + x.departures.length : '&nbsp;'}</span></span></button>`).join('')}</div>
+        <div class="wk-legend"><span><i class="wk-sw sw-ocean"></i>sleeping in camp</span><span><b class="wk-in">+</b> arrivals</span><span><b class="wk-out">−</b> departures</span><span>last column = check-out day ${h(fd(last.d))}</span></div></div></div>`;
+    const board = `<div class="card wk-card wk-board"><div class="wk-bhead"><span>Day</span><span>${ic('login')} Arrivals</span><span>${ic('logout')} Departures</span><span>${ic('truck')} Transfers</span><span>Meals</span><span>Surf</span></div>
+      ${M.days.map(x => dayRow(x, M)).join('')}</div>`;
+    const teams = `<div class="card wk-card">${cardHead('Team messages', 'One WhatsApp text per team, for a day or the whole week')}<div class="wk-teamrows">${TEAMS.filter(t => t.contact).map(t => teamRow(t, ctx)).join('')}</div></div>`;
+    return tiles + checkChips + strip + board + teams;
   }
-  function transfersView(ws, rows) {
-    const day = W.day; const list = tripsFor(day, ws);
-    const c = contactOf('transfers');
-    const resend = list.some(t => t.needs_resend);
-    const text = list.length ? (resend ? transfersUpdate(list, day, ws) : GT.whatsappDayText(list)) : '';
-    const tripIds = new Set(list.map(t => t.booking_ref).filter(Boolean));
-    const arriving = rows.filter(g => counted(g) && (day === 'week' ? g.check_in >= ws && g.check_in <= add(ws, 6) : g.check_in === day));
-    const own = arriving.filter(g => !g.has_transfer && !tripIds.has(g.booking_ref));
-    const state = t => t.needs_resend ? ['Time changed, resend', 'badge-amber'] : t.status === 'confirmed' ? ['Confirmed', 'badge-green'] : t.status === 'sent' ? ['Sent', 'badge-blue'] : ['Not sent', 'badge-grey'];
-    const rowsHtml = list.length ? list.map(t => { const [st, cls] = state(t); const dep = t.kind === 'airport_departure';
-      return `<div class="wk-g"><div class="wk-g1"><b class="num">${h(t.trip_time || 'time?')}</b> <span class="badge ${dep ? 'badge-navy' : 'badge-blue'}">${dep ? 'Departure' : 'Arrival'}</span> <b>${h(t.guest_names || 'Guest')}</b> <span class="badge ${cls}">${st}</span></div>
-        <div class="cell-sub">${day === 'week' ? h(fd(t.trip_date)) + ' · ' : ''}${h(t.flight || 'flight?')} · ${t.pax} ${t.pax === 1 ? 'person' : 'persons'} · ${h(t.vehicle || '')}</div></div>`; }).join('')
-      : `<div class="card-body hint">No transfers still to do ${day === 'week' ? 'this week' : 'on this day'}.</div>`;
-    const toTick = list.filter(t => t.status === 'planned' || t.needs_resend).length;
-    return `<div class="card wk-card"><div class="card-hdr"><div><div class="card-title">Transfers · ${day === 'week' ? 'week' : fdm(day)} · ${list.length}</div><div class="card-hint">Still to do, from Transport. Tuk-tuks and paying drivers stay in Transport.</div></div></div>
-        <div class="wk-rows">${rowsHtml}</div>
-        ${own.length ? `<div class="card-body"><div class="section-lbl">Coming on their own</div><div class="cell-sub">${h(own.map(g => g.guest_name).join(', '))}</div></div>` : ''}</div>
-      ${list.length ? `<div class="card wk-card"><div class="card-hdr"><div><div class="card-title">Message</div><div class="card-hint">Miguel's format, one block per transfer</div></div></div><div class="card-body"><div class="wk-msg" id="wkMsg">${h(text)}</div></div></div>
-      <div class="wk-foot"><div class="wk-foot-btns"><button class="btn btn-s" onclick="WeekUI.copy()">${ic('copy')} Copy</button>
-        <button class="btn btn-p" id="wkSend" onclick="WeekUI.send()">${ic('send')} ${resend ? 'Send update' : 'Send to ' + h(c ? c.name : 'Transfers')}</button></div>
-        <div class="hint wk-state">${toTick ? `${plural(toTick, 'transfer')} not marked sent · <button class="btn-link" onclick="WeekUI.tickTransfers()">Mark sent ✓</button>` : 'All marked sent'}${c && c.phone ? '' : ` · <button class="btn-link" onclick="WeekUI.openContacts()">add phone</button>`}</div></div>` : ''}`;
+  function dayRow(x, M) {
+    const arr = x.arrivals.length, dep = x.departures.length;
+    const blk = (cls, icon, label, n, sign, inner) => `<div class="wk-bc ${cls}"><div class="wk-bl"><span class="wk-blt">${ic(icon)} ${label}</span>${n ? `<b class="wk-bn num">${sign}${n}</b>` : ''}</div><div class="wk-bi">${inner}</div></div>`;
+    const trips = x.trips.map(t => { const [st, cls] = tripBadge(t); return `<div class="wk-tl"><b class="num">${h(t.trip_time || 'time?')}</b> <span class="wk-dir ${t.kind === 'airport_departure' ? 'out' : 'in'}">${t.kind === 'airport_departure' ? 'out' : 'in'}</span> ${h(t.guest_names || 'Guest')} <span class="badge ${cls}">${st}</span></div>`; }).join('');
+    const own = x.own.filter(g => g.arrival_time);
+    const ownHtml = own.length ? `<div class="wk-tl wk-own">On their own: ${own.slice().sort((a, b) => a.arrival_time.localeCompare(b.arrival_time)).map(g => `${h(g.arrival_time)} ${h(g.guest_name)}`).join(', ')}</div>` : '';
+    const c = x.courses; const st = x.students.length;
+    const surf = x.closing ? '<span class="wk-nil">–</span>' : st ? `<b class="num">${st}</b> ${st === 1 ? 'student' : 'students'}
+      <span class="wk-stack" title="Standard ${c.S} · Intensive ${c.I} · Coaching ${c.C}">${[['s', c.S], ['i', c.I], ['c', c.C]].filter(k => k[1]).map(k => `<i class="sk-${k[0]}" style="flex:${k[1]}"></i>`).join('')}</span>
+      <span class="cell-sub">${[['Standard', c.S], ['Intensive', c.I], ['Coaching', c.C]].filter(k => k[1]).map(k => `${k[0]} ${k[1]}`).join(' · ')}${x.yoga ? ` · Yoga ${x.yoga}` : ''}</span>` : '<span class="wk-nil">No lessons</span>';
+    return `<div class="wk-brow${x.closing ? ' closing' : ''}${isToday(x.d) ? ' today' : ''}" id="wkDay-${x.d}">
+      <div class="wk-bday"><div class="wk-bdate">${h(fdm(x.d))}${isToday(x.d) ? ' <span class="badge badge-blue">Today</span>' : ''}</div>
+        <div class="wk-bnight">${x.closing ? 'Check-out day' : `<b class="num">${x.dinner}</b> in camp tonight`}</div></div>
+      ${blk('arr', 'login', 'Arrivals', x.closing ? 0 : arr, '+', x.closing ? (arr ? `<span class="wk-nil">${arr} arriving · next week</span>` : '<span class="wk-nil">–</span>') : arr ? byRoom(x.arrivals) : '<span class="wk-nil">None</span>')}
+      ${blk('dep', 'logout', 'Departures', dep, '−', dep ? byRoom(x.departures) : '<span class="wk-nil">None</span>')}
+      ${blk('trf', 'truck', 'Transfers', 0, '', trips || ownHtml ? trips + ownHtml : '<span class="wk-nil">None</span>')}
+      ${blk('meal', 'coffee', 'Meals', 0, '', `<span class="wk-meal"><b class="num">${x.breakfast}</b> breakfast</span>${x.closing ? '' : `<span class="wk-meal"><b class="num">${x.dinner}</b> dinner</span>`}`)}
+      ${blk('srf', 'wave', 'Surf', 0, '', surf)}</div>`;
+  }
+  function teamRow(t, ctx) {
+    const { ws, ch } = ctx; const c = contactOf(t.k);
+    let state, cls = 'badge-grey';
+    if (t.k === 'transfers') {
+      const list = tripsFor('week', ws); const todo = list.filter(x => x.status === 'planned' || x.needs_resend).length;
+      state = !list.length ? 'Nothing to send' : todo ? `${todo} to send` : 'All sent'; cls = !list.length ? 'badge-grey' : todo ? 'badge-amber' : 'badge-green';
+    } else {
+      const sent = latestMsgs(ws).filter(m => m.team === t.k); const changed = ch.filter(x => x.team === t.k).length;
+      state = changed ? 'Changed since sent' : sent.length ? `Sent ${stampOf(sent[0].sent_at)}` : 'Not sent'; cls = changed ? 'badge-amber' : sent.length ? 'badge-green' : 'badge-grey';
+    }
+    return `<button class="wk-team" onclick="WeekUI.go('${t.k}','${W.day}')"><span class="wk-team-n"><b>${h(t.label)}</b><span class="cell-sub">${h(c ? c.name + (c.phone ? '' : ' · no phone yet') : 'No contact yet')}</span></span>
+      <span class="badge ${cls}">${h(state)}</span>${ic('chevron-right')}</button>`;
+  }
+
+  // ── Rooms ───────────────────────────────────────────────────────────────
+  function roomsTab(ctx) {
+    const { ws, rows } = ctx;
+    const P = roomPlan(ws, rows);
+    const nights = [0, 1, 2, 3, 4, 5, 6];
+    const hd = `<div class="wk-gl wk-ghead"><span class="wk-glb"></span>${nights.map(n => `<span class="wk-gh${isToday(add(ws, n)) ? ' today' : ''}">${dayHead(add(ws, n))}</span>`).join('')}</div>`;
+    const bar = (it, room) => {
+      const g0 = it.gs[0]; const moved = it.gs.some(g => movedRooms(g));
+      const before = g0.check_in < ws, after = g0.check_out > add(ws, 7);
+      const tip = `${it.gs.map(g => g.guest_name).join(' + ')} · ${stayText(g0, ws)}${moved ? ' · room move, date not in the file' : ''}`;
+      return `<button class="wk-bar${before ? ' before' : ''}${after ? ' after' : ''}${g0._st === 'carry' ? ' carry' : ''}" style="grid-column:${it.a + 2} / ${it.b + 2}" title="${h(tip)}" onclick="WeekUI.findGuest(decodeURIComponent('${encodeURIComponent(g0.guest_name)}'))">
+        <span class="wk-bt"><span class="wk-bfull">${it.gs.map(g => h(g.guest_name)).join(' + ')}</span><span class="wk-bshort">${it.gs.map(g => h(first(g.guest_name))).join(' + ')}</span></span>${moved ? '<span class="wk-dot" title="Room move"></span>' : ''}</button>`;
+    };
+    const lane = (l, room, li) => {
+      const cells = nights.map(n => l.items.some(x => x.a <= n && n < x.b) ? '' : `<span class="wk-cell${room.shared || li === 0 ? ' free' : ''}" style="grid-column:${n + 2}"></span>`).join('');
+      return `<div class="wk-gl${l.extra ? ' extra' : ''}"><span class="wk-glb">${room.shared ? (l.extra ? 'extra' : `<span class="wk-bedw">Bed </span>${l.bed}`) : ''}</span>${cells}${l.items.map(it => bar(it, room)).join('')}</div>`;
+    };
+    const roomHtml = r => {
+      const inRoom = r.stays.length;
+      return `<div class="wk-room"><div class="wk-rhead"><b>${h(r.label)}</b><span class="cell-sub">${r.none ? 'check Bookinglayer' : r.shared ? `shared${r.note ? ' · ' + h(r.note) : ''}` : 'private'} · ${inRoom ? plural(inRoom, 'guest') + ' this week' : 'empty all week'}</span></div>
+        ${r.lanes.map((l, i) => lane(l, r, i)).join('')}</div>`;
+    };
+    const shared = P.rooms.filter(r => r.shared), priv = P.rooms.filter(r => !r.shared && !r.none), none = P.rooms.filter(r => r.none);
+    const freeRow = (label, arr) => `<div class="wk-gl wk-gfree"><span class="wk-glb">${label}</span>${arr.map((n, i) => `<span class="wk-fc num${n ? '' : ' zero'}" style="grid-column:${i + 2}">${n}</span>`).join('')}</div>`;
+    const grid = `<div class="card wk-card">${cardHead('Rooms and beds', 'One bar per stay · columns are nights · dashed = free', toMsgBtn('Cleaning message'))}
+      <div class="wk-grid">${hd}
+        ${shared.length ? `<div class="section-lbl wk-gsec">Shared rooms</div>${shared.map(roomHtml).join('')}` : ''}
+        ${priv.length ? `<div class="section-lbl wk-gsec">Private rooms</div>${priv.map(roomHtml).join('')}` : ''}
+        ${none.length ? `<div class="section-lbl wk-gsec">No room yet</div>${none.map(roomHtml).join('')}` : ''}
+        <div class="section-lbl wk-gsec">Free each night</div>
+        ${freeRow('<span class="wk-bedw">Shared </span>beds', P.freeBeds)}${freeRow('<span class="wk-bedw">Private </span>rooms', P.freeRooms)}</div>
+      <div class="wk-legend wk-glegend"><span><i class="wk-sw sw-bar"></i>stay</span><span><i class="wk-sw sw-cut"></i>here before / stays after this week</span><span><i class="wk-sw sw-free"></i>free</span><span><span class="wk-dot"></span> room move</span></div></div>`;
+    return checkBlock(ctx, 'rooms') + grid + messageCard(ctx, 'cleaning');
+  }
+
+  // ── Kitchen ─────────────────────────────────────────────────────────────
+  const allergyOf = g => String(g.allergies || '').split(' / ').map(s => s.trim()).filter(s => s && !NO_ALLERGY.test(s)).join(' / ');
+  function kitchenTab(ctx) {
+    const { ws, M } = ctx;
+    const gs = M.guests.slice().sort(nameSort);
+    const where = g => { const r = roomOf(g); return `${r ? r.label : 'no room'} · ${stayText(g, ws)}`; };
+    const allergic = gs.filter(g => allergyOf(g));
+    const diets = dietGroups(gs);
+    const none = gs.filter(g => dietOf(g) === 'none').length, unanswered = gs.filter(g => !dietOf(g)).length;
+    const allergyCard = `<div class="card wk-card wk-allergy${allergic.length ? ' has' : ''}">${cardHead(`Allergies and intolerances${allergic.length ? ` <span class="badge badge-red">${allergic.length}</span>` : ''}`, 'From Bookinglayer, filled in by the guests', toMsgBtn('Kitchen message'))}
+      <div class="wk-plist">${allergic.length ? allergic.map(g => `<div class="wk-p"><span><b>${h(g.guest_name)}</b><span class="cell-sub">${h(where(g))}</span></span><span class="badge badge-red">${h(allergyOf(g))}</span></div>`).join('')
+        : '<div class="wk-p"><span class="hint">None in Bookinglayer for this week.</span></div>'}</div></div>`;
+    const dietCard = `<div class="card wk-card">${cardHead('Special diets', `${plural(diets.reduce((s, d) => s + d[1].length, 0), 'guest')} · ${none} with no special diet · ${unanswered} did not answer`)}
+      <div class="wk-plist">${diets.length ? diets.map(([diet, list]) => list.map(g => `<div class="wk-p"><span><b>${h(g.guest_name)}</b><span class="cell-sub">${h(where(g))}</span></span><span class="badge badge-green">${h(diet)}</span></div>`).join('')).join('')
+        : '<div class="wk-p"><span class="hint">No special diets in Bookinglayer for this week.</span></div>'}</div></div>`;
+    const max = Math.max(1, ...M.days.map(x => Math.max(x.breakfast, x.closing ? 0 : x.dinner)));
+    const meals = `<div class="card wk-card">${cardHead('Meals per day', 'Guests only, staff not included · breakfast = who slept the night before')}
+      <div class="card-body"><div class="wk-chart">${M.days.map(x => `<div class="wk-col${x.closing ? ' closing' : ''}${isToday(x.d) ? ' today' : ''}">
+        <div class="wk-bars"><span class="wk-vb sk-b" style="height:${pct(x.breakfast, max)}%"><span class="wk-sv num">${x.breakfast}</span></span>
+          ${x.closing ? '<span class="wk-vb none"></span>' : `<span class="wk-vb sk-d" style="height:${pct(x.dinner, max)}%"><span class="wk-sv num">${x.dinner}</span></span>`}</div>
+        <div class="wk-sday">${dayHead(x.d)}</div></div>`).join('')}</div>
+      <div class="wk-legend"><span><i class="wk-sw sw-navy"></i>breakfast</span><span><i class="wk-sw sw-ocean"></i>dinner</span></div></div></div>`;
+    return checkBlock(ctx, 'kitchen') + allergyCard + dietCard + meals + messageCard(ctx, 'kitchen');
+  }
+
+  // ── Surf ────────────────────────────────────────────────────────────────
+  const COURSE_BADGE = { Standard: 'badge-blue', Intensive: 'badge-navy', Coaching: 'badge-grey' };
+  function surfTab(ctx) {
+    const { ws, rows, M } = ctx;
+    const st = M.students.slice().sort(byStay);
+    const wkDays = M.days.slice(0, 7);
+    const max = Math.max(1, ...wkDays.map(x => x.students.length));
+    const tot = courseCounts(st);
+    const chart = `<div class="card wk-card">${cardHead('Morning students per day', `${plural(st.length, 'student')} this week`, toMsgBtn('Surf message'))}
+      <div class="card-body"><div class="wk-chart">${wkDays.map(x => { const c = x.courses; const n = x.students.length; return `<div class="wk-col${isToday(x.d) ? ' today' : ''}">
+        <div class="wk-bars"><span class="wk-vb wide wk-vstack" style="height:${pct(n, max)}%" title="Standard ${c.S} · Intensive ${c.I} · Coaching ${c.C}"><span class="wk-sv num">${n}</span>${[['c', c.C], ['i', c.I], ['s', c.S]].filter(k => k[1]).map(k => `<i class="sk-${k[0]}" style="flex:${k[1]}"></i>`).join('')}</span></div>
+        <div class="wk-sday">${dayHead(x.d)}</div><div class="wk-sub num">${c.S}·${c.I}·${c.C}</div></div>`; }).join('')}</div>
+      <div class="wk-legend"><span><i class="wk-sw sw-ocean"></i>Standard ${tot.S}</span><span><i class="wk-sw sw-navy"></i>Intensive ${tot.I}</span><span><i class="wk-sw sw-grey"></i>Coaching ${tot.C}</span><span>under each day: Standard · Intensive · Coaching</span></div>
+      <div class="hint wk-yoga">${h(yogaInfo(ws, rows))}</div></div></div>`;
+    const person = g => { const c = course(g); const w = partOfWeek(g, ws);
+      return `<div class="wk-p"><span><b>${h(g.guest_name)}</b>${w ? `<span class="cell-sub">${h(w)}</span>` : ''}</span><span class="wk-pb">${isYoga(g) ? '<span class="badge badge-green">Yoga</span>' : ''}<span class="badge ${COURSE_BADGE[c] || 'badge-grey'}">${h(c)}</span></span></div>`; };
+    const groups = LEVELS.map(lv => [lv, st.filter(g => levelOf(g) === lv)]).filter(([, l]) => l.length);
+    const levels = `<div class="card wk-card">${cardHead('Groups by level', 'To split the morning groups')}
+      ${groups.map(([lv, l]) => `<div class="wk-lvl"><div class="section-lbl${lv === 'Level not set' ? ' wk-warn' : ''}">${h(lv)} · ${l.length}</div><div class="wk-plist cols">${l.map(person).join('')}</div></div>`).join('') || '<div class="card-body hint">No surf students this week.</div>'}</div>`;
+    const inten = st.filter(g => course(g) === 'Intensive');
+    const noLessons = M.guests.filter(g => !course(g));
+    const yogis = M.guests.filter(isYoga);
+    const line = (label, n, text) => `<div class="wk-p wk-note"><span><b>${label}${n ? ` · ${n}` : ''}</b><span class="cell-sub">${text}</span></span></div>`;
+    const notes = (inten.length || noLessons.length || yogis.length) ? `<div class="card wk-card">${cardHead('Good to know', 'Bookinglayer only has the start of each course: the head coach picks the days')}<div class="wk-plist">
+      ${inten.length ? line('Intensive afternoons', inten.length, `3 afternoons this week, head coach picks: ${h(inten.map(g => g.guest_name).join(', '))}`) : ''}
+      ${yogis.length ? line(`Yoga ${YOGA_TIME}`, yogis.length, h(yogis.map(g => g.guest_name).join(', '))) : ''}
+      ${noLessons.length ? line('No lessons booked', noLessons.length, h(noLessons.map(g => { const w = partOfWeek(g, ws); return g.guest_name + (w ? ` (${w})` : ''); }).join(', '))) : ''}</div></div>` : '';
+    return checkBlock(ctx, 'surf') + chart + levels + notes + messageCard(ctx, 'surf');
+  }
+
+  // ── Transfers ───────────────────────────────────────────────────────────
+  function transfersTab(ctx) {
+    const { M } = ctx;
+    const all = M.days.flatMap(x => x.trips);
+    const cost = all.filter(t => t.status !== 'no_show').reduce((s, t) => s + Number(t.expected_price || 0), 0);
+    const days = M.days.filter(x => x.trips.length || x.own.length);
+    const tripRow = t => { const [st, cls] = tripBadge(t);
+      return `<div class="wk-g wk-trip"><span class="wk-time num">${h(t.trip_time || 'time?')}</span><span class="wk-tmain"><span class="wk-g1">${dirBadge(t)} <b>${h(t.guest_names || 'Guest')}</b></span>
+        <span class="cell-sub">${h(t.flight || 'flight?')} · ${t.pax} ${t.pax === 1 ? 'person' : 'persons'}${t.vehicle ? ' · ' + h(t.vehicle) : ''}${t.guest_phone ? ' · ' + h(t.guest_phone) : ''}</span></span><span class="badge ${cls}">${st}</span></div>`; };
+    const ownRow = g => `<div class="wk-g wk-trip own"><span class="wk-time num">${h(g.arrival_time || '–')}</span><span class="wk-tmain"><span class="wk-g1"><b>${h(g.guest_name)}</b></span>
+      <span class="cell-sub">${g.arrival_time ? 'arrives around this time' : 'no arrival time given'}${g.arrival_flight ? ' · ' + h(g.arrival_flight) : ''}${g.phone ? ' · ' + h(g.phone) : ''}</span></span><span class="badge badge-grey">Own way</span></div>`;
+    const dayHtml = x => { const own = x.own.slice().sort((a, b) => (a.arrival_time || '99').localeCompare(b.arrival_time || '99'));
+      return `<div class="wk-tday" id="wkTr-${x.d}"><div class="wk-tdh"><b>${h(fdm(x.d))}</b>${isToday(x.d) ? ' <span class="badge badge-blue">Today</span>' : ''}<span class="cell-sub">${[x.trips.length ? plural(x.trips.length, 'transfer') : '', own.length ? `${own.length} on their own` : ''].filter(Boolean).join(' · ')}</span></div>
+        <div class="wk-rows">${x.trips.map(tripRow).join('')}${own.map(ownRow).join('')}</div></div>`; };
+    const card = `<div class="card wk-card">${cardHead('Airport transfers', `${plural(all.length, 'transfer')} this week${cost ? ` · ${h(money(cost))} expected` : ''} · tuk-tuks and paying drivers stay in Transport`, toMsgBtn('Transfers message'))}
+      ${days.length ? days.map(dayHtml).join('') : '<div class="card-body hint">No airport transfers and no arrivals this week.</div>'}</div>`;
+    return checkBlock(ctx, 'transfers') + card + messageCard(ctx, 'transfers');
+  }
+
+  // ── Guests ──────────────────────────────────────────────────────────────
+  function guestsTab(ctx) {
+    const { ws, rows } = ctx; const day = W.day;
+    const gs = guestsList(rows, day, ws);
+    const days = [0, 1, 2, 3, 4, 5, 6].map(i => add(ws, i));
+    const dayPills = `<div class="pills wk-days">${days.map(d => `<button class="pill${day === d ? ' active' : ''}" data-day="${d}" onclick="WeekUI.setDay('${d}')">${fd(d)}</button>`).join('')}<button class="pill${day === 'week' ? ' active' : ''}" data-day="week" onclick="WeekUI.setDay('week')">Week</button></div>`;
+    const list = gs.length ? gs.map(g => guestRow(g, ws)).join('') : '';
+    return checkBlock(ctx, 'guests') + `<div class="card wk-card">${cardHead(`Guests · ${day === 'week' ? 'week' : fdm(day)} · <span id="wkGuestN">${gs.length}</span>`, 'For you only — no message to the team.')}
+        <div class="wk-gtools"><input class="search wk-search" id="wkSearch" type="search" placeholder="Search name, room, phone, diet…" value="${h(W.q || '')}" oninput="WeekUI.search(this.value)">${dayPills}</div>
+        <div class="wk-ghd"><span>Guest</span><span>Stay</span><span>Room</span><span>Surf</span><span>Diet</span><span>Phone</span><span>Arrival</span></div>
+        <div class="wk-rows wk-guests">${list}</div><div class="card-body hint wk-noguests"${gs.length ? ' hidden' : ''}>${gs.length ? 'No guest matches the search.' : 'No guests on this day.'}</div></div>
+      <div class="wk-foot"><button class="btn btn-p" onclick="WeekUI.copy()">${ic('copy')} Copy list</button></div>`;
+  }
+  function guestRow(g, ws) {
+    const r = roomOf(g); const c = course(g); const d = dietOf(g); const al = allergyOf(g);
+    const room = r ? r.label + (r.shared && g.bed_number ? ' bed ' + g.bed_number : '') : 'no room';
+    const nights = (g.check_in && g.check_out) ? daysBetween(g.check_in, g.check_out) : 0;
+    const pack = String(g.packages || '').split(/\s*,\s*/).filter(Boolean).slice(-1)[0] || '';
+    const arrive = g.has_transfer ? 'transfer' + (g.arrival_time ? ' ' + g.arrival_time : '') : g.arrival_time ? 'own way ' + g.arrival_time : 'own way';
+    const q = [g.guest_name, room, g.phone, c, levelOf(g), d, al, g.partner, pack, g.booking_ref].join(' ').toLowerCase();
+    return `<div class="wk-g wk-grow" data-q="${h(q)}"><span class="wk-gc name"><span class="wk-g1"><b>${h(g.guest_name)}</b>${g.partner ? ` <span class="badge badge-amber">partner – don't charge</span>` : ''}${g._st === 'carry' ? ' <span class="badge badge-grey">still here?</span>' : ''}</span>${pack || g.partner ? `<span class="cell-sub">${h([pack, g.partner && g.partner !== 'partner' ? 'via ' + g.partner : ''].filter(Boolean).join(' · '))}</span>` : ''}</span>
+      <span class="wk-gc" data-l="Stay">${h(stayText(g, ws))}${nights ? `<span class="cell-sub">${plural(nights, 'night')}</span>` : ''}</span>
+      <span class="wk-gc" data-l="Room">${h(room)}${movedRooms(g) ? `<span class="cell-sub">moved from ${h(movedRooms(g)[0])}</span>` : ''}</span>
+      <span class="wk-gc" data-l="Surf">${h(c ? c : 'no lessons')}${c ? `<span class="cell-sub">${h(levelOf(g))}${isYoga(g) ? ' · Yoga' : ''}</span>` : isYoga(g) ? '<span class="cell-sub">Yoga</span>' : ''}</span>
+      <span class="wk-gc" data-l="Diet">${h(d === 'none' ? 'no special diet' : d || 'diet ?')}${al ? ` <span class="badge badge-red">allergies: ${h(al)}</span>` : ''}</span>
+      <span class="wk-gc" data-l="Phone">${g.phone ? `<a href="tel:${h(g.phone)}">${h(g.phone)}</a>` : '<span class="wk-nil">no phone</span>'}</span>
+      <span class="wk-gc" data-l="Arrival">${h(arrive)}</span></div>`;
+  }
+  function filterGuests(q) {
+    const words = String(q || '').toLowerCase().split(/\s+/).filter(Boolean);
+    let n = 0;
+    document.querySelectorAll('#weekRoot .wk-grow').forEach(el => { const ok = words.every(w => el.dataset.q.includes(w)); el.hidden = !ok; if (ok) n++; });
+    const c = $('wkGuestN'); if (c) c.textContent = n;
+    const none = document.querySelector('#weekRoot .wk-noguests'); if (none) none.hidden = n > 0;
   }
   function yogaInfo(ws, rows) {
     const n = rows.filter(g => counted(g) && inWeek(g, ws) && isYoga(g)).length;
@@ -732,10 +1029,10 @@
       const out = [];
       const nNow = yogaIn(ws);
       if (nNow && daysBetween(ws, today) >= YOGA_CHECK_FROM_WEEKDAY && !yogaPayments(ws, today, ctx.ledger).length)
-        out.push({ text: `Yoga students this week (${nNow}) but no Yoga payment`, level: 'info', onClick: () => { W.week = ws; W.team = 'surf'; W.day = 'week'; W.mode = 'lists'; showPage('week'); } });
+        out.push({ text: `Yoga students this week (${nNow}) but no Yoga payment`, level: 'info', onClick: () => { W.week = ws; W.tab = 'surf'; W.team = 'surf'; W.day = 'week'; W.mode = 'lists'; showPage('week'); } });
       const nPrev = yogaIn(prev);
       if (nPrev && !yogaPayments(prev, today, ctx.ledger).length)
-        out.push({ text: `Yoga students last week (${nPrev}) but no Yoga payment`, level: 'info', onClick: () => { W.week = prev; W.team = 'surf'; W.day = 'week'; W.mode = 'lists'; showPage('week'); } });
+        out.push({ text: `Yoga students last week (${nPrev}) but no Yoga payment`, level: 'info', onClick: () => { W.week = prev; W.tab = 'surf'; W.team = 'surf'; W.day = 'week'; W.mode = 'lists'; showPage('week'); } });
       return out.length ? out : null;
     },
   };
@@ -759,15 +1056,23 @@
   window.WeekUI = {
     render, closeModal, openContacts, saveContacts, copy, send, undo, tickTransfers, keep, notHere,
     setMode(m) { W.mode = m; if (m === 'import' && window.TransportUI && TR().imp && TR().imp.stage === 'done') TR().imp = null; render(); },
-    afterImport() { const S0 = TR(); const g = S0.imp && S0.imp.groups && S0.imp.groups.guests || []; const firstIn = g.map(x => x.check_in).filter(Boolean).sort()[0];
-      W.mode = 'lists'; if (firstIn) { W.week = GT.weekStart(firstIn); W.day = defaultDay(W.week); } S0.imp = null; loadAll(true); },
-    setTeam(t) { W.team = t; W.undo = null; render(); }, setDay(d) { W.day = d; W.undo = null; render(); },
-    go(team, day) { W.team = team; W.day = day; render(); },
-    shiftWeek(n) { W.week = add(W.week, n); W.day = defaultDay(W.week); W.undo = null; render(); loadWeek(W.week).then(render); },
-    toggleCheck() { W.showCheck = !W.showCheck; render(); },
+    // After an import: Overview of the week Francisco imported for — the first check-in from today on
+    // (the file also holds guests already in camp), else the running week.
+    afterImport() { const S0 = TR(); const g = S0.imp && S0.imp.groups && S0.imp.groups.guests || []; const today = cToday();
+      const next = g.map(x => x.check_in).filter(d => d && d >= today).sort()[0];
+      W.mode = 'lists'; W.tab = 'overview'; W.week = GT.weekStart(next || today); W.day = 'week'; S0.imp = null; loadAll(true); },
+    setTab(t) { if (!TABS.some(x => x.k === t)) return; W.tab = t; W.team = teamOfTab(t) || W.team; W.undo = null; render(); },
+    setTeam(t) { W.team = t; W.tab = tabOf(t); W.undo = null; render(); }, setDay(d) { W.day = d; W.undo = null; render(); },
+    go(team, day) { W.team = team; W.tab = tabOf(team); W.day = day; W.scrollTo = 'wkMessage'; render(); },
+    toMessage() { const el = $('wkMessage'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); },
+    toDay(d) { const el = $('wkDay-' + d); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); },
+    search(q) { W.q = q; filterGuests(q); },
+    findGuest(name) { W.q = name; W.tab = 'guests'; W.team = 'guests'; W.day = 'week'; render(); },
+    shiftWeek(n) { W.week = add(W.week, n); W.day = 'week'; W.undo = null; render(); loadWeek(W.week).then(render); },
     // for tests
     _state: W, loadAll, classify, body, parts, toText, updateText, lineDiff, hash, toCheck: () => toCheck(W.week), changes: () => changes(W.week),
     checks: { file: fileCheck, yoga: yogaCheck }, roomInfo, course, levelOf, dietOf,
+    model: () => weekModel(W.week, rowsOf(W.week)), roomPlan: () => roomPlan(W.week, rowsOf(W.week)),
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 })();
