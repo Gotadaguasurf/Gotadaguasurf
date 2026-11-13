@@ -925,7 +925,7 @@ test('transfers: a transfer with flight, time and phone has «Confirm with guest
   await row('Callum Downes').locator('[data-guest-send]').click();
   const url = await page.evaluate(() => window.__opened[window.__opened.length - 1]);
   expect(url.startsWith('https://wa.me/447000000003?text=')).toBe(true);
-  expect(decodeURIComponent(url)).toContain('holding a sign with your name');
+  expect(decodeURIComponent(url)).toContain('holding a *sign with your name*');
   expect((await call(st, 'trip_update')).body.guest_notified_at).toBeTruthy();
   await expect(row('Callum Downes').locator('[data-guest="told"] .badge')).toHaveText('Guest told ✓');
   await row('Callum Downes').locator('[data-guest-ok]').click();

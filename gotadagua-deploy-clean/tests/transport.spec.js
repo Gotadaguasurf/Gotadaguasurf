@@ -594,7 +594,7 @@ test('trips: a transfer without flight or time has «Ask guest» — WhatsApp to
   const text = decodeURIComponent(url.split('?text=')[1]);
   expect(text).toContain('Hi Beliz!');
   expect(text).toContain('flight number');
-  expect(text).toContain("I'm Francisco, the manager of Gota Dagua Surf Camp Sri Lanka.");
+  expect(text).toContain("I'm Francisco, the manager of *Gota Dagua Surf Camp Sri Lanka*.");
   expect(text).not.toMatch(/[\u{1F300}-\u{1FAFF}]/u);                                         // no emoji (wa.me shows «?» on desktop)
   await expect(page.locator('.tr-day').first().locator('.tr-row').filter({ hasText: 'Beliz Kuyumcuoglu' })).toContainText('asked');
   expect(errors).toEqual([]);
@@ -1008,18 +1008,20 @@ test('guest: «Confirm with guest» — the details and the sign with their name
   await expect(row(A(12)).locator('button:has-text("Ask guest for flight & time")')).toHaveCount(1);
   await expect(row(A(14)).locator('[data-guest-send]')).toHaveCount(0);
   await page.evaluate(id => TransportUI.confirmGuest(id), A(12));                    // even when called directly it asks instead
-  expect((await opened(page)).text).toContain('Could you send us your flight number');
+  expect((await opened(page)).text).toContain('- your *flight number*');
   expect(st.calls.filter(c => c.t === 'trip_update').length).toBe(0);
   // Arrival.
   await row(A(11)).locator('[data-guest-send]').click();
   const m = await opened(page, 1);
   expect(m.url.startsWith('https://wa.me/491700000001?text=')).toBe(true);
   expect(m.text).toBe([
-    "Hi Lorena! I'm Francisco, the manager of Gota Dagua Surf Camp Sri Lanka.",
-    'Your airport pick-up is booked:', 'Date: Sat 14 Nov', 'Flight: QR658', 'Landing: 07:00', 'Persons: 1',
-    'Our driver will be waiting for you at the arrivals exit of Colombo airport, holding a sign with your name.',
-    'Please reply to confirm these details are correct, or tell us what changed.', 'See you soon!'].join('\n'));
-  expect(m.url).toContain(encodeURIComponent('holding a sign with your name'));
+    "Hi Lorena! I'm Francisco, the manager of *Gota Dagua Surf Camp Sri Lanka*.", '',
+    '*Your airport pick-up is booked*', '',
+    '*Date:* Sat 14 Nov', '*Flight:* QR658', '*Landing:* 07:00', '*Persons:* 1', '',
+    'Our driver will be waiting for you at the *arrivals exit* of Colombo airport, holding a *sign with your name*.', '',
+    'Please reply to confirm these details are correct, or tell us what changed.', '', 'See you soon!'].join('\n'));
+  expect(m.url).toContain(encodeURIComponent('holding a *sign with your name*'));
+  expect(m.text).not.toMatch(/\n{3,}/);                                               // one blank line between blocks, never two
   expect(/\p{Extended_Pictographic}/u.test(m.text)).toBe(false);
   const told = (await call(st, 'trip_update')).body;
   expect(told.guest_notified_at).toBeTruthy();
@@ -1036,15 +1038,16 @@ test('guest: «Confirm with guest» — the details and the sign with their name
   await call(st, 'trip_update', 3);
   await expect(row(A(11)).locator('[data-guest="changed"] .badge')).toHaveText('Changed — tell guest again');
   await row(A(11)).locator('[data-guest-send]').click();
-  expect((await opened(page, 2)).text).toContain('Landing: 09:10');
+  expect((await opened(page, 2)).text).toContain('*Landing:* 09:10');
   await expect(row(A(11)).locator('[data-guest="told"]')).toHaveCount(1);          // told again; the old confirmation is gone
   expect((await call(st, 'trip_update', 4)).body.guest_confirmed_at).toBe(null);
   // Departure: flight time and, when set, the pick-up at the camp.
   await row(A(15)).locator('[data-guest-send]').click();
   expect((await opened(page, 3)).text).toBe([
-    "Hi Callum! I'm Francisco, the manager of Gota Dagua Surf Camp Sri Lanka.",
-    'Your drop-off at Colombo airport is booked:', 'Date: Sat 21 Nov', 'Flight: UL503', 'Flight time: 12:55', 'Pick-up at the camp: 08:30', 'Persons: 1',
-    'Please reply to confirm these details are correct, or tell us what changed.', 'Thank you!'].join('\n'));
+    "Hi Callum! I'm Francisco, the manager of *Gota Dagua Surf Camp Sri Lanka*.", '',
+    '*Your drop-off at Colombo airport is booked*', '',
+    '*Date:* Sat 21 Nov', '*Flight:* UL503', '*Flight time:* 12:55', '*Pick-up at the camp:* 08:30', '*Persons:* 1', '',
+    'Please reply to confirm these details are correct, or tell us what changed.', '', 'Thank you!'].join('\n'));
   expect(await page.evaluate(() => TransportUI.confirmText({ kind: 'airport_departure', trip_date: '2026-11-21', trip_time: '12:55', flight: 'UL503', guest_names: 'Callum', pax: 2 }))).not.toContain('Pick-up at the camp');
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   expect(errors).toEqual([]);

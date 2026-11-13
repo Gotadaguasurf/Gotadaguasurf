@@ -469,9 +469,10 @@
   const needsInfo = t => isAirport(t) && (!t.trip_time || !t.flight);
   function askText(t) {
     const first = String(t.guest_names || '').split(/[,+&]/)[0].trim().split(/\s+/)[0] || 'there';
+    const hi = `Hi ${first}! I'm ${ASK_SENDER}, the manager of *Gota Dagua Surf Camp Sri Lanka*.`;
     return t.kind === 'airport_departure'
-      ? `Hi ${first}! I'm ${ASK_SENDER}, the manager of Gota Dagua Surf Camp Sri Lanka.\nTo plan your drop-off at Colombo airport, could you send us your departure flight number and the date and time it leaves?\nThank you!`
-      : `Hi ${first}! I'm ${ASK_SENDER}, the manager of Gota Dagua Surf Camp Sri Lanka.\nWe're getting your airport pick-up ready. Could you send us your flight number and the date and time you land in Colombo?\nThank you, see you soon!`;
+      ? [hi, '', 'To plan your *drop-off at Colombo airport*, could you send us:', '', '- your *departure flight number*', '- the *date and time* it leaves', '', 'Thank you!'].join('\n')
+      : [hi, '', "We're getting your *airport pick-up* ready. Could you send us:", '', '- your *flight number*', '- the *date and time* you land in Colombo', '', 'Thank you, see you soon!'].join('\n');
   }
   function ask(id) {
     const t = TR.trips.find(x => x.id === id); if (!t) return;
@@ -496,16 +497,19 @@
     if (was && JSON.stringify(toldSnapshot({ ...was })) !== JSON.stringify(toldSnapshot(t))) return 'changed';
     return t.guest_confirmed_at ? 'confirmed' : 'told';
   }
+  // WhatsApp style (Miguel, 13 Nov): bold headings and labels, a blank line between blocks, no emoji.
   function confirmText(t) {
     const first = String(t.guest_names || '').split(/[,+&]/)[0].trim().split(/\s+/)[0] || 'there';
     const pax = Number(t.pax) || 1;
-    const hi = `Hi ${first}! I'm ${ASK_SENDER}, the manager of Gota Dagua Surf Camp Sri Lanka.`;
-    if (t.kind === 'airport_departure') return [hi, 'Your drop-off at Colombo airport is booked:', `Date: ${fmtDay(t.trip_date)}`, `Flight: ${t.flight}`, `Flight time: ${t.trip_time}`,
-      ...(t.pickup_time ? [`Pick-up at the camp: ${t.pickup_time}`] : []), `Persons: ${pax}`,
-      'Please reply to confirm these details are correct, or tell us what changed.', 'Thank you!'].join('\n');
-    return [hi, 'Your airport pick-up is booked:', `Date: ${fmtDay(t.trip_date)}`, `Flight: ${t.flight}`, `Landing: ${t.trip_time}`, `Persons: ${pax}`,
-      'Our driver will be waiting for you at the arrivals exit of Colombo airport, holding a sign with your name.',
-      'Please reply to confirm these details are correct, or tell us what changed.', 'See you soon!'].join('\n');
+    const hi = `Hi ${first}! I'm ${ASK_SENDER}, the manager of *Gota Dagua Surf Camp Sri Lanka*.`;
+    if (t.kind === 'airport_departure') return [hi, '', '*Your drop-off at Colombo airport is booked*', '',
+      `*Date:* ${fmtDay(t.trip_date)}`, `*Flight:* ${t.flight}`, `*Flight time:* ${t.trip_time}`,
+      ...(t.pickup_time ? [`*Pick-up at the camp:* ${t.pickup_time}`] : []), `*Persons:* ${pax}`, '',
+      'Please reply to confirm these details are correct, or tell us what changed.', '', 'Thank you!'].join('\n');
+    return [hi, '', '*Your airport pick-up is booked*', '',
+      `*Date:* ${fmtDay(t.trip_date)}`, `*Flight:* ${t.flight}`, `*Landing:* ${t.trip_time}`, `*Persons:* ${pax}`, '',
+      'Our driver will be waiting for you at the *arrivals exit* of Colombo airport, holding a *sign with your name*.', '',
+      'Please reply to confirm these details are correct, or tell us what changed.', '', 'See you soon!'].join('\n');
   }
   // The buttons and the state of one trip — used on the day list, in the day sheet and by the Week tab (WeekUI.askBtn).
   function guestHtml(t) {
