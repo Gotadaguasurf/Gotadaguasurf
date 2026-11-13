@@ -7700,6 +7700,10 @@ function linkedItemOptionsFor(type,area,category=''){
   if(type==='income'&&category==='Tours') return [''].concat(currentTourItems());
   if(type==='income'&&category==='Transport') return [''].concat(currentTransportItems());
   if(type==='expense'&&isTourExpenseCat(category)) return [''].concat(currentTourItems());
+  // Sri Lanka (13 Nov): routes and quick-add presets now live in Transport (trips), so the
+  // expense picker keeps only what a payment is for: Airport, surf-lesson tuk-tuks, food, laundry,
+  // and the tours that carry their own transport. A saved older value stays selectable (see below).
+  if(type==='expense'&&category==='Transport'&&__HUB_LOCATION_SLUG==='sri-lanka') return [''].concat([...new Set([...TRANSPORT_LINKED_ITEMS,...toursWithTransport()])]);
   if(type==='expense'&&category==='Transport') return [''].concat(currentTransportItems());
   if(type==='expense'&&category==='Utilities') return [''].concat(UTILITIES_LINKED_ITEMS);
   // Income under any other category (Other Revenue, Drinks, Merchandise…):

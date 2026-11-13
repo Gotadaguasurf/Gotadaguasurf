@@ -403,3 +403,11 @@ test('paylink: the description fills itself from the ticks — «Dilan · 2 arri
   await picker(page).locator('.pl-row').nth(0).click();
   await expect(desc).toHaveValue('Dilan waiting time');
 });
+
+test('Sri Lanka ledger: the Transport item list keeps only what a payment is for (no route presets)', async ({ page }) => {
+  await open(page);
+  await page.click('.exp-quick-btn[data-cat="Transport"]');
+  const opts = await page.locator('#qe_linked option').allTextContents();
+  expect(opts.slice(0, 5)).toEqual(['None / general', 'Airport', 'Transport Surf Lesson', 'Food Supply', 'Laundry']);
+  for (const extra of ['Airport → Surfcamp', 'Surfcamp → Airport', 'Ahangama', 'South Beach', 'Weligama']) expect(opts).not.toContain(extra);
+});
