@@ -7,6 +7,7 @@
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='-15 0 92 92'><path fill='%231e6fa8' d='M61.7,51.9c-.4-9-5.5-16.5-9.7-24.1-2.9-4.8-5.3-9.8-9.3-13.9-3.9-4.4-6.5-9.8-10.8-13.9C19.2,16.6-.5,39.9,0,61.9c9.4-7.9,20.1-17.7,33.1-17.8,3,0,7.2,0,9.5,2.2,1.7,1.7,3.2,4.2,2,6.5-.3.5-1.9,2.7-2.3,2.9-12.9,7.4-20.3,18.6-16.5,33.7,3.1,1.3,8,1,11.1-.3,2.7-.3,5.1-1.3,7.5-2.5,8.7-2.9,14.5-11.1,15.5-20.1,1.2-4.7,2.1-9.7,1.8-14.6h0Z'/></svg>">
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/lib/app-shell.css">
+<link rel="stylesheet" href="/camp-hub/transport.css">
 <script src="/lib/app-shell.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.4"></script>
@@ -417,6 +418,7 @@ body{min-height:100dvh}
     <button class="ntab" data-page="overview" onclick="showPage(&#39;overview&#39;)"><span class="nav-btn-label"><span class="ui-ic ui-ic-lg"><svg viewBox="0 0 20 20"><path d="M3 17h14"/><path d="M6 14V8"/><path d="M10 14V4"/><path d="M14 14v-6"/></svg></span><span>Overview</span></span></button>
     <button class="ntab" data-page="pos" onclick="showPage(&#39;pos&#39;)"><span class="nav-btn-label"><span class="ui-ic ui-ic-lg"><svg viewBox="0 0 20 20"><rect x="3" y="5" width="14" height="10" rx="2"/><path d="M6 9h8"/><path d="M6 12h5"/></svg></span><span id="posTabLabel">Camp Tab</span></span></button>
     <button class="ntab" data-page="expenses" onclick="showPage(&#39;expenses&#39;)"><span class="nav-btn-label"><span class="ui-ic ui-ic-lg"><svg viewBox="0 0 20 20"><path d="M6 3h8l3 3v11H6z"/><path d="M14 3v4h4"/><path d="M9 10h5"/><path d="M9 13h5"/></svg></span><span>Operations Ledger</span></span></button>
+    <button class="ntab" data-page="transport" onclick="showPage(&#39;transport&#39;)" style="display:none"><span class="nav-btn-label"><span class="ui-ic ui-ic-lg"><svg viewBox="0 0 20 20"><path d="M3 13h14"/><path d="M5 13v-3a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v3"/><circle cx="7" cy="15" r="1.5"/><circle cx="13" cy="15" r="1.5"/></svg></span><span>Transport</span></span></button>
     <button class="ntab" data-page="weekly" onclick="showPage(&#39;weekly&#39;)"><span class="nav-btn-label"><span class="ui-ic ui-ic-lg"><svg viewBox="0 0 20 20"><rect x="3" y="4" width="14" height="13" rx="2"/><path d="M7 2v4"/><path d="M13 2v4"/><path d="M3 8h14"/></svg></span><span>Weekly P&amp;L</span></span></button>
   </div>
   <div class="nav-actions">
@@ -441,6 +443,7 @@ body{min-height:100dvh}
   <button class="ntab-m" data-page="overview" onclick="showPage('overview');toggleMobileNav()">Overview</button>
   <button class="ntab-m" data-page="pos" onclick="showPage('pos');toggleMobileNav()"><span id="posTabLabelMob">Camp Tab</span></button>
   <button class="ntab-m" data-page="expenses" onclick="showPage('expenses');toggleMobileNav()">Operations Ledger</button>
+  <button class="ntab-m" data-page="transport" onclick="showPage('transport');toggleMobileNav()" style="display:none">Transport</button>
   <button class="ntab-m" data-page="weekly" onclick="showPage('weekly');toggleMobileNav()">Weekly P&amp;L</button>
   <div class="nav-mob-lbl">Actions</div>
   <a class="ntab-m" id="hqShortcutBtnMob" href="/hq/" style="display:none">HQ</a>
@@ -774,6 +777,8 @@ body{min-height:100dvh}
 </div>
 
 <!-- ═══════════ WEEKLY P&L ═══════════ -->
+<div class="page" id="page-transport"><div class="container" id="transportRoot"></div></div>
+
 <div class="page active" id="page-weekly">
   <div class="container">
     <div class="section-head page-head">
@@ -4681,6 +4686,7 @@ function showPage(p){
   else if(p==='pos'){ mountCampTabFrame(); return; }
   else if(p==='expenses'){ renderExpenses(); ensureAiUploadWired(); applyLocationSpecificExpUI(); }
   else if(p==='weekly') renderWeeklyPL();
+  else if(p==='transport' && typeof renderTransportPage==='function') renderTransportPage();
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -10405,6 +10411,8 @@ document.addEventListener('keydown', function(e){
 });
 
 </script>
+<script src="/lib/guests-trips.js"></script>
+<script src="/camp-hub/transport.js"></script>
 
 
 <script src="/camp-hub/cash-count.js"></script>

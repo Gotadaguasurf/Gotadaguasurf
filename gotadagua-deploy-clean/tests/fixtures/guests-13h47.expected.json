@@ -1,0 +1,183 @@
+{
+ "file": "guests-13h47.csv",
+ "export_date": null,
+ "has_transfers_col": false,
+ "counts": {
+  "other location": 38,
+  "duplicate row": 2,
+  "no transfer": 15,
+  "cancelled/expired (cancels planned trips)": 3
+ },
+ "trips": [
+  {
+   "key": "bl:2026-4070:arr",
+   "kind": "airport_arrival",
+   "date": "2026-11-14",
+   "time": null,
+   "flight": "",
+   "place": "CMB",
+   "pax": 1,
+   "guests": [
+    "Beliz Kuyumcuoglu"
+   ],
+   "boards": false,
+   "charge": null,
+   "flags": [
+    "file has no Transfers column: count and direction assumed (arrival)",
+    "no time yet: ask the guest"
+   ],
+   "ambiguous": false,
+   "csv_lines": [
+    50
+   ]
+  },
+  {
+   "key": "bl:2026-4936:arr",
+   "kind": "airport_arrival",
+   "date": "2026-11-14",
+   "time": null,
+   "flight": "",
+   "place": "CMB",
+   "pax": 1,
+   "guests": [
+    "Maximilian Ehrler"
+   ],
+   "boards": false,
+   "charge": null,
+   "flags": [
+    "file has no Transfers column: count and direction assumed (arrival)",
+    "no time yet: ask the guest"
+   ],
+   "ambiguous": false,
+   "csv_lines": [
+    54
+   ]
+  },
+  {
+   "key": "bl:2026-4660:arr",
+   "kind": "airport_arrival",
+   "date": "2026-11-14",
+   "time": "01:55",
+   "flight": "QR658",
+   "place": "CMB",
+   "pax": 1,
+   "guests": [
+    "Lorena Marie Glas"
+   ],
+   "boards": false,
+   "charge": null,
+   "flags": [
+    "file has no Transfers column: count and direction assumed (arrival)",
+    "night arrival: lands 01:55 on Sat 14 Nov, driver leaves camp Fri 13 Nov evening — confirm the night"
+   ],
+   "ambiguous": true,
+   "csv_lines": [
+    58
+   ]
+  }
+ ],
+ "cancel_refs": [
+  "2026-0967",
+  "2026-4601",
+  "2026-4860"
+ ],
+ "skipped": [],
+ "dirty_no_transfer": [
+  [
+   40,
+   "Peter Mongey",
+   "2026-4357",
+   [
+    "flight «N/A» = empty"
+   ]
+  ],
+  [
+   41,
+   "Sinéad O'Farrell",
+   "2026-4357",
+   [
+    "flight «N/A» = empty"
+   ]
+  ],
+  [
+   48,
+   "Lilly Krüger",
+   "2026-4891",
+   [
+    "time 13:00 typed in the flight field"
+   ]
+  ],
+  [
+   49,
+   "Zara Palmer",
+   "2026-4932",
+   [
+    "flight «No transfer» = empty"
+   ]
+  ],
+  [
+   52,
+   "Riley Denning",
+   "2026-5003",
+   [
+    "flight «N/A» = empty"
+   ]
+  ],
+  [
+   55,
+   "Laurine Corneille",
+   "2026-3370",
+   [
+    "two times 14:00 / 02:50"
+   ]
+  ],
+  [
+   59,
+   "Lea Brennig",
+   "2026-4867",
+   [
+    "flight field carries a date 12/11"
+   ]
+  ]
+ ],
+ "other_location_names": [
+  "Jennifer Peter",
+  "Tina Wollenschlaeger",
+  "Steve Kutschke",
+  "Mara Barrett",
+  "Mariana Kolomiets",
+  "Natallia Savastsenka",
+  "Lizaveta Rabava",
+  "Maksim Kalatsei",
+  "Yassin Moutaouakil",
+  "Rany Asmaro",
+  "Sara Cardoso",
+  "Rafaela Baleeiro",
+  "Lize Breeuwsma",
+  "Lucie Lemaire",
+  "Stephanie Rabe",
+  "Nicole Schueler",
+  "Bart Strijp",
+  "Pim Eltink",
+  "Tracking Test Delete After QA",
+  "Millie McCallum",
+  "Lucile Pinto",
+  "Flora OLIGERI",
+  "Agathe Peytavin",
+  "Laura Power",
+  "Nikolija TEST",
+  "Katie Jeffers",
+  "Lisa bana",
+  "isa lana",
+  "Hoi Yi Law",
+  "Tsz Yin Scarlet Tang",
+  "Mariana Kolomiets",
+  "Navi Arulmohan",
+  "Oliver Weinke",
+  "Lukas Höllwerth",
+  "Yassin Moutaouakil",
+  "Louise Amouret",
+  "Yana Yeromenko",
+  "Iryna Pita"
+ ]
+}
