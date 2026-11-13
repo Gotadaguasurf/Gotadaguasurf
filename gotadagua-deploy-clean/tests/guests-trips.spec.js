@@ -108,3 +108,24 @@ test('dates: Sat–Fri week start and day arithmetic never go through a time zon
   expect(G.weekStart('2026-11-16')).toBe('2026-11-14'); // Monday
   expect(G.addDaysIso('2026-03-29', 1)).toBe('2026-03-30'); // DST change in Europe
 });
+
+test('guest rows (for the weekly staff lists): one normalised row per Sri Lanka guest, duplicates once', () => {
+  const preset = G.guestRows(read(PRESET + '.csv'), PRESET + '.csv');
+  expect(preset.length).toBe(18);
+  expect(preset.every(g => g.week_start === '2026-11-14')).toBe(true);
+  const lorena = preset.find(g => g.booking_ref === '2026-4660');
+  expect(lorena).toMatchObject({ guest_name: 'Lorena Marie Glas', check_in: '2026-11-14', check_out: '2026-11-21', bed_number: '4', nights: 7,
+    arrival_time: '01:55', arrival_flight: 'QR 658', has_transfer: true, booking_status: 'confirmed', level: 'Beginner level' });
+  expect(lorena.accommodation).toContain('Unawatuna');
+  expect(lorena.raw['Diet (2)']).toBeDefined(); // the second «Diet» column is kept in raw
+  expect(preset.filter(g => g.has_transfer).length).toBe(3);
+  const all = G.guestRows(read(ALL + '.csv'), ALL + '.csv');
+  expect(all.length).toBe(21); // 23 Sri Lanka rows − 2 exact duplicates; 38 other-camp rows left out
+  const byStatus = all.reduce((m, g) => (m[g.booking_status] = (m[g.booking_status] || 0) + 1, m), {});
+  expect(byStatus).toEqual({ paid: 14, confirmed: 4, expired: 3 });
+  // Allergy columns merge, «No»/«-» dropped; the two Diet columns join.
+  const head = '"Guest","Booking status","Booking","Packages","Check-in on","Check-out on","Diet","Diet","Allergies / Intolerance","Allergies","Allergies indications"';
+  const one = G.guestRows(head + '\n"Ana","paid","2026-1","Surf Camp Ahangama","Sat 14 Nov 2026","Sat 21 Nov 2026","Vegetarian","Gluten free","Nuts","No","nuts, severe"', 'x.csv')[0];
+  expect(one.diet).toBe('Vegetarian / Gluten free');
+  expect(one.allergies).toBe('Nuts / nuts, severe');
+});

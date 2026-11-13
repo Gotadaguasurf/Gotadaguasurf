@@ -277,6 +277,54 @@
     };
   }
 
+  // ── Every guest row, normalised (13 Nov 2026) ──────────────────────────
+  // The weekly staff lists (rooms and beds, kitchen diets, surf by level) are
+  // built from the same Monday import, so the hub stores one row per guest in
+  // camp_week_guests. Same location / test / duplicate rules as the trips;
+  // the hub then keeps only the bookings that are live in HQ bookings.
+  // week_start = the Saturday of the Sat–Fri week of the check-in; a list for a
+  // week must still select by overlap (check_in < week end and check_out > week start).
+  const NO_ALLERGY = new Set(['', 'no', 'none', '-', 'n/a', 'na', 'nope', 'nothing']);
+  function guestRows(text, fileName) {
+    const all = parseCsv(text);
+    const H = (all[0] || []).map(h => h.trim());
+    const nth = (name, k) => { let c = -1; for (let i = 0; i < H.length; i++) if (H[i] === name && ++c === k) return i; return -1; };
+    const val = (r, name, k = 0) => { const i = nth(name, k); return i >= 0 && i < r.length ? pyStrip(r[i]) : ''; };
+    const get = (r, ...names) => { for (const n of names) if (H.includes(n)) return val(r, n); return ''; };
+    const out = []; const seen = new Set();
+    all.slice(1).forEach((r, n) => {
+      if (!r.some(c => String(c).trim())) return;
+      const rawName = get(r, 'Guest').replace(/\s+/g, ' ').trim();
+      const ref = get(r, 'Booking', 'Booking #');
+      if (!isSriLanka(get(r, 'Packages'), get(r, 'Accommodations'))) return;
+      if (TEST_NAME.test(rawName)) return;
+      const key = ref + '\u0000' + rawName.toLowerCase();
+      if (seen.has(key)) return; seen.add(key);
+      const raw = {}; const count = {};
+      H.forEach((h, i) => { count[h] = (count[h] || 0) + 1; raw[count[h] > 1 ? `${h} (${count[h]})` : h] = i < r.length ? r[i] : ''; });
+      const join = (vals, skip) => [...new Set(vals.map(pyStrip).filter(v => v && !(skip && skip.has(v.toLowerCase()))))].join(' / ');
+      let arrT = hhmm(get(r, 'Arrival time')); if (arrT === '00:00') arrT = null;
+      let depT = hhmm(get(r, 'Departure time')); if (depT === '00:00') depT = null;
+      const ci = ymd(get(r, 'Check-in on', 'Arrives on')); const co = ymd(get(r, 'Check-out on', 'Departure date', 'Departs on'));
+      const nights = parseInt(get(r, 'Nights'), 10);
+      out.push({
+        csv_line: n + 2, booking_ref: ref, guest_name: (isUpper(rawName) || isLower(rawName)) ? pyTitle(rawName) : rawName,
+        guest_key: rawName.toLowerCase(), phone: cleanPhone(get(r, 'Phone')),
+        week_start: ci ? weekStart(ci) : null, check_in: ci || null, check_out: co || null,
+        accommodation: get(r, 'Accommodations'), bed_number: get(r, 'Bed number'), packages: get(r, 'Packages'),
+        activities: get(r, 'Activities'), level: get(r, 'Level'),
+        diet: join([val(r, 'Diet', 0), val(r, 'Diet', 1)]),
+        allergies: join([get(r, 'Allergies / Intolerance'), get(r, 'Allergies'), get(r, 'Allergies indications')], NO_ALLERGY),
+        nights: Number.isFinite(nights) ? nights : null,
+        arrival_time: arrT, arrival_flight: get(r, 'Arrival flight'), departure_time: depT, departure_flight: get(r, 'Departure flight'),
+        has_transfer: get(r, 'Has transfer').toLowerCase() === 'yes',
+        booking_status: get(r, 'Booking status').toLowerCase().replace(/ /g, '_'),
+        raw,
+      });
+    });
+    return out;
+  }
+
   // ── WhatsApp message (format fixed by Miguel, 13 Nov 2026) ───────────────
   const WA_VEHICLE_LABEL = { 'Car': 'Small Car', 'Minivan': 'Minivan', 'Large Van': 'Large Van' };
   const WA_UNKNOWN = 'TBC';
@@ -302,7 +350,7 @@
   }
 
   return {
-    parseCsv, isGuestsExportHeader, parse, hhmm, ymd, cleanPhone, vehicleFor, addDaysIso, weekday, weekStart, dMon,
+    parseCsv, isGuestsExportHeader, parse, guestRows, hhmm, ymd, cleanPhone, vehicleFor, addDaysIso, weekday, weekStart, dMon,
     whatsappText, whatsappDayText, whatsappUrl, OK_STATUS, DEAD_STATUS,
   };
 });
