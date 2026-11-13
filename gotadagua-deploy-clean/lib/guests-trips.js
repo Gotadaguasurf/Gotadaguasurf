@@ -141,6 +141,14 @@
   // parse(text, fileName, exportDate?) → same shape as guests_to_trips.py,
   // plus app fields on each trip (phone, booking_ref, booking_checkout,
   // vehicle) and `refs_active`, `is_preset`.
+  // Packages that include things the Guests file does not tick (Miguel, 13 Nov: the «Sri Lanka with
+  // João Kopke» week includes the airport transfer both ways, 5 surf lessons and 5 yoga lessons).
+  // Add a package here and the import, Transport and Week follow.
+  const PACKAGE_INCLUDES = [
+    { re: /with\s+jo[aã]o\s+kopke/i, label: 'Sri Lanka with João Kopke', transfer: true, course: 'Standard', yoga: true },
+  ];
+  function packageIncludes(pkg) { const s = String(pkg || ''); return PACKAGE_INCLUDES.find(x => x.re.test(s)) || null; }
+
   function parse(text, fileName, exportDate) {
     const all = parseCsv(text);
     const H = (all[0] || []).map(h => h.trim());
@@ -175,16 +183,23 @@
         has: get(r, 'Has transfer').toLowerCase() === 'yes', transfers: get(r, 'Transfers'), tcomment: get(r, 'Transfer comment'),
         arr_time: get(r, 'Arrival time'), arr_flight: get(r, 'Arrival flight'), arr_loc: get(r, 'Arrival location'),
         dep_time: get(r, 'Departure time'), dep_flight: get(r, 'Departure flight'), dep_loc: get(r, 'Departure location'),
-        phone: get(r, 'Phone').replace(/ /g, ''),
+        phone: get(r, 'Phone').replace(/ /g, ''), pkg: get(r, 'Packages', 'Package'),
       });
     });
 
     const legs = []; const cancels = new Set(); const dirty = []; const refsActive = new Set();
+    // A guest who stays on with a second booking (same name, one ends the day the other starts) has
+    // no departure at the end of the first and no arrival at the start of the second (13 Nov: Yanneck Kumli).
+    const nkey = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+    const liveP = [...people.values()].filter(x => OK_STATUS.has(x.status));
+    const staysOn = x => liveP.some(y => y !== x && nkey(y.name) === nkey(x.name) && y.ci && y.ci === x.co);
+    const cameBefore = x => liveP.some(y => y !== x && nkey(y.name) === nkey(x.name) && y.co && y.co === x.ci);
     for (const p of people.values()) {
       if (DEAD_STATUS.has(p.status)) { cancels.add(p.ref); bump('cancelled/expired (cancels planned trips)'); continue; }
       if (!OK_STATUS.has(p.status)) { bump(`status ${p.status} (ignored)`); continue; }
       refsActive.add(p.ref);
-      if (!p.has) {
+      const incl = packageIncludes(p.pkg);
+      if (!p.has && !(incl && incl.transfer)) {
         bump('no transfer');
         const dflags = [];
         const [, t1, , fd1] = classifyField(p.arr_flight, dflags, 'flight');
@@ -197,7 +212,9 @@
         if (dflags.length) dirty.push([p.line, p.name, p.ref, dflags]);
         continue;
       }
-      const nProducts = hasTransfersCol ? (p.transfers.match(/airport transfer/gi) || []).length : null;
+      // A package that includes the airport transfer both ways counts as one booked transfer each way.
+      const nProducts = incl && incl.transfer ? Math.max(1, (p.transfers.match(/airport transfer/gi) || []).length)
+        : hasTransfersCol ? (p.transfers.match(/airport transfer/gi) || []).length : null;
       const boards = p.transfers.toLowerCase().includes('surfboard') || p.tcomment.toLowerCase().includes('surfboard');
       const comment = p.tcomment.toLowerCase();
       // One leg only when the comment says so: «only» (or «just need») and the direction in the
@@ -208,6 +225,8 @@
       const depOnly = sameClause('only|just need', 'return|departure|drop(.?off)?');
       const arrOnly = !depOnly && (sameClause('only|just need', 'arrival|pick.?up') || /\bone.?way\b/.test(comment));
       for (const direction of ['arrival', 'departure']) {
+        if (direction === 'departure' && staysOn(p)) { bump('stays on with a new booking: no departure'); continue; }
+        if (direction === 'arrival' && cameBefore(p)) { bump('continues from an earlier booking: no arrival'); continue; }
         const flags = []; let date, time, fl, pl, amb;
         if (direction === 'arrival') {
           // Miguel, 13 Nov: «the arrivals and departures need to appear always» — a booked
@@ -215,6 +234,7 @@
           if (depOnly) continue;
           if (nProducts === null) flags.push('file has no Transfers column: round trip assumed');
           else if (nProducts === 0) flags.push('Has transfer = Yes but no transfer product listed');
+          if (incl && incl.transfer && !p.has) flags.push(`transfer included in the package «${incl.label}»`);
           date = p.ci;
           const [f1, t1, pl1, fd1] = classifyField(p.arr_flight, flags, 'flight');
           let t0 = hhmm(p.arr_time); if (t0 === '00:00') t0 = null;
@@ -234,10 +254,14 @@
         // No check-in / check-out date → no trip (camp_trips.trip_date is NOT NULL: one such leg
         // aborted the whole import). The guest shows under «Left out» with «no … date».
         if (!date) { bump(`transfer without a ${direction === 'arrival' ? 'check-in' : 'check-out'} date (no trip)`); continue; }
+        if (direction === 'departure' && incl && incl.transfer && !p.has) flags.push(`transfer included in the package «${incl.label}»`);
         if (pl !== 'CMB' && pl !== 'HRI') { flags.push(`airport ${pl} is not a Sri Lanka airport`); amb = true; }
         // The guest's own words beat our guess (13 Nov: «Don't need airport transfer, I'll arrive a day earlier»).
         if (/\b(don.?t|do not|no) need\b|\bno transfer\b|\bnot needed\b|\bcancel/i.test(p.tcomment)) { flags.push(`guest says: «${p.tcomment.trim()}» — check if this transfer is still needed`); amb = true; }
         if (!time) flags.push('no time yet: ask the guest');
+        else if (direction === 'departure' && time < '05:00') {
+          flags.push(`night departure: flight ${time} on ${strfADB(date)} — pick-up at the camp on ${strfADB(addDaysIso(date, -1))} evening`); amb = true;
+        }
         else if (direction === 'arrival' && time < '05:00') {
           flags.push(`night arrival: lands ${time} on ${strfADB(date)}, driver leaves camp ${strfADB(addDaysIso(date, -1))} evening — confirm the night`); amb = true;
         }
@@ -419,6 +443,6 @@
 
   return {
     parseCsv, isGuestsExportHeader, parse, guestRows, guestAudit, hhmm, ymd, cleanPhone, vehicleFor, addDaysIso, weekday, weekStart, dMon,
-    whatsappText, whatsappDayText, whatsappUrl, OK_STATUS, DEAD_STATUS,
+    whatsappText, whatsappDayText, whatsappUrl, OK_STATUS, DEAD_STATUS, PACKAGE_INCLUDES, packageIncludes,
   };
 });

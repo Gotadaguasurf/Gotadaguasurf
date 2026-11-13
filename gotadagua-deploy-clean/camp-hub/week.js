@@ -137,7 +137,8 @@
     if (/intensive/i.test(a)) return 'Intensive';
     if (/coaching/i.test(a)) return 'Coaching';
     if (/surf course|surf lesson|standard surf/i.test(a)) return 'Standard';
-    return '';
+    const inc = window.GuestsTrips && GuestsTrips.packageIncludes ? GuestsTrips.packageIncludes(g.packages) : null;   // package with lessons included
+    return inc && inc.course ? inc.course : '';
   }
   function levelOf(g) {
     const l = String(g.level || '').toLowerCase();
@@ -157,7 +158,7 @@
     return d.length ? d.join(' / ') : 'none';
   }
   const allergyOf = g => String(g.allergies || '').split(' / ').map(s => s.trim()).filter(s => s && !NO_ALLERGY.test(s)).join(' / ');
-  const isYoga = g => /yoga/i.test(String(g.activities || '') + ' ' + String(g.packages || ''));
+  const isYoga = g => /yoga/i.test(String(g.activities || '') + ' ' + String(g.packages || '')) || !!(window.GuestsTrips && GuestsTrips.packageIncludes && (GuestsTrips.packageIncludes(g.packages) || {}).yoga);
   const inCamp = (g, d) => g.check_in && g.check_out && g.check_in <= d && d < g.check_out;
   const inWeek = (g, ws) => g.check_in && g.check_out && g.check_in <= add(ws, 6) && g.check_out > ws;
   const bedNum = b => parseInt(b, 10) || 99;

@@ -258,3 +258,23 @@ test('A7 — a guest whose transfer was removed stays in refs_active with no tri
   expect(out.trips).toEqual([]);
   expect(out.refs_active).toEqual(['2026-4660']);
 });
+
+test('a package that includes the transfer gives both legs without «Has transfer»; a guest who stays on with a new booking has no leg in between; a night departure is flagged', () => {
+  const H = ['Arrives on', 'Guest', 'Booking status', 'Booking', 'Arrival status', 'Arrival time', 'Arrival location', 'Arrival flight', 'Arrival airline', 'Departure date', 'Checked in', 'Language', 'Phone', 'Accommodations', 'Check-in on', 'Check-out on', 'Bed number', 'Packages', 'Activities', 'Level', 'Has transfer', 'Transfers', 'Transfer comment', 'Departure time', 'Departure flight', 'Booking due', 'Email', 'Nights'];
+  const row = (name, ref, ci, co, pkg, depTime) => [ci, name, 'paid', ref, 'Not set', '', '', '', '', co, 'Yes', 'English', '+491700000088', 'Marissa Shared Room (4p)', ci, co, '1', pkg, '', '', 'No', '', '', depTime || '', '', '0.00', 'x@example.com', '7'];
+  const rows = [
+    row('Ana Exemplo', '2026-9101', 'Sat 7 Nov 2026', 'Sat 14 Nov 2026', 'Sri Lanka with João Kopke', '00:45'),
+    row('Bruno Stay', '2026-9102', 'Sat 7 Nov 2026', 'Sat 14 Nov 2026', 'Sri Lanka with João Kopke'),
+    row('Bruno Stay', '2026-9103', 'Sat 14 Nov 2026', 'Sat 21 Nov 2026', 'Surf Camp Ahangama, Sri Lanka'),
+  ];
+  const csv = [H, ...rows].map(r => r.map(c => `"${c}"`).join(',')).join('\n');
+  const p = G.parse(csv, 'Bookinglayer-Guests-2026-11-13 10_00.csv');
+  const leg = (g, k) => p.trips.filter(t => t.guests.includes(g) && t.kind === k);
+  expect(leg('Ana Exemplo', 'airport_arrival')).toHaveLength(1);
+  expect(leg('Ana Exemplo', 'airport_departure')).toHaveLength(1);
+  expect(leg('Ana Exemplo', 'airport_departure')[0].flags.join('|')).toContain('night departure');
+  expect(leg('Ana Exemplo', 'airport_arrival')[0].flags.join('|')).toContain('included in the package');
+  expect(leg('Bruno Stay', 'airport_arrival')).toHaveLength(1);      // arrives 7 Nov (package)
+  expect(leg('Bruno Stay', 'airport_departure')).toHaveLength(0);    // stays on 14 Nov; the 2nd booking has no transfer
+  expect(G.packageIncludes('Sri Lanka with João Kopke')).toMatchObject({ transfer: true, course: 'Standard', yoga: true });
+});
