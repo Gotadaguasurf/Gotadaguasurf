@@ -268,7 +268,7 @@ test('trips: manual transfer in one screen — who pays, price from /prices', as
 test('trips: no-show from the trip screen', async ({ page }) => {
   const st = await openTab(page, { trips: NEXT_WEEK() });
   await page.evaluate(() => TransportUI.shiftWeek(7));
-  await page.click('.tr-row[data-trip="aaaaaaaa-0000-4000-8000-00000000a003"]');
+  await page.click('.tr-row[data-trip="aaaaaaaa-0000-4000-8000-00000000a003"] .tr-line1 b'); // the name — the row centre now holds «Ask guest»
   await page.click('#trOv button:has-text("No-show")');
   expect((await call(st, 'trip_update')).body).toMatchObject({ status: 'no_show' });
   await expect(page.locator('.tr-row[data-trip="aaaaaaaa-0000-4000-8000-00000000a003"] .badge-grey')).toHaveText('No-show');
@@ -539,5 +539,23 @@ test('next week import: a Bookinglayer Guests .xlsx is read like the CSV (Excel 
   await page.setInputFiles('#trGuestsFile', { name: 'Bookinglayer-Guests-2026-11-07 14_23.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: Buffer.from('PK fake xlsx') });
   await expect(page.locator('#transportRoot')).toContainText('Airport trips from this file · 4');
   await expect(page.locator('#transportRoot')).toContainText('exported 7 Nov');
+  expect(errors).toEqual([]);
+});
+
+test('trips: a transfer without flight or time has «Ask guest» — WhatsApp to the GUEST asking for the flight; «asked» shows after', async ({ page }) => {
+  const errors = collectFatalErrors(page);
+  await openTab(page, { trips: NEXT_WEEK() });
+  await page.click('button[title="Next week"]');
+  const rows = page.locator('.tr-day').first().locator('.tr-row');
+  await expect(rows.first().locator('button:has-text("Ask guest")')).toHaveCount(0);           // Lorena has flight + time
+  const beliz = rows.filter({ hasText: 'Beliz Kuyumcuoglu' });
+  await beliz.locator('button:has-text("Ask guest for flight & time")').click();
+  const url = await page.evaluate(() => window.__opened[0]);
+  expect(url.startsWith('https://wa.me/491700000002?text=')).toBe(true);                      // the guest, not the driver contact
+  const text = decodeURIComponent(url.split('?text=')[1]);
+  expect(text).toContain('Hi Beliz!');
+  expect(text).toContain('flight number');
+  expect(text).toContain('Gota Dagua Ahangama');
+  await expect(page.locator('.tr-day').first().locator('.tr-row').filter({ hasText: 'Beliz Kuyumcuoglu' })).toContainText('asked');
   expect(errors).toEqual([]);
 });

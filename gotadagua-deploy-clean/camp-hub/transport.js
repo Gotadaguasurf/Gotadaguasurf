@@ -311,7 +311,8 @@
       <div class="tr-main"><div class="tr-line1"><span class="badge ${dep ? 'badge-navy' : 'badge-blue'}">${dep ? 'Departure' : 'Arrival'}</span> <b>${h(t.guest_names || 'Guest')}</b> <span class="hint">· ${t.pax} ${t.pax === 1 ? 'person' : 'persons'}</span></div>
         <div class="cell-sub">${h(t.flight || 'flight?')} · ${h(t.vehicle || '')} · ${h(driverById(t.driver_id)?.name || 'no driver')}${t.charge ? ' · ' + h(CHARGE_LABEL[t.charge]) : ''}</div>
         ${t.needs_resend ? `<div class="tr-resend"><span class="badge badge-amber">Time changed, resend</span></div>` : ''}
-        ${t.missing_since ? `<div class="tr-resend"><span class="badge badge-amber">Not in the latest Bookinglayer file</span></div>` : ''}</div>
+        ${t.missing_since ? `<div class="tr-resend"><span class="badge badge-amber">Not in the latest Bookinglayer file</span></div>` : ''}
+        ${live && needsInfo(t) ? `<div class="tr-resend"><button class="btn btn-s btn-sm" onclick="event.stopPropagation();TransportUI.ask('${t.id}')">${ic('send')} Ask guest for ${!t.flight && !t.trip_time ? 'flight & time' : !t.flight ? 'flight' : 'time'}</button>${askedOn(t.id) ? ` <span class="hint">asked ${h(fmtDay(askedOn(t.id)))}</span>` : ''}</div>` : ''}</div>
       <div class="tr-side"><span class="badge ${cls}">${st}</span>
         <div class="tr-btns">${live ? `<button class="btn btn-s btn-sm btn-icon" title="Send on WhatsApp" onclick="event.stopPropagation();TransportUI.send('${t.id}')">${ic('send')}</button>` : ''}${next}</div></div></div>`;
   }
@@ -333,6 +334,27 @@
     openWa(waText(t));
     const c = contact();
     say(`WhatsApp opened for ${c ? c.name : 'the transport contact'} — tick Sent ✓ once it is sent`);
+  }
+  // ── Ask the guest for the missing flight / time (Miguel, 13 Nov) ───────
+  // Opens WhatsApp to the GUEST (not the driver) with a short question. The app
+  // cannot see the reply: Francisco types the answer into the trip.
+  const ASK_KEY = 'tr-asked-v1';
+  function askedMap() { try { return JSON.parse(localStorage.getItem(ASK_KEY) || '{}') || {}; } catch (_) { return {}; } }
+  function askedOn(id) { return askedMap()[id] || ''; }
+  const needsInfo = t => isAirport(t) && (!t.trip_time || !t.flight);
+  function askText(t) {
+    const first = String(t.guest_names || '').split(/[,+&]/)[0].trim().split(/\s+/)[0] || 'there';
+    return t.kind === 'airport_departure'
+      ? `Hi ${first}! This is Gota Dagua Ahangama 🌊\nTo plan your drop-off at Colombo airport, could you send us your departure flight number and the date and time it leaves?\nThank you!`
+      : `Hi ${first}! This is Gota Dagua Ahangama 🌊\nWe're getting your airport pick-up ready. Could you send us your flight number and the date and time you land in Colombo?\nThank you, see you soon!`;
+  }
+  function ask(id) {
+    const t = TR.trips.find(x => x.id === id); if (!t) return;
+    window.open(GT.whatsappUrl(t.guest_phone || '', askText(t)), '_blank', 'noopener');
+    try { const m = askedMap(); m[id] = cToday(); localStorage.setItem(ASK_KEY, JSON.stringify(m)); } catch (_) {}
+    say(t.guest_phone ? `WhatsApp opened for ${t.guest_names || 'the guest'} — type the answer into the transfer` : 'No phone for this guest — pick the chat in WhatsApp');
+    render();
+    try { if (window.WeekUI && typeof window.WeekUI.render === 'function') window.WeekUI.render(); } catch (_) {}
   }
   function sendDay(day) {
     const list = TR.trips.filter(t => t.trip_date === day && isAirport(t) && !t.payment_entry_id && !isDone(t) && !['cancelled', 'no_show'].includes(t.status))
@@ -957,7 +979,7 @@
   window.TransportUI = {
     render, closeModal, setView(v, f) { TR.view = v; if (f) TR.filter = f; render(); }, setFilter(f) { TR.filter = f; render(); },
     shiftWeek(n) { TR.week = GT.addDaysIso(TR.week, n); TR.filter = ['resend', 'tosend', 'missing'].includes(TR.filter) ? 'all' : TR.filter; render(); },
-    send, sendDay, tick, tickDay, openTrip, saveTrip, setStatus, openAddTransfer, saveTransfer,
+    send, sendDay, ask, askText, askedOn, needsInfo, tick, tickDay, openTrip, saveTrip, setStatus, openAddTransfer, saveTransfer,
     openTuktuk, tukSet, tap, untap, removeRun, pickFile, setExportDate, saveImport,
     setRec(tab) { TR.view = 'reconcile'; TR.recTab = tab; render(); }, recFilter(f) { TR.recFilter = f; render(); },
     recMode(m) { TR.recMode = m; render(); },

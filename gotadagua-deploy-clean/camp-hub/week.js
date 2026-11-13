@@ -906,6 +906,13 @@
   }
 
   // ── Transfers ───────────────────────────────────────────────────────────
+  // «Ask guest for flight & time» — same action as in Transport (TransportUI.ask).
+  function askBtn(t) {
+    const T = window.TransportUI; if (!T || !T.needsInfo || !T.needsInfo(t) || t.payment_entry_id || ['cancelled', 'no_show'].includes(t.status)) return '';
+    const what = !t.flight && !t.trip_time ? 'flight & time' : !t.flight ? 'flight' : 'time';
+    const on = T.askedOn(t.id);
+    return `<span class="wk-ask"><button class="btn btn-s btn-sm" onclick="TransportUI.ask('${t.id}')">Ask guest for ${what}</button>${on ? ` <span class="hint">asked ${h(fdm(on))}</span>` : ''}</span>`;
+  }
   function transfersTab(ctx) {
     const { M } = ctx;
     const all = M.days.flatMap(x => x.trips);
@@ -913,7 +920,7 @@
     const days = M.days.filter(x => x.trips.length || x.own.length);
     const tripRow = t => { const [st, cls] = tripBadge(t);
       return `<div class="wk-g wk-trip"><span class="wk-time num">${h(t.trip_time || 'time?')}</span><span class="wk-tmain"><span class="wk-g1">${dirBadge(t)} <b>${h(t.guest_names || 'Guest')}</b></span>
-        <span class="cell-sub">${h(t.flight || 'flight?')} · ${t.pax} ${t.pax === 1 ? 'person' : 'persons'}${t.vehicle ? ' · ' + h(t.vehicle) : ''}${t.guest_phone ? ' · ' + h(t.guest_phone) : ''}</span></span><span class="badge ${cls}">${st}</span></div>`; };
+        <span class="cell-sub">${h(t.flight || 'flight?')} · ${t.pax} ${t.pax === 1 ? 'person' : 'persons'}${t.vehicle ? ' · ' + h(t.vehicle) : ''}${t.guest_phone ? ' · ' + h(t.guest_phone) : ''}</span>${askBtn(t)}</span><span class="badge ${cls}">${st}</span></div>`; };
     const ownRow = g => `<div class="wk-g wk-trip own"><span class="wk-time num">${h(arriveAt(g))}</span><span class="wk-tmain"><span class="wk-g1"><b>${h(g.guest_name)}</b></span>
       <span class="cell-sub">arrives around this time${flightOf(g) ? ' · ' + h(flightOf(g)) : ''}${g.phone ? ' · ' + h(g.phone) : ''}</span></span><span class="badge badge-grey">Own way</span></div>`;
     const dayHtml = x => {
