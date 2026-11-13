@@ -16,6 +16,7 @@ drop table if exists public.camp_cash_counts cascade;
 drop function if exists public.camp_transport_ledger_trigger() cascade;
 drop function if exists public.camp_transport__link(uuid);
 drop function if exists public.camp_transport_autolink(uuid);
+drop function if exists public.camp_transport_link_own(uuid, uuid[]);
 drop function if exists public.camp_transport_link_set(uuid, uuid, uuid[], text);
 drop function if exists public.camp_transport__driver_in(uuid, text);
 drop function if exists public.camp_trips_pay(uuid, uuid, numeric, text, jsonb);
