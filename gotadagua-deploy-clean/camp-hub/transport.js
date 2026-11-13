@@ -114,6 +114,7 @@
   }
   const contact = () => TR.drivers.find(d => d.active !== false && (d.default_for || []).includes('transfers_contact'));
   const driverById = id => TR.drivers.find(d => d.id === id);
+  const HQ_CROSSCHECK = false; // see buildImport()
   const defaultDriver = kind => TR.drivers.find(d => d.active !== false && (d.default_for || []).includes(kind));
   const driversFor = kind => TR.drivers.filter(d => d.active !== false && ((d.kinds || []).includes(kind) || (kind === 'airport' && (d.kinds || []).includes('other'))));
   const ledgerById = id => (typeof S !== 'undefined' && S.ledger || []).find(e => e.id === id);
@@ -537,7 +538,7 @@
     const dep = t.kind === 'airport_departure';
     return `<div class="tr-row tr-static"><div class="tr-time">${t.time ? `<b class="num">${h(t.time)}</b>` : '<span class="badge badge-amber">time?</span>'}</div>
       <div class="tr-main"><div class="tr-line1"><span class="badge ${dep ? 'badge-navy' : 'badge-blue'}">${dep ? 'Departure' : 'Arrival'}</span> <b>${h(t.guests.join(', '))}</b> <span class="hint">· ${fmtDay(t.date)} · ${t.pax} ${t.pax === 1 ? 'person' : 'persons'}</span></div>
-      <div class="cell-sub">${h(t.flight || 'flight?')} · ${h(t.vehicle)} · ${money(t.expected_price)} · ${t.booking_ref}${t.hq_match === 'ok' ? ' · in HQ' : ' · not yet in HQ'}${t.partner ? ' · partner: ' + h(t.partner) + ', don\'t charge' : ''}</div>
+      <div class="cell-sub">${h(t.flight || 'flight?')} · ${h(t.vehicle)} · ${money(t.expected_price)} · ${t.booking_ref}${t.hq_match === 'ok' ? ' · in HQ' : t.hq_match === 'missing' ? ' · not yet in HQ' : ''}${t.partner ? ' · partner: ' + h(t.partner) + ', don\'t charge' : ''}</div>
       ${t.flags.filter(f => !/^no time yet/.test(f)).map(f => `<div class="cell-sub tr-amber">${h(f)}</div>`).join('')}</div></div>`;
   }
   async function pickFile(input) {
@@ -558,7 +559,10 @@
     const c = client();
     const refs = [...new Set(parsed.trips.map(t => t.booking_ref).concat(parsed.refs_active).concat(parsed.cancel_refs))].filter(Boolean);
     let hq = [];
-    if (refs.length) {
+    // Miguel, 13 Nov: the camp's Guests file and HQ's bookings import are kept apart on purpose
+    // (managers import guests for operations; Miguel imports bookings for partners/income), so
+    // nothing in one can change the other. Flip to true to bring the HQ cross-check back.
+    if (HQ_CROSSCHECK && refs.length) {
       const { data, error } = await c.from('bookings').select('booking_ref,booker,check_in_on,location,package,partner_name,raw_payload').in('booking_ref', refs);
       if (error) { TR.imp = { error: "Couldn't read HQ bookings — " + (error.message || 'error') }; render(); return; }
       hq = data || [];
@@ -569,7 +573,7 @@
     // stays). HQ is a cross-check when it has the ref: cancelled there → no trip; live → hq_match ok;
     // absent → hq_match missing (kept, one soft line).
     const cancelledRefs = new Set(refs.filter(r => byRef.has(r) && HQ_DEAD_STATUSES.has(hqStatus(r))));
-    const matchOf = r => byRef.has(r) ? 'ok' : 'missing';
+    const matchOf = r => !HQ_CROSSCHECK ? null : (byRef.has(r) ? 'ok' : 'missing');
     const allGuests = GT.guestRows(TR.imp.text, parsed.file);
     const okGuests = allGuests.filter(g => GT.OK_STATUS.has(g.booking_status));
     const partnerOf = r => { const b = byRef.get(r); if (b) { const p = String(b.partner_name || ''); return p && !/^direct/i.test(p) ? p : ''; } const g = okGuests.find(x => x.booking_ref === r && x.partner); return g ? g.partner : ''; };
@@ -582,7 +586,7 @@
     // export carries no product list today (13 Nov 2026: 0 of 273 Sri Lanka bookings), so this
     // group stays empty until the bookings import stores the products.
     let hqMissing = [];
-    try {
+    if (HQ_CROSSCHECK) try {
       const ws = nextWeekStart(), we = GT.addDaysIso(ws, 6);
       const { data } = await c.from('bookings').select('booking_ref,booker,check_in_on,package,raw_payload').in('location', TRIPS_BL_LOCATION_LABELS).gte('check_in_on', ws).lte('check_in_on', we);
       const inFile = new Set(allGuests.map(g => g.booking_ref));

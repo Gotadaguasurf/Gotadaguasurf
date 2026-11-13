@@ -161,45 +161,34 @@ test('transport: tab shows for full Sri Lanka users only — not in local view, 
 });
 
 // ── Next week import ───────────────────────────────────────────────────────
-test('next week import: the Guests file is the source; HQ cross-checks (ok / missing / cancelled) and the RPC gets only live rows', async ({ page }) => {
+test('next week import: the Guests file stands alone — HQ bookings are never read or used (Miguel, 13 Nov)', async ({ page }) => {
   const errors = collectFatalErrors(page);
+  const hqReads = [];
+  page.on('request', r => { if (/\/rest\/v1\/bookings\?.*(booking_ref=in|check_in_on=gte)/.test(r.url())) hqReads.push(r.url()); }); // the import's own HQ reads (the hub's Overview load is separate)
   const st = await openTab(page, {
-    bookings: [
+    bookings: [ // HQ says Maximilian is cancelled — the camp import must not care
       { booking_ref: '2026-4660', booker: 'Lorena Marie Glas', check_in_on: '2026-11-14', location: 'Surf Camp Ahangama', package: 'Surf Camp Ahangama', partner_name: 'Direct Bookings', raw_payload: { status: 'confirmed' } },
       { booking_ref: '2026-4936', booker: 'Maximilian Ehrler', check_in_on: '2026-11-14', location: 'Surf Camp Ahangama', package: 'Surf Camp Ahangama', partner_name: 'Direct Bookings', raw_payload: { status: 'cancelled' } },
-      { booking_ref: '2026-4070', booker: 'Beliz Kuyumcuoglu', check_in_on: '2026-11-14', location: 'Surf Camp Ahangama', package: 'Surf Camp Ahangama', partner_name: 'Direct Bookings', raw_payload: {} }, // no status in HQ → still counts as there
-      { booking_ref: '2026-9999', booker: 'Ana Transfer', check_in_on: '2026-11-15', location: 'Surf Camp Ahangama', package: 'Surf Camp Ahangama, Airport Transfer Sri Lanka', partner_name: 'Direct Bookings', raw_payload: { status: 'paid' } },
     ],
   });
   await page.click('button.pill:has-text("Next week")');
-  await expect(page.locator('#transportRoot .card-title').first()).toContainText('Next week · 14–20 Nov'); // Fri 13 Nov → the coming Sat–Fri
+  await expect(page.locator('#transportRoot .card-title').first()).toContainText('Next week · 14–20 Nov');
   await page.setInputFiles('#trGuestsFile', GUESTS_CSV);
-  // group 1: trips from the file — Maximilian is cancelled in HQ, so 3 of the 4 legs
-  await expect(page.locator('#transportRoot')).toContainText('Airport trips from this file · 3');
-  await expect(page.locator('#transportRoot')).toContainText('Lorena Marie Glas');
-  await expect(page.locator('#transportRoot')).toContainText('in HQ');
-  // soft line: refs not in HQ yet (16 bookings in the file − Lorena, Beliz, Maximilian)
-  await expect(page.locator('.tr-soft')).toContainText('13 bookings not yet in HQ — import bookings');
-  // group 2: cancelled in HQ
-  await expect(page.locator('#transportRoot')).toContainText('Cancelled in HQ · 1');
-  // group 3: an HQ booking with a transfer product that the file does not have
-  await expect(page.locator('#transportRoot')).toContainText('Transfer booked in HQ, not in this file · 1');
-  await expect(page.locator('#transportRoot')).toContainText('Ana Transfer');
+  await expect(page.locator('#transportRoot')).toContainText('Airport trips from this file · 4');
+  await expect(page.locator('#transportRoot')).toContainText('Maximilian Ehrler');
+  await expect(page.locator('#transportRoot')).not.toContainText('in HQ');
+  await expect(page.locator('#transportRoot')).not.toContainText('Cancelled in HQ');
+  await expect(page.locator('.tr-soft')).toHaveCount(0);
   await page.click('#trImportSave');
-  await expect(page.locator('.status-msg.status-ok')).toContainText('Saved: 3 new');
+  await expect(page.locator('.status-msg.status-ok')).toContainText('Saved: 4 new');
   const imp = (await call(st, 'import')).body;
-  expect(imp.p_trips.map(t => t.key).sort()).toEqual(['bl:2026-4070:arr', 'bl:2026-4070:dep', 'bl:2026-4660:arr']);
-  // HQ has Lorena as a direct booking → no partner, although the Guests file shows 599 due
-  expect(imp.p_trips.find(t => t.key === 'bl:2026-4660:arr')).toMatchObject({ hq_match: 'ok', time: '01:55', expected_price: 21000, partner: null });
-  expect(imp.p_trips.find(t => t.key === 'bl:2026-4070:arr')).toMatchObject({ hq_match: 'ok', vehicle: 'Minivan', expected_price: 26500 });
-  expect(imp.p_cancel_refs).toEqual(['2026-4936']);
-  expect(imp.p_guests.length).toBe(17); // 18 guests − Maximilian (cancelled in HQ)
-  expect(imp.p_guests.every(g => ['ok', 'missing'].includes(g.hq_match))).toBe(true);
-  // not in HQ → partner from the Guests «Booking due» > 0 (gen_from_guests.py rule)
-  expect(imp.p_guests.find(g => g.booking_ref === '2026-4070').hq_match).toBe('ok');
-  expect(imp.p_guests.find(g => g.booking_ref === '2026-4047')).toMatchObject({ hq_match: 'missing', partner: 'partner', booking_due: 639 });
-  expect(imp.p_is_preset).toBe(true);
-  expect(imp.p_export_date).toBe('2026-11-07');
+  expect(imp.p_trips.map(t => t.key).sort()).toEqual(['bl:2026-4070:arr', 'bl:2026-4070:dep', 'bl:2026-4660:arr', 'bl:2026-4936:arr']);
+  expect(imp.p_trips.every(t => t.hq_match == null)).toBe(true);
+  expect(imp.p_cancel_refs).not.toContain('2026-4936');
+  expect(imp.p_guests.length).toBe(18);
+  // partner comes from the Guests «Booking due» > 0 only (gen_from_guests.py rule)
+  expect(imp.p_guests.find(g => g.booking_ref === '2026-4047')).toMatchObject({ partner: 'partner', booking_due: 639 });
+  expect(hqReads).toEqual([]);
   expect(errors).toEqual([]);
 });
 
