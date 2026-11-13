@@ -36,7 +36,7 @@
   // Dates are Colombo dates stored as text: read the parts, never through UTC.
   const fmtDay = iso => { const [y, m, d] = String(iso).split('-').map(Number); return `${DAY[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]} ${d} ${MON[m - 1]}`; };
   // One source for go-live and «now» (camp-hub/transport.js; tests pin both).
-  const goLive = () => (window.TransportUI && TransportUI.goLive) ? TransportUI.goLive() : (window.TRIPS_GO_LIVE_OVERRIDE || '2026-11-16');
+  const goLive = () => (window.TransportUI && TransportUI.goLive) ? TransportUI.goLive() : (window.TRIPS_GO_LIVE_OVERRIDE || '2026-11-14');
   function colomboNow() {
     if (window.TransportUI && TransportUI.colomboNow) return TransportUI.colomboNow();
     const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Colombo', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
@@ -57,7 +57,7 @@
   function candidates() {
     const upTo = entryDate(); const from = goLive();
     return (P.trips || []).filter(t => (t.kind === 'airport_arrival' || t.kind === 'airport_departure') && !t.payment_entry_id
-      && !['cancelled', 'no_show', 'merged'].includes(t.status) && isDone(t) && t.trip_date >= from && t.trip_date <= upTo)
+      && !['cancelled', 'no_show', 'merged'].includes(t.status) && t.trip_date >= from && t.trip_date <= upTo)   // done or not yet: Nadith may pay ahead (13 Nov)
       .sort((a, b) => (a.trip_date + (a.trip_time || '99') + a.id).localeCompare(b.trip_date + (b.trip_time || '99') + b.id));
   }
 
@@ -113,7 +113,7 @@
         const who = [t.guest_names || 'Guest'];
         if (t.driver_id && t.driver_id !== defaultDriver && driverName(t.driver_id)) who.push(driverName(t.driver_id));
         return `<label class="pl-row"><input type="checkbox" data-trip="${h(t.id)}"${P.picked.has(t.id) ? ' checked' : ''}>
-          <span class="pl-txt">${h(fmtDay(t.trip_date))} · ${t.kind === 'airport_departure' ? 'Departure' : 'Arrival'} · ${h(who.join(' · '))}<span class="pl-sep"> · </span></span><b class="pl-amt">${num(t.expected_price)}</b></label>`;
+          <span class="pl-txt">${h(fmtDay(t.trip_date))}${t.trip_time ? ' ' + h(t.trip_time) : ''} · ${t.kind === 'airport_departure' ? 'Departure' : 'Arrival'} · ${h(who.join(' · '))}${isDone(t) ? '' : ' <i class="pl-later">(not yet)</i>'}<span class="pl-sep"> · </span></span><b class="pl-amt">${num(t.expected_price)}</b></label>`;
       }).join('')}</div>` : `<div class="pl-note">No unpaid airport transfers up to ${h(fmtDay(entryDate()))}.</div>`;
     }
     const sum = pickedSum();

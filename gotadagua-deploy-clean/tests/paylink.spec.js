@@ -38,9 +38,10 @@ const TRIPS = () => [
   trip({ id: T(9), kind: 'tuktuk', guest_names: null, route: 'Ahangama', purpose: 'surf', driver_id: D.sampath, expected_price: 500, status: 'done', source: 'manual', vehicle: 'Tuk-tuk' }),
 ];
 const ROWS = [
-  'Sun 8 Nov · Arrival · Lorena Marie Glas · 21,000',
-  'Mon 9 Nov · Arrival · Beliz Kuyumcuoglu · Nishantha · 26,500',
-  'Tue 10 Nov · Departure · Maximilian Ehrler · 20,000',
+  'Sun 8 Nov 01:55 · Arrival · Lorena Marie Glas · 21,000',
+  'Mon 9 Nov 10:00 · Arrival · Beliz Kuyumcuoglu · Nishantha · 26,500',
+  'Tue 10 Nov 10:00 · Departure · Maximilian Ehrler · 20,000',
+  'Fri 13 Nov 18:00 · Arrival · Tonight Guest (not yet) · 21,000',   // not done yet: Nadith may pay ahead (13 Nov)
 ];
 
 async function stub(page, opts = {}) {
@@ -112,8 +113,8 @@ test('paylink: the picker shows only for Sri Lanka · Transport · Airport — l
   await page.selectOption('#qe_linked', 'Airport');
   await expect(picker(page)).toBeVisible();
   await expect(picker(page).locator('label').first()).toHaveText('Which transfers is this for?');
-  // Done + unpaid airport trips, go-live … entry date, oldest first; the driver only when not the default (Dilan).
-  await expect(picker(page).locator('.pl-row')).toHaveCount(3);
+  // Unpaid airport trips (done or not yet), go-live … entry date, oldest first; the driver only when not the default (Dilan).
+  await expect(picker(page).locator('.pl-row')).toHaveCount(4);
   expect((await picker(page).locator('.pl-row').allTextContents()).map(s => s.replace(/\s+/g, ' ').trim())).toEqual(ROWS);
   // Big tap targets, no accordion, nothing wider than the phone.
   const box = await picker(page).locator('.pl-row').first().boundingBox();
@@ -140,7 +141,7 @@ test('paylink: the picker shows only for Sri Lanka · Transport · Airport — l
 test('paylink: ticking fills the amount with the sum; he can still change it', async ({ page }) => {
   await open(page);
   await transportAirport(page);
-  await expect(picker(page).locator('.pl-row')).toHaveCount(3);
+  await expect(picker(page).locator('.pl-row')).toHaveCount(4);
   await picker(page).locator('.pl-row').nth(0).click();
   await expect(page.locator('#qe_amount')).toHaveValue('21000');
   await picker(page).locator('.pl-row').nth(1).click();
@@ -176,15 +177,15 @@ test('paylink: after the save the RPC gets the saved entry id and the ticked tri
   expect(await page.evaluate(id => S.ledger.some(e => e.id === id), row.id)).toBe(true);
   // The next payment no longer offers the two trips just paid.
   await transportAirport(page);
-  await expect(picker(page).locator('.pl-row')).toHaveCount(1);
-  await expect(picker(page).locator('.pl-row')).toContainText('Beliz Kuyumcuoglu');
+  await expect(picker(page).locator('.pl-row')).toHaveCount(2);
+  await expect(picker(page).locator('.pl-row').first()).toContainText('Beliz Kuyumcuoglu');
   expect(errors).toEqual([]);
 });
 
 test('paylink: nothing ticked → the form works as today, no RPC', async ({ page }) => {
   const st = await open(page);
   await transportAirport(page);
-  await expect(picker(page).locator('.pl-row')).toHaveCount(3);
+  await expect(picker(page).locator('.pl-row')).toHaveCount(4);
   await page.fill('#qe_amount', '21000');
   await page.click('[onclick="saveQuickExpense()"]');
   await expect(page.locator('#toast')).toHaveText('Entry added');

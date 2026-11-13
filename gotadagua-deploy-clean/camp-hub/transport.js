@@ -21,7 +21,7 @@
 
   // ── Settings (kept as constants so Miguel can change them later) ────────
   const TRIPS_ENABLED_LOCATIONS = new Set(['sri-lanka']);
-  const TRIPS_GO_LIVE = '2026-11-16';             // = camp_trips_go_live() in the SQL
+  const TRIPS_GO_LIVE = '2026-11-14';  // = camp_trips_go_live() in the SQL; start of the first camp week with trips (was 16 Nov)
   const goLive = () => window.TRIPS_GO_LIVE_OVERRIDE || TRIPS_GO_LIVE;   // tests move it into the past
   const TRIPS_LOAD_FROM = '2026-10-01';
   const TRIPS_BL_LOCATION_LABELS = ['Surf Camp Ahangama'];
@@ -269,9 +269,13 @@
     return ['Planned', 'badge-grey'];
   }
   function renderTrips() {
-    const ws = TR.week, we = GT.addDaysIso(ws, 6);
+    const ws = TR.week, we = GT.addDaysIso(ws, 6), closing = GT.addDaysIso(ws, 7);
     const f = TR.filter;
-    let list = TR.trips.filter(t => t.trip_date >= ws && t.trip_date <= we);
+    // A departure on the Saturday a week ends belongs to that week's guests (Miguel, 13 Nov:
+    // «Beliz has departure and was not there»): week Sat 14–Fri 20 shows the Sat 21 departures,
+    // and week Sat 21–Fri 27 starts with the Sat 21 arrivals only.
+    const isDep = t => t.kind === 'airport_departure';
+    let list = TR.trips.filter(t => (t.trip_date >= ws && t.trip_date <= we && !(t.trip_date === ws && isDep(t))) || (t.trip_date === closing && isDep(t)));
     if (['resend', 'tosend', 'missing'].includes(f)) list = TR.trips.filter(t => t.trip_date >= cToday() || f === 'resend');
     if (f === 'airport') list = list.filter(isAirport);
     else if (f === 'tuktuk') list = list.filter(t => !isAirport(t));

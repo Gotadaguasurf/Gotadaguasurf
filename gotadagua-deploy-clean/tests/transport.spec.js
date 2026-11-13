@@ -593,3 +593,17 @@ test('trips: a transfer without flight or time has «Ask guest» — WhatsApp to
   await expect(page.locator('.tr-day').first().locator('.tr-row').filter({ hasText: 'Beliz Kuyumcuoglu' })).toContainText('asked');
   expect(errors).toEqual([]);
 });
+
+test('trips: a departure on the closing Saturday shows in the week it ends (14–20 Nov shows Sat 21), not in the next one', async ({ page }) => {
+  await openTab(page, { trips: [
+    trip({ id: 'aaaaaaaa-0000-4000-8000-00000000d001', kind: 'airport_departure', guest_names: 'Beliz Kuyumcuoglu', trip_date: '2026-11-21', trip_time: '15:00', booking_ref: '2026-4070' }),
+    trip({ id: 'aaaaaaaa-0000-4000-8000-00000000d002', guest_names: 'Next Week Arrival', trip_date: '2026-11-21', trip_time: '09:00' }),
+  ] });
+  await page.click('button[title="Next week"]');
+  await expect(page.locator('.tr-week')).toHaveText('14–20 Nov');
+  await expect(page.locator('#transportRoot')).toContainText('Beliz Kuyumcuoglu');
+  await expect(page.locator('#transportRoot')).not.toContainText('Next Week Arrival');
+  await page.click('button[title="Next week"]');
+  await expect(page.locator('#transportRoot')).toContainText('Next Week Arrival');
+  await expect(page.locator('#transportRoot')).not.toContainText('Beliz Kuyumcuoglu');
+});

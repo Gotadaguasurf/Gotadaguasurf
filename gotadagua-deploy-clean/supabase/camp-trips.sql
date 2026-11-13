@@ -26,7 +26,7 @@
 -- Go-live: Transport cash expenses created before this date are old lumps and
 -- are never linked or flagged (keep in step with TRIPS_GO_LIVE in camp-hub/transport.js).
 create or replace function public.camp_trips_go_live()
-returns date language sql immutable as $$ select date '2026-11-16' $$;
+returns date language sql immutable as $$ select date '2026-11-14' $$;
 
 -- ── Drivers and contacts ────────────────────────────────────────────────────
 create table if not exists public.camp_drivers (
