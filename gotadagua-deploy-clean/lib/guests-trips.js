@@ -319,10 +319,23 @@
         arrival_time: arrT, arrival_flight: get(r, 'Arrival flight'), departure_time: depT, departure_flight: get(r, 'Departure flight'),
         has_transfer: get(r, 'Has transfer').toLowerCase() === 'yes',
         booking_status: get(r, 'Booking status').toLowerCase().replace(/ /g, '_'),
+        booking_due: dueOf(get(r, 'Booking due')), email: get(r, 'Email'),
         raw,
       });
     });
+    // Partner («don't charge»): Booking due > 0 means a partner collects (gen_from_guests.py);
+    // the name comes from the email domain and is carried to every guest of the booking.
+    const byRef = {};
+    out.forEach(g => { const p = partnerOf(g); if (p && p !== 'partner') byRef[g.booking_ref] = p; });
+    out.forEach(g => { const p = partnerOf(g); g.partner = p ? (byRef[g.booking_ref] || p) : (byRef[g.booking_ref] || ''); delete g.email; });
     return out;
+  }
+  const PARTNER_DOMAINS = { 'oceanadventure.surf': 'Ocean Adventure', 'aashalanka.com': 'AASHA' };
+  function dueOf(v) { const n = parseFloat(String(v || '').replace(/[^0-9.\-]/g, '')); return Number.isFinite(n) ? n : 0; }
+  function partnerOf(g) {
+    if (!(g.booking_due > 0)) return '';
+    const dom = g.email && g.email.includes('@') ? g.email.split('@').pop().toLowerCase() : '';
+    return PARTNER_DOMAINS[dom] || 'partner';
   }
 
   // ── WhatsApp message (format fixed by Miguel, 13 Nov 2026) ───────────────

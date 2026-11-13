@@ -38,12 +38,14 @@ create table if not exists public.camp_drivers (
   aliases text[] not null default '{}',          -- words that name him in a ledger description
   kinds text[] not null default '{}',            -- {'airport','tuktuk','other','contact'}
   default_for text[] not null default '{}',      -- {'airport'} / {'tuktuk'} / {'transfers_contact'}
+  default_vehicle text,                          -- Car / Minivan / Large Van / Tuk-tuk
   price_overrides jsonb not null default '{}',
   active boolean not null default true,
   created_at timestamptz not null default now(),
   created_by uuid default auth.uid()
 );
 alter table public.camp_drivers add column if not exists aliases text[] not null default '{}';
+alter table public.camp_drivers add column if not exists default_vehicle text;
 create unique index if not exists camp_drivers_name on public.camp_drivers(location_id, lower(name));
 
 -- ── Trips ───────────────────────────────────────────────────────────────────
@@ -82,6 +84,10 @@ create table if not exists public.camp_trips (
   updated_at timestamptz not null default now(), updated_by uuid
 );
 alter table public.camp_trips add column if not exists guest_phone text;
+-- HQ cross-check (13 Nov: the Guests file is the source for upcoming weeks; HQ bookings only
+-- hold past and current stays). ok = the ref is live in HQ bookings · missing = not there yet.
+alter table public.camp_trips add column if not exists hq_match text check (hq_match in ('ok','missing'));
+alter table public.camp_trips add column if not exists partner text;        -- partner booking: the guest is not charged by us
 create unique index if not exists camp_trips_key on public.camp_trips(location_id, import_key) where import_key is not null;
 create index if not exists camp_trips_day on public.camp_trips(location_id, trip_date);
 create index if not exists camp_trips_payment on public.camp_trips(payment_entry_id) where payment_entry_id is not null;
@@ -124,11 +130,17 @@ create table if not exists public.camp_week_guests (
   arrival_time text, arrival_flight text, departure_time text, departure_flight text,
   has_transfer boolean not null default false,
   booking_status text,
+  booking_due numeric(12,2),
+  partner text,                                  -- from HQ when matched, else Guests «Booking due» > 0
+  hq_match text check (hq_match in ('ok','missing')),
   raw jsonb not null default '{}',
   import_id uuid,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+alter table public.camp_week_guests add column if not exists booking_due numeric(12,2);
+alter table public.camp_week_guests add column if not exists partner text;
+alter table public.camp_week_guests add column if not exists hq_match text check (hq_match in ('ok','missing'));
 create unique index if not exists camp_week_guests_key on public.camp_week_guests(location_id, booking_ref, guest_key);
 create index if not exists camp_week_guests_week on public.camp_week_guests(location_id, week_start);
 
@@ -423,8 +435,11 @@ begin
 end $$;
 
 -- Monday import of the Bookinglayer Guests export (security invoker: the
--- table policies apply — Francisco / HQ only). p_trips come from
--- GuestsTrips.parse() for bookings live in HQ; p_guests from guestRows().
+-- table policies apply — Francisco / HQ only). The Guests file is the source
+-- for upcoming weeks: p_trips = GuestsTrips.parse() trips and p_guests =
+-- guestRows() of confirmed / deposit paid / paid rows, each with hq_match
+-- ('ok' = live in HQ bookings, 'missing' = not there yet). Refs HQ has as
+-- cancelled come in p_cancel_refs (with the file's own cancelled rows).
 -- Rules = trips.md §1.6.
 create or replace function public.camp_trips_import(
   p_location uuid, p_export_date date, p_is_preset boolean,
@@ -447,12 +462,13 @@ begin
     select * into t from public.camp_trips where location_id = p_location and import_key = v_key for update;
     if t.id is null then
       insert into public.camp_trips (location_id, kind, trip_date, trip_time, flight, place, route, purpose, guest_names, guest_phone, booking_ref, booking_checkout,
-        pax, vehicle, driver_id, expected_price, status, source, charge, import_key, import_flags, last_import_at, last_export_date)
+        pax, vehicle, driver_id, expected_price, status, source, charge, import_key, import_flags, last_import_at, last_export_date, hq_match, partner)
       values (p_location, x->>'kind', n_date, n_time, n_flight, coalesce(n_place,'CMB'),
         case when x->>'kind' = 'airport_departure' then 'Surfcamp → Airport' else 'Airport → Surfcamp' end, 'guests',
         n_guests, n_phone, x->>'booking_ref', nullif(x->>'booking_checkout','')::date, n_pax, x->>'vehicle', v_driver,
         coalesce((x->>'expected_price')::numeric, 0), 'planned', 'bookinglayer', nullif(x->>'charge',''), v_key,
-        array(select jsonb_array_elements_text(coalesce(x->'flags','[]'::jsonb))), v_now, p_export_date);
+        array(select jsonb_array_elements_text(coalesce(x->'flags','[]'::jsonb))), v_now, p_export_date,
+        nullif(x->>'hq_match',''), nullif(x->>'partner',''));
       v_ins := v_ins + 1; continue;
     end if;
     if t.payment_entry_id is not null or t.status in ('done','no_show','merged')
@@ -478,6 +494,7 @@ begin
       vehicle = case when 'vehicle' = any(t.edited_fields) then t.vehicle else coalesce(x->>'vehicle', t.vehicle) end,
       expected_price = case when 'expected_price' = any(t.edited_fields) then t.expected_price else coalesce((x->>'expected_price')::numeric, t.expected_price) end,
       charge = coalesce(nullif(x->>'charge',''), t.charge),
+      hq_match = coalesce(nullif(x->>'hq_match',''), t.hq_match), partner = coalesce(nullif(x->>'partner',''), t.partner),
       import_flags = array(select jsonb_array_elements_text(coalesce(x->'flags','[]'::jsonb))),
       needs_resend = t.needs_resend or (t.status in ('sent','confirmed') and changed),
       missing_since = null, last_import_at = v_now, last_export_date = coalesce(p_export_date, t.last_export_date)
@@ -504,11 +521,12 @@ begin
   -- Guests of the week (staff lists).
   insert into public.camp_week_guests as g (location_id, week_start, booking_ref, guest_key, guest_name, phone, check_in, check_out,
     accommodation, bed_number, packages, activities, level, diet, allergies, nights, arrival_time, arrival_flight, departure_time, departure_flight,
-    has_transfer, booking_status, raw, import_id, updated_at)
+    has_transfer, booking_status, booking_due, partner, hq_match, raw, import_id, updated_at)
   select p_location, nullif(y->>'week_start','')::date, y->>'booking_ref', y->>'guest_key', y->>'guest_name', nullif(y->>'phone',''),
     nullif(y->>'check_in','')::date, nullif(y->>'check_out','')::date, y->>'accommodation', y->>'bed_number', y->>'packages', y->>'activities',
     y->>'level', y->>'diet', y->>'allergies', nullif(y->>'nights','')::int, nullif(y->>'arrival_time',''), y->>'arrival_flight',
     nullif(y->>'departure_time',''), y->>'departure_flight', coalesce((y->>'has_transfer')::boolean, false), y->>'booking_status',
+    nullif(y->>'booking_due','')::numeric, nullif(y->>'partner',''), nullif(y->>'hq_match',''),
     coalesce(y->'raw', '{}'::jsonb), v_import, v_now
   from jsonb_array_elements(coalesce(p_guests, '[]'::jsonb)) y
   where coalesce(y->>'booking_ref','') <> '' and coalesce(y->>'guest_key','') <> ''
@@ -517,7 +535,8 @@ begin
     bed_number = excluded.bed_number, packages = excluded.packages, activities = excluded.activities, level = excluded.level, diet = excluded.diet,
     allergies = excluded.allergies, nights = excluded.nights, arrival_time = coalesce(excluded.arrival_time, g.arrival_time),
     arrival_flight = excluded.arrival_flight, departure_time = coalesce(excluded.departure_time, g.departure_time), departure_flight = excluded.departure_flight,
-    has_transfer = excluded.has_transfer, booking_status = excluded.booking_status, raw = excluded.raw, import_id = excluded.import_id, updated_at = v_now;
+    has_transfer = excluded.has_transfer, booking_status = excluded.booking_status, booking_due = excluded.booking_due,
+    partner = excluded.partner, hq_match = excluded.hq_match, raw = excluded.raw, import_id = excluded.import_id, updated_at = v_now;
   get diagnostics v_guests = row_count;
   return jsonb_build_object('inserted', v_ins, 'updated', v_upd, 'resend', v_resend, 'cancelled', v_cancel, 'missing', v_missing,
                             'untouched', v_untouched, 'guests', v_guests, 'import_id', v_import);
