@@ -209,15 +209,19 @@
   }
   // free_reason / added_by_local arrive with supabase/camp-trips-v2.sql. Until it is run, a save
   // that carries them is repeated without them (charge = 'free' is still stored) — never a lost edit.
-  const NEW_COLS = ['free_reason', 'added_by_local'];
-  const newColMissing = error => !!error && /free_reason|added_by_local/.test(String(error.message || '') + String(error.details || ''));
+  const NEW_COLS = ['free_reason', 'added_by_local', 'guest_notified_at', 'guest_confirmed_at', 'guest_told_snapshot'];
+  const newColMissing = error => !!error && /free_reason|added_by_local|guest_notified_at|guest_confirmed_at|guest_told_snapshot/.test(String(error.message || '') + String(error.details || ''));
   const withoutNew = row => { const r = { ...row }; NEW_COLS.forEach(k => delete r[k]); return r; };
   async function updateTrip(id, patch, edited) {
     const t = TR.trips.find(x => x.id === id); if (!t) return null;
     const row = { ...patch };
     if (edited && edited.length) row.edited_fields = [...new Set([...(t.edited_fields || []), ...edited])];
     let { data, error } = await client().from('camp_trips').update(row).eq('id', id).select();
-    if (newColMissing(error)) ({ data, error } = await client().from('camp_trips').update(withoutNew(row)).eq('id', id).select());
+    if (newColMissing(error)) {
+      // Nothing else to save (e.g. «Guest told ✓» before the database update): keep it on this screen only.
+      if (!Object.keys(withoutNew(row)).length) { const local = { ...t, ...row }; TR.trips = TR.trips.map(x => x.id === id ? local : x); return local; }
+      ({ data, error } = await client().from('camp_trips').update(withoutNew(row)).eq('id', id).select());
+    }
     if (error) { say("Couldn't save — " + (error.message || 'error'), 'err'); return null; }
     const fresh = (data && data[0]) || { ...t, ...row };
     TR.trips = TR.trips.map(x => x.id === id ? fresh : x);
@@ -365,8 +369,9 @@
       const sendable = air.filter(t => !t.payment_entry_id && !isDone(t) && !onHold(t));
       return `<div class="card tr-day"><div class="card-hdr"><div><div class="card-title">${fmtDay(day)}</div>
           <div class="card-hint">${air.length} transfer${air.length === 1 ? '' : 's'}${tuk.length ? ` · ${tuk.length} tuk-tuk run${tuk.length === 1 ? '' : 's'} · ${money(tuk.reduce((s, t) => s + Number(t.expected_price || 0), 0))}` : ''}</div></div>
-          ${sendable.length > 1 ? `<div class="row"><button class="btn btn-s btn-sm" onclick="TransportUI.sendDay('${day}')" title="One WhatsApp to ${h(c ? c.name : 'the transport contact')} with every transfer of the day">${ic('send')} Send the whole day</button>
-            <button class="btn btn-s btn-sm" onclick="TransportUI.tickDay('${day}')">${ic('check')} Sent ✓ all</button></div>` : ''}</div>
+          ${sendable.length > 1 || air.filter(guestCan).length > 1 ? `<div class="row tr-day-btns">${sendable.length > 1 ? `<button class="btn btn-s btn-sm" onclick="TransportUI.sendDay('${day}')" title="One WhatsApp to ${h(c ? c.name : 'the transport contact')} with every transfer of the day">${ic('send')} Send the whole day</button>
+            <button class="btn btn-s btn-sm" onclick="TransportUI.tickDay('${day}')">${ic('check')} Sent ✓ all</button>` : ''}
+            ${air.filter(guestCan).length > 1 ? `<button class="btn btn-s btn-sm" data-guest-day onclick="TransportUI.openGuestDay('${day}')" title="One WhatsApp per guest: the driver waits with a sign with their name">${ic('users')} Confirm with all guests of the day</button>` : ''}</div>` : ''}</div>
         <div class="tr-rows">${air.map(tripRow).join('')}${dayTrips.filter(t => isAirport(t) && ['cancelled', 'no_show'].includes(t.status)).map(tripRow).join('')}${tuk.length ? tuktukSummary(tuk, day) : ''}</div></div>`;
     }).join('');
   }
@@ -416,6 +421,7 @@
         <div class="cell-sub">${h(t.flight || 'flight?')} · ${h(t.vehicle || '')} · ${h(driverById(t.driver_id)?.name || 'no driver')} · ${money(t.expected_price)}${t.charge && !isFree(t) ? ' · ' + h(CHARGE_LABEL[t.charge]) : ''}${t.added_by_local ? ` · added by ${LOCAL_MANAGER_NAME}` : ''}</div>
         ${t.needs_resend ? `<div class="tr-resend"><span class="badge badge-amber">Time changed, resend</span></div>` : ''}
         ${live && rowFlag(t) ? `<div class="tr-flagline" data-flag>${ic('alert')} ${h(rowFlag(t))}</div>` : ''}
+        ${live && !needsInfo(t) && guestHtml(t) ? `<div class="tr-resend">${guestHtml(t)}</div>` : ''}
         ${live && needsInfo(t) ? `<div class="tr-resend"><button class="btn btn-s btn-sm" onclick="event.stopPropagation();TransportUI.ask('${t.id}')">${ic('send')} Ask guest for ${!t.flight && !t.trip_time ? 'flight & time' : !t.flight ? 'flight' : 'time'}</button>${askedOn(t.id) ? ` <span class="hint">asked ${h(fmtDay(askedOn(t.id)))}</span>` : ''}</div>` : ''}</div>
       <div class="tr-side"><div class="tr-pay"><span class="badge ${ps.cls}" data-pay="${ps.key}">${ps.label}</span>${ps.sub ? `<span class="cell-sub">${h(ps.sub)}</span>` : ''}</div>
         <div class="tr-btns">${live ? `<button class="btn btn-s btn-sm btn-icon" title="Send on WhatsApp" onclick="event.stopPropagation();TransportUI.send('${t.id}')">${ic('send')}</button>` : ''}${next}</div></div></div>`;
@@ -474,6 +480,64 @@
     say(t.guest_phone ? `WhatsApp opened for ${t.guest_names || 'the guest'} — type the answer into the transfer` : 'No phone for this guest — pick the chat in WhatsApp');
     render();
     try { if (window.WeekUI && typeof window.WeekUI.render === 'function') window.WeekUI.render(); } catch (_) {}
+  }
+  // ── Confirm the transfer with the GUEST (Miguel, 13 Nov) ────────────────
+  // The driver waits at the arrivals exit with a sign with the guest's name; the guest gets the
+  // details on WhatsApp and replies that they are right. Only when flight and time are known —
+  // otherwise «Ask guest». States on the trip: guest_notified_at («Guest told ✓»), then the manual
+  // tick guest_confirmed_at («Guest confirmed ✓»); guest_told_snapshot = what he was told, so a
+  // later change (edit or re-import) shows «Changed — tell guest again». No emoji (wa.me).
+  const toldSnapshot = t => ({ trip_date: t.trip_date, trip_time: t.trip_time || null, flight: t.flight || null, pickup_time: t.pickup_time || null, pax: Number(t.pax) || 1 });
+  const guestCan = t => isAirport(t) && !!t.guest_phone && !needsInfo(t) && !t.payment_entry_id && !isDone(t) && !['cancelled', 'no_show', 'merged'].includes(t.status);
+  // '' (not told) | 'told' | 'confirmed' | 'changed'
+  function guestState(t) {
+    if (!t.guest_notified_at) return '';
+    const was = t.guest_told_snapshot;
+    if (was && JSON.stringify(toldSnapshot({ ...was })) !== JSON.stringify(toldSnapshot(t))) return 'changed';
+    return t.guest_confirmed_at ? 'confirmed' : 'told';
+  }
+  function confirmText(t) {
+    const first = String(t.guest_names || '').split(/[,+&]/)[0].trim().split(/\s+/)[0] || 'there';
+    const pax = Number(t.pax) || 1;
+    const hi = `Hi ${first}! I'm ${ASK_SENDER}, the manager of Gota Dagua Surf Camp Sri Lanka.`;
+    if (t.kind === 'airport_departure') return [hi, 'Your drop-off at Colombo airport is booked:', `Date: ${fmtDay(t.trip_date)}`, `Flight: ${t.flight}`, `Flight time: ${t.trip_time}`,
+      ...(t.pickup_time ? [`Pick-up at the camp: ${t.pickup_time}`] : []), `Persons: ${pax}`,
+      'Please reply to confirm these details are correct, or tell us what changed.', 'Thank you!'].join('\n');
+    return [hi, 'Your airport pick-up is booked:', `Date: ${fmtDay(t.trip_date)}`, `Flight: ${t.flight}`, `Landing: ${t.trip_time}`, `Persons: ${pax}`,
+      'Our driver will be waiting for you at the arrivals exit of Colombo airport, holding a sign with your name.',
+      'Please reply to confirm these details are correct, or tell us what changed.', 'See you soon!'].join('\n');
+  }
+  // The buttons and the state of one trip — used on the day list, in the day sheet and by the Week tab (WeekUI.askBtn).
+  function guestHtml(t) {
+    const st = guestState(t); const can = guestCan(t);
+    if (!st && !can) return '';
+    const btn = label => can ? `<button class="btn btn-s btn-sm" data-guest-send onclick="event.stopPropagation();TransportUI.confirmGuest('${t.id}')">${ic('send')} ${label}</button>` : '';
+    if (st === 'confirmed') return `<span class="tr-guest" data-guest="confirmed"><span class="badge badge-green">Guest confirmed ✓</span></span>`;
+    if (st === 'told') return `<span class="tr-guest" data-guest="told"><span class="badge badge-blue">Guest told ✓</span>${can ? ` <button class="btn btn-s btn-sm" data-guest-ok onclick="event.stopPropagation();TransportUI.guestConfirmed('${t.id}')">Guest confirmed ✓</button>` : ''}</span>`;
+    if (st === 'changed') return `<span class="tr-guest" data-guest="changed"><span class="badge badge-amber">Changed — tell guest again</span> ${btn('Confirm with guest')}</span>`;
+    return `<span class="tr-guest" data-guest="">${btn('Confirm with guest')}</span>`;
+  }
+  const redrawAll = () => { render(); try { if (window.WeekUI && typeof window.WeekUI.render === 'function' && typeof activePage !== 'undefined' && activePage === 'week') window.WeekUI.render(); } catch (_) {} if (TR.guestDay && $('trOv') && $('trOv').classList.contains('open') && $('gd_list')) openGuestDay(TR.guestDay); };
+  async function confirmGuest(id) {
+    const t = TR.trips.find(x => x.id === id); if (!t) return;
+    if (needsInfo(t)) return ask(id);                         // flight or time missing: ask, never «confirm»
+    if (!t.guest_phone) { say('No phone for this guest', 'err'); return; }
+    window.open(GT.whatsappUrl(t.guest_phone, confirmText(t)), '_blank', 'noopener');
+    if (await updateTrip(id, { guest_notified_at: new Date().toISOString(), guest_confirmed_at: null, guest_told_snapshot: toldSnapshot(t) })) { redrawAll(); say(`WhatsApp opened for ${t.guest_names || 'the guest'} — tick «Guest confirmed ✓» when they reply`); }
+  }
+  async function guestConfirmed(id) {
+    if (await updateTrip(id, { guest_confirmed_at: new Date().toISOString() })) { redrawAll(); say('Guest confirmed'); }
+  }
+  // «Confirm with all guests of the day»: wa.me takes one person at a time, so a list with one Send per guest.
+  const guestDayList = day => TR.trips.filter(t => t.trip_date === day && (guestCan(t) || (guestState(t) && isAirport(t) && !['cancelled', 'no_show', 'merged'].includes(t.status))))
+    .sort((a, b) => (a.trip_time || '99').localeCompare(b.trip_time || '99'));
+  function openGuestDay(day) {
+    TR.guestDay = day;
+    const list = guestDayList(day); const told = list.filter(t => ['told', 'confirmed'].includes(guestState(t))).length;
+    const body = `<div class="tr-picks" id="gd_list">${list.length ? list.map(t => `<div class="tr-gd" data-gd="${t.id}"><div><b>${h(t.guest_names || 'Guest')}</b><span class="cell-sub">${t.kind === 'airport_departure' ? 'Departure' : 'Arrival'} · ${h(t.trip_time || '')} · ${h(t.flight || '')} · ${h(t.guest_phone || '')}</span></div><div class="tr-gd-act">${guestHtml(t)}</div></div>`).join('')
+      : '<div class="hint">No guest to confirm with this day (a phone, the flight and the time are needed).</div>'}</div>
+      <div class="hint">WhatsApp opens one guest at a time. ${told} of ${list.length} told.</div>`;
+    modal(`Confirm with guests · ${fmtDay(day)}`, 'The driver waits at the arrivals exit with a sign with their name', body, `<button class="btn btn-p" onclick="TransportUI.closeModal();TransportUI.render()">Done</button>`);
   }
   function sendDay(day) {
     const list = TR.trips.filter(t => t.trip_date === day && isAirport(t) && !t.payment_entry_id && !isDone(t) && !['cancelled', 'no_show'].includes(t.status) && !onHold(t))
@@ -1371,7 +1435,8 @@
     shiftWeek(n) { TR.week = GT.addDaysIso(TR.week, n); TR.filter = ['resend', 'tosend', 'missing'].includes(TR.filter) ? 'all' : TR.filter; render(); },
     send, sendDay, ask, askText, askedOn, needsInfo, tick, tickDay, openTrip, saveTrip, setStatus, openAddTransfer, saveTransfer,
     openTuktuk, openPlan, tukSet, tukMode, tap, untap, removeRun, removeTrip, planAdd, planStep, sendOrder, orderText,
-    openRuns, saveRuns, deleteRuns, payState, weekTotals, keepTrip, inWeek, pickFile, setExportDate, saveImport,
+    openRuns, saveRuns, deleteRuns, payState, weekTotals, keepTrip, inWeek,
+    confirmGuest, guestConfirmed, confirmText, guestState, guestHtml, openGuestDay, pickFile, setExportDate, saveImport,
     setRec(tab) { TR.view = 'reconcile'; TR.recTab = tab; render(); }, recFilter(f) { TR.recFilter = f; render(); },
     recMode(m) { TR.recMode = m; render(); },
     recShift(n) { const P = recPeriod(); TR.recAnchor = TR.recMode === 'month' ? GT.addDaysIso(n > 0 ? GT.addDaysIso(P.e, 1) : GT.addDaysIso(P.s, -1), 0) : GT.addDaysIso(P.s, 7 * n); render(); },

@@ -11,6 +11,8 @@
 --      paid: a free trip is owed and linked to a payment like any other.
 --      A trigger keeps charge = 'free' while a reason is set, so the Monday
 --      Guests import (which rewrites charge from the file) cannot undo it.
+--  1b · camp_trips.guest_notified_at / guest_confirmed_at / guest_told_snapshot —
+--      «Confirm with guest» (the guest gets the transfer details on WhatsApp).
 --  2 · camp_trips.added_by_local — true when the local manager added the trip
 --      from the ledger form («added by Nadith» in Transport).
 --  3 · camp_trip_add_own() — the local manager cannot insert into camp_trips
@@ -29,6 +31,12 @@
 
 alter table public.camp_trips add column if not exists free_reason text;
 alter table public.camp_trips add column if not exists added_by_local boolean not null default false;
+-- «Confirm with guest»: when the guest was sent the details of the transfer on WhatsApp, what
+-- he was told (so a later change shows «Changed — tell guest again»), and Francisco's tick
+-- when the guest replied that they are right.
+alter table public.camp_trips add column if not exists guest_notified_at timestamptz;
+alter table public.camp_trips add column if not exists guest_confirmed_at timestamptz;
+alter table public.camp_trips add column if not exists guest_told_snapshot jsonb;
 do $$ begin
   if not exists (select 1 from pg_constraint where conname = 'camp_trips_free_reason_check' and conrelid = 'public.camp_trips'::regclass) then
     alter table public.camp_trips add constraint camp_trips_free_reason_check
@@ -512,7 +520,7 @@ grant execute on function public.camp_transport_link_own(uuid, uuid[]) to authen
 -- ════════════════════════════════════════════════════════════════════════════
 --  Checks after running (SELECT only)
 -- ════════════════════════════════════════════════════════════════════════════
--- select column_name from information_schema.columns where table_name = 'camp_trips' and column_name in ('free_reason','added_by_local');   -- 2 rows
+-- select column_name from information_schema.columns where table_name = 'camp_trips' and column_name in ('free_reason','added_by_local','guest_notified_at','guest_confirmed_at','guest_told_snapshot');   -- 5 rows
 -- select proname, prosecdef from pg_proc where proname in ('camp_trip_add_own','camp_transport_link_own','camp_trips_free_keep');           -- 3 rows
 -- select has_function_privilege('anon', 'public.camp_trip_add_own(uuid, text, date, text, text, numeric, text, date)', 'execute');          -- false
 -- select tgname from pg_trigger where tgrelid = 'public.camp_trips'::regclass and not tgisinternal;                                         -- camp_trips_free_keep, camp_trips_guard

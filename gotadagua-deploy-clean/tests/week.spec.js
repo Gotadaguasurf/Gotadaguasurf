@@ -86,6 +86,9 @@ async function stub(page, opts = {}) {
       if (method === 'PATCH') { const t = st.trips.find(x => x.id === idEq); Object.assign(t, body); st.calls.push({ t: 'trip_update', id: idEq, body }); return json([t]); }
     }
     if (url.includes('/rest/v1/camp_transport_payments')) return json([]);
+    // The import refuses to save transfers at price 0 (13 Nov): the stub serves the airport prices of /prices.
+    if (url.includes('/rest/v1/pricing_catalog')) return json(slug === 'sri-lanka' && url.includes('category=eq.Transport') ? [['Airport → Surfcamp — Car', 21000], ['Airport → Surfcamp — Minivan', 26500], ['Airport → Surfcamp — Large Van', 29500], ['Surfcamp → Airport — Car', 20000], ['Surfcamp → Airport — Minivan', 25000], ['Surfcamp → Airport — Large Van', 28000]]
+      .map(([name, cost], i) => ({ id: `cat-${i}`, name, cost_per_guest: cost, currency: 'LKR', notes: '', linked_transport_preset_id: `p-${name.split(' — ')[0]}`, linked_camp_tab_id: null, picker_tab: 'airport', sort_order: i })) : []);
     if (url.includes('/rest/v1/rpc/camp_transport_autolink')) return json({});
     if (url.includes('/rest/v1/rpc/camp_trips_import')) { st.calls.push({ t: 'import', body }); return json({ inserted: body.p_trips.length, updated: 0, resend: 0, cancelled: 0, missing: 0, untouched: 0, guests: body.p_guests.length }); }
     if (url.includes('/rest/v1/bookings')) return json([]);
@@ -905,4 +908,28 @@ test('transfers: «Transfers booked» lists arrivals and departures apart, date 
   await expect(secs.nth(1).locator('.wk-booked').first()).toContainText('Sat 21 Nov');
   await expect(secs.nth(0)).not.toContainText('Beliz Kuyumcuoglu');                        // her departure is not an arrival
   expect(errors).toEqual([]);
+});
+
+test('transfers: a transfer with flight, time and phone has «Confirm with guest» and shows Guest told ✓ / Guest confirmed ✓ (drawn by Transport)', async ({ page }) => {
+  const trips = [
+    trip({ id: 'aaaaaaaa-0000-4000-8000-00000000a021', guest_names: 'Callum Downes', guest_phone: '+447000000003', trip_date: '2026-11-17', trip_time: '23:10', flight: 'UL504', booking_ref: '2026-4360' }),
+    trip({ id: 'aaaaaaaa-0000-4000-8000-00000000a022', guest_names: 'Emilia Faccenna', guest_phone: '+390000000001', trip_date: '2026-11-17', trip_time: null, booking_ref: '2026-5074' }),
+    trip({ id: 'aaaaaaaa-0000-4000-8000-00000000a023', guest_names: 'Told Already', guest_phone: '+390000000002', trip_date: '2026-11-18', trip_time: '10:00', flight: 'QR1', guest_notified_at: '2026-11-12T10:00:00Z',
+      guest_told_snapshot: { trip_date: '2026-11-18', trip_time: '08:00', flight: 'QR1', pickup_time: null, pax: 1 } }),
+  ];
+  const st = await openWeek(page, { trips });
+  await pick(page, 'Transfers', '2026-11-17');
+  const row = n => page.locator('.wk-view-transfers .wk-trip', { hasText: n }).first();
+  await expect(row('Emilia Faccenna').locator('button')).toHaveText('Ask guest for flight & time');   // missing flight: ask, not confirm
+  await expect(row('Emilia Faccenna').locator('[data-guest-send]')).toHaveCount(0);
+  await row('Callum Downes').locator('[data-guest-send]').click();
+  const url = await page.evaluate(() => window.__opened[window.__opened.length - 1]);
+  expect(url.startsWith('https://wa.me/447000000003?text=')).toBe(true);
+  expect(decodeURIComponent(url)).toContain('holding a sign with your name');
+  expect((await call(st, 'trip_update')).body.guest_notified_at).toBeTruthy();
+  await expect(row('Callum Downes').locator('[data-guest="told"] .badge')).toHaveText('Guest told ✓');
+  await row('Callum Downes').locator('[data-guest-ok]').click();
+  await expect(row('Callum Downes').locator('[data-guest="confirmed"] .badge')).toHaveText('Guest confirmed ✓');
+  await pick(page, 'Transfers', '2026-11-18');
+  await expect(row('Told Already').locator('[data-guest="changed"] .badge')).toHaveText('Changed — tell guest again');   // told 08:00, now 10:00
 });

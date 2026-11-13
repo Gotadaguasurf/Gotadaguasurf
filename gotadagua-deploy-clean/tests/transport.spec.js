@@ -986,3 +986,95 @@ test('E10 / E7 / E18 — the review list explains itself, a misspelt driver name
   const chip = await page.evaluate(() => window.CAMP_CHECKS.find(c => c.id === 'transport-payment-unlinked').run({ ledger: S.ledger, location: 'sri-lanka', isLocal: false, today: '2026-11-13' }).text);
   expect(chip).toMatch(/^Transport payment not linked to trips · 3 · LKR\s125,000$/);
 });
+
+// ── Confirm the transfer with the GUEST (Miguel, 13 Nov) ───────────────────
+const guestWeek = () => [
+  trip({ id: A(11), guest_names: 'Lorena Marie Glas', guest_phone: '+491700000001', trip_time: '07:00', flight: 'QR658', booking_ref: '2026-4660' }),
+  trip({ id: A(12), guest_names: 'Beliz Kuyumcuoglu, Deniz Kuyumcuoglu', guest_phone: '+491700000002', pax: 2, booking_ref: '2026-4070' }),                 // no flight, no time
+  trip({ id: A(13), guest_names: 'Callum Downes', guest_phone: '+447000000003', trip_time: '12:35', flight: 'UL504', booking_ref: '2026-4360' }),
+  trip({ id: A(14), guest_names: 'No Phone Guest', trip_time: '15:00', flight: 'EK650', booking_ref: '2026-1' }),
+  trip({ id: A(15), kind: 'airport_departure', trip_date: '2026-11-21', trip_time: '12:55', pickup_time: '08:30', flight: 'UL503', guest_names: 'Callum Downes', guest_phone: '+447000000003', expected_price: 20000, booking_ref: '2026-4360' }),
+];
+const opened = async (page, i = 0) => { const u = await page.evaluate(n => window.__opened[n], i); return { url: u, text: decodeURIComponent(u.split('?text=')[1]) }; };
+
+test('guest: «Confirm with guest» — the details and the sign with their name go to the guest on WhatsApp; Guest told ✓ → Guest confirmed ✓; a changed time asks to tell them again', async ({ page }) => {
+  const errors = collectFatalErrors(page);
+  const st = await openTab(page, { trips: guestWeek() });
+  await page.evaluate(() => TransportUI.shiftWeek(7));
+  const row = id => page.locator(`.tr-row[data-trip="${id}"]`);
+  // Flight and time known + a phone → Confirm. Missing flight → «Ask guest», never Confirm. No phone → neither.
+  await expect(row(A(11)).locator('[data-guest-send]')).toHaveText('Confirm with guest');
+  await expect(row(A(12)).locator('[data-guest-send]')).toHaveCount(0);
+  await expect(row(A(12)).locator('button:has-text("Ask guest for flight & time")')).toHaveCount(1);
+  await expect(row(A(14)).locator('[data-guest-send]')).toHaveCount(0);
+  await page.evaluate(id => TransportUI.confirmGuest(id), A(12));                    // even when called directly it asks instead
+  expect((await opened(page)).text).toContain('Could you send us your flight number');
+  expect(st.calls.filter(c => c.t === 'trip_update').length).toBe(0);
+  // Arrival.
+  await row(A(11)).locator('[data-guest-send]').click();
+  const m = await opened(page, 1);
+  expect(m.url.startsWith('https://wa.me/491700000001?text=')).toBe(true);
+  expect(m.text).toBe([
+    "Hi Lorena! I'm Francisco, the manager of Gota Dagua Surf Camp Sri Lanka.",
+    'Your airport pick-up is booked:', 'Date: Sat 14 Nov', 'Flight: QR658', 'Landing: 07:00', 'Persons: 1',
+    'Our driver will be waiting for you at the arrivals exit of Colombo airport, holding a sign with your name.',
+    'Please reply to confirm these details are correct, or tell us what changed.', 'See you soon!'].join('\n'));
+  expect(m.url).toContain(encodeURIComponent('holding a sign with your name'));
+  expect(/\p{Extended_Pictographic}/u.test(m.text)).toBe(false);
+  const told = (await call(st, 'trip_update')).body;
+  expect(told.guest_notified_at).toBeTruthy();
+  expect(told).toMatchObject({ guest_confirmed_at: null, guest_told_snapshot: { trip_date: '2026-11-14', trip_time: '07:00', flight: 'QR658', pickup_time: null, pax: 1 } });
+  await expect(row(A(11)).locator('[data-guest="told"] .badge')).toHaveText('Guest told ✓');
+  // The guest replies → one manual tick.
+  await row(A(11)).locator('[data-guest-ok]').click();
+  expect((await call(st, 'trip_update', 2)).body.guest_confirmed_at).toBeTruthy();
+  await expect(row(A(11)).locator('[data-guest="confirmed"] .badge')).toHaveText('Guest confirmed ✓');
+  // The time changes afterwards (typed here; a re-import changes the same fields) → tell the guest again.
+  await row(A(11)).locator('.tr-line1 b').click();
+  await page.fill('#tr_t', '09:10');
+  await page.click('#trOv .btn-p');
+  await call(st, 'trip_update', 3);
+  await expect(row(A(11)).locator('[data-guest="changed"] .badge')).toHaveText('Changed — tell guest again');
+  await row(A(11)).locator('[data-guest-send]').click();
+  expect((await opened(page, 2)).text).toContain('Landing: 09:10');
+  await expect(row(A(11)).locator('[data-guest="told"]')).toHaveCount(1);          // told again; the old confirmation is gone
+  expect((await call(st, 'trip_update', 4)).body.guest_confirmed_at).toBe(null);
+  // Departure: flight time and, when set, the pick-up at the camp.
+  await row(A(15)).locator('[data-guest-send]').click();
+  expect((await opened(page, 3)).text).toBe([
+    "Hi Callum! I'm Francisco, the manager of Gota Dagua Surf Camp Sri Lanka.",
+    'Your drop-off at Colombo airport is booked:', 'Date: Sat 21 Nov', 'Flight: UL503', 'Flight time: 12:55', 'Pick-up at the camp: 08:30', 'Persons: 1',
+    'Please reply to confirm these details are correct, or tell us what changed.', 'Thank you!'].join('\n'));
+  expect(await page.evaluate(() => TransportUI.confirmText({ kind: 'airport_departure', trip_date: '2026-11-21', trip_time: '12:55', flight: 'UL503', guest_names: 'Callum', pax: 2 }))).not.toContain('Pick-up at the camp');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  expect(errors).toEqual([]);
+});
+
+test('guest: «Confirm with all guests of the day» — one Send per guest, a ✓ once sent', async ({ page }) => {
+  const st = await openTab(page, { trips: guestWeek() });
+  await page.evaluate(() => TransportUI.shiftWeek(7));
+  const sat = page.locator('.tr-day', { hasText: 'Sat 14 Nov' });
+  await expect(sat.locator('button:has-text("Send the whole day")')).toHaveCount(1);
+  await sat.locator('[data-guest-day]').click();
+  await expect(page.locator('#trOv .mhdr-title')).toHaveText('Confirm with guests · Sat 14 Nov');
+  await expect(page.locator('#gd_list .tr-gd')).toHaveCount(2);                     // Lorena and Callum; Beliz (no flight) and the guest without a phone are not listed
+  await expect(page.locator('#trOv')).toContainText('0 of 2 told');
+  await page.locator(`.tr-gd[data-gd="${A(13)}"] [data-guest-send]`).click();
+  await call(st, 'trip_update');
+  expect((await opened(page)).url.startsWith('https://wa.me/447000000003?text=')).toBe(true);
+  await expect(page.locator(`.tr-gd[data-gd="${A(13)}"] .badge`)).toHaveText('Guest told ✓');
+  await expect(page.locator('#trOv')).toContainText('1 of 2 told');
+  await expect(page.locator(`.tr-gd[data-gd="${A(11)}"] [data-guest-send]`)).toHaveCount(1);
+  await expect(page.locator('#trOv .btn-p')).toHaveCount(1);
+});
+
+test('guest: before the database update the states still show on this screen (nothing else is sent to the server)', async ({ page }) => {
+  const st = await openTab(page, { trips: guestWeek() });
+  await page.route(/\/rest\/v1\/camp_trips\?id=eq\./, r => r.request().method() === 'PATCH' && /guest_notified_at|guest_confirmed_at/.test(r.request().postData() || '')
+    ? r.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ code: 'PGRST204', message: "Could not find the 'guest_notified_at' column of 'camp_trips' in the schema cache" }) }) : r.fallback());
+  await page.evaluate(() => TransportUI.shiftWeek(7));
+  await page.locator(`.tr-row[data-trip="${A(11)}"] [data-guest-send]`).click();
+  await expect(page.locator(`.tr-row[data-trip="${A(11)}"] [data-guest="told"]`)).toHaveCount(1);
+  await expect(page.locator('#toast')).not.toHaveClass(/err/);
+  expect(st.calls.filter(c => c.t === 'trip_update').length).toBe(0);
+});

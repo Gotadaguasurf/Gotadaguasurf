@@ -1040,6 +1040,8 @@
   // ── Transfers ───────────────────────────────────────────────────────────
   // «Ask guest for flight & time» — same action as in Transport (TransportUI.ask).
   function askBtn(t) {
+    // Flight and time known → «Confirm with guest» and its states, drawn by Transport (TransportUI.guestHtml).
+    if (window.TransportUI && TransportUI.guestHtml && TransportUI.needsInfo && !TransportUI.needsInfo(t)) return TransportUI.guestHtml(t);
     const T = window.TransportUI; if (!T || !T.needsInfo || !T.needsInfo(t) || t.payment_entry_id || ['cancelled', 'no_show'].includes(t.status)) return '';
     const what = !t.flight && !t.trip_time ? 'flight & time' : !t.flight ? 'flight' : 'time';
     const on = T.askedOn(t.id);
