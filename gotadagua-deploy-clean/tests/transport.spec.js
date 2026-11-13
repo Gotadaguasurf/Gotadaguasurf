@@ -421,6 +421,17 @@ test('reconcile: «Week reconciled» when every done trip is paid and every paym
   f.links = f.links.filter(l => l.state === 'matched'); f.ledger = f.ledger.filter(e => f.links.some(l => l.entry_id === e.id));
   await openTab(page, f);
   await page.click('button.pill:has-text("Reconcile")');
+  // «Later Today» (22:00) hasn't happened: not reconciled yet, only «so far so good».
+  await expect(page.locator('.tr-reconciled')).toHaveCount(0);
+  await expect(page.locator('.tr-sofar')).toContainText('So far so good');
+});
+
+test('reconcile: «Week reconciled» once every trip of the week is done and paid (nothing still to come)', async ({ page }) => {
+  const f = recFixture();
+  f.trips = f.trips.filter(t => ['aaaaaaaa-0000-4000-8000-00000000b001', 'aaaaaaaa-0000-4000-8000-00000000b005', 'aaaaaaaa-0000-4000-8000-00000000b004', 'aaaaaaaa-0000-4000-8000-00000000b007'].includes(t.id));
+  f.links = f.links.filter(l => l.state === 'matched'); f.ledger = f.ledger.filter(e => f.links.some(l => l.entry_id === e.id));
+  await openTab(page, f);
+  await page.click('button.pill:has-text("Reconcile")');
   await expect(page.locator('.tr-reconciled')).toContainText('Week reconciled');
 });
 
@@ -1115,4 +1126,15 @@ test('trips: a Confirmed tick can be undone (Undo ✓ → Sent), and the sheet o
   await row.locator('.tr-line1 b').click();
   await page.click('#trOv [data-undo]');
   expect((await call(st, 'trip_update', 2)).body).toMatchObject({ status: 'planned' });
+});
+
+test('reconcile: upcoming trips are never green, and an all-upcoming week is not «reconciled»', async ({ page }) => {
+  await openTab(page, { trips: [
+    trip({ id: 'aaaaaaaa-0000-4000-8000-00000000c001', guest_names: 'Future Guest', trip_date: '2026-11-17', trip_time: '09:00' }),
+  ] });
+  await page.evaluate(() => { TransportUI.setRec('airport'); TransportUI.recShift(1); });
+  await expect(page.locator('tr[data-trip="aaaaaaaa-0000-4000-8000-00000000c001"] .tr-ok-y')).toHaveCount(0);
+  await expect(page.locator('tr[data-trip="aaaaaaaa-0000-4000-8000-00000000c001"] .tr-ok-u')).toHaveCount(1);
+  await expect(page.locator('.tr-reconciled')).toHaveCount(0);
+  await expect(page.locator('.tr-sofar')).toContainText('still to come');
 });

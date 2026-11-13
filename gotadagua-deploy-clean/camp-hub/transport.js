@@ -1152,8 +1152,16 @@
       table = rows.length ? `<table class="tr-tbl"><thead><tr><th></th><th>Date</th><th>Trip</th><th>Booked</th><th>Done</th><th>Paid</th><th>Status</th><th></th></tr></thead><tbody>${rows.map(recRow).join('')}</tbody></table>`
         : `<div class="card-body hint">${list.length ? 'Nothing here with this filter.' : 'No trips in this period.'}</div>`;
     }
-    const reconciled = !D.todo && (D.air.length + D.tuk.length + D.pays.length) > 0;
-    return filters + kpis + (reconciled ? `<div class="status-msg status-ok tr-reconciled">${ic('check-circle')} ${TR.recMode === 'week' ? 'Week' : 'Month'} reconciled — every trip done is paid and every payment has its trips.</div>` : '') +
+    // «Reconciled» only once there is something done and nothing left to come (13 Nov).
+    const allT = D.air.concat(D.tuk);
+    const nDone = allT.filter(t => ['matched', 'extra'].includes(reconcileStatus(t))).length;
+    const nUp = allT.filter(t => reconcileStatus(t) === 'upcoming').length;
+    const per = TR.recMode === 'week' ? 'Week' : 'Month';
+    const banner = D.todo ? ''
+      : nDone && !nUp ? `<div class="status-msg status-ok tr-reconciled">${ic('check-circle')} ${per} reconciled — every trip done is paid and every payment has its trips.</div>`
+      : nDone && nUp ? `<div class="status-msg status-info tr-sofar">${ic('clock')} So far so good — every trip done is paid · ${nUp} still to come.</div>`
+      : nUp ? `<div class="status-msg status-info tr-sofar">${ic('clock')} Nothing to reconcile yet — ${nUp} ${nUp === 1 ? 'trip' : 'trips'} still to come.</div>` : '';
+    return filters + kpis + banner +
       `<div class="card tr-rec"><div class="card-hdr"><div><div class="card-title">Reconcile ${P.label}</div><div class="card-hint">${hint}</div></div>
         <button class="btn btn-s btn-sm" id="trPayBtn" onclick="TransportUI.openPay()" title="Nadith pays the drivers in the Ledger. Use this only when you pay a driver yourself.">${ic('euro')} Pay a driver</button></div>
       <div class="card-body hq-filters tr-rec-pills"><div class="pills">${viewPills}</div><div class="pills tr-rec-right">${right}</div></div>
@@ -1174,6 +1182,14 @@
     const e = ledgerById(t.payment_entry_id); const by = linkedByLabel(linkOf(t.payment_entry_id));
     return e ? `${fmtShort(e.date)} · ${money(e.amountLocal)}<span class="cell-sub">${h(e.description || '')}${by ? ` · ${h(by)}` : ''}</span>` : `<span class="hint">payment${by ? ` · ${h(by)}` : ''}</span>`;
   }
+  // Green tick only when the trip is really reconciled (done and paid). Miguel, 13 Nov: «se ainda
+  // não aconteceram porque estão a verde?» — upcoming = clock, nothing to do = dash, problem = alert.
+  function recIcon(s) {
+    if (s === 'matched' || s === 'extra') return `<span class="tr-ok-y" title="Done and paid">${ic('check-circle')}</span>`;
+    if (REC_TODO.has(s)) return `<span class="tr-ok-n" title="To do">${ic('alert')}</span>`;
+    if (s === 'upcoming') return `<span class="tr-ok-u" title="Not happened yet">${ic('clock')}</span>`;
+    return `<span class="tr-ok-u" title="Nothing to pay">${ic('minus')}</span>`;
+  }
   function recRow(t) {
     const s = reconcileStatus(t); const [label, cls] = REC_LABEL[s];
     const ok = !REC_TODO.has(s);
@@ -1185,7 +1201,7 @@
     const done = t.status === 'no_show' ? 'No-show' : t.status === 'cancelled' ? 'Cancelled' : isDone(t) ? (t.status === 'done' ? 'Done' : 'Done <span class="cell-sub">time passed</span>') : '<span class="hint">not yet</span>';
     const act = s === 'owed' ? `<button class="btn btn-s btn-sm" onclick="TransportUI.linkTrip('${t.id}')">${ic('link')} Link</button>`
       : t.payment_entry_id ? `<button class="btn btn-s btn-sm" onclick="TransportUI.unlinkTrip('${t.id}')">Unlink</button>` : '';
-    return `<tr data-rec="${s}" data-trip="${t.id}"><td class="tr-ok">${ok ? `<span class="tr-ok-y">${ic('check-circle')}</span>` : `<span class="tr-ok-n">${ic('alert')}</span>`}</td>
+    return `<tr data-rec="${s}" data-trip="${t.id}"><td class="tr-ok">${recIcon(s)}</td>
       <td class="tr-nowrap tr-c-date">${fmtShort(t.trip_date)}</td><td class="tr-c-what">${what}</td><td class="tr-c-k" data-l="Booked">${booked}</td><td class="tr-c-k" data-l="Done">${done}</td><td class="tr-c-k" data-l="Paid">${paidCell(t)}</td>
       <td class="tr-c-st"><span class="badge ${cls}">${label}</span></td><td class="tr-act">${act}</td></tr>`;
   }
