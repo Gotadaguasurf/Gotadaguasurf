@@ -132,8 +132,8 @@ test('sl ui: Overview labels say what the number is (camp / HQ, transport in rev
 
 test('sl ui: Weekly P&L calls the last column «Net this week», not cash', async ({ page }) => {
   const { errs } = await boot(page, { width: 1440, height: 900 });
-  await page.evaluate(() => showPage('weekly'));
-  const heads = await page.evaluate(() => [...document.querySelectorAll('#weeklyContent thead th')].map(th => th.innerText.trim().toLowerCase()));
+  await page.evaluate(() => { showPage('weekly'); wplSetView('cash'); }); // the cash-control table of the page
+  const heads = await page.evaluate(() => [...document.querySelectorAll('#wplCashTable thead th')].map(th => th.innerText.trim().toLowerCase()));
   expect(heads).toContain('net this week');
   expect(heads.join('|')).not.toMatch(/cash left/);
   expect(heads).toContain('drinks sales');

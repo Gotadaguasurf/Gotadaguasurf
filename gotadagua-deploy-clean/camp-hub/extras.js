@@ -449,7 +449,9 @@ window.CAMP_CHECKS = window.CAMP_CHECKS || [];
     injectStyles();
     const html = weekCardHtml();
     if (old) { old.outerHTML = html; return; }
-    el.insertAdjacentHTML('afterbegin', html);
+    // Under the week's P&L and the chart when the page has a slot for it.
+    const slot = document.getElementById('wplExtrasSlot');
+    if (slot) slot.innerHTML = html; else el.insertAdjacentHTML('afterbegin', html);
   }
   // Called at the end of renderWeeklyPL() in index.html.
   window.campExtrasAfterWeekly = function () { try { renderWeekCard(); } catch (err) { console.warn('[extras] week card', err); } };
@@ -472,11 +474,11 @@ window.CAMP_CHECKS = window.CAMP_CHECKS || [];
 .ex-leave-row .num{font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:600}
 .ex-wk{margin-bottom:16px}
 .ex-wk-hdr{border-bottom:1px solid var(--border)}
-.ex-wk-body{padding:4px var(--card-pad,16px) 8px}
-.ex-wk-row{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:9px 0;border-bottom:1px solid var(--border);font-size:13.5px}
-.ex-wk-row:last-child{border-bottom:none}
-.ex-wk-k{color:var(--muted);flex:0 0 auto;min-width:84px}
-.ex-wk-v{text-align:right;font-weight:600;color:var(--navy);font-variant-numeric:tabular-nums;min-width:0;overflow-wrap:anywhere}
+.ex-wk-body{padding:12px var(--card-pad,16px) 14px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px 24px}
+.ex-wk-row{display:flex;flex-direction:column;gap:2px;font-size:13.5px;min-width:0}
+.ex-wk-k{color:var(--muted);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em}
+.ex-wk-v{font-weight:600;color:var(--navy);font-variant-numeric:tabular-nums;min-width:0;overflow-wrap:anywhere}
+@media (max-width:700px){.ex-wk-body{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 16px}}
 .ex-wk-sub{font-weight:500;color:var(--muted);font-size:12px;margin-top:2px}
 #exSalOv .modal{max-width:420px}
 .ex-sal-h{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:6px 0 4px}
