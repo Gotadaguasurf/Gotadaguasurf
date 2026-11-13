@@ -75,3 +75,7 @@
   .tr-rec-right { margin-left: 0; }
   .tr-tbl td.tr-act .row { flex-wrap: wrap; }
 }
+
+/* Trip sheet footer: up to five buttons wrap on phones instead of running off the left edge. */
+.tr-modal .mfooter { flex-wrap: wrap; justify-content: flex-end; }
+.tr-modal .mfooter .btn { flex: 0 1 auto; }
