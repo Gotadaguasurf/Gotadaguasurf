@@ -378,3 +378,28 @@ test('paylink: «Not in the list» before the database update (function missing)
   expect(st.calls.filter(c => c.t === 'link_own').length).toBe(0);
   expect(errors).toEqual([]);
 });
+
+test('paylink: the description fills itself from the ticks — «Dilan · 2 arrivals, 1 departure · 8–10 Nov» — unless he typed one', async ({ page }) => {
+  const st = await open(page, { trips: TRIPS().map(t => t.id === T(2) ? { ...t, driver_id: D.dilan } : t) });
+  await transportAirport(page);
+  const desc = page.locator('#qe_desc');
+  await picker(page).locator('.pl-row').nth(0).click();
+  await expect(desc).toHaveValue('Dilan · 1 arrival · 8 Nov');
+  await picker(page).locator('.pl-row').nth(1).click();
+  await picker(page).locator('.pl-row').nth(2).click();
+  await expect(desc).toHaveValue('Dilan · 2 arrivals, 1 departure · 8–10 Nov');
+  await picker(page).locator('.pl-row').nth(2).click();
+  await expect(desc).toHaveValue('Dilan · 2 arrivals · 8–9 Nov');
+  await page.click('[onclick="saveQuickExpense()"]');
+  await call(st, 'link_own');
+  expect(st.posted[0]).toMatchObject({ description: 'Dilan · 2 arrivals · 8–9 Nov', amount_local: 47500 });
+  // His own words are never replaced, and unticking everything clears only what the form wrote.
+  await transportAirport(page);
+  await picker(page).locator('.pl-row').nth(0).click();
+  await expect(desc).toHaveValue('Dilan · 1 departure · 10 Nov');
+  await picker(page).locator('.pl-row').nth(0).click();
+  await expect(desc).toHaveValue('');
+  await desc.fill('Dilan waiting time');
+  await picker(page).locator('.pl-row').nth(0).click();
+  await expect(desc).toHaveValue('Dilan waiting time');
+});

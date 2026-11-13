@@ -48,7 +48,7 @@ const NEXT_WEEK = () => [
 async function stub(page, opts = {}) {
   const st = {
     trips: (opts.trips || []).map(t => ({ ...t })), drivers: DRIVERS.map(d => ({ ...d })), links: (opts.links || []).map(l => ({ ...l })),
-    ledger: (opts.ledger || []).map(r => ({ ...r })), bookings: opts.bookings || [], calls: [],
+    ledger: (opts.ledger || []).map(r => ({ ...r })), bookings: opts.bookings || [], calls: [], noPrices: !!opts.noPrices,
   };
   const slug = opts.slug || 'sri-lanka';
   await page.route(/api\.frankfurter\.dev/, r => r.abort());
@@ -67,7 +67,7 @@ async function stub(page, opts = {}) {
       if (method === 'POST') { (Array.isArray(body) ? body : [body]).forEach(r => { const i = st.ledger.findIndex(x => x.id === r.id); if (i >= 0) st.ledger[i] = { ...st.ledger[i], ...r }; else st.ledger.push({ created_at: new Date().toISOString(), ...r }); }); return json([]); }
       return json([]);
     }
-    if (url.includes('/rest/v1/pricing_catalog')) return json(slug === 'sri-lanka' && url.includes('category=eq.Transport') ? CATALOG : []);
+    if (url.includes('/rest/v1/pricing_catalog')) return json(slug === 'sri-lanka' && url.includes('category=eq.Transport') && !st.noPrices ? CATALOG : []);
     if (url.includes('/rest/v1/camp_drivers')) {
       if (method === 'GET') return json(st.drivers);
       if (method === 'PATCH') { const d = st.drivers.find(x => x.id === idEq); Object.assign(d, body); st.calls.push({ t: 'driver_update', id: idEq, body }); return json([d]); }
@@ -90,7 +90,7 @@ async function stub(page, opts = {}) {
       return json(st.bookings.filter(b => b.location === 'Surf Camp Ahangama' && b.check_in_on >= '2026-11-14' && b.check_in_on <= '2026-11-20'));
     }
     if (url.includes('/rest/v1/rpc/camp_transport_autolink')) return json({});
-    if (url.includes('/rest/v1/rpc/camp_trips_import')) { st.calls.push({ t: 'import', body }); return json({ inserted: body.p_trips.length, updated: 0, resend: 0, cancelled: 0, missing: 0, untouched: 0, guests: body.p_guests.length }); }
+    if (url.includes('/rest/v1/rpc/camp_trips_import')) { st.calls.push({ t: 'import', body }); return json({ inserted: body.p_trips.length, updated: 0, resend: 0, cancelled: 0, missing: 0, untouched: 0, guests: body.p_guests.length, ...(opts.importResult || {}) }); }
     if (url.includes('/rest/v1/rpc/camp_transport_link_set')) {
       st.calls.push({ t: 'link_set', body });
       st.trips.forEach(t => { if (t.payment_entry_id === body.p_entry) t.payment_entry_id = null; });
@@ -470,7 +470,11 @@ test('pay a driver: ticked trips prefill the amount; a difference needs a reason
     trip({ id: 'aaaaaaaa-0000-4000-8000-00000000c004', kind: 'other', route: 'Yala Safari', purpose: 'tour', tour_name: 'Yala Safari', trip_date: '2026-11-07', expected_price: 0, status: 'done', source: 'manual' }),
   ];
   const st = await openTab(page, { trips: trips.slice(0, 3) });
-  await page.click('button:has-text("Pay a driver")');
+  // Nadith is the payer: «Pay a driver» is no longer in the header, it sits behind Reconcile (secondary).
+  await expect(page.locator('.tr-actions button:has-text("Pay a driver")')).toHaveCount(0);
+  await page.click('button.pill:has-text("Reconcile")');
+  await expect(page.locator('#trPayBtn')).toHaveClass(/btn-s/);
+  await page.click('#trPayBtn');
   await page.click('#trOv .tr-pick-btn:has-text("Dilan")');
   await expect(page.locator('#py_amt')).toHaveValue('63000');
   await expect(page.locator('#py_save')).toBeEnabled();
@@ -794,6 +798,7 @@ test('drivers: «Tuk-tuk orders to» — the order goes to that contact, else to
   const upd = await call(st, 'driver_update');
   expect(upd.id).toBe(D.nadith);
   expect(upd.body.default_for.sort()).toEqual(['transfers_contact', 'tuktuk_contact']);
+  await expect(page.locator('#toast')).toHaveText('Drivers saved');
   await page.evaluate(() => TransportUI.openPlan());
   await expect(page.locator('#tk_send')).toHaveText('Send order to Nadith');
   await page.click('#tk_send');
@@ -861,4 +866,123 @@ test('local view: Nadith still has no Transport tab and none of the new Transpor
   await open(page, { query: '&view=local', ...weekFixture() });
   await expect(page.locator('.ntab[data-page="transport"]:visible, .ntab-m[data-page="transport"]:visible')).toHaveCount(0);
   expect(await page.evaluate(() => { TransportUI.openPlan && 0; return document.getElementById('transportRoot').innerHTML; })).toBe('');
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Scenario fixes (sl_design/transport_scenarios.md), named after their ids.
+//  The database side of each (import, automatic link) is checked in PGlite:
+//  scratchpad/tv2/sql_check_v2.mjs.
+// ════════════════════════════════════════════════════════════════════════════
+const A = n => `aaaaaaaa-0000-4000-8000-00000000d${String(n).padStart(3, '0')}`;
+const nextWeekFlags = () => [
+  trip({ id: A(1), guest_names: 'Callum Downes', trip_time: '12:35', flight: 'UL504', booking_ref: '2026-4360', import_key: 'bl:2026-4360:arr' }),
+  trip({ id: A(2), guest_names: 'Maximilian Ehrler', trip_time: '08:20', flight: 'QR664', booking_ref: '2026-4936', import_key: 'bl:2026-4936:arr', missing_since: '2026-11-13' }),                                  // A6: booking gone from the file
+  trip({ id: A(3), guest_names: 'Lorena Marie Glas', trip_time: '07:00', flight: 'QR658', booking_ref: '2026-4660', import_key: 'bl:2026-4660:arr', missing_since: '2026-11-13', import_flags: ['transfer removed in Bookinglayer — cancel it?'] }),   // A7
+  trip({ id: A(4), guest_names: 'Emilia Faccenna', trip_date: '2026-11-17', trip_time: '02:45', flight: 'EK650', booking_ref: '2026-5100', import_key: 'bl:2026-5100:arr', import_flags: ['night arrival: lands 02:45 on Tue 17 Nov, driver leaves camp Mon 16 Nov evening — confirm the night'] }),   // A10
+  trip({ id: A(5), kind: 'airport_departure', trip_date: '2026-11-21', trip_time: '14:00', guest_names: 'Alicia Pohl', booking_ref: '2026-4155', import_key: 'bl:2026-4155:dep', expected_price: 20000,
+    import_flags: ['guest says: «Don\'t need airport transfer, I\'ll arrive a day earlier» — check if this transfer is still needed'] }),                                                                                  // A11
+  trip({ id: A(6), kind: 'airport_departure', trip_date: '2026-11-21', trip_time: '12:55', flight: 'UL503', guest_names: 'Callum Downes', booking_ref: '2026-4360', import_key: 'bl:2026-4360:dep', expected_price: 20000 }),
+];
+
+test('A6 / A7 — a trip whose booking or transfer left the file is flagged on the day list and held back from «Send the whole day» until «Still needed»', async ({ page }) => {
+  const st = await openTab(page, { trips: nextWeekFlags() });
+  await page.evaluate(() => TransportUI.shiftWeek(7));
+  const row = id => page.locator(`.tr-row[data-trip="${id}"]`);
+  await expect(row(A(2)).locator('[data-flag]')).toHaveText('Not in the latest Bookinglayer file');
+  await expect(row(A(3)).locator('[data-flag]')).toHaveText('Transfer removed in Bookinglayer — cancel it, or keep it if it is still needed');
+  await expect(row(A(1)).locator('[data-flag]')).toHaveCount(0);
+  await expect(page.locator('.tr-strip')).toContainText('2 not in the latest Bookinglayer file');
+  // Sat 14 Nov has three arrivals; only Callum goes to the driver, so there is no «whole day» button and the day send carries him alone.
+  const sat = page.locator('.tr-day', { hasText: 'Sat 14 Nov' });
+  await expect(sat.locator('button:has-text("Send the whole day")')).toHaveCount(0);
+  await page.evaluate(() => TransportUI.sendDay('2026-11-14'));
+  let text = decodeURIComponent((await page.evaluate(() => window.__opened[0])).split('?text=')[1]);
+  expect(text).toContain('Callum Downes');
+  expect(text).not.toContain('Maximilian Ehrler');
+  expect(text).not.toContain('Lorena Marie Glas');
+  await page.evaluate(() => TransportUI.tickDay('2026-11-14'));
+  await call(st, 'trip_update', 1);
+  await page.waitForTimeout(200);
+  expect(st.calls.filter(c => c.t === 'trip_update').map(c => c.id)).toEqual([A(1)]);          // «Sent ✓ all» never ticks a held trip
+  // Francisco checked with the guest: «Still needed» clears the flag and the trip goes out again.
+  await row(A(3)).locator('.tr-line1 b').click();
+  await page.click('#tr_keep');
+  expect((await call(st, 'trip_update', 2)).body).toEqual({ missing_since: null, import_flags: [] });
+  await expect(row(A(3)).locator('[data-flag]')).toHaveCount(0);
+  await page.evaluate(() => { window.__opened.length = 0; TransportUI.sendDay('2026-11-14'); });
+  text = decodeURIComponent((await page.evaluate(() => window.__opened[0])).split('?text=')[1]);
+  expect(text).toContain('Lorena Marie Glas');
+  expect(text).not.toContain('Maximilian Ehrler');
+});
+
+test('A6 — the import sends «preset» for the real kind of file and the refs still in it; the result line says what to check', async ({ page }) => {
+  const st = await openTab(page, { importResult: { missing: 2, replaced: 1 } });
+  await page.click('button.pill:has-text("Next week")');
+  await page.setInputFiles('#trGuestsFile', GUESTS_CSV);
+  await page.click('#trImportSave');
+  const imp = (await call(st, 'import')).body;
+  expect(imp.p_is_preset).toBe(true);
+  expect(imp.p_refs_present.length).toBe(16);
+  await expect(page.locator('.status-msg.status-ok')).toContainText('2 not in this file — check them · 1 regrouped');
+});
+
+test('A10 / A11 — a night arrival and «guest says don\'t need» show as one amber line on the day list', async ({ page }) => {
+  await openTab(page, { trips: nextWeekFlags() });
+  await page.evaluate(() => TransportUI.shiftWeek(7));
+  const row = id => page.locator(`.tr-row[data-trip="${id}"]`);
+  await expect(row(A(4)).locator('[data-flag]')).toHaveText('Night arrival — the driver leaves the evening before (Mon 16 Nov)');
+  await expect(row(A(5)).locator('[data-flag]')).toHaveText('Guest says: «Don\'t need airport transfer, I\'ll arrive a day earlier» — still needed?');
+  await expect(row(A(6)).locator('[data-flag]')).toHaveCount(0);
+  expect(await row(A(5)).locator('[data-flag]').evaluate(el => getComputedStyle(el).color)).toBe('rgb(154, 103, 0)');   // amber
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+});
+
+test('A13 — an import while the prices have not loaded never saves trips at 0', async ({ page }) => {
+  const st = await openTab(page);
+  await page.click('button.pill:has-text("Next week")');
+  st.noPrices = true;
+  await page.evaluate(() => { transportPresets = { airport: [], tuktuk: [], surf: [], tours: [] }; });   // a slow phone: /prices not in yet
+  await page.setInputFiles('#trGuestsFile', GUESTS_CSV);
+  await expect(page.locator('.tr-noprice')).toContainText('6 transfers have no price yet');
+  await page.click('#trImportSave');
+  await expect(page.locator('#toast')).toHaveText('The transfer prices have not loaded — nothing saved. Check the connection and try again.');
+  expect(st.calls.filter(c => c.t === 'import').length).toBe(0);
+  // The prices arrive: the same Save now works, with real prices.
+  st.noPrices = false;
+  await page.click('#trImportSave');
+  const imp = (await call(st, 'import')).body;
+  expect(imp.p_trips.every(t => t.expected_price > 0)).toBe(true);
+  expect(imp.p_trips.find(t => t.key === 'bl:2026-4660:arr').expected_price).toBe(21000);
+});
+
+test('F2 — Reconcile uses the same week as Trips: the closing-Saturday departures belong to the week that ends', async ({ page }) => {
+  await openTab(page, { trips: nextWeekFlags() });
+  await page.evaluate(() => TransportUI.shiftWeek(7));                               // Trips, week 14–20 Nov
+  const inTrips = await page.locator('.tr-row[data-trip]').evaluateAll(els => els.map(e => e.dataset.trip).sort());
+  expect(inTrips).toEqual([A(1), A(2), A(3), A(4), A(5), A(6)]);                     // with the two Sat 21 departures
+  await page.evaluate(() => { TransportUI._state.recAnchor = '2026-11-14'; TransportUI.recMode('week'); TransportUI.setRec('airport'); });
+  const inRec = await page.locator('tr[data-trip]').evaluateAll(els => els.map(e => e.dataset.trip).sort());
+  expect(inRec).toEqual(inTrips);
+  await page.evaluate(() => { TransportUI._state.recAnchor = '2026-11-21'; TransportUI.render(); });
+  await expect(page.locator('tr[data-trip]')).toHaveCount(0);                        // week 21–27 does not count them again
+});
+
+test('E10 / E7 / E18 — the review list explains itself, a misspelt driver name still raises the chip, and «Owed to drivers» sits on top', async ({ page }) => {
+  const fx = weekFixture();
+  const P5 = 'bbbbbbbb-0000-4000-8000-000000000005', P6 = 'bbbbbbbb-0000-4000-8000-000000000006', P7 = 'bbbbbbbb-0000-4000-8000-000000000007';
+  fx.ledger.push(ledgerRow(P5, 'Dilan and Nishantha', 41000), ledgerRow(P6, 'Dilan 42000', 42000), ledgerRow(P7, 'Dylan 42000', 42000), ledgerRow('bbbbbbbb-0000-4000-8000-000000000008', 'Fuel for scooter', 1500));
+  fx.links.push({ entry_id: P5, location_id: LOC, driver_id: null, entry_amount: 41000, trips_amount: 0, trips_count: 0, state: 'review', reason: 'two drivers named', linked_by: 'auto' },
+    { entry_id: P6, location_id: LOC, driver_id: D.dilan, entry_amount: 42000, trips_amount: 0, trips_count: 0, state: 'review', reason: 'no exact match', linked_by: 'auto' });
+  await openTab(page, fx);
+  // One line on top: what is owed to each driver, and what needs a look.
+  expect(norm(await page.locator('#trOwed').innerText())).toBe('OWED TO DRIVERS Dilan LKR 47,500 Sampath LKR 1,500 2 payments to check');
+  await page.click('#trOwed');
+  await expect(page.locator('.tr-rec')).toBeVisible();
+  await page.evaluate(() => { TransportUI._state.recAnchor = '2026-11-12'; TransportUI.setRec('payments'); });
+  await expect(page.locator(`tr[data-pay="${P5}"]`)).toContainText('two drivers named in the description');   // E7
+  await expect(page.locator(`tr[data-pay="${P6}"]`)).toContainText('do not add up to this amount');            // E18: nothing stamped, to review
+  await expect(page.locator(`tr[data-pay="${P6}"]`)).toContainText('0 trips');
+  // E10: «Dylan 42000» has no link row yet (old database) — the chip still counts it; fuel is left alone.
+  const chip = await page.evaluate(() => window.CAMP_CHECKS.find(c => c.id === 'transport-payment-unlinked').run({ ledger: S.ledger, location: 'sri-lanka', isLocal: false, today: '2026-11-13' }).text);
+  expect(chip).toMatch(/^Transport payment not linked to trips · 3 · LKR\s125,000$/);
 });

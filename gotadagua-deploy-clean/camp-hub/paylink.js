@@ -43,7 +43,7 @@
 
   const SLUG = (typeof __HUB_LOCATION_SLUG !== 'undefined') ? __HUB_LOCATION_SLUG : '';
   const P = { trips: null, drivers: [], loading: null, loadedAt: 0, error: '', picked: new Set(), prefill: null, visible: false,
-    extra: [], adding: false, draft: null, seq: 0 };   // extra = «not in the list» transfers waiting for the save
+    extra: [], adding: false, draft: null, seq: 0, autoDesc: null };   // extra = «not in the list» transfers waiting for the save
   const $ = id => document.getElementById(id);
   const h = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const num = n => Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
@@ -201,7 +201,30 @@
     }
   }
   function pickedSum() { return (P.trips || []).filter(t => P.picked.has(t.id)).reduce((s, t) => s + Number(t.expected_price || 0), 0) + P.extra.reduce((s, x) => s + Number(x.price || 0), 0); }
+  // The description writes itself from the ticks — «Dilan · 3 arrivals · 14–16 Nov» — unless he
+  // typed his own (Nadith used to type the name, the counts and the dates by hand).
+  const fmtShort = iso => { const [, m, d] = String(iso).split('-').map(Number); return `${d} ${MON[m - 1]}`; };
+  function autoDescription() {
+    const rows = (P.trips || []).filter(t => P.picked.has(t.id)).map(t => ({ kind: t.kind, date: t.trip_date, driver: t.driver_id || '' }))
+      .concat(P.extra.map(x => ({ kind: x.kind, date: x.date, driver: null })));
+    if (!rows.length) return '';
+    const fallback = (P.drivers.find(d => d.active !== false && (d.default_for || []).includes('airport')) || {}).id || '';
+    const ids = [...new Set(rows.map(r => r.driver === null ? fallback : r.driver))];
+    const who = ids.length === 1 && ids[0] ? ((P.drivers.find(d => d.id === ids[0]) || {}).name || 'Airport') : 'Airport';
+    const arr = rows.filter(r => r.kind !== 'airport_departure').length, dep = rows.length - arr;
+    const parts = []; if (arr) parts.push(`${arr} arrival${arr === 1 ? '' : 's'}`); if (dep) parts.push(`${dep} departure${dep === 1 ? '' : 's'}`);
+    const dates = rows.map(r => r.date).sort(); const a = dates[0], b = dates[dates.length - 1];
+    const range = a === b ? fmtShort(a) : (a.slice(0, 7) === b.slice(0, 7) ? `${Number(a.slice(8))}–${fmtShort(b)}` : `${fmtShort(a)} – ${fmtShort(b)}`);
+    return `${who} · ${parts.join(', ')} · ${range}`;
+  }
+  function applyDescription() {
+    const el = $('qe_desc'); if (!el) return;
+    if (el.value.trim() && el.value !== P.autoDesc) return;       // his own words stay
+    const text = autoDescription();
+    el.value = text; P.autoDesc = text || null;
+  }
   function applyAmount() {
+    applyDescription();
     const el = $('qe_amount'); if (!el) return;
     const sum = pickedSum();
     if ((P.picked.size || P.extra.length) && sum > 0) { el.value = String(sum); P.prefill = sum; }
@@ -241,7 +264,7 @@
     try {
       if (!P.visible || (!P.picked.size && !P.extra.length)) return null;
       const ids = [...P.picked]; const extra = P.extra.slice(); const day = (payload && payload.date) || entryDate();
-      P.picked.clear(); P.extra = []; P.adding = false; P.draft = null; P.prefill = null;
+      P.picked.clear(); P.extra = []; P.adding = false; P.draft = null; P.prefill = null; P.autoDesc = null;
       if (!payload || payload.type !== 'expense' || payload.category !== 'Transport' || payload.linkedItem !== PAYLINK_ITEM) return null;
       const c = client(); if (!c) throw new Error('Not connected');
       const timed = call => Promise.race([Promise.resolve(call), new Promise((_, no) => setTimeout(() => no(new Error('timeout')), PAYLINK_RPC_TIMEOUT_MS))]);

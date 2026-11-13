@@ -19,6 +19,13 @@
 .tr-main { min-width: 0; }
 .tr-line1 { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .tr-resend { margin-top: 6px; }
+.tr-flagline { margin-top: 6px; font-size: 13px; line-height: 1.4; color: var(--amber); font-weight: 600; }
+.tr-flagline .ic { width: 14px; height: 14px; vertical-align: -2px; }
+#transportRoot .tr-owed { display: flex; flex-wrap: wrap; align-items: center; gap: 6px var(--sp-4); width: 100%; margin-top: var(--sp-3); padding: var(--sp-3) var(--sp-4); border: 1px solid var(--border); border-radius: var(--r); background: var(--surface); font: inherit; font-size: 14px; color: var(--ink); text-align: left; cursor: pointer; }
+#transportRoot .tr-owed:hover { border-color: var(--border-2); }
+.tr-owed-l { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.tr-owed-d b { margin-left: 4px; }
+.tr-owed-chk { color: var(--amber); font-weight: 600; }
 .tr-amber { color: var(--amber); }
 .tr-side { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
 .tr-btns { display: flex; gap: 6px; }
