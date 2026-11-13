@@ -9592,7 +9592,6 @@ const WPL_REALIZED=['paid','confirmed','deposit paid','deposit_paid'];
 const wplEuro=n=>{const v=Math.round(Number(n||0));return (v<0?'−':'')+'€'+Math.abs(v).toLocaleString('en-US');};
 const wplSigned=n=>{const v=Math.round(Number(n||0));return (v<0?'−':'+')+'€'+Math.abs(v).toLocaleString('en-US');};
 const wplPct=(a,b)=>b>0?Math.round(100*a/b)+'%':'—';
-const wplShort=iso=>{const d=new Date(iso+'T00:00:00');return d.getDate()+' '+d.toLocaleDateString('en-GB',{month:'short'});};
 // «7–13 Nov 2026», «31 Oct – 6 Nov 2026»
 function wplRange(ws){const we=addDays(ws,6);const a=new Date(ws+'T00:00:00'),b=new Date(we+'T00:00:00');const m=d=>d.toLocaleDateString('en-GB',{month:'short'});
   return a.getMonth()===b.getMonth()?`${a.getDate()}–${b.getDate()} ${m(b)} ${b.getFullYear()}`:`${a.getDate()} ${m(a)} – ${b.getDate()} ${m(b)} ${b.getFullYear()}`;}
@@ -9811,7 +9810,7 @@ function wplCashTableHtml(M,sel){
       ${cells(r)}
       <td class="r" style="color:var(--red)">${r.guestDays?perGuestDayMetric(r.foodExp,r.guestDays):'—'}</td></tr>`;
   const futureRow=M.future.length?`<tr class="click wpl-future" id="wplFutureRow" onclick="wplToggleFuture()">
-      <td class="wpl-wk">Dated after this week<span class="cell-sub">${M.future.length} week${M.future.length===1?'':'s'} · paid in advance · ${WPL_FUTURE_OPEN?'hide':'show'}</span></td><td class="r">—</td>${cells(F)}<td class="r">—</td></tr>`:'';
+      <td class="wpl-wk">Dated after this week<span class="cell-sub">${M.future.length} week${M.future.length===1?'':'s'} paid in advance · ${WPL_FUTURE_OPEN?'hide':'show'}</span></td><td class="r">—</td>${cells(F)}<td class="r">—</td></tr>`:'';
   return `<div class="tbl-wrap"><table class="wpl-tbl" id="wplCashTable">
       <thead><tr>
         <th>Week</th>
