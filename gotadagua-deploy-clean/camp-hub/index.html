@@ -465,6 +465,7 @@ body{min-height:100dvh}
       <div class="ov-week-info" id="ovWeekInfo"></div>
       <span id="ovCsvLabel" style="display:none"></span>
     </div>
+    <div id="ovChecks"></div><!-- checks strip: camp-hub/cash-count.js -->
 
     <!-- ────── Performance ────── -->
     <section class="ov-section">
@@ -547,6 +548,7 @@ body{min-height:100dvh}
     </details>
 
     <div class="exp-kpis" id="expKpis"></div>
+    <div id="expChecks"></div><!-- checks strip: camp-hub/cash-count.js -->
 
     <div class="exp-quick" id="expQuickBar">
       <button class="exp-quick-btn qcat-camp" data-cat="Food" onclick="quickCategoryShortcut('Food')"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M4 6h13l-1.2 6H6z"/><path d="M4 6 3 3H1.5"/><circle cx="7.5" cy="16" r="1"/><circle cx="14.5" cy="16" r="1"/></svg></span><span>Food</span></span></button>
@@ -5949,6 +5951,7 @@ function renderOverview(){
       if (CAMP_ONLY_CARD_TITLES.has(txt)) card.style.display = 'none';
     });
   }
+  if(typeof campCashAfterRender==='function') campCashAfterRender('overview'); // camp-hub/cash-count.js
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -9017,6 +9020,7 @@ function renderExpenses(){
   if(tsel&&typeF!=='all'&&!['expense','transfer','income'].includes(typeF)){typeF='all';tsel.value='all';}
 
   let rows=[...baseRows];
+  if(window.__checkFilterIds instanceof Set) rows=(S.ledger||[]).filter(x=>window.__checkFilterIds.has(String(x.id))); // a check chip (cash-count.js) shows its rows, any period
   if(typeF!=='all')rows=rows.filter(x=>x.type===typeF);
   if(payF!=='all')rows=rows.filter(x=>ledgerPayFilterKeys(x).includes(payF));
   // Filtered to Cash or Bank Transfer, a row that moves both drawers (cash
@@ -9188,6 +9192,7 @@ function renderExpenses(){
     `;
   }
 
+  if(typeof campCashAfterRender==='function') campCashAfterRender('expenses'); // camp-hub/cash-count.js
   const el=document.getElementById('expTable');
   if(!el)return;
   const _fv=id=>document.getElementById(id)?.value||'';
@@ -9210,7 +9215,7 @@ function renderExpenses(){
         <td style="color:var(--muted);font-size:12px">${escapeHtml(r.vendor||'—')}</td>
         <td class="r ${ledgerAmtClass(r)}">${ledgerLocalAmtText(r,payWallet)}</td>
         <td class="r ${ledgerAmtClass(r)}">${ledgerSign(r,payWallet)}${euro(r.amount)}</td>
-        <td>${['hq_invoice','hq_transfer'].includes(String(r.sourceKind||'').toLowerCase())?`<div class="exp-table-actions" style="color:var(--muted-2)" title="Edit this in HQ">${AppShell.icon('lock')}</div>`:`<div class="exp-table-actions"><button class="btn btn-s btn-sm btn-icon" onclick="openEditLedger('${r.id}')" title="Edit">${AppShell.icon('edit')}</button><button class="btn btn-s btn-sm btn-icon icon-danger" onclick="delLedger('${r.id}')" title="Delete">${AppShell.icon('trash')}</button></div>`}</td>
+        <td>${(['hq_invoice','hq_transfer'].includes(String(r.sourceKind||'').toLowerCase())||(LOCAL_MANAGER_MODE&&String(r.sourceKind||'')==='cash_count'))?`<div class="exp-table-actions" style="color:var(--muted-2)" title="Edit this in HQ">${AppShell.icon('lock')}</div>`:`<div class="exp-table-actions"><button class="btn btn-s btn-sm btn-icon" onclick="openEditLedger('${r.id}')" title="Edit">${AppShell.icon('edit')}</button><button class="btn btn-s btn-sm btn-icon icon-danger" onclick="delLedger('${r.id}')" title="Delete">${AppShell.icon('trash')}</button></div>`}</td>
       </tr>`;
   const head=`<thead><tr><th>Date</th><th title="When the line was entered in the app">Added</th><th>Type</th><th>Category</th><th>Paid via</th><th>Linked item</th><th>Description</th><th>Vendor</th><th class="r">Local</th><th class="r">EUR</th><th class="r" style="width:88px">Actions</th></tr></thead>`;
   const upcomingEur=sum(upcoming,x=>Number(x.amount||0));
@@ -9979,6 +9984,7 @@ function applyLocalManagerMode(){
   if(!LOCAL_MANAGER_MODE) return;
   // Money from HQ arrives through the bank statement, not from him.
   const qeHq=document.querySelector('#qe_type option[value="transfer"]'); if(qeHq) qeHq.remove();
+  document.querySelectorAll('.exp-quick-btn[data-cat="Cash Float"]').forEach(b=>b.remove());
   document.querySelectorAll('.ntab, .ntab-m').forEach(btn=>{ btn.style.display = (btn.dataset.page==='pos' || btn.dataset.page==='expenses') ? '' : 'none'; });
   showPage('expenses');
 }
@@ -10401,4 +10407,5 @@ document.addEventListener('keydown', function(e){
 </script>
 
 
+<script src="/camp-hub/cash-count.js"></script>
 </body></html>
