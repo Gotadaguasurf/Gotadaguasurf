@@ -677,5 +677,7 @@ window.CAMP_CHECKS = window.CAMP_CHECKS || [];
     }, 250);
     setInterval(() => { try { renderAll(); } catch (_) {} }, 5 * 60 * 1000);
   }
+  // transport.js (and any other check) asks for a redraw when its data changes.
+  window.addEventListener('camp-checks-changed', () => { try { renderAll(); } catch (_) {} });
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 })();

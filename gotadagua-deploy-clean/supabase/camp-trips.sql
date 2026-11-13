@@ -268,8 +268,17 @@ begin
   if l.entry_id is not null and l.signature is not distinct from v_sig and l.state in ('matched','explained') then
     return 'unchanged';
   end if;
-  update public.camp_trips set payment_entry_id = null where payment_entry_id = p_entry;
   v_driver := public.camp_transport__driver_in(e.location_id, e.description);
+  -- Only driver payments are reconciled: a named driver, or a driver-run linked item.
+  -- Fuel, scooter, deliveries etc. (no driver, no such item) are left alone.
+  if v_driver is null and coalesce(e.linked_item, '') not in ('Airport', 'Transport Surf Lesson', 'Food Supply', 'Laundry') then
+    if l.entry_id is not null then
+      update public.camp_trips set payment_entry_id = null where payment_entry_id = p_entry;
+      delete from public.camp_transport_payments where entry_id = p_entry;
+    end if;
+    return 'not_driver';
+  end if;
+  update public.camp_trips set payment_entry_id = null where payment_entry_id = p_entry;
   if v_driver is not null then
     for t in
       select id, expected_price from public.camp_trips

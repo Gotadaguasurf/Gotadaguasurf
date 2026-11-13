@@ -881,6 +881,16 @@
 
   // ── Chip for the shared strip («Transport payment not linked to trips») ─
   // Synchronous; null until Transport data is loaded, always null in the local view.
+  // Same gate as camp_transport__link(): a named driver or a driver-run linked item.
+  // Fuel / scooter / delivery rows are not driver payments and never nag.
+  const DRIVER_ITEMS = ['Airport', 'Transport Surf Lesson', 'Food Supply', 'Laundry'];
+  function looksLikeDriverPayment(e) {
+    if (DRIVER_ITEMS.includes(String(e.linkedItem || ''))) return true;
+    const text = String(e.description || '').toLowerCase();
+    return (TR.drivers || []).some(d => d && !((d.kinds || []).length === 1 && d.kinds[0] === 'contact') &&
+      [d.name, ...(d.aliases || [])].some(a => { a = String(a || '').toLowerCase().trim(); if (!a) return false;
+        const re = new RegExp('(^|[^a-z0-9])' + a.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '([^a-z0-9]|$)'); return re.test(text); }));
+  }
   const unlinkedCheck = {
     id: 'transport-payment-unlinked',
     run(ctx) {
@@ -888,7 +898,8 @@
       const linked = new Set(TR.links.map(l => l.entry_id));
       const review = TR.links.filter(l => l.state === 'review');
       const fresh = (ctx.ledger || []).filter(e => e && e.type === 'expense' && e.category === 'Transport' && e.paymentMethod === 'Cash'
-        && String(e.date || '') >= goLive() && String(e.createdAt || '').slice(0, 10) >= goLive() && !linked.has(e.id));
+        && String(e.date || '') >= goLive() && String(e.createdAt || '').slice(0, 10) >= goLive() && !linked.has(e.id)
+        && looksLikeDriverPayment(e));
       const n = review.length + fresh.length;
       if (!n) return null;
       const lkrSum = review.reduce((s, l) => s + Math.max(0, Number(l.entry_amount || 0) - Number(l.trips_amount || 0)), 0) + fresh.reduce((s, e) => s + Number(e.amountLocal || 0), 0);
