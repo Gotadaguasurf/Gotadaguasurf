@@ -252,13 +252,30 @@
     for (const l of legs) { const k = l.ref + '\u0000' + l.direction; if (!byBd.has(k)) byBd.set(k, []); byBd.get(k).push(l); }
     for (const ls of byBd.values()) {
       const ref = ls[0].ref, d = ls[0].direction;
-      const variants = new Map();
-      for (const l of ls) { const k = [l.date, l.time, l.flight].join('\u0000'); if (!variants.has(k)) variants.set(k, []); variants.get(k).push(l); }
-      const split = variants.size > 1;
-      for (const group of variants.values()) {
-        const g0 = group[0];
+      // Guests of one booking travel together unless the file says otherwise: two legs are one
+      // trip when the date is the same and neither the time nor the flight contradicts — an EMPTY
+      // time or flight never splits a booking (a couple where only one filled the flight used to
+      // become two trips, and three after the other filled it). The trip takes the values that are
+      // filled in. Legs that carry a flight or time are placed first so an empty one joins them.
+      const groups = [];
+      const fits = (g, l) => g.date === l.date && (!g.time || !l.time || g.time === l.time) && (!g.flight || !l.flight || g.flight === l.flight);
+      const filled = l => (l.time ? 1 : 0) + (l.flight ? 1 : 0);
+      for (const l of ls.slice().sort((a, b) => filled(b) - filled(a) || a.line - b.line)) {
+        const g = groups.find(x => fits(x, l));
+        if (g) { g.legs.push(l); g.time = g.time || l.time; g.flight = g.flight || l.flight; }
+        else groups.push({ date: l.date, time: l.time, flight: l.flight, legs: [l] });
+      }
+      groups.forEach(g => g.legs.sort((a, b) => a.line - b.line));
+      groups.sort((a, b) => a.legs[0].line - b.legs[0].line);
+      const split = groups.length > 1;
+      for (const grp of groups) {
+        const group = grp.legs;
+        const lead = group.find(l => l.time === grp.time && l.flight === grp.flight) || group[0];
+        const g0 = { ...group[0], time: grp.time, flight: grp.flight, place: lead.place };
         const gkey = `bl:${ref}:${d.slice(0, 3)}` + (split ? `:${g0.guest.toLowerCase().replace(/[^a-z]/g, '')}` : '');
-        const fl = [...new Set(group.flatMap(l => l.flags))].sort();
+        let fl = [...new Set(group.flatMap(l => l.flags))];
+        if (grp.time) fl = fl.filter(f => !/^no time yet/.test(f));   // one guest of the trip gave the time
+        fl.sort();
         if (split) fl.push('guests of this booking travel separately');
         const pax = group.length; const boards = group.some(l => l.boards);
         trips.set(gkey, {
@@ -282,7 +299,9 @@
     }
     // A «preset» file = Sri Lanka only, active bookings only (the saved «Semana Sri Lanka» view):
     // only then can a trip that is absent from the file be flagged «missing».
-    const isPreset = !report['other location'] && !report['test booking'] && !cancels.size && !Object.keys(report).some(k => k.startsWith('status '));
+    // Decided by the Sri Lanka rows only: the real «Semana Sri Lanka» export of 13 Nov carried one row
+    // of another camp, which switched this off and with it the «not in the latest file» flag.
+    const isPreset = !report['test booking'] && !cancels.size && !Object.keys(report).some(k => k.startsWith('status '));
     return {
       file: base, export_date: exportDate, has_transfers_col: hasTransfersCol,
       counts: report, trips: [...trips.values()], cancel_refs: [...cancels].sort(), skipped, dirty_no_transfer: dirty, other_location_names: other,

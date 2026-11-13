@@ -215,3 +215,46 @@ test('round trip (Miguel, 13 Nov): one leg only when the comment says so next to
   expect(noOut.trips.every(t => t.date)).toBe(true);
   expect(noOut.counts['transfer without a check-out date (no trip)']).toBe(1);
 });
+
+// ── Scenario fixes of 13 Nov (sl_design/transport_scenarios.md) ─────────────
+const SYN_HEAD = 'Guest,Booking status,Booking,Arrival time,Arrival flight,Departure time,Departure flight,Check-in on,Check-out on,Packages,Accommodations,Has transfer,Transfers,Transfer comment,Phone';
+const synRow = (o) => [o.guest, o.status || 'Confirmed', o.ref, o.at || '', o.af || '', o.dt || '', o.df || '', o.ci || 'Sat 28 Nov 2026', o.co || 'Sat 5 Dec 2026',
+  o.pk === undefined ? 'Surf Camp Ahangama' : o.pk, o.acc || 'Mirissa room', o.has || 'Yes', o.tr === undefined ? 'Airport Transfer, Airport Transfer' : o.tr, o.tc || '', ''].join(',');
+const syn = (rows, name = 'Bookinglayer-Guests-2026-11-23 09_00.csv') => G.parse([SYN_HEAD, ...rows.map(synRow)].join('\n'), name);
+
+test('A8 — a couple never becomes three trips: an empty flight joins the booking, it does not split it', () => {
+  // Monday: Anna filled the flight, Jonas left it empty → ONE arrival for 2 persons (was two Cars).
+  const mon = syn([{ guest: 'Anna Berg', ref: '2026-6001', at: '08:20', af: 'QR664' }, { guest: 'Jonas Berg', ref: '2026-6001' }]);
+  const arr = mon.trips.filter(t => t.kind === 'airport_arrival');
+  expect(arr.length).toBe(1);
+  expect(arr[0]).toMatchObject({ key: 'bl:2026-6001:arr', pax: 2, time: '08:20', flight: 'QR664', guests: ['Anna Berg', 'Jonas Berg'], vehicle: 'Car' });
+  expect(arr[0].flags.some(f => /no time yet/.test(f))).toBe(false);            // one of them gave it
+  // The empty one first in the file: same result, same key.
+  const rev = syn([{ guest: 'Jonas Berg', ref: '2026-6001' }, { guest: 'Anna Berg', ref: '2026-6001', at: '08:20', af: 'QR664' }]);
+  expect(rev.trips.filter(t => t.kind === 'airport_arrival').map(t => [t.key, t.pax, t.time, t.flight])).toEqual([['bl:2026-6001:arr', 2, '08:20', 'QR664']]);
+  // Jonas fills the same flight: still the one trip, same key → the re-import updates it, nothing new.
+  const wed = syn([{ guest: 'Anna Berg', ref: '2026-6001', at: '08:20', af: 'QR664' }, { guest: 'Jonas Berg', ref: '2026-6001', at: '08:20', af: 'QR664' }]);
+  expect(wed.trips.filter(t => t.kind === 'airport_arrival').map(t => [t.key, t.pax])).toEqual([['bl:2026-6001:arr', 2]]);
+  // Only a real difference splits: another flight, another time or another day.
+  const apart = syn([{ guest: 'Anna Berg', ref: '2026-6001', at: '08:20', af: 'QR664' }, { guest: 'Jonas Berg', ref: '2026-6001', at: '14:05', af: 'UL504' }]);
+  expect(apart.trips.filter(t => t.kind === 'airport_arrival').map(t => [t.key, t.pax, t.time])).toEqual([['bl:2026-6001:arr:annaberg', 1, '08:20'], ['bl:2026-6001:arr:jonasberg', 1, '14:05']]);
+  // Nobody filled anything: one trip for the two, «no time yet».
+  const none = syn([{ guest: 'Anna Berg', ref: '2026-6001' }, { guest: 'Jonas Berg', ref: '2026-6001' }]);
+  expect(none.trips.filter(t => t.kind === 'airport_arrival').map(t => [t.key, t.pax, t.time])).toEqual([['bl:2026-6001:arr', 2, null]]);
+  expect(none.trips[0].flags).toContain('no time yet: ask the guest');
+});
+
+test('A6 — «preset» is decided by the Sri Lanka rows only: one row of another camp no longer switches the missing check off', () => {
+  const withOther = syn([{ guest: 'Max Ehrler', ref: '2026-4936', at: '08:20', af: 'QR664' }, { guest: 'Ericeira Guest', ref: '2026-9000', pk: 'Surf Camp Ericeira', acc: 'Dorm 4', has: 'No', tr: '' }]);
+  expect(withOther.counts['other location']).toBe(1);
+  expect(withOther.is_preset).toBe(true);
+  expect(withOther.refs_active).toEqual(['2026-4936']);
+  // A cancelled row or a status that is not live still means «not the preset» (an all-bookings export).
+  expect(syn([{ guest: 'Max Ehrler', ref: '2026-4936' }, { guest: 'Gone Guest', ref: '2026-1', status: 'Cancelled' }]).is_preset).toBe(false);
+});
+
+test('A7 — a guest whose transfer was removed stays in refs_active with no trip, so the import can flag the old trips', () => {
+  const out = syn([{ guest: 'Lorena Marie Glas', ref: '2026-4660', has: 'No', tr: '' }]);
+  expect(out.trips).toEqual([]);
+  expect(out.refs_active).toEqual(['2026-4660']);
+});
