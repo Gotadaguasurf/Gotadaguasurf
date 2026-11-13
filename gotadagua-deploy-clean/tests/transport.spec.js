@@ -1103,3 +1103,16 @@ test('E8 — a weekly tuk-tuk lump that is not an exact sum: «Tick all» links 
   expect(c.p_trip_ids.length).toBe(12);
   expect(c).toMatchObject({ p_entry: PS, p_driver: D.sampath, p_note: 'waiting time' });
 });
+
+test('trips: a Confirmed tick can be undone (Undo ✓ → Sent), and the sheet offers «Back to Sent / Planned»', async ({ page }) => {
+  const st = await openTab(page, { trips: [
+    trip({ id: 'aaaaaaaa-0000-4000-8000-00000000u001', guest_names: 'Lorena Marie Glas', guest_phone: '+491700000001', trip_date: '2026-11-14', trip_time: '07:00', flight: 'QR658', status: 'confirmed' }),
+  ] });
+  await page.click('button[title="Next week"]');
+  const row = page.locator('.tr-row[data-trip="aaaaaaaa-0000-4000-8000-00000000u001"]');
+  await row.locator('[data-undo]').click();
+  expect((await call(st, 'trip_update')).body).toMatchObject({ status: 'sent' });
+  await row.locator('.tr-line1 b').click();
+  await page.click('#trOv [data-undo]');
+  expect((await call(st, 'trip_update', 2)).body).toMatchObject({ status: 'planned' });
+});

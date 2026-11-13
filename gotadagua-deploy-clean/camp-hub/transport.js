@@ -414,7 +414,9 @@
     const live = !t.payment_entry_id && !isDone(t) && !['cancelled', 'no_show'].includes(t.status);
     const next = !live ? '' : t.status === 'planned' ? `<button class="btn btn-s btn-sm" onclick="event.stopPropagation();TransportUI.tick('${t.id}','sent')">Sent ✓</button>`
       : t.status === 'sent' && !t.needs_resend ? `<button class="btn btn-s btn-sm" onclick="event.stopPropagation();TransportUI.tick('${t.id}','confirmed')">Confirmed ✓</button>`
-      : t.needs_resend ? `<button class="btn btn-s btn-sm" onclick="event.stopPropagation();TransportUI.tick('${t.id}','sent')">Sent ✓</button>` : '';
+      : t.needs_resend ? `<button class="btn btn-s btn-sm" onclick="event.stopPropagation();TransportUI.tick('${t.id}','sent')">Sent ✓</button>`
+      // Undo a tick (Miguel, 13 Nov: «if I want to take that it is confirmed?»): one step back.
+      : t.status === 'confirmed' ? `<button class="btn btn-s btn-sm" data-undo onclick="event.stopPropagation();TransportUI.undoTick('${t.id}')" title="Back to Sent">Undo ✓</button>` : '';
     return `<div class="tr-row" data-trip="${t.id}" onclick="TransportUI.openTrip('${t.id}')">
       <div class="tr-time">${time}</div>
       <div class="tr-main"><div class="tr-line1"><span class="badge ${dep ? 'badge-navy' : 'badge-blue'}">${dep ? 'Departure' : 'Arrival'}</span> <b>${h(t.guest_names || 'Guest')}</b> <span class="hint">· ${t.pax} ${t.pax === 1 ? 'person' : 'persons'}</span>${isFree(t) ? ` <span class="badge badge-blue tr-free">${h(freeLabel(t))}</span>` : ''}</div>
@@ -516,7 +518,7 @@
     const st = guestState(t); const can = guestCan(t);
     if (!st && !can) return '';
     const btn = label => can ? `<button class="btn btn-s btn-sm" data-guest-send onclick="event.stopPropagation();TransportUI.confirmGuest('${t.id}')">${ic('send')} ${label}</button>` : '';
-    if (st === 'confirmed') return `<span class="tr-guest" data-guest="confirmed"><span class="badge badge-green">Guest confirmed ✓</span></span>`;
+    if (st === 'confirmed') return `<span class="tr-guest" data-guest="confirmed"><span class="badge badge-green">Guest confirmed ✓</span>${can ? ` <button class="btn btn-s btn-sm" data-guest-undo onclick="event.stopPropagation();TransportUI.undoGuestConfirmed('${t.id}')" title="Remove the guest's confirmation">Undo</button>` : ''}</span>`;
     if (st === 'told') return `<span class="tr-guest" data-guest="told"><span class="badge badge-blue">Guest told ✓</span>${can ? ` <button class="btn btn-s btn-sm" data-guest-ok onclick="event.stopPropagation();TransportUI.guestConfirmed('${t.id}')" title="Tick when the guest replied that the details are right">${ic('check')} Mark guest confirmed</button>` : ''}</span>`;
     if (st === 'changed') return `<span class="tr-guest" data-guest="changed"><span class="badge badge-amber">Changed — tell guest again</span> ${btn('Confirm with guest')}</span>`;
     return `<span class="tr-guest" data-guest="">${btn('Confirm with guest')}</span>`;
@@ -615,6 +617,7 @@
     const footer = `${live ? `<button class="btn btn-s" onclick="TransportUI.setStatus('${id}','no_show')">No-show</button>
       ${t.source === 'manual' ? '' : `<button class="btn btn-danger" onclick="TransportUI.setStatus('${id}','cancelled')">Cancel trip</button>`}` : ''}
       ${t.status === 'cancelled' || t.status === 'no_show' ? `<button class="btn btn-s" onclick="TransportUI.setStatus('${id}','planned')">Restore</button>` : ''}
+      ${live && (t.status === 'confirmed' || t.status === 'sent') ? `<button class="btn btn-s" data-undo onclick="TransportUI.undoTick('${id}')">${t.status === 'confirmed' ? 'Back to Sent' : 'Back to Planned'}</button>` : ''}
       ${held ? `<button class="btn btn-s" id="tr_keep" onclick="TransportUI.keepTrip('${id}')">Still needed</button>` : ''}
       ${!paid && t.source === 'manual' ? `<button class="btn btn-danger" id="tr_del" onclick="TransportUI.removeTrip('${id}')">${ic('trash')} Delete</button>` : ''}
       <button class="btn btn-s" onclick="TransportUI.send('${id}')">${ic('send')} WhatsApp</button>
@@ -653,6 +656,15 @@
     if (moved && (t.status === 'sent' || t.status === 'confirmed')) patch.needs_resend = true;
     // charge / free_reason are not import fields: «Free» is kept by the database, not by edited_fields.
     if (await updateTrip(id, patch, edited.filter(k => k !== 'charge' && k !== 'free_reason'))) { closeModal(); render(); say('Saved'); }
+  }
+  // One step back: Confirmed → Sent, Sent → Planned. Only for unpaid trips that haven't happened.
+  async function undoTick(id) {
+    const t = TR.trips.find(x => x.id === id); if (!t || t.payment_entry_id) return;
+    const back = t.status === 'confirmed' ? 'sent' : t.status === 'sent' ? 'planned' : null; if (!back) return;
+    if (await updateTrip(id, { status: back })) { closeModal(); render(); try { if (window.WeekUI && typeof activePage !== 'undefined' && activePage === 'week') WeekUI.render(); } catch (_) {} say(back === 'sent' ? 'Back to Sent' : 'Back to Planned'); }
+  }
+  async function undoGuestConfirmed(id) {
+    if (await updateTrip(id, { guest_confirmed_at: null })) { redrawAll(); say('Guest confirmation removed'); }
   }
   async function setStatus(id, status) {
     const patch = { status, cancel_reason: status === 'cancelled' ? 'manual' : null };
@@ -1444,7 +1456,7 @@
   window.TransportUI = {
     render, closeModal, setView(v, f) { TR.view = v; if (f) TR.filter = f; render(); }, setFilter(f) { TR.filter = f; render(); },
     shiftWeek(n) { TR.week = GT.addDaysIso(TR.week, n); TR.filter = ['resend', 'tosend', 'missing'].includes(TR.filter) ? 'all' : TR.filter; render(); },
-    send, sendDay, ask, askText, askedOn, needsInfo, tick, tickDay, openTrip, saveTrip, setStatus, openAddTransfer, saveTransfer,
+    send, sendDay, undoTick, undoGuestConfirmed, ask, askText, askedOn, needsInfo, tick, tickDay, openTrip, saveTrip, setStatus, openAddTransfer, saveTransfer,
     openTuktuk, openPlan, tukSet, tukMode, tap, untap, removeRun, removeTrip, planAdd, planStep, sendOrder, orderText,
     openRuns, saveRuns, deleteRuns, payState, weekTotals, keepTrip, inWeek,
     confirmGuest, guestConfirmed, confirmText, guestState, guestHtml, openGuestDay, pickFile, setExportDate, saveImport,
