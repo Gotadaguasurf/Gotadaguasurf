@@ -22,9 +22,11 @@
   // ── Settings (kept as constants so Miguel can change them later) ────────
   const TRIPS_ENABLED_LOCATIONS = new Set(['sri-lanka']);
   const TRIPS_GO_LIVE = '2026-11-16';             // = camp_trips_go_live() in the SQL
+  const goLive = () => window.TRIPS_GO_LIVE_OVERRIDE || TRIPS_GO_LIVE;   // tests move it into the past
   const TRIPS_LOAD_FROM = '2026-10-01';
   const TRIPS_BL_LOCATION_LABELS = ['Surf Camp Ahangama'];
   const HQ_LIVE_STATUSES = new Set(['confirmed', 'paid', 'deposit paid', 'deposit_paid']);
+  const HQ_DEAD_STATUSES = new Set(['cancelled', 'canceled', 'expired']);   // only these cancel a trip; any other HQ status counts as there
   const VEHICLES = ['Car', 'Minivan', 'Large Van'];
   // Camp runs have no catalog price yet (Sampath's prices, open question Q2):
   // a /prices row with the same name (picker «tuktuk») replaces the price here.
@@ -79,9 +81,10 @@
   //   2 cancelled                                         → cancelled      «Cancelled»          neutral
   //   3 no-show                                           → no_show        «No-show»            neutral (Francisco decided)
   //   4 not done yet                                      → upcoming       «Upcoming»           neutral, never blocks «reconciled»
-  //   5 done, not paid                                    → owed           «Owed to driver»     to do
-  //   6 done, paid, from Bookinglayer (or a tuk-tuk run)  → matched        «Matched»
-  //   7 done, paid, added by hand (no booking)            → extra          «Extra»              neutral
+  //   5 done, not paid, dated before go-live              → before_go_live «Before go-live»     neutral (paid in the old lumps)
+  //   6 done, not paid                                    → owed           «Owed to driver»     to do
+  //   7 done, paid, from Bookinglayer (or a tuk-tuk run)  → matched        «Matched»
+  //   8 done, paid, added by hand (no booking)            → extra          «Extra»              neutral
   function reconcileStatus(t) {
     const paid = !!t.payment_entry_id;
     const done = isDone(t);
@@ -89,13 +92,14 @@
     if (t.status === 'cancelled' || t.status === 'merged') return 'cancelled';
     if (t.status === 'no_show') return 'no_show';
     if (!done) return 'upcoming';
+    if (!paid && t.trip_date < goLive()) return 'before_go_live';
     if (!paid) return 'owed';
     if (t.source === 'bookinglayer' || t.kind === 'tuktuk') return 'matched';
     return 'extra';
   }
   const REC_LABEL = {
     matched: ['Matched', 'badge-green'], owed: ['Owed to driver', 'badge-amber'], paid_not_done: ['Paid, not done', 'badge-red'],
-    no_show: ['No-show', 'badge-grey'], extra: ['Extra', 'badge-blue'], upcoming: ['Upcoming', 'badge-grey'], cancelled: ['Cancelled', 'badge-grey'],
+    no_show: ['No-show', 'badge-grey'], before_go_live: ['Before go-live', 'badge-grey'], extra: ['Extra', 'badge-blue'], upcoming: ['Upcoming', 'badge-grey'], cancelled: ['Cancelled', 'badge-grey'],
   };
   const REC_TODO = new Set(['owed', 'paid_not_done']);
   const isAirport = t => t.kind === 'airport_arrival' || t.kind === 'airport_departure';
@@ -125,10 +129,21 @@
       const c = client(); const loc = await ensureHubLocationId().catch(() => '');
       if (!c || !loc) { TR.error = 'Not connected'; return; }
       try { await c.rpc('camp_transport_autolink', { p_location: loc }); } catch (_) { /* table not set up yet */ }
+      // PostgREST returns 1.000 rows at most: page through (10–25 tuk-tuk runs a day add up fast).
+      const all = async (build) => {
+        const out = [];
+        for (let p = 0; p < 50; p++) {
+          const { data, error } = await build().range(p * 1000, p * 1000 + 999);
+          if (error) return { error };
+          out.push(...(data || []));
+          if (!data || data.length < 1000) break;
+        }
+        return { data: out };
+      };
       const [d, t, l] = await Promise.all([
         c.from('camp_drivers').select('*').eq('location_id', loc).order('name'),
-        c.from('camp_trips').select('*').eq('location_id', loc).gte('trip_date', TRIPS_LOAD_FROM).order('trip_date').order('trip_time'),
-        c.from('camp_transport_payments').select('*').eq('location_id', loc),
+        all(() => c.from('camp_trips').select('*').eq('location_id', loc).gte('trip_date', TRIPS_LOAD_FROM).order('trip_date').order('trip_time').order('id')),
+        all(() => c.from('camp_transport_payments').select('*').eq('location_id', loc).order('entry_id')),
       ]);
       const err = d.error || t.error || l.error;
       if (err) { TR.error = err.message || String(err); TR.loaded = false; return; }
@@ -550,7 +565,7 @@
     // The Guests file is the source for upcoming weeks (HQ bookings only hold past and current
     // stays). HQ is a cross-check when it has the ref: cancelled there → no trip; live → hq_match ok;
     // absent → hq_match missing (kept, one soft line).
-    const cancelledRefs = new Set(refs.filter(r => byRef.has(r) && !HQ_LIVE_STATUSES.has(hqStatus(r))));
+    const cancelledRefs = new Set(refs.filter(r => byRef.has(r) && HQ_DEAD_STATUSES.has(hqStatus(r))));
     const matchOf = r => byRef.has(r) ? 'ok' : 'missing';
     const allGuests = GT.guestRows(TR.imp.text, parsed.file);
     const okGuests = allGuests.filter(g => GT.OK_STATUS.has(g.booking_status));
@@ -694,7 +709,7 @@
   }
   function renderLink() {
     const D = TR.linkDraft; const e = ledgerById(D.entryId) || {}; const amount = Number(e.amountLocal || (linkOf(D.entryId) || {}).entry_amount || 0);
-    const cands = TR.trips.filter(t => (t.payment_entry_id === D.entryId) || (!t.payment_entry_id && (!D.driver || t.driver_id === D.driver) && isDone(t) && !['cancelled', 'no_show', 'merged'].includes(t.status)))
+    const cands = TR.trips.filter(t => (t.payment_entry_id === D.entryId) || (!t.payment_entry_id && (!D.driver || t.driver_id === D.driver) && ['owed', 'before_go_live'].includes(reconcileStatus(t))))
       .sort((a, b) => (a.trip_date + (a.trip_time || '')).localeCompare(b.trip_date + (b.trip_time || '')));
     const sum = cands.filter(t => D.picked.has(t.id)).reduce((s, t) => s + Number(t.expected_price || 0), 0);
     const body = `<div class="mfield"><label>Driver</label><select id="lk_dr" onchange="TransportUI.linkDriver(this.value)">${driverOptions(D.driver)}</select></div>
@@ -749,7 +764,7 @@
   }
 
   // ── Pay a driver (full view tool) ──────────────────────────────────────
-  function owedBy(driverId) { return TR.trips.filter(t => t.driver_id === driverId && !t.payment_entry_id && isDone(t) && !['cancelled', 'no_show', 'merged'].includes(t.status)); }
+  function owedBy(driverId) { return TR.trips.filter(t => t.driver_id === driverId && reconcileStatus(t) === 'owed'); }
   function openPay() {
     const rows = TR.drivers.filter(d => !(d.kinds || []).every(k => k === 'contact')).map(d => { const o = owedBy(d.id); return { d, n: o.length, sum: o.reduce((s, t) => s + Number(t.expected_price || 0), 0) }; });
     const body = `<div class="tr-picks">${rows.map(r => `<button class="tr-pick tr-pick-btn" onclick="TransportUI.payPick('${r.d.id}')"><span><b>${h(r.d.name)}</b>${r.d.label ? ` · ${h(r.d.label)}` : ''}<span class="cell-sub">${r.n ? `owes ${r.n} trip${r.n === 1 ? '' : 's'}` : 'nothing owed'}</span></span><b class="num">${money(r.sum)}</b></button>`).join('')}</div>`;
@@ -873,7 +888,7 @@
       const linked = new Set(TR.links.map(l => l.entry_id));
       const review = TR.links.filter(l => l.state === 'review');
       const fresh = (ctx.ledger || []).filter(e => e && e.type === 'expense' && e.category === 'Transport' && e.paymentMethod === 'Cash'
-        && String(e.date || '') >= TRIPS_GO_LIVE && String(e.createdAt || '').slice(0, 10) >= TRIPS_GO_LIVE && !linked.has(e.id));
+        && String(e.date || '') >= goLive() && String(e.createdAt || '').slice(0, 10) >= goLive() && !linked.has(e.id));
       const n = review.length + fresh.length;
       if (!n) return null;
       const lkrSum = review.reduce((s, l) => s + Math.max(0, Number(l.entry_amount || 0) - Number(l.trips_amount || 0)), 0) + fresh.reduce((s, e) => s + Number(e.amountLocal || 0), 0);
@@ -908,7 +923,7 @@
     openPay, payPick, payTick, payAmount, payDate, payReason, payNote, savePay,
     openDrivers, addDriver, saveDrivers,
     // for tests and the coordinator
-    _state: TR, load, isDone, reconcileStatus, colomboNow, check: unlinkedCheck, TRIPS_GO_LIVE,
+    _state: TR, load, isDone, reconcileStatus, colomboNow, check: unlinkedCheck, TRIPS_GO_LIVE, goLive,
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 })();

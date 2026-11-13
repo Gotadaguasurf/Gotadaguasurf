@@ -74,7 +74,10 @@ async function stub(page, opts = {}) {
       if (method === 'POST') { const rows = (Array.isArray(body) ? body : [body]).map(r => ({ id: uid('dddddddd'), aliases: [], kinds: [], default_for: [], active: true, ...r })); st.drivers.push(...rows); return json(rows); }
     }
     if (url.includes('/rest/v1/camp_trips')) {
-      if (method === 'GET') return json(st.trips);
+      if (method === 'GET') { // PostgREST caps a page at 1.000 rows: honour offset/limit like the server
+        const off = Number((url.match(/[?&]offset=(\d+)/) || [])[1] || 0); const lim = Number((url.match(/[?&]limit=(\d+)/) || [])[1] || 1000);
+        return json(st.trips.slice(off, off + Math.min(lim, 1000)));
+      }
       if (method === 'POST') { const rows = (Array.isArray(body) ? body : [body]).map(r => trip({ id: uid('aaaaaaaa'), created_at: new Date().toISOString(), import_key: null, booking_ref: null, guest_names: null, ...r })); st.trips.push(...rows); st.calls.push({ t: 'trip_insert', rows }); return json(rows); }
       if (method === 'PATCH') { const t = st.trips.find(x => x.id === idEq); Object.assign(t, body); st.calls.push({ t: 'trip_update', id: idEq, body }); return json([t]); }
       if (method === 'DELETE') { st.trips = st.trips.filter(x => x.id !== idEq); st.calls.push({ t: 'trip_delete', id: idEq }); return json([]); }
@@ -118,7 +121,8 @@ async function call(st, kind, n = 1) {
 async function open(page, opts = {}) {
   const st = await stub(page, opts);
   page.on('dialog', d => d.accept());
-  await page.addInitScript(([now]) => { window.TRANSPORT_NOW = now; window.__opened = []; window.open = (u) => { window.__opened.push(u); return null; }; }, [NOW]);
+  // Go-live (16 Nov) is after the pinned «now»: move it into the past like the SQL check does.
+  await page.addInitScript(([now]) => { window.TRANSPORT_NOW = now; window.TRIPS_GO_LIVE_OVERRIDE = '2026-11-01'; window.__opened = []; window.open = (u) => { window.__opened.push(u); return null; }; }, [NOW]);
   await fakeOwnerSession(page);
   await page.goto(`/camp-hub/?location=${opts.slug || 'sri-lanka'}${opts.query || ''}`, { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => { try { return HUB_LEDGER_HYDRATED === true; } catch (_) { return false; } }, null, { timeout: 15000 });
@@ -163,6 +167,7 @@ test('next week import: the Guests file is the source; HQ cross-checks (ok / mis
     bookings: [
       { booking_ref: '2026-4660', booker: 'Lorena Marie Glas', check_in_on: '2026-11-14', location: 'Surf Camp Ahangama', package: 'Surf Camp Ahangama', partner_name: 'Direct Bookings', raw_payload: { status: 'confirmed' } },
       { booking_ref: '2026-4936', booker: 'Maximilian Ehrler', check_in_on: '2026-11-14', location: 'Surf Camp Ahangama', package: 'Surf Camp Ahangama', partner_name: 'Direct Bookings', raw_payload: { status: 'cancelled' } },
+      { booking_ref: '2026-4070', booker: 'Beliz Kuyumcuoglu', check_in_on: '2026-11-14', location: 'Surf Camp Ahangama', package: 'Surf Camp Ahangama', partner_name: 'Direct Bookings', raw_payload: {} }, // no status in HQ → still counts as there
       { booking_ref: '2026-9999', booker: 'Ana Transfer', check_in_on: '2026-11-15', location: 'Surf Camp Ahangama', package: 'Surf Camp Ahangama, Airport Transfer Sri Lanka', partner_name: 'Direct Bookings', raw_payload: { status: 'paid' } },
     ],
   });
@@ -173,8 +178,8 @@ test('next week import: the Guests file is the source; HQ cross-checks (ok / mis
   await expect(page.locator('#transportRoot')).toContainText('Airport trips from this file · 3');
   await expect(page.locator('#transportRoot')).toContainText('Lorena Marie Glas');
   await expect(page.locator('#transportRoot')).toContainText('in HQ');
-  // soft line: refs not in HQ yet (16 bookings in the file − Lorena − Maximilian)
-  await expect(page.locator('.tr-soft')).toContainText('14 bookings not yet in HQ — import bookings');
+  // soft line: refs not in HQ yet (16 bookings in the file − Lorena, Beliz, Maximilian)
+  await expect(page.locator('.tr-soft')).toContainText('13 bookings not yet in HQ — import bookings');
   // group 2: cancelled in HQ
   await expect(page.locator('#transportRoot')).toContainText('Cancelled in HQ · 1');
   // group 3: an HQ booking with a transfer product that the file does not have
@@ -186,11 +191,12 @@ test('next week import: the Guests file is the source; HQ cross-checks (ok / mis
   expect(imp.p_trips.map(t => t.key).sort()).toEqual(['bl:2026-4070:arr', 'bl:2026-4070:dep', 'bl:2026-4660:arr']);
   // HQ has Lorena as a direct booking → no partner, although the Guests file shows 599 due
   expect(imp.p_trips.find(t => t.key === 'bl:2026-4660:arr')).toMatchObject({ hq_match: 'ok', time: '01:55', expected_price: 21000, partner: null });
-  expect(imp.p_trips.find(t => t.key === 'bl:2026-4070:arr')).toMatchObject({ hq_match: 'missing', vehicle: 'Minivan', expected_price: 26500 });
+  expect(imp.p_trips.find(t => t.key === 'bl:2026-4070:arr')).toMatchObject({ hq_match: 'ok', vehicle: 'Minivan', expected_price: 26500 });
   expect(imp.p_cancel_refs).toEqual(['2026-4936']);
   expect(imp.p_guests.length).toBe(17); // 18 guests − Maximilian (cancelled in HQ)
   expect(imp.p_guests.every(g => ['ok', 'missing'].includes(g.hq_match))).toBe(true);
   // not in HQ → partner from the Guests «Booking due» > 0 (gen_from_guests.py rule)
+  expect(imp.p_guests.find(g => g.booking_ref === '2026-4070').hq_match).toBe('ok');
   expect(imp.p_guests.find(g => g.booking_ref === '2026-4047')).toMatchObject({ hq_match: 'missing', partner: 'partner', booking_due: 639 });
   expect(imp.p_is_preset).toBe(true);
   expect(imp.p_export_date).toBe('2026-11-07');
@@ -342,10 +348,12 @@ test('reconcile: status precedence (pure rule)', async ({ page }) => {
       upcoming: S(T({ trip_date: '2026-11-13', trip_time: '10:01' })), doneByTime: S(T({ trip_date: '2026-11-13', trip_time: '09:59' })),
       noTimeToday: S(T({ trip_date: '2026-11-13', trip_time: null })), extra: S(T({ source: 'manual', payment_entry_id: 'p' })),
       tuktuk: S(T({ kind: 'tuktuk', source: 'manual', status: 'done', payment_entry_id: 'p' })),
+      beforeGoLive: S(T({ trip_date: '2026-10-30' })), paidBeforeGoLive: S(T({ trip_date: '2026-10-30', payment_entry_id: 'p' })),
     };
   });
   expect(r).toEqual({ matched: 'matched', owed: 'owed', owedManual: 'owed', paidNoShow: 'paid_not_done', paidCancelled: 'paid_not_done', paidUpcoming: 'paid_not_done',
-    noShow: 'no_show', cancelled: 'cancelled', upcoming: 'upcoming', doneByTime: 'owed', noTimeToday: 'upcoming', extra: 'extra', tuktuk: 'matched' });
+    noShow: 'no_show', cancelled: 'cancelled', upcoming: 'upcoming', doneByTime: 'owed', noTimeToday: 'upcoming', extra: 'extra', tuktuk: 'matched',
+    beforeGoLive: 'before_go_live', paidBeforeGoLive: 'matched' });
 });
 
 test('reconcile: rows, statuses and totals for the week, like the bank reconcile', async ({ page }) => {
@@ -512,6 +520,12 @@ test('chip «Transport payment not linked to trips»: counts review payments; si
   expect(r.level).toBe('warn');
   expect([r.local, r.morocco, r.before]).toEqual([null, null, null]);
   expect([r.page, r.rec, r.tab]).toEqual(['transport', 'reconcile', 'payments']);
+});
+
+test('transport: more than 1.000 trips load in pages (tuk-tuk runs add up fast)', async ({ page }) => {
+  const runs = Array.from({ length: 1234 }, (_, i) => trip({ id: `aaaaaaaa-0000-4000-8000-${String(900000 + i).padStart(12, '0')}`, kind: 'tuktuk', route: 'Ahangama', purpose: 'surf', driver_id: D.sampath, expected_price: 500, status: 'done', source: 'manual', trip_date: '2026-11-0' + (1 + (i % 9)) }));
+  await openTab(page, { trips: runs });
+  expect(await page.evaluate(() => TransportUI._state.trips.length)).toBe(1234);
 });
 
 test('transport: works with the tables missing (SQL not run yet) — a clear message, no crash', async ({ page }) => {

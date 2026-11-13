@@ -276,7 +276,7 @@ begin
        where location_id = e.location_id and driver_id = v_driver and payment_entry_id is null
          and status not in ('cancelled','no_show','merged')
          and public.camp_trip_is_done(status, trip_date, trip_time)
-         and trip_date <= e.entry_date
+         and trip_date <= e.entry_date and trip_date >= v_go      -- trips before go-live were paid in the old lumps
        order by trip_date, trip_time nulls last, created_at, id
        for update
     loop
@@ -583,10 +583,12 @@ grant select on public.camp_transport_payments to authenticated;
 grant select, insert, update on public.camp_week_guests to authenticated;
 
 -- Definer functions: no anonymous calls; the internal ones not callable at all.
-revoke all on function public.camp_transport__link(uuid) from public;
-revoke all on function public.camp_transport__driver_in(uuid, text) from public;
-revoke all on function public.camp_transport_ledger_trigger() from public;
-revoke all on function public.camp_trips_guard() from public;
+-- Supabase's default privileges grant EXECUTE on every new public function to anon and
+-- authenticated directly (pg_default_acl, checked 13 Nov 2026), so revoke from those roles too.
+revoke all on function public.camp_transport__link(uuid) from public, anon, authenticated;
+revoke all on function public.camp_transport__driver_in(uuid, text) from public, anon, authenticated;
+revoke all on function public.camp_transport_ledger_trigger() from public, anon, authenticated;
+revoke all on function public.camp_trips_guard() from public, anon, authenticated;
 revoke all on function public.camp_transport_autolink(uuid) from public, anon;
 revoke all on function public.camp_transport_link_set(uuid, uuid, uuid[], text) from public, anon;
 revoke all on function public.camp_trips_pay(uuid, uuid, numeric, text, jsonb) from public, anon;
