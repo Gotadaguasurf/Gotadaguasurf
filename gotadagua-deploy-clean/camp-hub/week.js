@@ -199,7 +199,7 @@
     return rows;
   }
   // Beds of a booking with two rooms. Bookinglayer lists the beds as «1, 4» in number order, not
-  // in room order (13 Nov: João Lavado, «Marissa, Ahangama» + «1, 4» = Mirissa bed 4, then Ahangama
+  // in room order (audit of 13 Nov: rooms «Marissa, Ahangama» + beds «1, 4» = Mirissa bed 4, then Ahangama
   // bed 1). So each order is tried against the size of the room and the beds of the other guests;
   // one order fits → used; otherwise no bed is shown and the move goes to «To check».
   const bedList = g => String(g.bed_number || '').split(',').map(s => s.trim()).filter(Boolean);
@@ -247,7 +247,21 @@
   }
   const roomOn = (g, d) => { const s = segments(g).find(x => x.from <= d && d < x.to); return s ? s.r : null; };
   const firstRoom = g => segments(g)[0].r;
-  const lastBed = g => { const s = segments(g); return s[s.length - 1].bed; };   // the bed of the room roomOf() names
+  // The room a guest is in on the day shown (on the check-out day: the room being left), or, for
+  // the whole week, the first room of the week — never the last room of the booking when the guest
+  // has not moved yet (audit of 13 Nov: a guest shown in the private room a week before moving there).
+  function segAt(g, day, ws) {
+    const s = segments(g);
+    if (day && day !== 'week') return s.find(x => x.from <= day && day < x.to) || s.slice().reverse().find(x => x.to === day) || s[s.length - 1];
+    return s.find(x => x.from < add(ws, 7) && x.to > ws) || s[s.length - 1];
+  }
+  // «Mirissa room · bed 4» + what comes before or after it on the same booking.
+  function roomText(g, day, ws, sep) {
+    const s = segments(g); const x = segAt(g, day, ws); const i = s.indexOf(x);
+    if (!x.r) return { label: '', sub: '' };
+    return { label: x.r.label + (x.r.shared && x.bed ? `${sep}bed ${x.bed}` : ''),
+      sub: s[i + 1] ? `then ${s[i + 1].r ? s[i + 1].r.label : OUTSIDE}, ${fd(s[i + 1].from)}` : i > 0 ? `from ${s[i - 1].r ? s[i - 1].r.label : OUTSIDE}, ${fd(x.from)}` : (moveUnknown(g) ? `from ${movedRooms(g)[0]}` : '') };
+  }
   const moveUnknown = g => roomNames(g.accommodation).length > 1 && !moveDay(g);
   const sameRoom = (a, b) => (a ? a.key : '') === (b ? b.key : '');
   const OUTSIDE = 'Outside of camp';
@@ -422,9 +436,9 @@
     const gs = rows.filter(g => counted(g) && (day === 'week' ? inWeek(g, ws) : inCamp(g, day) || g.check_out === day)).sort(byStay);
     return gs;
   }
-  function guestLine(g, ws) {
-    const r = roomOf(g); const c = course(g); const d = dietOf(g);
-    return [g.guest_name, r ? r.label + (r.shared && lastBed(g) ? ' bed ' + lastBed(g) : '') : 'no room', stayText(g, ws), g.phone || 'no phone',
+  function guestLine(g, ws, day) {
+    const rt = roomText(g, day, ws, ' '); const c = course(g); const d = dietOf(g);
+    return [g.guest_name, rt.label ? rt.label + (rt.sub ? ` (${rt.sub})` : '') : 'no room', stayText(g, ws), g.phone || 'no phone',
       c ? `${c} · ${levelOf(g)}` : 'no lessons', d === 'none' ? 'no special diet' : d || 'diet ?', g.has_transfer ? 'transfer' : 'own way',
       g.partner ? `partner (${g.partner}) – don't charge` : ''].filter(Boolean).join(' · ');
   }
@@ -435,7 +449,7 @@
     if (team === 'kitchen') return day === 'week' ? kitchenWeek(rows, ws) : kitchenDay(rows, day);
     if (team === 'surf') return day === 'week' ? surfWeek(rows, ws) : surfDay(rows, day);
     if (team === 'transfers') { const list = tripsFor(day, ws); return list.length ? [L(GT.whatsappDayText(list))] : [L('No transfers')]; }
-    if (team === 'guests') { const gs = guestsList(rows, day, ws); return [T(`Guests – ${day === 'week' ? 'week ' + range(ws, add(ws, 7)) : fdm(day)} (${gs.length})`), G, ...gs.map(g => L(guestLine(g, ws)))]; }
+    if (team === 'guests') { const gs = guestsList(rows, day, ws); return [T(`Guests – ${day === 'week' ? 'week ' + range(ws, add(ws, 7)) : fdm(day)} (${gs.length})`), G, ...gs.map(g => L(guestLine(g, ws, day)))]; }
     return [];
   }
   const body = (team, day, ws, rows) => toText(parts(team, day, ws, rows));
@@ -596,8 +610,8 @@
     }
     return { noRoom: [...noRoom], noBed: [...noBed], clash: [...clash.values()], double: [...dbl.values()], over: [...over.values()] };
   }
-  // The same person on two bookings with nights in between that have no booking (13 Nov: Florentin
-  // Hollert, out Sat 14, back Sat 21): the file cannot say whether he leaves or stays.
+  // The same person on two bookings with nights in between that have no booking (audit of 13 Nov:
+  // a guest out on Sat 14 and back on Sat 21): the file cannot say whether he leaves or stays.
   const GAP_MAX_NIGHTS = 14;
   function stayGaps(ws, rows) {
     const by = new Map(); const out = [];
@@ -606,7 +620,7 @@
       if (n > 0 && n <= GAP_MAX_NIGHTS && a.check_out <= add(ws, 7) && b.check_in >= ws) out.push({ a, b, nights: n }); } });
     return out;
   }
-  // «Arrives on» / «Departure date» of the file against the room dates (13 Nov: Yanneck Kumli, bed from Sat 7, arrives Mon 9).
+  // «Arrives on» / «Departure date» of the file against the room dates (audit of 13 Nov: a bed from Sat 7, the guest arrives Mon 9).
   function dateDiff(g) {
     const raw = g.raw || {}; const arr = GT.ymd(raw['Arrives on']), dep = GT.ymd(raw['Departure date']);
     return [arr && g.check_in && arr !== g.check_in ? `room from ${fd(g.check_in)}, arrives ${fd(arr)}` : '', dep && g.check_out && dep !== g.check_out ? `room until ${fd(g.check_out)}, leaves ${fd(dep)}` : ''].filter(Boolean).join('; ');
@@ -983,7 +997,7 @@
   function kitchenTab(ctx) {
     const { ws, M } = ctx;
     const gs = M.guests.slice().sort(nameSort);
-    const where = g => { const r = roomOf(g); return `${r ? r.label : OUTSIDE} · ${stayText(g, ws)}`; };
+    const where = g => { const r = segAt(g, 'week', ws).r; return `${r ? r.label : OUTSIDE} · ${stayText(g, ws)}`; };
     const allergic = gs.filter(g => allergyOf(g));
     const diets = dietGroups(gs);
     const none = gs.filter(g => dietOf(g) === 'none').length, unanswered = gs.filter(g => !dietOf(g)).length;
@@ -1075,16 +1089,15 @@
         <div class="wk-rows wk-guests">${list}</div><div class="card-body hint wk-noguests"${gs.length ? ' hidden' : ''}>${gs.length ? 'No guest matches the search.' : 'No guests on this day.'}</div></div>` + groupCard(ctx);
   }
   function guestRow(g, ws) {
-    const r = roomOf(g); const c = course(g); const d = dietOf(g); const al = allergyOf(g);
-    const bed = lastBed(g);
-    const room = r ? r.label + (r.shared && bed ? ' · bed ' + bed : '') : OUTSIDE;
+    const rt = roomText(g, W.day, ws, ' · '); const r = segAt(g, W.day, ws).r; const c = course(g); const d = dietOf(g); const al = allergyOf(g);
+    const room = r ? rt.label : OUTSIDE;
     const nights = (g.check_in && g.check_out) ? daysBetween(g.check_in, g.check_out) : 0;
     const pack = String(g.packages || '').trim();
     const arrive = (g.has_transfer ? 'transfer' : 'own way') + (arriveAt(g) ? ' ' + arriveAt(g) : '');
     const q = [g.guest_name, room, g.phone, c, levelOf(g), d, al, g.partner, pack, g.booking_ref].join(' ').toLowerCase();
     return `<div class="wk-g wk-grow" data-q="${h(q)}"><span class="wk-gc name"><span class="wk-g1"><b>${h(g.guest_name)}</b>${g.partner ? ` <span class="badge badge-amber">partner – don't charge</span>` : ''}${g._st === 'carry' ? ' <span class="badge badge-grey">still here?</span>' : ''}${g._prev ? ' <span class="badge badge-blue">stays on</span>' : ''}</span>${pack || g.partner ? `<span class="cell-sub">${h([pack, g.partner && g.partner !== 'partner' ? 'via ' + g.partner : ''].filter(Boolean).join(' · '))}</span>` : ''}</span>
       <span class="wk-gc" data-l="Stay">${h(stayText(g, ws))}${nights ? `<span class="cell-sub">${plural(nights, 'night')}</span>` : ''}</span>
-      <span class="wk-gc" data-l="Room">${r ? h(room) : `<span class="badge badge-grey">${OUTSIDE}</span>`}${movedRooms(g) ? `<span class="cell-sub">from ${h(movedRooms(g)[0])}${moveDay(g) ? ', ' + h(fd(moveDay(g))) : ''}</span>` : !r ? '<span class="cell-sub">meals only</span>' : ''}</span>
+      <span class="wk-gc" data-l="Room">${r ? h(room) : `<span class="badge badge-grey">${OUTSIDE}</span>`}${rt.sub ? `<span class="cell-sub">${h(rt.sub)}</span>` : !r ? '<span class="cell-sub">meals only</span>' : ''}</span>
       <span class="wk-gc" data-l="Surf">${h(c ? c : 'no lessons')}${c ? `<span class="cell-sub">${h(levelOf(g))}${isYoga(g) ? ' · Yoga' : ''}</span>` : isYoga(g) ? '<span class="cell-sub">Yoga</span>' : ''}</span>
       <span class="wk-gc" data-l="Diet">${h(d === 'none' ? 'no special diet' : d || 'diet ?')}${al ? ` <span class="badge badge-red">allergies: ${h(al)}</span>` : ''}</span>
       <span class="wk-gc" data-l="Phone">${(g.phone || phoneOf(g)) ? `<a href="tel:${h(g.phone || phoneOf(g))}">${h(g.phone || phoneOf(g))}</a>` : '<span class="wk-nil">no phone</span>'}</span>
