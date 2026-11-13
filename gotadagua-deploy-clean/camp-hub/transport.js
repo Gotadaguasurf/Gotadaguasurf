@@ -342,12 +342,15 @@
   const ASK_KEY = 'tr-asked-v1';
   function askedMap() { try { return JSON.parse(localStorage.getItem(ASK_KEY) || '{}') || {}; } catch (_) { return {}; } }
   function askedOn(id) { return askedMap()[id] || ''; }
+  // Who signs the question to the guest (Miguel, 13 Nov). No emoji: WhatsApp's wa.me link shows
+  // some of them as «?» on desktop.
+  const ASK_SENDER = 'Francisco';
   const needsInfo = t => isAirport(t) && (!t.trip_time || !t.flight);
   function askText(t) {
     const first = String(t.guest_names || '').split(/[,+&]/)[0].trim().split(/\s+/)[0] || 'there';
     return t.kind === 'airport_departure'
-      ? `Hi ${first}! This is Gota Dagua Ahangama 🌊\nTo plan your drop-off at Colombo airport, could you send us your departure flight number and the date and time it leaves?\nThank you!`
-      : `Hi ${first}! This is Gota Dagua Ahangama 🌊\nWe're getting your airport pick-up ready. Could you send us your flight number and the date and time you land in Colombo?\nThank you, see you soon!`;
+      ? `Hi ${first}! I'm ${ASK_SENDER}, the manager of Gota Dagua Surf Camp Sri Lanka.\nTo plan your drop-off at Colombo airport, could you send us your departure flight number and the date and time it leaves?\nThank you!`
+      : `Hi ${first}! I'm ${ASK_SENDER}, the manager of Gota Dagua Surf Camp Sri Lanka.\nWe're getting your airport pick-up ready. Could you send us your flight number and the date and time you land in Colombo?\nThank you, see you soon!`;
   }
   function ask(id) {
     const t = TR.trips.find(x => x.id === id); if (!t) return;

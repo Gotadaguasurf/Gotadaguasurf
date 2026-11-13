@@ -588,7 +588,8 @@ test('trips: a transfer without flight or time has «Ask guest» — WhatsApp to
   const text = decodeURIComponent(url.split('?text=')[1]);
   expect(text).toContain('Hi Beliz!');
   expect(text).toContain('flight number');
-  expect(text).toContain('Gota Dagua Ahangama');
+  expect(text).toContain("I'm Francisco, the manager of Gota Dagua Surf Camp Sri Lanka.");
+  expect(text).not.toMatch(/[\u{1F300}-\u{1FAFF}]/u);                                         // no emoji (wa.me shows «?» on desktop)
   await expect(page.locator('.tr-day').first().locator('.tr-row').filter({ hasText: 'Beliz Kuyumcuoglu' })).toContainText('asked');
   expect(errors).toEqual([]);
 });
