@@ -372,6 +372,103 @@ body{min-height:100dvh}
 @media(max-width:1000px){.exp-kpis{grid-template-columns:1fr 1fr}}
 @media(max-width:1200px){.exp-inline-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:700px){.exp-inline-grid,.exp-kpis{grid-template-columns:1fr}.exp-filters .select,.exp-filters .period-picker,.exp-toggle{width:100%}}
+/* ── Weekly P&L (page-specific; tokens and classes from /lib/app-shell.css) ── */
+#weeklyContent>.card{margin-bottom:var(--sp-4)}
+.wpl-week-hdr,.wpl-chart-hdr,.wpl-tbl-hdr{display:flex;justify-content:space-between;align-items:flex-start;gap:var(--sp-3) var(--sp-4);flex-wrap:wrap}
+.wpl-week-hdr{border-bottom:1px solid var(--border)}
+.wpl-week-hdr .badge{margin-left:6px;vertical-align:2px}
+.wpl-nav,.wpl-pills{display:flex;gap:var(--sp-2);flex-wrap:wrap}
+.wpl-kpis{display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid var(--border)}
+.wpl-kpi{padding:var(--sp-4) var(--card-pad);border-right:1px solid var(--border);min-width:0}
+.wpl-kpi:last-child{border-right:none}
+.wpl-kpi .kpi-sub{overflow-wrap:anywhere}
+.wpl-kpi .wpl-avg{margin-top:2px;color:var(--muted-2)}
+.wpl-cells{display:grid;grid-template-columns:repeat(5,1fr);gap:var(--sp-3) var(--sp-4);padding:var(--sp-4) var(--card-pad);border-bottom:1px solid var(--border);background:var(--surface-2)}
+.wpl-cell{min-width:0}
+.wpl-cell-l{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);line-height:1.3}
+.wpl-cell-v{font-size:18px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums;letter-spacing:-.01em;margin-top:4px}
+.wpl-cell-s{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.wpl-week .section-lbl{display:flex;justify-content:space-between;gap:var(--sp-3);flex-wrap:wrap;padding-top:var(--sp-4)}
+.wpl-lbl-note{text-transform:none;letter-spacing:0;font-weight:400;color:var(--muted-2)}
+.wpl-bars{padding:0 var(--card-pad) var(--sp-3)}
+.wpl-bar-row{display:grid;grid-template-columns:170px minmax(0,1fr) 76px 76px;gap:var(--sp-3);align-items:center;padding:5px 0;font-size:13px}
+.wpl-bar-k{color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wpl-bar-track{position:relative;height:14px;background:var(--surface-2);border-radius:4px}
+.wpl-bar-fill{height:100%;background:var(--red);opacity:.78;border-radius:4px;min-width:1px}
+.wpl-bar-avg{position:absolute;top:-3px;bottom:-3px;width:2px;margin-left:-1px;background:var(--navy);border-radius:1px}
+.wpl-bar-v{text-align:right;font-weight:600;color:var(--navy);font-variant-numeric:tabular-nums;white-space:nowrap}
+.wpl-bar-d{text-align:right;font-size:12px;color:var(--muted-2);font-variant-numeric:tabular-nums;white-space:nowrap}
+.wpl-bar-d.up{color:var(--red);font-weight:600}.wpl-bar-d.down{color:var(--green);font-weight:600}
+.wpl-none{color:var(--muted);font-size:13px;padding:var(--sp-2) 0}
+.wpl-moves,.wpl-foot-row{display:flex;flex-wrap:wrap;gap:4px 18px;font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+.wpl-moves{padding:var(--sp-2) var(--card-pad) var(--sp-4)}
+.wpl-moves b,.wpl-foot-row b{color:var(--navy);font-weight:600}
+.wpl-foot-row b.pos{color:var(--green)}.wpl-foot-row b.neg{color:var(--red)}
+.wpl-foot{border-top:1px solid var(--border);padding:var(--sp-3) var(--card-pad);display:flex;flex-direction:column;gap:6px}
+.wpl-foot-k{font-weight:600;color:var(--ink);min-width:210px}
+.wpl-foot .btn-link{padding:0;height:auto}
+.wpl-legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--muted);align-items:center}
+.wpl-sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.wpl-sw.book,.wpl-b.book{background:var(--green)}
+.wpl-sw.onsite,.wpl-b.onsite{background:#7cc79a}
+.wpl-sw.camp,.wpl-b.camp{background:var(--red)}
+.wpl-sw.hq,.wpl-b.hq{background:#e59a93}
+.wpl-chart{display:flex;gap:var(--sp-2);padding:var(--sp-2) var(--card-pad) 0}
+.wpl-axis{display:flex;flex-direction:column;justify-content:space-between;height:var(--wpl-h);font-size:11px;color:var(--muted-2);text-align:right;font-variant-numeric:tabular-nums;flex:0 0 auto;line-height:1;margin-top:-5px;padding-bottom:0}
+.wpl-axis span:last-child{transform:translateY(5px)}
+.wpl-plot{position:relative;flex:1 1 auto;min-width:0}
+.wpl-grid{position:absolute;left:0;right:0;top:0;height:var(--wpl-h);display:flex;flex-direction:column;justify-content:space-between;pointer-events:none}
+.wpl-grid i{display:block;height:1px;background:var(--border)}
+.wpl-cols{position:relative;display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:2px}
+.wpl-col{appearance:none;border:0;background:transparent;font:inherit;padding:0 0 6px;margin:0;cursor:pointer;display:flex;flex-direction:column;align-items:center;border-radius:6px;min-width:0;color:var(--muted)}
+.wpl-col:hover{background:var(--surface-2)}
+.wpl-col.on{background:var(--ocean-soft)}
+.wpl-col:focus-visible{outline:none;box-shadow:var(--ring)}
+.wpl-pair{display:flex;align-items:flex-end;justify-content:center;gap:2px;height:var(--wpl-h);width:100%}
+.wpl-stack{display:flex;flex-direction:column;justify-content:flex-end;width:34%;max-width:22px;height:100%}
+.wpl-b{width:100%}
+.wpl-stack .wpl-b:first-child{border-radius:3px 3px 0 0}
+.wpl-x{font-size:11px;margin-top:6px;white-space:nowrap;color:var(--ink);font-weight:600}
+.wpl-x2{font-size:11px;font-variant-numeric:tabular-nums;font-weight:600}
+.wpl-short{display:none}
+.wpl-chart-note,.wpl-tbl-note{font-size:12px;color:var(--muted);padding:var(--sp-2) var(--card-pad) var(--sp-4);line-height:1.45}
+.wpl-tbl-note{border-top:1px solid var(--border);padding-top:var(--sp-3)}
+.wpl-tbl .wpl-wk{font-weight:600;white-space:nowrap}
+.wpl-tbl td.wpl-zero{color:var(--muted-2)}
+.wpl-tbl td.wpl-strong{font-weight:700;color:var(--navy)}
+.wpl-tbl td.pos{color:var(--green)}.wpl-tbl td.neg{color:var(--red)}
+.wpl-tbl tr.wpl-sel td{background:var(--ocean-soft)}
+.wpl-tbl tr.wpl-future td{background:var(--surface-2)}
+@media(max-width:900px){
+  .wpl-kpis{grid-template-columns:1fr 1fr}
+  .wpl-kpi:nth-child(2){border-right:none}
+  .wpl-kpi:nth-child(-n+2){border-bottom:1px solid var(--border)}
+  .wpl-cells{grid-template-columns:repeat(3,1fr)}
+}
+@media(max-width:700px){
+  .wpl-kpi{padding:var(--sp-3) var(--sp-4)}
+  .wpl-kpi .kpi-value{font-size:24px}
+  .wpl-cells{grid-template-columns:1fr 1fr;padding:var(--sp-3) var(--sp-4)}
+  .wpl-bars{padding:0 var(--sp-4) var(--sp-3)}
+  .wpl-bar-row{grid-template-columns:minmax(0,1fr) 64px 64px;gap:2px var(--sp-2)}
+  .wpl-bar-k{grid-column:1/-1;font-size:12.5px;color:var(--muted)}
+  .wpl-moves,.wpl-foot,.wpl-chart-note,.wpl-tbl-note{padding-left:var(--sp-4);padding-right:var(--sp-4)}
+  .wpl-foot-k{min-width:100%}
+  .wpl-chart{padding:var(--sp-2) var(--sp-3) 0;gap:4px}
+  .wpl-cols{gap:0}
+  .wpl-pair{gap:1px}
+  .wpl-stack{width:42%}
+  .wpl-x{font-size:9.5px;font-weight:500;text-align:center;line-height:1.15}
+  .wpl-x span{display:block}
+  .wpl-x2{font-size:9.5px;margin-top:2px}
+  .wpl-long{display:none}.wpl-short{display:inline}
+  .wpl-axis{font-size:10px}
+  .wpl-tbl .wpl-wk{position:sticky;left:0;z-index:1;background:var(--surface);white-space:normal;min-width:104px;max-width:112px;box-shadow:1px 0 0 var(--border)}
+  .wpl-tbl thead th:first-child{position:sticky;left:0;z-index:2}
+  .wpl-tbl tfoot td:first-child{position:sticky;left:0;z-index:1;box-shadow:1px 0 0 var(--border)}
+  .wpl-tbl tr.wpl-sel td.wpl-wk{background:var(--ocean-soft)}
+  .wpl-tbl tr.wpl-future td.wpl-wk{background:var(--surface-2)}
+}
 </style>
 </head>
 <body>
@@ -788,7 +885,7 @@ body{min-height:100dvh}
     <div class="section-head page-head">
       <div>
         <div class="section-title">Weekly P&amp;L</div>
-        <div class="section-sub">Cash control and sales by category — every week, Saturday to Friday</div>
+        <div class="section-sub">Revenue, costs and result of each week, and the cash control — Saturday to Friday</div>
       </div>
     </div>
     <div id="weeklyContent"></div>
@@ -4727,10 +4824,13 @@ async function ovLoadBookingsFromSupabase(){
   const labels=OV_BL_LOCATION_LABELS[__HUB_LOCATION_SLUG]; if(!labels) return;
   const client=(typeof getHubSupabaseClient==='function')?getHubSupabaseClient():null; if(!client) return;
   const rows=[];
+  // Booking amounts (Weekly P&L revenue) only for the full view: a local
+  // manager's or a Camp-Tab-only device never receives them.
+  const money=!LOCAL_MANAGER_MODE&&!CAMP_TAB_ONLY_MODE;
   for(let page=0;page<50;page++){
     const from=page*1000;
     const {data,error}=await client.from('bookings')
-      .select('booking_ref,booker,check_in_on,pax,package,nights:raw_payload->>nights')
+      .select('booking_ref,booker,check_in_on,pax,package,nights:raw_payload->>nights'+(money?',total,net_amount,status:raw_payload->>status':''))
       .in('location',labels).order('check_in_on',{ascending:true}).order('booking_ref',{ascending:true}).range(from,from+999);
     if(error){ console.warn('[Hub] bookings load failed',error); return; }
     rows.push(...(data||[]));
@@ -4742,12 +4842,15 @@ async function ovLoadBookingsFromSupabase(){
     const nights=Math.max(1,parseInt(r.nights,10)||7);
     // Check-out = local midnight `nights` days later (ci + n×24h lands at 01:00
     // after the March clock change in Lisbon and leaks into the next week).
-    return { ref:String(r.booking_ref||''), name:String(r.booker||'Guest'), status:'confirmed', ci, co:new Date(addDays(String(r.check_in_on),nights)+'T00:00:00').getTime(), pax:Math.max(1,Number(r.pax)||1), accommodation:String(r.package||'') };
+    return { ref:String(r.booking_ref||''), name:String(r.booker||'Guest'), status:'confirmed', ci, co:new Date(addDays(String(r.check_in_on),nights)+'T00:00:00').getTime(), pax:Math.max(1,Number(r.pax)||1), accommodation:String(r.package||''),
+      // Net of partner commission, the HQ rule (hq_overview_rollup): coalesce(net_amount,total), realized bookings only.
+      ...(money&&(r.net_amount!=null||r.total!=null)?{net:Number(r.net_amount!=null?r.net_amount:r.total)||0,realized:WPL_REALIZED.includes(String(r.status||'Paid').toLowerCase())}:{}) };
   }).filter(b=>Number.isFinite(b.ci));
   __ovBookingsFromDb=true;
   const lbl=document.getElementById('ovCsvLabel');
   if(lbl){ lbl.textContent='Bookinglayer · '+ovBookings.length+' bookings'; lbl.style.display=''; }
   try{ renderOverview(); }catch(_e){}
+  try{ renderWeeklyPL(); }catch(_e){}
 }
 function ovParseCsvRows(text){
   const rows=[];let row=[];let cur='';let inQ=false;
@@ -9474,6 +9577,282 @@ async function __saveExpenseRun(){
 // ═══════════════════════════════════════════════════════════
 //  WEEKLY P&L  — connected to both weeks AND ledger
 // ═══════════════════════════════════════════════════════════
+// ── Weekly P&L ───────────────────────────────────────────────────────────
+// One model for the page (wplModel): a row per Saturday→Friday week with
+//   · the P&L: revenue = Bookinglayer bookings (net of commission, spread per
+//     night, the HQ rule: Paid / Confirmed / Deposit paid) + on-site sales
+//     (every revenue row of the ledger); costs = every expense row, split
+//     into paid by the camp and paid by HQ; result = revenue − costs.
+//   · the cash control the page always had (sales by category, spent by
+//     cash / card / bank, Money from HQ, what the week did to Bank + Cash).
+// Rows dated after the current week (prepaid rent, visas) are kept apart:
+// they are not part of «to date» and are folded into one line of the table.
+let WPL_SEL=null, WPL_VIEW='pl', WPL_FUTURE_OPEN=false;
+const WPL_REALIZED=['paid','confirmed','deposit paid','deposit_paid'];
+const wplEuro=n=>{const v=Math.round(Number(n||0));return (v<0?'−':'')+'€'+Math.abs(v).toLocaleString('en-US');};
+const wplSigned=n=>{const v=Math.round(Number(n||0));return (v<0?'−':'+')+'€'+Math.abs(v).toLocaleString('en-US');};
+const wplPct=(a,b)=>b>0?Math.round(100*a/b)+'%':'—';
+const wplShort=iso=>{const d=new Date(iso+'T00:00:00');return d.getDate()+' '+d.toLocaleDateString('en-GB',{month:'short'});};
+// «7–13 Nov 2026», «31 Oct – 6 Nov 2026»
+function wplRange(ws){const we=addDays(ws,6);const a=new Date(ws+'T00:00:00'),b=new Date(we+'T00:00:00');const m=d=>d.toLocaleDateString('en-GB',{month:'short'});
+  return a.getMonth()===b.getMonth()?`${a.getDate()}–${b.getDate()} ${m(b)} ${b.getFullYear()}`:`${a.getDate()} ${m(a)} – ${b.getDate()} ${m(b)} ${b.getFullYear()}`;}
+function wplHasBookingMoney(){ return ovBookings.some(b=>Number.isFinite(b.net)); }
+// Booking revenue of a week: each booking's net amount ÷ its nights × the
+// nights it spends in the week (the same nights that make the guest-days).
+function wplBookingNetForWeek(ws){
+  const s=new Date(ws+'T00:00:00').getTime(), e=new Date(addDays(ws,7)+'T00:00:00').getTime();
+  let v=0;
+  for(const b of ovBookings){
+    if(!Number.isFinite(b.net)||b.realized===false) continue;
+    const ci=Math.max(b.ci,s), co=Math.min(b.co,e);
+    if(co<=ci) continue;
+    const nights=Math.max(1,Math.round((b.co-b.ci)/86400000));
+    v+=b.net*Math.round((co-ci)/86400000)/nights;
+  }
+  return v;
+}
+function wplRowFor(ws){
+  const wk=S.weeks.find(w=>w.start===ws);
+  const ledger=ledgerForWeek(ws);
+  const inc=ledger.filter(x=>x.type==='income'), exp=ledger.filter(x=>x.type==='expense');
+  // Money in = HQ top-ups only. ATM withdrawals and cash deposits are
+  // internal moves between the camp's bank and cash drawers.
+  const sent=sum(ledger.filter(x=>x.type==='transfer'&&(x.paymentMethod==='HQ Transfer'||String(x.sourceKind||'').toLowerCase()==='hq_transfer')),x=>x.amount);
+  const campSpend=sum(exp.filter(x=>x.paymentMethod==='Cash'),x=>x.amount);
+  const cardSpend=sum(exp.filter(x=>x.paymentMethod==='Card'),x=>x.amount);
+  const hqSpend=sum(exp.filter(x=>x.paymentMethod==='Bank Transfer'),x=>x.amount);
+  // Ledger only: every Camp Tab «Pay» already writes its own revenue row.
+  const totalRevenue=sum(inc,x=>x.amount);
+  // In local currency, as in the Overview's Food control.
+  const foodExp=sum(exp.filter(x=>x.businessArea==='Food'),x=>entryLocalDisplayAmount(x));
+  const tabRevenue=wk?weekRevenue(wk):0;
+  // What the week did to Bank + Cash, by the one drawer rule (ledgerDrawerDelta).
+  const cash=sum(ledger,x=>{const d=ledgerDrawerDelta(x);return (d.bank+d.cash)*Number(x.amount||0);});
+  const guests=wk?(wk.guests||[]).length:0;
+  // No Camp Tab week in the hub (per_guest camps): guests come from Bookinglayer.
+  const bookingGuests=!wk&&ovBookings.length?ovBookingGuestCount(ovBookingsForWeeks([{start:ws}])):0;
+  const paidGuests=wk?(wk.guests||[]).filter(g=>g.paid).length:0;
+  const guestDays=wk?guestDaysForWeeks([wk]).value:(ovBookings.length?ovGuestDaysForWeek(ws):0);
+  const area=a=>sum(inc.filter(x=>x.businessArea===a),x=>x.amount);
+  const drinksSales=area('Bar'), merchSales=area('Merch'), tourSales=area('Tours'), transportSales=area('Transport');
+  // Sales outside the four categories (extra dinners, «Check Out» totals…).
+  const snap=v=>Math.abs(v)<0.005?0:v; // float dust would print «-€0.00»
+  const otherSales=snap(totalRevenue-drinksSales-merchSales-tourSales-transportSales);
+  // Loans, cash put in or taken out: in «Net this week», in no other column.
+  const otherMoves=snap(cash-(sent+totalRevenue-campSpend-cardSpend-hqSpend));
+  // P&L
+  const hasMoney=wplHasBookingMoney();
+  const bookRev=hasMoney?wplBookingNetForWeek(ws):0;
+  const costHq=sum(exp.filter(x=>isHqPaidRow(x)),x=>x.amount);
+  const costAll=sum(exp,x=>x.amount);
+  const cats={};
+  exp.forEach(x=>{const k=x.category||'Other';cats[k]=(cats[k]||0)+Number(x.amount||0);});
+  const revenue=bookRev+totalRevenue;
+  return{ws,sent,campSpend,cardSpend,hqSpend,foodExp,tabRevenue,totalRevenue,cash,guests,paidGuests,bookingGuests,guestDays,
+    drinksSales,merchSales,tourSales,transportSales,otherSales,otherMoves,
+    bookRev,onsite:totalRevenue,revenue,costCamp:costAll-costHq,costHq,cost:costAll,result:revenue-costAll,cats,
+    guestCount:guests||bookingGuests,n:ledger.length};
+}
+function wplModel(){
+  const cur=weekStartSat(today());
+  const ledgerWS=new Set([...S.weeks.map(w=>w.start),...S.ledger.map(x=>weekStartSat(x.date))]);
+  const all=new Set(ledgerWS);
+  // Weeks with guests and no ledger row yet still earn booking revenue.
+  if(ovBookings.length) ovAllBookingWeekStarts().forEach(ws=>{ if(ws<=cur) all.add(ws); });
+  const rows=[...all].sort().reverse().map(wplRowFor);
+  return{cur,rows:rows.filter(r=>r.ws<=cur),future:rows.filter(r=>r.ws>cur),hasMoney:wplHasBookingMoney()};
+}
+const WPL_SUM_KEYS=['sent','campSpend','cardSpend','hqSpend','foodExp','tabRevenue','totalRevenue','cash','guests','paidGuests','guestDays','drinksSales','merchSales','tourSales','transportSales','otherSales','otherMoves','bookRev','onsite','revenue','costCamp','costHq','cost','result'];
+function wplSum(rows){
+  const t=Object.fromEntries(WPL_SUM_KEYS.map(k=>[k,0])); t.cats={};
+  rows.forEach(r=>{ WPL_SUM_KEYS.forEach(k=>{t[k]+=Number(r[k]||0);}); Object.entries(r.cats||{}).forEach(([k,v])=>{t.cats[k]=(t.cats[k]||0)+v;}); });
+  return t;
+}
+function wplSelect(ws,scroll){
+  WPL_SEL=ws; renderWeeklyPL();
+  if(scroll){ const el=document.getElementById('wplWeek'); if(el&&el.scrollIntoView) el.scrollIntoView({block:'start',behavior:'smooth'}); }
+}
+function wplSetView(v){ WPL_VIEW=v; renderWeeklyPL(); }
+function wplToggleFuture(){ WPL_FUTURE_OPEN=!WPL_FUTURE_OPEN; renderWeeklyPL(); }
+
+// The selected week: revenue, costs, result, guests; per guest-night; the
+// cost lines drawn to one scale against the average of the 4 weeks before.
+function wplWeekCardHtml(M,byWs,sel){
+  const r=byWs.get(sel)||Object.assign(wplSum([]),{ws:sel,guestCount:0});
+  const prev=[1,2,3,4].map(i=>byWs.get(addDays(sel,-7*i))).filter(Boolean);
+  const P=wplSum(prev); const avg=k=>P[k]/4;
+  const pGuests=sum(prev,x=>x.guestCount||0)/4;
+  const inProgress=sel===M.cur;
+  const dayNo=inProgress?Math.round((new Date(today()+'T00:00:00')-new Date(sel+'T00:00:00'))/86400000)+1:0;
+  const older=M.rows.filter(x=>x.ws<sel).map(x=>x.ws)[0]||addDays(sel,-7);
+  const newer=sel<M.cur?addDays(sel,7):null;
+  const per=(a,n)=>n>0?wplEuro(a/n):'—';
+  const kpi=(label,value,cls,sub,sub2)=>`<div class="wpl-kpi"><div class="kpi-label">${label}</div><div class="kpi-value ${cls||''}">${value}</div><div class="kpi-sub">${sub}</div>${sub2?`<div class="kpi-sub wpl-avg">${sub2}</div>`:''}</div>`;
+  const cell=(label,value,sub)=>`<div class="wpl-cell"><div class="wpl-cell-l">${label}</div><div class="wpl-cell-v">${value}</div><div class="wpl-cell-s">${sub}</div></div>`;
+  const salary=r.cats.Salary||0, pSalary=P.cats.Salary||0;
+  // Cost lines: this week's categories, biggest first, on one scale with the average.
+  const names=[...new Set([...Object.keys(r.cats),...Object.keys(P.cats)])];
+  const lines=names.map(k=>({k,v:r.cats[k]||0,a:(P.cats[k]||0)/4})).filter(x=>x.v>0.005||x.a>0.005).sort((a,b)=>b.v-a.v||b.a-a.a);
+  const top=lines.slice(0,7), rest=lines.slice(7);
+  if(rest.length) top.push({k:`Other (${rest.length})`,v:sum(rest,x=>x.v),a:sum(rest,x=>x.a)});
+  const scale=Math.max(1,...top.map(x=>Math.max(x.v,x.a)));
+  const bars=top.map(x=>{const d=x.v-x.a; const big=Math.abs(d)>=Math.max(50,x.a*0.25);
+    return `<div class="wpl-bar-row"><div class="wpl-bar-k">${escapeHtml(x.k)}</div>
+      <div class="wpl-bar-track"><div class="wpl-bar-fill" style="width:${(100*x.v/scale).toFixed(2)}%"></div>${prev.length?`<div class="wpl-bar-avg" style="left:${(100*x.a/scale).toFixed(2)}%" title="Average of the 4 weeks before: ${wplEuro(x.a)}"></div>`:''}</div>
+      <div class="wpl-bar-v">${wplEuro(x.v)}</div>
+      <div class="wpl-bar-d ${big?(d>0?'up':'down'):''}">${prev.length?wplSigned(d):''}</div></div>`;}).join('');
+  // What changed most against the 4 weeks before.
+  const moves=[{k:'Bookings',d:r.bookRev-avg('bookRev')},{k:'On-site sales',d:r.onsite-avg('onsite')},...lines.map(x=>({k:x.k,d:x.v-x.a}))]
+    .filter(x=>Math.abs(x.d)>=50).sort((a,b)=>Math.abs(b.d)-Math.abs(a.d)).slice(0,4);
+  const ytdRows=M.rows.filter(x=>x.ws<=sel&&addDays(x.ws,6).slice(0,4)===addDays(sel,6).slice(0,4));
+  const Y=wplSum(ytdRows);
+  const resLine=(label,t,n)=>`<div class="wpl-foot-row"><span class="wpl-foot-k">${label}</span><span>revenue <b>${wplEuro(t.revenue)}</b></span><span>costs <b>${wplEuro(t.cost)}</b></span><span>result <b class="${t.result>=0?'pos':'neg'}">${wplEuro(t.result)}</b></span><span>margin <b>${t.revenue>0?Math.round(100*t.result/t.revenue)+'%':'—'}</b></span>${n?`<span>${n}</span>`:''}</div>`;
+  return `<div class="card wpl-week" id="wplWeek">
+    <div class="card-pad wpl-week-hdr">
+      <div><div class="card-title">Week ${fmtd(sel)} → ${fmtd(addDays(sel,6))}${inProgress?` <span class="badge badge-amber">In progress</span>`:''}</div>
+        <div class="card-hint">${inProgress?`Day ${dayNo} of 7 — the numbers still move. `:''}Compared with the average of the 4 weeks before.</div></div>
+      <div class="wpl-nav">
+        <button class="btn btn-s btn-sm" onclick="wplSelect('${older}')" aria-label="Previous week">‹ Earlier</button>
+        <button class="btn btn-s btn-sm" ${newer?`onclick="wplSelect('${newer}')"`:'disabled'} aria-label="Next week">Later ›</button>
+        ${inProgress?'':`<button class="btn btn-s btn-sm" onclick="wplSelect('${M.cur}')">This week</button>`}
+      </div>
+    </div>
+    <div class="wpl-kpis">
+      ${kpi('Revenue',wplEuro(r.revenue),'',M.hasMoney?`Bookings ${wplEuro(r.bookRev)} · on-site ${wplEuro(r.onsite)}`:`On-site sales only — booking amounts not loaded`,`4-week average ${wplEuro(avg('revenue'))}`)}
+      ${kpi('Costs',wplEuro(r.cost),'',`Camp ${wplEuro(r.costCamp)} · paid by HQ ${wplEuro(r.costHq)}`,`4-week average ${wplEuro(avg('cost'))}`)}
+      ${kpi('Result',wplEuro(r.result),r.result>=0?'pos':'neg','Revenue − costs',`4-week average ${wplEuro(avg('result'))}`)}
+      ${kpi('Guests',String(r.guestCount||0),'',`${r.guestDays||0} guest-night${r.guestDays===1?'':'s'}`,`4-week average ${Math.round(pGuests)} guests · ${Math.round(P.guestDays/4)} nights`)}
+    </div>
+    <div class="wpl-cells">
+      ${cell('Revenue / guest-night',per(r.revenue,r.guestDays),`4 weeks ${per(P.revenue,P.guestDays)}`)}
+      ${cell('Cost / guest-night',per(r.cost,r.guestDays),`4 weeks ${per(P.cost,P.guestDays)}`)}
+      ${cell('Food / guest-day',perGuestDayMetric(r.foodExp,r.guestDays),`4 weeks ${perGuestDayMetric(P.foodExp,P.guestDays)}`)}
+      ${cell('On-site sales / guest-night',per(r.onsite,r.guestDays),`4 weeks ${per(P.onsite,P.guestDays)}`)}
+      ${cell('Staff share of costs',wplPct(salary,r.cost),`4 weeks ${wplPct(pSalary,P.cost)}`)}
+    </div>
+    <div class="section-lbl">Where the money went<span class="wpl-lbl-note">bar = this week · line = 4-week average</span></div>
+    <div class="wpl-bars">${bars||'<div class="wpl-none">No costs in this week.</div>'}</div>
+    ${moves.length&&prev.length?`<div class="wpl-moves"><span class="wpl-foot-k">Biggest changes</span>${moves.map(m=>`<span>${escapeHtml(m.k)} <b>${wplSigned(m.d)}</b></span>`).join('')}</div>`:''}
+    <div class="wpl-foot">
+      ${resLine('The 4 weeks before, together',P,'')}
+      ${resLine(`${addDays(sel,6).slice(0,4)} up to this week`,Y,'')}
+      <div class="wpl-foot-row"><button class="btn btn-link" onclick="jumpToWeek('${sel}')">Open this week in the Overview</button></div>
+    </div>
+  </div>`;
+}
+// Revenue against costs, the last 12 weeks, one scale starting at zero.
+function wplChartHtml(M,byWs,sel){
+  const weeks=[]; for(let i=11;i>=0;i--) weeks.push(addDays(M.cur,-7*i));
+  const data=weeks.map(ws=>byWs.get(ws)||{ws,bookRev:0,onsite:0,costCamp:0,costHq:0,revenue:0,cost:0,result:0,guestDays:0});
+  const raw=Math.max(1,...data.map(d=>Math.max(d.revenue,d.cost)));
+  const pow=Math.pow(10,Math.floor(Math.log10(raw))); const top=[1,2,2.5,5,10].map(m=>m*pow).find(v=>v>=raw);
+  const H=132; const h=v=>Math.max(0,v)/top*H;
+  const seg=(v,cls)=>v>0.005?`<div class="${cls}" style="height:${h(v).toFixed(1)}px"></div>`:'';
+  return `<div class="card wpl-chart-card">
+    <div class="card-pad wpl-chart-hdr"><div><div class="card-title">Last 12 weeks</div><div class="card-hint">Revenue and costs of each week on the same scale. Tap a week to open it.</div></div>
+      <div class="wpl-legend"><span><i class="wpl-sw book"></i>Bookings</span><span><i class="wpl-sw onsite"></i>On-site</span><span><i class="wpl-sw camp"></i>Camp costs</span><span><i class="wpl-sw hq"></i>Paid by HQ</span></div></div>
+    <div class="wpl-chart" style="--wpl-h:${H}px">
+      <div class="wpl-axis"><span>${wplEuro(top)}</span><span>${wplEuro(top/2)}</span><span>€0</span></div>
+      <div class="wpl-plot">
+        <div class="wpl-grid"><i></i><i></i><i></i></div>
+        <div class="wpl-cols">${data.map(d=>`<button type="button" class="wpl-col${d.ws===sel?' on':''}" onclick="wplSelect('${d.ws}')" title="${fmtd(d.ws)} → ${fmtd(addDays(d.ws,6))} · revenue ${wplEuro(d.revenue)} · costs ${wplEuro(d.cost)} · result ${wplEuro(d.result)}">
+          <span class="wpl-pair"><span class="wpl-stack">${seg(d.onsite,'wpl-b onsite')}${seg(d.bookRev,'wpl-b book')}</span><span class="wpl-stack">${seg(d.costHq,'wpl-b hq')}${seg(d.costCamp,'wpl-b camp')}</span></span>
+          <span class="wpl-x"><span>${new Date(d.ws+'T00:00:00').getDate()}</span> <span>${new Date(d.ws+'T00:00:00').toLocaleDateString('en-GB',{month:'short'})}</span></span>
+          <span class="wpl-x2 ${d.result>=0?'pos':'neg'}"><span class="wpl-long">${Math.abs(d.result)>=1000?(d.result<0?'−':'')+(Math.abs(d.result)/1000).toFixed(1)+'k':(d.result<0?'−':'')+Math.round(Math.abs(d.result))}</span><span class="wpl-short">${Math.abs(d.result)>=500?(d.result<0?'−':'')+Math.round(Math.abs(d.result)/1000)+'k':(d.result<0?'−':'')+Math.round(Math.abs(d.result))}</span></span>
+        </button>`).join('')}</div>
+      </div>
+    </div>
+    <div class="wpl-chart-note">Under each week: the result (revenue − costs) in €. Salaries and rent land in the week they are paid, so single weeks swing; read the trend.</div>
+  </div>`;
+}
+function wplPLTableHtml(M,sel){
+  const T=wplSum(M.rows);
+  const fut=wplSum(M.future);
+  const c=(v,cls)=>`<td class="r ${Math.abs(v)<0.5?'wpl-zero':(cls||'')}">${wplEuro(v)}</td>`;
+  const f=v=>`<td class="r">${wplEuro(v)}</td>`;
+  const res=(v)=>`<td class="r wpl-strong ${v>=0?'pos':'neg'}">${wplEuro(v)}</td>`;
+  // One list of columns; on a phone Result, Revenue and Costs come right after the week.
+  const cols=[
+    {k:'guests',h:'Guests',cell:r=>`<td class="r">${r.guestCount||'—'}</td>`,foot:()=>'<td class="r">—</td>'},
+    {k:'nights',h:'Guest-nights',cell:r=>`<td class="r">${r.guestDays||'—'}</td>`,foot:()=>`<td class="r">${T.guestDays}</td>`},
+    {k:'book',h:'Bookings',cell:r=>c(r.bookRev),foot:()=>f(T.bookRev)},
+    {k:'onsite',h:'On-site sales',cell:r=>c(r.onsite),foot:()=>f(T.onsite)},
+    {k:'revenue',h:'Revenue',cell:r=>c(r.revenue,'wpl-strong'),foot:()=>f(T.revenue)},
+    {k:'camp',h:'Camp costs',cell:r=>c(r.costCamp),foot:()=>f(T.costCamp)},
+    {k:'hq',h:'Paid by HQ',cell:r=>c(r.costHq),foot:()=>f(T.costHq)},
+    {k:'cost',h:'Costs',cell:r=>c(r.cost,'wpl-strong'),foot:()=>f(T.cost)},
+    {k:'result',h:'Result',cell:r=>res(r.result),foot:()=>res(T.result)},
+    {k:'cpn',h:'Cost / guest-night',cell:r=>`<td class="r">${r.guestDays?wplEuro(r.cost/r.guestDays):'—'}</td>`,foot:()=>`<td class="r">${T.guestDays?wplEuro(T.cost/T.guestDays):'—'}</td>`},
+  ];
+  const phone=typeof matchMedia==='function'&&matchMedia('(max-width:700px)').matches;
+  const order=phone?['result','revenue','cost','guests','nights','book','onsite','camp','hq','cpn']:cols.map(x=>x.k);
+  const C=order.map(k=>cols.find(x=>x.k===k));
+  return `<div class="tbl-wrap"><table class="wpl-tbl" id="wplPLTable">
+    <thead><tr><th>Week</th>${C.map(x=>`<th class="r">${x.h}</th>`).join('')}</tr></thead>
+    <tbody>${M.rows.map(r=>`<tr class="click${r.ws===sel?' wpl-sel':''}" onclick="wplSelect('${r.ws}',true)">
+      <td class="wpl-wk" title="${fmtd(r.ws)} → ${fmtd(addDays(r.ws,6))}">${wplRange(r.ws)}${r.ws===M.cur?'<span class="cell-sub">in progress</span>':''}</td>${C.map(x=>x.cell(r)).join('')}</tr>`).join('')}</tbody>
+    <tfoot><tr><td>Total to date</td>${C.map(x=>x.foot()).join('')}</tr></tfoot>
+  </table></div>
+  ${M.future.length?`<div class="wpl-tbl-note">Not in this table: ${wplEuro(fut.cost)} of costs dated after this week (${M.future.length} week${M.future.length===1?'':'s'}, e.g. rent or visas paid in advance). They are in the Cash control view.</div>`:''}`;
+}
+function wplCashTableHtml(M,sel){
+  const all=[...M.future,...M.rows];
+  const totals=wplSum(all), F=wplSum(M.future);
+  const showOtherSales=all.some(r=>Math.abs(r.otherSales)>0.005), showMoves=all.some(r=>Math.abs(r.otherMoves)>0.005);
+  const wk=(v,color,bold)=>`<td class="r" style="${Math.abs(Number(v))>0.005?`color:${color};${bold?'font-weight:700':''}`:'color:var(--muted-2)'}">${euro(v)}</td>`;
+  const cells=r=>`${wk(r.drinksSales,'var(--green)',true)}${wk(r.merchSales,'var(--green)',true)}${wk(r.tourSales,'var(--green)',true)}${wk(r.transportSales,'var(--green)',true)}
+      ${showOtherSales?wk(r.otherSales,'var(--green)',true):''}
+      ${wk(r.campSpend,'var(--red)',false)}${wk(r.cardSpend||0,'var(--red)',false)}${wk(r.hqSpend,'var(--amber)',false)}${wk(r.sent,'var(--amber)',false)}
+      ${showMoves?wk(r.otherMoves,r.otherMoves>=0?'var(--green)':'var(--red)',false):''}
+      ${wk(r.cash,r.cash>=0?'var(--green)':'var(--red)',true)}`;
+  const row=r=>`<tr class="click${r.ws===sel?' wpl-sel':''}" onclick="wplSelect('${r.ws}',true)">
+      <td class="wpl-wk">${fmtd(r.ws)} → ${fmtd(addDays(r.ws,6))}</td>
+      <td class="r">${r.guests?`${r.paidGuests} / ${r.guests}`:(r.bookingGuests?`<span title="Guests from Bookinglayer">${r.bookingGuests}</span>`:'—')}</td>
+      ${cells(r)}
+      <td class="r" style="color:var(--red)">${r.guestDays?perGuestDayMetric(r.foodExp,r.guestDays):'—'}</td></tr>`;
+  const futureRow=M.future.length?`<tr class="click wpl-future" id="wplFutureRow" onclick="wplToggleFuture()">
+      <td class="wpl-wk">Dated after this week<span class="cell-sub">${M.future.length} week${M.future.length===1?'':'s'} · paid in advance · ${WPL_FUTURE_OPEN?'hide':'show'}</span></td><td class="r">—</td>${cells(F)}<td class="r">—</td></tr>`:'';
+  return `<div class="tbl-wrap"><table class="wpl-tbl" id="wplCashTable">
+      <thead><tr>
+        <th>Week</th>
+        <th class="r">Guests (paid / total)</th>
+        <th class="r">Drinks sales</th>
+        <th class="r">Merch sales</th>
+        <th class="r">Tour sales</th>
+        <th class="r">Transport sales</th>
+        ${showOtherSales?'<th class="r" title="Sales outside the four categories, e.g. extra dinners or a check-out total">Other sales</th>':''}
+        <th class="r">Spent in cash</th>
+        <th class="r">Spent by card</th>
+        <th class="r">Paid by bank</th>
+        <th class="r">Money from HQ</th>
+        ${showMoves?'<th class="r" title="Money that moved and is neither a sale, a cost nor Money from HQ: loans, cash put into or taken out of the box">Other moves</th>':''}
+        <th class="r" title="What the week did to Bank + Cash: Money from HQ + sales − everything spent (cash, card, bank) ± other moves. Costs paid by HQ are not in it.">Net this week</th>
+        <th class="r">Food / guest-day</th>
+      </tr></thead>
+      <tbody>
+        ${futureRow}${WPL_FUTURE_OPEN?M.future.map(row).join(''):''}
+        ${M.rows.map(row).join('')}
+      </tbody>
+      <tfoot>
+        <tr>
+          <td>Total</td>
+          <td class="r">${totals.guests||!ovBookings.length?`${totals.paidGuests} / ${totals.guests}`:`<span title="Guests from Bookinglayer">${ovBookingGuestCount(ovBookingsForWeeks(all.map(r=>({start:r.ws}))))}</span>`}</td>
+          <td class="r" style="color:var(--green)">${euro(totals.drinksSales)}</td>
+          <td class="r" style="color:var(--green)">${euro(totals.merchSales)}</td>
+          <td class="r" style="color:var(--green)">${euro(totals.tourSales)}</td>
+          <td class="r" style="color:var(--green)">${euro(totals.transportSales)}</td>
+          ${showOtherSales?`<td class="r" style="color:var(--green)">${euro(totals.otherSales)}</td>`:''}
+          <td class="r" style="color:var(--red)">${euro(totals.campSpend)}</td>
+          <td class="r" style="color:var(--red)">${euro(totals.cardSpend)}</td>
+          <td class="r" style="color:var(--amber)">${euro(totals.hqSpend)}</td>
+          <td class="r" style="color:var(--amber)">${euro(totals.sent)}</td>
+          ${showMoves?`<td class="r" style="color:${totals.otherMoves>=0?'var(--green)':'var(--red)'}">${euro(totals.otherMoves)}</td>`:''}
+          <td class="r" style="color:${totals.cash>=0?'var(--green)':'var(--red)'}">${euro(totals.cash)}</td>
+          <td class="r" style="color:var(--red)">${perGuestDayMetric(totals.foodExp,totals.guestDays)}</td>
+        </tr>
+      </tfoot>
+    </table></div>`;
+}
 function renderWeeklyPL(){
   const el=document.getElementById('weeklyContent');
   if(!el)return;
@@ -9482,123 +9861,22 @@ function renderWeeklyPL(){
     el.innerHTML='<div class="card card-pad" style="color:var(--muted);text-align:center;padding:32px">No data yet. Create a week in Camp Tab and add some expenses to see the P&L.</div>';
     return;
   }
-
-  const allWS=new Set([
-    ...S.weeks.map(w=>w.start),
-    ...S.ledger.map(x=>weekStartSat(x.date))
-  ]);
-  const sortedWS=[...allWS].sort().reverse();
-
-  const rows=sortedWS.map(ws=>{
-    const wk=S.weeks.find(w=>w.start===ws);
-    const ledger=ledgerForWeek(ws);
-    // Money in = HQ top-ups only. ATM withdrawals and cash deposits are
-    // internal moves between the camp's bank and cash drawers — counting
-    // them here inflated «Cash Float In» and Operating Cash.
-    const sent=sum(ledger.filter(x=>x.type==='transfer'&&(x.paymentMethod==='HQ Transfer'||String(x.sourceKind||'').toLowerCase()==='hq_transfer')),x=>x.amount);
-    const campSpend=sum(ledger.filter(x=>x.type==='expense'&&x.paymentMethod==='Cash'),x=>x.amount);
-    const cardSpend=sum(ledger.filter(x=>x.type==='expense'&&x.paymentMethod==='Card'),x=>x.amount);
-    const hqSpend=sum(ledger.filter(x=>x.type==='expense'&&x.paymentMethod==='Bank Transfer'),x=>x.amount);
-    const manualRevenue=sum(ledger.filter(x=>x.type==='income'),x=>x.amount);
-    // In local currency: «Food / guest-day» is shown with lkr() (as in the
-    // Overview's Food control). Summing € here showed €9 as «LKR 9».
-    const foodExp=sum(ledger.filter(x=>x.type==='expense'&&x.businessArea==='Food'),x=>entryLocalDisplayAmount(x));
-    const tabRevenue=wk?weekRevenue(wk):0;
-    // Same fix as Overview's double-count: every per_guest item Pay AND
-    // every Sri Lanka legacy close-week writes campitem_* / campclose_*
-    // ledger entries. tabRevenue (from g.paid items) is the SAME money
-    // already in manualRevenue. Use ledger only as the single source of
-    // truth; tabRevenue stays in scope as display metadata so any
-    // surface that wants the "Camp Tab snapshot" can still read it.
-    const totalRevenue=manualRevenue;
-    // Operating balance — every spend channel (Cash + Card + Bank
-    // Transfer) draws from the same pool funded by HQ top-ups +
-    // collected revenue.
-    // = what the week did to Bank + Cash, by the one drawer rule
-    // (ledgerDrawerDelta): a loan paid out of the bank, cash put in or taken
-    // out count too; withdrawals and deposits only move money between the two.
-    const cash=sum(ledger,x=>{const d=ledgerDrawerDelta(x);return (d.bank+d.cash)*Number(x.amount||0);});
-    const guests=wk?(wk.guests||[]).length:0;
-    // No Camp Tab week in the hub (per_guest camps): guests come from Bookinglayer.
-    const bookingGuests=!wk&&ovBookings.length?ovBookingGuestCount(ovBookingsForWeeks([{start:ws}])):0;
-    const paidGuests=wk?(wk.guests||[]).filter(g=>g.paid).length:0;
-    const guestDays=wk?guestDaysForWeeks([wk]).value:(ovBookings.length?ovGuestDaysForWeek(ws):0);
-    // Per-area split: ledger-only too. The businessArea on each ledger
-    // entry already encodes which bucket (Bar / Merch / Tours / Transport)
-    // the money belongs to — buildPaidItemRevenueEntry → inferArea
-    // handles the mapping at creation time. Combining tab items here
-    // again would just duplicate. Drinks items become businessArea='Bar';
-    // Merch becomes 'Merch'; Tours/Transport split inside Tours via
-    // isTransportRevenueName when the entry is built.
-    const areaRevenue={
-      Bar:sum(ledger.filter(x=>x.type==='income'&&x.businessArea==='Bar'),x=>x.amount),
-      Merch:sum(ledger.filter(x=>x.type==='income'&&x.businessArea==='Merch'),x=>x.amount),
-      Tours:sum(ledger.filter(x=>x.type==='income'&&x.businessArea==='Tours'),x=>x.amount),
-      Transport:sum(ledger.filter(x=>x.type==='income'&&x.businessArea==='Transport'),x=>x.amount)
-    };
-    return{ws,sent,campSpend,cardSpend,hqSpend,foodExp,tabRevenue,totalRevenue,cash,guests,paidGuests,bookingGuests,guestDays,drinksSales:areaRevenue.Bar,merchSales:areaRevenue.Merch,tourSales:areaRevenue.Tours,transportSales:areaRevenue.Transport};
-  });
-
-  const totals=rows.reduce((t,r)=>({
-    sent:t.sent+r.sent,campSpend:t.campSpend+r.campSpend,cardSpend:t.cardSpend+(r.cardSpend||0),hqSpend:t.hqSpend+r.hqSpend,
-    foodExp:t.foodExp+r.foodExp,tabRevenue:t.tabRevenue+r.tabRevenue,totalRevenue:t.totalRevenue+r.totalRevenue,
-    cash:t.cash+r.cash,guests:t.guests+r.guests,paidGuests:t.paidGuests+r.paidGuests,guestDays:t.guestDays+r.guestDays,
-    drinksSales:t.drinksSales+r.drinksSales,merchSales:t.merchSales+r.merchSales,tourSales:t.tourSales+r.tourSales,transportSales:t.transportSales+r.transportSales
-  }),{sent:0,campSpend:0,cardSpend:0,hqSpend:0,foodExp:0,tabRevenue:0,totalRevenue:0,cash:0,guests:0,paidGuests:0,guestDays:0,drinksSales:0,merchSales:0,tourSales:0,transportSales:0});
-
-  el.innerHTML=`<div class="card">
-    <div class="card-pad" style="border-bottom:1px solid var(--border)">
-      <div class="card-title">Weekly P&L — all weeks</div>
-      <div class="card-hint">Sales by category, what was spent and how, money from HQ, and the net result — per week</div>
+  const M=wplModel();
+  const byWs=new Map(M.rows.map(r=>[r.ws,r]));
+  // Opens on the current week when it has anything, else on the latest week that has.
+  const latest=(M.rows.find(r=>r.n||r.guestCount)||M.rows[0]||{ws:M.cur}).ws;
+  const sel=(WPL_SEL&&WPL_SEL<=M.cur)?WPL_SEL:(byWs.get(M.cur)&&(byWs.get(M.cur).n||byWs.get(M.cur).guestCount)?M.cur:latest);
+  const view=WPL_VIEW==='cash'?'cash':'pl';
+  el.innerHTML=`${wplWeekCardHtml(M,byWs,sel)}
+  ${wplChartHtml(M,byWs,sel)}
+  <div id="wplExtrasSlot"></div>
+  <div class="card">
+    <div class="card-pad wpl-tbl-hdr" style="border-bottom:1px solid var(--border)">
+      <div><div class="card-title">Weekly P&L — all weeks</div>
+      <div class="card-hint">${view==='pl'?'Revenue (bookings spread per night + on-site sales), every cost of the week and the result. Tap a week to open it above.':'Sales by category, what was spent and how, money from HQ, and what the week did to Bank + Cash.'}</div></div>
+      <div class="wpl-pills" role="tablist"><button class="pill${view==='pl'?' active':''}" onclick="wplSetView('pl')">Profit & loss</button><button class="pill${view==='cash'?' active':''}" onclick="wplSetView('cash')">Cash control</button></div>
     </div>
-    <div class="tbl-wrap"><table>
-      <thead><tr>
-        <th>Week</th>
-        <th class="r">Guests (paid / total)</th>
-        <th class="r">Drinks sales</th>
-        <th class="r">Merch sales</th>
-        <th class="r">Tour sales</th>
-        <th class="r">Transport sales</th>
-        <th class="r">Spent in cash</th>
-        <th class="r">Spent by card</th>
-        <th class="r">Paid by bank</th>
-        <th class="r">Money from HQ</th>
-        <th class="r" title="Money from HQ + sales − everything spent (cash, card, bank). Costs paid by HQ are not in it.">Net this week</th>
-        <th class="r">Food / guest-day</th>
-      </tr></thead>
-      <tbody>
-        ${rows.map(r=>{ const wk=(v,color,bold)=>`<td class="r" style="${Number(v)?`color:${color};${bold?'font-weight:700':''}`:'color:var(--muted-2)'}">${euro(v)}</td>`; return `<tr class="click" onclick="jumpToWeek('${r.ws}')">
-          <td style="font-weight:600;white-space:nowrap">${fmtd(r.ws)} → ${fmtd(addDays(r.ws,6))}</td>
-          <td class="r">${r.guests?`${r.paidGuests} / ${r.guests}`:(r.bookingGuests?`<span title="Guests from Bookinglayer">${r.bookingGuests}</span>`:'—')}</td>
-          ${wk(r.drinksSales,'var(--green)',true)}
-          ${wk(r.merchSales,'var(--green)',true)}
-          ${wk(r.tourSales,'var(--green)',true)}
-          ${wk(r.transportSales,'var(--green)',true)}
-          ${wk(r.campSpend,'var(--red)',false)}
-          ${wk(r.cardSpend||0,'var(--red)',false)}
-          ${wk(r.hqSpend,'var(--amber)',false)}
-          ${wk(r.sent,'var(--amber)',false)}
-          ${wk(r.cash, r.cash>=0?'var(--green)':'var(--red)', true)}
-          <td class="r" style="color:var(--red)">${r.guestDays?perGuestDayMetric(r.foodExp,r.guestDays):'—'}</td>
-        </tr>`;}).join('')}
-      </tbody>
-      <tfoot>
-        <tr>
-          <td>Total</td>
-          <td class="r">${totals.guests||!ovBookings.length?`${totals.paidGuests} / ${totals.guests}`:`<span title="Guests from Bookinglayer">${ovBookingGuestCount(ovBookingsForWeeks(sortedWS.map(start=>({start}))))}</span>`}</td>
-          <td class="r" style="color:var(--green)">${euro(totals.drinksSales)}</td>
-          <td class="r" style="color:var(--green)">${euro(totals.merchSales)}</td>
-          <td class="r" style="color:var(--green)">${euro(totals.tourSales)}</td>
-          <td class="r" style="color:var(--green)">${euro(totals.transportSales)}</td>
-          <td class="r" style="color:var(--red)">${euro(totals.campSpend)}</td>
-          <td class="r" style="color:var(--red)">${euro(totals.cardSpend)}</td>
-          <td class="r" style="color:var(--amber)">${euro(totals.hqSpend)}</td>
-          <td class="r" style="color:var(--amber)">${euro(totals.sent)}</td>
-          <td class="r" style="color:${totals.cash>=0?'var(--green)':'var(--red)'}">${euro(totals.cash)}</td>
-          <td class="r" style="color:var(--red)">${perGuestDayMetric(totals.foodExp,totals.guestDays)}</td>
-        </tr>
-      </tfoot>
-    </table></div>
+    ${view==='pl'?wplPLTableHtml(M,sel):wplCashTableHtml(M,sel)}
   </div>`;
   if(typeof campExtrasAfterWeekly==='function') campExtrasAfterWeekly(); // camp-hub/extras.js («This week» card)
 }
