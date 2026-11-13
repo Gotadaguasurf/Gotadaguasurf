@@ -7,6 +7,7 @@ drop trigger if exists camp_transport_link_upd on public.ledger_entries;
 drop policy if exists ledger_local_no_cash_count_insert on public.ledger_entries;
 drop policy if exists ledger_local_no_cash_count_update on public.ledger_entries;
 drop policy if exists ledger_local_no_cash_count_delete on public.ledger_entries;
+drop table if exists public.camp_week_messages cascade;
 drop table if exists public.camp_transport_payments cascade;
 drop table if exists public.camp_trips cascade;
 drop table if exists public.camp_week_guests cascade;
