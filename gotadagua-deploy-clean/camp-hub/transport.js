@@ -667,8 +667,8 @@
     const act = s === 'owed' ? `<button class="btn btn-s btn-sm" onclick="TransportUI.linkTrip('${t.id}')">${ic('link')} Link</button>`
       : t.payment_entry_id ? `<button class="btn btn-s btn-sm" onclick="TransportUI.unlinkTrip('${t.id}')">Unlink</button>` : '';
     return `<tr data-rec="${s}" data-trip="${t.id}"><td class="tr-ok">${ok ? `<span class="tr-ok-y">${ic('check-circle')}</span>` : `<span class="tr-ok-n">${ic('alert')}</span>`}</td>
-      <td class="tr-nowrap">${fmtShort(t.trip_date)}</td><td>${what}</td><td>${booked}</td><td>${done}</td><td>${paidCell(t)}</td>
-      <td><span class="badge ${cls}">${label}</span></td><td class="tr-act">${act}</td></tr>`;
+      <td class="tr-nowrap tr-c-date">${fmtShort(t.trip_date)}</td><td class="tr-c-what">${what}</td><td class="tr-c-k" data-l="Booked">${booked}</td><td class="tr-c-k" data-l="Done">${done}</td><td class="tr-c-k" data-l="Paid">${paidCell(t)}</td>
+      <td class="tr-c-st"><span class="badge ${cls}">${label}</span></td><td class="tr-act">${act}</td></tr>`;
   }
   function payRow(l) {
     const e = ledgerById(l.entry_id) || {};
@@ -678,9 +678,9 @@
     const why = l.state === 'review' ? ({ 'no driver named': 'no driver named in the description', 'no unpaid trips': 'no unpaid trips of this driver', 'amounts differ': `trips ${money(l.trips_amount)} · difference ${money(Number(l.entry_amount) - Number(l.trips_amount))}`, unlinked: 'unlinked', 'no trips linked': 'no trips linked' }[l.reason] || l.reason || '')
       : l.state === 'explained' ? (l.note || '') : '';
     return `<tr data-pay="${l.entry_id}" data-state="${l.state}"><td class="tr-ok">${ok ? `<span class="tr-ok-y">${ic('check-circle')}</span>` : `<span class="tr-ok-n">${ic('alert')}</span>`}</td>
-      <td class="tr-nowrap">${fmtShort(e.date)}</td><td>${h(e.description || '')}<span class="cell-sub">${h(d ? d.name : 'no driver')} · ${l.linked_by === 'auto' ? 'linked automatically' : l.linked_by === 'pay' ? 'Pay a driver' : 'linked by hand'}</span></td>
-      <td class="r tr-nowrap">${money(l.entry_amount)}</td><td>${l.trips_count} trip${l.trips_count === 1 ? '' : 's'} · ${money(l.trips_amount)}</td>
-      <td><span class="badge ${label[1]}">${label[0]}</span>${why ? `<span class="cell-sub">${h(why)}</span>` : ''}</td>
+      <td class="tr-nowrap tr-c-date">${fmtShort(e.date)}</td><td class="tr-c-what">${h(e.description || '')}<span class="cell-sub">${h(d ? d.name : 'no driver')} · ${l.linked_by === 'auto' ? 'linked automatically' : l.linked_by === 'pay' ? 'Pay a driver' : 'linked by hand'}</span></td>
+      <td class="r tr-nowrap tr-c-k" data-l="Amount">${money(l.entry_amount)}</td><td class="tr-c-k" data-l="Trips">${l.trips_count} trip${l.trips_count === 1 ? '' : 's'} · ${money(l.trips_amount)}</td>
+      <td class="tr-c-st"><span class="badge ${label[1]}">${label[0]}</span>${why ? `<span class="cell-sub">${h(why)}</span>` : ''}</td>
       <td class="tr-act"><div class="row"><button class="btn btn-s btn-sm" onclick="TransportUI.openLink('${l.entry_id}')">${ic('link')} Link trips</button>
         ${l.trips_count ? `<button class="btn btn-s btn-sm" onclick="TransportUI.unlinkPayment('${l.entry_id}')">Unlink</button>` : ''}
         ${l.state === 'review' ? `<button class="btn btn-s btn-sm" onclick="TransportUI.openExplain('${l.entry_id}')">Mark explained</button>` : ''}</div></td></tr>`;
