@@ -9964,7 +9964,7 @@ window.addEventListener('message',e=>{
   if(e.data?.type==='camp-tab-bookings-synced'){
     rerenderActivePageData();
     if(e.data.ok&&e.data.added){
-      toast(e.data.added===1?'1 booking synced to Camp Tab':`${e.data.added} bookings synced to Camp Tab`);
+      toast(e.data.perGuest?`${e.data.added} guest${e.data.added===1?'':'s'} from the Guests file added to Camp Tab`:(e.data.added===1?'1 booking synced to Camp Tab':`${e.data.added} bookings synced to Camp Tab`));
     }else if(e.data.reason==='different-active-week'){
       toast('Camp Tab already has another active week open');
     }else if(e.data.reason==='error'){

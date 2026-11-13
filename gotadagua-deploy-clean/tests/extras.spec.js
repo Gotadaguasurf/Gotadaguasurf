@@ -77,7 +77,7 @@ function ledgerRows({ withoutKavindu = false, bank = 217830 } = {}) {
   const rows = [
     // Bank: an HQ transfer in and nothing else touching it but the salaries below.
     L('money_sent', 'HQ Transfer', 0, '2026-09-01', 'Money from HQ', { category: 'Cash Float' }),
-    L('money_sent', 'Cash', 500000, '2026-10-01', 'Opening cash', { category: 'Cash Float' }),
+    L('money_sent', 'Cash', 1000000, '2026-10-01', 'Opening cash', { category: 'Cash Float' }),
     ...SEP.map(([m, a, d, desc, x]) => L('expense', m, a, d, desc, x || {})),
     ...OCT.filter(r => !(withoutKavindu && /^Kavindu/.test(r[3]))).map(([m, a, d, desc, x]) => L('expense', m, a, d, desc, x || {})),
     // This week (Sat 14 – Fri 20 Nov): bar sales, tours, a cost.
@@ -266,9 +266,11 @@ test('leaving chips above the Camp Tab: today and tomorrow with open tab, list o
   await frame.evaluate(() => { const g = rosterRows(S.activeWeek, 'guests').find(x => x.name === 'Tom Müller'); g.items.push({ id: makeUuid(), n: 'Shot', p: 1000, cat: 'Drinks' }); save(); });
   await page.evaluate(() => showPage('pos'));
   await expect(page.locator('#exLeaving .health-chip')).toHaveText(['Leaving today with open tab: 1 · LKR 2,600', 'Leaving tomorrow with open tab: 1 · LKR 1,000']);
+  await expect(page.locator('#toast')).toContainText('2 guests from the Guests file added to Camp Tab');
   await page.locator('#exLeaving .health-chip').first().click();
   await expect(page.locator('#exLeaveList')).toContainText('Gonçalo Pina');
   await expect(page.locator('#exLeaveList')).toContainText('LKR 2,600');
+  await page.screenshot({ path: `${SHOTS}/extras-leaving.png` });
   // The frame is pushed down, not off the screen.
   const box = await page.locator('#campTabFrame').boundingBox();
   expect(box.y + box.height).toBeLessThanOrEqual(845);
@@ -276,7 +278,6 @@ test('leaving chips above the Camp Tab: today and tomorrow with open tab, list o
   // Paying Gonçalo's lines removes him from the chip.
   await frame.evaluate(() => { const g = rosterRows(S.activeWeek, 'guests').find(x => x.name === 'Gonçalo Pina'); g.items.forEach(i => { i.paidAt = '2026-11-16'; }); save(); });
   await expect(page.locator('#exLeaving .health-chip')).toHaveText(['Leaving tomorrow with open tab: 1 · LKR 1,000']);
-  await page.screenshot({ path: `${SHOTS}/extras-leaving.png` });
   expect(errors).toEqual([]);
 });
 
@@ -311,6 +312,7 @@ test('salary chip: September as the expected list, October complete → no chip;
   await chip.click();
   await expect(p2.locator('#exSalOv.open .mhdr-title')).toHaveText('October salaries');
   await noWiderThanPhone(p2);
+  await p2.waitForTimeout(500);
   await p2.screenshot({ path: `${SHOTS}/extras-salaries-modal.png` });
   await p2.locator('#exSalOv [data-not-expected]').click();
   await expect(p2.locator('#exSalOv')).toContainText('Expected again');
@@ -349,6 +351,8 @@ test('tour chip: Cooking Class sold twice this week with no cost (last month\'s 
   await openHub(page, { waitFrame: false });
   await page.evaluate(() => showPage('expenses'));
   await expect(page.locator('#expChecks .health-chip', { hasText: 'Tour sold' })).toHaveText('Tour sold this week with no cost: Cooking Class ×2');
+  await page.locator('#expChecks').scrollIntoViewIfNeeded();
+  await page.evaluate(() => window.scrollBy(0, -120));
   await page.screenshot({ path: `${SHOTS}/extras-chips.png`, fullPage: false });
 });
 
@@ -360,7 +364,7 @@ test('weekly P&L: «This week» card — guests, bar sales, spent, cash vs last 
     waitFrame: false,
     tables: {
       camp_trips: [trip('t1', '2026-11-16', '08:00'), trip('t2', '2026-11-18', '09:30', { kind: 'airport_departure' }), trip('t3', '2026-11-15', '07:00', { status: 'cancelled' })],
-      camp_cash_counts: [{ id: 'c1', location_id: LOC, count_date: '2026-11-15', bar_box: 100000, pocket: 395000, declared_unloaded_withdrawals: 0, statement_through: null, status: 'open', created_at: '2026-11-15T13:00:00Z' }],
+      camp_cash_counts: [{ id: 'c1', location_id: LOC, count_date: '2026-11-15', bar_box: 20000, pocket: 160000, declared_unloaded_withdrawals: 0, statement_through: null, status: 'open', created_at: '2026-11-15T13:00:00Z' }],
     },
   });
   await page.waitForFunction(() => window.TransportUI && TransportUI._state.loaded && window.CampCash && CampCash.state.loaded, null, { timeout: 15000 });
@@ -371,7 +375,7 @@ test('weekly P&L: «This week» card — guests, bar sales, spent, cash vs last 
   await expect(card.locator('.ex-wk-row').nth(0)).toContainText('4');           // Julia, Anna, Tom, Gonçalo (Guests file)
   await expect(card.locator('.ex-wk-row').nth(1)).toContainText('LKR 19,200');  // Camp Tab: 1,200 + 3 × 6,000
   await expect(card.locator('.ex-wk-row').nth(2)).toContainText('cash LKR 8,000 · bank LKR 4,500');
-  await expect(card.locator('.ex-wk-row').nth(3)).toContainText('last count 15 Nov: counted 495,000');
+  await expect(card.locator('.ex-wk-row').nth(3)).toContainText('last count 15 Nov: counted 180,000 · −3,200');
   await expect(card.locator('.ex-wk-row').nth(4)).toContainText('2 booked · 1 done · 0 paid');
   await expect(card.locator('.ex-wk-row').nth(4)).toContainText('owed to drivers LKR 9,000');
   await expect(card.locator('.ex-wk-row').nth(5)).toContainText('exported 15 Nov');

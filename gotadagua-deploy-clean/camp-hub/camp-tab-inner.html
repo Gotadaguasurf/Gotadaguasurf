@@ -5159,8 +5159,7 @@ window.addEventListener('message',async e=>{
     const result=await applyIncomingBookingsToCampTab(e.data);
     try{window.parent?.postMessage({type:'camp-tab-bookings-synced',...result,weekStart:e.data?.weekStart||''},'*');}catch(_){}
     if(result.ok&&result.added){
-      const what=result.perGuest?'guest':'booking';
-      toast(result.added===1?`1 ${what} added to Camp Tab`:`${result.added} ${what}s added to Camp Tab`);
+      toast(result.perGuest?`${result.added} guest${result.added===1?'':'s'} from the Guests file added`:(result.added===1?'1 booking synced to Camp Tab':`${result.added} bookings synced to Camp Tab`));
     }else if(result.reason==='different-active-week'){
       toast('Camp Tab already has another active week open');
     }
