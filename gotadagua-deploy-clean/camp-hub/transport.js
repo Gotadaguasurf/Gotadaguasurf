@@ -1203,11 +1203,19 @@
       .sort((a, b) => (a.trip_date + (a.trip_time || '')).localeCompare(b.trip_date + (b.trip_time || '')));
     const sum = cands.filter(t => D.picked.has(t.id)).reduce((s, t) => s + Number(t.expected_price || 0), 0);
     const body = `<div class="mfield"><label>Driver</label><select id="lk_dr" onchange="TransportUI.linkDriver(this.value)">${driverOptions(D.driver)}</select></div>
+      ${cands.length > 3 ? `<div class="row tr-pick-all"><button class="btn btn-s btn-sm" id="lk_all" onclick="TransportUI.linkAll(true)">Tick all ${cands.length}</button><button class="btn btn-s btn-sm" id="lk_none" onclick="TransportUI.linkAll(false)">None</button></div>` : ''}
       <div class="tr-picks">${cands.length ? cands.map(t => `<label class="tr-pick"><input type="checkbox" data-id="${t.id}" ${D.picked.has(t.id) ? 'checked' : ''} onchange="TransportUI.linkPick('${t.id}', this.checked)">
         <span>${fmtShort(t.trip_date)} · ${h(isAirport(t) ? (t.guest_names || 'Guest') + (t.kind === 'airport_departure' ? ' · departure' : ' · arrival') : (t.tour_name ? 'Tour · ' + t.tour_name : t.route))}</span><b class="num">${money(t.expected_price)}</b></label>`).join('') : '<div class="hint">No unpaid trips for this driver.</div>'}</div>
       <div class="tr-sum ${sum === amount ? 'ok' : 'off'}" id="lk_sum">Ticked ${money(sum)} of ${money(amount)}${sum !== amount ? ` · difference ${money(amount - sum)}` : ''}</div>
       <div class="mfield"><label>Note (accepts a difference)</label><input id="lk_note" placeholder="e.g. waiting time"></div>`;
     modal('Link trips', `${h(e.description || '')} · ${money(amount)}`, body, `<button class="btn btn-s" onclick="TransportUI.closeModal()">Cancel</button><button class="btn btn-p" id="lk_save" onclick="TransportUI.saveLink()">Save</button>`);
+  }
+  // Sampath's weekly lump covers a hundred runs and is never an exact multiple of the prices: tick them in one tap, then the note.
+  function linkAll(on) {
+    const D = TR.linkDraft; if (!D) return;
+    const cands = TR.trips.filter(t => (t.payment_entry_id === D.entryId) || (!t.payment_entry_id && (!D.driver || t.driver_id === D.driver) && ['owed', 'before_go_live'].includes(reconcileStatus(t))));
+    D.picked = new Set(on ? cands.map(t => t.id) : []);
+    const note = $('lk_note') ? $('lk_note').value : ''; renderLink(); if ($('lk_note')) $('lk_note').value = note;
   }
   function linkDriver(v) { TR.linkDraft.driver = v; TR.linkDraft.picked = new Set(TR.trips.filter(t => t.payment_entry_id === TR.linkDraft.entryId).map(t => t.id)); renderLink(); }
   function linkPick(id, on) { if (on) TR.linkDraft.picked.add(id); else TR.linkDraft.picked.delete(id); const note = $('lk_note') ? $('lk_note').value : ''; renderLink(); if ($('lk_note')) $('lk_note').value = note; }
@@ -1439,7 +1447,7 @@
     setRec(tab) { TR.view = 'reconcile'; TR.recTab = tab; render(); }, recFilter(f) { TR.recFilter = f; render(); },
     recMode(m) { TR.recMode = m; render(); },
     recShift(n) { const P = recPeriod(); TR.recAnchor = TR.recMode === 'month' ? GT.addDaysIso(n > 0 ? GT.addDaysIso(P.e, 1) : GT.addDaysIso(P.s, -1), 0) : GT.addDaysIso(P.s, 7 * n); render(); },
-    openLink, linkDriver, linkPick, saveLink, unlinkPayment, openExplain, saveExplain, linkTrip, linkTripTo, unlinkTrip,
+    openLink, linkDriver, linkPick, linkAll, saveLink, unlinkPayment, openExplain, saveExplain, linkTrip, linkTripTo, unlinkTrip,
     openPay, payPick, payTick, payAmount, payDate, payReason, payNote, savePay,
     openDrivers, addDriver, saveDrivers,
     // for tests and the coordinator

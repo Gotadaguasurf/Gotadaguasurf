@@ -62,6 +62,7 @@
 .tr-plan-add .mfield { margin-bottom: 0; }
 .tr-plan-add .btn { grid-column: 1 / -1; justify-content: center; }
 .tr-run-n { margin-bottom: var(--sp-3); }
+.tr-pick-all { margin-bottom: var(--sp-2); }
 .tr-paid-note .btn { margin-left: var(--sp-2); }
 .tr-modal .tr-paid-note { margin-bottom: var(--sp-4); }
 .tr-free-why .hint { margin-top: 6px; }

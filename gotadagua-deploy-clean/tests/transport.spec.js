@@ -1078,3 +1078,25 @@ test('guest: before the database update the states still show on this screen (no
   await expect(page.locator('#toast')).not.toHaveClass(/err/);
   expect(st.calls.filter(c => c.t === 'trip_update').length).toBe(0);
 });
+
+test('E8 — a weekly tuk-tuk lump that is not an exact sum: «Tick all» links the driver\'s runs in one tap, with a note', async ({ page }) => {
+  const PS = 'bbbbbbbb-0000-4000-8000-0000000000b1';
+  const runs = Array.from({ length: 12 }, (_, i) => run(200 + i, { trip_date: '2026-11-10' }));
+  const st = await openTab(page, { trips: runs, ledger: [ledgerRow(PS, 'Sampath For Tuk Tuks (07/11-13/11)', 6300)],
+    links: [{ entry_id: PS, location_id: LOC, driver_id: D.sampath, entry_amount: 6300, trips_amount: 0, trips_count: 0, state: 'review', reason: 'no exact match', linked_by: 'auto' }] });
+  await page.evaluate(() => { TransportUI._state.recAnchor = '2026-11-12'; TransportUI.setRec('payments'); });
+  await expect(page.locator(`tr[data-pay="${PS}"]`)).toContainText('no trips linked');
+  await page.click(`tr[data-pay="${PS}"] button:has-text("Link trips")`);
+  await expect(page.locator('#trOv input[type=checkbox]:checked')).toHaveCount(0);
+  await page.click('#lk_all');
+  await expect(page.locator('#trOv input[type=checkbox]:checked')).toHaveCount(12);
+  await expect(page.locator('#lk_sum')).toContainText('Ticked LKR 6,000 of LKR 6,300 · difference LKR 300');
+  await page.click('#lk_none');
+  await expect(page.locator('#trOv input[type=checkbox]:checked')).toHaveCount(0);
+  await page.click('#lk_all');
+  await page.fill('#lk_note', 'waiting time');
+  await page.click('#lk_save');
+  const c = (await call(st, 'link_set')).body;
+  expect(c.p_trip_ids.length).toBe(12);
+  expect(c).toMatchObject({ p_entry: PS, p_driver: D.sampath, p_note: 'waiting time' });
+});
