@@ -3435,6 +3435,13 @@
         summaryEl.innerHTML = '<div style="color:#c43c3c">Could not read the file.</div>';
         return;
       }
+      // A Bookinglayer «Guests» export must never reach the bookings upsert: it would save every
+      // guest as a booking with total 0 and wipe that booking's revenue (13 Nov 2026).
+      if(/(^|,)\s*"?(has transfer|arrival flight)"?\s*(,|$)/i.test(text.replace(/^\uFEFF/, '').split(/\r?\n/, 1)[0] || '')){
+        summaryEl.innerHTML = '<div style="color:#c43c3c">This is a Guests export. Import it in the camp hub → Transport → Next week.</div>';
+        input.value = '';
+        return;
+      }
       const rows = parseGlobalCsv(text);
       if(!rows.length){
         summaryEl.innerHTML = '<div style="color:#c43c3c">No bookings found. Use the Bookinglayer bookings export without editing it.</div>';
