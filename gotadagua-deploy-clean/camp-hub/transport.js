@@ -152,7 +152,7 @@
     })();
     try { await TR.loading; } finally { TR.loading = null; }
     try { window.dispatchEvent(new CustomEvent('camp-checks-changed')); } catch (_) {}
-    if (typeof activePage !== 'undefined' && activePage === 'transport') render();
+    if (typeof activePage !== 'undefined' && (activePage === 'transport' || activePage === 'week')) render();
   }
   async function updateTrip(id, patch, edited) {
     const t = TR.trips.find(x => x.id === id); if (!t) return null;
@@ -211,6 +211,9 @@
     render();
   }
   function render() {
+    // The Week tab (camp-hub/week.js) shows the same import: hand the redraw to it, and keep one copy of the import inputs in the DOM.
+    if (typeof activePage !== 'undefined' && activePage === 'week' && window.WeekUI) { WeekUI.render(); return; }
+    const wk = $('weekRoot'); if (wk && wk.querySelector('.wk-import')) wk.innerHTML = '';
     const root = $('transportRoot'); if (!root) return;
     const v = TR.view;
     const head = `<div class="section-head page-head"><div><div class="section-title">Transport</div><div class="section-sub">Airport transfers and tuk-tuk runs · Sri Lanka</div></div>
@@ -600,6 +603,7 @@
         p_trips: I.groups.trips, p_guests: I.groups.guests,
       });
       I.stage = 'done'; I.result = result || {};
+      try { window.dispatchEvent(new CustomEvent('camp-week-imported')); } catch (_) {}   // Week reloads its lists
       await load(true);
       render(); say('Import saved');
     } catch (_) { /* toasted */ } finally { TR.busy.delete('imp'); }
@@ -934,6 +938,7 @@
     openPay, payPick, payTick, payAmount, payDate, payReason, payNote, savePay,
     openDrivers, addDriver, saveDrivers,
     // for tests and the coordinator
+    importHtml: renderNext,   // the Week tab renders the same import
     _state: TR, load, isDone, reconcileStatus, colomboNow, check: unlinkedCheck, TRIPS_GO_LIVE, goLive,
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
