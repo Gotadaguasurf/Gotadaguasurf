@@ -229,7 +229,7 @@
   //            the guests who stay on in the same room («from last week»)
   //   outside  the same, for guests with no room in the file
   function dayMoves(rows, d) {
-    const outs = [], ins = [], outside = [];
+    const outs = [], ins = [], outside = [], bedChanges = [];
     const changeover = GT.weekday(d) === CHANGEOVER_WEEKDAY;
     rows.filter(counted).forEach(g => {
       const segs = segments(g); const end = stayEnd(g); const left = daysBetween(d, end);
@@ -238,6 +238,8 @@
           const next = segs[i + 1] || (g._next ? segments(g._next)[0] : null);
           if (!next) { if (s.r) outs.push({ g, r: s.r, bed: s.bed, note: '', leaves: true }); }
           else if (!sameRoom(next.r, s.r) && s.r) outs.push({ g, r: s.r, bed: s.bed, note: `stays ${nightsNote(left).replace(' ', ' more ')}, in ${next.r ? next.r.label : 'no room yet'}`, move: true });
+          // Same room, other bed (a new booking for the next week): the bed is freed for the cleaning team.
+          else if (s.r && next.bed && s.bed && String(next.bed) !== String(s.bed)) bedChanges.push({ g, r: s.r, bed: s.bed, note: `stays, moves to bed ${next.bed}`, bedChange: true });
         }
         if (s.from === d) {
           const prev = segs[i - 1] || (g._prev ? segments(g._prev).slice(-1)[0] : null);
@@ -249,7 +251,7 @@
         } else if (changeover && s.from < d && d < s.to) (s.r ? ins : outside).push({ g, r: s.r, bed: s.bed, note: stayOn(left), kind: 'stay' });
       });
     });
-    return { outs, ins, outside };
+    return { outs, ins, outside, bedChanges };
   }
   const stayOn = left => left >= 7 ? 'from last week, one more week with us' : `from last week, ${nightsNote(left).replace(' ', ' more ')}`;
 
@@ -551,6 +553,9 @@
         arrivals, departures: live.filter(g => g.check_out === d && !g._next).sort(byStay),
         staying: live.filter(g => g.check_in === d && g._prev).sort(byStay),               // new booking, same stay
         moves: mv.ins.filter(x => x.kind === 'move'),
+        // Everyone who leaves a room or a bed that day: leaving the camp, moving room, changing bed.
+        roomOuts: [...mv.outs, ...mv.bedChanges,
+          ...live.filter(g => g.check_out === d && !g._next && !segments(g).some(s => s.r)).map(g => ({ g, r: null, note: '' }))],   // no room in the file: «Outside of camp»
         breakfast: live.filter(g => inCamp(g, add(d, -1))).length, dinner: night.length,
         students, courses: courseCounts(students), yoga: night.filter(isYoga).length,
         trips: dayTrips, own: i === 7 ? [] : arrivals.filter(g => !g.has_transfer && !refs.has(g.booking_ref)),
@@ -700,6 +705,14 @@
     return [...rooms.values()].sort((a, b) => a.r.order - b.r.order || a.r.label.localeCompare(b.r.label))
       .map(({ r, gs }) => `<div class="wk-rl"><span class="wk-rm">${h(r.label.replace(/ room$/, ''))}</span><span>${gs.map(g => h(g.guest_name)).join(', ')}</span></div>`).join('');
   }
+  // Departures column: by the room they leave, with a short note for a room move or bed change
+  // (Miguel, 13 Nov: «tenho 3 pessoas a sair nesse dia» — the cleaning team needs every bed freed).
+  function outsByRoom(list) {
+    const rooms = new Map();
+    list.forEach(o => { const r = o.r || { key: '?', label: OUTSIDE, order: 100 }; if (!rooms.has(r.key)) rooms.set(r.key, { r, os: [] }); rooms.get(r.key).os.push(o); });
+    return [...rooms.values()].sort((a, b) => a.r.order - b.r.order || a.r.label.localeCompare(b.r.label))
+      .map(({ r, os }) => `<div class="wk-rl"><span class="wk-rm">${h(r.label.replace(/ room$/, ''))}</span><span class="wk-outs">${os.map(o => `<span class="wk-out1">${h(o.g.guest_name)}${o.note ? ` <i class="wk-onote">(${h(o.note)})</i>` : ''}</span>`).join('')}</span></div>`).join('');
+  }
   // Bars to scale: height in % of the tallest value of the chart.
   const pct = (n, max) => max ? Math.round(n / max * 1000) / 10 : 0;
   function tripBadge(t) {
@@ -788,7 +801,7 @@
       <div class="wk-bday"><div class="wk-bdate">${h(fdm(x.d))}${isToday(x.d) ? ' <span class="badge badge-blue">Today</span>' : ''}</div>
         <div class="wk-bnight">${x.closing ? 'Check-out day' : `<b class="num">${x.sleep}</b> in camp tonight${x.outside ? `<span class="wk-bout">+ ${x.outside} outside, for meals</span>` : ''}`}</div></div>
       ${blk('arr', 'login', 'Arrivals', x.closing ? 0 : arr, '+', x.closing ? (arr ? `<span class="wk-nil">${arr} arriving · next week</span>` : '<span class="wk-nil">–</span>') : (arr ? byRoom(x.arrivals, firstRoom) : '<span class="wk-nil">None</span>') + extra)}
-      ${blk('dep', 'logout', 'Departures', dep, '−', dep ? byRoom(x.departures, roomOf) : '<span class="wk-nil">None</span>')}
+      ${blk('dep', 'logout', 'Departures', x.roomOuts.length, '−', x.roomOuts.length ? outsByRoom(x.roomOuts) : '<span class="wk-nil">None</span>')}
       ${blk('trf', 'truck', 'Transfers', 0, '', trips || ownHtml ? trips + ownHtml : '<span class="wk-nil">None</span>')}
       ${blk('meal', 'coffee', 'Meals', 0, '', `<span class="wk-meal"><b class="num">${x.breakfast}</b> breakfast</span>${x.closing ? '' : `<span class="wk-meal"><b class="num">${x.dinner}</b> dinner</span>`}`)}
       ${blk('srf', 'wave', 'Surf', 0, '', surf)}</div>`;
