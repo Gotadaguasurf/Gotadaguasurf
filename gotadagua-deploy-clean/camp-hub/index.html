@@ -8059,6 +8059,7 @@ function applyLinkedPrice(prefix){
   const type=document.getElementById(prefix+'_type')?.value||(prefix==='em'?expModalType:'expense');
   const category=document.getElementById(prefix+'_cat')?.value||'';
   const linked=(document.getElementById(prefix+'_linked')?.value||'').trim();
+  if(window.CampPayLink) CampPayLink.sync(prefix); // Sri Lanka «Which transfers is this for?» (camp-hub/paylink.js)
   if(!linked) return;
   const qtyEl=document.getElementById(prefix+'_qty');
   const amountEl=document.getElementById(prefix+'_amount');
@@ -8313,9 +8314,13 @@ async function __saveQuickExpenseRun(){
   }catch(_e){
     return; // helper toasted the failure; keep the form open so user can retry
   }
+  // Sri Lanka: link the airport transfers ticked in «Which transfers is this
+  // for?» (camp-hub/paylink.js). The entry is already saved; this never fails it.
+  let payLink=null;
+  try{ if(window.CampPayLink) payLink=await CampPayLink.afterSave(payload); }catch(_e){ payLink=null; }
   resetQuickExpense();
   renderExpenses();renderOverview();renderWeeklyPL();
-  toast('Entry added');
+  if(payLink) CampPayLink.toast(payLink); else toast('Entry added');
 }
 
 function refreshRecurringButton(){}
@@ -10419,6 +10424,7 @@ document.addEventListener('keydown', function(e){
 </script>
 <script src="/lib/guests-trips.js"></script>
 <script src="/camp-hub/transport.js"></script>
+<script src="/camp-hub/paylink.js"></script>
 <script src="/camp-hub/week.js"></script>
 
 

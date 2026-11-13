@@ -97,7 +97,7 @@ async function stub(page, opts = {}) {
       const e = st.ledger.find(x => x.id === body.p_entry); const sum = st.trips.filter(t => t.payment_entry_id === body.p_entry).reduce((s, t) => s + t.expected_price, 0);
       const n = body.p_trip_ids.length; const state = n && sum === e.amount_local ? 'matched' : body.p_note ? 'explained' : 'review';
       const l = st.links.find(x => x.entry_id === body.p_entry);
-      Object.assign(l, { state, trips_amount: sum, trips_count: n, note: body.p_note, linked_by: 'manual', driver_id: body.p_driver, reason: state === 'review' ? (n ? 'amounts differ' : 'unlinked') : null });
+      Object.assign(l, { state, trips_amount: sum, trips_count: n, note: body.p_note, linked_by: 'manual', reviewed_by: 'u1', driver_id: body.p_driver, reason: state === 'review' ? (n ? 'amounts differ' : 'unlinked') : null });
       return json({ state, trips: n, trips_amount: sum, amount: e.amount_local });
     }
     if (url.includes('/rest/v1/rpc/camp_trips_pay')) {
