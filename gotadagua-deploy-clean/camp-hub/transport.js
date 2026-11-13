@@ -676,7 +676,7 @@
     const right = pill(filter === 'all', 'All', "TransportUI.recFilter('all')") + pill(filter === 'todo', 'To do', "TransportUI.recFilter('todo')") + pill(filter === 'done', 'Done', "TransportUI.recFilter('done')");
     let table = '', hint = '';
     if (tab === 'payments') {
-      hint = 'Every Transport cash payment the ledger has since go-live. Nadith enters them as today; they link to the driver\'s trips by themselves. ✓ = the trips add up · ✗ = to review.';
+      hint = 'Every Transport cash payment the ledger has since go-live. Nadith enters them as today; they link to the driver\'s trips by themselves, or to the transfers he ticked when paying. ✓ = the trips add up · ✗ = to review.';
       let rows = D.pays.slice().sort((a, b) => String((ledgerById(a.entry_id) || {}).date || '').localeCompare(String((ledgerById(b.entry_id) || {}).date || '')));
       if (filter === 'todo') rows = rows.filter(l => l.state === 'review'); else if (filter === 'done') rows = rows.filter(l => l.state !== 'review');
       table = rows.length ? `<table class="tr-tbl"><thead><tr><th></th><th>Date</th><th>Payment</th><th class="r">Amount</th><th>Trips</th><th>Status</th><th></th></tr></thead><tbody>${rows.map(payRow).join('')}</tbody></table>`
