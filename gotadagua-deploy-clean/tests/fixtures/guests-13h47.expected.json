@@ -23,7 +23,28 @@
    "boards": false,
    "charge": null,
    "flags": [
-    "file has no Transfers column: count and direction assumed (arrival)",
+    "file has no Transfers column: round trip assumed",
+    "no time yet: ask the guest"
+   ],
+   "ambiguous": false,
+   "csv_lines": [
+    50
+   ]
+  },
+  {
+   "key": "bl:2026-4070:dep",
+   "kind": "airport_departure",
+   "date": "2026-11-21",
+   "time": null,
+   "flight": "",
+   "place": "CMB",
+   "pax": 1,
+   "guests": [
+    "Beliz Kuyumcuoglu"
+   ],
+   "boards": false,
+   "charge": null,
+   "flags": [
     "no time yet: ask the guest"
    ],
    "ambiguous": false,
@@ -45,7 +66,28 @@
    "boards": false,
    "charge": null,
    "flags": [
-    "file has no Transfers column: count and direction assumed (arrival)",
+    "file has no Transfers column: round trip assumed",
+    "no time yet: ask the guest"
+   ],
+   "ambiguous": false,
+   "csv_lines": [
+    54
+   ]
+  },
+  {
+   "key": "bl:2026-4936:dep",
+   "kind": "airport_departure",
+   "date": "2026-11-21",
+   "time": null,
+   "flight": "",
+   "place": "CMB",
+   "pax": 1,
+   "guests": [
+    "Maximilian Ehrler"
+   ],
+   "boards": false,
+   "charge": null,
+   "flags": [
     "no time yet: ask the guest"
    ],
    "ambiguous": false,
@@ -67,10 +109,31 @@
    "boards": false,
    "charge": null,
    "flags": [
-    "file has no Transfers column: count and direction assumed (arrival)",
+    "file has no Transfers column: round trip assumed",
     "night arrival: lands 01:55 on Sat 14 Nov, driver leaves camp Fri 13 Nov evening — confirm the night"
    ],
    "ambiguous": true,
+   "csv_lines": [
+    58
+   ]
+  },
+  {
+   "key": "bl:2026-4660:dep",
+   "kind": "airport_departure",
+   "date": "2026-11-21",
+   "time": null,
+   "flight": "",
+   "place": "CMB",
+   "pax": 1,
+   "guests": [
+    "Lorena Marie Glas"
+   ],
+   "boards": false,
+   "charge": null,
+   "flags": [
+    "no time yet: ask the guest"
+   ],
+   "ambiguous": false,
    "csv_lines": [
     58
    ]

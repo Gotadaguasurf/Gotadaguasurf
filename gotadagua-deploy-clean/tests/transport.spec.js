@@ -174,15 +174,15 @@ test('next week import: the Guests file stands alone — HQ bookings are never r
   await page.click('button.pill:has-text("Next week")');
   await expect(page.locator('#transportRoot .card-title').first()).toContainText('Next week · 14–20 Nov');
   await page.setInputFiles('#trGuestsFile', GUESTS_CSV);
-  await expect(page.locator('#transportRoot')).toContainText('Airport trips from this file · 4');
+  await expect(page.locator('#transportRoot')).toContainText('Airport trips from this file · 6');
   await expect(page.locator('#transportRoot')).toContainText('Maximilian Ehrler');
   await expect(page.locator('#transportRoot')).not.toContainText('in HQ');
   await expect(page.locator('#transportRoot')).not.toContainText('Cancelled in HQ');
   await expect(page.locator('.tr-soft')).toHaveCount(0);
   await page.click('#trImportSave');
-  await expect(page.locator('.status-msg.status-ok')).toContainText('Saved: 4 new');
+  await expect(page.locator('.status-msg.status-ok')).toContainText('Saved: 6 new');
   const imp = (await call(st, 'import')).body;
-  expect(imp.p_trips.map(t => t.key).sort()).toEqual(['bl:2026-4070:arr', 'bl:2026-4070:dep', 'bl:2026-4660:arr', 'bl:2026-4936:arr']);
+  expect(imp.p_trips.map(t => t.key).sort()).toEqual(['bl:2026-4070:arr', 'bl:2026-4070:dep', 'bl:2026-4660:arr', 'bl:2026-4660:dep', 'bl:2026-4936:arr', 'bl:2026-4936:dep']); // every transfer both ways (13 Nov)
   expect(imp.p_trips.every(t => t.hq_match == null)).toBe(true);
   expect(imp.p_cancel_refs).not.toContain('2026-4936');
   expect(imp.p_guests.length).toBe(18);
@@ -233,7 +233,7 @@ test('next week import: a file without a date in its name asks when it was downl
   await page.fill('#trExportDate', '2026-11-13');
   await page.click('.tr-date-ask button');
   await expect(page.locator('#transportRoot')).toContainText('exported 13 Nov');
-  await expect(page.locator('#transportRoot')).toContainText('Airport trips from this file · 3');
+  await expect(page.locator('#transportRoot')).toContainText('Airport trips from this file · 6');
 });
 
 // ── Trips list + WhatsApp ──────────────────────────────────────────────────
@@ -570,7 +570,7 @@ test('next week import: a Bookinglayer Guests .xlsx is read like the CSV (Excel 
   await page.click('button.pill:has-text("Next week")');
   expect(await page.locator('#trGuestsFile').getAttribute('accept')).toContain('.xlsx');
   await page.setInputFiles('#trGuestsFile', { name: 'Bookinglayer-Guests-2026-11-07 14_23.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: Buffer.from('PK fake xlsx') });
-  await expect(page.locator('#transportRoot')).toContainText('Airport trips from this file · 4');
+  await expect(page.locator('#transportRoot')).toContainText('Airport trips from this file · 6');
   await expect(page.locator('#transportRoot')).toContainText('exported 7 Nov');
   expect(errors).toEqual([]);
 });

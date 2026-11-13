@@ -1,8 +1,10 @@
 // Bookinglayer Guests export → airport trips (lib/guests-trips.js), no browser.
 //
 // The two real files (phones and emails replaced by fake values, structure
-// kept) must give exactly what the reference parser
-// sl_design/trips/guests_to_trips.py gave on them (*.expected.json), plus the
+// kept) must give exactly the trips in *.expected.json — first produced by the
+// reference parser sl_design/trips/guests_to_trips.py, regenerated 13 Nov 2026
+// when a booked transfer became the round trip (only the departure legs were
+// added and the «arrival/return assumed» flags dropped), plus the
 // rules that this week's data cannot show (a 2-guest booking, a booking whose
 // guests fly separately) and the WhatsApp text in Miguel's fixed format.
 const { test, expect } = require('@playwright/test');
@@ -23,18 +25,18 @@ function pythonShape(out, expected) {
 }
 
 for (const name of [PRESET, ALL]) {
-  test(`guests parser: ${name} gives the same trips as the reference parser`, () => {
+  test(`guests parser: ${name} gives the expected trips (reference parser + round trip, 13 Nov)`, () => {
     const out = G.parse(read(name + '.csv'), name + '.csv');
     const expected = JSON.parse(read(name + '.expected.json'));
     expect(pythonShape(out, expected)).toEqual(expected);
   });
 }
 
-test('guests parser: the 7 Nov preset — 4 trips, Lorena at night, Beliz both ways, preset detected', () => {
+test('guests parser: the 7 Nov preset — 6 trips (every transfer both ways), Lorena at night, Beliz both ways, preset detected', () => {
   const out = G.parse(read(PRESET + '.csv'), PRESET + '.csv');
   expect(out.export_date).toBe('2026-11-07');
   expect(out.is_preset).toBe(true);
-  expect(out.trips.map(t => t.key)).toEqual(['bl:2026-4070:arr', 'bl:2026-4070:dep', 'bl:2026-4936:arr', 'bl:2026-4660:arr']);
+  expect(out.trips.map(t => t.key)).toEqual(['bl:2026-4070:arr', 'bl:2026-4070:dep', 'bl:2026-4936:arr', 'bl:2026-4936:dep', 'bl:2026-4660:arr', 'bl:2026-4660:dep']);
   const lorena = out.trips.find(t => t.key === 'bl:2026-4660:arr');
   expect(lorena).toMatchObject({ date: '2026-11-14', time: '01:55', flight: 'QR658', pax: 1, booking_ref: '2026-4660', vehicle: 'Car' });
   expect(lorena.flags.some(f => f.startsWith('night arrival: lands 01:55 on Sat 14 Nov, driver leaves camp Fri 13 Nov'))).toBe(true);
@@ -42,15 +44,22 @@ test('guests parser: the 7 Nov preset — 4 trips, Lorena at night, Beliz both w
   expect(beliz.boards).toBe(true);
   expect(beliz.vehicle).toBe('Minivan'); // surfboards → at least a Minivan
   expect(out.trips.find(t => t.key === 'bl:2026-4070:dep')).toMatchObject({ kind: 'airport_departure', date: '2026-11-21', booking_checkout: '2026-11-21' });
+  // Miguel, 13 Nov: «the arrivals and departures need to appear always» — 1 product (Maximilian)
+  // or none with Has transfer = Yes (Lorena) still gives the departure on the check-out date.
+  for (const ref of ['2026-4936', '2026-4660']) {
+    expect(out.trips.find(t => t.key === `bl:${ref}:dep`)).toMatchObject({ kind: 'airport_departure', date: '2026-11-21', booking_ref: ref, time: null });
+  }
+  expect(out.trips.some(t => t.flags.some(f => /arrival assumed|return assumed/.test(f)))).toBe(false);
   expect(out.guests_total).toBe(18);
   expect(out.refs_active.length).toBe(16); // 18 guests in 16 bookings
 });
 
-test('guests parser: the all-locations file — 3 trips, 3 cancelled refs, duplicates and other camps counted, not a preset', () => {
+test('guests parser: the all-locations file — 6 trips (3 guests both ways), 3 cancelled refs, duplicates and other camps counted, not a preset', () => {
   const out = G.parse(read(ALL + '.csv'), ALL + '.csv');
   expect(out.export_date).toBe(null); // no date in the name → the hub asks for it
   expect(out.is_preset).toBe(false);
-  expect(out.trips.length).toBe(3);
+  expect(out.trips.length).toBe(6);
+  expect(out.trips.filter(t => t.kind === 'airport_departure').length).toBe(3);
   expect(out.cancel_refs.length).toBe(3);
   expect(out.counts['duplicate row']).toBe(2);
   expect(out.counts['other location']).toBe(38);
@@ -83,7 +92,7 @@ test('guests parser: guests of one booking on different flights → one trip eac
 test('guests parser: a multi-line Transfer comment does not break the rows', () => {
   const csv = [HEAD, `"Ana Silva","paid","2026-9003","09:00","QR1","","Kabalana","Sat 14 Nov 2026","Sat 21 Nov 2026","Surf Camp Ahangama","Yes","Airport Transfer Sri Lanka","please wait\nwe have bags",""`, row('Rui Chaves', '2026-9004', '11:00', 'QR2')].join('\r\n');
   const out = G.parse(csv, 'x.csv');
-  expect(out.trips.map(t => t.booking_ref)).toEqual(['2026-9003', '2026-9004', '2026-9004']);
+  expect(out.trips.map(t => t.booking_ref)).toEqual(['2026-9003', '2026-9003', '2026-9004', '2026-9004']); // 1 product or 2: both ways
 });
 
 test('guests header sniff: a Guests export is recognised, a bookings export is not', () => {
@@ -181,6 +190,25 @@ test('a transfer comment saying it is not needed flags the trip (guest\'s own wo
   const row = ['Sat 7 Nov 2026', 'Ana Exemplo', 'paid', '2026-9001', 'Partial', '15:00', '', '', '', 'Sat 21 Nov 2026', 'No', 'English', '+491700000099', 'Unawatuna Beach Shared Room (only girls)', 'Sat 7 Nov 2026', 'Sat 21 Nov 2026', '3', 'Surf Camp Ahangama, Sri Lanka', 'Surf Equipment', '', 'Yes', 'Airport Transfer Sri Lanka', 'Don’t need airport transfer, I’ll arrive a day earlier', '', '', '0.00', 'x@example.com', '14'];
   const csv = [H, row].map(r => r.map(c => `"${c}"`).join(',')).join('\n');
   const p = G.parse(csv, 'Bookinglayer-Guests-2026-11-07 14_23.csv');
-  expect(p.trips).toHaveLength(1);
-  expect(p.trips[0].flags.join(' | ')).toContain('guest says: «Don’t need airport transfer, I’ll arrive a day earlier»');
+  expect(p.trips.map(t => t.kind)).toEqual(['airport_arrival', 'airport_departure']); // still the round trip…
+  for (const t of p.trips) {                                                           // …but both legs carry the guest's words
+    expect(t.flags.join(' | ')).toContain('guest says: «Don’t need airport transfer, I’ll arrive a day earlier»');
+    expect(t.ambiguous).toBe(true);
+  }
+});
+
+test('round trip (Miguel, 13 Nov): one leg only when the comment says so next to the direction; no date → no trip, never a dateless leg', () => {
+  const H = '"Guest","Booking status","Booking","Arrival time","Arrival flight","Accommodations","Check-in on","Check-out on","Packages","Has transfer","Transfers","Transfer comment"';
+  const one = (comment, co = 'Sat 21 Nov 2026') => G.parse(H + `\n"Ana","paid","2026-9020","10:00","QR1","Kabalana","Sat 14 Nov 2026","${co}","Surf Camp Ahangama","Yes","Airport Transfer Sri Lanka","${comment}"`, 'x-2026-11-13.csv');
+  const kinds = o => o.trips.map(t => t.kind.replace('airport_', ''));
+  expect(kinds(one(''))).toEqual(['arrival', 'departure']);
+  expect(kinds(one('we only have two bags, arrival 10:00'))).toEqual(['arrival', 'departure']); // «only» elsewhere in the sentence
+  expect(kinds(one('only arrival please'))).toEqual(['arrival']);
+  expect(kinds(one('pick-up only'))).toEqual(['arrival']);
+  expect(kinds(one('departure only'))).toEqual(['departure']);
+  expect(kinds(one('one way, departure only'))).toEqual(['departure']);                        // not zero legs
+  const noOut = one('', '');
+  expect(kinds(noOut)).toEqual(['arrival']);
+  expect(noOut.trips.every(t => t.date)).toBe(true);
+  expect(noOut.counts['transfer without a check-out date (no trip)']).toBe(1);
 });

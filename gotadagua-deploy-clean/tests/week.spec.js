@@ -697,10 +697,10 @@ test('import: Week shows the Transport import (one copy of the inputs, one blue 
   expect(await visiblePrimary(page)).toBe(1);
   const before = st.calls.filter(c => c.t === 'guests_get').length;
   await page.setInputFiles('#trGuestsFile', GUESTS_CSV);
-  await expect(page.locator('#weekRoot')).toContainText('Airport trips from this file · 4');
+  await expect(page.locator('#weekRoot')).toContainText('Airport trips from this file · 6');
   expect(await visiblePrimary(page)).toBe(1);
   await page.click('#trImportSave');
-  await expect(page.locator('#weekRoot .status-msg.status-ok')).toContainText('Saved: 4 new');
+  await expect(page.locator('#weekRoot .status-msg.status-ok')).toContainText('Saved: 6 new');
   expect((await call(st, 'import')).body.p_guests.length).toBe(18);
   await expect.poll(() => st.calls.filter(c => c.t === 'guests_get').length).toBeGreaterThan(before);
   await page.click('#weekRoot button:has-text("See the week")');

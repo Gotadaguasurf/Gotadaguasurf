@@ -200,13 +200,20 @@
       const nProducts = hasTransfersCol ? (p.transfers.match(/airport transfer/gi) || []).length : null;
       const boards = p.transfers.toLowerCase().includes('surfboard') || p.tcomment.toLowerCase().includes('surfboard');
       const comment = p.tcomment.toLowerCase();
+      // One leg only when the comment says so in so many words: «only» next to the direction
+      // («departure only», «only the pick-up»), not anywhere in the sentence («we only have two
+      // bags, arrival 10:00» is still the round trip). The departure test goes first so
+      // «one way, departure only» keeps the departure instead of dropping both legs.
+      const depOnly = /\b(only|just)\s+(the\s+)?(return|departure|drop(.?off)?)\b|\b(return|departure|drop(.?off)?)\s+(transfer\s+)?only\b/.test(comment);
+      const arrOnly = !depOnly && /\b(only|just)\s+(the\s+)?(arrival|pick.?up)\b|\b(arrival|pick.?up)\s+(transfer\s+)?only\b|\bone.?way\b/.test(comment);
       for (const direction of ['arrival', 'departure']) {
         const flags = []; let date, time, fl, pl, amb;
         if (direction === 'arrival') {
-          if (nProducts === 1 && /\b(return|departure|drop|back to (the )?airport)\b/.test(comment)) continue;
-          if (nProducts === null) flags.push('file has no Transfers column: count and direction assumed (arrival)');
+          // Miguel, 13 Nov: «the arrivals and departures need to appear always» — a booked
+          // transfer is the round trip, so every guest with a transfer gets both legs.
+          if (depOnly) continue;
+          if (nProducts === null) flags.push('file has no Transfers column: round trip assumed');
           else if (nProducts === 0) flags.push('Has transfer = Yes but no transfer product listed');
-          else if (nProducts === 1) flags.push('1 transfer booked: arrival assumed');
           date = p.ci;
           const [f1, t1, pl1, fd1] = classifyField(p.arr_flight, flags, 'flight');
           let t0 = hhmm(p.arr_time); if (t0 === '00:00') t0 = null;
@@ -218,13 +225,14 @@
             flags.push(`flight date ${fd1[0]}/${fd1[1]} differs from check-in ${date.slice(8)}/${date.slice(5, 7)}`); amb = true;
           }
         } else {
-          const want = (nProducts !== null && nProducts >= 2) || (nProducts === 1 && /\b(return|departure|drop)\b/.test(comment));
-          if (!want) continue;
+          if (arrOnly) continue;
           date = p.co;
           const [f1, t1, pl1] = classifyField(p.dep_flight, flags, 'departure flight');
           time = hhmm(p.dep_time) || t1; fl = f1; pl = pl1 || PLACES[p.dep_loc.toLowerCase()] || 'CMB'; amb = false;
-          if (nProducts && nProducts >= 2) flags.push('2 transfers booked: return assumed');
         }
+        // No check-in / check-out date → no trip (camp_trips.trip_date is NOT NULL: one such leg
+        // aborted the whole import). The guest shows under «Left out» with «no … date».
+        if (!date) { bump(`transfer without a ${direction === 'arrival' ? 'check-in' : 'check-out'} date (no trip)`); continue; }
         if (pl !== 'CMB' && pl !== 'HRI') { flags.push(`airport ${pl} is not a Sri Lanka airport`); amb = true; }
         // The guest's own words beat our guess (13 Nov: «Don't need airport transfer, I'll arrive a day earlier»).
         if (/\b(don.?t|do not|no) need\b|\bno transfer\b|\bnot needed\b|\bcancel/i.test(p.tcomment)) { flags.push(`guest says: «${p.tcomment.trim()}» — check if this transfer is still needed`); amb = true; }

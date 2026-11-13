@@ -41,7 +41,6 @@
    "boards": true,
    "charge": "bookinglayer",
    "flags": [
-    "2 transfers booked: return assumed",
     "no time yet: ask the guest"
    ],
    "ambiguous": false,
@@ -63,7 +62,27 @@
    "boards": false,
    "charge": "bookinglayer",
    "flags": [
-    "1 transfer booked: arrival assumed",
+    "no time yet: ask the guest"
+   ],
+   "ambiguous": false,
+   "csv_lines": [
+    11
+   ]
+  },
+  {
+   "key": "bl:2026-4936:dep",
+   "kind": "airport_departure",
+   "date": "2026-11-21",
+   "time": null,
+   "flight": "",
+   "place": "CMB",
+   "pax": 1,
+   "guests": [
+    "Maximilian Ehrler"
+   ],
+   "boards": false,
+   "charge": "bookinglayer",
+   "flags": [
     "no time yet: ask the guest"
    ],
    "ambiguous": false,
@@ -89,6 +108,27 @@
     "night arrival: lands 01:55 on Sat 14 Nov, driver leaves camp Fri 13 Nov evening — confirm the night"
    ],
    "ambiguous": true,
+   "csv_lines": [
+    15
+   ]
+  },
+  {
+   "key": "bl:2026-4660:dep",
+   "kind": "airport_departure",
+   "date": "2026-11-21",
+   "time": null,
+   "flight": "",
+   "place": "CMB",
+   "pax": 1,
+   "guests": [
+    "Lorena Marie Glas"
+   ],
+   "boards": false,
+   "charge": null,
+   "flags": [
+    "no time yet: ask the guest"
+   ],
+   "ambiguous": false,
    "csv_lines": [
     15
    ]
