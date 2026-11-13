@@ -1771,7 +1771,7 @@ function exportBackup(){
     campTabState:readJsonStorage(CAMPTAB_KEY,{}),
     campTabMenu:readJsonStorage(CAMPTAB_MENU_KEY,{}),
     campTabStaff:readJsonStorage(CAMPTAB_STAFF_KEY,[]),
-    overviewBookings:Array.isArray(ovBookings)?ovBookings:[],
+    overviewBookings:Array.isArray(ovBookings)?ovBookings.map(({net,realized,...b})=>b):[], // dates and guests only, never the amounts
     settings:{
       lkrPerEur:parseFloat(localStorage.getItem(FX_KEY)||String(DEFAULT_LKR_PER_EUR))||DEFAULT_LKR_PER_EUR
     }
@@ -2041,6 +2041,9 @@ function subscribeHubRealtime(){
           toast('Week updated on another device');
         }
       } else if(key===OV_CSV_REMOTE_KEY&&Array.isArray(json)){
+        // The bookings table wins once it has loaded (it also carries the
+        // amounts of the Weekly P&L); a pasted CSV only fills an empty camp.
+        if(__ovBookingsFromDb) return;
         ovBookings=json;
         rerenderActivePageData();
       } else if(key===DELETED_CAMPCLOSE_KEY&&Array.isArray(json)){
@@ -9678,9 +9681,14 @@ function wplToggleFuture(){ WPL_FUTURE_OPEN=!WPL_FUTURE_OPEN; renderWeeklyPL(); 
 // cost lines drawn to one scale against the average of the 4 weeks before.
 function wplWeekCardHtml(M,byWs,sel){
   const r=byWs.get(sel)||Object.assign(wplSum([]),{ws:sel,guestCount:0});
-  const prev=[1,2,3,4].map(i=>byWs.get(addDays(sel,-7*i))).filter(Boolean);
-  const P=wplSum(prev); const avg=k=>P[k]/4;
-  const pGuests=sum(prev,x=>x.guestCount||0)/4;
+  // The 4 weeks before; at the very start of a camp's data there are fewer (an idle week in between counts as zero).
+  const first=M.rows.length?M.rows[M.rows.length-1].ws:sel;
+  const prevWs=[1,2,3,4].map(i=>addDays(sel,-7*i)).filter(ws=>ws>=first);
+  const prev=prevWs.map(ws=>byWs.get(ws)).filter(Boolean);
+  const nPrev=prevWs.length; const cmp=nPrev>0;
+  const avgLbl=nPrev===4?'4-week average':`${nPrev}-week average`, wksLbl=`${nPrev||4} week${nPrev===1?'':'s'}`;
+  const P=wplSum(prev); const avg=k=>P[k]/(nPrev||1);
+  const pGuests=sum(prev,x=>x.guestCount||0)/(nPrev||1);
   const inProgress=sel===M.cur;
   const dayNo=inProgress?Math.round((new Date(today()+'T00:00:00')-new Date(sel+'T00:00:00'))/86400000)+1:0;
   const older=M.rows.filter(x=>x.ws<sel).map(x=>x.ws)[0]||addDays(sel,-7);
@@ -9691,15 +9699,15 @@ function wplWeekCardHtml(M,byWs,sel){
   const salary=r.cats.Salary||0, pSalary=P.cats.Salary||0;
   // Cost lines: this week's categories, biggest first, on one scale with the average.
   const names=[...new Set([...Object.keys(r.cats),...Object.keys(P.cats)])];
-  const lines=names.map(k=>({k,v:r.cats[k]||0,a:(P.cats[k]||0)/4})).filter(x=>x.v>0.005||x.a>0.005).sort((a,b)=>b.v-a.v||b.a-a.a);
+  const lines=names.map(k=>({k,v:r.cats[k]||0,a:(P.cats[k]||0)/(nPrev||1)})).filter(x=>x.v>0.005||x.a>0.005).sort((a,b)=>b.v-a.v||b.a-a.a);
   const top=lines.slice(0,7), rest=lines.slice(7);
   if(rest.length) top.push({k:`Other (${rest.length})`,v:sum(rest,x=>x.v),a:sum(rest,x=>x.a)});
   const scale=Math.max(1,...top.map(x=>Math.max(x.v,x.a)));
   const bars=top.map(x=>{const d=x.v-x.a; const big=Math.abs(d)>=Math.max(50,x.a*0.25);
     return `<div class="wpl-bar-row"><div class="wpl-bar-k">${escapeHtml(x.k)}</div>
-      <div class="wpl-bar-track"><div class="wpl-bar-fill" style="width:${(100*x.v/scale).toFixed(2)}%"></div>${prev.length?`<div class="wpl-bar-avg" style="left:${(100*x.a/scale).toFixed(2)}%" title="Average of the 4 weeks before: ${wplEuro(x.a)}"></div>`:''}</div>
+      <div class="wpl-bar-track"><div class="wpl-bar-fill" style="width:${(100*x.v/scale).toFixed(2)}%"></div>${cmp?`<div class="wpl-bar-avg" style="left:${(100*x.a/scale).toFixed(2)}%" title="Average of the ${wksLbl} before: ${wplEuro(x.a)}"></div>`:''}</div>
       <div class="wpl-bar-v">${wplEuro(x.v)}</div>
-      <div class="wpl-bar-d ${big?(d>0?'up':'down'):''}">${prev.length?wplSigned(d):''}</div></div>`;}).join('');
+      <div class="wpl-bar-d ${big?(d>0?'up':'down'):''}">${cmp?wplSigned(d):''}</div></div>`;}).join('');
   // What changed most against the 4 weeks before.
   const moves=[{k:'Bookings',d:r.bookRev-avg('bookRev')},{k:'On-site sales',d:r.onsite-avg('onsite')},...lines.map(x=>({k:x.k,d:x.v-x.a}))]
     .filter(x=>Math.abs(x.d)>=50).sort((a,b)=>Math.abs(b.d)-Math.abs(a.d)).slice(0,4);
@@ -9709,7 +9717,7 @@ function wplWeekCardHtml(M,byWs,sel){
   return `<div class="card wpl-week" id="wplWeek">
     <div class="card-pad wpl-week-hdr">
       <div><div class="card-title">Week ${fmtd(sel)} → ${fmtd(addDays(sel,6))}${inProgress?` <span class="badge badge-amber">In progress</span>`:''}</div>
-        <div class="card-hint">${inProgress?`Day ${dayNo} of 7 — the numbers still move. `:''}Compared with the average of the 4 weeks before.</div></div>
+        <div class="card-hint">${inProgress?`Day ${dayNo} of 7 — the numbers still move. `:''}${cmp?`Compared with the average of the ${wksLbl} before.`:'The first week of the data — nothing to compare with yet.'}</div></div>
       <div class="wpl-nav">
         <button class="btn btn-s btn-sm" onclick="wplSelect('${older}')" aria-label="Previous week">‹ Earlier</button>
         <button class="btn btn-s btn-sm" ${newer?`onclick="wplSelect('${newer}')"`:'disabled'} aria-label="Next week">Later ›</button>
@@ -9717,23 +9725,23 @@ function wplWeekCardHtml(M,byWs,sel){
       </div>
     </div>
     <div class="wpl-kpis">
-      ${kpi('Revenue',wplEuro(r.revenue),'',M.hasMoney?`Bookings ${wplEuro(r.bookRev)} · on-site ${wplEuro(r.onsite)}`:`On-site sales only — booking amounts not loaded`,`4-week average ${wplEuro(avg('revenue'))}`)}
-      ${kpi('Costs',wplEuro(r.cost),'',`Camp ${wplEuro(r.costCamp)} · paid by HQ ${wplEuro(r.costHq)}`,`4-week average ${wplEuro(avg('cost'))}`)}
-      ${kpi('Result',wplEuro(r.result),r.result>=0?'pos':'neg','Revenue − costs',`4-week average ${wplEuro(avg('result'))}`)}
-      ${kpi('Guests',String(r.guestCount||0),'',`${r.guestDays||0} guest-night${r.guestDays===1?'':'s'}`,`4-week average ${Math.round(pGuests)} guests · ${Math.round(P.guestDays/4)} nights`)}
+      ${kpi('Revenue',wplEuro(r.revenue),'',M.hasMoney?`Bookings ${wplEuro(r.bookRev)} · on-site ${wplEuro(r.onsite)}`:`On-site sales only — booking amounts not loaded`,cmp?`${avgLbl} ${wplEuro(avg('revenue'))}`:'')}
+      ${kpi('Costs',wplEuro(r.cost),'',`Camp ${wplEuro(r.costCamp)} · paid by HQ ${wplEuro(r.costHq)}`,cmp?`${avgLbl} ${wplEuro(avg('cost'))}`:'')}
+      ${kpi('Result',wplEuro(r.result),r.result>=0?'pos':'neg','Revenue − costs',cmp?`${avgLbl} ${wplEuro(avg('result'))}`:'')}
+      ${kpi('Guests',String(r.guestCount||0),'',`${r.guestDays||0} guest-night${r.guestDays===1?'':'s'}`,cmp?`${avgLbl} ${Math.round(pGuests)} guests · ${Math.round(P.guestDays/nPrev)} nights`:'')}
     </div>
     <div class="wpl-cells">
-      ${cell('Revenue / guest-night',per(r.revenue,r.guestDays),`4 weeks ${per(P.revenue,P.guestDays)}`)}
-      ${cell('Cost / guest-night',per(r.cost,r.guestDays),`4 weeks ${per(P.cost,P.guestDays)}`)}
-      ${cell('Food / guest-day',perGuestDayMetric(r.foodExp,r.guestDays),`4 weeks ${perGuestDayMetric(P.foodExp,P.guestDays)}`)}
-      ${cell('On-site sales / guest-night',per(r.onsite,r.guestDays),`4 weeks ${per(P.onsite,P.guestDays)}`)}
-      ${cell('Staff share of costs',wplPct(salary,r.cost),`4 weeks ${wplPct(pSalary,P.cost)}`)}
+      ${cell('Revenue / guest-night',per(r.revenue,r.guestDays),cmp?`${wksLbl} ${per(P.revenue,P.guestDays)}`:'')}
+      ${cell('Cost / guest-night',per(r.cost,r.guestDays),cmp?`${wksLbl} ${per(P.cost,P.guestDays)}`:'')}
+      ${cell('Food / guest-day',perGuestDayMetric(r.foodExp,r.guestDays),cmp?`${wksLbl} ${perGuestDayMetric(P.foodExp,P.guestDays)}`:'')}
+      ${cell('On-site sales / guest-night',per(r.onsite,r.guestDays),cmp?`${wksLbl} ${per(P.onsite,P.guestDays)}`:'')}
+      ${cell('Staff share of costs',wplPct(salary,r.cost),cmp?`${wksLbl} ${wplPct(pSalary,P.cost)}`:'')}
     </div>
-    <div class="section-lbl">Where the money went<span class="wpl-lbl-note">bar = this week · line = 4-week average</span></div>
+    <div class="section-lbl">Where the money went<span class="wpl-lbl-note">${cmp?`bar = this week · line = ${avgLbl}`:''}</span></div>
     <div class="wpl-bars">${bars||'<div class="wpl-none">No costs in this week.</div>'}</div>
-    ${moves.length&&prev.length?`<div class="wpl-moves"><span class="wpl-foot-k">Biggest changes</span>${moves.map(m=>`<span>${escapeHtml(m.k)} <b>${wplSigned(m.d)}</b></span>`).join('')}</div>`:''}
+    ${moves.length&&cmp?`<div class="wpl-moves"><span class="wpl-foot-k">Biggest changes</span>${moves.map(m=>`<span>${escapeHtml(m.k)} <b>${wplSigned(m.d)}</b></span>`).join('')}</div>`:''}
     <div class="wpl-foot">
-      ${resLine('The 4 weeks before, together',P,'')}
+      ${cmp?resLine(`The ${wksLbl} before, together`,P,''):''}
       ${resLine(`${addDays(sel,6).slice(0,4)} up to this week`,Y,'')}
       <div class="wpl-foot-row"><button class="btn btn-link" onclick="jumpToWeek('${sel}')">Open this week in the Overview</button></div>
     </div>
@@ -10661,7 +10669,7 @@ async function requirePlatformSession(){
       if(weeksJson.salaryMode) S.salaryMode=weeksJson.salaryMode;
       save_mem();
     }
-    if(Array.isArray(ovJson)&&ovJson.length){
+    if(Array.isArray(ovJson)&&ovJson.length&&!__ovBookingsFromDb){ // the bookings table, once loaded, wins over a saved CSV
       ovBookings=ovJson;
     }
     if(S.weeks.length) AW=mostRecentWeek()?.id||S.weeks[S.weeks.length-1].id;

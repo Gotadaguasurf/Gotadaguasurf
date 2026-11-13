@@ -41,7 +41,7 @@ function fixture() {
 // One Bookinglayer booking: 2 guests, Sat 17 Oct → Sat 24 Oct = 14 guest-days.
 const BOOKINGS = [{ booking_ref: 'B-1', booker: 'Ann', check_in_on: WS, pax: 2, package: 'Surf', nights: '7' }];
 
-async function openHub(page, rows, bookings = BOOKINGS, now = null) {
+async function openHub(page, rows, bookings = BOOKINGS, now = null, opts = {}) {
   if (now) await page.clock.setFixedTime(new Date(now));
   await page.route(/api\.frankfurter\.dev/, route => route.abort());
   await page.route(/supabase\.co\/(auth|rest|realtime|functions)\/v1\/.*/, async route => {
@@ -52,11 +52,16 @@ async function openHub(page, rows, bookings = BOOKINGS, now = null) {
     if (url.includes('/rest/v1/locations')) return json({ id: LOC, name: 'Sri Lanka', slug: 'sri-lanka', currency: 'LKR', default_fx_to_eur: FX, camp_tab_mode: 'per_guest' });
     if (url.includes('/rest/v1/ledger_entries')) return json(rows);
     if (url.includes('/rest/v1/bookings')) return json(bookings);
+    // A CSV someone saved for this camp long ago (dates and guests, no amounts).
+    if (opts.savedCsv && url.includes('/rest/v1/location_state_store') && url.includes('camphub_ov_bookings_v3')) {
+      await new Promise(r => setTimeout(r, opts.csvDelayMs || 0));
+      return json({ state_json: opts.savedCsv });
+    }
     return json([]);
   });
   page.on('dialog', d => d.accept());
   await fakeOwnerSession(page);
-  await page.goto('/camp-hub/?location=sri-lanka', { waitUntil: 'domcontentloaded' });
+  await page.goto('/camp-hub/?location=sri-lanka' + (opts.query || ''), { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => { try { return HUB_LEDGER_HYDRATED === true && ovBookings.length > 0; } catch (_) { return false; } }, null, { timeout: 15000 });
 }
 
@@ -343,4 +348,46 @@ test.describe('laptop width', () => {
     });
     expect(g).toEqual({ sameRow: true, n: 4, overflow: 0, tblOverflow: 0 });
   });
+});
+
+test('weekly P&L: a saved CSV never replaces the bookings table (the amounts stay), whichever arrives first', async ({ page }) => {
+  const ci = new Date(WS + 'T00:00:00').getTime();
+  const savedCsv = [{ ref: 'OLD', name: 'Old CSV', status: 'confirmed', ci, co: ci + 7 * 86400000, pax: 9, accommodation: '' }];
+  for (const csvDelayMs of [0, 1200]) {
+    await openHub(page, fixture(), MONEY_BOOKINGS, NOW, { savedCsv, csvDelayMs });
+    await page.waitForFunction(() => { try { return __ovBookingsFromDb === true; } catch (_) { return false; } });
+    await page.waitForTimeout(csvDelayMs + 600);
+    const r = await page.evaluate(() => ({ refs: ovBookings.map(b => b.ref).sort(), money: wplHasBookingMoney() }));
+    expect(r).toEqual({ refs: ['B-1', 'B-2', 'B-3'], money: true });
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+  }
+  // A backup of the hub carries dates and guests, never the amounts.
+  const keys = await page.evaluate(() => {
+    let out = ''; const orig = downloadTextFile; downloadTextFile = (_name, content) => { out = content; };
+    try { exportBackup(); } finally { downloadTextFile = orig; }
+    return Object.keys(JSON.parse(out).overviewBookings[0]);
+  });
+  expect(keys).toContain('pax');
+  expect(keys).not.toContain('net');
+  expect(keys).not.toContain('realized');
+});
+
+test('weekly P&L: a Camp-Tab-only device never asks for the booking amounts', async ({ page }) => {
+  const asked = [];
+  page.on('request', r => { if (/rest\/v1\/bookings/.test(r.url())) asked.push(decodeURIComponent(r.url())); });
+  await openHub(page, fixture(), MONEY_BOOKINGS, NOW, { query: '&view=camp-tab-only' });
+  expect(asked.length).toBeGreaterThan(0);
+  expect(asked.some(u => /net_amount|total|status/.test(u))).toBe(false);
+});
+
+test('weekly P&L: the first week of the data has nothing to compare with and says so', async ({ page }) => {
+  await openHub(page, fixture(), BOOKINGS, NOW);
+  await plTable(page);
+  const card = page.locator('#wplWeek');
+  await expect(card.locator('.card-hint')).toContainText('nothing to compare with yet');
+  await expect(card).not.toContainText('average');
+  // One week later the comparison is with the one week that exists.
+  await page.evaluate(() => wplSelect('2026-10-24'));
+  await expect(card.locator('.card-hint')).toContainText('Compared with the average of the 1 week before');
+  await expect(card.locator('.wpl-kpi').nth(1)).toContainText('1-week average');
 });
