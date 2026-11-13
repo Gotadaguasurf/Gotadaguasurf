@@ -151,9 +151,11 @@ window.CAMP_CHECKS = window.CAMP_CHECKS || [];
     st.textContent = `
 #expChecks .health-strip,#ovChecks .health-strip{padding:0;margin:12px 0 4px}
 #ovChecks .health-strip{margin:0 0 16px}
+#expChecks .health-chip,#ovChecks .health-chip{white-space:normal;height:auto;min-height:var(--h-pill);padding:5px 12px;text-align:left;line-height:1.3;max-width:100%}
 .health-chip.cc-info{background:var(--ocean-soft);border-color:#cfe2f2;color:var(--ocean)}
 .health-chip.cc-info:hover{background:var(--ocean);color:#fff;border-color:var(--ocean)}
-.cc-filter{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:8px 0 4px;font-size:var(--fs-sec);color:var(--muted)}
+.cc-filter{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:0 0 10px;padding:10px 12px;background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:var(--r-sm);font-size:var(--fs-sec);color:var(--ink);scroll-margin-top:80px}
+.cc-filter span{flex:1 1 100%}
 .cc-tile{margin-top:10px;display:flex;flex-direction:column;gap:6px;align-items:flex-start}
 .cc-last{font-size:var(--fs-sec);color:var(--muted)}
 .cc-hist{width:100%;font-size:12.5px}
@@ -530,7 +532,7 @@ window.CAMP_CHECKS = window.CAMP_CHECKS || [];
     ['expTypeF', 'expPayF', 'expCatF', 'expWeekF'].forEach((id) => { const el = document.getElementById(id); if (el) el.value = 'all'; });
     try { if (typeof showPage === 'function') showPage('expenses'); } catch (_) {}
     if (typeof setExpPeriodUnified === 'function') setExpPeriodUnified('all'); else rerenderHub();
-    const host = document.getElementById('expChecks'); if (host && host.scrollIntoView) { try { host.scrollIntoView({ block: 'start', behavior: 'smooth' }); } catch (_) {} }
+    const bar = document.getElementById('ccFilterBar'); if (bar && bar.scrollIntoView) { try { bar.scrollIntoView({ block: 'start', behavior: 'smooth' }); } catch (_) {} }
   }
   function clearRowFilter() {
     window.__checkFilterIds = null; window.__checkFilterInfo = null;
@@ -615,16 +617,25 @@ window.CAMP_CHECKS = window.CAMP_CHECKS || [];
     chips.forEach((c) => chipHandlers.push(c.onClick || null));
     const info = hostId === 'expChecks' && window.__checkFilterIds instanceof Set ? window.__checkFilterInfo || { label: 'Filtered by a check', actions: [] } : null;
     const filterBar = info ? `<div class="cc-filter" id="ccFilterBar"><span>${esc(info.label)}</span>${(info.actions || []).map((a, i) => `<button class="btn btn-s btn-sm" data-cc-act="${i}">${esc(a.label)}</button>`).join('')}<button class="btn btn-s btn-sm" data-cc-act="clear">Show all</button></div>` : '';
-    host.innerHTML = (chips.length ? `<div class="health-strip" role="list">${chips.map((c, i) => `<button class="health-chip${c.level === 'info' ? ' cc-info' : ''}" role="listitem" data-chip="${base + i}" data-check="${esc(c.id)}">${esc(c.text)}</button>`).join('')}</div>` : '') + filterBar;
+    host.innerHTML = chips.length ? `<div class="health-strip" role="list">${chips.map((c, i) => `<button class="health-chip${c.level === 'info' ? ' cc-info' : ''}" role="listitem" data-chip="${base + i}" data-check="${esc(c.id)}">${esc(c.text)}</button>`).join('')}</div>` : '';
     host.onclick = (e) => {
       const chip = e.target.closest('[data-chip]');
-      if (chip) { const fn = chipHandlers[Number(chip.dataset.chip)]; if (typeof fn === 'function') fn(); return; }
-      const act = e.target.closest('[data-cc-act]');
-      if (act) {
-        if (act.dataset.ccAct === 'clear') return clearRowFilter();
-        const a = (info && info.actions || [])[Number(act.dataset.ccAct)]; if (a && typeof a.run === 'function') a.run();
-      }
+      if (chip) { const fn = chipHandlers[Number(chip.dataset.chip)]; if (typeof fn === 'function') fn(); }
     };
+    // The «showing these rows» bar sits right above the ledger table.
+    if (hostId === 'expChecks') {
+      const table = document.getElementById('expTable');
+      let fh = document.getElementById('ccFilterHost');
+      if (!fh && table && table.parentNode) { fh = document.createElement('div'); fh.id = 'ccFilterHost'; table.parentNode.insertBefore(fh, table); }
+      if (fh) {
+        fh.innerHTML = filterBar;
+        fh.onclick = (e) => {
+          const act = e.target.closest('[data-cc-act]'); if (!act) return;
+          if (act.dataset.ccAct === 'clear') return clearRowFilter();
+          const a = (info && info.actions || [])[Number(act.dataset.ccAct)]; if (a && typeof a.run === 'function') a.run();
+        };
+      }
+    }
     if (chipHandlers.length > 500) chipHandlers = chipHandlers.slice(-100); // handlers of old renders are dropped
   }
 

@@ -233,6 +233,8 @@ test.describe('cash count', () => {
     expect((await chipTexts(page, 'expChecks')).sort()).toEqual([...expected].sort());
     await expect(page.locator('#ccLast')).toHaveText('Last count: never');
     await expect(page.locator('#ccOpenBtn')).toBeVisible();
+    // Long chips wrap: nothing wider than the phone.
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1);
     // Salaries of two people (same amount, different text) are not duplicates;
     // two Camp Tab beers and two withdrawals of the same day are not either.
     const groups = await page.evaluate(() => CampCash.duplicateGroups(S.ledger, '2026-11-13').map(g => g.rows.map(r => r.description).sort()));
