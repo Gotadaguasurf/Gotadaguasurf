@@ -257,7 +257,7 @@
   }
   // «Mirissa room · bed 4» + what comes before or after it on the same booking.
   function roomText(g, day, ws, sep) {
-    const s = segments(g); const x = segAt(g, day, ws); const i = s.indexOf(x);
+    const s = segments(g); const at = segAt(g, day, ws); const i = s.findIndex(y => y.from === at.from && y.to === at.to); const x = s[i];
     if (!x.r) return { label: '', sub: '' };
     return { label: x.r.label + (x.r.shared && x.bed ? `${sep}bed ${x.bed}` : ''),
       sub: s[i + 1] ? `then ${s[i + 1].r ? s[i + 1].r.label : OUTSIDE}, ${fd(s[i + 1].from)}` : i > 0 ? `from ${s[i - 1].r ? s[i - 1].r.label : OUTSIDE}, ${fd(x.from)}` : (moveUnknown(g) ? `from ${movedRooms(g)[0]}` : '') };

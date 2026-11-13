@@ -842,12 +842,14 @@ test('departures: everyone who leaves a room or a bed is listed — leaving the 
   expect((await rawMsg(page, 'guests', '2026-11-13')).split('\n').find(l => l.startsWith('Joel Lima'))).toContain('Mirissa room bed 4');
   await tab(page, 'guests');
   await expect(page.locator('#weekRoot .wk-grow', { hasText: 'Joel Lima' }).locator('[data-l="Room"]')).toHaveText(/Mirissa room · bed 4\s*then Ahangama room, Sat 14/);
-  await page.evaluate(() => WeekUI.shiftWeek(7));
-  await expect(page.locator('#weekRoot .wk-grow', { hasText: 'Joel Lima' }).locator('[data-l="Room"]')).toHaveText(/Ahangama room\s*from Mirissa room, Sat 14/);
   // the +1 with no room: on To check with the room of her booking; the people check adds up
   await tab(page, 'rooms');
   await expect(page.locator('.wk-view-rooms .wk-check')).toContainText('Sira Hart (same booking as Kai Kopp, Hiriketeya room)');
   expect((await page.evaluate(() => WeekUI.people())).ok).toBe(true);
+  // back in the week of the 14th he is listed in the room he moved to
+  await page.evaluate(() => WeekUI.shiftWeek(7));
+  await tab(page, 'guests');
+  await expect(page.locator('#weekRoot .wk-grow', { hasText: 'Joel Lima' }).locator('[data-l="Room"]')).toHaveText(/Ahangama room\s*from Mirissa room, Sat 14/);
   expect(errors).toEqual([]);
 });
 
