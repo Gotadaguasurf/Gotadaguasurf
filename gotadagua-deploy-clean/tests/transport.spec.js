@@ -525,3 +525,19 @@ test('transport: works with the tables missing (SQL not run yet) — a clear mes
   await expect(page.locator('#transportRoot .status-warn')).toContainText('Ask Miguel to run supabase/camp-trips.sql');
   expect(errors).toEqual([]);
 });
+
+test('next week import: a Bookinglayer Guests .xlsx is read like the CSV (Excel reader stubbed)', async ({ page }) => {
+  const errors = collectFatalErrors(page);
+  const csv = require('fs').readFileSync(GUESTS_CSV, 'utf8');
+  // Stand-in for SheetJS: the app only calls XLSX.read + XLSX.utils.sheet_to_csv.
+  await page.addInitScript(text => {
+    window.XLSX = { read: () => ({ SheetNames: ['Guests'], Sheets: { Guests: {} } }), utils: { sheet_to_csv: () => text } };
+  }, csv);
+  await openTab(page);
+  await page.click('button.pill:has-text("Next week")');
+  expect(await page.locator('#trGuestsFile').getAttribute('accept')).toContain('.xlsx');
+  await page.setInputFiles('#trGuestsFile', { name: 'Bookinglayer-Guests-2026-11-07 14_23.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: Buffer.from('PK fake xlsx') });
+  await expect(page.locator('#transportRoot')).toContainText('Airport trips from this file · 4');
+  await expect(page.locator('#transportRoot')).toContainText('exported 7 Nov');
+  expect(errors).toEqual([]);
+});

@@ -510,7 +510,7 @@
     const I = TR.imp;
     let out = `<div class="card tr-import"><div class="card-hdr"><div><div class="card-title">${opts && opts.title ? h(opts.title) : `Next week · ${fmtRange(ws, we)}`}</div>
       <div class="card-hint">Download the Guests export with the «Semana Sri Lanka» preset and drop it here. Importing again during the week updates the trips — nothing is duplicated.</div></div></div>
-      <div class="card-body"><label class="btn ${I && I.stage === 'preview' ? 'btn-s' : 'btn-p'}">${ic('upload')} Choose Guests file<input type="file" accept=".csv" id="trGuestsFile" style="display:none" onchange="TransportUI.pickFile(this)"></label>
+      <div class="card-body"><label class="btn ${I && I.stage === 'preview' ? 'btn-s' : 'btn-p'}">${ic('upload')} Choose Guests file<input type="file" accept=".csv,.xlsx,.xls" id="trGuestsFile" style="display:none" onchange="TransportUI.pickFile(this)"></label>
       ${I && I.needDate ? `<div class="mfield tr-date-ask"><label>When did you download this file?</label><input type="date" id="trExportDate" value="${cToday()}"><button class="btn btn-s btn-sm" onclick="TransportUI.setExportDate()">Continue</button></div>` : ''}
       </div></div>`;
     if (!I || I.needDate) return out;
@@ -541,9 +541,31 @@
       <div class="cell-sub">${h(t.flight || 'flight?')} · ${h(t.vehicle)} · ${money(t.expected_price)} · ${t.booking_ref}${t.hq_match === 'ok' ? ' · in HQ' : t.hq_match === 'missing' ? ' · not yet in HQ' : ''}${t.partner ? ' · partner: ' + h(t.partner) + ', don\'t charge' : ''}</div>
       ${t.flags.filter(f => !/^no time yet/.test(f)).map(f => `<div class="cell-sub tr-amber">${h(f)}</div>`).join('')}</div></div>`;
   }
+  // Bookinglayer's Guests export comes as .xlsx (13 Nov 2026) as well as .csv. The Excel file is
+  // turned into the same CSV text (dates keep their «Sat 14 Nov 2026» format), so one parser serves both.
+  const XLSX_CDN = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+  let xlsxLoading = null;
+  function loadXlsx() {
+    if (window.XLSX) return Promise.resolve(window.XLSX);
+    if (!xlsxLoading) xlsxLoading = new Promise((ok, no) => {
+      const s = document.createElement('script'); s.src = XLSX_CDN;
+      s.onload = () => window.XLSX ? ok(window.XLSX) : no(new Error('Excel reader did not load'));
+      s.onerror = () => { xlsxLoading = null; no(new Error('Excel reader could not be downloaded')); };
+      document.head.appendChild(s);
+    });
+    return xlsxLoading;
+  }
+  async function guestsXlsxToCsv(file) {
+    const X = await loadXlsx();
+    const wb = X.read(new Uint8Array(await file.arrayBuffer()), { type: 'array' });
+    return X.utils.sheet_to_csv(wb.Sheets[wb.SheetNames[0]], { blankrows: false });
+  }
   async function pickFile(input) {
     const file = input.files && input.files[0]; if (!file) return;
-    const text = await file.text(); input.value = '';
+    let text;
+    try { text = /\.xlsx?$/i.test(file.name) ? await guestsXlsxToCsv(file) : await file.text(); }
+    catch (err) { input.value = ''; TR.imp = { error: "Couldn't read this Excel file — " + (err && err.message || 'error') + '. Try again, or export it as CSV.' }; render(); return; }
+    input.value = '';
     if (!GT.isGuestsExportHeader(text)) { TR.imp = { error: 'This is not a Bookinglayer Guests export (no «Has transfer» column). Use Guests → Export with the «Semana Sri Lanka» preset.' }; render(); return; }
     TR.imp = { text, name: file.name };
     const parsed = GT.parse(text, file.name);
