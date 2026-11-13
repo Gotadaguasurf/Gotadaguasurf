@@ -207,6 +207,9 @@ test('round trip (Miguel, 13 Nov): one leg only when the comment says so next to
   expect(kinds(one('pick-up only'))).toEqual(['arrival']);
   expect(kinds(one('departure only'))).toEqual(['departure']);
   expect(kinds(one('one way, departure only'))).toEqual(['departure']);                        // not zero legs
+  expect(kinds(one('I only need a pick up'))).toEqual(['arrival']);
+  expect(kinds(one('just need the return transfer'))).toEqual(['departure']);
+  expect(kinds(one('only one transfer, the departure'))).toEqual(['arrival', 'departure']);     // unclear → both, the manager decides
   const noOut = one('', '');
   expect(kinds(noOut)).toEqual(['arrival']);
   expect(noOut.trips.every(t => t.date)).toBe(true);

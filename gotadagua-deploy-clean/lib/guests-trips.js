@@ -200,12 +200,13 @@
       const nProducts = hasTransfersCol ? (p.transfers.match(/airport transfer/gi) || []).length : null;
       const boards = p.transfers.toLowerCase().includes('surfboard') || p.tcomment.toLowerCase().includes('surfboard');
       const comment = p.tcomment.toLowerCase();
-      // One leg only when the comment says so in so many words: «only» next to the direction
-      // («departure only», «only the pick-up»), not anywhere in the sentence («we only have two
-      // bags, arrival 10:00» is still the round trip). The departure test goes first so
-      // «one way, departure only» keeps the departure instead of dropping both legs.
-      const depOnly = /\b(only|just)\s+(the\s+)?(return|departure|drop(.?off)?)\b|\b(return|departure|drop(.?off)?)\s+(transfer\s+)?only\b/.test(comment);
-      const arrOnly = !depOnly && /\b(only|just)\s+(the\s+)?(arrival|pick.?up)\b|\b(arrival|pick.?up)\s+(transfer\s+)?only\b|\bone.?way\b/.test(comment);
+      // One leg only when the comment says so: «only» (or «just need») and the direction in the
+      // same clause («departure only», «I only need a pick up»), not anywhere in the comment
+      // («we only have two bags, arrival 10:00» is still the round trip). The departure test goes
+      // first so «one way, departure only» keeps the departure instead of dropping both legs.
+      const sameClause = (a, b) => new RegExp(`\\b(${a})\\b[^,.;:!?\\n]*\\b(${b})\\b|\\b(${b})\\b[^,.;:!?\\n]*\\b(${a})\\b`).test(comment);
+      const depOnly = sameClause('only|just need', 'return|departure|drop(.?off)?');
+      const arrOnly = !depOnly && (sameClause('only|just need', 'arrival|pick.?up') || /\bone.?way\b/.test(comment));
       for (const direction of ['arrival', 'departure']) {
         const flags = []; let date, time, fl, pl, amb;
         if (direction === 'arrival') {
