@@ -52,6 +52,7 @@ async function openHub(page, rows, bookings = BOOKINGS, now = null, opts = {}) {
     if (url.includes('/rest/v1/locations')) return json({ id: LOC, name: 'Sri Lanka', slug: 'sri-lanka', currency: 'LKR', default_fx_to_eur: FX, camp_tab_mode: 'per_guest' });
     if (url.includes('/rest/v1/ledger_entries')) return json(rows);
     if (url.includes('/rest/v1/bookings')) return json(bookings);
+    if (url.includes('/rest/v1/camp_week_guests')) return json(opts.weekGuests || []);
     // A CSV someone saved for this camp long ago (dates and guests, no amounts).
     if (opts.savedCsv && url.includes('/rest/v1/location_state_store') && url.includes('camphub_ov_bookings_v3')) {
       await new Promise(r => setTimeout(r, opts.csvDelayMs || 0));
@@ -390,4 +391,77 @@ test('weekly P&L: the first week of the data has nothing to compare with and say
   await page.evaluate(() => wplSelect('2026-10-24'));
   await expect(card.locator('.card-hint')).toContainText('Compared with the average of the 1 week before');
   await expect(card.locator('.wpl-kpi').nth(1)).toContainText('1-week average');
+});
+
+// ── Bookings freshness and the camp's own Guests file (13 Nov 2026) ─────────
+// HQ bookings are a manual import: a week that ends after the import was made
+// can miss stays, so its revenue / result are marked incomplete, never read as a loss.
+test('weekly P&L: a week that ends after the last bookings import is marked incomplete', async ({ page }) => {
+  const errors = collectFatalErrors(page);
+  const bookings = MONEY_BOOKINGS.map(b => ({ ...b, created_at: '2026-10-20T10:00:00Z' })); // imported on 20 Oct
+  await openHub(page, fixture(), bookings, NOW);
+  const t = await plTable(page);
+  const by = Object.fromEntries(t.body.map(r => [r.Week.replace('in progress', ''), r]));
+  expect(by['17–23 Oct 2026'].Result).toContain('incomplete');   // ends 23 Oct, after the import
+  expect(by['10–16 Oct 2026'].Result).not.toContain('incomplete'); // ended before it
+  expect(t.note).toContain('Bookings imported up to 20 Oct 2026');
+  const card = page.locator('#wplWeek');
+  await expect(card.locator('.card-title')).toContainText('17 Oct 2026');
+  await expect(card.locator('#wplIncomplete')).toContainText('Bookings not imported for this week yet — revenue and guests are incomplete. Import bookings in HQ. Bookings imported up to 20 Oct 2026.');
+  await expect(card.locator('.badge', { hasText: 'Bookings incomplete' })).toHaveCount(1);
+  const cls = await card.locator('.wpl-kpi .kpi-value').evaluateAll(els => els.map(e => e.className));
+  expect(cls[0]).toContain('wpl-dim'); expect(cls[2]).toContain('wpl-dim');     // revenue and result greyed
+  expect(cls[2]).not.toMatch(/\b(pos|neg)\b/);                                   // never a red «loss»
+  await expect(card.locator('.wpl-kpi').nth(2)).toContainText('Incomplete — bookings missing');
+  await expect(page.locator('.wpl-chart .wpl-col.inc')).toHaveCount(2);          // 17 Oct and the current week
+  // A complete week has no note and its result keeps its colour.
+  await page.evaluate(() => wplSelect('2026-10-10'));
+  await expect(card.locator('#wplIncomplete')).toHaveCount(0);
+  expect(await card.locator('.wpl-kpi .kpi-value').nth(2).getAttribute('class')).toMatch(/\b(pos|neg)\b/);
+  expect(errors).toEqual([]);
+});
+
+test('weekly P&L: guests and guest-nights come from the camp\u2019s Guests file when it has the week', async ({ page }) => {
+  const g = (name, ci, co, status = 'paid', ref = 'G-' + name) => ({ booking_ref: ref, guest_key: name.toLowerCase(), guest_name: name, check_in: ci, check_out: co, booking_status: status });
+  const weekGuests = [
+    g('Ann', WS, '2026-10-24'), g('Ben', WS, '2026-10-24'), g('Cleo', WS, '2026-10-24'), g('Dan', WS, '2026-10-24'),
+    g('Eve', '2026-10-20', '2026-10-31'),           // 4 nights in this week, 7 in the next
+    g('Fay', WS, '2026-10-24', 'cancelled'), g('Gus', WS, '2026-10-24', 'not_here'), // not counted
+    g('Ann', WS, '2026-10-24'),                     // the same guest twice in the table counts once
+  ];
+  const bookings = MONEY_BOOKINGS.map(b => ({ ...b, created_at: '2026-10-20T10:00:00Z' }));
+  await openHub(page, fixture(), bookings, NOW, { weekGuests });
+  await page.waitForFunction(() => { try { return WPL_CG.state === 'done'; } catch (_) { return false; } });
+  const t = await plTable(page);
+  const by = Object.fromEntries(t.body.map(r => [r.Week.replace('in progress', ''), r]));
+  // 17–23 Oct: the file has 5 guests / 32 nights, the HQ bookings 3 guests / 21 nights → the file.
+  expect(by['17–23 Oct 2026'].Guests).toBe('5');
+  expect(by['17–23 Oct 2026']['Guest-nights']).toBe(String(4 * 7 + 4));
+  // 24–30 Oct: only the file knows this week (Eve, 7 nights).
+  expect(by['24–30 Oct 2026'].Guests).toBe('1');
+  expect(by['24–30 Oct 2026']['Guest-nights']).toBe('7');
+  // 10–16 Oct: the file has nothing → HQ bookings (1 guest, 7 nights).
+  expect(by['10–16 Oct 2026'].Guests).toBe('1');
+  expect(by['10–16 Oct 2026']['Guest-nights']).toBe('7');
+  // Revenue is still the bookings\u2019.
+  expect(by['17–23 Oct 2026'].Bookings).toBe(whole(900 + 350));
+  await page.evaluate(() => wplSelect('2026-10-17'));
+  const card = page.locator('#wplWeek');
+  await expect(card.locator('.wpl-kpi').nth(3)).toContainText('32 guest-nights · from the camp\u2019s Guests file');
+  await expect(card.locator('#wplIncomplete')).toContainText('The bookings cover 3 of the 5 guests in the camp\u2019s Guests file.');
+  // Cash control: same guests, and food per guest-day on the file\u2019s nights.
+  const c = await weeklyTable(page);
+  const r = c.body.find(x => /17 Oct 2026/.test(x.Week));
+  expect(r['Guests (paid / total)']).toBe('5');
+  expect(r['Food / guest-day']).toBe(lkr(Math.round(12000 / 32)));
+});
+
+test('weekly P&L: a Camp-Tab-only device never reads the Guests file for the P&L', async ({ page }) => {
+  const asked = [];
+  page.on('request', r => { if (/rest\/v1\/camp_week_guests/.test(r.url())) asked.push(r.url()); });
+  await openHub(page, fixture(), MONEY_BOOKINGS, NOW, { query: '&view=camp-tab-only' });
+  await page.evaluate(() => { try { renderWeeklyPL(); } catch (_) {} });
+  await page.waitForTimeout(400);
+  expect(await page.evaluate(() => WPL_CG.state)).toBe('idle');
+  expect(asked).toEqual([]);
 });
