@@ -461,22 +461,12 @@
     b.forEach(x => { const i = left.indexOf(x); if (i >= 0) left.splice(i, 1); else added.push(x); });
     return [...left.map(x => '– ' + x), ...added.map(x => '+ ' + x)];
   }
-  function updateText(oldText, newText, day, ws) {
-    const head = `UPDATE – ${day === 'week' ? 'week ' + range(ws, add(ws, 7)) : fdm(day)}`;
-    const diff = lineDiff(oldText, newText);
-    return [head, ...diff, '', newText].join('\n');
-  }
-  function transfersUpdate(list, day, ws) {
-    const changed = list.filter(t => t.needs_resend).map(t => {
-      const s = t.sent_snapshot || {}; const bits = [];
-      if (s.trip_date && s.trip_date !== t.trip_date) bits.push(`date ${GT.dMon(s.trip_date)} → ${GT.dMon(t.trip_date)}`);
-      if ((s.trip_time || '') !== (t.trip_time || '')) bits.push(`time ${s.trip_time || 'TBC'} → ${t.trip_time || 'TBC'}`);
-      if ((s.flight || '') !== (t.flight || '')) bits.push(`flight ${s.flight || 'TBC'} → ${t.flight || 'TBC'}`);
-      if (s.pax && s.pax !== t.pax) bits.push(`${s.pax} → ${t.pax} persons`);
-      return `${t.guest_names || 'Guest'}: ${bits.join(', ') || 'changed'}`;
-    });
-    return [`UPDATE – ${day === 'week' ? 'week ' + range(ws, add(ws, 7)) : fdm(day)}`, ...changed, '', GT.whatsappDayText(list)].join('\n');
-  }
+  // Miguel, 13 Nov: «não quero update — sempre que mando tem de ser o real». A resend is the
+  // real, current message, never an UPDATE header or a diff. «Changed since sent» only tells
+  // Francisco that the team has an old version.
+  function updateText(oldText, newText) { return newText; }
+  function transfersUpdate(list) { return GT.whatsappDayText(list); }
+
 
   // ── Data ────────────────────────────────────────────────────────────────
   const client = () => (typeof getHubSupabaseClient === 'function') ? getHubSupabaseClient() : null;
@@ -863,7 +853,7 @@
       return `<div class="card wk-card wk-msgcard" id="wkMessage">${cardHead('Message', `Transfers still to do · ${h(when)} · Miguel's format, one block per transfer`)}
         <div class="card-body">${dayPills}${list.length ? `<div class="wk-msg" id="wkMsg">${h(text)}</div>
         <div class="wk-foot"><div class="wk-foot-btns"><button class="btn btn-s" onclick="WeekUI.copy()">${ic('copy')} Copy</button>
-          <button class="btn btn-p" id="wkSend" onclick="WeekUI.send()">${ic('send')} ${resend ? 'Send update' : 'Send to ' + h(c ? c.name : 'Transfers')}</button></div>
+          <button class="btn btn-p" id="wkSend" onclick="WeekUI.send()">${ic('send')} ${'Send to ' + h(c ? c.name : 'Transfers')}</button></div>
           <div class="hint wk-state">${toTick ? `${plural(toTick, 'transfer')} not marked sent · <button class="btn-link" onclick="WeekUI.tickTransfers()">Mark sent ✓</button>` : 'All marked sent'}${c && c.phone ? '' : ` · <button class="btn-link" onclick="WeekUI.openContacts()">add phone</button>`}</div></div>`
         : `<div class="hint wk-none">No transfers still to do ${day === 'week' ? 'this week' : 'on this day'}.</div>`}</div></div>`;
     }
@@ -882,7 +872,7 @@
     const undo = W.undo && W.undo.team === team && W.undo.day === day ? ` · <button class="btn-link wk-undo" onclick="WeekUI.undo()">Undo</button>` : '';
     const state = sent ? `Sent ${h(stampOf(sent.sent_at))}${changed ? ' · changed since' : ''}${undo}` : 'Not sent';
     return `<div class="wk-foot"><div class="wk-foot-btns"><button class="btn btn-s" onclick="WeekUI.copy()">${ic('copy')} Copy</button>
-        <button class="btn btn-p" id="wkSend" onclick="WeekUI.send()">${ic('send')} ${changed ? 'Send update' : 'Send to ' + h(who)}</button></div>
+        <button class="btn btn-p" id="wkSend" onclick="WeekUI.send()">${ic('send')} ${'Send to ' + h(who)}</button></div>
       <div class="hint wk-state">${state}${noPhone ? ` · <button class="btn-link" onclick="WeekUI.openContacts()">add phone</button>` : ''}</div></div>`;
   }
   function stampOf(at) { const s = colomboStamp(new Date(at)); return `${fd(s.slice(0, 10))} ${s.slice(11, 16)}`; }

@@ -484,7 +484,7 @@ test('send: wa.me to the team contact with the WhatsApp formatting, remembered (
   expect(errors).toEqual([]);
 });
 
-test('changed since sent: a re-import that changes Tuesday dinner → chip, amber dot, UPDATE header with the diff, «Send update»', async ({ page }) => {
+test('changed since sent: a re-import that changes Tuesday dinner → chip, amber dot; Send sends the real current message (no UPDATE, no diff)', async ({ page }) => {
   const old = '*KITCHEN - TUE 17 NOV*\n\n*Dinner:* 20 people\n*Breakfast Wed 18:* 20 people\n\n*Vegan*\n- Alicia Pohl\n- Anja Graf\n- Lilly Krüger\n\n*Allergies*\n- Alicia Pohl _(lactose)_';
   const st = await openWeek(page, { msgs: [{ id: 'm1', location_id: LOC, week_start: '2026-11-14', team: 'kitchen', day: '2026-11-17', text: old, hash: fnv(old), sent_at: '2026-11-16T08:00:00Z' }] });
   await expect(page.locator('.wk-changed')).toContainText('Kitchen (Tue)');
@@ -494,9 +494,10 @@ test('changed since sent: a re-import that changes Tuesday dinner → chip, ambe
   await page.click('.wk-changed .health-chip:has-text("Kitchen (Tue)")');
   await expect(page.locator('.wk-days .pill[data-day="2026-11-17"] .wk-dot')).toHaveCount(1);
   const msg = await msgText(page);
-  expect(msg.split('\n').slice(0, 5)).toEqual(['UPDATE – Tue 17 Nov', '– Dinner: 20 people', '– Breakfast Wed 18: 20 people', '+ Dinner: 21 people', '+ Breakfast Wed 18: 21 people']);
-  expect(msg).toContain('\n\nKITCHEN TODAY - 17 NOV\n\nDinner: 21 people');
-  await expect(page.locator('#wkSend')).toHaveText(/Send update/);
+  expect(msg).not.toContain('UPDATE');
+  expect(msg).not.toMatch(/^[–+] /m);
+  expect(msg.startsWith('KITCHEN TODAY - 17 NOV\n\nDinner: 21 people')).toBe(true);
+  await expect(page.locator('#wkSend')).toHaveText(/Send to/);
   await page.click('#wkSend');
   const ins = (await call(st, 'msg_insert')).rows[0];
   expect(ins.text.startsWith('*KITCHEN - TUE 17 NOV*')).toBe(true);   // the stored body never carries the UPDATE header or TODAY
@@ -528,12 +529,11 @@ test('transfers: a timeline per day with the status of each trip; the message is
   await expect(page.locator('#wkTr-2026-11-14 .wk-untimed')).toContainText('On their own, no arrival time given');
   await expect(page.locator('#wkTr-2026-11-21 .wk-trip.own')).toHaveCount(0);            // next week's arrivals are not this week's business
   const msg = await msgText(page);
-  expect(msg.split('\n')[0]).toBe('UPDATE – Tue 17 Nov');
-  expect(msg).toContain('Peter Mongey, Sinéad O\'Farrell: time 21:10 → 23:40');
+  expect(msg).not.toContain('UPDATE');
   expect(msg).toContain('Airport to Camp\nPeter Mongey, Sinéad O\'Farrell\n+353400000001\n2 persons\nFlight Number: EK650\nTime: 23:40\nDate: 17 Nov\nSmall Car');
-  await expect(page.locator('#wkSend')).toHaveText(/Send update/);
+  await expect(page.locator('#wkSend')).toHaveText(/Send to/);
   await page.click('#wkSend');
-  expect(await page.evaluate(() => window.__opened[0])).toMatch(/^https:\/\/wa\.me\/94771234567\?text=UPDATE/);
+  expect(await page.evaluate(() => window.__opened[0])).toMatch(/^https:\/\/wa\.me\/94771234567\?text=Airport/);
   expect(st.calls.filter(c => c.t === 'msg_insert')).toHaveLength(0);   // transfers keep their sent state on the trips
   await page.click('.wk-state button:has-text("Mark sent")');
   await call(st, 'trip_update', 2);
