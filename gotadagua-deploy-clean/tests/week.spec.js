@@ -152,12 +152,12 @@ const visiblePrimary = page => page.locator('#weekRoot .btn-p:visible').count();
 const rawMsg = (page, team, day) => page.evaluate(([t, d]) => WeekUI.bodyOf(t, d), [team, day]);
 const noOverflow = page => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
 
-test('week: tab for full Sri Lanka users only — not in local view (no request either), camp-tab-only or Morocco', async ({ page, browser }) => {
+test('week: tab for full users only — not in local view (no request either) or camp-tab-only (Morocco now has it: tests/morocco-week.spec.js)', async ({ page, browser }) => {
   const errors = collectFatalErrors(page);
   await open(page);
   expect(await page.locator('.ntab-m[data-page="week"]').evaluate(el => el.style.display)).toBe('');
   expect(errors).toEqual([]);
-  for (const [query, slug] of [['&view=local', 'sri-lanka'], ['&view=camp-tab-only', 'sri-lanka'], ['', 'morocco']]) {
+  for (const [query, slug] of [['&view=local', 'sri-lanka'], ['&view=camp-tab-only', 'sri-lanka']]) {   // Morocco removed 14 Nov: it has the tab now
     const p = await browser.newPage({ viewport: { width: 390, height: 844 } });
     const st = await open(p, { query, slug });
     await p.waitForTimeout(800);

@@ -1,4 +1,11 @@
-// Camp hub · Transport (Sri Lanka, 13 Nov 2026)
+// Camp hub · Transport (Sri Lanka 13 Nov 2026; Morocco 14 Nov 2026)
+//
+// Morocco (lib/camp-config.js): the same airport transfers (Let Us Tours, Agadir /
+// Marrakech / Essaouira) and, instead of tuk-tuks, van runs (Fathoune: surf spot,
+// Dunes, Paradise Valley…), one tap per run with the people in the van. Nobody pays
+// in cash there: every driver is paid by SG bank transfer, so «Paid» = the trip is
+// linked to a Transport · Bank Transfer line in the ledger (typed by Floriane or
+// brought by the statement), in Reconcile → Payments. No «Pay a driver» in Morocco.
 //
 // Airport transfers and tuk-tuk runs for the full view (Francisco, Miguel,
 // HQ). Never in ?view=local or camp-tab-only: Nadith keeps paying drivers in
@@ -21,16 +28,25 @@
 (function () {
   'use strict';
   const GT = window.GuestsTrips;
+  const SLUG = (typeof __HUB_LOCATION_SLUG !== 'undefined') ? __HUB_LOCATION_SLUG : '';
+  const CC = (window.CampConfig && CampConfig.get(SLUG)) || (window.CampConfig && CampConfig.SL) || {};
+  const IS_SL = SLUG === 'sri-lanka';
+  const GTC = IS_SL ? undefined : CC;          // parser settings: none = Sri Lanka's, exactly as before
+  // The camp's runs: Sri Lanka tuk-tuks, Morocco vans (camp_trips.kind 'other', no database change).
+  const RUN = IS_SL ? { kind: 'tuktuk', drv: 'tuktuk', label: 'Tuk-tuk', plural: 'Tuk-tuk runs', lower: 'tuk-tuk', veh: 'Tuk-tuk', contact: 'tuktuk_contact' }
+    : { kind: (CC.runs || {}).kind || 'other', drv: 'van', label: 'Van', plural: 'Van runs', lower: 'van', veh: (CC.runs || {}).vehicle || 'Van', contact: 'van_contact' };
+  const BANK_PAID = CC.payMethod === 'Bank Transfer';   // Morocco: drivers are paid by SG bank transfer
+  const CUR = CC.currency || 'LKR';
 
   // ── Settings (kept as constants so Miguel can change them later) ────────
-  const TRIPS_ENABLED_LOCATIONS = new Set(['sri-lanka']);
-  const TRIPS_GO_LIVE = '2026-11-14';  // = camp_trips_go_live() in the SQL; start of the first camp week with trips (was 16 Nov)
+  const TRIPS_ENABLED_LOCATIONS = new Set(['sri-lanka', 'morocco']);
+  const TRIPS_GO_LIVE = IS_SL ? '2026-11-14' : (CC.goLive || '2026-11-14');  // = camp_trips_go_live() in the SQL; start of the first camp week with trips (was 16 Nov)
   const goLive = () => window.TRIPS_GO_LIVE_OVERRIDE || TRIPS_GO_LIVE;   // tests move it into the past
   const TRIPS_LOAD_FROM = '2026-10-01';
-  const TRIPS_BL_LOCATION_LABELS = ['Surf Camp Ahangama'];
+  const TRIPS_BL_LOCATION_LABELS = IS_SL ? ['Surf Camp Ahangama'] : (CC.blLocations || []);
   const HQ_LIVE_STATUSES = new Set(['confirmed', 'paid', 'deposit paid', 'deposit_paid']);
   const HQ_DEAD_STATUSES = new Set(['cancelled', 'canceled', 'expired']);   // only these cancel a trip; any other HQ status counts as there
-  const VEHICLES = ['Car', 'Minivan', 'Large Van'];
+  const VEHICLES = IS_SL ? ['Car', 'Minivan', 'Large Van'] : CC.vehicles;
   // Camp runs have no catalog price yet (Sampath's prices, open question Q2):
   // a /prices row with the same name (picker «tuktuk») replaces the price here.
   const TUKTUK_CAMP_RUNS = [
@@ -46,11 +62,10 @@
   // (supabase/camp-trips-v2.sql); a free trip without a reason is an older row.
   const FREE_REASONS = [['staff', 'Staff'], ['gift', 'Gift to guest'], ['compensation', 'Compensation'], ['other', 'Other']];
   const FREE_SHORT = { staff: 'Staff', gift: 'Gift', compensation: 'Compensation', other: 'Other' };
-  const TUKTUK_CONTACT = 'tuktuk_contact';         // default_for of the person who gets the tuk-tuk order
+  const TUKTUK_CONTACT = RUN.contact;         // default_for of the person who gets the tuk-tuk order
   const PLAN_DEFAULT_TIME = '07:30';
-  const LOCAL_MANAGER_NAME = 'Nadith';             // who pays the drivers in ?view=local («linked by Nadith» in Reconcile)
+  const LOCAL_MANAGER_NAME = IS_SL ? 'Nadith' : (CC.localManager || 'the local manager');             // who pays the drivers in ?view=local («linked by Nadith» in Reconcile)
 
-  const SLUG = (typeof __HUB_LOCATION_SLUG !== 'undefined') ? __HUB_LOCATION_SLUG : '';
   const enabled = () => TRIPS_ENABLED_LOCATIONS.has(SLUG) && !LOCAL_MANAGER_MODE && !CAMP_TAB_ONLY_MODE;
 
   const TR = {
@@ -63,7 +78,7 @@
   // ── Time: Colombo, never the browser's zone. window.TRANSPORT_NOW pins it in tests.
   function colomboNow() {
     if (window.TRANSPORT_NOW) return String(window.TRANSPORT_NOW).slice(0, 16);
-    const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Colombo', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+    const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: CC.tz || 'Asia/Colombo', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
       .formatToParts(new Date()).map(x => [x.type, x.value]));
     return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;
   }
@@ -104,7 +119,7 @@
     if (!done) return 'upcoming';
     if (!paid && t.trip_date < goLive()) return 'before_go_live';
     if (!paid) return 'owed';
-    if (t.source === 'bookinglayer' || t.kind === 'tuktuk') return 'matched';
+    if (t.source === 'bookinglayer' || t.kind === RUN.kind) return 'matched';
     return 'extra';
   }
   const REC_LABEL = {
@@ -153,25 +168,48 @@
     return { key: 'planned', label: t.status === 'confirmed' ? 'Confirmed' : t.status === 'sent' ? 'Sent' : 'Planned', cls: t.status === 'confirmed' ? 'badge-green' : t.status === 'sent' ? 'badge-blue' : 'badge-grey', sub: '' };
   }
   const payBadge = t => { const p = payState(t); return `<span class="badge ${p.cls}" data-pay="${p.key}">${p.label}</span>`; };
-  const runLabel = t => t.tour_name ? 'Tour · ' + t.tour_name : t.purpose === 'surf' ? 'Camp → ' + (t.route || '') : (t.route || t.purpose || 'Run');
+  const runLabel = t => !IS_SL ? (vanRateOf(t) ? vanRateOf(t).label : (t.route || t.purpose || 'Run')) : t.tour_name ? 'Tour · ' + t.tour_name : t.purpose === 'surf' ? 'Camp → ' + (t.route || '') : (t.route || t.purpose || 'Run');
+  const vanRateOf = t => (CC.vanRates || []).find(r => r.route === t.route) || null;
+  const ratePrice = (r, n) => r.per === 'person' ? Number(r.price || 0) * Math.max(1, Number(n) || 1) : Number(r.price || 0);
+  const ppl = n => `${n} ${Number(n) === 1 ? 'person' : 'people'}`;
+  const airportCity = place => IS_SL ? 'Colombo' : (CC.airportCity[place] || CC.airportCity[CC.airportDefault]);
 
-  function presetPrice(kind, vehicle) {
+  function presetPrice(kind, vehicle, place) {
     const list = (typeof transportPresets !== 'undefined' && transportPresets && transportPresets.airport) || [];
     const dep = kind === 'airport_departure';
-    const p = list.find(x => dep ? /→\s*airport/i.test(x.name) : /airport\s*→/i.test(x.name));
+    // Morocco: one price per airport and vehicle, both ways («Agadir Airport — Car 250», «Marrakech Airport — Car 1200»).
+    const p = !IS_SL ? list.find(x => String(x.name || '').toLowerCase().includes(airportCity(place || CC.airportDefault).toLowerCase()))
+      : list.find(x => dep ? /→\s*airport/i.test(x.name) : /airport\s*→/i.test(x.name));
     const v = p && (p.vehicles || []).find(x => x.label === vehicle);
     return v ? Number(v.price) || 0 : 0;
   }
   const contact = () => TR.drivers.find(d => d.active !== false && (d.default_for || []).includes('transfers_contact'));
   // Who gets the tuk-tuk order: the «Tuk-tuk orders to» person, else the default tuk-tuk driver (Sampath).
-  const tukContact = () => TR.drivers.find(d => d.active !== false && (d.default_for || []).includes(TUKTUK_CONTACT)) || defaultDriver('tuktuk');
+  const tukContact = () => TR.drivers.find(d => d.active !== false && (d.default_for || []).includes(TUKTUK_CONTACT)) || defaultDriver(RUN.drv);
   const driverById = id => TR.drivers.find(d => d.id === id);
   const HQ_CROSSCHECK = false; // see buildImport()
   const defaultDriver = kind => TR.drivers.find(d => d.active !== false && (d.default_for || []).includes(kind));
   const driversFor = kind => TR.drivers.filter(d => d.active !== false && ((d.kinds || []).includes(kind) || (kind === 'airport' && (d.kinds || []).includes('other'))));
   const ledgerById = id => (typeof S !== 'undefined' && S.ledger || []).find(e => e.id === id);
   const linkOf = entryId => TR.links.find(l => l.entry_id === entryId);
-  function waText(t) { return GT.whatsappText(t); }
+  // Morocco: a Transport · Bank Transfer line (typed by Floriane or brought by the SG statement) that pays
+  // a driver and is not linked to trips yet. Shown in Reconcile → Payments as «To review» until it is
+  // linked (camp_transport_link_set accepts any Transport expense). Sri Lanka: none (its payments are cash).
+  function bankCandidates() {
+    if (!BANK_PAID) return [];
+    const known = new Set(TR.links.map(l => l.entry_id));
+    return ((typeof S !== 'undefined' && S.ledger) || []).filter(e => e && e.type === 'expense' && e.category === 'Transport' && e.paymentMethod === 'Bank Transfer'
+      && String(e.date || '') >= goLive() && !known.has(e.id) && looksLikeDriverPayment(e))
+      .map(e => ({ entry_id: e.id, location_id: e.locationId || null, driver_id: driverIn(e.description), entry_amount: Number(e.amountLocal || 0), trips_amount: 0, trips_count: 0,
+        state: 'review', reason: 'no trips linked', linked_by: 'auto', pending: true }));
+  }
+  const allLinks = () => BANK_PAID ? TR.links.concat(bankCandidates()) : TR.links;
+  function driverIn(text) {
+    const t = String(text || '').toLowerCase();
+    const hits = TR.drivers.filter(d => d && d.active !== false && !((d.kinds || []).length === 1 && d.kinds[0] === 'contact') && [d.name, ...(d.aliases || [])].some(a => a && t.includes(String(a).toLowerCase())));
+    return hits.length === 1 ? hits[0].id : null;
+  }
+  function waText(t) { return GT.whatsappText(t, GTC); }
 
   // ── Data ───────────────────────────────────────────────────────────────
   const client = () => (typeof getHubSupabaseClient === 'function') ? getHubSupabaseClient() : null;
@@ -229,6 +267,7 @@
   }
   async function insertTrip(row) {
     const loc = await ensureHubLocationId();
+    if (!IS_SL && !row.currency) row = { ...row, currency: CUR };   // the column defaults to LKR
     let { data, error } = await client().from('camp_trips').insert({ location_id: loc, ...row }).select();
     if (newColMissing(error)) ({ data, error } = await client().from('camp_trips').insert({ location_id: loc, ...withoutNew(row) }).select());
     if (error) { say("Couldn't save — " + (error.message || 'error'), 'err'); return null; }
@@ -280,9 +319,9 @@
     const wk = $('weekRoot'); if (wk && wk.querySelector('.wk-import')) wk.innerHTML = '';
     const root = $('transportRoot'); if (!root) return;
     const v = TR.view;
-    const head = `<div class="section-head page-head"><div><div class="section-title">Transport</div><div class="section-sub tr-how">Transfers come from the Guests file (Week → Import). Tuk-tuks: plan tomorrow and send the order. Nadith pays in the Ledger (Transport · Airport) and ticks the guests, and they show as Paid here.</div></div>
+    const head = `<div class="section-head page-head"><div><div class="section-title">Transport</div><div class="section-sub tr-how">${h(CC.transportHow || '')}</div></div>
       <div class="exp-top-actions tr-actions">
-        <button class="btn ${v === 'trips' ? 'btn-p' : 'btn-s'}" onclick="TransportUI.openTuktuk()">${ic('plus')} Tuk-tuk runs</button>
+        <button class="btn ${v === 'trips' ? 'btn-p' : 'btn-s'}" onclick="TransportUI.openTuktuk()">${ic('plus')} ${RUN.plural}</button>
         <button class="btn btn-s" onclick="TransportUI.openAddTransfer()">${ic('truck')} Add transfer</button>
         <button class="btn btn-s" onclick="TransportUI.openDrivers()">${ic('users')} Drivers</button>
       </div></div>`;
@@ -291,7 +330,7 @@
       return;
     }
     if (!TR.loaded) { root.innerHTML = head + '<div class="loading">Loading trips…</div>'; return; }
-    const review = TR.links.filter(l => l.state === 'review').length;
+    const review = allLinks().filter(l => l.state === 'review').length;
     const tabs = `<div class="pills tr-views">
       <button class="pill${v === 'trips' ? ' active' : ''}" onclick="TransportUI.setView('trips')">Trips</button>
       <button class="pill${v === 'next' ? ' active' : ''}" onclick="TransportUI.setView('next')">Next week</button>
@@ -304,7 +343,7 @@
   function owedLine() {
     const by = new Map();
     TR.trips.forEach(t => { if (reconcileStatus(t) !== 'owed') return; const k = t.driver_id || ''; by.set(k, (by.get(k) || 0) + Number(t.expected_price || 0)); });
-    const review = TR.links.filter(l => l.state === 'review').length;
+    const review = allLinks().filter(l => l.state === 'review').length;
     const parts = [...by.entries()].sort((a, b) => b[1] - a[1]).map(([id, sum]) => `<span class="tr-owed-d">${h(driverById(id)?.name || 'No driver')} <b class="num">${money(sum)}</b></span>`);
     return `<button class="tr-owed" id="trOwed" onclick="TransportUI.setRec('${review && !parts.length ? 'payments' : 'airport'}')" title="Open Reconcile"><span class="tr-owed-l">Owed to drivers</span>${parts.length ? parts.join('') : '<span class="tr-owed-d">nothing</span>'}${review ? `<span class="tr-owed-d tr-owed-chk">${review} payment${review === 1 ? '' : 's'} to check</span>` : ''}</button>`;
   }
@@ -313,11 +352,11 @@
     const resend = TR.trips.filter(t => isAirport(t) && t.needs_resend && t.status !== 'done').length;
     const toSend = TR.trips.filter(t => isAirport(t) && t.status === 'planned' && `${t.trip_date}T${t.trip_time || '23:59'}` >= now && `${t.trip_date}T${t.trip_time || '00:00'}` <= in48).length;
     const missing = TR.trips.filter(t => t.missing_since && !['cancelled', 'done', 'no_show'].includes(t.status) && !isDone(t)).length;
-    const review = TR.links.filter(l => l.state === 'review').length;
+    const review = allLinks().filter(l => l.state === 'review').length;
     const chips = [];
     const tm = GT.addDaysIso(cToday(), 1);
-    const order = TR.trips.filter(t => t.kind === 'tuktuk' && t.trip_date === tm && !t.payment_entry_id && (t.status === 'planned' || (t.status === 'sent' && t.needs_resend))).length;
-    if (order) chips.push(`<button class="health-chip" onclick="TransportUI.openPlan()">${order} tuk-tuk run${order === 1 ? '' : 's'} for tomorrow — send the order</button>`);
+    const order = TR.trips.filter(t => t.kind === RUN.kind && t.trip_date === tm && !t.payment_entry_id && (t.status === 'planned' || (t.status === 'sent' && t.needs_resend))).length;
+    if (order) chips.push(`<button class="health-chip" onclick="TransportUI.openPlan()">${order} ${RUN.lower} run${order === 1 ? '' : 's'} for tomorrow — send the order</button>`);
     if (resend) chips.push(`<button class="health-chip" onclick="TransportUI.setView('trips','resend')">${resend} time changed — resend</button>`);
     if (toSend) chips.push(`<button class="health-chip" onclick="TransportUI.setView('trips','tosend')">${toSend} to send (next 48 h)</button>`);
     if (missing) chips.push(`<button class="health-chip" onclick="TransportUI.setView('trips','missing')">${missing} not in the latest Bookinglayer file</button>`);
@@ -357,7 +396,7 @@
       <div class="period-picker"><button class="btn btn-s btn-sm btn-icon" title="Previous week" onclick="TransportUI.shiftWeek(-7)">${ic('chevron-left')}</button>
         <span class="period-picker-lbl tr-week">${fmtRange(ws, we)}</span>
         <button class="btn btn-s btn-sm btn-icon" title="Next week" onclick="TransportUI.shiftWeek(7)">${ic('chevron-right')}</button></div>
-      <div class="pills">${pill('all', 'All')}${pill('airport', 'Airport')}${pill('tuktuk', 'Tuk-tuk')}</div></div>`;
+      <div class="pills">${pill('all', 'All')}${pill('airport', 'Airport')}${pill('tuktuk', RUN.label)}</div></div>`;
     const days = [...new Set(list.map(t => t.trip_date))].sort();
     if (!days.length) return filters + totals + `<div class="empty-state">${ic('truck')}<div class="empty-title">No trips this week</div><p>Import the Guests export in Next week, or add a transfer.</p></div>`;
     const c = contact();
@@ -368,7 +407,7 @@
       const tuk = dayTrips.filter(t => !isAirport(t));
       const sendable = air.filter(t => !t.payment_entry_id && !isDone(t) && !onHold(t));
       return `<div class="card tr-day"><div class="card-hdr"><div><div class="card-title">${fmtDay(day)}</div>
-          <div class="card-hint">${air.length} transfer${air.length === 1 ? '' : 's'}${tuk.length ? ` · ${tuk.length} tuk-tuk run${tuk.length === 1 ? '' : 's'} · ${money(tuk.reduce((s, t) => s + Number(t.expected_price || 0), 0))}` : ''}</div></div>
+          <div class="card-hint">${air.length} transfer${air.length === 1 ? '' : 's'}${tuk.length ? ` · ${tuk.length} ${RUN.lower} run${tuk.length === 1 ? '' : 's'} · ${money(tuk.reduce((s, t) => s + Number(t.expected_price || 0), 0))}` : ''}</div></div>
           ${sendable.length > 1 || air.filter(guestCan).length > 1 ? `<div class="row tr-day-btns">${sendable.length > 1 ? `<button class="btn btn-s btn-sm" onclick="TransportUI.sendDay('${day}')" title="One WhatsApp to ${h(c ? c.name : 'the transport contact')} with every transfer of the day">${ic('send')} Send the whole day</button>
             <button class="btn btn-s btn-sm" onclick="TransportUI.tickDay('${day}')">${ic('check')} Sent ✓ all</button>` : ''}
             ${air.filter(guestCan).length > 1 ? `<button class="btn btn-s btn-sm" data-guest-day onclick="TransportUI.openGuestDay('${day}')" title="One WhatsApp per guest: the driver waits with a sign with their name">${ic('users')} Confirm with all guests of the day</button>` : ''}</div>` : ''}</div>
@@ -405,7 +444,7 @@
     };
     const tile = (id, label, g, extra) => `<div class="kpi" data-total="${id}"><div class="kpi-label">${label}</div><div class="kpi-value">${money(g.sum)}</div><div class="kpi-sub">${split(g)}</div>${extra ? `<div class="kpi-sub tr-t-free">${h(extra)}</div>` : ''}</div>`;
     const all = { sum: A.sum + K.sum, paid: A.paid + K.paid, owed: A.owed + K.owed, planned: A.planned + K.planned, old: A.old + K.old };
-    return `<div class="summary-grid tr-totals">${tile('airport', `Airport · ${A.n} transfer${A.n === 1 ? '' : 's'}`, A, freeLine(A.free))}${tile('tuktuk', `Tuk-tuk · ${K.n} run${K.n === 1 ? '' : 's'}`, K, freeLine(K.free))}${tile('week', 'Week total', all, '')}</div>`;
+    return `<div class="summary-grid tr-totals">${tile('airport', `Airport · ${A.n} transfer${A.n === 1 ? '' : 's'}`, A, freeLine(A.free))}${tile('tuktuk', `${RUN.label} · ${K.n} run${K.n === 1 ? '' : 's'}`, K, freeLine(K.free))}${tile('week', 'Week total', all, '')}</div>`;
   }
   function tripRow(t) {
     const ps = payState(t);
@@ -434,14 +473,14 @@
     runs.forEach(t => {
       const ps = payState(t); const timed = ps.key === 'planned' && t.trip_time ? t.trip_time : '';
       const k = [timed, t.tour_name ? 'Tour · ' + t.tour_name : t.route || t.purpose, t.driver_id || '', ps.key, ps.label, ps.sub, isFree(t) ? freeLabel(t) : ''].join('|');
-      const x = by.get(k) || { time: timed, label: t.tour_name ? 'Tour · ' + t.tour_name : t.route || t.purpose, n: 0, sum: 0, driver: t.driver_id, ps, free: isFree(t) ? freeLabel(t) : '', ids: [] };
-      x.n++; x.sum += Number(t.expected_price || 0); x.ids.push(t.id); by.set(k, x);
+      const x = by.get(k) || { time: timed, label: IS_SL ? (t.tour_name ? 'Tour · ' + t.tour_name : t.route || t.purpose) : runLabel(t), n: 0, sum: 0, pax: 0, driver: t.driver_id, ps, free: isFree(t) ? freeLabel(t) : '', ids: [] };
+      x.n++; x.pax += Number(t.pax) || 1; x.sum += Number(t.expected_price || 0); x.ids.push(t.id); by.set(k, x);
     });
     const order = { planned: 0, owed: 1, old: 2, paid: 3, off: 4 };
     const lines = [...by.values()].sort((a, b) => (order[a.ps.key] - order[b.ps.key]) || (a.time || '').localeCompare(b.time || '') || String(a.label).localeCompare(String(b.label)) || a.ps.label.localeCompare(b.ps.label));
     return `<div class="tr-tuk">${lines.map((x, i) => {
       const key = `${day}#${i}`; TR.runGroups[key] = x.ids;
-      return `<button class="tr-tuk-line" data-run-group="${key}" onclick="TransportUI.openRuns('${key}')"><span class="tr-tuk-what">${x.time ? `<b class="num">${h(x.time)}</b> ` : ic('map-pin') + ' '}${h(x.label)} × ${x.n}${x.free ? ` <span class="badge badge-blue tr-free">${h(x.free)}</span>` : ''}<span class="cell-sub">${h(driverById(x.driver)?.name || 'no driver')}${x.ps.sub ? ' · ' + h(x.ps.sub) : ''}</span></span>
+      return `<button class="tr-tuk-line" data-run-group="${key}" onclick="TransportUI.openRuns('${key}')"><span class="tr-tuk-what">${x.time ? `<b class="num">${h(x.time)}</b> ` : ic('map-pin') + ' '}${h(x.label)} × ${x.n}${x.free ? ` <span class="badge badge-blue tr-free">${h(x.free)}</span>` : ''}<span class="cell-sub">${h(driverById(x.driver)?.name || 'no driver')}${IS_SL ? '' : ' · ' + ppl(x.pax)}${x.ps.sub ? ' · ' + h(x.ps.sub) : ''}</span></span>
         <span class="badge ${x.ps.cls}" data-pay="${x.ps.key}">${x.ps.label}</span><span class="num tr-tuk-amt">${money(x.sum)}</span></button>`;
     }).join('')}</div>`;
   }
@@ -467,14 +506,14 @@
   function askedOn(id) { return askedMap()[id] || ''; }
   // Who signs the question to the guest (Miguel, 13 Nov). No emoji: WhatsApp's wa.me link shows
   // some of them as «?» on desktop.
-  const ASK_SENDER = 'Francisco';
+  const ASK_SENDER = IS_SL ? 'Francisco' : CC.manager;
   const needsInfo = t => isAirport(t) && (!t.trip_time || !t.flight);
   function askText(t) {
     const first = String(t.guest_names || '').split(/[,+&]/)[0].trim().split(/\s+/)[0] || 'there';
-    const hi = `Hi ${first}! I'm ${ASK_SENDER}, the manager of *Gota Dagua Surf Camp Sri Lanka*.`;
+    const hi = `Hi ${first}! I'm ${ASK_SENDER}, the manager of *${IS_SL ? 'Gota Dagua Surf Camp Sri Lanka' : CC.campFull}*.`;
     return t.kind === 'airport_departure'
-      ? [hi, '', 'To plan your *drop-off at Colombo airport*, could you send us:', '', '- your *departure flight number*', '- the *date and time* it leaves', '', 'Thank you!'].join('\n')
-      : [hi, '', "We're getting your *airport pick-up* ready. Could you send us:", '', '- your *flight number*', '- the *date and time* you land in Colombo', '', 'Thank you, see you soon!'].join('\n');
+      ? [hi, '', `To plan your *drop-off at ${airportCity(t.place)} airport*, could you send us:`, '', '- your *departure flight number*', '- the *date and time* it leaves', '', 'Thank you!'].join('\n')
+      : [hi, '', "We're getting your *airport pick-up* ready. Could you send us:", '', '- your *flight number*', `- the *date and time* you land in ${airportCity(t.place)}`, '', 'Thank you, see you soon!'].join('\n');
   }
   function ask(id) {
     const t = TR.trips.find(x => x.id === id); if (!t) return;
@@ -503,14 +542,14 @@
   function confirmText(t) {
     const first = String(t.guest_names || '').split(/[,+&]/)[0].trim().split(/\s+/)[0] || 'there';
     const pax = Number(t.pax) || 1;
-    const hi = `Hi ${first}! I'm ${ASK_SENDER}, the manager of *Gota Dagua Surf Camp Sri Lanka*.`;
-    if (t.kind === 'airport_departure') return [hi, '', '*Your drop-off at Colombo airport is booked*', '',
+    const hi = `Hi ${first}! I'm ${ASK_SENDER}, the manager of *${IS_SL ? 'Gota Dagua Surf Camp Sri Lanka' : CC.campFull}*.`;
+    if (t.kind === 'airport_departure') return [hi, '', `*Your drop-off at ${airportCity(t.place)} airport is booked*`, '',
       `*Date:* ${fmtDay(t.trip_date)}`, `*Flight:* ${t.flight}`, `*Flight time:* ${t.trip_time}`,
       ...(t.pickup_time ? [`*Pick-up at the camp:* ${t.pickup_time}`] : []), `*Persons:* ${pax}`, '',
       'Please reply to confirm these details are correct, or tell us what changed.', '', 'Thank you!'].join('\n');
     return [hi, '', '*Your airport pick-up is booked*', '',
       `*Date:* ${fmtDay(t.trip_date)}`, `*Flight:* ${t.flight}`, `*Landing:* ${t.trip_time}`, `*Persons:* ${pax}`, '',
-      'Our driver will be waiting for you at the *arrivals exit* of Colombo airport, holding a *sign with your name*.', '',
+      `Our driver will be waiting for you at the *arrivals exit* of ${airportCity(t.place)} airport, holding a *sign with your name*.`, '',
       'Please reply to confirm these details are correct, or tell us what changed.', '', 'See you soon!'].join('\n');
   }
   // The buttons and the state of one trip — used on the day list, in the day sheet and by the Week tab (WeekUI.askBtn).
@@ -549,7 +588,7 @@
     const list = TR.trips.filter(t => t.trip_date === day && isAirport(t) && !t.payment_entry_id && !isDone(t) && !['cancelled', 'no_show'].includes(t.status) && !onHold(t))
       .sort((a, b) => (a.trip_time || '99').localeCompare(b.trip_time || '99'));
     if (!list.length) return;
-    openWa(GT.whatsappDayText(list));
+    openWa(GT.whatsappDayText(list, GTC));
   }
   const snapshot = t => ({ trip_date: t.trip_date, trip_time: t.trip_time, flight: t.flight, pax: t.pax, place: t.place });
   async function tick(id, what) {
@@ -606,7 +645,7 @@
       <div class="mfield"><label>Guest</label><input id="tr_g" value="${h(t.guest_names || '')}"></div>
       <div class="mfield"><label>Guest phone</label><input id="tr_ph" value="${h(t.guest_phone || '')}"></div>
       <div class="g2"><div class="mfield"><label>Car</label><select id="tr_v" ${paid ? 'disabled' : ''}>${VEHICLES.map(v => `<option${v === t.vehicle ? ' selected' : ''}>${v}</option>`).join('')}</select></div>
-      <div class="mfield"><label>Price (LKR)</label><input type="number" id="tr_pr" value="${Number(t.expected_price || 0)}" ${paid ? 'disabled' : ''}></div></div>
+      <div class="mfield"><label>Price (${CUR})</label><input type="number" id="tr_pr" value="${Number(t.expected_price || 0)}" ${paid ? 'disabled' : ''}></div></div>
       <div class="mfield"><label>Driver</label><select id="tr_dr" ${paid ? 'disabled' : ''}>${driverOptions(t.driver_id, 'airport')}</select></div>
       ${chargeBlock('tr', t.charge, t.free_reason)}
       <div class="mfield"><label>Notes</label><input id="tr_n" value="${h(t.notes || '')}"></div>
@@ -624,7 +663,7 @@
       <button class="btn btn-p" onclick="TransportUI.saveTrip('${id}')">Save</button>`;
     modal(`${t.kind === 'airport_departure' ? 'Departure' : 'Arrival'} · ${fmtDay(t.trip_date)}`, h(t.guest_names || ''), body, footer);
     const v = $('tr_v'), pr = $('tr_pr');
-    if (v && pr) v.addEventListener('change', () => { const p = presetPrice(t.kind, v.value); if (p) pr.value = p; });
+    if (v && pr) v.addEventListener('change', () => { const p = presetPrice(t.kind, v.value, t.place); if (p) pr.value = p; });
     wireCharge('tr');
   }
   // «Still needed»: Francisco checked — the flag goes and the trip is back in the day message.
@@ -682,12 +721,14 @@
       <div class="mfield"><label id="at_g_lbl">Guest</label><input id="at_g"></div>
       <div class="mfield"><label id="at_ph_lbl">Guest phone</label><input id="at_ph" placeholder="+49…"></div>
       <div class="g2"><div class="mfield"><label>Car</label><select id="at_v">${VEHICLES.map(v => `<option>${v}</option>`).join('')}</select></div>
-      <div class="mfield"><label>Price (LKR)</label><input type="number" id="at_pr" value="${presetPrice('airport_arrival', 'Car')}"></div></div>
+      <div class="mfield"><label>Price (${CUR})</label><input type="number" id="at_pr" value="${presetPrice('airport_arrival', VEHICLES[0])}"></div></div>
+      ${IS_SL ? '' : `<div class="mfield"><label>Airport</label><select id="at_pl">${CC.airports.map(a => `<option value="${a}">${h(CC.airportCity[a])} (${a})</option>`).join('')}</select></div>`}
       <div class="mfield"><label>Driver</label><select id="at_dr">${driverOptions(d && d.id, 'airport')}</select></div>
       ${chargeBlock('at', 'bookinglayer', null)}
       <div class="mfield"><label>Note</label><input id="at_n" placeholder="Optional"></div>`;
     modal('Add transfer', 'A transfer that is not in Bookinglayer — a guest, or staff / a gift', body, `<button class="btn btn-s" onclick="TransportUI.closeModal()">Cancel</button><button class="btn btn-p" id="at_save" onclick="TransportUI.saveTransfer()">Save</button>`);
-    const reprice = () => { $('at_pr').value = presetPrice(segVal('at_kind'), $('at_v').value); };
+    const reprice = () => { $('at_pr').value = presetPrice(segVal('at_kind'), $('at_v').value, $('at_pl') ? $('at_pl').value : undefined); };
+    if ($('at_pl')) $('at_pl').addEventListener('change', reprice);
     wireSeg('at_kind', reprice); wireCharge('at'); $('at_v').addEventListener('change', reprice);
     // Staff: nobody pays us → Free · Staff by default (he can still change it).
     wireSeg('at_who', () => {
@@ -709,7 +750,7 @@
         kind, trip_date: $('at_d').value || cToday(), trip_time: $('at_t').value || null, flight: ($('at_f').value || '').toUpperCase().replace(/\s+/g, '') || null,
         pax: Math.max(1, parseInt($('at_p').value, 10) || 1), guest_names: $('at_g').value.trim() || null, guest_phone: ($('at_ph').value || '').replace(/\s+/g, '') || null,
         vehicle: $('at_v').value, expected_price: Number($('at_pr').value || 0), driver_id: $('at_dr').value || null, ...readCharge('at'),
-        route: kind === 'airport_departure' ? 'Surfcamp → Airport' : 'Airport → Surfcamp', purpose: segVal('at_who') === 'staff' ? 'staff' : 'guests', place: 'CMB', source: 'manual', status: 'planned',
+        route: kind === 'airport_departure' ? 'Surfcamp → Airport' : 'Airport → Surfcamp', purpose: segVal('at_who') === 'staff' ? 'staff' : 'guests', place: IS_SL ? 'CMB' : (($('at_pl') && $('at_pl').value) || CC.airportDefault), source: 'manual', status: 'planned',
         notes: ($('at_n') && $('at_n').value.trim()) || null,
       };
       if (!row.free_reason) delete row.free_reason;
@@ -719,8 +760,14 @@
   }
 
   // ── Tuk-tuk day sheet: one tap = one run ───────────────────────────────
-  TR.tuk = { date: null, driver: null, mode: 'log', planDate: null, planTime: PLAN_DEFAULT_TIME, planRoute: '', planCount: 1 };
+  TR.tuk = { date: null, driver: null, mode: 'log', planDate: null, planTime: PLAN_DEFAULT_TIME, planRoute: '', planCount: 1, people: 1, planPeople: 1 };
+  // Morocco: the van rate table (lib/camp-config.js vanRates) — price per person or per run.
+  const priceText = r => !IS_SL && r.per === 'person' ? `${money(r.price)} / person` : money(r.price);
   function tukRoutes() {
+    if (!IS_SL) {
+      const list = (CC.vanRates || []).map(r => ({ key: 'van|' + r.key, label: r.label, route: r.route, purpose: r.purpose, tour: null, price: Number(r.price) || 0, per: r.per }));
+      return { surf: list.filter(r => r.purpose === 'surf'), camp: [], tour: list.filter(r => r.purpose !== 'surf') };
+    }
     const P = (typeof transportPresets !== 'undefined' && transportPresets) || {};
     const catalogTuk = new Map((P.tuktuk || []).map(p => [p.name.toLowerCase(), Number(p.unitPrice) || 0]));
     return {
@@ -730,9 +777,9 @@
     };
   }
   const allRoutes = () => { const R = tukRoutes(); return [...R.surf, ...R.camp, ...R.tour]; };
-  const routeOptions = sel => { const R = tukRoutes(); const grp = (label, list) => list.length ? `<optgroup label="${label}">${list.map(r => `<option value="${h(r.key)}"${r.key === sel ? ' selected' : ''}>${h(r.label)} · ${money(r.price)}</option>`).join('')}</optgroup>` : ''; return grp('Surf', R.surf) + grp('Camp runs', R.camp) + grp('Tour', R.tour); };
+  const routeOptions = sel => { const R = tukRoutes(); const grp = (label, list) => list.length ? `<optgroup label="${label}">${list.map(r => `<option value="${h(r.key)}"${r.key === sel ? ' selected' : ''}>${h(r.label)} · ${priceText(r)}</option>`).join('')}</optgroup>` : ''; return grp('Surf', R.surf) + grp('Camp runs', R.camp) + grp(IS_SL ? 'Tour' : 'Tours and trips', R.tour); };
   function openTuktuk(mode) {
-    const d = defaultDriver('tuktuk');
+    const d = defaultDriver(RUN.drv);
     TR.tuk.date = TR.tuk.date || cToday(); TR.tuk.driver = TR.tuk.driver || (d && d.id) || '';
     TR.tuk.mode = mode === 'plan' ? 'plan' : 'log';
     if (TR.tuk.mode === 'plan' && !TR.tuk.planDate) TR.tuk.planDate = GT.addDaysIso(cToday(), 1);
@@ -744,21 +791,23 @@
     const seg = `<div class="pills tr-seg" id="tk_mode"><button type="button" class="pill${plan ? '' : ' active'}" onclick="TransportUI.tukMode('log')">Log runs</button><button type="button" class="pill${plan ? ' active' : ''}" onclick="TransportUI.tukMode('plan')">Plan tomorrow</button></div>`;
     if (plan) return renderPlan(seg);
     const R = tukRoutes(); const day = TR.tuk.date; const drv = TR.tuk.driver;
-    const runs = TR.trips.filter(t => t.kind === 'tuktuk' && t.trip_date === day && (t.driver_id || '') === drv);
+    const runs = TR.trips.filter(t => t.kind === RUN.kind && t.trip_date === day && (t.driver_id || '') === drv);
     const count = r => runs.filter(t => t.route === r.route && t.purpose === r.purpose).length;
-    const btn = r => `<div class="tr-tap"><button class="tr-tap-main" data-key="${h(r.key)}" onclick="TransportUI.tap('${h(r.key)}')"><span>${h(r.label)}</span><span class="hint num">${money(r.price)}</span><b class="tr-tap-n num">${count(r)}</b></button>
+    const btn = r => `<div class="tr-tap"><button class="tr-tap-main" data-key="${h(r.key)}" onclick="TransportUI.tap('${h(r.key)}')"><span>${h(r.label)}</span><span class="hint num">${priceText(r)}</span><b class="tr-tap-n num">${count(r)}</b></button>
       <button class="btn btn-s btn-icon tr-tap-minus" title="Remove the last unpaid run" onclick="TransportUI.untap('${h(r.key)}')" ${count(r) ? '' : 'disabled'}>${ic('minus')}</button></div>`;
     const total = runs.reduce((s, t) => s + Number(t.expected_price || 0), 0);
     const body = `${seg}<div class="g2 tr-tuk-head"><div class="mfield"><label>Day</label><input type="date" id="tk_d" value="${h(day)}" onchange="TransportUI.tukSet('date', this.value)"></div>
-      <div class="mfield"><label>Driver</label><select id="tk_dr" onchange="TransportUI.tukSet('driver', this.value)">${driverOptions(drv, 'tuktuk')}</select></div></div>
+      <div class="mfield"><label>Driver</label><select id="tk_dr" onchange="TransportUI.tukSet('driver', this.value)">${driverOptions(drv, RUN.drv)}</select></div></div>
+      ${IS_SL ? '' : `<div class="mfield tr-people"><label>People in the van</label><span class="tr-step"><button class="btn btn-s btn-icon" title="One person less" onclick="TransportUI.tukPeople(-1)">${ic('minus')}</button><b class="num" id="tk_people">${TR.tuk.people}</b><button class="btn btn-s btn-icon" title="One person more" onclick="TransportUI.tukPeople(1)">${ic('plus')}</button></span><span class="hint">then tap where the van went</span></div>`}
       ${R.surf.length ? `<div class="section-lbl">Surf</div>${R.surf.map(btn).join('')}` : ''}
-      <div class="section-lbl">Camp runs</div>${R.camp.map(btn).join('')}
-      ${R.tour.length ? `<div class="section-lbl">Tour</div>${R.tour.map(btn).join('')}` : ''}
-      <div class="tr-tuk-total"><span>${fmtDay(day)} · ${runs.length} run${runs.length === 1 ? '' : 's'}</span><b class="num">${money(total)}</b></div>
+      ${R.camp.length || IS_SL ? `<div class="section-lbl">Camp runs</div>${R.camp.map(btn).join('')}` : ''}
+      ${R.tour.length ? `<div class="section-lbl">${IS_SL ? 'Tour' : 'Tours and trips'}</div>${R.tour.map(btn).join('')}` : ''}
+      <div class="tr-tuk-total"><span>${fmtDay(day)} · ${runs.length} run${runs.length === 1 ? '' : 's'}${IS_SL ? '' : ' · ' + ppl(runs.reduce((s, t) => s + (Number(t.pax) || 1), 0))}</span><b class="num">${money(total)}</b></div>
       <div class="hint">To change or delete a run later, tap its line in the Trips list.</div>`;
-    modal('Tuk-tuk runs', 'Runs done: each tap is saved at once — no Save button', body, `<button class="btn btn-p" onclick="TransportUI.closeModal();TransportUI.render()">Done</button>`);
+    modal(RUN.plural, 'Runs done: each tap is saved at once — no Save button', body, `<button class="btn btn-p" onclick="TransportUI.closeModal();TransportUI.render()">Done</button>`);
   }
-  function tukSet(k, v) { TR.tuk[k] = v; if (k !== 'planTime' && k !== 'planRoute' && k !== 'planCount') renderTuktuk(); }
+  function tukSet(k, v) { TR.tuk[k] = v; if (k !== 'planTime' && k !== 'planRoute' && k !== 'planCount' && k !== 'planPeople') renderTuktuk(); }
+  function tukPeople(d) { TR.tuk.people = Math.min(60, Math.max(1, (Number(TR.tuk.people) || 1) + d)); const el = $('tk_people'); if (el) el.textContent = TR.tuk.people; }
   function tukMode(m) { TR.tuk.mode = m === 'plan' ? 'plan' : 'log'; if (m === 'plan' && !TR.tuk.planDate) TR.tuk.planDate = GT.addDaysIso(cToday(), 1); renderTuktuk(); }
   function tukRoute(key) { return allRoutes().find(r => r.key === key); }
   async function tap(key) {
@@ -767,14 +816,15 @@
     if (!TR.tuk.driver) { say('Pick the driver first', 'err'); return; }
     TR.busy.add('tap|' + key);
     try {
-      const row = { kind: 'tuktuk', trip_date: TR.tuk.date, trip_time: TR.tuk.date === cToday() ? cTime() : null, route: r.route, purpose: r.purpose, tour_name: r.tour || null,
-        driver_id: TR.tuk.driver, expected_price: r.price, vehicle: 'Tuk-tuk', status: 'done', source: 'manual', pax: 1 };
-      if (await insertTrip(row)) { say(`Saved · ${r.label} · ${money(r.price)}`); renderTuktuk(); }
+      const pax = IS_SL ? 1 : Math.max(1, Number(TR.tuk.people) || 1); const price = IS_SL ? r.price : ratePrice(r, pax);
+      const row = { kind: RUN.kind, trip_date: TR.tuk.date, trip_time: TR.tuk.date === cToday() ? cTime() : null, route: r.route, purpose: r.purpose, tour_name: r.tour || null,
+        driver_id: TR.tuk.driver, expected_price: price, vehicle: RUN.veh, status: 'done', source: 'manual', pax };
+      if (await insertTrip(row)) { say(`Saved · ${r.label}${IS_SL ? '' : ' · ' + ppl(pax)} · ${money(price)}`); renderTuktuk(); }
     } finally { setTimeout(() => TR.busy.delete('tap|' + key), 300); }
   }
   async function untap(key) {
     const r = tukRoute(key); if (!r) return;
-    const last = TR.trips.filter(t => t.kind === 'tuktuk' && t.trip_date === TR.tuk.date && (t.driver_id || '') === TR.tuk.driver && t.route === r.route && t.purpose === r.purpose && !t.payment_entry_id)
+    const last = TR.trips.filter(t => t.kind === RUN.kind && t.trip_date === TR.tuk.date && (t.driver_id || '') === TR.tuk.driver && t.route === r.route && t.purpose === r.purpose && !t.payment_entry_id)
       .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))[0];
     if (!last) return;
     if (await deleteTrip(last.id)) { say(`Removed one ${r.label}`); renderTuktuk(); }
@@ -784,18 +834,18 @@
   // A planned run is one camp_trips row with status 'planned' and a time; it counts as done by
   // itself once that time passes (isDone / camp_trip_is_done), like an airport trip. Sending the
   // order stamps the runs 'sent'; a run added or changed afterwards asks for the order again.
-  const planRuns = (day, drv) => TR.trips.filter(t => t.kind === 'tuktuk' && t.trip_date === day && (t.driver_id || '') === (drv || '') && ['planned', 'sent', 'confirmed'].includes(t.status) && t.trip_time)
+  const planRuns = (day, drv) => TR.trips.filter(t => t.kind === RUN.kind && t.trip_date === day && (t.driver_id || '') === (drv || '') && ['planned', 'sent', 'confirmed'].includes(t.status) && t.trip_time)
     .sort((a, b) => (a.trip_time + runLabel(a)).localeCompare(b.trip_time + runLabel(b)));
   function planLines(runs) {
     const by = new Map();
-    runs.forEach(t => { const k = t.trip_time + '|' + runLabel(t); const x = by.get(k) || { time: t.trip_time, label: runLabel(t), n: 0, sum: 0, ids: [], sample: t }; x.n++; x.sum += Number(t.expected_price || 0); x.ids.push(t.id); by.set(k, x); });
+    runs.forEach(t => { const k = t.trip_time + '|' + runLabel(t); const x = by.get(k) || { time: t.trip_time, label: runLabel(t), n: 0, sum: 0, pax: 0, ids: [], sample: t }; x.n++; x.pax += Number(t.pax) || 1; x.sum += Number(t.expected_price || 0); x.ids.push(t.id); by.set(k, x); });
     return [...by.values()];
   }
   // The camp's own message style: bold upper-case title, one line per run, a blank line between
   // times, no emoji (wa.me shows some as «?» on WhatsApp desktop).
   function orderText(day, runs) {
-    const out = [`*TUK TUKS - ${fmtDay(day).toUpperCase()}*`]; let last = null;
-    planLines(runs).forEach(x => { if (x.time !== last) { out.push(''); last = x.time; } out.push(`${x.time} ${x.label} ×${x.n}`); });
+    const out = [`*${IS_SL ? 'TUK TUKS' : 'VANS'} - ${fmtDay(day).toUpperCase()}*`]; let last = null;
+    planLines(runs).forEach(x => { if (x.time !== last) { out.push(''); last = x.time; } out.push(IS_SL ? `${x.time} ${x.label} ×${x.n}` : `${x.time} ${x.label} - ${x.n} ${x.n === 1 ? 'van' : 'vans'}, ${ppl(x.pax)}`); });
     return out.join('\n');
   }
   const orderPending = runs => runs.filter(t => !t.payment_entry_id && (t.status === 'planned' || t.needs_resend));
@@ -804,29 +854,30 @@
     const runs = planRuns(day, drv); const lines = planLines(runs); const pending = orderPending(runs);
     const sentAt = runs.map(t => t.sent_at).filter(Boolean).sort().pop();
     if (!TR.tuk.planRoute || !tukRoute(TR.tuk.planRoute)) TR.tuk.planRoute = (allRoutes()[0] || {}).key || '';
-    const state = !runs.length ? '' : !pending.length ? `<span class="badge badge-green" id="tk_sent">Sent ✓</span>${sentAt ? ` <span class="hint">${h(stampText(sentAt))} to ${h(c ? c.name : 'the tuk-tuk contact')}</span>` : ''}`
+    const state = !runs.length ? '' : !pending.length ? `<span class="badge badge-green" id="tk_sent">Sent ✓</span>${sentAt ? ` <span class="hint">${h(stampText(sentAt))} to ${h(c ? c.name : `the ${RUN.lower} contact`)}</span>` : ''}`
       : sentAt ? `<span class="badge badge-amber" id="tk_sent">Changed since sent</span> <span class="hint">send the order again</span>` : `<span class="badge badge-grey" id="tk_sent">Not sent yet</span>`;
     const body = `${seg}<div class="g2 tr-tuk-head"><div class="mfield"><label>Day</label><input type="date" id="tk_pd" value="${h(day)}" onchange="TransportUI.tukSet('planDate', this.value)"></div>
-      <div class="mfield"><label>Driver</label><select id="tk_dr" onchange="TransportUI.tukSet('driver', this.value)">${driverOptions(drv, 'tuktuk')}</select></div></div>
+      <div class="mfield"><label>Driver</label><select id="tk_dr" onchange="TransportUI.tukSet('driver', this.value)">${driverOptions(drv, RUN.drv)}</select></div></div>
       <div class="section-lbl">${fmtDay(day)} · the order</div>
-      <div class="tr-plan" id="tk_plan">${lines.length ? lines.map((x, i) => `<div class="tr-plan-line" data-plan="${i}"><b class="num">${h(x.time)}</b><span>${h(x.label)}</span>
+      <div class="tr-plan" id="tk_plan">${lines.length ? lines.map((x, i) => `<div class="tr-plan-line" data-plan="${i}"><b class="num">${h(x.time)}</b><span>${h(x.label)}${IS_SL ? '' : ` <span class="hint">· ${ppl(x.pax)}</span>`}</span>
           <span class="tr-step"><button class="btn btn-s btn-icon" title="One run less" onclick="TransportUI.planStep(${i}, -1)">${ic('minus')}</button><b class="num">${x.n}</b><button class="btn btn-s btn-icon" title="One run more" onclick="TransportUI.planStep(${i}, 1)">${ic('plus')}</button></span></div>`).join('')
         : '<div class="hint">No runs planned for this day yet. Add the first one below.</div>'}</div>
       ${runs.length ? `<div class="tr-tuk-total"><span>${runs.length} run${runs.length === 1 ? '' : 's'} · ${state}</span><b class="num">${money(runs.reduce((s, t) => s + Number(t.expected_price || 0), 0))}</b></div>` : ''}
       <div class="section-lbl">Add a run</div>
       <div class="tr-plan-add"><div class="mfield"><label>Time</label><input type="time" id="tk_pt" value="${h(TR.tuk.planTime)}" onchange="TransportUI.tukSet('planTime', this.value)"></div>
         <div class="mfield"><label>Route</label><select id="tk_pr" onchange="TransportUI.tukSet('planRoute', this.value)">${routeOptions(TR.tuk.planRoute)}</select></div>
-        <div class="mfield"><label>Tuk-tuks</label><input type="number" min="1" max="20" id="tk_pn" value="${TR.tuk.planCount}" onchange="TransportUI.tukSet('planCount', this.value)"></div>
+        <div class="mfield"><label>${IS_SL ? 'Tuk-tuks' : 'Vans'}</label><input type="number" min="1" max="20" id="tk_pn" value="${TR.tuk.planCount}" onchange="TransportUI.tukSet('planCount', this.value)"></div>
+        ${IS_SL ? '' : `<div class="mfield"><label>People per van</label><input type="number" min="1" max="30" id="tk_pp" value="${TR.tuk.planPeople}" onchange="TransportUI.tukSet('planPeople', this.value)"></div>`}
         <button class="btn btn-s" id="tk_padd" onclick="TransportUI.planAdd()">${ic('plus')} Add to the order</button></div>
       ${c && !c.phone ? `<div class="hint">No phone for ${h(c.name)} yet — WhatsApp will ask you to pick the chat. Add the number in Drivers.</div>` : ''}`;
-    modal('Tuk-tuk runs', 'Plan the runs and send the order the evening before', body,
+    modal(RUN.plural, 'Plan the runs and send the order the evening before', body,
       `<button class="btn btn-s" onclick="TransportUI.closeModal();TransportUI.render()">Done</button>
-       <button class="btn btn-p" id="tk_send" onclick="TransportUI.sendOrder()" ${runs.length ? '' : 'disabled'}>${ic('send')} ${sentAt && !pending.length ? 'Send again' : 'Send order'} to ${h(c ? c.name : 'tuk-tuk contact')}</button>`);
+       <button class="btn btn-p" id="tk_send" onclick="TransportUI.sendOrder()" ${runs.length ? '' : 'disabled'}>${ic('send')} ${sentAt && !pending.length ? 'Send again' : 'Send order'} to ${h(c ? c.name : `${RUN.lower} contact`)}</button>`);
   }
   // sent_at is a UTC stamp: show it in Colombo time.
   function stampText(iso) {
     try {
-      const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Colombo', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(iso)).map(x => [x.type, x.value]));
+      const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: CC.tz || 'Asia/Colombo', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(iso)).map(x => [x.type, x.value]));
       return `${fmtShort(`${p.year}-${p.month}-${p.day}`)} ${p.hour}:${p.minute}`;
     } catch (_) { return ''; }
   }
@@ -841,8 +892,9 @@
     try {
       TR.tuk.planTime = time; TR.tuk.planRoute = r.key; TR.tuk.planCount = 1;
       for (let i = 0; i < n; i++) {
-        if (!await insertTrip({ kind: 'tuktuk', trip_date: TR.tuk.planDate, trip_time: time, route: r.route, purpose: r.purpose, tour_name: r.tour || null,
-          driver_id: TR.tuk.driver, expected_price: r.price, vehicle: 'Tuk-tuk', status: 'planned', source: 'manual', pax: 1 })) break;
+        const pax = IS_SL ? 1 : Math.min(30, Math.max(1, parseInt(($('tk_pp') && $('tk_pp').value) || TR.tuk.planPeople || '1', 10) || 1));
+        if (!await insertTrip({ kind: RUN.kind, trip_date: TR.tuk.planDate, trip_time: time, route: r.route, purpose: r.purpose, tour_name: r.tour || null,
+          driver_id: TR.tuk.driver, expected_price: IS_SL ? r.price : ratePrice(r, pax), vehicle: RUN.veh, status: 'planned', source: 'manual', pax })) break;
       }
       renderTuktuk();
     } finally { TR.busy.delete('plan'); }
@@ -854,8 +906,8 @@
     try {
       if (d > 0) {
         const t = x.sample;
-        await insertTrip({ kind: 'tuktuk', trip_date: t.trip_date, trip_time: t.trip_time, route: t.route, purpose: t.purpose, tour_name: t.tour_name || null,
-          driver_id: t.driver_id, expected_price: t.expected_price, vehicle: 'Tuk-tuk', status: 'planned', source: 'manual', pax: 1 });
+        await insertTrip({ kind: RUN.kind, trip_date: t.trip_date, trip_time: t.trip_time, route: t.route, purpose: t.purpose, tour_name: t.tour_name || null,
+          driver_id: t.driver_id, expected_price: t.expected_price, vehicle: RUN.veh, status: 'planned', source: 'manual', pax: IS_SL ? 1 : (Number(t.pax) || 1) });
       } else {
         const victim = TR.trips.filter(t => x.ids.includes(t.id) && !t.payment_entry_id).sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))[0];
         if (!victim) { say('These runs are paid — unlink the payment first', 'err'); return; }
@@ -874,7 +926,7 @@
     try {
       const now = new Date().toISOString();
       for (const t of runs.filter(t => !t.payment_entry_id)) await updateTrip(t.id, { status: 'sent', sent_at: now, needs_resend: false });
-      renderTuktuk(); say(`Order opened in WhatsApp for ${c ? c.name : 'the tuk-tuk contact'} · marked Sent ✓`);
+      renderTuktuk(); say(`Order opened in WhatsApp for ${c ? c.name : `the ${RUN.lower} contact`} · marked Sent ✓`);
     } finally { TR.busy.delete('order'); }
   }
 
@@ -891,16 +943,19 @@
       <div class="g2"><div class="mfield"><label>Date</label><input type="date" id="rn_d" value="${h(t.trip_date)}" ${dis}></div>
       <div class="mfield"><label>Time</label><input type="time" id="rn_t" value="${h(t.trip_time || '')}" ${dis}></div></div>
       <div class="mfield"><label>Route / purpose</label><select id="rn_r" ${dis}>${cur ? '' : `<option value="" selected>${h(runLabel(t))}</option>`}${routeOptions(cur ? cur.key : '')}</select></div>
-      <div class="g2"><div class="mfield"><label>Driver</label><select id="rn_dr" ${dis}>${driverOptions(t.driver_id, 'tuktuk')}</select></div>
+      ${!IS_SL && n === 1 ? `<div class="mfield"><label>People in the van</label><input type="number" min="1" max="60" id="rn_pax" value="${Number(t.pax) || 1}" ${dis}></div>` : ''}
+      <div class="g2"><div class="mfield"><label>Driver</label><select id="rn_dr" ${dis}>${driverOptions(t.driver_id, RUN.drv)}</select></div>
       <div class="mfield"><label>Price${n > 1 ? ' (each)' : ''} (LKR)</label><input type="number" id="rn_pr" value="${Number(t.expected_price || 0)}" ${dis}></div></div>
       <div class="mfield"><label>Tour</label><input id="rn_tour" value="${h(t.tour_name || '')}" placeholder="Only when the run is for a tour"></div>
       ${chargeBlock('rn', isFree(t) ? 'free' : '', t.free_reason, { label: 'Offered ride?', options: [['', 'No'], ['free', 'Free']] })}
       <div class="mfield"><label>Note</label><input id="rn_n" value="${h(t.notes || '')}"></div>`;
     const footer = `${paid ? '' : `<button class="btn btn-danger" id="rn_del" onclick="TransportUI.deleteRuns()">${ic('trash')} Delete${n > 1 ? ` ${n} runs` : ''}</button>${n > 1 ? `<button class="btn btn-s" id="rn_one" onclick="TransportUI.deleteRuns(1)">Remove one</button>` : ''}`}
       <button class="btn btn-p" id="rn_save" onclick="TransportUI.saveRuns()">Save</button>`;
-    modal(`Tuk-tuk · ${fmtDay(t.trip_date)}`, `${h(runLabel(t))}${n > 1 ? ` × ${n}` : ''} · ${payState(t).label}`, body, footer);
+    modal(`${RUN.label} · ${fmtDay(t.trip_date)}`, `${h(runLabel(t))}${n > 1 ? ` × ${n}` : ''} · ${payState(t).label}`, body, footer);
     wireCharge('rn');
-    const sel = $('rn_r'); if (sel) sel.addEventListener('change', () => { const r = tukRoute(sel.value); if (r) { $('rn_pr').value = r.price; $('rn_tour').value = r.tour || ''; } });
+    const pxv = () => ($('rn_pax') ? Number($('rn_pax').value) || 1 : Number(t.pax) || 1);
+    const sel = $('rn_r'); if (sel) sel.addEventListener('change', () => { const r = tukRoute(sel.value); if (r) { $('rn_pr').value = IS_SL ? r.price : ratePrice(r, pxv()); $('rn_tour').value = r.tour || ''; } });
+    if ($('rn_pax')) $('rn_pax').addEventListener('change', () => { const r = tukRoute(sel && sel.value) || (vanRateOf(t) && { ...vanRateOf(t) }); if (r) $('rn_pr').value = ratePrice(r, pxv()); });
   }
   async function saveRuns() {
     const runs = TR.trips.filter(t => (TR.runEdit || []).includes(t.id)); if (!runs.length || TR.busy.has('runs')) return;
@@ -910,7 +965,7 @@
       const fr = readCharge('rn');
       const base = { tour_name: $('rn_tour').value.trim() || null, notes: $('rn_n').value.trim() || null, charge: fr.charge || null, free_reason: fr.free_reason };
       if (!paid) Object.assign(base, { trip_date: $('rn_d').value || runs[0].trip_date, trip_time: $('rn_t').value || null, driver_id: $('rn_dr').value || null, expected_price: Number($('rn_pr').value || 0) },
-        r ? { route: r.route, purpose: r.purpose } : {});
+        r ? { route: r.route, purpose: r.purpose } : {}, $('rn_pax') ? { pax: Math.max(1, parseInt($('rn_pax').value, 10) || 1) } : {});
       let n = 0;
       for (const t of runs) {
         const next = { ...base };
@@ -932,7 +987,7 @@
   async function deleteRuns(one) {
     let runs = TR.trips.filter(t => (TR.runEdit || []).includes(t.id) && !t.payment_entry_id); if (!runs.length) return;
     if (one) runs = runs.sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || ''))).slice(0, 1);
-    else if (runs.length > 1 && !window.confirm(`Delete these ${runs.length} tuk-tuk runs? They are not paid.`)) return;
+    else if (runs.length > 1 && !window.confirm(`Delete these ${runs.length} ${RUN.lower} runs? They are not paid.`)) return;
     let n = 0; for (const t of runs) if (await deleteTrip(t.id)) n++;
     closeModal(); render(); say(n === 1 ? 'Run deleted' : `${n} runs deleted`);
   }
@@ -944,7 +999,7 @@
     const ws = nextWeekStart(), we = GT.addDaysIso(ws, 6);
     const I = TR.imp;
     let out = `<div class="card tr-import"><div class="card-hdr"><div><div class="card-title">${opts && opts.title ? h(opts.title) : `Next week · ${fmtRange(ws, we)}`}</div>
-      <div class="card-hint">Download the Guests export with the «Semana Sri Lanka» preset and drop it here. Importing again during the week updates the trips — nothing is duplicated.</div></div></div>
+      <div class="card-hint">Download the Guests export with the «${h(IS_SL ? 'Semana Sri Lanka' : CC.preset)}» preset and drop it here. Importing again during the week updates the trips — nothing is duplicated.</div></div></div>
       <div class="card-body"><label class="btn ${I && I.stage === 'preview' ? 'btn-s' : 'btn-p'}">${ic('upload')} Choose Guests file<input type="file" accept=".csv,.xlsx,.xls" id="trGuestsFile" style="display:none" onchange="TransportUI.pickFile(this)"></label>
       ${I && I.needDate ? `<div class="mfield tr-date-ask"><label>When did you download this file?</label><input type="date" id="trExportDate" value="${cToday()}"><button class="btn btn-s btn-sm" onclick="TransportUI.setExportDate()">Continue</button></div>` : ''}
       </div></div>`;
@@ -1003,16 +1058,16 @@
     try { text = /\.xlsx?$/i.test(file.name) ? await guestsXlsxToCsv(file) : await file.text(); }
     catch (err) { input.value = ''; TR.imp = { error: "Couldn't read this Excel file — " + (err && err.message || 'error') + '. Try again, or export it as CSV.' }; render(); return; }
     input.value = '';
-    if (!GT.isGuestsExportHeader(text)) { TR.imp = { error: 'This is not a Bookinglayer Guests export (no «Has transfer» column). Use Guests → Export with the «Semana Sri Lanka» preset.' }; render(); return; }
+    if (!GT.isGuestsExportHeader(text)) { TR.imp = { error: 'This is not a Bookinglayer Guests export (no «Has transfer» column). Use Guests → Export with the «' + (IS_SL ? 'Semana Sri Lanka' : CC.preset) + '» preset.' }; render(); return; }
     TR.imp = { text, name: file.name };
-    const parsed = GT.parse(text, file.name);
+    const parsed = GT.parse(text, file.name, undefined, GTC);
     if (!parsed.export_date) { TR.imp.needDate = true; render(); return; }
     await buildImport(parsed);
   }
   async function setExportDate() {
     const d = $('trExportDate') && $('trExportDate').value; if (!d || !TR.imp) return;
     TR.imp.needDate = false;
-    await buildImport(GT.parse(TR.imp.text, TR.imp.name, d));
+    await buildImport(GT.parse(TR.imp.text, TR.imp.name, d, GTC));
   }
   // Nobody lost at the import: rows in the file = guests imported + rows left out, each with its reason.
   // Other camps and cancelled bookings are expected; a status that is not live, a row without dates or
@@ -1049,13 +1104,13 @@
     // absent → hq_match missing (kept, one soft line).
     const cancelledRefs = new Set(refs.filter(r => byRef.has(r) && HQ_DEAD_STATUSES.has(hqStatus(r))));
     const matchOf = r => !HQ_CROSSCHECK ? null : (byRef.has(r) ? 'ok' : 'missing');
-    const allGuests = GT.guestRows(TR.imp.text, parsed.file);
+    const allGuests = GT.guestRows(TR.imp.text, parsed.file, GTC);
     const okGuests = allGuests.filter(g => GT.OK_STATUS.has(g.booking_status) && g.check_in && g.check_out);   // no dates = on no list: shown under «Left out»
     const partnerOf = r => { const b = byRef.get(r); if (b) { const p = String(b.partner_name || ''); return p && !/^direct/i.test(p) ? p : ''; } const g = okGuests.find(x => x.booking_ref === r && x.partner); return g ? g.partner : ''; };
     // Prices come from /prices and may still be loading on a slow phone: wait for them, never save a trip at 0.
     if (parsed.trips.length && !pricesReady()) { try { if (typeof loadTransportPresets === 'function') await loadTransportPresets(); } catch (_) {} }
     const trips = parsed.trips.filter(t => !cancelledRefs.has(t.booking_ref))
-      .map(t => ({ ...t, expected_price: presetPrice(t.kind, t.vehicle), hq_match: matchOf(t.booking_ref), partner: partnerOf(t.booking_ref) || null }));
+      .map(t => ({ ...t, expected_price: presetPrice(t.kind, t.vehicle, t.place), hq_match: matchOf(t.booking_ref), partner: partnerOf(t.booking_ref) || null }));
     const guests = okGuests.filter(g => !cancelledRefs.has(g.booking_ref)).map(g => ({ ...g, hq_match: matchOf(g.booking_ref), partner: partnerOf(g.booking_ref) || null }));
     const hqCancelled = okGuests.filter(g => cancelledRefs.has(g.booking_ref)).map(g => ({ guest: g.guest_name, ref: g.booking_ref, transfer: g.has_transfer, status: hqStatus(g.booking_ref) || 'not live' }));
     const missingRefs = new Set(guests.filter(g => g.hq_match === 'missing').map(g => g.booking_ref)).size;
@@ -1070,16 +1125,16 @@
       hqMissing = (data || []).filter(b => HQ_LIVE_STATUSES.has(String((b.raw_payload || {}).status || '').toLowerCase()) && !inFile.has(String(b.booking_ref)) && /airport transfer/i.test(String(b.package || '') + ' ' + JSON.stringify(b.raw_payload || {})));
     } catch (_) {}
     TR.imp = { ...TR.imp, parsed, stage: 'preview',
-      groups: { audit: GT.guestAudit(TR.imp.text, parsed.file), trips, guests, hqCancelled, hqMissing, missingRefs, cancelledRefs, cancelRefs: [...new Set(parsed.cancel_refs.concat([...cancelledRefs]))] } };
+      groups: { audit: GT.guestAudit(TR.imp.text, parsed.file, GTC), trips, guests, hqCancelled, hqMissing, missingRefs, cancelledRefs, cancelRefs: [...new Set(parsed.cancel_refs.concat([...cancelledRefs]))] } };
     render();
   }
-  const pricesReady = () => presetPrice('airport_arrival', 'Car') > 0 && presetPrice('airport_departure', 'Car') > 0;
+  const pricesReady = () => presetPrice('airport_arrival', VEHICLES[0]) > 0 && presetPrice('airport_departure', VEHICLES[0]) > 0;
   const noPrice = trips => (trips || []).filter(t => !(Number(t.expected_price) > 0));
   async function saveImport() {
     const I = TR.imp; if (!I || I.stage !== 'preview' || TR.busy.has('imp')) return;
     if (noPrice(I.groups.trips).length) {   // one more try, then refuse: a trip at 0 «fits» any payment
       try { if (typeof loadTransportPresets === 'function') await loadTransportPresets(); } catch (_) {}
-      I.groups.trips = I.groups.trips.map(t => ({ ...t, expected_price: presetPrice(t.kind, t.vehicle) }));
+      I.groups.trips = I.groups.trips.map(t => ({ ...t, expected_price: presetPrice(t.kind, t.vehicle, t.place) }));
       if (noPrice(I.groups.trips).length) { render(); say('The transfer prices have not loaded — nothing saved. Check the connection and try again.', 'err'); return; }
     }
     TR.busy.add('imp');
@@ -1108,7 +1163,7 @@
     const inP = t => week ? inWeek(t, week) : (t.trip_date >= s && t.trip_date <= e);   // week mode = the same trips as the Trips list
     const air = TR.trips.filter(t => isAirport(t) && inP(t));
     const tuk = TR.trips.filter(t => !isAirport(t) && inP(t));
-    const pays = TR.links.filter(l => { const en = ledgerById(l.entry_id); const d = en ? en.date : ''; return (d >= s && d <= e) || l.state === 'review'; });
+    const pays = allLinks().filter(l => { const en = ledgerById(l.entry_id); const d = en ? en.date : ''; return (d >= s && d <= e) || l.state === 'review'; });
     const st = t => reconcileStatus(t);
     const owed = [...air, ...tuk].filter(t => st(t) === 'owed');
     const totals = {
@@ -1134,21 +1189,22 @@
     const tukTodo = D.tuk.filter(t => REC_TODO.has(reconcileStatus(t))).length;
     const payTodo = D.pays.filter(l => l.state === 'review').length;
     const pill = (on, label, js) => `<button class="pill${on ? ' active' : ''}" onclick="${js}">${label}</button>`;
-    const viewPills = pill(tab === 'airport', `Airport · ${D.air.length}${badge(airTodo)}`, "TransportUI.setRec('airport')") + pill(tab === 'tuktuk', `Tuk-tuk · ${D.tuk.length}${badge(tukTodo)}`, "TransportUI.setRec('tuktuk')") + pill(tab === 'payments', `Payments · ${D.pays.length}${badge(payTodo)}`, "TransportUI.setRec('payments')");
+    const viewPills = pill(tab === 'airport', `Airport · ${D.air.length}${badge(airTodo)}`, "TransportUI.setRec('airport')") + pill(tab === 'tuktuk', `${RUN.label} · ${D.tuk.length}${badge(tukTodo)}`, "TransportUI.setRec('tuktuk')") + pill(tab === 'payments', `Payments · ${D.pays.length}${badge(payTodo)}`, "TransportUI.setRec('payments')");
     const right = pill(filter === 'all', 'All', "TransportUI.recFilter('all')") + pill(filter === 'todo', 'To do', "TransportUI.recFilter('todo')") + pill(filter === 'done', 'Done', "TransportUI.recFilter('done')");
     let table = '', hint = '';
     if (tab === 'payments') {
-      hint = 'Every Transport cash payment the ledger has since go-live. Nadith enters them as today; they link to the driver\'s trips by themselves, or to the transfers he ticked when paying. ✓ = the trips add up · ✗ = to review.';
+      hint = BANK_PAID ? 'Every Transport bank transfer to a driver since go-live (typed in the ledger or brought by the SG statement). Link each one to the trips it pays: then they show as Paid. ✓ = the trips add up · ✗ = to review.'
+        : 'Every Transport cash payment the ledger has since go-live. Nadith enters them as today; they link to the driver\'s trips by themselves, or to the transfers he ticked when paying. ✓ = the trips add up · ✗ = to review.';
       let rows = D.pays.slice().sort((a, b) => String((ledgerById(a.entry_id) || {}).date || '').localeCompare(String((ledgerById(b.entry_id) || {}).date || '')));
       if (filter === 'todo') rows = rows.filter(l => l.state === 'review'); else if (filter === 'done') rows = rows.filter(l => l.state !== 'review');
       table = rows.length ? `<table class="tr-tbl"><thead><tr><th></th><th>Date</th><th>Payment</th><th class="r">Amount</th><th>Trips</th><th>Status</th><th></th></tr></thead><tbody>${rows.map(payRow).join('')}</tbody></table>`
-        : `<div class="card-body hint">${D.pays.length ? 'Nothing here with this filter.' : 'No Transport cash payment in this period.'}</div>`;
+        : `<div class="card-body hint">${D.pays.length ? 'Nothing here with this filter.' : BANK_PAID ? 'No Transport bank transfer to a driver in this period.' : 'No Transport cash payment in this period.'}</div>`;
     } else {
       const list = (tab === 'airport' ? D.air : D.tuk).slice().sort((a, b) => (a.trip_date + (a.trip_time || '')).localeCompare(b.trip_date + (b.trip_time || '')));
       let rows = list;
       if (filter === 'todo') rows = rows.filter(t => REC_TODO.has(reconcileStatus(t))); else if (filter === 'done') rows = rows.filter(t => !REC_TODO.has(reconcileStatus(t)));
       hint = tab === 'airport' ? 'Every airport trip of the period: booked in Bookinglayer, done (automatic once the time passes) and paid (linked to a ledger payment).'
-        : 'Every tuk-tuk run of the period and the payment that paid it, by driver.';
+        : `Every ${RUN.lower} run of the period and the payment that paid it, by driver.`;
       table = rows.length ? `<table class="tr-tbl"><thead><tr><th></th><th>Date</th><th>Trip</th><th>Booked</th><th>Done</th><th>Paid</th><th>Status</th><th></th></tr></thead><tbody>${rows.map(recRow).join('')}</tbody></table>`
         : `<div class="card-body hint">${list.length ? 'Nothing here with this filter.' : 'No trips in this period.'}</div>`;
     }
@@ -1163,7 +1219,7 @@
       : nUp ? `<div class="status-msg status-info tr-sofar">${ic('clock')} Nothing to reconcile yet — ${nUp} ${nUp === 1 ? 'trip' : 'trips'} still to come.</div>` : '';
     return filters + kpis + banner +
       `<div class="card tr-rec"><div class="card-hdr"><div><div class="card-title">Reconcile ${P.label}</div><div class="card-hint">${hint}</div></div>
-        <button class="btn btn-s btn-sm" id="trPayBtn" onclick="TransportUI.openPay()" title="Nadith pays the drivers in the Ledger. Use this only when you pay a driver yourself.">${ic('euro')} Pay a driver</button></div>
+        ${BANK_PAID ? '' : `<button class="btn btn-s btn-sm" id="trPayBtn" onclick="TransportUI.openPay()" title="Nadith pays the drivers in the Ledger. Use this only when you pay a driver yourself.">${ic('euro')} Pay a driver</button>`}</div>
       <div class="card-body hq-filters tr-rec-pills"><div class="pills">${viewPills}</div><div class="pills tr-rec-right">${right}</div></div>
       <div class="tbl-wrap">${table}</div></div>`;
   }
@@ -1197,7 +1253,7 @@
     const tag = (isFree(t) ? ` · ${h(freeLabel(t))}` : '') + (t.added_by_local ? ` · added by ${LOCAL_MANAGER_NAME}` : '');
     const what = isAirport(t) ? `<b>${h(t.guest_names || 'Guest')}</b><span class="cell-sub">${dep ? 'Departure' : 'Arrival'} · ${h(driverById(t.driver_id)?.name || 'no driver')} · ${money(t.expected_price)}${tag}</span>`
       : `<b>${h(t.tour_name ? 'Tour · ' + t.tour_name : t.route || t.purpose)}</b><span class="cell-sub">${h(driverById(t.driver_id)?.name || '')} · ${money(t.expected_price)}${tag}</span>`;
-    const booked = t.source === 'bookinglayer' ? `${h(t.booking_ref || 'Bookinglayer')}` : t.kind === 'tuktuk' ? '<span class="hint">—</span>' : `<span class="hint">by hand${t.charge && !isFree(t) ? ' · ' + h(CHARGE_LABEL[t.charge]) : ''}</span>`;
+    const booked = t.source === 'bookinglayer' ? `${h(t.booking_ref || 'Bookinglayer')}` : t.kind === RUN.kind ? '<span class="hint">—</span>' : `<span class="hint">by hand${t.charge && !isFree(t) ? ' · ' + h(CHARGE_LABEL[t.charge]) : ''}</span>`;
     const done = t.status === 'no_show' ? 'No-show' : t.status === 'cancelled' ? 'Cancelled' : isDone(t) ? (t.status === 'done' ? 'Done' : 'Done <span class="cell-sub">time passed</span>') : '<span class="hint">not yet</span>';
     const act = s === 'owed' ? `<button class="btn btn-s btn-sm" onclick="TransportUI.linkTrip('${t.id}')">${ic('link')} Link</button>`
       : t.payment_entry_id ? `<button class="btn btn-s btn-sm" onclick="TransportUI.unlinkTrip('${t.id}')">Unlink</button>` : '';
@@ -1276,8 +1332,9 @@
   // From a trip row: «Link» → pick the payment that paid it.
   function linkTrip(tripId) {
     const t = TR.trips.find(x => x.id === tripId); if (!t) return;
-    const pays = TR.links.filter(l => l.state !== 'matched' && (!l.driver_id || !t.driver_id || l.driver_id === t.driver_id));
+    const pays = allLinks().filter(l => l.state !== 'matched' && (!l.driver_id || !t.driver_id || l.driver_id === t.driver_id));
     const body = pays.length ? `<div class="tr-picks">${pays.map(l => { const e = ledgerById(l.entry_id) || {}; return `<button class="tr-pick tr-pick-btn" onclick="TransportUI.linkTripTo('${tripId}','${l.entry_id}')"><span>${fmtShort(e.date)} · ${h(e.description || '')}</span><b class="num">${money(l.entry_amount)}</b></button>`; }).join('')}</div>`
+      : BANK_PAID ? '<div class="hint">No bank transfer to review for this driver. Add the transfer in the ledger (Transport · Bank Transfer) or wait for the SG statement, then link it here.</div>'
       : '<div class="hint">No payment to review for this driver. When Nadith enters the payment in the ledger it links by itself.</div>';
     modal('Which payment paid this trip?', `${h(t.guest_names || t.route || '')} · ${fmtShort(t.trip_date)} · ${money(t.expected_price)}`, body, '');
   }
@@ -1377,14 +1434,14 @@
     const teamContact = d => (d.default_for || []).some(x => /^(cleaning|kitchen|surf)_contact$/.test(x));   // edited in Week → Contacts
     const list = TR.drivers.filter(d => !teamContact(d));
     const rows = list.map(d => `<div class="tr-driver" data-driver="${d.id}"><div class="g2"><div class="mfield"><label>Name</label><input data-f="name" value="${h(d.name)}"></div>
-        <div class="mfield"><label>Phone (+94…)</label><input data-f="phone" value="${h(d.phone || '')}" placeholder="+94771234567"></div></div>
+        <div class="mfield"><label>Phone (${IS_SL ? '+94' : CC.phoneExample.slice(0, 4)}…)</label><input data-f="phone" value="${h(d.phone || '')}" placeholder="${IS_SL ? '+94771234567' : CC.phoneExample}"></div></div>
         <div class="g2"><div class="mfield"><label>Label</label><input data-f="label" value="${h(d.label || '')}"></div>
-        <div class="mfield"><label>Default vehicle</label><select data-f="default_vehicle"><option value=""></option>${VEHICLES.concat('Tuk-tuk').map(v => `<option${v === d.default_vehicle ? ' selected' : ''}>${v}</option>`).join('')}</select></div></div>
+        <div class="mfield"><label>Default vehicle</label><select data-f="default_vehicle"><option value=""></option>${VEHICLES.concat(RUN.veh).map(v => `<option${v === d.default_vehicle ? ' selected' : ''}>${v}</option>`).join('')}</select></div></div>
         <div class="mfield"><label>Named in payments as (comma separated)</label><input data-f="aliases" value="${h((d.aliases || []).join(', '))}"></div></div>`).join('');
     const body = `<div class="mfield"><label>Send transfers to</label><select id="dv_contact">${list.map(d => `<option value="${d.id}"${c && c.id === d.id ? ' selected' : ''}>${h(d.name)}${d.phone ? ' · ' + h(d.phone) : ' · no phone'}</option>`).join('')}</select>
         <div class="hint">WhatsApp messages go to this person, who passes them to the driver.</div></div>
-      <div class="mfield"><label>Tuk-tuk orders to</label><select id="dv_tuk"><option value="">Default tuk-tuk driver${defaultDriver('tuktuk') ? ' (' + h(defaultDriver('tuktuk').name) + ')' : ''}</option>${list.map(d => `<option value="${d.id}"${(d.default_for || []).includes(TUKTUK_CONTACT) ? ' selected' : ''}>${h(d.name)}${d.phone ? ' · ' + h(d.phone) : ' · no phone'}</option>`).join('')}</select>
-        <div class="hint">Who gets tomorrow's tuk-tuk order on WhatsApp (Tuk-tuk runs → Plan tomorrow).</div></div>${rows}
+      <div class="mfield"><label>${RUN.label} orders to</label><select id="dv_tuk"><option value="">Default ${RUN.lower} driver${defaultDriver(RUN.drv) ? ' (' + h(defaultDriver(RUN.drv).name) + ')' : ''}</option>${list.map(d => `<option value="${d.id}"${(d.default_for || []).includes(TUKTUK_CONTACT) ? ' selected' : ''}>${h(d.name)}${d.phone ? ' · ' + h(d.phone) : ' · no phone'}</option>`).join('')}</select>
+        <div class="hint">Who gets tomorrow's ${RUN.lower} order on WhatsApp (${RUN.plural} → Plan tomorrow).</div></div>${rows}
       <button class="btn btn-s" onclick="TransportUI.addDriver()">${ic('plus')} Add driver</button>`;
     modal('Drivers', 'Name, phone and default vehicle', body, `<button class="btn btn-s" onclick="TransportUI.closeModal()">Cancel</button><button class="btn btn-p" onclick="TransportUI.saveDrivers()">Save</button>`);
   }
@@ -1401,7 +1458,7 @@
       const d = driverById(el.dataset.driver); if (!d) continue;
       const v = f => el.querySelector(`[data-f="${f}"]`).value;
       const phone = v('phone').replace(/[\s-]/g, '');
-      if (phone && !/^\+[0-9]{8,15}$/.test(phone)) { say(`${d.name}: phone must look like +94771234567`, 'err'); return; }
+      if (phone && !/^\+[0-9]{8,15}$/.test(phone)) { say(`${d.name}: phone must look like ${IS_SL ? '+94771234567' : CC.phoneExample}`, 'err'); return; }
       let df = (d.default_for || []).filter(x => x !== 'transfers_contact' && x !== TUKTUK_CONTACT); if (d.id === cId) df = df.concat('transfers_contact');
       if (d.id === tId) df = df.concat(TUKTUK_CONTACT);
       let kinds = d.kinds || []; if ((d.id === cId || d.id === tId) && !kinds.length) kinds = ['contact'];
@@ -1419,7 +1476,7 @@
   // Synchronous; null until Transport data is loaded, always null in the local view.
   // Same gate as camp_transport__link(): a named driver or a driver-run linked item.
   // Fuel / scooter / delivery rows are not driver payments and never nag.
-  const DRIVER_ITEMS = ['Airport', 'Transport Surf Lesson', 'Food Supply', 'Laundry'];
+  const DRIVER_ITEMS = IS_SL ? ['Airport', 'Transport Surf Lesson', 'Food Supply', 'Laundry'] : ['Airport', ...(CC.vanRates || []).map(r => r.route)];
   // «Dylan» = Dilan: the same word with one letter changed, added or missing (= camp_transport__near).
   function nearWord(a, b) {
     if (a === b) return true;
@@ -1453,8 +1510,19 @@
       return { text: `Transport payment not linked to trips · ${n}${lkrSum ? ' · ' + money(lkrSum) : ''}`, level: 'warn', onClick: () => { TR.view = 'reconcile'; TR.recTab = 'payments'; TR.recFilter = 'todo'; showPage('transport'); } };
     },
   };
+  // Morocco: a bank transfer to a driver that pays no trips yet (the same lines as Reconcile → Payments).
+  const bankUnlinkedCheck = {
+    id: 'transport-bank-unlinked',
+    run(ctx) {
+      if (!ctx || ctx.isLocal || !BANK_PAID || ctx.location !== SLUG || !TR.loaded) return null;
+      const list = allLinks().filter(l => l.state === 'review');
+      if (!list.length) return null;
+      const sum = list.reduce((s, l) => s + Math.max(0, Number(l.entry_amount || 0) - Number(l.trips_amount || 0)), 0);
+      return { text: `Bank transfer to a driver not linked to trips · ${list.length}${sum ? ' · ' + money(sum) : ''}`, level: 'warn', onClick: () => { TR.view = 'reconcile'; TR.recTab = 'payments'; TR.recFilter = 'todo'; showPage('transport'); } };
+    },
+  };
   window.CAMP_CHECKS = window.CAMP_CHECKS || [];
-  if (!window.CAMP_CHECKS.some(c => c && c.id === unlinkedCheck.id)) window.CAMP_CHECKS.push(unlinkedCheck);
+  [unlinkedCheck, bankUnlinkedCheck].forEach(ck => { if (!window.CAMP_CHECKS.some(c => c && c.id === ck.id)) window.CAMP_CHECKS.push(ck); });
 
   // ── Boot: show the tab for full Sri Lanka users, load once the ledger is in ─
   function boot() {
@@ -1474,7 +1542,7 @@
     shiftWeek(n) { TR.week = GT.addDaysIso(TR.week, n); TR.filter = ['resend', 'tosend', 'missing'].includes(TR.filter) ? 'all' : TR.filter; render(); },
     send, sendDay, undoTick, undoGuestConfirmed, ask, askText, askedOn, needsInfo, tick, tickDay, openTrip, saveTrip, setStatus, openAddTransfer, saveTransfer,
     openTuktuk, openPlan, tukSet, tukMode, tap, untap, removeRun, removeTrip, planAdd, planStep, sendOrder, orderText,
-    openRuns, saveRuns, deleteRuns, payState, weekTotals, keepTrip, inWeek,
+    openRuns, saveRuns, deleteRuns, payState, weekTotals, keepTrip, inWeek, tukPeople, presetPrice, bankCandidates, camp: CC, RUN,
     confirmGuest, guestConfirmed, confirmText, guestState, guestHtml, openGuestDay, pickFile, setExportDate, saveImport,
     setRec(tab) { TR.view = 'reconcile'; TR.recTab = tab; render(); }, recFilter(f) { TR.recFilter = f; render(); },
     recMode(m) { TR.recMode = m; render(); },
@@ -1485,7 +1553,7 @@
     // for tests and the coordinator
     importHtml: renderNext,   // the Week tab renders the same import
     tripState,                // the Week tab shows the same status badge
-    _state: TR, load, isDone, reconcileStatus, colomboNow, check: unlinkedCheck, TRIPS_GO_LIVE, goLive,
+    _state: TR, load, isDone, reconcileStatus, colomboNow, campNow: colomboNow, check: unlinkedCheck, bankCheck: bankUnlinkedCheck, TRIPS_GO_LIVE, goLive,
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 })();

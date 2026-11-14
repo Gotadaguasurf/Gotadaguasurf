@@ -414,14 +414,14 @@ test('weekly P&L: «This week» card — guests, bar sales, spent, cash vs last 
   expect(errors).toEqual([]);
 });
 
-test('weekly P&L card and new chips stay out of Morocco', async ({ page }) => {
+test('Morocco: the «This week» card shows (14 Nov), the Sri Lanka payroll / cash / tour chips stay out', async ({ page }) => {
   await page.clock.setFixedTime(new Date(MON_16_NOV));
   await stub(page, { ledger_entries: ledgerRows() });
   await fakeOwnerSession(page);
   await page.goto('/camp-hub/?location=morocco', { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => { try { return HUB_LEDGER_HYDRATED === true; } catch (_) { return false; } }, null, { timeout: 20000 });
   await page.evaluate(() => showPage('weekly'));
-  await expect(page.locator('#exWeekCard')).toHaveCount(0);
+  await expect(page.locator('#exWeekCard')).toHaveCount(1);   // was 0 until 14 Nov: Morocco has the Week page now
   const res = await page.evaluate(() => CAMP_CHECKS.filter(c => ['salaries-missing', 'money-from-hq-needed', 'tour-without-cost'].includes(c.id)).map(c => c.run({ ledger: S.ledger, location: 'morocco', isLocal: false, today: '2026-11-16' })));
   expect(res).toEqual([null, null, null]);
 });

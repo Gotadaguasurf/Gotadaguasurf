@@ -23,6 +23,12 @@
 // error the expense stays and he reads a calm message; Francisco sees the
 // payment in Transport → Reconcile → Payments to review.
 //
+// Morocco (14 Nov 2026): nobody pays a driver in cash there. Floriane types the monthly
+// Let Us Tours transfer as Transport · (Agadir) Airport · Bank Transfer; the same checklist
+// shows for that line and links the transfers it pays (she is the camp manager, so
+// camp_transport_link_own accepts any of her lines). No «Not in the list» there: she adds
+// a transfer in Transport → Add transfer. No hint until the item is an airport one.
+//
 // Hooks in camp-hub/index.html: CampPayLink.sync(prefix) at the top of
 // applyLinkedPrice() (runs on every category / item change and form reset) and
 // CampPayLink.afterSave() in __saveQuickExpenseRun(). Styles in transport.css.
@@ -30,7 +36,7 @@
   'use strict';
 
   // ── Settings ──────────────────────────────────────────────────────────────
-  const PAYLINK_LOCATIONS = new Set(['sri-lanka']);
+  const PAYLINK_LOCATIONS = new Set(['sri-lanka', 'morocco']);
   const PAYLINK_ITEM = 'Airport';
   const PAYLINK_STALE_MS = 60 * 1000;      // re-read the trips when the picker reopens after a minute
   const PAYLINK_RPC_TIMEOUT_MS = 15 * 1000;
@@ -42,6 +48,12 @@
   const HINT_CASH = 'Paying the driver in cash? Set the payment to Cash to tick the guests.';
 
   const SLUG = (typeof __HUB_LOCATION_SLUG !== 'undefined') ? __HUB_LOCATION_SLUG : '';
+  const IS_SL = SLUG === 'sri-lanka';
+  const CC = (window.CampConfig && CampConfig.get(SLUG)) || {};
+  const PAY_METHOD = IS_SL ? 'Cash' : (CC.payMethod || 'Cash');                  // Morocco: Bank Transfer
+  const isAirportItem = v => IS_SL ? v === PAYLINK_ITEM : /airport/i.test(String(v || ''));   // «Airport», «Agadir Airport»…
+  const HINT_BANK = 'Paying the airport transfers by bank? Set the payment to Bank Transfer to tick the guests.';
+  const failText = () => IS_SL ? FAIL_TEXT : "Saved. Couldn't link the transfers — link them in Transport → Reconcile → Payments.";
   const P = { trips: null, drivers: [], loading: null, loadedAt: 0, error: '', picked: new Set(), prefill: null, visible: false,
     extra: [], adding: false, draft: null, seq: 0, autoDesc: null };   // extra = «not in the list» transfers waiting for the save
   const $ = id => document.getElementById(id);
@@ -56,7 +68,7 @@
   const goLive = () => (window.TransportUI && TransportUI.goLive) ? TransportUI.goLive() : (window.TRIPS_GO_LIVE_OVERRIDE || '2026-11-14');
   function colomboNow() {
     if (window.TransportUI && TransportUI.colomboNow) return TransportUI.colomboNow();
-    const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Colombo', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+    const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: CC.tz || 'Asia/Colombo', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
       .formatToParts(new Date()).map(x => [x.type, x.value]));
     return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;
   }
@@ -68,7 +80,7 @@
   function wanted() {
     if (!PAYLINK_LOCATIONS.has(SLUG)) return false;
     try { if (CAMP_TAB_ONLY_MODE) return false; } catch (_) {}
-    return val('qe_type') === 'expense' && val('qe_cat') === 'Transport' && val('qe_linked') === PAYLINK_ITEM && val('qe_pay') === 'Cash';
+    return val('qe_type') === 'expense' && val('qe_cat') === 'Transport' && isAirportItem(val('qe_linked')) && val('qe_pay') === PAY_METHOD;
   }
   const entryDate = () => val('qe_date') || colomboNow().slice(0, 10);
   const lastDate = () => addDays(entryDate(), PAYLINK_AHEAD_DAYS);
@@ -147,6 +159,7 @@
   }
   function render() {
     hint();
+    if (!IS_SL && !P.visible && !$('qe_paylink_wrap')) return;      // Morocco: nothing in the form until it applies
     const w = wrap(); if (!w) return;
     if (!P.visible) { w.style.display = 'none'; w.innerHTML = ''; return; }
     w.style.display = '';
@@ -168,7 +181,7 @@
         <span class="pl-txt">${h(fmtDay(x.date))} · ${x.kind === 'airport_departure' ? 'Departure' : 'Arrival'} · ${h(x.name)} · Free · ${FREE_SHORT[x.reason]}<span class="pl-sep"> · </span></span><b class="pl-amt">${num(x.price)}</b></label>`).join('')}</div>` : '';
     const n = P.picked.size + P.extra.length;
     const sum = pickedSum();
-    const more = P.adding ? addForm() : `<div class="pl-more"><button type="button" class="btn btn-s btn-sm" id="pl_more" data-act="open">+ Not in the list (staff / gift)</button></div>`;
+    const more = !IS_SL ? '' : P.adding ? addForm() : `<div class="pl-more"><button type="button" class="btn btn-s btn-sm" id="pl_more" data-act="open">+ Not in the list (staff / gift)</button></div>`;
     w.innerHTML = `<label>Which transfers is this for?</label>${list}${extras}
       ${n ? `<div class="pl-sum">${n} ticked · ${num(sum)}</div>` : '<div class="pl-hint">Optional. Tick the guests you are paying for.</div>'}${more}`;
   }
@@ -178,8 +191,10 @@
     let el = $('qe_paylink_hint');
     let text = '';
     if (PAYLINK_LOCATIONS.has(SLUG) && !campTabOnly() && val('qe_type') === 'expense' && val('qe_cat') === 'Transport') {
-      if (val('qe_linked') !== PAYLINK_ITEM) text = HINT_PICK;
-      else if (val('qe_pay') !== 'Cash') text = HINT_CASH;
+      if (IS_SL) {
+        if (val('qe_linked') !== PAYLINK_ITEM) text = HINT_PICK;
+        else if (val('qe_pay') !== 'Cash') text = HINT_CASH;
+      } else if (isAirportItem(val('qe_linked')) && val('qe_pay') !== PAY_METHOD) text = HINT_BANK;
     }
     if (!text) { if (el) el.remove(); return; }
     if (!el) { el = document.createElement('div'); el.id = 'qe_paylink_hint'; el.className = 'pl-item-hint'; host.appendChild(el); }
@@ -265,7 +280,7 @@
       if (!P.visible || (!P.picked.size && !P.extra.length)) return null;
       const ids = [...P.picked]; const extra = P.extra.slice(); const day = (payload && payload.date) || entryDate();
       P.picked.clear(); P.extra = []; P.adding = false; P.draft = null; P.prefill = null; P.autoDesc = null;
-      if (!payload || payload.type !== 'expense' || payload.category !== 'Transport' || payload.linkedItem !== PAYLINK_ITEM) return null;
+      if (!payload || payload.type !== 'expense' || payload.category !== 'Transport' || !isAirportItem(payload.linkedItem)) return null;
       const c = client(); if (!c) throw new Error('Not connected');
       const timed = call => Promise.race([Promise.resolve(call), new Promise((_, no) => setTimeout(() => no(new Error('timeout')), PAYLINK_RPC_TIMEOUT_MS))]);
       // «Not in the list» transfers are created now that the expense exists, then linked with the ticked ones.
@@ -283,11 +298,11 @@
       P.trips = (P.trips || []).map(t => ids.includes(t.id) ? { ...t, payment_entry_id: payload.id } : t);
       const n = ids.length; const differs = res.data && res.data.state === 'review';
       try { if (window.TransportUI && TransportUI._state && TransportUI._state.loaded) TransportUI.load(true); } catch (_) {}   // full view: Reconcile up to date
-      return { ok: true, text: `Entry added · ${n} transfer${n === 1 ? '' : 's'} linked${differs ? ' · the amount differs, Francisco will check' : ''}` };
+      return { ok: true, text: `Entry added · ${n} transfer${n === 1 ? '' : 's'} linked${differs ? (IS_SL ? ' · the amount differs, Francisco will check' : ' · the amount differs — see Transport → Reconcile') : ''}` };
     } catch (e) {
       try { console.warn('[paylink] link failed — the expense is saved', e); } catch (_) {}
       P.loadedAt = 0; // re-read next time
-      return { ok: false, text: FAIL_TEXT };
+      return { ok: false, text: failText() };
     }
   }
   // A calm toast (never red), kept a little longer when there is more to read.

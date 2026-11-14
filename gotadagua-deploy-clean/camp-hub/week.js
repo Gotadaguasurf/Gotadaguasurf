@@ -1,4 +1,8 @@
-// Camp hub · Week (Sri Lanka, 13 Nov 2026)
+// Camp hub · Week (Sri Lanka 13 Nov 2026; Morocco 14 Nov 2026)
+//
+// Per camp: everything that differs between the camps (names, time zone, rooms,
+// airports, week numbering, packages) comes from lib/camp-config.js (CC below).
+// Sri Lanka keeps its own room constants here, unchanged.
 //
 // Francisco's overview of the week (full view only; Nadith's ?view=local has
 // no Week tab). The Monday Bookinglayer Guests import lands in camp_week_guests
@@ -29,9 +33,14 @@
 (function () {
   'use strict';
   const GT = window.GuestsTrips;
+  const SLUG = (typeof __HUB_LOCATION_SLUG !== 'undefined') ? __HUB_LOCATION_SLUG : '';
+  const CC = (window.CampConfig && CampConfig.get(SLUG)) || (window.CampConfig && CampConfig.SL) || {};
+  const IS_SL = SLUG === 'sri-lanka';
+  const GTC = IS_SL ? undefined : CC;                 // the parser's settings: none = Sri Lanka's, exactly as before
+  const IS_MA_ROOMS = !IS_SL && Array.isArray(CC.rooms);
 
   // ── Settings ────────────────────────────────────────────────────────────
-  const WEEK_ENABLED_LOCATIONS = new Set(['sri-lanka']);
+  const WEEK_ENABLED_LOCATIONS = new Set(['sri-lanka', 'morocco']);
   const FILE_OLD_DAYS = 3;              // chip «Guests file is N days old» after this
   const YOGA_TIME = '08:00';            // shown in the Surf message (B1 template)
   const YOGA_PAY_CATEGORIES = ['Salary', 'Tours & activities', 'Tours'];
@@ -64,17 +73,16 @@
     marissa: 'Mirissa room', kabalana: 'Kabalana room', unawatuna: 'Unawatuna room', hiriketeya: 'Hiriketeya room', ahangama: 'Ahangama room',
     madiha: 'Madiha room', midigama: 'Midigama room', welligama: 'Weligama room', weligama: 'Weligama room',
   };
-  const CAMP_NAME = { 'sri-lanka': 'Sri Lanka' };  // the WhatsApp group is named after the camp
+  const CAMP_NAME = { 'sri-lanka': 'Sri Lanka', morocco: 'Morocco' };  // the WhatsApp group is named after the camp
   // Week group settings, kept per location in location_state_store (key GROUP_KEY): the season's first
   // Saturday (week 1), the group description template, and per week the invite link and who was invited.
   const GROUP_KEY = 'week_group_v1';
-  const SEASON_WEEK1_DEFAULT = '2026-08-15';       // a Saturday → Sat 14 Nov 2026 is week 14
-  const GROUP_DESC_DEFAULT = '📅 YOUR WEEKLY SCHEDULE - WEEK {week} ({dates})\n\nEdit me: write the weekly schedule here once. It is kept for the next weeks; {week} and {dates} fill themselves in.';
+  const SEASON_WEEK1_DEFAULT = IS_SL ? '2026-08-15' : CC.seasonWeek1;   // Sri Lanka: a Saturday → Sat 14 Nov 2026 is week 14 (Morocco: lib/camp-config.js)
+  const GROUP_DESC_DEFAULT = IS_SL ? '📅 YOUR WEEKLY SCHEDULE - WEEK {week} ({dates})\n\nEdit me: write the weekly schedule here once. It is kept for the next weeks; {week} and {dates} fill themselves in.' : CC.groupDescDefault;
   const CHANGEOVER_WEEKDAY = 6;         // Saturday (Date.getDay): the camp's weeks run Sat–Sat
   const PRIVATE_ROOM_BEDS = 2;          // beds of a private room (the Day Planner shows two per room)
   const LEVELS = ['Beginner', 'Experienced beginner', 'Intermediate', 'Experienced intermediate', 'Advanced', 'Level not set'];
 
-  const SLUG = (typeof __HUB_LOCATION_SLUG !== 'undefined') ? __HUB_LOCATION_SLUG : '';
   const enabled = () => WEEK_ENABLED_LOCATIONS.has(SLUG) && !LOCAL_MANAGER_MODE && !CAMP_TAB_ONLY_MODE;
 
   const W = {
@@ -92,7 +100,7 @@
     return colomboStamp(new Date());
   }
   function colomboStamp(d) {
-    const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Colombo', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+    const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: CC.tz || 'Asia/Colombo', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
       .formatToParts(d).map(x => [x.type, x.value]));
     return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;
   }
@@ -119,8 +127,19 @@
 
   // ── Guest facts (pure) ──────────────────────────────────────────────────
   function roomNames(acc) { return String(acc || '').split(/\s*,\s*/).map(s => s.trim()).filter(Boolean); }
+  // Morocco: «8 - Banana Point mixed shared room (4pax)» → «8 - Banana Point», by room number.
+  function maRoomInfo(n) {
+    const r = CampConfig.maRoomParse(n); const known = CC.rooms.find(x => (r.n != null && x.n === r.n) || x.name.toLowerCase() === r.core.toLowerCase());
+    const num = r.n != null ? r.n : known ? known.n : null;
+    const label = num != null ? `${num} - ${known ? known.name : r.core}` : r.core;
+    const shared = known ? !!known.shared : r.shared;
+    const beds = known && known.beds ? known.beds : r.cap;
+    const note = shared ? (beds ? `${beds} beds` : '') + ((known && known.note) || (r.female ? 'female' : '') ? `${beds ? ' · ' : ''}${(known && known.note) || 'female'}` : '') : (known && known.note) || (r.family ? 'family' : '');
+    return { key: num != null ? 'ma-' + num : label.toLowerCase(), label, shared, note, order: num != null ? num : 99, beds: beds || 0 };
+  }
   function roomInfo(name) {
     const n = String(name || '').trim(); if (!n) return null;
+    if (IS_MA_ROOMS) return maRoomInfo(n);
     const low = n.toLowerCase(); const w1 = n.split(/\s+/)[0];
     const shared = /shared|dorm/.test(low);
     let label = w1, note = '';
@@ -137,7 +156,7 @@
     if (/intensive/i.test(a)) return 'Intensive';
     if (/coaching/i.test(a)) return 'Coaching';
     if (/surf course|surf lesson|standard surf/i.test(a)) return 'Standard';
-    const inc = window.GuestsTrips && GuestsTrips.packageIncludes ? GuestsTrips.packageIncludes(g.packages) : null;   // package with lessons included
+    const inc = window.GuestsTrips && GuestsTrips.packageIncludes ? GuestsTrips.packageIncludes(g.packages, GTC) : null;   // package with lessons included
     return inc && inc.course ? inc.course : '';
   }
   function levelOf(g) {
@@ -158,7 +177,7 @@
     return d.length ? d.join(' / ') : 'none';
   }
   const allergyOf = g => String(g.allergies || '').split(' / ').map(s => s.trim()).filter(s => s && !NO_ALLERGY.test(s)).join(' / ');
-  const isYoga = g => /yoga/i.test(String(g.activities || '') + ' ' + String(g.packages || '')) || !!(window.GuestsTrips && GuestsTrips.packageIncludes && (GuestsTrips.packageIncludes(g.packages) || {}).yoga);
+  const isYoga = g => /yoga/i.test(String(g.activities || '') + ' ' + String(g.packages || '')) || !!(window.GuestsTrips && GuestsTrips.packageIncludes && (GuestsTrips.packageIncludes(g.packages, GTC) || {}).yoga);
   const inCamp = (g, d) => g.check_in && g.check_out && g.check_in <= d && d < g.check_out;
   const inWeek = (g, ws) => g.check_in && g.check_out && g.check_in <= add(ws, 6) && g.check_out > ws;
   const bedNum = b => parseInt(b, 10) || 99;
@@ -206,6 +225,7 @@
   const bedList = g => String(g.bed_number || '').split(',').map(s => s.trim()).filter(Boolean);
   function roomCap(r) {
     if (!r) return 0;
+    if (IS_MA_ROOMS) return r.shared ? (r.beds || 0) : (r.beds || CC.privateRoomBeds || PRIVATE_ROOM_BEDS);
     const c = CAMP_ROOMS.find(x => ROOM_SHORT[x.w].toLowerCase() === r.key);
     return c ? (c.beds || PRIVATE_ROOM_BEDS) : r.shared ? (parseInt(r.note, 10) || 0) : PRIVATE_ROOM_BEDS;
   }
@@ -449,7 +469,7 @@
     if (team === 'cleaning') return day === 'week' ? cleaningWeek(rows, ws) : cleaningDay(rows, day);
     if (team === 'kitchen') return day === 'week' ? kitchenWeek(rows, ws) : kitchenDay(rows, day);
     if (team === 'surf') return day === 'week' ? surfWeek(rows, ws) : surfDay(rows, day);
-    if (team === 'transfers') { const list = tripsFor(day, ws); return list.length ? [L(GT.whatsappDayText(list))] : [L('No transfers')]; }
+    if (team === 'transfers') { const list = tripsFor(day, ws); return list.length ? [L(GT.whatsappDayText(list, GTC))] : [L('No transfers')]; }
     if (team === 'guests') { const gs = guestsList(rows, day, ws); return [T(`Guests – ${day === 'week' ? 'week ' + range(ws, add(ws, 7)) : fdm(day)} (${gs.length})`), G, ...gs.map(g => L(guestLine(g, ws, day)))]; }
     return [];
   }
@@ -466,7 +486,7 @@
   // real, current message, never an UPDATE header or a diff. «Changed since sent» only tells
   // Francisco that the team has an old version.
   function updateText(oldText, newText) { return newText; }
-  function transfersUpdate(list) { return GT.whatsappDayText(list); }
+  function transfersUpdate(list) { return GT.whatsappDayText(list, GTC); }
 
 
   // ── Data ────────────────────────────────────────────────────────────────
@@ -549,6 +569,9 @@
     const pl = placement(ws, rows);
     const mate = g => { const m = rows.find(x => x !== g && counted(x) && x.booking_ref === g.booking_ref && roomOf(x)); return m ? ` (same booking as ${m.guest_name}, ${roomOf(m).label})` : ''; };
     if (pl.noRoom.length) items.push({ tab: 'rooms', short: `${pl.noRoom.length} without a room`, text: `${plural(pl.noRoom.length, 'guest')} without a room in the file – counted as outside of camp (meals only)`, who: pl.noRoom.map(g => g.guest_name + mate(g)).join(', ') });
+    // Morocco: a room the settings do not know (no beds, not shown when empty) — add it to lib/camp-config.js.
+    const unlisted = IS_MA_ROOMS ? live.filter(g => roomNames(g.accommodation).some(n => !CampConfig.maRoomKnown(n))) : [];
+    if (unlisted.length) items.push({ tab: 'rooms', short: `${plural(unlisted.length, 'guest')} in a room not in the list`, text: `${plural(unlisted.length, 'guest')} in a room the app does not know yet – counted, but its beds are not checked (ask Miguel to add the room)`, who: unlisted.map(g => `${g.guest_name} (${g.accommodation})`).join(', ') });
     if (pl.clash.length) items.push({ tab: 'rooms', short: `${plural(pl.clash.length, 'bed')} with 2 guests`, text: `${plural(pl.clash.length, 'bed')} with two guests on the same night – check the Day Planner`, who: pl.clash.map(c => `${c.r.label} bed ${c.bed}: ${names(c.gs)} (${fd(c.d)})`).join('; ') });
     if (pl.double.length) items.push({ tab: 'rooms', short: `${plural(pl.double.length, 'room')} with 2 bookings`, text: `${plural(pl.double.length, 'private room')} with two bookings on the same night – check the Day Planner`, who: pl.double.map(c => `${c.r.label}: ${names(c.gs)} (${fd(c.d)})`).join('; ') });
     if (pl.over.length) items.push({ tab: 'rooms', short: `${plural(pl.over.length, 'room')} over its beds`, text: `${plural(pl.over.length, 'room')} with more guests than beds – check the Day Planner`, who: pl.over.map(c => `${c.r.label}: ${c.gs.length} guests for ${c.cap} beds (${fd(c.d)})`).join('; ') });
@@ -650,7 +673,7 @@
   // the night before; dinner = who sleeps tonight — the numbers of the Kitchen message.
   // When a guest coming on their own arrives: the Arrival time, or a time typed in the flight field («13:00», «02h50»).
   const arriveAt = g => g.arrival_time || ((String(g.arrival_flight || '').trim().match(/^(\d{1,2})[:h](\d{2})$/i) || []).slice(1).map(x => x.padStart(2, '0')).join(':')) || '';
-  const flightOf = g => { const f = String(g.arrival_flight || '').trim(); return /^[A-Za-z]{2}\s?\d{2,4}\b/.test(f) ? f : ''; };
+  const flightOf = g => { const f = String(g.arrival_flight || '').trim(); return (CC.icaoFlights ? /^[A-Za-z]{2,3}\s?\d{2,4}\b/ : /^[A-Za-z]{2}\s?\d{2,4}\b/).test(f) ? f : ''; };
   const airportTrip = t => (t.kind === 'airport_arrival' || t.kind === 'airport_departure') && !['cancelled', 'merged'].includes(t.status);
   function weekModel(ws, rows) {
     const live = rows.filter(counted);
@@ -691,10 +714,11 @@
     const st = weekStays(rows, ws);
     const w1 = s => { const x = String(s || '').split(/\s+/)[0].toLowerCase(); return x === 'weligama' ? 'welligama' : x; };
     const rooms = new Map();
-    CAMP_ROOMS.forEach((c, i) => rooms.set(ROOM_SHORT[c.w].toLowerCase(), { key: c.w, label: ROOM_SHORT[c.w], shared: !!c.beds, note: c.note || '', beds: c.beds || 0, order: i, stays: [] }));
+    if (IS_MA_ROOMS) CC.rooms.forEach(c => { const r = maRoomInfo(`${c.n} - ${c.name}`); rooms.set(r.key, { key: r.key, label: r.label, shared: r.shared, note: r.note, beds: r.shared ? r.beds : 0, order: r.order, stays: [] }); });
+    else CAMP_ROOMS.forEach((c, i) => rooms.set(ROOM_SHORT[c.w].toLowerCase(), { key: c.w, label: ROOM_SHORT[c.w], shared: !!c.beds, note: c.note || '', beds: c.beds || 0, order: i, stays: [] }));
     st.forEach(x => {
       const k = x.r ? x.r.key : '?';
-      if (!rooms.has(k)) rooms.set(k, x.r ? { key: k, label: x.r.label, shared: x.r.shared, note: x.r.note, beds: x.r.shared ? (parseInt(x.r.note, 10) || 0) : 0, order: 50 + x.r.order, stays: [] }
+      if (!rooms.has(k)) rooms.set(k, x.r ? { key: k, label: x.r.label, shared: x.r.shared, note: x.r.note, beds: x.r.shared ? (IS_MA_ROOMS ? x.r.beds : (parseInt(x.r.note, 10) || 0)) : 0, order: (IS_MA_ROOMS ? 0 : 50) + x.r.order, stays: [] }
         : { key: '?', label: OUTSIDE, shared: false, none: true, note: '', beds: 0, order: 999, stays: [] });
       rooms.get(k).stays.push({ ...x, a: Math.max(0, daysBetween(ws, x.from)), b: Math.min(7, daysBetween(ws, x.to)), bedN: parseInt(x.bed, 10) || 0,
         cutL: x.before, cutR: stayEnd(x.g) > add(ws, 7) && x.to >= add(ws, 7), moved: x.from > x.g.check_in || x.to < x.g.check_out });
@@ -767,7 +791,7 @@
       <span class="wk-count">${plural(nGuests, 'guest')}</span>
       <span class="hint wk-file">${W.meta ? `Guests file imported ${h(fileStamp(W.meta.at))}` : 'No Guests file imported yet'}</span></div>`;
     if (!nGuests && !rows.length) {
-      root.innerHTML = head + filters + `<div class="empty-state">${ic('users')}<div class="empty-title">No guests this week</div><p>Download the Guests export with the «Semana Sri Lanka» preset and import it.</p>
+      root.innerHTML = head + filters + `<div class="empty-state">${ic('users')}<div class="empty-title">No guests this week</div><p>Download the Guests export with the «${h(CC.preset || 'Semana Sri Lanka')}» preset and import it.</p>
         <button class="btn btn-p" onclick="WeekUI.setMode('import')">${ic('upload')} Import Guests file</button></div>`;
       return;
     }
@@ -849,7 +873,7 @@
     if (team === 'transfers') {
       const list = tripsFor(day, ws);
       const resend = list.some(x => x.needs_resend);
-      const text = list.length ? (resend ? transfersUpdate(list, day, ws) : GT.whatsappDayText(list)) : '';
+      const text = list.length ? (resend ? transfersUpdate(list, day, ws) : GT.whatsappDayText(list, GTC)) : '';
       const toTick = list.filter(x => x.status === 'planned' || x.needs_resend).length;
       return `<div class="card wk-card wk-msgcard" id="wkMessage">${cardHead('Message', `Transfers still to do · ${h(when)} · Miguel's format, one block per transfer`)}
         <div class="card-body">${dayPills}${list.length ? `<div class="wk-msg" id="wkMsg">${h(text)}</div>
@@ -1075,7 +1099,7 @@
       <div class="wk-rows">${list.length ? list.map(bookedRow).join('') : '<div class="wk-g hint">No transfer booked.</div>'}</div></div>`;
     const booked = `<div class="card wk-card wk-bookedcard">${cardHead('Transfers booked', 'Everyone with an airport transfer this week — from the Guests file')}
       ${sect(`${ic('login')} Arrivals`, 'airport → camp', arrT)}${sect(`${ic('logout')} Departures`, 'camp → airport', depT)}</div>`;
-    const card = `<div class="card wk-card">${cardHead('Day by day', `${plural(all.length, 'transfer')} this week${cost ? ` · ${h(money(cost))} expected` : ''} · tuk-tuks and paying drivers stay in Transport`, toMsgBtn('Transfers message'))}
+    const card = `<div class="card wk-card">${cardHead('Day by day', `${plural(all.length, 'transfer')} this week${cost ? ` · ${h(money(cost))} expected` : ''} · ${IS_SL ? 'tuk-tuks' : 'van runs'} and paying drivers stay in Transport`, toMsgBtn('Transfers message'))}
       ${days.length ? days.map(dayHtml).join('') : '<div class="card-body hint">No airport transfers and no arrivals this week.</div>'}</div>`;
     return checkBlock(ctx, 'transfers') + booked + card + messageCard(ctx, 'transfers');
   }
@@ -1128,7 +1152,7 @@
   function e164(raw) {
     let p = String(raw || '').replace(/[\s().\-]/g, '');
     if (/^00\d/.test(p)) p = '+' + p.slice(2);
-    p = GT.cleanPhone(p);
+    p = GT.cleanPhone(p, GTC);
     return /^\+[1-9]\d{7,14}$/.test(p) ? p : '';
   }
   // The guest's phone as E.164; a guest on a second booking may only have it on the first one.
@@ -1222,7 +1246,7 @@
   function currentText() {
     const ws = W.week; const rows = rowsOf(ws);
     if (W.team === 'guests') return body('guests', W.day, ws, rows);
-    if (W.team === 'transfers') { const list = tripsFor(W.day, ws); return list.some(t => t.needs_resend) ? transfersUpdate(list, W.day, ws) : GT.whatsappDayText(list); }
+    if (W.team === 'transfers') { const list = tripsFor(W.day, ws); return list.some(t => t.needs_resend) ? transfersUpdate(list, W.day, ws) : GT.whatsappDayText(list, GTC); }
     const text = body(W.team, W.day, ws, rows); const sent = sentOf(W.team, W.day, ws);
     return { text, out: dress(sent && sent.hash !== hash(text) ? updateText(sent.text, text, W.day, ws) : text, cToday()) };
   }
@@ -1297,7 +1321,7 @@
       const fixed = t.k === 'transfers';
       return `<div class="wk-contact" data-team="${t.k}"><div class="section-lbl">${h(t.label)}</div>
         <div class="g2"><div class="mfield"><label>Name</label><input data-f="name" value="${h(c ? c.name : '')}" placeholder="${h(t.role)}" ${fixed && c ? 'disabled' : ''}></div>
-        <div class="mfield"><label>Phone</label><input data-f="phone" value="${h(c && c.phone || '')}" placeholder="add phone · +94771234567" inputmode="tel"></div></div>
+        <div class="mfield"><label>Phone</label><input data-f="phone" value="${h(c && c.phone || '')}" placeholder="add phone · ${h(CC.phoneExample || '+94771234567')}" inputmode="tel"></div></div>
         ${fixed ? `<div class="hint">Who gets the transfers is set in Transport → Drivers.</div>` : ''}</div>`;
     }).join('');
     let ov = $('wkOv');
@@ -1316,7 +1340,7 @@
         const t = TEAMS.find(x => x.k === el.dataset.team); const c = contactOf(t.k);
         const name = el.querySelector('[data-f="name"]').value.trim();
         const phone = el.querySelector('[data-f="phone"]').value.replace(/[\s-]/g, '');
-        if (phone && !/^\+[0-9]{8,15}$/.test(phone)) { say(`${t.label}: phone must look like +94771234567`, 'err'); return; }
+        if (phone && !/^\+[0-9]{8,15}$/.test(phone)) { say(`${t.label}: phone must look like ${CC.phoneExample || '+94771234567'}`, 'err'); return; }
         if (c) {
           const patch = {};
           if ((c.phone || '') !== phone) patch.phone = phone || null;

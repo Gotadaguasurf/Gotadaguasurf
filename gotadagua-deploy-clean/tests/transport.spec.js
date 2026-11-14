@@ -137,7 +137,7 @@ async function openTab(page, opts = {}) {
 }
 
 // ── Access ─────────────────────────────────────────────────────────────────
-test('transport: tab shows for full Sri Lanka users only — not in local view, camp-tab-only or Morocco', async ({ page, browser }) => {
+test('transport: tab shows for full users only — not in local view or camp-tab-only (Morocco now has it: tests/morocco-transport.spec.js)', async ({ page, browser }) => {
   const errors = collectFatalErrors(page);
   await open(page);
   await expect(page.locator('.ntab[data-page="transport"]')).toBeVisible({ visible: true }).catch(async () => {
@@ -145,7 +145,7 @@ test('transport: tab shows for full Sri Lanka users only — not in local view, 
     expect(await page.locator('.ntab-m[data-page="transport"]').evaluate(el => el.style.display)).toBe('');
   });
   expect(errors).toEqual([]);
-  for (const [query, slug] of [['&view=local', 'sri-lanka'], ['&view=camp-tab-only', 'sri-lanka'], ['', 'morocco']]) {
+  for (const [query, slug] of [['&view=local', 'sri-lanka'], ['&view=camp-tab-only', 'sri-lanka']]) {   // Morocco removed 14 Nov: it has the tab now
     const p = await browser.newPage({ viewport: { width: 390, height: 844 } });
     await open(p, { query, slug });
     const r = await p.evaluate(() => {

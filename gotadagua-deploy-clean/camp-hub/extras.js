@@ -35,8 +35,11 @@ window.CAMP_CHECKS = window.CAMP_CHECKS || [];
   'use strict';
 
   // ── Settings (Miguel may change these) ────────────────────────────────────
-  const EXTRAS_LOCATIONS = ['sri-lanka'];
-  const CAMP_TZ = 'Asia/Colombo';
+  const EXTRAS_LOCATIONS = ['sri-lanka'];              // the salary / Money from HQ / tour-cost chips (Sri Lanka's cash and payroll)
+  // Camp Tab prefill, «Leaving with open tab» and the «This week» card: every camp with a Week page (Morocco since 14 Nov).
+  const WEEK_EXTRAS_LOCATIONS = ['sri-lanka', 'morocco'];
+  const CAMP_CFG = () => (window.CampConfig && CampConfig.get(typeof __HUB_LOCATION_SLUG !== 'undefined' ? __HUB_LOCATION_SLUG : '')) || {};
+  const CAMP_TZ = CAMP_CFG().tz || 'Asia/Colombo';
   const SALARY_DUE_DAY = 28;          // payday ~28th: from then on the chip checks THIS month
   const MONEY_CHIP_FROM_DAY = 15;     // «Money from HQ needed» from the 15th of the month
   const TOUR_COST_LOOKBACK_DAYS = 3;  // a tour cost paid up to 3 days before the week still counts
@@ -49,13 +52,13 @@ window.CAMP_CHECKS = window.CAMP_CHECKS || [];
   const slug = () => (typeof __HUB_LOCATION_SLUG !== 'undefined' ? __HUB_LOCATION_SLUG : '');
   const isLocal = () => (typeof LOCAL_MANAGER_MODE !== 'undefined' && LOCAL_MANAGER_MODE === true);
   const isTabOnly = () => (typeof CAMP_TAB_ONLY_MODE !== 'undefined' && CAMP_TAB_ONLY_MODE === true);
-  const enabled = () => EXTRAS_LOCATIONS.includes(slug());
+  const enabled = () => WEEK_EXTRAS_LOCATIONS.includes(slug());
   const fullView = () => enabled() && !isLocal() && !isTabOnly();
   const perGuest = () => (typeof HUB_CAMP_TAB_MODE !== 'undefined' && HUB_CAMP_TAB_MODE === 'per_guest');
   const ledger = () => (typeof S !== 'undefined' && S && Array.isArray(S.ledger) ? S.ledger : []);
   const esc = (s) => (typeof escapeHtml === 'function' ? escapeHtml(s) : String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])));
   const int = (n) => Math.round(Number(n || 0)).toLocaleString('en-US');
-  const lkrTxt = (n) => `LKR ${int(n)}`;
+  const lkrTxt = (n) => `${CAMP_CFG().currency || 'LKR'} ${int(n)}`;
   const localAmt = (r) => (typeof entryLocalDisplayAmount === 'function' ? entryLocalDisplayAmount(r) : Number(r.amountLocal || 0));
   const isIncome = (r) => r && (r.type === 'income' || r.type === 'revenue');
   const isHqPaid = (r) => (typeof isHqPaidRow === 'function' ? isHqPaidRow(r) : (r.paymentMethod === 'HQ Paid' || String(r.sourceKind || '') === 'hq_invoice'));
