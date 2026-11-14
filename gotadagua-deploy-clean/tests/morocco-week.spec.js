@@ -49,7 +49,7 @@ for (const [file, importAt] of [[H.FILE, '2026-11-14T08:00:00Z'], [H.FILE2, '202
   });
 }
 
-test('morocco week: the import audit = the oracle (31 rows = 25 guests + 6 left out, each with its reason)', () => {
+test('morocco week: the import audit = the oracle (38 rows = 32 guests + 6 left out, each with its reason)', () => {
   const a = H.GT.guestAudit(fs.readFileSync(H.CSV(H.FILE), 'utf8'), H.FILE, H.CC.MA);
   const o = oracle(H.FILE);
   expect(a.rows).toBe(o.rows);
@@ -68,11 +68,13 @@ test('morocco week: Overview and the Cleaning message of Sat 14 — every room a
     '*11 - Tifnit*', '- Yuki Tanaka', '',
     '*13 - Anchor Point*', '- Clara Schmidt _(stays, moves to bed 5)_', '- Pieter de Vries _(stays 5 more nights, in 6 - Safi)_', '',
     '*CHECK IN - SAT 14 NOV*', '',
+    '*1 - Imsouane*', '- Noah Weiss _(4 nights)_', '',
     '*2 - Boilers*', '- Lucas Dubois', '',
     '*4 - Crocro*', '- Lena Hoffmann', '- Jonas Weber', '',
     '*5 - Panorama Point*', '- Ines Costa', '',
     '*6 - Safi*', '- Nina Larsen', '- Guest without name (booking MA-1010)', '- Pieter de Vries _(from 13 - Anchor Point, 5 nights)_', '',
     '*8 - Banana Point*', '- Sophie Martin', '- Tom Baker _(from last week, 6 more nights)_', '',
+    '*9 - Anza*', '- Theo Duval', '- Lea Duval', '- Max Duval', '',
     '*13 - Anchor Point*', '- Karl Nilsson', '- Clara Schmidt _(from last week, one more week with us, now in bed 5)_', '- Rui Alves _(from 8 - Banana Point, 4 nights)_', '',
     '*Outside of camp* _(also guests coming for breakfast and dinner)_', '- Ben Clarke',
   ].join('\n'));
@@ -86,7 +88,7 @@ test('morocco week: To check names the Morocco gaps — room not in the list, gu
   await H.openWeek(page);
   const items = await page.evaluate(() => WeekUI.toCheck().map(i => `${i.tab}: ${i.text} — ${i.who || (i.guests || []).map(g => g.guest_name).join(', ')}`));
   const has = re => expect(items.some(x => re.test(x)), `${re} in\n${items.join('\n')}`).toBe(true);
-  has(/^rooms: 1 guest in a room the app does not know yet.*Sara Ali \(9 - Mirleft Private Room\)/);
+  has(/^rooms: 1 guest in a room the app does not know yet.*Sara Ali \(10 - Mirleft Private Room\)/);
   has(/^rooms: 1 guest without a room in the file.*Ben Clarke/);
   has(/^rooms: 1 private room with two bookings on the same night.*6 - Safi/);
   has(/^rooms: 2 room moves taken on the Saturday.*Pieter de Vries.*Rui Alves/);
@@ -97,14 +99,14 @@ test('morocco week: Kitchen and Surf messages (diets, allergies, levels) and the
   const st = await H.openWeek(page, { trips: H.tripsFromFile() });
   const k = await rawMsg(page, 'kitchen', '2026-11-15');
   expect(k).toContain('*KITCHEN - SUN 15 NOV*');
-  expect(k).toContain('*Dinner:* 16 people');
+  expect(k).toContain('*Dinner:* 21 people');   // = the oracle's dinner of Sun 15
   expect(k).toContain('*Allergies*\n- Marta Rossi _(nuts)_');
   expect(k).toContain('*Vegetarian*');
   const s = await rawMsg(page, 'surf', '2026-11-16');
   expect(s).toContain('*SURF - MON 16 NOV*');
   expect(s).toMatch(/\*Advanced\*\n- Oliver Smith _\(coaching\)_/);
   const t = await rawMsg(page, 'transfers', '2026-11-16');
-  expect(t).toBe(['Airport to Camp', 'Oliver Smith', '+447700900007', '1 person', 'Flight Number: TO3226', 'Time: 22:10', 'Date: 16 Nov', 'Car'].join('\n'));
+  expect(t).toBe(['Airport to Camp', 'Ana Ruiz', '+34600000028', '1 person', 'Flight Number: RK3033', 'Time: 09:30', 'Date: 16 Nov', 'Car', '', 'Airport to Camp', 'Oliver Smith', '+447700900007', '1 person', 'Flight Number: TO3226', 'Time: 22:10', 'Date: 16 Nov', 'Car'].join('\n'));
   expect(st.calls.filter(c => c.t === 'import')).toEqual([]);
 });
 
@@ -149,4 +151,47 @@ test('morocco week: screenshots at 390 and 1280 — no horizontal overflow on an
     }
   }
   expect(errors).toEqual([]);
+});
+
+test('morocco rooms: the 13 real room strings (spacing around «-» as in Bookinglayer), the two Anza rooms stay apart, Imsouane room ≠ Imsouane van run', async ({ page }) => {
+  const C = H.CC;
+  const real = ['0 - Tamri Private Room', '1 - Imsouane Private Room', '2 - Boilers Private Room', '3 - La Source Private Room', '4 - Crocro Private Room',
+    '5 - Panorama Point Female shared room (6pax)', '6 - Safi Family Private Room', '7 - Anza Private Room', '8 - Banana Point mixed shared room (4pax)',
+    '9- Anza Triple Room Ensuite', '11 -Tifnit Private Room', '12 - Douira Private Room', '13 - Anchor Point mixed shared room (8pax)'];
+  expect(real.map(n => { const r = C.maRoomParse(n); const k = C.MA.rooms.find(x => C.maRoomMatch(r, x)); return k ? `${k.n} ${k.name}` : 'unknown'; }))
+    .toEqual(['0 Tamri', '1 Imsouane', '2 Boilers', '3 La Source', '4 Crocro', '5 Panorama Point', '6 Safi', '7 Anza', '8 Banana Point', '9 Anza', '11 Tifnit', '12 Douira', '13 Anchor Point']);
+  expect(real.every(n => C.maRoomKnown(n))).toBe(true);
+  expect(C.maRoomKnown('10 - Anza Private Room')).toBe(false);                 // a name alone is not room 7 or 9
+  expect(C.maRoomKnown('13 - Castelo surf house shared room')).toBe(false);
+  await H.openWeek(page);
+  const P = await page.evaluate(() => WeekUI.roomPlan().rooms.map(r => ({ label: r.label, shared: r.shared, beds: r.beds, people: [...new Set(r.stays.map(s => s.g.guest_name))].sort() })));
+  const room = l => P.find(r => r.label === l);
+  expect(room('7 - Anza').people).toEqual(['Hugo Leroy']);
+  expect(room('9 - Anza').people).toEqual(['Lea Duval', 'Max Duval', 'Theo Duval']);
+  expect(room('5 - Panorama Point')).toMatchObject({ shared: true, beds: 6 });
+  expect(room('1 - Imsouane').people).toEqual(['Noah Weiss']);
+  expect(P.map(r => r.label)).toEqual(['0 - Tamri', '1 - Imsouane', '2 - Boilers', '3 - La Source', '4 - Crocro', '5 - Panorama Point', '6 - Safi', '7 - Anza', '8 - Banana Point', '9 - Anza', '10 - Mirleft', '11 - Tifnit', '12 - Douira', '13 - Anchor Point', 'Outside of camp']);
+  // The 3 Duvals fit their triple room: no «over its beds» for 9 - Anza.
+  const items = await page.evaluate(() => WeekUI.toCheck().map(i => i.who || '').join(' | '));
+  expect(items).not.toMatch(/9 - Anza: \d guests for/);
+  // The van run to Imsouane is a van destination, not the room: a run never lands in Rooms.
+  expect(H.CC.MA.vanRates.some(r => r.route === 'Imsouane')).toBe(true);
+});
+
+test('morocco transfers: the airport of every leg = the oracle (product «(Marrakesh)» / «(Agadir)», location, flight field)', () => {
+  for (const f of [H.FILE, H.FILE2]) {
+    const o = oracle(f);
+    const trips = H.GT.parse(fs.readFileSync(H.CSV(f), 'utf8'), f, null, H.CC.MA).trips;
+    const want = new Map(o.transfers.flatMap(x => [[`${x.booking}|${x.name}|arr`, x.arrival_airport], [`${x.booking}|${x.name}|dep`, x.departure_airport]]));
+    // One trip per booking and direction (guests travel together): its airport is the one of its guests;
+    // guests of one trip with different airports in the file → the trip says so (flag), never silently.
+    const bad = [];
+    trips.forEach(t => {
+      const aps = [...new Set(t.guests.map(g => want.get(`${t.booking_ref}|${g}|${t.kind === 'airport_departure' ? 'dep' : 'arr'}`)))];
+      if (!aps.includes(t.place)) bad.push(`${t.key}: app ${t.place} / oracle ${aps.join(',')}`);
+      if (aps.length > 1 && !t.flags.some(x => /different airports/.test(x))) bad.push(`${t.key}: guests with airports ${aps.join(', ')} and no flag`);
+    });
+    expect(bad, f).toEqual([]);
+    expect(trips.length).toBeGreaterThan(20);
+  }
 });

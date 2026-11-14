@@ -73,11 +73,16 @@
   // Rooms seen on the Bookinglayer list (coordinator, 14 Nov): «N - Name …», the number and
   // «(Npax)» are part of the name. A room missing here still works (read from the file);
   // add it to show it when it is empty all week and to give it its beds.
+  // The real «Semana Marrocos» list of 14 Nov (77 rows) has these 13 rooms, spelled as in Bookinglayer
+  // («9- Anza Triple Room Ensuite», «11 -Tifnit Private Room»: the spacing around «-» varies). Two rooms
+  // share the name Anza (7 private, 9 triple): the number tells them apart. No room 10 in the list.
   const MA_ROOMS = [
-    { n: 2, name: 'Boilers' }, { n: 4, name: 'Crocro' },
-    { n: 5, name: 'Panorama Point', shared: true, beds: 0, note: 'female' },   // CONFIRM: beds of the female room
+    { n: 0, name: 'Tamri' }, { n: 1, name: 'Imsouane' }, { n: 2, name: 'Boilers' }, { n: 3, name: 'La Source' }, { n: 4, name: 'Crocro' },
+    { n: 5, name: 'Panorama Point', shared: true, beds: 6, note: 'female' },
     { n: 6, name: 'Safi', beds: 0, note: 'family' },                            // CONFIRM: beds of the family room
+    { n: 7, name: 'Anza' },
     { n: 8, name: 'Banana Point', shared: true, beds: 4, note: 'mixed' },
+    { n: 9, name: 'Anza', beds: 3, note: 'triple' },
     { n: 11, name: 'Tifnit' }, { n: 12, name: 'Douira' },
     { n: 13, name: 'Anchor Point', shared: true, beds: 8, note: 'mixed' },
   ];
@@ -106,7 +111,15 @@
       esu: 'ESU', essaouira: 'ESU', cmn: 'CMN', casablanca: 'CMN', tng: 'TNG', tangier: 'TNG', fez: 'FEZ', rba: 'RBA', rabat: 'RBA', lisbon: 'LIS' },
     icaoFlights: true,
     depFromArrival: true,
-    plusOneNames: true,                                   // nameless / same-name +1s are separate people on the trips too                                 // no departure airport column: RAK in → RAK out (flagged)                                    // EJU5371, EZY2621 are easyJet flights
+    plusOneNames: true,
+    productAirport: true,                                 // «Airport Transfer Morocco (Marrakesh)»: the product names the airport
+    locationColumn: /tamraght|\(ma\)/i,                   // a «Booking location» column, when the export has one
+    // What the import checks so a change on the Bookinglayer side is said out loud (14 Nov):
+    // columns the lists need (any one name of a group is enough), the product names and the packages seen so far.
+    requiredColumns: [['Accommodations'], ['Bed number'], ['Has transfer'], ['Transfers'], ['Arrives on', 'Check-in on'], ['Departure date', 'Check-out on'],
+      ['Arrival time'], ['Arrival flight'], ['Departure time'], ['Departure flight'], ['Packages'], ['Activities'], ['Diet'], ['Phone']],
+    productRe: /^airport transfer morocco\s*\(([^)]+)\)/i,       // «Airport Transfer Morocco (Agadir)» / «(Marrakesh)» in the real list
+    knownPackages: ['Weekly package Morocco', 'Weekly package Morocco (starting any day of the week)', 'Flexible Package Morocco'],                                   // nameless / same-name +1s are separate people on the trips too                                 // no departure airport column: RAK in → RAK out (flagged)                                    // EJU5371, EZY2621 are easyJet flights
     ownWayWords: /^(by\s+)?(bus|coach|ctm|supratours|taxi|car|rental car|rent a car|own car|driving|by car)$/i,
     phoneZeroCodes: ['212', '351', '34'],                 // +212 06… → +212 6…
     transferRe: /airport\s+(transfer|shuttle|pick.?up|drop.?off)/gi,

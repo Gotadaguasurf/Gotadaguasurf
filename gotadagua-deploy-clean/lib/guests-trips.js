@@ -76,8 +76,10 @@
   // only when most rows of the file are this camp's (the file is the camp's preset), and flagged.
   function campRows(all, H, cfg) {
     const idx = H.indexOf('Packages'), ia = H.indexOf('Accommodations');
+    const il = cfg.locationColumn ? H.indexOf('Booking location') : -1;   // Morocco: the export may carry the location itself
     const cell = (r, i) => i >= 0 && i < r.length ? pyStrip(r[i]) : '';
-    const v = all.slice(1).map(r => r.some(c => String(c).trim()) ? cfg.matchRow(cell(r, idx), cell(r, ia)) : null);
+    const one = r => { const loc = cell(r, il); if (il >= 0 && loc) return cfg.locationColumn.test(loc) ? (cfg.matchRow(cell(r, idx), cell(r, ia)) === 'room' ? 'room' : 'yes') : ''; return cfg.matchRow(cell(r, idx), cell(r, ia)); };
+    const v = all.slice(1).map(r => r.some(c => String(c).trim()) ? one(r) : null);
     const mine = v.filter(x => x === 'yes' || x === 'room').length, other = v.filter(x => x === '').length;
     const takeUnknown = mine > 0 && mine >= other;
     return v.map(x => x === 'unknown' ? (takeUnknown ? 'unknown' : '') : x);
@@ -163,8 +165,22 @@
   const PACKAGE_INCLUDES = slConfig().packages;
   function packageIncludes(pkg, cfg) { const s = String(pkg || ''); return conf(cfg).packages.find(x => x.re.test(s)) || null; }
 
+  // Morocco: the transfer product names the airport — «Airport Transfer Morocco (Agadir)» / «(Marrakesh)».
+  // Returns the airport code of the guest's product ('' when none or no such setting); with `seen`
+  // (the airport the flight or the location gave) a different product airport is flagged.
+  function productAirport(transfers, cfg) {
+    if (!cfg.productAirport) return '';
+    const codes = [...String(transfers || '').matchAll(/\(([^)]+)\)/g)].map(m => cfg.places[m[1].trim().toLowerCase()]).filter(Boolean);
+    return [...new Set(codes)].length === 1 ? codes[0] : '';
+  }
+
   function parse(text, fileName, exportDate, cfg) {
     cfg = conf(cfg);
+    const prodPlace = (p, flags, seen) => {
+      const ap = productAirport(p.transfers, cfg);
+      if (ap && seen && seen !== ap) { flags.push(`transfer booked for ${cfg.airportCity[ap] || ap} airport, the flight / location says ${cfg.airportCity[seen] || seen} — check`); return ''; }
+      return ap;
+    };
     const all = parseCsv(text);
     const H = (all[0] || []).map(h => h.trim());
     const idx = name => H.indexOf(name);
@@ -267,7 +283,9 @@
           if (t0 && t1 && t0 !== t1) { flags.push(`two times: ${t0} (arrival time) and ${t1} (flight field)`); time = t0; amb = true; }
           else { time = t0 || t1; amb = false; }
           if (t1 && !t0) flags.push('time taken from the flight field');
-          fl = f1; pl = pl1 || cfg.places[p.arr_loc.toLowerCase()] || cfg.airportDefault;
+          const seenA = pl1 || cfg.places[p.arr_loc.toLowerCase()] || '';
+          fl = f1; pl = seenA || prodPlace(p, flags, '') || cfg.airportDefault;
+          if (seenA) prodPlace(p, flags, seenA);            // product airport ≠ flight / location → flagged
           if (fd1 && date && (fd1[0] !== parseInt(date.slice(8), 10) || fd1[1] !== parseInt(date.slice(5, 7), 10))) {
             flags.push(`flight date ${fd1[0]}/${fd1[1]} differs from check-in ${date.slice(8)}/${date.slice(5, 7)}`); amb = true;
           }
@@ -275,7 +293,9 @@
           if (arrOnly) continue;
           date = p.co;
           const [f1, t1, pl1] = classifyField(p.dep_flight, flags, 'departure flight', cfg);
-          time = hhmm(p.dep_time) || t1; fl = f1; pl = pl1 || cfg.places[p.dep_loc.toLowerCase()] || ''; amb = false;
+          const seenD = pl1 || cfg.places[p.dep_loc.toLowerCase()] || '';
+          time = hhmm(p.dep_time) || t1; fl = f1; pl = seenD || prodPlace(p, flags, '') || ''; amb = false;
+          if (seenD) prodPlace(p, flags, seenD);
           // The export has no departure airport column: a guest who landed elsewhere than the default
           // airport (Marrakech) most likely flies out from there too — said on the trip (Morocco only).
           if (!pl && cfg.depFromArrival) {
@@ -334,6 +354,8 @@
         if (grp.time) fl = fl.filter(f => !/^no time yet/.test(f));   // one guest of the trip gave the time
         fl.sort();
         if (split) fl.push('guests of this booking travel separately');
+        // Morocco: guests of one trip whose rows name different airports (one location says Essaouira, the +1 has none).
+        if (cfg.productAirport) { const aps = [...new Set(group.map(l => l.place))]; if (aps.length > 1) fl.push(`guests of this booking: different airports in the file (${aps.join(' / ')}) — ${g0.place} kept, check`); }
         const pax = group.length; const boards = group.some(l => l.boards);
         trips.set(gkey, {
           key: gkey, kind: `airport_${d}`, date: g0.date, time: g0.time, flight: g0.flight, place: g0.place,
@@ -452,6 +474,40 @@
     return PARTNER_DOMAINS[dom] || 'partner';
   }
 
+  // ── Import warnings (Morocco, 14 Nov 2026) ─────────────────────────────
+  // What changed on the Bookinglayer side, said on the import result instead of a silent fallback:
+  //   column   a column the lists need is missing from the file
+  //   room     a room that is not in the camp's room list
+  //   product  a transfer product with a new name, or an airport the camp does not know
+  //   package  a package name not seen before
+  // Only camps with these settings (Morocco); Sri Lanka: [] — its import is unchanged.
+  function importWarnings(text, fileName, cfg) {
+    if (!cfg || !cfg.requiredColumns) return [];
+    const out = [];
+    const H = ((parseCsv(String(text || '').split(/\r?\n/, 1)[0])[0]) || []).map(h => h.trim());
+    cfg.requiredColumns.forEach(group => { if (!group.some(n => H.includes(n))) out.push({ kind: 'column', text: `Column «${group[0]}» is missing from the file — add it back in the «${cfg.preset}» tab of Bookinglayer` }); });
+    const rows = scanGuests(text, fileName, cfg).out.filter(g => OK_STATUS.has(g.booking_status));
+    const count = (m, k, name) => { const x = m.get(k) || { n: 0, names: [], seen: new Set() }; if (x.seen.has(name)) return; x.seen.add(name); x.n++; if (x.names.length < 4) x.names.push(name); m.set(k, x); };
+    const rooms = new Map(), prods = new Map(), pkgs = new Map();
+    rows.forEach(g => {
+      if (g.room_unlisted) count(rooms, g.accommodation, g.guest_name);
+      String((g.raw || {}).Transfers || '').split(/,(?![^(]*\))/).map(x => x.trim()).filter(Boolean).forEach(pr => {
+        const m = cfg.productRe ? pr.match(cfg.productRe) : null;
+        if (!m) { count(prods, `Transfer product «${pr}» is new — the app cannot tell the airport, Agadir assumed`, g.guest_name); return; }
+        const ap = cfg.places[m[1].trim().toLowerCase()];
+        if (!ap || !cfg.airports.includes(ap)) count(prods, `Transfer product «${pr}»: airport «${m[1].trim()}» is not one the camp knows`, g.guest_name);
+      });
+      String(g.packages || '').split(/,(?![^(]*\))/).map(x => x.trim()).filter(Boolean).forEach(pk => {
+        if (!(cfg.knownPackages || []).some(k => k.toLowerCase() === pk.toLowerCase())) count(pkgs, pk, g.guest_name);
+      });
+    });
+    const who = x => `${x.names.join(', ')}${x.n > x.names.length ? ` +${x.n - x.names.length}` : ''}`;
+    rooms.forEach((x, k) => out.push({ kind: 'room', text: `Room «${k}» is not in the room list (${x.n} ${x.n === 1 ? 'guest' : 'guests'}: ${who(x)}) — counted, its beds are not checked; ask Miguel to add it` }));
+    prods.forEach((x, k) => out.push({ kind: 'product', text: `${k} (${who(x)})` }));
+    pkgs.forEach((x, k) => out.push({ kind: 'package', text: `Package «${k}» was never seen before (${x.n} ${x.n === 1 ? 'guest' : 'guests'}: ${who(x)}) — check what it includes (transfer, lessons, yoga)` }));
+    return out;
+  }
+
   // ── WhatsApp message (format fixed by Miguel, 13 Nov 2026) ───────────────
   const WA_VEHICLE_LABEL = { 'Car': 'Small Car', 'Minivan': 'Minivan', 'Large Van': 'Large Van' };
   const WA_UNKNOWN = 'TBC';
@@ -478,7 +534,7 @@
   }
 
   return {
-    parseCsv, isGuestsExportHeader, parse, guestRows, guestAudit, hhmm, ymd, cleanPhone, vehicleFor, addDaysIso, weekday, weekStart, dMon,
+    parseCsv, isGuestsExportHeader, parse, guestRows, guestAudit, importWarnings, hhmm, ymd, cleanPhone, vehicleFor, addDaysIso, weekday, weekStart, dMon,
     whatsappText, whatsappDayText, whatsappUrl, OK_STATUS, DEAD_STATUS, PACKAGE_INCLUDES, packageIncludes,
   };
 });

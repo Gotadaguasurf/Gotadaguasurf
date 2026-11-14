@@ -33,31 +33,35 @@ test('morocco transport: the tab shows for the full view; the header says how Mo
   expect(errors).toEqual([]);
 });
 
-test('morocco transport: Guests import — Morocco rows only, Agadir / Marrakech prices, both legs, nothing read from HQ bookings, 31 rows = 25 guests + 6 left out', async ({ page }) => {
+test('morocco transport: Guests import — Morocco rows only, Agadir / Marrakech prices, both legs, nothing read from HQ bookings, 38 rows = 32 guests + 6 left out', async ({ page }) => {
   const hqReads = [];
   page.on('request', r => { if (/\/rest\/v1\/bookings\?.*(booking_ref=in|check_in_on=gte)/.test(r.url())) hqReads.push(r.url()); });
   const st = await openTab(page);
   await page.click('button.pill:has-text("Next week")');
   await expect(page.locator('#transportRoot .card-hint').first()).toContainText('«Semana Marrocos»');
   await page.setInputFiles('#trGuestsFile', H.CSV(H.FILE));
-  await expect(page.locator('#transportRoot')).toContainText('Airport trips from this file · 23');
-  await expect(page.locator('.tr-audit')).toContainText('31 rows in the file = 25 guests imported + 6 left out');
+  await expect(page.locator('#transportRoot')).toContainText('Airport trips from this file · 27');
+  await expect(page.locator('.tr-audit')).toContainText('38 rows in the file = 32 guests imported + 6 left out');
   await expect(page.locator('.tr-leftout')).toContainText('17 - Castelo beach mixed dorm');
   await expect(page.locator('.tr-noprice')).toHaveCount(0);
-  await expect(page.locator('.tr-noairprice')).toContainText('Nina Larsen, Guest without name (booking MA-1010) (Essaouira), Nina Larsen, Guest without name (booking MA-1010) (Essaouira): no price for this airport');
+  await expect(page.locator('.tr-noairprice')).toContainText('Nina Larsen, Guest without name (booking MA-1010) (Essaouira): no price for this airport');
   await page.click('#trImportSave');
   const imp = (await H.call(st, 'import')).body;
   const by = k => imp.p_trips.find(t => t.key === k);
   expect(by('bl:MA-1007:arr')).toMatchObject({ place: 'RAK', vehicle: 'Car', expected_price: 1200, time: '22:10', flight: 'TO3226' });
-  expect(by('bl:MA-1007:dep')).toMatchObject({ place: 'RAK', expected_price: 1200 });            // flies out from Marrakech too (flagged)
-  expect(by('bl:MA-1007:dep').flags.join(' ')).toContain('departure airport not in the file: RAK');
+  expect(by('bl:MA-1007:dep')).toMatchObject({ place: 'RAK', expected_price: 1200 });            // the product says Marrakesh
+  // Real file: «Airport Transfer Morocco (Marrakesh)», arrival location «-»: both legs from Marrakech at 1,200 (was Agadir 250).
+  expect(by('bl:MA-1027:arr')).toMatchObject({ place: 'RAK', expected_price: 1200, flight: 'EZY2621' });
+  expect(by('bl:MA-1027:dep')).toMatchObject({ place: 'RAK', expected_price: 1200 });
+  expect(by('bl:MA-1028:arr').place).toBe('RAK');                                             // the location wins, the product disagrees:
+  expect(by('bl:MA-1028:arr').flags.join(' ')).toContain('transfer booked for Agadir airport, the flight / location says Marrakech — check');
   expect(by('bl:MA-1001:arr')).toMatchObject({ place: 'AGA', pax: 2, expected_price: 250, flight: 'FR1110' });
   expect(by('bl:MA-1002:arr').flight).toBe('EJU5371');                                       // easyJet code read
   expect(by('bl:MA-1002:dep').flags.join(' ')).toContain('night departure');
   expect(by('bl:MA-1011:arr').flags.join(' ')).toContain('airport CMN is not a Morocco airport');
-  expect(imp.p_trips.filter(t => !(t.expected_price > 0)).map(t => t.key)).toEqual(['bl:MA-1010:arr', 'bl:MA-1010:dep']);   // Essaouira (in, and out like the arrival): no /prices row yet
+  expect(imp.p_trips.filter(t => !(t.expected_price > 0)).map(t => t.key)).toEqual(['bl:MA-1010:arr']);   // Essaouira arrival (no /prices row); out to Agadir as the product says: no /prices row yet
   expect(imp.p_cancel_refs).toEqual(['MA-1012']);
-  expect(imp.p_guests.length).toBe(25);
+  expect(imp.p_guests.length).toBe(32);
   expect(by('bl:MA-1025:arr')).toMatchObject({ pax: 3, guests: ['Marco Bianchi', 'Guest without name (booking MA-1025)', 'Guest without name (booking MA-1025) (2)'] });   // two nameless +1s: 3 people, never merged
   expect(imp.p_guests.find(g => g.guest_name === 'Ines Costa').phone).toBe('+212661000019');
   expect(hqReads).toEqual([]);
@@ -183,4 +187,49 @@ test('morocco transport: screenshots at 390 and 1280 — Trips, Next week, Recon
     await page.evaluate(() => TransportUI.closeModal());
   }
   expect(errors).toEqual([]);
+});
+
+// A change on the Bookinglayer side is said on the import result, one line each (coordinator, 14 Nov):
+// a missing column, a room not in the list, a transfer product with a new name or an unknown airport, a new package.
+test('morocco import: loud warnings — missing column, room not in the list, new transfer product / unknown airport, new package; Essaouira without a price', async ({ page }) => {
+  const rows = H.GT.parseCsv(fs.readFileSync(H.CSV(H.FILE), 'utf8')).filter(r => r.length > 1);
+  const head = rows[0]; const col = n => head.indexOf(n);
+  const set = (guest, name, v) => { rows.find(r => r[col('Guest')] === guest)[col(name)] = v; };
+  set('Karl Nilsson', 'Transfers', 'Airport Shuttle Tamraght');                                   // a new product name
+  set('Lisa Brown', 'Transfers', 'Airport Transfer Morocco (Casablanca), Airport Transfer Morocco (Casablanca)');   // an airport the camp does not use
+  set('Eva Novak', 'Transfers', 'Airport Transfer Morocco (Essaouira)'); set('Eva Novak', 'Has transfer', 'Yes');   // known airport, no /prices row
+  set('Lucas Dubois', 'Packages', 'Surf & Yoga Retreat Morocco');                                 // a package never seen
+  const drop = col('Bed number');
+  const csv = rows.map(r => r.filter((_, i) => i !== drop).map(c => /[",\n]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c).join(',')).join('\n');
+  await openTab(page);
+  await page.click('button.pill:has-text("Next week")');
+  await page.setInputFiles('#trGuestsFile', { name: 'ma-guests-2026-11-14.csv', mimeType: 'text/csv', buffer: Buffer.from(csv, 'utf8') });
+  const w = page.locator('.tr-impwarn');
+  await expect(w).toBeVisible();
+  const lines = await w.locator('.tr-impwarn-l').allInnerTexts();
+  expect(lines).toEqual([
+    'Column «Bed number» is missing from the file — add it back in the «Semana Marrocos» tab of Bookinglayer',
+    'Room «10 - Mirleft Private Room» is not in the room list (1 guest: Sara Ali) — counted, its beds are not checked; ask Miguel to add it',
+    'Transfer product «Airport Shuttle Tamraght» is new — the app cannot tell the airport, Agadir assumed (Karl Nilsson)',
+    'Transfer product «Airport Transfer Morocco (Casablanca)»: airport «Casablanca» is not one the camp knows (Lisa Brown)',
+    'Package «Surf & Yoga Retreat Morocco» was never seen before (1 guest: Lucas Dubois) — check what it includes (transfer, lessons, yoga)',
+  ]);
+  await expect(page.locator('.tr-noairprice')).toContainText('Eva Novak (Essaouira): no price for this airport');
+});
+
+test('morocco import: the real fixture gives one warning only (the room not in the list); Sri Lanka files give none', async () => {
+  const w = H.GT.importWarnings(fs.readFileSync(H.CSV(H.FILE), 'utf8'), H.FILE, H.CC.MA);
+  expect(w.map(x => x.kind)).toEqual(['room']);
+  const sl = fs.readFileSync(path.join(__dirname, 'fixtures', 'Bookinglayer-Guests-2026-11-07 14_23.csv'), 'utf8');
+  expect(H.GT.importWarnings(sl, 'x')).toEqual([]);
+});
+
+test('morocco import: a «Booking location» column, when the export has one, decides the camp («Tamraght Camp (MA)» in, anything else out)', () => {
+  const rows = H.GT.parseCsv(fs.readFileSync(H.CSV(H.FILE), 'utf8')).filter(r => r.length > 1);
+  rows[0].push('Booking location');
+  rows.slice(1).forEach(r => r.push(r[1] === 'Joana Silva' ? 'Surf Camp Ericeira (PT)' : r[1] === 'Sara Ali' ? 'Tamraght Camp (MA)' : r[1] === 'Ravi Perera' ? 'Surf Camp Ahamgama (LK)' : 'Tamraght Camp (MA)'));
+  const csv = rows.map(r => r.map(c => /[",\n]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c).join(',')).join('\n');
+  const a = H.GT.guestAudit(csv, 'x.csv', H.CC.MA);
+  expect(a.left.filter(x => x.kind === 'other_camp').map(x => x.name)).toEqual(['Joana Silva', 'Ravi Perera']);   // Pedro («13 - Castelo …») is in: the column says Tamraght
+  expect(a.guests).toBe(33);
 });
