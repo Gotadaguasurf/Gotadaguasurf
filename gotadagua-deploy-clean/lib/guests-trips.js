@@ -23,10 +23,17 @@
   const JUNK = new Set(['', 'n/a', 'na', '-', '--', 'none', 'no', 'no transfer', 'tbc', 'tbd', '?', 'unknown']);
   const TIME_RE = /^\s*(\d{1,2})\s*[:h.]\s*(\d{2})\s*(am|pm)?\s*$/i;
   const FLIGHT_RE = /^([A-Z][A-Z0-9]|[A-Z0-9][A-Z])\s?-?\s?(\d{1,4})[A-Z]?$/;
+  const ICAO_RE = /^([A-Z]{3})\s?-?\s?(\d{1,4})[A-Z]?$/;   // EZY2621, EJU5371 (camps with icaoFlights)
   const FLIGHT_DATE_RE = /\s+(\d{1,2})[/.](\d{1,2})(?:[/.](\d{2,4}))?\s*$/;
-  const PLACES = { cmb: 'CMB', colombo: 'CMB', bandaranaike: 'CMB', hri: 'HRI', mattala: 'HRI', agadir: 'AGA', marrakech: 'RAK', lisbon: 'LIS' };
   const TEST_NAME = /\b(test|delete after|qa)\b/i;
-  const SL_ROOMS = ['hiriketeya', 'kabalana', 'marissa', 'unawatuna', 'madiha', 'midigama', 'welligama', 'weligama', 'ahangama'];
+  // The camp's settings (lib/camp-config.js). Every function takes an optional `cfg`; without it
+  // the parser is the Sri Lanka parser of 13 Nov, unchanged.
+  function slConfig() {
+    if (typeof module === 'object' && module.exports) { try { return require('./camp-config.js').SL; } catch (_) { /* below */ } }
+    if (typeof self !== 'undefined' && self.CampConfig) return self.CampConfig.SL;
+    throw new Error('lib/camp-config.js must be loaded before lib/guests-trips.js');
+  }
+  const conf = cfg => cfg || slConfig();
   // A Guests export has these headers; the bookings export never does (HQ import guard).
   const GUESTS_HEADER_MARKERS = ['has transfer', 'arrival flight'];
 
@@ -63,13 +70,17 @@
   const pyTitle = s => s.toLowerCase().replace(/(^|[^\p{L}])(\p{L})/gu, (m, a, b) => a + b.toUpperCase());
   const pad2 = n => String(n).padStart(2, '0');
 
-  function isSriLanka(pk, acc) {
-    const p = pk.toLowerCase();
-    if (p.includes('ahangama') || p.includes('sri lanka')) return 'yes';
-    // A room of the camp is enough, whatever the package is called (13 Nov audit: a guest on a package
-    // with another name must not drop out of the lists). 'room' = Packages empty (counted in the report).
-    if (SL_ROOMS.some(r => acc.toLowerCase().includes(r))) return pk.trim() ? 'yes' : 'room';
-    return '';
+  // A room of the camp is enough, whatever the package is called (13 Nov audit: a guest on a package
+  // with another name must not drop out of the lists). 'room' = Packages empty (counted in the report).
+  // 'unknown' (Morocco): a «N - Name» room not in the camp's list and not another camp's — counted
+  // only when most rows of the file are this camp's (the file is the camp's preset), and flagged.
+  function campRows(all, H, cfg) {
+    const idx = H.indexOf('Packages'), ia = H.indexOf('Accommodations');
+    const cell = (r, i) => i >= 0 && i < r.length ? pyStrip(r[i]) : '';
+    const v = all.slice(1).map(r => r.some(c => String(c).trim()) ? cfg.matchRow(cell(r, idx), cell(r, ia)) : null);
+    const mine = v.filter(x => x === 'yes' || x === 'room').length, other = v.filter(x => x === '').length;
+    const takeUnknown = mine > 0 && mine >= other;
+    return v.map(x => x === 'unknown' ? (takeUnknown ? 'unknown' : '') : x);
   }
 
   function ymd(s) {
@@ -106,34 +117,38 @@
   function weekStart(iso) { return addDaysIso(iso, -((weekday(iso) + 1) % 7)); }
 
   // Guest phone: no spaces; drop the extra 0 after the country code (gen_from_guests.py).
-  function cleanPhone(s) {
+  function cleanPhone(s, cfg) {
     let ph = String(s || '').replace(/\s+/g, '');
-    const mm = ph.match(/^\+(41|44|33|49|43|61|353|39|31|32|48)0(\d+)$/);
+    const extra = cfg && cfg.phoneZeroCodes && cfg.phoneZeroCodes.length ? '|' + cfg.phoneZeroCodes.join('|') : '';
+    const mm = ph.match(new RegExp(`^\\+(41|44|33|49|43|61|353|39|31|32|48${extra})0(\\d+)$`));
     if (mm) ph = '+' + mm[1] + mm[2];
     return ph;
   }
 
-  function classifyField(raw, flags, label) {
+  function classifyField(raw, flags, label, cfg) {
+    cfg = conf(cfg);
     let v = pyStrip(raw);
     if (JUNK.has(v.toLowerCase())) return ['', null, '', ''];
     const t = hhmm(v);
     if (t) return ['', t, '', ''];
-    const place = PLACES[v.toLowerCase()] || '';
+    const place = cfg.places[v.toLowerCase()] || '';
     if (place) return ['', null, place, ''];
+    // «bus», «taxi»: the guest says how they come — not a flight (Morocco lists, 14 Nov).
+    if (cfg.ownWayWords && cfg.ownWayWords.test(v)) { flags.push(`${label} field says «${v}» — coming on their own? check the transfer`); return ['', null, '', '']; }
     let fd = '';
     const m = FLIGHT_DATE_RE.exec(v);
     if (m) { fd = [parseInt(m[1], 10), parseInt(m[2], 10)]; v = v.slice(0, m.index); }
     const u = v.toUpperCase().replace(/\s+/g, ' ').trim();
-    const fm = FLIGHT_RE.exec(u);
+    const fm = FLIGHT_RE.exec(u) || (cfg.icaoFlights ? ICAO_RE.exec(u) : null);
     if (fm) return [fm[1] + fm[2], null, '', fd];
     flags.push(`${label} «${raw}» not understood`);
     return ['', null, '', fd];
   }
 
-  function vehicleFor(pax, boards) {
-    const n = Number(pax) || 1;
-    let v = n <= 4 ? 'Car' : n <= 8 ? 'Minivan' : 'Large Van';
-    if (boards && v === 'Car') v = 'Minivan';
+  function vehicleFor(pax, boards, cfg) {
+    const c = conf(cfg); const n = Number(pax) || 1;
+    let v = n <= c.vehicleCaps[0] ? c.vehicles[0] : n <= c.vehicleCaps[1] ? c.vehicles[1] : c.vehicles[2];
+    if (boards && v === c.vehicles[0]) v = c.vehicles[1];
     return v;
   }
 
@@ -144,12 +159,12 @@
   // Packages that include things the Guests file does not tick (Miguel, 13 Nov: the «Sri Lanka with
   // João Kopke» week includes the airport transfer both ways, 5 surf lessons and 5 yoga lessons).
   // Add a package here and the import, Transport and Week follow.
-  const PACKAGE_INCLUDES = [
-    { re: /with\s+jo[aã]o\s+kopke/i, label: 'Sri Lanka with João Kopke', transfer: true, course: 'Standard', yoga: true },
-  ];
-  function packageIncludes(pkg) { const s = String(pkg || ''); return PACKAGE_INCLUDES.find(x => x.re.test(s)) || null; }
+  // The list lives in lib/camp-config.js (`packages`); PACKAGE_INCLUDES is Sri Lanka's.
+  const PACKAGE_INCLUDES = slConfig().packages;
+  function packageIncludes(pkg, cfg) { const s = String(pkg || ''); return conf(cfg).packages.find(x => x.re.test(s)) || null; }
 
-  function parse(text, fileName, exportDate) {
+  function parse(text, fileName, exportDate, cfg) {
+    cfg = conf(cfg);
     const all = parseCsv(text);
     const H = (all[0] || []).map(h => h.trim());
     const idx = name => H.indexOf(name);
@@ -164,16 +179,18 @@
 
     const report = {}; const bump = k => { report[k] = (report[k] || 0) + 1; };
     const people = new Map(); const skipped = []; const other = [];
+    const verdict = campRows(all, H, cfg);
     all.slice(1).forEach((r, n) => {
       if (!r.some(c => String(c).trim())) return;
       const line = n + 2;
-      const name = get(r, 'Guest').replace(/\s+/g, ' ').trim();
       const ref = get(r, 'Booking', 'Booking #');
+      // A +1 with no name travels as «Guest without name (booking …)», the name the weekly lists give him.
+      const name = get(r, 'Guest').replace(/\s+/g, ' ').trim() || `Guest without name (booking ${ref || '?'})`;
       const st = get(r, 'Booking status').toLowerCase().replace(/ /g, '_');
-      const pk = get(r, 'Packages'), acc = get(r, 'Accommodations');
-      const loc = isSriLanka(pk, acc);
+      const loc = verdict[n];
       if (!loc) { bump('other location'); other.push(name); return; }
-      if (loc === 'room') bump('Sri Lanka by room name (Packages empty)');
+      if (loc === 'room') bump(`${cfg.name} by room name (Packages empty)`);
+      if (loc === 'unknown') bump(`${cfg.name} room not in the room list (kept: the file is ${cfg.name}'s)`);
       if (TEST_NAME.test(name)) { bump('test booking'); skipped.push([line, name, 'test']); return; }
       const key = ref + '\u0000' + name.toLowerCase();
       if (people.has(key)) { bump('duplicate row'); return; }
@@ -198,11 +215,11 @@
       if (DEAD_STATUS.has(p.status)) { cancels.add(p.ref); bump('cancelled/expired (cancels planned trips)'); continue; }
       if (!OK_STATUS.has(p.status)) { bump(`status ${p.status} (ignored)`); continue; }
       refsActive.add(p.ref);
-      const incl = packageIncludes(p.pkg);
+      const incl = packageIncludes(p.pkg, cfg);
       if (!p.has && !(incl && incl.transfer)) {
         bump('no transfer');
         const dflags = [];
-        const [, t1, , fd1] = classifyField(p.arr_flight, dflags, 'flight');
+        const [, t1, , fd1] = classifyField(p.arr_flight, dflags, 'flight', cfg);
         let t0 = hhmm(p.arr_time); if (t0 === '00:00') t0 = null;
         if (t1 && t0 && t1 !== t0) dflags.push(`two times ${t0} / ${t1}`);
         else if (t1) dflags.push(`time ${t1} typed in the flight field`);
@@ -213,8 +230,8 @@
         continue;
       }
       // A package that includes the airport transfer both ways counts as one booked transfer each way.
-      const nProducts = incl && incl.transfer ? Math.max(1, (p.transfers.match(/airport transfer/gi) || []).length)
-        : hasTransfersCol ? (p.transfers.match(/airport transfer/gi) || []).length : null;
+      const nProducts = incl && incl.transfer ? Math.max(1, (p.transfers.match(cfg.transferRe) || []).length)
+        : hasTransfersCol ? (p.transfers.match(cfg.transferRe) || []).length : null;
       const boards = p.transfers.toLowerCase().includes('surfboard') || p.tcomment.toLowerCase().includes('surfboard');
       const comment = p.tcomment.toLowerCase();
       // One leg only when the comment says so: «only» (or «just need») and the direction in the
@@ -236,26 +253,33 @@
           else if (nProducts === 0) flags.push('Has transfer = Yes but no transfer product listed');
           if (incl && incl.transfer && !p.has) flags.push(`transfer included in the package «${incl.label}»`);
           date = p.ci;
-          const [f1, t1, pl1, fd1] = classifyField(p.arr_flight, flags, 'flight');
+          const [f1, t1, pl1, fd1] = classifyField(p.arr_flight, flags, 'flight', cfg);
           let t0 = hhmm(p.arr_time); if (t0 === '00:00') t0 = null;
           if (t0 && t1 && t0 !== t1) { flags.push(`two times: ${t0} (arrival time) and ${t1} (flight field)`); time = t0; amb = true; }
           else { time = t0 || t1; amb = false; }
           if (t1 && !t0) flags.push('time taken from the flight field');
-          fl = f1; pl = pl1 || PLACES[p.arr_loc.toLowerCase()] || 'CMB';
+          fl = f1; pl = pl1 || cfg.places[p.arr_loc.toLowerCase()] || cfg.airportDefault;
           if (fd1 && date && (fd1[0] !== parseInt(date.slice(8), 10) || fd1[1] !== parseInt(date.slice(5, 7), 10))) {
             flags.push(`flight date ${fd1[0]}/${fd1[1]} differs from check-in ${date.slice(8)}/${date.slice(5, 7)}`); amb = true;
           }
         } else {
           if (arrOnly) continue;
           date = p.co;
-          const [f1, t1, pl1] = classifyField(p.dep_flight, flags, 'departure flight');
-          time = hhmm(p.dep_time) || t1; fl = f1; pl = pl1 || PLACES[p.dep_loc.toLowerCase()] || 'CMB'; amb = false;
+          const [f1, t1, pl1] = classifyField(p.dep_flight, flags, 'departure flight', cfg);
+          time = hhmm(p.dep_time) || t1; fl = f1; pl = pl1 || cfg.places[p.dep_loc.toLowerCase()] || ''; amb = false;
+          // The export has no departure airport column: a guest who landed elsewhere than the default
+          // airport (Marrakech) most likely flies out from there too — said on the trip (Morocco only).
+          if (!pl && cfg.depFromArrival) {
+            const ap = classifyField(p.arr_flight, [], 'flight', cfg)[2] || cfg.places[p.arr_loc.toLowerCase()] || '';
+            if (ap && ap !== cfg.airportDefault) { pl = ap; flags.push(`departure airport not in the file: ${ap}, like the arrival — check`); }
+          }
+          pl = pl || cfg.airportDefault;
         }
         // No check-in / check-out date → no trip (camp_trips.trip_date is NOT NULL: one such leg
         // aborted the whole import). The guest shows under «Left out» with «no … date».
         if (!date) { bump(`transfer without a ${direction === 'arrival' ? 'check-in' : 'check-out'} date (no trip)`); continue; }
         if (direction === 'departure' && incl && incl.transfer && !p.has) flags.push(`transfer included in the package «${incl.label}»`);
-        if (pl !== 'CMB' && pl !== 'HRI') { flags.push(`airport ${pl} is not a Sri Lanka airport`); amb = true; }
+        if (!cfg.airports.includes(pl)) { flags.push(`airport ${pl} is not a ${cfg.name} airport`); amb = true; }
         // The guest's own words beat our guess (13 Nov: «Don't need airport transfer, I'll arrive a day earlier»).
         if (/\b(don.?t|do not|no) need\b|\bno transfer\b|\bnot needed\b|\bcancel/i.test(p.tcomment)) { flags.push(`guest says: «${p.tcomment.trim()}» — check if this transfer is still needed`); amb = true; }
         if (!time) flags.push('no time yet: ask the guest');
@@ -266,7 +290,7 @@
           flags.push(`night arrival: lands ${time} on ${strfADB(date)}, driver leaves camp ${strfADB(addDaysIso(date, -1))} evening — confirm the night`); amb = true;
         }
         const charge = (nProducts || 0) >= 1 ? 'bookinglayer' : null;
-        legs.push({ charge, ref: p.ref, direction, date, time: time || null, flight: fl, place: pl, guest: p.name, phone: cleanPhone(p.phone), co: p.co,
+        legs.push({ charge, ref: p.ref, direction, date, time: time || null, flight: fl, place: pl, guest: p.name, phone: cleanPhone(p.phone, cfg), co: p.co,
           boards, flags, ambiguous: amb, line: p.line });
       }
     }
@@ -309,7 +333,7 @@
           csv_lines: group.map(l => l.line),
           // app fields (not in the Python output)
           booking_ref: ref, booking_checkout: g0.co || null, phone: (group.find(l => l.phone) || {}).phone || '',
-          vehicle: vehicleFor(pax, boards),
+          vehicle: vehicleFor(pax, boards, cfg),
         });
       }
     }
@@ -344,19 +368,21 @@
   // guestRows = the rows to store. guestAudit = the same pass with every row of the file accounted
   // for: rows in the file = guests to import + rows left out, each with its reason (nobody lost
   // without a line on the import screen).
-  function guestRows(text, fileName) { return scanGuests(text, fileName).out; }
-  function guestAudit(text, fileName) {
-    const { out, left, total } = scanGuests(text, fileName);
+  function guestRows(text, fileName, cfg) { return scanGuests(text, fileName, cfg).out; }
+  function guestAudit(text, fileName, cfg) {
+    const { out, left, total } = scanGuests(text, fileName, cfg);
     const live = out.filter(g => OK_STATUS.has(g.booking_status) && g.check_in && g.check_out);
     out.filter(g => !OK_STATUS.has(g.booking_status)).forEach(g => left.push({ line: g.csv_line, name: g.guest_name, ref: g.booking_ref, kind: DEAD_STATUS.has(g.booking_status) ? 'cancelled' : 'status', reason: `status «${g.booking_status.replace(/_/g, ' ') || 'empty'}»` }));
     out.filter(g => OK_STATUS.has(g.booking_status) && !(g.check_in && g.check_out)).forEach(g => left.push({ line: g.csv_line, name: g.guest_name, ref: g.booking_ref, kind: 'no_dates', reason: 'no check-in or check-out date: on no list' }));
     left.sort((a, b) => a.line - b.line);
     return { rows: total, guests: live.length, left, renamed: out.filter(g => g.renamed).map(g => ({ line: g.csv_line, name: g.guest_name, ref: g.booking_ref })) };
   }
-  function scanGuests(text, fileName) {
+  function scanGuests(text, fileName, cfg) {
+    cfg = conf(cfg);
     const left = []; let total = 0;
     const all = parseCsv(text);
     const H = (all[0] || []).map(h => h.trim());
+    const verdict = campRows(all, H, cfg);
     const nth = (name, k) => { let c = -1; for (let i = 0; i < H.length; i++) if (H[i] === name && ++c === k) return i; return -1; };
     const val = (r, name, k = 0) => { const i = nth(name, k); return i >= 0 && i < r.length ? pyStrip(r[i]) : ''; };
     const get = (r, ...names) => { for (const n of names) if (H.includes(n)) return val(r, n); return ''; };
@@ -367,7 +393,7 @@
       let rawName = get(r, 'Guest').replace(/\s+/g, ' ').trim();
       const ref = get(r, 'Booking', 'Booking #');
       const leave = (kind, reason) => left.push({ line: n + 2, name: rawName || '(no name)', ref, kind, reason });
-      if (!isSriLanka(get(r, 'Packages'), get(r, 'Accommodations'))) { leave('other_camp', `other camp (${get(r, 'Accommodations') || get(r, 'Packages') || 'no room, no package'})`); return; }
+      if (!verdict[n]) { leave('other_camp', `other camp (${get(r, 'Accommodations') || get(r, 'Packages') || 'no room, no package'})`); return; }
       if (TEST_NAME.test(rawName)) { leave('test', 'test booking'); return; }
       // The +1 of a booking can come with no name, or with the same name as the booker. Only a row
       // that repeats name, dates, room and bed is a duplicate; any other one is another person.
@@ -388,7 +414,7 @@
       const nights = parseInt(get(r, 'Nights'), 10);
       out.push({
         csv_line: n + 2, booking_ref: ref, guest_name: (isUpper(rawName) || isLower(rawName)) ? pyTitle(rawName) : rawName,
-        guest_key: rawName.toLowerCase(), phone: cleanPhone(get(r, 'Phone')),
+        guest_key: rawName.toLowerCase(), phone: cleanPhone(get(r, 'Phone'), cfg),
         week_start: ci ? weekStart(ci) : null, check_in: ci || null, check_out: co || null,
         accommodation: get(r, 'Accommodations'), bed_number: get(r, 'Bed number'), packages: get(r, 'Packages'),
         activities: get(r, 'Activities'), level: get(r, 'Level'),
@@ -399,7 +425,7 @@
         has_transfer: get(r, 'Has transfer').toLowerCase() === 'yes',
         booking_status: get(r, 'Booking status').toLowerCase().replace(/ /g, '_'),
         booking_due: dueOf(get(r, 'Booking due')), email: get(r, 'Email'),
-        ...(renamed ? { renamed: true } : {}), raw,
+        ...(renamed ? { renamed: true } : {}), ...(verdict[n] === 'unknown' ? { room_unlisted: true } : {}), raw,
       });
     });
     // Partner («don't charge»): Booking due > 0 means a partner collects (gen_from_guests.py);
@@ -420,7 +446,8 @@
   // ── WhatsApp message (format fixed by Miguel, 13 Nov 2026) ───────────────
   const WA_VEHICLE_LABEL = { 'Car': 'Small Car', 'Minivan': 'Minivan', 'Large Van': 'Large Van' };
   const WA_UNKNOWN = 'TBC';
-  function whatsappText(t) {
+  function whatsappText(t, cfg) {
+    const c = conf(cfg); const lbl = cfg ? c.waVehicle : WA_VEHICLE_LABEL;
     const dep = t.kind === 'airport_departure';
     const pax = Number(t.pax) || 1;
     const time = (dep && t.pickup_time) ? t.pickup_time : t.trip_time;
@@ -432,10 +459,10 @@
       `Flight Number: ${t.flight || WA_UNKNOWN}`,
       `Time: ${time || WA_UNKNOWN}`,
       `Date: ${dMon(t.trip_date)}`,
-      WA_VEHICLE_LABEL[t.vehicle] || t.vehicle || WA_VEHICLE_LABEL[vehicleFor(pax, false)],
+      lbl[t.vehicle] || t.vehicle || lbl[vehicleFor(pax, false, cfg)],
     ].join('\n');
   }
-  function whatsappDayText(trips) { return trips.map(whatsappText).join('\n\n'); }
+  function whatsappDayText(trips, cfg) { return trips.map(t => whatsappText(t, cfg)).join('\n\n'); }
   function whatsappUrl(phone, text) {
     const digits = String(phone || '').replace(/\D/g, '');
     return `https://wa.me/${digits}?text=${encodeURIComponent(text)}`;
