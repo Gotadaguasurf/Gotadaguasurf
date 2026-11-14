@@ -1,0 +1,965 @@
+{
+ "days": {
+  "2026-11-07": {
+   "arrivals": [
+    "Clara Schmidt",
+    "Yuki Tanaka"
+   ],
+   "breakfast": 0,
+   "departures": [],
+   "dinner": 2,
+   "room_outs": []
+  },
+  "2026-11-08": {
+   "arrivals": [],
+   "breakfast": 2,
+   "departures": [],
+   "dinner": 2,
+   "room_outs": []
+  },
+  "2026-11-09": {
+   "arrivals": [],
+   "breakfast": 2,
+   "departures": [],
+   "dinner": 2,
+   "room_outs": []
+  },
+  "2026-11-10": {
+   "arrivals": [],
+   "breakfast": 2,
+   "departures": [],
+   "dinner": 2,
+   "room_outs": []
+  },
+  "2026-11-11": {
+   "arrivals": [
+    "Rui Alves"
+   ],
+   "breakfast": 2,
+   "departures": [],
+   "dinner": 3,
+   "room_outs": []
+  },
+  "2026-11-12": {
+   "arrivals": [
+    "Pieter de Vries"
+   ],
+   "breakfast": 3,
+   "departures": [],
+   "dinner": 4,
+   "room_outs": []
+  },
+  "2026-11-13": {
+   "arrivals": [
+    "Tom Baker"
+   ],
+   "breakfast": 4,
+   "departures": [],
+   "dinner": 5,
+   "room_outs": []
+  },
+  "2026-11-14": {
+   "arrivals": [
+    "Ben Clarke",
+    "Guest without name (booking MA-1010)",
+    "Jonas Weber",
+    "Karl Nilsson",
+    "Lena Hoffmann",
+    "Lucas Dubois",
+    "Nina Larsen",
+    "Sophie Martin"
+   ],
+   "breakfast": 5,
+   "departures": [
+    "Yuki Tanaka"
+   ],
+   "dinner": 12,
+   "room_outs": [
+    {
+     "bed": "",
+     "name": "Yuki Tanaka",
+     "room": "11",
+     "why": "leaves"
+    },
+    {
+     "bed": "2",
+     "name": "Clara Schmidt",
+     "room": "13",
+     "why": "bed_change"
+    },
+    {
+     "bed": "3",
+     "name": "Pieter de Vries",
+     "room": "13",
+     "why": "move"
+    },
+    {
+     "bed": "4",
+     "name": "Rui Alves",
+     "room": "8",
+     "why": "move"
+    }
+   ]
+  },
+  "2026-11-15": {
+   "arrivals": [
+    "Lisa Brown",
+    "Marta Rossi",
+    "Max Müller"
+   ],
+   "breakfast": 12,
+   "departures": [],
+   "dinner": 15,
+   "room_outs": []
+  },
+  "2026-11-16": {
+   "arrivals": [
+    "Oliver Smith"
+   ],
+   "breakfast": 15,
+   "departures": [],
+   "dinner": 16,
+   "room_outs": []
+  },
+  "2026-11-17": {
+   "arrivals": [
+    "Sara Ali"
+   ],
+   "breakfast": 16,
+   "departures": [],
+   "dinner": 17,
+   "room_outs": []
+  },
+  "2026-11-18": {
+   "arrivals": [
+    "Emma Johnson",
+    "Eva Novak"
+   ],
+   "breakfast": 17,
+   "departures": [
+    "Rui Alves"
+   ],
+   "dinner": 18,
+   "room_outs": [
+    {
+     "bed": "7",
+     "name": "Rui Alves",
+     "room": "13",
+     "why": "leaves"
+    }
+   ]
+  },
+  "2026-11-19": {
+   "arrivals": [],
+   "breakfast": 18,
+   "departures": [
+    "Pieter de Vries"
+   ],
+   "dinner": 17,
+   "room_outs": [
+    {
+     "bed": "",
+     "name": "Pieter de Vries",
+     "room": "6",
+     "why": "leaves"
+    }
+   ]
+  },
+  "2026-11-20": {
+   "arrivals": [],
+   "breakfast": 17,
+   "departures": [
+    "Max Müller",
+    "Oliver Smith",
+    "Tom Baker"
+   ],
+   "dinner": 14,
+   "room_outs": [
+    {
+     "bed": "",
+     "name": "Oliver Smith",
+     "room": "11",
+     "why": "leaves"
+    },
+    {
+     "bed": "6",
+     "name": "Max Müller",
+     "room": "13",
+     "why": "leaves"
+    },
+    {
+     "bed": "2",
+     "name": "Tom Baker",
+     "room": "8",
+     "why": "leaves"
+    }
+   ]
+  },
+  "2026-11-21": {
+   "arrivals": [],
+   "breakfast": 14,
+   "departures": [
+    "Ben Clarke",
+    "Clara Schmidt",
+    "Emma Johnson",
+    "Guest without name (booking MA-1010)",
+    "Jonas Weber",
+    "Lena Hoffmann",
+    "Lisa Brown",
+    "Lucas Dubois",
+    "Nina Larsen",
+    "Sara Ali",
+    "Sophie Martin"
+   ],
+   "dinner": 3,
+   "room_outs": [
+    {
+     "bed": "",
+     "name": "Ben Clarke",
+     "room": "",
+     "why": "leaves"
+    },
+    {
+     "bed": "",
+     "name": "Emma Johnson",
+     "room": "12",
+     "why": "leaves"
+    },
+    {
+     "bed": "4",
+     "name": "Lisa Brown",
+     "room": "13",
+     "why": "leaves"
+    },
+    {
+     "bed": "5",
+     "name": "Clara Schmidt",
+     "room": "13",
+     "why": "leaves"
+    },
+    {
+     "bed": "",
+     "name": "Lucas Dubois",
+     "room": "2",
+     "why": "leaves"
+    },
+    {
+     "bed": "",
+     "name": "Jonas Weber",
+     "room": "4",
+     "why": "leaves"
+    },
+    {
+     "bed": "",
+     "name": "Lena Hoffmann",
+     "room": "4",
+     "why": "leaves"
+    },
+    {
+     "bed": "",
+     "name": "Guest without name (booking MA-1010)",
+     "room": "6",
+     "why": "leaves"
+    },
+    {
+     "bed": "",
+     "name": "Nina Larsen",
+     "room": "6",
+     "why": "leaves"
+    },
+    {
+     "bed": "1",
+     "name": "Sophie Martin",
+     "room": "8",
+     "why": "leaves"
+    },
+    {
+     "bed": "",
+     "name": "Sara Ali",
+     "room": "9",
+     "why": "leaves"
+    }
+   ]
+  },
+  "2026-11-22": {
+   "arrivals": [],
+   "breakfast": 3,
+   "departures": [
+    "Karl Nilsson",
+    "Marta Rossi"
+   ],
+   "dinner": 1,
+   "room_outs": [
+    {
+     "bed": "1",
+     "name": "Karl Nilsson",
+     "room": "13",
+     "why": "leaves"
+    },
+    {
+     "bed": "1",
+     "name": "Marta Rossi",
+     "room": "5",
+     "why": "leaves"
+    }
+   ]
+  },
+  "2026-11-23": {
+   "arrivals": [],
+   "breakfast": 1,
+   "departures": [],
+   "dinner": 1,
+   "room_outs": []
+  },
+  "2026-11-24": {
+   "arrivals": [],
+   "breakfast": 1,
+   "departures": [],
+   "dinner": 1,
+   "room_outs": []
+  },
+  "2026-11-25": {
+   "arrivals": [],
+   "breakfast": 1,
+   "departures": [
+    "Eva Novak"
+   ],
+   "dinner": 0,
+   "room_outs": [
+    {
+     "bed": "3",
+     "name": "Eva Novak",
+     "room": "8",
+     "why": "leaves"
+    }
+   ]
+  }
+ },
+ "file": "ma-guests-2026-11-15.csv",
+ "guests": [
+  {
+   "booking": "MA-1006",
+   "check_in": "2026-11-07",
+   "check_out": "2026-11-14",
+   "name": "Clara Schmidt"
+  },
+  {
+   "booking": "MA-1020",
+   "check_in": "2026-11-07",
+   "check_out": "2026-11-14",
+   "name": "Yuki Tanaka"
+  },
+  {
+   "booking": "MA-1023",
+   "check_in": "2026-11-11",
+   "check_out": "2026-11-18",
+   "name": "Rui Alves"
+  },
+  {
+   "booking": "MA-1005",
+   "check_in": "2026-11-12",
+   "check_out": "2026-11-19",
+   "name": "Pieter de Vries"
+  },
+  {
+   "booking": "MA-1003",
+   "check_in": "2026-11-13",
+   "check_out": "2026-11-20",
+   "name": "Tom Baker"
+  },
+  {
+   "booking": "MA-1001",
+   "check_in": "2026-11-14",
+   "check_out": "2026-11-21",
+   "name": "Jonas Weber"
+  },
+  {
+   "booking": "MA-1001",
+   "check_in": "2026-11-14",
+   "check_out": "2026-11-21",
+   "name": "Lena Hoffmann"
+  },
+  {
+   "booking": "MA-1002",
+   "check_in": "2026-11-14",
+   "check_out": "2026-11-21",
+   "name": "Sophie Martin"
+  },
+  {
+   "booking": "MA-1009",
+   "check_in": "2026-11-14",
+   "check_out": "2026-11-21",
+   "name": "Lucas Dubois"
+  },
+  {
+   "booking": "MA-1010",
+   "check_in": "2026-11-14",
+   "check_out": "2026-11-21",
+   "name": "Guest without name (booking MA-1010)"
+  },
+  {
+   "booking": "MA-1010",
+   "check_in": "2026-11-14",
+   "check_out": "2026-11-21",
+   "name": "Nina Larsen"
+  },
+  {
+   "booking": "MA-1011",
+   "check_in": "2026-11-14",
+   "check_out": "2026-11-22",
+   "name": "Karl Nilsson"
+  },
+  {
+   "booking": "MA-1016",
+   "check_in": "2026-11-14",
+   "check_out": "2026-11-21",
+   "name": "Clara Schmidt"
+  },
+  {
+   "booking": "MA-1021",
+   "check_in": "2026-11-14",
+   "check_out": "2026-11-21",
+   "name": "Ben Clarke"
+  },
+  {
+   "booking": "MA-1004",
+   "check_in": "2026-11-15",
+   "check_out": "2026-11-22",
+   "name": "Marta Rossi"
+  },
+  {
+   "booking": "MA-1018",
+   "check_in": "2026-11-15",
+   "check_out": "2026-11-20",
+   "name": "Max Müller"
+  },
+  {
+   "booking": "MA-1022",
+   "check_in": "2026-11-15",
+   "check_out": "2026-11-21",
+   "name": "Lisa Brown"
+  },
+  {
+   "booking": "MA-1007",
+   "check_in": "2026-11-16",
+   "check_out": "2026-11-20",
+   "name": "Oliver Smith"
+  },
+  {
+   "booking": "MA-1017",
+   "check_in": "2026-11-17",
+   "check_out": "2026-11-21",
+   "name": "Sara Ali"
+  },
+  {
+   "booking": "MA-1008",
+   "check_in": "2026-11-18",
+   "check_out": "2026-11-21",
+   "name": "Emma Johnson"
+  },
+  {
+   "booking": "MA-1024",
+   "check_in": "2026-11-18",
+   "check_out": "2026-11-25",
+   "name": "Eva Novak"
+  }
+ ],
+ "left_out": [
+  {
+   "line": 16,
+   "name": "Hannah Becker",
+   "reason": "cancelled"
+  },
+  {
+   "line": 17,
+   "name": "Test booking delete after",
+   "reason": "test"
+  },
+  {
+   "line": 18,
+   "name": "Joana Silva",
+   "reason": "other_camp"
+  },
+  {
+   "line": 19,
+   "name": "Ravi Perera",
+   "reason": "other_camp"
+  },
+  {
+   "line": 22,
+   "name": "Max Müller",
+   "reason": "duplicate"
+  }
+ ],
+ "nights": {
+  "2026-11-07": {
+   "beds": {
+    "11|": [
+     "Yuki Tanaka"
+    ],
+    "13|2": [
+     "Clara Schmidt"
+    ]
+   },
+   "in_camp": 2,
+   "no_room": []
+  },
+  "2026-11-08": {
+   "beds": {
+    "11|": [
+     "Yuki Tanaka"
+    ],
+    "13|2": [
+     "Clara Schmidt"
+    ]
+   },
+   "in_camp": 2,
+   "no_room": []
+  },
+  "2026-11-09": {
+   "beds": {
+    "11|": [
+     "Yuki Tanaka"
+    ],
+    "13|2": [
+     "Clara Schmidt"
+    ]
+   },
+   "in_camp": 2,
+   "no_room": []
+  },
+  "2026-11-10": {
+   "beds": {
+    "11|": [
+     "Yuki Tanaka"
+    ],
+    "13|2": [
+     "Clara Schmidt"
+    ]
+   },
+   "in_camp": 2,
+   "no_room": []
+  },
+  "2026-11-11": {
+   "beds": {
+    "11|": [
+     "Yuki Tanaka"
+    ],
+    "13|2": [
+     "Clara Schmidt"
+    ],
+    "8|4": [
+     "Rui Alves"
+    ]
+   },
+   "in_camp": 3,
+   "no_room": []
+  },
+  "2026-11-12": {
+   "beds": {
+    "11|": [
+     "Yuki Tanaka"
+    ],
+    "13|2": [
+     "Clara Schmidt"
+    ],
+    "13|3": [
+     "Pieter de Vries"
+    ],
+    "8|4": [
+     "Rui Alves"
+    ]
+   },
+   "in_camp": 4,
+   "no_room": []
+  },
+  "2026-11-13": {
+   "beds": {
+    "11|": [
+     "Yuki Tanaka"
+    ],
+    "13|2": [
+     "Clara Schmidt"
+    ],
+    "13|3": [
+     "Pieter de Vries"
+    ],
+    "8|2": [
+     "Tom Baker"
+    ],
+    "8|4": [
+     "Rui Alves"
+    ]
+   },
+   "in_camp": 5,
+   "no_room": []
+  },
+  "2026-11-14": {
+   "beds": {
+    "13|1": [
+     "Karl Nilsson"
+    ],
+    "13|5": [
+     "Clara Schmidt"
+    ],
+    "13|7": [
+     "Rui Alves"
+    ],
+    "2|": [
+     "Lucas Dubois"
+    ],
+    "4|": [
+     "Jonas Weber",
+     "Lena Hoffmann"
+    ],
+    "6|": [
+     "Guest without name (booking MA-1010)",
+     "Nina Larsen",
+     "Pieter de Vries"
+    ],
+    "8|1": [
+     "Sophie Martin"
+    ],
+    "8|2": [
+     "Tom Baker"
+    ]
+   },
+   "in_camp": 12,
+   "no_room": [
+    "Ben Clarke"
+   ]
+  },
+  "2026-11-15": {
+   "beds": {
+    "13|1": [
+     "Karl Nilsson"
+    ],
+    "13|4": [
+     "Lisa Brown"
+    ],
+    "13|5": [
+     "Clara Schmidt"
+    ],
+    "13|6": [
+     "Max Müller"
+    ],
+    "13|7": [
+     "Rui Alves"
+    ],
+    "2|": [
+     "Lucas Dubois"
+    ],
+    "4|": [
+     "Jonas Weber",
+     "Lena Hoffmann"
+    ],
+    "5|1": [
+     "Marta Rossi"
+    ],
+    "6|": [
+     "Guest without name (booking MA-1010)",
+     "Nina Larsen",
+     "Pieter de Vries"
+    ],
+    "8|1": [
+     "Sophie Martin"
+    ],
+    "8|2": [
+     "Tom Baker"
+    ]
+   },
+   "in_camp": 15,
+   "no_room": [
+    "Ben Clarke"
+   ]
+  },
+  "2026-11-16": {
+   "beds": {
+    "11|": [
+     "Oliver Smith"
+    ],
+    "13|1": [
+     "Karl Nilsson"
+    ],
+    "13|4": [
+     "Lisa Brown"
+    ],
+    "13|5": [
+     "Clara Schmidt"
+    ],
+    "13|6": [
+     "Max Müller"
+    ],
+    "13|7": [
+     "Rui Alves"
+    ],
+    "2|": [
+     "Lucas Dubois"
+    ],
+    "4|": [
+     "Jonas Weber",
+     "Lena Hoffmann"
+    ],
+    "5|1": [
+     "Marta Rossi"
+    ],
+    "6|": [
+     "Guest without name (booking MA-1010)",
+     "Nina Larsen",
+     "Pieter de Vries"
+    ],
+    "8|1": [
+     "Sophie Martin"
+    ],
+    "8|2": [
+     "Tom Baker"
+    ]
+   },
+   "in_camp": 16,
+   "no_room": [
+    "Ben Clarke"
+   ]
+  },
+  "2026-11-17": {
+   "beds": {
+    "11|": [
+     "Oliver Smith"
+    ],
+    "13|1": [
+     "Karl Nilsson"
+    ],
+    "13|4": [
+     "Lisa Brown"
+    ],
+    "13|5": [
+     "Clara Schmidt"
+    ],
+    "13|6": [
+     "Max Müller"
+    ],
+    "13|7": [
+     "Rui Alves"
+    ],
+    "2|": [
+     "Lucas Dubois"
+    ],
+    "4|": [
+     "Jonas Weber",
+     "Lena Hoffmann"
+    ],
+    "5|1": [
+     "Marta Rossi"
+    ],
+    "6|": [
+     "Guest without name (booking MA-1010)",
+     "Nina Larsen",
+     "Pieter de Vries"
+    ],
+    "8|1": [
+     "Sophie Martin"
+    ],
+    "8|2": [
+     "Tom Baker"
+    ],
+    "9|": [
+     "Sara Ali"
+    ]
+   },
+   "in_camp": 17,
+   "no_room": [
+    "Ben Clarke"
+   ]
+  },
+  "2026-11-18": {
+   "beds": {
+    "11|": [
+     "Oliver Smith"
+    ],
+    "12|": [
+     "Emma Johnson"
+    ],
+    "13|1": [
+     "Karl Nilsson"
+    ],
+    "13|4": [
+     "Lisa Brown"
+    ],
+    "13|5": [
+     "Clara Schmidt"
+    ],
+    "13|6": [
+     "Max Müller"
+    ],
+    "2|": [
+     "Lucas Dubois"
+    ],
+    "4|": [
+     "Jonas Weber",
+     "Lena Hoffmann"
+    ],
+    "5|1": [
+     "Marta Rossi"
+    ],
+    "6|": [
+     "Guest without name (booking MA-1010)",
+     "Nina Larsen",
+     "Pieter de Vries"
+    ],
+    "8|1": [
+     "Sophie Martin"
+    ],
+    "8|2": [
+     "Tom Baker"
+    ],
+    "8|3": [
+     "Eva Novak"
+    ],
+    "9|": [
+     "Sara Ali"
+    ]
+   },
+   "in_camp": 18,
+   "no_room": [
+    "Ben Clarke"
+   ]
+  },
+  "2026-11-19": {
+   "beds": {
+    "11|": [
+     "Oliver Smith"
+    ],
+    "12|": [
+     "Emma Johnson"
+    ],
+    "13|1": [
+     "Karl Nilsson"
+    ],
+    "13|4": [
+     "Lisa Brown"
+    ],
+    "13|5": [
+     "Clara Schmidt"
+    ],
+    "13|6": [
+     "Max Müller"
+    ],
+    "2|": [
+     "Lucas Dubois"
+    ],
+    "4|": [
+     "Jonas Weber",
+     "Lena Hoffmann"
+    ],
+    "5|1": [
+     "Marta Rossi"
+    ],
+    "6|": [
+     "Guest without name (booking MA-1010)",
+     "Nina Larsen"
+    ],
+    "8|1": [
+     "Sophie Martin"
+    ],
+    "8|2": [
+     "Tom Baker"
+    ],
+    "8|3": [
+     "Eva Novak"
+    ],
+    "9|": [
+     "Sara Ali"
+    ]
+   },
+   "in_camp": 17,
+   "no_room": [
+    "Ben Clarke"
+   ]
+  },
+  "2026-11-20": {
+   "beds": {
+    "12|": [
+     "Emma Johnson"
+    ],
+    "13|1": [
+     "Karl Nilsson"
+    ],
+    "13|4": [
+     "Lisa Brown"
+    ],
+    "13|5": [
+     "Clara Schmidt"
+    ],
+    "2|": [
+     "Lucas Dubois"
+    ],
+    "4|": [
+     "Jonas Weber",
+     "Lena Hoffmann"
+    ],
+    "5|1": [
+     "Marta Rossi"
+    ],
+    "6|": [
+     "Guest without name (booking MA-1010)",
+     "Nina Larsen"
+    ],
+    "8|1": [
+     "Sophie Martin"
+    ],
+    "8|3": [
+     "Eva Novak"
+    ],
+    "9|": [
+     "Sara Ali"
+    ]
+   },
+   "in_camp": 14,
+   "no_room": [
+    "Ben Clarke"
+   ]
+  },
+  "2026-11-21": {
+   "beds": {
+    "13|1": [
+     "Karl Nilsson"
+    ],
+    "5|1": [
+     "Marta Rossi"
+    ],
+    "8|3": [
+     "Eva Novak"
+    ]
+   },
+   "in_camp": 3,
+   "no_room": []
+  },
+  "2026-11-22": {
+   "beds": {
+    "8|3": [
+     "Eva Novak"
+    ]
+   },
+   "in_camp": 1,
+   "no_room": []
+  },
+  "2026-11-23": {
+   "beds": {
+    "8|3": [
+     "Eva Novak"
+    ]
+   },
+   "in_camp": 1,
+   "no_room": []
+  },
+  "2026-11-24": {
+   "beds": {
+    "8|3": [
+     "Eva Novak"
+    ]
+   },
+   "in_camp": 1,
+   "no_room": []
+  }
+ },
+ "rows": 26
+}

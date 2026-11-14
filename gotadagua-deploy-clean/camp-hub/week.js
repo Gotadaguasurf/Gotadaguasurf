@@ -240,6 +240,12 @@
       const spans = md ? [[g.check_in, md], [md, g.check_out]] : [[g.check_in, g.check_out], [g.check_in, g.check_out]];
       const fits = (i, bed) => { const cap = roomCap(rs[i]); return !(cap && parseInt(bed, 10) > cap) && !taken(rs[i], bed, spans[i][0], spans[i][1], g); };
       const a = beds[0], b = beds[beds.length - 1];
+      // Morocco: ONE bed number for a move between a shared and a private room = the bed of the shared room
+      // (a private room has no bed to clean apart). Sri Lanka keeps its rule below.
+      if (IS_MA_ROOMS && beds.length === 1 && rs[0] && rs[1] && rs[0].shared !== rs[1].shared) {
+        const i = rs[0].shared ? 0 : 1;
+        g._beds = fits(i, a) ? (i === 0 ? [a, ''] : ['', a]) : null; g._bedsUnclear = !g._beds; return;
+      }
       const ok = (beds.length ? (a === b ? [[a, b]] : [[a, b], [b, a]]) : []).filter(o => fits(0, o[0]) && fits(1, o[1]));
       g._beds = ok.length === 1 ? ok[0] : null;
       g._bedsUnclear = !g._beds && beds.length > 0;
