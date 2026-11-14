@@ -158,3 +158,8 @@
 
 /* Reconcile: upcoming / nothing to pay — neutral, never green */
 .tr-ok-u { color: var(--text-muted, #5b6b7b); }
+/* Morocco van runs: «People in the van» stepper (14 Nov 2026) */
+.tr-people{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px}
+.tr-people>label{flex-basis:100%}
+.tr-people .tr-step{display:inline-flex;align-items:center;gap:10px}
+.tr-people .tr-step b{min-width:22px;text-align:center;font-size:17px}
