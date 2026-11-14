@@ -61,7 +61,8 @@ test('morocco week: Overview and the Cleaning message of Sat 14 — every room a
   const errors = collectFatalErrors(page);
   await H.openWeek(page);
   await expect(page.locator('#weekRoot .wk-week')).toContainText('Week 46');
-  const clean = await rawMsg(page, 'cleaning', '2026-11-14');
+  // Since 14 Nov the Morocco Cleaning message is sent in Darija (tests/morocco-darija.spec.js); this is its English twin, shown beside it.
+  const clean = await page.evaluate(() => WeekUI.bodyOf('cleaning', '2026-11-14', 'en'));
   expect(clean).toBe([
     '*CHECK OUT - SAT 14 NOV*', '',
     '*8 - Banana Point*', '- Rui Alves _(stays 4 more nights, in 13 - Anchor Point)_', '',

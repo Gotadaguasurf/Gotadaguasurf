@@ -308,19 +308,19 @@
         if (s.to === d) {
           const next = segs[i + 1] || (g._next ? segments(g._next)[0] : null);
           if (!next) (s.r ? outs : outsideOuts).push({ g, r: s.r, bed: s.bed, note: '', leaves: true });   // no room in the file: still on a list
-          else if (!sameRoom(next.r, s.r) && s.r) outs.push({ g, r: s.r, bed: s.bed, note: `stays ${nightsNote(left).replace(' ', ' more ')}, in ${next.r ? next.r.label : 'no room yet'}`, move: true });
+          else if (!sameRoom(next.r, s.r) && s.r) outs.push({ g, r: s.r, bed: s.bed, note: `stays ${nightsNote(left).replace(' ', ' more ')}, in ${next.r ? next.r.label : 'no room yet'}`, move: true, nd: { k: 'moveOut', left, room: next.r ? next.r.label : '' } });
           // Same room, other bed (a new booking for the next week): the bed is freed for the cleaning team.
-          else if (s.r && next.bed && s.bed && String(next.bed) !== String(s.bed)) bedChanges.push({ g, r: s.r, bed: s.bed, note: `stays, moves to bed ${next.bed}`, bedChange: true });
+          else if (s.r && next.bed && s.bed && String(next.bed) !== String(s.bed)) bedChanges.push({ g, r: s.r, bed: s.bed, note: `stays, moves to bed ${next.bed}`, bedChange: true, nd: { k: 'bedChange', bed: next.bed } });
         }
         if (s.from === d) {
           const prev = segs[i - 1] || (g._prev ? segments(g._prev).slice(-1)[0] : null);
           const short = left < 7 ? nightsNote(left) : '';
-          let note = short, kind = 'new';
-          if (prev && !sameRoom(prev.r, s.r)) { note = [`from ${prev.r ? prev.r.label : 'outside'}`, short || 'one more week with us'].join(', '); kind = 'move'; }
+          let note = short, kind = 'new', nd = { k: 'new', left };
+          if (prev && !sameRoom(prev.r, s.r)) { note = [`from ${prev.r ? prev.r.label : 'outside'}`, short || 'one more week with us'].join(', '); kind = 'move'; nd = { k: 'moveIn', left, room: prev.r ? prev.r.label : '' }; }
           else if (prev) { const newBed = prev.bed && s.bed && String(prev.bed) !== String(s.bed) ? `, now in bed ${s.bed}` : '';
-            if (!changeover && !newBed) return; note = stayOn(left) + newBed; kind = 'stay'; }
-          (s.r ? ins : outside).push({ g, r: s.r, bed: s.bed, note, kind });
-        } else if (changeover && s.from < d && d < s.to) (s.r ? ins : outside).push({ g, r: s.r, bed: s.bed, note: stayOn(left), kind: 'stay' });
+            if (!changeover && !newBed) return; note = stayOn(left) + newBed; kind = 'stay'; nd = { k: 'stay', left, bed: newBed ? s.bed : '' }; }
+          (s.r ? ins : outside).push({ g, r: s.r, bed: s.bed, note, kind, nd });
+        } else if (changeover && s.from < d && d < s.to) (s.r ? ins : outside).push({ g, r: s.r, bed: s.bed, note: stayOn(left), kind: 'stay', nd: { k: 'stay', left, bed: '' } });
       });
     });
     return { outs, ins, outside, bedChanges, outsideOuts };
@@ -335,36 +335,68 @@
   const UP = s => String(s).toUpperCase();
   const dayTitle = (what, d) => `*${what} - ${UP(fdm(d))}*`;                       // *CHECK IN - SAT 14 NOV*
   const weekTitle = (what, ws) => `*${what} - ${Number(ws.slice(8))} TO ${UP(GT.dMon(add(ws, 7)))}*`;   // *ROOMS - 14 TO 21 NOV* («week 14» is the season's week number)
+  // ── Moroccan Darija for the Morocco Cleaning team (lib/camp-config.js teamLang / darija) ──────────
+  // The same parts are built twice from the same data: lang 'ar' (copied, sent, stored) and lang 'en'
+  // (shown beside it to check, never sent). Every Darija line has its English twin at the same index.
+  const AR = CC.darija || null;
+  const CLEAN_LANG = AR && CC.teamLang && CC.teamLang.cleaning === 'ar-MA' ? 'ar' : 'en';
+  const fdA = iso => `${AR.days[GT.weekday(iso)]} ${Number(iso.slice(8))}`;                              // السبت 21
+  const fdmA = iso => `${fdA(iso)} ${AR.months[Number(iso.slice(5, 7)) - 1]}`;                           // السبت 21 نونبر
+  const dayTitleL = (what, d, lang) => lang === 'ar' ? `*${AR[{ 'CHECK OUT': 'checkOut', 'CHECK IN': 'checkIn', ROOMS: 'rooms' }[what]]} - ${fdmA(d)}*` : dayTitle(what, d);
+  const weekTitleL = (what, ws, lang) => lang === 'ar' ? `*${AR.rooms} - ${AR.from} ${Number(ws.slice(8))} ${AR.until} ${Number(add(ws, 7).slice(8))} ${AR.months[Number(add(ws, 7).slice(5, 7)) - 1]}*` : weekTitle(what, ws);
+  // The note of a cleaning line in Darija, from the descriptor dayMoves / weekStays keep beside the English note.
+  function noteAr(x) {
+    const nd = x.nd; if (!nd) return '';
+    const nights = n => AR.nights(n);
+    if (nd.k === 'moveOut') return AR.moveOut(nights(nd.left), nd.room);
+    if (nd.k === 'bedChange') return AR.bedChange(nd.bed);
+    if (nd.k === 'new') return nd.left < 7 ? nights(nd.left) : '';
+    if (nd.k === 'moveIn') return (nd.room ? AR.fromRoom(nd.room) : AR.fromOutside) + AR.comma + (nd.left < 7 ? nights(nd.left) : AR.oneMoreWeek);
+    if (nd.k === 'stay') return (nd.left >= 7 ? AR.stayWeek : AR.stayNights(nights(nd.left))) + (nd.bed ? AR.nowInBed(nd.bed) : '');
+    if (nd.k === 'week') {
+      const we = add(nd.ws, 7); const a = nd.from > nd.ws ? fdA(nd.from) : '', b = nd.to < we ? fdA(nd.to) : '';
+      const part = a && b ? `${AR.from} ${a} ${AR.until} ${b}` : a ? `${AR.from} ${a}` : b ? `${nd.before ? AR.lastWeek + AR.comma : ''}${AR.until} ${b}` : nd.before ? AR.lastWeek : '';
+      return [nd.fromRoom ? AR.fromRoom(nd.fromRoom) : '', part, nd.then ? AR.then(nd.then === OUTSIDE ? AR.outside : nd.then) : ''].filter(Boolean).join(AR.comma);
+    }
+    return '';
+  }
+  const noteOf = (x, lang) => lang === 'ar' ? noteAr(x) : x.note;
   const dash = (name, note) => `- ${name}${note ? ` _(${note})_` : ''}`;                 // WhatsApp: _italic_ notes
   const B = s => L(`*${s}*`);                                                       // WhatsApp: *bold* headings
   // Stored and compared with the neutral title; sent with «TODAY» / «TOMORROW» when the day is today or tomorrow
   // (the message for a day normally goes out the evening before).
   function dress(text, today) {
-    return String(text).replace(/^\*([A-Z ]+) - ([A-Z]{3}) (\d{1,2}) ([A-Z]{3})\*$/gm, (m, what, wd, n, mon) => {
+    let out = String(text).replace(/^\*([A-Z ]+) - ([A-Z]{3}) (\d{1,2}) ([A-Z]{3})\*$/gm, (m, what, wd, n, mon) => {
       const hit = [[today, 'TODAY'], [add(today, 1), 'TOMORROW']].find(([d]) => UP(fdm(d)) === `${wd} ${n} ${mon}`);
       return hit ? `*${what} ${hit[1]} - ${n} ${mon}*` : m;
     });
+    // Darija titles: «*الخروج - السبت 21 نونبر*» → «*الخروج اليوم - 21 نونبر*» / «*الدخول غدا - 21 نونبر*».
+    if (AR) out = out.replace(new RegExp(`^\\*(${[AR.checkOut, AR.checkIn, AR.rooms].join('|')}) - (\\S+) (\\d{1,2}) (\\S+)\\*$`, 'gm'), (m, what, wd, n, mon) => {
+      const hit = [[today, AR.today], [add(today, 1), AR.tomorrow]].find(([d]) => fdmA(d) === `${wd} ${n} ${mon}`);
+      return hit ? `*${what} ${hit[1]} - ${n} ${mon}*` : m;
+    });
+    return out;
   }
   // Blocks by room: the room name, then «- Name (note)» by bed.
-  function roomBlocks(list) {
+  function roomBlocks(list, lang) {
     const rooms = new Map();
     list.forEach(x => { if (!rooms.has(x.r.key)) rooms.set(x.r.key, { r: x.r, xs: [] }); rooms.get(x.r.key).xs.push(x); });
     const out = [];
     [...rooms.values()].sort((a, b) => a.r.order - b.r.order || a.r.label.localeCompare(b.r.label)).forEach(({ r, xs }) => {
-      out.push(B(r.label), ...xs.slice().sort((a, b) => bedNum(a.bed) - bedNum(b.bed) || nameSort(a.g, b.g)).map(x => L(dash(x.g.guest_name, x.note))), G);
+      out.push(B(r.label), ...xs.slice().sort((a, b) => bedNum(a.bed) - bedNum(b.bed) || nameSort(a.g, b.g)).map(x => L(dash(x.g.guest_name, noteOf(x, lang)))), G);
     });
     return out;
   }
-  const outsideBlock = xs => xs.length ? [L(`*${OUTSIDE}* _(also guests coming for breakfast and dinner)_`), ...xs.slice().sort((a, b) => nameSort(a.g, b.g)).map(x => L(dash(x.g.guest_name, x.note))), G] : [];
+  const outsideBlock = (xs, lang) => xs.length ? [L(lang === 'ar' ? AR.outsideHeader : `*${OUTSIDE}* _(also guests coming for breakfast and dinner)_`), ...xs.slice().sort((a, b) => nameSort(a.g, b.g)).map(x => L(dash(x.g.guest_name, noteOf(x, lang)))), G] : [];
 
-  function cleaningDay(rows, d) {
+  function cleaningDay(rows, d, lang) {
     const m = dayMoves(rows, d);
     const p = [];
     // Every bed that is freed: leaving the camp, moving room, changing bed — and the guests with no room in the file.
     const outs = [...m.outs, ...m.bedChanges];
-    if (outs.length || m.outsideOuts.length) p.push(T(dayTitle('CHECK OUT', d)), G, ...roomBlocks(outs), ...outsideBlock(m.outsideOuts));
-    if (m.ins.length || m.outside.length) p.push(T(dayTitle('CHECK IN', d)), G, ...roomBlocks(m.ins), ...outsideBlock(m.outside));
-    if (!p.length) p.push(T(dayTitle('ROOMS', d)), G, L('No check-in or check-out'));
+    if (outs.length || m.outsideOuts.length) p.push(T(dayTitleL('CHECK OUT', d, lang)), G, ...roomBlocks(outs, lang), ...outsideBlock(m.outsideOuts, lang));
+    if (m.ins.length || m.outside.length) p.push(T(dayTitleL('CHECK IN', d, lang)), G, ...roomBlocks(m.ins, lang), ...outsideBlock(m.outside, lang));
+    if (!p.length) p.push(T(dayTitleL('ROOMS', d, lang)), G, L(lang === 'ar' ? AR.noMoves : 'No check-in or check-out'));
     return p;
   }
   function stayText(g, ws) { return `${stayStart(g) < ws ? 'here' : fd(g.check_in)} → ${fd(g.check_out)}`; }
@@ -383,15 +415,16 @@
       const bits = [partOf(s.from, s.to, ws, before)];
       if (all[i + 1]) bits.push(`then ${all[i + 1].r ? all[i + 1].r.label : OUTSIDE.toLowerCase()}`);
       if (i > 0 && all[i - 1].r) bits.unshift(`from ${all[i - 1].r.label}`);
-      out.push({ ...s, before, note: bits.filter(Boolean).join(', ') });
+      out.push({ ...s, before, note: bits.filter(Boolean).join(', '),
+        nd: { k: 'week', ws, from: s.from, to: s.to, before, then: all[i + 1] ? (all[i + 1].r ? all[i + 1].r.label : OUTSIDE) : '', fromRoom: i > 0 && all[i - 1].r ? all[i - 1].r.label : '' } });
     }));
     return out;
   }
-  function cleaningWeek(rows, ws) {
+  function cleaningWeek(rows, ws, lang) {
     const st = weekStays(rows, ws);
-    const p = [T(weekTitle('ROOMS', ws)), G, ...roomBlocks(st.filter(x => x.r)), ...outsideBlock(st.filter(x => !x.r))];
+    const p = [T(weekTitleL('ROOMS', ws, lang)), G, ...roomBlocks(st.filter(x => x.r), lang), ...outsideBlock(st.filter(x => !x.r), lang)];
     const unknown = rows.filter(g => counted(g) && inWeek(g, ws) && moveUnknown(g));
-    if (unknown.length) p.push(B('Room moves (ask the day)'), ...unknown.map(g => L(dash(g.guest_name, movedRooms(g).join(' → ')))));
+    if (unknown.length) p.push(B(lang === 'ar' ? AR.roomMoves : 'Room moves (ask the day)'), ...unknown.map(g => L(dash(g.guest_name, movedRooms(g).join(' → ')))));
     return p;
   }
 
@@ -471,15 +504,17 @@
   }
 
   // body(team, day) for the viewed week — the text compared with what was sent.
-  function parts(team, day, ws, rows) {
-    if (team === 'cleaning') return day === 'week' ? cleaningWeek(rows, ws) : cleaningDay(rows, day);
+  // lang: the team's language (Morocco Cleaning: Darija); 'en' builds the English twin shown beside it.
+  function parts(team, day, ws, rows, lang) {
+    if (team === 'cleaning') { const lg = lang || CLEAN_LANG; return day === 'week' ? cleaningWeek(rows, ws, lg) : cleaningDay(rows, day, lg); }
     if (team === 'kitchen') return day === 'week' ? kitchenWeek(rows, ws) : kitchenDay(rows, day);
     if (team === 'surf') return day === 'week' ? surfWeek(rows, ws) : surfDay(rows, day);
     if (team === 'transfers') { const list = tripsFor(day, ws); return list.length ? [L(GT.whatsappDayText(list, GTC))] : [L('No transfers')]; }
     if (team === 'guests') { const gs = guestsList(rows, day, ws); return [T(`Guests – ${day === 'week' ? 'week ' + range(ws, add(ws, 7)) : fdm(day)} (${gs.length})`), G, ...gs.map(g => L(guestLine(g, ws, day)))]; }
     return [];
   }
-  const body = (team, day, ws, rows) => toText(parts(team, day, ws, rows));
+  const body = (team, day, ws, rows, lang) => toText(parts(team, day, ws, rows, lang));
+  const bilingual = team => team === 'cleaning' && CLEAN_LANG === 'ar';   // Darija sent, English beside it
   // UPDATE header + the lines that changed (a line diff of the sent text against today's).
   function lineDiff(oldText, newText) {
     const strip = t => t.split('\n').slice(1).map(s => s.trim()).filter(Boolean);
@@ -892,8 +927,22 @@
     const sent = sentOf(team, day, ws);
     const changed = sent && sent.hash !== hash(text);
     const msg = dress(changed ? updateText(sent.text, text, day, ws) : text, cToday());
+    if (bilingual(team)) {
+      // Morocco Cleaning: the Darija that is sent, and beside each line its English twin — to check, never sent.
+      const en = dress(body(team, day, ws, rows, 'en'), cToday());
+      return `<div class="card wk-card wk-msgcard" id="wkMessage">${cardHead('Message', `WhatsApp text in Darija${c ? ` for ${h(c.name)}` : ''} · ${h(when)}`)}
+        <div class="card-body">${dayPills}${biHtml(msg, en)}${footer(team, day, sent, changed, c, t)}</div></div>`;
+    }
     return `<div class="card wk-card wk-msgcard" id="wkMessage">${cardHead('Message', `WhatsApp text${c ? ` for ${h(c.name)}` : ''} · ${h(when)}`)}
       <div class="card-body">${dayPills}<div class="wk-msg" id="wkMsg">${waHtml(msg)}</div>${footer(team, day, sent, changed, c, t)}</div></div>`;
+  }
+  // Two columns at 1280 (Darija right-to-left | English), one at 390 (each English line in grey under its
+  // Darija line). The lines are built from the same parts, so they pair up 1:1.
+  function biHtml(ar, en) {
+    const a = ar.split('\n'), e = en.split('\n');
+    const rowsHtml = a.map((x, i) => `<div class="wk-bi-r${x.trim() ? '' : ' gap'}"><div class="wk-bi-ar" dir="rtl" lang="ar">${waHtml(x) || '&nbsp;'}</div><div class="wk-bi-en" lang="en">${waHtml(e[i] || '') || '&nbsp;'}</div></div>`).join('');
+    return `<div class="wk-msg wk-bi" id="wkMsg"><div class="wk-bi-r wk-bi-hd"><div class="wk-bi-ar" dir="rtl">Darija — sent</div><div class="wk-bi-en">English — to check, not sent</div></div>
+      <div class="hint wk-bi-hint">Grey lines: English — to check, not sent. Copy and Send take the Darija only.</div>${rowsHtml}</div>`;
   }
   // The preview shows WhatsApp's formatting (*bold*, _notes_); Copy and Send keep the raw text.
   const waHtml = text => h(text).replace(/\*([^*\n]+)\*/g, '<b>$1</b>').replace(/_(\([^_\n]+\))_/g, '<span class="wk-mnote">$1</span>');
@@ -1441,7 +1490,7 @@
     findGuest(name) { W.q = name; W.tab = 'guests'; W.team = 'guests'; W.day = 'week'; render(); },
     shiftWeek(n) { W.week = add(W.week, n); W.day = 'week'; W.undo = null; render(); loadWeek(W.week).then(render); },
     // for tests
-    _state: W, loadAll, classify, body, bodyOf: (team, day) => body(team, day, W.week, rowsOf(W.week)), parts, toText, updateText, lineDiff, hash, toCheck: () => toCheck(W.week), changes: () => changes(W.week),
+    _state: W, loadAll, classify, body, bodyOf: (team, day, lang) => body(team, day, W.week, rowsOf(W.week), lang), parts, toText, updateText, lineDiff, hash, toCheck: () => toCheck(W.week), changes: () => changes(W.week),
     checks: { file: fileCheck, yoga: yogaCheck }, roomInfo, course, levelOf, dietOf, dress, dayMoves: d => dayMoves(rowsOf(W.week), d), e164, groupName: () => groupName(W.week), weekNo, weekLabel, groupDescription: () => groupDescription(W.week),
     vcf: () => vcfText(groupPeople(W.week, rowsOf(W.week), W.groupOutside), W.week), groupPeople: () => groupPeople(W.week, rowsOf(W.week), W.groupOutside),
     model: () => weekModel(W.week, rowsOf(W.week)), roomPlan: () => roomPlan(W.week, rowsOf(W.week)),

@@ -305,3 +305,21 @@
 .wk-bookedcard .wk-bsec + .wk-bsec { border-top: 1px solid var(--border, #dde5ee); }
 .wk-booked .wk-bwhen { display: flex; flex-direction: column; min-width: 86px; gap: 1px; font-size: 13px; }
 .wk-booked .wk-bwhen .num { color: var(--text-muted, #5b6b7b); }
+
+/* Morocco Cleaning in Darija (14 Nov 2026): Darija (sent, right-to-left) beside its English twin (to check, not sent). */
+.wk-bi { white-space: normal; display: flex; flex-direction: column; }
+.wk-bi-r { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 20px; align-items: baseline; }
+.wk-bi-r > div { min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.wk-bi-ar { direction: rtl; text-align: right; unicode-bidi: plaintext; }
+.wk-bi-en { color: var(--muted); border-left: 1px solid var(--border); padding-left: 14px; }
+.wk-bi-hd > div { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); padding-bottom: 6px; }
+.wk-bi-r.gap > div { min-height: .7em; }
+.wk-bi-hint { display: none; }
+@media (max-width: 700px) {
+  .wk-bi-r { grid-template-columns: minmax(0, 1fr); }
+  .wk-bi-hd { display: none; }
+  .wk-bi-hint { display: block; margin-bottom: 6px; }
+  .wk-bi-en { border-left: none; padding-left: 0; font-size: 12px; text-align: left; }
+  .wk-bi-r.gap .wk-bi-en { display: none; }
+}
+.wk-bi { max-height: 560px; }

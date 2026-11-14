@@ -155,6 +155,28 @@
       { key: 'imsouane', label: 'Imsouane', route: 'Imsouane', purpose: 'surf', price: 110, per: 'person' },
     ],
     vanSupplier: 'Fathoune',
+    // The cleaning team reads Moroccan Darija in Arabic script (Miguel, 14 Nov: «limpeza só, a cozinha é em
+    // inglês por agora»). Only the Cleaning messages; every other team message stays English. Guest and room
+    // names stay in Latin letters, day numbers in Western digits. Ungendered on purpose (we don't know each
+    // guest's gender). The app shows the English beside it to check; only the Darija is copied / sent.
+    teamLang: { cleaning: 'ar-MA' },
+    darija: {
+      checkOut: 'الخروج', checkIn: 'الدخول', rooms: 'البيوت', today: 'اليوم', tomorrow: 'غدا',
+      // Date.getUTCDay order: Sun … Sat
+      days: ['الحد', 'الثنين', 'الثلاث', 'الربع', 'الخميس', 'الجمعة', 'السبت'],
+      months: ['يناير', 'فبراير', 'مارس', 'أبريل', 'ماي', 'يونيو', 'يوليوز', 'غشت', 'شتنبر', 'أكتوبر', 'نونبر', 'دجنبر'],
+      nights: n => n === 1 ? 'ليلة وحدة' : n === 2 ? 'جوج ليالي' : n <= 10 ? `${n} ليالي` : `${n} ليلة`,
+      from: 'من', until: 'حتى', comma: '، ',
+      moveOut: (nights, room) => room ? `مزال ${nights}، من بعد ف ${room}` : `مزال ${nights}، من بعد بلا بيت`,
+      bedChange: bed => `نفس البيت، ناموسية جديدة: ${bed}`,
+      fromRoom: room => `من ${room}`, fromOutside: 'من برا', oneMoreWeek: 'مزال سيمانة',
+      stayWeek: 'من السيمانة اللي فاتت، مزال سيمانة معانا', stayNights: nights => `من السيمانة اللي فاتت، مزال ${nights}`,
+      nowInBed: bed => `، دابا ف الناموسية ${bed}`,
+      outside: 'برا الكامب', outsideHeader: '*برا الكامب* _(كياكلو معانا الفطور والعشا)_',
+      noMoves: 'ما كاين لا دخول لا خروج',
+      lastWeek: 'من السيمانة اللي فاتت', then: room => `من بعد ${room}`,
+      roomMoves: 'تبديل البيوت (سولو على النهار)',
+    },
     transportHow: 'Airport transfers come from the Guests file (Week → Import) and go to Let Us Tours. Van runs: one tap per run. Everything is paid by SG bank transfer: link the Bank Transfer line to its trips in Reconcile.',
   };
 
