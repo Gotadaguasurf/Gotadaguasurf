@@ -1017,6 +1017,7 @@
     out += `<div class="card"><div class="card-hdr"><div><div class="card-title">Airport trips from this file · ${groups.trips.length}</div><div class="card-hint">From the Guests export (the source for upcoming weeks), checked against HQ bookings when the booking is there.</div></div></div>
       <div class="tr-rows">${groups.trips.length ? groups.trips.map(t => impRow(t)).join('') : '<div class="card-body hint">No transfer booked in this file.</div>'}</div>
       ${I.stage === 'preview' && noPrice(groups.trips).length ? `<div class="status-msg status-warn tr-noprice">${noPrice(groups.trips).length} transfer${noPrice(groups.trips).length === 1 ? ' has' : 's have'} no price yet (the prices are still loading, or /prices has no price for that car). Saving will try again and refuses if a price is still missing.</div>` : ''}
+      ${noAirportPrice(groups.trips).length ? `<div class="status-msg status-warn tr-noairprice">${noAirportPrice(groups.trips).map(t => `${h(t.guests.join(', '))} (${h(CC.airportCity[t.place] || t.place)})`).join(', ')}: no price for this airport in /prices — saved at 0, type the price in the trip.</div>` : ''}
       ${I.stage === 'preview' ? `<div class="card-body"><button class="btn btn-p" id="trImportSave" onclick="TransportUI.saveImport()" ${groups.trips.length || groups.guests.length ? '' : 'disabled'}>Save ${groups.trips.length} trip${groups.trips.length === 1 ? '' : 's'} and ${groups.guests.length} guest${groups.guests.length === 1 ? '' : 's'}</button></div>` : ''}</div>`;
     if (groups.hqCancelled.length) out += `<div class="card"><div class="card-hdr"><div><div class="card-title">Cancelled in HQ · ${groups.hqCancelled.length}</div><div class="card-hint">Live in Bookinglayer's Guests list but cancelled in HQ bookings: no trip, and a planned trip is cancelled.</div></div></div>
       <div class="tr-rows">${groups.hqCancelled.map(x => `<div class="tr-row tr-static"><div class="tr-main"><b>${h(x.guest)}</b><div class="cell-sub">${h(x.ref)} · ${h(x.status)} in HQ${x.transfer ? ' · had a transfer' : ''}</div></div></div>`).join('')}</div></div>`;
@@ -1129,7 +1130,10 @@
     render();
   }
   const pricesReady = () => presetPrice('airport_arrival', VEHICLES[0]) > 0 && presetPrice('airport_departure', VEHICLES[0]) > 0;
-  const noPrice = trips => (trips || []).filter(t => !(Number(t.expected_price) > 0));
+  // Morocco: an airport with no /prices row (Essaouira on 14 Nov) does not block the import — nothing is
+  // linked automatically there, the trip is saved at 0 and flagged; only «prices not loaded» blocks.
+  const noPrice = trips => (trips || []).filter(t => !(Number(t.expected_price) > 0) && (IS_SL || !pricesReady()));
+  const noAirportPrice = trips => IS_SL ? [] : (trips || []).filter(t => !(Number(t.expected_price) > 0) && pricesReady());
   async function saveImport() {
     const I = TR.imp; if (!I || I.stage !== 'preview' || TR.busy.has('imp')) return;
     if (noPrice(I.groups.trips).length) {   // one more try, then refuse: a trip at 0 «fits» any payment
@@ -1281,7 +1285,7 @@
   async function afterLink(msg) { await load(true); closeModal(); render(); if (msg) say(msg); }
   // Link trips to one payment: the driver's unpaid done trips + those already linked.
   function openLink(entryId) {
-    const l = linkOf(entryId); const e = ledgerById(entryId) || {};
+    const l = linkOf(entryId) || allLinks().find(x => x.entry_id === entryId);   // Morocco: a bank line not linked yet const e = ledgerById(entryId) || {};
     TR.linkDraft = { entryId, driver: (l && l.driver_id) || '', picked: new Set(TR.trips.filter(t => t.payment_entry_id === entryId).map(t => t.id)) };
     renderLink();
   }
