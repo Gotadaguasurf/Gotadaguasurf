@@ -33,15 +33,15 @@ test('morocco transport: the tab shows for the full view; the header says how Mo
   expect(errors).toEqual([]);
 });
 
-test('morocco transport: Guests import — Morocco rows only, Agadir / Marrakech prices, both legs, nothing read from HQ bookings, 27 rows = 22 guests + 5 left out', async ({ page }) => {
+test('morocco transport: Guests import — Morocco rows only, Agadir / Marrakech prices, both legs, nothing read from HQ bookings, 31 rows = 25 guests + 6 left out', async ({ page }) => {
   const hqReads = [];
   page.on('request', r => { if (/\/rest\/v1\/bookings\?.*(booking_ref=in|check_in_on=gte)/.test(r.url())) hqReads.push(r.url()); });
   const st = await openTab(page);
   await page.click('button.pill:has-text("Next week")');
   await expect(page.locator('#transportRoot .card-hint').first()).toContainText('«Semana Marrocos»');
   await page.setInputFiles('#trGuestsFile', H.CSV(H.FILE));
-  await expect(page.locator('#transportRoot')).toContainText('Airport trips from this file · 21');
-  await expect(page.locator('.tr-audit')).toContainText('27 rows in the file = 22 guests imported + 5 left out');
+  await expect(page.locator('#transportRoot')).toContainText('Airport trips from this file · 23');
+  await expect(page.locator('.tr-audit')).toContainText('31 rows in the file = 25 guests imported + 6 left out');
   await expect(page.locator('.tr-leftout')).toContainText('17 - Castelo beach mixed dorm');
   await expect(page.locator('.tr-noprice')).toHaveCount(0);
   await expect(page.locator('.tr-noairprice')).toContainText('Nina Larsen, Guest without name (booking MA-1010) (Essaouira), Nina Larsen, Guest without name (booking MA-1010) (Essaouira): no price for this airport');
@@ -57,7 +57,8 @@ test('morocco transport: Guests import — Morocco rows only, Agadir / Marrakech
   expect(by('bl:MA-1011:arr').flags.join(' ')).toContain('airport CMN is not a Morocco airport');
   expect(imp.p_trips.filter(t => !(t.expected_price > 0)).map(t => t.key)).toEqual(['bl:MA-1010:arr', 'bl:MA-1010:dep']);   // Essaouira (in, and out like the arrival): no /prices row yet
   expect(imp.p_cancel_refs).toEqual(['MA-1012']);
-  expect(imp.p_guests.length).toBe(22);
+  expect(imp.p_guests.length).toBe(25);
+  expect(by('bl:MA-1025:arr')).toMatchObject({ pax: 3, guests: ['Marco Bianchi', 'Guest without name (booking MA-1025)', 'Guest without name (booking MA-1025) (2)'] });   // two nameless +1s: 3 people, never merged
   expect(imp.p_guests.find(g => g.guest_name === 'Ines Costa').phone).toBe('+212661000019');
   expect(hqReads).toEqual([]);
 });
@@ -148,6 +149,18 @@ test('morocco «Which transfers is this for?»: Transport · Agadir Airport · B
   await expect(page.locator('#qe_paylink_wrap .pl-row').first()).toBeVisible();
   await expect(page.locator('#qe_paylink_wrap #pl_more')).toHaveCount(0);
   expect(st.calls.filter(c => c.t === 'link_own')).toEqual([]);
+  // Tick two transfers → the amount fills itself → save → the RPC links them to the saved Bank Transfer line.
+  const ids = await page.locator('#qe_paylink_wrap input[data-trip]').evaluateAll(els => els.slice(0, 2).map(e => e.dataset.trip));
+  await page.locator('#qe_paylink_wrap .pl-row').nth(0).click();
+  await page.locator('#qe_paylink_wrap .pl-row').nth(1).click();
+  await page.fill('#qe_desc', 'Let Us Tours · November transfers');
+  await page.click('[onclick="saveQuickExpense()"]');
+  const c = await H.call(st, 'link_own');
+  const row = st.posted[st.posted.length - 1];
+  expect(row).toMatchObject({ type: 'expense', category: 'Transport', linked_item: 'Agadir Airport', payment_method: 'Bank Transfer', currency: 'MAD' });
+  expect(c.body.p_entry).toBe(row.id);
+  expect(c.body.p_trip_ids.sort()).toEqual(ids.sort());
+  await expect(page.locator('#toast')).toContainText('2 transfers linked');
 });
 
 test('morocco transport: screenshots at 390 and 1280 — Trips, Next week, Reconcile, van runs; no horizontal overflow', async ({ page }) => {

@@ -105,7 +105,8 @@
     places: { aga: 'AGA', agadir: 'AGA', 'agadir airport': 'AGA', 'al massira': 'AGA', rak: 'RAK', marrakech: 'RAK', marrakesh: 'RAK', 'marrakech airport': 'RAK',
       esu: 'ESU', essaouira: 'ESU', cmn: 'CMN', casablanca: 'CMN', tng: 'TNG', tangier: 'TNG', fez: 'FEZ', rba: 'RBA', rabat: 'RBA', lisbon: 'LIS' },
     icaoFlights: true,
-    depFromArrival: true,                                 // no departure airport column: RAK in → RAK out (flagged)                                    // EJU5371, EZY2621 are easyJet flights
+    depFromArrival: true,
+    plusOneNames: true,                                   // nameless / same-name +1s are separate people on the trips too                                 // no departure airport column: RAK in → RAK out (flagged)                                    // EJU5371, EZY2621 are easyJet flights
     ownWayWords: /^(by\s+)?(bus|coach|ctm|supratours|taxi|car|rental car|rent a car|own car|driving|by car)$/i,
     phoneZeroCodes: ['212', '351', '34'],                 // +212 06… → +212 6…
     transferRe: /airport\s+(transfer|shuttle|pick.?up|drop.?off)/gi,
@@ -115,9 +116,10 @@
     matchRow(pk, acc) {
       const a = low(acc), p = low(pk);
       if (MA_MARK.test(p)) return 'yes';
+      // Another camp's words first: «13 - Castelo …» shares a number with a Morocco room.
+      if (OTHER_CAMPS.test(a) || OTHER_CAMPS.test(p)) return '';
       const rooms = String(acc || '').split(/\s*,\s*/).filter(Boolean);
       if (rooms.length && rooms.some(r => maRoomKnown(r))) return p.trim() ? 'yes' : 'room';
-      if (OTHER_CAMPS.test(a) || OTHER_CAMPS.test(p)) return '';
       // A room of the «N - Name» shape that is not in the list and not another camp's: counted only
       // when the file is a Morocco file (decided in the parser) and flagged.
       return rooms.length && rooms.every(r => /^\s*\d+\s*-\s*\S/.test(r)) ? 'unknown' : '';
@@ -128,7 +130,7 @@
     payMethod: 'Bank Transfer',
     airportSupplier: 'Let Us Tours',
     // The surf vans (Fathoune) and tours. CONFIRM: 110 MAD is the unit of every van line in the
-    // ledger (Apr–Oct 2026, 61 of 62 lines are a multiple of 110), the lines carry qty 1, so the data
+    // ledger (Apr–Oct 2026, 50 of 51 surf-van lines — Surf, Dunes, Paradise Valley, Souk — are a multiple of 110), the lines carry qty 1, so the data
     // cannot tell «per person» from «per van leg». The table says per person; change `per` to 'run'.
     vanRates: [
       { key: 'surf', label: 'Surf spot', route: 'Surf', purpose: 'surf', price: 110, per: 'person' },
@@ -155,11 +157,13 @@
     return { n: m ? Number(m[1]) : null, core: core || rest, shared, cap: cap ? Number(cap) : 0,
       female: /female|girls|women/.test(lowr), family: /family/.test(lowr) };
   }
-  function maRoomKnown(name) { const r = maRoomParse(name); return !!r && MA_ROOMS.some(x => (r.n != null && x.n === r.n) || low(r.core) === low(x.name)); }
+  // A room of the list = the same name (and the same number when the file has one): a number alone is not enough.
+  const maRoomMatch = (r, x) => { const a = low(r.core), b = low(x.name); const named = a === b || a.includes(b) || b.includes(a); return named && (r.n == null || r.n === x.n); };
+  function maRoomKnown(name) { const r = maRoomParse(name); return !!r && MA_ROOMS.some(x => maRoomMatch(r, x)); }
 
   const CAMPS = { 'sri-lanka': SL, morocco: MA };
   function get(slug) { return CAMPS[slug] || null; }
   const enabledSlugs = () => Object.keys(CAMPS);
 
-  return { get, enabledSlugs, SL, MA, maRoomParse, maRoomKnown, CAMPS };
+  return { get, enabledSlugs, SL, MA, maRoomParse, maRoomKnown, maRoomMatch, CAMPS };
 });

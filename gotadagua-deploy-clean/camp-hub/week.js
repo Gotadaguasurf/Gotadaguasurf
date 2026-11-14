@@ -129,7 +129,7 @@
   function roomNames(acc) { return String(acc || '').split(/\s*,\s*/).map(s => s.trim()).filter(Boolean); }
   // Morocco: «8 - Banana Point mixed shared room (4pax)» → «8 - Banana Point», by room number.
   function maRoomInfo(n) {
-    const r = CampConfig.maRoomParse(n); const known = CC.rooms.find(x => (r.n != null && x.n === r.n) || x.name.toLowerCase() === r.core.toLowerCase());
+    const r = CampConfig.maRoomParse(n); const known = CC.rooms.find(x => CampConfig.maRoomMatch(r, x));
     const num = r.n != null ? r.n : known ? known.n : null;
     const label = num != null ? `${num} - ${known ? known.name : r.core}` : r.core;
     const shared = known ? !!known.shared : r.shared;

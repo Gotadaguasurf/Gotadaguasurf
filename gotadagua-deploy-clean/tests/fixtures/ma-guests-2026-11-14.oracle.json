@@ -283,13 +283,17 @@
    ]
   },
   "2026-11-22": {
-   "arrivals": [],
+   "arrivals": [
+    "Guest without name (booking MA-1025)",
+    "Guest without name (booking MA-1025) (2)",
+    "Marco Bianchi"
+   ],
    "breakfast": 4,
    "departures": [
     "Karl Nilsson",
     "Marta Rossi"
    ],
-   "dinner": 2,
+   "dinner": 5,
    "room_outs": [
     {
      "bed": "1",
@@ -307,25 +311,25 @@
   },
   "2026-11-23": {
    "arrivals": [],
-   "breakfast": 2,
+   "breakfast": 5,
    "departures": [],
-   "dinner": 2,
+   "dinner": 5,
    "room_outs": []
   },
   "2026-11-24": {
    "arrivals": [],
-   "breakfast": 2,
+   "breakfast": 5,
    "departures": [],
-   "dinner": 2,
+   "dinner": 5,
    "room_outs": []
   },
   "2026-11-25": {
    "arrivals": [],
-   "breakfast": 2,
+   "breakfast": 5,
    "departures": [
     "Eva Novak"
    ],
-   "dinner": 1,
+   "dinner": 4,
    "room_outs": [
     {
      "bed": "3",
@@ -337,30 +341,60 @@
   },
   "2026-11-26": {
    "arrivals": [],
-   "breakfast": 1,
+   "breakfast": 4,
    "departures": [],
-   "dinner": 1,
+   "dinner": 4,
    "room_outs": []
   },
   "2026-11-27": {
    "arrivals": [],
-   "breakfast": 1,
+   "breakfast": 4,
    "departures": [],
-   "dinner": 1,
+   "dinner": 4,
    "room_outs": []
   },
   "2026-11-28": {
    "arrivals": [],
-   "breakfast": 1,
+   "breakfast": 4,
    "departures": [
     "Ines Costa"
    ],
-   "dinner": 0,
+   "dinner": 3,
    "room_outs": [
     {
      "bed": "2",
      "name": "Ines Costa",
      "room": "5",
+     "why": "leaves"
+    }
+   ]
+  },
+  "2026-11-29": {
+   "arrivals": [],
+   "breakfast": 3,
+   "departures": [
+    "Guest without name (booking MA-1025)",
+    "Guest without name (booking MA-1025) (2)",
+    "Marco Bianchi"
+   ],
+   "dinner": 0,
+   "room_outs": [
+    {
+     "bed": "1",
+     "name": "Marco Bianchi",
+     "room": "13",
+     "why": "leaves"
+    },
+    {
+     "bed": "2",
+     "name": "Guest without name (booking MA-1025)",
+     "room": "13",
+     "why": "leaves"
+    },
+    {
+     "bed": "3",
+     "name": "Guest without name (booking MA-1025) (2)",
+     "room": "13",
      "why": "leaves"
     }
    ]
@@ -499,6 +533,24 @@
    "check_in": "2026-11-18",
    "check_out": "2026-11-25",
    "name": "Eva Novak"
+  },
+  {
+   "booking": "MA-1025",
+   "check_in": "2026-11-22",
+   "check_out": "2026-11-29",
+   "name": "Guest without name (booking MA-1025)"
+  },
+  {
+   "booking": "MA-1025",
+   "check_in": "2026-11-22",
+   "check_out": "2026-11-29",
+   "name": "Guest without name (booking MA-1025) (2)"
+  },
+  {
+   "booking": "MA-1025",
+   "check_in": "2026-11-22",
+   "check_out": "2026-11-29",
+   "name": "Marco Bianchi"
   }
  ],
  "left_out": [
@@ -526,6 +578,11 @@
    "line": 22,
    "name": "Max Müller",
    "reason": "duplicate"
+  },
+  {
+   "line": 32,
+   "name": "Pedro Santos",
+   "reason": "other_camp"
   }
  ],
  "nights": {
@@ -996,6 +1053,15 @@
   },
   "2026-11-22": {
    "beds": {
+    "13|1": [
+     "Marco Bianchi"
+    ],
+    "13|2": [
+     "Guest without name (booking MA-1025)"
+    ],
+    "13|3": [
+     "Guest without name (booking MA-1025) (2)"
+    ],
     "5|2": [
      "Ines Costa"
     ],
@@ -1003,11 +1069,20 @@
      "Eva Novak"
     ]
    },
-   "in_camp": 2,
+   "in_camp": 5,
    "no_room": []
   },
   "2026-11-23": {
    "beds": {
+    "13|1": [
+     "Marco Bianchi"
+    ],
+    "13|2": [
+     "Guest without name (booking MA-1025)"
+    ],
+    "13|3": [
+     "Guest without name (booking MA-1025) (2)"
+    ],
     "5|2": [
      "Ines Costa"
     ],
@@ -1015,11 +1090,20 @@
      "Eva Novak"
     ]
    },
-   "in_camp": 2,
+   "in_camp": 5,
    "no_room": []
   },
   "2026-11-24": {
    "beds": {
+    "13|1": [
+     "Marco Bianchi"
+    ],
+    "13|2": [
+     "Guest without name (booking MA-1025)"
+    ],
+    "13|3": [
+     "Guest without name (booking MA-1025) (2)"
+    ],
     "5|2": [
      "Ines Costa"
     ],
@@ -1027,36 +1111,78 @@
      "Eva Novak"
     ]
    },
-   "in_camp": 2,
+   "in_camp": 5,
    "no_room": []
   },
   "2026-11-25": {
    "beds": {
+    "13|1": [
+     "Marco Bianchi"
+    ],
+    "13|2": [
+     "Guest without name (booking MA-1025)"
+    ],
+    "13|3": [
+     "Guest without name (booking MA-1025) (2)"
+    ],
     "5|2": [
      "Ines Costa"
     ]
    },
-   "in_camp": 1,
+   "in_camp": 4,
    "no_room": []
   },
   "2026-11-26": {
    "beds": {
+    "13|1": [
+     "Marco Bianchi"
+    ],
+    "13|2": [
+     "Guest without name (booking MA-1025)"
+    ],
+    "13|3": [
+     "Guest without name (booking MA-1025) (2)"
+    ],
     "5|2": [
      "Ines Costa"
     ]
    },
-   "in_camp": 1,
+   "in_camp": 4,
    "no_room": []
   },
   "2026-11-27": {
    "beds": {
+    "13|1": [
+     "Marco Bianchi"
+    ],
+    "13|2": [
+     "Guest without name (booking MA-1025)"
+    ],
+    "13|3": [
+     "Guest without name (booking MA-1025) (2)"
+    ],
     "5|2": [
      "Ines Costa"
     ]
    },
-   "in_camp": 1,
+   "in_camp": 4,
+   "no_room": []
+  },
+  "2026-11-28": {
+   "beds": {
+    "13|1": [
+     "Marco Bianchi"
+    ],
+    "13|2": [
+     "Guest without name (booking MA-1025)"
+    ],
+    "13|3": [
+     "Guest without name (booking MA-1025) (2)"
+    ]
+   },
+   "in_camp": 3,
    "no_room": []
   }
  },
- "rows": 27
+ "rows": 31
 }

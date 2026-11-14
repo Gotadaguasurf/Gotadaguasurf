@@ -179,21 +179,30 @@
 
     const report = {}; const bump = k => { report[k] = (report[k] || 0) + 1; };
     const people = new Map(); const skipped = []; const other = [];
-    const verdict = campRows(all, H, cfg);
+    const verdict = campRows(all, H, cfg); const dupRows = new Set();
     all.slice(1).forEach((r, n) => {
       if (!r.some(c => String(c).trim())) return;
       const line = n + 2;
       const ref = get(r, 'Booking', 'Booking #');
-      // A +1 with no name travels as «Guest without name (booking …)», the name the weekly lists give him.
-      const name = get(r, 'Guest').replace(/\s+/g, ' ').trim() || `Guest without name (booking ${ref || '?'})`;
+      // Morocco (cfg.plusOneNames): a +1 with no name travels as «Guest without name (booking …)», the name
+      // the weekly lists give him; Sri Lanka keeps the 13 Nov behaviour (nameless = '').
+      let name = get(r, 'Guest').replace(/\s+/g, ' ').trim() || (cfg.plusOneNames ? `Guest without name (booking ${ref || '?'})` : '');
       const st = get(r, 'Booking status').toLowerCase().replace(/ /g, '_');
       const loc = verdict[n];
       if (!loc) { bump('other location'); other.push(name); return; }
       if (loc === 'room') bump(`${cfg.name} by room name (Packages empty)`);
       if (loc === 'unknown') bump(`${cfg.name} room not in the room list (kept: the file is ${cfg.name}'s)`);
       if (TEST_NAME.test(name)) { bump('test booking'); skipped.push([line, name, 'test']); return; }
-      const key = ref + '\u0000' + name.toLowerCase();
-      if (people.has(key)) { bump('duplicate row'); return; }
+      let key = ref + '\u0000' + name.toLowerCase();
+      if (cfg.plusOneNames) {
+        // Same rule as the weekly lists (scanGuests): only a row that repeats name, dates, room and bed is a
+        // duplicate; a second guest with the same (or no) name is another person, «Name (2)» — never merged.
+        const same = key + '\u0000' + [get(r, 'Check-in on', 'Arrives on'), get(r, 'Check-out on', 'Departure date', 'Departs on'), get(r, 'Accommodations'), get(r, 'Bed number')].join('|');
+        if (dupRows.has(same)) { bump('duplicate row'); return; }
+        dupRows.add(same);
+        const base = name;
+        for (let k = 2; people.has(key); k++) { name = `${base} (${k})`; key = ref + '\u0000' + name.toLowerCase(); }
+      } else if (people.has(key)) { bump('duplicate row'); return; }
       people.set(key, {
         line, name: (isUpper(name) || isLower(name)) ? pyTitle(name) : name, ref, status: st,
         ci: ymd(get(r, 'Check-in on', 'Arrives on')), co: ymd(get(r, 'Check-out on', 'Departure date', 'Departs on')),

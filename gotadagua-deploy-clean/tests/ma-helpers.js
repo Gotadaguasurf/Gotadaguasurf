@@ -42,7 +42,7 @@ function tripsFromFile(name = FILE) {
 
 async function stub(page, opts = {}) {
   const st = { guests: opts.guests || guestsFromFile(), msgs: [], drivers: (opts.drivers || DRIVERS).map(d => ({ ...d })), trips: (opts.trips || []).map(t => ({ ...t })),
-    ledger: opts.ledger || [], links: opts.links || [], calls: [], urls: [], group: opts.group || null };
+    ledger: (opts.ledger || []).map(r => ({ ...r })), links: opts.links || [], calls: [], urls: [], posted: [], group: opts.group || null };
   await page.route(/api\.frankfurter\.dev/, r => r.abort());
   await page.route(/supabase\.co\/(auth|rest|realtime|storage|functions)\/v1\/.*/, async route => {
     const req = route.request(); const url = decodeURIComponent(req.url()); const method = req.method();
@@ -53,7 +53,10 @@ async function stub(page, opts = {}) {
     const idEq = (q('id') || '').replace(/^eq\./, '');
     if (url.includes('/auth/v1/user')) return json({ id: 'u1', email: 'miguel@gotadaguasurf.com', aud: 'authenticated', role: 'authenticated' });
     if (url.includes('/rest/v1/locations')) return json({ id: LOC, name: 'Morocco', slug: 'morocco', currency: 'MAD', default_fx_to_eur: 10.8, camp_tab_mode: 'per_guest' });
-    if (url.includes('/rest/v1/ledger_entries')) return json(method === 'GET' ? st.ledger : []);
+    if (url.includes('/rest/v1/ledger_entries')) {
+      if (method === 'POST') { (Array.isArray(body) ? body : [body]).forEach(r => { st.posted.push(r); const i = st.ledger.findIndex(x => x.id === r.id); if (i >= 0) st.ledger[i] = { ...st.ledger[i], ...r }; else st.ledger.push({ created_at: new Date().toISOString(), ...r }); }); return json([]); }
+      return json(method === 'GET' ? st.ledger : []);
+    }
     if (url.includes('/rest/v1/camp_drivers')) {
       if (method === 'GET') return json(st.drivers);
       if (method === 'PATCH') { const d = st.drivers.find(x => x.id === idEq); Object.assign(d, body); st.calls.push({ t: 'driver_update', id: idEq, body }); return json([d]); }

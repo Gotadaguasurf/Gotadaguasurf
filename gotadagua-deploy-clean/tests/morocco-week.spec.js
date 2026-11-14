@@ -49,7 +49,7 @@ for (const [file, importAt] of [[H.FILE, '2026-11-14T08:00:00Z'], [H.FILE2, '202
   });
 }
 
-test('morocco week: the import audit = the oracle (27 rows = 22 guests + 5 left out, each with its reason)', () => {
+test('morocco week: the import audit = the oracle (31 rows = 25 guests + 6 left out, each with its reason)', () => {
   const a = H.GT.guestAudit(fs.readFileSync(H.CSV(H.FILE), 'utf8'), H.FILE, H.CC.MA);
   const o = oracle(H.FILE);
   expect(a.rows).toBe(o.rows);
