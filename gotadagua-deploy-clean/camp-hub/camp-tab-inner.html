@@ -232,6 +232,30 @@ header{display:none}
   .subnav{padding:0 8px;overflow-x:auto}.snav-btn{padding:0 10px}
 }
 @media(max-width:700px){.menu-shell{grid-template-columns:1fr}.menu-grid{grid-template-columns:1fr}}
+
+/* Sri Lanka Dipløria picker (15 Nov 2026) */
+.dip-wrap{grid-column:1/-1;display:flex;flex-direction:column;gap:12px;min-width:0}
+.dip-head{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.dip-title{font-weight:700;color:var(--navy);font-size:15px}
+.dip-sub{color:var(--muted);font-size:12px;font-weight:600}
+.dip-hint{color:var(--muted);font-size:11px}
+.dip-models{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.dip-model.out{opacity:.5;cursor:not-allowed}
+.dip-model-head{display:flex;align-items:center;gap:12px}
+.dip-model-name{font-weight:700;color:var(--navy);font-size:16px}
+.dip-sizes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;max-width:420px}
+.dip-size{display:flex;flex-direction:column;align-items:center;gap:2px;padding:14px 6px;border:1px solid var(--border);border-radius:12px;background:#fff;font-family:inherit;cursor:pointer}
+.dip-size .dip-sz{font-size:20px;font-weight:800;color:var(--navy);font-variant-numeric:tabular-nums}
+.dip-size .dip-left{font-size:11px;color:var(--green);font-weight:700}
+.dip-size.out{opacity:.4;cursor:not-allowed;background:var(--bg)}
+.dip-size.out .dip-left{color:var(--muted)}
+.dip-table-wrap{overflow-x:auto;max-width:100%}
+.dip-table{border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums;min-width:100%}
+.dip-table th,.dip-table td{padding:6px 7px;border-bottom:1px solid var(--border);text-align:center;white-space:nowrap}
+.dip-table th:first-child{text-align:left}
+.dip-table td span{color:var(--muted);font-size:10px}
+.dip-table td.zero b{color:var(--red)} .dip-table td.none{color:var(--muted)}
+.dip-table tfoot th,.dip-table tfoot td{font-weight:700;border-top:2px solid var(--border)}
 </style>
 </head>
 <body>
@@ -2354,7 +2378,8 @@ function isSpecialMerchName(name=''){
 // empty — this list defines the MAX set, not a force-show. Owner uses
 // /prices to fill each catalog; missing rows just hide the tab quietly.
 const LOCATION_TAB_CONFIG = {
-  'sri-lanka':   ['Drinks', 'Tours', 'Extras', 'Merch'],
+  // Sri Lanka Dipløria (15 Nov 2026): consignment boardshorts, picked model → size (see diploriaPicker).
+  'sri-lanka':   ['Drinks', 'Tours', 'Extras', 'Merch', 'Diploria'],
   'morocco':     ['Tours', 'Extras', 'Merch'],
   // Diploria: boardshort line sold at the Portugal camp only. Colour ×
   // waist-size SKUs ("Core Black 32"), standalone stock per SKU.
@@ -2373,7 +2398,81 @@ const DEFAULT_TAB_ORDER = ['Drinks', 'Tours', 'Extras', 'Merch'];
 const CAT_DISPLAY_NAME = {
   'Tours': 'Tours/Activities',
 };
-function displayCatName(c){ return CAT_DISPLAY_NAME[c] || c; }
+function displayCatName(c){
+  if(c === 'Diploria' && diploriaPicker()) return 'Dipløria';   // Sri Lanka's label; Portugal keeps «Diploria»
+  return CAT_DISPLAY_NAME[c] || c;
+}
+
+// ── Dipløria in Sri Lanka (Miguel, 15 Nov 2026) ─────────────────────────────
+// «uma tab como as drinks para a Dipløria … os modelos todos e tamanhos e os stocks para não falhar nada».
+// Consignment stock, one catalog row per model × size («Core Black 32», stock_qty = the sheet's count).
+// One decision per screen: the models (with «N left»), then that model's sizes 28–34 (0 = greyed out),
+// a tap adds the SKU to the guest's tab and goes back to the models. Stock left = initial − every sale
+// of that SKU in history + the active week (standaloneSoldCount), so removing a line gives it back.
+// Portugal keeps its own «Size 28…34» cards (not in this set).
+function diploriaPicker(){ return ['sri-lanka'].includes(CAMP_TAB_LOCATION_SLUG); }   // the camps with the model → size picker
+var DIPLORIA_SIZES = ['28', '30', '31', '32', '33', '34'];
+var DIP_MODEL = null;          // the model whose sizes are shown, null = the models
+var DIP_STOCK_VIEW = false;    // the read-only model × size grid
+function diploriaSku(name){ const m = String(name || '').trim().match(/^(.*\S)\s+(\d{2})$/); return m ? { model: m[1], size: m[2] } : null; }
+// [{ model, price, skus: { '32': item } }] in catalog order.
+function diploriaModels(){
+  const out = []; const by = new Map();
+  (Array.isArray(MENU.Diploria) ? MENU.Diploria : []).forEach(item => {
+    const k = diploriaSku(item && item.n); if(!k) return;
+    if(!by.has(k.model)){ const m = { model: k.model, price: Number(item.p || 0), skus: {} }; by.set(k.model, m); out.push(m); }
+    by.get(k.model).skus[k.size] = item;
+  });
+  return out;
+}
+function diploriaCell(m, size){
+  const item = m.skus[size]; if(!item) return { initial: 0, sold: 0, left: 0, item: null };
+  const initial = Number(item.stk || 0), sold = diploriaSoldCount(item.n);
+  return { initial, sold, left: Math.max(0, initial - sold), item };
+}
+function diploriaModelTotals(m){ return DIPLORIA_SIZES.reduce((t, sz) => { const c = diploriaCell(m, sz); t.initial += c.initial; t.sold += c.sold; t.left += c.left; return t; }, { initial: 0, sold: 0, left: 0 }); }
+function diploriaTotals(){ return diploriaModels().reduce((t, m) => { const x = diploriaModelTotals(m); t.initial += x.initial; t.sold += x.sold; t.left += x.left; return t; }, { initial: 0, sold: 0, left: 0 }); }
+function renderDiploriaPicker(el){
+  const models = diploriaModels(); const T = diploriaTotals();
+  const head = `<div class="dip-head"><div><div class="dip-title">Dipløria</div><div class="dip-sub" id="dipTotal">${T.left} left of ${T.initial}${T.sold ? ` · ${T.sold} sold` : ''}</div></div>
+    <button class="btn btn-s btn-sm" id="dipStockBtn" onclick="dipToggleStock()">${DIP_STOCK_VIEW ? 'Back to models' : 'Stock'}</button></div>`;
+  if(DIP_STOCK_VIEW){
+    const cell = c => c.item ? `<td class="${c.left ? '' : 'zero'}"><b>${c.left}</b><span>/${c.initial}</span></td>` : '<td class="none">–</td>';
+    const foot = DIPLORIA_SIZES.map(sz => models.reduce((t, m) => { const c = diploriaCell(m, sz); t.l += c.left; t.i += c.initial; return t; }, { l: 0, i: 0 }));
+    el.innerHTML = `<div class="dip-wrap">${head}<div class="dip-hint">Read-only · each cell = left / initial · compare with the sheet «Stock Dipløria Sri Lanka»</div>
+      <div class="dip-table-wrap"><table class="dip-table" id="dipStock"><thead><tr><th>Model</th>${DIPLORIA_SIZES.map(s => `<th>${s}</th>`).join('')}<th>Total</th><th>Sold</th></tr></thead>
+      <tbody>${models.map(m => { const t = diploriaModelTotals(m); return `<tr data-model="${esc(m.model)}"><th>${esc(m.model)}</th>${DIPLORIA_SIZES.map(sz => cell(diploriaCell(m, sz))).join('')}<td class="tot"><b>${t.left}</b><span>/${t.initial}</span></td><td>${t.sold}</td></tr>`; }).join('')}</tbody>
+      <tfoot><tr><th>Total</th>${foot.map(f => `<td class="tot"><b>${f.l}</b><span>/${f.i}</span></td>`).join('')}<td class="tot" id="dipGrand"><b>${T.left}</b><span>/${T.initial}</span></td><td>${T.sold}</td></tr></tfoot></table></div></div>`;
+    return;
+  }
+  const m = DIP_MODEL != null ? models.find(x => x.model === DIP_MODEL) : null;
+  if(m){
+    const t = diploriaModelTotals(m);
+    el.innerHTML = `<div class="dip-wrap">${head}
+      <div class="dip-model-head"><button class="btn btn-s btn-sm" id="dipBack" onclick="dipBack()">‹ Models</button><div><div class="dip-model-name">${esc(m.model)}</div><div class="dip-sub">${euro(m.price)} · ${t.left} left · pick the size</div></div></div>
+      <div class="dip-sizes" id="dipSizes">${DIPLORIA_SIZES.map(sz => { const c = diploriaCell(m, sz);
+        return `<button class="dip-size${c.left ? '' : ' out'}" data-size="${sz}" ${c.left ? '' : 'disabled'} onclick="dipAddSize('${sz}', this)"><span class="dip-sz">${sz}</span><span class="dip-left">${c.left ? `${c.left} left` : 'none'}</span></button>`; }).join('')}</div></div>`;
+    return;
+  }
+  el.innerHTML = `<div class="dip-wrap">${head}<div class="dip-models" id="dipModels">${models.map((x, i) => { const t = diploriaModelTotals(x);
+    return `<button class="c-item dip-model${t.left ? '' : ' out'}" data-model="${esc(x.model)}" ${t.left ? '' : 'disabled'} onclick="dipPickModel(${i})">
+      <div class="ci-name">${esc(x.model)}</div>
+      <div class="ci-desc" style="color:${t.left ? 'var(--green)' : 'var(--red)'};font-weight:700">${t.left ? `${t.left} left` : 'Out of stock'}</div>
+      <div class="ci-price">${euro(x.price)}</div></button>`; }).join('') || '<div class="c-item-empty">No Dipløria rows in the catalog yet.</div>'}</div></div>`;
+}
+function dipPickModel(i){ const m = diploriaModels()[i]; if(!m) return; DIP_MODEL = m.model; renderItemGrid(); }
+function dipBack(){ DIP_MODEL = null; renderItemGrid(); }
+function dipToggleStock(){ DIP_STOCK_VIEW = !DIP_STOCK_VIEW; DIP_MODEL = null; renderItemGrid(); }
+// A size tap: re-read the stock at the moment of the tap (two quick taps on the last unit add one).
+function dipAddSize(size, btn){
+  if(!AG || !S.activeWeek){ toast('Select a guest first!'); return; }
+  const m = diploriaModels().find(x => x.model === DIP_MODEL); if(!m) return;
+  const c = diploriaCell(m, size);
+  if(!c.item || c.left <= 0){ toast(`${m.model} ${size} is out of stock`); renderItemGrid(); return; }
+  DIP_MODEL = null;                      // back to the models once it is on the tab
+  addResolvedItem(c.item, btn);
+  renderItemGrid();
+}
 
 function visibleCats(){
   const config = LOCATION_TAB_CONFIG[CAMP_TAB_LOCATION_SLUG] || DEFAULT_TAB_ORDER;
@@ -2726,6 +2825,9 @@ function renderItemGrid(){
     setTimeout(() => amtInput.focus(), 50);
     return;
   }
+  // Sri Lanka Dipløria: model → size picker (renderDiploriaPicker). No staff price, so the Staff roster
+  // falls through to the empty state below like any category without staff prices.
+  if (AC === 'Diploria' && diploriaPicker() && currentRoster !== 'staff') { renderDiploriaPicker(el); return; }
   // Merch + Merch Special share the underlying MENU.Merch array; the
   // synthetic split is purely display. Filter by the "special" name
   // pattern so each tab shows only its share.
@@ -3043,7 +3145,7 @@ window.delGuestRow=function(id){
   renderTabPanel();
   toast(`${g.name} removed from week`);
 };
-function setCat(c){AC=c;renderCatTabs();renderItemGrid();}
+function setCat(c){AC=c;DIP_MODEL=null;DIP_STOCK_VIEW=false;renderCatTabs();renderItemGrid();}
 
 // Resolve the actual item array for a given (possibly synthetic) category.
 // "Merch Special" is a synthetic tab — there's no MENU['Merch Special'].
@@ -3287,7 +3389,8 @@ function addResolvedItem(item,btn){
   // Staff M decrement the same counter as the base M). Without including
   // Merch Special here, a stockout could be silently bypassed by selling
   // a Staff/Offer variant.
-  if(AC==='Merch' || AC==='Merch Special' || AC==='Extras'){
+  // Diploria too (15 Nov 2026): the card was already disabled at 0, now no path can add past the stock.
+  if(AC==='Merch' || AC==='Merch Special' || AC==='Extras' || AC==='Diploria'){
     const stockLeft=stockLeftForCategory(item, AC);
     if(stockLeft!==null&&stockLeft<=0){toast(item.n+' is out of stock');return;}
   }

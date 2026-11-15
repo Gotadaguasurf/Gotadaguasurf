@@ -309,7 +309,7 @@ test('camp-tab Diploria: Portugal tab config + standalone stock route', async ({
     unknownCat: window.stockLeftForCategory({ n: 'Whatever', stk: 5 }, 'Nope'),
   }));
   expect(result.portugalTabs).toContain('Diploria');
-  expect(result.otherCamps).toEqual([]);   // Portugal only
+  expect(result.otherCamps).toEqual(['sri-lanka']);   // Portugal and, since 15 Nov 2026, Sri Lanka (tests/sl-diploria.spec.js)
   expect(result.stockLeft).toBe(1);
   expect(result.noStockField).toBeNull();  // no stk → untracked, not zero
   expect(result.unknownCat).toBeNull();
