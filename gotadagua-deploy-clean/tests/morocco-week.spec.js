@@ -223,6 +223,11 @@ test('morocco «Send the whole week» (Transport, was Week → Send to Let Us To
   await expect(page.locator('#transportRoot [data-week-count]')).toContainText(`Arrivals ${c.arr.n} · ${c.arr.pax} persons`);
   await expect(page.locator('#transportRoot [data-week-count]')).toContainText(`Departures ${c.dep.n} · ${c.dep.pax} persons`);
   await expect(page.locator('#transportRoot [data-total="airport"] .kpi-label')).toHaveText(`Airport · ${c.arr.n + c.dep.n} transfers`);
+  // phone: the first trip on the first screen (the week totals sit under the day list)
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.evaluate(() => window.scrollTo(0, 0));
+  expect(await page.evaluate(() => document.querySelector('#transportRoot .tr-day .tr-row').getBoundingClientRect().top)).toBeLessThan(844);
+  await page.setViewportSize({ width: 1280, height: 900 });
   fs.mkdirSync(path.join(__dirname, '..', 'test-results', 'transfers-message-shots'), { recursive: true });
   for (const [w, hgt] of [[1280, 900], [390, 844]]) {
     await page.setViewportSize({ width: w, height: hgt });
@@ -253,7 +258,7 @@ for (const [kase, mk] of [
     if (kase === 'file1-sat14-0600') {
       // the three airports are in this week's message (sanity of the fixture, not of the format)
       const places = await page.evaluate(() => [...new Set(TransportUI._state.trips.filter(t => GuestsTrips.transfersTrips(TransportUI._state.trips, { day: 'week', ws: '2026-11-14', now: TransportUI.colomboNow() }).includes(t)).map(t => t.place))].sort());
-      expect(places.length).toBeGreaterThanOrEqual(3);
+      expect(places).toEqual(expect.arrayContaining(['AGA', 'ESU', 'RAK']));   // (+ CMN: the fixture's flagged non-Morocco airport)
     }
     if (process.env.GOLDEN_WRITE !== '1') expect(WG.covered('ma', kase, 'transfers|')).toBe(9);
   });

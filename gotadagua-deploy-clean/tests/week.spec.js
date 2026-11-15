@@ -554,6 +554,10 @@ test('transfers: a tap on the Week Overview opens Transport on the same week and
   await expect(page.locator('#transportRoot .tr-views .pill.active')).toHaveText('Trips');
   const day = page.locator('#trDay-2026-11-17');
   await expect(day).toBeInViewport();
+  const navClear = () => page.evaluate(() => document.getElementById('trDay-2026-11-17').getBoundingClientRect().top >= document.querySelector('.app-nav').getBoundingClientRect().bottom);
+  // (the hub scrolls smoothly) once settled, the card's date sits just under the sticky nav, not behind it
+  await expect.poll(navClear, { timeout: 3000 }).toBe(true);
+  await expect.poll(() => page.evaluate(() => Math.round(document.getElementById('trDay-2026-11-17').getBoundingClientRect().top)), { timeout: 3000 }).toBeLessThan(120);
   expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(100);                              // scrolled to the day, not the top of the page
   await expect(day.locator('.tr-row')).toHaveCount(2);
   const row = n => day.locator('.tr-row', { hasText: n });
@@ -577,6 +581,7 @@ test('transfers: the closing Saturday\'s departure and another week land on that
   await page.locator('#wkDay-2026-11-21 .wk-bc.trf .wk-trlink').click();
   await expect(page.locator('#transportRoot .tr-week')).toHaveText('14–20 Nov');                          // Sat 21 departures belong to the week that ends
   await expect(page.locator('#trDay-2026-11-21')).toBeInViewport();
+  await expect.poll(() => page.evaluate(() => document.getElementById('trDay-2026-11-21').getBoundingClientRect().top >= document.querySelector('.app-nav').getBoundingClientRect().bottom), { timeout: 3000 }).toBe(true);
   await expect(page.locator('#trDay-2026-11-21 .tr-row')).toContainText('Beliz Kuyumcuoglu');
   // the Transport week is moved away, then Week → Team messages → Transfers brings it back to Week's week
   await page.evaluate(() => TransportUI.shiftWeek(14));

@@ -234,7 +234,7 @@ test('morocco import: a «Booking location» column, when the export has one, de
   expect(a.guests).toBe(33);
 });
 
-test('morocco «Send the whole day»: the same house-style message as Week → Transfers, to Let Us Tours, sent ones marked, held out', async ({ page }) => {
+test('morocco «Send the whole day»: the same house-style message the old Week → Transfers sent, to Let Us Tours, sent ones marked, held out', async ({ page }) => {
   const trips = H.tripsFromFile().map(t => t.import_key === 'bl:MA-1001:arr' ? { ...t, status: 'confirmed' } : t.import_key === 'bl:MA-1010:arr' ? { ...t, missing_since: '2026-11-14' } : t);
   await openTab(page, { trips });
   await page.evaluate(() => TransportUI.sendDay('2026-11-14'));

@@ -277,7 +277,7 @@ test('trips: list by day, WhatsApp to the «Send transfers to» contact in Migue
   expect(upd.body).toMatchObject({ status: 'sent', needs_resend: false, sent_snapshot: { trip_date: '2026-11-14', trip_time: '01:55', flight: 'QR658', pax: 1 } });
   await rows.first().locator('button:has-text("Confirmed ✓")').click();
   await expect(rows.first().locator('.badge-green:has-text("Confirmed")')).toBeVisible();
-  // whole day (15 Nov): the same house-style message as Week → Transfers for that day — one builder
+  // whole day (15 Nov): the same house-style message as the old Week → Transfers day message — one builder
   await page.click('button:has-text("Send the whole day")');
   const day = decodeURIComponent((await page.evaluate(() => window.__opened[1])).split('?text=')[1]);
   expect(day).toBe([
@@ -686,12 +686,12 @@ for (const [name, size] of [['phone 390', { width: 390, height: 844 }], ['deskto
     // The logic in one plain line under the title.
     await expect(page.locator('#transportRoot .tr-how')).toHaveText('Airport transfers, tuk-tuks and paying the drivers. Nadith pays in the Ledger and ticks the guests.');
     await expect(page.locator('.tr-week')).toHaveText('7–13 Nov');
-    // Phone (15 Nov 2026): the week totals sit under the day list and the sub is one line, so the first trip is on the first screen;
+    // Phone (15 Nov 2026): the week totals sit under the day list, so the first trip is on the first screen;
     // desktop keeps the totals on top. Rendered once either way.
     await expect(page.locator('[data-total="airport"]')).toHaveCount(1);
     const pos = await page.evaluate(() => ({ totals: document.querySelector('.tr-totals').getBoundingClientRect().top, day: document.querySelector('.tr-day').getBoundingClientRect().top,
       row: document.querySelector('.tr-day .tr-row').getBoundingClientRect().top, sub: document.querySelector('.tr-how').getBoundingClientRect().height, line: parseFloat(getComputedStyle(document.querySelector('.tr-how')).lineHeight) || 20 }));
-    if (size.width <= 700) { expect(pos.totals).toBeGreaterThan(pos.day); expect(pos.row).toBeLessThan(size.height); expect(pos.sub).toBeLessThan(pos.line * 1.6); }
+    if (size.width <= 700) { expect(pos.totals).toBeGreaterThan(pos.day); expect(pos.row).toBeLessThan(size.height); }
     else expect(pos.totals).toBeLessThan(pos.day);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(size.width);
     // Week totals: drivers' prices; cancelled left out; free is a part of the airport count, not an extra.

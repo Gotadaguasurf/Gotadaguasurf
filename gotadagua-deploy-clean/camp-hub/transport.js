@@ -333,7 +333,7 @@
     const wk = $('weekRoot'); if (wk && wk.querySelector('.wk-import')) wk.innerHTML = '';
     const root = $('transportRoot'); if (!root) return;
     const v = TR.view;
-    const head = `<div class="section-head page-head"><div><div class="section-title">Transport</div><div class="section-sub tr-how" title="${h(CC.transportHow || '')}" onclick="this.classList.toggle('open')">${h(CC.transportHow || '')}</div></div>
+    const head = `<div class="section-head page-head"><div><div class="section-title">Transport</div><div class="section-sub tr-how">${h(CC.transportHow || '')}</div></div>
       <div class="exp-top-actions tr-actions">
         <button class="btn ${v === 'trips' ? 'btn-p' : 'btn-s'}" onclick="TransportUI.openTuktuk()">${ic('plus')} ${RUN.plural}</button>
         <button class="btn btn-s" onclick="TransportUI.openAddTransfer()">${ic('truck')} Add transfer</button>
@@ -475,7 +475,7 @@
     const p = n => `${n} ${n === 1 ? 'person' : 'persons'}`;
     const todo = weekTickIds(ws).length;
     return `<div class="hint tr-count" data-week-count><span>Arrivals ${C.arr.n} · ${p(C.arr.pax)}</span><span class="tr-count-sep">|</span><span>Departures ${C.dep.n} · ${p(C.dep.pax)}</span>${todo
-      ? `<span class="tr-count-tick">· ${todo} not marked sent · <button class="btn-link" data-week-tick onclick="TransportUI.tickWeek()">Mark all sent ✓</button></span>` : ''}</div>`;
+      ? `<span class="tr-count-tick">${todo} not marked sent · <button class="btn-link" data-week-tick onclick="TransportUI.tickWeek()">Mark all sent ✓</button></span>` : ''}</div>`;
   }
   // «Send the whole week»: the whole-week message that Week → Transfers sent (GT.transfersText, day 'week'), byte for byte.
   const weekTrips = ws => GT.transfersTrips(TR.trips, { day: 'week', ws, now: colomboNow() });
@@ -591,7 +591,7 @@
       `Our driver will be waiting for you at the *arrivals exit* of ${airportCity(t.place)} airport, holding a *sign with your name*.`, '',
       'Please reply to confirm these details are correct, or tell us what changed.', '', 'See you soon!'].join('\n');
   }
-  // The buttons and the state of one trip — used on the day list, in the day sheet and by the Week tab (WeekUI.askBtn).
+  // The buttons and the state of one trip — used on the day list and in the day sheet.
   function guestHtml(t) {
     const st = guestState(t); const can = guestCan(t);
     if (!st && !can) return '';
@@ -623,7 +623,7 @@
       <div class="hint">WhatsApp opens one guest at a time. ${told} of ${list.length} told.</div>`;
     modal(`Confirm with guests · ${fmtDay(day)}`, 'The driver waits at the arrivals exit with a sign with their name', body, `<button class="btn btn-p" onclick="TransportUI.closeModal();TransportUI.render()">Done</button>`);
   }
-  // «Send the whole day»: the same message as Week → Transfers for that day (one builder, 15 Nov):
+  // «Send the whole day»: the house-style day message (one builder with «Send the whole week», 15 Nov):
   // *TRANSFERS - SUN 15 NOV* (TODAY / TOMORROW), every transfer not yet happened, sent ones marked.
   function dayMessage(day) { return GT.dressTitles(GT.transfersText(TR.trips, { day, now: colomboNow(), cfg: GTC }), cToday()); }
   function sendDay(day) {

@@ -7,6 +7,8 @@
 #transportRoot .tr-filters .period-picker { display: inline-flex; align-items: center; gap: var(--sp-2); }
 /* The week's arrivals / departures in one line under the week picker (was «Transfers booked» in Week, 15 Nov 2026). */
 #transportRoot .tr-filters:has(+ .tr-count) { margin-bottom: var(--sp-2); }
+/* A tap on Week's Overview scrolls to a day card: keep its date clear of the sticky 60px nav. */
+#transportRoot .tr-day { scroll-margin-top: 72px; }
 #transportRoot .tr-count { display: flex; flex-wrap: wrap; align-items: center; gap: 4px var(--sp-2); margin: 0 0 var(--sp-4); }
 #transportRoot .tr-count-sep { color: var(--border-strong, #c8d3df); }
 #transportRoot .tr-count .btn-link { height: auto; padding: 0 2px; }
@@ -118,13 +120,10 @@
   .tr-tbl td.tr-c-k .cell-sub { display: inline; margin-left: 4px; }
   #transportRoot .tr-actions .btn { flex: 1 1 calc(50% - 8px); justify-content: center; }
   #transportRoot .tr-totals { grid-template-columns: 1fr; gap: var(--sp-2); }
-  /* Phone (15 Nov 2026): the first trip on the first screen — the week totals go under the day list, the page
-     sub is one line (tap it to read it all). */
+  /* Phone (15 Nov 2026): the first trip on the first screen — the week totals go under the day list. */
   #transportRoot .tr-tripview { display: flex; flex-direction: column; }
   #transportRoot .tr-tripview > .tr-totals { order: 9; margin-top: var(--sp-2); }
-  #transportRoot .page-head > div:first-child { min-width: 0; max-width: 100%; }
-  #transportRoot .tr-how { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
-  #transportRoot .tr-how.open { white-space: normal; overflow: visible; }
+
   .tr-totals .kpi { padding: var(--sp-3) var(--sp-4); }
   .tr-pay { flex-direction: row; align-items: center; gap: var(--sp-2); text-align: left; flex-wrap: wrap; }
   .tr-tuk-line { grid-template-columns: 1fr auto auto; gap: var(--sp-2); padding: var(--sp-2) var(--sp-4); }
