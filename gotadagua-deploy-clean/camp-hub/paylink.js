@@ -128,9 +128,9 @@
       const ds = (e.target && e.target.dataset) || {};
       if (ds.trip) pick(ds.trip, e.target.checked);
       else if (ds.extraId && !e.target.checked) { P.extra = P.extra.filter(x => x.id !== ds.extraId); applyAmount(); render(); }   // untick = take it out
-      else if (ds.draft && P.draft) { P.draft[ds.draft] = e.target.value; e.stopPropagation(); }
+      else if (ds.draft && P.draft) { P.draft[ds.draft] = e.target.value; if (ds.draft === 'price') P.draft.priceEdited = true; e.stopPropagation(); }
     });
-    w.addEventListener('input', e => { const k = e.target && e.target.dataset && e.target.dataset.draft; if (k && P.draft) P.draft[k] = e.target.value; });
+    w.addEventListener('input', e => { const k = e.target && e.target.dataset && e.target.dataset.draft; if (k && P.draft) { P.draft[k] = e.target.value; if (k === 'price') P.draft.priceEdited = true; } });
     w.addEventListener('click', e => { const b = e.target && e.target.closest && e.target.closest('[data-act]'); if (b) { e.preventDefault(); act(b.dataset.act, b.dataset.v); } });
     w.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target && e.target.dataset && e.target.dataset.draft) { e.preventDefault(); act('add'); } });
     after.insertAdjacentElement('afterend', w);
@@ -147,6 +147,8 @@
     } catch (_) { return 0; }
   }
   const newDraft = () => ({ name: '', date: entryDate() < goLive() ? goLive() : entryDate(), kind: 'airport_arrival', reason: 'staff' });   // never a date before go-live
+  // The amount of the extra transfer: the /prices Car price for the trip, until it is typed over.
+  const draftPrice = d => d.priceEdited ? String(d.price == null ? '' : d.price) : String(carPrice(d.kind) || '');
   function addForm() {
     const d = P.draft || (P.draft = newDraft());
     const pills = (act, list, cur) => `<div class="pills">${list.map(([v, l]) => `<button type="button" class="pill${v === cur ? ' active' : ''}" data-act="${act}" data-v="${v}">${l}</button>`).join('')}</div>`;
@@ -155,6 +157,7 @@
       <div class="pl-full"><div class="pl-lbl">Date</div><input type="date" id="pl_date" data-draft="date" value="${h(d.date)}"></div>
       <div class="pl-full"><div class="pl-lbl">Trip</div>${pills('kind', [['airport_arrival', 'Arrival'], ['airport_departure', 'Departure']], d.kind)}</div>
       <div class="pl-full"><div class="pl-lbl">Why is it free?</div>${pills('reason', FREE_REASONS, d.reason)}</div>
+      <div class="pl-full"><div class="pl-lbl">Amount (LKR) · what the driver gets</div><input id="pl_price" data-draft="price" type="number" inputmode="numeric" min="0" step="1" value="${h(draftPrice(d))}"></div>
       <div class="pl-full pl-add-btns"><button type="button" class="btn btn-s btn-sm" data-act="cancel">Cancel</button><button type="button" class="btn btn-s btn-sm" id="pl_add_ok" data-act="add">Add to this payment</button></div></div>`;
   }
   function render() {
@@ -210,7 +213,9 @@
       const say = m => { try { toast(m); } catch (_) {} };
       if (!name_) { say('Type the name'); const el = $('pl_name'); if (el) el.focus(); return; }
       if (!d.date || d.date < goLive() || d.date > lastDate()) { say(`The date must be between ${fmtDay(goLive())} and ${fmtDay(lastDate())}`); return; }
-      P.extra.push({ id: 'new-' + (++P.seq), name: name_, date: d.date, kind: d.kind, reason: d.reason, price: carPrice(d.kind) });
+      const price = Number(draftPrice(d));
+      if (!Number.isFinite(price) || price < 0 || draftPrice(d).trim() === '') { say('Type the amount the driver gets'); const el = $('pl_price'); if (el) el.focus(); return; }
+      P.extra.push({ id: 'new-' + (++P.seq), name: name_, date: d.date, kind: d.kind, reason: d.reason, price: Math.round(price) });
       P.adding = false; P.draft = null;
       applyAmount(); render();
     }

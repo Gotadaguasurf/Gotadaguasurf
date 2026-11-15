@@ -331,6 +331,7 @@ test('paylink: «+ Not in the list (staff / gift)» — kept in the form, create
   await picker(page).locator('[data-act="kind"][data-v="airport_departure"]').click();
   await picker(page).locator('[data-act="reason"][data-v="gift"]').click();
   await expect(picker(page).locator('#pl_name')).toHaveValue('Kasun');             // the typed name survives the redraw
+  await expect(picker(page).locator('#pl_price')).toHaveValue('20000');            // the amount is on the form: the /prices departure price
   await picker(page).locator('#pl_date').fill('2026-11-12');
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   await picker(page).locator('#pl_add_ok').click();
@@ -353,8 +354,13 @@ test('paylink: «+ Not in the list (staff / gift)» — kept in the form, create
   await transportAirport(page);
   await picker(page).locator('#pl_more').click();
   await picker(page).locator('#pl_name').fill('Staff Two');
+  await picker(page).locator('#pl_price').fill('15000');                            // a different amount, typed on the form
+  await picker(page).locator('[data-act="kind"][data-v="airport_departure"]').click();
+  await expect(picker(page).locator('#pl_price')).toHaveValue('15000');            // a typed amount survives the redraw
   await picker(page).locator('#pl_name').press('Enter');                            // Enter adds, it never saves the expense
   await expect(picker(page).locator('.pl-new')).toHaveCount(1);
+  await expect(picker(page).locator('.pl-new .pl-amt')).toHaveText('15,000');
+  await expect(page.locator('#qe_amount')).toHaveValue('15000');
   expect(st.posted.length).toBe(1);
   await picker(page).locator('.pl-new input').click();                               // untick
   await expect(picker(page).locator('.pl-new')).toHaveCount(0);
