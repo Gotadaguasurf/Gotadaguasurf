@@ -135,6 +135,11 @@ async function openTab(page, opts = {}) {
   await page.evaluate(() => showPage('transport'));
   return st;
 }
+// The Guests import has one door, in Week (15 Nov 2026): Transport's empty week points there (TransportUI.toImport).
+async function openImport(page) {
+  await page.evaluate(() => TransportUI.toImport());
+  await expect(page.locator('#weekRoot .wk-import #trGuestsFile')).toHaveCount(1);
+}
 
 // ── Access ─────────────────────────────────────────────────────────────────
 test('transport: tab shows for full users only — not in local view or camp-tab-only (Morocco now has it: tests/morocco-transport.spec.js)', async ({ page, browser }) => {
@@ -161,8 +166,22 @@ test('transport: tab shows for full users only — not in local view or camp-tab
   }
 });
 
-// ── Next week import ───────────────────────────────────────────────────────
-test('next week import: the Guests file stands alone — HQ bookings are never read or used (Miguel, 13 Nov)', async ({ page }) => {
+// ── One import door (15 Nov 2026: «Week = guests and camp teams, Transport = drivers and money») ──
+test('transport: two pills (Trips · Reconcile), no «Next week»; an empty week says the trips come from the Guests file and opens the import in Week', async ({ page }) => {
+  const errors = collectFatalErrors(page);
+  await openTab(page, { trips: [] });
+  await expect(page.locator('#transportRoot .tr-views .pill')).toHaveText(['Trips', 'Reconcile']);
+  await expect(page.locator('#transportRoot button.pill:has-text("Next week")')).toHaveCount(0);
+  await expect(page.locator('#transportRoot .empty-state')).toContainText('Trips come from the Guests file. Import it in Week.');
+  await page.click('#transportRoot .empty-state button:has-text("Import Guests file")');
+  await expect(page.locator('#weekRoot .wk-import .card-title').first()).toHaveText('Guests file');
+  expect(await page.evaluate(() => activePage)).toBe('week');
+  expect(await page.locator('#trGuestsFile').count()).toBe(1);
+  expect(errors).toEqual([]);
+});
+
+// ── Guests import (shown in Week, the only door) ───────────────────────────
+test('guests import (in Week): the Guests file stands alone — HQ bookings are never read or used (Miguel, 13 Nov)', async ({ page }) => {
   const errors = collectFatalErrors(page);
   const hqReads = [];
   page.on('request', r => { if (/\/rest\/v1\/bookings\?.*(booking_ref=in|check_in_on=gte)/.test(r.url())) hqReads.push(r.url()); }); // the import's own HQ reads (the hub's Overview load is separate)
@@ -172,13 +191,13 @@ test('next week import: the Guests file stands alone — HQ bookings are never r
       { booking_ref: '2026-4936', booker: 'Maximilian Ehrler', check_in_on: '2026-11-14', location: 'Surf Camp Ahangama', package: 'Surf Camp Ahangama', partner_name: 'Direct Bookings', raw_payload: { status: 'cancelled' } },
     ],
   });
-  await page.click('button.pill:has-text("Next week")');
-  await expect(page.locator('#transportRoot .card-title').first()).toContainText('Next week · 14–20 Nov');
+  await openImport(page);
+  await expect(page.locator('#weekRoot .wk-import .card-title').first()).toHaveText('Guests file');
   await page.setInputFiles('#trGuestsFile', GUESTS_CSV);
-  await expect(page.locator('#transportRoot')).toContainText('Airport trips from this file · 6');
-  await expect(page.locator('#transportRoot')).toContainText('Maximilian Ehrler');
-  await expect(page.locator('#transportRoot')).not.toContainText('in HQ');
-  await expect(page.locator('#transportRoot')).not.toContainText('Cancelled in HQ');
+  await expect(page.locator('#weekRoot')).toContainText('Airport trips from this file · 6');
+  await expect(page.locator('#weekRoot')).toContainText('Maximilian Ehrler');
+  await expect(page.locator('#weekRoot')).not.toContainText('in HQ');
+  await expect(page.locator('#weekRoot')).not.toContainText('Cancelled in HQ');
   await expect(page.locator('.tr-soft')).toHaveCount(0);
   await page.click('#trImportSave');
   await expect(page.locator('.status-msg.status-ok')).toContainText('Saved: 6 new');
@@ -193,13 +212,13 @@ test('next week import: the Guests file stands alone — HQ bookings are never r
   expect(errors).toEqual([]);
 });
 
-test('next week import: every row of the file is accounted for — imported, or left out with its reason (audit of 13 Nov)', async ({ page }) => {
+test('guests import (in Week): every row of the file is accounted for — imported, or left out with its reason (audit of 13 Nov)', async ({ page }) => {
   const st = await openTab(page);
-  await page.click('button.pill:has-text("Next week")');
+  await openImport(page);
   await page.setInputFiles('#trGuestsFile', GUESTS_CSV);
-  await expect(page.locator('#transportRoot .tr-audit')).toHaveText('18 rows in the file = 18 guests imported + 0 left out');
-  await expect(page.locator('#transportRoot .tr-audit')).toHaveClass(/hint/);
-  await expect(page.locator('#transportRoot .tr-leftout')).toHaveCount(0);
+  await expect(page.locator('#weekRoot .tr-audit')).toHaveText('18 rows in the file = 18 guests imported + 0 left out');
+  await expect(page.locator('#weekRoot .tr-audit')).toHaveClass(/hint/);
+  await expect(page.locator('#weekRoot .tr-leftout')).toHaveCount(0);
   // invented rows: a +1 with no name, a request, another camp, a row with no dates
   const head = '"Guest","Booking status","Booking","Accommodations","Bed number","Packages","Check-in on","Check-out on","Has transfer"';
   const csv = [head,
@@ -209,9 +228,9 @@ test('next week import: every row of the file is accounted for — imported, or 
     '"Pia Pohl","paid","2026-9012","17 - Castelo beach mixed dorm","1","Offseason Custom Package","Fri 27 Nov 2026","Sun 29 Nov 2026","No"',
     '"Quin Quast","paid","2026-9013","Madiha Beach Standard Ensuite Room","1","Surf Camp Ahangama","","","No"'].join('\n');
   await page.setInputFiles('#trGuestsFile', { name: 'Bookinglayer-Guests-2026-11-13 10_00.csv', mimeType: 'text/csv', buffer: Buffer.from(csv, 'utf8') });
-  await expect(page.locator('#transportRoot .tr-audit')).toHaveText('5 rows in the file = 2 guests imported + 3 left out · 2 to look at');
-  await expect(page.locator('#transportRoot .tr-audit')).toHaveClass(/status-warn/);
-  const left = page.locator('#transportRoot .tr-leftout .tr-row');
+  await expect(page.locator('#weekRoot .tr-audit')).toHaveText('5 rows in the file = 2 guests imported + 3 left out · 2 to look at');
+  await expect(page.locator('#weekRoot .tr-audit')).toHaveClass(/status-warn/);
+  const left = page.locator('#weekRoot .tr-leftout .tr-row');
   await expect(left).toHaveCount(3);
   await expect(left.nth(0)).toContainText('Nora Nagel');
   await expect(left.nth(0)).toContainText('status «request»');
@@ -220,21 +239,21 @@ test('next week import: every row of the file is accounted for — imported, or 
   await expect(left.nth(1).locator('.badge')).toHaveCount(0);
   await expect(left.nth(2)).toContainText('Quin Quast');
   await expect(left.nth(2)).toContainText('no check-in or check-out date: on no list');
-  await expect(page.locator('#transportRoot .tr-soft')).toContainText('1 guest with no name or a repeated name on the booking, kept as separate people: Guest without name (booking 2026-9007)');
+  await expect(page.locator('#weekRoot .tr-soft')).toContainText('1 guest with no name or a repeated name on the booking, kept as separate people: Guest without name (booking 2026-9007)');
   await page.click('#trImportSave');
   const imp = (await call(st, 'import')).body;
   expect(imp.p_guests.map(g => g.guest_key)).toEqual(['kai kopp', 'guest without name (booking 2026-9007)']);
 });
 
-test('next week import: a file without a date in its name asks when it was downloaded', async ({ page }) => {
+test('guests import (in Week): a file without a date in its name asks when it was downloaded', async ({ page }) => {
   await openTab(page);
-  await page.click('button.pill:has-text("Next week")');
+  await openImport(page);
   await page.setInputFiles('#trGuestsFile', path.join(__dirname, 'fixtures', 'guests-13h47.csv'));
-  await expect(page.locator('#transportRoot')).toContainText('When did you download this file?');
+  await expect(page.locator('#weekRoot')).toContainText('When did you download this file?');
   await page.fill('#trExportDate', '2026-11-13');
   await page.click('.tr-date-ask button');
-  await expect(page.locator('#transportRoot')).toContainText('exported 13 Nov');
-  await expect(page.locator('#transportRoot')).toContainText('Airport trips from this file · 6');
+  await expect(page.locator('#weekRoot')).toContainText('exported 13 Nov');
+  await expect(page.locator('#weekRoot')).toContainText('Airport trips from this file · 6');
 });
 
 // ── Trips list + WhatsApp ──────────────────────────────────────────────────
@@ -583,7 +602,7 @@ test('transport: works with the tables missing (SQL not run yet) — a clear mes
   expect(errors).toEqual([]);
 });
 
-test('next week import: a Bookinglayer Guests .xlsx is read like the CSV (Excel reader stubbed)', async ({ page }) => {
+test('guests import (in Week): a Bookinglayer Guests .xlsx is read like the CSV (Excel reader stubbed)', async ({ page }) => {
   const errors = collectFatalErrors(page);
   const csv = require('fs').readFileSync(GUESTS_CSV, 'utf8');
   // Stand-in for SheetJS: the app only calls XLSX.read + XLSX.utils.sheet_to_csv.
@@ -591,11 +610,11 @@ test('next week import: a Bookinglayer Guests .xlsx is read like the CSV (Excel 
     window.XLSX = { read: () => ({ SheetNames: ['Guests'], Sheets: { Guests: {} } }), utils: { sheet_to_csv: () => text } };
   }, csv);
   await openTab(page);
-  await page.click('button.pill:has-text("Next week")');
+  await openImport(page);
   expect(await page.locator('#trGuestsFile').getAttribute('accept')).toContain('.xlsx');
   await page.setInputFiles('#trGuestsFile', { name: 'Bookinglayer-Guests-2026-11-07 14_23.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: Buffer.from('PK fake xlsx') });
-  await expect(page.locator('#transportRoot')).toContainText('Airport trips from this file · 6');
-  await expect(page.locator('#transportRoot')).toContainText('exported 7 Nov');
+  await expect(page.locator('#weekRoot')).toContainText('Airport trips from this file · 6');
+  await expect(page.locator('#weekRoot')).toContainText('exported 7 Nov');
   expect(errors).toEqual([]);
 });
 
@@ -935,7 +954,7 @@ test('A6 / A7 — a trip whose booking or transfer left the file is flagged on t
 
 test('A6 — the import sends «preset» for the real kind of file and the refs still in it; the result line says what to check', async ({ page }) => {
   const st = await openTab(page, { importResult: { missing: 2, replaced: 1 } });
-  await page.click('button.pill:has-text("Next week")');
+  await openImport(page);
   await page.setInputFiles('#trGuestsFile', GUESTS_CSV);
   await page.click('#trImportSave');
   const imp = (await call(st, 'import')).body;
@@ -957,7 +976,7 @@ test('A10 / A11 — a night arrival and «guest says don\'t need» show as one a
 
 test('A13 — an import while the prices have not loaded never saves trips at 0', async ({ page }) => {
   const st = await openTab(page);
-  await page.click('button.pill:has-text("Next week")');
+  await openImport(page);
   st.noPrices = true;
   await page.evaluate(() => { transportPresets = { airport: [], tuktuk: [], surf: [], tours: [] }; });   // a slow phone: /prices not in yet
   await page.setInputFiles('#trGuestsFile', GUESTS_CSV);

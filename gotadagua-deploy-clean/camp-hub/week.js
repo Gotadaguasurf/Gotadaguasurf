@@ -23,9 +23,9 @@
 //
 // Where the import lives: the Guests import is the first thing Francisco does
 // on Monday, so Week has the «Import Guests file» button at the top and shows
-// the import there — the same code and state as Transport → Next week
-// (TransportUI.importHtml), never a second import. Transport keeps its «Next
-// week» pill as a second door to it (transfers-only view, existing habit).
+// the import there (TransportUI.importHtml). It is the only door (15 Nov 2026:
+// Transport lost its «Next week» pill); after saving, «See the week» or «Send
+// transfers in Transport» (the same week).
 //
 // Week works from camp_week_guests alone: HQ bookings has no future stays, so
 // hq_match / partner come from the import (bookings only when a ref matched).
@@ -814,7 +814,8 @@
       else if (!S.loaded) inner = S.error ? `<div class="status-msg status-warn">Transport is not set up yet (${h(S.error)}). Ask Miguel to run supabase/camp-trips.sql.</div>` : '<div class="loading">Loading…</div>';
       else inner = TransportUI.importHtml({ title: 'Guests file' });
       const done = S.imp && S.imp.stage === 'done';
-      root.innerHTML = head + `<div class="wk-import">${inner}</div>` + (done ? `<div class="wk-after"><button class="btn btn-s" onclick="WeekUI.afterImport()">${ic('list')} See the week</button></div>` : '');
+      root.innerHTML = head + `<div class="wk-import">${inner}</div>` + (done ? `<div class="wk-after"><button class="btn btn-p" onclick="WeekUI.afterImport()">${ic('list')} See the week</button>
+        <button class="btn btn-s" onclick="WeekUI.afterImport('transport')">${ic('truck')} Send transfers in Transport ${ic('chevron-right')}</button></div>` : '');
       if (!S.loaded && !S.error && window.TransportUI) TransportUI.load().then(render);
       return;
     }
@@ -1366,15 +1367,14 @@
   }
   const notHere = id => patchGuest(id, { booking_status: 'not_here' }, 'Taken out of the week');
 
-  // ── Contacts modal (4 rows: name + phone) ───────────────────────────────
+  // ── Contacts modal (3 rows: name + phone) ───────────────────────────────
+  // The camp teams only (cleaning, kitchen, surf): who gets the transfers is set in Transport → Drivers (15 Nov 2026).
   function openContacts() {
-    const rows = TEAMS.filter(t => t.contact).map(t => {
+    const rows = TEAMS.filter(t => t.contact && t.k !== 'transfers').map(t => {
       const c = contactOf(t.k);
-      const fixed = t.k === 'transfers';
       return `<div class="wk-contact" data-team="${t.k}"><div class="section-lbl">${h(t.label)}</div>
-        <div class="g2"><div class="mfield"><label>Name</label><input data-f="name" value="${h(c ? c.name : '')}" placeholder="${h(t.role)}" ${fixed && c ? 'disabled' : ''}></div>
-        <div class="mfield"><label>Phone</label><input data-f="phone" value="${h(c && c.phone || '')}" placeholder="add phone · ${h(CC.phoneExample || '+94771234567')}" inputmode="tel"></div></div>
-        ${fixed ? `<div class="hint">Who gets the transfers is set in Transport → Drivers.</div>` : ''}</div>`;
+        <div class="g2"><div class="mfield"><label>Name</label><input data-f="name" value="${h(c ? c.name : '')}" placeholder="${h(t.role)}"></div>
+        <div class="mfield"><label>Phone</label><input data-f="phone" value="${h(c && c.phone || '')}" placeholder="add phone · ${h(CC.phoneExample || '+94771234567')}" inputmode="tel"></div></div></div>`;
     }).join('');
     let ov = $('wkOv');
     if (!ov) { ov = document.createElement('div'); ov.className = 'overlay'; ov.id = 'wkOv'; ov.addEventListener('click', e => { if (e.target === ov) closeModal(); }); document.body.appendChild(ov); }
@@ -1462,9 +1462,11 @@
     setMode(m) { W.mode = m; if (m === 'import' && window.TransportUI && TR().imp && TR().imp.stage === 'done') TR().imp = null; render(); },
     // After an import: Overview of the week Francisco imported for — the first check-in from today on
     // (the file also holds guests already in camp), else the running week.
-    afterImport() { const S0 = TR(); const g = S0.imp && S0.imp.groups && S0.imp.groups.guests || []; const today = cToday();
+    // to = 'transport': the same week in Transport → Trips, to send the transfers.
+    afterImport(to) { const S0 = TR(); const g = S0.imp && S0.imp.groups && S0.imp.groups.guests || []; const today = cToday();
       const next = g.map(x => x.check_in).filter(d => d && d >= today).sort()[0];
-      W.mode = 'lists'; W.tab = 'overview'; W.week = GT.weekStart(next || today); W.day = 'week'; S0.imp = null; loadAll(true); },
+      W.mode = 'lists'; W.tab = 'overview'; W.week = GT.weekStart(next || today); W.day = 'week'; S0.imp = null; loadAll(true);
+      if (to === 'transport' && window.TransportUI && TransportUI.setWeek) TransportUI.setWeek(W.week); },
     setTab(t) { if (!TABS.some(x => x.k === t)) return; W.tab = t; W.team = teamOfTab(t) || W.team; W.undo = null; render(); },
     setTeam(t) { W.team = t; W.tab = tabOf(t); W.undo = null; render(); }, setDay(d) { W.day = d; W.undo = null; render(); },
     go(team, day) { W.team = team; W.tab = tabOf(team); W.day = day; W.scrollTo = 'wkMessage'; render(); },

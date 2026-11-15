@@ -19,12 +19,14 @@
 .wk-in { color: var(--wk-in); } .wk-out { color: var(--wk-out); }
 .wk-warn { color: var(--amber); }
 
-/* Tabs: one pill row; it scrolls sideways on a phone, the page never does. */
+/* Tabs: one pill row; at 420px and below it wraps onto two rows (15 Nov 2026), so no tab — Guests with its
+   «to check» count — is ever off-screen. The page never scrolls sideways. */
 #weekRoot .wk-tabs { display: flex; flex-wrap: nowrap; gap: var(--sp-2); overflow-x: auto; margin: 0 0 var(--sp-4); padding-bottom: 2px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
 #weekRoot .wk-tabs::-webkit-scrollbar { display: none; }
 #weekRoot .wk-tabs .pill { height: 36px; padding: 0 14px; font-size: 13px; flex: 0 0 auto; }
 #weekRoot .wk-tabs .wk-n { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber-border); }
 #weekRoot .wk-tabs .pill.active .wk-n { background: #fff; }
+@media (max-width: 420px) { #weekRoot .wk-tabs { flex-wrap: wrap; overflow-x: visible; } }
 .wk-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--amber); margin-left: 6px; vertical-align: middle; flex: 0 0 auto; }
 #weekRoot .pill.active .wk-dot { box-shadow: 0 0 0 2px #fff; }
 
@@ -193,7 +195,7 @@
 .wk-foot-btns .btn-p { min-width: 220px; justify-content: center; }
 .wk-state { margin-top: 6px; }
 .wk-state .btn-link { padding: 0; border: 0; font: inherit; color: var(--ocean); cursor: pointer; text-decoration: underline; }
-.wk-after { margin-top: var(--sp-3); }
+.wk-after { margin-top: var(--sp-3); display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 .wk-contact { padding-bottom: var(--sp-3); margin-bottom: var(--sp-3); border-bottom: 1px solid var(--border); }
 .wk-contact:last-child { border-bottom: 0; margin-bottom: 0; }
 

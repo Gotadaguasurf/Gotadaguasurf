@@ -37,10 +37,10 @@ test('morocco transport: Guests import — Morocco rows only, Agadir / Marrakech
   const hqReads = [];
   page.on('request', r => { if (/\/rest\/v1\/bookings\?.*(booking_ref=in|check_in_on=gte)/.test(r.url())) hqReads.push(r.url()); });
   const st = await openTab(page);
-  await page.click('button.pill:has-text("Next week")');
-  await expect(page.locator('#transportRoot .card-hint').first()).toContainText('«Semana Marrocos»');
+  await page.evaluate(() => TransportUI.toImport());              // the one import door is in Week (15 Nov 2026)
+  await expect(page.locator('#weekRoot .wk-import .card-hint').first()).toContainText('«Semana Marrocos»');
   await page.setInputFiles('#trGuestsFile', H.CSV(H.FILE));
-  await expect(page.locator('#transportRoot')).toContainText('Airport trips from this file · 27');
+  await expect(page.locator('#weekRoot')).toContainText('Airport trips from this file · 27');
   await expect(page.locator('.tr-audit')).toContainText('38 rows in the file = 32 guests imported + 6 left out');
   await expect(page.locator('.tr-leftout')).toContainText('17 - Castelo beach mixed dorm');
   await expect(page.locator('.tr-noprice')).toHaveCount(0);
@@ -167,20 +167,20 @@ test('morocco «Which transfers is this for?»: Transport · Agadir Airport · B
   await expect(page.locator('#toast')).toContainText('2 transfers linked');
 });
 
-test('morocco transport: screenshots at 390 and 1280 — Trips, Next week, Reconcile, van runs; no horizontal overflow', async ({ page }) => {
+test('morocco transport: screenshots at 390 and 1280 — Trips, Reconcile, the Guests import (in Week), van runs; no horizontal overflow', async ({ page }) => {
   fs.mkdirSync(SHOTS, { recursive: true });
   const errors = collectFatalErrors(page);
   const runs = [{ id: 'cccccccc-0000-4000-8000-000000000009', location_id: H.LOC, kind: 'other', trip_date: '2026-11-14', trip_time: '08:00', route: 'Surf', purpose: 'surf', pax: 9, vehicle: 'Van', driver_id: H.D.fat, expected_price: 990, currency: 'MAD', status: 'done', source: 'manual', payment_entry_id: null, import_flags: [], edited_fields: [], created_at: '2026-11-14T08:00:00Z' }];
   await openTab(page, { trips: [...H.tripsFromFile(), ...runs] });
   for (const [w, hgt] of [[390, 844], [1280, 900]]) {
     await page.setViewportSize({ width: w, height: hgt });
-    for (const v of ['trips', 'next', 'reconcile']) {
-      await page.evaluate(v => TransportUI.setView(v), v);
+    for (const v of ['trips', 'import', 'reconcile']) {
+      await page.evaluate(v => { if (v === 'import') TransportUI.toImport(); else { showPage('transport'); TransportUI.setView(v); } }, v);
       await page.waitForTimeout(150);
       expect(await H.noOverflow(page), `${v} at ${w}`).toBe(true);
       await page.screenshot({ path: path.join(SHOTS, `transport-${v}-${w}.png`), fullPage: true });
     }
-    await page.evaluate(() => TransportUI.openTuktuk());
+    await page.evaluate(() => { showPage('transport'); TransportUI.openTuktuk(); });
     await page.waitForTimeout(150);
     expect(await H.noOverflow(page), `van runs at ${w}`).toBe(true);
     await page.screenshot({ path: path.join(SHOTS, `transport-vanruns-${w}.png`) });
@@ -202,7 +202,7 @@ test('morocco import: loud warnings — missing column, room not in the list, ne
   const drop = col('Bed number');
   const csv = rows.map(r => r.filter((_, i) => i !== drop).map(c => /[",\n]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c).join(',')).join('\n');
   await openTab(page);
-  await page.click('button.pill:has-text("Next week")');
+  await page.evaluate(() => TransportUI.toImport());
   await page.setInputFiles('#trGuestsFile', { name: 'ma-guests-2026-11-14.csv', mimeType: 'text/csv', buffer: Buffer.from(csv, 'utf8') });
   const w = page.locator('.tr-impwarn');
   await expect(w).toBeVisible();

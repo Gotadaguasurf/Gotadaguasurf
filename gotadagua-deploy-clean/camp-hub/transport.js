@@ -14,9 +14,9 @@
 //
 //   Trips      list by day (Sat–Fri week), WhatsApp to the «Send transfers to»
 //              contact, Sent ✓ / Confirmed ✓, «Time changed, resend».
-//   Next week  the Monday Guests import: trips from the file (checked against
-//              HQ bookings when the ref is there), cancelled in HQ, HQ transfer missing.
 //   Reconcile  trips ↔ payments, like HQ → Month close → Reconcile.
+//   The Monday Guests import has one door, in Week (15 Nov 2026: «Week = guests and camp
+//   teams, Transport = drivers and money»): Week shows renderNext() as TransportUI.importHtml.
 //   + Tuk-tuk runs (one tap = one run today; «Plan tomorrow» + the WhatsApp order
 //     to the tuk-tuk contact), Add transfer (guest or staff), Pay a driver, Drivers.
 //   Every row shows Paid / Owed / Planned, and «Free» (staff, gift…) when nobody
@@ -302,6 +302,18 @@
     return ov;
   }
   function closeModal() { const ov = document.getElementById('trOv'); if (ov) ov.classList.remove('open'); }
+  // The one import door is in Week (15 Nov 2026).
+  function toImport() {
+    TR.view = 'trips';
+    if (typeof showPage === 'function') showPage('week');
+    if (window.WeekUI && WeekUI.setMode) WeekUI.setMode('import');
+  }
+  // Open Transport → Trips on a week (Week's Sat–Fri start) and, when given, scroll to that day's card.
+  // Used by Week (Overview transfers, Team messages, after the import): same week, same day.
+  function setWeek(ws, day) {
+    TR.week = ws || GT.weekStart(cToday()); TR.view = 'trips'; TR.filter = 'all'; TR.scrollDay = day && day !== 'week' ? day : '';
+    if (typeof showPage === 'function' && (typeof activePage === 'undefined' || activePage !== 'transport')) showPage('transport'); else render();
+  }
   const $ = id => document.getElementById(id);
 
   // ════════════════════════════════════════════════════════════════════════
@@ -331,12 +343,13 @@
     }
     if (!TR.loaded) { root.innerHTML = head + '<div class="loading">Loading trips…</div>'; return; }
     const review = allLinks().filter(l => l.state === 'review').length;
+    // Two pills (15 Nov 2026): the Guests import lives in Week only («Import it in Week» on an empty week).
     const tabs = `<div class="pills tr-views">
-      <button class="pill${v === 'trips' ? ' active' : ''}" onclick="TransportUI.setView('trips')">Trips</button>
-      <button class="pill${v === 'next' ? ' active' : ''}" onclick="TransportUI.setView('next')">Next week</button>
+      <button class="pill${v !== 'reconcile' ? ' active' : ''}" onclick="TransportUI.setView('trips')">Trips</button>
       <button class="pill${v === 'reconcile' ? ' active' : ''}" onclick="TransportUI.setView('reconcile')">Reconcile${review ? ` <span class="count">${review}</span>` : ''}</button></div>`;
-    const body = v === 'next' ? renderNext() : v === 'reconcile' ? renderReconcile() : renderTrips();
+    const body = v === 'reconcile' ? renderReconcile() : renderTrips();
     root.innerHTML = head + attentionStrip() + owedLine() + tabs + body;
+    if (TR.scrollDay) { const el = $('trDay-' + TR.scrollDay); TR.scrollDay = ''; if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start' }); }
   }
 
   // What is owed to each driver right now (every done, unpaid trip since go-live), in one line.
@@ -398,7 +411,8 @@
         <button class="btn btn-s btn-sm btn-icon" title="Next week" onclick="TransportUI.shiftWeek(7)">${ic('chevron-right')}</button></div>
       <div class="pills">${pill('all', 'All')}${pill('airport', 'Airport')}${pill('tuktuk', RUN.label)}</div></div>`;
     const days = [...new Set(list.map(t => t.trip_date))].sort();
-    if (!days.length) return filters + totals + `<div class="empty-state">${ic('truck')}<div class="empty-title">No trips this week</div><p>Import the Guests export in Next week, or add a transfer.</p></div>`;
+    if (!days.length) return filters + totals + `<div class="empty-state">${ic('truck')}<div class="empty-title">No trips this week</div><p>Trips come from the Guests file. Import it in Week.</p>
+      <button class="btn btn-s" onclick="TransportUI.toImport()">${ic('upload')} Import Guests file in Week</button></div>`;
     const c = contact();
     TR.runGroups = {};
     return filters + totals + days.map(day => {
@@ -406,7 +420,7 @@
       const air = dayTrips.filter(t => isAirport(t) && !['cancelled', 'no_show'].includes(t.status));
       const tuk = dayTrips.filter(t => !isAirport(t));
       const sendable = GT.transfersTrips(TR.trips, { day, now: colomboNow() });   // = what «Send the whole day» sends
-      return `<div class="card tr-day"><div class="card-hdr"><div><div class="card-title">${fmtDay(day)}</div>
+      return `<div class="card tr-day" id="trDay-${day}" data-day="${day}"><div class="card-hdr"><div><div class="card-title">${fmtDay(day)}</div>
           <div class="card-hint">${air.length} transfer${air.length === 1 ? '' : 's'}${tuk.length ? ` · ${tuk.length} ${RUN.lower} run${tuk.length === 1 ? '' : 's'} · ${money(tuk.reduce((s, t) => s + Number(t.expected_price || 0), 0))}` : ''}</div></div>
           ${sendable.length > 1 || air.filter(guestCan).length > 1 ? `<div class="row tr-day-btns">${sendable.length > 1 ? `<button class="btn btn-s btn-sm" onclick="TransportUI.sendDay('${day}')" title="One WhatsApp to ${h(c ? c.name : 'the transport contact')} with every transfer of the day">${ic('send')} Send the whole day</button>
             <button class="btn btn-s btn-sm" onclick="TransportUI.tickDay('${day}')">${ic('check')} Sent ✓ all</button>` : ''}
@@ -1000,14 +1014,14 @@
   }
   async function removeRun(id) { if (await deleteTrip(id)) { closeModal(); render(); } }
 
-  // ── Next week: Monday Guests import ────────────────────────────────────
+  // ── The Monday Guests import (shown in Week: TransportUI.importHtml) ───
   function nextWeekStart() { return GT.addDaysIso(GT.weekStart(cToday()), 7); }
   function renderNext(opts) {
     const ws = nextWeekStart(), we = GT.addDaysIso(ws, 6);
     const I = TR.imp;
     let out = `<div class="card tr-import"><div class="card-hdr"><div><div class="card-title">${opts && opts.title ? h(opts.title) : `Next week · ${fmtRange(ws, we)}`}</div>
       <div class="card-hint">Download the Guests export with the «${h(IS_SL ? 'Semana Sri Lanka' : CC.preset)}» preset and drop it here. Importing again during the week updates the trips — nothing is duplicated.</div></div></div>
-      <div class="card-body"><label class="btn ${I && I.stage === 'preview' ? 'btn-s' : 'btn-p'}">${ic('upload')} Choose Guests file<input type="file" accept=".csv,.xlsx,.xls" id="trGuestsFile" style="display:none" onchange="TransportUI.pickFile(this)"></label>
+      <div class="card-body"><label class="btn ${I && (I.stage === 'preview' || I.stage === 'done') ? 'btn-s' : 'btn-p'}">${ic('upload')} Choose Guests file<input type="file" accept=".csv,.xlsx,.xls" id="trGuestsFile" style="display:none" onchange="TransportUI.pickFile(this)"></label>
       ${I && I.needDate ? `<div class="mfield tr-date-ask"><label>When did you download this file?</label><input type="date" id="trExportDate" value="${cToday()}"><button class="btn btn-s btn-sm" onclick="TransportUI.setExportDate()">Continue</button></div>` : ''}
       </div></div>`;
     if (!I || I.needDate) return out;
@@ -1551,7 +1565,8 @@
 
   window.renderTransportPage = renderTransportPage;
   window.TransportUI = {
-    render, closeModal, setView(v, f) { TR.view = v; if (f) TR.filter = f; render(); }, setFilter(f) { TR.filter = f; render(); },
+    render, closeModal, setView(v, f) { if (v === 'next') return toImport(); TR.view = v; if (f) TR.filter = f; render(); }, setFilter(f) { TR.filter = f; render(); },
+    toImport, setWeek,
     shiftWeek(n) { TR.week = GT.addDaysIso(TR.week, n); TR.filter = ['resend', 'tosend', 'missing'].includes(TR.filter) ? 'all' : TR.filter; render(); },
     send, sendDay, dayMessage, undoTick, undoGuestConfirmed, ask, askText, askedOn, needsInfo, tick, tickDay, tickIds, openTrip, saveTrip, setStatus, openAddTransfer, saveTransfer,
     openTuktuk, openPlan, tukSet, tukMode, tap, untap, removeRun, removeTrip, planAdd, planStep, sendOrder, orderText,

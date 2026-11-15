@@ -232,10 +232,12 @@ test('overview: tiles, guests per night, and arrivals / departures / transfers /
   expect(errors).toEqual([]);
 });
 
-test('layout: no horizontal scroll in any tab at 390px and at 1280px; the tab row scrolls inside itself', async ({ page }) => {
+test('layout: no horizontal scroll in any tab at 390px and at 1280px; at 390 the tab row wraps, every tab on screen', async ({ page }) => {
   await openWeek(page);
   for (const [w, hgt] of [[390, 844], [1280, 900]]) {
     await page.setViewportSize({ width: w, height: hgt });
+    const tabsFit = await page.locator('#weekRoot .wk-tabs').evaluate(el => el.scrollWidth <= el.clientWidth + 0.5 && [...el.querySelectorAll('.pill')].every(p => p.getBoundingClientRect().right <= window.innerWidth));
+    expect(tabsFit, `every tab on screen at ${w}px`).toBe(true);
     for (const k of ['overview', 'rooms', 'kitchen', 'surf', 'transfers', 'guests']) {
       await tab(page, k);
       expect(await noOverflow(page), `${k} at ${w}px`).toBe(true);
@@ -688,12 +690,12 @@ test('week group: the season week number (week 1 starts on a Saturday, a setting
   await expect(page.locator('#wkGroupName')).toHaveText('Gota Dagua Sri Lanka - week 2');
 });
 
-// ── Import inside Week (same code as Transport → Next week) ────────────────
-test('import: Week shows the Transport import (one copy of the inputs, one blue button); after saving, «See the week» lands on Overview, every tab filled', async ({ page }) => {
+// ── Import inside Week (the only door since 15 Nov 2026) ───────────────────
+test('import: Week shows the import (one copy of the inputs, one blue button); after saving, «See the week» (blue) lands on Overview, every tab filled', async ({ page }) => {
   const errors = collectFatalErrors(page);
   const st = await openWeek(page);
   await tab(page, 'surf');
-  await page.evaluate(() => { showPage('transport'); TransportUI.setView('next'); showPage('week'); });
+  await page.evaluate(() => { showPage('transport'); showPage('week'); });
   await page.click('#weekRoot button:has-text("Import Guests file")');
   await expect(page.locator('#weekRoot .wk-import')).toContainText('Choose Guests file');
   await expect(page.locator('#weekRoot .wk-import .card-title').first()).toHaveText('Guests file');
@@ -705,14 +707,22 @@ test('import: Week shows the Transport import (one copy of the inputs, one blue 
   expect(await visiblePrimary(page)).toBe(1);
   await page.click('#trImportSave');
   await expect(page.locator('#weekRoot .status-msg.status-ok')).toContainText('Saved: 6 new');
+  expect(await visiblePrimary(page)).toBe(1);                                           // «See the week»; «Choose Guests file» turns secondary
+  await expect(page.locator('#weekRoot .wk-after .btn-p')).toHaveText(/See the week/);
+  await expect(page.locator('#weekRoot .wk-after .btn-s')).toHaveText(/Send transfers in Transport/);
   expect((await call(st, 'import')).body.p_guests.length).toBe(18);
   await expect.poll(() => st.calls.filter(c => c.t === 'guests_get').length).toBeGreaterThan(before);
   await page.click('#weekRoot button:has-text("See the week")');
   await expect(page.locator('#weekRoot .wk-tabs .pill.active')).toHaveText(/Overview/);
   await expect(page.locator('#weekRoot .wk-week')).toHaveText('Week 14 · 14–20 Nov');
   await expect(page.locator('#wkDay-2026-11-14 .wk-bc.arr')).toContainText('+15');
-  // Transport still renders its own page afterwards, with a single copy of the inputs
-  await page.evaluate(() => { showPage('transport'); TransportUI.setView('next'); });
+  // Transport has no import of its own any more: two pills, no inputs; an old «next» view opens the Week import
+  await page.evaluate(() => showPage('transport'));
+  await expect(page.locator('#transportRoot .tr-views .pill')).toHaveText(['Trips', 'Reconcile']);
+  expect(await page.locator('#trGuestsFile').count()).toBe(0);
+  await page.evaluate(() => TransportUI.setView('next'));
+  await expect(page.locator('#weekRoot .wk-import')).toBeVisible();
+  expect(await page.evaluate(() => activePage)).toBe('week');
   expect(await page.locator('#trGuestsFile').count()).toBe(1);
   expect(errors).toEqual([]);
 });
@@ -728,11 +738,22 @@ test('import on a Friday: the file also holds the guests in camp, the week shown
   await expect(page.locator('#weekRoot .wk-tabs .pill.active')).toHaveText(/Overview/);
 });
 
+test('import: «Send transfers in Transport» after saving opens Transport → Trips on the week of the file (Friday: the coming week)', async ({ page }) => {
+  await openWeek(page, { now: '2026-11-13T18:00' });
+  await page.click('#weekRoot button:has-text("Import Guests file")');
+  await page.setInputFiles('#trGuestsFile', GUESTS_CSV);
+  await page.click('#trImportSave');
+  await page.click('#weekRoot button:has-text("Send transfers in Transport")');
+  expect(await page.evaluate(() => activePage)).toBe('transport');
+  await expect(page.locator('#transportRoot .tr-week')).toHaveText('14–20 Nov');
+  await expect(page.locator('#transportRoot .tr-views .pill.active')).toHaveText('Trips');
+});
+
 // ── Contacts ───────────────────────────────────────────────────────────────
-test('contacts: four rows; a phone is checked (E.164); the cleaning contact is created on first save', async ({ page }) => {
+test('contacts: three rows (the camp teams); a phone is checked (E.164); the cleaning contact is created on first save', async ({ page }) => {
   const st = await openWeek(page);
   await page.click('#weekRoot button:has-text("Contacts")');
-  await expect(page.locator('#wkOv .wk-contact')).toHaveCount(4);
+  await expect(page.locator('#wkOv .wk-contact')).toHaveCount(3);
   const clean = page.locator('#wkOv .wk-contact[data-team="cleaning"]');
   await clean.locator('[data-f="name"]').fill('Kumari');
   await clean.locator('[data-f="phone"]').fill('0771234567');
@@ -750,9 +771,10 @@ test('contacts: four rows; a phone is checked (E.164); the cleaning contact is c
   await expect(page.locator('#trOv .tr-driver')).toHaveCount(2);                   // Dilan + Nadith
   await expect(page.locator('#dv_contact option')).toHaveText([/Dilan/, /Nadith/]);
   await page.evaluate(() => { TransportUI.closeModal(); showPage('week'); });
-  // the transfers contact's name is Transport's choice: read-only here
+  // the transfers contact lives in Transport → Drivers only (15 Nov 2026): not listed here
   await page.click('#weekRoot button:has-text("Contacts")');
-  await expect(page.locator('#wkOv .wk-contact[data-team="transfers"] [data-f="name"]')).toBeDisabled();
+  await expect(page.locator('#wkOv .wk-contact')).toHaveText([/Cleaning/, /Kitchen/, /Surf/]);
+  await expect(page.locator('#wkOv .wk-contact[data-team="transfers"]')).toHaveCount(0);
 });
 
 // ── Chips (shared registry) ────────────────────────────────────────────────

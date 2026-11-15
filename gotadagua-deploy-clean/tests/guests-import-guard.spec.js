@@ -24,7 +24,7 @@ test('HQ import: a Guests export is refused and nothing is written to bookings',
   await expect(input).toHaveCount(1);
   bookingCalls.length = 0;
   await input.setInputFiles(GUESTS_CSV);
-  await expect(page.locator('#globalCsvSummary')).toContainText('This is a Guests export. Import it in the camp hub → Transport → Next week.');
+  await expect(page.locator('#globalCsvSummary')).toContainText('This is a Guests export. Import it in the camp hub → Week → Import Guests file.');
   await page.waitForTimeout(500);
   expect(bookingCalls).toEqual([]);
   expect(errors).toEqual([]);
