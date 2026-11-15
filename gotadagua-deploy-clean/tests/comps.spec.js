@@ -241,9 +241,10 @@ test('comps: Pay / Pay all / Close guest / History with a comp on the tab — no
   await expect(frame.locator('#billOv')).not.toContainText('Compensation');
   await frame.locator('#billOv').evaluate(el => el.classList.remove('open'));
   await frame.locator('#payBtn').click();
-  const rev = () => (ctl.T.ledger_entries || []).filter(r => r.source_kind === 'camp_tab_per_item');
+  // since 15 Nov 2026 a paid checkout is one grouped line per product group (camp_tab_per_guest)
+  const rev = () => (ctl.T.ledger_entries || []).filter(r => /^camp_tab_per_(item|guest)$/.test(r.source_kind) && r.type === 'revenue');
   await expect.poll(() => rev().length).toBe(1);
-  expect(rev().map(r => [r.description, Number(r.amount_local)])).toEqual([['Camp Tab · Anna · Lion Lager', 600]]);
+  expect(rev().map(r => [r.description, Number(r.amount_local)])).toEqual([['Camp Tab · Anna · Drinks: Lion Lager', 600]]);
   await expect(frame.locator('#payState')).toBeVisible();
   await frame.locator('#closeGuestBtn').click();
   await frame.locator('.snav-btn[data-sub="history"]').click();
@@ -251,7 +252,7 @@ test('comps: Pay / Pay all / Close guest / History with a comp on the tab — no
   await frame.locator('#histList .hist-week-head').first().click();
   await expect(frame.locator('#histList')).toContainText('Free · Compensation');
   // the closed guest's comp is still in the Comps view
-  await frame.locator('.snav-btn[data-sub="comps"]').click();
+  await frame.locator('.snav-btn[data-sub="sellers"]').click();
   await expect(frame.locator('#cpCount')).toHaveText('1');
   await expect(frame.locator('#cpByReason')).toContainText('Compensation');
   expect(rev().length).toBe(1);
@@ -287,7 +288,7 @@ function seeded(slug) {
 test('comps: the Comps view — totals by reason and by item, who and when; This week vs All time; old ones «No reason (before 15 Nov)»', async ({ page }) => {
   const D = seeded('sri-lanka');
   const { frame } = await openCampTab(page, 'sri-lanka', { camp_guests: D.guests, camp_tab_items: D.items, ledger_entries: D.ledger });
-  await frame.locator('.snav-btn[data-sub="comps"]').click();
+  await frame.locator('.snav-btn[data-sub="sellers"]').click();
   await expect(frame.locator('#cpPeriodRow .pill.active')).toHaveText('This week');
   await expect(frame.locator('#cpCount')).toHaveText('4');
   await expect(frame.locator('#cpValue')).toHaveText('LKR 3,600');
@@ -338,7 +339,7 @@ test('comps: Morocco — a free T-shirt asks why, the reason is saved; Comps vie
   await discount(frame, 'Paradise Valley'); await freeBtn(frame); await chip(frame, 'gift');
   expect((await lines(frame)).map(l => [l.n, l.p, l.reason, l.list])).toEqual([['T-Shirt M', 0, 'marketing', 300], ['Paradise Valley', 0, 'gift', 250]]);
   await expect.poll(() => dbItems(ctl).filter(r => r.reason === 'marketing').length, { timeout: 10000 }).toBe(1);
-  await frame.locator('.snav-btn[data-sub="comps"]').click();
+  await frame.locator('.snav-btn[data-sub="sellers"]').click();
   await expect(frame.locator('#cpCount')).toHaveText('4');
   await expect(frame.locator('#cpValue')).toHaveText('MAD 1,300');
   await page.evaluate(() => showPage('weekly'));
@@ -359,7 +360,7 @@ test('comps: Sri Lanka Dipløria (pass-through) is not affected — no reason as
     comps: CampComps.lines(S, MENU, { isPass: isPassThrough }).length,
   }));
   expect(out).toEqual({ pass: false, bar: false, comps: 0 });
-  await frame.locator('.snav-btn[data-sub="comps"]').click();
+  await frame.locator('.snav-btn[data-sub="sellers"]').click();
   await expect(frame.locator('#compsBody')).toContainText('Nothing given free');
 });
 
@@ -385,7 +386,7 @@ test('comps: screenshots at 390 and 1280 — «Why is it free?», the discount m
     await chip(frame, 'staff');
     await page.waitForTimeout(150);
     await page.screenshot({ path: path.join(SHOTS, `tab-with-comp-${w}.png`) });
-    await frame.locator('.snav-btn[data-sub="comps"]').click();
+    await frame.locator('.snav-btn[data-sub="sellers"]').click();
     await frame.locator('#cpPeriodRow .pill[data-period="all"]').click();
     await page.waitForTimeout(300);
     await page.screenshot({ path: path.join(SHOTS, `comps-view-${w}.png`) });
