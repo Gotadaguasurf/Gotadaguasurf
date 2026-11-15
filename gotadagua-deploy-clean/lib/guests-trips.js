@@ -528,6 +528,47 @@
     ].join('\n');
   }
   function whatsappDayText(trips, cfg) { return trips.map(t => whatsappText(t, cfg)).join('\n\n'); }
+
+  // ── The Transfers message (15 Nov 2026) ─────────────────────────────────
+  // One builder for Week → Transfers (a day or the week) and Transport → «Send the whole day», so the two
+  // can never drift. In: every airport transfer not yet happened — planned, sent, confirmed, guest told, paid
+  // ahead. Out: time passed (`now` = the camp's «YYYY-MM-DDTHH:MM»), cancelled / no-show / merged, and held
+  // (missing_since: it left the latest Bookinglayer file, maybe cancelled — looked at first).
+  const DONE_STATES = ['planned', 'sent', 'confirmed'];
+  const tripDoneAt = (t, now) => t.status === 'done' || (DONE_STATES.includes(t.status) && `${t.trip_date}T${t.trip_time || '23:59'}` < String(now || ''));
+  // Transport's week: Sat–Fri, plus the closing Saturday's departures, without the opening Saturday's departures.
+  function tripInWeek(t, ws) {
+    const dep = t.kind === 'airport_departure';
+    return (t.trip_date >= ws && t.trip_date <= addDaysIso(ws, 6) && !(t.trip_date === ws && dep)) || (t.trip_date === addDaysIso(ws, 7) && dep);
+  }
+  function transfersTrips(trips, o) {
+    const live = t => (t.kind === 'airport_arrival' || t.kind === 'airport_departure') && !['cancelled', 'no_show', 'merged'].includes(t.status) && !t.missing_since && !tripDoneAt(t, o.now);
+    return (trips || []).filter(live).filter(t => o.day === 'week' ? tripInWeek(t, o.ws) : t.trip_date === o.day)
+      .sort((a, b) => (a.trip_date + (a.trip_time || '99')).localeCompare(b.trip_date + (b.trip_time || '99')));
+  }
+  // What the driver reads on a transfer he already has.
+  const tripMark = t => t.needs_resend && ['sent', 'confirmed'].includes(t.status) ? 'changed' : ['sent', 'confirmed'].includes(t.status) ? 'already sent' : '';
+  function tripBlock(t, cfg) { const lines = whatsappText(t, cfg).split('\n'); const m = tripMark(t); if (m) lines[0] += ` _(${m})_`; return lines.join('\n'); }
+  const dayUp = iso => { const { m, d } = dateParts(iso); return `${DAY_ABBR[weekday(iso)].toUpperCase()} ${d} ${MONTH_ABBR[m - 1].toUpperCase()}`; };   // SAT 14 NOV
+  // House style (Miguel, 15 Nov): bold title, a bold heading per day in the week message, each day by time
+  // (arrivals and departures mixed), Miguel's block per transfer, a blank line between transfers.
+  // Neutral title (stored / compared); dressTitles() adds TODAY / TOMORROW when it goes out.
+  function transfersText(trips, o) {
+    const list = transfersTrips(trips, o);
+    const title = o.day === 'week' ? `*TRANSFERS - ${Number(o.ws.slice(8))} TO ${dMon(addDaysIso(o.ws, 7)).toUpperCase()}*` : `*TRANSFERS - ${dayUp(o.day)}*`;
+    if (!list.length) return `${title}\n\nNo transfers`;
+    if (o.day !== 'week') return [title, ...list.map(t => tripBlock(t, o.cfg))].join('\n\n');
+    const out = [title];
+    [...new Set(list.map(t => t.trip_date))].sort().forEach(d => { out.push(`*${dayUp(d)}*`); list.filter(t => t.trip_date === d).forEach(t => out.push(tripBlock(t, o.cfg))); });
+    return out.join('\n\n');
+  }
+  // «*CHECK OUT - SAT 14 NOV*» → «*CHECK OUT TODAY - 14 NOV*» / «… TOMORROW …» (the message for a day goes out the evening before).
+  function dressTitles(text, today) {
+    return String(text).replace(/^\*([A-Z ]+) - ([A-Z]{3}) (\d{1,2}) ([A-Z]{3})\*$/gm, (m, what, wd, n, mon) => {
+      const hit = [[today, 'TODAY'], [addDaysIso(today, 1), 'TOMORROW']].find(([d]) => dayUp(d) === `${wd} ${n} ${mon}`);
+      return hit ? `*${what} ${hit[1]} - ${n} ${mon}*` : m;
+    });
+  }
   function whatsappUrl(phone, text) {
     const digits = String(phone || '').replace(/\D/g, '');
     return `https://wa.me/${digits}?text=${encodeURIComponent(text)}`;
@@ -535,6 +576,6 @@
 
   return {
     parseCsv, isGuestsExportHeader, parse, guestRows, guestAudit, importWarnings, hhmm, ymd, cleanPhone, vehicleFor, addDaysIso, weekday, weekStart, dMon,
-    whatsappText, whatsappDayText, whatsappUrl, OK_STATUS, DEAD_STATUS, PACKAGE_INCLUDES, packageIncludes,
+    whatsappText, whatsappDayText, whatsappUrl, transfersTrips, transfersText, tripMark, tripInWeek, tripDoneAt, dressTitles, OK_STATUS, DEAD_STATUS, PACKAGE_INCLUDES, packageIncludes,
   };
 });

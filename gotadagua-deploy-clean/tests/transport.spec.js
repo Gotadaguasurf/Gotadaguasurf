@@ -258,11 +258,18 @@ test('trips: list by day, WhatsApp to the «Send transfers to» contact in Migue
   expect(upd.body).toMatchObject({ status: 'sent', needs_resend: false, sent_snapshot: { trip_date: '2026-11-14', trip_time: '01:55', flight: 'QR658', pax: 1 } });
   await rows.first().locator('button:has-text("Confirmed ✓")').click();
   await expect(rows.first().locator('.badge-green:has-text("Confirmed")')).toBeVisible();
-  // whole day: 3 blocks separated by a blank line
+  // whole day (15 Nov): the same house-style message as Week → Transfers for that day — one builder
   await page.click('button:has-text("Send the whole day")');
   const day = decodeURIComponent((await page.evaluate(() => window.__opened[1])).split('?text=')[1]);
-  expect(day.split('\n\n').length).toBe(3);
-  expect(day).toContain('Beliz Kuyumcuoglu\n+491700000002\n1 person\nFlight Number: TBC\nTime: TBC\nDate: 14 Nov\nMinivan');
+  expect(day).toBe([
+    '*TRANSFERS TOMORROW - 14 NOV*',
+    'Airport to Camp _(already sent)_\nLorena Marie Glas\n+491700000001\n1 person\nFlight Number: QR658\nTime: 01:55\nDate: 14 Nov\nSmall Car',
+    'Airport to Camp\nBeliz Kuyumcuoglu\n+491700000002\n1 person\nFlight Number: TBC\nTime: TBC\nDate: 14 Nov\nMinivan',
+    'Airport to Camp\nMaximilian Ehrler\n+41700000003\n1 person\nFlight Number: TBC\nTime: TBC\nDate: 14 Nov\nSmall Car',
+  ].join('\n\n'));
+  // … byte for byte what the Week's day message sends (the Week tab dresses it the same way)
+  expect(await page.evaluate(() => TransportUI.dayMessage('2026-11-14'))).toBe(day);
+  expect(await page.evaluate(() => GuestsTrips.dressTitles(GuestsTrips.transfersText(TransportUI._state.trips, { day: '2026-11-14', now: TransportUI.colomboNow() }), '2026-11-13'))).toBe(day);
   expect(errors).toEqual([]);
 });
 

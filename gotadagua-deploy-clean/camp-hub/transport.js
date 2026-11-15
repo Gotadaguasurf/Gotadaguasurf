@@ -405,7 +405,7 @@
       const dayTrips = list.filter(t => t.trip_date === day).sort((a, b) => (a.trip_time || '99').localeCompare(b.trip_time || '99'));
       const air = dayTrips.filter(t => isAirport(t) && !['cancelled', 'no_show'].includes(t.status));
       const tuk = dayTrips.filter(t => !isAirport(t));
-      const sendable = air.filter(t => !t.payment_entry_id && !isDone(t) && !onHold(t));
+      const sendable = GT.transfersTrips(TR.trips, { day, now: colomboNow() });   // = what «Send the whole day» sends
       return `<div class="card tr-day"><div class="card-hdr"><div><div class="card-title">${fmtDay(day)}</div>
           <div class="card-hint">${air.length} transfer${air.length === 1 ? '' : 's'}${tuk.length ? ` · ${tuk.length} ${RUN.lower} run${tuk.length === 1 ? '' : 's'} · ${money(tuk.reduce((s, t) => s + Number(t.expected_price || 0), 0))}` : ''}</div></div>
           ${sendable.length > 1 || air.filter(guestCan).length > 1 ? `<div class="row tr-day-btns">${sendable.length > 1 ? `<button class="btn btn-s btn-sm" onclick="TransportUI.sendDay('${day}')" title="One WhatsApp to ${h(c ? c.name : 'the transport contact')} with every transfer of the day">${ic('send')} Send the whole day</button>
@@ -584,11 +584,12 @@
       <div class="hint">WhatsApp opens one guest at a time. ${told} of ${list.length} told.</div>`;
     modal(`Confirm with guests · ${fmtDay(day)}`, 'The driver waits at the arrivals exit with a sign with their name', body, `<button class="btn btn-p" onclick="TransportUI.closeModal();TransportUI.render()">Done</button>`);
   }
+  // «Send the whole day»: the same message as Week → Transfers for that day (one builder, 15 Nov):
+  // *TRANSFERS - SUN 15 NOV* (TODAY / TOMORROW), every transfer not yet happened, sent ones marked.
+  function dayMessage(day) { return GT.dressTitles(GT.transfersText(TR.trips, { day, now: colomboNow(), cfg: GTC }), cToday()); }
   function sendDay(day) {
-    const list = TR.trips.filter(t => t.trip_date === day && isAirport(t) && !t.payment_entry_id && !isDone(t) && !['cancelled', 'no_show'].includes(t.status) && !onHold(t))
-      .sort((a, b) => (a.trip_time || '99').localeCompare(b.trip_time || '99'));
-    if (!list.length) return;
-    openWa(GT.whatsappDayText(list, GTC));
+    if (!GT.transfersTrips(TR.trips, { day, now: colomboNow() }).length) return;
+    openWa(dayMessage(day));
   }
   const snapshot = t => ({ trip_date: t.trip_date, trip_time: t.trip_time, flight: t.flight, pax: t.pax, place: t.place });
   async function tick(id, what) {
@@ -1552,7 +1553,7 @@
   window.TransportUI = {
     render, closeModal, setView(v, f) { TR.view = v; if (f) TR.filter = f; render(); }, setFilter(f) { TR.filter = f; render(); },
     shiftWeek(n) { TR.week = GT.addDaysIso(TR.week, n); TR.filter = ['resend', 'tosend', 'missing'].includes(TR.filter) ? 'all' : TR.filter; render(); },
-    send, sendDay, undoTick, undoGuestConfirmed, ask, askText, askedOn, needsInfo, tick, tickDay, tickIds, openTrip, saveTrip, setStatus, openAddTransfer, saveTransfer,
+    send, sendDay, dayMessage, undoTick, undoGuestConfirmed, ask, askText, askedOn, needsInfo, tick, tickDay, tickIds, openTrip, saveTrip, setStatus, openAddTransfer, saveTransfer,
     openTuktuk, openPlan, tukSet, tukMode, tap, untap, removeRun, removeTrip, planAdd, planStep, sendOrder, orderText,
     openRuns, saveRuns, deleteRuns, payState, weekTotals, keepTrip, inWeek, tukPeople, presetPrice, bankCandidates, camp: CC, RUN,
     confirmGuest, guestConfirmed, confirmText, guestState, guestHtml, openGuestDay, pickFile, setExportDate, saveImport,

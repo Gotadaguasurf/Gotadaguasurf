@@ -366,10 +366,7 @@
   // Stored and compared with the neutral title; sent with «TODAY» / «TOMORROW» when the day is today or tomorrow
   // (the message for a day normally goes out the evening before).
   function dress(text, today) {
-    let out = String(text).replace(/^\*([A-Z ]+) - ([A-Z]{3}) (\d{1,2}) ([A-Z]{3})\*$/gm, (m, what, wd, n, mon) => {
-      const hit = [[today, 'TODAY'], [add(today, 1), 'TOMORROW']].find(([d]) => UP(fdm(d)) === `${wd} ${n} ${mon}`);
-      return hit ? `*${what} ${hit[1]} - ${n} ${mon}*` : m;
-    });
+    let out = GT.dressTitles(text, today);   // the same rule as Transport's «Send the whole day»
     // Darija titles: «*الخروج - السبت 21 نونبر*» → «*الخروج اليوم - 21 نونبر*» / «*الدخول غدا - 21 نونبر*».
     if (AR) out = out.replace(new RegExp(`^\\*(${[AR.checkOut, AR.checkIn, AR.rooms].join('|')}) - (\\S+) (\\d{1,2}) (\\S+)\\*$`, 'gm'), (m, what, wd, n, mon) => {
       const hit = [[today, AR.today], [add(today, 1), AR.tomorrow]].find(([d]) => fdmA(d) === `${wd} ${n} ${mon}`);
@@ -483,45 +480,15 @@
     return p;
   }
 
-  // Transfers: the trips of Transport, Miguel's fixed format (GuestsTrips.whatsappText).
+  // Transfers: one builder with Transport's «Send the whole day» (GuestsTrips.transfersTrips / transfersText,
+  // 15 Nov): every transfer not yet happened — sent, confirmed, guest told and paid-ahead ones in (sent ones
+  // marked) — the week = Transport's week (Sat–Fri + the closing Saturday's departures).
   const tripDone = t => (window.TransportUI && TransportUI.isDone) ? TransportUI.isDone(t) : t.status === 'done';
-  // Every transfer that has not happened yet (Miguel, 15 Nov: «deviam sempre aparecer todos»): arrivals and
-  // departures, already sent, confirmed or guest told included — a sent trip is marked, not dropped. Out: the
-  // ones whose time has passed, cancelled / no-show / merged, and the ones held because they left the latest
-  // Bookinglayer file (missing_since: maybe cancelled — Francisco looks first, as in Transport's «Send the whole day»).
-  // Until 15 Nov paid trips were left out too: a trip paid ahead still has to be driven, so it stays.
-  const liveTrip = t => (t.kind === 'airport_arrival' || t.kind === 'airport_departure') && !['cancelled', 'no_show', 'merged'].includes(t.status)
-    && !t.missing_since && !tripDone(t);
   const tripSort = (a, b) => (a.trip_date + (a.trip_time || '99')).localeCompare(b.trip_date + (b.trip_time || '99'));
-  // The week = Transport's week (Sat–Fri, plus the closing Saturday's departures, without the opening Saturday's
-  // departures, which belong to last week's guests). Until 15 Nov this list stopped on Friday: the Saturday
-  // departures (Beliz, Sat 21) were never in the week message.
-  const inTripWeek = (t, ws) => (window.TransportUI && TransportUI.inWeek) ? TransportUI.inWeek(t, ws)
-    : (t.trip_date >= ws && t.trip_date <= add(ws, 6) && !(t.trip_date === ws && t.kind === 'airport_departure')) || (t.trip_date === add(ws, 7) && t.kind === 'airport_departure');
-  function tripsFor(day, ws) {
-    const all = (TR().trips || []).filter(liveTrip);
-    return (day === 'week' ? all.filter(t => inTripWeek(t, ws)) : all.filter(t => t.trip_date === day)).sort(tripSort);
-  }
-  // Not yet sent to the driver (the «Mark sent ✓» line): planned or changed, unpaid — = TransportUI.tickDay.
+  const tripsFor = (day, ws) => GT.transfersTrips(TR().trips || [], { day, ws, now: colomboNow() });
+  // Not yet sent to the driver (the «Mark sent ✓» line): planned or changed, unpaid — = TransportUI.tickIds.
   const toSend = t => !t.payment_entry_id && (t.status === 'planned' || (t.status === 'sent' && t.needs_resend) || (t.status === 'confirmed' && t.needs_resend));
-  // The marker a driver reads on a transfer he already has.
-  const tripMark = t => t.needs_resend && ['sent', 'confirmed'].includes(t.status) ? 'changed' : ['sent', 'confirmed'].includes(t.status) ? 'already sent' : '';
-  function tripBlock(t) {
-    const lines = GT.whatsappText(t, GTC).split('\n'); const m = tripMark(t);
-    if (m) lines[0] += ` _(${m})_`;
-    return lines.join('\n');
-  }
-  // The Transfers message, house style (Miguel, 15 Nov: «mais fixe como nos outros»): bold title, a bold heading
-  // per day in the week message, each day sorted by time (arrivals and departures mixed), Miguel's driver block
-  // per transfer with a blank line between transfers.
-  function transfersParts(day, ws) {
-    const list = tripsFor(day, ws);
-    const p = [T(day === 'week' ? weekTitle('TRANSFERS', ws) : dayTitle('TRANSFERS', day)), G];
-    if (!list.length) return [...p, L('No transfers')];
-    if (day !== 'week') { list.forEach(t => p.push(L(tripBlock(t)), G)); return p; }
-    [...new Set(list.map(t => t.trip_date))].sort().forEach(d => { p.push(B(UP(fdm(d))), G); list.filter(t => t.trip_date === d).forEach(t => p.push(L(tripBlock(t)), G)); });
-    return p;
-  }
+  const transfersParts = (day, ws) => [L(GT.transfersText(TR().trips || [], { day, ws, now: colomboNow(), cfg: GTC }))];
   function guestsList(rows, day, ws) {
     const gs = rows.filter(g => counted(g) && (day === 'week' ? inWeek(g, ws) : inCamp(g, day) || g.check_out === day)).sort(byStay);
     return gs;

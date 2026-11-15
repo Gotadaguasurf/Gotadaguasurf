@@ -233,3 +233,16 @@ test('morocco import: a «Booking location» column, when the export has one, de
   expect(a.left.filter(x => x.kind === 'other_camp').map(x => x.name)).toEqual(['Joana Silva', 'Ravi Perera']);   // Pedro («13 - Castelo …») is in: the column says Tamraght
   expect(a.guests).toBe(33);
 });
+
+test('morocco «Send the whole day»: the same house-style message as Week → Transfers, to Let Us Tours, sent ones marked, held out', async ({ page }) => {
+  const trips = H.tripsFromFile().map(t => t.import_key === 'bl:MA-1001:arr' ? { ...t, status: 'confirmed' } : t.import_key === 'bl:MA-1010:arr' ? { ...t, missing_since: '2026-11-14' } : t);
+  await openTab(page, { trips });
+  await page.evaluate(() => TransportUI.sendDay('2026-11-14'));
+  const url = decodeURIComponent(await page.evaluate(() => window.__opened.pop()));
+  expect(url.startsWith('https://wa.me/212600000101?text=')).toBe(true);
+  expect(url.split('?text=')[1]).toBe([
+    '*TRANSFERS TODAY - 14 NOV*',
+    'Airport to Camp\nSophie Martin\n+33600000002\n1 person\nFlight Number: EJU5371\nTime: 10:05\nDate: 14 Nov\nCar',
+    'Airport to Camp _(already sent)_\nLena Hoffmann, Jonas Weber\n+491510000001\n2 persons\nFlight Number: FR1110\nTime: 14:20\nDate: 14 Nov\nCar',
+  ].join('\n\n'));   // now 10:00: Karl 09:00 and Yuki 06:40 have passed; Nina is held (not in the latest file)
+});
