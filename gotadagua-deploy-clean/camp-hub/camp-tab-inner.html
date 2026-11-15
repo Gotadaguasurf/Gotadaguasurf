@@ -5233,7 +5233,10 @@ function confirmClose(){
   }
 }
 
+// Portugal Dipløria: money held for the brand, a transfer into cash (same rule as the hub's campTabRowKind).
+const isHeldForDiploria = i => !!i && i.c === 'Diploria' && CAMP_TAB_LOCATION_SLUG === 'portugal';
 function mapRevenueCategory(item){
+  if(isHeldForDiploria(item)) return 'Dipløria';
   if(item.c==='Drinks') return 'Drinks';
   if(item.c==='Merch') return 'Merchandise';
   if(item.c==='Tours') return item.n||'Tours';
@@ -5249,7 +5252,7 @@ function syncClosedWeekToHubLedger(wk){
   const revenueDate=(wk.closedAt&&String(wk.closedAt).slice(0,10))||wk.start||today();
   paidItems.forEach(item=>{
     const category=mapRevenueCategory(item);
-    const linkedItem=item.c==='Tours'?item.n:'';
+    const linkedItem=(item.c==='Tours'||isHeldForDiploria(item))?item.n:'';
     const key=[category,linkedItem].join('::');
     grouped[key]=grouped[key]||{category,linkedItem,total:0};
     grouped[key].total+=Number(item.p||0);
@@ -5265,9 +5268,9 @@ function syncClosedWeekToHubLedger(wk){
   const entries=Object.values(grouped).map(group=>({
     id:`campclose_${wk.id||wk.start}_${group.category}_${group.linkedItem||'general'}`.replace(/\s+/g,'_'),
     date:revenueDate,
-    type:'income',
+    type:group.category==='Dipløria'?'transfer':'income',
     category:group.category,
-    businessArea:group.category==='Drinks'
+    businessArea:group.category==='Dipløria'?'General':group.category==='Drinks'
       ?'Bar'
       :group.category==='Merchandise'
         ?'Merch'

@@ -106,6 +106,15 @@ Movements (LK).
    (`ledger_entries.is_comp` stays the Tour-expense «offered spot» flag);
    the Camp Tab «Comps» sub-tab and the Weekly P&L «Comps» line read the
    Camp Tab state. Old free lines show «No reason (before 15 Nov)».
+
+   **Dipløria (15 Nov 2026):** the brand's boardshorts are never camp revenue.
+   Sri Lanka = pass-through (paid by card to the owner, no ledger row).
+   Portugal = held: a paid line is a ledger TRANSFER «Into cash» (`money_sent`,
+   method `Cash`, category `Dipløria`), so it is in no P&L (every sum, incl.
+   `hq_overview_rollup`, reads revenue/expense rows only) but counts +cash;
+   «Passed to Dipløria» (written from `/diploria/`) is a transfer «Out of cash»
+   / «Out of bank», same category, `source_kind diploria_pass`. Owed by
+   Portugal = paid Camp Tab lines − passes (`DiploriaCore.held`).
 2. **Surf-school rental → ledger**: INSERT on `surf_school_rentals` fires the
    `tr_surf_rental_ledger` trigger (SECURITY DEFINER) which creates the
    `ledger_entries` revenue row atomically and stamps `ledger_entry_id` back.

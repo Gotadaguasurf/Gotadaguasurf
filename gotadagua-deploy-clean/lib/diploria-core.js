@@ -8,12 +8,18 @@
 //   acrossCamps / alerts / transferTargets
 //   sales(items, guests, locations)           one row per Diploria Camp Tab line, newest first
 //   inPeriod / periodRange / totals / groupBy / byDay / overview / expenseTotals / margin
+//   held(items, ledger, locations)           per «held» camp: paid to the camp − passed to Dipløria = owed (all time)
+//   passEntry({...})                          the ledger_entries row of «Passed to Dipløria»
 //
 // Camps appear only when they have Diploria catalog rows (today Portugal and Sri Lanka; no empty Morocco).
 // How each camp sells (Miguel, 15 Nov 2026):
 //   pass  Sri Lanka: the guest pays the Dipløria owner by card, 55 € («Card → Dipløria»), not camp money
-//   camp  Portugal: sold by the camp, booked as camp income (65 €, «Size 28…34»); the money sits in the
-//         camp's ledger, not the Dipløria account
+//   held  Portugal (Miguel, 15 Nov 2026: «esse dinheiro em Portugal não conta porque vamos dar à marca»): the
+//         guest pays the camp (65 €, «Size 28…34»), the camp holds the money and passes it to Dipløria later.
+//         Never camp income: the Camp Tab writes it as a ledger transfer «Into cash» with category «Dipløria»
+//         (out of every P&L, +cash); «Passed to Dipløria» is a transfer «Out of cash» / «Out of bank», same
+//         category. Owed by the camp = paid Camp Tab lines − passes (the July/October sales never reached the
+//         ledger, so the paid lines are the record, never ledger sales rows).
 (function (root, factory) {
   const api = factory();
   if (typeof module === 'object' && module.exports) module.exports = api;
@@ -21,15 +27,18 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  const CAMP_MODE = { 'sri-lanka': 'pass', portugal: 'camp' };
-  const MODE_LABEL = { pass: 'Card → Dipløria', camp: 'sold by the camp' };
-  const MODE_LONG = { pass: 'Pass-through: paid by card to Dipløria (EUR)', camp: 'Sold by the camp: camp income, in the camp ledger' };
+  const CAMP_MODE = { 'sri-lanka': 'pass', portugal: 'held' };
+  const MODE_LABEL = { pass: 'Card → Dipløria', held: 'paid to the camp' };
+  const MODE_LONG = { pass: 'Pass-through: paid by card to Dipløria (EUR)', held: 'Paid to the camp, passed on to Dipløria: not camp income' };
+  // Ledger marker of a Dipløria move (supabase/diploria-portugal-held.sql): transfer rows with this category.
+  const LEDGER_CAT = 'Dipløria';
+  const PASS_METHODS = { cash: 'Cash Out', bank: 'Bank Transfer' };   // «Out of cash» / «Out of bank»
   const SIZES = ['28', '30', '31', '32', '33', '34'];
   const PASS_METHOD = 'Card → Dipløria';
   const NO_MODEL = 'All models (sizes only)';
   const KIND_LABEL = { initial: 'Opening stock', sent: 'Received', returned: 'Returned to Dipløria', transfer_out: 'Moved out', transfer_in: 'Moved in', correction: 'Correction', sold_outside: 'Sold outside the tab' };
   const EXPENSE_CATS = [['production', 'Production'], ['shipping', 'Shipping to camps'], ['marketing', 'Marketing'], ['samples', 'Samples'], ['fees', 'Fees & bank'], ['other', 'Other']];
-  const modeOf = slug => CAMP_MODE[slug] || 'camp';
+  const modeOf = slug => CAMP_MODE[slug] || 'held';
   const r2 = n => Math.round(Number(n || 0) * 100) / 100;
 
   // «Core Black 32» → { model: 'Core Black', size: '32' }; Portugal's «Size 30» → { model: '', size: '30' } (sizes only).
@@ -124,8 +133,8 @@
         guest: g ? g.name : '(guest)', staff: !!(g && g.is_staff),
         sku: String(i.item_name || '').trim(), model: p.model || NO_MODEL, size: p.size, price: Number(i.price_local || 0), currency: String(i.currency || '').toUpperCase() || '?',
         paid, paidAt: paid ? String(i.paid_at).slice(0, 10) : '',
-        method: paid ? (mode === 'pass' ? (meta(i).payMethod || PASS_METHOD) : (meta(i).payMethod || MODE_LABEL.camp)) : '',
-        bookedAs: mode === 'pass' ? 'Dipløria account' : 'sold by the camp (camp income)' };
+        method: paid ? (mode === 'pass' ? (meta(i).payMethod || PASS_METHOD) : (meta(i).payMethod || MODE_LABEL.held)) : '',
+        bookedAs: mode === 'pass' ? 'Dipløria account' : 'held by the camp for Dipløria' };
     }).sort((a, b) => (b.date + b.time + b.camp + b.guest).localeCompare(a.date + a.time + a.camp + a.guest));
   }
 
@@ -148,7 +157,7 @@
     const eur = (rows || []).filter(r => r.currency === 'EUR');
     const sum = list => r2(list.reduce((s, r) => s + r.price, 0));
     return { units: (rows || []).length, sold: sum(eur), paid: sum(eur.filter(r => r.paid)), unpaid: sum(eur.filter(r => !r.paid)),
-      passSold: sum(eur.filter(r => r.mode === 'pass')), campSold: sum(eur.filter(r => r.mode === 'camp')),
+      passSold: sum(eur.filter(r => r.mode === 'pass')), heldSold: sum(eur.filter(r => r.mode === 'held')),
       otherCurrency: (rows || []).filter(r => r.currency !== 'EUR') };
   }
   function groupBy(rows, k) {
@@ -188,13 +197,41 @@
     const byCat = EXPENSE_CATS.map(([k, label]) => ({ key: k, label, amount: r2(eur.filter(e => (e.category || 'other') === k).reduce((s, e) => s + Number(e.amount || 0), 0)) })).filter(x => x.amount);
     return { count: live.length, eur: r2(eur.reduce((s, e) => s + Number(e.amount || 0), 0)), byCat, otherCurrency: live.filter(e => String(e.currency || 'EUR').toUpperCase() !== 'EUR') };
   }
-  // Sales − expenses. Portugal's sales are camp income (they sit in the camp's ledger), so the margin is shown
-  // twice and labelled: on the Dipløria account (Sri Lanka pass-through only) and counting the camps' sales too.
+  // Sales − expenses. Every short is Dipløria's money: Sri Lanka's goes straight to the account (card), Portugal's
+  // is held by the camp until it is passed on (see held()). One margin.
   function margin(saleRows, expenses) {
     const t = totals(saleRows), x = expenseTotals(expenses);
-    return { accountSales: t.passSold, campSales: t.campSold, sold: t.sold, expenses: x.eur, onAccount: r2(t.passSold - x.eur), withCamps: r2(t.sold - x.eur), byCat: x.byCat, otherCurrency: x.otherCurrency, unpaid: t.unpaid };
+    return { accountSales: t.passSold, heldSales: t.heldSold, sold: t.sold, expenses: x.eur, margin: r2(t.sold - x.eur), byCat: x.byCat, otherCurrency: x.otherCurrency, unpaid: t.unpaid };
   }
 
-  return { CAMP_MODE, MODE_LABEL, MODE_LONG, SIZES, PASS_METHOD, NO_MODEL, KIND_LABEL, EXPENSE_CATS, modeOf, parseSku, stock, acrossCamps, alerts, transferTargets,
-    sales, periodRange, filterSales, totals, groupBy, byDay, overview, expenseRows, expenseTotals, margin };
+  // A «Passed to Dipløria» ledger row (Portugal → Dipløria). A transfer, so out of every P&L; Out of cash or Out of bank.
+  const isPassRow = e => !!e && e.type === 'money_sent' && e.category === LEDGER_CAT && Object.values(PASS_METHODS).includes(e.payment_method);
+  const eurOf = e => String(e.currency || 'EUR').toUpperCase() === 'EUR' ? Number(e.amount_local ?? e.amount_eur ?? 0) : Number(e.amount_eur || 0);
+  // Per «held» camp, all time (a balance, not a period figure): paid to the camp (paid Camp Tab lines, EUR, > 0) −
+  // passed to Dipløria (pass rows of that camp's ledger) = owed by the camp. Unpaid lines are listed apart.
+  function held(items, ledger, locations) {
+    return (locations || []).filter(l => CAMP_MODE[l.slug] === 'held').map(l => {
+      const lines = (items || []).filter(i => i && i.category === 'Diploria' && i.location_id === l.id && String(i.currency || 'EUR').toUpperCase() === 'EUR' && Number(i.price_local || 0) > 0);
+      const paidLines = lines.filter(i => i.paid_at), openLines = lines.filter(i => !i.paid_at);
+      const passes = (ledger || []).filter(e => e.location_id === l.id && isPassRow(e))
+        .map(e => ({ id: e.id, date: String(e.entry_date || '').slice(0, 10), amount: r2(eurOf(e)), from: e.payment_method === PASS_METHODS.bank ? 'bank' : 'cash', note: e.description || '' }))
+        .sort((a, b) => b.date.localeCompare(a.date));
+      const paid = r2(paidLines.reduce((s, i) => s + Number(i.price_local || 0), 0));
+      const passed = r2(passes.reduce((s, p) => s + p.amount, 0));
+      return { id: l.id, slug: l.slug, name: l.name, paid, paidUnits: paidLines.length, passed, owed: r2(paid - passed), passes,
+        unpaid: r2(openLines.reduce((s, i) => s + Number(i.price_local || 0), 0)), unpaidUnits: openLines.length };
+    });
+  }
+  // The row /diploria/ writes. EUR (Portugal), rate 1; the hub reads it as a transfer «Out of cash» / «Out of bank».
+  function passEntry({ id, locationId, slug, date, amount, from, note }) {
+    const a = r2(amount);
+    if (!locationId || !date || !(a > 0)) return null;
+    return { id, location_id: locationId, week_id: null, type: 'money_sent', category: LEDGER_CAT, linked_item: null,
+      description: String(note || '').trim() || 'Passed to Dipløria', payment_method: from === 'bank' ? PASS_METHODS.bank : PASS_METHODS.cash,
+      qty: 1, amount_local: a, currency: 'EUR', entry_date: date, business_area: 'General', fx_rate: 1, amount_eur: a,
+      source_kind: 'diploria_pass', is_comp: false, zone_id: null, paid_from: slug || null, attributed_location: slug || null };
+  }
+
+  return { CAMP_MODE, MODE_LABEL, MODE_LONG, SIZES, PASS_METHOD, NO_MODEL, KIND_LABEL, EXPENSE_CATS, LEDGER_CAT, PASS_METHODS, modeOf, parseSku, stock, acrossCamps, alerts, transferTargets,
+    sales, periodRange, filterSales, totals, groupBy, byDay, overview, expenseRows, expenseTotals, margin, isPassRow, held, passEntry };
 });

@@ -1,6 +1,6 @@
 // Dipløria business area /diploria/ (15 Nov 2026) — stubbed Supabase, the real catalog shapes:
 // Sri Lanka 38 SKUs / 61 units at 55 EUR (pass-through, «Card → Dipløria»), Portugal «Size 28…34» / 42 at 65 EUR
-// (sold by the camp, camp income). Guest names are invented.
+// (paid to the camp and held for Dipløria — not camp income — since 15 Nov 2026). Guest names are invented.
 //
 // Miguel: «a ideia é ter Dipløria em todos os camps a vender (cada um com o seu stock), mas depois ter uma área como
 // temos o HQ mas para a Dipløria» + «uma overview por camp do que se vende … as despesas, quanto stock metemos por
@@ -177,16 +177,16 @@ test('diploria core: stock per camp = opening + moves − Camp Tab lines; Sri La
   expect(D.transferTargets(s, LOC_PT, pt.rows[1])[0].options).toEqual(sl.rows.filter(r => r.size === '30').map(r => r.sku));   // sizes-only → pick a model
 });
 
-test('diploria core: sales list, totals per month / camp / model, € sold · paid · not paid; Sri Lanka pass-through, Portugal camp income; by day; margin both ways', async () => {
+test('diploria core: sales list, totals per month / camp / model, € sold · paid · not paid; Sri Lanka pass-through, Portugal held for Dipløria; by day; one margin', async () => {
   const rows = D.sales(ITEMS, GUESTS, LOCATIONS);
   expect(rows.length).toBe(8);   // the Merch line is not Dipløria
   expect(rows[0]).toMatchObject({ date: '2026-11-15', time: '10:00', camp: 'Sri Lanka', mode: 'pass', guest: 'Ana Test', model: 'Core Burgundy', size: '31', price: 55, currency: 'EUR', paid: false, bookedAs: 'Dipløria account' });
   expect(rows.find(r => r.id === uid(704))).toMatchObject({ paid: true, paidAt: '2026-11-14', method: 'Card → Dipløria' });
   expect(rows.find(r => r.id === uid(705))).toMatchObject({ guest: 'Staff Test', staff: true });
-  expect(rows.find(r => r.id === uid(700))).toMatchObject({ camp: 'Portugal', mode: 'camp', method: 'sold by the camp', bookedAs: 'sold by the camp (camp income)', model: 'Core Army Green', size: '32' });
+  expect(rows.find(r => r.id === uid(700))).toMatchObject({ camp: 'Portugal', mode: 'held', method: 'paid to the camp', bookedAs: 'held by the camp for Dipløria', model: 'Core Army Green', size: '32' });
   expect(rows.find(r => r.id === uid(703))).toMatchObject({ model: D.NO_MODEL, size: '31' });
   const t = D.totals(rows);
-  expect(t).toMatchObject({ units: 8, sold: 480, paid: 185, unpaid: 295, passSold: 220, campSold: 260 });
+  expect(t).toMatchObject({ units: 8, sold: 480, paid: 185, unpaid: 295, passSold: 220, heldSold: 260 });
   expect(D.groupBy(rows, 'month').map(g => [g.key, g.units, g.sold, g.paid, g.unpaid])).toEqual([['2026-11', 5, 285, 120, 165], ['2026-08', 2, 130, 0, 130], ['2026-07', 1, 65, 65, 0]]);
   expect(D.groupBy(rows, 'camp').map(g => [g.key, g.units, g.sold])).toEqual([['Portugal', 4, 260], ['Sri Lanka', 4, 220]]);
   expect(D.groupBy(rows, 'model')[0]).toMatchObject({ key: 'Core Black', units: 2, sold: 110 });
@@ -200,23 +200,23 @@ test('diploria core: sales list, totals per month / camp / model, € sold · pa
   expect(days[5].perCamp).toEqual({ 'sri-lanka': 2 });
   const ov = D.overview(D.stock(CATALOG_NOW, ITEMS, LOCATIONS, MOVES), inWeek);
   expect(ov.camps.map(c => [c.slug, c.units, c.sold, c.unpaid, c.left])).toEqual([['portugal', 1, 65, 0, 44], ['sri-lanka', 4, 220, 165, 58]]);
-  expect(ov.all).toMatchObject({ units: 5, sold: 285, passSold: 220, campSold: 65, left: 102 });
+  expect(ov.all).toMatchObject({ units: 5, sold: 285, passSold: 220, heldSold: 65, left: 102 });
   expect(ov.camps[1].topModels[0]).toEqual({ key: 'Core Black', units: 2 });
   const month = D.periodRange('month', new Date('2026-11-15T12:00:00'));
   const mg = D.margin(D.filterSales(rows, { range: month }), D.expenseRows(EXPENSES, month));
-  expect(mg).toMatchObject({ accountSales: 220, campSales: 65, expenses: 1020, onAccount: -800, withCamps: -735 });
+  expect(mg).toMatchObject({ accountSales: 220, heldSales: 65, sold: 285, expenses: 1020, margin: -735 });
   expect(mg.byCat.map(c => [c.key, c.amount])).toEqual([['production', 900], ['shipping', 120]]);
 });
 
 // ── The page ───────────────────────────────────────────────────────────────────────────────────
-test('diploria area: the owner gets in; one card per camp (Portugal and Sri Lanka, no Morocco) + All camps; Portugal labelled «sold by the camp» (camp income)', async ({ page }) => {
+test('diploria area: the owner gets in; one card per camp (Portugal and Sri Lanka, no Morocco) + All camps; Portugal labelled «held by the camp» (not camp income)', async ({ page }) => {
   const ctl = await openArea(page);
   await ready(page);
   expect(await page.locator('#ovCards [data-camp-card]').evaluateAll(els => els.map(e => e.dataset.campCard))).toEqual(['portugal', 'sri-lanka', 'all']);
   await expect(page.locator('body')).not.toContainText('Morocco');
   const pt = page.locator('[data-camp-card="portugal"]');
-  await expect(pt).toContainText('Sold by the camp');
-  await expect(pt).toContainText('camp income, in the camp ledger');
+  await expect(pt).toContainText('Held by the camp');
+  await expect(pt).toContainText('Paid to the camp, passed on to Dipløria: not camp income');
   await expect(pt.locator('[data-units]')).toHaveText('1');                       // this month: «Size 31» on 12 Nov
   await expect(pt.locator('[data-left]')).toHaveText('44 of 45');
   const sl = page.locator('[data-camp-card="sri-lanka"]');
@@ -228,7 +228,7 @@ test('diploria area: the owner gets in; one card per camp (Portugal and Sri Lank
   await expect(page.locator('[data-camp-card="all"] [data-units]')).toHaveText('5');
   await expect(page.locator('#ovAlerts [data-alert="Sri Lanka · Retro 32"]')).toHaveText('Sri Lanka · Retro 32 · none left');
   await expect(page.locator('#ovAlerts [data-ones="Sri Lanka"] summary')).toHaveText(`Sri Lanka: ${D.alerts(D.stock(CATALOG_NOW, ITEMS, LOCATIONS, MOVES)).filter(a => a.left === 1).length} sizes with 1 left`);
-  await expect(page.locator('#ovMargin')).toContainText('-€800.00');
+  await expect(page.locator('#ovMargin')).toContainText('-€735.00');
   expect(ctl.writes).toEqual([]);                                                   // reading writes nothing
   await shot(page, 'overview-390.png');
   await page.setViewportSize({ width: 1280, height: 900 });
@@ -276,7 +276,7 @@ test('diploria area: sales by day (this week), tap a day → its sales with gues
   await page.locator('#campPills [data-camp="portugal"]').click();
   await page.locator('[data-period]:visible').selectOption('all');
   await expect(page.locator('#salesRows tr')).toHaveCount(4);
-  await expect(page.locator('#salesRows')).toContainText('Sold by the camp');
+  await expect(page.locator('#salesRows')).toContainText('Held by the camp');
   await expect(page.locator('#salesTotals')).toContainText('Aug 2026');
   await page.locator('#campPills [data-camp="all"]').click();
   // the default period (this month, 30 bars) fits the card at 390: bars and dates share the width, nothing scrolls
@@ -356,7 +356,7 @@ test('diploria area: expenses list for the period, add one (Dipløria table only
   await page.waitForSelector('#expRows tr[data-exp]');
   await expect(page.locator('#expRows tr[data-exp]')).toHaveCount(2);              // November only
   await expect(page.locator('#expSummary')).toContainText('€1,020.00');
-  await expect(page.locator('#expSummary')).toContainText('-€800.00');
+  await expect(page.locator('#expSummary')).toContainText('-€735.00');
   await expect(page.locator('.btn-p:visible')).toHaveCount(1);                      // one blue button on the view
   await page.locator('#addExpBtn').click();
   await page.locator('#ex_cat').selectOption('marketing');
@@ -373,7 +373,7 @@ test('diploria area: expenses list for the period, add one (Dipløria table only
   expect(ctl.writes).toEqual([['POST', 'diploria_expenses']]);
   expect(ctl.T.diploria_expenses.at(-1)).toMatchObject({ supplier: 'Meta Test', category: 'marketing', amount: 80, currency: 'EUR', expense_date: '2026-11-15', location_id: null });
   await expect(page.locator('#expSummary')).toContainText('€1,100.00');
-  await expect(page.locator('#expSummary')).toContainText('-€880.00');
+  await expect(page.locator('#expSummary')).toContainText('-€815.00');
   await page.locator(`#expRows tr[data-exp="${uid(802)}"]`).count().then(n => expect(n).toBe(0));
   await page.locator(`#expRows tr[data-exp="${uid(801)}"] button[title="Archive"]`).click();
   await expect(page.locator(`#expRows tr[data-exp="${uid(801)}"]`)).toHaveCount(0);

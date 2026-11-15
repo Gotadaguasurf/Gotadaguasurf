@@ -80,7 +80,13 @@
 .dp-banner{padding:10px 14px;border-radius:var(--r-sm);background:var(--amber-bg);border:1px solid var(--amber-border);color:var(--amber);font-size:13px;margin-bottom:12px}
 .dp-mode{font-size:11px;font-weight:700;border-radius:6px;padding:2px 7px;white-space:nowrap}
 .dp-mode.pass{background:var(--ocean-soft);color:var(--ocean)}
-.dp-mode.camp{background:var(--sand);color:#7a5b16}
+.dp-mode.held{background:var(--sand);color:#7a5b16}
+.dp-held{margin-top:12px;padding-top:10px;border-top:1px dashed var(--border)}
+.dp-held .dp-kv{margin-top:0}
+.dp-held-foot{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px}
+.dp-pass-list{list-style:none;margin:6px 0 0;padding:0;font-size:12.5px}
+.dp-pass-list li{display:grid;grid-template-columns:64px 1fr auto;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)}
+.dp-pass-list li b{font-variant-numeric:tabular-nums}
 .dp-unpaid{color:var(--red);font-weight:700}
 .dp-tot-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:var(--sp-3)}
 .dp-tot-grid table{width:100%;font-size:13px}
@@ -129,7 +135,7 @@
       <div class="card card-pad" id="ovAlerts"></div>
     </section>
     <section class="ov-section">
-      <div class="ov-section-head"><div><div class="ov-section-title">Sales − expenses</div><div class="ov-section-sub">Same period. Portugal's sales are camp income, so the margin is shown both ways.</div></div></div>
+      <div class="ov-section-head"><div><div class="ov-section-title">Sales − expenses</div><div class="ov-section-sub">Same period. Every short is Dipløria's money: Sri Lanka's goes straight to the account, Portugal's is held by the camp until it is passed on.</div></div></div>
       <div class="summary-grid" id="ovMargin"></div>
     </section>
   </div>
@@ -228,6 +234,24 @@
   </div>
 </div>
 
+<!-- Passed to Dipløria: money a camp hands over (a ledger transfer of that camp, never a camp cost) -->
+<div class="overlay" id="passOverlay" onclick="if(event.target===this)closePass()">
+  <div class="modal" style="max-width:460px">
+    <div class="mhdr"><div class="mhdr-title" id="psTitle">Money passed to Dipløria</div><div class="mhdr-sub" id="psSub"></div><button class="mclose" onclick="closePass()" aria-label="Close">×</button></div>
+    <div class="mbody">
+      <div class="mgrid">
+        <div class="mfield"><label for="ps_amount">Amount (EUR)</label><input id="ps_amount" type="number" min="0" step="0.01" inputmode="decimal"></div>
+        <div class="mfield"><label for="ps_date">Date</label><input id="ps_date" type="date"></div>
+      </div>
+      <div class="mfield"><label for="ps_from">Taken from</label><select id="ps_from"><option value="cash">The camp's cash</option><option value="bank">The camp's bank account</option></select></div>
+      <div class="mfield"><label for="ps_note">Note</label><input id="ps_note" type="text" placeholder="Passed to Dipløria"></div>
+      <div class="hint" id="psStatus"></div>
+      <div id="psList"></div>
+    </div>
+    <div class="mfooter"><button class="btn btn-s" onclick="closePass()">Cancel</button><button class="btn btn-p" id="psSave" onclick="savePass()">Save</button></div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.4"></script>
 <script src="/supabase-config.js"></script>
@@ -253,9 +277,9 @@ const monthLabel = (ym) => { const [y, m] = String(ym).split('-'); return m ? `$
 const CAMP_COLORS = ['var(--ocean)', 'var(--navy)', 'var(--ocean-light)', '#c48a1a'];
 function toast(msg, kind){ const t = $('toast'); t.textContent = msg; t.className = 'toast show' + (kind === 'err' ? ' err' : kind === 'ok' ? ' ok' : ''); clearTimeout(t._t); t._t = setTimeout(() => t.className = 'toast', 4200); }
 
-const ST = { user: null, canEdit: false, locations: [], catalog: [], items: [], guests: [], moves: [], expenses: [],
+const ST = { user: null, canEdit: false, locations: [], catalog: [], items: [], guests: [], moves: [], expenses: [], ledger: [], ledgerError: '',
   movesReady: true, expensesReady: true, period: 'month', custom: { from: '', to: '' }, camp: 'all', day: null };
-let STOCK = [], SALES = [];
+let STOCK = [], SALES = [], HELD = [];
 
 function showPage(name){
   document.querySelectorAll('.ntab,.ntab-m').forEach(b => b.classList.toggle('active', b.dataset.page === name));
@@ -301,12 +325,14 @@ async function paged(build){
   return { data: all, error: null };
 }
 async function loadAll(){
-  const [loc, cat, items, moves, exps] = await Promise.all([
+  const [loc, cat, items, moves, exps, ledger] = await Promise.all([
     sb.from('locations').select('id, slug, name'),
     paged(() => sb.from('pricing_catalog').select('id, location_id, name, category, stock_qty, sell_price, sell_currency, currency, sort_order, active').eq('category', 'Diploria').order('sort_order', { ascending: true }).order('id', { ascending: true })),
     paged(() => sb.from('camp_tab_items').select('id, guest_id, location_id, category, item_name, price_local, currency, added_at, paid_at, meta').eq('category', 'Diploria').order('added_at', { ascending: true }).order('id', { ascending: true })),
     paged(() => sb.from('diploria_stock_moves').select('id, location_id, sku, qty, kind, note, transfer_id, created_by, created_at').order('created_at', { ascending: true }).order('id', { ascending: true })),
     paged(() => sb.from('diploria_expenses').select('id, expense_date, supplier, description, category, amount, currency, location_id, file_url, note, created_at, deleted_at').is('deleted_at', null).order('expense_date', { ascending: false }).order('id', { ascending: true })),
+    // Portugal's Dipløria moves in its ledger (transfers, category «Dipløria»): the passes settle what the camp owes.
+    paged(() => sb.from('ledger_entries').select('id, location_id, type, category, entry_date, amount_local, amount_eur, currency, payment_method, description').eq('type', 'money_sent').eq('category', D.LEDGER_CAT).order('entry_date', { ascending: true }).order('id', { ascending: true })),
   ]);
   if (loc.error) toast('Camps: ' + loc.error.message, 'err');
   if (cat.error) toast('Catalog: ' + cat.error.message, 'err');
@@ -315,6 +341,7 @@ async function loadAll(){
   ST.movesReady = !moves.error; ST.moves = moves.error ? [] : moves.data;
   ST.expensesReady = !exps.error; ST.expenses = exps.error ? [] : exps.data;
   ST.movesError = moves.error ? moves.error.message : ''; ST.expensesError = exps.error ? exps.error.message : '';
+  ST.ledger = ledger.error ? [] : ledger.data; ST.ledgerError = ledger.error ? ledger.error.message : '';
   const ids = [...new Set(ST.items.map(i => i.guest_id).filter(Boolean))]; const guests = [];
   for (let i = 0; i < ids.length; i += 100) {
     const { data, error } = await sb.from('camp_guests').select('id, name, is_staff').in('id', ids.slice(i, i + 100));
@@ -324,6 +351,7 @@ async function loadAll(){
   ST.guests = guests;
   STOCK = D.stock(ST.catalog, ST.items, ST.locations, ST.moves);
   SALES = D.sales(ST.items, ST.guests, ST.locations);
+  HELD = D.held(ST.items, ST.ledger, ST.locations);
 }
 
 // ── Period (shared by Overview, Sales and Expenses) ──
@@ -362,7 +390,18 @@ function renderAll(){
   if (page === 'page-stock') renderStock();
   if (page === 'page-expenses') renderExpenses();
 }
-const modeBadge = (mode) => `<span class="dp-mode ${mode}">${mode === 'pass' ? 'Card → Dipløria' : 'Sold by the camp'}</span>`;
+const modeBadge = (mode) => `<span class="dp-mode ${mode}">${mode === 'pass' ? 'Card → Dipløria' : 'Held by the camp'}</span>`;
+// What a «held» camp owes Dipløria (all time): paid to the camp − passed. The passes are that camp's ledger transfers.
+function heldHtml(slug){
+  const h = HELD.find(x => x.slug === slug); if (!h) return '';
+  return `<div class="dp-held" data-held="${esc(slug)}"><div class="dp-kv">
+      <span>paid to the camp · all time</span><b data-held-paid>${eur(h.paid)}</b>
+      <span>passed to Dipløria</span><b data-passed>${eur(h.passed)}</b>
+      <span><b>owed by the camp</b></span><b class="${h.owed > 0.005 ? 'neg' : ''}" data-owed>${eur(h.owed)}</b>
+    </div>
+    <div class="dp-held-foot"><span class="hint">${ST.ledgerError ? 'Passes not readable: ' + esc(ST.ledgerError) : h.passes.length ? `last passed ${esc(dm(h.passes[0].date))}` : 'nothing passed yet'}</span>
+      ${ST.canEdit ? `<button class="btn btn-s btn-sm" data-pass-btn="${esc(slug)}" onclick="openPass('${esc(slug)}')">Record money passed</button>` : ''}</div></div>`;
+}
 const chips = (list, suffix) => list.length ? `<div class="dp-chips">${list.map(x => `<span class="dp-chip">${esc(suffix === 'size' ? 'Size ' + x.key : x.key)} <b>${x.units}</b></span>`).join('')}</div>` : '<span class="hint">none sold</span>';
 
 // ── Overview ──
@@ -371,14 +410,15 @@ function renderOverview(){
   $('ovBanner').innerHTML = STOCK.length ? '' : '<div class="dp-banner">No Dipløria rows in any camp catalog yet.</div>';
   const card = (c, all) => `<div class="card dp-card${all ? ' all' : ''}" data-camp-card="${esc(all ? 'all' : c.slug)}">
       <div class="dp-card-head"><div><div class="dp-card-name">${esc(c.name)}</div><div class="dp-card-mode">${all ? `Every camp · ${esc(periodLabel())}` : esc(D.MODE_LONG[c.mode])}</div></div>${all ? '' : modeBadge(c.mode)}</div>
-      <div class="dp-big"><div><b data-units>${c.units}</b><span>shorts sold</span></div><div><b data-eur>${eur0(c.sold)}</b><span>${all ? 'sold' : c.mode === 'pass' ? 'to Dipløria' : 'camp income'}</span></div></div>
+      <div class="dp-big"><div><b data-units>${c.units}</b><span>shorts sold</span></div><div><b data-eur>${eur0(c.sold)}</b><span>${all ? 'sold' : c.mode === 'pass' ? 'to Dipløria' : 'for Dipløria'}</span></div></div>
       <div class="dp-kv">
-        ${all ? `<span>to the Dipløria account</span><b>${eur(c.passSold)}</b><span>sold by the camps</span><b>${eur(c.campSold)}</b>` : ''}
+        ${all ? `<span>straight to the Dipløria account</span><b>${eur(c.passSold)}</b><span>held by the camps</span><b>${eur(c.heldSold)}</b>` : ''}
         <span>not paid yet</span><b class="${c.unpaid ? 'neg' : ''}" data-unpaid>${eur(c.unpaid)}</b>
         <span>stock left now</span><b data-left>${c.left} of ${c.stock}</b>
       </div>
       <div class="dp-tops"><span class="lbl">Top models</span>${chips(c.topModels)}<span class="lbl">Top sizes</span>${chips(c.topSizes, 'size')}</div>
       ${c.otherCurrency && c.otherCurrency.length ? `<div class="hint" style="margin-top:6px">${c.otherCurrency.length} line(s) not in EUR, counted in units only.</div>` : ''}
+      ${!all && c.mode === 'held' ? heldHtml(c.slug) : ''}
     </div>`;
   $('ovCards').innerHTML = ov.camps.map(c => card(c)).join('') + (ov.camps.length ? card(ov.all, true) : '');
   const al = D.alerts(STOCK);
@@ -389,12 +429,13 @@ function renderOverview(){
     : `<div class="dp-alerts">${zeros.map(a => `<span class="dp-alert zero" data-alert="${esc(a.camp + ' · ' + a.sku)}">${esc(a.camp)} · ${esc(a.sku)} · none left</span>`).join('') || '<span class="hint">No size at 0.</span>'}</div>
       ${oneCamps.map(c => { const l = ones.filter(a => a.camp === c); return `<details class="dp-ones" data-ones="${esc(c)}"><summary>${esc(c)}: ${l.length} size${l.length === 1 ? '' : 's'} with 1 left</summary><p>${l.map(a => `<span data-alert="${esc(a.camp + ' · ' + a.sku)}">${esc(a.sku)}</span>`).join(' · ')}</p></details>`; }).join('')}`;
   const mg = D.margin(rows, D.expenseRows(ST.expenses, r));
+  const owed = HELD.reduce((s, h) => s + h.owed, 0);
   $('ovMargin').innerHTML = [
-    ['Sales to the Dipløria account', eur(mg.accountSales), 'Sri Lanka, card to Dipløria'],
-    ['Sold by the camps', eur(mg.campSales), 'Portugal, camp income (camp ledger)'],
+    ['Straight to the Dipløria account', eur(mg.accountSales), 'Sri Lanka, card to Dipløria'],
+    ['Held by the camps', eur(mg.heldSales), 'Portugal, paid to the camp, passed on later'],
     ['Expenses', eur(mg.expenses), ST.expensesReady ? `${D.expenseRows(ST.expenses, r).length} line(s)` : 'expenses table not set up yet'],
-    ['Margin on the Dipløria account', eur(mg.onAccount), 'account sales − expenses', mg.onAccount < 0],
-    ['Margin counting the camps', eur(mg.withCamps), 'all sales − expenses', mg.withCamps < 0],
+    ['Margin', eur(mg.margin), 'all sales − expenses', mg.margin < 0],
+    ['Owed by the camps now', eur(owed), 'paid to the camp − passed, all time', owed > 0.005],
   ].map(([l, v, s, neg]) => `<div class="kpi"><div class="kpi-label">${l}</div><div class="kpi-value${neg ? ' neg' : ''}">${v}</div><div class="kpi-sub">${s}</div></div>`).join('');
 }
 
@@ -415,7 +456,7 @@ function renderSales(){
   $('dayAxis').innerHTML = days.map((d, i) => `<span>${i % step === 0 ? dm(d.date) : ''}</span>`).join('');
   $('dayLegend').innerHTML = camps.filter(c => ST.camp === 'all' || c.slug === ST.camp).map(c => `<span><i style="background:${campColor(c.slug)}"></i>${esc(c.name)}</span>`).join('');
   const list = ST.day ? rows.filter(s => s.date === ST.day) : rows; const t = D.totals(list);
-  $('salesKpis').innerHTML = [['Shorts', t.units, ''], ['Sold', eur(t.sold), `${eur(t.passSold)} to Dipløria · ${eur(t.campSold)} by the camps`], ['Paid', eur(t.paid), ''], ['Not paid', eur(t.unpaid), '', t.unpaid > 0]]
+  $('salesKpis').innerHTML = [['Shorts', t.units, ''], ['Sold', eur(t.sold), `${eur(t.passSold)} straight to Dipløria · ${eur(t.heldSold)} held by the camps`], ['Paid', eur(t.paid), ''], ['Not paid', eur(t.unpaid), '', t.unpaid > 0]]
     .map(([l, v, s, neg]) => `<div class="kpi"><div class="kpi-label">${l}</div><div class="kpi-value${neg ? ' neg' : ''}">${v}</div>${s ? `<div class="kpi-sub">${s}</div>` : ''}</div>`).join('');
   $('salesListTitle').textContent = ST.day ? `Sales on ${dm(ST.day)}` : 'Sales';
   $('salesListSub').textContent = ST.day ? `${list.length} short(s)` : `${list.length} short(s) · ${periodLabel()}`;
@@ -533,9 +574,8 @@ function renderExpenses(){
   const r = range(); const list = D.expenseRows(ST.expenses, r); const mg = D.margin(D.filterSales(SALES, { range: r }), list);
   $('expSummary').innerHTML = [
     ['Expenses', eur(mg.expenses), mg.byCat.map(c => `${c.label} ${eur0(c.amount)}`).join(' · ') || periodLabel()],
-    ['Sales to the Dipløria account', eur(mg.accountSales), 'Sri Lanka, card to Dipløria'],
-    ['Margin on the Dipløria account', eur(mg.onAccount), 'account sales − expenses', mg.onAccount < 0],
-    ['Margin counting the camps', eur(mg.withCamps), `+ ${eur(mg.campSales)} sold by the camps (camp income)`, mg.withCamps < 0],
+    ['Sales', eur(mg.sold), `${eur(mg.accountSales)} straight to Dipløria · ${eur(mg.heldSales)} held by the camps`],
+    ['Margin', eur(mg.margin), 'all sales − expenses', mg.margin < 0],
   ].map(([l, v, s, neg]) => `<div class="kpi"><div class="kpi-label">${l}</div><div class="kpi-value${neg ? ' neg' : ''}">${v}</div><div class="kpi-sub">${s}</div></div>`).join('')
     + (mg.otherCurrency.length ? `<div class="hint" style="grid-column:1/-1">${mg.otherCurrency.length} expense(s) not in EUR are listed but not in the totals.</div>` : '');
   const locName = id => (ST.locations.find(l => l.id === id) || {}).name || '';
@@ -582,6 +622,33 @@ async function archiveExpense(id){
   const { error } = await sb.from('diploria_expenses').update({ deleted_at: new Date().toISOString() }).eq('id', id);
   if (error) { toast(error.message, 'err'); return; }
   await loadAll(); renderAll(); toast('Archived', 'ok');
+}
+
+// ── Passed to Dipløria (a «held» camp hands the money over) ──
+const localIso = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+let PS_SLUG = null;
+function openPass(slug){
+  const h = HELD.find(x => x.slug === slug); if (!h || !ST.canEdit) return;
+  PS_SLUG = slug;
+  $('psTitle').textContent = `Money passed to Dipløria · ${h.name}`;
+  $('psSub').textContent = `${h.name} owes ${eur(h.owed)}. Saved in ${h.name}'s ledger as a transfer out of its cash or bank: not a camp cost.`;
+  $('ps_amount').value = h.owed > 0 ? h.owed.toFixed(2) : ''; $('ps_date').value = localIso(); $('ps_from').value = 'cash'; $('ps_note').value = ''; $('psStatus').textContent = '';
+  $('psList').innerHTML = h.passes.length ? `<div class="hint" style="margin-top:8px">Passed before (delete one in ${esc(h.name)}'s Operations Ledger)</div><ul class="dp-pass-list">${h.passes.map(p => `<li data-pass="${esc(p.id)}"><span>${esc(dm(p.date))}</span><span>${esc(p.from === 'bank' ? 'from the bank' : 'from cash')}${p.note && p.note !== 'Passed to Dipløria' ? ` · ${esc(p.note)}` : ''}</span><b>${eur(p.amount)}</b></li>`).join('')}</ul>` : '';
+  $('passOverlay').classList.add('open');
+}
+function closePass(){ $('passOverlay').classList.remove('open'); PS_SLUG = null; }
+async function savePass(){
+  const h = HELD.find(x => x.slug === PS_SLUG); if (!h) return;
+  const amount = Number($('ps_amount').value);
+  if (!$('ps_date').value || !(amount > 0)) { $('psStatus').textContent = 'A date and an amount above 0 are needed.'; return; }
+  if (amount > h.owed + 0.005 && !confirm(`${eur(amount)} is more than the ${eur(h.owed)} ${h.name} owes. Save it anyway?`)) return;
+  const id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-8xxx-xxxxxxxxxxxx'.replace(/x/g, () => (Math.random() * 16 | 0).toString(16));
+  const row = D.passEntry({ id, locationId: h.id, slug: h.slug, date: $('ps_date').value, amount, from: $('ps_from').value, note: $('ps_note').value });
+  const btn = $('psSave'); btn.disabled = true;
+  const { error } = await sb.from('ledger_entries').insert(row);
+  btn.disabled = false;
+  if (error) { $('psStatus').textContent = error.message; toast(error.message, 'err'); return; }
+  closePass(); await loadAll(); renderAll(); toast(`Passed to Dipløria · ${eur(amount)}`, 'ok');
 }
 
 boot();
