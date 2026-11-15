@@ -31,6 +31,7 @@
 .ov-area-cell-label{font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700}
 .ov-area-cell-value{font-variant-numeric:tabular-nums;font-size:15px;font-weight:700;color:var(--navy);line-height:1.2}
 .ov-area-cell-sub{font-size:10px;color:var(--muted)}
+.ov-area-note{font-size:11px;color:var(--muted);margin-top:10px}
 /* Compact breakdown chip (used in Utilities / Payroll / Transport sub-grids) */
 .ov-chip{background:#fff;border:1px solid var(--border);border-radius:var(--r-sm);padding:14px 16px}
 .ov-chip-label{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700;margin-bottom:6px}
@@ -664,7 +665,8 @@ body{min-height:100dvh}
       <button class="exp-quick-btn" data-cat="Services" onclick="quickCategoryShortcut('Services')"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M4 10h12"/><path d="M10 4v12"/><circle cx="10" cy="10" r="5.5"/></svg></span><span>Services</span></span></button>
       <button class="exp-quick-btn" data-cat="Utilities" onclick="quickCategoryShortcut('Utilities')"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M11 3 5 11h4l-1 6 6-9h-4z"/></svg></span><span>Utilities</span></span></button>
       <button class="exp-quick-btn qcat-camp" data-cat="Tours &amp; activities" onclick="quickCategoryShortcut('Tours &amp; activities')"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M3 15c2-4 5-6 8-6s6 2 6 6"/><path d="M10 9V4"/><path d="M7.5 6.5 10 4l2.5 2.5"/></svg></span><span>Tours</span></span></button>
-      <button class="exp-quick-btn qcat-camp" data-cat="Drinks" onclick="quickCategoryShortcut('Drinks')"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M6 4h8"/><path d="M7 4v3c0 2 1.5 3.5 3 3.5S13 9 13 7V4"/><path d="M10 10.5V16"/><path d="M7.5 16h5"/></svg></span><span>Drinks</span></span></button>
+      <button class="exp-quick-btn qcat-camp" data-cat="Drinks" onclick="quickCategoryShortcut('Drinks')" title="Beer, spirits, mixers, soft drinks, ice — what the bar sells"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M6 4h8"/><path d="M7 4v3c0 2 1.5 3.5 3 3.5S13 9 13 7V4"/><path d="M10 10.5V16"/><path d="M7.5 16h5"/></svg></span><span>Bar drinks</span></span></button>
+      <button class="exp-quick-btn qcat-camp" data-cat="Drinking water" onclick="quickCategoryShortcut('Drinking water')" title="Water dispenser refills for guests and staff — not the bar"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M10 3c2.5 3.2 4.5 5.8 4.5 8.5a4.5 4.5 0 0 1-9 0C5.5 8.8 7.5 6.2 10 3z"/></svg></span><span>Drinking water</span></span></button>
       <button class="exp-quick-btn qcat-camp" data-cat="Cleaning" onclick="quickCategoryShortcut('Cleaning')"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M6 4h8"/><path d="M8 4v3"/><path d="M12 4v3"/><path d="M5 7h10l-1 9H6z"/></svg></span><span>Cleaning</span></span></button>
       <button class="exp-quick-btn" data-cat="Transport" onclick="quickCategoryShortcut('Transport')"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M3 12h11"/><path d="m11 8 4 4-4 4"/><path d="M4 8h4"/></svg></span><span>Transport</span></span></button>
       <button class="exp-quick-btn" data-cat="Cash Float" onclick="startQuickExpense('transfer',{category:'Cash Float',description:'Money from HQ'})"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M3 10h10"/><path d="m10 6 4 4-4 4"/><path d="M14 5h3v10h-3"/></svg></span><span>Money from HQ</span></span></button>
@@ -1173,7 +1175,10 @@ const CATS=Object.keys(MENU);
 // One category list for the whole app (22 Oct 2026) — the same names as
 // hq_invoice_categories. Old names (Bar, Setup, Special, Cleaning Supplies,
 // Merchandising, Repairs, Supplies, Activities, Accounting) are mapped on read.
-const EXP_CATS=['Food','Drinks','Salary','Benefits','Taxes','Rent','Utilities','Services','Insurances','Equipment & maintenance','Cleaning','Laundry','Transport','Tours & activities','Merchandise','Marketing','Other'];
+// «Drinks» = bar stock (what the bar sells); «Drinking water» = the dispenser
+// refills for guests and staff, kept out of the bar so the Bar card shows the
+// real bar profit (Miguel, 15 Nov 2026). Its area is Utilities.
+const EXP_CATS=['Food','Drinks','Drinking water','Salary','Benefits','Taxes','Rent','Utilities','Services','Insurances','Equipment & maintenance','Cleaning','Laundry','Transport','Tours & activities','Merchandise','Marketing','Other'];
 const LEGACY_EXP_CAT={Bar:'Drinks',Setup:'Equipment & maintenance',Repairs:'Equipment & maintenance',Supplies:'Equipment & maintenance',Special:'Other','Cleaning Supplies':'Cleaning',Activities:'Tours & activities',Tours:'Tours & activities',Merchandising:'Merchandise',Merch:'Merchandise',Accounting:'Services'};
 const modernExpCat=(c)=>LEGACY_EXP_CAT[c]||c;
 // Tour cost rows: «Tours & activities» since 22 Oct 2026 (legacy «Tours» /
@@ -1228,7 +1233,7 @@ const AREA_CONFIG={
   Food:{expenseCats:['Food'],incomeCats:[],linkedItems:[]},
   Bar:{expenseCats:['Drinks'],incomeCats:['Drinks'],linkedItems:MENU.Drinks.map(i=>i.n)},
   Transport:{expenseCats:['Transport'],incomeCats:TRANSPORT_REVENUE_CATS,linkedItems:TRANSPORT_LINKED_ITEMS},
-  Utilities:{expenseCats:['Utilities','Services','Rent','Insurances','Equipment & maintenance','Cleaning','Taxes'],incomeCats:[],linkedItems:[]},
+  Utilities:{expenseCats:['Utilities','Drinking water','Services','Rent','Insurances','Equipment & maintenance','Cleaning','Taxes'],incomeCats:[],linkedItems:[]},
   Salaries:{expenseCats:['Salary','Benefits'],incomeCats:[],linkedItems:[]},
   Merch:{expenseCats:['Merchandise'],incomeCats:['Merchandise'],linkedItems:MENU.Merch.map(i=>i.n)},
   Tours:{expenseCats:['Tours & activities'],incomeCats:TOUR_REVENUE_CATS,linkedItems:MENU.Tours.map(i=>i.n)},
@@ -1369,7 +1374,7 @@ function inferArea(type,category,linkedItem=''){
   if(category==='Drinks') return 'Bar';
   if(category==='Transport') return 'Transport';
   if(category==='Laundry') return 'Laundry';
-  if(['Utilities','Services','Rent','Insurances','Equipment & maintenance','Cleaning','Taxes'].includes(category)) return 'Utilities';
+  if(['Utilities','Drinking water','Services','Rent','Insurances','Equipment & maintenance','Cleaning','Taxes'].includes(category)) return 'Utilities';
   if(['Salary','Benefits'].includes(category)) return 'Salaries';
   if(category==='Merchandise') return 'Merch';
   if(category==='Tours & activities') return linkedItem&&AREA_CONFIG.Transport.linkedItems.includes(linkedItem)?'Transport':'Tours';
@@ -4579,44 +4584,195 @@ function buildPaidItemRevenueEntry(guest, item, opts={}){
   });
 }
 
+// ── Camp Tab checkout lines (Miguel, 15 Nov 2026: «nos checkouts gera muitas
+// linhas… não dá para agrupar?») ─────────────────────────────────────────────
+// One ledger row per guest × payment day × product group, not one per item:
+//   Drinks / Other  → one row per category, itemised description
+//                     «Camp Tab · Anna · Drinks: Lion Lager ×5, Cocktail ×2»
+//   Tours / Transport sold from Tours / Wild tickets / Merch
+//                   → one row per product (linked_item = the product, qty = n),
+//                     so Tours by product, Wild tickets and Merch cost of goods
+//                     keep reading linked_item × qty.
+// The row is DERIVED from the Camp Tab state (the iframe posts its state
+// before every paid / unpaid message), never incremented, so a repeated or
+// late message only rewrites the same row. Id = campguest_<guest>_<day>_<group>
+// → stableUuidFromSeed: stable across re-syncs and computers.
+// Per-item analytics (Top sellers, stock, Dipløria) read camp_tab_items, not
+// these rows. Dipløria (pass-through) and LKR 0 / gift lines never count.
+// Rows written before this change (one per item, campitem_…) stay as they are:
+// an item that already has its own row is left out of the group.
+function campTabCheckoutGroup(item){
+  const category=mapCampTabRevenueCategory(item);
+  const perProduct=item.c==='Tours'||category===WILD_GOTA_CAT||category==='Merchandise';
+  const linkedItem=perProduct?String(item.n||'').trim():'';
+  // Same seed rule as the closed-week rows (tour name for Tours items).
+  const seed=item.c==='Tours'?(item.n||'Tours'):category;
+  return {category,linkedItem,seed,key:[seed,linkedItem].join('::')};
+}
+function campTabGuestKey(guest){ return String(guest?.id||guest?.name||'guest').replace(/\s+/g,'_'); }
+function campTabCheckoutSeed(guestKey,date,group){
+  return `campguest_${guestKey}_${date}_${group.seed}_${group.linkedItem||'general'}`.replace(/\s+/g,'_');
+}
+function campTabCheckoutId(guestKey,date,group){ return stableUuidFromSeed(campTabCheckoutSeed(guestKey,date,group)); }
+function campTabCheckoutDescription(name,group,items){
+  const who=String(name||'guest').trim();
+  if(group.linkedItem) return `Camp Tab · ${who} · ${group.linkedItem}${items.length>1?` ×${items.length}`:''}`;
+  const counts=new Map();
+  items.forEach(i=>{ const n=String(i.n||'').trim()||'Item'; counts.set(n,(counts.get(n)||0)+1); });
+  const label=group.category==='Other Revenue'?'Other':group.category;
+  return `Camp Tab · ${who} · ${label}: ${[...counts].map(([n,c])=>c>1?`${n} ×${c}`:n).join(', ')}`;
+}
+// Grouped revenue rows for these items of one guest, one payment day.
+function buildCheckoutRevenueEntries(guest, items, date){
+  const revenueDate=String(date||today()).slice(0,10);
+  const guestKey=campTabGuestKey(guest);
+  const groups=new Map();
+  (items||[]).filter(i=>i && Number(i.p||0)>0 && !isPassThroughItem(i)).forEach(item=>{
+    const g=campTabCheckoutGroup(item);
+    if(!groups.has(g.key)) groups.set(g.key,{...g,items:[]});
+    groups.get(g.key).items.push(item);
+  });
+  return [...groups.values()].map(group=>{
+    const total=group.items.reduce((s,i)=>s+Number(i.p||0),0);
+    return normalizeLedgerEntry({
+      id: campTabCheckoutSeed(guestKey,revenueDate,group),
+      date: revenueDate,
+      type: 'income',
+      category: group.category,
+      businessArea: inferArea('income', group.category, group.linkedItem),
+      paymentMethod: 'Cash',
+      paidBy: 'Camp',
+      linkedItem: group.linkedItem,
+      quantity: group.items.length,
+      description: campTabCheckoutDescription(guest?.name,group,group.items),
+      vendor: 'Camp Tab',
+      sourceKind: 'camp_tab_per_guest',
+      currency: LOCAL_CURRENCY || 'LKR',
+      fxRate: getBestFxRateForDate(revenueDate),
+      amountLocal: Number(total.toFixed(2)),
+      ...campTabRevenueAttribution(group.category)
+    });
+  });
+}
 function buildPaidGuestRevenueEntries(guest, opts={}){
   if(!guest || !Array.isArray(guest.items) || !guest.items.length) return [];
-  const paidItems = guest.items.filter(i => Number(i?.p||0) > 0 && !isPassThroughItem(i));   // never Dipløria (pass-through)
-  if(!paidItems.length) return [];
   const revenueDate = (opts.date && String(opts.date).slice(0,10)) || today();
-  const grouped = {};
-  paidItems.forEach(item => {
-    const category = mapCampTabRevenueCategory(item);
-    const linkedItem = (item.c === 'Tours' || category === WILD_GOTA_CAT) ? item.n : '';
-    // Same id-stability trick as closed-week revenue — use the legacy
-    // tour-name-as-category seed so we never collide with the weekly
-    // close path's ids.
-    const legacyIdSeed = item.c === 'Tours' ? (item.n || 'Tours') : category;
-    const key = [legacyIdSeed, linkedItem].join('::');
-    grouped[key] = grouped[key] || { category, legacyIdSeed, linkedItem, total: 0 };
-    grouped[key].total += Number(item.p || 0);
+  return buildCheckoutRevenueEntries(guest, guest.items, revenueDate);
+}
+// The Camp Tab state as last mirrored by the iframe (camp-tab-state-changed).
+function campTabStateConsumers(){
+  const st=readJsonStorage(CAMPTAB_KEY,null);
+  const weeks=[st?.activeWeek,st?.nextWeek,...(Array.isArray(st?.history)?st.history:[])].filter(Boolean);
+  return weeks.flatMap(w=>[...(w.guests||[]),...(w.staff||[])]).filter(Boolean);
+}
+function findCampTabStateGuest(guestRef){
+  const key=campTabGuestKey(guestRef);
+  return campTabStateConsumers().find(g=>campTabGuestKey(g)===key)||null;
+}
+// Items of a guest that a pre-grouping per-item row (campitem_…) already
+// carries: by its deterministic id first, then one-for-one by description +
+// day + amount (two identical beers = two legacy rows). Those stay out of
+// the grouped row, so nothing is ever counted twice.
+function campTabLegacyCoveredIds(guest, date, items){
+  const guestKey=campTabGuestKey(guest);
+  const ledgerIds=new Set(S.ledger.map(r=>String(r?.id||'')));
+  const covered=new Set(); const used=new Set();
+  const rest=[];
+  items.forEach(i=>{
+    const seed=`campitem_${guestKey}_${String(i.id||i.n||'item').replace(/\s+/g,'_')}_${date}`;
+    const uuid=stableUuidFromSeed(seed);
+    if(ledgerIds.has(uuid)||ledgerIds.has(seed)){ covered.add(String(i.id)); used.add(ledgerIds.has(uuid)?uuid:seed); }
+    else rest.push(i);
   });
-  const guestId = String(guest.id || guest.name || 'guest').replace(/\s+/g,'_');
-  return Object.values(grouped).map(group => normalizeLedgerEntry({
-    // ID scope: guest + date + (category × linked-item). One row per
-    // (guest, day, category) — re-paying on the same day updates in place,
-    // re-paying on a different day creates a new row.
-    id: `campguest_${guestId}_${revenueDate}_${group.legacyIdSeed}_${group.linkedItem || 'general'}`.replace(/\s+/g, '_'),
-    date: revenueDate,
-    type: 'income',
-    category: group.category,
-    businessArea: inferArea('income', group.category, group.linkedItem),
-    paymentMethod: 'Cash',
-    paidBy: 'Camp',
-    linkedItem: group.linkedItem,
-    description: `Camp Tab revenue · ${guest.name || 'guest'}`,
-    vendor: 'Camp Tab',
-    sourceKind: 'camp_tab_per_guest',
-    currency: LOCAL_CURRENCY || 'LKR',
-    fxRate: getBestFxRateForDate(revenueDate),
-    amountLocal: Number(group.total.toFixed(2)),
-    ...campTabRevenueAttribution(group.category)
-  }));
+  if(rest.length){
+    const pool=S.ledger.filter(r=>String(r?.sourceKind||'')==='camp_tab_per_item' && String(r?.date||'').slice(0,10)===date && !used.has(String(r.id)));
+    rest.forEach(i=>{
+      const desc=`Camp Tab · ${String(guest?.name||'guest').trim()} · ${String(i.n||'').trim()}`;
+      const k=pool.findIndex(r=>String(r?.description||'').trim()===desc && Math.abs(Number(r?.amountLocal||0)-Number(i.p||0))<0.01);
+      if(k>=0){ covered.add(String(i.id)); pool.splice(k,1); }
+    });
+  }
+  return covered;
+}
+// The items a grouped row should hold right now.
+function campTabCheckoutItems(guest, date, groupKey, opts={}){
+  const exclude=opts.excludeIds||new Set();
+  const include=opts.include||[];
+  const all=[...(guest?.items||[])];
+  include.forEach(it=>{ if(it && !all.some(x=>String(x?.id)===String(it.id))) all.push({...it,paidAt:it.paidAt||date}); });
+  const paid=all.filter(i=>i && i.paidAt && String(i.paidAt).slice(0,10)===date
+    && Number(i.p||0)>0 && !isPassThroughItem(i) && !exclude.has(String(i.id))
+    && campTabCheckoutGroup(i).key===groupKey);
+  const covered=campTabLegacyCoveredIds(guest,date,paid);
+  return paid.filter(i=>!covered.has(String(i.id)));
+}
+// Paid / unpaid messages are coalesced (Pay all = one message per line) and
+// written one batch at a time, so the last write always holds the full group.
+const CT_CHECKOUT_PENDING=new Map();
+let CT_CHECKOUT_TIMER=null;
+let CT_CHECKOUT_CHAIN=Promise.resolve();
+function queueCampTabCheckout(guestRef, item, date, opts={}){
+  if(!guestRef || !item || !date) return;
+  const day=String(date).slice(0,10);
+  const group=campTabCheckoutGroup(item);
+  const k=[campTabGuestKey(guestRef),day,group.key].join('|');
+  const p=CT_CHECKOUT_PENDING.get(k)||{guestRef,date:day,group,excludeIds:new Set(),include:[],triggers:[]};
+  p.guestRef={...p.guestRef,...guestRef};
+  if(opts.unpaid){ p.excludeIds.add(String(item.id)); p.include=p.include.filter(x=>String(x.id)!==String(item.id)); }
+  else { p.excludeIds.delete(String(item.id)); p.include.push(item); if(opts.source) p.triggers.push({guestId:guestRef.id,itemId:item.id,source:opts.source}); }
+  CT_CHECKOUT_PENDING.set(k,p);
+  clearTimeout(CT_CHECKOUT_TIMER);
+  CT_CHECKOUT_TIMER=setTimeout(()=>{
+    CT_CHECKOUT_CHAIN=CT_CHECKOUT_CHAIN.then(flushCampTabCheckouts).catch(err=>console.warn('[Hub] checkout flush failed',err));
+  },120);
+}
+async function flushCampTabCheckouts(){
+  const batch=[...CT_CHECKOUT_PENDING.values()];
+  CT_CHECKOUT_PENDING.clear();
+  if(!batch.length) return;
+  const upserts=[]; const deletes=[]; const triggers=[];
+  batch.forEach(p=>{
+    const stateGuest=findCampTabStateGuest(p.guestRef);
+    const guest=stateGuest?{...stateGuest,name:stateGuest.name||p.guestRef.name}:{...p.guestRef,items:[]};
+    const items=campTabCheckoutItems(guest,p.date,p.group.key,{excludeIds:p.excludeIds,include:p.include});
+    const id=campTabCheckoutId(campTabGuestKey(guest),p.date,p.group);
+    if(items.length) upserts.push(...buildCheckoutRevenueEntries(guest,items,p.date));
+    else deletes.push(id);
+    triggers.push(...p.triggers);
+  });
+  if(deletes.length){
+    const gone=new Set(deletes);
+    const before=S.ledger.length;
+    S.ledger=S.ledger.filter(r=>!gone.has(String(r?.id||'')));
+    if(S.ledger.length!==before){ save(); notifyLedgerChanged(); }
+    HUB_SUPPRESS_LEDGER_RT=true;
+    for(const id of gone){
+      try{ await deleteLedgerEntryFromSupabase(id); }catch(err){ console.warn('[Hub] checkout row delete failed',id,err); }
+    }
+    setTimeout(()=>{ HUB_SUPPRESS_LEDGER_RT=false; },600);
+  }
+  if(upserts.length){
+    const ok=await upsertClosedWeekIncome(upserts);
+    // Nothing retries a checkout row later: if the save fails the Camp Tab
+    // takes the «Paid» back on every line of this batch.
+    if(!ok) triggers.forEach(t=>{ try{ t.source?.postMessage({type:'camp-tab-item-paid-failed',guestId:t.guestId,itemId:t.itemId},'*'); }catch(_){} });
+  }
+  rerenderActivePageData();
+}
+// A grouped row deleted from the Operations Ledger: the items it carried, so
+// the Camp Tab can take their «Paid» back (one message per item).
+function campTabCheckoutRowItems(row){
+  const id=String(row?.id||''); const date=String(row?.date||'').slice(0,10);
+  for(const g of campTabStateConsumers()){
+    const key=campTabGuestKey(g);
+    const paid=(g.items||[]).filter(i=>i?.paidAt && String(i.paidAt).slice(0,10)===date && Number(i.p||0)>0 && !isPassThroughItem(i));
+    const byGroup=new Map();
+    paid.forEach(i=>{ const gr=campTabCheckoutGroup(i); if(!byGroup.has(gr.key)) byGroup.set(gr.key,gr); });
+    for(const gr of byGroup.values()){
+      if(campTabCheckoutId(key,date,gr)===id) return {guest:g,items:campTabCheckoutItems(g,date,gr.key)};
+    }
+  }
+  return null;
 }
 
 async function upsertClosedWeekIncome(entry){
@@ -5671,9 +5827,15 @@ function renderOverview(){
   // trim, not a data cutoff: any Bar row that ever landed against
   // these camps still counts toward Total Spent — it just doesn't
   // get its own idle-zero card.
-  const HIDE_BAR=(typeof __HUB_LOCATION_SLUG!=='undefined') && ['morocco','surf-school'].includes(__HUB_LOCATION_SLUG);
+  // Bar = bar sales (Camp Tab «Drinks» + cash bar revenue) − bar drinks
+  // bought in the period (expense category «Drinks»). The water dispenser
+  // has its own category («Drinking water», Utilities) since 15 Nov 2026,
+  // so it no longer eats the bar margin. A camp without a bar keeps the
+  // card hidden until it has a bar row in the period.
+  const HIDE_BAR=(typeof __HUB_LOCATION_SLUG!=='undefined') && ['morocco','surf-school'].includes(__HUB_LOCATION_SLUG)
+    && !(Math.abs(areaRevenues.Bar.local)>0.005 || Math.abs(areaCosts.Bar.local)>0.005);
   const profitAreas=[
-    ...(HIDE_BAR ? [] : [{icon:'cup',name:'Drinks',revenueLocal:areaRevenues.Bar.local,revenueEur:areaRevenues.Bar.eur,costLocal:areaCosts.Bar.local,costEur:areaCosts.Bar.eur}]),
+    ...(HIDE_BAR ? [] : [{icon:'cup',name:'Bar',id:'ovBarCard',costLabel:'Drinks bought',note:'Bar sales − bar drinks bought · drinking water apart',revenueLocal:areaRevenues.Bar.local,revenueEur:areaRevenues.Bar.eur,costLocal:areaCosts.Bar.local,costEur:areaCosts.Bar.eur}]),
     {icon:'shirt',name:'Merch',revenueLocal:areaRevenues.Merch.local,revenueEur:areaRevenues.Merch.eur,costLocal:merchCogsLocal,costEur:merchCogsEur}
   ];
   const tourCardsMarkup=tourRows.length?`
@@ -5781,7 +5943,7 @@ function renderOverview(){
       const marginEur=p.revenueEur-p.costEur;
       const pct=p.revenueLocal>0?((marginLocal/p.revenueLocal)*100).toFixed(0):'—';
       const marginCls=marginLocal>0?'pos':marginLocal<0?'neg':'zero';
-      return `<div class="ov-area-card">
+      return `<div class="ov-area-card"${p.id?` id="${p.id}"`:''}>
         <div class="ov-area-head">
           <div class="ov-area-title">${uiIcon(p.icon)}<span>${p.name}</span></div>
           <span class="ov-area-margin ${marginCls}">${marginLocal>=0?'+':''}${lkr(marginLocal)}</span>
@@ -5793,16 +5955,17 @@ function renderOverview(){
             <div class="ov-area-cell-sub">${p.revenueEur>0?euro(p.revenueEur):'—'}</div>
           </div>
           <div class="ov-area-cell">
-            <div class="ov-area-cell-label">Direct cost</div>
+            <div class="ov-area-cell-label">${p.costLabel||'Direct cost'}</div>
             <div class="ov-area-cell-value" style="color:${p.costLocal>0?'var(--red)':'var(--navy)'}">${lkr(p.costLocal)}</div>
             <div class="ov-area-cell-sub">${p.costEur>0?euro(p.costEur):'—'}</div>
           </div>
           <div class="ov-area-cell">
             <div class="ov-area-cell-label">Margin</div>
-            <div class="ov-area-cell-value" style="color:${marginLocal>0?'var(--green)':marginLocal<0?'var(--red)':'var(--navy)'}">${pct==='—'?'—':pct+'%'}</div>
-            <div class="ov-area-cell-sub">${p.revenueLocal>0?'of revenue':'no revenue'}</div>
+            <div class="ov-area-cell-value" data-margin-pct style="color:${marginLocal>0?'var(--green)':marginLocal<0?'var(--red)':'var(--navy)'}">${pct==='—'?'—':pct+'%'}</div>
+            <div class="ov-area-cell-sub">${p.revenueLocal>0?`${marginLocal>=0?'+':''}${euro(marginEur)}`:'no revenue'}</div>
           </div>
-        </div>
+        </div>${p.note?`
+        <div class="ov-area-note">${p.note}</div>`:''}
       </div>`;
     }).join('')}
     ${(diploria.sold>0||diploria.onTab>0)?`<div class="ov-area-card">
@@ -9461,7 +9624,15 @@ async function delLedger(id){
   try{
     const isPerItem = String(entry?.sourceKind||'')==='camp_tab_per_item'
       || String(entry?.id||'').startsWith('campitem_');
-    if(isPerItem){
+    // Grouped checkout row: one legacy-shaped message per item it carried,
+    // so the Camp Tab takes the «Paid» back on each of them.
+    const grouped = String(entry?.sourceKind||'')==='camp_tab_per_guest' ? campTabCheckoutRowItems(entry) : null;
+    if(grouped){
+      const frame=document.getElementById('campTabFrame');
+      grouped.items.forEach(it=>{
+        try{ frame?.contentWindow?.postMessage({type:'camp-tab-ledger-deleted',description:`Camp Tab · ${String(grouped.guest.name||'').trim()} · ${String(it.n||'').trim()}`,date:entry?.date||'',amountLocal:Number(it.p||0)},'*'); }catch(_e){}
+      });
+    }else if(isPerItem){
       const frame=document.getElementById('campTabFrame');
       if(frame?.contentWindow){
         frame.contentWindow.postMessage({
@@ -10163,7 +10334,13 @@ window.addEventListener('message',e=>{
   if(e.data?.type==='camp-tab-item-paid'){
     try{
       const {guest,item,date}=e.data;
-      if(guest && item){
+      // Grouped checkout row (15 Nov 2026): guest × day × product group,
+      // derived from the Camp Tab state. Only when the guest is not in the
+      // mirrored state (should not happen) does it fall back to the old
+      // one-row-per-item line, so a payment is never lost.
+      if(guest && item && !isPassThroughItem(item) && Number(item.p||0)>0 && findCampTabStateGuest(guest)){
+        queueCampTabCheckout(guest,item,String(date||today()).slice(0,10),{source:e.source});
+      }else if(guest && item){
         const entry=buildPaidItemRevenueEntry(guest,item,{date});
         // Nothing retries a per-item row later: if the save fails the Camp
         // Tab must take the «Paid» back, or the money never reaches the books.
@@ -10215,6 +10392,19 @@ window.addEventListener('message',e=>{
             && Math.abs(Number(row?.amountLocal||0)-Number(item?.p||0))<0.01);
         }
         if(idx>=0){ matched.push(String(S.ledger[idx].id||'')); S.ledger.splice(idx,1); }
+      });
+      // Grouped checkout rows of THIS guest (by guest id, never by name):
+      // the category of each line comes from the mirrored Camp Tab state
+      // (the iframe posts this message before it removes the guest).
+      const stateGuest = findCampTabStateGuest(e.data?.guest||{});
+      (Array.isArray(e.data?.items) ? e.data.items : []).forEach(item => {
+        const full = (stateGuest?.items||[]).find(x => String(x?.id)===String(item?.id)) || item;
+        if(!full?.c || isPassThroughItem(full)) return;
+        const dateStr = String(item?.date||'').slice(0,10);
+        const gid = campTabCheckoutId(guestKey, dateStr, campTabCheckoutGroup(full));
+        matched.push(gid);
+        const idx = S.ledger.findIndex(row => row?.id===gid);
+        if(idx>=0) S.ledger.splice(idx,1);
       });
       if(S.ledger.length !== sizeBefore){
         save();
@@ -10295,6 +10485,10 @@ window.addEventListener('message',e=>{
             console.warn('[Hub] failed to delete unpaid item ledger row',id,err)
           );
         });
+        // Grouped checkout row: rebuilt without this line (deleted when it
+        // was the last one). The item is excluded explicitly because delItem
+        // posts this message before it drops the line from its state.
+        if(!isPassThroughItem(item)) queueCampTabCheckout(guest,item,dateStr,{unpaid:true});
       }
     }catch(err){ console.warn('[Hub] item-unpaid handler failed',err); }
     rerenderActivePageData();

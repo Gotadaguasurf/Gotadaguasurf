@@ -87,6 +87,17 @@ Movements (LK).
    (type=revenue, location-scoped). Weekly close aggregates into P&L. All
    entries carry `paid_from` + `attributed_location` so HQ can split "who
    paid" vs "whose cost it economically is".
+   Since 15 Nov 2026 a paid Camp Tab line is grouped: ONE row per guest ×
+   payment day × product group (`source_kind = camp_tab_per_guest`, id
+   `campguest_<guest>_<day>_<group>` → stable UUID). Drinks / Other = one row
+   per category with an itemised description («Camp Tab · Anna · Drinks: Lion
+   Lager ×5, Cocktail ×2»); Tours, Wild tickets and Merch = one row per
+   product (`linked_item` + `qty`). The row is rebuilt from the Camp Tab state
+   on every paid / unpaid message (never incremented); older one-row-per-item
+   rows (`camp_tab_per_item`) stay and are left out of the group. Per-item
+   analytics read `camp_tab_items`. Expense category «Drinks» = bar stock;
+   «Drinking water» (area Utilities) = the dispenser, so the Overview «Bar»
+   card is bar sales − bar drinks bought.
 2. **Surf-school rental → ledger**: INSERT on `surf_school_rentals` fires the
    `tr_surf_rental_ledger` trigger (SECURITY DEFINER) which creates the
    `ledger_entries` revenue row atomically and stamps `ledger_entry_id` back.

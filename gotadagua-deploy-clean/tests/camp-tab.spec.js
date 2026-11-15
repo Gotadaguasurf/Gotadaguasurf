@@ -24,7 +24,7 @@ const CATALOG = [
 }));
 
 // Small in-memory PostgREST: GET filters eq/is/in, POST upserts by id, PATCH, DELETE.
-async function stub(page, tables) {
+async function stub(page, tables, location = null) {
   const T = {}; Object.entries(tables).forEach(([k, v]) => { T[k] = v.map(r => ({ ...r })); });
   const ctl = { T, fail: null, writes: [] };
   const match = (row, url) => [...new URL(url).searchParams.entries()].every(([k, v]) => {
@@ -41,7 +41,7 @@ async function stub(page, tables) {
     if (url.includes('/auth/v1/user')) return json({ id: 'u1', email: 'miguel@gotadaguasurf.com', aud: 'authenticated', role: 'authenticated' });
     if (url.includes('/auth/v1/')) return json({});
     const t = (url.match(/\/rest\/v1\/([a-z_]+)/) || [])[1]; if (!t) return json([]);
-    if (t === 'locations') return json({ id: LOC, name: 'Sri Lanka', slug: 'sri-lanka', currency: 'LKR', default_fx_to_eur: 340, camp_tab_mode: 'per_guest' });
+    if (t === 'locations') return json(location || { id: LOC, name: 'Sri Lanka', slug: 'sri-lanka', currency: 'LKR', default_fx_to_eur: 340, camp_tab_mode: 'per_guest' });
     if (ctl.fail && ctl.fail(t, method)) return json({ message: 'stub failure', code: '500' }, 500);
     const rows = T[t] || (T[t] = []);
     if (method !== 'GET') ctl.writes.push([method, t]);
@@ -64,15 +64,15 @@ async function stub(page, tables) {
   return ctl;
 }
 
-async function openCampTab(page, extra = {}) {
+async function openCampTab(page, extra = {}, location = null) {
   const ctl = await stub(page, {
     pricing_catalog: CATALOG, ledger_entries: [], location_state_store: [], location_menus: [], camp_staff_directory: [],
     camp_weeks: [{ id: WEEK, location_id: LOC, start_date: '2026-06-07', end_date: '2026-06-13', status: 'open', closed_at: null, draft_kind: null, meta: { label: null, source: null } }],
     camp_guests: [], camp_tab_items: [], ...extra,
-  });
+  }, location);
   page.on('dialog', d => d.accept());
   await fakeOwnerSession(page);
-  await page.goto('/camp-hub/?location=sri-lanka', { waitUntil: 'domcontentloaded' });
+  await page.goto(`/camp-hub/?location=${location ? location.slug : 'sri-lanka'}`, { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => { try { return HUB_LEDGER_HYDRATED === true; } catch (_) { return false; } }, null, { timeout: 20000 });
   const fh = await page.waitForSelector('iframe[src*="camp-tab-inner"][src*="mode=per_guest"]', { state: 'attached', timeout: 20000 });
   const frame = await fh.contentFrame();
@@ -81,7 +81,10 @@ async function openCampTab(page, extra = {}) {
   await page.waitForTimeout(800);
   return { ctl, frame };
 }
-const revenue = (ctl) => (ctl.T.ledger_entries || []).filter(r => r.source_kind === 'camp_tab_per_item');
+// Camp Tab revenue rows: one per guest × day × product group since 15 Nov 2026
+// (camp_tab_per_guest); camp_tab_per_item = the rows written before.
+const revenue = (ctl) => (ctl.T.ledger_entries || []).filter(r => ['camp_tab_per_item', 'camp_tab_per_guest'].includes(r.source_kind));
+const lines = (ctl) => revenue(ctl).map(r => [r.description, Number(r.amount_local), Number(r.qty)]).sort();
 async function addConsumer(frame, name) {
   await frame.locator('#addConsumerBtn').click();
   await frame.locator('#newGuestName').fill(name);
@@ -92,19 +95,22 @@ const tap = (frame, name) => frame.locator(`#itemGrid button:has(.ci-name:text-i
 const discount = (frame, name) => frame.locator(`#itemGrid .c-item:has(.ci-name:text-is("${name}")) button[title^="Give"]`).first().click();
 const row = (frame, name) => frame.locator(`#tabList .c-tab-row:has(.ctr-name:text-is("${name}"))`);
 
-test('camp tab: un-paying one of two identical beers removes ONE ledger row, not both', async ({ page }) => {
+test('camp tab: un-paying one of two identical beers takes ONE beer off the checkout line, not both', async ({ page }) => {
   const { ctl, frame } = await openCampTab(page);
   await addConsumer(frame, 'Marie');
   await cat(frame, 'Drinks'); await tap(frame, 'Soft Drink'); await tap(frame, 'Soft Drink');
-  await frame.locator('#payBtn').click(); // «Pay all (2)»
-  await expect.poll(() => revenue(ctl).length).toBe(2);
+  await frame.locator('#payBtn').click(); // «Pay all (2)» → ONE line, qty 2
+  await expect.poll(() => lines(ctl)).toEqual([['Camp Tab · Marie · Drinks: Soft Drink ×2', 800, 2]]);
+  const id = revenue(ctl)[0].id;
   await row(frame, 'Soft Drink').first().locator('button', { hasText: 'Mark unpaid' }).click();
-  await page.waitForTimeout(1200);
-  expect(revenue(ctl).map(r => [r.description, Number(r.amount_local)])).toEqual([['Camp Tab · Marie · Soft Drink', 400]]);
-  // the line still paid keeps its own row
+  await expect.poll(() => lines(ctl)).toEqual([['Camp Tab · Marie · Drinks: Soft Drink', 400, 1]]);
+  // the same row (same id), rewritten — never a second one
+  expect(revenue(ctl).map(r => r.id)).toEqual([id]);
   const stillPaid = await frame.evaluate(() => findConsumer(AG, 'guests').items.filter(i => i.paidAt).map(i => i.id));
   expect(stillPaid.length).toBe(1);
-  expect(revenue(ctl)[0].description).toBe('Camp Tab · Marie · Soft Drink');
+  // un-paying the last one removes the row
+  await row(frame, 'Soft Drink').locator('button', { hasText: 'Mark unpaid' }).first().click();
+  await expect.poll(() => revenue(ctl).length).toBe(0);
 });
 
 test('camp tab: deleting a closed guest from History removes only HIS rows, not those of another guest with the same name', async ({ page }) => {
@@ -120,8 +126,7 @@ test('camp tab: deleting a closed guest from History removes only HIS rows, not 
   await expect.poll(() => revenue(ctl).length).toBe(2);
   await frame.locator('.snav-btn[data-sub="history"]').click();
   await frame.locator('#histList button', { hasText: 'Delete' }).first().click();
-  await page.waitForTimeout(1200);
-  expect(revenue(ctl).map(r => [r.description, Number(r.amount_local)])).toEqual([['Camp Tab · Jules · Cocktail', 2000]]);
+  await expect.poll(() => lines(ctl)).toEqual([['Camp Tab · Jules · Drinks: Cocktail', 2000, 1]]);
 });
 
 test('camp tab: a gift does not keep the tab «Unpaid»; This week counts Collected / Outstanding line by line', async ({ page }) => {
@@ -139,7 +144,8 @@ test('camp tab: a gift does not keep the tab «Unpaid»; This week counts Collec
   expect(head).toContain('LKR 2,000\nOUTSTANDING');
   await frame.locator('.snav-btn[data-sub="charge"]').click();
   await frame.locator('#payBtn').click(); // pays the Cocktail; the gift has no price
-  await expect.poll(() => revenue(ctl).length).toBe(2);
+  // same guest, same day, same category → the Cocktail joins the beer's line
+  await expect.poll(() => lines(ctl)).toEqual([['Camp Tab · Anna · Drinks: Lion Lager, Cocktail', 2600, 2]]);
   await expect(frame.locator('#payState')).toBeVisible();
   await expect(frame.locator('#glist .c-guest .c-gpaid')).toHaveCount(1);
   await frame.locator('.snav-btn[data-sub="week"]').click();
@@ -147,8 +153,8 @@ test('camp tab: a gift does not keep the tab «Unpaid»; This week counts Collec
   expect(head).toContain('LKR 2,600\nCOLLECTED');
   expect(head).not.toContain('OUTSTANDING');
   await expect(frame.locator('#twList .tw-card .badge').first()).toHaveText('Paid');
-  // the gift wrote no revenue row
-  expect(revenue(ctl).map(r => r.description).sort()).toEqual(['Camp Tab · Anna · Cocktail', 'Camp Tab · Anna · Lion Lager']);
+  // the gift wrote nothing (not on the line, not a row of its own)
+  expect(lines(ctl)).toEqual([['Camp Tab · Anna · Drinks: Lion Lager, Cocktail', 2600, 2]]);
 });
 
 test('camp tab: Bill shows what is still to pay, and its «Mark paid» pays every line into the ledger', async ({ page }) => {
@@ -160,7 +166,7 @@ test('camp tab: Bill shows what is still to pay, and its «Mark paid» pays ever
   await frame.locator('.c-btn-bill').click();
   await expect(frame.locator('#billOv .bill-total-box')).toContainText('LKR 2,000');
   await frame.locator('#billPayBtn').click();
-  await expect.poll(() => revenue(ctl).length).toBe(2);
+  await expect.poll(() => lines(ctl)).toEqual([['Camp Tab · Bill Guest · Drinks: Cocktail, Soft Drink', 2400, 2]]);
   const items = await frame.evaluate(() => findConsumer(AG, 'guests').items.map(i => !!i.paidAt));
   expect(items).toEqual([true, true]);
 });
@@ -193,7 +199,7 @@ test('camp tab: «Dr House Transfer» is Transport revenue; staff buy at the sta
   expect(rows).toEqual([
     ['Camp Tab · Anna · Dr House Transfer', 3000, 'Transport', 'Transport', 'Dr House Transfer', 'Cash', 'revenue'],
     ['Camp Tab · Anna · River Safari', 6000, 'Tours', 'Tours', 'River Safari', 'Cash', 'revenue'],
-    ['Camp Tab · Jude · Lion Lager', 300, 'Drinks', 'Bar', '', 'Cash', 'revenue'],
+    ['Camp Tab · Jude · Drinks: Lion Lager', 300, 'Drinks', 'Bar', '', 'Cash', 'revenue'],
   ]);
 });
 
@@ -296,4 +302,100 @@ test('camp tab: the menu copy (location_menus) keeps the Staff price and «no st
   expect(fromCopy.staff).toEqual(expect.arrayContaining(['Soft Drink', 'Lion Lager', 'Cocktail', 'Shot']));
   expect(fromCopy.soft.stk).toBeUndefined();
   expect(fromCopy.soft.sp).toBe(200);
+});
+
+// ── Grouped checkout lines (Miguel, 15 Nov 2026: «nos checkouts gera muitas
+// linhas… 1 cerveja em cada linha») ─────────────────────────────────────────
+test('checkout lines: Pay all writes ONE line per product group — drinks itemised, tours / merch per product with qty', async ({ page }) => {
+  const { ctl, frame } = await openCampTab(page);
+  await addConsumer(frame, 'Max');
+  await cat(frame, 'Drinks'); await tap(frame, 'Lion Lager'); await tap(frame, 'Lion Lager'); await tap(frame, 'Cocktail');
+  await cat(frame, 'Tours'); await tap(frame, 'River Safari'); await tap(frame, 'River Safari');
+  await cat(frame, 'Merch'); await tap(frame, 'T-Shirt M'); await tap(frame, 'T-Shirt M');
+  const posts = () => ctl.writes.filter(([m, t]) => m === 'POST' && t === 'ledger_entries').length;
+  const before = posts();
+  await frame.locator('#payBtn').click(); // «Pay all (7)»
+  await expect.poll(() => lines(ctl)).toEqual([
+    ['Camp Tab · Max · Drinks: Lion Lager ×2, Cocktail', 3200, 3],
+    ['Camp Tab · Max · River Safari ×2', 12000, 2],
+    ['Camp Tab · Max · T-Shirt M ×2', 18000, 2],
+  ]);
+  // 7 paid lines → one batch write, not 7
+  expect(posts() - before).toBe(1);
+  const meta = revenue(ctl).map(r => [r.category, r.business_area, r.linked_item || '', r.source_kind, r.currency]).sort();
+  expect(meta).toEqual([
+    ['Drinks', 'Bar', '', 'camp_tab_per_guest', 'LKR'],
+    ['Merchandise', 'Merch', 'T-Shirt M', 'camp_tab_per_guest', 'LKR'],
+    ['Tours', 'Tours', 'River Safari', 'camp_tab_per_guest', 'LKR'],
+  ]);
+  // the id is the deterministic guest × day × group key
+  const expected = await page.evaluate(() => {
+    const g = findCampTabStateGuest({ name: 'Max', id: campTabStateConsumers().find(x => x.name === 'Max').id });
+    const day = String(g.items[0].paidAt).slice(0, 10);
+    return g.items.map(i => campTabCheckoutId(campTabGuestKey(g), day, campTabCheckoutGroup(i)));
+  });
+  expect([...new Set(expected)].sort()).toEqual(revenue(ctl).map(r => r.id).sort());
+  // per-item analytics still have every line in camp_tab_items
+  await expect.poll(() => (ctl.T.camp_tab_items || []).filter(r => r.paid_at).length).toBe(7);
+});
+
+test('checkout lines: a re-sync never duplicates — old one-row-per-item lines stay as they are and stay out of the group', async ({ page }) => {
+  const { ctl, frame } = await openCampTab(page);
+  await addConsumer(frame, 'Lea');
+  await cat(frame, 'Drinks'); await tap(frame, 'Lion Lager');
+  // A beer paid BEFORE this change: its own campitem_ row, written the old way.
+  const old = await frame.evaluate(() => { const g = findConsumer(AG, currentRoster); const it = g.items[0]; it.paidAt = new Date().toISOString(); save();
+    return { guest: { id: g.id, name: g.name }, item: { id: it.id, c: it.c, n: it.n, p: Number(it.p) }, date: it.paidAt.slice(0, 10) }; });
+  await page.evaluate(async (o) => { await upsertClosedWeekIncome([buildPaidItemRevenueEntry(o.guest, o.item, { date: o.date })]); }, old);
+  await expect.poll(() => lines(ctl)).toEqual([['Camp Tab · Lea · Lion Lager', 600, 1]]);
+  // A second beer today, paid now → grouped line with ONLY the new beer.
+  await tap(frame, 'Lion Lager');
+  await frame.locator('#payBtn').click();
+  await expect.poll(() => lines(ctl)).toEqual([['Camp Tab · Lea · Drinks: Lion Lager', 600, 1], ['Camp Tab · Lea · Lion Lager', 600, 1]]);
+  const ids = revenue(ctl).map(r => r.id).sort();
+  // Re-sync: every paid message sent again, twice.
+  await frame.evaluate(() => { const g = findConsumer(AG, currentRoster);
+    for (let k = 0; k < 2; k++) g.items.forEach(it => window.parent.postMessage({ type: 'camp-tab-item-paid', guest: { id: g.id, name: g.name }, item: { id: it.id, c: it.c, n: it.n, p: Number(it.p) }, date: String(it.paidAt).slice(0, 10) }, '*')); });
+  await page.waitForTimeout(1200);
+  expect(lines(ctl)).toEqual([['Camp Tab · Lea · Drinks: Lion Lager', 600, 1], ['Camp Tab · Lea · Lion Lager', 600, 1]]);
+  expect(revenue(ctl).map(r => r.id).sort()).toEqual(ids);
+  // Un-paying the OLD beer removes its own row; the grouped line is untouched.
+  await frame.evaluate(() => { window.confirm = () => true; const g = findConsumer(AG, currentRoster); unpayItemOnGuest(g, 0); });
+  await expect.poll(() => lines(ctl)).toEqual([['Camp Tab · Lea · Drinks: Lion Lager', 600, 1]]);
+});
+
+test('checkout lines: deleting a grouped line in the Operations Ledger takes «Paid» back on every line it carried', async ({ page }) => {
+  const { ctl, frame } = await openCampTab(page);
+  await addConsumer(frame, 'Zoe');
+  await cat(frame, 'Drinks'); await tap(frame, 'Soft Drink'); await tap(frame, 'Cocktail');
+  await frame.locator('#payBtn').click();
+  await expect.poll(() => lines(ctl)).toEqual([['Camp Tab · Zoe · Drinks: Soft Drink, Cocktail', 2400, 2]]);
+  const id = revenue(ctl)[0].id;
+  await page.evaluate((x) => delLedger(x), id);
+  await expect.poll(() => frame.evaluate(() => findConsumer(AG, 'guests').items.map(i => !!i.paidAt))).toEqual([false, false]);
+  await page.waitForTimeout(800);
+  expect(revenue(ctl)).toEqual([]); // and nothing brings it back
+});
+
+test('checkout lines (Morocco, MAD — no bar tab): tours per product with qty, merch per product', async ({ page }) => {
+  const { ctl, frame } = await openCampTab(page, {}, { id: LOC, name: 'Morocco', slug: 'morocco', currency: 'MAD', default_fx_to_eur: 10.8, camp_tab_mode: 'per_guest' });
+  await addConsumer(frame, 'Omar');
+  await cat(frame, 'Tours'); await tap(frame, 'River Safari'); await tap(frame, 'River Safari');
+  await cat(frame, 'Merch'); await tap(frame, 'T-Shirt M');
+  await frame.locator('#payBtn').click();
+  await expect.poll(() => lines(ctl)).toEqual([['Camp Tab · Omar · River Safari ×2', 12000, 2], ['Camp Tab · Omar · T-Shirt M', 9000, 1]]);
+  expect([...new Set(revenue(ctl).map(r => r.currency))]).toEqual(['MAD']);
+});
+
+test('checkout lines: deleting a paid line (This week card) rebuilds the group without it, even though the message comes before the delete', async ({ page }) => {
+  const { ctl, frame } = await openCampTab(page);
+  await addConsumer(frame, 'Ines');
+  await cat(frame, 'Drinks'); await tap(frame, 'Soft Drink'); await tap(frame, 'Cocktail'); await tap(frame, 'Cocktail');
+  await frame.locator('#payBtn').click();
+  await expect.poll(() => lines(ctl)).toEqual([['Camp Tab · Ines · Drinks: Soft Drink, Cocktail ×2', 4400, 3]]);
+  await frame.evaluate(() => { const g = findConsumer(AG, currentRoster); deleteGuestItem(g.id, g.items.findIndex(i => i.n === 'Cocktail')); });
+  await expect.poll(() => lines(ctl)).toEqual([['Camp Tab · Ines · Drinks: Soft Drink, Cocktail', 2400, 2]]);
+  // a whole guest deleted from the week: the line goes, by guest id
+  await frame.evaluate(() => { window.confirm = () => true; deleteGuest(findConsumer(AG, currentRoster).id); });
+  await expect.poll(() => revenue(ctl).length).toBe(0);
 });

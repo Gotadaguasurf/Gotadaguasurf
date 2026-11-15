@@ -109,7 +109,7 @@ test('sl ui: on a phone each ledger row says what it is (category · description
   expect(errs).toEqual([]);
 });
 
-test('sl ui: Overview labels say what the number is (camp / HQ, transport in revenue, no Morocco words, Drinks)', async ({ page }) => {
+test('sl ui: Overview labels say what the number is (camp / HQ, transport in revenue, no Morocco words, Bar)', async ({ page }) => {
   const { errs } = await boot(page, { width: 1440, height: 900 });
   await page.evaluate(() => showPage('overview'));
   const txt = await page.evaluate(() => document.getElementById('page-overview').innerText);
@@ -120,7 +120,9 @@ test('sl ui: Overview labels say what the number is (camp / HQ, transport in rev
   const elec = await page.evaluate(() => [...document.querySelectorAll('#page-overview .ov-chip')].find(c => /^ELECTRICITY$|^Electricity$/.test(c.firstElementChild?.innerText.trim()))?.innerText.replace(/\s+/g, ' '));
   expect(elec).toMatch(/Camp: LKR 60,000/);
   expect(elec).not.toMatch(/Paid by HQ: LKR/);
-  expect(txt).toMatch(/\bDrinks\b/);
+  // The bar card (15 Nov 2026): «Bar», cost = drinks bought for the bar
+  expect(txt).toMatch(/\bBar\b/);
+  expect(txt).toMatch(/Drinks bought/i);
   // Tour cards: nothing pokes out of its card even with LKR 27,152,740
   const cut = await page.evaluate(() => {
     const card = document.getElementById('ovTourTotals').closest('.card');

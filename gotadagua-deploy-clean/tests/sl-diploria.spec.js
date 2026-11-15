@@ -243,7 +243,7 @@ test('sl dipløria €: «Pay Dipløria» pays only those lines (Card → Diplø
   await expect.poll(() => (ctl.T.camp_tab_items || []).find(r => r.item_name === 'Core Black 28')?.paid_at || null).not.toBeNull();
   expect(JSON.parse(JSON.stringify((ctl.T.camp_tab_items || []).find(r => r.item_name === 'Core Black 28').meta)).payMethod).toBe('Card → Dipløria');
   await frame.locator('#payBtn').click();
-  await expect.poll(() => perItemRows(ctl).map(r => [r.description, Number(r.amount_local)])).toEqual([['Camp Tab · Marie · Lion Lager', 600]]);
+  await expect.poll(() => perItemRows(ctl).map(r => [r.description, Number(r.amount_local)])).toEqual([['Camp Tab · Marie · Drinks: Lion Lager', 600]]);
   // The other way round: camp first, Dipløria still to pay.
   await addLines(frame, 'Jules', 'Lion Lager', 'Retro 28');
   await frame.locator('#payBtn').click();
@@ -251,7 +251,7 @@ test('sl dipløria €: «Pay Dipløria» pays only those lines (Card → Diplø
   st = await frame.evaluate(() => findConsumer(AG, 'guests').items.map(i => [i.n, !!i.paidAt]));
   expect(st).toEqual([['Lion Lager', true], ['Retro 28', false]]);
   await expect(frame.locator('#passPayBtn')).toHaveText('Pay Dipløria · €55');
-  expect(perItemRows(ctl).map(r => r.description).sort()).toEqual(['Camp Tab · Jules · Lion Lager', 'Camp Tab · Marie · Lion Lager']);
+  expect(perItemRows(ctl).map(r => r.description).sort()).toEqual(['Camp Tab · Jules · Drinks: Lion Lager', 'Camp Tab · Marie · Drinks: Lion Lager']);
 });
 
 test('sl dipløria €: no ledger row on any path — per item, per guest, closed week (hub and camp tab), and no Merch revenue', async ({ page }) => {

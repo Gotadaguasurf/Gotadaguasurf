@@ -554,11 +554,12 @@ test('camp cash: Camp Tab sale → Pay all → Cash revenue rows in the ledger �
   expect(tab.paid).toEqual([true, true]);
   expect(tab.methodFields).toEqual([[], []]); // the Camp Tab stores no payment method at all
 
-  await page.waitForFunction(() => S.ledger.filter(r => r.sourceKind === 'camp_tab_per_item' && /Test Guest/.test(r.description || '')).length === 2, null, { timeout: 10000 });
-  const rows = writes.filter(w => w.op === 'upsert' && w.row.source_kind === 'camp_tab_per_item' && /Test Guest/.test(w.row.description || ''))
+  await page.waitForFunction(() => S.ledger.filter(r => r.sourceKind === 'camp_tab_per_guest' && /Test Guest/.test(r.description || '')).length === 2, null, { timeout: 10000 });
+  const rows = writes.filter(w => w.op === 'upsert' && w.row.source_kind === 'camp_tab_per_guest' && /Test Guest/.test(w.row.description || ''))
     .map(w => [w.row.type, w.row.payment_method, w.row.amount_local, w.row.description]);
+  // one checkout line per product group (15 Nov 2026): bar drinks / the tour
   expect(rows).toEqual([
-    ['revenue', 'Cash', 900, 'Camp Tab · Test Guest · Lion Lager'],
+    ['revenue', 'Cash', 900, 'Camp Tab · Test Guest · Drinks: Lion Lager'],
     ['revenue', 'Cash', 1500, 'Camp Tab · Test Guest · Temple Run Tuk Tuk'],
   ]);
   let d = await drawers(page);
@@ -568,7 +569,7 @@ test('camp cash: Camp Tab sale → Pay all → Cash revenue rows in the ledger �
 
   // The host reverses the beer («Paid» pill) → its ledger row goes, Cash back down.
   await frame.evaluate(() => { window.confirm = () => true; unpayItemOnGuest(findConsumer('Test Guest', 'guests'), 0); });
-  await page.waitForFunction(() => S.ledger.filter(r => r.sourceKind === 'camp_tab_per_item' && /Test Guest/.test(r.description || '')).length === 1, null, { timeout: 10000 });
+  await page.waitForFunction(() => S.ledger.filter(r => r.sourceKind === 'camp_tab_per_guest' && /Test Guest/.test(r.description || '')).length === 1, null, { timeout: 10000 });
   d = await drawers(page);
   expect(d.ledgerCash).toBe(EXPECTED_CASH + 1500);
   expect(writes.some(w => w.op === 'delete')).toBe(true);
