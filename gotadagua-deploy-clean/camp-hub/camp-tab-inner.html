@@ -3912,7 +3912,8 @@ function openBill(guestId){
   let html='';
   Object.keys(byCat).forEach(cat=>{
     html+=`<div style="margin-bottom:14px"><div style="font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--border)">${cat}</div>`;
-    byCat[cat].forEach(i=>{html+=`<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:13px;border-bottom:1px solid rgba(0,0,0,.04)"><span>${i.n}${i.s?` <span style="font-size:10px;color:var(--muted)">· ${i.s}</span>`:''}</span><span style="font-variant-numeric:tabular-nums;font-size:11px;color:var(--muted)">${euro(i.p)}</span></div>`;});
+    // The guest's bill says «Free» / «-50%» but never why (the comp reason is for the owners).
+    byCat[cat].forEach(i=>{const bs=i.compReason?String(i.s||'').replace(/ · [^·]+$/,''):i.s;html+=`<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:13px;border-bottom:1px solid rgba(0,0,0,.04)"><span>${i.n}${bs?` <span style="font-size:10px;color:var(--muted)">· ${bs}</span>`:''}</span><span style="font-variant-numeric:tabular-nums;font-size:11px;color:var(--muted)">${euro(i.p)}</span></div>`;});
     html+=`</div>`;
   });
   // per_guest: lines already paid one by one are not «to pay» any more.

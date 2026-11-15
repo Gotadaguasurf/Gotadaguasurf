@@ -235,6 +235,11 @@ test('comps: Pay / Pay all / Close guest / History with a comp on the tab — no
   await cat(frame, 'Drinks');
   await frame.locator('#itemGrid button:has(.ci-name:text-is("Lion Lager"))').first().click();
   await discount(frame, 'Cocktail'); await freeBtn(frame); await chip(frame, 'compensation');
+  // the guest's bill says «Free» but not why
+  await frame.locator('.c-btn-bill').click();
+  await expect(frame.locator('#billOv')).toContainText('Free');
+  await expect(frame.locator('#billOv')).not.toContainText('Compensation');
+  await frame.locator('#billOv').evaluate(el => el.classList.remove('open'));
   await frame.locator('#payBtn').click();
   const rev = () => (ctl.T.ledger_entries || []).filter(r => r.source_kind === 'camp_tab_per_item');
   await expect.poll(() => rev().length).toBe(1);
