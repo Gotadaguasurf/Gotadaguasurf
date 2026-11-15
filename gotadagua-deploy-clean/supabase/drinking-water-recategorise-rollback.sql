@@ -1,5 +1,6 @@
 -- ════════════════════════════════════════════════════════════════════════════
---  ROLLBACK of supabase/drinking-water-recategorise.sql — puts each of the
+--  ROLLBACK of supabase/drinking-water-recategorise.sql (A) and
+--  drinking-water-recategorise-food.sql (B, C) — puts each of the
 --  18 rows back on its literal old category and business area (as found on
 --  15 Nov 2026). Only touches a row that is still «Drinking water», so it is
 --  idempotent and never undoes a later manual change. NOT RUN.

@@ -105,6 +105,10 @@ test('bar card (Sri Lanka): bar sales − bar drinks bought, the dispenser stays
   expect(norm(nov.merch)).toContain('LKR 5,000');
   // grouped tour line counts 2 paid guests
   expect(norm(nov.tours)).toContain('2 paid guests');
+  // the dispenser shows as its own line of Utilities control
+  const water = await page.evaluate(() => { const c = [...document.querySelectorAll('#ovCatCard .card')].find(x => x.querySelector('.ov-cat-title')?.textContent.trim() === 'Utilities control');
+    const ch = c && [...c.querySelectorAll('.ov-chip')].find(x => x.firstElementChild?.textContent.trim() === 'Drinking water'); return ch ? ch.textContent.replace(/\s+/g, ' ') : ''; });
+  expect(norm(water)).toContain('LKR 9,000');
   // October on its own: 50,000 − 70,000 → −40 %
   const oct = await overviewFor(page, '2026-10');
   expect(norm(oct.bar)).toContain('-LKR 20,000');
@@ -165,4 +169,24 @@ test('«Drinking water»: its own category in the list, area Utilities; «Bar dr
   await page.locator('#expQuickBar .exp-quick-btn[data-cat="Drinking water"]').click();
   await expect.poll(() => page.evaluate(() => document.getElementById('qe_cat').value)).toBe('Drinking water');
   expect(errs).toEqual([]);
+});
+
+test('operations ledger: a long itemised checkout line wraps at 390 and 1280 (no sideways scroll)', async ({ page }) => {
+  const long = row({ type: 'revenue', category: 'Drinks', business_area: 'Bar', amount_local: 21800, qty: 19, entry_date: '2026-11-13', description: 'Camp Tab · João Lavado · Drinks: Soft Drink ×6, Lion Lager ×5, Cocktail ×4, Cider ×3, Mocktail', source_kind: 'camp_tab_per_guest' });
+  for (const vp of [{ width: 390, height: 844 }, { width: 1280, height: 900 }]) {
+    const { errs } = await boot(page, { rows: [...SL_ROWS, long], viewport: vp });
+    await page.evaluate(() => showPage('expenses'));
+    const out = await page.evaluate(() => {
+      const el = [...document.querySelectorAll('#page-expenses *')].find(e => e.children.length === 0 && /João Lavado · Drinks: Soft Drink ×6/.test(e.textContent || ''));
+      if (el) el.scrollIntoView({ block: 'center' });
+      return { found: !!el, docScroll: document.documentElement.scrollWidth <= innerWidth + 1 };
+    });
+    expect(out).toEqual({ found: true, docScroll: true });
+    if (SHOTS) {
+      fs.mkdirSync(SHOTS, { recursive: true });
+      await page.waitForTimeout(800);
+      await page.locator('#page-expenses tr, #page-expenses .exp-row, #page-expenses .ledger-card', { hasText: 'João Lavado · Drinks: Soft Drink ×6' }).last().screenshot({ path: path.join(SHOTS, `ledger-checkout-line-${vp.width}.png`) });
+    }
+    expect(errs).toEqual([]);
+  }
 });

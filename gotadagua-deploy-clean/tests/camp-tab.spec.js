@@ -399,3 +399,36 @@ test('checkout lines: deleting a paid line (This week card) rebuilds the group w
   await frame.evaluate(() => { window.confirm = () => true; deleteGuest(findConsumer(AG, currentRoster).id); });
   await expect.poll(() => revenue(ctl).length).toBe(0);
 });
+
+test('checkout lines: lines paid on the other computer (not yet in this Camp Tab) are kept when this one pays more', async ({ page }) => {
+  const { ctl, frame } = await openCampTab(page);
+  await addConsumer(frame, 'Nora');
+  await cat(frame, 'Drinks'); await tap(frame, 'Lion Lager'); await tap(frame, 'Lion Lager');
+  await frame.locator('#payBtn').click();
+  await expect.poll(() => lines(ctl)).toEqual([['Camp Tab · Nora · Drinks: Lion Lager ×2', 1200, 2]]);
+  await expect.poll(() => (ctl.T.camp_tab_items || []).filter(r => r.paid_at && r.item_name === 'Lion Lager').length).toBe(2);
+  // This computer's mirrored state is stale: it lacks both beers (paid "elsewhere"),
+  // and a third beer is paid here.
+  await page.evaluate(() => {
+    const st = readJsonStorage(CAMPTAB_KEY, null);
+    const g = [...(st.activeWeek.guests || [])].find(x => x.name === 'Nora');
+    const beer = { id: '0000beef-0000-4000-8000-000000000003', c: 'Drinks', n: 'Lion Lager', p: 600, paidAt: new Date().toISOString() };
+    g.items = [beer];
+    writeJsonStorage(CAMPTAB_KEY, st);
+    window.postMessage({ type: 'camp-tab-item-paid', guest: { id: g.id, name: g.name }, item: { id: beer.id, c: beer.c, n: beer.n, p: beer.p }, date: beer.paidAt.slice(0, 10) }, '*');
+  });
+  await expect.poll(() => lines(ctl)).toEqual([['Camp Tab · Nora · Drinks: Lion Lager ×3', 1800, 3]]);
+});
+
+test('checkout lines: an error while building the line takes «Paid» back (nothing left paid without a row)', async ({ page }) => {
+  const { ctl, frame } = await openCampTab(page);
+  await addConsumer(frame, 'Pia');
+  await cat(frame, 'Drinks'); await tap(frame, 'Cocktail');
+  await page.evaluate(() => { window.__realBuild = buildCheckoutRevenueEntries; buildCheckoutRevenueEntries = () => { throw new Error('boom'); }; });
+  await frame.locator('#payBtn').click();
+  await expect.poll(() => frame.evaluate(() => findConsumer(AG, 'guests').items.map(i => !!i.paidAt))).toEqual([false]);
+  expect(revenue(ctl)).toEqual([]);
+  await page.evaluate(() => { buildCheckoutRevenueEntries = window.__realBuild; });
+  await frame.locator('#payBtn').click();
+  await expect.poll(() => lines(ctl)).toEqual([['Camp Tab · Pia · Drinks: Cocktail', 2000, 1]]);
+});
