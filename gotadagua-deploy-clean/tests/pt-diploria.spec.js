@@ -15,6 +15,7 @@ test.use({ timezoneId: 'Europe/Lisbon', viewport: { width: 1280, height: 900 } }
 const LOC_PT = '380ae05e-7f8e-4ee5-b37b-e7d85903a397';
 const LOC_SL = '83cda02b-b63f-46fd-979a-945fd30ba5ab';
 const WEEK = 'c2289c05-527b-4079-a810-b71cd00733ec';
+const uid = (n) => `0000d1a0-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const SHOTS = process.env.PTDIP_SHOTS || path.join(__dirname, '..', 'test-results', 'pt-diploria-shots');
 const row = (r, i) => ({ id: `0000c47a-0000-4000-8000-${String(i + 1).padStart(12, '0')}`, location_id: LOC_PT, name: r.name, category: r.category, audience: 'general',
   sell_price: r.sell, sell_currency: 'EUR', currency: 'EUR', cost_per_guest: 0, alt_price: null, alt_label: null, stock_qty: r.stock,
@@ -62,11 +63,11 @@ async function stub(page, tables) {
   return ctl;
 }
 
-async function openPortugal(page) {
+async function openPortugal(page, seed = {}) {
   const ctl = await stub(page, {
     pricing_catalog: CATALOG_PT, ledger_entries: [], location_state_store: [], location_menus: [], camp_staff_directory: [],
     camp_weeks: [{ id: WEEK, location_id: LOC_PT, start_date: '2026-11-14', end_date: '2026-11-20', status: 'open', closed_at: null, draft_kind: null, meta: { label: null, source: null } }],
-    camp_guests: [], camp_tab_items: [],
+    camp_guests: [], camp_tab_items: [], ...seed,
   });
   page.on('dialog', d => d.accept());
   await fakeOwnerSession(page);
@@ -231,7 +232,6 @@ test('diploria core: held() = paid to the camp − passed (all time), unpaid apa
 
 // ── /diploria/: Portugal like a pass-through camp — «for Dipløria», owed by the camp, passed ───────────────
 const LOCATIONS = [{ id: LOC_SL, slug: 'sri-lanka', name: 'Sri Lanka' }, { id: LOC_PT, slug: 'portugal', name: 'Portugal' }];
-const uid = (n) => `0000d1a0-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const AREA_CATALOG = [
   ...['28', '30', '31', '32', '33', '34'].map((sz, i) => ({ id: uid(200 + i), location_id: LOC_PT, name: `Size ${sz}`, category: 'Diploria', stock_qty: [9, 15, 9, 4, 3, 2][i], sell_price: 65, sell_currency: 'EUR', currency: 'EUR', sort_order: 4010 + i * 10, active: true })),
   { id: uid(210), location_id: LOC_SL, name: 'Core Black 30', category: 'Diploria', stock_qty: 3, sell_price: 55, sell_currency: 'EUR', currency: 'EUR', sort_order: 8000, active: true },
@@ -359,4 +359,25 @@ test('portugal hub: screenshots of the Dipløria card and the ledger lines at 39
     if (await tbl.count()) { await tbl.scrollIntoViewIfNeeded(); await tbl.screenshot({ path: path.join(SHOTS, `hub-portugal-ledger-${w}.png`) }); }
     else await page.screenshot({ path: path.join(SHOTS, `hub-portugal-ledger-${w}.png`), fullPage: true });
   }
+});
+
+// The real shape on 15 Nov 2026: Portugal's per_guest Camp Tab is ONE open container week (since 8 Jun) holding
+// every guest, closed guests included. The hub card must read the July / October lines like /diploria/ does.
+test('portugal hub: the Dipløria card reads the history like /diploria/ — paid to the camp €130, 2 on tab, owed €130; no ledger row is invented', async ({ page }) => {
+  const CW = '759a7a5d-572b-4649-b331-6547b544f31a';
+  const g = (n, name) => ({ id: uid(610 + n), location_id: LOC_PT, week_id: CW, name, booking_ref: null, is_staff: false, paid: false, paid_at: null, closed_at: '2026-10-05T10:00:00Z', checkin: null, checkout: null, pax: 1, sort_order: n, meta: {} });
+  const line = (n, gi, name, at, paid) => ({ id: uid(720 + n), location_id: LOC_PT, guest_id: uid(610 + gi), week_id: CW, category: 'Diploria', item_name: name, price_local: 65, currency: 'EUR', price_type: null, added_at: at, paid_at: paid, sort_order: n, meta: {} });
+  const { ctl } = await openPortugal(page, {
+    camp_weeks: [{ id: CW, location_id: LOC_PT, start_date: '2026-06-08', end_date: '2026-06-14', status: 'open', closed_at: null, draft_kind: null, meta: { label: null, source: null } }],
+    camp_guests: [g(0, 'Pedro Test'), g(1, 'Marta Test'), g(2, 'Rita Test')],
+    camp_tab_items: [line(0, 0, 'Core Army Green 32', '2026-07-25T10:24:00Z', '2026-07-25T09:24:47Z'), line(1, 1, 'Core Burgundy 32', '2026-08-05T16:46:00Z', null),
+      line(2, 1, 'Pocket Brown 32', '2026-08-05T16:47:00Z', null), line(3, 2, 'Size 31', '2026-10-01T08:30:00Z', '2026-10-01T07:38:35Z')],
+  });
+  await page.evaluate(() => showPage('overview'));
+  await page.waitForTimeout(400);
+  await expect(page.locator('#ovDipOwed')).toContainText('Owed to Dipløria now €130 · paid to the camp €130 − passed €0');
+  const cells = await page.locator('#ovDiploria .ov-area-cell-value').allInnerTexts();
+  expect(cells).toEqual(['2', '€130', '2']);                                       // sold (paid) · held · on tab
+  expect(ctl.T.ledger_entries).toEqual([]);                                        // history is read, never back-filled
+  expect(await page.evaluate(() => sum(S.ledger.filter(x => x.type === 'income'), x => x.amount))).toBe(0);
 });
