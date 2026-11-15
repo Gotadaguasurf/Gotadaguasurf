@@ -686,6 +686,14 @@ for (const [name, size] of [['phone 390', { width: 390, height: 844 }], ['deskto
     // The logic in one plain line under the title.
     await expect(page.locator('#transportRoot .tr-how')).toHaveText('Airport transfers, tuk-tuks and paying the drivers. Nadith pays in the Ledger and ticks the guests.');
     await expect(page.locator('.tr-week')).toHaveText('7–13 Nov');
+    // Phone (15 Nov 2026): the week totals sit under the day list and the sub is one line, so the first trip is on the first screen;
+    // desktop keeps the totals on top. Rendered once either way.
+    await expect(page.locator('[data-total="airport"]')).toHaveCount(1);
+    const pos = await page.evaluate(() => ({ totals: document.querySelector('.tr-totals').getBoundingClientRect().top, day: document.querySelector('.tr-day').getBoundingClientRect().top,
+      row: document.querySelector('.tr-day .tr-row').getBoundingClientRect().top, sub: document.querySelector('.tr-how').getBoundingClientRect().height, line: parseFloat(getComputedStyle(document.querySelector('.tr-how')).lineHeight) || 20 }));
+    if (size.width <= 700) { expect(pos.totals).toBeGreaterThan(pos.day); expect(pos.row).toBeLessThan(size.height); expect(pos.sub).toBeLessThan(pos.line * 1.6); }
+    else expect(pos.totals).toBeLessThan(pos.day);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(size.width);
     // Week totals: drivers' prices; cancelled left out; free is a part of the airport count, not an extra.
     const air = norm(await page.locator('[data-total="airport"]').innerText());
     expect(air).toBe('AIRPORT · 5 TRANSFERS LKR 109,500 Paid LKR 41,000 · Owed LKR 47,500 · Planned LKR 21,000 Free: 2 · LKR 41,000 (Staff: Kasun; Gift: Alicia)');

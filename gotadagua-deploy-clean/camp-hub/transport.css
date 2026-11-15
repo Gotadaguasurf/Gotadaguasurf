@@ -118,6 +118,13 @@
   .tr-tbl td.tr-c-k .cell-sub { display: inline; margin-left: 4px; }
   #transportRoot .tr-actions .btn { flex: 1 1 calc(50% - 8px); justify-content: center; }
   #transportRoot .tr-totals { grid-template-columns: 1fr; gap: var(--sp-2); }
+  /* Phone (15 Nov 2026): the first trip on the first screen — the week totals go under the day list, the page
+     sub is one line (tap it to read it all). */
+  #transportRoot .tr-tripview { display: flex; flex-direction: column; }
+  #transportRoot .tr-tripview > .tr-totals { order: 9; margin-top: var(--sp-2); }
+  #transportRoot .page-head > div:first-child { min-width: 0; max-width: 100%; }
+  #transportRoot .tr-how { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+  #transportRoot .tr-how.open { white-space: normal; overflow: visible; }
   .tr-totals .kpi { padding: var(--sp-3) var(--sp-4); }
   .tr-pay { flex-direction: row; align-items: center; gap: var(--sp-2); text-align: left; flex-wrap: wrap; }
   .tr-tuk-line { grid-template-columns: 1fr auto auto; gap: var(--sp-2); padding: var(--sp-2) var(--sp-4); }

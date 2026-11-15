@@ -756,6 +756,8 @@ test('import: Week shows the import (one copy of the inputs, one blue button); a
   expect(await visiblePrimary(page)).toBe(1);                                           // «See the week»; «Choose Guests file» turns secondary
   await expect(page.locator('#weekRoot .wk-after .btn-p')).toHaveText(/See the week/);
   await expect(page.locator('#weekRoot .wk-after .btn-s')).toHaveText(/Send transfers in Transport/);
+  // the next steps sit right under the «Saved» line, above the list of the file (one screen on a phone)
+  expect(await page.evaluate(() => { const ok = document.querySelector('#weekRoot .status-ok'); return ok.nextElementSibling && ok.nextElementSibling.classList.contains('wk-after'); })).toBe(true);
   expect((await call(st, 'import')).body.p_guests.length).toBe(18);
   await expect.poll(() => st.calls.filter(c => c.t === 'guests_get').length).toBeGreaterThan(before);
   await page.click('#weekRoot button:has-text("See the week")');

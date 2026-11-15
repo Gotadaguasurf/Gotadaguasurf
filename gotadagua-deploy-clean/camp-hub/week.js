@@ -809,8 +809,12 @@
       else if (!S.loaded) inner = S.error ? `<div class="status-msg status-warn">Transport is not set up yet (${h(S.error)}). Ask Miguel to run supabase/camp-trips.sql.</div>` : '<div class="loading">Loading…</div>';
       else inner = TransportUI.importHtml({ title: 'Guests file' });
       const done = S.imp && S.imp.stage === 'done';
-      root.innerHTML = head + `<div class="wk-import">${inner}</div>` + (done ? `<div class="wk-after"><button class="btn btn-p" onclick="WeekUI.afterImport()">${ic('list')} See the week</button>
-        <button class="btn btn-s" onclick="WeekUI.afterImport('transport')">${ic('truck')} Send transfers in Transport ${ic('chevron-right')}</button></div>` : '');
+      // After saving: the two next steps right under the «Saved» line, not under the long list of the file.
+      const after = done ? `<div class="wk-after"><button class="btn btn-p" onclick="WeekUI.afterImport()">${ic('list')} See the week</button>
+        <button class="btn btn-s" onclick="WeekUI.afterImport('transport')">${ic('truck')} Send transfers in Transport ${ic('chevron-right')}</button></div>` : '';
+      const okAt = done ? inner.search(/<div class="status-msg status-ok">[\s\S]*?<\/div>/) : -1;
+      if (okAt >= 0) { const end = inner.indexOf('</div>', okAt) + 6; inner = inner.slice(0, end) + after + inner.slice(end); }
+      root.innerHTML = head + `<div class="wk-import">${inner}</div>` + (done && okAt < 0 ? after : '');
       if (!S.loaded && !S.error && window.TransportUI) TransportUI.load().then(render);
       return;
     }

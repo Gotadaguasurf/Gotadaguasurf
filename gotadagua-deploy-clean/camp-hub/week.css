@@ -194,7 +194,7 @@
 .wk-foot-btns .btn-p { min-width: 220px; justify-content: center; }
 .wk-state { margin-top: 6px; }
 .wk-state .btn-link { padding: 0; border: 0; font: inherit; color: var(--ocean); cursor: pointer; text-decoration: underline; }
-.wk-after { margin-top: var(--sp-3); display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.wk-after { margin: var(--sp-3) 0 var(--sp-4); display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 .wk-contact { padding-bottom: var(--sp-3); margin-bottom: var(--sp-3); border-bottom: 1px solid var(--border); }
 .wk-contact:last-child { border-bottom: 0; margin-bottom: 0; }
 

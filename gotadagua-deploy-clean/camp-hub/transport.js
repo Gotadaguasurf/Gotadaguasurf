@@ -333,7 +333,7 @@
     const wk = $('weekRoot'); if (wk && wk.querySelector('.wk-import')) wk.innerHTML = '';
     const root = $('transportRoot'); if (!root) return;
     const v = TR.view;
-    const head = `<div class="section-head page-head"><div><div class="section-title">Transport</div><div class="section-sub tr-how">${h(CC.transportHow || '')}</div></div>
+    const head = `<div class="section-head page-head"><div><div class="section-title">Transport</div><div class="section-sub tr-how" title="${h(CC.transportHow || '')}" onclick="this.classList.toggle('open')">${h(CC.transportHow || '')}</div></div>
       <div class="exp-top-actions tr-actions">
         <button class="btn ${v === 'trips' ? 'btn-p' : 'btn-s'}" onclick="TransportUI.openTuktuk()">${ic('plus')} ${RUN.plural}</button>
         <button class="btn btn-s" onclick="TransportUI.openAddTransfer()">${ic('truck')} Add transfer</button>
@@ -349,7 +349,8 @@
     const tabs = `<div class="pills tr-views">
       <button class="pill${v !== 'reconcile' ? ' active' : ''}" onclick="TransportUI.setView('trips')">Trips</button>
       <button class="pill${v === 'reconcile' ? ' active' : ''}" onclick="TransportUI.setView('reconcile')">Reconcile${review ? ` <span class="count">${review}</span>` : ''}</button></div>`;
-    const body = v === 'reconcile' ? renderReconcile() : renderTrips();
+    // Trips sit in one wrapper so a phone can show the week totals under the day list (transport.css), never twice.
+    const body = v === 'reconcile' ? renderReconcile() : `<div class="tr-tripview">${renderTrips()}</div>`;
     root.innerHTML = head + attentionStrip() + owedLine() + tabs + body;
     if (TR.scrollDay) { const el = $('trDay-' + TR.scrollDay); TR.scrollDay = ''; if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start' }); }
   }
