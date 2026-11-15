@@ -233,6 +233,15 @@ header{display:none}
 }
 @media(max-width:700px){.menu-shell{grid-template-columns:1fr}.menu-grid{grid-template-columns:1fr}}
 
+/* Sri Lanka Dipløria = pass-through on the guest's tab (15 Nov 2026) */
+.pass-block{margin-top:10px;border:1px dashed var(--border-2,var(--border));border-radius:10px;padding:8px}
+.pass-head{display:flex;justify-content:space-between;gap:8px;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;padding:2px 4px 6px}
+.pass-head b{color:var(--navy);font-size:13px;letter-spacing:0}
+.pass-pay{width:100%;margin-top:6px}
+.pass-done{font-size:12px;color:var(--green);font-weight:700;padding:6px 4px 0}
+.pass-bill{margin-top:10px;font-size:12px;color:var(--muted);border-top:1px dashed var(--border);padding-top:8px}
+.dip-sales{display:flex;flex-direction:column;gap:6px;margin-top:6px}
+.dip-unpaid{color:var(--red)}
 /* Sri Lanka Dipløria picker (15 Nov 2026) */
 .dip-wrap{grid-column:1/-1;display:flex;flex-direction:column;gap:12px;min-width:0}
 .dip-head{display:flex;justify-content:space-between;align-items:center;gap:10px}
@@ -1031,6 +1040,7 @@ function normalizeItemRows(items){
     // paidAt's day. Accept both casings so hydrate from snake_case
     // (paid_at) and from local cache (paidAt) round-trip cleanly.
     ...((item?.paidAt||item?.paid_at)?{paidAt:String(item.paidAt||item.paid_at)}:{}),
+    ...(item?.payMethod?{payMethod:String(item.payMethod)}:{}),
     sortOrder:Number.isFinite(Number(item?.sortOrder))?Number(item.sortOrder):(idx+1)*10
   })).filter(item=>item.n&&Number.isFinite(item.p));
 }
@@ -1391,6 +1401,7 @@ function hydrateWeekStateFromRows(weekRows,guestRows,itemRows){
       // as paid on every other device after the next hydrate.
       ...(item.paid_at?{paidAt:item.paid_at}:{}),
       ...(meta.staffNote?{s:meta.staffNote}:{}),
+      ...(meta.payMethod?{payMethod:meta.payMethod}:{}),
       ...(item.price_type?{priceType:item.price_type}:{}),
       // Audit fields — populated server-side by fn_stamp_audit_camp_tab.
       // Names resolved from platform_profiles via resolveAuditNames() and
@@ -1848,7 +1859,7 @@ function buildCampTabSyncRows(locationId){
             // currency='LKR' in the DB — amounts were right, but the
             // Activity feed (which trusts the stored column) rendered
             // "LKR 30" for €30 Portugal merch.
-            currency:LOCAL_CURRENCY||'LKR',
+            currency:isPassThrough(item)?PASS_CURRENCY:(LOCAL_CURRENCY||'LKR'),   // Dipløria in Sri Lanka: 55 EUR
             added_at:item.d+'T'+(item.t||'12:00')+':00.000Z',
             // per_guest mode (Morocco) — persist the item's individual paid
             // timestamp. Sri Lanka items never set paidAt so this stays
@@ -1856,7 +1867,7 @@ function buildCampTabSyncRows(locationId){
             paid_at:item.paidAt||null,
             price_type:item.priceType||null,
             sort_order:(itemIndex+1)*10,
-            meta:{time:item.t||'',staffNote:item.s||null}
+            meta:{time:item.t||'',staffNote:item.s||null,...(item.payMethod?{payMethod:item.payMethod}:{})}
           });
         });
       });
@@ -2355,7 +2366,20 @@ const today=()=>isoLocal(new Date());
 const weekStartSat=iso=>{const d=new Date(iso+'T00:00:00');const day=d.getDay();const diff=day===6?0:day+1;d.setDate(d.getDate()-diff);return isoLocal(d);};
 const addDays=(iso,n)=>{const d=new Date(iso+'T00:00:00');d.setDate(d.getDate()+n);return isoLocal(d);};
 const weekSpan=ws=>fmtd(ws)+' to '+fmtd(addDays(ws,6));
-const gtot=g=>g.items.reduce((s,i)=>s+Number(i.p),0);
+// ── Pass-through lines (Sri Lanka Dipløria, Miguel 15 Nov 2026) ─────────────
+// «pago sozinho no nome do guest»: the guest pays the Dipløria owner by card, 55 EUR a short. For the camp
+// it is pure pass-through — no revenue, no cash, no cost, no ledger row. Those lines sit in their own block
+// on the tab with a € subtotal, are never in the camp total / Pay / Bill, and are paid on their own
+// («Pay Dipløria», method «Card → Dipløria»). Portugal's Diploria (camp revenue, in EUR already) is untouched.
+function isPassThrough(i){ return !!i && i.c === 'Diploria' && diploriaPicker(); }
+const PASS_CURRENCY = 'EUR';
+const PASS_METHOD = 'Card → Dipløria';
+function fmtPass(n){ try { return new Intl.NumberFormat('en-IE',{style:'currency',currency:PASS_CURRENCY,maximumFractionDigits:2,minimumFractionDigits:0}).format(Number(n||0)); } catch(_){ return '€'+Number(n||0); } }
+const campLines = g => (g && Array.isArray(g.items) ? g.items : []).filter(i => !isPassThrough(i));
+const passLines = g => (g && Array.isArray(g.items) ? g.items : []).filter(isPassThrough);
+const campUnpaid = i => !!i && !i.paidAt && Number(i.p||0) > 0 && !isPassThrough(i);   // what Pay / Bill / Close count
+const itemMoney = i => isPassThrough(i) ? fmtPass(i.p) : euro(i.p);
+const gtot=g=>campLines(g).reduce((s,i)=>s+Number(i.p),0);
 const esc=s=>String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
 const getCats=()=>Object.keys(MENU);
 // Category visibility is data-driven: every category that has items in
@@ -2442,14 +2466,14 @@ function renderDiploriaPicker(el){
     el.innerHTML = `<div class="dip-wrap">${head}<div class="dip-hint">Read-only · each cell = left / initial · compare with the sheet «Stock Dipløria Sri Lanka»</div>
       <div class="dip-table-wrap"><table class="dip-table" id="dipStock"><thead><tr><th>Model</th>${DIPLORIA_SIZES.map(s => `<th>${s}</th>`).join('')}<th>Total</th><th>Sold</th></tr></thead>
       <tbody>${models.map(m => { const t = diploriaModelTotals(m); return `<tr data-model="${esc(m.model)}"><th>${esc(m.model)}</th>${DIPLORIA_SIZES.map(sz => cell(diploriaCell(m, sz))).join('')}<td class="tot"><b>${t.left}</b><span>/${t.initial}</span></td><td>${t.sold}</td></tr>`; }).join('')}</tbody>
-      <tfoot><tr><th>Total</th>${foot.map(f => `<td class="tot"><b>${f.l}</b><span>/${f.i}</span></td>`).join('')}<td class="tot" id="dipGrand"><b>${T.left}</b><span>/${T.initial}</span></td><td>${T.sold}</td></tr></tfoot></table></div></div>`;
+      <tfoot><tr><th>Total</th>${foot.map(f => `<td class="tot"><b>${f.l}</b><span>/${f.i}</span></td>`).join('')}<td class="tot" id="dipGrand"><b>${T.left}</b><span>/${T.initial}</span></td><td>${T.sold}</td></tr></tfoot></table></div>${diploriaSalesHtml()}</div>`;
     return;
   }
   const m = DIP_MODEL != null ? models.find(x => x.model === DIP_MODEL) : null;
   if(m){
     const t = diploriaModelTotals(m);
     el.innerHTML = `<div class="dip-wrap">${head}
-      <div class="dip-model-head"><button class="btn btn-s btn-sm" id="dipBack" onclick="dipBack()">‹ Models</button><div><div class="dip-model-name">${esc(m.model)}</div><div class="dip-sub">${euro(m.price)} · ${t.left} left · pick the size</div></div></div>
+      <div class="dip-model-head"><button class="btn btn-s btn-sm" id="dipBack" onclick="dipBack()">‹ Models</button><div><div class="dip-model-name">${esc(m.model)}</div><div class="dip-sub">${fmtPass(m.price)} · ${t.left} left · pick the size</div></div></div>
       <div class="dip-sizes" id="dipSizes">${DIPLORIA_SIZES.map(sz => { const c = diploriaCell(m, sz);
         return `<button class="dip-size${c.left ? '' : ' out'}" data-size="${sz}" ${c.left ? '' : 'disabled'} onclick="dipAddSize('${sz}', this)"><span class="dip-sz">${sz}</span><span class="dip-left">${c.left ? `${c.left} left` : 'none'}</span></button>`; }).join('')}</div></div>`;
     return;
@@ -2458,7 +2482,21 @@ function renderDiploriaPicker(el){
     return `<button class="c-item dip-model${t.left ? '' : ' out'}" data-model="${esc(x.model)}" ${t.left ? '' : 'disabled'} onclick="dipPickModel(${i})">
       <div class="ci-name">${esc(x.model)}</div>
       <div class="ci-desc" style="color:${t.left ? 'var(--green)' : 'var(--red)'};font-weight:700">${t.left ? `${t.left} left` : 'Out of stock'}</div>
-      <div class="ci-price">${euro(x.price)}</div></button>`; }).join('') || '<div class="c-item-empty">No Dipløria rows in the catalog yet.</div>'}</div></div>`;
+      <div class="ci-price">${fmtPass(x.price)}</div></button>`; }).join('') || '<div class="c-item-empty">No Dipløria rows in the catalog yet.</div>'}</div></div>`;
+}
+// Every Dipløria sale (history + this week), to match against the owner's account (Miguel, 15 Nov).
+function diploriaSales(){
+  const out = [];
+  [...(Array.isArray(S.history) ? S.history : []), ...(S.activeWeek ? [S.activeWeek] : [])].forEach(wk => allConsumers(wk).forEach(g =>
+    (Array.isArray(g.items) ? g.items : []).forEach(i => { if(i && i.c === 'Diploria') out.push({ date: i.d || '', guest: g.name, sku: i.n, price: Number(i.p||0), paid: !!i.paidAt, paidAt: i.paidAt || '', method: i.payMethod || (i.paidAt ? PASS_METHOD : '') }); })));
+  return out.sort((a, b) => (b.date + b.guest).localeCompare(a.date + a.guest));
+}
+function diploriaSalesHtml(){
+  const L = diploriaSales();
+  const sold = L.reduce((s,x)=>s+x.price,0), paid = L.filter(x=>x.paid).reduce((s,x)=>s+x.price,0);
+  return `<div class="dip-sales" id="dipSales"><div class="dip-title">Dipløria sales</div>
+    <div class="dip-sub" id="dipSalesTot">${L.length} sold · ${fmtPass(sold)} · paid ${fmtPass(paid)} · not paid ${fmtPass(sold - paid)}</div>
+    ${L.length ? `<div class="dip-table-wrap"><table class="dip-table dip-sales-t"><thead><tr><th>Date</th><th>Guest</th><th>Short</th><th>Price</th><th>Paid</th></tr></thead><tbody>${L.map(x => `<tr data-sale="${esc(x.sku)}"><td>${esc(x.date)}</td><td>${esc(x.guest)}</td><td>${esc(x.sku)}</td><td>${fmtPass(x.price)}</td><td>${x.paid ? `${esc(String(x.paidAt).slice(0,10))} · ${esc(x.method)}` : '<b class="dip-unpaid">not paid</b>'}</td></tr>`).join('')}</tbody></table></div>` : '<div class="dip-hint">No Dipløria sale yet.</div>'}</div>`;
 }
 function dipPickModel(i){ const m = diploriaModels()[i]; if(!m) return; DIP_MODEL = m.model; renderItemGrid(); }
 function dipBack(){ DIP_MODEL = null; renderItemGrid(); }
@@ -2995,7 +3033,7 @@ function renderTabPanel(){
   // every item being individually settled, not just the legacy whole-
   // guest g.paid flag.
   const fullyPaid = isGuestFullyPaid(g);
-  const unpaidCount = (g.items||[]).filter(i=>!i?.paidAt && Number(i?.p||0)>0).length;
+  const unpaidCount = (g.items||[]).filter(campUnpaid).length;
   document.getElementById('chargeGuestMeta').textContent=(currentRoster==='staff'?'Staff tab':'Guest tab')+' — '+(fullyPaid?'Paid / '+euro(gtot(g)):g.items.length+' item'+(g.items.length===1?'':'s')+' / '+euro(gtot(g)));
   // per_guest mode: drop the week prefix from the tab status line.
   const tabMetaLeft = CAMP_TAB_MODE==='per_guest' ? g.name : weekLabel;
@@ -3029,8 +3067,9 @@ function renderTabPanel(){
       closeGuestBtn.disabled = false;
       closeGuestBtn.style.opacity = '1';
       closeGuestBtn.style.cursor  = 'pointer';
-      const hasUnpaid = (g.items||[]).some(i => !i?.paidAt && Number(i?.p||0)>0);
-      closeGuestBtn.title = hasUnpaid
+      const hasUnpaid = (g.items||[]).some(campUnpaid);
+      closeGuestBtn.title = passLines(g).some(i => !i.paidAt) ? 'Pay Dipløria first (card to Dipløria) — it cannot stay unpaid'
+        : hasUnpaid
         ? 'Close — unpaid items will stay as an unpaid record in history'
         : 'Remove this guest from the active list';
     } else {
@@ -3066,6 +3105,7 @@ function renderTabPanel(){
   }
   document.getElementById('tabList').innerHTML=[...g.items].reverse().map((item,ri)=>{
     const idx=g.items.length-1-ri;
+    if(isPassThrough(item)) return '';   // Dipløria: its own block below (passBlockHtml)
     // per_guest mode (Morocco):
     //  - Each item gets its own Pay / Paid pill. Tapping Pay stamps
     //    paidAt + posts camp-tab-item-paid → one ledger row lands today.
@@ -3102,8 +3142,50 @@ function renderTabPanel(){
       </div>
     </div>`;
   }).join('');
+  document.getElementById('tabList').innerHTML += passBlockHtml(g);
   document.getElementById('tabTotal').textContent=euro(gtot(g));
+  // Only Dipløria on the tab: nothing for the camp to bill or take.
+  if(foot && !campLines(g).length){
+    const billBtn=foot.querySelector('.c-btn-bill'), payBtn3=foot.querySelector('#payBtn'), payState3=foot.querySelector('#payState');
+    if(billBtn) billBtn.style.display='none'; if(payBtn3) payBtn3.style.display='none'; if(payState3) payState3.style.display='none';
+  }
   if(foot)foot.style.display='block';
+}
+// The Dipløria block of a guest's tab: its lines in €, the € subtotal, and «Pay Dipløria · €N» (paid on its
+// own, by card to the owner — never in the camp total, never a ledger row).
+function passBlockHtml(g){
+  const lines = passLines(g); if(!lines.length) return '';
+  const unpaid = lines.filter(i => !i.paidAt), sum = lines.reduce((s,i)=>s+Number(i.p||0),0), due = unpaid.reduce((s,i)=>s+Number(i.p||0),0);
+  const rows = lines.map(item => { const idx = g.items.indexOf(item);
+    return `<div class="c-tab-row${item.paidAt?' paid':''}" data-pass="1"><div style="flex:1;min-width:0"><div class="ctr-name">${esc(item.n)}</div><div class="ctr-time">Dipløria · ${esc(item.t||'')}${item.paidAt?` · paid ${esc(String(item.paidAt).slice(0,10))} · ${esc(item.payMethod||PASS_METHOD)}`:''}</div></div>
+      <div style="display:flex;align-items:center;gap:8px;flex-shrink:0"><div class="ctr-price">${fmtPass(item.p)}</div>
+      ${item.paidAt?`<span class="badge badge-green">Paid</span><button class="btn btn-link btn-sm ct-unpay" onclick="event.stopPropagation();unpayItem(${idx})">Mark unpaid</button>`:`<button class="ctr-del" onclick="delItem(${idx})" title="Remove from tab">×</button>`}</div></div>`; }).join('');
+  return `<div class="pass-block" id="passBlock"><div class="pass-head"><span>Dipløria · paid by card to Dipløria, not camp money</span><b id="passTotal">${fmtPass(sum)}</b></div>${rows}
+    ${unpaid.length?`<button class="btn btn-s pass-pay" id="passPayBtn" onclick="payDiploria()">Pay Dipløria · ${fmtPass(due)}</button>`:'<div class="pass-done">Dipløria paid · '+esc(PASS_METHOD)+'</div>'}</div>`;
+}
+// «Pay Dipløria»: one tap + confirm (the guest's name and the shorts). Marks only those lines paid with the
+// method «Card → Dipløria». No ledger row, no cash, no revenue: nothing is posted to the hub.
+function payDiploriaForGuest(g){
+  if(!g) return false;
+  const unpaid = passLines(g).filter(i => !i.paidAt);
+  if(!unpaid.length){ toast('Dipløria already paid'); return false; }
+  const due = unpaid.reduce((s,i)=>s+Number(i.p||0),0);
+  if(!confirm(`Pay Dipløria for ${g.name}?\n\n${unpaid.map(i=>`- ${i.n}  ${fmtPass(i.p)}`).join('\n')}\n\nTotal ${fmtPass(due)} — paid by card straight to Dipløria (not camp money).`)) return false;
+  const nowIso = new Date().toISOString();
+  unpaid.forEach(i => { i.paidAt = nowIso; i.payMethod = PASS_METHOD; });
+  save();
+  renderAllCampTabViews();
+  toast(`Dipløria paid · ${g.name} · ${fmtPass(due)}`);
+  return true;
+}
+function payDiploria(){ return payDiploriaForGuest(findConsumer(AG,currentRoster)); }
+// Closing a guest with an unpaid Dipløria line is refused: it is someone else's money and must be paid by
+// card (or the line removed) first — never left as a write-off.
+function passBlocksClose(g){
+  const open = passLines(g).filter(i => !i.paidAt);
+  if(!open.length) return false;
+  alert(`Dipløria not paid — ${g.name} has ${open.length} Dipløria short${open.length===1?'':'s'} (${fmtPass(open.reduce((s,i)=>s+Number(i.p||0),0))}).\n\nTap «Pay Dipløria» (card to Dipløria) or remove the line, then close the guest.`);
+  return true;
 }
 
 function selGuest(id){AG=id;renderGuestList();renderItemGrid();renderTabPanel();
@@ -3471,8 +3553,9 @@ function closeActiveGuest(){
   // surface a stronger confirmation that spells out what's about to
   // happen — the items stay in history as UNPAID so the books reflect
   // reality (e.g. guest left without paying, owner decided to comp it).
+  if(passBlocksClose(g)) return;
   const items = Array.isArray(g.items) ? g.items : [];
-  const unpaid = items.filter(i => !i?.paidAt && Number(i?.p||0) > 0);
+  const unpaid = items.filter(campUnpaid);
   if(unpaid.length){
     const totalUnpaid = unpaid.reduce((s,i)=>s+Number(i.p||0),0);
     if(!confirm(`Close ${g.name} with ${unpaid.length} unpaid item${unpaid.length===1?'':'s'} (${euro(totalUnpaid)})?\n\nThe unpaid items stay in history as a record — no ledger entries are written for them.\n\nYou can re-open the guest later from History if needed.`)){
@@ -3496,8 +3579,8 @@ function closeActiveGuest(){
 function isGuestFullyPaid(g){
   if(!g) return false;
   if(CAMP_TAB_MODE !== 'per_guest') return !!g.paid;
-  const items = Array.isArray(g.items) ? g.items : [];
-  if(!items.length) return !!g.paid;
+  const items = campLines(g);   // Dipløria is paid on its own and never makes the camp tab «Unpaid»
+  if(!items.length) return passLines(g).length ? true : !!g.paid;
   // A gift / LKR 0 line can't be paid (payItemOnGuest refuses it), so it
   // must not keep the guest «Unpaid» forever once every priced line is paid.
   return items.every(i => !!i?.paidAt || !(Number(i?.p||0)>0)) || !!g.paid;
@@ -3515,10 +3598,11 @@ function payItemOnGuest(g, idx){
   const item=g.items?.[idx];
   if(!item) return false;
   if(item.paidAt){ toast('Item already paid'); return false; }
+  if(isPassThrough(item)){ toast('Dipløria is paid on its own — «Pay Dipløria»'); return false; }
   if(!(Number(item.p)>0)){ toast('Item has no price'); return false; }
   const nowIso=new Date().toISOString();
   item.paidAt=nowIso;
-  if(g.items.every(i => !!i.paidAt || !(Number(i?.p||0)>0))){
+  if(campLines(g).every(i => !!i.paidAt || !(Number(i?.p||0)>0))){
     g.paid=true;
     g.paidAt = g.paidAt || nowIso;
   }
@@ -3549,7 +3633,7 @@ function payAllForGuestId(guestId){
   if(CAMP_TAB_MODE !== 'per_guest') return;
   const g=findConsumer(guestId,currentRoster);
   if(!g) return;
-  const idxs=(g.items||[]).map((it,idx)=>(!it?.paidAt && Number(it?.p||0)>0)?idx:-1).filter(idx=>idx>=0);
+  const idxs=(g.items||[]).map((it,idx)=>campUnpaid(it)?idx:-1).filter(idx=>idx>=0);
   if(!idxs.length){ toast('Nothing to pay'); return; }
   // re-read the guest each time: paying a line saves and rebuilds the rows
   idxs.forEach(idx=>payItemOnGuest(findConsumer(guestId,currentRoster), idx));
@@ -3572,6 +3656,10 @@ function unpayItemOnGuest(g, idx){
   const item=g.items?.[idx];
   if(!item) return false;
   if(!item.paidAt){ toast('Item is not paid'); return false; }
+  if(isPassThrough(item)){   // no ledger row behind a Dipløria payment: just take the mark back
+    if(!confirm(`Mark "${item.n}" as not paid to Dipløria?`)) return false;
+    delete item.paidAt; delete item.payMethod; save(); renderAllCampTabViews(); toast(`${item.n} marked unpaid`); return true;
+  }
   const paidDate=String(item.paidAt).slice(0,10);
   if(!confirm(`Mark "${item.n}" as unpaid?\n\nThis removes the ${euro(Number(item.p||0))} entry from the Operations Ledger.`)) return false;
   delete item.paidAt;
@@ -3612,8 +3700,9 @@ function closeGuestById(guestId){
   if(CAMP_TAB_MODE !== 'per_guest') return;
   const g=findConsumer(guestId,currentRoster);
   if(!g) return;
+  if(passBlocksClose(g)) return;
   const items = Array.isArray(g.items) ? g.items : [];
-  const unpaid = items.filter(i => !i?.paidAt && Number(i?.p||0) > 0);
+  const unpaid = items.filter(campUnpaid);
   if(unpaid.length){
     const totalUnpaid = unpaid.reduce((s,i)=>s+Number(i.p||0),0);
     if(!confirm(`Close ${g.name} with ${unpaid.length} unpaid item${unpaid.length===1?'':'s'} (${euro(totalUnpaid)})?\n\nThe unpaid items stay in history as a record — no ledger entries are written for them.\n\nYou can re-open the guest later from History if needed.`)){
@@ -3641,7 +3730,7 @@ function togglePaid(){
       return;
     }
     const unpaidIndexes = (g.items||[])
-      .map((it,idx) => (!it?.paidAt && Number(it?.p||0)>0) ? idx : -1)
+      .map((it,idx) => campUnpaid(it) ? idx : -1)
       .filter(idx => idx>=0);
     if (!unpaidIndexes.length) { toast('Nothing to pay'); return; }
     unpaidIndexes.forEach(payItem);
@@ -3665,7 +3754,7 @@ function openBill(guestId){
   if(!g||!g.items.length){toast('No items on this tab.');return;}
   document.getElementById('billName').textContent=g.name;
   document.getElementById('billMeta').textContent=g.items.length+(g.items.length===1?' item':' items')+' — '+weekSpan(S.activeWeek.start)+(stayMeta(g)?` — ${stayMeta(g)}`:'');
-  const byCat={};g.items.forEach(i=>{if(!byCat[i.c])byCat[i.c]=[];byCat[i.c].push(i);});
+  const byCat={};campLines(g).forEach(i=>{if(!byCat[i.c])byCat[i.c]=[];byCat[i.c].push(i);});   // the camp part only
   let html='';
   Object.keys(byCat).forEach(cat=>{
     html+=`<div style="margin-bottom:14px"><div style="font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--border)">${cat}</div>`;
@@ -3673,7 +3762,10 @@ function openBill(guestId){
     html+=`</div>`;
   });
   // per_guest: lines already paid one by one are not «to pay» any more.
-  const billDue=CAMP_TAB_MODE==='per_guest'?g.items.filter(i=>!i.paidAt).reduce((s,i)=>s+Number(i.p||0),0):gtot(g);
+  const billDue=CAMP_TAB_MODE==='per_guest'?campLines(g).filter(i=>!i.paidAt).reduce((s,i)=>s+Number(i.p||0),0):gtot(g);
+  // Dipløria: one short line under the camp bill — paid apart, by card to Dipløria.
+  const pl=passLines(g); if(pl.length){ const pd=pl.filter(i=>!i.paidAt).reduce((s,i)=>s+Number(i.p||0),0);
+    html+=`<div class="pass-bill" id="billPass">Dipløria (paid by card to Dipløria, not on this bill): ${pl.length} short${pl.length===1?'':'s'} · ${pd?fmtPass(pd)+' to pay':'paid'}</div>`; }
   html+=`<div class="bill-total-box" style="background:var(--navy);border-radius:var(--r);padding:14px 16px;display:flex;justify-content:space-between;align-items:center;margin-top:12px"><div><div style="font-size:9px;color:#9fc0da;text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:3px">Total to pay</div><div style="font-weight:700;letter-spacing:-.02em;font-size:28px;color:#fff">${euro(billDue)}</div></div><div style="text-align:right;font-size:11px;color:#9fc0da">${g.items.length} items<br>${fmtd(S.activeWeek.start)} week</div></div>`;
   document.getElementById('billBody').innerHTML=html;
   // per_guest: «Mark paid» = «Pay all» — each line gets paid and its ledger
@@ -3738,7 +3830,7 @@ function renderThisWeek(){
   // paid flag (only set when every line is paid) — a half-paid tab showed
   // everything as Outstanding and nothing as Collected.
   const perLine=CAMP_TAB_MODE==='per_guest';
-  const lines=perLine?guests.flatMap(g=>g.items||[]):[];
+  const lines=perLine?guests.flatMap(g=>campLines(g)):[];   // camp money only (Dipløria is not)
   const totalCollected=perLine?lines.filter(i=>i.paidAt).reduce((s,i)=>s+Number(i.p||0),0):paid.reduce((s,g)=>s+gtot(g),0);
   const totalOutstanding=perLine?lines.filter(i=>!i.paidAt).reduce((s,i)=>s+Number(i.p||0),0):unpaid.reduce((s,g)=>s+gtot(g),0);
   const chargeableUnpaid=unpaid.filter(g=>gtot(g)>0);
@@ -3795,7 +3887,7 @@ function renderThisWeek(){
       // handles the unpaid-items confirmation. Variable kept for the
       // "paid/cta" colour state below.
       const closeReady = isFullyPaid || tot===0;
-      const hasUnpaidItems = (g.items||[]).some(i => !i?.paidAt && Number(i?.p||0)>0);
+      const hasUnpaidItems = (g.items||[]).some(campUnpaid);
       return `<div class="card tw-card">
         <div class="tw-card-head" onclick="toggleTwExpand('${esc(g.id)}')">
         <div style="flex:1;min-width:0">
@@ -3830,16 +3922,17 @@ function renderThisWeek(){
             return `<div class="tw-item-row${itemPaid?' paid':''}"${auditTitle?` title="${esc(auditTitle)}"`:''}>
               <div class="tw-item-main">
                 <span>${i.n}${i.s?` <span style="font-size:10px;color:var(--muted)">· ${i.s}</span>`:''}</span>
-                <span style="font-variant-numeric:tabular-nums;font-size:11px;color:var(--muted)">${euro(i.p)}</span>
+                <span style="font-variant-numeric:tabular-nums;font-size:11px;color:var(--muted)">${itemMoney(i)}</span>
               </div>
-              ${perItemPay}
+              ${isPassThrough(i)?(i.paidAt?'<span class="badge badge-green" style="margin-left:8px">Paid · Dipløria</span>':''):perItemPay}
               ${delBtn}
             </div>`;
           }).join(''):'<div style="font-size:12px;color:var(--muted);padding:8px 0">No items yet.</div>'}
           <div class="tw-actions">
             ${CAMP_TAB_MODE==='per_guest'
               ? `${!isFullyPaid&&tot>0?`<button class="btn btn-s btn-sm" onclick="openBill('${esc(g.id)}')">Bill</button>`:''}
-                 ${(()=>{ const n=(g.items||[]).filter(it=>!it?.paidAt&&Number(it?.p||0)>0).length; return n?`<button class="btn btn-p btn-sm" onclick="payAllForGuestId('${esc(g.id)}')">${n>1?`Pay all (${n})`:'Pay'}</button>`:''; })()}
+                 ${passLines(g).some(i=>!i.paidAt)?`<button class="btn btn-s btn-sm" onclick="AG='${esc(g.id)}';payDiploria()">Pay Dipløria · ${fmtPass(passLines(g).filter(i=>!i.paidAt).reduce((s,i)=>s+Number(i.p||0),0))}</button>`:''}
+                 ${(()=>{ const n=(g.items||[]).filter(campUnpaid).length; return n?`<button class="btn btn-p btn-sm" onclick="payAllForGuestId('${esc(g.id)}')">${n>1?`Pay all (${n})`:'Pay'}</button>`:''; })()}
                  <button class="btn ${closeReady?'btn-p':'btn-s'} btn-sm" onclick="closeGuestById('${esc(g.id)}')" title="${hasUnpaidItems?'Close — unpaid items will stay as an unpaid record in history':'Remove guest from active list'}">Close guest</button>
                  <button class="btn btn-link btn-sm c-link-danger" onclick="deleteGuest('${esc(g.id)}')">Delete ${rosterLabel().toLowerCase()}</button>`
               : `${currentRoster==='guests'?`<button class="btn btn-s btn-sm" onclick="passGuestToNextWeek('${esc(g.id)}')">${isQueuedForNextWeek(g.name)?'Update next week':'Continue next week'}</button>`:''}
@@ -3933,7 +4026,7 @@ function deleteGuest(id){
   // with the guest. Sri Lanka path keeps its tiny confirm because
   // ledger entries don't land per-guest there (they land at week close).
   const items     = Array.isArray(g.items) ? g.items : [];
-  const paidItems = CAMP_TAB_MODE==='per_guest' ? items.filter(i => !!i?.paidAt) : [];
+  const paidItems = CAMP_TAB_MODE==='per_guest' ? items.filter(i => !!i?.paidAt && !isPassThrough(i)) : [];   // Dipløria has no ledger row
   const totalPaid = paidItems.reduce((s,i)=>s+Number(i?.p||0),0);
   const confirmMsg = (CAMP_TAB_MODE==='per_guest' && paidItems.length)
     ? `Delete ${g.name} from this week?\n\nThis also removes ${paidItems.length} ledger entr${paidItems.length===1?'y':'ies'} (${euro(totalPaid)}) from the Operations Ledger.\n\nCan't be undone.`
@@ -4095,7 +4188,7 @@ function renderHistory(){
               </div>
             </div>
             ${isGOpen&&g.items.length?`<div class="hw-items-detail">
-              ${g.items.map(i=>`<div class="hw-item-line"><span>${i.n}${i.s?` <span style="font-size:10px;color:var(--muted)">· ${i.s}</span>`:''}</span><span style="font-variant-numeric:tabular-nums;font-size:11px;color:var(--muted)">${euro(i.p)}</span></div>`).join('')}
+              ${g.items.map(i=>`<div class="hw-item-line"><span>${i.n}${i.s?` <span style="font-size:10px;color:var(--muted)">· ${i.s}</span>`:''}</span><span style="font-variant-numeric:tabular-nums;font-size:11px;color:var(--muted)">${itemMoney(i)}</span></div>`).join('')}
               <div style="display:flex;justify-content:space-between;padding:7px 0 0;border-top:1px solid var(--border);margin-top:4px;font-weight:700;font-size:13px">
                 <span>Total</span><span style="font-variant-numeric:tabular-nums">${euro(gt)}</span>
               </div>
@@ -4128,7 +4221,7 @@ function renderHistoryPerGuest(el){
   const closed=all.filter(g=>g?.closedAt||g?.closed_at);
   // Total collected across closed guests (paid items only). Surfaces
   // a quick "how much have we made from these closed guests" stat.
-  const allItemsClosed=closed.flatMap(g=>Array.isArray(g.items)?g.items:[]);
+  const allItemsClosed=closed.flatMap(g=>campLines(g));
   const totalCollected=allItemsClosed.filter(i=>!!i?.paidAt).reduce((s,i)=>s+Number(i?.p||0),0);
   const term=histPerGuestSearch.trim().toLowerCase();
   // Newest closed first — it was database order, so the guest closed today sat at the bottom.
@@ -4158,7 +4251,7 @@ function renderHistoryPerGuest(el){
       ${filtered.length?filtered.map(g=>{
         const isOpen=histPerGuestOpen===g.id;
         const items=Array.isArray(g.items)?g.items:[];
-        const paid=items.filter(i=>!!i?.paidAt);
+        const paid=items.filter(i=>!!i?.paidAt && !isPassThrough(i));
         const totalPaid=paid.reduce((s,i)=>s+Number(i?.p||0),0);
         const closedDate=String(g.closedAt||g.closed_at||'').slice(0,10);
         return `<div class="card hist-week ${isOpen?'open':''}">
@@ -4180,7 +4273,7 @@ function renderHistoryPerGuest(el){
             ${items.length?`<div class="hw-items-detail">
               ${items.map(i=>`<div class="hw-item-line" style="${i.paidAt?'opacity:.9':''}">
                 <span>${esc(i.n||'')}${i.paidAt?` <span style="font-size:9px;font-weight:700;background:var(--green-bg);color:var(--green);border:1px solid var(--green-border);border-radius:20px;padding:1px 7px;margin-left:6px;letter-spacing:.04em;text-transform:uppercase">Paid</span>`:''}</span>
-                <span style="font-variant-numeric:tabular-nums;font-size:11px;color:var(--muted)">${euro(Number(i.p||0))}</span>
+                <span style="font-variant-numeric:tabular-nums;font-size:11px;color:var(--muted)">${itemMoney(i)}</span>
               </div>`).join('')}
               <div style="display:flex;justify-content:space-between;padding:7px 0 0;border-top:1px solid var(--border);margin-top:4px;font-weight:700;font-size:13px">
                 <span>Collected</span><span style="font-variant-numeric:tabular-nums">${euro(totalPaid)}</span>
@@ -4240,7 +4333,7 @@ function deleteClosedGuest(id){
   if(!g) return;
   const roster = inGuests ? 'guests' : 'staff';
   const items  = Array.isArray(g.items) ? g.items : [];
-  const paidItems   = items.filter(i=>!!i?.paidAt);
+  const paidItems   = items.filter(i=>!!i?.paidAt && !isPassThrough(i));   // Dipløria has no ledger row
   const totalPaid   = paidItems.reduce((s,i)=>s+Number(i?.p||0),0);
   const msg = paidItems.length
     ? `Delete ${g.name} from history?\n\nThis also removes ${paidItems.length} ledger entr${paidItems.length===1?'y':'ies'} (${euro(totalPaid)}) from the Operations Ledger.\n\nCan't be undone.`
@@ -4293,7 +4386,7 @@ function renderSellers(){
     });
   });
 
-  const filtered=tsCat==='All'?allItems:allItems.filter(i=>i.c===tsCat);
+  const filtered=(tsCat==='All'?allItems:allItems.filter(i=>i.c===tsCat)).filter(i=>!isPassThrough(i));   // Dipløria: its own list in the Dipløria tab
   const counts={};
   filtered.forEach(i=>{
     if(!counts[i.n])counts[i.n]={n:i.n,cat:i.c,qty:0,rev:0};
@@ -4918,7 +5011,7 @@ function mapRevenueCategory(item){
 function syncClosedWeekToHubLedger(wk){
   if(!wk) return;
   // Items paid one by one (per_guest «Pay») already have their own ledger row.
-  const paidItems=allConsumers(wk).filter(g=>g.paid).flatMap(g=>g.items||[]).filter(i=>!i.paidAt);
+  const paidItems=allConsumers(wk).filter(g=>g.paid).flatMap(g=>g.items||[]).filter(i=>!i.paidAt && !isPassThrough(i));   // never Dipløria
   if(!paidItems.length) return;
   const grouped={};
   const revenueDate=(wk.closedAt&&String(wk.closedAt).slice(0,10))||wk.start||today();
@@ -5206,7 +5299,7 @@ window.addEventListener('message',async e=>{
         if(String(g?.name||'').trim().toLowerCase() !== guestName.toLowerCase()) continue;
         if(!Array.isArray(g.items)) continue;
         for(const it of g.items){
-          if(!it?.paidAt) continue;
+          if(!it?.paidAt || isPassThrough(it)) continue;
           const itDate = String(it.paidAt).slice(0,10);
           const itName = String(it.n||'').trim();
           const itPrice = Number(it.p||0);
@@ -5229,7 +5322,7 @@ window.addEventListener('message',async e=>{
           if(String(g?.name||'').trim().toLowerCase() !== guestName.toLowerCase()) continue;
           if(!Array.isArray(g.items)) continue;
           for(const it of g.items){
-            if(!it?.paidAt) continue;
+            if(!it?.paidAt || isPassThrough(it)) continue;
             const itName = String(it.n||'').trim();
             const itPrice = Number(it.p||0);
             if(itName===itemName && Math.abs(itPrice-amount) < 0.01){

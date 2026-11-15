@@ -176,7 +176,8 @@ window.CAMP_CHECKS = window.CAMP_CHECKS || [];
 
   // ── B3 · «Leaving today/tomorrow with open tab» above the Camp Tab ───────
   function openAmount(g) {
-    const items = Array.isArray(g.items) ? g.items : [];
+    // Sri Lanka Dipløria is paid by card to its owner (55 EUR), never camp money: not an open camp tab.
+    const items = (Array.isArray(g.items) ? g.items : []).filter((i) => !(i && i.c === 'Diploria' && slug() === 'sri-lanka'));
     if (g.paid && !items.some((i) => i && i.paidAt)) return 0;                 // weekly-style paid flag, nothing per line
     return items.filter((i) => i && !i.paidAt).reduce((s, i) => s + (Number(i.p) > 0 ? Number(i.p) : 0), 0);
   }

@@ -15,8 +15,11 @@ const LOC_PT = '380ae05e-7f8e-4ee5-b37b-e7d85903a397';
 const WEEK = 'c2289c05-527b-4079-a810-b71cd00733ec';
 const SHOTS = path.join(__dirname, '..', 'test-results', 'sl-diploria-shots');
 const STOCK = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'sl-diploria-stock.json'), 'utf8'));
-const PRICE = () => 20000;   // every model (Miguel, 15 Nov: «20000 no camp do sri lanka todos para testar») = supabase/sl-diploria-menu.sql
-const SKUS = STOCK.models.flatMap((x, mi) => x.qty.map((q, si) => ({ name: `${x.model} ${STOCK.sizes[si]}`, model: x.model, size: STOCK.sizes[si], qty: q, sort: 8000 + mi * 10 + si })).filter(s => s.qty > 0));
+const PRICE = () => 55;   // 55 EUR every model, paid by card to the owner (Miguel, 15 Nov) = supabase/sl-diploria-55eur.sql
+// The 38 rows of the first sheet; Retro 32 sold out since (row kept at 0 in production): 61 units.
+const SKUS = STOCK.models.flatMap((x, mi) => x.qty.map((q, si) => ({ name: `${x.model} ${STOCK.sizes[si]}`, model: x.model, size: STOCK.sizes[si], qty: q, sort: 8000 + mi * 10 + si })).filter(s => s.qty > 0))
+  .map(s => s.name === 'Retro 32' ? { ...s, qty: 0 } : s);
+const NOW = { ...STOCK, models: STOCK.models.map(x => x.model === 'Retro' ? { ...x, qty: [1, 3, 0, 0, 0, 0] } : x) };   // the sheet's real figures
 const BASE = [
   ['Soft Drink', 'Drinks', 400, 200, 'Staff', null], ['Lion Lager', 'Drinks', 600, 300, 'Staff', 50],
   ['T-Shirt M', 'Merch', 9000, 3000, 'Staff', 54], ['River Safari', 'Tour', 6000, null, null, null],
@@ -96,7 +99,7 @@ const cat = (frame, label) => frame.locator('#catTabs button', { hasText: label 
 const modelLeft = frame => frame.locator('#dipModels .dip-model').evaluateAll(els => els.map(e => [e.dataset.model, e.querySelector('.ci-desc').textContent.trim()]));
 const sizeRow = frame => frame.locator('#dipSizes .dip-size').evaluateAll(els => els.map(e => [e.dataset.size, e.querySelector('.dip-left').textContent.trim(), e.disabled]));
 
-test('sl dipløria: the tab after Merch, 38 SKUs with the sheet stock, one card per model with «N left», 62 in all', async ({ page }) => {
+test('sl dipløria: the tab after Merch, 38 SKUs with the sheet stock, one card per model with «N left», 61 in all (Retro 32 sold out, greyed)', async ({ page }) => {
   const { frame } = await openCampTab(page);
   await addConsumer(frame, 'Marie');
   const tabs = await frame.locator('#catTabs button').allInnerTexts();
@@ -104,14 +107,19 @@ test('sl dipløria: the tab after Merch, 38 SKUs with the sheet stock, one card 
   const menu = await frame.evaluate(() => MENU.Diploria.map(i => [i.n, i.stk, i.p]));
   expect(menu).toEqual(SKUS.map(s => [s.name, s.qty, PRICE(s.model)]));
   await cat(frame, 'Dipløria');
-  await expect(frame.locator('#dipTotal')).toHaveText('62 left of 62');
-  expect(await modelLeft(frame)).toEqual(STOCK.models.map(x => [x.model, `${x.qty.reduce((a, b) => a + b, 0)} left`]));
+  await expect(frame.locator('#dipTotal')).toHaveText('61 left of 61');
+  expect(await modelLeft(frame)).toEqual(NOW.models.map(x => [x.model, `${x.qty.reduce((a, b) => a + b, 0)} left`]));
+  await expect(frame.locator('#dipModels .dip-model').first().locator('.ci-price')).toHaveText('€55');
   // the read-only Stock grid = the sheet, cell by cell (left / initial; – = no such size)
   await frame.locator('#dipStockBtn').click();
   const grid = await frame.locator('#dipStock tbody tr').evaluateAll(trs => trs.map(tr => [...tr.children].map(c => c.textContent.trim())));
-  expect(grid).toEqual(STOCK.models.map(x => [x.model, ...x.qty.map(q => q ? `${q}/${q}` : '–'), `${x.qty.reduce((a, b) => a + b, 0)}/${x.qty.reduce((a, b) => a + b, 0)}`, '0']));
+  expect(grid).toEqual(NOW.models.map(x => [x.model, ...x.qty.map((q, si) => q ? `${q}/${q}` : (x.model === 'Retro' && si === 3 ? '0/0' : '–')), `${x.qty.reduce((a, b) => a + b, 0)}/${x.qty.reduce((a, b) => a + b, 0)}`, '0']));
   const foot = await frame.locator('#dipStock tfoot td').allInnerTexts();
-  expect(foot.map(s => s.replace(/\s/g, ''))).toEqual(['7/7', '20/20', '13/13', '9/9', '4/4', '9/9', '62/62', '0']);
+  expect(foot.map(s => s.replace(/\s/g, ''))).toEqual(['7/7', '20/20', '13/13', '8/8', '4/4', '9/9', '61/61', '0']);
+  // Retro: 4 left, size 32 greyed
+  await frame.locator('#dipStockBtn').click();
+  await frame.locator('#dipModels .dip-model[data-model="Retro"]').click();
+  expect(await sizeRow(frame)).toEqual([['28', '1 left', false], ['30', '3 left', false], ['31', 'none', true], ['32', 'none', true], ['33', 'none', true], ['34', 'none', true]]);
 });
 
 test('sl dipløria: model → size (0 greyed), a tap adds «Core Black 28» at its price and goes back; the last one sold → disabled; removed from the tab → back', async ({ page }) => {
@@ -123,9 +131,9 @@ test('sl dipløria: model → size (0 greyed), a tap adds «Core Black 28» at i
   await frame.locator('#dipSizes .dip-size[data-size="28"]').click();
   await expect(frame.locator('#dipModels')).toBeVisible();                                   // back to the models
   await expect(frame.locator('#dipModels .dip-model[data-model="Core Black"] .ci-desc')).toHaveText('7 left');
-  await expect(frame.locator('#dipTotal')).toHaveText('61 left of 62 · 1 sold');
+  await expect(frame.locator('#dipTotal')).toHaveText('60 left of 61 · 1 sold');
   const line = await frame.evaluate(() => findConsumer(AG, 'guests').items.map(i => [i.n, i.p, i.c]));
-  expect(line).toEqual([['Core Black 28', 20000, 'Diploria']]);
+  expect(line).toEqual([['Core Black 28', 55, 'Diploria']]);
   await frame.locator('#dipModels .dip-model[data-model="Core Black"]').click();
   expect((await sizeRow(frame))[0]).toEqual(['28', 'none', true]);                          // the last one: disabled
   expect(await frame.evaluate(() => stockLeftForCategory(MENU.Diploria.find(i => i.n === 'Core Black 28'), 'Diploria'))).toBe(0);
@@ -134,7 +142,7 @@ test('sl dipløria: model → size (0 greyed), a tap adds «Core Black 28» at i
   await frame.evaluate(() => { DIP_MODEL = 'Core Black'; renderItemGrid(); });
   expect((await sizeRow(frame))[0]).toEqual(['28', '1 left', false]);
   await frame.locator('#dipBack').click();
-  await expect(frame.locator('#dipTotal')).toHaveText('62 left of 62');
+  await expect(frame.locator('#dipTotal')).toHaveText('61 left of 61');
 });
 
 test('sl dipløria: two quick taps on the last unit add one; no path adds past the stock', async ({ page }) => {
@@ -191,4 +199,141 @@ test('sl dipløria: screenshots at 390 and 1280 — models, sizes, stock grid �
       await frame.locator('#itemGrid').screenshot({ path: path.join(SHOTS, `diploria-${v}-${w}.png`) });
     }
   }
+});
+
+// ── 55 EUR, pass-through: paid on its own by card to Dipløria, never camp money (Miguel, 15 Nov) ──────────
+const addLines = async (frame, guest, ...names) => {
+  await addConsumer(frame, guest);
+  for (const n of names) {
+    if (/ \d\d$/.test(n)) await frame.evaluate(n => { const it = MENU.Diploria.find(i => i.n === n); AC = 'Diploria'; addResolvedItem(it); }, n);
+    else await frame.evaluate(n => { const it = MENU.Drinks.find(i => i.n === n); AC = 'Drinks'; addResolvedItem(it); }, n);
+  }
+};
+const perItemRows = ctl => (ctl.T.ledger_entries || []).filter(r => /^camp_tab/.test(String(r.source_kind || '')));
+
+test('sl dipløria €: its own block with a € subtotal, never in the LKR total; Pay counts the camp lines only; stored as EUR', async ({ page }) => {
+  const { ctl, frame } = await openCampTab(page);
+  await addLines(frame, 'Marie', 'Core Black 28', 'Lion Lager', 'Pocket Navy 30');
+  await expect(frame.locator('#tabTotal')).toHaveText('LKR 600');
+  await expect(frame.locator('#passBlock')).toContainText('Dipløria · paid by card to Dipløria, not camp money');
+  await expect(frame.locator('#passTotal')).toHaveText('€110');
+  await expect(frame.locator('#passBlock .ctr-price')).toHaveText(['€55', '€55']);
+  await expect(frame.locator('#passPayBtn')).toHaveText('Pay Dipløria · €110');
+  await expect(frame.locator('#payBtn')).toHaveText('Pay');                       // one camp line (Lion Lager)
+  await expect(frame.locator('#tabList .c-tab-row:not([data-pass])')).toHaveCount(1);
+  await expect.poll(() => (ctl.T.camp_tab_items || []).filter(r => r.category === 'Diploria').map(r => [r.item_name, Number(r.price_local), r.currency]).sort(), { timeout: 8000 })
+    .toEqual([['Core Black 28', 55, 'EUR'], ['Pocket Navy 30', 55, 'EUR']]);
+  expect((ctl.T.camp_tab_items || []).find(r => r.item_name === 'Lion Lager').currency).toBe('LKR');
+  // The Bill (camp part) has no Dipløria line, only the short note under it.
+  await frame.locator('.c-btn-bill').click();
+  await expect(frame.locator('#billBody')).not.toContainText('Core Black 28');
+  await expect(frame.locator('#billBody')).toContainText('Lion Lager');
+  await expect(frame.locator('#billPass')).toHaveText('Dipløria (paid by card to Dipløria, not on this bill): 2 shorts · €110 to pay');
+});
+
+test('sl dipløria €: «Pay Dipløria» pays only those lines (Card → Dipløria) with NO ledger row; the camp Pay leaves Dipløria unpaid', async ({ page }) => {
+  const { ctl, frame } = await openCampTab(page);
+  await addLines(frame, 'Marie', 'Core Black 28', 'Lion Lager');
+  await frame.locator('#passPayBtn').click();                                     // confirm accepted
+  await expect(frame.locator('#passBlock .pass-done')).toHaveText('Dipløria paid · Card → Dipløria');
+  let st = await frame.evaluate(() => findConsumer(AG, 'guests').items.map(i => [i.n, !!i.paidAt, i.payMethod || '']));
+  expect(st).toEqual([['Core Black 28', true, 'Card → Dipløria'], ['Lion Lager', false, '']]);
+  await page.waitForTimeout(1200);
+  expect(perItemRows(ctl)).toEqual([]);                                          // nothing in the ledger
+  await expect.poll(() => (ctl.T.camp_tab_items || []).find(r => r.item_name === 'Core Black 28')?.paid_at || null).not.toBeNull();
+  expect(JSON.parse(JSON.stringify((ctl.T.camp_tab_items || []).find(r => r.item_name === 'Core Black 28').meta)).payMethod).toBe('Card → Dipløria');
+  await frame.locator('#payBtn').click();
+  await expect.poll(() => perItemRows(ctl).map(r => [r.description, Number(r.amount_local)])).toEqual([['Camp Tab · Marie · Lion Lager', 600]]);
+  // The other way round: camp first, Dipløria still to pay.
+  await addLines(frame, 'Jules', 'Lion Lager', 'Retro 28');
+  await frame.locator('#payBtn').click();
+  await expect.poll(() => perItemRows(ctl).length).toBe(2);
+  st = await frame.evaluate(() => findConsumer(AG, 'guests').items.map(i => [i.n, !!i.paidAt]));
+  expect(st).toEqual([['Lion Lager', true], ['Retro 28', false]]);
+  await expect(frame.locator('#passPayBtn')).toHaveText('Pay Dipløria · €55');
+  expect(perItemRows(ctl).map(r => r.description).sort()).toEqual(['Camp Tab · Jules · Lion Lager', 'Camp Tab · Marie · Lion Lager']);
+});
+
+test('sl dipløria €: no ledger row on any path — per item, per guest, closed week (hub and camp tab), and no Merch revenue', async ({ page }) => {
+  const { ctl, frame } = await openCampTab(page);
+  const hub = await page.evaluate(() => {
+    const dip = { id: 'd1', c: 'Diploria', n: 'Core Black 28', p: 55, paidAt: '2026-11-15T10:00:00Z' }, beer = { id: 'b1', c: 'Drinks', n: 'Lion Lager', p: 600 };
+    const guest = { id: 'g1', name: 'Marie', paid: true, items: [dip, { ...beer, paidAt: '2026-11-15T10:00:00Z' }] };
+    return {
+      perItem: buildPaidItemRevenueEntry(guest, dip, { date: '2026-11-15' }),
+      perGuest: buildPaidGuestRevenueEntries(guest, { date: '2026-11-15' }).map(e => e.category),
+      week: buildClosedWeekRevenueEntries({ id: 'w1', start: '2026-11-14', guests: [{ id: 'g2', name: 'Leo', paid: true, items: [{ id: 'd2', c: 'Diploria', n: 'Retro 30', p: 55 }, { id: 'b2', c: 'Drinks', n: 'Lion Lager', p: 600 }] }], staff: [] }).map(e => [e.category, e.amountLocal]),
+      category: mapCampTabRevenueCategory(dip),
+    };
+  });
+  expect(hub.perItem).toBeNull();
+  expect(hub.perGuest).toEqual(['Drinks']);
+  expect(hub.week).toEqual([['Drinks', 600]]);
+  // A stray item-paid message for a Dipløria line writes nothing either.
+  await page.evaluate(() => window.postMessage({ type: 'camp-tab-item-paid', guest: { id: 'gx', name: 'Stray' }, item: { id: 'dx', c: 'Diploria', n: 'Core Black 30', p: 55 }, date: '2026-11-15' }, '*'));
+  // The camp tab's own week close (weekly mode path) leaves it out too.
+  const weekly = await frame.evaluate(() => { const sent = []; const orig = window.parent.postMessage.bind(window.parent);
+    window.parent.postMessage = (m, o) => { sent.push(m && m.type); };
+    try { syncClosedWeekToHubLedger({ id: 'w2', start: '2026-11-14', guests: [{ id: 'g3', name: 'Ana', paid: true, items: [{ id: 'd3', c: 'Diploria', n: 'Retro 30', p: 55 }] }], staff: [] }); } finally { window.parent.postMessage = orig; }
+    return sent; });
+  expect(weekly).toEqual([]);
+  await page.waitForTimeout(800);
+  expect(perItemRows(ctl)).toEqual([]);
+  expect((ctl.T.ledger_entries || []).filter(r => r.category === 'Merchandise')).toEqual([]);
+});
+
+test('sl dipløria €: Close guest is refused while Dipløria is unpaid («Dipløria not paid»); after «Pay Dipløria» it closes', async ({ page }) => {
+  const { frame } = await openCampTab(page);
+  const dialogs = []; page.removeAllListeners('dialog'); page.on('dialog', d => { dialogs.push(d.message()); d.accept(); });
+  await addLines(frame, 'Marie', 'Core Black 28');
+  await frame.locator('#closeGuestBtn').click();
+  await expect.poll(() => dialogs.length).toBe(1);
+  expect(dialogs[0]).toContain('Dipløria not paid — Marie has 1 Dipløria short (€55).');
+  expect(await frame.evaluate(() => !!findConsumer(AG, 'guests') && !findConsumer(AG, 'guests').closedAt)).toBe(true);
+  await frame.locator('#passPayBtn').click();
+  await frame.locator('#closeGuestBtn').click();
+  await expect.poll(() => frame.evaluate(() => AG)).toBeNull();
+  const closed = await frame.evaluate(() => S.activeWeek.guests.find(g => g.name === 'Marie').closedAt);
+  expect(closed).toBeTruthy();
+});
+
+test('sl dipløria €: the sales list (date, guest, short, €55, paid · method / not paid) and totals; the Leaving chips ignore Dipløria', async ({ page }) => {
+  const { frame } = await openCampTab(page);
+  await addLines(frame, 'Marie', 'Core Black 28');
+  await frame.locator('#passPayBtn').click();
+  await addLines(frame, 'Leo', 'Essential Grey 33');
+  await frame.evaluate(() => { AC = 'Diploria'; DIP_STOCK_VIEW = true; renderItemGrid(); });
+  await expect(frame.locator('#dipSalesTot')).toHaveText('2 sold · €110 · paid €55 · not paid €55');
+  const rows = await frame.locator('#dipSales tbody tr').evaluateAll(trs => trs.map(tr => [...tr.children].slice(1).map(c => c.textContent.trim())));
+  expect(rows.map(r => r.slice(0, 3))).toEqual(expect.arrayContaining([['Marie', 'Core Black 28', '€55'], ['Leo', 'Essential Grey 33', '€55']]));
+  expect(rows.find(r => r[0] === 'Marie')[3]).toMatch(/^\d{4}-\d{2}-\d{2} · Card → Dipløria$/);
+  expect(rows.find(r => r[0] === 'Leo')[3]).toBe('not paid');
+  const chips = await page.evaluate(() => { const today = CampExtras.colomboToday(); const ms = new Date(today + 'T00:00:00').getTime();
+    return CampExtras.leavingGroups({ activeWeek: { guests: [{ name: 'Only Dip', bookingCo: ms, items: [{ c: 'Diploria', n: 'Core Black 28', p: 55 }] }, { name: 'Beer', bookingCo: ms, items: [{ c: 'Drinks', n: 'Lion Lager', p: 600 }] }] } }, today); });
+  expect(chips.today.map(x => [x.name, x.amount])).toEqual([['Beer', 600]]);
+});
+
+test('sl dipløria €: screenshots of the guest tab with the Dipløria block at 390 and 1280, no overflow', async ({ page }) => {
+  fs.mkdirSync(SHOTS, { recursive: true });
+  const { frame } = await openCampTab(page);
+  await addLines(frame, 'Marie', 'Core Black 28', 'Lion Lager', 'Pocket Navy 30');
+  for (const [w, h] of [[1280, 900], [390, 844]]) {
+    await page.setViewportSize({ width: w, height: h });
+    await page.waitForTimeout(200);
+    expect(await frame.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)).toBe(false);
+    await frame.locator('#passBlock').scrollIntoViewIfNeeded();
+    await page.screenshot({ path: path.join(SHOTS, `diploria-tab-${w}.png`) });
+  }
+});
+
+test('sl dipløria €: the Overview card shows € sold and units, «paid to Dipløria · not camp revenue»', async ({ page }) => {
+  const { frame } = await openCampTab(page);
+  await addLines(frame, 'Marie', 'Core Black 28');
+  await frame.locator('#passPayBtn').click();
+  await page.waitForTimeout(600);
+  await page.evaluate(() => showPage('overview'));
+  const card = page.locator('.ov-area-card', { hasText: 'Dipløria' });
+  await expect(card).toContainText('€55');
+  await expect(card).toContainText('paid to Dipløria · not camp revenue');
+  await expect(card).not.toContainText('LKR');
 });

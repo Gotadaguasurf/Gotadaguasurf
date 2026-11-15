@@ -4461,6 +4461,10 @@ function isWildPartyItem(item){
 function campTabRevenueAttribution(category){
   return category===WILD_GOTA_CAT ? {paidFrom:WILD_LOCATION_SLUG, attributedLocation:WILD_LOCATION_SLUG} : {};
 }
+// Pass-through lines (Sri Lanka Dipløria, Miguel 15 Nov 2026): the guest pays the owner by card, 55 EUR.
+// Zero revenue, zero cash, zero cost for the camp — no Camp Tab path may turn them into a ledger row.
+const CAMPTAB_PASS_THROUGH = { 'sri-lanka': ['Diploria'] };
+function isPassThroughItem(item){ return (CAMPTAB_PASS_THROUGH[__HUB_LOCATION_SLUG] || []).includes(String(item?.c || '')); }
 function mapCampTabRevenueCategory(item){
   if(isWildPartyItem(item)) return WILD_GOTA_CAT;
   if(item.c==='Drinks') return 'Drinks';
@@ -4481,7 +4485,7 @@ function buildClosedWeekRevenueEntries(wk){
   if(!wk) return null;
   // Items paid one by one (per_guest «Pay») already have their own
   // camp_tab_per_item row — never add them again as a weekly total.
-  const paidItems=[...(wk.guests||[]),...(wk.staff||[])].filter(g=>g.paid).flatMap(g=>g.items||[]).filter(i=>!i.paidAt);
+  const paidItems=[...(wk.guests||[]),...(wk.staff||[])].filter(g=>g.paid).flatMap(g=>g.items||[]).filter(i=>!i.paidAt && !isPassThroughItem(i));   // never Dipløria (pass-through)
   if(!paidItems.length) return [];
   // Revenue is always dated to the LAST DAY of the camp week — i.e. the
   // Friday that closes the Sat→Fri cycle. Previously this used closedAt
@@ -4545,6 +4549,7 @@ function buildClosedWeekRevenueEntries(wk){
 // the same day. Sri Lanka never calls this — it goes through Close Week.
 function buildPaidItemRevenueEntry(guest, item, opts={}){
   if(!guest || !item) return null;
+  if(isPassThroughItem(item)) return null;   // Dipløria in Sri Lanka: paid to the owner, not camp revenue
   const amount = Number(item?.p||0);
   if(!(amount>0)) return null;
   const revenueDate = (opts.date && String(opts.date).slice(0,10)) || today();
@@ -4576,7 +4581,7 @@ function buildPaidItemRevenueEntry(guest, item, opts={}){
 
 function buildPaidGuestRevenueEntries(guest, opts={}){
   if(!guest || !Array.isArray(guest.items) || !guest.items.length) return [];
-  const paidItems = guest.items.filter(i => Number(i?.p||0) > 0);
+  const paidItems = guest.items.filter(i => Number(i?.p||0) > 0 && !isPassThroughItem(i));   // never Dipløria (pass-through)
   if(!paidItems.length) return [];
   const revenueDate = (opts.date && String(opts.date).slice(0,10)) || today();
   const grouped = {};
@@ -5432,6 +5437,9 @@ function renderOverview(){
   // changed message — read it from there. "Sold" = item.paidAt
   // (per_guest) OR guest.paid (weekly); anything else is on tab.
   const diploria={sold:0,revenueLocal:0,onTab:0};
+  // Sri Lanka: Dipløria is pass-through (55 EUR to the owner by card) — the card shows € sold / units, never camp revenue.
+  const DIP_PASS = isPassThroughItem({ c: 'Diploria' });
+  const dipEur = n => new Intl.NumberFormat('en-IE',{style:'currency',currency:'EUR',maximumFractionDigits:0}).format(Number(n||0));
   try{
     const ctState=readJsonStorage(CAMPTAB_KEY,null);
     const ctWeeks=[ctState?.activeWeek,ctState?.nextWeek,
@@ -5799,8 +5807,8 @@ function renderOverview(){
     }).join('')}
     ${(diploria.sold>0||diploria.onTab>0)?`<div class="ov-area-card">
       <div class="ov-area-head">
-        <div class="ov-area-title">${uiIcon('shirt')}<span>Diploria</span></div>
-        <span class="ov-area-margin ${diploria.revenueLocal>0?'pos':'zero'}">${diploria.revenueLocal>0?'+':''}${lkr(diploria.revenueLocal)}</span>
+        <div class="ov-area-title">${uiIcon('shirt')}<span>${DIP_PASS?'Dipløria':'Diploria'}</span></div>
+        ${DIP_PASS?`<span class="ov-area-margin zero" title="Paid by card to Dipløria — not camp revenue">${dipEur(diploria.revenueLocal)}</span>`:`<span class="ov-area-margin ${diploria.revenueLocal>0?'pos':'zero'}">${diploria.revenueLocal>0?'+':''}${lkr(diploria.revenueLocal)}</span>`}
       </div>
       <div class="ov-area-body">
         <div class="ov-area-cell">
@@ -5809,9 +5817,9 @@ function renderOverview(){
           <div class="ov-area-cell-sub">boardshort${diploria.sold===1?'':'s'}</div>
         </div>
         <div class="ov-area-cell">
-          <div class="ov-area-cell-label">Revenue</div>
-          <div class="ov-area-cell-value" style="color:${diploria.revenueLocal>0?'var(--green)':'var(--navy)'}">${lkr(diploria.revenueLocal)}</div>
-          <div class="ov-area-cell-sub">collected</div>
+          <div class="ov-area-cell-label">${DIP_PASS?'€ sold':'Revenue'}</div>
+          <div class="ov-area-cell-value" style="color:${DIP_PASS?'var(--navy)':(diploria.revenueLocal>0?'var(--green)':'var(--navy)')}">${DIP_PASS?dipEur(diploria.revenueLocal):lkr(diploria.revenueLocal)}</div>
+          <div class="ov-area-cell-sub">${DIP_PASS?'paid to Dipløria · not camp revenue':'collected'}</div>
         </div>
         <div class="ov-area-cell">
           <div class="ov-area-cell-label">On tab</div>
