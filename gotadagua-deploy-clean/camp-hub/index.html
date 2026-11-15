@@ -10153,6 +10153,7 @@ function renderWeeklyPL(){
   el.innerHTML=`${wplWeekCardHtml(M,byWs,sel)}
   ${wplChartHtml(M,byWs,sel)}
   <div id="wplExtrasSlot"></div>
+  <div id="wplCompsSlot"></div>
   <div class="card">
     <div class="card-pad wpl-tbl-hdr" style="border-bottom:1px solid var(--border)">
       <div><div class="card-title">Weekly P&L — all weeks</div>
@@ -10162,6 +10163,7 @@ function renderWeeklyPL(){
     ${view==='pl'?wplPLTableHtml(M,sel):wplCashTableHtml(M,sel)}
   </div>`;
   if(typeof campExtrasAfterWeekly==='function') campExtrasAfterWeekly(); // camp-hub/extras.js («This week» card)
+  if(window.CampComps) CampComps.afterWeekly(sel); // camp-hub/comps.js («Comps» line: given free, by reason — not a cost)
 }
 
 function jumpToWeek(ws){
@@ -11010,4 +11012,5 @@ document.addEventListener('keydown', function(e){
 
 <script src="/camp-hub/cash-count.js"></script>
 <script src="/camp-hub/extras.js"></script>
+<script src="/camp-hub/comps.js"></script>
 </body></html>
