@@ -1344,6 +1344,16 @@ function decodeMenuDescription(raw){
   }
   return {d:s.trim()||null,hasTransport,costPerGuest,transportAssoc};
 }
+function menuRowStock(stk){
+  if(stk===null||stk===undefined||stk==='') return null;
+  const n=Number(stk);
+  return Number.isFinite(n)?n:null;
+}
+function menuRowStaffPrice(item){
+  if(Number.isFinite(Number(item?.sp))&&Number(item.sp)>0) return Number(item.sp);
+  if(isStaffAltLabel(item)&&item?.altPrice!==null&&item?.altPrice!==undefined&&Number(item.altPrice)>0) return Number(item.altPrice);
+  return null;
+}
 function menuStateToRows(locationId){
   // Defensive dedup on the OUTBOUND payload too: the DB now has a
   // unique index on (location_id, category, item_name, price_local)
@@ -1358,9 +1368,15 @@ function menuStateToRows(locationId){
     category:cat,
     item_name:item.n,
     price_local:Number(item.p||0),
-    stock_qty:Number.isFinite(Number(item.stk))?Number(item.stk):null,
+    // stk null/undefined = no stock count (unlimited). Number(null) is 0, so the
+    // old Number.isFinite test wrote 0 and every unlimited drink came back
+    // «Out of stock» for whoever loaded the menu from this copy (15 Nov 2026).
+    stock_qty:menuRowStock(item.stk),
     description:encodeMenuDescription(item),
-    staff_price_local:Number.isFinite(Number(item.sp))&&Number(item.sp)>0?Number(item.sp):null,
+    // Staff price: a local sp, else the /prices «Staff» alt price — catalog
+    // items carry it as altPrice/altLabel, which this table has no column
+    // for, so the copy lost it and the Staff tab went empty (15 Nov 2026).
+    staff_price_local:menuRowStaffPrice(item),
     sort_order:(catIndex+1)*1000 + (itemIndex+1)*10,
     active:true
   }))).filter(row=>{

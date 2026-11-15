@@ -279,3 +279,21 @@ test('camp tab: opening the hub never deletes the staff list, and an unchanged m
   expect(ctl.T.location_menus.some(r => r.item_name === 'Lion Lager' && Number(r.price_local) === 600)).toBe(true);
   void frame;
 });
+
+test('camp tab: the menu copy (location_menus) keeps the Staff price and «no stock count» — a tablet that loads the copy still sells to staff (15 Nov 2026)', async ({ page }) => {
+  const { ctl, frame } = await openCampTab(page);
+  await frame.evaluate(async () => { _menuRowsKey = null; await syncCampTabMenuToSupabase(); });
+  const pick = n => { const r = (ctl.T.location_menus || []).find(x => x.item_name === n); return r && [r.stock_qty, r.staff_price_local]; };
+  expect(pick('Soft Drink')).toEqual([null, 200]);   // unlimited stays unlimited (was 0 → «Out of stock»)
+  expect(pick('Lion Lager')).toEqual([50, 300]);
+  expect(pick('Cocktail')).toEqual([null, 1000]);
+  expect(pick('Zink Stick')).toEqual([38, null]);    // no Staff alt → no staff price
+  // a device that boots from the copy alone: Staff tab still lists the drinks, guests can buy a Soft Drink
+  const fromCopy = await frame.evaluate(rows => { const m = menuRowsToState(rows);
+    // the Staff tab's own rule (renderItemGrid): an item shows when it has a Staff alt or an sp
+    const staff = (m.Drinks || []).filter(i => isStaffAltLabel(i) || (i?.sp != null && Number.isFinite(Number(i?.sp)))).map(i => i.n);
+    return { staff, soft: (m.Drinks || []).find(i => i.n === 'Soft Drink') }; }, ctl.T.location_menus);
+  expect(fromCopy.staff).toEqual(expect.arrayContaining(['Soft Drink', 'Lion Lager', 'Cocktail', 'Shot']));
+  expect(fromCopy.soft.stk).toBeUndefined();
+  expect(fromCopy.soft.sp).toBe(200);
+});
