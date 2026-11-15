@@ -993,3 +993,36 @@ test('transfers message card: screenshots at 390 and 1280, no horizontal overflo
     await page.locator('#wkMessage').screenshot({ path: `${SH}/sl-transfers-week-${w}.png` });
   }
 });
+
+// ── Golden: the team messages and the transfers message never change (tests/week-golden.js) ─────
+// Captured once from main before the transfers moved to Transport (15 Nov 2026). Rooms, Kitchen, Surf
+// and Guests are the «zero errors» area: byte-identical. The transfers message of each day and of the
+// whole week = what Week → Transfers sent, now sent from Transport.
+const WG = require('./week-golden');
+const TRANSFERS_TEXT = (day, ws) => (TransportUI.weekMessage ? (day === 'week' ? TransportUI.weekMessage(ws) : TransportUI.dayMessage(day))
+  : WeekUI.dress(WeekUI.bodyOf('transfers', day), TransportUI.colomboNow().slice(0, 10)));
+const GOLDEN_TRIPS = () => {
+  const T2 = id => `aaaaaaaa-0000-4000-8000-0000000c${String(id).padStart(4, '0')}`;
+  return [
+    trip({ id: T2(1), guest_names: 'Gone This Morning', trip_date: '2026-11-17', trip_time: '06:30', flight: 'UL504' }),
+    trip({ id: T2(2), kind: 'airport_departure', guest_names: 'Last Week Guest', trip_date: '2026-11-14', trip_time: '15:00', flight: 'QR651' }),
+    trip({ id: T2(3), guest_names: 'Sent Already', guest_phone: '+491700000003', trip_date: '2026-11-18', trip_time: '14:10', flight: 'QR654', status: 'sent', sent_snapshot: { trip_date: '2026-11-18', trip_time: '14:10', flight: 'QR654', pax: 1 } }),
+    trip({ id: T2(4), kind: 'airport_departure', guest_names: 'Confirmed Guest', guest_phone: '+491700000004', trip_date: '2026-11-18', trip_time: '09:05', flight: 'EK651', status: 'confirmed', vehicle: 'Minivan', pax: 3 }),
+    trip({ id: T2(5), guest_names: 'Changed Guest', trip_date: '2026-11-19', trip_time: '11:00', flight: 'QR658', status: 'sent', needs_resend: true }),
+    trip({ id: T2(6), kind: 'airport_departure', guest_names: 'Saturday Leaver', trip_date: '2026-11-21', trip_time: '15:00', flight: 'QR655', vehicle: 'Minivan' }),
+    trip({ id: T2(7), guest_names: 'Next Week Arrival', trip_date: '2026-11-21', trip_time: '10:00', flight: 'QR660' }),
+    trip({ id: T2(8), guest_names: 'Cancelled Guest', trip_date: '2026-11-19', trip_time: '12:00', status: 'cancelled' }),
+    trip({ id: T2(9), guest_names: 'Held Guest', trip_date: '2026-11-19', trip_time: '13:00', missing_since: '2026-11-16' }),
+  ];
+};
+for (const [kase, opts] of [['default', {}], ['mixed', { trips: GOLDEN_TRIPS() }], ['friday', { now: '2026-11-13T18:00', trips: GOLDEN_TRIPS() }]]) {
+  test(`golden (${kase}): Rooms, Kitchen, Surf and Guests messages, To check, people check and the day model are byte-identical; the transfers message = the one Week sent`, async ({ page }) => {
+    await openWeek(page, opts);
+    if (kase === 'friday') { await page.evaluate(() => { WeekUI.shiftWeek(7); }); await page.waitForFunction(() => WeekUI._state.cache['2026-11-14']); }
+    const team = await WG.teamMessages(page);
+    expect(WG.check('sl', kase, team)).toEqual([]);
+    const tr = await WG.transfersMessages(page, TRANSFERS_TEXT);
+    expect(WG.check('sl', kase, tr)).toEqual([]);
+    if (process.env.GOLDEN_WRITE !== '1') expect(WG.covered('sl', kase, 'transfers|')).toBe(9);
+  });
+}

@@ -225,3 +225,30 @@ test('morocco transfers message: the week in house style, Saturday departures in
     await page.locator('#wkMessage').screenshot({ path: path.join(__dirname, '..', 'test-results', 'transfers-message-shots', `ma-transfers-week-${w}.png`) });
   }
 });
+
+// ── Golden: the team messages (Darija + English twin) and the transfers message to Let Us Tours ──
+// Captured once from main before the transfers moved to Transport (15 Nov 2026), see tests/week-golden.js.
+// The whole-week message to Let Us Tours with its three airports (Agadir, Marrakech, Essaouira) must be
+// the bytes Week → Transfers sent; Rooms, Kitchen, Surf and Guests must not change at all.
+const WG = require('./week-golden');
+const MA_TRANSFERS_TEXT = (day, ws) => (TransportUI.weekMessage ? (day === 'week' ? TransportUI.weekMessage(ws) : TransportUI.dayMessage(day))
+  : WeekUI.dress(WeekUI.bodyOf('transfers', day), TransportUI.colomboNow().slice(0, 10)));
+for (const [kase, mk] of [
+  ['file1-mon16', () => ({ trips: H.tripsFromFile().map(t => t.import_key === 'bl:MA-1002:arr' ? { ...t, status: 'sent' } : t), now: '2026-11-16T12:00' })],
+  ['file1-sat14-0600', () => ({ trips: H.tripsFromFile().map(t => t.import_key === 'bl:MA-1001:arr' ? { ...t, status: 'confirmed' } : t.import_key === 'bl:MA-1007:arr' ? { ...t, status: 'sent', needs_resend: true } : t), now: '2026-11-14T06:00' })],
+  ['file2', () => ({ guests: H.guestsFromFile(H.FILE2, '22222222-0000-4000-8000-000000000009', '2026-11-15T08:00:00Z'), trips: H.tripsFromFile(H.FILE2) })],
+]) {
+  test(`morocco golden (${kase}): Cleaning (Darija + English), Kitchen, Surf, Guests byte-identical; the transfers message to Let Us Tours = the one Week sent`, async ({ page }) => {
+    const opts = mk();
+    await H.openWeek(page, opts);
+    expect(WG.check('ma', kase, await WG.teamMessages(page, { darija: true }))).toEqual([]);
+    const tr = await WG.transfersMessages(page, MA_TRANSFERS_TEXT);
+    expect(WG.check('ma', kase, tr)).toEqual([]);
+    if (kase === 'file1-sat14-0600') {
+      // the three airports are in this week's message (sanity of the fixture, not of the format)
+      const places = await page.evaluate(() => [...new Set(TransportUI._state.trips.filter(t => GuestsTrips.transfersTrips(TransportUI._state.trips, { day: 'week', ws: '2026-11-14', now: TransportUI.colomboNow() }).includes(t)).map(t => t.place))].sort());
+      expect(places.length).toBeGreaterThanOrEqual(3);
+    }
+    if (process.env.GOLDEN_WRITE !== '1') expect(WG.covered('ma', kase, 'transfers|')).toBe(9);
+  });
+}
