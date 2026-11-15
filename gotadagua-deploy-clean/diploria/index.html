@@ -38,15 +38,15 @@
 .dp-ones summary{cursor:pointer;font-weight:600;color:var(--amber)}
 .dp-ones p{margin:6px 0 0;color:var(--muted);line-height:1.5}
 /* sales by day */
-.dp-bars{display:flex;align-items:flex-end;gap:3px;height:170px;padding:20px 4px 0;overflow-x:auto;border-bottom:1px solid var(--border)}
-.dp-bar{flex:1 0 14px;max-width:34px;display:flex;flex-direction:column-reverse;cursor:pointer;border:0;background:transparent;padding:0;height:100%;justify-content:flex-start;position:relative}
+.dp-bars{display:flex;align-items:flex-end;gap:2px;height:170px;padding:20px 4px 0;overflow:hidden;border-bottom:1px solid var(--border)}
+.dp-bar{flex:1 1 0;min-width:0;max-width:34px;display:flex;flex-direction:column-reverse;cursor:pointer;border:0;background:transparent;padding:0;height:100%;justify-content:flex-start;position:relative}
 .dp-bar .seg{display:block;width:100%;border-radius:3px 3px 0 0}
 .dp-bar .seg+.seg{border-radius:0}
 .dp-bar .n{position:absolute;left:0;right:0;text-align:center;font-size:10.5px;font-weight:700;color:var(--navy)}
 .dp-bar.sel .seg{outline:2px solid var(--ink);outline-offset:0}
 .dp-bar.empty{cursor:default}
-.dp-axis{display:flex;gap:3px;padding:4px 4px 0;overflow:hidden}
-.dp-axis span{flex:1 0 14px;max-width:34px;font-size:9.5px;color:var(--muted);text-align:center;white-space:nowrap}
+.dp-axis{display:flex;gap:2px;padding:4px 4px 0;overflow:hidden}
+.dp-axis span{flex:1 1 0;min-width:0;max-width:34px;overflow:visible;font-size:9.5px;color:var(--muted);text-align:center;white-space:nowrap}
 .dp-legend{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:8px}
 .dp-legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
 /* stock grid */
@@ -424,7 +424,7 @@ function renderSales(){
       <td>${esc(dm(s.date))}${s.time ? ` <span class="hint">${esc(s.time)}</span>` : ''}</td>
       <td>${esc(s.camp)} ${modeBadge(s.mode)}</td>
       <td>${esc(s.guest)}${s.staff ? ' <span class="badge badge-grey">staff</span>' : ''}</td>
-      <td>${esc(s.model)}${s.size ? ` · <b>${esc(s.size)}</b>` : ''}</td>
+      <td>${s.model === D.NO_MODEL ? 'Size' : esc(s.model)}${s.size ? ` · <b>${esc(s.size)}</b>` : ''}</td>
       <td class="r">${esc(money(s.price, s.currency))}</td>
       <td>${s.paid ? `${esc(dm(s.paidAt))} · ${esc(s.method)}` : '<span class="dp-unpaid">not paid</span>'}</td></tr>`).join('')
     : '<tr class="empty-row"><td colspan="6">No Dipløria sale in this period.</td></tr>';

@@ -279,6 +279,13 @@ test('diploria area: sales by day (this week), tap a day → its sales with gues
   await expect(page.locator('#salesRows')).toContainText('Sold by the camp');
   await expect(page.locator('#salesTotals')).toContainText('Aug 2026');
   await page.locator('#campPills [data-camp="all"]').click();
+  // the default period (this month, 30 bars) fits the card at 390: bars and dates share the width, nothing scrolls
+  await page.locator('[data-period]:visible').selectOption('month');
+  expect(await page.locator('#dayBars .dp-bar').count()).toBe(30);
+  expect(await page.evaluate(() => { const b = document.getElementById('dayBars'); return b.scrollWidth <= b.clientWidth + 1; })).toBe(true);
+  const [b1, a1] = await Promise.all([page.locator('#dayBars .dp-bar').nth(14).boundingBox(), page.locator('#dayAxis span').nth(14).boundingBox()]);
+  expect(Math.abs(b1.x - a1.x)).toBeLessThan(2);
+  await shot(page, 'sales-month-390.png');
   await page.setViewportSize({ width: 1280, height: 900 });
   await shot(page, 'sales-1280.png');
 });
