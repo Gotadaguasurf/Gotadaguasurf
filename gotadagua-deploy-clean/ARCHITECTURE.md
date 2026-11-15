@@ -87,6 +87,13 @@ Movements (LK).
    (type=revenue, location-scoped). Weekly close aggregates into P&L. All
    entries carry `paid_from` + `attributed_location` so HQ can split "who
    paid" vs "whose cost it economically is".
+   **Comps (15 Nov 2026, `camp-hub/comps.js`):** a Camp Tab line at price 0
+   is only added with a reason (staff · gift · compensation · marketing ·
+   other + note), stored on `camp_tab_items.meta` (`comp_reason`,
+   `comp_note`, `list_price`). A free line never reaches the ledger
+   (`ledger_entries.is_comp` stays the Tour-expense «offered spot» flag);
+   the Camp Tab «Comps» sub-tab and the Weekly P&L «Comps» line read the
+   Camp Tab state. Old free lines show «No reason (before 15 Nov)».
 2. **Surf-school rental → ledger**: INSERT on `surf_school_rentals` fires the
    `tr_surf_rental_ledger` trigger (SECURITY DEFINER) which creates the
    `ledger_entries` revenue row atomically and stamps `ledger_entry_id` back.

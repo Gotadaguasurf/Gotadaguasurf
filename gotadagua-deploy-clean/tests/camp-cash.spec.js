@@ -593,14 +593,14 @@ test('camp tab: «Gift · free» is LKR 0 on the Staff and Guests tabs, and the 
     currentRoster = 'staff';
     document.getElementById('newGuestName').value = 'Jude Test';
     saveNewGuest(); // same form as «+ Staff» — adds to the current roster and selects it
-    addItemAtCustomPrice(beer.id, beer.n, 0, 'Gift', null);   // «Gift · free»
+    addItemAtCustomPrice(beer.id, beer.n, 0, 'Gift', null, { reason: 'staff' });   // «Free» · Staff (a reason is required since 15 Nov 2026)
     addResolvedItem(beer);                                      // normal staff tap
     const staff = findConsumer('Jude Test', 'staff').items.map(i => [i.p, i.priceType]);
     // Guests tab
     currentRoster = 'guests';
     document.getElementById('newGuestName').value = 'Gift Guest';
     saveNewGuest();
-    addItemAtCustomPrice(beer.id, beer.n, 0, 'Gift', null);
+    addItemAtCustomPrice(beer.id, beer.n, 0, 'Gift', null, { reason: 'gift' });
     addItemAtCustomPrice(beer.id, beer.n, 450, '-50%', null);
     const guest = findConsumer('Gift Guest', 'guests').items.map(i => [i.p, i.priceType]);
     return { staff, guest };
@@ -641,7 +641,7 @@ test('camp tab: This week «Pay all» pays every unpaid line of that guest', asy
     MENU.Drinks = [...(MENU.Drinks || []), { id: 'w-beer', n: 'Lion Lager', p: 900 }];
     addResolvedItem({ id: 'w-beer', n: 'Lion Lager', p: 900 });
     addResolvedItem({ id: 'w-soft', n: 'Soft Drink', p: 400 });
-    addItemAtCustomPrice('w-beer', 'Lion Lager', 0, 'Gift', null);
+    addItemAtCustomPrice('w-beer', 'Lion Lager', 0, 'Gift', null, { reason: 'gift' });
     const g = findConsumer('Week Guest', 'guests');
     twExpanded = g.id; renderThisWeek();
     const btn = [...document.querySelectorAll('.tw-actions button')].find(b => /^Pay all/.test(b.textContent));

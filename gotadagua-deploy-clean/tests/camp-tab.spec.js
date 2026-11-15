@@ -129,7 +129,8 @@ test('camp tab: a gift does not keep the tab «Unpaid»; This week counts Collec
   await addConsumer(frame, 'Anna');
   await cat(frame, 'Drinks'); await tap(frame, 'Lion Lager'); await tap(frame, 'Cocktail');
   await discount(frame, 'Shot');
-  await frame.locator('#discountModal button', { hasText: 'Gift' }).click();
+  await frame.locator('#discountModal button[data-price="0"]').click();          // «Free» → «Why is it free?» (15 Nov 2026)
+  await frame.locator('#compReasonModal .comp-chip[data-reason="gift"]').click();
   // pay one line (Sri Lanka has no per-line Pay button since 12 Nov 2026 — the function still exists)
   await frame.evaluate(() => { const g = findConsumer(AG, currentRoster); payItem(g.items.findIndex(i => i.n === 'Lion Lager' && !i.paidAt)); });
   await expect.poll(() => revenue(ctl).length).toBe(1);

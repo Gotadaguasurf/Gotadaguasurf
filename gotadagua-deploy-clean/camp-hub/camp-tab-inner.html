@@ -7,6 +7,7 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.4"></script>
 <script src="/supabase-config.js"></script>
+<script src="/camp-hub/comps.js"></script>
 <link rel="stylesheet" href="/lib/app-shell.css">
 <style>
 /* Design system: /lib/app-shell.css (tokens, .btn, .badge, .card, .search,
@@ -188,6 +189,35 @@ header{display:none}
 .ts-header{padding:14px 20px 10px;flex-shrink:0;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .ts-body{flex:1;overflow-y:auto;padding:0 20px 20px}
 .ts-item{display:flex;align-items:center;gap:12px;padding:11px 14px;margin-bottom:7px}
+/* ── Comps (15 Nov 2026): «Why is it free?» chips + the Comps sub-tab ── */
+.comp-eyebrow{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-weight:700}
+.comp-eyebrow-sub{text-transform:none;letter-spacing:0;font-weight:500}
+.comp-modal{max-width:420px;padding:18px}
+.comp-chips{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.comp-chip{flex-direction:column;align-items:flex-start;gap:1px;min-height:52px;padding:10px 12px;font-size:14px;text-align:left;white-space:normal;line-height:1.2}
+.comp-chip-sub{font-size:11px;font-weight:500;color:var(--muted)}
+.comp-chip.on{border-color:var(--ocean);color:var(--ocean)}
+.comp-other{display:flex;gap:8px;margin-top:10px}
+.comp-pills{display:flex;flex-wrap:wrap;gap:6px}
+input.comp-err{border-color:var(--red)!important;box-shadow:0 0 0 2px rgba(220,38,38,.12)}
+.cp-kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:14px}
+.cp-kpi{padding:12px 14px}
+.cp-kpi-l{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600}
+.cp-kpi-v{font-size:20px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums;margin-top:2px}
+.cp-kpi-s{font-size:12px;color:var(--muted);margin-top:2px}
+.cp-cols{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+.cp-card{padding:0;overflow:hidden}
+.cp-card-h{padding:10px 14px;border-bottom:1px solid var(--border);font-size:13px;font-weight:700;color:var(--navy)}
+.cp-row{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:8px 14px;border-bottom:1px solid var(--border);font-size:13px}
+.cp-row:last-child{border-bottom:none}
+.cp-row .num{font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:600}
+.cp-row .cnt{color:var(--muted);font-weight:500;margin-right:8px}
+.cp-line{display:grid;grid-template-columns:1fr auto;gap:2px 12px;padding:9px 14px;border-bottom:1px solid var(--border);font-size:13px}
+.cp-line:last-child{border-bottom:none}
+.cp-line-sub{grid-column:1/2;font-size:12px;color:var(--muted)}
+.cp-line .num{font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
+.cp-none{color:var(--amber)}
+@media(max-width:700px){.cp-cols{grid-template-columns:1fr}.cp-kpis{grid-template-columns:1fr 1fr}.cp-kpi-v{font-size:18px}}
 .ts-rank{font-weight:700;letter-spacing:-.02em;font-size:20px;color:var(--muted-2);min-width:28px;text-align:center}
 .ts-info{flex:1;min-width:0}
 .ts-name{font-size:13px;font-weight:700;color:var(--navy)}
@@ -286,6 +316,7 @@ header{display:none}
   <button class="snav-btn" data-sub="week" onclick="showSub('week')">This week</button>
   <button class="snav-btn" data-sub="history" onclick="showSub('history')">History</button>
   <button class="snav-btn" data-sub="sellers" onclick="showSub('sellers')">Top sellers</button>
+  <button class="snav-btn" data-sub="comps" onclick="showSub('comps')">Comps</button>
   <button class="snav-btn" data-sub="activity" onclick="showSub('activity')">Activity</button>
 </div>
 
@@ -395,6 +426,18 @@ header{display:none}
       <div id="tsCatRow" style="display:flex;gap:8px;flex-wrap:wrap"></div>
     </div>
     <div class="ts-body" id="tsBody"></div>
+  </div>
+</div>
+
+<!-- ═══════════════ COMPS (15 Nov 2026) ═══════════════ -->
+<!-- What was given away free, and why (camp-hub/comps.js). Visibility only. -->
+<div class="subpage" id="sub-comps">
+  <div class="ts-wrap">
+    <div class="ts-header">
+      <div style="font-weight:700;letter-spacing:-.02em;font-size:18px;color:var(--navy);margin-right:6px">Comps</div>
+      <div id="cpPeriodRow" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+    </div>
+    <div class="ts-body" id="compsBody"></div>
   </div>
 </div>
 
@@ -1041,6 +1084,15 @@ function normalizeItemRows(items){
     // (paid_at) and from local cache (paidAt) round-trip cleanly.
     ...((item?.paidAt||item?.paid_at)?{paidAt:String(item.paidAt||item.paid_at)}:{}),
     ...(item?.payMethod?{payMethod:String(item.payMethod)}:{}),
+    // Comps (15 Nov 2026, camp-hub/comps.js): why a line was given free / discounted,
+    // and the catalog price at the time. Only on lines that have them — old rows
+    // serialize exactly as before (dirty-sync baseline).
+    ...(item?.compReason?{compReason:String(item.compReason)}:{}),
+    ...(item?.compNote?{compNote:String(item.compNote)}:{}),
+    ...(Number.isFinite(Number(item?.listPrice))&&item?.listPrice!==null&&item?.listPrice!==''?{listPrice:Number(item.listPrice)}:{}),
+    // Audit stamp from the row (fn_stamp_audit_camp_tab) — kept in memory so the
+    // Comps view can say who added a comp. Never written back (not in the sync rows).
+    ...(item?.createdBy?{createdBy:String(item.createdBy)}:{}),
     sortOrder:Number.isFinite(Number(item?.sortOrder))?Number(item.sortOrder):(idx+1)*10
   })).filter(item=>item.n&&Number.isFinite(item.p));
 }
@@ -1402,6 +1454,9 @@ function hydrateWeekStateFromRows(weekRows,guestRows,itemRows){
       ...(item.paid_at?{paidAt:item.paid_at}:{}),
       ...(meta.staffNote?{s:meta.staffNote}:{}),
       ...(meta.payMethod?{payMethod:meta.payMethod}:{}),
+      ...(meta.comp_reason?{compReason:meta.comp_reason}:{}),
+      ...(meta.comp_note?{compNote:meta.comp_note}:{}),
+      ...(meta.list_price!=null&&Number.isFinite(Number(meta.list_price))?{listPrice:Number(meta.list_price)}:{}),
       ...(item.price_type?{priceType:item.price_type}:{}),
       // Audit fields — populated server-side by fn_stamp_audit_camp_tab.
       // Names resolved from platform_profiles via resolveAuditNames() and
@@ -1867,7 +1922,8 @@ function buildCampTabSyncRows(locationId){
             paid_at:item.paidAt||null,
             price_type:item.priceType||null,
             sort_order:(itemIndex+1)*10,
-            meta:{time:item.t||'',staffNote:item.s||null,...(item.payMethod?{payMethod:item.payMethod}:{})}
+            meta:{time:item.t||'',staffNote:item.s||null,...(item.payMethod?{payMethod:item.payMethod}:{}),
+              ...(item.compReason?{comp_reason:item.compReason}:{}),...(item.compNote?{comp_note:item.compNote}:{}),...(item.listPrice!=null?{list_price:item.listPrice}:{})}
           });
         });
       });
@@ -2631,6 +2687,7 @@ function showSub(sub){
   else if(sub==='week') renderThisWeek();
   else if(sub==='history') renderHistory();
   else if(sub==='sellers') renderSellers();
+  else if(sub==='comps') renderComps();
   else if(sub==='activity') renderPosActivity();
 }
 
@@ -2938,7 +2995,9 @@ function renderItemGrid(){
     // Not shown on out-of-stock rows (nothing to discount).
     // Drinks included since the Sri Lanka ask "be able to offer a drink" —
     // the modal's Gift·free covers the offer case, % covers happy-hour.
-    const showDiscount = !outOfStock && (AC==='Merch' || AC==='Extras' || AC==='Drinks');
+    // Tours too since 15 Nov 2026 (Miguel: «bebida ou t-shirt ou tour») — a free
+    // tour asks why, like any other comp (openCompReasonModal).
+    const showDiscount = !outOfStock && (AC==='Merch' || AC==='Extras' || AC==='Drinks' || AC==='Tours');
     // On the Staff roster there is no percentage discount — the staff
     // price is already the concession. The only extra action the owner
     // wants is "give it away", so the icon flips from % to a small gift
@@ -3275,106 +3334,174 @@ function addItemAtAltPrice(id,name,btn){
   if(!item){toast('Item not found');return;}
   const altPrice=Number(item.altPrice||0);
   if(!(altPrice>0)){ toast('No alt price on this item'); return; }
-  return addResolvedItem({...item, p: altPrice, sp: altPrice, _altUsed:true, _altLabel: item.altLabel||'Offer'}, btn);
+  return addResolvedItem({...item, p: altPrice, sp: altPrice, _altUsed:true, _altLabel: item.altLabel||'Offer', _listPrice: Number(item.p||0)}, btn);
 }
 // Adds a menu item at a custom price with a descriptive label
 // (e.g. "-25%", "Gift", "€8"). Piggybacks on the alt-used mechanism so
 // the bill line + history clearly show the discount reason. Called by
 // the per-item discount modal below.
-function addItemAtCustomPrice(id,name,newPrice,discountLabel,btn){
+// why = {reason, note} (camp-hub/comps.js keys) — required when the price is
+// 0 (addResolvedItem asks for it if missing), optional for a partial discount.
+function addItemAtCustomPrice(id,name,newPrice,discountLabel,btn,why){
   if(!AG||!S.activeWeek){toast('Select a guest first!');return;}
   const source=menuSourceFor(AC);
   const item=source.find(row=>row?.id===id) || source.find(row=>String(row?.n||'')===String(name||''));
   if(!item){toast('Item not found');return;}
   const p=Math.max(0, Number(newPrice||0));
-  return addResolvedItem({...item, p, sp: p, _altUsed:true, _altLabel: discountLabel || 'Discount'}, btn);
+  return addResolvedItem({...item, p, sp: p, _altUsed:true, _altLabel: discountLabel || 'Discount', _listPrice: Number(item.p||0),
+    ...(why&&why.reason?{_compReason:why.reason,_compNote:why.note||''}:{})}, btn);
+}
+// «Why is it free?» (15 Nov 2026) — every line at price 0 goes through here
+// before it is added (addResolvedItem). One tap per reason; «Other» needs a
+// short note. Same keys as transport's «Why is it free?» (paylink.js) + Marketing.
+function openCompReasonModal(item, btn, opts){
+  const CC=window.CampComps;
+  let m=document.getElementById('compReasonModal'); if(m) m.remove();
+  m=document.createElement('div');
+  m.id='compReasonModal';
+  m.className='overlay open'; m.style.zIndex='10000';
+  const pre=(opts&&opts.reason)||'';
+  const listPrice=Number.isFinite(Number(item._listPrice))?Number(item._listPrice):Number(item.p||0);
+  const chips=CC.REASONS.map(([k,l])=>`<button type="button" class="btn btn-s comp-chip${k===pre?' on':''}" data-reason="${k}"><span>${l}</span>${CC.HINT[k]?`<span class="comp-chip-sub">${CC.HINT[k]}</span>`:''}</button>`).join('');
+  m.innerHTML=`
+    <div class="modal comp-modal" role="dialog" aria-label="Why is it free?">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px">
+        <div>
+          <div class="comp-eyebrow">Why is it free?</div>
+          <div style="font-size:18px;font-weight:800;color:var(--navy);margin-top:2px">${CC.escHtml(item.n)}</div>
+        </div>
+        <button id="compReasonClose" aria-label="Close" style="background:none;border:0;font-size:24px;color:var(--muted);cursor:pointer;line-height:1">×</button>
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:12px">${listPrice>0?`Full price <b style="font-variant-numeric:tabular-nums;color:var(--navy)">${euro(listPrice)}</b> · given free`:'Given free'}</div>
+      <div class="comp-chips">${chips}</div>
+      <div id="compOtherRow" class="comp-other" style="${pre==='other'?'':'display:none'}">
+        <div class="mfield" style="flex:1;margin:0"><input type="text" id="compOtherNote" maxlength="${CC.NOTE_MAX}" placeholder="What happened? (required)" autocomplete="off"></div>
+        <button id="compOtherAdd" class="btn btn-p">Add free</button>
+      </div>
+    </div>`;
+  document.body.appendChild(m);
+  const close=()=>m.remove();
+  m.querySelector('#compReasonClose').addEventListener('click',close);
+  m.addEventListener('click',e=>{ if(e.target===m) close(); });
+  const add=(reason,note)=>{ close(); addResolvedItem({...item,_compReason:reason,_compNote:note||''},btn); };
+  const noteEl=m.querySelector('#compOtherNote');
+  m.querySelectorAll('.comp-chip').forEach(b=>b.addEventListener('click',()=>{
+    const k=b.dataset.reason;
+    if(!CC.needsNote(k)){ add(k,''); return; }
+    m.querySelectorAll('.comp-chip').forEach(x=>x.classList.toggle('on',x===b));
+    m.querySelector('#compOtherRow').style.display='';
+    setTimeout(()=>noteEl.focus(),30);
+  }));
+  const addOther=()=>{
+    const note=CC.cleanNote(noteEl.value);
+    if(!note){ noteEl.classList.add('comp-err'); toast('Write a short note for «Other»'); noteEl.focus(); return; }
+    add('other',note);
+  };
+  m.querySelector('#compOtherAdd').addEventListener('click',addOther);
+  noteEl.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); addOther(); } });
+  noteEl.addEventListener('input',()=>noteEl.classList.remove('comp-err'));
+  if(pre==='other') setTimeout(()=>noteEl.focus(),30);
 }
 // Opens a small floating modal to give a discount / gift / custom price
 // on the tapped item. Quick buttons for the common cases + a free-text
-// amount for anything else.
+// amount for anything else. «Free» always needs a reason (15 Nov 2026):
+// pick it here first, or the «Why is it free?» step opens after the tap.
+// A partial discount takes the same reason chips, optional.
 function openDiscountModal(id, name){
   if(!AG||!S.activeWeek){toast('Select a guest first!');return;}
   const source=menuSourceFor(AC);
   const item=source.find(row=>row?.id===id) || source.find(row=>String(row?.n||'')===String(name||''));
   if(!item){toast('Item not found');return;}
+  // Staff roster: the staff price already IS the concession, so the only
+  // action is «give it free» — straight to «Why is it free?» (one tap less).
+  if(currentRoster === 'staff'){ addItemAtCustomPrice(id, name, 0, 'Gift', null); return; }
   // Base price for the discount modal MUST be the roster-visible price
   // (staff sees staff price, guest sees guest price). Using item.p
   // directly showed the guest full price on the Staff tab, so "-50%"
   // would compute off the wrong number and undercharge staff sales.
   const basePrice = Number(displayPriceFor(item)||0);
-  const isEUR = (typeof HUB_CURRENCY_CODE==='string') ? HUB_CURRENCY_CODE==='EUR' : true;
   const cur = (typeof euro==='function') ? euro : (n)=>`€${(Number(n)||0).toFixed(2)}`;
+  const CC = window.CampComps;
   // Kill any prior instance so quick re-taps don't stack.
   let m = document.getElementById('discountModal'); if(m) m.remove();
   m = document.createElement('div');
   m.id = 'discountModal';
   m.className = 'overlay open'; m.style.zIndex = '9999';
-  const button = (label, price, note) => `<button data-price="${price}" data-note="${esc(note)}" class="btn btn-s" style="flex:1;min-width:100px;flex-direction:column;gap:0;padding:12px 8px;font-size:13px"><div>${label}</div><div style="font-variant-numeric:tabular-nums;color:var(--muted);font-weight:600;margin-top:4px">${cur(price)}</div></button>`;
+  const button = (label, price, note) => `<button data-price="${price}" data-note="${esc(note)}" class="btn btn-s" style="flex:1;min-width:76px;flex-direction:column;gap:0;padding:12px 8px;font-size:13px"><div>${label}</div><div style="font-variant-numeric:tabular-nums;color:var(--muted);font-weight:600;margin-top:4px">${cur(price)}</div></button>`;
   const p10 = Math.max(0, basePrice * 0.9);
   const p25 = Math.max(0, basePrice * 0.75);
   const p50 = Math.max(0, basePrice * 0.5);
-  // Staff roster: the staff price already IS the concession, so we only
-  // surface a "Gift · free" action here. Guests roster: full quick-
-  // discount grid + custom price input for one-off deals.
-  const staffRoster = currentRoster === 'staff';
-  const title = staffRoster ? 'Give as gift' : 'Discount';
-  const quickButtons = staffRoster
-    ? button('Gift · free', 0, 'Gift')
-    : `${button('-10%', p10, '-10%')}
+  const quickButtons = `${button('-10%', p10, '-10%')}
        ${button('-25%', p25, '-25%')}
        ${button('-50%', p50, '-50%')}
-       ${button('Gift · free', 0, 'Gift')}`;
-  const customRow = staffRoster ? '' : `
-      <div style="border-top:1px solid var(--border);padding-top:12px">
-        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:6px">Custom price</div>
-        <div style="display:flex;gap:8px">
-          <div class="mfield" style="flex:1;margin:0"><input type="number" step="0.01" min="0" id="discountCustomPrice" placeholder="Amount" style="font-variant-numeric:tabular-nums"></div>
-          <div class="mfield" style="flex:1;margin:0"><input type="text" id="discountCustomNote" placeholder="Note (optional)"></div>
-          <button id="discountCustomApply" class="btn btn-p">Apply</button>
-        </div>
-      </div>`;
+       ${button('Free', 0, 'Gift')}`;
+  const reasonPills = CC.REASONS.map(([k,l])=>`<button type="button" class="pill comp-pill" data-reason="${k}">${l}</button>`).join('');
   m.innerHTML = `
-    <div class="modal" style="max-width:420px;padding:18px">
+    <div class="modal" style="max-width:440px;padding:18px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
         <div>
-          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-weight:700">${title}</div>
-          <div style="font-size:18px;font-weight:800;color:var(--navy);margin-top:2px">${esc(item.n)}</div>
+          <div class="comp-eyebrow">Discount</div>
+          <div style="font-size:18px;font-weight:800;color:var(--navy);margin-top:2px">${CC.escHtml(item.n)}</div>
         </div>
-        <button id="discountClose" style="background:none;border:0;font-size:24px;color:var(--muted);cursor:pointer;line-height:1">×</button>
+        <button id="discountClose" aria-label="Close" style="background:none;border:0;font-size:24px;color:var(--muted);cursor:pointer;line-height:1">×</button>
       </div>
-      <div style="font-size:12px;color:var(--muted);margin-bottom:14px">${staffRoster ? 'Staff price' : 'Full price'}: <b style="font-variant-numeric:tabular-nums;color:var(--navy)">${cur(basePrice)}</b></div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:12px">Full price: <b style="font-variant-numeric:tabular-nums;color:var(--navy)">${cur(basePrice)}</b></div>
+      <div style="margin-bottom:12px">
+        <div class="comp-eyebrow" style="margin-bottom:6px">Why? <span class="comp-eyebrow-sub">needed for Free · optional for a discount</span></div>
+        <div class="comp-pills">${reasonPills}</div>
+        <div id="discOtherRow" style="display:none;margin-top:8px"><div class="mfield" style="margin:0"><input type="text" id="discOtherNote" maxlength="${CC.NOTE_MAX}" placeholder="What happened? (required for Other)" autocomplete="off"></div></div>
+      </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
         ${quickButtons}
       </div>
-      ${customRow}
+      <div style="border-top:1px solid var(--border);padding-top:12px">
+        <div class="comp-eyebrow" style="margin-bottom:6px">Custom price</div>
+        <div style="display:flex;gap:8px">
+          <div class="mfield" style="flex:1;margin:0"><input type="number" step="0.01" min="0" id="discountCustomPrice" placeholder="Amount" style="font-variant-numeric:tabular-nums"></div>
+          <div class="mfield" style="flex:1;margin:0"><input type="text" id="discountCustomNote" placeholder="Label (optional)"></div>
+          <button id="discountCustomApply" class="btn btn-p">Apply</button>
+        </div>
+      </div>
     </div>`;
   document.body.appendChild(m);
   const close = () => m.remove();
   m.querySelector('#discountClose').addEventListener('click', close);
   m.addEventListener('click', (e) => { if(e.target === m) close(); });
+  let reason = '';
+  const otherRow = m.querySelector('#discOtherRow');
+  const otherNote = m.querySelector('#discOtherNote');
+  m.querySelectorAll('.comp-pill').forEach(p => p.addEventListener('click', () => {
+    reason = (reason === p.dataset.reason) ? '' : p.dataset.reason;   // tap again = no reason
+    m.querySelectorAll('.comp-pill').forEach(x => x.classList.toggle('active', x.dataset.reason === reason));
+    otherRow.style.display = CC.needsNote(reason) ? '' : 'none';
+    if(CC.needsNote(reason)) setTimeout(() => otherNote.focus(), 30);
+  }));
+  otherNote.addEventListener('input', () => otherNote.classList.remove('comp-err'));
+  // null = no reason picked; false = «Other» without its note (blocked).
+  const currentWhy = () => {
+    if(!reason) return null;
+    const note = CC.cleanNote(otherNote.value);
+    if(CC.needsNote(reason) && !note){ otherNote.classList.add('comp-err'); otherNote.focus(); toast('Write a short note for «Other»'); return false; }
+    return { reason, note: CC.needsNote(reason) ? note : '' };
+  };
+  const apply = (price, label) => {
+    const why = currentWhy();
+    if(why === false) return;
+    close();
+    // Free with no reason → addResolvedItem opens «Why is it free?».
+    addItemAtCustomPrice(id, name, price, label, null, why);
+  };
   m.querySelectorAll('button[data-price]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const price = Number(btn.dataset.price || 0);
-      const note = btn.dataset.note || 'Discount';
-      addItemAtCustomPrice(id, name, price, note, null);
-      close();
-    });
+    btn.addEventListener('click', () => apply(Number(btn.dataset.price || 0), btn.dataset.note || 'Discount'));
   });
-  // Custom-price handler only exists on the Guests roster — the Staff
-  // modal renders without those inputs so we skip binding here to avoid
-  // a null querySelector.addEventListener throw.
-  const customApply = m.querySelector('#discountCustomApply');
-  if(customApply){
-    customApply.addEventListener('click', () => {
-      const raw = m.querySelector('#discountCustomPrice').value;
-      const price = Number(raw);
-      if(!Number.isFinite(price) || price < 0){ toast('Enter a valid amount'); return; }
-      const note = (m.querySelector('#discountCustomNote').value || '').trim() || euro(price);
-      addItemAtCustomPrice(id, name, price, note, null);
-      close();
-    });
-    setTimeout(() => m.querySelector('#discountCustomPrice')?.focus(), 50);
-  }
+  m.querySelector('#discountCustomApply').addEventListener('click', () => {
+    const raw = m.querySelector('#discountCustomPrice').value;
+    const price = Number(raw);
+    if(raw === '' || !Number.isFinite(price) || price < 0){ toast('Enter a valid amount'); return; }
+    const note = (m.querySelector('#discountCustomNote').value || '').trim() || euro(price);
+    apply(price, note);
+  });
+  setTimeout(() => m.querySelector('#discountCustomPrice')?.focus(), 50);
 }
 
 // Bar tab running-total editor. A Bar line is opened once and grows as
@@ -3487,8 +3614,8 @@ function addResolvedItem(item,btn){
   // bills / history so the user can tell at a glance which sale used
   // the discount. Staff stays 'staff', regular stays 'regular'.
   const altUsed=!!item._altUsed;
-  const priceType = altUsed ? String(item._altLabel||'Offer') : (currentRoster==='staff'?'staff':'regular');
-  const altStaffNote = altUsed ? String(item._altLabel||'Offer') : null;
+  let priceType = altUsed ? String(item._altLabel||'Offer') : (currentRoster==='staff'?'staff':'regular');
+  let altStaffNote = altUsed ? String(item._altLabel||'Offer') : null;
   // Persist the canonical category — never the synthetic "Merch Special"
   // or "Bar Tab" tab names. Item.c drives merchSoldCounts, stock, and
   // the ledger area-routing, all of which expect a stable category:
@@ -3497,7 +3624,34 @@ function addResolvedItem(item,btn){
   const persistedCategory = (AC === 'Merch Special') ? 'Merch'
     : (AC === 'Bar Tab') ? 'Bar'
     : AC;
-  const nextItem={id:makeUuid(),menuItemId:item.id||'',n:item.n,p:price,c:persistedCategory,t:tnow(),d:today(),priceType,...(altStaffNote?{s:altStaffNote}:{})};
+  // ── Comps (15 Nov 2026) ── a line at price 0 is only added with a reason
+  // (Staff · Gift to guest · Compensation · Marketing / influencer · Other + note).
+  // Every free path lands here: «Free» in the discount modal, a custom price of
+  // 0, the Staff «Give as gift» icon, a catalog price of 0. Bar (typed running
+  // total) and Sri Lanka Dipløria (pass-through) are never comps.
+  const CC=window.CampComps;
+  const why={reason:item._compReason||'',note:CC?CC.cleanNote(item._compNote):''};
+  const isFree=!!CC && CC.isFreeLine({p:price,c:persistedCategory}, isPassThrough);
+  if(isFree && !CC.validWhy(why)){
+    openCompReasonModal(item, btn, {reason: CC.isReason(why.reason)?why.reason:''});
+    return;
+  }
+  // List price = the catalog guest price (also on the Staff roster), so a comp
+  // is valued at what a guest would have paid.
+  const listPrice=Number.isFinite(Number(item._listPrice))?Number(item._listPrice):Number(item.p||0);
+  const comp={};
+  if(isFree){
+    priceType='Gift';   // isGiftLine() and old reports read «Gift»
+    altStaffNote='Free · '+CC.short(why.reason);
+    Object.assign(comp,{compReason:why.reason,...(why.note?{compNote:why.note}:{}),...(listPrice>0?{listPrice}:{})});
+  }else if(altUsed){
+    if(listPrice>0) comp.listPrice=listPrice;
+    if(CC && CC.validWhy(why)){
+      Object.assign(comp,{compReason:why.reason,...(why.note?{compNote:why.note}:{})});
+      altStaffNote=altStaffNote+' · '+CC.short(why.reason);
+    }
+  }
+  const nextItem={id:makeUuid(),menuItemId:item.id||'',n:item.n,p:price,c:persistedCategory,t:tnow(),d:today(),priceType,...(altStaffNote?{s:altStaffNote}:{}),...comp};
   g.items=[...normalizeItemRows(g.items),nextItem];
   // per_guest mode: adding a NEW unpaid item must reset the guest's
   // bulk "paid" flag, otherwise isGuestFullyPaid (which falls back to
@@ -4272,7 +4426,7 @@ function renderHistoryPerGuest(el){
           ${isOpen?`<div class="hist-week-body">
             ${items.length?`<div class="hw-items-detail">
               ${items.map(i=>`<div class="hw-item-line" style="${i.paidAt?'opacity:.9':''}">
-                <span>${esc(i.n||'')}${i.paidAt?` <span style="font-size:9px;font-weight:700;background:var(--green-bg);color:var(--green);border:1px solid var(--green-border);border-radius:20px;padding:1px 7px;margin-left:6px;letter-spacing:.04em;text-transform:uppercase">Paid</span>`:''}</span>
+                <span>${esc(i.n||'')}${i.s?` <span style="font-size:10px;color:var(--muted)">· ${CampComps.escHtml(i.s)}</span>`:''}${i.paidAt?` <span style="font-size:9px;font-weight:700;background:var(--green-bg);color:var(--green);border:1px solid var(--green-border);border-radius:20px;padding:1px 7px;margin-left:6px;letter-spacing:.04em;text-transform:uppercase">Paid</span>`:''}</span>
                 <span style="font-variant-numeric:tabular-nums;font-size:11px;color:var(--muted)">${itemMoney(i)}</span>
               </div>`).join('')}
               <div style="display:flex;justify-content:space-between;padding:7px 0 0;border-top:1px solid var(--border);margin-top:4px;font-weight:700;font-size:13px">
@@ -4408,6 +4562,59 @@ function renderSellers(){
     <div class="ts-qty">${item.qty}x</div>
     <div class="ts-rev">${euro(item.rev)}</div>
   </div>`).join('');
+}
+
+// ══════════════ COMPS — what was given free, and why (sub-tab) ══════════════
+// Reads the Camp Tab state (every week, both rosters, closed guests too) via
+// camp-hub/comps.js — the same rule the camp hub's Weekly P&L «Comps» line uses.
+// Value = list price kept on the line (meta.list_price); old comps without it
+// use today's catalog price by name and are marked «≈».
+let cpPeriod='week';
+const CP_PERIODS=[['week','This week'],['month','This month'],['last-month','Last month'],['all','All time']];
+function setCompsPeriod(p){ cpPeriod=p; renderComps(); }
+function renderComps(){
+  const CC=window.CampComps;
+  const body=document.getElementById('compsBody');
+  const row=document.getElementById('cpPeriodRow');
+  if(!body||!CC) return;
+  if(row) row.innerHTML=CP_PERIODS.map(([k,l])=>`<button class="pill${k===cpPeriod?' active':''}" data-period="${k}" onclick="setCompsPeriod('${k}')">${l}</button>`).join('');
+  const range=CC.periodRange(cpPeriod,today());
+  const rows=CC.lines(S,MENU,{...range,isPass:isPassThrough});
+  const sum=CC.summarize(rows);
+  const h=CC.escHtml;
+  const span=range.from?`${fmtd(range.from)} – ${fmtd(range.to)}`:'All time';
+  if(!rows.length){
+    body.innerHTML=`<div class="empty-state" style="padding:40px 12px;text-align:center;color:var(--muted);font-size:13px"><div style="font-weight:700;color:var(--navy);margin-bottom:4px">Nothing given free · ${h(span)}</div>A free drink, T-shirt or tour shows here with the reason picked when it was added.</div>`;
+    return;
+  }
+  // Who added it: the audit stamp (created_by), resolved once, then redraw.
+  const uids=[...new Set(rows.map(r=>r.createdBy).filter(id=>id&&!PROFILE_NAMES.has(id)))];
+  if(uids.length){
+    const client=getCampTabSupabaseClient();
+    if(client) resolveAuditNames(client,uids).then(()=>{ if(activeSub==='comps') renderComps(); }).catch(()=>{});
+  }
+  const approx=sum.estimated?'≈ ':'';
+  const noReason=sum.byReason.find(r=>r.key===CC.NO_REASON);
+  const reasonRows=sum.byReason.map(r=>`<div class="cp-row" data-reason="${r.key}"><span class="${r.key===CC.NO_REASON?'cp-none':''}">${h(r.label)}</span><span><span class="cnt">×${r.count}</span><span class="num">${euro(r.value)}</span></span></div>`).join('');
+  const itemRows=sum.byItem.slice(0,12).map(i=>`<div class="cp-row" data-item="${h(i.n)}"><span>${h(i.n)} <span style="color:var(--muted);font-size:12px">· ${h(displayCatName(i.c))}</span></span><span><span class="cnt">×${i.count}</span><span class="num">${euro(i.value)}</span></span></div>`).join('');
+  const lineRows=rows.slice(0,200).map(r=>{
+    const by=r.createdBy?(PROFILE_NAMES.get(r.createdBy)||''):'';
+    const why=r.reason===CC.NO_REASON?`<span class="cp-none">${h(CC.NO_REASON_LABEL)}</span>`:h(CC.label(r.reason))+(r.note?` — ${h(r.note)}`:'');
+    return `<div class="cp-line" data-reason="${r.reason}"><span><b>${h(r.n)}</b> → ${h(r.to)}${r.roster==='Staff'?' <span class="badge badge-grey" style="margin-left:2px">Staff</span>':''}</span><span class="num">${r.estimated?'≈ ':''}${euro(r.value)}</span>
+      <span class="cp-line-sub">${why} · ${r.d?fmtd(r.d):''}${r.t?' '+h(r.t):''}${by?` · by ${h(by)}`:''}</span></div>`;
+  }).join('');
+  body.innerHTML=`
+    <div class="cp-kpis">
+      <div class="card cp-kpi"><div class="cp-kpi-l">Given free</div><div class="cp-kpi-v" id="cpCount">${sum.count}</div><div class="cp-kpi-s">${h(span)}</div></div>
+      <div class="card cp-kpi"><div class="cp-kpi-l">Value at list price</div><div class="cp-kpi-v" id="cpValue">${approx}${euro(sum.value)}</div><div class="cp-kpi-s">${sum.estimated?'≈ some old lines priced from today\u2019s catalog':'what guests would have paid'}</div></div>
+      <div class="card cp-kpi"><div class="cp-kpi-l">Without a reason</div><div class="cp-kpi-v">${noReason?noReason.count:0}</div><div class="cp-kpi-s">${noReason?'added before 15 Nov':'every comp has its reason'}</div></div>
+    </div>
+    <div class="cp-cols">
+      <div class="card cp-card" id="cpByReason"><div class="cp-card-h">By reason</div>${reasonRows}</div>
+      <div class="card cp-card" id="cpByItem"><div class="cp-card-h">By item</div>${itemRows}</div>
+    </div>
+    <div class="card cp-card" id="cpLines"><div class="cp-card-h">Who and when</div>${lineRows}</div>
+    <div style="font-size:12px;color:var(--muted);margin-top:10px;line-height:1.5">Not a cost line: a free item never reaches the ledger. Shown so the owners see why things were given away.</div>`;
 }
 
 // ══════════════ ACTIVITY — POS audit feed (sub-tab) ══════════════
@@ -5373,6 +5580,7 @@ function renderAllCampTabViews(){
   if(activeSub==='week') renderThisWeek();
   if(activeSub==='history') renderHistory();
   if(activeSub==='sellers') renderSellers();
+  if(activeSub==='comps') renderComps();
 }
 
 let CAMP_RT_CHANNEL=null;
