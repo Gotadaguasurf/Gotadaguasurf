@@ -684,7 +684,7 @@ for (const [name, size] of [['phone 390', { width: 390, height: 844 }], ['deskto
     await page.setViewportSize(size);
     await openTab(page, weekFixture());
     // The logic in one plain line under the title.
-    await expect(page.locator('#transportRoot .tr-how')).toHaveText('Transfers come from the Guests file (Week → Import). Tuk-tuks: plan tomorrow and send the order. Nadith pays in the Ledger (Transport · Airport) and ticks the guests, and they show as Paid here.');
+    await expect(page.locator('#transportRoot .tr-how')).toHaveText('Airport transfers, tuk-tuks and paying the drivers. Nadith pays in the Ledger and ticks the guests.');
     await expect(page.locator('.tr-week')).toHaveText('7–13 Nov');
     // Week totals: drivers' prices; cancelled left out; free is a part of the airport count, not an extra.
     const air = norm(await page.locator('[data-total="airport"]').innerText());
@@ -929,10 +929,11 @@ test('A6 / A7 — a trip whose booking or transfer left the file is flagged on t
   await expect(row(A(3)).locator('[data-flag]')).toHaveText('Transfer removed in Bookinglayer — cancel it, or keep it if it is still needed');
   await expect(row(A(1)).locator('[data-flag]')).toHaveCount(0);
   await expect(page.locator('.tr-strip')).toContainText('2 not in the latest Bookinglayer file');
-  // Sat 14 Nov has three arrivals; only Callum goes to the driver, so there is no «whole day» button and the day send carries him alone.
+  // Sat 14 Nov has three arrivals; only Callum goes to the driver: the «whole day» button shows for one sendable transfer
+  // (15 Nov 2026, the house-style titled message now lives here only) and the day send carries him alone.
   const sat = page.locator('.tr-day', { hasText: 'Sat 14 Nov' });
-  await expect(sat.locator('button:has-text("Send the whole day")')).toHaveCount(0);
-  await page.evaluate(() => TransportUI.sendDay('2026-11-14'));
+  await expect(sat.locator('button:has-text("Send the whole day")')).toHaveCount(1);
+  await sat.locator('button:has-text("Send the whole day")').click();
   let text = decodeURIComponent((await page.evaluate(() => window.__opened[0])).split('?text=')[1]);
   expect(text).toContain('Callum Downes');
   expect(text).not.toContain('Maximilian Ehrler');

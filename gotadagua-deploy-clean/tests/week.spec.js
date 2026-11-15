@@ -1,8 +1,10 @@
 // Camp hub · Week tab (Sri Lanka, 13 Nov 2026) — stubbed Supabase.
 //
 // Francisco's overview of the week: the Monday Guests import (camp_week_guests)
-// shown in six tabs (Overview, Rooms, Kitchen, Surf, Transfers, Guests), each
-// team tab ending with its WhatsApp message. Full view only — Nadith's
+// shown in five tabs (Overview, Rooms, Kitchen, Surf, Guests), each team tab
+// ending with its WhatsApp message. Since 15 Nov 2026 the airport transfers live in
+// Transport only («Week = guests and camp teams, Transport = drivers and money»): the
+// Overview shows them read-only and a tap opens Transport on the same week and day. Full view only — Nadith's
 // ?view=local keeps exactly what he has today.
 // The guests are the real 7 Nov Guests file (tests/fixtures, fake phones) plus
 // the four guests already in camp from an earlier file (Alexander, Alicia,
@@ -138,7 +140,7 @@ async function openWeek(page, opts = {}) {
 }
 const msgText = page => page.locator('#wkMsg').innerText();
 // The message of a team sits at the bottom of its tab (Cleaning → Rooms).
-const TAB = { Cleaning: 'rooms', Kitchen: 'kitchen', Surf: 'surf', Transfers: 'transfers', Guests: 'guests' };
+const TAB = { Cleaning: 'rooms', Kitchen: 'kitchen', Surf: 'surf', Guests: 'guests' };
 const tab = (page, k) => page.click(`#weekRoot .wk-tabs .pill[data-tab="${k}"]`);
 const pick = async (page, team, day) => {
   await tab(page, TAB[team]);
@@ -182,7 +184,7 @@ test('overview: tiles, guests per night, and arrivals / departures / transfers /
   await openWeek(page);
   await expect(page.locator('#weekRoot .wk-week')).toHaveText('Week 14 · 14–20 Nov');
   await expect(page.locator('#weekRoot .wk-count')).toHaveText('22 guests');
-  await expect(page.locator('#weekRoot .wk-tabs .pill')).toHaveText([/Overview/, /Rooms/, /Kitchen/, /Surf/, /Transfers/, /Guests/]);
+  await expect(page.locator('#weekRoot .wk-tabs .pill')).toHaveText([/Overview/, /Rooms/, /Kitchen/, /Surf/, /Guests/]);
   await expect(page.locator('#weekRoot .wk-tabs .pill.active')).toHaveText(/Overview/);
   const kpi = l => page.locator('#weekRoot .wk-kpis .kpi', { hasText: l }).locator('.kpi-value');
   await expect(kpi('Guests this week')).toHaveText('22');
@@ -212,7 +214,8 @@ test('overview: tiles, guests per night, and arrivals / departures / transfers /
   await expect(day('2026-11-17')).toContainText('Today');
   await expect(day('2026-11-17').locator('.wk-bday')).toContainText('21 in camp tonight');
   await expect(day('2026-11-17').locator('.wk-bc.trf')).toContainText('23:40');
-  await expect(day('2026-11-17').locator('.wk-bc.trf')).toContainText('Time changed');
+  await expect(day('2026-11-17').locator('.wk-bc.trf .badge')).toHaveCount(0);           // read-only, no status: «Done» / «Owed» never disagree
+  await expect(day('2026-11-17').locator('.wk-bc.trf .wk-trgo')).toContainText('Transport');
   await expect(day('2026-11-17').locator('.wk-bc.meal')).toHaveText(/20\s*breakfast\s*21\s*dinner/);
   await expect(day('2026-11-17').locator('.wk-bc.srf')).toContainText('20 students');
   await expect(day('2026-11-17').locator('.wk-bc.srf')).toContainText('Standard 13 · Intensive 4 · Coaching 3 · Yoga 13');
@@ -224,8 +227,10 @@ test('overview: tiles, guests per night, and arrivals / departures / transfers /
   expect(m.dinner).toBe(21);
   expect(await rawMsg(page, 'kitchen', '2026-11-17')).toContain(`*Dinner:* ${m.dinner} people`);
   expect(await visiblePrimary(page)).toBe(0);            // Overview is for reading: no blue button
-  // team messages: a state per team, and the door to its tab
+  // team messages: a state per team, and the door to its tab (Transfers: the state, the door is Transport)
   await expect(page.locator('.wk-team')).toHaveCount(4);
+  await expect(page.locator('.wk-team[data-team="transfers"]')).toContainText('Nadith · in Transport');
+  await expect(page.locator('.wk-team[data-team="transfers"] .badge')).toHaveText('3 to send');
   await page.click('.wk-team:has-text("Kitchen")');
   await expect(page.locator('#weekRoot .wk-tabs .pill.active')).toHaveText(/Kitchen/);
   await expect(page.locator('#wkMessage')).toBeVisible();
@@ -238,7 +243,7 @@ test('layout: no horizontal scroll in any tab at 390px and at 1280px; at 390 the
     await page.setViewportSize({ width: w, height: hgt });
     const tabsFit = await page.locator('#weekRoot .wk-tabs').evaluate(el => el.scrollWidth <= el.clientWidth + 0.5 && [...el.querySelectorAll('.pill')].every(p => p.getBoundingClientRect().right <= window.innerWidth));
     expect(tabsFit, `every tab on screen at ${w}px`).toBe(true);
-    for (const k of ['overview', 'rooms', 'kitchen', 'surf', 'transfers', 'guests']) {
+    for (const k of ['overview', 'rooms', 'kitchen', 'surf', 'guests']) {
       await tab(page, k);
       expect(await noOverflow(page), `${k} at ${w}px`).toBe(true);
       const cut = await page.locator('#weekRoot .wk-view').evaluate(el => [...el.querySelectorAll('.card, .wk-check, .kpi')].filter(c => c.getBoundingClientRect().right > window.innerWidth + 0.5).length);
@@ -412,18 +417,15 @@ test('to check: a count on the tab it concerns, a compact list inside the tab, c
   await expect(n('rooms')).toHaveText('2');
   await expect(n('kitchen')).toHaveText('1');
   await expect(n('surf')).toHaveText('1');
-  await expect(n('transfers')).toHaveText('1');
   await expect(n('guests')).toHaveText('3');
   await expect(n('overview')).toHaveCount(0);
-  await expect(page.locator('.wk-tocheck .health-chip')).toHaveText(['3 without level', '16 without diet answer', '2 without a bed', '2 transfers without time', '4 still here?', '5 phones fixed', '10 without a phone', '1 room move to confirm']);
+  await expect(page.locator('.wk-tocheck .health-chip')).toHaveText(['3 without level', '16 without diet answer', '2 without a bed', '4 still here?', '5 phones fixed', '10 without a phone', '1 room move to confirm']);
   // the two guests carried from the earlier file sit in a shared room with no bed number
   expect((await page.evaluate(() => WeekUI.toCheck())).find(c => /without a bed number/.test(c.text)).who).toBe('Alexander Straub, Alicia Pohl');
   await page.click('.wk-tocheck .health-chip:has-text("without level")');
   await expect(page.locator('.wk-view-surf .wk-check')).toContainText('3 surf students without level – ask at check-in');
   await tab(page, 'kitchen');
   await expect(page.locator('.wk-view-kitchen .wk-check')).toContainText("didn't answer diet – ask at the welcome dinner");
-  await tab(page, 'transfers');
-  await expect(page.locator('.wk-view-transfers .wk-check')).toContainText('2 transfers without flight time – ask the guest');   // Beliz's Saturday departure counts since 15 Nov
   await tab(page, 'guests');
   const list = page.locator('.wk-view-guests .wk-check');
   await expect(list).toContainText('4 guests in camp are not in the latest Guests file – still here?');
@@ -441,6 +443,22 @@ test('to check: a count on the tab it concerns, a compact list inside the tab, c
   await expect(page.locator('#weekRoot .wk-count')).toHaveText('21 guests');
   await expect(page.locator('.wk-view-guests .wk-check')).toContainText('2 guests in camp are not in the latest Guests file');
   await expect(page.locator('.wk-view-guests .wk-check')).not.toContainText('dropped');
+});
+
+test('«N without time» moved to Transport: a chip, and its filter lists exactly those transfers (Beliz\'s Saturday departure counts); the trip editor is one tap away', async ({ page }) => {
+  await openWeek(page);
+  expect((await page.evaluate(() => WeekUI.toCheck())).some(c => /without (flight )?time/.test(c.text))).toBe(false);
+  await page.evaluate(() => showPage('transport'));
+  const chip = page.locator('#transportRoot .tr-strip .health-chip', { hasText: 'without time' });
+  await expect(chip).toHaveText('2 without time');
+  await chip.click();
+  const rows = page.locator('#transportRoot .tr-row');
+  await expect(rows).toHaveCount(2);
+  await expect(rows.nth(0)).toContainText('Emilia Faccenna');
+  await expect(rows.nth(1)).toContainText('Beliz Kuyumcuoglu');
+  await expect(rows.nth(0).locator('button:has-text("Ask guest for flight & time")')).toHaveCount(1);
+  await rows.nth(0).locator('.tr-line1 b').click();                              // the answer is typed in the same place
+  await expect(page.locator('#trOv')).toHaveClass(/open/);
 });
 
 test('dropped from the latest file (cancelled?) is not counted and shows in To check', async ({ page }) => {
@@ -493,7 +511,7 @@ test('changed since sent: a re-import that changes Tuesday dinner → chip, ambe
   const old = '*KITCHEN - TUE 17 NOV*\n\n*Dinner:* 20 people\n*Breakfast Wed 18:* 20 people\n\n*Vegan*\n- Alicia Pohl\n- Anja Graf\n- Lilly Krüger\n\n*Allergies*\n- Alicia Pohl _(lactose)_';
   const st = await openWeek(page, { msgs: [{ id: 'm1', location_id: LOC, week_start: '2026-11-14', team: 'kitchen', day: '2026-11-17', text: old, hash: fnv(old), sent_at: '2026-11-16T08:00:00Z' }] });
   await expect(page.locator('.wk-changed')).toContainText('Kitchen (Tue)');
-  await expect(page.locator('.wk-changed')).toContainText('Transfers (Tue)');          // Peter + Sinéad's flight time changed after sending
+  await expect(page.locator('.wk-changed')).not.toContainText('Transfers');           // a changed flight time is Transport's chip «time changed — resend»
   await expect(page.locator('.wk-tabs .pill[data-tab="kitchen"] .wk-dot')).toHaveCount(1);
   await expect(page.locator('.wk-team', { hasText: 'Kitchen' })).toContainText('Changed since sent');
   await page.click('.wk-changed .health-chip:has-text("Kitchen (Tue)")');
@@ -506,7 +524,7 @@ test('changed since sent: a re-import that changes Tuesday dinner → chip, ambe
   await page.click('#wkSend');
   const ins = (await call(st, 'msg_insert')).rows[0];
   expect(ins.text.startsWith('*KITCHEN - TUE 17 NOV*')).toBe(true);   // the stored body never carries the UPDATE header or TODAY
-  await expect(page.locator('.wk-changed')).not.toContainText('Kitchen (Tue)');
+  await expect(page.locator('.wk-changed')).toHaveCount(0);            // nothing else changed (the transfers are not in this strip any more)
 });
 
 test('no camp_week_messages yet (SQL not run): lists, Copy and Send still work, a soft line says it is not remembered', async ({ page }) => {
@@ -520,34 +538,62 @@ test('no camp_week_messages yet (SQL not run): lists, Copy and Send still work, 
   expect(errors).toEqual([]);
 });
 
-// ── Transfers + Guests ─────────────────────────────────────────────────────
-test('transfers: a timeline per day with the status of each trip; the message is Miguel\'s format, Send to Nadith, Mark sent ✓', async ({ page }) => {
+// ── Transfers (in Transport since 15 Nov 2026) + Guests ────────────────────
+test('transfers: a tap on the Week Overview opens Transport on the same week and day; the day card has each trip with its status; «Send the whole day» in Miguel\'s format; Sent ✓ all', async ({ page }) => {
+  const errors = collectFatalErrors(page);
   const st = await openWeek(page);
-  await pick(page, 'Transfers', '2026-11-17');
-  await expect(page.locator('#wkTr-2026-11-17 .wk-trip')).toHaveCount(2);
-  await expect(page.locator('#wkTr-2026-11-17 .wk-trip').last()).toContainText('time?');
-  await expect(page.locator('#wkTr-2026-11-17 .wk-trip', { hasText: 'Peter Mongey' })).toContainText('23:40');
-  await expect(page.locator('#wkTr-2026-11-17 .wk-trip', { hasText: 'Peter Mongey' }).locator('.badge').last()).toHaveText('Time changed');
-  await expect(page.locator('#wkTr-2026-11-17 .wk-trip', { hasText: 'Emilia Faccenna' }).locator('.badge').last()).toHaveText('Planned');
-  await expect(page.locator('#wkTr-2026-11-21 .wk-trip')).toContainText('Departure');
-  await expect(page.locator('#wkTr-2026-11-16 .wk-trip.own')).toHaveCount(2);            // Peter + Sinéad come on their own on Monday
-  await expect(page.locator('#wkTr-2026-11-14 .wk-untimed')).toContainText('On their own, no arrival time given');
-  await expect(page.locator('#wkTr-2026-11-21 .wk-trip.own')).toHaveCount(0);            // next week's arrivals are not this week's business
-  const msg = await msgText(page);
-  expect(msg).not.toContain('UPDATE');
-  expect(msg.startsWith('TRANSFERS TODAY - 17 NOV')).toBe(true);                       // house style since 15 Nov (preview shows *bold* as bold)
-  expect(msg).toContain('Airport to Camp (changed)\nPeter Mongey, Sinéad O\'Farrell\n+353400000001\n2 persons\nFlight Number: EK650\nTime: 23:40\nDate: 17 Nov\nSmall Car');
-  await expect(page.locator('#wkSend')).toHaveText(/Send to/);
-  await page.click('#wkSend');
-  expect(await page.evaluate(() => decodeURIComponent(window.__opened[0]))).toMatch(/^https:\/\/wa\.me\/94771234567\?text=\*TRANSFERS TODAY - 17 NOV\*\n\nAirport to Camp _\(changed\)_/);
+  // who comes on their own is people information: it sits with the arrivals in Week
+  await expect(page.locator('#wkDay-2026-11-16 .wk-bc.arr .wk-own')).toContainText('On their own:');   // Peter + Sinéad come on their own on Monday (times given)
+  await expect(page.locator('#wkDay-2026-11-14 .wk-bc.arr .wk-untimed')).toContainText('On their own, no arrival time given');
+  await expect(page.locator('#wkDay-2026-11-21 .wk-bc.arr')).not.toContainText('On their own');       // next week's arrivals are not this week's business
+  await expect(page.locator('#wkDay-2026-11-16 .wk-bc.trf')).not.toContainText('On their own');
+  // a mid-week day
+  await page.locator('#wkDay-2026-11-17 .wk-bc.trf .wk-trlink').click();
+  expect(await page.evaluate(() => activePage)).toBe('transport');
+  await expect(page.locator('#transportRoot .tr-week')).toHaveText('14–20 Nov');
+  await expect(page.locator('#transportRoot .tr-views .pill.active')).toHaveText('Trips');
+  const day = page.locator('#trDay-2026-11-17');
+  await expect(day).toBeInViewport();
+  expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(100);                              // scrolled to the day, not the top of the page
+  await expect(day.locator('.tr-row')).toHaveCount(2);
+  const row = n => day.locator('.tr-row', { hasText: n });
+  await expect(row('Emilia Faccenna').locator('.tr-time .badge-amber')).toHaveText('time?');
+  await expect(row('Emilia Faccenna').locator('[data-pay]')).toHaveText('Planned');
+  await expect(row('Peter Mongey')).toContainText('23:40');
+  await expect(row('Peter Mongey')).toContainText('Time changed, resend');
+  await expect(page.locator('#trDay-2026-11-21 .tr-row')).toContainText('Departure');
+  await day.locator('button:has-text("Send the whole day")').click();
+  expect(await page.evaluate(() => decodeURIComponent(window.__opened.pop()))).toMatch(/^https:\/\/wa\.me\/94771234567\?text=\*TRANSFERS TODAY - 17 NOV\*\n\nAirport to Camp _\(changed\)_\nPeter Mongey, Sinéad O'Farrell\n\+353400000001\n2 persons\nFlight Number: EK650\nTime: 23:40\nDate: 17 Nov\nSmall Car/);
   expect(st.calls.filter(c => c.t === 'msg_insert')).toHaveLength(0);   // transfers keep their sent state on the trips
-  await page.click('.wk-state button:has-text("Mark sent")');
+  await day.locator('button:has-text("Sent ✓ all")').click();
   await call(st, 'trip_update', 2);
-  await expect(page.locator('.wk-state')).toContainText('All marked sent');
-  expect(await visiblePrimary(page)).toBe(1);
+  expect(st.calls.filter(c => c.t === 'trip_update').map(c => c.id).sort()).toEqual(['aaaaaaaa-0000-4000-8000-00000000a001', 'aaaaaaaa-0000-4000-8000-00000000a002']);
+  expect(await page.locator('#transportRoot .btn-p:visible').count()).toBe(1);                          // + Tuk-tuk runs
+  expect(errors).toEqual([]);
 });
 
-test('transfers: a trip already done (time passed) or a no-show stays on the timeline with its status, but not in the message; paid ahead, confirmed and sent ones are in it (marked)', async ({ page }) => {
+test('transfers: the closing Saturday\'s departure and another week land on that week and that day in Transport (setWeek); the Team messages row opens the week', async ({ page }) => {
+  await openWeek(page);
+  await page.locator('#wkDay-2026-11-21 .wk-bc.trf .wk-trlink').click();
+  await expect(page.locator('#transportRoot .tr-week')).toHaveText('14–20 Nov');                          // Sat 21 departures belong to the week that ends
+  await expect(page.locator('#trDay-2026-11-21')).toBeInViewport();
+  await expect(page.locator('#trDay-2026-11-21 .tr-row')).toContainText('Beliz Kuyumcuoglu');
+  // the Transport week is moved away, then Week → Team messages → Transfers brings it back to Week's week
+  await page.evaluate(() => TransportUI.shiftWeek(14));
+  await expect(page.locator('#transportRoot .tr-week')).toHaveText('28 Nov – 4 Dec');
+  await page.evaluate(() => showPage('week'));
+  await page.click('.wk-team[data-team="transfers"]');
+  expect(await page.evaluate(() => activePage)).toBe('transport');
+  await expect(page.locator('#transportRoot .tr-week')).toHaveText('14–20 Nov');
+  // another week in Week (the week before) → the same week in Transport
+  await page.evaluate(() => { showPage('week'); WeekUI.shiftWeek(-7); });
+  await expect(page.locator('#weekRoot .wk-week')).toHaveText('Week 13 · 7–13 Nov');
+  await page.evaluate(() => WeekUI.toTransport('2026-11-10'));
+  await expect(page.locator('#transportRoot .tr-week')).toHaveText('7–13 Nov');
+  expect(await page.evaluate(() => TransportUI._state.week)).toBe('2026-11-07');
+});
+
+test('transfers in Transport: a trip already done (time passed) or a no-show stays on the day list with its status, but not in the message; paid ahead, confirmed and sent ones are in it (marked)', async ({ page }) => {
   const trips = [...TRIPS(),
     trip({ id: 'aaaaaaaa-0000-4000-8000-00000000a009', guest_names: 'Early Bird', trip_date: '2026-11-17', trip_time: '06:30', flight: 'UL504' }),
     trip({ id: 'aaaaaaaa-0000-4000-8000-00000000a010', guest_names: 'Paid Already', trip_date: '2026-11-17', trip_time: '22:00', payment_entry_id: 'pay-1' }),
@@ -555,18 +601,18 @@ test('transfers: a trip already done (time passed) or a no-show stays on the tim
     trip({ id: 'aaaaaaaa-0000-4000-8000-00000000a012', guest_names: 'All Set', trip_date: '2026-11-19', trip_time: '09:00', status: 'confirmed' }),
     trip({ id: 'aaaaaaaa-0000-4000-8000-00000000a013', guest_names: 'Was Told', trip_date: '2026-11-19', trip_time: '10:00', status: 'sent' })];
   await openWeek(page, { trips });
-  await pick(page, 'Transfers', '2026-11-17');
-  const msg = await msgText(page);
+  await page.evaluate(() => WeekUI.toTransport('2026-11-17'));
+  const msg = await page.evaluate(() => TransportUI.dayMessage('2026-11-17'));
   expect(msg).not.toContain('Early Bird');
   expect(msg).toContain('Airport to Camp\nPaid Already');            // paid ahead (15 Nov): still to be driven, so in the message
-  const badge = n => page.locator('.wk-view-transfers .wk-trip', { hasText: n }).locator('.badge').last();
-  await expect(badge('Early Bird')).toHaveText('Done');
-  await expect(badge('Paid Already')).toHaveText('Paid');
-  await expect(badge('Never Came')).toHaveText('No-show');
-  await expect(badge('All Set')).toHaveText('Confirmed');
-  await expect(badge('Was Told')).toHaveText('Sent');
-  await expect(page.locator('#wkTr-2026-11-17 .wk-trip')).toHaveCount(4);
-  await expect(page.locator('.wk-state')).toContainText('2 transfers not marked sent');
+  const pay = n => page.locator('#transportRoot .tr-row', { hasText: n }).locator('[data-pay]');
+  await expect(pay('Early Bird')).toHaveText('Owed');                  // one vocabulary now: done, not paid
+  await expect(pay('Paid Already')).toHaveText('Paid');
+  await expect(pay('Never Came')).toHaveText('No-show');
+  await expect(pay('All Set')).toHaveText('Confirmed');
+  await expect(pay('Was Told')).toHaveText('Sent');
+  await expect(page.locator('#trDay-2026-11-17 .tr-row')).toHaveCount(4);
+  await expect(page.locator('#transportRoot [data-week-count]')).toContainText('3 not marked sent');   // Peter (changed), Emilia, Beliz
 });
 
 test('guests: a searchable list with stay, room, course, diet, phone and partner; Copy list', async ({ page }) => {
@@ -919,21 +965,22 @@ test('people check: a row the lists cannot place turns the line red and adds a T
   expect(pc.nights).toEqual([1, 1, 1, 1, 1, 1, 1]);
 });
 
-test('transfers: «Transfers booked» lists arrivals and departures apart, date and time first', async ({ page }) => {
+test('transfers: «Transfers booked» is now one line in Transport — arrivals and departures with persons, the same trips as the Airport tile; the Airport pill lists them', async ({ page }) => {
   const errors = collectFatalErrors(page);
   await openWeek(page);
-  await pick(page, 'Transfers', 'week');
-  const secs = page.locator('.wk-bookedcard .wk-bsec');
-  await expect(secs).toHaveCount(2);
-  await expect(secs.nth(0).locator('.wk-tdh')).toContainText('Arrivals');
-  await expect(secs.nth(1).locator('.wk-tdh')).toContainText('Departures');
-  await expect(secs.nth(1)).toContainText('Beliz Kuyumcuoglu');
-  await expect(secs.nth(1).locator('.wk-booked').first()).toContainText('Sat 21 Nov');
-  await expect(secs.nth(0)).not.toContainText('Beliz Kuyumcuoglu');                        // her departure is not an arrival
+  await page.evaluate(() => WeekUI.toTransport());
+  const line = page.locator('#transportRoot [data-week-count]');
+  await expect(line).toContainText('Arrivals 2 · 3 persons');
+  await expect(line).toContainText('Departures 1 · 1 person');            // Beliz leaves on the closing Saturday
+  const tile = await page.locator('#transportRoot [data-total="airport"] .kpi-label').textContent();
+  const c = await page.evaluate(() => TransportUI.weekCount(TransportUI._state.trips.filter(t => TransportUI.inWeek(t, TransportUI._state.week))));
+  expect(tile).toBe(`Airport · ${c.arr.n + c.dep.n} transfers`);
+  await page.click('#transportRoot .tr-filters .pill:has-text("Airport")');
+  await expect(page.locator('#transportRoot .tr-row')).toHaveCount(3);
   expect(errors).toEqual([]);
 });
 
-test('transfers: a transfer with flight, time and phone has «Confirm with guest» and shows Guest told ✓ / Guest confirmed ✓ (drawn by Transport)', async ({ page }) => {
+test('transfers in Transport: a transfer with flight, time and phone has «Confirm with guest» and shows Guest told ✓ / Guest confirmed ✓', async ({ page }) => {
   const trips = [
     trip({ id: 'aaaaaaaa-0000-4000-8000-00000000a021', guest_names: 'Callum Downes', guest_phone: '+447000000003', trip_date: '2026-11-17', trip_time: '23:10', flight: 'UL504', booking_ref: '2026-4360' }),
     trip({ id: 'aaaaaaaa-0000-4000-8000-00000000a022', guest_names: 'Emilia Faccenna', guest_phone: '+390000000001', trip_date: '2026-11-17', trip_time: null, booking_ref: '2026-5074' }),
@@ -941,9 +988,9 @@ test('transfers: a transfer with flight, time and phone has «Confirm with guest
       guest_told_snapshot: { trip_date: '2026-11-18', trip_time: '08:00', flight: 'QR1', pickup_time: null, pax: 1 } }),
   ];
   const st = await openWeek(page, { trips });
-  await pick(page, 'Transfers', '2026-11-17');
-  const row = n => page.locator('.wk-view-transfers .wk-trip', { hasText: n }).first();
-  await expect(row('Emilia Faccenna').locator('button')).toHaveText('Ask guest for flight & time');   // missing flight: ask, not confirm
+  await page.evaluate(() => WeekUI.toTransport('2026-11-17'));
+  const row = n => page.locator('#transportRoot .tr-row', { hasText: n }).first();
+  await expect(row('Emilia Faccenna').locator('.tr-resend button')).toHaveText('Ask guest for flight & time');   // missing flight: ask, not confirm
   await expect(row('Emilia Faccenna').locator('[data-guest-send]')).toHaveCount(0);
   await row('Callum Downes').locator('[data-guest-send]').click();
   const url = await page.evaluate(() => window.__opened[window.__opened.length - 1]);
@@ -953,12 +1000,11 @@ test('transfers: a transfer with flight, time and phone has «Confirm with guest
   await expect(row('Callum Downes').locator('[data-guest="told"] .badge')).toHaveText('Guest told ✓');
   await row('Callum Downes').locator('[data-guest-ok]').click();
   await expect(row('Callum Downes').locator('[data-guest="confirmed"] .badge')).toHaveText('Guest confirmed ✓');
-  await pick(page, 'Transfers', '2026-11-18');
   await expect(row('Told Already').locator('[data-guest="changed"] .badge')).toHaveText('Changed — tell guest again');   // told 08:00, now 10:00
 });
 
 // Miguel, 15 Nov: «a mensagem tem de estar mais fixe como nos outros… os departures? Deviam sempre aparecer todos».
-test('transfers message: every transfer still to come — sent, confirmed and guest-told ones marked, the closing Saturday departure in, a passed one out — by day, sorted by time, house style', async ({ page }) => {
+test('«Send the whole week» (Transport): every transfer still to come — sent, confirmed and guest-told ones marked, the closing Saturday departure in, a passed one out — by day, sorted by time, house style', async ({ page }) => {
   const T2 = id => `aaaaaaaa-0000-4000-8000-0000000b${String(id).padStart(4, '0')}`;
   const trips = [
     trip({ id: T2(1), guest_names: 'Gone This Morning', trip_date: '2026-11-17', trip_time: '06:30', flight: 'UL504' }),                                  // today, time passed → out
@@ -971,7 +1017,8 @@ test('transfers message: every transfer still to come — sent, confirmed and gu
     trip({ id: T2(8), guest_names: 'Cancelled Guest', trip_date: '2026-11-19', trip_time: '12:00', status: 'cancelled' }),
   ];
   const st = await openWeek(page, { trips });
-  const week = await page.evaluate(() => WeekUI.bodyOf('transfers', 'week'));
+  await page.evaluate(() => WeekUI.toTransport());
+  const week = await page.evaluate(() => TransportUI.weekMessage('2026-11-14'));
   const block = (dir, name, phone, pax, fl, time, date, car, mark) => [`${dir}${mark ? ` _(${mark})_` : ''}`, name, phone, `${pax} ${pax === 1 ? 'person' : 'persons'}`, `Flight Number: ${fl}`, `Time: ${time}`, `Date: ${date}`, car].join('\n');
   expect(week).toBe([
     '*TRANSFERS - 14 TO 21 NOV*', '',
@@ -983,36 +1030,38 @@ test('transfers message: every transfer still to come — sent, confirmed and gu
     '*SAT 21 NOV*', '',
     block('Camp to Airport', 'Beliz Kuyumcuoglu', '+905300000006', 1, 'QR655', '15:00', '21 Nov', 'Minivan', ''),
   ].join('\n'));
-  // Send / Copy take the whole organised message; Mark sent ✓ ticks exactly its unsent trips (not next week's Saturday arrival).
-  await pick(page, 'Transfers', 'week');
-  await expect(page.locator('.wk-state')).toContainText('2 transfers not marked sent');
-  await page.click('#wkSend');
+  // «Send the whole week» sends the whole organised message; «Mark all sent ✓» ticks exactly its unsent trips (not next week's Saturday arrival).
+  await expect(page.locator('#transportRoot [data-week-count]')).toContainText('2 not marked sent');
+  await page.click('#transportRoot [data-send-week]');
   expect(await page.evaluate(() => decodeURIComponent(window.__opened.pop()).split('?text=')[1])).toBe(week);
-  await page.click('.wk-state button:has-text("Mark sent")');
+  expect(await page.evaluate(() => decodeURIComponent(window.__opened.length))).toBe('0');
+  await page.click('#transportRoot [data-week-tick]');
   await call(st, 'trip_update', 2);
+  await page.waitForTimeout(200);
   const ticked = st.calls.filter(c => c.t === 'trip_update').map(c => c.id).sort();
   expect(ticked).toEqual([T2(5), T2(6)]);
-  await expect(page.locator('.wk-state')).toContainText('All marked sent');
+  await expect(page.locator('#transportRoot [data-week-tick]')).toHaveCount(0);
   // A day with nothing: «No transfers» under the title.
-  expect(await page.evaluate(() => WeekUI.bodyOf('transfers', '2026-11-20'))).toBe('*TRANSFERS - FRI 20 NOV*\n\nNo transfers');
+  expect(await page.evaluate(() => TransportUI.dayMessage('2026-11-20'))).toBe('*TRANSFERS - FRI 20 NOV*\n\nNo transfers');
   // A changed trip (time moved after it was sent) is marked changed — the full message is sent again, never a diff.
-  await page.evaluate(id => { const t = TransportUI._state.trips.find(x => x.id === id); t.status = 'sent'; t.needs_resend = true; t.trip_time = '15:20'; WeekUI.render(); }, T2(3));
-  const again = await page.evaluate(() => WeekUI.bodyOf('transfers', 'week'));
+  await page.evaluate(id => { const t = TransportUI._state.trips.find(x => x.id === id); t.status = 'sent'; t.needs_resend = true; t.trip_time = '15:20'; TransportUI.render(); }, T2(3));
+  const again = await page.evaluate(() => TransportUI.weekMessage('2026-11-14'));
   expect(again).toContain('Airport to Camp _(changed)_\nSent Already');
   expect(again.split('\n')[0]).toBe('*TRANSFERS - 14 TO 21 NOV*');
   expect(again).not.toMatch(/UPDATE|^[+–] /m);
 });
 
-test('transfers message card: screenshots at 390 and 1280, no horizontal overflow', async ({ page }) => {
+test('Transport trips with «Send the whole week» and the count line: screenshots at 390 and 1280, no horizontal overflow', async ({ page }) => {
   const SH = require('path').join(__dirname, '..', 'test-results', 'transfers-message-shots');
   require('fs').mkdirSync(SH, { recursive: true });
   await openWeek(page);
-  await pick(page, 'Transfers', 'week');
+  await page.evaluate(() => WeekUI.toTransport());
   for (const [w, hgt] of [[1280, 900], [390, 844]]) {
     await page.setViewportSize({ width: w, height: hgt });
     await page.waitForTimeout(150);
     expect(await noOverflow(page)).toBe(true);
-    await page.locator('#wkMessage').screenshot({ path: `${SH}/sl-transfers-week-${w}.png` });
+    await expect(page.locator('#transportRoot [data-send-week]')).toBeInViewport();
+    await page.screenshot({ path: `${SH}/sl-transport-week-${w}.png`, fullPage: true });
   }
 });
 

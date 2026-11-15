@@ -12,8 +12,10 @@
 // the ledger as today and supabase/camp-trips.sql links his payment to the
 // trips by itself.
 //
-//   Trips      list by day (Sat–Fri week), WhatsApp to the «Send transfers to»
-//              contact, Sent ✓ / Confirmed ✓, «Time changed, resend».
+//   Trips      the one list of airport transfers (15 Nov 2026: Week → Transfers is gone), by day
+//              (Sat–Fri week): WhatsApp to the «Send transfers to» contact — a trip, «Send the
+//              whole day», «Send the whole week» (the message Week used to send, same builder) —
+//              Sent ✓ / Confirmed ✓, «Time changed, resend», the guests' confirmations.
 //   Reconcile  trips ↔ payments, like HQ → Month close → Reconcile.
 //   The Monday Guests import has one door, in Week (15 Nov 2026: «Week = guests and camp
 //   teams, Transport = drivers and money»): Week shows renderNext() as TransportUI.importHtml.
@@ -360,18 +362,24 @@
     const parts = [...by.entries()].sort((a, b) => b[1] - a[1]).map(([id, sum]) => `<span class="tr-owed-d">${h(driverById(id)?.name || 'No driver')} <b class="num">${money(sum)}</b></span>`);
     return `<button class="tr-owed" id="trOwed" onclick="TransportUI.setRec('${review && !parts.length ? 'payments' : 'airport'}')" title="Open Reconcile"><span class="tr-owed-l">Owed to drivers</span>${parts.length ? parts.join('') : '<span class="tr-owed-d">nothing</span>'}${review ? `<span class="tr-owed-d tr-owed-chk">${review} payment${review === 1 ? '' : 's'} to check</span>` : ''}</button>`;
   }
+  // Chip «N without time» and its filter share one rule: an airport transfer still to come with no flight time
+  // (held trips have their own chip «not in the latest Bookinglayer file»). Moved from Week → To check, 15 Nov 2026.
+  const noTimeTrip = t => isAirport(t) && !t.trip_time && counts(t) && !t.missing_since && !isDone(t);
+  const SPECIAL_FILTERS = ['resend', 'tosend', 'missing', 'notime'];
   function attentionStrip() {
     const now = colomboNow(); const in48 = addHours(now, 48);
     const resend = TR.trips.filter(t => isAirport(t) && t.needs_resend && t.status !== 'done').length;
     const toSend = TR.trips.filter(t => isAirport(t) && t.status === 'planned' && `${t.trip_date}T${t.trip_time || '23:59'}` >= now && `${t.trip_date}T${t.trip_time || '00:00'}` <= in48).length;
     const missing = TR.trips.filter(t => t.missing_since && !['cancelled', 'done', 'no_show'].includes(t.status) && !isDone(t)).length;
     const review = allLinks().filter(l => l.state === 'review').length;
+    const notime = TR.trips.filter(noTimeTrip).length;
     const chips = [];
     const tm = GT.addDaysIso(cToday(), 1);
     const order = TR.trips.filter(t => t.kind === RUN.kind && t.trip_date === tm && !t.payment_entry_id && (t.status === 'planned' || (t.status === 'sent' && t.needs_resend))).length;
     if (order) chips.push(`<button class="health-chip" onclick="TransportUI.openPlan()">${order} ${RUN.lower} run${order === 1 ? '' : 's'} for tomorrow — send the order</button>`);
     if (resend) chips.push(`<button class="health-chip" onclick="TransportUI.setView('trips','resend')">${resend} time changed — resend</button>`);
     if (toSend) chips.push(`<button class="health-chip" onclick="TransportUI.setView('trips','tosend')">${toSend} to send (next 48 h)</button>`);
+    if (notime) chips.push(`<button class="health-chip" onclick="TransportUI.setView('trips','notime')">${notime} without time</button>`);
     if (missing) chips.push(`<button class="health-chip" onclick="TransportUI.setView('trips','missing')">${missing} not in the latest Bookinglayer file</button>`);
     if (review) chips.push(`<button class="health-chip" onclick="TransportUI.setRec('payments')">${review} payment${review === 1 ? '' : 's'} to review</button>`);
     return chips.length ? `<div class="health-strip tr-strip">${chips.join('')}</div>` : '';
@@ -383,46 +391,40 @@
   }
 
   // ── Trips view ─────────────────────────────────────────────────────────
-  function tripState(t) {
-    if (t.payment_entry_id) return ['Paid', 'badge-green'];
-    if (t.status === 'cancelled') return ['Cancelled', 'badge-grey'];
-    if (t.status === 'no_show') return ['No-show', 'badge-grey'];
-    if (isDone(t)) return ['Done', 'badge-navy'];
-    if (t.status === 'confirmed') return ['Confirmed', 'badge-green'];
-    if (t.status === 'sent') return ['Sent', 'badge-blue'];
-    return ['Planned', 'badge-grey'];
-  }
   function renderTrips() {
     const ws = TR.week, we = GT.addDaysIso(ws, 6);
     const f = TR.filter;
     let list = TR.trips.filter(t => inWeek(t, ws));
-    const special = ['resend', 'tosend', 'missing'].includes(f);
+    const special = SPECIAL_FILTERS.includes(f);
     const totals = special ? '' : weekTotalsHtml(list);   // the whole week, whatever the Airport / Tuk-tuk pill says
-    if (['resend', 'tosend', 'missing'].includes(f)) list = TR.trips.filter(t => t.trip_date >= cToday() || f === 'resend');
+    const count = special ? '' : weekCountHtml(list, ws);
+    if (special) list = TR.trips.filter(t => t.trip_date >= cToday() || f === 'resend');
     if (f === 'airport') list = list.filter(isAirport);
     else if (f === 'tuktuk') list = list.filter(t => !isAirport(t));
     else if (f === 'resend') list = list.filter(t => isAirport(t) && t.needs_resend);
     else if (f === 'tosend') list = list.filter(t => isAirport(t) && t.status === 'planned');
     else if (f === 'missing') list = list.filter(t => t.missing_since && !['cancelled', 'no_show'].includes(t.status));
+    else if (f === 'notime') list = list.filter(noTimeTrip);
     const pill = (k, label) => `<button class="pill${f === k ? ' active' : ''}" onclick="TransportUI.setFilter('${k}')">${label}</button>`;
     const filters = `<div class="ov-filters tr-filters">
       <div class="period-picker"><button class="btn btn-s btn-sm btn-icon" title="Previous week" onclick="TransportUI.shiftWeek(-7)">${ic('chevron-left')}</button>
         <span class="period-picker-lbl tr-week">${fmtRange(ws, we)}</span>
         <button class="btn btn-s btn-sm btn-icon" title="Next week" onclick="TransportUI.shiftWeek(7)">${ic('chevron-right')}</button></div>
+      ${special ? '' : weekSendBtn(ws)}
       <div class="pills">${pill('all', 'All')}${pill('airport', 'Airport')}${pill('tuktuk', RUN.label)}</div></div>`;
     const days = [...new Set(list.map(t => t.trip_date))].sort();
-    if (!days.length) return filters + totals + `<div class="empty-state">${ic('truck')}<div class="empty-title">No trips this week</div><p>Trips come from the Guests file. Import it in Week.</p>
+    if (!days.length) return filters + count + totals + `<div class="empty-state">${ic('truck')}<div class="empty-title">No trips this week</div><p>Trips come from the Guests file. Import it in Week.</p>
       <button class="btn btn-s" onclick="TransportUI.toImport()">${ic('upload')} Import Guests file in Week</button></div>`;
     const c = contact();
     TR.runGroups = {};
-    return filters + totals + days.map(day => {
+    return filters + count + totals + days.map(day => {
       const dayTrips = list.filter(t => t.trip_date === day).sort((a, b) => (a.trip_time || '99').localeCompare(b.trip_time || '99'));
       const air = dayTrips.filter(t => isAirport(t) && !['cancelled', 'no_show'].includes(t.status));
       const tuk = dayTrips.filter(t => !isAirport(t));
       const sendable = GT.transfersTrips(TR.trips, { day, now: colomboNow() });   // = what «Send the whole day» sends
       return `<div class="card tr-day" id="trDay-${day}" data-day="${day}"><div class="card-hdr"><div><div class="card-title">${fmtDay(day)}</div>
           <div class="card-hint">${air.length} transfer${air.length === 1 ? '' : 's'}${tuk.length ? ` · ${tuk.length} ${RUN.lower} run${tuk.length === 1 ? '' : 's'} · ${money(tuk.reduce((s, t) => s + Number(t.expected_price || 0), 0))}` : ''}</div></div>
-          ${sendable.length > 1 || air.filter(guestCan).length > 1 ? `<div class="row tr-day-btns">${sendable.length > 1 ? `<button class="btn btn-s btn-sm" onclick="TransportUI.sendDay('${day}')" title="One WhatsApp to ${h(c ? c.name : 'the transport contact')} with every transfer of the day">${ic('send')} Send the whole day</button>
+          ${sendable.length >= 1 || air.filter(guestCan).length > 1 ? `<div class="row tr-day-btns">${sendable.length >= 1 ? `<button class="btn btn-s btn-sm" onclick="TransportUI.sendDay('${day}')" title="One WhatsApp to ${h(c ? c.name : 'the transport contact')} with every transfer of the day">${ic('send')} Send the whole day</button>
             <button class="btn btn-s btn-sm" onclick="TransportUI.tickDay('${day}')">${ic('check')} Sent ✓ all</button>` : ''}
             ${air.filter(guestCan).length > 1 ? `<button class="btn btn-s btn-sm" data-guest-day onclick="TransportUI.openGuestDay('${day}')" title="One WhatsApp per guest: the driver waits with a sign with their name">${ic('users')} Confirm with all guests of the day</button>` : ''}</div>` : ''}</div>
         <div class="tr-rows">${air.map(tripRow).join('')}${dayTrips.filter(t => isAirport(t) && ['cancelled', 'no_show'].includes(t.status)).map(tripRow).join('')}${tuk.length ? tuktukSummary(tuk, day) : ''}</div></div>`;
@@ -459,6 +461,28 @@
     const tile = (id, label, g, extra) => `<div class="kpi" data-total="${id}"><div class="kpi-label">${label}</div><div class="kpi-value">${money(g.sum)}</div><div class="kpi-sub">${split(g)}</div>${extra ? `<div class="kpi-sub tr-t-free">${h(extra)}</div>` : ''}</div>`;
     const all = { sum: A.sum + K.sum, paid: A.paid + K.paid, owed: A.owed + K.owed, planned: A.planned + K.planned, old: A.old + K.old };
     return `<div class="summary-grid tr-totals">${tile('airport', `Airport · ${A.n} transfer${A.n === 1 ? '' : 's'}`, A, freeLine(A.free))}${tile('tuktuk', `${RUN.label} · ${K.n} run${K.n === 1 ? '' : 's'}`, K, freeLine(K.free))}${tile('week', 'Week total', all, '')}</div>`;
+  }
+  // «Transfers booked» of the old Week tab, as one line (15 Nov 2026): arrivals and departures of the week, with
+  // the persons — the same trips as the Airport tile (cancelled and no-show out), the Airport pill lists them.
+  function weekCount(list) {
+    const air = list.filter(t => counts(t) && isAirport(t));
+    const side = k => { const xs = air.filter(t => t.kind === k); return { n: xs.length, pax: xs.reduce((s, t) => s + (Number(t.pax) || 1), 0) }; };
+    return { arr: side('airport_arrival'), dep: side('airport_departure') };
+  }
+  function weekCountHtml(list, ws) {
+    const C = weekCount(list); if (!C.arr.n && !C.dep.n) return '';
+    const p = n => `${n} ${n === 1 ? 'person' : 'persons'}`;
+    const todo = weekTickIds(ws).length;
+    return `<div class="hint tr-count" data-week-count><span>Arrivals ${C.arr.n} · ${p(C.arr.pax)}</span><span class="tr-count-sep">|</span><span>Departures ${C.dep.n} · ${p(C.dep.pax)}</span>${todo
+      ? `<span class="tr-count-tick">· ${todo} not marked sent · <button class="btn-link" data-week-tick onclick="TransportUI.tickWeek()">Mark all sent ✓</button></span>` : ''}</div>`;
+  }
+  // «Send the whole week»: the whole-week message that Week → Transfers sent (GT.transfersText, day 'week'), byte for byte.
+  const weekTrips = ws => GT.transfersTrips(TR.trips, { day: 'week', ws, now: colomboNow() });
+  const weekTickIds = ws => weekTrips(ws).filter(t => !t.payment_entry_id && !isDone(t) && (t.status === 'planned' || t.needs_resend)).map(t => t.id);
+  function weekSendBtn(ws) {
+    if (!weekTrips(ws).length) return '';
+    const c = contact();
+    return `<button class="btn btn-s btn-sm" data-send-week onclick="TransportUI.sendWeek()" title="One WhatsApp to ${h(c ? c.name : 'the transport contact')} with every transfer of the week still to come">${ic('send')} Send the whole week</button>`;
   }
   function tripRow(t) {
     const ps = payState(t);
@@ -605,6 +629,16 @@
     if (!GT.transfersTrips(TR.trips, { day, now: colomboNow() }).length) return;
     openWa(dayMessage(day));
   }
+  // The week (Sat–Fri + the closing Saturday's departures): *TRANSFERS - 14 TO 21 NOV*, a bold heading per day.
+  function weekMessage(ws) { return GT.dressTitles(GT.transfersText(TR.trips, { day: 'week', ws: ws || TR.week, now: colomboNow(), cfg: GTC }), cToday()); }
+  function sendWeek() {
+    const ws = TR.week; if (!weekTrips(ws).length) return;
+    openWa(weekMessage(ws));
+    const c = contact();
+    say(`WhatsApp opened for ${c ? c.name : 'the transport contact'} — tap «Mark all sent ✓» once it is sent`);
+  }
+  // Exactly the trips of the week message (never next week's Saturday arrivals).
+  const tickWeek = () => tickIds(weekTickIds(TR.week));
   const snapshot = t => ({ trip_date: t.trip_date, trip_time: t.trip_time, flight: t.flight, pax: t.pax, place: t.place });
   async function tick(id, what) {
     const t = TR.trips.find(x => x.id === id); if (!t) return;
@@ -613,7 +647,7 @@
       : { status: 'confirmed', confirmed_at: new Date().toISOString() };
     if (await updateTrip(id, patch)) { render(); say(what === 'sent' ? 'Marked as sent' : 'Marked as confirmed'); }
   }
-  // The trips of the Week → Transfers message, ticked Sent ✓ by id (the message is the week or a day of it).
+  // The trips of the «Send the whole week» message, ticked Sent ✓ by id.
   async function tickIds(ids) {
     const list = TR.trips.filter(t => (ids || []).includes(t.id) && isAirport(t) && !t.payment_entry_id && !isDone(t) && (t.status === 'planned' || t.needs_resend));
     for (const t of list) await updateTrip(t.id, { status: 'sent', sent_at: new Date().toISOString(), sent_snapshot: snapshot(t), needs_resend: false });
@@ -1567,8 +1601,8 @@
   window.TransportUI = {
     render, closeModal, setView(v, f) { if (v === 'next') return toImport(); TR.view = v; if (f) TR.filter = f; render(); }, setFilter(f) { TR.filter = f; render(); },
     toImport, setWeek,
-    shiftWeek(n) { TR.week = GT.addDaysIso(TR.week, n); TR.filter = ['resend', 'tosend', 'missing'].includes(TR.filter) ? 'all' : TR.filter; render(); },
-    send, sendDay, dayMessage, undoTick, undoGuestConfirmed, ask, askText, askedOn, needsInfo, tick, tickDay, tickIds, openTrip, saveTrip, setStatus, openAddTransfer, saveTransfer,
+    shiftWeek(n) { TR.week = GT.addDaysIso(TR.week, n); TR.filter = SPECIAL_FILTERS.includes(TR.filter) ? 'all' : TR.filter; render(); },
+    send, sendDay, dayMessage, weekMessage, sendWeek, tickWeek, weekCount, undoTick, undoGuestConfirmed, ask, askText, askedOn, needsInfo, tick, tickDay, tickIds, openTrip, saveTrip, setStatus, openAddTransfer, saveTransfer,
     openTuktuk, openPlan, tukSet, tukMode, tap, untap, removeRun, removeTrip, planAdd, planStep, sendOrder, orderText,
     openRuns, saveRuns, deleteRuns, payState, weekTotals, keepTrip, inWeek, tukPeople, presetPrice, bankCandidates, camp: CC, RUN,
     confirmGuest, guestConfirmed, confirmText, guestState, guestHtml, openGuestDay, pickFile, setExportDate, saveImport,
@@ -1580,7 +1614,6 @@
     openDrivers, addDriver, saveDrivers,
     // for tests and the coordinator
     importHtml: renderNext,   // the Week tab renders the same import
-    tripState,                // the Week tab shows the same status badge
     _state: TR, load, isDone, reconcileStatus, colomboNow, campNow: colomboNow, check: unlinkedCheck, bankCheck: bankUnlinkedCheck, TRIPS_GO_LIVE, goLive,
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();

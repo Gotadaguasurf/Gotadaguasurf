@@ -5,6 +5,11 @@
 #transportRoot .tr-strip { padding: 0; margin-top: var(--sp-3); }
 #transportRoot .tr-filters { display: flex; gap: var(--sp-3); flex-wrap: wrap; align-items: center; margin-bottom: var(--sp-4); }
 #transportRoot .tr-filters .period-picker { display: inline-flex; align-items: center; gap: var(--sp-2); }
+/* The week's arrivals / departures in one line under the week picker (was «Transfers booked» in Week, 15 Nov 2026). */
+#transportRoot .tr-filters:has(+ .tr-count) { margin-bottom: var(--sp-2); }
+#transportRoot .tr-count { display: flex; flex-wrap: wrap; align-items: center; gap: 4px var(--sp-2); margin: 0 0 var(--sp-4); }
+#transportRoot .tr-count-sep { color: var(--border-strong, #c8d3df); }
+#transportRoot .tr-count .btn-link { height: auto; padding: 0 2px; }
 #transportRoot .tr-week { min-width: 92px; text-align: center; }
 #transportRoot .card { margin-bottom: var(--sp-4); }
 #transportRoot .card-hdr { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--sp-3); flex-wrap: wrap; }

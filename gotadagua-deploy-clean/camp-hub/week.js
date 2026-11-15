@@ -6,20 +6,25 @@
 //
 // Francisco's overview of the week (full view only; Nadith's ?view=local has
 // no Week tab). The Monday Bookinglayer Guests import lands in camp_week_guests
-// (supabase/camp-trips.sql) and fills six tabs:
+// (supabase/camp-trips.sql) and fills five tabs:
 //
-//   Overview    guests in camp per night, and per day: arrivals, departures,
-//               transfers, meals, surf students
+//   Overview    guests in camp per night, and per day: arrivals (and who comes on
+//               their own), departures, transfers (read-only, a tap opens Transport
+//               on that day), meals, surf students
 //   Rooms       occupancy grid (beds × nights)        + the Cleaning message
 //   Kitchen     allergies, diets, meals per day       + the Kitchen message
 //   Surf        students per day, groups by level     + the Surf message
-//   Transfers   every airport trip with its status    + the Transfers message
 //   Guests      searchable list, «Copy list»
+//
+// The rule (15 Nov 2026): Week = the guests and the camp teams (no money); Transport =
+// everything with a driver (the airport transfers, their message, Sent / Confirmed, the
+// guests' confirmations) and the money. Week → Transfers is gone: Transport → Trips is
+// the one list of transfers, with «Send the whole day» / «Send the whole week».
 //
 // A message is one WhatsApp text per team, for a day or the whole week: Copy or
 // «Send to <contact>» (wa.me). Each send is stored in camp_week_messages
 // (supabase/camp-week.sql) so a re-import shows «Changed since sent → Send
-// update». Transfers keep their sent state on the trips (camp_trips).
+// update».
 //
 // Where the import lives: the Guests import is the first thing Francisco does
 // on Monday, so Week has the «Import Guests file» button at the top and shows
@@ -58,7 +63,7 @@
   // The tabs of the page; `team` = whose message sits at the bottom of the tab.
   const TABS = [
     { k: 'overview', label: 'Overview' }, { k: 'rooms', label: 'Rooms', team: 'cleaning' }, { k: 'kitchen', label: 'Kitchen', team: 'kitchen' },
-    { k: 'surf', label: 'Surf', team: 'surf' }, { k: 'transfers', label: 'Transfers', team: 'transfers' }, { k: 'guests', label: 'Guests', team: 'guests' },
+    { k: 'surf', label: 'Surf', team: 'surf' }, { k: 'guests', label: 'Guests', team: 'guests' },
   ];
   // The rooms of the camp, so a room that is empty all week still shows in the grid.
   // `beds` only for shared rooms (free beds are counted); private rooms are free or taken as a whole.
@@ -480,15 +485,11 @@
     return p;
   }
 
-  // Transfers: one builder with Transport's «Send the whole day» (GuestsTrips.transfersTrips / transfersText,
-  // 15 Nov): every transfer not yet happened — sent, confirmed, guest told and paid-ahead ones in (sent ones
-  // marked) — the week = Transport's week (Sat–Fri + the closing Saturday's departures).
-  const tripDone = t => (window.TransportUI && TransportUI.isDone) ? TransportUI.isDone(t) : t.status === 'done';
+  // Transfers live in Transport (15 Nov 2026); Week reads them for the Overview and the «N to send» line.
   const tripSort = (a, b) => (a.trip_date + (a.trip_time || '99')).localeCompare(b.trip_date + (b.trip_time || '99'));
   const tripsFor = (day, ws) => GT.transfersTrips(TR().trips || [], { day, ws, now: colomboNow() });
   // Not yet sent to the driver (the «Mark sent ✓» line): planned or changed, unpaid — = TransportUI.tickIds.
   const toSend = t => !t.payment_entry_id && (t.status === 'planned' || (t.status === 'sent' && t.needs_resend) || (t.status === 'confirmed' && t.needs_resend));
-  const transfersParts = (day, ws) => [L(GT.transfersText(TR().trips || [], { day, ws, now: colomboNow(), cfg: GTC }))];
   function guestsList(rows, day, ws) {
     const gs = rows.filter(g => counted(g) && (day === 'week' ? inWeek(g, ws) : inCamp(g, day) || g.check_out === day)).sort(byStay);
     return gs;
@@ -506,7 +507,6 @@
     if (team === 'cleaning') { const lg = lang || CLEAN_LANG; return day === 'week' ? cleaningWeek(rows, ws, lg) : cleaningDay(rows, day, lg); }
     if (team === 'kitchen') return day === 'week' ? kitchenWeek(rows, ws) : kitchenDay(rows, day);
     if (team === 'surf') return day === 'week' ? surfWeek(rows, ws) : surfDay(rows, day);
-    if (team === 'transfers') return transfersParts(day, ws);
     if (team === 'guests') { const gs = guestsList(rows, day, ws); return [T(`Guests – ${day === 'week' ? 'week ' + range(ws, add(ws, 7)) : fdm(day)} (${gs.length})`), G, ...gs.map(g => L(guestLine(g, ws, day)))]; }
     return [];
   }
@@ -524,7 +524,6 @@
   // real, current message, never an UPDATE header or a diff. «Changed since sent» only tells
   // Francisco that the team has an old version.
   function updateText(oldText, newText) { return newText; }
-  function transfersUpdate(list) { return GT.whatsappDayText(list, GTC); }
 
 
   // ── Data ────────────────────────────────────────────────────────────────
@@ -585,9 +584,8 @@
   }
   function changes(ws) {
     const rows = rowsOf(ws); const out = [];
+    // (an old stored transfers message is never compared: the transfers' changes are Transport's chip «time changed — resend»)
     latestMsgs(ws).forEach(m => { if (m.team !== 'transfers' && hash(body(m.team, m.day, ws, rows)) !== m.hash) out.push({ team: m.team, day: m.day }); });
-    const days = [...new Set(tripsFor('week', ws).filter(t => t.needs_resend).map(t => t.trip_date))].sort();
-    days.forEach(d => out.push({ team: 'transfers', day: d }));
     return out;
   }
   const changeLabel = c => `${TEAMS.find(t => t.k === c.team).label} (${c.day === 'week' ? 'Week' : DAY[GT.weekday(c.day)]})`;
@@ -620,8 +618,6 @@
     if (gaps.length) items.push({ tab: 'guests', short: `${plural(gaps.length, 'guest')} leaving and coming back?`, text: `${plural(gaps.length, 'guest')} with two bookings and nights with no booking in between – leaving and coming back, or staying?`, who: gaps.map(x => `${x.a.guest_name} (out ${fdm(x.a.check_out)}, back ${fdm(x.b.check_in)})`).join(', ') });
     const dates = live.filter(dateDiff);
     if (dates.length) items.push({ tab: 'guests', short: `${plural(dates.length, 'guest')} with other arrival dates`, text: `${plural(dates.length, 'guest')} with arrival or departure dates that differ from the room dates – counted by the room dates`, who: dates.map(g => `${g.guest_name} (${dateDiff(g)})`).join(', ') });
-    const noTime = tripsFor('week', ws).filter(t => !t.trip_time);
-    if (noTime.length) items.push({ tab: 'transfers', short: `${plural(noTime.length, 'transfer')} without time`, text: `${plural(noTime.length, 'transfer')} without flight time – ask the guest`, who: noTime.map(t => t.guest_names || 'Guest').join(', ') });
     const carry = wk.filter(g => g._st === 'carry');
     if (carry.length) items.push({ tab: 'guests', short: `${carry.length} still here?`, text: `${plural(carry.length, 'guest')} in camp ${carry.length === 1 ? 'is' : 'are'} not in the latest Guests file – still here?`, guests: carry, kind: 'carry' });
     const dropped = wk.filter(g => g._st === 'dropped');
@@ -711,7 +707,6 @@
   // the night before; dinner = who sleeps tonight — the numbers of the Kitchen message.
   // When a guest coming on their own arrives: the Arrival time, or a time typed in the flight field («13:00», «02h50»).
   const arriveAt = g => g.arrival_time || ((String(g.arrival_flight || '').trim().match(/^(\d{1,2})[:h](\d{2})$/i) || []).slice(1).map(x => x.padStart(2, '0')).join(':')) || '';
-  const flightOf = g => { const f = String(g.arrival_flight || '').trim(); return (CC.icaoFlights ? /^[A-Za-z]{2,3}\s?\d{2,4}\b/ : /^[A-Za-z]{2}\s?\d{2,4}\b/).test(f) ? f : ''; };
   const airportTrip = t => (t.kind === 'airport_arrival' || t.kind === 'airport_departure') && !['cancelled', 'merged'].includes(t.status);
   function weekModel(ws, rows) {
     const live = rows.filter(counted);
@@ -802,7 +797,7 @@
   function render() {
     const root = $('weekRoot'); if (!root || !enabled()) return;
     const ws = W.week;
-    const head = `<div class="section-head page-head"><div><div class="section-title">Week</div><div class="section-sub">Arrivals, departures, rooms, meals, surf and transfers · messages for the team</div></div>
+    const head = `<div class="section-head page-head"><div><div class="section-title">Week</div><div class="section-sub">Arrivals, departures, rooms, meals and surf · messages for the camp teams</div></div>
       <div class="exp-top-actions wk-actions">
         <button class="btn btn-s" onclick="WeekUI.setMode('${W.mode === 'import' ? 'lists' : 'import'}')">${ic(W.mode === 'import' ? 'arrow-left' : 'upload')} ${W.mode === 'import' ? 'Back to the week' : 'Import Guests file'}</button>
         <button class="btn btn-s" onclick="WeekUI.openContacts()">${ic('phone')} Contacts</button></div></div>`;
@@ -844,7 +839,7 @@
       return `<button class="pill${W.tab === t.k ? ' active' : ''}" role="tab" data-tab="${t.k}" onclick="WeekUI.setTab('${t.k}')">${t.label}${n ? `<span class="count wk-n" title="To check">${n}</span>` : ''}${dot}</button>`; }).join('')}</div>`;
     const ctx = { ws, rows, M, checks, ch };
     const view = W.tab === 'rooms' ? roomsTab(ctx) : W.tab === 'kitchen' ? kitchenTab(ctx) : W.tab === 'surf' ? surfTab(ctx)
-      : W.tab === 'transfers' ? transfersTab(ctx) : W.tab === 'guests' ? guestsTab(ctx) : overviewTab(ctx);
+      : W.tab === 'guests' ? guestsTab(ctx) : overviewTab(ctx);
     root.innerHTML = head + filters + notSaved + tabs + chHtml + `<div class="wk-view wk-view-${W.tab}">${view}</div>`;
     if (W.tab === 'guests' && W.q) filterGuests(W.q);
     const tabsEl = root.querySelector('.wk-tabs'), on = tabsEl && tabsEl.querySelector('.pill.active');   // keep the active tab in sight on a phone
@@ -894,12 +889,6 @@
   }
   // Bars to scale: height in % of the tallest value of the chart.
   const pct = (n, max) => max ? Math.round(n / max * 1000) / 10 : 0;
-  function tripBadge(t) {
-    if (t.needs_resend && !tripDone(t) && !t.payment_entry_id && t.status !== 'no_show') return ['Time changed', 'badge-amber'];
-    if (window.TransportUI && TransportUI.tripState) return TransportUI.tripState(t);
-    return t.status === 'no_show' ? ['No-show', 'badge-grey'] : t.status === 'confirmed' ? ['Confirmed', 'badge-green'] : t.status === 'sent' ? ['Sent', 'badge-blue'] : ['Planned', 'badge-grey'];
-  }
-  const dirBadge = t => t.kind === 'airport_departure' ? '<span class="badge badge-navy">Departure</span>' : '<span class="badge badge-blue">Arrival</span>';
 
   // The message of a tab's team: day pills, the text, Copy + the one blue Send.
   function messageCard(ctx, team) {
@@ -909,17 +898,6 @@
     const dayPills = `<div class="pills wk-days">${days.map(d => `<button class="pill${day === d ? ' active' : ''}" data-day="${d}" onclick="WeekUI.setDay('${d}')">${fd(d)}${dot(d)}</button>`).join('')}<button class="pill${day === 'week' ? ' active' : ''}" data-day="week" onclick="WeekUI.setDay('week')">Week${dot('week')}</button></div>`;
     const when = day === 'week' ? 'the week' : fdm(day);
     const t = TEAMS.find(x => x.k === team); const c = contactOf(team);
-    if (team === 'transfers') {
-      const list = tripsFor(day, ws);
-      const text = dress(body('transfers', day, ws, rows), cToday());
-      const toTick = list.filter(toSend).length;
-      return `<div class="card wk-card wk-msgcard" id="wkMessage">${cardHead('Message', `Every transfer still to come · ${h(when)} · already sent ones are marked`)}
-        <div class="card-body">${dayPills}${list.length ? `<div class="wk-msg" id="wkMsg">${waHtml(text)}</div>
-        <div class="wk-foot"><div class="wk-foot-btns"><button class="btn btn-s" onclick="WeekUI.copy()">${ic('copy')} Copy</button>
-          <button class="btn btn-p" id="wkSend" onclick="WeekUI.send()">${ic('send')} ${'Send to ' + h(c ? c.name : 'Transfers')}</button></div>
-          <div class="hint wk-state">${toTick ? `${plural(toTick, 'transfer')} not marked sent · <button class="btn-link" onclick="WeekUI.tickTransfers()">Mark sent ✓</button>` : 'All marked sent'}${c && c.phone ? '' : ` · <button class="btn-link" onclick="WeekUI.openContacts()">add phone</button>`}</div></div>`
-        : `<div class="wk-msg" id="wkMsg">${waHtml(text)}</div><div class="hint wk-none">No transfers still to come ${day === 'week' ? 'this week' : 'on this day'}.</div>`}</div></div>`;
-    }
     const text = body(team, day, ws, rows);
     const sent = sentOf(team, day, ws);
     const changed = sent && sent.hash !== hash(text);
@@ -984,10 +962,15 @@
   function dayRow(x, M) {
     const arr = x.arrivals.length, dep = x.departures.length;
     const blk = (cls, icon, label, n, sign, inner) => `<div class="wk-bc ${cls}${/^<span class="wk-nil">/.test(inner) ? ' empty' : ''}"><div class="wk-bl"><span class="wk-blt">${ic(icon)} ${label}</span>${n ? `<b class="wk-bn num">${sign}${n}</b>` : ''}</div><div class="wk-bi">${inner}</div></div>`;
-    const trips = x.trips.map(t => { const [st, cls] = tripBadge(t); return `<div class="wk-tl"><b class="num">${h(t.trip_time || 'time?')}</b> <span class="wk-dir ${t.kind === 'airport_departure' ? 'out' : 'in'}">${t.kind === 'airport_departure' ? 'out' : 'in'}</span> ${h(t.guest_names || 'Guest')} <span class="badge ${cls}">${st}</span></div>`; }).join('');
-    const own = x.own.filter(arriveAt);
-    const ownHtml = own.length ? `<div class="wk-tl wk-own">On their own: ${own.slice().sort((a, b) => arriveAt(a).localeCompare(arriveAt(b))).map(g => `${h(arriveAt(g))} ${h(g.guest_name)}`).join(', ')}</div>` : '';
-    const extra = x.closing ? '' : (x.staying.length ? `<div class="wk-tl wk-own">Staying on (new booking): ${x.staying.map(g => h(g.guest_name)).join(', ')}</div>` : '')
+    // Transfers: read-only (time, in / out, name — no status, so Week and Transport never disagree); a tap opens
+    // Transport → Trips on this week and this day, where they are sent, confirmed and edited.
+    const trips = x.trips.map(t => `<div class="wk-tl"><b class="num">${h(t.trip_time || 'time?')}</b> <span class="wk-dir ${t.kind === 'airport_departure' ? 'out' : 'in'}">${t.kind === 'airport_departure' ? 'out' : 'in'}</span> ${h(t.guest_names || 'Guest')}</div>`).join('');
+    const trf = trips ? `<button type="button" class="wk-trlink" onclick="WeekUI.toTransport('${x.d}')" title="Open in Transport">${trips}<span class="wk-trgo">Transport ${ic('chevron-right')}</span></button>` : '';
+    // Guests coming on their own are people information: they sit with the arrivals (with the time they gave, or without one).
+    const own = x.own.filter(arriveAt), untimed = x.own.filter(g => !arriveAt(g));
+    const ownHtml = (own.length ? `<div class="wk-tl wk-own">On their own: ${own.slice().sort((a, b) => arriveAt(a).localeCompare(arriveAt(b))).map(g => `${h(arriveAt(g))} ${h(g.guest_name)}`).join(', ')}</div>` : '')
+      + (untimed.length ? `<div class="wk-tl wk-own wk-untimed">On their own, no arrival time given: ${untimed.map(g => h(g.guest_name)).join(', ')}</div>` : '');
+    const extra = x.closing ? '' : ownHtml + (x.staying.length ? `<div class="wk-tl wk-own">Staying on (new booking): ${x.staying.map(g => h(g.guest_name)).join(', ')}</div>` : '')
       + x.moves.map(m => `<div class="wk-tl wk-own">Room move: ${h(m.g.guest_name)} → ${h(m.r.label)}</div>`).join('');
     const c = x.courses; const st = x.students.length;
     const surf = x.closing ? '<span class="wk-nil">–</span>' : st ? `<b class="num">${st}</b> ${st === 1 ? 'student' : 'students'}
@@ -998,7 +981,7 @@
         <div class="wk-bnight">${x.closing ? 'Check-out day' : `<b class="num">${x.sleep}</b> in camp tonight${x.outside ? `<span class="wk-bout">+ ${x.outside} outside, for meals</span>` : ''}`}</div></div>
       ${blk('arr', 'login', 'Arrivals', x.closing ? 0 : arr, '+', x.closing ? (arr ? `<span class="wk-nil">${arr} arriving · next week</span>` : '<span class="wk-nil">–</span>') : (arr ? byRoom(x.arrivals, firstRoom) : '<span class="wk-nil">None</span>') + extra)}
       ${blk('dep', 'logout', 'Departures', x.roomOuts.length, '−', x.roomOuts.length ? outsByRoom(x.roomOuts) : '<span class="wk-nil">None</span>')}
-      ${blk('trf', 'truck', 'Transfers', 0, '', trips || ownHtml ? trips + ownHtml : '<span class="wk-nil">None</span>')}
+      ${blk('trf', 'truck', 'Transfers', 0, '', trf || '<span class="wk-nil">None</span>')}
       ${blk('meal', 'coffee', 'Meals', 0, '', `<span class="wk-meal"><b class="num">${x.breakfast}</b> breakfast</span>${x.closing ? '' : `<span class="wk-meal"><b class="num">${x.dinner}</b> dinner</span>`}`)}
       ${blk('srf', 'wave', 'Surf', 0, '', surf)}</div>`;
   }
@@ -1012,7 +995,9 @@
       const sent = latestMsgs(ws).filter(m => m.team === t.k); const changed = ch.filter(x => x.team === t.k).length;
       state = changed ? 'Changed since sent' : sent.length ? `Sent ${stampOf(sent[0].sent_at)}` : 'Not sent'; cls = changed ? 'badge-amber' : sent.length ? 'badge-green' : 'badge-grey';
     }
-    return `<button class="wk-team" onclick="WeekUI.go('${t.k}','${W.day}')"><span class="wk-team-n"><b>${h(t.label)}</b><span class="cell-sub">${h(c ? c.name + (c.phone ? '' : ' · no phone yet') : 'No contact yet')}</span></span>
+    // Transfers: the state only; the message is sent from Transport (the row opens it on this week).
+    const sub = t.k === 'transfers' ? `${c ? c.name : 'No contact yet'} · in Transport` : (c ? c.name + (c.phone ? '' : ' · no phone yet') : 'No contact yet');
+    return `<button class="wk-team" data-team="${t.k}" onclick="WeekUI.go('${t.k}','${W.day}')"><span class="wk-team-n"><b>${h(t.label)}</b><span class="cell-sub">${h(sub)}</span></span>
       <span class="badge ${cls}">${h(state)}</span>${ic('chevron-right')}</button>`;
   }
 
@@ -1112,48 +1097,6 @@
       ${yogis.length ? line(`Yoga ${YOGA_TIME}`, yogis.length, h(yogis.map(g => g.guest_name).join(', '))) : ''}
       ${noLessons.length ? line('No lessons booked', noLessons.length, h(noLessons.map(g => { const w = partOfWeek(g, ws); return g.guest_name + (w ? ` (${w})` : ''); }).join(', '))) : ''}</div></div>` : '';
     return checkBlock(ctx, 'surf') + chart + levels + notes + messageCard(ctx, 'surf');
-  }
-
-  // ── Transfers ───────────────────────────────────────────────────────────
-  // «Ask guest for flight & time» — same action as in Transport (TransportUI.ask).
-  function askBtn(t) {
-    // Flight and time known → «Confirm with guest» and its states, drawn by Transport (TransportUI.guestHtml).
-    if (window.TransportUI && TransportUI.guestHtml && TransportUI.needsInfo && !TransportUI.needsInfo(t)) return TransportUI.guestHtml(t);
-    const T = window.TransportUI; if (!T || !T.needsInfo || !T.needsInfo(t) || t.payment_entry_id || ['cancelled', 'no_show'].includes(t.status)) return '';
-    const what = !t.flight && !t.trip_time ? 'flight & time' : !t.flight ? 'flight' : 'time';
-    const on = T.askedOn(t.id);
-    return `<span class="wk-ask"><button class="btn btn-s btn-sm" onclick="TransportUI.ask('${t.id}')">Ask guest for ${what}</button>${on ? ` <span class="hint">asked ${h(fdm(on))}</span>` : ''}</span>`;
-  }
-  function transfersTab(ctx) {
-    const { M } = ctx;
-    const all = M.days.flatMap(x => x.trips);
-    const cost = all.filter(t => t.status !== 'no_show').reduce((s, t) => s + Number(t.expected_price || 0), 0);
-    const days = M.days.filter(x => x.trips.length || x.own.length);
-    const tripRow = t => { const [st, cls] = tripBadge(t);
-      return `<div class="wk-g wk-trip"><span class="wk-time num">${h(t.trip_time || 'time?')}</span><span class="wk-tmain"><span class="wk-g1">${dirBadge(t)} <b>${h(t.guest_names || 'Guest')}</b></span>
-        <span class="cell-sub">${h(t.flight || 'flight?')} · ${t.pax} ${t.pax === 1 ? 'person' : 'persons'}${t.vehicle ? ' · ' + h(t.vehicle) : ''}${t.guest_phone ? ' · ' + h(t.guest_phone) : ''}</span>${askBtn(t)}</span><span class="badge ${cls}">${st}</span></div>`; };
-    const ownRow = g => `<div class="wk-g wk-trip own"><span class="wk-time num">${h(arriveAt(g))}</span><span class="wk-tmain"><span class="wk-g1"><b>${h(g.guest_name)}</b></span>
-      <span class="cell-sub">arrives around this time${flightOf(g) ? ' · ' + h(flightOf(g)) : ''}${g.phone ? ' · ' + h(g.phone) : ''}</span></span><span class="badge badge-grey">Own way</span></div>`;
-    const dayHtml = x => {
-      const timed = x.own.filter(arriveAt), untimed = x.own.filter(g => !arriveAt(g));
-      const rows = [...x.trips.map(t => [t.trip_time || '99', tripRow(t)]), ...timed.map(g => [arriveAt(g), ownRow(g)])].sort((a, b) => a[0].localeCompare(b[0])).map(r => r[1]).join('');
-      return `<div class="wk-tday" id="wkTr-${x.d}"><div class="wk-tdh"><b>${h(fdm(x.d))}</b>${isToday(x.d) ? ' <span class="badge badge-blue">Today</span>' : ''}<span class="cell-sub">${[x.trips.length ? plural(x.trips.length, 'transfer') : '', x.own.length ? `${x.own.length} on their own` : ''].filter(Boolean).join(' · ')}</span></div>
-        <div class="wk-rows">${rows}${untimed.length ? `<div class="wk-g wk-untimed"><span class="section-lbl">On their own, no arrival time given</span><span class="cell-sub">${untimed.map(g => h(g.guest_name)).join(', ')}</span></div>` : ''}</div></div>`; };
-    // Who has an airport transfer booked, arrivals and departures apart (Miguel, 13 Nov:
-    // «I need to see good who has the transfers from the airport booked»).
-    const byWhen = (a, b) => (a.trip_date + (a.trip_time || '99')).localeCompare(b.trip_date + (b.trip_time || '99'));
-    const arrT = all.filter(t => t.kind === 'airport_arrival').sort(byWhen), depT = all.filter(t => t.kind === 'airport_departure').sort(byWhen);
-    const people = list => list.filter(t => !['cancelled', 'no_show'].includes(t.status)).reduce((s, t) => s + (Number(t.pax) || 1), 0);
-    const bookedRow = t => { const [st, cls] = tripBadge(t);
-      return `<div class="wk-g wk-trip wk-booked"><span class="wk-bwhen"><b>${h(fdm(t.trip_date))}</b><span class="num">${h(t.trip_time || 'time?')}</span></span><span class="wk-tmain"><span class="wk-g1"><b>${h(t.guest_names || 'Guest')}</b> <span class="hint">· ${t.pax} ${t.pax === 1 ? 'person' : 'persons'}</span></span>
-        <span class="cell-sub">${h(t.flight || 'flight?')}${t.vehicle ? ' · ' + h(t.vehicle) : ''}${t.guest_phone ? ' · ' + h(t.guest_phone) : ''}</span>${askBtn(t)}</span><span class="badge ${cls}">${st}</span></div>`; };
-    const sect = (title, sub, list) => `<div class="wk-bsec"><div class="wk-tdh"><b>${title}</b><span class="cell-sub">${list.length ? `${plural(list.length, 'transfer')} · ${plural(people(list), 'person')}` : 'none booked'} · ${sub}</span></div>
-      <div class="wk-rows">${list.length ? list.map(bookedRow).join('') : '<div class="wk-g hint">No transfer booked.</div>'}</div></div>`;
-    const booked = `<div class="card wk-card wk-bookedcard">${cardHead('Transfers booked', 'Everyone with an airport transfer this week — from the Guests file')}
-      ${sect(`${ic('login')} Arrivals`, 'airport → camp', arrT)}${sect(`${ic('logout')} Departures`, 'camp → airport', depT)}</div>`;
-    const card = `<div class="card wk-card">${cardHead('Day by day', `${plural(all.length, 'transfer')} this week${cost ? ` · ${h(money(cost))} expected` : ''} · ${IS_SL ? 'tuk-tuks' : 'van runs'} and paying drivers stay in Transport`, toMsgBtn('Transfers message'))}
-      ${days.length ? days.map(dayHtml).join('') : '<div class="card-body hint">No airport transfers and no arrivals this week.</div>'}</div>`;
-    return checkBlock(ctx, 'transfers') + booked + card + messageCard(ctx, 'transfers');
   }
 
   // ── Guests ──────────────────────────────────────────────────────────────
@@ -1298,7 +1241,6 @@
   function currentText() {
     const ws = W.week; const rows = rowsOf(ws);
     if (W.team === 'guests') return body('guests', W.day, ws, rows);
-    if (W.team === 'transfers') return dress(body('transfers', W.day, ws, rows), cToday());   // the whole organised message
     const text = body(W.team, W.day, ws, rows); const sent = sentOf(W.team, W.day, ws);
     return { text, out: dress(sent && sent.hash !== hash(text) ? updateText(sent.text, text, W.day, ws) : text, cToday()) };
   }
@@ -1318,7 +1260,6 @@
     const c = contactOf(W.team);
     const out = typeof t === 'string' ? t : t.out;
     window.open(GT.whatsappUrl(c && c.phone || '', out), '_blank', 'noopener');
-    if (W.team === 'transfers') { say(`WhatsApp opened for ${c ? c.name : 'the transfers contact'} — mark the transfers sent once it is sent`); return; }
     record(t.text);
   }
   async function record(text) {
@@ -1343,13 +1284,6 @@
     if (error) { say("Couldn't undo — " + (error.message || 'error'), 'err'); return; }
     const entry = W.cache[u.ws]; if (entry) entry.msgs = entry.msgs.filter(m => m.id !== u.id);
     render(); say('Marked as not sent');
-  }
-  async function tickTransfers() {
-    if (!window.TransportUI) return;
-    // Exactly the trips of the message (the closing Saturday's arrivals belong to next week's message).
-    const ids = tripsFor(W.day, W.week).filter(toSend).map(t => t.id);
-    if (TransportUI.tickIds) await TransportUI.tickIds(ids); else for (const d of [...new Set(tripsFor(W.day, W.week).map(t => t.trip_date))]) await TransportUI.tickDay(d);
-    render();
   }
   async function patchGuest(id, patch, msg) {
     const { error } = await client().from('camp_week_guests').update(patch).eq('id', id);
@@ -1412,6 +1346,12 @@
     } finally { W.busy.delete('contacts'); }
   }
 
+  // ── To Transport: the same week (W.week, Sat–Fri) and, from a day of the board, that day's card ──
+  function toTransport(day) {
+    if (!window.TransportUI || !TransportUI.setWeek) return;
+    TransportUI.setWeek(W.week, day && day !== 'week' ? day : '');
+  }
+
   // ── Checks for the shared strip ─────────────────────────────────────────
   // Synchronous; null until loaded and always null in the local view.
   const fileCheck = {
@@ -1458,7 +1398,7 @@
 
   window.renderWeekPage = renderWeekPage;
   window.WeekUI = {
-    render, closeModal, openContacts, saveContacts, copy, send, undo, tickTransfers, keep, notHere,
+    render, closeModal, openContacts, saveContacts, copy, send, undo, keep, notHere, toTransport,
     setMode(m) { W.mode = m; if (m === 'import' && window.TransportUI && TR().imp && TR().imp.stage === 'done') TR().imp = null; render(); },
     // After an import: Overview of the week Francisco imported for — the first check-in from today on
     // (the file also holds guests already in camp), else the running week.
@@ -1469,7 +1409,7 @@
       if (to === 'transport' && window.TransportUI && TransportUI.setWeek) TransportUI.setWeek(W.week); },
     setTab(t) { if (!TABS.some(x => x.k === t)) return; W.tab = t; W.team = teamOfTab(t) || W.team; W.undo = null; render(); },
     setTeam(t) { W.team = t; W.tab = tabOf(t); W.undo = null; render(); }, setDay(d) { W.day = d; W.undo = null; render(); },
-    go(team, day) { W.team = team; W.tab = tabOf(team); W.day = day; W.scrollTo = 'wkMessage'; render(); },
+    go(team, day) { if (team === 'transfers') return toTransport(day); W.team = team; W.tab = tabOf(team); W.day = day; W.scrollTo = 'wkMessage'; render(); },
     toGroup() { const el = $('wkGroup'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); },
     toMessage() { const el = $('wkMessage'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); },
     toDay(d) { const el = $('wkDay-' + d); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); },

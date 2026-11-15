@@ -66,7 +66,7 @@
     runs: { kind: 'tuktuk', label: 'Tuk-tuk', plural: 'Tuk-tuk runs', vehicle: 'Tuk-tuk' },
     payMethod: 'Cash',
     airportSupplier: null,
-    transportHow: 'Transfers come from the Guests file (Week → Import). Tuk-tuks: plan tomorrow and send the order. Nadith pays in the Ledger (Transport · Airport) and ticks the guests, and they show as Paid here.',
+    transportHow: 'Airport transfers, tuk-tuks and paying the drivers. Nadith pays in the Ledger and ticks the guests.',
   };
 
   // ── Morocco (14 Nov 2026) ─────────────────────────────────────────────────
@@ -177,7 +177,7 @@
       lastWeek: 'من السيمانة اللي فاتت', then: room => `من بعد ${room}`,
       roomMoves: 'تبديل البيوت (سولو على النهار)',
     },
-    transportHow: 'Airport transfers come from the Guests file (Week → Import) and go to Let Us Tours. Van runs: one tap per run. Everything is paid by SG bank transfer: link the Bank Transfer line to its trips in Reconcile.',
+    transportHow: 'Airport transfers (Let Us Tours), van runs (Fathoune), paid by SG bank transfer: link it in Reconcile.',
   };
 
   // «8 - Banana Point mixed shared room (4pax)» → { n: 8, core: 'Banana Point', … }

@@ -96,7 +96,7 @@ test('morocco week: To check names the Morocco gaps — room not in the list, gu
   has(/^guests: .*phones? had a wrong 0.*\+212661000019/);
 });
 
-test('morocco week: Kitchen and Surf messages (diets, allergies, levels) and the Transfers message in the camp\'s format', async ({ page }) => {
+test('morocco week: Kitchen and Surf messages (diets, allergies, levels); the Transfers message (in Transport) in the camp\'s format', async ({ page }) => {
   const st = await H.openWeek(page, { trips: H.tripsFromFile() });
   const k = await rawMsg(page, 'kitchen', '2026-11-15');
   expect(k).toContain('*KITCHEN - SUN 15 NOV*');
@@ -106,7 +106,7 @@ test('morocco week: Kitchen and Surf messages (diets, allergies, levels) and the
   const s = await rawMsg(page, 'surf', '2026-11-16');
   expect(s).toContain('*SURF - MON 16 NOV*');
   expect(s).toMatch(/\*Advanced\*\n- Oliver Smith _\(coaching\)_/);
-  const t = await rawMsg(page, 'transfers', '2026-11-16');
+  const t = await page.evaluate(() => TransportUI.dayMessage('2026-11-16'));   // Transport's «Send the whole day» since 15 Nov 2026
   expect(t).toBe(['*TRANSFERS - MON 16 NOV*', '', 'Airport to Camp', 'Ana Ruiz', '+34600000028', '1 person', 'Flight Number: RK3033', 'Time: 09:30', 'Date: 16 Nov', 'Car', '', 'Airport to Camp', 'Oliver Smith', '+447700900007', '1 person', 'Flight Number: TO3226', 'Time: 22:10', 'Date: 16 Nov', 'Car'].join('\n'));
   expect(st.calls.filter(c => c.t === 'import')).toEqual([]);
 });
@@ -144,7 +144,7 @@ test('morocco week: screenshots at 390 and 1280 — no horizontal overflow on an
   await H.openWeek(page, { trips: H.tripsFromFile() });
   for (const [w, hgt] of [[390, 844], [1280, 900]]) {
     await page.setViewportSize({ width: w, height: hgt });
-    for (const t of ['overview', 'rooms', 'kitchen', 'surf', 'transfers', 'guests']) {
+    for (const t of ['overview', 'rooms', 'kitchen', 'surf', 'guests']) {
       await page.click(`#weekRoot .wk-tabs .pill[data-tab="${t}"]`);
       await page.waitForTimeout(150);
       expect(await H.noOverflow(page), `${t} at ${w}`).toBe(true);
@@ -197,10 +197,11 @@ test('morocco transfers: the airport of every leg = the oracle (product «(Marra
   }
 });
 
-test('morocco transfers message: the week in house style, Saturday departures in, sent ones marked, Send to Let Us Tours', async ({ page }) => {
+test('morocco «Send the whole week» (Transport, was Week → Send to Let Us Tours): the week in house style, Saturday departures in, sent ones marked, the count line', async ({ page }) => {
   const trips = H.tripsFromFile().map(t => t.import_key === 'bl:MA-1002:arr' ? { ...t, status: 'sent' } : t);
   await H.openWeek(page, { trips, now: '2026-11-16T12:00' });
-  const week = await page.evaluate(() => WeekUI.bodyOf('transfers', 'week'));
+  await page.evaluate(() => WeekUI.toTransport());
+  const week = await page.evaluate(() => TransportUI.weekMessage('2026-11-14'));
   const lines = week.split('\n');
   expect(lines[0]).toBe('*TRANSFERS - 14 TO 21 NOV*');
   const heads = lines.filter(l => /^\*[A-Z]{3} \d+ [A-Z]{3}\*$/.test(l));
@@ -212,17 +213,22 @@ test('morocco transfers message: the week in house style, Saturday departures in
   expect((sat.match(/Camp to Airport/g) || []).length).toBeGreaterThanOrEqual(6);
   expect(sat).not.toContain('Airport to Camp');                                // next week's Saturday arrivals stay out
   expect(H.EMOJI.test(week)).toBe(false);
-  await page.click('#weekRoot .wk-tabs .pill[data-tab="transfers"]');
-  await page.click('#weekRoot .wk-days .pill[data-day="week"]');
-  await expect(page.locator('#wkSend')).toHaveText(/Send to Let Us Tours/);
-  await page.click('#wkSend');
-  expect(await page.evaluate(() => decodeURIComponent(window.__opened.pop()))).toMatch(/^https:\/\/wa\.me\/212600000101\?text=\*TRANSFERS - 14 TO 21 NOV\*/);
+  await expect(page.locator('#transportRoot [data-send-week]')).toHaveAttribute('title', /Let Us Tours/);
+  await page.click('#transportRoot [data-send-week]');
+  const sent = await page.evaluate(() => decodeURIComponent(window.__opened.pop()));
+  expect(sent.startsWith('https://wa.me/212600000101?text=*TRANSFERS - 14 TO 21 NOV*')).toBe(true);
+  expect(sent.split('?text=')[1]).toBe(week);
+  // the week's arrivals / departures in one line = the Airport tile's count
+  const c = await page.evaluate(() => TransportUI.weekCount(TransportUI._state.trips.filter(t => TransportUI.inWeek(t, '2026-11-14'))));
+  await expect(page.locator('#transportRoot [data-week-count]')).toContainText(`Arrivals ${c.arr.n} · ${c.arr.pax} persons`);
+  await expect(page.locator('#transportRoot [data-week-count]')).toContainText(`Departures ${c.dep.n} · ${c.dep.pax} persons`);
+  await expect(page.locator('#transportRoot [data-total="airport"] .kpi-label')).toHaveText(`Airport · ${c.arr.n + c.dep.n} transfers`);
   fs.mkdirSync(path.join(__dirname, '..', 'test-results', 'transfers-message-shots'), { recursive: true });
   for (const [w, hgt] of [[1280, 900], [390, 844]]) {
     await page.setViewportSize({ width: w, height: hgt });
     await page.waitForTimeout(150);
     expect(await H.noOverflow(page)).toBe(true);
-    await page.locator('#wkMessage').screenshot({ path: path.join(__dirname, '..', 'test-results', 'transfers-message-shots', `ma-transfers-week-${w}.png`) });
+    await page.screenshot({ path: path.join(__dirname, '..', 'test-results', 'transfers-message-shots', `ma-transport-week-${w}.png`), fullPage: true });
   }
 });
 
