@@ -598,6 +598,12 @@
       : { status: 'confirmed', confirmed_at: new Date().toISOString() };
     if (await updateTrip(id, patch)) { render(); say(what === 'sent' ? 'Marked as sent' : 'Marked as confirmed'); }
   }
+  // The trips of the Week → Transfers message, ticked Sent ✓ by id (the message is the week or a day of it).
+  async function tickIds(ids) {
+    const list = TR.trips.filter(t => (ids || []).includes(t.id) && isAirport(t) && !t.payment_entry_id && !isDone(t) && (t.status === 'planned' || t.needs_resend));
+    for (const t of list) await updateTrip(t.id, { status: 'sent', sent_at: new Date().toISOString(), sent_snapshot: snapshot(t), needs_resend: false });
+    render(); say(`${list.length} marked as sent`);
+  }
   async function tickDay(day) {
     const list = TR.trips.filter(t => t.trip_date === day && isAirport(t) && !t.payment_entry_id && !isDone(t) && !onHold(t) && ['planned', 'sent'].includes(t.status) && (t.status === 'planned' || t.needs_resend));
     for (const t of list) await updateTrip(t.id, { status: 'sent', sent_at: new Date().toISOString(), sent_snapshot: snapshot(t), needs_resend: false });
@@ -1546,7 +1552,7 @@
   window.TransportUI = {
     render, closeModal, setView(v, f) { TR.view = v; if (f) TR.filter = f; render(); }, setFilter(f) { TR.filter = f; render(); },
     shiftWeek(n) { TR.week = GT.addDaysIso(TR.week, n); TR.filter = ['resend', 'tosend', 'missing'].includes(TR.filter) ? 'all' : TR.filter; render(); },
-    send, sendDay, undoTick, undoGuestConfirmed, ask, askText, askedOn, needsInfo, tick, tickDay, openTrip, saveTrip, setStatus, openAddTransfer, saveTransfer,
+    send, sendDay, undoTick, undoGuestConfirmed, ask, askText, askedOn, needsInfo, tick, tickDay, tickIds, openTrip, saveTrip, setStatus, openAddTransfer, saveTransfer,
     openTuktuk, openPlan, tukSet, tukMode, tap, untap, removeRun, removeTrip, planAdd, planStep, sendOrder, orderText,
     openRuns, saveRuns, deleteRuns, payState, weekTotals, keepTrip, inWeek, tukPeople, presetPrice, bankCandidates, camp: CC, RUN,
     confirmGuest, guestConfirmed, confirmText, guestState, guestHtml, openGuestDay, pickFile, setExportDate, saveImport,

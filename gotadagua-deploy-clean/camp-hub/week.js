@@ -485,12 +485,42 @@
 
   // Transfers: the trips of Transport, Miguel's fixed format (GuestsTrips.whatsappText).
   const tripDone = t => (window.TransportUI && TransportUI.isDone) ? TransportUI.isDone(t) : t.status === 'done';
+  // Every transfer that has not happened yet (Miguel, 15 Nov: «deviam sempre aparecer todos»): arrivals and
+  // departures, already sent, confirmed or guest told included — a sent trip is marked, not dropped. Out: the
+  // ones whose time has passed, cancelled / no-show / merged, and the ones held because they left the latest
+  // Bookinglayer file (missing_since: maybe cancelled — Francisco looks first, as in Transport's «Send the whole day»).
+  // Until 15 Nov paid trips were left out too: a trip paid ahead still has to be driven, so it stays.
   const liveTrip = t => (t.kind === 'airport_arrival' || t.kind === 'airport_departure') && !['cancelled', 'no_show', 'merged'].includes(t.status)
-    && !t.payment_entry_id && !tripDone(t);   // still to do — the same trips Transport's «Send the whole day» sends
+    && !t.missing_since && !tripDone(t);
   const tripSort = (a, b) => (a.trip_date + (a.trip_time || '99')).localeCompare(b.trip_date + (b.trip_time || '99'));
+  // The week = Transport's week (Sat–Fri, plus the closing Saturday's departures, without the opening Saturday's
+  // departures, which belong to last week's guests). Until 15 Nov this list stopped on Friday: the Saturday
+  // departures (Beliz, Sat 21) were never in the week message.
+  const inTripWeek = (t, ws) => (window.TransportUI && TransportUI.inWeek) ? TransportUI.inWeek(t, ws)
+    : (t.trip_date >= ws && t.trip_date <= add(ws, 6) && !(t.trip_date === ws && t.kind === 'airport_departure')) || (t.trip_date === add(ws, 7) && t.kind === 'airport_departure');
   function tripsFor(day, ws) {
     const all = (TR().trips || []).filter(liveTrip);
-    return (day === 'week' ? all.filter(t => t.trip_date >= ws && t.trip_date <= add(ws, 6)) : all.filter(t => t.trip_date === day)).sort(tripSort);
+    return (day === 'week' ? all.filter(t => inTripWeek(t, ws)) : all.filter(t => t.trip_date === day)).sort(tripSort);
+  }
+  // Not yet sent to the driver (the «Mark sent ✓» line): planned or changed, unpaid — = TransportUI.tickDay.
+  const toSend = t => !t.payment_entry_id && (t.status === 'planned' || (t.status === 'sent' && t.needs_resend) || (t.status === 'confirmed' && t.needs_resend));
+  // The marker a driver reads on a transfer he already has.
+  const tripMark = t => t.needs_resend && ['sent', 'confirmed'].includes(t.status) ? 'changed' : ['sent', 'confirmed'].includes(t.status) ? 'already sent' : '';
+  function tripBlock(t) {
+    const lines = GT.whatsappText(t, GTC).split('\n'); const m = tripMark(t);
+    if (m) lines[0] += ` _(${m})_`;
+    return lines.join('\n');
+  }
+  // The Transfers message, house style (Miguel, 15 Nov: «mais fixe como nos outros»): bold title, a bold heading
+  // per day in the week message, each day sorted by time (arrivals and departures mixed), Miguel's driver block
+  // per transfer with a blank line between transfers.
+  function transfersParts(day, ws) {
+    const list = tripsFor(day, ws);
+    const p = [T(day === 'week' ? weekTitle('TRANSFERS', ws) : dayTitle('TRANSFERS', day)), G];
+    if (!list.length) return [...p, L('No transfers')];
+    if (day !== 'week') { list.forEach(t => p.push(L(tripBlock(t)), G)); return p; }
+    [...new Set(list.map(t => t.trip_date))].sort().forEach(d => { p.push(B(UP(fdm(d))), G); list.filter(t => t.trip_date === d).forEach(t => p.push(L(tripBlock(t)), G)); });
+    return p;
   }
   function guestsList(rows, day, ws) {
     const gs = rows.filter(g => counted(g) && (day === 'week' ? inWeek(g, ws) : inCamp(g, day) || g.check_out === day)).sort(byStay);
@@ -509,7 +539,7 @@
     if (team === 'cleaning') { const lg = lang || CLEAN_LANG; return day === 'week' ? cleaningWeek(rows, ws, lg) : cleaningDay(rows, day, lg); }
     if (team === 'kitchen') return day === 'week' ? kitchenWeek(rows, ws) : kitchenDay(rows, day);
     if (team === 'surf') return day === 'week' ? surfWeek(rows, ws) : surfDay(rows, day);
-    if (team === 'transfers') { const list = tripsFor(day, ws); return list.length ? [L(GT.whatsappDayText(list, GTC))] : [L('No transfers')]; }
+    if (team === 'transfers') return transfersParts(day, ws);
     if (team === 'guests') { const gs = guestsList(rows, day, ws); return [T(`Guests – ${day === 'week' ? 'week ' + range(ws, add(ws, 7)) : fdm(day)} (${gs.length})`), G, ...gs.map(g => L(guestLine(g, ws, day)))]; }
     return [];
   }
@@ -913,15 +943,14 @@
     const t = TEAMS.find(x => x.k === team); const c = contactOf(team);
     if (team === 'transfers') {
       const list = tripsFor(day, ws);
-      const resend = list.some(x => x.needs_resend);
-      const text = list.length ? (resend ? transfersUpdate(list, day, ws) : GT.whatsappDayText(list, GTC)) : '';
-      const toTick = list.filter(x => x.status === 'planned' || x.needs_resend).length;
-      return `<div class="card wk-card wk-msgcard" id="wkMessage">${cardHead('Message', `Transfers still to do · ${h(when)} · Miguel's format, one block per transfer`)}
-        <div class="card-body">${dayPills}${list.length ? `<div class="wk-msg" id="wkMsg">${h(text)}</div>
+      const text = dress(body('transfers', day, ws, rows), cToday());
+      const toTick = list.filter(toSend).length;
+      return `<div class="card wk-card wk-msgcard" id="wkMessage">${cardHead('Message', `Every transfer still to come · ${h(when)} · already sent ones are marked`)}
+        <div class="card-body">${dayPills}${list.length ? `<div class="wk-msg" id="wkMsg">${waHtml(text)}</div>
         <div class="wk-foot"><div class="wk-foot-btns"><button class="btn btn-s" onclick="WeekUI.copy()">${ic('copy')} Copy</button>
           <button class="btn btn-p" id="wkSend" onclick="WeekUI.send()">${ic('send')} ${'Send to ' + h(c ? c.name : 'Transfers')}</button></div>
           <div class="hint wk-state">${toTick ? `${plural(toTick, 'transfer')} not marked sent · <button class="btn-link" onclick="WeekUI.tickTransfers()">Mark sent ✓</button>` : 'All marked sent'}${c && c.phone ? '' : ` · <button class="btn-link" onclick="WeekUI.openContacts()">add phone</button>`}</div></div>`
-        : `<div class="hint wk-none">No transfers still to do ${day === 'week' ? 'this week' : 'on this day'}.</div>`}</div></div>`;
+        : `<div class="wk-msg" id="wkMsg">${waHtml(text)}</div><div class="hint wk-none">No transfers still to come ${day === 'week' ? 'this week' : 'on this day'}.</div>`}</div></div>`;
     }
     const text = body(team, day, ws, rows);
     const sent = sentOf(team, day, ws);
@@ -1009,7 +1038,7 @@
     const { ws, ch } = ctx; const c = contactOf(t.k);
     let state, cls = 'badge-grey';
     if (t.k === 'transfers') {
-      const list = tripsFor('week', ws); const todo = list.filter(x => x.status === 'planned' || x.needs_resend).length;
+      const list = tripsFor('week', ws); const todo = list.filter(toSend).length;
       state = !list.length ? 'Nothing to send' : todo ? `${todo} to send` : 'All sent'; cls = !list.length ? 'badge-grey' : todo ? 'badge-amber' : 'badge-green';
     } else {
       const sent = latestMsgs(ws).filter(m => m.team === t.k); const changed = ch.filter(x => x.team === t.k).length;
@@ -1301,7 +1330,7 @@
   function currentText() {
     const ws = W.week; const rows = rowsOf(ws);
     if (W.team === 'guests') return body('guests', W.day, ws, rows);
-    if (W.team === 'transfers') { const list = tripsFor(W.day, ws); return list.some(t => t.needs_resend) ? transfersUpdate(list, W.day, ws) : GT.whatsappDayText(list, GTC); }
+    if (W.team === 'transfers') return dress(body('transfers', W.day, ws, rows), cToday());   // the whole organised message
     const text = body(W.team, W.day, ws, rows); const sent = sentOf(W.team, W.day, ws);
     return { text, out: dress(sent && sent.hash !== hash(text) ? updateText(sent.text, text, W.day, ws) : text, cToday()) };
   }
@@ -1349,8 +1378,9 @@
   }
   async function tickTransfers() {
     if (!window.TransportUI) return;
-    const days = W.day === 'week' ? [...new Set(tripsFor('week', W.week).map(t => t.trip_date))] : [W.day];
-    for (const d of days) await TransportUI.tickDay(d);
+    // Exactly the trips of the message (the closing Saturday's arrivals belong to next week's message).
+    const ids = tripsFor(W.day, W.week).filter(toSend).map(t => t.id);
+    if (TransportUI.tickIds) await TransportUI.tickIds(ids); else for (const d of [...new Set(tripsFor(W.day, W.week).map(t => t.trip_date))]) await TransportUI.tickDay(d);
     render();
   }
   async function patchGuest(id, patch, msg) {

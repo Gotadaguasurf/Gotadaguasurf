@@ -107,7 +107,7 @@ test('morocco week: Kitchen and Surf messages (diets, allergies, levels) and the
   expect(s).toContain('*SURF - MON 16 NOV*');
   expect(s).toMatch(/\*Advanced\*\n- Oliver Smith _\(coaching\)_/);
   const t = await rawMsg(page, 'transfers', '2026-11-16');
-  expect(t).toBe(['Airport to Camp', 'Ana Ruiz', '+34600000028', '1 person', 'Flight Number: RK3033', 'Time: 09:30', 'Date: 16 Nov', 'Car', '', 'Airport to Camp', 'Oliver Smith', '+447700900007', '1 person', 'Flight Number: TO3226', 'Time: 22:10', 'Date: 16 Nov', 'Car'].join('\n'));
+  expect(t).toBe(['*TRANSFERS - MON 16 NOV*', '', 'Airport to Camp', 'Ana Ruiz', '+34600000028', '1 person', 'Flight Number: RK3033', 'Time: 09:30', 'Date: 16 Nov', 'Car', '', 'Airport to Camp', 'Oliver Smith', '+447700900007', '1 person', 'Flight Number: TO3226', 'Time: 22:10', 'Date: 16 Nov', 'Car'].join('\n'));
   expect(st.calls.filter(c => c.t === 'import')).toEqual([]);
 });
 
@@ -194,5 +194,34 @@ test('morocco transfers: the airport of every leg = the oracle (product «(Marra
     });
     expect(bad, f).toEqual([]);
     expect(trips.length).toBeGreaterThan(20);
+  }
+});
+
+test('morocco transfers message: the week in house style, Saturday departures in, sent ones marked, Send to Let Us Tours', async ({ page }) => {
+  const trips = H.tripsFromFile().map(t => t.import_key === 'bl:MA-1002:arr' ? { ...t, status: 'sent' } : t);
+  await H.openWeek(page, { trips, now: '2026-11-16T12:00' });
+  const week = await page.evaluate(() => WeekUI.bodyOf('transfers', 'week'));
+  const lines = week.split('\n');
+  expect(lines[0]).toBe('*TRANSFERS - 14 TO 21 NOV*');
+  const heads = lines.filter(l => /^\*[A-Z]{3} \d+ [A-Z]{3}\*$/.test(l));
+  expect(heads).toEqual(['*MON 16 NOV*', '*TUE 17 NOV*', '*WED 18 NOV*', '*FRI 20 NOV*', '*SAT 21 NOV*']);   // Sat 14 / Sun 15 have passed (now Mon 16 12:00)
+  expect(week).not.toContain('Ana Ruiz');                                    // Mon 16 09:30: passed
+  expect(week).toContain('Airport to Camp\nOliver Smith');                    // Mon 16 22:10: still to come
+  const sat = week.slice(week.indexOf('*SAT 21 NOV*'));
+  expect(sat).toContain('Camp to Airport\nSophie Martin');                     // a Saturday departure (03:30)
+  expect((sat.match(/Camp to Airport/g) || []).length).toBeGreaterThanOrEqual(6);
+  expect(sat).not.toContain('Airport to Camp');                                // next week's Saturday arrivals stay out
+  expect(H.EMOJI.test(week)).toBe(false);
+  await page.click('#weekRoot .wk-tabs .pill[data-tab="transfers"]');
+  await page.click('#weekRoot .wk-days .pill[data-day="week"]');
+  await expect(page.locator('#wkSend')).toHaveText(/Send to Let Us Tours/);
+  await page.click('#wkSend');
+  expect(await page.evaluate(() => decodeURIComponent(window.__opened.pop()))).toMatch(/^https:\/\/wa\.me\/212600000101\?text=\*TRANSFERS - 14 TO 21 NOV\*/);
+  fs.mkdirSync(path.join(__dirname, '..', 'test-results', 'transfers-message-shots'), { recursive: true });
+  for (const [w, hgt] of [[1280, 900], [390, 844]]) {
+    await page.setViewportSize({ width: w, height: hgt });
+    await page.waitForTimeout(150);
+    expect(await H.noOverflow(page)).toBe(true);
+    await page.locator('#wkMessage').screenshot({ path: path.join(__dirname, '..', 'test-results', 'transfers-message-shots', `ma-transfers-week-${w}.png`) });
   }
 });
