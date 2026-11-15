@@ -147,13 +147,22 @@
     const hs = hubState();
     if (!hs || !hs.state) return '';
     const isPass = (it) => it && it.c === 'Diploria' && typeof __HUB_LOCATION_SLUG !== 'undefined' && __HUB_LOCATION_SLUG === 'sri-lanka';
-    const sum = summarize(lines(hs.state, hs.menu, { from: ws, to: addDays(ws, 6), isPass }));
+    const rows = lines(hs.state, hs.menu, { from: ws, to: addDays(ws, 6), isPass });
+    const sum = summarize(rows);
+    // What was given, to whom and why — the week's list (Miguel 15 Nov 2026: «ver o que oferecemos e a razão… por semana»)
+    const MAX = 40;
+    const list = rows.slice(0, MAX).map((r) => `<div class="wpl-comps-line" data-reason="${r.reason}">
+        <span class="wpl-comps-what"><b>${escHtml(r.n)}</b> → ${escHtml(r.to)}${r.roster === 'Staff' ? ' <span class="wpl-comps-n">(staff)</span>' : ''}</span>
+        <span class="wpl-comps-val">${r.estimated ? '≈ ' : ''}${hubMoney(r.value)}</span>
+        <span class="wpl-comps-why">${escHtml(label(r.reason))}${r.note ? ` — ${escHtml(r.note)}` : ''}${r.d ? ` · ${dm(r.d)}` : ''}</span></div>`).join('')
+      + (rows.length > MAX ? `<div class="wpl-comps-n" style="margin-top:6px">+${rows.length - MAX} more in Camp Tab → Top sellers → Given free</div>` : '');
     const by = sum.byReason.map((r) => `<span class="wpl-comps-r" data-reason="${r.key}">${escHtml(r.label)} <b>${hubMoney(r.value)}</b>${r.count > 1 ? ` <span class="wpl-comps-n">×${r.count}</span>` : ''}</span>`).join('');
     return `<div class="card wpl-comps" id="wplComps"><div class="card-pad">
       <div class="wpl-comps-top"><span class="wpl-comps-k">Comps · ${dm(ws)} – ${dm(addDays(ws, 6))}</span>
         <span class="wpl-comps-v" id="wplCompsTotal">${sum.count ? `${sum.estimated ? '≈ ' : ''}${hubMoney(sum.value)} at list price · ${sum.count} item${sum.count === 1 ? '' : 's'}` : 'Nothing given free'}</span></div>
       ${by ? `<div class="wpl-comps-by">${by}</div>` : ''}
-      <div class="card-hint">Given free in the Camp Tab, at the catalog price. Not a cost line — shown so you can see why. Details: Camp Tab → Comps.</div>
+      ${list ? `<div class="wpl-comps-list" id="wplCompsList">${list}</div>` : ''}
+      <div class="card-hint">Given free in the Camp Tab, at the catalog price. Not a cost line — shown so you can see why. Other weeks: Camp Tab → Top sellers → Given free.</div>
     </div></div>`;
   }
   function injectHubStyles() {
@@ -168,7 +177,12 @@
 .wpl-comps-by{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:8px;font-size:13px;color:var(--text,inherit)}
 .wpl-comps-r b{font-weight:600;font-variant-numeric:tabular-nums}
 .wpl-comps-n{color:var(--muted);font-size:12px}
-.wpl-comps .card-hint{margin-top:6px}`;
+.wpl-comps .card-hint{margin-top:6px}
+.wpl-comps-list{margin-top:10px;border-top:1px solid var(--border,#e5e7eb)}
+.wpl-comps-line{display:grid;grid-template-columns:1fr auto;gap:2px 12px;padding:8px 0;border-bottom:1px solid var(--border,#e5e7eb);font-size:13px}
+.wpl-comps-what{min-width:0;overflow-wrap:anywhere}
+.wpl-comps-val{font-variant-numeric:tabular-nums;white-space:nowrap;text-align:right}
+.wpl-comps-why{grid-column:1 / -1;color:var(--muted);font-size:12px}`;
     document.head.appendChild(st);
   }
   function afterWeekly(ws) {

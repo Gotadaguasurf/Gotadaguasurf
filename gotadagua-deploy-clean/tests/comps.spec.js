@@ -303,6 +303,18 @@ test('comps: the Comps view — totals by reason and by item, who and when; This
   expect(first).toContain('Other — Guest birthday');
   await expect(frame.locator('#cpLines')).toContainText('by Francisco');          // created_by resolved
   await expect(frame.locator('#cpLines .cp-line').nth(1)).toContainText('Staff');  // Jude is on the Staff roster
+  // week by week (Miguel 15 Nov: «para eu saber por semana»): ‹ goes to last week, › back
+  await expect(frame.locator('#cpNextWeek')).toBeDisabled();
+  await frame.locator('#cpPrevWeek').click();
+  await expect(frame.locator('#cpPeriodRow .pill.active')).toHaveText('Last week');
+  await expect(frame.locator('#cpCount')).toHaveText('1');
+  await expect(frame.locator('#cpLines')).toContainText('No reason (before 15 Nov)');
+  await frame.locator('#cpPrevWeek').click();
+  await expect(frame.locator('#cpPeriodRow .pill.active')).toHaveText(/^\d{1,2} \w{3} – \d{1,2} \w{3}$/);
+  await frame.locator('#cpNextWeek').click();
+  await frame.locator('#cpNextWeek').click();
+  await expect(frame.locator('#cpPeriodRow .pill.active')).toHaveText('This week');
+  await expect(frame.locator('#cpCount')).toHaveText('4');
   await frame.locator('#cpPeriodRow .pill[data-period="all"]').click();
   await expect(frame.locator('#cpCount')).toHaveText('5');
   await expect(frame.locator('#cpValue')).toHaveText('≈ LKR 4,200');
@@ -318,6 +330,12 @@ test('comps: the Weekly P&L «Comps» line — this week at list price by reason
   const by = await page.locator('#wplComps .wpl-comps-r').evaluateAll(rs => rs.map(r => r.innerText.replace(/\s+/g, ' ').trim()));
   expect(by).toEqual(['Staff LKR 1,000 · €3 ×2', 'Gift to guest LKR 600 · €2', 'Other LKR 2,000 · €6']);
   await expect(page.locator('#wplComps')).toContainText('Not a cost line');
+  // the week's list: what, to whom, why
+  const list = await page.locator('#wplCompsList .wpl-comps-line').evaluateAll(rs => rs.map(r => r.innerText.replace(/\s+/g, ' ').trim()));
+  expect(list).toHaveLength(4);
+  expect(list[0]).toContain('Cocktail → Anna');
+  expect(list[0]).toContain('Other — Guest birthday');
+  expect(list.filter(l => l.includes('(staff)'))).toHaveLength(2);
   // the week before: only the old comp, without a reason
   await page.evaluate((ws) => wplSelect(addDays(ws, -7)), D.ws);
   await expect(page.locator('#wplCompsTotal')).toHaveText('≈ LKR 600 · €2 at list price · 1 item');

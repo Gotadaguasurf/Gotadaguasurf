@@ -4587,14 +4587,23 @@ function renderSellers(){
 // use today's catalog price by name and are marked «≈».
 let cpPeriod='week';
 const CP_PERIODS=[['week','This week'],['month','This month'],['last-month','Last month'],['all','All time']];
-function setCompsPeriod(p){ cpPeriod=p; renderComps(); }
+// Week browse (Miguel 15 Nov 2026: «ver o que oferecemos e a razão… por semana»):
+// ‹ › step through past Sat–Fri weeks; 0 = this week, -1 = last week…
+let cpWeekOff=0;
+function setCompsPeriod(p){ cpPeriod=p; if(p==='week') cpWeekOff=0; renderComps(); }
+function shiftCompsWeek(n){ cpPeriod='week'; cpWeekOff=Math.min(0,cpWeekOff+n); renderComps(); }
 function renderComps(){
   const CC=window.CampComps;
   const body=document.getElementById('compsBody');
   const row=document.getElementById('cpPeriodRow');
   if(!body||!CC) return;
-  if(row) row.innerHTML=CP_PERIODS.map(([k,l])=>`<button class="pill${k===cpPeriod?' active':''}" data-period="${k}" onclick="setCompsPeriod('${k}')">${l}</button>`).join('');
-  const range=CC.periodRange(cpPeriod,today());
+  const range=cpPeriod==='week'?CC.periodRange('week',CC.addDays(today(),7*cpWeekOff)):CC.periodRange(cpPeriod,today());
+  const wkLabel=cpWeekOff===0?'This week':cpWeekOff===-1?'Last week':`${fmtd(range.from).replace(/ \d{4}$/,'')} – ${fmtd(range.to).replace(/ \d{4}$/,'')}`;
+  if(row) row.innerHTML=`<button class="pill" id="cpPrevWeek" aria-label="Previous week" title="Previous week" onclick="shiftCompsWeek(-1)">‹</button>`
+    +CP_PERIODS.map(([k,l])=>{
+      const pill=`<button class="pill${k===cpPeriod?' active':''}" data-period="${k}" onclick="setCompsPeriod('${k}')">${k==='week'?wkLabel:l}</button>`;
+      return k==='week'?pill+`<button class="pill" id="cpNextWeek" aria-label="Next week" title="Next week" onclick="shiftCompsWeek(1)"${cpPeriod==='week'&&cpWeekOff<0?'':' disabled style="opacity:.35"'}>›</button>`:pill;
+    }).join('');
   const rows=CC.lines(S,MENU,{...range,isPass:isPassThrough});
   const sum=CC.summarize(rows);
   const h=CC.escHtml;
