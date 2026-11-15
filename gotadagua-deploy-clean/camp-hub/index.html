@@ -1177,7 +1177,8 @@ const CATS=Object.keys(MENU);
 // Merchandising, Repairs, Supplies, Activities, Accounting) are mapped on read.
 // «Drinks» = bar stock (what the bar sells); «Drinking water» = the dispenser
 // refills for guests and staff, kept out of the bar so the Bar card shows the
-// real bar profit (Miguel, 15 Nov 2026). Its area is Utilities.
+// real bar profit (Miguel, 15 Nov 2026). Its area is Food (water to drink is
+// food, Miguel 15 Nov), so it counts in Food / guest-day.
 const EXP_CATS=['Food','Drinks','Drinking water','Salary','Benefits','Taxes','Rent','Utilities','Services','Insurances','Equipment & maintenance','Cleaning','Laundry','Transport','Tours & activities','Merchandise','Marketing','Other'];
 const LEGACY_EXP_CAT={Bar:'Drinks',Setup:'Equipment & maintenance',Repairs:'Equipment & maintenance',Supplies:'Equipment & maintenance',Special:'Other','Cleaning Supplies':'Cleaning',Activities:'Tours & activities',Tours:'Tours & activities',Merchandising:'Merchandise',Merch:'Merchandise',Accounting:'Services'};
 const modernExpCat=(c)=>LEGACY_EXP_CAT[c]||c;
@@ -1230,10 +1231,10 @@ const KNOWN_BUSINESS_AREAS=new Set([...AREA_ORDER,'Surf School']);
 // (HQ → camp top-ups) and nothing else.
 const PAYMENT_METHODS=['Cash','Card','Bank Transfer'];
 const AREA_CONFIG={
-  Food:{expenseCats:['Food'],incomeCats:[],linkedItems:[]},
+  Food:{expenseCats:['Food','Drinking water'],incomeCats:[],linkedItems:[]},
   Bar:{expenseCats:['Drinks'],incomeCats:['Drinks'],linkedItems:MENU.Drinks.map(i=>i.n)},
   Transport:{expenseCats:['Transport'],incomeCats:TRANSPORT_REVENUE_CATS,linkedItems:TRANSPORT_LINKED_ITEMS},
-  Utilities:{expenseCats:['Utilities','Drinking water','Services','Rent','Insurances','Equipment & maintenance','Cleaning','Taxes'],incomeCats:[],linkedItems:[]},
+  Utilities:{expenseCats:['Utilities','Services','Rent','Insurances','Equipment & maintenance','Cleaning','Taxes'],incomeCats:[],linkedItems:[]},
   Salaries:{expenseCats:['Salary','Benefits'],incomeCats:[],linkedItems:[]},
   Merch:{expenseCats:['Merchandise'],incomeCats:['Merchandise'],linkedItems:MENU.Merch.map(i=>i.n)},
   Tours:{expenseCats:['Tours & activities'],incomeCats:TOUR_REVENUE_CATS,linkedItems:MENU.Tours.map(i=>i.n)},
@@ -1370,11 +1371,11 @@ function inferArea(type,category,linkedItem=''){
   }
   if(String(category||'').startsWith('Wild')) return 'Wild';
   category=modernExpCat(category);
-  if(category==='Food') return 'Food';
+  if(category==='Food'||category==='Drinking water') return 'Food';
   if(category==='Drinks') return 'Bar';
   if(category==='Transport') return 'Transport';
   if(category==='Laundry') return 'Laundry';
-  if(['Utilities','Drinking water','Services','Rent','Insurances','Equipment & maintenance','Cleaning','Taxes'].includes(category)) return 'Utilities';
+  if(['Utilities','Services','Rent','Insurances','Equipment & maintenance','Cleaning','Taxes'].includes(category)) return 'Utilities';
   if(['Salary','Benefits'].includes(category)) return 'Salaries';
   if(category==='Merchandise') return 'Merch';
   if(category==='Tours & activities') return linkedItem&&AREA_CONFIG.Transport.linkedItems.includes(linkedItem)?'Transport':'Tours';
@@ -5768,12 +5769,9 @@ function renderOverview(){
   // …and Utilities rows with no type picked (gas bottles, water bowser, most
   // bills before June) get their own line instead of vanishing.
   const OV_UT_UNSPLIT='Not split by type';
-  // «Drinking water» (the dispenser, its own category since 15 Nov 2026) is a
-  // line of this card, next to the water bill.
-  const OV_UT_DRINKING='Drinking water';
-  const utilityRows=[...UTILITIES_LINKED_ITEMS,OV_UT_UNSPLIT,OV_UT_DRINKING].map(name=>{
-    const rows=name===OV_UT_DRINKING?expenses.filter(x=>x.category===OV_UT_DRINKING)
-      :expenses.filter(x=>x.category==='Utilities'&&(name===OV_UT_UNSPLIT?!UTILITIES_LINKED_ITEMS.includes(x.linkedItem||''):(x.linkedItem||'')===name));
+  // «Drinking water» (the dispenser) is area Food since 15 Nov 2026, not here.
+  const utilityRows=[...UTILITIES_LINKED_ITEMS,OV_UT_UNSPLIT].map(name=>{
+    const rows=expenses.filter(x=>x.category==='Utilities'&&(name===OV_UT_UNSPLIT?!UTILITIES_LINKED_ITEMS.includes(x.linkedItem||''):(x.linkedItem||'')===name));
     return {
       name,
       spendLocal:sum(rows,x=>entryLocalDisplayAmount(x)),
@@ -5861,7 +5859,7 @@ function renderOverview(){
   // get its own idle-zero card.
   // Bar = bar sales (Camp Tab «Drinks» + cash bar revenue) − bar drinks
   // bought in the period (expense category «Drinks»). The water dispenser
-  // has its own category («Drinking water», Utilities) since 15 Nov 2026,
+  // has its own category («Drinking water», area Food) since 15 Nov 2026,
   // so it no longer eats the bar margin. A camp without a bar keeps the
   // card hidden until it has a bar row in the period.
   const HIDE_BAR=(typeof __HUB_LOCATION_SLUG!=='undefined') && ['morocco','surf-school'].includes(__HUB_LOCATION_SLUG)

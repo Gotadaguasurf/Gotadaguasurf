@@ -35,7 +35,7 @@ const SL_ROWS = [
   row({ type: 'revenue', category: 'Drinks', business_area: 'Bar', amount_local: 600, entry_date: '2026-11-11', description: 'Camp Tab · Leo · Lion Lager', source_kind: 'camp_tab_per_item' }),
   row({ type: 'revenue', category: 'Drinks', business_area: 'Bar', amount_local: 15000, entry_date: '2026-11-12', description: 'Bar cash night' }),
   row({ type: 'expense', category: 'Drinks', business_area: 'Bar', amount_local: 8000, entry_date: '2026-11-05', description: 'Bar Drinks · Dassana' }),
-  row({ type: 'expense', category: 'Drinking water', business_area: 'Utilities', amount_local: 9000, entry_date: '2026-11-06', description: 'Water Dispenser' }),
+  row({ type: 'expense', category: 'Drinking water', business_area: 'Food', amount_local: 9000, entry_date: '2026-11-06', description: 'Water Dispenser' }),
   row({ type: 'expense', category: 'Food', business_area: 'Food', amount_local: 5000, entry_date: '2026-11-07', description: 'Market' }),
   row({ type: 'revenue', category: 'Drinks', business_area: 'Bar', amount_local: 50000, entry_date: '2026-10-20', description: 'October bar' }),
   row({ type: 'expense', category: 'Drinks', business_area: 'Bar', amount_local: 70000, entry_date: '2026-10-21', description: 'October stock' }),
@@ -105,10 +105,10 @@ test('bar card (Sri Lanka): bar sales − bar drinks bought, the dispenser stays
   expect(norm(nov.merch)).toContain('LKR 5,000');
   // grouped tour line counts 2 paid guests
   expect(norm(nov.tours)).toContain('2 paid guests');
-  // the dispenser shows as its own line of Utilities control
+  // the dispenser is Food since 15 Nov 2026: no longer a line of Utilities control
   const water = await page.evaluate(() => { const c = [...document.querySelectorAll('#ovCatCard .card')].find(x => x.querySelector('.ov-cat-title')?.textContent.trim() === 'Utilities control');
     const ch = c && [...c.querySelectorAll('.ov-chip')].find(x => x.firstElementChild?.textContent.trim() === 'Drinking water'); return ch ? ch.textContent.replace(/\s+/g, ' ') : ''; });
-  expect(norm(water)).toContain('LKR 9,000');
+  expect(water).toBe('');
   // October on its own: 50,000 − 70,000 → −40 %
   const oct = await overviewFor(page, '2026-10');
   expect(norm(oct.bar)).toContain('-LKR 20,000');
@@ -150,18 +150,18 @@ test('bar card (Morocco): hidden while the camp has no bar row; shown in MAD as 
   expect(errs).toEqual([]);
 });
 
-test('«Drinking water»: its own category in the list, area Utilities; «Bar drinks» / «Drinking water» quick buttons', async ({ page }) => {
+test('«Drinking water»: its own category in the list, area Food; «Bar drinks» / «Drinking water» quick buttons', async ({ page }) => {
   const { errs } = await boot(page);
   const out = await page.evaluate(() => ({
     inList: EXP_CATS.includes('Drinking water') && EXP_CATS.indexOf('Drinking water') === EXP_CATS.indexOf('Drinks') + 1,
     area: inferArea('expense', 'Drinking water'),
     drinksArea: inferArea('expense', 'Drinks'),
-    utilities: AREA_CONFIG.Utilities.expenseCats.includes('Drinking water'),
+    food: AREA_CONFIG.Food.expenseCats.includes('Drinking water') && !AREA_CONFIG.Utilities.expenseCats.includes('Drinking water'),
     bar: AREA_CONFIG.Bar.expenseCats,
     buttons: [...document.querySelectorAll('#expQuickBar .exp-quick-btn')].map(b => [b.dataset.cat, b.textContent.trim()]).filter(([c]) => /Drink/.test(c)),
   }));
   expect(out).toEqual({
-    inList: true, area: 'Utilities', drinksArea: 'Bar', utilities: true, bar: ['Drinks'],
+    inList: true, area: 'Food', drinksArea: 'Bar', food: true, bar: ['Drinks'],
     buttons: [['Drinks', 'Bar drinks'], ['Drinking water', 'Drinking water']],
   });
   // the quick button opens a Drinking water expense

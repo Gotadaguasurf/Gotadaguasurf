@@ -96,7 +96,7 @@ Movements (LK).
    on every paid / unpaid message (never incremented); older one-row-per-item
    rows (`camp_tab_per_item`) stay and are left out of the group. Per-item
    analytics read `camp_tab_items`. Expense category «Drinks» = bar stock;
-   «Drinking water» (area Utilities) = the dispenser, so the Overview «Bar»
+   «Drinking water» (area Food) = the dispenser, so the Overview «Bar»
    card is bar sales − bar drinks bought.
 2. **Surf-school rental → ledger**: INSERT on `surf_school_rentals` fires the
    `tr_surf_rental_ledger` trigger (SECURITY DEFINER) which creates the

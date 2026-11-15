@@ -16,7 +16,7 @@
 --  Morocco «2 bottles» / «3 bottles» (Utilities, 105 / 165 MAD) are gas
 --  bottles; Portugal «Água» rows are the SMAS water bill. Not touched.
 --
---    A  2 rows  Drinks/Bar → Drinking water/Utilities  18,000 LKR (bar cost −18,000)
+--    A  2 rows  Drinks/Bar → Drinking water/Food  18,000 LKR (bar cost −18,000)
 --
 --  Idempotent: each update matches id AND the old category (and hq_invoice_id
 --  null), so a second run changes nothing. amount_* never change, so
@@ -31,8 +31,8 @@ begin;
 drop table if exists _dw_moves;
 create temp table _dw_moves (id uuid primary key, grp text, old_cat text, old_area text, new_cat text, new_area text, entry_date date, amount_local numeric, description text);
 insert into _dw_moves values
-  ('34d0abca-858e-4279-ac05-dfb68d5b0605','A','Drinks','Bar','Drinking water','Utilities','2026-11-02',  9000,'Water Dispnser'),
-  ('555d6283-46e6-48fe-a237-17a3318ccdde','A','Drinks','Bar','Drinking water','Utilities','2026-11-14',  9000,'Water Dispenser');
+  ('34d0abca-858e-4279-ac05-dfb68d5b0605','A','Drinks','Bar','Drinking water','Food','2026-11-02',  9000,'Water Dispnser'),
+  ('555d6283-46e6-48fe-a237-17a3318ccdde','A','Drinks','Bar','Drinking water','Food','2026-11-14',  9000,'Water Dispenser');
 
 do $$ begin
   if not exists (select 1 from hq_invoice_categories where name = 'Drinking water') then
@@ -53,7 +53,7 @@ with t as (
 )
 select json_build_object(
   'listed', (select count(*) from _dw_moves),
-  'now_drinking_water', (select count(*) from _dw_moves m join ledger_entries e on e.id = m.id and e.category = 'Drinking water' and e.business_area = 'Utilities'),
+  'now_drinking_water', (select count(*) from _dw_moves m join ledger_entries e on e.id = m.id and e.category = 'Drinking water' and e.business_area = 'Food'),
   'not_moved', (select json_agg(json_build_object('id', m.id, 'category_now', e.category)) from _dw_moves m left join ledger_entries e on e.id = m.id where e.id is null or e.category <> 'Drinking water'),
   'water_rows_left_in_drinks', (select json_agg(json_build_object('id', e.id, 'date', e.entry_date, 'desc', e.description)) from ledger_entries e where e.type = 'expense' and e.category = 'Drinks' and e.description ~* 'dispens|dispnser'),
   'before_after', (select json_agg(x order by x.mon, x.category) from (
