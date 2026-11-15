@@ -1,0 +1,590 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#28394b">
+<title>Dipløria — Gota Dagua</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='-15 0 92 92'><path fill='%231e6fa8' d='M61.7,51.9c-.4-9-5.5-16.5-9.7-24.1-2.9-4.8-5.3-9.8-9.3-13.9-3.9-4.4-6.5-9.8-10.8-13.9C19.2,16.6-.5,39.9,0,61.9c9.4-7.9,20.1-17.7,33.1-17.8,3,0,7.2,0,9.5,2.2,1.7,1.7,3.2,4.2,2,6.5-.3.5-1.9,2.7-2.3,2.9-12.9,7.4-20.3,18.6-16.5,33.7,3.1,1.3,8,1,11.1-.3,2.7-.3,5.1-1.3,7.5-2.5,8.7-2.9,14.5-11.1,15.5-20.1,1.2-4.7,2.1-9.7,1.8-14.6h0Z'/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=DM+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/lib/app-shell.css">
+<style>
+/* page-specific only — everything else comes from /lib/app-shell.css */
+.dp-filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.dp-filters input[type=date]{height:var(--h-pill);border:1px solid var(--border-2);border-radius:999px;padding:0 10px;font-size:12.5px;color:var(--ink);background:#fff}
+.dp-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:var(--sp-3)}
+.dp-card{padding:var(--sp-4) 18px}
+.dp-card.all{border-color:var(--navy)}
+.dp-card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:10px}
+.dp-card-name{font-size:var(--fs-card);font-weight:700;color:var(--navy)}
+.dp-card-mode{font-size:11.5px;color:var(--muted);margin-top:2px;line-height:1.35}
+.dp-big{display:flex;gap:18px;align-items:baseline;flex-wrap:wrap}
+.dp-big b{font-size:26px;font-weight:700;color:var(--navy);letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.dp-big span{font-size:12px;color:var(--muted);margin-left:4px}
+.dp-kv{display:grid;grid-template-columns:1fr auto;gap:4px 12px;margin-top:10px;font-size:13px}
+.dp-kv span{color:var(--muted)}.dp-kv b{font-weight:600;text-align:right;font-variant-numeric:tabular-nums}
+.dp-kv b.neg{color:var(--red)}
+.dp-tops{margin-top:10px;display:flex;flex-direction:column;gap:6px}
+.dp-tops .lbl{font-size:var(--fs-micro);text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
+.dp-chips{display:flex;flex-wrap:wrap;gap:4px}
+.dp-chip{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;background:var(--surface-2);border:1px solid var(--border);font-size:12px;color:var(--ink)}
+.dp-chip b{font-weight:700;color:var(--navy)}
+.dp-alerts{display:flex;flex-wrap:wrap;gap:6px}
+.dp-alert{display:inline-flex;gap:6px;align-items:center;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;background:var(--amber-bg);border:1px solid var(--amber-border);color:var(--amber)}
+.dp-alert.zero{background:var(--red-bg);border-color:var(--red-border);color:var(--red)}
+.dp-ones{margin-top:10px;font-size:13px}
+.dp-ones summary{cursor:pointer;font-weight:600;color:var(--amber)}
+.dp-ones p{margin:6px 0 0;color:var(--muted);line-height:1.5}
+/* sales by day */
+.dp-bars{display:flex;align-items:flex-end;gap:3px;height:170px;padding:20px 4px 0;overflow-x:auto;border-bottom:1px solid var(--border)}
+.dp-bar{flex:1 0 14px;max-width:34px;display:flex;flex-direction:column-reverse;cursor:pointer;border:0;background:transparent;padding:0;height:100%;justify-content:flex-start;position:relative}
+.dp-bar .seg{display:block;width:100%;border-radius:3px 3px 0 0}
+.dp-bar .seg+.seg{border-radius:0}
+.dp-bar .n{position:absolute;left:0;right:0;text-align:center;font-size:10.5px;font-weight:700;color:var(--navy)}
+.dp-bar.sel .seg{outline:2px solid var(--ink);outline-offset:0}
+.dp-bar.empty{cursor:default}
+.dp-axis{display:flex;gap:3px;padding:4px 4px 0;overflow:hidden}
+.dp-axis span{flex:1 0 14px;max-width:34px;font-size:9.5px;color:var(--muted);text-align:center;white-space:nowrap}
+.dp-legend{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:8px}
+.dp-legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+/* stock grid */
+.dp-grid{border-collapse:collapse;width:100%;min-width:420px;font-size:13px;table-layout:fixed}
+.dp-grid th:first-child{width:180px}.dp-grid th:last-child{width:90px}
+.dp-grid th,.dp-grid td{padding:6px 4px;border-bottom:1px solid var(--border);text-align:center}
+.dp-grid th:first-child,.dp-grid td:first-child{text-align:left;padding-left:var(--card-pad);white-space:nowrap}
+.dp-grid thead th{font-size:var(--fs-micro);text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
+.dp-cell{width:100%;min-width:40px;border:1px solid var(--border);border-radius:8px;background:#fff;padding:4px 2px;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:center;line-height:1.15}
+.dp-cell b{font-size:15px;color:var(--green);font-variant-numeric:tabular-nums}
+.dp-cell small{font-size:10px;color:var(--muted)}
+.dp-cell.low b{color:var(--amber)}.dp-cell.zero b{color:var(--red)}
+.dp-cell.none{border-style:dashed;color:var(--muted-2)}
+.dp-cell.drift{box-shadow:inset 0 0 0 2px var(--amber-border)}
+.dp-cell:disabled{cursor:default}
+.dp-cell:not(:disabled):hover{border-color:var(--ocean)}
+.dp-grid tfoot td,.dp-grid tfoot th{font-weight:700;border-top:2px solid var(--navy)}
+/* modal steps */
+.dp-step-actions{display:grid;gap:8px}
+.dp-step-actions .btn{justify-content:flex-start;height:46px;font-size:14px}
+.dp-qty{display:flex;align-items:center;gap:10px;justify-content:center;margin:6px 0 14px}
+.dp-qty button{width:44px;height:44px;border-radius:12px;border:1px solid var(--border-2);background:#fff;font-size:20px;cursor:pointer}
+.dp-qty input{width:84px;height:44px;text-align:center;font-size:20px;font-weight:700;border:1px solid var(--border-2);border-radius:12px}
+.dp-hist{list-style:none;margin:10px 0 0;padding:0;font-size:12.5px}
+.dp-hist li{display:grid;grid-template-columns:72px 1fr auto;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)}
+.dp-hist li .q{font-weight:700;font-variant-numeric:tabular-nums}.dp-hist li .q.pos{color:var(--green)}.dp-hist li .q.neg{color:var(--red)}
+.dp-hist li .note{color:var(--muted);font-size:11.5px}
+.dp-mstats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;text-align:center}
+.dp-mstats div{background:var(--surface-2);border-radius:10px;padding:8px 4px}
+.dp-mstats b{display:block;font-size:18px;color:var(--navy)}.dp-mstats span{font-size:11px;color:var(--muted)}
+.dp-banner{padding:10px 14px;border-radius:var(--r-sm);background:var(--amber-bg);border:1px solid var(--amber-border);color:var(--amber);font-size:13px;margin-bottom:12px}
+.dp-mode{font-size:11px;font-weight:700;border-radius:6px;padding:2px 7px;white-space:nowrap}
+.dp-mode.pass{background:var(--ocean-soft);color:var(--ocean)}
+.dp-mode.camp{background:var(--sand);color:#7a5b16}
+.dp-unpaid{color:var(--red);font-weight:700}
+.dp-tot-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:var(--sp-3)}
+.dp-tot-grid table{width:100%;font-size:13px}
+.mfield{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
+.mfield label{font-size:var(--fs-micro);font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.mgrid{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
+@media (max-width:640px){
+  .container{padding-left:16px;padding-right:16px}
+  .mgrid{grid-template-columns:1fr}
+  .page .summary-grid{grid-template-columns:1fr 1fr;gap:8px}
+  .page .summary-grid .kpi{padding:12px}
+  .page .summary-grid .kpi-value{font-size:20px}
+  .dp-tot-grid th,.dp-tot-grid td{padding:8px 6px;font-size:12px}
+  .dp-list thead{display:none}
+  .dp-list,.dp-list tbody,.dp-list tr,.dp-list td{display:block;width:100%}
+  .dp-list tr{padding:10px 16px;border-bottom:1px solid var(--border)}
+  .dp-list td{padding:1px 0 !important;border:0 !important;text-align:left !important;white-space:normal !important}
+  .dp-list td.r{font-weight:700}
+  .dp-grid{min-width:0;font-size:12px;table-layout:fixed}
+  .dp-grid th:last-child,.dp-grid td:last-child{width:46px}
+  .dp-grid tfoot td,.dp-grid tfoot th{font-size:10.5px;padding:6px 0}
+  .dp-grid th,.dp-grid td{padding:5px 2px}
+  .dp-grid th:first-child,.dp-grid td:first-child{padding-left:10px;white-space:normal;width:80px;line-height:1.2}
+  .dp-cell{min-width:0;padding:3px 0;border-radius:7px}
+  .dp-cell b{font-size:14px}
+  .dp-cell small{font-size:9px}
+  .overlay{padding:0;align-items:flex-end}
+  .overlay .modal{border-radius:16px 16px 0 0;max-height:94vh}
+}
+</style>
+</head>
+<body>
+<nav class="app-nav" id="appNav"></nav>
+
+<!-- ═══════════ OVERVIEW ═══════════ -->
+<div class="page active" id="page-overview">
+  <div class="container">
+    <div class="ov-section-head page-head">
+      <div><div class="ov-section-title">Dipløria</div><div class="ov-section-sub">Boardshorts sold in the camps: what each camp sells, what is left, what is still unpaid. A business of its own, apart from the camps.</div></div>
+      <div class="dp-filters" data-period-host></div>
+    </div>
+    <div id="ovBanner"></div>
+    <div class="dp-cards" id="ovCards"><div class="card card-pad hint">Loading…</div></div>
+    <section class="ov-section" style="margin-top:24px">
+      <div class="ov-section-head"><div><div class="ov-section-title">Running low</div><div class="ov-section-sub">Sizes with 0 or 1 left, now</div></div></div>
+      <div class="card card-pad" id="ovAlerts"></div>
+    </section>
+    <section class="ov-section">
+      <div class="ov-section-head"><div><div class="ov-section-title">Sales − expenses</div><div class="ov-section-sub">Same period. Portugal's sales are camp income, so the margin is shown both ways.</div></div></div>
+      <div class="summary-grid" id="ovMargin"></div>
+    </section>
+  </div>
+</div>
+
+<!-- ═══════════ SALES ═══════════ -->
+<div class="page" id="page-sales">
+  <div class="container">
+    <div class="ov-section-head page-head">
+      <div><div class="ov-section-title">Sales</div><div class="ov-section-sub">Every Dipløria line of every Camp Tab. Tap a day to see its sales.</div></div>
+      <div class="dp-filters"><span data-period-host></span><span class="pills" id="campPills"></span></div>
+    </div>
+    <div class="card card-pad" style="margin-bottom:16px">
+      <div class="card-title" style="margin-bottom:4px">Shorts sold per day</div>
+      <div class="hint" id="dayHint"></div>
+      <div class="dp-bars" id="dayBars"></div>
+      <div class="dp-axis" id="dayAxis"></div>
+      <div class="dp-legend" id="dayLegend"></div>
+    </div>
+    <div class="summary-grid" id="salesKpis"></div>
+    <section class="ov-section" style="margin-top:0">
+      <div class="ov-section-head"><div><div class="ov-section-title" id="salesListTitle">Sales</div><div class="ov-section-sub" id="salesListSub"></div></div><div id="dayClear"></div></div>
+      <div class="card"><div class="tbl-wrap"><table class="dp-list" id="salesTable">
+        <thead><tr><th>Date</th><th>Camp</th><th>Guest</th><th>Short</th><th class="r">Price</th><th>Paid</th></tr></thead>
+        <tbody id="salesRows"></tbody></table></div></div>
+    </section>
+    <section class="ov-section">
+      <div class="ov-section-head"><div><div class="ov-section-title">Totals</div><div class="ov-section-sub">Per month, camp and model (EUR lines)</div></div></div>
+      <div class="dp-tot-grid" id="salesTotals"></div>
+    </section>
+  </div>
+</div>
+
+<!-- ═══════════ STOCK ═══════════ -->
+<div class="page" id="page-stock">
+  <div class="container">
+    <div class="ov-section-head page-head">
+      <div><div class="ov-section-title">Stock per camp</div><div class="ov-section-sub">Left now = stock (opening + every move) − the Camp Tab sales. The Camp Tab shows the same «N left». Tap a size to receive, correct or move shorts.</div></div>
+    </div>
+    <div id="stockBanner"></div>
+    <div id="stockCamps"></div>
+    <section class="ov-section">
+      <div class="ov-section-head"><div><div class="ov-section-title">All camps</div><div class="ov-section-sub">Per model and per size</div></div></div>
+      <div class="dp-tot-grid" id="stockAcross"></div>
+    </section>
+  </div>
+</div>
+
+<!-- ═══════════ EXPENSES ═══════════ -->
+<div class="page" id="page-expenses">
+  <div class="container">
+    <div class="ov-section-head page-head">
+      <div><div class="ov-section-title">Expenses</div><div class="ov-section-sub">Dipløria's own costs: production, shipping to the camps, marketing. Not in the Water HQ.</div></div>
+      <div class="dp-filters"><span data-period-host></span><button class="btn btn-p" id="addExpBtn" onclick="openExpense()">Add expense</button></div>
+    </div>
+    <div id="expBanner"></div>
+    <div class="summary-grid" id="expSummary"></div>
+    <div class="card"><div class="tbl-wrap"><table class="dp-list" id="expTable">
+      <thead><tr><th>Date</th><th>Supplier · what</th><th>Category</th><th>Camp</th><th class="r">Amount</th><th>File</th><th></th></tr></thead>
+      <tbody id="expRows"></tbody></table></div></div>
+  </div>
+</div>
+
+<!-- Stock: one SKU, one decision per screen -->
+<div class="overlay" id="moveOverlay" onclick="if(event.target===this)closeMove()">
+  <div class="modal" style="max-width:460px">
+    <div class="mhdr"><div class="mhdr-title" id="mvTitle"></div><div class="mhdr-sub" id="mvSub"></div><button class="mclose" onclick="closeMove()" aria-label="Close">×</button></div>
+    <div class="mbody" id="mvBody"></div>
+    <div class="mfooter" id="mvFoot"></div>
+  </div>
+</div>
+
+<!-- Expense form -->
+<div class="overlay" id="expOverlay" onclick="if(event.target===this)closeExpense()">
+  <div class="modal" style="max-width:520px">
+    <div class="mhdr"><div class="mhdr-title" id="exTitle">Add expense</div><div class="mhdr-sub">Dipløria only: never a Water or camp cost.</div><button class="mclose" onclick="closeExpense()" aria-label="Close">×</button></div>
+    <div class="mbody">
+      <div class="mgrid">
+        <div class="mfield"><label for="ex_date">Date</label><input id="ex_date" type="date"></div>
+        <div class="mfield"><label for="ex_cat">Category</label><select id="ex_cat"></select></div>
+      </div>
+      <div class="mfield"><label for="ex_supplier">Supplier</label><input id="ex_supplier" type="text" placeholder="Factory, DHL, Meta ads…"></div>
+      <div class="mfield"><label for="ex_desc">What</label><input id="ex_desc" type="text" placeholder="Batch of 60 shorts, box to Sri Lanka…"></div>
+      <div class="mgrid">
+        <div class="mfield"><label for="ex_amount">Amount</label><input id="ex_amount" type="number" min="0" step="0.01" inputmode="decimal"></div>
+        <div class="mfield"><label for="ex_cur">Currency</label><select id="ex_cur"><option>EUR</option><option>LKR</option><option>MAD</option><option>USD</option><option>GBP</option></select></div>
+      </div>
+      <div class="mgrid">
+        <div class="mfield"><label for="ex_loc">Camp (optional)</label><select id="ex_loc"></select></div>
+        <div class="mfield"><label for="ex_file">File link (Drive)</label><input id="ex_file" type="url" placeholder="https://drive.google.com/…"></div>
+      </div>
+      <div class="mfield"><label for="ex_note">Note</label><input id="ex_note" type="text"></div>
+      <div class="hint" id="exStatus"></div>
+    </div>
+    <div class="mfooter"><button class="btn btn-s" onclick="closeExpense()">Cancel</button><button class="btn btn-p" id="exSave" onclick="saveExpense()">Save expense</button></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.4"></script>
+<script src="/supabase-config.js"></script>
+<script src="/owner-config.js"></script>
+<script src="/lib/app-shell.js"></script>
+<script src="/lib/diploria-core.js"></script>
+<script>
+AppShell.mount('appNav', { app:'diploria', title:'Businesses',
+  tabs:[{ id:'overview', label:'Overview', active:true }, { id:'sales', label:'Sales' }, { id:'stock', label:'Stock' }, { id:'expenses', label:'Expenses' }],
+  location:{ label:'Dipløria', items:[{ href:'/wild/', label:'Wild Wednesday', sub:'Weekly party · Costa da Caparica', current:false }, { href:'/suk/', label:'The Suk', sub:'Manjar Lda · restaurant + catering', current:false }, { href:'/diploria/', label:'Dipløria', sub:'Boardshorts · stock + sales', current:true }] } });
+const cfg = window.__SUPABASE_CONFIG || {};
+const sb = window.supabase.createClient(cfg.url, cfg.anonKey);
+const SLUG = 'diploria';
+const D = window.DiploriaCore;
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const eur = (n) => (Number(n) < 0 ? '-' : '') + '€' + Math.abs(Number(n || 0)).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const eur0 = (n) => (Math.round(Number(n)) < 0 ? '-' : '') + '€' + Math.abs(Math.round(Number(n || 0))).toLocaleString('en-GB');
+const money = (n, cur) => (String(cur || 'EUR').toUpperCase() === 'EUR' ? eur(n) : `${String(cur).toUpperCase()} ${Number(n || 0).toLocaleString('en-GB')}`);
+const dm = (s) => { const [y, m, d] = String(s || '').split('-'); return d ? `${d}/${m}` : ''; };
+const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const monthLabel = (ym) => { const [y, m] = String(ym).split('-'); return m ? `${MON[Number(m) - 1]} ${y}` : ym; };
+const CAMP_COLORS = ['var(--ocean)', 'var(--navy)', 'var(--ocean-light)', '#c48a1a'];
+function toast(msg, kind){ const t = $('toast'); t.textContent = msg; t.className = 'toast show' + (kind === 'err' ? ' err' : kind === 'ok' ? ' ok' : ''); clearTimeout(t._t); t._t = setTimeout(() => t.className = 'toast', 4200); }
+
+const ST = { user: null, canEdit: false, locations: [], catalog: [], items: [], guests: [], moves: [], expenses: [],
+  movesReady: true, expensesReady: true, period: 'month', custom: { from: '', to: '' }, camp: 'all', day: null };
+let STOCK = [], SALES = [];
+
+function showPage(name){
+  document.querySelectorAll('.ntab,.ntab-m').forEach(b => b.classList.toggle('active', b.dataset.page === name));
+  document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === 'page-' + name));
+  if (history.replaceState) history.replaceState(null, '', '#' + name);
+  renderAll();
+}
+
+// ── Boot: the owner, or an active member of the 'diploria' workspace (same rule as the RLS) ──
+async function boot(){
+  const { data:{ user } } = await sb.auth.getUser();
+  if (!user) { document.body.innerHTML = AppShell.splash('Sign in required', 'Open the Gota Dagua hub, sign in, then reopen this page.'); return; }
+  ST.user = user;
+  let full = false;
+  try {
+    const { data } = await sb.from('platform_profiles').select('full_name,email,platform_role').eq('id', user.id).maybeSingle();
+    if ($('userChip')) $('userChip').textContent = data?.full_name || data?.email || user.email || 'you';
+    const owners = new Set(window.__PLATFORM_OWNER_EMAILS || ['miguel@gotadaguasurf.com']);
+    full = owners.has(String(user.email || '').toLowerCase()) || String(data?.platform_role || '').toLowerCase() === 'super_admin';
+  } catch { if ($('userChip')) $('userChip').textContent = user.email || 'you'; }
+  if (full) ST.canEdit = true;
+  else {
+    const { data: mem } = await sb.from('workspace_memberships').select('can_view, can_edit, workspaces!inner(slug)').eq('user_id', user.id).eq('active', true).eq('workspaces.slug', SLUG).maybeSingle();
+    if (!mem || !mem.can_view) { document.body.innerHTML = AppShell.splash('No access', 'Dipløria is not in your allowed areas. Ask Miguel to add it in Settings → Team access.'); return; }
+    ST.canEdit = !!mem.can_edit;
+  }
+  if (!ST.canEdit) { $('addExpBtn').disabled = true; $('addExpBtn').title = 'Read only: ask Miguel for edit access'; }
+  ST.custom = D.periodRange('month', new Date());
+  await loadAll();
+  const h = location.hash.replace('#', '');
+  if (h && $('page-' + h)) showPage(h); else renderAll();
+}
+
+async function paged(build){
+  const PAGE = 1000; let from = 0, all = [];
+  for (let i = 0; i < 200; i++) {
+    const { data, error } = await build().range(from, from + PAGE - 1);
+    if (error) return { data: all, error };
+    all = all.concat(data || []);
+    if (!data || data.length < PAGE) break;
+    from += PAGE;
+  }
+  return { data: all, error: null };
+}
+async function loadAll(){
+  const [loc, cat, items, moves, exps] = await Promise.all([
+    sb.from('locations').select('id, slug, name'),
+    paged(() => sb.from('pricing_catalog').select('id, location_id, name, category, stock_qty, sell_price, sell_currency, currency, sort_order, active').eq('category', 'Diploria').order('sort_order', { ascending: true }).order('id', { ascending: true })),
+    paged(() => sb.from('camp_tab_items').select('id, guest_id, location_id, category, item_name, price_local, currency, added_at, paid_at, meta').eq('category', 'Diploria').order('added_at', { ascending: true }).order('id', { ascending: true })),
+    paged(() => sb.from('diploria_stock_moves').select('id, location_id, sku, qty, kind, note, transfer_id, created_by, created_at').order('created_at', { ascending: true }).order('id', { ascending: true })),
+    paged(() => sb.from('diploria_expenses').select('id, expense_date, supplier, description, category, amount, currency, location_id, file_url, note, created_at, deleted_at').is('deleted_at', null).order('expense_date', { ascending: false }).order('id', { ascending: true })),
+  ]);
+  if (loc.error) toast('Camps: ' + loc.error.message, 'err');
+  if (cat.error) toast('Catalog: ' + cat.error.message, 'err');
+  if (items.error) toast('Camp Tab lines: ' + items.error.message, 'err');
+  ST.locations = loc.data || []; ST.catalog = cat.data || []; ST.items = items.data || [];
+  ST.movesReady = !moves.error; ST.moves = moves.error ? [] : moves.data;
+  ST.expensesReady = !exps.error; ST.expenses = exps.error ? [] : exps.data;
+  ST.movesError = moves.error ? moves.error.message : ''; ST.expensesError = exps.error ? exps.error.message : '';
+  const ids = [...new Set(ST.items.map(i => i.guest_id).filter(Boolean))]; const guests = [];
+  for (let i = 0; i < ids.length; i += 100) {
+    const { data, error } = await sb.from('camp_guests').select('id, name, is_staff').in('id', ids.slice(i, i + 100));
+    if (error) { toast('Guests: ' + error.message, 'err'); break; }
+    guests.push(...(data || []));
+  }
+  ST.guests = guests;
+  STOCK = D.stock(ST.catalog, ST.items, ST.locations, ST.moves);
+  SALES = D.sales(ST.items, ST.guests, ST.locations);
+}
+
+// ── Period (shared by Overview, Sales and Expenses) ──
+function range(){ return ST.period === 'all' ? { from: '', to: '' } : ST.period === 'custom' ? ST.custom : D.periodRange(ST.period, new Date()); }
+function periodLabel(){
+  const r = range();
+  if (ST.period === 'all') return 'all time';
+  if (ST.period === 'week') return `this week (${dm(r.from)}–${dm(r.to)})`;
+  if (ST.period === 'month') return `this month (${monthLabel(r.from.slice(0, 7))})`;
+  if (/^m:/.test(ST.periodKey || '')) return monthLabel(ST.periodKey.slice(2));
+  return `${dm(r.from) || '…'} – ${dm(r.to) || '…'}`;
+}
+function renderPeriod(){
+  const months = [...new Set([...SALES.map(s => s.month), ...ST.expenses.map(e => String(e.expense_date || '').slice(0, 7))].filter(Boolean))].sort().reverse();
+  const key = ST.periodKey || ST.period;
+  const html = `<label class="period-picker" title="Period"><span class="period-picker-lbl">Period</span><select data-period onchange="setPeriod(this.value)">
+      <option value="week"${key === 'week' ? ' selected' : ''}>This week</option><option value="month"${key === 'month' ? ' selected' : ''}>This month</option>
+      ${months.map(m => `<option value="m:${m}"${key === 'm:' + m ? ' selected' : ''}>${monthLabel(m)}</option>`).join('')}
+      <option value="all"${key === 'all' ? ' selected' : ''}>All time</option><option value="custom"${key === 'custom' ? ' selected' : ''}>Custom…</option></select></label>
+    ${key === 'custom' ? `<input type="date" data-from value="${esc(ST.custom.from)}" onchange="setCustom('from', this.value)" aria-label="From"><input type="date" data-to value="${esc(ST.custom.to)}" onchange="setCustom('to', this.value)" aria-label="To">` : ''}`;
+  document.querySelectorAll('[data-period-host]').forEach(h => { h.innerHTML = html; h.classList.add('dp-filters'); });
+}
+function setPeriod(v){
+  ST.periodKey = v; ST.day = null;
+  if (/^m:/.test(v)) { const [y, m] = v.slice(2).split('-').map(Number); ST.period = 'custom'; ST.custom = D.periodRange('month', new Date(y, m - 1, 15)); }
+  else ST.period = v;
+  renderAll();
+}
+function setCustom(which, v){ ST.custom = { ...ST.custom, [which]: v }; ST.period = 'custom'; ST.periodKey = 'custom'; ST.day = null; renderAll(); }
+
+function renderAll(){
+  renderPeriod();
+  const page = (document.querySelector('.page.active') || {}).id || 'page-overview';
+  if (page === 'page-overview') renderOverview();
+  if (page === 'page-sales') renderSales();
+  if (page === 'page-stock') renderStock();
+  if (page === 'page-expenses') renderExpenses();
+}
+const modeBadge = (mode) => `<span class="dp-mode ${mode}">${mode === 'pass' ? 'Card → Dipløria' : 'Sold by the camp'}</span>`;
+const chips = (list, suffix) => list.length ? `<div class="dp-chips">${list.map(x => `<span class="dp-chip">${esc(suffix === 'size' ? 'Size ' + x.key : x.key)} <b>${x.units}</b></span>`).join('')}</div>` : '<span class="hint">none sold</span>';
+
+// ── Overview ──
+function renderOverview(){
+  const r = range(); const rows = D.filterSales(SALES, { range: r }); const ov = D.overview(STOCK, rows);
+  $('ovBanner').innerHTML = STOCK.length ? '' : '<div class="dp-banner">No Dipløria rows in any camp catalog yet.</div>';
+  const card = (c, all) => `<div class="card dp-card${all ? ' all' : ''}" data-camp-card="${esc(all ? 'all' : c.slug)}">
+      <div class="dp-card-head"><div><div class="dp-card-name">${esc(c.name)}</div><div class="dp-card-mode">${all ? `Every camp · ${esc(periodLabel())}` : esc(D.MODE_LONG[c.mode])}</div></div>${all ? '' : modeBadge(c.mode)}</div>
+      <div class="dp-big"><div><b data-units>${c.units}</b><span>shorts sold</span></div><div><b data-eur>${eur0(c.sold)}</b><span>${all ? 'sold' : c.mode === 'pass' ? 'to Dipløria' : 'camp income'}</span></div></div>
+      <div class="dp-kv">
+        ${all ? `<span>to the Dipløria account</span><b>${eur(c.passSold)}</b><span>sold by the camps</span><b>${eur(c.campSold)}</b>` : ''}
+        <span>not paid yet</span><b class="${c.unpaid ? 'neg' : ''}" data-unpaid>${eur(c.unpaid)}</b>
+        <span>stock left now</span><b data-left>${c.left} of ${c.stock}</b>
+      </div>
+      <div class="dp-tops"><span class="lbl">Top models</span>${chips(c.topModels)}<span class="lbl">Top sizes</span>${chips(c.topSizes, 'size')}</div>
+      ${c.otherCurrency && c.otherCurrency.length ? `<div class="hint" style="margin-top:6px">${c.otherCurrency.length} line(s) not in EUR, counted in units only.</div>` : ''}
+    </div>`;
+  $('ovCards').innerHTML = ov.camps.map(c => card(c)).join('') + (ov.camps.length ? card(ov.all, true) : '');
+  const al = D.alerts(STOCK);
+  // Sizes at 0 as chips; the many «1 left» (Sri Lanka's consignment is mostly one per size) folded per camp.
+  const zeros = al.filter(a => !a.left), ones = al.filter(a => a.left === 1);
+  const oneCamps = [...new Set(ones.map(a => a.camp))];
+  $('ovAlerts').innerHTML = !al.length ? '<span class="hint">Nothing below 2.</span>'
+    : `<div class="dp-alerts">${zeros.map(a => `<span class="dp-alert zero" data-alert="${esc(a.camp + ' · ' + a.sku)}">${esc(a.camp)} · ${esc(a.sku)} · none left</span>`).join('') || '<span class="hint">No size at 0.</span>'}</div>
+      ${oneCamps.map(c => { const l = ones.filter(a => a.camp === c); return `<details class="dp-ones" data-ones="${esc(c)}"><summary>${esc(c)}: ${l.length} size${l.length === 1 ? '' : 's'} with 1 left</summary><p>${l.map(a => `<span data-alert="${esc(a.camp + ' · ' + a.sku)}">${esc(a.sku)}</span>`).join(' · ')}</p></details>`; }).join('')}`;
+  const mg = D.margin(rows, D.expenseRows(ST.expenses, r));
+  $('ovMargin').innerHTML = [
+    ['Sales to the Dipløria account', eur(mg.accountSales), 'Sri Lanka, card to Dipløria'],
+    ['Sold by the camps', eur(mg.campSales), 'Portugal, camp income (camp ledger)'],
+    ['Expenses', eur(mg.expenses), ST.expensesReady ? `${D.expenseRows(ST.expenses, r).length} line(s)` : 'expenses table not set up yet'],
+    ['Margin on the Dipløria account', eur(mg.onAccount), 'account sales − expenses', mg.onAccount < 0],
+    ['Margin counting the camps', eur(mg.withCamps), 'all sales − expenses', mg.withCamps < 0],
+  ].map(([l, v, s, neg]) => `<div class="kpi"><div class="kpi-label">${l}</div><div class="kpi-value${neg ? ' neg' : ''}">${v}</div><div class="kpi-sub">${s}</div></div>`).join('');
+}
+
+// ── Sales ──
+function campColor(slug){ const i = STOCK.findIndex(c => c.slug === slug); return CAMP_COLORS[(i < 0 ? STOCK.length : i) % CAMP_COLORS.length]; }
+function renderSales(){
+  const camps = STOCK.map(c => ({ slug: c.slug, name: c.name }));
+  SALES.forEach(s => { if (!camps.some(c => c.slug === s.campSlug)) camps.push({ slug: s.campSlug, name: s.camp }); });
+  $('campPills').innerHTML = [{ slug: 'all', name: 'All camps' }, ...camps].map(c => `<button class="pill${ST.camp === c.slug ? ' active' : ''}" data-camp="${esc(c.slug)}" onclick="ST.camp='${esc(c.slug)}';ST.day=null;renderSales()">${esc(c.name)}</button>`).join('');
+  const r = range(); const rows = D.filterSales(SALES, { range: r, camp: ST.camp }); const days = D.byDay(rows, r);
+  const max = Math.max(1, ...days.map(d => d.units));
+  $('dayHint').textContent = `${rows.length} short${rows.length === 1 ? '' : 's'} · ${periodLabel()}`;
+  $('dayBars').innerHTML = days.length ? days.map(d => {
+    const segs = Object.entries(d.perCamp).map(([slug, n]) => `<span class="seg" style="height:${(n / max) * 100}%;background:${campColor(slug)}" title="${esc(slug)}: ${n}"></span>`).join('');
+    return `<button class="dp-bar${d.units ? '' : ' empty'}${ST.day === d.date ? ' sel' : ''}" data-day="${d.date}" ${d.units ? `onclick="pickDay('${d.date}')"` : 'disabled'} aria-label="${d.date}: ${d.units} sold">${segs}${d.units ? `<span class="n" style="bottom:calc(${(d.units / max) * 100}% + 2px)">${d.units}</span>` : ''}</button>`;
+  }).join('') : '<div class="hint" style="align-self:center;margin:auto">No sale in this period.</div>';
+  const step = Math.max(1, Math.ceil(days.length / 10));
+  $('dayAxis').innerHTML = days.map((d, i) => `<span>${i % step === 0 ? dm(d.date) : ''}</span>`).join('');
+  $('dayLegend').innerHTML = camps.filter(c => ST.camp === 'all' || c.slug === ST.camp).map(c => `<span><i style="background:${campColor(c.slug)}"></i>${esc(c.name)}</span>`).join('');
+  const list = ST.day ? rows.filter(s => s.date === ST.day) : rows; const t = D.totals(list);
+  $('salesKpis').innerHTML = [['Shorts', t.units, ''], ['Sold', eur(t.sold), `${eur(t.passSold)} to Dipløria · ${eur(t.campSold)} by the camps`], ['Paid', eur(t.paid), ''], ['Not paid', eur(t.unpaid), '', t.unpaid > 0]]
+    .map(([l, v, s, neg]) => `<div class="kpi"><div class="kpi-label">${l}</div><div class="kpi-value${neg ? ' neg' : ''}">${v}</div>${s ? `<div class="kpi-sub">${s}</div>` : ''}</div>`).join('');
+  $('salesListTitle').textContent = ST.day ? `Sales on ${dm(ST.day)}` : 'Sales';
+  $('salesListSub').textContent = ST.day ? `${list.length} short(s)` : `${list.length} short(s) · ${periodLabel()}`;
+  $('dayClear').innerHTML = ST.day ? '<button class="btn btn-s btn-sm" onclick="pickDay(null)">Whole period</button>' : '';
+  $('salesRows').innerHTML = list.length ? list.map(s => `<tr data-sale="${esc(s.id)}">
+      <td>${esc(dm(s.date))}${s.time ? ` <span class="hint">${esc(s.time)}</span>` : ''}</td>
+      <td>${esc(s.camp)} ${modeBadge(s.mode)}</td>
+      <td>${esc(s.guest)}${s.staff ? ' <span class="badge badge-grey">staff</span>' : ''}</td>
+      <td>${esc(s.model)}${s.size ? ` · <b>${esc(s.size)}</b>` : ''}</td>
+      <td class="r">${esc(money(s.price, s.currency))}</td>
+      <td>${s.paid ? `${esc(dm(s.paidAt))} · ${esc(s.method)}` : '<span class="dp-unpaid">not paid</span>'}</td></tr>`).join('')
+    : '<tr class="empty-row"><td colspan="6">No Dipløria sale in this period.</td></tr>';
+  const tbl = (title, groups, label) => `<div class="card"><div class="card-hdr" style="padding:12px var(--card-pad)"><div class="card-title">${title}</div></div><div class="tbl-wrap"><table>
+      <thead><tr><th></th><th class="r">Units</th><th class="r">Sold</th><th class="r">Paid</th><th class="r">Not paid</th></tr></thead>
+      <tbody>${groups.length ? groups.map(g => `<tr><td>${esc(label(g.key))}</td><td class="r">${g.units}</td><td class="r">${eur(g.sold)}</td><td class="r">${eur(g.paid)}</td><td class="r${g.unpaid ? ' dp-unpaid' : ''}">${eur(g.unpaid)}</td></tr>`).join('') : '<tr class="empty-row"><td colspan="5">—</td></tr>'}</tbody></table></div></div>`;
+  $('salesTotals').innerHTML = tbl('Per month', D.groupBy(rows, 'month'), monthLabel) + tbl('Per camp', D.groupBy(rows, 'camp'), k => k) + tbl('Per model', D.groupBy(rows, 'model'), k => k);
+}
+function pickDay(d){ ST.day = ST.day === d ? null : d; renderSales(); }
+
+// ── Stock ──
+function renderStock(){
+  $('stockBanner').innerHTML = !ST.movesReady
+    ? `<div class="dp-banner">Stock moves are not set up yet (run supabase/diploria-stock.sql). Showing the catalog figures; changes are off. <span class="hint">${esc(ST.movesError)}</span></div>`
+    : (STOCK.some(c => c.rows.some(r => r.drift)) ? '<div class="dp-banner">Some catalog figures differ from the moves (outlined cells). The next move on that size writes the right figure.</div>' : '');
+  $('stockCamps').innerHTML = STOCK.map((c, ci) => {
+    const sizes = D.SIZES; const canTap = ST.canEdit && ST.movesReady;
+    const cell = (m, mi, sz) => { const r = m.sizes[sz];
+      if (!r) return `<td><button class="dp-cell none" ${canTap && m.model ? `onclick="openMove(${ci}, ${mi}, '${sz}')"` : 'disabled'} aria-label="${esc((m.model || 'Size') + ' ' + sz)}: none">–</button></td>`;
+      const cls = r.left === 0 ? ' zero' : r.left === 1 ? ' low' : '';
+      return `<td><button class="dp-cell${cls}${r.drift ? ' drift' : ''}" data-sku="${esc(r.sku)}" data-left="${r.left}" onclick="openMove(${ci}, ${mi}, '${sz}')"><b>${r.left}</b><small>of ${r.stock}</small></button></td>`; };
+    return `<section class="ov-section" style="margin-top:0" data-stock-camp="${esc(c.slug)}">
+      <div class="ov-section-head"><div><div class="ov-section-title">${esc(c.name)} ${modeBadge(c.mode)}</div><div class="ov-section-sub" data-camp-total>${c.total.left} left of ${c.total.stock} · ${c.total.sold} sold on the Camp Tab${c.total.moves ? ` · ${c.total.moves > 0 ? '+' : ''}${c.total.moves} moved since the opening count` : ''}</div></div></div>
+      <div class="card"><div class="tbl-wrap"><table class="dp-grid">
+        <thead><tr><th>${c.sizesOnly ? 'Sizes' : 'Model'}</th>${sizes.map(s => `<th>${s}</th>`).join('')}<th>Left</th></tr></thead>
+        <tbody>${c.models.map((m, mi) => `<tr data-model="${esc(m.model || D.NO_MODEL)}"><td><b>${esc(m.model || 'All models')}</b></td>${sizes.map(sz => cell(m, mi, sz)).join('')}<td><b>${m.left}</b><span class="hint">/${m.stock}</span></td></tr>`).join('')}</tbody>
+        ${c.models.length > 1 ? `<tfoot><tr><th>Total</th>${c.bySize.map(s => `<td>${s.left}<span class="hint">/${s.stock}</span></td>`).join('')}<td>${c.total.left}<span class="hint">/${c.total.stock}</span></td></tr></tfoot>` : ''}
+      </table></div></div></section>`;
+  }).join('') || '<div class="card card-pad hint">No Dipløria rows in any camp catalog yet.</div>';
+  const ac = D.acrossCamps(STOCK);
+  const t2 = (title, head, rows) => `<div class="card"><div class="card-hdr" style="padding:12px var(--card-pad)"><div class="card-title">${title}</div></div><div class="tbl-wrap"><table>
+      <thead><tr><th>${head}</th><th class="r">Stock</th><th class="r">Sold</th><th class="r">Left</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+  $('stockAcross').innerHTML = t2('Per model', 'Model', ac.models.map(m => `<tr><td>${esc(m.model)}<div class="hint">${esc(m.camps.join(' · '))}</div></td><td class="r">${m.stock}</td><td class="r">${m.sold}</td><td class="r"><b>${m.left}</b></td></tr>`).join(''))
+    + t2('Per size', 'Size', ac.sizes.map(s => `<tr data-size-total="${s.size}"><td>${s.size}</td><td class="r">${s.stock}</td><td class="r">${s.sold}</td><td class="r"><b>${s.left}</b></td></tr>`).join('') + `<tr data-size-total="all"><td><b>All</b></td><td class="r"><b>${ac.total.stock}</b></td><td class="r"><b>${ac.total.sold}</b></td><td class="r"><b>${ac.total.left}</b></td></tr>`);
+}
+
+// One SKU: first the figures + history + what to do; then one screen for that action.
+let MV = null;
+function openMove(ci, mi, size){
+  const c = STOCK[ci]; if (!c) return; const m = c.models[mi]; if (!m) return; const model = m.model; const r = m.sizes[size];
+  MV = { camp: c, model, size, row: r || null, sku: r ? r.sku : `${model} ${size}`, step: 'menu', qty: 1, note: '', reason: 'correction', sign: -1, target: null };
+  renderMove(); $('moveOverlay').classList.add('open');
+}
+function closeMove(){ $('moveOverlay').classList.remove('open'); MV = null; }
+function renderMove(){
+  const { camp, row, sku } = MV; const can = ST.canEdit && ST.movesReady;
+  $('mvTitle').textContent = `${sku} · ${camp.name}`;
+  if (MV.step === 'menu') {
+    $('mvSub').textContent = row ? `${row.left} left now` : 'Not stocked at this camp yet';
+    const hist = row ? row.history.slice().reverse() : [];
+    $('mvBody').innerHTML = `${row ? `<div class="dp-mstats"><div><b>${row.stock}</b><span>stock</span></div><div><b>${row.sold}</b><span>sold</span></div><div><b data-mv-left>${row.left}</b><span>left</span></div><div><b>${row.moves > 0 ? '+' : ''}${row.moves}</b><span>moved</span></div></div>` : ''}
+      ${can ? `<div class="dp-step-actions" style="margin-top:14px">
+        <button class="btn btn-s" data-act="sent" onclick="mvStep('sent')">${AppShell.icon('plus')} Received</button>
+        ${row ? `<button class="btn btn-s" data-act="correction" onclick="mvStep('correction')" ${row.left ? '' : 'disabled'}>${AppShell.icon('minus')} Correction</button>
+        <button class="btn btn-s" data-act="transfer" onclick="mvStep('transfer')" ${row.left && D.transferTargets(STOCK, camp.id, row).length ? '' : 'disabled'}>${AppShell.icon('truck')} Move to another camp</button>` : ''}
+      </div>` : `<div class="hint" style="margin-top:12px">${ST.movesReady ? 'Read only: ask Miguel for edit access to change the stock.' : 'Stock moves are not set up yet.'}</div>`}
+      <div class="section-lbl" style="margin-top:16px">History</div>
+      <ul class="dp-hist" id="mvHist">${hist.length ? hist.map(h => `<li><span>${esc(dm(String(h.created_at || '').slice(0, 10)))}</span><span>${esc(D.KIND_LABEL[h.kind] || h.kind)}${h.note ? `<div class="note">${esc(h.note)}</div>` : ''}</span><span class="q ${h.qty > 0 ? 'pos' : h.qty < 0 ? 'neg' : ''}">${h.qty > 0 ? '+' : ''}${h.qty}</span></li>`).join('')
+        : `<li><span></span><span class="note">${row ? `No move yet: opening stock ${row.initial} (catalog).` : 'Nothing yet.'}</span><span></span></li>`}</ul>`;
+    $('mvFoot').innerHTML = '<button class="btn btn-s" onclick="closeMove()">Close</button>';
+    return;
+  }
+  const left = row ? row.left : 0;
+  const qtyHtml = `<div class="dp-qty"><button type="button" onclick="mvQty(-1)" aria-label="One less">−</button><input id="mvQty" type="number" min="1" step="1" value="${MV.qty}" oninput="MV.qty=Math.max(1,parseInt(this.value,10)||1)"><button type="button" onclick="mvQty(1)" aria-label="One more">+</button></div>`;
+  const noteHtml = `<div class="mfield"><label for="mvNote">Note</label><input id="mvNote" type="text" value="${esc(MV.note)}" oninput="MV.note=this.value" placeholder="${MV.step === 'sent' ? 'Box from Lisbon, new batch…' : MV.step === 'transfer' ? 'For the October groups…' : 'Recount on 15 Nov…'}"></div>`;
+  let body = '', title = '';
+  if (MV.step === 'sent') { title = row ? `How many arrived? ${left} left now.` : `How many arrived? «${sku}» is added to ${camp.name}'s catalog at the same price as the other ${esc(MV.model)}.`; body = qtyHtml + noteHtml; }
+  if (MV.step === 'correction') {
+    title = `How many to take out? ${left} left now.`;
+    const reasons = [['correction', 'Recount'], ['sold_outside', 'Sold outside the tab'], ['returned', 'Returned to Dipløria']];
+    body = `<div class="pills" style="justify-content:center;margin-bottom:8px">${reasons.map(([k, l]) => `<button type="button" class="pill${MV.reason === k ? ' active' : ''}" data-reason="${k}" onclick="MV.reason='${k}';renderMove()">${l}</button>`).join('')}</div>` + qtyHtml + noteHtml;
+  }
+  if (MV.step === 'transfer') {
+    const targets = D.transferTargets(STOCK, camp.id, row); if (!MV.target && targets.length) MV.target = { campId: targets[0].campId, sku: targets[0].options[0] };
+    const cur = targets.find(t => t.campId === (MV.target && MV.target.campId)) || targets[0];
+    title = `Move to which camp? ${left} left here.`;
+    body = `<div class="pills" style="justify-content:center;margin-bottom:8px">${targets.map(t => `<button type="button" class="pill${cur && t.campId === cur.campId ? ' active' : ''}" data-target="${esc(t.slug)}" onclick="mvTarget('${t.campId}')">${esc(t.camp)}</button>`).join('')}</div>
+      ${cur && cur.options.length > 1 ? `<div class="mfield"><label for="mvToSku">Lands as</label><select id="mvToSku" onchange="MV.target.sku=this.value">${cur.options.map(o => `<option${MV.target.sku === o ? ' selected' : ''}>${esc(o)}</option>`).join('')}</select></div>`
+        : cur ? `<div class="hint" style="text-align:center;margin-bottom:8px">Lands as «${esc(cur.options[0])}» in ${esc(cur.camp)}${cur.isNew ? ' (new there, same price as its other shorts)' : ''}.</div>` : ''}` + qtyHtml + noteHtml;
+  }
+  $('mvSub').textContent = title;
+  $('mvBody').innerHTML = body;
+  $('mvFoot').innerHTML = `<button class="btn btn-s" onclick="MV.step='menu';renderMove()">Back</button><button class="btn btn-p" id="mvSave" onclick="saveMove()">${MV.step === 'sent' ? 'Add to stock' : MV.step === 'transfer' ? 'Move' : 'Take out'}</button>`;
+}
+function mvStep(s){ MV.step = s; MV.qty = 1; MV.note = ''; MV.target = null; renderMove(); }
+function mvQty(d){ MV.qty = Math.max(1, (parseInt($('mvQty').value, 10) || 1) + d); $('mvQty').value = MV.qty; }
+function mvTarget(id){ const t = D.transferTargets(STOCK, MV.camp.id, MV.row).find(x => x.campId === id); MV.target = { campId: id, sku: t ? t.options[0] : '' }; renderMove(); }
+async function saveMove(){
+  if (!MV) return; const btn = $('mvSave'); const q = Math.max(1, parseInt(($('mvQty') || {}).value, 10) || MV.qty || 1);
+  const kind = MV.step === 'correction' ? MV.reason : MV.step;
+  const args = { p_location_id: MV.camp.id, p_sku: MV.sku, p_qty: kind === 'correction' ? -q : q, p_kind: kind, p_note: (MV.note || '').trim() || null,
+    p_to_location_id: kind === 'transfer' ? MV.target.campId : null, p_to_sku: kind === 'transfer' ? MV.target.sku : null };
+  btn.disabled = true; btn.textContent = 'Saving…';
+  const { data, error } = await sb.rpc('diploria_stock_move', args);
+  if (error) { btn.disabled = false; btn.textContent = 'Try again'; toast(error.message || 'Could not save the move', 'err'); return; }
+  const sku = MV.sku, campName = MV.camp.name;
+  closeMove();
+  await loadAll(); renderAll();
+  toast(`${sku} · ${campName}: ${data && data.left != null ? data.left + ' left' : 'saved'}`, 'ok');
+}
+
+// ── Expenses ──
+function renderExpenses(){
+  $('expBanner').innerHTML = ST.expensesReady ? '' : `<div class="dp-banner">The expenses table is not set up yet (run supabase/diploria-expenses.sql). <span class="hint">${esc(ST.expensesError)}</span></div>`;
+  if (!ST.expensesReady) $('addExpBtn').disabled = true;
+  const r = range(); const list = D.expenseRows(ST.expenses, r); const mg = D.margin(D.filterSales(SALES, { range: r }), list);
+  $('expSummary').innerHTML = [
+    ['Expenses', eur(mg.expenses), mg.byCat.map(c => `${c.label} ${eur0(c.amount)}`).join(' · ') || periodLabel()],
+    ['Sales to the Dipløria account', eur(mg.accountSales), 'Sri Lanka, card to Dipløria'],
+    ['Margin on the Dipløria account', eur(mg.onAccount), 'account sales − expenses', mg.onAccount < 0],
+    ['Margin counting the camps', eur(mg.withCamps), `+ ${eur(mg.campSales)} sold by the camps (camp income)`, mg.withCamps < 0],
+  ].map(([l, v, s, neg]) => `<div class="kpi"><div class="kpi-label">${l}</div><div class="kpi-value${neg ? ' neg' : ''}">${v}</div><div class="kpi-sub">${s}</div></div>`).join('')
+    + (mg.otherCurrency.length ? `<div class="hint" style="grid-column:1/-1">${mg.otherCurrency.length} expense(s) not in EUR are listed but not in the totals.</div>` : '');
+  const locName = id => (ST.locations.find(l => l.id === id) || {}).name || '';
+  const catName = k => (D.EXPENSE_CATS.find(c => c[0] === k) || [k, k])[1];
+  $('expRows').innerHTML = list.length ? list.map(e => `<tr data-exp="${esc(e.id)}">
+      <td>${esc(dm(e.expense_date))}<span class="hint"> ${esc(String(e.expense_date || '').slice(0, 4))}</span></td>
+      <td><b>${esc(e.supplier || '—')}</b>${e.description ? `<div class="hint">${esc(e.description)}</div>` : ''}${e.note ? `<div class="hint">${esc(e.note)}</div>` : ''}</td>
+      <td>${esc(catName(e.category))}</td><td>${esc(locName(e.location_id))}</td>
+      <td class="r">${esc(money(e.amount, e.currency))}</td>
+      <td>${e.file_url && /^https?:\/\//i.test(e.file_url) ? `<a href="${esc(e.file_url)}" target="_blank" rel="noopener">${AppShell.icon('paperclip')} open</a>` : '<span class="hint">—</span>'}</td>
+      <td>${ST.canEdit ? `<button class="btn btn-s btn-sm" onclick="openExpense('${esc(e.id)}')">Edit</button> <button class="btn btn-s btn-sm" onclick="archiveExpense('${esc(e.id)}')" title="Archive">${AppShell.icon('archive')}</button>` : ''}</td></tr>`).join('')
+    : `<tr class="empty-row"><td colspan="7">No expense in this period.</td></tr>`;
+}
+let EX_ID = null;
+function openExpense(id){
+  if (!ST.canEdit || !ST.expensesReady) return;
+  const e = id ? ST.expenses.find(x => x.id === id) : null; EX_ID = e ? e.id : null;
+  $('exTitle').textContent = e ? 'Edit expense' : 'Add expense';
+  $('ex_cat').innerHTML = D.EXPENSE_CATS.map(([k, l]) => `<option value="${k}">${l}</option>`).join('');
+  $('ex_loc').innerHTML = '<option value="">—</option>' + STOCK.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  $('ex_date').value = e ? e.expense_date : new Date().toISOString().slice(0, 10);
+  $('ex_cat').value = e ? e.category : 'production'; $('ex_supplier').value = e ? e.supplier : ''; $('ex_desc').value = e ? e.description : '';
+  $('ex_amount').value = e ? e.amount : ''; $('ex_cur').value = e ? e.currency : 'EUR'; $('ex_loc').value = e && e.location_id ? e.location_id : '';
+  $('ex_file').value = e && e.file_url ? e.file_url : ''; $('ex_note').value = e && e.note ? e.note : ''; $('exStatus').textContent = '';
+  $('expOverlay').classList.add('open');
+}
+function closeExpense(){ $('expOverlay').classList.remove('open'); EX_ID = null; }
+async function saveExpense(){
+  const amount = Number($('ex_amount').value); const file = $('ex_file').value.trim();
+  if (!$('ex_date').value || !(amount >= 0) || $('ex_amount').value === '') { $('exStatus').textContent = 'A date and an amount are needed.'; return; }
+  if (!$('ex_supplier').value.trim() && !$('ex_desc').value.trim()) { $('exStatus').textContent = 'Say who or what it was.'; return; }
+  if (file && !/^https?:\/\//i.test(file)) { $('exStatus').textContent = 'The file link must start with https://'; return; }
+  const row = { expense_date: $('ex_date').value, supplier: $('ex_supplier').value.trim(), description: $('ex_desc').value.trim(), category: $('ex_cat').value,
+    amount: Math.round(amount * 100) / 100, currency: $('ex_cur').value, location_id: $('ex_loc').value || null, file_url: file || null, note: $('ex_note').value.trim() || null };
+  const btn = $('exSave'); btn.disabled = true;
+  const { error } = EX_ID ? await sb.from('diploria_expenses').update(row).eq('id', EX_ID) : await sb.from('diploria_expenses').insert(row);
+  btn.disabled = false;
+  if (error) { $('exStatus').textContent = error.message; toast(error.message, 'err'); return; }
+  closeExpense(); await loadAll(); renderAll(); toast('Expense saved', 'ok');
+}
+async function archiveExpense(id){
+  const e = ST.expenses.find(x => x.id === id); if (!e) return;
+  if (!confirm(`Archive «${e.supplier || e.description}» (${money(e.amount, e.currency)})? It leaves the list and the totals.`)) return;
+  const { error } = await sb.from('diploria_expenses').update({ deleted_at: new Date().toISOString() }).eq('id', id);
+  if (error) { toast(error.message, 'err'); return; }
+  await loadAll(); renderAll(); toast('Archived', 'ok');
+}
+
+boot();
+</script>
+</body>
+</html>

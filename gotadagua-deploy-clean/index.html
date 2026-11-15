@@ -640,6 +640,23 @@
         href:'/suk/',
         meta:[['Main use','Restaurant P&L'],['Currency','EUR']]
       },
+      // Dipløria (15 Nov 2026): our own boardshorts business, sold in the camps (each camp with its own
+      // stock). Access = the owner or the «Dipløria» pill in Settings (workspace 'diploria'); the
+      // 'owner' platform role alone does not open it (same rule as the page and its RLS).
+      {
+        key:'diploria',
+        type:'business',
+        title:'Dipløria',
+        subtitle:'Boardshorts · Portugal + Sri Lanka',
+        eyebrow:'Business',
+        copy:'O que cada camp vende, o stock por camp (ajustável), as vendas por dia e as despesas da Dipløria.',
+        status:'live',
+        statusLabel:'Live now',
+        icon:'stack',
+        action:'open',
+        href:'/diploria/',
+        meta:[['Main use','Stock + sales'],['Currency','EUR']]
+      },
       {
         key:'prices-sri-lanka',
         type:'pricing',
@@ -811,6 +828,7 @@
       // Businesses (own page each; slug = location slug = workspaces slug)
       { key:'wild-wednesday',       label:'Wild Wednesday',       group:'Businesses' },
       { key:'the-suk',              label:'The Suk',              group:'Businesses' },
+      { key:'diploria',             label:'Dipløria',             group:'Businesses' },
       // Prices (Pricing Catalog per camp — Phase 4 access-control)
       { key:'prices-sri-lanka',   label:'Sri Lanka prices',    group:'Prices' },
       { key:'prices-morocco',     label:'Morocco prices',      group:'Prices' },
@@ -961,7 +979,10 @@
       // The HQ tile is never granted by the platform role — only by the HQ
       // pill in Settings (Miguel, 9 Sep 2026). Owners keep the shortcut for
       // everything else so no camp tile disappears for Ricardo or Gonçalo.
-      if (previewIsSelf && key !== 'hq' && (role === 'owner' || role === 'super_admin' || OWNER_EMAILS.has(myEmail))) {
+      // Dipløria is a business apart: the platform owner (super_admin / owner list) or its pill, never the
+      // 'owner' role alone (15 Nov 2026).
+      if (previewIsSelf && key === 'diploria' && (role === 'super_admin' || OWNER_EMAILS.has(myEmail))) return true;
+      if (previewIsSelf && key !== 'hq' && key !== 'diploria' && (role === 'owner' || role === 'super_admin' || OWNER_EMAILS.has(myEmail))) {
         return true;
       }
       if (previewIsSelf && key === 'hq' && (role === 'super_admin' || OWNER_EMAILS.has(myEmail))) {

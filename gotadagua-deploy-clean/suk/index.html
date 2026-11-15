@@ -162,7 +162,7 @@
 <script src="/lib/expense-form.js"></script>
 <script src="/hq/accountant-excel.js"></script>
 <script>
-AppShell.mount('appNav', { app:'suk', title:'Businesses', tabs:[{ id:'overview', label:'Overview', active:true }, { id:'invoices', label:'Expenses' }, { id:'bank', label:'Bank statement' }, { id:'close', label:'Month close' }], location:{ label:'The Suk', items:[{ href:'/wild/', label:'Wild Wednesday', sub:'Weekly party · Costa da Caparica', current:false }, { href:'/suk/', label:'The Suk', sub:'Manjar Lda · restaurant + catering', current:true }] }, actions:'<a class="nav-action-btn" href="/hq/" id="hqBtn" style="display:none">HQ</a>' });
+AppShell.mount('appNav', { app:'suk', title:'Businesses', tabs:[{ id:'overview', label:'Overview', active:true }, { id:'invoices', label:'Expenses' }, { id:'bank', label:'Bank statement' }, { id:'close', label:'Month close' }], location:{ label:'The Suk', items:[{ href:'/wild/', label:'Wild Wednesday', sub:'Weekly party · Costa da Caparica', current:false }, { href:'/suk/', label:'The Suk', sub:'Manjar Lda · restaurant + catering', current:true }, { href:'/diploria/', label:'Dipløria', sub:'Boardshorts · stock + sales', current:false }] }, actions:'<a class="nav-action-btn" href="/hq/" id="hqBtn" style="display:none">HQ</a>' });
 const cfg = window.__SUPABASE_CONFIG || {};
 const sb = window.supabase.createClient(cfg.url, cfg.anonKey);
 const SLUG = 'the-suk', COMPANY = 'manjar', BANK = 'bcp';

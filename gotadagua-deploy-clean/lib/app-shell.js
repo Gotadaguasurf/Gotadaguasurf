@@ -33,6 +33,7 @@
     { group:'Businesses' },
     { slug:'wild',        href:'/wild/',        label:'Wild Wednesday', sub:'Close the night · season P&L' },
     { slug:'suk',         href:'/suk/',         label:'The Suk',     sub:'Manjar · restaurant + catering' },
+    { slug:'diploria',    href:'/diploria/',    label:'Dipløria',    sub:'Boardshorts · stock + sales' },
   ];
   const LOGO = `<svg viewBox="0 0 197.4 91" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
     <path fill="#fff4d5" d="M61.7,51.9c-.4-9-5.5-16.5-9.7-24.1-2.9-4.8-5.3-9.8-9.3-13.9-3.9-4.4-6.5-9.8-10.8-13.9C19.2,16.6-.5,39.9,0,61.9c9.4-7.9,20.1-17.7,33.1-17.8,3,0,7.2,0,9.5,2.2,1.7,1.7,3.2,4.2,2,6.5-.3.5-1.9,2.7-2.3,2.9-12.9,7.4-20.3,18.6-16.5,33.7,3.1,1.3,8,1,11.1-.3,2.7-.3,5.1-1.3,7.5-2.5,8.7-2.9,14.5-11.1,15.5-20.1,1.2-4.7,2.1-9.7,1.8-14.6h0Z"/>
