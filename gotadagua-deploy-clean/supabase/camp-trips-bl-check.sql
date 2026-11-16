@@ -355,7 +355,9 @@ begin
        where id = t.id;
       v_cancelled := v_cancelled + 1;
     elsif not (v_flag = any(t.import_flags)) then
-      update public.camp_trips set import_flags = array_append(import_flags, v_flag) where id = t.id;
+      update public.camp_trips set import_flags = array_append(import_flags, v_flag),
+             bl_checked_at = v_now, bl_checked_by = v_uid, bl_check_note = coalesce(nullif(trim(p_note), ''), 'booking page: not booked — kept, it is in the past')
+       where id = t.id;
       v_flagged := v_flagged + 1;
     end if;
   end loop;
