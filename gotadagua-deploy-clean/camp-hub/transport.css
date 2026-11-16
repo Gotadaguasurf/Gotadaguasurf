@@ -257,3 +257,28 @@
   .tr-srow .tr-c-what .tr-guest { max-width: 100%; }
   .tr-srow .tr-c-what .btn { max-width: 100%; min-width: 0; height: auto; min-height: 32px; padding-top: 4px; padding-bottom: 4px; white-space: normal; text-align: left; line-height: 1.25; justify-content: flex-start; }
 }
+
+/* ── Overview (16 Nov 2026): transport types × Week / Month / Year ── */
+.tr-ov-filters { flex-wrap: wrap; gap: var(--sp-2) var(--sp-3); }
+#transportRoot .tr-ov-period { min-width: 112px; text-align: center; }
+.tr-ov-card { overflow: hidden; }
+.tr-ov-tbl tr.tr-ov-grp td { height: auto; padding: 10px 14px 4px; font-size: var(--fs-micro); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); background: var(--surface); border-bottom: 0; }
+.tr-ov-tbl tbody tr.tr-ov-grp:hover td { background: var(--surface); }
+.tr-ov-nil { color: var(--muted-2); }
+.tr-ov-tbl td.tr-t-owed { color: var(--amber); font-weight: 600; }
+/* Year: twelve months scroll sideways inside the card; the type column stays put. */
+.tr-ov-year .tr-ov-first { position: sticky; left: 0; z-index: 2; background: var(--surface); min-width: 150px; white-space: nowrap; box-shadow: inset -1px 0 0 var(--border); }
+.tr-ov-year thead th.tr-ov-first, .tr-ov-year tfoot td.tr-ov-first { background: var(--surface-2); }
+.tr-ov-year tbody tr:hover td.tr-ov-first { background: var(--surface-2); }
+#transportRoot .btn-link.tr-ov-mbtn { font: inherit; text-transform: inherit; letter-spacing: inherit; color: var(--ocean); font-weight: 600; padding: 0; }
+.tr-ov-paym .tr-ov-mbtn { color: var(--muted) !important; }
+.tr-ov-note { padding: var(--sp-2) var(--card-pad) var(--sp-3); }
+@media (max-width: 700px) {
+  .tr-ov-tbl td, .tr-ov-tbl th { padding-left: 10px; padding-right: 10px; }
+  .tr-ov-tbl .tr-ov-xs { display: none; }      /* phone: Type · Trips · People · Cost · Owed (Paid and per person on a laptop and in the CSV) */
+  .tr-ov-year .tr-ov-first { min-width: 120px; }
+  /* Week / Month on a phone: the type column stays put, the amounts scroll inside the card if they must. */
+  .tr-ov-tbl[data-ov-table="summary"] { font-size: 12.5px; }
+  .tr-ov-tbl[data-ov-table="summary"] td:first-child, .tr-ov-tbl[data-ov-table="summary"] th:first-child { position: sticky; left: 0; z-index: 2; background: var(--surface); min-width: 112px; box-shadow: inset -1px 0 0 var(--border); }
+  .tr-ov-tbl[data-ov-table="summary"] thead th:first-child, .tr-ov-tbl[data-ov-table="summary"] tfoot td:first-child { background: var(--surface-2); }
+}

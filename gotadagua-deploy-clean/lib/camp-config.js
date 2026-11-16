@@ -102,7 +102,10 @@
     phoneExample: '+212612345678',
     preset: 'Semana Marrocos',
     blLocations: ['Tamraght Camp'],                        // HQ bookings.location; the Guests preset says «Tamraght Camp (MA)»
-    goLive: '2026-11-14',                                 // CONFIRM: trips before it are «Before go-live», never owed
+    // Trips before it are «Before go-live», never owed. 1 Oct 2026 (16 Nov 2026): May–Sep is settled; the unpaid Let Us
+    // Tours airport trips of 1 Oct–12 Nov were added to camp_trips (source manual, import_key «hist2026:…») and are owed.
+    // The SQL camp_trips_go_live() is not this date (it only gates Sri Lanka's cash auto-linking).
+    goLive: '2026-10-01',
     // Week numbering for the group name. CONFIRM. Morocco is open all year, so week 1 is
     // the first Saturday of 2026 → Sat 14 Nov 2026 is week 46 (close to the calendar week).
     seasonWeek1: '2026-01-03',
@@ -121,7 +124,9 @@
       ['Arrival time'], ['Arrival flight'], ['Departure time'], ['Departure flight'], ['Packages'], ['Activities'], ['Diet'], ['Phone']],
     productRe: /^airport transfer morocco\s*\(([^)]+)\)/i,       // «Airport Transfer Morocco (Agadir)» / «(Marrakesh)» in the real list
     knownPackages: ['Weekly package Morocco', 'Weekly package Morocco (starting any day of the week)', 'Flexible Package Morocco'],                                   // nameless / same-name +1s are separate people on the trips too                                 // no departure airport column: RAK in → RAK out (flagged)                                    // EJU5371, EZY2621 are easyJet flights
-    ownWayWords: /^(by\s+)?(bus|coach|ctm|supratours|taxi|car|rental car|rent a car|own car|driving|by car)$/i,
+    // A flight / time field that says how the guest comes, or just «no» (Floriane, 16 Nov 2026: «NON» = no transfer that way,
+    // the guest comes on their own): no trip in that direction, flagged on the import. «N/A» stays «empty» (ambiguous).
+    ownWayWords: /^(?:(by\s+)?(bus|coach|ctm|supratours|taxi|car|rental car|rent a car|own car|driving|by car)|non|no|none|nope|nein|nee|nao|não|nada)[.!]?$/i,
     phoneZeroCodes: ['212', '351', '34'],                 // +212 06… → +212 6…
     transferRe: /airport\s+(transfer|shuttle|pick.?up|drop.?off)/gi,
     vehicles: ['Car', 'Minivan', 'Big Van'], vehicleCaps: [4, 8],   // = the /prices airport vehicles (4, 8, 15 seats)

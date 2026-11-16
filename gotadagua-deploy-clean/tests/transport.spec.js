@@ -1160,7 +1160,7 @@ const SHEET_SHOTS = process.env.SHEET_SHOTS || path.join(__dirname, '..', 'test-
 test('sheet: Airport / Tuk-tuks pills, seven days with «+ Add» (prefilled with the day and the category), a footer per category', async ({ page }) => {
   const errors = collectFatalErrors(page);
   await openTab(page, weekFixture());
-  await expect(page.locator('#transportRoot .tr-cats .pill')).toHaveText(['All', 'Airport', 'Tuk-tuks']);
+  await expect(page.locator('#transportRoot .tr-cats .pill')).toHaveText(['All', 'Airport', 'Tuk-tuks', 'Overview']);
   await expect(page.locator('#transportRoot .tr-day')).toHaveCount(7);
   await expect(page.locator('#trDay-2026-11-07')).toContainText('Nothing on this day');
   await expect(page.locator('#transportRoot [data-foot]')).toHaveCount(2);

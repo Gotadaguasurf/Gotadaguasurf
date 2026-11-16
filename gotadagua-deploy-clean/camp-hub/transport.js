@@ -403,7 +403,7 @@
     }
     if (!TR.loaded) { root.innerHTML = head + '<div class="loading">Loading trips…</div>'; return; }
     // One view (16 Nov 2026): Reconcile is gone — «Owed to drivers» opens Pay, two chips cover the rest.
-    root.innerHTML = head + attentionStrip() + owedLine() + `<div class="tr-tripview">${renderTrips()}</div>`;
+    root.innerHTML = head + attentionStrip() + owedLine() + `<div class="tr-tripview">${TR.view === 'overview' && !LOCAL ? renderOverview() : renderTrips()}</div>`;
     if (TR.scrollDay) { const el = $('trDay-' + TR.scrollDay); TR.scrollDay = ''; if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start' }); }
   }
 
@@ -483,7 +483,7 @@
         <span class="period-picker-lbl tr-week">${fmtRange(ws, we)}</span>
         <button class="btn btn-s btn-sm btn-icon" title="Next week" onclick="TransportUI.shiftWeek(7)">${ic('chevron-right')}</button></div>
       ${special || LOCAL ? '' : weekSendBtn(ws)}
-      <div class="pills tr-cats">${pill('all', 'All')}${CATS.map(c => pill(c[0], c[1])).join('')}</div></div>`;
+      <div class="pills tr-cats">${pill('all', 'All')}${CATS.map(c => pill(c[0], c[1])).join('')}${ovPill(false)}</div></div>`;
     // Special chips (resend, to send…) list only the days that have something; the week shows all seven.
     // The closing Saturday's departures belong to this week (inWeek): that day is added after Friday.
     const days = special ? [...new Set(list.map(t => t.trip_date))].sort() : [...new Set([...weekDays(ws), ...list.map(t => t.trip_date)])].sort();
@@ -847,6 +847,95 @@
     render(); say(`${list.length} marked as sent`);
   }
 
+  // ── Overview (Miguel, 16 Nov 2026: «ver o overview por semana e mês e ano para os diferentes tipos de transportes
+  // para poder analisar») ────────────────────────────────────────────────
+  // Week | Month | Year with ‹ ›, default this month; rows = transport types (lib/transport-overview.js). Before the
+  // camp's go-live there is no trip list: those days show the ledger's Transport payments per supplier. Full view only.
+  const TO = () => window.TransportOverview;
+  TR.ov = TR.ov || { mode: 'month', anchor: '', measure: 'cost' };
+  const MONTH_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const ovPill = active => LOCAL ? '' : `<button class="pill${active ? ' active' : ''}" data-view="overview" onclick="TransportUI.setView('overview')">${ic('bar-chart')} Overview</button>`;
+  function ovAnchorFrom(mode, iso) { return mode === 'week' ? GT.weekStart(iso) : mode === 'year' ? iso.slice(0, 4) : iso.slice(0, 7); }
+  function ovPeriod() {
+    const ov = TR.ov; if (!ov.anchor) ov.anchor = ovAnchorFrom(ov.mode, cToday());
+    return TO().period(ov.mode, ov.anchor);
+  }
+  function ovMode(m) { const from = ovPeriod().from; TR.ov.mode = ['week', 'month', 'year'].includes(m) ? m : 'month'; TR.ov.anchor = ovAnchorFrom(TR.ov.mode, from); TR.view = 'overview'; render(); }
+  function ovShift(n) { const P = ovPeriod(); TR.ov.anchor = TO().shift(P.mode, P.anchor, n); render(); }
+  function ovMonth(ym) { TR.ov.mode = 'month'; TR.ov.anchor = ym; TR.view = 'overview'; render(); }
+  function ovMeasure(k) { TR.ov.measure = k === 'people' ? 'people' : 'cost'; render(); }
+  const ovLedger = () => (typeof S !== 'undefined' && S.ledger) || [];
+  // What the view shows, for the page, the CSV and the tests.
+  function ovData() {
+    const P = ovPeriod(); const base = { trips: TR.trips, ledger: ovLedger(), drivers: TR.drivers, cfg: CC, goLive: goLive(), now: colomboNow() };
+    return P.mode === 'year' ? { P, Y: TO().yearMatrix({ ...base, year: P.anchor }) } : { P, Sm: TO().summary({ ...base, mode: P.mode, from: P.from, to: P.to }) };
+  }
+  const ovLabel = P => P.mode === 'week' ? fmtRange(P.from, P.to) : P.mode === 'year' ? P.anchor : `${MONTH_LONG[+P.anchor.slice(5, 7) - 1]} ${P.anchor.slice(0, 4)}`;
+  const nOr = (n, f) => n ? f(n) : '<span class="tr-ov-nil">–</span>';
+  function renderOverview() {
+    const { P, Sm, Y } = ovData(); const ov = TR.ov;
+    const seg = (k, label, cur, fn) => `<button class="pill${cur === k ? ' active' : ''}" data-ov-${fn}="${k}" onclick="TransportUI.ov${fn === 'mode' ? 'Mode' : 'Measure'}('${k}')">${label}</button>`;
+    const filters = `<div class="ov-filters tr-filters tr-ov-filters">
+      <div class="period-picker"><button class="btn btn-s btn-sm btn-icon" title="Previous" onclick="TransportUI.ovShift(-1)">${ic('chevron-left')}</button>
+        <span class="period-picker-lbl tr-ov-period">${h(ovLabel(P))}</span>
+        <button class="btn btn-s btn-sm btn-icon" title="Next" onclick="TransportUI.ovShift(1)">${ic('chevron-right')}</button></div>
+      <div class="pills tr-ov-modes">${seg('week', 'Week', ov.mode, 'mode')}${seg('month', 'Month', ov.mode, 'mode')}${seg('year', 'Year', ov.mode, 'mode')}</div>
+      ${P.mode === 'year' ? `<div class="pills tr-ov-measure">${seg('cost', 'Cost', ov.measure, 'measure')}${seg('people', 'People', ov.measure, 'measure')}</div>` : ''}
+      <button class="btn btn-s btn-sm" data-ov-export onclick="TransportUI.ovExport()">${ic('download')} Export</button>
+      <div class="pills tr-cats">${['all', ...CATS.map(c => c[0])].map(k => `<button class="pill" data-cat="${k}" onclick="TransportUI.setFilter('${k}')">${k === 'all' ? 'All' : catLabel(k)}</button>`).join('')}${ovPill(true)}</div></div>`;
+    return filters + (Y ? ovYearHtml(Y) : ovSummaryHtml(Sm, P));
+  }
+  const groupHead = g => TO().GROUP_LABEL(CC, g);
+  function ovSummaryHtml(Sm, P) {
+    let last = '';
+    const body = Sm.rows.map(r => { const gh = groupHead(r.group); const head = gh !== last ? `<tr class="tr-ov-grp"><td colspan="7">${h(gh)}</td></tr>` : ''; last = gh;
+      return head + `<tr data-ov-row="${h(r.key)}"><td>${h(r.label)}${r.noShow ? `<span class="cell-sub">incl. ${r.noShow} no-show</span>` : ''}</td><td class="r">${r.trips}</td><td class="r">${r.people}</td>
+        <td class="r">${money(r.cost)}</td><td class="r tr-ov-xs">${nOr(r.paid, money)}</td><td class="r${r.owed ? ' tr-t-owed' : ''}">${nOr(r.owed, money)}</td><td class="r tr-ov-xs">${r.people ? money(r.perPerson) : '–'}</td></tr>`; }).join('');
+    const T = Sm.total;
+    const trips = Sm.rows.length ? `<div class="card tr-ov-card"><div class="tbl-wrap"><table class="tbl tr-ov-tbl" data-ov-table="summary">
+      <thead><tr><th>Type</th><th class="r">Trips</th><th class="r">People</th><th class="r">Cost</th><th class="r tr-ov-xs">Paid</th><th class="r">Owed</th><th class="r tr-ov-xs">Per person</th></tr></thead>
+      <tbody>${body}</tbody>
+      <tfoot><tr data-ov-total><td>Total${T.noShow ? `<span class="cell-sub">incl. ${T.noShow} no-show</span>` : ''}</td><td class="r">${T.trips}</td><td class="r">${T.people}</td><td class="r">${money(T.cost)}</td><td class="r tr-ov-xs">${money(T.paid)}</td><td class="r">${money(T.owed)}</td><td class="r tr-ov-xs">${T.people ? money(T.perPerson) : '–'}</td></tr></tfoot></table></div></div>` : '';
+    const L = Sm.ledger;
+    const ledger = L.rows.length ? `<div class="card tr-ov-card" data-ov-ledger><div class="card-hdr"><div><div class="card-title">From payments — no trip list</div>
+        <div class="card-hint">Before ${h(fmtShort(goLive()))} the app has no trip list: the ledger's Transport expenses, by supplier</div></div></div>
+      <div class="tbl-wrap"><table class="tbl tr-ov-tbl"><thead><tr><th>Supplier</th><th class="r">Payments</th><th class="r">Cost</th></tr></thead>
+      <tbody>${L.rows.map(r => `<tr data-ov-supplier="${h(r.label)}"><td>${h(r.label)}</td><td class="r">${r.payments}</td><td class="r">${money(r.cost)}</td></tr>`).join('')}</tbody>
+      <tfoot><tr><td>Total</td><td class="r">${L.payments}</td><td class="r">${money(L.total)}</td></tr></tfoot></table></div></div>` : '';
+    const empty = !trips && !ledger ? `<div class="card tr-ov-card"><div class="tbl-wrap"><table class="tbl"><tbody><tr class="empty-row"><td>No trips${P.from < goLive() ? ' and no Transport payments' : ''} in this period</td></tr></tbody></table></div></div>` : '';
+    return trips + ledger + empty;
+  }
+  function ovYearHtml(Y) {
+    const k = TR.ov.measure;
+    const fmt = v => v == null ? '<span class="tr-ov-nil">·</span>' : k === 'cost' ? nOr(v, money) : nOr(v, n => String(n));
+    if (!Y.rows.length) return `<div class="card tr-ov-card"><div class="tbl-wrap"><table class="tbl"><tbody><tr class="empty-row"><td>No trips or Transport payments in ${h(Y.year)}</td></tr></tbody></table></div></div>`;
+    const head = `<tr><th class="tr-ov-first">${k === 'cost' ? 'Cost' : 'People'}</th>${Y.months.map((m, i) => `<th class="r${Y.fromPayments[i] ? ' tr-ov-paym' : ''}"><button class="btn-link tr-ov-mbtn" data-ov-month="${m}" onclick="TransportUI.ovMonth('${m}')" title="Open ${MONTH_LONG[i]}${Y.fromPayments[i] ? ' (from payments)' : ''}">${TO().MON[i]}${Y.fromPayments[i] ? '*' : ''}</button></th>`).join('')}<th class="r">Total</th></tr>`;
+    return `<div class="card tr-ov-card"><div class="tbl-wrap tr-ov-yearwrap"><table class="tbl tr-ov-tbl tr-ov-year" data-ov-table="year">
+      <thead>${head}</thead><tbody>${ovYearRows(Y, k, fmt)}</tbody>
+      <tfoot><tr data-ov-total><td class="tr-ov-first">Total</td>${Y.totals[k].map(v => `<td class="r">${fmt(v)}</td>`).join('')}<td class="r">${fmt(Y.totals.all[k])}</td></tr></tfoot></table></div>
+      ${Y.fromPayments.some(Boolean) ? `<div class="hint tr-ov-note">* before ${h(fmtShort(goLive()))}: from payments — no trip list (the ledger's Transport expenses, by supplier; no people)</div>` : ''}</div>`;
+  }
+  function ovYearRows(Y, k, fmt) {
+    let last = '';
+    return Y.rows.map(r => { const gh = groupHead(r.group); const gr = gh !== last ? `<tr class="tr-ov-grp"><td class="tr-ov-first">${h(gh)}</td><td colspan="13"></td></tr>` : ''; last = gh;
+      return gr + `<tr data-ov-row="${h(r.key)}"><td class="tr-ov-first">${h(r.label)}</td>${r[k].map(v => `<td class="r">${fmt(v)}</td>`).join('')}<td class="r">${fmt(r.total[k])}</td></tr>`; }).join('');
+  }
+  function ovTable() {
+    const { P, Sm, Y } = ovData();
+    return { P, rows: Y ? TO().yearTable(Y, TR.ov.measure, CUR) : TO().summaryTable(Sm, CUR) };
+  }
+  function ovExport() {
+    const { P, rows } = ovTable();
+    const name = `transport-overview-${SLUG || 'camp'}-${P.mode}-${P.anchor}${P.mode === 'year' ? '-' + TR.ov.measure : ''}.csv`;
+    downloadCsv(name, '﻿' + rows.map(r => r.map(csvCell).join(',')).join('\r\n') + '\r\n');
+  }
+  function downloadCsv(name, text) {
+    const blob = new Blob([text], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  }
+
   // ── Export a month (Floriane, 16 Nov 2026: «monthly export to cross-check the camp transfer logs against the
   // transport provider's monthly invoice») ─────────────────────────────────
   // One CSV row per trip of the month (by trip date): airport transfers and runs, cancelled and no-show included
@@ -885,10 +974,7 @@
     const m = month || ($('tr_exm') && $('tr_exm').value) || cToday().slice(0, 7);
     if (!/^\d{4}-\d\d$/.test(m)) { say('Pick a month', 'err'); return; }
     if (m < EXPORT_FROM) { say(`Trips are kept in the app from ${fmtShort(TRIPS_LOAD_FROM)}`, 'err'); return; }
-    const blob = new Blob([monthCsv(m)], { type: 'text/csv;charset=utf-8' });
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `transport-${SLUG || 'camp'}-${m}.csv`;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    downloadCsv(`transport-${SLUG || 'camp'}-${m}.csv`, monthCsv(m));
     closeModal();
   }
 
@@ -1354,7 +1440,7 @@
     if (groups.hqMissing.length) out += `<div class="card"><div class="card-hdr"><div><div class="card-title">Transfer booked in HQ, not in this file · ${groups.hqMissing.length}</div></div></div>
       <div class="tr-rows">${groups.hqMissing.map(b => `<div class="tr-row tr-static"><div class="tr-main"><b>${h(b.booker || '')}</b><div class="cell-sub">${h(b.booking_ref)} · check-in ${fmtShort(String(b.check_in_on))}</div></div></div>`).join('')}</div></div>`;
     const dirty = P.dirty_no_transfer.filter(d => !groups.cancelledRefs.has(d[2]));
-    if (dirty.length) out += `<div class="card"><div class="card-hdr"><div><div class="card-title">To check (no transfer booked)</div></div></div><div class="tr-rows">${dirty.map(d => `<div class="tr-row tr-static"><div class="tr-main"><b>${h(d[1])}</b><div class="cell-sub">${h(d[3].join(' · '))}</div></div></div>`).join('')}</div></div>`;
+    if (dirty.length) out += `<div class="card"><div class="card-hdr"><div><div class="card-title">To check (no trip made)</div></div></div><div class="tr-rows">${dirty.map(d => `<div class="tr-row tr-static"><div class="tr-main"><b>${h(d[1])}</b><div class="cell-sub">${h(d[3].join(' · '))}</div></div></div>`).join('')}</div></div>`;
     return out;
   }
   function impRow(t) {
@@ -1857,9 +1943,10 @@
 
   window.renderTransportPage = renderTransportPage;
   window.TransportUI = {
-    render, closeModal, setView(v, f) { if (v === 'next') return toImport(); TR.view = v; if (f) TR.filter = f; render(); }, setFilter(f) { TR.filter = f; render(); },
+    render, closeModal, setView(v, f) { if (v === 'next') return toImport(); TR.view = v; if (f) TR.filter = f; render(); }, setFilter(f) { TR.filter = f; TR.view = 'trips'; render(); },
     toImport, setWeek,
     shiftWeek(n) { TR.week = GT.addDaysIso(TR.week, n); TR.filter = SPECIAL_FILTERS.includes(TR.filter) ? 'all' : TR.filter; render(); },
+    ovMode, ovShift, ovMonth, ovMeasure, ovExport, ovData,
     send, sendDay, dayMessage, weekMessage, sendWeek, tickWeek, weekCount, undoTick, setStep, missingInfo, monthCsv, openExport, downloadMonth, undoGuestConfirmed, ask, askText, askedOn, needsInfo, tick, tickDay, tickIds, openTrip, saveTrip, setStatus, openAddTransfer, saveTransfer,
     openTuktuk, openPlan, tukSet, tukVehicle(v) { TR.tuk.vehicle = v; vanSheetRefresh(); }, tukMode, tap, untap, removeRun, removeTrip, planAdd, planStep, sendOrder, orderText,
     openRuns, saveRuns, deleteRuns, toggleRuns, addOn, catOf, payState, weekTotals, keepTrip, inWeek, tukPeople, presetPrice, bankCandidates, camp: CC, RUN,

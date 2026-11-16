@@ -278,3 +278,34 @@ test('a package that includes the transfer gives both legs without «Has transfe
   expect(leg('Bruno Stay', 'airport_departure')).toHaveLength(0);    // stays on 14 Nov; the 2nd booking has no transfer
   expect(G.packageIncludes('Sri Lanka with João Kopke')).toMatchObject({ transfer: true, course: 'Standard', yoga: true });
 });
+
+// Morocco (Floriane, 16 Nov 2026): one transfer product and «NON» in the arrival flight (French «no»: the guest comes on
+// their own, the transfer is the departure only) made BOTH trips. A flight or time field that just says no → no trip
+// that way, said on the import («To check»). «N/A» stays «empty» (a trip, time to ask). Sri Lanka has no such words.
+test('guests parser (Morocco): «NON» / «no» / «nein» in a flight or time field = on their own — no trip that way, the other leg kept, flagged; «N/A» still a trip', () => {
+  const CC = require('../lib/camp-config.js');
+  const file = fs.readFileSync(path.join(__dirname, 'fixtures', 'ma-guests-2026-11-14.csv'), 'utf8');
+  const rows = G.parseCsv(file).filter(r => r.length > 1); const hd = rows[0]; const col = n => hd.indexOf(n);
+  const sophie = rows.find(r => r[col('Booking')] === 'MA-1002');
+  const variant = (field, value, ref) => { const r = sophie.slice(); r[col(field)] = value; r[col('Booking')] = ref; r[col('Guest')] = `Paula Exemplo ${ref.slice(3)}`; r[col('Transfers')] = 'Airport Transfer Morocco (Agadir)'; return r; };
+  const extra = [variant('Arrival flight', 'NON', 'MA-9001'), variant('Arrival flight', 'none', 'MA-9002'), variant('Departure flight', 'Nein', 'MA-9003'),
+    variant('Arrival time', 'non.', 'MA-9004'), variant('Arrival flight', 'N/A', 'MA-9005'), variant('Arrival flight', 'Não', 'MA-9006')];
+  const csv = [...rows, ...extra].map(r => r.map(c => /[",\n]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c).join(',')).join('\n');
+  const out = G.parse(csv, 'ma-guests-2026-11-14.csv', null, CC.MA);
+  const keys = new Set(out.trips.map(t => t.key));
+  const legs = ref => ['arr', 'dep'].filter(d => keys.has(`bl:${ref}:${d}`));
+  expect(legs('MA-9001')).toEqual(['dep']);                       // «NON» in the arrival flight: departure only
+  expect(legs('MA-9002')).toEqual(['dep']);
+  expect(legs('MA-9003')).toEqual(['arr']);                       // «Nein» in the departure flight: arrival only
+  expect(legs('MA-9004')).toEqual(['dep']);                       // «non.» in the arrival time
+  expect(legs('MA-9005')).toEqual(['arr', 'dep']);                // «N/A» is not «no»: a trip, flight to ask
+  expect(legs('MA-9006')).toEqual(['dep']);
+  const dirty = Object.fromEntries(out.dirty_no_transfer.map(d => [d[2], d[3].join(' | ')]));
+  expect(dirty['MA-9001']).toContain('flight field says «NON» — coming on their own? check the transfer');
+  expect(dirty['MA-9003']).toContain('departure flight field says «Nein» — coming on their own? check the transfer');
+  expect(out.counts['arrival field says on their own: no arrival trip']).toBe(4);
+  expect(keys.has('bl:MA-1002:arr') && keys.has('bl:MA-1002:dep')).toBe(true);   // the fixture's own rows unchanged
+  // Sri Lanka: no own-way words — «no» in the flight is «empty», the round trip as before.
+  const sl = G.parse([HEAD, row('Ana Silva', '2026-9301', '', 'no')].join('\n'), 'x-2026-11-13.csv');
+  expect(sl.trips.map(t => t.key)).toEqual(['bl:2026-9301:arr', 'bl:2026-9301:dep']);
+});

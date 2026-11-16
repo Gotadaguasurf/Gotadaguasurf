@@ -127,16 +127,23 @@
     return ph;
   }
 
+  // The time column can say it too («NON» in Arrival time).
+  function ownWayTime(raw, flags, label, cfg) {
+    const v = pyStrip(raw); cfg = conf(cfg);
+    if (!v || !cfg.ownWayWords || !cfg.ownWayWords.test(v)) return false;
+    flags.push(`${label} field says «${v}» — coming on their own? check the transfer`); return true;
+  }
   function classifyField(raw, flags, label, cfg) {
     cfg = conf(cfg);
     let v = pyStrip(raw);
+    // «bus», «taxi», «NON»: the guest says how they come — no flight, no transfer that way (Morocco lists, 14 + 16 Nov).
+    // Checked before the empty words: for a camp with ownWayWords «no» / «none» mean «on their own», not «not known yet».
+    if (v && cfg.ownWayWords && cfg.ownWayWords.test(v)) { flags.push(`${label} field says «${v}» — coming on their own? check the transfer`); return ['', null, '', '', true]; }
     if (JUNK.has(v.toLowerCase())) return ['', null, '', ''];
     const t = hhmm(v);
     if (t) return ['', t, '', ''];
     const place = cfg.places[v.toLowerCase()] || '';
     if (place) return ['', null, place, ''];
-    // «bus», «taxi»: the guest says how they come — not a flight (Morocco lists, 14 Nov).
-    if (cfg.ownWayWords && cfg.ownWayWords.test(v)) { flags.push(`${label} field says «${v}» — coming on their own? check the transfer`); return ['', null, '', '']; }
     let fd = '';
     const m = FLIGHT_DATE_RE.exec(v);
     if (m) { fd = [parseInt(m[1], 10), parseInt(m[2], 10)]; v = v.slice(0, m.index); }
@@ -278,7 +285,8 @@
           else if (nProducts === 0) flags.push('Has transfer = Yes but no transfer product listed');
           if (incl && incl.transfer && !p.has) flags.push(`transfer included in the package «${incl.label}»`);
           date = p.ci;
-          const [f1, t1, pl1, fd1] = classifyField(p.arr_flight, flags, 'flight', cfg);
+          const [f1, t1, pl1, fd1, own1] = classifyField(p.arr_flight, flags, 'flight', cfg);
+          if (own1 || ownWayTime(p.arr_time, flags, 'arrival time', cfg)) { bump('arrival field says on their own: no arrival trip'); dirty.push([p.line, p.name, p.ref, flags]); continue; }
           let t0 = hhmm(p.arr_time); if (t0 === '00:00') t0 = null;
           if (t0 && t1 && t0 !== t1) { flags.push(`two times: ${t0} (arrival time) and ${t1} (flight field)`); time = t0; amb = true; }
           else { time = t0 || t1; amb = false; }
@@ -292,7 +300,8 @@
         } else {
           if (arrOnly) continue;
           date = p.co;
-          const [f1, t1, pl1] = classifyField(p.dep_flight, flags, 'departure flight', cfg);
+          const [f1, t1, pl1, , own1] = classifyField(p.dep_flight, flags, 'departure flight', cfg);
+          if (own1 || ownWayTime(p.dep_time, flags, 'departure time', cfg)) { bump('departure field says on their own: no departure trip'); dirty.push([p.line, p.name, p.ref, flags]); continue; }
           const seenD = pl1 || cfg.places[p.dep_loc.toLowerCase()] || '';
           time = hhmm(p.dep_time) || t1; fl = f1; pl = seenD || prodPlace(p, flags, '') || ''; amb = false;
           if (seenD) prodPlace(p, flags, seenD);

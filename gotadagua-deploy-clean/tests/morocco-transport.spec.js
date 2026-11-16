@@ -286,7 +286,7 @@ test('morocco sheet: Airport / Surf vans / Tours pills, identical tour runs as o
   ];
   await page.setViewportSize({ width: 390, height: 844 });
   await openTab(page, { trips, goLive: '2026-11-07' });
-  await expect(page.locator('#transportRoot .tr-cats .pill')).toHaveText(['All', 'Airport', 'Surf vans', 'Tours']);
+  await expect(page.locator('#transportRoot .tr-cats .pill')).toHaveText(['All', 'Airport', 'Surf vans', 'Tours', 'Overview']);
   await expect(page.locator('#transportRoot .tr-day')).toHaveCount(7);
   await expect(page.locator('#transportRoot [data-foot]')).toHaveCount(3);
   await page.click('#transportRoot .tr-cats .pill[data-cat="vans"]');
