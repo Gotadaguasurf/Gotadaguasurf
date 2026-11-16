@@ -511,7 +511,27 @@
   // ── WhatsApp message (format fixed by Miguel, 13 Nov 2026) ───────────────
   const WA_VEHICLE_LABEL = { 'Car': 'Small Car', 'Minivan': 'Minivan', 'Large Van': 'Large Van' };
   const WA_UNKNOWN = 'TBC';
+  // 17.11.2026
+  const dDots = iso => { const { y, m, d } = dateParts(iso); return `${String(d).padStart(2, '0')}.${String(m).padStart(2, '0')}.${y}`; };
+  // Morocco (Floriane, 16 Nov 2026 — cfg.waDriver 'labeled'): every line says what it is, the airport by its city,
+  // the time the driver leaves the camp for a departure (pickup_time; never the flight time: TBC until it is typed).
+  function whatsappLabeled(t, c) {
+    const dep = t.kind === 'airport_departure';
+    const pax = Number(t.pax) || 1;
+    const city = (c.airportCity || {})[t.place] || (c.airportCity || {})[c.airportDefault] || 'the';
+    const veh = t.vehicle || vehicleFor(pax, false, c);
+    return [
+      dep ? `Surfcamp to ${city} airport:` : `${city} airport to Surfcamp`,
+      `Number of people: ${pax}`,
+      `Name: ${t.guest_names || WA_UNKNOWN}`,
+      `Contact WhatsApp: ${t.guest_phone || WA_UNKNOWN}`,
+      ...(dep ? [`Departure time from camp: ${t.pickup_time || WA_UNKNOWN}`] : [`Flight number: ${t.flight || WA_UNKNOWN}`, `Arrival time: ${t.trip_time || WA_UNKNOWN}`]),
+      `Date: ${t.trip_date ? dDots(t.trip_date) : WA_UNKNOWN}`,
+      `Car: ${(c.waVehicleDriver || {})[veh] || String(veh || WA_UNKNOWN).toLowerCase()}`,
+    ].join('\n');
+  }
   function whatsappText(t, cfg) {
+    if (cfg && cfg.waDriver === 'labeled') return whatsappLabeled(t, cfg);
     const c = conf(cfg); const lbl = cfg ? c.waVehicle : WA_VEHICLE_LABEL;
     const dep = t.kind === 'airport_departure';
     const pax = Number(t.pax) || 1;

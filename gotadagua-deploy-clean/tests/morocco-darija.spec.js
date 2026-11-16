@@ -16,24 +16,26 @@ const ARABIC = /[؀-ۿ]/;
 
 const DAYS = ['2026-11-14', '2026-11-15', '2026-11-16', '2026-11-17', '2026-11-18', '2026-11-19', '2026-11-20', 'week'];
 
-test('morocco cleaning in Darija: Sat 14 word for word — Latin names and rooms, Western digits, *bold* / _notes_ kept', async ({ page }) => {
+test('morocco cleaning in Darija: Sat 14 word for word — two parts (rooms left, rooms to prepare), «بيت N», Western digits, *bold* kept', async ({ page }) => {
   const errors = collectFatalErrors(page);
   await H.openWeek(page);
+  // Floriane, 16 Nov 2026: part 1 the rooms being left, part 2 the rooms to prepare for the day's arrivals.
   expect(await msg(page, 'cleaning', '2026-11-14')).toBe([
     '*الخروج - السبت 14 نونبر*', '',
-    '*8 - Banana Point*', '- Rui Alves _(مزال 4 ليالي، من بعد ف 13 - Anchor Point)_', '',
-    '*11 - Tifnit*', '- Yuki Tanaka', '',
-    '*13 - Anchor Point*', '- Clara Schmidt _(نفس البيت، ناموسية جديدة: 5)_', '- Pieter de Vries _(مزال 5 ليالي، من بعد ف 6 - Safi)_', '',
+    'بيت 8: شخص واحد خارج',
+    'بيت 11: شخص واحد خارج',
+    'بيت 13: شخص واحد خارج، واحد كيبدل الناموسية', '',
     '*الدخول - السبت 14 نونبر*', '',
-    '*1 - Imsouane*', '- Noah Weiss _(4 ليالي)_', '',
-    '*2 - Boilers*', '- Lucas Dubois', '',
-    '*4 - Crocro*', '- Lena Hoffmann', '- Jonas Weber', '',
-    '*5 - Panorama Point*', '- Ines Costa', '',
-    '*6 - Safi*', '- Nina Larsen', '- Guest without name (booking MA-1010)', '- Pieter de Vries _(من 13 - Anchor Point، 5 ليالي)_', '',
-    '*8 - Banana Point*', '- Sophie Martin', '- Tom Baker _(من السيمانة اللي فاتت، مزال 6 ليالي)_', '',
-    '*9 - Anza*', '- Theo Duval', '- Lea Duval', '- Max Duval', '',
-    '*13 - Anchor Point*', '- Karl Nilsson', '- Clara Schmidt _(من السيمانة اللي فاتت، مزال سيمانة معانا، دابا ف الناموسية 5)_', '- Rui Alves _(من 8 - Banana Point، 4 ليالي)_', '',
-    '*برا الكامب* _(كياكلو معانا الفطور والعشا)_', '- Ben Clarke',
+    'السلام! عافاك وجدي هادشي:',
+    'بيت 1: ناموسية كبيرة/شخص واحد',
+    'بيت 2: ناموسية كبيرة/شخص واحد',
+    'بيت 4: ناموسية كبيرة ولا جوج صغار؟/2 أشخاص',
+    'بيت 5: ناموسية وحدة',
+    'بيت 6: 3 أشخاص',
+    'بيت 8: ناموسية وحدة',
+    'بيت 9: 3 ناموسيات/3 أشخاص',
+    'بيت 13: 3 ناموسيات',
+    'شكرا!',
   ].join('\n'));
   const week = await msg(page, 'cleaning', 'week');
   expect(week.split('\n')[0]).toBe('*البيوت - من 14 حتى 21 نونبر*');
@@ -42,6 +44,7 @@ test('morocco cleaning in Darija: Sat 14 word for word — Latin names and rooms
   expect(week).toContain('- Pieter de Vries _(من 13 - Anchor Point، حتى الخميس 19)_');
   expect(week).toContain('- Clara Schmidt _(من السيمانة اللي فاتت)_');
   expect(await msg(page, 'cleaning', '2026-11-23')).toMatch(/^\*الخروج - الثنين 23 نونبر\*/);
+  expect(await msg(page, 'cleaning', '2026-11-15')).toBe(['*الدخول - الحد 15 نونبر*', '', 'السلام! عافاك وجدي هادشي:', 'بيت 5: ناموسية وحدة', 'بيت 7: ناموسية كبيرة/شخص واحد', 'بيت 13: 2 ناموسيات', 'شكرا!'].join('\n'));
   expect(errors).toEqual([]);
 });
 

@@ -239,3 +239,21 @@
   .tr-srow .tr-c-price { font-size: 14px; }
   .tr-kids .tr-c-what { padding-left: var(--sp-2); }
 }
+
+/* ── Floriane's feedback (16 Nov 2026) ──
+   IN / OUT in two colours (the same tag as Week → Overview): arrivals green, departures amber. */
+.badge.tr-dir.in { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-border); }
+.badge.tr-dir.out { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber-border); }
+/* The status with the driver: one compact select (Pending → Message Sent → Confirmed). */
+.tr-btns { flex-wrap: wrap; justify-content: flex-end; align-items: center; }
+#transportRoot .select.tr-status-sel { height: 32px; font-size: 12.5px; padding: 0 26px 0 10px; max-width: 150px; }
+/* Missing information for the driver: a red edge on the row and what is missing, in words. */
+.tr-srow.tr-row.tr-missing { box-shadow: inset 3px 0 0 var(--red); background: var(--red-bg); }
+.tr-srow.tr-row.tr-missing:hover { background: var(--red-bg); }
+.tr-missline { margin-top: 6px; font-size: 13px; line-height: 1.4; color: var(--red); font-weight: 600; }
+.tr-missline .ic { width: 14px; height: 14px; vertical-align: -2px; }
+@media (max-width: 700px) {
+  #transportRoot .select.tr-status-sel { max-width: 112px; font-size: 12px; padding: 0 22px 0 8px; background-position: right 7px center; }
+  .tr-srow .tr-c-what .tr-guest { max-width: 100%; }
+  .tr-srow .tr-c-what .btn { max-width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; justify-content: flex-start; }
+}

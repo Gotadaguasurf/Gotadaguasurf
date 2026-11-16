@@ -25,7 +25,8 @@
 //   Trips      the one list of airport transfers (15 Nov 2026: Week → Transfers is gone), by day
 //              (Sat–Fri week): WhatsApp to the «Send transfers to» contact — a trip, «Send the
 //              whole day», «Send the whole week» (the message Week used to send, same builder) —
-//              Sent ✓ / Confirmed ✓, «Time changed, resend», the guests' confirmations.
+//              the status select Pending → Message Sent → Confirmed (Floriane, 16 Nov 2026), «Time changed,
+//              resend», a red line when the driver is missing something, the guests' confirmations; «Export month» (CSV).
 //   Reconcile  trips ↔ payments, like HQ → Month close → Reconcile.
 //   The Monday Guests import has one door, in Week (15 Nov 2026: «Week = guests and camp
 //   teams, Transport = drivers and money»): Week shows renderNext() as TransportUI.importHtml.
@@ -394,6 +395,7 @@
         <button class="btn btn-s" id="trPayBtn" onclick="TransportUI.openPay()">${ic('euro')} Pay a driver</button>
         <button class="btn btn-s" onclick="TransportUI.openAddTransfer()">${ic('truck')} Add transfer</button>
         <button class="btn btn-s" onclick="TransportUI.openDrivers()">${ic('users')} Drivers</button>
+        <button class="btn btn-s" data-export-month onclick="TransportUI.openExport()">${ic('download')} Export month</button>
       </div></div>`;
     if (TR.error) {
       root.innerHTML = head + `<div class="status-msg status-warn">Transport is not set up yet (${h(TR.error)}). Ask Miguel to run supabase/camp-trips.sql.</div>`;
@@ -584,13 +586,31 @@
   // One sheet row: Time | What | People | Driver | Price | Status. On a phone the row is two lines
   // (time · what · price, then people · driver · status — .tr-c-meta, hidden on a laptop).
   const pplCell = n => `${Number(n) || 1}`;
+  // IN / OUT in two colours (Floriane, 16 Nov 2026): arrivals green, departures amber — the same tag as Week → Overview.
+  const dirTag = t => t.kind === 'airport_departure' ? '<span class="badge tr-dir out" data-dir="out">Departure</span>' : '<span class="badge tr-dir in" data-dir="in">Arrival</span>';
+  // The three steps of a transfer with the driver (camp_trips.status): planned → sent → confirmed.
+  const STATUS_STEPS = [['planned', 'Pending'], ['sent', 'Message Sent'], ['confirmed', 'Confirmed']];
+  const statusSelect = t => `<select class="select tr-status-sel" data-status-sel aria-label="Status with the driver" onclick="event.stopPropagation()" onchange="event.stopPropagation();TransportUI.setStep('${t.id}',this.value)">${STATUS_STEPS.map(([v, l]) => `<option value="${v}"${t.status === v ? ' selected' : ''}>${l}</option>`).join('')}</select>`;
+  // What the driver needs and the trip does not have (Floriane, 16 Nov 2026: «missing information alert»), for a
+  // transfer still to come. Arrival: flight, landing time, phone. Departure: the time the driver leaves the camp
+  // (Morocco: pickup_time; Sri Lanka, whose message falls back on the flight time: either), phone. Both: a vehicle.
+  function missingInfo(t) {
+    if (!isAirport(t)) return [];
+    const out = [];
+    if (t.kind === 'airport_arrival') { if (!t.flight) out.push('flight'); if (!t.trip_time) out.push('time'); }
+    else if (CC.depNeedsPickup ? !t.pickup_time : !(t.pickup_time || t.trip_time)) out.push(CC.depNeedsPickup ? 'pick-up time' : 'time');
+    if (!t.guest_phone) out.push('phone');
+    if (!t.vehicle) out.push('vehicle');
+    return out;
+  }
+  const missText = miss => miss.map(m => 'no ' + m).join(' · ').replace(/^n/, 'N');   // «No flight · no time»
   function tripRow(t) {
     const ps = payState(t);
     const dep = t.kind === 'airport_departure';
     const time = t.trip_time ? `<b class="num">${h(t.trip_time)}</b>` : '<span class="badge badge-amber">time?</span>';
     const drv = h(driverById(t.driver_id)?.name || 'no driver');
     const pay = `<div class="tr-pay"><span class="badge ${ps.cls}" data-pay="${ps.key}">${ps.label}</span>${ps.sub ? `<span class="cell-sub">${h(ps.sub)}</span>` : ''}</div>`;
-    const line1 = `<div class="tr-line1"><span class="badge ${dep ? 'badge-navy' : 'badge-blue'}">${dep ? 'Departure' : 'Arrival'}</span> <b>${h(t.guest_names || 'Guest')}</b>${isFree(t) ? ` <span class="badge badge-blue tr-free">${h(freeLabel(t))}</span>` : ''}</div>`;
+    const line1 = `<div class="tr-line1">${dirTag(t)} <b>${h(t.guest_names || 'Guest')}</b>${isFree(t) ? ` <span class="badge badge-blue tr-free">${h(freeLabel(t))}</span>` : ''}</div>`;
     const meta = `<div class="tr-c-meta cell-sub">${ppl(t.pax)} · ${drv}</div>`;
     // ?view=local: airport rows are read-only — Francisco sends and confirms them.
     if (LOCAL) return `<div class="tr-row tr-srow tr-row-ro" data-trip="${t.id}" data-cat="airport"><div class="tr-time tr-c-time">${time}</div>
@@ -598,16 +618,18 @@
       <div class="tr-c-ppl num">${pplCell(t.pax)}</div><div class="tr-c-drv">${drv}</div><div class="tr-c-price num">${money(t.expected_price)}</div>
       <div class="tr-side tr-c-status">${pay}</div></div>`;
     const live = !t.payment_entry_id && !isDone(t) && !['cancelled', 'no_show'].includes(t.status);
-    const next = !live ? '' : t.status === 'planned' ? `<button class="btn btn-s btn-sm" onclick="event.stopPropagation();TransportUI.tick('${t.id}','sent')">Sent ✓</button>`
-      : t.status === 'sent' && !t.needs_resend ? `<button class="btn btn-s btn-sm" onclick="event.stopPropagation();TransportUI.tick('${t.id}','confirmed')">Confirmed ✓</button>`
-      : t.needs_resend ? `<button class="btn btn-s btn-sm" onclick="event.stopPropagation();TransportUI.tick('${t.id}','sent')">Sent ✓</button>`
-      // Undo a tick (Miguel, 13 Nov: «if I want to take that it is confirmed?»): one step back.
-      : t.status === 'confirmed' ? `<button class="btn btn-s btn-sm" data-undo onclick="event.stopPropagation();TransportUI.undoTick('${t.id}')" title="Back to Sent">Undo ✓</button>` : '';
+    // Floriane (16 Nov 2026): one control with the three steps — Pending → Message Sent → Confirmed — instead of
+    // the one-step buttons. A changed trip (needs_resend) keeps a «Sent ✓» beside it: picking the step already
+    // shown fires nothing, and that tick is what says the new time went out.
+    const next = !live || !STATUS_STEPS.some(x => x[0] === t.status) ? '' : statusSelect(t)
+      + (t.needs_resend ? `<button class="btn btn-s btn-sm" data-resent onclick="event.stopPropagation();TransportUI.tick('${t.id}','sent')" title="The new details are sent">Sent ✓</button>` : '');
+    const miss = live ? missingInfo(t) : [];
     const sub = [h(t.flight || 'flight?'), h(t.vehicle || ''), t.charge && !isFree(t) ? h(CHARGE_LABEL[t.charge]) : '', t.added_by_local ? `added by ${LOCAL_MANAGER_NAME}` : ''].filter(Boolean).join(' · ');
-    return `<div class="tr-row tr-srow" data-trip="${t.id}" data-cat="airport" onclick="TransportUI.openTrip('${t.id}')">
+    return `<div class="tr-row tr-srow${miss.length ? ' tr-missing' : ''}${dep ? ' tr-out' : ' tr-in'}" data-trip="${t.id}" data-cat="airport"${miss.length ? ` data-missing="${h(miss.join('|'))}"` : ''} onclick="TransportUI.openTrip('${t.id}')">
       <div class="tr-time tr-c-time">${time}</div>
       <div class="tr-main tr-c-what">${line1}
         <div class="cell-sub tr-c-sub">${sub}</div>${meta}
+        ${miss.length ? `<div class="tr-missline" data-missline>${ic('alert')} ${h(missText(miss))}</div>` : ''}
         ${t.needs_resend ? `<div class="tr-resend"><span class="badge badge-amber">Time changed, resend</span></div>` : ''}
         ${live && rowFlag(t) ? `<div class="tr-flagline" data-flag>${ic('alert')} ${h(rowFlag(t))}</div>` : ''}
         ${live && !needsInfo(t) && guestHtml(t) ? `<div class="tr-resend">${guestHtml(t)}</div>` : ''}
@@ -799,6 +821,19 @@
       : { status: 'confirmed', confirmed_at: new Date().toISOString() };
     if (await updateTrip(id, patch)) { render(); say(what === 'sent' ? 'Marked as sent' : 'Marked as confirmed'); }
   }
+  // The status control of a row: Pending / Message Sent / Confirmed. Forward steps write what the ticks wrote
+  // (sent_at + the snapshot the «changed since sent» check reads, confirmed_at); a step back is undoTick's.
+  async function setStep(id, to) {
+    const t = TR.trips.find(x => x.id === id); if (!t || t.payment_entry_id || !STATUS_STEPS.some(x => x[0] === to) || t.status === to) return;
+    const rank = v => STATUS_STEPS.findIndex(x => x[0] === v);
+    const now = new Date().toISOString();
+    const sent = { sent_at: now, sent_snapshot: snapshot(t), needs_resend: false };
+    const patch = rank(to) < rank(t.status) ? { status: to }
+      : to === 'sent' ? { status: 'sent', ...sent }
+      : t.status === 'planned' ? { status: 'confirmed', confirmed_at: now, ...sent }   // straight to Confirmed: it was sent too
+      : { status: 'confirmed', confirmed_at: now };
+    if (await updateTrip(id, patch)) { render(); say(`Status: ${STATUS_STEPS[rank(to)][1]}`); } else render();
+  }
   // The trips of the «Send the whole week» message, ticked Sent ✓ by id.
   async function tickIds(ids) {
     const list = TR.trips.filter(t => (ids || []).includes(t.id) && isAirport(t) && !t.payment_entry_id && !isDone(t) && (t.status === 'planned' || t.needs_resend));
@@ -809,6 +844,51 @@
     const list = TR.trips.filter(t => t.trip_date === day && isAirport(t) && !t.payment_entry_id && !isDone(t) && !onHold(t) && ['planned', 'sent'].includes(t.status) && (t.status === 'planned' || t.needs_resend));
     for (const t of list) await updateTrip(t.id, { status: 'sent', sent_at: new Date().toISOString(), sent_snapshot: snapshot(t), needs_resend: false });
     render(); say(`${list.length} marked as sent`);
+  }
+
+  // ── Export a month (Floriane, 16 Nov 2026: «monthly export to cross-check the camp transfer logs against the
+  // transport provider's monthly invoice») ─────────────────────────────────
+  // One CSV row per trip of the month (by trip date): airport transfers and runs, cancelled and no-show included
+  // with their status (a provider may still bill a no-show); merged trips (a duplicate folded into another) left out.
+  // UTF-8 with a BOM and comma separators, every field quoted, so Excel opens the names and accents right.
+  const csvCell = v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
+  const EXPORT_FROM = TRIPS_LOAD_FROM.slice(0, 7);   // the page loads trips from here
+  function tripStatusLabel(t) {
+    if (t.status === 'cancelled') return 'Cancelled';
+    if (t.status === 'no_show') return 'No-show';
+    if (isDone(t)) return 'Done';
+    return (STATUS_STEPS.find(x => x[0] === t.status) || [t.status, t.status || ''])[1];
+  }
+  function monthCsv(month) {
+    const city = p => (CC.airportCity || {})[p] || p || 'Airport';
+    const head = ['Date', 'Time', 'Direction', 'Route / what', 'Guest names', 'People', 'Flight', 'Vehicle', 'Driver / supplier', `Price (${CUR})`, 'Status', 'Paid', 'Paid on'];
+    const rows = TR.trips.filter(t => String(t.trip_date || '').slice(0, 7) === month && t.status !== 'merged')
+      .sort((a, b) => (a.trip_date + (a.trip_time || '99')).localeCompare(b.trip_date + (b.trip_time || '99')) || String(a.id).localeCompare(String(b.id)))
+      .map(t => {
+        const dep = t.kind === 'airport_departure', air = isAirport(t);
+        const e = t.payment_entry_id ? ledgerById(t.payment_entry_id) : null;
+        return [t.trip_date, t.trip_time || '', air ? (dep ? 'OUT' : 'IN') : 'run',
+          air ? (dep ? `Surfcamp → ${city(t.place)} airport` : `${city(t.place)} airport → Surfcamp`) : runLabel(t),
+          t.guest_names || '', Number(t.pax) || 1, air ? (t.flight || '') : '', t.vehicle || (air ? '' : RUN.veh), driverById(t.driver_id)?.name || '',
+          Number(t.expected_price || 0), tripStatusLabel(t), t.payment_entry_id ? 'yes' : 'no', e && e.date ? e.date : ''];
+      });
+    return '\ufeff' + [head, ...rows].map(r => r.map(csvCell).join(',')).join('\r\n') + '\r\n';
+  }
+  function openExport() {
+    const now = cToday().slice(0, 7);
+    modal('Export month', 'Every transfer and run of the month in a spreadsheet (CSV), to check against the driver\'s invoice',
+      `<div class="mfield"><label for="tr_exm">Month</label><input type="month" id="tr_exm" value="${now}" min="${EXPORT_FROM}"></div>`,
+      `<button class="btn btn-s" onclick="TransportUI.closeModal()">Cancel</button><button class="btn btn-p" data-export-go onclick="TransportUI.downloadMonth()">${ic('download')} Download CSV</button>`);
+  }
+  function downloadMonth(month) {
+    const m = month || ($('tr_exm') && $('tr_exm').value) || cToday().slice(0, 7);
+    if (!/^\d{4}-\d\d$/.test(m)) { say('Pick a month', 'err'); return; }
+    if (m < EXPORT_FROM) { say(`Trips are kept in the app from ${fmtShort(TRIPS_LOAD_FROM)}`, 'err'); return; }
+    const blob = new Blob([monthCsv(m)], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `transport-${SLUG || 'camp'}-${m}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    closeModal();
   }
 
   // ── Trip detail (edit, no-show, cancel) ────────────────────────────────
@@ -1779,7 +1859,7 @@
     render, closeModal, setView(v, f) { if (v === 'next') return toImport(); TR.view = v; if (f) TR.filter = f; render(); }, setFilter(f) { TR.filter = f; render(); },
     toImport, setWeek,
     shiftWeek(n) { TR.week = GT.addDaysIso(TR.week, n); TR.filter = SPECIAL_FILTERS.includes(TR.filter) ? 'all' : TR.filter; render(); },
-    send, sendDay, dayMessage, weekMessage, sendWeek, tickWeek, weekCount, undoTick, undoGuestConfirmed, ask, askText, askedOn, needsInfo, tick, tickDay, tickIds, openTrip, saveTrip, setStatus, openAddTransfer, saveTransfer,
+    send, sendDay, dayMessage, weekMessage, sendWeek, tickWeek, weekCount, undoTick, setStep, missingInfo, monthCsv, openExport, downloadMonth, undoGuestConfirmed, ask, askText, askedOn, needsInfo, tick, tickDay, tickIds, openTrip, saveTrip, setStatus, openAddTransfer, saveTransfer,
     openTuktuk, openPlan, tukSet, tukVehicle(v) { TR.tuk.vehicle = v; vanSheetRefresh(); }, tukMode, tap, untap, removeRun, removeTrip, planAdd, planStep, sendOrder, orderText,
     openRuns, saveRuns, deleteRuns, toggleRuns, addOn, catOf, payState, weekTotals, keepTrip, inWeek, tukPeople, presetPrice, bankCandidates, camp: CC, RUN,
     confirmGuest, guestConfirmed, confirmText, guestState, guestHtml, openGuestDay, pickFile, setExportDate, saveImport,

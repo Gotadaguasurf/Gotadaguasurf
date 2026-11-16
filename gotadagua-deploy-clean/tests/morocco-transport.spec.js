@@ -74,7 +74,8 @@ test('morocco transport: driver and guest messages — the camp\'s format, Flori
     const T = TransportUI._state.trips; const o = T.find(t => t.import_key === 'bl:MA-1007:arr'); const m = T.find(t => t.import_key === 'bl:MA-1004:arr');
     return { confirm: TransportUI.confirmText(o), ask: TransportUI.askText(m), wa: GuestsTrips.whatsappText(o, CampConfig.MA) };
   });
-  expect(r.wa.split('\n').pop()).toBe('Car');
+  // Floriane's driver format (16 Nov 2026): Oliver lands in Marrakech.
+  expect(r.wa).toBe(['Marrakech airport to Surfcamp', 'Number of people: 1', 'Name: Oliver Smith', 'Contact WhatsApp: +447700900007', 'Flight number: TO3226', 'Arrival time: 22:10', 'Date: 16.11.2026', 'Car: small car'].join('\n'));
   expect(r.confirm).toContain("Hi Oliver! I'm Floriane, the manager of *Gota Dagua Surf Camp Morocco*.");
   expect(r.confirm).toContain('*arrivals exit* of Marrakech airport, holding a *sign with your name*');
   expect(r.ask).toContain('the *date and time* you land in Agadir');
@@ -263,8 +264,8 @@ test('morocco «Send the whole day»: the same house-style message the old Week 
   expect(url.startsWith('https://wa.me/212600000101?text=')).toBe(true);
   expect(url.split('?text=')[1]).toBe([
     '*TRANSFERS TODAY - 14 NOV*',
-    'Airport to Camp\nSophie Martin\n+33600000002\n1 person\nFlight Number: EJU5371\nTime: 10:05\nDate: 14 Nov\nCar',
-    'Airport to Camp _(already sent)_\nLena Hoffmann, Jonas Weber\n+491510000001\n2 persons\nFlight Number: FR1110\nTime: 14:20\nDate: 14 Nov\nCar',
+    'Agadir airport to Surfcamp\nNumber of people: 1\nName: Sophie Martin\nContact WhatsApp: +33600000002\nFlight number: EJU5371\nArrival time: 10:05\nDate: 14.11.2026\nCar: small car',
+    'Agadir airport to Surfcamp _(already sent)_\nNumber of people: 2\nName: Lena Hoffmann, Jonas Weber\nContact WhatsApp: +491510000001\nFlight number: FR1110\nArrival time: 14:20\nDate: 14.11.2026\nCar: small car',
   ].join('\n\n'));   // now 10:00: Karl 09:00 and Yuki 06:40 have passed; Nina is held (not in the latest file)
 });
 

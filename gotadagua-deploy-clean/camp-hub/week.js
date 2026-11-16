@@ -391,7 +391,62 @@
   }
   const outsideBlock = (xs, lang) => xs.length ? [L(lang === 'ar' ? AR.outsideHeader : `*${OUTSIDE}* _(also guests coming for breakfast and dinner)_`), ...xs.slice().sort((a, b) => nameSort(a.g, b.g)).map(x => L(dash(x.g.guest_name, noteOf(x, lang)))), G] : [];
 
+  // ── Morocco: the day in two parts (Floriane, 16 Nov 2026; CC.cleaningPrepare) ──────────────────────
+  //   CHECK OUT  one line per room being left:   «Room 13: 1 person leaving, 1 changing bed»
+  //   CHECK IN   the rooms to prepare, Floriane's template:
+  //              «Hello! Could you please prepare the following:» · «Room 2: double bed/1 person» · … · «Thank you!»
+  // Rooms to prepare = new guests and guests coming from another room (a guest staying on in the same room is
+  // not a room to prepare, unless the file gives them another bed). Private room: one person → «double bed/1 person»;
+  // two or more → «<n> people» with the beds the room name says (twin / triple / double), «double or twin?» for two
+  // when it says nothing. Shared room: «<n> beds» (one per arriving guest). Guests with no room are left out
+  // (no room to clean). The English twin is built from the same lines, index for index.
+  const PREP = !!(CC.cleaningPrepare && IS_MA_ROOMS);
+  const roomNo = r => r.key && /^ma-\d+$/.test(r.key) ? r.key.slice(3) : r.label;
+  // The raw Bookinglayer name of the room a guest sleeps in (maRoomParse drops «twin», «triple»… from the label).
+  const rawRoomName = (g, r) => roomNames(g.accommodation).find(n => { const x = roomInfo(n); return x && x.key === r.key; }) || '';
+  function bedHint(xs, r) {
+    const raw = xs.map(x => rawRoomName(x.g, r)).join(' ').toLowerCase();
+    return /triple/.test(raw) ? 'triple' : /twin/.test(raw) ? 'twin' : /double/.test(raw) ? 'double' : '';
+  }
+  function byRoomKey(list) {
+    const m = new Map();
+    list.forEach(x => { if (!x.r) return; if (!m.has(x.r.key)) m.set(x.r.key, { r: x.r, xs: [] }); m.get(x.r.key).xs.push(x); });
+    return [...m.values()].sort((a, b) => a.r.order - b.r.order || a.r.label.localeCompare(b.r.label));
+  }
+  function prepLine({ r, xs }, lang) {
+    const n = xs.length; const ar = lang === 'ar';
+    const room = ar ? AR.room(roomNo(r)) : `Room ${roomNo(r)}`;
+    const ppl = ar ? AR.people(n) : `${n} ${n === 1 ? 'person' : 'people'}`;
+    let what;
+    if (r.shared) what = ar ? AR.beds(n) : `${n} ${n === 1 ? 'bed' : 'beds'}`;
+    else if (n === 1) what = (ar ? AR.doubleBed : 'double bed') + '/' + ppl;
+    else {
+      const hint = bedHint(xs, r);
+      const beds = hint === 'triple' ? (ar ? AR.beds(3) : '3 beds') : hint === 'twin' ? (ar ? AR.twinBeds : 'twin beds') : hint === 'double' ? (ar ? AR.doubleBed : 'double bed')
+        : n === 2 ? (ar ? AR.doubleOrTwin : 'double or twin?') : '';
+      what = beds ? `${beds}/${ppl}` : ppl;
+    }
+    return L(`${room}: ${what}`);
+  }
+  function leaveLine({ r, xs }, lang) {
+    const ar = lang === 'ar'; const out = xs.filter(x => !x.bedChange).length, bc = xs.filter(x => x.bedChange).length;
+    const bits = [out ? (ar ? AR.leaving(out) : `${out} ${out === 1 ? 'person' : 'people'} leaving`) : '', bc ? (ar ? AR.bedChanges(bc) : `${bc} changing bed`) : ''].filter(Boolean);
+    return L(`${ar ? AR.room(roomNo(r)) : `Room ${roomNo(r)}`}: ${bits.join(ar ? AR.comma : ', ')}`);
+  }
+  // Who needs a bed made that day: new, coming from another room, or staying on but in another bed.
+  const toPrepare = ins => ins.filter(x => x.r && (x.kind === 'new' || x.kind === 'move' || (x.kind === 'stay' && x.nd && x.nd.bed)));
+  function cleaningPrep(rows, d, lang) {
+    const m = dayMoves(rows, d); const ar = lang === 'ar';
+    const outs = byRoomKey([...m.outs, ...m.bedChanges]), ins = byRoomKey(toPrepare(m.ins));
+    const p = [];
+    if (outs.length) p.push(T(dayTitleL('CHECK OUT', d, lang)), G, ...outs.map(x => leaveLine(x, lang)), G);
+    if (ins.length) p.push(T(dayTitleL('CHECK IN', d, lang)), G, L(ar ? AR.hello : 'Hello! Could you please prepare the following:'), ...ins.map(x => prepLine(x, lang)), L(ar ? AR.thanks : 'Thank you!'));
+    if (!p.length) p.push(T(dayTitleL('ROOMS', d, lang)), G, L(ar ? AR.noMoves : 'No check-in or check-out'));
+    return p;
+  }
+
   function cleaningDay(rows, d, lang) {
+    if (PREP) return cleaningPrep(rows, d, lang);
     const m = dayMoves(rows, d);
     const p = [];
     // Every bed that is freed: leaving the camp, moving room, changing bed — and the guests with no room in the file.
@@ -968,7 +1023,7 @@
     const blk = (cls, icon, label, n, sign, inner) => `<div class="wk-bc ${cls}${/^<span class="wk-nil">/.test(inner) ? ' empty' : ''}"><div class="wk-bl"><span class="wk-blt">${ic(icon)} ${label}</span>${n ? `<b class="wk-bn num">${sign}${n}</b>` : ''}</div><div class="wk-bi">${inner}</div></div>`;
     // Transfers: read-only (time, in / out, name — no status, so Week and Transport never disagree); a tap opens
     // Transport → Trips on this week and this day, where they are sent, confirmed and edited.
-    const trips = x.trips.map(t => `<div class="wk-tl"><b class="num">${h(t.trip_time || 'time?')}</b> <span class="wk-dir ${t.kind === 'airport_departure' ? 'out' : 'in'}">${t.kind === 'airport_departure' ? 'out' : 'in'}</span> ${h(t.guest_names || 'Guest')}</div>`).join('');
+    const trips = x.trips.map(t => `<div class="wk-tl ${t.kind === 'airport_departure' ? 'wk-trout' : 'wk-trin'}"><b class="num">${h(t.trip_time || 'time?')}</b> <span class="wk-dir ${t.kind === 'airport_departure' ? 'out' : 'in'}">${t.kind === 'airport_departure' ? 'out' : 'in'}</span> ${h(t.guest_names || 'Guest')}</div>`).join('');
     const trf = trips ? `<button type="button" class="wk-trlink" onclick="WeekUI.toTransport('${x.d}')" title="Open in Transport">${trips}<span class="wk-trgo">Transport ${ic('chevron-right')}</span></button>` : '';
     // Guests coming on their own are people information: they sit with the arrivals (with the time they gave, or without one).
     const own = x.own.filter(arriveAt), untimed = x.own.filter(g => !arriveAt(g));
@@ -1006,6 +1061,12 @@
   }
 
   // ── Rooms ───────────────────────────────────────────────────────────────
+  // The «By room» list in arrival order (Floriane, 16 Nov 2026: «chronologically by Arrival Date, instead of
+  // alphabetically»): the day they come into the room, then the arrival time when the file has it, then the bed, then the name.
+  // Already in camp before the week («here») first; the arrival time only counts on the day the guest arrives (not on a room move).
+  const arrDay = s => s.before ? '' : (s.from || '');
+  const arrTime = s => (!s.before && s.from === s.g.check_in && arriveAt(s.g)) || '99';
+  const byArrival = (a, b) => arrDay(a).localeCompare(arrDay(b)) || arrTime(a).localeCompare(arrTime(b)) || (a.bedN || 99) - (b.bedN || 99) || nameSort(a.g, b.g);
   function roomsTab(ctx) {
     const { ws, rows } = ctx;
     const P = roomPlan(ws, rows);
@@ -1018,7 +1079,7 @@
       const outTxt = s.to > we || (s.to === we && stayEnd(g) > we) ? '<span class="wk-here">stays</span>' : `<span class="wk-out">${h(fd(s.to))}</span>`;
       return `<div class="wk-br"><span class="wk-brn">${h(g.guest_name)}${s.bedN && s.r && s.r.shared ? `<span class="wk-bed">bed ${s.bedN}</span>` : ''}${from ? `<span class="cell-sub">from ${h(from)}</span>` : ''}${to ? `<span class="cell-sub">then ${h(to)}</span>` : ''}</span><span>${inTxt}</span><span>${outTxt}</span></div>`; };
     const block = r => `<div class="wk-broom"><div class="wk-brh"><b>${h(r.label)}</b><span class="cell-sub">${r.none ? 'meals only' : r.shared ? `shared${r.note ? ' · ' + h(r.note) : ''}` : 'private'}</span></div>
-      ${r.stays.length ? r.stays.slice().sort((a, b) => (a.bedN || 99) - (b.bedN || 99) || a.a - b.a || nameSort(a.g, b.g)).map(person).join('') : '<div class="wk-br"><span class="wk-nil">Empty all week</span></div>'}</div>`;
+      ${r.stays.length ? r.stays.slice().sort(byArrival).map(person).join('') : '<div class="wk-br"><span class="wk-nil">Empty all week</span></div>'}</div>`;
     const plain = `<div class="card wk-card">${cardHead('By room', `Who is in each room this week · <span class="wk-here">here</span> = already in camp`, toMsgBtn('Cleaning message'))}
       <div class="wk-brhd"><span>Guest</span><span>In</span><span>Out</span></div>
       <div class="wk-byroom">${P.rooms.map(block).join('')}</div></div>`;

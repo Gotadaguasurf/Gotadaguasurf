@@ -57,28 +57,41 @@ test('morocco week: the import audit = the oracle (38 rows = 32 guests + 6 left 
   expect(a.left.map(x => [x.line, x.name, x.kind === 'other_camp' ? 'other_camp' : x.kind])).toEqual(o.left_out.map(x => [x.line, x.name, x.reason]));
 });
 
-test('morocco week: Overview and the Cleaning message of Sat 14 — every room and bed freed, room numbers, «Outside of camp», no emoji in any team message', async ({ page }) => {
+test('morocco week: Overview and the Cleaning message of Sat 14 — two parts: rooms left, rooms to prepare (Floriane\'s template), no emoji in any team message', async ({ page }) => {
   const errors = collectFatalErrors(page);
   await H.openWeek(page);
   await expect(page.locator('#weekRoot .wk-week')).toContainText('Week 46');
   // Since 14 Nov the Morocco Cleaning message is sent in Darija (tests/morocco-darija.spec.js); this is its English twin, shown beside it.
+  // 16 Nov (Floriane): part 1 = one line per room being left; part 2 = the rooms to prepare — private room, one person →
+  // «double bed/1 person», two → «double or twin?» unless the room name says (9 is a triple), shared room → «<n> beds»;
+  // staying on in the same room is not a room to prepare (Tom Baker, 8), a new bed is (Clara Schmidt, 13); a room move
+  // counts in the new room (Pieter de Vries → 6, Rui Alves → 13). Ben Clarke has no room: not in the cleaning day.
   const clean = await page.evaluate(() => WeekUI.bodyOf('cleaning', '2026-11-14', 'en'));
   expect(clean).toBe([
     '*CHECK OUT - SAT 14 NOV*', '',
-    '*8 - Banana Point*', '- Rui Alves _(stays 4 more nights, in 13 - Anchor Point)_', '',
-    '*11 - Tifnit*', '- Yuki Tanaka', '',
-    '*13 - Anchor Point*', '- Clara Schmidt _(stays, moves to bed 5)_', '- Pieter de Vries _(stays 5 more nights, in 6 - Safi)_', '',
+    'Room 8: 1 person leaving',
+    'Room 11: 1 person leaving',
+    'Room 13: 1 person leaving, 1 changing bed', '',
     '*CHECK IN - SAT 14 NOV*', '',
-    '*1 - Imsouane*', '- Noah Weiss _(4 nights)_', '',
-    '*2 - Boilers*', '- Lucas Dubois', '',
-    '*4 - Crocro*', '- Lena Hoffmann', '- Jonas Weber', '',
-    '*5 - Panorama Point*', '- Ines Costa', '',
-    '*6 - Safi*', '- Nina Larsen', '- Guest without name (booking MA-1010)', '- Pieter de Vries _(from 13 - Anchor Point, 5 nights)_', '',
-    '*8 - Banana Point*', '- Sophie Martin', '- Tom Baker _(from last week, 6 more nights)_', '',
-    '*9 - Anza*', '- Theo Duval', '- Lea Duval', '- Max Duval', '',
-    '*13 - Anchor Point*', '- Karl Nilsson', '- Clara Schmidt _(from last week, one more week with us, now in bed 5)_', '- Rui Alves _(from 8 - Banana Point, 4 nights)_', '',
-    '*Outside of camp* _(also guests coming for breakfast and dinner)_', '- Ben Clarke',
+    'Hello! Could you please prepare the following:',
+    'Room 1: double bed/1 person',
+    'Room 2: double bed/1 person',
+    'Room 4: double or twin?/2 people',
+    'Room 5: 1 bed',
+    'Room 6: 3 people',
+    'Room 8: 1 bed',
+    'Room 9: 3 beds/3 people',
+    'Room 13: 3 beds',
+    'Thank you!',
   ].join('\n'));
+  // A day with arrivals only: one part, with the date; a private room with «twin» in its name says so.
+  expect(await page.evaluate(() => WeekUI.bodyOf('cleaning', '2026-11-15', 'en'))).toBe(['*CHECK IN - SUN 15 NOV*', '', 'Hello! Could you please prepare the following:', 'Room 5: 1 bed', 'Room 7: double bed/1 person', 'Room 13: 2 beds', 'Thank you!'].join('\n'));
+  const twin = await page.evaluate(() => { const e = WeekUI._state.cache['2026-11-14']; const keep = e.rows;
+    e.rows = keep.map(g => g.booking_ref === 'MA-1001' ? { ...g, accommodation: '4 - Crocro Twin Private Room' } : g);
+    try { return WeekUI.bodyOf('cleaning', '2026-11-14', 'en'); } finally { e.rows = keep; } });
+  expect(twin).toContain('Room 4: twin beds/2 people');
+  // The week message keeps the guests by room (unchanged).
+  expect((await page.evaluate(() => WeekUI.bodyOf('cleaning', 'week', 'en'))).split('\n')[0]).toBe('*ROOMS - 14 TO 21 NOV*');
   // Every team message, every day and the week: no emoji (wa.me shows some as «?»).
   const all = await page.evaluate(() => { const out = []; ['cleaning', 'kitchen', 'surf', 'guests'].forEach(t => ['week', '2026-11-14', '2026-11-15', '2026-11-16', '2026-11-17', '2026-11-18', '2026-11-19', '2026-11-20'].forEach(d => out.push(WeekUI.bodyOf(t, d)))); return out.join('\n'); });
   expect(H.EMOJI.test(all)).toBe(false);
@@ -107,7 +120,9 @@ test('morocco week: Kitchen and Surf messages (diets, allergies, levels); the Tr
   expect(s).toContain('*SURF - MON 16 NOV*');
   expect(s).toMatch(/\*Advanced\*\n- Oliver Smith _\(coaching\)_/);
   const t = await page.evaluate(() => TransportUI.dayMessage('2026-11-16'));   // Transport's «Send the whole day» since 15 Nov 2026
-  expect(t).toBe(['*TRANSFERS - MON 16 NOV*', '', 'Airport to Camp', 'Ana Ruiz', '+34600000028', '1 person', 'Flight Number: RK3033', 'Time: 09:30', 'Date: 16 Nov', 'Car', '', 'Airport to Camp', 'Oliver Smith', '+447700900007', '1 person', 'Flight Number: TO3226', 'Time: 22:10', 'Date: 16 Nov', 'Car'].join('\n'));
+  // Floriane's driver format (16 Nov 2026): every line labelled, the airport by its city, Date dd.mm.yyyy, «small car».
+  expect(t).toBe(['*TRANSFERS - MON 16 NOV*', '', 'Marrakech airport to Surfcamp', 'Number of people: 1', 'Name: Ana Ruiz', 'Contact WhatsApp: +34600000028', 'Flight number: RK3033', 'Arrival time: 09:30', 'Date: 16.11.2026', 'Car: small car', '',
+    'Marrakech airport to Surfcamp', 'Number of people: 1', 'Name: Oliver Smith', 'Contact WhatsApp: +447700900007', 'Flight number: TO3226', 'Arrival time: 22:10', 'Date: 16.11.2026', 'Car: small car'].join('\n'));
   expect(st.calls.filter(c => c.t === 'import')).toEqual([]);
 });
 
@@ -133,9 +148,9 @@ test('morocco week: «Changed since sent» resends the real full message, never 
   await page.evaluate(() => { const e = WeekUI._state.cache['2026-11-14']; e.rows = e.rows.filter(g => g.guest_name !== 'Ines Costa'); WeekUI.render(); });
   await expect(page.locator('#weekRoot .wk-changed')).toContainText('Cleaning (Sat)');
   const now = await page.evaluate(() => WeekUI.bodyOf('cleaning', '2026-11-14'));
-  expect(now).not.toContain('Ines Costa');
+  expect(now).not.toContain('بيت 5:');                 // her room (5) has nothing to prepare any more
   expect(now).not.toMatch(/UPDATE|^[+–] /m);
-  expect(sent.rows[0].text).toContain('Ines Costa');
+  expect(sent.rows[0].text).toContain('بيت 5: ناموسية وحدة');
 });
 
 test('morocco week: screenshots at 390 and 1280 — no horizontal overflow on any tab', async ({ page }) => {
@@ -207,11 +222,11 @@ test('morocco «Send the whole week» (Transport, was Week → Send to Let Us To
   const heads = lines.filter(l => /^\*[A-Z]{3} \d+ [A-Z]{3}\*$/.test(l));
   expect(heads).toEqual(['*MON 16 NOV*', '*TUE 17 NOV*', '*WED 18 NOV*', '*FRI 20 NOV*', '*SAT 21 NOV*']);   // Sat 14 / Sun 15 have passed (now Mon 16 12:00)
   expect(week).not.toContain('Ana Ruiz');                                    // Mon 16 09:30: passed
-  expect(week).toContain('Airport to Camp\nOliver Smith');                    // Mon 16 22:10: still to come
+  expect(week).toContain('Marrakech airport to Surfcamp\nNumber of people: 1\nName: Oliver Smith');   // Mon 16 22:10: still to come
   const sat = week.slice(week.indexOf('*SAT 21 NOV*'));
-  expect(sat).toContain('Camp to Airport\nSophie Martin');                     // a Saturday departure (03:30)
-  expect((sat.match(/Camp to Airport/g) || []).length).toBeGreaterThanOrEqual(6);
-  expect(sat).not.toContain('Airport to Camp');                                // next week's Saturday arrivals stay out
+  expect(sat).toContain('Surfcamp to Agadir airport:\nNumber of people: 1\nName: Sophie Martin');   // a Saturday departure (03:30)
+  expect((sat.match(/^Surfcamp to \w+ airport:/gm) || []).length).toBeGreaterThanOrEqual(6);
+  expect(sat).not.toMatch(/airport to Surfcamp/);                              // next week's Saturday arrivals stay out
   expect(H.EMOJI.test(week)).toBe(false);
   await expect(page.locator('#transportRoot [data-send-week]')).toHaveAttribute('title', /Let Us Tours/);
   await page.click('#transportRoot [data-send-week]');
@@ -241,6 +256,10 @@ test('morocco «Send the whole week» (Transport, was Week → Send to Let Us To
 // Captured once from main before the transfers moved to Transport (15 Nov 2026), see tests/week-golden.js.
 // The whole-week message to Let Us Tours with its three airports (Agadir, Marrakech, Essaouira) must be
 // the bytes Week → Transfers sent; Rooms, Kitchen, Surf and Guests must not change at all.
+// 16 Nov 2026 (Floriane's feedback, on purpose): the Morocco Cleaning DAY messages (two parts: rooms left, rooms to
+// prepare) and the driver blocks (her labelled format) were re-captured with GOLDEN_WRITE=1 — only the keys
+// cleaning|<day>, cleaning-en|<day> and transfers|… changed; the week message, Kitchen, Surf, Guests, To check,
+// the people check and the day model kept their hashes.
 const WG = require('./week-golden');
 const MA_TRANSFERS_TEXT = (day, ws) => (TransportUI.weekMessage ? (day === 'week' ? TransportUI.weekMessage(ws) : TransportUI.dayMessage(day))
   : WeekUI.dress(WeekUI.bodyOf('transfers', day), TransportUI.colomboNow().slice(0, 10)));

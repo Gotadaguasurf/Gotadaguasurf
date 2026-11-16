@@ -258,7 +258,7 @@ test('guests import (in Week): a file without a date in its name asks when it wa
 });
 
 // ── Trips list + WhatsApp ──────────────────────────────────────────────────
-test('trips: list by day, WhatsApp to the «Send transfers to» contact in Miguel\'s format, Sent ✓ then Confirmed ✓', async ({ page }) => {
+test('trips: list by day, WhatsApp to the «Send transfers to» contact in Miguel\'s format, status Pending → Message Sent → Confirmed', async ({ page }) => {
   const errors = collectFatalErrors(page);
   const st = await openTab(page, { trips: NEXT_WEEK() });
   await expect(page.locator('.tr-week')).toHaveText('7–13 Nov');   // Fri 13 Nov: this Sat–Fri week
@@ -272,12 +272,17 @@ test('trips: list by day, WhatsApp to the «Send transfers to» contact in Migue
   const url = await page.evaluate(() => window.__opened[0]);
   expect(url.startsWith('https://wa.me/94771234567?text=')).toBe(true);
   expect(decodeURIComponent(url.split('?text=')[1])).toBe('Airport to Camp\nLorena Marie Glas\n+491700000001\n1 person\nFlight Number: QR658\nTime: 01:55\nDate: 14 Nov\nSmall Car');
-  await rows.first().locator('button:has-text("Sent ✓")').click();
+  // Floriane (16 Nov 2026): one select with the three steps instead of the Sent ✓ / Confirmed ✓ buttons.
+  await expect(rows.first().locator('[data-status-sel]')).toHaveValue('planned');
+  await expect(rows.first().locator('[data-status-sel] option')).toHaveText(['Pending', 'Message Sent', 'Confirmed']);
+  await rows.first().locator('[data-status-sel]').selectOption('sent');
   await expect(rows.first().locator('.badge-blue:has-text("Sent")')).toBeVisible();
   const upd = await call(st, 'trip_update');
   expect(upd.body).toMatchObject({ status: 'sent', needs_resend: false, sent_snapshot: { trip_date: '2026-11-14', trip_time: '01:55', flight: 'QR658', pax: 1 } });
-  await rows.first().locator('button:has-text("Confirmed ✓")').click();
+  await expect(page.locator('#trOv.open')).toHaveCount(0);            // the select never opens the trip sheet
+  await rows.first().locator('[data-status-sel]').selectOption('confirmed');
   await expect(rows.first().locator('.badge-green:has-text("Confirmed")')).toBeVisible();
+  expect((await call(st, 'trip_update', 2)).body).toMatchObject({ status: 'confirmed' });
   // whole day (15 Nov): the same house-style message as the old Week → Transfers day message — one builder
   await page.click('button:has-text("Send the whole day")');
   const day = decodeURIComponent((await page.evaluate(() => window.__opened[1])).split('?text=')[1]);
@@ -1040,14 +1045,14 @@ test('E8 — a weekly tuk-tuk lump that is not an exact sum: «Tick all» links 
   expect(c).toMatchObject({ p_entry: PS, p_driver: D.sampath, p_note: 'waiting time' });
 });
 
-test('trips: a Confirmed tick can be undone (Undo ✓ → Sent), and the sheet offers «Back to Sent / Planned»', async ({ page }) => {
+test('trips: a Confirmed trip can go back a step (status select → Message Sent), and the sheet offers «Back to Sent / Planned»', async ({ page }) => {
   const st = await openTab(page, { trips: [
     trip({ id: 'aaaaaaaa-0000-4000-8000-00000000u001', guest_names: 'Lorena Marie Glas', guest_phone: '+491700000001', trip_date: '2026-11-14', trip_time: '07:00', flight: 'QR658', status: 'confirmed' }),
   ] });
   await page.click('button[title="Next week"]');
   const row = page.locator('.tr-row[data-trip="aaaaaaaa-0000-4000-8000-00000000u001"]');
-  await row.locator('[data-undo]').click();
-  expect((await call(st, 'trip_update')).body).toMatchObject({ status: 'sent' });
+  await row.locator('[data-status-sel]').selectOption('sent');
+  expect((await call(st, 'trip_update')).body).toEqual({ status: 'sent' });   // a step back only moves the status
   await row.locator('.tr-line1 b').click();
   await page.click('#trOv [data-undo]');
   expect((await call(st, 'trip_update', 2)).body).toMatchObject({ status: 'planned' });
@@ -1246,4 +1251,22 @@ test('sheet · Nadith (?view=local): the same sheet; airport rows read-only and 
   await expect(page.locator('#tk_mode .pill.active')).toHaveText('Log runs');
   await expect(page.locator('#tk_d')).toHaveValue('2026-11-12');
   expect(errors).toEqual([]);
+});
+
+// Floriane's feedback (16 Nov 2026), Sri Lanka side: the missing-information line and the IN / OUT colours apply in
+// both camps; a Sri Lanka departure with its flight time is complete (its driver message falls back on it).
+test('trips (Sri Lanka): missing information — red row «No flight · no time · no phone»; a departure with the flight time is complete; IN / OUT tags', async ({ page }) => {
+  await openTab(page, { trips: [
+    trip({ id: 'aaaaaaaa-0000-4000-8000-00000000m001', guest_names: 'Ana Example', trip_time: null, flight: null, guest_phone: null }),
+    trip({ id: 'aaaaaaaa-0000-4000-8000-00000000m002', kind: 'airport_departure', route: 'Surfcamp → Airport', trip_date: '2026-11-15', guest_names: 'Ben Example', trip_time: '15:00', flight: 'QR655', guest_phone: '+491700000009' }),
+    trip({ id: 'aaaaaaaa-0000-4000-8000-00000000m003', guest_names: 'Cleo Example', trip_time: '11:00', flight: 'QR658', guest_phone: '+491700000008', vehicle: null }),
+  ] });
+  await page.click('button[title="Next week"]');
+  const row = n => page.locator(`.tr-row[data-trip="aaaaaaaa-0000-4000-8000-00000000m00${n}"]`);
+  await expect(row(1)).toHaveClass(/tr-missing/);
+  await expect(row(1).locator('[data-missline]')).toHaveText(/No flight · no time · no phone$/);
+  await expect(row(2)).not.toHaveClass(/tr-missing/);
+  await expect(row(3).locator('[data-missline]')).toHaveText(/No vehicle$/);
+  await expect(row(1).locator('.tr-dir.in')).toHaveText('Arrival');
+  await expect(row(2).locator('.tr-dir.out')).toHaveText('Departure');
 });

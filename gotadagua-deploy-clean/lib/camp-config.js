@@ -126,6 +126,15 @@
     transferRe: /airport\s+(transfer|shuttle|pick.?up|drop.?off)/gi,
     vehicles: ['Car', 'Minivan', 'Big Van'], vehicleCaps: [4, 8],   // = the /prices airport vehicles (4, 8, 15 seats)
     waVehicle: { 'Car': 'Car', 'Minivan': 'Minivan', 'Big Van': 'Big Van' },
+    // The airport driver's message (Let Us Tours, driver Yassine — Floriane, 16 Nov 2026): one block per trip in
+    // her shape («Surfcamp to Agadir airport:» / «Agadir airport to Surfcamp», Number of people, Name, Contact
+    // WhatsApp, Departure time from camp / Flight number + Arrival time, Date dd.mm.yyyy, Car). GuestsTrips.whatsappText
+    // uses it when the camp has it; Sri Lanka has none and keeps its own format.
+    waDriver: 'labeled',
+    waVehicleDriver: { 'Car': 'small car', 'Minivan': 'minivan', 'Big Van': 'big van' },
+    // Transport's «missing information» line: a departure needs the time the driver leaves the camp (pickup_time),
+    // which the Guests file never has (its «Departure time» is the flight). Sri Lanka: the flight time is enough.
+    depNeedsPickup: true,
     packages: [],                                         // CONFIRM: does a Morocco package include the transfer or lessons?
     matchRow(pk, acc) {
       const a = low(acc), p = low(pk);
@@ -182,7 +191,19 @@
       noMoves: 'ما كاين لا دخول لا خروج',
       lastWeek: 'من السيمانة اللي فاتت', then: room => `من بعد ${room}`,
       roomMoves: 'تبديل البيوت (سولو على النهار)',
+      // The day message in two parts (Floriane, 16 Nov 2026): the rooms being left, then the rooms to prepare.
+      // «Room 2: double bed/1 person» → «بيت 2: ناموسية كبيرة/شخص واحد». CONFIRM the wording with the team.
+      room: n => `بيت ${n}`,
+      hello: 'السلام! عافاك وجدي هادشي:', thanks: 'شكرا!',
+      doubleBed: 'ناموسية كبيرة', twinBeds: 'جوج ناموسيات صغار', doubleOrTwin: 'ناموسية كبيرة ولا جوج صغار؟',
+      beds: n => n === 1 ? 'ناموسية وحدة' : `${n} ناموسيات`,
+      people: n => n === 1 ? 'شخص واحد' : `${n} أشخاص`,
+      leaving: n => n === 1 ? 'شخص واحد خارج' : `${n} أشخاص خارجين`,
+      bedChanges: n => n === 1 ? 'واحد كيبدل الناموسية' : `${n} كيبدلو الناموسية`,
     },
+    // Morocco's Cleaning message for a day: «CHECK OUT» = one line per room being left, «CHECK IN» = one line per
+    // room to prepare (Floriane, 16 Nov 2026). The week message keeps the guests by room.
+    cleaningPrepare: true,
     transportHow: 'Airport transfers (Let Us Tours) and van runs (Fathoune), paid by SG bank transfer: tap a driver in «Owed to drivers» to pay or to link the transfer.',
   };
 

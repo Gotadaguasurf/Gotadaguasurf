@@ -98,8 +98,12 @@
 .wk-rm { color: var(--muted); font-size: 12px; padding-top: 1px; }
 .wk-tl { padding: 1px 0; }
 .wk-tl .badge { height: 18px; font-size: 10.5px; padding: 0 6px; vertical-align: 1px; }
-.wk-dir { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
-.wk-dir.in { color: var(--wk-in); } .wk-dir.out { color: var(--wk-out); }
+/* IN / OUT in two colours (Floriane, 16 Nov 2026): arrivals green, departures amber — the same as Transport's rows. */
+.wk-dir { display: inline-block; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: 0 6px; border-radius: 999px; border: 1px solid; line-height: 16px; }
+.wk-dir.in { color: var(--green); background: var(--green-bg); border-color: var(--green-border); }
+.wk-dir.out { color: var(--amber); background: var(--amber-bg); border-color: var(--amber-border); }
+.wk-tl.wk-trin { box-shadow: inset 3px 0 0 var(--green-border); padding-left: 6px; }
+.wk-tl.wk-trout { box-shadow: inset 3px 0 0 var(--amber-border); padding-left: 6px; }
 .wk-own { color: var(--muted); font-size: 12.5px; }
 /* Overview transfers: read-only lines; the whole block is one tap to Transport on that day (15 Nov 2026). */
 .wk-trlink { display: block; width: 100%; min-width: 0; padding: 0; margin: 0; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
