@@ -17,7 +17,8 @@
 //     days, and «Drivers and contacts · Export month» at the foot. No header button row any more.
 //   · an airport transfer by hand is FREE only (staff, gift, compensation, other): guests' transfers come from Bookinglayer.
 //   · every airport row has one checkpoint strip — Booked · Info · Driver · Guest · Paid — and a labelled «Edit».
-//   · Overview: four numbers, by kind, by driver, the year as bars; amounts with ≈ € (TransportOverview.eurRate).
+//   · Overview (v2): three numbers (cost with up/down, owed now, per person), the year as bars by kind, one bar per kind,
+//     drivers and suppliers; old months read like new ones (lib/transport-overview.js classifies the ledger lines).
 // Driver payments, simplified (Miguel 16 Nov 2026, «sim, avança com a proposta dos motoristas»):
 //   · «Pay a driver» is the one door to pay a driver, in both camps. Tap a driver in «Owed to
 //     drivers»: everything done and unpaid since the last payment, by day × route, already ticked;
@@ -129,8 +130,10 @@
   //   2 cancelled                                         → cancelled      «Cancelled»          neutral
   //   3 no-show                                           → no_show        «No-show»            neutral (Francisco decided)
   //   4 not done yet                                      → upcoming       «Upcoming»           neutral, never blocks «reconciled»
-  //   5 done, not paid, dated before go-live              → before_go_live «Before go-live»     neutral (paid in the old lumps)
-  //   6 done, not paid                                    → owed           «Owed to driver»     to do
+  //   5 done, not paid, «did the driver go?» unanswered   → on_hold        «On hold»            to do: answer first (16 Nov 2026:
+  //     a flagged trip is never «Owed», nor in «Owed to drivers» / the Overview, until «Driver went» or «Didn't go»)
+  //   6 done, not paid, dated before go-live              → before_go_live «Before go-live»     neutral (paid in the old lumps)
+  //   7 done, not paid                                    → owed           «Owed to driver»     to do
   //   7 done, paid, from Bookinglayer (or a tuk-tuk run)  → matched        «Matched»
   //   8 done, paid, added by hand (no booking)            → extra          «Extra»              neutral
   function reconcileStatus(t) {
@@ -140,16 +143,17 @@
     if (t.status === 'cancelled' || t.status === 'merged') return 'cancelled';
     if (t.status === 'no_show') return 'no_show';
     if (!done) return 'upcoming';
+    if (!paid && blFlagged(t)) return 'on_hold';
     if (!paid && t.trip_date < goLive()) return 'before_go_live';
     if (!paid) return 'owed';
     if (t.source === 'bookinglayer' || t.kind === RUN.kind) return 'matched';
     return 'extra';
   }
   const REC_LABEL = {
-    matched: ['Matched', 'badge-green'], owed: ['Owed to driver', 'badge-amber'], paid_not_done: ['Paid, not done', 'badge-red'],
+    matched: ['Matched', 'badge-green'], owed: ['Owed to driver', 'badge-amber'], on_hold: ['On hold — answer first', 'badge-amber'], paid_not_done: ['Paid, not done', 'badge-red'],
     no_show: ['No-show', 'badge-grey'], before_go_live: ['Before go-live', 'badge-grey'], extra: ['Extra', 'badge-blue'], upcoming: ['Upcoming', 'badge-grey'], cancelled: ['Cancelled', 'badge-grey'],
   };
-  const REC_TODO = new Set(['owed', 'paid_not_done']);
+  const REC_TODO = new Set(['owed', 'paid_not_done', 'on_hold']);
   const isAirport = t => t.kind === 'airport_arrival' || t.kind === 'airport_departure';
   // The one week rule (Trips, the week totals and Reconcile): Sat–Fri, and a departure on the
   // Saturday a week ends belongs to that week's guests (Miguel, 13 Nov: «Beliz has departure and
@@ -209,6 +213,7 @@
     if (t.status === 'no_show') return { key: 'off', label: 'No-show', cls: 'badge-grey', sub: '' };
     const s = reconcileStatus(t);
     if (s === 'owed') return { key: 'owed', label: 'Owed', cls: 'badge-amber', sub: 'done, not paid' };
+    if (s === 'on_hold') return { key: 'hold', label: 'On hold', cls: 'badge-amber', sub: 'answer first: did the driver go?' };
     if (s === 'before_go_live') return { key: 'old', label: 'Before go-live', cls: 'badge-grey', sub: `not tracked before ${fmtShort(goLive())}` };
     return { key: 'planned', label: t.status === 'confirmed' ? 'Confirmed' : t.status === 'sent' ? 'Sent' : 'Planned', cls: t.status === 'confirmed' ? 'badge-green' : t.status === 'sent' ? 'badge-blue' : 'badge-grey', sub: '' };
   }
@@ -457,12 +462,13 @@
   // Chip «N without time» and its filter share one rule: an airport transfer still to come with no flight time
   // (held trips have their own chip «not in the latest Bookinglayer file»). Moved from Week → To check, 15 Nov 2026.
   const noTimeTrip = t => isAirport(t) && !t.trip_time && counts(t) && !t.missing_since && !isDone(t);
-  const SPECIAL_FILTERS = ['resend', 'tosend', 'missing', 'notime', 'noinfo', 'paidnotdone', 'blcheck'];
+  const SPECIAL_FILTERS = ['resend', 'tosend', 'missing', 'notime', 'noinfo', 'paidnotdone', 'blcheck', 'onhold'];
   // «N missing info» (16 Nov 2026 UX pass): an airport transfer still to come that the driver cannot do as it is —
   // the same rule as the red row (missingInfo: flight, time / pick-up time, phone, vehicle). It holds «without time».
   const noInfoTrip = t => isAirport(t) && counts(t) && !t.missing_since && !isDone(t) && !t.payment_entry_id && missingInfo(t).length > 0;
   const FILTER_TEXT = { resend: 'time changed — resend', tosend: 'to send (next 48 h)', missing: 'not in the latest Bookinglayer file', notime: 'without time',
-    noinfo: 'missing info', paidnotdone: 'paid, not done', blcheck: 'to check in Bookinglayer' };
+    noinfo: 'missing info', paidnotdone: 'paid, not done', blcheck: 'to check in Bookinglayer', onhold: 'on hold — did the driver go?' };
+  const onHoldTrips = () => TR.trips.filter(t => reconcileStatus(t) === 'on_hold');
   const paidNotDone = () => TR.trips.filter(t => reconcileStatus(t) === 'paid_not_done');
   const toCheck = () => LOCAL ? [] : allLinks().filter(l => l.state === 'review');
   function attentionStrip() {
@@ -519,7 +525,7 @@
     let list = TR.trips.filter(t => inWeek(t, ws));
     const special = SPECIAL_FILTERS.includes(f);
     const count = special || LOCAL || (f && f !== 'all' && f !== 'airport') ? '' : weekCountHtml(list, ws);
-    if (special) list = f === 'paidnotdone' ? paidNotDone() : f === 'blcheck' ? blList() : TR.trips.filter(t => t.trip_date >= cToday() || f === 'resend');
+    if (special) list = f === 'paidnotdone' ? paidNotDone() : f === 'blcheck' ? blList() : f === 'onhold' ? onHoldTrips() : TR.trips.filter(t => t.trip_date >= cToday() || f === 'resend');
     if (f === 'resend') list = list.filter(t => isAirport(t) && t.needs_resend);
     else if (f === 'tosend') list = list.filter(t => isAirport(t) && t.status === 'planned');
     else if (f === 'missing') list = list.filter(t => t.missing_since && !['cancelled', 'no_show'].includes(t.status));
@@ -583,10 +589,10 @@
     if (!shown.length) return '';
     const line = ([k, label]) => {
       const xs = list.filter(t => counts(t) && catOf(t) === k);
-      const g = { paid: 0, owed: 0, planned: 0, old: 0, sum: 0 };
+      const g = { paid: 0, owed: 0, hold: 0, planned: 0, old: 0, sum: 0 };
       xs.forEach(t => { const amt = Number(t.expected_price || 0); const key = payState(t).key; g.sum += amt; if (key in g) g[key] += amt; });
       const n = k === 'airport' ? `${xs.length} transfer${xs.length === 1 ? '' : 's'}` : `${xs.length} run${xs.length === 1 ? '' : 's'}`;
-      return `<div class="tr-foot-line" data-foot="${k}"><b>${h(label)}</b><span>${n} · ${money(g.sum)}</span><span class="tr-foot-split"><span class="tr-t-paid">Paid ${money(g.paid)}</span> · <span class="${g.owed ? 'tr-t-owed' : ''}">Owed ${money(g.owed)}</span> · Planned ${money(g.planned)}${g.old ? ` · Before go-live ${money(g.old)}` : ''}</span></div>`;
+      return `<div class="tr-foot-line" data-foot="${k}"><b>${h(label)}</b><span>${n} · ${money(g.sum)}</span><span class="tr-foot-split"><span class="tr-t-paid">Paid ${money(g.paid)}</span> · <span class="${g.owed ? 'tr-t-owed' : ''}">Owed ${money(g.owed)}</span> · Planned ${money(g.planned)}${g.hold ? ` · <span class="tr-t-owed">On hold ${money(g.hold)}</span>` : ''}${g.old ? ` · Before go-live ${money(g.old)}` : ''}</span></div>`;
     };
     return `<div class="card tr-catfoot">${shown.map(line).join('')}</div>`;
   }
@@ -686,6 +692,8 @@
         + `<button class="btn btn-s btn-sm" data-bl-not onclick="event.stopPropagation();TransportUI.blNotBooked('${t.id}')" title="The booking page has no transfer on this date — cancel this trip">Not booked</button>`;
       return `<span class="tr-step-i is-todo tr-blline" data-step="booked" data-state="todo" data-blcheck><span class="tr-bl-t">${ic('alert')} Check in Bookinglayer</span>${ref ? `<span class="tr-bl-ref">${h(ref)}</span>` : ''}${open || btns ? `<span class="tr-bl-act">${open}${btns}</span>` : ''}</span>`;
     }
+    // «Not booked in Bookinglayer: did the driver go?» still open: never «Booked ✓» (bl_checked_at is set by the check that raised it).
+    if (blFlagged(t)) return stepTok('booked', 'todo', `${ic('alert')} Not booked?`);
     return t.bl_checked_at ? stepTok('booked', 'ok', `${ic('check')} Booked`) : '';
   }
   function stepsHtml(t, ro) {
@@ -706,7 +714,7 @@
       if (!ro && !needsInfo(t) && guestHtml(t)) out.push(`<span class="tr-step-g" data-step="guest">${guestHtml(t)}</span>`);
     } else {
       const ps = payState(t);
-      out.push(`<span class="tr-step-i is-${ps.key === 'paid' ? 'ok' : ps.key === 'owed' ? 'todo' : 'off'} tr-pay" data-step="paid" data-state="${ps.key}"><span class="badge ${ps.cls}" data-pay="${ps.key}">${ps.label}</span>${ps.sub ? `<span class="cell-sub">${h(ps.sub)}</span>` : ''}</span>`);
+      out.push(`<span class="tr-step-i is-${ps.key === 'paid' ? 'ok' : ps.key === 'owed' || ps.key === 'hold' ? 'todo' : 'off'} tr-pay" data-step="paid" data-state="${ps.key}"><span class="badge ${ps.cls}" data-pay="${ps.key}">${ps.label}</span>${ps.sub ? `<span class="cell-sub">${h(ps.sub)}</span>` : ''}</span>`);
     }
     return `<div class="tr-steps" data-steps>${out.filter(Boolean).join('')}</div>`;
   }
@@ -944,9 +952,11 @@
   }
 
   // ── Overview (Miguel, 16 Nov 2026: «ver o overview por semana e mês e ano para os diferentes tipos de transportes
-  // para poder analisar») ────────────────────────────────────────────────
-  // Week | Month | Year with ‹ ›, default this month; rows = transport types (lib/transport-overview.js). Before the
-  // camp's go-live there is no trip list: those days show the ledger's Transport payments per supplier. Full view only.
+  // para poder analisar»; v2 the same day: «está muito confuso ainda… estão todos confusos no geral») ─────────────
+  // Week | Month | Year with ‹ ›, default this month. The screen answers, top to bottom: what transport cost (and up or
+  // down against the period before), what we owe right now, the cost per person → (year) cost by month, by kind →
+  // by kind of transport (one bar each) → the drivers and suppliers. Every number shown once; MAD / LKR first, ≈ € second.
+  // The numbers come from lib/transport-overview.js (trips from the go-live, the ledger's payments before it). Full view only.
   const TO = () => window.TransportOverview;
   TR.ov = TR.ov || { mode: 'month', anchor: '', measure: 'cost' };
   const MONTH_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -961,27 +971,30 @@
   function ovMonth(ym) { TR.ov.mode = 'month'; TR.ov.anchor = ym; TR.view = 'overview'; render(); }
   function ovMeasure(k) { TR.ov.measure = k === 'people' ? 'people' : 'cost'; render(); }
   const ovLedger = () => (typeof S !== 'undefined' && S.ledger) || [];
-  // What the view shows, for the page, the CSV and the tests. Year: Sm = the whole year (big numbers, by kind, by driver),
-  // Y = the month-by-month matrix (the bars and the CSV).
+  // What the view shows, for the page, the CSV and the tests: V = the period (total, kinds, suppliers), Y = the year by
+  // month (Year only), cmp = up or down, owed = what is owed right now (the «Owed to drivers» rule), fx = the € rate.
   function ovData() {
     const P = ovPeriod();
-    // Payments linked to trips are those trips' «Paid»; the others show in the month they were paid (one owed rule: reconcileStatus).
-    const linked = new Set(TR.trips.map(t => t.payment_entry_id).filter(Boolean));   // a payment «to check» with no trips is not linked
-    const base = { trips: TR.trips, ledger: ovLedger(), drivers: TR.drivers, cfg: CC, goLive: goLive(), now: colomboNow(), linked, isOwed: t => reconcileStatus(t) === 'owed' };
-    const o = { ...base, mode: P.mode, from: P.from, to: P.to };
-    const Sm = TO().summary(o);
+    // Payments linked to trips are those trips' «Paid» (a payment «to check» with no trips is not linked).
+    const linked = new Set(TR.trips.map(t => t.payment_entry_id).filter(Boolean));
+    const C = TO().collect({ trips: TR.trips, ledger: ovLedger(), drivers: TR.drivers, cfg: CC, goLive: goLive(), now: colomboNow(), linked, isOwed: t => reconcileStatus(t) === 'owed' });
     const fx = TO().eurRate({ ledger: ovLedger(), cur: CUR, from: P.from, to: P.to, fallback: (typeof LOCAL_PER_EUR !== 'undefined' ? LOCAL_PER_EUR : 0),
       defaultRate: (typeof FX_FALLBACK_THIS_LOC !== 'undefined' ? FX_FALLBACK_THIS_LOC : 0) });
-    return { P, Sm, Y: P.mode === 'year' ? TO().yearMatrix({ ...base, year: P.anchor }) : null, K: TO().byKind(Sm, CC), D: TO().byDriver(o), head: TO().headline(Sm), fx };
+    return { P, C, V: TO().view(C, P, CC), Y: P.mode === 'year' ? TO().yearView(C, P.anchor, CC) : null, cmp: TO().compare(C, P), owed: TO().owedNow(C), checks: toCheck().length, holds: onHoldTrips().length, fx };
   }
   const ovLabel = P => P.mode === 'week' ? fmtRange(P.from, P.to) : P.mode === 'year' ? P.anchor : `${MONTH_LONG[+P.anchor.slice(5, 7) - 1]} ${P.anchor.slice(0, 4)}`;
-  const nOr = (n, f) => n ? f(n) : '<span class="tr-ov-nil">–</span>';
-  // «MAD 21,050» with «≈ €1,950» under it — the Overview only (never on trip rows or forms).
   const fmtEur = n => '€' + Math.round(Number(n) || 0).toLocaleString('en-US');
-  const twoCur = (v, fx, cls) => `<span class="num">${money(v)}</span><span class="cell-sub tr-eur${cls ? ' ' + cls : ''}">≈ ${fmtEur(TO().eur(v, fx.rate))}</span>`;
-  const twoCurOr = (v, fx) => v ? twoCur(v, fx) : '<span class="tr-ov-nil">–</span>';
+  const eurOf = (v, fx) => `≈ ${fmtEur(TO().eur(v, fx.rate))}`;
+  // «MAD 21,050» with «≈ €1,950» under it — the Overview only (never on trip rows or forms).
+  const twoCur = (v, fx) => `<span class="num">${money(v)}</span><span class="tr-eur">${eurOf(v, fx)}</span>`;
+  const compact = v => v >= 1e6 ? (v / 1e6).toFixed(v >= 1e7 ? 0 : 1) + 'M' : v >= 1e4 ? Math.round(v / 1e3) + 'k' : v >= 1e3 ? (v / 1e3).toFixed(1).replace(/\.0$/, '') + 'k' : String(Math.round(v));
+  const plural = (n, one, many) => `${n.toLocaleString('en-US')} ${n === 1 ? one : (many || one + 's')}`;
+  const kindCls = k => `tr-k-${['airport', 'vans', 'tuktuk', 'tours'].includes(k) ? k : 'other'}`;
+  // A kind's people and per person are shown when at least half of its cost has a head count (a lump sum has none).
+  const headcount = k => k.people > 0 && k.costP >= k.cost / 2;
+  const andList = xs => xs.length < 2 ? (xs[0] || '') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`;
   function renderOverview() {
-    const D = ovData(); const { P, Sm, Y, K, head, fx } = D; const ov = TR.ov;
+    const D = ovData(); const { P, V, Y, fx } = D; const ov = TR.ov;
     const seg = (k, label, cur) => `<button class="pill${cur === k ? ' active' : ''}" data-ov-mode="${k}" onclick="TransportUI.ovMode('${k}')">${label}</button>`;
     const filters = `<div class="ov-filters tr-filters tr-ov-filters">
       <div class="period-picker"><button class="btn btn-s btn-sm btn-icon" title="Previous" onclick="TransportUI.ovShift(-1)">${ic('chevron-left')}</button>
@@ -989,57 +1002,112 @@
         <button class="btn btn-s btn-sm btn-icon" title="Next" onclick="TransportUI.ovShift(1)">${ic('chevron-right')}</button></div>
       <div class="pills tr-ov-modes">${seg('week', 'Week', ov.mode)}${seg('month', 'Month', ov.mode)}${seg('year', 'Year', ov.mode)}</div>
       <button class="btn btn-s btn-sm" data-ov-export onclick="TransportUI.ovExport()">${ic('download')} Export</button></div>`;
-    if (!Sm.rows.length && !Sm.ledger.rows.length) return filters + `<div class="card tr-ov-card"><div class="tbl-wrap"><table class="tbl"><tbody><tr class="empty-row"><td>No trips${P.from < goLive() ? ' and no Transport payments' : ''} in this period</td></tr></tbody></table></div></div>`;
-    return filters + ovTiles(head, fx) + (Y ? ovBars(Y, fx) : '') + ovKindHtml(K, head, fx) + ovDriverHtml(D.D, fx) + ovNote(Sm, Y, fx);
+    if (V.empty) {
+      const t = cToday(); const now = t >= P.from && t <= P.to;
+      const when = P.mode === 'week' ? (now ? 'this week' : `in the week of ${fmtRange(P.from, P.to)}`) : P.mode === 'month' ? (now ? 'this month' : `in ${ovLabel(P)}`) : (now ? 'this year' : `in ${P.anchor}`);
+      return filters + ovTiles(D, true) + `<div class="card tr-ov-card" data-ov-empty><div class="empty-state">${ic('truck')}<div class="empty-title">No transport recorded ${h(when)}</div><p>No trips and no transport payments in the ledger for these dates.</p></div></div>`;
+    }
+    return filters + ovTiles(D) + (Y ? ovYearChart(Y, fx) : '') + ovKinds(V, fx) + ovSuppliers(V, fx) + ovNote(D);
   }
-  // The four numbers of the period: what transport cost, what is paid, what is still owed, the cost per person.
-  function ovTiles(H, fx) {
-    const tile = (k, label, v, sub, cls) => `<div class="kpi" data-ov-kpi="${k}"><div class="kpi-label">${label}</div><div class="kpi-value${cls ? ' ' + cls : ''}">${money(v)}</div><div class="kpi-sub"><span class="tr-eur">≈ ${fmtEur(TO().eur(v, fx.rate))}</span>${sub ? ' · ' + sub : ''}</div></div>`;
-    const tp = `${H.trips} trip${H.trips === 1 ? '' : 's'} · ${H.people} ${H.people === 1 ? 'person' : 'people'}`;
-    return `<div class="summary-grid tr-ov-kpis">${tile('cost', 'Total cost', H.cost, H.trips ? tp : `${H.payments} payment${H.payments === 1 ? '' : 's'}`)}${tile('paid', 'Paid', H.paid, '', H.paid ? 'pos' : '')}
-      ${tile('owed', 'Owed to drivers', H.owed, H.owed ? 'done, not paid' : 'nothing owed', H.owed ? 'kv-amber' : '')}${tile('pp', 'Cost per person', H.perPerson, H.people ? 'trips of this period' : 'no trips')}</div>`;
+  // Three numbers: what transport cost (up or down), what we owe right now, the cost per person.
+  function ovTiles(D, owedOnly) {
+    const { V, cmp, owed, checks, holds, fx } = D; const T = V.total;
+    const tile = (k, label, value, sub, cls) => `<div class="kpi" data-ov-kpi="${k}"><div class="kpi-label">${label}</div><div class="kpi-value${cls ? ' ' + cls : ''}">${value}</div>${sub}</div>`;
+    const delta = c => { if (!c) return ''; const p = c.pct; const r = (100 + p) / 100;
+      const word = Math.abs(p) < 1 ? `about the same as ${h(c.name)}` : p >= 100 ? `${r >= 10 ? Math.round(r) : Math.round(r * 10) / 10} times ${h(c.name)}` : `${Math.abs(p)}% ${p > 0 ? 'more' : 'less'} than ${h(c.name)}`;
+      return `<div class="kpi-sub tr-delta" data-ov-delta>${ic(Math.abs(p) < 1 ? 'minus' : p > 0 ? 'trending-up' : 'trending-down')}<span>${word}</span></div>`; };
+    const cost = tile('cost', 'Transport cost', money(T.cost), `<div class="kpi-sub"><span class="tr-eur">${eurOf(T.cost, fx)}</span>${T.toCome ? ` · incl. ${money(T.toCome)} still to come` : ''}</div>${delta(cmp.prev)}${delta(cmp.lastYear)}`);
+    // Owed now: every driver with done, unpaid trips (any period) — each a link to «Pay a driver»; then the payments to check.
+    const pays = owed.rows.map(r => r.driverId ? `<button class="btn-link tr-ov-pay" data-ov-pay="${h(r.driverId)}" onclick="TransportUI.payPick('${h(r.driverId)}')">Pay ${h(r.label)} <span class="num">${money(r.amount)}</span></button>`
+      : `<span class="tr-ov-nodrv">${money(r.amount)} on trips with no driver</span>`).join('');
+    const chk = (checks ? `<button class="btn-link tr-ov-pay" data-ov-checks onclick="TransportUI.openChecks()">${plural(checks, 'payment')} to check</button>` : '')
+      + (holds ? `<button class="btn-link tr-ov-pay" data-ov-holds onclick="TransportUI.setView('trips','onhold')">${plural(holds, 'trip')} on hold — did the driver go?</button>` : '');
+    const owedTile = tile('owed', 'Owed now', money(owed.total), `<div class="kpi-sub">${owed.total ? `<span class="tr-eur">${eurOf(owed.total, fx)}</span>` : 'Nothing owed to drivers'}</div>${pays || chk ? `<div class="tr-ov-acts">${pays}${chk}</div>` : ''}`, owed.total ? 'kv-amber' : '');
+    if (owedOnly) return owed.total || checks || holds ? `<div class="summary-grid tr-ov-kpis tr-ov-kpis-1">${owedTile}</div>` : '';
+    // Per person: the cost of what has a head count ÷ the people. Old months: only the lines that say how many travelled.
+    let pp = '';
+    if (T.people) {
+      // Only the kinds whose cost mostly has a head count, and only when they are most of the money (else no tile).
+      const withP = V.kinds.filter(headcount); const people = withP.reduce((s, k) => s + k.people, 0); const costP = withP.reduce((s, k) => s + k.costP, 0);
+      if (people && withP.reduce((s, k) => s + k.cost, 0) >= T.cost / 2) {
+        const full = withP.length === V.kinds.length && withP.every(k => k.costP === k.cost);
+        const sub = full ? [plural(people, 'person', 'people'), T.trips ? plural(T.trips, 'trip') : ''].filter(Boolean).join(' · ') : `${andList(withP.map(k => k.label))} · ${plural(people, 'person', 'people')}`;
+        const v = Math.round(costP / people);
+        pp = tile('pp', 'Per person', money(v), `<div class="kpi-sub"><span class="tr-eur">${eurOf(v, fx)}</span> · ${h(sub)}</div>`);
+      }
+    }
+    return `<div class="summary-grid tr-ov-kpis${pp ? '' : ' tr-ov-kpis-2'}">${cost}${owedTile}${pp}</div>`;
   }
-  // Year: one bar per month (the cost), a tap opens that month. Months before the trip list are from payments (lighter).
-  function ovBars(Y, fx) {
-    const max = Math.max(1, ...Y.totals.cost);
-    const bars = Y.months.map((m, i) => { const v = Y.totals.cost[i]; const pct = Math.round(v / max * 100);
-      return `<button class="tr-bar${Y.fromPayments[i] ? ' tr-bar-paym' : ''}" data-ov-month="${m}" onclick="TransportUI.ovMonth('${m}')" title="${MONTH_LONG[i]}: ${h(money(v))} ≈ ${fmtEur(TO().eur(v, fx.rate))}${Y.fromPayments[i] ? ' (from payments)' : ''}">
-        <span class="tr-bar-v num">${v ? h(compact(v)) : ''}</span><span class="tr-bar-col"><span class="tr-bar-fill" style="height:${v ? Math.max(3, pct) : 0}%"></span></span><span class="tr-bar-m">${TO().MON[i]}</span></button>`; }).join('');
-    return `<div class="card tr-ov-card tr-ov-bars" data-ov-bars><div class="card-hdr"><div><div class="card-title">Cost by month</div><div class="card-hint">${h(CUR)} · tap a month to open it${Y.fromPayments.some(Boolean) ? ' · lighter = from payments' : ''}</div></div></div>
+  // Year: one stacked bar per month, one colour per kind (the same colours as the kind bars below); a bar opens its month.
+  function ovYearChart(Y, fx) {
+    const max = Math.max(1, ...Y.totals.cost); const thisM = cToday().slice(0, 7);
+    const legend = Y.rows.map(r => `<span class="tr-leg"><i class="tr-sw ${kindCls(r.kind)}"></i>${h(r.label)}</span>`).join('');
+    const bars = Y.months.map((m, i) => {
+      const v = Y.totals.cost[i]; const segs = Y.rows.filter(r => r.cost[i] > 0);
+      const tip = `<span class="tr-tip" role="tooltip"><b>${MONTH_LONG[i]}</b><span class="num">${h(money(v))} ${h(eurOf(v, fx))}</span>${segs.map(r => `<span><i class="tr-sw ${kindCls(r.kind)}"></i>${h(r.label)} <span class="num">${h(money(r.cost[i]))}</span></span>`).join('')}</span>`;
+      return `<button class="tr-bar${m === thisM ? ' tr-bar-now' : ''}" data-ov-month="${m}" onclick="TransportUI.ovMonth('${m}')" aria-label="${MONTH_LONG[i]}: ${h(money(v))}${segs.map(r => `, ${h(r.label)} ${h(money(r.cost[i]))}`).join('')}">
+        <span class="tr-bar-v num">${v ? h(compact(v)) : ''}</span><span class="tr-bar-col"><span class="tr-bar-stack" style="height:${v ? Math.max(2, Math.round(v / max * 100)) : 0}%">${segs.map(r => `<span class="tr-seg ${kindCls(r.kind)}" style="flex-grow:${r.cost[i]}"></span>`).join('')}</span></span><span class="tr-bar-m">${TO().MON[i]}</span>${v ? tip : ''}</button>`;
+    }).join('');
+    return `<div class="card tr-ov-card tr-ov-chart" data-ov-bars><div class="card-hdr"><div><div class="card-title">Cost by month</div><div class="card-hint">${h(CUR)} · tap a month to open it</div></div><div class="tr-legend">${legend}</div></div>
       <div class="tr-bars">${bars}</div></div>`;
   }
-  const compact = v => v >= 1e6 ? (v / 1e6).toFixed(v >= 1e7 ? 0 : 1) + 'M' : v >= 1e4 ? Math.round(v / 1e3) + 'k' : v >= 1e3 ? (v / 1e3).toFixed(1).replace(/\.0$/, '') + 'k' : String(Math.round(v));
-  // One row per kind of transport — the page's pills — with what it is made of under the name.
-  function ovKindHtml(K, H, fx) {
-    const parts = x => x.kind === 'ledger' ? x.parts.map(p => `${h(p.label)} ${p.payments}`).join(' · ') : x.parts.length > 1 || (x.parts[0] && x.parts[0].label !== x.label) ? x.parts.map(p => `${h(p.label)} ${p.trips}`).join(' · ') : '';
-    const meta = x => x.kind === 'ledger' ? `${x.payments} payment${x.payments === 1 ? '' : 's'}` : `${x.trips} trip${x.trips === 1 ? '' : 's'} · ${x.people} ${x.people === 1 ? 'person' : 'people'}`;
-    const rows = K.map(x => `<tr data-ov-row="${x.kind}"><td><b>${h(x.label)}${x.kind === 'ledger' ? '*' : ''}</b>${parts(x) ? `<span class="cell-sub">${parts(x)}</span>` : ''}${x.noShow ? `<span class="cell-sub">incl. ${x.noShow} no-show</span>` : ''}<span class="cell-sub tr-ov-meta">${meta(x)}</span></td>
-      <td class="r tr-ov-xs">${x.kind === 'ledger' ? '–' : x.trips}</td><td class="r tr-ov-xs">${x.kind === 'ledger' ? '–' : x.people}</td>
-      <td class="r">${twoCur(x.cost, fx)}</td><td class="r tr-ov-xs">${twoCurOr(x.paid, fx)}</td><td class="r${x.owed ? ' tr-t-owed' : ''}">${twoCurOr(x.owed, fx)}</td><td class="r tr-ov-xs">${x.people ? money(x.perPerson) : '–'}</td></tr>`).join('');
-    return `<div class="card tr-ov-card"><div class="card-hdr"><div><div class="card-title">By kind of transport</div></div></div><div class="tbl-wrap"><table class="tbl tr-ov-tbl" data-ov-table="summary">
-      <thead><tr><th>Kind</th><th class="r tr-ov-xs">Trips</th><th class="r tr-ov-xs">People</th><th class="r">Cost</th><th class="r tr-ov-xs">Paid</th><th class="r">Owed</th><th class="r tr-ov-xs">Per person</th></tr></thead>
-      <tbody>${rows}</tbody>
-      <tfoot><tr data-ov-total><td>Total<span class="cell-sub tr-ov-meta">${H.trips} trip${H.trips === 1 ? '' : 's'} · ${H.people} ${H.people === 1 ? 'person' : 'people'}</span></td><td class="r tr-ov-xs">${H.trips}</td><td class="r tr-ov-xs">${H.people}</td>
-        <td class="r">${twoCur(H.cost, fx)}</td><td class="r tr-ov-xs">${twoCur(H.paid, fx)}</td><td class="r">${twoCur(H.owed, fx)}</td><td class="r tr-ov-xs">${H.people ? money(H.perPerson) : '–'}</td></tr></tfoot></table></div></div>`;
+  // One row per kind of transport (the page's pills): a bar for its share of the cost, then trips, people, per person.
+  function ovKinds(V, fx) {
+    const T = V.total; const max = Math.max(1, ...V.kinds.map(k => k.cost)); const showT = T.trips > 0; const showP = V.kinds.some(headcount);
+    const partsOf = k => {
+      const xs = k.parts.length === 1 && k.parts[0].label === k.label ? [] : k.parts;
+      // A count only when it is the whole part: trips for trips, people for payments (a part with both says its name only).
+      const one = p => `${h(p.label)}${p.trips && !p.payments ? ` ${p.trips}` : p.people && !p.trips ? ` (${plural(p.people, 'person', 'people')})` : ''}`;
+      return xs.length > 4 ? xs.slice(0, 3).map(one).join(' · ') + ` · +${xs.length - 3} more` : xs.map(one).join(' · ');
+    };
+    const meta = k => [k.trips ? plural(k.trips, 'trip') : '', headcount(k) ? plural(k.people, 'person', 'people') : '', headcount(k) ? `${money(k.perPerson)} per person` : ''].filter(Boolean).join(' · ');
+    const rows = V.kinds.map(k => { const pct = Math.round(k.cost / (T.cost || 1) * 100);
+      return `<div class="tr-kind" data-ov-row="${k.kind}">
+        <div class="tr-kind-name"><span class="tr-kind-t"><i class="tr-sw ${kindCls(k.kind)}"></i><b>${h(k.label)}</b></span>${partsOf(k) ? `<span class="cell-sub tr-kind-parts">${partsOf(k)}</span>` : ''}${k.noShow ? `<span class="cell-sub">incl. ${plural(k.noShow, 'no-show')}</span>` : ''}</div>
+        <div class="tr-kind-bar" aria-hidden="true"><span class="tr-kind-track"><span class="tr-kind-fill ${kindCls(k.kind)}" style="width:${Math.max(1, Math.round(k.cost / max * 100))}%"></span></span><span class="tr-kind-pct num">${pct}%</span></div>
+        <div class="tr-kind-cost r">${twoCur(k.cost, fx)}</div>
+        ${showT ? `<div class="tr-kind-n r num tr-ov-xs">${k.trips || ''}</div>` : ''}${showP ? `<div class="tr-kind-n r num tr-ov-xs">${headcount(k) ? k.people.toLocaleString('en-US') : ''}</div><div class="tr-kind-n r num tr-ov-xs">${headcount(k) ? money(k.perPerson) : ''}</div>` : ''}
+        <div class="tr-kind-meta cell-sub">${meta(k)}</div></div>`; }).join('');
+    const cols = `tr-kinds-c${3 + (showT ? 1 : 0) + (showP ? 2 : 0)}${showT ? ' tr-kinds-t' : ''}${showP ? ' tr-kinds-p' : ''}`;
+    return `<div class="card tr-ov-card" data-ov-kinds><div class="card-hdr"><div><div class="card-title">By kind of transport</div></div></div>
+      <div class="tr-kinds ${cols}" data-ov-table="summary"><div class="tr-kind tr-kind-head"><div>Kind</div><div>Share of cost</div><div class="r">Cost</div>${showT ? '<div class="r tr-ov-xs">Trips</div>' : ''}${showP ? '<div class="r tr-ov-xs">People</div><div class="r tr-ov-xs">Per person</div>' : ''}</div>${rows}</div></div>`;
   }
-  // Who was paid how much (the payments before the trip list go to their supplier).
-  function ovDriverHtml(rows, fx) {
-    if (!rows.length) return '';
-    return `<div class="card tr-ov-card" data-ov-drivers><div class="card-hdr"><div><div class="card-title">By driver</div></div></div><div class="tbl-wrap"><table class="tbl tr-ov-tbl" data-ov-table="drivers">
-      <thead><tr><th>Driver</th><th class="r tr-ov-xs">Trips</th><th class="r">Cost</th><th class="r tr-ov-xs">Paid</th><th class="r">Owed</th></tr></thead>
-      <tbody>${rows.map(r => `<tr data-ov-driver="${h(r.label)}"><td>${h(r.label)}<span class="cell-sub tr-ov-meta">${[r.trips ? `${r.trips} trip${r.trips === 1 ? '' : 's'}` : '', r.payments ? `${r.payments} payment${r.payments === 1 ? '' : 's'}*` : ''].filter(Boolean).join(' · ')}</span></td>
-        <td class="r tr-ov-xs">${r.trips || '–'}${r.payments ? `<span class="cell-sub">+ ${r.payments} payment${r.payments === 1 ? '' : 's'}*</span>` : ''}</td><td class="r">${twoCur(r.cost, fx)}</td><td class="r tr-ov-xs">${twoCurOr(r.paid, fx)}</td><td class="r${r.owed ? ' tr-t-owed' : ''}">${twoCurOr(r.owed, fx)}</td></tr>`).join('')}</tbody></table></div></div>`;
+  // Who we pay: each driver / supplier with this period's cost and where it stands (paid, owed → Pay, still to come).
+  function ovSuppliers(V, fx) {
+    if (!V.suppliers.length) return '';
+    const kl = k => (V.kinds.find(x => x.kind === k) || {}).label || '';
+    const rows = V.suppliers.map(s => {
+      const what = [s.kinds.map(kl).filter(x => x && x !== s.label).join(' + '), s.trips ? plural(s.trips, 'trip') : '', !s.trips && s.payments ? plural(s.payments, 'payment') : ''].filter(Boolean).join(' · ');
+      const st = [];
+      // Owed: the word and «Pay» only — the amount owed now is in the «Owed now» tile, once.
+      if (s.owed) st.push(`<span class="tr-st tr-st-owed">Not paid yet</span>${s.driverId ? ` <button class="btn-link tr-ov-pay" data-ov-pay="${h(s.driverId)}" onclick="TransportUI.payPick('${h(s.driverId)}')">Pay</button>` : ''}`);
+      if (s.toCome) st.push(`<span class="tr-st">${money(s.toCome)} still to come</span>`);
+      const paidHere = s.paid - s.earlier;
+      if (s.cost && !s.owed && !s.toCome && paidHere >= s.cost) st.push(`<span class="tr-st tr-st-paid">${ic('check')} Paid${!s.trips && s.lastPaid ? ` · last ${h(fmtShort(s.lastPaid))}` : ''}</span>`);
+      else if (s.cost && paidHere && paidHere < s.cost && !s.owed) st.push(`<span class="tr-st">${money(paidHere)} paid</span>`);
+      if (s.earlier) st.push(`<span class="tr-st">+ ${money(s.earlier)} paid for earlier trips</span>`);
+      return `<div class="tr-sup" data-ov-driver="${h(s.label)}"><div class="tr-sup-name"><b>${h(s.label)}</b><span class="cell-sub">${h(what)}</span></div>
+        <div class="tr-sup-st">${st.join('')}</div><div class="tr-sup-cost r">${s.cost ? twoCur(s.cost, fx) : ''}</div></div>`;
+    }).join('');
+    return `<div class="card tr-ov-card" data-ov-drivers><div class="card-hdr"><div><div class="card-title">Drivers and suppliers</div></div></div><div class="tr-sups" data-ov-table="drivers">${rows}</div></div>`;
   }
-  function ovNote(Sm, Y, fx) {
-    const src = { period: "the rate on this period's ledger lines", ledger: "the rate on the camp's ledger lines", app: "the app's rate today", default: "the camp's usual rate", eur: '' }[fx.source] || '';
+  // One quiet line: how the numbers are made, and the € rate.
+  function ovNote(D) {
+    const { V, C, fx } = D;
     const shown = fx.rate >= 100 ? Math.round(fx.rate) : Math.round(fx.rate * 10) / 10;   // 340 LKR, 10.8 MAD
-    const notes = [`€ ≈ at ${shown.toLocaleString('en-US')} ${h(CUR)} per € (${src}).`];
-    if (Sm.ledger.rows.length || (Y && Y.fromPayments.some(Boolean))) notes.push(`* Transport payments in the ledger that pay no trip of the app, in the month they were paid (before ${h(fmtShort(goLive()))} the app has no trip list).`);
-    return `<div class="hint tr-ov-note" data-ov-note>${notes.join(' ')}</div>`;
+    const how = [];
+    if (V.total.trips) how.push('trips at their agreed price');
+    if (V.total.fromPayments) {
+      const here = new Set(V.kinds.filter(k => k.fromPayments).map(k => k.kind));
+      const starts = Object.entries(C.start || {}).filter(([k, d]) => d && here.has(k)).map(([k, d]) => `${TO().kindLabel(k, CC)} ${fmtShort(d)}`);
+      const none = [...here].filter(k => k !== 'other' && !(C.start || {})[k]).map(k => TO().kindLabel(k, CC));
+      how.push(`before the trip list${starts.length ? ` (it starts: ${andList(starts)})` : ''}, the transport payments in the ledger${none.length ? ` (${andList(none)}: no trip list yet)` : ''}, airport invoices in the month they cover${CC.legacyPerPerson && V.kinds.some(k => CC.legacyPerPerson.kinds.includes(k.kind) && k.fromPayments) ? `, people = van lines ÷ ${CC.legacyPerPerson.rate}` : ''}`);
+    }
+    return `<div class="hint tr-ov-note" data-ov-note>How this is calculated: ${how.join('; ') || 'nothing in this period'}. € ≈ at ${shown.toLocaleString('en-US')} ${h(CUR)} per €.</div>`;
   }
   function ovTable() {
-    const { P, Sm, Y, fx } = ovData();
-    return { P, rows: Y ? TO().yearTable(Y, TR.ov.measure, CUR, fx.rate) : TO().summaryTable(Sm, CUR, fx.rate) };
+    const { P, V, Y, fx } = ovData();
+    return { P, rows: Y ? TO().yearTable(Y, TR.ov.measure, CUR, fx.rate) : TO().viewTable(V, CUR, fx.rate) };
   }
   function ovExport() {
     const { P, rows } = ovTable();
@@ -1782,7 +1850,7 @@
   const monthBefore = ym => { const y = +ym.slice(0, 4), m = +ym.slice(5, 7) - 1; return m ? `${y}-${String(m).padStart(2, '0')}` : `${y - 1}-12`; };
   function linkCands(D) {
     const e = ledgerById(D.entryId) || {}; const upTo = String(e.date || '9999-12-31');
-    return TR.trips.filter(t => (t.payment_entry_id === D.entryId) || (!t.payment_entry_id && (!D.driver || t.driver_id === D.driver) && ['owed', 'before_go_live'].includes(reconcileStatus(t)) && t.trip_date <= upTo))
+    return TR.trips.filter(t => (t.payment_entry_id === D.entryId) || (!t.payment_entry_id && (!D.driver || t.driver_id === D.driver) && ['owed', 'on_hold', 'before_go_live'].includes(reconcileStatus(t)) && t.trip_date <= upTo))
       .sort((a, b) => (a.trip_date + (a.trip_time || '')).localeCompare(b.trip_date + (b.trip_time || '')));
   }
   function openLink(entryId) {
@@ -1871,7 +1939,9 @@
     const upTo = GT.addDaysIso(date || cToday(), PAY_AHEAD_DAYS);
     return TR.trips.filter(t => t.driver_id === driverId && isAirport(t) && !t.payment_entry_id && reconcileStatus(t) === 'upcoming' && t.trip_date >= goLive() && t.trip_date <= upTo);
   }
-  const payPool = P => owedBy(P.driver).concat(aheadBy(P.driver, P.date));
+  // On hold («did the driver go?» unanswered): not owed, but listed in Pay — never ticked by itself — so it can be paid once answered.
+  const heldBy = driverId => TR.trips.filter(t => t.driver_id === driverId && reconcileStatus(t) === 'on_hold');
+  const payPool = P => owedBy(P.driver).concat(heldBy(P.driver), aheadBy(P.driver, P.date));
   const dayDiff = (a, b) => { const u = x => { const [y, m, d] = String(x).split('-').map(Number); return Date.UTC(y, m - 1, d); }; return Math.round((u(a) - u(b)) / 86400000); };
   // One line per day × route (a hundred tuk-tuk runs a week stay readable); an airport transfer is its own line.
   function payGroups(P) {

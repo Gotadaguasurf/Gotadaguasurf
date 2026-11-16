@@ -1298,22 +1298,22 @@ test('trips (Sri Lanka): missing information — red row «No flight · no time 
   await expect(row(2).locator('.tr-dir.out')).toHaveText('Departure');
 });
 
-// Transport → Overview (16 Nov 2026), Sri Lanka: the same view with the tuk-tuks; fits a phone without sideways scroll.
-test('overview (Sri Lanka): month by kind — Airport and Tuk-tuks (the pills), LKR with ≈ € (ledger rate 340), by driver; no errors; at 390 the tables fit', async ({ page }) => {
+// Transport → Overview (16 Nov 2026; v2), Sri Lanka: the same view with the tuk-tuks; fits a phone without sideways scroll.
+test('overview (Sri Lanka): month by kind — Airport and Tuk-tuks (the pills), LKR with ≈ € (ledger rate 340), drivers; no errors; at 390 nothing scrolls sideways', async ({ page }) => {
   const errors = collectFatalErrors(page);
   await openTab(page, weekFixture());
   await page.click('#transportRoot [data-view="overview"]');
   await expect(page.locator('.tr-ov-period')).toHaveText('November 2026');
-  await expect(page.locator('#transportRoot .tr-strip, #trOwed')).toHaveCount(0);               // the Overview is its own screen: no To do / Owed on it
-  expect((await page.locator('[data-ov-table="summary"] tbody tr td:first-child').allInnerTexts()).map(l => l.split('\n')[0])).toEqual(['Airport', 'Tuk-tuks']);
-  await expect(page.locator('[data-ov-row="tuktuk"] td').first()).toContainText('Surf · Ahangama 3 · Surf · Weligama 1');
-  await expect(page.locator('[data-ov-table="summary"] tfoot')).toContainText('LKR');
+  await expect(page.locator('#transportRoot .tr-strip, #trOwed')).toHaveCount(0);               // the Overview is its own screen: no To do / Owed line on it
+  expect((await page.locator('[data-ov-table="summary"] [data-ov-row] .tr-kind-t').allInnerTexts()).map(l => l.trim())).toEqual(['Airport', 'Tuk-tuks']);
+  await expect(page.locator('[data-ov-row="tuktuk"]')).toContainText('Surf · Ahangama 3 · Surf · Weligama 1');
+  await expect(page.locator('[data-ov-row="tuktuk"] .tr-kind-cost')).toContainText('LKR');
   await expect(page.locator('[data-ov-kpi="cost"] .tr-eur')).toHaveText(/^≈ €[\d,]+$/);
   await expect(page.locator('[data-ov-note]')).toContainText('€ ≈ at 340 LKR per €');
-  expect((await page.locator('[data-ov-table="drivers"] tbody tr td:first-child').allInnerTexts()).map(l => l.split('\n')[0])).toEqual(['Dilan', 'Sampath']);
+  expect(await page.locator('[data-ov-drivers] [data-ov-driver]').evaluateAll(rs => rs.map(r => r.dataset.ovDriver))).toEqual(['Dilan', 'Sampath']);
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.locator('[data-ov-table="summary"] tfoot .tr-ov-meta')).toBeVisible();
-  expect(await page.locator('#transportRoot .tr-ov-card .tbl-wrap').evaluateAll(els => els.every(el => el.scrollWidth <= el.clientWidth))).toBe(true);
+  await expect(page.locator('[data-ov-row="tuktuk"] .tr-kind-meta')).toBeVisible();          // phone: trips · people · per person under the bar
+  expect(await page.locator('#transportRoot .tr-ov-card').evaluateAll(els => els.every(el => el.scrollWidth <= el.clientWidth + 1))).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   expect(errors).toEqual([]);
 });
@@ -1387,6 +1387,38 @@ test('bl check: the amber line «Check in Bookinglayer» only on unchecked impor
   expect(await page.evaluate(() => TransportUI.blCheck.run({ location: 'sri-lanka', isLocal: false }).text)).toBe('3 transfers to check in Bookinglayer');
   expect(await page.evaluate(() => TransportUI.blCheck.run({ location: 'sri-lanka', isLocal: true }))).toBe(null);
   expect(await page.evaluate(() => (WeekUI.toCheck().find(c => c.go === 'blcheck') || {}).short)).toBe('3 transfers to check in Bookinglayer');
+  expect(errors).toEqual([]);
+});
+
+// Owner, 16 Nov 2026 (Lorena / Callum, Sri Lanka, Sat 14 Nov): a past trip that still asks «Not booked in Bookinglayer — did the
+// driver go?» showed «✓ Booked» (bl_checked_at was set by the check that raised the question) and «Owed». While the question is
+// open: «Not booked?» in amber, «On hold — answer first», and it counts in no «Owed» (the owed line, the Overview) until answered.
+test('bl check: an open «did the driver go?» is «Not booked?» + «On hold», never «Booked ✓» nor owed; «Driver went» → owed', async ({ page }) => {
+  const errors = collectFatalErrors(page);
+  await openTab(page, blFixture());
+  const row = page.locator(`#transportRoot .tr-row[data-trip="${BLID(9)}"]`);
+  await expect(row.locator('[data-step="booked"]')).toHaveAttribute('data-state', 'todo');
+  await expect(row.locator('[data-step="booked"]')).toHaveText('Not booked?');
+  await expect(row.locator('[data-step="paid"]')).toHaveAttribute('data-state', 'hold');
+  await expect(row.locator('[data-step="paid"] [data-pay]')).toHaveText('On hold');
+  await expect(row.locator('[data-step="paid"]')).toContainText('answer first');
+  expect(await page.evaluate(id => TransportUI.reconcileStatus(TransportUI._state.trips.find(t => t.id === id)), BLID(9))).toBe('on_hold');
+  const owedSum = () => page.evaluate(() => TransportUI._state.trips.filter(t => TransportUI.reconcileStatus(t) === 'owed').reduce((s, t) => s + Number(t.expected_price), 0));
+  const before = await owedSum();
+  const dilan = page.locator(`#trOwed [data-owed="${D.dilan}"] b`);
+  const num = async () => Number((await dilan.textContent()).replace(/[^\d]/g, ''));
+  expect(await num()).toBe(before);                                                   // the owed line leaves it out
+  expect(await page.evaluate(() => TransportUI.ovData().owed.total)).toBe(before);     // and so does the Overview,
+  await page.click('#transportRoot [data-view="overview"]');                           // which points at the open question instead
+  await expect(page.locator('[data-ov-kpi="owed"] [data-ov-holds]')).toHaveText('1 trip on hold — did the driver go?');
+  await page.click('[data-ov-holds]');
+  await expect(page.locator(`#transportRoot .tr-row[data-trip]`)).toHaveCount(1);
+  await page.click('#transportRoot .tr-cats .pill[data-cat="all"]');
+  // He went → the question goes: plain owed, «Booked» again.
+  await row.locator('[data-went]').click();
+  await expect(row.locator('[data-step="paid"]')).toHaveAttribute('data-state', 'owed');
+  await expect(row.locator('[data-step="booked"]')).toHaveAttribute('data-state', 'ok');
+  expect(await num()).toBe(before + 21000);
   expect(errors).toEqual([]);
 });
 

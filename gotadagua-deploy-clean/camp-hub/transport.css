@@ -258,28 +258,6 @@
   .tr-srow .tr-c-what .btn { max-width: 100%; min-width: 0; height: auto; min-height: 32px; padding-top: 4px; padding-bottom: 4px; white-space: normal; text-align: left; line-height: 1.25; justify-content: flex-start; }
 }
 
-/* ── Overview (16 Nov 2026): transport types × Week / Month / Year ── */
-.tr-ov-filters { flex-wrap: wrap; gap: var(--sp-2) var(--sp-3); }
-#transportRoot .tr-ov-period { min-width: 112px; text-align: center; }
-.tr-ov-card { overflow: hidden; }
-.tr-ov-tbl tr.tr-ov-grp td { height: auto; padding: 10px 14px 4px; font-size: var(--fs-micro); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); background: var(--surface); border-bottom: 0; }
-.tr-ov-tbl tbody tr.tr-ov-grp:hover td { background: var(--surface); }
-.tr-ov-nil { color: var(--muted-2); }
-.tr-ov-tbl td.tr-t-owed { color: var(--amber); font-weight: 600; }
-.tr-ov-tbl .tr-ov-meta { display: none; }
-/* Year: twelve months scroll sideways inside the card; the type column stays put. */
-.tr-ov-year .tr-ov-first { position: sticky; left: 0; z-index: 2; background: var(--surface); min-width: 150px; white-space: nowrap; box-shadow: inset -1px 0 0 var(--border); }
-.tr-ov-year thead th.tr-ov-first, .tr-ov-year tfoot td.tr-ov-first { background: var(--surface-2); }
-.tr-ov-year tbody tr:hover td.tr-ov-first { background: var(--surface-2); }
-#transportRoot .btn-link.tr-ov-mbtn { font: inherit; text-transform: inherit; letter-spacing: inherit; color: var(--ocean); font-weight: 600; padding: 0; }
-.tr-ov-paym .tr-ov-mbtn { color: var(--muted) !important; }
-.tr-ov-note { padding: var(--sp-2) var(--card-pad) var(--sp-3); }
-@media (max-width: 700px) {
-  .tr-ov-tbl td, .tr-ov-tbl th { padding-left: 10px; padding-right: 10px; }
-  .tr-ov-tbl .tr-ov-xs { display: none; }      /* phone: Type (trips · people under it) · Cost · Owed; the rest on a laptop and in the CSV */
-  .tr-ov-year .tr-ov-first { min-width: 120px; }
-  .tr-ov-tbl .tr-ov-meta { display: block; }
-}
 /* Checked in Bookinglayer (16 Nov 2026): an imported airport leg nobody has checked on its booking page yet —
    one amber line like the missing-information line, with «Open booking» and two quiet buttons. */
 .tr-blline { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 6px; font-size: 13px; line-height: 1.4; color: var(--amber); font-weight: 600; }
@@ -340,31 +318,113 @@
   .tr-srow.tr-row { grid-template-areas: "time what price" "time what status" "steps steps steps"; }
   .tr-c-steps .tr-steps { margin-top: 4px; }
 }
-/* ── Overview (16 Nov 2026 UX pass): four numbers, cost by month (year), by kind, by driver; euros under the amounts ── */
-#transportRoot .tr-ov-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: var(--sp-4); }
-#transportRoot .tr-ov-kpis .kpi-value { font-size: 24px; white-space: nowrap; }
+/* ── Overview v2 (16 Nov 2026, Miguel: «estão todos confusos no geral»): three numbers → (year) cost by month →
+   one bar per kind → drivers and suppliers. Kind colours are chart-only (validated with the dataviz palette check:
+   adjacent CVD ΔE ≥ 19, contrast ≥ 3:1 except the grey «Fuel & other», which always carries its label). Airport is the
+   app's ocean in both camps; vans / tuk-tuks orange; tours violet; fuel & other grey. Green stays «paid», amber «owed». ── */
+#transportRoot { --tr-k-airport: #1e6fa8; --tr-k-vans: #eb6834; --tr-k-tours: #6250d6; --tr-k-other: #98a3b3; }
+#transportRoot .tr-k-airport { background: var(--tr-k-airport); }
+#transportRoot .tr-k-vans, #transportRoot .tr-k-tuktuk { background: var(--tr-k-vans); }
+#transportRoot .tr-k-tours { background: var(--tr-k-tours); }
+#transportRoot .tr-k-other { background: var(--tr-k-other); }
+.tr-ov-filters { flex-wrap: wrap; gap: var(--sp-2) var(--sp-3); }
+#transportRoot .tr-ov-period { min-width: 112px; text-align: center; }
+.tr-ov-card { overflow: hidden; }
 .tr-eur { color: var(--muted); font-weight: 500; }
-.tr-ov-tbl td .tr-eur { display: block; font-size: 12px; }
-.tr-ov-tbl td.r .num { white-space: nowrap; }
-.tr-ov-tbl td .cell-sub { display: block; }
-#transportRoot .tr-ov-card .card-hdr { padding-bottom: var(--sp-3); }
-.tr-bars { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 6px; padding: 0 var(--card-pad) var(--sp-4); align-items: end; }
-.tr-bar { display: flex; flex-direction: column; align-items: stretch; gap: 4px; padding: 0; border: 0; background: none; font: inherit; cursor: pointer; min-width: 0; }
+#transportRoot .tr-ov-card .card-hdr { min-height: 0; }
+/* The three numbers */
+#transportRoot .tr-ov-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-bottom: var(--sp-4); }
+#transportRoot .tr-ov-kpis.tr-ov-kpis-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+#transportRoot .tr-ov-kpis.tr-ov-kpis-1 { grid-template-columns: minmax(0, 420px); }
+#transportRoot .tr-ov-kpis .kpi-value { font-size: 26px; white-space: nowrap; }
+.tr-delta { display: flex; align-items: center; gap: 6px; margin-top: 4px; color: var(--ink); }
+.tr-delta .ic { width: 14px; height: 14px; color: var(--muted); flex: none; }
+.tr-ov-acts { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 8px; text-align: left; }
+#transportRoot .tr-ov-acts .btn-link { text-align: left; justify-content: flex-start; }
+#transportRoot .btn-link.tr-ov-pay { padding: 0; height: auto; min-height: 0; font-size: 12.5px; font-weight: 600; color: var(--ocean); }
+.tr-ov-nodrv { font-size: 12.5px; color: var(--amber); }
+/* Year: one stacked bar per month */
+#transportRoot .tr-ov-chart { overflow: visible; position: relative; }
+#transportRoot .tr-ov-chart .card-hdr { align-items: flex-end; border-bottom: 0; }
+.tr-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12.5px; color: var(--ink); }
+.tr-leg { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.tr-sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.tr-bars { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 8px; padding: var(--sp-2) var(--card-pad) var(--sp-4); align-items: end; }
+.tr-bar { position: relative; display: flex; flex-direction: column; align-items: stretch; gap: 4px; padding: 0; border: 0; background: none; font: inherit; cursor: pointer; min-width: 0; border-radius: var(--r-xs); }
+.tr-bar:focus-visible { outline: none; box-shadow: var(--ring); }
 .tr-bar-v { font-size: 11px; color: var(--muted); text-align: center; min-height: 14px; white-space: nowrap; overflow: hidden; }
-.tr-bar-col { position: relative; display: block; height: 120px; border-radius: var(--r-xs); background: var(--surface-2); overflow: hidden; }
-.tr-bar-fill { position: absolute; left: 0; right: 0; bottom: 0; background: var(--ocean); border-radius: var(--r-xs) var(--r-xs) 0 0; }
-.tr-bar-paym .tr-bar-fill { background: var(--ocean-soft); box-shadow: inset 0 0 0 1px var(--ocean); }
-.tr-bar:hover .tr-bar-col { box-shadow: 0 0 0 2px var(--ocean-soft); }
+.tr-bar-col { display: flex; align-items: flex-end; height: 140px; border-bottom: 1px solid var(--border-2); }
+.tr-bar-stack { display: flex; flex-direction: column-reverse; width: 100%; gap: 2px; transition: opacity .12s; }
+.tr-seg { display: block; flex-basis: 0; min-height: 2px; }
+.tr-seg:last-child { border-radius: 4px 4px 0 0; }
+.tr-bars:hover .tr-bar:not(:hover) .tr-bar-stack { opacity: .45; }
 .tr-bar-m { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); text-align: center; }
-@media (max-width: 900px) { #transportRoot .tr-ov-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.tr-bar-now .tr-bar-m { color: var(--ink); }
+/* The hover readout sits beside the bar, inside the plot (never over the title or the legend). */
+.tr-tip { display: none; position: absolute; top: 18px; left: calc(100% + 6px); z-index: 20; flex-direction: column; gap: 3px; padding: 8px 10px;
+  background: var(--navy); color: #fff; border-radius: var(--r-xs); box-shadow: var(--sh-lg); font-size: 12px; line-height: 1.35; white-space: nowrap; text-align: left; pointer-events: none; }
+.tr-tip > span { display: flex; align-items: center; gap: 6px; }
+.tr-tip .tr-sw { box-shadow: 0 0 0 1px rgba(255,255,255,.6); }
+.tr-bar:nth-last-child(-n+5) .tr-tip { left: auto; right: calc(100% + 6px); }
+@media (hover: hover) { .tr-bar:hover .tr-tip { display: flex; } }
+.tr-bar:focus-visible .tr-tip { display: flex; }
+/* By kind: one bar each (its share of the cost), then the numbers */
+.tr-kind { display: grid; grid-template-columns: var(--tr-kcols); align-items: center; gap: 0 16px; padding: 12px var(--card-pad); border-top: 1px solid var(--border); }
+.tr-kind-head { border-top: 0; padding-top: 10px; padding-bottom: 10px; background: var(--surface-2); font-size: var(--fs-micro, 11px); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.tr-kinds-c3 { --tr-kcols: minmax(150px, 1.2fr) minmax(110px, 1.6fr) 140px; }
+.tr-kinds-c4 { --tr-kcols: minmax(150px, 1.2fr) minmax(110px, 1.6fr) 140px 64px; }
+.tr-kinds-c5 { --tr-kcols: minmax(150px, 1.2fr) minmax(110px, 1.6fr) 140px 76px 104px; }
+.tr-kinds-c6 { --tr-kcols: minmax(150px, 1.2fr) minmax(110px, 1.4fr) 140px 64px 76px 104px; }
+.tr-kind .r { text-align: right; }
+.tr-kind-t { display: inline-flex; align-items: center; gap: 8px; }
+.tr-kind-name .cell-sub { display: block; margin-left: 18px; }
+.tr-kind-bar { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.tr-kind-track { flex: 1; min-width: 0; height: 12px; display: block; }
+.tr-kind-fill { display: block; height: 100%; border-radius: 0 4px 4px 0; }
+.tr-kind-pct { width: 38px; flex: none; text-align: right; font-size: 12px; color: var(--muted); }
+.tr-kind-cost .num, .tr-sup-cost .num { display: block; font-weight: 600; white-space: nowrap; }
+.tr-kind-cost .tr-eur, .tr-sup-cost .tr-eur { display: block; font-size: 12px; white-space: nowrap; }
+.tr-kind-n { white-space: nowrap; }
+.tr-kind-meta { display: none; }
+/* Drivers and suppliers */
+.tr-sup { display: grid; grid-template-columns: minmax(150px, 1.2fr) minmax(0, 1.6fr) 140px; gap: 4px 16px; align-items: center; padding: 12px var(--card-pad); border-top: 1px solid var(--border); }
+.tr-sup:first-child { border-top: 0; }
+.tr-sup-name b, .tr-sup-name .cell-sub { display: block; }
+.tr-sup-st { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; font-size: 12.5px; color: var(--muted); }
+.tr-sup-cost { text-align: right; }
+.tr-st-owed { color: var(--amber); font-weight: 600; }
+.tr-st-paid { display: inline-flex; align-items: center; gap: 4px; color: var(--green); font-weight: 600; }
+.tr-st-paid .ic { width: 14px; height: 14px; }
+.tr-ov-note { padding: 0 2px var(--sp-3); }
+@media (max-width: 900px) {
+  .tr-kinds-c6 { --tr-kcols: minmax(140px, 1.2fr) minmax(90px, 1fr) 130px 56px 64px 96px; }
+}
 @media (max-width: 700px) {
-  #transportRoot .tr-ov-kpis { gap: var(--sp-2); }
-  #transportRoot .tr-ov-kpis .kpi { padding: var(--sp-3); }
-  #transportRoot .tr-ov-kpis .kpi-value { font-size: 18px; }
-  .tr-bars { gap: 3px; padding: 0 var(--sp-3) var(--sp-3); }
-  .tr-bar-col { height: 90px; }
+  #transportRoot .tr-ov-kpis, #transportRoot .tr-ov-kpis.tr-ov-kpis-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-2); }
+  #transportRoot .tr-ov-kpis > [data-ov-kpi="cost"], #transportRoot .tr-ov-kpis.tr-ov-kpis-2 > .kpi { grid-column: 1 / -1; }
+  #transportRoot .tr-ov-kpis.tr-ov-kpis-1 { grid-template-columns: minmax(0, 1fr); }
+  #transportRoot .tr-ov-kpis .kpi { padding: var(--sp-3); min-width: 0; }
+  #transportRoot .tr-ov-kpis .kpi-value { font-size: 20px; }
+  #transportRoot .tr-ov-kpis > [data-ov-kpi="cost"] .kpi-value { font-size: 26px; }
+  .tr-ov-acts { flex-direction: column; align-items: flex-start; }
+  .tr-bars { gap: 3px; padding: var(--sp-2) var(--sp-3) var(--sp-3); }
+  .tr-bar-col { height: 110px; }
   .tr-bar-v { font-size: 9.5px; }
   .tr-bar-m { font-size: 9.5px; letter-spacing: 0; }
+  .tr-seg:last-child { border-radius: 3px 3px 0 0; }
+  .tr-kind { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name cost" "bar bar" "meta meta"; gap: 6px 12px; padding: 12px 16px; }
+  .tr-kind-head { display: none; }
+  .tr-kind-name { grid-area: name; min-width: 0; }
+  .tr-kind-cost { grid-area: cost; }
+  .tr-kind-bar { grid-area: bar; }
+  .tr-kind-meta { grid-area: meta; display: block; margin-left: 18px; }
+  .tr-kind-meta:empty { display: none; }
+  .tr-kind .tr-ov-xs { display: none; }
+  .tr-sup { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name cost" "st st"; padding: 12px 16px; }
+  .tr-sup-name { grid-area: name; min-width: 0; }
+  .tr-sup-cost { grid-area: cost; }
+  .tr-sup-st { grid-area: st; }
+  .tr-sup-st:empty { display: none; }
 }
 .tr-srow.tr-row { row-gap: 8px; }
 @media (max-width: 700px) { .tr-srow.tr-row { row-gap: 4px; } }

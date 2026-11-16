@@ -1,4 +1,4 @@
-// Transport → Overview (16 Nov 2026): the pure aggregation (lib/transport-overview.js), no browser.
+// Transport → Overview (16 Nov 2026; v2 the same day): the pure aggregation (lib/transport-overview.js), no browser.
 // Invented trips and ledger lines; the camp settings are the real lib/camp-config.js.
 const { test, expect } = require('@playwright/test');
 const O = require('../lib/transport-overview.js');
@@ -7,9 +7,12 @@ const CC = require('../lib/camp-config.js');
 let n = 0;
 const trip = o => ({ id: `t${++n}`, kind: 'airport_arrival', trip_date: '2026-11-10', trip_time: '10:00', place: 'AGA', pax: 1, expected_price: 250, status: 'planned', payment_entry_id: null, route: null, purpose: 'guests', tour_name: null, ...o });
 const run = (route, o = {}) => trip({ kind: 'other', route, place: null, purpose: (CC.MA.vanRates.find(r => r.route === route) || {}).purpose || 'surf', ...o });
-const led = (date, description, amount) => ({ id: `l${++n}`, type: 'expense', category: 'Transport', date, description, amountLocal: amount });
+const led = (date, description, amount, linkedItem = '', o = {}) => ({ id: `l${++n}`, type: 'expense', category: 'Transport', businessArea: 'Transport', date, description, amountLocal: amount, linkedItem, quantity: 1, ...o });
+const SL_DRIVERS = [{ id: 's1', name: 'Dilan', aliases: ['Dilan'], kinds: ['airport', 'other'] }, { id: 's2', name: 'Sampath', aliases: ['Sampath'], kinds: ['tuktuk'] }, { id: 's3', name: 'Nishantha', aliases: ['Nishantha'], kinds: ['airport'] }, { id: 's4', name: 'Nadith', kinds: ['contact'] }];
 const DRIVERS = [{ id: 'd1', name: 'Let Us Tours', aliases: ['LUT'], kinds: ['airport'] }, { id: 'd2', name: 'Fathoune', aliases: ['Mounir'], kinds: ['van'] }, { id: 'd3', name: 'Floriane', kinds: ['contact'] }];
 const NOW = '2026-11-16T12:00';
+const MA = { trips: [], drivers: DRIVERS, cfg: CC.MA, goLive: '2026-10-01', now: NOW };
+const sum = (xs, k) => xs.reduce((s, x) => s + x[k], 0);
 
 test('overview: types — airport arrivals / departures (split by airport only when there are several), van runs by vanRates label, tours, other; Sri Lanka tuk-tuks', () => {
   expect(O.classify(trip({}), CC.MA)).toMatchObject({ group: 'arr', key: 'arr:AGA' });
@@ -27,49 +30,123 @@ test('overview: types — airport arrivals / departures (split by airport only w
   expect([O.shift('month', '2026-12', 1), O.shift('month', '2026-01', -1), O.shift('week', '2026-11-14', -1), O.shift('year', '2026', 1)]).toEqual(['2027-01', '2025-12', '2026-11-07', '2027']);
 });
 
-test('overview: month summary — trips, people, cost, paid, owed (done, unpaid, not a no-show = «Owed to drivers»), per person, no-show counted, cancelled and merged out, a total', () => {
+test('overview v2: a ledger line is read like a person would — route → kind, tuk-tuk words, airport item, the supplier named, a route said in words, else «Fuel & other» named by what it is', () => {
+  const c = (e, cfg = CC.MA, d = DRIVERS) => { const x = O.classifyLine(e, cfg, d); return [x.kind, x.part, x.supplier]; };
+  // Morocco: the weekly van lines (no description) are the route's; the supplier is the camp's van supplier.
+  expect(c(led('2026-05-01', '', 8800, 'Surf'))).toEqual(['vans', 'Surf Taghazout', 'Fathoune']);
+  expect(c(led('2026-05-05', '', 880, 'Dunes'))).toEqual(['tours', 'Dunes', 'Fathoune']);
+  expect(c(led('2026-07-01', '+Souk', 1430, 'Paradise Valley'))).toEqual(['tours', 'Paradise + Souk', 'Fathoune']);
+  expect(c(led('2026-05-06', 'Fathoune Mounir — transport, trips until 20 Apr', 30800))).toEqual(['vans', 'Fathoune lump sum', 'Fathoune']);
+  expect(c(led('2026-05-06', 'April · Let Us Tours (bank statement)', 20000, 'Airport'))).toEqual(['airport', 'Monthly invoice', 'Let Us Tours']);
+  expect(c(led('2026-10-12', 'September · Let Us Tours — airport transfers', 15000))).toEqual(['airport', 'Monthly invoice', 'Let Us Tours']);
+  expect(c(led('2026-01-22', 'Atlas Vans — Transporte SURF', 19000))).toEqual(['vans', 'Surf Taghazout', 'Atlas Vans']);
+  expect(c(led('2026-04-05', 'Afriquia — car diesel', 800))).toEqual(['other', 'Fuel', '']);
+  expect(c(led('2026-02-09', 'Example Car — car rental', 4000))).toEqual(['other', 'Car rental', '']);
+  expect(c(led('2026-02-25', 'Example Tours · old sheet', 14000))).toEqual(['other', 'Example Tours', '']);
+  // Sri Lanka: tuk-tuk words, the «Transport Surf Lesson» item, the driver's kind, scooter fuel.
+  expect(c(led('2026-10-28', 'Sampath For Tuk Tuks (12/10-24/10)', 120000), CC.SL, SL_DRIVERS)).toEqual(['tuktuk', 'Payments to Sampath', 'Sampath']);
+  expect(c(led('2026-08-16', 'Tuk Payments', 45000), CC.SL, SL_DRIVERS)).toEqual(['tuktuk', 'Tuk-tuk payments', 'Sampath']);   // the camp's only tuk-tuk driver
+  expect(c(led('2026-11-03', 'Sampath 25/10-31/10', 90000, 'Transport Surf Lesson'), CC.SL, SL_DRIVERS)).toEqual(['tuktuk', 'Payments to Sampath', 'Sampath']);
+  expect(c(led('2026-09-20', 'Dilan', 80000), CC.SL, SL_DRIVERS)).toEqual(['airport', 'Payments to Dilan', 'Dilan']);
+  expect(c(led('2026-09-01', 'Host Example (Social Host)', 20000, 'Airport → Surfcamp'), CC.SL, SL_DRIVERS)).toEqual(['airport', 'Other payments', '']);   // two airport drivers: nobody guessed
+  expect(c(led('2026-09-04', 'Fuel For Scooter', 1500), CC.SL, SL_DRIVERS)).toEqual(['other', 'Fuel', '']);
+});
+
+test('overview v2: a monthly airport invoice counts in the month it names (at most two months back); every other line on its date', () => {
+  expect(O.serviceDate(led('2026-05-06', 'April · Let Us Tours', 1))).toBe('2026-04-30');
+  expect(O.serviceDate(led('2026-06-30', 'June', 1))).toBe('2026-06-30');
+  expect(O.serviceDate(led('2027-01-05', 'December · Let Us Tours', 1))).toBe('2026-12-31');
+  expect(O.serviceDate(led('2026-09-10', 'May', 1))).toBe('2026-09-10');                        // too far back: not a month tag
+  expect(O.serviceDate(led('2026-05-06', 'Let Us Tours April', 1))).toBe('2026-05-06');          // only a month at the start
+});
+
+// A month before the trip list, shaped like Morocco's May (invented amounts): weekly van lines per route (N × 110), one van lump
+// sum, the previous month's airport invoice paid in it; this month's invoice is paid the next month.
+function mayLedger() {
+  return [led('2026-05-01', '', 8800, 'Surf'), led('2026-05-05', '', 990, 'Dunes'), led('2026-05-06', 'Fathoune Mounir — trips until 20 Apr (one payment)', 30800),
+    led('2026-05-06', 'April · Let Us Tours', 20000, 'Airport'), led('2026-05-08', '', 1430, 'Paradise Valley'), led('2026-05-08', '', 4400, 'Surf'), led('2026-05-12', '', 770, 'Dunes'),
+    led('2026-05-15', '', 5500, 'Surf'), led('2026-05-19', '', 1650, 'Dunes'), led('2026-05-22', '', 9900, 'Surf'), led('2026-05-26', '', 880, 'Dunes'), led('2026-05-29', '', 6600, 'Surf'), led('2026-05-30', '', 2200, 'Surf'),
+    { ...led('2026-05-19', '3 people offer', 600, 'Dunes — Sandboarding', { quantity: 12 }), category: 'Tours & activities', businessArea: 'Tours' },   // a tour's cost, not transport
+    led('2026-06-10', 'May', 22000, 'Airport')];
+}
+test('overview v2: an old month reads like a new one — Airport · Surf vans · Tours with people (N × 110) and per person; the lump sum has no head count; drivers add up to the total', () => {
+  const C = O.collect({ ...MA, ledger: mayLedger() });
+  const V = O.view(C, O.period('month', '2026-05'), CC.MA);
+  expect(V.total.cost).toBe(95920);                                                       // April's invoice out, May's (paid 10 Jun) in
+  expect(V.total.trips).toBe(0);
+  expect(V.kinds.map(k => [k.label, k.cost, k.people, k.perPerson])).toEqual([['Airport', 22000, 0, null], ['Surf vans', 68200, 340, 110], ['Tours', 5720, 52, 110]]);
+  expect(V.kinds[1].parts.map(p => [p.label, p.cost, p.people])).toEqual([['Surf Taghazout', 37400, 340], ['Fathoune lump sum', 30800, 0]]);
+  expect(V.kinds[0].parts.map(p => p.label)).toEqual(['Monthly invoice']);
+  expect(V.suppliers.map(s => [s.label, s.cost, s.payments, s.lastPaid])).toEqual([['Fathoune', 73920, 12, '2026-05-30'], ['Let Us Tours', 22000, 1, '2026-06-10']]);
+  expect(sum(V.kinds, 'cost')).toBe(V.total.cost);
+  expect(sum(V.suppliers, 'cost')).toBe(V.total.cost);
+  expect(O.view(C, O.period('month', '2026-04'), CC.MA).total.cost).toBe(20000);
+  expect(O.view(C, O.period('month', '2026-06'), CC.MA).empty).toBe(true);
+  expect(C.start).toEqual({ airport: null, vans: null, tours: null });
+  // One trip list per driver: the first van run (a tour) starts it for the surf vans too, so a later lump sum is «paid for earlier trips».
+  const C2 = O.collect({ ...MA, trips: [run('Dunes', { trip_date: '2026-11-15', status: 'done', driver_id: 'd2' })], ledger: [led('2026-11-20', 'Fathoune Mounir — October runs', 5000)] });
+  expect(C2.start).toEqual({ airport: null, vans: '2026-11-15', tours: '2026-11-15' });
+  expect(O.view(C2, O.period('month', '2026-11'), CC.MA).suppliers.find(s => s.label === 'Fathoune')).toMatchObject({ cost: 250, earlier: 5000 });
+});
+
+test('overview v2: after the trip list — trips are the cost; an unlinked payment for earlier trips is «Paid» only (never cost twice); a linked one never shows; fuel is always cost; a kind with no trips yet keeps its payments as cost', () => {
+  const air = trip({ trip_date: '2026-10-10', status: 'done', expected_price: 16000, driver_id: 'd1' });
+  const ledger = [led('2026-10-12', 'Let Us Tours transfers', 16000), led('2026-10-13', 'Afriquia diesel', 300), { ...led('2026-10-20', 'Let Us Tours', 500), id: 'linked-1' },
+    led('2026-10-03', '', 3850, 'Surf'), led('2026-10-12', 'September · Let Us Tours', 15000)];
+  const C = O.collect({ ...MA, trips: [air], ledger, linked: ['linked-1'] });
+  expect(C.start.airport).toBe('2026-10-10');
+  const V = O.view(C, O.period('month', '2026-10'), CC.MA);
+  expect(V.kinds.map(k => [k.kind, k.cost, k.trips, k.fromPayments])).toEqual([['airport', 16000, 1, 0], ['vans', 3850, 0, 3850], ['other', 300, 0, 300]]);
+  const lut = V.suppliers.find(s => s.label === 'Let Us Tours');
+  expect(lut).toMatchObject({ cost: 16000, owed: 16000, earlier: 16000, trips: 1 });           // the trip once; the payment «for earlier trips»
+  expect(V.suppliers.find(s => s.label === 'Fathoune')).toMatchObject({ cost: 3850, earlier: 0 });   // no van trips yet: the van line is the cost
+  // «September · Let Us Tours» paid 12 Oct belongs to September, before the trip list: September's airport cost.
+  expect(O.view(C, O.period('month', '2026-09'), CC.MA).kinds.map(k => [k.kind, k.cost])).toEqual([['airport', 15000]]);
+  // Owed now: the one rule (a custom isOwed wins).
+  expect(O.owedNow(C)).toEqual({ total: 16000, rows: [{ driverId: 'd1', label: 'Let Us Tours', amount: 16000, trips: 1 }] });
+  expect(O.owedNow(O.collect({ ...MA, trips: [air], isOwed: () => false })).total).toBe(0);
+});
+
+test('overview v2: trips — kinds with their parts, trips, people, owed, to come; no-show counted, cancelled and merged out; Sri Lanka\'s November merges payments (1–13) and trips (from 14) in the same rows', () => {
   const trips = [
-    trip({ trip_date: '2026-11-02', pax: 2, expected_price: 300, status: 'done', payment_entry_id: 'p1' }),     // paid
-    trip({ trip_date: '2026-11-05', status: 'confirmed' }),                                                  // passed → owed
-    trip({ trip_date: '2026-11-06', status: 'no_show' }),                                                    // no-show: counted, not owed (QA 16 Nov 2026: = reconcileStatus)
-    trip({ trip_date: '2026-11-20', status: 'planned' }),                                                    // to come: cost only
-    trip({ trip_date: '2026-11-21', place: 'RAK', expected_price: 1200 }),                                   // a second airport → split
-    trip({ trip_date: '2026-11-07', status: 'cancelled' }), trip({ trip_date: '2026-11-08', status: 'merged' }),
-    trip({ trip_date: '2026-11-09', kind: 'airport_departure', expected_price: 250 }),
-    run('Surf', { trip_date: '2026-11-03', pax: 6, expected_price: 500, status: 'done' }), run('Surf', { trip_date: '2026-11-04', pax: 4, expected_price: 300, status: 'done' }),
-    run('Dunes', { trip_date: '2026-11-11', pax: 8, expected_price: 700, status: 'done', payment_entry_id: 'p2' }),
-    trip({ trip_date: '2026-10-31' }), trip({ trip_date: '2026-12-01' }),                                     // other months
+    trip({ trip_date: '2026-11-02', pax: 2, expected_price: 300, status: 'done', payment_entry_id: 'p1', driver_id: 'd1' }),
+    trip({ trip_date: '2026-11-05', status: 'confirmed', driver_id: 'd1' }), trip({ trip_date: '2026-11-06', status: 'no_show', driver_id: 'd1' }),
+    trip({ trip_date: '2026-11-20', driver_id: 'd1' }), trip({ trip_date: '2026-11-21', place: 'RAK', expected_price: 1200, driver_id: 'd1' }),
+    trip({ trip_date: '2026-11-07', status: 'cancelled' }), trip({ trip_date: '2026-11-08', status: 'merged' }), trip({ trip_date: '2026-11-09', kind: 'airport_departure', driver_id: 'd1' }),
+    run('Surf', { trip_date: '2026-11-03', pax: 6, expected_price: 500, status: 'done', driver_id: 'd2' }), run('Dunes', { trip_date: '2026-11-11', pax: 8, expected_price: 700, status: 'done', payment_entry_id: 'p2', driver_id: 'd2' }),
   ];
-  const s = O.summary({ trips, ledger: [led('2026-11-02', 'Let Us Tours', 999)], drivers: DRIVERS, cfg: CC.MA, mode: 'month', from: '2026-11-01', to: '2026-11-30', goLive: '2026-10-01', now: NOW });
-  expect(s.rows.map(r => [r.label, r.trips, r.people, r.cost, r.paid, r.owed, r.perPerson, r.noShow])).toEqual([
-    ['Arrivals · Agadir', 4, 5, 1050, 300, 250, 210, 1],
-    ['Arrivals · Marrakech', 1, 1, 1200, 0, 0, 1200, 0],
-    ['Departures', 1, 1, 250, 0, 250, 250, 0],
-    ['Surf Taghazout', 2, 10, 800, 0, 800, 80, 0],
-    ['Dunes', 1, 8, 700, 700, 0, 88, 0],
-  ]);
-  expect(s.total).toEqual({ trips: 9, people: 25, cost: 4000, paid: 1000, owed: 1300, noShow: 1, perPerson: 160 });
-  expect(s.ledger.rows).toEqual([]);                                                // after go-live: the ledger is not counted again
-  // One airport only → «Arrivals», no city.
-  const one = O.summary({ trips: trips.filter(t => t.place !== 'RAK'), cfg: CC.MA, mode: 'month', from: '2026-11-01', to: '2026-11-30', goLive: '2026-10-01', now: NOW });
-  expect(one.rows[0].label).toBe('Arrivals');
-  // The CSV is the table: header, the rows, the total.
-  const tbl = O.summaryTable(s, 'MAD');
-  expect(tbl[0]).toEqual(['Type', 'Group', 'Trips', 'People', 'Cost (MAD)', 'Paid (MAD)', 'Owed (MAD)', 'Cost per person (MAD)', 'No-show']);
-  expect(tbl[tbl.length - 1]).toEqual(['Total', '', 9, 25, 4000, 1000, 1300, 160, 1]);
-  // With a rate, the euros are appended last (16 Nov 2026).
-  const te = O.summaryTable(s, 'MAD', 10);
-  expect(te[0].slice(-3)).toEqual(['Cost (EUR)', 'Paid (EUR)', 'Owed (EUR)']);
-  expect(te[te.length - 1].slice(-3)).toEqual([400, 100, 130]);
-  // By kind = the page's pills; parts under each; the big numbers.
-  const K = O.byKind(s, CC.MA);
-  expect(K.map(k => [k.kind, k.label, k.trips, k.cost, k.owed])).toEqual([['airport', 'Airport', 6, 2500, 500], ['vans', 'Surf vans', 2, 800, 800], ['tours', 'Tours', 1, 700, 0]]);
-  expect(K[0].parts).toEqual([{ label: 'Arrivals', trips: 5 }, { label: 'Departures', trips: 1 }]);
-  expect(O.headline(s)).toMatchObject({ cost: 4000, paid: 1000, owed: 1300, trips: 9, people: 25, perPerson: 160 });
-  // By driver, the same owed rule (a custom isOwed wins).
-  const D = O.byDriver({ trips, drivers: DRIVERS, cfg: CC.MA, mode: 'month', from: '2026-11-01', to: '2026-11-30', goLive: '2026-10-01', now: NOW, isOwed: () => false });
-  expect(D.reduce((a, r) => a + r.owed, 0)).toBe(0);
-  expect(D.reduce((a, r) => a + r.cost, 0)).toBe(4000);
+  const V = O.view(O.collect({ ...MA, trips }), O.period('month', '2026-11'), CC.MA);
+  expect(V.total).toMatchObject({ trips: 8, people: 21, cost: 3700, paid: 1000, owed: 1000, toCome: 1450, noShow: 1, perPerson: 176 });
+  expect(V.kinds.map(k => [k.label, k.trips, k.cost, k.owed, k.perPerson])).toEqual([['Airport', 6, 2500, 500, 357], ['Surf vans', 1, 500, 500, 83], ['Tours', 1, 700, 0, 88]]);
+  expect(V.kinds[0].parts.map(p => [p.label, p.trips])).toEqual([['Arrivals', 5], ['Departures', 1]]);
+  expect(V.suppliers.map(s => [s.label, s.cost, s.owed, s.toCome])).toEqual([['Let Us Tours', 2500, 500, 1450], ['Fathoune', 1200, 500, 0]]);
+  // Sri Lanka, go-live 14 Nov: the payments of 1–13 and the trips of 14–30 are one «Airport» row; a trip before go-live is not counted.
+  const sl = O.collect({ trips: [trip({ trip_date: '2026-11-10', place: 'CMB', expected_price: 21000 }), trip({ trip_date: '2026-11-16', place: 'CMB', expected_price: 21000, driver_id: 's1' })],
+    ledger: [led('2026-11-05', 'Dilan airport', 42000), led('2026-11-16', 'Dilan airport', 21000)], drivers: SL_DRIVERS, cfg: CC.SL, goLive: '2026-11-14', now: NOW });
+  const S = O.view(sl, O.period('month', '2026-11'), CC.SL);
+  expect(S.kinds.map(k => [k.label, k.cost, k.trips, k.fromPayments])).toEqual([['Airport', 63000, 1, 42000]]);
+  expect(S.suppliers).toEqual([expect.objectContaining({ label: 'Dilan', cost: 63000, earlier: 21000, trips: 1, payments: 2 })]);
+});
+
+test('overview v2: year by month × kind, up or down against the period before and a year earlier, the CSV with euros last', () => {
+  const trips = [trip({ trip_date: '2026-10-05', pax: 2, expected_price: 300 }), trip({ trip_date: '2026-11-05' }), run('Surf', { trip_date: '2026-11-06', pax: 5, expected_price: 500 })];
+  const C = O.collect({ ...MA, trips, ledger: [led('2025-11-20', '', 1100, 'Surf'), led('2026-08-03', '', 4400, 'Surf'), led('2026-09-03', 'Afriquia diesel', 100)] });
+  const Y = O.yearView(C, '2026', CC.MA);
+  expect(Y.rows.map(r => [r.label, r.total.cost])).toEqual([['Airport', 550], ['Surf vans', 4900], ['Fuel & other', 100]]);
+  expect(Y.rows[1].people.slice(7, 11)).toEqual([40, 0, 0, 5]);                                      // 4,400 ÷ 110
+  expect(Y.rows[2].people[8]).toBe(null);                                                            // fuel: no head count
+  expect(Y.totals.cost.slice(7, 11)).toEqual([4400, 100, 300, 750]);
+  expect(O.compare(C, O.period('month', '2026-11'))).toEqual({ prev: { anchor: '2026-10', name: 'October 2026', cost: 300, pct: 150 }, lastYear: { anchor: '2025-11', name: 'November 2025', cost: 1100, pct: -32 } });
+  expect(O.compare(C, O.period('month', '2026-08')).prev).toBe(null);                               // nothing in July: no comparison
+  const t = O.yearTable(Y, 'cost', 'MAD', 10);
+  expect(t[0]).toEqual(['Cost (MAD)', ...O.MON, 'Total', 'Total (EUR)']);
+  expect(t[t.length - 1]).toEqual(['Total', 0, 0, 0, 0, 0, 0, 0, 4400, 100, 300, 750, 0, 5550, 555]);
+  expect(O.yearTable(Y, 'people', 'MAD')[3]).toEqual(['Fuel & other', 0, 0, 0, 0, 0, 0, 0, 0, '', 0, 0, 0, 0]);
+  const V = O.view(C, O.period('month', '2026-11'), CC.MA);
+  const csv = O.viewTable(V, 'MAD', 10);
+  expect(csv[0]).toEqual(['Kind', 'Detail', 'Trips', 'People', 'Cost (MAD)', 'Paid (MAD)', 'Owed (MAD)', 'Cost per person (MAD)', 'From payments (MAD)', 'Cost (EUR)', 'Paid (EUR)', 'Owed (EUR)']);
+  expect(csv.find(r => r[0] === 'Total')).toEqual(['Total', '', 2, 6, 750, 0, 750, 125, 0, 75, 0, 75]);
+  expect(csv.some(r => r[0] === 'Driver / supplier')).toBe(true);
 });
 
 test('overview: euros — one rate per period from the camp\'s ledger (median of amount_local / amount_eur), out-of-range rows skipped (the 389.63 «MAD» row), fallbacks range-checked', () => {
@@ -83,57 +160,9 @@ test('overview: euros — one rate per period from the camp\'s ledger (median of
   expect(O.eur(21050, 10.8)).toBe(1949);
 });
 
-test('overview: a Transport payment after go-live that pays no trip shows in the month it was paid (driver payments only); a linked one never (QA 16 Nov 2026)', () => {
-  const ledger = [led('2026-10-12', 'September · Let Us Tours', 16000), led('2026-10-13', 'Afriquia diesel', 300), { ...led('2026-10-20', 'Let Us Tours', 500), id: 'linked-1' }];
-  const o = { trips: [], ledger, drivers: DRIVERS, cfg: CC.MA, mode: 'month', from: '2026-10-01', to: '2026-10-31', goLive: '2026-10-01', now: NOW };
-  expect(O.summary(o).ledger.rows).toEqual([]);                                     // no linked set given: as before
-  const s = O.summary({ ...o, linked: ['linked-1'] });
-  // Paid only, never cost: after go-live the trips are the cost (else a payment for owed trips counts twice).
-  expect(s.ledger.rows).toEqual([{ label: 'Let Us Tours', payments: 1, cost: 0, paid: 16000 }]);
-  expect(O.headline(s)).toMatchObject({ cost: 0, paid: 16000 });
-  expect(O.byDriver({ ...o, linked: ['linked-1'] })).toEqual([{ label: 'Let Us Tours', trips: 0, people: 0, cost: 0, paid: 16000, owed: 0, payments: 1 }]);
-  // Owed trips + their (unlinked) payment: cost = the trips, once.
-  const owedTrip = trip({ trip_date: '2026-10-10', status: 'done', expected_price: 16000, driver_id: 'd1' });
-  const s2 = O.summary({ ...o, trips: [owedTrip], linked: ['linked-1'] });
-  expect(O.headline(s2)).toMatchObject({ cost: 16000, paid: 16000, owed: 16000 });
-});
-
 test('overview: the week is Transport\'s week (Sat–Fri, the closing Saturday\'s departures in, the opening Saturday\'s out)', () => {
   const trips = [trip({ trip_date: '2026-11-14' }), trip({ trip_date: '2026-11-14', kind: 'airport_departure' }), trip({ trip_date: '2026-11-21', kind: 'airport_departure' }), trip({ trip_date: '2026-11-21' })];
-  const s = O.summary({ trips, cfg: CC.MA, mode: 'week', from: '2026-11-14', to: '2026-11-20', goLive: '2026-10-01', now: NOW });
-  expect(s.rows.map(r => [r.label, r.trips])).toEqual([['Arrivals', 1], ['Departures', 1]]);
+  const V = O.view(O.collect({ trips, cfg: CC.MA, goLive: '2026-10-01', now: NOW }), O.period('week', '2026-11-14'), CC.MA);
+  expect(V.kinds[0].parts.map(p => [p.label, p.trips])).toEqual([['Arrivals', 1], ['Departures', 1]]);
 });
 
-test('overview: before go-live — the ledger\'s Transport payments per supplier (driver name or alias; contacts are not suppliers; the rest «Other transport»)', () => {
-  const ledger = [led('2026-09-03', 'Let Us Tours September', 4000), led('2026-09-20', 'LUT airport', 1000), led('2026-09-10', 'Mounir vans week 37', 2200),
-    led('2026-09-11', 'Taxi to Agadir (Floriane)', 150), led('2026-10-02', 'Let Us Tours October', 9999), { ...led('2026-09-05', 'Fathoune', 50), category: 'Food' }];
-  const trips = [trip({ trip_date: '2026-09-15' })];                              // a trip before go-live is not counted (the ledger is)
-  const s = O.summary({ trips, ledger, drivers: DRIVERS, cfg: CC.MA, mode: 'month', from: '2026-09-01', to: '2026-09-30', goLive: '2026-10-01', now: NOW });
-  expect(s.rows).toEqual([]);
-  expect(s.ledger.rows).toEqual([{ label: 'Let Us Tours', payments: 2, cost: 5000 }, { label: 'Fathoune', payments: 1, cost: 2200 }, { label: 'Other transport', payments: 1, cost: 150 }]);
-  expect(s.ledger.total).toBe(7350);
-  expect(O.summaryTable(s, 'MAD').slice(1)).toEqual([['Let Us Tours', 'From payments — no trip list', '2 payments', '', 5000, 5000, '', '', ''], ['Fathoune', 'From payments — no trip list', '1 payment', '', 2200, 2200, '', '', ''], ['Other transport', 'From payments — no trip list', '1 payment', '', 150, 150, '', '', '']]);
-  // Sri Lanka's November: 1–13 from payments, 14–30 from the trips (go-live 14 Nov).
-  const sl = O.summary({ trips: [trip({ trip_date: '2026-11-10', place: 'CMB', expected_price: 21000 }), trip({ trip_date: '2026-11-16', place: 'CMB', expected_price: 21000 })],
-    ledger: [led('2026-11-05', 'Dilan airport', 42000), led('2026-11-16', 'Dilan airport', 21000)], drivers: [{ name: 'Dilan', kinds: ['airport'] }], cfg: CC.SL, mode: 'month', from: '2026-11-01', to: '2026-11-30', goLive: '2026-11-14', now: NOW });
-  expect(sl.total.cost).toBe(21000);
-  expect(sl.ledger.rows).toEqual([{ label: 'Dilan', payments: 1, cost: 42000 }]);
-});
-
-test('overview: year — type × month for cost and people, row and column totals, ledger rows for the months before go-live (no people)', () => {
-  const trips = [trip({ trip_date: '2026-10-05', pax: 2, expected_price: 300 }), trip({ trip_date: '2026-11-05' }), run('Surf', { trip_date: '2026-11-06', pax: 5, expected_price: 500 }),
-    trip({ trip_date: '2026-11-07', status: 'cancelled' }), trip({ trip_date: '2025-12-30' })];
-  const ledger = [led('2026-08-03', 'Let Us Tours', 4000), led('2026-09-03', 'Let Us Tours', 3000), led('2026-09-04', 'Fuel', 100)];
-  const Y = O.yearMatrix({ trips, ledger, drivers: DRIVERS, cfg: CC.MA, year: '2026', goLive: '2026-10-01' });
-  expect(Y.months[0]).toBe('2026-01');
-  expect(Y.rows.map(r => [r.label, r.total.cost, r.total.people])).toEqual([['Arrivals', 550, 3], ['Surf Taghazout', 500, 5], ['Let Us Tours', 7000, null], ['Other transport', 100, null]]);
-  expect(Y.rows[0].cost.slice(9, 11)).toEqual([300, 250]);
-  expect(Y.rows[2].cost.slice(7, 9)).toEqual([4000, 3000]);
-  expect(Y.totals.cost.slice(7, 11)).toEqual([4000, 3100, 300, 750]);
-  expect(Y.totals.all).toEqual({ cost: 8150, people: 8 });
-  expect(Y.fromPayments.map((x, i) => x ? i + 1 : 0).filter(Boolean)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
-  const t = O.yearTable(Y, 'people', 'MAD');
-  expect(t[0]).toEqual(['People', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Total']);
-  expect(t[3]).toEqual(['Let Us Tours (from payments)', ...Array(12).fill(''), '']);
-  expect(t[t.length - 1]).toEqual(['Total', 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 6, 0, 8]);
-});

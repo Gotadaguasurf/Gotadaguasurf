@@ -166,6 +166,9 @@
     runs: { kind: 'other', label: 'Van run', plural: 'Van runs', vehicle: 'Van' },
     payMethod: 'Bank Transfer',
     airportSupplier: 'Let Us Tours',
+    // Transport → Overview, months before the trip list (16 Nov 2026): the ledger's van lines name no driver (they are the
+    // vanSupplier's, below) and until 30 Sep he charged 110 MAD per person, so a route line of N × 110 carried N people.
+    legacyPerPerson: { rate: 110, until: '2026-10-01', kinds: ['vans', 'tours'] },
     // The surf vans (Fathoune) and tours. Miguel, 16 Nov 2026: Fathoune charges PER VEHICLE (Car / Minivan /
     // Big Van), never per person; the price is the /prices row «<catalog> — <vehicle>» (picker surf / tours).
     // This table only maps a route to its purpose, its tour(s) and its label; `catalog` names the /prices
