@@ -8620,7 +8620,31 @@ function similarLedgerEntry(p){
   const amt=Number(p?.amountLocal??p?.amount??0);
   return (S.ledger||[]).find(e=>e&&e.id!==p.id&&e.type===p.type&&e.date===p.date&&(e.category||'')===(p.category||'')&&Math.abs(Number(e.amountLocal??e.amount??0)-amt)<0.01)||null;
 }
+// A card payment already loaded from the bank statement (Sri Lanka: Miguel
+// loads the Sampath statement as «… · Sampath card» Bank Transfer lines).
+// Nadith typing the same receipt again as Cash counted it twice and made his
+// cash look short (Miguel, 16 Nov 2026). Same amount, any category, up to two
+// days apart (the bank books a day or two late).
+function bankCardTwin(p){
+  if(!p||p.type!=='expense') return null;
+  if((p.paymentMethod||'')!=='Cash') return null;
+  const amt=Number(p?.amountLocal??p?.amount??0);
+  if(!(amt>0)||!p.date) return null;
+  const lo=addDays(p.date,-2), hi=addDays(p.date,2);
+  return (S.ledger||[]).find(e=>e&&e.id!==p.id&&e.type==='expense'
+    &&(e.paymentMethod||'')!=='Cash'&&e.date>=lo&&e.date<=hi
+    &&Math.abs(Number(e.amountLocal??e.amount??0)-amt)<0.01)||null;
+}
+function bankTwinLabel(e){
+  const d=String(e.description||'').split('·')[0].trim();
+  return d||e.category||'card payment';
+}
 function confirmNotRepeated(p){
+  const bank=bankCardTwin(p);
+  if(bank){
+    const when=new Date(bank.date+'T00:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short'});
+    return confirm(`This looks like the card payment already in from the bank: ${bankTwinLabel(bank)} · ${Number(bank.amountLocal??bank.amount??0).toLocaleString('en-US')} on ${when}.\n\nSame receipt? Press Cancel, it is already in.\nPress OK only if this is a different payment.`);
+  }
   const twin=similarLedgerEntry(p);
   if(!twin) return true;
   return confirm(`There is already a ${twin.category||twin.type} line of ${Number(twin.amountLocal??twin.amount??0)} on ${twin.date}${twin.description?` (${twin.description})`:''}.\n\nSave this one too?`);
