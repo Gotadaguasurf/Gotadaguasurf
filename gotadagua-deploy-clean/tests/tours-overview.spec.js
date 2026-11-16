@@ -156,3 +156,33 @@ test('tour cost entry: «Tours & activities» gets the tour picker, Guests and �
   expect(writes).toEqual([]);
   expect(errs).toEqual([]);
 });
+
+test('tours overview: Jan–May weekly «Activities · week of» totals take the tour costs of those weeks; tour cards keep only the months sold per tour', async ({ page }) => {
+  const { writes, errs } = await bootSriLanka(page);
+  const out = await page.evaluate(() => {
+    const mk = (o) => normalizeLedgerEntry({ currency: 'LKR', fxRate: 400, paymentMethod: 'Cash', sourceKind: 'manual', quantity: 1, ...o });
+    const revenue = [
+      mk({ type: 'income', category: 'Tours', businessArea: 'Tours', amountLocal: 230800, date: '2026-01-03', description: 'Activities · week of 2026-01-03' }),
+      mk({ type: 'income', category: 'Tours', businessArea: 'Tours', amountLocal: 11000, date: '2026-05-30', description: 'Activities · week of 2026-05-30' }),
+      mk({ type: 'income', category: 'Tours', businessArea: 'Tours', linkedItem: 'River Safari', amountLocal: 12000, date: '2026-08-20', description: 'Camp Tab · A · Tours' }),
+    ];
+    const expenses = [
+      mk({ type: 'expense', category: 'Tours & activities', businessArea: 'Tours', linkedItem: 'River Safari', amountLocal: 100000, date: '2026-01-08', description: 'River boat' }),
+      mk({ type: 'expense', category: 'Tours & activities', businessArea: 'Tours', linkedItem: 'Cooking Class', amountLocal: 20000, date: '2026-06-05', description: 'Cook (last weekly week ends 5 Jun)' }),
+      mk({ type: 'expense', category: 'Tours & activities', businessArea: 'Tours', amountLocal: 7500, date: '2026-02-03', description: 'Private Lessons · Gihan' }),
+      mk({ type: 'expense', category: 'Tours & activities', businessArea: 'Tours', linkedItem: 'River Safari', amountLocal: 8000, date: '2026-08-20', description: 'River boat' }),
+      mk({ type: 'expense', category: 'Tours & activities', businessArea: 'Tours', amountLocal: 42500, date: '2026-11-10', description: 'Yala tickets' }),
+    ];
+    const t = tourProfitRows(revenue, expenses);
+    const by = Object.fromEntries(t.rows.map(r => [r.name, { rev: r.revenueLocal, cost: r.costLocal }]));
+    return { by, sold: t.sold, unlinked: t.unlinked };
+  });
+  expect(out.by['Tours (not split by tour)']).toEqual({ rev: 241800, cost: 127500 });
+  expect(out.by['River Safari']).toEqual({ rev: 12000, cost: 8000 });
+  expect(out.by['Cooking Class']).toBeUndefined();
+  expect(out.by['Not linked to a tour']).toEqual({ rev: 0, cost: 42500 });
+  // nothing lost, nothing doubled
+  expect(out.sold.costLocal + out.unlinked.costLocal).toBe(100000 + 20000 + 7500 + 8000 + 42500);
+  expect(writes).toEqual([]);
+  expect(errs).toEqual([]);
+});

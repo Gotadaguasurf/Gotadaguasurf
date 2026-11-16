@@ -5381,6 +5381,18 @@ function tourProfitRows(revenueEntries,expenses){
   // payingCost = costLocal - compCostLocal → margin against actual sales.
   const tourMap={};
   const blankTour = (key) => ({name:key,qty:0,revenueLocal:0,revenueEur:0,costLocal:0,costEur:0,compCostLocal:0,compCostEur:0});
+  // Sri Lanka Jan–May 2026: tour revenue is one weekly total per week
+  // («Activities · week of 2026-01-03», from the old sheet) while the costs
+  // were typed per tour. Per tour that read as River Safari −944%. Every
+  // tour cost up to the end of the last weekly total goes to the «not split»
+  // card instead, next to the revenue it belongs with; the tour cards show
+  // only the months with revenue per tour (Camp Tab, from July). Miguel,
+  // 16 Nov 2026: «sim, muda o cartão dos tours».
+  const WEEKLY_TOTAL_RE=/^Activities\s*·\s*week of\s/i;
+  const unsplitUntil=revenueEntries
+    .filter(x=>x.businessArea==='Tours'&&!String(x.linkedItem||'').trim()&&WEEKLY_TOTAL_RE.test(String(x.description||''))&&x.date)
+    .reduce((m,x)=>{ const end=addDays(x.date,6); return end>m?end:m; },'');
+  const beforeSplit=(x)=>!!unsplitUntil&&!!x.date&&x.date<=unsplitUntil;
   // Ledger only — same single-source rule as the drawer KPIs and the
   // per-area tiles above. Every paid Camp Tab item already lands a ledger
   // income row (camp_tab_per_item / campclose_*), so adding paidItems here
@@ -5399,7 +5411,7 @@ function tourProfitRows(revenueEntries,expenses){
     // A tour cost with no tour picked: included activities (yoga, games
     // night, photographer…) or a sold-tour cost nobody linked. It is NOT
     // part of any tour's margin — shown apart, outside «Sold tours».
-    const key=String(x.linkedItem||'').trim()||TOUR_UNLINKED_COST_KEY;
+    const key=beforeSplit(x)?TOUR_UNSPLIT_REVENUE_KEY:(String(x.linkedItem||'').trim()||TOUR_UNLINKED_COST_KEY);
     tourMap[key]=tourMap[key]||blankTour(key);
     const l=entryLocalDisplayAmount(x), e=entryEurAmount(x);
     tourMap[key].costLocal+=l;
@@ -5425,8 +5437,9 @@ function tourProfitRows(revenueEntries,expenses){
     tourMap[key].revenueEur+=entryEurAmount(x);
   });
   expenses.filter(x=>x.businessArea!=='Tours'&&x.businessArea!=='Transport').forEach(x=>{
-    const key=String(x.linkedItem||'').trim();
-    if(!key||!tourNamesForCrossSweep.has(key)) return;
+    const linked=String(x.linkedItem||'').trim();
+    if(!linked||!tourNamesForCrossSweep.has(linked)) return;
+    const key=beforeSplit(x)?TOUR_UNSPLIT_REVENUE_KEY:linked;
     tourMap[key]=tourMap[key]||blankTour(key);
     const l=entryLocalDisplayAmount(x), e=entryEurAmount(x);
     tourMap[key].costLocal+=l;
@@ -5469,6 +5482,12 @@ function tourProfitRows(revenueEntries,expenses){
     // — keeps the cost visible somewhere instead of vanishing.
     const validInMenuOrTourMap = candidates.filter(t => t && knownTourNames.has(t));
     if(!validInMenuOrTourMap.length) return;
+    if(beforeSplit(x)){
+      const u = tourMap[TOUR_UNSPLIT_REVENUE_KEY] = tourMap[TOUR_UNSPLIT_REVENUE_KEY] || blankTour(TOUR_UNSPLIT_REVENUE_KEY);
+      u.costLocal += entryLocalDisplayAmount(x);
+      u.costEur += entryEurAmount(x);
+      return;
+    }
     const ranThisPeriod = validInMenuOrTourMap.filter(t => (tourMap[t]?.qty||0) > 0);
     const targets = ranThisPeriod.length ? ranThisPeriod : [validInMenuOrTourMap[0]];
     const rowLocal = entryLocalDisplayAmount(x);
@@ -5908,7 +5927,7 @@ function renderOverview(){
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:10px">
               <div>
                 <div style="font-weight:700;color:var(--navy)">${r.name}</div>
-                <div style="font-size:11px;color:var(--muted);margin-top:2px">${r.name===TOUR_UNLINKED_COST_KEY?'Included activities, or a tour cost with no tour picked':r.name===TOUR_UNSPLIT_REVENUE_KEY?`${r.qty||0} entr${r.qty===1?'y':'ies'} with no tour picked`:`${r.qty||0} paid guest${r.qty===1?'':'s'}`}${(r.variants&&r.variants.length>1)?` · ${r.variants.length} variants`:''}</div>
+                <div style="font-size:11px;color:var(--muted);margin-top:2px">${r.name===TOUR_UNLINKED_COST_KEY?'Included activities, or a tour cost with no tour picked':r.name===TOUR_UNSPLIT_REVENUE_KEY?`${r.qty||0} entr${r.qty===1?'y':'ies'} with no tour picked${r.costLocal>0.005?' · tour costs of those weeks included':''}`:`${r.qty||0} paid guest${r.qty===1?'':'s'}`}${(r.variants&&r.variants.length>1)?` · ${r.variants.length} variants`:''}</div>
               </div>
               <span class="badge ${payingMarginLocal>=0?'badge-green':'badge-red'}" title="Paying-guest margin (excludes comp seats)">${payingMarginLocal>=0?'+':''}${lkr(payingMarginLocal)}</span>
             </div>
