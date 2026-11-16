@@ -27,6 +27,8 @@
 --      import flagging removed transfers / replacing regrouped trips. These
 --      REPLACE camp_transport__link and camp_trips_import of camp-trips.sql:
 --      after this file, do not re-run camp-trips.sql without re-running this one.
+--      NOTE (16 Nov 2026): supabase/camp-trips-bl-check.sql replaces camp_trips_import again
+--      («checked in Bookinglayer»). After re-running this file, run camp-trips-bl-check.sql again.
 -- ════════════════════════════════════════════════════════════════════════════
 
 alter table public.camp_trips add column if not exists free_reason text;

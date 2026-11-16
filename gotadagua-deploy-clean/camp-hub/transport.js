@@ -156,6 +156,7 @@
   function rowFlag(t) {
     const F = t.import_flags || [];
     const says = F.find(f => /^guest says:/.test(f));
+    if (blFlagged(t)) return 'Not booked in Bookinglayer — did the driver go? If not, cancel this trip';
     if (F.some(f => REMOVED_FLAG.test(f))) return 'Transfer removed in Bookinglayer — cancel it, or keep it if it is still needed';
     if (t.missing_since) return 'Not in the latest Bookinglayer file';
     if (says) { const m = says.match(/«([^»]*)»/); const q = m ? m[1].trim() : ''; return `Guest says: «${q.length > 60 ? q.slice(0, 57) + '…' : q}» — still needed?`; }
@@ -164,6 +165,21 @@
   }
   // Held back from «Send the whole day» until Francisco has looked: the booking or its transfer left the file.
   const onHold = t => !!t.missing_since;
+  // ── Checked in Bookinglayer (supabase/camp-trips-bl-check.sql, 16 Nov 2026) ──
+  // The Guests export cannot tell one transfer leg from two, nor their dates: every imported airport leg is «to check
+  // in Bookinglayer» until somebody has looked at the booking page — «Booked ✓» / «Not booked» on the row, or the
+  // morning assistant through camp_trips_bl_verify. Unchecked legs still go out to the driver (never blocked).
+  // Off until the SQL is run: a row without the column bl_checked_at never shows the check.
+  const blOn = t => !!t && Object.prototype.hasOwnProperty.call(t, 'bl_checked_at');
+  function blToCheck(t) {
+    return blOn(t) && !t.bl_checked_at && isAirport(t) && t.source === 'bookinglayer' && !t.payment_entry_id
+      && ['planned', 'sent', 'confirmed'].includes(t.status) && String(t.trip_date || '') >= GT.addDaysIso(cToday(), -1);
+  }
+  const blList = () => TR.trips.filter(blToCheck).sort((a, b) => (a.trip_date + (a.trip_time || '99')).localeCompare(b.trip_date + (b.trip_time || '99')));
+  const blUrl = ref => `https://app.bookinglayer.io/bookings?page=1&limit=25&search=${encodeURIComponent(ref)}&query=${encodeURIComponent(ref)}`;
+  // camp_trips_bl_verify kept a past trip that the booking page does not have: «did the driver go?»
+  const BL_NOT_BOOKED_FLAG = /^Not booked in Bookinglayer:/;
+  const blFlagged = t => (t.import_flags || []).some(f => BL_NOT_BOOKED_FLAG.test(f)) && !t.payment_entry_id && !['cancelled', 'no_show', 'merged'].includes(t.status);
   const vehicleFor = GT.vehicleFor;
   const isFree = t => t.charge === 'free' || !!t.free_reason;
   const freeLabel = t => 'Free' + (t.free_reason && FREE_SHORT[t.free_reason] ? ' · ' + FREE_SHORT[t.free_reason] : '');
@@ -420,7 +436,7 @@
   // Chip «N without time» and its filter share one rule: an airport transfer still to come with no flight time
   // (held trips have their own chip «not in the latest Bookinglayer file»). Moved from Week → To check, 15 Nov 2026.
   const noTimeTrip = t => isAirport(t) && !t.trip_time && counts(t) && !t.missing_since && !isDone(t);
-  const SPECIAL_FILTERS = ['resend', 'tosend', 'missing', 'notime', 'paidnotdone'];
+  const SPECIAL_FILTERS = ['resend', 'tosend', 'missing', 'notime', 'paidnotdone', 'blcheck'];
   const paidNotDone = () => TR.trips.filter(t => reconcileStatus(t) === 'paid_not_done');
   const toCheck = () => LOCAL ? [] : allLinks().filter(l => l.state === 'review');
   function attentionStrip() {
@@ -438,6 +454,8 @@
     if (review) chips.push(`<button class="health-chip" data-chip="check" onclick="TransportUI.openChecks()">${review} payment${review === 1 ? '' : 's'} to check</button>`);
     if (pnd) chips.push(`<button class="health-chip" data-chip="paidnotdone" onclick="TransportUI.setView('trips','paidnotdone')">${pnd} paid, not done</button>`);
     if (LOCAL) return chips.length ? `<div class="health-strip tr-strip">${chips.join('')}</div>` : '';   // the airport chips are Francisco's
+    const bl = blList().length;
+    if (bl) chips.push(`<button class="health-chip" data-chip="blcheck" onclick="TransportUI.setView('trips','blcheck')">${bl} transfer${bl === 1 ? '' : 's'} to check in Bookinglayer</button>`);
     if (resend) chips.push(`<button class="health-chip" onclick="TransportUI.setView('trips','resend')">${resend} time changed — resend</button>`);
     if (toSend) chips.push(`<button class="health-chip" onclick="TransportUI.setView('trips','tosend')">${toSend} to send (next 48 h)</button>`);
     if (notime) chips.push(`<button class="health-chip" onclick="TransportUI.setView('trips','notime')">${notime} without time</button>`);
@@ -471,7 +489,7 @@
     let list = TR.trips.filter(t => inWeek(t, ws));
     const special = SPECIAL_FILTERS.includes(f);
     const count = special || LOCAL ? '' : weekCountHtml(list, ws);
-    if (special) list = f === 'paidnotdone' ? paidNotDone() : TR.trips.filter(t => t.trip_date >= cToday() || f === 'resend');
+    if (special) list = f === 'paidnotdone' ? paidNotDone() : f === 'blcheck' ? blList() : TR.trips.filter(t => t.trip_date >= cToday() || f === 'resend');
     if (f === 'resend') list = list.filter(t => isAirport(t) && t.needs_resend);
     else if (f === 'tosend') list = list.filter(t => isAirport(t) && t.status === 'planned');
     else if (f === 'missing') list = list.filter(t => t.missing_since && !['cancelled', 'no_show'].includes(t.status));
@@ -503,6 +521,8 @@
       if (air.length) parts.push(`${air.length} transfer${air.length === 1 ? '' : 's'}`);
       if (runs.length) parts.push(`${runs.length} ${IS_SL ? 'tuk-tuk run' : 'run'}${runs.length === 1 ? '' : 's'}`);
       if (sum) parts.push(money(sum));
+      const blN = dayTrips.filter(blToCheck).length;   // shown, never blocking «Send the whole day»
+      if (blN) parts.push(`<span class="tr-amber" data-day-bl="${blN}">${blN} to check in Bookinglayer</span>`);
       const sendable = LOCAL || !showAir ? [] : GT.transfersTrips(TR.trips, { day, now: colomboNow() });   // = what «Send the whole day» sends
       const dayBtns = !LOCAL && showAir && (sendable.length >= 1 || air.filter(guestCan).length > 1) ? `<div class="row tr-day-btns">${sendable.length >= 1 ? `<button class="btn btn-s btn-sm" onclick="TransportUI.sendDay('${day}')" title="One WhatsApp to ${h(c ? c.name : 'the transport contact')} with every transfer of the day">${ic('send')} Send the whole day</button>
             <button class="btn btn-s btn-sm" onclick="TransportUI.tickDay('${day}')">${ic('check')} Sent ✓ all</button>` : ''}
@@ -604,6 +624,15 @@
     return out;
   }
   const missText = miss => miss.map(m => 'no ' + m).join(' · ').replace(/^n/, 'N');   // «No flight · no time»
+  // One amber line under the row: «Check in Bookinglayer · Open booking · Booked ✓ · Not booked» (read-only in ?view=local).
+  function blLine(t, readOnly) {
+    if (!blToCheck(t)) return '';
+    const ref = t.booking_ref || '';
+    const open = ref && !readOnly ? `<a class="tr-bl-open" href="${h(blUrl(ref))}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Open booking</a>` : '';
+    const btns = readOnly ? '' : `<button class="btn btn-s btn-sm" data-bl-booked onclick="event.stopPropagation();TransportUI.blBooked('${t.id}')" title="Both the date and the direction are on the booking page">Booked ✓</button>`
+      + `<button class="btn btn-s btn-sm" data-bl-not onclick="event.stopPropagation();TransportUI.blNotBooked('${t.id}')" title="The booking page has no transfer on this date — cancel this trip">Not booked</button>`;
+    return `<div class="tr-blline" data-blcheck><span class="tr-bl-t">${ic('alert')} Check in Bookinglayer</span>${ref ? `<span class="tr-bl-ref">${h(ref)}</span>` : ''}${open || btns ? `<span class="tr-bl-act">${open}${btns}</span>` : ''}</div>`;
+  }
   function tripRow(t) {
     const ps = payState(t);
     const dep = t.kind === 'airport_departure';
@@ -614,7 +643,7 @@
     const meta = `<div class="tr-c-meta cell-sub">${ppl(t.pax)} · ${drv}</div>`;
     // ?view=local: airport rows are read-only — Francisco sends and confirms them.
     if (LOCAL) return `<div class="tr-row tr-srow tr-row-ro" data-trip="${t.id}" data-cat="airport"><div class="tr-time tr-c-time">${time}</div>
-      <div class="tr-main tr-c-what">${line1}${meta}</div>
+      <div class="tr-main tr-c-what">${line1}${meta}${blLine(t, true)}</div>
       <div class="tr-c-ppl num">${pplCell(t.pax)}</div><div class="tr-c-drv">${drv}</div><div class="tr-c-price num">${money(t.expected_price)}</div>
       <div class="tr-side tr-c-status">${pay}</div></div>`;
     const live = !t.payment_entry_id && !isDone(t) && !['cancelled', 'no_show'].includes(t.status);
@@ -632,7 +661,8 @@
         <div class="cell-sub tr-c-sub">${sub}</div>${meta}
         ${miss.length ? `<div class="tr-missline" data-missline>${ic('alert')} ${h(missText(miss))}</div>` : ''}
         ${t.needs_resend ? `<div class="tr-resend"><span class="badge badge-amber">Time changed, resend</span></div>` : ''}
-        ${live && rowFlag(t) ? `<div class="tr-flagline" data-flag>${ic('alert')} ${h(rowFlag(t))}</div>` : ''}
+        ${blLine(t, false)}
+        ${(live || blFlagged(t)) && rowFlag(t) ? `<div class="tr-flagline" data-flag>${ic('alert')} ${h(rowFlag(t))}</div>` : ''}
         ${live && !needsInfo(t) && guestHtml(t) ? `<div class="tr-resend">${guestHtml(t)}</div>` : ''}
         ${live && needsInfo(t) ? `<div class="tr-resend"><button class="btn btn-s btn-sm" onclick="event.stopPropagation();TransportUI.ask('${t.id}')">${ic('send')} Ask guest for ${!t.flight && !t.trip_time ? 'flight & time' : !t.flight ? 'flight' : 'time'}</button>${askedOn(t.id) ? ` <span class="hint">asked ${h(fmtDay(askedOn(t.id)))}</span>` : ''}</div>` : ''}</div>
       <div class="tr-c-ppl num">${pplCell(t.pax)}</div><div class="tr-c-drv">${drv}</div><div class="tr-c-price num">${money(t.expected_price)}</div>
@@ -1080,6 +1110,32 @@
   }
   async function undoGuestConfirmed(id) {
     if (await updateTrip(id, { guest_confirmed_at: null })) { redrawAll(); say('Guest confirmation removed'); }
+  }
+  // «Booked ✓» / «Not booked» after looking at the booking page (the same columns camp_trips_bl_verify writes).
+  async function myId() { try { const { data } = await client().auth.getSession(); return (data && data.session && data.session.user && data.session.user.id) || null; } catch (_) { return null; } }
+  const blRedraw = () => { redrawAll(); try { window.dispatchEvent(new CustomEvent('camp-checks-changed')); } catch (_) {} };
+  async function blBooked(id) {
+    const t = TR.trips.find(x => x.id === id); if (!t || TR.busy.has('bl' + id)) return;
+    TR.busy.add('bl' + id);
+    try {
+      if (await updateTrip(id, { bl_checked_at: new Date().toISOString(), bl_checked_by: await myId(), bl_check_note: 'checked by hand' })) { blRedraw(); say('Checked in Bookinglayer'); }
+    } finally { TR.busy.delete('bl' + id); }
+  }
+  async function blNotBooked(id) {
+    const t = TR.trips.find(x => x.id === id); if (!t || TR.busy.has('bl' + id)) return;
+    const dir = t.kind === 'airport_departure' ? 'departure' : 'arrival';
+    if (!window.confirm(`Cancel the ${dir} of ${t.guest_names || 'this guest'} on ${fmtDay(t.trip_date)}? It is not booked in Bookinglayer.${['sent', 'confirmed'].includes(t.status) ? ' The driver already has it: tell him.' : ''}`)) return;
+    TR.busy.add('bl' + id);
+    try {
+      const patch = { status: 'cancelled', cancel_reason: 'Not booked in Bookinglayer (checked by hand)', needs_resend: ['sent', 'confirmed'].includes(t.status),
+        bl_checked_at: new Date().toISOString(), bl_checked_by: await myId(), bl_check_note: 'not booked (checked by hand)' };
+      if (await updateTrip(id, patch)) { blRedraw(); say('Trip cancelled — not booked in Bookinglayer'); }
+    } finally { TR.busy.delete('bl' + id); }
+  }
+  // Transport → Trips with only the transfers still to check (the chip, Week → To check, the hub's checks).
+  function showBlCheck() {
+    TR.view = 'trips'; TR.filter = 'blcheck';
+    if (typeof showPage === 'function' && (typeof activePage === 'undefined' || activePage !== 'transport')) showPage('transport'); else render();
   }
   async function setStatus(id, status) {
     const patch = { status, cancel_reason: status === 'cancelled' ? 'manual' : null };
@@ -1923,8 +1979,18 @@
       return { text: `Bank transfer to a driver not linked to trips · ${list.length}${sum ? ' · ' + money(sum) : ''}`, level: 'warn', onClick: () => { TR.view = 'trips'; showPage('transport'); openChecks(); } };
     },
   };
+  // Both camps: imported airport transfers not yet checked on their Bookinglayer booking page (= the Transport chip).
+  const blCheck = {
+    id: 'transport-bl-check',
+    run(ctx) {
+      if (!ctx || ctx.isLocal || ctx.location !== SLUG || !TR.loaded || !enabled()) return null;
+      const n = blList().length;
+      if (!n) return null;
+      return { text: `${n} transfer${n === 1 ? '' : 's'} to check in Bookinglayer`, level: 'warn', onClick: showBlCheck };
+    },
+  };
   window.CAMP_CHECKS = window.CAMP_CHECKS || [];
-  [unlinkedCheck, bankUnlinkedCheck].forEach(ck => { if (!window.CAMP_CHECKS.some(c => c && c.id === ck.id)) window.CAMP_CHECKS.push(ck); });
+  [blCheck, unlinkedCheck, bankUnlinkedCheck].forEach(ck => { if (!window.CAMP_CHECKS.some(c => c && c.id === ck.id)) window.CAMP_CHECKS.push(ck); });
 
   // ── Boot: show the tab (full view; Sri Lanka ?view=local as «Drivers»), load once the ledger is in ─
   function boot() {
@@ -1956,6 +2022,7 @@
     openChecks, openLink, linkDriver, linkPick, linkAll, saveLink, unlinkPayment, openExplain, saveExplain, unlinkTrip,
     openPay, payPick, payTick, payTickGroup, payMinus, payAddToggle, payAddRun, payBank, payAmount, payDate, payReason, payNote, savePay, payGroups, localDrivers: LOCAL,
     openDrivers, addDriver, saveDrivers,
+    blBooked, blNotBooked, showBlCheck, blToCheck, blList, blUrl, blCount: () => blList().length, blCheck,
     // for tests and the coordinator
     importHtml: renderNext,   // the Week tab renders the same import
     _state: TR, load, isDone, reconcileStatus, colomboNow, campNow: colomboNow, check: unlinkedCheck, bankCheck: bankUnlinkedCheck, TRIPS_GO_LIVE, goLive,

@@ -685,6 +685,10 @@
     const fixed = moves.filter(g => !moveUnknown(g)), open = moves.filter(moveUnknown);
     if (fixed.length) items.push({ tab: 'rooms', short: `${plural(fixed.length, 'room move')} to confirm`, text: `${plural(fixed.length, 'room move')} taken on the Saturday – the file has no move date, check the Day Planner`, who: fixed.map(g => `${g.guest_name} (${movedRooms(g).join(' → ')}, ${fd(moveDay(g))})`).join(', ') });
     if (open.length) items.push({ tab: 'rooms', short: `${plural(open.length, 'room move')} without date`, text: `${plural(open.length, 'room move')} without a date – check the Day Planner`, who: open.map(g => `${g.guest_name} (${movedRooms(g).join(' → ')})`).join(', ') });
+    // Transfers not yet checked on their Bookinglayer booking page — the same count as Transport's chip (every upcoming
+    // one, not only this week's); the chip opens Transport on that list.
+    const bl = window.TransportUI && TransportUI.blList ? TransportUI.blList() : [];
+    if (bl.length) items.push({ tab: 'overview', go: 'blcheck', short: `${plural(bl.length, 'transfer')} to check in Bookinglayer`, text: `${plural(bl.length, 'airport transfer')} not checked on the Bookinglayer booking page yet`, who: bl.map(t => `${t.guest_names || 'Guest'} (${t.booking_ref || '?'})`).join(', ') });
     return items;
   }
 
@@ -1001,7 +1005,7 @@
       <div class="kpi"><div class="kpi-label">Arrivals</div><div class="kpi-value num kv-ocean">${M.arrivals}</div><div class="kpi-sub">${M.days[0].arrivals.length ? `${M.days[0].arrivals.length} on ${fd(ws)}` : 'Sat – Fri'}</div></div>
       <div class="kpi"><div class="kpi-label">Departures</div><div class="kpi-value num">${M.departures}</div><div class="kpi-sub">${last.departures.length ? `then ${last.departures.length} on ${fd(last.d)}` : 'Sat – Fri'}</div></div>
       <div class="kpi"><div class="kpi-label">Most in camp</div><div class="kpi-value num">${M.peak}</div><div class="kpi-sub">${M.peak ? h(peakDays.length > 3 ? `${peakDays[0]} – ${peakDays[peakDays.length - 1]}` : peakDays.join(', ')) : 'no one yet'}</div></div></div>`;
-    const checkChips = checks.length ? `<div class="health-strip wk-tocheck"><span class="health-lbl">To check</span>${checks.map(c => `<button class="health-chip" onclick="WeekUI.setTab('${c.tab}')">${h(c.short)}</button>`).join('')}</div>` : '';
+    const checkChips = checks.length ? `<div class="health-strip wk-tocheck"><span class="health-lbl">To check</span>${checks.map(c => `<button class="health-chip"${c.go ? ` data-chip="${c.go}"` : ''} onclick="${c.go === 'blcheck' ? 'TransportUI.showBlCheck()' : `WeekUI.setTab('${c.tab}')`}">${h(c.short)}</button>`).join('')}</div>` : '';
     const max = Math.max(M.peak, 1);
     const strip = `<div class="card wk-card">${cardHead('Guests in camp each night', 'Arrivals and departures under each day')}
       <div class="card-body"><div class="wk-strip">${M.days.map(x => `<button class="wk-sc${x.closing ? ' closing' : ''}${isToday(x.d) ? ' today' : ''}" onclick="WeekUI.toDay('${x.d}')" title="${h(fdm(x.d))}">

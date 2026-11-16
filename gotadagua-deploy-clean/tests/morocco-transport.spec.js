@@ -348,3 +348,29 @@ test('morocco per-vehicle price in the edit sheet and in Pay «Run not in the li
   expect(ins).toMatchObject({ route: 'Dunes', purpose: 'tour', vehicle: 'Big Van', expected_price: 800, status: 'done', notes: 'Added when paying' });
   expect(errors).toEqual([]);
 });
+
+// Checked in Bookinglayer (supabase/camp-trips-bl-check.sql, 16 Nov 2026), Morocco: the same amber line, chip and
+// «Booked ✓»; Week → Overview → To check carries the count and opens Transport on the list. Invented guests.
+test('morocco bl check: unchecked Let Us Tours legs are «to check in Bookinglayer»; Week → To check opens the list; «Booked ✓» clears it', async ({ page }) => {
+  const errors = collectFatalErrors(page);
+  const base = { location_id: H.LOC, route: 'Airport → Surfcamp', purpose: 'guests', tour_name: null, pickup_time: null, place: 'AGA', pax: 2, vehicle: 'Car', driver_id: H.D.lut, expected_price: 250, currency: 'MAD',
+    status: 'planned', source: 'bookinglayer', charge: 'bookinglayer', import_flags: [], edited_fields: [], missing_since: null, needs_resend: false, payment_entry_id: null, created_at: '2026-11-14T08:00:00Z' };
+  const trips = [
+    { ...base, id: 'aaaaaaaa-0000-4000-8000-0000000bc001', kind: 'airport_arrival', trip_date: '2026-11-16', trip_time: '14:05', flight: 'FR1110', guest_names: 'Mona Invented, Nils Invented', guest_phone: '+212600000201', booking_ref: 'MA-9101', import_key: 'bl:MA-9101:arr', bl_checked_at: null },
+    { ...base, id: 'aaaaaaaa-0000-4000-8000-0000000bc002', kind: 'airport_departure', route: 'Surfcamp → Airport', trip_date: '2026-11-18', trip_time: '10:00', pickup_time: '07:00', flight: 'FR1111', guest_names: 'Mona Invented, Nils Invented', guest_phone: '+212600000201', booking_ref: 'MA-9101', import_key: 'bl:MA-9101:dep', bl_checked_at: '2026-11-14T06:00:00Z' },
+  ];
+  const st = await H.openWeek(page, { trips });
+  const chip = page.locator('#weekRoot .wk-tocheck [data-chip="blcheck"]');
+  await expect(chip).toHaveText('1 transfer to check in Bookinglayer');
+  await chip.click();
+  await expect(page.locator('#transportRoot [data-chip="blcheck"]')).toHaveText('1 transfer to check in Bookinglayer');
+  await expect(page.locator('#transportRoot .tr-row[data-trip]')).toHaveCount(1);
+  const line = page.locator('#transportRoot .tr-row[data-trip="aaaaaaaa-0000-4000-8000-0000000bc001"] [data-blcheck]');
+  await expect(line.locator('a.tr-bl-open')).toHaveAttribute('href', 'https://app.bookinglayer.io/bookings?page=1&limit=25&search=MA-9101&query=MA-9101');
+  await line.locator('[data-bl-booked]').click();
+  const up = await H.call(st, 'trip_update');
+  expect(up.body).toMatchObject({ bl_check_note: 'checked by hand' });
+  await expect(page.locator('#transportRoot [data-chip="blcheck"]')).toHaveCount(0);
+  expect(await page.evaluate(() => TransportUI.blCheck.run({ location: 'morocco', isLocal: false }))).toBe(null);
+  expect(errors).toEqual([]);
+});

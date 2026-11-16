@@ -280,3 +280,11 @@
   .tr-ov-year .tr-ov-first { min-width: 120px; }
   .tr-ov-tbl .tr-ov-meta { display: block; }
 }
+/* Checked in Bookinglayer (16 Nov 2026): an imported airport leg nobody has checked on its booking page yet —
+   one amber line like the missing-information line, with «Open booking» and two quiet buttons. */
+.tr-blline { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 6px; font-size: 13px; line-height: 1.4; color: var(--amber); font-weight: 600; }
+.tr-blline .ic { width: 14px; height: 14px; vertical-align: -2px; }
+.tr-bl-ref { font-weight: 500; color: var(--muted); }
+@media (max-width: 700px) { .tr-blline { gap: 4px 8px; } .tr-bl-act { gap: 4px 6px; } .tr-srow .tr-c-what .tr-bl-act .btn { padding-left: 8px; padding-right: 8px; } }
+.tr-bl-act { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.tr-bl-open { color: var(--ocean); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }

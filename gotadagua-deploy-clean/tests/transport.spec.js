@@ -1287,3 +1287,115 @@ test('overview (Sri Lanka): month by type — airport and «Tuk-tuk runs», LKR,
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   expect(errors).toEqual([]);
 });
+
+// ── Checked in Bookinglayer (supabase/camp-trips-bl-check.sql, 16 Nov 2026) ─────────────────────────────────────────
+// The Guests export cannot tell one transfer leg from two: every imported airport leg is «to check in Bookinglayer»
+// (bl_checked_at null) until somebody looked at the booking page. Invented guests. «Now» = Fri 13 Nov 10:00.
+const BL_SHOTS = process.env.BLCHK_SHOTS || path.join(__dirname, '..', 'test-results', 'blchk-shots');
+const BLID = n => `aaaaaaaa-0000-4000-8000-0000000b${String(n).padStart(4, '0')}`;
+function blFixture() {
+  return { trips: [
+    trip({ id: BLID(1), guest_names: 'Ana Testperson', guest_phone: '+491700000101', trip_time: '09:30', flight: 'QR668', booking_ref: '2026-9001', import_key: 'bl:2026-9001:arr', bl_checked_at: null }),
+    trip({ id: BLID(2), guest_names: 'Bruno Fictive', guest_phone: '+491700000102', trip_time: '11:00', flight: 'EK650', booking_ref: '2026-9002', import_key: 'bl:2026-9002:arr', bl_checked_at: '2026-11-12T08:00:00Z', bl_check_note: 'booking page: 1x 14 Nov' }),
+    trip({ id: BLID(3), kind: 'airport_departure', route: 'Surfcamp → Airport', trip_date: '2026-11-15', guest_names: 'Carla Madeup', guest_phone: '+491700000103', trip_time: '18:00', flight: 'QR655', booking_ref: '2026-9003', import_key: 'bl:2026-9003:dep', status: 'sent', bl_checked_at: null }),
+    // never «to check»: added by hand, cancelled, older than yesterday, and a row read before the SQL (no column)
+    trip({ id: BLID(4), guest_names: 'Dario Handadded', trip_time: '12:00', flight: 'UL504', guest_phone: '+491700000104', source: 'manual', charge: 'camp_tab', bl_checked_at: null }),
+    trip({ id: BLID(5), guest_names: 'Elsa Cancelled', trip_time: '13:00', booking_ref: '2026-9005', status: 'cancelled', cancel_reason: 'bookinglayer', bl_checked_at: null }),
+    trip({ id: BLID(6), guest_names: 'Fritz Earlier', trip_date: '2026-11-10', trip_time: '08:00', booking_ref: '2026-9006', bl_checked_at: null }),
+    trip({ id: BLID(7), guest_names: 'Gina Nocolumn', trip_time: '15:00', flight: 'QR668', guest_phone: '+491700000107', booking_ref: '2026-9007' }),
+    // yesterday, done by time: still «to check» (the morning check reads from yesterday on)
+    trip({ id: BLID(8), guest_names: 'Hugo Yesterday', trip_date: '2026-11-12', trip_time: '07:00', flight: 'QR664', guest_phone: '+491700000108', booking_ref: '2026-9008', bl_checked_at: null }),
+    // kept by camp_trips_bl_verify: in the past and not on the booking page
+    trip({ id: BLID(9), guest_names: 'Ines Pastflag', trip_date: '2026-11-11', trip_time: '10:00', flight: 'QR664', guest_phone: '+491700000109', booking_ref: '2026-9009', bl_checked_at: '2026-11-13T05:00:00Z',
+      import_flags: ['Not booked in Bookinglayer: did the driver go? If not, cancel this trip'] }),
+  ] };
+}
+
+test('bl check: the amber line «Check in Bookinglayer» only on unchecked imported legs from yesterday on; chip = filtered list = day counts = hub check = Week → To check', async ({ page }) => {
+  const errors = collectFatalErrors(page);
+  await openTab(page, blFixture());
+  const row = n => page.locator(`#transportRoot .tr-row[data-trip="${BLID(n)}"]`);
+  const chip = page.locator('#transportRoot [data-chip="blcheck"]');
+  await expect(chip).toHaveText('3 transfers to check in Bookinglayer');
+  // this week (7–13 Nov): yesterday's arrival keeps the line; the past trip the booking page does not have says so
+  await expect(row(8).locator('[data-blcheck]')).toContainText('Check in Bookinglayer');
+  await expect(row(6).locator('[data-blcheck]')).toHaveCount(0);
+  await expect(row(9).locator('[data-blcheck]')).toHaveCount(0);
+  await expect(row(9).locator('[data-flag]')).toHaveText(/Not booked in Bookinglayer — did the driver go\? If not, cancel this trip/);
+  await page.click('button[title="Next week"]');
+  await expect(row(1).locator('[data-blcheck] .tr-bl-t')).toHaveText(/Check in Bookinglayer/);
+  await expect(row(1).locator('[data-blcheck] .tr-bl-ref')).toHaveText('2026-9001');
+  const href = await row(1).locator('[data-blcheck] a.tr-bl-open').getAttribute('href');
+  expect(href).toBe('https://app.bookinglayer.io/bookings?page=1&limit=25&search=2026-9001&query=2026-9001');
+  expect(await row(1).locator('[data-blcheck] a.tr-bl-open').getAttribute('target')).toBe('_blank');
+  await expect(row(1).locator('[data-blcheck] [data-bl-booked]')).toHaveText('Booked ✓');
+  await expect(row(1).locator('[data-blcheck] [data-bl-not]')).toHaveText('Not booked');
+  await expect(row(3).locator('[data-blcheck]')).toHaveCount(1);
+  for (const n of [2, 4, 5, 7]) await expect(row(n).locator('[data-blcheck]')).toHaveCount(0);
+  // the row keeps its layout: the line sits in the «What» cell, the buttons stay where they were
+  await expect(row(1).locator('.tr-c-what [data-blcheck]')).toHaveCount(1);
+  await expect(row(1).locator('.tr-btns button[title="Send on WhatsApp"]')).toHaveCount(1);
+  // the day cards count them (shown only — «Send the whole day» still sends them)
+  await expect(page.locator('#trDay-2026-11-14 [data-day-bl]')).toHaveText('1 to check in Bookinglayer');
+  await expect(page.locator('#trDay-2026-11-15 [data-day-bl]')).toHaveText('1 to check in Bookinglayer');
+  await expect(page.locator('#trDay-2026-11-14 button:has-text("Send the whole day")')).toHaveCount(1);
+  expect(await page.evaluate(() => TransportUI.dayMessage('2026-11-14'))).toContain('Ana Testperson');
+  // the chip filters to exactly those
+  await chip.click();
+  await expect(page.locator('#transportRoot .tr-row[data-trip]')).toHaveCount(3);
+  expect(await page.locator('#transportRoot .tr-row[data-trip]').evaluateAll(els => els.map(e => e.dataset.trip))).toEqual([BLID(8), BLID(1), BLID(3)]);
+  // the hub's shared checks and Week → To check say the same number
+  expect(await page.evaluate(() => TransportUI.blCheck.run({ location: 'sri-lanka', isLocal: false }).text)).toBe('3 transfers to check in Bookinglayer');
+  expect(await page.evaluate(() => TransportUI.blCheck.run({ location: 'sri-lanka', isLocal: true }))).toBe(null);
+  expect(await page.evaluate(() => (WeekUI.toCheck().find(c => c.go === 'blcheck') || {}).short)).toBe('3 transfers to check in Bookinglayer');
+  expect(errors).toEqual([]);
+});
+
+test('bl check: «Booked ✓» stamps the check (who and when); «Not booked» cancels with its own reason, asks the driver to be told when it was sent', async ({ page }) => {
+  const st = await openTab(page, blFixture());
+  await page.click('button[title="Next week"]');
+  const row = n => page.locator(`#transportRoot .tr-row[data-trip="${BLID(n)}"]`);
+  await row(1).locator('[data-bl-booked]').click();
+  const up = await call(st, 'trip_update');
+  expect(up.id).toBe(BLID(1));
+  expect(Object.keys(up.body).sort()).toEqual(['bl_check_note', 'bl_checked_at', 'bl_checked_by']);
+  expect(up.body.bl_check_note).toBe('checked by hand');
+  expect(up.body.bl_checked_by).toBe('00000000-0000-4000-8000-000000000001');
+  expect(Date.parse(up.body.bl_checked_at)).toBeGreaterThan(0);
+  await expect(row(1).locator('[data-blcheck]')).toHaveCount(0);
+  await expect(page.locator('#transportRoot [data-chip="blcheck"]')).toHaveText('2 transfers to check in Bookinglayer');
+  await row(3).locator('[data-bl-not]').click();
+  const c = await call(st, 'trip_update', 2);
+  expect(c.id).toBe(BLID(3));
+  expect(c.body).toMatchObject({ status: 'cancelled', cancel_reason: 'Not booked in Bookinglayer (checked by hand)', needs_resend: true, bl_check_note: 'not booked (checked by hand)' });
+  await expect(row(3).locator('[data-pay="off"]')).toHaveText('Cancelled');
+  await expect(row(3).locator('[data-blcheck]')).toHaveCount(0);
+  await expect(page.locator('#transportRoot [data-chip="blcheck"]')).toHaveText('1 transfer to check in Bookinglayer');   // yesterday's
+});
+
+test('bl check: Nadith (?view=local) sees the amber state read-only — no link, no buttons, no chip', async ({ page }) => {
+  await open(page, { query: '&view=local', ...blFixture() });
+  await page.evaluate(() => showPage('transport'));
+  await page.waitForFunction(() => window.TransportUI && TransportUI._state.loaded, null, { timeout: 10000 });
+  await page.click('button[title="Next week"]');
+  const line = page.locator(`#transportRoot .tr-row-ro[data-trip="${BLID(1)}"] [data-blcheck]`);
+  await expect(line).toContainText('Check in Bookinglayer');
+  await expect(line.locator('a, button')).toHaveCount(0);
+  await expect(page.locator('#transportRoot [data-chip="blcheck"]')).toHaveCount(0);
+});
+
+test('bl check: screenshots — a Transport day with checked and unchecked transfers (1280 and 390, no sideways scroll)', async ({ page }) => {
+  const errors = collectFatalErrors(page);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await openTab(page, blFixture());
+  await page.click('button[title="Next week"]');
+  fsx.mkdirSync(BL_SHOTS, { recursive: true });
+  await page.locator('#trDay-2026-11-14').screenshot({ path: path.join(BL_SHOTS, 'transport-day-1280.png') });
+  await page.screenshot({ path: path.join(BL_SHOTS, 'transport-week-1280.png'), fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator(`#transportRoot .tr-row[data-trip="${BLID(1)}"] [data-bl-booked]`)).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  await page.locator('#trDay-2026-11-14').screenshot({ path: path.join(BL_SHOTS, 'transport-day-390.png') });
+  await page.screenshot({ path: path.join(BL_SHOTS, 'transport-week-390.png'), fullPage: true });
+  expect(errors).toEqual([]);
+});
