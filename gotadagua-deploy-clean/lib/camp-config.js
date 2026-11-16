@@ -143,17 +143,18 @@
     runs: { kind: 'other', label: 'Van run', plural: 'Van runs', vehicle: 'Van' },
     payMethod: 'Bank Transfer',
     airportSupplier: 'Let Us Tours',
-    // The surf vans (Fathoune) and tours. CONFIRM: 110 MAD is the unit of every van line in the
-    // ledger (Apr–Oct 2026, 50 of 51 surf-van lines — Surf, Dunes, Paradise Valley, Souk — are a multiple of 110), the lines carry qty 1, so the data
-    // cannot tell «per person» from «per van leg». The table says per person; change `per` to 'run'.
+    // The surf vans (Fathoune) and tours. Miguel, 16 Nov 2026: Fathoune charges PER VEHICLE (Car / Minivan /
+    // Big Van), never per person; the price is the /prices row «<catalog> — <vehicle>» (picker surf / tours).
+    // This table only maps a route to its purpose, its tour(s) and its label; `catalog` names the /prices
+    // destination. No catalog row → price 0 and «price to confirm» (`confirm`).
     vanRates: [
-      { key: 'surf', label: 'Surf spot', route: 'Surf', purpose: 'surf', price: 110, per: 'person' },
-      { key: 'dunes', label: 'Dunes', route: 'Dunes', purpose: 'tour', tour: 'Dunes — Sandboarding', price: 110, per: 'person' },
-      { key: 'paradise', label: 'Paradise Valley', route: 'Paradise Valley', purpose: 'tour', tour: 'Paradise Valley', price: 110, per: 'person' },
-      { key: 'paradise-souk', label: 'Paradise + Souk', route: 'Paradise + Souk', purpose: 'tour', tour: 'Paradise Valley', tours: ['Paradise Valley', 'Souk Tour'], price: 110, per: 'person' },   // one run, 110/person, its cost split over both tours by paying guests (16 Nov 2026)
-      { key: 'souk', label: 'Souk', route: 'Souk', purpose: 'tour', tour: 'Souk Tour', price: 110, per: 'person' },
-      { key: 'taghazout-party', label: 'Taghazout + Party', route: 'Taghazout + Party', purpose: 'other', price: 110, per: 'person' },
-      { key: 'imsouane', label: 'Imsouane', route: 'Imsouane', purpose: 'surf', price: 110, per: 'person' },
+      { key: 'surf', label: 'Surf spot', route: 'Surf', purpose: 'surf', catalog: 'Surf' },
+      { key: 'dunes', label: 'Dunes', route: 'Dunes', purpose: 'tour', tour: 'Dunes — Sandboarding', catalog: 'Dunes' },
+      { key: 'paradise', label: 'Paradise Valley', route: 'Paradise Valley', purpose: 'tour', tour: 'Paradise Valley', catalog: 'Paradise Valley' },
+      { key: 'paradise-souk', label: 'Paradise + Souk', route: 'Paradise + Souk', purpose: 'tour', tour: 'Paradise Valley', tours: ['Paradise Valley', 'Souk Tour'], catalog: 'Paradise Valley', confirm: true },   // not in /prices: Paradise Valley's vehicle price, to confirm; cost split over both tours by paying guests
+      { key: 'souk', label: 'Souk', route: 'Souk', purpose: 'tour', tour: 'Souk Tour', catalog: 'Souk' },
+      { key: 'taghazout-party', label: 'Taghazout + Party', route: 'Taghazout + Party', purpose: 'other', confirm: true },   // not in /prices: 0, to confirm
+      { key: 'imsouane', label: 'Imsouane', route: 'Imsouane', purpose: 'surf', catalog: 'Imsouane' },
     ],
     vanSupplier: 'Fathoune',
     // The cleaning team reads Moroccan Darija in Arabic script (Miguel, 14 Nov: «limpeza só, a cozinha é em
