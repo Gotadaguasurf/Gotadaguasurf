@@ -860,7 +860,7 @@
     const ov = TR.ov; if (!ov.anchor) ov.anchor = ovAnchorFrom(ov.mode, cToday());
     return TO().period(ov.mode, ov.anchor);
   }
-  function ovMode(m) { const from = ovPeriod().from; TR.ov.mode = ['week', 'month', 'year'].includes(m) ? m : 'month'; TR.ov.anchor = ovAnchorFrom(TR.ov.mode, from); TR.view = 'overview'; render(); }
+  function ovMode(m) { const P0 = ovPeriod(); const t = cToday(); const from = t >= P0.from && t <= P0.to ? t : P0.from; TR.ov.mode = ['week', 'month', 'year'].includes(m) ? m : 'month'; TR.ov.anchor = ovAnchorFrom(TR.ov.mode, from); TR.view = 'overview'; render(); }
   function ovShift(n) { const P = ovPeriod(); TR.ov.anchor = TO().shift(P.mode, P.anchor, n); render(); }
   function ovMonth(ym) { TR.ov.mode = 'month'; TR.ov.anchor = ym; TR.view = 'overview'; render(); }
   function ovMeasure(k) { TR.ov.measure = k === 'people' ? 'people' : 'cost'; render(); }
@@ -886,16 +886,18 @@
     return filters + (Y ? ovYearHtml(Y) : ovSummaryHtml(Sm, P));
   }
   const groupHead = g => TO().GROUP_LABEL(CC, g);
+  // Phone: Type · Cost · Owed, with «9 trips · 12 people» under the type (the same two lines as a trip row).
+  const ovMeta = r => `<span class="cell-sub tr-ov-meta">${r.trips} trip${r.trips === 1 ? '' : 's'} · ${r.people} ${r.people === 1 ? 'person' : 'people'}</span>`;
   function ovSummaryHtml(Sm, P) {
     let last = '';
     const body = Sm.rows.map(r => { const gh = groupHead(r.group); const head = gh !== last ? `<tr class="tr-ov-grp"><td colspan="7">${h(gh)}</td></tr>` : ''; last = gh;
-      return head + `<tr data-ov-row="${h(r.key)}"><td>${h(r.label)}${r.noShow ? `<span class="cell-sub">incl. ${r.noShow} no-show</span>` : ''}</td><td class="r">${r.trips}</td><td class="r">${r.people}</td>
+      return head + `<tr data-ov-row="${h(r.key)}"><td>${h(r.label)}${r.noShow ? `<span class="cell-sub">incl. ${r.noShow} no-show</span>` : ''}${ovMeta(r)}</td><td class="r tr-ov-xs">${r.trips}</td><td class="r tr-ov-xs">${r.people}</td>
         <td class="r">${money(r.cost)}</td><td class="r tr-ov-xs">${nOr(r.paid, money)}</td><td class="r${r.owed ? ' tr-t-owed' : ''}">${nOr(r.owed, money)}</td><td class="r tr-ov-xs">${r.people ? money(r.perPerson) : '–'}</td></tr>`; }).join('');
     const T = Sm.total;
     const trips = Sm.rows.length ? `<div class="card tr-ov-card"><div class="tbl-wrap"><table class="tbl tr-ov-tbl" data-ov-table="summary">
-      <thead><tr><th>Type</th><th class="r">Trips</th><th class="r">People</th><th class="r">Cost</th><th class="r tr-ov-xs">Paid</th><th class="r">Owed</th><th class="r tr-ov-xs">Per person</th></tr></thead>
+      <thead><tr><th>Type</th><th class="r tr-ov-xs">Trips</th><th class="r tr-ov-xs">People</th><th class="r">Cost</th><th class="r tr-ov-xs">Paid</th><th class="r">Owed</th><th class="r tr-ov-xs">Per person</th></tr></thead>
       <tbody>${body}</tbody>
-      <tfoot><tr data-ov-total><td>Total${T.noShow ? `<span class="cell-sub">incl. ${T.noShow} no-show</span>` : ''}</td><td class="r">${T.trips}</td><td class="r">${T.people}</td><td class="r">${money(T.cost)}</td><td class="r tr-ov-xs">${money(T.paid)}</td><td class="r">${money(T.owed)}</td><td class="r tr-ov-xs">${T.people ? money(T.perPerson) : '–'}</td></tr></tfoot></table></div></div>` : '';
+      <tfoot><tr data-ov-total><td>Total${T.noShow ? `<span class="cell-sub">incl. ${T.noShow} no-show</span>` : ''}${ovMeta(T)}</td><td class="r tr-ov-xs">${T.trips}</td><td class="r tr-ov-xs">${T.people}</td><td class="r">${money(T.cost)}</td><td class="r tr-ov-xs">${money(T.paid)}</td><td class="r">${money(T.owed)}</td><td class="r tr-ov-xs">${T.people ? money(T.perPerson) : '–'}</td></tr></tfoot></table></div></div>` : '';
     const L = Sm.ledger;
     const ledger = L.rows.length ? `<div class="card tr-ov-card" data-ov-ledger><div class="card-hdr"><div><div class="card-title">From payments — no trip list</div>
         <div class="card-hint">Before ${h(fmtShort(goLive()))} the app has no trip list: the ledger's Transport expenses, by supplier</div></div></div>

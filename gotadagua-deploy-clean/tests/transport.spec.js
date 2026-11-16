@@ -1271,3 +1271,19 @@ test('trips (Sri Lanka): missing information — red row «No flight · no time 
   await expect(row(1).locator('.tr-dir.in')).toHaveText('Arrival');
   await expect(row(2).locator('.tr-dir.out')).toHaveText('Departure');
 });
+
+// Transport → Overview (16 Nov 2026), Sri Lanka: the same view with the tuk-tuks; fits a phone without sideways scroll.
+test('overview (Sri Lanka): month by type — airport and «Tuk-tuk runs», LKR, no errors; at 390 the table fits (trips · people under the type)', async ({ page }) => {
+  const errors = collectFatalErrors(page);
+  await openTab(page, weekFixture());
+  await page.click('#transportRoot [data-view="overview"]');
+  await expect(page.locator('.tr-ov-period')).toHaveText('November 2026');
+  await expect(page.locator('#transportRoot .tr-ov-grp', { hasText: 'Tuk-tuk runs' })).toHaveCount(1);
+  await expect(page.locator('#transportRoot .tr-ov-grp', { hasText: 'Airport' })).toHaveCount(1);
+  await expect(page.locator('[data-ov-table="summary"] tfoot')).toContainText('LKR');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator('[data-ov-table="summary"] tfoot .tr-ov-meta')).toBeVisible();
+  expect(await page.locator('#transportRoot .tr-ov-card .tbl-wrap').first().evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  expect(errors).toEqual([]);
+});

@@ -266,6 +266,7 @@
 .tr-ov-tbl tbody tr.tr-ov-grp:hover td { background: var(--surface); }
 .tr-ov-nil { color: var(--muted-2); }
 .tr-ov-tbl td.tr-t-owed { color: var(--amber); font-weight: 600; }
+.tr-ov-tbl .tr-ov-meta { display: none; }
 /* Year: twelve months scroll sideways inside the card; the type column stays put. */
 .tr-ov-year .tr-ov-first { position: sticky; left: 0; z-index: 2; background: var(--surface); min-width: 150px; white-space: nowrap; box-shadow: inset -1px 0 0 var(--border); }
 .tr-ov-year thead th.tr-ov-first, .tr-ov-year tfoot td.tr-ov-first { background: var(--surface-2); }
@@ -275,10 +276,7 @@
 .tr-ov-note { padding: var(--sp-2) var(--card-pad) var(--sp-3); }
 @media (max-width: 700px) {
   .tr-ov-tbl td, .tr-ov-tbl th { padding-left: 10px; padding-right: 10px; }
-  .tr-ov-tbl .tr-ov-xs { display: none; }      /* phone: Type · Trips · People · Cost · Owed (Paid and per person on a laptop and in the CSV) */
+  .tr-ov-tbl .tr-ov-xs { display: none; }      /* phone: Type (trips · people under it) · Cost · Owed; the rest on a laptop and in the CSV */
   .tr-ov-year .tr-ov-first { min-width: 120px; }
-  /* Week / Month on a phone: the type column stays put, the amounts scroll inside the card if they must. */
-  .tr-ov-tbl[data-ov-table="summary"] { font-size: 12.5px; }
-  .tr-ov-tbl[data-ov-table="summary"] td:first-child, .tr-ov-tbl[data-ov-table="summary"] th:first-child { position: sticky; left: 0; z-index: 2; background: var(--surface); min-width: 112px; box-shadow: inset -1px 0 0 var(--border); }
-  .tr-ov-tbl[data-ov-table="summary"] thead th:first-child, .tr-ov-tbl[data-ov-table="summary"] tfoot td:first-child { background: var(--surface-2); }
+  .tr-ov-tbl .tr-ov-meta { display: block; }
 }

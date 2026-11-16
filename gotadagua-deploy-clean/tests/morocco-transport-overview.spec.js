@@ -44,7 +44,8 @@ test('overview (Morocco): the Overview pill → this month by type — airports 
   const labels = await page.locator('[data-ov-table="summary"] tbody tr[data-ov-row] td:first-child').allInnerTexts();
   expect(labels.map(l => l.split('\n')[0])).toEqual(expect.arrayContaining(['Arrivals · Agadir', 'Arrivals · Marrakech', 'Surf Taghazout', 'Dunes']));
   expect(labels.map(l => l.split('\n')[0])).not.toContain('Souk');                       // its only run was cancelled
-  expect(labels.indexOf('Surf Taghazout')).toBeGreaterThan(labels.findIndex(l => l.startsWith('Departures')));   // airport, then runs, then tours
+  const names = labels.map(l => l.split('\n')[0]);
+  expect(names.indexOf('Surf Taghazout')).toBeGreaterThan(names.findIndex(l => l.startsWith('Departures')));   // airport, then runs, then tours
   await expect(page.locator('[data-ov-table="summary"] tbody')).toContainText('incl. 1 no-show');
   await expect(page.locator('#transportRoot .tr-ov-grp').first()).toHaveText('Airport');
   // The page shows what the pure function computes from the same trips.
@@ -118,6 +119,7 @@ test('overview (Morocco): screenshots Week, Month, Year at 1280 and 390 — no p
       await page.evaluate(([m, a]) => { TransportUI.ovMode(m); TransportUI._state.ov.anchor = a; TransportUI.render(); }, [mode, anchor]);
       await page.waitForTimeout(120);
       expect(await H.noOverflow(page), `${mode} at ${w}`).toBe(true);
+      if (mode !== 'year') expect(await page.locator('.tr-ov-card .tbl-wrap').first().evaluate(el => el.scrollWidth <= el.clientWidth), `${mode} table at ${w}`).toBe(true);   // only the year scrolls inside its card
       await page.locator('.tr-tripview').screenshot({ path: path.join(SHOTS, `overview-${mode}-${w}.png`) });
     }
   }

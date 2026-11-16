@@ -289,7 +289,7 @@ test('guests parser (Morocco): «NON» / «no» / «nein» in a flight or time f
   const sophie = rows.find(r => r[col('Booking')] === 'MA-1002');
   const variant = (field, value, ref) => { const r = sophie.slice(); r[col(field)] = value; r[col('Booking')] = ref; r[col('Guest')] = `Paula Exemplo ${ref.slice(3)}`; r[col('Transfers')] = 'Airport Transfer Morocco (Agadir)'; return r; };
   const extra = [variant('Arrival flight', 'NON', 'MA-9001'), variant('Arrival flight', 'none', 'MA-9002'), variant('Departure flight', 'Nein', 'MA-9003'),
-    variant('Arrival time', 'non.', 'MA-9004'), variant('Arrival flight', 'N/A', 'MA-9005'), variant('Arrival flight', 'Não', 'MA-9006')];
+    variant('Arrival time', 'non.', 'MA-9004'), variant('Arrival flight', 'N/A', 'MA-9005'), variant('Arrival flight', 'Não', 'MA-9006'), variant('Arrival flight', 'by bus', 'MA-9007')];
   const csv = [...rows, ...extra].map(r => r.map(c => /[",\n]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c).join(',')).join('\n');
   const out = G.parse(csv, 'ma-guests-2026-11-14.csv', null, CC.MA);
   const keys = new Set(out.trips.map(t => t.key));
@@ -300,10 +300,11 @@ test('guests parser (Morocco): «NON» / «no» / «nein» in a flight or time f
   expect(legs('MA-9004')).toEqual(['dep']);                       // «non.» in the arrival time
   expect(legs('MA-9005')).toEqual(['arr', 'dep']);                // «N/A» is not «no»: a trip, flight to ask
   expect(legs('MA-9006')).toEqual(['dep']);
+  expect(legs('MA-9007')).toEqual(['dep']);                       // the older words too (bus, taxi…): with a transfer booked, no arrival trip any more (flagged)
   const dirty = Object.fromEntries(out.dirty_no_transfer.map(d => [d[2], d[3].join(' | ')]));
   expect(dirty['MA-9001']).toContain('flight field says «NON» — coming on their own? check the transfer');
   expect(dirty['MA-9003']).toContain('departure flight field says «Nein» — coming on their own? check the transfer');
-  expect(out.counts['arrival field says on their own: no arrival trip']).toBe(4);
+  expect(out.counts['arrival field says on their own: no arrival trip']).toBe(5);
   expect(keys.has('bl:MA-1002:arr') && keys.has('bl:MA-1002:dep')).toBe(true);   // the fixture's own rows unchanged
   // Sri Lanka: no own-way words — «no» in the flight is «empty», the round trip as before.
   const sl = G.parse([HEAD, row('Ana Silva', '2026-9301', '', 'no')].join('\n'), 'x-2026-11-13.csv');
