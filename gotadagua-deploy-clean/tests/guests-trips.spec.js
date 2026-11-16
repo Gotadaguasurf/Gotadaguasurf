@@ -282,7 +282,7 @@ test('a package that includes the transfer gives both legs without «Has transfe
 // Morocco (Floriane, 16 Nov 2026): one transfer product and «NON» in the arrival flight (French «no»: the guest comes on
 // their own, the transfer is the departure only) made BOTH trips. A flight or time field that just says no → no trip
 // that way, said on the import («To check»). «N/A» stays «empty» (a trip, time to ask). Sri Lanka has no such words.
-test('guests parser (Morocco): «NON» / «no» / «nein» in a flight or time field = on their own — no trip that way, the other leg kept, flagged; «N/A» still a trip', () => {
+test('guests parser (Morocco): «NON» / «no» / «nein» in a flight or time field = on their own — no trip that way, the other leg kept, flagged; «by bus» and «N/A» still a trip', () => {
   const CC = require('../lib/camp-config.js');
   const file = fs.readFileSync(path.join(__dirname, 'fixtures', 'ma-guests-2026-11-14.csv'), 'utf8');
   const rows = G.parseCsv(file).filter(r => r.length > 1); const hd = rows[0]; const col = n => hd.indexOf(n);
@@ -300,11 +300,12 @@ test('guests parser (Morocco): «NON» / «no» / «nein» in a flight or time f
   expect(legs('MA-9004')).toEqual(['dep']);                       // «non.» in the arrival time
   expect(legs('MA-9005')).toEqual(['arr', 'dep']);                // «N/A» is not «no»: a trip, flight to ask
   expect(legs('MA-9006')).toEqual(['dep']);
-  expect(legs('MA-9007')).toEqual(['dep']);                       // the older words too (bus, taxi…): with a transfer booked, no arrival trip any more (flagged)
+  expect(legs('MA-9007')).toEqual(['arr', 'dep']);                // «by bus» (the older words): flagged only, the trip kept — the export can't tell 1 leg from 2
+  expect(out.trips.find(t => t.key === 'bl:MA-9007:arr').flags.join(' | ')).toContain('flight field says «by bus» — coming on their own? check the transfer');
   const dirty = Object.fromEntries(out.dirty_no_transfer.map(d => [d[2], d[3].join(' | ')]));
   expect(dirty['MA-9001']).toContain('flight field says «NON» — coming on their own? check the transfer');
   expect(dirty['MA-9003']).toContain('departure flight field says «Nein» — coming on their own? check the transfer');
-  expect(out.counts['arrival field says on their own: no arrival trip']).toBe(5);
+  expect(out.counts['arrival field says on their own: no arrival trip']).toBe(4);
   expect(keys.has('bl:MA-1002:arr') && keys.has('bl:MA-1002:dep')).toBe(true);   // the fixture's own rows unchanged
   // Sri Lanka: no own-way words — «no» in the flight is «empty», the round trip as before.
   const sl = G.parse([HEAD, row('Ana Silva', '2026-9301', '', 'no')].join('\n'), 'x-2026-11-13.csv');

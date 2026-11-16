@@ -130,20 +130,22 @@
   // The time column can say it too («NON» in Arrival time).
   function ownWayTime(raw, flags, label, cfg) {
     const v = pyStrip(raw); cfg = conf(cfg);
-    if (!v || !cfg.ownWayWords || !cfg.ownWayWords.test(v)) return false;
+    if (!v || !cfg.noWords || !cfg.noWords.test(v)) return false;
     flags.push(`${label} field says «${v}» — coming on their own? check the transfer`); return true;
   }
   function classifyField(raw, flags, label, cfg) {
     cfg = conf(cfg);
     let v = pyStrip(raw);
-    // «bus», «taxi», «NON»: the guest says how they come — no flight, no transfer that way (Morocco lists, 14 + 16 Nov).
-    // Checked before the empty words: for a camp with ownWayWords «no» / «none» mean «on their own», not «not known yet».
-    if (v && cfg.ownWayWords && cfg.ownWayWords.test(v)) { flags.push(`${label} field says «${v}» — coming on their own? check the transfer`); return ['', null, '', '', true]; }
+    // «NON», «no»: no transfer that way — no trip in that direction (Morocco, 16 Nov). Checked before the empty words:
+    // for a camp with noWords «no» / «none» mean «on their own», not «not known yet».
+    if (v && cfg.noWords && cfg.noWords.test(v)) { flags.push(`${label} field says «${v}» — coming on their own? check the transfer`); return ['', null, '', '', true]; }
     if (JUNK.has(v.toLowerCase())) return ['', null, '', ''];
     const t = hhmm(v);
     if (t) return ['', t, '', ''];
     const place = cfg.places[v.toLowerCase()] || '';
     if (place) return ['', null, place, ''];
+    // «bus», «taxi»: the guest says how they come — not a flight; flagged, the trip is kept (Morocco lists, 14 Nov).
+    if (cfg.ownWayWords && cfg.ownWayWords.test(v)) { flags.push(`${label} field says «${v}» — coming on their own? check the transfer`); return ['', null, '', '']; }
     let fd = '';
     const m = FLIGHT_DATE_RE.exec(v);
     if (m) { fd = [parseInt(m[1], 10), parseInt(m[2], 10)]; v = v.slice(0, m.index); }

@@ -124,9 +124,12 @@
       ['Arrival time'], ['Arrival flight'], ['Departure time'], ['Departure flight'], ['Packages'], ['Activities'], ['Diet'], ['Phone']],
     productRe: /^airport transfer morocco\s*\(([^)]+)\)/i,       // «Airport Transfer Morocco (Agadir)» / «(Marrakesh)» in the real list
     knownPackages: ['Weekly package Morocco', 'Weekly package Morocco (starting any day of the week)', 'Flexible Package Morocco'],                                   // nameless / same-name +1s are separate people on the trips too                                 // no departure airport column: RAK in → RAK out (flagged)                                    // EJU5371, EZY2621 are easyJet flights
-    // A flight / time field that says how the guest comes, or just «no» (Floriane, 16 Nov 2026: «NON» = no transfer that way,
-    // the guest comes on their own): no trip in that direction, flagged on the import. «N/A» stays «empty» (ambiguous).
-    ownWayWords: /^(?:(by\s+)?(bus|coach|ctm|supratours|taxi|car|rental car|rent a car|own car|driving|by car)|non|no|none|nope|nein|nee|nao|não|nada)[.!]?$/i,
+    // A flight field that says how the guest comes («bus», «taxi»): flagged only, the trip is kept (the Guests export cannot
+    // tell one transfer leg from two, so no heuristic drops a paid leg — 16 Nov 2026).
+    ownWayWords: /^(by\s+)?(bus|coach|ctm|supratours|taxi|car|rental car|rent a car|own car|driving|by car)$/i,
+    // A flight / time field that just says no (Floriane, 16 Nov 2026: «NON» = the guest comes on their own that way):
+    // no trip in that direction, flagged on the import. «N/A» stays «empty» (ambiguous).
+    noWords: /^(non|no|none|nope|nein|nee|nao|não|nada)[.!]?$/i,
     phoneZeroCodes: ['212', '351', '34'],                 // +212 06… → +212 6…
     transferRe: /airport\s+(transfer|shuttle|pick.?up|drop.?off)/gi,
     vehicles: ['Car', 'Minivan', 'Big Van'], vehicleCaps: [4, 8],   // = the /prices airport vehicles (4, 8, 15 seats)
