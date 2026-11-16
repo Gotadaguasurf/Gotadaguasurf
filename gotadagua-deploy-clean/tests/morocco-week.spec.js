@@ -259,7 +259,8 @@ test('morocco «Send the whole week» (Transport, was Week → Send to Let Us To
 // 16 Nov 2026 (Floriane's feedback, on purpose): the Morocco Cleaning DAY messages (two parts: rooms left, rooms to
 // prepare) and the driver blocks (her labelled format) were re-captured with GOLDEN_WRITE=1 — only the keys
 // cleaning|<day>, cleaning-en|<day> and transfers|… changed; the week message, Kitchen, Surf, Guests, To check,
-// the people check and the day model kept their hashes.
+// the people check and the day model kept their hashes. 16 Nov 2026 (QA): a departure without a pick-up time says «TBC (flight 09:30)» —
+// only the transfers|… keys with such a departure were re-captured.
 const WG = require('./week-golden');
 const MA_TRANSFERS_TEXT = (day, ws) => (TransportUI.weekMessage ? (day === 'week' ? TransportUI.weekMessage(ws) : TransportUI.dayMessage(day))
   : WeekUI.dress(WeekUI.bodyOf('transfers', day), TransportUI.colomboNow().slice(0, 10)));
