@@ -10,7 +10,8 @@
       (supabase/camp-cash-count.sql).
    2. Full users (Francisco, Miguel) see the Counts history under the Cash tile
       and Settle a count through the RPC camp_cash_settle: within the
-      tolerance it closes with no row; otherwise one «Cash count» transfer.
+      tolerance it closes with no row; otherwise it stays open (no adjustment
+      lines since 16 Nov 2026: only expenses/revenues/withdrawals move the cash).
    3. The checks strip under the ledger tiles (#expChecks) and on the Overview
       (#ovChecks). Any script can register a check:
         window.CAMP_CHECKS.push({id, run(ctx) → null | {text, level, onClick?}})
@@ -59,6 +60,11 @@ window.CAMP_CHECKS = window.CAMP_CHECKS || [];
   const slug = () => (typeof __HUB_LOCATION_SLUG !== 'undefined' ? __HUB_LOCATION_SLUG : '');
   const isLocal = () => (typeof LOCAL_MANAGER_MODE !== 'undefined' && LOCAL_MANAGER_MODE === true);
   const enabled = () => CASH_COUNT_LOCATIONS.includes(slug());
+  // Miguel, 16 Nov 2026: «tira isto, agora tem de sempre bater certo com expenses etc.» — no «Count cash»
+  // button, no last count / history under the Cash tile, no «Count the cash» chip. The cash moves only with
+  // expenses, revenues, withdrawals and transfers. The other checks (duplicates, cash with nothing typed…) stay.
+  // window.CAMP_CASH_COUNTS = true brings the counts back (tests keep them working).
+  const countsOn = () => window.CAMP_CASH_COUNTS === true;
   const ledger = () => (typeof S !== 'undefined' && S && Array.isArray(S.ledger) ? S.ledger : []);
   const cur = () => (typeof LOCAL_CURRENCY !== 'undefined' && LOCAL_CURRENCY) || 'LKR';
   const esc = (s) => (typeof escapeHtml === 'function' ? escapeHtml(s) : String(s == null ? '' : s));
@@ -219,7 +225,7 @@ window.CAMP_CHECKS = window.CAMP_CHECKS || [];
   // ── The count (4 screens) ─────────────────────────────────────────────────
   let draft = null;
   function openCount() {
-    if (!enabled() || !state.available) return;
+    if (!enabled() || !state.available || !countsOn()) return;
     injectStyles();
     const today = colombo().date;
     draft = { step: 1, date: today, bar: '', pocket: '', took: null, declared: '', reason: '', note: '', notes: {}, showNotes: false, saving: false, through: statementThrough(today) };
@@ -371,7 +377,7 @@ window.CAMP_CHECKS = window.CAMP_CHECKS || [];
   }
   function openSettle(id) {
     const c = state.counts.find((x) => String(x.id) === String(id));
-    if (!c || !canSettle(c)) return;
+    if (!c || !canSettle(c) || !countsOn()) return;
     injectStyles();
     settling = { id: c.id, busy: false, note: '' };
     ensureOverlay('cashSettleOv').classList.add('open');
@@ -391,9 +397,11 @@ window.CAMP_CHECKS = window.CAMP_CHECKS || [];
     q('.mhdr-sub').textContent = `Counted ${dMon(colomboDateOf(c.created_at) || c.count_date)}${at ? ` ${at}` : ''} · ${covered ? 'statement covers it' : 'open'}`;
     const within = Math.abs(v.diff) <= TOLERANCE;
     const reason = REASONS.find((r) => r.v === c.reason);
+    // Miguel, 16 Nov 2026: nobody changes the cash by hand — only expenses, revenues, withdrawals and transfers
+    // move it. A count off by more than the tolerance stays open until the missing lines are entered.
     const line = within
       ? `Within ${short(TOLERANCE)}: settling closes the count with no ledger line.`
-      : `Settling writes one ledger line: <strong>${v.diff < 0 ? 'Cash Out' : 'Into cash'} · Cash count · ${v.diff < 0 ? '−' : '+'}${num(Math.abs(v.diff))}</strong>.`;
+      : `<strong>Can't settle: ${num(Math.abs(v.diff))} ${v.diff < 0 ? 'less' : 'more'} than the app.</strong> A count never changes the cash. Enter the missing ${v.diff < 0 ? 'expenses (or the money taken out)' : 'revenues (or the ATM withdrawal)'}, then settle — the difference must be ${short(TOLERANCE)} or less.`;
     q('.mbody').innerHTML = `
       ${covered ? '' : `<div class="cc-warn">The bank statement in the app goes up to ${nowThrough ? dMon(nowThrough) : '—'}, not past ${dMon(c.count_date)} yet. ${v.declaredUsed > 0 ? `${num(v.declaredUsed)} of the cash Nadith said he took is not in the ledger yet and counts as expected cash.` : 'Cash taken from the ATM since then is not checked against the bank yet.'}</div>`}
       <table class="cc-sum">
@@ -405,9 +413,9 @@ window.CAMP_CHECKS = window.CAMP_CHECKS || [];
         <tr class="tot"><td>Difference</td><td class="r" id="csDiff">${v.diff < 0 ? '−' : v.diff > 0 ? '+' : ''}${num(Math.abs(v.diff))}</td></tr>
       </table>
       ${reason ? `<div class="cc-hint">Reason: ${esc(reason.t)}.${c.note ? ` «${esc(c.note)}»` : ''}</div>` : (c.note ? `<div class="cc-hint">«${esc(c.note)}»</div>` : '')}
-      ${within ? '' : `<div class="mfield"><label for="csNote">Note on the adjustment (optional)</label><textarea class="cc-note" id="csNote">${esc(settling.note)}</textarea></div>`}
+
       <div class="cc-small" id="csLine">${line}</div>`;
-    q('.mfooter').innerHTML = `<button class="btn btn-s" data-cs="close">Leave open</button><button class="btn btn-p" data-cs="settle" ${settling.busy ? 'disabled' : ''}>${settling.busy ? 'Settling…' : 'Settle count'}</button>`;
+    q('.mfooter').innerHTML = `<button class="btn btn-s" data-cs="close">Leave open</button>${within ? `<button class="btn btn-p" data-cs="settle" ${settling.busy ? 'disabled' : ''}>${settling.busy ? 'Settling…' : 'Settle count'}</button>` : ''}`;
     ov.onclick = (e) => {
       if (e.target === ov) return closeOverlay('cashSettleOv');
       const b = e.target.closest('[data-cs]'); if (!b) return;
@@ -456,7 +464,7 @@ window.CAMP_CHECKS = window.CAMP_CHECKS || [];
     const tile = [...root.querySelectorAll('.kpi')].find((k) => ((k.querySelector('.kpi-label') || {}).textContent || '').trim() === 'Cash');
     if (!tile) return;
     const old = tile.querySelector('.cc-tile'); const histOpen = !!(old && old.querySelector('details[open]')); if (old) old.remove();
-    if (!enabled() || !state.available) return;
+    if (!enabled() || !state.available || !countsOn()) return;
     injectStyles();
     const wrap = document.createElement('div');
     wrap.className = 'cc-tile';
@@ -551,7 +559,7 @@ window.CAMP_CHECKS = window.CAMP_CHECKS || [];
     { // K1 — the evening count
       id: 'cash-count-today', local: true,
       run(ctx) {
-        if (!state.available || ctx.hour < COUNT_DUE_HOUR) return null;
+        if (!countsOn() || !state.available || ctx.hour < COUNT_DUE_HOUR) return null;
         if ((ctx.counts || []).some((c) => c.count_date === ctx.today)) return null;
         if (ctx.isLocal) return { text: 'Count the cash', level: 'warn', onClick: openCount };
         const last = (ctx.counts || [])[0];

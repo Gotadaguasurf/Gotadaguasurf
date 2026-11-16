@@ -9652,7 +9652,7 @@ function renderExpenses(){
         <td style="color:var(--muted);font-size:12px">${escapeHtml(r.vendor||'—')}</td>
         <td class="r ${ledgerAmtClass(r)}">${ledgerLocalAmtText(r,payWallet)}</td>
         <td class="r ${ledgerAmtClass(r)}">${ledgerSign(r,payWallet)}${euro(r.amount)}</td>
-        <td>${(['hq_invoice','hq_transfer'].includes(String(r.sourceKind||'').toLowerCase())||(LOCAL_MANAGER_MODE&&String(r.sourceKind||'')==='cash_count'))?`<div class="exp-table-actions" style="color:var(--muted-2)" title="Edit this in HQ">${AppShell.icon('lock')}</div>`:`<div class="exp-table-actions"><button class="btn btn-s btn-sm btn-icon" onclick="openEditLedger('${r.id}')" title="Edit">${AppShell.icon('edit')}</button><button class="btn btn-s btn-sm btn-icon icon-danger" onclick="delLedger('${r.id}')" title="Delete">${AppShell.icon('trash')}</button></div>`}</td>
+        <td>${(['hq_invoice','hq_transfer'].includes(String(r.sourceKind||'').toLowerCase())||String(r.sourceKind||'')==='cash_count')?`<div class="exp-table-actions" style="color:var(--muted-2)" title="${String(r.sourceKind||'')==='cash_count'?'Cash count — locked':'Edit this in HQ'}">${AppShell.icon('lock')}</div>`:`<div class="exp-table-actions"><button class="btn btn-s btn-sm btn-icon" onclick="openEditLedger('${r.id}')" title="Edit">${AppShell.icon('edit')}</button><button class="btn btn-s btn-sm btn-icon icon-danger" onclick="delLedger('${r.id}')" title="Delete">${AppShell.icon('trash')}</button></div>`}</td>
       </tr>`;
   const head=`<thead><tr><th>Date</th><th title="When the line was entered in the app">Added</th><th>Type</th><th>Category</th><th>Paid via</th><th>Linked item</th><th>Description</th><th>Vendor</th><th class="r">Local</th><th class="r">EUR</th><th class="r" style="width:88px">Actions</th></tr></thead>`;
   const upcomingEur=sum(upcoming,x=>Number(x.amount||0));
@@ -9693,6 +9693,7 @@ async function delLedger(id){
   const entry = S.ledger.find(x=>x.id===id);
   if(!entry) return;
   if(['hq_invoice','hq_transfer'].includes(String(entry.sourceKind||'').toLowerCase())){ toast('This line comes from HQ. Delete it in HQ → Expenses.','err'); return; }
+  if(String(entry.sourceKind||'')==='cash_count'){ toast('Cash count lines are locked.','err'); return; }
   const typeLbl = entry.type==='income' ? 'revenue' : entry.type==='transfer' ? 'transfer' : 'expense';
   const amount = entry.amountLocal && entry.currency && entry.currency!=='EUR' ? (`${entry.currency} `+Number(entry.amountLocal).toLocaleString('en-GB',{maximumFractionDigits:2})) : ('€'+Number(entry.amount||0).toFixed(2));
   const note = entry.description ? ` "${String(entry.description).slice(0,60)}"` : '';
@@ -9835,7 +9836,7 @@ function openExpModal(type,id=null,preset=null){
   openOv('expOv');
 }
 
-function openEditLedger(id){const entry=S.ledger.find(x=>x.id===id);if(!entry)return;if(['hq_invoice','hq_transfer'].includes(String(entry.sourceKind||'').toLowerCase())){toast('This line comes from HQ. Edit it in HQ → Expenses.','err');return;}openExpModal(entry.type,id);}
+function openEditLedger(id){const entry=S.ledger.find(x=>x.id===id);if(!entry)return;if(String(entry.sourceKind||'')==='cash_count'){toast('Cash count lines are locked.','err');return;}if(['hq_invoice','hq_transfer'].includes(String(entry.sourceKind||'').toLowerCase())){toast('This line comes from HQ. Edit it in HQ → Expenses.','err');return;}openExpModal(entry.type,id);}
 function deleteEditingLedger(){if(!editingLedgerId)return;const id=editingLedgerId;editingLedgerId=null;closeOv('expOv');delLedger(id);}
 
 async function saveExpense(){

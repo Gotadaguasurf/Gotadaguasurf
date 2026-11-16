@@ -102,11 +102,13 @@ async function stubSupabase(page, rows, opts = {}) {
 }
 
 // at: UTC instant. 13:00Z = 18:30 Colombo (count due).
-async function openHub(page, { query = '', at = '2026-11-13T13:00:00Z', rows = Object.values(fixture()), counts, countsMissing, settleResponse, initChecks = true, location = 'sri-lanka' } = {}) {
+async function openHub(page, { query = '', at = '2026-11-13T13:00:00Z', rows = Object.values(fixture()), counts, countsMissing, settleResponse, initChecks = true, location = 'sri-lanka', countsOn = true } = {}) {
   await page.clock.setFixedTime(new Date(at));
   const stub = await stubSupabase(page, rows, { counts, countsMissing, settleResponse });
   page.on('dialog', d => d.accept());
   await fakeOwnerSession(page);
+  // Counts are switched off in the app since 16 Nov 2026 (Miguel); these tests keep the hidden code working.
+  if (countsOn) await page.addInitScript(() => { window.CAMP_CASH_COUNTS = true; });
   if (initChecks) {
     // A check registered by another script (transport.js) BEFORE cash-count.js
     // loads — the registry must keep it, and keep it out of ?view=local.
@@ -272,32 +274,33 @@ test.describe('cash count', () => {
     adjustment_entry_id: null, created_by: 'u-nadith', created_at: '2026-11-13T16:10:00Z',
   };
 
-  test('full view: Settle posts the adjustment through the RPC and the Cash tile equals the count', async ({ page }) => {
+  test('16 Nov 2026 (Miguel): no «Count cash» anywhere — no button, no last count, no counts list, no «count the cash» chip; the Cash count line is locked for HQ too', async ({ page }) => {
     const errors = collectFatalErrors(page);
-    const settleResponse = (body) => ({
-      status: 'settled', expected: EXPECTED_CASH, difference: -9600, declared_used: 0, real_withdrawals: 0,
-      adjustment: row('money_sent', 'Cash Out', 9600, { id: 'adj-1', date: '2026-11-13', category: 'Cash count', sourceKind: 'cash_count',
-        description: 'Cash count 13 Nov · counted 352,000.00 · expected 361,600.00 · settled by miguel', createdAt: '2026-11-14T04:00:00Z' }),
-    });
-    const { calls } = await openHub(page, { counts: [openCount], settleResponse });
+    const adj = row('money_sent', 'Cash Out', 493581.74, { id: 'adj-fresh', date: '2026-11-12', category: 'Cash count', sourceKind: 'cash_count', description: 'Cash count 12 Nov · fresh start' });
+    await openHub(page, { rows: [...Object.values(fixture()), adj], counts: [openCount], countsOn: false, at: '2026-11-13T14:00:00Z' });   // 19:30 Colombo
     await page.evaluate(() => showPage('expenses'));
-    await expect(page.locator('#ccLast')).toHaveText('Last count: 13 Nov · −9,600 · open');
-    expect(await chipTexts(page, 'expChecks')).not.toContain('Cash not counted today · never counted');
-    await page.locator('#ccHist summary').click();
-    await page.locator('[data-cc-settle="count-1"]').click();
-    const ov = page.locator('#cashSettleOv');
-    await expect(ov.locator('.mhdr-title')).toHaveText('Count of 13 Nov');
-    await expect(ov.locator('#csDiff')).toHaveText('−9,600.00');
-    await expect(ov.locator('#csLine')).toContainText('Cash Out · Cash count · −9,600.00');
-    await ov.locator('#csNote').fill('Reset count');
-    await ov.getByRole('button', { name: 'Settle count' }).click();
-    await expect(ov).not.toHaveClass(/open/);
-    expect(calls.rpc).toEqual([{ p_count: 'count-1', p_note: 'Reset count' }]);
-    const cash = await page.evaluate(() => ledgerDrawerBalances(S.ledger).cashLocal);
-    expect(cash).toBe(352000);
-    await expect(page.locator('#ccLast')).toHaveText('Last count: 13 Nov · −9,600 · settled');
-    await expect(page.locator('[data-cc-settle]')).toHaveCount(0);
+    await expect(page.locator('#ccOpenBtn')).toHaveCount(0);
+    await expect(page.locator('#ccLast')).toHaveCount(0);
+    await expect(page.locator('#ccHist')).toHaveCount(0);
+    const chips = (await chipTexts(page, 'expChecks')).join(' | ');
+    expect(chips).not.toMatch(/Count the cash|not counted/);
+    await page.evaluate(() => { CampCash.openCount(); CampCash.openSettle('count-1'); });
+    await expect(page.locator('#cashCountOv.open, #cashSettleOv.open')).toHaveCount(0);
+    const adjRow = page.locator('#expTable tbody tr', { hasText: 'Cash count 12 Nov' });
+    await expect(adjRow).toHaveCount(1);
+    await expect(adjRow.locator('button[title="Edit"]')).toHaveCount(0);
+    await expect(adjRow.locator('button[title="Delete"]')).toHaveCount(0);
+    await expect(adjRow.locator('.exp-table-actions[title="Cash count — locked"]')).toHaveCount(1);
     expect(errors).toEqual([]);
+  });
+
+  test('a count off by more than 1,000 can\'t be settled (a count never changes the cash)', async ({ page }) => {
+    const { calls } = await openHub(page, { counts: [openCount] });
+    await page.evaluate(() => { showPage('expenses'); CampCash.openSettle('count-1'); });
+    const ov = page.locator('#cashSettleOv');
+    await expect(ov.locator('#csLine')).toContainText("Can't settle");
+    await expect(ov.getByRole('button', { name: 'Settle count' })).toHaveCount(0);
+    expect(calls.rpc).toEqual([]);
   });
 
   test('settle within 1,000: no ledger line', async ({ page }) => {
@@ -326,7 +329,7 @@ test.describe('cash count', () => {
     const adjRow = page.locator('#expTable tbody tr', { hasText: 'Cash count 13 Nov' });
     await expect(adjRow).toHaveCount(1);
     await expect(adjRow.locator('button[title="Edit"]')).toHaveCount(0);
-    await expect(adjRow.locator('.exp-table-actions[title="Edit this in HQ"]')).toHaveCount(1);
+    await expect(adjRow.locator('.exp-table-actions[title="Cash count — locked"]')).toHaveCount(1);
     // His own cash lines keep their Edit button.
     await expect(page.locator('#expTable tbody tr', { hasText: 'Dilan(19/10-29/10)' }).locator('button[title="Edit"]')).toHaveCount(1);
   });
