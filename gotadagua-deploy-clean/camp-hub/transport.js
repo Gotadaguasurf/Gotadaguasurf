@@ -412,45 +412,84 @@
     return `${day}T${String(hh).padStart(2, '0')}${stamp.slice(13, 16)}`;
   }
 
-  // ── Trips view ─────────────────────────────────────────────────────────
+  // ── Trips view: the week as one sheet (Miguel, 16 Nov 2026: «a lista dos transferes… adicionar e ver
+  // por dia quase como se fosse um excel… dividido tipo tuk tuks e aeroporto no Sri e em Marrocos surf
+  // vans, tours e aeroporto»). Sat–Fri, every day shown (an empty day has its own «+ Add»), one row per
+  // transfer or run with the columns Time | What | People | Driver | Price | Status, and one footer line
+  // per category with Paid / Owed / Planned. Identical runs are one row «× N» that opens on tap.
+  // Categories: Sri Lanka Airport · Tuk-tuks; Morocco Airport · Surf vans (every van run that is not a
+  // tour: surf spot, Imsouane, party…) · Tours (van runs with purpose 'tour').
+  const CATS = IS_SL ? [['airport', 'Airport'], ['tuktuk', 'Tuk-tuks']] : [['airport', 'Airport'], ['vans', 'Surf vans'], ['tours', 'Tours']];
+  const catOf = t => isAirport(t) ? 'airport' : IS_SL ? 'tuktuk' : (t.purpose === 'tour' ? 'tours' : 'vans');
+  const catLabel = k => (CATS.find(c => c[0] === k) || [k, k])[1];
+  // A pill → the trips it shows. 'tuktuk' on Morocco (older links) = every van run.
+  const inCat = (t, f) => f === 'all' || !f ? true : f === 'airport' ? isAirport(t) : f === 'tuktuk' ? !isAirport(t) : catOf(t) === f;
+  const runNoun = t => IS_SL ? 'tuk-tuk run' : (t && t.purpose === 'tour' ? 'tour run' : 'van run');
+  TR.openGroups = TR.openGroups || new Set();
+  function weekDays(ws) { return Array.from({ length: 7 }, (_, i) => GT.addDaysIso(ws, i)); }
   function renderTrips() {
     const ws = TR.week, we = GT.addDaysIso(ws, 6);
     const f = TR.filter;
     let list = TR.trips.filter(t => inWeek(t, ws));
     const special = SPECIAL_FILTERS.includes(f);
-    const totals = '';   // the three week-total tiles are gone (16 Nov 2026): «Owed to drivers» says what matters
     const count = special || LOCAL ? '' : weekCountHtml(list, ws);
     if (special) list = f === 'paidnotdone' ? paidNotDone() : TR.trips.filter(t => t.trip_date >= cToday() || f === 'resend');
-    if (f === 'airport') list = list.filter(isAirport);
-    else if (f === 'tuktuk') list = list.filter(t => !isAirport(t));
-    else if (f === 'resend') list = list.filter(t => isAirport(t) && t.needs_resend);
+    if (f === 'resend') list = list.filter(t => isAirport(t) && t.needs_resend);
     else if (f === 'tosend') list = list.filter(t => isAirport(t) && t.status === 'planned');
     else if (f === 'missing') list = list.filter(t => t.missing_since && !['cancelled', 'no_show'].includes(t.status));
     else if (f === 'notime') list = list.filter(noTimeTrip);
-    const pill = (k, label) => `<button class="pill${f === k ? ' active' : ''}" onclick="TransportUI.setFilter('${k}')">${label}</button>`;
+    else if (!special) list = list.filter(t => inCat(t, f));
+    const pill = (k, label) => `<button class="pill${f === k || (k === 'all' && special) ? ' active' : ''}" data-cat="${k}" onclick="TransportUI.setFilter('${k}')">${label}</button>`;
     const filters = `<div class="ov-filters tr-filters">
       <div class="period-picker"><button class="btn btn-s btn-sm btn-icon" title="Previous week" onclick="TransportUI.shiftWeek(-7)">${ic('chevron-left')}</button>
         <span class="period-picker-lbl tr-week">${fmtRange(ws, we)}</span>
         <button class="btn btn-s btn-sm btn-icon" title="Next week" onclick="TransportUI.shiftWeek(7)">${ic('chevron-right')}</button></div>
       ${special || LOCAL ? '' : weekSendBtn(ws)}
-      <div class="pills">${pill('all', 'All')}${pill('airport', 'Airport')}${pill('tuktuk', RUN.label)}</div></div>`;
-    const days = [...new Set(list.map(t => t.trip_date))].sort();
-    if (!days.length) return filters + count + totals + `<div class="empty-state">${ic('truck')}<div class="empty-title">No trips this week</div><p>Trips come from the Guests file. Import it in Week.</p>
-      <button class="btn btn-s" onclick="TransportUI.toImport()">${ic('upload')} Import Guests file in Week</button></div>`;
+      <div class="pills tr-cats">${pill('all', 'All')}${CATS.map(c => pill(c[0], c[1])).join('')}</div></div>`;
+    // Special chips (resend, to send…) list only the days that have something; the week shows all seven.
+    // The closing Saturday's departures belong to this week (inWeek): that day is added after Friday.
+    const days = special ? [...new Set(list.map(t => t.trip_date))].sort() : [...new Set([...weekDays(ws), ...list.map(t => t.trip_date)])].sort();
+    const empty = !special && !list.length && !TR.trips.some(t => inWeek(t, ws))
+      ? `<div class="hint tr-sheet-empty">No trips this week yet. Airport transfers come from the Guests file (import it in Week); add runs with «+ Add» on the day.${LOCAL ? '' : ` <button class="btn-link" onclick="TransportUI.toImport()">Import Guests file in Week</button>`}</div>` : '';
+    const cols = `<div class="tr-srow tr-scols" aria-hidden="true"><span>Time</span><span>What</span><span>People</span><span>Driver</span><span class="tr-c-r">Price</span><span>Status</span></div>`;
     const c = contact();
     TR.runGroups = {};
-    return filters + count + totals + days.map(day => {
+    const showAir = special || f === 'all' || f === 'airport' || !f;
+    const body = days.map(day => {
       const dayTrips = list.filter(t => t.trip_date === day).sort((a, b) => (a.trip_time || '99').localeCompare(b.trip_time || '99'));
       const air = dayTrips.filter(t => isAirport(t) && !['cancelled', 'no_show'].includes(t.status));
-      const tuk = dayTrips.filter(t => !isAirport(t));
-      const sendable = LOCAL ? [] : GT.transfersTrips(TR.trips, { day, now: colomboNow() });   // = what «Send the whole day» sends
-      return `<div class="card tr-day" id="trDay-${day}" data-day="${day}"><div class="card-hdr"><div><div class="card-title">${fmtDay(day)}</div>
-          <div class="card-hint">${air.length} transfer${air.length === 1 ? '' : 's'}${tuk.length ? ` · ${tuk.length} ${RUN.lower} run${tuk.length === 1 ? '' : 's'} · ${money(tuk.reduce((s, t) => s + Number(t.expected_price || 0), 0))}` : ''}</div></div>
-          ${!LOCAL && (sendable.length >= 1 || air.filter(guestCan).length > 1) ? `<div class="row tr-day-btns">${sendable.length >= 1 ? `<button class="btn btn-s btn-sm" onclick="TransportUI.sendDay('${day}')" title="One WhatsApp to ${h(c ? c.name : 'the transport contact')} with every transfer of the day">${ic('send')} Send the whole day</button>
+      const airOff = dayTrips.filter(t => isAirport(t) && ['cancelled', 'no_show'].includes(t.status));
+      const runs = dayTrips.filter(t => !isAirport(t));
+      const sum = dayTrips.filter(counts).reduce((s, t) => s + Number(t.expected_price || 0), 0);
+      const parts = [];
+      if (air.length) parts.push(`${air.length} transfer${air.length === 1 ? '' : 's'}`);
+      if (runs.length) parts.push(`${runs.length} ${IS_SL ? 'tuk-tuk run' : 'run'}${runs.length === 1 ? '' : 's'}`);
+      if (sum) parts.push(money(sum));
+      const sendable = LOCAL || !showAir ? [] : GT.transfersTrips(TR.trips, { day, now: colomboNow() });   // = what «Send the whole day» sends
+      const dayBtns = !LOCAL && showAir && (sendable.length >= 1 || air.filter(guestCan).length > 1) ? `<div class="row tr-day-btns">${sendable.length >= 1 ? `<button class="btn btn-s btn-sm" onclick="TransportUI.sendDay('${day}')" title="One WhatsApp to ${h(c ? c.name : 'the transport contact')} with every transfer of the day">${ic('send')} Send the whole day</button>
             <button class="btn btn-s btn-sm" onclick="TransportUI.tickDay('${day}')">${ic('check')} Sent ✓ all</button>` : ''}
-            ${air.filter(guestCan).length > 1 ? `<button class="btn btn-s btn-sm" data-guest-day onclick="TransportUI.openGuestDay('${day}')" title="One WhatsApp per guest: the driver waits with a sign with their name">${ic('users')} Confirm with all guests of the day</button>` : ''}</div>` : ''}</div>
-        <div class="tr-rows">${air.map(tripRow).join('')}${dayTrips.filter(t => isAirport(t) && ['cancelled', 'no_show'].includes(t.status)).map(tripRow).join('')}${tuk.length ? tuktukSummary(tuk, day) : ''}</div></div>`;
+            ${air.filter(guestCan).length > 1 ? `<button class="btn btn-s btn-sm" data-guest-day onclick="TransportUI.openGuestDay('${day}')" title="One WhatsApp per guest: the driver waits with a sign with their name">${ic('users')} Confirm with all guests of the day</button>` : ''}</div>` : '';
+      const canAdd = !special && !(LOCAL && f === 'airport');
+      const add = canAdd ? `<button class="btn-link tr-add" data-add="${day}" onclick="TransportUI.addOn('${day}')">${ic('plus')} Add</button>` : '';
+      const rows = air.map(tripRow).join('') + airOff.map(tripRow).join('') + (runs.length ? runRows(runs, day) : '');
+      return `<div class="card tr-day${rows ? '' : ' tr-day-empty'}" id="trDay-${day}" data-day="${day}"><div class="card-hdr tr-dayhead"><div class="tr-dayttl"><div class="card-title">${fmtDay(day)}</div>
+          <div class="card-hint">${rows ? parts.join(' · ') : 'Nothing on this day'}</div></div><div class="tr-dayact">${add}</div>${dayBtns}</div>
+        ${rows ? `<div class="tr-rows">${rows}</div>` : ''}</div>`;
     }).join('');
+    return filters + count + empty + `<div class="tr-sheet">${cols}${body}</div>` + catFooter(list, f, special);
+  }
+  // One compact line per category for the week: Paid / Owed / Planned (cancelled and no-show never count).
+  function catFooter(list, f, special) {
+    const shown = special ? [] : CATS.filter(c => f === 'all' || !f || f === c[0] || (f === 'tuktuk' && c[0] !== 'airport'));
+    if (!shown.length) return '';
+    const line = ([k, label]) => {
+      const xs = list.filter(t => counts(t) && catOf(t) === k);
+      const g = { paid: 0, owed: 0, planned: 0, old: 0, sum: 0 };
+      xs.forEach(t => { const amt = Number(t.expected_price || 0); const key = payState(t).key; g.sum += amt; if (key in g) g[key] += amt; });
+      const n = k === 'airport' ? `${xs.length} transfer${xs.length === 1 ? '' : 's'}` : `${xs.length} run${xs.length === 1 ? '' : 's'}`;
+      return `<div class="tr-foot-line" data-foot="${k}"><b>${h(label)}</b><span>${n} · ${money(g.sum)}</span><span class="tr-foot-split"><span class="tr-t-paid">Paid ${money(g.paid)}</span> · <span class="${g.owed ? 'tr-t-owed' : ''}">Owed ${money(g.owed)}</span> · Planned ${money(g.planned)}${g.old ? ` · Before go-live ${money(g.old)}` : ''}</span></div>`;
+    };
+    return `<div class="card tr-catfoot">${shown.map(line).join('')}</div>`;
   }
   // Week totals (Miguel, 13 Nov: «total transfers in price per week, tuk-tuks and airport, and the
   // gifts too»). Same trips as the list below; cancelled and no-show never count. Amounts are the
@@ -506,48 +545,97 @@
     const c = contact();
     return `<button class="btn btn-s btn-sm" data-send-week onclick="TransportUI.sendWeek()" title="One WhatsApp to ${h(c ? c.name : 'the transport contact')} with every transfer of the week still to come">${ic('send')} Send the whole week</button>`;
   }
+  // One sheet row: Time | What | People | Driver | Price | Status. On a phone the row is two lines
+  // (time · what · price, then people · driver · status — .tr-c-meta, hidden on a laptop).
+  const pplCell = n => `${Number(n) || 1}`;
   function tripRow(t) {
     const ps = payState(t);
     const dep = t.kind === 'airport_departure';
     const time = t.trip_time ? `<b class="num">${h(t.trip_time)}</b>` : '<span class="badge badge-amber">time?</span>';
+    const drv = h(driverById(t.driver_id)?.name || 'no driver');
+    const pay = `<div class="tr-pay"><span class="badge ${ps.cls}" data-pay="${ps.key}">${ps.label}</span>${ps.sub ? `<span class="cell-sub">${h(ps.sub)}</span>` : ''}</div>`;
+    const line1 = `<div class="tr-line1"><span class="badge ${dep ? 'badge-navy' : 'badge-blue'}">${dep ? 'Departure' : 'Arrival'}</span> <b>${h(t.guest_names || 'Guest')}</b>${isFree(t) ? ` <span class="badge badge-blue tr-free">${h(freeLabel(t))}</span>` : ''}</div>`;
+    const meta = `<div class="tr-c-meta cell-sub">${ppl(t.pax)} · ${drv}</div>`;
     // ?view=local: airport rows are read-only — Francisco sends and confirms them.
-    if (LOCAL) return `<div class="tr-row tr-row-ro" data-trip="${t.id}"><div class="tr-time">${time}</div>
-      <div class="tr-main"><div class="tr-line1"><span class="badge ${dep ? 'badge-navy' : 'badge-blue'}">${dep ? 'Departure' : 'Arrival'}</span> <b>${h(t.guest_names || 'Guest')}</b> <span class="hint">· ${t.pax} ${t.pax === 1 ? 'person' : 'persons'}</span>${isFree(t) ? ` <span class="badge badge-blue tr-free">${h(freeLabel(t))}</span>` : ''}</div>
-        <div class="cell-sub">${h(driverById(t.driver_id)?.name || 'no driver')} · ${money(t.expected_price)}</div></div>
-      <div class="tr-side"><div class="tr-pay"><span class="badge ${ps.cls}" data-pay="${ps.key}">${ps.label}</span>${ps.sub ? `<span class="cell-sub">${h(ps.sub)}</span>` : ''}</div></div></div>`;
+    if (LOCAL) return `<div class="tr-row tr-srow tr-row-ro" data-trip="${t.id}" data-cat="airport"><div class="tr-time tr-c-time">${time}</div>
+      <div class="tr-main tr-c-what">${line1}${meta}</div>
+      <div class="tr-c-ppl num">${pplCell(t.pax)}</div><div class="tr-c-drv">${drv}</div><div class="tr-c-price num">${money(t.expected_price)}</div>
+      <div class="tr-side tr-c-status">${pay}</div></div>`;
     const live = !t.payment_entry_id && !isDone(t) && !['cancelled', 'no_show'].includes(t.status);
     const next = !live ? '' : t.status === 'planned' ? `<button class="btn btn-s btn-sm" onclick="event.stopPropagation();TransportUI.tick('${t.id}','sent')">Sent ✓</button>`
       : t.status === 'sent' && !t.needs_resend ? `<button class="btn btn-s btn-sm" onclick="event.stopPropagation();TransportUI.tick('${t.id}','confirmed')">Confirmed ✓</button>`
       : t.needs_resend ? `<button class="btn btn-s btn-sm" onclick="event.stopPropagation();TransportUI.tick('${t.id}','sent')">Sent ✓</button>`
       // Undo a tick (Miguel, 13 Nov: «if I want to take that it is confirmed?»): one step back.
       : t.status === 'confirmed' ? `<button class="btn btn-s btn-sm" data-undo onclick="event.stopPropagation();TransportUI.undoTick('${t.id}')" title="Back to Sent">Undo ✓</button>` : '';
-    return `<div class="tr-row" data-trip="${t.id}" onclick="TransportUI.openTrip('${t.id}')">
-      <div class="tr-time">${time}</div>
-      <div class="tr-main"><div class="tr-line1"><span class="badge ${dep ? 'badge-navy' : 'badge-blue'}">${dep ? 'Departure' : 'Arrival'}</span> <b>${h(t.guest_names || 'Guest')}</b> <span class="hint">· ${t.pax} ${t.pax === 1 ? 'person' : 'persons'}</span>${isFree(t) ? ` <span class="badge badge-blue tr-free">${h(freeLabel(t))}</span>` : ''}</div>
-        <div class="cell-sub">${h(t.flight || 'flight?')} · ${h(t.vehicle || '')} · ${h(driverById(t.driver_id)?.name || 'no driver')} · ${money(t.expected_price)}${t.charge && !isFree(t) ? ' · ' + h(CHARGE_LABEL[t.charge]) : ''}${t.added_by_local ? ` · added by ${LOCAL_MANAGER_NAME}` : ''}</div>
+    const sub = [h(t.flight || 'flight?'), h(t.vehicle || ''), t.charge && !isFree(t) ? h(CHARGE_LABEL[t.charge]) : '', t.added_by_local ? `added by ${LOCAL_MANAGER_NAME}` : ''].filter(Boolean).join(' · ');
+    return `<div class="tr-row tr-srow" data-trip="${t.id}" data-cat="airport" onclick="TransportUI.openTrip('${t.id}')">
+      <div class="tr-time tr-c-time">${time}</div>
+      <div class="tr-main tr-c-what">${line1}
+        <div class="cell-sub tr-c-sub">${sub}</div>${meta}
         ${t.needs_resend ? `<div class="tr-resend"><span class="badge badge-amber">Time changed, resend</span></div>` : ''}
         ${live && rowFlag(t) ? `<div class="tr-flagline" data-flag>${ic('alert')} ${h(rowFlag(t))}</div>` : ''}
         ${live && !needsInfo(t) && guestHtml(t) ? `<div class="tr-resend">${guestHtml(t)}</div>` : ''}
         ${live && needsInfo(t) ? `<div class="tr-resend"><button class="btn btn-s btn-sm" onclick="event.stopPropagation();TransportUI.ask('${t.id}')">${ic('send')} Ask guest for ${!t.flight && !t.trip_time ? 'flight & time' : !t.flight ? 'flight' : 'time'}</button>${askedOn(t.id) ? ` <span class="hint">asked ${h(fmtDay(askedOn(t.id)))}</span>` : ''}</div>` : ''}</div>
-      <div class="tr-side"><div class="tr-pay"><span class="badge ${ps.cls}" data-pay="${ps.key}">${ps.label}</span>${ps.sub ? `<span class="cell-sub">${h(ps.sub)}</span>` : ''}</div>
+      <div class="tr-c-ppl num">${pplCell(t.pax)}</div><div class="tr-c-drv">${drv}</div><div class="tr-c-price num">${money(t.expected_price)}</div>
+      <div class="tr-side tr-c-status">${pay}
         <div class="tr-btns">${live ? `<button class="btn btn-s btn-sm btn-icon" title="Send on WhatsApp" onclick="event.stopPropagation();TransportUI.send('${t.id}')">${ic('send')}</button>` : ''}${next}</div></div></div>`;
   }
-  // One line per route + driver + state (a planned run also by its time). Tap a line to edit or delete its runs.
-  function tuktukSummary(runs, day) {
+  // Runs of a day: identical runs (route, driver, state; a planned run also by its time) are one row «× N».
+  // Tap the row: one run → its edit sheet; several → the row opens to show each run (tap one to edit it),
+  // the pencil edits them all at once.
+  function runRows(runs, day) {
     const by = new Map();
     runs.forEach(t => {
       const ps = payState(t); const timed = ps.key === 'planned' && t.trip_time ? t.trip_time : '';
-      const k = [timed, t.tour_name ? 'Tour · ' + t.tour_name : t.route || t.purpose, t.driver_id || '', ps.key, ps.label, ps.sub, isFree(t) ? freeLabel(t) : ''].join('|');
-      const x = by.get(k) || { time: timed, label: IS_SL ? (t.tour_name ? 'Tour · ' + t.tour_name : t.route || t.purpose) : runLabel(t), n: 0, sum: 0, pax: 0, driver: t.driver_id, ps, free: isFree(t) ? freeLabel(t) : '', ids: [] };
-      x.n++; x.pax += Number(t.pax) || 1; x.sum += Number(t.expected_price || 0); x.ids.push(t.id); by.set(k, x);
+      const label = IS_SL ? (t.tour_name ? 'Tour · ' + t.tour_name : t.route || t.purpose) : runLabel(t);
+      const k = [timed, label, t.driver_id || '', ps.key, ps.label, ps.sub, isFree(t) ? freeLabel(t) : '', catOf(t)].join('|');
+      const x = by.get(k) || { k, time: timed, label, n: 0, sum: 0, pax: 0, driver: t.driver_id, ps, free: isFree(t) ? freeLabel(t) : '', cat: catOf(t), runs: [] };
+      x.n++; x.pax += Number(t.pax) || 1; x.sum += Number(t.expected_price || 0); x.runs.push(t); by.set(k, x);
     });
     const order = { planned: 0, owed: 1, old: 2, paid: 3, off: 4 };
     const lines = [...by.values()].sort((a, b) => (order[a.ps.key] - order[b.ps.key]) || (a.time || '').localeCompare(b.time || '') || String(a.label).localeCompare(String(b.label)) || a.ps.label.localeCompare(b.ps.label));
-    return `<div class="tr-tuk">${lines.map((x, i) => {
-      const key = `${day}#${i}`; TR.runGroups[key] = x.ids;
-      return `<button class="tr-tuk-line" data-run-group="${key}" onclick="TransportUI.openRuns('${key}')"><span class="tr-tuk-what">${x.time ? `<b class="num">${h(x.time)}</b> ` : ic('map-pin') + ' '}${h(x.label)} × ${x.n}${x.free ? ` <span class="badge badge-blue tr-free">${h(x.free)}</span>` : ''}<span class="cell-sub">${h(driverById(x.driver)?.name || 'no driver')}${IS_SL ? '' : ' · ' + ppl(x.pax)}${x.ps.sub ? ' · ' + h(x.ps.sub) : ''}</span></span>
-        <span class="badge ${x.ps.cls}" data-pay="${x.ps.key}">${x.ps.label}</span><span class="num tr-tuk-amt">${money(x.sum)}</span></button>`;
-    }).join('')}</div>`;
+    const pplTxt = n => IS_SL ? '' : ppl(n);
+    return lines.map((x, i) => {
+      const key = `${day}#${i}`; TR.runGroups[key] = x.runs.map(t => t.id);
+      const openKey = `${day}|${x.k}`; const open = x.n > 1 && TR.openGroups.has(openKey);
+      const single = x.n === 1 ? x.runs[0] : null;
+      const time = x.time ? `<b class="num">${h(x.time)}</b>` : single && single.trip_time ? `<span class="num hint">${h(single.trip_time)}</span>` : `<span class="tr-pin">${ic('map-pin')}</span>`;
+      const drv = h(driverById(x.driver)?.name || 'no driver');
+      const tap = x.n > 1 ? `TransportUI.toggleRuns('${h(openKey).replace(/'/g, '&#39;')}')` : `TransportUI.openRuns('${key}')`;
+      const row = `<div class="tr-tuk-line tr-srow${open ? ' tr-open' : ''}" role="button" tabindex="0" data-run-group="${key}" data-cat="${x.cat}" data-n="${x.n}" onclick="${tap}">
+        <div class="tr-c-time">${time}</div>
+        <div class="tr-c-what tr-tuk-what"><span class="tr-what-l"><b>${h(x.label)}</b>${x.n > 1 ? ` <span class="tr-xn">× ${x.n}</span>` : ''}${x.free ? ` <span class="badge badge-blue tr-free">${h(x.free)}</span>` : ''}${x.n > 1 ? ` <span class="tr-caret">${ic(open ? 'chevron-up' : 'chevron-down')}</span>` : ''}</span>
+          <span class="tr-c-meta cell-sub">${[pplTxt(x.pax), drv].filter(Boolean).join(' · ')}</span></div>
+        <div class="tr-c-ppl num">${IS_SL ? '' : x.pax}</div><div class="tr-c-drv">${drv}</div><div class="tr-c-price num tr-tuk-amt">${money(x.sum)}</div>
+        <div class="tr-c-status"><div class="tr-pay"><span class="badge ${x.ps.cls}" data-pay="${x.ps.key}">${x.ps.label}</span>${x.ps.sub ? `<span class="cell-sub">${h(x.ps.sub)}</span>` : ''}</div>
+          ${x.n > 1 ? `<button class="btn btn-s btn-sm btn-icon tr-edit-all" data-run-edit="${key}" title="Edit these ${x.n} runs together" onclick="event.stopPropagation();TransportUI.openRuns('${key}')">${ic('edit')}</button>` : ''}</div></div>`;
+      if (!open) return row;
+      const kids = x.runs.slice().sort((a, b) => (a.trip_time || '').localeCompare(b.trip_time || '')).map((t, j) => {
+        const kk = `${key}.${j}`; TR.runGroups[kk] = [t.id];
+        return `<div class="tr-tuk-line tr-srow tr-kid" role="button" tabindex="0" data-run-one="${t.id}" onclick="TransportUI.openRuns('${kk}')">
+          <div class="tr-c-time">${t.trip_time ? `<span class="num hint">${h(t.trip_time)}</span>` : ''}</div>
+          <div class="tr-c-what"><span class="tr-what-l">${h(x.label)}</span><span class="tr-c-meta cell-sub">${[pplTxt(t.pax), drv].filter(Boolean).join(' · ')}</span></div>
+          <div class="tr-c-ppl num">${IS_SL ? '' : (Number(t.pax) || 1)}</div><div class="tr-c-drv">${drv}</div><div class="tr-c-price num">${money(t.expected_price)}</div><div class="tr-c-status"></div></div>`;
+      }).join('');
+      return row + `<div class="tr-kids">${kids}</div>`;
+    }).join('');
+  }
+  function toggleRuns(k) { if (TR.openGroups.has(k)) TR.openGroups.delete(k); else TR.openGroups.add(k); render(); }
+  // «+ Add» on a day: the add sheet of the category shown, on that day. «All» asks which one (one decision per screen).
+  function addOn(day, cat) {
+    const f = cat || TR.filter;
+    if (f === 'airport') { if (LOCAL) return; openAddTransfer({ date: day }); return; }
+    if (f === 'tuktuk' || f === 'vans' || f === 'tours') { openRunsOn(day, f); return; }
+    if (LOCAL) { openRunsOn(day, 'tuktuk'); return; }
+    const opts = [['airport', 'Airport transfer', 'truck'], ...CATS.filter(c => c[0] !== 'airport').map(c => [c[0], IS_SL ? 'Tuk-tuk run' : c[0] === 'tours' ? 'Tour (van)' : 'Surf van', 'map-pin'])];
+    modal(`Add on ${fmtDay(day)}`, 'What do you want to add?', `<div class="tr-picks">${opts.map(([k, label, icn]) => `<button class="tr-pick tr-pick-btn" data-add-cat="${k}" onclick="TransportUI.addOn('${day}','${k}')"><span>${ic(icn)} <b>${label}</b></span></button>`).join('')}</div>`, `<button class="btn btn-s" onclick="TransportUI.closeModal()">Cancel</button>`);
+  }
+  function openRunsOn(day, cat) {
+    const d = defaultDriver(RUN.drv);
+    if (d) TR.tuk.driver = d.id;                    // vans and tours: Fathoune; tuk-tuks: Sampath (default_for)
+    TR.tuk.cat = IS_SL ? '' : (cat === 'tours' || cat === 'vans' ? cat : '');
+    if (day > cToday()) { TR.tuk.planDate = day; TR.tuk.planRoute = ''; TR.tuk.mode = 'plan'; renderTuktuk(); }
+    else { TR.tuk.date = day; TR.tuk.mode = 'log'; renderTuktuk(); }
   }
 
   // ── WhatsApp ───────────────────────────────────────────────────────────
@@ -794,11 +882,12 @@
   }
 
   // ── Add transfer (one screen) ──────────────────────────────────────────
-  function openAddTransfer() {
-    const d = defaultDriver('airport');
+  function openAddTransfer(opts) {
+    const d = defaultDriver('airport');      // Morocco: Let Us Tours (default_for 'airport'); Sri Lanka: Dilan
+    const onDay = opts && opts.date && /^\d{4}-\d\d-\d\d$/.test(opts.date) ? opts.date : cToday();
     const body = `<div class="mfield"><label>Who is it for?</label><div class="pills tr-seg" id="at_who"><button type="button" class="pill active" data-v="guest">Guest</button><button type="button" class="pill" data-v="staff">Staff</button></div></div>
       <div class="pills tr-seg" id="at_kind"><button class="pill active" data-v="airport_arrival">Airport to Camp</button><button class="pill" data-v="airport_departure">Camp to Airport</button></div>
-      <div class="g2"><div class="mfield"><label>Date</label><input type="date" id="at_d" value="${cToday()}"></div><div class="mfield"><label>Time</label><input type="time" id="at_t"></div></div>
+      <div class="g2"><div class="mfield"><label>Date</label><input type="date" id="at_d" value="${onDay}"></div><div class="mfield"><label>Time</label><input type="time" id="at_t"></div></div>
       <div class="g2"><div class="mfield"><label>Flight</label><input id="at_f" placeholder="QR658"></div><div class="mfield"><label>Persons</label><input type="number" min="1" id="at_p" value="1"></div></div>
       <div class="mfield"><label id="at_g_lbl">Guest</label><input id="at_g"></div>
       <div class="mfield"><label id="at_ph_lbl">Guest phone</label><input id="at_ph" placeholder="+49…"></div>
@@ -860,9 +949,13 @@
     };
   }
   const allRoutes = () => { const R = tukRoutes(); return [...R.surf, ...R.camp, ...R.tour]; };
-  const routeOptions = sel => { const R = tukRoutes(); const grp = (label, list) => list.length ? `<optgroup label="${label}">${list.map(r => `<option value="${h(r.key)}"${r.key === sel ? ' selected' : ''}>${h(r.label)} · ${priceText(r)}</option>`).join('')}</optgroup>` : ''; return grp('Surf', R.surf) + grp('Camp runs', R.camp) + grp(IS_SL ? 'Tour' : 'Tours and trips', R.tour); };
+  // «+ Add» on a day of the Tours / Surf vans pill opens the run sheet with that category's routes only.
+  const routeInCat = r => !TR.tuk.cat ? true : TR.tuk.cat === 'tours' ? r.purpose === 'tour' : r.purpose !== 'tour';
+  function catRoutes() { const R = tukRoutes(); return { surf: R.surf.filter(routeInCat), camp: R.camp.filter(routeInCat), tour: R.tour.filter(routeInCat) }; }
+  const routeOptions = (sel, byCat) => { const R = byCat ? catRoutes() : tukRoutes(); const grp = (label, list) => list.length ? `<optgroup label="${label}">${list.map(r => `<option value="${h(r.key)}"${r.key === sel ? ' selected' : ''}>${h(r.label)} · ${priceText(r)}</option>`).join('')}</optgroup>` : ''; return grp('Surf', R.surf) + grp('Camp runs', R.camp) + grp(IS_SL ? 'Tour' : 'Tours and trips', R.tour); };
   function openTuktuk(mode) {
     const d = defaultDriver(RUN.drv);
+    TR.tuk.cat = '';                         // the header button: every route (a day's «+ Add» narrows it, openRunsOn)
     TR.tuk.date = TR.tuk.date || cToday(); TR.tuk.driver = TR.tuk.driver || (d && d.id) || '';
     TR.tuk.mode = mode === 'plan' ? 'plan' : 'log';
     if (TR.tuk.mode === 'plan' && !TR.tuk.planDate) TR.tuk.planDate = GT.addDaysIso(cToday(), 1);
@@ -873,7 +966,7 @@
     const plan = TR.tuk.mode === 'plan';
     const seg = `<div class="pills tr-seg" id="tk_mode"><button type="button" class="pill${plan ? '' : ' active'}" onclick="TransportUI.tukMode('log')">Log runs</button><button type="button" class="pill${plan ? ' active' : ''}" onclick="TransportUI.tukMode('plan')">Plan tomorrow</button></div>`;
     if (plan) return renderPlan(seg);
-    const R = tukRoutes(); const day = TR.tuk.date; const drv = TR.tuk.driver;
+    const R = catRoutes(); const day = TR.tuk.date; const drv = TR.tuk.driver;
     const runs = TR.trips.filter(t => t.kind === RUN.kind && t.trip_date === day && (t.driver_id || '') === drv);
     const count = r => runs.filter(t => t.route === r.route && t.purpose === r.purpose).length;
     const btn = r => `<div class="tr-tap"><button class="tr-tap-main" data-key="${h(r.key)}" onclick="TransportUI.tap('${h(r.key)}')"><span>${h(r.label)}</span><span class="hint num">${priceText(r)}</span><b class="tr-tap-n num">${count(r)}</b></button>
@@ -936,7 +1029,7 @@
     const day = TR.tuk.planDate; const drv = TR.tuk.driver; const c = tukContact();
     const runs = planRuns(day, drv); const lines = planLines(runs); const pending = orderPending(runs);
     const sentAt = runs.map(t => t.sent_at).filter(Boolean).sort().pop();
-    if (!TR.tuk.planRoute || !tukRoute(TR.tuk.planRoute)) TR.tuk.planRoute = (allRoutes()[0] || {}).key || '';
+    if (!TR.tuk.planRoute || !tukRoute(TR.tuk.planRoute) || !routeInCat(tukRoute(TR.tuk.planRoute))) { const C = catRoutes(); TR.tuk.planRoute = ([...C.surf, ...C.camp, ...C.tour][0] || allRoutes()[0] || {}).key || ''; }
     const state = !runs.length ? '' : !pending.length ? `<span class="badge badge-green" id="tk_sent">Sent ✓</span>${sentAt ? ` <span class="hint">${h(stampText(sentAt))} to ${h(c ? c.name : `the ${RUN.lower} contact`)}</span>` : ''}`
       : sentAt ? `<span class="badge badge-amber" id="tk_sent">Changed since sent</span> <span class="hint">send the order again</span>` : `<span class="badge badge-grey" id="tk_sent">Not sent yet</span>`;
     const body = `${seg}<div class="g2 tr-tuk-head"><div class="mfield"><label>Day</label><input type="date" id="tk_pd" value="${h(day)}" onchange="TransportUI.tukSet('planDate', this.value)"></div>
@@ -948,7 +1041,7 @@
       ${runs.length ? `<div class="tr-tuk-total"><span>${runs.length} run${runs.length === 1 ? '' : 's'} · ${state}</span><b class="num">${money(runs.reduce((s, t) => s + Number(t.expected_price || 0), 0))}</b></div>` : ''}
       <div class="section-lbl">Add a run</div>
       <div class="tr-plan-add"><div class="mfield"><label>Time</label><input type="time" id="tk_pt" value="${h(TR.tuk.planTime)}" onchange="TransportUI.tukSet('planTime', this.value)"></div>
-        <div class="mfield"><label>Route</label><select id="tk_pr" onchange="TransportUI.tukSet('planRoute', this.value)">${routeOptions(TR.tuk.planRoute)}</select></div>
+        <div class="mfield"><label>Route</label><select id="tk_pr" onchange="TransportUI.tukSet('planRoute', this.value)">${routeOptions(TR.tuk.planRoute, true)}</select></div>
         <div class="mfield"><label>${IS_SL ? 'Tuk-tuks' : 'Vans'}</label><input type="number" min="1" max="20" id="tk_pn" value="${TR.tuk.planCount}" onchange="TransportUI.tukSet('planCount', this.value)"></div>
         ${IS_SL ? '' : `<div class="mfield"><label>People per van</label><input type="number" min="1" max="30" id="tk_pp" value="${TR.tuk.planPeople}" onchange="TransportUI.tukSet('planPeople', this.value)"></div>`}
         <button class="btn btn-s" id="tk_padd" onclick="TransportUI.planAdd()">${ic('plus')} Add to the order</button></div>
@@ -1615,7 +1708,7 @@
     shiftWeek(n) { TR.week = GT.addDaysIso(TR.week, n); TR.filter = SPECIAL_FILTERS.includes(TR.filter) ? 'all' : TR.filter; render(); },
     send, sendDay, dayMessage, weekMessage, sendWeek, tickWeek, weekCount, undoTick, undoGuestConfirmed, ask, askText, askedOn, needsInfo, tick, tickDay, tickIds, openTrip, saveTrip, setStatus, openAddTransfer, saveTransfer,
     openTuktuk, openPlan, tukSet, tukMode, tap, untap, removeRun, removeTrip, planAdd, planStep, sendOrder, orderText,
-    openRuns, saveRuns, deleteRuns, payState, weekTotals, keepTrip, inWeek, tukPeople, presetPrice, bankCandidates, camp: CC, RUN,
+    openRuns, saveRuns, deleteRuns, toggleRuns, addOn, catOf, payState, weekTotals, keepTrip, inWeek, tukPeople, presetPrice, bankCandidates, camp: CC, RUN,
     confirmGuest, guestConfirmed, confirmText, guestState, guestHtml, openGuestDay, pickFile, setExportDate, saveImport,
     openChecks, openLink, linkDriver, linkPick, linkAll, saveLink, unlinkPayment, openExplain, saveExplain, unlinkTrip,
     openPay, payPick, payTick, payTickGroup, payMinus, payAddToggle, payAddRun, payBank, payAmount, payDate, payReason, payNote, savePay, payGroups, localDrivers: LOCAL,

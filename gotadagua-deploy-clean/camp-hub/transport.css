@@ -183,3 +183,59 @@
 .tr-people>label{flex-basis:100%}
 .tr-people .tr-step{display:inline-flex;align-items:center;gap:10px}
 .tr-people .tr-step b{min-width:22px;text-align:center;font-size:17px}
+
+/* ── The week as a sheet (16 Nov 2026): Time | What | People | Driver | Price | Status ──
+   Laptop: aligned columns like a spreadsheet. Phone: two lines per row — time · what · price,
+   then people · driver (.tr-c-meta) and the status under the price. No sideways scroll. */
+#transportRoot .tr-cats .pill { white-space: nowrap; }
+.tr-srow.tr-row, .tr-srow.tr-tuk-line, .tr-scols {
+  display: grid; grid-template-columns: 64px minmax(0, 1fr) 64px minmax(90px, 140px) 110px minmax(150px, 190px);
+  grid-template-areas: "time what ppl drv price status"; column-gap: var(--sp-3); align-items: start;
+}
+.tr-scols { padding: 0 var(--card-pad) 6px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.tr-c-time { grid-area: time; padding-top: 2px; }
+.tr-c-what { grid-area: what; min-width: 0; }
+.tr-c-ppl { grid-area: ppl; padding-top: 2px; }
+.tr-c-drv { grid-area: drv; padding-top: 2px; min-width: 0; overflow-wrap: anywhere; }
+.tr-c-price, .tr-scols .tr-c-r { grid-area: price; text-align: right; white-space: nowrap; padding-top: 2px; }
+.tr-c-status { grid-area: status; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; min-width: 0; }
+.tr-srow .tr-c-status .tr-pay { align-items: flex-end; text-align: right; }
+.tr-c-meta, .tr-srow .tr-c-what .tr-c-meta { display: none; }
+.tr-srow.tr-tuk-line { min-height: 48px; padding: var(--sp-3) var(--card-pad); align-items: start; }
+.tr-tuk-what .tr-what-l { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.tr-xn { font-weight: 600; color: var(--ink); }
+.tr-caret .ic { width: 14px; height: 14px; vertical-align: -2px; color: var(--muted); }
+.tr-pin .ic { width: 15px; height: 15px; color: var(--muted); }
+.tr-tuk-line.tr-open { background: var(--surface-2); }
+.tr-kids .tr-tuk-line { background: var(--surface-2); font-size: 13px; min-height: 40px; padding-top: var(--sp-2); padding-bottom: var(--sp-2); }
+.tr-kids .tr-c-what { padding-left: var(--sp-3); border-left: 2px solid var(--border-2); }
+.tr-tuk-line .tr-c-status { flex-direction: row; flex-wrap: wrap; justify-content: flex-end; align-items: flex-start; gap: 6px; }
+.tr-edit-all { width: 32px; height: 32px; order: -1; }
+.tr-dayhead { align-items: center; }
+.tr-dayhead .tr-dayttl { flex: 1 1 auto; min-width: 0; }
+.tr-dayact { display: flex; align-items: center; }
+.tr-dayhead .tr-day-btns { flex-basis: 100%; }
+#transportRoot .btn-link.tr-add { display: inline-flex; align-items: center; gap: 4px; height: 32px; padding: 0 6px; font-weight: 600; }
+#transportRoot .btn-link.tr-add .ic { width: 14px; height: 14px; }
+.tr-none { padding: var(--sp-3) var(--card-pad); }
+#transportRoot .tr-sheet-empty { margin: 0 0 var(--sp-3); }
+#transportRoot .tr-catfoot { padding: var(--sp-2) var(--card-pad); }
+.tr-foot-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px var(--sp-3); padding: var(--sp-2) 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+.tr-foot-line:last-child { border-bottom: 0; }
+.tr-foot-line .tr-foot-split { color: var(--muted); font-size: 13px; }
+.tr-t-paid { color: var(--green-text, var(--green)); }
+.tr-t-owed { color: var(--amber); font-weight: 600; }
+@media (max-width: 700px) {
+  .tr-scols { display: none; }
+  .tr-srow.tr-row, .tr-srow.tr-tuk-line {
+    grid-template-columns: 46px minmax(0, 1fr) auto; grid-template-areas: "time what price" "time what status";
+    column-gap: var(--sp-2); row-gap: 4px; padding: var(--sp-3) var(--sp-4);
+  }
+  .tr-srow .tr-c-ppl, .tr-srow .tr-c-drv { display: none; }
+  .tr-srow .tr-c-what .tr-c-meta { display: block; margin-top: 2px; }
+  .tr-srow .tr-c-status { align-self: end; }
+  .tr-srow .tr-c-status .tr-pay { flex-direction: column; align-items: flex-end; gap: 2px; }
+  .tr-srow.tr-row .tr-side { grid-column: auto; flex-direction: column; justify-content: flex-start; align-items: flex-end; }
+  .tr-srow .tr-c-price { font-size: 14px; }
+  .tr-kids .tr-c-what { padding-left: var(--sp-2); }
+}

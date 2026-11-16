@@ -170,8 +170,11 @@ test('transport: one view (no Reconcile pill since 16 Nov 2026), no «Next week�
   await expect(page.locator('#transportRoot .tr-views')).toHaveCount(0);
   await expect(page.locator('#transportRoot .tr-tripview')).toBeVisible();
   await expect(page.locator('#transportRoot button.pill:has-text("Next week")')).toHaveCount(0);
-  await expect(page.locator('#transportRoot .empty-state')).toContainText('Trips come from the Guests file. Import it in Week.');
-  await page.click('#transportRoot .empty-state button:has-text("Import Guests file")');
+  // The sheet (16 Nov 2026): an empty week still shows its seven days, each with «+ Add», and says where trips come from.
+  await expect(page.locator('#transportRoot .tr-sheet-empty')).toContainText('Airport transfers come from the Guests file (import it in Week)');
+  await expect(page.locator('#transportRoot .tr-day')).toHaveCount(7);
+  await expect(page.locator('#transportRoot .tr-day [data-add]')).toHaveCount(7);
+  await page.click('#transportRoot .tr-sheet-empty button:has-text("Import Guests file")');
   await expect(page.locator('#weekRoot .wk-import .card-title').first()).toHaveText('Guests file');
   expect(await page.evaluate(() => activePage)).toBe('week');
   expect(await page.locator('#trGuestsFile').count()).toBe(1);
@@ -614,8 +617,9 @@ for (const [name, size] of [['phone 390', { width: 390, height: 844 }], ['deskto
     // Tuk-tuk lines: one per route and state.
     const lines = page.locator('.tr-tuk-line');
     await expect(lines).toHaveCount(2);
-    expect(norm(await lines.nth(0).innerText())).toBe('Ahangama × 3 Sampath · done, not paid Owed LKR 1,500');
-    expect(norm(await lines.nth(1).innerText())).toBe('Weligama × 1 Sampath · 12 Nov · linked automatically Paid LKR 1,500');
+    // The sheet (16 Nov 2026): Time | What | People | Driver | Price | Status — identical runs are one row «× N».
+    expect(norm(await lines.nth(0).innerText())).toBe('Ahangama × 3 Sampath LKR 1,500 Owed done, not paid');
+    expect(norm(await lines.nth(1).innerText())).toBe('07:30 Weligama Sampath LKR 1,500 Paid 12 Nov · linked automatically');
     // The Airport / Tuk-tuk pills filter the list.
     await page.click('.tr-filters .pill:has-text("Tuk-tuk")');
     await expect(page.locator('.tr-row')).toHaveCount(0);
@@ -630,8 +634,16 @@ for (const [name, size] of [['phone 390', { width: 390, height: 844 }], ['deskto
 test('tuk-tuk: tap a line to edit its runs, remove one, delete them; a paid run is read-only («unlink the payment first»)', async ({ page }) => {
   const errors = collectFatalErrors(page);
   const st = await openTab(page, weekFixture());
-  const owed = page.locator('.tr-tuk-line', { hasText: 'Ahangama' });
+  const owed = page.locator('.tr-tuk-line[data-run-group]', { hasText: 'Ahangama' });
+  // A row «× 3» opens on tap to show each run (tap one to edit it); the pencil edits the three together.
   await owed.click();
+  await expect(page.locator('.tr-kids [data-run-one]')).toHaveCount(3);
+  await expect(page.locator('#trOv.open')).toHaveCount(0);
+  await page.locator('.tr-kids [data-run-one]').first().click();
+  await expect(page.locator('#trOv .mhdr-title')).toHaveText('Tuk-tuk · Thu 12 Nov');
+  await expect(page.locator('#trOv .tr-run-n')).toHaveCount(0);                 // one run
+  await page.evaluate(() => TransportUI.closeModal());
+  await owed.locator('[data-run-edit]').click();
   await expect(page.locator('#trOv .mhdr-title')).toHaveText('Tuk-tuk · Thu 12 Nov');
   await expect(page.locator('#trOv .tr-run-n')).toHaveText('3 runs on this line — what you change applies to all 3.');
   await expect(page.locator('#rn_r')).toHaveValue('surf|Ahangama');
@@ -650,12 +662,12 @@ test('tuk-tuk: tap a line to edit its runs, remove one, delete them; a paid run 
   const line = page.locator('.tr-tuk-line[data-run-group]', { hasText: 'Weligama × 3' });
   await expect(line).toContainText('LKR 4,200');
   // Remove one.
-  await line.click();
+  await line.locator('[data-run-edit]').click();
   await page.click('#rn_one');
   await call(st, 'trip_delete', 1);
   await expect(page.locator('.tr-tuk-line', { hasText: 'Weligama × 2' })).toHaveCount(1);
   // Delete the rest (asks first when it is more than one).
-  await page.locator('.tr-tuk-line', { hasText: 'Weligama × 2' }).click();
+  await page.locator('.tr-tuk-line', { hasText: 'Weligama × 2' }).locator('[data-run-edit]').click();
   await expect(page.locator('#rn_del')).toHaveText('Delete 2 runs');
   await page.click('#rn_del');
   await call(st, 'trip_delete', 3);
@@ -722,9 +734,9 @@ test('tuk-tuk: plan tomorrow — timed runs saved as planned, the WhatsApp order
   const lines = page.locator('.tr-tuk-line');
   await expect(lines).toHaveCount(3);
   expect((await lines.allInnerTexts()).map(norm)).toEqual([
-    '07:30 Ahangama × 1 Sampath Planned LKR 500',
-    '07:30 Ahangama × 2 Sampath Sent LKR 1,000',
-    '07:30 Weligama × 1 Sampath Sent LKR 1,500',
+    '07:30 Ahangama Sampath LKR 500 Planned',
+    '07:30 Ahangama × 2 Sampath LKR 1,000 Sent',
+    '07:30 Weligama Sampath LKR 1,500 Sent',
   ]);
   await page.click('.tr-strip .health-chip:has-text("send the order")');
   await expect(page.locator('#tk_mode .pill.active')).toHaveText('Plan tomorrow');
@@ -1131,4 +1143,107 @@ test('pay a driver: airport transfers up to 14 days ahead are listed «(not yet)
   await page.evaluate(() => TransportUI.openTuktuk());
   expect(await page.locator('#tk_dr option').allTextContents()).toEqual(expect.arrayContaining(['Dilan · Airport van', 'Sampath · Tuk-tuk', 'Nishantha · Alex Transportation']));
   expect(await page.locator('#tk_dr option', { hasText: 'Nadith' }).count()).toBe(0);         // a contact is not a driver
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+//  16 Nov 2026 (Miguel): «a lista dos transferes… adicionar e ver por dia quase como se fosse um excel…
+//  dividido tipo tuk tuks e aeroporto». The week as one sheet: seven days (empty ones too), each with
+//  «+ Add»; Time | What | People | Driver | Price | Status; a footer line per category.
+// ════════════════════════════════════════════════════════════════════════════
+const SHEET_SHOTS = process.env.SHEET_SHOTS || path.join(__dirname, '..', 'test-results', 'sheet-shots');
+test('sheet: Airport / Tuk-tuks pills, seven days with «+ Add» (prefilled with the day and the category), a footer per category', async ({ page }) => {
+  const errors = collectFatalErrors(page);
+  await openTab(page, weekFixture());
+  await expect(page.locator('#transportRoot .tr-cats .pill')).toHaveText(['All', 'Airport', 'Tuk-tuks']);
+  await expect(page.locator('#transportRoot .tr-day')).toHaveCount(7);
+  await expect(page.locator('#trDay-2026-11-07')).toContainText('Nothing on this day');
+  await expect(page.locator('#transportRoot [data-foot]')).toHaveCount(2);
+  await expect(page.locator('#transportRoot [data-foot="tuktuk"]')).toContainText('4 runs · LKR 3,000');
+  await expect(page.locator('#transportRoot [data-foot="tuktuk"]')).toContainText('Paid LKR 1,500 · Owed LKR 1,500 · Planned LKR 0');
+  // Airport: transfers only.
+  await page.click('#transportRoot .tr-cats .pill[data-cat="airport"]');
+  await expect(page.locator('#transportRoot .tr-tuk-line')).toHaveCount(0);
+  await expect(page.locator('#transportRoot .tr-row').first()).toBeVisible();
+  await expect(page.locator('#transportRoot [data-foot]')).toHaveCount(1);
+  await page.click('#transportRoot [data-add="2026-11-12"]');
+  await expect(page.locator('#trOv .mhdr-title')).toHaveText('Add transfer');
+  await expect(page.locator('#at_d')).toHaveValue('2026-11-12');
+  await page.evaluate(() => TransportUI.closeModal());
+  // Tuk-tuks: runs only; «+ Add» on a past day logs runs on that day, on a future day plans them.
+  await page.click('#transportRoot .tr-cats .pill[data-cat="tuktuk"]');
+  await expect(page.locator('#transportRoot .tr-row')).toHaveCount(0);
+  await expect(page.locator('#transportRoot .tr-tuk-line[data-n="3"]')).toContainText('Ahangama × 3');
+  await page.click('#transportRoot [data-add="2026-11-12"]');
+  await expect(page.locator('#tk_mode .pill.active')).toHaveText('Log runs');
+  await expect(page.locator('#tk_d')).toHaveValue('2026-11-12');
+  await expect(page.locator('#tk_dr')).toHaveValue(D.sampath);
+  await page.evaluate(() => TransportUI.closeModal());
+  await page.evaluate(() => TransportUI.shiftWeek(7));
+  await page.click('#transportRoot [data-add="2026-11-16"]');
+  await expect(page.locator('#tk_mode .pill.active')).toHaveText('Plan tomorrow');
+  await expect(page.locator('#tk_pd')).toHaveValue('2026-11-16');
+  await page.evaluate(() => { TransportUI.closeModal(); TransportUI.shiftWeek(-7); });
+  // All: «+ Add» asks which one (one decision per screen).
+  await page.click('#transportRoot .tr-cats .pill[data-cat="all"]');
+  await page.click('#transportRoot [data-add="2026-11-10"]');
+  await expect(page.locator('#trOv .mhdr-title')).toHaveText('Add on Tue 10 Nov');
+  await expect(page.locator('#trOv [data-add-cat]')).toHaveText(['Airport transfer', 'Tuk-tuk run']);
+  await page.click('#trOv [data-add-cat="airport"]');
+  await expect(page.locator('#at_d')).toHaveValue('2026-11-10');
+  expect(errors).toEqual([]);
+});
+
+for (const [name, size] of [['390', { width: 390, height: 844 }], ['1280', { width: 1280, height: 900 }]]) {
+  test(`sheet layout ${name}: ${size.width <= 700 ? 'two lines per row (time · what · price, then people · driver · status)' : 'aligned columns with a header row'}, no sideways scroll`, async ({ page }) => {
+    await page.setViewportSize(size);
+    await openTab(page, weekFixture());
+    const box = async sel => page.locator(sel).first().boundingBox();
+    const run = '#transportRoot .tr-tuk-line[data-n="3"]';
+    const air = `#transportRoot .tr-row[data-trip="${R(102)}"]`;
+    if (size.width <= 700) {
+      await expect(page.locator('#transportRoot .tr-scols')).toBeHidden();
+      await expect(page.locator(`${run} .tr-c-meta`)).toBeVisible();
+      await expect(page.locator(`${run} .tr-c-meta`)).toHaveText('Sampath');
+      await expect(page.locator(`${run} .tr-c-drv`)).toBeHidden();
+      await expect(page.locator(`${air} .tr-c-meta`)).toHaveText('1 person · Dilan');
+      const what = await box(`${run} .tr-what-l`), price = await box(`${run} .tr-c-price`), status = await box(`${run} .tr-c-status [data-pay]`);
+      expect(Math.abs(price.y - what.y)).toBeLessThan(8);            // line 1: what · price
+      expect(status.y).toBeGreaterThan(price.y + price.height - 2);    // line 2: the status under the price
+    } else {
+      await expect(page.locator('#transportRoot .tr-scols')).toBeVisible();
+      await expect(page.locator('#transportRoot .tr-scols')).toHaveText(/Time\s*What\s*People\s*Driver\s*Price\s*Status/);
+      await expect(page.locator(`${run} .tr-c-meta`)).toBeHidden();
+      await expect(page.locator(`${run} .tr-c-drv`)).toHaveText('Sampath');
+      const right = async sel => { const b = await box(sel); return b.x + b.width; };
+      const head = await right('#transportRoot .tr-scols .tr-c-r');
+      expect(Math.abs(await right(`${run} .tr-c-price`) - head)).toBeLessThan(2);
+      expect(Math.abs(await right(`${air} .tr-c-price`) - head)).toBeLessThan(2);
+      expect(Math.abs((await box(`${run} .tr-c-drv`)).x - (await box(`${air} .tr-c-drv`)).x)).toBeLessThan(2);
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(size.width);
+    fsx.mkdirSync(SHEET_SHOTS, { recursive: true });
+    await page.screenshot({ path: path.join(SHEET_SHOTS, `sl-full-${name}.png`), fullPage: true });
+  });
+}
+
+test('sheet · Nadith (?view=local): the same sheet; airport rows read-only and no «+ Add» on Airport; «+ Add» on a day opens the tuk-tuk runs', async ({ page }) => {
+  const errors = collectFatalErrors(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await open(page, { query: '&view=local', ...weekFixture() });
+  await page.evaluate(() => showPage('transport'));
+  await page.waitForFunction(() => window.TransportUI && TransportUI._state.loaded, null, { timeout: 10000 });
+  await expect(page.locator('#transportRoot .tr-cats .pill')).toHaveText(['All', 'Airport', 'Tuk-tuks']);
+  await expect(page.locator('#transportRoot .tr-day')).toHaveCount(7);
+  await page.click('#transportRoot .tr-cats .pill[data-cat="airport"]');
+  await expect(page.locator('#transportRoot [data-add]')).toHaveCount(0);
+  await expect(page.locator('#transportRoot .tr-row-ro').first()).toBeVisible();
+  await expect(page.locator('#transportRoot .tr-row-ro .tr-btns')).toHaveCount(0);
+  await page.click('#transportRoot .tr-cats .pill[data-cat="all"]');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  fsx.mkdirSync(SHEET_SHOTS, { recursive: true });
+  await page.screenshot({ path: path.join(SHEET_SHOTS, 'nadith-drivers-390.png'), fullPage: true });
+  await page.click('#transportRoot [data-add="2026-11-12"]');
+  await expect(page.locator('#tk_mode .pill.active')).toHaveText('Log runs');
+  await expect(page.locator('#tk_d')).toHaveValue('2026-11-12');
+  expect(errors).toEqual([]);
 });

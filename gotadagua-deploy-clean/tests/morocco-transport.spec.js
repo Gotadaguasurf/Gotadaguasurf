@@ -256,3 +256,55 @@ test('morocco «Send the whole day»: the same house-style message the old Week 
     'Airport to Camp _(already sent)_\nLena Hoffmann, Jonas Weber\n+491510000001\n2 persons\nFlight Number: FR1110\nTime: 14:20\nDate: 14 Nov\nCar',
   ].join('\n\n'));   // now 10:00: Karl 09:00 and Yuki 06:40 have passed; Nina is held (not in the latest file)
 });
+
+// The week as one sheet (16 Nov 2026, Miguel: «em Marrocos surf vans, tours… e aeroporto (este é sempre pelo
+// mesmo)»): Airport · Surf vans · Tours; «+ Add» on a Tours day opens the van sheet with the tours only and
+// Fathoune; on an Airport day the transfer form with Let Us Tours.
+const SHEET_SHOTS = process.env.SHEET_SHOTS || path.join(__dirname, '..', 'test-results', 'sheet-shots');
+test('morocco sheet: Airport / Surf vans / Tours pills, identical tour runs as one row «× 2», «+ Add» prefilled (tours only, Fathoune; airport with Let Us Tours)', async ({ page }) => {
+  const errors = collectFatalErrors(page);
+  const base = { location_id: H.LOC, kind: 'other', trip_time: '09:00', vehicle: 'Van', driver_id: H.D.fat, currency: 'MAD', source: 'manual', payment_entry_id: null, import_flags: [], edited_fields: [], created_at: '2026-11-14T08:00:00Z' };
+  const id = n => `cccccccc-0000-4000-8000-0000000001${String(n).padStart(2, '0')}`;
+  const trips = [
+    { ...base, id: id(1), trip_date: '2026-11-14', trip_time: '08:00', route: 'Surf', purpose: 'surf', pax: 8, expected_price: 880, status: 'done' },
+    { ...base, id: id(2), trip_date: '2026-11-16', route: 'Dunes', purpose: 'tour', tour_name: 'Dunes — Sandboarding', pax: 6, expected_price: 660, status: 'planned' },
+    { ...base, id: id(3), trip_date: '2026-11-16', route: 'Dunes', purpose: 'tour', tour_name: 'Dunes — Sandboarding', pax: 6, expected_price: 660, status: 'planned' },
+    { ...base, id: id(4), trip_date: '2026-11-17', route: 'Paradise + Souk', purpose: 'tour', tour_name: 'Paradise Valley + Souk Tour', pax: 10, expected_price: 1100, status: 'planned' },
+    { ...base, id: id(5), kind: 'airport_arrival', trip_date: '2026-11-15', trip_time: '12:00', route: 'Airport → Surfcamp', purpose: 'guests', guest_names: 'Sheet Guest', pax: 2, vehicle: 'Car', driver_id: H.D.lut, expected_price: 250, status: 'planned', place: 'AGA', charge: 'bookinglayer' },
+  ];
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openTab(page, { trips, goLive: '2026-11-07' });
+  await expect(page.locator('#transportRoot .tr-cats .pill')).toHaveText(['All', 'Airport', 'Surf vans', 'Tours']);
+  await expect(page.locator('#transportRoot .tr-day')).toHaveCount(7);
+  await expect(page.locator('#transportRoot [data-foot]')).toHaveCount(3);
+  await page.click('#transportRoot .tr-cats .pill[data-cat="vans"]');
+  await expect(page.locator('#transportRoot .tr-tuk-line')).toHaveCount(1);
+  await expect(page.locator('#transportRoot .tr-tuk-line')).toContainText('Surf spot');
+  await page.click('#transportRoot .tr-cats .pill[data-cat="tours"]');
+  await expect(page.locator('#transportRoot .tr-row')).toHaveCount(0);
+  await expect(page.locator('#transportRoot .tr-tuk-line')).toHaveCount(2);
+  const dunes = page.locator('#transportRoot .tr-tuk-line[data-n="2"]');
+  await expect(dunes).toContainText('Dunes');
+  await expect(dunes).toContainText('× 2');
+  await expect(dunes.locator('.tr-c-meta')).toHaveText('12 people · Fathoune');
+  await expect(page.locator('#transportRoot [data-foot="tours"]')).toContainText('3 runs · MAD 2,420');
+  expect(await H.noOverflow(page)).toBe(true);
+  fs.mkdirSync(SHEET_SHOTS, { recursive: true });
+  await page.screenshot({ path: path.join(SHEET_SHOTS, 'morocco-tours-390.png'), fullPage: true });
+  // «+ Add» on a Tours day still to come: the plan sheet, tours only, Fathoune.
+  await page.click('#transportRoot [data-add="2026-11-18"]');
+  await expect(page.locator('#tk_mode .pill.active')).toHaveText('Plan tomorrow');
+  await expect(page.locator('#tk_pd')).toHaveValue('2026-11-18');
+  await expect(page.locator('#tk_dr')).toHaveValue(H.D.fat);
+  const routes = await page.locator('#tk_pr option').allInnerTexts();
+  expect(routes.length).toBeGreaterThan(0);
+  expect(routes.some(r => /Surf spot|Imsouane|Taghazout/.test(r))).toBe(false);
+  expect(routes.some(r => /Dunes/.test(r))).toBe(true);
+  await page.evaluate(() => TransportUI.closeModal());
+  // Airport: always Let Us Tours.
+  await page.click('#transportRoot .tr-cats .pill[data-cat="airport"]');
+  await page.click('#transportRoot [data-add="2026-11-19"]');
+  await expect(page.locator('#at_d')).toHaveValue('2026-11-19');
+  await expect(page.locator('#at_dr')).toHaveValue(H.D.lut);
+  expect(errors).toEqual([]);
+});
