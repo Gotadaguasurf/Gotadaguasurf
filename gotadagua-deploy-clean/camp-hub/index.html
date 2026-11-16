@@ -4469,7 +4469,10 @@ function campTabRevenueAttribution(category){
 }
 // Pass-through lines (Sri Lanka Dipløria, Miguel 15 Nov 2026): the guest pays the owner by card, 55 EUR.
 // Zero revenue, zero cash, zero cost for the camp — no Camp Tab path may turn them into a ledger row.
-const CAMPTAB_PASS_THROUGH = { 'sri-lanka': ['Diploria'] };
+// Portugal «Bar» (Miguel 16 Nov 2026: «pagam o bar no The Suk… o restaurante recebe o dinheiro do bar, os
+// tours vão para a caixa do surf camp»): the bar is The Suk's (Manjar). The Camp Tab keeps the bar tab and
+// its «Paid» mark, but the money is taken at the restaurant till — never surf camp revenue or cash.
+const CAMPTAB_PASS_THROUGH = { 'sri-lanka': ['Diploria'], portugal: ['Bar'] };
 function isPassThroughItem(item){ return (CAMPTAB_PASS_THROUGH[__HUB_LOCATION_SLUG] || []).includes(String(item?.c || '')); }
 // Held for Dipløria (Portugal, Miguel 15 Nov 2026: «esse dinheiro em Portugal não conta porque vamos dar à
 // marca»). Not pass-through: the guest pays the CAMP (65 €) and the camp passes the money to Dipløria later.

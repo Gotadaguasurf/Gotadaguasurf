@@ -2902,7 +2902,7 @@ function renderItemGrid(){
         <div>
           <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-weight:700">Bar Tab</div>
           <div style="font-size:13px;font-weight:700;color:var(--navy);margin-top:2px">Add a bar charge</div>
-          <div style="font-size:11px;color:var(--muted);margin-top:2px;line-height:1.4">Freeform amount — bar sales route to the Bar area of the ledger, not Merch/Tours.</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px;line-height:1.4">${CAMP_TAB_LOCATION_SLUG==='portugal'?'Freeform amount — the bar is paid at The Suk, so it is never surf camp money (Miguel, 16 Nov 2026).':'Freeform amount — bar sales route to the Bar area of the ledger, not Merch/Tours.'}</div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <div class="mfield" style="flex:1;min-width:110px;margin:0"><input type="number" step="0.01" min="0" id="barTabAmount" placeholder="Amount" style="font-variant-numeric:tabular-nums"></div>

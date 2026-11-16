@@ -381,3 +381,27 @@ test('portugal hub: the Dipløria card reads the history like /diploria/ — pai
   expect(ctl.T.ledger_entries).toEqual([]);                                        // history is read, never back-filled
   expect(await page.evaluate(() => sum(S.ledger.filter(x => x.type === 'income'), x => x.amount))).toBe(0);
 });
+
+test('portugal bar: the Bar tab is paid at The Suk — a paid Bar line writes NO ledger row (no revenue, no cash); the tour on the same tab still does (Miguel 16 Nov 2026)', async ({ page }) => {
+  const { ctl, frame } = await openPortugal(page);
+  await addGuestWith(frame, 'Ana Test', [['Merch', 'T-Shirt M']]);
+  await frame.evaluate(() => { AC = 'Bar Tab'; addResolvedItem({ id: '', n: 'Beer', p: 12, c: 'Bar' }); addResolvedItem({ id: '', n: 'Wine', p: 8, c: 'Bar' }); });
+  await frame.locator('#payBtn').click();
+  await expect.poll(() => campRows(ctl), { timeout: 8000 }).toEqual([['revenue', 'Merchandise', 'Cash', 30, 'T-Shirt M', 'camp_tab_per_guest']]);
+  await page.waitForTimeout(600);
+  expect(campRows(ctl)).toEqual([['revenue', 'Merchandise', 'Cash', 30, 'T-Shirt M', 'camp_tab_per_guest']]);
+  // the bar lines stay «Paid» on the tab (nothing refused, nothing taken back)
+  const paid = await frame.evaluate(() => findConsumer(AG, 'guests').items.filter(i => i.c === 'Bar').map(i => !!i.paidAt));
+  expect(paid).toEqual([true, true]);
+  const f = await hubFigures(page);
+  expect(f.revenue).toBe(30);
+  expect(f.balance).toBe(30);
+  const hub = await page.evaluate(() => {
+    const bar = { id: 'b1', c: 'Bar', n: 'Beer', p: 12, paidAt: '2026-11-15T10:00:00Z' }, tour = { id: 't1', c: 'Tours', n: 'Ice Bath', p: 10, paidAt: '2026-11-15T10:00:00Z' };
+    const guest = { id: 'g1', name: 'Rui Test', items: [bar, tour] };
+    return { pass: isPassThroughItem(bar), perItem: buildPaidItemRevenueEntry(guest, bar, { date: '2026-11-15' }),
+      grouped: buildPaidGuestRevenueEntries(guest, { date: '2026-11-15' }).map(e => [e.category, e.amountLocal]),
+      week: buildClosedWeekRevenueEntries({ id: 'w1', start: '2026-11-14', guests: [{ id: 'g2', name: 'Leo', paid: true, items: [{ id: 'b2', c: 'Bar', n: 'Beer', p: 12 }, { id: 't2', c: 'Tours', n: 'Ice Bath', p: 10 }] }], staff: [] }).map(e => [e.category, e.amountLocal]) };
+  });
+  expect(hub).toEqual({ pass: true, perItem: null, grouped: [['Tours', 10]], week: [['Tours', 10]] });
+});
