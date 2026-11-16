@@ -562,7 +562,7 @@ test('transfers: a tap on the Week Overview opens Transport on the same week and
   await expect(day.locator('.tr-row')).toHaveCount(2);
   const row = n => day.locator('.tr-row', { hasText: n });
   await expect(row('Emilia Faccenna').locator('.tr-time .badge-amber')).toHaveText('time?');
-  await expect(row('Emilia Faccenna').locator('[data-pay]')).toHaveText('Planned');
+  await expect(row('Emilia Faccenna').locator('[data-status-sel]')).toHaveValue('planned');
   await expect(row('Peter Mongey')).toContainText('23:40');
   await expect(row('Peter Mongey')).toContainText('Time changed, resend');
   await expect(page.locator('#trDay-2026-11-21 .tr-row')).toContainText('Departure');
@@ -614,8 +614,10 @@ test('transfers in Transport: a trip already done (time passed) or a no-show sta
   await expect(pay('Early Bird')).toHaveText('Owed');                  // one vocabulary now: done, not paid
   await expect(pay('Paid Already')).toHaveText('Paid');
   await expect(pay('Never Came')).toHaveText('No-show');
-  await expect(pay('All Set')).toHaveText('Confirmed');
-  await expect(pay('Was Told')).toHaveText('Sent');
+  // Still to come: the status select says where it stands (16 Nov 2026, no Planned / Sent / Confirmed badge beside it).
+  const step = n => page.locator('#transportRoot .tr-row', { hasText: n }).locator('[data-status-sel]');
+  await expect(step('All Set')).toHaveValue('confirmed');
+  await expect(step('Was Told')).toHaveValue('sent');
   await expect(page.locator('#trDay-2026-11-17 .tr-row')).toHaveCount(4);
   await expect(page.locator('#transportRoot [data-week-count]')).toContainText('3 not marked sent');   // Peter (changed), Emilia, Beliz
 });

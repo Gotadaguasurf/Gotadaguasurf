@@ -620,7 +620,8 @@
     const live = !t.payment_entry_id && !isDone(t) && !['cancelled', 'no_show'].includes(t.status);
     // Floriane (16 Nov 2026): one control with the three steps — Pending → Message Sent → Confirmed — instead of
     // the one-step buttons. A changed trip (needs_resend) keeps a «Sent ✓» beside it: picking the step already
-    // shown fires nothing, and that tick is what says the new time went out.
+    // shown fires nothing, and that tick is what says the new time went out. With the select the row shows no
+    // Planned / Sent / Confirmed badge (one word per state); Paid, Owed, Cancelled… keep theirs.
     const next = !live || !STATUS_STEPS.some(x => x[0] === t.status) ? '' : statusSelect(t)
       + (t.needs_resend ? `<button class="btn btn-s btn-sm" data-resent onclick="event.stopPropagation();TransportUI.tick('${t.id}','sent')" title="The new details are sent">Sent ✓</button>` : '');
     const miss = live ? missingInfo(t) : [];
@@ -635,7 +636,7 @@
         ${live && !needsInfo(t) && guestHtml(t) ? `<div class="tr-resend">${guestHtml(t)}</div>` : ''}
         ${live && needsInfo(t) ? `<div class="tr-resend"><button class="btn btn-s btn-sm" onclick="event.stopPropagation();TransportUI.ask('${t.id}')">${ic('send')} Ask guest for ${!t.flight && !t.trip_time ? 'flight & time' : !t.flight ? 'flight' : 'time'}</button>${askedOn(t.id) ? ` <span class="hint">asked ${h(fmtDay(askedOn(t.id)))}</span>` : ''}</div>` : ''}</div>
       <div class="tr-c-ppl num">${pplCell(t.pax)}</div><div class="tr-c-drv">${drv}</div><div class="tr-c-price num">${money(t.expected_price)}</div>
-      <div class="tr-side tr-c-status">${pay}
+      <div class="tr-side tr-c-status">${next ? '' : pay}
         <div class="tr-btns">${live ? `<button class="btn btn-s btn-sm btn-icon" title="Send on WhatsApp" onclick="event.stopPropagation();TransportUI.send('${t.id}')">${ic('send')}</button>` : ''}${next}</div></div></div>`;
   }
   // Runs of a day: identical runs (route, driver, state; a planned run also by its time) are one row «× N».

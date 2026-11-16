@@ -276,12 +276,13 @@ test('trips: list by day, WhatsApp to the «Send transfers to» contact in Migue
   await expect(rows.first().locator('[data-status-sel]')).toHaveValue('planned');
   await expect(rows.first().locator('[data-status-sel] option')).toHaveText(['Pending', 'Message Sent', 'Confirmed']);
   await rows.first().locator('[data-status-sel]').selectOption('sent');
-  await expect(rows.first().locator('.badge-blue:has-text("Sent")')).toBeVisible();
+  await expect(rows.first().locator('[data-status-sel]')).toHaveValue('sent');
+  await expect(rows.first().locator('[data-pay]')).toHaveCount(0);   // one word per state: the select, no «Sent» badge beside it
   const upd = await call(st, 'trip_update');
   expect(upd.body).toMatchObject({ status: 'sent', needs_resend: false, sent_snapshot: { trip_date: '2026-11-14', trip_time: '01:55', flight: 'QR658', pax: 1 } });
   await expect(page.locator('#trOv.open')).toHaveCount(0);            // the select never opens the trip sheet
   await rows.first().locator('[data-status-sel]').selectOption('confirmed');
-  await expect(rows.first().locator('.badge-green:has-text("Confirmed")')).toBeVisible();
+  await expect(rows.first().locator('[data-status-sel]')).toHaveValue('confirmed');
   expect((await call(st, 'trip_update', 2)).body).toMatchObject({ status: 'confirmed' });
   // whole day (15 Nov): the same house-style message as the old Week → Transfers day message — one builder
   await page.click('button:has-text("Send the whole day")');
@@ -617,7 +618,7 @@ for (const [name, size] of [['phone 390', { width: 390, height: 844 }], ['deskto
     await expect(row(R(103))).toContainText('added by Nadith');
     await expect(row(R(104)).locator('.tr-free')).toHaveText('Free · Gift');
     await expect(row(R(104)).locator('[data-pay="paid"]')).toHaveText('Paid');
-    await expect(row(R(105)).locator('[data-pay="planned"]')).toHaveText('Planned');
+    await expect(row(R(105)).locator('[data-status-sel]')).toHaveValue('planned');      // still to come: the status select (Pending)
     await expect(row(R(106)).locator('[data-pay="off"]')).toHaveText('Cancelled');
     // Tuk-tuk lines: one per route and state.
     const lines = page.locator('.tr-tuk-line');

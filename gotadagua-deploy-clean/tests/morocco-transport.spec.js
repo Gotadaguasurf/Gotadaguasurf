@@ -160,7 +160,7 @@ test('morocco pay: tap Fathoune in «Owed to drivers» → his runs ticked; the 
   expect(set.p_trip_ids.sort()).toEqual(runs.map(r => r.id));
   expect(st.calls.filter(c => c.t === 'pay')).toEqual([]);                                 // no second line for the same money
   await expect(page.locator('#transportRoot [data-chip="check"]')).toHaveCount(0);
-  await expect(page.locator(`.tr-row[data-trip="${upcoming.id}"] [data-pay="planned"]`)).toHaveCount(await page.locator(`.tr-row[data-trip="${upcoming.id}"]`).count());   // upcoming never paid
+  await expect(page.locator(`.tr-row[data-trip="${upcoming.id}"] [data-pay]`)).toHaveCount(0);   // upcoming never paid: no Paid badge, only its status select (16 Nov 2026)
   expect(errors).toEqual([]);
 });
 

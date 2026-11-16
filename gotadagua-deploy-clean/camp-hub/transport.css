@@ -255,5 +255,5 @@
 @media (max-width: 700px) {
   #transportRoot .select.tr-status-sel { max-width: 112px; font-size: 12px; padding: 0 22px 0 8px; background-position: right 7px center; }
   .tr-srow .tr-c-what .tr-guest { max-width: 100%; }
-  .tr-srow .tr-c-what .btn { max-width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; justify-content: flex-start; }
+  .tr-srow .tr-c-what .btn { max-width: 100%; min-width: 0; height: auto; min-height: 32px; padding-top: 4px; padding-bottom: 4px; white-space: normal; text-align: left; line-height: 1.25; justify-content: flex-start; }
 }
