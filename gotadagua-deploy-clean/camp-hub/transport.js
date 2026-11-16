@@ -190,15 +190,22 @@
   // is kept for information and to split a tour's cost by paying guests. vanRates = route → purpose / tour / label.
   const VAN_CAPS = { Car: 4, Minivan: 8, 'Big Van': 15 };
   const VAN_DEFAULT = 'Minivan';
-  function vanPreset(r) {
-    const want = String((r && (r.catalog || r.route)) || '').toLowerCase(); if (!want || (r && r.confirm && !r.catalog)) return null;
+  // A route's /prices rows: one («Dunes»), or several added up («Paradise + Souk» = the Paradise Valley van + the Souk van).
+  function vanPresets(r) {
+    if (!r) return null;
+    const names = (r.catalogs || []).length ? r.catalogs : [r.catalog || r.route];
+    if (!names[0] || (r.confirm && !r.catalog && !(r.catalogs || []).length)) return null;
     const P = (typeof transportPresets !== 'undefined' && transportPresets) || {};
-    return [...(P.surf || []), ...(P.tours || [])].find(p => String(p.name || '').toLowerCase() === want) || null;
+    const all = [...(P.surf || []), ...(P.tours || [])];
+    const ps = names.map(n => all.find(p => String(p.name || '').toLowerCase() === String(n).toLowerCase()) || null);
+    return ps.every(p => p && (p.vehicles || []).length) ? ps : null;
   }
   function vanVehicles(r) {
-    const p = r ? vanPreset(r) : null;
-    const list = p && (p.vehicles || []).length ? p.vehicles.map(v => ({ label: v.label, capacity: Number(v.capacity) || VAN_CAPS[v.label] || null, price: Number(v.price) || 0 }))
-      : (CC.vehicles || ['Car', 'Minivan', 'Big Van']).map(l => ({ label: l, capacity: VAN_CAPS[l] || null, price: null }));
+    const ps = vanPresets(r);
+    const list = ps ? ps[0].vehicles.map(v => {
+      const each = ps.map(p => (p.vehicles || []).find(x => x.label === v.label));
+      return { label: v.label, capacity: Number(v.capacity) || VAN_CAPS[v.label] || null, price: each.every(Boolean) ? each.reduce((a, x) => a + (Number(x.price) || 0), 0) : null };
+    }) : (CC.vehicles || ['Car', 'Minivan', 'Big Van']).map(l => ({ label: l, capacity: VAN_CAPS[l] || null, price: null }));
     return list.slice().sort((a, b) => (a.capacity || 99) - (b.capacity || 99));
   }
   // The smallest vehicle that holds the people; nobody counted yet → Minivan.
@@ -970,7 +977,7 @@
   function tukRoutes() {
     if (!IS_SL) {
       // The tour(s) of a van run reach Tours by product: «Paradise + Souk» = both tours (16 Nov 2026).
-      const list = (CC.vanRates || []).map(r => ({ key: 'van|' + r.key, label: r.label, route: r.route, purpose: r.purpose, tour: (r.tours || []).length ? r.tours.join(' + ') : (r.tour || null), catalog: r.catalog || null, confirm: !!r.confirm }));
+      const list = (CC.vanRates || []).map(r => ({ key: 'van|' + r.key, label: r.label, route: r.route, purpose: r.purpose, tour: (r.tours || []).length ? r.tours.join(' + ') : (r.tour || null), catalog: r.catalog || null, catalogs: r.catalogs || null, confirm: !!r.confirm }));
       return { surf: list.filter(r => r.purpose === 'surf'), camp: [], tour: list.filter(r => r.purpose !== 'surf') };
     }
     const P = (typeof transportPresets !== 'undefined' && transportPresets) || {};

@@ -148,13 +148,17 @@
     // This table only maps a route to its purpose, its tour(s) and its label; `catalog` names the /prices
     // destination. No catalog row → price 0 and «price to confirm» (`confirm`).
     vanRates: [
-      { key: 'surf', label: 'Surf spot', route: 'Surf', purpose: 'surf', catalog: 'Surf' },
+      // Mounir Travel Tours (Mounir Fathoune), prices per vehicle from October 2026 (WhatsApp from Floriane, 16 Nov 2026):
+      // VAN 04 = Car, VAN 08 = Minivan, VAN 14/15 = Big Van; the prices live in /prices. Before October he charged
+      // 110 MAD per person (the old ledger lines). «Taghazout + Party» is gone: the guests pay those drivers directly.
+      { key: 'surf', label: 'Surf Taghazout', route: 'Surf', purpose: 'surf', catalog: 'Surf' },
+      { key: 'tamri', label: 'Surf Tamri / Anza', route: 'Tamri / Anza', purpose: 'surf', catalog: 'Tamri / Anza' },
+      { key: 'imsouane', label: 'Surf Imsouane', route: 'Imsouane', purpose: 'surf', catalog: 'Imsouane' },
       { key: 'dunes', label: 'Dunes', route: 'Dunes', purpose: 'tour', tour: 'Dunes — Sandboarding', catalog: 'Dunes' },
       { key: 'paradise', label: 'Paradise Valley', route: 'Paradise Valley', purpose: 'tour', tour: 'Paradise Valley', catalog: 'Paradise Valley' },
-      { key: 'paradise-souk', label: 'Paradise + Souk', route: 'Paradise + Souk', purpose: 'tour', tour: 'Paradise Valley', tours: ['Paradise Valley', 'Souk Tour'], catalog: 'Paradise Valley', confirm: true },   // not in /prices: Paradise Valley's vehicle price, to confirm; cost split over both tours by paying guests
+      // No special price: the van to Paradise Valley + the van for the Souk (guests pay 250 + 150). Cost split over both tours by paying guests.
+      { key: 'paradise-souk', label: 'Paradise + Souk', route: 'Paradise + Souk', purpose: 'tour', tour: 'Paradise Valley', tours: ['Paradise Valley', 'Souk Tour'], catalogs: ['Paradise Valley', 'Souk'] },
       { key: 'souk', label: 'Souk', route: 'Souk', purpose: 'tour', tour: 'Souk Tour', catalog: 'Souk' },
-      { key: 'taghazout-party', label: 'Taghazout + Party', route: 'Taghazout + Party', purpose: 'other', confirm: true },   // not in /prices: 0, to confirm
-      { key: 'imsouane', label: 'Imsouane', route: 'Imsouane', purpose: 'surf', catalog: 'Imsouane' },
     ],
     vanSupplier: 'Fathoune',
     // The cleaning team reads Moroccan Darija in Arabic script (Miguel, 14 Nov: «limpeza só, a cozinha é em

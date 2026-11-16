@@ -88,16 +88,17 @@ test('morocco transport: van runs — people in the van, one tap = one run at th
   await expect(page.locator('#trOv .mhdr-title')).toHaveText('Van runs');
   await expect(page.locator('#tk_people')).toHaveText('—');                       // nobody counted yet → Minivan
   await expect(page.locator('#tk_veh .pill.active')).toHaveText('Minivan');
-  await expect(page.locator('.tr-tap-main[data-key="van|surf"] .hint')).toHaveText('MAD 800 · Minivan');
-  await expect(page.locator('.tr-tap-main[data-key="van|paradise-souk"] .hint')).toHaveText('MAD 800 · Minivan · price to confirm');
-  await expect(page.locator('.tr-tap-main[data-key="van|taghazout-party"] .hint')).toHaveText('MAD 0 · Minivan · price to confirm');
+  await expect(page.locator('.tr-tap-main[data-key="van|surf"] .hint')).toHaveText('MAD 500 · Minivan');
+  await expect(page.locator('.tr-tap-main[data-key="van|paradise-souk"] .hint')).toHaveText('MAD 1,100 · Minivan');   // Paradise Valley van 700 + Souk van 400, no special price
+  await expect(page.locator('.tr-tap-main[data-key="van|taghazout-party"]')).toHaveCount(0);              // guests pay those drivers directly
+  await expect(page.locator('.tr-tap-main[data-key="van|tamri"] .hint')).toHaveText('MAD 600 · Minivan');
   for (let i = 0; i < 9; i++) await page.click('#trOv .tr-people button[title="One person more"]');
   await expect(page.locator('#tk_people')).toHaveText('9');
   await expect(page.locator('#tk_veh .pill.active')).toHaveText('Big Van');        // 9 people: the smallest that holds them
-  await expect(page.locator('.tr-tap-main[data-key="van|surf"] .hint')).toHaveText('MAD 900 · Big Van');
+  await expect(page.locator('.tr-tap-main[data-key="van|surf"] .hint')).toHaveText('MAD 700 · Big Van');
   await page.locator('.tr-tap-main[data-key="van|surf"]').click();
   const ins = (await H.call(st, 'trip_insert')).rows[0];
-  expect(ins).toMatchObject({ kind: 'other', route: 'Surf', purpose: 'surf', pax: 9, expected_price: 900, vehicle: 'Big Van', status: 'done', currency: 'MAD', driver_id: H.D.fat });
+  expect(ins).toMatchObject({ kind: 'other', route: 'Surf', purpose: 'surf', pax: 9, expected_price: 700, vehicle: 'Big Van', status: 'done', currency: 'MAD', driver_id: H.D.fat });
   await expect(page.locator('.tr-tap-main[data-key="van|surf"] .tr-tap-n')).toHaveText('1');
   await expect(page.locator('#trOv .tr-tuk-total')).toContainText('1 run · 9 people');
   // Plan tomorrow: 2 vans of 8 to the surf spot at 08:00 → the order for Fathoune
@@ -111,8 +112,8 @@ test('morocco transport: van runs — people in the van, one tap = one run at th
   await page.click('#tk_padd');
   await expect(page.locator('#tk_plan .tr-plan-line')).toHaveCount(1);
   const order = await page.evaluate(() => TransportUI.orderText('2026-11-15', TransportUI._state.trips.filter(t => t.status === 'planned')));
-  expect(order).toBe('*VANS - SUN 15 NOV*\n\n08:00 Surf spot - 2 × Minivan, 16 people');
-  expect(await page.evaluate(() => TransportUI._state.trips.filter(t => t.status === 'planned').map(t => [t.vehicle, t.expected_price]))).toEqual([['Minivan', 800], ['Minivan', 800]]);
+  expect(order).toBe('*VANS - SUN 15 NOV*\n\n08:00 Surf Taghazout - 2 × Minivan, 16 people');
+  expect(await page.evaluate(() => TransportUI._state.trips.filter(t => t.status === 'planned').map(t => [t.vehicle, t.expected_price]))).toEqual([['Minivan', 500], ['Minivan', 500]]);
   expect(H.EMOJI.test(order)).toBe(false);
   await page.click('#tk_send');
   await expect.poll(() => page.evaluate(() => window.__opened.length)).toBeGreaterThan(0);
@@ -289,7 +290,7 @@ test('morocco sheet: Airport / Surf vans / Tours pills, identical tour runs as o
   await expect(page.locator('#transportRoot [data-foot]')).toHaveCount(3);
   await page.click('#transportRoot .tr-cats .pill[data-cat="vans"]');
   await expect(page.locator('#transportRoot .tr-tuk-line')).toHaveCount(1);
-  await expect(page.locator('#transportRoot .tr-tuk-line')).toContainText('Surf spot');
+  await expect(page.locator('#transportRoot .tr-tuk-line')).toContainText('Surf Taghazout');
   await page.click('#transportRoot .tr-cats .pill[data-cat="tours"]');
   await expect(page.locator('#transportRoot .tr-row')).toHaveCount(0);
   await expect(page.locator('#transportRoot .tr-tuk-line')).toHaveCount(2);
@@ -298,7 +299,7 @@ test('morocco sheet: Airport / Surf vans / Tours pills, identical tour runs as o
   await expect(dunes).toContainText('× 2');
   await expect(dunes.locator('.tr-c-meta')).toHaveText('Minivan · 12 people · Fathoune');
   await expect(page.locator('#transportRoot [data-foot="tours"]')).toContainText('3 runs · MAD 2,500');
-  await expect(page.locator('#transportRoot .tr-tuk-line', { hasText: 'Paradise + Souk' }).locator('.tr-confirm')).toHaveText('price to confirm');
+  await expect(page.locator('#transportRoot .tr-tuk-line', { hasText: 'Paradise + Souk' }).locator('.tr-confirm')).toHaveCount(0);   // priced: Paradise van + Souk van
   await expect(page.locator('#transportRoot .tr-tuk-line', { hasText: 'Paradise + Souk' }).locator('.tr-c-meta')).toHaveText('Big Van · 10 people · Fathoune');
   expect(await H.noOverflow(page)).toBe(true);
   fs.mkdirSync(SHEET_SHOTS, { recursive: true });
@@ -310,7 +311,7 @@ test('morocco sheet: Airport / Surf vans / Tours pills, identical tour runs as o
   await expect(page.locator('#tk_dr')).toHaveValue(H.D.fat);
   const routes = await page.locator('#tk_pr option').allInnerTexts();
   expect(routes.length).toBeGreaterThan(0);
-  expect(routes.some(r => /Surf spot|Imsouane|Taghazout/.test(r))).toBe(false);
+  expect(routes.some(r => /Surf|Imsouane|Tamri/.test(r))).toBe(false);
   expect(routes.some(r => /Dunes/.test(r))).toBe(true);
   await page.evaluate(() => TransportUI.closeModal());
   // Airport: always Let Us Tours.
@@ -328,11 +329,11 @@ test('morocco per-vehicle price in the edit sheet and in Pay «Run not in the li
   await page.evaluate(id => TransportUI.openRuns([id]), runs[0].id);
   await expect(page.locator('#rn_v')).toHaveValue('Big Van');
   await page.selectOption('#rn_v', 'Car');
-  await expect(page.locator('#rn_pr')).toHaveValue('700');                      // Surf — Car
+  await expect(page.locator('#rn_pr')).toHaveValue('300');                      // Surf — Car
   await page.fill('#rn_pax', '3');
-  await expect(page.locator('#rn_pr')).toHaveValue('700');                      // people never change the price
+  await expect(page.locator('#rn_pr')).toHaveValue('300');                      // people never change the price
   await page.click('#rn_save');
-  expect((await H.call(st, 'trip_update')).body).toMatchObject({ vehicle: 'Car', expected_price: 700, pax: 3 });
+  expect((await H.call(st, 'trip_update')).body).toMatchObject({ vehicle: 'Car', expected_price: 300, pax: 3 });
   await expect(page.locator('#trOv.open')).toHaveCount(0);
   await page.evaluate(id => TransportUI.payPick(id), H.D.fat);
   await expect(page.locator('#trOv .mhdr-title')).toHaveText('Pay Fathoune');
@@ -343,6 +344,6 @@ test('morocco per-vehicle price in the edit sheet and in Pay «Run not in the li
   await page.selectOption('#py_av', 'Big Van');
   await page.click('#py_addok');
   const ins = (await H.call(st, 'trip_insert')).rows[0];
-  expect(ins).toMatchObject({ route: 'Dunes', purpose: 'tour', vehicle: 'Big Van', expected_price: 900, status: 'done', notes: 'Added when paying' });
+  expect(ins).toMatchObject({ route: 'Dunes', purpose: 'tour', vehicle: 'Big Van', expected_price: 800, status: 'done', notes: 'Added when paying' });
   expect(errors).toEqual([]);
 });

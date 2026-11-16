@@ -23,8 +23,8 @@ const DRIVERS = [
 const CATALOG = [['Agadir Airport — Car', 250], ['Agadir Airport — Minivan', 300], ['Agadir Airport — Big Van', 500],
   ['Marrakech Airport — Car', 1200], ['Marrakech Airport — Minivan', 1500], ['Marrakech Airport — Big Van', 2200]]
   .map(([name, cost], i) => ({ id: `cat-${i}`, name, cost_per_guest: cost, currency: 'MAD', notes: '', linked_transport_preset_id: `p-${name.split(' — ')[0]}`, linked_camp_tab_id: null, picker_tab: 'airport', sort_order: i }))
-  // Surf vans and tours (Miguel, 16 Nov 2026): Fathoune's price per VEHICLE, the live /prices rows.
-  .concat([['Surf', 'surf', 700, 800, 900], ['Imsouane', 'surf', 800, 900, 1200], ['Dunes', 'tours', 700, 800, 900], ['Paradise Valley', 'tours', 700, 800, 900], ['Souk', 'tours', 400, 500, 700]]
+  // Surf vans and tours: Mounir Travel Tours (Fathoune) per VEHICLE from October 2026, the live /prices rows.
+  .concat([['Surf', 'surf', 300, 500, 700], ['Tamri / Anza', 'surf', 400, 600, 800], ['Imsouane', 'surf', 800, 900, 1200], ['Dunes', 'tours', 500, 700, 800], ['Paradise Valley', 'tours', 500, 700, 800], ['Souk', 'tours', 300, 400, 600]]
     .flatMap(([dest, tab, car, mini, big], j) => [['Car', car, 4], ['Minivan', mini, 8], ['Big Van', big, 15]].map(([v, cost, cap], k) => ({ id: `cat-v${j}${k}`, name: `${dest} — ${v}`, cost_per_guest: cost, currency: 'MAD',
       notes: `capacity ${cap}`, linked_transport_preset_id: `p-${dest}`, linked_camp_tab_id: null, picker_tab: tab, sort_order: 20 + j * 3 + k }))));
 
