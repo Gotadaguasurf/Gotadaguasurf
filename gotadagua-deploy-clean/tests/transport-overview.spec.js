@@ -88,8 +88,14 @@ test('overview: a Transport payment after go-live that pays no trip shows in the
   const o = { trips: [], ledger, drivers: DRIVERS, cfg: CC.MA, mode: 'month', from: '2026-10-01', to: '2026-10-31', goLive: '2026-10-01', now: NOW };
   expect(O.summary(o).ledger.rows).toEqual([]);                                     // no linked set given: as before
   const s = O.summary({ ...o, linked: ['linked-1'] });
-  expect(s.ledger.rows).toEqual([{ label: 'Let Us Tours', payments: 1, cost: 16000 }]);
-  expect(O.byDriver({ ...o, linked: ['linked-1'] })).toEqual([{ label: 'Let Us Tours', trips: 0, people: 0, cost: 16000, paid: 16000, owed: 0, payments: 1 }]);
+  // Paid only, never cost: after go-live the trips are the cost (else a payment for owed trips counts twice).
+  expect(s.ledger.rows).toEqual([{ label: 'Let Us Tours', payments: 1, cost: 0, paid: 16000 }]);
+  expect(O.headline(s)).toMatchObject({ cost: 0, paid: 16000 });
+  expect(O.byDriver({ ...o, linked: ['linked-1'] })).toEqual([{ label: 'Let Us Tours', trips: 0, people: 0, cost: 0, paid: 16000, owed: 0, payments: 1 }]);
+  // Owed trips + their (unlinked) payment: cost = the trips, once.
+  const owedTrip = trip({ trip_date: '2026-10-10', status: 'done', expected_price: 16000, driver_id: 'd1' });
+  const s2 = O.summary({ ...o, trips: [owedTrip], linked: ['linked-1'] });
+  expect(O.headline(s2)).toMatchObject({ cost: 16000, paid: 16000, owed: 16000 });
 });
 
 test('overview: the week is Transport\'s week (Sat–Fri, the closing Saturday\'s departures in, the opening Saturday\'s out)', () => {

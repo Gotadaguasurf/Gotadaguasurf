@@ -190,9 +190,10 @@
   // morning check), «Transfer cancelled in Bookinglayer: did Dilan go…», «No arrival transfer booked…» — shows the same
   // amber question with «Driver went (pay)» / «Didn't go (cancel)», and Pay never ticks such a trip by itself.
   const BL_NOT_BOOKED_FLAG = 'Not booked in Bookinglayer: did the driver go? If not, cancel this trip';   // = camp_trips_bl_verify's v_flag
-  const QUESTION_FLAG = /did (the driver|\S+) go\b|^not booked in bookinglayer|^no (arrival|departure) transfer booked/i;
+  // («No arrival transfer booked…» is matched from the QA's quote; its exact wording is not in the repo.)
+  const QUESTION_FLAG = /did (the driver|\S+) go\?|^not booked in bookinglayer|^no (arrival|departure) transfer booked/i;
   const questionFlag = t => (t.import_flags || []).find(f => QUESTION_FLAG.test(String(f))) || '';
-  const blFlagged = t => !!questionFlag(t) && !t.payment_entry_id && !['cancelled', 'no_show', 'merged'].includes(t.status);
+  const blFlagged = t => !!questionFlag(t) && isDone(t) && !t.payment_entry_id && !['cancelled', 'no_show', 'merged'].includes(t.status);
   const vehicleFor = GT.vehicleFor;
   const isFree = t => t.charge === 'free' || !!t.free_reason;
   const freeLabel = t => 'Free' + (t.free_reason && FREE_SHORT[t.free_reason] ? ' · ' + FREE_SHORT[t.free_reason] : '');
@@ -965,7 +966,7 @@
   function ovData() {
     const P = ovPeriod();
     // Payments linked to trips are those trips' «Paid»; the others show in the month they were paid (one owed rule: reconcileStatus).
-    const linked = new Set(TR.links.map(l => l.entry_id).concat(TR.trips.map(t => t.payment_entry_id).filter(Boolean)));
+    const linked = new Set(TR.trips.map(t => t.payment_entry_id).filter(Boolean));   // a payment «to check» with no trips is not linked
     const base = { trips: TR.trips, ledger: ovLedger(), drivers: TR.drivers, cfg: CC, goLive: goLive(), now: colomboNow(), linked, isOwed: t => reconcileStatus(t) === 'owed' };
     const o = { ...base, mode: P.mode, from: P.from, to: P.to };
     const Sm = TO().summary(o);
@@ -1821,7 +1822,10 @@
     shown.forEach(t => on ? D.picked.add(t.id) : D.picked.delete(t.id));
     const note = $('lk_note') ? $('lk_note').value : ''; renderLink(); if ($('lk_note')) $('lk_note').value = note;
   }
-  function linkMonth(m) { const D = TR.linkDraft; if (!D) return; D.month = m; const note = $('lk_note') ? $('lk_note').value : ''; renderLink(); if ($('lk_note')) $('lk_note').value = note; }
+  // Switching month drops the ticks of the other months (except trips already linked to this payment): one month per save.
+  function linkMonth(m) { const D = TR.linkDraft; if (!D) return; D.month = m;
+    D.picked = new Set([...D.picked].filter(id => { const t = TR.trips.find(x => x.id === id); return t && (t.payment_entry_id === D.entryId || t.trip_date.slice(0, 7) === m); }));
+    const note = $('lk_note') ? $('lk_note').value : ''; renderLink(); if ($('lk_note')) $('lk_note').value = note; }
   function linkDriver(v) { TR.linkDraft.driver = v; TR.linkDraft.picked = new Set(TR.trips.filter(t => t.payment_entry_id === TR.linkDraft.entryId).map(t => t.id)); renderLink(); }
   function linkPick(id, on) { if (on) TR.linkDraft.picked.add(id); else TR.linkDraft.picked.delete(id); const note = $('lk_note') ? $('lk_note').value : ''; renderLink(); if ($('lk_note')) $('lk_note').value = note; }
   async function saveLink() {

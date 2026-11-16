@@ -109,10 +109,18 @@ test('QA 1 — Link trips: only trips on or before the payment, one month at a t
   await expect(page.locator('#trOv .tr-pick')).toHaveCount(2);
   await expect(page.locator('#lk_all')).toHaveCount(0);                                      // 2 trips: no «Tick all»
   await expect(page.locator('#trOv [data-lk-explain]')).toHaveText('Mark explained');
+  // Ticks never survive a month switch: tick all October, switch to November, tick one, save → only November is sent.
+  await page.click('#lk_months .pill:has-text("Oct 2026")');
+  await page.click('#lk_all');
+  await page.click('#lk_months .pill:has-text("Nov 2026")');
+  await page.locator('#trOv .tr-pick input[type="checkbox"]').first().check();
+  await page.fill('#lk_note', 'November part');
+  await page.click('#lk_save');
+  const link = await H.call(st, 'link_set');
+  expect(link.body.p_trip_ids).toEqual([trips[4].id]);
   // A payment never pays a trip dated after it.
   expect(await page.evaluate(() => TransportUI.namedMonth('September · Let Us Tours', '2026-10-12'))).toBe('2026-09');
   expect(await page.evaluate(() => TransportUI.namedMonth('Paid December', '2027-01-05'))).toBe('2026-12');
-  expect(st.calls.filter(c => c.t === 'link_set')).toHaveLength(0);
   expect(errors).toEqual([]);
 });
 

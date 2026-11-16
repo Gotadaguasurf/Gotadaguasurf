@@ -101,7 +101,9 @@ test('overview (Morocco): a payment after go-live that pays no trip shows in the
   await expect(page.locator('.tr-ov-period')).toHaveText('October 2026');
   await expect(page.locator('[data-ov-row="ledger"] td').first()).toContainText('Let Us Tours 1');
   await expect(page.locator('[data-ov-row="ledger"] td').first()).not.toContainText('Other transport');   // after go-live: driver payments only
-  await expect(page.locator('[data-ov-table="drivers"] tr[data-ov-driver="Let Us Tours"]')).toContainText('MAD 16,250'.replace(' ', ' '));
+  const lut = page.locator('[data-ov-table="drivers"] tr[data-ov-driver="Let Us Tours"] td');
+  expect((await lut.nth(2).locator('.num').textContent()).replace(/\s/g, ' ')).toBe('MAD 250');            // cost = the October trip, once
+  expect((await lut.nth(3).locator('.num').textContent()).replace(/\s/g, ' ')).toBe('MAD 16,000');         // the payment adds to «Paid» only
 });
 
 test('overview (Morocco): year — cost by month as bars (Sep from payments, lighter), a bar opens that month; Export = the matrix with € total last', async ({ page }) => {

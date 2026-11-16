@@ -124,9 +124,12 @@
     // Before go-live: what was paid, per supplier.
     const lines = ledgerTransport(o.ledger, o.from, o.to, goLive, o.linked, o.drivers);
     const lby = new Map();
-    lines.forEach(e => { const s = supplierOf(e, o.drivers); const x = lby.get(s) || { label: s, payments: 0, cost: 0 }; x.payments++; x.cost += Number(e.amountLocal || 0); lby.set(s, x); });
-    const ledgerRows = [...lby.values()].sort((a, b) => (a.label === 'Other transport') - (b.label === 'Other transport') || b.cost - a.cost);
-    return { rows, total, ledger: { rows: ledgerRows, total: ledgerRows.reduce((s, r) => s + r.cost, 0), payments: lines.length }, beforeGoLive: o.from < goLive };
+    // Before go-live a payment IS the cost (no trips); after it, an unlinked payment is money paid only — its trips (if
+    // any) already carry the cost, so it adds to «Paid», never to the cost twice. paid = every line; cost = the old ones.
+    lines.forEach(e => { const s = supplierOf(e, o.drivers); const x = lby.get(s) || { label: s, payments: 0, cost: 0 }; const v = Number(e.amountLocal || 0); x.payments++;
+      if (String(e.date || '') < goLive) x.cost += v; else x.paid = (x.paid || 0) + v; lby.set(s, x); });
+    const ledgerRows = [...lby.values()].map(x => x.paid ? { ...x, paid: x.paid + x.cost } : x).sort((a, b) => (a.label === 'Other transport') - (b.label === 'Other transport') || (b.paid || b.cost) - (a.paid || a.cost));
+    return { rows, total, ledger: { rows: ledgerRows, total: ledgerRows.reduce((s, r) => s + r.cost, 0), paid: ledgerRows.reduce((s, r) => s + (r.paid != null ? r.paid : r.cost), 0), payments: lines.length }, beforeGoLive: o.from < goLive };
   }
 
   // Year: type × month for cost and people (+ row and column totals). Ledger supplier rows for the months before go-live.
@@ -140,7 +143,7 @@
       const c = classify(t, o.cfg); const r = cell(c.key, { ...c, src: 'trips' }); const i = +t.trip_date.slice(5, 7) - 1;
       r.cost[i] += Number(t.expected_price || 0); r.people[i] += Number(t.pax) || 1;
     });
-    ledgerTransport(o.ledger, `${y}-01-01`, `${y}-12-31`, goLive, o.linked, o.drivers).forEach(e => {
+    ledgerTransport(o.ledger, `${y}-01-01`, `${y}-12-31`, goLive).forEach(e => {   // cost per month: the old payments only (after go-live the trips are the cost)
       const s = supplierOf(e, o.drivers); const r = cell('ledger:' + s, { group: 'ledger', key: 'ledger:' + s, label: s, order: s === 'Other transport' ? 1 : 0, src: 'ledger' }); const i = +String(e.date).slice(5, 7) - 1;
       r.cost[i] += Number(e.amountLocal || 0); r.people[i] = null;
     });
@@ -181,14 +184,14 @@
       if (p) p.trips += r.trips; else x.parts.push({ label: pl, trips: r.trips });
       by.set(k, x);
     });
-    if (s.ledger && s.ledger.rows.length) by.set('ledger', { kind: 'ledger', label: kindLabel('ledger', cfg), trips: 0, people: 0, cost: s.ledger.total, paid: s.ledger.total, owed: 0, noShow: 0,
+    if (s.ledger && s.ledger.rows.length) by.set('ledger', { kind: 'ledger', label: kindLabel('ledger', cfg), trips: 0, people: 0, cost: s.ledger.total, paid: s.ledger.paid != null ? s.ledger.paid : s.ledger.total, owed: 0, noShow: 0,
       payments: s.ledger.payments, parts: s.ledger.rows.map(r => ({ label: r.label, payments: r.payments })) });
     return [...by.values()].sort((a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind)).map(x => ({ ...x, perPerson: x.people ? Math.round(x.cost / x.people) : 0 }));
   }
   // The period's big numbers: trips + the payments before the trip list (both are money spent on transport).
   function headline(s) {
-    const L = (s.ledger && s.ledger.total) || 0;
-    return { cost: s.total.cost + L, paid: s.total.paid + L, owed: s.total.owed, trips: s.total.trips, people: s.total.people, perPerson: s.total.perPerson, fromPayments: L, payments: (s.ledger && s.ledger.payments) || 0 };
+    const L = (s.ledger && s.ledger.total) || 0; const LP = s.ledger ? (s.ledger.paid != null ? s.ledger.paid : L) : 0;
+    return { cost: s.total.cost + L, paid: s.total.paid + LP, owed: s.total.owed, trips: s.total.trips, people: s.total.people, perPerson: s.total.perPerson, fromPayments: L, payments: (s.ledger && s.ledger.payments) || 0 };
   }
   // One row per driver for the period (same trips as summary), the payments before the trip list added to their supplier.
   //   o = summary's o + drivers
@@ -204,7 +207,7 @@
       r.trips++; r.people += Number(t.pax) || 1; r.cost += price;
       if (t.payment_entry_id) r.paid += price; else if (isOwed(t)) r.owed += price;
     });
-    ledgerTransport(o.ledger, o.from, o.to, goLive, o.linked, o.drivers).forEach(e => { const r = row(supplierOf(e, o.drivers)); const v = Number(e.amountLocal || 0); r.cost += v; r.paid += v; r.payments++; });
+    ledgerTransport(o.ledger, o.from, o.to, goLive, o.linked, o.drivers).forEach(e => { const r = row(supplierOf(e, o.drivers)); const v = Number(e.amountLocal || 0); if (String(e.date || '') < goLive) r.cost += v; r.paid += v; r.payments++; });
     return [...by.values()].sort((a, b) => (a.label === 'Other transport') - (b.label === 'Other transport') || (a.label === 'No driver') - (b.label === 'No driver') || b.cost - a.cost);
   }
   // Euros for the Overview: ONE rate for the period, never a single stored row (16 Nov 2026: the app's exchange-rate
@@ -239,7 +242,7 @@
     const e = (...v) => E ? v.map(x => x === '' ? '' : eur(x, rate)) : [];
     s.rows.forEach(r => out.push([r.label, r.group === 'arr' || r.group === 'dep' ? 'Airport' : r.group === 'runs' ? 'Runs' : r.group === 'tours' ? 'Tours' : 'Other', r.trips, r.people, r.cost, r.paid, r.owed, r.perPerson, r.noShow, ...e(r.cost, r.paid, r.owed)]));
     if (s.rows.length) out.push(['Total', '', s.total.trips, s.total.people, s.total.cost, s.total.paid, s.total.owed, s.total.perPerson, s.total.noShow, ...e(s.total.cost, s.total.paid, s.total.owed)]);
-    s.ledger.rows.forEach(r => out.push([r.label, 'From payments — no trip list', `${r.payments} payment${r.payments === 1 ? '' : 's'}`, '', r.cost, r.cost, '', '', '', ...e(r.cost, r.cost, '')]));
+    s.ledger.rows.forEach(r => out.push([r.label, 'From payments — no trip list', `${r.payments} payment${r.payments === 1 ? '' : 's'}`, '', r.cost, r.paid != null ? r.paid : r.cost, '', '', '', ...e(r.cost, r.paid != null ? r.paid : r.cost, '')]));
     return out;
   }
   function yearTable(m, measure, cur, rate) {
