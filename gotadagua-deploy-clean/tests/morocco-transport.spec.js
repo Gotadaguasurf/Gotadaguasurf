@@ -24,12 +24,28 @@ function ledgerRow(id, desc, amount, date, extra = {}) {
     paid_from: 'morocco', attributed_location: 'morocco', created_at: '2026-11-14T09:00:00Z', ...extra };
 }
 
-test('morocco transport: the tab shows for the full view; the header says how Morocco pays (SG bank transfer) and «Pay a driver» is the one door (16 Nov 2026)', async ({ page }) => {
+test('morocco transport: the tab shows for the full view; pills in Floriane\'s words (Airport · Surf vans · Tours · Overview), no header button row; paying lives in «Owed to drivers» (16 Nov 2026 UX pass)', async ({ page }) => {
   const errors = collectFatalErrors(page);
   await openTab(page);
   await expect(page.locator('#transportRoot .tr-how')).toContainText('Let Us Tours');
-  await expect(page.locator('#transportRoot .tr-actions')).toContainText('Van runs');
-  await expect(page.locator('#trPayBtn')).toBeVisible();
+  await expect(page.locator('#transportRoot .tr-tabs .pill')).toHaveText(['All', 'Airport', 'Surf vans', 'Tours', 'Overview']);
+  await expect(page.locator('#transportRoot .tr-actions, #trPayBtn')).toHaveCount(0);   // no «Van runs / Pay a driver / Add transfer / Drivers / Export month» row
+  await expect(page.locator('#transportRoot')).not.toContainText('Van runs');
+  await expect(page.locator('#trOwed #trPayOther')).toHaveText('Pay another driver');
+  await expect(page.locator('#transportRoot [data-foot-links] button')).toHaveText(['Drivers and contacts', 'Export month']);
+  await page.click('#transportRoot .tr-tabs .pill[data-cat="vans"]');
+  await expect(page.locator('#transportRoot .btn-p:visible')).toHaveCount(1);
+  await expect(page.locator('#transportRoot [data-add-runs="vans"]')).toHaveText('Add surf vans');
+  await page.click('#transportRoot [data-add-runs="vans"]');
+  await expect(page.locator('#trOv .mhdr-title')).toHaveText('Surf vans');
+  await expect(page.locator('#trOv .tr-tap-main[data-key="van|dunes"]')).toHaveCount(0);   // the Surf vans pill: surf routes only
+  await page.evaluate(() => TransportUI.closeModal());
+  await page.click('#transportRoot .tr-tabs .pill[data-cat="tours"]');
+  await expect(page.locator('#transportRoot [data-add-runs="tours"]')).toHaveText('Add tour vans');
+  await page.click('#transportRoot [data-plan]');
+  await expect(page.locator('#trOv .mhdr-title')).toHaveText('Tour vans');
+  await expect(page.locator('#tk_mode .pill.active')).toHaveText('Plan tomorrow');
+  await page.evaluate(() => TransportUI.closeModal());
   await expect(page.locator('#transportRoot .tr-views')).toHaveCount(0);            // no Reconcile any more
   expect(errors).toEqual([]);
 });
@@ -86,7 +102,7 @@ test('morocco transport: van runs — people in the van, one tap = one run at th
   const errors = collectFatalErrors(page);
   const st = await openTab(page);
   await page.evaluate(() => TransportUI.openTuktuk());
-  await expect(page.locator('#trOv .mhdr-title')).toHaveText('Van runs');
+  await expect(page.locator('#trOv .mhdr-title')).toHaveText('Surf vans and tours');
   await expect(page.locator('#tk_people')).toHaveText('—');                       // nobody counted yet → Minivan
   await expect(page.locator('#tk_veh .pill.active')).toHaveText('Minivan');
   await expect(page.locator('.tr-tap-main[data-key="van|surf"] .hint')).toHaveText('MAD 500 · Minivan');

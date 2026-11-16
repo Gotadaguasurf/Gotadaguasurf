@@ -318,18 +318,38 @@ test('trips: no phone for the contact → wa.me without a number; a changed time
   await expect(page.locator('#transportRoot')).not.toContainText('time changed — resend');
 });
 
-test('trips: manual transfer in one screen — who pays, price from /prices', async ({ page }) => {
+test('trips: an airport transfer by hand is FREE only (Miguel 16 Nov 2026: guests\' transfers come from Bookinglayer) — reason and name required, «what we pay the driver» from /prices', async ({ page }) => {
   const st = await openTab(page);
-  await page.click('button:has-text("Add transfer")');
+  await page.click('#transportRoot .tr-tabs .pill[data-cat="airport"]');
+  await expect(page.locator('#transportRoot [data-add="2026-11-12"]')).toHaveText('Free transfer');
+  await page.click('#transportRoot [data-add="2026-11-12"]');
+  await expect(page.locator('#trOv .mhdr-title')).toHaveText('Add a free airport transfer');
+  await expect(page.locator('#trOv .tr-free-rule')).toContainText('never add them here');
+  await expect(page.locator('#trOv #at_ch, #trOv #at_who')).toHaveCount(0);                  // no «who pays us» / «guest» choice: always free
+  await expect(page.locator('#trOv #at_fr .pill')).toHaveText(['Staff', 'Gift to guest', 'Compensation', 'Other']);
+  await expect(page.locator('#trOv #at_fr .pill.active')).toHaveCount(0);                     // nothing picked for you
+  await expect(page.locator('#at_d')).toHaveValue('2026-11-12');
   await page.fill('#at_g', 'Anna');
-  await page.fill('#at_d', '2026-11-15');
   await page.fill('#at_t', '14:30');
   await expect(page.locator('#at_pr')).toHaveValue('21000');
-  await page.click('#at_ch .pill:has-text("Free")');
+  await expect(page.locator('#trOv label[for], #trOv label').filter({ hasText: 'What we pay the driver (LKR)' })).toHaveCount(1);
+  await page.click('#at_save');                                                               // no reason → refused
+  await expect(page.locator('#trOv.open')).toHaveCount(1);
+  expect(st.calls.filter(c => c.t === 'trip_insert')).toHaveLength(0);
+  await page.click('#at_fr .pill:has-text("Compensation")');
+  await page.fill('#at_g', '');
+  await page.click('#at_save');                                                               // no name → refused
+  expect(st.calls.filter(c => c.t === 'trip_insert')).toHaveLength(0);
+  await page.fill('#at_g', 'Anna');
+  await page.fill('#at_pr', '19000');
   await page.click('#at_save');
   const ins = (await call(st, 'trip_insert')).rows[0];
-  expect(ins).toMatchObject({ kind: 'airport_arrival', trip_date: '2026-11-15', trip_time: '14:30', guest_names: 'Anna', charge: 'free', expected_price: 21000, source: 'manual', driver_id: D.dilan });
-  await expect(page.locator('.tr-row')).toContainText('Anna');
+  expect(ins).toMatchObject({ kind: 'airport_arrival', trip_date: '2026-11-12', trip_time: '14:30', guest_names: 'Anna', charge: 'free', free_reason: 'compensation', purpose: 'guests', expected_price: 19000, source: 'manual', driver_id: D.dilan });
+  await expect(page.locator('.tr-row', { hasText: 'Anna' }).locator('.tr-free')).toHaveText('Free · Compensation');
+  // Its edit sheet offers only «Free» + the reason — never «In booking» or «Camp Tab».
+  await page.locator('.tr-row', { hasText: 'Anna' }).locator('[data-edit]').click();
+  await expect(page.locator('#tr_ch .pill')).toHaveText(['Free (added by hand)']);
+  await expect(page.locator('#tr_fr .pill.active')).toHaveText('Compensation');
 });
 
 test('trips: no-show from the trip screen', async ({ page }) => {
@@ -344,7 +364,9 @@ test('trips: no-show from the trip screen', async ({ page }) => {
 // ── Tuk-tuk day sheet ──────────────────────────────────────────────────────
 test('tuk-tuk: one tap = one run saved as done; a double tap saves one; minus removes the last; tour runs carry the tour', async ({ page }) => {
   const st = await openTab(page);
-  await page.click('button:has-text("Tuk-tuk runs")');
+  await page.click('#transportRoot .tr-tabs .pill[data-cat="tuktuk"]');
+  await page.click('#transportRoot [data-add-runs="tuktuk"]');                  // the Tuk-tuks pill's blue button: «Add tuk-tuk runs»
+  await expect(page.locator('#trOv .mhdr-title')).toHaveText('Tuk-tuk runs');
   await expect(page.locator('#tk_mode .pill.active')).toHaveText('Log runs');   // opens on today's log, as before
   await expect(page.locator('#tk_dr')).toHaveValue(D.sampath);
   const ahangama = page.locator('.tr-tap-main[data-key="surf|Ahangama"]');
@@ -423,9 +445,11 @@ test('pay a driver: ticked trips prefill the amount; a difference needs a reason
     trip({ id: 'aaaaaaaa-0000-4000-8000-00000000c004', kind: 'other', route: 'Yala Safari', purpose: 'tour', tour_name: 'Yala Safari', trip_date: '2026-11-07', expected_price: 0, status: 'done', source: 'manual' }),
   ];
   const st = await openTab(page, { trips: trips.slice(0, 3) });
-  // «Pay a driver» is the one door (16 Nov 2026): in the header (secondary), and each driver of «Owed to drivers» opens it.
-  await expect(page.locator('#trPayBtn')).toHaveClass(/btn-s/);
-  await page.click('#trPayBtn');
+  // One way to pay (16 Nov 2026 UX pass): «Pay» on each driver of «Owed to drivers»; «Pay another driver» opens the picker
+  // (a driver with nothing owed yet). No header «Pay a driver» button any more.
+  await expect(page.locator('#trPayBtn')).toHaveCount(0);
+  await expect(page.locator(`#trOwed [data-owed="${D.dilan}"] .tr-owed-pay`)).toHaveText('Pay');
+  await page.click('#trPayOther');
   await expect(page.locator('#trOv .tr-pick-btn:has-text("Dilan")')).toContainText('owed 3 trips');
   await page.click('#trOv .mclose');
   await page.click(`#trOwed [data-owed="${D.dilan}"]`);
@@ -602,10 +626,10 @@ for (const [name, size] of [['phone 390', { width: 390, height: 844 }], ['deskto
     await page.setViewportSize(size);
     await openTab(page, weekFixture());
     // The logic in one plain line under the title.
-    await expect(page.locator('#transportRoot .tr-how')).toHaveText('Airport transfers, tuk-tuk runs and paying the drivers: tap a driver in «Owed to drivers» to pay everything since the last payment, run by run.');
+    await expect(page.locator('#transportRoot .tr-how')).toHaveText('Airport transfers to and from Colombo, and the tuk-tuk runs. Pay a driver from «Owed to drivers».');
     await expect(page.locator('.tr-week')).toHaveText('7–13 Nov');
     await expect(page.locator('[data-total]')).toHaveCount(0);
-    expect(norm(await page.locator('#trOwed').innerText())).toBe('OWED TO DRIVERS Dilan LKR 47,500 Sampath LKR 1,500');
+    expect(norm(await page.locator('#trOwed').innerText())).toBe('OWED TO DRIVERS Dilan LKR 47,500 Pay Sampath LKR 1,500 Pay Pay another driver');
     if (size.width <= 700) expect(await page.evaluate(() => document.querySelector('.tr-day .tr-row').getBoundingClientRect().top)).toBeLessThan(size.height);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(size.width);
     // Every airport row says where it stands, without opening Reconcile.
@@ -627,7 +651,7 @@ for (const [name, size] of [['phone 390', { width: 390, height: 844 }], ['deskto
     expect(norm(await lines.nth(0).innerText())).toBe('Ahangama × 3 Sampath LKR 1,500 Owed done, not paid');
     expect(norm(await lines.nth(1).innerText())).toBe('07:30 Weligama Sampath LKR 1,500 Paid 12 Nov · linked automatically');
     // The Airport / Tuk-tuk pills filter the list.
-    await page.click('.tr-filters .pill:has-text("Tuk-tuk")');
+    await page.click('.tr-tabs .pill:has-text("Tuk-tuk")');
     await expect(page.locator('.tr-row')).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(size.width);
     // Before go-live (the real one, 14 Nov) nothing is «owed»: it is not tracked.
@@ -646,11 +670,11 @@ test('tuk-tuk: tap a line to edit its runs, remove one, delete them; a paid run 
   await expect(page.locator('.tr-kids [data-run-one]')).toHaveCount(3);
   await expect(page.locator('#trOv.open')).toHaveCount(0);
   await page.locator('.tr-kids [data-run-one]').first().click();
-  await expect(page.locator('#trOv .mhdr-title')).toHaveText('Tuk-tuk · Thu 12 Nov');
+  await expect(page.locator('#trOv .mhdr-title')).toHaveText('Edit tuk-tuk run · Thu 12 Nov');
   await expect(page.locator('#trOv .tr-run-n')).toHaveCount(0);                 // one run
   await page.evaluate(() => TransportUI.closeModal());
   await owed.locator('[data-run-edit]').click();
-  await expect(page.locator('#trOv .mhdr-title')).toHaveText('Tuk-tuk · Thu 12 Nov');
+  await expect(page.locator('#trOv .mhdr-title')).toHaveText('Edit tuk-tuk runs · Thu 12 Nov');
   await expect(page.locator('#trOv .tr-run-n')).toHaveText('3 runs on this line — what you change applies to all 3.');
   await expect(page.locator('#rn_r')).toHaveValue('surf|Ahangama');
   // Edit: route (price follows /prices), time, driver, note.
@@ -694,7 +718,9 @@ test('tuk-tuk: tap a line to edit its runs, remove one, delete them; a paid run 
 test('tuk-tuk: plan tomorrow — timed runs saved as planned, the WhatsApp order in the camp format, Sent ✓, changed since sent', async ({ page }) => {
   const errors = collectFatalErrors(page);
   const st = await openTab(page);
-  await page.click('button:has-text("Tuk-tuk runs")');
+  await page.click('#transportRoot .tr-tabs .pill[data-cat="tuktuk"]');
+  await page.click('#transportRoot [data-plan]');                                 // the Tuk-tuks pill: «Plan tomorrow» opens the order sheet
+  await expect(page.locator('#tk_mode .pill.active')).toHaveText('Plan tomorrow');
   await page.click('#tk_mode .pill:has-text("Plan tomorrow")');
   await expect(page.locator('#tk_pd')).toHaveValue('2026-11-14');                   // tomorrow (now = Fri 13 Nov)
   await expect(page.locator('#tk_pt')).toHaveValue('07:30');
@@ -767,16 +793,11 @@ test('drivers: «Tuk-tuk orders to» — the order goes to that contact, else to
   expect(await page.evaluate(() => window.__opened[0])).toContain('https://wa.me/94771234567?text=' + encodeURIComponent('*TUK TUKS - SAT 14 NOV*'));
 });
 
-test('free: a transfer for staff or a gift — Add transfer (Staff → Free · Staff), mark a trip Free with its reason, delete one added by hand', async ({ page }) => {
+test('free: a transfer for staff or a gift — Add a free airport transfer (Staff), mark a trip Free with its reason, delete one added by hand', async ({ page }) => {
   const errors = collectFatalErrors(page);
   const st = await openTab(page, { trips: NEXT_WEEK() });
-  await page.click('button:has-text("Add transfer")');
-  await expect(page.locator('#at_who .pill.active')).toHaveText('Guest');
-  await expect(page.locator('#at_fr_wrap')).toBeHidden();
-  await page.click('#at_who .pill:has-text("Staff")');
-  await expect(page.locator('#at_g_lbl')).toHaveText('Name');
-  await expect(page.locator('#at_ch .pill.active')).toHaveText('Free');
-  await expect(page.locator('#at_fr .pill.active')).toHaveText('Staff');
+  await page.evaluate(() => TransportUI.openAddTransfer());
+  await page.click('#at_fr .pill:has-text("Staff")');
   await page.fill('#at_g', 'Kasun');
   await page.fill('#at_d', '2026-11-15');
   await page.fill('#at_n', 'visa run');
@@ -808,8 +829,8 @@ test('free: a transfer for staff or a gift — Add transfer (Staff → Free · S
 
 test('free: before the database update (no free_reason column) the save is repeated without it — nothing lost, no error', async ({ page }) => {
   const st = await openTab(page, { trips: NEXT_WEEK().map(t => { const { free_reason, ...r } = t; return r; }), noFreeColumn: true });
-  await page.click('button:has-text("Add transfer")');
-  await page.click('#at_who .pill:has-text("Staff")');
+  await page.evaluate(() => TransportUI.openAddTransfer());
+  await page.click('#at_fr .pill:has-text("Staff")');
   await page.fill('#at_g', 'Kasun');
   await page.fill('#at_d', '2026-11-15');
   await page.click('#at_save');
@@ -817,7 +838,7 @@ test('free: before the database update (no free_reason column) the save is repea
   expect(ins.charge).toBe('free');
   expect('free_reason' in ins).toBe(false);
   expect(st.calls.filter(c => c.t === 'free_refused').length).toBe(1);
-  await expect(page.locator('#toast')).toHaveText('Transfer added');
+  await expect(page.locator('#toast')).toHaveText('Free transfer added');
   await expect(page.locator('.tr-row', { hasText: 'Kasun' }).locator('.tr-free')).toHaveText('Free');
 });
 
@@ -857,7 +878,7 @@ test('A6 / A7 — a trip whose booking or transfer left the file is flagged on t
   await page.evaluate(() => TransportUI.tickDay('2026-11-14'));
   await call(st, 'trip_update', 1);
   await page.waitForTimeout(200);
-  expect(st.calls.filter(c => c.t === 'trip_update').map(c => c.id)).toEqual([A(1)]);          // «Sent ✓ all» never ticks a held trip
+  expect(st.calls.filter(c => c.t === 'trip_update').map(c => c.id)).toEqual([A(1)]);          // «Mark all sent ✓» never ticks a held trip
   // Francisco checked with the guest: «Still needed» clears the flag and the trip goes out again.
   await row(A(3)).locator('.tr-line1 b').click();
   await page.click('#tr_keep');
@@ -917,7 +938,7 @@ test('E10 / E7 / E18 — the review list explains itself, a misspelt driver name
     { entry_id: P6, location_id: LOC, driver_id: D.dilan, entry_amount: 42000, trips_amount: 0, trips_count: 0, state: 'review', reason: 'no exact match', linked_by: 'auto' });
   await openTab(page, fx);
   // One line on top: what is owed to each driver, and what needs a look.
-  expect(norm(await page.locator('#trOwed').innerText())).toBe('OWED TO DRIVERS Dilan LKR 47,500 Sampath LKR 1,500');
+  expect(norm(await page.locator('#trOwed').innerText())).toBe('OWED TO DRIVERS Dilan LKR 47,500 Pay Sampath LKR 1,500 Pay Pay another driver');
   await expect(page.locator('[data-chip="check"]')).toHaveText('2 payments to check');
   await page.click('[data-chip="check"]');
   await expect(page.locator('#trOv .mhdr-title')).toHaveText('Payments to check');
@@ -1075,14 +1096,19 @@ test('local view (16 Nov 2026): Nadith has «Drivers» — owed line, runs, airp
   await page.waitForFunction(() => window.TransportUI && TransportUI._state.loaded, null, { timeout: 10000 });
   expect(await page.evaluate(() => activePage)).toBe('transport');
   await expect(page.locator('#transportRoot .section-title')).toHaveText('Drivers');
-  await expect(page.locator('#transportRoot .tr-actions .btn-p')).toContainText('Tuk-tuk runs');
-  await expect(page.locator('#transportRoot .tr-actions .btn')).toHaveCount(2);                 // Runs + Pay a driver: no Add transfer, no driver editing
-  // Airport rows: read-only (Francisco sends and confirms them).
+  // One blue button: «Add tuk-tuk runs» (+ «Plan tomorrow»); paying lives in «Owed to drivers»; no Drivers / Export / Overview.
+  await expect(page.locator('#transportRoot .btn-p:visible')).toHaveCount(1);
+  await expect(page.locator('#transportRoot [data-add-runs="tuktuk"]')).toHaveText('Add tuk-tuk runs');
+  await expect(page.locator('#transportRoot .tr-tabs .pill')).toHaveText(['All', 'Airport', 'Tuk-tuks']);
+  await expect(page.locator('#transportRoot [data-foot-links], #transportRoot [data-view="overview"], #trPayBtn')).toHaveCount(0);
+  // Airport rows: read-only (Francisco sends and confirms them) — the same checkpoints, no buttons, no select, no link.
   await expect(page.locator('#transportRoot .tr-row-ro').first()).toBeVisible();
   await expect(page.locator('#transportRoot .tr-btns, #transportRoot [data-send-week], #transportRoot .tr-day-btns')).toHaveCount(0);
+  await expect(page.locator('#transportRoot .tr-row-ro [data-steps]').first()).toBeVisible();
+  await expect(page.locator('#transportRoot .tr-row-ro select, #transportRoot .tr-row-ro button, #transportRoot .tr-row-ro a')).toHaveCount(0);
   await page.locator('#transportRoot .tr-row-ro').first().click();
   await expect(page.locator('#trOv.open')).toHaveCount(0);
-  expect(norm(await page.locator('#trOwed').innerText())).toBe('OWED TO DRIVERS Dilan LKR 47,500 Sampath LKR 1,500');
+  expect(norm(await page.locator('#trOwed').innerText())).toBe('OWED TO DRIVERS Dilan LKR 47,500 Pay Sampath LKR 1,500 Pay Pay another driver');
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   fsx.mkdirSync(DRV_SHOTS, { recursive: true });
   await page.screenshot({ path: path.join(DRV_SHOTS, 'nadith-drivers-390.png'), fullPage: true });
@@ -1125,7 +1151,7 @@ test('local view (16 Nov 2026): Nadith has «Drivers» — owed line, runs, airp
   expect(pay.p_entries.map(e => [e.linked_item, e.amount_local])).toEqual([['Transport Surf Lesson', 4200]]);
   expect(pay.p_entries[0].trip_ids.length).toBe(4);
   await expect(page.locator('#trOv')).not.toHaveClass(/open/);
-  expect(norm(await page.locator('#trOwed').innerText())).toBe('OWED TO DRIVERS Dilan LKR 47,500');
+  expect(norm(await page.locator('#trOwed').innerText())).toBe('OWED TO DRIVERS Dilan LKR 47,500 Pay Pay another driver');
   expect(st.calls.filter(c => c.t === 'link_set')).toEqual([]);
   expect(errors).toEqual([]);
 });
@@ -1172,7 +1198,7 @@ test('sheet: Airport / Tuk-tuks pills, seven days with «+ Add» (prefilled with
   await expect(page.locator('#transportRoot .tr-row').first()).toBeVisible();
   await expect(page.locator('#transportRoot [data-foot]')).toHaveCount(1);
   await page.click('#transportRoot [data-add="2026-11-12"]');
-  await expect(page.locator('#trOv .mhdr-title')).toHaveText('Add transfer');
+  await expect(page.locator('#trOv .mhdr-title')).toHaveText('Add a free airport transfer');
   await expect(page.locator('#at_d')).toHaveValue('2026-11-12');
   await page.evaluate(() => TransportUI.closeModal());
   // Tuk-tuks: runs only; «+ Add» on a past day logs runs on that day, on a future day plans them.
@@ -1193,7 +1219,7 @@ test('sheet: Airport / Tuk-tuks pills, seven days with «+ Add» (prefilled with
   await page.click('#transportRoot .tr-cats .pill[data-cat="all"]');
   await page.click('#transportRoot [data-add="2026-11-10"]');
   await expect(page.locator('#trOv .mhdr-title')).toHaveText('Add on Tue 10 Nov');
-  await expect(page.locator('#trOv [data-add-cat]')).toHaveText(['Airport transfer', 'Tuk-tuk run']);
+  await expect(page.locator('#trOv [data-add-cat]')).toHaveText(['Free airport transfer (staff, gift…)', 'Tuk-tuk run']);
   await page.click('#trOv [data-add-cat="airport"]');
   await expect(page.locator('#at_d')).toHaveValue('2026-11-10');
   expect(errors).toEqual([]);
@@ -1273,17 +1299,21 @@ test('trips (Sri Lanka): missing information — red row «No flight · no time 
 });
 
 // Transport → Overview (16 Nov 2026), Sri Lanka: the same view with the tuk-tuks; fits a phone without sideways scroll.
-test('overview (Sri Lanka): month by type — airport and «Tuk-tuk runs», LKR, no errors; at 390 the table fits (trips · people under the type)', async ({ page }) => {
+test('overview (Sri Lanka): month by kind — Airport and Tuk-tuks (the pills), LKR with ≈ € (ledger rate 340), by driver; no errors; at 390 the tables fit', async ({ page }) => {
   const errors = collectFatalErrors(page);
   await openTab(page, weekFixture());
   await page.click('#transportRoot [data-view="overview"]');
   await expect(page.locator('.tr-ov-period')).toHaveText('November 2026');
-  await expect(page.locator('#transportRoot .tr-ov-grp', { hasText: 'Tuk-tuk runs' })).toHaveCount(1);
-  await expect(page.locator('#transportRoot .tr-ov-grp', { hasText: 'Airport' })).toHaveCount(1);
+  await expect(page.locator('#transportRoot .tr-strip, #trOwed')).toHaveCount(0);               // the Overview is its own screen: no To do / Owed on it
+  expect((await page.locator('[data-ov-table="summary"] tbody tr td:first-child').allInnerTexts()).map(l => l.split('\n')[0])).toEqual(['Airport', 'Tuk-tuks']);
+  await expect(page.locator('[data-ov-row="tuktuk"] td').first()).toContainText('Surf · Ahangama 3 · Surf · Weligama 1');
   await expect(page.locator('[data-ov-table="summary"] tfoot')).toContainText('LKR');
+  await expect(page.locator('[data-ov-kpi="cost"] .tr-eur')).toHaveText(/^≈ €[\d,]+$/);
+  await expect(page.locator('[data-ov-note]')).toContainText('€ ≈ at 340 LKR per €');
+  expect((await page.locator('[data-ov-table="drivers"] tbody tr td:first-child').allInnerTexts()).map(l => l.split('\n')[0])).toEqual(['Dilan', 'Sampath']);
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.locator('[data-ov-table="summary"] tfoot .tr-ov-meta')).toBeVisible();
-  expect(await page.locator('#transportRoot .tr-ov-card .tbl-wrap').first().evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+  expect(await page.locator('#transportRoot .tr-ov-card .tbl-wrap').evaluateAll(els => els.every(el => el.scrollWidth <= el.clientWidth))).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   expect(errors).toEqual([]);
 });
@@ -1322,6 +1352,8 @@ test('bl check: the amber line «Check in Bookinglayer» only on unchecked impor
   await expect(row(6).locator('[data-blcheck]')).toHaveCount(0);
   await expect(row(9).locator('[data-blcheck]')).toHaveCount(0);
   await expect(row(9).locator('[data-flag]')).toHaveText(/Not booked in Bookinglayer — did the driver go\? If not, cancel this trip/);
+  await expect(row(9).locator('[data-went]')).toHaveText('Driver went (pay)');
+  await expect(row(9).locator('[data-didnt]')).toHaveText("Didn't go (cancel)");
   await page.click('button[title="Next week"]');
   await expect(row(1).locator('[data-blcheck] .tr-bl-t')).toHaveText(/Check in Bookinglayer/);
   await expect(row(1).locator('[data-blcheck] .tr-bl-ref')).toHaveText('2026-9001');
@@ -1332,9 +1364,16 @@ test('bl check: the amber line «Check in Bookinglayer» only on unchecked impor
   await expect(row(1).locator('[data-blcheck] [data-bl-not]')).toHaveText('Not booked');
   await expect(row(3).locator('[data-blcheck]')).toHaveCount(1);
   for (const n of [2, 4, 5, 7]) await expect(row(n).locator('[data-blcheck]')).toHaveCount(0);
-  // the row keeps its layout: the line sits in the «What» cell, the buttons stay where they were
-  await expect(row(1).locator('.tr-c-what [data-blcheck]')).toHaveCount(1);
+  // 16 Nov 2026 UX pass: the check is the first step of the row's checkpoint strip (Booked · Info · Driver · Guest · Paid);
+  // a checked leg says «Booked ✓»; the buttons stay on the right with a labelled «Edit».
+  await expect(row(1).locator('.tr-c-steps [data-step="booked"][data-blcheck]')).toHaveCount(1);
+  await expect(row(2).locator('[data-step="booked"]')).toHaveText('Booked');
+  await expect(row(2).locator('[data-step="booked"]')).toHaveAttribute('data-state', 'ok');
+  await expect(row(7).locator('[data-step="booked"]')).toHaveCount(0);                         // a row read before the SQL: no step at all
+  await expect(row(4).locator('[data-step="booked"]')).toHaveCount(0);                         // added by hand: nothing to check
+  expect(await row(1).locator('[data-step]').evaluateAll(els => els.map(e => e.dataset.step))).toEqual(['booked', 'info', 'driver', 'guest']);
   await expect(row(1).locator('.tr-btns button[title="Send on WhatsApp"]')).toHaveCount(1);
+  await expect(row(1).locator('.tr-btns [data-edit]')).toHaveText('Edit');
   // the day cards count them (shown only — «Send the whole day» still sends them)
   await expect(page.locator('#trDay-2026-11-14 [data-day-bl]')).toHaveText('1 to check in Bookinglayer');
   await expect(page.locator('#trDay-2026-11-15 [data-day-bl]')).toHaveText('1 to check in Bookinglayer');

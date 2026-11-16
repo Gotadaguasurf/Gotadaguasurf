@@ -66,8 +66,11 @@
     runs: { kind: 'tuktuk', label: 'Tuk-tuk', plural: 'Tuk-tuk runs', vehicle: 'Tuk-tuk' },
     payMethod: 'Cash',
     airportSupplier: null,
-    transportHow: 'Airport transfers, tuk-tuk runs and paying the drivers: tap a driver in «Owed to drivers» to pay everything since the last payment, run by run.',
-    localDriversHow: 'Log the tuk-tuk runs and pay the drivers: tap a driver in «Owed to drivers» to see everything since the last payment, run by run.',
+    // Transport's page (16 Nov 2026 UX pass): one pill per kind of trip, the words this camp uses. `add` = the blue
+    // button of a runs pill (opens today's run sheet on that pill's routes); the Airport pill's blue button sends.
+    transportTabs: [{ key: 'airport', label: 'Airport' }, { key: 'tuktuk', label: 'Tuk-tuks', add: 'Add tuk-tuk runs', sheet: 'Tuk-tuk runs' }],
+    transportHow: 'Airport transfers to and from Colombo, and the tuk-tuk runs. Pay a driver from «Owed to drivers».',
+    localDriversHow: 'Log the tuk-tuk runs and pay the drivers in cash from «Owed to drivers».',
   };
 
   // ── Morocco (14 Nov 2026) ─────────────────────────────────────────────────
@@ -106,6 +109,9 @@
     // Tours airport trips of 1 Oct–12 Nov were added to camp_trips (source manual, import_key «hist2026:…») and are owed.
     // The SQL camp_trips_go_live() is not this date (it only gates Sri Lanka's cash auto-linking).
     goLive: '2026-10-01',
+    // «N payments to check» looks at bank lines from this date only (QA 16 Nov 2026): the Oct lines pay September, before
+    // the trip list, and linking them to Oct/Nov trips would mark those paid. An older line is still linked by hand.
+    bankCheckFrom: '2026-11-01',
     // Week numbering for the group name. CONFIRM. Morocco is open all year, so week 1 is
     // the first Saturday of 2026 → Sat 14 Nov 2026 is week 46 (close to the calendar week).
     seasonWeek1: '2026-01-03',
@@ -212,7 +218,9 @@
     // Morocco's Cleaning message for a day: «CHECK OUT» = one line per room being left, «CHECK IN» = one line per
     // room to prepare (Floriane, 16 Nov 2026). The week message keeps the guests by room.
     cleaningPrepare: true,
-    transportHow: 'Airport transfers (Let Us Tours) and van runs (Fathoune), paid by SG bank transfer: tap a driver in «Owed to drivers» to pay or to link the transfer.',
+    transportTabs: [{ key: 'airport', label: 'Airport' }, { key: 'vans', label: 'Surf vans', add: 'Add surf vans', sheet: 'Surf vans' },
+      { key: 'tours', label: 'Tours', add: 'Add tour vans', sheet: 'Tour vans' }],
+    transportHow: 'Airport transfers (Let Us Tours), surf vans and tours (Fathoune). Drivers are paid by SG bank transfer from «Owed to drivers».',
   };
 
   // «8 - Banana Point mixed shared room (4pax)» → { n: 8, core: 'Banana Point', … }

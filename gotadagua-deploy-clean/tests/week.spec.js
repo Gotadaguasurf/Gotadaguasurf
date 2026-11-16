@@ -445,20 +445,27 @@ test('to check: a count on the tab it concerns, a compact list inside the tab, c
   await expect(page.locator('.wk-view-guests .wk-check')).not.toContainText('dropped');
 });
 
-test('«N without time» moved to Transport: a chip, and its filter lists exactly those transfers (Beliz\'s Saturday departure counts); the trip editor is one tap away', async ({ page }) => {
+test('«N missing info» in Transport (was «N without time», 16 Nov 2026 UX pass: the same rule as the red row): a To do chip, its filter lists exactly those transfers (Beliz\'s Saturday departure counts); «Edit» is one tap away', async ({ page }) => {
   await openWeek(page);
   expect((await page.evaluate(() => WeekUI.toCheck())).some(c => /without (flight )?time/.test(c.text))).toBe(false);
   await page.evaluate(() => showPage('transport'));
-  const chip = page.locator('#transportRoot .tr-strip .health-chip', { hasText: 'without time' });
-  await expect(chip).toHaveText('2 without time');
+  await expect(page.locator('#transportRoot .tr-strip .health-lbl')).toHaveText('To do');
+  const chip = page.locator('#transportRoot .tr-strip [data-chip="noinfo"]');
+  await expect(chip).toHaveText('2 missing info');
   await chip.click();
+  await expect(page.locator('#transportRoot [data-showing="noinfo"]')).toContainText('Showing only: missing info · 2 trips');
   const rows = page.locator('#transportRoot .tr-row');
   await expect(rows).toHaveCount(2);
   await expect(rows.nth(0)).toContainText('Emilia Faccenna');
   await expect(rows.nth(1)).toContainText('Beliz Kuyumcuoglu');
   await expect(rows.nth(0).locator('button:has-text("Ask guest for flight & time")')).toHaveCount(1);
-  await rows.nth(0).locator('.tr-line1 b').click();                              // the answer is typed in the same place
+  await rows.nth(0).locator('[data-edit-info]').click();                          // «Edit» on the red step: the answer is typed in the trip sheet
   await expect(page.locator('#trOv')).toHaveClass(/open/);
+  await expect(page.locator('#trOv .mhdr-title')).toHaveText(/^Edit arrival · /);
+  await page.evaluate(() => TransportUI.closeModal());
+  await page.click('#transportRoot [data-show-all]');                             // back to the whole week
+  await expect(page.locator('#transportRoot [data-showing]')).toHaveCount(0);
+  await expect(page.locator('#transportRoot .tr-tabs .pill.active')).toHaveText('All');
 });
 
 test('dropped from the latest file (cancelled?) is not counted and shows in To check', async ({ page }) => {
@@ -539,7 +546,7 @@ test('no camp_week_messages yet (SQL not run): lists, Copy and Send still work, 
 });
 
 // ── Transfers (in Transport since 15 Nov 2026) + Guests ────────────────────
-test('transfers: a tap on the Week Overview opens Transport on the same week and day; the day card has each trip with its status; «Send the whole day» in Miguel\'s format; Sent ✓ all', async ({ page }) => {
+test('transfers: a tap on the Week Overview opens Transport on the same week and day; the day card has each trip with its status; «Send the whole day» in Miguel\'s format; Mark all sent ✓', async ({ page }) => {
   const errors = collectFatalErrors(page);
   const st = await openWeek(page);
   // who comes on their own is people information: it sits with the arrivals in Week
@@ -569,10 +576,10 @@ test('transfers: a tap on the Week Overview opens Transport on the same week and
   await day.locator('button:has-text("Send the whole day")').click();
   expect(await page.evaluate(() => decodeURIComponent(window.__opened.pop()))).toMatch(/^https:\/\/wa\.me\/94771234567\?text=\*TRANSFERS TODAY - 17 NOV\*\n\nAirport to Camp _\(changed\)_\nPeter Mongey, Sinéad O'Farrell\n\+353400000001\n2 persons\nFlight Number: EK650\nTime: 23:40\nDate: 17 Nov\nSmall Car/);
   expect(st.calls.filter(c => c.t === 'msg_insert')).toHaveLength(0);   // transfers keep their sent state on the trips
-  await day.locator('button:has-text("Sent ✓ all")').click();
+  await day.locator('button:has-text("Mark all sent ✓")').click();
   await call(st, 'trip_update', 2);
   expect(st.calls.filter(c => c.t === 'trip_update').map(c => c.id).sort()).toEqual(['aaaaaaaa-0000-4000-8000-00000000a001', 'aaaaaaaa-0000-4000-8000-00000000a002']);
-  expect(await page.locator('#transportRoot .btn-p:visible').count()).toBe(1);                          // + Tuk-tuk runs
+  expect(await page.locator('#transportRoot .btn-p:visible').count()).toBe(1);                          // one blue button: «Send the whole week» on All
   expect(errors).toEqual([]);
 });
 
@@ -984,7 +991,7 @@ test('transfers: «Transfers booked» is now one line in Transport — arrivals 
   const c = await page.evaluate(() => TransportUI.weekCount(TransportUI._state.trips.filter(t => TransportUI.inWeek(t, TransportUI._state.week))));
   expect(c.arr.n + c.dep.n).toBe(3);
   expect(await page.locator('#transportRoot [data-total]').count()).toBe(0);   // the week-total tiles are gone (16 Nov 2026)
-  await page.click('#transportRoot .tr-filters .pill:has-text("Airport")');
+  await page.click('#transportRoot .tr-tabs .pill:has-text("Airport")');
   await expect(page.locator('#transportRoot .tr-row')).toHaveCount(3);
   expect(errors).toEqual([]);
 });

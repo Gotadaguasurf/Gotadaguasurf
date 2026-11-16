@@ -33,8 +33,8 @@ test('floriane 4d: the driver message — departure and arrival blocks in her sh
     };
   });
   expect(r.dep).toBe(['Surfcamp to Agadir airport:', 'Number of people: 1', 'Name: Jane Example', 'Contact WhatsApp: +33600000000', 'Departure time from camp: 6:15', 'Date: 17.11.2026', 'Car: small car'].join('\n'));
-  expect(r.depNoPickup).toContain('Departure time from camp: TBC');          // never the flight time (09:30)
-  expect(r.depNoPickup).not.toContain('09:30');
+  expect(r.depNoPickup).toContain('Departure time from camp: TBC (flight 09:30)');   // never the bare flight time as the pick-up (QA 16 Nov 2026)
+  expect(r.depNoPickup).not.toContain('Departure time from camp: 09:30');
   expect(r.arr).toBe(['Essaouira airport to Surfcamp', 'Number of people: 2', 'Name: John Example, Ann Example', 'Contact WhatsApp: +32400000000', 'Flight number: FR 5297', 'Arrival time: 23:20', 'Date: 16.11.2026', 'Car: big van'].join('\n'));
   expect(r.mini.split('\n')[0]).toBe('Marrakech airport to Surfcamp');
   expect(r.mini).toContain('Flight number: TBC\nArrival time: TBC');
@@ -109,7 +109,8 @@ test('floriane 4b: missing information — a red row saying what is missing (fli
 test('floriane 4c: «Export month» — a CSV of the month (BOM, quoted, comma), one row per trip with direction, route, guests, flight, vehicle, driver, price, status, paid', async ({ page }) => {
   const trips = H.tripsFromFile().map(t => t.import_key === 'bl:MA-1001:arr' ? { ...t, payment_entry_id: 'cccccccc-0000-4000-8000-000000000001', status: 'confirmed' } : t.import_key === 'bl:MA-1007:arr' ? { ...t, status: 'cancelled' } : t)
     .concat([{ ...H.tripsFromFile()[0], id: 'bbbbbbbb-0000-4000-8000-000000000901', kind: 'other', route: 'Dunes', purpose: 'tour', guest_names: null, pax: 6, vehicle: 'Minivan', flight: null, trip_date: '2026-11-15', trip_time: '14:00', driver_id: H.D.fat, expected_price: 700, import_key: null },
-      { ...H.tripsFromFile()[0], id: 'bbbbbbbb-0000-4000-8000-000000000902', trip_date: '2026-10-30', import_key: null, guest_names: 'October Guest' }]);
+      { ...H.tripsFromFile()[0], id: 'bbbbbbbb-0000-4000-8000-000000000902', trip_date: '2026-10-30', import_key: null, guest_names: 'October Guest' },
+      { ...H.tripsFromFile()[0], id: 'bbbbbbbb-0000-4000-8000-000000000903', import_key: null, guest_names: 'Split Duplicate', status: 'cancelled', cancel_reason: 'split' }]);
   const ledger = [{ id: 'cccccccc-0000-4000-8000-000000000001', location_id: H.LOC, week_id: null, type: 'expense', category: 'Transport', linked_item: null, description: 'Let Us Tours', payment_method: 'Bank Transfer', qty: 1, amount_local: 250, currency: 'MAD',
     entry_date: '2026-11-16', business_area: 'Transport', fx_rate: 10.8, amount_eur: 250 / 10.8, recurring_source_id: null, recurring_month: null, source_kind: 'manual', is_comp: false, zone_id: null,
     paid_from: 'morocco', attributed_location: 'morocco', created_at: '2026-11-16T09:00:00Z' }];
@@ -117,14 +118,15 @@ test('floriane 4c: «Export month» — a CSV of the month (BOM, quoted, comma),
   const csv = await page.evaluate(() => TransportUI.monthCsv('2026-11'));
   expect(csv.charCodeAt(0)).toBe(0xfeff);
   const lines = csv.slice(1).trim().split('\r\n');
-  expect(lines[0]).toBe('"Date","Time","Direction","Route / what","Guest names","People","Flight","Vehicle","Driver / supplier","Price (MAD)","Status","Paid","Paid on"');
-  expect(lines.length - 1).toBe(trips.filter(t => t.trip_date.startsWith('2026-11')).length);   // one row per trip of the month; October out
+  expect(lines[0]).toBe('"Date","Time","Direction","Route / what","Guest names","People","Flight","Vehicle","Driver / supplier","Price (MAD)","Billable","Status","Paid","Paid on"');
+  expect(lines.length - 1).toBe(trips.filter(t => t.trip_date.startsWith('2026-11') && t.cancel_reason !== 'split').length);   // one row per trip of the month; October and split duplicates out
+  expect(csv).not.toContain('Split Duplicate');
   expect(csv).not.toContain('October Guest');
   const rowOf = name => lines.find(l => l.includes(name));
-  expect(rowOf('"Lena Hoffmann, Jonas Weber"')).toMatch(/^"2026-11-14","14:20","IN","Agadir airport → Surfcamp","Lena Hoffmann, Jonas Weber","2","FR1110","Car","Let Us Tours","\d+","Confirmed","yes","2026-11-16"$/);
-  expect(rowOf('"Dunes"')).toBe('"2026-11-15","14:00","run","Dunes","","6","","Minivan","Fathoune","700","Pending","no",""');
+  expect(rowOf('"Lena Hoffmann, Jonas Weber"')).toMatch(/^"2026-11-14","14:20","IN","Agadir airport → Surfcamp","Lena Hoffmann, Jonas Weber","2","FR1110","Car","Let Us Tours","\d+","Yes","Confirmed","yes","2026-11-16"$/);
+  expect(rowOf('"Dunes"')).toBe('"2026-11-15","14:00","run","Dunes","","6","","Minivan","Fathoune","700","Yes","Pending","no",""');
   expect(lines.some(l => /"OUT","Surfcamp → \w+ airport"/.test(l))).toBe(true);
-  expect(rowOf('"Oliver Smith"')).toContain('"Cancelled","no"');   // cancelled trips stay in, with their status
+  expect(rowOf('"Oliver Smith"')).toContain('"0","No","Cancelled","no"');   // cancelled trips stay in at price 0, not billable (QA 16 Nov 2026)
   expect(lines.slice(1).map(l => l.slice(1, 11))).toEqual(lines.slice(1).map(l => l.slice(1, 11)).sort());   // by date
   // The control: Export month → month (this month by default) → Download CSV.
   await page.click('[data-export-month]');

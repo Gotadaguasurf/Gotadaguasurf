@@ -27,11 +27,11 @@ test('overview: types — airport arrivals / departures (split by airport only w
   expect([O.shift('month', '2026-12', 1), O.shift('month', '2026-01', -1), O.shift('week', '2026-11-14', -1), O.shift('year', '2026', 1)]).toEqual(['2027-01', '2025-12', '2026-11-07', '2027']);
 });
 
-test('overview: month summary — trips, people, cost, paid, owed (done or no-show, unpaid), per person, no-show counted, cancelled and merged out, a total', () => {
+test('overview: month summary — trips, people, cost, paid, owed (done, unpaid, not a no-show = «Owed to drivers»), per person, no-show counted, cancelled and merged out, a total', () => {
   const trips = [
     trip({ trip_date: '2026-11-02', pax: 2, expected_price: 300, status: 'done', payment_entry_id: 'p1' }),     // paid
     trip({ trip_date: '2026-11-05', status: 'confirmed' }),                                                  // passed → owed
-    trip({ trip_date: '2026-11-06', status: 'no_show' }),                                                    // no-show: billed, owed
+    trip({ trip_date: '2026-11-06', status: 'no_show' }),                                                    // no-show: counted, not owed (QA 16 Nov 2026: = reconcileStatus)
     trip({ trip_date: '2026-11-20', status: 'planned' }),                                                    // to come: cost only
     trip({ trip_date: '2026-11-21', place: 'RAK', expected_price: 1200 }),                                   // a second airport → split
     trip({ trip_date: '2026-11-07', status: 'cancelled' }), trip({ trip_date: '2026-11-08', status: 'merged' }),
@@ -42,13 +42,13 @@ test('overview: month summary — trips, people, cost, paid, owed (done or no-sh
   ];
   const s = O.summary({ trips, ledger: [led('2026-11-02', 'Let Us Tours', 999)], drivers: DRIVERS, cfg: CC.MA, mode: 'month', from: '2026-11-01', to: '2026-11-30', goLive: '2026-10-01', now: NOW });
   expect(s.rows.map(r => [r.label, r.trips, r.people, r.cost, r.paid, r.owed, r.perPerson, r.noShow])).toEqual([
-    ['Arrivals · Agadir', 4, 5, 1050, 300, 500, 210, 1],
+    ['Arrivals · Agadir', 4, 5, 1050, 300, 250, 210, 1],
     ['Arrivals · Marrakech', 1, 1, 1200, 0, 0, 1200, 0],
     ['Departures', 1, 1, 250, 0, 250, 250, 0],
     ['Surf Taghazout', 2, 10, 800, 0, 800, 80, 0],
     ['Dunes', 1, 8, 700, 700, 0, 88, 0],
   ]);
-  expect(s.total).toEqual({ trips: 9, people: 25, cost: 4000, paid: 1000, owed: 1550, noShow: 1, perPerson: 160 });
+  expect(s.total).toEqual({ trips: 9, people: 25, cost: 4000, paid: 1000, owed: 1300, noShow: 1, perPerson: 160 });
   expect(s.ledger.rows).toEqual([]);                                                // after go-live: the ledger is not counted again
   // One airport only → «Arrivals», no city.
   const one = O.summary({ trips: trips.filter(t => t.place !== 'RAK'), cfg: CC.MA, mode: 'month', from: '2026-11-01', to: '2026-11-30', goLive: '2026-10-01', now: NOW });
@@ -56,7 +56,40 @@ test('overview: month summary — trips, people, cost, paid, owed (done or no-sh
   // The CSV is the table: header, the rows, the total.
   const tbl = O.summaryTable(s, 'MAD');
   expect(tbl[0]).toEqual(['Type', 'Group', 'Trips', 'People', 'Cost (MAD)', 'Paid (MAD)', 'Owed (MAD)', 'Cost per person (MAD)', 'No-show']);
-  expect(tbl[tbl.length - 1]).toEqual(['Total', '', 9, 25, 4000, 1000, 1550, 160, 1]);
+  expect(tbl[tbl.length - 1]).toEqual(['Total', '', 9, 25, 4000, 1000, 1300, 160, 1]);
+  // With a rate, the euros are appended last (16 Nov 2026).
+  const te = O.summaryTable(s, 'MAD', 10);
+  expect(te[0].slice(-3)).toEqual(['Cost (EUR)', 'Paid (EUR)', 'Owed (EUR)']);
+  expect(te[te.length - 1].slice(-3)).toEqual([400, 100, 130]);
+  // By kind = the page's pills; parts under each; the big numbers.
+  const K = O.byKind(s, CC.MA);
+  expect(K.map(k => [k.kind, k.label, k.trips, k.cost, k.owed])).toEqual([['airport', 'Airport', 6, 2500, 500], ['vans', 'Surf vans', 2, 800, 800], ['tours', 'Tours', 1, 700, 0]]);
+  expect(K[0].parts).toEqual([{ label: 'Arrivals', trips: 5 }, { label: 'Departures', trips: 1 }]);
+  expect(O.headline(s)).toMatchObject({ cost: 4000, paid: 1000, owed: 1300, trips: 9, people: 25, perPerson: 160 });
+  // By driver, the same owed rule (a custom isOwed wins).
+  const D = O.byDriver({ trips, drivers: DRIVERS, cfg: CC.MA, mode: 'month', from: '2026-11-01', to: '2026-11-30', goLive: '2026-10-01', now: NOW, isOwed: () => false });
+  expect(D.reduce((a, r) => a + r.owed, 0)).toBe(0);
+  expect(D.reduce((a, r) => a + r.cost, 0)).toBe(4000);
+});
+
+test('overview: euros — one rate per period from the camp\'s ledger (median of amount_local / amount_eur), out-of-range rows skipped (the 389.63 «MAD» row), fallbacks range-checked', () => {
+  const L = (date, local, eurAmt, currency = 'MAD') => ({ date, amountLocal: local, amount: eurAmt, currency });
+  const ledger = [L('2026-11-02', 1080, 100), L('2026-11-03', 2160, 200), L('2026-11-04', 38963, 100), L('2026-11-05', 100, 100, 'EUR'), L('2026-10-01', 1100, 100)];
+  expect(O.eurRate({ ledger, cur: 'MAD', from: '2026-11-01', to: '2026-11-30' })).toEqual({ rate: 10.8, source: 'period', n: 2, skipped: 1 });
+  expect(O.eurRate({ ledger, cur: 'MAD', from: '2026-12-01', to: '2026-12-31' })).toMatchObject({ rate: 10.8, source: 'ledger', n: 3 });
+  expect(O.eurRate({ ledger: [L('2026-11-04', 38963, 100)], cur: 'MAD', from: '2026-11-01', to: '2026-11-30', fallback: 389.63, defaultRate: 10.5 })).toMatchObject({ rate: 10.5, source: 'default' });
+  expect(O.eurRate({ ledger: [], cur: 'MAD', fallback: 10.9 })).toMatchObject({ rate: 10.9, source: 'app' });
+  expect(O.eurRate({ ledger: [L('2026-11-02', 34000, 100, 'LKR')], cur: 'LKR', from: '2026-11-01', to: '2026-11-30' })).toMatchObject({ rate: 340, source: 'period' });
+  expect(O.eur(21050, 10.8)).toBe(1949);
+});
+
+test('overview: a Transport payment after go-live that pays no trip shows in the month it was paid (driver payments only); a linked one never (QA 16 Nov 2026)', () => {
+  const ledger = [led('2026-10-12', 'September · Let Us Tours', 16000), led('2026-10-13', 'Afriquia diesel', 300), { ...led('2026-10-20', 'Let Us Tours', 500), id: 'linked-1' }];
+  const o = { trips: [], ledger, drivers: DRIVERS, cfg: CC.MA, mode: 'month', from: '2026-10-01', to: '2026-10-31', goLive: '2026-10-01', now: NOW };
+  expect(O.summary(o).ledger.rows).toEqual([]);                                     // no linked set given: as before
+  const s = O.summary({ ...o, linked: ['linked-1'] });
+  expect(s.ledger.rows).toEqual([{ label: 'Let Us Tours', payments: 1, cost: 16000 }]);
+  expect(O.byDriver({ ...o, linked: ['linked-1'] })).toEqual([{ label: 'Let Us Tours', trips: 0, people: 0, cost: 16000, paid: 16000, owed: 0, payments: 1 }]);
 });
 
 test('overview: the week is Transport\'s week (Sat–Fri, the closing Saturday\'s departures in, the opening Saturday\'s out)', () => {

@@ -288,3 +288,87 @@
 @media (max-width: 700px) { .tr-blline { gap: 4px 8px; } .tr-bl-act { gap: 4px 6px; } .tr-srow .tr-c-what .tr-bl-act .btn { padding-left: 8px; padding-right: 8px; } }
 .tr-bl-act { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .tr-bl-open { color: var(--ocean); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+
+/* ── UX pass (16 Nov 2026): pills first, the pill's own blue button, To do, Owed (with Pay), the checkpoints of a transfer ── */
+#transportRoot .tr-tabs { margin: var(--sp-4) 0 0; flex-wrap: wrap; gap: var(--sp-2); }
+#transportRoot .tr-tabs + .tr-strip, #transportRoot .tr-tabs + .tr-owed { margin-top: var(--sp-4); }
+#transportRoot .tr-strip .health-lbl { margin-right: 2px; }
+#transportRoot .tr-filters { margin-top: var(--sp-4); }
+.tr-weekacts { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
+#transportRoot .tr-showing { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-3); margin: var(--sp-4) 0; font-size: 14px; }
+/* Owed to drivers: each driver is one quiet button that says «Pay». */
+#transportRoot .tr-owed-pay { display: inline-flex; align-items: center; gap: 4px; margin-left: 10px; padding-left: 10px; border-left: 1px solid var(--border-2); color: var(--ocean); font-weight: 600; font-size: 13px; }
+#transportRoot .tr-owed-pay .ic { width: 14px; height: 14px; }
+#transportRoot .tr-owed-none { color: var(--muted); border: 0; padding-left: 0; background: none; }
+#transportRoot .btn-link.tr-owed-other { margin-left: auto; height: auto; padding: 4px 2px; font-size: 13px; font-weight: 600; }
+#transportRoot .tr-owed-nodrv .hint { margin-left: 8px; }
+/* The foot of the page: Drivers and contacts · Export month. */
+#transportRoot .tr-foot-links { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-3); margin-top: var(--sp-5); padding-top: var(--sp-4); border-top: 1px solid var(--border); }
+/* Checkpoints: one strip of small steps under the name — Booked · Info · Driver · Guest · Paid. */
+.tr-steps { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
+.tr-step-i { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-height: 26px; padding: 2px 8px; border: 1px solid var(--border); border-radius: var(--r-xs); background: var(--surface); font-size: 12.5px; font-weight: 600; line-height: 1.3; color: var(--muted); }
+.tr-step-i .ic { width: 13px; height: 13px; vertical-align: -2px; }
+.tr-step-i.is-ok { color: var(--green); background: var(--green-bg); border-color: var(--green-border); }
+.tr-step-i.is-todo { color: var(--amber); background: var(--amber-bg); border-color: var(--amber-border); }
+.tr-step-i.is-bad { color: var(--red); background: var(--red-bg); border-color: var(--red-border); }
+.tr-step-i.is-off { background: none; border-color: transparent; padding-left: 0; }
+.tr-step-i.is-ctl { padding: 0; border: 0; background: none; gap: 6px; }
+.tr-step-i.tr-pay { flex-direction: row; gap: 6px; }
+.tr-step-i.tr-pay .badge { margin: 0; }
+.tr-step-i.tr-pay.is-ok, .tr-step-i.tr-pay.is-todo { padding: 0; border: 0; background: none; }
+.tr-step-i .tr-missline { margin: 0; font-size: 12.5px; color: var(--red); }
+.tr-step-i.tr-blline { margin-top: 0; font-size: 12.5px; }
+.btn-link.tr-step-edit { height: auto; padding: 0 2px; font-size: 12.5px; font-weight: 600; color: var(--ocean); text-decoration: underline; text-underline-offset: 2px; }
+.tr-step-act { margin-top: 0; }
+.tr-step-g .tr-guest { gap: 6px; }
+.tr-srow.tr-row .tr-btns { flex-wrap: nowrap; }
+@media (max-width: 700px) {
+  #transportRoot .btn-link.tr-owed-other { margin-left: 0; }
+  #transportRoot .tr-owed-pay { margin-left: 8px; padding-left: 8px; }
+  .tr-weekacts { flex-basis: 100%; }
+  .tr-weekacts .btn { flex: 1 1 auto; justify-content: center; }
+  .tr-steps { gap: 4px; }
+  .tr-step-i { font-size: 12px; }
+  .tr-srow.tr-row .tr-btns .btn:not(.btn-icon) { padding: 0 8px; }
+}
+/* The checkpoints sit on their own line of the row, under What … Status (phone: under the name and the buttons). */
+.tr-srow.tr-row { grid-template-areas: "time what ppl drv price status" ". steps steps steps steps steps"; }
+.tr-c-steps { grid-area: steps; min-width: 0; }
+.tr-c-steps .tr-steps { margin-top: 0; }
+.tr-bl-act { flex-wrap: wrap; }
+@media (max-width: 700px) {
+  .tr-srow.tr-row { grid-template-areas: "time what price" "time what status" "steps steps steps"; }
+  .tr-c-steps .tr-steps { margin-top: 4px; }
+}
+/* ── Overview (16 Nov 2026 UX pass): four numbers, cost by month (year), by kind, by driver; euros under the amounts ── */
+#transportRoot .tr-ov-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: var(--sp-4); }
+#transportRoot .tr-ov-kpis .kpi-value { font-size: 24px; white-space: nowrap; }
+.tr-eur { color: var(--muted); font-weight: 500; }
+.tr-ov-tbl td .tr-eur { display: block; font-size: 12px; }
+.tr-ov-tbl td.r .num { white-space: nowrap; }
+.tr-ov-tbl td .cell-sub { display: block; }
+#transportRoot .tr-ov-card .card-hdr { padding-bottom: var(--sp-3); }
+.tr-bars { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 6px; padding: 0 var(--card-pad) var(--sp-4); align-items: end; }
+.tr-bar { display: flex; flex-direction: column; align-items: stretch; gap: 4px; padding: 0; border: 0; background: none; font: inherit; cursor: pointer; min-width: 0; }
+.tr-bar-v { font-size: 11px; color: var(--muted); text-align: center; min-height: 14px; white-space: nowrap; overflow: hidden; }
+.tr-bar-col { position: relative; display: block; height: 120px; border-radius: var(--r-xs); background: var(--surface-2); overflow: hidden; }
+.tr-bar-fill { position: absolute; left: 0; right: 0; bottom: 0; background: var(--ocean); border-radius: var(--r-xs) var(--r-xs) 0 0; }
+.tr-bar-paym .tr-bar-fill { background: var(--ocean-soft); box-shadow: inset 0 0 0 1px var(--ocean); }
+.tr-bar:hover .tr-bar-col { box-shadow: 0 0 0 2px var(--ocean-soft); }
+.tr-bar-m { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); text-align: center; }
+@media (max-width: 900px) { #transportRoot .tr-ov-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 700px) {
+  #transportRoot .tr-ov-kpis { gap: var(--sp-2); }
+  #transportRoot .tr-ov-kpis .kpi { padding: var(--sp-3); }
+  #transportRoot .tr-ov-kpis .kpi-value { font-size: 18px; }
+  .tr-bars { gap: 3px; padding: 0 var(--sp-3) var(--sp-3); }
+  .tr-bar-col { height: 90px; }
+  .tr-bar-v { font-size: 9.5px; }
+  .tr-bar-m { font-size: 9.5px; letter-spacing: 0; }
+}
+.tr-srow.tr-row { row-gap: 8px; }
+@media (max-width: 700px) { .tr-srow.tr-row { row-gap: 4px; } }
+.tr-went { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+/* The vehicle under the driver's name (run rows), not glued to it. */
+.tr-c-drv .tr-veh { display: block; }
+.tr-modal .tr-free-rule { margin-bottom: var(--sp-4); }
