@@ -11,6 +11,7 @@ const { collectFatalErrors } = require('./helpers');
 const H = require('./ma-helpers');
 
 const SHOTS = path.join(__dirname, '..', 'test-results', 'morocco-shots');
+const DRV_SHOTS = process.env.DRV_SHOTS || path.join(__dirname, '..', 'test-results', 'drv-shots');
 async function openTab(page, opts = {}) {
   const st = await H.open(page, opts);
   await page.waitForFunction(() => window.TransportUI && TransportUI._state.loaded, null, { timeout: 10000 });
@@ -23,13 +24,13 @@ function ledgerRow(id, desc, amount, date, extra = {}) {
     paid_from: 'morocco', attributed_location: 'morocco', created_at: '2026-11-14T09:00:00Z', ...extra };
 }
 
-test('morocco transport: the tab shows for the full view; the header says how Morocco pays (SG bank transfer), no «Pay a driver»', async ({ page }) => {
+test('morocco transport: the tab shows for the full view; the header says how Morocco pays (SG bank transfer) and «Pay a driver» is the one door (16 Nov 2026)', async ({ page }) => {
   const errors = collectFatalErrors(page);
   await openTab(page);
   await expect(page.locator('#transportRoot .tr-how')).toContainText('Let Us Tours');
   await expect(page.locator('#transportRoot .tr-actions')).toContainText('Van runs');
-  await page.click('button.pill:has-text("Reconcile")');
-  await expect(page.locator('#trPayBtn')).toHaveCount(0);
+  await expect(page.locator('#trPayBtn')).toBeVisible();
+  await expect(page.locator('#transportRoot .tr-views')).toHaveCount(0);            // no Reconcile any more
   expect(errors).toEqual([]);
 });
 
@@ -107,74 +108,83 @@ test('morocco transport: van runs — people in the van, one tap = one run at 11
   await expect.poll(() => page.evaluate(() => window.__opened.length)).toBeGreaterThan(0);
   expect(await page.evaluate(() => decodeURIComponent(window.__opened.pop()))).toContain('wa.me/212600000102');
   await page.click('#trOv .btn:has-text("Done")');
-  await expect(page.locator('#transportRoot [data-total="tuktuk"] .kpi-label')).toContainText('Van · 3 runs');   // the run done + the 2 planned for tomorrow
+  expect(await page.evaluate(() => TransportUI._state.trips.filter(t => t.kind === TransportUI.RUN.kind).length)).toBe(3);   // the run done + the 2 planned for tomorrow
   expect(errors).toEqual([]);
 });
 
-test('morocco transport: a bank transfer to Fathoune shows in Reconcile → Payments «to review», is linked to his runs, and they turn Paid; upcoming trips never green', async ({ page }) => {
-  const runs = [1, 2, 3].map(i => ({ id: `cccccccc-0000-4000-8000-00000000000${i}`, location_id: H.LOC, kind: 'other', trip_date: '2026-11-1' + (i + 1), trip_time: '08:00', route: 'Surf', purpose: 'surf', pax: 10, vehicle: 'Van',
-    driver_id: H.D.fat, expected_price: 1100, currency: 'MAD', status: 'done', source: 'manual', payment_entry_id: null, import_flags: [], edited_fields: [], created_at: '2026-11-12T08:00:00Z' }));
+// Pay a driver (16 Nov 2026): Fathoune's runs since the last payment, by day × route; the SG transfer
+// already brought by the statement is offered («Use SG transfer …») and linked — never a second line.
+const fatRuns = () => [1, 2, 3].map(i => ({ id: `cccccccc-0000-4000-8000-00000000000${i}`, location_id: H.LOC, kind: 'other', trip_date: '2026-11-1' + (i + 1), trip_time: '08:00', route: i === 3 ? 'Paradise + Souk' : 'Surf', purpose: i === 3 ? 'tour' : 'surf',
+  tour_name: i === 3 ? 'Paradise Valley + Souk Tour' : null, pax: 10, vehicle: 'Van', driver_id: H.D.fat, expected_price: 1100, currency: 'MAD', status: 'done', source: 'manual', payment_entry_id: null, import_flags: [], edited_fields: [], created_at: '2026-11-12T08:00:00Z' }));
+test('morocco pay: tap Fathoune in «Owed to drivers» → his runs ticked; the SG transfer from the statement is offered and linked, no new line', async ({ page }) => {
+  const errors = collectFatalErrors(page);
+  const runs = fatRuns();
   const upcoming = { ...H.tripsFromFile().find(t => t.import_key === 'bl:MA-1007:arr') };
   const ledger = [ledgerRow('e1e1e1e1-0000-4000-8000-000000000001', 'Fathoune Mounir — transport services (bank, paid 14 Nov)', 3300, '2026-11-14'),
     ledgerRow('e1e1e1e1-0000-4000-8000-000000000002', 'Afriquia — car diesel', 400, '2026-11-14', { payment_method: 'Card' })];
   const st = await openTab(page, { trips: [...runs, upcoming], ledger, goLive: '2026-11-07' });
   const chip = await page.evaluate(() => { const c = CAMP_CHECKS.find(x => x.id === 'transport-bank-unlinked'); return c.run({ ledger: S.ledger, location: 'morocco', isLocal: false, today: '2026-11-14' }); });
   expect(chip.text.replace(/\s/g, ' ')).toBe('Bank transfer to a driver not linked to trips · 1 · MAD 3,300');
-  await page.evaluate(() => TransportUI.setRec('payments'));
-  const row = page.locator('tr[data-pay="e1e1e1e1-0000-4000-8000-000000000001"]');
-  await expect(row).toHaveAttribute('data-state', 'review');
-  await expect(page.locator('tr[data-pay="e1e1e1e1-0000-4000-8000-000000000002"]')).toHaveCount(0);   // a card fuel payment is no driver payment
-  await row.locator('button:has-text("Link trips")').click();
-  await expect(page.locator('#lk_dr')).toHaveValue(H.D.fat);
-  for (const r of runs) await page.locator(`#trOv input[data-id="${r.id}"]`).check();
-  await expect(page.locator('#lk_sum')).toHaveText(/Ticked MAD\s3,300 of MAD\s3,300/);
-  await page.click('#lk_save');
+  await expect(page.locator('#transportRoot [data-chip="check"]')).toHaveText('1 payment to check');
+  await page.click(`#trOwed [data-owed="${H.D.fat}"]`);
+  await expect(page.locator('#trOv .mhdr-title')).toHaveText('Pay Fathoune');
+  await expect(page.locator('#trOv [data-pay-group]')).toHaveCount(3);                       // one line per day × route
+  await expect(page.locator('#trOv [data-pay-group]', { hasText: 'Paradise + Souk' })).toContainText('10 people');
+  await expect(page.locator('#py_amt')).toHaveValue('3300');
+  await expect(page.locator('#trOv label:has-text("Bank transfer to Fathoune")')).toHaveCount(1);
+  const bank = page.locator('#trOv [data-bank="e1e1e1e1-0000-4000-8000-000000000001"]');
+  await expect(bank).toHaveText(/Use SG transfer 14 Nov · MAD\s3,300/);
+  await expect(page.locator('#trOv [data-bank="e1e1e1e1-0000-4000-8000-000000000002"]')).toHaveCount(0);   // a card fuel payment is no driver payment
+  fs.mkdirSync(DRV_SHOTS, { recursive: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await bank.click();
+  await expect(page.locator('#py_save')).toHaveText('Link payment');
+  expect(await H.noOverflow(page)).toBe(true);
+  await page.waitForTimeout(600);
+  await page.screenshot({ path: path.join(DRV_SHOTS, 'morocco-pay-390.png') });
+  await page.click('#py_save');
   const set = (await H.call(st, 'link_set')).body;
-  expect(set).toMatchObject({ p_entry: 'e1e1e1e1-0000-4000-8000-000000000001', p_driver: H.D.fat });
+  expect(set).toMatchObject({ p_entry: 'e1e1e1e1-0000-4000-8000-000000000001', p_driver: H.D.fat, p_note: null });
   expect(set.p_trip_ids.sort()).toEqual(runs.map(r => r.id));
-  await expect(row).toHaveAttribute('data-state', 'matched');
-  await page.evaluate(() => TransportUI.setRec('airport'));
-  await expect(page.locator(`tr[data-trip="${upcoming.id}"]`)).toHaveAttribute('data-rec', 'upcoming');
-  await expect(page.locator(`tr[data-trip="${upcoming.id}"] .tr-ok-y`)).toHaveCount(0);
+  expect(st.calls.filter(c => c.t === 'pay')).toEqual([]);                                 // no second line for the same money
+  await expect(page.locator('#transportRoot [data-chip="check"]')).toHaveCount(0);
+  await expect(page.locator(`.tr-row[data-trip="${upcoming.id}"] [data-pay="planned"]`)).toHaveCount(await page.locator(`.tr-row[data-trip="${upcoming.id}"]`).count());   // upcoming never paid
+  expect(errors).toEqual([]);
 });
 
-test('morocco «Which transfers is this for?»: Transport · Agadir Airport · Bank Transfer lists the unpaid airport transfers; Cash only shows the hint', async ({ page }) => {
-  const trips = H.tripsFromFile().filter(t => t.kind.startsWith('airport'));
-  const st = await H.open(page, { trips, goLive: '2026-11-01' });
-  await page.evaluate(() => { showPage('expenses'); });
-  const btn = page.locator('.exp-quick-btn[data-cat="Transport"]');
-  if (!(await btn.count())) test.skip(true, 'no Transport quick button in this layout');
-  await btn.click();
-  await page.evaluate(() => { const s = document.getElementById('qe_linked'); if (![...s.options].some(o => o.value === 'Agadir Airport')) s.add(new Option('Agadir Airport', 'Agadir Airport')); });
-  await page.selectOption('#qe_linked', 'Agadir Airport');
-  await page.selectOption('#qe_pay', 'Cash');
-  await expect(page.locator('#qe_paylink_hint')).toHaveText('Paying the airport transfers by bank? Set the payment to Bank Transfer to tick the guests.');
-  await page.selectOption('#qe_pay', 'Bank Transfer');
-  await expect(page.locator('#qe_paylink_wrap .pl-row').first()).toBeVisible();
-  await expect(page.locator('#qe_paylink_wrap #pl_more')).toHaveCount(0);
+test('morocco pay: no SG line yet → one Bank Transfer row (MAD) for all the runs, linked through camp_trips_pay', async ({ page }) => {
+  const runs = fatRuns();
+  const st = await openTab(page, { trips: runs, goLive: '2026-11-07' });
+  await page.evaluate(id => TransportUI.payPick(id), H.D.fat);
+  await expect(page.locator('#trOv [data-bank]')).toHaveCount(0);
+  await page.click('#py_save');
+  const pay = (await H.call(st, 'pay')).body;
+  expect(pay.p_entries.length).toBe(1);
+  expect(pay.p_entries[0]).toMatchObject({ category: 'Transport', payment_method: 'Bank Transfer', currency: 'MAD', amount_local: 3300, source_kind: 'trip_payment', linked_item: 'Surf' });
+  expect(pay.p_entries[0].trip_ids.sort()).toEqual(runs.map(r => r.id));
+  expect(pay.p_entries[0].description).toBe('Fathoune · 3 tour runs (Paradise Valley + Souk Tour) · 12–14 Nov');
+});
+
+test('morocco Quick add: Transport naming Fathoune → «Paying Fathoune? Pay in Drivers»; the button opens his Pay sheet (a warning only)', async ({ page }) => {
+  const st = await H.open(page, { trips: fatRuns(), goLive: '2026-11-07' });
+  await page.waitForFunction(() => window.TransportUI && TransportUI._state.loaded, null, { timeout: 10000 });
+  await page.evaluate(() => { showPage('expenses'); resetQuickExpense(); document.getElementById('qe_type').value = 'expense'; renderQuickExpenseCategories(); document.getElementById('qe_cat').value = 'Transport'; renderEntryCategorySelection('qe'); });
+  await page.fill('#qe_desc', 'Fathoune November vans');
+  await expect(page.locator('#qe_paylink_wrap')).toContainText('Paying Fathoune? Pay in Drivers');
+  await page.click('#pl_pay');
+  expect(await page.evaluate(() => activePage)).toBe('transport');
+  await expect(page.locator('#trOv .mhdr-title')).toHaveText('Pay Fathoune');
   expect(st.calls.filter(c => c.t === 'link_own')).toEqual([]);
-  // Tick two transfers → the amount fills itself → save → the RPC links them to the saved Bank Transfer line.
-  const ids = await page.locator('#qe_paylink_wrap input[data-trip]').evaluateAll(els => els.slice(0, 2).map(e => e.dataset.trip));
-  await page.locator('#qe_paylink_wrap .pl-row').nth(0).click();
-  await page.locator('#qe_paylink_wrap .pl-row').nth(1).click();
-  await page.fill('#qe_desc', 'Let Us Tours · November transfers');
-  await page.click('[onclick="saveQuickExpense()"]');
-  const c = await H.call(st, 'link_own');
-  const row = st.posted[st.posted.length - 1];
-  expect(row).toMatchObject({ type: 'expense', category: 'Transport', linked_item: 'Agadir Airport', payment_method: 'Bank Transfer', currency: 'MAD' });
-  expect(c.body.p_entry).toBe(row.id);
-  expect(c.body.p_trip_ids.sort()).toEqual(ids.sort());
-  await expect(page.locator('#toast')).toContainText('2 transfers linked');
 });
 
-test('morocco transport: screenshots at 390 and 1280 — Trips, Reconcile, the Guests import (in Week), van runs; no horizontal overflow', async ({ page }) => {
+test('morocco transport: screenshots at 390 and 1280 — Trips, the Guests import (in Week), van runs; no horizontal overflow', async ({ page }) => {
   fs.mkdirSync(SHOTS, { recursive: true });
   const errors = collectFatalErrors(page);
   const runs = [{ id: 'cccccccc-0000-4000-8000-000000000009', location_id: H.LOC, kind: 'other', trip_date: '2026-11-14', trip_time: '08:00', route: 'Surf', purpose: 'surf', pax: 9, vehicle: 'Van', driver_id: H.D.fat, expected_price: 990, currency: 'MAD', status: 'done', source: 'manual', payment_entry_id: null, import_flags: [], edited_fields: [], created_at: '2026-11-14T08:00:00Z' }];
   await openTab(page, { trips: [...H.tripsFromFile(), ...runs] });
   for (const [w, hgt] of [[390, 844], [1280, 900]]) {
     await page.setViewportSize({ width: w, height: hgt });
-    for (const v of ['trips', 'import', 'reconcile']) {
+    for (const v of ['trips', 'import']) {
       await page.evaluate(v => { if (v === 'import') TransportUI.toImport(); else { showPage('transport'); TransportUI.setView(v); } }, v);
       await page.waitForTimeout(150);
       expect(await H.noOverflow(page), `${v} at ${w}`).toBe(true);

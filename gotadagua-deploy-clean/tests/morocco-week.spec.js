@@ -222,7 +222,7 @@ test('morocco «Send the whole week» (Transport, was Week → Send to Let Us To
   const c = await page.evaluate(() => TransportUI.weekCount(TransportUI._state.trips.filter(t => TransportUI.inWeek(t, '2026-11-14'))));
   await expect(page.locator('#transportRoot [data-week-count]')).toContainText(`Arrivals ${c.arr.n} · ${c.arr.pax} persons`);
   await expect(page.locator('#transportRoot [data-week-count]')).toContainText(`Departures ${c.dep.n} · ${c.dep.pax} persons`);
-  await expect(page.locator('#transportRoot [data-total="airport"] .kpi-label')).toHaveText(`Airport · ${c.arr.n + c.dep.n} transfers`);
+  expect(await page.locator('#transportRoot [data-total]').count()).toBe(0);   // the week-total tiles are gone (16 Nov 2026)
   // phone: the first trip on the first screen (the week totals sit under the day list)
   await page.setViewportSize({ width: 390, height: 844 });
   await page.evaluate(() => window.scrollTo(0, 0));

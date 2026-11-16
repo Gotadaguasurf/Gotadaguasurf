@@ -79,6 +79,13 @@ async function stub(page, opts = {}) {
       st.links = st.links.filter(l => l.entry_id !== body.p_entry).concat({ entry_id: body.p_entry, location_id: LOC, driver_id: body.p_driver, entry_amount: Number(e.amount_local), trips_amount: sum, trips_count: ids.length, state, reason: state === 'review' ? 'amounts differ' : null, linked_by: 'manual', reviewed_by: 'u1', note: body.p_note });
       return json({ state, trips: ids.length, trips_amount: sum, amount: e.amount_local });
     }
+    if (url.includes('/rest/v1/rpc/camp_trips_pay')) {   // Pay a driver (16 Nov 2026): the rows land in the ledger, the trips carry them
+      st.calls.push({ t: 'pay', body });
+      const rows = body.p_entries.map(e => { const { trip_ids, ...r } = e; trip_ids.forEach(id => { const t = st.trips.find(x => x.id === id); if (t) t.payment_entry_id = r.id; }); return { ...r, source_kind: 'trip_payment', created_at: new Date().toISOString() }; });
+      st.ledger.push(...rows);
+      rows.forEach(r => st.links.push({ entry_id: r.id, location_id: LOC, driver_id: body.p_driver, entry_amount: r.amount_local, trips_amount: r.amount_local, trips_count: 1, state: 'matched', linked_by: 'pay' }));
+      return json({ rows, trips_amount: 0, amount: body.p_typed_amount });
+    }
     if (url.includes('/rest/v1/rpc/camp_transport_link_own')) { st.calls.push({ t: 'link_own', body }); return json({ state: 'matched' }); }
     if (url.includes('/rest/v1/rpc/camp_trips_import')) { st.calls.push({ t: 'import', body }); return json({ inserted: body.p_trips.length, updated: 0, resend: 0, cancelled: 0, missing: 0, untouched: 0, guests: body.p_guests.length }); }
     if (url.includes('/rest/v1/bookings')) { st.calls.push({ t: 'bookings', url }); return json([]); }

@@ -66,7 +66,8 @@
     runs: { kind: 'tuktuk', label: 'Tuk-tuk', plural: 'Tuk-tuk runs', vehicle: 'Tuk-tuk' },
     payMethod: 'Cash',
     airportSupplier: null,
-    transportHow: 'Airport transfers, tuk-tuks and paying the drivers. Nadith pays in the Ledger and ticks the guests.',
+    transportHow: 'Airport transfers, tuk-tuk runs and paying the drivers: tap a driver in «Owed to drivers» to pay everything since the last payment, run by run.',
+    localDriversHow: 'Log the tuk-tuk runs and pay the drivers: tap a driver in «Owed to drivers» to see everything since the last payment, run by run.',
   };
 
   // ── Morocco (14 Nov 2026) ─────────────────────────────────────────────────
@@ -149,7 +150,7 @@
       { key: 'surf', label: 'Surf spot', route: 'Surf', purpose: 'surf', price: 110, per: 'person' },
       { key: 'dunes', label: 'Dunes', route: 'Dunes', purpose: 'tour', tour: 'Dunes — Sandboarding', price: 110, per: 'person' },
       { key: 'paradise', label: 'Paradise Valley', route: 'Paradise Valley', purpose: 'tour', tour: 'Paradise Valley', price: 110, per: 'person' },
-      { key: 'paradise-souk', label: 'Paradise + Souk', route: 'Paradise + Souk', purpose: 'tour', tour: 'Paradise Valley', price: 110, per: 'person' },
+      { key: 'paradise-souk', label: 'Paradise + Souk', route: 'Paradise + Souk', purpose: 'tour', tour: 'Paradise Valley', tours: ['Paradise Valley', 'Souk Tour'], price: 110, per: 'person' },   // one run, 110/person, its cost split over both tours by paying guests (16 Nov 2026)
       { key: 'souk', label: 'Souk', route: 'Souk', purpose: 'tour', tour: 'Souk Tour', price: 110, per: 'person' },
       { key: 'taghazout-party', label: 'Taghazout + Party', route: 'Taghazout + Party', purpose: 'other', price: 110, per: 'person' },
       { key: 'imsouane', label: 'Imsouane', route: 'Imsouane', purpose: 'surf', price: 110, per: 'person' },
@@ -177,7 +178,7 @@
       lastWeek: 'من السيمانة اللي فاتت', then: room => `من بعد ${room}`,
       roomMoves: 'تبديل البيوت (سولو على النهار)',
     },
-    transportHow: 'Airport transfers (Let Us Tours), van runs (Fathoune), paid by SG bank transfer: link it in Reconcile.',
+    transportHow: 'Airport transfers (Let Us Tours) and van runs (Fathoune), paid by SG bank transfer: tap a driver in «Owed to drivers» to pay or to link the transfer.',
   };
 
   // «8 - Banana Point mixed shared room (4pax)» → { n: 8, core: 'Banana Point', … }

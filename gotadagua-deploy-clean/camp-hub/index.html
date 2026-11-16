@@ -4984,7 +4984,8 @@ async function removeClosedWeekIncome(payload={}){
 // ═══════════════════════════════════════════════════════════
 function showPage(p){
   if(CAMP_TAB_ONLY_MODE && p!=='pos') p='pos';
-  if(LOCAL_MANAGER_MODE && p!=='pos' && p!=='expenses') p='expenses';
+  // Sri Lanka ?view=local also has «Drivers» (camp-hub/transport.js, 16 Nov 2026): log the runs and pay the drivers.
+  if(LOCAL_MANAGER_MODE && p!=='pos' && p!=='expenses' && !(p==='transport' && window.TransportUI && TransportUI.localDrivers)) p='expenses';
   activePage=p;
   document.querySelectorAll('.page').forEach(el=>el.classList.remove('active'));
   document.getElementById('page-'+p).classList.add('active');
@@ -5373,7 +5374,14 @@ async function renderSurfSchoolOverview(){
 //            a tour cost still waiting for its tour)
 const TOUR_UNSPLIT_REVENUE_KEY='Tours (not split by tour)';
 const TOUR_UNLINKED_COST_KEY='Not linked to a tour';
-function tourProfitRows(revenueEntries,expenses){
+//   opts.runs — Transport runs done for a tour in the period (camp_trips, paid or not, 16 Nov 2026):
+//            their cost is the tour's transport cost on the run date. «Paradise + Souk» = both
+//            tours, split by paying guests; a free run is comp cost.
+//   opts.linkedEntries — ledger ids that pay trips: those Transport lines are skipped here (the
+//            runs already carry the cost; a monthly Fathoune transfer cannot be split by tour).
+function tourProfitRows(revenueEntries,expenses,opts){
+  const runs=(opts&&opts.runs)||[];
+  const linkedEntries=(opts&&opts.linkedEntries)||new Set();
   // Tour rows carry two cost streams so the display can split
   // "paying-guest margin" from "total margin":
   //   costLocal / costEur           = total cost (all rows, comp + paying)
@@ -5436,7 +5444,7 @@ function tourProfitRows(revenueEntries,expenses){
     tourMap[key].revenueLocal+=entryLocalDisplayAmount(x);
     tourMap[key].revenueEur+=entryEurAmount(x);
   });
-  expenses.filter(x=>x.businessArea!=='Tours'&&x.businessArea!=='Transport').forEach(x=>{
+  expenses.filter(x=>x.businessArea!=='Tours'&&x.businessArea!=='Transport'&&!linkedEntries.has(x.id)).forEach(x=>{
     const linked=String(x.linkedItem||'').trim();
     if(!linked||!tourNamesForCrossSweep.has(linked)) return;
     const key=beforeSplit(x)?TOUR_UNSPLIT_REVENUE_KEY:linked;
@@ -5464,7 +5472,7 @@ function tourProfitRows(revenueEntries,expenses){
   // The cost then splits WEIGHTED BY PAYING-GUEST COUNT across the
   // matched tours: the shared "Dunes" van absorbs into Sandboarding,
   // Camel Ride and Quad Bike proportional to how many guests each ran.
-  expenses.filter(x=>x.businessArea==='Transport').forEach(x=>{
+  expenses.filter(x=>x.businessArea==='Transport'&&!linkedEntries.has(x.id)).forEach(x=>{
     // Per-entry override (set via the Transport quick-add form's linked-tour
     // dropdown) wins over the preset's default linkedTour. Useful when a
     // shared destination's van served only one sub-tour and you want to
@@ -5520,6 +5528,28 @@ function tourProfitRows(revenueEntries,expenses){
     // Transport rows are never comps (van cost is the same whether the
     // seat carries a paying guest or a staff comp), so compCostLocal/Eur
     // stay untouched here.
+  });
+  // ── Runs done for a tour (Transport → runs, paid or not) ──
+  // Same split as the Transport rollup above: by paying guests over the tours that ran this
+  // period, else the full cost on the first. «Paradise + Souk» names two tours.
+  runs.forEach(t=>{
+    const names=String(t.tour_name||'').split(' + ').map(x=>x.trim()).filter(Boolean);
+    if(!names.length) return;
+    const valid=names.filter(n=>knownTourNames.has(n)||tourMap[n]);
+    const pool=valid.length?valid:[names[0]];
+    const ran=pool.filter(n=>(tourMap[n]?.qty||0)>0);
+    const targets=ran.length?ran:pool;
+    const local=Number(t.expected_price||0);
+    const fx=Number(t.fx_rate||0)||((typeof LOCAL_PER_EUR!=='undefined'&&Number(LOCAL_PER_EUR))||0);
+    const eur=fx>0?local/fx:0;
+    const free=t.charge==='free';
+    const guests=targets.reduce((s2,n)=>s2+(tourMap[n]?.qty||0),0);
+    targets.forEach(n=>{
+      tourMap[n]=tourMap[n]||blankTour(n);
+      const share=guests>0?(tourMap[n].qty||0)/guests:1/targets.length;
+      tourMap[n].costLocal+=local*share; tourMap[n].costEur+=eur*share;
+      if(free){ tourMap[n].compCostLocal+=local*share; tourMap[n].compCostEur+=eur*share; }
+    });
   });
   // Consolidate sub-tour cards by activity. Tours whose names follow the
   // pattern "<Activity> — <Variant>" (em-dash or " - ") are merged into a
@@ -5860,7 +5890,14 @@ function renderOverview(){
   const laundryCampEur=sum(laundryExpenses.filter(x=>ovCampPaid(x)),x=>entryEurAmount(x));
   const laundryHqLocal=sum(laundryExpenses.filter(x=>isHqPaidRow(x)),x=>entryLocalDisplayAmount(x));
   const laundryHqEur=sum(laundryExpenses.filter(x=>isHqPaidRow(x)),x=>entryEurAmount(x));
-  const tourSummary=tourProfitRows(revenueEntries,expenses);
+  // Runs done for a tour in the selected period (Transport, paid or not) and the ledger lines that pay trips.
+  const ovTrips=(window.TransportUI&&TransportUI._state&&TransportUI._state.loaded)?(TransportUI._state.trips||[]):[];
+  const ovTripInPeriod=t=>selectedWid!=='all'?weeks.some(w=>weekStartSat(t.trip_date)===w.start):(selectedMonth==='all'||monthKey(t.trip_date)===selectedMonth);
+  const ovRunDone=t=>!['cancelled','no_show','merged'].includes(t.status)&&(window.TransportUI&&TransportUI.isDone?TransportUI.isDone(t):t.status==='done');
+  const tourSummary=tourProfitRows(revenueEntries,expenses,{
+    runs:ovTrips.filter(t=>!/^airport_/.test(t.kind||'')&&t.tour_name&&ovRunDone(t)&&ovTripInPeriod(t)),
+    linkedEntries:new Set(ovTrips.map(t=>t.payment_entry_id).filter(Boolean)),
+  });
   const tourRows=tourSummary.rows;
   // Merch COGS: cost of goods SOLD, not the whole stock bought. For each
   // Merch item that appeared on a paid tab, look up its unit cost from
@@ -8419,7 +8456,7 @@ function applyLinkedPrice(prefix){
   const type=document.getElementById(prefix+'_type')?.value||(prefix==='em'?expModalType:'expense');
   const category=document.getElementById(prefix+'_cat')?.value||'';
   const linked=(document.getElementById(prefix+'_linked')?.value||'').trim();
-  if(window.CampPayLink) CampPayLink.sync(prefix); // Sri Lanka «Which transfers is this for?» (camp-hub/paylink.js)
+  if(window.CampPayLink) CampPayLink.sync(prefix); // «Paying X? Pay in Drivers» (camp-hub/paylink.js)
   if(!linked) return;
   const qtyEl=document.getElementById(prefix+'_qty');
   const amountEl=document.getElementById(prefix+'_amount');
@@ -8698,8 +8735,8 @@ async function __saveQuickExpenseRun(){
   }catch(_e){
     return; // helper toasted the failure; keep the form open so user can retry
   }
-  // Sri Lanka: link the airport transfers ticked in «Which transfers is this
-  // for?» (camp-hub/paylink.js). The entry is already saved; this never fails it.
+  // camp-hub/paylink.js: nothing is linked from Quick add since 16 Nov 2026 (driver payments
+  // go through «Pay a driver»); afterSave() returns null and never fails the save.
   let payLink=null;
   try{ if(window.CampPayLink) payLink=await CampPayLink.afterSave(payload); }catch(_e){ payLink=null; }
   resetQuickExpense();
@@ -10648,7 +10685,7 @@ function applyLocalManagerMode(){
   // Money from HQ arrives through the bank statement, not from him.
   const qeHq=document.querySelector('#qe_type option[value="transfer"]'); if(qeHq) qeHq.remove();
   document.querySelectorAll('.exp-quick-btn[data-cat="Cash Float"]').forEach(b=>b.remove());
-  document.querySelectorAll('.ntab, .ntab-m').forEach(btn=>{ btn.style.display = (btn.dataset.page==='pos' || btn.dataset.page==='expenses') ? '' : 'none'; });
+  document.querySelectorAll('.ntab, .ntab-m').forEach(btn=>{ btn.style.display = (btn.dataset.page==='pos' || btn.dataset.page==='expenses' || (btn.dataset.page==='transport' && window.TransportUI && TransportUI.localDrivers)) ? '' : 'none'; });
   showPage('expenses');
 }
 function applyCampTabOnlyMode(){

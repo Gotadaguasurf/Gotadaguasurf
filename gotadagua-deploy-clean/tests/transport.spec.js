@@ -1,8 +1,8 @@
 // Camp hub · Transport tab (Sri Lanka, 13 Nov 2026) — stubbed Supabase.
 //
-// Full view only (Francisco / Miguel / HQ). Nadith's ?view=local keeps exactly
-// what he has today: no Transport tab; his ledger payments are linked to the
-// trips by the database (supabase/camp-trips.sql, checked separately).
+// Full view (Francisco / Miguel / HQ). Since 16 Nov 2026 Nadith's ?view=local has the
+// same page as «Drivers»: the owed line, the runs and «Pay a driver» (airport rows
+// read-only). Reconcile is gone; «Pay a driver» is the one door to pay a driver.
 // «Now» is pinned to Fri 13 Nov 2026 10:00 Colombo (window.TRANSPORT_NOW).
 const { test, expect } = require('@playwright/test');
 const path = require('path');
@@ -142,7 +142,7 @@ async function openImport(page) {
 }
 
 // ── Access ─────────────────────────────────────────────────────────────────
-test('transport: tab shows for full users only — not in local view or camp-tab-only (Morocco now has it: tests/morocco-transport.spec.js)', async ({ page, browser }) => {
+test('transport: full view has the tab; Sri Lanka ?view=local has it as «Drivers»; camp-tab-only never (Morocco: tests/morocco-transport.spec.js)', async ({ page, browser }) => {
   const errors = collectFatalErrors(page);
   await open(page);
   await expect(page.locator('.ntab[data-page="transport"]')).toBeVisible({ visible: true }).catch(async () => {
@@ -150,27 +150,25 @@ test('transport: tab shows for full users only — not in local view or camp-tab
     expect(await page.locator('.ntab-m[data-page="transport"]').evaluate(el => el.style.display)).toBe('');
   });
   expect(errors).toEqual([]);
-  for (const [query, slug] of [['&view=local', 'sri-lanka'], ['&view=camp-tab-only', 'sri-lanka']]) {   // Morocco removed 14 Nov: it has the tab now
-    const p = await browser.newPage({ viewport: { width: 390, height: 844 } });
-    await open(p, { query, slug });
-    const r = await p.evaluate(() => {
-      const shown = [...document.querySelectorAll('[data-page="transport"]')].some(b => b.style.display !== 'none');
-      showPage('transport');
-      return { shown, active: activePage, loaded: !!(window.TransportUI && TransportUI._state.loaded) };
-    });
-    expect(r.shown, `${slug}${query}`).toBe(false);
-    if (slug === 'sri-lanka') expect(r.active, `${slug}${query}`).not.toBe('transport'); // local / camp-tab-only views refuse the page
-    expect(await p.locator('#transportRoot').innerHTML()).toBe('');                    // Morocco: nothing renders
-    expect(r.loaded).toBe(false);
-    await p.close();
-  }
+  // camp-tab-only: no tab, the page is refused, nothing loads
+  const p = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await open(p, { query: '&view=camp-tab-only' });
+  const r = await p.evaluate(() => {
+    const shown = [...document.querySelectorAll('[data-page="transport"]')].some(b => b.style.display !== 'none');
+    showPage('transport');
+    return { shown, active: activePage, loaded: !!(window.TransportUI && TransportUI._state.loaded) };
+  });
+  expect(r).toEqual({ shown: false, active: 'pos', loaded: false });
+  expect(await p.locator('#transportRoot').innerHTML()).toBe('');
+  await p.close();
 });
 
 // ── One import door (15 Nov 2026: «Week = guests and camp teams, Transport = drivers and money») ──
-test('transport: two pills (Trips · Reconcile), no «Next week»; an empty week says the trips come from the Guests file and opens the import in Week', async ({ page }) => {
+test('transport: one view (no Reconcile pill since 16 Nov 2026), no «Next week»; an empty week says the trips come from the Guests file and opens the import in Week', async ({ page }) => {
   const errors = collectFatalErrors(page);
   await openTab(page, { trips: [] });
-  await expect(page.locator('#transportRoot .tr-views .pill')).toHaveText(['Trips', 'Reconcile']);
+  await expect(page.locator('#transportRoot .tr-views')).toHaveCount(0);
+  await expect(page.locator('#transportRoot .tr-tripview')).toBeVisible();
   await expect(page.locator('#transportRoot button.pill:has-text("Next week")')).toHaveCount(0);
   await expect(page.locator('#transportRoot .empty-state')).toContainText('Trips come from the Guests file. Import it in Week.');
   await page.click('#transportRoot .empty-state button:has-text("Import Guests file")');
@@ -406,97 +404,6 @@ test('reconcile: status precedence (pure rule)', async ({ page }) => {
     beforeGoLive: 'before_go_live', paidBeforeGoLive: 'matched' });
 });
 
-test('reconcile: rows, statuses and totals for the week, like the bank reconcile', async ({ page }) => {
-  const errors = collectFatalErrors(page);
-  await openTab(page, recFixture());
-  await page.click('button.pill:has-text("Reconcile")');          // this week: Sat 7 – Fri 13 Nov
-  await expect(page.locator('.tr-rec .card-title')).toHaveText('Reconcile 7–13 Nov');
-  const status = async (id) => page.locator(`tr[data-trip="${id}"]`).getAttribute('data-rec');
-  expect(await status('aaaaaaaa-0000-4000-8000-00000000b001')).toBe('matched');
-  expect(await status('aaaaaaaa-0000-4000-8000-00000000b002')).toBe('owed');
-  expect(await status('aaaaaaaa-0000-4000-8000-00000000b003')).toBe('paid_not_done');
-  expect(await status('aaaaaaaa-0000-4000-8000-00000000b004')).toBe('no_show');
-  expect(await status('aaaaaaaa-0000-4000-8000-00000000b005')).toBe('extra');
-  expect(await status('aaaaaaaa-0000-4000-8000-00000000b006')).toBe('upcoming');
-  await expect(page.locator('tr[data-trip="aaaaaaaa-0000-4000-8000-00000000b001"]')).toContainText('Dilan 42000');
-  const kpi = async (label) => (await page.locator(`.tr-kpis .kpi:has(.kpi-label:text-is("${label}")) .kpi-value`).textContent()).trim();
-  expect(await kpi('Booked')).toBe('5');
-  expect(await kpi('Done')).toBe('5');     // b001, b002, b005 + 2 tuk-tuk runs
-  expect(await kpi('Paid')).toBe('4');     // b001, b003, b005, b007
-  expect((await kpi('Owed to drivers')).replace(/[^0-9]/g, '')).toBe('22500');   // b002 21.000 + b008 1.500
-  expect((await kpi('Paid without trips')).replace(/[^0-9]/g, '')).toBe('6500'); // p2 5.000 + p4 1.500
-  await expect(page.locator('.tr-reconciled')).toHaveCount(0);
-  // To do filter keeps only the problems
-  await page.click('.tr-rec-right .pill:has-text("To do")');
-  await expect(page.locator('tr[data-trip]')).toHaveCount(2);
-  // Tuk-tuk tab: one paid run, one owed
-  await page.click('.tr-rec-pills .pill:has-text("Tuk-tuk")');
-  await page.click('.tr-rec-right .pill:has-text("All")');
-  expect(await status('aaaaaaaa-0000-4000-8000-00000000b007')).toBe('matched');
-  expect(await status('aaaaaaaa-0000-4000-8000-00000000b008')).toBe('owed');
-  // Payments tab: 2 to review, 2 matched
-  await page.click('.tr-rec-pills .pill:has-text("Payments")');
-  await expect(page.locator('tr[data-pay][data-state="review"]')).toHaveCount(2);
-  await expect(page.locator(`tr[data-pay="${P.p4}"]`)).toContainText('no driver named');
-  expect(errors).toEqual([]);
-});
-
-test('reconcile: «Week reconciled» when every done trip is paid and every payment has its trips', async ({ page }) => {
-  const f = recFixture();
-  f.trips = f.trips.filter(t => ['aaaaaaaa-0000-4000-8000-00000000b001', 'aaaaaaaa-0000-4000-8000-00000000b005', 'aaaaaaaa-0000-4000-8000-00000000b006', 'aaaaaaaa-0000-4000-8000-00000000b004', 'aaaaaaaa-0000-4000-8000-00000000b007'].includes(t.id));
-  f.links = f.links.filter(l => l.state === 'matched'); f.ledger = f.ledger.filter(e => f.links.some(l => l.entry_id === e.id));
-  await openTab(page, f);
-  await page.click('button.pill:has-text("Reconcile")');
-  // «Later Today» (22:00) hasn't happened: not reconciled yet, only «so far so good».
-  await expect(page.locator('.tr-reconciled')).toHaveCount(0);
-  await expect(page.locator('.tr-sofar')).toContainText('So far so good');
-});
-
-test('reconcile: «Week reconciled» once every trip of the week is done and paid (nothing still to come)', async ({ page }) => {
-  const f = recFixture();
-  f.trips = f.trips.filter(t => ['aaaaaaaa-0000-4000-8000-00000000b001', 'aaaaaaaa-0000-4000-8000-00000000b005', 'aaaaaaaa-0000-4000-8000-00000000b004', 'aaaaaaaa-0000-4000-8000-00000000b007'].includes(t.id));
-  f.links = f.links.filter(l => l.state === 'matched'); f.ledger = f.ledger.filter(e => f.links.some(l => l.entry_id === e.id));
-  await openTab(page, f);
-  await page.click('button.pill:has-text("Reconcile")');
-  await expect(page.locator('.tr-reconciled')).toContainText('Week reconciled');
-});
-
-test('reconcile: Link trips / Unlink / Mark explained on a payment, Link and Unlink on a trip', async ({ page }) => {
-  const st = await openTab(page, recFixture());
-  await page.evaluate(() => TransportUI.setRec('payments'));
-  // Link the owed trip to the 25.000 payment (which already has the paid no-show)
-  await page.locator(`tr[data-pay="${P.p2}"] button:has-text("Link trips")`).click();
-  await page.locator('#trOv input[data-id="aaaaaaaa-0000-4000-8000-00000000b002"]').check();
-  await expect(page.locator('#lk_sum')).toContainText('difference');
-  await page.locator('#trOv input[data-id="aaaaaaaa-0000-4000-8000-00000000b003"]').uncheck();
-  await page.fill('#lk_note', 'Waiting time');
-  await page.click('#lk_save');
-  let last = (await call(st, 'link_set', 1)).body;
-  expect(last).toMatchObject({ p_entry: P.p2, p_driver: D.dilan, p_trip_ids: ['aaaaaaaa-0000-4000-8000-00000000b002'], p_note: 'Waiting time' });
-  await expect(page.locator(`tr[data-pay="${P.p2}"]`)).toHaveAttribute('data-state', 'explained');
-  // Unlink it again
-  await page.locator(`tr[data-pay="${P.p2}"] button:has-text("Unlink")`).click();
-  last = (await call(st, 'link_set', 2)).body;
-  expect(last).toMatchObject({ p_entry: P.p2, p_trip_ids: [], p_note: null });
-  await expect(page.locator(`tr[data-pay="${P.p2}"]`)).toHaveAttribute('data-state', 'review');
-  // Mark the fuel row explained
-  await page.locator(`tr[data-pay="${P.p4}"] button:has-text("Mark explained")`).click();
-  await page.fill('#ex_note', 'scooter fuel, not a driver');
-  await page.click('#trOv .btn-p');
-  last = (await call(st, 'link_set', 3)).body;
-  expect(last).toMatchObject({ p_entry: P.p4, p_trip_ids: [], p_note: 'scooter fuel, not a driver' });
-  await expect(page.locator(`tr[data-pay="${P.p4}"]`)).toHaveAttribute('data-state', 'explained');
-  // From a trip row: Link → pick the payment; Unlink → removes only that trip
-  await page.evaluate(() => TransportUI.setRec('airport'));
-  await page.locator('tr[data-trip="aaaaaaaa-0000-4000-8000-00000000b002"] button:has-text("Link")').click();
-  await page.locator(`#trOv .tr-pick-btn:has-text("Dilan 25000")`).click();
-  last = (await call(st, 'link_set', 4)).body;
-  expect(last).toMatchObject({ p_entry: P.p2, p_trip_ids: ['aaaaaaaa-0000-4000-8000-00000000b002'] });
-  await page.locator('tr[data-trip="aaaaaaaa-0000-4000-8000-00000000b005"] button:has-text("Unlink")').click();
-  last = (await call(st, 'link_set', 5)).body;
-  expect(last).toMatchObject({ p_entry: P.p1, p_trip_ids: ['aaaaaaaa-0000-4000-8000-00000000b001'], p_note: null });
-});
-
 // ── Pay a driver (full view tool) ──────────────────────────────────────────
 test('pay a driver: ticked trips prefill the amount; a difference needs a reason; one Cash row per linked item through the RPC', async ({ page }) => {
   const errors = collectFatalErrors(page);
@@ -507,12 +414,14 @@ test('pay a driver: ticked trips prefill the amount; a difference needs a reason
     trip({ id: 'aaaaaaaa-0000-4000-8000-00000000c004', kind: 'other', route: 'Yala Safari', purpose: 'tour', tour_name: 'Yala Safari', trip_date: '2026-11-07', expected_price: 0, status: 'done', source: 'manual' }),
   ];
   const st = await openTab(page, { trips: trips.slice(0, 3) });
-  // Nadith is the payer: «Pay a driver» is no longer in the header, it sits behind Reconcile (secondary).
-  await expect(page.locator('.tr-actions button:has-text("Pay a driver")')).toHaveCount(0);
-  await page.click('button.pill:has-text("Reconcile")');
+  // «Pay a driver» is the one door (16 Nov 2026): in the header (secondary), and each driver of «Owed to drivers» opens it.
   await expect(page.locator('#trPayBtn')).toHaveClass(/btn-s/);
   await page.click('#trPayBtn');
-  await page.click('#trOv .tr-pick-btn:has-text("Dilan")');
+  await expect(page.locator('#trOv .tr-pick-btn:has-text("Dilan")')).toContainText('owed 3 trips');
+  await page.click('#trOv .mclose');
+  await page.click(`#trOwed [data-owed="${D.dilan}"]`);
+  await expect(page.locator('#trOv .mhdr-title')).toHaveText('Pay Dilan');
+  await expect(page.locator('#trOv [data-pay-group]')).toHaveCount(3);
   await expect(page.locator('#py_amt')).toHaveValue('63000');
   await expect(page.locator('#py_save')).toBeEnabled();
   await page.fill('#py_amt', '70000');
@@ -579,12 +488,12 @@ test('chip «Transport payment not linked to trips»: counts review payments; si
     const morocco = check.run({ ...ctx, location: 'morocco' });
     TransportUI._state.loaded = false; const before = check.run(ctx); TransportUI._state.loaded = true;
     hit.onClick();
-    return { text: hit.text, level: hit.level, local, morocco, before, page: activePage, rec: TransportUI._state.view, tab: TransportUI._state.recTab };
+    return { text: hit.text, level: hit.level, local, morocco, before, page: activePage, view: TransportUI._state.view, modal: document.querySelector('#trOv.open .mhdr-title')?.textContent };
   });
   expect(r.text).toMatch(/^Transport payment not linked to trips · 2 · LKR\s6,500$/);
   expect(r.level).toBe('warn');
   expect([r.local, r.morocco, r.before]).toEqual([null, null, null]);
-  expect([r.page, r.rec, r.tab]).toEqual(['transport', 'reconcile', 'payments']);
+  expect([r.page, r.view, r.modal]).toEqual(['transport', 'trips', 'Payments to check']);   // Reconcile is gone: the list of payments to check opens
 });
 
 test('transport: more than 1.000 trips load in pages (tuk-tuk runs add up fast)', async ({ page }) => {
@@ -679,26 +588,17 @@ function weekFixture() {
 const norm = s => s.replace(/\s+/g, ' ').trim();
 
 for (const [name, size] of [['phone 390', { width: 390, height: 844 }], ['desktop 1280', { width: 1280, height: 900 }]]) {
-  test(`trips: paid or not on every row, free tags and the week totals — ${name}`, async ({ page }) => {
+  test(`trips: paid or not on every row, free tags; no week-total tiles (16 Nov 2026) — ${name}`, async ({ page }) => {
     const errors = collectFatalErrors(page);
     await page.setViewportSize(size);
     await openTab(page, weekFixture());
     // The logic in one plain line under the title.
-    await expect(page.locator('#transportRoot .tr-how')).toHaveText('Airport transfers, tuk-tuks and paying the drivers. Nadith pays in the Ledger and ticks the guests.');
+    await expect(page.locator('#transportRoot .tr-how')).toHaveText('Airport transfers, tuk-tuk runs and paying the drivers: tap a driver in «Owed to drivers» to pay everything since the last payment, run by run.');
     await expect(page.locator('.tr-week')).toHaveText('7–13 Nov');
-    // Phone (15 Nov 2026): the week totals sit under the day list, so the first trip is on the first screen;
-    // desktop keeps the totals on top. Rendered once either way.
-    await expect(page.locator('[data-total="airport"]')).toHaveCount(1);
-    const pos = await page.evaluate(() => ({ totals: document.querySelector('.tr-totals').getBoundingClientRect().top, day: document.querySelector('.tr-day').getBoundingClientRect().top,
-      row: document.querySelector('.tr-day .tr-row').getBoundingClientRect().top, sub: document.querySelector('.tr-how').getBoundingClientRect().height, line: parseFloat(getComputedStyle(document.querySelector('.tr-how')).lineHeight) || 20 }));
-    if (size.width <= 700) { expect(pos.totals).toBeGreaterThan(pos.day); expect(pos.row).toBeLessThan(size.height); }
-    else expect(pos.totals).toBeLessThan(pos.day);
+    await expect(page.locator('[data-total]')).toHaveCount(0);
+    expect(norm(await page.locator('#trOwed').innerText())).toBe('OWED TO DRIVERS Dilan LKR 47,500 Sampath LKR 1,500');
+    if (size.width <= 700) expect(await page.evaluate(() => document.querySelector('.tr-day .tr-row').getBoundingClientRect().top)).toBeLessThan(size.height);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(size.width);
-    // Week totals: drivers' prices; cancelled left out; free is a part of the airport count, not an extra.
-    const air = norm(await page.locator('[data-total="airport"]').innerText());
-    expect(air).toBe('AIRPORT · 5 TRANSFERS LKR 109,500 Paid LKR 41,000 · Owed LKR 47,500 · Planned LKR 21,000 Free: 2 · LKR 41,000 (Staff: Kasun; Gift: Alicia)');
-    expect(norm(await page.locator('[data-total="tuktuk"]').innerText())).toBe('TUK-TUK · 4 RUNS LKR 3,000 Paid LKR 1,500 · Owed LKR 1,500');
-    expect(norm(await page.locator('[data-total="week"]').innerText())).toBe('WEEK TOTAL LKR 112,500 Paid LKR 42,500 · Owed LKR 49,000 · Planned LKR 21,000');
     // Every airport row says where it stands, without opening Reconcile.
     const row = id => page.locator(`.tr-row[data-trip="${id}"]`);
     await expect(row(R(101)).locator('[data-pay]')).toHaveText('Paid');
@@ -716,15 +616,13 @@ for (const [name, size] of [['phone 390', { width: 390, height: 844 }], ['deskto
     await expect(lines).toHaveCount(2);
     expect(norm(await lines.nth(0).innerText())).toBe('Ahangama × 3 Sampath · done, not paid Owed LKR 1,500');
     expect(norm(await lines.nth(1).innerText())).toBe('Weligama × 1 Sampath · 12 Nov · linked automatically Paid LKR 1,500');
-    // The Airport / Tuk-tuk pills filter the list, never the totals.
+    // The Airport / Tuk-tuk pills filter the list.
     await page.click('.tr-filters .pill:has-text("Tuk-tuk")');
     await expect(page.locator('.tr-row')).toHaveCount(0);
-    expect(norm(await page.locator('[data-total="airport"]').innerText())).toBe(air);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(size.width);
     // Before go-live (the real one, 14 Nov) nothing is «owed»: it is not tracked.
     await page.evaluate(() => { window.TRIPS_GO_LIVE_OVERRIDE = '2026-11-14'; TransportUI.setFilter('all'); });
     await expect(row(R(102)).locator('[data-pay="old"]')).toHaveText('Before go-live');
-    expect(norm(await page.locator('[data-total="airport"]').innerText())).toContain('Owed LKR 0 · Planned LKR 21,000 · Before go-live LKR 47,500');
     expect(errors).toEqual([]);
   });
 }
@@ -769,8 +667,8 @@ test('tuk-tuk: tap a line to edit its runs, remove one, delete them; a paid run 
   await expect(page.locator('#trOv .tr-paid-note')).toContainText('Paid 12 Nov · linked automatically — unlink the payment first');
   for (const id of ['rn_d', 'rn_t', 'rn_r', 'rn_dr', 'rn_pr']) await expect(page.locator('#' + id)).toBeDisabled();
   await expect(page.locator('#rn_del')).toHaveCount(0);
-  await page.click('#trOv .tr-paid-note button');
-  await expect(page.locator('.tr-rec')).toBeVisible();                              // straight to Reconcile → Tuk-tuk
+  await page.click('#trOv .tr-paid-note [data-unlink]');                            // Reconcile is gone: unlink right here
+  expect((await call(st, 'link_set')).body).toMatchObject({ p_entry: P.p3, p_trip_ids: [] });
   expect(st.calls.filter(c => c.t === 'trip_delete').length).toBe(3);
   expect(errors).toEqual([]);
 });
@@ -869,7 +767,6 @@ test('free: a transfer for staff or a gift — Add transfer (Staff → Free · S
   expect(ins).toMatchObject({ kind: 'airport_arrival', guest_names: 'Kasun', purpose: 'staff', charge: 'free', free_reason: 'staff', notes: 'visa run', expected_price: 21000, source: 'manual' });
   const mine = page.locator('.tr-row', { hasText: 'Kasun' });
   await expect(mine.locator('.tr-free')).toHaveText('Free · Staff');
-  await expect(page.locator('[data-total="airport"] .tr-t-free')).toHaveText('Free: 1 · LKR 21,000 (Staff: Kasun)');
   // A Bookinglayer transfer becomes a gift.
   await page.click('.tr-row[data-trip="aaaaaaaa-0000-4000-8000-00000000a001"] .tr-line1 b');
   await expect(page.locator('#tr_del')).toHaveCount(0);                             // imported trips are cancelled, never deleted
@@ -878,7 +775,6 @@ test('free: a transfer for staff or a gift — Add transfer (Staff → Free · S
   await page.click('#trOv .btn-p');
   expect((await call(st, 'trip_update')).body).toEqual({ charge: 'free', free_reason: 'gift' });   // not an import field: edited_fields untouched
   await expect(page.locator('.tr-row[data-trip="aaaaaaaa-0000-4000-8000-00000000a001"] .tr-free')).toHaveText('Free · Gift');
-  await expect(page.locator('[data-total="airport"] .tr-t-free')).toHaveText('Free: 2 · LKR 42,000 (Staff: Kasun; Gift: Lorena)');
   // … and back to «In booking».
   await page.click('.tr-row[data-trip="aaaaaaaa-0000-4000-8000-00000000a001"] .tr-line1 b');
   await page.click('#tr_ch .pill:has-text("In booking")');
@@ -905,12 +801,6 @@ test('free: before the database update (no free_reason column) the save is repea
   expect(st.calls.filter(c => c.t === 'free_refused').length).toBe(1);
   await expect(page.locator('#toast')).toHaveText('Transfer added');
   await expect(page.locator('.tr-row', { hasText: 'Kasun' }).locator('.tr-free')).toHaveText('Free');
-});
-
-test('local view: Nadith still has no Transport tab and none of the new Transport tools', async ({ page }) => {
-  await open(page, { query: '&view=local', ...weekFixture() });
-  await expect(page.locator('.ntab[data-page="transport"]:visible, .ntab-m[data-page="transport"]:visible')).toHaveCount(0);
-  expect(await page.evaluate(() => { TransportUI.openPlan && 0; return document.getElementById('transportRoot').innerHTML; })).toBe('');
 });
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -1001,18 +891,6 @@ test('A13 — an import while the prices have not loaded never saves trips at 0'
   expect(imp.p_trips.find(t => t.key === 'bl:2026-4660:arr').expected_price).toBe(21000);
 });
 
-test('F2 — Reconcile uses the same week as Trips: the closing-Saturday departures belong to the week that ends', async ({ page }) => {
-  await openTab(page, { trips: nextWeekFlags() });
-  await page.evaluate(() => TransportUI.shiftWeek(7));                               // Trips, week 14–20 Nov
-  const inTrips = await page.locator('.tr-row[data-trip]').evaluateAll(els => els.map(e => e.dataset.trip).sort());
-  expect(inTrips).toEqual([A(1), A(2), A(3), A(4), A(5), A(6)]);                     // with the two Sat 21 departures
-  await page.evaluate(() => { TransportUI._state.recAnchor = '2026-11-14'; TransportUI.recMode('week'); TransportUI.setRec('airport'); });
-  const inRec = await page.locator('tr[data-trip]').evaluateAll(els => els.map(e => e.dataset.trip).sort());
-  expect(inRec).toEqual(inTrips);
-  await page.evaluate(() => { TransportUI._state.recAnchor = '2026-11-21'; TransportUI.render(); });
-  await expect(page.locator('tr[data-trip]')).toHaveCount(0);                        // week 21–27 does not count them again
-});
-
 test('E10 / E7 / E18 — the review list explains itself, a misspelt driver name still raises the chip, and «Owed to drivers» sits on top', async ({ page }) => {
   const fx = weekFixture();
   const P5 = 'bbbbbbbb-0000-4000-8000-000000000005', P6 = 'bbbbbbbb-0000-4000-8000-000000000006', P7 = 'bbbbbbbb-0000-4000-8000-000000000007';
@@ -1021,13 +899,15 @@ test('E10 / E7 / E18 — the review list explains itself, a misspelt driver name
     { entry_id: P6, location_id: LOC, driver_id: D.dilan, entry_amount: 42000, trips_amount: 0, trips_count: 0, state: 'review', reason: 'no exact match', linked_by: 'auto' });
   await openTab(page, fx);
   // One line on top: what is owed to each driver, and what needs a look.
-  expect(norm(await page.locator('#trOwed').innerText())).toBe('OWED TO DRIVERS Dilan LKR 47,500 Sampath LKR 1,500 2 payments to check');
-  await page.click('#trOwed');
-  await expect(page.locator('.tr-rec')).toBeVisible();
-  await page.evaluate(() => { TransportUI._state.recAnchor = '2026-11-12'; TransportUI.setRec('payments'); });
-  await expect(page.locator(`tr[data-pay="${P5}"]`)).toContainText('two drivers named in the description');   // E7
-  await expect(page.locator(`tr[data-pay="${P6}"]`)).toContainText('do not add up to this amount');            // E18: nothing stamped, to review
-  await expect(page.locator(`tr[data-pay="${P6}"]`)).toContainText('0 trips');
+  expect(norm(await page.locator('#trOwed').innerText())).toBe('OWED TO DRIVERS Dilan LKR 47,500 Sampath LKR 1,500');
+  await expect(page.locator('[data-chip="check"]')).toHaveText('2 payments to check');
+  await page.click('[data-chip="check"]');
+  await expect(page.locator('#trOv .mhdr-title')).toHaveText('Payments to check');
+  await expect(page.locator(`#trOv [data-check="${P5}"]`)).toContainText('Dilan and Nishantha');                // E7: no driver, no trips
+  await expect(page.locator(`#trOv [data-check="${P5}"]`)).toContainText('no trips linked');
+  await expect(page.locator(`#trOv [data-check="${P6}"]`)).toContainText('Dilan · no trips linked');            // E18: nothing stamped, to check
+  await page.click(`#trOv [data-check="${P6}"]`);
+  await expect(page.locator('#trOv .mhdr-title')).toHaveText('Link trips');
   // E10: «Dylan 42000» has no link row yet (old database) — the chip still counts it; fuel is left alone.
   const chip = await page.evaluate(() => window.CAMP_CHECKS.find(c => c.id === 'transport-payment-unlinked').run({ ledger: S.ledger, location: 'sri-lanka', isLocal: false, today: '2026-11-13' }).text);
   expect(chip).toMatch(/^Transport payment not linked to trips · 3 · LKR\s125,000$/);
@@ -1133,9 +1013,7 @@ test('E8 — a weekly tuk-tuk lump that is not an exact sum: «Tick all» links 
   const runs = Array.from({ length: 12 }, (_, i) => run(200 + i, { trip_date: '2026-11-10' }));
   const st = await openTab(page, { trips: runs, ledger: [ledgerRow(PS, 'Sampath For Tuk Tuks (07/11-13/11)', 6300)],
     links: [{ entry_id: PS, location_id: LOC, driver_id: D.sampath, entry_amount: 6300, trips_amount: 0, trips_count: 0, state: 'review', reason: 'no exact match', linked_by: 'auto' }] });
-  await page.evaluate(() => { TransportUI._state.recAnchor = '2026-11-12'; TransportUI.setRec('payments'); });
-  await expect(page.locator(`tr[data-pay="${PS}"]`)).toContainText('no trips linked');
-  await page.click(`tr[data-pay="${PS}"] button:has-text("Link trips")`);
+  await page.click('[data-chip="check"]');                                          // one payment to check → Link trips at once
   await expect(page.locator('#trOv input[type=checkbox]:checked')).toHaveCount(0);
   await page.click('#lk_all');
   await expect(page.locator('#trOv input[type=checkbox]:checked')).toHaveCount(12);
@@ -1163,13 +1041,94 @@ test('trips: a Confirmed tick can be undone (Undo ✓ → Sent), and the sheet o
   expect((await call(st, 'trip_update', 2)).body).toMatchObject({ status: 'planned' });
 });
 
-test('reconcile: upcoming trips are never green, and an all-upcoming week is not «reconciled»', async ({ page }) => {
-  await openTab(page, { trips: [
-    trip({ id: 'aaaaaaaa-0000-4000-8000-00000000c001', guest_names: 'Future Guest', trip_date: '2026-11-17', trip_time: '09:00' }),
-  ] });
-  await page.evaluate(() => { TransportUI.setRec('airport'); TransportUI.recShift(1); });
-  await expect(page.locator('tr[data-trip="aaaaaaaa-0000-4000-8000-00000000c001"] .tr-ok-y')).toHaveCount(0);
-  await expect(page.locator('tr[data-trip="aaaaaaaa-0000-4000-8000-00000000c001"] .tr-ok-u')).toHaveCount(1);
-  await expect(page.locator('.tr-reconciled')).toHaveCount(0);
-  await expect(page.locator('.tr-sofar')).toContainText('still to come');
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Driver payments, one door (Miguel 16 Nov 2026, «sim, avança com a proposta dos motoristas»)
+// ════════════════════════════════════════════════════════════════════════════
+const fsx = require('fs');
+const DRV_SHOTS = process.env.DRV_SHOTS || path.join(__dirname, '..', 'test-results', 'drv-shots');
+test('local view (16 Nov 2026): Nadith has «Drivers» — owed line, runs, airport rows read-only; Pay with «Run not in the list» and «−», Cash rows split by item', async ({ page }) => {
+  const errors = collectFatalErrors(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  const st = await open(page, { query: '&view=local', ...weekFixture() });
+  expect(await page.evaluate(() => [...document.querySelectorAll('[data-page="transport"]')].some(b => b.style.display !== 'none' && /Drivers/.test(b.textContent)))).toBe(true);
+  expect(await page.evaluate(() => TransportUI._state.loaded)).toBe(false);                  // nothing loads until he opens «Drivers»
+  await page.evaluate(() => showPage('transport'));
+  await page.waitForFunction(() => window.TransportUI && TransportUI._state.loaded, null, { timeout: 10000 });
+  expect(await page.evaluate(() => activePage)).toBe('transport');
+  await expect(page.locator('#transportRoot .section-title')).toHaveText('Drivers');
+  await expect(page.locator('#transportRoot .tr-actions .btn-p')).toContainText('Tuk-tuk runs');
+  await expect(page.locator('#transportRoot .tr-actions .btn')).toHaveCount(2);                 // Runs + Pay a driver: no Add transfer, no driver editing
+  // Airport rows: read-only (Francisco sends and confirms them).
+  await expect(page.locator('#transportRoot .tr-row-ro').first()).toBeVisible();
+  await expect(page.locator('#transportRoot .tr-btns, #transportRoot [data-send-week], #transportRoot .tr-day-btns')).toHaveCount(0);
+  await page.locator('#transportRoot .tr-row-ro').first().click();
+  await expect(page.locator('#trOv.open')).toHaveCount(0);
+  expect(norm(await page.locator('#trOwed').innerText())).toBe('OWED TO DRIVERS Dilan LKR 47,500 Sampath LKR 1,500');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  fsx.mkdirSync(DRV_SHOTS, { recursive: true });
+  await page.screenshot({ path: path.join(DRV_SHOTS, 'nadith-drivers-390.png'), fullPage: true });
+  // Tap Sampath → everything owed since the last payment, by day × route, ticked.
+  await page.click(`#trOwed [data-owed="${D.sampath}"]`);
+  await expect(page.locator('#trOv .mhdr-title')).toHaveText('Pay Sampath');
+  const ah = page.locator('#trOv [data-pay-group]', { hasText: 'Ahangama' });
+  await expect(ah).toContainText('× 3');
+  await expect(ah).toContainText('LKR 1,500');
+  await expect(page.locator('#py_amt')).toHaveValue('1500');
+  await expect(page.locator('#trOv label:has-text("Cash you are giving Sampath")')).toHaveCount(1);
+  // A run nobody logged: added done, ticked.
+  await page.click('#py_add');
+  await page.fill('#py_ad', '2026-11-11');
+  await page.selectOption('#py_ar', 'surf|Weligama');
+  await page.fill('#py_an', '2');
+  await page.click('#py_addok');
+  const ins = (await call(st, 'trip_insert', 2)).rows[0];
+  expect(ins).toMatchObject({ kind: 'tuktuk', trip_date: '2026-11-11', route: 'Weligama', purpose: 'surf', driver_id: D.sampath, expected_price: 1500, status: 'done', source: 'manual' });
+  await expect(page.locator('#trOv [data-pay-group]', { hasText: 'Weligama' })).toContainText('× 2');
+  await expect(page.locator('#py_amt')).toHaveValue('4500');
+  // A run that did not happen: «−» removes one.
+  await ah.locator('[data-pay-minus]').click();
+  await call(st, 'trip_delete');
+  await expect(page.locator('#trOv [data-pay-group]', { hasText: 'Ahangama' })).toContainText('× 2');
+  await expect(page.locator('#py_amt')).toHaveValue('4000');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  await page.waitForTimeout(600);                                                    // let the sheet and the toast settle
+  await page.screenshot({ path: path.join(DRV_SHOTS, 'nadith-pay-390.png') });
+  // Sampath says 4,200: the difference needs a reason.
+  await page.fill('#py_amt', '4200');
+  await expect(page.locator('#py_save')).toBeDisabled();
+  await page.click('#py_reasons .pill:has-text("Extra stop")');
+  await page.click('#py_save');
+  const pay = (await call(st, 'pay')).body;
+  expect(pay.p_driver).toBe(D.sampath);
+  expect(pay.p_typed_amount).toBe(4200);
+  expect(pay.p_diff_note).toBe('Extra stop');
+  expect(pay.p_entries.every(e => e.payment_method === 'Cash' && e.source_kind === 'trip_payment')).toBe(true);
+  expect(pay.p_entries.map(e => [e.linked_item, e.amount_local])).toEqual([['Transport Surf Lesson', 4200]]);
+  expect(pay.p_entries[0].trip_ids.length).toBe(4);
+  await expect(page.locator('#trOv')).not.toHaveClass(/open/);
+  expect(norm(await page.locator('#trOwed').innerText())).toBe('OWED TO DRIVERS Dilan LKR 47,500');
+  expect(st.calls.filter(c => c.t === 'link_set')).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
+test('pay a driver: airport transfers up to 14 days ahead are listed «(not yet)», not ticked; Dilan can log a tour run (Yala) from the run sheet', async ({ page }) => {
+  const trips = [
+    trip({ id: 'aaaaaaaa-0000-4000-8000-00000000e001', guest_names: 'Done Guest', trip_date: '2026-11-10', trip_time: '10:00' }),
+    trip({ id: 'aaaaaaaa-0000-4000-8000-00000000e002', guest_names: 'Ahead Guest', trip_date: '2026-11-20', trip_time: '10:00' }),
+    trip({ id: 'aaaaaaaa-0000-4000-8000-00000000e003', guest_names: 'Far Guest', trip_date: '2026-12-10', trip_time: '10:00' }),
+  ];
+  const st = await openTab(page, { trips });
+  await page.evaluate(id => TransportUI.payPick(id), D.dilan);
+  await expect(page.locator('#trOv [data-pay-group]')).toHaveCount(2);
+  const ahead = page.locator('#trOv [data-pay-group]', { hasText: 'Ahead Guest' });
+  await expect(ahead).toContainText('(not yet)');
+  await expect(ahead.locator('input')).not.toBeChecked();
+  await expect(page.locator('#py_amt')).toHaveValue('21000');
+  await ahead.locator('input').check();
+  await expect(page.locator('#py_amt')).toHaveValue('42000');
+  await page.evaluate(() => TransportUI.closeModal());
+  await page.evaluate(() => TransportUI.openTuktuk());
+  expect(await page.locator('#tk_dr option').allTextContents()).toEqual(expect.arrayContaining(['Dilan · Airport van', 'Sampath · Tuk-tuk', 'Nishantha · Alex Transportation']));
+  expect(await page.locator('#tk_dr option', { hasText: 'Nadith' }).count()).toBe(0);         // a contact is not a driver
 });

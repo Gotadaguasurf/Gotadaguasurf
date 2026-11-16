@@ -186,3 +186,33 @@ test('tours overview: Jan–May weekly «Activities · week of» totals take the
   expect(writes).toEqual([]);
   expect(errs).toEqual([]);
 });
+
+test('tours overview (16 Nov 2026): runs done for a tour count as its transport cost, paid or not; «Paradise + Souk» splits by paying guests; a free run is comp; a ledger line that pays trips is skipped', async ({ page }) => {
+  const { writes, errs } = await bootSriLanka(page);
+  const out = await page.evaluate(() => {
+    const mk = (o) => normalizeLedgerEntry({ currency: 'LKR', fxRate: 400, paymentMethod: 'Cash', sourceKind: 'manual', quantity: 1, ...o });
+    const revenue = [
+      mk({ type: 'income', category: 'Tours', businessArea: 'Tours', linkedItem: 'Paradise Valley', amountLocal: 750, quantity: 3, date: '2026-11-10', description: 'Camp Tab · Tours' }),
+      mk({ type: 'income', category: 'Tours', businessArea: 'Tours', linkedItem: 'Souk Tour', amountLocal: 150, quantity: 1, date: '2026-11-10', description: 'Camp Tab · Tours' }),
+      mk({ type: 'income', category: 'Tours', businessArea: 'Tours', linkedItem: 'Dunes — Sandboarding', amountLocal: 600, quantity: 2, date: '2026-11-11', description: 'Camp Tab · Tours' }),
+    ];
+    const paid = mk({ id: '00000000-0000-4000-8000-0000000000f1', type: 'expense', category: 'Transport', businessArea: 'Transport', linkedItem: 'Dunes', amountLocal: 220, date: '2026-11-14', description: 'Fathoune · 1 tour run', paymentMethod: 'Bank Transfer' });
+    const expenses = [paid];
+    const runs = [
+      { kind: 'other', route: 'Paradise + Souk', tour_name: 'Paradise Valley + Souk Tour', expected_price: 1100, status: 'done', trip_date: '2026-11-10' },   // 10 people × 110
+      { kind: 'other', route: 'Dunes', tour_name: 'Dunes — Sandboarding', expected_price: 220, status: 'done', trip_date: '2026-11-11', payment_entry_id: paid.id },
+      { kind: 'other', route: 'Dunes', tour_name: 'Dunes — Sandboarding', expected_price: 110, status: 'done', trip_date: '2026-11-11', charge: 'free' },     // staff seat
+    ];
+    const t = tourProfitRows(revenue, expenses, { runs, linkedEntries: new Set([paid.id]) });
+    const by = Object.fromEntries(t.rows.map(r => [r.name, { rev: r.revenueLocal, cost: Math.round(r.costLocal), comp: Math.round(r.compCostLocal) }]));
+    const without = tourProfitRows(revenue, expenses);
+    return { by, sold: t.sold, withoutParadise: without.rows.find(r => r.name === 'Paradise Valley') };
+  });
+  expect(out.by['Paradise Valley']).toEqual({ rev: 750, cost: 825, comp: 0 });   // 3 of the 4 paying guests of the van
+  expect(out.by['Souk Tour']).toEqual({ rev: 150, cost: 275, comp: 0 });
+  expect(out.by['Dunes']).toEqual({ rev: 600, cost: 330, comp: 110 });           // the paid Fathoune line is not counted twice
+  expect(Math.round(out.sold.costLocal)).toBe(1430);
+  expect(out.withoutParadise.costLocal).toBe(0);                                 // without runs (old callers): no run cost appears
+  expect(writes).toEqual([]);
+  expect(errs).toEqual([]);
+});

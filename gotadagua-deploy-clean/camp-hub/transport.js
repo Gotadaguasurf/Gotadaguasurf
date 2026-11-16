@@ -8,9 +8,19 @@
 // brought by the statement), in Reconcile → Payments. No «Pay a driver» in Morocco.
 //
 // Airport transfers and tuk-tuk runs for the full view (Francisco, Miguel,
-// HQ). Never in ?view=local or camp-tab-only: Nadith keeps paying drivers in
-// the ledger as today and supabase/camp-trips.sql links his payment to the
-// trips by itself.
+// HQ). Never in camp-tab-only.
+//
+// Driver payments, simplified (Miguel 16 Nov 2026, «sim, avança com a proposta dos motoristas»):
+//   · «Pay a driver» is the one door to pay a driver, in both camps. Tap a driver in «Owed to
+//     drivers»: everything done and unpaid since the last payment, by day × route, already ticked;
+//     «+ Run not in the list» adds a run nobody logged, «−» removes one that did not happen, a
+//     remaining difference needs a reason. Sri Lanka writes Cash rows split by item; Morocco one
+//     Bank Transfer row, or links the SG transfer already loaded from the statement.
+//   · Sri Lanka ?view=local (Nadith) has this page as «Drivers»: the owed line, the runs (log and
+//     Plan tomorrow) and the day list; airport rows are read-only there. supabase/camp-trips-local-pay.sql
+//     lets him log tuk-tuk runs and pay; nothing else in his access changes.
+//   · Reconcile and the week-total tiles are gone. Two chips stay: «N payments to check» (a
+//     payment typed elsewhere that is not linked → Link trips) and «N paid, not done».
 //
 //   Trips      the one list of airport transfers (15 Nov 2026: Week → Transfers is gone), by day
 //              (Sat–Fri week): WhatsApp to the «Send transfers to» contact — a trip, «Send the
@@ -68,12 +78,14 @@
   const PLAN_DEFAULT_TIME = '07:30';
   const LOCAL_MANAGER_NAME = IS_SL ? 'Nadith' : (CC.localManager || 'the local manager');             // who pays the drivers in ?view=local («linked by Nadith» in Reconcile)
 
-  const enabled = () => TRIPS_ENABLED_LOCATIONS.has(SLUG) && !LOCAL_MANAGER_MODE && !CAMP_TAB_ONLY_MODE;
+  // Sri Lanka's local manager (Nadith) gets the page as «Drivers» (16 Nov 2026). Morocco has no ?view=local.
+  const LOCAL = IS_SL && (typeof LOCAL_MANAGER_MODE !== 'undefined') && !!LOCAL_MANAGER_MODE;
+  const enabled = () => TRIPS_ENABLED_LOCATIONS.has(SLUG) && !CAMP_TAB_ONLY_MODE && (!LOCAL_MANAGER_MODE || LOCAL);
+  const PAY_METHOD = (LOCAL || !BANK_PAID) ? 'Cash' : 'Bank Transfer';
 
   const TR = {
     loaded: false, loading: null, error: '', drivers: [], trips: [], links: [],
     view: 'trips', filter: 'all', week: null,
-    recMode: 'week', recAnchor: null, recTab: 'airport', recFilter: 'all',
     imp: null, busy: new Set(),
   };
 
@@ -221,7 +233,7 @@
     TR.loading = (async () => {
       const c = client(); const loc = await ensureHubLocationId().catch(() => '');
       if (!c || !loc) { TR.error = 'Not connected'; return; }
-      try { await c.rpc('camp_transport_autolink', { p_location: loc }); } catch (_) { /* table not set up yet */ }
+      if (!LOCAL) { try { await c.rpc('camp_transport_autolink', { p_location: loc }); } catch (_) { /* table not set up yet */ } }
       // PostgREST returns 1.000 rows at most: page through (10–25 tuk-tuk runs a day add up fast).
       const all = async (build) => {
         const out = [];
@@ -236,7 +248,7 @@
       const [d, t, l] = await Promise.all([
         c.from('camp_drivers').select('*').eq('location_id', loc).order('name'),
         all(() => c.from('camp_trips').select('*').eq('location_id', loc).gte('trip_date', TRIPS_LOAD_FROM).order('trip_date').order('trip_time').order('id')),
-        all(() => c.from('camp_transport_payments').select('*').eq('location_id', loc).order('entry_id')),
+        LOCAL ? Promise.resolve({ data: [] }) : all(() => c.from('camp_transport_payments').select('*').eq('location_id', loc).order('entry_id')),
       ]);
       const err = d.error || t.error || l.error;
       if (err) { TR.error = err.message || String(err); TR.loaded = false; return; }
@@ -246,6 +258,8 @@
     try { await TR.loading; } finally { TR.loading = null; }
     try { window.dispatchEvent(new CustomEvent('camp-checks-changed')); } catch (_) {}
     if (typeof activePage !== 'undefined' && (activePage === 'transport' || activePage === 'week')) render();
+    // Tours by product counts the runs done for each tour (paid or not): redraw it once the trips are in.
+    try { if (typeof activePage !== 'undefined' && activePage === 'overview' && typeof renderOverview === 'function') renderOverview(); } catch (_) {}
   }
   // free_reason / added_by_local arrive with supabase/camp-trips-v2.sql. Until it is run, a save
   // that carries them is repeated without them (charge = 'free' is still stored) — never a lost edit.
@@ -332,10 +346,16 @@
     if (typeof activePage !== 'undefined' && activePage === 'week' && window.WeekUI) { WeekUI.render(); return; }
     const wk = $('weekRoot'); if (wk && wk.querySelector('.wk-import')) wk.innerHTML = '';
     const root = $('transportRoot'); if (!root) return;
-    const v = TR.view;
-    const head = `<div class="section-head page-head"><div><div class="section-title">Transport</div><div class="section-sub tr-how">${h(CC.transportHow || '')}</div></div>
+    const head = LOCAL
+      ? `<div class="section-head page-head"><div><div class="section-title">Drivers</div><div class="section-sub tr-how">${h(CC.localDriversHow || 'Log the tuk-tuk runs and pay the drivers: tap a driver in «Owed to drivers» to see everything since the last payment, run by run.')}</div></div>
       <div class="exp-top-actions tr-actions">
-        <button class="btn ${v === 'trips' ? 'btn-p' : 'btn-s'}" onclick="TransportUI.openTuktuk()">${ic('plus')} ${RUN.plural}</button>
+        <button class="btn btn-p" onclick="TransportUI.openTuktuk()">${ic('plus')} ${RUN.plural}</button>
+        <button class="btn btn-s" id="trPayBtn" onclick="TransportUI.openPay()">${ic('euro')} Pay a driver</button>
+      </div></div>`
+      : `<div class="section-head page-head"><div><div class="section-title">Transport</div><div class="section-sub tr-how">${h(CC.transportHow || '')}</div></div>
+      <div class="exp-top-actions tr-actions">
+        <button class="btn btn-p" onclick="TransportUI.openTuktuk()">${ic('plus')} ${RUN.plural}</button>
+        <button class="btn btn-s" id="trPayBtn" onclick="TransportUI.openPay()">${ic('euro')} Pay a driver</button>
         <button class="btn btn-s" onclick="TransportUI.openAddTransfer()">${ic('truck')} Add transfer</button>
         <button class="btn btn-s" onclick="TransportUI.openDrivers()">${ic('users')} Drivers</button>
       </div></div>`;
@@ -344,45 +364,46 @@
       return;
     }
     if (!TR.loaded) { root.innerHTML = head + '<div class="loading">Loading trips…</div>'; return; }
-    const review = allLinks().filter(l => l.state === 'review').length;
-    // Two pills (15 Nov 2026): the Guests import lives in Week only («Import it in Week» on an empty week).
-    const tabs = `<div class="pills tr-views">
-      <button class="pill${v !== 'reconcile' ? ' active' : ''}" onclick="TransportUI.setView('trips')">Trips</button>
-      <button class="pill${v === 'reconcile' ? ' active' : ''}" onclick="TransportUI.setView('reconcile')">Reconcile${review ? ` <span class="count">${review}</span>` : ''}</button></div>`;
-    // Trips sit in one wrapper so a phone can show the week totals under the day list (transport.css), never twice.
-    const body = v === 'reconcile' ? renderReconcile() : `<div class="tr-tripview">${renderTrips()}</div>`;
-    root.innerHTML = head + attentionStrip() + owedLine() + tabs + body;
+    // One view (16 Nov 2026): Reconcile is gone — «Owed to drivers» opens Pay, two chips cover the rest.
+    root.innerHTML = head + attentionStrip() + owedLine() + `<div class="tr-tripview">${renderTrips()}</div>`;
     if (TR.scrollDay) { const el = $('trDay-' + TR.scrollDay); TR.scrollDay = ''; if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start' }); }
   }
 
   // What is owed to each driver right now (every done, unpaid trip since go-live), in one line.
+  // Each driver is a button: it opens Pay with everything owed to him already ticked (16 Nov 2026).
   function owedLine() {
     const by = new Map();
     TR.trips.forEach(t => { if (reconcileStatus(t) !== 'owed') return; const k = t.driver_id || ''; by.set(k, (by.get(k) || 0) + Number(t.expected_price || 0)); });
-    const review = allLinks().filter(l => l.state === 'review').length;
-    const parts = [...by.entries()].sort((a, b) => b[1] - a[1]).map(([id, sum]) => `<span class="tr-owed-d">${h(driverById(id)?.name || 'No driver')} <b class="num">${money(sum)}</b></span>`);
-    return `<button class="tr-owed" id="trOwed" onclick="TransportUI.setRec('${review && !parts.length ? 'payments' : 'airport'}')" title="Open Reconcile"><span class="tr-owed-l">Owed to drivers</span>${parts.length ? parts.join('') : '<span class="tr-owed-d">nothing</span>'}${review ? `<span class="tr-owed-d tr-owed-chk">${review} payment${review === 1 ? '' : 's'} to check</span>` : ''}</button>`;
+    const parts = [...by.entries()].sort((a, b) => b[1] - a[1]).map(([id, sum]) => id
+      ? `<button class="tr-owed-d" data-owed="${id}" onclick="TransportUI.payPick('${id}')" title="Pay ${h(driverById(id)?.name || '')}">${h(driverById(id)?.name || 'Driver')} <b class="num">${money(sum)}</b></button>`
+      : `<span class="tr-owed-d tr-owed-nodrv" data-owed="">No driver <b class="num">${money(sum)}</b></span>`);
+    return `<div class="tr-owed" id="trOwed"><span class="tr-owed-l">Owed to drivers</span>${parts.length ? parts.join('') : '<span class="tr-owed-d">nothing</span>'}</div>`;
   }
   // Chip «N without time» and its filter share one rule: an airport transfer still to come with no flight time
   // (held trips have their own chip «not in the latest Bookinglayer file»). Moved from Week → To check, 15 Nov 2026.
   const noTimeTrip = t => isAirport(t) && !t.trip_time && counts(t) && !t.missing_since && !isDone(t);
-  const SPECIAL_FILTERS = ['resend', 'tosend', 'missing', 'notime'];
+  const SPECIAL_FILTERS = ['resend', 'tosend', 'missing', 'notime', 'paidnotdone'];
+  const paidNotDone = () => TR.trips.filter(t => reconcileStatus(t) === 'paid_not_done');
+  const toCheck = () => LOCAL ? [] : allLinks().filter(l => l.state === 'review');
   function attentionStrip() {
     const now = colomboNow(); const in48 = addHours(now, 48);
     const resend = TR.trips.filter(t => isAirport(t) && t.needs_resend && t.status !== 'done').length;
     const toSend = TR.trips.filter(t => isAirport(t) && t.status === 'planned' && `${t.trip_date}T${t.trip_time || '23:59'}` >= now && `${t.trip_date}T${t.trip_time || '00:00'}` <= in48).length;
     const missing = TR.trips.filter(t => t.missing_since && !['cancelled', 'done', 'no_show'].includes(t.status) && !isDone(t)).length;
-    const review = allLinks().filter(l => l.state === 'review').length;
+    const review = toCheck().length;
+    const pnd = paidNotDone().length;
     const notime = TR.trips.filter(noTimeTrip).length;
     const chips = [];
     const tm = GT.addDaysIso(cToday(), 1);
     const order = TR.trips.filter(t => t.kind === RUN.kind && t.trip_date === tm && !t.payment_entry_id && (t.status === 'planned' || (t.status === 'sent' && t.needs_resend))).length;
     if (order) chips.push(`<button class="health-chip" onclick="TransportUI.openPlan()">${order} ${RUN.lower} run${order === 1 ? '' : 's'} for tomorrow — send the order</button>`);
+    if (review) chips.push(`<button class="health-chip" data-chip="check" onclick="TransportUI.openChecks()">${review} payment${review === 1 ? '' : 's'} to check</button>`);
+    if (pnd) chips.push(`<button class="health-chip" data-chip="paidnotdone" onclick="TransportUI.setView('trips','paidnotdone')">${pnd} paid, not done</button>`);
+    if (LOCAL) return chips.length ? `<div class="health-strip tr-strip">${chips.join('')}</div>` : '';   // the airport chips are Francisco's
     if (resend) chips.push(`<button class="health-chip" onclick="TransportUI.setView('trips','resend')">${resend} time changed — resend</button>`);
     if (toSend) chips.push(`<button class="health-chip" onclick="TransportUI.setView('trips','tosend')">${toSend} to send (next 48 h)</button>`);
     if (notime) chips.push(`<button class="health-chip" onclick="TransportUI.setView('trips','notime')">${notime} without time</button>`);
     if (missing) chips.push(`<button class="health-chip" onclick="TransportUI.setView('trips','missing')">${missing} not in the latest Bookinglayer file</button>`);
-    if (review) chips.push(`<button class="health-chip" onclick="TransportUI.setRec('payments')">${review} payment${review === 1 ? '' : 's'} to review</button>`);
     return chips.length ? `<div class="health-strip tr-strip">${chips.join('')}</div>` : '';
   }
   function addHours(stamp, n) {
@@ -397,9 +418,9 @@
     const f = TR.filter;
     let list = TR.trips.filter(t => inWeek(t, ws));
     const special = SPECIAL_FILTERS.includes(f);
-    const totals = special ? '' : weekTotalsHtml(list);   // the whole week, whatever the Airport / Tuk-tuk pill says
-    const count = special ? '' : weekCountHtml(list, ws);
-    if (special) list = TR.trips.filter(t => t.trip_date >= cToday() || f === 'resend');
+    const totals = '';   // the three week-total tiles are gone (16 Nov 2026): «Owed to drivers» says what matters
+    const count = special || LOCAL ? '' : weekCountHtml(list, ws);
+    if (special) list = f === 'paidnotdone' ? paidNotDone() : TR.trips.filter(t => t.trip_date >= cToday() || f === 'resend');
     if (f === 'airport') list = list.filter(isAirport);
     else if (f === 'tuktuk') list = list.filter(t => !isAirport(t));
     else if (f === 'resend') list = list.filter(t => isAirport(t) && t.needs_resend);
@@ -411,7 +432,7 @@
       <div class="period-picker"><button class="btn btn-s btn-sm btn-icon" title="Previous week" onclick="TransportUI.shiftWeek(-7)">${ic('chevron-left')}</button>
         <span class="period-picker-lbl tr-week">${fmtRange(ws, we)}</span>
         <button class="btn btn-s btn-sm btn-icon" title="Next week" onclick="TransportUI.shiftWeek(7)">${ic('chevron-right')}</button></div>
-      ${special ? '' : weekSendBtn(ws)}
+      ${special || LOCAL ? '' : weekSendBtn(ws)}
       <div class="pills">${pill('all', 'All')}${pill('airport', 'Airport')}${pill('tuktuk', RUN.label)}</div></div>`;
     const days = [...new Set(list.map(t => t.trip_date))].sort();
     if (!days.length) return filters + count + totals + `<div class="empty-state">${ic('truck')}<div class="empty-title">No trips this week</div><p>Trips come from the Guests file. Import it in Week.</p>
@@ -422,10 +443,10 @@
       const dayTrips = list.filter(t => t.trip_date === day).sort((a, b) => (a.trip_time || '99').localeCompare(b.trip_time || '99'));
       const air = dayTrips.filter(t => isAirport(t) && !['cancelled', 'no_show'].includes(t.status));
       const tuk = dayTrips.filter(t => !isAirport(t));
-      const sendable = GT.transfersTrips(TR.trips, { day, now: colomboNow() });   // = what «Send the whole day» sends
+      const sendable = LOCAL ? [] : GT.transfersTrips(TR.trips, { day, now: colomboNow() });   // = what «Send the whole day» sends
       return `<div class="card tr-day" id="trDay-${day}" data-day="${day}"><div class="card-hdr"><div><div class="card-title">${fmtDay(day)}</div>
           <div class="card-hint">${air.length} transfer${air.length === 1 ? '' : 's'}${tuk.length ? ` · ${tuk.length} ${RUN.lower} run${tuk.length === 1 ? '' : 's'} · ${money(tuk.reduce((s, t) => s + Number(t.expected_price || 0), 0))}` : ''}</div></div>
-          ${sendable.length >= 1 || air.filter(guestCan).length > 1 ? `<div class="row tr-day-btns">${sendable.length >= 1 ? `<button class="btn btn-s btn-sm" onclick="TransportUI.sendDay('${day}')" title="One WhatsApp to ${h(c ? c.name : 'the transport contact')} with every transfer of the day">${ic('send')} Send the whole day</button>
+          ${!LOCAL && (sendable.length >= 1 || air.filter(guestCan).length > 1) ? `<div class="row tr-day-btns">${sendable.length >= 1 ? `<button class="btn btn-s btn-sm" onclick="TransportUI.sendDay('${day}')" title="One WhatsApp to ${h(c ? c.name : 'the transport contact')} with every transfer of the day">${ic('send')} Send the whole day</button>
             <button class="btn btn-s btn-sm" onclick="TransportUI.tickDay('${day}')">${ic('check')} Sent ✓ all</button>` : ''}
             ${air.filter(guestCan).length > 1 ? `<button class="btn btn-s btn-sm" data-guest-day onclick="TransportUI.openGuestDay('${day}')" title="One WhatsApp per guest: the driver waits with a sign with their name">${ic('users')} Confirm with all guests of the day</button>` : ''}</div>` : ''}</div>
         <div class="tr-rows">${air.map(tripRow).join('')}${dayTrips.filter(t => isAirport(t) && ['cancelled', 'no_show'].includes(t.status)).map(tripRow).join('')}${tuk.length ? tuktukSummary(tuk, day) : ''}</div></div>`;
@@ -489,6 +510,11 @@
     const ps = payState(t);
     const dep = t.kind === 'airport_departure';
     const time = t.trip_time ? `<b class="num">${h(t.trip_time)}</b>` : '<span class="badge badge-amber">time?</span>';
+    // ?view=local: airport rows are read-only — Francisco sends and confirms them.
+    if (LOCAL) return `<div class="tr-row tr-row-ro" data-trip="${t.id}"><div class="tr-time">${time}</div>
+      <div class="tr-main"><div class="tr-line1"><span class="badge ${dep ? 'badge-navy' : 'badge-blue'}">${dep ? 'Departure' : 'Arrival'}</span> <b>${h(t.guest_names || 'Guest')}</b> <span class="hint">· ${t.pax} ${t.pax === 1 ? 'person' : 'persons'}</span>${isFree(t) ? ` <span class="badge badge-blue tr-free">${h(freeLabel(t))}</span>` : ''}</div>
+        <div class="cell-sub">${h(driverById(t.driver_id)?.name || 'no driver')} · ${money(t.expected_price)}</div></div>
+      <div class="tr-side"><div class="tr-pay"><span class="badge ${ps.cls}" data-pay="${ps.key}">${ps.label}</span>${ps.sub ? `<span class="cell-sub">${h(ps.sub)}</span>` : ''}</div></div></div>`;
     const live = !t.payment_entry_id && !isDone(t) && !['cancelled', 'no_show'].includes(t.status);
     const next = !live ? '' : t.status === 'planned' ? `<button class="btn btn-s btn-sm" onclick="event.stopPropagation();TransportUI.tick('${t.id}','sent')">Sent ✓</button>`
       : t.status === 'sent' && !t.needs_resend ? `<button class="btn btn-s btn-sm" onclick="event.stopPropagation();TransportUI.tick('${t.id}','confirmed')">Confirmed ✓</button>`
@@ -685,7 +711,7 @@
   }
   function paidNote(t) {
     const ps = payState(t);
-    return `<div class="status-msg status-info tr-paid-note">Paid${ps.sub ? ' ' + h(ps.sub) : ''} — unlink the payment first to change the date, price or driver, or to delete it. <button class="btn btn-s btn-sm" onclick="TransportUI.closeModal();TransportUI.setRec('${isAirport(t) ? 'airport' : 'tuktuk'}')">Open Reconcile</button></div>`;
+    return `<div class="status-msg status-info tr-paid-note">Paid${ps.sub ? ' ' + h(ps.sub) : ''} — unlink the payment first to change the date, price or driver, or to delete it.${LOCAL ? '' : ` <button class="btn btn-s btn-sm" data-unlink onclick="TransportUI.unlinkTrip('${t.id}')">Unlink payment</button>`}</div>`;
   }
   function openTrip(id) {
     const t = TR.trips.find(x => x.id === id); if (!t) return;
@@ -821,7 +847,8 @@
   const priceText = r => !IS_SL && r.per === 'person' ? `${money(r.price)} / person` : money(r.price);
   function tukRoutes() {
     if (!IS_SL) {
-      const list = (CC.vanRates || []).map(r => ({ key: 'van|' + r.key, label: r.label, route: r.route, purpose: r.purpose, tour: null, price: Number(r.price) || 0, per: r.per }));
+      // The tour(s) of a van run reach Tours by product: «Paradise + Souk» = both tours (16 Nov 2026).
+      const list = (CC.vanRates || []).map(r => ({ key: 'van|' + r.key, label: r.label, route: r.route, purpose: r.purpose, tour: (r.tours || []).length ? r.tours.join(' + ') : (r.tour || null), price: Number(r.price) || 0, per: r.per }));
       return { surf: list.filter(r => r.purpose === 'surf'), camp: [], tour: list.filter(r => r.purpose !== 'surf') };
     }
     const P = (typeof transportPresets !== 'undefined' && transportPresets) || {};
@@ -853,7 +880,7 @@
       <button class="btn btn-s btn-icon tr-tap-minus" title="Remove the last unpaid run" onclick="TransportUI.untap('${h(r.key)}')" ${count(r) ? '' : 'disabled'}>${ic('minus')}</button></div>`;
     const total = runs.reduce((s, t) => s + Number(t.expected_price || 0), 0);
     const body = `${seg}<div class="g2 tr-tuk-head"><div class="mfield"><label>Day</label><input type="date" id="tk_d" value="${h(day)}" onchange="TransportUI.tukSet('date', this.value)"></div>
-      <div class="mfield"><label>Driver</label><select id="tk_dr" onchange="TransportUI.tukSet('driver', this.value)">${driverOptions(drv, RUN.drv)}</select></div></div>
+      <div class="mfield"><label>Driver</label><select id="tk_dr" onchange="TransportUI.tukSet('driver', this.value)">${driverOptions(drv)}</select></div></div>
       ${IS_SL ? '' : `<div class="mfield tr-people"><label>People in the van</label><span class="tr-step"><button class="btn btn-s btn-icon" title="One person less" onclick="TransportUI.tukPeople(-1)">${ic('minus')}</button><b class="num" id="tk_people">${TR.tuk.people}</b><button class="btn btn-s btn-icon" title="One person more" onclick="TransportUI.tukPeople(1)">${ic('plus')}</button></span><span class="hint">then tap where the van went</span></div>`}
       ${R.surf.length ? `<div class="section-lbl">Surf</div>${R.surf.map(btn).join('')}` : ''}
       ${R.camp.length || IS_SL ? `<div class="section-lbl">Camp runs</div>${R.camp.map(btn).join('')}` : ''}
@@ -913,7 +940,7 @@
     const state = !runs.length ? '' : !pending.length ? `<span class="badge badge-green" id="tk_sent">Sent ✓</span>${sentAt ? ` <span class="hint">${h(stampText(sentAt))} to ${h(c ? c.name : `the ${RUN.lower} contact`)}</span>` : ''}`
       : sentAt ? `<span class="badge badge-amber" id="tk_sent">Changed since sent</span> <span class="hint">send the order again</span>` : `<span class="badge badge-grey" id="tk_sent">Not sent yet</span>`;
     const body = `${seg}<div class="g2 tr-tuk-head"><div class="mfield"><label>Day</label><input type="date" id="tk_pd" value="${h(day)}" onchange="TransportUI.tukSet('planDate', this.value)"></div>
-      <div class="mfield"><label>Driver</label><select id="tk_dr" onchange="TransportUI.tukSet('driver', this.value)">${driverOptions(drv, RUN.drv)}</select></div></div>
+      <div class="mfield"><label>Driver</label><select id="tk_dr" onchange="TransportUI.tukSet('driver', this.value)">${driverOptions(drv)}</select></div></div>
       <div class="section-lbl">${fmtDay(day)} · the order</div>
       <div class="tr-plan" id="tk_plan">${lines.length ? lines.map((x, i) => `<div class="tr-plan-line" data-plan="${i}"><b class="num">${h(x.time)}</b><span>${h(x.label)}${IS_SL ? '' : ` <span class="hint">· ${ppl(x.pax)}</span>`}</span>
           <span class="tr-step"><button class="btn btn-s btn-icon" title="One run less" onclick="TransportUI.planStep(${i}, -1)">${ic('minus')}</button><b class="num">${x.n}</b><button class="btn btn-s btn-icon" title="One run more" onclick="TransportUI.planStep(${i}, 1)">${ic('plus')}</button></span></div>`).join('')
@@ -1000,7 +1027,7 @@
       <div class="mfield"><label>Time</label><input type="time" id="rn_t" value="${h(t.trip_time || '')}" ${dis}></div></div>
       <div class="mfield"><label>Route / purpose</label><select id="rn_r" ${dis}>${cur ? '' : `<option value="" selected>${h(runLabel(t))}</option>`}${routeOptions(cur ? cur.key : '')}</select></div>
       ${!IS_SL && n === 1 ? `<div class="mfield"><label>People in the van</label><input type="number" min="1" max="60" id="rn_pax" value="${Number(t.pax) || 1}" ${dis}></div>` : ''}
-      <div class="g2"><div class="mfield"><label>Driver</label><select id="rn_dr" ${dis}>${driverOptions(t.driver_id, RUN.drv)}</select></div>
+      <div class="g2"><div class="mfield"><label>Driver</label><select id="rn_dr" ${dis}>${driverOptions(t.driver_id)}</select></div>
       <div class="mfield"><label>Price${n > 1 ? ' (each)' : ''} (LKR)</label><input type="number" id="rn_pr" value="${Number(t.expected_price || 0)}" ${dis}></div></div>
       <div class="mfield"><label>Tour</label><input id="rn_tour" value="${h(t.tour_name || '')}" placeholder="Only when the run is for a tour"></div>
       ${chargeBlock('rn', isFree(t) ? 'free' : '', t.free_reason, { label: 'Offered ride?', options: [['', 'No'], ['free', 'Free']] })}
@@ -1215,76 +1242,6 @@
   }
 
   // ── Reconcile (same pattern as HQ → Month close → Reconcile) ────────────
-  function recPeriod() {
-    const a = TR.recAnchor || cToday();
-    if (TR.recMode === 'month') { const s = a.slice(0, 8) + '01'; const e = GT.addDaysIso(GT.addDaysIso(s, 32).slice(0, 8) + '01', -1); return { s, e, label: `${MON[Number(s.slice(5, 7)) - 1]} ${s.slice(0, 4)}` }; }
-    const s = GT.weekStart(a); const e = GT.addDaysIso(s, 6); return { s, e, label: fmtRange(s, e), week: s };
-  }
-  function recData() {
-    const { s, e, week } = recPeriod();
-    const inP = t => week ? inWeek(t, week) : (t.trip_date >= s && t.trip_date <= e);   // week mode = the same trips as the Trips list
-    const air = TR.trips.filter(t => isAirport(t) && inP(t));
-    const tuk = TR.trips.filter(t => !isAirport(t) && inP(t));
-    const pays = allLinks().filter(l => { const en = ledgerById(l.entry_id); const d = en ? en.date : ''; return (d >= s && d <= e) || l.state === 'review'; });
-    const st = t => reconcileStatus(t);
-    const owed = [...air, ...tuk].filter(t => st(t) === 'owed');
-    const totals = {
-      booked: air.filter(t => t.source === 'bookinglayer' && t.status !== 'cancelled').length,
-      done: [...air, ...tuk].filter(t => isDone(t) && !['cancelled', 'no_show'].includes(t.status)).length,
-      paid: [...air, ...tuk].filter(t => t.payment_entry_id).length,
-      owedLkr: owed.reduce((x, t) => x + Number(t.expected_price || 0), 0),
-      unlinkedLkr: pays.filter(l => l.state === 'review').reduce((x, l) => x + Math.max(0, Number(l.entry_amount || 0) - Number(l.trips_amount || 0)), 0),
-    };
-    const todo = [...air, ...tuk].filter(t => REC_TODO.has(st(t))).length + pays.filter(l => l.state === 'review').length;
-    return { air, tuk, pays, totals, todo };
-  }
-  function renderReconcile() {
-    const P = recPeriod(); const D = recData(); const T = D.totals;
-    const tab = TR.recTab, filter = TR.recFilter;
-    const kpi = (label, value, sub, cls) => `<div class="kpi"><div class="kpi-label">${label}</div><div class="kpi-value ${cls || ''}">${value}</div>${sub ? `<div class="kpi-sub">${sub}</div>` : ''}</div>`;
-    const filters = `<div class="ov-filters tr-filters"><div class="pills"><button class="pill${TR.recMode === 'week' ? ' active' : ''}" onclick="TransportUI.recMode('week')">Week</button><button class="pill${TR.recMode === 'month' ? ' active' : ''}" onclick="TransportUI.recMode('month')">Month</button></div>
-      <div class="period-picker"><button class="btn btn-s btn-sm btn-icon" title="Previous" onclick="TransportUI.recShift(-1)">${ic('chevron-left')}</button><span class="period-picker-lbl">${P.label}</span><button class="btn btn-s btn-sm btn-icon" title="Next" onclick="TransportUI.recShift(1)">${ic('chevron-right')}</button></div></div>`;
-    const kpis = `<div class="summary-grid tr-kpis">${kpi('Booked', T.booked, 'transfers from Bookinglayer')}${kpi('Done', T.done, 'trips and runs')}${kpi('Paid', T.paid, 'linked to a payment')}
-      ${kpi('Owed to drivers', money(T.owedLkr), 'done, not paid', T.owedLkr ? 'kv-amber' : '')}${kpi('Paid without trips', money(T.unlinkedLkr), 'payments to review', T.unlinkedLkr ? 'neg' : '')}</div>`;
-    const badge = (n, cls) => n ? ` <span class="badge ${cls || 'badge-red'}">${n}</span>` : '';
-    const airTodo = D.air.filter(t => REC_TODO.has(reconcileStatus(t))).length;
-    const tukTodo = D.tuk.filter(t => REC_TODO.has(reconcileStatus(t))).length;
-    const payTodo = D.pays.filter(l => l.state === 'review').length;
-    const pill = (on, label, js) => `<button class="pill${on ? ' active' : ''}" onclick="${js}">${label}</button>`;
-    const viewPills = pill(tab === 'airport', `Airport · ${D.air.length}${badge(airTodo)}`, "TransportUI.setRec('airport')") + pill(tab === 'tuktuk', `${RUN.label} · ${D.tuk.length}${badge(tukTodo)}`, "TransportUI.setRec('tuktuk')") + pill(tab === 'payments', `Payments · ${D.pays.length}${badge(payTodo)}`, "TransportUI.setRec('payments')");
-    const right = pill(filter === 'all', 'All', "TransportUI.recFilter('all')") + pill(filter === 'todo', 'To do', "TransportUI.recFilter('todo')") + pill(filter === 'done', 'Done', "TransportUI.recFilter('done')");
-    let table = '', hint = '';
-    if (tab === 'payments') {
-      hint = BANK_PAID ? 'Every Transport bank transfer to a driver since go-live (typed in the ledger or brought by the SG statement). Link each one to the trips it pays: then they show as Paid. ✓ = the trips add up · ✗ = to review.'
-        : 'Every Transport cash payment the ledger has since go-live. Nadith enters them as today; they link to the driver\'s trips by themselves, or to the transfers he ticked when paying. ✓ = the trips add up · ✗ = to review.';
-      let rows = D.pays.slice().sort((a, b) => String((ledgerById(a.entry_id) || {}).date || '').localeCompare(String((ledgerById(b.entry_id) || {}).date || '')));
-      if (filter === 'todo') rows = rows.filter(l => l.state === 'review'); else if (filter === 'done') rows = rows.filter(l => l.state !== 'review');
-      table = rows.length ? `<table class="tr-tbl"><thead><tr><th></th><th>Date</th><th>Payment</th><th class="r">Amount</th><th>Trips</th><th>Status</th><th></th></tr></thead><tbody>${rows.map(payRow).join('')}</tbody></table>`
-        : `<div class="card-body hint">${D.pays.length ? 'Nothing here with this filter.' : BANK_PAID ? 'No Transport bank transfer to a driver in this period.' : 'No Transport cash payment in this period.'}</div>`;
-    } else {
-      const list = (tab === 'airport' ? D.air : D.tuk).slice().sort((a, b) => (a.trip_date + (a.trip_time || '')).localeCompare(b.trip_date + (b.trip_time || '')));
-      let rows = list;
-      if (filter === 'todo') rows = rows.filter(t => REC_TODO.has(reconcileStatus(t))); else if (filter === 'done') rows = rows.filter(t => !REC_TODO.has(reconcileStatus(t)));
-      hint = tab === 'airport' ? 'Every airport trip of the period: booked in Bookinglayer, done (automatic once the time passes) and paid (linked to a ledger payment).'
-        : `Every ${RUN.lower} run of the period and the payment that paid it, by driver.`;
-      table = rows.length ? `<table class="tr-tbl"><thead><tr><th></th><th>Date</th><th>Trip</th><th>Booked</th><th>Done</th><th>Paid</th><th>Status</th><th></th></tr></thead><tbody>${rows.map(recRow).join('')}</tbody></table>`
-        : `<div class="card-body hint">${list.length ? 'Nothing here with this filter.' : 'No trips in this period.'}</div>`;
-    }
-    // «Reconciled» only once there is something done and nothing left to come (13 Nov).
-    const allT = D.air.concat(D.tuk);
-    const nDone = allT.filter(t => ['matched', 'extra'].includes(reconcileStatus(t))).length;
-    const nUp = allT.filter(t => reconcileStatus(t) === 'upcoming').length;
-    const per = TR.recMode === 'week' ? 'Week' : 'Month';
-    const banner = D.todo ? ''
-      : nDone && !nUp ? `<div class="status-msg status-ok tr-reconciled">${ic('check-circle')} ${per} reconciled — every trip done is paid and every payment has its trips.</div>`
-      : nDone && nUp ? `<div class="status-msg status-info tr-sofar">${ic('clock')} So far so good — every trip done is paid · ${nUp} still to come.</div>`
-      : nUp ? `<div class="status-msg status-info tr-sofar">${ic('clock')} Nothing to reconcile yet — ${nUp} ${nUp === 1 ? 'trip' : 'trips'} still to come.</div>` : '';
-    return filters + kpis + banner +
-      `<div class="card tr-rec"><div class="card-hdr"><div><div class="card-title">Reconcile ${P.label}</div><div class="card-hint">${hint}</div></div>
-        ${BANK_PAID ? '' : `<button class="btn btn-s btn-sm" id="trPayBtn" onclick="TransportUI.openPay()" title="Nadith pays the drivers in the Ledger. Use this only when you pay a driver yourself.">${ic('euro')} Pay a driver</button>`}</div>
-      <div class="card-body hq-filters tr-rec-pills"><div class="pills">${viewPills}</div><div class="pills tr-rec-right">${right}</div></div>
-      <div class="tbl-wrap">${table}</div></div>`;
-  }
   // Who linked a payment to its trips. A manual link with no reviewer is the local
   // manager's own pick when he paid (camp_transport_link_own: «Which transfers is this
   // for?»); Francisco's links and «Pay a driver» always carry reviewed_by.
@@ -1295,50 +1252,15 @@
     if (l.linked_by === 'manual' && !l.reviewed_by) return `linked by ${LOCAL_MANAGER_NAME}`;
     return 'linked by hand';
   }
-  function paidCell(t) {
-    if (!t.payment_entry_id) return '<span class="hint">—</span>';
-    const e = ledgerById(t.payment_entry_id); const by = linkedByLabel(linkOf(t.payment_entry_id));
-    return e ? `${fmtShort(e.date)} · ${money(e.amountLocal)}<span class="cell-sub">${h(e.description || '')}${by ? ` · ${h(by)}` : ''}</span>` : `<span class="hint">payment${by ? ` · ${h(by)}` : ''}</span>`;
-  }
-  // Green tick only when the trip is really reconciled (done and paid). Miguel, 13 Nov: «se ainda
-  // não aconteceram porque estão a verde?» — upcoming = clock, nothing to do = dash, problem = alert.
-  function recIcon(s) {
-    if (s === 'matched' || s === 'extra') return `<span class="tr-ok-y" title="Done and paid">${ic('check-circle')}</span>`;
-    if (REC_TODO.has(s)) return `<span class="tr-ok-n" title="To do">${ic('alert')}</span>`;
-    if (s === 'upcoming') return `<span class="tr-ok-u" title="Not happened yet">${ic('clock')}</span>`;
-    return `<span class="tr-ok-u" title="Nothing to pay">${ic('minus')}</span>`;
-  }
-  function recRow(t) {
-    const s = reconcileStatus(t); const [label, cls] = REC_LABEL[s];
-    const ok = !REC_TODO.has(s);
-    const dep = t.kind === 'airport_departure';
-    const tag = (isFree(t) ? ` · ${h(freeLabel(t))}` : '') + (t.added_by_local ? ` · added by ${LOCAL_MANAGER_NAME}` : '');
-    const what = isAirport(t) ? `<b>${h(t.guest_names || 'Guest')}</b><span class="cell-sub">${dep ? 'Departure' : 'Arrival'} · ${h(driverById(t.driver_id)?.name || 'no driver')} · ${money(t.expected_price)}${tag}</span>`
-      : `<b>${h(t.tour_name ? 'Tour · ' + t.tour_name : t.route || t.purpose)}</b><span class="cell-sub">${h(driverById(t.driver_id)?.name || '')} · ${money(t.expected_price)}${tag}</span>`;
-    const booked = t.source === 'bookinglayer' ? `${h(t.booking_ref || 'Bookinglayer')}` : t.kind === RUN.kind ? '<span class="hint">—</span>' : `<span class="hint">by hand${t.charge && !isFree(t) ? ' · ' + h(CHARGE_LABEL[t.charge]) : ''}</span>`;
-    const done = t.status === 'no_show' ? 'No-show' : t.status === 'cancelled' ? 'Cancelled' : isDone(t) ? (t.status === 'done' ? 'Done' : 'Done <span class="cell-sub">time passed</span>') : '<span class="hint">not yet</span>';
-    const act = s === 'owed' ? `<button class="btn btn-s btn-sm" onclick="TransportUI.linkTrip('${t.id}')">${ic('link')} Link</button>`
-      : t.payment_entry_id ? `<button class="btn btn-s btn-sm" onclick="TransportUI.unlinkTrip('${t.id}')">Unlink</button>` : '';
-    return `<tr data-rec="${s}" data-trip="${t.id}"><td class="tr-ok">${recIcon(s)}</td>
-      <td class="tr-nowrap tr-c-date">${fmtShort(t.trip_date)}</td><td class="tr-c-what">${what}</td><td class="tr-c-k" data-l="Booked">${booked}</td><td class="tr-c-k" data-l="Done">${done}</td><td class="tr-c-k" data-l="Paid">${paidCell(t)}</td>
-      <td class="tr-c-st"><span class="badge ${cls}">${label}</span></td><td class="tr-act">${act}</td></tr>`;
-  }
-  function payRow(l) {
-    const e = ledgerById(l.entry_id) || {};
-    const d = driverById(l.driver_id);
-    const ok = l.state !== 'review';
-    const label = l.state === 'matched' ? ['Matched', 'badge-green'] : l.state === 'explained' ? ['Explained', 'badge-blue'] : ['To review', 'badge-amber'];
-    const why = l.state === 'review' ? ({ 'no driver named': 'no driver named in the description', 'no unpaid trips': 'no unpaid trips of this driver', 'amounts differ': `trips ${money(l.trips_amount)} · difference ${money(Number(l.entry_amount) - Number(l.trips_amount))}`, unlinked: 'unlinked', 'no trips linked': 'no trips linked',
-      'two drivers named': 'two drivers named in the description — link each driver\'s trips by hand', 'no exact match': 'the driver\'s unpaid trips do not add up to this amount — tick the right ones in Link trips',
-      'no driver named': 'no driver named and no guests ticked' }[l.reason] || l.reason || '')
-      : l.state === 'explained' ? (l.note || '') : '';
-    return `<tr data-pay="${l.entry_id}" data-state="${l.state}"><td class="tr-ok">${ok ? `<span class="tr-ok-y">${ic('check-circle')}</span>` : `<span class="tr-ok-n">${ic('alert')}</span>`}</td>
-      <td class="tr-nowrap tr-c-date">${fmtShort(e.date)}</td><td class="tr-c-what">${h(e.description || '')}<span class="cell-sub">${h(d ? d.name : 'no driver')} · ${h(l.trips_count ? linkedByLabel(l) : 'no trips linked')}</span></td>
-      <td class="r tr-nowrap tr-c-k" data-l="Amount">${money(l.entry_amount)}</td><td class="tr-c-k" data-l="Trips">${l.trips_count} trip${l.trips_count === 1 ? '' : 's'} · ${money(l.trips_amount)}</td>
-      <td class="tr-c-st"><span class="badge ${label[1]}">${label[0]}</span>${why ? `<span class="cell-sub">${h(why)}</span>` : ''}</td>
-      <td class="tr-act"><div class="row"><button class="btn btn-s btn-sm" onclick="TransportUI.openLink('${l.entry_id}')">${ic('link')} Link trips</button>
-        ${l.trips_count ? `<button class="btn btn-s btn-sm" onclick="TransportUI.unlinkPayment('${l.entry_id}')">Unlink</button>` : ''}
-        ${l.state === 'review' ? `<button class="btn btn-s btn-sm" onclick="TransportUI.openExplain('${l.entry_id}')">Mark explained</button>` : ''}</div></td></tr>`;
+  // «N payments to check»: a Transport payment typed elsewhere (or brought by the statement) that is
+  // not linked to its trips. Each one opens the same Link trips sheet (16 Nov 2026: Reconcile is gone).
+  function openChecks() {
+    const list = toCheck().slice().sort((a, b) => String((ledgerById(a.entry_id) || {}).date || '').localeCompare(String((ledgerById(b.entry_id) || {}).date || '')));
+    if (list.length === 1) return openLink(list[0].entry_id);
+    const body = list.length ? `<div class="tr-picks">${list.map(l => { const e = ledgerById(l.entry_id) || {}; const d = driverById(l.driver_id);
+      return `<button class="tr-pick tr-pick-btn" data-check="${l.entry_id}" onclick="TransportUI.openLink('${l.entry_id}')"><span>${fmtShort(e.date)} · ${h(e.description || '')}<span class="cell-sub">${h(d ? d.name : 'no driver')} · ${l.trips_count ? `${l.trips_count} trip${l.trips_count === 1 ? '' : 's'} · ${money(l.trips_amount)}` : 'no trips linked'}</span></span><b class="num">${money(l.entry_amount)}</b></button>`; }).join('')}</div>`
+      : '<div class="hint">Nothing to check.</div>';
+    modal('Payments to check', 'Paid to a driver but not linked to the trips it pays', body, '');
   }
   async function afterLink(msg) { await load(true); closeModal(); render(); if (msg) say(msg); }
   // Link trips to one payment: the driver's unpaid done trips + those already linked.
@@ -1391,20 +1313,6 @@
     const l = linkOf(entryId);
     try { await rpc('camp_transport_link_set', { p_entry: entryId, p_driver: (l && l.driver_id) || null, p_trip_ids: TR.trips.filter(t => t.payment_entry_id === entryId).map(t => t.id), p_note: note }); await afterLink('Marked explained'); } catch (_) {}
   }
-  // From a trip row: «Link» → pick the payment that paid it.
-  function linkTrip(tripId) {
-    const t = TR.trips.find(x => x.id === tripId); if (!t) return;
-    const pays = allLinks().filter(l => l.state !== 'matched' && (!l.driver_id || !t.driver_id || l.driver_id === t.driver_id));
-    const body = pays.length ? `<div class="tr-picks">${pays.map(l => { const e = ledgerById(l.entry_id) || {}; return `<button class="tr-pick tr-pick-btn" onclick="TransportUI.linkTripTo('${tripId}','${l.entry_id}')"><span>${fmtShort(e.date)} · ${h(e.description || '')}</span><b class="num">${money(l.entry_amount)}</b></button>`; }).join('')}</div>`
-      : BANK_PAID ? '<div class="hint">No bank transfer to review for this driver. Add the transfer in the ledger (Transport · Bank Transfer) or wait for the SG statement, then link it here.</div>'
-      : '<div class="hint">No payment to review for this driver. When Nadith enters the payment in the ledger it links by itself.</div>';
-    modal('Which payment paid this trip?', `${h(t.guest_names || t.route || '')} · ${fmtShort(t.trip_date)} · ${money(t.expected_price)}`, body, '');
-  }
-  async function linkTripTo(tripId, entryId) {
-    const t = TR.trips.find(x => x.id === tripId); const l = linkOf(entryId);
-    const ids = TR.trips.filter(x => x.payment_entry_id === entryId).map(x => x.id).concat(tripId);
-    try { await rpc('camp_transport_link_set', { p_entry: entryId, p_driver: (l && l.driver_id) || t.driver_id || null, p_trip_ids: ids, p_note: (l && l.note) || null }); await afterLink('Linked'); } catch (_) {}
-  }
   async function unlinkTrip(tripId) {
     const t = TR.trips.find(x => x.id === tripId); if (!t || !t.payment_entry_id) return;
     const entryId = t.payment_entry_id; const l = linkOf(entryId);
@@ -1412,45 +1320,132 @@
     try { await rpc('camp_transport_link_set', { p_entry: entryId, p_driver: (l && l.driver_id) || t.driver_id || null, p_trip_ids: ids, p_note: null }); await afterLink('Unlinked'); } catch (_) {}
   }
 
-  // ── Pay a driver (full view tool) ──────────────────────────────────────
+  // ── Pay a driver — the one door (16 Nov 2026) ──────────────────────────
+  // Everything done and unpaid for the driver since the last payment, grouped by day × route,
+  // already ticked. Airport transfers may be paid up to 14 days ahead (13 Nov): listed, not ticked.
+  // «+ Run not in the list» saves a run nobody logged (done, ticked); «−» removes a run that did
+  // not happen; a difference that is left needs a reason. Sri Lanka: Cash rows split by item
+  // (camp_trips_pay). Morocco: one Bank Transfer row — or the SG transfer already in the ledger
+  // («Use SG transfer …», camp_transport_link_set), never a second line for the same money.
+  const PAY_AHEAD_DAYS = 14;   // = camp_trips_pay (supabase/camp-trips-local-pay.sql)
+  const payDrivers = () => TR.drivers.filter(d => d.active !== false && !(d.kinds || []).every(k => k === 'contact'));
   function owedBy(driverId) { return TR.trips.filter(t => t.driver_id === driverId && reconcileStatus(t) === 'owed'); }
+  function aheadBy(driverId, date) {
+    const upTo = GT.addDaysIso(date || cToday(), PAY_AHEAD_DAYS);
+    return TR.trips.filter(t => t.driver_id === driverId && isAirport(t) && !t.payment_entry_id && reconcileStatus(t) === 'upcoming' && t.trip_date >= goLive() && t.trip_date <= upTo);
+  }
+  const payPool = P => owedBy(P.driver).concat(aheadBy(P.driver, P.date));
+  const dayDiff = (a, b) => { const u = x => { const [y, m, d] = String(x).split('-').map(Number); return Date.UTC(y, m - 1, d); }; return Math.round((u(a) - u(b)) / 86400000); };
+  // One line per day × route (a hundred tuk-tuk runs a week stay readable); an airport transfer is its own line.
+  function payGroups(P) {
+    const by = new Map();
+    payPool(P).sort((a, b) => (a.trip_date + (a.trip_time || '99')).localeCompare(b.trip_date + (b.trip_time || '99'))).forEach(t => {
+      const run = !isAirport(t); const ahead = reconcileStatus(t) === 'upcoming';
+      const k = run ? [t.trip_date, runLabel(t), isFree(t) ? freeLabel(t) : ''].join('|') : t.id;
+      const g = by.get(k) || { key: k, day: t.trip_date, run, ahead, label: run ? runLabel(t) : `${t.kind === 'airport_departure' ? 'Departure' : 'Arrival'} · ${t.guest_names || 'Guest'}`, free: isFree(t) ? freeLabel(t) : '', ids: [], sum: 0, pax: 0, manual: 0 };
+      g.ids.push(t.id); g.sum += Number(t.expected_price || 0); g.pax += Number(t.pax) || 1; if (run && t.source === 'manual') g.manual++;
+      by.set(k, g);
+    });
+    return [...by.values()];
+  }
   function openPay() {
-    const rows = TR.drivers.filter(d => !(d.kinds || []).every(k => k === 'contact')).map(d => { const o = owedBy(d.id); return { d, n: o.length, sum: o.reduce((s, t) => s + Number(t.expected_price || 0), 0) }; });
-    const body = `<div class="tr-picks">${rows.map(r => `<button class="tr-pick tr-pick-btn" onclick="TransportUI.payPick('${r.d.id}')"><span><b>${h(r.d.name)}</b>${r.d.label ? ` · ${h(r.d.label)}` : ''}<span class="cell-sub">${r.n ? `owes ${r.n} trip${r.n === 1 ? '' : 's'}` : 'nothing owed'}</span></span><b class="num">${money(r.sum)}</b></button>`).join('')}</div>`;
+    const rows = payDrivers().map(d => { const o = owedBy(d.id); return { d, n: o.length, sum: o.reduce((s, t) => s + Number(t.expected_price || 0), 0) }; })
+      .sort((a, b) => b.sum - a.sum || String(a.d.name).localeCompare(String(b.d.name)));
+    const body = `<div class="tr-picks">${rows.map(r => `<button class="tr-pick tr-pick-btn" data-pay-driver="${r.d.id}" onclick="TransportUI.payPick('${r.d.id}')"><span><b>${h(r.d.name)}</b>${r.d.label ? ` · ${h(r.d.label)}` : ''}<span class="cell-sub">${r.n ? `owed ${r.n} trip${r.n === 1 ? '' : 's'}` : 'nothing owed'}</span></span><b class="num">${money(r.sum)}</b></button>`).join('') || '<div class="hint">No drivers yet.</div>'}</div>`;
     modal('Pay a driver', 'Who are you paying?', body, '');
   }
   function payPick(driverId) {
-    TR.payDraft = { driver: driverId, picked: new Set(owedBy(driverId).map(t => t.id)), amount: null, reason: '', note: '', date: cToday() };
+    if (!driverById(driverId)) return;
+    TR.payDraft = { driver: driverId, picked: new Set(owedBy(driverId).map(t => t.id)), amount: null, reason: '', note: '', date: cToday(), adding: false, bankEntry: null,
+      add: { date: cToday(), route: (allRoutes()[0] || {}).key || '', n: 1, pax: 1 } };
     renderPay();
   }
+  // Morocco: unlinked SG transfers to this driver within 5 days of the payment date, closest amount first.
+  function bankMatches(P) {
+    if (!BANK_PAID || LOCAL) return [];
+    const { sum } = payNumbers();
+    return bankCandidates().map(l => ({ l, e: ledgerById(l.entry_id) })).filter(x => x.e && driverIn(x.e.description) === P.driver && Math.abs(dayDiff(x.e.date, P.date)) <= 5)
+      .sort((a, b) => Math.abs(Number(a.e.amountLocal || 0) - sum) - Math.abs(Number(b.e.amountLocal || 0) - sum));
+  }
   function renderPay() {
-    const P = TR.payDraft; const d = driverById(P.driver); const owed = owedBy(P.driver);
-    const sum = owed.filter(t => P.picked.has(t.id)).reduce((s, t) => s + Number(t.expected_price || 0), 0);
-    const amount = P.amount == null ? sum : P.amount; const diff = amount - sum;
-    const days = [...new Set(owed.map(t => t.trip_date))].sort();
-    const body = `${days.map(day => `<div class="section-lbl">${fmtDay(day)}</div>${owed.filter(t => t.trip_date === day).map(t => `<label class="tr-pick"><input type="checkbox" ${P.picked.has(t.id) ? 'checked' : ''} onchange="TransportUI.payTick('${t.id}', this.checked)">
-        <span>${h(isAirport(t) ? (t.guest_names || 'Guest') + (t.kind === 'airport_departure' ? ' · departure' : ' · arrival') : (t.tour_name ? 'Tour · ' + t.tour_name : t.route))}</span><b class="num">${money(t.expected_price)}</b></label>`).join('')}`).join('') || '<div class="hint">Nothing owed to this driver.</div>'}
-      <div class="g2"><div class="mfield"><label>Cash you are giving ${h(d ? d.name : '')}</label><input type="number" id="py_amt" value="${amount}" oninput="TransportUI.payAmount(this.value)"></div>
-      <div class="mfield"><label>Date</label><input type="date" id="py_date" value="${h(P.date)}" onchange="TransportUI.payDate(this.value)"></div></div>
+    const P = TR.payDraft; if (!P) return; const d = driverById(P.driver);
+    const groups = payGroups(P);
+    const { sum, amount } = payNumbers();
+    const days = [...new Set(groups.map(g => g.day))].sort();
+    const line = g => { const on = g.ids.every(id => P.picked.has(id)); const n = g.ids.length;
+      return `<div class="tr-pick tr-pay-line" data-pay-group="${h(g.key)}"><label class="tr-pay-tick"><input type="checkbox" ${on ? 'checked' : ''} onchange="TransportUI.payTickGroup('${h(g.key)}', this.checked)">
+        <span>${h(g.label)}${g.run && n > 1 ? ` <b class="num">× ${n}</b>` : ''}${g.free ? ` <span class="badge badge-blue tr-free">${h(g.free)}</span>` : ''}${g.ahead ? ' <i class="pl-later">(not yet)</i>' : ''}${!IS_SL && g.run ? `<span class="cell-sub">${ppl(g.pax)}</span>` : ''}</span></label>
+        ${g.run && g.manual ? `<button class="btn btn-s btn-sm btn-icon" data-pay-minus title="Remove one run that did not happen" onclick="TransportUI.payMinus('${h(g.key)}')">${ic('minus')}</button>` : ''}<b class="num">${money(g.sum)}</b></div>`; };
+    const list = days.map(day => `<div class="section-lbl">${fmtDay(day)}</div>${groups.filter(g => g.day === day).map(line).join('')}`).join('') || '<div class="hint">Nothing owed to this driver.</div>';
+    const A = P.add;
+    const addForm = P.adding ? `<div class="tr-pay-add" id="py_addform"><div class="g2"><div class="mfield"><label>Day</label><input type="date" id="py_ad" value="${h(A.date)}"></div>
+        <div class="mfield"><label>${IS_SL ? 'Runs' : 'Vans'}</label><input type="number" min="1" max="30" id="py_an" value="${A.n}"></div></div>
+        <div class="mfield"><label>Route</label><select id="py_ar">${routeOptions(A.route)}</select></div>
+        ${IS_SL ? '' : `<div class="mfield"><label>People per van</label><input type="number" min="1" max="60" id="py_ap" value="${A.pax}"></div>`}
+        <div class="row"><button class="btn btn-s btn-sm" onclick="TransportUI.payAddToggle(false)">Cancel</button><button class="btn btn-s btn-sm" id="py_addok" onclick="TransportUI.payAddRun()">${ic('plus')} Add and tick</button></div></div>`
+      : `<button class="btn btn-s btn-sm" id="py_add" onclick="TransportUI.payAddToggle(true)">${ic('plus')} Run not in the list</button>`;
+    const bm = bankMatches(P);
+    const bank = bm.length ? `<div class="mfield tr-pay-bank"><label>Already in from the bank?</label><div class="pills">${bm.map(x => `<button type="button" class="pill${P.bankEntry === x.l.entry_id ? ' active' : ''}" data-bank="${x.l.entry_id}" onclick="TransportUI.payBank('${x.l.entry_id}')">Use SG transfer ${fmtShort(x.e.date)} · ${money(x.e.amountLocal)}</button>`).join('')}</div>
+        <div class="hint">${P.bankEntry ? 'The trips are linked to this bank line — no new line is written.' : 'Pick it when you already made this transfer and the statement brought it in.'}</div></div>` : '';
+    const body = `${list}<div class="tr-pay-more">${addForm}</div>${bank}
+      <div class="g2"><div class="mfield"><label>${PAY_METHOD === 'Cash' ? `Cash you are giving ${h(d ? d.name : '')}` : `Bank transfer to ${h(d ? d.name : '')}`}</label><input type="number" id="py_amt" value="${amount}" ${P.bankEntry ? 'disabled' : ''} oninput="TransportUI.payAmount(this.value)"></div>
+      <div class="mfield"><label>Date</label><input type="date" id="py_date" value="${h(P.date)}" ${P.bankEntry ? 'disabled' : ''} onchange="TransportUI.payDate(this.value)"></div></div>
       <div id="py_diff">${diffBlock(sum, amount)}</div>`;
-    modal(`Pay ${d ? d.name : 'driver'}`, `${P.picked.size} trip${P.picked.size === 1 ? '' : 's'} ticked · ${money(sum)}`, body,
-      `<button class="btn btn-s" onclick="TransportUI.openPay()">Back</button><button class="btn btn-p" id="py_save" onclick="TransportUI.savePay()" ${payReady() ? '' : 'disabled'}>Save payment</button>`);
+    modal(`Pay ${d ? d.name : 'driver'}`, `<span id="py_sub">${P.picked.size} trip${P.picked.size === 1 ? '' : 's'} ticked · ${money(sum)}</span>`, body,
+      `<button class="btn btn-s" onclick="TransportUI.openPay()">Back</button><button class="btn btn-p" id="py_save" onclick="TransportUI.savePay()" ${payReady() ? '' : 'disabled'}>${P.bankEntry ? 'Link payment' : 'Save payment'}</button>`);
   }
   function diffBlock(sum, amount) {
     const diff = amount - sum; const P = TR.payDraft;
     if (!diff) return '';
     return `<div class="status-msg status-warn">You typed ${money(amount)} · the trips add up to ${money(sum)} · difference ${diff > 0 ? '+' : ''}${money(diff)}</div>
+      <div class="hint">A run missing? Add it with «Run not in the list». A run that did not happen? Untick it or remove it with «−».</div>
       <div class="mfield"><label>Why?</label><div class="pills" id="py_reasons">${DIFF_REASONS.map(r => `<button class="pill${P.reason === r ? ' active' : ''}" onclick="TransportUI.payReason('${r}')">${r}</button>`).join('')}</div>
       <input id="py_note" placeholder="Short note" value="${h(P.note)}" oninput="TransportUI.payNote(this.value)"></div>`;
   }
-  function payNumbers() { const P = TR.payDraft; const sum = owedBy(P.driver).filter(t => P.picked.has(t.id)).reduce((s, t) => s + Number(t.expected_price || 0), 0); const amount = P.amount == null ? sum : P.amount; return { sum, amount }; }
+  function payNumbers() {
+    const P = TR.payDraft; const sum = payPool(P).filter(t => P.picked.has(t.id)).reduce((s, t) => s + Number(t.expected_price || 0), 0);
+    const be = P.bankEntry ? ledgerById(P.bankEntry) : null;
+    const amount = be ? Number(be.amountLocal || 0) : (P.amount == null ? sum : P.amount);
+    return { sum, amount };
+  }
   function payReady() { const P = TR.payDraft; const { sum, amount } = payNumbers(); return P.picked.size > 0 && amount > 0 && (amount === sum || !!P.reason); }
+  function payRefresh() { const { sum, amount } = payNumbers(); if ($('py_diff')) $('py_diff').innerHTML = diffBlock(sum, amount); if ($('py_save')) $('py_save').disabled = !payReady(); }
   function payTick(id, on) { const P = TR.payDraft; if (on) P.picked.add(id); else P.picked.delete(id); P.amount = null; renderPay(); }
-  function payAmount(v) { TR.payDraft.amount = Number(v || 0); const { sum, amount } = payNumbers(); $('py_diff').innerHTML = diffBlock(sum, amount); $('py_save').disabled = !payReady(); }
-  function payDate(v) { TR.payDraft.date = v || cToday(); }
-  function payReason(r) { TR.payDraft.reason = r; const { sum, amount } = payNumbers(); $('py_diff').innerHTML = diffBlock(sum, amount); $('py_save').disabled = !payReady(); }
+  function payTickGroup(key, on) { const P = TR.payDraft; const g = payGroups(P).find(x => x.key === key); if (!g) return; g.ids.forEach(id => on ? P.picked.add(id) : P.picked.delete(id)); P.amount = null; renderPay(); }
+  async function payMinus(key) {
+    const P = TR.payDraft; const g = payGroups(P).find(x => x.key === key); if (!g || TR.busy.has('payminus')) return;
+    const victim = TR.trips.filter(t => g.ids.includes(t.id) && t.source === 'manual' && !t.payment_entry_id).sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))[0];
+    if (!victim) return;
+    TR.busy.add('payminus');
+    try { if (await deleteTrip(victim.id)) { P.picked.delete(victim.id); P.amount = null; say(`Removed one ${g.label}`); renderPay(); } } finally { TR.busy.delete('payminus'); }
+  }
+  function payAddToggle(on) { TR.payDraft.adding = !!on; renderPay(); }
+  async function payAddRun() {
+    const P = TR.payDraft; if (!P || TR.busy.has('payadd')) return;
+    const r = tukRoute(($('py_ar') && $('py_ar').value) || P.add.route); const day = ($('py_ad') && $('py_ad').value) || cToday();
+    const n = Math.min(30, Math.max(1, parseInt(($('py_an') && $('py_an').value) || '1', 10) || 1));
+    const pax = IS_SL ? 1 : Math.min(60, Math.max(1, parseInt(($('py_ap') && $('py_ap').value) || '1', 10) || 1));
+    if (!r) { say('Pick the route', 'err'); return; }
+    if (day > cToday()) { say('Only runs that already happened', 'err'); return; }
+    TR.busy.add('payadd');
+    try {
+      P.add = { date: day, route: r.key, n: 1, pax };
+      for (let i = 0; i < n; i++) {
+        const t = await insertTrip({ kind: RUN.kind, trip_date: day, trip_time: null, route: r.route, purpose: r.purpose, tour_name: r.tour || null,
+          driver_id: P.driver, expected_price: IS_SL ? r.price : ratePrice(r, pax), vehicle: RUN.veh, status: 'done', source: 'manual', pax, notes: 'Added when paying' });
+        if (!t) break;
+        P.picked.add(t.id);
+      }
+      P.adding = false; P.amount = null; renderPay();
+    } finally { TR.busy.delete('payadd'); }
+  }
+  function payBank(entryId) { const P = TR.payDraft; P.bankEntry = P.bankEntry === entryId ? null : entryId; if (P.bankEntry) { const e = ledgerById(entryId); if (e && e.date) P.date = e.date; } renderPay(); }
+  function payAmount(v) { TR.payDraft.amount = Number(v || 0); payRefresh(); }
+  function payDate(v) { TR.payDraft.date = v || cToday(); renderPay(); }
+  function payReason(r) { TR.payDraft.reason = r; payRefresh(); if ($('py_reasons')) $('py_reasons').querySelectorAll('.pill').forEach(b => b.classList.toggle('active', b.textContent === r)); }
   function payNote(v) { TR.payDraft.note = v; }
-  function linkedItemOf(t) { return isAirport(t) ? 'Airport' : t.purpose === 'tour' ? (t.route || t.tour_name || 'Errand') : (LINKED_ITEM_BY_PURPOSE[t.purpose] || 'Errand'); }
+  // Morocco: a van run's item is its route («Surf», «Dunes», «Paradise + Souk» = the van rate table).
+  function linkedItemOf(t) { return isAirport(t) ? 'Airport' : !IS_SL ? (t.route || 'Van') : t.purpose === 'tour' ? (t.route || t.tour_name || 'Errand') : (LINKED_ITEM_BY_PURPOSE[t.purpose] || 'Errand'); }
   function describe(driver, trips) {
     const arr = trips.filter(t => t.kind === 'airport_arrival').length, dep = trips.filter(t => t.kind === 'airport_departure').length;
     const runs = trips.filter(t => !isAirport(t));
@@ -1465,21 +1460,31 @@
     const P = TR.payDraft; if (!P || !payReady() || TR.busy.has('pay')) return;
     TR.busy.add('pay');
     try {
-      const d = driverById(P.driver); const trips = owedBy(P.driver).filter(t => P.picked.has(t.id));
+      const d = driverById(P.driver); const trips = payPool(P).filter(t => P.picked.has(t.id));
       const { sum, amount } = payNumbers(); const diff = amount - sum;
+      const note = diff ? [P.reason, P.note].filter(Boolean).join(': ') : '';
+      if (P.bankEntry) {
+        // Morocco: the SG transfer is already in the ledger — link it, never a second line.
+        const r = await rpc('camp_transport_link_set', { p_entry: P.bankEntry, p_driver: P.driver, p_trip_ids: trips.map(t => t.id), p_note: note || null });
+        await load(true); closeModal(); render();
+        try { renderExpenses(); renderOverview(); } catch (_) {}
+        say(`Linked ${d ? d.name : 'driver'} · ${trips.length} trip${trips.length === 1 ? '' : 's'}${r && r.state === 'explained' ? ' · difference explained' : ''}`);
+        return;
+      }
       let fx = 0; try { fx = await fetchFxRateForDate(P.date); } catch (_) {}
       if (!(fx > 0)) fx = Number(LOCAL_PER_EUR || DEFAULT_LKR_PER_EUR) || 330;
+      // Sri Lanka: one Cash row per linked item. Morocco: one bank movement = one row (the most common item).
       const groups = new Map();
-      trips.forEach(t => { const k = linkedItemOf(t); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(t); });
-      const entries = [...groups.entries()].map(([item, ts]) => ({ item, ts, amount: ts.reduce((s, t) => s + Number(t.expected_price || 0), 0) }));
+      trips.forEach(t => { const k = IS_SL ? linkedItemOf(t) : '*'; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(t); });
+      const topItem = ts => { const c = new Map(); ts.forEach(t => c.set(linkedItemOf(t), (c.get(linkedItemOf(t)) || 0) + 1)); return [...c.entries()].sort((a, b) => b[1] - a[1])[0][0]; };
+      const entries = [...groups.entries()].map(([item, ts]) => ({ item: item === '*' ? topItem(ts) : item, ts, amount: ts.reduce((s, t) => s + Number(t.expected_price || 0), 0) }));
       const largest = entries.slice().sort((a, b) => b.amount - a.amount)[0];
-      const note = diff ? [P.reason, P.note].filter(Boolean).join(': ') : '';
       const rows = entries.map(g => {
         const amt = g === largest ? g.amount + diff : g.amount;
         const desc = describe(d ? d.name : 'Driver', g.ts) + (g === largest && diff ? ` · ${diff > 0 ? '+' : ''}${Math.round(diff).toLocaleString('de-DE')} ${P.reason.toLowerCase()}` : '');
         const entry = normalizeLedgerEntry({ id: (crypto.randomUUID ? crypto.randomUUID() : undefined), date: P.date, type: 'expense', category: 'Transport', linkedItem: g.item, businessArea: 'Transport',
-          paymentMethod: 'Cash', currency: LOCAL_CURRENCY || 'LKR', fxRate: fx, amountLocal: amt, quantity: g.ts.length, description: desc, sourceKind: 'trip_payment', amount: Number((amt / fx).toFixed(2)) });
-        return { ...ledgerEntryToDbRow(entry, HUB_SB_LOCATION_ID), trip_ids: g.ts.map(t => t.id) };
+          paymentMethod: PAY_METHOD, currency: LOCAL_CURRENCY || CUR, fxRate: fx, amountLocal: amt, quantity: g.ts.length, description: desc, sourceKind: 'trip_payment', amount: Number((amt / fx).toFixed(2)) });
+        return { ...ledgerEntryToDbRow(entry, HUB_SB_LOCATION_ID), payment_method: PAY_METHOD, trip_ids: g.ts.map(t => t.id) };
       });
       const r = await rpc('camp_trips_pay', { p_location: HUB_SB_LOCATION_ID, p_driver: P.driver, p_typed_amount: amount, p_diff_note: note || null, p_entries: rows });
       const fresh = ((r && r.rows) || []).map(dbRowToLedgerEntry).filter(Boolean);
@@ -1569,7 +1574,7 @@
       const n = review.length + fresh.length;
       if (!n) return null;
       const lkrSum = review.reduce((s, l) => s + Math.max(0, Number(l.entry_amount || 0) - Number(l.trips_amount || 0)), 0) + fresh.reduce((s, e) => s + Number(e.amountLocal || 0), 0);
-      return { text: `Transport payment not linked to trips · ${n}${lkrSum ? ' · ' + money(lkrSum) : ''}`, level: 'warn', onClick: () => { TR.view = 'reconcile'; TR.recTab = 'payments'; TR.recFilter = 'todo'; showPage('transport'); } };
+      return { text: `Transport payment not linked to trips · ${n}${lkrSum ? ' · ' + money(lkrSum) : ''}`, level: 'warn', onClick: () => { TR.view = 'trips'; showPage('transport'); openChecks(); } };
     },
   };
   // Morocco: a bank transfer to a driver that pays no trips yet (the same lines as Reconcile → Payments).
@@ -1580,16 +1585,21 @@
       const list = allLinks().filter(l => l.state === 'review');
       if (!list.length) return null;
       const sum = list.reduce((s, l) => s + Math.max(0, Number(l.entry_amount || 0) - Number(l.trips_amount || 0)), 0);
-      return { text: `Bank transfer to a driver not linked to trips · ${list.length}${sum ? ' · ' + money(sum) : ''}`, level: 'warn', onClick: () => { TR.view = 'reconcile'; TR.recTab = 'payments'; TR.recFilter = 'todo'; showPage('transport'); } };
+      return { text: `Bank transfer to a driver not linked to trips · ${list.length}${sum ? ' · ' + money(sum) : ''}`, level: 'warn', onClick: () => { TR.view = 'trips'; showPage('transport'); openChecks(); } };
     },
   };
   window.CAMP_CHECKS = window.CAMP_CHECKS || [];
   [unlinkedCheck, bankUnlinkedCheck].forEach(ck => { if (!window.CAMP_CHECKS.some(c => c && c.id === ck.id)) window.CAMP_CHECKS.push(ck); });
 
-  // ── Boot: show the tab for full Sri Lanka users, load once the ledger is in ─
+  // ── Boot: show the tab (full view; Sri Lanka ?view=local as «Drivers»), load once the ledger is in ─
   function boot() {
     if (!enabled()) return;
-    document.querySelectorAll('.ntab[data-page="transport"], .ntab-m[data-page="transport"]').forEach(b => { b.style.display = ''; });
+    document.querySelectorAll('.ntab[data-page="transport"], .ntab-m[data-page="transport"]').forEach(b => {
+      b.style.display = '';
+      // ?view=local: the same page is Nadith's «Drivers» tab (16 Nov 2026).
+      if (LOCAL) { const lbl = b.querySelector('.nav-btn-label > span:last-child'); if (lbl) lbl.textContent = 'Drivers'; else if (b.classList.contains('ntab-m')) b.textContent = 'Drivers'; }
+    });
+    if (LOCAL) return;   // Nadith's phone loads the trips only when he opens «Drivers» (renderTransportPage)
     let tries = 0;
     const wait = setInterval(() => {
       tries++;
@@ -1607,11 +1617,8 @@
     openTuktuk, openPlan, tukSet, tukMode, tap, untap, removeRun, removeTrip, planAdd, planStep, sendOrder, orderText,
     openRuns, saveRuns, deleteRuns, payState, weekTotals, keepTrip, inWeek, tukPeople, presetPrice, bankCandidates, camp: CC, RUN,
     confirmGuest, guestConfirmed, confirmText, guestState, guestHtml, openGuestDay, pickFile, setExportDate, saveImport,
-    setRec(tab) { TR.view = 'reconcile'; TR.recTab = tab; render(); }, recFilter(f) { TR.recFilter = f; render(); },
-    recMode(m) { TR.recMode = m; render(); },
-    recShift(n) { const P = recPeriod(); TR.recAnchor = TR.recMode === 'month' ? GT.addDaysIso(n > 0 ? GT.addDaysIso(P.e, 1) : GT.addDaysIso(P.s, -1), 0) : GT.addDaysIso(P.s, 7 * n); render(); },
-    openLink, linkDriver, linkPick, linkAll, saveLink, unlinkPayment, openExplain, saveExplain, linkTrip, linkTripTo, unlinkTrip,
-    openPay, payPick, payTick, payAmount, payDate, payReason, payNote, savePay,
+    openChecks, openLink, linkDriver, linkPick, linkAll, saveLink, unlinkPayment, openExplain, saveExplain, unlinkTrip,
+    openPay, payPick, payTick, payTickGroup, payMinus, payAddToggle, payAddRun, payBank, payAmount, payDate, payReason, payNote, savePay, payGroups, localDrivers: LOCAL,
     openDrivers, addDriver, saveDrivers,
     // for tests and the coordinator
     importHtml: renderNext,   // the Week tab renders the same import

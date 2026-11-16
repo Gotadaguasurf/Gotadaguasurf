@@ -33,8 +33,17 @@
 @media (max-width: 700px) { .tr-gd { grid-template-columns: 1fr; } }
 .tr-flagline { margin-top: 6px; font-size: 13px; line-height: 1.4; color: var(--amber); font-weight: 600; }
 .tr-flagline .ic { width: 14px; height: 14px; vertical-align: -2px; }
-#transportRoot .tr-owed { display: flex; flex-wrap: wrap; align-items: center; gap: 6px var(--sp-4); width: 100%; margin-top: var(--sp-3); padding: var(--sp-3) var(--sp-4); border: 1px solid var(--border); border-radius: var(--r); background: var(--surface); font: inherit; font-size: 14px; color: var(--ink); text-align: left; cursor: pointer; }
-#transportRoot .tr-owed:hover { border-color: var(--border-2); }
+#transportRoot .tr-owed { display: flex; flex-wrap: wrap; align-items: center; gap: 6px var(--sp-3); width: 100%; margin-top: var(--sp-3); padding: var(--sp-3) var(--sp-4); border: 1px solid var(--border); border-radius: var(--r); background: var(--surface); font: inherit; font-size: 14px; color: var(--ink); text-align: left; }
+/* Each driver opens Pay (16 Nov 2026): a quiet chip, never a second blue button. */
+#transportRoot button.tr-owed-d { display: inline-flex; align-items: center; min-height: 36px; padding: 4px 12px; border: 1px solid var(--border-2); border-radius: 999px; background: var(--surface-2); font: inherit; font-size: 14px; color: var(--ink); cursor: pointer; }
+#transportRoot button.tr-owed-d:hover { border-color: var(--navy); }
+/* Pay sheet: one line per day × route; the tick, the «−» and the amount. */
+.tr-pay-line { grid-template-columns: 1fr auto auto; cursor: default; }
+.tr-pay-tick { display: flex; align-items: center; gap: var(--sp-3); cursor: pointer; min-height: 32px; }
+.tr-pay-tick .cell-sub { display: block; }
+.tr-pay-more { margin: var(--sp-3) 0; }
+.tr-pay-add { padding: var(--sp-3); border: 1px dashed var(--border-2); border-radius: var(--r-sm); }
+.tr-row-ro { cursor: default; }
 .tr-owed-l { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
 .tr-owed-d b { margin-left: 4px; }
 .tr-owed-chk { color: var(--amber); font-weight: 600; }

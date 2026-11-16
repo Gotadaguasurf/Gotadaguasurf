@@ -1,12 +1,10 @@
-// Camp hub · Quick add «Which transfers is this for?» (Sri Lanka, 13 Nov 2026) — stubbed Supabase.
+// Camp hub · Quick add → «Paying X? Pay in Drivers» (16 Nov 2026) — stubbed Supabase.
 //
-// Nadith (?view=local) pays the airport drivers with a Cash Transport · Airport
-// expense. The form lists the unpaid airport transfers from go-live up to the
-// entry date + 14 days («(not yet)» on the ones still to happen); «+ Not in the
-// list» adds a free staff / gift transfer (camp_trip_add_own, supabase/camp-trips-v2.sql);
-// ticking fills the amount; after the save the hub calls
-// camp_transport_link_own (supabase/camp-trips-own-link.sql, checked in PGlite
-// separately). A failed link never undoes the save.
+// Driver payments have one door: «Pay a driver» (Nadith: the «Drivers» tab). The old
+// checklist in Quick add («Which transfers is this for?», «+ Not in the list») is gone.
+// When a Quick add expense is Transport and its description names a driver, one line
+// says «Paying Dilan? Pay in Drivers → [Pay Dilan]». It only warns: saving still works,
+// and nothing is linked from Quick add any more (no camp_transport_link_own call).
 // «Now» is pinned to Fri 13 Nov 2026 10:00 Colombo (window.TRANSPORT_NOW); go-live moved to 1 Nov.
 const { test, expect } = require('@playwright/test');
 const { fakeOwnerSession, collectFatalErrors } = require('./helpers');
@@ -105,315 +103,56 @@ async function open(page, opts = {}) {
   await page.waitForFunction(() => !!window.CampPayLink);
   return st;
 }
-// Quick add like Nadith: the Transport shortcut, then the item, then the date.
-async function transportAirport(page, date = '2026-11-13') {
+async function transportWith(page, desc) {
   await page.click('.exp-quick-btn[data-cat="Transport"]');
-  await page.fill('#qe_date', date);
-  await page.selectOption('#qe_linked', 'Airport');
+  await page.fill('#qe_date', '2026-11-13');
+  await page.fill('#qe_desc', desc);
 }
-const picker = page => page.locator('#qe_paylink_wrap');
+const warn = page => page.locator('#qe_paylink_wrap');
 
-test('paylink: the picker shows only for Sri Lanka · Transport · Airport — local view at 390px', async ({ page, browser }) => {
+test('one door: Transport naming a driver shows «Paying Dilan? Pay in Drivers» — Nadith at 390px; the button opens his Pay sheet in Drivers', async ({ page }) => {
   const errors = collectFatalErrors(page);
   const st = await open(page);
   expect(page.viewportSize().width).toBe(390);
-  await expect(picker(page)).toBeHidden();
-  expect(st.calls.filter(c => c.t === 'trips_read').length).toBe(0); // nothing read until he needs it
-  await page.click('.exp-quick-btn[data-cat="Transport"]');
-  await page.fill('#qe_date', '2026-11-13');
-  await expect(picker(page)).toBeHidden();                        // Transport, no item yet
-  await page.selectOption('#qe_linked', 'Transport Surf Lesson');
-  await expect(picker(page)).toBeHidden();                        // another item
-  await page.selectOption('#qe_linked', 'Airport');
-  await expect(picker(page)).toBeVisible();
-  await expect(picker(page).locator('label').first()).toHaveText('Which transfers is this for?');
-  // Unpaid airport trips (done or not yet), go-live … entry date + 14 days, oldest first; the driver only when not the default (Dilan).
-  await expect(picker(page).locator('.pl-row')).toHaveCount(5);
-  expect((await picker(page).locator('.pl-row').allTextContents()).map(s => s.replace(/\s+/g, ' ').trim())).toEqual(ROWS);
-  // Big tap targets, no accordion, nothing wider than the phone.
-  const box = await picker(page).locator('.pl-row').first().boundingBox();
-  expect(box.height).toBeGreaterThanOrEqual(44);
+  await transportWith(page, 'fuel for scooter');
+  await expect(warn(page)).toHaveCount(0);                                 // no driver named
+  await page.fill('#qe_desc', 'Dilan 3 arrivals');
+  await expect(warn(page)).toContainText('Paying Dilan? Pay in Drivers');
+  await expect(page.locator('#qe_paylink_wrap .pl-onedoor, #qe_paylink_wrap')).toBeVisible();
+  await expect(page.locator('#qe_paylink_wrap .pl-row, #qe_paylink_wrap input[type=checkbox]')).toHaveCount(0);   // the old checklist is gone
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
-  await expect(picker(page).locator('details')).toHaveCount(0);
-  // The list ends 14 days after the entry date: an older date shortens it, a later one reaches the 28 Nov trip.
-  await page.fill('#qe_date', '2026-10-26');
-  await expect(picker(page).locator('.pl-row')).toHaveCount(2);                     // up to 9 Nov
-  await page.fill('#qe_date', '2026-11-14');
-  await expect(picker(page).locator('.pl-row')).toHaveCount(6);
-  await expect(picker(page).locator('.pl-row').last()).toContainText('Sat 28 Nov 10:00 · Arrival · Far Guest (not yet)');
-  await page.fill('#qe_date', '2026-11-13');
-  await expect(picker(page).locator('#pl_more')).toHaveText('+ Not in the list (staff / gift)');
-  // Another category hides it.
-  await page.selectOption('#qe_cat', 'Food');
-  await expect(picker(page)).toBeHidden();
-  expect(errors).toEqual([]);
-  // Morocco: never.
-  const p = await browser.newPage({ viewport: { width: 390, height: 844 } });
-  await open(p, { slug: 'morocco' });
-  await p.click('.exp-quick-btn[data-cat="Transport"]');
-  if (await p.locator('#qe_linked option[value="Airport"]').count()) await p.selectOption('#qe_linked', 'Airport');
-  await expect(p.locator('#qe_paylink_wrap')).toHaveCount(0);
-  await p.close();
-});
-
-test('paylink: ticking fills the amount with the sum; he can still change it', async ({ page }) => {
-  await open(page);
-  await transportAirport(page);
-  await expect(picker(page).locator('.pl-row')).toHaveCount(5);
-  await picker(page).locator('.pl-row').nth(0).click();
-  await expect(page.locator('#qe_amount')).toHaveValue('21000');
-  await picker(page).locator('.pl-row').nth(1).click();
-  await expect(page.locator('#qe_amount')).toHaveValue('47500');
-  await expect(picker(page).locator('.pl-sum')).toHaveText('2 ticked · 47,500');
-  await picker(page).locator('.pl-row').nth(0).click();
-  await expect(page.locator('#qe_amount')).toHaveValue('26500');
-  await picker(page).locator('.pl-row').nth(1).click();
-  await expect(page.locator('#qe_amount')).toHaveValue('');           // nothing ticked → back to empty
-  await picker(page).locator('.pl-row').nth(2).click();
-  await page.fill('#qe_amount', '22000');                             // waiting time: he types his own amount
-  await expect(page.locator('#qe_amount')).toHaveValue('22000');
-  await expect(picker(page).locator('input:checked')).toHaveCount(1);
-});
-
-test('paylink: after the save the RPC gets the saved entry id and the ticked trips', async ({ page }) => {
-  const errors = collectFatalErrors(page);
-  const st = await open(page);
-  await transportAirport(page);
-  await picker(page).locator('.pl-row').nth(0).click();
-  await picker(page).locator('.pl-row').nth(2).click();
-  await page.fill('#qe_desc', 'Dilan airport');
-  await page.click('[onclick="saveQuickExpense()"]');
-  const c = await call(st, 'link_own');
-  expect(st.posted.length).toBe(1);
-  const row = st.posted[0];
-  expect(row).toMatchObject({ type: 'expense', category: 'Transport', linked_item: 'Airport', payment_method: 'Cash', amount_local: 41000, entry_date: '2026-11-13' });
-  expect(c.body.p_entry).toBe(row.id);
-  expect(c.ledgerHad).toBe(true);                                       // called after the ledger row landed
-  expect(c.body.p_trip_ids.sort()).toEqual([T(1), T(3)].sort());
-  await expect(page.locator('#toast')).toHaveText('Entry added · 2 transfers linked');
-  await expect(picker(page)).toBeHidden();                              // form reset
-  expect(await page.evaluate(id => S.ledger.some(e => e.id === id), row.id)).toBe(true);
-  // The next payment no longer offers the two trips just paid.
-  await transportAirport(page);
-  await expect(picker(page).locator('.pl-row')).toHaveCount(3);
-  await expect(picker(page).locator('.pl-row').first()).toContainText('Beliz Kuyumcuoglu');
+  await page.fill('#qe_desc', 'Dilan and Nishantha');
+  await expect(warn(page)).toHaveCount(0);                                 // two drivers: no guess
+  await page.fill('#qe_desc', 'Nadith petrol');
+  await expect(warn(page)).toHaveCount(0);                                 // a contact is not a driver
+  await page.fill('#qe_desc', 'dylan tuk tuk sampath');
+  await expect(warn(page)).toContainText('Paying Sampath?');
+  await page.click('#pl_pay');
+  expect(await page.evaluate(() => activePage)).toBe('transport');
+  await expect(page.locator('#trOv .mhdr-title')).toHaveText('Pay Sampath');
   expect(errors).toEqual([]);
 });
 
-test('paylink: nothing ticked → the form works as today, no RPC', async ({ page }) => {
+test('one door: it only warns — saving anyway still saves the expense, and nothing is linked from Quick add', async ({ page }) => {
   const st = await open(page);
-  await transportAirport(page);
-  await expect(picker(page).locator('.pl-row')).toHaveCount(5);
-  await page.fill('#qe_amount', '21000');
+  await transportWith(page, 'Dilan 41000');
+  await page.selectOption('#qe_linked', 'Airport');
+  await page.fill('#qe_amount', '41000');
+  await expect(warn(page)).toContainText('Paying Dilan?');
   await page.click('[onclick="saveQuickExpense()"]');
+  await expect.poll(() => st.posted.length).toBeGreaterThan(0);
+  expect(st.posted[st.posted.length - 1]).toMatchObject({ type: 'expense', category: 'Transport', amount_local: 41000, description: 'Dilan 41000' });
   await expect(page.locator('#toast')).toHaveText('Entry added');
-  expect(st.posted.length).toBe(1);
-  await page.waitForTimeout(300);
-  expect(st.calls.filter(c => c.t === 'link_own').length).toBe(0);
+  expect(st.calls.filter(c => c.t === 'link_own' || c.t === 'add_own')).toEqual([]);
+  await expect(warn(page)).toHaveCount(0);                                 // the form is reset
 });
 
-test('paylink: if the link fails the expense stays saved and he reads a calm message', async ({ page }) => {
-  const errors = collectFatalErrors(page);
-  const st = await open(page, { ownFail: true });
-  await transportAirport(page);
-  await picker(page).locator('.pl-row').nth(1).click();
-  await page.click('[onclick="saveQuickExpense()"]');
-  await call(st, 'link_own');
-  const toast = page.locator('#toast');
-  await expect(toast).toHaveText("Saved. Couldn't link the transfers — Francisco will see it in Payments to review.");
-  await expect(toast).not.toHaveClass(/err/);
-  expect(st.posted.length).toBe(1);
-  const id = st.posted[0].id;
-  expect(await page.evaluate(id => S.ledger.some(e => e.id === id && e.amountLocal === 26500), id)).toBe(true);
-  await expect(page.locator('#qe_amount')).toHaveValue('');           // form reset as after any save
-  await expect(page.locator('[onclick="saveQuickExpense()"]')).toBeEnabled();
-  expect(errors).toEqual([]);
-});
-
-test('paylink: full view still works — Reconcile says who linked each payment and trip', async ({ page }) => {
-  const errors = collectFatalErrors(page);
-  const E_N = 'bbbbbbbb-0000-4000-8000-000000000001', E_F = 'bbbbbbbb-0000-4000-8000-000000000002';
-  const led = (id, desc, amount) => ({ id, location_id: LOC, week_id: null, type: 'expense', category: 'Transport', linked_item: 'Airport', description: desc, payment_method: 'Cash', qty: 1, amount_local: amount, currency: 'LKR',
-    entry_date: '2026-11-12', business_area: 'Transport', fx_rate: 340, amount_eur: amount / 340, recurring_source_id: null, recurring_month: null, source_kind: 'manual', is_comp: false, zone_id: null,
-    paid_from: 'sri-lanka', attributed_location: 'sri-lanka', created_at: '2026-11-12T09:00:00Z' });
-  const trips = TRIPS().map(t => t.id === T(1) || t.id === T(2) ? { ...t, payment_entry_id: E_N } : t.id === T(3) ? { ...t, payment_entry_id: E_F } : t);
-  const st = await open(page, {
-    query: '', trips,
-    ledger: [led(E_N, 'Airport transfers', 47500), led(E_F, 'Dilan departure', 20000)],
-    links: [
-      { entry_id: E_N, location_id: LOC, driver_id: null, entry_amount: 47500, trips_amount: 47500, trips_count: 2, state: 'matched', reason: null, linked_by: 'manual', reviewed_by: null },
-      { entry_id: E_F, location_id: LOC, driver_id: D.dilan, entry_amount: 20000, trips_amount: 20000, trips_count: 1, state: 'matched', reason: null, linked_by: 'manual', reviewed_by: 'u-francisco' },
-    ],
-  });
-  await page.waitForFunction(() => window.TransportUI && TransportUI._state.loaded, null, { timeout: 10000 });
-  await page.evaluate(() => { showPage('transport'); TransportUI.recMode('week'); TransportUI.setRec('payments'); });
-  await page.evaluate(() => { TransportUI._state.recAnchor = '2026-11-12'; TransportUI.render(); });
-  await expect(page.locator(`tr[data-pay="${E_N}"]`)).toContainText('linked by Nadith');
-  await expect(page.locator(`tr[data-pay="${E_F}"]`)).toContainText('linked by hand');
-  await page.evaluate(() => { TransportUI._state.recAnchor = '2026-11-08'; TransportUI.setRec('airport'); });
-  await expect(page.locator(`tr[data-trip="${T(1)}"] [data-l="Paid"]`)).toContainText('12 Nov · LKR 47,500');   // shown as paid, with the entry
-  await expect(page.locator(`tr[data-trip="${T(1)}"] [data-l="Paid"]`)).toContainText('Airport transfers · linked by Nadith');
-  await expect(page.locator(`tr[data-trip="${T(1)}"]`)).toContainText('Matched');
-  await expect(page.locator(`tr[data-trip="${T(3)}"] [data-l="Paid"]`)).toContainText('linked by hand');
-  // Quick add in the full view still saves as before (no ticks → no RPC).
+test('one door: another category never warns; the full view warns too', async ({ page }) => {
+  const st = await open(page, { query: '' });
   await page.evaluate(() => showPage('expenses'));
-  await page.click('.exp-quick-btn[data-cat="Food"]');
-  await page.fill('#qe_amount', '1500');
-  await page.click('[onclick="saveQuickExpense()"]');
-  await expect(page.locator('#toast')).toHaveText('Entry added');
-  expect(st.calls.filter(c => c.t === 'link_own').length).toBe(0);
-  expect(errors).toEqual([]);
-});
-
-// ── 13 Nov: «in the operations ledger I still don't see the guest selection» ──
-test('paylink: on 13 Nov the 14 Nov transfers are listed (not «No unpaid airport transfers»), and a hint points to Airport', async ({ page, browser }) => {
-  const errors = collectFatalErrors(page);
-  const only14 = [
-    trip({ id: T(21), guest_names: 'Lorena Marie Glas', trip_date: '2026-11-14', trip_time: '07:00' }),
-    trip({ id: T(22), guest_names: 'Maximilian Ehrler', trip_date: '2026-11-14', trip_time: '08:20' }),
-    trip({ id: T(23), kind: 'airport_departure', guest_names: 'Beliz Kuyumcuoglu', trip_date: '2026-11-21', trip_time: null, expected_price: 25000 }),
-  ];
-  const st = await stub(page, { trips: only14 });
-  await page.addInitScript(([now]) => { window.TRANSPORT_NOW = now; }, [NOW]);   // the real go-live (14 Nov), no override
-  await fakeOwnerSession(page);
-  await page.goto('/camp-hub/?location=sri-lanka&view=local', { waitUntil: 'domcontentloaded' });
-  await page.waitForFunction(() => { try { return HUB_LEDGER_HYDRATED === true; } catch (_) { return false; } }, null, { timeout: 15000 });
-  await page.waitForFunction(() => !!window.CampPayLink);
-  const hint = page.locator('#qe_paylink_hint');
-  await expect(hint).toHaveCount(0);
   await page.click('.exp-quick-btn[data-cat="Transport"]');
-  await page.fill('#qe_date', '2026-11-13');
-  await expect(hint).toHaveText('Paying airport transfers? Pick Airport to tick the guests.');   // Transport, no item yet
-  await page.selectOption('#qe_linked', 'Transport Surf Lesson');
-  await expect(hint).toHaveText('Paying airport transfers? Pick Airport to tick the guests.');
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
-  await page.selectOption('#qe_linked', 'Airport');
-  await expect(hint).toHaveCount(0);
-  await expect(picker(page).locator('.pl-row')).toHaveCount(3);
-  expect((await picker(page).locator('.pl-row').allTextContents()).map(s => s.replace(/\s+/g, ' ').trim())).toEqual([
-    'Sat 14 Nov 07:00 · Arrival · Lorena Marie Glas (not yet) · 21,000',
-    'Sat 14 Nov 08:20 · Arrival · Maximilian Ehrler (not yet) · 21,000',
-    'Sat 21 Nov · Departure · Beliz Kuyumcuoglu (not yet) · 25,000',
-  ]);
-  await expect(picker(page)).not.toContainText('No unpaid airport transfers');
-  // Not a cash payment: no list, and the hint says why.
-  const other = await page.evaluate(() => { const o = [...document.getElementById('qe_pay').options].find(x => x.value && x.value !== 'Cash'); return o ? o.value : ''; });
-  if (other) {
-    await page.selectOption('#qe_pay', other);
-    await expect(picker(page)).toBeHidden();
-    await expect(hint).toHaveText('Paying the driver in cash? Set the payment to Cash to tick the guests.');
-    await page.selectOption('#qe_pay', 'Cash');
-    await expect(picker(page)).toBeVisible();
-  }
-  // Another category: no hint.
-  await page.selectOption('#qe_cat', 'Food');
-  await expect(hint).toHaveCount(0);
-  expect(errors).toEqual([]);
-  expect(st.calls.filter(c => c.t === 'link_own').length).toBe(0);
-  // Morocco: never a hint.
-  const p = await browser.newPage({ viewport: { width: 390, height: 844 } });
-  await open(p, { slug: 'morocco' });
-  await p.click('.exp-quick-btn[data-cat="Transport"]');
-  await expect(p.locator('#qe_paylink_hint')).toHaveCount(0);
-  await p.close();
-});
-
-test('paylink: «+ Not in the list (staff / gift)» — kept in the form, created and linked after the save', async ({ page }) => {
-  const errors = collectFatalErrors(page);
-  const st = await open(page);
-  await transportAirport(page);
-  await picker(page).locator('#pl_more').click();
-  await expect(picker(page).locator('#pl_date')).toHaveValue('2026-11-13');       // the entry date
-  await picker(page).locator('#pl_add_ok').click();
-  await expect(page.locator('#toast')).toHaveText('Type the name');                 // nothing added without a name
-  await expect(picker(page).locator('.pl-new')).toHaveCount(0);
-  await picker(page).locator('#pl_name').fill('Kasun');
-  await picker(page).locator('[data-act="kind"][data-v="airport_departure"]').click();
-  await picker(page).locator('[data-act="reason"][data-v="gift"]').click();
-  await expect(picker(page).locator('#pl_name')).toHaveValue('Kasun');             // the typed name survives the redraw
-  await expect(picker(page).locator('#pl_price')).toHaveValue('20000');            // the amount is on the form: the /prices departure price
-  await picker(page).locator('#pl_date').fill('2026-11-12');
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
-  await picker(page).locator('#pl_add_ok').click();
-  await expect(picker(page).locator('.pl-new')).toHaveCount(1);
-  expect((await picker(page).locator('.pl-new').textContent()).replace(/\s+/g, ' ').trim()).toBe('Thu 12 Nov · Departure · Kasun · Free · Gift · 20,000');
-  await expect(page.locator('#qe_amount')).toHaveValue('20000');                    // the /prices departure price
-  expect(st.calls.filter(c => c.t === 'add_own').length).toBe(0);                   // nothing written before the save
-  await picker(page).locator('.pl-row').nth(0).click();                             // + Lorena from the list
-  await expect(page.locator('#qe_amount')).toHaveValue('41000');
-  await expect(picker(page).locator('.pl-sum')).toHaveText('2 ticked · 41,000');
-  await page.click('[onclick="saveQuickExpense()"]');
-  const add = await call(st, 'add_own');
-  expect(add.body).toMatchObject({ p_location: LOC, p_kind: 'airport_departure', p_date: '2026-11-12', p_name: 'Kasun', p_free_reason: 'gift', p_price: 20000, p_entry_date: '2026-11-13' });
-  expect(add.ledgerHad).toBe(1);                                                    // created only after the expense landed
-  const link = await call(st, 'link_own');
-  expect(link.body.p_entry).toBe(st.posted[0].id);
-  expect(link.body.p_trip_ids.sort()).toEqual([T(1), 'aaaaaaaa-0000-4000-8000-000000000901'].sort());
-  await expect(page.locator('#toast')).toHaveText('Entry added · 2 transfers linked');
-  // Unticking an added row takes it out; leaving Transport drops it.
-  await transportAirport(page);
-  await picker(page).locator('#pl_more').click();
-  await picker(page).locator('#pl_name').fill('Staff Two');
-  await picker(page).locator('#pl_price').fill('15000');                            // a different amount, typed on the form
-  await picker(page).locator('[data-act="kind"][data-v="airport_departure"]').click();
-  await expect(picker(page).locator('#pl_price')).toHaveValue('15000');            // a typed amount survives the redraw
-  await picker(page).locator('#pl_name').press('Enter');                            // Enter adds, it never saves the expense
-  await expect(picker(page).locator('.pl-new')).toHaveCount(1);
-  await expect(picker(page).locator('.pl-new .pl-amt')).toHaveText('15,000');
-  await expect(page.locator('#qe_amount')).toHaveValue('15000');
-  expect(st.posted.length).toBe(1);
-  await picker(page).locator('.pl-new input').click();                               // untick
-  await expect(picker(page).locator('.pl-new')).toHaveCount(0);
-  await expect(page.locator('#qe_amount')).toHaveValue('');
-  expect(errors).toEqual([]);
-});
-
-test('paylink: «Not in the list» before the database update (function missing) — the expense stays saved, calm message', async ({ page }) => {
-  const errors = collectFatalErrors(page);
-  const st = await open(page, { addMissing: true });
-  await transportAirport(page);
-  await picker(page).locator('#pl_more').click();
-  await picker(page).locator('#pl_name').fill('Kasun');
-  await picker(page).locator('#pl_add_ok').click();
-  await page.click('[onclick="saveQuickExpense()"]');
-  await call(st, 'add_own');
-  await expect(page.locator('#toast')).toHaveText("Saved. Couldn't link the transfers — Francisco will see it in Payments to review.");
-  await expect(page.locator('#toast')).not.toHaveClass(/err/);
-  expect(st.posted.length).toBe(1);
-  expect(st.posted[0]).toMatchObject({ amount_local: 21000, linked_item: 'Airport' });
-  expect(st.calls.filter(c => c.t === 'link_own').length).toBe(0);
-  expect(errors).toEqual([]);
-});
-
-test('paylink: the description fills itself from the ticks — «Dilan · 2 arrivals, 1 departure · 8–10 Nov» — unless he typed one', async ({ page }) => {
-  const st = await open(page, { trips: TRIPS().map(t => t.id === T(2) ? { ...t, driver_id: D.dilan } : t) });
-  await transportAirport(page);
-  const desc = page.locator('#qe_desc');
-  await picker(page).locator('.pl-row').nth(0).click();
-  await expect(desc).toHaveValue('Dilan · 1 arrival · 8 Nov');
-  await picker(page).locator('.pl-row').nth(1).click();
-  await picker(page).locator('.pl-row').nth(2).click();
-  await expect(desc).toHaveValue('Dilan · 2 arrivals, 1 departure · 8–10 Nov');
-  await picker(page).locator('.pl-row').nth(2).click();
-  await expect(desc).toHaveValue('Dilan · 2 arrivals · 8–9 Nov');
-  await page.click('[onclick="saveQuickExpense()"]');
-  await call(st, 'link_own');
-  expect(st.posted[0]).toMatchObject({ description: 'Dilan · 2 arrivals · 8–9 Nov', amount_local: 47500 });
-  // His own words are never replaced, and unticking everything clears only what the form wrote.
-  await transportAirport(page);
-  await picker(page).locator('.pl-row').nth(0).click();
-  await expect(desc).toHaveValue('Dilan · 1 departure · 10 Nov');
-  await picker(page).locator('.pl-row').nth(0).click();
-  await expect(desc).toHaveValue('');
-  await desc.fill('Dilan waiting time');
-  await picker(page).locator('.pl-row').nth(0).click();
-  await expect(desc).toHaveValue('Dilan waiting time');
-});
-
-test('Sri Lanka ledger: the Transport item list keeps only what a payment is for (no route presets)', async ({ page }) => {
-  await open(page);
-  await page.click('.exp-quick-btn[data-cat="Transport"]');
-  const opts = await page.locator('#qe_linked option').allTextContents();
-  expect(opts.slice(0, 5)).toEqual(['None / general', 'Airport', 'Transport Surf Lesson', 'Food Supply', 'Laundry']);
-  for (const extra of ['Airport → Surfcamp', 'Surfcamp → Airport', 'Ahangama', 'South Beach', 'Weligama']) expect(opts).not.toContain(extra);
+  await page.fill('#qe_desc', 'Nishantha airport');
+  await expect(warn(page)).toContainText('Paying Nishantha? Pay in Drivers');
+  await page.evaluate(() => { document.getElementById('qe_cat').value = 'Food'; document.getElementById('qe_cat').dispatchEvent(new Event('change', { bubbles: true })); });
+  await expect(warn(page)).toHaveCount(0);
 });

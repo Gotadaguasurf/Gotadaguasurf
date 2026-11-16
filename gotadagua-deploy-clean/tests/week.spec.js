@@ -551,7 +551,7 @@ test('transfers: a tap on the Week Overview opens Transport on the same week and
   await page.locator('#wkDay-2026-11-17 .wk-bc.trf .wk-trlink').click();
   expect(await page.evaluate(() => activePage)).toBe('transport');
   await expect(page.locator('#transportRoot .tr-week')).toHaveText('14–20 Nov');
-  await expect(page.locator('#transportRoot .tr-views .pill.active')).toHaveText('Trips');
+  await expect(page.locator('#transportRoot .tr-tripview')).toBeVisible();   // one view since 16 Nov 2026 (no Reconcile pill)
   const day = page.locator('#trDay-2026-11-17');
   await expect(day).toBeInViewport();
   const navClear = () => page.evaluate(() => document.getElementById('trDay-2026-11-17').getBoundingClientRect().top >= document.querySelector('.app-nav').getBoundingClientRect().bottom);
@@ -769,9 +769,9 @@ test('import: Week shows the import (one copy of the inputs, one blue button); a
   await expect(page.locator('#weekRoot .wk-tabs .pill.active')).toHaveText(/Overview/);
   await expect(page.locator('#weekRoot .wk-week')).toHaveText('Week 14 · 14–20 Nov');
   await expect(page.locator('#wkDay-2026-11-14 .wk-bc.arr')).toContainText('+15');
-  // Transport has no import of its own any more: two pills, no inputs; an old «next» view opens the Week import
+  // Transport has no import of its own any more: one view (16 Nov 2026: Reconcile is gone), no inputs; an old «next» view opens the Week import
   await page.evaluate(() => showPage('transport'));
-  await expect(page.locator('#transportRoot .tr-views .pill')).toHaveText(['Trips', 'Reconcile']);
+  expect(await page.locator('#transportRoot .tr-views').count()).toBe(0);
   expect(await page.locator('#trGuestsFile').count()).toBe(0);
   await page.evaluate(() => TransportUI.setView('next'));
   await expect(page.locator('#weekRoot .wk-import')).toBeVisible();
@@ -799,7 +799,7 @@ test('import: «Send transfers in Transport» after saving opens Transport → T
   await page.click('#weekRoot button:has-text("Send transfers in Transport")');
   expect(await page.evaluate(() => activePage)).toBe('transport');
   await expect(page.locator('#transportRoot .tr-week')).toHaveText('14–20 Nov');
-  await expect(page.locator('#transportRoot .tr-views .pill.active')).toHaveText('Trips');
+  await expect(page.locator('#transportRoot .tr-tripview')).toBeVisible();
 });
 
 // ── Contacts ───────────────────────────────────────────────────────────────
@@ -972,16 +972,16 @@ test('people check: a row the lists cannot place turns the line red and adds a T
   expect(pc.nights).toEqual([1, 1, 1, 1, 1, 1, 1]);
 });
 
-test('transfers: «Transfers booked» is now one line in Transport — arrivals and departures with persons, the same trips as the Airport tile; the Airport pill lists them', async ({ page }) => {
+test('transfers: «Transfers booked» is now one line in Transport — arrivals and departures with persons; the Airport pill lists them', async ({ page }) => {
   const errors = collectFatalErrors(page);
   await openWeek(page);
   await page.evaluate(() => WeekUI.toTransport());
   const line = page.locator('#transportRoot [data-week-count]');
   await expect(line).toContainText('Arrivals 2 · 3 persons');
   await expect(line).toContainText('Departures 1 · 1 person');            // Beliz leaves on the closing Saturday
-  const tile = await page.locator('#transportRoot [data-total="airport"] .kpi-label').textContent();
   const c = await page.evaluate(() => TransportUI.weekCount(TransportUI._state.trips.filter(t => TransportUI.inWeek(t, TransportUI._state.week))));
-  expect(tile).toBe(`Airport · ${c.arr.n + c.dep.n} transfers`);
+  expect(c.arr.n + c.dep.n).toBe(3);
+  expect(await page.locator('#transportRoot [data-total]').count()).toBe(0);   // the week-total tiles are gone (16 Nov 2026)
   await page.click('#transportRoot .tr-filters .pill:has-text("Airport")');
   await expect(page.locator('#transportRoot .tr-row')).toHaveCount(3);
   expect(errors).toEqual([]);
