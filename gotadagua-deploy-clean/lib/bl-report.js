@@ -423,7 +423,8 @@
   //   · paid lines < ceil(people / covers) → «N people, P transfer(s) paid — one covers K» (amber, never blocks)
   //   · every line at 0 €: a partner's booking (Company/Channel) or a package that includes the transfer → nothing;
   //     otherwise «no transfer paid»
-  //   · a paid line under the row's guest price (same currency, EUR) → «paid €70, /prices €80 (Ann A)»
+  //   · a paid line under the row's guest price (same currency, EUR) → «paid €70, /prices €80 (Ann A)» — not for a partner's
+  //     booking: its lines are net of the commission (real report 17 Nov 2026: Surfer Girls Power €108 of €120)
   const UNDERPAID_RE = /^\d+ people, \d+ transfers? paid — one covers \d+$|^no transfer paid$/;
   const UNDERSOLD_RE = /^paid €[\d.,]+, \/prices €[\d.,]+ \(/;
   function unitRow(vs, titles, boards) {
@@ -443,7 +444,7 @@
       const pkgTransfer = b.lines.some(l => l.kind === 'package' && (GT().packageIncludes(l.title, cfg) || {}).transfer);
       if (!b.partner && !pkgTransfer) flags.push('no transfer paid');
     } else if (covers && paidLegs.length < needed) flags.push(`${pax} people, ${paidLegs.length} transfer${paidLegs.length === 1 ? '' : 's'} paid — one covers ${covers}`);
-    paidLegs.forEach(l => {
+    if (!b.partner) paidLegs.forEach(l => {
       const r = unitRow(vs, l.titles, l.boards); if (!r || !(r.sell > 0) || String(r.sellCurrency || 'EUR').toUpperCase() !== 'EUR') return;
       if (l.price < r.sell - 0.005) flags.push(`paid €${fmtEur(l.price)}, /prices €${fmtEur(r.sell)} (${l.guest})`);
     });

@@ -393,3 +393,13 @@ test('morocco bl check: unchecked Let Us Tours legs are «to check in Bookinglay
   expect(await page.evaluate(() => TransportUI.blCheck.run({ location: 'morocco', isLocal: false }))).toBe(null);
   expect(errors).toEqual([]);
 });
+
+test('morocco van runs with /prices not loaded: a clear «not loaded» line, and a tap saves nothing (never a run at MAD 0)', async ({ page }) => {
+  const st = await openTab(page, { noPrices: true });
+  await page.evaluate(() => TransportUI.openTuktuk());
+  await expect(page.locator('#trOv [data-prices-not-loaded]')).toContainText('Van prices not loaded from /prices');
+  await expect(page.locator('#tk_veh')).toHaveCount(0);
+  await page.evaluate(() => TransportUI.tap('van|surf'));
+  await expect(page.locator('#toast')).toContainText('van prices have not loaded');
+  expect(st.calls.filter(c => c.t === 'trip_insert')).toEqual([]);
+});

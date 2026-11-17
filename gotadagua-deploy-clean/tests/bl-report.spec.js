@@ -298,7 +298,7 @@ test('9 people in Sri Lanka: the largest vehicle /prices has (Minivan) + «9 peo
 test('surfboards → Minivan whatever the head count: by the /prices bl_product row, and (before bl_product is filled) by the product name', () => {
   const sl = air(F.slCat(), CC.SL, 'airport_arrival', 'CMB');
   expect(G.pickVehicle(1, { vehicles: sl, products: [F.SURFBOARDS] }).label).toBe('Minivan');
-  expect(G.pickVehicle(2, { vehicles: sl, products: ['airport transfer  (with surfboards)'] }).label).toBe('Minivan');   // case and spaces
+  expect(G.pickVehicle(2, { vehicles: sl, products: ['airport transfer sri lanka  (with SURFBOARDS)'] }).label).toBe('Minivan');   // case and spaces
   expect(G.pickVehicle(2, { vehicles: air(F.slCat({ noProduct: true }), CC.SL, 'airport_arrival'), boards: true }).label).toBe('Minivan');
   expect(G.pickVehicle(2, { vehicles: sl, products: ['Airport Transfer Sri Lanka'] }).label).toBe('Car');
   const tr = slArr(sl0('2026-902', [{ name: 'Sam S' }, { name: 'Tia T' }], [{ p: F.SURFBOARDS, person: 'Sam S', start: '2026-11-21', price: 95 }, { p: F.SURFBOARDS, person: 'Tia T', start: '2026-11-21', price: 0 }]));
@@ -321,11 +321,13 @@ test('one paid transfer covers 3 people (covers_pax): 4 people on one €80 line
   expect(ma[0].flags).toContain('4 people, 1 transfer paid — one covers 3');
 });
 
-test('a paid line under the /prices guest price → «paid €70, /prices €80 (name)»; every line at 0 €: nothing for a partner, «no transfer paid» otherwise', () => {
+test('a paid line under the /prices guest price → «paid €70, /prices €80 (name)» (not for a partner: net of commission); every line at 0 €: nothing for a partner, «no transfer paid» otherwise', () => {
   const tr = slArr(sl0('2026-907', [{ name: 'Ann A' }], [tr80('Ann A', 70)]));
   expect(tr.flags.filter(f => B.UNDERSOLD_RE.test(f))).toEqual(['paid €70, /prices €80 (Ann A)']);
   expect(slArr(sl0('2026-908', [{ name: 'Ann A' }], [tr80('Ann A', 80)])).flags.filter(f => B.UNDERSOLD_RE.test(f) || B.UNDERPAID_RE.test(f))).toEqual([]);
   expect(slArr(sl0('2026-909', [{ name: 'Ann A' }], [tr80('Ann A', 0)], { channel: 'AASHA' })).flags.filter(f => B.UNDERPAID_RE.test(f))).toEqual([]);
+  // a partner's line is net of its commission (MA 2026-4020, Surfer Girls Power: €108 of €120): never «paid €108, /prices €120»
+  expect(slArr(sl0('2026-911', [{ name: 'Ann A' }], [tr80('Ann A', 72)], { channel: 'AASHA' })).flags.filter(f => B.UNDERSOLD_RE.test(f))).toEqual([]);
   expect(slArr(sl0('2026-910', [{ name: 'Ann A' }], [tr80('Ann A', 0)])).flags).toContain('no transfer paid');
 });
 

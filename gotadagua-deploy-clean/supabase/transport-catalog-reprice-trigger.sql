@@ -12,10 +12,15 @@
 -- ════════════════════════════════════════════════════════════════════════════
 create or replace function public.pricing_catalog__reprice_trips()
 returns trigger language plpgsql security definer set search_path = public as $$
-declare v_loc uuid := coalesce(new.location_id, old.location_id);
+declare r record;
 begin
-  if coalesce(new.category, old.category) = 'Transport' and v_loc is not null then
-    perform public.camp_trips__reprice(v_loc);
+  if tg_op = 'DELETE' then r := old; else r := new; end if;
+  if r.category = 'Transport' and r.location_id is not null then
+    perform public.camp_trips__reprice(r.location_id);
+  end if;
+  -- a row moved to another camp or out of Transport: that side follows too
+  if tg_op = 'UPDATE' and old.category = 'Transport' and old.location_id is distinct from new.location_id then
+    perform public.camp_trips__reprice(old.location_id);
   end if;
   return null;
 end $$;

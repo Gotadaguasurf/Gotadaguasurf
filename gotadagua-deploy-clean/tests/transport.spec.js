@@ -1606,6 +1606,13 @@ test('/prices failed: no seed presets, a clear «prices not loaded», nothing sa
   await page.evaluate(() => { openTransportQuickAdd(); });
   await expect(page.locator('#tqChipsWrap [data-prices-not-loaded]')).toContainText('Transport prices not loaded');
   expect(st.calls.filter(c => c.t === 'state_store' && JSON.stringify(c.body).includes('transport_presets'))).toEqual([]);
+  // a free airport transfer is not saved without its /prices vehicle and price
+  await page.evaluate(() => { document.getElementById('transportQuickOv')?.classList.remove('open'); TransportUI.openAddTransfer(); });
+  await page.click('#at_fr .pill:has-text("Staff")');
+  await page.fill('#at_g', 'Anna');
+  await page.evaluate(() => TransportUI.saveTransfer());
+  await expect(page.locator('#toast')).toContainText('prices have not loaded');
+  expect(st.calls.filter(c => c.t === 'trip_insert')).toEqual([]);
   expect(errors).toEqual([]);
 });
 

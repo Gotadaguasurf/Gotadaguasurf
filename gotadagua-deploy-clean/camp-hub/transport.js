@@ -237,6 +237,10 @@
   const airLabels = (kind, place, keep) => { const ls = airChoices(kind, place).map(v => v.label); return keep && !ls.includes(keep) ? ls.concat(keep) : ls; };
   // The vehicle for N people on an airport trip (GuestsTrips.pickVehicle: bl_product, then capacity, over → largest + flag).
   const pickAir = (kind, place, pax, boards, products) => GT.pickVehicle(pax, { vehicles: airChoices(kind, place), boards, products });
+  // A trip that already has a vehicle keeps it while it is on the route and holds the people (a surfboards Minivan stays a
+  // Minivan when one guest leaves); otherwise the rule picks again. = camp_trips__reprice in the SQL.
+  const keepOrPick = (kind, place, pax, current) => { const v = airChoices(kind, place).find(x => x.label === current);
+    return v && v.capacity != null && v.capacity >= (Number(pax) || 1) ? current : (pickAir(kind, place, pax).label || current); };
   // The camp settings + the catalog's vehicles, for the parsers (the import picks each trip's vehicle from /prices).
   const catCfg = () => TC.withCatalog(GTC || CC, catalog());
   // Morocco (Miguel, 16 Nov 2026): Fathoune charges per VEHICLE — Car / Minivan / Big Van — never per person.
@@ -798,7 +802,7 @@
       const key = n => String(n || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
       const out = new Set(sep.map(g => key(g.name)));
       const stay = names.filter(n => !out.has(key(n)));
-      const pax = Math.max(1, (Number(t.pax) || names.length) - sep.length); const veh = pickAir(t.kind, t.place, pax).label || t.vehicle;
+      const pax = Math.max(1, (Number(t.pax) || names.length) - sep.length); const veh = keepOrPick(t.kind, t.place, pax, t.vehicle);
       const kPax = sep.length; const kVeh = pickAir(t.kind, t.place, kPax).label || t.vehicle;
       let ik = `${t.import_key || 'manual:' + t.id}:sep`; for (let n = 2; TR.trips.some(x => x.import_key === ik); n++) ik = `${t.import_key || 'manual:' + t.id}:sep${n}`;
       const row = { kind: t.kind, trip_date: t.trip_date, trip_time: sep[0].time || null, flight: (sep[0].flight || '').replace(/\s+/g, '') || null, place: t.place, route: t.route, purpose: 'guests',
@@ -1510,6 +1514,7 @@
         notes: ($('at_n') && $('at_n').value.trim()) || null,
       };
       if (!reason) { say('Pick why it is free (staff, gift, compensation or other)', 'err'); return; }
+      if (pricesError() || !row.vehicle) { say('The transfer prices have not loaded from /prices — nothing saved. Check the connection and try again.', 'err'); return; }
       if (!row.guest_names) { say('Type the name', 'err'); return; }
       if (await insertTrip(row)) { closeModal(); TR.week = GT.weekStart(row.trip_date); TR.view = 'trips'; render(); say('Free transfer added'); }
     } finally { TR.busy.delete('at'); }
@@ -1604,6 +1609,7 @@
     if (TR.busy.has('tap|' + key)) return;            // a double tap saves one run
     const r = tukRoute(key); if (!r) return;
     if (!TR.tuk.driver) { say('Pick the driver first', 'err'); return; }
+    if (!IS_SL && pricesError()) { say('The van prices have not loaded from /prices — nothing saved. Check the connection and try again.', 'err'); return; }
     TR.busy.add('tap|' + key);
     try {
       const pax = IS_SL ? 1 : null; const veh = IS_SL ? RUN.veh : tukVehicle(); const price = runPrice(r, veh);
@@ -1678,6 +1684,7 @@
     if (!TR.tuk.driver) { say('Pick the driver first', 'err'); return; }
     if (!r) { say('Pick the route', 'err'); return; }
     if (!/^\d\d:\d\d$/.test(time)) { say('Type the time, e.g. 07:30', 'err'); return; }
+    if (!IS_SL && pricesError()) { say('The van prices have not loaded from /prices — nothing saved. Check the connection and try again.', 'err'); return; }
     TR.busy.add('plan');
     try {
       TR.tuk.planTime = time; TR.tuk.planRoute = r.key; TR.tuk.planCount = 1;
@@ -1955,8 +1962,12 @@
       trips = plan.send;
       // A trip whose vehicle was changed by hand keeps it: its price is that vehicle's /prices price, not the report trip's.
       const app = new Map(TR.trips.filter(a => a.import_key).map(a => [a.import_key, a]));
+      // A trip split with «Separate» keeps the camp's decision: the report's «N people, 1 transfer paid» (it still counts
+      // everyone of the booking) is not brought back onto it.
       trips = trips.map(t => { const a = app.get(t.key); const ed = (a && a.edited_fields) || [];
-        return a && ed.includes('vehicle') && !ed.includes('expected_price') && a.vehicle ? { ...t, expected_price: presetPrice(t.kind, a.vehicle, t.place) || t.expected_price } : t; });
+        let x = a && ed.includes('vehicle') && !ed.includes('expected_price') && a.vehicle ? { ...t, expected_price: presetPrice(t.kind, a.vehicle, t.place) || t.expected_price } : t;
+        if (ed.includes('together_split')) x = { ...x, flags: (x.flags || []).filter(f => !/^\d+ people, \d+ transfers? paid — one covers \d+$/.test(f)) };
+        return x; });
     }
     const guests = okGuests.filter(g => !cancelledRefs.has(g.booking_ref)).map(g => ({ ...g, hq_match: matchOf(g.booking_ref), partner: partnerOf(g.booking_ref) || null }));
     const hqCancelled = okGuests.filter(g => cancelledRefs.has(g.booking_ref)).map(g => ({ guest: g.guest_name, ref: g.booking_ref, transfer: g.has_transfer, status: hqStatus(g.booking_ref) || 'not live' }));
@@ -2241,6 +2252,7 @@
     const pax = IS_SL ? 1 : null;
     if (!r) { say('Pick the route', 'err'); return; }
     if (day > cToday()) { say('Only runs that already happened', 'err'); return; }
+    if (!IS_SL && pricesError()) { say('The van prices have not loaded from /prices — nothing saved. Check the connection and try again.', 'err'); return; }
     TR.busy.add('payadd');
     try {
       const veh = IS_SL ? RUN.veh : (($('py_av') && $('py_av').value) || vanDefaultVehicle(r));

@@ -4,7 +4,7 @@
 const TC = require('../lib/transport-catalog.js');
 const CC = require('../lib/camp-config.js');
 
-const SURFBOARDS = 'Airport Transfer (with surfboards)';
+const SURFBOARDS = 'Airport Transfer Sri Lanka (with surfboards)';   // the product title in the real camp report of 17 Nov 2026
 const row = (o, i) => ({ id: o.id || `cat-${i}`, category: 'Transport', active: true, show_in_transport_picker: true, notes: '', linked_transport_preset_id: null, linked_camp_tab_id: null,
   picker_tab: 'airport', sort_order: i, covers_pax: null, bl_product: null, sell_price: null, sell_currency: 'EUR', ...o });
 

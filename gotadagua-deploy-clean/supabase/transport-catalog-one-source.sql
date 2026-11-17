@@ -15,7 +15,7 @@
 --  1 · pricing_catalog.covers_pax (people one paid transfer covers: «€80 / 3 persons» → 3; NOT the seats) and
 --      pricing_catalog.bl_product (a Bookinglayer product title that always gets this vehicle, e.g. the surfboards one).
 --      Airport rows get covers_pax = 3 (Sri Lanka and Morocco, Miguel 17 Nov 2026). Sri Lanka's airport Minivan rows get
---      bl_product «Airport Transfer (with surfboards)» — CHECK the exact product title in Bookinglayer.
+--      bl_product «Airport Transfer Sri Lanka (with surfboards)» (the title in the real camp report of 17 Nov 2026).
 --      Capacity is NOT changed here: Miguel sets Car = 3 (and the Sri Lanka Minivan guest price €95) in /prices himself.
 --  2 · camp_trips.pax may be empty (Morocco van runs carry no head count from 17 Nov 2026); camp_trips.paid_lines /
 --      guest_eur (what the guests paid for the transfer, from the camp report's «Final price incl. tax»).
@@ -27,8 +27,10 @@
 --      true (never price 0) — the same rule as GuestsTrips.pickVehicle (lib/guests-trips.js).
 --  5 · camp_trips_reprice(location) → follow /prices on trips that may still change: from the camp's own today, not
 --      paid, planned / sent / confirmed, price not typed by hand ('expected_price' not in edited_fields).
---        · airport trips: vehicle re-picked for the people (kept when typed by hand: 'vehicle' in edited_fields), price
---          = that vehicle's cost; a sent / confirmed trip whose vehicle changes gets needs_resend.
+--        · airport trips: the stored vehicle is KEPT when typed by hand ('vehicle' in edited_fields) or while it is on the
+--          route and its capacity holds the people (camp_trips stores no product: a 2-person surfboards Minivan stays a
+--          Minivan); otherwise re-picked for the people. Price = that vehicle's cost; a sent / confirmed trip whose
+--          vehicle changes gets needs_resend.
 --        · Morocco van runs (kind 'other'): vehicle kept (chosen when logged), price = the cost of the /prices row
 --          «<route> — <vehicle>» on the surf / tours tabs. «Paradise + Souk» (two rows added up) has no row of its own
 --          and is LEFT ALONE, as are Sri Lanka's tuk-tuk runs (single-price routes) — change those by hand.
@@ -48,7 +50,7 @@ update public.pricing_catalog
    and location_id in (select id from public.locations where slug in ('sri-lanka', 'morocco'));
 
 update public.pricing_catalog
-   set bl_product = 'Airport Transfer (with surfboards)'
+   set bl_product = 'Airport Transfer Sri Lanka (with surfboards)'   -- the title in the camp report of 17 Nov 2026
  where category = 'Transport' and bl_product is null and coalesce(picker_tab, 'airport') = 'airport'
    and name like '% — Minivan'
    and location_id = (select id from public.locations where slug = 'sri-lanka');
@@ -109,7 +111,7 @@ create or replace function public.camp_trips__reprice(p_location uuid)
 returns integer language plpgsql security definer set search_path = public as $$
 declare
   v_today date := (now() at time zone public.camp_trips__tz(p_location))::date;
-  t public.camp_trips%rowtype; v_route text; v_veh text; v_cost numeric; v_n int := 0;
+  t public.camp_trips%rowtype; v_route text; v_veh text; v_cost numeric; v_cap int; v_n int := 0;
 begin
   for t in select * from public.camp_trips c
             where c.location_id = p_location and c.trip_date >= v_today and c.payment_entry_id is null
@@ -119,14 +121,19 @@ begin
     if t.kind in ('airport_arrival', 'airport_departure') then
       v_route := public.transport_airport_route(p_location, t.kind, t.place);
       if v_route is null then continue; end if;   -- no /prices route (e.g. Essaouira): left as it is
-      if 'vehicle' = any(coalesce(t.edited_fields, '{}')) then
+      -- the stored vehicle on this route: its cost and seats
+      v_cap := null;
+      select pc.cost_per_guest, coalesce(pc.capacity, nullif(substring(pc.notes from '(?i)capacity\s*(\d+)'), '')::int) into v_cost, v_cap
+        from public.pricing_catalog pc
+       where pc.location_id = p_location and pc.category = 'Transport' and pc.active and pc.show_in_transport_picker
+         and coalesce(pc.picker_tab, 'airport') = 'airport'
+         and lower(trim(regexp_replace(pc.name, '\s+—\s+[^—]*$', ''))) = lower(trim(v_route))
+         and trim(substring(pc.name from '—\s+([^—]*)$')) = t.vehicle
+       order by pc.sort_order nulls last limit 1;
+      -- Kept: a vehicle typed by hand, and a vehicle that is still on the route and holds the people (camp_trips stores no
+      -- product, so a «with surfboards» Minivan of 2 people must never drop to a Car here). Else the rule picks again.
+      if 'vehicle' = any(coalesce(t.edited_fields, '{}')) or (v_cost is not null and v_cap is not null and v_cap >= coalesce(t.pax, 1)) then
         v_veh := t.vehicle;
-        select pc.cost_per_guest into v_cost from public.pricing_catalog pc
-         where pc.location_id = p_location and pc.category = 'Transport' and pc.active and pc.show_in_transport_picker
-           and coalesce(pc.picker_tab, 'airport') = 'airport'
-           and lower(trim(regexp_replace(pc.name, '\s+—\s+[^—]*$', ''))) = lower(trim(v_route))
-           and trim(substring(pc.name from '—\s+([^—]*)$')) = t.vehicle
-         order by pc.sort_order nulls last limit 1;
       else
         select tv.vehicle, tv.cost into v_veh, v_cost from public.transport_vehicle_for(p_location, 'airport', v_route, coalesce(t.pax, 1)) tv;
       end if;
