@@ -340,14 +340,19 @@
   // The surf vans' cost per surfer-day in a period: the van runs' cost (trips of the kind 'vans', by day) on the days the
   // guests list has surfers ÷ the surfer-days of the period. Van cost on a day with no surfer in the list (guests not
   // imported for that day) is left out and returned as `uncovered`; payments with no day (lump sums) are never in it.
-  //   → { cost, surferDays, per (local per surfer-day, null when none), uncovered, days }
-  function perSurferDay(C, P, sd) {
+  // The surfer-days counted are bounded to the days van runs can have been logged: from the first van run (C.start.vans,
+  // or o.from) to the camp's today (o.to) — never future days of the current week / month, nor days before the van list.
+  //   → { cost, surferDays, per (local per surfer-day, null when none), uncovered, days, from, to }
+  function perSurferDay(C, P, sd, o) {
+    o = o || {};
+    const from = [P.from, o.from || (C.start || {}).vans || P.from].sort().pop();
+    const to = [P.to, o.to || P.to].sort()[0];
     const cost = {};
-    (C.items || C).forEach(it => { if (it.src === 'trip' && it.kind === 'vans' && it.date >= P.from && it.date <= P.to) cost[it.date] = (cost[it.date] || 0) + it.cost; });
+    (C.items || C).forEach(it => { if (it.src === 'trip' && it.kind === 'vans' && it.date >= from && it.date <= to) cost[it.date] = (cost[it.date] || 0) + it.cost; });
     let c = 0, uncovered = 0, days = 0;
     Object.keys(cost).forEach(d => { if ((sd.byDay[d] || 0) > 0) { c += cost[d]; days++; } else uncovered += cost[d]; });
-    const n = Object.keys(sd.byDay).filter(d => d >= P.from && d <= P.to).reduce((s, d) => s + sd.byDay[d], 0);
-    return { cost: c, surferDays: n, per: n && c ? Math.round(c / n * 100) / 100 : null, uncovered, days };
+    const n = Object.keys(sd.byDay).filter(d => d >= from && d <= to).reduce((s, d) => s + sd.byDay[d], 0);
+    return { cost: c, surferDays: n, per: n && c ? Math.round(c / n * 100) / 100 : null, uncovered, days, from, to };
   }
 
   // Airport transfers: what the guests paid (€) against what the drivers cost (€) in a period (17 Nov 2026).

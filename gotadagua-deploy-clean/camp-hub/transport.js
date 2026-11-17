@@ -1106,7 +1106,7 @@
     if (!G.rows) return null;
     const sd = TO().surferDays(G.rows, P.from, P.to, { courseDays: CC.surfCourseDays, ok: g => !GONE.has(String(g.booking_status || '').toLowerCase()),
       hasCourse: g => !!(window.WeekUI && WeekUI.course && WeekUI.course(g)) });
-    return { ...TO().perSurferDay(C, P, sd), byDay: sd.byDay };
+    return { ...TO().perSurferDay(C, P, sd, { to: cToday() }), byDay: sd.byDay };
   }
   try { window.addEventListener('camp-week-imported', () => { TR.ovGuests = null; }); } catch (_) {}
   async function loadOvGuests(P) {
@@ -1199,14 +1199,15 @@
       const one = p => `${h(p.label)}${p.trips && !p.payments ? ` ${p.trips}` : p.people && !p.trips ? ` (${plural(p.people, 'person', 'people')})` : ''}`;
       return xs.length > 4 ? xs.slice(0, 3).map(one).join(' · ') + ` · +${xs.length - 3} more` : xs.map(one).join(' · ');
     };
-    const meta = k => [k.trips ? plural(k.trips, 'trip') : '', headcount(k) ? plural(k.people, 'person', 'people') : '', headcount(k) ? `${money(k.perPerson)} per person` : '',
+    const sdOn = k => k.kind === 'vans' && surf && surf.per;   // the surfer-day figure replaces a typed head count
+    const meta = k => [k.trips ? plural(k.trips, 'trip') : '', headcount(k) && !sdOn(k) ? plural(k.people, 'person', 'people') : '', headcount(k) && !sdOn(k) ? `${money(k.perPerson)} per person` : '',
       k.kind === 'vans' && surf && surf.per ? `<span data-ov-surfer-day title="Surf van cost on the days with surfers ÷ surfer-days (guests with a Bookinglayer lesson or course that day)">${money(surf.per)} per surfer-day <span class="tr-eur">${eurOf(surf.per, fx)}</span> · ${plural(surf.surferDays, 'surfer-day')} from Bookinglayer lessons${surf.uncovered ? ` · ${money(surf.uncovered)} on days with no lessons data left out` : ''}</span>` : ''].filter(Boolean).join(' · ');
     const rows = V.kinds.map(k => { const pct = Math.round(k.cost / (T.cost || 1) * 100);
       return `<div class="tr-kind" data-ov-row="${k.kind}">
         <div class="tr-kind-name"><span class="tr-kind-t"><i class="tr-sw ${kindCls(k.kind)}"></i><b>${h(k.label)}</b></span>${partsOf(k) ? `<span class="cell-sub tr-kind-parts">${partsOf(k)}</span>` : ''}${k.noShow ? `<span class="cell-sub">incl. ${plural(k.noShow, 'no-show')}</span>` : ''}</div>
         <div class="tr-kind-bar" aria-hidden="true"><span class="tr-kind-track"><span class="tr-kind-fill ${kindCls(k.kind)}" style="width:${Math.max(1, Math.round(k.cost / max * 100))}%"></span></span><span class="tr-kind-pct num">${pct}%</span></div>
         <div class="tr-kind-cost r">${twoCur(k.cost, fx)}</div>
-        ${showT ? `<div class="tr-kind-n r num tr-ov-xs">${k.trips || ''}</div>` : ''}${showP ? `<div class="tr-kind-n r num tr-ov-xs">${headcount(k) ? k.people.toLocaleString('en-US') : ''}</div><div class="tr-kind-n r num tr-ov-xs">${headcount(k) ? money(k.perPerson) : ''}</div>` : ''}
+        ${showT ? `<div class="tr-kind-n r num tr-ov-xs">${k.trips || ''}</div>` : ''}${showP ? `<div class="tr-kind-n r num tr-ov-xs">${headcount(k) && !sdOn(k) ? k.people.toLocaleString('en-US') : ''}</div><div class="tr-kind-n r num tr-ov-xs">${headcount(k) && !sdOn(k) ? money(k.perPerson) : ''}</div>` : ''}
         <div class="tr-kind-meta cell-sub">${meta(k)}</div></div>`; }).join('');
     const cols = `tr-kinds-c${3 + (showT ? 1 : 0) + (showP ? 2 : 0)}${showT ? ' tr-kinds-t' : ''}${showP ? ' tr-kinds-p' : ''}`;
     return `<div class="card tr-ov-card" data-ov-kinds><div class="card-hdr"><div><div class="card-title">By kind of transport</div></div></div>

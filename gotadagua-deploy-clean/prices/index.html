@@ -1026,8 +1026,9 @@ async function loadEurRate(){
   let ledger = [], fallback = 0;
   try {
     const from = new Date(Date.now() - 120 * 864e5).toISOString().slice(0, 10);
-    const { data } = await sbClient.from('ledger_entries').select('date,currency,amount,amount_local').eq('location_id', locationId).eq('currency', cur).gte('date', from).limit(500);
-    ledger = (data || []).map(e => ({ date: e.date, currency: e.currency, amount: e.amount, amountLocal: e.amount_local }));
+    const { data, error } = await sbClient.from('ledger_entries').select('entry_date,currency,amount_eur,amount_local').eq('location_id', locationId).eq('currency', cur).gte('entry_date', from).limit(500);
+    if (error) throw error;
+    ledger = (data || []).map(e => ({ date: e.entry_date, currency: e.currency, amount: e.amount_eur, amountLocal: e.amount_local }));
   } catch (_) {}
   try { const { data } = await sbClient.from('locations').select('default_fx_to_eur').eq('id', locationId).maybeSingle(); fallback = Number(data && data.default_fx_to_eur) || 0; } catch (_) {}
   eurFx = TransportOverview.eurRate({ ledger, cur, fallback });

@@ -173,7 +173,9 @@ test('overview (Morocco): «Surf vans» shows the cost per surfer-day from the g
   await openOverview(page, { guests });
   const row = page.locator('[data-ov-row="vans"] [data-ov-surfer-day]');
   await expect(row).toContainText('per surfer-day');
-  await expect(row).toContainText('6 surfer-days from Bookinglayer lessons');      // Ann Mon 2 – Fri 6, Bob Tue 3
-  // Surf runs 3 Nov (500) and 4 Nov (300) ÷ 6 surfer-days
-  expect(await page.evaluate(() => TransportUI.ovData().surf)).toMatchObject({ cost: 800, surferDays: 6, per: 133.33, uncovered: 0 });
+  await expect(row).toContainText('5 surfer-days from Bookinglayer lessons');      // from the first van run (Tue 3): Ann Tue 3 – Fri 6, Bob Tue 3
+  // Surf runs 3 Nov (500) and 4 Nov (300) ÷ 5 surfer-days; the typed head count of the old runs is not shown beside it
+  expect(await page.evaluate(() => TransportUI.ovData().surf)).toMatchObject({ cost: 800, surferDays: 5, per: 160, uncovered: 0, from: '2026-11-03', to: '2026-11-14' });
+  await expect(page.locator('[data-ov-row="vans"] .tr-kind-meta')).not.toContainText('per person');
+  expect(await H.noOverflow(page)).toBe(true);                                // 390 px: no sideways scroll
 });

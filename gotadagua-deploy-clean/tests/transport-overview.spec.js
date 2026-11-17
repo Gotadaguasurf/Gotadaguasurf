@@ -195,6 +195,9 @@ test('surf vans per SURFER-DAY (17 Nov 2026): surfers from the guests\' Bookingl
   const C = O.collect({ ...MA, trips: [run('Surf', { trip_date: '2026-11-03', status: 'done', expected_price: 500 }), run('Surf', { trip_date: '2026-11-05', status: 'done', expected_price: 700 }),
     run('Surf', { trip_date: '2026-11-14', status: 'done', expected_price: 300 }), run('Dunes', { trip_date: '2026-11-05', status: 'done', expected_price: 800 })] });
   const r = O.perSurferDay(C, O.period('month', '2026-11'), sd);
-  // vans only (Dunes is a tour); the 14th has no surfer in the list → left out, said apart
-  expect(r).toEqual({ cost: 1200, surferDays: 15, per: 80, uncovered: 300, days: 2 });
+  // vans only (Dunes is a tour); the 14th has no surfer in the list → left out, said apart; surfer-days from the first van
+  // run (3 Nov: Ann's Monday 2nd is not counted, no van could have been logged then)
+  expect(r).toEqual({ cost: 1200, surferDays: 14, per: 85.71, uncovered: 300, days: 2, from: '2026-11-03', to: '2026-11-30' });
+  // «now» in the middle of the month: never the days still to come (guests staying on do not dilute the figure)
+  expect(O.perSurferDay(C, O.period('month', '2026-11'), sd, { to: '2026-11-05' })).toEqual({ cost: 1200, surferDays: 7, per: 171.43, uncovered: 0, days: 2, from: '2026-11-03', to: '2026-11-05' });
 });

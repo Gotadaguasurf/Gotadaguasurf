@@ -1660,4 +1660,5 @@ test('Overview: airport guests € (report prices, else estimated from /prices: 
   const G = await page.evaluate(() => { const P = TransportOverview.period('month', '2026-11'); return TransportOverview.guestMoney(TransportUI._state.trips, P, { rate: 340, sellFor: () => ({ eur: 80, covers: 3 }) }); });
   expect([G.revenue, G.cost, G.fromReport, G.estimated, G.free, G.margin]).toEqual([240, 67500, 1, 1, 1, Math.round((240 - 67500 / 340) * 100) / 100]);
   await expect(card.locator('[data-ov-gm="margin"] .kpi-value')).toHaveText(/^€\d+$/);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);   // 390 px: no sideways scroll
 });
