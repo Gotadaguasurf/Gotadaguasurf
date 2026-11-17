@@ -236,6 +236,7 @@ details.rooms-card[open] .rooms-caret{transform:rotate(180deg)}
 .tab-row .hint{margin:0}
 
 /* undo toast: the shell toast with one action */
+.toast.has-act{pointer-events:auto}
 .toast .toast-act{margin-left:12px;background:transparent;border:1px solid rgba(255,255,255,.4);color:#fff;border-radius:999px;padding:3px 12px;font:600 12.5px 'Outfit',sans-serif;cursor:pointer}
 
 /* search results across areas */
@@ -1202,7 +1203,7 @@ function showUndoToast(msg, onUndo, ms = 7000){
   let t = $('toast');
   if (!t) { t = document.createElement('div'); t.id = 'toast'; t.className = 'toast'; document.body.appendChild(t); }
   t.innerHTML = `<span>${escapeHtml(msg)}</span><button type="button" class="toast-act" id="undoBtn">Undo</button>`;
-  t.className = 'toast show';
+  t.className = 'toast show has-act';
   clearTimeout(t._t);
   t._t = setTimeout(() => { t.className = 'toast'; }, ms);
   $('undoBtn').onclick = async ()=>{
@@ -1430,7 +1431,7 @@ function priceCell(r, field){
   const v = Number(r[field] || 0);
   const cur = field === 'sell_price' ? ccyOf(r) : (r.currency || 'EUR');
   const flash = __flashCell === `${r.id}:${field}` ? ' saved' : '';
-  return `<span class="cell-edit${v > 0 ? '' : ' empty'}${flash}" data-id="${r.id}" data-field="${field}" data-tf-id="${r.id}" data-tf-field="${field}" ${canEdit ? 'role="button" tabindex="0"' : ''} onclick="onCellEdit(this)" onkeydown="if(event.key==='Enter'){event.preventDefault();onCellEdit(this)}" title="${canEdit && viewMode === 'edit' ? 'Tap to change' : ''}">${v > 0 ? money(v, cur) : '—'}</span>`;
+  return `<span class="cell-edit${v > 0 ? '' : ' empty'}${flash}" data-id="${r.id}" data-field="${field}" data-tf-id="${r.id}" data-tf-field="${field}" ${canEdit ? 'role="button" tabindex="0"' : ''} onclick="onCellEdit(this)" onkeydown="if(event.target===this&&event.key==='Enter'){event.preventDefault();onCellEdit(this)}" title="${canEdit && viewMode === 'edit' ? 'Tap to change' : ''}">${v > 0 ? money(v, cur) : '—'}</span>`;
 }
 
 function toggleCell(r, field){
@@ -1554,7 +1555,9 @@ function inlineNumberEdit(el, start, fmt, save){
     }
   };
   input.addEventListener('blur', commit);
+  input.addEventListener('click', e => e.stopPropagation());
   input.addEventListener('keydown', e => {
+    e.stopPropagation();
     if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
     else if (e.key === 'Escape') { done = true; show(start); }
   });
@@ -1731,7 +1734,7 @@ async function renderAccommodation(){
         if (shown) any = true;
         const cellId = `accomcell_${accomActivePackId}_${s.id}_${r.id}_${occ}`;
         const txt = shown ? money(shown, cur).replace(/\.00$/, '') : '—';
-        return `<td class="r" data-label="${escapeHtml(occLabel(occ))}"><span id="${cellId}" class="cell-edit${shown ? '' : ' empty'}" ${canEdit && !list ? 'role="button" tabindex="0"' : ''} onclick="onAccomEditCell(this,'${accomActivePackId}','${s.id}','${r.id}',${occ})" onkeydown="if(event.key==='Enter'){event.preventDefault();this.click()}">${txt}</span></td>`;
+        return `<td class="r" data-label="${escapeHtml(occLabel(occ))}"><span id="${cellId}" class="cell-edit${shown ? '' : ' empty'}" ${canEdit && !list ? 'role="button" tabindex="0"' : ''} onclick="onAccomEditCell(this,'${accomActivePackId}','${s.id}','${r.id}',${occ})" onkeydown="if(event.target===this&&event.key==='Enter'){event.preventDefault();this.click()}">${txt}</span></td>`;
       }).join('');
       if (list && !any) return '';
       return `<tr><td>${escapeHtml(r.label)}</td>${cells}</tr>`;

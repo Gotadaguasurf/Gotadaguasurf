@@ -78,7 +78,7 @@ async function stubPrices(page, opts = {}) {
 async function openPrices(page, slug = 'portugal', opts = {}) {
   const ctl = await stubPrices(page, opts);
   await page.goto(`/prices/?location=${slug}${opts.query || ''}`, { waitUntil: 'domcontentloaded' });
-  await page.waitForFunction(() => { try { return Array.isArray(catalog) && catalog.length > 0 && !!document.getElementById('tableWrap'); } catch (_) { return false; } }, null, { timeout: 15000 });
+  await page.waitForFunction(() => { try { return Array.isArray(catalog) && catalog.length > 0 && !!document.getElementById('tableWrap') && __customAreasLoaded === true; } catch (_) { return false; } }, null, { timeout: 15000 });
   return ctl;
 }
 
