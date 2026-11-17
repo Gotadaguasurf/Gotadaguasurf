@@ -260,3 +260,66 @@ test('a car takes up to 3 people in both camps; 4 = minivan', () => {
   expect([1, 3, 4, 8, 9].map(n => G.vehicleFor(n, false, CC.SL))).toEqual(['Car', 'Car', 'Minivan', 'Minivan', 'Large Van']);
   expect(G.vehicleFor(4)).toBe('Minivan');   // no settings = Sri Lanka's
 });
+
+// ── Merge, never blank (Miguel, 17 Nov 2026) ───────────────────────────────────────────────────────
+test('guests: an empty report diet keeps the app diet; a filled report value fills an empty app field; «Not here» set by hand stays, as a question', () => {
+  const t = csv([sl('2026-97', { guests: [{ name: 'Tom T', diet: '', level: 'Beginner level', beds: '' }], lines: [{ p: SLROOM, person: 'Tom T', start: '2026-11-21', end: '2026-11-28' }] }),
+    sl('2026-98', { guests: [{ name: 'Una U' }], lines: [{ p: SLROOM, person: 'Una U', start: '2026-11-21', end: '2026-11-28' }] })]);
+  const rows = B.guestRows(t, 'x.csv', CC.SL);
+  const app = [{ booking_ref: '2026-97', guest_key: 'tom t', diet: 'Vegan', level: '', bed_number: '3', phone: '+351900000000', raw: { transfer_comment: 'arriving by bus' }, booking_status: 'paid' },
+    { booking_ref: '2026-98', guest_key: 'una u', booking_status: 'not_here' }];
+  const P = B.planGuests(rows, app);
+  const tom = P.rows.find(g => g.guest_key === 'tom t');
+  expect([tom.diet, tom.bed_number, tom.phone, tom.level, tom.raw.transfer_comment]).toEqual(['Vegan', '3', '+351900000000', 'Beginner level', 'arriving by bus']);
+  expect(P.kept[0].fields.map(f => f.field)).toEqual(['phone', 'diet', 'bed_number', 'transfer comment']);
+  expect(P.fills[0].fields.map(f => f.field)).toEqual(['level', 'accommodation']);
+  const una = P.rows.find(g => g.guest_key === 'una u');
+  expect(una.booking_status).toBe('not_here');
+  expect(P.conflicts.map(c => c.note)).toEqual(['Bookinglayer says: paid — use it?']);
+});
+
+test('trips: a new report flight fills an empty app flight; a time typed by hand vs a different report time → kept, with «Bookinglayer says» on the trip', () => {
+  const t = csv([sl('2026-99', { guests: [{ name: 'Val V', arrT: '11:55', arrF: 'QR664' }], lines: [{ p: SLROOM, person: 'Val V', start: '2026-11-21', end: '2026-11-28' }, { p: 'Airport Transfer Sri Lanka', person: 'Val V', start: '2026-11-21' }] })]);
+  const p = B.parse(t, 'x.csv', '2026-11-17', CC.SL);
+  const base = { id: 'v1', kind: 'airport_arrival', trip_date: '2026-11-21', booking_ref: '2026-99', import_key: 'bl:2026-99:arr', status: 'planned', source: 'bookinglayer', place: 'CMB', pax: 1, vehicle: 'Car', guest_names: 'Val V', last_import_at: '2026-11-14' };
+  const fill = B.planTrips(p.trips, [{ ...base, flight: null, trip_time: '11:55', edited_fields: [] }], { today: '2026-11-17', exportDate: '2026-11-17' });
+  expect(fill.fills.map(x => x.fills.map(c => [c.field, c.report]))).toEqual([[['flight', 'QR664']]]);
+  expect(fill.conflicts).toEqual([]);
+  const conf = B.planTrips(p.trips, [{ ...base, flight: 'QR664', trip_time: '09:30', edited_fields: ['trip_time'] }], { today: '2026-11-17', exportDate: '2026-11-17' });
+  expect(conf.conflicts.map(x => x.conflicts.map(c => [c.field, c.app, c.report]))).toEqual([[['trip_time', '09:30', '11:55']]]);
+  expect(conf.send[0].flags).toContain('Bookinglayer says: time 11:55 — use it?');
+  expect(B.blSaysOf('Bookinglayer says: time 11:55 — use it?')).toEqual({ word: 'time', field: 'trip_time', value: '11:55' });
+  expect(conf.update).toEqual([]);   // nothing else changes: the hand-typed time stays
+});
+
+test('MA 2026-4717: two per-guest trips of one transfer become one (the key holder brought back), the others «merged — same transfer»; 2026-4791 (two airports) stays two', () => {
+  const bks = [maBooking('2026-4717', '2026-11-15', '2026-11-20', [{ name: 'Hoi Yi Law', arr: [30, 'U2 2621', '10:55'], dep: [30, 'U2 2286', '11:55'] }, { name: 'Tsz Yin Scarlet Tang', arr: [0, 'LS1129', '11:55'], dep: [0, 'EZY2286', '11:55'] }])];
+  const ma = (o) => ({ kind: 'airport_arrival', trip_date: '2026-11-15', booking_ref: '2026-4717', status: 'planned', source: 'bookinglayer', place: 'AGA', pax: 1, vehicle: 'Car', expected_price: 250, edited_fields: [], last_import_at: '2026-11-14', ...o });
+  const app = [
+    ma({ id: 'a0', import_key: 'bl:2026-4717:arr', status: 'cancelled', cancel_reason: 'split', guest_names: 'Hoi Yi Law, Tsz Yin Scarlet Tang', pax: 2 }),
+    ma({ id: 'a1', import_key: 'bl:2026-4717:arr:hoiyilaw', guest_names: 'Hoi Yi Law', trip_time: '10:55', flight: 'U22621' }),
+    ma({ id: 'a2', import_key: 'bl:2026-4717:arr:tszyinscarlettang', guest_names: 'Tsz Yin Scarlet Tang', trip_time: '11:55', flight: 'LS1129' }),
+    ma({ id: 'd1', kind: 'airport_departure', trip_date: '2026-11-20', import_key: 'bl:2026-4717:dep:hoiyilaw', guest_names: 'Hoi Yi Law' }),
+    ma({ id: 'd2', kind: 'airport_departure', trip_date: '2026-11-20', import_key: 'bl:2026-4717:dep:tszyinscarlettang', guest_names: 'Tsz Yin Scarlet Tang' }),
+  ];
+  const p = B.parse(csvPriced(bks), 'x.csv', '2026-11-17', CC.MA);
+  const plan = B.planTrips(p.trips, app, { today: '2026-11-17', exportDate: '2026-11-17', prices: (k, v, pl) => ({ AGA: { Car: 250, Minivan: 300 } })[pl][v] });
+  expect(plan.merge.map(m => [m.trip.key, m.survivor.id, m.others.map(a => a.id), m.patch.pax, m.patch.guest_names, m.patch.status || '', m.patch.import_key || ''])).toEqual([
+    ['bl:2026-4717:arr', 'a0', ['a1', 'a2'], 2, 'Hoi Yi Law, Tsz Yin Scarlet Tang', 'planned', ''],
+    ['bl:2026-4717:dep', 'd1', ['d2'], 2, 'Hoi Yi Law, Tsz Yin Scarlet Tang', '', 'bl:2026-4717:dep']]);
+  expect(plan.merge[0].patch.import_flags.some(f => TOG.test(f))).toBe(true);
+  expect(plan.merge[0].patch.expected_price).toBe(250);
+  // the merged-away trips are not «regrouped» or flagged by the import; nothing is held back
+  expect([plan.regroupCancel, plan.flagRemoved, plan.withheld]).toEqual([[], [], []]);
+  expect(plan.send.map(t => t.key).sort()).toEqual(['bl:2026-4717:arr', 'bl:2026-4717:dep']);
+  // Sri Lanka never merges a trip of an earlier day
+  const sl0 = B.planTrips(p.trips, app, { today: '2026-11-17', exportDate: '2026-11-17', mergePast: false });
+  expect(sl0.merge.map(m => m.trip.key)).toEqual(['bl:2026-4717:dep']);
+  expect(sl0.mergeInfo.map(m => m.trip.key)).toEqual(['bl:2026-4717:arr']);
+  // two airports: two trips, nothing merged
+  const two = B.parse(csvPriced([{ ...maBooking('2026-4791', '2026-10-26', '2026-11-02', [{ name: 'Rosemary Keogh', arr: [30, '', ''], dep: [30, '', ''] }]),
+    lines: [{ p: MA_PKG, person: 'Rosemary Keogh', start: '2026-10-26', end: '2026-11-02' }, { p: MA_PKG, person: 'Nina Van Nieuwkoop', start: '2026-10-26', end: '2026-11-02' },
+      { p: TO('Agadir'), person: 'Rosemary Keogh', start: '2026-10-26', price: 30 }, { p: TO('Marrakesh'), person: 'Nina Van Nieuwkoop', start: '2026-10-26', price: 240 }],
+    guests: [{ name: 'Rosemary Keogh' }, { name: 'Nina Van Nieuwkoop' }] }]), 'x.csv', '2026-11-17', CC.MA).trips;
+  expect(two.map(t => [t.place, t.guests]).sort()).toEqual([['AGA', ['Rosemary Keogh']], ['RAK', ['Nina Van Nieuwkoop']]]);
+});

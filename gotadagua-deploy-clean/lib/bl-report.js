@@ -485,12 +485,50 @@
     const exp = [o.exportDate, today].filter(Boolean).sort().pop();
     const app = (appTrips || []).filter(t => t.kind === 'airport_arrival' || t.kind === 'airport_departure');
     const byKey = new Map(app.filter(t => t.import_key).map(t => [t.import_key, t]));
-    const plan = { send: [], create: [], update: [], same: [], revive: [], untouched: [], covered: [], past: [], regroupCancel: [], flagRemoved: [], notInReport: [], refsPresent: o.refsPresent || [...new Set(trips.map(t => t.booking_ref))] };
+    const plan = { send: [], create: [], update: [], same: [], revive: [], untouched: [], covered: [], past: [], regroupCancel: [], flagRemoved: [], notInReport: [], fills: [], conflicts: [], refsPresent: o.refsPresent || [...new Set(trips.map(t => t.booking_ref))] };
     const doneByTime = t => `${t.trip_date}T${t.trip_time || '23:59'}` < now;
+    const withPrice = t => { const price = presetOf(o.prices, t.kind, t.vehicle, t.place); return { ...t, flags: (t.flags || []).slice(), ...(price != null ? { expected_price: price } : {}) }; };
+    // ── One transfer kept as two trips (MA 2026-4717, 17 Nov 2026): the report makes it one trip, the app has a live trip
+    // per guest under per-guest keys. One trip survives with everyone (the one holding the report's key — brought back
+    // when an import had cancelled it — else the paid guest's), the others become «merged» (merged_into the survivor,
+    // «merged — same transfer»): never two trips owed for one transfer. A paid trip is never merged; a camp with
+    // mergePast: false (Sri Lanka) never merges a trip of an earlier day.
+    plan.merge = []; plan.mergeInfo = [];
+    const mergedAway = new Set();
+    trips.forEach(t0 => {
+      const live = app.filter(a => a.booking_ref === t0.booking_ref && a.kind === t0.kind && a.trip_date === t0.date && a.place === t0.place && ['planned', 'sent', 'confirmed', 'done'].includes(a.status));
+      if (live.length < 2) return;
+      const names = new Set((t0.guests || []).map(nk));
+      if (!live.every(a => String(a.guest_names || '').split(/\s*,\s*/).filter(Boolean).every(n => names.has(nk(n))))) return;
+      if (live.some(a => a.payment_entry_id)) { plan.mergeInfo.push({ trip: t0, app: live, why: 'one of them is paid — merge by hand' }); return; }
+      if (t0.date < today && o.mergePast === false) { plan.mergeInfo.push({ trip: t0, app: live, why: 'an earlier day: this camp never changes past trips' }); return; }
+      const t = withPrice(t0); const keyRow = byKey.get(t.key);
+      let survivor = null;
+      if (keyRow && live.includes(keyRow)) survivor = keyRow;
+      else if (keyRow && keyRow.status === 'cancelled' && ['bookinglayer', 'split'].includes(keyRow.cancel_reason || '') && !keyRow.payment_entry_id) survivor = keyRow;
+      else if (!keyRow) survivor = live.find(a => nk(a.guest_names).includes(nk((t.guests || [])[0]))) || live[0];
+      if (!survivor) { plan.mergeInfo.push({ trip: t, app: live, why: `the key ${t.key} belongs to a ${keyRow.status} trip` }); return; }
+      const ed = new Set(survivor.edited_fields || []);
+      const patch = {};
+      const put = (f, v) => { if (!ed.has(f) && v != null && v !== '') patch[f] = v; };
+      put('guest_names', (t.guests || []).join(', ')); put('pax', t.pax); put('vehicle', t.vehicle); put('trip_time', t.time); put('flight', t.flight);
+      if (t.expected_price != null) put('expected_price', t.expected_price);
+      if (t.phone) put('guest_phone', t.phone);
+      patch.import_flags = t.flags;
+      if (survivor.import_key !== t.key) patch.import_key = t.key;
+      if (survivor.status === 'cancelled') { patch.status = 'planned'; patch.cancel_reason = null; }
+      const others = live.filter(a => a !== survivor);
+      others.forEach(a => mergedAway.add(a.id)); mergedAway.add(survivor.id);   // neither is the import's to regroup or flag
+      plan.merge.push({ trip: t, survivor, others, patch });
+      byKey.set(t.key, { ...survivor, ...patch, import_key: t.key });
+    });
     trips.forEach(t => {
-      const price = presetOf(o.prices, t.kind, t.vehicle, t.place);
-      const tt = price != null ? { ...t, expected_price: price } : t;
+      const tt = withPrice(t);
       const k = byKey.get(t.key);
+      if (plan.merge.some(m => m.trip.key === t.key && m.trip.booking_ref === t.booking_ref)) {
+        // merged above with the report's values: sent so the import keeps its key (a trip of an earlier day is left alone by the RPC)
+        plan.send.push(tt); return;
+      }
       const other = app.filter(a => a.import_key !== t.key && a.booking_ref === t.booking_ref && a.kind === t.kind && a.trip_date === t.date && (HAPPENED.includes(a.status) || a.payment_entry_id));
       if (!k) {
         if (other.length) { plan.covered.push({ trip: tt, app: other }); return; }
@@ -504,11 +542,18 @@
       const diffs = tripDiffs(tt, k, false);
       if (why) { plan.untouched.push({ trip: tt, app: k, why, diffs }); return; }
       const changes = tripDiffs(tt, k, true);
-      if (k.status === 'cancelled') { plan.revive.push({ trip: tt, app: k, changes }); return; }
-      (changes.length ? plan.update : plan.same).push({ trip: tt, app: k, changes });
+      // Merge, never blank (Miguel, 17 Nov 2026): an empty report value never blanks (the RPC coalesces); a field typed by
+      // hand stays, and a different report value becomes a note on the trip — «Bookinglayer says: time 11:55 — use it?».
+      const conflicts = changes.filter(c => c.kept); const fills = changes.filter(c => !c.kept && (c.app === '' || c.app == null));
+      conflicts.forEach(c => tt.flags.push(blSays(c.field, c.report)));
+      const entry = { trip: tt, app: k, changes: changes.filter(c => !c.kept), fills, conflicts };
+      if (fills.length) plan.fills.push(entry);
+      if (conflicts.length) plan.conflicts.push(entry);
+      if (k.status === 'cancelled') { plan.revive.push(entry); return; }
+      (entry.changes.length ? plan.update : plan.same).push(entry);
     });
     const pre = k => String(k || '').split(':').slice(0, 3).join(':');
-    const regroupable = (a, ks) => a.source === 'bookinglayer' && LIVE.includes(a.status) && !a.payment_entry_id && a.import_key && !ks.has(a.import_key) && !isAdded(a);
+    const regroupable = (a, ks) => !mergedAway.has(a.id) && a.source === 'bookinglayer' && LIVE.includes(a.status) && !a.payment_entry_id && a.import_key && !ks.has(a.import_key) && !isAdded(a);
     // The RPC's «regrouped» pass cancels every live trip of the same booking + direction that the file does not
     // name, with no date test. A trip of an earlier day must never change: the keys that would cancel it are held back.
     plan.withheld = [];
@@ -524,7 +569,7 @@
     const keys = new Set(plan.send.map(t => t.key));
     const prefixes = new Set([...keys].map(pre));
     app.forEach(a => {
-      const liveBl = a.source === 'bookinglayer' && LIVE.includes(a.status) && !a.payment_entry_id && a.import_key && !keys.has(a.import_key) && !isAdded(a);
+      const liveBl = !mergedAway.has(a.id) && a.source === 'bookinglayer' && LIVE.includes(a.status) && !a.payment_entry_id && a.import_key && !keys.has(a.import_key) && !isAdded(a);
       if (liveBl && prefixes.has(pre(a.import_key))) { plan.regroupCancel.push(a); return; }
       if (liveBl && plan.refsPresent.includes(a.booking_ref) && a.trip_date >= exp && !(a.import_flags || []).includes('transfer removed in Bookinglayer — cancel it?')) plan.flagRemoved.push(a);
     });
@@ -532,6 +577,13 @@
       && (!a.booking_checkout || a.booking_checkout <= o.window.to)).forEach(a => plan.notInReport.push(a));
     return plan;
   }
+  const nk = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+  // «Bookinglayer says: time 11:55 — use it?» (a field typed by hand in the app, a different value in the report).
+  const FIELD_WORD = { trip_time: 'time', flight: 'flight', trip_date: 'date', pax: 'people', place: 'airport', guest_names: 'guests', guest_phone: 'phone', vehicle: 'vehicle', expected_price: 'price' };
+  const WORD_FIELD = Object.fromEntries(Object.entries(FIELD_WORD).map(([f, w]) => [w, f]));
+  const blSays = (field, value) => `Bookinglayer says: ${FIELD_WORD[field] || field} ${value} — use it?`;
+  const BL_SAYS_RE = /^Bookinglayer says: (\w+) (.+) — use it\?$/;
+  function blSaysOf(flag) { const m = BL_SAYS_RE.exec(String(flag || '')); return m ? { word: m[1], field: WORD_FIELD[m[1]] || m[1], value: m[2] } : null; }
   // The values the RPC would write (edited fields kept, an empty value never blanks) vs what the app has.
   function tripDiffs(t, a, rpc) {
     const ed = new Set(rpc ? (a.edited_fields || []) : []);
@@ -547,8 +599,13 @@
     Object.keys(n).forEach(f => {
       const av = f === 'expected_price' ? Number(a[f]) : f === 'pax' ? Number(a[f]) : (a[f] == null ? '' : String(a[f]));
       const nv = f === 'expected_price' || f === 'pax' ? Number(n[f]) : (n[f] == null ? '' : String(n[f]));
-      if (av !== nv) out.push({ field: f, app: a[f] == null ? '' : a[f], report: n[f] == null ? '' : n[f], kept: ed.has(f) });
+      if (av !== nv) out.push({ field: f, app: a[f] == null ? '' : a[f], report: n[f] == null ? '' : n[f], kept: false });
     });
+    // a field typed by hand: the RPC keeps it; a different, non-empty report value is a conflict (shown, never applied)
+    const r = { trip_date: t.date, trip_time: t.time, flight: t.flight, pax: t.pax, place: t.place, guest_names: (t.guests || []).join(', '), guest_phone: t.phone, vehicle: t.vehicle, expected_price: t.expected_price };
+    ed.forEach(f => { if (!(f in r)) return; const rv = r[f]; if (rv == null || rv === '') return;
+      const same = f === 'pax' || f === 'expected_price' ? Number(rv) === Number(a[f]) : String(rv) === String(a[f] == null ? '' : a[f]);
+      if (!same) out.push({ field: f, app: a[f] == null ? '' : a[f], report: rv, kept: true }); });
     return out;
   }
 
@@ -560,12 +617,33 @@
     return '';
   }
   const yogaOf = g => /yoga/i.test(`${g.activities || ''} ${g.packages || ''}`);
+  // camp_week_guests fields an empty report value never blanks. Not here: status, due, partner (booking facts — an
+  // empty Company/Channel means a direct booking) and the dates.
+  const MERGE_FIELDS = ['phone', 'level', 'diet', 'allergies', 'bed_number', 'accommodation', 'packages', 'activities', 'arrival_time', 'arrival_flight', 'departure_time', 'departure_flight'];
   function planGuests(rows, appGuests, o) {
     o = o || {};
     const app = new Map((appGuests || []).map(g => [`${g.booking_ref}\u0000${g.guest_key}`, g]));
     const mine = new Set(rows.map(g => `${g.booking_ref}\u0000${g.guest_key}`));
-    const plan = { add: [], change: [], same: [], phoneFilled: [], statusDue: [], appOnly: [] };
+    const plan = { add: [], change: [], same: [], phoneFilled: [], statusDue: [], appOnly: [], fills: [], conflicts: [], kept: [], rows: [] };
     const norm = v => v == null ? '' : String(v).trim();
+    rows = rows.map(g0 => {
+      const a = app.get(`${g0.booking_ref}\u0000${g0.guest_key}`);
+      if (!a) { plan.rows.push(g0); return g0; }
+      // Merge, never blank (Miguel, 17 Nov 2026): an empty report field keeps the stored value; a filled one updates it.
+      const g = { ...g0, raw: { ...(g0.raw || {}) } }; const fill = [], kept = [];
+      MERGE_FIELDS.forEach(f => {
+        const n = norm(g[f]), x = norm(a[f]);
+        if (!n && x) { g[f] = a[f]; kept.push({ field: f, app: x }); }
+        else if (n && !x) fill.push({ field: f, report: n });
+      });
+      if (!norm(g.raw.transfer_comment) && a.raw && norm(a.raw.transfer_comment)) { g.raw.transfer_comment = a.raw.transfer_comment; kept.push({ field: 'transfer comment', app: norm(a.raw.transfer_comment) }); }
+      // «Not here» set by hand in Week: kept; the report's status is a question.
+      if (a.booking_status === 'not_here' && g.booking_status !== 'not_here') { plan.conflicts.push({ g, a, field: 'status', report: g.booking_status, app: 'not_here', note: `Bookinglayer says: ${g.booking_status.replace(/_/g, ' ')} — use it?` }); g.booking_status = 'not_here'; }
+      if (fill.length) plan.fills.push({ g, a, fields: fill });
+      if (kept.length) plan.kept.push({ g, a, fields: kept });
+      plan.rows.push(g);
+      return g;
+    });
     rows.forEach(g => {
       const a = app.get(`${g.booking_ref}\u0000${g.guest_key}`);
       if (!a) { plan.add.push(g); return; }
@@ -591,5 +669,5 @@
     return plan;
   }
 
-  return { TOGETHER_FLAG, paidTwiceFlag, flightNo, priceOf, PRICE_HEADER, COL, isReportHeader, productKind, read, model, parse, guestRows, guestAudit, importWarnings, lessonsByDay, planTrips, planGuests, tripDiffs, courseOf, exportDateOf };
+  return { blSays, blSaysOf, BL_SAYS_RE, MERGE_FIELDS, TOGETHER_FLAG, paidTwiceFlag, flightNo, priceOf, PRICE_HEADER, COL, isReportHeader, productKind, read, model, parse, guestRows, guestAudit, importWarnings, lessonsByDay, planTrips, planGuests, tripDiffs, courseOf, exportDateOf };
 });
