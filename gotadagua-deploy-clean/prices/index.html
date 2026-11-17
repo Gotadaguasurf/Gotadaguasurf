@@ -354,6 +354,8 @@ details.rooms-card[open] .rooms-caret{transform:rotate(180deg)}
 
 /* PDF dialog */
 .pdf-sections{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-2)}
+.pdf-sections .mtoggle{margin-top:0;align-items:center}
+.pdf-sections .mtoggle input{margin-top:0}
 @media (max-width:700px){ .pdf-sections{grid-template-columns:1fr} }
 </style>
 </head>
@@ -566,7 +568,7 @@ AppShell.mount('appNav', { app:'prices', tabAttr:'data-view', tabsId:'viewToggle
   <div class="modal" style="max-width:520px">
     <div class="mhdr">
       <div class="mhdr-title" id="pdfTitle">Create price list PDF</div>
-      <div class="mhdr-sub">A4, ready to send to guests and partners. Prices come from this page, never typed again.</div>
+      <div class="mhdr-sub">A4, ready to send to agencies and partners. Prices come from this page, never typed again.</div>
       <button class="mclose" type="button" aria-label="Close" onclick="$('pdfOv').classList.remove('open')">×</button>
     </div>
     <div class="mbody">
@@ -590,7 +592,8 @@ AppShell.mount('appNav', { app:'prices', tabAttr:'data-view', tabsId:'viewToggle
       <div class="micro" style="margin-bottom:8px">Include</div>
       <div>
         <div class="pdf-sections" id="pdf_sections">
-          <label class="mtoggle"><input type="checkbox" value="accommodation" checked><span class="label">Accommodation &amp; seasons</span></label>
+          <label class="mtoggle"><input type="checkbox" value="accommodation" checked><span class="label">Accommodation (weekly)</span></label>
+          <label class="mtoggle"><input type="checkbox" value="flexible"><span class="label">Flexible pack (per night)</span></label>
           <label class="mtoggle"><input type="checkbox" value="surf" checked><span class="label">Surf packs &amp; lessons</span></label>
           <label class="mtoggle"><input type="checkbox" value="tours" checked><span class="label">Tours &amp; activities</span></label>
           <label class="mtoggle"><input type="checkbox" value="transfers" checked><span class="label">Transfers</span></label>
@@ -2862,6 +2865,7 @@ window.openPdfDialog = ()=>{
   try {
     const saved = JSON.parse(localStorage.getItem(PDF_PREF_KEY) || 'null');
     if (Array.isArray(saved)) document.querySelectorAll('#pdf_sections input').forEach(i => { i.checked = saved.includes(i.value); });
+    const flex = document.querySelector('#pdf_sections input[value="flexible"]'); if (flex) flex.checked = false;   // always starts off (Miguel 17 Nov 2026)
   } catch (_) {}
   $('pdfOv').classList.add('open');
   setTimeout(() => $('pdfCreate')?.focus(), 30);

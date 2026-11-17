@@ -180,6 +180,25 @@ test('«Price list PDF» → «Create PDF» opens the print page for this camp w
   const u = new URL(popup.url());
   expect(u.pathname).toBe('/prices/pricelist.html');
   expect(Object.fromEntries(u.searchParams)).toEqual({ location: 'sri-lanka', period: 'upcoming', sections: 'accommodation,surf,tours,transfers,addons', print: '1' });
+  await popup.close();
+  // «Flexible pack (per night)» can be ticked, but always opens unticked — even after it was used last time
+  await page.locator('#pdfBtn').click();
+  const flex = page.locator('#pdf_sections input[value="flexible"]');
+  await expect(flex).not.toBeChecked();
+  await flex.check();
+  const [p2] = await Promise.all([context.waitForEvent('page'), page.locator('#pdfCreate').click()]);
+  expect(new URL(p2.url()).searchParams.get('sections')).toBe('accommodation,flexible,surf,tours,transfers,addons');
+  await p2.close();
+  await page.locator('#pdfBtn').click();
+  await expect(flex).not.toBeChecked();
+});
+
+test('price list model: per-night (Flexible) packs only when «flexible» is chosen', () => {
+  const packsOf = (sections) => PriceList.buildModel({ camps: [campFromData('portugal')], period: 'all', today: '2026-11-17', sections }).camps[0].accommodation.map(p => p.flex);
+  expect(packsOf(['accommodation'])).not.toContain(true);
+  expect(packsOf(['accommodation', 'flexible'])).toContain(true);
+  expect(packsOf(['accommodation', 'flexible'])).toContain(false);
+  expect(packsOf(['flexible']).every(Boolean)).toBe(true);
 });
 
 // ── the price list itself ────────────────────────────────────────────────────
@@ -219,7 +238,7 @@ test('price list page: A4 print with no overflow (long names, 5 sharing columns)
   } });
   await page.addInitScript(() => { window.print = () => { window.__printed = true; }; });
   const errors = collectFatalErrors(page);
-  await page.goto('/prices/pricelist.html?location=all&period=all&sections=accommodation,surf,tours,transfers,addons,bar&print=1');
+  await page.goto('/prices/pricelist.html?location=all&period=all&sections=accommodation,flexible,surf,tours,transfers,addons,bar&print=1');
   await page.waitForFunction(() => window.__priceListReady === true, null, { timeout: 15000 });
   await expect.poll(() => page.evaluate(() => window.__printed === true)).toBe(true);
   await expect(page).toHaveTitle('Gota Dagua price list - All camps 2026–2027');

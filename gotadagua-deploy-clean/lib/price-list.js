@@ -135,9 +135,11 @@
       basis: flex ? (nights > 1 ? `Per person, ${nights} nights` : 'Per person, per night') : (pack.price_basis === 'per_person_per_week' ? 'Per person, 7 nights' : 'Per person') };
   }
 
-  function accommodationModel(accom, period, today) {
+  // kinds: { weekly, flex } — per-night packs only when «Flexible pack» is ticked in the dialog (off by default, Miguel 17 Nov 2026)
+  function accommodationModel(accom, period, today, kinds) {
+    const k = kinds || { weekly: true, flex: true };
     if (!accom || !(accom.packs || []).length) return [];
-    const packs = (accom.packs || []).filter(p => p.active !== false).slice().sort(bySort);
+    const packs = (accom.packs || []).filter(p => p.active !== false && (p.price_basis === 'per_person_per_night' ? k.flex : k.weekly)).slice().sort(bySort);
     const out = [];
     for (const pack of packs) {
       const m = accomMatrix({ pack, seasons: accom.seasons, rooms: accom.rooms, prices: accom.prices, today, period, shortLabels: true });
@@ -230,7 +232,7 @@
     const parts = [];
     let accommodation = [];
     let seasons = null, calendar = [];
-    if (sections.includes('accommodation')) { accommodation = accommodationModel(camp.accom, period, today); if (accommodation.length) { seasons = seasonsModel(camp.accom, period, today); calendar = seasonCalendar(camp.accom, period, today); } }
+    if (sections.includes('accommodation') || sections.includes('flexible')) { accommodation = accommodationModel(camp.accom, period, today, { weekly: sections.includes('accommodation'), flex: sections.includes('flexible') }); if (accommodation.length) { seasons = seasonsModel(camp.accom, period, today); calendar = seasonCalendar(camp.accom, period, today); } }
     for (const def of SECTION_DEFS) {
       if (!sections.includes(def.key)) continue;
       if (def.key === 'transfers') { const rows = transferRows(camp.catalog); if (rows.length) parts.push({ key: def.key, title: def.title, kind: 'transfers', rows }); continue; }
