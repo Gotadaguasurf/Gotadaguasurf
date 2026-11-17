@@ -91,14 +91,14 @@
       if (!c) { const hit = NAME_TO_CODE.find(([re]) => re.test(p)); c = hit ? hit[1] : null; }
       if (c && !codes.includes(c)) codes.push(c);
     });
-    if (!codes.length) return { code: '', name: '', unknown: parts };
+    if (!codes.length) return { code: '', name: '', unknown: parts, codes };
     let code = codes[0];
     if (codes.length > 1) {
       const pk = String(packages || '').toLowerCase();
       const byPkg = codes.find(c => { const n = (CODE_TO_NAME[c] || '').toLowerCase(); return n && pk && (pk.includes(n) || n.split(/\s+/).some(t => t.length > 3 && !['surf', 'camp', 'the'].includes(t) && pk.includes(t))); });
       code = byPkg || STAY_FIRST.find(c => codes.includes(c)) || code;
     }
-    return { code, name: CODE_TO_NAME[code] || code, unknown: [] };
+    return { code, name: CODE_TO_NAME[code] || code, unknown: [], codes };
   }
 
   // «1.234,56» / «1,234.56» / «€ 30.00» → number
@@ -136,6 +136,7 @@
       const viaPartner = ((via.match(/\bvia\s+(.+)$/i) || [])[1] || '').trim();
       const ci = dateMs(get('checkin')), co = dateMs(get('checkout'));
       rows.push({
+        locationCodes: loc.codes || [],
         line: n + 2, ref, guest: get('bookerName'), status: statusKey(get('status') || 'confirmed'),
         checkinMs: ci, checkoutMs: co, nights: (ci && co) ? Math.max(1, Math.round((co - ci) / 86400000)) : (num(get('nights')) || 7),   // = the HQ import
         pax: parseInt(get('pax'), 10) || 1, locationCode: loc.code, locationName: loc.name, locationTags: get('locations'),
@@ -185,10 +186,17 @@
       if (foreign && !prev) { out.held.push({ ref: r.ref, why: `new booking in ${r.currency} (${gross}) — set the euro value by hand, then the import keeps it` }); return; }
       const raw = { ...prp };
       OWN_RAW.forEach(k => { raw[k] = k === 'partner' ? (partnerName || 'Direct Bookings') : r[k]; });
+      // the Bookings export stamped the hour in checkinMs / checkoutMs; the same day keeps the stored value
+      const sameDay = k => prp[k] != null && raw[k] != null && Math.floor(Number(prp[k]) / 86400000) === Math.floor(raw[k] / 86400000);
+      const keptDays = ['checkinMs', 'checkoutMs'].filter(k => { if (sameDay(k)) { raw[k] = prp[k]; return true; } return false; });
+      if (keptDays.length === 2 && prp.nights != null) raw.nights = prp.nights;   // same stay: the stored night count stays
       raw.gross = gross;
       // the currency: the app's mark wins (CHF / USD bookings carry their euro value in total)
       if (prp.currency) raw.currency = prp.currency;
       else if (foreign) { raw.currency = r.currency; raw['total_' + r.currency.toLowerCase()] = gross; }
+      else delete raw.currency;   // euros: no mark (the HQ import never wrote one)
+      // «List of locations» as Bookinglayer wrote it; locationTags keeps the codes the HQ import stored («LK», «SC, TRANS»)
+      raw.locationList = r.locationTags; raw.locationTags = prp.locationTags || r.locationCodes.join(', ');
       if (!prp.bookingSource) raw.bookingSource = sourceFor(r, partnerName);
       if (!prp.source) raw.source = 'bl-revenue-report';
       if (!r.locationCode && prp.locationCode) raw.locationCode = prp.locationCode;

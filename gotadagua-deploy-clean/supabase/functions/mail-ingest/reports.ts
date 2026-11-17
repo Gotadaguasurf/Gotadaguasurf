@@ -16,6 +16,7 @@
 //  Archiving = remove the INBOX label, only with settings.archive on, outside dry run, and when the mailbox token
 //  has gmail.modify (the connection made before 17 Nov is read-only: reconnect with ?start=SECRET&modify=1).
 // ════════════════════════════════════════════════════════════════════════════
+import '../_shared/lib-globals.ts'          // first: the libraries below register themselves on self
 import '../_shared/lib/camp-config.js'
 import '../_shared/lib/guests-trips.js'
 import '../_shared/lib/bl-report.js'
