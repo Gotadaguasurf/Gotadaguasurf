@@ -64,6 +64,30 @@
 #invListBody th.sel input,#invListBody td.sel input{display:none}
 #invListBody.select-mode th.sel,#invListBody.select-mode td.sel{padding-left:8px}
 #invListBody.select-mode th.sel input,#invListBody.select-mode td.sel input{display:inline-block}
+/* Expenses on a phone (≤640px): each row is a small card like Month close — supplier + amount on top,
+   date · category · location · PDF and the row buttons under it. Invoice no., Payment and Bank open with Edit. */
+@media (max-width: 640px){
+  #invListBody table{min-width:0 !important;table-layout:auto}
+  #invListBody colgroup,#invListBody thead{display:none}
+  #invListBody table,#invListBody tbody{display:block;width:100%}
+  #invListBody tbody tr{display:flex;flex-wrap:wrap;align-items:center;gap:2px 10px;padding:12px 14px;border-bottom:1px solid var(--border)}
+  #invListBody tbody tr>td{display:block;padding:0 !important;border:0 !important;min-width:0;white-space:normal !important;text-align:left !important;background:transparent !important}
+  #invListBody tr.inv-r>td:nth-child(1),#invListBody tr.inv-r>td:nth-child(4),#invListBody tr.inv-r>td:nth-child(7),#invListBody tr.inv-r>td:nth-child(8){display:none}
+  #invListBody.select-mode tr.inv-r>td.sel{display:block;order:0;width:auto}
+  #invListBody tr.inv-r>td:nth-child(3){order:1;flex:1 1 0;align-self:flex-start}
+  #invListBody tr.inv-r>td:nth-child(10){order:2;text-align:right !important;align-self:flex-start}
+  #invListBody tr.inv-r::before{content:'';order:3;flex:0 0 100%;height:0}
+  #invListBody tr.inv-r>td:nth-child(2){order:4;font-size:12px;color:var(--muted)}
+  #invListBody tr.inv-r>td:nth-child(5),#invListBody tr.inv-r>td:nth-child(6){order:5;font-size:12px;color:var(--muted)}
+  #invListBody tr.inv-r>td:nth-child(9){order:6}
+  #invListBody tr.inv-r>td:nth-child(11){order:7;margin-left:auto}
+  #invListBody tbody tr.row-selected,#invListBody tbody tr.dup,#invListBody tbody tr.due{background:var(--amber-bg)}
+  #invListBody tbody tr.row-selected{background:var(--ocean-soft)}
+  #invListBody .sup-name,#invListBody .sup-desc{white-space:normal;overflow-wrap:anywhere}
+  #invListBody tr.grp-row{justify-content:space-between;background:var(--surface-2);border-top:1px solid var(--border-2);padding:10px 14px}
+  #invListBody tr.grp-row>td.sel,#invListBody tr.grp-row>td:last-child{display:none}
+  #invListBody tr.empty-row>td{flex:1 1 100%;text-align:center !important}
+}
 .sup-cell{display:block;max-width:232px;overflow:hidden}
 #invListBody .sup-cell{max-width:none}
 .sup-name{display:block;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -4405,7 +4429,7 @@ async function renderInvoiceList(){
       isInterCo ? `<span class="badge badge-grey" title="Paid by ${escapeHtml(companyLabel(r.paying_company))}, not the location's usual company">paid by other company</span>` : '',
     ].filter(Boolean).join(' ');
     // Category and Location change in the row (like /suk/); everything else is edited in the form.
-    return `<tr class="${r.is_duplicate?'dup':''}${isSelected?' row-selected':''}" data-inv-id="${r.id}">
+    return `<tr class="inv-r${r.is_duplicate?' dup':''}${isSelected?' row-selected':''}" data-inv-id="${r.id}">
       <td class="sel"><input type="checkbox" class="row-check" data-id="${r.id}" ${isSelected?'checked':''} onchange="onRowCheck('${r.id}', this.checked)"></td>
       <td style="white-space:nowrap" title="${r.invoice_date}">${fmtDia(r.invoice_date)}</td>
       <td><div class="sup-cell"><span class="sup-name" title="${escapeHtml(r.company||'')}">${escapeHtml(r.company||'')}</span>${r.description?`<span class="sup-desc" title="${escapeHtml(r.description)}">${escapeHtml(r.description)}</span>`:''}${tags?`<span class="sup-tags">${tags}</span>`:''}${r.needs_review?`<span class="review-q">${escapeHtml(reviewQuestion(r.notes))}</span>`:''}</div></td>
