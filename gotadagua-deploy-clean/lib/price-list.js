@@ -22,7 +22,6 @@
   const CAMP_PLACE = { portugal: 'Costa da Caparica', morocco: 'Tamraght', 'sri-lanka': 'Ahangama', 'junior-camp': 'Junior Camp · Costa da Caparica', 'surf-school': 'Surf School · Costa da Caparica' };
   const CAMP_PHOTO = { portugal: ['loc-portugal', 'pack-portugal', ''], morocco: ['loc-morocco', 'pack-morocco', 'tour-morocco'],
     'sri-lanka': ['loc-srilanka', 'pack-srilanka', 'tour-srilanka'], 'junior-camp': ['loc-junior', 'loc-junior', ''], 'surf-school': ['pack-portugal', 'pack-portugal', ''] };   // the site's tour-portugal.jpg shows the Sri Lanka house: not used
-  const BOOK_URL = 'https://bookings.gotadaguasurf.com';
   const SECTION_LEAD = {
     accommodation: 'Prices per person. Pick your room — the season sets the price.',
     surf: 'From your first wave to your best one.',
@@ -78,6 +77,7 @@
   // (editable, with cell ids) and the price list (read-only). Money is one format per pack: per-night packs (or any
   // price with cents) always 2 decimals, weekly packs whole euros.
   const OCC_LABEL = (n, occs) => n === 1 ? 'Single use' : (n === 2 && !(occs || []).some(x => x > 2)) ? 'Sharing' : `${n} sharing`;
+  const OCC_SHORT = (n, occs) => n === 1 ? 'Single' : (n === 2 && !(occs || []).some(x => x > 2)) ? 'Shared' : `${n} share`;
   function packDecimals(pack, prices) {
     if (pack && pack.price_basis === 'per_person_per_night') return 2;
     return (prices || []).some(p => Math.round(Number(p.sell_price) * 100) % 100 !== 0) ? 2 : 0;
@@ -120,7 +120,7 @@
       const cells = cols.map(c => occs.map(occ => {
         const p = priceAt(c.id, r.id, occ);
         const v = p ? Number(p.sell_price) * nights : 0;
-        return { occ, label: occs.length > 1 ? OCC_LABEL(occ, occs) : '', price: v, text: v ? moneyFixed(v, (p && p.currency) || cur, dec) : '' };
+        return { occ, label: occs.length > 1 ? (o.shortLabels ? OCC_SHORT : OCC_LABEL)(occ, occs) : '', price: v, text: v ? moneyFixed(v, (p && p.currency) || cur, dec) : '' };
       }));
       return { id: r.id, room: r.label, desc: r.description || '', occs, cells, any: cells.some(cs => cs.some(x => x.price)) };
     }).filter(r => o.keepEmpty || r.any);
@@ -271,14 +271,15 @@
     const logo = (opts && opts.logo) || '';
     const logoNavy = logo.replace(/#fff4d5/gi, '#27384a');
     const c = model.contact;
-    const contact = `<span>${esc(c.phone)}</span><span>${esc(c.email)}</span><span>${esc(c.web)}</span>`;
+    // the price list goes to agencies and partners (guests book on the website): no «Book now», a reservations line instead
+    const partnerLine = `Reservations &amp; partnerships: <a href="mailto:${esc(c.email)}">${esc(c.email)}</a> · ${esc(c.phone)}`;
     const one = model.camps.length === 1 ? model.camps[0] : null;
     const coverPhotos = (one ? [one.slug] : model.camps.map(x => x.slug).filter(sl => CAMP_PHOTO[sl]).slice(0, 3))
       .map(sl => `<div class="pl-cover-photo" style="background-image:url('/assets/pricelist/${(CAMP_PHOTO[sl] || CAMP_PHOTO.portugal)[0]}.jpg')"></div>`).join('');
     const cover = `<section class="pl-cover">
       <div class="pl-cover-photos n${one ? 1 : Math.min(3, model.camps.length) || 1}">${coverPhotos}</div>
       <div class="pl-cover-shade"></div>
-      <div class="pl-cover-top"><div class="pl-cover-logo">${logo}</div><a class="pl-book" href="${BOOK_URL}">Book now</a></div>
+      <div class="pl-cover-top"><div class="pl-cover-logo">${logo}</div><span class="pl-cover-for">For agencies &amp; partners</span></div>
       <div class="pl-cover-main">
         <div class="pl-kicker">Price list ${esc(model.period)}</div>
         <h1>${esc(model.title)}</h1>
@@ -286,7 +287,7 @@
         ${model.camps.length > 1 ? `<div class="pl-place">${model.camps.map(x => esc(x.label)).join(' · ')}</div>` : ''}
         <p class="pl-cover-tag">Where waves become stories and people become friends.</p>
       </div>
-      <div class="pl-cover-foot"><div class="pl-contact">${contact}</div><div class="pl-generated">Prices as of ${esc(model.generated)}</div></div>
+      <div class="pl-cover-foot"><div class="pl-reserv">${partnerLine}</div><div class="pl-generated">Prices as of ${esc(model.generated)}</div></div>
     </section>`;
     if (!model.camps.length) return cover + `<section class="pl-camp"><p class="pl-empty">Nothing to print: no published prices in the chosen camp, dates and sections.</p></section>`;
     const camps = model.camps.map(camp => {
@@ -308,10 +309,10 @@
     }).join('');
     const end = `<section class="pl-end">
       <div class="pl-end-logo">${logo}</div>
-      <div class="pl-end-title">Ready to catch some waves?</div>
-      <p>Book online or write to us.</p>
-      <a class="pl-book big" href="${BOOK_URL}">Book now</a>
-      <div class="pl-contact">${contact}</div>
+      <div class="pl-end-title">Questions or group requests?</div>
+      <p>Write to us.</p>
+      <div class="pl-reserv">${partnerLine}</div>
+      <div class="pl-contact"><span>${esc(c.web)}</span></div>
       <div class="pl-generated">Prices as of ${esc(model.generated)}. Gota Dagua surf camps in Portugal, Morocco and Sri Lanka.</div>
     </section>`;
     return `<div class="pl-running">${logoNavy}<span>gotadaguasurf.com · ${esc(c.email)} · ${esc(c.phone)}</span></div>` + cover + camps + end;

@@ -115,29 +115,55 @@ tr.drag-over-top td{box-shadow:inset 0 2px 0 0 var(--ocean)}
 tr.drag-over-bottom td{box-shadow:inset 0 -2px 0 0 var(--ocean)}
 .view-list .drag-col{display:none}
 
-/* seasons timeline */
+/* seasons card: plain sentence, rolling 15-month strip, seasons × years table (phones: a list) */
+:root{--season-low:#8a965a;--season-mid:#d0a320;--season-high:#c63c12;--season-special:#3f3d1b;--season-ink:#3f3d1b;--season-bone:#f6f0d8}
 .season-card{margin-bottom:var(--sp-5)}
-.tl-year{display:grid;grid-template-columns:44px 1fr;gap:var(--sp-3);align-items:center;margin-bottom:10px}
-.tl-year-lbl{font-size:12.5px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums}
-.tl-track{position:relative;height:28px;border-radius:var(--r-xs);background:repeating-linear-gradient(135deg,var(--surface-2) 0 6px,#eef2f6 6px 12px);border:1px solid var(--border);overflow:hidden}
-.tl-seg{position:absolute;top:0;bottom:0;display:flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;overflow:hidden;white-space:nowrap;border-right:1px solid rgba(255,255,255,.7)}
-.tl-seg.low{background:var(--green-bg);color:var(--green)}
-.tl-seg.mid{background:var(--amber-bg);color:var(--amber)}
-.tl-seg.high{background:var(--red-bg);color:var(--red)}
-.tl-seg.special,.tl-seg.other{background:var(--ocean-soft);color:var(--ocean)}
-.tl-today{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--navy);border-radius:1px}
-.tl-months{display:grid;grid-template-columns:repeat(12,1fr);font-size:10.5px;color:var(--muted-2);margin:0 0 6px 56px}
-.tl-legend{display:flex;flex-wrap:wrap;gap:var(--sp-2) var(--sp-4);margin-top:var(--sp-3)}
-.tl-leg{display:flex;gap:8px;align-items:baseline;font-size:12.5px;color:var(--muted);line-height:1.45}
-.tl-leg b{color:var(--ink);font-weight:600}
-@media (max-width:700px){ .tl-months span:nth-child(even){visibility:hidden} .tl-seg{font-size:0} .tl-leg{flex-direction:column;gap:4px} }
+.season-now{font-size:15px;color:var(--ink);line-height:1.9;margin:0 0 var(--sp-4)}
+.season-now .season-pill{vertical-align:1px;margin:0 2px}
+.season-now .arrow{color:var(--muted-2);margin:0 4px}
+.closed-tag{display:inline-flex;height:22px;align-items:center;padding:0 8px;border-radius:var(--r-xs);background:var(--surface-2);border:1px dashed var(--border-2);color:var(--muted);font-size:12px;font-weight:600}
+.tl-wrap{position:relative;margin:28px 0 var(--sp-4)}
+.tl-strip{position:relative;height:40px;border-radius:var(--r-sm);overflow:visible;background:var(--surface-2)}
+.tl-band{position:absolute;top:0;bottom:0;border:0;padding:0;margin:0;cursor:pointer;display:flex;align-items:center;justify-content:center;font:600 12px 'Outfit',sans-serif;overflow:hidden;white-space:nowrap;box-shadow:inset -2px 0 0 var(--surface)}
+.tl-band:first-child{border-radius:var(--r-sm) 0 0 var(--r-sm)}
+.tl-band:nth-last-child(2){border-radius:0 var(--r-sm) var(--r-sm) 0}
+.tl-band.low{background:var(--season-low);color:#fff}
+.tl-band.mid{background:var(--season-mid);color:var(--season-ink)}
+.tl-band.high{background:var(--season-high);color:#fff}
+.tl-band.special,.tl-band.other{background:var(--season-special);color:var(--season-bone)}
+.tl-band.closed{background:var(--surface-2);color:var(--muted);box-shadow:inset 0 0 0 1px var(--border-2),inset -2px 0 0 var(--surface)}
+.tl-band.unset{background:transparent;color:var(--muted-2);box-shadow:inset 0 0 0 1px dashed var(--border);border:1px dashed var(--border-2)}
+.tl-band:hover,.tl-band.sel{filter:brightness(1.06);outline:2px solid var(--ocean);outline-offset:-2px;z-index:1}
+.tl-today{position:absolute;top:-22px;bottom:-4px;width:0;border-left:2px solid var(--ink);z-index:2;pointer-events:none}
+.tl-today span{position:absolute;top:0;left:4px;font-size:11px;font-weight:700;color:var(--ink);white-space:nowrap;background:var(--surface);padding:0 3px;border-radius:3px;line-height:16px}
+.tl-months{display:grid;margin-top:6px;font-size:11px;color:var(--muted)}
+.tl-m{border-left:1px solid var(--border);padding-left:4px;line-height:1.3;white-space:nowrap;overflow:hidden}
+.tl-m b{display:block;font-weight:700;color:var(--ink);font-size:11px}
+.tl-m:not(.yr) b{display:none}
+.tl-detail{margin-top:8px;font-size:12.5px;color:var(--muted);min-height:18px;font-variant-numeric:tabular-nums}
+.season-table{border-collapse:collapse;font-size:12.5px;font-variant-numeric:tabular-nums}
+.season-table th,.season-table td{padding:8px 24px 8px 0;text-align:left;vertical-align:top;border-top:1px solid var(--border)}
+.season-table thead th{border-top:0;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;padding-bottom:6px}
+.season-table td div{line-height:1.6;white-space:nowrap}
+.season-table td .is-now{font-weight:700;color:var(--ink)}
+.season-table td .is-past{color:var(--muted-2);text-decoration:line-through}
+.season-table .na{color:var(--muted-2)}
+.season-list{display:none;list-style:none;margin:0;padding:0}
+.season-list li{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--border);font-size:13px;font-variant-numeric:tabular-nums}
+.season-list li.is-now{font-weight:700}
+.season-list .season-pill{min-width:64px;justify-content:center}
+.now-tag,.now-badge{display:inline-flex;align-items:center;height:18px;padding:0 7px;border-radius:999px;background:var(--ink);color:#fff;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+@media (max-width:700px){
+  .tl-wrap,.season-table{display:none}
+  .season-list{display:block}
+  .season-now{font-size:14px}
+}
 
-/* accommodation */
 .season-pill{display:inline-flex;align-items:center;flex-shrink:0;white-space:nowrap;height:22px;padding:0 10px;border-radius:var(--r-xs);font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;border:1px solid transparent}
-.season-pill.low{background:var(--green-bg);color:var(--green);border-color:var(--green-border)}
-.season-pill.mid{background:var(--amber-bg);color:var(--amber);border-color:var(--amber-border)}
-.season-pill.high{background:var(--red-bg);color:var(--red);border-color:var(--red-border)}
-.season-pill.special,.season-pill.other{background:var(--ocean-soft);color:var(--ocean);border-color:#cfe2f2}
+.season-pill.low{background:var(--season-low);color:#fff;border-color:var(--season-low)}
+.season-pill.mid{background:var(--season-mid);color:var(--season-ink);border-color:var(--season-mid)}
+.season-pill.high{background:var(--season-high);color:#fff;border-color:var(--season-high)}
+.season-pill.special,.season-pill.other{background:var(--season-special);color:var(--season-bone);border-color:var(--season-special)}
 /* accommodation: one matrix per pack — rooms × seasons, each cell the room's sharing prices (17 Nov 2026) */
 .accom-wrap{max-width:1040px}
 .nights-sel{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);font-weight:500}
@@ -188,6 +214,49 @@ details.dates-pop>summary::-webkit-details-marker{display:none}
   .price-cell .occ-line{justify-content:space-between}
   .price-cell .occ-line>.cell-edit,.price-cell .occ-line>.na{margin-left:auto}
   .accom-matrix tbody tr:hover td{background:transparent}
+}
+
+
+/* PROPOSAL (owner to choose, ?matrix=new): one calm matrix per pack — room | seasons; «Single / Shared» right beside each price; today's season tinted */
+#accomCard.mx2{max-width:880px}
+#accomCard.mx2 .price-cell .occ-lbl{display:inline}
+#accomCard.mx2 .price-cell .occ-line{justify-content:flex-end}
+#accomCard.mx2 .accom-matrix{width:100%;table-layout:fixed}
+#accomCard.mx2 .accom-matrix col.room-col-w{width:auto}
+#accomCard.mx2 .accom-matrix col.season-col-w{width:150px}
+#accomCard.mx2 .accom-matrix.cols-4 col.season-col-w{width:132px}
+#accomCard.mx2 table.accom-matrix thead th{height:62px;vertical-align:top;white-space:nowrap;text-transform:none;letter-spacing:0;padding-top:12px;padding-bottom:8px}
+#accomCard.mx2 table.accom-matrix thead th.room-col-h{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);padding-top:16px}
+#accomCard.mx2 table.accom-matrix th.season-col,#accomCard.mx2 table.accom-matrix td.price-cell{text-align:right}
+#accomCard.mx2 .season-col .col-line{display:block;margin-top:6px;height:18px;font-size:11.5px;font-weight:500;color:var(--muted)}
+#accomCard.mx2 table.accom-matrix .is-now{background:#faf6e6}
+#accomCard.mx2 table.accom-matrix td{vertical-align:top;height:auto;padding-top:12px;padding-bottom:12px;white-space:normal}
+#accomCard.mx2 .room-name{font-weight:600;color:var(--ink);line-height:1.35}
+#accomCard.mx2 .room-desc{display:block;-webkit-line-clamp:unset;font-size:12px;color:var(--muted);line-height:1.4;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#accomCard.mx2 .occ-lines{display:flex;flex-direction:column;gap:2px}
+#accomCard.mx2 .occ-line{display:flex;align-items:center;justify-content:flex-end;gap:6px;min-height:28px}
+#accomCard.mx2 .occ-lbl{font-size:11.5px;color:var(--muted);white-space:nowrap}
+#accomCard.mx2 .occ-line .cell-edit{min-width:0;margin-right:-8px}
+#accomCard.mx2 .occ-line .na{color:var(--muted-2);font-size:12px}
+#accomCard.mx2 .m-season{display:none}
+#accomCard.mx2 .accom-note{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:12.5px;color:var(--muted);padding:var(--sp-3) var(--card-pad);border-top:1px solid var(--border)}
+#accomCard.mx2 .accom-more{background:none;border:0;padding:0;font:500 12.5px 'Outfit',sans-serif;color:var(--muted);text-decoration:underline;cursor:pointer}
+#accomCard.mx2 .accom-more:hover{color:var(--ocean)}
+.accom-wrap.mx2 .pack-bar{display:flex;gap:var(--sp-3);align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:var(--sp-4);max-width:880px}
+#accomCard.mx2 .pack-desc{font-size:12.5px;color:var(--muted);line-height:1.5;padding:0 var(--card-pad) var(--sp-3)}
+/* phones: one card per room, the seasons as rows, today's season tinted */
+@media (max-width:700px){
+  #accomCard.mx2 .accom-matrix thead{display:none}
+  #accomCard.mx2 .accom-matrix,#accomCard.mx2 .accom-matrix tbody{display:block;width:100%}
+  #accomCard.mx2 .accom-matrix tbody tr{display:block;padding:14px var(--sp-4);border-bottom:1px solid var(--border)}
+  #accomCard.mx2 table.accom-matrix td{display:block;border:0;padding:0}
+  #accomCard.mx2 table.accom-matrix td.room-cell{margin-bottom:8px}
+  #accomCard.mx2 table.accom-matrix td.price-cell{display:grid;grid-template-columns:110px 1fr;align-items:start;gap:8px;padding:6px 8px;margin:0 -8px;border-top:1px solid var(--border);border-radius:6px;text-align:left}
+  #accomCard.mx2 .m-season{display:inline-flex;align-items:center;gap:6px;margin-top:4px}
+  #accomCard.mx2 .price-cell .occ-line{justify-content:space-between}
+  #accomCard.mx2 .price-cell .occ-line>.cell-edit,#accomCard.mx2 .price-cell .occ-line>.na{margin-left:auto}
+  #accomCard.mx2 .accom-matrix tbody tr:hover td{background:transparent}
+  #accomCard.mx2 table.accom-matrix td.price-cell.is-now{background:#faf6e6}
 }
 
 /* rooms inventory (collapsible) */
@@ -1668,51 +1737,130 @@ const seasonName = (s)=> { const t = String(s?.label || '').trim(); return t ? t
 // Flexible-pack night selector: the DB keeps the per-night base; the cells show base × nights and an edit divides back.
 let __accomFlexNights = 1;
 
+// ── Seasons card (17 Nov 2026, Miguel: «esta parte podia estar muito melhor, mais fácil de entender») ─────────────
+// 1. one sentence in plain words: what applies today and what comes next
+// 2. a rolling 15-month strip from this month: strong season colours, «Closed» gaps named, a labelled «Today»,
+//    tap a band → its exact dates
+// 3. a compact table: seasons × years, the periods stacked in each cell
+// Phones: the sentence + a list of the coming periods instead of the strip and the table.
+const DAY_MS = 864e5;
+const isoAdd = (iso, days)=> new Date(Date.parse(iso + 'T00:00:00Z') + days * DAY_MS).toISOString().slice(0, 10);
+const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const fmtDay = (iso, withYear = true)=> { const [y, m, d] = iso.split('-').map(Number); return `${d} ${MON[m - 1]}${withYear ? ' ' + y : ''}`; };
+// «5 Dec – 23 Apr 2027» inside a year column (the start year is the column), «30 May – 6 Jun»
+const fmtInYear = (r, y)=> {
+  const sy = +r.start.slice(0, 4), ey = +r.end.slice(0, 4);
+  if (sy === y && ey === y) return `${fmtDay(r.start, false)} – ${fmtDay(r.end, false)}`;
+  return `${fmtDay(r.start, sy !== y)} – ${fmtDay(r.end)}`;   // a period that started before this column's year shows its own year
+};
+const seasonShort = (s)=> seasonName(s).replace(/\s*season$/i, '');
+
+function seasonPeriods(seasons){
+  const out = [];
+  seasons.forEach(s => (Array.isArray(s.date_ranges) ? s.date_ranges : []).forEach(r => {
+    if (r && r.start && r.end && r.end >= r.start) out.push({ s, start: r.start, end: r.end });
+  }));
+  return out.sort((a, b) => a.start.localeCompare(b.start));
+}
+
+// «Now: Mid season · until 4 Dec 2026 → then High season from 5 Dec 2026 to 23 Apr 2027»
+function seasonSentence(periods, today){
+  const cur = periods.find(p => p.start <= today && p.end >= today);
+  const from = cur ? cur.end : today;
+  const next = periods.find(p => p.start > from);
+  const pill = (p)=> `<span class="season-pill ${seasonCls(p.s)}">${escapeHtml(seasonName(p.s))}</span>`;
+  let html = cur ? `<b>Now:</b> ${pill(cur)} until ${fmtDay(cur.end)}` : '<b>Now:</b> <span class="closed-tag">Closed</span>';
+  if (next) {
+    const gapFrom = cur ? isoAdd(cur.end, 1) : null;
+    if (cur && gapFrom < next.start) html += ` <span class="arrow">→</span> closed ${fmtDay(gapFrom, false)} – ${fmtDay(isoAdd(next.start, -1))}`;
+    html += ` <span class="arrow">→</span> then ${pill(next)} from ${fmtDay(next.start)} to ${fmtDay(next.end)}`;
+  } else if (!cur) html += ' · no dates set yet';
+  return html;
+}
+
 function seasonTimelineHtml(seasons){
-  const DAY = 864e5;
-  const segs = [];
-  const yNow = new Date().getFullYear();
-  // past years are history: the timeline starts in the current year (any number of periods per season per year)
-  seasons.forEach(s => currentRanges(s).forEach(r => segs.push({ s, start: r.start, end: r.end })));
-  if (!segs.length) return '';
-  const y0 = Math.max(yNow, Math.min(...segs.map(g => +g.start.slice(0, 4)))), y1 = Math.max(y0, ...segs.map(g => +g.end.slice(0, 4)));
-  const todayIso = new Date().toISOString().slice(0, 10);
-  const years = [];
-  for (let y = y0; y <= y1; y++) {
-    const ys = Date.UTC(y, 0, 1), ye = Date.UTC(y + 1, 0, 1), len = ye - ys;
-    const bars = segs.map(g => {
-      const a = Math.max(Date.parse(g.start + 'T00:00:00Z'), ys), b = Math.min(Date.parse(g.end + 'T00:00:00Z') + DAY, ye);
-      if (b <= a) return '';
-      const left = (a - ys) / len * 100, width = (b - a) / len * 100;
-      return `<div class="tl-seg ${seasonCls(g.s)}" style="left:${left.toFixed(3)}%;width:${width.toFixed(3)}%" title="${escapeHtml(seasonName(g.s))} · ${escapeHtml(fmtDateRange(g))}">${width > 7 ? escapeHtml(seasonName(g.s).replace(/\s*season$/i, '')) : ''}</div>`;
-    }).join('');
-    const t = Date.parse(todayIso + 'T00:00:00Z');
-    const today = (t >= ys && t < ye) ? `<div class="tl-today" style="left:${((t - ys) / len * 100).toFixed(3)}%" title="Today"></div>` : '';
-    years.push(`<div class="tl-year"><div class="tl-year-lbl">${y}</div><div class="tl-track" data-year="${y}">${bars}${today}</div></div>`);
+  const periods = seasonPeriods(seasons);
+  if (!periods.length) return '';
+  const now = new Date();
+  const today = now.toISOString().slice(0, 10);
+  const yNow = now.getFullYear();
+  const MONTHS = 15;
+  const ws = `${yNow}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+  const weD = new Date(Date.UTC(yNow, now.getMonth() + MONTHS, 1));
+  const we = weD.toISOString().slice(0, 10);   // exclusive
+  const t0 = Date.parse(ws + 'T00:00:00Z'), len = Date.parse(we + 'T00:00:00Z') - t0;
+  const pct = (iso)=> (Date.parse(iso + 'T00:00:00Z') - t0) / len * 100;
+  const lastKnown = periods.reduce((m, p) => p.end > m ? p.end : m, '');
+  // bands: every period inside the window, and each hole named — «Closed» between periods, «Not set yet» after the last one
+  const bands = [];
+  let cursor = ws;
+  periods.filter(p => p.end >= ws && p.start < we).forEach(p => {
+    const a = p.start < ws ? ws : p.start;
+    if (a > cursor) bands.push({ kind: cursor > lastKnown ? 'unset' : 'closed', start: cursor, end: isoAdd(a, -1) });
+    const b = p.end >= we ? isoAdd(we, -1) : p.end;
+    bands.push({ kind: seasonCls(p.s), s: p.s, start: a, end: b, full: p });
+    if (isoAdd(b, 1) > cursor) cursor = isoAdd(b, 1);
+  });
+  if (cursor < we) bands.push({ kind: cursor > lastKnown ? 'unset' : 'closed', start: cursor, end: isoAdd(we, -1) });
+  const bandHtml = bands.map(b => {
+    const left = pct(b.start), width = pct(isoAdd(b.end, 1)) - left;
+    if (width <= 0) return '';
+    const name = b.s ? seasonName(b.s) : (b.kind === 'closed' ? 'Closed' : 'No season set yet');
+    const dates = b.full ? fmtDateRange(b.full) : fmtDateRange({ start: b.start, end: b.end });
+    const label = b.s ? seasonShort(b.s) : (b.kind === 'closed' ? 'Closed' : 'Not set');
+    return `<button type="button" class="tl-band ${b.kind}" style="left:${left.toFixed(3)}%;width:${width.toFixed(3)}%" title="${escapeHtml(name)} · ${escapeHtml(dates)}" data-detail="${escapeHtml(name)} · ${escapeHtml(dates)}" onclick="onSeasonBand(this)">${width > 5.5 ? `<span>${escapeHtml(label)}</span>` : ''}</button>`;
+  }).join('');
+  const months = [];
+  for (let i = 0; i < MONTHS; i++) {
+    const d = new Date(Date.UTC(yNow, now.getMonth() + i, 1));
+    months.push(`<span class="tl-m${d.getUTCMonth() === 0 || i === 0 ? ' yr' : ''}">${MON[d.getUTCMonth()]}${d.getUTCMonth() === 0 || i === 0 ? `<b>${d.getUTCFullYear()}</b>` : ''}</span>`);
   }
+  const todayHtml = `<div class="tl-today" style="left:${pct(today).toFixed(3)}%"><span>Today</span></div>`;
+  // table: seasons × years (from this year on); a period sits in the year it starts (or this year if it started before)
+  const yMax = Math.max(yNow, ...periods.map(p => +p.end.slice(0, 4)));
+  const years = []; for (let y = yNow; y <= yMax; y++) years.push(y);
+  const yearsWithAny = years.filter(y => periods.some(p => p.end >= today && Math.max(yNow, +p.start.slice(0, 4)) === y));
+  const tableRows = seasons.map(s => {
+    const mine = periods.filter(p => p.s === s && p.end >= today);   // what is over is history: not listed
+    return `<tr><th scope="row"><span class="season-pill ${seasonCls(s)}">${escapeHtml(seasonName(s))}</span></th>${yearsWithAny.map(y => {
+      const inY = mine.filter(p => Math.max(yNow, +p.start.slice(0, 4)) === y);
+      return `<td data-year="${y}">${inY.length ? inY.map(p => `<div class="${p.start <= today && p.end >= today ? 'is-now' : p.end < today ? 'is-past' : ''}">${escapeHtml(fmtInYear(p, y))}</div>`).join('') : '<span class="na">—</span>'}</td>`;
+    }).join('')}</tr>`;
+  }).join('');
+  // phones: the coming periods, one per line
+  const upcoming = periods.filter(p => p.end >= today);
+  const listHtml = upcoming.map(p => `<li class="${p.start <= today ? 'is-now' : ''}"><span class="season-pill ${seasonCls(p.s)}">${escapeHtml(seasonShort(p.s))}</span><span>${escapeHtml(fmtDateRange(p))}</span>${p.start <= today ? '<span class="now-tag">Now</span>' : ''}</li>`).join('');
   // two seasons on the same day = two prices for one night: flag it (a gap is fine — the camp may be closed)
   const overlaps = [];
-  for (let i = 0; i < segs.length; i++) for (let j = i + 1; j < segs.length; j++) {
-    const A = segs[i], B = segs[j];
-    if (A.s === B.s) continue;
+  for (let i = 0; i < periods.length; i++) for (let j = i + 1; j < periods.length; j++) {
+    const A = periods[i], B = periods[j];
+    if (A.s === B.s || A.end < today && B.end < today) continue;
     const s = A.start > B.start ? A.start : B.start, e = A.end < B.end ? A.end : B.end;
     if (s <= e) overlaps.push(`${seasonName(A.s)} and ${seasonName(B.s)} overlap ${fmtDateRange({ start: s, end: e })}`);
   }
-  const months = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'].map(m => `<span>${m}</span>`).join('');
-  const legend = seasons.map(s => {
-    const txt = currentRanges(s).map(fmtDateRange).filter(Boolean).join(' · ');
-    return `<div class="tl-leg"><span class="season-pill ${seasonCls(s)}">${escapeHtml(seasonName(s))}</span><span>${escapeHtml(txt || 'No dates set')}</span></div>`;
-  }).join('');
   return `<div class="card season-card" id="seasonCard">
-    <div class="card-hdr"><div><div class="card-title">Seasons</div><div class="card-hint">When each price column applies. Striped = no season (closed or not priced).</div></div></div>
+    <div class="card-hdr"><div class="card-title">Seasons</div></div>
     <div class="card-body">
-      <div class="tl-months" aria-hidden="true">${months}</div>
-      ${years.join('')}
-      <div class="tl-legend">${legend}</div>
+      <p class="season-now" id="seasonNow">${seasonSentence(periods, today)}</p>
+      <div class="tl-wrap">
+        <div class="tl-strip" role="group" aria-label="Seasons in the next ${MONTHS} months">${bandHtml}${todayHtml}</div>
+        <div class="tl-months" style="grid-template-columns:repeat(${MONTHS},1fr)">${months.join('')}</div>
+        <div class="tl-detail" id="tlDetail" aria-live="polite">Tap a band to see its dates.</div>
+      </div>
+      <table class="season-table">
+        <thead><tr><th></th>${yearsWithAny.map(y => `<th>${y}</th>`).join('')}</tr></thead>
+        <tbody>${tableRows}</tbody>
+      </table>
+      <ul class="season-list">${listHtml || '<li class="na">No dates set yet</li>'}</ul>
       ${overlaps.length ? `<div class="status-msg status-warn" style="margin-top:12px">${escapeHtml(overlaps.join(' · '))}. Check the season dates.</div>` : ''}
     </div>
   </div>`;
 }
+window.onSeasonBand = (el)=>{
+  document.querySelectorAll('#seasonCard .tl-band.sel').forEach(b => b.classList.remove('sel'));
+  el.classList.add('sel');
+  const d = document.getElementById('tlDetail'); if (d) d.textContent = el.dataset.detail || '';
+};
 
 async function renderAccommodation(){
   const wrap = $('tableWrap');
@@ -1746,7 +1894,7 @@ async function renderAccommodation(){
   const nights = isFlex ? Math.max(1, __accomFlexNights) : 1;
   // ONE matrix per pack (17 Nov 2026): rows = rooms, columns = seasons, each cell = the room's sharing prices.
   const m = PriceList.accomMatrix({ pack: activePack, seasons, rooms, prices, nights, period: 'from-this-year',
-    keepEmpty: editing, allOccs: editing && __accomAllOccs, today: new Date().toISOString().slice(0, 10) });
+    keepEmpty: editing, allOccs: editing && __accomAllOccs, today: new Date().toISOString().slice(0, 10), shortLabels: __matrixV2 });
   const somePartial = editing && m.rows.some(r => r.occs.length < m.occsInPack.length);
 
   const packPills = packs.map(p => `<button class="pill ${p.id === accomActivePackId ? 'active' : ''}" onclick="onAccomPickPack('${p.id}')">${escapeHtml(p.label)}</button>`).join('');
@@ -1755,6 +1903,7 @@ async function renderAccommodation(){
         ${[1, 2, 3, 4, 5, 6, 7].map(n => `<option value="${n}"${n === nights ? ' selected' : ''}>${n === 1 ? '1 night (price per night)' : n + ' nights'}</option>`).join('')}
       </select></label>` : '';
 
+  if (!__matrixV2) {   // the live matrix (owner to choose between this and the proposal below)
   const head = m.cols.map(c => {
     const all = c.ranges.map(fmtDateRange);
     const w = c.when;
@@ -1796,8 +1945,54 @@ async function renderAccommodation(){
     </div>
     ${renderRoomsInventory()}
   </div>`;
+    return;
+  }
+  // PROPOSAL (?matrix=new): calmer headers, «Single / Shared» beside each price, today's season tinted, tighter widths
+  const todayIso = new Date().toISOString().slice(0, 10);
+  // header = the season pill + ONE short line: «Now» on the season that applies today, else «from 5 Dec»
+  const colNow = m.cols.map(c => c.ranges.some(r => r.start <= todayIso && r.end >= todayIso));
+  const colLine = m.cols.map((c, i) => {
+    if (colNow[i]) return '<span class="now-badge">Now</span>';
+    const nx = c.ranges.find(r => r.start > todayIso);
+    if (!nx) return '';
+    const soon = nx.start < isoAdd(todayIso, 300);
+    return `<span class="col-from">from ${fmtDay(nx.start, !soon)}</span>`;
+  });
+  const head = m.cols.map((c, i) => `<th class="season-col${colNow[i] ? ' is-now' : ''}" data-season="${c.id}">
+      <span class="season-pill ${c.key}">${escapeHtml(c.label.replace(/\s*season$/i, ''))}</span><span class="col-line">${colLine[i]}</span></th>`).join('');
+  const body = m.rows.map(r => `<tr data-room="${r.id}">
+      <td class="room-cell"><div class="room-name">${escapeHtml(r.room)}</div>${r.desc ? `<div class="room-desc" title="${escapeHtml(r.desc)}">${escapeHtml(r.desc)}</div>` : ''}</td>
+      ${r.cells.map((cs, i) => { const c = m.cols[i]; return `<td class="price-cell${colNow[i] ? ' is-now' : ''}" data-label="${escapeHtml(c.label)}">
+        <span class="m-season"><span class="season-pill ${c.key}">${escapeHtml(c.label.replace(/\s*season$/i, ''))}</span>${colNow[i] ? '<span class="now-badge">Now</span>' : ''}</span>
+        <div class="occ-lines">${cs.map(x => {
+          const lbl = x.label ? `<span class="occ-lbl">${escapeHtml(x.label)}</span>` : '';
+          if (!x.price && !editing) return `<div class="occ-line">${lbl}<span class="na">${cs.length > 1 ? 'n/a' : '—'}</span></div>`;
+          const id = `accomcell_${accomActivePackId}_${c.id}_${r.id}_${x.occ}`;
+          return `<div class="occ-line">${lbl}<span id="${id}" class="cell-edit${x.price ? '' : ' empty'}" ${editing ? 'role="button" tabindex="0"' : ''} onclick="onAccomEditCell(this,'${accomActivePackId}','${c.id}','${r.id}',${x.occ})" onkeydown="if(event.target===this&&event.key==='Enter'){event.preventDefault();this.click()}">${x.price ? x.text : (editing ? 'Add' : '—')}</span></div>`;
+        }).join('')}</div></td>`; }).join('')}
+    </tr>`).join('');
+
+  const per = isFlex ? (nights > 1 ? `Per person for ${nights} nights (saved per night)` : 'Per person per night') : 'Per person for 7 nights';
+  const footerNote = `${per} · ${escapeHtml(m.currency)}${editing ? ' · tap a price to edit' : ''}`;
+
+  wrap.innerHTML = `<div class="accom-wrap mx2">
+    ${seasonTimelineHtml(seasons)}
+    <div class="pack-bar"><div class="pills" role="tablist" aria-label="Packs">${packPills}</div>${nightsHtml}</div>
+    <div class="card tbl-wrap mx2" id="accomCard">
+      <div class="card-hdr"><div class="card-title">${escapeHtml(activePack.label)}</div></div>
+      ${activePack.description ? `<div class="pack-desc">${escapeHtml(activePack.description)}</div>` : ''}
+      ${m.rows.length && m.cols.length ? `<table class="tbl accom-matrix cols-${m.cols.length}">
+        <colgroup><col class="room-col-w">${m.cols.map(() => '<col class="season-col-w">').join('')}</colgroup>
+        <thead><tr><th class="room-col-h">Room</th>${head}</tr></thead>
+        <tbody>${body}</tbody></table>` : `<div class="card-body">${emptyState('inbox', 'No prices in this pack yet', '')}</div>`}
+      <div class="accom-note"><span>${footerNote}</span>${somePartial || (editing && __accomAllOccs) ? `<button class="btn-link accom-more" onclick="onAccomAllOccs()">${__accomAllOccs ? 'Hide unused sharing options' : 'Add a sharing option'}</button>` : ''}</div>
+    </div>
+    ${renderRoomsInventory()}
+  </div>`;
 }
 let __accomAllOccs = false;
+// the matrix proposal of 17 Nov 2026 is opt-in until the owner picks: /prices/?location=…&matrix=new
+const __matrixV2 = (()=>{ try { return new URL(location.href).searchParams.get('matrix') === 'new'; } catch (_) { return false; } })();
 window.onAccomAllOccs = ()=>{ __accomAllOccs = !__accomAllOccs; renderAccommodation(); };
 
 // «Our rooms» — the physical rooms (accommodation_rooms), folded under the prices.
