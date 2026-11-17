@@ -227,7 +227,10 @@ test('price list page: A4 print with no overflow (long names, 5 sharing columns)
   await expect(page.locator('.pl-camp[data-camp="portugal"] .pl-matrix thead th').first()).toBeVisible();
   await expect(page.locator('.pl-cover')).toContainText('+351 924 689 580');
   // the website's look: brand fonts loaded, photo cover and camp cards, «Book now» to the booking site, one money format
-  expect(await page.evaluate(() => [document.fonts.check('16px Frastha'), document.fonts.check('16px Londrina')])).toEqual([true, true]);
+  // Gaya is deployed outside git (licence): when the file is there it is the title font, else Frastha stands in
+  const hasGaya = require('fs').existsSync(require('path').join(__dirname, '..', 'assets', 'fonts', 'Gaya-Regular.woff2'));
+  expect(await page.evaluate(() => [document.fonts.check('16px Londrina'), getComputedStyle(document.querySelector('.pl-sec-head h2')).fontFamily])).toEqual([true, 'Gaya, Frastha, Georgia, serif']);
+  if (hasGaya) expect(await page.evaluate(() => document.fonts.check('16px Gaya'))).toBe(true);
   await expect(page.locator('.pl-cover .pl-cover-photo')).toHaveCount(3);
   await expect(page.locator('.pl-camp-card')).toHaveCount(5);
   await expect(page.locator('a.pl-book').first()).toHaveAttribute('href', 'https://bookings.gotadaguasurf.com');

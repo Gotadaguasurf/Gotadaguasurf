@@ -6,7 +6,7 @@
 <title>Price list — Gota Dagua</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='-15 0 92 92'><path fill='%231e6fa8' d='M61.7,51.9c-.4-9-5.5-16.5-9.7-24.1-2.9-4.8-5.3-9.8-9.3-13.9-3.9-4.4-6.5-9.8-10.8-13.9C19.2,16.6-.5,39.9,0,61.9c9.4-7.9,20.1-17.7,33.1-17.8,3,0,7.2,0,9.5,2.2,1.7,1.7,3.2,4.2,2,6.5-.3.5-1.9,2.7-2.3,2.9-12.9,7.4-20.3,18.6-16.5,33.7,3.1,1.3,8,1,11.1-.3,2.7-.3,5.1-1.3,7.5-2.5,8.7-2.9,14.5-11.1,15.5-20.1,1.2-4.7,2.1-9.7,1.8-14.6h0Z'/></svg>">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
-<link rel="preload" href="/assets/fonts/Frastha-Bold.ttf" as="font" type="font/ttf" crossorigin>
+<link rel="preload" href="/assets/fonts/Gaya-Regular.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/assets/fonts/LondrinaSolid-Regular.ttf" as="font" type="font/ttf" crossorigin>
 <script src="/lib/supabase.min.js?v=6" onerror="window.__SUPABASE_SDK_FAILED=true"></script>
 <script src="/supabase-config.js?v=6" onerror="window.__SUPABASE_CFG_FAILED=true"></script>
@@ -17,14 +17,19 @@
 <style>
 /* The price list (17 Nov 2026) — a MARKETING document, styled like gotadaguasurf.com, not like the app:
    paper backgrounds, Frastha serif titles, Londrina Solid camp names and buttons, Inter text, sun-yellow «Book now»,
-   rounded photo cards. Fonts: Frastha + Londrina Solid self-hosted from /assets/fonts (the website's files),
-   Inter from Google Fonts. A4 sheets on screen; the same sheets in print → «Save as PDF». */
+   rounded photo cards. Fonts as on gotadaguasurf.com: Gaya (titles), Londrina Solid (camp names, buttons), Inter (text); colours from the
+   brand artwork (COLORS.pdf: olive, moss, ochre, terracotta, sage, bone) on the website's paper and navy. A4 sheets on screen; the same sheets in print → «Save as PDF». */
+/* Gaya (WrittenShape, web licence owned by Gota Dagua) = the website's titles, «Included:», «from 429€», subtitles.
+   The file is NOT in git (public repo; the EULA forbids public repositories): it is deployed next to its licence text
+   (assets/fonts/Gaya-LICENSE-WrittenShape_EULA.pdf). Without it the page falls back to Frastha. */
+@font-face{font-family:"Gaya";src:url("/assets/fonts/Gaya-Regular.woff2") format("woff2");font-weight:400;font-display:block}
 @font-face{font-family:"Frastha";src:url("/assets/fonts/Frastha-Bold.ttf") format("truetype");font-weight:400 700;font-display:block}
 @font-face{font-family:"Londrina";src:url("/assets/fonts/LondrinaSolid-Regular.ttf") format("truetype");font-weight:400;font-display:block}
 :root{
   --gd-paper:#fffdee; --gd-card:#fffdf7; --gd-cream:#fbf4dd; --gd-sand:#f6ecca; --gd-line:#e8dcb4; --gd-line-2:#ddd2ad;
-  --gd-navy:#27384a; --gd-navy-soft:#46596b; --gd-yellow:#f6d34e; --gd-yellow-soft:#fbe88f; --gd-terra:#b96a3f; --gd-green:#4e7a4e;
-  --gd-serif:"Frastha",Georgia,serif; --gd-display:"Londrina","Arial Narrow",sans-serif; --gd-body:"Inter",system-ui,sans-serif;
+  --gd-navy:#27384a; --gd-navy-soft:#46596b; --gd-yellow:#f6d34e; --gd-yellow-soft:#fbe88f; --gd-terra:#c63c12; --gd-green:#4e7a4e;
+  --gd-olive:#3f3d1b; --gd-moss:#60633c; --gd-ochre:#d0a320; --gd-orange:#c25a12; --gd-sage:#8a965a; --gd-sage-soft:#e3e6d0; --gd-bone:#f6f0d8;
+  --gd-serif:"Gaya","Frastha",Georgia,serif; --gd-display:"Londrina","Arial Narrow",sans-serif; --gd-body:"Inter",system-ui,sans-serif;
   --pl-w:210mm; --pl-h:297mm; --pl-mx:16mm;
 }
 body{background:#e9e3cf;font-family:var(--gd-body);color:var(--gd-navy)}
@@ -45,16 +50,16 @@ body{background:#e9e3cf;font-family:var(--gd-body);color:var(--gd-navy)}
 .pl-cover-photos.n2{grid-template-columns:1fr 1fr}
 .pl-cover-photos.n3{grid-template-columns:1fr 1fr 1fr}
 .pl-cover-photo{background-size:cover;background-position:center}
-.pl-cover-shade{position:absolute;inset:0;background:linear-gradient(180deg,rgba(23,34,46,.55) 0%,rgba(23,34,46,.05) 26%,rgba(23,34,46,.1) 48%,rgba(23,34,46,.82) 78%,rgba(23,34,46,.94) 100%)}
+.pl-cover-shade{position:absolute;inset:0;background:linear-gradient(180deg,rgba(38,36,16,.55) 0%,rgba(38,36,16,.05) 26%,rgba(38,36,16,.1) 48%,rgba(38,36,16,.8) 78%,rgba(38,36,16,.94) 100%)}
 .pl-cover-top{position:relative;display:flex;justify-content:space-between;align-items:center;padding:16mm var(--pl-mx) 0}
 .pl-cover-logo svg{width:46mm;height:auto;display:block}
 .pl-book{display:inline-block;background:var(--gd-yellow-soft);color:var(--gd-navy);font-family:var(--gd-display);text-transform:uppercase;letter-spacing:.04em;font-size:15px;line-height:1;padding:9px 16px 8px;border-radius:9px;text-decoration:none}
 .pl-book.big{font-size:20px;padding:12px 26px 11px;margin:14px 0 18px}
 .pl-cover-main{position:relative;margin-top:auto;padding:0 var(--pl-mx)}
-.pl-kicker{font-family:var(--gd-serif);font-size:14px;letter-spacing:.2em;text-transform:uppercase;color:#f7eac1}
+.pl-kicker{font-family:var(--gd-serif);font-size:16px;letter-spacing:.14em;text-transform:uppercase;color:var(--gd-ochre)}
 .pl-cover h1{font-family:var(--gd-display);font-weight:400;font-size:78px;line-height:.86;text-transform:uppercase;letter-spacing:.01em;margin:6px 0 2px;color:#fffdf7}
 .pl-place{font-family:var(--gd-display);font-size:22px;text-transform:uppercase;letter-spacing:.04em;color:#fffdf7;opacity:.95}
-.pl-cover-tag{font-family:var(--gd-serif);font-size:17px;color:#f7eac1;margin-top:12px;max-width:120mm;line-height:1.35}
+.pl-cover-tag{font-family:var(--gd-serif);font-size:19px;color:var(--gd-bone);margin-top:12px;max-width:120mm;line-height:1.35}
 .pl-cover-foot{position:relative;padding:8mm var(--pl-mx) 13mm;margin-top:8mm;border-top:1px solid rgba(255,253,238,.22)}
 .pl-contact{display:flex;flex-wrap:wrap;gap:4px 20px;font-size:12.5px;font-weight:600;font-variant-numeric:tabular-nums}
 .pl-cover .pl-contact{color:#fffdf7}
@@ -63,23 +68,23 @@ body{background:#e9e3cf;font-family:var(--gd-body);color:var(--gd-navy)}
 /* ── a camp: paper sheet, website-style photo card as opener ── */
 .pl-camp,.pl-end{width:var(--pl-w);max-width:100%;background:var(--gd-paper);padding:14mm var(--pl-mx) 18mm;box-shadow:0 10px 30px rgba(39,56,74,.12);color:var(--gd-navy);position:relative;z-index:1}
 .pl-camp-card{position:relative;height:62mm;border-radius:16px;overflow:hidden;background-size:cover;background-position:center 35%;margin-bottom:9mm;break-inside:avoid}
-.pl-camp-card::after{content:'';position:absolute;inset:0;background:linear-gradient(180deg,rgba(23,34,46,.18),rgba(23,34,46,.6))}
+.pl-camp-card::after{content:'';position:absolute;inset:0;background:linear-gradient(180deg,rgba(38,36,16,.15),rgba(38,36,16,.6))}
 .pl-camp-card-in{position:absolute;inset:0;z-index:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:#fffdf7}
-.pl-camp-kicker{font-family:var(--gd-serif);font-size:17px;text-transform:uppercase;letter-spacing:.02em}
+.pl-camp-kicker{font-family:var(--gd-serif);font-size:19px;text-transform:uppercase;letter-spacing:.02em}
 .pl-camp-name{font-family:var(--gd-display);font-weight:400;font-size:54px;line-height:.86;text-transform:uppercase;margin:2px 0;color:#fffdf7;letter-spacing:.01em}
 .pl-camp-place{font-family:var(--gd-display);font-size:19px;text-transform:uppercase;letter-spacing:.04em}
-.pl-camp-from{font-family:var(--gd-serif);font-size:17px;margin-top:8px}
+.pl-camp-from{font-family:var(--gd-serif);font-size:19px;margin-top:8px}
 .pl-part{margin-top:9mm}
 .pl-part:first-of-type{margin-top:0}
 .pl-sec-head{text-align:center;margin-bottom:5mm;break-after:avoid}
-.pl-sec-head h2{margin:0;font-family:var(--gd-serif);font-weight:700;font-size:25px;letter-spacing:.02em;text-transform:uppercase;color:var(--gd-navy);line-height:1.1}
-.pl-lead{font-family:var(--gd-serif);font-size:16px;color:var(--gd-navy-soft);margin-top:3px}
+.pl-sec-head h2{margin:0;font-family:var(--gd-serif);font-weight:400;font-size:30px;letter-spacing:.02em;text-transform:uppercase;color:var(--gd-navy);line-height:1.1}
+.pl-lead{font-family:var(--gd-serif);font-size:17px;color:var(--gd-moss);margin-top:3px}
 
 /* accommodation matrix: rooms × seasons, white card like the website's package cards */
 .pl-pack{background:var(--gd-card);border:1px solid var(--gd-line);border-radius:14px;padding:6mm 6mm 4mm;margin-bottom:6mm;break-inside:avoid}
 .pl-pack-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap}
-.pl-pack h3{margin:0;font-family:var(--gd-serif);font-weight:700;font-size:19px;color:var(--gd-navy)}
-.pl-basis{font-family:var(--gd-body);font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--gd-navy-soft)}
+.pl-pack h3{margin:0;font-family:var(--gd-serif);font-weight:400;font-size:22px;color:var(--gd-navy)}
+.pl-basis{font-family:var(--gd-body);font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--gd-moss)}
 .pl-pack-desc{font-size:11px;color:var(--gd-navy-soft);line-height:1.5;margin:3px 0 4mm}
 .pl-table{width:100%;border-collapse:collapse;table-layout:fixed}
 .pl-matrix{font-size:12px}
@@ -91,10 +96,10 @@ body{background:#e9e3cf;font-family:var(--gd-body);color:var(--gd-navy)}
 .pl-matrix th{font-weight:500;text-align:right;vertical-align:top;padding:0 0 7px 6px;border-bottom:1.5px solid var(--gd-navy);font-size:10px;color:var(--gd-navy-soft);line-height:1.35}
 .pl-matrix th.pl-room-h{text-align:left;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--gd-navy-soft);padding-left:0}
 .pl-pill{display:inline-block;font-family:var(--gd-display);font-size:13px;line-height:1;text-transform:uppercase;letter-spacing:.04em;border-radius:7px;padding:5px 9px 4px;margin-bottom:4px}
-.pl-pill.low{background:#dfeadb;color:var(--gd-green)}
-.pl-pill.mid{background:var(--gd-yellow-soft);color:var(--gd-navy)}
+.pl-pill.low{background:var(--gd-sage);color:var(--gd-bone)}
+.pl-pill.mid{background:var(--gd-ochre);color:var(--gd-olive)}
 .pl-pill.high{background:var(--gd-terra);color:#fffdf7}
-.pl-pill.special,.pl-pill.other{background:var(--gd-navy);color:#fffdf7}
+.pl-pill.special,.pl-pill.other{background:var(--gd-olive);color:var(--gd-bone)}
 .pl-dates{display:block;font-variant-numeric:tabular-nums;white-space:nowrap;font-size:8.5px;letter-spacing:-.01em}
 .pl-matrix td{padding:7px 0 7px 6px;border-bottom:1px solid var(--gd-line);vertical-align:top}
 .pl-matrix tbody tr:last-child td{border-bottom:0}
@@ -126,24 +131,24 @@ body{background:#e9e3cf;font-family:var(--gd-body);color:var(--gd-navy)}
 .pl-transfers th.r{text-align:right}
 .pl-transfers td{padding:7px 6mm;border-bottom:1px dashed var(--gd-line-2)}
 .pl-transfers tr:last-child td{border-bottom:0}
-.pl-transfers tr.pl-route-row td{font-weight:700;font-size:12px;background:var(--gd-cream);border-bottom:1px solid var(--gd-line)}
+.pl-transfers tr.pl-route-row td{font-weight:700;font-size:12px;background:var(--gd-bone);border-bottom:1px solid var(--gd-line)}
 .pl-transfers tr.pl-veh td:first-child{padding-left:10mm}
 .pl-transfers tbody tr.pl-route-row{break-after:avoid}
 
 /* good to know: check-circle list like the website's «Included» */
-.pl-notes{background:var(--gd-cream);border-radius:14px;padding:5mm 6mm;break-inside:avoid;margin-top:2mm}
-.pl-notes h3{margin:0 0 6px;font-family:var(--gd-serif);font-weight:700;font-size:18px;margin-bottom:6px}
+.pl-notes{background:var(--gd-bone);border-radius:14px;padding:5mm 6mm;break-inside:avoid;margin-top:2mm}
+.pl-notes h3{margin:0 0 6px;font-family:var(--gd-serif);font-weight:400;font-size:21px;margin-bottom:6px}
 .pl-notes ul{list-style:none;margin:0;padding:0;font-size:11.5px;line-height:1.5}
 .pl-notes li{position:relative;padding-left:20px;margin-bottom:4px}
-.pl-notes li::before{content:'';position:absolute;left:0;top:3px;width:11px;height:11px;border:1.4px solid var(--gd-navy);border-radius:50%;background:radial-gradient(circle,var(--gd-navy) 0 2px,transparent 2.5px)}
+.pl-notes li::before{content:'';position:absolute;left:0;top:3px;width:11px;height:11px;border:1.4px solid var(--gd-moss);border-radius:50%;background:radial-gradient(circle,var(--gd-moss) 0 2px,transparent 2.5px)}
 
 /* closing call to action */
-.pl-end{background:var(--gd-navy);color:#fffdf7;text-align:center;padding:14mm var(--pl-mx)}
+.pl-end{background:var(--gd-olive);color:var(--gd-bone);text-align:center;padding:14mm var(--pl-mx)}
 .pl-end-logo svg{width:34mm;height:auto;margin:0 auto 6mm;display:block}
-.pl-end-title{font-family:var(--gd-serif);font-weight:700;font-size:26px;text-transform:uppercase}
-.pl-end p{font-family:var(--gd-serif);font-size:15px;color:#f7eac1;margin-top:4px}
+.pl-end-title{font-family:var(--gd-serif);font-weight:400;font-size:34px;text-transform:uppercase}
+.pl-end p{font-family:var(--gd-serif);font-size:18px;color:var(--gd-ochre);margin-top:4px}
 .pl-end .pl-contact{justify-content:center;color:#fffdf7}
-.pl-end .pl-generated{color:#aebccb}
+.pl-end .pl-generated{color:#bdb998}
 .pl-empty{color:var(--gd-navy-soft);font-size:14px}
 
 /* phones: the sheets scale down (the PDF is A4 either way) */

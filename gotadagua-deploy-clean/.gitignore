@@ -2,3 +2,8 @@ node_modules/
 test-results/
 playwright-report/
 .DS_Store
+
+# Licensed brand font (WrittenShape web licence): the EULA forbids public repositories — this repo is public.
+# Deploy it outside git (see prices/pricelist.html @font-face), never commit it.
+assets/fonts/Gaya-Regular.woff2
+assets/fonts/Gaya-LICENSE-WrittenShape_EULA.pdf
