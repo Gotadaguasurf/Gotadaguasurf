@@ -242,7 +242,8 @@ test('price list page: A4 print with no overflow (long names, 5 sharing columns)
   // for agencies and partners only (17 Nov 2026): no «Book now», a reservations line on the cover and the back page
   await expect(page.locator('.pl-book')).toHaveCount(0);
   await expect(page.locator('.pl-cover .pl-reserv')).toHaveText('Reservations & partnerships: info@gotadaguasurf.com · +351 924 689 580');
-  await expect(page.locator('.pl-end')).toContainText('Questions or group requests?');
+  await expect(page.locator('.pl-end')).not.toContainText('Questions or group requests?');   // removed 17 Nov 2026
+  await expect(page.locator('.pl-end .pl-reserv')).toBeVisible();
   expect(await page.content()).not.toContain('bookings.gotadaguasurf.com');
   await expect(page.locator('.pl-camp[data-camp="sri-lanka"] .pl-pack').nth(1).locator('.pl-amt').first()).toHaveText(/^€\d+\.\d{2}$/);
   await expect(page.locator('.pl-camp[data-camp="sri-lanka"] .pl-pack').first().locator('.pl-amt').first()).toHaveText(/^€\d+$/);

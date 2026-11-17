@@ -362,8 +362,6 @@
     }).join('');
     const end = `<section class="pl-end">
       <div class="pl-end-logo">${logo}</div>
-      <div class="pl-end-title">Questions or group requests?</div>
-      <p>Write to us.</p>
       <div class="pl-reserv">${partnerLine}</div>
       <div class="pl-contact"><span>${esc(c.web)}</span></div>
       <div class="pl-generated">Prices as of ${esc(model.generated)}. Gota Dagua surf camps in Portugal, Morocco and Sri Lanka.</div>
