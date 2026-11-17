@@ -2827,6 +2827,9 @@ try { getAuthClient().auth.getSession().then(r => AppShell.setAccount({ name: r?
 (function(){
   async function initPlatformAccess(){
     try {
+      // logged out (fresh browser): sign in at the hub and come back, like the HQ — not an empty €0.00 page
+      const { data: { session } = {} } = await getAuthClient().auth.getSession();
+      if (!session) { location.href = '/?next=' + encodeURIComponent('/partners/'); return; }
       await verifySupabaseSetup();
       if (__cloudMode === 'cloud') {
         await loadFromSupabase();
