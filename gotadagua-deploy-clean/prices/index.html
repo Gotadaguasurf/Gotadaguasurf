@@ -37,282 +37,232 @@
 <script src="/lib/transport-overview.js"></script>
 <link rel="stylesheet" href="/lib/app-shell.css">
 <style>
-/* Page-specific rules only. Tokens, the header pills (.nav-tabs / .ntab /
-   .nav-action-btn), buttons (.btn), cards, tables (.tbl-wrap / table.tbl),
-   badges, fields and the modal all come from /lib/app-shell.css above. */
-*{margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-
-/* Header — same bar as the shell's .app-nav, kept as an element rule so the
-   Edit / Price List toggle stays visible on phones (this page has no
-   hamburger drawer; the toggle simply wraps to its own row). */
-header{background:var(--navy);padding:0 22px;display:flex;align-items:center;justify-content:space-between;height:60px;position:sticky;top:0;z-index:100;box-shadow:0 1px 0 rgba(255,255,255,.06),0 2px 16px rgba(13,27,42,.22);gap:12px}
-.header-left{display:flex;align-items:center;gap:14px;min-width:220px}
-.brand-lockup{display:flex;align-items:center;gap:10px}
-.brand-home{display:flex;align-items:center;gap:10px;color:inherit;text-decoration:none}
-.brand-logo{display:flex;align-items:center;justify-content:flex-start;width:134px;height:30px;flex-shrink:0}
-.brand-logo svg{height:30px;width:auto;display:block}
-.header-right{display:flex;align-items:center;gap:10px;flex-shrink:0;justify-content:flex-end;min-width:220px}
-@media (max-width: 900px){
-  header{flex-wrap:wrap;height:auto;padding:8px 12px;gap:8px}
-  .header-left,.header-right{min-width:0}
-  .brand-logo{width:100px}
-  .brand-logo svg{height:24px}
-  header .nav-tabs{order:3;flex-basis:100%;justify-content:center}
-}
-/* Save pill is hidden until the first save; the shell styles its states. */
+/* /prices — page-specific layout only (Design v3, 17 Nov 2026). Tokens, header (.app-nav), buttons, pills, cards,
+   tables (table.tbl / .tbl-wrap), badges, fields, modal and toast come from /lib/app-shell.css above. */
 .save-pill{display:none}
 .save-pill.show{display:inline-flex}
-.ntab .ui-ic{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;flex-shrink:0}
-.ntab .ui-ic svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 
-/* Toolbar: search pill + primary action on one row */
-.toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:18px}
-.toolbar .search{flex:1;min-width:200px}
-
-/* Classic catalog table (shell .card.tbl-wrap): centred columns + compact row actions */
-.card.tbl-wrap{overflow:auto}
-.tbl-wrap th.c,.tbl-wrap td.c{text-align:center}
-.tbl-wrap td.muted{color:var(--muted);font-size:12px}
-.row-actions{display:inline-flex;gap:6px;flex-shrink:0}
-
-div.empty{padding:48px 24px;text-align:center;color:var(--muted);background:var(--surface);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--sh)}
-.empty-icon{font-size:32px;margin-bottom:8px;opacity:.4}
-
-/* Category badges the shell has no colour for (Tour / Transport /
-   Accommodation / Other use the shell's blue / amber / green / grey) */
-.badge-pack{background:#f3eafc;color:#7a3ba0;border:1px solid #e2cdf3}
-.badge-night{background:#fde8f1;color:#a02a5e;border:1px solid #f6c6da}
-.badge-lesson{background:#fdf2e8;color:#a05a1a;border:1px solid #f5d6bd}
-.badge-group{background:var(--amber-bg);color:var(--amber);border:1px solid var(--amber-border);margin-left:4px}
-
-.row-toggle{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--muted)}
-.row-toggle .dot{width:8px;height:8px;border-radius:50%;background:var(--border-2)}
-.row-toggle.on .dot{background:var(--green)}
-.row-toggle.on{color:var(--green);font-weight:700}
-
-/* Modal sections (page-specific grouping inside the shell modal) */
-.msection{padding:14px 0;border-bottom:1px solid var(--border)}
-.msection:first-child{padding-top:0}
-.msection:last-child{padding-bottom:0;border-bottom:0}
-.msection-title{font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700;margin-bottom:10px}
-.mfield input[type=number]{font-family:'DM Mono',monospace}
-.mfield .help{font-size:11.5px;color:var(--muted);margin-top:4px;line-height:1.5}
-.mgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.mtoggle{display:flex;align-items:center;gap:8px;padding:9px 12px;border:1px solid var(--border-2);border-radius:var(--r-sm);background:#fff;cursor:pointer;user-select:none}
-.mtoggle input{width:16px;height:16px;cursor:pointer}
-.mtoggle .label{font-size:12.5px;color:var(--ink);font-weight:600;flex:1}
-
-/* ── Price-List view: one card per area, shell table inside ── */
-.pv-section-title{font-size:var(--fs-section);font-weight:700;color:var(--navy);letter-spacing:-.01em;margin:32px 0 14px 2px}
-.pv-section-title:first-of-type{margin-top:0}
-.pv-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--sh);margin-bottom:14px;overflow:auto}
-.pv-price{font-weight:700;color:var(--ink)}
-.pv-na{color:var(--muted-2);font-size:12px;font-weight:400}
-.pv-desc{font-size:12px;color:var(--muted);line-height:1.4;max-width:480px}
-.pv-empty{padding:24px 16px;text-align:center;color:var(--muted);font-size:13px}
-
-/* ── Transfers (route-grouped): one card per route, vehicles as rows ── */
-.tf-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--sh);margin-bottom:12px;overflow:auto}
-.tf-card-eyebrow{font-size:10.5px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);font-weight:700;padding:16px 14px 10px}
-.tf-card-sub{font-size:11px;color:var(--muted-2);font-weight:500;margin-left:8px;text-transform:none;letter-spacing:0}
-.tf-table th.c,.tf-table td.c{text-align:center}
-.tf-table td.muted{color:var(--muted);font-size:12px}
-.tf-price{font-weight:700;color:var(--ink)}
-.tf-cost{font-weight:600;color:var(--ink)}
-/* Picker toggle — same green-dot On / grey-dot Off chip as the classic table */
-.tf-picker-toggle{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer;padding:2px 4px;border-radius:6px;transition:background .12s}
-.tf-picker-toggle .dot{width:8px;height:8px;border-radius:50%;background:var(--border-2)}
-.tf-picker-toggle.on{color:var(--green);font-weight:600}
-.tf-picker-toggle.on .dot{background:var(--green)}
-.tf-picker-toggle:hover{background:var(--foam)}
-body.view-list .tf-picker-toggle{cursor:default;pointer-events:none}
-.tf-na{color:var(--muted-2);font-size:12px;font-weight:400}
-/* Inline editable cells — hover hints clickability; saving / failed states */
-.tf-cell-edit{display:inline-block;padding:4px 8px;border-radius:6px;cursor:pointer;transition:background .12s}
-.tf-cell-edit:hover{background:var(--foam)}
-.tf-cell-edit.saving{background:var(--green-bg);color:var(--green)}
-.tf-cell-edit.failed{background:var(--red-bg);color:var(--red)}
-.tf-cell-input{font-family:'DM Mono',monospace;font-weight:600;font-size:13px;width:90px;border:1px solid var(--border-2);border-radius:6px;padding:4px 8px;text-align:right;background:#fff;color:var(--ink)}
-.tf-cell-input:focus{outline:none;border-color:var(--ocean);box-shadow:0 0 0 3px rgba(30,111,168,.12)}
-.tf-cell-empty{color:var(--muted-2);font-size:12px;font-weight:400}
-body.view-list .tf-cell-edit{cursor:default}
-body.view-list .tf-cell-edit:hover{background:transparent}
-.tf-row-actions{display:inline-flex;gap:6px}
-
-/* Area tabs — pill segmented control (Surf / Tours / Transfers / …) */
-.area-tabs{display:flex;gap:4px;flex-wrap:wrap;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:4px;margin-bottom:16px;width:fit-content;max-width:100%}
-.area-tab{display:inline-flex;align-items:center;gap:8px;border:none;background:transparent;color:var(--muted);padding:8px 14px;border-radius:999px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif;transition:background .12s,color .12s}
-.area-tab:hover{color:var(--navy);background:var(--foam)}
-.area-tab.active{background:var(--ocean);color:#fff;font-weight:700}
-.area-tab .count{font-size:11px;font-variant-numeric:tabular-nums;background:rgba(255,255,255,.18);color:inherit;padding:1px 6px;border-radius:999px;min-width:18px;text-align:center}
-.area-tab:not(.active) .count{background:#f1f4f8;color:var(--muted)}
-/* touch screens: tabs are 36px; the hide/delete «×» is a 28px round target kept apart from the tab label */
-@media (pointer:coarse){
-  .area-tab{min-height:36px}
-  .area-tab>span[onclick]{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;margin-left:10px !important;margin-right:-8px;border-radius:50%;background:rgba(22,36,58,.06);font-size:16px !important;opacity:.7 !important}
-}
-.area-tab .ico{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px}
-.area-tab .ico svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
-
-/* ── Accommodation grid ── section heads sit outside the card; title +
-   inline subtitle share one row on wide screens, stack on phones. */
-.accom-section-head{margin:28px 0 14px;padding:0 2px}
-.accom-section-head:first-of-type{margin-top:0}
-.accom-section-title{font-size:var(--fs-section);font-weight:700;color:var(--navy);letter-spacing:-.01em;display:inline;margin-right:14px}
-.accom-section-sub{font-size:12.5px;color:var(--muted);line-height:1.5;display:inline}
-@media (max-width: 720px){
-  .accom-section-title{display:block;margin-right:0;margin-bottom:4px}
-  .accom-section-sub{display:block}
-}
-.accom-pack-tabs{display:inline-flex;gap:2px;margin:0 0 18px;background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:4px;width:fit-content}
-.accom-pack-tab{padding:7px 16px;border-radius:999px;border:none;font-size:12.5px;font-weight:600;cursor:pointer;color:var(--muted);background:transparent;font-family:'Outfit',sans-serif;transition:all .15s}
-.accom-pack-tab:hover{color:var(--navy);background:var(--foam)}
-.accom-pack-tab.active{background:var(--ocean);color:#fff;font-weight:700}
-
-.accom-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--sh);padding:20px 22px;margin-bottom:14px}
-.accom-card-label{font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px}
-.accom-card-desc{font-size:12px;color:var(--muted);margin-bottom:18px;line-height:1.6}
-
-/* Nights selector (Flexible Pack only) */
-.accom-nights{display:flex;align-items:center;gap:10px;background:var(--foam);border:1px solid var(--border);border-radius:var(--r-sm);padding:10px 14px;margin-bottom:18px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
-.accom-nights-label{font-weight:600;color:var(--ink)}
-.accom-nights-btns{display:inline-flex;gap:4px}
-.accom-nights-btn{width:32px;height:32px;border-radius:var(--r-sm);border:1px solid var(--border-2);background:#fff;color:var(--navy);font-weight:700;font-family:'Outfit',sans-serif;cursor:pointer;font-size:13px;transition:all .15s}
-.accom-nights-btn:hover{border-color:var(--ocean);color:var(--ocean)}
-.accom-nights-btn.active{background:var(--ocean);color:#fff;border-color:var(--ocean)}
-.accom-nights-summary{color:var(--muted);font-size:12px}
-.accom-nights-summary b{color:var(--ink);font-weight:700}
-
-/* Per-season block */
-.accom-season-block{padding:14px 0}
-.accom-season-block + .accom-season-block{border-top:1px solid var(--border);margin-top:6px;padding-top:18px}
-.accom-season-head{display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap}
-.accom-season-pill{display:inline-flex;align-items:center;font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:3px 11px;border-radius:999px;border:1px solid transparent}
-.accom-season-pill.low    {background:var(--green-bg);color:var(--green);border-color:var(--green-border)}
-.accom-season-pill.mid    {background:var(--amber-bg);color:var(--amber);border-color:var(--amber-border)}
-.accom-season-pill.high   {background:var(--red-bg);color:var(--red);border-color:var(--red-border)}
-.accom-season-pill.special{background:#fde0d0;color:#b85a1c;border-color:#f5c7b0}
-.accom-season-dates{font-size:12px;color:var(--muted)}
-
-/* Season grid keeps title-case headers ("Single use" / "Sharing") like the price docs */
-.accom-season-table{width:100%;border-collapse:collapse}
-.accom-season-table thead th{font-size:12px;font-weight:600;color:var(--muted);text-align:right;padding:8px 10px;border-bottom:1px solid var(--border);white-space:normal}
-.accom-season-table thead th:first-child{text-align:left}
-.accom-season-table tbody td{padding:9px 10px;border-bottom:1px solid var(--border);font-size:13px;color:var(--ink);text-align:right;vertical-align:middle}
-.accom-season-table tbody td:first-child{text-align:left;font-weight:600}
-.accom-season-table tbody tr:last-child td{border-bottom:0}
-
-.accom-price{display:inline-block;font-weight:600;color:var(--ink);font-size:13px;font-family:'DM Mono',monospace;cursor:pointer;padding:4px 8px;border-radius:6px;transition:background .12s}
-.accom-price:hover{background:var(--foam)}
-/* In Price-List mode the cells aren't clickable — drop the affordances. */
-body.view-list .accom-price{cursor:default}
-body.view-list .accom-price:hover{background:transparent}
-.accom-price.empty{color:var(--muted-2);font-weight:400;font-size:12px}
-.accom-price.saving{background:var(--green-bg);color:var(--green)}
-.accom-price.failed{background:var(--red-bg);color:var(--red)}
-.accom-price-input{font-family:'DM Mono',monospace;font-size:13px;font-weight:600;width:90px;border:1px solid var(--border-2);border-radius:6px;padding:4px 8px;text-align:right;background:#fff;color:var(--ink)}
-.accom-price-input:focus{outline:none;border-color:var(--ocean);box-shadow:0 0 0 3px rgba(30,111,168,.12)}
-
-.accom-note{background:var(--foam);border:1px solid var(--border);border-radius:var(--r-sm);padding:10px 14px;margin-top:14px;font-size:12px;color:var(--muted);line-height:1.6}
-.accom-note b{color:var(--ink);font-weight:600}
-
-/* ── Our Rooms inventory ── */
-.accom-floor-label{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin:20px 0 10px}
-.accom-floor-label:first-child{margin-top:0}
-.accom-rooms-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
-.accom-room{background:var(--foam);border:1px solid var(--border);border-radius:var(--r-sm);padding:13px 15px;position:relative;transition:background .12s}
-.accom-room:hover{background:#fff}
-.accom-room.shared{border-left:3px solid var(--ocean)}
-.accom-room.superior{border-left:3px solid var(--amber)}
-.accom-room.rv{border-left:3px solid var(--amber)}
-.accom-room-name{font-size:13px;font-weight:700;color:var(--navy);margin-bottom:4px}
-.accom-room-config{font-size:12px;color:var(--muted);margin-bottom:6px;line-height:1.4}
-.accom-room-tags{display:flex;gap:5px;flex-wrap:wrap}
-.accom-tag{font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;border:1px solid transparent}
-.accom-tag-shared,.accom-tag-ac{background:var(--ocean-soft);color:var(--ocean);border-color:#cfe2f2}
-.accom-tag-bath{background:var(--green-bg);color:var(--green);border-color:var(--green-border)}
-.accom-tag-ocean,.accom-tag-rv{background:var(--amber-bg);color:var(--amber);border-color:var(--amber-border)}
-
-@media (max-width: 720px){
-  .accom-card{padding:16px}
-  .accom-season-table thead th,
-  .accom-season-table tbody td{padding:6px 4px;font-size:12px}
+/* page head: title left, search + PDF + one primary button right; wraps under the title on phones */
+.prices-head{align-items:flex-end}
+.prices-actions{display:flex;gap:var(--sp-2);align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.prices-actions .search{width:240px}
+@media (max-width:700px){
+  .prices-actions{width:100%;justify-content:stretch}
+  .prices-actions .search{width:100%;flex:1 1 100%}
+  .prices-actions .btn{flex:1 1 0}
 }
 
-/* Drag-and-drop reorder — a grab handle at the start of each row lets the
-   user shuffle items inside their category. The dragged row dims, the drop
-   target gets a thin ocean-blue line. Persists via a batch UPDATE of
-   sort_order on every row in the affected area. */
-.drag-handle{cursor:grab;color:var(--muted-2);font-size:16px;line-height:1;user-select:none;padding:4px 6px;border-radius:4px;transition:color .12s,background .12s}
-.drag-handle:hover{color:var(--ink);background:var(--foam)}
-.drag-handle:active{cursor:grabbing}
-tr.dragging,.tf-table tr.dragging{opacity:.4}
-tr.drag-over-top   td{box-shadow:inset 0 2px 0 0 var(--ocean)}
+/* area pills: one row; on phones it scrolls sideways inside itself (never the page) */
+.area-bar{display:flex;gap:var(--sp-2);align-items:center;margin:0 0 var(--sp-5)}
+.area-pills{display:flex;gap:var(--sp-2);flex-wrap:wrap;min-width:0}
+.area-pills .pill{white-space:nowrap}
+.area-pills .pill .ic{width:15px;height:15px}
+.area-pills .pill.manage{border-style:dashed;color:var(--muted)}
+@media (max-width:820px){
+  .area-bar{margin-left:calc(-1 * var(--sp-4));margin-right:calc(-1 * var(--sp-4))}
+  .area-pills{flex-wrap:nowrap;overflow-x:auto;padding:2px var(--sp-4) 6px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  .area-pills::-webkit-scrollbar{display:none}
+}
+
+/* catalog tables */
+.cat-card{overflow:hidden;margin-bottom:var(--sp-4)}
+.cat-card .card-hdr{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-3);flex-wrap:wrap}
+.cat-card table{width:100%}
+.tbl-wrap th.c,.tbl-wrap td.c,table.tbl th.c,table.tbl td.c{text-align:center}
+td.drag-col,th.drag-col{width:28px;padding-left:8px!important;padding-right:0!important}
+.row-actions{display:inline-flex;gap:6px;justify-content:flex-end;white-space:nowrap}
+.item-name{font-weight:600;color:var(--ink)}
+.item-badges{display:inline-flex;gap:6px;flex-wrap:wrap;margin-left:6px;vertical-align:1px}
+.item-badges .badge{height:20px;font-size:10.5px}
+.muted{color:var(--muted)}
+.na{color:var(--muted-2);font-weight:400}
+
+/* inline price cells: tap → number input → Enter / blur saves, Escape cancels */
+.cell-edit{display:inline-flex;align-items:center;justify-content:flex-end;min-width:64px;min-height:30px;padding:4px 8px;border-radius:var(--r-xs);font-variant-numeric:tabular-nums;font-weight:600;color:var(--ink);border:1px solid transparent;transition:background .12s,border-color .12s}
+.can-edit .cell-edit{cursor:pointer}
+.can-edit .cell-edit:hover{background:var(--ocean-soft);border-color:#cfe2f2}
+.cell-edit.empty{color:var(--muted-2);font-weight:400}
+.cell-edit.saving{background:var(--amber-bg);color:var(--amber)}
+.cell-edit.saved{background:var(--green-bg);color:var(--green)}
+.cell-edit.failed{background:var(--red-bg);color:var(--red)}
+.cell-input{font:600 13px 'Outfit',sans-serif;font-variant-numeric:tabular-nums;width:96px;height:32px;border:1px solid var(--ocean);border-radius:var(--r-xs);padding:0 8px;text-align:right;background:#fff;color:var(--ink);box-shadow:var(--ring);outline:none}
+.cell-ccy{font-size:11px;color:var(--muted);font-weight:500;margin-right:4px}
+.margin-pos{color:var(--green);font-weight:600}
+.margin-neg{color:var(--red);font-weight:600}
+
+/* On / Off switch (Camp Tab, Transport quick-add) */
+.toggle{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--muted);padding:4px 8px;border-radius:999px;border:1px solid var(--border);background:var(--surface);white-space:nowrap}
+.toggle .dot{width:8px;height:8px;border-radius:50%;background:var(--border-2)}
+.toggle.on{color:var(--green);border-color:var(--green-border);background:var(--green-bg)}
+.toggle.on .dot{background:var(--green)}
+.can-edit .toggle{cursor:pointer}
+.can-edit .toggle:hover{border-color:var(--border-2)}
+.view-list .toggle,.view-list .cell-edit{cursor:default}
+
+/* transfers: one card per route */
+.route-card .card-hdr{padding-top:var(--sp-4);padding-bottom:var(--sp-3)}
+.route-title{font-size:15px;font-weight:700;color:var(--navy)}
+.route-sub{font-size:12.5px;color:var(--muted)}
+
+/* drag to reorder (desktop) */
+.drag-handle{cursor:grab;color:var(--muted-2);display:inline-flex;padding:4px;border-radius:4px;user-select:none}
+.drag-handle:hover{color:var(--ink);background:var(--surface-2)}
+.drag-handle .ic{width:14px;height:14px}
+tr.dragging{opacity:.4}
+tr.drag-over-top td{box-shadow:inset 0 2px 0 0 var(--ocean)}
 tr.drag-over-bottom td{box-shadow:inset 0 -2px 0 0 var(--ocean)}
-body.view-list .drag-handle{display:none}
+.view-list .drag-col{display:none}
 
+/* seasons timeline */
+.season-card{margin-bottom:var(--sp-5)}
+.tl-year{display:grid;grid-template-columns:44px 1fr;gap:var(--sp-3);align-items:center;margin-bottom:10px}
+.tl-year-lbl{font-size:12.5px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums}
+.tl-track{position:relative;height:28px;border-radius:var(--r-xs);background:repeating-linear-gradient(135deg,var(--surface-2) 0 6px,#eef2f6 6px 12px);border:1px solid var(--border);overflow:hidden}
+.tl-seg{position:absolute;top:0;bottom:0;display:flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;overflow:hidden;white-space:nowrap;border-right:1px solid rgba(255,255,255,.7)}
+.tl-seg.low{background:var(--green-bg);color:var(--green)}
+.tl-seg.mid{background:var(--amber-bg);color:var(--amber)}
+.tl-seg.high{background:var(--red-bg);color:var(--red)}
+.tl-seg.special,.tl-seg.other{background:var(--ocean-soft);color:var(--ocean)}
+.tl-today{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--navy);border-radius:1px}
+.tl-months{display:grid;grid-template-columns:repeat(12,1fr);font-size:10.5px;color:var(--muted-2);margin:0 0 6px 56px}
+.tl-legend{display:flex;flex-wrap:wrap;gap:var(--sp-2) var(--sp-4);margin-top:var(--sp-3)}
+.tl-leg{display:flex;gap:8px;align-items:baseline;font-size:12.5px;color:var(--muted);line-height:1.45}
+.tl-leg b{color:var(--ink);font-weight:600}
+@media (max-width:700px){ .tl-months span:nth-child(even){visibility:hidden} .tl-seg{font-size:0} }
+
+/* accommodation */
+.season-pill{display:inline-flex;align-items:center;height:22px;padding:0 10px;border-radius:var(--r-xs);font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;border:1px solid transparent}
+.season-pill.low{background:var(--green-bg);color:var(--green);border-color:var(--green-border)}
+.season-pill.mid{background:var(--amber-bg);color:var(--amber);border-color:var(--amber-border)}
+.season-pill.high{background:var(--red-bg);color:var(--red);border-color:var(--red-border)}
+.season-pill.special,.season-pill.other{background:var(--ocean-soft);color:var(--ocean);border-color:#cfe2f2}
+.pack-bar{display:flex;gap:var(--sp-3);align-items:center;flex-wrap:wrap;margin-bottom:var(--sp-4)}
+.pack-desc{font-size:12.5px;color:var(--muted);line-height:1.5;padding:0 var(--card-pad) var(--sp-4)}
+.nights-row{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap;font-size:12.5px;color:var(--muted)}
+.nights-row .pill{min-width:36px;justify-content:center;padding:0 10px}
+.season-block{border-top:1px solid var(--border)}
+.season-block-head{display:flex;align-items:center;gap:var(--sp-3);flex-wrap:wrap;padding:var(--sp-4) var(--card-pad) var(--sp-2)}
+.season-dates{font-size:12.5px;color:var(--muted)}
+.accom-table{width:100%;table-layout:fixed}
+.accom-table th:first-child,.accom-table td:first-child{width:42%}
+.accom-table td:first-child{font-weight:600;white-space:normal}
+.accom-note{font-size:12.5px;color:var(--muted);line-height:1.55;padding:var(--sp-4) var(--card-pad);border-top:1px solid var(--border);background:var(--surface-2)}
+.accom-note b{color:var(--ink);font-weight:600}
+@media (max-width:700px){
+  .accom-table th:first-child,.accom-table td:first-child{width:34%}
+  .accom-table th,.accom-table td{padding-left:6px!important;padding-right:6px!important;font-size:12px}
+  .accom-table thead th{white-space:normal;line-height:1.25}
+  .accom-table .cell-edit{min-width:0;padding:4px 4px}
+}
+
+/* rooms inventory (collapsible) */
+details.rooms-card>summary{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:var(--sp-3)}
+details.rooms-card>summary::-webkit-details-marker{display:none}
+details.rooms-card[open] .rooms-caret{transform:rotate(180deg)}
+.rooms-caret{transition:transform .15s;color:var(--muted);display:inline-flex}
+.floor-lbl{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:var(--sp-4) 0 var(--sp-2)}
+.floor-lbl:first-child{margin-top:0}
+.rooms-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:var(--sp-2)}
+.room{border:1px solid var(--border);border-radius:var(--r-sm);padding:12px 14px;background:var(--surface)}
+.room-name{font-size:13px;font-weight:700;color:var(--navy)}
+.room-config{font-size:12px;color:var(--muted);margin:2px 0 6px;line-height:1.4}
+.room-tags{display:flex;gap:4px;flex-wrap:wrap}
+
+/* phones: catalog + transfer rows become compact cards — name on top, the three numbers side by side,
+   switches + icon actions on the last line (no page overflow, no endless label lists) */
+.occ-short{display:none}
+@media (max-width:820px){
+  table.stack thead{display:none}
+  table.stack,table.stack tbody{display:block;width:100%}
+  table.stack tbody tr{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 12px;padding:14px var(--sp-4);border-bottom:1px solid var(--border)}
+  table.stack tbody tr:last-child{border-bottom:0}
+  table.stack td{display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-start;gap:2px;padding:0!important;border:0!important;height:auto!important;font-size:13px;text-align:left;white-space:normal;min-width:0}
+  table.stack td::before{content:attr(data-short);color:var(--muted);font-weight:600;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em}
+  table.stack td.drag-col,table.stack td.td-cat{display:none}
+  table.stack td.td-name{display:block;grid-column:1 / -1}
+  table.stack td.td-name::before,table.stack td.td-actions::before{content:none}
+  table.stack td.td-pax{grid-column:1 / 3}
+  table.stack tr:has(.td-pax) td.td-actions{grid-row:2}
+  table.stack td.td-actions{align-items:flex-end;justify-content:flex-end;grid-column:-2 / -1}
+  table.stack td.td-toggle-wide{grid-column:span 2}
+  table.stack .cell-edit{justify-content:flex-start;min-width:0;margin-left:-8px}
+  table.stack .row-actions .btn{width:30px;padding:0;justify-content:center}
+  table.stack .row-actions .btn .lbl{display:none}
+  table.stack .row-actions .btn .ic{margin:0}
+  table.stack tbody tr:hover td{background:transparent}
+  table.stack td .cell-sub{margin-top:0}
+}
+@media (max-width:700px){ .occ-long{display:none} .occ-short{display:inline} }
+
+/* empty, loading, boot log, no access */
+.prices-empty{background:var(--surface);border:1px solid var(--border);border-radius:var(--r)}
 .no-access{padding:64px 24px;text-align:center;color:var(--muted);max-width:560px;margin:0 auto}
-.no-access h2{color:var(--navy);font-size:var(--fs-page);font-weight:700;letter-spacing:-.02em;margin-bottom:8px}
+.no-access h2{color:var(--navy);font-size:24px;font-weight:700;letter-spacing:-.02em;margin-bottom:8px}
 .no-access p{font-size:13px;line-height:1.55}
-.boot-log{margin-top:18px;text-align:left;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);padding:14px 16px;font-family:'DM Mono',monospace;font-size:11px;color:var(--ink);max-height:240px;overflow:auto}
-.boot-log .line{padding:3px 0;border-bottom:1px dotted var(--border)}
+.boot-log{margin-top:18px;text-align:left;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);padding:14px 16px;font-size:12px;color:var(--ink);max-height:240px;overflow:auto}
+.boot-log .line{padding:3px 0;border-bottom:1px solid var(--border)}
 .boot-log .line:last-child{border-bottom:0}
 .boot-log .ok{color:var(--green)}
 .boot-log .pending{color:var(--muted)}
-.boot-log .err{color:var(--red);font-weight:700}
+.boot-log .err{color:var(--red);font-weight:600}
 .boot-spin{display:inline-block;width:10px;height:10px;border:2px solid var(--border);border-top-color:var(--ocean);border-radius:50%;animation:spin 1s linear infinite;vertical-align:-1px;margin-right:6px}
 @keyframes spin{to{transform:rotate(360deg)}}
 
-/* Phones: the classic catalog table stacks each row as a labelled card */
-@media (max-width: 820px){
-  .tbl-wrap thead{display:none}
-  .tbl-wrap tbody tr{display:block;padding:12px;border-bottom:1px solid var(--border)}
-  .tbl-wrap td,.tbl-wrap td.r{display:flex;justify-content:space-between;padding:6px 0;font-size:12px;text-align:left;white-space:normal}
-  .tbl-wrap td::before{content:attr(data-label);color:var(--muted);font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.06em}
+/* modal: grouped sections; a sheet from the bottom on phones */
+.msection{padding:var(--sp-4) 0;border-bottom:1px solid var(--border)}
+.msection:first-child{padding-top:0}
+.msection:last-child{padding-bottom:0;border-bottom:0}
+.msection-title{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600;margin-bottom:var(--sp-3)}
+.mfield .help{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.5}
+.mgrid{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-3)}
+.mtoggle{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1px solid var(--border-2);border-radius:var(--r-sm);background:#fff;cursor:pointer;user-select:none}
+.mtoggle+.mtoggle{margin-top:var(--sp-2)}
+.mtoggle input{width:16px;height:16px;margin-top:2px;cursor:pointer;accent-color:var(--ocean)}
+.mtoggle .label{font-size:13px;color:var(--ink);font-weight:600;flex:1}
+.mtoggle .label small{display:block;font-size:12px;color:var(--muted);font-weight:400;margin-top:2px}
+.linked-preview{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-sm);padding:10px 12px;margin-bottom:var(--sp-3);font-size:12.5px}
+.mfooter .grow{flex:1}
+@media (max-width:700px){
+  .overlay{align-items:flex-end;padding:0}
+  .overlay .modal{max-width:none;border-radius:var(--r-lg) var(--r-lg) 0 0;max-height:94vh}
+  .mgrid{grid-template-columns:1fr}
 }
+
+/* manage tabs list */
+.tab-row{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-3);padding:10px 0;border-bottom:1px solid var(--border)}
+.tab-row:last-child{border-bottom:0}
+.tab-row .grow{min-width:0}
+.tab-row .hint{margin:0}
+
+/* undo toast: the shell toast with one action */
+.toast .toast-act{margin-left:12px;background:transparent;border:1px solid rgba(255,255,255,.4);color:#fff;border-radius:999px;padding:3px 12px;font:600 12.5px 'Outfit',sans-serif;cursor:pointer}
+
+/* search results across areas */
+.area-tag{font-size:11px;color:var(--muted);font-weight:500}
+
+/* price-list (read-only) view */
+.pv-desc{font-size:12.5px;color:var(--muted);line-height:1.45;white-space:normal}
+.pv-price{font-weight:700;color:var(--ink)}
+
+/* PDF dialog */
+.pdf-sections{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-2)}
+@media (max-width:700px){ .pdf-sections{grid-template-columns:1fr} }
 </style>
 </head>
 <body>
 
-<header>
-  <div class="header-left">
-    <a class="brand-home" href="/">
-      <div class="brand-lockup">
-        <div class="brand-logo">
-          <svg viewBox="0 0 197.4 91" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path fill="#fff4d5" d="M61.7,51.9c-.4-9-5.5-16.5-9.7-24.1-2.9-4.8-5.3-9.8-9.3-13.9-3.9-4.4-6.5-9.8-10.8-13.9C19.2,16.6-.5,39.9,0,61.9c9.4-7.9,20.1-17.7,33.1-17.8,3,0,7.2,0,9.5,2.2,1.7,1.7,3.2,4.2,2,6.5-.3.5-1.9,2.7-2.3,2.9-12.9,7.4-20.3,18.6-16.5,33.7,3.1,1.3,8,1,11.1-.3,2.7-.3,5.1-1.3,7.5-2.5,8.7-2.9,14.5-11.1,15.5-20.1,1.2-4.7,2.1-9.7,1.8-14.6h0Z"/><path fill="#fff4d5" d="M69.7,90.6l-.3-1.9c-.7-5.9-.5-11.9-.4-17.9,0-6.7-.3-13.7,0-20.3v-2.3c.5,0,1.1,0,1.7,0,3.3-.3,6.9-.3,10.2,0,.7,0,1.7,0,2.4,0,1.5.3,4,2.2,5,3.3,2.2,2.7,4.9,8.2,5.5,11.7,1.1,7.7-1.8,18.8-6.7,24.8-.4.5-1.4,1.9-1.7,2.1-.2,0-1.5.4-1.9.4-3.3.5-13.7,0-13.7,0h0v.2ZM77.2,61.3v.8c.4,4.6,0,9.3.3,13.9,0,.9-.3,1.7.9,1.8,2.2.3,4.1-.4,5.3-2.3,2.4-3.5,2.3-5.9,1.4-9.9-.3-1.1-1-2.6-1.7-3.5-.8-1-1.4-.8-2.5-.9-.2,0-.3,0-.6,0-1.1,0-2.1,0-3.3,0h.2Z"/><path fill="#fff4d5" d="M124.1.2c2.7,0,4.5.8,7,1.9,6.3,2.9,4.6,10.5,5.1,16.2.5,6.7.9,13.3-1.7,19.7-.9,2.1-3.1,4.1-5.4,4.5-3.5.5-6.3,1-9.8.3-5.6-1.2-7.1-5.7-7.5-10.9-.3-3.7-.4-7.5-.7-11.3-.3-3.5.3-9.2,1.1-12.7,1.5-6.5,6.1-7.6,12.1-7.7h-.2ZM124.1,8.4c-1.4.1-2.7.7-3.7,1.7-.9.8-2.1,3.8-2.4,5-1.1,4.5-.7,9.9.4,14.5.5,2.3,1.9,5.4,4.6,5.7,1.5,0,2.7-.3,3.9-1.1,2-1.4,2-4.9,2.1-7.1.1-1.4.2-2.7.3-4.1,0-1.7,0-3.5-.1-5.1-.3-2.5-.9-7.1-3.1-8.6-.5-.3-1.3-.7-1.9-.7h0v-.2Z"/><path fill="#fff4d5" d="M163.1,48.3c.2-.3,4.1-.3,4.3-.3h3.1v10.8c-.1,5.1-.9,10.1-.7,15.2.1,3.2-.2,5.8-1.1,8.9-.8,2.9-1.7,5.4-4.6,6.8-4.5,2.3-10,1.4-14.4-.9-1.1-.6-2.5-2.7-3-3.8-1.9-4.6-1.2-9.7-1-14.4.1-3.2.4-12.1.4-13.7s.1-6.4.1-8.5,1.5-.3,1.8-.2c.3,0,3.4,0,4.5,0,.2,0,.3,0,.3.2v6.1c-.1,5.9-.1,11.9.1,17.9.1,2.4.3,7.4,1.9,9.3.2.2.6.7.8.7.3,0,1.8.3,2.2.3s2.5-1,2.8-1.3c.1,0,.7-1.6.8-1.9.9-2.8.7-5.9.8-8.7.1-4,.1-7.9.4-11.9.1-1.9.3-9.5.3-10.5h0l.2-.2Z"/><path fill="#fff4d5" d="M176.3.4c.3,1.1.2,2.4.5,3.5.3,1.6.9,3.2,1.2,4.8.9,4.1,1.3,8.3,2.3,12.3.5,2.2,1.3,4.5,1.9,6.7,1.3,4.6,2.3,9.3,3.4,13.9.1.7.3,1,.5,1.6h-8.5c-.1-1.3-.5-2.6-.9-3.9-.3-1.3-.5-2.8-.9-4.1-.3-.9-.5-1.4-.7-2.5,0,0-4.1,0-5.3,0h-.2c-.2,1.2-.4,2.2-.6,3.3-.3,1.5-.7,3.1-1.1,4.7-.1.7-.3,1.7-.4,2.5-1,0-8.3-.2-9,0-.1-.5,5.7-24.6,8.4-36.2.5-2.2.9-4.4,1.4-6.6,0,0,3.5.1,3.7.1h4.3v-.2ZM172.4,11.8q-.3,0-.3.2c-.2.9-.5,1.9-.7,2.8-.5,2.5-.9,5.3-1.3,7.9-.1.9-.3,1.8-.3,2.7,1.6,0,3.2,0,4.7-.3.1-.9-.2-1.7-.3-2.5-.3-2.4-.5-5-1-7.3-.2-1.1-.7-2.3-.9-3.4h.1Z"/><path fill="#fff4d5" d="M162.6,8.9h-.8c-.9.1-2,.3-2.9.4h-4.3c-.3,1.2-.1,2.5-.1,3.7-.3,8.1,0,16.5-.3,24.6,0,1.7.1,3.3.1,4.9s0,.3.1.5c0,.3-7.8,0-8.5,0,0-.9-.3-4.9-.3-6.1-.4-6.9.5-14.1-.3-21,0-.8-.4-1.8-.5-2.6-.1-1.4,0-2.9,0-4.3v-.2c-.8-.1-1.5,0-2.3,0s-.5-.1-.7-.1c-1.5,0-2.9.1-4.4.1V.5h1.3c3.8-.3,7.5.1,11.3,0,3.5,0,6.5.2,10,.4.5,0,2.4-.1,2.6.1.2.3,0,.6,0,.9,0,1,0,2.1-.1,3.1,0,1.3.3,2.5.1,3.9h0Z"/><path fill="#fff4d5" d="M109.8,48c.3,1.1.2,2.4.5,3.5.3,1.6.9,3.2,1.2,4.8.9,4.1,1.3,8.3,2.3,12.3.5,2.2,1.3,4.5,1.9,6.7,1.3,4.6,2.3,9.3,3.4,13.9,0,.7.3,1,.5,1.6h-8.5c0-1.3-.5-2.6-.9-3.9-.3-1.3-.5-2.8-.9-4.1-.3-.9-.5-1.4-.7-2.5,0,0-4.1,0-5.3,0h-.2c-.2,1.2-.4,2.2-.6,3.3-.3,1.5-.7,3.1-1.1,4.7,0,.7-.3,1.7-.4,2.5-1,0-8.3-.2-9,0,0-.5,5.7-24.6,8.4-36.2.5-2.2.9-4.4,1.4-6.6,0,0,3.5,0,3.7,0h4.3v-.2ZM105.9,59.5q-.3,0-.3.2c-.2.9-.5,1.9-.7,2.8-.5,2.5-.9,5.3-1.3,7.9,0,.9-.3,1.8-.3,2.7,1.6,0,3.2,0,4.7-.3,0-.9-.2-1.7-.3-2.5-.3-2.4-.5-5-1-7.3-.2-1.1-.7-2.3-.9-3.4h.1Z"/><path fill="#fff4d5" d="M187.6,48c.3,1.1.2,2.4.5,3.5.3,1.6.9,3.2,1.2,4.8.9,4.1,1.3,8.3,2.3,12.3.5,2.2,1.3,4.5,1.9,6.7,1.3,4.6,2.3,9.3,3.4,13.9.1.7.3,1,.5,1.6h-8.5c-.1-1.3-.5-2.6-.9-3.9-.3-1.3-.5-2.8-.9-4.1-.3-.9-.5-1.4-.7-2.5,0,0-4.1,0-5.3,0h-.2c-.2,1.2-.4,2.2-.6,3.3-.3,1.5-.7,3.1-1.1,4.7-.1.7-.3,1.7-.4,2.5-1,0-8.3-.2-9,0-.1-.5,5.7-24.6,8.4-36.2.5-2.2.9-4.4,1.4-6.6,0,0,3.5,0,3.7,0h4.3v-.2ZM183.7,59.5q-.3,0-.3.2c-.2.9-.5,1.9-.7,2.8-.5,2.5-.9,5.3-1.3,7.9-.1.9-.3,1.8-.3,2.7,1.6,0,3.2,0,4.7-.3.1-.9-.2-1.7-.3-2.5-.3-2.4-.5-5-1-7.3-.2-1.1-.7-2.3-.9-3.4h.1Z"/><path fill="#fff4d5" d="M108.3,13.8h-6.9c-.2-.5,0-1-.2-1.4,0-.5-1.3-2.3-1.5-2.8-.5-.7-1.4-1.5-2.3-1.5-1.3-.1-3.2,0-4.3.8-.5.3-1.1,2.1-1.4,2.7-1.1,3.3-1.3,6.6-1.5,10.1,0,3.6.2,8.1,1.7,11.4,0,.3.5.9.6,1.1.2.3,1.7,1.1,2,1.1.9,0,2.5,0,3.4-.3.3,0,1.7-1,2-1.3.6-.6,1.3-3.3,1.3-4.2s-.3-1.9-.4-2l-4.5-.2c-.3-1.9,0-3.9,0-5.8v-.2c.9,0,6.9.3,9.1.5h2.2c0,.7.2,1.3.3,2,.4,3.1.4,5.2,0,8.3s-.5,6.5-3.1,8.5c-1.1.9-1.8,1.5-3.3,1.9-1.9.6-2.8.6-4.7.7-1.3,0-2.3,0-3.6-.2-3.9-.8-6.3-2.8-7.5-6.5-2.7-8.8-3.1-18.8-.9-27.8.7-3,1.3-4.6,3.9-6.5,2.1-1.5,7-2.3,9.4-1.6,2.7.8,6.6,2.7,8.1,4.4.7.8,1.5,2.7,1.7,3.8.2,1.2,0,5,0,5h.2Z"/><path fill="#fff4d5" d="M142.8,61.3h-6.9c-.2-.5-.1-1-.2-1.4-.1-.5-1.3-2.4-1.5-2.8-.5-.7-1.5-1.5-2.3-1.5-1.3,0-3.2,0-4.3.8-.5.3-1.2,2.1-1.4,2.7-1.1,3.3-1.3,6.7-1.5,10.1,0,3.6.2,8.1,1.7,11.5,0,.3.5.9.6,1.1.2.3,1.7,1.1,2,1.1.9,0,2.5,0,3.5-.3.4,0,1.7-1,2-1.3.6-.7,1.3-3.3,1.3-4.3s-.3-1.9-.4-2l-4.5-.2c-.3-1.9-.1-3.9.1-5.8v-.2c.9,0,6.9.3,9.1.5h2.2c0,.7.2,1.3.3,2.1.5,3.1.4,5.2.1,8.3-.3,3.1-.5,6.5-3.1,8.6-1.1.9-1.8,1.5-3.3,1.9-1.9.6-2.8.6-4.7.7-1.3,0-2.3,0-3.6-.2-3.9-.8-6.3-2.8-7.5-6.6-2.7-8.9-3.1-18.9-.9-27.9.8-3.1,1.3-4.7,3.9-6.5,2.1-1.5,7.1-2.3,9.5-1.6,2.7.8,6.6,2.7,8.1,4.4.7.8,1.5,2.8,1.7,3.8.2,1.3,0,5,0,5h0Z"/></svg>
-        </div>
-      </div>
-    </a>
-    <details class="app-switch">
-      <summary>
-        <span>Prices</span>
-        <span class="app-switch-caret">▾</span>
-      </summary>
-      <nav class="app-switch-menu" data-app-menu="prices"></nav>
-    </details>
-    <details class="app-switch loc-switch" id="pricesLocSwitch">
-      <summary>
-        <span id="pricesLocLabel">Sri Lanka</span>
-        <span class="app-switch-caret">▾</span>
-      </summary>
-      <nav class="app-switch-menu">
-        <a href="/prices/?location=portugal"    data-loc="portugal"><span>Portugal</span><small>EUR catalog</small></a>
-        <a href="/prices/?location=morocco"     data-loc="morocco"><span>Morocco</span><small>MAD catalog</small></a>
-        <a href="/prices/?location=sri-lanka"   data-loc="sri-lanka"><span>Sri Lanka</span><small>LKR catalog</small></a>
-        <a href="/prices/?location=junior-camp" data-loc="junior-camp"><span>Junior Camp</span><small>EUR catalog</small></a>
-        <a href="/prices/?location=surf-school" data-loc="surf-school"><span>Surf School</span><small>EUR · Rentals + Lessons</small></a>
-      </nav>
-    </details>
-  </div>
-  <div class="nav-tabs" id="viewToggle">
-    <button class="ntab active" onclick="onViewMode('edit')"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M14 3l3 3-9 9H5v-3z"/><path d="M12 5l3 3"/></svg></span><span>Edit</span></button>
-    <button class="ntab" onclick="onViewMode('list')"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M6 3h8l3 3v11H6z"/><path d="M14 3v4h4"/><path d="M9 10h5"/><path d="M9 13h5"/></svg></span><span>Price List</span></button>
-  </div>
-  <div class="header-right" data-account-slot>
-    <span id="savePill" class="save-pill"></span>
-    <button class="nav-action-btn" id="dlPdfBtn" onclick="downloadPriceListPDF()" title="Download a PDF of the current price list">Download PDF</button>
-  </div>
-</header>
+<nav id="appNav"></nav>
+<script>
+AppShell.mount('appNav', { app:'prices', tabAttr:'data-view', tabsId:'viewToggle',
+  tabs:[{ id:'edit', label:'Edit', onclick:"onViewMode('edit')", active:true }, { id:'list', label:'Price list', onclick:"onViewMode('list')" }],
+  location:{ id:'pricesLocSwitch', labelId:'pricesLocLabel', label:'Prices', items:[
+    { href:'/prices/?location=portugal',    slug:'portugal',    label:'Portugal',    sub:'EUR' },
+    { href:'/prices/?location=morocco',     slug:'morocco',     label:'Morocco',     sub:'MAD + EUR' },
+    { href:'/prices/?location=sri-lanka',   slug:'sri-lanka',   label:'Sri Lanka',   sub:'LKR + EUR' },
+    { href:'/prices/?location=junior-camp', slug:'junior-camp', label:'Junior Camp', sub:'EUR' },
+    { href:'/prices/?location=surf-school', slug:'surf-school', label:'Surf School', sub:'EUR · rentals + lessons' } ] },
+  actions:'<span id="savePill" class="save-pill"></span>' });
+</script>
 
 <main id="mainContent">
   <div class="no-access" id="loadingMsg">
@@ -330,29 +280,27 @@ body.view-list .drag-handle{display:none}
   </div>
 </main>
 
-<!-- Edit modal — reorganised into clear sections (General / Pricing /
-     Visibility / Connections). Visibility and Connections sections show
-     category-aware fields: Transport gets picker tab + linked tour,
-     Tour gets linked transport. Keeps the modal fluid without dumping
-     every option on the user. -->
-<div class="overlay" id="editOv">
+<!-- Edit sheet — one item: General / Pricing / Visibility / Connections (Transport and Tour only). Ids are the contract
+     of the save handler and the tests: keep them. -->
+<div class="overlay" id="editOv" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
   <div class="modal">
     <div class="mhdr">
-      <div class="mhdr-title" id="modalTitle">New entry</div>
+      <div class="mhdr-title" id="modalTitle">New item</div>
       <div class="mhdr-sub" id="modalSub">Add an item to the price list</div>
+      <button class="mclose" type="button" aria-label="Close" onclick="$('editOv').classList.remove('open')">×</button>
     </div>
     <div class="mbody">
 
-      <!-- ───── General ───── -->
       <div class="msection">
         <div class="msection-title">General</div>
         <div class="mfield">
-          <label>Name *</label>
-          <input type="text" id="em_name" placeholder="e.g., Souk Tour" autocomplete="off">
+          <label for="em_name">Name</label>
+          <input type="text" id="em_name" placeholder="e.g. Souk Tour" autocomplete="off">
+          <div class="help">Transfers: «Route — Vehicle», e.g. «Agadir Airport — Car».</div>
         </div>
         <div class="mgrid">
           <div class="mfield">
-            <label>Category *</label>
+            <label for="em_category">Category</label>
             <select id="em_category" onchange="onCategoryChange()">
               <option value="Tour">Tour</option>
               <option value="Transport">Transport</option>
@@ -366,161 +314,186 @@ body.view-list .drag-handle{display:none}
             </select>
           </div>
           <div class="mfield">
-            <label>Audience</label>
+            <label for="em_audience">Who pays</label>
             <select id="em_audience">
-              <option value="general">General (per-guest)</option>
-              <option value="group">Group (fixed per booking)</option>
+              <option value="general">Per guest</option>
+              <option value="group">Per group (fixed per booking)</option>
             </select>
           </div>
         </div>
       </div>
 
-      <!-- ───── Pricing ─────
-           Two separate currencies: cost stays in the location's local
-           money (MAD/LKR — what we pay drivers / suppliers); sell can be
-           in EUR (what we charge the client). For most rows the two are
-           identical and pre-selected to the local currency, but
-           airport-transfer rows expose the mismatch clearly. -->
+      <!-- Two currencies: the cost stays in the camp's money (what we pay drivers / suppliers), the guest price can be €. -->
       <div class="msection">
         <div class="msection-title">Pricing</div>
         <div class="mgrid">
           <div class="mfield">
-            <label>Sell price</label>
-            <input type="number" id="em_sell" min="0" step="0.01" placeholder="0.00">
+            <label for="em_sell">Guest price</label>
+            <input type="number" id="em_sell" min="0" step="0.01" inputmode="decimal" placeholder="0.00">
           </div>
           <div class="mfield">
-            <label>Sell currency</label>
-            <select id="em_sell_currency">
-              <!-- options populated at openNew / openEdit -->
-            </select>
+            <label for="em_sell_currency">Guest price currency</label>
+            <select id="em_sell_currency"></select>
           </div>
         </div>
         <div class="mgrid">
           <div class="mfield">
-            <label>Cost per guest</label>
-            <input type="number" id="em_cost" min="0" step="0.01" placeholder="0.00">
+            <label for="em_cost">Cost per guest</label>
+            <input type="number" id="em_cost" min="0" step="0.01" inputmode="decimal" placeholder="0.00">
           </div>
           <div class="mfield">
-            <label>Cost currency</label>
-            <select id="em_currency">
-              <!-- options populated at openNew / openEdit -->
-            </select>
+            <label for="em_currency">Cost currency</label>
+            <select id="em_currency"></select>
           </div>
         </div>
         <div class="mfield">
-          <label>Notes</label>
-          <input type="text" id="em_notes" placeholder="Optional short note" autocomplete="off">
+          <label for="em_notes">Notes</label>
+          <input type="text" id="em_notes" placeholder="What's included, shown on the price list" autocomplete="off">
         </div>
-        <!-- ───── Stock + alt price (Merch-only) ───── -->
-        <!-- Wrappers shown / hidden by onCategoryChange. Live inside the
-             Pricing section so they sit next to Sell price visually. The
-             alt-price block lets the owner offer a promotional / discount
-             price on top of the regular Sell — same physical stock. -->
         <div class="mfield" id="em_stock_row" style="display:none">
-          <label>Stock on hand</label>
-          <input type="number" id="em_stock" min="0" step="1" placeholder="e.g., 12" autocomplete="off">
-          <div style="font-size:10px;color:var(--muted);margin-top:4px">Number of units left. Leave empty to disable stock tracking. <strong>The same stock is shared by the regular price AND the staff price below</strong> — selling either decrements the same counter.</div>
+          <label for="em_stock">Stock on hand</label>
+          <input type="number" id="em_stock" min="0" step="1" inputmode="numeric" placeholder="e.g. 12" autocomplete="off">
+          <div class="help">Units left. Leave empty to stop counting. Guest and staff sales take from the same stock.</div>
         </div>
         <div class="mgrid" id="em_alt_row" style="display:none">
           <div class="mfield">
-            <label>Staff price (optional)</label>
-            <input type="number" id="em_alt_price" min="0" step="0.01" placeholder="e.g. 10 · leave empty to hide from Staff tab">
-            <div style="font-size:10px;color:var(--muted);margin-top:4px">Price shown on the Staff tab in the Camp Tab. Set 0 for a giveaway. Leave empty and the item stays guest-only. Currency matches the sell price. Stock is shared with the regular price.</div>
+            <label for="em_alt_price">Staff price</label>
+            <input type="number" id="em_alt_price" min="0" step="0.01" inputmode="decimal" placeholder="Empty = guests only">
+            <div class="help">Shown on the Staff tab of the Camp Tab, in the guest price currency. 0 = giveaway.</div>
           </div>
-          <!-- Alt label input is now hidden — the alt price is always
-               labelled 'Staff' server-side, matching the simplified
-               "Staff price" UX the owner asked for. -->
           <input type="hidden" id="em_alt_label" value="Staff">
         </div>
       </div>
 
-      <!-- ───── Visibility ───── -->
       <div class="msection">
         <div class="msection-title">Visibility</div>
         <label class="mtoggle" id="em_show_ct_row">
           <input type="checkbox" id="em_show_ct">
-          <span class="label">Show in Camp Tab
-            <br><span style="font-size:11.5px;color:var(--muted);font-weight:400">Guests can charge this item to their tab.</span>
-          </span>
+          <span class="label">Show in Camp Tab<small>Guests can charge this item to their tab.</small></span>
         </label>
-        <label class="mtoggle" id="em_show_tp_row" style="margin-top:8px">
+        <label class="mtoggle" id="em_show_tp_row">
           <input type="checkbox" id="em_show_tp">
-          <span class="label">Show in Transport quick-add
-            <br><span style="font-size:11.5px;color:var(--muted);font-weight:400">Appears as a chip when logging transport expenses in the camp hub.</span>
-          </span>
+          <span class="label">Show in Transport quick-add<small>Appears as a chip when logging transport in the camp hub.</small></span>
         </label>
       </div>
 
-      <!-- ───── Connections (transport-only & tour-only fields) ───── -->
       <div class="msection" id="em_connections_section">
         <div class="msection-title">Connections</div>
-        <!-- Live "effective cost" preview — updates as the user picks
-             a linked transport so they SEE the bundle math without having
-             to do it in their head. Hidden until something's selected. -->
-        <div id="em_total_preview" style="display:none;background:var(--foam);border:1px solid var(--border);border-radius:9px;padding:10px 12px;margin-bottom:12px;font-size:12px">
-          <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin-bottom:4px">Linked item</div>
-          <div id="em_total_preview_body" style="color:var(--ink)"></div>
+        <div id="em_total_preview" class="linked-preview" style="display:none">
+          <div class="micro" style="margin-bottom:4px">Linked item</div>
+          <div id="em_total_preview_body"></div>
         </div>
-
-        <!-- Transport-specific: which tab in the Hub picker -->
         <div class="mfield" id="em_picker_tab_row" style="display:none">
-          <label>Transport tab</label>
+          <label for="em_picker_tab">Transport tab</label>
           <select id="em_picker_tab">
             <option value="airport">Airport</option>
             <option value="surf">Surf</option>
             <option value="tours">Tours</option>
-            <option value="tuktuk">Tuk Tuk</option>
+            <option value="tuktuk">Tuk tuk</option>
           </select>
-          <div class="help">Which tab this destination appears under in the Transport quick-add. Use <b>Airport</b> for airport transfers, <b>Surf</b> for surf spots, <b>Tours</b> for excursion destinations (Dunes / Souk / Paradise Valley).</div>
+          <div class="help">Where this route shows in Transport quick-add: Airport, Surf spots, Tours (Dunes, Souk, Paradise Valley) or Tuk tuk runs.</div>
         </div>
-
-        <!-- Transport-specific: vehicle capacity (so per-guest cost can be
-             derived when a Tour is linked to this transport). Leave blank
-             for per-trip pricing (tuk-tuks, single-passenger taxis). -->
         <div class="mfield" id="em_capacity_row" style="display:none">
-          <label>Vehicle capacity (optional)</label>
-          <input type="number" id="em_capacity" min="1" step="1" placeholder="e.g. 4">
-          <div class="help">Seats in this vehicle. Transport picks the smallest vehicle whose capacity holds the people of a trip (more than the largest → the largest, flagged «2nd vehicle?»). The linked tour uses cost ÷ capacity as the per-guest transport share. Leave blank for per-trip prices (tuk-tuks).</div>
+          <label for="em_capacity">Seats in the vehicle</label>
+          <input type="number" id="em_capacity" min="1" step="1" inputmode="numeric" placeholder="e.g. 4">
+          <div class="help">Transport picks the smallest vehicle that seats everyone (more people than the largest → the largest, flagged «2nd vehicle?»). A linked tour uses cost ÷ seats as its transport share. Empty for per-trip prices (tuk-tuks).</div>
         </div>
         <div class="mgrid" id="em_covers_row" style="display:none">
           <div class="mfield">
-            <label>People one paid transfer covers</label>
-            <input type="number" id="em_covers" min="1" step="1" placeholder="3">
-            <div class="help">«€80 / 3 persons» → 3. A trip with more people than paid transfers × this is flagged «underpaid». Not the seats.</div>
+            <label for="em_covers">People one paid transfer covers</label>
+            <input type="number" id="em_covers" min="1" step="1" inputmode="numeric" placeholder="3">
+            <div class="help">«€80 / 3 persons» → 3. More people than paid transfers × this is flagged «underpaid». Not the seats.</div>
           </div>
           <div class="mfield">
-            <label>Bookinglayer product (optional)</label>
+            <label for="em_bl_product">Bookinglayer product</label>
             <input type="text" id="em_bl_product" placeholder="Airport Transfer (with surfboards)">
             <div class="help">A booking of this exact product always gets this vehicle (or a bigger one for more people).</div>
           </div>
         </div>
-
-        <!-- Transport-specific: link to a tour so cost flows to that tour's P&L -->
         <div class="mfield" id="em_linked_tour_row" style="display:none">
-          <label>Linked tour (optional)</label>
-          <select id="em_linked_tour">
-            <option value="">— Not linked —</option>
-          </select>
-          <div class="help">When set, transport spend for this destination is attributed to the chosen tour in reports.</div>
+          <label for="em_linked_tour">Linked tour</label>
+          <select id="em_linked_tour"><option value="">Not linked</option></select>
+          <div class="help">Transport spend on this route counts towards the chosen tour in reports.</div>
         </div>
-
-        <!-- Tour-specific: link to the transport ROUTE used for this tour.
-             A tour uses whichever vehicle fits the group size — Car for 4,
-             Big Van for 12 — so the linkage is to the route ("Souk"), not
-             a specific vehicle. The Overview attributes any vehicle from
-             that route to this tour's P&L. -->
         <div class="mfield" id="em_linked_transport_row" style="display:none">
-          <label>Linked transport route (optional)</label>
-          <select id="em_linked_transport">
-            <option value="">— Not linked —</option>
-          </select>
-          <div class="help">Pick the route, not a specific vehicle. The Overview attributes every vehicle from that route (Car / Minivan / Van) to this tour's profit.</div>
+          <label for="em_linked_transport">Linked transport route</label>
+          <select id="em_linked_transport"><option value="">Not linked</option></select>
+          <div class="help">Pick the route, not a vehicle: every vehicle of that route (Car / Minivan / Van) counts towards this tour's profit.</div>
         </div>
       </div>
     </div>
     <div class="mfooter">
+      <button class="btn btn-danger" id="emDelete" style="display:none" onclick="(function(){const id=editingId;$('editOv').classList.remove('open');onDelete(id);})()">Delete</button>
+      <span class="grow"></span>
       <button class="btn btn-s" id="emCancel">Cancel</button>
       <button class="btn btn-p" id="emSave">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Tabs sheet -->
+<div class="overlay" id="tabsOv" role="dialog" aria-modal="true" aria-labelledby="tabsTitle" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal" style="max-width:520px">
+    <div class="mhdr">
+      <div class="mhdr-title" id="tabsTitle">Tabs</div>
+      <div class="mhdr-sub">Hide the tabs you don't use, or add your own.</div>
+      <button class="mclose" type="button" aria-label="Close" onclick="$('tabsOv').classList.remove('open')">×</button>
+    </div>
+    <div class="mbody" id="tabsBody"></div>
+    <div class="mfooter"><button class="btn btn-s" onclick="$('tabsOv').classList.remove('open')">Done</button></div>
+  </div>
+</div>
+
+<!-- Confirm sheet (delete / hide) -->
+<div class="overlay" id="confirmOv" role="alertdialog" aria-modal="true" aria-labelledby="confirmTitle">
+  <div class="modal" style="max-width:440px">
+    <div class="mhdr"><div class="mhdr-title" id="confirmTitle">Are you sure?</div></div>
+    <div class="mbody"><p id="confirmText" style="font-size:13.5px;color:var(--ink);line-height:1.55"></p></div>
+    <div class="mfooter"><button class="btn btn-s" id="confirmCancel">Cancel</button><button class="btn btn-danger" id="confirmOk">Delete</button></div>
+  </div>
+</div>
+
+<!-- Price list PDF -->
+<div class="overlay" id="pdfOv" role="dialog" aria-modal="true" aria-labelledby="pdfTitle" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal" style="max-width:520px">
+    <div class="mhdr">
+      <div class="mhdr-title" id="pdfTitle">Create price list PDF</div>
+      <div class="mhdr-sub">A4, ready to send to guests and partners. Prices come from this page, never typed again.</div>
+      <button class="mclose" type="button" aria-label="Close" onclick="$('pdfOv').classList.remove('open')">×</button>
+    </div>
+    <div class="mbody">
+      <div class="mgrid">
+        <div class="mfield">
+          <label for="pdf_camp">Camp</label>
+          <select id="pdf_camp">
+            <option value="portugal">Portugal</option>
+            <option value="morocco">Morocco</option>
+            <option value="sri-lanka">Sri Lanka</option>
+            <option value="junior-camp">Junior Camp</option>
+            <option value="surf-school">Surf School</option>
+            <option value="all">All camps</option>
+          </select>
+        </div>
+        <div class="mfield">
+          <label for="pdf_period">Season dates</label>
+          <select id="pdf_period"></select>
+        </div>
+      </div>
+      <div class="mfield">
+        <label>Include</label>
+        <div class="pdf-sections" id="pdf_sections">
+          <label class="mtoggle"><input type="checkbox" value="accommodation" checked><span class="label">Accommodation &amp; seasons</span></label>
+          <label class="mtoggle"><input type="checkbox" value="surf" checked><span class="label">Surf packs &amp; lessons</span></label>
+          <label class="mtoggle"><input type="checkbox" value="tours" checked><span class="label">Tours &amp; activities</span></label>
+          <label class="mtoggle"><input type="checkbox" value="transfers" checked><span class="label">Transfers</span></label>
+          <label class="mtoggle"><input type="checkbox" value="addons" checked><span class="label">Add-ons &amp; extras</span></label>
+          <label class="mtoggle"><input type="checkbox" value="bar"><span class="label">Bar &amp; merch</span></label>
+        </div>
+      </div>
+    </div>
+    <div class="mfooter">
+      <button class="btn btn-s" onclick="$('pdfOv').classList.remove('open')">Cancel</button>
+      <button class="btn btn-p" id="pdfCreate" onclick="createPriceListPdf()">Create PDF</button>
     </div>
   </div>
 </div>
@@ -601,19 +574,6 @@ let viewMode = 'edit';      // 'edit' (owner-facing) | 'list' (clean Price-List 
 // inherit `currentColor` so they automatically match the active/inactive
 // tab text colour. Keeps the visual language clean and brandable (no
 // multi-colour emojis fighting the page).
-const AREA_ICONS = {
-  accommodation:'<svg viewBox="0 0 24 24"><path d="M3 11h18M3 11l1.5-5h15L21 11M3 11v9h18v-9M7 16h3M14 16h3"/></svg>',
-  surf:         '<svg viewBox="0 0 24 24"><path d="M3 11c2.5-3 5-3 7.5 0s5 3 7.5 0M3 16c2.5-3 5-3 7.5 0s5 3 7.5 0M5 7.5c4-2.5 8-2.5 14 0"/></svg>',
-  tours:        '<svg viewBox="0 0 24 24"><path d="M12 21s-7-7-7-12a7 7 0 1 1 14 0c0 5-7 12-7 12z"/><circle cx="12" cy="9" r="2.5"/></svg>',
-  transfers:    '<svg viewBox="0 0 24 24"><path d="M3 17v-5l2-5h11l3 5v5"/><path d="M3 17h2M19 17h2M8 17h8"/><circle cx="7" cy="17" r="1.5"/><circle cx="17" cy="17" r="1.5"/></svg>',
-  // Merch icon: a t-shirt outline. Stays monochrome via currentColor so
-  // it inherits the active/inactive tab text colour like the rest.
-  merch:        '<svg viewBox="0 0 24 24"><path d="M9 4l-5 3 2 4 2-1v10h8V10l2 1 2-4-5-3-2 2c-.5.5-1.5.5-2 0L9 4z"/></svg>',
-  // Drinks icon: a simple cup/glass outline. Same line-art style.
-  drinks:       '<svg viewBox="0 0 24 24"><path d="M6 4h12l-1 16a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L6 4zM7 9h10"/></svg>',
-  addons:       '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
-  costs:        '<svg viewBox="0 0 24 24"><path d="M3 20h18M5 20V10M10 20V6M15 20v-9M20 20v-4"/></svg>'
-};
 // Built-in areas. Extras added — same shape as Merch (stock + optional
 // alt price), category='Extras' feeds the POS Extras tab via
 // refreshCatalogCampTabExtras. Custom areas the owner adds live in
@@ -621,7 +581,7 @@ const AREA_ICONS = {
 const AREAS_SYSTEM = [
   { key:'accommodation', label:'Accommodation', cats:['Accommodation','Per Night'], defaultCategory:'Accommodation' },
   { key:'surf',          label:'Surf',          cats:['Surf Pack','Lesson'],         defaultCategory:'Surf Pack'     },
-  { key:'tours',         label:'Tours / Activities', cats:['Tour'],                   defaultCategory:'Tour'          },
+  { key:'tours',         label:'Tours & activities', cats:['Tour'],                   defaultCategory:'Tour'          },
   { key:'transfers',     label:'Transfers',     cats:['Transport'],                   defaultCategory:'Transport'     },
   { key:'merch',         label:'Merch',         cats:['Merch'],                       defaultCategory:'Merch'         },
   { key:'extras',        label:'Extras',        cats:['Extras'],                      defaultCategory:'Extras'        },
@@ -781,6 +741,7 @@ function withTimeout(promise, ms, label){
   canEdit = isOwner;
   canViewCosts = isOwner;
   markStep('step-session','ok','Signed in as '+currentEmail);
+  AppShell.setUser(currentEmail);
 
   // 4. Resolve location_id
   markStep('step-location','pending','Resolving location "'+LOCATION_SLUG+'"…');
@@ -1020,7 +981,7 @@ const NEW_CAT_COLS = ['covers_pax', 'bl_product'];
 const newCatColMissing = e => !!e && /covers_pax|bl_product/.test(String(e.message || '') + String(e.details || '') + String(e.hint || ''));
 function withoutNewCatCols(p) {
   const r = { ...p }; const had = NEW_CAT_COLS.some(k => r[k] != null); NEW_CAT_COLS.forEach(k => delete r[k]);
-  if (had) setTimeout(() => alert('Saved — except «covers» and «Bookinglayer product»: run supabase/transport-catalog-one-source.sql first.'), 0);
+  if (had) setTimeout(() => AppShell.toast('Saved — except «covers» and «Bookinglayer product»: run supabase/transport-catalog-one-source.sql first.', 'err'), 0);
   return r;
 }
 // € for the margins: ONE rate per camp, from TransportOverview.eurRate (the rule the Transport Overview uses): the camp's
@@ -1068,6 +1029,9 @@ let hiddenSystemKeys = new Set();
 // pricing_areas. Retries without the `hidden` column when the table is
 // mid-migration so the rest of the feature keeps working.
 async function loadCustomAreas(){
+  try { await loadCustomAreasRows(); } finally { __customAreasLoaded = true; syncOrphanArea(); }
+}
+async function loadCustomAreasRows(){
   try{
     let sel = await sbClient
       .from('pricing_areas')
@@ -1122,66 +1086,129 @@ function applyCustomAreas(rows, includeHidden){
   rebuildAreaByKey();
 }
 
-// Prompts the owner for a new tab (label + optional category name).
-// Persists to pricing_areas, then reloads and re-renders.
-async function openNewTabDialog(){
-  const label = prompt('New tab name (e.g. "Rentals", "Wetsuits")');
-  if(!label || !label.trim()) return;
-  const cleanLabel = label.trim();
-  // Category defaults to the label — the owner rarely wants a separate
-  // category name and it keeps the pricing_catalog rows self-explanatory.
-  const key = cleanLabel.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'');
-  if(!key){ alert('Use letters and numbers only.'); return; }
-  if(AREA_BY_KEY[key]){ alert(`Tab "${cleanLabel}" already exists.`); return; }
-  const sortOrder = 100 + AREAS.filter(a => a._custom).length * 10;
-  const { error } = await sbClient.from('pricing_areas').insert({
-    key, label: cleanLabel, cats: [cleanLabel], icon: null, sort_order: sortOrder,
-  });
-  if(error){ alert('Save failed: '+error.message); return; }
-  await loadCustomAreas();
-  filterArea = key;   // jump straight to the new tab
-  renderTable();
+// ── Tabs: add / hide / delete (pricing_areas is shared by every camp) ───────
+// «Tabs» pill → one sheet: every tab with Hide (built-in) or Delete (custom), hidden ones with Restore, and a field
+// for a new tab. Same writes as before (insert / upsert hidden=true / delete); confirmations are sheets, not alerts.
+window.openManageTabs = ()=>{
+  if (!canEdit) return;
+  renderManageTabs();
+  $('tabsOv').classList.add('open');
+};
+function renderManageTabs(){
+  const body = $('tabsBody');
+  if (!body) return;
+  syncOrphanArea();
+  const rows = AREAS.filter(a => a.key !== 'costs' && !a._auto).map(a => {
+    const hidden = hiddenSystemKeys.has(a.key);
+    const n = areaCount(a);
+    const btn = a._custom
+      ? `<button class="btn btn-danger btn-sm" onclick="deleteCustomArea('${a.key}')">${ic('trash')}<span class="lbl">Delete</span></button>`
+      : hidden
+        ? `<button class="btn btn-s btn-sm" onclick="restoreHiddenAreas(['${a.key}'])">${ic('eye')} Restore</button>`
+        : `<button class="btn btn-s btn-sm" onclick="hideSystemArea('${a.key}')">${ic('eye-off')} Hide</button>`;
+    return `<div class="tab-row" data-tab-row="${a.key}"><div class="grow"><b>${escapeHtml(a.label)}</b>${hidden ? ' <span class="badge badge-grey">Hidden</span>' : ''}${a._custom ? ' <span class="badge badge-blue">Custom</span>' : ''}
+      <p class="hint">${n} item${n === 1 ? '' : 's'}</p></div>${btn}</div>`;
+  }).join('');
+  body.innerHTML = `${rows}
+    <div class="mfield" style="margin-top:var(--sp-4)"><label for="newTabName">New tab</label>
+      <div class="row" style="flex-wrap:nowrap"><input type="text" id="newTabName" placeholder="e.g. Rentals" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();createCustomTab()}">
+      <button class="btn btn-s" onclick="createCustomTab()">${ic('plus')} Add tab</button></div>
+      <div class="help">Tabs are shared by every camp. Items keep their category when a tab is hidden or deleted.</div></div>`;
 }
+async function openNewTabDialog(){ openManageTabs(); setTimeout(() => $('newTabName')?.focus(), 60); }
+window.openNewTabDialog = openNewTabDialog;
+
+window.createCustomTab = async ()=>{
+  const input = $('newTabName');
+  const cleanLabel = String(input?.value || '').trim();
+  if (!cleanLabel) { input?.focus(); return; }
+  const key = cleanLabel.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  if (!key) { AppShell.toast('Use letters and numbers only.', 'err'); return; }
+  if (AREA_BY_KEY[key]) { AppShell.toast(`There is already a tab called «${cleanLabel}».`, 'err'); return; }
+  const sortOrder = 100 + AREAS.filter(a => a._custom).length * 10;
+  const { error } = await sbClient.from('pricing_areas').insert({ key, label: cleanLabel, cats: [cleanLabel], icon: null, sort_order: sortOrder });
+  if (error) { AppShell.toast("Couldn't add the tab — " + error.message, 'err'); return; }
+  await loadCustomAreas();
+  filterArea = key;
+  $('tabsOv').classList.remove('open');
+  AppShell.toast(`Tab «${cleanLabel}» added`, 'ok');
+  renderTable();
+};
 
 async function deleteCustomArea(key){
   const a = AREA_BY_KEY[key];
-  if(!a || !a._custom){ return; }
+  if (!a || !a._custom) return;
   const inUse = catalog.filter(r => a.cats.includes(r.category)).length;
-  const msg = inUse
-    ? `Delete tab "${a.label}"?\n\n${inUse} product${inUse===1?'':'s'} in this tab will stay in the catalog (category unchanged) but the tab disappears from /prices and the POS. You can bring the tab back by creating it again with the same label.`
-    : `Delete tab "${a.label}"?`;
-  if(!confirm(msg)) return;
+  const ok = await confirmSheet({ title: `Delete the «${a.label}» tab?`,
+    text: (inUse ? `${inUse} item${inUse === 1 ? '' : 's'} stay in the catalog with their category, but the tab disappears from Prices and the Camp Tab. ` : '') +
+      'This changes every camp. You can bring it back by adding a tab with the same name.', ok: 'Delete tab' });
+  if (!ok) return;
   const { error } = await sbClient.from('pricing_areas').delete().eq('key', key);
-  if(error){ alert('Delete failed: '+error.message); return; }
+  if (error) { AppShell.toast("Couldn't delete the tab — " + error.message, 'err'); return; }
   await loadCustomAreas();
-  if(filterArea === key) filterArea = 'accommodation';
-  renderTable();
+  if (filterArea === key) filterArea = 'accommodation';
+  renderManageTabs(); renderTable();
+  AppShell.toast(`Tab «${a.label}» deleted`, 'ok');
 }
+window.deleteCustomArea = deleteCustomArea;
 
-// System tabs can't be deleted from code, but can be hidden by upserting
-// a pricing_areas row with hidden=true. Restore is a simple row delete
-// (see restoreSystemArea below). Kept separate from deleteCustomArea so
-// the confirm copy explains the "hide, not delete" behaviour.
+// Built-in tabs are hidden (a pricing_areas row with hidden=true), never deleted; Restore deletes that row.
 async function hideSystemArea(key){
   const a = AREA_BY_KEY[key];
-  if(!a || a._custom){ return; }
-  if(!confirm(`Hide the "${a.label}" tab?\n\nProducts stay in the catalog. You can bring the tab back any time from the "Restore hidden" button on the tab row.`)) return;
-  const { error } = await sbClient.from('pricing_areas').upsert({
-    key: a.key, label: a.label, cats: a.cats, sort_order: 0, hidden: true,
-  }, { onConflict: 'key' });
-  if(error){ alert('Hide failed: '+error.message); return; }
+  if (!a || a._custom) return;
+  const ok = await confirmSheet({ title: `Hide the «${a.label}» tab?`, text: 'Items stay in the catalog. This hides the tab in every camp; Restore brings it back.', ok: 'Hide tab', danger: false });
+  if (!ok) return;
+  const { error } = await sbClient.from('pricing_areas').upsert({ key: a.key, label: a.label, cats: a.cats, sort_order: 0, hidden: true }, { onConflict: 'key' });
+  if (error) { AppShell.toast("Couldn't hide the tab — " + error.message, 'err'); return; }
   await loadCustomAreas();
-  if(filterArea === key) filterArea = 'accommodation';
-  renderTable();
+  if (filterArea === key) filterArea = 'accommodation';
+  renderManageTabs(); renderTable();
 }
-async function restoreHiddenAreas(){
-  if(!hiddenSystemKeys.size) return;
-  const list = Array.from(hiddenSystemKeys).map(k => AREAS_SYSTEM.find(a=>a.key===k)?.label || k).join(', ');
-  if(!confirm(`Bring back the hidden tab${hiddenSystemKeys.size===1?'':'s'}: ${list}?`)) return;
-  const { error } = await sbClient.from('pricing_areas').delete().in('key', Array.from(hiddenSystemKeys));
-  if(error){ alert('Restore failed: '+error.message); return; }
+window.hideSystemArea = hideSystemArea;
+
+async function restoreHiddenAreas(keys){
+  const list = (Array.isArray(keys) && keys.length ? keys : Array.from(hiddenSystemKeys)).filter(k => hiddenSystemKeys.has(k));
+  if (!list.length) return;
+  const { error } = await sbClient.from('pricing_areas').delete().in('key', list);
+  if (error) { AppShell.toast("Couldn't restore — " + error.message, 'err'); return; }
   await loadCustomAreas();
-  renderTable();
+  renderManageTabs(); renderTable();
+  AppShell.toast(list.length === 1 ? 'Tab restored' : 'Tabs restored', 'ok');
+}
+window.restoreHiddenAreas = restoreHiddenAreas;
+
+// ── Confirm sheet + undo toast (no browser alerts) ───────────────────────────
+function confirmSheet({ title, text, ok = 'Delete', danger = true }){
+  return new Promise(resolve => {
+    $('confirmTitle').textContent = title || 'Are you sure?';
+    $('confirmText').textContent = text || '';
+    const okBtn = $('confirmOk'), cancel = $('confirmCancel'), ov = $('confirmOv');
+    okBtn.textContent = ok;
+    okBtn.className = 'btn ' + (danger ? 'btn-danger' : 'btn-p');
+    const finish = (v)=>{ ov.classList.remove('open'); okBtn.onclick = cancel.onclick = ov.onclick = null; document.removeEventListener('keydown', onKey); resolve(v); };
+    const onKey = (e)=>{ if (e.key === 'Escape') finish(false); };
+    okBtn.onclick = ()=> finish(true);
+    cancel.onclick = ()=> finish(false);
+    ov.onclick = (e)=>{ if (e.target === ov) finish(false); };
+    document.addEventListener('keydown', onKey);
+    ov.classList.add('open');
+    setTimeout(() => cancel.focus(), 30);
+  });
+}
+window.confirmSheet = confirmSheet;
+
+function showUndoToast(msg, onUndo, ms = 7000){
+  let t = $('toast');
+  if (!t) { t = document.createElement('div'); t.id = 'toast'; t.className = 'toast'; document.body.appendChild(t); }
+  t.innerHTML = `<span>${escapeHtml(msg)}</span><button type="button" class="toast-act" id="undoBtn">Undo</button>`;
+  t.className = 'toast show';
+  clearTimeout(t._t);
+  t._t = setTimeout(() => { t.className = 'toast'; }, ms);
+  $('undoBtn').onclick = async ()=>{
+    clearTimeout(t._t); t.className = 'toast';
+    try { await onUndo(); }
+    catch (err) { AppShell.toast("Couldn't undo — " + (err?.message || 'try again'), 'err'); }
+  };
 }
 
 // Lifetime sold counts per Merch / Drinks item, keyed by item_name.
@@ -1254,332 +1281,425 @@ function subscribeRealtime(){
     .subscribe();
 }
 
-// ── Rendering ──────────────────────────────────────────────────────────────
+// ── Rendering (Design v3, 17 Nov 2026) ─────────────────────────────────────
+// Page head (title · search · Price list PDF · one blue «New item») → area pills → the area's card(s).
+// Areas keep their own layouts: Accommodation = season timeline + pack × season blocks (rooms × occupancy),
+// Transfers = one card per route, every other area = the catalog table. Phones: rows stack as cards.
+const AREA_ICON = { accommodation:'home', surf:'wave', tours:'map-pin', transfers:'truck', merch:'tag', extras:'star',
+  drinks:'coffee', addons:'plus', costs:'bar-chart', other:'list' };
+const ic = (n)=> (window.AppShell ? AppShell.icon(n) : '');
+const ccyOf = (r)=> r.sell_currency || r.currency || LOCATION_CURRENCY[LOCATION_SLUG] || 'EUR';
+const isInternalNote = (s)=> /^\s*imported from\b/i.test(String(s || ''));
+const PICKER_TAB_LABEL = { airport:'Airport', surf:'Surf', tours:'Tours', tuktuk:'Tuk tuk' };
+const PAGE_SUB = {
+  edit: 'Tap a price to change it. Prices here also show in the Camp Tab and in Transport quick-add when switched on.',
+  list: 'Read-only view — what guests and partners see. Switch to Edit to change anything.'
+};
+let __flashCell = '';   // 'id:field' of the cell just saved → painted green once after the re-render
 
 function renderShell(){
-  const mainEl = $('mainContent');
-  mainEl.innerHTML = `
-    <div class="section-head page-head">
+  document.body.classList.toggle('can-edit', !!canEdit);
+  const label = LOCATION_LABELS[LOCATION_SLUG] || LOCATION_SLUG;
+  $('mainContent').innerHTML = `
+    <div class="section-head page-head prices-head">
       <div>
-        <div class="section-title">${escapeHtml(LOCATION_LABELS[LOCATION_SLUG] || LOCATION_SLUG)} prices</div>
-        <div class="section-sub" id="pageSub">Prices here also show in the Camp Tab and in Transport quick-add when ticked below.</div>
+        <div class="section-title" id="pageTitle">${escapeHtml(label)} prices</div>
+        <div class="section-sub" id="pageSub">${PAGE_SUB[viewMode]}</div>
+      </div>
+      <div class="prices-actions">
+        <input type="search" class="search" id="searchInput" placeholder="Search ${escapeHtml(label)}…" aria-label="Search prices" oninput="onSearch(this.value)" autocomplete="off">
+        <button class="btn btn-s" id="pdfBtn" onclick="openPdfDialog()">${ic('printer')} Price list PDF</button>
+        ${canEdit ? `<button class="btn btn-p" id="newEntryBtn" onclick="openNew()">${ic('plus')} New item</button>` : ''}
       </div>
     </div>
-    <div class="area-tabs" id="areaTabs"></div>
-    <div class="toolbar">
-      <input type="text" class="search" id="searchInput" placeholder="Search by name…" oninput="onSearch(this.value)">
-      ${canEdit ? `<button class="btn btn-p" id="newEntryBtn" onclick="openNew()">+ New entry</button>` : ''}
-    </div>
+    <div class="area-bar"><div class="area-pills" id="areaTabs" role="tablist" aria-label="Price areas"></div></div>
     <div id="tableWrap"></div>
   `;
 }
 
 function categoryBadge(cat){
-  const map = {
-    'Tour':'badge-blue','Transport':'badge-amber','Surf Pack':'badge-pack',
-    'Accommodation':'badge-green','Per Night':'badge-night','Lesson':'badge-lesson',
-    'Other Service':'badge-grey'
-  };
-  return `<span class="badge ${map[cat]||'badge-grey'}">${escapeHtml(cat||'')}</span>`;
+  const map = { 'Tour':'badge-blue', 'Transport':'badge-amber', 'Accommodation':'badge-green', 'Surf Pack':'badge-navy', 'Lesson':'badge-blue' };
+  return `<span class="badge ${map[cat] || 'badge-grey'}">${escapeHtml(cat || '—')}</span>`;
 }
+
+// Categories no tab collects (e.g. Junior Camp «Transfer», Surf School «Rental») get one automatic tab, so no row is ever
+// invisible. Built only after pricing_areas has loaded (Diploria lives there), never written anywhere.
+let __customAreasLoaded = false;
+function syncOrphanArea(){
+  const idx = AREAS.findIndex(a => a.key === 'other');
+  if (idx >= 0) AREAS.splice(idx, 1);
+  if (__customAreasLoaded) {
+    const known = new Set(AREAS.flatMap(a => a.cats));
+    const orphans = [...new Set(catalog.map(r => r.category).filter(c => c && !known.has(c)))].sort();
+    if (orphans.length) AREAS.push({ key:'other', label: orphans.join(' · '), cats: orphans, defaultCategory: orphans[0], _auto: true });
+  }
+  rebuildAreaByKey();
+}
+
+// Surf School only rents boards + wetsuits and gives lessons: the Surf tab (plus any automatic tab).
+const LOCATION_AREAS_OVERRIDE = { 'surf-school': new Set(['surf', 'other']) };
+function visibleAreas(){
+  syncOrphanArea();
+  const only = LOCATION_AREAS_OVERRIDE[LOCATION_SLUG];
+  return AREAS.filter(a =>
+    !(viewMode === 'list' && a.key === 'costs') &&
+    !hiddenSystemKeys.has(a.key) &&
+    (!only || only.has(a.key)));
+}
+const areaCount = (a)=> a.cats.length ? catalog.filter(r => a.cats.includes(r.category)).length : 0;
 
 function renderAreaTabs(){
   const tabs = $('areaTabs');
   if (!tabs) return;
-  // Per-area row count drives the badge so the user sees at a glance how
-  // many entries live in each surface. The Costs tab has no DB categories
-  // yet (placeholder for a future operational-costs view). In Price List
-  // mode we hide the Costs tab entirely — it's owner-internal.
-  // Per-location tab overrides. Surf School has a different workflow
-  // than the camps (only rents boards + wetsuits and gives lessons), so
-  // most camp-centric tabs (Tours, Merch, Bar/Drinks, Add-ons, etc.)
-  // aren't relevant and clutter the picker. Only 'surf' (Surf Pack +
-  // Lesson) is exposed. If Miguel later wants Costs to show for the
-  // school too, add 'costs' to this array.
-  const LOCATION_AREAS_OVERRIDE = {
-    'surf-school': new Set(['surf'])
-  };
-  const overrideForThisLoc = LOCATION_AREAS_OVERRIDE[LOCATION_SLUG];
-  const visibleAreas = AREAS.filter(a =>
-    !(viewMode === 'list' && a.key === 'costs') &&
-    !hiddenSystemKeys.has(a.key) &&
-    (!overrideForThisLoc || overrideForThisLoc.has(a.key))
-  );
-  const counts = {};
-  for (const a of visibleAreas) {
-    counts[a.key] = a.cats.length
-      ? catalog.filter(r => a.cats.includes(r.category)).length
-      : 0;
-  }
-  // If the user is in List mode and somehow on the Costs tab, bounce them
-  // to the first visible area.
-  if (viewMode === 'list' && filterArea === 'costs') {
-    filterArea = 'accommodation';
-  }
-  // Row-count badges are useful in Edit mode (quick health-check on how
-  // many entries each area carries) but distracting on the share-friendly
-  // Price List view — the user wants the tabs to read as clean section
-  // labels there. So we drop the count chip when viewMode === 'list'.
+  const areas = visibleAreas();
+  if (!areas.some(a => a.key === filterArea) && areas.length) filterArea = areas[0].key;
   const showCounts = viewMode === 'edit';
-  const tabHtml = visibleAreas.map(a => {
-    // Costs is a placeholder area and can't be hidden — the owner uses
-    // it as a reserved slot. Anything else gets an X in edit mode:
-    //   • custom tab → deleteCustomArea (removes the row entirely)
-    //   • system tab → hideSystemArea (upserts hidden=true, reversible
-    //     via the Restore button on the right).
-    const canHide = viewMode === 'edit' && a.key !== 'costs';
-    const del = !canHide ? '' : (a._custom
-      ? `<span onclick="event.stopPropagation();deleteCustomArea('${a.key}')" title="Delete this custom tab" style="margin-left:4px;cursor:pointer;opacity:.6;font-size:14px;line-height:1">×</span>`
-      : `<span onclick="event.stopPropagation();hideSystemArea('${a.key}')" title="Hide this tab (reversible)" style="margin-left:4px;cursor:pointer;opacity:.5;font-size:14px;line-height:1">×</span>`);
-    return `
-    <button class="area-tab ${filterArea === a.key ? 'active' : ''}"
-            onclick="onAreaTab('${a.key}')">
-      <span class="ico">${AREA_ICONS[a.key] || ''}</span>
-      <span>${a.label}</span>
-      ${showCounts ? `<span class="count">${counts[a.key]}</span>` : ''}
-      ${del}
-    </button>`;
-  }).join('');
-  // Restore chip — shows only when the owner has hidden at least one
-  // system tab. One-click brings every hidden tab back at once.
-  const restoreBtn = (viewMode === 'edit' && hiddenSystemKeys.size)
-    ? `<button class="area-tab" onclick="restoreHiddenAreas()" title="Show hidden tabs" style="border:1.5px dashed #b3d1a3;color:#3f7a3f">
-         <span style="font-size:13px;line-height:1">↺</span>
-         <span>Restore ${hiddenSystemKeys.size} hidden</span>
-       </button>`
-    : '';
-  // "+ New tab" chip appears at the end of the tab row, edit mode only.
-  const newTabBtn = viewMode === 'edit'
-    ? `<button class="area-tab" onclick="openNewTabDialog()" title="Create a custom tab" style="border:1.5px dashed #cfcfcc;color:#8a8a86">
-         <span style="font-size:15px;font-weight:700;line-height:1">+</span>
-         <span>New tab</span>
-       </button>`
-    : '';
-  tabs.innerHTML = tabHtml + restoreBtn + newTabBtn;
+  tabs.innerHTML = areas.map(a => {
+    const n = areaCount(a);
+    const count = (showCounts && a.key !== 'accommodation' && a.key !== 'costs') ? `<span class="count">${n}</span>` : '';
+    return `<button class="pill ${filterArea === a.key ? 'active' : ''}" role="tab" aria-selected="${filterArea === a.key}" data-area="${a.key}" onclick="onAreaTab('${a.key}')">${ic(AREA_ICON[a.key] || 'grid')}<span>${escapeHtml(a.label)}</span>${count}</button>`;
+  }).join('') + ((viewMode === 'edit' && canEdit)
+    ? `<button class="pill manage" id="manageTabsBtn" onclick="openManageTabs()" title="Add, hide or delete tabs">${ic('settings')}<span>Tabs${hiddenSystemKeys.size ? ` · ${hiddenSystemKeys.size} hidden` : ''}</span></button>`
+    : '');
+  const act = tabs.querySelector('.pill.active');
+  if (act && tabs.scrollWidth > tabs.clientWidth) {
+    const l = act.offsetLeft - tabs.offsetLeft, r = l + act.offsetWidth;
+    if (l < tabs.scrollLeft || r > tabs.scrollLeft + tabs.clientWidth) tabs.scrollLeft = Math.max(0, l - 16);
+  }
+}
+
+function emptyState(icon, title, text, btn){
+  return `<div class="empty-state prices-empty">${ic(icon)}<div class="empty-title">${title}</div>${text ? `<p>${text}</p>` : ''}${btn || ''}</div>`;
 }
 
 function renderTable(){
   renderAreaTabs();
-  // Costs tab is a placeholder — no schema-backed rows yet, so the
-  // "+ New entry" CTA would be confusing here. Hide it on that tab and
-  // bring it back everywhere else. Same goes for Accommodation: it has
-  // its own structured grid editor (renderAccommodation) and the modal
-  // CRUD flow doesn't fit the pack × season × room matrix.
-  // In Price List view all editing UIs are hidden — partners shouldn't
-  // see the "+ New entry" button.
+  document.body.classList.toggle('view-list', viewMode === 'list');
   const newBtn = $('newEntryBtn');
   if (newBtn) newBtn.style.display = (viewMode === 'list' || filterArea === 'costs' || filterArea === 'accommodation') ? 'none' : '';
-
-  // Price List view has its own dedicated renderer that lays out every
-  // area's items as clean cards, matching the user's pricing docs.
-  if (viewMode === 'list') {
-    renderPriceListView();
-    return;
-  }
-
-  // Accommodation has its own dedicated UI — kick over to that and bail.
-  if (filterArea === 'accommodation') {
-    renderAccommodation();
-    return;
-  }
-
-  // Transfers gets the route-grouped layout (one card per route, vehicles
-  // as rows). Much cleaner than the flat row table for users browsing
-  // 21+ vehicle-per-destination entries.
-  if (filterArea === 'transfers') {
-    renderTransfersEdit();
-    return;
-  }
+  if (filterSearch.trim()) { renderSearchResults(); return; }
+  if (viewMode === 'list') { renderPriceListView(); return; }
+  if (filterArea === 'accommodation') { renderAccommodation(); return; }
+  if (filterArea === 'transfers') { renderTransfersEdit(); return; }
   const wrap = $('tableWrap');
   if (!wrap) return;
-  let rows = catalog.slice();
-  const allowedCats = categoriesForArea(filterArea);
-  rows = rows.filter(r => allowedCats.includes(r.category));
-  if (filterSearch) {
-    const q = filterSearch.toLowerCase();
-    rows = rows.filter(r=> (r.name||'').toLowerCase().includes(q) || (r.notes||'').toLowerCase().includes(q));
-  }
-  // Sort by user-controlled sort_order so drag-reorder (which updates the
-  // sort_order field in-place on `catalog`) shows the new order immediately
-  // instead of waiting for a refresh. Fall back to alphabetical so two rows
-  // with the same sort_order stay stable.
-  rows.sort((a, b) => {
-    const so = (Number(a.sort_order) || 100) - (Number(b.sort_order) || 100);
-    if (so) return so;
-    return (a.name || '').localeCompare(b.name || '');
-  });
-
+  const area = AREA_BY_KEY[filterArea];
+  const rows = catalog.filter(r => categoriesForArea(filterArea).includes(r.category)).sort(bySortOrder);
   if (!rows.length) {
-    const area = AREA_BY_KEY[filterArea];
-    const isCosts = filterArea === 'costs';
-    wrap.innerHTML = `<div class="empty">
-      <div class="empty-icon">${area?.icon || '💰'}</div>
-      <div style="font-family:'Outfit',sans-serif;font-weight:700;font-size:18px;color:var(--navy);margin-bottom:4px">${isCosts ? 'Costs view — coming soon' : 'No '+(area?.label||'entries')+' yet'}</div>
-      <div style="font-size:13px">${
-        isCosts
-          ? 'A dedicated operational-costs surface will live here. For now, costs are entered alongside each item in the other tabs (Cost per guest).'
-          : (canEdit ? `Click "+ New entry" to add a ${area?.label.toLowerCase()||'entry'}.` : 'No prices have been added for this area yet.')
-      }</div>
-    </div>`;
+    wrap.innerHTML = filterArea === 'costs'
+      ? emptyState('bar-chart', 'Costs — not in use yet', 'Costs are entered with each item in the other tabs (Cost per guest).')
+      : emptyState('inbox', `No ${escapeHtml((area?.label || 'items').toLowerCase())} yet`,
+          canEdit ? 'Use New item to add the first one.' : 'Nothing has been priced here yet.',
+          canEdit ? `<button class="btn btn-s" onclick="openNew()">${ic('plus')} New item</button>` : '');
     return;
   }
+  wrap.innerHTML = catalogCard(rows, { title: area?.label, drag: canEdit });
+  paintFlash();
+}
 
+const bySortOrder = (a, b)=> ((Number(a.sort_order) || 100) - (Number(b.sort_order) || 100)) || (a.name || '').localeCompare(b.name || '');
+
+function catalogCard(rows, opts = {}){
+  const drag = !!opts.drag;
   const head = `<thead><tr>
-    ${canEdit ? '<th style="width:30px"></th>' : ''}
+    ${drag ? '<th class="drag-col" aria-label="Order"></th>' : ''}
     <th>Name</th>
     <th>Category</th>
-    <th class="r">Sell</th>
+    <th class="r">Guest price</th>
     ${canViewCosts ? '<th class="r">Cost</th><th class="r">Margin</th>' : ''}
     <th class="c">Camp Tab</th>
     <th class="c">Transport quick-add</th>
-    ${canEdit ? '<th class="c">Actions</th>' : ''}
+    ${canEdit ? '<th class="r" aria-label="Actions"></th>' : ''}
   </tr></thead>`;
-
-  // Catalog table: each row shows ONLY its own sell / cost / margin.
-  // Linkage between a Tour and a Transport stays in the database so the
-  // Hub Overview can attribute spend correctly, but we do NOT surface it
-  // here as combined-cost arithmetic — the user explicitly doesn't want
-  // "tour = X + transport per guest" in the catalog view. Per-pax
-  // breakdowns (capacity ÷ guest) are likewise hidden — vehicles can run
-  // half-empty, so a fixed-pax math is misleading.
-  const body = rows.map(r=>{
-    const sellNum = Number(r.sell_price||0);
-    const ownCost = Number(r.cost_per_guest||0);
-    // the cost in the sell currency (MAD / LKR → € with the camp's one rate) before subtracting
-    const costSell = costInSellCcy(ownCost, r.currency || r.sell_currency || 'EUR', r.sell_currency || r.currency || 'EUR');
-    const margin = costSell == null ? null : sellNum - costSell;
-    const marginPct = sellNum > 0 && margin != null ? Math.round((margin / sellNum) * 100) : null;
-
-    // SELL price uses sell_currency (what we charge guests — usually EUR).
-    // COST uses currency (what we pay suppliers — local: MAD, LKR, etc.).
-    // When sell_currency is null we fall back to currency so single-currency
-    // rows (e.g. simple add-ons priced and costed in EUR) keep working.
-    const sellCcy = r.sell_currency || r.currency || 'EUR';
-    const sellTxt = sellNum > 0 ? money(sellNum, sellCcy) : '<span style="color:var(--muted)">—</span>';
-    const costTxt = ownCost > 0 ? money(ownCost, r.currency) : '<span style="color:var(--muted)">—</span>';
-    const marginTxt = sellNum > 0 && marginPct != null
-      ? `<span style="color:${margin>=0?'var(--green)':'var(--red)'};font-weight:700" title="${costSell !== ownCost ? `cost ≈ ${escapeHtml(money(costSell, r.sell_currency || 'EUR'))} at ${Math.round(eurFx.rate * 10) / 10} per €` : ''}">${marginPct}%</span>`
-      : '<span style="color:var(--muted)">—</span>';
-
-    const audBadge = r.audience === 'group' ? '<span class="badge badge-group">Group</span>' : '';
-    // Merch stock badge: green pill with count, red "Out of stock" when 0,
-    // nothing at all when stock_qty is null (tracking disabled). Keeps
-    // every other category visually unchanged.
-    const stockBadge = (['Merch','Drinks','Diploria','Extras'].includes(r.category) && r.stock_qty !== null && r.stock_qty !== undefined)
-      ? `<span style="font-size:10px;font-weight:700;background:${Number(r.stock_qty)>0?'var(--green-bg)':'var(--red-bg)'};color:${Number(r.stock_qty)>0?'var(--green)':'var(--red)'};border:1px solid ${Number(r.stock_qty)>0?'var(--green-border)':'#f0a0a0'};border-radius:20px;padding:2px 9px;margin-left:8px;letter-spacing:.04em">${Number(r.stock_qty)>0?`${r.stock_qty} in stock`:'Out of stock'}</span>`
-      : '';
-    // Alt-price badge for Merch — shown only when set. Same pill style
-    // as stockBadge but in ocean blue so the eye registers it as a
-    // pricing variation rather than a stock indicator.
-    const altBadge = (['Merch','Drinks','Diploria','Extras'].includes(r.category) && r.alt_price !== null && r.alt_price !== undefined)
-      ? `<span style="font-size:10px;font-weight:700;background:#eef6ff;color:var(--ocean);border:1px solid #bfdcf2;border-radius:20px;padding:2px 9px;margin-left:6px;letter-spacing:.04em">${escapeHtml(r.alt_label || 'Offer')} · ${money(Number(r.alt_price), sellCcy)}</span>`
-      : '';
-    // Lifetime sold badge — Merch + Drinks only. Subdued navy chip so it
-    // reads as a metric, not an action. Hidden when 0 to keep the row
-    // visually quiet for fresh items.
-    const soldTracked = ['Merch','Drinks','Diploria','Extras'].includes(r.category);
-    const soldCount = soldTracked ? Number(merchSoldByName[r.name] || 0) : 0;
-    const onTabCount = soldTracked ? Number(merchOnTabByName[r.name] || 0) : 0;
-    const soldBadge = (soldCount > 0 || onTabCount > 0)
-      ? `<span style="font-size:10px;font-weight:700;background:#eef4f9;color:var(--navy);border:1px solid var(--border);border-radius:20px;padding:2px 9px;margin-left:6px;letter-spacing:.04em">${soldCount} sold${onTabCount>0?` <span style=\"color:var(--muted);font-weight:600\">· +${onTabCount} on tab</span>`:''}</span>`
-      : '';
-    return `<tr data-row-id="${r.id}" ondragover="onRowDragOver(event)" ondragleave="onRowDragLeave(event)" ondrop="onRowDrop(event,'${r.id}')">
-      ${canEdit ? `<td class="c"><span class="drag-handle" draggable="true" title="Drag to reorder" ondragstart="onRowDragStart(event,'${r.id}')" ondragend="onRowDragEnd(event)">⋮⋮</span></td>` : ''}
-      <td data-label="Name">
-        <div style="font-weight:600">${escapeHtml(r.name||'')}${audBadge}${stockBadge}${altBadge}${soldBadge}</div>
-        ${r.notes ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">${escapeHtml(r.notes)}</div>` : ''}
-      </td>
-      <td data-label="Category">${categoryBadge(r.category)}</td>
-      <td class="r" data-label="Sell">${sellTxt}</td>
-      ${canViewCosts ? `<td class="r" data-label="Cost">${costTxt}</td><td class="r" data-label="Margin">${marginTxt}</td>` : ''}
-      <td class="c" data-label="Camp Tab"><span class="row-toggle ${r.show_in_camp_tab?'on':''}"><span class="dot"></span>${r.show_in_camp_tab?'On':'Off'}</span></td>
-      <td class="c" data-label="Transport quick-add"><span class="row-toggle ${r.show_in_transport_picker?'on':''}"><span class="dot"></span>${r.show_in_transport_picker?'On':'Off'}</span></td>
-      ${canEdit ? `<td class="c" data-label="Actions"><div class="row-actions">
-        <button class="btn btn-s btn-sm" onclick="openEdit('${r.id}')">Edit</button>
-        <button class="btn btn-danger btn-sm" onclick="onDelete('${r.id}')">Delete</button>
-      </div></td>` : ''}
-    </tr>`;
-  }).join('');
-
-  wrap.innerHTML = `<div class="card tbl-wrap"><table>${head}<tbody>${body}</tbody></table></div>`;
+  const hint = opts.hint || `${rows.length} item${rows.length === 1 ? '' : 's'}`;
+  return `<div class="card cat-card tbl-wrap">
+    <div class="card-hdr"><div><div class="card-title">${escapeHtml(opts.title || 'Items')}</div><div class="card-hint">${escapeHtml(hint)}</div></div></div>
+    <table class="stack">${head}<tbody>${rows.map(r => catalogRowHtml(r, opts)).join('')}</tbody></table>
+  </div>`;
 }
+
+function marginOf(r){
+  const sell = Number(r.sell_price || 0), cost = Number(r.cost_per_guest || 0);
+  const costSell = costInSellCcy(cost, r.currency || r.sell_currency || 'EUR', r.sell_currency || r.currency || 'EUR');
+  if (!(sell > 0) || costSell == null) return null;
+  return { pct: Math.round(((sell - costSell) / sell) * 100), costSell, converted: costSell !== cost };
+}
+
+function priceCell(r, field){
+  const v = Number(r[field] || 0);
+  const cur = field === 'sell_price' ? ccyOf(r) : (r.currency || 'EUR');
+  const flash = __flashCell === `${r.id}:${field}` ? ' saved' : '';
+  return `<span class="cell-edit${v > 0 ? '' : ' empty'}${flash}" data-id="${r.id}" data-field="${field}" data-tf-id="${r.id}" data-tf-field="${field}" ${canEdit ? 'role="button" tabindex="0"' : ''} onclick="onCellEdit(this)" onkeydown="if(event.key==='Enter'){event.preventDefault();onCellEdit(this)}" title="${canEdit && viewMode === 'edit' ? 'Tap to change' : ''}">${v > 0 ? money(v, cur) : '—'}</span>`;
+}
+
+function toggleCell(r, field){
+  const on = !!r[field];
+  return `<span class="toggle ${on ? 'on' : ''}" ${canEdit ? 'role="switch" tabindex="0"' : ''} aria-checked="${on}" onclick="onToggleField('${r.id}','${field}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();onToggleField('${r.id}','${field}')}"><span class="dot"></span>${on ? 'On' : 'Off'}</span>`;
+}
+
+function itemBadges(r){
+  const b = [];
+  const ccy = ccyOf(r);
+  if (r.active === false) b.push('<span class="badge badge-grey">Inactive</span>');
+  if (r.audience === 'group') b.push('<span class="badge badge-amber">Group</span>');
+  const tracked = ['Merch', 'Drinks', 'Diploria', 'Extras'].includes(r.category);
+  if (tracked && r.stock_qty !== null && r.stock_qty !== undefined)
+    b.push(Number(r.stock_qty) > 0 ? `<span class="badge badge-green">${Number(r.stock_qty)} in stock</span>` : '<span class="badge badge-red">Out of stock</span>');
+  if (r.alt_price !== null && r.alt_price !== undefined)
+    b.push(`<span class="badge badge-blue">${escapeHtml(r.alt_label || 'Staff')} ${escapeHtml(money(Number(r.alt_price), ccy))}</span>`);
+  if (tracked) {
+    const sold = Number(merchSoldByName[r.name] || 0), onTab = Number(merchOnTabByName[r.name] || 0);
+    if (sold > 0 || onTab > 0) b.push(`<span class="badge badge-grey">${sold} sold${onTab > 0 ? ` · +${onTab} on tab` : ''}</span>`);
+  }
+  return b.length ? `<span class="item-badges">${b.join('')}</span>` : '';
+}
+
+function catalogRowHtml(r, opts = {}){
+  const m = canViewCosts ? marginOf(r) : null;
+  const marginTxt = m
+    ? `<span class="${m.pct >= 0 ? 'margin-pos' : 'margin-neg'}" title="${m.converted ? `cost ≈ ${escapeHtml(money(m.costSell, r.sell_currency || 'EUR'))} at ${Math.round(eurFx.rate * 10) / 10} per €` : ''}">${m.pct}%</span>`
+    : '<span class="na">—</span>';
+  const areaTag = opts.showArea ? `<div class="cell-sub area-tag">${escapeHtml(areaLabelOf(r.category))}</div>` : '';
+  const dragAttrs = opts.drag ? ` ondragover="onRowDragOver(event)" ondragleave="onRowDragLeave(event)" ondrop="onRowDrop(event,'${r.id}')"` : '';
+  return `<tr data-row-id="${r.id}"${dragAttrs}>
+    ${opts.drag ? `<td class="drag-col"><span class="drag-handle" draggable="true" title="Drag to reorder" ondragstart="onRowDragStart(event,'${r.id}')" ondragend="onRowDragEnd(event)">${ic('more')}</span></td>` : ''}
+    <td class="td-name" data-label="Name"><span class="item-name">${escapeHtml(r.name || '')}</span>${itemBadges(r)}
+      ${r.notes ? `<div class="cell-sub">${escapeHtml(r.notes)}</div>` : ''}${areaTag}</td>
+    <td class="td-cat" data-label="Category">${categoryBadge(r.category)}</td>
+    <td class="r" data-label="Guest price" data-short="Guest price">${priceCell(r, 'sell_price')}</td>
+    ${canViewCosts ? `<td class="r" data-label="Cost" data-short="Cost">${priceCell(r, 'cost_per_guest')}</td><td class="r" data-label="Margin" data-short="Margin">${marginTxt}</td>` : ''}
+    <td class="c" data-label="Camp Tab" data-short="Camp Tab">${toggleCell(r, 'show_in_camp_tab')}</td>
+    <td class="c${canViewCosts ? '' : ' td-toggle-wide'}" data-label="Transport quick-add" data-short="Quick-add">${toggleCell(r, 'show_in_transport_picker')}</td>
+    ${canEdit ? `<td class="r td-actions" data-label="Actions"><div class="row-actions">
+      <button class="btn btn-s btn-sm" onclick="openEdit('${r.id}')">${ic('edit')}<span class="lbl">Edit</span></button>
+      <button class="btn btn-danger btn-sm" onclick="onDelete('${r.id}')" aria-label="Delete ${escapeHtml(r.name || '')}">${ic('trash')}<span class="lbl">Delete</span></button>
+    </div></td>` : ''}
+  </tr>`;
+}
+
+function areaLabelOf(category){
+  syncOrphanArea();
+  const a = AREAS.find(x => x.cats.includes(category));
+  return a ? a.label : (category || '');
+}
+
+function paintFlash(){
+  if (!__flashCell) return;
+  const done = __flashCell; __flashCell = '';
+  setTimeout(() => {
+    document.querySelectorAll('.cell-edit.saved').forEach(el => el.classList.remove('saved'));
+  }, 1400);
+  return done;
+}
+
+// Search runs over the whole camp (every tab), so «where is the Souk tour?» is one step.
+function renderSearchResults(){
+  const wrap = $('tableWrap');
+  if (!wrap) return;
+  const q = filterSearch.trim().toLowerCase();
+  const hit = (r)=> [r.name, r.notes, r.category, r.bl_product].some(v => String(v || '').toLowerCase().includes(q));
+  const order = new Map(AREAS.map((a, i) => [a.key, i]));
+  const areaIdx = (r)=> { const a = AREAS.find(x => x.cats.includes(r.category)); return a ? order.get(a.key) : 999; };
+  const rows = catalog.filter(hit).filter(r => viewMode === 'edit' || (r.active !== false && Number(r.sell_price || 0) > 0))
+    .sort((a, b) => (areaIdx(a) - areaIdx(b)) || bySortOrder(a, b));
+  if (!rows.length) {
+    wrap.innerHTML = emptyState('search', `Nothing matches «${escapeHtml(filterSearch.trim())}»`, 'Search looks at names, notes and categories of every tab in this camp.',
+      `<button class="btn btn-s" onclick="clearSearch()">Clear search</button>`);
+    return;
+  }
+  wrap.innerHTML = catalogCard(rows, { title: 'Search results', hint: `${rows.length} match${rows.length === 1 ? '' : 'es'} in all tabs`, showArea: true });
+  paintFlash();
+}
+window.clearSearch = ()=>{ filterSearch = ''; const s = $('searchInput'); if (s) s.value = ''; renderTable(); };
 
 function renderNoAccess(title, text){
   $('mainContent').innerHTML = `<div class="no-access"><h2>${escapeHtml(title)}</h2><p>${escapeHtml(text)}</p></div>`;
 }
 
-// ── Accommodation grid editor ────────────────────────────────────────────
-function fmtDateRange(rng){
-  // Returns "27 Sep – 31 Oct 2026" given {start:'2026-09-27', end:'2026-10-31'}
-  if (!rng?.start || !rng?.end) return '';
-  const fmt = (s,sameYear)=>{
-    const d = new Date(s+'T00:00:00');
-    const m = d.toLocaleString('en-GB', { month:'short' });
-    const day = d.getDate();
-    return sameYear ? `${day} ${m}` : `${day} ${m} ${d.getFullYear()}`;
+// ── Inline number edit (catalog prices, transfer prices, accommodation cells) ──
+// Tap → number input with the shown value → Enter / leaving the field saves → Escape cancels.
+function inlineNumberEdit(el, start, fmt, save){
+  const input = document.createElement('input');
+  input.type = 'number'; input.inputMode = 'decimal'; input.min = '0'; input.step = '0.01';
+  input.className = 'cell-input'; input.value = start > 0 ? String(start) : ''; input.placeholder = '0';
+  input.setAttribute('aria-label', 'New price');
+  el.classList.remove('failed', 'saved', 'empty');
+  el.innerHTML = ''; el.appendChild(input);
+  input.focus(); input.select();
+  const show = (v)=>{ el.textContent = fmt(v); el.classList.toggle('empty', !(v > 0)); };
+  let done = false;
+  const commit = async ()=>{
+    if (done) return; done = true;
+    const raw = input.value.trim();
+    const num = raw === '' ? 0 : Number(raw);
+    if (!Number.isFinite(num) || num < 0) { show(start); AppShell.toast('Type a number of 0 or more.', 'err'); return; }
+    if (Math.abs(num - start) < 0.005) { show(start); return; }
+    show(num); el.classList.add('saving');
+    __pendingSave = true; __suppressRt = true;
+    setSavePill('saving', 'Saving…');
+    try {
+      await save(num);
+      el.classList.remove('saving'); el.classList.add('saved');
+      setSavePill('saved', 'Saved'); setTimeout(clearSavePill, 1500);
+      setTimeout(() => el.classList.remove('saved'), 1400);
+    } catch (err) {
+      console.error('[Prices] inline save failed', err);
+      el.classList.remove('saving'); el.classList.add('failed'); show(start);
+      setSavePill('failed', 'Save failed');
+      AppShell.toast("Couldn't save — " + (err?.message || 'check the connection and try again'), 'err');
+    } finally {
+      __pendingSave = false;
+      setTimeout(() => { __suppressRt = false; }, 1000);
+    }
   };
-  const a = new Date(rng.start+'T00:00:00');
-  const b = new Date(rng.end  +'T00:00:00');
-  const sameYear = a.getFullYear() === b.getFullYear();
-  return `${fmt(rng.start, sameYear)} – ${fmt(rng.end, false)}`;
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    else if (e.key === 'Escape') { done = true; show(start); }
+  });
 }
 
-// Flexible-pack night selector state. Per-night base prices live in the DB;
-// the selector multiplies them for display only. Editing a cell while
-// nights > 1 divides the user's input by the active night count so the
-// stored value stays the per-night base.
+window.onCellEdit = (el)=>{
+  if (!canEdit || viewMode === 'list') return;
+  if (el.querySelector('input')) return;
+  const id = el.dataset.id || el.getAttribute('data-tf-id');
+  const field = el.dataset.field || el.getAttribute('data-tf-field');
+  if (!id || !['sell_price', 'cost_per_guest'].includes(field)) return;
+  const row = catalog.find(r => r.id === id);
+  if (!row) return;
+  const cur = field === 'sell_price' ? ccyOf(row) : (row.currency || 'EUR');
+  inlineNumberEdit(el, Number(row[field] || 0), v => v > 0 ? money(v, cur) : '—', async (num)=>{
+    const { data, error } = await sbClient.from('pricing_catalog').update({ [field]: num }).eq('id', id).select().single();
+    if (error) throw error;
+    const idx = catalog.findIndex(r => r.id === id);
+    if (idx >= 0) catalog[idx] = { ...catalog[idx], ...data };
+    __flashCell = `${id}:${field}`;
+    setTimeout(() => renderTable(), 0);   // margin + badges follow the new number
+  });
+};
+window.onTfEditCell = window.onCellEdit;   // older name (transfers)
+
+// On / Off for «Camp Tab» and «Transport quick-add», straight from the row.
+window.onToggleField = async (id, field)=>{
+  if (!canEdit || viewMode === 'list') return;
+  if (!['show_in_camp_tab', 'show_in_transport_picker'].includes(field)) return;
+  const row = catalog.find(r => r.id === id);
+  if (!row) return;
+  const newVal = !row[field];
+  __pendingSave = true; __suppressRt = true;
+  setSavePill('saving', 'Saving…');
+  try {
+    const { data, error } = await sbClient.from('pricing_catalog').update({ [field]: newVal }).eq('id', id).select().single();
+    if (error) throw error;
+    const idx = catalog.findIndex(r => r.id === id);
+    if (idx >= 0) catalog[idx] = { ...catalog[idx], ...data };
+    setSavePill('saved', 'Saved'); setTimeout(clearSavePill, 1500);
+    AppShell.toast(`${row.name}: ${field === 'show_in_camp_tab' ? 'Camp Tab' : 'Transport quick-add'} ${newVal ? 'on' : 'off'}`, 'ok');
+    renderTable();
+  } catch (err) {
+    console.error('[Prices] toggle failed', err);
+    setSavePill('failed', 'Save failed');
+    AppShell.toast("Couldn't save — " + (err?.message || 'try again'), 'err');
+  } finally {
+    __pendingSave = false;
+    setTimeout(() => { __suppressRt = false; }, 1000);
+  }
+};
+window.onTfTogglePicker = (id)=> onToggleField(id, 'show_in_transport_picker');
+
+// ── Accommodation: season timeline + pack × season blocks ─────────────────
+function fmtDateRange(rng){
+  // "27 Sep – 31 Oct 2026" given {start:'2026-09-27', end:'2026-10-31'}
+  if (!rng?.start || !rng?.end) return '';
+  const fmt = (s, withYear)=>{
+    const d = new Date(s + 'T00:00:00');
+    return `${d.getDate()} ${d.toLocaleString('en-GB', { month:'short' })}${withYear ? ' ' + d.getFullYear() : ''}`;
+  };
+  const sameYear = rng.start.slice(0, 4) === rng.end.slice(0, 4);
+  return `${fmt(rng.start, !sameYear)} – ${fmt(rng.end, true)}`;
+}
+const seasonCls = (s)=> ['low', 'mid', 'high', 'special'].includes(s?.season_key) ? s.season_key : 'other';
+const seasonName = (s)=> { const t = String(s?.label || '').trim(); return t ? t.charAt(0) + t.slice(1).toLowerCase() : 'Season'; };
+
+// Flexible-pack night selector: the DB keeps the per-night base; the cells show base × nights and an edit divides back.
 let __accomFlexNights = 1;
+
+function seasonTimelineHtml(seasons){
+  const DAY = 864e5;
+  const segs = [];
+  seasons.forEach(s => (Array.isArray(s.date_ranges) ? s.date_ranges : []).forEach(r => {
+    if (r && r.start && r.end && r.end >= r.start) segs.push({ s, start: r.start, end: r.end });
+  }));
+  if (!segs.length) return '';
+  const y0 = Math.min(...segs.map(g => +g.start.slice(0, 4))), y1 = Math.max(...segs.map(g => +g.end.slice(0, 4)));
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const years = [];
+  for (let y = y0; y <= y1; y++) {
+    const ys = Date.UTC(y, 0, 1), ye = Date.UTC(y + 1, 0, 1), len = ye - ys;
+    const bars = segs.map(g => {
+      const a = Math.max(Date.parse(g.start + 'T00:00:00Z'), ys), b = Math.min(Date.parse(g.end + 'T00:00:00Z') + DAY, ye);
+      if (b <= a) return '';
+      const left = (a - ys) / len * 100, width = (b - a) / len * 100;
+      return `<div class="tl-seg ${seasonCls(g.s)}" style="left:${left.toFixed(3)}%;width:${width.toFixed(3)}%" title="${escapeHtml(seasonName(g.s))} · ${escapeHtml(fmtDateRange(g))}">${width > 7 ? escapeHtml(seasonName(g.s).replace(/\s*season$/i, '')) : ''}</div>`;
+    }).join('');
+    const t = Date.parse(todayIso + 'T00:00:00Z');
+    const today = (t >= ys && t < ye) ? `<div class="tl-today" style="left:${((t - ys) / len * 100).toFixed(3)}%" title="Today"></div>` : '';
+    years.push(`<div class="tl-year"><div class="tl-year-lbl">${y}</div><div class="tl-track" data-year="${y}">${bars}${today}</div></div>`);
+  }
+  // two seasons on the same day = two prices for one night: flag it (a gap is fine — the camp may be closed)
+  const overlaps = [];
+  for (let i = 0; i < segs.length; i++) for (let j = i + 1; j < segs.length; j++) {
+    const A = segs[i], B = segs[j];
+    if (A.s === B.s) continue;
+    const s = A.start > B.start ? A.start : B.start, e = A.end < B.end ? A.end : B.end;
+    if (s <= e) overlaps.push(`${seasonName(A.s)} and ${seasonName(B.s)} overlap ${fmtDateRange({ start: s, end: e })}`);
+  }
+  const months = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'].map(m => `<span>${m}</span>`).join('');
+  const legend = seasons.map(s => {
+    const txt = (Array.isArray(s.date_ranges) ? s.date_ranges : []).map(fmtDateRange).filter(Boolean).join(' · ');
+    return `<div class="tl-leg"><span class="season-pill ${seasonCls(s)}">${escapeHtml(seasonName(s))}</span><span>${escapeHtml(txt || 'No dates set')}</span></div>`;
+  }).join('');
+  return `<div class="card season-card" id="seasonCard">
+    <div class="card-hdr"><div><div class="card-title">Seasons</div><div class="card-hint">When each price column applies. Striped = no season (closed or not priced).</div></div></div>
+    <div class="card-body">
+      <div class="tl-months" aria-hidden="true">${months}</div>
+      ${years.join('')}
+      <div class="tl-legend">${legend}</div>
+      ${overlaps.length ? `<div class="status-msg status-warn" style="margin-top:12px">${escapeHtml(overlaps.join(' · '))}. Check the season dates.</div>` : ''}
+    </div>
+  </div>`;
+}
 
 async function renderAccommodation(){
   const wrap = $('tableWrap');
   if (!wrap) return;
-  // Surf School doesn't have accommodation — swallow the section entirely
-  // and paint a friendlier hint instead of "Accommodation not set up yet"
-  // which mid-guides the school manager toward an SQL they shouldn't run.
   if (LOCATION_SLUG === 'surf-school') {
-    wrap.innerHTML = `<div class="empty">
-      <div class="empty-icon">🏄</div>
-      <div style="font-family:'Outfit',sans-serif;font-weight:700;font-size:18px;color:var(--navy);margin-bottom:4px">The Surf School doesn't stock accommodation</div>
-      <div style="font-size:13px">Manage board + wetsuit rates in the <strong>Surf</strong> tab above. The Rentals form in the Camp Hub reads these <em>live</em> — edit a "Surf Pack" price here (keep the name format, e.g. "Board & Wetsuit — 2h (Standard)") and the rental form picks it up on its next load. Rows with unrecognised names fall back to the built-in matrix.</div>
-    </div>`;
+    wrap.innerHTML = emptyState('wave', 'The Surf School has no accommodation', 'Board, wetsuit and lesson prices are in the Surf tab. The rental form in the camp hub reads them live.');
     return;
   }
-
-  // Lazy-load + subscribe on first open
   if (!accomData) {
-    wrap.innerHTML = `<div class="empty"><div style="font-size:13px;color:var(--muted)">Loading accommodation prices…</div></div>`;
-    try {
-      await loadAccommodation();
-    } catch (err) {
+    wrap.innerHTML = `<div class="card"><div class="card-body"><div class="skeleton lg"></div><div class="skeleton row"></div><div class="skeleton row"></div><div class="skeleton row"></div></div></div>`;
+    try { await loadAccommodation(); }
+    catch (err) {
       console.error('[Prices] loadAccommodation failed', err);
-      const msg = String(err?.message || err);
-      let hint = '';
-      if (/relation .* does not exist|accommodation_/i.test(msg)) {
-        hint = ' Run supabase/accommodation-schema.sql in the Supabase SQL Editor first, then refresh this page.';
-      }
-      wrap.innerHTML = `<div class="empty"><div style="font-size:13px;color:var(--red)">Couldn't load accommodation prices — try again or tell Miguel. (${escapeHtml(msg)}${hint})</div></div>`;
+      wrap.innerHTML = emptyState('alert', "Couldn't load accommodation prices", 'Try again or tell Miguel. (' + escapeHtml(String(err?.message || err)) + ')',
+        `<button class="btn btn-s" onclick="renderTable()">${ic('refresh')} Try again</button>`);
       return;
     }
   }
-  if (!accomData) return;   // another call is still loading; it will render when done
-
+  if (!accomData) return;   // another call is still loading; it renders when done
+  if (filterArea !== 'accommodation' || filterSearch.trim()) return;   // the owner moved on while it loaded
   const { packs, seasons, rooms, prices } = accomData;
   if (!packs.length || !seasons.length || !rooms.length) {
-    wrap.innerHTML = `<div class="empty">
-      
-      <div style="font-family:'Outfit',sans-serif;font-weight:700;font-size:18px;color:var(--navy);margin-bottom:4px">Accommodation not set up yet</div>
-      <div style="font-size:13px">Run <code>supabase/accommodation-schema.sql</code> in the Supabase SQL Editor to seed packs, seasons, and room types for this location.</div>
-    </div>`;
+    wrap.innerHTML = emptyState('home', 'Accommodation is not set up for this camp', 'Packs, seasons and room types are added once in the database (supabase/accommodation-schema.sql).');
     return;
   }
-  if (!accomActivePackId || !packs.find(p=>p.id === accomActivePackId)) {
-    accomActivePackId = packs[0].id;
-  }
-  const activePack = packs.find(p=>p.id === accomActivePackId);
+  if (!accomActivePackId || !packs.find(p => p.id === accomActivePackId)) accomActivePackId = packs[0].id;
+  const list = viewMode === 'list';
+  const activePack = packs.find(p => p.id === accomActivePackId);
   const isFlex = activePack?.price_basis === 'per_person_per_night';
   const nightsMultiplier = isFlex ? Math.max(1, __accomFlexNights) : 1;
 
-  // Compute occupancy range from THIS pack's data (Sri Lanka → 1-2, Morocco → 1-4)
   const priceByKey = new Map();
   let maxOccupancy = 2;
   for (const pr of prices) {
@@ -1590,289 +1710,128 @@ async function renderAccommodation(){
   if (maxOccupancy > 6) maxOccupancy = 6;
   const occupancies = [];
   for (let i = 1; i <= maxOccupancy; i++) occupancies.push(i);
-  const cur = activePack.currency || 'EUR';
-  // Column labels describe ROOM SHARING (how many guests share the room) —
-  // NOT the nights count above. Using "Single use" / "Sharing" makes the
-  // distinction visually obvious so a user looking at the Flexible Pack
-  // with its 1-6 nights buttons doesn't conflate the two.
-  const occLabel = (n) => {
-    if (n === 1) return 'Single use';
-    if (n === 2) return 'Sharing';
-    return `${n} sharing`;
-  };
+  const cur = activePack.currency || (prices.find(p => p.pack_id === accomActivePackId)?.currency) || 'EUR';
+  // Columns are ROOM SHARING (how many guests share the room), never the nights count.
+  const occLabel = (n)=> n === 1 ? 'Single use' : n === 2 ? 'Sharing' : `${n} sharing`;
 
-  // Pack tabs
-  const packTabsHtml = packs.map(p=>`
-    <button class="accom-pack-tab ${p.id===accomActivePackId?'active':''}" onclick="onAccomPickPack('${p.id}')">${escapeHtml(p.label)}</button>
-  `).join('');
+  const packPills = packs.map(p => `<button class="pill ${p.id === accomActivePackId ? 'active' : ''}" onclick="onAccomPickPack('${p.id}')">${escapeHtml(p.label)}</button>`).join('');
+  const nightsHtml = isFlex ? `<div class="nights-row"><span>Nights</span>${[1, 2, 3, 4, 5, 6].map(n =>
+    `<button class="pill ${n === nightsMultiplier ? 'active' : ''}" onclick="onAccomPickNights(${n})" aria-label="${n} night${n === 1 ? '' : 's'}">${n}</button>`).join('')}</div>` : '';
 
-  // Nights selector — Flexible Pack only
-  const nightsSelectorHtml = isFlex ? `
-    <div class="accom-nights">
-      <span class="accom-nights-label">Number of nights:</span>
-      <div class="accom-nights-btns">
-        ${[1,2,3,4,5,6].map(n => `
-          <button class="accom-nights-btn ${n===nightsMultiplier?'active':''}" onclick="onAccomPickNights(${n})">${n}</button>
-        `).join('')}
-      </div>
-      <span class="accom-nights-summary">nights selected: <b>${nightsMultiplier}</b></span>
-    </div>
-  ` : '';
-
-  // Per-season blocks
-  const seasonBlocksHtml = seasons.map(s => {
+  const blocks = seasons.map(s => {
     const ranges = Array.isArray(s.date_ranges) ? s.date_ranges : [];
-    const datesTxt = ranges.map(fmtDateRange).filter(Boolean).join(' · ') || '';
-    const headCells = ['<th>Room Type</th>'].concat(occupancies.map(o => `<th>${occLabel(o)}</th>`)).join('');
+    const datesTxt = ranges.map(fmtDateRange).filter(Boolean).join(' · ');
     const bodyRows = rooms.map(r => {
-      let row = `<td>${escapeHtml(r.label)}</td>`;
-      for (const occ of occupancies) {
-        const k = `${s.id}|${r.id}|${occ}`;
+      let any = false;
+      const cells = occupancies.map(occ => {
+        const existing = priceByKey.get(`${s.id}|${r.id}|${occ}`);
+        const base = existing ? Number(existing.sell_price || 0) : 0;
+        const shown = base > 0 ? base * nightsMultiplier : 0;
+        if (shown) any = true;
         const cellId = `accomcell_${accomActivePackId}_${s.id}_${r.id}_${occ}`;
-        const existing = priceByKey.get(k);
-        const baseVal = existing ? Number(existing.sell_price||0) : null;
-        const displayVal = (baseVal && baseVal > 0) ? (baseVal * nightsMultiplier) : null;
-        const display = displayVal
-          ? money(displayVal, cur).replace(/\.00$/, '')
-          : '—';
-        const cls = displayVal ? 'accom-price' : 'accom-price empty';
-        row += `<td><span id="${cellId}" class="${cls}" onclick="onAccomEditCell(this,'${accomActivePackId}','${s.id}','${r.id}',${occ})">${display}</span></td>`;
-      }
-      return `<tr>${row}</tr>`;
+        const txt = shown ? money(shown, cur).replace(/\.00$/, '') : '—';
+        return `<td class="r" data-label="${escapeHtml(occLabel(occ))}"><span id="${cellId}" class="cell-edit${shown ? '' : ' empty'}" ${canEdit && !list ? 'role="button" tabindex="0"' : ''} onclick="onAccomEditCell(this,'${accomActivePackId}','${s.id}','${r.id}',${occ})" onkeydown="if(event.key==='Enter'){event.preventDefault();this.click()}">${txt}</span></td>`;
+      }).join('');
+      if (list && !any) return '';
+      return `<tr><td>${escapeHtml(r.label)}</td>${cells}</tr>`;
     }).join('');
-    return `
-      <div class="accom-season-block">
-        <div class="accom-season-head">
-          <span class="accom-season-pill ${s.season_key}">${escapeHtml(s.label)}</span>
-          ${datesTxt ? `<span class="accom-season-dates">${escapeHtml(datesTxt)}</span>` : ''}
-        </div>
-        <table class="accom-season-table">
-          <thead><tr>${headCells}</tr></thead>
-          <tbody>${bodyRows}</tbody>
-        </table>
-      </div>
-    `;
+    if (list && !bodyRows) return '';
+    return `<div class="season-block" data-season="${s.id}">
+      <div class="season-block-head"><span class="season-pill ${seasonCls(s)}">${escapeHtml(s.label)}</span>${datesTxt ? `<span class="season-dates">${escapeHtml(datesTxt)}</span>` : ''}</div>
+      <table class="tbl accom-table"><thead><tr><th>Room type</th>${occupancies.map(o => `<th class="r"><span class="occ-long">${occLabel(o)}</span><span class="occ-short">${o === 1 ? 'Single' : o + ' share'}</span></th>`).join('')}</tr></thead><tbody>${bodyRows}</tbody></table>
+    </div>`;
   }).join('');
 
-  // Footer note — different for Weekly vs Flexible
   const footerNote = isFlex
     ? (nightsMultiplier === 1
-        ? '<b>Prices are per person per night.</b> Click any cell to edit. Empty cells (—) mean no price set yet.'
-        : `<b>Prices shown are total per person for ${nightsMultiplier} nights.</b> Click any cell and the input will divide by ${nightsMultiplier} so the per-night base stays consistent.`)
-    : '<b>Prices are per person</b> for the full pack. The column depends on how many people share the room. A solo traveller in a double room pays the 1 Person rate.';
+        ? '<b>Prices are per person per night.</b>' + (canEdit && !list ? ' Tap a price to change it; clear it to remove it.' : '')
+        : `<b>Prices shown are per person for ${nightsMultiplier} nights.</b>` + (canEdit && !list ? ` A price you type here is divided by ${nightsMultiplier} and kept per night.` : ''))
+    : '<b>Prices are per person</b> for the full pack. The column is how many people share the room — a solo traveller in a double room pays the single-use rate.';
 
   wrap.innerHTML = `
-    ${renderRoomsInventory()}
-    <div class="accom-section-head">
-      <div class="accom-section-title">Accommodation Pricing</div>
-    </div>
-    <div class="accom-pack-tabs">${packTabsHtml}</div>
-    <div class="accom-card">
-      <div class="accom-card-label">${escapeHtml(activePack.label)}</div>
-      ${activePack.description ? `<div class="accom-card-desc">${escapeHtml(activePack.description)}</div>` : ''}
-      ${nightsSelectorHtml}
-      ${seasonBlocksHtml}
+    ${seasonTimelineHtml(seasons)}
+    <div class="pack-bar"><div class="pills" role="tablist" aria-label="Packs">${packPills}</div>${nightsHtml}</div>
+    <div class="card tbl-wrap" id="accomCard">
+      <div class="card-hdr"><div><div class="card-title">${escapeHtml(activePack.label)}</div><div class="card-hint">${escapeHtml(cur)} · ${isFlex ? 'per person per night' : 'per person per pack'}</div></div></div>
+      ${activePack.description ? `<div class="pack-desc">${escapeHtml(activePack.description)}</div>` : ''}
+      ${blocks || `<div class="card-body">${emptyState('inbox', 'No prices in this pack yet', '')}</div>`}
       <div class="accom-note">${footerNote}</div>
     </div>
+    ${renderRoomsInventory()}
   `;
 }
 
-// "Our Rooms" inventory — physical rooms with floor groupings, tags, and
-// colour-coded left borders (shared / superior / riad-view). Sources from
-// accommodation_rooms; when that table is empty (schema not yet applied)
-// the section is omitted entirely so older Supabase projects keep working.
+// «Our rooms» — the physical rooms (accommodation_rooms), folded under the prices.
 function renderRoomsInventory(){
   const inv = accomData?.inventory || [];
   if (!inv.length) return '';
-
-  // Group by floor (NULL floor → single un-grouped "Rooms" block, used by
-  // Sri Lanka which has no floor labels in the source doc).
   const byFloor = new Map();
-  for (const r of inv) {
-    const key = r.floor || '';
-    if (!byFloor.has(key)) byFloor.set(key, []);
-    byFloor.get(key).push(r);
-  }
-
-  // Build a short intro line based on which tags are present in the
-  // inventory — keeps the description honest about what the rooms include
-  // without hardcoding per-location copy.
-  const allTags = new Set();
-  for (const r of inv) (r.tags || []).forEach(t => allTags.add(t));
-  const introBits = [];
-  if (allTags.has('bath')) introBits.push('<strong>private ensuite bathroom</strong>');
-  if (allTags.has('ac'))   introBits.push('<strong>air conditioning</strong>');
-  const introTxt = introBits.length
-    ? `All rooms have ${introBits.join(' and ')}.`
-    : 'Room inventory below.';
-
-  // Floor labels keep their natural order from the data: NULL first
-  // (Sri Lanka), then Ground / 1st / 2nd / etc.
-  const floorBlocks = Array.from(byFloor.entries()).map(([floor, rooms]) => {
-    const label = floor ? `${escapeHtml(floor)} Floor` : '';
-    const cards = rooms.map(r => {
-      const variantCls = r.variant && r.variant !== 'standard' ? r.variant : '';
-      const tagsHtml = (r.tags || []).map(t => {
-        const labelMap = {
-          shared:'Shared Dorm', bath:'Private Bathroom', ac:'AC',
-          ocean:'Ocean/Jungle View', rv:'Riad View'
-        };
-        const clsMap = {
-          shared:'accom-tag-shared', bath:'accom-tag-bath', ac:'accom-tag-ac',
-          ocean:'accom-tag-ocean',   rv:'accom-tag-rv'
-        };
-        const lab = labelMap[t] || t;
-        const cls = clsMap[t] || 'accom-tag-bath';
-        return `<span class="accom-tag ${cls}">${escapeHtml(lab)}</span>`;
-      }).join('');
-      return `
-        <div class="accom-room ${variantCls}">
-          <div class="accom-room-name">${escapeHtml(r.name || '')}</div>
-          ${r.config_text ? `<div class="accom-room-config">${escapeHtml(r.config_text)}</div>` : ''}
-          <div class="accom-room-tags">${tagsHtml}</div>
-        </div>
-      `;
-    }).join('');
-    return `
-      ${label ? `<div class="accom-floor-label">${label}</div>` : ''}
-      <div class="accom-rooms-grid">${cards}</div>
-    `;
-  }).join('');
-
-  return `
-    <div class="accom-section-head">
-      <div class="accom-section-title">Our Rooms</div>
-      ${introTxt ? `<div class="accom-section-sub">${introTxt}</div>` : ''}
-    </div>
-    <div class="accom-card">
-      ${floorBlocks}
-    </div>
-  `;
+  for (const r of inv) { const k = r.floor || ''; if (!byFloor.has(k)) byFloor.set(k, []); byFloor.get(k).push(r); }
+  const allTags = new Set(); inv.forEach(r => (r.tags || []).forEach(t => allTags.add(t)));
+  const intro = [allTags.has('bath') && 'private ensuite bathroom', allTags.has('ac') && 'air conditioning'].filter(Boolean);
+  const TAG = { shared:['Shared dorm', 'badge-blue'], bath:['Private bathroom', 'badge-green'], ac:['AC', 'badge-blue'], ocean:['Ocean / jungle view', 'badge-amber'], rv:['Riad view', 'badge-amber'] };
+  const floors = [...byFloor.entries()].map(([floor, rooms]) => `
+    ${floor ? `<div class="floor-lbl">${escapeHtml(floor)} floor</div>` : ''}
+    <div class="rooms-grid">${rooms.map(r => `<div class="room">
+      <div class="room-name">${escapeHtml(r.name || '')}</div>
+      ${r.config_text ? `<div class="room-config">${escapeHtml(r.config_text)}</div>` : ''}
+      <div class="room-tags">${(r.tags || []).map(t => `<span class="badge ${(TAG[t] || [0, 'badge-grey'])[1]}">${escapeHtml((TAG[t] || [t])[0])}</span>`).join('')}</div>
+    </div>`).join('')}</div>`).join('');
+  return `<details class="card rooms-card" style="margin-top:var(--sp-5)">
+    <summary class="card-hdr"><div><div class="card-title">Our rooms</div><div class="card-hint">${inv.length} rooms${intro.length ? ' · all with ' + intro.join(' and ') : ''}</div></div><span class="rooms-caret">${ic('chevron-down')}</span></summary>
+    <div class="card-body">${floors}</div>
+  </details>`;
 }
 
-window.onAccomPickPack = (packId)=>{
-  accomActivePackId = packId;
-  // Reset nights to 1 whenever we switch packs so the weekly view doesn't
-  // accidentally show "multiplied" data from a previous flexible session.
-  __accomFlexNights = 1;
-  renderAccommodation();
-};
-
-window.onAccomPickNights = (n)=>{
-  __accomFlexNights = Math.max(1, Math.min(60, Number(n) || 1));
-  renderAccommodation();
-};
+window.onAccomPickPack = (packId)=>{ accomActivePackId = packId; __accomFlexNights = 1; renderAccommodation(); };
+window.onAccomPickNights = (n)=>{ __accomFlexNights = Math.max(1, Math.min(60, Number(n) || 1)); renderAccommodation(); };
 
 window.onAccomEditCell = (el, packId, seasonId, roomId, occupancy)=>{
-  if (!canEdit) return;
-  // Price List mode is read-only — clicking a cell does nothing so the
-  // partner can't accidentally surface an input.
-  if (viewMode === 'list') return;
+  if (!canEdit || viewMode === 'list') return;
   if (el.querySelector('input')) return;
-
-  const pack = (accomData?.packs||[]).find(p=>p.id === packId);
+  const pack = (accomData?.packs || []).find(p => p.id === packId);
   const isFlex = pack?.price_basis === 'per_person_per_night';
   const nights = isFlex ? Math.max(1, __accomFlexNights) : 1;
-  const cur = pack?.currency || 'EUR';
-  const existing = (accomData?.prices||[]).find(p=>
-    p.pack_id===packId && p.season_id===seasonId && p.room_type_id===roomId && p.occupancy===occupancy
-  );
-  // The DB stores the per-night (or per-pack) base price. The cell displays
-  // base × nights. When the user clicks to edit, the input shows the
-  // DISPLAYED value — what they see is what they edit. We divide back by
-  // nights before saving so the base is consistent.
-  const baseVal = existing ? Number(existing.sell_price||0) : 0;
-  const displayedVal = baseVal * nights;
-  const startDisplay = displayedVal || '';
-
-  const input = document.createElement('input');
-  input.type = 'number';
-  input.min = '0';
-  input.step = '0.01';
-  input.className = 'accom-price-input';
-  input.value = startDisplay || '';
-  input.placeholder = '0';
-
-  el.classList.remove('empty','failed');
-  el.innerHTML = '';
-  el.appendChild(input);
-  input.focus();
-  input.select();
-
-  const restoreDisplay = ()=>{
-    el.textContent = displayedVal > 0 ? money(displayedVal, cur).replace(/\.00$/,'') : '—';
-    el.classList.toggle('empty', !displayedVal);
-  };
-
-  let committed = false;
-  const commit = async ()=>{
-    if (committed) return;
-    committed = true;
-    const raw = input.value.trim();
-    const displayNum = raw === '' ? 0 : Number(raw);
-    if (!Number.isFinite(displayNum) || displayNum < 0) { restoreDisplay(); return; }
-    // Divide back to the per-night (or per-pack) base before saving.
+  const cur = pack?.currency || ((accomData?.prices || []).find(p => p.pack_id === packId)?.currency) || 'EUR';
+  const findExisting = ()=> (accomData?.prices || []).find(p => p.pack_id === packId && p.season_id === seasonId && p.room_type_id === roomId && p.occupancy === occupancy);
+  const existing = findExisting();
+  const baseVal = existing ? Number(existing.sell_price || 0) : 0;
+  // what you see is what you edit: base × nights; saved back as the per-night (or per-pack) base
+  inlineNumberEdit(el, baseVal * nights, v => v > 0 ? money(v, cur).replace(/\.00$/, '') : '—', async (displayNum)=>{
     const baseNum = Number((displayNum / nights).toFixed(2));
-    if (Math.abs(baseVal - baseNum) < 0.005) { restoreDisplay(); return; } // no change
-
-    el.classList.add('saving');
-    const newDisplay = baseNum * nights;
-    el.textContent = newDisplay > 0 ? money(newDisplay, cur).replace(/\.00$/,'') : '—';
-    const cellKey = `${packId}|${seasonId}|${roomId}|${occupancy}`;
-    __accomSavingCell = cellKey;
-    __pendingSave = true;
+    if (Math.abs(baseVal - baseNum) < 0.005) return;
+    __accomSavingCell = `${packId}|${seasonId}|${roomId}|${occupancy}`;
     try {
       if (existing && baseNum === 0) {
         const { error } = await sbClient.from('accommodation_prices').delete().eq('id', existing.id);
         if (error) throw error;
-        accomData.prices = accomData.prices.filter(p=>p.id !== existing.id);
+        accomData.prices = accomData.prices.filter(p => p.id !== existing.id);
       } else if (existing) {
-        const { data, error } = await sbClient
-          .from('accommodation_prices')
-          .update({ sell_price: baseNum })
-          .eq('id', existing.id).select().single();
+        const { data, error } = await sbClient.from('accommodation_prices').update({ sell_price: baseNum }).eq('id', existing.id).select().single();
         if (error) throw error;
-        const idx = accomData.prices.findIndex(p=>p.id === existing.id);
+        const idx = accomData.prices.findIndex(p => p.id === existing.id);
         if (idx >= 0) accomData.prices[idx] = data;
       } else if (baseNum > 0) {
-        const { data, error } = await sbClient
-          .from('accommodation_prices')
-          .insert({
-            location_id: locationId,
-            pack_id: packId,
-            season_id: seasonId,
-            room_type_id: roomId,
-            occupancy,
-            sell_price: baseNum,
-            currency: cur
-          }).select().single();
+        const { data, error } = await sbClient.from('accommodation_prices').insert({
+          location_id: locationId, pack_id: packId, season_id: seasonId, room_type_id: roomId, occupancy, sell_price: baseNum, currency: cur
+        }).select().single();
         if (error) throw error;
         accomData.prices.push(data);
       }
-      el.classList.remove('saving');
-      el.classList.toggle('empty', !newDisplay);
-    } catch (err) {
-      console.error('[Prices] accommodation cell save failed', err);
-      el.classList.remove('saving');
-      el.classList.add('failed');
-      restoreDisplay();
-      alert('Could not save: ' + (err?.message || 'unknown error'));
     } finally {
-      __pendingSave = false;
-      setTimeout(()=>{ __accomSavingCell = null; }, 800);
+      setTimeout(() => { __accomSavingCell = null; }, 800);
     }
-  };
-
-  input.addEventListener('blur', commit);
-  input.addEventListener('keydown', e=>{
-    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
-    else if (e.key === 'Escape') { committed = true; restoreDisplay(); }
   });
 };
 
 // ── Search / filter ───────────────────────────────────────────────────────
 window.onSearch = (v)=>{ filterSearch = v; renderTable(); };
-window.onAreaTab = (key)=>{ filterArea = key; renderTable(); };
+window.onAreaTab = (key)=>{
+  filterArea = key;
+  if (filterSearch) { filterSearch = ''; const s = $('searchInput'); if (s) s.value = ''; }
+  renderTable();
+};
+
 
 // ── Drag-and-drop reorder ────────────────────────────────────────────────
 // Lets the user reorder rows inside a category by grabbing the ⋮⋮ handle
@@ -1944,7 +1903,7 @@ window.onRowDrop = async (e, targetId)=>{
   // Only allow reordering inside the same category — moving a Tour into the
   // Surf area would change its category, which isn't what the drag implies.
   if (dragged.category !== target.category) {
-    alert("You can only reorder items inside the same category. To move it to another area, edit the entry and change its Category.");
+    AppShell.toast('Items move only inside their own category. To move one to another tab, edit it and change its category.', 'err');
     return;
   }
   await reorderWithinCategory(dragged, targetId, insertBefore);
@@ -1983,64 +1942,133 @@ async function reorderWithinCategory(dragged, targetId, insertBefore){
       const idx = catalog.findIndex(r => r.id === u.id);
       if (idx >= 0) catalog[idx].sort_order = u.sort_order;
     }
-    setSavePill('saved','Order saved ✓');
+    setSavePill('saved','Order saved');
     setTimeout(clearSavePill, 1500);
     renderTable();
   } catch (err) {
     console.error('[Prices] reorder failed', err);
-    setSavePill('failed','⚠ Reorder failed');
-    alert('Could not save new order: ' + (err?.message || 'unknown error'));
+    setSavePill('failed','Reorder failed');
+    AppShell.toast("Couldn't save the new order — " + (err?.message || 'try again'), 'err');
   } finally {
     __pendingSave = false;
     setTimeout(()=>{ __suppressRt = false; }, 1000);
   }
 }
+
 window.onViewMode = (mode)=>{
   if (mode !== 'edit' && mode !== 'list') return;
   if (viewMode === mode) return;
   viewMode = mode;
-  // Body-level class lets us tweak hover / cursor styles globally for
-  // read-only mode without threading state through every render call.
   document.body.classList.toggle('view-list', mode === 'list');
-  // Update the page subtitle so the user sees what they're in.
   const sub = $('pageSub');
-  if (sub) {
-    sub.textContent = (mode === 'list')
-      ? 'Read-only view — what guests and partners see. Click Edit to change anything.'
-      : 'Prices here also show in the Camp Tab and in Transport quick-add when ticked below.';
-  }
-  // Sync the toggle pill states.
-  document.querySelectorAll('#viewToggle .ntab').forEach((btn, i)=>{
-    btn.classList.toggle('active', (i === 0) === (mode === 'edit'));
-  });
-  // Re-render the area tabs so the row-count badges appear/disappear with
-  // the mode switch (counts are hidden in Price List for a cleaner look).
-  renderAreaTabs();
-  // Re-render the body — main entry point that decides between Edit and List.
+  if (sub) sub.textContent = PAGE_SUB[mode];
+  if (window.AppShell) AppShell.setTab(mode);
   renderTable();
 };
 
-// ── Price-List (share-ready) view ─────────────────────────────────────────
-// One section per business area, each laid out per its natural shape:
-//   • Accommodation reuses renderAccommodation (already doc-styled, with
-//     editing disabled when viewMode==='list' — see the click guard
-//     inside onAccomEditCell).
-//   • Tours / Surf / Transfers / Add-ons each get a labelled card with
-//     a 3-column table: Name / Description / Price per person. No costs,
-//     no margin, no toggles, no action buttons.
-//   • Costs stays an empty placeholder.
-// The footer at the bottom is intentionally bare — partners don't need
-// the operational metadata that the edit view exposes.
+// ── Transfers: one card per route, vehicles as rows ─────────────────────────
+function paxCell(it){
+  const r = it.row;
+  const cov = Number(r.covers_pax) > 0 ? `<div class="cell-sub">1 paid transfer = ${Number(r.covers_pax)} person${Number(r.covers_pax) === 1 ? '' : 's'}</div>` : '';
+  return `${it.paxRange ? `${it.paxRange}` : '<span class="na">—</span>'}${it.capacity > 0 ? ` <span class="muted">· ${it.capacity} seats</span>` : ''}${cov}`;
+}
 
-// ── Transfers: route-grouped rendering ────────────────────────────────────
-//
-// Names like "Agadir Airport — Car" / "Agadir Airport — Minivan" share a
-// route prefix split on the last " — ". Vehicles are ordered by capacity,
-// pax ranges are computed as [previous_max+1 ... this_capacity]
-// (so Car=4 → 1-4, Minivan=8 → 5-8, Big Van=15 → 9-15). Single-price
-// presets without a "—" suffix (Sri Lanka tuk-tuks like Ahangama,
-// Weligama) are rendered as one-row routes.
+function renderTransfersEdit(){
+  const wrap = $('tableWrap');
+  if (!wrap) return;
+  const groups = transferRouteGroups();
+  if (!groups.length) {
+    wrap.innerHTML = emptyState('truck', 'No transfers yet', canEdit ? 'Use New item to add a route and its vehicles (name them «Route — Vehicle»).' : '',
+      canEdit ? `<button class="btn btn-s" onclick="openNew()">${ic('plus')} New item</button>` : '');
+    return;
+  }
+  const inactive = catalog.filter(r => r.category === 'Transport' && r.active === false);
+  wrap.innerHTML = groups.map(g => {
+    const isAirport = /airport/i.test(g.route);
+    const tabs = [...new Set(g.items.map(it => PICKER_TAB_LABEL[it.row.picker_tab] || ''))].filter(Boolean).join(', ');
+    return `<div class="card cat-card tbl-wrap route-card" data-route="${escapeHtml(g.route)}">
+      <div class="card-hdr"><div><div class="route-title">${escapeHtml(g.route)}</div>
+        <div class="route-sub">${isAirport ? 'Airport transfer' : 'Camp run'}${tabs ? ` · ${escapeHtml(tabs)} tab` : ''} · ${g.items.length} vehicle${g.items.length === 1 ? '' : 's'}</div></div></div>
+      <table class="stack">
+        <thead><tr>
+          ${canEdit ? '<th class="drag-col" aria-label="Order"></th>' : ''}
+          <th>Vehicle</th><th>People</th>
+          ${canViewCosts ? '<th class="r">Driver cost (per trip)</th>' : ''}
+          <th class="r">Guest price (per trip)</th>
+          <th class="c">Transport quick-add</th>
+          ${canEdit ? '<th class="r" aria-label="Actions"></th>' : ''}
+        </tr></thead>
+        <tbody>${g.items.map(it => {
+          const r = it.row;
+          const m = canViewCosts ? marginOf(r) : null;
+          const mTxt = (m && Number(r.cost_per_guest || 0) > 0) ? `<div class="cell-sub ${m.pct >= 0 ? 'margin-pos' : 'margin-neg'}" data-tf-margin>margin ${m.pct}%</div>` : '';
+          return `<tr data-row-id="${r.id}"${canEdit ? ` ondragover="onRowDragOver(event)" ondragleave="onRowDragLeave(event)" ondrop="onRowDrop(event,'${r.id}')"` : ''}>
+            ${canEdit ? `<td class="drag-col"><span class="drag-handle" draggable="true" title="Drag to reorder within ${escapeHtml(g.route)}" ondragstart="onRowDragStart(event,'${r.id}')" ondragend="onRowDragEnd(event)">${ic('more')}</span></td>` : ''}
+            <td class="td-name" data-label="Vehicle"><span class="item-name">${escapeHtml(it.vehicle || r.name || '—')}</span>${itemBadges(r)}
+              ${r.bl_product ? `<div class="cell-sub">Bookinglayer: ${escapeHtml(r.bl_product)}</div>` : ''}</td>
+            <td class="td-pax" data-label="People" data-short="People"><span>${paxCell(it)}</span></td>
+            ${canViewCosts ? `<td class="r" data-label="Driver cost" data-short="Driver cost">${priceCell(r, 'cost_per_guest')}</td>` : ''}
+            <td class="r" data-label="Guest price" data-short="Guest price"><span>${priceCell(r, 'sell_price')}${mTxt}</span></td>
+            <td class="c" data-label="Quick-add" data-short="Quick-add">${toggleCell(r, 'show_in_transport_picker')}</td>
+            ${canEdit ? `<td class="r td-actions" data-label="Actions"><div class="row-actions">
+              <button class="btn btn-s btn-sm" onclick="openEdit('${r.id}')">${ic('edit')}<span class="lbl">Edit</span></button>
+              <button class="btn btn-danger btn-sm" onclick="onDelete('${r.id}')" aria-label="Delete ${escapeHtml(r.name || '')}">${ic('trash')}<span class="lbl">Delete</span></button>
+            </div></td>` : ''}
+          </tr>`;
+        }).join('')}</tbody>
+      </table>
+    </div>`;
+  }).join('') + (inactive.length ? catalogCard(inactive.sort(bySortOrder), { title: 'Inactive transfers', hint: 'Not offered in Transport — switch back on in Edit.' }) : '');
+  paintFlash();
+}
 
+// ── Price list (read-only, share-friendly) ──────────────────────────────────
+function pvAreaItems(areaKey){
+  const cats = categoriesForArea(areaKey);
+  return catalog.filter(r => cats.includes(r.category) && r.active !== false && Number(r.sell_price || 0) > 0).sort(bySortOrder);
+}
+
+function pvCard(title, cols, rowsHtml, emptyMsg){
+  if (!rowsHtml) return `<div class="card">${emptyState('inbox', escapeHtml(emptyMsg), '')}</div>`;
+  return `<div class="card cat-card tbl-wrap">
+    ${title ? `<div class="card-hdr"><div class="card-title">${escapeHtml(title)}</div></div>` : ''}
+    <table class="tbl"><thead><tr>${cols.map(c => `<th${c.right ? ' class="r"' : ''}>${escapeHtml(c.label)}</th>`).join('')}</tr></thead><tbody>${rowsHtml}</tbody></table>
+  </div>`;
+}
+
+function renderTransfersPriceList(){
+  const wrap = $('tableWrap');
+  if (!wrap) return;
+  const sellable = transferRouteGroups()
+    .map(g => ({ ...g, items: g.items.filter(it => Number(it.row.sell_price || 0) > 0) }))
+    .filter(g => g.items.length);
+  if (!sellable.length) {
+    wrap.innerHTML = `<div class="card">${emptyState('truck', 'No transfers published yet', 'Add a guest price in Edit to publish a route.')}</div>`;
+    return;
+  }
+  wrap.innerHTML = sellable.map(g => pvCard(`${/airport/i.test(g.route) ? 'Airport transfer · ' : ''}${g.route}`,
+    [{ label: 'Vehicle' }, { label: 'People' }, { label: 'Price per trip', right: true }],
+    g.items.map(it => {
+      const r = it.row; const cov = Number(r.covers_pax) || 0;
+      return `<tr><td>${escapeHtml(it.vehicle || r.name)}</td><td class="muted">${cov ? `up to ${cov} persons` : (it.paxRange || '—')}</td><td class="r"><span class="pv-price">${money(Number(r.sell_price || 0), ccyOf(r))}</span></td></tr>`;
+    }).join(''), '')).join('');
+}
+
+function renderPriceListView(){
+  const wrap = $('tableWrap');
+  if (!wrap) return;
+  if (filterArea === 'accommodation') { renderAccommodation(); return; }
+  if (filterArea === 'transfers') { renderTransfersPriceList(); return; }
+  const area = AREA_BY_KEY[filterArea];
+  const first = { surf: 'Pack', tours: 'Activity' }[filterArea] || 'Item';
+  const rows = pvAreaItems(filterArea).map(r => `<tr>
+      <td><span class="item-name">${escapeHtml(r.name)}</span>${r.notes && !isInternalNote(r.notes) ? `<div class="pv-desc">${escapeHtml(r.notes)}</div>` : ''}</td>
+      <td class="r"><span class="pv-price">${money(Number(r.sell_price || 0), ccyOf(r))}</span></td></tr>`).join('');
+  wrap.innerHTML = pvCard(area?.label || 'Items', [{ label: first }, { label: 'Price', right: true }], rows, `Nothing published in ${area?.label || 'this tab'} yet.`);
+}
+
+
+// ── Transfers: route grouping ──
 function transferRouteGroups(){
   const transfers = catalog.filter(r => r.category === 'Transport' && r.active);
   const groups = new Map();
@@ -2088,341 +2116,7 @@ function transferRouteGroups(){
   return result;
 }
 
-function renderTransfersEdit(){
-  const wrap = $('tableWrap');
-  if (!wrap) return;
-  const groups = transferRouteGroups();
-  if (!groups.length) {
-    wrap.innerHTML = `<div class="empty">
-      <div class="empty-icon">🚐</div>
-      <div style="font-family:'Outfit',sans-serif;font-weight:700;font-size:18px;color:var(--ink);margin-bottom:4px">No transfers yet</div>
-      <div style="font-size:13px">Click "+ New entry" to add a transfer destination.</div>
-    </div>`;
-    return;
-  }
-  wrap.innerHTML = groups.map(g => {
-    const isAirport = /airport/i.test(g.route);
-    const eyebrow = isAirport ? `Airport transfer · ${g.route}` : g.route;
-    return `
-      <div class="tf-card">
-        <div class="tf-card-eyebrow">${escapeHtml(eyebrow)}</div>
-        <table class="tbl tf-table">
-          <thead>
-            <tr>
-              ${canEdit ? '<th style="width:30px"></th>' : ''}
-              <th>Vehicle</th>
-              <th>Pax</th>
-              <th class="r">Cost (per trip)</th>
-              <th class="r">Price (per trip)</th>
-              <th class="c">Transport Picker</th>
-              <th class="c">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${g.items.map(it => {
-              const r = it.row;
-              const cost = Number(r.cost_per_guest || 0);
-              const sell = Number(r.sell_price || 0);
-              const costCcy = r.currency || 'EUR';
-              const sellCcy = r.sell_currency || r.currency || 'EUR';
-              const costCell  = cost > 0 ? money(cost, costCcy) : '<span class="tf-cell-empty">— add</span>';
-              const priceCell = sell > 0 ? money(sell, sellCcy) : '<span class="tf-cell-empty">— add</span>';
-              const cSell = costInSellCcy(cost, costCcy, sellCcy);
-              const mPct = sell > 0 && cost > 0 && cSell != null ? Math.round((sell - cSell) / sell * 100) : null;
-              const mTxt = mPct == null ? '' : `<div class="cell-sub" data-tf-margin style="color:${mPct >= 0 ? 'var(--green)' : 'var(--red)'}">margin ${mPct}%</div>`;
-              const pickerCls = r.show_in_transport_picker ? 'on' : '';
-              const pickerLabel = r.show_in_transport_picker ? 'On' : 'Off';
-              const pickerTitle = r.show_in_transport_picker
-                ? 'In Transport quick-add · click to remove'
-                : 'Hidden from Transport quick-add · click to add';
-              const picker = `<span class="tf-picker-toggle ${pickerCls}" onclick="onTfTogglePicker('${r.id}')" title="${pickerTitle}"><span class="dot"></span>${pickerLabel}</span>`;
-              return `
-                <tr data-row-id="${r.id}" ondragover="onRowDragOver(event)" ondragleave="onRowDragLeave(event)" ondrop="onRowDrop(event,'${r.id}')">
-                  ${canEdit ? `<td class="c"><span class="drag-handle" draggable="true" title="Drag to reorder within ${escapeHtml(g.route)}" ondragstart="onRowDragStart(event,'${r.id}')" ondragend="onRowDragEnd(event)">⋮⋮</span></td>` : ''}
-                  <td>${escapeHtml(it.vehicle || '—')}</td>
-                  <td class="muted">${it.paxRange || '—'}</td>
-                  <td class="r"><span class="tf-cell-edit tf-cost" data-tf-id="${r.id}" data-tf-field="cost_per_guest" onclick="onTfEditCell(this)">${costCell}</span></td>
-                  <td class="r"><span class="tf-cell-edit tf-price" data-tf-id="${r.id}" data-tf-field="sell_price" onclick="onTfEditCell(this)">${priceCell}</span>${mTxt}</td>
-                  <td class="c">${picker}</td>
-                  <td class="c"><div class="tf-row-actions">
-                    <button class="btn btn-s btn-sm" onclick="openEdit('${r.id}')">More</button>
-                    <button class="btn btn-danger btn-sm" onclick="onDelete('${r.id}')">Delete</button>
-                  </div></td>
-                </tr>
-              `;
-            }).join('')}
-          </tbody>
-        </table>
-      </div>
-    `;
-  }).join('');
-}
 
-// Inline Picker toggle. Flips show_in_transport_picker and saves to
-// Supabase. The Hub picks the change up via the existing
-// pricing_catalog realtime subscription (no extra wiring needed) — the
-// row appears or disappears in the Hub's Transport quick-add modal in
-// the next ~1s.
-window.onTfTogglePicker = async (id)=>{
-  if (!canEdit || viewMode === 'list') return;
-  const row = catalog.find(r => r.id === id);
-  if (!row) return;
-  const newVal = !row.show_in_transport_picker;
-  __pendingSave = true;
-  try {
-    const { data, error } = await sbClient
-      .from('pricing_catalog')
-      .update({ show_in_transport_picker: newVal })
-      .eq('id', id).select().single();
-    if (error) throw error;
-    const idx = catalog.findIndex(r => r.id === id);
-    if (idx >= 0) catalog[idx] = { ...catalog[idx], ...data };
-    renderTable();
-  } catch (err) {
-    console.error('[Prices] picker toggle failed', err);
-    alert('Could not save: ' + (err?.message || 'unknown error'));
-  } finally {
-    __pendingSave = false;
-  }
-};
-
-// Inline click-to-edit for the Cost / Price cells of the Transfers table.
-// Mirrors onAccomEditCell: click → input with current value → Enter/blur
-// saves → Escape cancels. Saves are Supabase-first, with the row in
-// `catalog` mutated only after the update resolves.
-let __tfSavingId = null;
-
-window.onTfEditCell = (el)=>{
-  if (!canEdit || viewMode === 'list') return;
-  if (el.querySelector('input')) return;
-  const id    = el.getAttribute('data-tf-id');
-  const field = el.getAttribute('data-tf-field');
-  if (!id || !field) return;
-  const row   = catalog.find(r => r.id === id);
-  if (!row) return;
-  // Cost is formatted in `currency` (local money). Sell is in
-  // `sell_currency` (often EUR for airport transfers). Picking the right
-  // one per-field keeps the input pre-fill in the right currency.
-  const cur = (field === 'sell_price')
-    ? (row.sell_currency || row.currency || 'EUR')
-    : (row.currency || 'EUR');
-  const start = Number(row[field] || 0);
-
-  const input = document.createElement('input');
-  input.type = 'number';
-  input.min = '0';
-  input.step = '0.01';
-  input.className = 'tf-cell-input';
-  input.value = start || '';
-  input.placeholder = '0';
-
-  el.classList.remove('failed');
-  el.innerHTML = '';
-  el.appendChild(input);
-  input.focus();
-  input.select();
-
-  const restore = (val)=>{
-    el.textContent = val > 0 ? money(val, cur) : '— add';
-    if (val > 0) el.classList.remove('tf-cell-empty');
-    else { /* keep readable hint */ }
-  };
-
-  let committed = false;
-  const commit = async ()=>{
-    if (committed) return;
-    committed = true;
-    const raw = input.value.trim();
-    const num = raw === '' ? 0 : Number(raw);
-    if (!Number.isFinite(num) || num < 0) { restore(start); return; }
-    if (Math.abs(num - start) < 0.005)    { restore(start); return; }
-
-    el.classList.add('saving');
-    el.textContent = num > 0 ? money(num, cur) : '— add';
-    __tfSavingId = id;
-    __pendingSave = true;
-    try {
-      const payload = { [field]: num };
-      const { data, error } = await sbClient
-        .from('pricing_catalog').update(payload).eq('id', id).select().single();
-      if (error) throw error;
-      // Mirror the change locally so the next render shows correct margin
-      // without needing a full reload. Realtime echo is suppressed via
-      // __suppressRt set by the wrapping ledger writer pattern.
-      const idx = catalog.findIndex(r => r.id === id);
-      if (idx >= 0) catalog[idx] = { ...catalog[idx], ...data };
-      el.classList.remove('saving');
-      // Re-render so margin / pill colour reflect the new value.
-      renderTable();
-    } catch (err) {
-      console.error('[Prices] transfer cell save failed', err);
-      el.classList.remove('saving');
-      el.classList.add('failed');
-      restore(start);
-      alert('Could not save: ' + (err?.message || 'unknown error'));
-    } finally {
-      __pendingSave = false;
-      setTimeout(()=>{ __tfSavingId = null; }, 800);
-    }
-  };
-
-  input.addEventListener('blur', commit);
-  input.addEventListener('keydown', e=>{
-    if (e.key === 'Enter')      { e.preventDefault(); input.blur(); }
-    else if (e.key === 'Escape'){ committed = true; restore(start); }
-  });
-};
-
-function renderTransfersPriceList(){
-  const wrap = $('tableWrap');
-  if (!wrap) return;
-  const groups = transferRouteGroups();
-  // Only show routes with at least one sellable item (sell_price > 0).
-  // A partner doesn't care about routes that have no client price yet.
-  const sellable = groups
-    .map(g => ({ ...g, items: g.items.filter(it => Number(it.row.sell_price || 0) > 0) }))
-    .filter(g => g.items.length);
-  if (!sellable.length) {
-    wrap.innerHTML = `
-      <div class="pv-section-title">Transfers</div>
-      <div class="pv-card"><div class="pv-empty">No transfers published yet. Add a client price in Edit mode to publish a route.</div></div>
-    `;
-    return;
-  }
-  wrap.innerHTML = `
-    <div class="pv-section-title">Transfers</div>
-    ${sellable.map(g => {
-      const isAirport = /airport/i.test(g.route);
-      const eyebrow = isAirport
-        ? `Airport transfer · ${g.route} <span class="tf-card-sub">Selling prices</span>`
-        : `${g.route} <span class="tf-card-sub">Selling prices</span>`;
-      return `
-        <div class="tf-card">
-          <div class="tf-card-eyebrow">${eyebrow}</div>
-          <table class="tbl tf-table">
-            <thead>
-              <tr>
-                <th>Vehicle</th>
-                <th>Pax</th>
-                <th class="r">Client price (per way)</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${g.items.map(it => {
-                const r = it.row;
-                const sellCcy = r.sell_currency || r.currency || 'EUR';
-                return `
-                  <tr>
-                    <td>${escapeHtml(it.vehicle || '—')}</td>
-                    <td class="muted">${it.paxRange || '—'}</td>
-                    <td class="r"><span class="tf-price">${money(Number(r.sell_price||0), sellCcy)}</span></td>
-                  </tr>
-                `;
-              }).join('')}
-            </tbody>
-          </table>
-        </div>
-      `;
-    }).join('')}
-  `;
-}
-
-function pvAreaItems(areaKey){
-  const cats = categoriesForArea(areaKey);
-  return catalog
-    .filter(r => cats.includes(r.category) && r.active && Number(r.sell_price||0) > 0)
-    .sort((a,b)=>{
-      const so = (a.sort_order||100) - (b.sort_order||100);
-      if (so) return so;
-      return (a.name||'').localeCompare(b.name||'');
-    });
-}
-
-function pvTable(headerCols, rows, emptyMsg){
-  if (!rows.length) return `<div class="pv-empty">${escapeHtml(emptyMsg)}</div>`;
-  const head = `<thead><tr>${headerCols.map(h=>`<th${h.right?' class="r"':''}>${escapeHtml(h.label)}</th>`).join('')}</tr></thead>`;
-  const body = `<tbody>${rows}</tbody>`;
-  return `<table class="tbl pv-table">${head}${body}</table>`;
-}
-
-function renderPriceListView(){
-  const wrap = $('tableWrap');
-  if (!wrap) return;
-
-  // Accommodation has its own renderer; defer to it for the section.
-  let accommodationHtml = '';
-  // Lazy-load on the first List-mode open if needed
-  if (filterArea === 'accommodation') {
-    // When the area tab is Accommodation, the dedicated grid renders
-    // (the user sees the rich pack/season/room view). We DON'T also
-    // append the other-area sections here — that view stays focused.
-    renderAccommodation();
-    return;
-  }
-
-  // Single-area focused view — show ONLY the active area in Price List.
-  // The area tabs above still let the partner switch sections.
-  const area = AREA_BY_KEY[filterArea];
-  const items = pvAreaItems(filterArea);
-
-  let bodyHtml;
-  if (filterArea === 'costs') {
-    bodyHtml = `<div class="pv-card"><div class="pv-empty">No public costs section.</div></div>`;
-  } else if (filterArea === 'tours') {
-    const rows = items.map(r => {
-      const ccy = r.sell_currency || r.currency || 'EUR';
-      return `
-      <tr>
-        <td>${escapeHtml(r.name)}</td>
-        <td><div class="pv-desc">${escapeHtml(r.notes || '')}</div></td>
-        <td class="r"><span class="pv-price">${money(Number(r.sell_price||0), ccy)}</span></td>
-      </tr>
-    `;}).join('');
-    bodyHtml = `<div class="pv-card">${pvTable(
-      [{label:'Activity'},{label:'Includes'},{label:'Price/person',right:true}],
-      rows, 'No tours published yet.'
-    )}</div>`;
-  } else if (filterArea === 'surf') {
-    const rows = items.map(r => {
-      const ccy = r.sell_currency || r.currency || 'EUR';
-      return `
-      <tr>
-        <td>${escapeHtml(r.name)}</td>
-        <td><div class="pv-desc">${escapeHtml(r.notes || '')}</div></td>
-        <td class="r"><span class="pv-price">${money(Number(r.sell_price||0), ccy)}</span></td>
-      </tr>
-    `;}).join('');
-    bodyHtml = `<div class="pv-card">${pvTable(
-      [{label:'Pack'},{label:'Includes'},{label:'Price/person',right:true}],
-      rows, 'No surf packs published yet.'
-    )}</div>`;
-  } else if (filterArea === 'transfers') {
-    // Transfers in Price List mode get the same route-grouped layout as
-    // edit, minus the cost / margin / actions columns. Each card is one
-    // route, vehicles as rows.
-    renderTransfersPriceList();
-    return;
-  } else { // addons + fallback
-    const rows = items.map(r => {
-      const ccy = r.sell_currency || r.currency || 'EUR';
-      return `
-      <tr>
-        <td>${escapeHtml(r.name)}</td>
-        <td><div class="pv-desc">${escapeHtml(r.notes || '')}</div></td>
-        <td class="r"><span class="pv-price">${money(Number(r.sell_price||0), ccy)}</span></td>
-      </tr>
-    `;}).join('');
-    bodyHtml = `<div class="pv-card">${pvTable(
-      [{label:'Item'},{label:'Description'},{label:'Price',right:true}],
-      rows, 'Nothing in this area yet.'
-    )}</div>`;
-  }
-
-  wrap.innerHTML = `
-    <div class="pv-section-title">${escapeHtml(area?.label || 'Items')}</div>
-    ${bodyHtml}
-  `;
-}
 
 // ── Modal: New / Edit ─────────────────────────────────────────────────────
 // Category-aware field visibility + smart defaults. Transport rows expose
@@ -2470,7 +2164,7 @@ function populateLinkedSelects(currentRow){
   const tourRows = catalog
     .filter(r=>r.category==='Tour' && r.active && r.id !== skipId)
     .sort((a,b)=>(a.name||'').localeCompare(b.name||''));
-  tourSel.innerHTML = '<option value="">— Not linked —</option>' +
+  tourSel.innerHTML = '<option value="">Not linked</option>' +
     tourRows.map(r=>`<option value="${r.id}">${escapeHtml(r.name)}</option>`).join('');
 
   // ── Linked transport dropdown — route GROUPS, not individual vehicles ──
@@ -2493,7 +2187,7 @@ function populateLinkedSelects(currentRow){
     if (route) transRoutes.add(route);
   }
   const sortedRoutes = Array.from(transRoutes).sort();
-  transSel.innerHTML = '<option value="">— Not linked —</option>' +
+  transSel.innerHTML = '<option value="">Not linked</option>' +
     sortedRoutes.map(g=>`<option value="route:${escapeHtml(g)}">${escapeHtml(g)}</option>`).join('');
 
   // Pre-select what's already on the row.
@@ -2636,8 +2330,9 @@ function ensureCategoryOption(cat){
 }
 window.openNew = ()=>{
   editingId = null;
-  $('modalTitle').textContent = 'New entry';
-  $('modalSub').textContent = 'Add an item to the pricing catalog';
+  $('modalTitle').textContent = 'New item';
+  $('modalSub').textContent = `Add an item to the ${LOCATION_LABELS[LOCATION_SLUG] || ''} price list`;
+  $('emDelete').style.display = 'none';
   $('em_name').value = '';
   // Seed the category to whatever the active tab represents so the user
   // doesn't have to pick it again. They can still change it via the
@@ -2675,8 +2370,9 @@ window.openEdit = (id)=>{
   const r = catalog.find(x=>x.id === id);
   if (!r) return;
   editingId = id;
-  $('modalTitle').textContent = 'Edit entry';
+  $('modalTitle').textContent = 'Edit item';
   $('modalSub').textContent = r.name || '';
+  $('emDelete').style.display = canEdit ? '' : 'none';
   $('em_name').value = r.name || '';
   ensureCategoryOption(r.category);
   $('em_category').value = r.category || 'Tour';
@@ -2727,7 +2423,8 @@ $('emCancel').addEventListener('click', ()=>$('editOv').classList.remove('open')
 $('emSave').addEventListener('click', async ()=>{
   const name = $('em_name').value.trim();
   if (!name) {
-    alert('Name is required');
+    AppShell.toast('Give the item a name.', 'err');
+    $('em_name').focus();
     return;
   }
   const cat = $('em_category').value;
@@ -2889,38 +2586,54 @@ $('emSave').addEventListener('click', async ()=>{
     }
 
     __pendingSave = false;
-    setSavePill('saved','Saved ✓');
+    setSavePill('saved','Saved');
     setTimeout(clearSavePill, 1500);
     $('editOv').classList.remove('open');
+    AppShell.toast(`Saved «${saved?.name || name}»`, 'ok');
+    // a new item filed under another tab: follow it there so the owner sees it
+    const savedArea = AREAS.find(a => a.cats.includes(saved?.category));
+    if (savedArea && savedArea.key !== filterArea && !filterSearch) filterArea = savedArea.key;
     renderTable();
   } catch (err) {
     console.error('[Prices] save failed', err);
     __pendingSave = false;
-    setSavePill('failed','⚠ Save failed — try again');
-    alert('Could not save: ' + (err?.message || 'unknown error'));
+    setSavePill('failed','Save failed');
+    AppShell.toast("Couldn't save — " + (err?.message || 'check the connection and try again'), 'err');
   } finally {
     setTimeout(()=>{ __suppressRt = false; }, 1000);
   }
 });
 
-// ── Delete: Supabase-first ────────────────────────────────────────────────
+// ── Delete: confirm sheet, then «Undo» for 7 s (re-inserts the same row, same id) ──
 window.onDelete = async (id)=>{
   const r = catalog.find(x=>x.id === id);
   if (!r) return;
-  if (!confirm(`Delete "${r.name}"?\n\nThis can't be undone.`)) return;
+  const ok = await confirmSheet({ title: 'Delete this item?', text: `«${r.name}» leaves the price list, the Camp Tab and Transport quick-add. You can undo right after.`, ok: 'Delete' });
+  if (!ok) return;
   __suppressRt = true;
   setSavePill('saving','Deleting…');
   try {
     const { error } = await sbClient.from('pricing_catalog').delete().eq('id', id);
     if (error) throw error;
     catalog = catalog.filter(x=>x.id !== id);
-    setSavePill('saved','Deleted ✓');
+    setSavePill('saved','Deleted');
     setTimeout(clearSavePill, 1500);
     renderTable();
+    showUndoToast(`Deleted «${r.name}»`, async ()=>{
+      const copy = { ...r }; delete copy.created_at; delete copy.updated_at;
+      __suppressRt = true;
+      try {
+        const { data, error: insErr } = await sbClient.from('pricing_catalog').insert(copy).select().single();
+        if (insErr) throw insErr;
+        if (!catalog.some(x => x.id === data.id)) catalog.push(data);
+        renderTable();
+        AppShell.toast(`Restored «${r.name}»`, 'ok');
+      } finally { setTimeout(()=>{ __suppressRt = false; }, 1000); }
+    });
   } catch (err) {
     console.error('[Prices] delete failed', err);
-    setSavePill('failed','⚠ Delete failed');
-    alert('Could not delete: ' + (err?.message || 'unknown error'));
+    setSavePill('failed','Delete failed');
+    AppShell.toast("Couldn't delete — " + (err?.message || 'try again'), 'err');
   } finally {
     setTimeout(()=>{ __suppressRt = false; }, 1000);
   }
@@ -2935,394 +2648,45 @@ window.addEventListener('beforeunload', e=>{
 });
 
 // ════════════════════════════════════════════════════════════════════════════
-//  PDF EXPORT — "Download PDF" button in the header
+//  PRICE LIST PDF (17 Nov 2026) — «Price list PDF» → choose camp / season dates / sections → «Create PDF».
+//  Opens /prices/pricelist.html in a new tab: an A4 print page built by /lib/price-list.js from the same tables
+//  (no typed prices), in Outfit with the brand colours, which opens the browser's print dialog → «Save as PDF».
+//  Chosen over the old pdfmake export: real CSS (fonts, logo, page breaks), no 1.4 MB library from a CDN, and the
+//  same template is what the tests print. The page reads guest prices only — never costs.
 // ════════════════════════════════════════════════════════════════════════════
-//
-//  Builds a single PDF that mirrors the Gota Dagua printed price-list style:
-//  navy droplet logo header on every page, narrow-tall page (200×330mm),
-//  filled-navy section chips, alternating-shade row tables, contact footer.
-//
-//  Data flows from the live in-memory `catalog` (pricing_catalog rows) and
-//  `accomData` (accommodation packs/seasons/rooms/prices). Editing any row
-//  in the app updates these arrays via realtime; the next click of the
-//  Download PDF button picks up those changes automatically — no rebuild
-//  step, no stale exports.
-//
-//  pdfmake is lazy-loaded from CDN on first click (~1.4MB). Subsequent
-//  clicks reuse the cached library. The four built-in PDF fonts (Helvetica)
-//  are used so vfs_fonts.js — the 600KB Roboto bundle — is NOT loaded.
-// ════════════════════════════════════════════════════════════════════════════
-
-// Inline SVG of the Gota Dagua wordmark + droplet, recolored navy for
-// rendering on the light PDF background. Original site CSS uses #fff4d5
-// (cream) because it sits on the dark navy header bar — we swap that for
-// the navy ink so it reads on the cream/grey PDF page.
-const BRAND_SVG_NAVY = `<svg viewBox="0 0 197.4 91" xmlns="http://www.w3.org/2000/svg"><path fill="#1A2B3D" d="M61.7,51.9c-.4-9-5.5-16.5-9.7-24.1-2.9-4.8-5.3-9.8-9.3-13.9-3.9-4.4-6.5-9.8-10.8-13.9C19.2,16.6-.5,39.9,0,61.9c9.4-7.9,20.1-17.7,33.1-17.8,3,0,7.2,0,9.5,2.2,1.7,1.7,3.2,4.2,2,6.5-.3.5-1.9,2.7-2.3,2.9-12.9,7.4-20.3,18.6-16.5,33.7,3.1,1.3,8,1,11.1-.3,2.7-.3,5.1-1.3,7.5-2.5,8.7-2.9,14.5-11.1,15.5-20.1,1.2-4.7,2.1-9.7,1.8-14.6h0Z"/><path fill="#1A2B3D" d="M69.7,90.6l-.3-1.9c-.7-5.9-.5-11.9-.4-17.9,0-6.7-.3-13.7,0-20.3v-2.3c.5,0,1.1,0,1.7,0,3.3-.3,6.9-.3,10.2,0,.7,0,1.7,0,2.4,0,1.5.3,4,2.2,5,3.3,2.2,2.7,4.9,8.2,5.5,11.7,1.1,7.7-1.8,18.8-6.7,24.8-.4.5-1.4,1.9-1.7,2.1-.2,0-1.5.4-1.9.4-3.3.5-13.7,0-13.7,0h0v.2ZM77.2,61.3v.8c.4,4.6,0,9.3.3,13.9,0,.9-.3,1.7.9,1.8,2.2.3,4.1-.4,5.3-2.3,2.4-3.5,2.3-5.9,1.4-9.9-.3-1.1-1-2.6-1.7-3.5-.8-1-1.4-.8-2.5-.9-.2,0-.3,0-.6,0-1.1,0-2.1,0-3.3,0h.2Z"/><path fill="#1A2B3D" d="M124.1.2c2.7,0,4.5.8,7,1.9,6.3,2.9,4.6,10.5,5.1,16.2.5,6.7.9,13.3-1.7,19.7-.9,2.1-3.1,4.1-5.4,4.5-3.5.5-6.3,1-9.8.3-5.6-1.2-7.1-5.7-7.5-10.9-.3-3.7-.4-7.5-.7-11.3-.3-3.5.3-9.2,1.1-12.7,1.5-6.5,6.1-7.6,12.1-7.7h-.2ZM124.1,8.4c-1.4.1-2.7.7-3.7,1.7-.9.8-2.1,3.8-2.4,5-1.1,4.5-.7,9.9.4,14.5.5,2.3,1.9,5.4,4.6,5.7,1.5,0,2.7-.3,3.9-1.1,2-1.4,2-4.9,2.1-7.1.1-1.4.2-2.7.3-4.1,0-1.7,0-3.5-.1-5.1-.3-2.5-.9-7.1-3.1-8.6-.5-.3-1.3-.7-1.9-.7h0v-.2Z"/><path fill="#1A2B3D" d="M163.1,48.3c.2-.3,4.1-.3,4.3-.3h3.1v10.8c-.1,5.1-.9,10.1-.7,15.2.1,3.2-.2,5.8-1.1,8.9-.8,2.9-1.7,5.4-4.6,6.8-4.5,2.3-10,1.4-14.4-.9-1.1-.6-2.5-2.7-3-3.8-1.9-4.6-1.2-9.7-1-14.4.1-3.2.4-12.1.4-13.7s.1-6.4.1-8.5,1.5-.3,1.8-.2c.3,0,3.4,0,4.5,0,.2,0,.3,0,.3.2v6.1c-.1,5.9-.1,11.9.1,17.9.1,2.4.3,7.4,1.9,9.3.2.2.6.7.8.7.3,0,1.8.3,2.2.3s2.5-1,2.8-1.3c.1,0,.7-1.6.8-1.9.9-2.8.7-5.9.8-8.7.1-4,.1-7.9.4-11.9.1-1.9.3-9.5.3-10.5h0l.2-.2Z"/><path fill="#1A2B3D" d="M176.3.4c.3,1.1.2,2.4.5,3.5.3,1.6.9,3.2,1.2,4.8.9,4.1,1.3,8.3,2.3,12.3.5,2.2,1.3,4.5,1.9,6.7,1.3,4.6,2.3,9.3,3.4,13.9.1.7.3,1,.5,1.6h-8.5c-.1-1.3-.5-2.6-.9-3.9-.3-1.3-.5-2.8-.9-4.1-.3-.9-.5-1.4-.7-2.5,0,0-4.1,0-5.3,0h-.2c-.2,1.2-.4,2.2-.6,3.3-.3,1.5-.7,3.1-1.1,4.7-.1.7-.3,1.7-.4,2.5-1,0-8.3-.2-9,0-.1-.5,5.7-24.6,8.4-36.2.5-2.2.9-4.4,1.4-6.6,0,0,3.5.1,3.7.1h4.3v-.2ZM172.4,11.8q-.3,0-.3.2c-.2.9-.5,1.9-.7,2.8-.5,2.5-.9,5.3-1.3,7.9-.1.9-.3,1.8-.3,2.7,1.6,0,3.2,0,4.7-.3.1-.9-.2-1.7-.3-2.5-.3-2.4-.5-5-1-7.3-.2-1.1-.7-2.3-.9-3.4h.1Z"/><path fill="#1A2B3D" d="M162.6,8.9h-.8c-.9.1-2,.3-2.9.4h-4.3c-.3,1.2-.1,2.5-.1,3.7-.3,8.1,0,16.5-.3,24.6,0,1.7.1,3.3.1,4.9s0,.3.1.5c0,.3-7.8,0-8.5,0,0-.9-.3-4.9-.3-6.1-.4-6.9.5-14.1-.3-21,0-.8-.4-1.8-.5-2.6-.1-1.4,0-2.9,0-4.3v-.2c-.8-.1-1.5,0-2.3,0s-.5-.1-.7-.1c-1.5,0-2.9.1-4.4.1V.5h1.3c3.8-.3,7.5.1,11.3,0,3.5,0,6.5.2,10,.4.5,0,2.4-.1,2.6.1.2.3,0,.6,0,.9,0,1,0,2.1-.1,3.1,0,1.3.3,2.5.1,3.9h0Z"/><path fill="#1A2B3D" d="M109.8,48c.3,1.1.2,2.4.5,3.5.3,1.6.9,3.2,1.2,4.8.9,4.1,1.3,8.3,2.3,12.3.5,2.2,1.3,4.5,1.9,6.7,1.3,4.6,2.3,9.3,3.4,13.9,0,.7.3,1,.5,1.6h-8.5c0-1.3-.5-2.6-.9-3.9-.3-1.3-.5-2.8-.9-4.1-.3-.9-.5-1.4-.7-2.5,0,0-4.1,0-5.3,0h-.2c-.2,1.2-.4,2.2-.6,3.3-.3,1.5-.7,3.1-1.1,4.7,0,.7-.3,1.7-.4,2.5-1,0-8.3-.2-9,0,0-.5,5.7-24.6,8.4-36.2.5-2.2.9-4.4,1.4-6.6,0,0,3.5,0,3.7,0h4.3v-.2ZM105.9,59.5q-.3,0-.3.2c-.2.9-.5,1.9-.7,2.8-.5,2.5-.9,5.3-1.3,7.9,0,.9-.3,1.8-.3,2.7,1.6,0,3.2,0,4.7-.3,0-.9-.2-1.7-.3-2.5-.3-2.4-.5-5-1-7.3-.2-1.1-.7-2.3-.9-3.4h.1Z"/><path fill="#1A2B3D" d="M187.6,48c.3,1.1.2,2.4.5,3.5.3,1.6.9,3.2,1.2,4.8.9,4.1,1.3,8.3,2.3,12.3.5,2.2,1.3,4.5,1.9,6.7,1.3,4.6,2.3,9.3,3.4,13.9.1.7.3,1,.5,1.6h-8.5c-.1-1.3-.5-2.6-.9-3.9-.3-1.3-.5-2.8-.9-4.1-.3-.9-.5-1.4-.7-2.5,0,0-4.1,0-5.3,0h-.2c-.2,1.2-.4,2.2-.6,3.3-.3,1.5-.7,3.1-1.1,4.7-.1.7-.3,1.7-.4,2.5-1,0-8.3-.2-9,0-.1-.5,5.7-24.6,8.4-36.2.5-2.2.9-4.4,1.4-6.6,0,0,3.5,0,3.7,0h4.3v-.2ZM183.7,59.5q-.3,0-.3.2c-.2.9-.5,1.9-.7,2.8-.5,2.5-.9,5.3-1.3,7.9-.1.9-.3,1.8-.3,2.7,1.6,0,3.2,0,4.7-.3.1-.9-.2-1.7-.3-2.5-.3-2.4-.5-5-1-7.3-.2-1.1-.7-2.3-.9-3.4h.1Z"/><path fill="#1A2B3D" d="M108.3,13.8h-6.9c-.2-.5,0-1-.2-1.4,0-.5-1.3-2.3-1.5-2.8-.5-.7-1.4-1.5-2.3-1.5-1.3-.1-3.2,0-4.3.8-.5.3-1.1,2.1-1.4,2.7-1.1,3.3-1.3,6.6-1.5,10.1,0,3.6.2,8.1,1.7,11.4,0,.3.5.9.6,1.1.2.3,1.7,1.1,2,1.1.9,0,2.5,0,3.4-.3.3,0,1.7-1,2-1.3.6-.6,1.3-3.3,1.3-4.2s-.3-1.9-.4-2l-4.5-.2c-.3-1.9,0-3.9,0-5.8v-.2c.9,0,6.9.3,9.1.5h2.2c0,.7.2,1.3.3,2,.4,3.1.4,5.2,0,8.3s-.5,6.5-3.1,8.5c-1.1.9-1.8,1.5-3.3,1.9-1.9.6-2.8.6-4.7.7-1.3,0-2.3,0-3.6-.2-3.9-.8-6.3-2.8-7.5-6.5-2.7-8.8-3.1-18.8-.9-27.8.7-3,1.3-4.6,3.9-6.5,2.1-1.5,7-2.3,9.4-1.6,2.7.8,6.6,2.7,8.1,4.4.7.8,1.5,2.7,1.7,3.8.2,1.2,0,5,0,5h.2Z"/><path fill="#1A2B3D" d="M142.8,61.3h-6.9c-.2-.5-.1-1-.2-1.4-.1-.5-1.3-2.4-1.5-2.8-.5-.7-1.5-1.5-2.3-1.5-1.3,0-3.2,0-4.3.8-.5.3-1.2,2.1-1.4,2.7-1.1,3.3-1.3,6.7-1.5,10.1,0,3.6.2,8.1,1.7,11.5,0,.3.5.9.6,1.1.2.3,1.7,1.1,2,1.1.9,0,2.5,0,3.5-.3.4,0,1.7-1,2-1.3.6-.7,1.3-3.3,1.3-4.3s-.3-1.9-.4-2l-4.5-.2c-.3-1.9-.1-3.9.1-5.8v-.2c.9,0,6.9.3,9.1.5h2.2c0,.7.2,1.3.3,2.1.5,3.1.4,5.2.1,8.3-.3,3.1-.5,6.5-3.1,8.6-1.1.9-1.8,1.5-3.3,1.9-1.9.6-2.8.6-4.7.7-1.3,0-2.3,0-3.6-.2-3.9-.8-6.3-2.8-7.5-6.6-2.7-8.9-3.1-18.9-.9-27.9.8-3.1,1.3-4.7,3.9-6.5,2.1-1.5,7.1-2.3,9.5-1.6,2.7.8,6.6,2.7,8.1,4.4.7.8,1.5,2.8,1.7,3.8.2,1.3,0,5,0,5h0Z"/></svg>`;
-
-// Lazy-load pdfmake + vfs_fonts on first PDF request.
-//
-// We use the DEFAULT Roboto family that ships in vfs_fonts.js. An earlier
-// attempt overrode pdfMake.fonts to use built-in PDF Helvetica, which threw
-// "File 'data/Helvetica-Bold.afm' not found in virtual file system" — the
-// web build of pdfmake requires AFM (Adobe Font Metrics) files to be in
-// its virtual FS, and vfs_fonts.js only ships the Roboto AFMs. Sticking
-// with Roboto keeps everything in-bundle and is actually closer to the
-// Outfit-style geometric sans the brand uses on the website.
-let __pdfmakePromise = null;
-function _loadScript(url){
-  return new Promise((resolve, reject) => {
-    const s = document.createElement('script');
-    s.src = url;
-    s.async = true;
-    s.onload = () => resolve();
-    s.onerror = () => reject(new Error(`Could not load ${url}`));
-    document.head.appendChild(s);
-  });
-}
-function loadPdfMake(){
-  if (__pdfmakePromise) return __pdfmakePromise;
-  __pdfmakePromise = (async () => {
-    if (!window.pdfMake) {
-      await _loadScript('https://cdn.jsdelivr.net/npm/pdfmake@0.2.10/build/pdfmake.min.js');
-    }
-    if (!window.pdfMake) throw new Error('pdfmake loaded but window.pdfMake is undefined.');
-    if (!window.pdfMake.vfs) {
-      await _loadScript('https://cdn.jsdelivr.net/npm/pdfmake@0.2.10/build/vfs_fonts.js');
-    }
-    return window.pdfMake;
-  })();
-  return __pdfmakePromise;
-}
-
-const PDF_INK    = '#1A2B3D';
-const PDF_SHADE  = '#D5DADE';
-const PDF_MUTED  = '#1A2B3D';
-const PDF_PAGE_W = 567;  // 200mm in pt
-const PDF_PAGE_H = 935;  // 330mm in pt
-
-function pdfChip(text, { width=null, fontSize=12 } = {}){
-  return {
-    table: {
-      widths: [width || 220],
-      body: [[{
-        text, bold:true, color:'#FFFFFF', fontSize, alignment:'center'
-      }]]
-    },
-    layout: {
-      hLineWidth: () => 0, vLineWidth: () => 0,
-      paddingTop:    () => 6,
-      paddingBottom: () => 6,
-      paddingLeft:   () => 14,
-      paddingRight:  () => 14,
-      fillColor: () => PDF_INK
-    },
-    alignment: 'center',
-    margin: [0, 4, 0, 8]
-  };
-}
-
-function pdfBigChip(title, subtitle){
-  return {
-    table: {
-      widths: ['*'],
-      body: [
-        [{ text: title, bold:true, color:'#FFFFFF', fontSize:15, alignment:'center', margin:[0,2,0,0] }],
-        [{ text: subtitle, color:'#FFFFFF', fontSize:10.5, alignment:'center', lineHeight:1.25, margin:[0,0,0,4] }]
-      ]
-    },
-    layout: {
-      hLineWidth: () => 0, vLineWidth: () => 0,
-      paddingTop:    () => 6,
-      paddingBottom: () => 6,
-      paddingLeft:   () => 14,
-      paddingRight:  () => 14,
-      fillColor: () => PDF_INK
-    },
-    margin: [50, 6, 50, 16]
-  };
-}
-
-// Two-column table with alternating row fill — used for upgrade lists,
-// tours, transfers, add-ons. `rows` is an array of { name, note?, price }.
-function pdfUpgradeTable(rows){
-  const body = rows.map(r => {
-    const left = r.note
-      ? { stack: [
-          { text: r.name, bold:true, fontSize:11.5, color:PDF_INK },
-          { text: r.note, fontSize:9, color:PDF_INK, margin:[0,2,0,0], lineHeight:1.25 }
-        ]}
-      : { text: r.name, bold:true, fontSize:11.5, color:PDF_INK };
-    const right = { text: r.price, bold:true, fontSize:12, color:PDF_INK, alignment:'right' };
-    return [left, right];
-  });
-  return {
-    table: { widths: ['*', 80], body },
-    layout: {
-      hLineWidth: () => 0, vLineWidth: () => 0,
-      paddingTop:    () => 11,
-      paddingBottom: () => 11,
-      paddingLeft:   () => 16,
-      paddingRight:  () => 16,
-      fillColor: (i) => (i % 2 === 0 ? PDF_SHADE : null)
-    },
-    margin: [0, 0, 0, 14]
-  };
-}
-
-// Accommodation season table — alternating shaded rows for each room type
-// across the relevant occupancy columns ("1 Person" / "2 People" / …).
-function pdfSeasonTable(headerLabels, rows){
-  const widths = ['*'].concat(headerLabels.slice(1).map(() => 90));
-  const headerRow = headerLabels.map((h,i) => ({
-    text: i === 0 ? '' : h, alignment:'center', color:PDF_INK, fontSize:10, margin:[0,4,0,4]
-  }));
-  const body = [headerRow];
-  for (const r of rows) {
-    const cells = [
-      { text: r[0], bold:true, fontSize:11, color:PDF_INK, alignment:'left', margin:[12,4,0,4] }
-    ];
-    for (let i = 1; i < r.length; i++){
-      const v = r[i];
-      cells.push({
-        text: v ? v : '—',
-        bold: true, fontSize:11, color:PDF_INK, alignment:'center', margin:[0,4,0,4]
-      });
-    }
-    body.push(cells);
-  }
-  return {
-    table: { widths, body },
-    layout: {
-      hLineWidth: () => 0, vLineWidth: () => 0,
-      paddingTop:    () => 4,
-      paddingBottom: () => 4,
-      paddingLeft:   () => 0,
-      paddingRight:  () => 0,
-      fillColor: (i) => (i > 0 && i % 2 === 1 ? PDF_SHADE : null)
-    },
-    margin: [0, 4, 0, 14]
-  };
-}
-
-// Group catalog rows by category for the PDF sections.
-function pdfCatalogByCategory(){
-  const buckets = { 'Surf Pack':[], 'Lesson':[], 'Tour':[], 'Other Service':[] };
-  for (const r of (catalog || [])) {
-    if (!r.active) continue;
-    if (buckets[r.category]) buckets[r.category].push(r);
-  }
-  for (const k of Object.keys(buckets)) {
-    buckets[k].sort((a,b) => (a.sort_order||100)-(b.sort_order||100) || a.name.localeCompare(b.name));
-  }
-  return buckets;
-}
-
-function pdfMoneyEUR(n){ return `${Math.round(Number(n||0))}€`; }
-
-async function downloadPriceListPDF(){
-  const btn = document.getElementById('dlPdfBtn');
-  if (btn) btn.disabled = true;
-  console.log('[PDF] download started');
+const PDF_PREF_KEY = 'prices.pdf.sections';
+window.openPdfDialog = ()=>{
+  const camp = $('pdf_camp');
+  if (camp) camp.value = [...camp.options].some(o => o.value === LOCATION_SLUG) ? LOCATION_SLUG : 'all';
+  const y = new Date().getFullYear();
+  const years = new Set([y, y + 1]);
+  (accomData?.seasons || []).forEach(s => (s.date_ranges || []).forEach(r => { if (r?.start) years.add(+r.start.slice(0, 4)); if (r?.end) years.add(+r.end.slice(0, 4)); }));
+  const per = $('pdf_period');
+  per.innerHTML = `<option value="upcoming">Current and upcoming</option>` +
+    [...years].filter(v => v >= y - 1).sort().map(v => `<option value="${v}">${v} only</option>`).join('') +
+    `<option value="all">All dates</option>`;
   try {
-    const pdfMake = await loadPdfMake();
-    console.log('[PDF] pdfmake ready, building doc');
+    const saved = JSON.parse(localStorage.getItem(PDF_PREF_KEY) || 'null');
+    if (Array.isArray(saved)) document.querySelectorAll('#pdf_sections input').forEach(i => { i.checked = saved.includes(i.value); });
+  } catch (_) {}
+  $('pdfOv').classList.add('open');
+  setTimeout(() => $('pdfCreate')?.focus(), 30);
+};
+window.downloadPriceListPDF = window.openPdfDialog;   // older name
 
-    const locLabel = (LOCATION_LABELS[LOCATION_SLUG] || LOCATION_SLUG || 'Sri Lanka');
-    const year     = new Date().getFullYear();
-    const titleTxt = `PRICE LIST ${locLabel.toUpperCase()} SURF CAMP ${year}/${year+1}`;
-
-    const content = [
-      { text: titleTxt, fontSize:14, bold:true, alignment:'center', color:PDF_INK, margin:[0,4,0,12] }
-    ];
-
-    // ── ACCOMMODATION SECTION ─────────────────────────────────────────────
-    if (accomData && accomData.packs && accomData.packs.length) {
-      const { packs, seasons, rooms, prices } = accomData;
-      for (const pack of packs) {
-        // BIG chip: pack name + pack description (e.g. "7 Nights | ...")
-        const subtitle = (pack.description && pack.description.trim())
-          ? pack.description
-          : (pack.label || 'Pack');
-        content.push(pdfBigChip((pack.label || 'Pack').toUpperCase(), subtitle));
-
-        // compute occupancy range from this pack's prices
-        let maxOcc = 2;
-        const priceByKey = new Map();
-        for (const pr of prices) {
-          if (pr.pack_id !== pack.id) continue;
-          priceByKey.set(`${pr.season_id}|${pr.room_type_id}|${pr.occupancy}`, pr);
-          if (pr.occupancy > maxOcc) maxOcc = pr.occupancy;
-        }
-        if (maxOcc > 4) maxOcc = 4;
-        const occs = [];
-        for (let i=1;i<=maxOcc;i++) occs.push(i);
-        const occLabel = (n) => n===1 ? '1 Person' : (n===2 ? '2 People' : `${n} people`);
-
-        for (const s of seasons) {
-          // small chip with the season label
-          content.push(pdfChip((s.label || 'Season').toUpperCase(), { width: 200, fontSize: 11 }));
-          // dates line
-          const ranges = Array.isArray(s.date_ranges) ? s.date_ranges : [];
-          const datesTxt = ranges.map(fmtDateRange).filter(Boolean).join('   |   ');
-          if (datesTxt) {
-            content.push({ text: datesTxt, fontSize:10, color:PDF_INK, alignment:'center', margin:[0,0,0,6] });
-          }
-          // header + rows
-          const headerLabels = ['Room Type'].concat(occs.map(occLabel));
-          const tableRows = rooms.map(r => {
-            const row = [r.label || ''];
-            for (const o of occs) {
-              const pr = priceByKey.get(`${s.id}|${r.id}|${o}`);
-              const val = pr && Number(pr.sell_price||0) > 0 ? pmfMoney(pr.sell_price, pack.currency || 'EUR') : null;
-              row.push(val);
-            }
-            return row;
-          }).filter(row => row.slice(1).some(v => v !== null));
-          if (tableRows.length) content.push(pdfSeasonTable(headerLabels, tableRows));
-        }
-      }
-    }
-
-    // ── UPGRADE / SURF / TOURS / ADD-ONS / TRANSFERS ───────────────────────
-    const cats = pdfCatalogByCategory();
-
-    // Page-break before "Upgrades" section so accommodation stays clean
-    if ((cats['Surf Pack'].length + cats['Lesson'].length) > 0 ||
-        cats['Tour'].length > 0 ||
-        cats['Other Service'].length > 0 ||
-        (typeof transferRouteGroups === 'function' && transferRouteGroups().length > 0)) {
-      content.push({ text: '', pageBreak:'before' });
-    }
-
-    // Surf section — Surf Pack rows treated as "upgrades", Lesson rows too.
-    const surfRows = [...cats['Surf Pack'], ...cats['Lesson']].map(r => ({
-      name: r.name,
-      note: (r.notes || '').trim() || null,
-      price: pdfMoneyEUR(r.sell_price)
-    }));
-    if (surfRows.length) {
-      content.push(pdfChip('UPGRADE YOUR PACKAGE', { width: 260, fontSize: 12 }));
-      content.push({ text:'', margin:[0,4,0,0] });
-      content.push(pdfUpgradeTable(surfRows));
-    }
-
-    // Tours
-    if (cats['Tour'].length) {
-      content.push(pdfChip('TOURS', { width: 140 }));
-      content.push({ text:'', margin:[0,4,0,0] });
-      content.push(pdfUpgradeTable(cats['Tour'].map(r => ({
-        name: r.name,
-        note: (r.notes || '').trim() || null,
-        price: pdfMoneyEUR(r.sell_price)
-      }))));
-    }
-
-    // Transfers — route-grouped vehicles. Uses the same grouper as the UI.
-    if (typeof transferRouteGroups === 'function') {
-      const groups = transferRouteGroups();
-      const transferRows = [];
-      for (const g of groups) {
-        for (const it of g.items) {
-          const paxLabel = it.paxRange ? ` (${it.paxRange} pax)` : '';
-          transferRows.push({
-            name: `${it.vehicle || it.row.name}${paxLabel}`,
-            note: g.route,
-            price: pdfMoneyEUR(it.row.sell_price)
-          });
-        }
-      }
-      if (transferRows.length) {
-        content.push(pdfChip('TRANSFERS', { width: 160 }));
-        content.push({ text:'', margin:[0,4,0,0] });
-        content.push(pdfUpgradeTable(transferRows));
-      }
-    }
-
-    // Other services / add-ons
-    if (cats['Other Service'].length) {
-      content.push(pdfChip('ADD-ONS', { width: 140 }));
-      content.push({ text:'', margin:[0,4,0,0] });
-      content.push(pdfUpgradeTable(cats['Other Service'].map(r => ({
-        name: r.name,
-        note: (r.notes || '').trim() || null,
-        price: pdfMoneyEUR(r.sell_price)
-      }))));
-    }
-
-    const docDef = {
-      pageSize: { width: PDF_PAGE_W, height: PDF_PAGE_H },
-      pageMargins: [40, 80, 40, 60],
-      defaultStyle: { color: PDF_INK },
-      // Simple text header — the SVG-embed approach kept silently failing
-      // in pdfmake's renderer for some users. A text wordmark is rock-
-      // solid and still on-brand.
-      header: () => ({
-        text: 'GOTA DAGUA',
-        alignment: 'center',
-        bold: true,
-        fontSize: 22,
-        color: PDF_INK,
-        margin: [0, 28, 0, 0]
-      }),
-      footer: () => ({
-        margin: [40, 14, 40, 0],
-        columns: [
-          { text: '+351 924 689 580', alignment:'left', color:PDF_INK, fontSize:9.5, bold:true },
-          { text: 'INFO@GOTADAGUASURF.COM', alignment:'right', color:PDF_INK, fontSize:9.5, bold:true }
-        ]
-      }),
-      content
-    };
-
-    const dateStr = new Date().toISOString().slice(0,10);
-    const filename = `gota-prices-${LOCATION_SLUG || 'sri-lanka'}-${dateStr}.pdf`;
-    console.log('[PDF] calling createPdf, sections:', content.length, 'filename:', filename);
-    // Use getBlob + manual anchor click. pdfMake.createPdf().download() can
-    // fail silently in browsers that block downloads after async awaits
-    // (the user gesture chain is broken by `await loadPdfMake()`). Building
-    // the blob explicitly and triggering an anchor click sidesteps that.
-    pdfMake.createPdf(docDef).getBlob((blob) => {
-      try {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        setTimeout(() => {
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
-        }, 100);
-        console.log('[PDF] blob downloaded:', filename, 'size:', blob.size, 'bytes');
-      } catch (e) {
-        console.error('[PDF] blob download failed', e);
-        alert(`PDF was generated (${blob.size} bytes) but the download failed: ${e.message}`);
-      }
-    });
-  } catch (err) {
-    console.error('[Prices] PDF export failed', err);
-    // Surface the error two ways — toast for normal users, alert as a
-    // belt-and-suspenders fallback so the user sees SOMETHING if the
-    // toast container is missing or hidden.
-    const msg = err && err.message ? err.message : String(err);
-    try { showToast("PDF couldn't be created — try again or tell Miguel."); } catch(_) {}
-    alert(`PDF couldn't be created — try again or tell Miguel.\n\n(${msg})`);
-  } finally {
-    if (btn) btn.disabled = false;
-  }
+function priceListUrl(){
+  const sections = [...document.querySelectorAll('#pdf_sections input:checked')].map(i => i.value);
+  const q = new URLSearchParams({ location: $('pdf_camp').value, period: $('pdf_period').value, sections: sections.join(','), print: '1' });
+  return { url: `/prices/pricelist.html?${q.toString()}`, sections };
 }
-
-// Small money helper that pdfmake uses INSIDE the season table. Lives next
-// to downloadPriceListPDF so the export module is self-contained.
-function pmfMoney(amount, currency){
-  const n = Math.round(Number(amount || 0));
-  if (currency === 'EUR') return `${n}€`;
-  if (currency === 'LKR') return `${n} LKR`;
-  if (currency === 'MAD') return `${n} MAD`;
-  return `${n} ${currency || ''}`.trim();
-}
-
-window.downloadPriceListPDF = downloadPriceListPDF;
+window.createPriceListPdf = ()=>{
+  const { url, sections } = priceListUrl();
+  if (!sections.length) { AppShell.toast('Pick at least one section.', 'err'); return; }
+  try { localStorage.setItem(PDF_PREF_KEY, JSON.stringify(sections)); } catch (_) {}
+  $('pdfOv').classList.remove('open');
+  const w = window.open(url, '_blank');   // synchronous in the click → not blocked
+  if (!w) location.href = url;
+};
 
 // App switcher & location switcher — close on click-outside + Escape.
 // Native <details> doesn't do this: without it the menu stays stuck
@@ -3335,6 +2699,7 @@ document.addEventListener('click', function(e){
 document.addEventListener('keydown', function(e){
   if (e.key === 'Escape') {
     document.querySelectorAll('details.app-switch[open]').forEach(function(d){ d.open = false; });
+    ['editOv','tabsOv','pdfOv'].forEach(function(id){ var o = document.getElementById(id); if (o && o.classList.contains('open') && !document.querySelector('.cell-input')) o.classList.remove('open'); });
   }
 });
 </script>

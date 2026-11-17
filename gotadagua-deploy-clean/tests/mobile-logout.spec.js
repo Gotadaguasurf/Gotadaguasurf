@@ -61,12 +61,12 @@ const DRAWER_PAGES = [
   { name: 'wild', path: '/wild/', after: 'hub' },
   { name: 'diploria', path: '/diploria/', after: 'hub' },
   { name: 'instructors', path: '/instructors/', after: 'hub' },
+  { name: 'prices', path: '/prices/?location=sri-lanka', after: 'hub' },
 ];
 // Pages without a drawer → compact «Log out» in the header.
 const HEADER_PAGES = [
   { name: 'hub', path: '/', after: 'hub-login' },
   { name: 'surf-school', path: '/surf-school/', after: 'hub' },
-  { name: 'prices', path: '/prices/?location=sri-lanka', after: 'hub' },
 ];
 
 async function expectAfter(page, after) {
