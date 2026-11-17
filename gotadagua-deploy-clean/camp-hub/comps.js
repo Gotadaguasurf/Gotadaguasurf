@@ -155,7 +155,8 @@
           estimated: !hasStored,
           createdBy: it.createdBy || '',
           // Made an offer after it was charged (17 Nov 2026): who, when, and the price it had.
-          offer: !!(it.offerFrom && typeof it.offerFrom === 'object'),
+          // (a Staff plus allowance line also keeps offerFrom, for Undo — it is not a manual offer)
+          offer: !!(it.offerFrom && typeof it.offerFrom === 'object') && it.compReason !== 'staff_plus',
           wasPrice: it.offerFrom && Number.isFinite(Number(it.offerFrom.p)) ? Number(it.offerFrom.p) : null,
           compAt: it.compAt || '',
           compBy: it.compBy || '',

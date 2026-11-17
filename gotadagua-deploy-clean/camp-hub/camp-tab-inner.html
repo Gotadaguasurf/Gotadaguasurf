@@ -3250,7 +3250,7 @@ function renderTabPanel(){
     const priceCell = isEditableBar
       ? `<button class="ctr-price" onclick="event.stopPropagation();openBarEditModal(${idx})" style="background:none;border:1px dashed var(--border-2);border-radius:var(--r-sm);padding:4px 8px;cursor:pointer;font-family:inherit;font-size:inherit;color:inherit" title="Tap to add drinks or correct the amount">${euro(item.p)}</button>`
       : `<div class="ctr-price">${euro(item.p)}</div>`;
-    const offerTitle = item.offerFrom ? ` title="${esc(`Made an offer${item.compByName?' by '+item.compByName:''}${item.compAt?' · '+String(item.compAt).slice(0,16).replace('T',' '):''} · was ${euro(Number(item.offerFrom.p||0))}`)}"` : '';
+    const offerTitle = (item.offerFrom && item.compReason!=='staff_plus') ? ` title="${esc(`Made an offer${item.compByName?' by '+item.compByName:''}${item.compAt?' · '+String(item.compAt).slice(0,16).replace('T',' '):''} · was ${euro(Number(item.offerFrom.p||0))}`)}"` : '';
     return `<div class="c-tab-row${isPaid?' paid':''}${item.offerFrom?' offered':''}" data-item="${esc(item.id)}"${offerTitle}>
       <div style="flex:1;min-width:0"><div class="ctr-name">${item.n}</div><div class="ctr-time">${item.c} · ${item.t}${item.s?' · '+item.s:''}</div>${offerActionHtml(g,item)}</div>
       <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">

@@ -310,6 +310,11 @@ test('staff plus: Sri Lanka — the first 7 drinks of the week free («Staff plu
   await expect(frame.locator('#cpCount')).toHaveText('7');
   await expect(frame.locator('#cpByReason .cp-row[data-reason="staff_plus"]')).toContainText('Staff plus allowance');
   await expect(frame.locator('#cpLines')).toContainText('Staff plus allowance (7/7)');
+  await expect(frame.locator('#cpLines')).not.toContainText('made an offer');          // automatic, not a manual offer
+  await page.evaluate(() => showPage('weekly'));
+  await expect(page.locator('#wplCompsList')).toContainText('Staff plus allowance (1/7)');
+  await expect(page.locator('#wplCompsList')).not.toContainText('made an offer');
+  await page.evaluate(() => showPage('pos'));
   // Pay all: only the charged lines reach the ledger
   await frame.locator('.snav-btn[data-sub="charge"]').click();
   await frame.locator('#payBtn').click();
