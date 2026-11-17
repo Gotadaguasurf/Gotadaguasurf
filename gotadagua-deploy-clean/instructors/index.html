@@ -48,17 +48,54 @@
     .modal-grid{display:grid;grid-template-columns:1.1fr .9fr;gap:var(--sp-5)}.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-4)}
     .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:var(--sp-4)}
     .total-box{grid-column:1/-1}
-    .qd-top{display:flex;flex-wrap:wrap;gap:var(--sp-4);align-items:flex-end;margin-bottom:var(--sp-4)}.qd-top .field{min-width:160px}
-    .qd-wrap{max-height:52vh;overflow:auto;border:1px solid var(--border);border-radius:var(--r)}
-    .qd-table{width:100%;border-collapse:separate;border-spacing:0}
-    .qd-table th{position:sticky;top:0;z-index:2;background:var(--surface-2);padding:10px 8px;font-size:var(--fs-micro);text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600;text-align:center;border-bottom:1px solid var(--border);white-space:nowrap}
-    .qd-table th:first-child,.qd-table td:first-child{text-align:left;position:sticky;left:0;background:#fff;z-index:1}.qd-table th:first-child{background:var(--surface-2);z-index:3}
-    .qd-table td{padding:6px;border-bottom:1px solid var(--border);text-align:center;vertical-align:middle;font-size:13px}.qd-table tr:hover td{background:var(--surface-2)}
-    .qd-name{font-weight:600;color:var(--navy);white-space:nowrap;font-size:13px}.qd-name .sub{display:block;font-size:11px;color:var(--muted);font-weight:400}
-    .qd-table input.qd-n{width:54px;height:34px;text-align:center;padding:0 4px;border:1px solid var(--border-2);border-radius:8px;font-family:inherit;font-size:14px;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums;-moz-appearance:textfield}.qd-table input.qd-n::-webkit-inner-spin-button{-webkit-appearance:none}
-    .qd-table input.qd-n:focus{border-color:var(--ocean);box-shadow:var(--ring);outline:none}.qd-table input.qd-n.has{background:var(--ocean-soft);border-color:var(--ocean)}
-    .qd-price{display:block;font-size:11px;color:var(--muted);margin-top:3px;cursor:pointer;font-variant-numeric:tabular-nums}.qd-price:hover{color:var(--ocean);text-decoration:underline}.qd-price input{width:48px;font-size:11px;padding:2px 4px;text-align:center;border:1px solid var(--ocean);border-radius:6px;font-family:inherit}
-    .qd-rowtotal{font-weight:700;color:var(--navy);white-space:nowrap;font-size:12.5px;font-variant-numeric:tabular-nums}.qd-foot{display:flex;justify-content:space-between;align-items:center;gap:var(--sp-4);margin-top:var(--sp-4);flex-wrap:wrap}
+    /* Quick day — phone first: day chips, one row per instructor, − N + per lesson type, sticky total + Save */
+    #modal .modal{max-width:980px}#modal .modal.qd-mode{max-width:560px}
+    .qd-days{display:flex;gap:8px;flex-wrap:wrap}
+    .qd-days .pill{height:44px;padding:0 18px;font-size:15px}
+    .qd-dayline{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:10px 0 16px;min-height:24px}
+    .qd-daylbl{font-size:13px;font-weight:600;color:var(--muted)}
+    .qd-dayline input[type=date]{height:44px;font-size:16px;max-width:220px}
+    #qdSavedNote,#qdMsg{margin-bottom:16px}
+    .qd-list{display:flex;flex-direction:column;border-top:1px solid var(--border)}
+    .qd-person{padding:14px 0;border-bottom:1px solid var(--border)}
+    .qd-person-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:6px}
+    .qd-name{font-size:15px;font-weight:700;color:var(--navy);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .qd-rowtotal{font-size:13px;font-weight:600;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+    .qd-rowtotal.has{color:var(--navy)}
+    .qd-line{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 0}
+    .qd-type{min-width:0;flex:1}
+    .qd-type-name{font-size:14px;font-weight:600;color:var(--ink);line-height:1.3}
+    .qd-type-sub{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;line-height:1.4}
+    .qd-price-edit{background:none;border:0;padding:0;font:inherit;color:var(--ocean);cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+    .qd-price input{width:64px;height:28px;font-size:16px;padding:0 6px;text-align:right;border:1px solid var(--ocean);border-radius:6px;font-family:inherit}
+    .qd-step{display:flex;align-items:center;gap:6px;flex-shrink:0}
+    .qd-step button{width:44px;height:44px;border-radius:var(--r-sm);border:1px solid var(--border-2);background:#fff;color:var(--navy);font-size:22px;font-weight:500;line-height:1;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;justify-content:center;padding:0;touch-action:manipulation}
+    .qd-step button:hover{border-color:var(--ocean);color:var(--ocean)}.qd-step button:active{background:var(--ocean-soft)}
+    .qd-step button:disabled{opacity:.35;cursor:default}
+    .qd-step input.qd-n{width:52px;height:44px;text-align:center;padding:0;border:1px solid var(--border-2);border-radius:var(--r-sm);font-family:inherit;font-size:18px;font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums;-moz-appearance:textfield;background:#fff}
+    .qd-step input.qd-n::-webkit-inner-spin-button,.qd-step input.qd-n::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+    .qd-step input.qd-n:focus{border-color:var(--ocean);box-shadow:var(--ring);outline:none}
+    .qd-step input.qd-n.has{background:var(--ocean-soft);border-color:var(--ocean);color:var(--ocean-dark)}
+    .qd-locked{min-width:52px;text-align:center;font-size:18px;font-weight:700;color:var(--muted);font-variant-numeric:tabular-nums}
+    .qd-more{margin-top:2px;padding:0;height:32px}
+    .qd-add{margin:16px 0 8px}.qd-add .select{width:100%;height:44px;font-size:15px}
+    .qd-adv{margin-top:8px;border-top:1px solid var(--border);padding-top:8px}
+    .qd-adv>summary{cursor:pointer;font-size:13px;font-weight:600;color:var(--muted);padding:8px 0;list-style:none}
+    .qd-adv>summary::-webkit-details-marker{display:none}.qd-adv>summary::marker{content:''}
+    .qd-adv>summary::after{content:' +';color:var(--muted-2)}.qd-adv[open]>summary::after{content:' −'}
+    .qd-adv-body{display:flex;flex-wrap:wrap;gap:12px 16px;align-items:flex-end;padding:4px 0 8px}.qd-adv-body .field{min-width:200px}
+    .qd-linkrow{margin-top:8px}.qd-linkrow .btn-link{padding:0;height:32px}
+    .qd-back{margin:-4px 0 12px}
+    .qd-bar{justify-content:space-between;align-items:center;gap:12px;z-index:11}
+    .qd-sum{display:flex;flex-direction:column;min-width:0;font-variant-numeric:tabular-nums}
+    .qd-sum strong{font-size:15px;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .qd-bar .btn-p{min-width:120px;flex-shrink:0}
+    @media (max-width:700px){
+      #modal.overlay{padding:0;align-items:stretch}
+      #modal .modal,#modal .modal.qd-mode{max-width:none;max-height:none;height:100%;height:100dvh;border-radius:0;border:0}
+      .qd-days .pill{flex:1;justify-content:center;padding:0 10px}
+      .qd-bar{padding-bottom:calc(12px + env(safe-area-inset-bottom))}
+    }
     .daylist-item{border:1px solid var(--border);border-radius:var(--r);padding:12px;background:#fff}
     .overview-grid{display:grid;gap:var(--sp-3);grid-template-columns:repeat(5,1fr);margin-bottom:var(--sp-4)}
     @media (max-width:1100px){.overview-grid{grid-template-columns:1fr 1fr}.loc-cards{grid-template-columns:repeat(3,1fr)}.modal-grid{grid-template-columns:1fr}}
@@ -213,33 +250,38 @@ AppShell.setAccount({ signOut: () => AppShell.signOut(getSupabaseClient) });   /
 </div>
 
 <div class="overlay" id="modal">
-  <div class="modal" style="max-width:980px">
+  <div class="modal" id="lessonModalBox">
     <div class="mhdr">
-      <div class="mhdr-row">
-        <div>
-          <div class="mhdr-title" id="modalTitle">Add lessons for the day</div>
-          <div class="mhdr-sub" id="modalSub">Type only the number of lessons — the prices are already filled in.</div>
-        </div>
-        <div class="mhdr-tools">
-          <div class="pills" id="modeSwitch"><button id="modeQuick" class="pill active">Quick day</button><button id="modeLine" class="pill">Line by line</button></div>
-        </div>
-      </div>
+      <div class="mhdr-title" id="modalTitle">Lessons for the day</div>
+      <div class="mhdr-sub" id="modalSub">Tap + for each lesson given. The price fills in by itself.</div>
       <button class="mclose" id="closeModalBtn" aria-label="Close">×</button>
     </div>
     <div class="mbody">
+      <!-- Quick day (17 Nov 2026, Miguel: «tem de ser mais fácil de usar e mobile —
+           para conseguir meter no dia… ou no dia a seguir»): pick the day with one
+           tap, then a − N + per lesson type for the people who usually work. The day's
+           saved lessons come pre-filled, so Save updates them instead of adding twice. -->
       <div id="quickDay">
-        <div class="qd-top">
-          <div class="field"><label>Day</label><input type="date" id="qdDate"></div>
-          <div class="field"><label>Status</label><select id="qdPaid"><option value="false">Unpaid</option><option value="true">Paid</option></select></div>
-          <label class="pill"><input type="checkbox" id="qdAll" style="display:inline-block;margin:0;width:14px;height:14px;accent-color:var(--ocean)"> Show all instructors</label>
-          <div class="hint" style="flex:1;text-align:right">Price per lesson suggested from each instructor's history — tap the price to change it. Enter jumps to the next instructor.</div>
+        <div class="qd-days" id="qdDays" role="group" aria-label="Day">
+          <button type="button" class="pill" data-day="today">Today</button>
+          <button type="button" class="pill" data-day="yesterday">Yesterday</button>
+          <button type="button" class="pill" data-day="other">Other day</button>
         </div>
-        <div class="qd-wrap"><table class="qd-table"><thead id="qdHead"></thead><tbody id="qdBody"></tbody></table></div>
-        <div class="qd-foot">
-          <div><span class="muted">This day:</span> <strong id="qdTotal">0 lessons · €0.00</strong></div>
-          <div style="display:flex;gap:8px"><button class="btn btn-s" id="qdClear">Clear</button><button class="btn btn-p" id="qdSave">Save day</button></div>
-        </div>
+        <div class="qd-dayline"><span class="qd-daylbl" id="qdDayLbl"></span><input type="date" id="qdDate" aria-label="Pick the day" style="display:none"></div>
+        <div class="status-msg status-info" id="qdSavedNote" style="display:none"></div>
+        <div class="status-msg status-err" id="qdMsg" style="display:none"></div>
+        <div id="qdBody" class="qd-list"></div>
+        <div class="qd-add"><select class="select" id="qdAddSel" aria-label="Add instructor"></select></div>
+        <details class="qd-adv" id="qdAdv">
+          <summary>Options</summary>
+          <div class="qd-adv-body">
+            <div class="field"><label>Status of new lessons</label><select id="qdPaid"><option value="false">Unpaid</option><option value="true">Paid</option></select></div>
+            <button type="button" class="btn btn-s btn-sm" id="qdClear">Reset to saved numbers</button>
+          </div>
+        </details>
+        <div class="qd-linkrow"><button type="button" class="btn btn-link btn-sm" id="modeLine">Notes or a special price? Add line by line</button></div>
       </div>
+      <div class="qd-linkrow qd-back" id="lineBack" style="display:none"><button type="button" class="btn btn-link btn-sm" id="modeQuick">Back to quick day</button></div>
       <div class="modal-grid" id="lineMode" style="display:none">
         <div>
           <div class="form-grid">
@@ -280,6 +322,10 @@ AppShell.setAccount({ signOut: () => AppShell.signOut(getSupabaseClient) });   /
           </div>
         </div>
       </div>
+    </div>
+    <div class="mfooter qd-bar" id="qdBar">
+      <div class="qd-sum"><strong id="qdTotal">Today: 0 lessons · €0.00</strong><span class="hint" id="qdState"></span></div>
+      <button type="button" class="btn btn-p btn-lg" id="qdSave">Save</button>
     </div>
   </div>
 </div>
@@ -771,9 +817,9 @@ function updateDashboard(){
 function render(){renderTabs();renderYearTabs();renderMonthTabs();renderCategoryFilter();renderSearchableDropdown("instructorBtn","instructorDropdown","instructorSearch","instructorOptions",selectedInstructor,(v)=>{selectedInstructor=v;render();},true);renderFilterSummary();renderCategoryOverview();updateKpis();updatePayroll();updateEntries();updateDashboard();renderDirectory();}
 function fillSelects(){document.getElementById("fCategory").innerHTML=lessonCategories.map(v=>`<option value="${v}">${v}</option>`).join("");document.getElementById("fPayment").innerHTML=paymentTypes.map(v=>`<option value="${v}">${v}</option>`).join("");}
 function calcTotal(){document.getElementById("fTotal").textContent=euro(Number(document.getElementById("fLessons").value||0)*Number(document.getElementById("fPrice").value||0));}
-function resetDraft(keepDate=true){const currentDate=keepDate?(document.getElementById("fDate").value||new Date().toISOString().slice(0,10)):new Date().toISOString().slice(0,10);document.getElementById("fDate").value=currentDate;document.getElementById("fCategory").value="Surf School";document.getElementById("fLessons").value=1;document.getElementById("fNotes").value="";document.getElementById("fPaid").value="false";calcTotal();}
+function resetDraft(keepDate=true){const currentDate=keepDate?(document.getElementById("fDate").value||localIso()):localIso();document.getElementById("fDate").value=currentDate;document.getElementById("fCategory").value="Surf School";document.getElementById("fLessons").value=1;document.getElementById("fNotes").value="";document.getElementById("fPaid").value="false";calcTotal();}
 function openModal(edit=false){fillSelects();document.getElementById("modal").classList.add("open");setModalMode(edit?"line":modalMode);document.getElementById("modalTitle").textContent=edit?"Edit lesson":"Lessons for the day";document.getElementById("lineActions").style.display=edit?"none":"flex";document.getElementById("editActions").style.display=edit?"flex":"none";renderSearchableDropdown("formInstructorBtn","formInstructorDropdown","formInstructorSearch","formInstructorOptions",formInstructor,(v)=>{formInstructor=v;openModal(Boolean(editingId));},false);renderDayQueue();calcTotal();}
-function closeModal(){document.getElementById("modal").classList.remove("open");editingId=null;dayQueue=[];}
+function closeModal(){document.getElementById("modal").classList.remove("open");editingId=null;dayQueue=[];qdDay=null;qdCounts={};qdBase={};qdShown=[];qdMoreOpen=new Set();qdPriceEdited=new Set();qdError("");}
 function renderDayQueue(){document.getElementById("dayListCount").textContent=`${dayQueue.length} lines`;document.getElementById("dayQueueTotal").textContent=dayQueue.reduce((s,i)=>s+Number(i.numberOfLessons),0);document.getElementById("dayListWrap").innerHTML=dayQueue.length?dayQueue.map((item,index)=>`<div class="daylist-item"><div style="display:flex;justify-content:space-between;gap:12px"><div><div style="font-weight:700">${item.instructorName}</div><div class="muted" style="font-size:14px;margin-top:4px">${item.date} · ${item.lessonCategory} · ${item.numberOfLessons} lessons</div></div><button class="btn btn-danger btn-sm" data-remove-draft="${index}">Remove</button></div></div>`).join(""):`<div class="hint" style="padding:12px 0">No lines added yet for this day.</div>`;document.querySelectorAll("[data-remove-draft]").forEach(btn=>btn.onclick=()=>{dayQueue=dayQueue.filter((_,i)=>i!==Number(btn.dataset.removeDraft));renderDayQueue();});}
 function buildCurrentDraft(){return{date:document.getElementById("fDate").value,instructorName:formInstructor,lessonCategory:document.getElementById("fCategory").value,numberOfLessons:Number(document.getElementById("fLessons").value||0),paymentType:document.getElementById("fPayment").value,priceUnit:Number(document.getElementById("fPrice").value||0),notes:document.getElementById("fNotes").value,paid:document.getElementById("fPaid").value==="true"};}
 function addDraftToDayQueue(){const draft=buildCurrentDraft();if(!draft.date||!draft.instructorName||!draft.numberOfLessons)return;dayQueue.push(draft);showMessage(`Added to day list. ${dayQueue.length} items ready.`);resetDraft(true);renderDayQueue();}
@@ -805,11 +851,22 @@ async function saveDayList(){
   }
 }
 // ── Dia rápido ───────────────────────────────────────────────────────────
-// Uma grelha instrutor x categoria para o dia: escreve-se so o numero de aulas.
-// O preco vem do historico (o mais usado nas ultimas 20 aulas dessa pessoa
-// nessa categoria) — em 2026 so 8 pares em ~90 tiveram dois precos, e sempre
-// com um claramente dominante. Substitui o "Add to day list" linha a linha.
+// 17 Nov 2026 (Miguel: «tem de ser mais fácil de usar e mobile — para conseguir
+// meter no dia… ou no dia a seguir»): em vez da grelha de 6 colunas, o dia
+// escolhe-se com um toque (Hoje / Ontem / Outro dia) e cada instrutor que
+// costuma trabalhar tem um − N + só nos tipos de aula que dá. O preço vem do
+// histórico (o mais usado nas últimas 20 aulas dessa pessoa nesse tipo) e só
+// muda pelo link «price». As aulas já gravadas nesse dia aparecem nos números:
+// gravar ACTUALIZA essas linhas (ou apaga quando volta a 0) em vez de duplicar.
+// Linhas pagas (já lançadas no HQ) ou repartidas em várias linhas não se mexem
+// aqui — mudam-se em Lesson entries.
 let qdCounts={},qdPrices={},modalMode="quick";
+let qdDay=null,qdDayMode="today",qdBase={},qdPriceEdited=new Set(),qdShown=[],qdMoreOpen=new Set(),qdSaving=false;
+const localIso=(d=new Date())=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+function qdTodayIso(){return localIso(new Date());}
+function qdYesterdayIso(){const d=new Date();d.setDate(d.getDate()-1);return localIso(d);}
+function qdDayWord(iso){if(iso===qdTodayIso())return"Today";if(iso===qdYesterdayIso())return"Yesterday";return new Date(iso+"T00:00:00").toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short"});}
+function qdLongDay(iso){return new Date(iso+"T00:00:00").toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long",year:"numeric"});}
 function moda(vals){const c={};let best=null;vals.forEach(v=>{c[v]=(c[v]||0)+1;if(best===null||c[v]>c[best])best=v;});return best;}
 function precoSugerido(name,cat){
   const own=sortByNewest(entries.filter(e=>e.instructorName===name&&e.lessonCategory===cat&&Number(e.priceUnit)<100)).slice(0,20).map(e=>Number(e.priceUnit));
@@ -818,67 +875,203 @@ function precoSugerido(name,cat){
   if(all.length)return moda(all);
   const d=instructorDirectory.find(x=>x.name===name);return d&&d.rate?d.rate:25;
 }
+function qdDaysBefore(ref,n){const d=new Date(ref+"T00:00:00");d.setDate(d.getDate()-n);return localIso(d);}
+function qdLatestDate(){return entries.length?entries.reduce((m,e)=>e.date>m?e.date:m,"0"):qdTodayIso();}
 function instrutoresRecentes(){
-  const ref=entries.length?entries.reduce((m,e)=>e.date>m?e.date:m,"0"):new Date().toISOString().slice(0,10);
-  const lim=new Date(ref+"T00:00:00");lim.setDate(lim.getDate()-90);const limIso=lim.toISOString().slice(0,10);
+  const limIso=qdDaysBefore(qdLatestDate(),90);
   const cnt={};entries.forEach(e=>{if(e.date>=limIso)cnt[e.instructorName]=(cnt[e.instructorName]||0)+Number(e.numberOfLessons);});
-  const recentes=Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a]);
+  const recentes=Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a]||a.localeCompare(b));
   const outros=instructorOptions().filter(n=>!cnt[n]);
   return{recentes,outros,cnt};
 }
 function qdCats(){return categoriesIn(entries).length?categoriesIn(entries):lessonCategories;}
+const qdKey=(name,cat)=>name+"|"+cat;
+const qdSplit=k=>{const i=k.lastIndexOf("|");return{name:k.slice(0,i),cat:k.slice(i+1)};};
+// Os tipos que a pessoa dá: os do seu histórico dos últimos 180 dias (senão de
+// sempre), por nº de aulas. Sem histórico: o tipo mais dado na escola.
+function qdTypesFor(name){
+  const mine=entries.filter(e=>e.instructorName===name);
+  const lim=qdDaysBefore(qdLatestDate(),180);
+  const pick=rows=>{const c={};rows.forEach(e=>{c[e.lessonCategory]=(c[e.lessonCategory]||0)+Number(e.numberOfLessons);});return Object.keys(c).sort((a,b)=>c[b]-c[a]);};
+  let cats=pick(mine.filter(e=>e.date>=lim));
+  if(!cats.length)cats=pick(mine);
+  if(!cats.length){const top=pick(entries.filter(e=>e.date>=qdDaysBefore(qdLatestDate(),90)))[0]||pick(entries)[0]||"Surf School";cats=[top];}
+  return cats;
+}
+// O que já está gravado no dia, por instrutor|tipo.
+function qdLoadDay(iso){
+  qdDay=iso;qdBase={};qdCounts={};qdPriceEdited=new Set();
+  entries.filter(e=>e.date===iso).forEach(e=>{const k=qdKey(e.instructorName,e.lessonCategory);(qdBase[k]=qdBase[k]||{rows:[]}).rows.push(e);});
+  Object.keys(qdBase).forEach(k=>{
+    const b=qdBase[k];b.n=b.rows.reduce((s,e)=>s+Number(e.numberOfLessons),0);b.total=b.rows.reduce((s,e)=>s+Number(e.total),0);
+    b.locked=b.rows.length>1?"lines":(b.rows.some(e=>e.paid)?"paid":"");
+    qdCounts[k]=b.n;
+    if(b.rows.length===1)qdPrices[k]=Number(b.rows[0].priceUnit);
+  });
+}
+function qdShownNames(){
+  const {recentes,outros}=instrutoresRecentes();
+  const onDay=[...new Set(Object.keys(qdBase).map(k=>qdSplit(k).name))];
+  const base=recentes.length?recentes:outros;
+  const list=[...onDay.filter(n=>!base.includes(n)),...base];
+  qdShown.forEach(n=>{if(!list.includes(n))list.push(n);});
+  return list;
+}
+function qdLinesFor(name){
+  const main=qdTypesFor(name);
+  const onDay=Object.keys(qdBase).map(qdSplit).filter(x=>x.name===name).map(x=>x.cat);
+  const typed=Object.keys(qdCounts).filter(k=>qdCounts[k]>0).map(qdSplit).filter(x=>x.name===name).map(x=>x.cat);
+  const extra=qdMoreOpen.has(name)?lessonCategories:[];
+  const cats=[...new Set([...main,...onDay,...typed,...extra])];
+  const more=lessonCategories.filter(c=>!cats.includes(c));
+  return{cats,more};
+}
+function qdPriceOf(k){if(qdPrices[k]===undefined){const {name,cat}=qdSplit(k);qdPrices[k]=precoSugerido(name,cat);}return Number(qdPrices[k]);}
+function qdLineHtml(name,cat){
+  const k=qdKey(name,cat),b=qdBase[k],ek=esc(k);
+  if(b&&b.locked){
+    const why=b.locked==="paid"?"Paid":"Saved in "+b.rows.length+" lines";
+    return`<div class="qd-line" data-line="${ek}"><div class="qd-type"><div class="qd-type-name">${esc(cat)}</div><div class="qd-type-sub">${why} · ${euro(b.total)} · change in Lesson entries</div></div><div class="qd-step"><span class="qd-locked" data-locked="${ek}">${b.n}</span></div></div>`;
+  }
+  const v=qdCounts[k]||0,price=qdPriceOf(k);
+  return`<div class="qd-line" data-line="${ek}"><div class="qd-type"><div class="qd-type-name">${esc(cat)}</div><div class="qd-type-sub"><span class="qd-price" data-pk="${ek}">${euro(price)}</span> · <button type="button" class="qd-price-edit" data-pe="${ek}">price</button></div></div>`+
+    `<div class="qd-step"><button type="button" tabindex="-1" data-dec="${ek}" aria-label="One lesson less" ${v?"":"disabled"}>−</button><input class="qd-n ${v?"has":""}" type="number" min="0" step="1" inputmode="numeric" pattern="[0-9]*" data-k="${ek}" value="${v}" aria-label="${esc(name)} · ${esc(cat)} lessons"><button type="button" tabindex="-1" data-inc="${ek}" aria-label="One lesson more">+</button></div></div>`;
+}
 function renderQuickDay(){
-  const head=document.getElementById("qdHead"),body=document.getElementById("qdBody");if(!head||!body)return;
-  const cats=qdCats();const {recentes,outros,cnt}=instrutoresRecentes();
-  const nomes=document.getElementById("qdAll").checked?[...recentes,...outros]:(recentes.length?recentes:outros);
-  head.innerHTML=`<tr><th>Instructor</th>${cats.map(c=>`<th>${esc(c)}</th>`).join("")}<th>Total</th></tr>`;
-  body.innerHTML=nomes.map(n=>`<tr data-row="${esc(n)}"><td><span class="qd-name">${esc(n)}<span class="sub">${cnt[n]?`${cnt[n]} lessons in the last 90 days`:"no recent lessons"}</span></span></td>${cats.map(c=>{const k=n+"|"+c;if(qdPrices[k]===undefined)qdPrices[k]=precoSugerido(n,c);const v=qdCounts[k]||"";return`<td><input class="qd-n ${v?"has":""}" type="number" min="0" step="1" inputmode="numeric" data-k="${esc(k)}" value="${v}"><span class="qd-price" data-pk="${esc(k)}" title="Tap to change the price">${qdPrices[k]}€</span></td>`;}).join("")}<td class="qd-rowtotal" data-rt="${esc(n)}">·</td></tr>`).join("")||`<tr class="empty-row"><td colspan="${cats.length+2}">No instructors yet. Add one in "Line by line".</td></tr>`;
+  const body=document.getElementById("qdBody");if(!body)return;
+  if(!qdDay)qdLoadDay(qdTodayIso());
+  // dia
+  document.querySelectorAll("#qdDays [data-day]").forEach(b=>b.classList.toggle("active",b.dataset.day===qdDayMode));
+  const dIn=document.getElementById("qdDate");dIn.value=qdDay;dIn.style.display=qdDayMode==="other"?"":"none";
+  document.getElementById("qdDayLbl").textContent=qdLongDay(qdDay);
+  const savedN=Object.values(qdBase).reduce((s,b)=>s+b.n,0),savedV=Object.values(qdBase).reduce((s,b)=>s+b.total,0);
+  const note=document.getElementById("qdSavedNote");
+  note.style.display=savedN?"":"none";
+  note.textContent=savedN?`Already saved for this day: ${savedN} lesson${savedN===1?"":"s"} · ${euro(savedV)}. The numbers below start from them — Save updates them, it never adds them twice.`:"";
+  // pessoas
+  const nomes=qdShownNames();
+  body.innerHTML=nomes.map(n=>{const {cats,more}=qdLinesFor(n);
+    return`<div class="qd-person" data-row="${esc(n)}"><div class="qd-person-head"><span class="qd-name">${esc(n)}</span><span class="qd-rowtotal" data-rt="${esc(n)}"></span></div>${cats.map(c=>qdLineHtml(n,c)).join("")}${more.length?`<button type="button" class="btn btn-link btn-sm qd-more" data-more="${esc(n)}">More types</button>`:""}</div>`;}).join("")
+    ||`<div class="empty-state">${AppShell.icon("users")}<div class="empty-title">No instructors yet</div><p>Add one in the Instructors tab, or below.</p></div>`;
+  // + instrutor
+  const sel=document.getElementById("qdAddSel");const rest=instructorOptions().filter(n=>!nomes.includes(n));
+  sel.innerHTML=`<option value="">+ Add instructor</option>`+rest.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join("");
+  sel.parentElement.style.display=rest.length?"":"none";
+  // eventos
   body.querySelectorAll("input.qd-n").forEach(inp=>{
-    inp.oninput=()=>{const k=inp.dataset.k;const v=Math.max(0,Math.floor(Number(inp.value)||0));if(v)qdCounts[k]=v;else delete qdCounts[k];inp.classList.toggle("has",!!v);qdTotais();};
-    inp.onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();const col=[...inp.parentElement.parentElement.children].indexOf(inp.parentElement);const next=inp.closest("tr").nextElementSibling;const t=next&&next.children[col]&&next.children[col].querySelector("input.qd-n");if(t){t.focus();t.select();}}};
+    inp.oninput=()=>{qdSetCount(inp.dataset.k,inp.value,false);};
+    inp.onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();const all=[...document.querySelectorAll("#qdBody input.qd-n")];const t=all[all.indexOf(inp)+1];if(t){t.focus();t.select();}else document.getElementById("qdSave").focus();}};
     inp.onfocus=()=>inp.select();
   });
-  body.querySelectorAll(".qd-price").forEach(sp=>sp.onclick=()=>{
-    if(sp.querySelector("input"))return;const k=sp.dataset.pk;const cur=qdPrices[k];
-    sp.innerHTML=`<input type="number" min="0" step="0.5" value="${cur}">`;const i=sp.querySelector("input");i.focus();i.select();
-    const done=()=>{const v=Number(i.value);qdPrices[k]=v>0?v:cur;sp.textContent=qdPrices[k]+"€";qdTotais();};
-    i.onblur=done;i.onkeydown=e=>{if(e.key==="Enter"||e.key==="Tab"){e.preventDefault();i.blur();}if(e.key==="Escape"){i.value=cur;i.blur();}};
-  });
+  body.querySelectorAll("[data-inc]").forEach(b=>b.onclick=()=>qdSetCount(b.dataset.inc,(qdCounts[b.dataset.inc]||0)+1,true));
+  body.querySelectorAll("[data-dec]").forEach(b=>b.onclick=()=>qdSetCount(b.dataset.dec,Math.max(0,(qdCounts[b.dataset.dec]||0)-1),true));
+  body.querySelectorAll("[data-more]").forEach(b=>b.onclick=()=>{qdMoreOpen.add(b.dataset.more);renderQuickDay();});
+  body.querySelectorAll("[data-pe]").forEach(b=>b.onclick=()=>qdEditPrice(b.dataset.pe));
   qdTotais();
 }
-function qdLinhas(){return Object.keys(qdCounts).filter(k=>qdCounts[k]>0).map(k=>{const i=k.lastIndexOf("|");return{name:k.slice(0,i),cat:k.slice(i+1),n:qdCounts[k],price:Number(qdPrices[k]||0)};});}
+function qdSetCount(k,val,syncInput){
+  const v=Math.max(0,Math.floor(Number(val)||0));
+  if(v)qdCounts[k]=v;else if(qdBase[k])qdCounts[k]=0;else delete qdCounts[k];
+  const inp=[...document.querySelectorAll("#qdBody input.qd-n")].find(i=>i.dataset.k===k);
+  if(inp){if(syncInput)inp.value=v;inp.classList.toggle("has",!!v);const dec=inp.previousElementSibling;if(dec)dec.disabled=!v;}
+  qdTotais();
+}
+function qdEditPrice(k){
+  const sp=[...document.querySelectorAll("#qdBody .qd-price")].find(x=>x.dataset.pk===k);if(!sp||sp.querySelector("input"))return;
+  const cur=qdPriceOf(k);
+  sp.innerHTML=`<input type="number" min="0" step="0.5" inputmode="decimal" value="${cur}" aria-label="Price per lesson">`;const i=sp.querySelector("input");i.focus();i.select();
+  const done=()=>{const v=Number(i.value);qdPrices[k]=v>0?v:cur;if(qdPrices[k]!==cur)qdPriceEdited.add(k);sp.textContent=euro(qdPrices[k]);qdTotais();};
+  i.onblur=done;i.onkeydown=e=>{if(e.key==="Enter"||e.key==="Tab"){e.preventDefault();i.blur();}if(e.key==="Escape"){i.value=cur;i.blur();}};
+}
+// O dia inteiro depois de gravar: o que está nos passos + o que está trancado (pago / várias linhas).
+function qdLinhas(){
+  const keys=new Set([...Object.keys(qdCounts),...Object.keys(qdBase)]);
+  return[...keys].map(k=>{const {name,cat}=qdSplit(k);const b=qdBase[k];
+    if(b&&b.locked)return{k,name,cat,n:b.n,price:b.n?b.total/b.n:0,value:b.total,locked:true};
+    const n=qdCounts[k]||0,price=qdPriceOf(k);return{k,name,cat,n,price,value:n*price,locked:false};}).filter(l=>l.n>0);
+}
+// O que gravar: novo → insert; uma linha por pagar → update do nº (e do preço se mudou); 0 → apagar.
+function qdPlan(){
+  const plan={inserts:[],updates:[],deletes:[]};
+  const keys=new Set([...Object.keys(qdCounts),...Object.keys(qdBase)]);
+  keys.forEach(k=>{const b=qdBase[k];if(b&&b.locked)return;const {name,cat}=qdSplit(k);const T=qdCounts[k]||0,price=qdPriceOf(k);
+    if(!b){if(T>0)plan.inserts.push({k,name,cat,n:T,price});return;}
+    const row=b.rows[0];
+    if(T===0){plan.deletes.push({k,name,cat,row});return;}
+    const patch={};if(T!==Number(row.numberOfLessons))patch.num_lessons=T;if(qdPriceEdited.has(k)&&price!==Number(row.priceUnit))patch.price_unit=price;
+    if(Object.keys(patch).length)plan.updates.push({k,name,cat,row,patch,n:T,price});
+  });
+  return plan;
+}
+function qdDirty(){const p=qdPlan();return p.inserts.length+p.updates.length+p.deletes.length>0;}
 function qdTotais(){
   const linhas=qdLinhas();const porNome={};let n=0,v=0;
-  linhas.forEach(l=>{porNome[l.name]=(porNome[l.name]||0)+l.n*l.price;n+=l.n;v+=l.n*l.price;});
-  document.querySelectorAll("[data-rt]").forEach(td=>{const t=porNome[td.dataset.rt];td.textContent=t?euro(t):"·";});
-  const tot=document.getElementById("qdTotal");if(tot)tot.textContent=`${n} lessons · ${euro(v)}`;
-  const btn=document.getElementById("qdSave");if(btn)btn.disabled=!linhas.length;
+  linhas.forEach(l=>{porNome[l.name]=(porNome[l.name]||0)+l.value;n+=l.n;v+=l.value;});
+  document.querySelectorAll("[data-rt]").forEach(el=>{const t=porNome[el.dataset.rt];el.textContent=t?euro(t):"";el.classList.toggle("has",!!t);});
+  const tot=document.getElementById("qdTotal");if(tot&&qdDay)tot.textContent=`${qdDayWord(qdDay)}: ${n} lesson${n===1?"":"s"} · ${euro(v)}`;
+  const p=qdPlan(),changes=p.inserts.length+p.updates.length+p.deletes.length,hasBase=Object.keys(qdBase).length>0;
+  const st=document.getElementById("qdState");if(st)st.textContent=changes?(hasBase?`${changes} change${changes===1?"":"s"} not saved yet`:"Not saved yet"):(hasBase?"All saved":"Tap + to add lessons");
+  const btn=document.getElementById("qdSave");if(btn&&!qdSaving)btn.disabled=!changes;
+}
+function qdSetDay(iso,mode){
+  if(!iso)return;
+  if(iso===qdDay){qdDayMode=mode;renderQuickDay();return;}
+  const newHasRows=entries.some(e=>e.date===iso),oldHasBase=Object.keys(qdBase).length>0;
+  if(qdDirty()){
+    if(!oldHasBase&&!newHasRows){qdDay=iso;qdDayMode=mode;renderQuickDay();return;}   // nada gravado em nenhum dos dois: os números seguem para o dia certo
+    if(!window.confirm(`Change the day? The numbers you typed for ${qdDayWord(qdDay).toLowerCase()} are not saved yet.`)){renderQuickDay();return;}
+  }
+  qdDayMode=mode;qdLoadDay(iso);renderQuickDay();
+}
+function qdError(msg){const b=document.getElementById("qdMsg");if(!b)return;b.textContent=msg||"";b.style.display=msg?"":"none";if(msg)b.scrollIntoView({block:"nearest"});}
+// Actualiza só o que mudou numa linha do dia e confirma que a base de dados a mudou mesmo (RLS devolve 0 linhas sem erro).
+async function updateLessonCount(id,patch){
+  const client=await getSupabaseClient();
+  const {data,error}=await client.from("instructor_lessons").update(patch).eq("id",id).select("id");
+  if(error)throw error;
+  if(!data||!data.length)throw new Error("The lesson was not updated — no write permission for this place?");
+}
+async function deleteLessonRow(id){
+  const client=await getSupabaseClient();
+  const {data,error}=await client.from("instructor_lessons").delete().eq("id",id).select("id");
+  if(error)throw error;
+  if(!data||!data.length)throw new Error("The lesson was not removed — no permission to delete here?");
 }
 async function saveQuickDay(){
-  const linhas=qdLinhas();const date=document.getElementById("qdDate").value;
-  if(!linhas.length||!date){showError("Pick the day and enter at least one number of lessons.");return;}
+  const date=qdDay;const plan=qdPlan();
+  if(!date){qdError("Pick the day first.");return;}
+  if(!plan.inserts.length&&!plan.updates.length&&!plan.deletes.length){qdError("Nothing to save — tap + next to a lesson type.");return;}
+  qdError("");
   const paid=document.getElementById("qdPaid").value==="true";
-  _instrPending=true;const btn=document.getElementById("qdSave");if(btn){btn.disabled=true;btn.textContent="Saving…";}
+  _instrPending=true;qdSaving=true;const btn=document.getElementById("qdSave");if(btn){btn.disabled=true;btn.textContent="Saving…";}
   try{
-    const drafts=linhas.map(l=>{const d=instructorDirectory.find(x=>x.name===l.name);return{date,instructorName:l.name,lessonCategory:l.cat,numberOfLessons:l.n,paymentType:(d&&d.paymentType)||"Recibo Verde",priceUnit:l.price,notes:"",paid};});
-    const results=await Promise.all(drafts.map(d=>withRetry(()=>insertLessonEntry(d),"insert lesson")));
-    const dup=results.filter(r=>r&&r.duplicate).length;
+    const drafts=plan.inserts.map(l=>{const d=instructorDirectory.find(x=>x.name===l.name);return{date,instructorName:l.name,lessonCategory:l.cat,numberOfLessons:l.n,paymentType:(d&&d.paymentType)||"Recibo Verde",priceUnit:l.price,notes:"",paid};});
+    const results=await Promise.all([
+      ...drafts.map(d=>withRetry(()=>insertLessonEntry(d),"insert lesson")),
+      ...plan.updates.map(u=>withRetry(()=>updateLessonCount(u.row.id,u.patch),"update lesson")),
+      ...plan.deletes.map(x=>withRetry(()=>deleteLessonRow(x.row.id),"delete lesson")),
+    ]);
+    const dup=results.slice(0,drafts.length).filter(r=>r&&r.duplicate).length;
+    const linhas=qdLinhas();const n=linhas.reduce((s,l)=>s+l.n,0),v=linhas.reduce((s,l)=>s+l.value,0);
     selectedYear=date.slice(0,4);selectedMonth=date.slice(0,7);
     await loadInstructorData();
-    const n=linhas.reduce((s,l)=>s+l.n,0),v=linhas.reduce((s,l)=>s+l.n*l.price,0);
-    showMessage(`${date}: ${n} lessons saved (${euro(v)}, ${drafts.length-dup} lines)${dup?` · ${dup} already existed and were skipped`:""}.`);
-    qdCounts={};closeModal();render();
-  }catch(error){showError(errMsg(error,"Couldn't save the day."));}
-  finally{_instrPending=false;if(btn){btn.disabled=false;btn.textContent="Save day";}}
+    const parts=[drafts.length-dup?`${drafts.length-dup} new`:"",plan.updates.length?`${plan.updates.length} changed`:"",plan.deletes.length?`${plan.deletes.length} removed`:""].filter(Boolean).join(", ");
+    showMessage(`${qdLongDay(date)}: ${n} lessons · ${euro(v)} saved (${parts||"no changes"})${dup?` · ${dup} already existed and were skipped`:""}.`);
+    closeModal();render();
+  }catch(error){
+    // Mostra o erro real dentro do modal — o #messageBox fica atrás do overlay.
+    qdError("Not saved: "+errMsg(error,"check the connection and try again."));
+  }finally{_instrPending=false;qdSaving=false;if(btn){btn.textContent="Save";}qdTotais();}
 }
 function setModalMode(mode){
-  document.getElementById("quickDay").style.display=mode==="quick"?"":"none";
-  document.getElementById("lineMode").style.display=mode==="quick"?"none":"";
-  document.getElementById("modeQuick").classList.toggle("active",mode==="quick");
-  document.getElementById("modeLine").classList.toggle("active",mode!=="quick");
-  document.getElementById("modeSwitch").style.display=editingId?"none":"";
-  document.getElementById("modalSub").textContent=mode==="quick"?"Type only the number of lessons — the prices are already filled in.":"One line at a time, with every field.";
-  if(mode==="quick"){const d=document.getElementById("qdDate");if(!d.value)d.value=new Date().toISOString().slice(0,10);renderQuickDay();setTimeout(()=>{const f=document.querySelector("#qdBody input.qd-n");if(f)f.focus();},30);}
+  const quick=mode==="quick";
+  document.getElementById("quickDay").style.display=quick?"":"none";
+  document.getElementById("lineMode").style.display=quick?"none":"";
+  document.getElementById("qdBar").style.display=quick?"":"none";
+  document.getElementById("lineBack").style.display=(!quick&&!editingId)?"":"none";
+  document.getElementById("lessonModalBox").classList.toggle("qd-mode",quick);
+  document.getElementById("modalSub").textContent=editingId?"Change any field and save.":(quick?"Tap + for each lesson given. The price fills in by itself.":"One line at a time, with notes and any price.");
+  if(quick){renderQuickDay();}
 }
 function startEdit(id){const entry=entries.find(e=>e.id===id);if(!entry)return;editingId=id;dayQueue=[];formInstructor=entry.instructorName;openModal(true);document.getElementById("fDate").value=entry.date;document.getElementById("fCategory").value=entry.lessonCategory;document.getElementById("fLessons").value=entry.numberOfLessons;document.getElementById("fPayment").value=entry.paymentType;document.getElementById("fPrice").value=entry.priceUnit;document.getElementById("fNotes").value=entry.notes||"";document.getElementById("fPaid").value=String(Boolean(entry.paid));calcTotal();}
 async function saveSingleEdit(){
@@ -1011,7 +1204,7 @@ async function handleImport(file){
 }
 document.querySelectorAll(".tab-trigger,.header-tab,.ntab[data-tab],.ntab-m[data-tab]").forEach(btn=>btn.onclick=()=>{activeTab=btn.dataset.tab;renderTabs();});
 (function(){const b=document.getElementById("addLessonBtn");if(b)b.innerHTML=AppShell.icon("plus")+" Add lessons";const n=document.getElementById("newInstructorBtn");if(n)n.innerHTML=AppShell.icon("plus")+" New instructor";})();
-document.getElementById("addLessonBtn").onclick=()=>{editingId=null;dayQueue=[];formInstructor=instructorOptions()[0]||"";openModal(false);document.getElementById("fDate").value=new Date().toISOString().slice(0,10);document.getElementById("fCategory").value="Surf School";document.getElementById("fLessons").value=1;document.getElementById("fPayment").value="Recibo Verde";document.getElementById("fPrice").value=25;document.getElementById("fNotes").value="";document.getElementById("fPaid").value="false";calcTotal();};
+document.getElementById("addLessonBtn").onclick=()=>{editingId=null;dayQueue=[];modalMode="quick";qdDay=null;qdDayMode="today";formInstructor=instructorOptions()[0]||"";openModal(false);document.getElementById("fDate").value=localIso();document.getElementById("fCategory").value="Surf School";document.getElementById("fLessons").value=1;document.getElementById("fPayment").value="Recibo Verde";document.getElementById("fPrice").value=25;document.getElementById("fNotes").value="";document.getElementById("fPaid").value="false";calcTotal();};
 document.getElementById("paidFilter").onchange=e=>{selectedPaid=e.target.value;render();};
 document.getElementById("viewList").onclick=()=>{entriesView="list";updateEntries();};
 document.getElementById("viewSummary").onclick=()=>{entriesView="summary";updateEntries();};
@@ -1023,7 +1216,6 @@ document.getElementById("saveDayListBtn").onclick=saveDayList;
 document.getElementById("saveEditBtn").onclick=saveSingleEdit;
 document.getElementById("modeQuick").onclick=()=>{modalMode="quick";setModalMode("quick");};
 document.getElementById("modeLine").onclick=()=>{modalMode="line";setModalMode("line");};
-document.getElementById("qdAll").onchange=renderQuickDay;
 document.getElementById("newInstructorBtn").onclick=()=>openInstructorModal(null);
 document.getElementById("dirShowInactive").onchange=renderDirectory;
 document.getElementById("instructorModalClose").onclick=closeInstructorModal;
@@ -1033,9 +1225,14 @@ document.getElementById("statementPrint").onclick=printStatement;
 document.getElementById("instructorModalCancel").onclick=closeInstructorModal;
 document.getElementById("instructorModalSave").onclick=saveInstructor;
 document.getElementById("instructorModal").addEventListener("click",ev=>{if(ev.target.id==="instructorModal")closeInstructorModal();});
-document.getElementById("qdClear").onclick=()=>{qdCounts={};renderQuickDay();};
+document.getElementById("qdClear").onclick=()=>{if(qdDay)qdLoadDay(qdDay);renderQuickDay();};
 document.getElementById("qdSave").onclick=saveQuickDay;
-document.getElementById("qdDate").onchange=()=>{};
+document.getElementById("qdDate").onchange=e=>qdSetDay(e.target.value,"other");
+document.querySelectorAll("#qdDays [data-day]").forEach(b=>b.onclick=()=>{const m=b.dataset.day;
+  if(m==="today")qdSetDay(qdTodayIso(),"today");else if(m==="yesterday")qdSetDay(qdYesterdayIso(),"yesterday");
+  else{qdDayMode="other";renderQuickDay();const i=document.getElementById("qdDate");i.focus();try{i.showPicker&&i.showPicker();}catch(_){}}});
+document.getElementById("qdAddSel").onchange=e=>{const n=e.target.value;if(!n)return;if(!qdShown.includes(n))qdShown.push(n);renderQuickDay();
+  const row=[...document.querySelectorAll("#qdBody [data-row]")].find(r=>r.dataset.row===n);if(row){row.scrollIntoView({block:"center"});const i=row.querySelector("input.qd-n");if(i)i.focus({preventScroll:true});}};
 document.getElementById("clearLineBtn").onclick=()=>resetDraft(true);
 ["fLessons","fPrice"].forEach(id=>document.getElementById(id).oninput=calcTotal);
 document.addEventListener("click",e=>{[["instructorDropdown","instructorBtn"],["formInstructorDropdown","formInstructorBtn"]].forEach(([ddId,btnId])=>{const dd=document.getElementById(ddId),btn=document.getElementById(btnId);if(dd&&btn&&!dd.contains(e.target)&&!btn.contains(e.target))dd.classList.remove("open");});});
