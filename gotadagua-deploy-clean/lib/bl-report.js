@@ -171,15 +171,20 @@
       else if (!p && nameless.length === 1) g = nameless[0];
       if (g) { g.lines.push(l); l.owner = g; } else { l.owner = null; orphanLines.push(l); }
     });
-    // Nameless guests sharing nameless lines (groups): rooms only when they are all the same room and dates.
+    // Nameless guests sharing nameless lines (groups). The same product on the same dates once per nameless guest
+    // (MA 2026-3404: 7 × room, package, each intensive day lesson, transfer) → one each. Otherwise (2026-4946: 20
+    // nameless guests in 8 rooms) the lines stay the booking's and are flagged — who has which is not in the report.
     const pool = orphanLines.filter(l => !l.person);
     if (nameless.length > 1 && pool.length) {
-      const roomLines = pool.filter(l => l.kind === 'room');
-      const sig = l => `${l.title}|${l.start}|${l.end}`;
-      const sigs = [...new Set(roomLines.map(sig))];
-      if (sigs.length === 1 && roomLines.length === nameless.length) nameless.forEach((g, i) => { g.lines.push(roomLines[i]); roomLines[i].owner = g; });
-      else if (roomLines.length) flags.push(`${nameless.length} guests without a name in ${sigs.length} different rooms: who sleeps where is not in the report — see the booking in Bookinglayer`);
-      b.namelessPool = { guests: nameless.length, lines: pool.filter(l => !l.owner) };
+      const sig = l => `${l.kind}|${l.title}|${l.start}|${l.end}`;
+      const bySig = new Map(); pool.forEach(l => { if (!bySig.has(sig(l))) bySig.set(sig(l), []); bySig.get(sig(l)).push(l); });
+      const left = [];
+      bySig.forEach(ls => { if (ls.length === nameless.length) ls.forEach((l, i) => { nameless[i].lines.push(l); l.owner = nameless[i]; }); else left.push(...ls); });
+      const roomsLeft = left.filter(l => l.kind === 'room');
+      if (roomsLeft.length) flags.push(`${nameless.length} guests without a name in ${new Set(roomsLeft.map(l => l.title)).size} different rooms: who sleeps where is not in the report — see the booking in Bookinglayer`);
+      const otherLeft = left.filter(l => l.kind !== 'room' && l.kind !== 'included');
+      if (otherLeft.length) flags.push(`${otherLeft.length} line${otherLeft.length === 1 ? '' : 's'} of the guests without a name not given to one guest (${[...new Set(otherLeft.map(l => l.title))].join(', ')}) — counted for the booking only`);
+      b.namelessPool = { guests: nameless.length, lines: left };
     }
     if (b.guests.some(g => !g.lines.length)) b.guests.filter(g => !g.lines.length && !(b.namelessPool && !g.fileName)).forEach(g => flags.push(`${g.name} is on the guest list but owns no line (no room, no lesson)`));
     if (b.lines.some(l => l.sameName)) flags.push('two guests with the same name: their lines are given to the first');
@@ -419,7 +424,10 @@
   const isAdded = t => !t.last_import_at && !!t.bl_checked_at;   // added from the booking page
   function priceOf(prices, kind, vehicle, place) { return prices ? Number(prices(kind, vehicle, place)) || 0 : null; }
   function planTrips(trips, appTrips, o) {
-    o = o || {}; const today = o.today; const exp = o.exportDate || today; const now = o.now || `${today}T00:00`;
+    o = o || {}; const today = o.today; const now = o.now || `${today}T00:00`;
+    // The import is sent with the camp's today when the file is older (Sri Lanka was already on 17 Nov when the 16 Nov
+    // file was exported): the RPC's «transfer removed» pass then never marks a trip of an earlier day.
+    const exp = [o.exportDate, today].filter(Boolean).sort().pop();
     const app = (appTrips || []).filter(t => t.kind === 'airport_arrival' || t.kind === 'airport_departure');
     const byKey = new Map(app.filter(t => t.import_key).map(t => [t.import_key, t]));
     const plan = { send: [], create: [], update: [], same: [], revive: [], untouched: [], covered: [], past: [], regroupCancel: [], flagRemoved: [], notInReport: [], refsPresent: o.refsPresent || [...new Set(trips.map(t => t.booking_ref))] };
@@ -437,15 +445,28 @@
       plan.send.push(tt);
       const why = k.payment_entry_id ? 'paid' : ['done', 'no_show', 'merged'].includes(k.status) ? k.status
         : (k.status === 'cancelled' && !['bookinglayer', 'split'].includes(k.cancel_reason || '')) ? `cancelled: ${k.cancel_reason || 'by hand'}`
-          : (k.last_export_date && exp && exp < k.last_export_date) ? 'older file' : (LIVE.includes(k.status) && doneByTime(k)) ? 'in the past' : '';
+          : (k.last_export_date && exp && exp < k.last_export_date) ? 'older file' : doneByTime(k) ? 'in the past' : '';   // the RPC tests the time for any status
       const diffs = tripDiffs(tt, k, false);
       if (why) { plan.untouched.push({ trip: tt, app: k, why, diffs }); return; }
       const changes = tripDiffs(tt, k, true);
       if (k.status === 'cancelled') { plan.revive.push({ trip: tt, app: k, changes }); return; }
       (changes.length ? plan.update : plan.same).push({ trip: tt, app: k, changes });
     });
-    const keys = new Set(plan.send.map(t => t.key));
     const pre = k => String(k || '').split(':').slice(0, 3).join(':');
+    const regroupable = (a, ks) => a.source === 'bookinglayer' && LIVE.includes(a.status) && !a.payment_entry_id && a.import_key && !ks.has(a.import_key) && !isAdded(a);
+    // The RPC's «regrouped» pass cancels every live trip of the same booking + direction that the file does not
+    // name, with no date test. A trip of an earlier day must never change: the keys that would cancel it are held back.
+    plan.withheld = [];
+    for (;;) {
+      const ks = new Set(plan.send.map(t => t.key)); const pf = new Set([...ks].map(pre));
+      const hit = app.filter(a => regroupable(a, ks) && pf.has(pre(a.import_key)) && a.trip_date < today);
+      if (!hit.length) break;
+      const bad = new Set(hit.map(a => pre(a.import_key)));
+      plan.send.filter(t => bad.has(pre(t.key))).forEach(t => plan.withheld.push({ trip: t, why: `would cancel ${hit.filter(a => pre(a.import_key) === pre(t.key)).map(a => `${a.import_key} (${a.trip_date})`).join(', ')}, a trip of an earlier day` }));
+      plan.send = plan.send.filter(t => !bad.has(pre(t.key)));
+      ['create', 'update', 'same', 'revive', 'untouched'].forEach(k => { plan[k] = plan[k].filter(x => !bad.has(pre(x.trip.key))); });
+    }
+    const keys = new Set(plan.send.map(t => t.key));
     const prefixes = new Set([...keys].map(pre));
     app.forEach(a => {
       const liveBl = a.source === 'bookinglayer' && LIVE.includes(a.status) && !a.payment_entry_id && a.import_key && !keys.has(a.import_key) && !isAdded(a);

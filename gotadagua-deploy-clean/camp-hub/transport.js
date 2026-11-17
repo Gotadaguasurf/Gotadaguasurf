@@ -1697,6 +1697,7 @@
     out += block('Trips that change', '', P.update.map(x => trip(x.trip, chg(x.changes))));
     out += block('Brought back', 'Cancelled by an earlier import, booked again', P.revive.map(x => trip(x.trip)));
     out += block('Replaced', 'Same booking and direction, grouped another way in the report: cancelled and replaced', P.regroupCancel.map(a => trip(a)));
+    out += block('Held back', 'Saving these would cancel a trip of an earlier day: not sent — change them in Transport', (P.withheld || []).map(x => trip(x.trip, h(x.why))));
     out += block('Not in the report — cancel?', 'The booking is in the report without this transfer. Saving only marks it; cancel it in Transport if it is right.', P.flagRemoved.map(a => trip(a)));
     out += block('Booking not in the report', 'Future trips of bookings that are not in this report (cancelled in Bookinglayer?). Nothing changes.', P.notInReport.map(a => trip(a)));
     out += block('Not changed (paid, done or past)', 'The report differs from the app here; the app is kept', P.untouched.filter(x => x.diffs.length).map(x => trip(x.trip, `${h(x.why)} · ${chg(x.diffs)}`)));
@@ -1846,7 +1847,8 @@
     try {
       const loc = await ensureHubLocationId();
       const result = await rpc('camp_trips_import', {
-        p_location: loc, p_export_date: I.parsed.export_date, p_is_preset: !!I.parsed.is_preset,
+        // the camp report: never a date before the camp's today, so the «transfer removed» pass leaves earlier days alone
+        p_location: loc, p_export_date: I.parsed.report ? [I.parsed.export_date, cToday()].filter(Boolean).sort().pop() : I.parsed.export_date, p_is_preset: !!I.parsed.is_preset,
         p_refs_present: I.parsed.refs_active, p_cancel_refs: I.groups.cancelRefs,
         p_trips: I.groups.trips, p_guests: I.groups.guests,
       });

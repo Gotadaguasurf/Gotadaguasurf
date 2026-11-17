@@ -82,12 +82,15 @@ test('group of 7 with no names: 7 separate guests in the one room of the booking
   const guests = [1, 2, 3, 4, 5, 6, 7].map(n => ({ name: '', beds: String(n) }));
   const lines = [];
   guests.forEach(() => lines.push({ p: '13 - Anchor Point mixed shared room (8pax)', person: '', start: '2026-11-21', end: '2026-11-25' }, { p: 'Flexible Package Morocco', person: '', start: '2026-11-21', end: '2026-11-25' },
-    { p: 'Airport Transfer Morocco (Agadir)', person: '', start: '2026-11-21' }));
+    { p: 'Airport Transfer Morocco (Agadir)', person: '', start: '2026-11-21' }, { p: 'Intensive Day Group surf lesson', person: '', start: '2026-11-22', time: '09:00' }));
   const t = csv([{ ref: '2026-40', ci: '2026-11-21', co: '2026-11-25', guests, lines }]);
   const g = B.guestRows(t, 'x.csv', CC.MA);
   expect(g.map(x => x.guest_key)).toEqual(['guest without name (booking 2026-40)', ...[2, 3, 4, 5, 6, 7].map(n => `guest without name (booking 2026-40) (${n})`)]);
   expect(new Set(g.map(x => x.accommodation))).toEqual(new Set(['13 - Anchor Point mixed shared room (8pax)']));
   expect(g.map(x => x.bed_number)).toEqual(['1', '2', '3', '4', '5', '6', '7']);
+  // every line of the group, once per nameless guest, is that guest's: package, day lesson, transfer
+  expect(g.every(x => x.packages === 'Flexible Package Morocco' && x.has_transfer && x.raw.lessons.length === 1)).toBe(true);
+  expect(B.lessonsByDay(g, '2026-11-22', '2026-11-22')['2026-11-22'].intensive).toBe(7);
   const [tr] = B.parse(t, 'x.csv', '2026-11-16', CC.MA).trips;
   expect([tr.pax, tr.vehicle]).toEqual([7, 'Minivan']);
 });
@@ -152,4 +155,26 @@ test('import plan: past legs without their key and legs the app has under anothe
   expect(plan.send.map(t => t.key).sort()).toEqual(['bl:2026-80:dep', 'bl:2026-81:dep']);
   // bl:2026-81:arr:old is not regrouped (no arrival key of 2026-81 is sent) but flagged «transfer removed»
   expect(plan.regroupCancel).toEqual([]); expect(plan.flagRemoved.map(a => a.id)).toEqual(['x1']);
+});
+
+test('import plan: a key that would make the RPC cancel a trip of an earlier day (regrouped) is held back', () => {
+  const t = csv([{ ref: '2026-90', ci: '2026-11-10', co: '2026-11-30', guests: [{ name: 'Pia P', arrT: '10:00', arrF: 'QR1' }, { name: 'Ray R', arrT: '12:00', arrF: 'QR2' }],
+    lines: [{ p: SLROOM, person: 'Pia P', start: '2026-11-10', end: '2026-11-30' }, { p: 'Airport Transfer Sri Lanka', person: 'Pia P', start: '2026-11-10' }, { p: 'Airport Transfer Sri Lanka', person: 'Ray R', start: '2026-11-18' }] }]);
+  const p = B.parse(t, 'x.csv', '2026-11-16', CC.SL);
+  expect(p.trips.map(x => x.key)).toEqual(['bl:2026-90:arr:piap', 'bl:2026-90:arr:rayr']);
+  // the app has the 10 Nov arrival under the plain key, still «planned» (never marked done)
+  const app = [{ id: 'old', kind: 'airport_arrival', trip_date: '2026-11-10', booking_ref: '2026-90', import_key: 'bl:2026-90:arr', status: 'planned', source: 'bookinglayer', place: 'CMB', pax: 1, last_import_at: '2026-11-08' }];
+  const plan = B.planTrips(p.trips, app, { today: '2026-11-17', exportDate: '2026-11-16', now: '2026-11-17T08:00' });
+  expect(plan.send).toEqual([]);
+  expect(plan.regroupCancel).toEqual([]);
+  expect(plan.withheld.map(x => x.trip.key)).toEqual(['bl:2026-90:arr:rayr']);
+  expect(plan.covered.map(x => x.trip.key)).toEqual(['bl:2026-90:arr:piap']);   // the app has the 10 Nov leg under the old key
+});
+
+test('import plan: a trip cancelled by an import but in the past is not brought back (the RPC leaves past trips alone)', () => {
+  const t = csv([sl('2026-91', { ci: '2026-11-14', co: '2026-11-21', guests: [{ name: 'Sue S' }], lines: [{ p: SLROOM, person: 'Sue S', start: '2026-11-14', end: '2026-11-21' }, { p: 'Airport Transfer Sri Lanka', person: 'Sue S', start: '2026-11-14' }] })]);
+  const p = B.parse(t, 'x.csv', '2026-11-16', CC.SL);
+  const app = [{ id: 'c', kind: 'airport_arrival', trip_date: '2026-11-14', booking_ref: '2026-91', import_key: 'bl:2026-91:arr', status: 'cancelled', cancel_reason: 'split', source: 'bookinglayer', place: 'CMB', pax: 1 }];
+  const plan = B.planTrips(p.trips, app, { today: '2026-11-17', exportDate: '2026-11-16', now: '2026-11-17T08:00' });
+  expect(plan.revive).toEqual([]); expect(plan.untouched.map(x => x.why)).toEqual(['in the past']);
 });
