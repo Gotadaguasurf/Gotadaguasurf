@@ -359,3 +359,10 @@ test('merge into a trip brought back on its key: the driver\'s «sent» is kept,
   const [m] = B.planTrips(p.trips, app, { today: '2026-11-17', exportDate: '2026-11-17' }).merge;
   expect([m.survivor.id, m.patch.status, m.patch.needs_resend, m.others.map(a => a.id)]).toEqual(['k', 'sent', true, ['h', 't']]);
 });
+
+test('all lines at 0 € (e.g. a partner\'s transfer) = like one paid line: one trip, the guest with the most info leads, the question when times differ (Miguel, 17 Nov 2026)', () => {
+  const t = trips([maBooking('2026-94', '2026-11-21', '2026-11-28', [{ name: 'Zoe Z', arr: [0, '', ''], dep: [0, 'FR184', '19:00'] }, { name: 'Yan Y', arr: [0, 'FR185', '00:05'], dep: [0, 'FR8167', '05:10'] }])]);
+  expect(t.map(x => [x.key, x.pax, x.flight, x.time, x.all_zero])).toEqual([['bl:2026-94:arr', 2, 'FR185', '00:05', true], ['bl:2026-94:dep', 2, 'FR184', '19:00', true]]);
+  expect(t[0].flags.some(f => TOG.test(f))).toBe(false);
+  expect(t[1].flags.find(f => TOG.test(f))).toMatch(/\(Yan Y · FR8167 · 05:10\)$/);
+});

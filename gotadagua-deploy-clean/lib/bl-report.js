@@ -344,15 +344,21 @@
     //     ignored) or time (> 30 min) differs from the paid one stays in it, with the question «coming together?»;
     //   · two or more paid lines on the same flight / time (or empty) → ONE trip, «N transfers paid, same flight — confirm»;
     //     on different flights / times → one trip per paid line, each 0 € guest with the paid line that matches;
-    //   · no paid line (all 0 €) → as without prices.
+    //   · no paid line (all 0 €, e.g. a partner's transfer) → like one paid line (Miguel, 17 Nov 2026): ONE trip, the guest
+    //     with the most flight / time info leads, the question when another guest's flight / time differs.
     const priceGroups = ls => {
       const out2 = []; const byDay = new Map();
       ls.forEach(l => { const k = `${l.date}|${l.place}`; if (!byDay.has(k)) byDay.set(k, []); byDay.get(k).push(l); });
       byDay.forEach(c => {
-        const paid = c.filter(l => l.price > 0).sort((a, b2) => a.order - b2.order); const free = c.filter(l => !(l.price > 0)).sort((a, b2) => a.order - b2.order);
-        if (!paid.length) { out2.push(...oldGroups(c)); return; }
+        let paid = c.filter(l => l.price > 0).sort((a, b2) => a.order - b2.order); let free = c.filter(l => !(l.price > 0)).sort((a, b2) => a.order - b2.order);
+        const allZero = !paid.length;
+        if (allZero) {
+          const filled = l => (l.time ? 1 : 0) + (l.flight ? 1 : 0);
+          const lead = free.slice().sort((a, b2) => filled(b2) - filled(a) || a.order - b2.order)[0];
+          paid = [lead]; free = free.filter(l => l !== lead);
+        }
         const pg = [];
-        paid.forEach(l => { const gr = pg.find(x => compatible(x, l)); if (gr) { gr.legs.push(l); gr.paid++; gr.time = gr.time || l.time; gr.flight = gr.flight || l.flight; } else pg.push({ date: l.date, place: l.place, time: l.time, flight: l.flight, legs: [l], paid: 1, ask: [], extra: [] }); });
+        paid.forEach(l => { const gr = pg.find(x => compatible(x, l)); if (gr) { gr.legs.push(l); gr.paid++; gr.time = gr.time || l.time; gr.flight = gr.flight || l.flight; } else pg.push({ date: l.date, place: l.place, time: l.time, flight: l.flight, legs: [l], paid: 1, ask: [], extra: [], allZero }); });
         // a 0 € guest who fits joins; their flight / time fill what the paid guest left empty (MA 2026-4241 shape)
         free.forEach(l => { const gr = pg.find(x => compatible(x, l)); if (gr) { gr.legs.push(l); gr.time = gr.time || l.time; gr.flight = gr.flight || l.flight; } else { pg[0].legs.push(l); pg[0].ask.push(l); } });
         pg.forEach(gr => {
@@ -389,7 +395,7 @@
           booking_ref: b.ref, booking_checkout: b.co || null, phone: (gr.legs.find(l => l.phone) || {}).phone || '',
           phone_from: (gr.legs.find(l => l.phone) || {}).phoneFrom || '',
           vehicle: GT().vehicleFor(pax, boards, cfg), partner: b.partner || null,
-          ...(b.hasPrice ? { paid_lines: gr.legs.filter(l => l.price > 0).length, line_prices: gr.legs.map(l => ({ guest: l.guest, price: l.price })) } : {}),
+          ...(b.hasPrice ? { paid_lines: gr.legs.filter(l => l.price > 0).length, line_prices: gr.legs.map(l => ({ guest: l.guest, price: l.price })), all_zero: !!gr.allZero } : {}),
         });
       });
     }
