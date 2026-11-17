@@ -18,6 +18,19 @@
   const CONTACT = { phone: '+351 924 689 580', email: 'info@gotadaguasurf.com', web: 'www.gotadaguasurf.com' };
   const CAMP_ORDER = ['portugal', 'morocco', 'sri-lanka', 'junior-camp', 'surf-school'];
   const CAMP_LABEL = { portugal: 'Portugal', morocco: 'Morocco', 'sri-lanka': 'Sri Lanka', 'junior-camp': 'Junior Camp', 'surf-school': 'Surf School' };
+  // the place under each camp name, as on gotadaguasurf.com; photos from the website (assets/pricelist/)
+  const CAMP_PLACE = { portugal: 'Costa da Caparica', morocco: 'Tamraght', 'sri-lanka': 'Ahangama', 'junior-camp': 'Junior Camp · Costa da Caparica', 'surf-school': 'Surf School · Costa da Caparica' };
+  const CAMP_PHOTO = { portugal: ['loc-portugal', 'pack-portugal', ''], morocco: ['loc-morocco', 'pack-morocco', 'tour-morocco'],
+    'sri-lanka': ['loc-srilanka', 'pack-srilanka', 'tour-srilanka'], 'junior-camp': ['loc-junior', 'loc-junior', ''], 'surf-school': ['pack-portugal', 'pack-portugal', ''] };   // the site's tour-portugal.jpg shows the Sri Lanka house: not used
+  const BOOK_URL = 'https://bookings.gotadaguasurf.com';
+  const SECTION_LEAD = {
+    accommodation: 'Prices per person. Pick your room — the season sets the price.',
+    surf: 'From your first wave to your best one.',
+    tours: 'Days out with the crew.',
+    transfers: 'We pick you up at the airport.',
+    addons: 'Little extras for your stay.',
+    bar: 'At the camp bar and shop.',
+  };
   const SECTION_DEFS = [
     { key: 'surf', title: 'Surf packs & lessons', cats: ['Surf Pack', 'Lesson'] },
     { key: 'tours', title: 'Tours & activities', cats: ['Tour'] },
@@ -167,13 +180,18 @@
     parts.forEach(p => p.rows.forEach(r => { const m = /^([A-Z]{3}) /.exec(r.price); currencies.add(m ? m[1] : 'EUR'); }));
     const covers = [...new Set(parts.filter(p => p.kind === 'transfers').flatMap(p => p.rows.map(r => r.covers)).filter(Boolean))];
     const notes = [];
-    if (accommodation.length) notes.push('Accommodation prices are per person. The column is how many people share the room — a solo traveller in a double room pays the single-use rate.');
+    if (accommodation.length) notes.push('Accommodation prices are per person. Single use = one guest alone in the room; sharing = the price each guest pays when they share it.');
     if (accommodation.some(p => p.flex)) notes.push('Flexible pack prices are per person, per night.');
     if (covers.length === 1) notes.push(`Transfer prices are per transfer; one transfer covers up to ${covers[0]} persons.`);
     else if (covers.length > 1) notes.push('Transfer prices are per transfer; «up to» is how many persons one transfer covers.');
     const nonEur = [...currencies].filter(c => c !== 'EUR');
     if (nonEur.length) notes.push(`Prices are in euro unless marked ${nonEur.join(' / ')}.`);
-    return { slug: camp.slug, label: camp.label || CAMP_LABEL[camp.slug] || camp.slug, accommodation, parts, ranges, notes,
+    // «from €…» = the lowest weekly per-person price printed (as the website's package cards say it)
+    const weekly = (camp.accom && camp.accom.prices || []).filter(pr => { const pk = (camp.accom.packs || []).find(x => x.id === pr.pack_id); return pk && pk.price_basis !== 'per_person_per_night' && Number(pr.sell_price) > 0; });
+    const printed = new Set(accommodation.filter(a => !a.flex).flatMap(a => a.rooms.flatMap(r => r.cells.flat().map(x => x.price))));
+    const fromVals = weekly.map(pr => Number(pr.sell_price)).filter(v => printed.has(moneyFixed(v, 'EUR', 0)) || printed.has(moneyFixed(v, 'EUR', 2)));
+    const from = fromVals.length ? moneyFixed(Math.min(...fromVals), 'EUR', Number.isInteger(Math.min(...fromVals)) ? 0 : 2) : '';
+    return { slug: camp.slug, label: camp.label || CAMP_LABEL[camp.slug] || camp.slug, place: CAMP_PLACE[camp.slug] || '', from, accommodation, parts, ranges, notes,
       empty: !accommodation.length && !parts.length };
   }
 
@@ -204,13 +222,17 @@
   // ── HTML ──────────────────────────────────────────────────────────────────
   function accomHtml(p) {
     const n = p.seasons.length;
+    const occCol = p.rooms.some(r => r.cells.some(cs => cs.length > 1));
     return `<div class="pl-pack">
       <div class="pl-pack-head"><h3>${esc(p.label)}</h3><span class="pl-basis">${esc(p.basis)}</span></div>
       ${p.desc ? `<p class="pl-pack-desc">${esc(p.desc)}</p>` : ''}
-      <table class="pl-matrix pl-cols-${n}">
-        <colgroup><col class="pl-col-room">${p.seasons.map(() => '<col>').join('')}</colgroup>
-        <thead><tr><th class="pl-room-h">Room</th>${p.seasons.map(s => `<th><span class="pl-pill ${s.key}">${esc(s.label.replace(/\s*season$/i, ''))}</span>${s.dates.length ? `<span class="pl-dates">${s.dates.map(esc).join('<br>')}</span>` : ''}</th>`).join('')}</tr></thead>
-        <tbody>${p.rooms.map(r => `<tr><td class="pl-room">${esc(r.room)}</td>${r.cells.map(cs => `<td class="pl-cell">${cs.length ? cs.map(x => `<div class="pl-line">${x.label ? `<span class="pl-occ">${esc(x.label)}</span>` : ''}<span class="pl-amt${x.price ? '' : ' na'}">${x.price ? esc(x.price) : '—'}</span></div>`).join('') : '<span class="pl-amt na">—</span>'}</td>`).join('')}</tr>`).join('')}</tbody>
+      <table class="pl-table pl-matrix pl-cols-${n}">
+        <colgroup><col class="pl-col-room">${occCol ? '<col class="pl-col-occ">' : ''}${p.seasons.map(() => '<col class="pl-col-season">').join('')}</colgroup>
+        <thead><tr><th class="pl-room-h">Room</th>${occCol ? '<th></th>' : ''}${p.seasons.map(s => `<th class="pl-season-h"><span class="pl-pill ${s.key}">${esc(s.label.replace(/\s*season$/i, ''))}</span>${s.dates.length ? `<span class="pl-dates">${s.dates.map(esc).join('<br>')}</span>` : ''}</th>`).join('')}</tr></thead>
+        <tbody>${p.rooms.map(r => {
+          const labels = (r.cells.find(cs => cs.length) || []).map(x => x.label);
+          return `<tr><td class="pl-room">${esc(r.room)}</td>${occCol ? `<td class="pl-occ">${labels.filter(Boolean).map(l => `<div class="pl-line">${esc(l)}</div>`).join('')}</td>` : ''}${r.cells.map(cs => `<td class="pl-cell">${cs.length ? cs.map(x => `<div class="pl-line"><span class="pl-amt${x.price ? '' : ' na'}">${x.price ? esc(x.price) : '—'}</span></div>`).join('') : '<div class="pl-line"><span class="pl-amt na">—</span></div>'}</td>`).join('')}</tr>`;
+        }).join('')}</tbody>
       </table>
     </div>`;
   }
@@ -223,42 +245,72 @@
         ? `<tr><td><b>${esc(g.route)}</b></td><td>${g.rows[0].covers ? `up to ${g.rows[0].covers} persons` : '—'}</td><td class="r pl-price">${esc(g.rows[0].price)}</td></tr>`
         : `<tr class="pl-route-row"><td colspan="3">${esc(g.route)}</td></tr>` + g.rows.map(r =>
           `<tr class="pl-veh"><td>${esc(r.vehicle || r.route)}</td><td>${r.covers ? `up to ${r.covers} persons` : '—'}</td><td class="r pl-price">${esc(r.price)}</td></tr>`).join('')).join('');
-      return `<section class="pl-part"><h2>${esc(part.title)}</h2>
+      return `<section class="pl-part" data-part="transfers">${sectionHead(part.key, part.title)}
         <table class="pl-table pl-transfers"><colgroup><col><col class="pl-col-mid"><col class="pl-col-num"></colgroup>
           <thead><tr><th>Route and vehicle</th><th>One transfer covers</th><th class="r">Per transfer</th></tr></thead>
           <tbody>${body}</tbody>
         </table></section>`;
     }
-    return `<section class="pl-part"><h2>${esc(part.title)}</h2>
-      <table class="pl-table"><colgroup><col><col class="pl-col-num"></colgroup>
-        <tbody>${part.rows.map(r => `<tr><td><b>${esc(r.name)}</b>${r.note ? `<span class="pl-sub">${esc(r.note)}</span>` : ''}</td><td class="r pl-price">${esc(r.price)}</td></tr>`).join('')}</tbody>
-      </table></section>`;
+    return `<section class="pl-part" data-part="${esc(part.key)}">${sectionHead(part.key, part.title)}
+      <div class="pl-items${part.photo ? ' with-photo' : ''}">
+        <table class="pl-table pl-list"><colgroup><col><col class="pl-col-num"></colgroup>
+          <tbody>${part.rows.map(r => `<tr><td><span class="pl-name">${esc(r.name)}</span>${r.note ? `<span class="pl-sub">${esc(r.note)}</span>` : ''}</td><td class="r pl-price">${esc(r.price)}</td></tr>`).join('')}</tbody>
+        </table>
+        ${part.photo ? `<div class="pl-photo" style="background-image:url('/assets/pricelist/${esc(part.photo)}.jpg')"></div>` : ''}
+      </div></section>`;
   }
+  function sectionHead(key, title) {
+    return `<header class="pl-sec-head"><h2>${esc(title)}</h2>${SECTION_LEAD[key] ? `<p class="pl-lead">${esc(SECTION_LEAD[key])}</p>` : ''}</header>`;
+  }
+
   function render(model, opts) {
     const logo = (opts && opts.logo) || '';
-    const logoNavy = logo.replace(/#fff4d5/gi, '#28394b');
+    const logoNavy = logo.replace(/#fff4d5/gi, '#27384a');
     const c = model.contact;
-    const contactHtml = `<div class="pl-contact"><span>${esc(c.phone)}</span><span>${esc(c.email)}</span><span>${esc(c.web)}</span></div>`;
+    const contact = `<span>${esc(c.phone)}</span><span>${esc(c.email)}</span><span>${esc(c.web)}</span>`;
+    const one = model.camps.length === 1 ? model.camps[0] : null;
+    const coverPhotos = (one ? [one.slug] : model.camps.map(x => x.slug).filter(sl => CAMP_PHOTO[sl]).slice(0, 3))
+      .map(sl => `<div class="pl-cover-photo" style="background-image:url('/assets/pricelist/${(CAMP_PHOTO[sl] || CAMP_PHOTO.portugal)[0]}.jpg')"></div>`).join('');
     const cover = `<section class="pl-cover">
-      <div class="pl-cover-logo">${logo}</div>
+      <div class="pl-cover-photos n${one ? 1 : Math.min(3, model.camps.length) || 1}">${coverPhotos}</div>
+      <div class="pl-cover-shade"></div>
+      <div class="pl-cover-top"><div class="pl-cover-logo">${logo}</div><a class="pl-book" href="${BOOK_URL}">Book now</a></div>
       <div class="pl-cover-main">
-        <div class="pl-eyebrow">Price list</div>
+        <div class="pl-kicker">Price list ${esc(model.period)}</div>
         <h1>${esc(model.title)}</h1>
-        <div class="pl-cover-period">${esc(model.period)}</div>
-        ${model.camps.length > 1 ? `<div class="pl-cover-camps">${model.camps.map(x => esc(x.label)).join('<span>·</span>')}</div>` : ''}
-        ${model.sections.length ? `<ul class="pl-cover-list">${model.sections.map(s => `<li>${esc(s)}</li>`).join('')}</ul>` : ''}
+        ${one && one.place ? `<div class="pl-place">${esc(one.place)}</div>` : ''}
+        ${model.camps.length > 1 ? `<div class="pl-place">${model.camps.map(x => esc(x.label)).join(' · ')}</div>` : ''}
+        <p class="pl-cover-tag">Where waves become stories and people become friends.</p>
       </div>
-      <div class="pl-cover-foot">${contactHtml}<div class="pl-generated">Prices as of ${esc(model.generated)}</div></div>
+      <div class="pl-cover-foot"><div class="pl-contact">${contact}</div><div class="pl-generated">Prices as of ${esc(model.generated)}</div></div>
     </section>`;
     if (!model.camps.length) return cover + `<section class="pl-camp"><p class="pl-empty">Nothing to print: no published prices in the chosen camp, dates and sections.</p></section>`;
-    const camps = model.camps.map(camp => `<section class="pl-camp" data-camp="${esc(camp.slug)}">
-      <header class="pl-camp-head"><div class="pl-camp-logo">${logoNavy}</div><div><div class="pl-eyebrow dark">Gota Dagua price list</div><h1>${esc(camp.label)}</h1></div></header>
-      ${camp.accommodation.length ? `<section class="pl-part pl-accom"><h2>Accommodation</h2>${camp.accommodation.map(accomHtml).join('')}</section>` : ''}
+    const camps = model.camps.map(camp => {
+      const ph = CAMP_PHOTO[camp.slug] || CAMP_PHOTO.portugal;
+      camp.parts.forEach(pt => { if (pt.key === 'tours' && ph[2] && pt.rows.length >= 3) pt.photo = ph[2]; });
+      return `<section class="pl-camp" data-camp="${esc(camp.slug)}">
+      <header class="pl-camp-card" style="background-image:url('/assets/pricelist/${ph[1]}.jpg')">
+        <div class="pl-camp-card-in">
+          <div class="pl-camp-kicker">${camp.slug === 'surf-school' ? 'Surf school' : camp.slug === 'junior-camp' ? 'Junior surf camp' : 'Surf camp'}</div>
+          <h2 class="pl-camp-name">${esc(camp.label)}</h2>
+          ${camp.place ? `<div class="pl-camp-place">${esc(camp.place.replace(/^(Junior Camp|Surf School) · /, ''))}</div>` : ''}
+          ${camp.from ? `<div class="pl-camp-from">from ${esc(camp.from)}</div>` : ''}
+        </div>
+      </header>
+      ${camp.accommodation.length ? `<section class="pl-part pl-accom" data-part="accommodation">${sectionHead('accommodation', 'Accommodation')}${camp.accommodation.map(accomHtml).join('')}</section>` : ''}
       ${camp.parts.map(partHtml).join('')}
-      ${camp.notes.length ? `<section class="pl-part pl-notes"><h2>Good to know</h2><ul>${camp.notes.map(n => `<li>${esc(n)}</li>`).join('')}</ul></section>` : ''}
-    </section>`).join('');
-    const end = `<section class="pl-end"><div class="pl-end-title">Questions or ready to book?</div>${contactHtml}<div class="pl-generated">Prices as of ${esc(model.generated)}.</div></section>`;
-    return cover + camps + end;
+      ${camp.notes.length ? `<section class="pl-part pl-notes"><h3>Good to know</h3><ul>${camp.notes.map(n => `<li>${esc(n)}</li>`).join('')}</ul></section>` : ''}
+    </section>`;
+    }).join('');
+    const end = `<section class="pl-end">
+      <div class="pl-end-logo">${logo}</div>
+      <div class="pl-end-title">Ready to catch some waves?</div>
+      <p>Book online or write to us.</p>
+      <a class="pl-book big" href="${BOOK_URL}">Book now</a>
+      <div class="pl-contact">${contact}</div>
+      <div class="pl-generated">Prices as of ${esc(model.generated)}. Gota Dagua surf camps in Portugal, Morocco and Sri Lanka.</div>
+    </section>`;
+    return `<div class="pl-running">${logoNavy}<span>gotadaguasurf.com · ${esc(c.email)} · ${esc(c.phone)}</span></div>` + cover + camps + end;
   }
 
   const api = { buildModel, render, accomMatrix, seasonWhen, moneyFixed, money, inPeriod, fmtRange, CONTACT, CAMP_ORDER, CAMP_LABEL, isInternalNote, guestText };

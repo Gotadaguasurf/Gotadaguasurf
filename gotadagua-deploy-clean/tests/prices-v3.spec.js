@@ -226,6 +226,16 @@ test('price list page: A4 print with no overflow (long names, 5 sharing columns)
   await expect(page.locator('.pl-camp')).toHaveCount(5);
   await expect(page.locator('.pl-camp[data-camp="portugal"] .pl-matrix thead th').first()).toBeVisible();
   await expect(page.locator('.pl-cover')).toContainText('+351 924 689 580');
+  // the website's look: brand fonts loaded, photo cover and camp cards, «Book now» to the booking site, one money format
+  expect(await page.evaluate(() => [document.fonts.check('16px Frastha'), document.fonts.check('16px Londrina')])).toEqual([true, true]);
+  await expect(page.locator('.pl-cover .pl-cover-photo')).toHaveCount(3);
+  await expect(page.locator('.pl-camp-card')).toHaveCount(5);
+  await expect(page.locator('a.pl-book').first()).toHaveAttribute('href', 'https://bookings.gotadaguasurf.com');
+  await expect(page.locator('.pl-camp[data-camp="sri-lanka"] .pl-pack').nth(1).locator('.pl-amt').first()).toHaveText(/^€\d+\.\d{2}$/);
+  await expect(page.locator('.pl-camp[data-camp="sri-lanka"] .pl-pack').first().locator('.pl-amt').first()).toHaveText(/^€\d+$/);
+  const imgs = await page.evaluate(async () => { const u = [...new Set([...document.querySelectorAll('[style*="background-image"]')].map(e => /url\(['"]?([^'")]+)/.exec(e.getAttribute('style'))[1]))];
+    return Promise.all(u.map(x => fetch(x).then(r => [x, r.status]))); });
+  expect(imgs.filter(([, st]) => st !== 200)).toEqual([]);
   await page.emulateMedia({ media: 'print' });
   await page.setViewportSize({ width: 794, height: 1123 });                                  // A4 at 96 dpi
   const over = await page.evaluate(() => {
