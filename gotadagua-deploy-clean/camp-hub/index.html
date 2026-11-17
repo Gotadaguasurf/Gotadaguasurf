@@ -346,8 +346,17 @@ body{min-height:100dvh}
    the amount says what the row is. Desktop: long tokens in Description
    (e.g. «FEE:VISH_CORP_CHG_30072026») may break so Actions stay on screen. */
 .what-mob{display:none}
-@media(max-width:700px){.what-mob{display:block;max-width:150px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11.5px;color:var(--muted);margin-top:2px}}
+@media(max-width:700px){.what-mob{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;max-width:none;white-space:normal;overflow:hidden;overflow-wrap:anywhere;font-size:11.5px;color:var(--muted);margin-top:2px}}
 #expTable td:nth-child(7){overflow-wrap:anywhere}
+/* Phones: the ledger is Date | Type + amount + what | Actions — the other
+   columns are repeated in the Type cell or open with Edit (17 Nov 2026). */
+@media(max-width:700px){
+  #expTable tr:not(.empty-row)>:nth-child(2),
+  #expTable tr:not(.empty-row)>:nth-child(n+4):nth-child(-n+10){display:none}
+  #expTable td:nth-child(3){white-space:normal!important;width:100%}
+  #expTable th,#expTable td{padding-left:10px;padding-right:10px}
+  #expTable th:last-child{width:auto!important}
+}
 .icon-danger:hover{color:var(--red);border-color:var(--red);background:var(--red-bg)}
 .hub-embed-wrap{height:calc(100vh - 60px);padding:0}
 .hub-embed-frame{width:100%;height:100%;border:none;display:block;background:var(--bg)}
