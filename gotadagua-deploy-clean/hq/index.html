@@ -116,6 +116,8 @@ td.loc-name{font-weight:600;color:var(--navy)}
 /* filters: the "More filters" row, the toggles and the active-filter summary */
 .hq-menu{position:relative}.hq-menu summary{list-style:none}.hq-menu summary::-webkit-details-marker{display:none}
 .hq-menu-list{position:absolute;right:0;top:calc(100% + 6px);background:#fff;border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--sh-lg);padding:6px;min-width:200px;z-index:30;display:flex;flex-direction:column}
+/* phones: the «More» button sits at the left of its row, so the menu opens to the right and stays on screen */
+@media (max-width: 640px){ .hq-menu-list{left:0;right:auto;max-width:calc(100vw - 24px)} }
 .hq-menu-list button{background:none;border:none;text-align:left;padding:9px 12px;border-radius:8px;font-family:inherit;font-size:13px;font-weight:600;color:var(--navy);cursor:pointer;display:flex;align-items:center;gap:8px}
 .hq-menu-list button:hover{background:var(--surface-2)}
 .hq-filters.hq-more{padding:var(--sp-3);background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-sm)}
@@ -159,6 +161,7 @@ td.loc-name{font-weight:600;color:var(--navy)}
 .drawer-item-body{min-width:0}
 .drawer-item-cat{font-weight:600;color:var(--ink);font-size:12.5px}
 .drawer-item-desc{font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (max-width: 640px){ .drawer-item-desc{white-space:normal;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2} }
 .drawer-item-amt{text-align:right;font-variant-numeric:tabular-nums;font-weight:600;font-size:13px;color:var(--ink)}
 .drawer-empty{padding:var(--sp-4) 0;font-size:12.5px;color:var(--muted);text-align:center}
 .drawer-footer{padding:var(--sp-3) var(--sp-5);border-top:1px solid var(--border);display:flex;gap:var(--sp-2);flex-shrink:0;background:var(--surface-2)}
