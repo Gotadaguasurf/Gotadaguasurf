@@ -177,8 +177,15 @@
       seen.add(r.ref);
       const prev = prevBy.get(r.ref) || null; const prp = (prev && prev.raw_payload) || {};
       let partnerName = r.partner && r.partner !== 'Direct Bookings' ? r.partner : null;
+      let pctIn = Number(r.commissionPct) || 0;
+      // An EMPTY Company/Channel cell on a booking the app has with a partner never turns it direct (the 26 Oct 2026 error):
+      // the app's partner and commission stay, with a note.
+      if (!partnerName && prev && prev.partner_name) {
+        partnerName = prev.partner_name; pctIn = Number(prev.partner_commission_pct) || 0;
+        out.notes.push(`${r.ref}: no Company/Channel in the report — kept the app's partner ${prev.partner_name} (${pctIn} %)`);
+      }
       if (partnerName) { const hit = byLower.get(partnerName.trim().toLowerCase()); if (hit) partnerName = hit; else if (!out.newPartners.includes(partnerName)) out.newPartners.push(partnerName); }
-      const gross = r2(r.gross); const pct = Number(r.commissionPct) || 0;
+      const gross = r2(r.gross); const pct = pctIn;
       const commission = partnerName ? r2(gross * pct / 100) : 0;
       const ciIso = r.checkinMs ? new Date(r.checkinMs).toISOString().slice(0, 10) : null;
       const foreign = r.currency && r.currency !== 'EUR';
@@ -186,6 +193,7 @@
       if (foreign && !prev) { out.held.push({ ref: r.ref, why: `new booking in ${r.currency} (${gross}) — set the euro value by hand, then the import keeps it` }); return; }
       const raw = { ...prp };
       OWN_RAW.forEach(k => { raw[k] = k === 'partner' ? (partnerName || 'Direct Bookings') : r[k]; });
+      raw.commissionPct = pct;
       // the Bookings export stamped the hour in checkinMs / checkoutMs; the same day keeps the stored value
       const sameDay = k => prp[k] != null && raw[k] != null && Math.floor(Number(prp[k]) / 86400000) === Math.floor(raw[k] / 86400000);
       const keptDays = ['checkinMs', 'checkoutMs'].filter(k => { if (sameDay(k)) { raw[k] = prp[k]; return true; } return false; });

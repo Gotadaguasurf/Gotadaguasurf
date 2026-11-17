@@ -90,20 +90,20 @@ test('window guard: only future, unpaid trips of a booking that left the report 
     appTrip('t-hand', '2026-205', '2026-11-28', '2026-12-02', { source: 'manual' }),           // added by hand → never
     appTrip('t-gone', '2026-206', '2026-11-28', '2026-12-02', { status: 'cancelled', cancel_reason: 'guest' }),
   ];
-  const r = I.planCampReport({ text, fileName: 'r.csv', slug: 'morocco', appTrips: app, appGuests: [], catalog: MA_CAT, now: '2026-11-17T10:00', receivedYmd: '2026-11-17' });
+  const r = I.planCampReport({ text, fileName: 'r.csv', slug: 'morocco', appTrips: app, appGuests: [], catalog: MA_CAT, now: '2026-11-17T10:00', receivedYmd: '2026-11-17', cancelVanished: true });
   expect(r.ok).toBe(true);
   expect(r.vanish.map(a => a.id)).toEqual(['t-in']);
   expect(r.vanishOutside.map(a => a.id).sort()).toEqual(['t-null', 't-out']);
   expect(r.changes.counts.vanish).toBe(1);
-  // switched off → nothing cancelled, said why
-  const off = I.planCampReport({ text, fileName: 'r.csv', slug: 'morocco', appTrips: app, appGuests: [], catalog: MA_CAT, now: '2026-11-17T10:00', receivedYmd: '2026-11-17', cancelVanished: false });
-  expect(off.vanish).toEqual([]); expect(off.vanishHeld).toMatch(/switched off/);
+  // off by default (the camp hub's import never cancels them) → nothing cancelled, the would-cancel list is still logged
+  const off = I.planCampReport({ text, fileName: 'r.csv', slug: 'morocco', appTrips: app, appGuests: [], catalog: MA_CAT, now: '2026-11-17T10:00', receivedYmd: '2026-11-17' });
+  expect(off.vanish).toEqual([]); expect(off.vanishHeld).toMatch(/switched off/); expect(off.changes.trips.vanish.length).toBe(1);
 });
 
 test('window guard: many bookings leaving at once (a truncated file?) cancels nothing', () => {
   const text = csvPriced([maBk('2026-100', '2026-11-20', '2026-11-27', 'Ann A')]);
   const app = [1, 2, 3, 4, 5].map(n => appTrip('t' + n, '2026-30' + n, '2026-11-25', '2026-12-01'));
-  const r = I.planCampReport({ text, fileName: 'r.csv', slug: 'morocco', appTrips: app, appGuests: [], catalog: MA_CAT, now: '2026-11-17T10:00', receivedYmd: '2026-11-17' });
+  const r = I.planCampReport({ text, fileName: 'r.csv', slug: 'morocco', appTrips: app, appGuests: [], catalog: MA_CAT, now: '2026-11-17T10:00', receivedYmd: '2026-11-17', cancelVanished: true });
   expect(r.vanish).toEqual([]); expect(r.vanishAll.length).toBe(5); expect(r.vanishHeld).toMatch(/at once/);
 });
 
@@ -205,6 +205,16 @@ test('revenue: the HQ import rules — partner, commission once, Connect source,
   expect(by['2026-14']).toBeUndefined();
   expect(p.held.map(h => h.ref)).toEqual(['2026-14']);
   expect(p.created.sort()).toEqual(['2026-11']);
+});
+
+test('revenue: an empty Company/Channel never turns a partner booking direct (the 26 Oct 2026 error)', () => {
+  const rows = RV.parse(revCsv([{ ref: '2026-30', total: '1000.00', via: 'Bookinglayer Connect', channel: '' }])).rows;
+  const prev = { booking_ref: '2026-30', total: 1000, partner_name: 'The Surf Tribe', partner_commission_pct: 15, commission_amount: 150, net_amount: 850, booking_type: 'surfcamp', raw_payload: { bookingSource: 'Connect: The Surf Tribe' } };
+  const p = RV.plan(rows, [prev], ['The Surf Tribe']);
+  const u = p.upserts[0];
+  expect(u).toMatchObject({ partner_name: 'The Surf Tribe', partner_commission_pct: 15, commission_amount: 150, net_amount: 850, booking_type: 'surfcamp' });
+  expect(u.raw_payload).toMatchObject({ partner: 'The Surf Tribe', commissionPct: 15, bookingSource: 'Connect: The Surf Tribe' });
+  expect(p.notes.join()).toMatch(/2026-30: no Company\/Channel in the report — kept the app's partner The Surf Tribe/);
 });
 
 test('revenue: idempotent — the same file again changes nothing', () => {

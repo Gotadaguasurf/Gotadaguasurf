@@ -55,8 +55,7 @@ const WATER_NIF = '515059927', MANJAR_NIF = '502379723'
 const PERSONAL_NIFS = new Set(['268990719', '231351224'])
 const MAX_ATTACHMENTS_PER_RUN = 12
 const MAX_BYTES = 15 * 1024 * 1024
-// the Bookinglayer reports (hourly, CSV) are reports.ts's: left out here so they do not fill mail_ingest_items (the code skips them too)
-const GMAIL_QUERY = 'has:attachment newer_than:14d -in:spam -in:trash -"Sistema de MANJAR" -subject:(hourly app accounting) -subject:(semana week transfers) -subject:(revenue partners check-in)'
+const GMAIL_QUERY = 'has:attachment newer_than:14d -in:spam -in:trash -"Sistema de MANJAR"'
 const WATER_LOCATIONS = new Set(['portugal', 'surf-school', 'junior-camp', 'kids-camp', 'morocco', 'sri-lanka', 'wild-wednesday', 'general'])
 const MONTHS_EN = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 const MONTHS_PT = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
@@ -340,7 +339,10 @@ async function run(db: Db, opts: RunOpts = {}) {
         const marker: Ctx = { db, account, messageId: id, attachmentId: '-', filename: '', sha: '', receivedAt, from, subject, gmailLink, backfill: !!opts.backfill }
         if (/sistema de manjar/i.test(subject)) { await record(marker, { status: 'skipped', reason: 'relatório do POS do Manjar' }, null); continue }
         // a Bookinglayer report (never a PDF): reports.ts imports it and logs it in bl_report_runs
-        if ((globalThis as any).BlIngest?.routeEmail({ subject, attachments: atts }).kind !== 'none') { await record(marker, { status: 'skipped', reason: 'relatório do Bookinglayer (bl_report_runs)' }, null); continue }
+        // fails safe: without the library nothing is a report (an invoice is never skipped by mistake)
+        const BI = (globalThis as any).BlIngest
+        const reportKind = BI && typeof BI.routeEmail === 'function' ? BI.routeEmail({ subject, attachments: atts }).kind : 'none'
+        if (reportKind !== 'none') { await record(marker, { status: 'skipped', reason: 'relatório do Bookinglayer (bl_report_runs)' }, null); continue }
         if (!pdfs.length) { await record(marker, { status: 'skipped', reason: 'sem PDF em anexo' }, null); continue }
         for (const a of pdfs) {
           if (budget <= 0) break

@@ -30,7 +30,9 @@ create table if not exists public.bl_report_settings (
   dry_run_camp boolean not null default true,      -- true = log what the camp import would change, write nothing
   dry_run_revenue boolean not null default true,   -- the same for the Revenue & Partners → bookings import
   archive boolean not null default false,          -- remove INBOX from report emails (needs gmail.modify on accounting@)
-  cancel_vanished boolean not null default true,   -- cancel future trips of bookings that left the report (check-out inside −3..+32)
+  -- cancel future trips of bookings that left the report (check-out inside −3..+32). OFF by default: the camp hub's import
+  -- never does it (it only lists them); the would-cancel list is in every run's changes.trips.vanish. Miguel decides.
+  cancel_vanished boolean not null default false,
   updated_at timestamptz not null default now(),
   updated_by text
 );
@@ -256,10 +258,14 @@ select distinct on (coalesce(r.location_slug, r.report)) coalesce(r.location_slu
 grant select on public.bl_report_last_import to authenticated;
 
 -- ════════════════════════════════════════════════════════════════════════════
+--  Run order: AFTER transport-catalog-one-source.sql and camp-trips-bl-check.sql; run THIS file again whenever a file that
+--  redefines camp_trips_can_manage (local-manager.sql, tighten-rls-*.sql …) is run again, or the automatic import gets 42501.
 --  After reviewing the dry runs (select received_at, report, location_slug, status, changes, error
 --  from bl_report_runs order by created_at desc limit 20):
 --    update public.bl_report_settings set dry_run_camp = false, updated_at = now(), updated_by = 'Miguel';     -- camp reports live
 --    update public.bl_report_settings set dry_run_revenue = false, updated_at = now(), updated_by = 'Miguel';  -- Revenue live
 --    update public.bl_report_settings set archive = true, updated_at = now(), updated_by = 'Miguel';           -- after reconnecting accounting@ with gmail.modify
+--    update public.bl_report_settings set cancel_vanished = true, updated_at = now(), updated_by = 'Miguel';   -- only if vanished bookings should cancel trips
+--  Emails logged during the dry run are never imported nor archived later (one run per email): archive those by hand.
 --  Back to dry run: set the flag to true again. Undo a Revenue import: bookings_snapshots has every row as it was (run_id).
 -- ════════════════════════════════════════════════════════════════════════════

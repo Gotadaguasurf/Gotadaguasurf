@@ -109,7 +109,7 @@
   // Plus the window guard: future, unpaid trips of a booking that left the report while its check-out is inside the
   // window are cancelled as «bookinglayer» (the reason an import uses, so the trip comes back if the booking returns).
   // o = { text, fileName, slug, appTrips, appGuests, catalog, now ('YYYY-MM-DDTHH:MM' camp time), receivedYmd,
-  //       cancelVanished (default true), vanishCap }
+  //       cancelVanished (default false — the camp hub's import never cancels them; bl_report_settings.cancel_vanished), vanishCap }
   const LIVE = ['planned', 'sent', 'confirmed'];
   function planCampReport(o) {
     const B = BR(); const G = GT();
@@ -164,7 +164,7 @@
     const vanishRefs = [...new Set(vanish.map(a => a.booking_ref))];
     const cap = o.vanishCap != null ? o.vanishCap : Math.max(3, Math.ceil(refs.size * 0.15));
     let vanishHeld = '';
-    if (o.cancelVanished === false && vanish.length) vanishHeld = 'cancelling vanished bookings is switched off (bl_report_settings.cancel_vanished)';
+    if (o.cancelVanished !== true && vanish.length) vanishHeld = 'cancelling vanished bookings is switched off (bl_report_settings.cancel_vanished) — listed only';
     else if (vanishRefs.length > cap) vanishHeld = `${vanishRefs.length} bookings left the report at once (more than ${cap}) — nothing cancelled, check the report`;
     const merges = (plan.merge || []).map(m => ({ survivor: m.survivor.id, patch: m.patch, others: m.others.map(x => ({ id: x.id, needs_resend: ['sent', 'confirmed'].includes(x.status) })) }));
     const rpc = {

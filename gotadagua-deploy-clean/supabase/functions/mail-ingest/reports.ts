@@ -191,7 +191,7 @@ async function handleCamp(db: Any, runId: string, slug: string, text: string, fi
   ])
   const now = BI().localNow(cfg.tz)
   const receivedYmd = BI().localNow(cfg.tz, receivedAt).slice(0, 10)
-  const plan = BI().planCampReport({ text, fileName, slug, appTrips, appGuests, catalog, now, receivedYmd, cancelVanished: settings.cancel_vanished !== false })
+  const plan = BI().planCampReport({ text, fileName, slug, appTrips, appGuests, catalog, now, receivedYmd, cancelVanished: settings.cancel_vanished === true })
   const win = plan.window || BI().reportWindow(receivedYmd)
   await db.from('bl_report_runs').update({ rows: plan.rows ?? null, window_from: win.from, window_to: win.to, changes: plan.changes }).eq('id', runId)
   if (!plan.ok) return finish(db, runId, 'refused', { error: plan.refused })
