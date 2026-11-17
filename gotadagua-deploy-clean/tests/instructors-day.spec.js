@@ -33,6 +33,7 @@ async function openDay(page, { today = [], extraPeople = 0 } = {}) {
     loadInstructorData = async () => {};
     window.__w = { inserts: [], updates: [], deletes: [] };
     window.__orig = { u: String(updateLessonCount), d: String(deleteLessonRow) };
+    window.__origFn = { updateLessonCount, deleteLessonRow };
     insertLessonEntry = async (d) => { window.__w.inserts.push(d); return { duplicate: false }; };
     updateLessonCount = async (id, patch) => { window.__w.updates.push({ id, patch }); };
     deleteLessonRow = async (id) => { window.__w.deletes.push(id); };
@@ -186,12 +187,10 @@ test('switching day keeps typed numbers when neither day has saved lessons, and 
 test('a write that RLS silently refuses shows the real error inside the modal and keeps the numbers', async ({ page }) => {
   await openDay(page, { today: [{ id: 'm1', name: 'Matilde', cat: 'Surf School', n: 2, price: 25 }] });
   await page.evaluate(() => {
-    // real updateLessonCount against a client whose update matches 0 rows
-    updateLessonCount = async (id, patch) => {
-      const c = { update: () => c, eq: () => c, select: async () => ({ data: [], error: null }) };
-      const { data, error } = await c.update(patch).eq('id', id).select('id');
-      if (error) throw error; if (!data || !data.length) throw new Error('The lesson was not updated — no write permission for this place?');
-    };
+    // the REAL updateLessonCount against a client whose update matches 0 rows (what RLS does — no error, no rows)
+    updateLessonCount = window.__origFn.updateLessonCount;
+    const c = { from: () => c, update: () => c, eq: () => c, select: async () => ({ data: [], error: null }) };
+    supabaseClient = c;
     withRetry = async (fn) => fn();
   });
   await plus(page, 'Matilde', 'Surf School').click();
@@ -265,4 +264,43 @@ test('line by line stays for exceptions, one blue button per view', async ({ pag
   await expect(page.locator('#quickDay')).toBeVisible();
   await expect(page.locator('#qdBar')).toBeVisible();
   expect(await page.locator('#modal .btn-p:visible').count()).toBe(1);
+});
+
+test('a price typed for one day never sticks: the next day / next open starts from the usual price again', async ({ page }) => {
+  await openDay(page);
+  await plus(page, 'Matilde', 'Surf School').click();
+  await line(page, 'Matilde', 'Surf School').locator('[data-pe]').click();
+  await line(page, 'Matilde', 'Surf School').locator('.qd-price input').fill('40');
+  await line(page, 'Matilde', 'Surf School').locator('.qd-price input').press('Enter');
+  await page.locator('#qdSave').click();
+  expect((await page.evaluate(() => window.__w.inserts))[0].priceUnit).toBe(40);
+  await page.locator('#addLessonBtn').click();
+  await expect(line(page, 'Matilde', 'Surf School').locator('.qd-price')).toHaveText('€25.00');
+  await page.locator('#qdDays [data-day="yesterday"]').click();
+  await expect(line(page, 'Matilde', 'Surf School').locator('.qd-price')).toHaveText('€25.00');
+});
+
+test('someone else saved the same day meanwhile → nothing is written, the day reloads with what is saved', async ({ page }) => {
+  await openDay(page, { today: [{ id: 'm1', name: 'Matilde', cat: 'Surf School', n: 2, price: 25 }] });
+  await plus(page, 'Matilde', 'Surf School').click();
+  // another phone saves Romildo for the same day (realtime refreshed `entries`)
+  await page.evaluate(() => { const x = new Date(); const iso = `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+    entries.push({ id: 'other', instructorId: 'x', date: iso, instructorName: 'Romildo Ramos', lessonCategory: 'Surf Camp', numberOfLessons: 2, paymentType: 'Recibo Verde', priceUnit: 30, total: 60, paid: false, notes: '' }); });
+  await page.locator('#qdSave').click();
+  const w = await page.evaluate(() => window.__w);
+  expect(w.inserts.length + w.updates.length + w.deletes.length).toBe(0);
+  await expect(page.locator('#qdMsg')).toContainText('Someone else changed this day');
+  await expect(num(page, 'Matilde', 'Surf School')).toHaveValue('2');
+  await expect(num(page, 'Romildo Ramos', 'Surf Camp')).toHaveValue('2');
+  // saving again now works from the fresh numbers
+  await plus(page, 'Matilde', 'Surf School').click();
+  await page.locator('#qdSave').click();
+  expect((await page.evaluate(() => window.__w.updates))).toEqual([{ id: 'm1', patch: { num_lessons: 3 } }]);
+});
+
+test('line by line opens on the day picked above', async ({ page }) => {
+  await openDay(page);
+  await page.locator('#qdDays [data-day="yesterday"]').click();
+  await page.locator('#modeLine').click();
+  expect(await page.locator('#fDate').inputValue()).toBe(await page.evaluate(() => qdYesterdayIso()));
 });

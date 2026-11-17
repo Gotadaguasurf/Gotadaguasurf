@@ -819,7 +819,7 @@ function fillSelects(){document.getElementById("fCategory").innerHTML=lessonCate
 function calcTotal(){document.getElementById("fTotal").textContent=euro(Number(document.getElementById("fLessons").value||0)*Number(document.getElementById("fPrice").value||0));}
 function resetDraft(keepDate=true){const currentDate=keepDate?(document.getElementById("fDate").value||localIso()):localIso();document.getElementById("fDate").value=currentDate;document.getElementById("fCategory").value="Surf School";document.getElementById("fLessons").value=1;document.getElementById("fNotes").value="";document.getElementById("fPaid").value="false";calcTotal();}
 function openModal(edit=false){fillSelects();document.getElementById("modal").classList.add("open");setModalMode(edit?"line":modalMode);document.getElementById("modalTitle").textContent=edit?"Edit lesson":"Lessons for the day";document.getElementById("lineActions").style.display=edit?"none":"flex";document.getElementById("editActions").style.display=edit?"flex":"none";renderSearchableDropdown("formInstructorBtn","formInstructorDropdown","formInstructorSearch","formInstructorOptions",formInstructor,(v)=>{formInstructor=v;openModal(Boolean(editingId));},false);renderDayQueue();calcTotal();}
-function closeModal(){document.getElementById("modal").classList.remove("open");editingId=null;dayQueue=[];qdDay=null;qdCounts={};qdBase={};qdShown=[];qdMoreOpen=new Set();qdPriceEdited=new Set();qdError("");}
+function closeModal(){document.getElementById("modal").classList.remove("open");editingId=null;dayQueue=[];qdDay=null;qdCounts={};qdPrices={};qdBase={};qdShown=[];qdMoreOpen=new Set();qdPriceEdited=new Set();qdError("");}
 function renderDayQueue(){document.getElementById("dayListCount").textContent=`${dayQueue.length} lines`;document.getElementById("dayQueueTotal").textContent=dayQueue.reduce((s,i)=>s+Number(i.numberOfLessons),0);document.getElementById("dayListWrap").innerHTML=dayQueue.length?dayQueue.map((item,index)=>`<div class="daylist-item"><div style="display:flex;justify-content:space-between;gap:12px"><div><div style="font-weight:700">${item.instructorName}</div><div class="muted" style="font-size:14px;margin-top:4px">${item.date} · ${item.lessonCategory} · ${item.numberOfLessons} lessons</div></div><button class="btn btn-danger btn-sm" data-remove-draft="${index}">Remove</button></div></div>`).join(""):`<div class="hint" style="padding:12px 0">No lines added yet for this day.</div>`;document.querySelectorAll("[data-remove-draft]").forEach(btn=>btn.onclick=()=>{dayQueue=dayQueue.filter((_,i)=>i!==Number(btn.dataset.removeDraft));renderDayQueue();});}
 function buildCurrentDraft(){return{date:document.getElementById("fDate").value,instructorName:formInstructor,lessonCategory:document.getElementById("fCategory").value,numberOfLessons:Number(document.getElementById("fLessons").value||0),paymentType:document.getElementById("fPayment").value,priceUnit:Number(document.getElementById("fPrice").value||0),notes:document.getElementById("fNotes").value,paid:document.getElementById("fPaid").value==="true"};}
 function addDraftToDayQueue(){const draft=buildCurrentDraft();if(!draft.date||!draft.instructorName||!draft.numberOfLessons)return;dayQueue.push(draft);showMessage(`Added to day list. ${dayQueue.length} items ready.`);resetDraft(true);renderDayQueue();}
@@ -900,7 +900,7 @@ function qdTypesFor(name){
 }
 // O que já está gravado no dia, por instrutor|tipo.
 function qdLoadDay(iso){
-  qdDay=iso;qdBase={};qdCounts={};qdPriceEdited=new Set();
+  qdDay=iso;qdBase={};qdCounts={};qdPrices={};qdPriceEdited=new Set();
   entries.filter(e=>e.date===iso).forEach(e=>{const k=qdKey(e.instructorName,e.lessonCategory);(qdBase[k]=qdBase[k]||{rows:[]}).rows.push(e);});
   Object.keys(qdBase).forEach(k=>{
     const b=qdBase[k];b.n=b.rows.reduce((s,e)=>s+Number(e.numberOfLessons),0);b.total=b.rows.reduce((s,e)=>s+Number(e.total),0);
@@ -1037,9 +1037,16 @@ async function deleteLessonRow(id){
   if(error)throw error;
   if(!data||!data.length)throw new Error("The lesson was not removed — no permission to delete here?");
 }
+// O que está gravado agora nesse dia é o mesmo de quando o dia abriu? Se outra
+// pessoa gravou entretanto, não se escreve nada: recarrega-se o dia.
+function qdBaseSig(rows){return rows.map(e=>`${e.id}:${Number(e.numberOfLessons)}:${Number(e.priceUnit)}:${e.paid?1:0}`).sort().join("|");}
+function qdBaseIsCurrent(){const was=qdBaseSig(Object.values(qdBase).flatMap(b=>b.rows));return was===qdBaseSig(entries.filter(e=>e.date===qdDay));}
+function qdReloadDay(msg){const iso=qdDay;qdLoadDay(iso);renderQuickDay();qdError(msg);}
 async function saveQuickDay(){
-  const date=qdDay;const plan=qdPlan();
+  const date=qdDay;
   if(!date){qdError("Pick the day first.");return;}
+  if(!qdBaseIsCurrent()){qdReloadDay("Someone else changed this day while you were typing — the numbers now show what is saved. Check them and save again.");return;}
+  const plan=qdPlan();
   if(!plan.inserts.length&&!plan.updates.length&&!plan.deletes.length){qdError("Nothing to save — tap + next to a lesson type.");return;}
   qdError("");
   const paid=document.getElementById("qdPaid").value==="true";
@@ -1060,7 +1067,10 @@ async function saveQuickDay(){
     closeModal();render();
   }catch(error){
     // Mostra o erro real dentro do modal — o #messageBox fica atrás do overlay.
-    qdError("Not saved: "+errMsg(error,"check the connection and try again."));
+    const why="Not saved: "+errMsg(error,"check the connection and try again.");
+    // Parte pode ter ficado gravada: volta a ler o dia para o próximo Save partir do que lá está.
+    try{await loadInstructorData();if(!qdBaseIsCurrent()){qdReloadDay(why+" Part of the day was saved — the numbers now show what is saved.");return;}}catch(_){}
+    qdError(why);
   }finally{_instrPending=false;qdSaving=false;if(btn){btn.textContent="Save";}qdTotais();}
 }
 function setModalMode(mode){
@@ -1215,7 +1225,7 @@ document.getElementById("addToDayListBtn").onclick=addDraftToDayQueue;
 document.getElementById("saveDayListBtn").onclick=saveDayList;
 document.getElementById("saveEditBtn").onclick=saveSingleEdit;
 document.getElementById("modeQuick").onclick=()=>{modalMode="quick";setModalMode("quick");};
-document.getElementById("modeLine").onclick=()=>{modalMode="line";setModalMode("line");};
+document.getElementById("modeLine").onclick=()=>{if(qdDay)document.getElementById("fDate").value=qdDay;modalMode="line";setModalMode("line");};
 document.getElementById("newInstructorBtn").onclick=()=>openInstructorModal(null);
 document.getElementById("dirShowInactive").onchange=renderDirectory;
 document.getElementById("instructorModalClose").onclick=closeInstructorModal;
