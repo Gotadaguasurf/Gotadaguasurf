@@ -12,7 +12,7 @@
 <link rel="stylesheet" href="/lib/app-shell.css">
 <script src="/lib/app-shell.js"></script>
 <style>
-@media(max-width:820px){.app-nav .nav-actions{display:flex;min-width:0}.app-nav .nav-logo-mark{width:auto}}   /* logo box hugs the mark so HQ + name + Log out fit on a phone */
+@media(max-width:820px){.app-nav .nav-actions{display:flex;min-width:0}.app-nav .nav-logo{flex-shrink:0}.app-nav .nav-logo-mark{width:auto}}   /* logo box hugs the mark and the name chip shrinks first, so HQ + name + Log out fit on a phone */
 /* Tokens, body (Outfit 14px), header, cards, KPI tiles (.card.kpi), tables
    (.tbl-wrap), badges, buttons (.btn-p/.btn-s/.btn-g/.btn-r), fields (.field),
    toast and splash all come from /lib/app-shell.css. Below: only what this

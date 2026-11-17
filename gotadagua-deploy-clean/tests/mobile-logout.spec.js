@@ -68,7 +68,7 @@ const HEADER_PAGES = [
 
 async function expectAfter(page, after) {
   if (after === 'hub' || after === 'hub-login') {
-    await expect(page).toHaveURL(/\/(\?.*)?$/, { timeout: 10_000 });
+    await expect.poll(() => new URL(page.url()).pathname, { timeout: 10_000 }).toBe('/');
     await expect(page.locator('#loginEmail')).toBeVisible({ timeout: 10_000 });
   } else if (after === 'crm-login') {
     await expect(page.locator('#loginScreen')).toBeVisible({ timeout: 10_000 });
@@ -118,6 +118,20 @@ for (const p of HEADER_PAGES) {
     await expectAfter(page, p.after);
   });
 }
+
+test('narrow phone (360px): the header «Log out» is fully on screen', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 780 });
+  await setup(page);
+  for (const p of HEADER_PAGES) {
+    await page.goto(p.path, { waitUntil: 'domcontentloaded' });
+    const btn = page.locator('#navMobLogout');
+    await expect(btn, p.path).toBeVisible({ timeout: 15_000 });
+    await page.waitForTimeout(800);   // user chip / HQ shortcut filled in
+    await expect(btn, p.path).toBeInViewport({ ratio: 1 });
+    expect(await noHorizontalScroll(page), p.path).toBe(true);
+    await page.screenshot({ path: path.join(SHOTS, `narrow-${slug(p.name)}.png`), clip: { x: 0, y: 0, width: 360, height: 140 } });
+  }
+});
 
 test('phone header stays inside 390px with the drawer pages too', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
