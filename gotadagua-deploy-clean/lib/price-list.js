@@ -273,7 +273,7 @@
       <table class="pl-table pl-matrix pl-cols-${n}">
         <colgroup><col class="pl-col-room">${p.seasons.map(() => '<col class="pl-col-season">').join('')}</colgroup>
         <thead><tr><th class="pl-room-h">Room</th>${p.seasons.map(s => { const up = s.upcoming || s.dates || [];
-          return `<th class="pl-season-h"><span class="pl-pill ${s.key}">${esc(s.label.replace(/\s*season$/i, ''))}</span><span class="pl-dates">${up.slice(0, 3).map(esc).join('<br>')}${up.length > 3 ? `<br><i>+${up.length - 3} more — see Seasons</i>` : ''}</span></th>`; }).join('')}</tr></thead>
+          return `<th class="pl-season-h"><span class="pl-pill ${s.key}">${esc(s.label.replace(/\s*season$/i, ''))}</span><span class="pl-dates">${up.map(esc).join('<br>')}</span></th>`; }).join('')}</tr></thead>
         <tbody>${p.rooms.map(r => `<tr><td class="pl-room">${esc(r.room)}</td>${r.cells.map(cs => `<td class="pl-cell">${cs.length ? cs.map(x => `<div class="pl-line">${x.label ? `<span class="pl-occ-in">${esc(x.label)}</span>` : ''}<span class="pl-amt${x.price ? '' : ' na'}">${x.price ? esc(x.price) : '—'}</span></div>`).join('') : '<div class="pl-line"><span class="pl-amt na">—</span></div>'}</td>`).join('')}</tr>`).join('')}</tbody>
       </table>
     </div>`;
@@ -354,7 +354,7 @@
           ${camp.from ? `<div class="pl-camp-from">from ${esc(camp.from)}</div>` : ''}
         </div>
       </header>
-      ${seasonsHtml(camp.seasons)}
+      ${''/* no Seasons section in the PDF (Miguel 17 Nov 2026): every date is under its season in the matrix */}
       ${camp.accommodation.length ? `<section class="pl-part pl-accom" data-part="accommodation"><div class="pl-keep">${sectionHead('accommodation', 'Accommodation')}${accomHtml(camp.accommodation[0])}</div>${camp.accommodation.slice(1).map(accomHtml).join('')}${notesHtml(camp)}</section>` : ''}
       ${camp.parts.map(partHtml).join('')}
       ${camp.accommodation.length ? '' : notesHtml(camp)}

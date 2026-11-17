@@ -233,11 +233,11 @@ test('price list page: A4 print with no overflow (long names, 5 sharing columns)
   if (hasGaya) expect(await page.evaluate(() => document.fonts.check('16px Gaya'))).toBe(true);
   await expect(page.locator('.pl-cover .pl-cover-photo')).toHaveCount(3);
   await expect(page.locator('.pl-camp-card')).toHaveCount(5);
-  // the Seasons section (strip + seasons × years table) comes right before the accommodation, in the brand palette
+  // no Seasons section in the PDF (17 Nov 2026): accommodation comes first and every date sits under its season
   const sl = page.locator('.pl-camp[data-camp="sri-lanka"]');
-  await expect(sl.locator('[data-part]').first()).toHaveAttribute('data-part', 'seasons');
-  await expect(sl.locator('.pl-seasons .pl-band').first()).toBeVisible();
-  await expect(sl.locator('.pl-seasons .pl-season-table tbody tr')).toHaveCount(3);
+  await expect(page.locator('.pl-seasons')).toHaveCount(0);
+  await expect(sl.locator('[data-part]').first()).toHaveAttribute('data-part', 'accommodation');
+  await expect(page.locator('.pl-dates i')).toHaveCount(0);
   await expect(sl.locator('.pl-matrix .pl-occ-in').first()).toHaveText('Single');
   // for agencies and partners only (17 Nov 2026): no «Book now», a reservations line on the cover and the back page
   await expect(page.locator('.pl-book')).toHaveCount(0);
