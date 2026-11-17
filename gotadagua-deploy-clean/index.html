@@ -2485,6 +2485,8 @@
       clearAuthParams();
       setLoginState('login');
     }
+    // phones: the header's «Log out» is hidden ≤820px, so the shell shows a compact one that calls this same handler
+    if (window.AppShell) AppShell.setAccount({ signOut: doSignOut });
 
     async function blockRemovedAccess(email=''){
       try{

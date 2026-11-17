@@ -303,7 +303,7 @@ body.view-list .drag-handle{display:none}
     <button class="ntab active" onclick="onViewMode('edit')"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M14 3l3 3-9 9H5v-3z"/><path d="M12 5l3 3"/></svg></span><span>Edit</span></button>
     <button class="ntab" onclick="onViewMode('list')"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M6 3h8l3 3v11H6z"/><path d="M14 3v4h4"/><path d="M9 10h5"/><path d="M9 13h5"/></svg></span><span>Price List</span></button>
   </div>
-  <div class="header-right">
+  <div class="header-right" data-account-slot>
     <span id="savePill" class="save-pill"></span>
     <button class="nav-action-btn" id="dlPdfBtn" onclick="downloadPriceListPDF()" title="Download a PDF of the current price list">Download PDF</button>
   </div>
@@ -571,6 +571,7 @@ const CURRENCY_LABEL = {
 // `var supabase = ...` at global scope, which would collide with a `let
 // supabase` in this script (SyntaxError: Identifier already declared).
 let sbClient = null;
+AppShell.setAccount({ signOut: () => AppShell.signOut(sbClient) });   // phones: compact «Log out» in the header
 let session = null;
 let currentEmail = '';
 let isOwner = false;

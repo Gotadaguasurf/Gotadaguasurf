@@ -264,6 +264,7 @@ AppShell.mount('appNav', { app:'diploria', title:'Businesses',
   location:{ label:'Dipløria', items:[{ href:'/wild/', label:'Wild Wednesday', sub:'Weekly party · Costa da Caparica', current:false }, { href:'/suk/', label:'The Suk', sub:'Manjar Lda · restaurant + catering', current:false }, { href:'/diploria/', label:'Dipløria', sub:'Boardshorts · stock + sales', current:true }] } });
 const cfg = window.__SUPABASE_CONFIG || {};
 const sb = window.supabase.createClient(cfg.url, cfg.anonKey);
+AppShell.setAccount({ signOut: () => AppShell.signOut(sb) });   // phones: «Log out» in the drawer / header
 const SLUG = 'diploria';
 const D = window.DiploriaCore;
 const $ = (id) => document.getElementById(id);

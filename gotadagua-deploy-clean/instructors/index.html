@@ -73,6 +73,7 @@
 <script>
 AppShell.mount('appNav', { app:'instructors', tabAttr:'data-tab', user:false,
   tabs:[{ id:'dashboard', label:'Dashboard', active:true }, { id:'payroll', label:'Monthly payroll' }, { id:'entries', label:'Lesson entries' }, { id:'instructors', label:'Instructors' }].map(t => ({ ...t, onclick:`activeTab='${t.id}';renderTabs()` })) });
+AppShell.setAccount({ signOut: () => AppShell.signOut(getSupabaseClient) });   // phones: «Log out» in the drawer
 </script>
 
 <main>
@@ -1042,6 +1043,7 @@ async function requirePlatformSession(){
   const client=await getSupabaseClient();
   const { data } = await client.auth.getSession();
   if (!data.session) window.location.href = '/';
+  else AppShell.setAccount({ name: data.session.user.email });
 }
 // Multi-device live sync. Subscribes to instructor_lessons and
 // instructor_directory and re-hydrates the page whenever any client (or

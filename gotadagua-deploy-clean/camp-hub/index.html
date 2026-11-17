@@ -10730,22 +10730,24 @@ function renderAccessBlockScreen(result){
       </div>
     </div>`;
   const signOut = document.getElementById('hubAccessSignOut');
-  if(signOut){
-    signOut.addEventListener('click', async () => {
-      try{
-        const c = getHubSupabaseClient();
-        if(c) await c.auth.signOut();
-      }catch(_){}
-      window.location.href = '/';
-    });
-  }
+  if(signOut) signOut.addEventListener('click', hubSignOut);
 }
+async function hubSignOut(){
+  try{
+    const c = getHubSupabaseClient();
+    if(c) await c.auth.signOut();
+  }catch(_){}
+  window.location.href = '/';
+}
+// phones: «Account → Log out» at the top of the drawer (AppShell), same handler
+if(window.AppShell) AppShell.setAccount({ signOut: hubSignOut });
 
 async function requirePlatformSession(){
   const client=getHubSupabaseClient();
   if(!client) return;
   const {data}=await client.auth.getSession();
   if(!data.session){window.location.href='/';return;}
+  if(window.AppShell) AppShell.setAccount({ name: data.session.user.email || '' });
   // Gate: verify the user has access to __HUB_LOCATION_SLUG BEFORE any
   // location-scoped hydration runs — otherwise the app would render the
   // default (Sri Lanka / LKR) even for a Portugal-only user.

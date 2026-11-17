@@ -2791,8 +2791,13 @@ async function signOutTeam() {
     document.getElementById('pwInput').value = '';
   } catch (e) {}
   setAuthError('');
-  document.getElementById('pwScreen').style.display = 'flex';
+  // the old in-page password screen is gone: sign in again from the hub
+  const pw = document.getElementById('pwScreen');
+  if (pw) pw.style.display = 'flex'; else location.href = '/';
 }
+// phones: «Account → Log out» in the drawer (AppShell) runs this handler
+AppShell.setAccount({ signOut: signOutTeam });
+try { getAuthClient().auth.getSession().then(r => AppShell.setAccount({ name: r?.data?.session?.user?.email || '' })).catch(() => {}); } catch (e) {}
 (function(){
   async function initPlatformAccess(){
     try {

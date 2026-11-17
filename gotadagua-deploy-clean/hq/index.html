@@ -276,6 +276,7 @@ AppShell.mount('appNav', { app:'hq', tabAttr:'data-tab', tabsId:'hqNavTabs', tab
 <script>
 const cfg = window.__SUPABASE_CONFIG || {};
 const sb  = window.supabase.createClient(cfg.url, cfg.anonKey);
+AppShell.setAccount({ signOut: () => AppShell.signOut(sb) });   // phones: «Log out» in the drawer / header
 const $   = (id) => document.getElementById(id);
 const OWNER_EMAILS = new Set(window.__PLATFORM_OWNER_EMAILS || ['miguel@gotadaguasurf.com']);
 

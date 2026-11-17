@@ -610,7 +610,6 @@ body.dark .ed-input{background:var(--card)}
   <button class="ntab-m" onclick="document.getElementById('headerAddTask').click();toggleMobileNav()">+ Task</button>
   <button class="ntab-m" onclick="document.getElementById('checkInboxBtn').click();toggleMobileNav()">Open in Gmail</button>
   <button class="ntab-m" onclick="document.getElementById('settingsBtn').click();toggleMobileNav()">Settings</button>
-  <button class="ntab-m" onclick="document.getElementById('signOutBtn').click()">Sign out</button>
 </aside>
 
 <main>
@@ -3222,6 +3221,7 @@ function showApp(){
   document.getElementById('loginScreen').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
   hideAuthBoot();
+  AppShell.setAccount({ name: session?.user?.email || '' });
   loadAll();
 }
 
@@ -3239,6 +3239,8 @@ document.getElementById('loginForm').addEventListener('submit', async (e)=>{
   } catch(e){ errEl.textContent = e.message || 'Login failed'; }
 });
 
+// phones: the drawer's «Account → Log out» (AppShell) runs this same handler
+AppShell.setAccount({ signOut: () => document.getElementById('signOutBtn').click() });
 document.getElementById('signOutBtn').addEventListener('click', async ()=>{
   unsubscribeRealtime();
   stopGmailAutoPoll();

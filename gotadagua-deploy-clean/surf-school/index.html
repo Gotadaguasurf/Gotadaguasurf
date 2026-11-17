@@ -12,7 +12,7 @@
 <link rel="stylesheet" href="/lib/app-shell.css">
 <script src="/lib/app-shell.js"></script>
 <style>
-@media(max-width:820px){.app-nav .nav-actions{display:flex;min-width:0}}
+@media(max-width:820px){.app-nav .nav-actions{display:flex;min-width:0}.app-nav .nav-logo-mark{width:auto}}   /* logo box hugs the mark so HQ + name + Log out fit on a phone */
 /* Tokens, body (Outfit 14px), header, cards, KPI tiles (.card.kpi), tables
    (.tbl-wrap), badges, buttons (.btn-p/.btn-s/.btn-g/.btn-r), fields (.field),
    toast and splash all come from /lib/app-shell.css. Below: only what this
@@ -428,6 +428,7 @@ main{padding:16px 16px 48px;max-width:640px}
 <script>
 const cfg = window.__SUPABASE_CONFIG || {};
 const sb = window.supabase.createClient(cfg.url, cfg.anonKey);
+AppShell.setAccount({ signOut: () => AppShell.signOut(sb) });   // phones: «Log out» in the drawer / header
 
 // State
 let LOCATION_ID = null;

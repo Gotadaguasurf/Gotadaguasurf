@@ -90,6 +90,9 @@ values already have it). Amounts right-aligned in tables (`th.r` + `td.r`).
 Navy, 60px, sticky. Logo · app switch pill · tabs `.nav-tabs > .ntab` (pills, active = ocean) ·
 `.nav-actions` (`.user-chip`, `.nav-action-btn`, `.save-pill`). Secondary header text is
 `#a9c4da`. ≤820px the tabs move to the drawer (`.nav-mob-drawer`, `.ntab-m`).
+Every signed-in page calls `AppShell.setAccount({ signOut })` with its own sign-out: ≤820px the
+drawer opens with «Account» (name + «Log out», `.nav-mob-account`), and a page without a drawer gets a
+compact «Log out» in the header (`.nav-mob-logout`, hidden on desktop).
 Rule: never add a second navigation bar under the header; tabs live in the header only.
 
 ### Page head — `.section-head.page-head` / `.ov-section-head.page-head`

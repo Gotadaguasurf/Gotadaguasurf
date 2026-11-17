@@ -14,6 +14,9 @@
    AppShell.mount(el, opts)      renders nav(opts) into el (or #appNav) + mobile drawer
    AppShell.setTab(id)           marks the active tab (desktop + drawer)
    AppShell.setUser(text)        fills the user chip
+   AppShell.setAccount({signOut, name})  the page's own sign-out → «Account» in the phone drawer,
+                                 or a compact «Log out» in the header when the page has no drawer
+   AppShell.signOut(client)      default sign-out for pages without one (client.auth.signOut(), then /)
    AppShell.splash(title, text)  access/sign-in splash html
    AppShell.toast(msg, kind)     floating toast (creates #toast if missing)
    AppShell.icon(name, cls)      inline flat line icon (see ICON_PATHS; spec in /docs/DESIGN-SYSTEM.md)
@@ -114,6 +117,7 @@
     el.classList.add('app-nav');
     el.innerHTML = nav(NAV);
     if (NAV.mobile !== false && !$('mobNavDrawer')) el.insertAdjacentHTML('afterend', drawerHtml(NAV));
+    mountAccount();
   }
   function toggleMobile(){
     const d = $('mobNavDrawer'), b = $('mobNavBackdrop'); if (!d) return;
@@ -125,7 +129,76 @@
     const attr = (NAV && NAV.tabAttr) || 'data-page';
     document.querySelectorAll(`.ntab[${attr}],.ntab-m[${attr}]`).forEach(b => b.classList.toggle('active', b.getAttribute(attr) === id));
   }
-  function setUser(text){ const c = $('userChip'); if (c) c.textContent = text || '—'; }
+  function setUser(text){ const c = $('userChip'); if (c) c.textContent = text || '—'; refreshAccount(); }
+
+  // ── Account on phones (17 Nov 2026, Miguel: «no mobile não dá para fazer logout») ──
+  // ≤820px the header's .nav-actions (user chip + Sign out) are hidden, so every page registers its
+  // OWN sign-out here and the shell shows it where a phone can reach it:
+  //   page with a drawer (#mobNavDrawer) → «Account» section at the top of the drawer (name + Log out)
+  //   page without a drawer             → compact «Log out» in the header ([data-account-slot] or .app-nav / header)
+  // Desktop is untouched: the drawer only opens from the hamburger and .nav-mob-logout is hidden >820px.
+  //   AppShell.setAccount({ signOut: fn, name: 'text' })   fn is the page's own handler
+  //   AppShell.signOut(client)   default handler for pages that had none: the page's own client, then the hub
+  const ACCOUNT = { signOut: null, name: '' };
+  const NAME_SOURCES = ['userChip', 'userBadge', 'userName'];
+  function accountName(){
+    if (ACCOUNT.name) return ACCOUNT.name;
+    for (const id of NAME_SOURCES) {
+      const t = ($(id)?.textContent || '').trim();
+      if (t && t !== '—' && t !== '…') return t;
+    }
+    return 'Signed in';
+  }
+  function refreshAccount(){ const n = $('mobAccountName'); if (n) n.textContent = accountName(); }
+  function closeDrawer(){
+    const d = $('mobNavDrawer'), b = $('mobNavBackdrop');
+    if (d) { d.classList.remove('open'); d.setAttribute('aria-hidden', 'true'); }
+    if (b) b.classList.remove('open');
+  }
+  async function runSignOut(){
+    closeDrawer();
+    const h = ACCOUNT.signOut; if (!h) return;
+    try { await h(); }
+    catch (e) { console.error('[AppShell] sign-out failed', e); toast('Could not log out: ' + (e?.message || e), 'err'); }
+  }
+  function mountAccount(){
+    if (!ACCOUNT.signOut || !document.body) return;
+    const drawer = $('mobNavDrawer');
+    if (drawer) {
+      if (!$('mobAccount')) {
+        const close = drawer.querySelector('.nav-mob-close');
+        const html = `<div class="nav-mob-account" id="mobAccount">
+  <div class="nav-mob-lbl">Account</div>
+  <div class="nav-mob-user">${icon('user')}<span id="mobAccountName"></span></div>
+  <button type="button" class="nav-mob-logout-btn" id="mobLogoutBtn">${icon('logout')}<span>Log out</span></button>
+</div>`;
+        if (close) close.insertAdjacentHTML('afterend', html); else drawer.insertAdjacentHTML('afterbegin', html);
+        $('mobLogoutBtn').addEventListener('click', runSignOut);
+      }
+    } else if (!$('navMobLogout')) {
+      const slot = document.querySelector('[data-account-slot]') || document.querySelector('.app-nav') || document.querySelector('body > header');
+      if (slot) {
+        slot.insertAdjacentHTML('beforeend', `<button type="button" class="nav-mob-logout" id="navMobLogout" title="Log out">${icon('logout')}<span>Log out</span></button>`);
+        $('navMobLogout').addEventListener('click', runSignOut);
+      }
+    }
+    refreshAccount();
+  }
+  function setAccount(opts){
+    opts = opts || {};
+    if (opts.signOut) ACCOUNT.signOut = opts.signOut;
+    if (opts.name != null) ACCOUNT.name = String(opts.name || '');
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mountAccount, { once: true });
+    else mountAccount();
+  }
+  // Same call as every existing handler in the app (plain auth.signOut()), then back to the hub's login.
+  async function signOut(client){
+    try { const c = typeof client === 'function' ? await client() : client; if (c && c.auth) await c.auth.signOut(); }
+    catch (e) { console.warn('[AppShell] signOut', e); }
+    location.href = '/';
+  }
+  // the name is read when the drawer opens (pages fill their user chip after boot)
+  document.addEventListener('click', (e) => { if (e.target && e.target.closest && e.target.closest('.nav-hamburger')) refreshAccount(); }, true);
   function mountLogo(id){ const el = $(id); if (el) el.innerHTML = LOGO; }
   function splash(title, text){ return `<div class="splash"><h1>${esc(title)}</h1><p>${text}</p><a href="/">← Back to hub</a></div>`; }
   function toast(msg, kind){
@@ -254,7 +327,7 @@
     new MutationObserver(() => { clearTimeout(flattenTimer); flattenTimer = setTimeout(() => flattenEmoji(), 120); }).observe(document.body, { childList: true, subtree: true });
   }
 
-  const api = { APPS, LOGO, menu, mountMenus, nav, mount, toggleMobile, setTab, setUser, mountLogo, splash, toast, esc, $, eur, eur0, fetchAll, currentSlug, icon, flattenEmoji };
+  const api = { APPS, LOGO, menu, mountMenus, nav, mount, toggleMobile, setTab, setUser, setAccount, signOut, mountLogo, splash, toast, esc, $, eur, eur0, fetchAll, currentSlug, icon, flattenEmoji };
   window.AppShell = api;
   window.BusinessShell = api;
   // Phones (17 Nov 2026, «no mobile não dá para fazer logout»): the header actions are hidden at ≤820px, so the
