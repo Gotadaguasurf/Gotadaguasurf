@@ -355,7 +355,7 @@
         </div>
       </header>
       ${seasonsHtml(camp.seasons)}
-      ${camp.accommodation.length ? `<section class="pl-part pl-accom" data-part="accommodation">${sectionHead('accommodation', 'Accommodation')}${camp.accommodation.map(accomHtml).join('')}${notesHtml(camp)}</section>` : ''}
+      ${camp.accommodation.length ? `<section class="pl-part pl-accom" data-part="accommodation"><div class="pl-keep">${sectionHead('accommodation', 'Accommodation')}${accomHtml(camp.accommodation[0])}</div>${camp.accommodation.slice(1).map(accomHtml).join('')}${notesHtml(camp)}</section>` : ''}
       ${camp.parts.map(partHtml).join('')}
       ${camp.accommodation.length ? '' : notesHtml(camp)}
     </section>`;
