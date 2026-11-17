@@ -192,6 +192,24 @@
     return { years, rows, strip, months, today: pct(today) };
   }
 
+  // «Season dates» (17 Nov 2026, after the owner dropped the Seasons page): one line per period in date order, above the
+  // accommodation, so an agency finds the season of a date at a glance; a hole between two periods is «Closed».
+  function seasonCalendar(accom, period, today) {
+    const seasons = ((accom && accom.seasons) || []).filter(s => s.active !== false);
+    const list = [];
+    seasons.forEach(s => (Array.isArray(s.date_ranges) ? s.date_ranges : []).forEach(r => {
+      if (r && r.start && r.end && r.end >= r.start && r.end >= today && inPeriod(r, period, today)) list.push({ s, start: r.start, end: r.end });
+    }));
+    list.sort((a, b) => a.start.localeCompare(b.start));
+    const add = (iso, n) => new Date(Date.parse(iso + 'T00:00:00Z') + n * 864e5).toISOString().slice(0, 10);
+    const out = [];
+    list.forEach((p, i) => {
+      const prev = list[i - 1];
+      if (prev && add(prev.end, 1) < p.start) out.push({ key: 'closed', label: 'Closed', text: fmtRange({ start: add(prev.end, 1), end: add(p.start, -1) }) });
+      out.push({ key: seasonKey(p.s), label: titleCase(p.s.label).replace(/\s*season$/i, ''), text: fmtRange(p) });
+    });
+    return out;
+  }
   function itemRows(catalog, cats) {
     return (catalog || []).filter(r => cats.includes(r.category) && r.active !== false && Number(r.sell_price) > 0)
       .slice().sort(bySort)
@@ -211,8 +229,8 @@
   function campModel(camp, period, sections, today) {
     const parts = [];
     let accommodation = [];
-    let seasons = null;
-    if (sections.includes('accommodation')) { accommodation = accommodationModel(camp.accom, period, today); if (accommodation.length) seasons = seasonsModel(camp.accom, period, today); }
+    let seasons = null, calendar = [];
+    if (sections.includes('accommodation')) { accommodation = accommodationModel(camp.accom, period, today); if (accommodation.length) { seasons = seasonsModel(camp.accom, period, today); calendar = seasonCalendar(camp.accom, period, today); } }
     for (const def of SECTION_DEFS) {
       if (!sections.includes(def.key)) continue;
       if (def.key === 'transfers') { const rows = transferRows(camp.catalog); if (rows.length) parts.push({ key: def.key, title: def.title, kind: 'transfers', rows }); continue; }
@@ -236,7 +254,7 @@
     const printed = new Set(accommodation.filter(a => !a.flex).flatMap(a => a.rooms.flatMap(r => r.cells.flat().map(x => x.price))));
     const fromVals = weekly.map(pr => Number(pr.sell_price)).filter(v => printed.has(moneyFixed(v, 'EUR', 0)) || printed.has(moneyFixed(v, 'EUR', 2)));
     const from = fromVals.length ? moneyFixed(Math.min(...fromVals), 'EUR', Number.isInteger(Math.min(...fromVals)) ? 0 : 2) : '';
-    return { slug: camp.slug, label: camp.label || CAMP_LABEL[camp.slug] || camp.slug, place: CAMP_PLACE[camp.slug] || '', from, seasons, accommodation, parts, ranges, notes,
+    return { slug: camp.slug, label: camp.label || CAMP_LABEL[camp.slug] || camp.slug, place: CAMP_PLACE[camp.slug] || '', from, seasons, calendar, accommodation, parts, ranges, notes,
       empty: !accommodation.length && !parts.length };
   }
 
@@ -270,6 +288,7 @@
     return `<div class="pl-pack">
       <div class="pl-pack-head"><h3>${esc(p.label)}</h3><span class="pl-basis">${esc(p.basis)}</span></div>
       ${p.desc ? `<p class="pl-pack-desc">${esc(p.desc)}</p>` : ''}
+      ${legendHtml(p)}
       <table class="pl-table pl-matrix pl-cols-${n}">
         <colgroup><col class="pl-col-room">${p.seasons.map(() => '<col class="pl-col-season">').join('')}</colgroup>
         <thead><tr><th class="pl-room-h">Room</th>${p.seasons.map(s => { const up = s.upcoming || s.dates || [];
@@ -277,6 +296,21 @@
         <tbody>${p.rooms.map(r => `<tr><td class="pl-room">${esc(r.room)}</td>${r.cells.map(cs => `<td class="pl-cell">${cs.length ? cs.map(x => `<div class="pl-line">${x.label ? `<span class="pl-occ-in">${esc(x.label)}</span>` : ''}<span class="pl-amt${x.price ? '' : ' na'}">${x.price ? esc(x.price) : '—'}</span></div>`).join('') : '<div class="pl-line"><span class="pl-amt na">—</span></div>'}</td>`).join('')}</tr>`).join('')}</tbody>
       </table>
     </div>`;
+  }
+  // what «Single / Shared / 3 share» mean, next to the prices (the notes come a page later)
+  function legendHtml(p) {
+    const used = new Set(p.rooms.flatMap(r => r.cells.flat().map(x => x.label)).filter(Boolean));
+    if (!used.size) return '';
+    const bits = [];
+    if (used.has('Single')) bits.push('<b>Single</b> = alone in the room');
+    const byN = {};
+    [...used].forEach(l => { const n = l === 'Shared' ? 2 : (/^(\d+) share$/.exec(l) || [])[1]; if (n) (byN[n] = byN[n] || []).push(l); });
+    Object.keys(byN).map(Number).sort((x, y) => x - y).forEach(n => bits.push(`<b>${byN[n].sort().reverse().map(esc).join(' / ')}</b> = per guest, ${n} in the room`));
+    return bits.length ? `<p class="pl-legend">All prices per person · ${bits.join(' · ')}.</p>` : '';
+  }
+  function calendarHtml(cal) {
+    if (!cal || !cal.length) return '';
+    return `<div class="pl-cal"><div class="pl-cal-h">Season dates</div><ul>${cal.map(c => `<li class="${c.key === 'closed' ? 'closed' : ''}"><span class="pl-pill ${esc(c.key)}">${esc(c.label)}</span><span>${esc(c.text)}</span></li>`).join('')}</ul></div>`;
   }
   function seasonsHtml(sm) {
     if (!sm) return '';
@@ -355,7 +389,7 @@
         </div>
       </header>
       ${''/* no Seasons section in the PDF (Miguel 17 Nov 2026): every date is under its season in the matrix */}
-      ${camp.accommodation.length ? `<section class="pl-part pl-accom" data-part="accommodation"><div class="pl-keep">${sectionHead('accommodation', 'Accommodation')}${accomHtml(camp.accommodation[0])}</div>${camp.accommodation.slice(1).map(accomHtml).join('')}${notesHtml(camp)}</section>` : ''}
+      ${camp.accommodation.length ? `<section class="pl-part pl-accom" data-part="accommodation"><div class="pl-keep">${sectionHead('accommodation', 'Accommodation')}${calendarHtml(camp.calendar)}${accomHtml(camp.accommodation[0])}</div>${camp.accommodation.slice(1).map(accomHtml).join('')}${notesHtml(camp)}</section>` : ''}
       ${camp.parts.map(partHtml).join('')}
       ${camp.accommodation.length ? '' : notesHtml(camp)}
     </section>`;
