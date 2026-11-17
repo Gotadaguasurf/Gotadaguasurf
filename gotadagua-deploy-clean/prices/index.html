@@ -70,7 +70,7 @@
 .cat-card table{width:100%}
 .tf-table{table-layout:fixed}
 .tbl-wrap th.c,.tbl-wrap td.c,table.tbl th.c,table.tbl td.c{text-align:center}
-td.drag-col,th.drag-col{width:28px;padding-left:8px!important;padding-right:0!important}
+.card.tbl-wrap table td.drag-col,.card.tbl-wrap table th.drag-col{width:28px;padding-left:8px;padding-right:0}
 .row-actions{display:inline-flex;gap:6px;justify-content:flex-end;white-space:nowrap}
 .item-name{font-weight:600;color:var(--ink)}
 .item-badges{display:inline-flex;gap:6px;flex-wrap:wrap;margin-left:6px;vertical-align:1px}
@@ -151,7 +151,7 @@ tr.drag-over-bottom td{box-shadow:inset 0 -2px 0 0 var(--ocean)}
 .accom-note b{color:var(--ink);font-weight:600}
 @media (max-width:700px){
   .accom-table th:first-child,.accom-table td:first-child{width:34%}
-  .accom-table th,.accom-table td{padding-left:6px!important;padding-right:6px!important;font-size:12px}
+  .card.tbl-wrap table.accom-table th,.card.tbl-wrap table.accom-table td{padding-left:6px;padding-right:6px;font-size:12px}
   .accom-table thead th{white-space:normal;line-height:1.25}
   .accom-table .cell-edit{min-width:0;padding:4px 4px}
 }
@@ -177,21 +177,21 @@ details.rooms-card[open] .rooms-caret{transform:rotate(180deg)}
   table.rtable,table.rtable tbody{display:block;width:100%}
   table.rtable tbody tr{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 12px;padding:14px var(--sp-4);border-bottom:1px solid var(--border)}
   table.rtable tbody tr:last-child{border-bottom:0}
-  table.rtable td{display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-start;gap:2px;padding:0!important;border:0!important;height:auto!important;font-size:13px;text-align:left;white-space:normal;min-width:0}
-  table.rtable td::before{content:attr(data-short);color:var(--muted);font-weight:600;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em}
-  table.rtable td.drag-col,table.rtable td.td-cat{display:none}
-  table.rtable td.td-name{display:block;grid-column:1 / -1}
-  table.rtable td.td-name::before,table.rtable td.td-actions::before{content:none}
-  table.rtable td.td-pax{grid-column:1 / 3}
+  .card.tbl-wrap table.rtable td{display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-start;gap:2px;padding:0;border:0;height:auto;font-size:13px;text-align:left;white-space:normal;min-width:0}
+  .card.tbl-wrap table.rtable td::before{content:attr(data-short);color:var(--muted);font-weight:600;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em}
+  .card.tbl-wrap table.rtable td.drag-col,.card.tbl-wrap table.rtable td.td-cat{display:none}
+  .card.tbl-wrap table.rtable td.td-name{display:block;grid-column:1 / -1}
+  .card.tbl-wrap table.rtable td.td-name::before,.card.tbl-wrap table.rtable td.td-actions::before{content:none}
+  .card.tbl-wrap table.rtable td.td-pax{grid-column:1 / 3}
   table.rtable tr:has(.td-pax) td.td-actions{grid-row:2}
-  table.rtable td.td-actions{align-items:flex-end;justify-content:flex-end;grid-column:-2 / -1}
-  table.rtable td.td-toggle-wide{grid-column:span 2}
+  .card.tbl-wrap table.rtable td.td-actions{align-items:flex-end;justify-content:flex-end;grid-column:-2 / -1}
+  .card.tbl-wrap table.rtable td.td-toggle-wide{grid-column:span 2}
   table.rtable .cell-edit{justify-content:flex-start;min-width:0;margin-left:-8px}
   table.rtable .row-actions .btn{width:30px;padding:0;justify-content:center}
   table.rtable .row-actions .btn .lbl{display:none}
   table.rtable .row-actions .btn .ic{margin:0}
   table.rtable tbody tr:hover td{background:transparent}
-  table.rtable td .cell-sub{margin-top:0}
+  .card.tbl-wrap table.rtable td .cell-sub{margin-top:0}
 }
 @media (max-width:700px){ .occ-long{display:none} .occ-short{display:inline} }
 
@@ -1423,7 +1423,7 @@ function catalogCard(rows, opts = {}){
 function marginOf(r){
   const sell = Number(r.sell_price || 0), cost = Number(r.cost_per_guest || 0);
   const costSell = costInSellCcy(cost, r.currency || r.sell_currency || 'EUR', r.sell_currency || r.currency || 'EUR');
-  if (!(sell > 0) || costSell == null) return null;
+  if (!(sell > 0) || !(cost > 0) || costSell == null) return null;   // no cost entered → no margin (not «100%»)
   return { pct: Math.round(((sell - costSell) / sell) * 100), costSell, converted: costSell !== cost };
 }
 
@@ -1473,8 +1473,8 @@ function catalogRowHtml(r, opts = {}){
     <td class="c" data-label="Camp Tab" data-short="Camp Tab">${toggleCell(r, 'show_in_camp_tab')}</td>
     <td class="c${canViewCosts ? '' : ' td-toggle-wide'}" data-label="Transport quick-add" data-short="Quick-add">${toggleCell(r, 'show_in_transport_picker')}</td>
     ${canEdit ? `<td class="r td-actions" data-label="Actions"><div class="row-actions">
-      <button class="btn btn-s btn-sm" onclick="openEdit('${r.id}')">${ic('edit')}<span class="lbl">Edit</span></button>
-      <button class="btn btn-danger btn-sm" onclick="onDelete('${r.id}')" aria-label="Delete ${escapeHtml(r.name || '')}">${ic('trash')}<span class="lbl">Delete</span></button>
+      <button class="btn btn-s btn-sm" onclick="openEdit('${r.id}')" title="Edit" aria-label="Edit ${escapeHtml(r.name || '')}">${ic('edit')}<span class="lbl">Edit</span></button>
+      <button class="btn btn-danger btn-sm" onclick="onDelete('${r.id}')" title="Delete" aria-label="Delete ${escapeHtml(r.name || '')}">${ic('trash')}<span class="lbl">Delete</span></button>
     </div></td>` : ''}
   </tr>`;
 }
@@ -2016,8 +2016,8 @@ function renderTransfersEdit(){
             <td class="r" data-label="Guest price" data-short="Guest price"><span>${priceCell(r, 'sell_price')}${mTxt}</span></td>
             <td class="c" data-label="Quick-add" data-short="Quick-add">${toggleCell(r, 'show_in_transport_picker')}</td>
             ${canEdit ? `<td class="r td-actions" data-label="Actions"><div class="row-actions">
-              <button class="btn btn-s btn-sm" onclick="openEdit('${r.id}')">${ic('edit')}<span class="lbl">Edit</span></button>
-              <button class="btn btn-danger btn-sm" onclick="onDelete('${r.id}')" aria-label="Delete ${escapeHtml(r.name || '')}">${ic('trash')}<span class="lbl">Delete</span></button>
+              <button class="btn btn-s btn-sm" onclick="openEdit('${r.id}')" title="Edit" aria-label="Edit ${escapeHtml(r.name || '')}">${ic('edit')}<span class="lbl">Edit</span></button>
+              <button class="btn btn-danger btn-sm" onclick="onDelete('${r.id}')" title="Delete" aria-label="Delete ${escapeHtml(r.name || '')}">${ic('trash')}<span class="lbl">Delete</span></button>
             </div></td>` : ''}
           </tr>`;
         }).join('')}</tbody>

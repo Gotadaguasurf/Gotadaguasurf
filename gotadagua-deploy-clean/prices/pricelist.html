@@ -170,6 +170,8 @@ body{background:#e9edf2}
       sb.from('accommodation_room_types').select('id,label,description,sort_order,active').eq('location_id', L.id),
       sb.from('accommodation_prices').select('pack_id,season_id,room_type_id,occupancy,sell_price,currency').eq('location_id', L.id),
     ]);
+    const accErr = [packs, seasons, rooms, prices].map(r => r.error).find(Boolean);
+    if (accErr && !/does not exist/i.test(accErr.message || '')) throw accErr;   // never a price list silently without rooms
     return { slug, label: PriceList.CAMP_LABEL[slug] || L.name, catalog: cat.data || [],
       accom: { packs: packs.data || [], seasons: seasons.data || [], rooms: rooms.data || [], prices: prices.data || [] } };
   }

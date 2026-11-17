@@ -10,7 +10,8 @@
    PriceList.render(model, { logo })  → HTML of the whole document (cover + one part per camp)
 
    Rules: every price comes from the tables (sell_price, accommodation_prices.sell_price) in its own currency
-   (sell_currency, else currency); rows inactive or at 0 are left out; costs are never read; internal notes
+   (sell_currency, else currency); rows inactive or at 0 are left out; «audience» is not printed (Surf School rows are all
+   «group», which would read «per group» on a board rental); costs are never read; internal notes
    («Imported from …») and transport notes (drivers) are not printed; a transfer's «up to N persons» is covers_pax.
    ════════════════════════════════════════════════════════════════════════ */
 (function (root) {
@@ -180,7 +181,7 @@
     }
     return `<section class="pl-part"><h2>${esc(part.title)}</h2>
       <table class="pl-table"><colgroup><col><col class="pl-col-num"></colgroup>
-        <tbody>${part.rows.map(r => `<tr><td><b>${esc(r.name)}</b>${r.group ? ' <span class="pl-tag">per group</span>' : ''}${r.note ? `<span class="pl-sub">${esc(r.note)}</span>` : ''}</td><td class="r pl-price">${esc(r.price)}</td></tr>`).join('')}</tbody>
+        <tbody>${part.rows.map(r => `<tr><td><b>${esc(r.name)}</b>${r.note ? `<span class="pl-sub">${esc(r.note)}</span>` : ''}</td><td class="r pl-price">${esc(r.price)}</td></tr>`).join('')}</tbody>
       </table></section>`;
   }
   function render(model, opts) {

@@ -137,7 +137,7 @@ test('view-only member: no costs, no margins, no editing, no New item', async ({
   await page.evaluate(() => { canEdit = false; canViewCosts = false; renderShell(); filterArea = 'transfers'; renderTable(); });
   await expect(page.locator('#newEntryBtn')).toHaveCount(0);
   await expect(page.locator('#tableWrap')).not.toContainText('Driver cost');
-  await expect(page.locator('#tableWrap')).not.toContainText('MAD 250');
+  await expect(page.locator('.cell-edit[data-field="cost_per_guest"]')).toHaveCount(0);
   await expect(page.locator('[data-tf-margin]')).toHaveCount(0);
   await page.locator('.cell-edit[data-field="sell_price"]').first().click();
   await expect(page.locator('.cell-input')).toHaveCount(0);
@@ -239,4 +239,48 @@ test('price list page: A4 print with no overflow (long names, 5 sharing columns)
   const pdf = await page.pdf({ format: 'A4', printBackground: true, preferCSSPageSize: true });
   expect(pdf.length).toBeGreaterThan(20000);
   expect(errors).toEqual([]);
+});
+
+test('edit sheet: a transfer saves seats, people one paid transfer covers and the Bookinglayer product', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const ctl = await openPrices(page, 'sri-lanka');
+  await page.locator('#areaTabs [data-area="transfers"]').click();
+  await page.locator('tr[data-row-id="pc-257"] .row-actions .btn-s').click();
+  await expect(page.locator('#editOv')).toHaveClass(/open/);
+  await expect(page.locator('#em_capacity')).toHaveValue('3');
+  await page.locator('#em_covers').fill('4');
+  await page.locator('#em_bl_product').fill('Airport Transfer Sri Lanka');
+  await page.locator('#emSave').click();
+  await expect(page.locator('#editOv')).not.toHaveClass(/open/);
+  const w = ctl.writes.filter(x => x.table === 'pricing_catalog');
+  expect(w).toHaveLength(1);
+  expect(w[0].method).toBe('PATCH');
+  expect(w[0].body).toMatchObject({ name: 'Surfcamp → Airport — Car', category: 'Transport', capacity: 3, covers_pax: 4, bl_product: 'Airport Transfer Sri Lanka', sell_price: 80, sell_currency: 'EUR', currency: 'LKR', picker_tab: 'airport' });
+  await expect(page.locator('#toast')).toContainText('Saved');
+});
+
+test('drag to reorder: the moved row goes first and every changed sort_order is saved', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const ctl = await openPrices(page, 'portugal');
+  await page.locator('#areaTabs [data-area="tours"]').click();
+  await expect(page.locator('#tableWrap .item-name')).toHaveText(['Yoga Class', 'Beach Party', 'Ice Bath', 'Surf Skate Lesson', 'Paradise Beach']);
+  const target = page.locator('tr[data-row-id="pc-313"]');
+  const box = await target.boundingBox();
+  await page.locator('tr[data-row-id="pc-328"] .drag-handle').dragTo(target, { targetPosition: { x: 40, y: 4 } });
+  await expect(page.locator('#tableWrap .item-name')).toHaveText(['Paradise Beach', 'Yoga Class', 'Beach Party', 'Ice Bath', 'Surf Skate Lesson']);
+  const orders = Object.fromEntries(ctl.writes.map(w => [w.filters.find(f => f[0] === 'id')[2], w.body.sort_order]));
+  expect(orders).toEqual({ 'pc-328': 100, 'pc-313': 200, 'pc-333': 300, 'pc-312': 400, 'pc-314': 500 });
+  expect(box).toBeTruthy();
+});
+
+test('a tour linked to another route moves the route link to every vehicle of the new route', async ({ page }) => {
+  const ctl = await openPrices(page, 'morocco');
+  await page.evaluate(() => openEdit('pc-241'));                                     // Paradise Valley tour
+  await expect(page.locator('#em_linked_transport')).toHaveValue('route:Paradise Valley');
+  await page.locator('#em_linked_transport').selectOption('route:Souk');
+  await page.locator('#emSave').click();
+  await expect(page.locator('#editOv')).not.toHaveClass(/open/);
+  const link = ctl.writes.find(w => w.body && w.body.linked_camp_tab_id === 'pc-241');
+  expect(link.filters).toEqual([['id', 'in', '(pc-303,pc-305,pc-308)']]);
+  expect(ctl.writes[0].body).toMatchObject({ linked_transport_preset_id: 'route:Souk' });
 });
