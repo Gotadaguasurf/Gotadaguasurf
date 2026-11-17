@@ -69,14 +69,13 @@
   const HQ_LIVE_STATUSES = new Set(['confirmed', 'paid', 'deposit paid', 'deposit_paid']);
   const HQ_DEAD_STATUSES = new Set(['cancelled', 'canceled', 'expired']);   // only these cancel a trip; any other HQ status counts as there
   // Vehicles, seats, driver cost and guest price: /prices only (lib/transport-catalog.js, 17 Nov 2026) — no list here.
-  // Camp runs have no catalog price yet (Sampath's prices, open question Q2):
-  // a /prices row with the same name (picker «tuktuk») replaces the price here.
+  // Sri Lanka's camp runs: the purposes only. The price is the /prices row of the same name (picker «tuktuk») — no
+  // price written here (17 Nov 2026: the old 500 LKR fallback is gone). No row → the run is saved at 0, flagged
+  // «no /prices row», and shows «price to confirm» until the row exists.
   const TUKTUK_CAMP_RUNS = [
-    { label: 'Market / food', purpose: 'food', price: 500 },
-    { label: 'Laundry', purpose: 'laundry', price: 500 },
-    { label: 'Staff', purpose: 'staff', price: 500 },
-    { label: 'Errand', purpose: 'errand', price: 500 },
+    { label: 'Market / food', purpose: 'food' }, { label: 'Laundry', purpose: 'laundry' }, { label: 'Staff', purpose: 'staff' }, { label: 'Errand', purpose: 'errand' },
   ];
+  const NO_ROW_FLAG = label => `no /prices row for «${label}» — price to set in /prices`;
   const LINKED_ITEM_BY_PURPOSE = { surf: 'Transport Surf Lesson', food: 'Food Supply', laundry: 'Laundry', staff: 'Staff', errand: 'Errand', other: 'Errand' };
   const DIFF_REASONS = ['Waiting time', 'Extra stop', 'Tip', 'Price changed', 'Other'];
   const CHARGE_LABEL = { bookinglayer: 'In booking', camp_tab: 'Camp Tab', free: 'Free' };
@@ -176,8 +175,9 @@
     if (t.missing_since) return 'Not in the latest Bookinglayer file';
     if (says) { const m = says.match(/«([^»]*)»/); const q = m ? m[1].trim() : ''; return `Guest says: «${q.length > 60 ? q.slice(0, 57) + '…' : q}» — still needed?`; }
     if (F.some(f => /^night arrival/.test(f))) return `Night arrival — the driver leaves the evening before (${fmtDay(GT.addDaysIso(t.trip_date, -1))})`;
-    // What the guests paid vs /prices, and a trip bigger than the largest vehicle (17 Nov 2026) — amber, never blocks.
-    const money = F.find(f => MONEY_FLAG.test(f)); if (money) return money.charAt(0).toUpperCase() + money.slice(1);
+    // A trip bigger than the largest /prices vehicle (17 Nov 2026) — amber, never blocks. The money questions («N people,
+    // 1 transfer paid», «no transfer paid», «paid €X, /prices €Y») have their own line with «OK — known» / «Charge guest».
+    const over = F.find(f => MONEY_FLAG.test(f) && !isMoneyFlag(f)); if (over) return over.charAt(0).toUpperCase() + over.slice(1);
     return '';
   }
   // Held back from «Send the whole day» until Francisco has looked: the booking or its transfer left the file.
@@ -766,6 +766,25 @@
   const PAID_TWICE_RE = /^\d+ transfers paid, same flight — confirm they come together$/;
   const BL_SAYS_RE = /^Bookinglayer says: (\w+) (.+) — use it\?$/;
   const SEP_FLAG = 'Separate from the paid transfer of this booking: the guest at 0 € has to pay a transfer';
+  // What the guests paid vs /prices (lib/bl-report.js moneyCheck, 17 Nov 2026). Answered like «Coming together»:
+  //   «OK — known»   the mark money_ok:<flag text> in edited_fields: that question never shows again — the next imports bring
+  //                  the same text back (paid lines and prices unchanged) and it stays answered; a new count or price is a
+  //                  new text, so a new question;
+  //   «Charge guest» (underpaid / no transfer paid) money_charge:<flag text>: the guest pays the missing transfer(s) on the
+  //                  Camp Tab, like «Separate» (a «no transfer paid» trip itself becomes charge Camp Tab, kept on re-import).
+  //                  Nothing is written into the Camp Tab POS — the trip says what to charge.
+  const UNDERPAID_RE = /^(\d+) people, (\d+) transfers? paid — one covers (\d+)$/;
+  const NOPAID_RE = /^no transfer paid$/;
+  const UNDERSOLD_RE = /^paid €[\d.,]+, \/prices €[\d.,]+ \(/;
+  const isMoneyFlag = f => UNDERPAID_RE.test(f) || NOPAID_RE.test(f) || UNDERSOLD_RE.test(f);
+  const moneyDone = (t, f) => edited(t, 'money_ok:' + f) || edited(t, 'money_charge:' + f);
+  const openMoney = t => flagsOf(t).filter(f => isMoneyFlag(f) && !moneyDone(t, f));
+  // The transfers the guest pays on the Camp Tab for a flag, and their € (the route's /prices guest price).
+  function chargeOf(t, f) {
+    const s2 = sellFor(t) || {}; const covers = s2.covers || Number(CC.transferCovers) || 3; const m = UNDERPAID_RE.exec(f);
+    const n = m ? Math.max(1, Math.ceil(Number(m[1]) / Number(m[3] || covers)) - Number(m[2])) : Math.max(1, Math.ceil((Number(t.pax) || 1) / covers));
+    return { n, eur: s2.eur > 0 ? n * s2.eur : null };
+  }
   const SAYS_FIELD = { time: 'trip_time', flight: 'flight', date: 'trip_date', people: 'pax', airport: 'place', guests: 'guest_names', phone: 'guest_phone', vehicle: 'vehicle', price: 'expected_price' };
   const flagsOf = t => (t.import_flags || []).map(String);
   const edited = (t, k) => (t.edited_fields || []).includes(k);
@@ -787,6 +806,16 @@
     const two = F.find(f => PAID_TWICE_RE.test(f));
     if (two && !edited(t, 'paid_twice_ok')) out.push(`<div class="tr-flagline" data-paid-twice>${ic('alert')} ${h(two)}</div>
         <div class="tr-went"><button class="btn btn-s btn-sm" data-paid-twice-ok onclick="event.stopPropagation();TransportUI.paidTwiceOk('${t.id}')">${ic('check')} Confirmed</button></div>`);
+    openMoney(t).forEach(f => {
+      const i = F.indexOf(f); const canCharge = !UNDERSOLD_RE.test(f);
+      out.push(`<div class="tr-flagline" data-money="${i}">${ic('alert')} ${h(f.charAt(0).toUpperCase() + f.slice(1))}</div>
+        <div class="tr-went"><button class="btn btn-s btn-sm" data-money-ok="${i}" onclick="event.stopPropagation();TransportUI.moneyOk('${t.id}', ${i})">${ic('check')} OK — known</button>${canCharge ? `
+        <button class="btn btn-s btn-sm" data-money-charge="${i}" onclick="event.stopPropagation();TransportUI.moneyCharge('${t.id}', ${i})">Charge guest</button>` : ''}</div>`);
+    });
+    (t.edited_fields || []).filter(k => String(k).startsWith('money_charge:')).forEach(k => {
+      const c = chargeOf(t, String(k).slice(13));
+      out.push(`<div class="tr-blsays cell-sub" data-money-charged>Camp Tab: the guest pays ${c.n} transfer${c.n === 1 ? '' : 's'}${c.eur ? ` (€${c.eur})` : ''}</div>`);
+    });
     F.filter(f => BL_SAYS_RE.test(f)).forEach((f, i) => out.push(`<div class="tr-blsays cell-sub" data-blsays="${i}">${h(f.replace(/ — use it\?$/, ''))} — <button class="btn-link" data-blsays-use="${i}" onclick="event.stopPropagation();TransportUI.useBl('${t.id}', ${i})">use it?</button></div>`));
     return out.join('');
   }
@@ -816,6 +845,17 @@
         redrawAll(); say(`Separate — ${row.guest_names} has a trip of their own (Camp Tab: the guest pays)`);
       }
     } finally { TR.busy.delete('tg' + id); }
+  }
+  async function moneyOk(id, i) {
+    const t = TR.trips.find(x => x.id === id); const f = t && flagsOf(t)[i]; if (!f || !isMoneyFlag(f)) return;
+    if (await updateTrip(id, {}, ['money_ok:' + f])) { redrawAll(); say('OK — known'); }
+  }
+  async function moneyCharge(id, i) {
+    const t = TR.trips.find(x => x.id === id); const f = t && flagsOf(t)[i]; if (!f || !(UNDERPAID_RE.test(f) || NOPAID_RE.test(f))) return;
+    const c = chargeOf(t, f);
+    // no transfer paid at all: the trip itself is the guest's to pay (charge Camp Tab, as a «Separate» trip)
+    const patch = NOPAID_RE.test(f) ? { charge: 'camp_tab' } : {};
+    if (await updateTrip(id, patch, ['money_charge:' + f])) { redrawAll(); say(`Charge guest — ${c.n} transfer${c.n === 1 ? '' : 's'}${c.eur ? ` (€${c.eur})` : ''} on the Camp Tab`); }
   }
   async function paidTwiceOk(id) {
     const t = TR.trips.find(x => x.id === id); if (!t) return;
@@ -866,7 +906,7 @@
       const label = IS_SL ? (t.tour_name ? 'Tour · ' + t.tour_name : t.route || t.purpose) : runLabel(t);
       const veh = IS_SL ? '' : (t.vehicle || '');
       const k = [timed, label, veh, t.driver_id || '', ps.key, ps.label, ps.sub, isFree(t) ? freeLabel(t) : '', catOf(t)].join('|');
-      const x = by.get(k) || { k, time: timed, label, veh, confirm: !IS_SL && !!(vanRateOf(t) || {}).confirm, n: 0, sum: 0, pax: 0, driver: t.driver_id, ps, free: isFree(t) ? freeLabel(t) : '', cat: catOf(t), runs: [] };
+      const x = by.get(k) || { k, time: timed, label, veh, confirm: IS_SL ? flagsOf(t).some(f => /^no \/prices row for/.test(f)) : !!(vanRateOf(t) || {}).confirm, n: 0, sum: 0, pax: 0, driver: t.driver_id, ps, free: isFree(t) ? freeLabel(t) : '', cat: catOf(t), runs: [] };
       x.n++; x.pax += runPax(t) || 0; x.sum += Number(t.expected_price || 0); x.runs.push(t); by.set(k, x);
     });
     const order = { planned: 0, owed: 1, old: 2, paid: 3, off: 4 };
@@ -1554,7 +1594,7 @@
   const tukVehicle = () => (TR.tuk.vehicle && vanLabels().includes(TR.tuk.vehicle) ? TR.tuk.vehicle : '') || vanDefaultVehicle(null);
   const planVehicle = () => (TR.tuk.planVehicle && vanLabels().includes(TR.tuk.planVehicle) ? TR.tuk.planVehicle : '') || vanDefaultVehicle(null);
   // Morocco: the vehicle's price, «MAD 900 · Big Van» (and «price to confirm» without a /prices row).
-  const priceText = (r, vehicle) => { if (IS_SL) return money(r.price); const v = vehicle || vanDefaultVehicle(r); const p = vanPrice(r, v); return `${money(p.price)} · ${v}${p.confirm ? ' · price to confirm' : ''}`; };
+  const priceText = (r, vehicle) => { if (IS_SL) return r.confirm ? 'price to confirm' : money(r.price); const v = vehicle || vanDefaultVehicle(r); const p = vanPrice(r, v); return `${money(p.price)} · ${v}${p.confirm ? ' · price to confirm' : ''}`; };
   const vehiclePick = (id, cur, onchange) => `<select id="${id}" onchange="${onchange}">${vanLabels(cur).map(v => `<option${v === cur ? ' selected' : ''}>${h(v)}</option>`).join('')}</select>`;
   function tukRoutes() {
     if (!IS_SL) {
@@ -1566,7 +1606,8 @@
     const catalogTuk = new Map((P.tuktuk || []).map(p => [p.name.toLowerCase(), Number(p.unitPrice) || 0]));
     return {
       surf: (P.surf || []).map(p => ({ key: 'surf|' + p.name, label: 'Camp → ' + p.name, route: p.name, purpose: 'surf', price: Number(p.unitPrice) || 0 })),
-      camp: TUKTUK_CAMP_RUNS.map(r => ({ key: 'camp|' + r.label, label: r.label, route: r.label, purpose: r.purpose, price: catalogTuk.get(r.label.toLowerCase()) ?? r.price })),
+      camp: TUKTUK_CAMP_RUNS.map(r => { const has = catalogTuk.has(r.label.toLowerCase());
+        return { key: 'camp|' + r.label, label: r.label, route: r.label, purpose: r.purpose, price: has ? catalogTuk.get(r.label.toLowerCase()) : 0, confirm: !has }; }),
       tour: (P.tours || []).map(p => ({ key: 'tour|' + p.name, label: p.linkedTour || p.name, route: p.name, purpose: 'tour', tour: p.linkedTour || p.name, price: Number(p.unitPrice) || 0 })),
     };
   }
@@ -1642,7 +1683,7 @@
     try {
       const pax = IS_SL ? 1 : null; const veh = IS_SL ? RUN.veh : tukVehicle(); const price = runPrice(r, veh);
       const row = { kind: RUN.kind, trip_date: TR.tuk.date, trip_time: TR.tuk.date === cToday() ? cTime() : null, route: r.route, purpose: r.purpose, tour_name: r.tour || null,
-        driver_id: TR.tuk.driver, expected_price: price, vehicle: veh, status: 'done', source: 'manual', pax };
+        driver_id: TR.tuk.driver, expected_price: price, vehicle: veh, status: 'done', source: 'manual', pax, ...(r.confirm && IS_SL ? { import_flags: [NO_ROW_FLAG(r.label)] } : {}) };
       if (await insertTrip(row)) { say(`Saved · ${r.label}${IS_SL ? '' : ' · ' + veh} · ${money(price)}`); renderTuktuk(); }
     } finally { setTimeout(() => TR.busy.delete('tap|' + key), 300); }
   }
@@ -1720,7 +1761,7 @@
         const pax = IS_SL ? 1 : null;
         const veh = IS_SL ? RUN.veh : (($('tk_pv') && $('tk_pv').value) || planVehicle());
         if (!await insertTrip({ kind: RUN.kind, trip_date: TR.tuk.planDate, trip_time: time, route: r.route, purpose: r.purpose, tour_name: r.tour || null,
-          driver_id: TR.tuk.driver, expected_price: runPrice(r, veh), vehicle: veh, status: 'planned', source: 'manual', pax })) break;
+          driver_id: TR.tuk.driver, expected_price: runPrice(r, veh), vehicle: veh, status: 'planned', source: 'manual', pax, ...(r.confirm && IS_SL ? { import_flags: [NO_ROW_FLAG(r.label)] } : {}) })) break;
       }
       renderTuktuk();
     } finally { TR.busy.delete('plan'); }
@@ -1995,6 +2036,7 @@
       trips = trips.map(t => { const a = app.get(t.key); const ed = (a && a.edited_fields) || [];
         let x = a && ed.includes('vehicle') && !ed.includes('expected_price') && a.vehicle ? { ...t, expected_price: presetPrice(t.kind, a.vehicle, t.place) || t.expected_price } : t;
         if (ed.includes('together_split')) x = { ...x, flags: (x.flags || []).filter(f => !/^\d+ people, \d+ transfers? paid — one covers \d+$/.test(f)) };
+        if (ed.includes('money_charge:no transfer paid') && (x.flags || []).includes('no transfer paid')) x = { ...x, charge: 'camp_tab' };   // «Charge guest» stands
         return x; });
     }
     const guests = okGuests.filter(g => !cancelledRefs.has(g.booking_ref)).map(g => ({ ...g, hq_match: matchOf(g.booking_ref), partner: partnerOf(g.booking_ref) || null }));
@@ -2287,7 +2329,7 @@
       P.add = { date: day, route: r.key, n: 1, pax, vehicle: IS_SL ? '' : veh };
       for (let i = 0; i < n; i++) {
         const t = await insertTrip({ kind: RUN.kind, trip_date: day, trip_time: null, route: r.route, purpose: r.purpose, tour_name: r.tour || null,
-          driver_id: P.driver, expected_price: runPrice(r, veh), vehicle: veh, status: 'done', source: 'manual', pax, notes: 'Added when paying' });
+          driver_id: P.driver, expected_price: runPrice(r, veh), vehicle: veh, status: 'done', source: 'manual', pax, notes: 'Added when paying', ...(r.confirm && IS_SL ? { import_flags: [NO_ROW_FLAG(r.label)] } : {}) });
         if (!t) break;
         P.picked.add(t.id);
       }
@@ -2486,7 +2528,7 @@
     openChecks, openLink, linkDriver, linkPick, linkAll, linkMonth, namedMonth, saveLink, unlinkPayment, openExplain, saveExplain, unlinkTrip,
     openPay, payPick, payTick, payTickGroup, payMinus, payAddToggle, payAddRun, payBank, payAmount, payDate, payReason, payNote, savePay, payGroups, localDrivers: LOCAL,
     openDrivers, addDriver, saveDrivers,
-    together, paidTwiceOk, useBl, toggleOff,
+    together, paidTwiceOk, moneyOk, moneyCharge, useBl, toggleOff,
     blBooked, blNotBooked, driverWent, driverDidntGo, showBlCheck, blToCheck, blList, blUrl, blCount: () => blList().length, blCheck,
     // for tests and the coordinator
     importHtml: renderNext,   // the Week tab renders the same import

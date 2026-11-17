@@ -1662,3 +1662,52 @@ test('Overview: airport guests € (report prices, else estimated from /prices: 
   await expect(card.locator('[data-ov-gm="margin"] .kpi-value')).toHaveText(/^€\d+$/);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);   // 390 px: no sideways scroll
 });
+
+test('money questions are answered like «Coming together»: «OK — known» never comes back for the same text (re-import), a new count asks again; «Charge guest» puts it on the Camp Tab', async ({ page }) => {
+  const errors = collectFatalErrors(page);
+  const id = n => `aaaaaaaa-0000-4000-8000-0000000000m${n}`;
+  const base = { trip_date: '2026-11-13', trip_time: '18:00', source: 'bookinglayer', charge: 'bookinglayer', status: 'planned' };
+  const UP = '4 people, 1 transfer paid — one covers 3';
+  const trips = [trip({ ...base, id: id(1), import_key: 'bl:2026-81:arr', booking_ref: '2026-81', guest_names: 'A, B, C, D', pax: 4, vehicle: 'Minivan', expected_price: 26500, import_flags: [UP] }),
+    trip({ ...base, id: id(2), import_key: 'bl:2026-82:arr', booking_ref: '2026-82', guest_names: 'Eve E', pax: 1, import_flags: ['no transfer paid'] }),
+    trip({ ...base, id: id(3), import_key: 'bl:2026-83:arr', booking_ref: '2026-83', guest_names: 'Flo F', pax: 1, import_flags: ['paid €70, /prices €80 (Flo F)'] })];
+  const st = await openTab(page, { trips });
+  const row = n => page.locator(`.tr-row[data-trip="${id(n)}"]`);
+  await expect(row(1).locator('[data-money]')).toHaveText(UP);
+  await expect(row(1).locator('[data-money-charge]')).toHaveCount(1);
+  await expect(row(3).locator('[data-money]')).toHaveText('Paid €70, /prices €80 (Flo F)');
+  await expect(row(3).locator('[data-money-charge]')).toHaveCount(0);                 // a lower price is a question, not a charge
+  // OK — known
+  await row(1).locator('[data-money-ok]').click();
+  const c1 = await call(st, 'trip_update', 1);
+  expect(c1.body.edited_fields).toContain('money_ok:' + UP);
+  await expect(row(1).locator('[data-money]')).toHaveCount(0);
+  // the next import brings the same text back: still answered; a new count (5 people) is a new question
+  await page.evaluate(([i, f]) => { const t = TransportUI._state.trips.find(x => x.id === i); t.import_flags = [f]; TransportUI.render(); }, [id(1), UP]);
+  await expect(row(1).locator('[data-money]')).toHaveCount(0);
+  await page.evaluate(([i]) => { const t = TransportUI._state.trips.find(x => x.id === i); t.import_flags = ['5 people, 1 transfer paid — one covers 3']; TransportUI.render(); }, [id(1)]);
+  await expect(row(1).locator('[data-money]')).toHaveText('5 people, 1 transfer paid — one covers 3');
+  // Charge guest on «no transfer paid»: the trip is the guest's to pay (Camp Tab), with what to charge
+  await row(2).locator('[data-money-charge]').click();
+  const c2 = await call(st, 'trip_update', 2);
+  expect(c2.body).toMatchObject({ charge: 'camp_tab' });
+  expect(c2.body.edited_fields).toContain('money_charge:no transfer paid');
+  await expect(row(2).locator('[data-money]')).toHaveCount(0);
+  await expect(row(2).locator('[data-money-charged]')).toHaveText('Camp Tab: the guest pays 1 transfer (€80)');
+  expect(errors).toEqual([]);
+});
+
+test('tuk-tuk camp runs: the price is the /prices row only — no row → «price to confirm», saved at 0 and flagged; a row → its price', async ({ page }) => {
+  const errors = collectFatalErrors(page);
+  const withLaundry = CATALOG.concat([{ id: 'cat-tk1', name: 'Laundry', cost_per_guest: 700, currency: 'LKR', notes: '', linked_transport_preset_id: 'p-Laundry', linked_camp_tab_id: null, picker_tab: 'tuktuk', sort_order: 50 }]);
+  const st = await openTab(page, { catalog: withLaundry });
+  await page.evaluate(() => TransportUI.openTuktuk());
+  await expect(page.locator('.tr-tap-main[data-key="camp|Laundry"] .hint')).toHaveText(/^LKR\s700$/);
+  await expect(page.locator('.tr-tap-main[data-key="camp|Market / food"] .hint')).toHaveText('price to confirm');
+  await page.locator('.tr-tap-main[data-key="camp|Market / food"]').click();
+  const ins = (await call(st, 'trip_insert')).rows[0];
+  expect(ins).toMatchObject({ route: 'Market / food', expected_price: 0, import_flags: ['no /prices row for «Market / food» — price to set in /prices'] });
+  await page.locator('.tr-tap-main[data-key="camp|Laundry"]').click();
+  expect((await call(st, 'trip_insert', 2)).rows[0]).toMatchObject({ route: 'Laundry', expected_price: 700 });
+  expect(errors).toEqual([]);
+});
