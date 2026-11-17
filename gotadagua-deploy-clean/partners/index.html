@@ -18,7 +18,8 @@ body{overflow-x:hidden}
 .kpi-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:14px;margin-bottom:28px}
 /* Keep the KPIs on a single row at every desktop width. Only collapse on
    true mobile, where horizontal scrolling would be awkward. */
-@media (max-width: 720px){ .kpi-strip{grid-template-columns:repeat(2,1fr)} }
+@media (max-width: 720px){ .kpi-strip{grid-template-columns:repeat(2,minmax(0,1fr))} }
+@media (max-width: 400px){ .kpi-strip{gap:10px} .kpi-strip .kpi{padding:12px 14px} .kpi-strip .kpi-value{font-size:20px;overflow-wrap:anywhere} }
 .month-tabs{display:flex;gap:6px;margin-bottom:var(--sp-5);flex-wrap:wrap}
 .tbl-wrap tbody tr{cursor:pointer}
 .tbl-wrap tbody tr.expanded{background:var(--foam)}
@@ -56,6 +57,19 @@ body{overflow-x:hidden}
 .dir-pill.to-partner{background:var(--amber-bg);color:var(--amber);border-color:var(--amber-border)}
 .dir-pill.mixed{background:#f1f4f8;color:var(--muted);border-color:var(--border)}
 .bal-total{font-size:10px;color:var(--muted);margin-top:4px}
+/* phones: Gross Revenue and Commission hide (the expanded row and its month cards open the statement); Balance wraps and stays on screen */
+@media (max-width: 640px){
+  .ptbl tr:not(.overview-row)>:nth-child(4),.ptbl tr:not(.overview-row)>:nth-child(5){display:none}
+  .ptbl thead th{white-space:normal;padding-left:8px;padding-right:8px}
+  .ptbl td{padding-left:8px;padding-right:8px}
+  .ptbl td.r{white-space:normal}
+  .ptbl td:nth-child(2){overflow-wrap:break-word}
+  .ptbl .pemail{overflow-wrap:anywhere}
+  .ptbl tr:not(.overview-row)>:first-child:not([colspan]){padding-left:10px;padding-right:2px;width:22px !important}
+  /* a month picked adds Invoice Status: Bookings hides too and the status select narrows */
+  .ptbl tr:not(.overview-row):has(>:nth-child(7))>:nth-child(3){display:none}
+  .ptbl .status-select{min-width:112px;width:112px;padding-right:26px;padding-left:9px;background-position:right 7px center}
+}
 /* Sales invoices (FT IN2/…) issued to the partner for a month — number + Drive link. */
 .inv-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
 .inv-chip{display:inline-block;font-size:10px;font-weight:600;color:var(--navy);background:#fff;border:1px solid var(--border);border-radius:999px;padding:2px 9px;text-decoration:none;white-space:nowrap}
@@ -107,7 +121,20 @@ body{overflow-x:hidden}
 .settings-hdr{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .settings-section{margin-bottom:30px}
 .settings-section-title{font-size:var(--fs-card);font-weight:700;color:var(--navy);margin-bottom:14px;padding-bottom:8px;border-bottom:1px solid var(--border)}
-.partner-row{display:grid;grid-template-columns:1fr 1fr auto auto auto;gap:10px;align-items:center;margin-bottom:8px;padding:10px 12px;background:var(--foam);border-radius:var(--r-sm);border:1px solid var(--border)}
+.partner-row,.partner-row-head{display:grid;grid-template-columns:1.1fr 1fr 1.1fr .9fr auto auto auto;gap:10px;align-items:center;margin-bottom:8px;padding:10px 12px;background:var(--foam);border-radius:var(--r-sm);border:1px solid var(--border)}
+.partner-row-head{gap:10px;padding:6px 12px;margin-bottom:4px;background:none;border:0;border-radius:0;align-items:normal}
+/* phones: two fields per line, the header row hidden (each field shows its placeholder) */
+@media (max-width: 640px){
+  .partner-row-head{display:none}
+  .partner-row{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  .partner-row>*{min-width:0}
+  .partner-row>input:first-child{grid-column:1/-1}
+  .partner-row select{width:100% !important}
+  .partner-row .com-input-wrap input{width:100% !important}
+  .partner-row .collects-select{min-width:0;width:100%}
+  .partner-row>.btn-r{justify-self:end}
+  .settings-footer{flex-wrap:wrap;gap:10px}
+}
 .partner-row input,.partner-row select{border:1px solid var(--border-2);border-radius:var(--r-sm);padding:9px 12px;font-size:13px;font-family:'Outfit',sans-serif;color:var(--ink);background:#fff;width:100%;outline:none;transition:border-color .18s, box-shadow .18s}
 .partner-row input:hover{border-color:var(--ocean)}
 .partner-row input:focus,.partner-row select:focus{border-color:var(--ocean);box-shadow:0 0 0 3px rgba(30,111,168,.12)}
@@ -182,7 +209,7 @@ body{overflow-x:hidden}
     <div class="kpi-strip" id="kpiStrip"></div>
     <div class="section-head" style="margin-top:10px"><div class="section-title">Surf Camp Partners</div><div class="section-sub" id="surfCampCountHint"></div></div>
     <div class="card tbl-wrap" style="margin-bottom:22px">
-      <table>
+      <table class="ptbl">
         <thead id="partnerTableHeadCamp"></thead>
         <tbody id="partnerTableBodyCamp"></tbody>
       </table>
@@ -190,7 +217,7 @@ body{overflow-x:hidden}
 
     <div class="section-head" style="margin-top:4px"><div class="section-title">Surf School Partners</div><div class="section-sub" id="surfSchoolCountHint"></div></div>
     <div class="card tbl-wrap">
-      <table>
+      <table class="ptbl">
         <thead id="partnerTableHeadSchool"></thead>
         <tbody id="partnerTableBodySchool"></tbody>
       </table>
@@ -199,7 +226,7 @@ body{overflow-x:hidden}
     <!-- Junior Surf Camp Partners (location code: JUN) -->
     <div class="section-head" style="margin-top:18px"><div class="section-title">Junior Surf Camp Partners</div><div class="section-sub" id="juniorCountHint"></div></div>
     <div class="card tbl-wrap" style="margin-bottom:22px">
-      <table>
+      <table class="ptbl">
         <thead id="partnerTableHeadJunior"></thead>
         <tbody id="partnerTableBodyJunior"></tbody>
       </table>
@@ -208,7 +235,7 @@ body{overflow-x:hidden}
     <!-- Kids Camp Caparica Partners (location code: Colon) -->
     <div class="section-head" style="margin-top:4px"><div class="section-title">Kids Camp Caparica Partners</div><div class="section-sub" id="kidsCountHint"></div></div>
     <div class="card tbl-wrap">
-      <table>
+      <table class="ptbl">
         <thead id="partnerTableHeadKids"></thead>
         <tbody id="partnerTableBodyKids"></tbody>
       </table>
@@ -2087,7 +2114,7 @@ function getAllPartnerNames() {
 
 function renderSettingsModal() {
   const partners = getAllPartnerNames();
-  const renderHeader = () => `<div style="display:grid;grid-template-columns:1.1fr 1fr 1.1fr .9fr auto auto auto;gap:10px;padding:6px 12px;margin-bottom:4px">
+  const renderHeader = () => `<div class="partner-row-head">
     <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Partner Name</div>
     <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Contact Name</div>
     <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Email</div>
@@ -2101,7 +2128,7 @@ function renderSettingsModal() {
     const rowId = `${type}_${i}`;
     const collects = partnerCollectsFromGuest(p);
     const collectsCls = collects ? 'they-owe' : 'we-owe'; // fallback only — the CSV Status/Due decides per booking
-    return `<div class="partner-row" id="prow_${rowId}" style="grid-template-columns:1.1fr 1fr 1.1fr .9fr auto auto auto;">
+    return `<div class="partner-row" id="prow_${rowId}">
       <input type="text" value="${p.replace(/"/g,'&quot;')}" placeholder="Partner name" id="pname_${rowId}">
       <input type="text" value="${getContactName(p).replace(/"/g,'&quot;')}" placeholder="Contact name" id="pcontact_${rowId}">
       <input type="text" value="${getEmail(p)}" placeholder="email@partner.com" id="pemail_${rowId}">
@@ -2150,7 +2177,6 @@ window.addPartnerRow = (type='surfcamp') => {
   const div = document.createElement('div');
   div.className = 'partner-row';
   div.id = 'prow_'+id;
-  div.style.gridTemplateColumns = '1.1fr 1fr 1.1fr .9fr auto auto auto';
   div.innerHTML = `
     <input type="text" placeholder="Partner name" id="pname_${id}">
     <input type="text" placeholder="Contact name" id="pcontact_${id}">
@@ -2801,6 +2827,9 @@ try { getAuthClient().auth.getSession().then(r => AppShell.setAccount({ name: r?
 (function(){
   async function initPlatformAccess(){
     try {
+      // logged out (fresh browser): sign in at the hub and come back, like the HQ — not an empty €0.00 page
+      const { data: { session } = {} } = await getAuthClient().auth.getSession();
+      if (!session) { location.href = '/?next=' + encodeURIComponent('/partners/'); return; }
       await verifySupabaseSetup();
       if (__cloudMode === 'cloud') {
         await loadFromSupabase();

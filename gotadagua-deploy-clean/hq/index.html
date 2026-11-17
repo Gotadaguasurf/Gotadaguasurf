@@ -58,12 +58,37 @@
 #invListBody col.c-date{width:62px}#invListBody col.c-no{width:104px}#invListBody col.c-cat{width:128px}#invListBody col.c-loc{width:118px}
 #invListBody col.c-pay{width:92px}#invListBody col.c-bank{width:144px}#invListBody col.c-pdf{width:82px}#invListBody col.c-amt{width:100px}#invListBody col.c-act{width:112px}
 #invListBody .inline-select{max-width:100%;min-width:0}
+@media (pointer:coarse){ #invListBody col.c-act{width:132px} .bd-sup a{display:inline-block;padding:9px 0;margin:-9px 0} }  /* touch: three 36px row buttons fit; supplier links get a taller hit area, same line */
 .inv-no{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* the select column stays in the table (the <colgroup> counts it) but is 0px wide until Select is on */
 #invListBody th.sel,#invListBody td.sel{padding:0;overflow:hidden}
 #invListBody th.sel input,#invListBody td.sel input{display:none}
 #invListBody.select-mode th.sel,#invListBody.select-mode td.sel{padding-left:8px}
 #invListBody.select-mode th.sel input,#invListBody.select-mode td.sel input{display:inline-block}
+/* Expenses on a phone (≤640px): each row is a small card like Month close — supplier + amount on top,
+   date · category · location · PDF and the row buttons under it. Invoice no., Payment and Bank open with Edit. */
+@media (max-width: 640px){
+  #invListBody table{min-width:0 !important;table-layout:auto}
+  #invListBody colgroup,#invListBody thead{display:none}
+  #invListBody table,#invListBody tbody{display:block;width:100%}
+  #invListBody tbody tr{display:flex;flex-wrap:wrap;align-items:center;gap:2px 10px;padding:12px 14px;border-bottom:1px solid var(--border)}
+  #invListBody tbody tr>td{display:block;padding:0 !important;border:0 !important;min-width:0;white-space:normal !important;text-align:left !important;background:transparent !important}
+  #invListBody tr.inv-r>td:nth-child(1),#invListBody tr.inv-r>td:nth-child(4),#invListBody tr.inv-r>td:nth-child(7),#invListBody tr.inv-r>td:nth-child(8){display:none}
+  #invListBody.select-mode tr.inv-r>td.sel{display:block;order:0;width:auto}
+  #invListBody tr.inv-r>td:nth-child(3){order:1;flex:1 1 0;align-self:flex-start}
+  #invListBody tr.inv-r>td:nth-child(10){order:2;text-align:right !important;align-self:flex-start}
+  #invListBody tr.inv-r::before{content:'';order:3;flex:0 0 100%;height:0}
+  #invListBody tr.inv-r>td:nth-child(2){order:4;font-size:12px;color:var(--muted)}
+  #invListBody tr.inv-r>td:nth-child(5),#invListBody tr.inv-r>td:nth-child(6){order:5;font-size:12px;color:var(--muted)}
+  #invListBody tr.inv-r>td:nth-child(9){order:6}
+  #invListBody tr.inv-r>td:nth-child(11){order:7;margin-left:auto}
+  #invListBody tbody tr.row-selected,#invListBody tbody tr.dup,#invListBody tbody tr.due{background:var(--amber-bg)}
+  #invListBody tbody tr.row-selected{background:var(--ocean-soft)}
+  #invListBody .sup-name,#invListBody .sup-desc{white-space:normal;overflow-wrap:anywhere}
+  #invListBody tr.grp-row{justify-content:space-between;background:var(--surface-2);border-top:1px solid var(--border-2);padding:10px 14px}
+  #invListBody tr.grp-row>td.sel,#invListBody tr.grp-row>td:last-child{display:none}
+  #invListBody tr.empty-row>td{flex:1 1 100%;text-align:center !important}
+}
 .sup-cell{display:block;max-width:232px;overflow:hidden}
 #invListBody .sup-cell{max-width:none}
 .sup-name{display:block;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -92,6 +117,8 @@ td.loc-name{font-weight:600;color:var(--navy)}
 /* filters: the "More filters" row, the toggles and the active-filter summary */
 .hq-menu{position:relative}.hq-menu summary{list-style:none}.hq-menu summary::-webkit-details-marker{display:none}
 .hq-menu-list{position:absolute;right:0;top:calc(100% + 6px);background:#fff;border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--sh-lg);padding:6px;min-width:200px;z-index:30;display:flex;flex-direction:column}
+/* phones: the «More» button sits at the left of its row, so the menu opens to the right and stays on screen */
+@media (max-width: 640px){ .hq-menu-list{left:0;right:auto;max-width:calc(100vw - 24px)} }
 .hq-menu-list button{background:none;border:none;text-align:left;padding:9px 12px;border-radius:8px;font-family:inherit;font-size:13px;font-weight:600;color:var(--navy);cursor:pointer;display:flex;align-items:center;gap:8px}
 .hq-menu-list button:hover{background:var(--surface-2)}
 .hq-filters.hq-more{padding:var(--sp-3);background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-sm)}
@@ -135,6 +162,7 @@ td.loc-name{font-weight:600;color:var(--navy)}
 .drawer-item-body{min-width:0}
 .drawer-item-cat{font-weight:600;color:var(--ink);font-size:12.5px}
 .drawer-item-desc{font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (max-width: 640px){ .drawer-item-desc{white-space:normal;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2} }
 .drawer-item-amt{text-align:right;font-variant-numeric:tabular-nums;font-weight:600;font-size:13px;color:var(--ink)}
 .drawer-empty{padding:var(--sp-4) 0;font-size:12.5px;color:var(--muted);text-align:center}
 .drawer-footer{padding:var(--sp-3) var(--sp-5);border-top:1px solid var(--border);display:flex;gap:var(--sp-2);flex-shrink:0;background:var(--surface-2)}
@@ -4405,7 +4433,7 @@ async function renderInvoiceList(){
       isInterCo ? `<span class="badge badge-grey" title="Paid by ${escapeHtml(companyLabel(r.paying_company))}, not the location's usual company">paid by other company</span>` : '',
     ].filter(Boolean).join(' ');
     // Category and Location change in the row (like /suk/); everything else is edited in the form.
-    return `<tr class="${r.is_duplicate?'dup':''}${isSelected?' row-selected':''}" data-inv-id="${r.id}">
+    return `<tr class="inv-r${r.is_duplicate?' dup':''}${isSelected?' row-selected':''}" data-inv-id="${r.id}">
       <td class="sel"><input type="checkbox" class="row-check" data-id="${r.id}" ${isSelected?'checked':''} onchange="onRowCheck('${r.id}', this.checked)"></td>
       <td style="white-space:nowrap" title="${r.invoice_date}">${fmtDia(r.invoice_date)}</td>
       <td><div class="sup-cell"><span class="sup-name" title="${escapeHtml(r.company||'')}">${escapeHtml(r.company||'')}</span>${r.description?`<span class="sup-desc" title="${escapeHtml(r.description)}">${escapeHtml(r.description)}</span>`:''}${tags?`<span class="sup-tags">${tags}</span>`:''}${r.needs_review?`<span class="review-q">${escapeHtml(reviewQuestion(r.notes))}</span>`:''}</div></td>

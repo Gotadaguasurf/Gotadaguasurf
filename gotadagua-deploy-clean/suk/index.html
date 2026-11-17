@@ -20,12 +20,35 @@
 .catsel:hover{background-color:var(--surface-2);border-color:var(--border-2)}
 .catsel:focus{background-color:#fff;border-color:var(--ocean);outline:none}
 .catsel.todo{border-color:var(--amber-border);background-color:var(--amber-bg);color:var(--amber);font-weight:700}
+/* touch screens: the row's selects and buttons are 36px; the button column widens to hold them */
+@media (pointer:coarse){ .catsel{min-height:36px} table#invTable col.c-act{width:96px} }
 /* Expenses: same columns and widths as the HQ table — fits a laptop page without sideways scroll */
 #invTable{table-layout:fixed;min-width:1100px}
 #invTable th,#invTable td{padding-left:8px;padding-right:8px}
 #invTable col.c-date{width:62px}#invTable col.c-no{width:104px}#invTable col.c-cat{width:128px}#invTable col.c-biz{width:112px}
 #invTable col.c-pay{width:92px}#invTable col.c-bank{width:112px}#invTable col.c-pdf{width:82px}#invTable col.c-amt{width:100px}#invTable col.c-act{width:84px}
 .inv-no{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Expenses on a phone (≤640px): each row is a small card like the HQ one — supplier + amount on top,
+   date · category · business · PDF and the row buttons under it. Invoice no., Payment and Bank open with Edit. */
+@media (max-width: 640px){
+  #invTable{min-width:0 !important;table-layout:auto}
+  #invTable colgroup,#invTable thead{display:none}
+  #invTable,#invTable tbody{display:block;width:100%}
+  #invTable tbody tr{display:flex;flex-wrap:wrap;align-items:center;gap:2px 10px;padding:12px 14px;border-bottom:1px solid var(--border)}
+  #invTable tbody tr>td{display:block;padding:0 !important;border:0 !important;min-width:0;white-space:normal !important;text-align:left !important;background:transparent !important}
+  #invTable tr.inv-r>td:nth-child(3),#invTable tr.inv-r>td:nth-child(6),#invTable tr.inv-r>td:nth-child(7){display:none}
+  #invTable tr.inv-r>td:nth-child(2){order:1;flex:1 1 0;align-self:flex-start}
+  #invTable tr.inv-r>td:nth-child(9){order:2;text-align:right !important;align-self:flex-start}
+  #invTable tr.inv-r::before{content:'';order:3;flex:0 0 100%;height:0}
+  #invTable tr.inv-r>td:nth-child(1){order:4;font-size:12px;color:var(--muted)}
+  #invTable tr.inv-r>td:nth-child(4),#invTable tr.inv-r>td:nth-child(5){order:5;font-size:12px}
+  #invTable tr.inv-r>td:nth-child(8){order:6}
+  #invTable tr.inv-r>td:nth-child(10){order:7;margin-left:auto}
+  #invTable .sup-name,#invTable .sup-desc{white-space:normal;overflow-wrap:anywhere}
+  #invTable tr.grp-row{justify-content:space-between;background:var(--surface-2);border-top:1px solid var(--border-2);padding:10px 14px}
+  #invTable tr.grp-row>td:nth-child(3){display:none}
+  #invTable tr.empty-row>td{flex:1 1 100%;text-align:center !important}
+}
 .cell-stack{display:flex;flex-direction:column;gap:2px;align-items:flex-start;min-width:0}
 .cell-stack .sub{font-size:11.5px;color:var(--muted)}
 .file-link{color:var(--ocean);text-decoration:none;font-weight:600;font-size:12px}
@@ -407,7 +430,7 @@ function renderInvoices(){
     : (i.payment_type === 'Cash' || /\[por fora/i.test(String(i.notes || ''))) ? '<span class="badge badge-grey" title="Off the books — counts here, stays out of the accountant pack">cash · no invoice</span>'
     : '<span class="badge badge-grey" title="Salaries, taxes and benefits need no invoice">no invoice</span>';
   const bankCell = (i) => i.bank ? `<span class="badge badge-green" title="Matched to the BCP debit of ${i.bank.movement_date}">BCP · ${fmtDay(i.bank.movement_date)}</span>` : (i.payment_type === 'Cash' ? '<span class="badge badge-grey">cash</span>' : '<span class="badge badge-amber" title="No BCP debit linked yet">not linked</span>');
-  $('invBody').innerHTML = rows.length ? withMonthRows(rows, i => i.invoice_date, 10, month === 'all', i => i.amount_eur, i => `<tr class="click" onclick="openInvoice('${i.id}')">
+  $('invBody').innerHTML = rows.length ? withMonthRows(rows, i => i.invoice_date, 10, month === 'all', i => i.amount_eur, i => `<tr class="click inv-r" onclick="openInvoice('${i.id}')">
     <td style="white-space:nowrap" title="${i.invoice_date}">${fmtDay(i.invoice_date)}</td>
     <td><div class="sup-cell"><span class="sup-name" title="${esc(i.company)}">${esc(i.company)}</span>${i.description ? `<span class="sup-desc" title="${esc(i.description)}">${esc(i.description)}</span>` : ''}${i.needs_review ? `<span class="review-q"><span class="badge badge-amber">Review</span> ${esc(reviewQuestion(i.notes))}</span>` : ''}</div></td>
     <td><span class="mono inv-no" title="${esc(i.invoice_number || '')}">${esc(i.invoice_number || '—')}</span></td>

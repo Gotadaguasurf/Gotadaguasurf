@@ -66,6 +66,8 @@
   .xf-dup ul{margin:6px 0 0 20px}
   .xf-ft{display:flex;justify-content:space-between;gap:10px;padding:12px 20px;border-top:1px solid var(--border,#e5eaf0);background:var(--surface-2,#f8fafc)}
   @media (max-width:720px){.xf-f,.xf-f.c3,.xf-f.c4,.xf-f.c6,.xf-f.c8{grid-column:span 6}.xf-bg{padding:12px 8px}.xf-bd,.xf-hd{padding-left:16px;padding-right:16px}}
+  /* phones: the form scrolls inside the box, so Save / Cancel stay pinned at its bottom */
+  @media (max-width:720px){.xf{display:flex;flex-direction:column;max-height:calc(100dvh - 24px)}.xf-hd,.xf-ft{flex-shrink:0}.xf-bd{flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch}.xf-ft{padding-left:16px;padding-right:16px}.xf-bd>#invToast:not(:empty),.xf-bd>.xf-dup.show{position:sticky;bottom:0;z-index:2;box-shadow:0 -8px 16px #fff}}
   @media (max-width:480px){.xf-f,.xf-f.c3,.xf-f.c4,.xf-f.c6,.xf-f.c8{grid-column:span 12}}
   `;
 
