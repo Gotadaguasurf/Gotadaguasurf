@@ -65,7 +65,7 @@ body{overflow-x:hidden}
   .ptbl td.r{white-space:normal}
   .ptbl td:nth-child(2){overflow-wrap:break-word}
   .ptbl .pemail{overflow-wrap:anywhere}
-  .ptbl tr:not(.overview-row)>:first-child{padding-left:10px;padding-right:2px;width:22px !important}
+  .ptbl tr:not(.overview-row)>:first-child:not([colspan]){padding-left:10px;padding-right:2px;width:22px !important}
   /* a month picked adds Invoice Status: Bookings hides too and the status select narrows */
   .ptbl tr:not(.overview-row):has(>:nth-child(7))>:nth-child(3){display:none}
   .ptbl .status-select{min-width:112px;width:112px;padding-right:26px;padding-left:9px;background-position:right 7px center}

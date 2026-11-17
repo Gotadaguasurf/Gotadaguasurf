@@ -93,6 +93,8 @@ test('camp hub ledger at 390: Date | Type | Actions, Edit and Delete on screen, 
   const heads = await page.evaluate(() => [...document.querySelectorAll('#expTable thead th')].filter(th => th.getBoundingClientRect().width > 0).map(th => th.innerText.trim().toLowerCase()));
   expect(heads).toEqual(['date', 'type', 'actions']);
   expect(await tappable(page, '#expTable tbody button[title=Edit]')).toBe(true);
+  // touch screen: the row buttons are a 36px target
+  expect((await box(page, '#expTable tbody button[title=Edit]')).h).toBeGreaterThanOrEqual(36);
   expect(await tappable(page, '#expTable tbody button[title=Delete]')).toBe(true);
   // the «what» line wraps to two lines instead of being cut at 150px
   const what = await page.evaluate(() => { const e = document.querySelector('#expTable .what-mob'); return { ws: getComputedStyle(e).whiteSpace, h: e.getBoundingClientRect().height }; });
@@ -155,6 +157,13 @@ test('Partners at 390: no sideways page, Balance on screen (also with a month pi
   expect(await balRight()).toBeLessThanOrEqual(390);
   const tbl = await page.evaluate(() => document.querySelector('#partnerTableHeadCamp').closest('table').getBoundingClientRect().right);
   expect(tbl).toBeLessThanOrEqual(390);
+  // the statement (Gross / Commission links are hidden on phones) opens from the expanded row's month cards
+  await page.evaluate(() => { setMonth('all'); }); await page.waitForTimeout(300);
+  await page.evaluate(() => document.querySelector('#partnerTableBodyCamp tr').click()); await page.waitForTimeout(400);
+  expect(await tappable(page, '.overview-row .month-card')).toBe(true);
+  await page.evaluate(() => document.querySelector('.overview-row .month-card').click());
+  await expect(page.locator('#stmtModal.open')).toBeVisible();
+  await page.evaluate(() => document.querySelectorAll('.overlay.open').forEach(o => o.classList.remove('open')));
   await page.evaluate(() => openSettings()); await page.waitForTimeout(500);
   const row = await page.evaluate(() => [...document.querySelector('#partnerRatesList .partner-row').children].map(c => { const r = c.getBoundingClientRect(); return { l: r.left, r: r.right, w: r.width }; }));
   expect(row.length).toBe(7);
@@ -182,6 +191,12 @@ test('shared expense form at 390: Save is on screen without scrolling (HQ and Su
     await page.evaluate(app => { if (app === 'hq') openAddExpense(); else { showPage('invoices'); document.getElementById('addInvBtn').click(); } }, app);
     await expect(page.locator('#saveInvBtn')).toBeVisible({ timeout: 10_000 });
     expect(await tappable(page, '#saveInvBtn', false)).toBe(true);
+    if (app === 'hq') { // an empty Save shows its message inside the visible part of the form
+      await page.locator('#saveInvBtn').click();
+      await expect(page.locator('#invToast')).not.toBeEmpty();
+      const v = await page.evaluate(() => { const bd = document.querySelector('.xf-bd').getBoundingClientRect(); const t = document.getElementById('invToast').getBoundingClientRect(); return t.top >= bd.top && t.bottom <= bd.bottom + 1; });
+      expect(v).toBe(true);
+    }
     await ctx.close();
   }
 });

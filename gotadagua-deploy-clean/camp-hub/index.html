@@ -367,6 +367,7 @@ body{min-height:100dvh}
   #savePill #savePillTxt{display:none}
   #savePill.failed{position:fixed;top:60px;left:0;right:0;width:auto;height:auto;min-height:44px;padding:10px 16px;border-radius:0;justify-content:center;gap:8px;background:var(--red);color:#fff;font-size:13px;z-index:99;box-shadow:var(--sh-lg)}
   #savePill.failed #savePillTxt{display:inline}
+  body:has(#savePill.failed) .toast{top:116px}
 }
 .icon-danger:hover{color:var(--red);border-color:var(--red);background:var(--red-bg)}
 .hub-embed-wrap{height:calc(100vh - 60px);padding:0}
