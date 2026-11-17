@@ -19,6 +19,12 @@
 --      import» refused, merges + import + vanished-booking cancels / snapshot + upsert) — service role only
 --  7 · bl_report_log_manual (the camp hub logs a manual import) · bl_report_last (Week's «Last import» line)
 --      · view bl_report_last_import (last import per camp)
+--  8 · Storage bucket bl-reports (private): every downloaded report CSV, gzipped, kept 30 days for the audit
+--  9 · cron mail-ingest-15min: every 15 minutes, day and night (was 07–22 UTC: no Sri Lanka import before ~12:30 Colombo)
+--
+--  How the reports come (17 Nov 2026): from no-reply@bookinglayer.com, NO attachment, an HTML «Download report» link to
+--  a signed https://downloads.bookinglayer.io/reports/<uuid>?expires=…&signature=… (30 days, no login). mail-ingest
+--  fetches only that host and path (never api. / app.bookinglayer.io).
 --
 --  Requires camp-trips.sql, camp-trips-v2.sql, camp-trips-bl-check.sql (live). Idempotent: safe to run again.
 --  NOT run against production by the agent — Miguel runs it.
@@ -69,6 +75,12 @@ create table if not exists public.bl_report_runs (
   by_name text,
   finished_at timestamptz
 );
+alter table public.bl_report_runs add column if not exists download jsonb;      -- hosts / paths followed (never the signature), status, content type, bytes
+alter table public.bl_report_runs add column if not exists file_sha256 text;    -- the CSV as downloaded
+alter table public.bl_report_runs add column if not exists file_bytes int;
+alter table public.bl_report_runs add column if not exists file_path text;      -- bl-reports/<day>/<kind>-<camp>-<message>.csv.gz (the same file once)
+alter table public.bl_report_runs add column if not exists file_error text;
+create index if not exists bl_report_runs_sha_idx on public.bl_report_runs (file_sha256);
 create index if not exists bl_report_runs_loc_idx on public.bl_report_runs (location_id, report, status, received_at desc);
 create index if not exists bl_report_runs_created_idx on public.bl_report_runs (created_at desc);
 alter table public.bl_report_runs enable row level security;
@@ -256,6 +268,12 @@ select distinct on (coalesce(r.location_slug, r.report)) coalesce(r.location_slu
  where r.status = 'imported'
  order by coalesce(r.location_slug, r.report), case when r.source = 'mail' then r.received_at else coalesce(r.finished_at, r.received_at) end desc;
 grant select on public.bl_report_last_import to authenticated;
+
+-- ── 8 · The report files (private: guest data; the Edge Function writes with the service role, no policy for anyone else) ─
+insert into storage.buckets (id, name, public) values ('bl-reports', 'bl-reports', false) on conflict (id) do nothing;
+
+-- ── 9 · mail-ingest every 15 minutes, all day (the command — with its secret — is kept; only the schedule changes) ─
+select cron.alter_job(jobid, schedule := '*/15 * * * *') from cron.job where jobname = 'mail-ingest-15min';
 
 -- ════════════════════════════════════════════════════════════════════════════
 --  Run order: AFTER transport-catalog-one-source.sql and camp-trips-bl-check.sql; run THIS file again whenever a file that

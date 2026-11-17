@@ -13,8 +13,14 @@
 //   «App - Revenue & Partners (check-in last 30 days)»      daily → bookings (lib/bl-revenue.js)
 //
 // The one rule that must never break: an invoice is never archived (Miguel downloads and pays
-// from the inbox). Only a message whose subject or attachment carries one of the titles above,
-// and that has no PDF attached, is a report; everything else is «none» and is left alone.
+// from the inbox). Only a message FROM no-reply@bookinglayer.com whose subject carries one of the titles
+// above, and that has no PDF attached, is a report; everything else is «none» and is left alone.
+//
+// How the reports really come (17 Nov 2026): no attachment. From no-reply@bookinglayer.com, subject
+// «Report: 17 November 2026 - <report title>», an HTML body with a «Download report» link to
+// https://downloads.bookinglayer.io/reports/<uuid>?expires=…&signature=… (signed, 30 days, no login).
+// reportLink() takes that link (a Google redirect unwrapped) and accepts ONLY https://downloads.bookinglayer.io/reports/…
+// — never api. or app.bookinglayer.io. mail-ingest downloads it server-side (reports.ts). A CSV attachment still works.
 (function (root, factory) {
   const api = factory();
   if (typeof module === 'object' && module.exports) module.exports = api;
@@ -39,22 +45,80 @@
     { kind: 'staff_copy', camp: 'sri-lanka', re: /\bapp semana sri lanka\b/ },
     { kind: 'revenue', camp: null, re: /\bapp revenue and partners\b/ },
   ];
+  const SENDER = 'no-reply@bookinglayer.com';
+  const fromBookinglayer = from => { const m = String(from || '').toLowerCase().match(/<([^>]+)>/); return (m ? m[1] : String(from || '').toLowerCase()).trim() === SENDER; };
   const isPdf = a => /\.pdf$/i.test(String(a.filename || '')) || /pdf/i.test(String(a.mime || ''));
   const isCsv = a => /\.csv$/i.test(String(a.filename || '')) || /^text\/(csv|comma-separated-values)\b/i.test(String(a.mime || '')) || /^application\/(csv|vnd\.ms-excel)\b/i.test(String(a.mime || '')) && /\.csv$/i.test(String(a.filename || ''));
   function titleOf(text) { const t = norm(text); return TITLES.find(x => x.re.test(t)) || null; }
-  // msg = { subject, attachments: [{ filename, mime }] }
-  //   → { kind: 'camp'|'staff_copy'|'revenue'|'none', camp, csv (the attachment to import), archivable, reason }
+  // msg = { from, subject, html, text, attachments: [{ filename, mime }] }
+  //   → { kind: 'camp'|'staff_copy'|'revenue'|'none', camp, csv (an attachment to import) | link (the download URL),
+  //       archivable, reason }
   function routeEmail(msg) {
-    const atts = (msg && msg.attachments) || [];
-    const none = reason => ({ kind: 'none', camp: null, csv: null, archivable: false, reason });
+    msg = msg || {};
+    const atts = msg.attachments || [];
+    const none = reason => ({ kind: 'none', camp: null, csv: null, link: null, archivable: false, reason });
     // A PDF anywhere = an invoice (or something Miguel must see): never a report, never archived.
     if (atts.some(isPdf)) return none('has a PDF attachment — left to the invoice pipeline');
-    const t = titleOf(msg && msg.subject) || atts.map(a => titleOf(a.filename)).find(Boolean) || null;
+    if (!fromBookinglayer(msg.from)) return none(`not from ${SENDER}`);
+    const t = titleOf(msg.subject) || atts.map(a => titleOf(a.filename)).find(Boolean) || null;
     if (!t) return none('not a Bookinglayer report title');
+    if (t.kind === 'staff_copy') return { kind: t.kind, camp: t.camp, csv: null, link: null, archivable: true, reason: 'staff copy — the hourly AUTO report is the source' };
     const csvs = atts.filter(isCsv);
-    if (t.kind === 'staff_copy') return { kind: t.kind, camp: t.camp, csv: null, archivable: true, reason: 'staff copy — the hourly AUTO report is the source' };
-    if (csvs.length !== 1) return { kind: t.kind, camp: t.camp, csv: null, archivable: false, reason: csvs.length ? `${csvs.length} CSV attachments — expected one` : 'no CSV attachment (a download link?)' };
-    return { kind: t.kind, camp: t.camp, csv: csvs[0], archivable: true, reason: '' };
+    if (csvs.length === 1) return { kind: t.kind, camp: t.camp, csv: csvs[0], link: null, archivable: true, reason: '' };
+    if (csvs.length > 1) return { kind: t.kind, camp: t.camp, csv: null, link: null, archivable: false, reason: `${csvs.length} CSV attachments — expected one` };
+    const L = reportLink(msg.html, msg.text);
+    if (!L.url) return { kind: t.kind, camp: t.camp, csv: null, link: null, archivable: false, reason: L.why };
+    return { kind: t.kind, camp: t.camp, csv: null, link: L.url, archivable: true, reason: '' };
+  }
+
+  // ── The «Download report» link ───────────────────────────────────────────
+  const DOWNLOAD_HOST = 'downloads.bookinglayer.io';
+  const ent = s => String(s || '').replace(/&amp;/gi, '&').replace(/&#x?0*3[dD];|&#61;/g, '=').replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'");
+  // A Google redirect (https://www.google.com/url?q=<the link>&sa=…) → the link inside it.
+  function unwrap(u) {
+    for (let i = 0; i < 3; i++) {
+      let x; try { x = new URL(u); } catch (_) { return u; }
+      if (/(^|\.)google\.[a-z.]+$/i.test(x.hostname) && x.pathname === '/url') { const q = x.searchParams.get('q') || x.searchParams.get('url'); if (!q) return u; u = q; continue; }
+      return u;
+    }
+    return u;
+  }
+  // ONLY https://downloads.bookinglayer.io/reports/… (no user, no port). Anything else → null + why.
+  function safeReportUrl(u) {
+    let x; try { x = new URL(String(u || '').trim()); } catch (_) { return { url: null, why: 'the download link is not a URL' }; }
+    if (x.protocol !== 'https:') return { url: null, why: `the download link is not https (${x.protocol})` };
+    if (x.hostname.toLowerCase() !== DOWNLOAD_HOST) return { url: null, why: `the download link goes to ${x.hostname}, not ${DOWNLOAD_HOST} — not followed` };
+    if (x.username || x.password || (x.port && x.port !== '443')) return { url: null, why: 'the download link has a user or a port — not followed' };
+    if (!/^\/reports\/[^/]+/.test(x.pathname)) return { url: null, why: `the download link path is ${x.pathname}, not /reports/… — not followed` };
+    return { url: x.toString(), why: '' };
+  }
+  // html / text of the email → { url, why }. The anchor whose text says «Download report» first; else any link to the
+  // download host (the plain-text part, or a link without that text).
+  function reportLink(html, text) {
+    const anchors = [...String(html || '').matchAll(/<a\b[^>]*\bhref\s*=\s*(["'])(.*?)\1[^>]*>([\s\S]*?)<\/a>/gi)]
+      .map(m => ({ href: unwrap(ent(m[2]).trim()), label: ent(m[3].replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ').trim() }));
+    const cands = anchors.filter(a => /download\s+report/i.test(a.label)).map(a => a.href)
+      .concat(anchors.map(a => a.href).filter(h => h.includes(DOWNLOAD_HOST)))
+      .concat([...String(text || '').matchAll(/https?:\/\/[^\s<>"')\]]+/g)].map(m => unwrap(ent(m[0]))).filter(h => h.includes(DOWNLOAD_HOST) || /google\.[a-z.]+\/url/.test(h)));
+    if (!cands.length) return { url: null, why: 'no «Download report» link in the email' };
+    let last = null;
+    for (const c of cands) { const r = safeReportUrl(c); if (r.url) return r; last = last || r; }
+    return last;
+  }
+  // The host + path of a link, never its signature (for the run log).
+  const linkForLog = u => { try { const x = new URL(u); return x.host + x.pathname; } catch (_) { return ''; } };
+  // A redirect of the download may go to the same host or to cloud storage (S3 / Google / Azure / R2) — nothing else.
+  function allowedRedirect(u) {
+    let x; try { x = new URL(u); } catch (_) { return false; }
+    if (x.protocol !== 'https:' || x.username || x.password) return false;
+    const h = x.hostname.toLowerCase();
+    return h === DOWNLOAD_HOST || /^([a-z0-9.-]+\.)?s3[a-z0-9.-]*\.amazonaws\.com$/.test(h) || h === 'storage.googleapis.com'
+      || /\.blob\.core\.windows\.net$/.test(h) || /\.r2\.cloudflarestorage\.com$/.test(h);
+  }
+  // What came back is a CSV (not an HTML «link expired» page, not a PDF): a first line with commas, no markup.
+  function looksLikeCsv(text) {
+    const first = (String(text || '').replace(/^\uFEFF/, '').split(/\r?\n/, 1)[0] || '').trim();
+    return !!first && first.includes(',') && !/^<|<html|<!doctype|%PDF/i.test(first);
   }
 
   // Oldest first; for each camp only the newest pending report is imported, the older ones are superseded.
@@ -240,5 +304,5 @@
     return { text: `Last import: ${when} ${at.slice(11, 16)} · ${who}`, amber };
   }
 
-  return { routeEmail, titleOf, norm, isPdf, isCsv, orderReports, olderThanLast, localNow, reportWindow, insideWindow, WINDOW, pricesFromCatalog, planCampReport, summarize, lastImportLine, STALE_HOURS };
+  return { routeEmail, reportLink, safeReportUrl, unwrap, allowedRedirect, looksLikeCsv, linkForLog, fromBookinglayer, SENDER, DOWNLOAD_HOST, titleOf, norm, isPdf, isCsv, orderReports, olderThanLast, localNow, reportWindow, insideWindow, WINDOW, pricesFromCatalog, planCampReport, summarize, lastImportLine, STALE_HOURS };
 });

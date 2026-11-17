@@ -154,13 +154,15 @@ Movements (LK).
 | `drive-sync-4x` | 07,12,17,21 h | `drive-sync` — **has never run**: the cron command still carries the placeholder secret (401 on every call). To be rebuilt in wave 3 of docs/PLANO-interface-e-automacao.md |
 | `run-sri-lanka-month-end` | 28–31 18:25 | `run-month-end` — same placeholder-secret problem, never ran |
 | weekly digest | not scheduled | `hq-weekly-digest` (preview only from the HQ) |
-| `mail-ingest-15min` | */15 7–22 UTC | `mail-ingest`: Bookinglayer reports of accounting@ first (`reports.ts`), then the invoices |
+| `mail-ingest-15min` | */15, all day (since 17 Nov 2026) | `mail-ingest`: Bookinglayer reports of accounting@ first (`reports.ts`), then the invoices |
 
 **Bookinglayer reports by email (17 Nov 2026, `supabase/bl-report-ingest.sql`):** mail-ingest imports the hourly
 «AUTO Marrocos / Sri Lanka - hourly para a app» camp reports with the camp hub's own rules (`lib/bl-report.js` via
 `lib/bl-ingest.js`, copied to `supabase/functions/_shared/lib/` by `npm run sync:edge`), the daily «App - Revenue &
 Partners» into `bookings` (`lib/bl-revenue.js`, every changed row snapshotted in `bookings_snapshots`), and archives only
-report emails — never one with a PDF. `bl_report_settings` holds dry run (default on) and archive (default off);
+report emails — never one with a PDF. The reports come with no attachment: only the «Download report» link to
+https://downloads.bookinglayer.io/reports/… is fetched (20 MB, 30 s, redirects to cloud storage only); each CSV is kept 30 days
+in the private bucket `bl-reports`. `bl_report_settings` holds dry run (default on) and archive (default off);
 every email and every manual import is a row of `bl_report_runs`; Week shows the last one under its Import button.
 
 The duplicate `gmail-sync-10min` job was removed on 22 Oct 2026.

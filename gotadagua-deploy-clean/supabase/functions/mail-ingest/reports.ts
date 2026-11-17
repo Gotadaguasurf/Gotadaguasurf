@@ -7,7 +7,12 @@
 //    revenue     «App - Revenue & Partners (check-in last 30 days)» → public.bookings (lib/bl-revenue.js)
 //    staff_copy  «App - Semana Marrocos / Sri Lanka (Week + Transfers)» → archived only
 //  Anything else is «none» and is never touched. A message with a PDF is never a report → INVOICES ARE NEVER
-//  ARCHIVED (Miguel downloads and pays them from the inbox).
+//  ARCHIVED (Miguel downloads and pays them from the inbox). A report comes from no-reply@bookinglayer.com with NO
+//  attachment: subject «Report: <date> - <title>», an HTML «Download report» link to a signed
+//  https://downloads.bookinglayer.io/reports/<uuid>?expires=…&signature=… (30 days, no login). Only that host and path
+//  are fetched (never api. / app.bookinglayer.io), 30 s timeout, 20 MB cap, redirects only to the same host or cloud
+//  storage (logged), the body must be a CSV. 401 / 403 / 410 → «link expired». Every file downloaded is kept 30 days,
+//  gzipped, in the private Storage bucket bl-reports (identical files once).
 //
 //  Safety: bl_report_settings (supabase/bl-report-ingest.sql) starts in DRY RUN — parse, compute, log the diff in
 //  bl_report_runs, import nothing, archive nothing. Each Gmail message is processed once (bl_report_runs.message_id
@@ -32,10 +37,14 @@ const BRV = () => G.BlRevenue
 const CC = () => G.CampConfig
 
 export const REPORT_ACCOUNT = 'accounting@gotadaguasurf.com'
-// Wide on purpose (the exact sender is not pinned): routeEmail decides; anything that is not a report is logged «ignored» once.
-export const REPORT_QUERY = 'newer_than:2d -in:spam -in:trash ({subject:hourly subject:semana subject:revenue} OR filename:csv)'
+// Bookinglayer's sender only; routeEmail decides on the title (anything else from it is logged «ignored» once).
+export const REPORT_QUERY = 'from:no-reply@bookinglayer.com newer_than:2d -in:spam -in:trash'
 const TRIPS_LOAD_FROM = '2026-10-01'   // = camp-hub/transport.js (the trips the import compares against)
 const MAX_MESSAGES = 120
+const MAX_DOWNLOAD = 20 * 1024 * 1024
+const DOWNLOAD_TIMEOUT_MS = 30_000
+const BUCKET = 'bl-reports'
+const KEEP_DAYS = 30
 
 export interface ReportDeps {
   gmail: (token: string, path: string) => Promise<Any>
@@ -43,6 +52,7 @@ export interface ReportDeps {
   header: (msg: Record<string, unknown>, name: string) => string
   b64urlToBytes: (s: string) => Uint8Array
   modify?: (token: string, id: string, body: Record<string, unknown>) => Promise<unknown>   // tests replace it
+  fetch?: typeof fetch                                                                      // the report download (tests replace it)
 }
 interface Att { filename: string; mime: string; attachmentId: string; data: string; size: number }
 function attachmentsOf(part: Record<string, unknown>, out: Att[] = []): Att[] {
@@ -52,6 +62,14 @@ function attachmentsOf(part: Record<string, unknown>, out: Att[] = []): Att[] {
   if (filename) out.push({ filename, mime: String(part.mimeType || ''), attachmentId: String(body.attachmentId || ''), data: String(body.data || ''), size: Number(body.size || 0) })
   for (const p of (part.parts as Record<string, unknown>[] | undefined) || []) attachmentsOf(p, out)
   return out
+}
+// The text of the email's html / plain part (base64url in format=full).
+function bodyOf(part: Record<string, unknown>, mime: string, b64: (s: string) => Uint8Array): string {
+  if (!part) return ''
+  const body = (part.body || {}) as Record<string, unknown>
+  if (String(part.mimeType || '').toLowerCase() === mime && !part.filename && body.data) return new TextDecoder('utf-8').decode(b64(String(body.data)))
+  for (const p of (part.parts as Record<string, unknown>[] | undefined) || []) { const t = bodyOf(p, mime, b64); if (t) return t }
+  return ''
 }
 const canModify = (scopes: string | null | undefined) => /gmail\.modify|mail\.google\.com/.test(String(scopes || ''))
 
@@ -92,19 +110,21 @@ export async function runReports(db: Any, deps: ReportDeps, opts: ReportRunOpts 
     if (seenSet.has(id)) continue
     const msg = await deps.gmail(token, `messages/${id}?format=full`)
     const atts = attachmentsOf(msg.payload)
-    const subject = deps.header(msg, 'Subject')
-    msgs.push({ id, msg, atts, subject, from: deps.header(msg, 'From'), internalDate: Number(msg.internalDate || 0), labels: msg.labelIds || [],
-      route: BI().routeEmail({ subject, attachments: atts.map(a => ({ filename: a.filename, mime: a.mime })) }) })
+    const subject = deps.header(msg, 'Subject'), from = deps.header(msg, 'From')
+    msgs.push({ id, msg, atts, subject, from, internalDate: Number(msg.internalDate || 0), labels: msg.labelIds || [],
+      route: BI().routeEmail({ from, subject, html: bodyOf(msg.payload, 'text/html', deps.b64urlToBytes), text: bodyOf(msg.payload, 'text/plain', deps.b64urlToBytes),
+        attachments: atts.map(a => ({ filename: a.filename, mime: a.mime })) }) })
   }
   summary.checked = msgs.length
   const { order, superseded } = BI().orderReports(msgs)
+  if (msgs.length) await purgeFiles(db).catch(() => { /* the bucket is housekeeping, never a reason to stop */ })
 
   // 2 · one by one, oldest first
   for (const m of order) {
     const route = m.route
     const receivedAt = m.internalDate ? new Date(m.internalDate).toISOString() : null
     const claim = { account_email: REPORT_ACCOUNT, message_id: m.id, received_at: receivedAt, subject: String(m.subject || '').slice(0, 200),
-      filename: (route.csv ? route.csv.filename : (m.atts[0] || {}).filename || '').slice(0, 200), report: route.kind, location_slug: route.camp, status: 'processing' }
+      filename: (route.csv ? route.csv.filename : route.link ? BI().linkForLog(route.link) : (m.atts[0] || {}).filename || '').slice(0, 200), report: route.kind, location_slug: route.camp, status: 'processing' }
     const { data: run, error: claimErr } = await db.from('bl_report_runs').insert(claim).select('id').single()
     if (claimErr || !run) { lines.push(`${m.id}: already taken by another run`); continue }
     const dry = route.kind === 'revenue' ? !!settings.dry_run_revenue : !!settings.dry_run_camp
@@ -113,11 +133,18 @@ export async function runReports(db: Any, deps: ReportDeps, opts: ReportRunOpts 
       if (route.kind === 'none') status = await finish(db, run.id, 'ignored', { error: route.reason })
       else if (route.kind === 'staff_copy') status = await finish(db, run.id, dry ? 'dry_run' : 'copy', { changes: { action: 'staff copy: archive only (the hourly AUTO report is the source)' } })
       else if (superseded.has(m.id)) status = await finish(db, run.id, 'superseded', { error: 'a newer report of the same kind came in the same run' })
-      else if (!route.csv) status = await finish(db, run.id, 'refused', { error: route.reason })
+      else if (!route.csv && !route.link) status = await finish(db, run.id, 'refused', { error: route.reason })
+      else if (await olderThanImported(db, route, receivedAt!)) status = await finish(db, run.id, 'superseded', { error: 'older than the report already imported' })
       else {
-        const text = await csvText(deps, token, m.id, route.csv, m.atts)
-        status = route.kind === 'camp' ? await handleCamp(db, run.id, route.camp, text, route.csv.filename, receivedAt!, settings, dry)
-          : await handleRevenue(db, run.id, text, receivedAt!, dry)
+        const got = route.csv ? await attachmentFile(deps, token, m.id, route.csv, m.atts) : await downloadReport(deps.fetch || fetch, route.link)
+        if (got.refused) status = await finish(db, run.id, 'refused', { error: got.refused, download: got.download || null })
+        else {
+          const file = await keepFile(db, route, m.id, got.bytes).catch((e: Error) => ({ file_error: String(e.message || e).slice(0, 300) }))
+          await db.from('bl_report_runs').update({ download: got.download || null, ...file }).eq('id', run.id)
+          const name = route.csv ? route.csv.filename : `${String(m.subject || 'report').replace(/[^\w .()&-]+/g, ' ').trim().slice(0, 120)}.csv`
+          status = route.kind === 'camp' ? await handleCamp(db, run.id, route.camp, got.text, name, receivedAt!, settings, dry)
+            : await handleRevenue(db, run.id, got.text, receivedAt!, dry)
+        }
       }
     } catch (e) {
       status = await finish(db, run.id, 'error', { error: ((e as Error).message || String(e)).slice(0, 800) })
@@ -146,12 +173,87 @@ async function finish(db: Any, id: string, status: string, extra: Record<string,
   await db.from('bl_report_runs').update({ status, finished_at: new Date().toISOString(), ...extra }).eq('id', id)
   return status
 }
-async function csvText(deps: ReportDeps, token: string, messageId: string, csv: { filename: string }, atts: Att[]) {
+interface Got { text: string; bytes: Uint8Array; refused?: string; download?: Record<string, unknown> }
+const decode = (bytes: Uint8Array) => new TextDecoder('utf-8').decode(bytes).replace(/^\uFEFF/, '')
+async function attachmentFile(deps: ReportDeps, token: string, messageId: string, csv: { filename: string }, atts: Att[]): Promise<Got> {
   const a = atts.find(x => x.filename === csv.filename)!
   let b64 = a.data
   if (!b64 && a.attachmentId) b64 = String((await deps.gmail(token, `messages/${messageId}/attachments/${a.attachmentId}`)).data || '')
-  if (!b64) throw new Error('the CSV attachment is empty')
-  return new TextDecoder('utf-8').decode(deps.b64urlToBytes(b64)).replace(/^﻿/, '')
+  if (!b64) return { text: '', bytes: new Uint8Array(), refused: 'the CSV attachment is empty' }
+  const bytes = deps.b64urlToBytes(b64)
+  return { text: decode(bytes), bytes, download: { attachment: csv.filename } }
+}
+// The signed «Download report» link → the CSV. Only https://downloads.bookinglayer.io/reports/… (routeEmail checked it);
+// redirects followed by hand, each one to the same host or cloud storage only, and logged without the signature.
+export async function downloadReport(fetchFn: typeof fetch, url: string): Promise<Got> {
+  const hops = [BI().linkForLog(url)]
+  const no = (refused: string, extra: Record<string, unknown> = {}): Got => ({ text: '', bytes: new Uint8Array(), refused, download: { hops, ...extra } })
+  if (!BI().safeReportUrl(url).url) return no('the download link is not https://downloads.bookinglayer.io/reports/… — not followed')
+  let u = url
+  for (let hop = 0; hop < 4; hop++) {
+    const ctl = new AbortController(); const tm = setTimeout(() => ctl.abort(), DOWNLOAD_TIMEOUT_MS)
+    try {
+      let r: Response
+      try { r = await fetchFn(u, { redirect: 'manual', signal: ctl.signal, headers: { accept: 'text/csv, text/plain, */*' } }) }
+      catch (e) { return no(ctl.signal.aborted ? `download timed out (${DOWNLOAD_TIMEOUT_MS / 1000} s)` : 'download failed: ' + String((e as Error).message || e).slice(0, 200)) }
+      if ([301, 302, 303, 307, 308].includes(r.status)) {
+        const loc = r.headers.get('location'); if (!loc) return no(`HTTP ${r.status} without a location`)
+        const next = new URL(loc, u).toString()
+        if (!BI().allowedRedirect(next)) return no(`the download redirected to ${new URL(next).host} — not followed`)
+        hops.push(BI().linkForLog(next)); u = next; continue
+      }
+      if ([401, 403, 410].includes(r.status)) return no(`link expired (HTTP ${r.status})`, { status: r.status })
+      if (!r.ok) return no(`download failed: HTTP ${r.status}`, { status: r.status })
+      const len = Number(r.headers.get('content-length') || 0)
+      if (len > MAX_DOWNLOAD) return no(`the report is ${Math.round(len / 1048576)} MB — over the ${MAX_DOWNLOAD / 1048576} MB cap`)
+      const chunks: Uint8Array[] = []; let total = 0
+      const reader = r.body ? r.body.getReader() : null
+      if (reader) for (;;) {
+        const { done, value } = await reader.read(); if (done) break
+        total += value.length; if (total > MAX_DOWNLOAD) { await reader.cancel().catch(() => {}); return no(`the report is over the ${MAX_DOWNLOAD / 1048576} MB cap`) }
+        chunks.push(value)
+      }
+      const bytes = new Uint8Array(total); let o = 0; for (const c of chunks) { bytes.set(c, o); o += c.length }
+      const text = decode(bytes)
+      const download = { hops, status: r.status, content_type: r.headers.get('content-type') || null, bytes: total }
+      // an HTML «link expired» page, an XML S3 error, a PDF… is not the report
+      if (!BI().looksLikeCsv(text)) return { text: '', bytes, refused: /expired|signature|accessdenied|request has expired/i.test(text.slice(0, 2000)) ? 'link expired (not a CSV: the page says so)' : 'the download is not a CSV', download }
+      return { text, bytes, download }
+    } finally { clearTimeout(tm) }
+  }
+  return no('too many redirects')
+}
+
+// ── The CSVs, kept 30 days for the audit (private bucket, gzip, one copy per identical file) ─────────
+async function sha256Hex(bytes: Uint8Array) { const h = await crypto.subtle.digest('SHA-256', bytes as unknown as BufferSource); return [...new Uint8Array(h)].map(b => b.toString(16).padStart(2, '0')).join('') }
+async function gzip(bytes: Uint8Array): Promise<Uint8Array> {
+  return new Uint8Array(await new Response(new Blob([bytes as unknown as BlobPart]).stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer())
+}
+async function keepFile(db: Any, route: Any, messageId: string, bytes: Uint8Array) {
+  const sha = await sha256Hex(bytes)
+  const { data: same } = await db.from('bl_report_runs').select('file_path').eq('file_sha256', sha).not('file_path', 'is', null).limit(1)
+  if (same && same[0] && same[0].file_path) return { file_sha256: sha, file_bytes: bytes.length, file_path: same[0].file_path }
+  const path = `${new Date().toISOString().slice(0, 10)}/${route.kind}${route.camp ? '-' + route.camp : ''}-${messageId}.csv.gz`
+  const { error } = await db.storage.from(BUCKET).upload(path, await gzip(bytes), { contentType: 'application/gzip', upsert: true })
+  if (error) return { file_sha256: sha, file_bytes: bytes.length, file_error: 'not kept: ' + String(error.message || error).slice(0, 200) }
+  return { file_sha256: sha, file_bytes: bytes.length, file_path: path }
+}
+// Folders are days (YYYY-MM-DD/…): those older than 30 days are removed.
+async function purgeFiles(db: Any) {
+  const cutoff = new Date(Date.now() - KEEP_DAYS * 86400000).toISOString().slice(0, 10)
+  const { data: days } = await db.storage.from(BUCKET).list('', { limit: 1000 })
+  for (const d of (days || []).filter((x: Any) => /^\d{4}-\d{2}-\d{2}$/.test(x.name) && x.name < cutoff)) {
+    const { data: files } = await db.storage.from(BUCKET).list(d.name, { limit: 1000 })
+    const paths = (files || []).map((f: Any) => `${d.name}/${f.name}`)
+    if (paths.length) await db.storage.from(BUCKET).remove(paths)
+  }
+}
+// Before downloading: a report older than the last one imported (same camp, or Revenue) is never needed.
+async function olderThanImported(db: Any, route: Any, receivedAt: string) {
+  let q = db.from('bl_report_runs').select('received_at').eq('report', route.kind).eq('source', 'mail').eq('status', 'imported')
+  if (route.camp) q = q.eq('location_slug', route.camp)
+  const { data } = await q.order('received_at', { ascending: false }).limit(1)
+  return !!(data && data[0] && BI().olderThanLast(receivedAt, data[0].received_at))
 }
 async function gmailModify(token: string, id: string, body: Record<string, unknown>) {
   const r = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}/modify`, {

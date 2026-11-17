@@ -93,7 +93,8 @@ grant execute on function public.hq_invoice_to_bank(uuid) to authenticated;
 -- cron: every 15 minutes, 07–22 h UTC. The secret is substituted by the deploy
 -- script (never commit the real value here).
 select cron.unschedule(jobid) from cron.job where jobname = 'mail-ingest-15min';
-select cron.schedule('mail-ingest-15min', '*/15 7-22 * * *', $$
+-- every 15 minutes, day and night since 17 Nov 2026 (the hourly Bookinglayer camp reports; bl-report-ingest.sql changes the live job)
+select cron.schedule('mail-ingest-15min', '*/15 * * * *', $$
   select net.http_post(
     url     := 'https://wnksmcjqnbxaagyhfxlt.supabase.co/functions/v1/mail-ingest',
     headers := jsonb_build_object('Content-Type', 'application/json', 'x-mail-ingest-secret', '__MAIL_INGEST_SECRET__'),

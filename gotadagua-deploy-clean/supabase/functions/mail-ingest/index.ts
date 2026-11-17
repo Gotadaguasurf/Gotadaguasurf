@@ -341,7 +341,7 @@ async function run(db: Db, opts: RunOpts = {}) {
         // a Bookinglayer report (never a PDF): reports.ts imports it and logs it in bl_report_runs
         // fails safe: without the library nothing is a report (an invoice is never skipped by mistake)
         const BI = (globalThis as any).BlIngest
-        const reportKind = BI && typeof BI.routeEmail === 'function' ? BI.routeEmail({ subject, attachments: atts }).kind : 'none'
+        const reportKind = BI && typeof BI.routeEmail === 'function' ? BI.routeEmail({ from, subject, attachments: atts }).kind : 'none'
         if (reportKind !== 'none') { await record(marker, { status: 'skipped', reason: 'relatório do Bookinglayer (bl_report_runs)' }, null); continue }
         if (!pdfs.length) { await record(marker, { status: 'skipped', reason: 'sem PDF em anexo' }, null); continue }
         for (const a of pdfs) {
