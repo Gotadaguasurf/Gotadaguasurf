@@ -63,6 +63,10 @@ body{background:#e9e3cf;font-family:var(--gd-body);color:var(--gd-navy)}
 .pl-cover-foot{position:relative;padding:8mm var(--pl-mx) 13mm;margin-top:8mm;border-top:1px solid rgba(255,253,238,.22)}
 .pl-contact{display:flex;flex-wrap:wrap;gap:4px 20px;font-size:12.5px;font-weight:600;font-variant-numeric:tabular-nums}
 .pl-cover .pl-contact{color:#fffdf7}
+.pl-cover-for{font-family:var(--gd-serif);font-size:16px;color:var(--gd-bone);letter-spacing:.02em}
+.pl-reserv{font-size:13px;font-weight:600;color:#fffdf7;font-variant-numeric:tabular-nums}
+.pl-reserv a{color:inherit;text-decoration:none}
+.pl-end .pl-reserv{margin:16px 0 8px;color:var(--gd-bone)}
 .pl-generated{font-size:10.5px;color:#cdd8e2;margin-top:5px}
 
 /* ── a camp: paper sheet, website-style photo card as opener ── */
@@ -88,7 +92,6 @@ body{background:#e9e3cf;font-family:var(--gd-body);color:var(--gd-navy)}
 .pl-pack-desc{font-size:11px;color:var(--gd-navy-soft);line-height:1.5;margin:3px 0 4mm}
 .pl-table{width:100%;border-collapse:collapse;table-layout:fixed}
 .pl-matrix{font-size:12px}
-.pl-matrix col.pl-col-occ{width:21mm}
 .pl-matrix col.pl-col-season{width:32mm}
 .pl-matrix.pl-cols-4 col.pl-col-season{width:27mm}
 .pl-matrix.pl-cols-4 .pl-dates{white-space:normal}
@@ -105,7 +108,30 @@ body{background:#e9e3cf;font-family:var(--gd-body);color:var(--gd-navy)}
 .pl-matrix tbody tr:last-child td{border-bottom:0}
 .pl-matrix tbody tr{break-inside:avoid}
 .pl-room{font-weight:600;color:var(--gd-navy);padding-left:0;line-height:1.3}
-.pl-occ{color:var(--gd-navy-soft);font-size:10.5px}
+.pl-occ-in{color:var(--gd-navy-soft);font-size:10px;margin-right:6px;font-weight:400}
+.pl-dates i{font-style:normal;color:var(--gd-moss)}
+/* seasons: 15-month strip + seasons × years table (brand palette) */
+.pl-season-card{background:var(--gd-card);border:1px solid var(--gd-line);border-radius:14px;padding:9mm 6mm 5mm}
+.pl-strip{position:relative;height:9mm;border-radius:6px;background:var(--gd-cream)}
+.pl-band{position:absolute;top:0;bottom:0;display:flex;align-items:center;justify-content:center;font-family:var(--gd-display);font-size:12px;text-transform:uppercase;letter-spacing:.04em;overflow:hidden;white-space:nowrap;box-shadow:inset -1.5px 0 0 var(--gd-card)}
+.pl-band:first-child{border-radius:6px 0 0 6px}
+.pl-band.low{background:var(--gd-sage);color:var(--gd-bone)}
+.pl-band.mid{background:var(--gd-ochre);color:var(--gd-olive)}
+.pl-band.high{background:var(--gd-terra);color:var(--gd-bone)}
+.pl-band.special,.pl-band.other{background:var(--gd-olive);color:var(--gd-bone)}
+.pl-band.closed{background:var(--gd-cream);color:var(--gd-navy-soft);font-family:var(--gd-body);font-size:9px;text-transform:none;letter-spacing:0}
+.pl-band.unset{background:transparent;color:#b8ad8a;font-family:var(--gd-body);font-size:9px;text-transform:none;letter-spacing:0;border:1px dashed var(--gd-line-2)}
+.pl-today{position:absolute;top:-5mm;bottom:-1mm;border-left:1.5px solid var(--gd-navy)}
+.pl-today span{position:absolute;top:0;left:3px;font-size:8.5px;font-weight:700;color:var(--gd-navy);white-space:nowrap;line-height:1}
+.pl-months{display:grid;margin-top:4px;font-size:8.5px;color:var(--gd-navy-soft)}
+.pl-months span{border-left:1px solid var(--gd-line);padding-left:3px;white-space:nowrap;overflow:hidden}
+.pl-months b{display:block;color:var(--gd-navy);font-weight:700}
+.pl-season-table{margin-top:5mm;font-size:11px}
+.pl-season-table th,.pl-season-table td{text-align:left;vertical-align:top;padding:6px 6px 6px 0;border-top:1px solid var(--gd-line)}
+.pl-season-table thead th{border-top:0;font-size:9.5px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--gd-navy-soft)}
+.pl-season-table thead th:first-child{width:30mm}
+.pl-season-table td div{white-space:nowrap;line-height:1.55;font-variant-numeric:tabular-nums}
+.pl-season-table .na{color:#b8ad8a}
 .pl-line{min-height:19px;display:flex;align-items:center}
 .pl-cell .pl-line{justify-content:flex-end}
 .pl-amt{font-family:var(--gd-body);font-weight:600;font-size:12.5px;color:var(--gd-navy);font-variant-numeric:tabular-nums;white-space:nowrap}
@@ -113,7 +139,7 @@ body{background:#e9e3cf;font-family:var(--gd-body);color:var(--gd-navy)}
 
 /* lists: surf, tours, add-ons — dashed rows like a menu, optional photo */
 .pl-items{background:var(--gd-card);border:1px solid var(--gd-line);border-radius:14px;padding:3mm 6mm;break-inside:auto}
-.pl-items.whole,.pl-part.whole{break-inside:avoid}
+.pl-items.whole,.pl-part.whole,.pl-keep{break-inside:avoid}
 .pl-items.with-photo{break-inside:avoid;display:grid;grid-template-columns:1fr 52mm;gap:6mm;align-items:start}
 .pl-photo{border-radius:12px;background-size:cover;background-position:center;height:66mm;margin:3mm 0}
 .pl-list td{padding:8px 0;border-bottom:1px dashed var(--gd-line-2);vertical-align:top;font-size:12px;line-height:1.35}
@@ -167,6 +193,15 @@ body{background:#e9e3cf;font-family:var(--gd-body);color:var(--gd-navy)}
   .pl-table{table-layout:auto}
   .pl-matrix col.pl-col-occ,.pl-matrix col.pl-col-season,.pl-list col.pl-col-num,.pl-transfers col{width:auto}
   .pl-dates{white-space:normal}
+  .pl-season-card{padding:22px 10px 10px}
+  .pl-pack{overflow-x:auto}
+  .pl-cell .pl-line{flex-wrap:wrap;justify-content:flex-end}
+  .pl-occ-in{margin-right:0;width:100%;text-align:right}
+  .pl-season-table td div{white-space:normal}
+  .pl-season-table thead th:first-child{width:auto}
+  .pl-months{font-size:7.5px}
+  .pl-months span:nth-child(even){visibility:hidden}
+  .pl-band{font-size:0}
   .pl-transfers td,.pl-transfers th{padding-left:10px;padding-right:10px}
   .pl-transfers tr.pl-veh td:first-child{padding-left:16px}
 }
