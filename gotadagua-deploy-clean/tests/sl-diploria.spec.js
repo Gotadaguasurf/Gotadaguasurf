@@ -162,7 +162,7 @@ test('sl dipløria: two quick taps on the last unit add one; no path adds past t
   await expect(frame.locator('#dipModels .dip-model[data-model="Euphoria Blue"] .ci-desc')).toHaveText('2 left');
 });
 
-test('sl dipløria: the other Sri Lanka tabs are unchanged (Drinks, Tours, Merch; Extras hidden without rows); the Staff roster has no Dipløria price', async ({ page }) => {
+test('sl dipløria: the other Sri Lanka tabs are unchanged (Drinks, Tours, Merch; Extras hidden without rows); the Staff roster has Dipløria too (17 Nov 2026)', async ({ page }) => {
   const { frame } = await openCampTab(page);
   await addConsumer(frame, 'Marie');
   expect(await frame.locator('#catTabs button').allInnerTexts()).toEqual(['Drinks', 'Tours/Activities', 'Merch', 'Dipløria']);
@@ -171,6 +171,47 @@ test('sl dipløria: the other Sri Lanka tabs are unchanged (Drinks, Tours, Merch
   await cat(frame, 'Merch');
   await expect(frame.locator('#itemGrid .ci-name', { hasText: 'T-Shirt M' })).toBeVisible();
   expect(await frame.evaluate(() => JSON.stringify(LOCATION_TAB_CONFIG.portugal))).toBe(JSON.stringify(['Tours', 'Extras', 'Merch', 'Diploria', 'Bar Tab']));
+  await frame.locator('#rosterStaffBtn').click();
+  await addConsumer(frame, 'Leo');
+  expect(await frame.locator('#catTabs button').allInnerTexts()).toEqual(['Drinks', 'Merch', 'Dipløria']);
+});
+
+// Miguel, 17 Nov 2026: staff buy shorts too — Dipløria on the Staff roster, exactly like a guest's.
+test('sl dipløria staff: the Staff roster sells Dipløria at the guest €55 (no staff price in the catalog), same stock, «Pay Dipløria» by card, no ledger row, no Staff plus slot, no «Make it an offer»', async ({ page }) => {
+  const { ctl, frame } = await openCampTab(page);
+  await frame.locator('#rosterStaffBtn').click();
+  await addConsumer(frame, 'Francisco');                          // Staff plus by config: drinks free, shorts never
+  await cat(frame, 'Dipløria');
+  await expect(frame.locator('#dipModels .dip-model').first().locator('.ci-price')).toHaveText('€55');
+  await frame.locator('#dipModels .dip-model[data-model="Core Black"]').click();
+  await frame.locator('#dipSizes .dip-size[data-size="28"]').click();
+  await expect(frame.locator('#dipTotal')).toHaveText('60 left of 61 · 1 sold');      // the same shelf as the guests
+  await cat(frame, 'Drinks');
+  await frame.locator('#itemGrid button:has(.ci-name:text-is("Lion Lager"))').first().click();
+  const items = await frame.evaluate(() => findConsumer(AG, 'staff').items.map(i => [i.n, i.p, i.c, i.priceType, i.compReason || '']));
+  expect(items).toEqual([['Core Black 28', 55, 'Diploria', 'staff', ''], ['Lion Lager', 0, 'Drinks', 'Gift', 'staff_plus']]);
+  await expect(frame.locator('#spLeftCharge')).toHaveText('6 of 7 free drinks left this week');   // the short used no slot
+  // the € block on the staff tab, and no «Make it an offer» on the short
+  await expect(frame.locator('#passBlock')).toContainText('Core Black 28');
+  await expect(frame.locator('#passBlock .ct-make-offer')).toHaveCount(0);
+  const dipId = await frame.evaluate(() => findConsumer(AG, 'staff').items.find(i => i.c === 'Diploria').id);
+  expect(await frame.evaluate((id) => applyOffer('staff', AG, id, { reason: 'gift', note: '' }), dipId)).toBe(false);
+  // stored as EUR on camp_tab_items (the /diploria/ history reads it, with the «staff» badge)
+  await expect.poll(() => (ctl.T.camp_tab_items || []).find(r => r.item_name === 'Core Black 28')?.currency || null).toBe('EUR');
+  expect((ctl.T.camp_guests || []).find(g => g.name === 'Francisco').is_staff).toBe(true);
+  // «Pay Dipløria»: card to Dipløria, nothing in the ledger
+  await frame.locator('#passPayBtn').click();
+  await expect(frame.locator('#passBlock .pass-done')).toHaveText('Dipløria paid · Card → Dipløria');
+  await page.waitForTimeout(1200);
+  expect(perItemRows(ctl)).toEqual([]);
+  for (const [w, h] of [[1280, 900], [390, 844]]) {
+    await page.setViewportSize({ width: w, height: h });
+    await cat(frame, 'Dipløria');
+    await page.waitForTimeout(200);
+    fs.mkdirSync(SHOTS, { recursive: true });
+    await page.screenshot({ path: path.join(process.env.OFFER_SHOTS || SHOTS, `diploria-staff-${w}.png`), fullPage: w === 390 });
+    expect(await frame.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+  }
 });
 
 test('portugal diploria unchanged: «Diploria» tab with its «Size 28…34» cards and «N left», no model picker', async ({ page }) => {

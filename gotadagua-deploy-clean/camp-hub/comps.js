@@ -18,6 +18,16 @@
                                     state the frame posts: camp-tab-state-changed)
    Same keys as transport's «Why is it free?» (camp-hub/paylink.js FREE_REASONS,
    camp_trips.free_reason) plus «marketing», which only the POS has.
+
+   17 Nov 2026:
+   · «Make it an offer» — a line already on the tab with a price is made free
+     afterwards (camp-tab-inner.html makeOfferForLine / applyOffer / undoOfferForLine).
+     Same reasons; meta.offer_from keeps what the line was ({p, priceType, s, …}) for
+     «Undo offer», meta.comp_at / comp_by / comp_by_name say when and who. A paid line
+     is refused («Mark unpaid» first), so a ledger row never has to be rewritten.
+   · Staff plus — STAFF_PLUS below: per camp, N free lines a Sat–Fri week for a staff
+     member flagged «Staff plus» (camp_guests.meta.staffPlus). The allowance is counted
+     from the lines (reason «staff_plus», note «k/N»), never stored.
    ════════════════════════════════════════════════════════════════════════════ */
 (function (root) {
   'use strict';
@@ -29,13 +39,72 @@
   const NO_REASON_LABEL = 'No reason (before 15 Nov)';
   const NOTE_MAX = 80;
 
-  const isReason = (k) => REASONS.some((r) => r[0] === k);
-  const label = (k) => (REASONS.find((r) => r[0] === k) || [])[1] || NO_REASON_LABEL;
+  // Reasons the app sets by itself — never a chip in «Why is it free?» (17 Nov 2026).
+  const AUTO_REASONS = [['staff_plus', 'Staff plus allowance']];
+  SHORT.staff_plus = 'Staff plus';
+  const ALL_REASONS = [...REASONS, ...AUTO_REASONS];
+
+  const isReason = (k) => ALL_REASONS.some((r) => r[0] === k);
+  const label = (k) => (ALL_REASONS.find((r) => r[0] === k) || [])[1] || NO_REASON_LABEL;
   const short = (k) => SHORT[k] || 'No reason';
+  // The reason as one phrase: «Gift to guest — birthday», «Staff plus allowance (3/7)».
+  const whyText = (k, note) => {
+    const n = cleanNote(note);
+    if (k === 'staff_plus') return `${label(k)}${n ? ` (${n})` : ''}`;
+    return `${label(k)}${n ? ` — ${n}` : ''}`;
+  };
   const needsNote = (k) => k === 'other';
   const cleanNote = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim().slice(0, NOTE_MAX);
   // A reason the caller may use: a known key, and a note when it is «other».
   const validWhy = (why) => !!why && isReason(why.reason) && (!needsNote(why.reason) || !!cleanNote(why.note));
+
+  // ── Staff plus (17 Nov 2026, Sri Lanka only for now) ─────────────────────
+  // Miguel: a staff type «Staff plus» with N free drinks a week. Per camp:
+  //   perWeek     free lines per person per Sat–Fri week (the Weekly P&L week)
+  //   categories  Camp Tab categories that count (default: every item in Drinks —
+  //               soft drinks and water too, when they are in the Drinks tab)
+  // Add a camp here to switch it on there; change 7 to change the allowance.
+  //   people      staff who are Staff plus every week with no switch, matched by
+  //               first name, case- and accent-insensitive (Miguel, 17 Nov 2026)
+  const STAFF_PLUS = {
+    'sri-lanka': { perWeek: 7, categories: ['Drinks'], people: ['Francisco', 'Federico'] },
+  };
+  // Spellings of a configured first name that are the same person
+  // («Frederico» on the Sri Lanka roster, «Fedrerico» in Miguel's message).
+  const STAFF_PLUS_ALIASES = { federico: ['frederico', 'fedrerico'] };
+  const firstName = (name) => String(name || '').trim().split(/\s+/)[0].normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  // True when this staff name is Staff plus by the camp's config (not by the roster switch).
+  function staffPlusByConfig(cfg, name) {
+    if (!cfg || !Array.isArray(cfg.people) || !cfg.people.length) return false;
+    const f = firstName(name); if (!f) return false;
+    return cfg.people.some((p) => { const k = firstName(p); return k === f || (STAFF_PLUS_ALIASES[k] || []).includes(f); });
+  }
+  const staffPlusConfig = (slug) => { const c = STAFF_PLUS[String(slug || '').toLowerCase()]; return c && c.perWeek > 0 ? c : null; };
+  const staffPlusCounts = (item, cfg) => !!cfg && !!item && (cfg.categories || ['Drinks']).includes(item.c);
+  const sameName = (a, b) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
+  // Every allowance line of this person (all staff rows with the name — a closed
+  // and re-added tab is the same person) in the Sat–Fri week of ymd, oldest first.
+  function staffPlusUsed(state, name, ymd) {
+    const ws = weekStartSat(ymd); const we = addDays(ws, 6);
+    const weeks = [...(Array.isArray(state && state.history) ? state.history : [])];
+    if (state && state.activeWeek) weeks.push(state.activeWeek);
+    const out = []; const seen = new Set();
+    weeks.forEach((wk) => (Array.isArray(wk && wk.staff) ? wk.staff : []).forEach((row) => {
+      if (!sameName(row && row.name, name)) return;
+      (Array.isArray(row.items) ? row.items : []).forEach((it, pos) => {
+        if (!it || it.compReason !== 'staff_plus') return;
+        if (it.id) { if (seen.has(it.id)) return; seen.add(it.id); }
+        const d = String(it.d || '').slice(0, 10);
+        if (!d || d < ws || d > we) return;
+        out.push({ item: it, row, key: `${d} ${String(it.t || '').padStart(5, '0')} ${String(pos).padStart(5, '0')}` });
+      });
+    }));
+    return out.sort((a, b) => a.key.localeCompare(b.key));
+  }
+  function staffPlusLeft(state, name, ymd, cfg) {
+    if (!cfg) return 0;
+    return Math.max(0, cfg.perWeek - staffPlusUsed(state, name, ymd).length);
+  }
 
   // Free = price 0. Bar lines are a running total typed by hand (never a comp)
   // and Sri Lanka Dipløria is pass-through (paid to the brand, not the camp).
@@ -97,6 +166,13 @@
           value: hasStored ? stored : guess,
           estimated: !hasStored,
           createdBy: it.createdBy || '',
+          // Made an offer after it was charged (17 Nov 2026): who, when, and the price it had.
+          // (a Staff plus allowance line also keeps offerFrom, for Undo — it is not a manual offer)
+          offer: !!(it.offerFrom && typeof it.offerFrom === 'object') && it.compReason !== 'staff_plus',
+          wasPrice: it.offerFrom && Number.isFinite(Number(it.offerFrom.p)) ? Number(it.offerFrom.p) : null,
+          compAt: it.compAt || '',
+          compBy: it.compBy || '',
+          compByName: it.compByName || '',
         });
       }));
     }));
@@ -105,7 +181,7 @@
 
   function summarize(rows) {
     const list = Array.isArray(rows) ? rows : [];
-    const byReason = [...REASONS.map((r) => r[0]), NO_REASON].map((key) => {
+    const byReason = [...ALL_REASONS.map((r) => r[0]), NO_REASON].map((key) => {
       const rs = list.filter((x) => x.reason === key);
       return { key, label: label(key), count: rs.length, value: rs.reduce((s, x) => s + x.value, 0) };
     }).filter((x) => x.count > 0);
@@ -154,7 +230,7 @@
     const list = rows.slice(0, MAX).map((r) => `<div class="wpl-comps-line" data-reason="${r.reason}">
         <span class="wpl-comps-what"><b>${escHtml(r.n)}</b> → ${escHtml(r.to)}${r.roster === 'Staff' ? ' <span class="wpl-comps-n">(staff)</span>' : ''}</span>
         <span class="wpl-comps-val">${r.estimated ? '≈ ' : ''}${hubMoney(r.value)}</span>
-        <span class="wpl-comps-why">${escHtml(label(r.reason))}${r.note ? ` — ${escHtml(r.note)}` : ''}${r.d ? ` · ${dm(r.d)}` : ''}</span></div>`).join('')
+        <span class="wpl-comps-why">${escHtml(whyText(r.reason, r.note))}${r.offer ? ' · made an offer after it was charged' : ''}${r.d ? ` · ${dm(r.d)}` : ''}</span></div>`).join('')
       + (rows.length > MAX ? `<div class="wpl-comps-n" style="margin-top:6px">+${rows.length - MAX} more in Camp Tab → Top sellers → Given free</div>` : '');
     const by = sum.byReason.map((r) => `<span class="wpl-comps-r" data-reason="${r.key}">${escHtml(r.label)} <b>${hubMoney(r.value)}</b>${r.count > 1 ? ` <span class="wpl-comps-n">×${r.count}</span>` : ''}</span>`).join('');
     return `<div class="card wpl-comps" id="wplComps"><div class="card-pad">
@@ -195,8 +271,9 @@
   }
 
   root.CampComps = {
-    REASONS, SHORT, HINT, NO_REASON, NO_REASON_LABEL, NOTE_MAX,
-    isReason, label, short, needsNote, cleanNote, validWhy, isFreeLine,
+    REASONS, AUTO_REASONS, SHORT, HINT, NO_REASON, NO_REASON_LABEL, NOTE_MAX,
+    isReason, label, short, whyText, needsNote, cleanNote, validWhy, isFreeLine,
+    STAFF_PLUS, staffPlusConfig, staffPlusByConfig, staffPlusCounts, staffPlusUsed, staffPlusLeft, sameName,
     weekStartSat, addDays, periodRange, menuPriceMap, lines, summarize, escHtml,
     afterWeekly, weeklyLineHtml,
   };

@@ -107,6 +107,22 @@ Movements (LK).
    the Camp Tab «Comps» sub-tab and the Weekly P&L «Comps» line read the
    Camp Tab state. Old free lines show «No reason (before 15 Nov)».
 
+   **Offers after the fact + Staff plus (17 Nov 2026):** «Make it an offer»
+   under a tab line turns a charged, unpaid line free with the same reasons;
+   the line stays (stock, Top sellers, bar counts), `meta.offer_from` keeps
+   what it was so «Undo offer» restores it, `meta.comp_at/comp_by/comp_by_name`
+   say when and who. A paid line is refused until «Mark unpaid» (which already
+   takes its revenue out of the grouped checkout row), so no ledger row is ever
+   rewritten for an offer. Staff plus (Sri Lanka only, `CampComps.STAFF_PLUS`:
+   7 drinks a Sat–Fri week, category Drinks): a staff member flagged on the
+   Staff roster (`camp_guests.meta.staffPlus`, every staff row with that name;
+   Francisco and Federico/Frederico are Staff plus by `STAFF_PLUS.people`, every
+   week, no switch)
+   gets the first 7 drinks of the week free, reason «Staff plus allowance
+   (k/7)»; from the 8th the staff price. Counted from the lines, never stored:
+   a deleted or undone one frees a slot for the next drink (labels renumber,
+   lines already charged stay charged). No SQL.
+
    **Dipløria (15 Nov 2026):** the brand's boardshorts are never camp revenue.
    Sri Lanka = pass-through (paid by card to the owner, no ledger row).
    Portugal = held: a paid line is a ledger TRANSFER «Into cash» (`money_sent`,
