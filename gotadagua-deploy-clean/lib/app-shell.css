@@ -143,6 +143,17 @@ th .ic,.kpi-label .ic,.summary-lbl .ic{width:12px;height:12px;vertical-align:-2p
   /* the location switch sits right of the app switch: its menu opens leftwards so it stays on screen */
   .loc-switch .app-switch-menu{left:auto;right:0}
   .app-switch-menu{max-width:calc(100vw - 24px)}
+  /* the two switches give way before they reach ☰ / Log out: a long label ends in «…» */
+  .app-nav .nav-logo{flex:1 1 auto}
+  .nav-logo .app-switch{min-width:0;flex:0 1 auto}
+  .app-switch summary{max-width:100%}
+  .app-switch summary>span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis}
+  .nav-hamburger,.nav-mob-logout{flex-shrink:0}
+}
+@media (max-width:420px){
+  .app-nav{gap:8px}
+  .nav-logo{gap:8px}
+  .nav-logo-mark{width:auto}
 }
 /* narrow phones: both header menus open as a sheet under the header, 12px from each edge */
 @media (max-width:420px){
