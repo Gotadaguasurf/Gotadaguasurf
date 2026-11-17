@@ -2199,8 +2199,20 @@ function isStaffAltLabel(item){
   return /staff/i.test(String(item?.altLabel || ''));
 }
 function displayPriceFor(item){
+  if(currentRoster==='staff' && AC==='Diploria') return diploriaStaffPrice(item);
   return currentRoster==='staff'?staffPriceFor(item):Number(item.p||0);
 }
+// Dipløria on the Staff roster (17 Nov 2026, Miguel: staff buy shorts too): the guest price
+// (Sri Lanka €55, Portugal €65) unless the catalog row has its own staff price (alt label
+// «Staff» or a staff_price on the menu) — never the half-price rule of the bar. The line is
+// then exactly a guest Dipløria line: pass-through / held, stock by SKU, never camp revenue.
+function diploriaStaffPrice(item){
+  if(Number.isFinite(Number(item?.sp))&&Number(item.sp)>0) return Number(item.sp);
+  if(isStaffAltLabel(item)&&Number(item?.altPrice)>0) return Number(item.altPrice);
+  return Number(item?.p||0);
+}
+// «staff» next to a price on the Staff roster — not on Dipløria (guest price there).
+function staffPriceTag(){ return currentRoster==='staff'&&AC!=='Diploria'?' <span style="font-size:10px;color:var(--muted)">staff</span>':''; }
 function currentMerchMenu(){
   return Array.isArray(MENU.Merch)?MENU.Merch:[];
 }
@@ -2569,7 +2581,7 @@ function diploriaModels(){
   const out = []; const by = new Map();
   (Array.isArray(MENU.Diploria) ? MENU.Diploria : []).forEach(item => {
     const k = diploriaSku(item && item.n); if(!k) return;
-    if(!by.has(k.model)){ const m = { model: k.model, price: Number(item.p || 0), skus: {} }; by.set(k.model, m); out.push(m); }
+    if(!by.has(k.model)){ const m = { model: k.model, price: currentRoster==='staff' ? diploriaStaffPrice(item) : Number(item.p || 0), skus: {} }; by.set(k.model, m); out.push(m); }
     by.get(k.model).skus[k.size] = item;
   });
   return out;
@@ -2654,6 +2666,8 @@ function visibleCats(){
       }
       return true;
     }
+    // Dipløria: on the Staff roster too, at the guest price (diploriaStaffPrice).
+    if (c === 'Diploria') return true;
     if (currentRoster === 'staff') {
       return items.some(i => isStaffAltLabel(i) || (i?.sp != null && Number.isFinite(Number(i?.sp))));
     }
@@ -2988,9 +3002,8 @@ function renderItemGrid(){
     setTimeout(() => amtInput.focus(), 50);
     return;
   }
-  // Sri Lanka Dipløria: model → size picker (renderDiploriaPicker). No staff price, so the Staff roster
-  // falls through to the empty state below like any category without staff prices.
-  if (AC === 'Diploria' && diploriaPicker() && currentRoster !== 'staff') { renderDiploriaPicker(el); return; }
+  // Sri Lanka Dipløria: model → size picker (renderDiploriaPicker), for guests and staff alike (17 Nov 2026).
+  if (AC === 'Diploria' && diploriaPicker()) { renderDiploriaPicker(el); return; }
   // Merch + Merch Special share the underlying MENU.Merch array; the
   // synthetic split is purely display. Filter by the "special" name
   // pattern so each tab shows only its share.
@@ -3011,7 +3024,8 @@ function renderItemGrid(){
   // an item at a made-up factor was misleading.
   // Stock is shared across rosters — a staff giveaway decrements the
   // same counter guests read from (see stockLeftForCategory).
-  if (currentRoster === 'staff') {
+  // Dipløria is the exception: every SKU, at the guest price (diploriaStaffPrice).
+  if (currentRoster === 'staff' && AC !== 'Diploria') {
     items = items.filter(i =>
       isStaffAltLabel(i) ||
       (i?.sp !== null && i?.sp !== undefined && Number.isFinite(Number(i?.sp)))
@@ -3089,7 +3103,7 @@ function renderItemGrid(){
           <div class="ci-name">${item.n}</div>
           ${item.d?`<div class="ci-desc">${item.d}</div>`:''}
           ${stockLabel}
-          <div class="ci-price" style="margin-top:4px">${euro(displayPriceFor(item))}${currentRoster==='staff'?` <span style="font-size:10px;color:var(--muted)">staff</span>`:''}</div>
+          <div class="ci-price" style="margin-top:4px">${euro(displayPriceFor(item))}${staffPriceTag()}</div>
         </button>
         <button onclick="event.stopPropagation();addItemAtAltPrice('${esc(item.id||'')}', '${esc(item.n)}', this)" ${outOfStock?'disabled':''} class="btn btn-s" style="font-size:11px;padding:6px 12px;justify-content:space-between;gap:8px;width:100%">
           <span style="text-transform:uppercase;letter-spacing:.06em">${esc(altLabel)}</span>
@@ -3107,7 +3121,7 @@ function renderItemGrid(){
           <div class="ci-name">${item.n}</div>
           ${item.d?`<div class="ci-desc">${item.d}</div>`:''}
           ${stockLabel}
-          <div class="ci-price">${euro(displayPriceFor(item))}${currentRoster==='staff'?` <span style="font-size:10px;color:var(--muted)">staff</span>`:''}</div>
+          <div class="ci-price">${euro(displayPriceFor(item))}${staffPriceTag()}</div>
         </button>
       </div>`;
     }
@@ -3115,7 +3129,7 @@ function renderItemGrid(){
     <div class="ci-name">${item.n}</div>
     ${item.d?`<div class="ci-desc">${item.d}</div>`:''}
     ${stockLabel}
-    <div class="ci-price">${euro(displayPriceFor(item))}${currentRoster==='staff'?` <span style="font-size:10px;color:var(--muted)">staff</span>`:''}</div>
+    <div class="ci-price">${euro(displayPriceFor(item))}${staffPriceTag()}</div>
   </button>`;
   }).join('');
 }
@@ -3808,11 +3822,11 @@ function ctFindLine(roster, guestId, itemId){
 }
 // A line that can carry the action at all (paid lines too: the tap says what to do).
 function offerEligible(item){
-  return !!item && !isPassThrough(item) && item.c!=='Bar';
+  return !!item && !isPassThrough(item) && item.c!=='Bar' && item.c!=='Diploria';   // Dipløria is the brand's money, never a camp offer
 }
 function offerBlockedWhy(g, item){
   if(!g||!item) return 'This line is not on the tab any more.';
-  if(isPassThrough(item)) return 'Dipløria is paid to the brand on its own — it cannot be an offer.';
+  if(isPassThrough(item)||item.c==='Diploria') return 'Dipløria is the brand\'s money — it cannot be a camp offer.';
   if(item.c==='Bar') return 'A bar running total cannot be an offer — tap the amount to correct it.';
   if(item.paidAt||g.paid) return `«${item.n}» is already paid.\n\nTap «Mark unpaid» first (the payment comes out of the ledger and the money goes back to ${g.name}), then make it an offer.`;
   if(g.closedAt||g.closed_at) return `${g.name}'s tab is closed. Re-open it from History first.`;

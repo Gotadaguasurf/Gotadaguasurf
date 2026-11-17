@@ -405,3 +405,24 @@ test('portugal bar: the Bar tab is paid at The Suk — a paid Bar line writes NO
   });
   expect(hub).toEqual({ pass: true, perItem: null, grouped: [['Tours', 10]], week: [['Tours', 10]] });
 });
+
+// Miguel, 17 Nov 2026: staff buy shorts too — on the Staff roster, held for Dipløria exactly like a guest's.
+test('portugal dipløria staff: the Staff roster has the Diploria tab at the guest 65 €; Pay = «held for Dipløria» transfer, never revenue; no «Make it an offer»', async ({ page }) => {
+  const { ctl, frame } = await openPortugal(page);
+  await frame.locator('#rosterStaffBtn').click();
+  await frame.locator('#addConsumerBtn').click();
+  await frame.locator('#newGuestName').fill('Lianne');
+  await frame.locator('#addGuestOv button', { hasText: 'Add' }).last().click();
+  expect(await frame.locator('#catTabs button').allInnerTexts()).toContain('Diploria');
+  await frame.locator('#catTabs button', { hasText: 'Diploria' }).first().click();
+  const cards = await frame.locator('#itemGrid .c-item .ci-price').allInnerTexts();
+  expect(cards[0].trim()).toBe('€65.00');
+  await frame.locator('#itemGrid button:has(.ci-name:text-is("Size 31"))').first().click();
+  expect(await frame.evaluate(() => findConsumer(AG, 'staff').items.map(i => [i.n, i.p, i.c]))).toEqual([['Size 31', 65, 'Diploria']]);
+  await expect(frame.locator('#itemGrid .c-item:has(.ci-name:text-is("Size 31")) .ci-desc')).toHaveText('8 left');   // same stock as the guests
+  await expect(frame.locator('#tabList .ct-make-offer')).toHaveCount(0);
+  await frame.locator('#payBtn').click();
+  await expect.poll(() => campRows(ctl), { timeout: 8000 }).toEqual([['money_sent', 'Dipløria', 'Cash', 65, 'Size 31', 'camp_tab_per_guest']]);
+  expect((ctl.T.ledger_entries || []).filter(r => r.type === 'revenue')).toEqual([]);
+  expect(ctl.T.ledger_entries[0].description).toBe('Camp Tab · Lianne · Dipløria Size 31 · held for Dipløria');
+});
