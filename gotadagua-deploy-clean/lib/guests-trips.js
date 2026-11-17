@@ -608,6 +608,7 @@
 
   return {
     parseCsv, isGuestsExportHeader, parse, guestRows, guestAudit, importWarnings, hhmm, ymd, cleanPhone, vehicleFor, addDaysIso, weekday, weekStart, dMon,
+    classifyField, strfADB, pyTitle, isUpper, isLower, NO_ALLERGY, TEST_NAME,   // used by lib/bl-report.js (the camp report, 16 Nov 2026)
     whatsappText, whatsappDayText, whatsappUrl, transfersTrips, transfersText, tripMark, tripInWeek, tripDoneAt, dressTitles, OK_STATUS, DEAD_STATUS, PACKAGE_INCLUDES, packageIncludes,
   };
 });
