@@ -1046,10 +1046,10 @@ test('instructors: quick-day grid suggests each instructor\'s usual price and sa
     document.getElementById('addLessonBtn').click();
     const quickVisible = document.getElementById('quickDay').style.display !== 'none' && document.getElementById('modal').classList.contains('open');
     const primaryBg = getComputedStyle(document.getElementById('qdSave')).backgroundColor;
-    const rows = [...document.querySelectorAll('#qdBody tr[data-row]')].map(tr => tr.dataset.row);
+    const rows = [...document.querySelectorAll('#qdBody [data-row]')].map(tr => tr.dataset.row);
     const price = (n, c) => document.querySelector(`.qd-price[data-pk="${n}|${c}"]`).textContent;
     const p = { matildeSchool: price('Matilde', 'Surf School'), romiCamp: price('Romildo Ramos', 'Surf Camp') };
-    document.getElementById('qdDate').value = '2026-09-08';
+    const dIn = document.getElementById('qdDate'); dIn.value = '2026-09-08'; dIn.dispatchEvent(new Event('change'));   // «Other day»
     const cell = document.querySelector('input.qd-n[data-k="Matilde|Surf School"]'); cell.value = '3'; cell.dispatchEvent(new Event('input'));
     const cell2 = document.querySelector('input.qd-n[data-k="Romildo Ramos|Surf Camp"]'); cell2.value = '2'; cell2.dispatchEvent(new Event('input'));
     const total = document.getElementById('qdTotal').textContent;
@@ -1060,10 +1060,10 @@ test('instructors: quick-day grid suggests each instructor\'s usual price and sa
   expect(out.primaryBg).not.toBe('rgba(255, 255, 255, 0.08)');   // the button is no longer invisible
   expect(out.rows.slice(0, 2)).toEqual(['Matilde', 'Romildo Ramos']);   // most lessons in the last 90 days first (4 vs 3)
   expect(out.rows).toContain('Matilde');
-  expect(out.rows).not.toContain('Heitor Souza');                 // no recent lessons → behind "Mostrar todos"
-  expect(out.p.matildeSchool).toBe('25€');                        // her usual, not the one-off 30
-  expect(out.p.romiCamp).toBe('30€');                             // the €250 salary row never becomes a price
-  expect(out.total).toBe('5 lessons · €135.00');
+  expect(out.rows).not.toContain('Heitor Souza');                 // no recent lessons → behind «+ Add instructor»
+  expect(out.p.matildeSchool).toBe('€25.00');                        // her usual, not the one-off 30
+  expect(out.p.romiCamp).toBe('€30.00');                             // the €250 salary row never becomes a price
+  expect(out.total).toMatch(/8 Sept?: 5 lessons · €135.00$/);
   expect(out.saved).toHaveLength(2);
   expect(out.saved.find(d => d.instructorName === 'Matilde')).toMatchObject({ date: '2026-09-08', lessonCategory: 'Surf School', numberOfLessons: 3, priceUnit: 25, paid: false, paymentType: 'Recibo Verde' });
   expect(out.msg).toContain('5 lessons');
