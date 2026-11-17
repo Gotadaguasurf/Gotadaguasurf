@@ -257,6 +257,13 @@
   const api = { APPS, LOGO, menu, mountMenus, nav, mount, toggleMobile, setTab, setUser, mountLogo, splash, toast, esc, $, eur, eur0, fetchAll, currentSlug, icon, flattenEmoji };
   window.AppShell = api;
   window.BusinessShell = api;
-  const auto = () => { mountMenus(); if (document.body) watchEmoji(); };
+  // Phones (17 Nov 2026, «no mobile não dá para fazer logout»): the header actions are hidden at ≤820px, so the
+  // page's own Log out / Sign out button is tagged and kept visible there (lib/app-shell.css .nav-signout).
+  function tagSignOut(){
+    document.querySelectorAll('.nav-actions button, .nav-actions a').forEach(b => {
+      if (/^\s*(log\s*out|sign\s*out)\s*$/i.test(b.textContent || '')) b.classList.add('nav-signout');
+    });
+  }
+  const auto = () => { mountMenus(); tagSignOut(); setTimeout(tagSignOut, 1500); if (document.body) watchEmoji(); };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', auto); else auto();
 })();
