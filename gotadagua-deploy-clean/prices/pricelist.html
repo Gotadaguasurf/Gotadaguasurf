@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Price list — Gota Dagua</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='-15 0 92 92'><path fill='%231e6fa8' d='M61.7,51.9c-.4-9-5.5-16.5-9.7-24.1-2.9-4.8-5.3-9.8-9.3-13.9-3.9-4.4-6.5-9.8-10.8-13.9C19.2,16.6-.5,39.9,0,61.9c9.4-7.9,20.1-17.7,33.1-17.8,3,0,7.2,0,9.5,2.2,1.7,1.7,3.2,4.2,2,6.5-.3.5-1.9,2.7-2.3,2.9-12.9,7.4-20.3,18.6-16.5,33.7,3.1,1.3,8,1,11.1-.3,2.7-.3,5.1-1.3,7.5-2.5,8.7-2.9,14.5-11.1,15.5-20.1,1.2-4.7,2.1-9.7,1.8-14.6h0Z'/></svg>">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="/lib/supabase.min.js?v=6" onerror="window.__SUPABASE_SDK_FAILED=true"></script>
+<script src="/supabase-config.js?v=6" onerror="window.__SUPABASE_CFG_FAILED=true"></script>
+<script src="/owner-config.js"></script>
+<script src="/lib/app-shell.js"></script>
+<script src="/lib/price-list.js"></script>
+<link rel="stylesheet" href="/lib/app-shell.css">
+<style>
+/* The price list (17 Nov 2026): A4 sheets on screen, the same sheets in print → «Save as PDF».
+   Brand tokens from app-shell.css; Outfit only; colours kept in print (print-color-adjust). */
+:root{ --pl-w:210mm; --pl-h:297mm; --pl-mx:16mm; }
+body{background:#e9edf2}
+.pl-bar{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:var(--sp-3);flex-wrap:wrap;padding:12px 16px;background:var(--navy);color:#fff}
+.pl-bar .grow{flex:1;min-width:0}
+.pl-bar-title{font-weight:700;font-size:15px}
+.pl-bar-sub{font-size:12.5px;color:#a9c4da}
+.pl-bar .btn-s{background:transparent;color:#fff;border-color:rgba(255,255,255,.35)}
+#doc{padding:24px 0 64px;display:flex;flex-direction:column;align-items:center;gap:24px}
+#doc .loading{padding:48px;color:var(--muted)}
+.pl-sheet{width:var(--pl-w);max-width:100%;background:#fff;box-shadow:0 8px 28px rgba(22,36,58,.12)}
+
+/* cover */
+.pl-cover{width:var(--pl-w);max-width:100%;min-height:var(--pl-h);display:flex;flex-direction:column;background:linear-gradient(160deg,var(--navy) 0%,var(--navy-deep) 100%);color:#fff;padding:22mm var(--pl-mx) 18mm;box-shadow:0 8px 28px rgba(22,36,58,.18)}
+.pl-cover-logo svg{width:62mm;height:auto;display:block}
+.pl-cover-main{margin-top:auto;margin-bottom:auto;padding:24mm 0}
+.pl-eyebrow{font-size:12px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:#a9c4da}
+.pl-eyebrow.dark{color:var(--muted);letter-spacing:.14em;font-size:10px}
+.pl-cover h1{font-size:46px;font-weight:700;letter-spacing:-.03em;line-height:1.05;margin:10px 0 8px;color:#fff}
+.pl-cover-period{font-size:22px;font-weight:300;color:#d6e4ef;font-variant-numeric:tabular-nums}
+.pl-cover-camps{margin-top:18px;font-size:15px;font-weight:500;color:#fff;display:flex;gap:10px;flex-wrap:wrap}
+.pl-cover-camps span{color:#6f8aa3}
+.pl-cover-list{list-style:none;margin:28px 0 0;padding:16px 0 0;border-top:1px solid rgba(255,255,255,.18);display:flex;flex-wrap:wrap;gap:8px 22px;font-size:13px;color:#d6e4ef}
+.pl-cover-list li::before{content:'';display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--ocean-light);margin-right:8px;vertical-align:2px}
+.pl-cover-foot{border-top:1px solid rgba(255,255,255,.18);padding-top:14px}
+.pl-cover .pl-contact{color:#fff}
+.pl-contact{display:flex;flex-wrap:wrap;gap:6px 22px;font-size:13px;font-weight:600;font-variant-numeric:tabular-nums}
+.pl-generated{font-size:11px;color:#8ea6bc;margin-top:6px}
+
+/* a camp */
+.pl-camp,.pl-end{width:var(--pl-w);max-width:100%;background:#fff;padding:16mm var(--pl-mx);box-shadow:0 8px 28px rgba(22,36,58,.12);color:var(--ink)}
+.pl-camp-head{display:flex;align-items:flex-end;justify-content:space-between;flex-direction:row-reverse;gap:16px;padding-bottom:10px;border-bottom:2px solid var(--navy);margin-bottom:6mm}
+.pl-camp-logo svg{width:30mm;height:auto;display:block}
+.pl-camp-head h1{font-size:30px;font-weight:700;letter-spacing:-.02em;color:var(--navy);line-height:1.1;margin-top:2px}
+.pl-part{margin-top:7mm}
+.pl-part:first-of-type{margin-top:0}
+.pl-part h2{font-size:17px;font-weight:700;color:var(--navy);letter-spacing:-.01em;margin-bottom:3mm;break-after:avoid}
+.pl-pack{margin-bottom:6mm}
+.pl-pack-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;break-after:avoid}
+.pl-pack h3{font-size:14px;font-weight:700;color:var(--ink)}
+.pl-basis{font-size:11px;font-weight:600;color:var(--ocean);background:var(--ocean-soft);border-radius:var(--r-xs);padding:2px 8px}
+.pl-pack-desc{font-size:11.5px;color:var(--muted);line-height:1.5;margin:3px 0 3mm;break-after:avoid}
+.pl-table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:12px;margin-bottom:4mm;break-inside:avoid}
+.pl-table col.pl-col-num{width:26mm}
+.pl-table col.pl-col-mid{width:40mm}
+.pl-transfers tr.pl-route-row td{font-weight:700;color:var(--navy);background:var(--surface-2);border-bottom:1px solid var(--border-2);padding-top:6px;padding-bottom:6px}
+.pl-transfers tr.pl-veh td:first-child{padding-left:18px}
+.pl-transfers tbody tr.pl-route-row{break-after:avoid}
+.pl-table th{font-size:9.5px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);text-align:left;padding:6px 8px;border-bottom:1px solid var(--border-2)}
+.pl-table th.r,.pl-table td.r{text-align:right}
+.pl-table td{padding:7px 8px;border-bottom:1px solid var(--border);vertical-align:top;line-height:1.35}
+.pl-table tbody tr{break-inside:avoid}
+.pl-table td b{font-weight:600;color:var(--ink)}
+.pl-table td.na{color:var(--muted-2)}
+.pl-price{font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums;white-space:nowrap}
+.pl-season td.r{font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.pl-season tr.pl-season-row th{text-transform:none;letter-spacing:0;font-size:11px;color:var(--muted);padding:8px 8px 6px;border-bottom:0;background:var(--surface-2)}
+.pl-season thead tr:nth-child(2) th{background:var(--surface-2)}
+.pl-sub{display:block;font-size:10.5px;color:var(--muted);margin-top:2px;line-height:1.4}
+.pl-tag{font-size:9.5px;font-weight:600;color:var(--amber);background:var(--amber-bg);border-radius:4px;padding:1px 6px;margin-left:4px}
+.pl-pill{display:inline-block;font-size:9.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;border-radius:4px;padding:3px 8px;margin-right:10px}
+.pl-pill.low{background:var(--green-bg);color:var(--green)}
+.pl-pill.mid{background:var(--amber-bg);color:var(--amber)}
+.pl-pill.high{background:var(--red-bg);color:var(--red)}
+.pl-pill.special,.pl-pill.other{background:var(--ocean-soft);color:var(--ocean)}
+.pl-dates{font-variant-numeric:tabular-nums}
+.pl-notes ul{margin:0;padding-left:16px;font-size:11.5px;color:var(--ink);line-height:1.55}
+.pl-notes li{margin-bottom:3px}
+.pl-notes{break-inside:avoid}
+.pl-end{padding-top:10mm;padding-bottom:12mm;background:var(--foam);box-shadow:none;border-top:1px solid var(--border)}
+.pl-end-title{font-size:17px;font-weight:700;color:var(--navy);margin-bottom:6px}
+.pl-end .pl-contact{color:var(--navy)}
+.pl-end .pl-generated{color:var(--muted)}
+.pl-empty{color:var(--muted);font-size:14px}
+.pl-error{max-width:560px;margin:48px auto;background:#fff;border:1px solid var(--border);border-radius:var(--r);padding:24px;text-align:center}
+
+/* phones: the sheets scale down (the PDF is A4 either way) */
+@media screen and (max-width:820px){
+  :root{ --pl-w:100%; --pl-mx:18px; }
+  #doc{padding:16px 12px 48px}
+  .pl-bar-sub{display:none}
+  .pl-bar-title{font-size:14px}
+  .pl-cover{min-height:auto;padding:28px 20px}
+  .pl-cover h1{font-size:36px}
+  .pl-camp,.pl-end{padding:24px 18px}
+  .pl-table col.pl-col-num{width:72px}
+  .pl-table col.pl-col-mid{width:84px}
+  .pl-table td,.pl-table th{padding-left:4px;padding-right:4px}
+}
+
+@page{ size:A4; margin:14mm 0 16mm;
+  @bottom-left{ content:"Gota Dagua · info@gotadaguasurf.com · +351 924 689 580"; font-family:Outfit,sans-serif; font-size:8pt; color:#64748b; padding-left:16mm }
+  @bottom-right{ content:"Page " counter(page) " of " counter(pages); font-family:Outfit,sans-serif; font-size:8pt; color:#64748b; padding-right:16mm } }
+@page cover{ margin:0; @bottom-left{ content:none } @bottom-right{ content:none } }
+@media print{
+  html,body{background:#fff}
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .pl-bar{display:none}
+  #doc{padding:0;display:block}
+  .pl-cover{page:cover;width:auto;height:297mm;min-height:0;box-shadow:none;break-after:page}
+  .pl-camp{width:auto;box-shadow:none;padding:0 16mm;break-before:page}
+  .pl-cover + .pl-camp{break-before:auto}
+  .pl-end{width:auto;margin:8mm 16mm 0;padding:7mm 8mm;border-radius:6px;border:0;break-inside:avoid}
+}
+</style>
+</head>
+<body>
+<div class="pl-bar" id="plBar">
+  <a class="btn btn-s btn-sm" href="/prices/" id="plBack">Back to prices</a>
+  <div class="grow"><div class="pl-bar-title" id="plTitle">Price list</div><div class="pl-bar-sub">In the print window choose «Save as PDF» · paper A4</div></div>
+  <button class="btn btn-p" id="plPrint" onclick="window.print()" disabled>Save as PDF</button>
+</div>
+<main id="doc"><div class="loading">Loading the prices…</div></main>
+
+<script>
+// /prices/pricelist.html?location=<slug|all>&period=<upcoming|all|YYYY>&sections=a,b,c&print=1
+// Same access rule as /prices: the owner, or an active prices-<camp> membership that can view. Guest prices only
+// (no cost column is selected). Nothing is written.
+(async function(){
+  const q = new URL(location.href).searchParams;
+  const loc = (q.get('location') || 'portugal').toLowerCase();
+  const period = q.get('period') || 'upcoming';
+  const sections = (q.get('sections') || 'accommodation,surf,tours,transfers,addons').split(',').map(s => s.trim()).filter(Boolean);
+  const doc = document.getElementById('doc');
+  const back = document.getElementById('plBack');
+  if (loc !== 'all') back.href = '/prices/?location=' + encodeURIComponent(loc);
+  const fail = (title, text) => { doc.innerHTML = `<div class="pl-error"><h2 style="font-size:18px;color:var(--navy);margin-bottom:6px">${AppShell.esc(title)}</h2><p style="color:var(--muted);font-size:13px">${AppShell.esc(text)}</p></div>`; };
+  if (window.__SUPABASE_SDK_FAILED || window.__SUPABASE_CFG_FAILED || !window.supabase || !window.__SUPABASE_CONFIG) return fail('Could not load', 'The app files did not load. Refresh the page.');
+  const sb = window.supabase.createClient(window.__SUPABASE_CONFIG.url, window.__SUPABASE_CONFIG.anonKey);
+  const { data: sess } = await sb.auth.getSession();
+  const user = sess && sess.session && sess.session.user;
+  if (!user) return fail('Not signed in', 'Sign in on the home page first, then create the price list again.');
+  const owners = new Set(window.__PLATFORM_OWNER_EMAILS || ['miguel@gotadaguasurf.com']);
+  let slugs = loc === 'all' ? PriceList.CAMP_ORDER.slice() : [loc];
+  if (!owners.has(String(user.email || '').toLowerCase())) {
+    try {
+      const { data: mems } = await sb.from('workspace_memberships').select('can_view, workspaces!inner(slug)').eq('user_id', user.id).eq('active', true).in('workspaces.slug', slugs.map(s => 'prices-' + s));
+      const ok = new Set((mems || []).filter(m => m.can_view !== false).map(m => String(m.workspaces && m.workspaces.slug || '').replace(/^prices-/, '')));
+      slugs = slugs.filter(s => ok.has(s));
+    } catch (_) { slugs = []; }
+    if (!slugs.length) return fail('No access', 'You don\'t have access to these prices. Ask Miguel in Settings → Team access.');
+  }
+  const CAT_COLS = 'id,name,category,sell_price,sell_currency,currency,notes,active,sort_order,capacity,covers_pax,audience';
+  async function loadCamp(slug){
+    const { data: L } = await sb.from('locations').select('id,slug,name').eq('slug', slug).maybeSingle();
+    if (!L) return null;
+    let cat = await sb.from('pricing_catalog').select(CAT_COLS).eq('location_id', L.id);
+    if (cat.error && /covers_pax/.test(cat.error.message || '')) cat = await sb.from('pricing_catalog').select(CAT_COLS.replace(',covers_pax', '')).eq('location_id', L.id);
+    if (cat.error) throw cat.error;
+    const [packs, seasons, rooms, prices] = await Promise.all([
+      sb.from('accommodation_packs').select('id,label,description,price_basis,sort_order,active').eq('location_id', L.id),
+      sb.from('accommodation_seasons').select('id,season_key,label,date_ranges,sort_order,active').eq('location_id', L.id),
+      sb.from('accommodation_room_types').select('id,label,description,sort_order,active').eq('location_id', L.id),
+      sb.from('accommodation_prices').select('pack_id,season_id,room_type_id,occupancy,sell_price,currency').eq('location_id', L.id),
+    ]);
+    return { slug, label: PriceList.CAMP_LABEL[slug] || L.name, catalog: cat.data || [],
+      accom: { packs: packs.data || [], seasons: seasons.data || [], rooms: rooms.data || [], prices: prices.data || [] } };
+  }
+  let camps;
+  try { camps = (await Promise.all(slugs.map(loadCamp))).filter(Boolean); }
+  catch (err) { console.error('[Price list] load failed', err); return fail("Couldn't load the prices", 'Check the connection and try again. (' + (err && err.message || err) + ')'); }
+  const model = PriceList.buildModel({ camps, period, sections });
+  window.__priceListModel = model;
+  document.title = model.fileTitle;   // the PDF's file name
+  document.getElementById('plTitle').textContent = `Price list · ${model.title} · ${model.period}`;
+  doc.innerHTML = PriceList.render(model, { logo: AppShell.LOGO });
+  document.getElementById('plPrint').disabled = false;
+  try { await document.fonts.ready; } catch (_) {}
+  window.__priceListReady = true;
+  if (q.get('print') === '1') setTimeout(() => window.print(), 350);
+})().catch(err => {
+  console.error('[Price list] failed', err);
+  document.getElementById('doc').innerHTML = '<div class="pl-error">Something went wrong — try again or tell Miguel.</div>';
+});
+</script>
+</body>
+</html>
