@@ -1669,6 +1669,7 @@
     const groups = I.groups;
     out += `<div class="hint tr-file">${h(P.file)} · exported ${fmtShort(P.export_date)} · ${groups.guests.length} guest${groups.guests.length === 1 ? '' : 's'} confirmed, deposit paid or paid${P.counts['other location'] ? ` · ${P.counts['other location']} from other camps left out` : ''}</div>`;
     out += auditHtml(groups);
+    if (groups.plan) out += reportPlanHtml(groups.plan, groups.guestPlan);
     // Morocco: what changed on the Bookinglayer side (missing column, unknown room, product or package) — one line each.
     if ((groups.warnings || []).length) out += `<div class="status-msg status-warn tr-impwarn"><b>Check before using the lists:</b>${groups.warnings.map(w => `<div class="tr-impwarn-l" data-kind="${w.kind}">${h(w.text)}</div>`).join('')}</div>`;
     if (groups.missingRefs) out += `<div class="status-msg status-info tr-soft">${groups.missingRefs} booking${groups.missingRefs === 1 ? '' : 's'} not yet in HQ — import bookings</div>`;
@@ -1683,6 +1684,28 @@
       <div class="tr-rows">${groups.hqMissing.map(b => `<div class="tr-row tr-static"><div class="tr-main"><b>${h(b.booker || '')}</b><div class="cell-sub">${h(b.booking_ref)} · check-in ${fmtShort(String(b.check_in_on))}</div></div></div>`).join('')}</div></div>`;
     const dirty = P.dirty_no_transfer.filter(d => !groups.cancelledRefs.has(d[2]));
     if (dirty.length) out += `<div class="card"><div class="card-hdr"><div><div class="card-title">To check (no trip made)</div></div></div><div class="tr-rows">${dirty.map(d => `<div class="tr-row tr-static"><div class="tr-main"><b>${h(d[1])}</b><div class="cell-sub">${h(d[3].join(' · '))}</div></div></div>`).join('')}</div></div>`;
+    return out;
+  }
+  // The camp report: what saving would change, before anything is saved (the rules of camp_trips_import).
+  function reportPlanHtml(P, GP) {
+    const d = k => k === 'airport_departure' ? 'Departure' : 'Arrival';
+    const trip = (t, extra) => `<div class="tr-row tr-static"><div class="tr-main"><b>${h((t.guests || []).join(', ') || t.guest_names || '')}</b><div class="cell-sub">${d(t.kind)} · ${fmtDay(t.date || t.trip_date)} · ${t.pax} ${Number(t.pax) === 1 ? 'person' : 'persons'} · ${h(t.booking_ref)}${extra ? ' · ' + extra : ''}</div></div></div>`;
+    const chg = c => c.map(x => `${h(x.field.replace('_', ' '))} ${h(String(x.app || '–'))} → ${h(String(x.report || '–'))}${x.kept ? ' (typed by hand, kept)' : ''}`).join(' · ');
+    const block = (title, hint, items) => items.length ? `<div class="card tr-plan"><div class="card-hdr"><div><div class="card-title">${h(title)} · ${items.length}</div>${hint ? `<div class="card-hint">${h(hint)}</div>` : ''}</div></div><div class="tr-rows">${items.join('')}</div></div>` : '';
+    let out = `<div class="status-msg status-info tr-plan-sum" data-plan="${P.create.length}|${P.update.length}|${P.regroupCancel.length}|${P.flagRemoved.length}">Camp report: ${P.create.length} new trip${P.create.length === 1 ? '' : 's'} · ${P.update.length} changed · ${P.same.length} unchanged${P.revive.length ? ` · ${P.revive.length} back` : ''}${P.regroupCancel.length ? ` · ${P.regroupCancel.length} replaced` : ''}${P.flagRemoved.length ? ` · ${P.flagRemoved.length} not in the report (asked, never cancelled)` : ''} — not sent: ${P.untouched.length} paid / done / past, ${P.covered.length} already in the app, ${P.past.length} past legs.</div>`;
+    out += block('New trips', 'From today on, not in the app yet', P.create.map(x => trip(x.trip)));
+    out += block('Trips that change', '', P.update.map(x => trip(x.trip, chg(x.changes))));
+    out += block('Brought back', 'Cancelled by an earlier import, booked again', P.revive.map(x => trip(x.trip)));
+    out += block('Replaced', 'Same booking and direction, grouped another way in the report: cancelled and replaced', P.regroupCancel.map(a => trip(a)));
+    out += block('Not in the report — cancel?', 'The booking is in the report without this transfer. Saving only marks it; cancel it in Transport if it is right.', P.flagRemoved.map(a => trip(a)));
+    out += block('Booking not in the report', 'Future trips of bookings that are not in this report (cancelled in Bookinglayer?). Nothing changes.', P.notInReport.map(a => trip(a)));
+    out += block('Not changed (paid, done or past)', 'The report differs from the app here; the app is kept', P.untouched.filter(x => x.diffs.length).map(x => trip(x.trip, `${h(x.why)} · ${chg(x.diffs)}`)));
+    if (GP) {
+      const gl = (x, extra) => `<div class="tr-row tr-static"><div class="tr-main"><b>${h(x.guest_name)}</b><div class="cell-sub">${h(x.booking_ref)} · ${fmtShort(x.check_in)} → ${fmtShort(x.check_out)}${extra ? ' · ' + extra : ''}</div></div></div>`;
+      out += `<div class="hint tr-plan-guests">Guests: ${GP.add.length} new · ${GP.change.length} changed · ${GP.same.length} unchanged${GP.wouldDrop.length ? ` · ${GP.wouldDrop.length} stored guests not in the report will show «cancelled?»` : ''}</div>`;
+      out += block('Guests that change', '', GP.change.map(x => gl(x.g, x.changes.map(c => `${h(c.field)} ${h(c.app || '–')} → ${h(c.report || '–')}`).join(' · '))));
+      out += block('Stored guests not in the report', 'Check-in inside this report but missing from it: Week will ask «cancelled?»', GP.wouldDrop.map(a => gl(a)));
+    }
     return out;
   }
   function impRow(t) {
@@ -1717,17 +1740,21 @@
     try { text = /\.xlsx?$/i.test(file.name) ? await guestsXlsxToCsv(file) : await file.text(); }
     catch (err) { input.value = ''; TR.imp = { error: "Couldn't read this Excel file — " + (err && err.message || 'error') + '. Try again, or export it as CSV.' }; render(); return; }
     input.value = '';
-    if (!GT.isGuestsExportHeader(text)) { TR.imp = { error: 'This is not a Bookinglayer Guests export (no «Has transfer» column). Use Guests → Export with the «' + (IS_SL ? 'Semana Sri Lanka' : CC.preset) + '» preset.' }; render(); return; }
-    TR.imp = { text, name: file.name };
-    const parsed = GT.parse(text, file.name, undefined, GTC);
+    // The camp report (booking lines × guests, 16 Nov 2026) is read by lib/bl-report.js; the Guests export as before.
+    const isReport = !!(window.BlReport && BlReport.isReportHeader(text));
+    if (!isReport && !GT.isGuestsExportHeader(text)) { TR.imp = { error: 'This is not a Bookinglayer Guests export (no «Has transfer» column) nor the camp report (no «Booking line: Id» column). Use Guests → Export with the «' + (IS_SL ? 'Semana Sri Lanka' : CC.preset) + '» preset, or the camp report.' }; render(); return; }
+    TR.imp = { text, name: file.name, report: isReport };
+    const parsed = IMP().parse(text, file.name, undefined, GTC);
     if (!parsed.export_date) { TR.imp.needDate = true; render(); return; }
     await buildImport(parsed);
   }
   async function setExportDate() {
     const d = $('trExportDate') && $('trExportDate').value; if (!d || !TR.imp) return;
     TR.imp.needDate = false;
-    await buildImport(GT.parse(TR.imp.text, TR.imp.name, d, GTC));
+    await buildImport(IMP().parse(TR.imp.text, TR.imp.name, d, GTC));
   }
+  // The parser of the file being imported: the camp report (lib/bl-report.js) or the Guests export (lib/guests-trips.js).
+  const IMP = () => (TR.imp && TR.imp.report && window.BlReport) ? window.BlReport : GT;
   // Nobody lost at the import: rows in the file = guests imported + rows left out, each with its reason.
   // Other camps and cancelled bookings are expected; a status that is not live, a row without dates or
   // a repeated row is worth a look, so the block turns amber.
@@ -1735,7 +1762,8 @@
     const A = groups.audit; if (!A) return '';
     const hq = groups.hqCancelled.length;
     const leftN = A.left.length + hq;
-    const sum = `${A.rows} row${A.rows === 1 ? '' : 's'} in the file = ${groups.guests.length} guest${groups.guests.length === 1 ? '' : 's'} imported + ${leftN} left out`;
+    const unit = A.unit === 'guests' ? 'guest' : 'row';
+    const sum = `${A.rows} ${unit}${A.rows === 1 ? '' : 's'} in the file = ${groups.guests.length} guest${groups.guests.length === 1 ? '' : 's'} imported + ${leftN} left out`;
     const adds = A.rows === groups.guests.length + leftN;
     const look = A.left.filter(x => x.kind === 'status' || x.kind === 'no_dates' || x.kind === 'duplicate');
     let out = `<div class="${adds && !look.length ? 'hint' : 'status-msg status-warn'} tr-audit">${adds ? '' : 'The rows do not add up — tell Miguel before using the lists. '}${h(sum)}${look.length ? ` · ${look.length} to look at` : ''}</div>`;
@@ -1763,13 +1791,22 @@
     // absent → hq_match missing (kept, one soft line).
     const cancelledRefs = new Set(refs.filter(r => byRef.has(r) && HQ_DEAD_STATUSES.has(hqStatus(r))));
     const matchOf = r => !HQ_CROSSCHECK ? null : (byRef.has(r) ? 'ok' : 'missing');
-    const allGuests = GT.guestRows(TR.imp.text, parsed.file, GTC);
+    const allGuests = IMP().guestRows(TR.imp.text, parsed.file, GTC);
     const okGuests = allGuests.filter(g => GT.OK_STATUS.has(g.booking_status) && g.check_in && g.check_out);   // no dates = on no list: shown under «Left out»
     const partnerOf = r => { const b = byRef.get(r); if (b) { const p = String(b.partner_name || ''); return p && !/^direct/i.test(p) ? p : ''; } const g = okGuests.find(x => x.booking_ref === r && x.partner); return g ? g.partner : ''; };
     // Prices come from /prices and may still be loading on a slow phone: wait for them, never save a trip at 0.
     if (parsed.trips.length && !pricesReady()) { try { if (typeof loadTransportPresets === 'function') await loadTransportPresets(); } catch (_) {} }
-    const trips = parsed.trips.filter(t => !cancelledRefs.has(t.booking_ref))
+    let trips = parsed.trips.filter(t => !cancelledRefs.has(t.booking_ref))
       .map(t => ({ ...t, expected_price: presetPrice(t.kind, t.vehicle, t.place), hq_match: matchOf(t.booking_ref), partner: partnerOf(t.booking_ref) || null }));
+    // The camp report goes back weeks (check-out window): only what may change is sent — legs from the camp's today on,
+    // and past legs the app already has under the same key (the import leaves those untouched). A past leg the app does not
+    // have, or a leg it has under another key (Morocco's «hist2026» trips), is never sent: it would be a second, owed trip.
+    let plan = null;
+    if (parsed.report && window.BlReport) {
+      const maxCo = (parsed.bookings || []).reduce((m, b) => b.co > m ? b.co : m, '');
+      plan = BlReport.planTrips(trips, TR.trips, { today: cToday(), now: colomboNow(), exportDate: parsed.export_date, refsPresent: parsed.refs_active, window: maxCo ? { to: maxCo } : null });
+      trips = plan.send;
+    }
     const guests = okGuests.filter(g => !cancelledRefs.has(g.booking_ref)).map(g => ({ ...g, hq_match: matchOf(g.booking_ref), partner: partnerOf(g.booking_ref) || null }));
     const hqCancelled = okGuests.filter(g => cancelledRefs.has(g.booking_ref)).map(g => ({ guest: g.guest_name, ref: g.booking_ref, transfer: g.has_transfer, status: hqStatus(g.booking_ref) || 'not live' }));
     const missingRefs = new Set(guests.filter(g => g.hq_match === 'missing').map(g => g.booking_ref)).size;
@@ -1783,8 +1820,14 @@
       const inFile = new Set(allGuests.map(g => g.booking_ref));
       hqMissing = (data || []).filter(b => HQ_LIVE_STATUSES.has(String((b.raw_payload || {}).status || '').toLowerCase()) && !inFile.has(String(b.booking_ref)) && /airport transfer/i.test(String(b.package || '') + ' ' + JSON.stringify(b.raw_payload || {})));
     } catch (_) {}
+    let guestPlan = null;
+    if (plan) try {
+      const loc = await ensureHubLocationId();
+      const { data } = await c.from('camp_week_guests').select('booking_ref,guest_key,guest_name,phone,check_in,check_out,accommodation,bed_number,packages,activities,level,diet,allergies,booking_status,booking_due,partner').eq('location_id', loc);
+      guestPlan = BlReport.planGuests(guests, data || []);
+    } catch (_) { guestPlan = null; }
     TR.imp = { ...TR.imp, parsed, stage: 'preview',
-      groups: { audit: GT.guestAudit(TR.imp.text, parsed.file, GTC), warnings: GT.importWarnings(TR.imp.text, parsed.file, GTC), trips, guests, hqCancelled, hqMissing, missingRefs, cancelledRefs, cancelRefs: [...new Set(parsed.cancel_refs.concat([...cancelledRefs]))] } };
+      groups: { audit: IMP().guestAudit(TR.imp.text, parsed.file, GTC), warnings: IMP().importWarnings(TR.imp.text, parsed.file, GTC), trips, guests, hqCancelled, hqMissing, missingRefs, cancelledRefs, cancelRefs: [...new Set(parsed.cancel_refs.concat([...cancelledRefs]))], plan, guestPlan } };
     render();
   }
   const pricesReady = () => presetPrice('airport_arrival', VEHICLES[0]) > 0 && presetPrice('airport_departure', VEHICLES[0]) > 0;

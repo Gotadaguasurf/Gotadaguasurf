@@ -1113,3 +1113,47 @@ for (const [kase, opts] of [['default', {}], ['mixed', { trips: GOLDEN_TRIPS() }
     if (process.env.GOLDEN_WRITE !== '1') expect(WG.covered('sl', kase, 'transfers|')).toBe(9);
   });
 }
+
+// ── The camp report (booking lines × guests, 16 Nov 2026) through the same Week import ─────────────
+test('import: the camp report is recognised, «what will change» is shown, and only today-on legs (or legs the app has by key) are sent', async ({ page }) => {
+  const { csv } = require('./bl-report-csv');
+  const R = 'Kabalana Beach Shared Room (4p)';
+  const text = csv([
+    // Emilia: today's arrival, the app has it by key without a time → updated, sent
+    { ref: '2026-5074', ci: '2026-11-17', co: '2026-11-21', guests: [{ name: 'Emilia Faccenna', arrT: '23:30', phone: '+393349187890' }],
+      lines: [{ p: R, person: 'Emilia Faccenna', start: '2026-11-17', end: '2026-11-21' }, { p: 'Airport Transfer Sri Lanka', person: 'Emilia Faccenna', start: '2026-11-17' }] },
+    // Diana: both legs in October, not in the app → past, never sent (would be owed twice)
+    { ref: '2026-3842', ci: '2026-10-03', co: '2026-10-10', guests: [{ name: 'Diana Tansiri' }],
+      lines: [{ p: R, person: 'Diana Tansiri', start: '2026-10-03', end: '2026-10-10' }, { p: 'Airport Transfer Sri Lanka', person: 'Diana Tansiri', start: '2026-10-03' }, { p: 'Airport Transfer Sri Lanka', person: 'Diana Tansiri', start: '2026-10-10' }] },
+    // Beliz: only the 14 Nov arrival is booked → the app's 21 Nov departure is asked about, never cancelled
+    { ref: '2026-4070', ci: '2026-11-14', co: '2026-11-21', guests: [{ name: 'Beliz Kuyumcuoglu' }],
+      lines: [{ p: R, person: 'Beliz Kuyumcuoglu', start: '2026-11-14', end: '2026-11-21' }, { p: 'Airport Transfer Sri Lanka', person: 'Beliz Kuyumcuoglu', start: '2026-11-14' }] },
+    // a new couple → two new trips
+    { ref: '2026-9001', ci: '2026-11-28', co: '2026-12-05', guests: [{ name: 'Nia N', arrT: '10:00', arrF: 'QR664' }, { name: 'Oli O' }],
+      lines: [{ p: R, person: 'Nia N', start: '2026-11-28', end: '2026-12-05' }, { p: R, person: 'Oli O', start: '2026-11-28', end: '2026-12-05' },
+        { p: 'Airport Transfer Sri Lanka', person: 'Nia N', start: '2026-11-28' }, { p: 'Airport Transfer Sri Lanka', person: 'Oli O', start: '2026-11-28' },
+        { p: 'Airport Transfer Sri Lanka', person: 'Nia N', start: '2026-12-05' }, { p: 'Airport Transfer Sri Lanka', person: 'Oli O', start: '2026-12-05' }] },
+    // a Caparica booking in the Sri Lanka report → left out, its «Airport Shuttle» never becomes a Colombo trip
+    { ref: '2026-4776', ci: '2026-11-27', co: '2026-11-29', guests: [{ name: 'Corinne Suter' }],
+      lines: [{ p: '17 - Castelo beach mixed dorm', person: 'Corinne Suter', start: '2026-11-27', end: '2026-11-29' }, { p: 'Airport Shuttle', person: 'Corinne Suter', start: '2026-11-27' }] },
+  ]);
+  const trips = TRIPS().map(t => ({ ...t, import_key: t.booking_ref === '2026-5074' ? 'bl:2026-5074:arr' : t.booking_ref === '2026-4070' ? 'bl:2026-4070:dep' : t.import_key, last_import_at: '2026-11-14T03:00:00Z' }));
+  const errors = collectFatalErrors(page);
+  const st = await openWeek(page, { trips });
+  await page.click('#weekRoot button:has-text("Import Guests file")');
+  await page.setInputFiles('#trGuestsFile', { name: '2026-11-16 2007 - teste sri lanka.csv', mimeType: 'text/csv', buffer: Buffer.from(text) });
+  await expect(page.locator('#weekRoot .tr-plan-sum')).toBeVisible();
+  await expect(page.locator('#weekRoot .tr-plan-sum')).toHaveAttribute('data-plan', '2|1|0|1');
+  await expect(page.locator('#weekRoot .tr-plan-sum')).toContainText('3 past legs');
+  await expect(page.locator('#weekRoot')).toContainText('Not in the report — cancel?');
+  await expect(page.locator('#weekRoot')).toContainText('Airport trips from this file · 3');
+  await expect(page.locator('#weekRoot .tr-audit')).toContainText('6 guests in the file = 5 guests imported + 1 left out');
+  await page.click('#trImportSave');
+  const imp = (await call(st, 'import')).body;
+  expect(imp.p_trips.map(t => t.key).sort()).toEqual(['bl:2026-5074:arr', 'bl:2026-9001:arr', 'bl:2026-9001:dep']);
+  expect(imp.p_is_preset).toBe(false);
+  expect(imp.p_cancel_refs).toEqual([]);
+  expect(imp.p_guests.map(g => g.booking_ref).sort()).toEqual(['2026-3842', '2026-4070', '2026-5074', '2026-9001', '2026-9001']);
+  expect(imp.p_trips.find(t => t.key === 'bl:2026-9001:arr')).toMatchObject({ pax: 2, time: '10:00', flight: 'QR664', expected_price: 21000 });
+  expect(errors).toEqual([]);
+});
