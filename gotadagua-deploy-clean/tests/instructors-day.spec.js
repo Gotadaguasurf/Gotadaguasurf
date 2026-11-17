@@ -75,7 +75,7 @@ test('steppers: only the types each instructor gives, price from their history, 
   // recent people only, busiest first; Heitor (no lessons in 90 days) is behind «+ Add instructor»
   const rows = await page.locator('#qdBody [data-row]').evaluateAll(els => els.map(e => e.dataset.row));
   expect(rows).toEqual(['Matilde', 'Romildo Ramos', 'Yuri Medeiros']);   // 6, 4 and 2 lessons in the last 90 days
-  expect(await page.locator('#qdAddSel option').allTextContents()).toContain('Heitor Souza');
+  await expect(page.locator('#qdBody [data-row="Heitor Souza"]')).toHaveCount(0);
   // only the types they actually give
   expect(await page.locator('#qdBody [data-row="Matilde"] .qd-line').count()).toBe(1);
   await expect(line(page, 'Matilde', 'Surf Camp')).toHaveCount(0);
@@ -97,7 +97,9 @@ test('steppers: only the types each instructor gives, price from their history, 
   await line(page, 'Yuri Medeiros', 'Theory').locator('.qd-price input').fill('20');
   await line(page, 'Yuri Medeiros', 'Theory').locator('.qd-price input').press('Enter');
   // someone not in the usual list
-  await page.locator('#qdAddSel').selectOption('Heitor Souza');
+  await page.locator('#qdSearch').fill('heitor');
+  await page.locator('#qdBody [data-add="Heitor Souza"]').click();
+  await expect(page.locator('#qdSearch')).toHaveValue('');
   await expect(line(page, 'Heitor Souza', 'Junior Camp')).toHaveCount(1);
   await plus(page, 'Heitor Souza', 'Junior Camp').click();
 
@@ -303,4 +305,70 @@ test('line by line opens on the day picked above', async ({ page }) => {
   await page.locator('#qdDays [data-day="yesterday"]').click();
   await page.locator('#modeLine').click();
   expect(await page.locator('#fDate').inputValue()).toBe(await page.evaluate(() => qdYesterdayIso()));
+});
+
+test('search: filters the list, ignores accents, finds active instructors outside the 90 days, × clears, Enter on one result goes to its stepper', async ({ page }) => {
+  await openDay(page);
+  await page.evaluate(() => { instructorDirectory.push({ id: 'dc', name: 'Cauê Flores', rate: 30, paymentType: 'Recibo Verde', vatPct: 0 }); });
+  const rows = () => page.locator('#qdBody [data-row]').evaluateAll(els => els.map(e => e.dataset.row));
+  // filter the usual list
+  await page.locator('#qdSearch').fill('MAT');
+  expect(await rows()).toEqual(['Matilde']);
+  await expect(page.locator('#qdSearchClear')).toBeVisible();
+  // typed numbers survive filtering
+  await plus(page, 'Matilde', 'Surf School').click();
+  await page.locator('#qdSearchClear').click();
+  await expect(page.locator('#qdSearch')).toHaveValue('');
+  await expect(page.locator('#qdSearchClear')).toBeHidden();
+  expect(await rows()).toEqual(['Matilde', 'Romildo Ramos', 'Yuri Medeiros']);
+  await expect(num(page, 'Matilde', 'Surf School')).toHaveValue('1');
+  // accent-insensitive, and someone not in the 90-day list (no lessons at all) shows as «tap to add»
+  await page.locator('#qdSearch').fill('caue');
+  expect(await rows()).toEqual([]);
+  await expect(page.locator('#qdBody [data-add]')).toHaveText(['Cauê Flores']);
+  // Enter on the single result adds them and lands on their first stepper
+  await page.locator('#qdSearch').press('Enter');
+  await expect(page.locator('#qdSearch')).toHaveValue('');
+  await expect(page.locator('#qdBody [data-row="Cauê Flores"] input.qd-n').first()).toBeFocused();
+  await page.keyboard.type('2');
+  // Enter on a single match already in the list focuses it too
+  await page.locator('#qdSearch').fill('yuri');
+  await page.locator('#qdSearch').press('Enter');
+  await expect(num(page, 'Yuri Medeiros', 'Kids Camp')).toBeFocused();
+  // nothing found says so; Escape clears
+  await page.locator('#qdSearch').fill('zzz');
+  await expect(page.locator('#qdBody .qd-nomatch')).toContainText('No instructor matches');
+  await page.locator('#qdSearch').press('Escape');
+  await expect(page.locator('#qdSearch')).toHaveValue('');
+  await expect(page.locator('#modal')).toHaveClass(/open/);
+  await page.locator('#qdSave').click();
+  const ins = await page.evaluate(() => window.__w.inserts.map(d => [d.instructorName, d.lessonCategory, d.numberOfLessons]));
+  expect(ins.sort()).toEqual([['Cauê Flores', 'Surf School', 2], ['Matilde', 'Surf School', 1]]);   // no history → the school's top type
+});
+
+test('search at 390px: sticky with the day chips, no sideways scroll, results are big tap targets', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openDay(page, { extraPeople: 12 });
+  await page.evaluate(() => { for (let i = 0; i < 6; i++) instructorDirectory.push({ id: 'n' + i, name: `Novo Instrutor Com Um Nome Bastante Comprido ${i}`, rate: 30, paymentType: 'Cash', vatPct: 0 }); });
+  await page.locator('#qdSearch').fill('novo');
+  await expect(page.locator('#qdBody [data-add]')).toHaveCount(6);
+  const m = await page.evaluate(() => {
+    const box = document.querySelector('#modal .modal');
+    const over = [box, document.getElementById('quickDay'), document.getElementById('qdHead'), document.getElementById('qdBody'), ...document.querySelectorAll('#qdBody .qd-result')]
+      .filter(el => el.scrollWidth > el.clientWidth + 1).map(el => el.className || el.id);
+    return { over, docW: document.documentElement.scrollWidth, tap: Math.min(...[...document.querySelectorAll('#qdBody .qd-result, #qdSearch')].map(b => b.offsetHeight)) };
+  });
+  expect(m.over).toEqual([]);
+  expect(m.docW).toBeLessThanOrEqual(390);
+  expect(m.tap).toBeGreaterThanOrEqual(44);
+  // scroll the list: chips + search stay pinned under the modal title
+  await page.locator('#qdSearch').fill('');
+  await page.locator('#modal .modal').evaluate(el => { el.scrollTop = el.scrollHeight; });
+  await page.waitForTimeout(250);
+  const head = await page.locator('#qdHead').boundingBox(), title = await page.locator('#modal .mhdr').boundingBox(), search = await page.locator('#qdSearch').boundingBox();
+  expect(Math.abs(head.y - (title.y + title.height))).toBeLessThan(2);
+  expect(search.y).toBeGreaterThan(0);
+  await expect(page.locator('#qdDays [data-day="yesterday"]')).toBeInViewport();
+  const save = await page.locator('#qdSave').boundingBox();
+  expect(save.y + save.height).toBeLessThanOrEqual(844);
 });

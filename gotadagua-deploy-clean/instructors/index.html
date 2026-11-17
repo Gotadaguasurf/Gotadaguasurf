@@ -49,14 +49,15 @@
     .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:var(--sp-4)}
     .total-box{grid-column:1/-1}
     /* Quick day — phone first: day chips, one row per instructor, − N + per lesson type, sticky total + Save */
-    #modal .modal{max-width:980px}#modal .modal.qd-mode{max-width:560px}
+    #modal .modal{max-width:980px;display:flex;flex-direction:column}#modal .modal>.mbody{flex:1 0 auto}#modal .modal.qd-mode{max-width:560px}
+    #modal .modal.qd-mode>.mbody{padding-top:4px}
     .qd-days{display:flex;gap:8px;flex-wrap:wrap}
     .qd-days .pill{height:44px;padding:0 18px;font-size:15px}
     .qd-dayline{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:10px 0 16px;min-height:24px}
     .qd-daylbl{font-size:13px;font-weight:600;color:var(--muted)}
     .qd-dayline input[type=date]{height:44px;font-size:16px;max-width:220px}
-    #qdSavedNote,#qdMsg{margin-bottom:16px}
-    .qd-list{display:flex;flex-direction:column;border-top:1px solid var(--border)}
+    #qdSavedNote,#qdMsg{margin:0 0 16px}
+    .qd-list{display:flex;flex-direction:column}
     .qd-person{padding:14px 0;border-bottom:1px solid var(--border)}
     .qd-person-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:6px}
     .qd-name{font-size:15px;font-weight:700;color:var(--navy);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -78,7 +79,20 @@
     .qd-step input.qd-n.has{background:var(--ocean-soft);border-color:var(--ocean);color:var(--ocean-dark)}
     .qd-locked{min-width:52px;text-align:center;font-size:18px;font-weight:700;color:var(--muted);font-variant-numeric:tabular-nums}
     .qd-more{margin-top:2px;padding:0;height:32px}
-    .qd-add{margin:16px 0 8px}.qd-add .select{width:100%;height:44px;font-size:15px}
+    .qd-head{position:sticky;top:0;z-index:9;background:#fff;padding:16px var(--card-pad) 12px;border-bottom:1px solid var(--border)}
+    .qd-head .qd-dayline{margin:10px 0 12px}
+    .qd-search{position:relative}
+    .qd-search-ic{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--muted-2);display:inline-flex;pointer-events:none}.qd-search-ic .ic{width:16px;height:16px}
+    .qd-search input{width:100%;height:44px;font-size:16px;padding:0 44px 0 38px;border:1px solid var(--border-2);border-radius:var(--r-sm);font-family:inherit;color:var(--ink);background:#fff;-webkit-appearance:none;appearance:none}
+    .qd-search input::-webkit-search-cancel-button{-webkit-appearance:none;display:none}
+    .qd-search input:focus{outline:none;border-color:var(--ocean);box-shadow:var(--ring)}
+    .qd-search-x{position:absolute;right:2px;top:2px;width:40px;height:40px;border:0;background:transparent;color:var(--muted);font-size:20px;line-height:1;cursor:pointer;border-radius:var(--r-sm)}.qd-search-x:hover{color:var(--ink)}
+    .qd-results{padding:12px 0 4px}
+    .qd-results .micro{margin-bottom:6px}
+    .qd-result{display:flex;align-items:center;gap:8px;width:100%;min-height:44px;padding:0 12px;margin-top:6px;border:1px dashed var(--border-2);border-radius:var(--r-sm);background:#fff;color:var(--navy);font:inherit;font-size:15px;font-weight:600;text-align:left;cursor:pointer}
+    .qd-result:hover,.qd-result:focus{border-color:var(--ocean);color:var(--ocean);outline:none}
+    .qd-result .ic{flex-shrink:0}
+    .qd-nomatch{padding:16px 0;color:var(--muted);font-size:13px}
     .qd-adv{margin-top:8px;border-top:1px solid var(--border);padding-top:8px}
     .qd-adv>summary{cursor:pointer;font-size:13px;font-weight:600;color:var(--muted);padding:8px 0;list-style:none}
     .qd-adv>summary::-webkit-details-marker{display:none}.qd-adv>summary::marker{content:''}
@@ -94,6 +108,8 @@
       #modal.overlay{padding:0;align-items:stretch}
       #modal .modal,#modal .modal.qd-mode{max-width:none;max-height:none;height:100%;height:100dvh;border-radius:0;border:0}
       .qd-days .pill{flex:1;justify-content:center;padding:0 10px}
+      .qd-head{padding:12px var(--sp-4)}
+      .qd-head .qd-dayline{margin:6px 0 10px}
       .qd-bar{padding-bottom:calc(12px + env(safe-area-inset-bottom))}
     }
     .daylist-item{border:1px solid var(--border);border-radius:var(--r);padding:12px;background:#fff}
@@ -256,22 +272,24 @@ AppShell.setAccount({ signOut: () => AppShell.signOut(getSupabaseClient) });   /
       <div class="mhdr-sub" id="modalSub">Tap + for each lesson given. The price fills in by itself.</div>
       <button class="mclose" id="closeModalBtn" aria-label="Close">×</button>
     </div>
+    <div class="qd-head" id="qdHead">
+      <div class="qd-days" id="qdDays" role="group" aria-label="Day">
+          <button type="button" class="pill" data-day="today">Today</button>
+          <button type="button" class="pill" data-day="yesterday">Yesterday</button>
+          <button type="button" class="pill" data-day="other">Other day</button>
+        </div>
+        <div class="qd-dayline"><span class="qd-daylbl" id="qdDayLbl"></span><input type="date" id="qdDate" aria-label="Pick the day" style="display:none"></div>
+        <div class="qd-search"><span class="qd-search-ic" id="qdSearchIc"></span><input type="search" id="qdSearch" placeholder="Search instructor" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="go" aria-label="Search instructor"><button type="button" class="qd-search-x" id="qdSearchClear" aria-label="Clear search" style="display:none">×</button></div>
+    </div>
     <div class="mbody">
       <!-- Quick day (17 Nov 2026, Miguel: «tem de ser mais fácil de usar e mobile —
            para conseguir meter no dia… ou no dia a seguir»): pick the day with one
            tap, then a − N + per lesson type for the people who usually work. The day's
            saved lessons come pre-filled, so Save updates them instead of adding twice. -->
       <div id="quickDay">
-        <div class="qd-days" id="qdDays" role="group" aria-label="Day">
-          <button type="button" class="pill" data-day="today">Today</button>
-          <button type="button" class="pill" data-day="yesterday">Yesterday</button>
-          <button type="button" class="pill" data-day="other">Other day</button>
-        </div>
-        <div class="qd-dayline"><span class="qd-daylbl" id="qdDayLbl"></span><input type="date" id="qdDate" aria-label="Pick the day" style="display:none"></div>
         <div class="status-msg status-info" id="qdSavedNote" style="display:none"></div>
         <div class="status-msg status-err" id="qdMsg" style="display:none"></div>
         <div id="qdBody" class="qd-list"></div>
-        <div class="qd-add"><select class="select" id="qdAddSel" aria-label="Add instructor"></select></div>
         <details class="qd-adv" id="qdAdv">
           <summary>Options</summary>
           <div class="qd-adv-body">
@@ -819,7 +837,7 @@ function fillSelects(){document.getElementById("fCategory").innerHTML=lessonCate
 function calcTotal(){document.getElementById("fTotal").textContent=euro(Number(document.getElementById("fLessons").value||0)*Number(document.getElementById("fPrice").value||0));}
 function resetDraft(keepDate=true){const currentDate=keepDate?(document.getElementById("fDate").value||localIso()):localIso();document.getElementById("fDate").value=currentDate;document.getElementById("fCategory").value="Surf School";document.getElementById("fLessons").value=1;document.getElementById("fNotes").value="";document.getElementById("fPaid").value="false";calcTotal();}
 function openModal(edit=false){fillSelects();document.getElementById("modal").classList.add("open");setModalMode(edit?"line":modalMode);document.getElementById("modalTitle").textContent=edit?"Edit lesson":"Lessons for the day";document.getElementById("lineActions").style.display=edit?"none":"flex";document.getElementById("editActions").style.display=edit?"flex":"none";renderSearchableDropdown("formInstructorBtn","formInstructorDropdown","formInstructorSearch","formInstructorOptions",formInstructor,(v)=>{formInstructor=v;openModal(Boolean(editingId));},false);renderDayQueue();calcTotal();}
-function closeModal(){document.getElementById("modal").classList.remove("open");editingId=null;dayQueue=[];qdDay=null;qdCounts={};qdPrices={};qdBase={};qdShown=[];qdMoreOpen=new Set();qdPriceEdited=new Set();qdError("");}
+function closeModal(){document.getElementById("modal").classList.remove("open");editingId=null;dayQueue=[];qdDay=null;qdCounts={};qdPrices={};qdBase={};qdShown=[];qdQuery="";document.getElementById("qdSearch").value="";qdMoreOpen=new Set();qdPriceEdited=new Set();qdError("");}
 function renderDayQueue(){document.getElementById("dayListCount").textContent=`${dayQueue.length} lines`;document.getElementById("dayQueueTotal").textContent=dayQueue.reduce((s,i)=>s+Number(i.numberOfLessons),0);document.getElementById("dayListWrap").innerHTML=dayQueue.length?dayQueue.map((item,index)=>`<div class="daylist-item"><div style="display:flex;justify-content:space-between;gap:12px"><div><div style="font-weight:700">${item.instructorName}</div><div class="muted" style="font-size:14px;margin-top:4px">${item.date} · ${item.lessonCategory} · ${item.numberOfLessons} lessons</div></div><button class="btn btn-danger btn-sm" data-remove-draft="${index}">Remove</button></div></div>`).join(""):`<div class="hint" style="padding:12px 0">No lines added yet for this day.</div>`;document.querySelectorAll("[data-remove-draft]").forEach(btn=>btn.onclick=()=>{dayQueue=dayQueue.filter((_,i)=>i!==Number(btn.dataset.removeDraft));renderDayQueue();});}
 function buildCurrentDraft(){return{date:document.getElementById("fDate").value,instructorName:formInstructor,lessonCategory:document.getElementById("fCategory").value,numberOfLessons:Number(document.getElementById("fLessons").value||0),paymentType:document.getElementById("fPayment").value,priceUnit:Number(document.getElementById("fPrice").value||0),notes:document.getElementById("fNotes").value,paid:document.getElementById("fPaid").value==="true"};}
 function addDraftToDayQueue(){const draft=buildCurrentDraft();if(!draft.date||!draft.instructorName||!draft.numberOfLessons)return;dayQueue.push(draft);showMessage(`Added to day list. ${dayQueue.length} items ready.`);resetDraft(true);renderDayQueue();}
@@ -948,15 +966,18 @@ function renderQuickDay(){
   const note=document.getElementById("qdSavedNote");
   note.style.display=savedN?"":"none";
   note.textContent=savedN?`Already saved for this day: ${savedN} lesson${savedN===1?"":"s"} · ${euro(savedV)}. The numbers below start from them — Save updates them, it never adds them twice.`:"";
-  // pessoas
-  const nomes=qdShownNames();
-  body.innerHTML=nomes.map(n=>{const {cats,more}=qdLinesFor(n);
+  // pessoas — a pesquisa filtra a lista e encontra também quem não está nela
+  const all=qdShownNames(),q=qdNorm(qdQuery);
+  const nomes=q?all.filter(n=>qdNorm(n).includes(q)):all;
+  const extra=q?[...new Set(instructorDirectory.map(d=>d.name))].filter(n=>!all.includes(n)&&qdNorm(n).includes(q)).sort((a,b)=>a.localeCompare(b)):[];
+  document.getElementById("qdSearchClear").style.display=qdQuery?"":"none";
+  const resHtml=extra.length?`<div class="qd-results"><div class="micro">Not in the list — tap to add</div>${extra.map(n=>`<button type="button" class="qd-result" data-add="${esc(n)}">${AppShell.icon("plus")}${esc(n)}</button>`).join("")}</div>`:"";
+  const noMatch=q&&!nomes.length&&!extra.length?`<div class="qd-nomatch">No instructor matches “${esc(qdQuery)}”. New instructors are created in the Instructors tab.</div>`:"";
+  body.innerHTML=resHtml+noMatch+nomes.map(n=>{const {cats,more}=qdLinesFor(n);
     return`<div class="qd-person" data-row="${esc(n)}"><div class="qd-person-head"><span class="qd-name">${esc(n)}</span><span class="qd-rowtotal" data-rt="${esc(n)}"></span></div>${cats.map(c=>qdLineHtml(n,c)).join("")}${more.length?`<button type="button" class="btn btn-link btn-sm qd-more" data-more="${esc(n)}">More types</button>`:""}</div>`;}).join("")
-    ||`<div class="empty-state">${AppShell.icon("users")}<div class="empty-title">No instructors yet</div><p>Add one in the Instructors tab, or below.</p></div>`;
-  // + instrutor
-  const sel=document.getElementById("qdAddSel");const rest=instructorOptions().filter(n=>!nomes.includes(n));
-  sel.innerHTML=`<option value="">+ Add instructor</option>`+rest.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join("");
-  sel.parentElement.style.display=rest.length?"":"none";
+    ||(q?"":`<div class="empty-state">${AppShell.icon("users")}<div class="empty-title">No recent lessons</div><p>Search above to find an instructor, or add one in the Instructors tab.</p></div>`);
+  body.querySelectorAll("[data-add]").forEach(b=>b.onclick=()=>qdAddFromSearch(b.dataset.add));
+  qdStickTop();
   // eventos
   body.querySelectorAll("input.qd-n").forEach(inp=>{
     inp.oninput=()=>{qdSetCount(inp.dataset.k,inp.value,false);};
@@ -969,6 +990,20 @@ function renderQuickDay(){
   body.querySelectorAll("[data-pe]").forEach(b=>b.onclick=()=>qdEditPrice(b.dataset.pe));
   qdTotais();
 }
+// Pesquisa sem acentos («caue» encontra Cauê).
+let qdQuery="";
+const qdNorm=v=>String(v||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/\s+/g," ").trim();
+function qdFocusRow(n){const row=[...document.querySelectorAll("#qdBody [data-row]")].find(r=>r.dataset.row===n);if(!row)return;row.scrollIntoView({block:"center"});const i=row.querySelector("input.qd-n");if(i){i.focus({preventScroll:true});i.select();}}
+function qdAddFromSearch(n){if(!qdShown.includes(n))qdShown.push(n);qdQuery="";document.getElementById("qdSearch").value="";renderQuickDay();qdFocusRow(n);}
+function qdSearchEnter(){
+  const all=qdShownNames(),q=qdNorm(qdQuery);if(!q)return;
+  const inList=all.filter(n=>qdNorm(n).includes(q));
+  const extra=[...new Set(instructorDirectory.map(d=>d.name))].filter(n=>!all.includes(n)&&qdNorm(n).includes(q));
+  if(inList.length+extra.length!==1)return;
+  if(extra.length)qdAddFromSearch(extra[0]);else qdFocusRow(inList[0]);
+}
+// O cabeçalho do dia (chips + pesquisa) fica preso por baixo do título do modal.
+function qdStickTop(){const h=document.querySelector("#modal .mhdr"),head=document.getElementById("qdHead");if(h&&head)head.style.top=h.offsetHeight+"px";}
 function qdSetCount(k,val,syncInput){
   const v=Math.max(0,Math.floor(Number(val)||0));
   if(v)qdCounts[k]=v;else if(qdBase[k])qdCounts[k]=0;else delete qdCounts[k];
@@ -1078,6 +1113,7 @@ function setModalMode(mode){
   document.getElementById("quickDay").style.display=quick?"":"none";
   document.getElementById("lineMode").style.display=quick?"none":"";
   document.getElementById("qdBar").style.display=quick?"":"none";
+  document.getElementById("qdHead").style.display=quick?"":"none";
   document.getElementById("lineBack").style.display=(!quick&&!editingId)?"":"none";
   document.getElementById("lessonModalBox").classList.toggle("qd-mode",quick);
   document.getElementById("modalSub").textContent=editingId?"Change any field and save.":(quick?"Tap + for each lesson given. The price fills in by itself.":"One line at a time, with notes and any price.");
@@ -1241,8 +1277,10 @@ document.getElementById("qdDate").onchange=e=>qdSetDay(e.target.value,"other");
 document.querySelectorAll("#qdDays [data-day]").forEach(b=>b.onclick=()=>{const m=b.dataset.day;
   if(m==="today")qdSetDay(qdTodayIso(),"today");else if(m==="yesterday")qdSetDay(qdYesterdayIso(),"yesterday");
   else{qdDayMode="other";renderQuickDay();const i=document.getElementById("qdDate");i.focus();try{i.showPicker&&i.showPicker();}catch(_){}}});
-document.getElementById("qdAddSel").onchange=e=>{const n=e.target.value;if(!n)return;if(!qdShown.includes(n))qdShown.push(n);renderQuickDay();
-  const row=[...document.querySelectorAll("#qdBody [data-row]")].find(r=>r.dataset.row===n);if(row){row.scrollIntoView({block:"center"});const i=row.querySelector("input.qd-n");if(i)i.focus({preventScroll:true});}};
+document.getElementById("qdSearchIc").innerHTML=AppShell.icon("search");
+document.getElementById("qdSearch").oninput=e=>{qdQuery=e.target.value;renderQuickDay();};
+document.getElementById("qdSearch").onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();qdSearchEnter();}else if(e.key==="Escape"&&qdQuery){e.preventDefault();e.stopPropagation();qdQuery="";e.target.value="";renderQuickDay();}};
+document.getElementById("qdSearchClear").onclick=()=>{qdQuery="";const i=document.getElementById("qdSearch");i.value="";renderQuickDay();i.focus();};
 document.getElementById("clearLineBtn").onclick=()=>resetDraft(true);
 ["fLessons","fPrice"].forEach(id=>document.getElementById(id).oninput=calcTotal);
 document.addEventListener("click",e=>{[["instructorDropdown","instructorBtn"],["formInstructorDropdown","formInstructorBtn"]].forEach(([ddId,btnId])=>{const dd=document.getElementById(ddId),btn=document.getElementById(btnId);if(dd&&btn&&!dd.contains(e.target)&&!btn.contains(e.target))dd.classList.remove("open");});});
