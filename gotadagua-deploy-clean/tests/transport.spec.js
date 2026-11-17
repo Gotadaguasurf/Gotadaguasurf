@@ -24,10 +24,12 @@ const DRIVERS = [
 ];
 const CATALOG = [
   ['Ahangama', 500, 'surf'], ['Weligama', 1500, 'surf'], ['South Beach', 500, 'surf'],
-  ['Airport → Surfcamp — Car', 21000, 'airport'], ['Airport → Surfcamp — Minivan', 26500, 'airport'], ['Airport → Surfcamp — Large Van', 29500, 'airport'],
-  ['Surfcamp → Airport — Car', 20000, 'airport'], ['Surfcamp → Airport — Minivan', 25000, 'airport'], ['Surfcamp → Airport — Large Van', 28000, 'airport'],
+  // airport rows carry the capacity column (17 Nov 2026: seats come from /prices only; Car = 3, no third vehicle in Sri Lanka)
+  ['Airport → Surfcamp — Car', 21000, 'airport', 3, 80], ['Airport → Surfcamp — Minivan', 26500, 'airport', 8, 95],
+  ['Surfcamp → Airport — Car', 20000, 'airport', 3, 80], ['Surfcamp → Airport — Minivan', 25000, 'airport', 8, 95],
   ['River Safari', 1000, 'tours'], ['Tea Plantation', 1500, 'tours'],
-].map(([name, cost, tab], i) => ({ id: `cat-${i}`, name, cost_per_guest: cost, currency: 'LKR', notes: '', linked_transport_preset_id: `p-${name.split(' — ')[0]}`, linked_camp_tab_id: null, picker_tab: tab, sort_order: i }));
+].map(([name, cost, tab, capacity, sell], i) => ({ id: `cat-${i}`, name, cost_per_guest: cost, currency: 'LKR', notes: '', linked_transport_preset_id: `p-${name.split(' — ')[0]}`, linked_camp_tab_id: null, picker_tab: tab, sort_order: i,
+  capacity: capacity || null, sell_price: sell || null, sell_currency: sell ? 'EUR' : null, covers_pax: sell ? 3 : null }));
 
 let seq = 0;
 const uid = (p = 'eeeeeeee') => `${p}-0000-4000-8000-${String(++seq).padStart(12, '0')}`;
@@ -52,7 +54,7 @@ const NEXT_WEEK = () => [
 async function stub(page, opts = {}) {
   const st = {
     trips: (opts.trips || []).map(t => ({ ...t })), drivers: DRIVERS.map(d => ({ ...d })), links: (opts.links || []).map(l => ({ ...l })),
-    ledger: (opts.ledger || []).map(r => ({ ...r })), bookings: opts.bookings || [], calls: [], noPrices: !!opts.noPrices,
+    ledger: (opts.ledger || []).map(r => ({ ...r })), bookings: opts.bookings || [], calls: [], noPrices: !!opts.noPrices, catalogUrls: [],
   };
   const slug = opts.slug || 'sri-lanka';
   await page.route(/api\.frankfurter\.dev/, r => r.abort());
@@ -71,7 +73,14 @@ async function stub(page, opts = {}) {
       if (method === 'POST') { (Array.isArray(body) ? body : [body]).forEach(r => { const i = st.ledger.findIndex(x => x.id === r.id); if (i >= 0) st.ledger[i] = { ...st.ledger[i], ...r }; else st.ledger.push({ created_at: new Date().toISOString(), ...r }); }); return json([]); }
       return json([]);
     }
-    if (url.includes('/rest/v1/pricing_catalog')) return json(slug === 'sri-lanka' && url.includes('category=eq.Transport') && !st.noPrices ? CATALOG : []);
+    if (url.includes('/rest/v1/pricing_catalog')) {
+      if (url.includes('category=eq.Transport')) st.catalogUrls.push(url);
+      // a database where supabase/transport-catalog-one-source.sql has not run yet: the new columns do not exist
+      if (opts.noNewCatalogCols && /covers_pax|bl_product/.test(url)) return json({ code: '42703', message: 'column pricing_catalog.covers_pax does not exist' }, 400);
+      if (opts.catalogFails && url.includes('category=eq.Transport')) return json({ code: '500', message: 'timeout' }, 500);
+      return json(slug === 'sri-lanka' && url.includes('category=eq.Transport') && !st.noPrices ? (opts.catalog || CATALOG) : []);
+    }
+    if (url.includes('/rest/v1/location_state_store') && method !== 'GET') st.calls.push({ t: 'state_store', body });
     if (url.includes('/rest/v1/camp_drivers')) {
       if (method === 'GET') return json(st.drivers);
       if (method === 'PATCH') { const d = st.drivers.find(x => x.id === idEq); Object.assign(d, body); st.calls.push({ t: 'driver_update', id: idEq, body }); return json([d]); }
@@ -1567,4 +1576,79 @@ test('cancelled trips the driver still has («changed, resend») stay in view, a
   await expect(page.locator(`#transportRoot .tr-row[data-trip="${RPID(6)}"]`)).toHaveCount(1);
   await expect(page.locator('#transportRoot [data-show-off]')).toHaveCount(0);
   expect(errors).toEqual([]);
+});
+
+// ── /prices is the one source of vehicles, seats and prices (17 Nov 2026) ──────────────────────────────
+test('/prices loader: capacity, cost, currency, sell price, covers and product are read (capacity from the column); nothing is written back to state_store', async ({ page }) => {
+  const errors = collectFatalErrors(page);
+  const st = await openTab(page);
+  expect(st.catalogUrls.length).toBeGreaterThan(0);
+  expect(st.catalogUrls[0]).toMatch(/select=[^&]*capacity/);
+  ['cost_per_guest', 'currency', 'sell_price', 'sell_currency', 'covers_pax', 'bl_product'].forEach(c => expect(st.catalogUrls[0]).toContain(c));
+  const v = await page.evaluate(() => TransportUI.airVehicles('airport_arrival', 'CMB').map(x => [x.label, x.capacity, x.cost, x.sell, x.coversPax]));
+  expect(v).toEqual([['Car', 3, 21000, 80, 3], ['Minivan', 8, 26500, 95, 3]]);
+  expect(await page.evaluate(() => [TransportUI.pickAir('airport_arrival', 'CMB', 4).label, TransportUI.presetPrice('airport_departure', 'Minivan', 'CMB')])).toEqual(['Minivan', 25000]);
+  expect(st.calls.filter(c => c.t === 'state_store' && JSON.stringify(c.body).includes('transport_presets'))).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
+test('/prices loader: before transport-catalog-one-source.sql (no covers_pax / bl_product) the select is repeated without them and the prices load', async ({ page }) => {
+  const st = await openTab(page, { noNewCatalogCols: true });
+  expect(st.catalogUrls.some(u => !/covers_pax/.test(u))).toBe(true);
+  expect(await page.evaluate(() => TransportUI.pricesReady())).toBe(true);
+  expect(await page.evaluate(() => TransportUI.airVehicles('airport_arrival').map(x => x.capacity))).toEqual([3, 8]);
+});
+
+test('/prices failed: no seed presets, a clear «prices not loaded», nothing saved to state_store', async ({ page }) => {
+  const errors = collectFatalErrors(page);
+  const st = await openTab(page, { catalogFails: true });
+  expect(await page.evaluate(() => [TransportUI.pricesReady(), !!__transportPricesError, TransportUI.airVehicles('airport_arrival').length, transportPresets.airport.length])).toEqual([false, true, 0, 0]);
+  await page.evaluate(() => { openTransportQuickAdd(); });
+  await expect(page.locator('#tqChipsWrap [data-prices-not-loaded]')).toContainText('Transport prices not loaded');
+  expect(st.calls.filter(c => c.t === 'state_store' && JSON.stringify(c.body).includes('transport_presets'))).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
+test('a renamed /prices row is never a silent 0: the route is found by direction, the vehicle by capacity; no route at all → flagged', async ({ page }) => {
+  const renamed = CATALOG.map(r => r.picker_tab !== 'airport' ? r : { ...r, name: r.name.replace('Airport → Surfcamp', 'CMB Airport → Gota camp').replace('— Car', '— Small car') });
+  await openTab(page, { catalog: renamed });
+  expect(await page.evaluate(() => { const pk = TransportUI.pickAir('airport_arrival', 'CMB', 2); return [pk.label, TransportUI.presetPrice('airport_arrival', pk.label, 'CMB')]; })).toEqual(['Small car', 21000]);
+  const TC = require('../lib/transport-catalog.js'); const G = require('../lib/guests-trips.js'); const CCfg = require('../lib/camp-config.js');
+  const noRoute = TC.group(CATALOG.filter(r => !/^Airport →/.test(r.name)));
+  const pk = G.pickVehicle(2, { vehicles: TC.airportVehicles(noRoute, CCfg.SL, 'airport_arrival', 'CMB') });
+  expect([pk.label, pk.flag]).toEqual([null, 'no vehicle in /prices for this route — vehicle and price to set']);
+});
+
+test('edit a trip: a new vehicle at its /prices price is not «price typed by hand»; a typed price is', async ({ page }) => {
+  const t = trip({ id: 'aaaaaaaa-0000-4000-8000-0000000000e1', trip_date: '2026-11-15', import_key: 'bl:2026-1:arr', booking_ref: '2026-1', guest_names: 'Ann A', pax: 2, edited_fields: ['expected_price'] });
+  const st = await openTab(page, { trips: [t] });
+  await page.evaluate(id => TransportUI.openTrip(id), t.id);
+  await expect(page.locator('#tr_v option')).toHaveText(['Car', 'Minivan']);          // the route's /prices vehicles, no «Large Van»
+  await page.selectOption('#tr_v', 'Minivan');
+  await expect(page.locator('#tr_pr')).toHaveValue('26500');
+  await page.click('#trOv .btn-p');
+  const up = (await call(st, 'trip_update')).body;
+  expect(up).toMatchObject({ vehicle: 'Minivan', expected_price: 26500 });
+  expect(up.edited_fields).toContain('vehicle');
+  expect(up.edited_fields).not.toContain('expected_price');                           // back on /prices (an old wrong mark is cleared)
+  await page.evaluate(id => TransportUI.openTrip(id), t.id);
+  await page.fill('#tr_pr', '30000');
+  await page.evaluate(id => TransportUI.saveTrip(id), t.id);
+  expect((await call(st, 'trip_update', 2)).body.edited_fields).toContain('expected_price');
+});
+
+test('Overview: airport guests € (report prices, else estimated from /prices: people ÷ covers × guest price) against the drivers €, and the margin', async ({ page }) => {
+  const base = { trip_date: '2026-11-10', trip_time: '10:00', status: 'done', source: 'bookinglayer', charge: 'bookinglayer' };
+  const trips = [trip({ ...base, id: 'aaaaaaaa-0000-4000-8000-0000000000f1', pax: 2, expected_price: 21000, guest_eur: 80, paid_lines: 1 }),
+    trip({ ...base, id: 'aaaaaaaa-0000-4000-8000-0000000000f2', pax: 4, vehicle: 'Minivan', expected_price: 26500 }),                // no report price: 2 × €80 estimated
+    trip({ ...base, id: 'aaaaaaaa-0000-4000-8000-0000000000f3', kind: 'airport_departure', pax: 1, expected_price: 20000, charge: 'free', free_reason: 'staff' })];
+  await openTab(page, { trips });
+  await page.evaluate(() => TransportUI.ovMode('month'));
+  const card = page.locator('[data-ov-guest-money]');
+  await expect(card.locator('[data-ov-gm="revenue"] .kpi-value')).toHaveText('€240');
+  await expect(card.locator('[data-ov-gm="revenue"] .kpi-label')).toHaveText('Guests paid (est.)');
+  await expect(card.locator('[data-ov-gm="revenue"] .kpi-sub')).toContainText('1 trip at the report\'s prices · 1 trip estimated from /prices · 1 trip free or on the Camp Tab');
+  const G = await page.evaluate(() => { const P = TransportOverview.period('month', '2026-11'); return TransportOverview.guestMoney(TransportUI._state.trips, P, { rate: 340, sellFor: () => ({ eur: 80, covers: 3 }) }); });
+  expect([G.revenue, G.cost, G.fromReport, G.estimated, G.free, G.margin]).toEqual([240, 67500, 1, 1, 1, Math.round((240 - 67500 / 340) * 100) / 100]);
+  await expect(card.locator('[data-ov-gm="margin"] .kpi-value')).toHaveText(/^€\d+$/);
 });

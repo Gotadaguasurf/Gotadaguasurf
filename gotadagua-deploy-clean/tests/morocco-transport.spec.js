@@ -98,38 +98,40 @@ test('morocco transport: driver and guest messages — the camp\'s format, Flori
   expect(H.EMOJI.test(r.confirm + r.ask + r.wa)).toBe(false);
 });
 
-test('morocco transport: van runs — people in the van, one tap = one run at the VEHICLE price (/prices, smallest vehicle that holds them), the order for tomorrow', async ({ page }) => {
+test('morocco transport: van runs — day, driver, vehicle (from /prices), tap where it went = one run at the VEHICLE price, no head count; the order for tomorrow', async ({ page }) => {
   const errors = collectFatalErrors(page);
   const st = await openTab(page);
   await page.evaluate(() => TransportUI.openTuktuk());
   await expect(page.locator('#trOv .mhdr-title')).toHaveText('Surf vans and tours');
-  await expect(page.locator('#tk_people')).toHaveText('—');                       // nobody counted yet → Minivan
+  // Miguel, 17 Nov 2026: no «People in the van» stepper — the vehicle is picked, the price is the vehicle's
+  await expect(page.locator('#tk_people')).toHaveCount(0);
+  await expect(page.locator('#trOv .tr-people')).toHaveCount(0);
+  await expect(page.locator('#tk_veh .pill')).toHaveText(['Car', 'Minivan', 'Big Van']);   // the vehicles /prices has, smallest first
   await expect(page.locator('#tk_veh .pill.active')).toHaveText('Minivan');
   await expect(page.locator('.tr-tap-main[data-key="van|surf"] .hint')).toHaveText('MAD 500 · Minivan');
   await expect(page.locator('.tr-tap-main[data-key="van|paradise-souk"] .hint')).toHaveText('MAD 1,100 · Minivan');   // Paradise Valley van 700 + Souk van 400, no special price
   await expect(page.locator('.tr-tap-main[data-key="van|taghazout-party"]')).toHaveCount(0);              // guests pay those drivers directly
   await expect(page.locator('.tr-tap-main[data-key="van|tamri"] .hint')).toHaveText('MAD 600 · Minivan');
-  for (let i = 0; i < 9; i++) await page.click('#trOv .tr-people button[title="One person more"]');
-  await expect(page.locator('#tk_people')).toHaveText('9');
-  await expect(page.locator('#tk_veh .pill.active')).toHaveText('Big Van');        // 9 people: the smallest that holds them
+  await page.click('#tk_veh .pill[data-v="Big Van"]');
+  await expect(page.locator('#tk_veh .pill.active')).toHaveText('Big Van');
   await expect(page.locator('.tr-tap-main[data-key="van|surf"] .hint')).toHaveText('MAD 700 · Big Van');
   await page.locator('.tr-tap-main[data-key="van|surf"]').click();
   const ins = (await H.call(st, 'trip_insert')).rows[0];
-  expect(ins).toMatchObject({ kind: 'other', route: 'Surf', purpose: 'surf', pax: 9, expected_price: 700, vehicle: 'Big Van', status: 'done', currency: 'MAD', driver_id: H.D.fat });
+  expect(ins).toMatchObject({ kind: 'other', route: 'Surf', purpose: 'surf', pax: null, expected_price: 700, vehicle: 'Big Van', status: 'done', currency: 'MAD', driver_id: H.D.fat });
   await expect(page.locator('.tr-tap-main[data-key="van|surf"] .tr-tap-n')).toHaveText('1');
-  await expect(page.locator('#trOv .tr-tuk-total')).toContainText('1 run · 9 people');
+  await expect(page.locator('#trOv .tr-tuk-total')).toHaveText(/^Sat 14 Nov · 1 run\s*MAD\s700$/);   // «day · N runs · MAD X», no people
   // Plan tomorrow: 2 vans of 8 to the surf spot at 08:00 → the order for Fathoune
   await page.click('#tk_mode .pill:has-text("Plan tomorrow")');
   await page.fill('#tk_pt', '08:00');
   await page.selectOption('#tk_pr', 'van|surf');
   await page.fill('#tk_pn', '2');
-  await page.fill('#tk_pp', '8');
-  await page.locator('#tk_pp').dispatchEvent('change');
+  await expect(page.locator('#tk_pp')).toHaveCount(0);                              // no «People per van»
   await expect(page.locator('#tk_pv')).toHaveValue('Minivan');
   await page.click('#tk_padd');
   await expect(page.locator('#tk_plan .tr-plan-line')).toHaveCount(1);
   const order = await page.evaluate(() => TransportUI.orderText('2026-11-15', TransportUI._state.trips.filter(t => t.status === 'planned')));
-  expect(order).toBe('*VANS - SUN 15 NOV*\n\n08:00 Surf Taghazout - 2 × Minivan, 16 people');
+  expect(order).toBe('*VANS - SUN 15 NOV*\n\n08:00 Surf Taghazout - 2 × Minivan');
+  expect(await page.evaluate(() => TransportUI._state.trips.filter(t => t.status === 'planned').map(t => t.pax))).toEqual([null, null]);
   expect(await page.evaluate(() => TransportUI._state.trips.filter(t => t.status === 'planned').map(t => [t.vehicle, t.expected_price]))).toEqual([['Minivan', 500], ['Minivan', 500]]);
   expect(H.EMOJI.test(order)).toBe(false);
   await page.click('#tk_send');
@@ -345,12 +347,13 @@ test('morocco per-vehicle price in the edit sheet and in Pay «Run not in the li
   const st = await openTab(page, { trips: runs, goLive: '2026-11-07' });
   await page.evaluate(id => TransportUI.openRuns([id]), runs[0].id);
   await expect(page.locator('#rn_v')).toHaveValue('Big Van');
+  await expect(page.locator('#rn_pax')).toHaveCount(0);                         // no head count on a van run (17 Nov 2026)
   await page.selectOption('#rn_v', 'Car');
   await expect(page.locator('#rn_pr')).toHaveValue('300');                      // Surf — Car
-  await page.fill('#rn_pax', '3');
-  await expect(page.locator('#rn_pr')).toHaveValue('300');                      // people never change the price
   await page.click('#rn_save');
-  expect((await H.call(st, 'trip_update')).body).toMatchObject({ vehicle: 'Car', expected_price: 300, pax: 3 });
+  const upd = (await H.call(st, 'trip_update')).body;
+  expect(upd).toMatchObject({ vehicle: 'Car', expected_price: 300 });
+  expect('pax' in upd).toBe(false);                                             // the stored head count is left as it was
   await expect(page.locator('#trOv.open')).toHaveCount(0);
   await page.evaluate(id => TransportUI.payPick(id), H.D.fat);
   await expect(page.locator('#trOv .mhdr-title')).toHaveText('Pay Fathoune');

@@ -68,7 +68,7 @@
   const TRIPS_BL_LOCATION_LABELS = IS_SL ? ['Surf Camp Ahangama'] : (CC.blLocations || []);
   const HQ_LIVE_STATUSES = new Set(['confirmed', 'paid', 'deposit paid', 'deposit_paid']);
   const HQ_DEAD_STATUSES = new Set(['cancelled', 'canceled', 'expired']);   // only these cancel a trip; any other HQ status counts as there
-  const VEHICLES = IS_SL ? ['Car', 'Minivan', 'Large Van'] : CC.vehicles;
+  // Vehicles, seats, driver cost and guest price: /prices only (lib/transport-catalog.js, 17 Nov 2026) — no list here.
   // Camp runs have no catalog price yet (Sampath's prices, open question Q2):
   // a /prices row with the same name (picker «tuktuk») replaces the price here.
   const TUKTUK_CAMP_RUNS = [
@@ -165,6 +165,9 @@
   }
   // The flags worth one amber line on the day list (the full list stays inside the trip).
   const REMOVED_FLAG = /^transfer removed in Bookinglayer/;
+  // lib/bl-report.js moneyCheck + GuestsTrips.pickVehicle: «4 people, 1 transfer paid — one covers 3», «no transfer paid»,
+  // «paid €70, /prices €80 (Ann A)», «9 people over capacity — 2nd vehicle?».
+  const MONEY_FLAG = /^\d+ people, \d+ transfers? paid — one covers \d+$|^no transfer paid$|^paid €[\d.,]+, \/prices €|people over capacity — 2nd vehicle\?$/;
   function rowFlag(t) {
     const F = t.import_flags || [];
     const says = F.find(f => /^guest says:/.test(f));
@@ -173,6 +176,8 @@
     if (t.missing_since) return 'Not in the latest Bookinglayer file';
     if (says) { const m = says.match(/«([^»]*)»/); const q = m ? m[1].trim() : ''; return `Guest says: «${q.length > 60 ? q.slice(0, 57) + '…' : q}» — still needed?`; }
     if (F.some(f => /^night arrival/.test(f))) return `Night arrival — the driver leaves the evening before (${fmtDay(GT.addDaysIso(t.trip_date, -1))})`;
+    // What the guests paid vs /prices, and a trip bigger than the largest vehicle (17 Nov 2026) — amber, never blocks.
+    const money = F.find(f => MONEY_FLAG.test(f)); if (money) return money.charAt(0).toUpperCase() + money.slice(1);
     return '';
   }
   // Held back from «Send the whole day» until Francisco has looked: the booking or its transfer left the file.
@@ -198,7 +203,6 @@
   const QUESTION_FLAG = /did (the driver|\S+) go\?|^not booked in bookinglayer|^no (arrival|departure) transfer booked/i;
   const questionFlag = t => (t.import_flags || []).find(f => QUESTION_FLAG.test(String(f))) || '';
   const blFlagged = t => !!questionFlag(t) && isDone(t) && !t.payment_entry_id && !['cancelled', 'no_show', 'merged'].includes(t.status);
-  const vehicleFor = GT.vehicleFor;
   const isFree = t => t.charge === 'free' || !!t.free_reason;
   const freeLabel = t => 'Free' + (t.free_reason && FREE_SHORT[t.free_reason] ? ' · ' + FREE_SHORT[t.free_reason] : '');
   const counts = t => !['cancelled', 'no_show', 'merged'].includes(t.status);
@@ -220,35 +224,52 @@
   const payBadge = t => { const p = payState(t); return `<span class="badge ${p.cls}" data-pay="${p.key}">${p.label}</span>`; };
   const runLabel = t => !IS_SL ? (vanRateOf(t) ? vanRateOf(t).label : (t.route || t.purpose || 'Run')) : t.tour_name ? 'Tour · ' + t.tour_name : t.purpose === 'surf' ? 'Camp → ' + (t.route || '') : (t.route || t.purpose || 'Run');
   const vanRateOf = t => (CC.vanRates || []).find(r => r.route === t.route) || null;
+  // ── /prices: the one source of vehicles, seats and prices (17 Nov 2026) ─────────────────────────────────
+  // transportPresets = the hub's catalog read (camp-hub/index.html loadTransportPresets → TransportCatalog.group):
+  // routes with vehicles [{ label, capacity, cost, currency, sell, sellCurrency, coversPax, blProduct }] by capacity.
+  // Nothing loaded → «prices not loaded» and no save (__transportPricesError); never a list or a price written here.
+  const TC = window.TransportCatalog;
+  const catalog = () => (typeof transportPresets !== 'undefined' && transportPresets) || {};
+  const pricesError = () => (typeof __transportPricesError !== 'undefined' && __transportPricesError) || '';
+  const airPlace = place => place || (IS_SL ? 'CMB' : CC.airportDefault);
+  const airVehicles = (kind, place) => TC.airportVehicles(catalog(), CC, kind, airPlace(place));
+  const airChoices = (kind, place) => TC.vehicleChoices(catalog(), CC, kind, airPlace(place));   // to pick from (Essaouira: Agadir's vans)
+  const airLabels = (kind, place, keep) => { const ls = airChoices(kind, place).map(v => v.label); return keep && !ls.includes(keep) ? ls.concat(keep) : ls; };
+  // The vehicle for N people on an airport trip (GuestsTrips.pickVehicle: bl_product, then capacity, over → largest + flag).
+  const pickAir = (kind, place, pax, boards, products) => GT.pickVehicle(pax, { vehicles: airChoices(kind, place), boards, products });
+  // The camp settings + the catalog's vehicles, for the parsers (the import picks each trip's vehicle from /prices).
+  const catCfg = () => TC.withCatalog(GTC || CC, catalog());
   // Morocco (Miguel, 16 Nov 2026): Fathoune charges per VEHICLE — Car / Minivan / Big Van — never per person.
-  // The price is the /prices row «Dunes — Big Van» (picker surf / tours, cost_per_guest = the vehicle price),
-  // read like Sri Lanka's presets (transportPresets surf / tours → vehicles with capacity). People in the van
-  // is kept for information and to split a tour's cost by paying guests. vanRates = route → purpose / tour / label.
-  const VAN_CAPS = { Car: 4, Minivan: 8, 'Big Van': 15 };
-  const VAN_DEFAULT = 'Minivan';
+  // The price is the /prices row «Dunes — Big Van» (picker surf / tours, cost_per_guest = the vehicle price).
+  // vanRates = route → purpose / tour / label only. Runs carry no head count (Miguel, 17 Nov 2026: «not needed»).
   // A route's /prices rows: one («Dunes»), or several added up («Paradise + Souk» = the Paradise Valley van + the Souk van).
   function vanPresets(r) {
     if (!r) return null;
     const names = (r.catalogs || []).length ? r.catalogs : [r.catalog || r.route];
     if (!names[0] || (r.confirm && !r.catalog && !(r.catalogs || []).length)) return null;
-    const P = (typeof transportPresets !== 'undefined' && transportPresets) || {};
+    const P = catalog();
     const all = [...(P.surf || []), ...(P.tours || [])];
     const ps = names.map(n => all.find(p => String(p.name || '').toLowerCase() === String(n).toLowerCase()) || null);
     return ps.every(p => p && (p.vehicles || []).length) ? ps : null;
   }
-  function vanVehicles(r) {
-    const ps = vanPresets(r);
-    const list = ps ? ps[0].vehicles.map(v => {
-      const each = ps.map(p => (p.vehicles || []).find(x => x.label === v.label));
-      return { label: v.label, capacity: Number(v.capacity) || VAN_CAPS[v.label] || null, price: each.every(Boolean) ? each.reduce((a, x) => a + (Number(x.price) || 0), 0) : null };
-    }) : (CC.vehicles || ['Car', 'Minivan', 'Big Van']).map(l => ({ label: l, capacity: VAN_CAPS[l] || null, price: null }));
-    return list.slice().sort((a, b) => (a.capacity || 99) - (b.capacity || 99));
+  // Every van vehicle /prices has (the vehicle picked before the route: «Log runs»), smallest first.
+  function vanLabels(keep) {
+    const P = catalog(); const seen = new Map();
+    [...(P.surf || []), ...(P.tours || [])].forEach(p => (p.vehicles || []).forEach(v => { const o = seen.get(v.label); if (!o || ((v.capacity || 0) > (o.capacity || 0))) seen.set(v.label, v); }));
+    const ls = TC.byCapacity([...seen.values()]).map(v => v.label);
+    return keep && !ls.includes(keep) ? ls.concat(keep) : ls;
   }
-  // The smallest vehicle that holds the people; nobody counted yet → Minivan.
-  function vanDefaultVehicle(r, pax) {
-    const n = Number(pax) || 0; const vs = vanVehicles(r);
-    if (!n) return (vs.find(v => v.label === VAN_DEFAULT) || vs[0] || {}).label || VAN_DEFAULT;
-    return (vs.find(v => v.capacity && v.capacity >= n) || vs[vs.length - 1] || {}).label || VAN_DEFAULT;
+  function vanVehicles(r) {
+    const ps = vanPresets(r); if (!ps) return [];
+    return TC.byCapacity(ps[0].vehicles.map(v => {
+      const each = ps.map(p => (p.vehicles || []).find(x => x.label === v.label));
+      return { label: v.label, capacity: v.capacity, price: each.every(Boolean) ? each.reduce((a, x) => a + (Number(x.cost != null ? x.cost : x.price) || 0), 0) : null };
+    }));
+  }
+  // Nothing picked yet: the middle-sized vehicle /prices has (Car · Minivan · Big Van → Minivan).
+  function vanDefaultVehicle(r) {
+    const ls = r ? vanVehicles(r).map(v => v.label) : vanLabels();
+    return ls.length ? ls[Math.floor(ls.length / 2)] : '';
   }
   function vanPrice(r, vehicle) {
     if (!r) return { price: 0, confirm: true };
@@ -258,17 +279,12 @@
   }
   const runPrice = (r, vehicle) => IS_SL ? Number(r.price) || 0 : vanPrice(r, vehicle).price;
   const ppl = n => `${n} ${Number(n) === 1 ? 'person' : 'people'}`;
+  // A van run's head count when somebody typed one (runs from 17 Nov 2026 have none): null = not counted.
+  const runPax = t => (t.pax == null || t.pax === '' || !(Number(t.pax) > 0)) ? null : Number(t.pax);
   const airportCity = place => IS_SL ? 'Colombo' : (CC.airportCity[place] || CC.airportCity[CC.airportDefault]);
 
-  function presetPrice(kind, vehicle, place) {
-    const list = (typeof transportPresets !== 'undefined' && transportPresets && transportPresets.airport) || [];
-    const dep = kind === 'airport_departure';
-    // Morocco: one price per airport and vehicle, both ways («Agadir Airport — Car 250», «Marrakech Airport — Car 1200»).
-    const p = !IS_SL ? list.find(x => String(x.name || '').toLowerCase().includes(airportCity(place || CC.airportDefault).toLowerCase()))
-      : list.find(x => dep ? /→\s*airport/i.test(x.name) : /airport\s*→/i.test(x.name));
-    const v = p && (p.vehicles || []).find(x => x.label === vehicle);
-    return v ? Number(v.price) || 0 : 0;
-  }
+  // The driver's price of an airport trip: /prices route × vehicle (0 = no such row; the import says so, never a guess).
+  function presetPrice(kind, vehicle, place) { return TC.costOf(airVehicles(kind, place), vehicle); }
   const contact = () => TR.drivers.find(d => d.active !== false && (d.default_for || []).includes('transfers_contact'));
   // Who gets the tuk-tuk order: the «Tuk-tuk orders to» person, else the default tuk-tuk driver (Sampath).
   const tukContact = () => TR.drivers.find(d => d.active !== false && (d.default_for || []).includes(TUKTUK_CONTACT)) || defaultDriver(RUN.drv);
@@ -339,10 +355,13 @@
   const NEW_COLS = ['free_reason', 'added_by_local', 'guest_notified_at', 'guest_confirmed_at', 'guest_told_snapshot'];
   const newColMissing = error => !!error && /free_reason|added_by_local|guest_notified_at|guest_confirmed_at|guest_told_snapshot/.test(String(error.message || '') + String(error.details || ''));
   const withoutNew = row => { const r = { ...row }; NEW_COLS.forEach(k => delete r[k]); return r; };
-  async function updateTrip(id, patch, edited) {
+  // edited = fields typed by hand (the import keeps them); cleared = fields back on the /prices value (the import and
+  // camp_trips_reprice may change them again).
+  async function updateTrip(id, patch, edited, cleared) {
     const t = TR.trips.find(x => x.id === id); if (!t) return null;
     const row = { ...patch };
-    if (edited && edited.length) row.edited_fields = [...new Set([...(t.edited_fields || []), ...edited])];
+    const had = t.edited_fields || [];
+    if ((edited && edited.length) || (cleared && cleared.length && had.some(f => cleared.includes(f)))) row.edited_fields = [...new Set([...had, ...(edited || [])])].filter(f => !(cleared || []).includes(f));
     let { data, error } = await client().from('camp_trips').update(row).eq('id', id).select();
     if (newColMissing(error)) {
       // Nothing else to save (e.g. «Guest told ✓» before the database update): keep it on this screen only.
@@ -359,6 +378,9 @@
     if (!IS_SL && !row.currency) row = { ...row, currency: CUR };   // the column defaults to LKR
     let { data, error } = await client().from('camp_trips').insert({ location_id: loc, ...row }).select();
     if (newColMissing(error)) ({ data, error } = await client().from('camp_trips').insert({ location_id: loc, ...withoutNew(row) }).select());
+    // A van run has no head count (17 Nov 2026). Until supabase/transport-catalog-one-source.sql lets pax be empty, the
+    // database default (1) is stored instead — the Overview then treats it like any other count.
+    if (error && row.pax === null && /pax/.test(String(error.message || '') + String(error.details || ''))) { const r2 = { ...row }; delete r2.pax; ({ data, error } = await client().from('camp_trips').insert({ location_id: loc, ...withoutNew(r2) }).select()); }
     if (error) { say("Couldn't save — " + (error.message || 'error'), 'err'); return null; }
     const fresh = (data && data[0]) || { id: 'tmp' + Date.now(), location_id: loc, ...row };
     TR.trips.push(fresh);
@@ -776,8 +798,8 @@
       const key = n => String(n || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
       const out = new Set(sep.map(g => key(g.name)));
       const stay = names.filter(n => !out.has(key(n)));
-      const pax = Math.max(1, (Number(t.pax) || names.length) - sep.length); const veh = vehicleFor(pax, false, GTC);
-      const kPax = sep.length; const kVeh = vehicleFor(kPax, false, GTC);
+      const pax = Math.max(1, (Number(t.pax) || names.length) - sep.length); const veh = pickAir(t.kind, t.place, pax).label || t.vehicle;
+      const kPax = sep.length; const kVeh = pickAir(t.kind, t.place, kPax).label || t.vehicle;
       let ik = `${t.import_key || 'manual:' + t.id}:sep`; for (let n = 2; TR.trips.some(x => x.import_key === ik); n++) ik = `${t.import_key || 'manual:' + t.id}:sep${n}`;
       const row = { kind: t.kind, trip_date: t.trip_date, trip_time: sep[0].time || null, flight: (sep[0].flight || '').replace(/\s+/g, '') || null, place: t.place, route: t.route, purpose: 'guests',
         guest_names: sep.map(g => g.name).join(', '), guest_phone: null, booking_ref: t.booking_ref, booking_checkout: t.booking_checkout, pax: kPax, vehicle: kVeh, driver_id: t.driver_id,
@@ -785,7 +807,8 @@
         // checked and never written by an import: the import never regroups or flags it (camp-trips-bl-check.sql)
         bl_checked_at: new Date().toISOString(), bl_check_note: 'separated by hand from the paid transfer' };
       const made = await insertTrip(row); if (!made) return;
-      if (await updateTrip(id, { guest_names: stay.join(', ') || t.guest_names, pax, vehicle: veh, expected_price: presetPrice(t.kind, veh, t.place), import_flags: rest }, ['pax', 'guest_names', 'vehicle', 'expected_price', 'together_split'])) {
+      // The price is the /prices price of the new vehicle: not «typed by hand» (camp_trips_reprice may follow /prices).
+      if (await updateTrip(id, { guest_names: stay.join(', ') || t.guest_names, pax, vehicle: veh, expected_price: presetPrice(t.kind, veh, t.place), import_flags: rest }, ['pax', 'guest_names', 'vehicle', 'together_split'], ['expected_price'])) {
         redrawAll(); say(`Separate — ${row.guest_names} has a trip of their own (Camp Tab: the guest pays)`);
       }
     } finally { TR.busy.delete('tg' + id); }
@@ -840,11 +863,11 @@
       const veh = IS_SL ? '' : (t.vehicle || '');
       const k = [timed, label, veh, t.driver_id || '', ps.key, ps.label, ps.sub, isFree(t) ? freeLabel(t) : '', catOf(t)].join('|');
       const x = by.get(k) || { k, time: timed, label, veh, confirm: !IS_SL && !!(vanRateOf(t) || {}).confirm, n: 0, sum: 0, pax: 0, driver: t.driver_id, ps, free: isFree(t) ? freeLabel(t) : '', cat: catOf(t), runs: [] };
-      x.n++; x.pax += Number(t.pax) || 1; x.sum += Number(t.expected_price || 0); x.runs.push(t); by.set(k, x);
+      x.n++; x.pax += runPax(t) || 0; x.sum += Number(t.expected_price || 0); x.runs.push(t); by.set(k, x);
     });
     const order = { planned: 0, owed: 1, old: 2, paid: 3, off: 4 };
     const lines = [...by.values()].sort((a, b) => (order[a.ps.key] - order[b.ps.key]) || (a.time || '').localeCompare(b.time || '') || String(a.label).localeCompare(String(b.label)) || a.ps.label.localeCompare(b.ps.label));
-    const pplTxt = n => IS_SL ? '' : ppl(n);
+    const pplTxt = n => IS_SL || !n ? '' : ppl(n);
     return lines.map((x, i) => {
       const key = `${day}#${i}`; TR.runGroups[key] = x.runs.map(t => t.id);
       const openKey = `${day}|${x.k}`; const open = x.n > 1 && TR.openGroups.has(openKey);
@@ -856,7 +879,7 @@
         <div class="tr-c-time">${time}</div>
         <div class="tr-c-what tr-tuk-what"><span class="tr-what-l"><b>${h(x.label)}</b>${x.n > 1 ? ` <span class="tr-xn">× ${x.n}</span>` : ''}${x.free ? ` <span class="badge badge-blue tr-free">${h(x.free)}</span>` : ''}${x.confirm ? ' <span class="badge badge-amber tr-confirm">price to confirm</span>' : ''}${x.n > 1 ? ` <span class="tr-caret">${ic(open ? 'chevron-up' : 'chevron-down')}</span>` : ''}</span>
           <span class="tr-c-meta cell-sub">${[x.veh, pplTxt(x.pax), drv].filter(Boolean).join(' · ')}</span></div>
-        <div class="tr-c-ppl num">${IS_SL ? '' : x.pax}</div><div class="tr-c-drv">${drv}${x.veh ? `<span class="cell-sub tr-veh">${h(x.veh)}</span>` : ''}</div><div class="tr-c-price num tr-tuk-amt">${money(x.sum)}</div>
+        <div class="tr-c-ppl num">${IS_SL || !x.pax ? '' : x.pax}</div><div class="tr-c-drv">${drv}${x.veh ? `<span class="cell-sub tr-veh">${h(x.veh)}</span>` : ''}</div><div class="tr-c-price num tr-tuk-amt">${money(x.sum)}</div>
         <div class="tr-c-status"><div class="tr-pay"><span class="badge ${x.ps.cls}" data-pay="${x.ps.key}">${x.ps.label}</span>${x.ps.sub ? `<span class="cell-sub">${h(x.ps.sub)}</span>` : ''}</div>
           ${x.n > 1 ? `<button class="btn btn-s btn-sm btn-icon tr-edit-all" data-run-edit="${key}" title="Edit these ${x.n} runs together" onclick="event.stopPropagation();TransportUI.openRuns('${key}')">${ic('edit')}</button>` : ''}</div></div>`;
       if (!open) return row;
@@ -865,7 +888,7 @@
         return `<div class="tr-tuk-line tr-srow tr-kid" role="button" tabindex="0" data-run-one="${t.id}" onclick="TransportUI.openRuns('${kk}')">
           <div class="tr-c-time">${t.trip_time ? `<span class="num hint">${h(t.trip_time)}</span>` : ''}</div>
           <div class="tr-c-what"><span class="tr-what-l">${h(x.label)}</span><span class="tr-c-meta cell-sub">${[pplTxt(t.pax), drv].filter(Boolean).join(' · ')}</span></div>
-          <div class="tr-c-ppl num">${IS_SL ? '' : (Number(t.pax) || 1)}</div><div class="tr-c-drv">${drv}</div><div class="tr-c-price num">${money(t.expected_price)}</div><div class="tr-c-status"></div></div>`;
+          <div class="tr-c-ppl num">${IS_SL ? '' : (runPax(t) || '')}</div><div class="tr-c-drv">${drv}</div><div class="tr-c-price num">${money(t.expected_price)}</div><div class="tr-c-status"></div></div>`;
       }).join('');
       return row + `<div class="tr-kids">${kids}</div>`;
     }).join('');
@@ -1093,7 +1116,7 @@
       const when = P.mode === 'week' ? (now ? 'this week' : `in the week of ${fmtRange(P.from, P.to)}`) : P.mode === 'month' ? (now ? 'this month' : `in ${ovLabel(P)}`) : (now ? 'this year' : `in ${P.anchor}`);
       return filters + ovTiles(D, true) + `<div class="card tr-ov-card" data-ov-empty><div class="empty-state">${ic('truck')}<div class="empty-title">No transport recorded ${h(when)}</div><p>No trips and no transport payments in the ledger for these dates.</p></div></div>`;
     }
-    return filters + ovTiles(D) + (Y ? ovYearChart(Y, fx) : '') + ovKinds(V, fx) + ovSuppliers(V, fx) + ovNote(D);
+    return filters + ovTiles(D) + (Y ? ovYearChart(Y, fx) : '') + ovKinds(V, fx) + ovGuestMoney(D) + ovSuppliers(V, fx) + ovNote(D);
   }
   // Three numbers: what transport cost (up or down), what we owe right now, the cost per person.
   function ovTiles(D, owedOnly) {
@@ -1157,6 +1180,29 @@
     const cols = `tr-kinds-c${3 + (showT ? 1 : 0) + (showP ? 2 : 0)}${showT ? ' tr-kinds-t' : ''}${showP ? ' tr-kinds-p' : ''}`;
     return `<div class="card tr-ov-card" data-ov-kinds><div class="card-hdr"><div><div class="card-title">By kind of transport</div></div></div>
       <div class="tr-kinds ${cols}" data-ov-table="summary"><div class="tr-kind tr-kind-head"><div>Kind</div><div>Share of cost</div><div class="r">Cost</div>${showT ? '<div class="r tr-ov-xs">Trips</div>' : ''}${showP ? '<div class="r tr-ov-xs">People</div><div class="r tr-ov-xs">Per person</div>' : ''}</div>${rows}</div></div>`;
+  }
+  // Airport transfers: guests' € against the drivers' € (17 Nov 2026). The guest price and covers_pax come from /prices
+  // (the route's smallest vehicle, or the row whose bl_product the trip's product is); the report's prices when stored.
+  function sellFor(t) {
+    const vs = airVehicles(t.kind, t.place); if (!vs.length) return null;
+    const prods = (t.products || []).map(x => String(x).toLowerCase().trim());
+    const u = vs.find(v => v.blProduct && prods.includes(String(v.blProduct).toLowerCase().trim())) || vs[0];
+    if (!(u.sell > 0) || String(u.sellCurrency || 'EUR').toUpperCase() !== 'EUR') return null;
+    return { eur: Number(u.sell), covers: Number(u.coversPax) || Number(CC.transferCovers) || 1 };
+  }
+  function ovGuestMoney(D) {
+    const { P, fx } = D;
+    const G = TO().guestMoney(TR.trips.filter(t => t.trip_date >= goLive()), P, { rate: fx.rate, sellFor });
+    if (!G.trips || G.trips === G.free) return '';
+    const est = G.estimated || G.unknown;
+    const tile = (k, label, v, sub, cls) => `<div class="kpi" data-ov-gm="${k}"><div class="kpi-label">${label}</div><div class="kpi-value${cls ? ' ' + cls : ''}">${v}</div><div class="kpi-sub">${sub}</div></div>`;
+    const how = [G.fromReport ? `${plural(G.fromReport, 'trip')} at the report's prices` : '', G.estimated ? `${plural(G.estimated, 'trip')} estimated from /prices` : '',
+      G.unknown ? `${plural(G.unknown, 'trip')} with no guest price in /prices` : '', G.free ? `${plural(G.free, 'trip')} free or on the Camp Tab` : ''].filter(Boolean).join(' · ');
+    return `<div class="card tr-ov-card" data-ov-guest-money><div class="card-hdr"><div><div class="card-title">Airport transfers · guests and drivers</div>
+      <div class="card-hint">What guests paid for their transfers against what the drivers cost, in €${est ? ' — partly estimated' : ''}</div></div></div>
+      <div class="summary-grid tr-ov-kpis">${tile('revenue', est ? 'Guests paid (est.)' : 'Guests paid', fmtEur(G.revenue), h(how))}
+        ${tile('cost', 'Drivers', fmtEur(G.costEur), `<span class="num">${money(G.cost)}</span>`)}
+        ${tile('margin', 'Margin', fmtEur(G.margin), G.revenue > 0 ? `${Math.round(G.margin / G.revenue * 100)}% of what guests paid` : '', G.margin < 0 ? 'kv-red' : '')}</div></div>`;
   }
   // Who we pay: each driver / supplier with this period's cost and where it stands (paid, owed → Pay, still to come).
   function ovSuppliers(V, fx) {
@@ -1232,7 +1278,7 @@
         const e = t.payment_entry_id ? ledgerById(t.payment_entry_id) : null;
         return [t.trip_date, t.trip_time || '', air ? (dep ? 'OUT' : 'IN') : 'run',
           air ? (dep ? `Surfcamp → ${city(t.place)} airport` : `${city(t.place)} airport → Surfcamp`) : runLabel(t),
-          t.guest_names || '', Number(t.pax) || 1, air ? (t.flight || '') : '', t.vehicle || (air ? '' : RUN.veh), driverById(t.driver_id)?.name || '',
+          t.guest_names || '', air ? (Number(t.pax) || 1) : (runPax(t) == null ? '' : runPax(t)), air ? (t.flight || '') : '', t.vehicle || (air ? '' : RUN.veh), driverById(t.driver_id)?.name || '',
           t.status === 'cancelled' ? 0 : Number(t.expected_price || 0), t.status === 'cancelled' ? 'No' : 'Yes', tripStatusLabel(t), t.payment_entry_id ? 'yes' : 'no', e && e.date ? e.date : ''];
       });
     return '\ufeff' + [head, ...rows].map(r => r.map(csvCell).join(',')).join('\r\n') + '\r\n';
@@ -1291,7 +1337,7 @@
       <div class="mfield"><label>Persons</label><input type="number" min="1" id="tr_p" value="${t.pax}"></div></div>
       <div class="mfield"><label>Guest</label><input id="tr_g" value="${h(t.guest_names || '')}"></div>
       <div class="mfield"><label>Guest phone</label><input id="tr_ph" value="${h(t.guest_phone || '')}"></div>
-      <div class="g2"><div class="mfield"><label>Vehicle</label><select id="tr_v" ${paid ? 'disabled' : ''}>${VEHICLES.map(v => `<option${v === t.vehicle ? ' selected' : ''}>${v}</option>`).join('')}</select></div>
+      <div class="g2"><div class="mfield"><label>Vehicle</label><select id="tr_v" ${paid ? 'disabled' : ''}>${airLabels(t.kind, t.place, t.vehicle).map(v => `<option${v === t.vehicle ? ' selected' : ''}>${h(v)}</option>`).join('') || '<option value="">no /prices vehicles</option>'}</select></div>
       <div class="mfield"><label>Price (${CUR})</label><input type="number" id="tr_pr" value="${Number(t.expected_price || 0)}" ${paid ? 'disabled' : ''}></div></div>
       <div class="mfield"><label>Driver</label><select id="tr_dr" ${paid ? 'disabled' : ''}>${driverOptions(t.driver_id, 'airport')}</select></div>
       ${t.source === 'manual' && isFree(t) ? chargeBlock('tr', 'free', t.free_reason, { options: [['free', 'Free (added by hand)']] }) : chargeBlock('tr', t.charge, t.free_reason)}
@@ -1342,7 +1388,12 @@
     const moved = ['trip_date', 'trip_time', 'flight', 'pax', 'pickup_time'].some(k => edited.includes(k));
     if (moved && (t.status === 'sent' || t.status === 'confirmed')) patch.needs_resend = true;
     // charge / free_reason are not import fields: «Free» is kept by the database, not by edited_fields.
-    if (await updateTrip(id, patch, edited.filter(k => k !== 'charge' && k !== 'free_reason'))) { closeModal(); render(); say('Saved'); }
+    // The price is «typed by hand» only when it is not the /prices price of the vehicle (17 Nov 2026): a vehicle change
+    // that takes the catalog price keeps following /prices (camp_trips_reprice, the import).
+    const catalogPrice = presetPrice(t.kind, next.vehicle, next.trip_date ? t.place : t.place);
+    const onCatalog = catalogPrice > 0 && Number(next.expected_price) === catalogPrice;
+    const marks = edited.filter(k => k !== 'charge' && k !== 'free_reason' && !(k === 'expected_price' && onCatalog));
+    if (await updateTrip(id, patch, marks, onCatalog && !t.payment_entry_id ? ['expected_price'] : [])) { closeModal(); render(); say('Saved'); }
   }
   // One step back: Confirmed → Sent, Sent → Planned. Only for unpaid trips that haven't happened.
   async function undoTick(id) {
@@ -1423,17 +1474,27 @@
       <div class="g2"><div class="mfield"><label>Flight</label><input id="at_f" placeholder="QR658"></div><div class="mfield"><label>Persons</label><input type="number" min="1" id="at_p" value="1"></div></div>
       <div class="mfield"><label>Name</label><input id="at_g" placeholder="Who travels"></div>
       <div class="mfield"><label>Phone</label><input id="at_ph" placeholder="${h(IS_SL ? '+49…' : CC.phoneExample)}"></div>
-      <div class="g2"><div class="mfield"><label>Vehicle</label><select id="at_v">${VEHICLES.map(v => `<option>${v}</option>`).join('')}</select></div>
-      <div class="mfield"><label>What we pay the driver (${CUR})</label><input type="number" min="0" id="at_pr" value="${presetPrice('airport_arrival', VEHICLES[0])}"></div></div>
+      <div class="g2"><div class="mfield"><label>Vehicle</label><select id="at_v">${airLabels('airport_arrival').map(v => `<option>${h(v)}</option>`).join('')}</select></div>
+      <div class="mfield"><label>What we pay the driver (${CUR})</label><input type="number" min="0" id="at_pr" value="${presetPrice('airport_arrival', airLabels('airport_arrival')[0])}"></div></div>
+      <div class="hint tr-at-over" id="at_over"></div>
       ${IS_SL ? '' : `<div class="mfield"><label>Airport</label><select id="at_pl">${CC.airports.map(a => `<option value="${a}">${h(CC.airportCity[a])} (${a})</option>`).join('')}</select></div>`}
       <div class="mfield"><label>Driver</label><select id="at_dr">${driverOptions(d && d.id, 'airport')}</select></div>
       <div class="mfield"><label>Note</label><input id="at_n" placeholder="Optional"></div>
       <div class="hint">Nobody pays us for it. The driver is still paid, so it counts in «Owed to drivers».</div>`;
     modal('Add a free airport transfer', 'Staff, a gift to a guest, a compensation…', body, `<button class="btn btn-s" onclick="TransportUI.closeModal()">Cancel</button><button class="btn btn-p" id="at_save" onclick="TransportUI.saveTransfer()">Save</button>`);
-    const reprice = () => { $('at_pr').value = presetPrice(segVal('at_kind'), $('at_v').value, $('at_pl') ? $('at_pl').value : undefined); };
-    if ($('at_pl')) $('at_pl').addEventListener('change', reprice);
-    wireSeg('at_kind', reprice); wireSeg('at_fr'); $('at_v').addEventListener('change', reprice);
-    $('at_p').addEventListener('change', () => { $('at_v').value = vehicleFor($('at_p').value, false); reprice(); });
+    const place = () => $('at_pl') ? $('at_pl').value : undefined;
+    const reprice = () => { $('at_pr').value = presetPrice(segVal('at_kind'), $('at_v').value, place()); };
+    // The vehicle list is the route's /prices rows; the people pick the smallest that holds them (over → largest + a note).
+    const repick = () => {
+      const pk = pickAir(segVal('at_kind'), place(), $('at_p').value);
+      const ls = airLabels(segVal('at_kind'), place()); const cur = $('at_v').value;
+      $('at_v').innerHTML = ls.map(v => `<option>${h(v)}</option>`).join('');
+      $('at_v').value = pk.label || (ls.includes(cur) ? cur : ls[0] || '');
+      $('at_over').textContent = pk.over ? pk.flag : ''; reprice();
+    };
+    if ($('at_pl')) $('at_pl').addEventListener('change', repick);
+    wireSeg('at_kind', repick); wireSeg('at_fr'); $('at_v').addEventListener('change', reprice);
+    $('at_p').addEventListener('change', repick);
   }
   function wireSeg(id, cb) { const el = $(id); if (!el) return; el.querySelectorAll('.pill').forEach(b => b.addEventListener('click', () => { el.querySelectorAll('.pill').forEach(x => x.classList.toggle('active', x === b)); if (cb) cb(); })); }
   const segVal = id => { const b = $(id) && $(id).querySelector('.pill.active'); return b ? b.dataset.v : ''; };
@@ -1455,12 +1516,13 @@
   }
 
   // ── Tuk-tuk day sheet: one tap = one run ───────────────────────────────
-  TR.tuk = { date: null, driver: null, mode: 'log', planDate: null, planTime: PLAN_DEFAULT_TIME, planRoute: '', planCount: 1, people: IS_SL ? 1 : null, planPeople: IS_SL ? 1 : '', vehicle: '', planVehicle: '' };
-  const tukVehicle = () => TR.tuk.vehicle || vanDefaultVehicle(null, TR.tuk.people);
-  const planVehicle = () => TR.tuk.planVehicle || vanDefaultVehicle(null, TR.tuk.planPeople);
+  // Morocco's van runs carry no head count (Miguel, 17 Nov 2026: «not needed»): day, driver, vehicle, then where it went.
+  TR.tuk = { date: null, driver: null, mode: 'log', planDate: null, planTime: PLAN_DEFAULT_TIME, planRoute: '', planCount: 1, vehicle: '', planVehicle: '' };
+  const tukVehicle = () => (TR.tuk.vehicle && vanLabels().includes(TR.tuk.vehicle) ? TR.tuk.vehicle : '') || vanDefaultVehicle(null);
+  const planVehicle = () => (TR.tuk.planVehicle && vanLabels().includes(TR.tuk.planVehicle) ? TR.tuk.planVehicle : '') || vanDefaultVehicle(null);
   // Morocco: the vehicle's price, «MAD 900 · Big Van» (and «price to confirm» without a /prices row).
-  const priceText = (r, vehicle) => { if (IS_SL) return money(r.price); const v = vehicle || vanDefaultVehicle(r, 0); const p = vanPrice(r, v); return `${money(p.price)} · ${v}${p.confirm ? ' · price to confirm' : ''}`; };
-  const vehiclePick = (id, cur, onchange) => `<select id="${id}" onchange="${onchange}">${['Car', 'Minivan', 'Big Van'].map(v => `<option${v === cur ? ' selected' : ''}>${v}</option>`).join('')}</select>`;
+  const priceText = (r, vehicle) => { if (IS_SL) return money(r.price); const v = vehicle || vanDefaultVehicle(r); const p = vanPrice(r, v); return `${money(p.price)} · ${v}${p.confirm ? ' · price to confirm' : ''}`; };
+  const vehiclePick = (id, cur, onchange) => `<select id="${id}" onchange="${onchange}">${vanLabels(cur).map(v => `<option${v === cur ? ' selected' : ''}>${h(v)}</option>`).join('')}</select>`;
   function tukRoutes() {
     if (!IS_SL) {
       // The tour(s) of a van run reach Tours by product: «Paradise + Souk» = both tours (16 Nov 2026).
@@ -1509,38 +1571,29 @@
     const total = runs.reduce((s, t) => s + Number(t.expected_price || 0), 0);
     const body = `${seg}<div class="g2 tr-tuk-head"><div class="mfield"><label>Day</label><input type="date" id="tk_d" value="${h(day)}" onchange="TransportUI.tukSet('date', this.value)"></div>
       <div class="mfield"><label>Driver</label><select id="tk_dr" onchange="TransportUI.tukSet('driver', this.value)">${driverOptions(drv)}</select></div></div>
-      ${IS_SL ? '' : `<div class="mfield tr-people"><label>People in the van</label><span class="tr-step"><button class="btn btn-s btn-icon" title="One person less" onclick="TransportUI.tukPeople(-1)">${ic('minus')}</button><b class="num" id="tk_people">${TR.tuk.people || '—'}</b><button class="btn btn-s btn-icon" title="One person more" onclick="TransportUI.tukPeople(1)">${ic('plus')}</button></span></div>
-      <div class="mfield"><label>Vehicle</label><div class="pills tr-seg" id="tk_veh">${['Car', 'Minivan', 'Big Van'].map(v => `<button type="button" class="pill${v === tukVehicle() ? ' active' : ''}" data-v="${v}" onclick="TransportUI.tukVehicle('${v}')">${v}</button>`).join('')}</div><div class="hint">The price is the vehicle's (/prices). Then tap where the van went.</div></div>`}
+      ${IS_SL ? '' : pricesError() || !vanLabels().length ? `<div class="status-msg status-warn" data-prices-not-loaded>Van prices not loaded from /prices${pricesError() ? ` (${h(pricesError())})` : ''} — a run would be saved without a price.</div>`
+        : `<div class="mfield"><label>Vehicle</label><div class="pills tr-seg" id="tk_veh">${vanLabels().map(v => `<button type="button" class="pill${v === tukVehicle() ? ' active' : ''}" data-v="${h(v)}" onclick="TransportUI.tukVehicle('${h(v).replace(/'/g, '&#39;')}')">${h(v)}</button>`).join('')}</div><div class="hint">The price is the vehicle's (/prices). Then tap where the van went.</div></div>`}
       ${R.surf.length ? `<div class="section-lbl">Surf</div>${R.surf.map(btn).join('')}` : ''}
       ${R.camp.length || IS_SL ? `<div class="section-lbl">Camp runs</div>${R.camp.map(btn).join('')}` : ''}
       ${R.tour.length ? `<div class="section-lbl">${IS_SL ? 'Tour' : 'Tours and trips'}</div>${R.tour.map(btn).join('')}` : ''}
-      <div class="tr-tuk-total"><span>${fmtDay(day)} · ${runs.length} run${runs.length === 1 ? '' : 's'}${IS_SL ? '' : ' · ' + ppl(runs.reduce((s, t) => s + (Number(t.pax) || 1), 0))}</span><b class="num">${money(total)}</b></div>
+      <div class="tr-tuk-total"><span>${fmtDay(day)} · ${runs.length} run${runs.length === 1 ? '' : 's'}</span><b class="num">${money(total)}</b></div>
       <div class="hint">To change or delete a run later, tap its line in the Trips list.</div>`;
     modal(sheetTitle(), 'Runs done: each tap is saved at once — no Save button', body, `<button class="btn btn-p" onclick="TransportUI.closeModal();TransportUI.render()">Done</button>`);
   }
   function tukSet(k, v) {
     TR.tuk[k] = v;
-    // Morocco plan: the vehicle (and the prices in the route list) follow the people / the vehicle picked —
-    // updated in place: this runs on «change», i.e. on blur, and a redraw then would swallow the next click.
-    if (!IS_SL && (k === 'planPeople' || k === 'planVehicle')) {
-      const pv = $('tk_pv'); if (pv && k === 'planPeople' && !TR.tuk.planVehicle) pv.value = planVehicle();
+    // Morocco plan: the prices in the route list follow the vehicle picked — updated in place: this runs on «change»,
+    // i.e. on blur, and a redraw then would swallow the next click.
+    if (!IS_SL && k === 'planVehicle') {
       const veh = planVehicle();
       document.querySelectorAll('#tk_pr option').forEach(o => { const r = tukRoute(o.value); if (r) o.textContent = `${r.label} · ${priceText(r, veh)}`; });
       return;
     }
-    if (k !== 'planTime' && k !== 'planRoute' && k !== 'planCount' && k !== 'planPeople') renderTuktuk();
+    if (k !== 'planTime' && k !== 'planRoute' && k !== 'planCount') renderTuktuk();
   }
-  function tukPeople(d) {
-    const cur = Number(TR.tuk.people) || 0;
-    TR.tuk.people = Math.min(60, Math.max(1, cur ? cur + d : 1));
-    if (IS_SL) { const el = $('tk_people'); if (el) el.textContent = TR.tuk.people; return; }
-    TR.tuk.vehicle = '';                       // the vehicle follows the people again (smallest that holds them)
-    vanSheetRefresh();
-  }
-  // Morocco run sheet: people / vehicle changed → the count, the active vehicle and every price, in place
+  // Morocco run sheet: vehicle changed → the active vehicle and every price, in place
   // (re-drawing the sheet under the tapped button broke the next tap).
   function vanSheetRefresh() {
-    const el = $('tk_people'); if (el) el.textContent = TR.tuk.people || '—';
     const v = tukVehicle();
     document.querySelectorAll('#tk_veh .pill').forEach(b => b.classList.toggle('active', b.dataset.v === v));
     document.querySelectorAll('#trOv .tr-tap-main[data-key]').forEach(b => { const r = tukRoute(b.dataset.key); const hint = b.querySelector('.hint'); if (r && hint) hint.textContent = priceText(r, v); });
@@ -1553,10 +1606,10 @@
     if (!TR.tuk.driver) { say('Pick the driver first', 'err'); return; }
     TR.busy.add('tap|' + key);
     try {
-      const pax = IS_SL ? 1 : Math.max(1, Number(TR.tuk.people) || 1); const veh = IS_SL ? RUN.veh : tukVehicle(); const price = runPrice(r, veh);
+      const pax = IS_SL ? 1 : null; const veh = IS_SL ? RUN.veh : tukVehicle(); const price = runPrice(r, veh);
       const row = { kind: RUN.kind, trip_date: TR.tuk.date, trip_time: TR.tuk.date === cToday() ? cTime() : null, route: r.route, purpose: r.purpose, tour_name: r.tour || null,
         driver_id: TR.tuk.driver, expected_price: price, vehicle: veh, status: 'done', source: 'manual', pax };
-      if (await insertTrip(row)) { say(`Saved · ${r.label}${IS_SL ? '' : ' · ' + veh + ' · ' + ppl(pax)} · ${money(price)}`); renderTuktuk(); }
+      if (await insertTrip(row)) { say(`Saved · ${r.label}${IS_SL ? '' : ' · ' + veh} · ${money(price)}`); renderTuktuk(); }
     } finally { setTimeout(() => TR.busy.delete('tap|' + key), 300); }
   }
   async function untap(key) {
@@ -1575,14 +1628,14 @@
     .sort((a, b) => (a.trip_time + runLabel(a)).localeCompare(b.trip_time + runLabel(b)));
   function planLines(runs) {
     const by = new Map();
-    runs.forEach(t => { const k = t.trip_time + '|' + runLabel(t) + (IS_SL ? '' : '|' + (t.vehicle || '')); const x = by.get(k) || { time: t.trip_time, label: runLabel(t), vehicle: IS_SL ? '' : (t.vehicle || ''), n: 0, sum: 0, pax: 0, ids: [], sample: t }; x.n++; x.pax += Number(t.pax) || 1; x.sum += Number(t.expected_price || 0); x.ids.push(t.id); by.set(k, x); });
+    runs.forEach(t => { const k = t.trip_time + '|' + runLabel(t) + (IS_SL ? '' : '|' + (t.vehicle || '')); const x = by.get(k) || { time: t.trip_time, label: runLabel(t), vehicle: IS_SL ? '' : (t.vehicle || ''), n: 0, sum: 0, pax: 0, ids: [], sample: t }; x.n++; x.sum += Number(t.expected_price || 0); x.ids.push(t.id); by.set(k, x); });
     return [...by.values()];
   }
   // The camp's own message style: bold upper-case title, one line per run, a blank line between
   // times, no emoji (wa.me shows some as «?» on WhatsApp desktop).
   function orderText(day, runs) {
     const out = [`*${IS_SL ? 'TUK TUKS' : 'VANS'} - ${fmtDay(day).toUpperCase()}*`]; let last = null;
-    planLines(runs).forEach(x => { if (x.time !== last) { out.push(''); last = x.time; } out.push(IS_SL ? `${x.time} ${x.label} ×${x.n}` : `${x.time} ${x.label} - ${x.n} × ${VAN_CAPS[x.vehicle] ? x.vehicle : 'van'}, ${ppl(x.pax)}`); });
+    planLines(runs).forEach(x => { if (x.time !== last) { out.push(''); last = x.time; } out.push(IS_SL ? `${x.time} ${x.label} ×${x.n}` : `${x.time} ${x.label} - ${x.n} × ${x.vehicle || 'van'}`); });
     return out.join('\n');
   }
   const orderPending = runs => runs.filter(t => !t.payment_entry_id && (t.status === 'planned' || t.needs_resend));
@@ -1596,7 +1649,7 @@
     const body = `${seg}<div class="g2 tr-tuk-head"><div class="mfield"><label>Day</label><input type="date" id="tk_pd" value="${h(day)}" onchange="TransportUI.tukSet('planDate', this.value)"></div>
       <div class="mfield"><label>Driver</label><select id="tk_dr" onchange="TransportUI.tukSet('driver', this.value)">${driverOptions(drv)}</select></div></div>
       <div class="section-lbl">${fmtDay(day)} · the order</div>
-      <div class="tr-plan" id="tk_plan">${lines.length ? lines.map((x, i) => `<div class="tr-plan-line" data-plan="${i}"><b class="num">${h(x.time)}</b><span>${h(x.label)}${IS_SL ? '' : ` <span class="hint">· ${h(x.vehicle || 'van')} · ${ppl(x.pax)}</span>`}</span>
+      <div class="tr-plan" id="tk_plan">${lines.length ? lines.map((x, i) => `<div class="tr-plan-line" data-plan="${i}"><b class="num">${h(x.time)}</b><span>${h(x.label)}${IS_SL ? '' : ` <span class="hint">· ${h(x.vehicle || 'van')}</span>`}</span>
           <span class="tr-step"><button class="btn btn-s btn-icon" title="One run less" onclick="TransportUI.planStep(${i}, -1)">${ic('minus')}</button><b class="num">${x.n}</b><button class="btn btn-s btn-icon" title="One run more" onclick="TransportUI.planStep(${i}, 1)">${ic('plus')}</button></span></div>`).join('')
         : '<div class="hint">No runs planned for this day yet. Add the first one below.</div>'}</div>
       ${runs.length ? `<div class="tr-tuk-total"><span>${runs.length} run${runs.length === 1 ? '' : 's'} · ${state}</span><b class="num">${money(runs.reduce((s, t) => s + Number(t.expected_price || 0), 0))}</b></div>` : ''}
@@ -1604,8 +1657,7 @@
       <div class="tr-plan-add"><div class="mfield"><label>Time</label><input type="time" id="tk_pt" value="${h(TR.tuk.planTime)}" onchange="TransportUI.tukSet('planTime', this.value)"></div>
         <div class="mfield"><label>Route</label><select id="tk_pr" onchange="TransportUI.tukSet('planRoute', this.value)">${routeOptions(TR.tuk.planRoute, true, IS_SL ? '' : planVehicle())}</select></div>
         <div class="mfield"><label>${IS_SL ? 'Tuk-tuks' : 'Vans'}</label><input type="number" min="1" max="20" id="tk_pn" value="${TR.tuk.planCount}" onchange="TransportUI.tukSet('planCount', this.value)"></div>
-        ${IS_SL ? '' : `<div class="mfield"><label>People per van</label><input type="number" min="1" max="30" id="tk_pp" value="${h(TR.tuk.planPeople)}" placeholder="?" onchange="TransportUI.tukSet('planPeople', this.value)"></div>
-        <div class="mfield"><label>Vehicle</label>${vehiclePick('tk_pv', planVehicle(), "TransportUI.tukSet('planVehicle', this.value)")}</div>`}
+        ${IS_SL ? '' : `<div class="mfield"><label>Vehicle</label>${vehiclePick('tk_pv', planVehicle(), "TransportUI.tukSet('planVehicle', this.value)")}</div>`}
         <button class="btn btn-s" id="tk_padd" onclick="TransportUI.planAdd()">${ic('plus')} Add to the order</button></div>
       ${c && !c.phone ? `<div class="hint">No phone for ${h(c.name)} yet — WhatsApp will ask you to pick the chat. Add the number in Drivers.</div>` : ''}`;
     modal(sheetTitle(), 'Plan the runs and send the order the evening before', body,
@@ -1630,7 +1682,7 @@
     try {
       TR.tuk.planTime = time; TR.tuk.planRoute = r.key; TR.tuk.planCount = 1;
       for (let i = 0; i < n; i++) {
-        const pax = IS_SL ? 1 : Math.min(30, Math.max(1, parseInt(($('tk_pp') && $('tk_pp').value) || TR.tuk.planPeople || '1', 10) || 1));
+        const pax = IS_SL ? 1 : null;
         const veh = IS_SL ? RUN.veh : (($('tk_pv') && $('tk_pv').value) || planVehicle());
         if (!await insertTrip({ kind: RUN.kind, trip_date: TR.tuk.planDate, trip_time: time, route: r.route, purpose: r.purpose, tour_name: r.tour || null,
           driver_id: TR.tuk.driver, expected_price: runPrice(r, veh), vehicle: veh, status: 'planned', source: 'manual', pax })) break;
@@ -1646,7 +1698,7 @@
       if (d > 0) {
         const t = x.sample;
         await insertTrip({ kind: RUN.kind, trip_date: t.trip_date, trip_time: t.trip_time, route: t.route, purpose: t.purpose, tour_name: t.tour_name || null,
-          driver_id: t.driver_id, expected_price: t.expected_price, vehicle: t.vehicle || RUN.veh, status: 'planned', source: 'manual', pax: IS_SL ? 1 : (Number(t.pax) || 1) });
+          driver_id: t.driver_id, expected_price: t.expected_price, vehicle: t.vehicle || RUN.veh, status: 'planned', source: 'manual', pax: IS_SL ? 1 : runPax(t) });
       } else {
         const victim = TR.trips.filter(t => x.ids.includes(t.id) && !t.payment_entry_id).sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))[0];
         if (!victim) { say('These runs are paid — unlink the payment first', 'err'); return; }
@@ -1682,8 +1734,7 @@
       <div class="g2"><div class="mfield"><label>Date</label><input type="date" id="rn_d" value="${h(t.trip_date)}" ${dis}></div>
       <div class="mfield"><label>Time</label><input type="time" id="rn_t" value="${h(t.trip_time || '')}" ${dis}></div></div>
       <div class="mfield"><label>Route / purpose</label><select id="rn_r" ${dis}>${cur ? '' : `<option value="" selected>${h(runLabel(t))}</option>`}${routeOptions(cur ? cur.key : '')}</select></div>
-      ${!IS_SL ? `<div class="g2">${n === 1 ? `<div class="mfield"><label>People in the van</label><input type="number" min="1" max="60" id="rn_pax" value="${Number(t.pax) || 1}" ${dis}></div>` : ''}
-        <div class="mfield"><label>Vehicle</label><select id="rn_v" ${dis}>${['Car', 'Minivan', 'Big Van'].map(v => `<option${v === (VAN_CAPS[t.vehicle] ? t.vehicle : vanDefaultVehicle(null, t.pax)) ? ' selected' : ''}>${v}</option>`).join('')}</select></div></div>` : ''}
+      ${!IS_SL ? `<div class="mfield"><label>Vehicle</label><select id="rn_v" ${dis}>${vanLabels(t.vehicle).map(v => `<option${v === (t.vehicle || vanDefaultVehicle(null)) ? ' selected' : ''}>${h(v)}</option>`).join('')}</select></div>` : ''}
       <div class="g2"><div class="mfield"><label>Driver</label><select id="rn_dr" ${dis}>${driverOptions(t.driver_id)}</select></div>
       <div class="mfield"><label>Price${n > 1 ? ' (each)' : ''} (LKR)</label><input type="number" id="rn_pr" value="${Number(t.expected_price || 0)}" ${dis}></div></div>
       <div class="mfield"><label>Tour</label><input id="rn_tour" value="${h(t.tour_name || '')}" placeholder="Only when the run is for a tour"></div>
@@ -1707,7 +1758,7 @@
       const fr = readCharge('rn');
       const base = { tour_name: $('rn_tour').value.trim() || null, notes: $('rn_n').value.trim() || null, charge: fr.charge || null, free_reason: fr.free_reason };
       if (!paid) Object.assign(base, { trip_date: $('rn_d').value || runs[0].trip_date, trip_time: $('rn_t').value || null, driver_id: $('rn_dr').value || null, expected_price: Number($('rn_pr').value || 0) },
-        r ? { route: r.route, purpose: r.purpose } : {}, $('rn_pax') ? { pax: Math.max(1, parseInt($('rn_pax').value, 10) || 1) } : {}, $('rn_v') ? { vehicle: $('rn_v').value } : {});
+        r ? { route: r.route, purpose: r.purpose } : {}, $('rn_v') ? { vehicle: $('rn_v').value } : {});
       let n = 0;
       for (const t of runs) {
         const next = { ...base };
@@ -1805,7 +1856,7 @@
     const dep = t.kind === 'airport_departure';
     return `<div class="tr-row tr-static"><div class="tr-time">${t.time ? `<b class="num">${h(t.time)}</b>` : '<span class="badge badge-amber">time?</span>'}</div>
       <div class="tr-main"><div class="tr-line1"><span class="badge ${dep ? 'badge-navy' : 'badge-blue'}">${dep ? 'Departure' : 'Arrival'}</span> <b>${h(t.guests.join(', '))}</b> <span class="hint">· ${fmtDay(t.date)} · ${t.pax} ${t.pax === 1 ? 'person' : 'persons'}</span></div>
-      <div class="cell-sub">${h(t.flight || 'flight?')} · ${h(t.vehicle)} · ${money(t.expected_price)} · ${t.booking_ref}${t.hq_match === 'ok' ? ' · in HQ' : t.hq_match === 'missing' ? ' · not yet in HQ' : ''}${t.partner ? ' · partner: ' + h(t.partner) + ', don\'t charge' : ''}</div>
+      <div class="cell-sub">${h(t.flight || 'flight?')} · ${h(t.vehicle || 'no vehicle in /prices')} · ${money(t.expected_price)} · ${t.booking_ref}${t.hq_match === 'ok' ? ' · in HQ' : t.hq_match === 'missing' ? ' · not yet in HQ' : ''}${t.partner ? ' · partner: ' + h(t.partner) + ', don\'t charge' : ''}</div>
       ${t.flags.filter(f => !/^no time yet/.test(f)).map(f => `<div class="cell-sub tr-amber">${h(f)}</div>`).join('')}</div></div>`;
   }
   // Bookinglayer's Guests export comes as .xlsx (13 Nov 2026) as well as .csv. The Excel file is
@@ -1837,14 +1888,16 @@
     const isReport = !!(window.BlReport && BlReport.isReportHeader(text));
     if (!isReport && !GT.isGuestsExportHeader(text)) { TR.imp = { error: 'This is not a Bookinglayer Guests export (no «Has transfer» column) nor the camp report (no «Booking line: Id» column). Use Guests → Export with the «' + (IS_SL ? 'Semana Sri Lanka' : CC.preset) + '» preset, or the camp report.' }; render(); return; }
     TR.imp = { text, name: file.name, report: isReport };
-    const parsed = IMP().parse(text, file.name, undefined, GTC);
+    // The vehicles come from /prices: read them first (a slow phone may still be loading them).
+    if (!pricesReady()) { try { if (typeof loadTransportPresets === 'function') await loadTransportPresets(); } catch (_) {} }
+    const parsed = IMP().parse(text, file.name, undefined, catCfg());
     if (!parsed.export_date) { TR.imp.needDate = true; render(); return; }
     await buildImport(parsed);
   }
   async function setExportDate() {
     const d = $('trExportDate') && $('trExportDate').value; if (!d || !TR.imp) return;
     TR.imp.needDate = false;
-    await buildImport(IMP().parse(TR.imp.text, TR.imp.name, d, GTC));
+    await buildImport(IMP().parse(TR.imp.text, TR.imp.name, d, catCfg()));
   }
   // The parser of the file being imported: the camp report (lib/bl-report.js) or the Guests export (lib/guests-trips.js).
   const IMP = () => (TR.imp && TR.imp.report && window.BlReport) ? window.BlReport : GT;
@@ -1900,6 +1953,10 @@
       plan = BlReport.planTrips(trips, TR.trips, { today: cToday(), now: colomboNow(), exportDate: parsed.export_date, refsPresent: parsed.refs_active, window: maxCo ? { to: maxCo } : null,
         mergePast: !IS_SL });   // Sri Lanka: «só para os novos» — a trip of an earlier day is never changed
       trips = plan.send;
+      // A trip whose vehicle was changed by hand keeps it: its price is that vehicle's /prices price, not the report trip's.
+      const app = new Map(TR.trips.filter(a => a.import_key).map(a => [a.import_key, a]));
+      trips = trips.map(t => { const a = app.get(t.key); const ed = (a && a.edited_fields) || [];
+        return a && ed.includes('vehicle') && !ed.includes('expected_price') && a.vehicle ? { ...t, expected_price: presetPrice(t.kind, a.vehicle, t.place) || t.expected_price } : t; });
     }
     const guests = okGuests.filter(g => !cancelledRefs.has(g.booking_ref)).map(g => ({ ...g, hq_match: matchOf(g.booking_ref), partner: partnerOf(g.booking_ref) || null }));
     const hqCancelled = okGuests.filter(g => cancelledRefs.has(g.booking_ref)).map(g => ({ guest: g.guest_name, ref: g.booking_ref, transfer: g.has_transfer, status: hqStatus(g.booking_ref) || 'not live' }));
@@ -1926,7 +1983,8 @@
       groups: { audit: IMP().guestAudit(TR.imp.text, parsed.file, GTC), warnings: IMP().importWarnings(TR.imp.text, parsed.file, GTC), trips, guests: guestPlan ? guestPlan.rows : guests, hqCancelled, hqMissing, missingRefs, cancelledRefs, cancelRefs: [...new Set(parsed.cancel_refs.concat([...cancelledRefs]))], plan, guestPlan } };
     render();
   }
-  const pricesReady = () => presetPrice('airport_arrival', VEHICLES[0]) > 0 && presetPrice('airport_departure', VEHICLES[0]) > 0;
+  // Ready = /prices loaded and both airport ways have a priced vehicle (the default airport for Morocco).
+  const pricesReady = () => !pricesError() && ['airport_arrival', 'airport_departure'].every(k => airVehicles(k).some(v => Number(v.cost != null ? v.cost : v.price) > 0));
   // Morocco: an airport with no /prices row (Essaouira on 14 Nov) does not block the import — nothing is
   // linked automatically there, the trip is saved at 0 and flagged; only «prices not loaded» blocks.
   const noPrice = trips => (trips || []).filter(t => !(Number(t.expected_price) > 0) && (IS_SL || !pricesReady()));
@@ -1935,7 +1993,8 @@
     const I = TR.imp; if (!I || I.stage !== 'preview' || TR.busy.has('imp')) return;
     if (noPrice(I.groups.trips).length) {   // one more try, then refuse: a trip at 0 «fits» any payment
       try { if (typeof loadTransportPresets === 'function') await loadTransportPresets(); } catch (_) {}
-      I.groups.trips = I.groups.trips.map(t => ({ ...t, expected_price: presetPrice(t.kind, t.vehicle, t.place) }));
+      // the prices arrived: a trip parsed without them gets its /prices vehicle now, then its price
+      I.groups.trips = I.groups.trips.map(t => { const v = t.vehicle || pickAir(t.kind, t.place, t.pax, t.boards, t.products).label || null; return { ...t, vehicle: v, expected_price: presetPrice(t.kind, v, t.place) }; });
       if (noPrice(I.groups.trips).length) { render(); say('The transfer prices have not loaded — nothing saved. Check the connection and try again.', 'err'); return; }
     }
     TR.busy.add('imp');
@@ -2098,7 +2157,7 @@
       const run = !isAirport(t); const ahead = reconcileStatus(t) === 'upcoming';
       const k = run ? [t.trip_date, runLabel(t), isFree(t) ? freeLabel(t) : ''].join('|') : t.id;
       const g = by.get(k) || { key: k, day: t.trip_date, run, ahead, label: run ? runLabel(t) : `${t.kind === 'airport_departure' ? 'Departure' : 'Arrival'} · ${t.guest_names || 'Guest'}${blFlagged(t) ? ' · did the driver go?' : ''}`, free: isFree(t) ? freeLabel(t) : '', ids: [], sum: 0, pax: 0, manual: 0 };
-      g.ids.push(t.id); g.sum += Number(t.expected_price || 0); g.pax += Number(t.pax) || 1; if (run && t.source === 'manual') g.manual++;
+      g.ids.push(t.id); g.sum += Number(t.expected_price || 0); g.pax += isAirport(t) ? (Number(t.pax) || 1) : (runPax(t) || 0); if (run && t.source === 'manual') g.manual++;
       by.set(k, g);
     });
     return [...by.values()];
@@ -2112,7 +2171,7 @@
   function payPick(driverId) {
     if (!driverById(driverId)) return;
     TR.payDraft = { driver: driverId, picked: new Set(owedBy(driverId).filter(t => !blFlagged(t)).map(t => t.id)), amount: null, reason: '', note: '', date: cToday(), adding: false, bankEntry: null,
-      add: { date: cToday(), route: (allRoutes()[0] || {}).key || '', n: 1, pax: 1 } };
+      add: { date: cToday(), route: (allRoutes()[0] || {}).key || '', n: 1 } };
     renderPay();
   }
   // Morocco: unlinked SG transfers to this driver within 5 days of the payment date, closest amount first.
@@ -2129,15 +2188,14 @@
     const days = [...new Set(groups.map(g => g.day))].sort();
     const line = g => { const on = g.ids.every(id => P.picked.has(id)); const n = g.ids.length;
       return `<div class="tr-pick tr-pay-line" data-pay-group="${h(g.key)}"><label class="tr-pay-tick"><input type="checkbox" ${on ? 'checked' : ''} onchange="TransportUI.payTickGroup('${h(g.key)}', this.checked)">
-        <span>${h(g.label)}${g.run && n > 1 ? ` <b class="num">× ${n}</b>` : ''}${g.free ? ` <span class="badge badge-blue tr-free">${h(g.free)}</span>` : ''}${g.ahead ? ' <i class="pl-later">(not yet)</i>' : ''}${!IS_SL && g.run ? `<span class="cell-sub">${ppl(g.pax)}</span>` : ''}</span></label>
+        <span>${h(g.label)}${g.run && n > 1 ? ` <b class="num">× ${n}</b>` : ''}${g.free ? ` <span class="badge badge-blue tr-free">${h(g.free)}</span>` : ''}${g.ahead ? ' <i class="pl-later">(not yet)</i>' : ''}${!IS_SL && g.run && g.pax ? `<span class="cell-sub">${ppl(g.pax)}</span>` : ''}</span></label>
         ${g.run && g.manual ? `<button class="btn btn-s btn-sm btn-icon" data-pay-minus title="Remove one run that did not happen" onclick="TransportUI.payMinus('${h(g.key)}')">${ic('minus')}</button>` : ''}<b class="num">${money(g.sum)}</b></div>`; };
     const list = days.map(day => `<div class="section-lbl">${fmtDay(day)}</div>${groups.filter(g => g.day === day).map(line).join('')}`).join('') || '<div class="hint">Nothing owed to this driver.</div>';
     const A = P.add;
     const addForm = P.adding ? `<div class="tr-pay-add" id="py_addform"><div class="g2"><div class="mfield"><label>Day</label><input type="date" id="py_ad" value="${h(A.date)}"></div>
         <div class="mfield"><label>${IS_SL ? 'Runs' : 'Vans'}</label><input type="number" min="1" max="30" id="py_an" value="${A.n}"></div></div>
         <div class="mfield"><label>Route</label><select id="py_ar">${routeOptions(A.route)}</select></div>
-        ${IS_SL ? '' : `<div class="g2"><div class="mfield"><label>People per van</label><input type="number" min="1" max="60" id="py_ap" value="${A.pax}"></div>
-        <div class="mfield"><label>Vehicle</label>${vehiclePick('py_av', A.vehicle || vanDefaultVehicle(null, A.pax), '')}</div></div>`}
+        ${IS_SL ? '' : `<div class="mfield"><label>Vehicle</label>${vehiclePick('py_av', A.vehicle || vanDefaultVehicle(null), '')}</div>`}
         <div class="row"><button class="btn btn-s btn-sm" onclick="TransportUI.payAddToggle(false)">Cancel</button><button class="btn btn-s btn-sm" id="py_addok" onclick="TransportUI.payAddRun()">${ic('plus')} Add and tick</button></div></div>`
       : `<button class="btn btn-s btn-sm" id="py_add" onclick="TransportUI.payAddToggle(true)">${ic('plus')} Run not in the list</button>`;
     const bm = bankMatches(P);
@@ -2180,12 +2238,12 @@
     const P = TR.payDraft; if (!P || TR.busy.has('payadd')) return;
     const r = tukRoute(($('py_ar') && $('py_ar').value) || P.add.route); const day = ($('py_ad') && $('py_ad').value) || cToday();
     const n = Math.min(30, Math.max(1, parseInt(($('py_an') && $('py_an').value) || '1', 10) || 1));
-    const pax = IS_SL ? 1 : Math.min(60, Math.max(1, parseInt(($('py_ap') && $('py_ap').value) || '1', 10) || 1));
+    const pax = IS_SL ? 1 : null;
     if (!r) { say('Pick the route', 'err'); return; }
     if (day > cToday()) { say('Only runs that already happened', 'err'); return; }
     TR.busy.add('payadd');
     try {
-      const veh = IS_SL ? RUN.veh : (($('py_av') && $('py_av').value) || vanDefaultVehicle(r, pax));
+      const veh = IS_SL ? RUN.veh : (($('py_av') && $('py_av').value) || vanDefaultVehicle(r));
       P.add = { date: day, route: r.key, n: 1, pax, vehicle: IS_SL ? '' : veh };
       for (let i = 0; i < n; i++) {
         const t = await insertTrip({ kind: RUN.kind, trip_date: day, trip_time: null, route: r.route, purpose: r.purpose, tour_name: r.tour || null,
@@ -2260,7 +2318,7 @@
     const rows = list.map(d => `<div class="tr-driver" data-driver="${d.id}"><div class="g2"><div class="mfield"><label>Name</label><input data-f="name" value="${h(d.name)}"></div>
         <div class="mfield"><label>Phone (${IS_SL ? '+94' : CC.phoneExample.slice(0, 4)}…)</label><input data-f="phone" value="${h(d.phone || '')}" placeholder="${IS_SL ? '+94771234567' : CC.phoneExample}"></div></div>
         <div class="g2"><div class="mfield"><label>Label</label><input data-f="label" value="${h(d.label || '')}"></div>
-        <div class="mfield"><label>Default vehicle</label><select data-f="default_vehicle"><option value=""></option>${VEHICLES.concat(RUN.veh).map(v => `<option${v === d.default_vehicle ? ' selected' : ''}>${v}</option>`).join('')}</select></div></div>
+        <div class="mfield"><label>Default vehicle</label><select data-f="default_vehicle"><option value=""></option>${[...new Set(airLabels('airport_arrival').concat(airLabels('airport_departure'), IS_SL ? [] : vanLabels(), RUN.veh, d.default_vehicle ? [d.default_vehicle] : []))].map(v => `<option${v === d.default_vehicle ? ' selected' : ''}>${v}</option>`).join('')}</select></div></div>
         <div class="mfield"><label>Named in payments as (comma separated)</label><input data-f="aliases" value="${h((d.aliases || []).join(', '))}"></div></div>`).join('');
     const body = `<div class="mfield"><label>Send transfers to</label><select id="dv_contact">${list.map(d => `<option value="${d.id}"${c && c.id === d.id ? ' selected' : ''}>${h(d.name)}${d.phone ? ' · ' + h(d.phone) : ' · no phone'}</option>`).join('')}</select>
         <div class="hint">WhatsApp messages go to this person, who passes them to the driver.</div></div>
@@ -2383,7 +2441,7 @@
     ovMode, ovShift, ovMonth, ovMeasure, ovExport, ovData,
     send, sendDay, dayMessage, weekMessage, sendWeek, tickWeek, weekCount, undoTick, setStep, missingInfo, monthCsv, openExport, downloadMonth, undoGuestConfirmed, ask, askText, askedOn, needsInfo, tick, tickDay, tickIds, openTrip, saveTrip, setStatus, openAddTransfer, saveTransfer,
     openTuktuk, openPlan, planOn, tukSet, tukVehicle(v) { TR.tuk.vehicle = v; vanSheetRefresh(); }, tukMode, tap, untap, removeRun, removeTrip, planAdd, planStep, sendOrder, orderText,
-    openRuns, saveRuns, deleteRuns, toggleRuns, addOn, catOf, payState, weekTotals, keepTrip, inWeek, tukPeople, presetPrice, bankCandidates, camp: CC, RUN,
+    openRuns, saveRuns, deleteRuns, toggleRuns, addOn, catOf, payState, weekTotals, keepTrip, inWeek, presetPrice, pickAir, airVehicles, pricesReady, bankCandidates, camp: CC, RUN,
     confirmGuest, guestConfirmed, confirmText, guestState, guestHtml, openGuestDay, pickFile, setExportDate, saveImport,
     openChecks, openLink, linkDriver, linkPick, linkAll, linkMonth, namedMonth, saveLink, unlinkPayment, openExplain, saveExplain, unlinkTrip,
     openPay, payPick, payTick, payTickGroup, payMinus, payAddToggle, payAddRun, payBank, payAmount, payDate, payReason, payNote, savePay, payGroups, localDrivers: LOCAL,

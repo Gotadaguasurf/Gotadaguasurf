@@ -8,7 +8,8 @@
 //
 // Where the numbers come from (collect()):
 //   · trips (camp_trips, from the camp's go-live): the trip's price is its cost; paid = linked to a payment; owed = the
-//     page's «Owed to drivers» rule (o.isOwed); cancelled and merged trips are out, a no-show counts.
+//     page's «Owed to drivers» rule (o.isOwed); cancelled and merged trips are out, a no-show counts. A van run with no
+//     head count (Morocco from 17 Nov 2026) has people = null: its kind's «per person» hides when most of the cost has none.
 //   · ledger payments (expense, category Transport): a payment linked to trips is those trips' «Paid» (never counted
 //     again). Every other line is classified the way a person would read it (classifyLine):
 //       1 linked_item = a route of CampConfig.vanRates → Surf vans / Tours (Morocco's weekly Fathoune lines)
@@ -195,7 +196,7 @@
       const price = Number(t.expected_price || 0); const paid = !!t.payment_entry_id; const owed = !paid && isOwed(t);
       return { src: 'trip', date: t.trip_date, trip: t, kind, group: c.group, part: kind === 'airport' ? (c.group === 'dep' ? 'Departures' : 'Arrivals') : c.label, place: c.place,
         supplier: drvName(t.driver_id), driverId: t.driver_id || '', cost: price, paid: paid ? price : 0, owed: owed ? price : 0,
-        toCome: !paid && !owed && t.status !== 'no_show' && !doneAt(t, o.now) ? price : 0, people: Number(t.pax) || 1, noShow: t.status === 'no_show' ? 1 : 0 };
+        toCome: !paid && !owed && t.status !== 'no_show' && !doneAt(t, o.now) ? price : 0, people: isAirport(t) || Number(t.pax) > 0 ? (Number(t.pax) || 1) : null, noShow: t.status === 'no_show' ? 1 : 0 };
     });
     Object.keys(start).forEach(k => { if (start[k] < goLive) start[k] = goLive; });
     const kindStart = k => k === 'other' ? '9999' : (start[listOf(k)] || '9999');
@@ -308,6 +309,28 @@
   }
   const eur = (v, rate) => rate > 0 ? Math.round(Number(v || 0) / rate) : 0;
 
+  // Airport transfers: what the guests paid (€) against what the drivers cost (€) in a period (17 Nov 2026).
+  //   · a trip from the camp report carries guest_eur = the paid lines' «Final price incl. tax» (camp_trips.guest_eur);
+  //   · an older trip (no guest_eur) is ESTIMATED from /prices: ceil(people ÷ covers_pax) × the route's guest price —
+  //     o.sellFor(t) → { eur, covers } | null; none → «unknown», never a silent €0;
+  //   · a free trip (staff, gift…) and a Camp Tab trip (the guest pays at the camp) bring nothing here; their driver cost
+  //     still counts. Cancelled / merged trips are out; a no-show was paid by the guest and counts.
+  //   o = { rate (local per €), sellFor } → { trips, revenue, cost, costEur, margin, fromReport, estimated, unknown, free }
+  function guestMoney(trips, P, o) {
+    o = o || {}; const r2 = x => Math.round(x * 100) / 100;
+    const air = (trips || []).filter(t => t && isAirport(t) && !OUT.has(t.status) && String(t.trip_date || '') >= P.from && String(t.trip_date || '') <= P.to);
+    const out = { trips: air.length, revenue: 0, cost: 0, costEur: 0, margin: 0, fromReport: 0, estimated: 0, unknown: 0, free: 0 };
+    air.forEach(t => {
+      out.cost += Number(t.expected_price || 0);
+      if (t.charge === 'free' || t.free_reason || (t.charge && t.charge !== 'bookinglayer')) { out.free++; return; }
+      if (t.guest_eur != null && t.guest_eur !== '' && Number.isFinite(Number(t.guest_eur))) { out.revenue += Number(t.guest_eur); out.fromReport++; return; }
+      const s = typeof o.sellFor === 'function' ? o.sellFor(t) : null;
+      if (s && s.eur > 0) { out.revenue += Math.ceil((Number(t.pax) || 1) / (s.covers > 0 ? s.covers : 1)) * s.eur; out.estimated++; } else out.unknown++;
+    });
+    out.revenue = r2(out.revenue); out.costEur = o.rate > 0 ? r2(out.cost / o.rate) : 0; out.margin = r2(out.revenue - out.costEur);
+    return out;
+  }
+
   // The view as a table for the CSV: exactly the numbers shown (kinds with their parts, then drivers), the euros last.
   function viewTable(V, cur, rate) {
     const E = rate > 0; const e = (...v) => E ? v.map(x => eur(x, rate)) : [];
@@ -334,5 +357,5 @@
   }
 
   return { period, shift, lastYear, periodName, classify, classifyLine, serviceDate, linePeople, supplierOf, driverOf, collect, view, yearView, compare, owedNow,
-    viewTable, yearTable, tripInWeek, addDays, MON, KIND_ORDER, kindOf, kindLabel, eurRate, eur, FX_RANGE };
+    viewTable, yearTable, tripInWeek, addDays, MON, KIND_ORDER, kindOf, kindLabel, eurRate, eur, FX_RANGE, guestMoney };
 });

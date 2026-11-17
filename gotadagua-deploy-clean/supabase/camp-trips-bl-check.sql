@@ -14,6 +14,9 @@
 --  camp_trips_import of camp-trips-v2.sql: after re-running camp-trips-v2.sql (or
 --  camp-trips.sql), run this file again. Idempotent: safe to run again.
 --  NOT run against production by the agent — Miguel runs it after his OK.
+--  17 Nov 2026: run supabase/transport-catalog-one-source.sql FIRST — camp_trips_bl_verify picks the vehicle and price
+--  with its transport_vehicle_for / transport_airport_route (the /prices capacity column, no vehicle names here), and
+--  camp_trips_import stores the camp report's paid_lines / guest_eur (columns added there; added here too if missing).
 --
 --  1 · camp_trips.bl_checked_at / bl_checked_by / bl_check_note.
 --  2 · Backfill: the bookings checked by hand on 16 Nov 2026 and the hist2026 trips.
@@ -33,6 +36,8 @@
 alter table public.camp_trips add column if not exists bl_checked_at timestamptz;   -- null = to check in Bookinglayer
 alter table public.camp_trips add column if not exists bl_checked_by uuid;          -- auth.uid() of who checked (null = SQL / backfill)
 alter table public.camp_trips add column if not exists bl_check_note text;          -- 'booking page: 1x 27 Nov', 'checked by hand'…
+alter table public.camp_trips add column if not exists paid_lines integer;          -- camp report: paid transfer lines (transport-catalog-one-source.sql)
+alter table public.camp_trips add column if not exists guest_eur numeric(10,2);     -- camp report: € the guests paid for this transfer
 
 -- The camp's own date (no time zone column on locations; = CampConfig tz in lib/camp-config.js).
 create or replace function public.camp_trips__tz(p_location uuid)
@@ -87,13 +92,15 @@ begin
     if t.id is null then
       -- a new airport trip arrives «to check in Bookinglayer» (bl_checked_at stays null)
       insert into public.camp_trips (location_id, kind, trip_date, trip_time, flight, place, route, purpose, guest_names, guest_phone, booking_ref, booking_checkout,
-        pax, vehicle, driver_id, expected_price, status, source, charge, import_key, import_flags, last_import_at, last_export_date, hq_match, partner)
+        pax, vehicle, driver_id, expected_price, status, source, charge, import_key, import_flags, last_import_at, last_export_date, hq_match, partner,
+        paid_lines, guest_eur)
       values (p_location, x->>'kind', n_date, n_time, n_flight, coalesce(n_place,'CMB'),
         case when x->>'kind' = 'airport_departure' then 'Surfcamp → Airport' else 'Airport → Surfcamp' end, 'guests',
         n_guests, n_phone, x->>'booking_ref', nullif(x->>'booking_checkout','')::date, n_pax, x->>'vehicle', v_driver,
         coalesce((x->>'expected_price')::numeric, 0), 'planned', 'bookinglayer', nullif(x->>'charge',''), v_key,
         array(select jsonb_array_elements_text(coalesce(x->'flags','[]'::jsonb))), v_now, p_export_date,
-        nullif(x->>'hq_match',''), nullif(x->>'partner',''));
+        nullif(x->>'hq_match',''), nullif(x->>'partner',''),
+        nullif(x->>'paid_lines','')::int, nullif(x->>'guest_eur','')::numeric);
       v_ins := v_ins + 1; continue;
     end if;
     if t.payment_entry_id is not null or t.status in ('done','no_show','merged')
@@ -122,6 +129,8 @@ begin
       expected_price = case when 'expected_price' = any(t.edited_fields) then t.expected_price else coalesce(nullif((x->>'expected_price')::numeric, 0), t.expected_price) end,
       charge = coalesce(nullif(x->>'charge',''), t.charge),
       hq_match = coalesce(nullif(x->>'hq_match',''), t.hq_match), partner = coalesce(nullif(x->>'partner',''), t.partner),
+      -- what the guests paid (camp report, 17 Nov 2026): a file without prices never blanks it
+      paid_lines = coalesce(nullif(x->>'paid_lines','')::int, t.paid_lines), guest_eur = coalesce(nullif(x->>'guest_eur','')::numeric, t.guest_eur),
       import_flags = array(select jsonb_array_elements_text(coalesce(x->'flags','[]'::jsonb))),
       needs_resend = t.needs_resend or (t.status in ('sent','confirmed') and changed),
       -- «Checked in Bookinglayer» (camp-trips-bl-check.sql): a new date (or kind) from the file = to check again.
@@ -218,7 +227,7 @@ declare
   v_kind text; v_date date; v_place text; v_pax int; v_dir text;
   v_checked int := 0; v_cancelled int := 0; v_flagged int := 0; v_created int := 0;
   v_hit uuid[] := '{}'; v_ids uuid[]; v_any boolean; v_tid uuid; v_sent boolean;
-  v_driver uuid; v_vehicle text; v_price numeric; v_city text; v_key text; v_n int;
+  v_driver uuid; v_vehicle text; v_price numeric; v_over boolean; v_route text; v_key text; v_n int;
   v_names text; v_phone text; v_flight text; v_time text; v_checkout date; v_partner text; v_gpax int;
   v_legs text;
 begin
@@ -300,23 +309,14 @@ begin
       from public.camp_week_guests g where g.location_id = p_location and g.booking_ref = v_ref;
     -- People: the leg's count, else the guests of the booking in the file, else 1.
     v_pax := greatest(1, coalesce(nullif(x->>'pax', '')::int, nullif(v_gpax, 0), 1));
-    v_vehicle := case when v_pax <= 3 then 'Car'   -- car up to 3 people (Miguel, 17 Nov 2026; = vehicleCaps in lib/camp-config.js)
-                       when v_pax <= 8 then 'Minivan' when v_slug = 'morocco' then 'Big Van' else 'Large Van' end;
-    -- Price = the driver's price in /prices (pricing_catalog.cost_per_guest of the airport row), as presetPrice() in
-    -- camp-hub/transport.js: Sri Lanka «Airport → Surfcamp — Car» / «Surfcamp → Airport — Car»; Morocco «Agadir Airport — Car»
-    -- (the row whose name holds the airport's city; an airport without a row, e.g. Essaouira, saves 0 like the import).
-    if v_slug = 'morocco' then
-      v_city := case v_place when 'AGA' then 'Agadir' when 'RAK' then 'Marrakech' when 'ESU' then 'Essaouira' else null end;
-      select pc.cost_per_guest into v_price from public.pricing_catalog pc
-       where pc.location_id = p_location and pc.category = 'Transport' and pc.active and pc.show_in_transport_picker
-         and coalesce(pc.picker_tab, 'airport') not in ('surf', 'tours', 'tuktuk')
-         and v_city is not null and strpos(lower(pc.name), lower(v_city)) > 0 and pc.name like '% — ' || v_vehicle
-       order by pc.sort_order nulls last limit 1;
-    else
-      select pc.cost_per_guest into v_price from public.pricing_catalog pc
-       where pc.location_id = p_location and pc.category = 'Transport' and pc.active and pc.show_in_transport_picker
-         and pc.name = case when v_kind = 'airport_departure' then 'Surfcamp → Airport — ' else 'Airport → Surfcamp — ' end || v_vehicle
-       order by pc.sort_order nulls last limit 1;
+    -- Vehicle and price from /prices (17 Nov 2026, supabase/transport-catalog-one-source.sql): the route of the leg
+    -- (Sri Lanka by direction, Morocco by airport city), then the smallest vehicle whose capacity column holds the people;
+    -- more people than the largest → the largest, flagged (never price 0). No route (e.g. Essaouira) → no vehicle, 0, like the import.
+    v_route := public.transport_airport_route(p_location, v_kind, v_place);
+    v_vehicle := null; v_price := null; v_over := false;
+    if v_route is not null then
+      select tv.vehicle, tv.cost, tv.over_capacity into v_vehicle, v_price, v_over
+        from public.transport_vehicle_for(p_location, 'airport', v_route, v_pax) tv;
     end if;
     select f.flight, f.tm into v_flight, v_time from (
       select upper(regexp_replace(case when v_kind = 'airport_departure' then g.departure_flight else g.arrival_flight end, '\s', '', 'g')) as flight,
@@ -337,7 +337,9 @@ begin
       case when v_kind = 'airport_departure' then 'Surfcamp → Airport' else 'Airport → Surfcamp' end, 'guests',
       v_names, case when v_phone ~ '^\+[0-9]{8,15}$' then v_phone else null end, v_ref, v_checkout,
       v_pax, v_vehicle, v_driver, coalesce(v_price, 0), v_currency, 'planned', 'bookinglayer', 'bookinglayer', v_key,
-      array['added from the Bookinglayer booking page (' || v_auto || ')'], v_partner,
+      array['added from the Bookinglayer booking page (' || v_auto || ')']
+        || case when coalesce(v_over, false) then array[v_pax || ' people over capacity — 2nd vehicle?'] else '{}'::text[] end
+        || case when v_route is null then array['no /prices route for this airport — vehicle and price to set'] else '{}'::text[] end, v_partner,
       v_now, v_uid, v_note)
     returning id into v_tid;
     v_created := v_created + 1; v_hit := v_hit || v_tid;

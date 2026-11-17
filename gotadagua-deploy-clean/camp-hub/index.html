@@ -10,6 +10,7 @@
 <link rel="stylesheet" href="/camp-hub/transport.css">
 <link rel="stylesheet" href="/camp-hub/week.css">
 <script src="/lib/app-shell.js"></script>
+<script src="/lib/transport-catalog.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.4"></script>
 <script src="/supabase-config.js"></script>
@@ -2070,7 +2071,9 @@ function subscribeHubRealtime(){
       } else if(key===HUB_LEDGER_TS_KEY){
         // Another computer wrote to the ledger — rehydrate
         scheduleHubLedgerRehydrate();
-      } else if(key===TRANSPORT_PRESETS_KEY && json && typeof json==='object'){
+      } else if(key===TRANSPORT_PRESETS_KEY && json && typeof json==='object' && !window.__transportCatalogRead){
+        // (17 Nov 2026) /prices is the only source of transport prices: once the catalog has been read, an old
+        // state_store row from another computer never overwrites it.
         // Another computer edited the Transport quick-add presets. Pull
         // the new payload in and re-render the modal (if open) and any
         // downstream view (Operations Ledger picker, Overview breakdown).
@@ -6362,120 +6365,9 @@ function renderOverview(){
 //  Ledger / Overview / Transport breakdown like any other expense.
 // ═══════════════════════════════════════════════════════════
 const TRANSPORT_PRESETS_KEY='transport_presets_v1';
-// Seeds are per-location so a new Morocco / future-location browser starts
-// with a sensible set of chips (or empty, to be filled in by the user).
-// Each location's data lives in its OWN Supabase row (the state_store is
-// keyed by (location_id, state_key)), so Sri Lanka's presets are completely
-// independent from Morocco's even though they share this constant lookup.
-const DEFAULT_TRANSPORT_PRESETS_BY_LOCATION={
-  'sri-lanka':{
-    airport:[
-      // Vehicle-picker style — same UX as Morocco's airport presets. Each
-      // direction is a destination with Car / Minivan / Large Van pricing.
-      {
-        id:stableUuidFromSeed('tq|sri-lanka|airport|CMB-to-Surfcamp'),
-        name:'CMB → Surfcamp',sortOrder:5,linkedTour:'',
-        vehicles:[
-          {id:stableUuidFromSeed('tq|sri-lanka|airport|CMB-to-Surfcamp|Car'),label:'Car',capacity:4,price:21500,sortOrder:10},
-          {id:stableUuidFromSeed('tq|sri-lanka|airport|CMB-to-Surfcamp|Minivan'),label:'Minivan',capacity:8,price:26500,sortOrder:20},
-          {id:stableUuidFromSeed('tq|sri-lanka|airport|CMB-to-Surfcamp|LargeVan'),label:'Large Van',capacity:12,price:29500,sortOrder:30}
-        ]
-      },
-      {
-        id:stableUuidFromSeed('tq|sri-lanka|airport|Surfcamp-to-CMB'),
-        name:'Surfcamp → CMB',sortOrder:6,linkedTour:'',
-        vehicles:[
-          {id:stableUuidFromSeed('tq|sri-lanka|airport|Surfcamp-to-CMB|Car'),label:'Car',capacity:4,price:20000,sortOrder:10},
-          {id:stableUuidFromSeed('tq|sri-lanka|airport|Surfcamp-to-CMB|Minivan'),label:'Minivan',capacity:8,price:25000,sortOrder:20},
-          {id:stableUuidFromSeed('tq|sri-lanka|airport|Surfcamp-to-CMB|LargeVan'),label:'Large Van',capacity:12,price:28000,sortOrder:30}
-        ]
-      },
-      // Legacy single-price presets — kept for backward compat. User can
-      // delete them via the modal's edit mode if they prefer the new
-      // hierarchical chips only.
-      {id:stableUuidFromSeed('tq|sri-lanka|airport|Car-Airport'),name:'Car-Airport',unitPrice:20500,sortOrder:10},
-      {id:stableUuidFromSeed('tq|sri-lanka|airport|BV-Airport'),name:'BV-Airport',unitPrice:32000,sortOrder:20},
-      {id:stableUuidFromSeed('tq|sri-lanka|airport|SV-Airport'),name:'SV-Airport',unitPrice:25500,sortOrder:30}
-    ],
-    tuktuk:[
-      {id:stableUuidFromSeed('tq|sri-lanka|tuktuk|Ahangama'),name:'Ahangama',unitPrice:500,sortOrder:10},
-      {id:stableUuidFromSeed('tq|sri-lanka|tuktuk|Weligama'),name:'Weligama',unitPrice:1500,sortOrder:20},
-      {id:stableUuidFromSeed('tq|sri-lanka|tuktuk|Ice Bath'),name:'Ice Bath',unitPrice:1500,sortOrder:30},
-      {id:stableUuidFromSeed('tq|sri-lanka|tuktuk|River Cruise'),name:'River Cruise',unitPrice:1000,sortOrder:40},
-      {id:stableUuidFromSeed('tq|sri-lanka|tuktuk|Tea Plantation'),name:'Tea Plantation',unitPrice:1500,sortOrder:50},
-      {id:stableUuidFromSeed('tq|sri-lanka|tuktuk|South Beach'),name:'South Beach',unitPrice:500,sortOrder:60}
-    ]
-  },
-  'morocco':{
-    airport:[
-      {
-        id:stableUuidFromSeed('tq|morocco|airport|Agadir'),
-        name:'Agadir Airport',sortOrder:10,linkedTour:'',
-        vehicles:[
-          {id:stableUuidFromSeed('tq|morocco|airport|Agadir|Car'),label:'Car',capacity:4,price:250,sortOrder:10},
-          {id:stableUuidFromSeed('tq|morocco|airport|Agadir|Minivan'),label:'Minivan',capacity:8,price:300,sortOrder:20},
-          {id:stableUuidFromSeed('tq|morocco|airport|Agadir|BigVan'),label:'Big Van',capacity:15,price:500,sortOrder:30}
-        ]
-      },
-      {
-        id:stableUuidFromSeed('tq|morocco|airport|Marrakech'),
-        name:'Marrakech Airport',sortOrder:20,linkedTour:'',
-        vehicles:[
-          {id:stableUuidFromSeed('tq|morocco|airport|Marrakech|Car'),label:'Car',capacity:4,price:1200,sortOrder:10},
-          {id:stableUuidFromSeed('tq|morocco|airport|Marrakech|Minivan'),label:'Minivan',capacity:8,price:1500,sortOrder:20},
-          {id:stableUuidFromSeed('tq|morocco|airport|Marrakech|BigVan'),label:'Big Van',capacity:15,price:2200,sortOrder:30}
-        ]
-      }
-    ],
-    tuktuk:[
-      {
-        id:stableUuidFromSeed('tq|morocco|toursurf|Surf'),
-        name:'Surf',sortOrder:5,linkedTour:'Surf Lessons',
-        vehicles:[
-          {id:stableUuidFromSeed('tq|morocco|toursurf|Surf|Car'),label:'Car',capacity:4,price:700,sortOrder:10},
-          {id:stableUuidFromSeed('tq|morocco|toursurf|Surf|Minivan'),label:'Minivan',capacity:8,price:800,sortOrder:20},
-          {id:stableUuidFromSeed('tq|morocco|toursurf|Surf|BigVan'),label:'Big Van',capacity:15,price:900,sortOrder:30}
-        ]
-      },
-      {
-        id:stableUuidFromSeed('tq|morocco|toursurf|Souk'),
-        name:'Souk',sortOrder:10,linkedTour:'',
-        vehicles:[
-          {id:stableUuidFromSeed('tq|morocco|toursurf|Souk|Car'),label:'Car',capacity:4,price:400,sortOrder:10},
-          {id:stableUuidFromSeed('tq|morocco|toursurf|Souk|Minivan'),label:'Minivan',capacity:8,price:500,sortOrder:20},
-          {id:stableUuidFromSeed('tq|morocco|toursurf|Souk|BigVan'),label:'Big Van',capacity:15,price:700,sortOrder:30}
-        ]
-      },
-      {
-        id:stableUuidFromSeed('tq|morocco|toursurf|ParadiseValley'),
-        name:'Paradise Valley',sortOrder:20,linkedTour:'',
-        vehicles:[
-          {id:stableUuidFromSeed('tq|morocco|toursurf|ParadiseValley|Car'),label:'Car',capacity:4,price:700,sortOrder:10},
-          {id:stableUuidFromSeed('tq|morocco|toursurf|ParadiseValley|Minivan'),label:'Minivan',capacity:8,price:800,sortOrder:20},
-          {id:stableUuidFromSeed('tq|morocco|toursurf|ParadiseValley|BigVan'),label:'Big Van',capacity:15,price:900,sortOrder:30}
-        ]
-      },
-      {
-        id:stableUuidFromSeed('tq|morocco|toursurf|Dunes'),
-        name:'Dunes',sortOrder:30,linkedTour:'',
-        vehicles:[
-          {id:stableUuidFromSeed('tq|morocco|toursurf|Dunes|Car'),label:'Car',capacity:4,price:700,sortOrder:10},
-          {id:stableUuidFromSeed('tq|morocco|toursurf|Dunes|Minivan'),label:'Minivan',capacity:8,price:800,sortOrder:20},
-          {id:stableUuidFromSeed('tq|morocco|toursurf|Dunes|BigVan'),label:'Big Van',capacity:15,price:900,sortOrder:30}
-        ]
-      },
-      {
-        id:stableUuidFromSeed('tq|morocco|toursurf|Imsouane'),
-        name:'Imsouane',sortOrder:40,linkedTour:'',
-        vehicles:[
-          {id:stableUuidFromSeed('tq|morocco|toursurf|Imsouane|Car'),label:'Car',capacity:4,price:800,sortOrder:10},
-          {id:stableUuidFromSeed('tq|morocco|toursurf|Imsouane|Minivan'),label:'Minivan',capacity:8,price:900,sortOrder:20},
-          {id:stableUuidFromSeed('tq|morocco|toursurf|Imsouane|BigVan'),label:'Big Van',capacity:15,price:1200,sortOrder:30}
-        ]
-      }
-    ]
-  }
-};
+// No seed presets any more (17 Nov 2026): /prices (pricing_catalog) is the only source of transport vehicles,
+// seats, driver cost and guest price. The old seeds carried stale prices (Car 21,500, a «Large Van» /prices does not
+// have) and were written back to state_store whenever the catalog failed to load.
 // Tab configuration per location. Every location shares the same tab
 // STRUCTURE (a list of {key,label} entries) — only the content differs.
 // The internal keys map 1-to-1 to transportPresets buckets in storage,
@@ -6515,6 +6407,8 @@ function escapeAttr(s){return escapeHtml(s).replace(/`/g,'&#96;');}
 
 function normalizeTransportPresetsPayload(raw){
   const safeVehicles=(arr,seedPrefix)=>(Array.isArray(arr)?arr:[]).map((v,i)=>({
+    // keep what /prices gave (cost, currency, sell, sellCurrency, coversPax, blProduct, rowName — lib/transport-catalog.js)
+    ...(v&&typeof v==='object'?v:{}),
     id:String(v?.id||stableUuidFromSeed(seedPrefix+'|v|'+i+'|'+(v?.label||''))),
     label:String(v?.label||'').trim(),
     capacity:Number.isFinite(Number(v?.capacity))?Number(v.capacity):null,
@@ -6571,86 +6465,10 @@ const TRANSPORT_ENABLED_LOCATIONS=new Set(['sri-lanka','morocco']);
 //  redirect the chip Edit UI to /prices to make this explicit.
 let __transportFromCatalog=false;
 
+// One grouping for every app: lib/transport-catalog.js (capacity from the column, notes only when it is empty;
+// cost, currency, guest price, covers_pax and bl_product on each vehicle; vehicles sorted by capacity).
 function groupCatalogIntoPresets(rows, tourIdToName){
-  // Catalog Transport rows have names like:
-  //   "Surfcamp → Airport — Car"   → preset "Surfcamp → Airport" with a Car vehicle
-  //   "Ahangama"                    → single-price preset with unitPrice
-  // Group by the prefix before the LAST " — " (so destination names that
-  // contain " — " elsewhere — like "Dunes — Sandboarding" — still split
-  // correctly at the vehicle boundary).
-  //
-  // picker_tab on each catalog row drives which Hub tab the preset lands
-  // in. Recognises the full tab set ('airport' | 'surf' | 'tours' |
-  // 'tuktuk'); anything else (including NULL) falls back to 'airport'.
-  // Legacy 'tuktuk' is kept for Sri Lanka backwards compat.
-  const VALID_TABS=new Set(['airport','surf','tours','tuktuk']);
-  const byDest=new Map();
-  for(const r of rows){
-    const fullName=String(r.name||'').trim();
-    if(!fullName) continue;
-    const tab=VALID_TABS.has(r.picker_tab)?r.picker_tab:'airport';
-    const splitIdx=fullName.lastIndexOf(' — ');
-    let destName,vehicleLabel;
-    if(splitIdx>0){
-      destName=fullName.slice(0,splitIdx).trim();
-      vehicleLabel=fullName.slice(splitIdx+3).trim();
-    } else {
-      destName=fullName;
-      vehicleLabel='';
-    }
-    const destKey=tab+'|'+destName;
-    if(!byDest.has(destKey)){
-      // linked_camp_tab_id on a Transport row points at the LINKED tour
-      // (catalog UUID). The Hub's aggregator (linkedTransportTours +
-      // knownTourNames lookup) expects a tour NAME, so translate UUID
-      // → name here. If the UUID isn't in the map (e.g. catalog row
-      // was deleted), fall back to whatever string is stored — preserves
-      // legacy data where linkedTour was already a name.
-      const rawLinked=r.linked_camp_tab_id||'';
-      const resolvedLinked=(tourIdToName && rawLinked && tourIdToName.has(rawLinked))
-        ? tourIdToName.get(rawLinked)
-        : rawLinked;
-      byDest.set(destKey,{
-        id:r.linked_transport_preset_id||('cat|'+r.id),
-        name:destName,
-        tab,
-        unitPrice:0,
-        sortOrder:Number.isFinite(Number(r.sort_order))?Number(r.sort_order):100,
-        linkedTour:resolvedLinked,
-        vehicles:[]
-      });
-    }
-    const preset=byDest.get(destKey);
-    if(vehicleLabel){
-      let capacity=null;
-      const m=String(r.notes||'').match(/capacity\s*(\d+)/i);
-      if(m) capacity=Number(m[1]);
-      preset.vehicles.push({
-        id:'cat|'+r.id,
-        label:vehicleLabel,
-        capacity,
-        price:Number(r.cost_per_guest||0),
-        sortOrder:Number.isFinite(Number(r.sort_order))?Number(r.sort_order):100
-      });
-    } else {
-      // No vehicle suffix → single-price preset
-      preset.unitPrice=Number(r.cost_per_guest||0);
-    }
-  }
-  const all=Array.from(byDest.values()).sort((a,b)=>a.sortOrder-b.sortOrder);
-  // Sort each preset's vehicles by sortOrder, then by label
-  for(const p of all){
-    p.vehicles.sort((a,b)=>a.sortOrder-b.sortOrder||(a.label||'').localeCompare(b.label||''));
-  }
-  // Split into every Hub tab bucket (airport / surf / tours / tuktuk).
-  // Presets whose tab isn't one of these — shouldn't happen after the
-  // VALID_TABS normalisation above — get dropped silently rather than
-  // leaking into Airport.
-  const result={airport:[],surf:[],tours:[],tuktuk:[]};
-  for(const p of all){
-    if(result[p.tab]) result[p.tab].push(p);
-  }
-  return result;
+  return TransportCatalog.group(rows, tourIdToName);
 }
 
 // Phase 6: when catalog is master, hide the Hub's "Edit presets" toggle and
@@ -6675,105 +6493,59 @@ function applyTransportEditLock(){
   }
 }
 
+// The /prices columns the transport picker reads. covers_pax / bl_product arrive with
+// supabase/transport-catalog-one-source.sql: until it is run the select is repeated without them.
+const TRANSPORT_CATALOG_COLS='id,name,cost_per_guest,currency,sell_price,sell_currency,capacity,notes,linked_transport_preset_id,linked_camp_tab_id,picker_tab,sort_order';
+const TRANSPORT_CATALOG_NEW_COLS=',covers_pax,bl_product';
+// Why the transport prices are missing ('' = loaded). Transport shows it as one block and saves nothing.
+let __transportPricesError='';
 async function loadTransportPresetsFromCatalog(){
-  // Returns {airport,tuktuk} grouped from pricing_catalog, or null if
-  // the catalog has no Transport rows flagged for this location's
-  // Transport picker. null tells the caller to fall back.
+  // { airport, surf, tours, tuktuk } from pricing_catalog, or { error } — never a guess.
   try{
     const client=getHubSupabaseClient();
     const locId=await ensureHubLocationId();
-    if(!client||!locId) return null;
-    const {data,error}=await client
-      .from('pricing_catalog')
-      .select('id,name,cost_per_guest,currency,notes,linked_transport_preset_id,linked_camp_tab_id,picker_tab,sort_order')
-      .eq('location_id',locId)
-      .eq('category','Transport')
-      .eq('show_in_transport_picker',true)
-      .eq('active',true)
+    if(!client||!locId) return {error:'not connected'};
+    const q=cols=>client.from('pricing_catalog').select(cols)
+      .eq('location_id',locId).eq('category','Transport').eq('show_in_transport_picker',true).eq('active',true)
       .order('sort_order',{ascending:true});
+    let {data,error}=await q(TRANSPORT_CATALOG_COLS+TRANSPORT_CATALOG_NEW_COLS);
+    if(error && /covers_pax|bl_product/.test(String(error.message||'')+String(error.details||'')+String(error.hint||''))) ({data,error}=await q(TRANSPORT_CATALOG_COLS));
     if(error) throw error;
-    if(!Array.isArray(data)||!data.length) return null;
-    // Pull the location's Tours too so we can translate the Transport rows'
-    // linked_camp_tab_id (a tour UUID) into the tour NAME that the Hub
-    // aggregator expects in preset.linkedTour. Failure here is non-fatal —
-    // unresolved UUIDs just fall through as-is.
+    if(!Array.isArray(data)||!data.length) return {error:'no transport rows in /prices for this camp'};
+    // Transport rows link a tour by its catalog id; the aggregator expects the tour NAME.
     let tourIdToName=null;
     try{
-      const tRes=await client
-        .from('pricing_catalog')
-        .select('id,name')
-        .eq('location_id',locId)
-        .eq('category','Tour')
-        .eq('active',true);
-      if(!tRes.error && Array.isArray(tRes.data)){
-        tourIdToName=new Map(tRes.data.map(t=>[t.id,String(t.name||'')]));
-      }
+      const tRes=await client.from('pricing_catalog').select('id,name').eq('location_id',locId).eq('category','Tour').eq('active',true);
+      if(!tRes.error && Array.isArray(tRes.data)) tourIdToName=new Map(tRes.data.map(t=>[t.id,String(t.name||'')]));
     }catch(_e){}
     return groupCatalogIntoPresets(data, tourIdToName);
   }catch(e){
     console.warn('[Hub] loadTransportPresetsFromCatalog failed',e);
-    return null;
+    return {error:(e&&e.message)||'could not read /prices'};
   }
 }
 
 async function loadTransportPresets(){
   if(!TRANSPORT_ENABLED_LOCATIONS.has(__HUB_LOCATION_SLUG)){
-    transportPresets={airport:[],tuktuk:[]};
+    transportPresets={airport:[],tuktuk:[],surf:[],tours:[]};
     return;
   }
-  // Phase 3: try the pricing_catalog first. If it has Transport rows
-  // for this location, use them as the master source.
+  // /prices is the only source (17 Nov 2026). Empty or failed → no presets and a clear «prices not loaded»
+  // (Transport refuses to save a trip without a price); nothing is ever written back to state_store.
   const fromCatalog=await loadTransportPresetsFromCatalog();
-  if(fromCatalog && (fromCatalog.airport.length||fromCatalog.tuktuk.length)){
+  __transportFromCatalog=true; window.__transportCatalogRead=true;
+  if(fromCatalog && !fromCatalog.error && TransportCatalog.count(fromCatalog)){
     transportPresets=normalizeTransportPresetsPayload(fromCatalog);
-    __transportFromCatalog=true;
-    const btn=document.getElementById('quickTransportBtn');
-    if(btn) btn.style.display='inline-flex';
-    applyTransportTabLabels();
-    applyTransportEditLock();
-    console.log('[Hub] Transport picker loaded from pricing_catalog —',
-      (fromCatalog.airport.length+fromCatalog.tuktuk.length),'destination(s)');
-    return;
+    __transportPricesError='';
+    console.log('[Hub] Transport picker loaded from pricing_catalog —',TransportCatalog.count(fromCatalog),'route(s)');
+  } else {
+    transportPresets={airport:[],tuktuk:[],surf:[],tours:[]};
+    __transportPricesError=(fromCatalog&&fromCatalog.error)||'no transport rows in /prices for this camp';
   }
-  __transportFromCatalog=false;
-  applyTransportEditLock();
-  const seed=DEFAULT_TRANSPORT_PRESETS_BY_LOCATION[__HUB_LOCATION_SLUG]||{airport:[],tuktuk:[]};
-  const hasSeed=(seed.airport?.length||0)+(seed.tuktuk?.length||0)>0;
-  try{
-    const data=await loadStateStore(TRANSPORT_PRESETS_KEY);
-    if(data && typeof data==='object'){
-      transportPresets=normalizeTransportPresetsPayload(data);
-      // Empty Supabase row + we HAVE seed data → seed it once. This is
-      // the only auto-seed path: the previous "top-up" that re-added
-      // missing seed names on every load was removed because it lived
-      // in a localStorage version-flag, which incognito sessions reset
-      // every time, so deleted seed entries (Car-Airport, BV-Airport,
-      // SV-Airport, etc.) kept coming back. Now the source of truth is
-      // strictly the Supabase row: once written, no automatic top-up
-      // ever runs again. Users who want a new chip use "+ Add preset"
-      // — that's the same UX as editing an existing one and it syncs.
-      if(hasSeed && !transportPresets.airport.length && !transportPresets.tuktuk.length){
-        transportPresets=normalizeTransportPresetsPayload(seed);
-        await saveTransportPresets({skipRender:true});
-      }
-    } else {
-      // No row yet — fresh install gets the full seed.
-      if(hasSeed){
-        transportPresets=normalizeTransportPresetsPayload(seed);
-        await saveTransportPresets({skipRender:true});
-      } else {
-        transportPresets={airport:[],tuktuk:[]};
-      }
-    }
-  }catch(e){
-    console.warn('[Hub] loadTransportPresets failed',e);
-    transportPresets=normalizeTransportPresetsPayload(seed);
-  }
-  // Surface the button now that data is loaded
   const btn=document.getElementById('quickTransportBtn');
   if(btn) btn.style.display='inline-flex';
-  // Make sure the modal tab labels reflect this location.
   applyTransportTabLabels();
+  applyTransportEditLock();
 }
 
 function applyTransportTabLabels(){
@@ -6788,6 +6560,7 @@ function applyTransportTabLabels(){
 
 async function saveTransportPresets({skipRender=false}={}){
   if(!TRANSPORT_ENABLED_LOCATIONS.has(__HUB_LOCATION_SLUG)) return;
+  if(__transportFromCatalog) return;   // /prices is the only source: never written back to state_store (17 Nov 2026)
   // Suppress our own RT echo for ~1s. Without this, the upsert at
   // saveStateStore bounces back as a postgres_changes event on the
   // other end of the same socket — the listener then re-runs
@@ -6885,6 +6658,10 @@ function isRoundTripOnlyTab(){
 function renderTransportChips(){
   const wrap=document.getElementById('tqChipsWrap');
   if(!wrap) return;
+  if(__transportPricesError){
+    wrap.innerHTML=`<div class="status-msg status-warn" data-prices-not-loaded>Transport prices not loaded (${escapeHtml(__transportPricesError)}). Nothing can be added until /prices loads — check the connection, or add the transport rows in <a href="/prices?location=${encodeURIComponent(__HUB_LOCATION_SLUG)}" target="_blank">Prices</a>.</div>`;
+    return;
+  }
   const editMode=!!document.getElementById('tqEditMode')?.checked;
   const list=(transportPresets[tqActiveTab]||[]).slice().sort((a,b)=>a.sortOrder-b.sortOrder);
   // Pool of tours the user can attach a preset to. Pulls every Tours menu

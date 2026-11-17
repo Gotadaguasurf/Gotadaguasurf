@@ -11,6 +11,8 @@ const { test, expect } = require('@playwright/test');
 const fs = require('fs');
 const path = require('path');
 const G = require('../lib/guests-trips.js');
+// the camp hub parses with the /prices vehicles (lib/transport-catalog.js); Car = 3 seats
+const SLC = require('./catalog-fixtures').slCfg();
 
 const FIX = path.join(__dirname, 'fixtures');
 const PRESET = 'Bookinglayer-Guests-2026-11-07 14_23';
@@ -33,7 +35,7 @@ for (const name of [PRESET, ALL]) {
 }
 
 test('guests parser: the 7 Nov preset — 6 trips (every transfer both ways), Lorena at night, Beliz both ways, preset detected', () => {
-  const out = G.parse(read(PRESET + '.csv'), PRESET + '.csv');
+  const out = G.parse(read(PRESET + '.csv'), PRESET + '.csv', undefined, SLC);
   expect(out.export_date).toBe('2026-11-07');
   expect(out.is_preset).toBe(true);
   expect(out.trips.map(t => t.key)).toEqual(['bl:2026-4070:arr', 'bl:2026-4070:dep', 'bl:2026-4936:arr', 'bl:2026-4936:dep', 'bl:2026-4660:arr', 'bl:2026-4660:dep']);
@@ -220,7 +222,7 @@ test('round trip (Miguel, 13 Nov): one leg only when the comment says so next to
 const SYN_HEAD = 'Guest,Booking status,Booking,Arrival time,Arrival flight,Departure time,Departure flight,Check-in on,Check-out on,Packages,Accommodations,Has transfer,Transfers,Transfer comment,Phone';
 const synRow = (o) => [o.guest, o.status || 'Confirmed', o.ref, o.at || '', o.af || '', o.dt || '', o.df || '', o.ci || 'Sat 28 Nov 2026', o.co || 'Sat 5 Dec 2026',
   o.pk === undefined ? 'Surf Camp Ahangama' : o.pk, o.acc || 'Mirissa room', o.has || 'Yes', o.tr === undefined ? 'Airport Transfer, Airport Transfer' : o.tr, o.tc || '', ''].join(',');
-const syn = (rows, name = 'Bookinglayer-Guests-2026-11-23 09_00.csv') => G.parse([SYN_HEAD, ...rows.map(synRow)].join('\n'), name);
+const syn = (rows, name = 'Bookinglayer-Guests-2026-11-23 09_00.csv') => G.parse([SYN_HEAD, ...rows.map(synRow)].join('\n'), name, undefined, SLC);
 
 test('A8 — a couple never becomes three trips: an empty flight joins the booking, it does not split it', () => {
   // Monday: Anna filled the flight, Jonas left it empty → ONE arrival for 2 persons (was two Cars).

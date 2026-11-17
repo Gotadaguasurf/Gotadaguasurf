@@ -166,3 +166,15 @@ test('overview: the week is Transport\'s week (Sat–Fri, the closing Saturday\'
   expect(V.kinds[0].parts.map(p => [p.label, p.trips])).toEqual([['Arrivals', 1], ['Departures', 1]]);
 });
 
+
+test('overview: Morocco van runs with no head count (17 Nov 2026: «People in the van» removed) — people unknown, the kind\'s «per person» hides; airport keeps its people', () => {
+  const runs = [run('Surf', { pax: null, status: 'done', driver_id: 'd2', expected_price: 500, trip_date: '2026-11-12' }), run('Dunes', { pax: null, status: 'done', driver_id: 'd2', expected_price: 700, trip_date: '2026-11-12' })];
+  const air = trip({ status: 'done', driver_id: 'd1', pax: 2, expected_price: 250, trip_date: '2026-11-12' });
+  const C = O.collect({ ...MA, trips: [...runs, air] });
+  expect(C.items.filter(i => i.src === 'trip' && i.kind !== 'airport').map(i => i.people)).toEqual([null, null]);
+  const V = O.view(C, O.period('month', '2026-11'), CC.MA);
+  const k = kd => V.kinds.find(x => x.kind === kd);
+  expect([k('vans').cost, k('vans').people, k('vans').perPerson]).toEqual([500, 0, null]);
+  expect([k('tours').cost, k('tours').people, k('tours').perPerson]).toEqual([700, 0, null]);
+  expect([k('airport').people, k('airport').perPerson]).toEqual([2, 125]);
+});

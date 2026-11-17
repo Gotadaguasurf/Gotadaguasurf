@@ -34,6 +34,7 @@
 <script src="/supabase-config.js?v=6" onerror="window.__SUPABASE_CFG_FAILED=true"></script>
 <script src="/owner-config.js"></script>
 <script src="/lib/app-shell.js"></script>
+<script src="/lib/transport-overview.js"></script>
 <link rel="stylesheet" href="/lib/app-shell.css">
 <style>
 /* Page-specific rules only. Tokens, the header pills (.nav-tabs / .ntab /
@@ -474,7 +475,19 @@ body.view-list .drag-handle{display:none}
         <div class="mfield" id="em_capacity_row" style="display:none">
           <label>Vehicle capacity (optional)</label>
           <input type="number" id="em_capacity" min="1" step="1" placeholder="e.g. 4">
-          <div class="help">If this is a per-vehicle cost (Car/Minivan/Van), enter how many guests fit. The linked tour will use cost ÷ capacity as the per-guest transport share. Leave blank for per-trip prices.</div>
+          <div class="help">Seats in this vehicle. Transport picks the smallest vehicle whose capacity holds the people of a trip (more than the largest → the largest, flagged «2nd vehicle?»). The linked tour uses cost ÷ capacity as the per-guest transport share. Leave blank for per-trip prices (tuk-tuks).</div>
+        </div>
+        <div class="mgrid" id="em_covers_row" style="display:none">
+          <div class="mfield">
+            <label>People one paid transfer covers</label>
+            <input type="number" id="em_covers" min="1" step="1" placeholder="3">
+            <div class="help">«€80 / 3 persons» → 3. A trip with more people than paid transfers × this is flagged «underpaid». Not the seats.</div>
+          </div>
+          <div class="mfield">
+            <label>Bookinglayer product (optional)</label>
+            <input type="text" id="em_bl_product" placeholder="Airport Transfer (with surfboards)">
+            <div class="help">A booking of this exact product always gets this vehicle (or a bigger one for more people).</div>
+          </div>
         </div>
 
         <!-- Transport-specific: link to a tour so cost flows to that tour's P&L -->
@@ -883,6 +896,8 @@ function withTimeout(promise, ms, label){
     // Custom tabs: fire-and-forget, don't block the catalog render if
     // the pricing_areas table isn't there yet. Re-renders when done.
     loadCustomAreas().then(()=>renderTable()).catch(()=>{});
+    // € rate for the margins (MAD / LKR cost vs € price): best-effort, re-renders when known.
+    loadEurRate().then(()=>renderTable()).catch(()=>{});
     // Sold counts are best-effort — the catalog renders even if this
     // bails (RLS, network). Don't await with the strict timeout.
     loadMerchSoldCounts().then(()=>renderTable()).catch(()=>{});
@@ -993,6 +1008,39 @@ async function refreshAccommodation(){
   renderAccommodation();
 }
 
+// covers_pax / bl_product arrive with supabase/transport-catalog-one-source.sql: until it is run a save is repeated without
+// them (the rest of the row is saved) and the owner is told once.
+const NEW_CAT_COLS = ['covers_pax', 'bl_product'];
+const newCatColMissing = e => !!e && /covers_pax|bl_product/.test(String(e.message || '') + String(e.details || '') + String(e.hint || ''));
+function withoutNewCatCols(p) {
+  const r = { ...p }; const had = NEW_CAT_COLS.some(k => r[k] != null); NEW_CAT_COLS.forEach(k => delete r[k]);
+  if (had) setTimeout(() => alert('Saved — except «covers» and «Bookinglayer product»: run supabase/transport-catalog-one-source.sql first.'), 0);
+  return r;
+}
+// € for the margins: ONE rate per camp, from TransportOverview.eurRate (the rule the Transport Overview uses): the camp's
+// own ledger lines in its currency (last 120 days), else the location's default rate when sane, else the camp default.
+let eurFx = { rate: 0, source: '' };   // 0 = not known yet: a cross-currency margin shows «—»
+async function loadEurRate(){
+  const cur = LOCATION_CURRENCY[LOCATION_SLUG] || 'EUR';
+  if (cur === 'EUR' || !window.TransportOverview) { eurFx = { rate: 1, source: 'eur' }; return; }
+  let ledger = [], fallback = 0;
+  try {
+    const from = new Date(Date.now() - 120 * 864e5).toISOString().slice(0, 10);
+    const { data } = await sbClient.from('ledger_entries').select('date,currency,amount,amount_local').eq('location_id', locationId).eq('currency', cur).gte('date', from).limit(500);
+    ledger = (data || []).map(e => ({ date: e.date, currency: e.currency, amount: e.amount, amountLocal: e.amount_local }));
+  } catch (_) {}
+  try { const { data } = await sbClient.from('locations').select('default_fx_to_eur').eq('id', locationId).maybeSingle(); fallback = Number(data && data.default_fx_to_eur) || 0; } catch (_) {}
+  eurFx = TransportOverview.eurRate({ ledger, cur, fallback });
+}
+// Cost in the sell currency: a MAD / LKR cost against a € price is converted first (never MAD − €).
+function costInSellCcy(cost, costCcy, sellCcy) {
+  if (!cost) return 0;
+  if ((costCcy || sellCcy) === sellCcy) return cost;
+  const cur = LOCATION_CURRENCY[LOCATION_SLUG] || 'EUR';
+  if (sellCcy === 'EUR' && costCcy === cur && eurFx.rate > 0) return cost / eurFx.rate;
+  if (costCcy === 'EUR' && sellCcy === cur && eurFx.rate > 0) return cost * eurFx.rate;
+  return null;   // two currencies the page cannot convert: no margin shown
+}
 async function loadCatalog(){
   const { data, error } = await sbClient
     .from('pricing_catalog')
@@ -1390,8 +1438,10 @@ function renderTable(){
   const body = rows.map(r=>{
     const sellNum = Number(r.sell_price||0);
     const ownCost = Number(r.cost_per_guest||0);
-    const margin = sellNum - ownCost;
-    const marginPct = sellNum > 0 ? Math.round((margin / sellNum) * 100) : null;
+    // the cost in the sell currency (MAD / LKR → € with the camp's one rate) before subtracting
+    const costSell = costInSellCcy(ownCost, r.currency || r.sell_currency || 'EUR', r.sell_currency || r.currency || 'EUR');
+    const margin = costSell == null ? null : sellNum - costSell;
+    const marginPct = sellNum > 0 && margin != null ? Math.round((margin / sellNum) * 100) : null;
 
     // SELL price uses sell_currency (what we charge guests — usually EUR).
     // COST uses currency (what we pay suppliers — local: MAD, LKR, etc.).
@@ -1400,8 +1450,8 @@ function renderTable(){
     const sellCcy = r.sell_currency || r.currency || 'EUR';
     const sellTxt = sellNum > 0 ? money(sellNum, sellCcy) : '<span style="color:var(--muted)">—</span>';
     const costTxt = ownCost > 0 ? money(ownCost, r.currency) : '<span style="color:var(--muted)">—</span>';
-    const marginTxt = sellNum > 0
-      ? `<span style="color:${margin>=0?'var(--green)':'var(--red)'};font-weight:700">${marginPct}%</span>`
+    const marginTxt = sellNum > 0 && marginPct != null
+      ? `<span style="color:${margin>=0?'var(--green)':'var(--red)'};font-weight:700" title="${costSell !== ownCost ? `cost ≈ ${escapeHtml(money(costSell, r.sell_currency || 'EUR'))} at ${Math.round(eurFx.rate * 10) / 10} per €` : ''}">${marginPct}%</span>`
       : '<span style="color:var(--muted)">—</span>';
 
     const audBadge = r.audience === 'group' ? '<span class="badge badge-group">Group</span>' : '';
@@ -2070,6 +2120,9 @@ function renderTransfersEdit(){
               const sellCcy = r.sell_currency || r.currency || 'EUR';
               const costCell  = cost > 0 ? money(cost, costCcy) : '<span class="tf-cell-empty">— add</span>';
               const priceCell = sell > 0 ? money(sell, sellCcy) : '<span class="tf-cell-empty">— add</span>';
+              const cSell = costInSellCcy(cost, costCcy, sellCcy);
+              const mPct = sell > 0 && cost > 0 && cSell != null ? Math.round((sell - cSell) / sell * 100) : null;
+              const mTxt = mPct == null ? '' : `<div class="cell-sub" data-tf-margin style="color:${mPct >= 0 ? 'var(--green)' : 'var(--red)'}">margin ${mPct}%</div>`;
               const pickerCls = r.show_in_transport_picker ? 'on' : '';
               const pickerLabel = r.show_in_transport_picker ? 'On' : 'Off';
               const pickerTitle = r.show_in_transport_picker
@@ -2082,7 +2135,7 @@ function renderTransfersEdit(){
                   <td>${escapeHtml(it.vehicle || '—')}</td>
                   <td class="muted">${it.paxRange || '—'}</td>
                   <td class="r"><span class="tf-cell-edit tf-cost" data-tf-id="${r.id}" data-tf-field="cost_per_guest" onclick="onTfEditCell(this)">${costCell}</span></td>
-                  <td class="r"><span class="tf-cell-edit tf-price" data-tf-id="${r.id}" data-tf-field="sell_price" onclick="onTfEditCell(this)">${priceCell}</span></td>
+                  <td class="r"><span class="tf-cell-edit tf-price" data-tf-id="${r.id}" data-tf-field="sell_price" onclick="onTfEditCell(this)">${priceCell}</span>${mTxt}</td>
                   <td class="c">${picker}</td>
                   <td class="c"><div class="tf-row-actions">
                     <button class="btn btn-s btn-sm" onclick="openEdit('${r.id}')">More</button>
@@ -2467,6 +2520,7 @@ window.onCategoryChange = ()=>{
   $('em_picker_tab_row').style.display = (cat === 'Transport') ? '' : 'none';
   $('em_linked_tour_row').style.display = (cat === 'Transport') ? '' : 'none';
   $('em_capacity_row').style.display   = (cat === 'Transport') ? '' : 'none';
+  if ($('em_covers_row')) $('em_covers_row').style.display = (cat === 'Transport') ? '' : 'none';
   // linked_transport ONLY shows for Tour
   $('em_linked_transport_row').style.display = (cat === 'Tour') ? '' : 'none';
   // Stock on hand stays Merch/Drinks-only (Tours don't run out; add-ons
@@ -2603,6 +2657,7 @@ window.openNew = ()=>{
   $('em_show_tp').checked = false;
   $('em_picker_tab').value = 'airport';
   $('em_capacity').value = '';
+  $('em_covers').value = ''; $('em_bl_product').value = '';
   populateLinkedSelects(null);
   onCategoryChange();
   $('editOv').classList.add('open');
@@ -2643,6 +2698,8 @@ window.openEdit = (id)=>{
   $('em_show_tp').checked = !!r.show_in_transport_picker;
   $('em_picker_tab').value = r.picker_tab || 'airport';
   $('em_capacity').value = (Number.isFinite(Number(r.capacity)) && Number(r.capacity) > 0) ? r.capacity : '';
+  $('em_covers').value = (Number(r.covers_pax) > 0) ? r.covers_pax : '';
+  $('em_bl_product').value = r.bl_product || '';
   populateLinkedSelects(r);
   onCategoryChange();
   $('editOv').classList.add('open');
@@ -2710,6 +2767,11 @@ $('emSave').addEventListener('click', async ()=>{
     if (capRaw > 0) {
       payload.capacity = Math.max(1, Math.round(capRaw));
     }
+    // covers_pax / bl_product (supabase/transport-catalog-one-source.sql): sent when filled, or emptied on a row that had them.
+    const before = editingId ? (catalog.find(x => x.id === editingId) || {}) : {};
+    const cov = Number($('em_covers').value || 0); const blp = ($('em_bl_product').value || '').trim();
+    if (cov > 0) payload.covers_pax = Math.round(cov); else if (before.covers_pax != null) payload.covers_pax = null;
+    if (blp) payload.bl_product = blp; else if (before.bl_product) payload.bl_product = null;
   }
   // Merch stock + alt price — same "only send when category needs it"
   // pattern as capacity. Empty inputs → null (feature disabled). The
@@ -2747,8 +2809,9 @@ $('emSave').addEventListener('click', async ()=>{
   try {
     let saved;
     if (editingId) {
-      const { data, error } = await sbClient
+      let { data, error } = await sbClient
         .from('pricing_catalog').update(payload).eq('id', editingId).select().single();
+      if (error && newCatColMissing(error)) ({ data, error } = await sbClient.from('pricing_catalog').update(withoutNewCatCols(payload)).eq('id', editingId).select().single());
       if (error) throw error;
       saved = data;
       // Replace in local catalog
@@ -2762,8 +2825,9 @@ $('emSave').addEventListener('click', async ()=>{
       const sameCategoryRows = catalog.filter(r => r.category === payload.category);
       const maxSort = sameCategoryRows.reduce((m, r) => Math.max(m, Number(r.sort_order || 0)), 100);
       payload.sort_order = maxSort + 1;
-      const { data, error } = await sbClient
+      let { data, error } = await sbClient
         .from('pricing_catalog').insert(payload).select().single();
+      if (error && newCatColMissing(error)) ({ data, error } = await sbClient.from('pricing_catalog').insert(withoutNewCatCols(payload)).select().single());
       if (error) throw error;
       saved = data;
       catalog.push(saved);

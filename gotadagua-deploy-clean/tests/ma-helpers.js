@@ -20,13 +20,17 @@ const DRIVERS = [
   { id: D.fat, location_id: LOC, name: 'Fathoune', label: 'Surf vans', phone: '+212600000102', aliases: ['Fathoune', 'Mounir'], kinds: ['van'], default_for: ['van', 'van_contact'], active: true },
 ];
 // /prices (pricing_catalog) for Morocco as on 14 Nov 2026: one price per airport and vehicle.
-const CATALOG = [['Agadir Airport — Car', 250], ['Agadir Airport — Minivan', 300], ['Agadir Airport — Big Van', 500],
-  ['Marrakech Airport — Car', 1200], ['Marrakech Airport — Minivan', 1500], ['Marrakech Airport — Big Van', 2200]]
-  .map(([name, cost], i) => ({ id: `cat-${i}`, name, cost_per_guest: cost, currency: 'MAD', notes: '', linked_transport_preset_id: `p-${name.split(' — ')[0]}`, linked_camp_tab_id: null, picker_tab: 'airport', sort_order: i }))
+// 17 Nov 2026: seats from the capacity column only (Car = 3 as Miguel sets it), guest price «€30 / 3 persons», «€120 / 3 persons».
+const CATALOG = [['Agadir Airport — Car', 250, 3, 30], ['Agadir Airport — Minivan', 300, 8, 40], ['Agadir Airport — Big Van', 500, 15, 65],
+  ['Marrakech Airport — Car', 1200, 3, 120], ['Marrakech Airport — Minivan', 1500, 8, 150], ['Marrakech Airport — Big Van', 2200, 15, 220]]
+  .map(([name, cost, capacity, sell], i) => ({ id: `cat-${i}`, name, cost_per_guest: cost, currency: 'MAD', capacity, sell_price: sell, sell_currency: 'EUR', covers_pax: 3, notes: '', linked_transport_preset_id: `p-${name.split(' — ')[0]}`, linked_camp_tab_id: null, picker_tab: 'airport', sort_order: i }))
   // Surf vans and tours: Mounir Travel Tours (Fathoune) per VEHICLE from October 2026, the live /prices rows.
   .concat([['Surf', 'surf', 300, 500, 700], ['Tamri / Anza', 'surf', 400, 600, 800], ['Imsouane', 'surf', 800, 900, 1200], ['Dunes', 'tours', 500, 700, 800], ['Paradise Valley', 'tours', 500, 700, 800], ['Souk', 'tours', 300, 400, 600]]
     .flatMap(([dest, tab, car, mini, big], j) => [['Car', car, 4], ['Minivan', mini, 8], ['Big Van', big, 15]].map(([v, cost, cap], k) => ({ id: `cat-v${j}${k}`, name: `${dest} — ${v}`, cost_per_guest: cost, currency: 'MAD',
-      notes: `capacity ${cap}`, linked_transport_preset_id: `p-${dest}`, linked_camp_tab_id: null, picker_tab: tab, sort_order: 20 + j * 3 + k }))));
+      capacity: cap, notes: '', linked_transport_preset_id: `p-${dest}`, linked_camp_tab_id: null, picker_tab: tab, sort_order: 20 + j * 3 + k }))));
+// The camp settings + these /prices vehicles: what the camp hub hands the parser.
+const TC = require('../lib/transport-catalog.js');
+const MA_CFG = TC.withCatalog(CC.MA, TC.group(CATALOG));
 
 let seq = 0;
 const uid = (p = 'eeeeeeee') => `${p}-0000-4000-8000-${String(++seq).padStart(12, '0')}`;
@@ -36,7 +40,7 @@ function guestsFromFile(name = FILE, importId = IMPORT_ID, at = '2026-11-14T08:0
 }
 // Trips as the import would store them (parser → camp_trips rows).
 function tripsFromFile(name = FILE) {
-  const p = GT.parse(fs.readFileSync(CSV(name), 'utf8'), name, null, CC.MA);
+  const p = GT.parse(fs.readFileSync(CSV(name), 'utf8'), name, null, MA_CFG);
   const price = (t) => { const city = CC.MA.airportCity[t.place] || 'Agadir'; const row = CATALOG.find(c => c.name === `${city} Airport — ${t.vehicle}`); return row ? row.cost_per_guest : 0; };
   return p.trips.map((t, i) => ({ id: `aaaaaaaa-0000-4000-8000-${String(i + 1).padStart(12, '0')}`, location_id: LOC, kind: t.kind, trip_date: t.date, trip_time: t.time, pickup_time: null, flight: t.flight || null, place: t.place,
     route: t.kind === 'airport_departure' ? 'Surfcamp → Airport' : 'Airport → Surfcamp', purpose: 'guests', tour_name: null, guest_names: t.guests.join(', '), guest_phone: t.phone || null,

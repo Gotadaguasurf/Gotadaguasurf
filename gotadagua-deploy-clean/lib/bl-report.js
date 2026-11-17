@@ -387,6 +387,17 @@
         fl.push(...(gr.extra || []));
         if (split) fl.push('guests of this booking travel separately');
         const pax = gr.legs.length; const boards = gr.legs.some(l => l.boards);
+        // The vehicle and the money check, from /prices (17 Nov 2026; cfg.transportVehicles = TransportCatalog.withCatalog).
+        const kind = `airport_${dir}`; const vs = G.vehiclesOf(cfg, kind, gr.place);
+        const products = [...new Set(gr.legs.flatMap(l => l.titles || []))];
+        const pk = G.pickVehicle(pax, { boards, products, vehicles: vs });
+        if (vs.length && pk.flag) fl.push(pk.flag);
+        const money = b.hasPrice ? moneyCheck(b, gr, pax, vs, cfg) : null;
+        if (money) {
+          // «N transfers paid, same flight» is right when the people need that many transfers (5 people, 2 paid): no question.
+          if (money.paid > 1 && money.paid <= money.needed) { const pf = paidTwiceFlag(money.paid); const i = fl.indexOf(pf); if (i >= 0) fl.splice(i, 1); }
+          fl.push(...money.flags);
+        }
         out.push({
           key, kind: `airport_${dir}`, date: gr.date, time: gr.time || null, flight: gr.flight || '', place: gr.place,
           pax, guests: gr.legs.map(l => l.guest), boards, charge: 'bookinglayer', flags: fl,
@@ -394,14 +405,51 @@
           csv_lines: gr.legs.flatMap(l => l.lids), line_ids: gr.legs.flatMap(l => l.lids),
           booking_ref: b.ref, booking_checkout: b.co || null, phone: (gr.legs.find(l => l.phone) || {}).phone || '',
           phone_from: (gr.legs.find(l => l.phone) || {}).phoneFrom || '',
-          vehicle: GT().vehicleFor(pax, boards, cfg), partner: b.partner || null,
-          ...(b.hasPrice ? { paid_lines: gr.legs.filter(l => l.price > 0).length, line_prices: gr.legs.map(l => ({ guest: l.guest, price: l.price })), all_zero: !!gr.allZero } : {}),
+          vehicle: pk.label, partner: b.partner || null, products,
+          ...(b.hasPrice ? { paid_lines: gr.legs.filter(l => l.price > 0).length, line_prices: gr.legs.map(l => ({ guest: l.guest, price: l.price })), all_zero: !!gr.allZero,
+            guest_eur: Math.round(gr.legs.reduce((s2, l) => s2 + (l.price > 0 ? l.price : 0), 0) * 100) / 100 } : {}),
         });
       });
     }
     // cross-booking suggestion, as GuestsTrips.parse
     return out;
   }
+
+  // ── What the guests paid for one trip vs /prices (Miguel, 17 Nov 2026) ──────────────────────────────
+  // One paid transfer covers `covers_pax` people (the /prices row; «€80 / 3 persons» → 3; cfg.transferCovers until the
+  // column exists). The row of a paid line = the row whose bl_product is the line's product, else (surfboards) the vehicle
+  // a surfboards trip gets, else the route's smallest vehicle — never the vehicle the trip was given for its head count
+  // (4 people on one €80 line get a Minivan, and are underpaid, not «paid €80, /prices €90»).
+  //   · paid lines < ceil(people / covers) → «N people, P transfer(s) paid — one covers K» (amber, never blocks)
+  //   · every line at 0 €: a partner's booking (Company/Channel) or a package that includes the transfer → nothing;
+  //     otherwise «no transfer paid»
+  //   · a paid line under the row's guest price (same currency, EUR) → «paid €70, /prices €80 (Ann A)»
+  const UNDERPAID_RE = /^\d+ people, \d+ transfers? paid — one covers \d+$|^no transfer paid$/;
+  const UNDERSOLD_RE = /^paid €[\d.,]+, \/prices €[\d.,]+ \(/;
+  function unitRow(vs, titles, boards) {
+    if (!vs.length) return null;
+    const P = (titles || []).map(t => String(t || '').toLowerCase().replace(/\s+/g, ' ').trim());
+    const byProd = vs.find(v => v.blProduct && P.includes(String(v.blProduct).toLowerCase().replace(/\s+/g, ' ').trim()));
+    if (byProd) return byProd;
+    if (boards) { const pk = GT().pickVehicle(1, { boards: true, vehicles: vs }); return vs.find(v => v.label === pk.label) || vs[0]; }
+    return vs[0];
+  }
+  function moneyCheck(b, gr, pax, vs, cfg) {
+    const legs = gr.legs; const paidLegs = legs.filter(l => l.price > 0); const flags = [];
+    const unit = unitRow(vs, [...new Set(legs.flatMap(l => l.titles || []))], legs.some(l => l.boards));
+    const covers = (unit && unit.coversPax > 0 ? unit.coversPax : null) || Number(cfg.transferCovers) || 0;
+    const needed = covers ? Math.ceil(pax / covers) : 0;
+    if (!paidLegs.length) {
+      const pkgTransfer = b.lines.some(l => l.kind === 'package' && (GT().packageIncludes(l.title, cfg) || {}).transfer);
+      if (!b.partner && !pkgTransfer) flags.push('no transfer paid');
+    } else if (covers && paidLegs.length < needed) flags.push(`${pax} people, ${paidLegs.length} transfer${paidLegs.length === 1 ? '' : 's'} paid — one covers ${covers}`);
+    paidLegs.forEach(l => {
+      const r = unitRow(vs, l.titles, l.boards); if (!r || !(r.sell > 0) || String(r.sellCurrency || 'EUR').toUpperCase() !== 'EUR') return;
+      if (l.price < r.sell - 0.005) flags.push(`paid €${fmtEur(l.price)}, /prices €${fmtEur(r.sell)} (${l.guest})`);
+    });
+    return { paid: paidLegs.length, needed, covers, flags };
+  }
+  const fmtEur = n => (Math.round(Number(n) * 100) / 100).toLocaleString('en-US', { maximumFractionDigits: 2 });
 
   // ── The model of the whole file for one camp ─────────────────────────────
   function model(text, fileName, cfg) {
@@ -694,5 +742,5 @@
     return plan;
   }
 
-  return { blSays, blSaysOf, BL_SAYS_RE, MERGE_FIELDS, TOGETHER_FLAG, paidTwiceFlag, flightNo, priceOf, PRICE_HEADER, COL, isReportHeader, productKind, read, model, parse, guestRows, guestAudit, importWarnings, lessonsByDay, planTrips, planGuests, tripDiffs, courseOf, exportDateOf };
+  return { blSays, blSaysOf, BL_SAYS_RE, MERGE_FIELDS, TOGETHER_FLAG, paidTwiceFlag, UNDERPAID_RE, UNDERSOLD_RE, moneyCheck, flightNo, priceOf, PRICE_HEADER, COL, isReportHeader, productKind, read, model, parse, guestRows, guestAudit, importWarnings, lessonsByDay, planTrips, planGuests, tripDiffs, courseOf, exportDateOf };
 });

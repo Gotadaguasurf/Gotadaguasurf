@@ -35,7 +35,7 @@ Gmail API (shared mailbox groups@gotadaguasurf.com)
 | `/hq` | Consolidated finance: Overview (profit, needs attention, result by month × location + CSV, Import bookings), Expenses, Month close (incl. «Faturas do email»), Cash flow, Investments | Miguel |
 | `/crm` | B2B outreach: contacts, pipeline, templates, **drip campaigns**, shared Gmail | Miguel + sales |
 | `/partners` | Partner commissions: who owes whom, month status, invoices, advances, statements (one page since 22 Oct 2026) | Miguel |
-| `/prices` | Pricing catalog per location (tours, transfers, accommodation grid) | Miguel + managers |
+| `/prices` | Pricing catalog per location (tours, transfers, accommodation grid). Since 17 Nov 2026 the ONE source of transport vehicles, seats (`capacity`), people one paid transfer covers (`covers_pax`), Bookinglayer product (`bl_product`), driver cost and guest € price — `lib/transport-catalog.js` groups it, `GuestsTrips.pickVehicle` picks (bl_product row, then smallest capacity ≥ people, over → largest + «2nd vehicle?»), SQL `transport_vehicle_for` / `camp_trips_reprice` (`supabase/transport-catalog-one-source.sql`) do the same; no vehicle list or seed price anywhere else | Miguel + managers |
 | `/instructors` | Instructor hours/payroll helper | Miguel |
 | `/wild` | Wild Wednesday (weekly party): Overview (season P&L), Close night | Miguel + Max |
 | `/suk` | The Suk (Manjar Lda restaurant + catering): Overview, Expenses (with «Without PDF»), Bank · Water ↔ Manjar | Miguel |

@@ -89,8 +89,8 @@ async function stub(page, opts = {}) {
     }
     if (url.includes('/rest/v1/camp_transport_payments')) return json([]);
     // The import refuses to save transfers at price 0 (13 Nov): the stub serves the airport prices of /prices.
-    if (url.includes('/rest/v1/pricing_catalog')) return json(slug === 'sri-lanka' && url.includes('category=eq.Transport') ? [['Airport → Surfcamp — Car', 21000], ['Airport → Surfcamp — Minivan', 26500], ['Airport → Surfcamp — Large Van', 29500], ['Surfcamp → Airport — Car', 20000], ['Surfcamp → Airport — Minivan', 25000], ['Surfcamp → Airport — Large Van', 28000]]
-      .map(([name, cost], i) => ({ id: `cat-${i}`, name, cost_per_guest: cost, currency: 'LKR', notes: '', linked_transport_preset_id: `p-${name.split(' — ')[0]}`, linked_camp_tab_id: null, picker_tab: 'airport', sort_order: i })) : []);
+    if (url.includes('/rest/v1/pricing_catalog')) return json(slug === 'sri-lanka' && url.includes('category=eq.Transport') ? [['Airport → Surfcamp — Car', 21000, 3], ['Airport → Surfcamp — Minivan', 26500, 8], ['Surfcamp → Airport — Car', 20000, 3], ['Surfcamp → Airport — Minivan', 25000, 8]]
+      .map(([name, cost, capacity], i) => ({ id: `cat-${i}`, name, cost_per_guest: cost, currency: 'LKR', capacity, notes: '', linked_transport_preset_id: `p-${name.split(' — ')[0]}`, linked_camp_tab_id: null, picker_tab: 'airport', sort_order: i })) : []);
     if (url.includes('/rest/v1/rpc/camp_transport_autolink')) return json({});
     if (url.includes('/rest/v1/rpc/camp_trips_import')) { st.calls.push({ t: 'import', body }); return json({ inserted: body.p_trips.length, updated: 0, resend: 0, cancelled: 0, missing: 0, untouched: 0, guests: body.p_guests.length }); }
     if (url.includes('/rest/v1/bookings')) return json([]);

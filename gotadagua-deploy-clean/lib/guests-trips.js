@@ -156,12 +156,35 @@
     return ['', null, '', fd];
   }
 
-  function vehicleFor(pax, boards, cfg) {
-    const c = conf(cfg); const n = Number(pax) || 1;
-    let v = n <= c.vehicleCaps[0] ? c.vehicles[0] : n <= c.vehicleCaps[1] ? c.vehicles[1] : c.vehicles[2];
-    if (boards && v === c.vehicles[0]) v = c.vehicles[1];
-    return v;
+  // ── The one vehicle picker (17 Nov 2026: /prices is the only place for vehicles and seats) ─────────
+  // vehicles = the route's /prices rows [{ label, capacity, blProduct?, … }] (lib/transport-catalog.js). In order:
+  //   1 a row whose bl_product is the booked product («Airport Transfer (with surfboards)» → Minivan) is the smallest
+  //     vehicle allowed; until bl_product is filled in /prices, a surfboards product skips the smallest vehicle;
+  //   2 the smallest vehicle (from that one up) whose capacity holds the people;
+  //   3 more people than the largest holds → the largest, flagged «N people over capacity — 2nd vehicle?» (never price 0).
+  // No rows (prices not loaded, or no such route in /prices) → no vehicle, flagged.
+  const OVER_RE = /people over capacity — 2nd vehicle\?$/;
+  const normP = s => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  function pickVehicle(pax, o) {
+    o = o || {}; const n = Math.max(1, Number(pax) || 1);
+    const vs = (Array.isArray(o.vehicles) ? o.vehicles : []).filter(v => v && v.label).slice()
+      .sort((a, b) => ((a.capacity == null) - (b.capacity == null)) || ((a.capacity || 0) - (b.capacity || 0)) || ((a.sortOrder || 0) - (b.sortOrder || 0)));
+    if (!vs.length) return { label: null, capacity: null, over: false, by: 'none', flag: 'no vehicle in /prices for this route — vehicle and price to set' };
+    const prods = (o.products || []).map(normP).filter(Boolean);
+    let floor = vs.find(v => v.blProduct && prods.includes(normP(v.blProduct))) || null; let by = floor ? 'product' : 'capacity';
+    if (!floor && o.boards && vs.length > 1) { floor = vs.find(v => v.capacity != null && v.capacity > (vs[0].capacity || 0)) || vs[1]; by = 'boards'; }
+    const from = floor ? vs.slice(vs.indexOf(floor)) : vs;
+    const fits = from.find(v => v.capacity != null && v.capacity >= n);
+    if (fits) return { label: fits.label, capacity: fits.capacity, over: false, by, flag: '' };
+    const known = from.filter(v => v.capacity != null);
+    if (!known.length) return { label: from[0].label, capacity: null, over: false, by, flag: `no capacity in /prices for «${from[0].label}» — check the vehicle` };
+    const big = known[known.length - 1];
+    return { label: big.label, capacity: big.capacity, over: true, by, flag: `${n} people over capacity — 2nd vehicle?` };
   }
+  // The label only (vehicles: the route's /prices rows). Anything that is not a list → null («no vehicle»).
+  function vehicleFor(pax, boards, vehicles) { return pickVehicle(pax, { boards, vehicles: Array.isArray(vehicles) ? vehicles : [] }).label; }
+  // The route's /prices rows for a trip, when the caller gave them (TransportCatalog.withCatalog → cfg.transportVehicles).
+  const vehiclesOf = (cfg, kind, place) => (cfg && typeof cfg.transportVehicles === 'function') ? (cfg.transportVehicles(kind, place) || []) : [];
 
   // ── main ───────────────────────────────────────────────────────────────
   // parse(text, fileName, exportDate?) → same shape as guests_to_trips.py,
@@ -375,7 +398,7 @@
           csv_lines: group.map(l => l.line),
           // app fields (not in the Python output)
           booking_ref: ref, booking_checkout: g0.co || null, phone: (group.find(l => l.phone) || {}).phone || '',
-          vehicle: vehicleFor(pax, boards, cfg),
+          ...(() => { const pk = pickVehicle(pax, { boards, vehicles: vehiclesOf(cfg, `airport_${d}`, g0.place) }); if (pk.flag && vehiclesOf(cfg, `airport_${d}`, g0.place).length) fl.push(pk.flag); return { vehicle: pk.label }; })(),
         });
       }
     }
@@ -530,7 +553,7 @@
     const dep = t.kind === 'airport_departure';
     const pax = Number(t.pax) || 1;
     const city = (c.airportCity || {})[t.place] || (c.airportCity || {})[c.airportDefault] || 'the';
-    const veh = t.vehicle || vehicleFor(pax, false, c);
+    const veh = t.vehicle;   // the trip's /prices vehicle; none yet → TBC
     return [
       dep ? `Surfcamp to ${city} airport:` : `${city} airport to Surfcamp`,
       `Number of people: ${pax}`,
@@ -556,7 +579,7 @@
       `Flight Number: ${t.flight || WA_UNKNOWN}`,
       `Time: ${time || WA_UNKNOWN}`,
       `Date: ${dMon(t.trip_date)}`,
-      lbl[t.vehicle] || t.vehicle || lbl[vehicleFor(pax, false, cfg)],
+      lbl[t.vehicle] || t.vehicle || WA_UNKNOWN,
     ].join('\n');
   }
   function whatsappDayText(trips, cfg) { return trips.map(t => whatsappText(t, cfg)).join('\n\n'); }
@@ -607,7 +630,7 @@
   }
 
   return {
-    parseCsv, isGuestsExportHeader, parse, guestRows, guestAudit, importWarnings, hhmm, ymd, cleanPhone, vehicleFor, addDaysIso, weekday, weekStart, dMon,
+    parseCsv, isGuestsExportHeader, parse, guestRows, guestAudit, importWarnings, hhmm, ymd, cleanPhone, vehicleFor, pickVehicle, OVER_RE, vehiclesOf, addDaysIso, weekday, weekStart, dMon,
     classifyField, strfADB, pyTitle, isUpper, isLower, NO_ALLERGY, TEST_NAME,   // used by lib/bl-report.js (the camp report, 16 Nov 2026)
     whatsappText, whatsappDayText, whatsappUrl, transfersTrips, transfersText, tripMark, tripInWeek, tripDoneAt, dressTitles, OK_STATUS, DEAD_STATUS, PACKAGE_INCLUDES, packageIncludes,
   };

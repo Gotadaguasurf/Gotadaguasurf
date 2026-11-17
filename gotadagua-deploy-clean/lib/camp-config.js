@@ -2,7 +2,7 @@
 //
 // Sri Lanka was built first (13 Nov) with its values written into the code; Morocco
 // runs the same pages, so everything that differs between the two camps lives here:
-// names, time zone, money, airports, rooms, packages, vehicles, the week numbering,
+// names, time zone, money, airports, rooms, packages, the week numbering (vehicles: /prices),
 // the airport transfer supplier and the surf-van runs. Pure data + small pure
 // functions, no DOM and no Supabase: the camp hub and the Node tests load the same file.
 //
@@ -42,9 +42,13 @@
     ownWayWords: null,                                    // «bus» in the flight field: just «not understood»
     phoneZeroCodes: [],                                   // extra country codes whose «0» is dropped
     transferRe: /airport transfer/gi,                     // a transfer product in the «Transfers» column
-    // A car takes up to 3 people, 4+ = minivan (Miguel, 17 Nov 2026 — both camps; it was 4 before).
-    vehicles: ['Car', 'Minivan', 'Large Van'], vehicleCaps: [3, 8],
-    waVehicle: { 'Car': 'Small Car', 'Minivan': 'Minivan', 'Large Van': 'Large Van' },
+    // Vehicles, seats, driver cost and guest price live in /prices only (lib/transport-catalog.js, 17 Nov 2026): the
+    // vehicle is the smallest whose /prices capacity holds the people (a «with surfboards» product → its bl_product row).
+    airportRoutes: 'direction',                           // one /prices route per way: «Airport → Surfcamp», «Surfcamp → Airport»
+    // People one paid transfer covers when the /prices row has no covers_pax yet: «Airport Transfer €80 / 3 persons»,
+    // «(with surfboards) €95 / 3 persons» (Miguel, 17 Nov 2026).
+    transferCovers: 3,
+    waVehicle: { 'Car': 'Small Car', 'Minivan': 'Minivan', 'Large Van': 'Large Van' },   // the driver's words for a /prices vehicle
     // Packages that include what the Guests file does not tick (Miguel, 13 Nov).
     packages: [{ re: /with\s+jo[aã]o\s+kopke/i, label: 'Sri Lanka with João Kopke', transfer: true, course: 'Standard', yoga: true }],
     // Is this row a guest of this camp? 'yes' | 'room' (by room name, Packages empty) | ''
@@ -139,7 +143,10 @@
     noWords: /^(non|no|none|nope|nein|nee|nao|não|nada)[.!]?$/i,
     phoneZeroCodes: ['212', '351', '34'],                 // +212 06… → +212 6…
     transferRe: /airport\s+(transfer|shuttle|pick.?up|drop.?off)/gi,
-    vehicles: ['Car', 'Minivan', 'Big Van'], vehicleCaps: [3, 8],   // car up to 3 people, 4+ minivan (Miguel, 17 Nov 2026; was 4)
+    airportRoutes: 'airport',                             // one /prices route per airport, both ways: «Agadir Airport — Car»
+    // «Airport Transfer Morocco (Agadir) €30 / 3 persons», «(Marrakesh) €120 / 3 persons» (Miguel, 17 Nov 2026): one paid
+    // transfer covers 3 people when the /prices row has no covers_pax yet. No surfboards product in Morocco.
+    transferCovers: 3,
     waVehicle: { 'Car': 'Car', 'Minivan': 'Minivan', 'Big Van': 'Big Van' },
     // The airport driver's message (Let Us Tours, driver Yassine — Floriane, 16 Nov 2026): one block per trip in
     // her shape («Surfcamp to Agadir airport:» / «Agadir airport to Surfcamp», Number of people, Name, Contact
