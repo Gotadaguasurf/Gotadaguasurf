@@ -150,6 +150,16 @@ header{display:none}
 .tw-item-row.paid .tw-item-main > span:last-child{color:var(--green);font-weight:700}
 
 .ct-unpay{height:22px;padding:0 6px;font-size:11px}
+/* «Make it an offer» / «Undo offer» under a tab line, and the Staff plus line (17 Nov 2026) */
+.ct-offer-row{display:block}
+.ct-offer{height:22px;padding:0;font-size:11px;font-weight:600;color:var(--ocean)}
+.tw-item-main .ct-offer-row{display:inline-block;margin-left:8px}
+@media (pointer:coarse){.ct-offer{min-height:32px}}
+.c-tab-row.offered .ctr-price{color:var(--muted)}
+.sp-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px;font-size:12px;color:var(--ink)}
+.sp-bar .btn-link{height:22px;padding:0}
+.sp-hint{color:var(--muted);font-size:12px}
+.sp-tabline{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 7px;margin-bottom:4px;border-bottom:1px solid var(--border);font-size:12px;color:var(--ink)}
 .tw-actions{display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap}
 .tw-actions .c-link-danger{margin-left:auto}
 .tw-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;color:var(--muted);gap:10px;padding:40px;text-align:center}
@@ -360,6 +370,7 @@ input.comp-err{border-color:var(--red)!important;box-shadow:0 0 0 2px rgba(220,3
       <div style="padding:10px 14px;border-bottom:1px solid var(--border);background:#fff;flex-shrink:0">
         <div style="font-weight:700;letter-spacing:-.02em;font-size:17px;color:var(--navy);line-height:1.15" id="chargeGuestName"></div>
         <div style="font-size:11px;color:var(--muted);margin-top:3px" id="chargeGuestMeta"></div>
+        <div class="sp-bar" id="staffPlusBar" style="display:none"></div>
       </div>
       <div class="c-cats" id="catTabs"></div>
       <div class="c-items" id="itemGrid"></div>
@@ -1063,6 +1074,20 @@ window.addEventListener('beforeunload',e=>{
 function isGiftLine(item){
   return /^gift$/i.test(String(item?.priceType||'').trim()) || /^gift$/i.test(String(item?.s||'').trim());
 }
+// The line as it was before «Make it an offer»: price, price type, note and any
+// earlier discount reason / list price. Undo offer restores exactly this.
+function normalizeOfferFrom(o){
+  if(!o||typeof o!=='object') return null;
+  const p=Number(o.p);
+  if(!Number.isFinite(p)) return null;
+  const out={p};
+  if(o.priceType) out.priceType=String(o.priceType);
+  if(o.s) out.s=String(o.s);
+  if(o.compReason) out.compReason=String(o.compReason);
+  if(o.compNote) out.compNote=String(o.compNote);
+  if(o.listPrice!=null&&o.listPrice!==''&&Number.isFinite(Number(o.listPrice))) out.listPrice=Number(o.listPrice);
+  return out;
+}
 function normalizeItemRows(items){
   return (Array.isArray(items)?items:[]).map((item,idx)=>({
     id:isUuid(item?.id)?item.id:makeUuid(),
@@ -1090,6 +1115,12 @@ function normalizeItemRows(items){
     ...(item?.compReason?{compReason:String(item.compReason)}:{}),
     ...(item?.compNote?{compNote:String(item.compNote)}:{}),
     ...(Number.isFinite(Number(item?.listPrice))&&item?.listPrice!==null&&item?.listPrice!==''?{listPrice:Number(item.listPrice)}:{}),
+    // «Make it an offer» after the line was charged (17 Nov 2026): what the line was
+    // before (Undo offer puts it back), and who made it free and when.
+    ...(normalizeOfferFrom(item?.offerFrom)?{offerFrom:normalizeOfferFrom(item.offerFrom)}:{}),
+    ...(item?.compAt?{compAt:String(item.compAt)}:{}),
+    ...(item?.compBy?{compBy:String(item.compBy)}:{}),
+    ...(item?.compByName?{compByName:String(item.compByName)}:{}),
     // Audit stamp from the row (fn_stamp_audit_camp_tab) — kept in memory so the
     // Comps view can say who added a comp. Never written back (not in the sync rows).
     ...(item?.createdBy?{createdBy:String(item.createdBy)}:{}),
@@ -1173,7 +1204,10 @@ function normalizeConsumerRows(rows){
     // this, rosterRows() would silently strip the number saveNewGuest
     // parsed out of "#99 Testo", every render would re-normalise, and
     // the #99 chip would vanish on the next paint. bug reproduced live.
-    ...(row?.bikeNo != null && Number.isFinite(Number(row.bikeNo)) ? {bikeNo: Number(row.bikeNo)} : {})
+    ...(row?.bikeNo != null && Number.isFinite(Number(row.bikeNo)) ? {bikeNo: Number(row.bikeNo)} : {}),
+    // Staff plus (17 Nov 2026, comps.js STAFF_PLUS): N free drinks a week. Kept on
+    // camp_guests.meta.staffPlus, only when on (old rows serialize as before).
+    ...(row?.staffPlus ? {staffPlus: true} : {})
   })).filter(row=>row.name);
 }
 function ensureWeekShape(wk){
@@ -1473,6 +1507,10 @@ function hydrateWeekStateFromRows(weekRows,guestRows,itemRows){
       ...(meta.comp_reason?{compReason:meta.comp_reason}:{}),
       ...(meta.comp_note?{compNote:meta.comp_note}:{}),
       ...(meta.list_price!=null&&Number.isFinite(Number(meta.list_price))?{listPrice:Number(meta.list_price)}:{}),
+      ...(meta.offer_from&&typeof meta.offer_from==='object'?{offerFrom:meta.offer_from}:{}),
+      ...(meta.comp_at?{compAt:meta.comp_at}:{}),
+      ...(meta.comp_by?{compBy:meta.comp_by}:{}),
+      ...(meta.comp_by_name?{compByName:meta.comp_by_name}:{}),
       ...(item.price_type?{priceType:item.price_type}:{}),
       // Audit fields — populated server-side by fn_stamp_audit_camp_tab.
       // Names resolved from platform_profiles via resolveAuditNames() and
@@ -1506,6 +1544,7 @@ function hydrateWeekStateFromRows(weekRows,guestRows,itemRows){
       ...(guest.pax?{bookingPax:guest.pax}:{}),
       ...(meta.staffNote?{staffNote:meta.staffNote}:{}),
       ...(meta.bikeNo != null && Number.isFinite(Number(meta.bikeNo)) ? {bikeNo: Number(meta.bikeNo)} : {}),
+      ...(meta.staffPlus ? {staffPlus: true} : {}),
       sortOrder:Number(guest.sort_order||0)
     };
     guestsByWeek[wkId][guest.is_staff?'staff':'guests'].push(payload);
@@ -1904,7 +1943,7 @@ function buildCampTabSyncRows(locationId){
           // Portugal uses bike numbers to identify each guest; stored in
           // meta so no schema change is needed. Rehydration on the read
           // side picks it back up from meta.bikeNo.
-          meta:{staffNote:row.staffNote||null, bikeNo: (row.bikeNo != null ? Number(row.bikeNo) : null)}
+          meta:{staffNote:row.staffNote||null, bikeNo: (row.bikeNo != null ? Number(row.bikeNo) : null), ...(row.staffPlus?{staffPlus:true}:{})}
         });
         normalizeItemRows(row.items).forEach((item,itemIndex)=>{
           const itemId=isUuid(item.id)?item.id:makeUuid();
@@ -1939,7 +1978,8 @@ function buildCampTabSyncRows(locationId){
             price_type:item.priceType||null,
             sort_order:(itemIndex+1)*10,
             meta:{time:item.t||'',staffNote:item.s||null,...(item.payMethod?{payMethod:item.payMethod}:{}),
-              ...(item.compReason?{comp_reason:item.compReason}:{}),...(item.compNote?{comp_note:item.compNote}:{}),...(item.listPrice!=null?{list_price:item.listPrice}:{})}
+              ...(item.compReason?{comp_reason:item.compReason}:{}),...(item.compNote?{comp_note:item.compNote}:{}),...(item.listPrice!=null?{list_price:item.listPrice}:{}),
+              ...(item.offerFrom?{offer_from:item.offerFrom}:{}),...(item.compAt?{comp_at:item.compAt}:{}),...(item.compBy?{comp_by:item.compBy}:{}),...(item.compByName?{comp_by_name:item.compByName}:{})}
           });
         });
       });
@@ -2865,7 +2905,7 @@ function renderGuestList(){
     return `<div class="c-guest ${AG===g.id?'active':''}" onclick="selGuest('${esc(g.id)}')">
     <div style="min-width:0;flex:1">
       <div class="c-guest-name">${bikeChip}${displayName}</div>
-      <div class="c-guest-amt">${gtot(g)>0?euro(gtot(g)):'no charges'}${currentRoster==='guests'&&isQueuedForNextWeek(g.name)?' / queued next week':''}</div>
+      <div class="c-guest-amt">${gtot(g)>0?euro(gtot(g)):'no charges'}${currentRoster==='guests'&&isQueuedForNextWeek(g.name)?' / queued next week':''}${currentRoster==='staff'&&g.staffPlus&&staffPlusCfg()?` · Staff plus, ${staffPlusLeftFor(g)} free left`:''}</div>
     </div>
     ${isGuestFullyPaid(g)?'<div class="c-gpaid"></div>':''}
     <button class="c-guest-del" onclick="event.stopPropagation();delGuestRow('${esc(g.id)}')" title="Remove from this week">×</button>
@@ -3109,6 +3149,7 @@ function renderTabPanel(){
   const fullyPaid = isGuestFullyPaid(g);
   const unpaidCount = (g.items||[]).filter(campUnpaid).length;
   document.getElementById('chargeGuestMeta').textContent=(currentRoster==='staff'?'Staff tab':'Guest tab')+' — '+(fullyPaid?'Paid / '+euro(gtot(g)):g.items.length+' item'+(g.items.length===1?'':'s')+' / '+euro(gtot(g)));
+  renderStaffPlusBar(g);
   // per_guest mode: drop the week prefix from the tab status line.
   const tabMetaLeft = CAMP_TAB_MODE==='per_guest' ? g.name : weekLabel;
   document.getElementById('tabMeta').textContent=tabMetaLeft+' — '+(fullyPaid?'Paid':g.items.length+(g.items.length===1?' item':' items'));
@@ -3151,8 +3192,10 @@ function renderTabPanel(){
     }
   }
 
+  const spTxt = currentRoster==='staff' ? staffPlusLeftText(g) : '';
+  const spLine = spTxt ? `<div class="sp-tabline" id="spTabLeft"><span class="badge badge-blue">Staff plus</span><span>${esc(spTxt)}</span></div>` : '';
   if(!g.items.length){
-    document.getElementById('tabList').innerHTML='<div style="padding:14px;text-align:center;font-size:12px;color:var(--muted)">No items yet.</div>';
+    document.getElementById('tabList').innerHTML=spLine+'<div style="padding:14px;text-align:center;font-size:12px;color:var(--muted)">No items yet.</div>';
     // per_guest mode: keep the footer visible so the owner can still
     // "Close guest" a person who was added but never charged (walk-in
     // that didn't buy anything, wrong entry, etc.). Bill + Pay make
@@ -3207,8 +3250,9 @@ function renderTabPanel(){
     const priceCell = isEditableBar
       ? `<button class="ctr-price" onclick="event.stopPropagation();openBarEditModal(${idx})" style="background:none;border:1px dashed var(--border-2);border-radius:var(--r-sm);padding:4px 8px;cursor:pointer;font-family:inherit;font-size:inherit;color:inherit" title="Tap to add drinks or correct the amount">${euro(item.p)}</button>`
       : `<div class="ctr-price">${euro(item.p)}</div>`;
-    return `<div class="c-tab-row${isPaid?' paid':''}">
-      <div style="flex:1;min-width:0"><div class="ctr-name">${item.n}</div><div class="ctr-time">${item.c} · ${item.t}${item.s?' · '+item.s:''}</div></div>
+    const offerTitle = item.offerFrom ? ` title="${esc(`Made an offer${item.compByName?' by '+item.compByName:''}${item.compAt?' · '+String(item.compAt).slice(0,16).replace('T',' '):''} · was ${euro(Number(item.offerFrom.p||0))}`)}"` : '';
+    return `<div class="c-tab-row${isPaid?' paid':''}${item.offerFrom?' offered':''}" data-item="${esc(item.id)}"${offerTitle}>
+      <div style="flex:1;min-width:0"><div class="ctr-name">${item.n}</div><div class="ctr-time">${item.c} · ${item.t}${item.s?' · '+item.s:''}</div>${offerActionHtml(g,item)}</div>
       <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
         ${priceCell}
         ${perItemPay}
@@ -3217,6 +3261,7 @@ function renderTabPanel(){
     </div>`;
   }).join('');
   document.getElementById('tabList').innerHTML += passBlockHtml(g);
+  if(spLine) document.getElementById('tabList').insertAdjacentHTML('afterbegin', spLine);
   document.getElementById('tabTotal').textContent=euro(gtot(g));
   // Only Dipløria on the tab: nothing for the camp to bill or take.
   if(foot && !campLines(g).length){
@@ -3289,6 +3334,7 @@ window.delGuestRow=function(id){
   if(!confirm(warn)) return;
   if(currentRoster==='staff'){
     wk.staff=(wk.staff||[]).filter(x=>String(x.id)!==String(id));
+    if((g.items||[]).some(i=>i?.compReason==='staff_plus')) renumberStaffPlus(g.name);
   } else {
     wk.guests=(wk.guests||[]).filter(x=>String(x.id)!==String(id));
   }
@@ -3376,29 +3422,30 @@ function openCompReasonModal(item, btn, opts){
   m.id='compReasonModal';
   m.className='overlay open'; m.style.zIndex='10000';
   const pre=(opts&&opts.reason)||'';
+  const offerMode=!!(opts&&typeof opts.onPick==='function');   // «Make it an offer» on a line already on the tab
   const listPrice=Number.isFinite(Number(item._listPrice))?Number(item._listPrice):Number(item.p||0);
   const chips=CC.REASONS.map(([k,l])=>`<button type="button" class="btn btn-s comp-chip${k===pre?' on':''}" data-reason="${k}"><span>${l}</span>${CC.HINT[k]?`<span class="comp-chip-sub">${CC.HINT[k]}</span>`:''}</button>`).join('');
   m.innerHTML=`
-    <div class="modal comp-modal" role="dialog" aria-label="Why is it free?">
+    <div class="modal comp-modal" role="dialog" aria-label="${offerMode?'Make it an offer':'Why is it free?'}">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px">
         <div>
-          <div class="comp-eyebrow">Why is it free?</div>
+          <div class="comp-eyebrow">${offerMode?'Make it an offer · why is it free?':'Why is it free?'}</div>
           <div style="font-size:18px;font-weight:800;color:var(--navy);margin-top:2px">${CC.escHtml(item.n)}</div>
         </div>
         <button id="compReasonClose" aria-label="Close" style="background:none;border:0;font-size:24px;color:var(--muted);cursor:pointer;line-height:1">×</button>
       </div>
-      <div style="font-size:12px;color:var(--muted);margin-bottom:12px">${listPrice>0?`Full price <b style="font-variant-numeric:tabular-nums;color:var(--navy)">${euro(listPrice)}</b> · given free`:'Given free'}</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:12px">${offerMode?`On the tab at <b style="font-variant-numeric:tabular-nums;color:var(--navy)">${euro(Number(item.p||0))}</b> · becomes free (stays on the tab for the counts)`:listPrice>0?`Full price <b style="font-variant-numeric:tabular-nums;color:var(--navy)">${euro(listPrice)}</b> · given free`:'Given free'}</div>
       <div class="comp-chips">${chips}</div>
       <div id="compOtherRow" class="comp-other" style="${pre==='other'?'':'display:none'}">
         <div class="mfield" style="flex:1;margin:0"><input type="text" id="compOtherNote" maxlength="${CC.NOTE_MAX}" placeholder="What happened? (required)" autocomplete="off"></div>
-        <button id="compOtherAdd" class="btn btn-p">Add free</button>
+        <button id="compOtherAdd" class="btn btn-p">${offerMode?'Make it free':'Add free'}</button>
       </div>
     </div>`;
   document.body.appendChild(m);
   const close=()=>m.remove();
   m.querySelector('#compReasonClose').addEventListener('click',close);
   m.addEventListener('click',e=>{ if(e.target===m) close(); });
-  const add=(reason,note)=>{ close(); addResolvedItem({...item,_compReason:reason,_compNote:note||''},btn); };
+  const add=(reason,note)=>{ close(); if(offerMode){ opts.onPick(reason,note||''); return; } addResolvedItem({...item,_compReason:reason,_compNote:note||''},btn); };
   const noteEl=m.querySelector('#compOtherNote');
   m.querySelectorAll('.comp-chip').forEach(b=>b.addEventListener('click',()=>{
     const k=b.dataset.reason;
@@ -3623,7 +3670,7 @@ function addResolvedItem(item,btn){
   // the staff price back on a «Gift · free» given on the Staff tab: sp=0 is
   // read as «no staff price», so the catalog's Staff alt price was charged
   // (a gifted Lion Lager showed LKR 300 — 12 Nov 2026).
-  const price=item._altUsed ? Math.max(0,Number(item.p||0)) : displayPriceFor(item);
+  let price=item._altUsed ? Math.max(0,Number(item.p||0)) : displayPriceFor(item);
   // Alt-price taps stamp the line with a descriptive priceType (the
   // alt label, e.g. "Offer") + a small `s` annotation that surfaces in
   // bills / history so the user can tell at a glance which sale used
@@ -3646,6 +3693,21 @@ function addResolvedItem(item,btn){
   // total) and Sri Lanka Dipløria (pass-through) are never comps.
   const CC=window.CampComps;
   const why={reason:item._compReason||'',note:CC?CC.cleanNote(item._compNote):''};
+  // ── Staff plus (17 Nov 2026) ── the first N drinks of the Sat–Fri week of a
+  // «Staff plus» person are free on their own (reason «Staff plus allowance (k/N)»);
+  // from N+1 the normal staff price. Only a plain tap: a gift / discount / alt
+  // price the user picked stands as picked.
+  const spCfg=(CC && currentRoster==='staff' && g.staffPlus && !altUsed && !item._compReason) ? CC.staffPlusConfig(CAMP_TAB_LOCATION_SLUG) : null;
+  let spAuto=null;
+  // A drink already free for staff (staff price 0) does not use the allowance.
+  if(spCfg && price>0 && CC.staffPlusCounts({c:persistedCategory},spCfg) && !isPassThrough({c:persistedCategory})){
+    const used=CC.staffPlusUsed(S,g.name,today()).length;
+    if(used<spCfg.perWeek){
+      spAuto={k:used+1,n:spCfg.perWeek,staffPrice:price};
+      why.reason='staff_plus'; why.note=`${spAuto.k}/${spAuto.n}`;
+      price=0;
+    }
+  }
   const isFree=!!CC && CC.isFreeLine({p:price,c:persistedCategory}, isPassThrough);
   if(isFree && !CC.validWhy(why)){
     openCompReasonModal(item, btn, {reason: CC.isReason(why.reason)?why.reason:''});
@@ -3657,8 +3719,13 @@ function addResolvedItem(item,btn){
   const comp={};
   if(isFree){
     priceType='Gift';   // isGiftLine() and old reports read «Gift»
-    altStaffNote='Free · '+CC.short(why.reason);
+    altStaffNote='Free · '+CC.short(why.reason)+(spAuto?' '+why.note:'');
     Object.assign(comp,{compReason:why.reason,...(why.note?{compNote:why.note}:{}),...(listPrice>0?{listPrice}:{})});
+    // Staff plus line: Undo offer puts the staff price back (it then counts as charged).
+    if(spAuto){
+      if(spAuto.staffPrice>0) comp.offerFrom={p:spAuto.staffPrice,priceType:'staff'};
+      Object.assign(comp,{compAt:new Date().toISOString(),...ctUserStamp()});
+    }
   }else if(altUsed){
     if(listPrice>0) comp.listPrice=listPrice;
     if(CC && CC.validWhy(why)){
@@ -3682,7 +3749,7 @@ function addResolvedItem(item,btn){
   save();
   if(btn){btn.classList.add('flash');setTimeout(()=>btn.classList.remove('flash'),260);}
   renderAllCampTabViews();
-  toast(item.n+' added to '+g.name);
+  toast(item.n+' added to '+g.name+(spAuto?` · free (${spAuto.k} of ${spAuto.n} this week)`:''));
 }
 function delItem(idx){
   const g=findConsumer(AG,currentRoster);
@@ -3706,8 +3773,163 @@ function delItem(idx){
       console.warn('[CampTab] delItem cascade failed', err);
     }
   }
-  g.items.splice(idx,1);save();renderAllCampTabViews();
+  const [gone]=g.items.splice(idx,1);
+  if(gone?.compReason==='staff_plus') renumberStaffPlus(g.name);   // the allowance recounts from the lines
+  save();renderAllCampTabViews();
 }
+// ══════════════ OFFERS — a charged line made free after it was added (17 Nov 2026) ══════════════
+// Miguel: «tornar uma oferta um item que já foi registado com valor». The line stays on
+// the tab (same name and category, so stock, Top sellers and bar counts are unchanged);
+// its price becomes 0 with a comp reason (camp-hub/comps.js), the list price is kept
+// for the Comps view, and offerFrom keeps what it was so «Undo offer» puts it back.
+// A price-0 line never reaches the ledger (Pay skips it), so nothing else changes.
+// Paid lines are refused: «Mark unpaid» first (that takes the revenue row back out
+// of the ledger and the money back to the guest), then make it an offer.
+// Everything is found again by guest id + line id after the modal (rosterRows
+// rebuilds the row objects on every call).
+function ctFindLine(roster, guestId, itemId){
+  const wk=currentWeek(); if(!wk) return {};
+  const g=findConsumer(guestId, roster, wk);
+  const idx=g?(g.items||[]).findIndex(i=>String(i?.id)===String(itemId)):-1;
+  return {wk, g, idx, item: idx>=0?g.items[idx]:null};
+}
+// A line that can carry the action at all (paid lines too: the tap says what to do).
+function offerEligible(item){
+  return !!item && !isPassThrough(item) && item.c!=='Bar';
+}
+function offerBlockedWhy(g, item){
+  if(!g||!item) return 'This line is not on the tab any more.';
+  if(isPassThrough(item)) return 'Dipløria is paid to the brand on its own — it cannot be an offer.';
+  if(item.c==='Bar') return 'A bar running total cannot be an offer — tap the amount to correct it.';
+  if(item.paidAt||g.paid) return `«${item.n}» is already paid.\n\nTap «Mark unpaid» first (the payment comes out of the ledger and the money goes back to ${g.name}), then make it an offer.`;
+  if(g.closedAt||g.closed_at) return `${g.name}'s tab is closed. Re-open it from History first.`;
+  if(!(Number(item.p||0)>0)) return `«${item.n}» is already free.`;
+  return '';
+}
+// The value given away: the line's list price, or (Staff roster) today's guest price, else what it was charged.
+function offerListPrice(item, roster){
+  if(Number(item?.listPrice)>0) return Number(item.listPrice);
+  if(roster==='staff'&&window.CampComps){ const m=CampComps.menuPriceMap(MENU).get(String(item?.n||'').trim().toLowerCase()); if(m>0) return m; }
+  return Number(item?.p||0);
+}
+function makeOfferForLine(guestId, itemId){
+  const roster=currentRoster;
+  const {g, item}=ctFindLine(roster, guestId, itemId);
+  const blocked=offerBlockedWhy(g, item);
+  if(blocked){ alert(blocked); return false; }
+  openCompReasonModal({n:item.n, p:Number(item.p||0), _listPrice:offerListPrice(item, roster)}, null,
+    {onPick:(reason, note)=>applyOffer(roster, guestId, itemId, {reason, note})});
+  return true;
+}
+function applyOffer(roster, guestId, itemId, why){
+  const CC=window.CampComps;
+  if(!CC||!why||!CC.validWhy(why)){ toast('Pick why it is free'); return false; }
+  const {g, item}=ctFindLine(roster, guestId, itemId);
+  const blocked=offerBlockedWhy(g, item);
+  if(blocked){ alert(blocked); return false; }
+  const list=offerListPrice(item, roster);
+  const was=Number(item.p||0);
+  item.offerFrom=normalizeOfferFrom({p:item.p, priceType:item.priceType, s:item.s, compReason:item.compReason, compNote:item.compNote, listPrice:item.listPrice});
+  ['compNote','listPrice','compBy','compByName'].forEach(k=>delete item[k]);
+  item.p=0;
+  item.priceType='Gift';   // isGiftLine() and old reports read «Gift»
+  item.s='Free · '+CC.short(why.reason);
+  item.compReason=why.reason;
+  const note=CC.cleanNote(why.note); if(note) item.compNote=note;
+  if(list>0) item.listPrice=list;
+  item.compAt=new Date().toISOString();
+  Object.assign(item, ctUserStamp());
+  save();
+  renderAllCampTabViews();
+  toast(`${item.n} is now an offer (was ${euro(was)})`);
+  return true;
+}
+function undoOfferForLine(guestId, itemId){
+  const {g, item}=ctFindLine(currentRoster, guestId, itemId);
+  const o=normalizeOfferFrom(item?.offerFrom);
+  if(!g||!item||!o){ toast('Nothing to undo'); return false; }
+  if(g.closedAt||g.closed_at){ alert(`${g.name}'s tab is closed. Re-open it from History first.`); return false; }
+  const wasStaffPlus=item.compReason==='staff_plus';
+  ['offerFrom','compReason','compNote','listPrice','compAt','compBy','compByName','priceType','s'].forEach(k=>delete item[k]);
+  item.p=o.p;
+  if(o.priceType) item.priceType=o.priceType;
+  if(o.s) item.s=o.s;
+  if(o.compReason) item.compReason=o.compReason;
+  if(o.compNote) item.compNote=o.compNote;
+  if(o.listPrice!=null) item.listPrice=o.listPrice;
+  // A priced unpaid line again: the tab is not fully paid any more.
+  if(o.p>0&&g.paid){ g.paid=false; delete g.paidAt; }
+  if(wasStaffPlus) renumberStaffPlus(g.name);
+  save();
+  renderAllCampTabViews();
+  toast(`${item.n} back to ${euro(o.p)}`);
+  return true;
+}
+// «Make it an offer» / «Undo offer» under a tab line (Charge panel and This week card).
+function offerActionHtml(g, item){
+  if(!g||!offerEligible(item)) return '';
+  const gid=esc(g.id), iid=esc(item.id);
+  if(item.offerFrom&&!(Number(item.p||0)>0)){
+    const by=item.compByName?` by ${item.compByName}`:'';
+    const when=item.compAt?` · ${String(item.compAt).slice(0,10)}`:'';
+    return `<span class="ct-offer-row"><button type="button" class="btn btn-link btn-sm ct-offer ct-undo-offer" data-item="${iid}" onclick="event.stopPropagation();undoOfferForLine('${gid}','${iid}')" title="Back to ${esc(euro(Number(item.offerFrom.p||0)))}${esc(by)}${esc(when)}">Undo offer</button></span>`;
+  }
+  if(!(Number(item.p||0)>0)) return '';
+  return `<span class="ct-offer-row"><button type="button" class="btn btn-link btn-sm ct-offer ct-make-offer" data-item="${iid}" onclick="event.stopPropagation();makeOfferForLine('${gid}','${iid}')">Make it an offer</button></span>`;
+}
+
+// ══════════════ STAFF PLUS — N free drinks a week (17 Nov 2026, comps.js STAFF_PLUS) ══════════════
+// Set per person on the Staff roster (camp_guests.meta.staffPlus, on every staff row
+// with that name — a closed and re-added tab is the same person). The allowance is
+// counted from the lines themselves (reason «staff_plus» in the Sat–Fri week), never a
+// stored counter: delete or undo one and the next drink is free again.
+function staffPlusCfg(){ return window.CampComps ? CampComps.staffPlusConfig(CAMP_TAB_LOCATION_SLUG) : null; }
+function staffPlusLeftFor(g, ymd){
+  const cfg=staffPlusCfg();
+  if(!cfg||!g||!g.staffPlus) return null;
+  return CampComps.staffPlusLeft(S, g.name, ymd||today(), cfg);
+}
+function staffPlusLeftText(g){
+  const cfg=staffPlusCfg(); const left=staffPlusLeftFor(g);
+  if(left==null) return '';
+  return `${left} of ${cfg.perWeek} free drinks left this week`;
+}
+function setStaffPlus(guestId, on){
+  const cfg=staffPlusCfg(); if(!cfg) return false;
+  const wk=currentWeek(); if(!wk) return false;
+  const rows=rosterRows(wk,'staff');
+  const g=rows.find(r=>r.id===guestId||r.name===guestId); if(!g) return false;
+  rows.forEach(r=>{ if(CampComps.sameName(r.name,g.name)){ if(on) r.staffPlus=true; else delete r.staffPlus; } });
+  save();
+  renderAllCampTabViews();
+  toast(on?`${g.name} is Staff plus · ${cfg.perWeek} free drinks a week`:`${g.name} is regular staff again`);
+  return true;
+}
+// After a Staff plus line is deleted or undone: number the ones left 1/N, 2/N… again
+// (label only — no price changes; a drink already charged stays charged).
+function renumberStaffPlus(name){
+  const CC=window.CampComps; const cfg=staffPlusCfg(); if(!CC||!cfg||!name) return;
+  const weeks=new Set();
+  [...(Array.isArray(S.history)?S.history:[]),S.activeWeek].filter(Boolean).forEach(wk=>(wk.staff||[]).forEach(r=>{
+    if(!CC.sameName(r?.name,name)) return;
+    (r.items||[]).forEach(i=>{ if(i?.compReason==='staff_plus'&&i.d) weeks.add(CC.weekStartSat(String(i.d).slice(0,10))); });
+  }));
+  weeks.forEach(ws=>CC.staffPlusUsed(S,name,ws).forEach(({item},i)=>{
+    const note=`${i+1}/${cfg.perWeek}`;
+    item.compNote=note; item.s=`Free · Staff plus ${note}`;
+  }));
+}
+// Staff roster (camps in comps.js STAFF_PLUS): the person's Staff plus switch and what is left this week.
+function renderStaffPlusBar(g){
+  const el=document.getElementById('staffPlusBar'); if(!el) return;
+  const cfg=staffPlusCfg();
+  if(!g||currentRoster!=='staff'||!cfg){ el.style.display='none'; el.innerHTML=''; return; }
+  el.style.display='flex';
+  el.innerHTML=g.staffPlus
+    ? `<span class="badge badge-blue">Staff plus</span><span class="sp-left" id="spLeftCharge">${esc(staffPlusLeftText(g))}</span><button type="button" class="btn btn-link btn-sm" id="spOffBtn" onclick="setStaffPlus('${esc(g.id)}',false)">Turn off</button>`
+    : `<button type="button" class="btn btn-s btn-sm" id="spOnBtn" onclick="setStaffPlus('${esc(g.id)}',true)">Make Staff plus</button><span class="sp-hint">${cfg.perWeek} free drinks a week</span>`;
+}
+
 // Per_guest mode only — close the currently-active guest. Stamps a
 // closed_at timestamp on the underlying consumer row. The data is
 // NEVER deleted; rosterRows just filters closed guests out of the
@@ -4063,6 +4285,7 @@ function renderThisWeek(){
         <div style="flex:1;min-width:0">
           <div class="tw-card-name">${g.name}</div>
           <div style="font-size:11px;color:var(--muted);margin-top:2px">${g.items.length} item${g.items.length!==1?'s':''}</div>
+          ${(currentRoster==='staff'&&g.staffPlus&&staffPlusCfg())?`<div class="tw-guest-meta"><span class="badge badge-blue tw-sp-badge">Staff plus · ${esc(staffPlusLeftText(g))}</span></div>`:''}
           ${(stayMeta(g)||isQueuedForNextWeek(g.name))?`<div class="tw-guest-meta">
             ${stayMeta(g)?`<span class="badge badge-grey">${stayMeta(g)}</span>`:''}
             ${isQueuedForNextWeek(g.name)?`<span class="badge badge-blue">Continues ${weekSpan(nextStart)}</span>`:''}
@@ -4089,9 +4312,9 @@ function renderThisWeek(){
               ? ''
               : `<button class="tw-item-del" onclick="deleteGuestItem('${esc(g.id)}',${idx});event.stopPropagation()" title="Delete item">×</button>`;
             const auditTitle = auditTitleFor(i);
-            return `<div class="tw-item-row${itemPaid?' paid':''}"${auditTitle?` title="${esc(auditTitle)}"`:''}>
+            return `<div class="tw-item-row${itemPaid?' paid':''}" data-item="${esc(i.id)}"${auditTitle?` title="${esc(auditTitle)}"`:''}>
               <div class="tw-item-main">
-                <span>${i.n}${i.s?` <span style="font-size:10px;color:var(--muted)">· ${i.s}</span>`:''}</span>
+                <span>${i.n}${i.s?` <span style="font-size:10px;color:var(--muted)">· ${i.s}</span>`:''}${offerActionHtml(g,i)}</span>
                 <span style="font-variant-numeric:tabular-nums;font-size:11px;color:var(--muted)">${itemMoney(i)}</span>
               </div>
               ${isPassThrough(i)?(i.paidAt?'<span class="badge badge-green" style="margin-left:8px">Paid · Dipløria</span>':''):perItemPay}
@@ -4104,6 +4327,7 @@ function renderThisWeek(){
                  ${passLines(g).some(i=>!i.paidAt)?`<button class="btn btn-s btn-sm" onclick="AG='${esc(g.id)}';payDiploria()">Pay Dipløria · ${fmtPass(passLines(g).filter(i=>!i.paidAt).reduce((s,i)=>s+Number(i.p||0),0))}</button>`:''}
                  ${(()=>{ const n=(g.items||[]).filter(campUnpaid).length; return n?`<button class="btn btn-p btn-sm" onclick="payAllForGuestId('${esc(g.id)}')">${n>1?`Pay all (${n})`:'Pay'}</button>`:''; })()}
                  <button class="btn ${closeReady?'btn-p':'btn-s'} btn-sm" onclick="closeGuestById('${esc(g.id)}')" title="${hasUnpaidItems?'Close — unpaid items will stay as an unpaid record in history':'Remove guest from active list'}">Close guest</button>
+                 ${(currentRoster==='staff'&&staffPlusCfg())?`<button class="btn btn-s btn-sm tw-sp-toggle" onclick="setStaffPlus('${esc(g.id)}',${g.staffPlus?'false':'true'})">${g.staffPlus?'Turn off Staff plus':'Make Staff plus'}</button>`:''}
                  <button class="btn btn-link btn-sm c-link-danger" onclick="deleteGuest('${esc(g.id)}')">Delete ${rosterLabel().toLowerCase()}</button>`
               : `${currentRoster==='guests'?`<button class="btn btn-s btn-sm" onclick="passGuestToNextWeek('${esc(g.id)}')">${isQueuedForNextWeek(g.name)?'Update next week':'Continue next week'}</button>`:''}
                  ${!g.paid&&tot>0?`<button class="btn btn-s btn-sm" onclick="openBill('${esc(g.id)}')">Bill</button>`:''}
@@ -4178,6 +4402,7 @@ function deleteGuestItem(id,idx){
     }
   }
   const [removed]=g.items.splice(idx,1);
+  if(removed?.compReason==='staff_plus') renumberStaffPlus(g.name);
   save();
   renderThisWeek();
   if(AG===g.id){
@@ -4623,10 +4848,12 @@ function renderComps(){
   const reasonRows=sum.byReason.map(r=>`<div class="cp-row" data-reason="${r.key}"><span class="${r.key===CC.NO_REASON?'cp-none':''}">${h(r.label)}</span><span><span class="cnt">×${r.count}</span><span class="num">${euro(r.value)}</span></span></div>`).join('');
   const itemRows=sum.byItem.slice(0,12).map(i=>`<div class="cp-row" data-item="${h(i.n)}"><span>${h(i.n)} <span style="color:var(--muted);font-size:12px">· ${h(displayCatName(i.c))}</span></span><span><span class="cnt">×${i.count}</span><span class="num">${euro(i.value)}</span></span></div>`).join('');
   const lineRows=rows.slice(0,200).map(r=>{
-    const by=r.createdBy?(PROFILE_NAMES.get(r.createdBy)||''):'';
-    const why=r.reason===CC.NO_REASON?`<span class="cp-none">${h(CC.NO_REASON_LABEL)}</span>`:h(CC.label(r.reason))+(r.note?` — ${h(r.note)}`:'');
+    // Made an offer after it was charged: who made it free (comp_by) and the price it had.
+    const by=r.offer?(r.compByName||(r.compBy&&PROFILE_NAMES.get(r.compBy))||''):r.createdBy?(PROFILE_NAMES.get(r.createdBy)||''):'';
+    const why=(r.reason===CC.NO_REASON?`<span class="cp-none">${h(CC.NO_REASON_LABEL)}</span>`:h(CC.whyText(r.reason,r.note)))
+      +(r.offer&&r.wasPrice>0?` · <span class="cp-offer">made an offer, was ${euro(r.wasPrice)}</span>`:'');
     return `<div class="cp-line" data-reason="${r.reason}"><span><b>${h(r.n)}</b> → ${h(r.to)}${r.roster==='Staff'?' <span class="badge badge-grey" style="margin-left:2px">Staff</span>':''}</span><span class="num">${r.estimated?'≈ ':''}${euro(r.value)}</span>
-      <span class="cp-line-sub">${why} · ${r.d?fmtd(r.d):''}${r.t?' '+h(r.t):''}${by?` · by ${h(by)}`:''}</span></div>`;
+      <span class="cp-line-sub">${why} · ${r.d?fmtd(r.d):''}${r.t?' '+h(r.t):''}${by?` · by ${h(by)}`:''}${r.offer&&r.compAt?` on ${h(fmtd(String(r.compAt).slice(0,10)))}`:''}</span></div>`;
   }).join('');
   body.innerHTML=`
     <div class="cp-kpis">
@@ -5135,6 +5362,8 @@ function saveNewGuest(){
   toAdd.forEach(({bikeNo, name})=>{
     const row={id:makeUuid(),name,items:[],paid:false};
     if(bikeNo != null) row.bikeNo = bikeNo;
+    // Staff plus is the person's: a re-added staff tab keeps it.
+    if(currentRoster==='staff' && staffPlusCfg() && [...rows,...(S.history||[]).flatMap(w=>w?.staff||[])].some(r=>r?.staffPlus && CampComps.sameName(r.name,name))) row.staffPlus=true;
     rows.push(row);
     created.push(row);
   });
@@ -5669,6 +5898,12 @@ function subscribeCampTabRealtime(locationId){
       if(status==='SUBSCRIBED') console.log('[Camp Tab] Realtime connected');
     });
 }
+// Who is using the Camp Tab — stamped on «Make it an offer» (comp_by / comp_by_name).
+let CT_USER={id:'',email:''};
+function ctUserStamp(){
+  const name=(CT_USER.id&&PROFILE_NAMES.get(CT_USER.id))||String(CT_USER.email||'').split('@')[0]||'';
+  return {...(CT_USER.id?{compBy:CT_USER.id}:{}),...(name?{compByName:name}:{})};
+}
 async function bootstrapCampTabFromSupabase(){
   if(campTabBootstrapped) return;
   campTabBootstrapped=true;
@@ -5677,6 +5912,7 @@ async function bootstrapCampTabFromSupabase(){
     if(!client) return;
     const { data: sessionData } = await client.auth.getSession();
     if(!sessionData?.session) return;
+    CT_USER={id:sessionData.session.user?.id||'',email:sessionData.session.user?.email||''};
     await hydrateCampTabMenuFromSupabase({mergeLocal:true});
     await hydrateCampTabStaffFromSupabase({mergeLocal:true});
     await hydrateCampTabStateFromSupabase({mergeLocal:true});
