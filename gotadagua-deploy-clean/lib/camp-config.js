@@ -42,7 +42,8 @@
     ownWayWords: null,                                    // «bus» in the flight field: just «not understood»
     phoneZeroCodes: [],                                   // extra country codes whose «0» is dropped
     transferRe: /airport transfer/gi,                     // a transfer product in the «Transfers» column
-    vehicles: ['Car', 'Minivan', 'Large Van'], vehicleCaps: [4, 8],
+    // A car takes up to 3 people, 4+ = minivan (Miguel, 17 Nov 2026 — both camps; it was 4 before).
+    vehicles: ['Car', 'Minivan', 'Large Van'], vehicleCaps: [3, 8],
     waVehicle: { 'Car': 'Small Car', 'Minivan': 'Minivan', 'Large Van': 'Large Van' },
     // Packages that include what the Guests file does not tick (Miguel, 13 Nov).
     packages: [{ re: /with\s+jo[aã]o\s+kopke/i, label: 'Sri Lanka with João Kopke', transfer: true, course: 'Standard', yoga: true }],
@@ -138,7 +139,7 @@
     noWords: /^(non|no|none|nope|nein|nee|nao|não|nada)[.!]?$/i,
     phoneZeroCodes: ['212', '351', '34'],                 // +212 06… → +212 6…
     transferRe: /airport\s+(transfer|shuttle|pick.?up|drop.?off)/gi,
-    vehicles: ['Car', 'Minivan', 'Big Van'], vehicleCaps: [4, 8],   // = the /prices airport vehicles (4, 8, 15 seats)
+    vehicles: ['Car', 'Minivan', 'Big Van'], vehicleCaps: [3, 8],   // car up to 3 people, 4+ minivan (Miguel, 17 Nov 2026; was 4)
     waVehicle: { 'Car': 'Car', 'Minivan': 'Minivan', 'Big Van': 'Big Van' },
     // The airport driver's message (Let Us Tours, driver Yassine — Floriane, 16 Nov 2026): one block per trip in
     // her shape («Surfcamp to Agadir airport:» / «Agadir airport to Surfcamp», Number of people, Name, Contact

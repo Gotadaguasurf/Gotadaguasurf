@@ -49,6 +49,25 @@
     level: 'Level', allergies: 'Guest: Allergies / Intolerance', bphone: 'Booker: Phone', due: 'Booking: Due amount', diet: 'Guest: Diet',
   };
   const REQUIRED = ['ref', 'status', 'ci', 'co', 'product', 'start', 'end', 'lid', 'person', 'guest'];
+  // The booking line's price (17 Nov 2026: «Booking line: Start time» replaced by «Booking line: Final price incl. tax»,
+  // EUR, last column). Other spellings Bookinglayer may use are accepted; a file without it reads as before.
+  const PRICE_HEADER = /^booking line:?\s*(final\s+)?(price|total|amount|line total|subtotal)\b/i;
+  function priceOf(v) {
+    let t = String(v == null ? '' : v).replace(/[^0-9.,\-]/g, '');
+    if (!t) return null;
+    if (t.includes(',') && t.includes('.')) t = t.lastIndexOf(',') > t.lastIndexOf('.') ? t.replace(/\./g, '').replace(',', '.') : t.replace(/,/g, '');
+    else if (t.includes(',')) t = /,\d{1,2}$/.test(t) ? t.replace(',', '.') : t.replace(/,/g, '');
+    const n = parseFloat(t); return Number.isFinite(n) ? n : null;
+  }
+  // The transfer rule with prices (Miguel, 17 Nov 2026). Flag texts are matched by camp-hub/transport.js.
+  const TOGETHER_FLAG = 'Different times — coming together? If not, the guest at 0 € has to pay a transfer';
+  const paidTwiceFlag = n => `${n} transfers paid, same flight — confirm they come together`;
+  // U2 2286 = EZY2286: the flight number without the airline code.
+  const flightNo = f => { const m = String(f || '').toUpperCase().replace(/\s+/g, '').match(/(\d{1,4})[A-Z]?$/); return m ? String(Number(m[1])) : ''; };
+  const mins = t => { const m = String(t || '').match(/^(\d{2}):(\d{2})$/); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
+  const flightsDiffer = (a, b) => !!(flightNo(a) && flightNo(b) && flightNo(a) !== flightNo(b));
+  const timesFar = (a, b) => { const x = mins(a), y = mins(b); return x != null && y != null && Math.abs(x - y) > 30; };
+  const compatible = (gr, l) => !flightsDiffer(gr.flight, l.flight) && !timesFar(gr.time, l.time);
 
   function isReportHeader(text) {
     const first = String(text || '').replace(/^﻿/, '').split(/\r?\n/, 1)[0] || '';
@@ -94,6 +113,7 @@
     const all = G.parseCsv(text);
     const H = (all[0] || []).map(h => h.trim());
     const ix = {}; Object.keys(COL).forEach(k => { ix[k] = H.indexOf(COL[k]); });
+    ix.price = H.findIndex(h => PRICE_HEADER.test(h));
     const missing = REQUIRED.filter(k => ix[k] < 0).map(k => COL[k]);
     const cell = (r, k) => ix[k] >= 0 && ix[k] < r.length ? pyStrip(r[ix[k]]) : '';
     const byRef = new Map(); let rowsN = 0;
@@ -106,7 +126,8 @@
     });
     const warnings = []; const bookings = [];
     for (const [ref, rs] of byRef) bookings.push(readBooking(ref, rs, cell, cfg, warnings));
-    const out = { file: String(fileName || '').split('/').pop(), rows: rowsN, missing, bookings, warnings };
+    const out = { file: String(fileName || '').split('/').pop(), rows: rowsN, missing, bookings, warnings, priceColumn: ix.price >= 0 ? H[ix.price] : null };
+    bookings.forEach(b => { b.hasPrice = ix.price >= 0; });
     memo = { text, name: fileName, cfg, out };
     return out;
   }
@@ -126,7 +147,8 @@
       if (!lines.has(lid)) {
         const title = cell(x.r, 'product');
         lines.set(lid, { lid, title, kind: productKind(title), start: G.ymd(cell(x.r, 'start')), end: G.ymd(cell(x.r, 'end')),
-          qty: Number(cell(x.r, 'qty')) || 1, person: cell(x.r, 'person').replace(/\s+/g, ' '), rows: [], line: x.line });
+          qty: Number(cell(x.r, 'qty')) || 1, person: cell(x.r, 'person').replace(/\s+/g, ' '), rows: [], line: x.line,
+          price: priceOf(cell(x.r, 'price')) });
       }
       lines.get(lid).rows.push(x);
     });
@@ -266,8 +288,9 @@
       const who = l.owner ? `g${l.owner.pos}` : l.person ? `p:${l.person.toLowerCase()}` : `l:${l.lid}`;
       const k = `${who}|${dir}|${date}`;
       const place = productPlace(l.title, cfg); const boards = /surfboard/i.test(l.title);
-      if (!seats.has(k)) { seats.set(k, { who, owner: l.owner, person: l.person, dir, date, place, boards, lids: [l.lid], titles: [l.title], flags: flag ? [flag] : [] }); return; }
+      if (!seats.has(k)) { seats.set(k, { who, owner: l.owner, person: l.person, dir, date, place, boards, lids: [l.lid], titles: [l.title], flags: flag ? [flag] : [], price: l.price }); return; }
       const s = seats.get(k); s.lids.push(l.lid); s.titles.push(l.title); s.boards = s.boards || boards;
+      if (l.price != null) s.price = (s.price || 0) + l.price;
       if (s.place !== place) s.flags.push(`booked twice for this day: ${s.titles.map(t => `«${t}»`).join(' and ')} — ${cfg.airportCity[s.place] || s.place} kept (first line), check`);
       else s.flags.push(`${s.lids.length} transfer lines for one person on this day (${s.titles.map(t => `«${t}»`).join(' + ')}): one seat`);
     });
@@ -298,16 +321,44 @@
     // (the rule of GuestsTrips.parse, so the keys stay the ones the app already has).
     const out = []; const byDir = { arrival: [], departure: [] };
     legs.forEach(l => byDir[l.dir].push(l));
-    for (const dir of ['arrival', 'departure']) {
-      const ls = byDir[dir]; if (!ls.length) continue;
+    // Without prices (older files): split only when a time or a flight contradicts.
+    const oldGroups = ls => {
       const groups = [];
       const fits = (gr, l) => gr.date === l.date && gr.place === l.place && (!gr.time || !l.time || gr.time === l.time) && (!gr.flight || !l.flight || gr.flight === l.flight);
       const filled = l => (l.time ? 1 : 0) + (l.flight ? 1 : 0);
       ls.slice().sort((a, b2) => filled(b2) - filled(a) || a.order - b2.order || a.lids[0].localeCompare(b2.lids[0])).forEach(l => {
         const gr = groups.find(x => fits(x, l));
         if (gr) { gr.legs.push(l); gr.time = gr.time || l.time; gr.flight = gr.flight || l.flight; }
-        else groups.push({ date: l.date, place: l.place, time: l.time, flight: l.flight, legs: [l] });
+        else groups.push({ date: l.date, place: l.place, time: l.time, flight: l.flight, legs: [l], extra: [] });
       });
+      return groups;
+    };
+    // With prices (Miguel, 17 Nov 2026), per booking × day × direction × airport:
+    //   · one paid line, the others at 0 € → ONE trip with everyone; a guest at 0 € whose flight (number, airline code
+    //     ignored) or time (> 30 min) differs from the paid one stays in it, with the question «coming together?»;
+    //   · two or more paid lines on the same flight / time (or empty) → ONE trip, «N transfers paid, same flight — confirm»;
+    //     on different flights / times → one trip per paid line, each 0 € guest with the paid line that matches;
+    //   · no paid line (all 0 €) → as without prices.
+    const priceGroups = ls => {
+      const out2 = []; const byDay = new Map();
+      ls.forEach(l => { const k = `${l.date}|${l.place}`; if (!byDay.has(k)) byDay.set(k, []); byDay.get(k).push(l); });
+      byDay.forEach(c => {
+        const paid = c.filter(l => l.price > 0).sort((a, b2) => a.order - b2.order); const free = c.filter(l => !(l.price > 0)).sort((a, b2) => a.order - b2.order);
+        if (!paid.length) { out2.push(...oldGroups(c)); return; }
+        const pg = [];
+        paid.forEach(l => { const gr = pg.find(x => compatible(x, l)); if (gr) { gr.legs.push(l); gr.paid++; gr.time = gr.time || l.time; gr.flight = gr.flight || l.flight; } else pg.push({ date: l.date, place: l.place, time: l.time, flight: l.flight, legs: [l], paid: 1, ask: [], extra: [] }); });
+        free.forEach(l => { const gr = pg.find(x => compatible(x, l)); if (gr) gr.legs.push(l); else { pg[0].legs.push(l); pg[0].ask.push(l); } });
+        pg.forEach(gr => {
+          if (gr.paid > 1) gr.extra.push(paidTwiceFlag(gr.paid));
+          if (gr.ask.length) gr.extra.push(`${TOGETHER_FLAG} (${gr.ask.map(l => [l.guest, l.flight, l.time].filter(Boolean).join(' · ')).join('; ')})`);
+        });
+        out2.push(...pg);
+      });
+      return out2;
+    };
+    for (const dir of ['arrival', 'departure']) {
+      const ls = byDir[dir]; if (!ls.length) continue;
+      const groups = b.hasPrice ? priceGroups(ls) : oldGroups(ls);
       groups.forEach(gr => gr.legs.sort((a, b2) => a.order - b2.order));
       groups.sort((a, b2) => a.date.localeCompare(b2.date) || a.legs[0].order - b2.legs[0].order);
       const split = groups.length > 1; const used = new Set();
@@ -317,7 +368,10 @@
         used.add(key);
         let fl = [...new Set(gr.legs.flatMap(l => l.flags))];
         if (gr.time) fl = fl.filter(f => !/^no time yet/.test(f));
+        // the together question replaces the «two times» noise of the 0 € guest
+        if ((gr.extra || []).length) fl = fl.filter(f => !/^two times|^time taken from/.test(f));
         fl.sort();
+        fl.push(...(gr.extra || []));
         if (split) fl.push('guests of this booking travel separately');
         const pax = gr.legs.length; const boards = gr.legs.some(l => l.boards);
         out.push({
@@ -328,6 +382,7 @@
           booking_ref: b.ref, booking_checkout: b.co || null, phone: (gr.legs.find(l => l.phone) || {}).phone || '',
           phone_from: (gr.legs.find(l => l.phone) || {}).phoneFrom || '',
           vehicle: GT().vehicleFor(pax, boards, cfg), partner: b.partner || null,
+          ...(b.hasPrice ? { paid_lines: gr.legs.filter(l => l.price > 0).length, line_prices: gr.legs.map(l => ({ guest: l.guest, price: l.price })) } : {}),
         });
       });
     }
@@ -422,7 +477,7 @@
   const LIVE = ['planned', 'sent', 'confirmed'];
   const HAPPENED = ['planned', 'sent', 'confirmed', 'done', 'no_show'];
   const isAdded = t => !t.last_import_at && !!t.bl_checked_at;   // added from the booking page
-  function priceOf(prices, kind, vehicle, place) { return prices ? Number(prices(kind, vehicle, place)) || 0 : null; }
+  function presetOf(prices, kind, vehicle, place) { return prices ? Number(prices(kind, vehicle, place)) || 0 : null; }
   function planTrips(trips, appTrips, o) {
     o = o || {}; const today = o.today; const now = o.now || `${today}T00:00`;
     // The import is sent with the camp's today when the file is older (Sri Lanka was already on 17 Nov when the 16 Nov
@@ -433,7 +488,7 @@
     const plan = { send: [], create: [], update: [], same: [], revive: [], untouched: [], covered: [], past: [], regroupCancel: [], flagRemoved: [], notInReport: [], refsPresent: o.refsPresent || [...new Set(trips.map(t => t.booking_ref))] };
     const doneByTime = t => `${t.trip_date}T${t.trip_time || '23:59'}` < now;
     trips.forEach(t => {
-      const price = priceOf(o.prices, t.kind, t.vehicle, t.place);
+      const price = presetOf(o.prices, t.kind, t.vehicle, t.place);
       const tt = price != null ? { ...t, expected_price: price } : t;
       const k = byKey.get(t.key);
       const other = app.filter(a => a.import_key !== t.key && a.booking_ref === t.booking_ref && a.kind === t.kind && a.trip_date === t.date && (HAPPENED.includes(a.status) || a.payment_entry_id));
@@ -536,5 +591,5 @@
     return plan;
   }
 
-  return { COL, isReportHeader, productKind, read, model, parse, guestRows, guestAudit, importWarnings, lessonsByDay, planTrips, planGuests, tripDiffs, courseOf, exportDateOf };
+  return { TOGETHER_FLAG, paidTwiceFlag, flightNo, priceOf, PRICE_HEADER, COL, isReportHeader, productKind, read, model, parse, guestRows, guestAudit, importWarnings, lessonsByDay, planTrips, planGuests, tripDiffs, courseOf, exportDateOf };
 });

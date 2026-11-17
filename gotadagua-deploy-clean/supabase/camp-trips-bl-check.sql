@@ -300,7 +300,8 @@ begin
       from public.camp_week_guests g where g.location_id = p_location and g.booking_ref = v_ref;
     -- People: the leg's count, else the guests of the booking in the file, else 1.
     v_pax := greatest(1, coalesce(nullif(x->>'pax', '')::int, nullif(v_gpax, 0), 1));
-    v_vehicle := case when v_pax <= 4 then 'Car' when v_pax <= 8 then 'Minivan' when v_slug = 'morocco' then 'Big Van' else 'Large Van' end;
+    v_vehicle := case when v_pax <= 3 then 'Car'   -- car up to 3 people (Miguel, 17 Nov 2026; = vehicleCaps in lib/camp-config.js)
+                       when v_pax <= 8 then 'Minivan' when v_slug = 'morocco' then 'Big Van' else 'Large Van' end;
     -- Price = the driver's price in /prices (pricing_catalog.cost_per_guest of the airport row), as presetPrice() in
     -- camp-hub/transport.js: Sri Lanka «Airport → Surfcamp — Car» / «Surfcamp → Airport — Car»; Morocco «Agadir Airport — Car»
     -- (the row whose name holds the airport's city; an airport without a row, e.g. Essaouira, saves 0 like the import).

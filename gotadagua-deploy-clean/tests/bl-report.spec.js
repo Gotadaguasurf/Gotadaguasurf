@@ -178,3 +178,85 @@ test('import plan: a trip cancelled by an import but in the past is not brought 
   const plan = B.planTrips(p.trips, app, { today: '2026-11-17', exportDate: '2026-11-16', now: '2026-11-17T08:00' });
   expect(plan.revive).toEqual([]); expect(plan.untouched.map(x => x.why)).toEqual(['in the past']);
 });
+
+// ── The price column and Miguel's transfer rule (17 Nov 2026) ─────────────────────────────────────
+const { csvPriced } = require('./bl-report-csv');
+const MA_PKG = 'Weekly package Morocco';
+const TO = (place) => `Airport Transfer Morocco (${place || 'Agadir'})`;
+// one booking: each guest { name, arr: [price, flight, time], dep: [price, flight, time] }
+function maBooking(ref, ci, co, people, place) {
+  const guests = people.map(p => ({ name: p.name, arrF: p.arr[1], arrT: p.arr[2], depF: p.dep[1], depT: p.dep[2] }));
+  const lines = [];
+  people.forEach(p => {
+    lines.push({ p: MA_PKG, person: p.name, start: ci, end: co, price: 400 });
+    if (p.arr[0] != null) lines.push({ p: TO(place), person: p.name, start: ci, price: p.arr[0] });
+    if (p.dep[0] != null) lines.push({ p: TO(place), person: p.name, start: co, price: p.dep[0] });
+  });
+  return { ref, ci, co, guests, lines };
+}
+const TOG = /^Different times — coming together\? If not, the guest at 0 € has to pay a transfer/;
+const trips = (bks, header) => B.parse(csvPriced(bks, header), 'x.csv', '2026-11-17', CC.MA).trips;
+
+test('price column: «Booking line: Final price incl. tax» (and other spellings) is read; without it, the old rule', () => {
+  expect(B.PRICE_HEADER.test('Booking line: Final price incl. tax')).toBe(true);
+  expect(B.PRICE_HEADER.test('Booking line Final price incl. tax')).toBe(true);
+  expect(B.PRICE_HEADER.test('Booking line: Price')).toBe(true);
+  expect(B.PRICE_HEADER.test('Booking line: Total incl. tax')).toBe(true);
+  expect(B.PRICE_HEADER.test('Booking line: Start time')).toBe(false);
+  expect([B.priceOf('30.00'), B.priceOf('0.00'), B.priceOf('€ 1.234,50'), B.priceOf('1,234.50'), B.priceOf('')]).toEqual([30, 0, 1234.5, 1234.5, null]);
+  const bk = maBooking('2026-2158', '2026-10-25', '2026-11-05', [{ name: 'Lisa Bleichrodt', arr: [30, 'HV6491', '18:15'], dep: [30, 'HV6492', '19:05'] }, { name: 'Vera Bos', arr: [0, 'HV6491', '14:15'], dep: [0, 'HV6492', '19:05'] }]);
+  const R = B.read(csvPriced([bk]), 'x.csv', CC.MA);
+  expect(R.priceColumn).toBe('Booking line: Final price incl. tax');
+  expect(R.missing).toEqual([]);
+  // the same booking without prices: the guests' times contradict → two trips (today's rule)
+  const old = B.parse(csv([bk]), 'x.csv', '2026-11-17', CC.MA).trips.filter(t => t.kind === 'airport_arrival');
+  expect(old.length).toBe(2);
+});
+
+test('MA 2026-2158: Lisa paid, Vera at 0 € on the same flight but 4 h apart → one trip of 2 with the «coming together?» question; departure one trip, no question', () => {
+  const t = trips([maBooking('2026-2158', '2026-10-25', '2026-11-05', [{ name: 'Lisa Bleichrodt', arr: [30, 'HV6491', '18:15'], dep: [30, 'HV6492', '19:05'] }, { name: 'Vera Bos', arr: [0, 'HV6491', '14:15'], dep: [0, 'HV6492', '19:05'] }])]);
+  expect(t.map(x => [x.key, x.pax, x.time, x.flight, x.vehicle])).toEqual([['bl:2026-2158:arr', 2, '18:15', 'HV6491', 'Car'], ['bl:2026-2158:dep', 2, '19:05', 'HV6492', 'Car']]);
+  expect(t[0].flags.filter(f => TOG.test(f))).toEqual(['Different times — coming together? If not, the guest at 0 € has to pay a transfer (Vera Bos · HV6491 · 14:15)']);
+  expect(t[1].flags.some(f => TOG.test(f))).toBe(false);
+  expect(t.flatMap(x => x.flags).join(' ')).not.toMatch(/refund|devol/i);
+});
+
+test('MA 2026-4297: Rebecca paid, Sera at 0 €, departures 12:00 vs 09:00 → one trip with the question; arrival (EZY vs EZY8711, same time) no question', () => {
+  const t = trips([maBooking('2026-4297', '2026-10-31', '2026-11-07', [{ name: 'Rebecca Brahde', arr: [30, 'EZY', '15:40'], dep: [30, '', '12:00'] }, { name: 'Sera Choi', arr: [0, 'EZY8711', '15:40'], dep: [0, '', '09:00'] }])]);
+  const [arr, dep] = t;
+  expect([arr.pax, dep.pax, dep.time]).toEqual([2, 2, '12:00']);
+  expect(arr.flags.some(f => TOG.test(f))).toBe(false);
+  expect(dep.flags.find(f => TOG.test(f))).toMatch(/\(Sera Choi · 09:00\)$/);
+});
+
+test('MA 2026-4581: Fabienne paid Marrakesh (240), the others at 0 €; departure LX8115 vs LX8114 → one trip of 3 asking about Tobias; arrival one trip, no question', () => {
+  const t = trips([maBooking('2026-4581', '2026-11-02', '2026-11-07', [
+    { name: 'Fabienne Meier', arr: [240, 'LX8114', '11:35'], dep: [240, 'LX8115', '18:00'] },
+    { name: 'Tobias Hinnen', arr: [0, 'LX8114', '11:35'], dep: [0, 'LX8114', '18:00'] },
+    { name: 'Teijo Greuter', arr: [0, 'LX8114', '11:35'], dep: [0, 'LX8115', '18:00'] }], 'Marrakesh')]);
+  expect(t.map(x => [x.key, x.place, x.pax])).toEqual([['bl:2026-4581:arr', 'RAK', 3], ['bl:2026-4581:dep', 'RAK', 3]]);
+  expect(t[0].flags.some(f => TOG.test(f))).toBe(false);
+  expect(t[1].flags.find(f => TOG.test(f))).toMatch(/\(Tobias Hinnen · LX8114 · 18:00\)$/);
+});
+
+test('MA 2026-4717: Hoi Yi paid, Tsz Yin at 0 € (her paid lines cancelled) — arrival U2 2621 vs LS1129 → question; departure U2 2286 = EZY2286 → same flight', () => {
+  const t = trips([maBooking('2026-4717', '2026-11-15', '2026-11-20', [{ name: 'Hoi Yi Law', arr: [30, 'U2 2621', '10:55'], dep: [30, 'U2 2286', '11:55'] }, { name: 'Tsz Yin Scarlet Tang', arr: [0, 'LS1129', '11:55'], dep: [0, 'EZY2286', '11:55'] }])]);
+  expect(t.map(x => [x.key, x.pax, x.flight])).toEqual([['bl:2026-4717:arr', 2, 'U22621'], ['bl:2026-4717:dep', 2, 'U22286']]);
+  expect(t[0].flags.find(f => TOG.test(f))).toMatch(/\(Tsz Yin Scarlet Tang · LS1129 · 11:55\)$/);
+  expect(t[1].flags.some(f => TOG.test(f))).toBe(false);
+  expect(B.flightNo('U2 2286')).toBe(B.flightNo('EZY2286'));
+});
+
+test('two paid lines: same flight → one trip «2 transfers paid, same flight — confirm»; different flights → one trip per paid line, the 0 € guest with the matching one', () => {
+  const same = trips([maBooking('2026-95', '2026-11-21', '2026-11-28', [{ name: 'Ada A', arr: [30, 'AT431', '22:55'], dep: [null] }, { name: 'Ben B', arr: [30, 'AT 431', ''], dep: [null] }, { name: 'Cal C', arr: [0, '', ''], dep: [null] }])]);
+  expect(same.map(x => [x.pax, x.flags.filter(f => /transfers paid/.test(f))])).toEqual([[3, ['2 transfers paid, same flight — confirm they come together']]]);
+  const diff = trips([maBooking('2026-96', '2026-11-21', '2026-11-28', [{ name: 'Ada A', arr: [30, 'AT431', '22:55'], dep: [null] }, { name: 'Ben B', arr: [30, 'FR185', '00:05'], dep: [null] }, { name: 'Cal C', arr: [0, 'FR 185', ''], dep: [null] }])]);
+  expect(diff.map(x => [x.key, x.guests])).toEqual([['bl:2026-96:arr:adaa', ['Ada A']], ['bl:2026-96:arr:benb', ['Ben B', 'Cal C']]]);
+  expect(diff.flatMap(x => x.flags).some(f => TOG.test(f) || /transfers paid/.test(f))).toBe(false);
+});
+
+test('a car takes up to 3 people in both camps; 4 = minivan', () => {
+  expect([1, 3, 4, 8, 9].map(n => G.vehicleFor(n, false, CC.MA))).toEqual(['Car', 'Car', 'Minivan', 'Minivan', 'Big Van']);
+  expect([1, 3, 4, 8, 9].map(n => G.vehicleFor(n, false, CC.SL))).toEqual(['Car', 'Car', 'Minivan', 'Minivan', 'Large Van']);
+  expect(G.vehicleFor(4)).toBe('Minivan');   // no settings = Sri Lanka's
+});

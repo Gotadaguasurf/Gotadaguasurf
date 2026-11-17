@@ -19,5 +19,13 @@ function rows(bk) {
   return out;
 }
 const csv = bks => [HEAD, ...bks.flatMap(rows)].map(r => r.map(q).join(',')).join('\n');
+// The report from 17 Nov 2026: «Booking line: Start time» removed, «Booking line: Final price incl. tax» added as the
+// last column (EUR). Each line's `price` (default 0) fills it.
+const ST = HEAD.indexOf('Booking line: Start time');
+function csvPriced(bks, header = 'Booking line: Final price incl. tax') {
+  const H = HEAD.filter((_, i) => i !== ST).concat(header);
+  const body = bks.flatMap(bk => { const prices = []; bk.lines.forEach(l => bk.guests.forEach(() => prices.push(l.price == null ? 0 : l.price))); return rows(bk).map((r, i) => r.filter((_, j) => j !== ST).concat(Number(prices[i]).toFixed(2))); });
+  return [H, ...body].map(r => r.map(q).join(',')).join('\n');
+}
 
-module.exports = { csv, bl };
+module.exports = { csv, csvPriced, bl };
