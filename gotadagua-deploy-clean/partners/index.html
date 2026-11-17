@@ -18,7 +18,8 @@ body{overflow-x:hidden}
 .kpi-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:14px;margin-bottom:28px}
 /* Keep the KPIs on a single row at every desktop width. Only collapse on
    true mobile, where horizontal scrolling would be awkward. */
-@media (max-width: 720px){ .kpi-strip{grid-template-columns:repeat(2,1fr)} }
+@media (max-width: 720px){ .kpi-strip{grid-template-columns:repeat(2,minmax(0,1fr))} }
+@media (max-width: 400px){ .kpi-strip{gap:10px} .kpi-strip .kpi{padding:12px 14px} .kpi-strip .kpi-value{font-size:20px;overflow-wrap:anywhere} }
 .month-tabs{display:flex;gap:6px;margin-bottom:var(--sp-5);flex-wrap:wrap}
 .tbl-wrap tbody tr{cursor:pointer}
 .tbl-wrap tbody tr.expanded{background:var(--foam)}
@@ -56,6 +57,19 @@ body{overflow-x:hidden}
 .dir-pill.to-partner{background:var(--amber-bg);color:var(--amber);border-color:var(--amber-border)}
 .dir-pill.mixed{background:#f1f4f8;color:var(--muted);border-color:var(--border)}
 .bal-total{font-size:10px;color:var(--muted);margin-top:4px}
+/* phones: Gross Revenue and Commission hide (the expanded row and its month cards open the statement); Balance wraps and stays on screen */
+@media (max-width: 640px){
+  .ptbl tr:not(.overview-row)>:nth-child(4),.ptbl tr:not(.overview-row)>:nth-child(5){display:none}
+  .ptbl thead th{white-space:normal;padding-left:8px;padding-right:8px}
+  .ptbl td{padding-left:8px;padding-right:8px}
+  .ptbl td.r{white-space:normal}
+  .ptbl td:nth-child(2){overflow-wrap:break-word}
+  .ptbl .pemail{overflow-wrap:anywhere}
+  .ptbl tr:not(.overview-row)>:first-child{padding-left:10px;padding-right:2px;width:22px !important}
+  /* a month picked adds Invoice Status: Bookings hides too and the status select narrows */
+  .ptbl tr:not(.overview-row):has(>:nth-child(7))>:nth-child(3){display:none}
+  .ptbl .status-select{min-width:112px;width:112px;padding-right:26px;padding-left:9px;background-position:right 7px center}
+}
 /* Sales invoices (FT IN2/…) issued to the partner for a month — number + Drive link. */
 .inv-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
 .inv-chip{display:inline-block;font-size:10px;font-weight:600;color:var(--navy);background:#fff;border:1px solid var(--border);border-radius:999px;padding:2px 9px;text-decoration:none;white-space:nowrap}
@@ -195,7 +209,7 @@ body{overflow-x:hidden}
     <div class="kpi-strip" id="kpiStrip"></div>
     <div class="section-head" style="margin-top:10px"><div class="section-title">Surf Camp Partners</div><div class="section-sub" id="surfCampCountHint"></div></div>
     <div class="card tbl-wrap" style="margin-bottom:22px">
-      <table>
+      <table class="ptbl">
         <thead id="partnerTableHeadCamp"></thead>
         <tbody id="partnerTableBodyCamp"></tbody>
       </table>
@@ -203,7 +217,7 @@ body{overflow-x:hidden}
 
     <div class="section-head" style="margin-top:4px"><div class="section-title">Surf School Partners</div><div class="section-sub" id="surfSchoolCountHint"></div></div>
     <div class="card tbl-wrap">
-      <table>
+      <table class="ptbl">
         <thead id="partnerTableHeadSchool"></thead>
         <tbody id="partnerTableBodySchool"></tbody>
       </table>
@@ -212,7 +226,7 @@ body{overflow-x:hidden}
     <!-- Junior Surf Camp Partners (location code: JUN) -->
     <div class="section-head" style="margin-top:18px"><div class="section-title">Junior Surf Camp Partners</div><div class="section-sub" id="juniorCountHint"></div></div>
     <div class="card tbl-wrap" style="margin-bottom:22px">
-      <table>
+      <table class="ptbl">
         <thead id="partnerTableHeadJunior"></thead>
         <tbody id="partnerTableBodyJunior"></tbody>
       </table>
@@ -221,7 +235,7 @@ body{overflow-x:hidden}
     <!-- Kids Camp Caparica Partners (location code: Colon) -->
     <div class="section-head" style="margin-top:4px"><div class="section-title">Kids Camp Caparica Partners</div><div class="section-sub" id="kidsCountHint"></div></div>
     <div class="card tbl-wrap">
-      <table>
+      <table class="ptbl">
         <thead id="partnerTableHeadKids"></thead>
         <tbody id="partnerTableBodyKids"></tbody>
       </table>
