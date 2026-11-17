@@ -172,6 +172,9 @@
     rooms: MA_ROOMS,
     privateRoomBeds: 2,
     runs: { kind: 'other', label: 'Van run', plural: 'Van runs', vehicle: 'Van' },
+    // The weekdays a surf course without a date has lessons (Date.getUTCDay: 0 = Sun). CONFIRM: Bookinglayer has only the
+    // course start and the head coach picks the days; Mon–Fri assumed (17 Nov 2026). Transport → Overview «per surfer-day».
+    surfCourseDays: [1, 2, 3, 4, 5],
     payMethod: 'Bank Transfer',
     airportSupplier: 'Let Us Tours',
     // Transport → Overview, months before the trip list (16 Nov 2026): the ledger's van lines name no driver (they are the

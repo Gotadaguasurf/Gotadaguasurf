@@ -309,6 +309,47 @@
   }
   const eur = (v, rate) => rate > 0 ? Math.round(Number(v || 0) / rate) : 0;
 
+  // Surf vans per SURFER-DAY (Miguel, 17 Nov 2026, after «People in the van» was removed): the head count comes from the
+  // guests, never from a typed number. Per day, surfers = guests (camp_week_guests, as the camp report importer stores
+  // them) with
+  //   · a dated surf lesson that day (raw.lessons: Standard / Intensive / Coaching day lessons, one line per date), or
+  //   · a surf COURSE (raw.courses) while in camp (check-in ≤ day < check-out), on the camp's lesson weekdays
+  //     o.courseDays (CampConfig.surfCourseDays; Mon–Fri when not set: Bookinglayer has only the course start, the head
+  //     coach picks the days), from the course's own date when it has one;
+  //   · an older Guests-export row (no raw.courses): o.hasCourse(g) (Week's course() rule) counts it like a course.
+  // A guest counts once a day. o.ok(g) = the guest is a live booking.  → { byDay: { 'YYYY-MM-DD': n }, total }
+  function surferDays(guests, from, to, o) {
+    o = o || {}; const days = {};
+    for (let d = from; d <= to; d = addDays(d, 1)) days[d] = new Set();
+    const wd = d => new Date(Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10))).getUTCDay();
+    const cd = new Set(o.courseDays && o.courseDays.length ? o.courseDays : [1, 2, 3, 4, 5]);
+    (guests || []).forEach(g => {
+      if (!g || (o.ok && !o.ok(g))) return;
+      const key = `${g.booking_ref || ''}|${g.guest_key || g.guest_name || g.id || ''}`;
+      const raw = g.raw || {};
+      (raw.lessons || []).forEach(x => { if (x && days[x.date]) days[x.date].add(key); });
+      const courses = Array.isArray(raw.courses) ? raw.courses : (o.hasCourse && o.hasCourse(g) ? [{ date: null }] : []);
+      courses.forEach(c => Object.keys(days).forEach(d => {
+        if (String(g.check_in || '') <= d && d < String(g.check_out || '') && cd.has(wd(d)) && (!c || !c.date || d >= c.date)) days[d].add(key);
+      }));
+    });
+    const byDay = {}; let total = 0;
+    Object.keys(days).forEach(d => { byDay[d] = days[d].size; total += days[d].size; });
+    return { byDay, total };
+  }
+  // The surf vans' cost per surfer-day in a period: the van runs' cost (trips of the kind 'vans', by day) on the days the
+  // guests list has surfers ÷ the surfer-days of the period. Van cost on a day with no surfer in the list (guests not
+  // imported for that day) is left out and returned as `uncovered`; payments with no day (lump sums) are never in it.
+  //   → { cost, surferDays, per (local per surfer-day, null when none), uncovered, days }
+  function perSurferDay(C, P, sd) {
+    const cost = {};
+    (C.items || C).forEach(it => { if (it.src === 'trip' && it.kind === 'vans' && it.date >= P.from && it.date <= P.to) cost[it.date] = (cost[it.date] || 0) + it.cost; });
+    let c = 0, uncovered = 0, days = 0;
+    Object.keys(cost).forEach(d => { if ((sd.byDay[d] || 0) > 0) { c += cost[d]; days++; } else uncovered += cost[d]; });
+    const n = Object.keys(sd.byDay).filter(d => d >= P.from && d <= P.to).reduce((s, d) => s + sd.byDay[d], 0);
+    return { cost: c, surferDays: n, per: n && c ? Math.round(c / n * 100) / 100 : null, uncovered, days };
+  }
+
   // Airport transfers: what the guests paid (€) against what the drivers cost (€) in a period (17 Nov 2026).
   //   · a trip from the camp report carries guest_eur = the paid lines' «Final price incl. tax» (camp_trips.guest_eur);
   //   · an older trip (no guest_eur) is ESTIMATED from /prices: ceil(people ÷ covers_pax) × the route's guest price —
@@ -357,5 +398,5 @@
   }
 
   return { period, shift, lastYear, periodName, classify, classifyLine, serviceDate, linePeople, supplierOf, driverOf, collect, view, yearView, compare, owedNow,
-    viewTable, yearTable, tripInWeek, addDays, MON, KIND_ORDER, kindOf, kindLabel, eurRate, eur, FX_RANGE, guestMoney };
+    viewTable, yearTable, tripInWeek, addDays, MON, KIND_ORDER, kindOf, kindLabel, eurRate, eur, FX_RANGE, guestMoney, surferDays, perSurferDay };
 });

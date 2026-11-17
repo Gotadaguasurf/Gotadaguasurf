@@ -178,3 +178,23 @@ test('overview: Morocco van runs with no head count (17 Nov 2026: «People in th
   expect([k('tours').cost, k('tours').people, k('tours').perPerson]).toEqual([700, 0, null]);
   expect([k('airport').people, k('airport').perPerson]).toEqual([2, 125]);
 });
+
+test('surf vans per SURFER-DAY (17 Nov 2026): surfers from the guests\' Bookinglayer lessons — dated day lessons on their date, a course Mon–Fri while in camp (from its date when it has one), once a day; cost ÷ surfer-days', () => {
+  const g = (name, ci, co, raw, o = {}) => ({ booking_ref: 'R-' + name, guest_key: name.toLowerCase(), guest_name: name, check_in: ci, check_out: co, booking_status: 'paid', raw, ...o });
+  const guests = [
+    g('Ann', '2026-11-01', '2026-11-08', { lessons: [], courses: [{ type: 'standard', date: null }] }),                    // Mon 2 – Fri 6 = 5
+    g('Bob', '2026-11-01', '2026-11-08', { lessons: [{ date: '2026-11-03', type: 'intensive' }, { date: '2026-11-07', type: 'standard' }], courses: [] }),   // Tue 3, Sat 7 = 2
+    g('Cy', '2026-11-01', '2026-11-08', { lessons: [{ date: '2026-11-04', type: 'standard' }], courses: [{ type: 'standard', date: '2026-11-04' }] }),       // Wed 4 – Fri 6 = 3 (the lesson on the 4th counts once)
+    g('Dee', '2026-11-01', '2026-11-08', { lessons: [], courses: [{ type: 'standard', date: null }] }, { booking_status: 'cancelled' }),                       // not counted
+    g('Eve', '2026-11-05', '2026-11-12', { source: 'guests' }, { activities: 'Surf Course Standard' }),                                                       // older row: Week's rule → Thu 5, Fri 6, Mon 9 – Wed 11 = 5
+  ];
+  const sd = O.surferDays(guests, '2026-11-01', '2026-11-15', { courseDays: CC.MA.surfCourseDays, ok: x => x.booking_status !== 'cancelled', hasCourse: x => /surf course/i.test(x.activities || '') });
+  expect(Object.entries(sd.byDay).filter(([, n]) => n).map(([d, n]) => `${d.slice(8)}:${n}`)).toEqual(['02:1', '03:2', '04:2', '05:3', '06:3', '07:1', '09:1', '10:1', '11:1']);
+  expect(sd.total).toBe(15);
+  expect(CC.MA.surfCourseDays).toEqual([1, 2, 3, 4, 5]);
+  const C = O.collect({ ...MA, trips: [run('Surf', { trip_date: '2026-11-03', status: 'done', expected_price: 500 }), run('Surf', { trip_date: '2026-11-05', status: 'done', expected_price: 700 }),
+    run('Surf', { trip_date: '2026-11-14', status: 'done', expected_price: 300 }), run('Dunes', { trip_date: '2026-11-05', status: 'done', expected_price: 800 })] });
+  const r = O.perSurferDay(C, O.period('month', '2026-11'), sd);
+  // vans only (Dunes is a tour); the 14th has no surfer in the list → left out, said apart
+  expect(r).toEqual({ cost: 1200, surferDays: 15, per: 80, uncovered: 300, days: 2 });
+});

@@ -165,3 +165,15 @@ test('overview (Morocco): screenshots Week, Month, Year at 1280 and 390 — no p
     }
   }
 });
+
+test('overview (Morocco): «Surf vans» shows the cost per surfer-day from the guests\' Bookinglayer lessons (no typed head count)', async ({ page }) => {
+  const g = (name, raw) => ({ id: uuid('99999999'), location_id: H.LOC, booking_ref: 'MA-S' + name, guest_key: name.toLowerCase(), guest_name: name, check_in: '2026-11-01', check_out: '2026-11-08',
+    booking_status: 'paid', activities: '', packages: '', raw, import_id: 'imp-s', updated_at: '2026-11-14T08:00:00Z' });
+  const guests = [g('Ann', { lessons: [], courses: [{ type: 'standard', date: null }] }), g('Bob', { lessons: [{ date: '2026-11-03', type: 'standard' }], courses: [] })];
+  await openOverview(page, { guests });
+  const row = page.locator('[data-ov-row="vans"] [data-ov-surfer-day]');
+  await expect(row).toContainText('per surfer-day');
+  await expect(row).toContainText('6 surfer-days from Bookinglayer lessons');      // Ann Mon 2 – Fri 6, Bob Tue 3
+  // Surf runs 3 Nov (500) and 4 Nov (300) ÷ 6 surfer-days
+  expect(await page.evaluate(() => TransportUI.ovData().surf)).toMatchObject({ cost: 800, surferDays: 6, per: 133.33, uncovered: 0 });
+});

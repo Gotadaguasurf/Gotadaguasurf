@@ -1638,7 +1638,9 @@ test('edit a trip: a new vehicle at its /prices price is not «price typed by ha
   expect(up).toMatchObject({ vehicle: 'Minivan', expected_price: 26500 });
   expect(up.edited_fields).toContain('vehicle');
   expect(up.edited_fields).not.toContain('expected_price');                           // back on /prices (an old wrong mark is cleared)
+  await expect(page.locator('#trOv.open')).toHaveCount(0);                             // the save closed the sheet
   await page.evaluate(id => TransportUI.openTrip(id), t.id);
+  await expect(page.locator('#tr_pr')).toBeVisible();
   await page.fill('#tr_pr', '30000');
   await page.evaluate(id => TransportUI.saveTrip(id), t.id);
   expect((await call(st, 'trip_update', 2)).body.edited_fields).toContain('expected_price');

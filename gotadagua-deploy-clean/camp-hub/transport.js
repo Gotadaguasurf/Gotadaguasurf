@@ -1093,7 +1093,33 @@
     const C = TO().collect({ trips: TR.trips, ledger: ovLedger(), drivers: TR.drivers, cfg: CC, goLive: goLive(), now: colomboNow(), linked, isOwed: t => reconcileStatus(t) === 'owed' });
     const fx = TO().eurRate({ ledger: ovLedger(), cur: CUR, from: P.from, to: P.to, fallback: (typeof LOCAL_PER_EUR !== 'undefined' ? LOCAL_PER_EUR : 0),
       defaultRate: (typeof FX_FALLBACK_THIS_LOC !== 'undefined' ? FX_FALLBACK_THIS_LOC : 0) });
-    return { P, C, V: TO().view(C, P, CC), Y: P.mode === 'year' ? TO().yearView(C, P.anchor, CC) : null, cmp: TO().compare(C, P), owed: TO().owedNow(C), checks: toCheck().length, holds: onHoldTrips().length, fx };
+    return { P, C, V: TO().view(C, P, CC), Y: P.mode === 'year' ? TO().yearView(C, P.anchor, CC) : null, cmp: TO().compare(C, P), owed: TO().owedNow(C), checks: toCheck().length, holds: onHoldTrips().length, fx,
+      surf: ovSurf(C, P) };
+  }
+  // Surf vans per surfer-day (Morocco, 17 Nov 2026): surfers from the guests' Bookinglayer lessons (camp_week_guests),
+  // read once per period; null until they are in (the row then shows nothing extra).
+  const GONE = new Set(['cancelled', 'canceled', 'expired', 'not_here']);
+  function ovSurf(C, P) {
+    if (!CC.vanRates) return null;
+    const G = TR.ovGuests;
+    if (!G || G.key !== P.from + '|' + P.to) { loadOvGuests(P); return null; }
+    if (!G.rows) return null;
+    const sd = TO().surferDays(G.rows, P.from, P.to, { courseDays: CC.surfCourseDays, ok: g => !GONE.has(String(g.booking_status || '').toLowerCase()),
+      hasCourse: g => !!(window.WeekUI && WeekUI.course && WeekUI.course(g)) });
+    return { ...TO().perSurferDay(C, P, sd), byDay: sd.byDay };
+  }
+  try { window.addEventListener('camp-week-imported', () => { TR.ovGuests = null; }); } catch (_) {}
+  async function loadOvGuests(P) {
+    const key = P.from + '|' + P.to; if (TR.ovGuests && TR.ovGuests.key === key) return;
+    TR.ovGuests = { key, rows: null };
+    try {
+      const c = client(); const loc = await ensureHubLocationId();
+      const { data, error } = await c.from('camp_week_guests').select('booking_ref,guest_key,guest_name,check_in,check_out,activities,packages,booking_status,raw')
+        .eq('location_id', loc).lte('check_in', P.to).gte('check_out', P.from);
+      if (error) throw error;
+      if (TR.ovGuests.key === key) TR.ovGuests.rows = data || [];
+    } catch (_) { if (TR.ovGuests.key === key) TR.ovGuests.rows = []; }
+    if (TR.view === 'overview' && TR.ovGuests.key === key) render();
   }
   const ovLabel = P => P.mode === 'week' ? fmtRange(P.from, P.to) : P.mode === 'year' ? P.anchor : `${MONTH_LONG[+P.anchor.slice(5, 7) - 1]} ${P.anchor.slice(0, 4)}`;
   const fmtEur = n => '€' + Math.round(Number(n) || 0).toLocaleString('en-US');
@@ -1120,7 +1146,7 @@
       const when = P.mode === 'week' ? (now ? 'this week' : `in the week of ${fmtRange(P.from, P.to)}`) : P.mode === 'month' ? (now ? 'this month' : `in ${ovLabel(P)}`) : (now ? 'this year' : `in ${P.anchor}`);
       return filters + ovTiles(D, true) + `<div class="card tr-ov-card" data-ov-empty><div class="empty-state">${ic('truck')}<div class="empty-title">No transport recorded ${h(when)}</div><p>No trips and no transport payments in the ledger for these dates.</p></div></div>`;
     }
-    return filters + ovTiles(D) + (Y ? ovYearChart(Y, fx) : '') + ovKinds(V, fx) + ovGuestMoney(D) + ovSuppliers(V, fx) + ovNote(D);
+    return filters + ovTiles(D) + (Y ? ovYearChart(Y, fx) : '') + ovKinds(V, fx, D.surf) + ovGuestMoney(D) + ovSuppliers(V, fx) + ovNote(D);
   }
   // Three numbers: what transport cost (up or down), what we owe right now, the cost per person.
   function ovTiles(D, owedOnly) {
@@ -1165,7 +1191,7 @@
       <div class="tr-bars">${bars}</div></div>`;
   }
   // One row per kind of transport (the page's pills): a bar for its share of the cost, then trips, people, per person.
-  function ovKinds(V, fx) {
+  function ovKinds(V, fx, surf) {
     const T = V.total; const max = Math.max(1, ...V.kinds.map(k => k.cost)); const showT = T.trips > 0; const showP = V.kinds.some(headcount);
     const partsOf = k => {
       const xs = k.parts.length === 1 && k.parts[0].label === k.label ? [] : k.parts;
@@ -1173,7 +1199,8 @@
       const one = p => `${h(p.label)}${p.trips && !p.payments ? ` ${p.trips}` : p.people && !p.trips ? ` (${plural(p.people, 'person', 'people')})` : ''}`;
       return xs.length > 4 ? xs.slice(0, 3).map(one).join(' · ') + ` · +${xs.length - 3} more` : xs.map(one).join(' · ');
     };
-    const meta = k => [k.trips ? plural(k.trips, 'trip') : '', headcount(k) ? plural(k.people, 'person', 'people') : '', headcount(k) ? `${money(k.perPerson)} per person` : ''].filter(Boolean).join(' · ');
+    const meta = k => [k.trips ? plural(k.trips, 'trip') : '', headcount(k) ? plural(k.people, 'person', 'people') : '', headcount(k) ? `${money(k.perPerson)} per person` : '',
+      k.kind === 'vans' && surf && surf.per ? `<span data-ov-surfer-day title="Surf van cost on the days with surfers ÷ surfer-days (guests with a Bookinglayer lesson or course that day)">${money(surf.per)} per surfer-day <span class="tr-eur">${eurOf(surf.per, fx)}</span> · ${plural(surf.surferDays, 'surfer-day')} from Bookinglayer lessons${surf.uncovered ? ` · ${money(surf.uncovered)} on days with no lessons data left out` : ''}</span>` : ''].filter(Boolean).join(' · ');
     const rows = V.kinds.map(k => { const pct = Math.round(k.cost / (T.cost || 1) * 100);
       return `<div class="tr-kind" data-ov-row="${k.kind}">
         <div class="tr-kind-name"><span class="tr-kind-t"><i class="tr-sw ${kindCls(k.kind)}"></i><b>${h(k.label)}</b></span>${partsOf(k) ? `<span class="cell-sub tr-kind-parts">${partsOf(k)}</span>` : ''}${k.noShow ? `<span class="cell-sub">incl. ${plural(k.noShow, 'no-show')}</span>` : ''}</div>
