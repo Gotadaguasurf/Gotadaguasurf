@@ -4,7 +4,7 @@
 // Run after changing any of these files:  node scripts/sync-edge-libs.js   (or npm run sync:edge)
 const fs = require('fs'); const path = require('path');
 const ROOT = path.join(__dirname, '..');
-const FILES = ['camp-config.js', 'guests-trips.js', 'bl-report.js', 'bl-ingest.js', 'bl-revenue.js'];
+const FILES = ['camp-config.js', 'transport-catalog.js', 'guests-trips.js', 'bl-report.js', 'bl-ingest.js', 'bl-revenue.js'];
 const DEST = path.join(ROOT, 'supabase', 'functions', '_shared', 'lib');
 if (require.main === module) {
   fs.mkdirSync(DEST, { recursive: true });

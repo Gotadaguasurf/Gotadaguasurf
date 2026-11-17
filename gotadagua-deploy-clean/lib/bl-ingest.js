@@ -26,6 +26,7 @@
   const BR = () => isNode ? require('./bl-report.js') : self.BlReport;
   const GT = () => isNode ? require('./guests-trips.js') : self.GuestsTrips;
   const CC = () => isNode ? require('./camp-config.js') : self.CampConfig;
+  const TC = () => isNode ? require('./transport-catalog.js') : self.TransportCatalog;
 
   // ── Which email is which ─────────────────────────────────────────────────
   // Titles are matched loosely (accents, case, punctuation and spacing ignored) because Bookinglayer
@@ -84,29 +85,20 @@
   function reportWindow(receivedYmd) { const G = GT(); return { from: G.addDaysIso(receivedYmd, -WINDOW.before), to: G.addDaysIso(receivedYmd, WINDOW.after) }; }
   const insideWindow = (checkout, w) => !!(checkout && w && w.from && w.to && String(checkout).slice(0, 10) >= w.from && String(checkout).slice(0, 10) <= w.to);
 
-  // ── Transfer prices from /prices (pricing_catalog), as presetPrice() in camp-hub/transport.js ───
-  // Rows «<destination> — <vehicle>» of category Transport shown in the airport picker. Sri Lanka: arrival =
-  // «Airport → Surfcamp», departure = «Surfcamp → Airport». Morocco: one row per airport, both ways
-  // («Agadir Airport — Car»). An airport with no row (Essaouira) = 0, as in the app.
+  // ── /prices (pricing_catalog) → vehicles and driver prices, as camp-hub/transport.js (17 Nov 2026) ───────
+  // The rows the camp hub reads (category Transport, in the picker, active) grouped by lib/transport-catalog.js; the
+  // price of an airport trip = TransportCatalog.costOf(the route's vehicles, vehicle) — presetPrice() in transport.js.
+  //   price(kind, vehicle, place) · price.ready (both airport ways have a priced vehicle = pricesReady())
+  //   price.cfg = the camp settings + the catalog's vehicles, what the parser picks each trip's vehicle from (catCfg()).
   function pricesFromCatalog(rows, slug) {
-    const cfg = CC().get(slug) || CC().SL;
-    const groups = []; const byName = new Map();
-    (rows || []).filter(r => r && r.active !== false && r.show_in_transport_picker !== false && !['surf', 'tours', 'tuktuk'].includes(r.picker_tab || 'airport'))
-      .slice().sort((a, b) => (Number(a.sort_order) || 100) - (Number(b.sort_order) || 100))
-      .forEach(r => {
-        const full = String(r.name || '').trim(); const i = full.lastIndexOf(' — '); if (i <= 0) return;
-        const name = full.slice(0, i).trim(); const veh = full.slice(i + 3).trim();
-        if (!byName.has(name)) { const g = { name, vehicles: {} }; byName.set(name, g); groups.push(g); }
-        const g = byName.get(name); if (!(veh in g.vehicles)) g.vehicles[veh] = Number(r.cost_per_guest) || 0;
-      });
-    const fn = (kind, vehicle, place) => {
-      const dep = kind === 'airport_departure';
-      const city = slug === 'sri-lanka' ? 'Colombo' : (cfg.airportCity[place || cfg.airportDefault] || cfg.airportCity[cfg.airportDefault]);
-      const g = slug !== 'sri-lanka' ? groups.find(x => x.name.toLowerCase().includes(String(city).toLowerCase()))
-        : groups.find(x => dep ? /→\s*airport/i.test(x.name) : /airport\s*→/i.test(x.name));
-      return g && vehicle in g.vehicles ? g.vehicles[vehicle] : 0;
-    };
-    fn.loaded = groups.length > 0;
+    const cfg = CC().get(slug) || CC().SL; const T = TC();
+    const P = T.group(rows || []);
+    const airPlace = place => place || (slug === 'sri-lanka' ? 'CMB' : cfg.airportDefault);
+    const airVehicles = (kind, place) => T.airportVehicles(P, cfg, kind, airPlace(place));
+    const fn = (kind, vehicle, place) => T.costOf(airVehicles(kind, place), vehicle);
+    fn.ready = ['airport_arrival', 'airport_departure'].every(k => airVehicles(k).some(v => Number(v.cost != null ? v.cost : v.price) > 0));
+    fn.loaded = T.count(P) > 0;
+    fn.cfg = T.withCatalog(cfg, P);
     return fn;
   }
 
@@ -130,24 +122,33 @@
     const receivedYmd = o.receivedYmd || today;
     const win = reportWindow(receivedYmd);
     const M = B.model(text, o.fileName, GTC);
+    const price = pricesFromCatalog(o.catalog, slug);
     if (M.R.missing.length) return refuse(`columns missing from the report: ${M.R.missing.join(', ')}`);
     // Without the price column the old grouping comes back (2158 / 4297 / 4581 split again, trips cancelled as «split»).
     if (!M.R.priceColumn) return refuse('the «Booking line: Final price incl. tax» column is missing — the transfer rule needs it');
     if (!M.live.length) return refuse('no live booking of this camp in the report (an empty or wrong file?)');
-    const parsed = B.parse(text, o.fileName, receivedYmd, GTC);
-    const price = pricesFromCatalog(o.catalog, slug);
-    if (!price.loaded) return refuse('no transfer prices in /prices for this camp — nothing imported (a trip at 0 «fits» any payment)');
+    if (!price.loaded) return refuse('no transfer rows in /prices for this camp — nothing imported (a trip at 0 «fits» any payment)');
+    // the parser picks each trip's vehicle from /prices (transport.js parses with catCfg())
+    const parsed = B.parse(text, o.fileName, receivedYmd, price.cfg);
     const allGuests = B.guestRows(text, o.fileName, GTC);
     const okGuests = allGuests.filter(g => G.OK_STATUS.has(g.booking_status) && g.check_in && g.check_out);
     const partnerOf = r => { const g = okGuests.find(x => x.booking_ref === r && x.partner); return g ? g.partner : ''; };
     let trips = parsed.trips.map(t => ({ ...t, expected_price: price(t.kind, t.vehicle, t.place), hq_match: null, partner: partnerOf(t.booking_ref) || null }));
-    // Sri Lanka refuses any trip at 0; Morocco saves an airport without a price at 0 (flagged), as the app does.
-    const noPrice = trips.filter(t => !(Number(t.expected_price) > 0));
-    if (slug === 'sri-lanka' && noPrice.length) return refuse(`${noPrice.length} transfer${noPrice.length === 1 ? '' : 's'} without a price in /prices (${noPrice.map(t => `${t.booking_ref} ${t.vehicle}`).join(', ')})`);
+    // = noPrice() in transport.js: Sri Lanka refuses any trip at 0; Morocco only when /prices is not usable (an airport
+    // without a row, Essaouira, is saved at 0 and flagged, as the app does).
+    const noPrice = trips.filter(t => !(Number(t.expected_price) > 0) && (slug === 'sri-lanka' || !price.ready));
+    if (noPrice.length) return refuse(`${noPrice.length} transfer${noPrice.length === 1 ? '' : 's'} without a price in /prices (${noPrice.map(t => `${t.booking_ref} ${t.vehicle}`).join(', ')})`);
     const maxCo = (parsed.bookings || []).reduce((m, b) => b.co > m ? b.co : m, '');
     const appTrips = o.appTrips || []; const appGuests = o.appGuests || [];
     const plan = B.planTrips(trips, appTrips, { today, now, exportDate: parsed.export_date, refsPresent: parsed.refs_active, window: maxCo ? { to: maxCo } : null, mergePast: slug !== 'sri-lanka' });
     trips = plan.send;
+    // = buildImport: a trip whose vehicle was changed by hand keeps it (its price = that vehicle's /prices price), and a trip
+    // split with «Separate» does not get the report's «N people, 1 transfer paid» back.
+    const byKey = new Map(appTrips.filter(a => a.import_key).map(a => [a.import_key, a]));
+    trips = trips.map(t => { const a = byKey.get(t.key); const ed = (a && a.edited_fields) || [];
+      let x = a && ed.includes('vehicle') && !ed.includes('expected_price') && a.vehicle ? { ...t, expected_price: price(t.kind, a.vehicle, t.place) || t.expected_price } : t;
+      if (ed.includes('together_split')) x = { ...x, flags: (x.flags || []).filter(f => !/^\d+ people, \d+ transfers? paid — one covers \d+$/.test(f)) };
+      return x; });
     const guests = okGuests.map(g => ({ ...g, hq_match: null, partner: partnerOf(g.booking_ref) || null }));
     const guestPlan = B.planGuests(guests, appGuests);
     // Week asks «cancelled?» only for a stored guest whose check-out is inside the report window.

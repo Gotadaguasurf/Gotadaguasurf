@@ -74,7 +74,8 @@ test('window: check-out −3..+32 days around the day the report was sent; no ch
 const ROOM = '13 - Anchor Point mixed shared room (8pax)';
 const maBk = (ref, ci, co, name, extra = {}) => ({ ref, ci, co, guests: [{ name, arrT: '10:00', arrF: 'FR1234' }], lines: [
   { p: ROOM, person: name, start: ci, end: co, price: 300 }, { p: 'Airport Transfer Morocco (Agadir)', person: name, start: ci, price: 30 }], ...extra });
-const MA_CAT = [{ name: 'Agadir Airport — Car', cost_per_guest: '250.00', picker_tab: 'airport', sort_order: 100 }, { name: 'Agadir Airport — Minivan', cost_per_guest: '300.00', picker_tab: 'airport', sort_order: 200 }];
+const { maRows, slRows } = require('./catalog-fixtures');
+const MA_CAT = maRows();   // /prices as the camp hub reads it (capacity column, covers_pax, bl_product)
 const appTrip = (id, ref, date, co, extra = {}) => ({ id, booking_ref: ref, kind: 'airport_arrival', trip_date: date, trip_time: '10:00', place: 'AGA', pax: 1, status: 'planned', source: 'bookinglayer',
   import_key: `bl:${ref}:arr`, booking_checkout: co, guest_names: 'X', payment_entry_id: null, last_import_at: '2026-11-10T00:00:00Z', edited_fields: [], ...extra });
 
@@ -118,7 +119,7 @@ test('camp report: refused — no price column, no prices, nothing for this camp
   const base = { fileName: 'r.csv', slug: 'morocco', appTrips: [], appGuests: [], catalog: MA_CAT, now: '2026-11-17T10:00', receivedYmd: '2026-11-17' };
   const { csv } = require('./bl-report-csv');
   expect(I.planCampReport({ ...base, text: csv([bk]) }).refused).toMatch(/Final price/);
-  expect(I.planCampReport({ ...base, text: csvPriced([bk]), catalog: [] }).refused).toMatch(/no transfer prices/);
+  expect(I.planCampReport({ ...base, text: csvPriced([bk]), catalog: [] }).refused).toMatch(/no transfer rows/);
   expect(I.planCampReport({ ...base, text: csvPriced([{ ...bk, status: 'Cancelled' }]) }).refused).toMatch(/no live booking/);
   expect(I.planCampReport({ ...base, text: 'a,b\n1,2' }).refused).toMatch(/not the camp report/);
   const ok = I.planCampReport({ ...base, text: csvPriced([bk]) });
@@ -127,11 +128,13 @@ test('camp report: refused — no price column, no prices, nothing for this camp
   expect(ok.rpc.p_export_date).toBe('2026-11-17');
 });
 
-test('prices from /prices: Morocco per airport, Sri Lanka per direction', () => {
-  const ma = I.pricesFromCatalog(MA_CAT.concat([{ name: 'Marrakech Airport — Car', cost_per_guest: 1200, picker_tab: 'airport', sort_order: 1000 }, { name: 'Surf Imsouane — Car', cost_per_guest: 9, picker_tab: 'surf' }]), 'morocco');
+test('prices from /prices (lib/transport-catalog.js, as presetPrice in transport.js): Morocco per airport, Sri Lanka per direction', () => {
+  const ma = I.pricesFromCatalog(MA_CAT, 'morocco');
   expect([ma('airport_arrival', 'Car', 'AGA'), ma('airport_departure', 'Minivan', 'AGA'), ma('airport_arrival', 'Car', 'RAK'), ma('airport_arrival', 'Car', 'ESU')]).toEqual([250, 300, 1200, 0]);
-  const sl = I.pricesFromCatalog([{ name: 'Airport → Surfcamp — Car', cost_per_guest: '20500.00', picker_tab: 'airport' }, { name: 'Surfcamp → Airport — Car', cost_per_guest: '19000.00', picker_tab: 'airport' }], 'sri-lanka');
-  expect([sl('airport_arrival', 'Car'), sl('airport_departure', 'Car'), sl('airport_arrival', 'Minivan')]).toEqual([20500, 19000, 0]);
+  expect(ma.ready).toBe(true);
+  const sl = I.pricesFromCatalog(slRows(), 'sri-lanka');
+  expect([sl('airport_arrival', 'Car'), sl('airport_departure', 'Car'), sl('airport_arrival', 'Large Van')]).toEqual([20500, 19000, 0]);
+  expect(I.pricesFromCatalog(slRows().filter(r => !/^Surfcamp/.test(r.name)), 'sri-lanka').ready).toBe(false);   // one way missing → not ready
 });
 
 test('«Last import» line: today / yesterday / date, automatic or by hand, amber after 3 hours', () => {
@@ -226,7 +229,7 @@ function fakeDb(seed = {}) {
   const T = { bl_report_settings: [{ id: 1, dry_run_camp: true, dry_run_revenue: true, archive: false, cancel_vanished: true }],
     mail_ingest_account: [{ id: 'acc', email: 'accounting@gotadaguasurf.com', active: true, scopes: 'https://www.googleapis.com/auth/gmail.readonly email' }],
     bl_report_runs: [], locations: [{ id: 'L-MA', slug: 'morocco' }, { id: 'L-SL', slug: 'sri-lanka' }], camp_trips: [], camp_week_guests: [],
-    pricing_catalog: MA_CAT.map(c => ({ ...c, location_id: 'L-MA', category: 'Transport', active: true, show_in_transport_picker: true })), bookings: [], partners: [{ name: 'Kilroy' }], ...seed };
+    pricing_catalog: MA_CAT.map(c => ({ ...c, location_id: 'L-MA' })), bookings: [], partners: [{ name: 'Kilroy' }], ...seed };
   const rpcCalls = [];
   class Q {
     constructor(t) { this.t = t; this.f = []; this.op = 'select'; }
@@ -288,7 +291,7 @@ const maFile = (aid, refs) => ({ name: 'AUTO Marrocos - hourly para a app (so ac
 let runReports;
 test.beforeAll(async () => {
   // reports.ts loads lib/*.js for their side effect (globals on self, as in Deno); in Node they are CommonJS → put them on globalThis first
-  globalThis.CampConfig = require('../lib/camp-config.js'); globalThis.GuestsTrips = require('../lib/guests-trips.js');
+  globalThis.CampConfig = require('../lib/camp-config.js'); globalThis.TransportCatalog = require('../lib/transport-catalog.js'); globalThis.GuestsTrips = require('../lib/guests-trips.js');
   globalThis.BlReport = require('../lib/bl-report.js'); globalThis.BlIngest = I; globalThis.BlRevenue = RV;
   ({ runReports } = require('../supabase/functions/mail-ingest/reports.ts'));
 });
@@ -364,9 +367,9 @@ test('the copies in supabase/functions/_shared/lib are identical to lib/ (run «
 test('the libraries load as Deno loads them (no «module», globals on self) and plan a report', () => {
   const ctx = { console, Intl, Date, Math, JSON, Map, Set, Number, String, Array, Object, RegExp, Error };
   ctx.self = ctx; vm.createContext(ctx);
-  ['camp-config.js', 'guests-trips.js', 'bl-report.js', 'bl-ingest.js', 'bl-revenue.js'].forEach(f =>
+  ['camp-config.js', 'transport-catalog.js', 'guests-trips.js', 'bl-report.js', 'bl-ingest.js', 'bl-revenue.js'].forEach(f =>
     vm.runInContext(`(function () { 'use strict'; ${fs.readFileSync(path.join(__dirname, '..', 'supabase', 'functions', '_shared', 'lib', f), 'utf8')}\n}).call(undefined);`, ctx, { filename: f }));
-  expect(Object.keys(ctx).filter(k => /^(CampConfig|GuestsTrips|BlReport|BlIngest|BlRevenue)$/.test(k)).sort()).toEqual(['BlIngest', 'BlReport', 'BlRevenue', 'CampConfig', 'GuestsTrips']);
+  expect(Object.keys(ctx).filter(k => /^(CampConfig|TransportCatalog|GuestsTrips|BlReport|BlIngest|BlRevenue)$/.test(k)).sort()).toEqual(['BlIngest', 'BlReport', 'BlRevenue', 'CampConfig', 'GuestsTrips', 'TransportCatalog']);
   const r = ctx.BlIngest.planCampReport({ text: csvPriced([maBk('2026-100', '2026-11-20', '2026-11-27', 'Ann A')]), fileName: 'r.csv', slug: 'morocco', appTrips: [], appGuests: [], catalog: MA_CAT, now: '2026-11-17T10:00', receivedYmd: '2026-11-17' });
   expect(r.ok).toBe(true); expect(r.rpc.p_trips.length).toBe(1);
 });
@@ -376,7 +379,7 @@ const SAMPLES = process.env.BL_REPORT_SAMPLES;
 test('real reports: routed by file name, planned without refusal, window guard on real data', () => {
   test.skip(!SAMPLES || !fs.existsSync(path.join(SAMPLES || '', 'sl.csv')), 'BL_REPORT_SAMPLES not set (the real files hold guest data and are not committed)');
   const runs = [['ma_1out.csv', 'morocco', 'AUTO Marrocos - hourly para a app (so accounting).csv', MA_CAT],
-    ['sl.csv', 'sri-lanka', 'AUTO Sri Lanka - hourly para a app (so accounting).csv', [{ name: 'Airport → Surfcamp — Car', cost_per_guest: 20500 }, { name: 'Airport → Surfcamp — Minivan', cost_per_guest: 25500 }, { name: 'Surfcamp → Airport — Car', cost_per_guest: 19000 }, { name: 'Surfcamp → Airport — Minivan', cost_per_guest: 24000 }]]];
+    ['sl.csv', 'sri-lanka', 'AUTO Sri Lanka - hourly para a app (so accounting).csv', slRows()]];
   for (const [f, slug, name, catalog] of runs) {
     expect(I.routeEmail({ subject: 'Report', attachments: [{ filename: name, mime: 'text/csv' }] })).toMatchObject({ kind: 'camp', camp: slug, archivable: true });
     const text = fs.readFileSync(path.join(SAMPLES, f), 'utf8');

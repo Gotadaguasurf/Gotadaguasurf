@@ -18,6 +18,7 @@
 // ════════════════════════════════════════════════════════════════════════════
 import '../_shared/lib-globals.ts'          // first: the libraries below register themselves on self
 import '../_shared/lib/camp-config.js'
+import '../_shared/lib/transport-catalog.js'
 import '../_shared/lib/guests-trips.js'
 import '../_shared/lib/bl-report.js'
 import '../_shared/lib/bl-ingest.js'
@@ -161,6 +162,17 @@ async function gmailModify(token: string, id: string, body: Record<string, unkno
   return out
 }
 
+// /prices rows as the camp hub reads them (camp-hub/index.html TRANSPORT_CATALOG_COLS); covers_pax / bl_product only once
+// supabase/transport-catalog-one-source.sql has run.
+const CATALOG_COLS = 'id,name,cost_per_guest,currency,sell_price,sell_currency,capacity,notes,linked_transport_preset_id,linked_camp_tab_id,picker_tab,sort_order'
+async function catalogRows(db: Any, loc: string) {
+  const q = (cols: string) => db.from('pricing_catalog').select(cols).eq('location_id', loc).eq('category', 'Transport').eq('show_in_transport_picker', true).eq('active', true).order('sort_order', { ascending: true })
+  let { data, error } = await q(CATALOG_COLS + ',covers_pax,bl_product')
+  if (error && /covers_pax|bl_product/.test(String(error.message || '') + String(error.details || '') + String(error.hint || ''))) ({ data, error } = await q(CATALOG_COLS))
+  if (error) throw new Error('reading /prices: ' + (error.message || String(error)))
+  return data || []
+}
+
 // ── Camp report ──────────────────────────────────────────────────────────────
 async function handleCamp(db: Any, runId: string, slug: string, text: string, fileName: string, receivedAt: string, settings: Any, dry: boolean) {
   const cfg = CC().get(slug)
@@ -175,8 +187,7 @@ async function handleCamp(db: Any, runId: string, slug: string, text: string, fi
   const [appTrips, appGuests, catalog] = await Promise.all([
     fetchAll(() => db.from('camp_trips').select('*').eq('location_id', loc.id).gte('trip_date', TRIPS_LOAD_FROM).order('trip_date').order('id')),
     fetchAll(() => db.from('camp_week_guests').select('*').eq('location_id', loc.id).order('id')),
-    fetchAll(() => db.from('pricing_catalog').select('name, cost_per_guest, picker_tab, sort_order, active, show_in_transport_picker').eq('location_id', loc.id)
-      .eq('category', 'Transport').eq('active', true).eq('show_in_transport_picker', true).order('sort_order')),
+    catalogRows(db, loc.id),
   ])
   const now = BI().localNow(cfg.tz)
   const receivedYmd = BI().localNow(cfg.tz, receivedAt).slice(0, 10)
