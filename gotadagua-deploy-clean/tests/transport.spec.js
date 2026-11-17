@@ -1308,6 +1308,44 @@ test('QA re-check: a planned run and a removed (tombstone) one on the same route
   expect(st.calls.filter(c => c.t === 'trip_insert').length).toBe(0);
 });
 
+test('final QA: Nadith\'s Send never carries Francisco\'s surf cancellation; Pay «−» on a run the driver has (still to come) keeps it as CANCELLED for the next Send; in the local view Pay adds / removes only his areas', async ({ page, browser }) => {
+  await page.clock.setFixedTime(new Date('2026-11-13T04:30:00Z'));
+  const snap = (label) => ({ trip_date: '2026-11-13', trip_time: '14:00', label, to: 'Sampath', batch: 'afternoon' });
+  const trips = [
+    run(41, { trip_date: '2026-11-13', trip_time: '14:00', status: 'cancelled', needs_resend: true, sent_at: '2026-11-13T01:30:00Z', sent_snapshot: snap('Camp → Ahangama') }),   // Francisco removed a surf run
+    run(42, { trip_date: '2026-11-13', trip_time: '14:00', status: 'done', route: 'Market / food', purpose: 'food', expected_price: 300, sent_at: '2026-11-13T01:30:00Z', sent_snapshot: snap('Market / food') }),
+    run(43, { trip_date: '2026-11-12', trip_time: '07:30', status: 'done' }),                                                                           // a surf run owed (yesterday)
+  ];
+  const st = await open(page, { query: '&view=local', trips });
+  await page.evaluate(() => showPage('transport'));
+  await page.waitForFunction(() => window.TransportUI && TransportUI._state.loaded, null, { timeout: 10000 });
+  const key = (p) => p.evaluate(id => TransportUI.batchesOf('2026-11-13', id).find(x => x.batch === 'afternoon').key, D.sampath);
+  expect(await key(page)).toBe('sent');                                                       // he does not see Francisco's change
+  expect(await page.evaluate(id => TransportUI.planMessage('2026-11-13', id), D.sampath)).toBe('');
+  // Pay (local): the surf group has no «−»; «Run not in the list» offers only his camp runs
+  await page.evaluate(id => TransportUI.payPick(id), D.sampath);
+  await expect(page.locator('#trOv [data-pay-group*="Ahangama"] [data-pay-minus]')).toHaveCount(0);
+  await page.evaluate(() => TransportUI.payMinus(TransportUI.payGroups(TransportUI._state.payDraft).find(g => /Ahangama/.test(g.key)).key));
+  await page.waitForTimeout(300);
+  expect(st.calls.filter(c => ['trip_delete', 'trip_update'].includes(c.t))).toEqual([]);
+  await page.click('#py_add');
+  const opts = await page.locator('#py_ar option').allInnerTexts();
+  expect(opts.every(o => /^(Market \/ food|Laundry|Staff|Errand)/.test(o))).toBe(true);
+  // Francisco: Pay «−» on the market run he sent (still to come) → kept as cancelled, the next Send says so
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const p2 = await ctx.newPage();
+  await p2.clock.setFixedTime(new Date('2026-11-13T04:30:00Z'));
+  const st2 = await openTab(p2, { trips: trips.map(t => ({ ...t })) });
+  expect(await key(p2)).toBe('changed');                                                      // he sees his own cancellation
+  await p2.evaluate(id => TransportUI.payPick(id), D.sampath);
+  await p2.locator('#trOv [data-pay-group*="Market"] [data-pay-minus]').click();
+  expect((await call(st2, 'trip_update')).body).toMatchObject({ status: 'cancelled', needs_resend: true });
+  expect(st2.calls.filter(c => c.t === 'trip_delete').length).toBe(0);
+  await expect.poll(() => p2.evaluate(id => TransportUI.planMessage('2026-11-13', id), D.sampath))
+    .toBe('*UPDATE: TUK TUKS - AFTERNOON FRI 13 NOV · PICKUP 14:00*\n\n14:00 Camp → Ahangama ×1 CANCELLED\n14:00 Market / food ×1 CANCELLED');
+  await ctx.close();
+});
+
 test('free: a transfer for staff or a gift — Add a free airport transfer (Staff), mark a trip Free with its reason, delete one added by hand', async ({ page }) => {
   const errors = collectFatalErrors(page);
   const st = await openTab(page, { trips: NEXT_WEEK() });
@@ -1635,36 +1673,38 @@ test('local view (16 Nov 2026): Nadith has «Drivers» — owed line, runs, airp
   await expect(ah).toContainText('LKR 1,500');
   await expect(page.locator('#py_amt')).toHaveValue('1500');
   await expect(page.locator('#trOv label:has-text("Cash you are giving Sampath")')).toHaveCount(1);
-  // A run nobody logged: added done, ticked.
+  // A run nobody logged: added done, ticked — Nadith only adds camp runs (runAreas, 17 Nov 2026: surf and tours are Francisco's).
   await page.click('#py_add');
   await page.fill('#py_ad', '2026-11-11');
-  await page.selectOption('#py_ar', 'surf|Weligama');
+  expect((await page.locator('#py_ar option').allInnerTexts()).every(o => /^(Market \/ food|Laundry|Staff|Errand)/.test(o))).toBe(true);
+  await page.selectOption('#py_ar', 'camp|Laundry');
   await page.fill('#py_an', '2');
   await page.click('#py_addok');
   const ins = (await call(st, 'trip_insert', 2)).rows[0];
-  expect(ins).toMatchObject({ kind: 'tuktuk', trip_date: '2026-11-11', route: 'Weligama', purpose: 'surf', driver_id: D.sampath, expected_price: 1500, status: 'done', source: 'manual' });
-  await expect(page.locator('#trOv [data-pay-group]', { hasText: 'Weligama' })).toContainText('× 2');
-  await expect(page.locator('#py_amt')).toHaveValue('4500');
-  // A run that did not happen: «−» removes one.
-  await ah.locator('[data-pay-minus]').click();
+  expect(ins).toMatchObject({ kind: 'tuktuk', trip_date: '2026-11-11', route: 'Laundry', purpose: 'laundry', driver_id: D.sampath, status: 'done', source: 'manual' });
+  const lau = page.locator('#trOv [data-pay-group]', { hasText: 'Laundry' });
+  await expect(lau).toContainText('× 2');
+  // A run that did not happen: «−» removes one of his; the surf line has no «−» for him.
+  await expect(ah.locator('[data-pay-minus]')).toHaveCount(0);
+  await lau.locator('[data-pay-minus]').click();
   await call(st, 'trip_delete');
-  await expect(page.locator('#trOv [data-pay-group]', { hasText: 'Ahangama' })).toContainText('× 2');
-  await expect(page.locator('#py_amt')).toHaveValue('4000');
+  await expect(page.locator('#trOv [data-pay-group]', { hasText: 'Laundry' })).not.toContainText('× 2');
+  await expect(page.locator('#py_amt')).toHaveValue('1500');
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   await page.waitForTimeout(600);                                                    // let the sheet and the toast settle
   await page.screenshot({ path: path.join(DRV_SHOTS, 'nadith-pay-390.png') });
-  // Sampath says 4,200: the difference needs a reason.
-  await page.fill('#py_amt', '4200');
+  // Sampath says 1,700: the difference needs a reason.
+  await page.fill('#py_amt', '1700');
   await expect(page.locator('#py_save')).toBeDisabled();
   await page.click('#py_reasons .pill:has-text("Extra stop")');
   await page.click('#py_save');
   const pay = (await call(st, 'pay')).body;
   expect(pay.p_driver).toBe(D.sampath);
-  expect(pay.p_typed_amount).toBe(4200);
+  expect(pay.p_typed_amount).toBe(1700);
   expect(pay.p_diff_note).toBe('Extra stop');
   expect(pay.p_entries.every(e => e.payment_method === 'Cash' && e.source_kind === 'trip_payment')).toBe(true);
-  expect(pay.p_entries.map(e => [e.linked_item, e.amount_local])).toEqual([['Transport Surf Lesson', 4200]]);
-  expect(pay.p_entries[0].trip_ids.length).toBe(4);
+  expect(pay.p_entries.reduce((a, e) => a + e.amount_local, 0)).toBe(1700);
+  expect(pay.p_entries.flatMap(e => e.trip_ids).length).toBe(4);
   await expect(page.locator('#trOv')).not.toHaveClass(/open/);
   expect(norm(await page.locator('#trOwed').innerText())).toBe('OWED TO DRIVERS Dilan LKR 47,500 Pay Pay another driver');
   expect(st.calls.filter(c => c.t === 'link_set')).toEqual([]);
