@@ -80,6 +80,10 @@ header{display:none}
 .c-item.flash .ci-name,.c-item.flash .ci-desc,.c-item.flash .ci-price{color:#fff}
 .c-item-empty{grid-column:1/-1;background:var(--surface);border:1px dashed var(--border-2);border-radius:var(--r);padding:22px 18px;text-align:center;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:10px}
 .ci-name{font-size:12px;font-weight:700;color:var(--navy);line-height:1.25}
+.ci-disc{position:absolute;top:8px;right:8px;border-radius:999px;width:26px;height:26px;padding:0;font-size:12px;font-weight:800;line-height:1}
+@media (pointer:coarse){.ci-disc{width:32px;height:32px;top:6px;right:6px}}
+.ce-phone{display:none}
+.ac-what{color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ci-desc{font-size:10px;color:var(--muted);line-height:1.3;margin-top:1px}
 .ci-price{font-variant-numeric:tabular-nums;font-size:13px;color:var(--ocean);margin-top:3px}
 /* Right panel */
@@ -268,11 +272,20 @@ input.comp-err{border-color:var(--red)!important;box-shadow:0 0 0 2px rgba(220,3
    sticky bottom sheet so Total / Bill / Pay stay in reach. */
 @media(max-width:800px){
   .c-row{flex-direction:column;overflow-y:auto;-webkit-overflow-scrolling:touch}
-  .c-sidebar{width:100%;flex:0 0 auto;max-height:40vh;border-right:none;border-bottom:1px solid var(--border)}
+  /* 17 Nov 2026: guest list 28vh + tab 34vh (was 40 + 46) so the products get the middle of the screen */
+  .c-sidebar{width:100%;flex:0 0 auto;max-height:28vh;border-right:none;border-bottom:1px solid var(--border)}
+  .c-sb-head{padding:8px 12px}
+  .c-sb-actions{margin-bottom:6px}
+  .c-guest{padding:6px 10px}
   .c-center{flex:0 0 auto;overflow:visible;min-height:240px}
   .c-items{flex:0 0 auto;overflow:visible;max-height:none}
-  .c-right{width:100%;flex:0 0 auto;max-height:46vh;position:sticky;bottom:0;border-left:none;border-top:1px solid var(--border);box-shadow:0 -6px 20px rgba(22,36,58,.08);z-index:5}
-  .c-tab-list{max-height:22vh}
+  .c-right{width:100%;flex:0 0 auto;max-height:34vh;position:sticky;bottom:0;border-left:none;border-top:1px solid var(--border);box-shadow:0 -6px 20px rgba(22,36,58,.08);z-index:5}
+  .c-tab-list{max-height:14vh}
+  /* the «%» / gift button sits top-right of a card: the name never runs under it */
+  .ci-has-disc .ci-name{padding-right:30px}
+  .ce-desk{display:none}.ce-phone{display:inline}
+  /* Activity: whole guest and item names, the line wraps */
+  #acBody .ac-what{white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere}
   .subnav{padding:0 8px;overflow-x:auto}.snav-btn{padding:0 10px}
 }
 @media(max-width:700px){.menu-shell{grid-template-columns:1fr}.menu-grid{grid-template-columns:1fr}}
@@ -364,7 +377,7 @@ input.comp-err{border-color:var(--red)!important;box-shadow:0 0 0 2px rgba(220,3
   <div class="c-center">
     <div class="c-center-empty" id="chargeEmpty">
       <div style="font-weight:700;letter-spacing:-.02em;font-size:18px">Select a guest</div>
-      <div style="font-size:12px;max-width:180px;line-height:1.6">Pick someone from the left to start adding items to their tab.</div>
+      <div style="font-size:12px;max-width:180px;line-height:1.6"><span class="ce-desk">Pick someone from the left to start adding items to their tab.</span><span class="ce-phone">Pick a guest above to start adding items to their tab.</span></div>
     </div>
     <div id="chargeActive" style="display:none;flex-direction:column;flex:1;min-height:0;overflow:hidden">
       <div style="padding:10px 14px;border-bottom:1px solid var(--border);background:#fff;flex-shrink:0">
@@ -3066,11 +3079,11 @@ function renderItemGrid(){
     const glyph = isStaffRoster ? giftSvg : '%';
     const btnTitle = isStaffRoster ? 'Give as gift' : 'Give discount / gift';
     const discountBtn = showDiscount
-      ? `<button aria-label="${btnTitle}" title="${btnTitle}" onclick="event.stopPropagation();openDiscountModal('${esc(item.id||'')}', '${esc(item.n)}')" class="btn btn-a" style="position:absolute;top:8px;right:8px;border-radius:999px;width:26px;height:26px;padding:0;font-size:12px;font-weight:800;line-height:1">${glyph}</button>`
+      ? `<button aria-label="${btnTitle}" title="${btnTitle}" onclick="event.stopPropagation();openDiscountModal('${esc(item.id||'')}', '${esc(item.n)}')" class="btn btn-a ci-disc">${glyph}</button>`
       : '';
     if(hasAlt){
       const altLabel = String(item.altLabel || 'Offer');
-      return `<div class="card c-item-card${outOfStock?' out':''}" id="ci${i}" style="position:relative;padding:12px;display:flex;flex-direction:column;gap:8px;${outOfStock?'opacity:.5':''}">
+      return `<div class="card c-item-card${discountBtn?' ci-has-disc':''}${outOfStock?' out':''}" id="ci${i}" style="position:relative;padding:12px;display:flex;flex-direction:column;gap:8px;${outOfStock?'opacity:.5':''}">
         ${discountBtn}
         <button class="c-item-main" onclick="addItemById('${esc(item.id||'')}', '${esc(item.n)}', this)" ${outOfStock?'disabled':''} style="background:none;border:none;text-align:left;cursor:${outOfStock?'not-allowed':'pointer'};padding:0;font-family:inherit;color:inherit;display:flex;flex-direction:column;gap:4px">
           <div class="ci-name">${item.n}</div>
@@ -3088,7 +3101,7 @@ function renderItemGrid(){
     // absolute-position it. Falls back to a plain <button> when no
     // discount is available (Tours, Drinks, etc.).
     if(showDiscount){
-      return `<div class="c-item${outOfStock?' out':''}" id="ci${i}" style="position:relative">
+      return `<div class="c-item ci-has-disc${outOfStock?' out':''}" id="ci${i}" style="position:relative">
         ${discountBtn}
         <button onclick="addItemById('${esc(item.id||'')}', '${esc(item.n)}', this)" ${outOfStock?'disabled':''} style="background:none;border:none;text-align:left;cursor:${outOfStock?'not-allowed':'pointer'};padding:0;font-family:inherit;color:inherit;width:100%;display:flex;flex-direction:column;gap:4px">
           <div class="ci-name">${item.n}</div>
@@ -4996,7 +5009,7 @@ async function renderPosActivity(){
     const editedByName = edited ? (PROFILE_NAMES.get(r.updated_by) || 'someone else') : null;
     return `<div style="display:grid;grid-template-columns:1fr auto;gap:10px;padding:9px 14px;border-bottom:1px solid var(--border);font-size:12px${edited?';background:#fdf9ee':''}">
       <div style="min-width:0">
-        <div style="color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><strong>${who}</strong> added <strong>${r.item_name||'item'}</strong> to <strong>${guest}</strong></div>
+        <div class="ac-what"><strong>${who}</strong> added <strong>${r.item_name||'item'}</strong> to <strong>${guest}</strong></div>
         <div style="font-size:10px;color:var(--muted);margin-top:1px">${r.category||'—'} · ${when(addedAt(r.added_at))}${edited?` · edited by ${editedByName} ${when(r.updated_at)}`:''}</div>
       </div>
       <div style="font-variant-numeric:tabular-nums;font-weight:700;color:var(--navy);text-align:right;white-space:nowrap">${cur} ${Number(r.price_local||0).toFixed(0)}</div>

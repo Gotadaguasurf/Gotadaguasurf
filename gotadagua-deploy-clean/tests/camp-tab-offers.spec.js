@@ -62,7 +62,8 @@ async function stub(page, slug, tables) {
     const rows = T[t] || (T[t] = []);
     if (method !== 'GET') ctl.writes.push([method, t]);
     if (method === 'GET') {
-      const out = rows.filter(r => match(r, url));
+      let out = rows.filter(r => match(r, url));
+      if (t === 'camp_tab_items' && /camp_guests\(/.test(new URL(url).searchParams.get('select') || '')) out = out.map(r => ({ ...r, camp_guests: (T.camp_guests || []).find(g => g.id === r.guest_id) || null }));
       if (/vnd\.pgrst\.object/.test(req.headers().accept || '')) return out.length ? json(out[0]) : json({ code: 'PGRST116' }, 406);
       return json(out);
     }
@@ -447,4 +448,50 @@ test('offers + staff plus: screenshots at 390 and 1280; no horizontal overflow',
     await page.screenshot({ path: path.join(SHOTS, `staff-plus-this-week-${w}.png`), fullPage: w === 390 });
     expect(await frame.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
   }
+});
+
+// Phones (17 Nov 2026): at 390 the guest list took 40vh and the sticky «Current tab» 46vh, leaving
+// room for ~4 product cards; the «%» button covered item names; Activity cut guest names with «…».
+test('phones: Charge view leaves room for the products, the % button never covers a name; Activity rows wrap (desktop unchanged)', async ({ page }) => {
+  const c = CAMPS['sri-lanka'];
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Colombo' }).format(new Date());
+  const names = ['Anna Kowalska-Lindqvist', 'Bruno', 'Carla', 'Daan', 'Elif', 'Felix', 'Greta', 'Hugo', 'Ines', 'Jonas', 'Kira', 'Lars', 'Mia', 'Noah', 'Olga', 'Pablo', 'Quinn', 'Rosa', 'Maximilian Alexander von Hohenberg'];
+  const guests = names.map((n, i) => ({ id: `0000c0e9-0000-4000-8000-0000000003${String(i).padStart(2, '0')}`, week_id: WEEK, location_id: c.id, name: n, is_staff: false, paid: false, paid_at: null, closed_at: null, pax: 1, sort_order: (i + 1) * 10, meta: {} }));
+  const items = guests.map((g, i) => ({ id: `0000c0e9-0000-4000-8000-0000000004${String(i).padStart(2, '0')}`, guest_id: g.id, week_id: WEEK, location_id: c.id, category: 'Drinks', item_name: i % 2 ? 'Lion Lager' : 'Cocktail with a very long name', qty: 1, price_local: i % 2 ? 600 : 2000, currency: 'LKR',
+    added_at: `${today}T${String(8 + (i % 10)).padStart(2, '0')}:00:00.000Z`, price_type: 'regular', sort_order: 10, meta: { time: '' }, paid_at: null, created_by: '00000000-0000-4000-8000-000000000001' }));
+  const cat2 = [...catalog('sri-lanka'), { ...catalog('sri-lanka')[2], id: '0000c0e9-0000-4000-8000-000000000099', name: 'Cocktail with a very long name', sort_order: 950 }];
+  await page.setViewportSize({ width: 390, height: 844 });
+  const { frame } = await openCampTab(page, 'sri-lanka', { camp_guests: guests, camp_tab_items: items, pricing_catalog: cat2 });
+  const phase = process.env.MOBILE_PHASE || 'after';
+  fs.mkdirSync(SHOTS, { recursive: true });
+  await frame.locator('#glist .c-guest', { hasText: 'Anna' }).click();
+  await cat(frame, 'Drinks');
+  await page.waitForTimeout(400);
+  await frame.evaluate(() => document.querySelector('.c-row').scrollTo(0, 0));
+  await page.screenshot({ path: path.join(SHOTS, `mobile-charge-390-${phase}.png`) });
+  await frame.locator('.snav-btn[data-sub="activity"]').click();
+  await expect(frame.locator('#acBody')).toContainText('Maximilian');
+  await page.screenshot({ path: path.join(SHOTS, `mobile-activity-390-${phase}.png`) });
+  // Activity: the long guest name is shown whole (the line wraps)
+  await expect(frame.locator('#acBody .ac-what').first()).toBeVisible();
+  const cut = await frame.evaluate(() => [...document.querySelectorAll('#acBody .ac-what')].some(el => el.scrollWidth > el.clientWidth + 1));
+  expect(cut).toBe(false);
+  await frame.locator('.snav-btn[data-sub="charge"]').click();
+  const m = await frame.evaluate(() => {
+    const h = (sel) => document.querySelector(sel).getBoundingClientRect().height;
+    const disc = document.querySelector('#itemGrid .ci-disc'); const name = disc.parentElement.querySelector('.ci-name');
+    const d = disc.getBoundingClientRect(), n = name.getBoundingClientRect();
+    const textRight = n.right - parseFloat(getComputedStyle(name).paddingRight);
+    return { vh: window.innerHeight, sidebar: h('.c-sidebar'), right: h('.c-right'), disc: [d.width, d.height], overlap: textRight > d.left && n.top < d.bottom };
+  });
+  expect(m.sidebar).toBeLessThanOrEqual(m.vh * 0.28 + 1);
+  expect(m.right).toBeLessThanOrEqual(m.vh * 0.34 + 1);
+  expect(m.overlap).toBe(false);
+  await expect(frame.locator('#chargeEmpty')).toContainText(/Pick a guest above/);
+  // desktop: same sizes as before
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.waitForTimeout(200);
+  const dsk = await frame.evaluate(() => ({ sidebarW: document.querySelector('.c-sidebar').getBoundingClientRect().width, rightW: document.querySelector('.c-right').getBoundingClientRect().width, discW: document.querySelector('#itemGrid .ci-disc').getBoundingClientRect().width }));
+  expect(dsk).toEqual({ sidebarW: 220, rightW: 260, discW: 26 });
+  await expect(frame.locator('#chargeEmpty')).toContainText(/Pick someone from the left/);
 });
