@@ -311,15 +311,16 @@ test('staff plus: Sri Lanka — the first 7 drinks of the week free («Staff plu
   await expect(frame.locator('#cpByReason .cp-row[data-reason="staff_plus"]')).toContainText('Staff plus allowance');
   await expect(frame.locator('#cpLines')).toContainText('Staff plus allowance (7/7)');
   await expect(frame.locator('#cpLines')).not.toContainText('made an offer');          // automatic, not a manual offer
-  await page.evaluate(() => showPage('weekly'));
-  await expect(page.locator('#wplCompsList')).toContainText('Staff plus allowance (1/7)');
-  await expect(page.locator('#wplCompsList')).not.toContainText('made an offer');
-  await page.evaluate(() => showPage('pos'));
   // Pay all: only the charged lines reach the ledger
   await frame.locator('.snav-btn[data-sub="charge"]').click();
   await frame.locator('#payBtn').click();
   await expect.poll(() => rev(ctl).length).toBe(2);
   expect(rev(ctl).map(r => Number(r.amount_local)).sort((a, b) => a - b)).toEqual([300, 3000]);
+  // the hub's Weekly P&L Comps list: the allowance lines, not «made an offer»
+  await page.evaluate(() => showPage('weekly'));
+  await expect(page.locator('#wplCompsList')).toContainText('Staff plus allowance (1/7)');
+  await expect(page.locator('#wplCompsList')).not.toContainText('made an offer');
+  await page.evaluate(() => showPage('pos'));
   // saved on camp_tab_items.meta, survives a reload with the allowance intact
   await expect.poll(() => (ctl.T.camp_tab_items || []).filter(r => r.meta?.comp_reason === 'staff_plus').length, { timeout: 10000 }).toBe(7);
   await page.reload({ waitUntil: 'domcontentloaded' });
