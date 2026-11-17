@@ -537,3 +537,42 @@ test('morocco: a sent van changed afterwards (vehicle) → «Changed after sendi
   expect(H.EMOJI.test(txt)).toBe(false);
   expect(errors).toEqual([]);
 });
+
+test('morocco run time: ONE departure time per day (08:00, editable) in «Log runs» and «Plan the day», no afternoon session; the order shows it; Tours keep their own time', async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2026-11-14T09:00:00Z'));
+  const st = await openTab(page);
+  fs.mkdirSync(PLAN_SHOTS, { recursive: true });
+  await page.click('#transportRoot .tr-tabs .pill[data-cat="vans"]');
+  await page.click('#transportRoot [data-add-runs="vans"]');
+  await expect(page.locator('#tk_ses')).toHaveCount(0);                                  // no Morning / Afternoon in Morocco
+  await expect(page.locator('#tk_st')).toHaveValue('08:00');
+  await page.locator('.tr-tap-main[data-key="van|surf"]').click();
+  expect((await H.call(st, 'trip_insert')).rows[0]).toMatchObject({ trip_time: '08:00', status: 'done' });
+  await page.fill('#tk_st', '08:30'); await page.locator('#tk_st').dispatchEvent('change');
+  await page.waitForTimeout(350);
+  await page.locator('.tr-tap-main[data-key="van|surf"]').click();
+  expect((await H.call(st, 'trip_insert', 2)).rows[0]).toMatchObject({ trip_time: '08:30' });
+  await page.waitForTimeout(450);
+  await page.screenshot({ path: path.join(PLAN_SHOTS, 'ma-time-picker-390.png') });
+  await page.evaluate(() => TransportUI.closeModal());
+  // Tours: their own time
+  await page.click('#transportRoot .tr-tabs .pill[data-cat="tours"]');
+  await page.click('#transportRoot [data-add-runs="tours"]');
+  await expect(page.locator('#trOv .tr-ses label')).toHaveText('Tour leaves at');
+  await expect(page.locator('#tk_st')).toHaveValue('08:00');
+  await page.fill('#tk_st', '09:15'); await page.locator('#tk_st').dispatchEvent('change');
+  await page.waitForTimeout(350);
+  await page.locator('.tr-tap-main[data-key="van|dunes"]').click();
+  expect((await H.call(st, 'trip_insert', 3)).rows[0]).toMatchObject({ trip_time: '09:15', purpose: 'tour' });
+  await page.waitForTimeout(500);
+  await page.evaluate(() => TransportUI.closeModal());
+  // Plan the day (tomorrow): 08:00 by default, one batch, the departure in the message
+  await page.click('#transportRoot .tr-tabs .pill[data-cat="vans"]');
+  await page.click('#transportRoot [data-plan]');
+  await expect(page.locator('#tk_pt')).toHaveValue('08:00');
+  await page.selectOption('#tk_pr', 'van|surf'); await page.fill('#tk_pn', '2'); await page.click('#tk_padd');
+  await page.fill('#tk_pt', '08:20'); await page.selectOption('#tk_pr', 'van|imsouane'); await page.fill('#tk_pn', '1'); await page.click('#tk_padd');
+  await expect(page.locator('#tk_plan .tr-plan-line')).toHaveCount(2);
+  expect(await page.evaluate(id => TransportUI.planMessage('2026-11-15', id), H.D.fat)).toBe('*VANS - SUN 15 NOV*\n\n08:00 Surf Taghazout - 2 × Minivan\n\n08:20 Surf Imsouane - 1 × Minivan');
+  expect(await page.evaluate(id => TransportUI.batchesOf('2026-11-15', id).map(b => b.batch), H.D.fat)).toEqual(['day']);
+});

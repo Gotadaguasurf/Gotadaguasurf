@@ -467,3 +467,7 @@
 .tr-modal .tr-batches:first-of-type { margin-top: 0; }
 .tr-week-all { font-size: 12.5px; align-self: center; }
 .tr-count .tr-weeksent { font-weight: 600; }
+/* A run area someone else runs (Nadith: surf, tours): visible, not tappable. */
+.tr-tap-ro .tr-tap-main { background: var(--surface-2); border-style: dashed; border-color: var(--border); color: var(--muted); font-weight: 500; cursor: default; }
+.tr-tap-ro .tr-tap-n { color: var(--muted); }
+.tr-step-ro { gap: var(--sp-3); }

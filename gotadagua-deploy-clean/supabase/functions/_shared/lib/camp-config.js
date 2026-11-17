@@ -78,6 +78,12 @@
     // runSessionSplit is Morning.
     runSessions: [{ key: 'morning', label: 'Morning', time: '07:30' }, { key: 'afternoon', label: 'Afternoon', time: '14:00' }],
     runSessionSplit: '12:00',
+    // Who may add / plan / send / edit each area of runs (Miguel, 17 Nov 2026): the surf runs and the tours are always
+    // Francisco's (the full camp hub view), the camp runs (Market / food, Laundry, Staff, Errand) are Nadith's too.
+    // An entry is a view — 'manager' = the full camp hub, 'local' = ?view=local — or a login email. The others see
+    // those runs read-only; «Pay a driver» is not affected. To let the social host run the tours later, add their login
+    // email (or the name of their view, once it exists) to `tours`, e.g. tours: ['manager', 'host@gotadaguasurf.com'].
+    runAreas: { surf: ['manager'], tours: ['manager'], camp: ['manager', 'local'] },
     payMethod: 'Cash',
     airportSupplier: null,
     // Transport's page (16 Nov 2026 UX pass): one pill per kind of trip, the words this camp uses. `add` = the blue
@@ -183,7 +189,10 @@
     runs: { kind: 'other', label: 'Van run', plural: 'Van runs', vehicle: 'Van' },
     // «Plan the day» (17 Nov 2026, Miguel): the surf vans and tours are organised the DAY BEFORE and the order goes to
     // Fathoune that evening. «Today» stays one tap away (a late change).
-    planDay: 'tomorrow', planTime: '07:30',
+    planDay: 'tomorrow', planTime: '08:00',
+    // The vans leave in the morning and come back late in the afternoon: one departure time per day (editable per run),
+    // one batch per day, no afternoon session. The tours keep their own time (typed per run).
+    runDepartTime: '08:00',
     // The weekdays a surf course without a date has lessons (Date.getUTCDay: 0 = Sun). CONFIRM: Bookinglayer has only the
     // course start and the head coach picks the days; Mon–Fri assumed (17 Nov 2026). Transport → Overview «per surfer-day».
     surfCourseDays: [1, 2, 3, 4, 5],
