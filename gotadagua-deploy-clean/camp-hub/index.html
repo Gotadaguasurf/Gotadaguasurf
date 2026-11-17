@@ -10468,10 +10468,12 @@ function applyLocalManagerMode(){
 }
 function applyCampTabOnlyMode(){
   if(!CAMP_TAB_ONLY_MODE) return;
-  document.querySelectorAll('.ntab').forEach(btn=>{
+  // the phone drawer matches the desktop header: only Camp Tab, no actions (HQ / backup); Account → Log out stays
+  document.querySelectorAll('.ntab, .ntab-m').forEach(btn=>{
     const isPos = btn.dataset.page==='pos';
     btn.style.display = isPos ? '' : 'none';
   });
+  document.querySelectorAll('#mobNavDrawer > .nav-mob-lbl').forEach(l=>{ if(l.textContent.trim()==='Actions') l.style.display='none'; });
   const navActionWrap=document.querySelector('.nav-actions');
   if(navActionWrap) navActionWrap.style.display='none';
   showPage('pos');
@@ -10595,7 +10597,7 @@ async function filterLocationSwitcherByAccess(client, session){
 async function showHqShortcutIfAccessible(client, session){
   const btn=document.getElementById('hqShortcutBtn');
   const btnMob=document.getElementById('hqShortcutBtnMob');
-  const showBoth=()=>{ if(btn) btn.style.display=''; if(btnMob) btnMob.style.display=''; };
+  const showBoth=()=>{ if(btn) btn.style.display=''; if(btnMob && !CAMP_TAB_ONLY_MODE) btnMob.style.display=''; };   // camp-tab-only: the drawer has no actions, like the header
   if(!btn||!client||!session) return;
   const OWNER_EMAILS_HUB=new Set(window.__PLATFORM_OWNER_EMAILS || ['miguel@gotadaguasurf.com']);
   const email=String(session.user?.email||'').toLowerCase();
@@ -10735,7 +10737,7 @@ function renderAccessBlockScreen(result){
 async function hubSignOut(){
   try{
     const c = getHubSupabaseClient();
-    if(c) await c.auth.signOut();
+    if(c) await c.auth.signOut({ scope:'local' });   // this device only
   }catch(_){}
   window.location.href = '/';
 }

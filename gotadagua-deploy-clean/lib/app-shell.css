@@ -138,10 +138,7 @@ th .ic,.kpi-label .ic,.summary-lbl .ic{width:12px;height:12px;vertical-align:-2p
   .nav-logo-mark svg{height:24px}
   .nav-title-stack{display:none}
   .app-switch summary{height:28px;padding:0 8px 0 10px;font-size:11px}
-  .app-nav .nav-tabs{display:none}
-  .app-nav .nav-actions{display:flex;gap:0}
-  .app-nav .nav-actions > :not(.nav-signout){display:none}
-  .app-nav .nav-actions .nav-signout{padding:6px 10px;font-size:12px;min-height:32px;white-space:nowrap}
+  .app-nav .nav-tabs,.app-nav .nav-actions{display:none}
   .nav-hamburger{display:block}
 }
 

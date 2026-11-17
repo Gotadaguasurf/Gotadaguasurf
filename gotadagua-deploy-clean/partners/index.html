@@ -2780,7 +2780,7 @@ async function signOutTeam() {
       __realtimeChannel = null;
     }
   } catch (e) {}
-  try { await client.auth.signOut(); } catch (e) {}
+  try { await client.auth.signOut({ scope: 'local' }); } catch (e) {}   // this device only
   const badge = document.getElementById('userBadge');
   if (badge) {
     badge.style.display = 'none';

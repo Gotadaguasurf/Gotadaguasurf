@@ -16,7 +16,7 @@
    AppShell.setUser(text)        fills the user chip
    AppShell.setAccount({signOut, name})  the page's own sign-out → «Account» in the phone drawer,
                                  or a compact «Log out» in the header when the page has no drawer
-   AppShell.signOut(client)      default sign-out for pages without one (client.auth.signOut(), then /)
+   AppShell.signOut(client)      default sign-out for pages without one (client.auth.signOut({scope:'local'}), then /)
    AppShell.splash(title, text)  access/sign-in splash html
    AppShell.toast(msg, kind)     floating toast (creates #toast if missing)
    AppShell.icon(name, cls)      inline flat line icon (see ICON_PATHS; spec in /docs/DESIGN-SYSTEM.md)
@@ -191,9 +191,10 @@
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mountAccount, { once: true });
     else mountAccount();
   }
-  // Same call as every existing handler in the app (plain auth.signOut()), then back to the hub's login.
+  // This device only ({ scope:'local' }): Miguel runs the app on two computers at once, a phone log out must not
+  // sign the others out. Then back to the hub's login.
   async function signOut(client){
-    try { const c = typeof client === 'function' ? await client() : client; if (c && c.auth) await c.auth.signOut(); }
+    try { const c = typeof client === 'function' ? await client() : client; if (c && c.auth) await c.auth.signOut({ scope: 'local' }); }
     catch (e) { console.warn('[AppShell] signOut', e); }
     location.href = '/';
   }
@@ -330,13 +331,6 @@
   const api = { APPS, LOGO, menu, mountMenus, nav, mount, toggleMobile, setTab, setUser, setAccount, signOut, mountLogo, splash, toast, esc, $, eur, eur0, fetchAll, currentSlug, icon, flattenEmoji };
   window.AppShell = api;
   window.BusinessShell = api;
-  // Phones (17 Nov 2026, «no mobile não dá para fazer logout»): the header actions are hidden at ≤820px, so the
-  // page's own Log out / Sign out button is tagged and kept visible there (lib/app-shell.css .nav-signout).
-  function tagSignOut(){
-    document.querySelectorAll('.nav-actions button, .nav-actions a').forEach(b => {
-      if (/^\s*(log\s*out|sign\s*out)\s*$/i.test(b.textContent || '')) b.classList.add('nav-signout');
-    });
-  }
-  const auto = () => { mountMenus(); tagSignOut(); setTimeout(tagSignOut, 1500); if (document.body) watchEmoji(); };
+  const auto = () => { mountMenus(); if (document.body) watchEmoji(); };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', auto); else auto();
 })();

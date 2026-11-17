@@ -3,8 +3,9 @@
 // sign-out with AppShell.setAccount and the shell shows it: an «Account» section at the top of the
 // hamburger drawer, or a compact «Log out» in the header on pages without a drawer.
 // Each test runs at 390px, opens the page with a fake owner session, finds a visible «Log out»,
-// clicks it and checks the page's own handler ran (POST /auth/v1/logout, stubbed — nothing reaches
-// production) plus what that handler does afterwards (login screen / back to the hub).
+// clicks it and checks the page's own handler ran (POST /auth/v1/logout?scope=local, stubbed — nothing reaches
+// production; local = this device only, the owner's other computers stay signed in) plus what that handler does
+// afterwards (login screen / back to the hub).
 const { test, expect } = require('@playwright/test');
 const path = require('path');
 
@@ -44,6 +45,8 @@ async function setup(page) {
   });
   return ctl;
 }
+// every visible «Log out» / «Sign out» control on screen (header + open drawer) — a phone must see exactly one
+const visibleSignOuts = (page) => page.locator('button:visible, a:visible').filter({ hasText: /^\s*(log|sign)\s*out\s*$/i }).count();
 const noHorizontalScroll = (page) => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1);
 
 // Pages whose header has a hamburger drawer → «Account» section with the name + «Log out».
@@ -94,10 +97,12 @@ for (const p of DRAWER_PAGES) {
     await expect(btn).toBeInViewport();
     expect(await page.locator('#mobNavDrawer .nav-mob-logout-btn').count()).toBe(1);
     expect(await page.locator('#mobNavDrawer >> text=/^Sign out$/').count()).toBe(0);   // no second sign-out in the drawer
+    expect(await visibleSignOuts(page)).toBe(1);
     await page.waitForTimeout(400);   // drawer slide-in, for the screenshot
     await page.screenshot({ path: path.join(SHOTS, `${slug(p.name)}.png`) });
     await btn.click();
     await expect.poll(() => ctl.logouts.length, { timeout: 10_000 }).toBeGreaterThan(0);
+    expect(ctl.logouts.every(u => /[?&]scope=local\b/.test(u)), ctl.logouts.join(' ')).toBe(true);   // this device only
     await expectAfter(page, p.after);
   });
 }
@@ -112,9 +117,11 @@ for (const p of HEADER_PAGES) {
     await expect(btn).toHaveText(/Log out/);
     await expect(btn).toBeInViewport({ ratio: 1 });
     expect(await noHorizontalScroll(page)).toBe(true);
+    expect(await visibleSignOuts(page)).toBe(1);
     await page.screenshot({ path: path.join(SHOTS, `${slug(p.name)}.png`) });
     await btn.click();
     await expect.poll(() => ctl.logouts.length, { timeout: 10_000 }).toBeGreaterThan(0);
+    expect(ctl.logouts.every(u => /[?&]scope=local\b/.test(u)), ctl.logouts.join(' ')).toBe(true);   // this device only
     await expectAfter(page, p.after);
   });
 }
@@ -131,6 +138,23 @@ test('narrow phone (360px): the header «Log out» is fully on screen', async ({
     expect(await noHorizontalScroll(page), p.path).toBe(true);
     await page.screenshot({ path: path.join(SHOTS, `narrow-${slug(p.name)}.png`), clip: { x: 0, y: 0, width: 360, height: 140 } });
   }
+});
+
+test('camp-tab-only: the phone drawer matches the desktop header (Camp Tab only, no actions)', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await setup(page);
+  await page.goto('/camp-hub/?location=portugal&view=camp-tab-only', { waitUntil: 'domcontentloaded' });
+  const burger = page.locator('.nav-hamburger:visible').first();
+  await expect(burger).toBeVisible({ timeout: 15_000 });
+  await page.waitForTimeout(1500);   // boot: HQ shortcut check, week/transport gates
+  await burger.click();
+  await expect(page.locator('#mobNavDrawer .ntab-m:visible')).toHaveText(['Camp Tab']);
+  await expect(page.locator('#mobNavDrawer .nav-mob-lbl:visible')).toHaveText(['Account', 'Sections']);
+  await expect(page.locator('#mobLogoutBtn')).toBeVisible();
+  // desktop shows the same single tab
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await expect(page.locator('.app-nav .ntab:visible')).toHaveCount(1);
+  await expect(page.locator('.app-nav .ntab[data-page="pos"]')).toBeVisible();
 });
 
 test('phone header stays inside 390px with the drawer pages too', async ({ page }) => {

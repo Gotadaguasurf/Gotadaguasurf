@@ -3245,7 +3245,7 @@ document.getElementById('signOutBtn').addEventListener('click', async ()=>{
   unsubscribeRealtime();
   stopGmailAutoPoll();
   stopGmailRefresh();
-  try { await getClient().auth.signOut(); } catch(e){}
+  try { await getClient().auth.signOut({ scope: 'local' }); } catch(e){}   // this device only
   session = null; CONTACTS = []; PEOPLE = []; TASKS = []; PIPELINES = []; PIPELINE_STAGES = []; CONTACT_PIPELINE = []; TEAM_USERS = []; CURRENT_TEAM_USER = null; OUTREACH_ACTIVITY_RECENT = []; SEQUENCES = []; SEQUENCE_RUNS = []; CURRENT_SEQUENCE = null; TEMPLATES = []; showLogin();
 });
 
