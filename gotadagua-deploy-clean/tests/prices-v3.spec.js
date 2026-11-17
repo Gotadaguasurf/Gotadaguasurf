@@ -284,3 +284,76 @@ test('a tour linked to another route moves the route link to every vehicle of th
   expect(link.filters).toEqual([['id', 'in', '(pc-303,pc-305,pc-308)']]);
   expect(ctl.writes[0].body).toMatchObject({ linked_transport_preset_id: 'route:Souk' });
 });
+
+// The Bookinglayer audit of 17 Nov 2026 (prices_audit/fix.sql, not applied yet): seasons get several periods per year and
+// run into 2028, Junior Camp gets its first pack. The calendar and the price list take that shape as it comes.
+const AUDIT_SL = {
+  low: [{ start: '2026-05-30', end: '2026-06-06' }, { start: '2026-07-11', end: '2026-10-02' }, { start: '2027-05-29', end: '2027-06-04' }, { start: '2027-07-10', end: '2027-10-29' }, { start: '2028-05-20', end: '2028-06-02' }],
+  mid: [{ start: '2026-04-25', end: '2026-05-29' }, { start: '2026-10-03', end: '2026-11-06' }, { start: '2026-11-14', end: '2026-12-04' }, { start: '2027-04-24', end: '2027-05-28' }, { start: '2027-10-30', end: '2027-12-03' }, { start: '2028-04-22', end: '2028-05-19' }],
+  high: [{ start: '2025-12-13', end: '2026-04-24' }, { start: '2026-12-05', end: '2027-04-23' }, { start: '2027-12-04', end: '2028-04-21' }],
+};
+const withAudit = (db) => {
+  db.accommodation_seasons.filter(s => s.location_id === 'loc-sl').forEach(s => { s.date_ranges = AUDIT_SL[s.season_key]; });
+  db.accommodation_packs.push({ id: 'jc-pk', location_id: 'loc-jc', pack_key: 'weekly', label: 'Junior Surf Camp — Summer (7 nights)', description: 'Bookinglayer «Junior Surf Camp - Summer»: 7, 14 or 21 nights on the fixed arrival dates. Price per person per week.', price_basis: 'per_person_per_week', sort_order: 10, active: true });
+  db.accommodation_seasons.push({ id: 'jc-lo', location_id: 'loc-jc', season_key: 'low', label: 'LOW SEASON', date_ranges: [{ start: '2027-06-19', end: '2027-07-02' }, { start: '2027-07-31', end: '2027-08-28' }], sort_order: 10, active: true },
+    { id: 'jc-hi', location_id: 'loc-jc', season_key: 'high', label: 'HIGH SEASON', date_ranges: [{ start: '2027-07-03', end: '2027-07-30' }], sort_order: 30, active: true });
+  db.accommodation_room_types.push({ id: 'jc-r1', location_id: 'loc-jc', label: 'Dorm 8–9 beds', sort_order: 10, active: true }, { id: 'jc-r2', location_id: 'loc-jc', label: 'Single / Double room', sort_order: 40, active: true });
+  [['jc-lo', 'jc-r1', 729], ['jc-hi', 'jc-r1', 769], ['jc-lo', 'jc-r2', 829], ['jc-hi', 'jc-r2', 869]].forEach(([se, rt, p], i) =>
+    db.accommodation_prices.push({ id: 'jc-p' + i, location_id: 'loc-jc', pack_id: 'jc-pk', season_id: se, room_type_id: rt, occupancy: 1, sell_price: p, currency: 'EUR' }));
+};
+
+test('season calendar: several periods per season per year, 2026 → 2028, past years left out; Junior Camp accommodation shows', async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2026-11-17T10:00:00Z'));
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await openPrices(page, 'sri-lanka', { mutate: withAudit });
+  await expect(page.locator('#seasonCard .tl-year-lbl')).toHaveText(['2026', '2027', '2028']);   // the 2025 period is history
+  await expect(page.locator('#seasonCard .tl-track[data-year="2026"] .tl-seg.mid')).toHaveCount(3);   // Apr–May, Oct–Nov, Nov–Dec
+  await expect(page.locator('#seasonCard .tl-track[data-year="2027"] .tl-seg.high')).toHaveCount(2);  // until 23 Apr + from 4 Dec
+  await expect(page.locator('#seasonCard .tl-track[data-year="2028"] .tl-seg')).toHaveCount(3);
+  await expect(page.locator('#seasonCard .status-msg')).toHaveCount(0);                              // the periods do not overlap
+  await expect(page.locator('#seasonCard .tl-today')).toHaveCount(1);
+  await expect(page.locator('.season-block').first().locator('.season-dates')).toContainText('30 May – 6 Jun 2026 · 11 Jul – 2 Oct 2026 · 29 May – 4 Jun 2027');
+  // the 13-segment calendar fits a phone
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await noSideScroll(page)).toBe(true);
+  // Junior Camp: from «no accommodation» to its first pack, nothing else to change
+  await page.unrouteAll({ behavior: 'ignoreErrors' });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await openPrices(page, 'junior-camp', { mutate: withAudit });
+  await expect(page.locator('#accomCard .card-title')).toHaveText('Junior Surf Camp — Summer (7 nights)');
+  await expect(page.locator('#accomcell_jc-pk_jc-hi_jc-r2_1')).toHaveText('€869');
+  await expect(page.locator('#seasonCard .tl-year-lbl')).toHaveText(['2027']);                       // its first periods are summer 2027
+});
+
+test('price list with the audit data: 2028 periods by year, Junior Camp in «all camps», no Bookinglayer wording printed', () => {
+  const db = JSON.parse(JSON.stringify(DATA)); withAudit(db);
+  db.pricing_catalog.push({ id: 'x1', location_id: 'loc-sl', name: 'Yala Park Safari', category: 'Tour', sell_price: 80, currency: 'LKR', sell_currency: 'EUR', notes: 'Bookinglayer «Yala Park Safari» 80 € per person', active: true, sort_order: 110 });
+  const camp = (slug) => { const L = db.locations.find(l => l.slug === slug); const of = t => db[t].filter(r => r.location_id === L.id);
+    return { slug, label: L.name, catalog: of('pricing_catalog'), accom: { packs: of('accommodation_packs'), seasons: of('accommodation_seasons'), rooms: of('accommodation_room_types'), prices: of('accommodation_prices') } }; };
+  const y28 = PriceList.buildModel({ camps: [camp('sri-lanka')], period: '2028', today: '2026-11-17', sections: ['accommodation'] });
+  expect(y28.camps[0].accommodation[0].seasons.map(s => [s.label, s.dates])).toEqual([
+    ['Low Season', ['20 May – 2 Jun 2028']], ['Mid Season', ['22 Apr – 19 May 2028']], ['High Season', ['4 Dec 2027 – 21 Apr 2028']]]);
+  const all = PriceList.buildModel({ camps: ['portugal', 'sri-lanka', 'junior-camp'].map(camp), period: 'upcoming', today: '2026-11-17', sections: ['accommodation', 'tours'] });
+  expect(all.camps.map(c => c.slug)).toEqual(['portugal', 'sri-lanka', 'junior-camp']);
+  const jc = all.camps[2].accommodation[0];
+  expect(jc.desc).toBe('7, 14 or 21 nights on the fixed arrival dates. Price per person per week.');
+  expect(jc.seasons.map(s => s.dates)).toEqual([['19 Jun – 2 Jul 2027', '31 Jul – 28 Aug 2027'], ['3 Jul – 30 Jul 2027']]);
+  const html = PriceList.render(all, { logo: '' });
+  expect(html).toContain('Yala Park Safari');
+  expect(html).not.toMatch(/Bookinglayer|Camp Tab/);
+});
+
+test('phone header at 360: camp menu opens on screen, ☰ and the switches do not overlap', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 780 });
+  await openPrices(page, 'junior-camp');
+  for (const sel of ['details.app-switch:not(.loc-switch)', 'details.loc-switch']) {
+    await page.locator(`${sel} > summary`).click();
+    const box = await page.locator(`${sel} .app-switch-menu`).boundingBox();
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(360);
+    await page.locator(`${sel} > summary`).click();
+  }
+  const r = await page.evaluate(() => ['details.loc-switch > summary', '.nav-hamburger'].map(s => document.querySelector(s).getBoundingClientRect()).map(b => [b.left, b.right]));
+  expect(r[0][1]).toBeLessThanOrEqual(r[1][0]);
+  expect(await noSideScroll(page)).toBe(true);
+});

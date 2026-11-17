@@ -33,7 +33,16 @@
     const s = Number.isInteger(v) ? v.toLocaleString('en-GB') : v.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     return (cur || 'EUR') === 'EUR' ? '€' + s : `${cur} ${s}`;
   }
-  const isInternalNote = (s) => /^\s*imported from\b/i.test(String(s || ''));
+  // Notes written for the team, never for guests: «Imported from …», Bookinglayer product references, Camp Tab prices.
+  const isInternalNote = (s) => /^\s*imported from\b|\bbookinglayer\b|\bcamp tab\b|\bBL\b/i.test(String(s || ''));
+  // A pack description is always printed: Bookinglayer references are cut out of it, never the guest facts.
+  function guestText(s) {
+    let t = String(s || '');
+    t = t.replace(/\s*\((?:[^()]|\([^()]*\))*\b(?:Bookinglayer|BL)\b(?:[^()]|\([^()]*\))*\)/g, '');
+    t = t.replace(/Bookinglayer\s*«[^»]*»\s*:?\s*/g, '');
+    t = t.split(/(?<=\.)\s+/).filter(x => !/\bbookinglayer\b|\bBL\b/i.test(x)).join(' ');
+    return t.replace(/\s+([,.;])/g, '$1').replace(/\s{2,}/g, ' ').trim();
+  }
   const bySort = (a, b) => ((Number(a.sort_order) || 100) - (Number(b.sort_order) || 100)) || String(a.name || a.label || '').localeCompare(String(b.name || b.label || ''));
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   function fmtRange(r) {
@@ -76,7 +85,7 @@
       }
       if (!blocks.length) continue;
       const flex = pack.price_basis === 'per_person_per_night';
-      out.push({ label: pack.label, desc: pack.description || '', flex, basis: flex ? 'Per person, per night' : (pack.price_basis === 'per_person_per_week' ? 'Per person, 7 nights' : 'Per person'),
+      out.push({ label: pack.label, desc: guestText(pack.description), flex, basis: flex ? 'Per person, per night' : (pack.price_basis === 'per_person_per_week' ? 'Per person, 7 nights' : 'Per person'),
         currency: cur, occs: occs.map(occLabel), seasons: blocks });
     }
     return out;
@@ -211,7 +220,7 @@
     return cover + camps + end;
   }
 
-  const api = { buildModel, render, money, inPeriod, fmtRange, CONTACT, CAMP_ORDER, CAMP_LABEL, isInternalNote };
+  const api = { buildModel, render, money, inPeriod, fmtRange, CONTACT, CAMP_ORDER, CAMP_LABEL, isInternalNote, guestText };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.PriceList = api;
 })(typeof window !== 'undefined' ? window : this);

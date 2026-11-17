@@ -25,7 +25,7 @@ const match = (row, f) => f.every(([k, op, v]) => {
 });
 
 async function stubPrices(page, opts = {}) {
-  const db = JSON.parse(JSON.stringify(DATA));
+  const db = JSON.parse(JSON.stringify(opts.data || DATA));   // opts.data: another fixture of the same shape
   db.pricing_areas = opts.areas || [{ key: 'diploria', label: 'Diploria', cats: ['Diploria'], icon: null, sort_order: 55, hidden: false }];
   db.ledger_entries = opts.ledger || [];
   db.camp_tab_items = opts.tabItems || [];
