@@ -13,12 +13,24 @@
 // UX pass (16 Nov 2026, Miguel: «van runs???? depois pay driver e depois add transfer???… sem coisas duplicadas»):
 //   · the page reads top-down: the pills (All · Airport · Surf vans · Tours · Overview — CampConfig.transportTabs), «To do»
 //     chips, «Owed to drivers» (each driver «Pay» = the one way to pay), the week bar with the pill's ONE blue button
-//     (Airport / All: Send the whole week; a runs pill: Add surf vans / tour vans / tuk-tuk runs + Plan tomorrow), the
+//     (Airport / All: Send the whole week; a runs pill: Add surf vans / tour vans / tuk-tuk runs + Plan the day), the
 //     days, and «Drivers and contacts · Export month» at the foot. No header button row any more.
 //   · an airport transfer by hand is FREE only (staff, gift, compensation, other): guests' transfers come from Bookinglayer.
 //   · every airport row has one checkpoint strip — Booked · Info · Driver · Guest · Paid — and a labelled «Edit».
 //   · Overview (v2): three numbers (cost with up/down, owed now, per person), the year as bars by kind, one bar per kind,
 //     drivers and suppliers; old months read like new ones (lib/transport-overview.js classifies the ledger lines).
+// Plan the day → send (17 Nov 2026, Miguel: «o dia é organizado primeiro, depois a mensagem é enviada ao motorista»):
+//   · Sri Lanka (tuk-tuks): marked in the run sheet per lesson session — Morning / Afternoon with its pickup time
+//     (CampConfig.runSessions) — then one blue «Send to Sampath on WhatsApp» for the runs of the day not sent yet; the
+//     afternoon message never repeats the morning. «Plan the day» (default today, Tomorrow a tap away) is the second door
+//     to the same batches. The runs he marks are the ones done.
+//   · Morocco (surf vans, tours): «Plan the day», default TOMORROW (Today a tap away), one batch per day, sent to Fathoune
+//     the evening before; «All went as planned» in «Log runs» marks the plan done (the same rows, never new ones).
+//   · Each batch: «Not sent» / «Planned · not sent» → «Sent 07:12 ✓ to Sampath» → a run added, edited or removed while
+//     the driver still has it to come → «Changed after sending — send again», and the resend lists only the changes
+//     («UPDATE:», … NEW / (was 2) / CANCELLED). States live in sent_at / needs_resend / sent_snapshot (no new column).
+//   · Airport: the day header shows «Not sent» / «Sent 18:30 ✓ to Dilan» / «Changed after sending — send again · N»,
+//     «Send the update» sends only the changed / new / cancelled transfers; the week line «Week sent 16 Nov 19:00 · 2 changed since».
 // Driver payments, simplified (Miguel 16 Nov 2026, «sim, avança com a proposta dos motoristas»):
 //   · «Pay a driver» is the one door to pay a driver, in both camps. Tap a driver in «Owed to
 //     drivers»: everything done and unpaid since the last payment, by day × route, already ticked;
@@ -26,7 +38,7 @@
 //     remaining difference needs a reason. Sri Lanka writes Cash rows split by item; Morocco one
 //     Bank Transfer row, or links the SG transfer already loaded from the statement.
 //   · Sri Lanka ?view=local (Nadith) has this page as «Drivers»: the owed line, the runs (log and
-//     Plan tomorrow) and the day list; airport rows are read-only there. supabase/camp-trips-local-pay.sql
+//     Plan the day, send) and the day list; airport rows are read-only there. supabase/camp-trips-local-pay.sql
 //     lets him log tuk-tuk runs and pay; nothing else in his access changes.
 //   · Reconcile and the week-total tiles are gone. Two chips stay: «N payments to check» (a
 //     payment typed elsewhere that is not linked → Link trips) and «N paid, not done».
@@ -39,7 +51,7 @@
 //   Reconcile  trips ↔ payments, like HQ → Month close → Reconcile.
 //   The Monday Guests import has one door, in Week (15 Nov 2026: «Week = guests and camp
 //   teams, Transport = drivers and money»): Week shows renderNext() as TransportUI.importHtml.
-//   + Tuk-tuk runs (one tap = one run today; «Plan tomorrow» + the WhatsApp order
+//   + Tuk-tuk runs (one tap = one run; «Send» / «Plan the day» + the WhatsApp order
 //     to the tuk-tuk contact), Add transfer (guest or staff), Pay a driver, Drivers.
 //   Every row shows Paid / Owed / Planned, and «Free» (staff, gift…) when nobody
 //   pays us for it — the driver is still paid. Week totals sit on top of Trips.
@@ -492,7 +504,7 @@
   // «N missing info» (16 Nov 2026 UX pass): an airport transfer still to come that the driver cannot do as it is —
   // the same rule as the red row (missingInfo: flight, time / pick-up time, phone, vehicle). It holds «without time».
   const noInfoTrip = t => isAirport(t) && counts(t) && !t.missing_since && !isDone(t) && !t.payment_entry_id && missingInfo(t).length > 0;
-  const FILTER_TEXT = { resend: 'time changed — resend', tosend: 'to send (next 48 h)', missing: 'not in the latest Bookinglayer file', notime: 'without time',
+  const FILTER_TEXT = { resend: 'changed — resend', tosend: 'to send (next 48 h)', missing: 'not in the latest Bookinglayer file', notime: 'without time',
     noinfo: 'missing info', paidnotdone: 'paid, not done', blcheck: 'to check in Bookinglayer', onhold: 'on hold — did the driver go?' };
   const onHoldTrips = () => TR.trips.filter(t => reconcileStatus(t) === 'on_hold');
   const paidNotDone = () => TR.trips.filter(t => reconcileStatus(t) === 'paid_not_done');
@@ -506,16 +518,21 @@
     const pnd = paidNotDone().length;
     const noinfo = TR.trips.filter(noInfoTrip).length;
     const chips = [];
-    const tm = GT.addDaysIso(cToday(), 1);
-    const order = TR.trips.filter(t => t.kind === RUN.kind && t.trip_date === tm && !t.payment_entry_id && (t.status === 'planned' || (t.status === 'sent' && t.needs_resend))).length;
-    if (order) chips.push(`<button class="health-chip" onclick="TransportUI.openPlan()">${order} ${RUN.lower} run${order === 1 ? '' : 's'} for tomorrow — send the order</button>`);
+    // Runs not sent yet (or changed since) for today and tomorrow: one chip per day, it opens where they are sent.
+    [cToday(), GT.addDaysIso(cToday(), 1)].forEach(d => {
+      const ids = [...new Set(TR.trips.filter(t => t.kind === RUN.kind && t.trip_date === d).map(t => t.driver_id || ''))];
+      const P = ids.flatMap(id => pendingOf(d, id)); if (!P.length) return;
+      const chg = P.some(x => x.key === 'changed');
+      const n = P.reduce((a, x) => a + (x.key === 'changed' ? x.fresh.length + x.chg.length + x.tomb.length : x.members.length), 0);
+      chips.push(`<button class="health-chip" data-chip="order" data-day="${d}" onclick="TransportUI.openPlan('${d}')">${chg ? `${RUN.plural} for ${dayWord(d)} changed — send the update` : `${n} ${RUN.lower} run${n === 1 ? '' : 's'} for ${dayWord(d)} — send the order`}</button>`);
+    });
     if (review) chips.push(`<button class="health-chip" data-chip="check" onclick="TransportUI.openChecks()">${review} payment${review === 1 ? '' : 's'} to check</button>`);
     if (pnd) chips.push(`<button class="health-chip" data-chip="paidnotdone" onclick="TransportUI.setView('trips','paidnotdone')">${pnd} paid, not done</button>`);
     const strip = () => chips.length ? `<div class="health-strip tr-strip"><span class="health-lbl">To do</span>${chips.join('')}</div>` : '';
     if (LOCAL) return strip();   // the airport chips are Francisco's
     const bl = blList().length;
     if (bl) chips.push(`<button class="health-chip" data-chip="blcheck" onclick="TransportUI.setView('trips','blcheck')">${bl} transfer${bl === 1 ? '' : 's'} to check in Bookinglayer</button>`);
-    if (resend) chips.push(`<button class="health-chip" onclick="TransportUI.setView('trips','resend')">${resend} time changed — resend</button>`);
+    if (resend) chips.push(`<button class="health-chip" onclick="TransportUI.setView('trips','resend')">${resend} changed — resend</button>`);
     if (toSend) chips.push(`<button class="health-chip" onclick="TransportUI.setView('trips','tosend')">${toSend} to send (next 48 h)</button>`);
     if (noinfo) chips.push(`<button class="health-chip" data-chip="noinfo" onclick="TransportUI.setView('trips','noinfo')">${noinfo} missing info</button>`);
     if (missing) chips.push(`<button class="health-chip" onclick="TransportUI.setView('trips','missing')">${missing} not in the latest Bookinglayer file</button>`);
@@ -560,12 +577,12 @@
     else if (f === 'noinfo') list = list.filter(noInfoTrip);
     else if (!special) list = list.filter(t => inCat(t, f));
     // The week bar: the week, then the one blue button of the pill — Airport / All: send the week to the driver
-    // contact; a runs pill: add today's runs (+ «Plan tomorrow», the order sent the evening before). Nadith: add runs.
+    // contact; a runs pill: add today's runs (+ «Plan the day»: Sri Lanka today, Morocco tomorrow). Nadith: add and plan runs.
     const tab = tabOf(f);
     const runTab = tab && tab.key !== 'airport' ? tab : (LOCAL && (f === 'all' || !f) ? TABS.find(x => x.key !== 'airport') : null);
     const acts = special ? '' : runTab
       ? `<button class="btn btn-p" data-add-runs="${runTab.key}" onclick="TransportUI.addOn('${cToday()}','${runTab.key}')">${ic('plus')} ${h(runTab.add || 'Add runs')}</button>
-         <button class="btn btn-s" data-plan onclick="TransportUI.planOn('${runTab.key}')">${ic('calendar')} Plan tomorrow</button>`
+         <button class="btn btn-s" data-plan onclick="TransportUI.planOn('${runTab.key}')">${ic('calendar')} Plan the day</button>`
       : LOCAL ? '' : weekSendBtn(ws, true);
     const filters = special
       ? `<div class="tr-showing" data-showing="${f}"><span>Showing only: <b>${h(FILTER_TEXT[f] || f)}</b> · ${list.length} trip${list.length === 1 ? '' : 's'}</span>
@@ -594,7 +611,8 @@
       const airOffAll = dayTrips.filter(t => isAirport(t) && ['cancelled', 'no_show', 'merged'].includes(t.status));
       const offHidden = airOffAll.filter(hidden); const offOpen = TR.openOff.has(day);
       const airOff = airOffAll.filter(t => !hidden(t) || offOpen);
-      const runs = dayTrips.filter(t => !isAirport(t));
+      // A run removed after its order went out stays as «cancelled» for the UPDATE message: not a run, not shown.
+      const runs = dayTrips.filter(t => !isAirport(t) && !(runOff(t) && !t.payment_entry_id));
       const sum = dayTrips.filter(counts).reduce((s, t) => s + Number(t.expected_price || 0), 0);
       const parts = [];
       if (air.length) parts.push(`${air.length} transfer${air.length === 1 ? '' : 's'}`);
@@ -603,7 +621,13 @@
       const blN = dayTrips.filter(blToCheck).length;   // shown, never blocking «Send the whole day»
       if (blN) parts.push(`<span class="tr-amber" data-day-bl="${blN}">${blN} to check in Bookinglayer</span>`);
       const sendable = LOCAL || !showAir ? [] : GT.transfersTrips(TR.trips, { day, now: colomboNow() });   // = what «Send the whole day» sends
-      const dayBtns = !LOCAL && showAir && (sendable.length >= 1 || air.filter(guestCan).length > 1) ? `<div class="row tr-day-btns">${sendable.length >= 1 ? `<button class="btn btn-s btn-sm" onclick="TransportUI.sendDay('${day}')" title="One WhatsApp to ${h(c ? c.name : 'the transport contact')} with every transfer of the day">${ic('send')} Send the whole day</button>
+      const aSt = showAir && !special ? airState(day, ws) : null;
+      const updBtn = aSt && aSt.key === 'changed';
+      const dayBtns = !LOCAL && showAir && (sendable.length >= 1 || updBtn || air.filter(guestCan).length > 1) ? `<div class="row tr-day-btns">${updBtn
+            ? `<button class="btn btn-s btn-sm" data-send-update="${day}" onclick="TransportUI.sendDayUpdate('${day}')" title="One WhatsApp to ${h(c ? c.name : 'the transport contact')} with only what changed since it was sent">${ic('send')} Send the update</button>
+            ${sendable.length >= 1 ? `<button class="btn btn-s btn-sm" onclick="TransportUI.sendDay('${day}')" title="One WhatsApp to ${h(c ? c.name : 'the transport contact')} with every transfer of the day">${ic('send')} Send the whole day</button>` : ''}
+            <button class="btn btn-s btn-sm" data-tick-day onclick="TransportUI.tickDay('${day}')">${ic('check')} Mark all sent ✓</button>`
+            : sendable.length >= 1 ? `<button class="btn btn-s btn-sm" onclick="TransportUI.sendDay('${day}')" title="One WhatsApp to ${h(c ? c.name : 'the transport contact')} with every transfer of the day">${ic('send')} Send the whole day</button>
             <button class="btn btn-s btn-sm" data-tick-day onclick="TransportUI.tickDay('${day}')">${ic('check')} Mark all sent ✓</button>` : ''}
             ${air.filter(guestCan).length > 1 ? `<button class="btn btn-s btn-sm" data-guest-day onclick="TransportUI.openGuestDay('${day}')" title="One WhatsApp per guest: the driver waits with a sign with their name">${ic('users')} Confirm with all guests of the day</button>` : ''}</div>` : '';
       const canAdd = !special && !(LOCAL && f === 'airport');
@@ -611,11 +635,100 @@
       const add = canAdd ? `<button class="btn-link tr-add" data-add="${day}" onclick="TransportUI.addOn('${day}')">${ic('plus')} ${f === 'airport' ? 'Free transfer' : 'Add'}</button>` : '';
       const offBtn = offHidden.length ? `<div class="tr-offtoggle"><button class="btn-link tr-show-off" data-show-off="${day}" data-n="${offHidden.length}" onclick="TransportUI.toggleOff('${day}')">${offOpen ? `Hide cancelled` : `Show ${offHidden.length} cancelled`}</button></div>` : '';
       const rows = air.map(tripRow).join('') + airOff.map(tripRow).join('') + offBtn + (runs.length ? runRows(runs, day) : '');
-      return `<div class="card tr-day${rows ? '' : ' tr-day-empty'}" id="trDay-${day}" data-day="${day}"><div class="card-hdr tr-dayhead"><div class="tr-dayttl"><div class="card-title">${fmtDay(day)}</div>
-          <div class="card-hint">${rows ? parts.join(' · ') : 'Nothing on this day'}</div></div><div class="tr-dayact">${add}</div>${dayBtns}</div>
+      const states = special ? '' : dayStateHtml(day, f, aSt);
+      return `<div class="card tr-day${rows || states ? '' : ' tr-day-empty'}" id="trDay-${day}" data-day="${day}"><div class="card-hdr tr-dayhead"><div class="tr-dayttl"><div class="card-title">${fmtDay(day)}</div>
+          <div class="card-hint">${rows ? parts.join(' · ') : 'Nothing on this day'}</div>${states}</div><div class="tr-dayact">${add}</div>${dayBtns}</div>
         ${rows ? `<div class="tr-rows">${rows}</div>` : ''}</div>`;
     }).join('');
     return filters + count + empty + `<div class="tr-sheet">${cols}${body}</div>` + catFooter(list, f, special);
+  }
+  // ── The day header: where the plan stands (17 Nov 2026) ────────────────────────────────────────────────────
+  // Runs pills (Tuk-tuks · Surf vans · Tours; Nadith's «Drivers»): planState → «Not planned» / «Planned · not sent» /
+  // «Sent 07:12 ✓ to Sampath» / «Changed after sending — send again» / «Logged ✓ · N runs», and one action: Plan, Send,
+  // Send the update, Log runs. Airport (and All): airState → «Not sent» / «Sent 18:30 ✓ to Dilan» / «Changed after
+  // sending — send again · N». Nadith sees the airport state without a button (Francisco sends those).
+  const runsPill = f => f === 'tuktuk' || f === 'vans' || f === 'tours' || (LOCAL && (f === 'all' || !f));
+  function dayStateHtml(day, f, aSt) {
+    const out = [];
+    if (runsPill(f)) {
+      const st = planState(day); const past = day < cToday(); const cat = f === 'all' || !f ? (TABS.find(x => x.key !== 'airport') || {}).key : f;
+      // The plan sheet on today / later; a past day opens «Log runs». Sri Lanka marks and sends from the run sheet.
+      const open = past || SESSIONS ? `TransportUI.addOn('${day}','${cat}')` : `TransportUI.planOn('${cat}','${day}')`;
+      const toLog = !SESSIONS && day <= cToday() && st.live.some(t => isDone(t) || day < cToday());
+      const badge = (x, label) => `<button class="badge ${PLAN_CLS[x.key]} tr-dstate-b" data-plan-state="${x.key}"${x.batch && SESSIONS ? ` data-batch="${x.batch}"` : ''} onclick="${open}" title="${past ? 'Log runs' : 'Open the runs of the day'}">${h(label)}</button>`;
+      if (SESSIONS) {
+        // Sri Lanka: one badge per lesson session that has runs (Morning · Sent 07:12 ✓ to Sampath), today and later.
+        const B = past ? [] : st.batches.filter(x => x.key !== 'none');
+        if (B.length || day <= GT.addDaysIso(cToday(), 1) && !past) out.push(`<span class="tr-dstate" data-plan-state="${st.key}">${B.length ? B.map(x => badge(x, `${batchName(x)} · ${planBadgeText(x)}`)).join('') : badge(st, 'Not planned')}${
+          st.batches.some(x => x.key === 'planned' || x.key === 'changed') && !past ? `<button class="btn-link" data-send-day="${day}" onclick="TransportUI.sendRunsDay('${day}')">${ic('send')} ${st.batches.some(x => x.key === 'changed') ? 'Send the update' : 'Send'}</button>`
+          : ''}</span>`);   // nothing to send: the badge and the day's «+ Add» open the sheet (no second «add» link)
+      } else if (st.key !== 'none' || (!past && day <= GT.addDaysIso(cToday(), 1))) {
+        const act = toLog ? `<button class="btn-link" data-log-day="${day}" onclick="TransportUI.logDay('${day}','${cat}')">${ic('check')} Log runs</button>`
+          : st.key === 'planned' ? `<button class="btn-link" data-plan-day="${day}" onclick="${open}">${ic('send')} Send</button>`
+          : st.key === 'changed' ? `<button class="btn-link" data-plan-day="${day}" onclick="${open}">${ic('send')} Send the update</button>` : '';
+        out.push(`<span class="tr-dstate" data-plan-state="${st.key}">${badge(st, planBadgeText(st))}${act}</span>`);
+      }
+    }
+    if (aSt) out.push(`<span class="tr-dstate" data-air-state="${aSt.key}" data-n="${aSt.n}"><span class="badge ${AIR_CLS[aSt.key]}">${h(airBadgeText(aSt))}</span></span>`);
+    return out.length ? `<div class="tr-dstates">${out.join('')}</div>` : '';
+  }
+  // The day header's «Send» (Sri Lanka): every driver with a batch to send that day, one WhatsApp each.
+  async function sendRunsDay(day) {
+    const ids = [...new Set(TR.trips.filter(t => t.kind === RUN.kind && t.trip_date === day).map(t => t.driver_id || ''))];
+    let any = false; for (const id of ids) if (pendingOf(day, id).length) any = (await sendBatches(day, id)) || any;
+    if (any) render();
+  }
+  // «Log runs» on a day header: the run sheet on that day, with the plan in it and «All went as planned».
+  function logDay(day, cat) { openRunsOn(day, cat); if (TR.tuk.mode !== 'log') { TR.tuk.date = day; TR.tuk.mode = 'log'; renderTuktuk(); } }
+  // Airport transfers of a day still to come, against what the transport contact was sent (sent_at / needs_resend /
+  // sent_snapshot, the same columns «Mark all sent ✓» and the status select write).
+  // ws: only the trips of that week (the closing Saturday's card shows its departures, not next week's arrivals).
+  function airState(day, ws) {
+    const now = colomboNow();
+    const inW = t => !ws || inWeek(t, ws);
+    const live = GT.transfersTrips(TR.trips, { day, now }).filter(inW);
+    const U0 = GT.transfersUpdateTrips(TR.trips, { day, now });
+    const U = { fresh: U0.fresh.filter(inW), changed: U0.changed.filter(inW), gone: U0.gone.filter(inW) }; U.n = U.fresh.length + U.changed.length + U.gone.length;
+    if (!live.length && !U.gone.length) return null;
+    const sent = live.filter(t => ['sent', 'confirmed'].includes(t.status));
+    const stamps = sent.concat(U.gone).map(t => t.sent_at).filter(Boolean).sort();
+    if (!sent.length && !U.gone.length) return { key: 'notsent', n: live.length, sentAt: '' };
+    return { key: U.n ? 'changed' : 'sent', n: U.n, sentAt: stamps.pop() || '' };
+  }
+  const AIR_CLS = { notsent: 'badge-grey', sent: 'badge-green', changed: 'badge-amber' };
+  function airBadgeText(a) {
+    const c = contact();
+    if (a.key === 'notsent') return 'Not sent';
+    if (a.key === 'sent') return `Sent${a.sentAt ? ' ' + sentWhen(a.sentAt) : ''} ✓${c ? ` to ${c.name}` : ''}`;
+    return `Changed after sending — send again · ${a.n}`;
+  }
+  // «Week sent 16 Nov 19:00 · 2 changed since»: the latest sent_at of the week's transfers (no separate week stamp is
+  // stored) and the transfers an UPDATE would carry.
+  function weekSentState(ws) {
+    // The week's own trips (tripInWeek: Sat–Fri + the closing Saturday's departures, never next week's arrivals), as
+    // «Send the whole week» and «Mark all sent ✓» see them. A day with something sent counts its new / changed /
+    // cancelled transfers as «changed since»; a day with nothing sent yet counts as «not sent». No week stamp is stored:
+    // the time shown is the latest sent_at of the week's transfers.
+    const now = colomboNow();
+    const live = GT.transfersTrips(TR.trips, { day: 'week', ws, now });
+    const U = GT.transfersUpdateTrips(TR.trips, { day: 'week', ws, now });
+    const sent = live.filter(t => ['sent', 'confirmed'].includes(t.status)).concat(U.gone);
+    if (!sent.length) return live.length ? { key: 'notsent', n: 0, notsent: live.length, sentAt: '' } : null;
+    const sentDays = new Set(sent.map(t => t.trip_date));
+    const notsent = U.fresh.filter(t => !sentDays.has(t.trip_date)).length;
+    const n = U.n - notsent;
+    const stamp = sent.map(t => t.sent_at).filter(Boolean).sort().pop() || '';
+    return { key: n ? 'changed' : 'sent', n, notsent, sentAt: stamp };
+  }
+  function weekSentSpan(ws) {
+    const w = weekSentState(ws); if (!w) return '';
+    const txt = w.key === 'notsent' ? 'Week not sent yet' : `Week sent${w.sentAt ? ' ' + stampText(w.sentAt) : ''}${w.n ? ` · ${w.n} changed since` : ' ✓'}${w.notsent ? ` · ${w.notsent} not sent` : ''}`;
+    return `<span class="tr-weeksent${w.key === 'changed' ? ' tr-amber' : ''}" data-week-sent="${w.key}" data-n="${w.n}" data-notsent="${w.notsent}">${h(txt)}</span>`;
+  }
+  function weekSentHtml(ws) {
+    const w = weekSentState(ws); if (!w) return '';
+    const txt = w.key === 'notsent' ? 'Week not sent yet' : `Week sent${w.sentAt ? ' ' + stampText(w.sentAt) : ''}${w.n ? ` · ${w.n} changed since` : ' ✓'}${w.notsent ? ` · ${w.notsent} not sent` : ''}`;
+    return `<div class="hint tr-weeksent${w.key === 'changed' ? ' tr-amber' : ''}" data-week-sent="${w.key}" data-n="${w.n}" data-notsent="${w.notsent}">${h(txt)}</div>`;
   }
   // One compact line per category for the week: Paid / Owed / Planned (cancelled and no-show never count).
   function catFooter(list, f, special) {
@@ -669,19 +782,26 @@
     const side = k => { const xs = air.filter(t => t.kind === k); return { n: xs.length, pax: xs.reduce((s, t) => s + (Number(t.pax) || 1), 0) }; };
     return { arr: side('airport_arrival'), dep: side('airport_departure') };
   }
+  // One line for the week (QA 17 Nov 2026: the count and the sent state merged): arrivals | departures | where the week
+  // stands with the driver contact · «Mark all sent ✓».
   function weekCountHtml(list, ws) {
-    const C = weekCount(list); if (!C.arr.n && !C.dep.n) return '';
+    const C = weekCount(list); const sent = weekSentSpan(ws); if (!C.arr.n && !C.dep.n && !sent) return '';
     const p = n => `${n} ${n === 1 ? 'person' : 'persons'}`;
     const todo = weekTickIds(ws).length;
-    return `<div class="hint tr-count" data-week-count><span>Arrivals ${C.arr.n} · ${p(C.arr.pax)}</span><span class="tr-count-sep">|</span><span>Departures ${C.dep.n} · ${p(C.dep.pax)}</span>${todo
+    return `<div class="hint tr-count" data-week-count><span>Arrivals ${C.arr.n} · ${p(C.arr.pax)}</span><span class="tr-count-sep">|</span><span>Departures ${C.dep.n} · ${p(C.dep.pax)}</span>${sent ? `<span class="tr-count-sep">|</span>${sent}` : ''}${todo
       ? `<span class="tr-count-tick">${todo} not marked sent · <button class="btn-link" data-week-tick onclick="TransportUI.tickWeek()">Mark all sent ✓</button></span>` : ''}</div>`;
   }
   // «Send the whole week»: the whole-week message that Week → Transfers sent (GT.transfersText, day 'week'), byte for byte.
   const weekTrips = ws => GT.transfersTrips(TR.trips, { day: 'week', ws, now: colomboNow() });
-  const weekTickIds = ws => weekTrips(ws).filter(t => !t.payment_entry_id && !isDone(t) && (t.status === 'planned' || t.needs_resend)).map(t => t.id);
+  const weekTickIds = ws => weekTrips(ws).filter(t => !t.payment_entry_id && !isDone(t) && (t.status === 'planned' || t.needs_resend)).map(t => t.id)
+    .concat(GT.transfersUpdateTrips(TR.trips, { day: 'week', ws, now: colomboNow() }).gone.map(t => t.id));
   function weekSendBtn(ws, primary) {
-    if (!weekTrips(ws).length) return '';
-    const c = contact();
+    const c = contact(); const w = weekSentState(ws);
+    // The week was sent and changed since: the blue button sends only the changes.
+    // The week was sent and changed since: the blue button sends only the changes; the whole week stays next to it.
+    const upd = w && w.key === 'changed' ? `<button class="btn ${primary ? 'btn-p' : 'btn-s btn-sm'}" data-send-week-update onclick="TransportUI.sendWeekUpdate()" title="One WhatsApp to ${h(c ? c.name : 'the transport contact')} with only what changed since the week was sent">${ic('send')} Send the week update</button>` : '';
+    if (!weekTrips(ws).length) return upd;
+    if (upd) return upd + `<button class="btn-link tr-week-all" data-send-week onclick="TransportUI.sendWeek()" title="One WhatsApp to ${h(c ? c.name : 'the transport contact')} with every transfer of the week still to come">or the whole week</button>`;
     return `<button class="btn ${primary ? 'btn-p' : 'btn-s btn-sm'}" data-send-week onclick="TransportUI.sendWeek()" title="One WhatsApp to ${h(c ? c.name : 'the transport contact')} with every transfer of the week still to come">${ic('send')} Send the whole week</button>`;
   }
   // One sheet row: Time | What | People | Driver | Price | Status. On a phone the row is two lines
@@ -948,10 +1068,11 @@
     modal(`Add on ${fmtDay(day)}`, 'What do you want to add?', `<div class="tr-picks">${opts.map(([k, label, icn]) => `<button class="tr-pick tr-pick-btn" data-add-cat="${k}" onclick="TransportUI.addOn('${day}','${k}')"><span>${ic(icn)} <b>${label}</b></span></button>`).join('')}</div>`, `<button class="btn btn-s" onclick="TransportUI.closeModal()">Cancel</button>`);
   }
   function openRunsOn(day, cat) {
-    const d = defaultDriver(RUN.drv);
+    const d = defaultDriver(RUN.drv); TR.tuk.session = ''; TR.tuk.pickup = {};   // the session follows the clock each time the sheet opens
     if (d) TR.tuk.driver = d.id;                    // vans and tours: Fathoune; tuk-tuks: Sampath (default_for)
     TR.tuk.cat = IS_SL ? '' : (cat === 'tours' || cat === 'vans' ? cat : '');
-    if (day > cToday()) { TR.tuk.planDate = day; TR.tuk.planRoute = ''; TR.tuk.mode = 'plan'; renderTuktuk(); }
+    // Sri Lanka marks the runs of any day in the run sheet (a later day: planned) and sends from there.
+    if (day > cToday() && !SESSIONS) { setPlanDay(day); TR.tuk.planRoute = ''; TR.tuk.mode = 'plan'; renderTuktuk(); }
     else { TR.tuk.date = day; TR.tuk.mode = 'log'; renderTuktuk(); }
   }
 
@@ -1093,15 +1214,42 @@
     if (await updateTrip(id, patch)) { render(); say(`Status: ${STATUS_STEPS[rank(to)][1]}`); } else render();
   }
   // The trips of the «Send the whole week» message, ticked Sent ✓ by id.
+  // «Mark all sent ✓» clears exactly what the UPDATE carries: never-sent → Sent, changed → stamped again (a Confirmed one
+  // stays Confirmed), cancelled after sending → told (needs_resend off, still cancelled).
+  const tickPatch = t => {
+    const now = new Date().toISOString();
+    if (['cancelled', 'no_show', 'merged'].includes(t.status)) return { sent_at: now, needs_resend: false };
+    return { status: t.status === 'confirmed' ? 'confirmed' : 'sent', sent_at: now, sent_snapshot: snapshot(t), needs_resend: false };
+  };
   async function tickIds(ids) {
-    const list = TR.trips.filter(t => (ids || []).includes(t.id) && isAirport(t) && !t.payment_entry_id && !isDone(t) && (t.status === 'planned' || t.needs_resend));
-    for (const t of list) await updateTrip(t.id, { status: 'sent', sent_at: new Date().toISOString(), sent_snapshot: snapshot(t), needs_resend: false });
+    const list = TR.trips.filter(t => (ids || []).includes(t.id) && isAirport(t) && !t.payment_entry_id && (
+      (!isDone(t) && (t.status === 'planned' || t.needs_resend)) || (['cancelled', 'no_show', 'merged'].includes(t.status) && t.needs_resend)));
+    for (const t of list) await updateTrip(t.id, tickPatch(t));
     render(); say(`${list.length} marked as sent`);
   }
+  // The trips of a day card: on the closing Saturday only that week's departures (as the badge counts them).
+  const dayScoped = day => TR.trips.filter(t => t.trip_date !== day || !isAirport(t) || !TR.week || inWeek(t, TR.week));
   async function tickDay(day) {
-    const list = TR.trips.filter(t => t.trip_date === day && isAirport(t) && !t.payment_entry_id && !isDone(t) && !onHold(t) && ['planned', 'sent'].includes(t.status) && (t.status === 'planned' || t.needs_resend));
-    for (const t of list) await updateTrip(t.id, { status: 'sent', sent_at: new Date().toISOString(), sent_snapshot: snapshot(t), needs_resend: false });
+    const U = GT.transfersUpdateTrips(dayScoped(day), { day, now: colomboNow() });
+    const list = dayScoped(day).filter(t => t.trip_date === day && isAirport(t) && !t.payment_entry_id && !isDone(t) && !onHold(t) && ['planned', 'sent', 'confirmed'].includes(t.status) && (t.status === 'planned' || t.needs_resend))
+      .concat(U.gone.filter(t => !t.payment_entry_id));
+    for (const t of list) await updateTrip(t.id, tickPatch(t));
     render(); say(`${list.length} marked as sent`);
+  }
+  // «Send the update»: only what changed since the day (or the week) was sent — «UPDATE:» in the title, no emoji.
+  function dayUpdateMessage(day) { return GT.transfersUpdateText(dayScoped(day), { day, now: colomboNow(), cfg: GTC, today: cToday() }); }
+  function weekUpdateMessage(ws) { return GT.transfersUpdateText(TR.trips, { day: 'week', ws: ws || TR.week, now: colomboNow(), cfg: GTC }); }
+  function sendDayUpdate(day) {
+    if (!GT.transfersUpdateTrips(dayScoped(day), { day, now: colomboNow() }).n) return;
+    openWa(dayUpdateMessage(day));
+    const c = contact();
+    say(`WhatsApp opened for ${c ? c.name : 'the transport contact'} — tap «Mark all sent ✓» once it is sent`);
+  }
+  function sendWeekUpdate() {
+    if (!GT.transfersUpdateTrips(TR.trips, { day: 'week', ws: TR.week, now: colomboNow() }).n) return;
+    openWa(weekUpdateMessage(TR.week));
+    const c = contact();
+    say(`WhatsApp opened for ${c ? c.name : 'the transport contact'} — tap «Mark all sent ✓» once it is sent`);
   }
 
   // ── Overview (Miguel, 16 Nov 2026: «ver o overview por semana e mês e ano para os diferentes tipos de transportes
@@ -1527,6 +1675,10 @@
   }
   async function setStatus(id, status) {
     const patch = { status, cancel_reason: status === 'cancelled' ? 'manual' : null };
+    // Cancelled after the transport contact got it: the day shows «Changed after sending» and the UPDATE says CANCELLED.
+    const t0 = TR.trips.find(x => x.id === id);
+    if (t0 && isAirport(t0) && (status === 'cancelled' || status === 'no_show') && ['sent', 'confirmed'].includes(t0.status) && t0.sent_at && !isDone(t0)) patch.needs_resend = true;
+    if (t0 && status === 'planned' && t0.needs_resend && ['cancelled', 'no_show'].includes(t0.status)) patch.needs_resend = false;
     if (status === 'planned') patch.cancel_reason = null;
     if (await updateTrip(id, patch)) { closeModal(); render(); say(status === 'no_show' ? 'Marked as no-show' : status === 'cancelled' ? 'Trip cancelled' : 'Trip restored'); }
   }
@@ -1616,35 +1768,77 @@
   const routeInCat = r => !TR.tuk.cat ? true : TR.tuk.cat === 'tours' ? r.purpose === 'tour' : r.purpose !== 'tour';
   function catRoutes() { const R = tukRoutes(); return { surf: R.surf.filter(routeInCat), camp: R.camp.filter(routeInCat), tour: R.tour.filter(routeInCat) }; }
   const routeOptions = (sel, byCat, vehicle) => { const R = byCat ? catRoutes() : tukRoutes(); const grp = (label, list) => list.length ? `<optgroup label="${label}">${list.map(r => `<option value="${h(r.key)}"${r.key === sel ? ' selected' : ''}>${h(r.label)} · ${priceText(r, vehicle)}</option>`).join('')}</optgroup>` : ''; return grp('Surf', R.surf) + grp('Camp runs', R.camp) + grp(IS_SL ? 'Tour' : 'Tours and trips', R.tour); };
+
+  // ── Plan the day (17 Nov 2026, Miguel: «o dia é organizado primeiro, depois a mensagem é enviada ao motorista») ──
+  // Sri Lanka plans the tuk-tuks in the MORNING for the SAME day and sends at once; Morocco plans the surf vans and
+  // tours the DAY BEFORE and sends to Fathoune that evening (CampConfig.planDay). The sheet has a day chip
+  // «Today / Tomorrow» that starts on the camp's day; the other one is a tap away.
+  const PLAN_DAY = CC.planDay === 'tomorrow' ? 'tomorrow' : 'today';
+  const planDefaultDay = () => PLAN_DAY === 'tomorrow' ? GT.addDaysIso(cToday(), 1) : cToday();
+  // The time a new run starts on: the camp's (07:30); planning today after it, the next quarter hour from now.
+  function planTimeFor(day) {
+    const base = CC.planTime || PLAN_DEFAULT_TIME;
+    if (day !== cToday() || base > cTime()) return base;
+    const [hh, mm] = cTime().split(':').map(Number); const q = Math.min(23 * 60 + 45, Math.ceil((hh * 60 + mm + 1) / 15) * 15);
+    return `${String(Math.floor(q / 60)).padStart(2, '0')}:${String(q % 60).padStart(2, '0')}`;
+  }
+  const dayWord = day => day === cToday() ? 'today' : day === GT.addDaysIso(cToday(), 1) ? 'tomorrow' : fmtDay(day);
   function openTuktuk(mode) {
-    const d = defaultDriver(RUN.drv);
+    const d = defaultDriver(RUN.drv); TR.tuk.session = ''; TR.tuk.pickup = {};
     TR.tuk.cat = '';                         // the header button: every route (a day's «+ Add» narrows it, openRunsOn)
     TR.tuk.date = TR.tuk.date || cToday(); TR.tuk.driver = TR.tuk.driver || (d && d.id) || '';
     TR.tuk.mode = mode === 'plan' ? 'plan' : 'log';
-    if (TR.tuk.mode === 'plan' && !TR.tuk.planDate) TR.tuk.planDate = GT.addDaysIso(cToday(), 1);
+    if (TR.tuk.mode === 'plan' && !TR.tuk.planDate) setPlanDay(planDefaultDay());
     renderTuktuk();
   }
-  const openPlan = () => { TR.tuk.planDate = GT.addDaysIso(cToday(), 1); openTuktuk('plan'); };
-  // «Plan tomorrow» on a runs pill: the order sheet for tomorrow, on that pill's routes.
-  function planOn(cat) {
+  function setPlanDay(day) { TR.tuk.planDate = day; TR.tuk.planTime = planTimeFor(day); }
+  // The chip «N runs for today — send the order» and the day header open the sheet on that day.
+  const openPlan = day => {
+    const d = /^\d{4}-\d\d-\d\d$/.test(String(day || '')) ? day : planDefaultDay();
+    if (SESSIONS) { openRunsOn(d, 'tuktuk'); return; }   // Sri Lanka marks and sends in the run sheet
+    setPlanDay(d); openTuktuk('plan');
+  };
+  // «Plan the day» on a runs pill: the order sheet on the camp's day, on that pill's routes.
+  function planOn(cat, day) {
     const d = defaultDriver(RUN.drv); if (d) TR.tuk.driver = d.id;
     TR.tuk.cat = IS_SL ? '' : (cat === 'tours' || cat === 'vans' ? cat : '');
-    TR.tuk.planDate = GT.addDaysIso(cToday(), 1); TR.tuk.planRoute = ''; TR.tuk.mode = 'plan'; renderTuktuk();
+    setPlanDay(/^\d{4}-\d\d-\d\d$/.test(String(day || '')) ? day : planDefaultDay()); TR.tuk.planRoute = ''; TR.tuk.mode = 'plan'; renderTuktuk();
   }
   // The run sheet's title says what it is for: «Surf vans», «Tour vans», «Tuk-tuk runs» (CampConfig.transportTabs).
   const sheetTitle = () => { const t = tabOf(TR.tuk.cat); return t && t.sheet ? t.sheet : IS_SL ? ((tabOf('tuktuk') || {}).sheet || 'Tuk-tuk runs') : 'Surf vans and tours'; };
+  // A run still on the plan (not logged, not removed): planned / sent / confirmed.
+  const LIVE_RUN = ['planned', 'sent', 'confirmed'];
+  const runOff = t => ['cancelled', 'no_show', 'merged'].includes(t.status);
   function renderTuktuk() {
     const plan = TR.tuk.mode === 'plan';
-    const seg = `<div class="pills tr-seg" id="tk_mode"><button type="button" class="pill${plan ? '' : ' active'}" onclick="TransportUI.tukMode('log')">Log runs</button><button type="button" class="pill${plan ? ' active' : ''}" onclick="TransportUI.tukMode('plan')">Plan tomorrow</button></div>`;
+    const seg = `<div class="pills tr-seg" id="tk_mode"><button type="button" class="pill${plan ? '' : ' active'}" onclick="TransportUI.tukMode('log')">Log runs</button><button type="button" class="pill${plan ? ' active' : ''}" onclick="TransportUI.tukMode('plan')">Plan the day</button></div>`;
     if (plan) return renderPlan(seg);
     const R = catRoutes(); const day = TR.tuk.date; const drv = TR.tuk.driver;
-    const runs = TR.trips.filter(t => t.kind === RUN.kind && t.trip_date === day && (t.driver_id || '') === drv);
-    const count = r => runs.filter(t => t.route === r.route && t.purpose === r.purpose).length;
-    const btn = r => `<div class="tr-tap"><button class="tr-tap-main" data-key="${h(r.key)}" onclick="TransportUI.tap('${h(r.key)}')"><span>${h(r.label)}</span><span class="hint num">${priceText(r, IS_SL ? '' : tukVehicle())}</span><b class="tr-tap-n num">${count(r)}</b></button>
-      <button class="btn btn-s btn-icon tr-tap-minus" title="Remove the last unpaid run" onclick="TransportUI.untap('${h(r.key)}')" ${count(r) ? '' : 'disabled'}>${ic('minus')}</button></div>`;
+    // A removed run (cancelled after the order went out) is not a run: never counted, never tapped away again.
+    const runs = TR.trips.filter(t => t.kind === RUN.kind && t.trip_date === day && (t.driver_id || '') === drv && !runOff(t));
+    // Sri Lanka: the runs are marked per lesson session (Morning / Afternoon) with its pickup time; the counts are the session's.
+    const ses = SESSIONS ? tukSession() : null;
+    const inSes = t => !ses || batchOf(t.trip_time) === ses.key;
+    const of = r => runs.filter(t => t.route === r.route && t.purpose === r.purpose && inSes(t));
+    // The number is what was logged (done); the runs still only planned for the day sit next to it («+2 planned»):
+    // a tap logs one of those first — the same trip, never a second one.
+    const count = r => of(r).filter(t => !LIVE_RUN.includes(t.status)).length;
+    const plannedN = r => of(r).filter(t => LIVE_RUN.includes(t.status)).length;
+    const btn = r => `<div class="tr-tap"><button class="tr-tap-main" data-key="${h(r.key)}" onclick="TransportUI.tap('${h(r.key)}')"><span>${h(r.label)}${plannedN(r) ? ` <span class="badge badge-grey tr-tap-plan" data-planned="${plannedN(r)}">+${plannedN(r)} planned</span>` : ''}</span><span class="hint num">${priceText(r, IS_SL ? '' : tukVehicle())}</span><b class="tr-tap-n num">${count(r)}</b></button>
+      <button class="btn btn-s btn-icon tr-tap-minus" title="One run less (it did not happen)" onclick="TransportUI.untap('${h(r.key)}')" ${of(r).some(t => !t.payment_entry_id) ? '' : 'disabled'}>${ic('minus')}</button></div>`;
     const total = runs.reduce((s, t) => s + Number(t.expected_price || 0), 0);
-    const body = `${seg}<div class="g2 tr-tuk-head"><div class="mfield"><label>Day</label><input type="date" id="tk_d" value="${h(day)}" onchange="TransportUI.tukSet('date', this.value)"></div>
+    const live = runs.filter(t => LIVE_RUN.includes(t.status) && (day <= cToday()));
+    const pend = pendingOf(day, drv); const c = tukContact(); const who = c ? c.name : `the ${RUN.lower} contact`;
+    const today = cToday(), tm = GT.addDaysIso(today, 1);
+    const dchip = (d, label) => `<button type="button" class="pill${day === d ? ' active' : ''}" data-day="${d}" onclick="TransportUI.tukSet('date','${d}')">${label}</button>`;
+    const sesBox = SESSIONS ? `<div class="mfield tr-ses"><label>Lesson</label><div class="tr-ses-row"><div class="pills tr-seg" id="tk_ses">${SESSIONS.map(x => `<button type="button" class="pill${x.key === ses.key ? ' active' : ''}" data-ses="${x.key}" onclick="TransportUI.tukSession('${x.key}')">${h(x.label)}</button>`).join('')}</div>
+        <span class="tr-ses-t"><span class="hint">Pickup</span><input type="time" id="tk_st" value="${h(ses.time)}" onchange="TransportUI.tukPickup(this.value)"></span></div></div>` : '';
+    const planBox = live.length ? `<div class="status-msg status-info tr-planlog" id="tk_planlog" data-n="${live.length}"><div><b>Planned for ${h(dayWord(day))}: ${live.length} run${live.length === 1 ? '' : 's'}</b>
+        <div class="hint">${planLines(live).map(x => h(planLineText(x))).join(' · ')}</div>
+        <div class="hint">Went as planned? One tap logs them all. Otherwise tap + / − on each route.</div></div></div>` : '';
+    const body = `${seg}${SESSIONS ? sendBox(day, drv) : ''}<div class="g2 tr-tuk-head"><div class="mfield"><label>Day</label>${SESSIONS ? `<div class="pills tr-seg tr-dayseg" id="tk_dday">${dchip(today, 'Today')}${dchip(tm, 'Tomorrow')}</div>` : ''}<input type="date" id="tk_d" value="${h(day)}" onchange="TransportUI.tukSet('date', this.value)"></div>
       <div class="mfield"><label>Driver</label><select id="tk_dr" onchange="TransportUI.tukSet('driver', this.value)">${driverOptions(drv)}</select></div></div>
+      ${sesBox}${planBox}
       ${IS_SL ? '' : pricesError() || !vanLabels().length ? `<div class="status-msg status-warn" data-prices-not-loaded>Van prices not loaded from /prices${pricesError() ? ` (${h(pricesError())})` : ''} — a run would be saved without a price.</div>`
         : `<div class="mfield"><label>Vehicle</label><div class="pills tr-seg" id="tk_veh">${vanLabels().map(v => `<button type="button" class="pill${v === tukVehicle() ? ' active' : ''}" data-v="${h(v)}" onclick="TransportUI.tukVehicle('${h(v).replace(/'/g, '&#39;')}')">${h(v)}</button>`).join('')}</div><div class="hint">The price is the vehicle's (/prices). Then tap where the van went.</div></div>`}
       ${R.surf.length ? `<div class="section-lbl">Surf</div>${R.surf.map(btn).join('')}` : ''}
@@ -1652,7 +1846,14 @@
       ${R.tour.length ? `<div class="section-lbl">${IS_SL ? 'Tour' : 'Tours and trips'}</div>${R.tour.map(btn).join('')}` : ''}
       <div class="tr-tuk-total"><span>${fmtDay(day)} · ${runs.length} run${runs.length === 1 ? '' : 's'}</span><b class="num">${money(total)}</b></div>
       <div class="hint">To change or delete a run later, tap its line in the Trips list.</div>`;
-    modal(sheetTitle(), 'Runs done: each tap is saved at once — no Save button', body, `<button class="btn btn-p" onclick="TransportUI.closeModal();TransportUI.render()">Done</button>`);
+    // One blue button: Sri Lanka «Send to Sampath on WhatsApp» while a batch of the day is not sent (or changed) — tap the
+    // runs, then send; else «All went as planned» while runs planned ahead wait to be logged; else «Done».
+    const sendP = SESSIONS && pend.length;
+    const footer = `<button class="btn ${sendP || live.length ? 'btn-s' : 'btn-p'}" id="tk_done" onclick="TransportUI.closeModal();TransportUI.render()">Done</button>`
+      + (live.length ? `<button class="btn ${sendP ? 'btn-s' : 'btn-p'}" id="tk_allplan" onclick="TransportUI.allAsPlanned()">${ic('check')} All went as planned</button>` : '')
+      + (sendP ? `<button class="btn btn-p" id="tk_send" onclick="TransportUI.sendOrder()">${ic('send')} ${pend.some(x => x.key === 'changed') ? `Send the update to ${h(who)} on WhatsApp` : `Send to ${h(who)} on WhatsApp`}</button>` : '');
+    const ov = modal(sheetTitle(), SESSIONS ? 'Tap each run (saved at once), then send them to the driver' : 'Runs done: each tap is saved at once — no Save button', body, footer);
+    const mf = ov && ov.querySelector('.mfooter'); if (mf) mf.classList.add('tr-foot1');
   }
   function tukSet(k, v) {
     TR.tuk[k] = v;
@@ -1663,6 +1864,7 @@
       document.querySelectorAll('#tk_pr option').forEach(o => { const r = tukRoute(o.value); if (r) o.textContent = `${r.label} · ${priceText(r, veh)}`; });
       return;
     }
+    if (k === 'planDate') { setPlanDay(v); renderTuktuk(); return; }
     if (k !== 'planTime' && k !== 'planRoute' && k !== 'planCount') renderTuktuk();
   }
   // Morocco run sheet: vehicle changed → the active vehicle and every price, in place
@@ -1672,8 +1874,23 @@
     document.querySelectorAll('#tk_veh .pill').forEach(b => b.classList.toggle('active', b.dataset.v === v));
     document.querySelectorAll('#trOv .tr-tap-main[data-key]').forEach(b => { const r = tukRoute(b.dataset.key); const hint = b.querySelector('.hint'); if (r && hint) hint.textContent = priceText(r, v); });
   }
-  function tukMode(m) { TR.tuk.mode = m === 'plan' ? 'plan' : 'log'; if (m === 'plan' && !TR.tuk.planDate) TR.tuk.planDate = GT.addDaysIso(cToday(), 1); renderTuktuk(); }
+  function tukMode(m) { TR.tuk.mode = m === 'plan' ? 'plan' : 'log'; if (m === 'plan' && !TR.tuk.planDate) setPlanDay(planDefaultDay()); renderTuktuk(); }
   function tukRoute(key) { return allRoutes().find(r => r.key === key); }
+  // Sri Lanka's lesson session in the run sheet: picked by hand, else by the time now (before the split = Morning).
+  // TR.tuk.pickup holds a pickup time typed for a session (else the session's time from CampConfig.runSessions).
+  function tukSession() {
+    const key = TR.tuk.session || (cTime() < SESSION_SPLIT ? SESSIONS[0].key : SESSIONS[1].key);
+    const base = sessionOf(key) || SESSIONS[0];
+    const typed = (TR.tuk.pickup || {})[key];
+    return { ...base, time: typed && batchOf(typed) === base.key ? typed : base.time };
+  }
+  function setSession(k) { if (sessionOf(k)) { TR.tuk.session = k; renderTuktuk(); } }
+  function setPickup(v) {
+    if (!/^\d\d:\d\d$/.test(String(v || ''))) return;
+    const ses = tukSession();
+    if (batchOf(v) !== ses.key) { say(`${ses.label} pickup: a time ${ses.key === SESSIONS[0].key ? 'before' : 'from'} ${SESSION_SPLIT}`, 'err'); renderTuktuk(); return; }
+    TR.tuk.pickup = { ...(TR.tuk.pickup || {}), [ses.key]: v }; renderTuktuk();
+  }
   async function tap(key) {
     if (TR.busy.has('tap|' + key)) return;            // a double tap saves one run
     const r = tukRoute(key); if (!r) return;
@@ -1682,52 +1899,240 @@
     TR.busy.add('tap|' + key);
     try {
       const pax = IS_SL ? 1 : null; const veh = IS_SL ? RUN.veh : tukVehicle(); const price = runPrice(r, veh);
-      const row = { kind: RUN.kind, trip_date: TR.tuk.date, trip_time: TR.tuk.date === cToday() ? cTime() : null, route: r.route, purpose: r.purpose, tour_name: r.tour || null,
-        driver_id: TR.tuk.driver, expected_price: price, vehicle: veh, status: 'done', source: 'manual', pax, ...(r.confirm && IS_SL ? { import_flags: [NO_ROW_FLAG(r.label)] } : {}) };
+      // A run planned for this day on this route is the same trip: log it (done), never a second row next to it.
+      // Morocco: the same vehicle first; another vehicle → that run takes the vehicle tapped and its price.
+      const ses = SESSIONS ? tukSession() : null;
+      const planned = TR.trips.filter(t => t.kind === RUN.kind && t.trip_date === TR.tuk.date && (t.driver_id || '') === TR.tuk.driver && t.route === r.route && t.purpose === r.purpose
+        && LIVE_RUN.includes(t.status) && !t.payment_entry_id && (!ses || batchOf(t.trip_time) === ses.key) && TR.tuk.date <= cToday()).sort((a, b) => (IS_SL ? 0 : ((a.vehicle === veh ? 0 : 1) - (b.vehicle === veh ? 0 : 1))) || String(a.trip_time || '').localeCompare(String(b.trip_time || '')))[0];
+      // A run removed after sending and tapped again before the update went: the same row comes back (nothing to tell).
+      const tomb = TR.trips.find(t => t.kind === RUN.kind && t.trip_date === TR.tuk.date && (t.driver_id || '') === TR.tuk.driver && t.route === r.route && t.purpose === r.purpose
+        && tombOf(t) && (!ses || batchOf(t.trip_time) === ses.key) && (IS_SL || t.vehicle === veh));
+      if (tomb) {
+        if (await updateTrip(tomb.id, { status: TR.tuk.date > cToday() ? 'sent' : 'done', cancel_reason: null, needs_resend: false })) { say(`Back · ${r.label}`); renderTuktuk(); }
+        return;
+      }
+      if (planned) {
+        const patch = { status: 'done', needs_resend: false };
+        if (!IS_SL && planned.vehicle !== veh) Object.assign(patch, { vehicle: veh, expected_price: price });
+        if (await updateTrip(planned.id, patch)) { say(`Logged the planned run · ${r.label}${IS_SL ? '' : ' · ' + veh} · ${money(patch.expected_price != null ? patch.expected_price : planned.expected_price)}`); renderTuktuk(); }
+        return;
+      }
+      // Sri Lanka: the run's time is the session's pickup; a run marked for a later day is planned (done by itself on the day).
+      const row = { kind: RUN.kind, trip_date: TR.tuk.date, trip_time: ses ? ses.time : TR.tuk.date === cToday() ? cTime() : null, route: r.route, purpose: r.purpose, tour_name: r.tour || null,
+        driver_id: TR.tuk.driver, expected_price: price, vehicle: veh, status: ses && TR.tuk.date > cToday() ? 'planned' : 'done', source: 'manual', pax, ...(r.confirm && IS_SL ? { import_flags: [NO_ROW_FLAG(r.label)] } : {}) };
       if (await insertTrip(row)) { say(`Saved · ${r.label}${IS_SL ? '' : ' · ' + veh} · ${money(price)}`); renderTuktuk(); }
     } finally { setTimeout(() => TR.busy.delete('tap|' + key), 300); }
   }
+  // «−»: one run of this route did not happen — the last one logged, else one still planned.
   async function untap(key) {
-    const r = tukRoute(key); if (!r) return;
-    const last = TR.trips.filter(t => t.kind === RUN.kind && t.trip_date === TR.tuk.date && (t.driver_id || '') === TR.tuk.driver && t.route === r.route && t.purpose === r.purpose && !t.payment_entry_id)
-      .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))[0];
+    const r = tukRoute(key); if (!r || TR.busy.has('untap')) return;
+    const ses = SESSIONS ? tukSession() : null;
+    const mine = TR.trips.filter(t => t.kind === RUN.kind && t.trip_date === TR.tuk.date && (t.driver_id || '') === TR.tuk.driver && t.route === r.route && t.purpose === r.purpose && !t.payment_entry_id && !runOff(t)
+      && (!ses || batchOf(t.trip_time) === ses.key));
+    const last = mine.sort((a, b) => ((LIVE_RUN.includes(a.status) ? 1 : 0) - (LIVE_RUN.includes(b.status) ? 1 : 0)) || String(b.created_at || '').localeCompare(String(a.created_at || '')))[0];
     if (!last) return;
-    if (await deleteTrip(last.id)) { say(`Removed one ${r.label}`); renderTuktuk(); }
+    TR.busy.add('untap');
+    try { if (await dropRun(last)) { say(`Removed one ${r.label}`); renderTuktuk(); } } finally { TR.busy.delete('untap'); }
+  }
+  // «All went as planned»: every run still planned for the day (this driver) is marked done — the same rows, so they
+  // count once in «Owed to drivers» and Pay. A second tap finds nothing left to mark.
+  async function allAsPlanned() {
+    if (TR.busy.has('allplan')) return;
+    const day = TR.tuk.date; const drv = TR.tuk.driver;
+    const list = TR.trips.filter(t => t.kind === RUN.kind && t.trip_date === day && (t.driver_id || '') === drv && LIVE_RUN.includes(t.status) && !t.payment_entry_id);
+    if (!list.length) return;
+    TR.busy.add('allplan');
+    try {
+      let n = 0; for (const t of list) if (await updateTrip(t.id, { status: 'done', needs_resend: false })) n++;
+      for (const t of staleTombs(day, drv)) await deleteTrip(t.id);
+      say(`${n} run${n === 1 ? '' : 's'} logged as planned`); renderTuktuk();
+    } finally { TR.busy.delete('allplan'); }
+  }
+  // Removing a run the driver already has and that is still to come: kept as «cancelled» (needs_resend) so the next
+  // message says CANCELLED — the row is deleted once that UPDATE is sent. Any other unpaid run is deleted, as before
+  // (a run that did not happen, taken out afterwards, tells nobody anything).
+  const driverHas = t => !!t.sent_at && !runOff(t) && !t.payment_entry_id && `${t.trip_date}T${t.trip_time || '23:59'}` >= colomboNow();
+  async function dropRun(t) {
+    if (!t || t.payment_entry_id) return false;
+    if (driverHas(t)) return !!(await updateTrip(t.id, { status: 'cancelled', cancel_reason: 'removed after the order was sent', needs_resend: true }));
+    return deleteTrip(t.id);
   }
 
-  // ── Plan tomorrow: the runs ordered the evening before + the WhatsApp order ─
-  // A planned run is one camp_trips row with status 'planned' and a time; it counts as done by
-  // itself once that time passes (isDone / camp_trip_is_done), like an airport trip. Sending the
-  // order stamps the runs 'sent'; a run added or changed afterwards asks for the order again.
-  const planRuns = (day, drv) => TR.trips.filter(t => t.kind === RUN.kind && t.trip_date === day && (t.driver_id || '') === (drv || '') && ['planned', 'sent', 'confirmed'].includes(t.status) && t.trip_time)
-    .sort((a, b) => (a.trip_time + runLabel(a)).localeCompare(b.trip_time + runLabel(b)));
+  // ── Batches: what goes to the driver, and where each one stands ────────────────────────────────────────────
+  // Miguel, 17 Nov 2026 (Sri Lanka): «preciso de mandar quando marco — normalmente marco de manhã a aula da manhã e à
+  // tarde antes da aula da tarde». So the runs go out in BATCHES:
+  //   Sri Lanka  one batch per lesson session of the day — Morning / Afternoon (CampConfig.runSessions, split at
+  //              runSessionSplit): every run of the day he marks (done) or plans, today or later. The afternoon message
+  //              never repeats the morning runs already sent.
+  //   Morocco    one batch per day, the runs planned ahead (Plan the day, tomorrow) — logged runs are not in it.
+  // A row's state is decided when it is written (as the airport transfers): new = in the batch, no sent_at; changed =
+  // needs_resend (an edit while the driver still has it to come); cancelled = the tombstone dropRun leaves. Sending
+  // stamps every row of the batch sent_at + sent_snapshot { trip_date, trip_time, label, vehicle, to, batch } (the
+  // snapshot only words the UPDATE: «×3 (was ×2)»), turns 'planned' into 'sent' (a done run stays done: it is still
+  // owed), and deletes the tombstones. Everything comes from those columns, so a reload shows the same.
+  const SESSIONS = IS_SL ? (CC.runSessions || [{ key: 'morning', label: 'Morning', time: '07:30' }, { key: 'afternoon', label: 'Afternoon', time: '14:00' }]) : null;
+  const SESSION_SPLIT = CC.runSessionSplit || '12:00';
+  const batchOf = time => !SESSIONS ? 'day' : (!time || time < SESSION_SPLIT) ? SESSIONS[0].key : SESSIONS[1].key;
+  const sessionOf = key => (SESSIONS || []).find(x => x.key === key) || null;
+  const batchKeys = () => SESSIONS ? SESSIONS.map(x => x.key) : ['day'];
+  const snapOf = t => t.sent_snapshot || {};
+  const fromPay = t => t.notes === 'Added when paying';     // «Run not in the list» in Pay: it happened, nothing to send
+  // In a batch: Sri Lanka every run of the day (not removed, not added in Pay); Morocco the runs planned ahead, and the
+  // ones logged out of an order he got.
+  const inBatch = t => !runOff(t) && !fromPay(t) && (IS_SL ? true : (LIVE_RUN.includes(t.status) && !!t.trip_time) || (t.status === 'done' && !!t.sent_at));
+  // Only while the run is still to come: once its time has passed there is nothing left to tell the driver.
+  const ahead = t => `${t.trip_date}T${t.trip_time || '23:59'}` >= colomboNow();
+  const tombOf = t => t.status === 'cancelled' && t.needs_resend && !!t.sent_at && !t.payment_entry_id && ahead(t);
+  // A tombstone whose time has passed (removed, never told, too late now): deleted the next time the day is sent or logged.
+  const staleTombs = (day, drv) => dayRunsOf(day, drv).filter(t => t.status === 'cancelled' && t.needs_resend && !!t.sent_at && !t.payment_entry_id && !ahead(t) && t.source === 'manual');
+  const dayRunsOf = (day, drv) => TR.trips.filter(t => t.kind === RUN.kind && t.trip_date === day && (t.driver_id || '') === (drv || ''));
+  // Sri Lanka's batches are for today and later (yesterday's runs are history, nothing to send).
+  const sendableDay = day => !IS_SL || day >= cToday();
+  function batchState(day, drv, b) {
+    const rows = dayRunsOf(day, drv);
+    const members = rows.filter(t => inBatch(t) && batchOf(t.trip_time) === b);
+    const tomb = rows.filter(t => tombOf(t) && batchOf(snapOf(t).trip_time || t.trip_time) === b);
+    const base = { day, driver: drv || '', batch: b, members, tomb, fresh: [], chg: [], sentAt: '', to: '' };
+    if (!members.length && !tomb.length) return { ...base, key: 'none' };
+    const sent = members.filter(t => !!t.sent_at);
+    // A run with no sent_at in a batch already sent is NEW whatever its time (marked late: he still has to know).
+    const fresh = members.filter(t => !t.sent_at); const chg = sent.filter(t => t.needs_resend && ahead(t));
+    const last = sent.concat(tomb).sort((a, b2) => String(b2.sent_at).localeCompare(String(a.sent_at)))[0];
+    const x = { ...base, fresh, chg, sentAt: last ? last.sent_at : '', to: last ? (snapOf(last).to || '') : '' };
+    if (!IS_SL && !tomb.length && members.every(t => t.status === 'done')) return { ...x, key: 'logged' };
+    if (!sent.length && !tomb.length) return { ...x, key: 'planned' };
+    if (!sendableDay(day)) return { ...x, key: 'sent' };
+    if (!(fresh.length || chg.length || tomb.length)) return { ...x, key: 'sent' };
+    // Removed and added back the same before sending (a tombstone and a new row on the same line): nothing to tell him.
+    return { ...x, key: batchChanges({ ...x, key: 'changed' }).length ? 'changed' : 'sent' };
+  }
+  // Every batch of a day for one driver (Sri Lanka: Morning, Afternoon; Morocco: the day).
+  const batchesOf = (day, drv) => batchKeys().map(b => batchState(day, drv, b));
+  // A Morocco day: nothing in the order but runs logged → «Logged ✓ · N runs».
+  const loggedOf = (day, drv) => dayRunsOf(day, drv).filter(t => t.status === 'done');
+  const STATE_RANK = { changed: 5, planned: 4, sent: 3, logged: 2, none: 1 };
+  // The day for one driver (or every driver with runs that day): the worst batch wins; its batches for the header.
+  function planState(day, drv) {
+    const ids = drv !== undefined ? [drv || ''] : [...new Set(TR.trips.filter(t => t.kind === RUN.kind && t.trip_date === day).map(t => t.driver_id || ''))];
+    if (!ids.length) ids.push((defaultDriver(RUN.drv) || {}).id || '');
+    const batches = ids.flatMap(id => batchesOf(day, id));
+    let worst = batches.slice().sort((a, b) => STATE_RANK[b.key] - STATE_RANK[a.key])[0];
+    const logged = ids.flatMap(id => loggedOf(day, id));
+    if (!IS_SL && worst.key === 'none' && logged.length) worst = { ...worst, key: 'logged' };
+    return { ...worst, batches, logged, live: batches.flatMap(x => x.members.filter(t => LIVE_RUN.includes(t.status))) };
+  }
+  const pendingOf = (day, drv) => sendableDay(day) ? batchesOf(day, drv).filter(x => x.key === 'planned' || x.key === 'changed') : [];
+  // «07:12» when it went out today, «16 Nov 19:00» otherwise (the camp's time zone).
+  function sentWhen(iso) { const p = stampParts(iso); return p && p.day === cToday() ? p.time : stampText(iso); }
+  const batchName = x => SESSIONS ? (sessionOf(x.batch) || {}).label || '' : '';
+  const planBadgeText = s => s.key === 'none' ? 'Not planned' : s.key === 'planned' ? (IS_SL ? 'Not sent' : 'Planned · not sent')
+    : s.key === 'sent' ? `Sent ${s.sentAt ? sentWhen(s.sentAt) + ' ' : ''}✓${s.to ? ` to ${s.to}` : ''}` : s.key === 'changed' ? 'Changed after sending — send again'
+    : `Logged ✓ · ${(s.logged || []).length} run${(s.logged || []).length === 1 ? '' : 's'}`;
+  const PLAN_CLS = { none: 'badge-grey', planned: 'badge-grey', sent: 'badge-green', changed: 'badge-amber', logged: 'badge-green' };
+
+  // ── The messages (house style, no emoji) ─────────────────────────────────────────────────────────────────
+  // A planned run is one camp_trips row with a time; it counts as done by itself once that time passes (isDone /
+  // camp_trip_is_done), like an airport trip — «All went as planned» / a tap in «Log runs» writes it down ('done').
+  const planRuns = (day, drv) => TR.trips.filter(t => t.kind === RUN.kind && t.trip_date === day && (drv === undefined || (t.driver_id || '') === (drv || '')) && inBatch(t) && t.trip_time
+    && (IS_SL || LIVE_RUN.includes(t.status))).sort((a, b) => (a.trip_time + runLabel(a)).localeCompare(b.trip_time + runLabel(b)));
+  const lineKey = x => [x.time, x.label, IS_SL ? '' : (x.vehicle || '')].join('|');
   function planLines(runs) {
     const by = new Map();
     runs.forEach(t => { const k = t.trip_time + '|' + runLabel(t) + (IS_SL ? '' : '|' + (t.vehicle || '')); const x = by.get(k) || { time: t.trip_time, label: runLabel(t), vehicle: IS_SL ? '' : (t.vehicle || ''), n: 0, sum: 0, pax: 0, ids: [], sample: t }; x.n++; x.sum += Number(t.expected_price || 0); x.ids.push(t.id); by.set(k, x); });
-    return [...by.values()];
+    return [...by.values()].sort((a, b) => (a.time + a.label).localeCompare(b.time + b.label));
   }
-  // The camp's own message style: bold upper-case title, one line per run, a blank line between
-  // times, no emoji (wa.me shows some as «?» on WhatsApp desktop).
+  const planLineText = x => IS_SL ? `${x.time} ${x.label} ×${x.n}` : `${x.time} ${x.label} - ${x.n} × ${x.vehicle || 'van'}`;
+  // «*TUK TUKS - AFTERNOON SAT 14 NOV · PICKUP 14:00*» (Sri Lanka) · «*VANS - SAT 14 NOV*» (Morocco, as before).
+  function batchTitle(day, b, rows) {
+    if (!SESSIONS) return `VANS - ${fmtDay(day).toUpperCase()}`;
+    const first = (rows || []).map(t => t.trip_time).filter(Boolean).sort()[0] || (sessionOf(b) || {}).time || '';
+    return `TUK TUKS - ${String((sessionOf(b) || {}).label || '').toUpperCase()} ${fmtDay(day).toUpperCase()}${first ? ` · PICKUP ${first}` : ''}`;
+  }
+  function orderBody(lines) {
+    const out = []; let last = null;
+    lines.forEach(x => { if (x.time !== last) { out.push(''); last = x.time; } out.push(planLineText(x)); });
+    return out;
+  }
+  // The whole order of these runs, one section per batch (Morocco: one).
   function orderText(day, runs) {
-    const out = [`*${IS_SL ? 'TUK TUKS' : 'VANS'} - ${fmtDay(day).toUpperCase()}*`]; let last = null;
-    planLines(runs).forEach(x => { if (x.time !== last) { out.push(''); last = x.time; } out.push(IS_SL ? `${x.time} ${x.label} ×${x.n}` : `${x.time} ${x.label} - ${x.n} × ${x.vehicle || 'van'}`); });
-    return out.join('\n');
+    return batchKeys().map(b => { const rs = (runs || []).filter(t => batchOf(t.trip_time) === b); return rs.length ? [`*${batchTitle(day, b, rs)}*`, ...orderBody(planLines(rs))].join('\n') : ''; })
+      .filter(Boolean).join('\n\n');
   }
-  const orderPending = runs => runs.filter(t => !t.payment_entry_id && (t.status === 'planned' || t.needs_resend));
+  // What changed in a batch since it was sent, line by line: what he had (each row's snapshot, the tombstones) against
+  // what it is now — «07:30 Camp → Ahangama ×3 (was 2)», «… ×1 NEW», «… ×1 CANCELLED».
+  function batchChanges(x) {
+    const keyNow = t => lineKey({ time: t.trip_time, label: runLabel(t), vehicle: t.vehicle || '' });
+    const keyHad = t => { const s = snapOf(t); return s.label ? lineKey({ time: s.trip_time, label: s.label, vehicle: s.vehicle || '' }) : keyNow(t); };
+    const had = new Map(), now = new Map(), info = new Map();
+    const add = (m, k, t, lbl) => { m.set(k, (m.get(k) || 0) + 1); if (!info.has(k)) info.set(k, lbl); };
+    x.members.filter(t => t.sent_at).forEach(t => { const s = snapOf(t); add(had, keyHad(t), t, s.label ? { time: s.trip_time, label: s.label, vehicle: s.vehicle || '' } : { time: t.trip_time, label: runLabel(t), vehicle: t.vehicle || '' }); });
+    x.tomb.forEach(t => { const s = snapOf(t); add(had, keyHad(t), t, s.label ? { time: s.trip_time, label: s.label, vehicle: s.vehicle || '' } : { time: t.trip_time, label: runLabel(t), vehicle: t.vehicle || '' }); });
+    x.members.forEach(t => add(now, keyNow(t), t, { time: t.trip_time, label: runLabel(t), vehicle: t.vehicle || '' }));
+    const out = [];
+    [...new Set([...had.keys(), ...now.keys()])].sort().forEach(k => {
+      const a = had.get(k) || 0, n = now.get(k) || 0; if (a === n) return; const l = info.get(k);
+      out.push(n === 0 ? `${planLineText({ ...l, n: a })} CANCELLED` : a === 0 ? `${planLineText({ ...l, n })} NEW` : `${planLineText({ ...l, n })} (was ${a})`);
+    });
+    if (!out.length) x.chg.forEach(t => out.push(`${planLineText({ time: t.trip_time, label: runLabel(t), vehicle: t.vehicle || '', n: 1 })} (changed)`));
+    return out;
+  }
+  // The section a pending batch sends: the whole batch the first time, only the changes after that («UPDATE:»).
+  function batchMessage(x) {
+    const title = batchTitle(x.day, x.batch, x.members.length ? x.members : x.tomb);
+    if (x.key === 'changed') return [`*UPDATE: ${title}*`, '', ...batchChanges(x)].join('\n');
+    return [`*${title}*`, ...orderBody(planLines(x.members))].join('\n');
+  }
+  // What «Send» sends for a day and driver: every batch not sent yet or changed since — never one he already has as it is.
+  const planMessage = (day, drv) => pendingOf(day, drv).map(batchMessage).join('\n\n');
+  // Send: WhatsApp to the run contact, then every row of each batch sent is stamped with what he now has.
+  async function sendBatches(day, drv) {
+    if (TR.busy.has('order')) return false;
+    const pend = pendingOf(day, drv); if (!pend.length) return false;
+    const c = tukContact();
+    window.open(GT.whatsappUrl(c && c.phone || '', pend.map(batchMessage).join('\n\n')), '_blank', 'noopener');
+    TR.busy.add('order');
+    try {
+      const now = new Date().toISOString();
+      for (const x of pend) {
+        for (const t of x.members) {
+          const patch = { sent_at: now, sent_snapshot: { trip_date: t.trip_date, trip_time: t.trip_time, route: t.route, label: runLabel(t), vehicle: t.vehicle || null, to: c ? c.name : '', batch: x.batch }, needs_resend: false };
+          if (t.status === 'planned' && !t.payment_entry_id) patch.status = 'sent';     // a done run stays done (owed)
+          await updateTrip(t.id, patch);
+        }
+        for (const t of x.tomb) await deleteTrip(t.id);                                 // told: the tombstone goes
+      }
+      for (const t of staleTombs(day, drv)) await deleteTrip(t.id);
+      say(`${pend.some(x => x.key === 'changed') ? 'Update' : 'Order'} opened in WhatsApp for ${c ? c.name : `the ${RUN.lower} contact`} · marked Sent ✓`);
+      return true;
+    } finally { TR.busy.delete('order'); }
+  }
+  // The block both sheets show: what goes out with «Send» (and what changed), or where the day stands.
+  function sendBox(day, drv) {
+    const B = batchesOf(day, drv).filter(x => x.key !== 'none' && x.key !== 'logged');
+    if (!B.length) return '';
+    const row = x => {
+      const ch = x.key === 'changed' ? batchChanges(x) : [];
+      return `<div class="tr-batch" data-batch="${x.batch}" data-batch-state="${x.key}"><span class="tr-batch-l">${batchName(x) ? `<b>${h(batchName(x))}</b> · ` : ''}${x.members.length} run${x.members.length === 1 ? '' : 's'}</span>
+        ${SESSIONS ? `<span class="badge ${PLAN_CLS[x.key]}" data-plan-state="${x.key}">${h(planBadgeText(x))}</span>` : '<span class="hint">Changed since it was sent — the message lists only this:</span>'}${ch.length ? `<div class="hint tr-batch-ch">${ch.map(t => h(t)).join('<br>')}</div>` : ''}</div>`;
+    };
+    return `<div class="tr-batches" id="tk_batches">${B.map(row).join('')}</div>`;
+  }
   function renderPlan(seg) {
-    const day = TR.tuk.planDate; const drv = TR.tuk.driver; const c = tukContact();
-    const runs = planRuns(day, drv); const lines = planLines(runs); const pending = orderPending(runs);
-    const sentAt = runs.map(t => t.sent_at).filter(Boolean).sort().pop();
+    const day = TR.tuk.planDate; const drv = TR.tuk.driver; const c = tukContact(); const who = c ? c.name : `the ${RUN.lower} contact`;
+    const runs = planRuns(day, drv); const lines = planLines(runs); const s = planState(day, drv); const pend = pendingOf(day, drv);
     if (!TR.tuk.planRoute || !tukRoute(TR.tuk.planRoute) || !routeInCat(tukRoute(TR.tuk.planRoute))) { const C = catRoutes(); TR.tuk.planRoute = ([...C.surf, ...C.camp, ...C.tour][0] || allRoutes()[0] || {}).key || ''; }
-    const state = !runs.length ? '' : !pending.length ? `<span class="badge badge-green" id="tk_sent">Sent ✓</span>${sentAt ? ` <span class="hint">${h(stampText(sentAt))} to ${h(c ? c.name : `the ${RUN.lower} contact`)}</span>` : ''}`
-      : sentAt ? `<span class="badge badge-amber" id="tk_sent">Changed since sent</span> <span class="hint">send the order again</span>` : `<span class="badge badge-grey" id="tk_sent">Not sent yet</span>`;
-    const body = `${seg}<div class="g2 tr-tuk-head"><div class="mfield"><label>Day</label><input type="date" id="tk_pd" value="${h(day)}" onchange="TransportUI.tukSet('planDate', this.value)"></div>
+    const today = cToday(), tm = GT.addDaysIso(today, 1);
+    const chip = (d, label) => `<button type="button" class="pill${day === d ? ' active' : ''}" data-day="${d}" onclick="TransportUI.tukSet('planDate','${d}')">${label}</button>`;
+    const days = `<div class="pills tr-seg tr-dayseg" id="tk_pday">${chip(today, 'Today')}${chip(tm, 'Tomorrow')}${day !== today && day !== tm ? chip(day, h(fmtDay(day))) : ''}</div>`;
+    const state = `<span class="badge ${PLAN_CLS[s.key]}" id="tk_sent" data-plan-state="${s.key}">${h(planBadgeText(s))}</span>`;
+    const body = `${seg}${SESSIONS ? sendBox(day, drv) : ''}<div class="g2 tr-tuk-head"><div class="mfield"><label>Day</label>${days}</div>
       <div class="mfield"><label>Driver</label><select id="tk_dr" onchange="TransportUI.tukSet('driver', this.value)">${driverOptions(drv)}</select></div></div>
       <div class="section-lbl">${fmtDay(day)} · the order</div>
       <div class="tr-plan" id="tk_plan">${lines.length ? lines.map((x, i) => `<div class="tr-plan-line" data-plan="${i}"><b class="num">${h(x.time)}</b><span>${h(x.label)}${IS_SL ? '' : ` <span class="hint">· ${h(x.vehicle || 'van')}</span>`}</span>
           <span class="tr-step"><button class="btn btn-s btn-icon" title="One run less" onclick="TransportUI.planStep(${i}, -1)">${ic('minus')}</button><b class="num">${x.n}</b><button class="btn btn-s btn-icon" title="One run more" onclick="TransportUI.planStep(${i}, 1)">${ic('plus')}</button></span></div>`).join('')
-        : '<div class="hint">No runs planned for this day yet. Add the first one below.</div>'}</div>
-      ${runs.length ? `<div class="tr-tuk-total"><span>${runs.length} run${runs.length === 1 ? '' : 's'} · ${state}</span><b class="num">${money(runs.reduce((s, t) => s + Number(t.expected_price || 0), 0))}</b></div>` : ''}
+        : `<div class="hint">No runs planned for ${h(dayWord(day))} yet. Add the first one below.</div>`}</div>
+      ${runs.length || s.key !== 'none' ? `<div class="tr-tuk-total"><span>${runs.length} run${runs.length === 1 ? '' : 's'} · ${state}</span><b class="num">${money(runs.reduce((a, t) => a + Number(t.expected_price || 0), 0))}</b></div>` : ''}
+      ${!SESSIONS && s.key === 'changed' ? sendBox(day, drv) : ''}
       <div class="section-lbl">Add a run</div>
       <div class="tr-plan-add"><div class="mfield"><label>Time</label><input type="time" id="tk_pt" value="${h(TR.tuk.planTime)}" onchange="TransportUI.tukSet('planTime', this.value)"></div>
         <div class="mfield"><label>Route</label><select id="tk_pr" onchange="TransportUI.tukSet('planRoute', this.value)">${routeOptions(TR.tuk.planRoute, true, IS_SL ? '' : planVehicle())}</select></div>
@@ -1735,17 +2140,24 @@
         ${IS_SL ? '' : `<div class="mfield"><label>Vehicle</label>${vehiclePick('tk_pv', planVehicle(), "TransportUI.tukSet('planVehicle', this.value)")}</div>`}
         <button class="btn btn-s" id="tk_padd" onclick="TransportUI.planAdd()">${ic('plus')} Add to the order</button></div>
       ${c && !c.phone ? `<div class="hint">No phone for ${h(c.name)} yet — WhatsApp will ask you to pick the chat. Add the number in Drivers.</div>` : ''}`;
-    modal(sheetTitle(), 'Plan the runs and send the order the evening before', body,
-      `<button class="btn btn-s" onclick="TransportUI.closeModal();TransportUI.render()">Done</button>
-       <button class="btn btn-p" id="tk_send" onclick="TransportUI.sendOrder()" ${runs.length ? '' : 'disabled'}>${ic('send')} ${sentAt && !pending.length ? 'Send again' : 'Send order'} to ${h(c ? c.name : `${RUN.lower} contact`)}</button>`);
+    const anyChanged = pend.some(x => x.key === 'changed');
+    const sendLbl = anyChanged ? `Send the update to ${h(who)} on WhatsApp` : `Send to ${h(who)} on WhatsApp`;
+    // One blue button: the send while something is not sent (or changed); once all is sent, «Done».
+    const sendBtn = pend.length ? `<button class="btn btn-p" id="tk_send" onclick="TransportUI.sendOrder()">${ic('send')} ${sendLbl}</button>` : '';
+    const ov = modal(sheetTitle(), PLAN_DAY === 'today' ? 'Plan the runs, then send the order to the driver at once' : 'Plan the runs, then send the order to the driver the evening before', body,
+      `<button class="btn ${pend.length ? 'btn-s' : 'btn-p'}" id="tk_done" onclick="TransportUI.closeModal();TransportUI.render()">Done</button>${sendBtn}`);
+    const mf = ov && ov.querySelector('.mfooter'); if (mf) mf.classList.add('tr-foot1');
   }
-  // sent_at is a UTC stamp: show it in Colombo time.
-  function stampText(iso) {
+  // sent_at is a UTC stamp: show it in the camp's time zone.
+  function stampParts(iso) {
     try {
       const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: CC.tz || 'Asia/Colombo', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(iso)).map(x => [x.type, x.value]));
-      return `${fmtShort(`${p.year}-${p.month}-${p.day}`)} ${p.hour}:${p.minute}`;
-    } catch (_) { return ''; }
+      return { day: `${p.year}-${p.month}-${p.day}`, time: `${p.hour}:${p.minute}` };
+    } catch (_) { return null; }
   }
+  function stampText(iso) { const p = stampParts(iso); return p ? `${fmtShort(p.day)} ${p.time}` : ''; }
+  // Sri Lanka: a run marked for today is done (as a tap in the run sheet); a later day's, and every Morocco plan, is planned.
+  const planStatus = day => SESSIONS && day <= cToday() ? 'done' : 'planned';
   async function planAdd() {
     if (TR.busy.has('plan')) return;
     const r = tukRoute(($('tk_pr') && $('tk_pr').value) || TR.tuk.planRoute); const time = ($('tk_pt') && $('tk_pt').value) || '';
@@ -1761,7 +2173,7 @@
         const pax = IS_SL ? 1 : null;
         const veh = IS_SL ? RUN.veh : (($('tk_pv') && $('tk_pv').value) || planVehicle());
         if (!await insertTrip({ kind: RUN.kind, trip_date: TR.tuk.planDate, trip_time: time, route: r.route, purpose: r.purpose, tour_name: r.tour || null,
-          driver_id: TR.tuk.driver, expected_price: runPrice(r, veh), vehicle: veh, status: 'planned', source: 'manual', pax, ...(r.confirm && IS_SL ? { import_flags: [NO_ROW_FLAG(r.label)] } : {}) })) break;
+          driver_id: TR.tuk.driver, expected_price: runPrice(r, veh), vehicle: veh, status: planStatus(TR.tuk.planDate), source: 'manual', pax, ...(r.confirm && IS_SL ? { import_flags: [NO_ROW_FLAG(r.label)] } : {}) })) break;
       }
       renderTuktuk();
     } finally { TR.busy.delete('plan'); }
@@ -1773,28 +2185,24 @@
     try {
       if (d > 0) {
         const t = x.sample;
+        const tomb = TR.trips.find(o => tombOf(o) && o.kind === RUN.kind && o.trip_date === t.trip_date && (o.driver_id || '') === (t.driver_id || '') && o.trip_time === t.trip_time && runLabel(o) === runLabel(t) && (IS_SL || o.vehicle === t.vehicle));
+        if (tomb) { await updateTrip(tomb.id, { status: tomb.trip_date > cToday() || !SESSIONS ? 'sent' : 'done', cancel_reason: null, needs_resend: false }); renderTuktuk(); return; }
         await insertTrip({ kind: RUN.kind, trip_date: t.trip_date, trip_time: t.trip_time, route: t.route, purpose: t.purpose, tour_name: t.tour_name || null,
-          driver_id: t.driver_id, expected_price: t.expected_price, vehicle: t.vehicle || RUN.veh, status: 'planned', source: 'manual', pax: IS_SL ? 1 : runPax(t) });
+          driver_id: t.driver_id, expected_price: t.expected_price, vehicle: t.vehicle || RUN.veh, status: planStatus(t.trip_date), source: 'manual', pax: IS_SL ? 1 : null });
       } else {
-        const victim = TR.trips.filter(t => x.ids.includes(t.id) && !t.payment_entry_id).sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))[0];
+        // One less: a run added since the order first (he never had it), else the newest; one he has is kept as cancelled.
+        const victim = TR.trips.filter(t => x.ids.includes(t.id) && !t.payment_entry_id)
+          .sort((a, b) => ((driverHas(a) ? 1 : 0) - (driverHas(b) ? 1 : 0)) || String(b.created_at || '').localeCompare(String(a.created_at || '')))[0];
         if (!victim) { say('These runs are paid — unlink the payment first', 'err'); return; }
-        const others = TR.trips.filter(t => x.ids.includes(t.id) && t.id !== victim.id && t.status === 'sent' && !t.needs_resend);
-        if (await deleteTrip(victim.id)) for (const t of others.slice(0, 1)) await updateTrip(t.id, { needs_resend: true });   // the order he has is now wrong
+        await dropRun(victim);
       }
       renderTuktuk();
     } finally { TR.busy.delete('plan'); }
   }
+  // «Send to Sampath on WhatsApp» in either sheet: the batches of the day not sent yet, or changed since.
   async function sendOrder() {
-    if (TR.busy.has('order')) return;
-    const day = TR.tuk.planDate; const runs = planRuns(day, TR.tuk.driver); if (!runs.length) return;
-    const c = tukContact();
-    window.open(GT.whatsappUrl(c && c.phone || '', orderText(day, runs)), '_blank', 'noopener');
-    TR.busy.add('order');
-    try {
-      const now = new Date().toISOString();
-      for (const t of runs.filter(t => !t.payment_entry_id)) await updateTrip(t.id, { status: 'sent', sent_at: now, needs_resend: false });
-      renderTuktuk(); say(`Order opened in WhatsApp for ${c ? c.name : `the ${RUN.lower} contact`} · marked Sent ✓`);
-    } finally { TR.busy.delete('order'); }
+    const day = TR.tuk.mode === 'plan' ? TR.tuk.planDate : TR.tuk.date;
+    if (await sendBatches(day, TR.tuk.driver)) renderTuktuk();
   }
 
   // ── Edit / delete tuk-tuk runs (tap a line in the Trips list) ───────────
@@ -1812,7 +2220,7 @@
       <div class="mfield"><label>Route / purpose</label><select id="rn_r" ${dis}>${cur ? '' : `<option value="" selected>${h(runLabel(t))}</option>`}${routeOptions(cur ? cur.key : '')}</select></div>
       ${!IS_SL ? `<div class="mfield"><label>Vehicle</label><select id="rn_v" ${dis}>${vanLabels(t.vehicle).map(v => `<option${v === (t.vehicle || vanDefaultVehicle(null)) ? ' selected' : ''}>${h(v)}</option>`).join('')}</select></div>` : ''}
       <div class="g2"><div class="mfield"><label>Driver</label><select id="rn_dr" ${dis}>${driverOptions(t.driver_id)}</select></div>
-      <div class="mfield"><label>Price${n > 1 ? ' (each)' : ''} (LKR)</label><input type="number" id="rn_pr" value="${Number(t.expected_price || 0)}" ${dis}></div></div>
+      <div class="mfield"><label>Price${n > 1 ? ' (each)' : ''} (LKR)</label><input type="number" id="rn_pr" value="${Number(t.expected_price || 0)}" ${dis || (LOCAL ? 'disabled title="The price comes from /prices"' : '')}></div></div>
       <div class="mfield"><label>Tour</label><input id="rn_tour" value="${h(t.tour_name || '')}" placeholder="Only when the run is for a tour"></div>
       ${chargeBlock('rn', isFree(t) ? 'free' : '', t.free_reason, { label: 'Offered ride?', options: [['', 'No'], ['free', 'Free']] })}
       <div class="mfield"><label>Note</label><input id="rn_n" value="${h(t.notes || '')}"></div>`;
@@ -1843,9 +2251,23 @@
         if (!Object.keys(patch).length) continue;
         if (!paid) {
           const when = `${next.trip_date}T${next.trip_time || '23:59'}`;
+          // A run the driver already has, moved to another day or driver: that order loses it (kept as cancelled, so the
+          // UPDATE says so) and the new day / driver gets it as a new planned run (17 Nov 2026).
+          const batchMoved = 'trip_time' in patch && batchOf(patch.trip_time) !== batchOf(t.trip_time);
+          if (driverHas(t) && ('trip_date' in patch || 'driver_id' in patch || batchMoved)) {
+            const copy = { kind: t.kind, trip_date: t.trip_date, trip_time: t.trip_time, route: t.route, purpose: t.purpose, tour_name: t.tour_name || null, driver_id: t.driver_id,
+              expected_price: t.expected_price, vehicle: t.vehicle || RUN.veh, status: 'planned', source: 'manual', pax: t.pax == null ? null : t.pax, charge: t.charge || null, notes: t.notes || null,
+              ...('free_reason' in t ? { free_reason: t.free_reason || null } : {}), ...patch };
+            // done when it has happened, or (Sri Lanka) marked for today; a later day → planned (never owed before it happens)
+            if (`${copy.trip_date}T${copy.trip_time || '23:59'}` < colomboNow() || (SESSIONS && t.status === 'done' && copy.trip_date <= cToday())) copy.status = 'done';
+            if (!await insertTrip(copy)) return;
+            if (!await updateTrip(t.id, { status: 'cancelled', cancel_reason: 'moved after the order was sent', needs_resend: true })) return;
+            n++; continue;
+          }
           // A logged run moved into the future is a planned run again; an order already sent is now out of date.
-          if (t.status === 'done' && when >= colomboNow() && ('trip_date' in patch || 'trip_time' in patch)) patch.status = 'planned';
-          if (t.status === 'sent' && ['trip_date', 'trip_time', 'route'].some(k => k in patch)) patch.needs_resend = true;
+          // (Sri Lanka marks runs as they are ordered, often before the pickup: a marked run stays done.)
+          if (t.status === 'done' && when >= colomboNow() && ('trip_date' in patch || 'trip_time' in patch) && (!SESSIONS || next.trip_date > cToday())) patch.status = 'planned';
+          if (driverHas(t) && ['trip_time', 'route', 'vehicle'].some(k => k in patch)) patch.needs_resend = true;
         }
         if (!await updateTrip(t.id, patch)) return;
         n++;
@@ -1857,10 +2279,10 @@
     let runs = TR.trips.filter(t => (TR.runEdit || []).includes(t.id) && !t.payment_entry_id); if (!runs.length) return;
     if (one) runs = runs.sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || ''))).slice(0, 1);
     else if (runs.length > 1 && !window.confirm(`Delete these ${runs.length} ${RUN.lower} runs? They are not paid.`)) return;
-    let n = 0; for (const t of runs) if (await deleteTrip(t.id)) n++;
+    let n = 0; for (const t of runs) if (await dropRun(t)) n++;
     closeModal(); render(); say(n === 1 ? 'Run deleted' : `${n} runs deleted`);
   }
-  async function removeRun(id) { if (await deleteTrip(id)) { closeModal(); render(); } }
+  async function removeRun(id) { const t = TR.trips.find(x => x.id === id); if (t && await dropRun(t)) { closeModal(); render(); } }
 
   // ── The Monday Guests import (shown in Week: TransportUI.importHtml) ───
   function nextWeekStart() { return GT.addDaysIso(GT.weekStart(cToday()), 7); }
@@ -2417,7 +2839,7 @@
     const body = `<div class="mfield"><label>Send transfers to</label><select id="dv_contact">${list.map(d => `<option value="${d.id}"${c && c.id === d.id ? ' selected' : ''}>${h(d.name)}${d.phone ? ' · ' + h(d.phone) : ' · no phone'}</option>`).join('')}</select>
         <div class="hint">WhatsApp messages go to this person, who passes them to the driver.</div></div>
       <div class="mfield"><label>${RUN.label} orders to</label><select id="dv_tuk"><option value="">Default ${RUN.lower} driver${defaultDriver(RUN.drv) ? ' (' + h(defaultDriver(RUN.drv).name) + ')' : ''}</option>${list.map(d => `<option value="${d.id}"${(d.default_for || []).includes(TUKTUK_CONTACT) ? ' selected' : ''}>${h(d.name)}${d.phone ? ' · ' + h(d.phone) : ' · no phone'}</option>`).join('')}</select>
-        <div class="hint">Who gets tomorrow's ${RUN.lower} order on WhatsApp (Plan tomorrow on the ${h(CATS.filter(c => c[0] !== 'airport').map(c => c[1]).join(' / '))} pill).</div></div>${rows}
+        <div class="hint">Who gets the ${RUN.lower} orders on WhatsApp (${IS_SL ? '«Send» in the run sheet' : '«Plan the day»'} on the ${h(CATS.filter(c => c[0] !== 'airport').map(c => c[1]).join(' / '))} pill).</div></div>${rows}
       <button class="btn btn-s" onclick="TransportUI.addDriver()">${ic('plus')} Add driver</button>`;
     modal('Drivers', 'Name, phone and default vehicle', body, `<button class="btn btn-s" onclick="TransportUI.closeModal()">Cancel</button><button class="btn btn-p" onclick="TransportUI.saveDrivers()">Save</button>`);
   }
@@ -2535,6 +2957,7 @@
     ovMode, ovShift, ovMonth, ovMeasure, ovExport, ovData,
     send, sendDay, dayMessage, weekMessage, sendWeek, tickWeek, weekCount, undoTick, setStep, missingInfo, monthCsv, openExport, downloadMonth, undoGuestConfirmed, ask, askText, askedOn, needsInfo, tick, tickDay, tickIds, openTrip, saveTrip, setStatus, openAddTransfer, saveTransfer,
     openTuktuk, openPlan, planOn, tukSet, tukVehicle(v) { TR.tuk.vehicle = v; vanSheetRefresh(); }, tukMode, tap, untap, removeRun, removeTrip, planAdd, planStep, sendOrder, orderText,
+    tukSession: setSession, tukPickup: setPickup, allAsPlanned, logDay, sendRunsDay, planState, batchesOf, planMessage, airState, weekSentState, sendDayUpdate, sendWeekUpdate, dayUpdateMessage, weekUpdateMessage, PLAN_DAY,
     openRuns, saveRuns, deleteRuns, toggleRuns, addOn, catOf, payState, weekTotals, keepTrip, inWeek, presetPrice, pickAir, airVehicles, pricesReady, bankCandidates, camp: CC, RUN,
     confirmGuest, guestConfirmed, confirmText, guestState, guestHtml, openGuestDay, pickFile, setExportDate, saveImport,
     openChecks, openLink, linkDriver, linkPick, linkAll, linkMonth, namedMonth, saveLink, unlinkPayment, openExplain, saveExplain, unlinkTrip,

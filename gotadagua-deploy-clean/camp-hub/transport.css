@@ -437,3 +437,33 @@
 .tr-blsays .btn-link { font-size: inherit; padding: 0; }
 .tr-offtoggle { padding: 6px 12px 8px; }
 .tr-offtoggle .btn-link { font-size: 13px; }
+
+/* ── Plan the day → send (17 Nov 2026) ── */
+/* Day header: where the plan / the transfers stand («Sent 07:12 ✓ to Sampath», «Changed after sending — send again»). */
+.tr-dstates { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: 6px; }
+.tr-dstate { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.tr-dstate .badge { white-space: normal; text-align: left; }
+.tr-dstate-b { border: 0; font: inherit; font-size: 11px; cursor: pointer; }
+.tr-dstate .btn-link { font-size: 12.5px; display: inline-flex; align-items: center; gap: 4px; }
+.tr-weeksent { margin: -4px 0 var(--sp-3); }
+/* Run sheet: day chips, the lesson session and its pickup, the batches to send. */
+.tr-modal .tr-dayseg { margin-bottom: var(--sp-2); }
+.tr-ses-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); }
+.tr-modal .tr-ses-row .tr-seg { margin-bottom: 0; flex: 0 0 auto; flex-wrap: nowrap; }
+.tr-ses-t { display: inline-flex; align-items: center; gap: var(--sp-2); }
+.tr-ses-t input { width: 110px; }
+.tr-tap-plan { margin-left: 6px; text-transform: none; letter-spacing: 0; font-weight: 600; }
+.tr-planlog { margin-bottom: var(--sp-3); }
+.tr-planlog .hint { margin-top: 4px; }
+.tr-batches { display: flex; flex-direction: column; gap: 6px; margin: var(--sp-3) 0; }
+.tr-batch { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); border: 1px solid var(--border); border-radius: var(--r-sm); font-size: 14px; }
+.tr-batch .badge { white-space: normal; }
+.tr-batch-ch { flex-basis: 100%; }
+/* The run / plan sheet footer stays one row on a phone: the long «Send to Sampath on WhatsApp» wraps inside its button. */
+.tr-modal .mfooter.tr-foot1 { flex-wrap: nowrap; align-items: stretch; gap: var(--sp-2); }
+.tr-modal .mfooter.tr-foot1 .btn { white-space: normal; line-height: 1.2; text-align: center; justify-content: center; min-height: 40px; height: auto; padding-top: 6px; padding-bottom: 6px; }
+.tr-modal .mfooter.tr-foot1 #tk_done { flex: 0 0 auto; }
+.tr-modal .mfooter.tr-foot1 #tk_send, .tr-modal .mfooter.tr-foot1 #tk_allplan { flex: 1 1 0; min-width: 0; }
+.tr-modal .tr-batches:first-of-type { margin-top: 0; }
+.tr-week-all { font-size: 12.5px; align-self: center; }
+.tr-count .tr-weeksent { font-weight: 600; }

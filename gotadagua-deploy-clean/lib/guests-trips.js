@@ -617,6 +617,41 @@
     [...new Set(list.map(t => t.trip_date))].sort().forEach(d => { out.push(`*${dayUp(d)}*`); list.filter(t => t.trip_date === d).forEach(t => out.push(tripBlock(t, o.cfg))); });
     return out.join('\n\n');
   }
+  // ── The UPDATE after sending (17 Nov 2026) ──────────────────────────────
+  // The driver already has the day (or the week): after a change only what changed goes out — «UPDATE:» in the title,
+  // each transfer marked _(new)_, _(changed: time 14:10 → 15:30)_ or _(CANCELLED)_, no emoji. In: a transfer still to
+  // come that was never sent (status planned), one sent and changed since (needs_resend), and one cancelled after it was
+  // sent (needs_resend, kept by the import / the cancel). transfersText is not touched (its bytes are golden-tested).
+  const SNAP_FIELDS = [['trip_date', 'date'], ['trip_time', 'time'], ['flight', 'flight'], ['pax', 'people'], ['place', 'airport']];
+  function tripChanges(t) {
+    const s = t.sent_snapshot || {};
+    return SNAP_FIELDS.filter(([k]) => k in s && String(s[k] == null ? '' : s[k]) !== String(t[k] == null ? '' : t[k]))
+      .map(([k, w]) => `${w} ${k === 'trip_date' ? (s[k] ? dMon(s[k]) : '?') : (s[k] == null || s[k] === '' ? '?' : s[k])} → ${k === 'trip_date' ? dMon(t[k]) : (t[k] == null || t[k] === '' ? '?' : t[k])}`);
+  }
+  // Which transfers an UPDATE carries: { fresh, changed, gone } (the same rule as the day header's «changed» count).
+  function transfersUpdateTrips(trips, o) {
+    const inScope = t => o.day === 'week' ? tripInWeek(t, o.ws) : t.trip_date === o.day;
+    const live = transfersTrips(trips, o);
+    const fresh = live.filter(t => t.status === 'planned');
+    const changed = live.filter(t => t.needs_resend && ['sent', 'confirmed'].includes(t.status));
+    const gone = (trips || []).filter(t => (t.kind === 'airport_arrival' || t.kind === 'airport_departure') && inScope(t) && ['cancelled', 'merged', 'no_show'].includes(t.status)
+      && t.needs_resend && !!t.sent_at && !tripDoneAt({ ...t, status: 'planned' }, o.now));
+    return { fresh, changed, gone, n: fresh.length + changed.length + gone.length };
+  }
+  function transfersUpdateText(trips, o) {
+    const U = transfersUpdateTrips(trips, o);
+    let title = o.day === 'week' ? `*TRANSFERS - ${Number(o.ws.slice(8))} TO ${dMon(addDaysIso(o.ws, 7)).toUpperCase()}*` : `*TRANSFERS - ${dayUp(o.day)}*`;
+    if (o.today && o.day !== 'week') title = dressTitles(title, o.today);
+    title = title.replace(/^\*/, '*UPDATE: ');
+    const mark = t => U.gone.includes(t) ? 'CANCELLED' : U.fresh.includes(t) ? 'new' : (() => { const c = tripChanges(t); return c.length ? `changed: ${c.join(', ')}` : 'changed'; })();
+    const block = t => { const lines = whatsappText(t, o.cfg).split('\n'); lines[0] += ` _(${mark(t)})_`; return lines.join('\n'); };
+    const all = [...U.changed, ...U.fresh, ...U.gone].sort((a, b) => (a.trip_date + (a.trip_time || '99')).localeCompare(b.trip_date + (b.trip_time || '99')));
+    if (!all.length) return `${title}\n\nNo changes`;
+    if (o.day !== 'week') return [title, ...all.map(block)].join('\n\n');
+    const out = [title];
+    [...new Set(all.map(t => t.trip_date))].sort().forEach(d => { out.push(`*${dayUp(d)}*`); all.filter(t => t.trip_date === d).forEach(t => out.push(block(t))); });
+    return out.join('\n\n');
+  }
   // «*CHECK OUT - SAT 14 NOV*» → «*CHECK OUT TODAY - 14 NOV*» / «… TOMORROW …» (the message for a day goes out the evening before).
   function dressTitles(text, today) {
     return String(text).replace(/^\*([A-Z ]+) - ([A-Z]{3}) (\d{1,2}) ([A-Z]{3})\*$/gm, (m, what, wd, n, mon) => {
@@ -632,6 +667,6 @@
   return {
     parseCsv, isGuestsExportHeader, parse, guestRows, guestAudit, importWarnings, hhmm, ymd, cleanPhone, vehicleFor, pickVehicle, OVER_RE, vehiclesOf, addDaysIso, weekday, weekStart, dMon,
     classifyField, strfADB, pyTitle, isUpper, isLower, NO_ALLERGY, TEST_NAME,   // used by lib/bl-report.js (the camp report, 16 Nov 2026)
-    whatsappText, whatsappDayText, whatsappUrl, transfersTrips, transfersText, tripMark, tripInWeek, tripDoneAt, dressTitles, OK_STATUS, DEAD_STATUS, PACKAGE_INCLUDES, packageIncludes,
+    whatsappText, whatsappDayText, whatsappUrl, transfersTrips, transfersText, transfersUpdateTrips, transfersUpdateText, tripChanges, tripMark, tripInWeek, tripDoneAt, dressTitles, OK_STATUS, DEAD_STATUS, PACKAGE_INCLUDES, packageIncludes,
   };
 });

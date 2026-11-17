@@ -44,7 +44,7 @@ test('morocco transport: the tab shows for the full view; pills in Floriane\'s w
   await expect(page.locator('#transportRoot [data-add-runs="tours"]')).toHaveText('Add tour vans');
   await page.click('#transportRoot [data-plan]');
   await expect(page.locator('#trOv .mhdr-title')).toHaveText('Tour vans');
-  await expect(page.locator('#tk_mode .pill.active')).toHaveText('Plan tomorrow');
+  await expect(page.locator('#tk_mode .pill.active')).toHaveText('Plan the day');
   await page.evaluate(() => TransportUI.closeModal());
   await expect(page.locator('#transportRoot .tr-views')).toHaveCount(0);            // no Reconcile any more
   expect(errors).toEqual([]);
@@ -121,7 +121,7 @@ test('morocco transport: van runs — day, driver, vehicle (from /prices), tap w
   await expect(page.locator('.tr-tap-main[data-key="van|surf"] .tr-tap-n')).toHaveText('1');
   await expect(page.locator('#trOv .tr-tuk-total')).toHaveText(/^Sat 14 Nov · 1 run\s*MAD\s700$/);   // «day · N runs · MAD X», no people
   // Plan tomorrow: 2 vans of 8 to the surf spot at 08:00 → the order for Fathoune
-  await page.click('#tk_mode .pill:has-text("Plan tomorrow")');
+  await page.click('#tk_mode .pill:has-text("Plan the day")');
   await page.fill('#tk_pt', '08:00');
   await page.selectOption('#tk_pr', 'van|surf');
   await page.fill('#tk_pn', '2');
@@ -325,8 +325,8 @@ test('morocco sheet: Airport / Surf vans / Tours pills, identical tour runs as o
   await page.screenshot({ path: path.join(SHEET_SHOTS, 'morocco-tours-390.png'), fullPage: true });
   // «+ Add» on a Tours day still to come: the plan sheet, tours only, Fathoune.
   await page.click('#transportRoot [data-add="2026-11-18"]');
-  await expect(page.locator('#tk_mode .pill.active')).toHaveText('Plan tomorrow');
-  await expect(page.locator('#tk_pd')).toHaveValue('2026-11-18');
+  await expect(page.locator('#tk_mode .pill.active')).toHaveText('Plan the day');
+  await expect(page.locator('#tk_pday .pill.active')).toHaveAttribute('data-day', '2026-11-18');   // a day that is neither today nor tomorrow: its own chip
   await expect(page.locator('#tk_dr')).toHaveValue(H.D.fat);
   const routes = await page.locator('#tk_pr option').allInnerTexts();
   expect(routes.length).toBeGreaterThan(0);
@@ -402,4 +402,138 @@ test('morocco van runs with /prices not loaded: a clear «not loaded» line, and
   await page.evaluate(() => TransportUI.tap('van|surf'));
   await expect(page.locator('#toast')).toContainText('van prices have not loaded');
   expect(st.calls.filter(c => c.t === 'trip_insert')).toEqual([]);
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Plan the day → send (17 Nov 2026): Morocco plans the surf vans / tours the DAY BEFORE and sends to Fathoune that
+//  evening — one batch per day. A full day by hand: plan → send → change → UPDATE → the day passes → «All went as
+//  planned» → Pay. The page clock = TRANSPORT_NOW (Sat 14 Nov 10:00 Casablanca = 09:00 UTC) so «Sent 10:00» reads.
+// ════════════════════════════════════════════════════════════════════════════
+const PLAN_SHOTS = process.env.PLAN_SHOTS || path.join(__dirname, '..', 'test-results', 'plan-shots');
+test('morocco plan the day: default TOMORROW → send to Fathoune (Sent 10:00 ✓) → change → «Changed after sending» + UPDATE with only the change → the day passes → «All went as planned» once → Pay lists them', async ({ page }) => {
+  const errors = collectFatalErrors(page);
+  await page.clock.setFixedTime(new Date('2026-11-14T09:00:00Z'));
+  const st = await openTab(page);
+  fs.mkdirSync(PLAN_SHOTS, { recursive: true });
+  const shot = async name => { for (const [w, hgt] of [[390, 844], [1280, 900]]) { await page.setViewportSize({ width: w, height: hgt }); await page.waitForTimeout(450); await page.screenshot({ path: path.join(PLAN_SHOTS, `${name}-${w}.png`) }); } await page.setViewportSize({ width: 390, height: 844 }); };
+  expect(await page.evaluate(() => TransportUI.PLAN_DAY)).toBe('tomorrow');
+  await page.click('#transportRoot .tr-tabs .pill[data-cat="vans"]');
+  await expect(page.locator('#trDay-2026-11-15 [data-plan-state]').first()).toHaveAttribute('data-plan-state', 'none');
+  await expect(page.locator('#trDay-2026-11-15 .tr-dstate')).toContainText('Not planned');
+  await page.click('#transportRoot [data-plan]');
+  await expect(page.locator('#tk_mode .pill.active')).toHaveText('Plan the day');
+  await expect(page.locator('#tk_pday .pill.active')).toHaveAttribute('data-day', '2026-11-15');     // tomorrow
+  await expect(page.locator('#trOv .mhdr-sub')).toHaveText('Plan the runs, then send the order to the driver the evening before');
+  await page.fill('#tk_pt', '08:00'); await page.selectOption('#tk_pr', 'van|surf'); await page.fill('#tk_pn', '2'); await page.selectOption('#tk_pv', 'Minivan'); await page.click('#tk_padd');
+  await expect(page.locator('#tk_plan .tr-plan-line')).toHaveCount(1);
+  await page.fill('#tk_pt', '14:00'); await page.selectOption('#tk_pr', 'van|imsouane'); await page.fill('#tk_pn', '1'); await page.selectOption('#tk_pv', 'Big Van'); await page.click('#tk_padd');
+  await expect(page.locator('#tk_plan .tr-plan-line')).toHaveCount(2);
+  await expect(page.locator('#tk_sent')).toHaveText('Planned · not sent');
+  await expect(page.locator('#tk_send')).toHaveText('Send to Fathoune on WhatsApp');
+  await expect(page.locator('#trOv .btn-p')).toHaveCount(1);
+  await shot('ma-plan-sheet-planned');
+  await page.click('#tk_send');
+  const txt = async i => decodeURIComponent((await page.evaluate(n => window.__opened[n], i)).split('?text=')[1]);
+  expect(await page.evaluate(() => window.__opened[0])).toContain('wa.me/212600000102');
+  expect(await txt(0)).toBe('*VANS - SUN 15 NOV*\n\n08:00 Surf Taghazout - 2 × Minivan\n\n14:00 Surf Imsouane - 1 × Big Van');
+  await expect.poll(() => st.calls.filter(c => c.t === 'trip_update').length).toBe(3);
+  expect(st.calls.filter(c => c.t === 'trip_update').every(c => c.body.status === 'sent' && c.body.sent_at && c.body.sent_snapshot.to === 'Fathoune')).toBe(true);
+  await expect(page.locator('#tk_sent')).toHaveText('Sent 10:00 ✓ to Fathoune');
+  await expect(page.locator('#tk_send')).toHaveCount(0);
+  await shot('ma-plan-sheet-sent');
+  // A change after sending: one more Surf van, Imsouane removed (kept as cancelled for the message)
+  await page.locator('.tr-plan-line', { hasText: 'Surf Taghazout' }).locator('button[title="One run more"]').click();
+  await expect(page.locator('.tr-plan-line', { hasText: 'Surf Taghazout' }).locator('.tr-step b')).toHaveText('3');
+  await page.locator('.tr-plan-line', { hasText: 'Surf Imsouane' }).locator('button[title="One run less"]').click();
+  await expect(page.locator('#tk_plan .tr-plan-line')).toHaveCount(1);
+  await expect(page.locator('#tk_sent')).toHaveText('Changed after sending — send again');
+  await expect(page.locator('#tk_batches .tr-batch-ch')).toContainText('08:00 Surf Taghazout - 3 × Minivan (was 2)');
+  await expect(page.locator('#tk_batches .tr-batch-ch')).toContainText('14:00 Surf Imsouane - 1 × Big Van CANCELLED');
+  await expect(page.locator('#tk_send')).toHaveText('Send the update to Fathoune on WhatsApp');
+  await shot('ma-plan-sheet-changed');
+  await page.click('#trOv #tk_done');
+  await expect(page.locator('#trDay-2026-11-15 [data-plan-state]').first()).toHaveAttribute('data-plan-state', 'changed');
+  await expect(page.locator('.tr-strip')).toContainText('Van runs for tomorrow changed — send the update');
+  await shot('ma-day-header-changed');
+  await page.click('#trDay-2026-11-15 [data-plan-day]');
+  await page.click('#tk_send');
+  expect(await txt(1)).toBe('*UPDATE: VANS - SUN 15 NOV*\n\n08:00 Surf Taghazout - 3 × Minivan (was 2)\n14:00 Surf Imsouane - 1 × Big Van CANCELLED');
+  expect(H.EMOJI.test(await txt(1))).toBe(false);
+  await expect.poll(() => st.calls.filter(c => c.t === 'trip_delete').length).toBe(1);
+  await expect(page.locator('#tk_sent')).toHaveText('Sent 10:00 ✓ to Fathoune');
+  await page.click('#trOv #tk_done');
+  await expect(page.locator('#trDay-2026-11-15 .tr-dstate')).toContainText('Sent 10:00 ✓ to Fathoune');
+  await shot('ma-day-header-sent');
+  // Reload: the same state from the rows
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => window.TransportUI && TransportUI._state.loaded, null, { timeout: 15000 });
+  await page.evaluate(() => { showPage('transport'); TransportUI.setFilter('vans'); });
+  await expect(page.locator('#trDay-2026-11-15 .tr-dstate')).toContainText('Sent 10:00 ✓ to Fathoune');
+  // The day passes (Sun 15 Nov 19:00): «Log runs» on the day → the plan in the sheet → «All went as planned»
+  const before = st.trips.filter(t => t.kind === 'other').length;
+  await page.clock.setFixedTime(new Date('2026-11-15T18:00:00Z'));
+  await page.evaluate(() => { window.TRANSPORT_NOW = '2026-11-15T19:00'; TransportUI.render(); });
+  await expect(page.locator('#trDay-2026-11-15 [data-log-day]')).toHaveCount(1);
+  const owed0 = await page.evaluate(id => TransportUI._state.trips.filter(t => t.driver_id === id && TransportUI.reconcileStatus(t) === 'owed').reduce((s, t) => s + Number(t.expected_price || 0), 0), H.D.fat);
+  await page.click('#trDay-2026-11-15 [data-log-day]');
+  await expect(page.locator('#tk_planlog')).toHaveAttribute('data-n', '3');
+  await expect(page.locator('.tr-tap-main[data-key="van|surf"] .tr-tap-plan')).toHaveText('+3 planned');
+  await expect(page.locator('#tk_allplan')).toHaveClass(/btn-p/);
+  await shot('ma-log-sheet-planned');
+  const nUp = st.calls.filter(c => c.t === 'trip_update').length;
+  await page.click('#tk_allplan');
+  await expect.poll(() => st.calls.filter(c => c.t === 'trip_update').length).toBe(nUp + 3);
+  expect(st.calls.filter(c => c.t === 'trip_update').slice(nUp).every(c => c.body.status === 'done')).toBe(true);
+  await expect(page.locator('#tk_allplan')).toHaveCount(0);                            // once: nothing left to mark
+  await page.evaluate(() => TransportUI.allAsPlanned());
+  expect(st.calls.filter(c => c.t === 'trip_update').length).toBe(nUp + 3);
+  expect(st.trips.filter(t => t.kind === 'other').length).toBe(before);              // the same trips, never new ones
+  await expect(page.locator('.tr-tap-main[data-key="van|surf"] .tr-tap-n')).toHaveText('3');
+  await page.click('#trOv #tk_done');
+  await expect(page.locator('#trDay-2026-11-15 .tr-dstate')).toContainText('Logged ✓ · 3 runs');
+  // Owed / Pay: the same 3 runs, once, at their price (they were owed by time already — the tap writes it down)
+  const owed1 = await page.evaluate(id => TransportUI._state.trips.filter(t => t.driver_id === id && TransportUI.reconcileStatus(t) === 'owed').reduce((s, t) => s + Number(t.expected_price || 0), 0), H.D.fat);
+  expect(owed1).toBe(owed0);
+  expect(owed1).toBe(1500);
+  await page.click(`#trOwed [data-owed="${H.D.fat}"]`);
+  const ids = await page.evaluate(() => TransportUI.payGroups(TransportUI._state.payDraft).flatMap(g => g.ids));
+  expect(ids.length).toBe(3); expect(new Set(ids).size).toBe(3);
+  await shot('ma-pay-after-plan');
+  expect(errors).toEqual([]);
+});
+
+test('morocco: a sent van changed afterwards (vehicle) → «Changed after sending», the UPDATE names it; a run logged with nothing planned is not in any order; the airport UPDATE in Floriane\'s labelled format', async ({ page }) => {
+  const errors = collectFatalErrors(page);
+  await page.clock.setFixedTime(new Date('2026-11-14T09:00:00Z'));
+  const sentAt = '2026-11-14T08:00:00Z';
+  const van = (id, o) => ({ id, location_id: H.LOC, kind: 'other', trip_date: '2026-11-15', trip_time: '08:00', route: 'Surf', purpose: 'surf', tour_name: null, guest_names: null, pax: null, vehicle: 'Minivan', driver_id: H.D.fat,
+    expected_price: 500, currency: 'MAD', status: 'sent', source: 'manual', charge: null, payment_entry_id: null, import_flags: [], edited_fields: [], needs_resend: false, sent_at: sentAt,
+    sent_snapshot: { trip_date: '2026-11-15', trip_time: '08:00', route: 'Surf', label: 'Surf Taghazout', vehicle: 'Minivan', to: 'Fathoune' }, created_at: '2026-11-13T08:00:00Z', ...o });
+  const air = (id, o) => ({ id, location_id: H.LOC, kind: 'airport_arrival', trip_date: '2026-11-15', trip_time: '12:00', pickup_time: null, flight: 'FR 1', place: 'AGA', route: 'Airport → Surfcamp', purpose: 'guests', guest_names: 'Ana Air', guest_phone: '+33600000001',
+    pax: 1, vehicle: 'Car', driver_id: H.D.lut, expected_price: 250, currency: 'MAD', status: 'sent', source: 'bookinglayer', charge: 'bookinglayer', import_flags: [], edited_fields: [], missing_since: null, needs_resend: false, payment_entry_id: null,
+    sent_at: sentAt, sent_snapshot: { trip_date: '2026-11-15', trip_time: '12:00', flight: 'FR 1', pax: 1, place: 'AGA' }, created_at: '2026-11-13T08:00:00Z', ...o });
+  const st = await openTab(page, { trips: [
+    van('bbbbbbbb-0000-4000-8000-000000000001'), van('bbbbbbbb-0000-4000-8000-000000000002'),
+    { ...van('bbbbbbbb-0000-4000-8000-000000000003'), trip_date: '2026-11-14', trip_time: '09:30', status: 'done', sent_at: null, sent_snapshot: null },
+    air('bbbbbbbb-0000-4000-8000-000000000011', { trip_time: '13:30', needs_resend: true }),
+  ] });
+  await page.click('#transportRoot .tr-tabs .pill[data-cat="vans"]');
+  await expect(page.locator('#trDay-2026-11-15 .tr-dstate')).toContainText('Sent 09:00 ✓ to Fathoune');
+  await expect(page.locator('#trDay-2026-11-14 [data-plan-state]').first()).toHaveAttribute('data-plan-state', 'logged');   // logged, never «not sent»
+  await page.evaluate(() => TransportUI.openRuns(['bbbbbbbb-0000-4000-8000-000000000002']));
+  await page.selectOption('#rn_v', 'Big Van');
+  await page.click('#rn_save');
+  expect((await H.call(st, 'trip_update')).body).toMatchObject({ vehicle: 'Big Van', needs_resend: true });
+  await expect(page.locator('#trDay-2026-11-15 [data-plan-state]').first()).toHaveAttribute('data-plan-state', 'changed');
+  expect(await page.evaluate(id => TransportUI.planMessage('2026-11-15', id), H.D.fat))
+    .toBe('*UPDATE: VANS - SUN 15 NOV*\n\n08:00 Surf Taghazout - 1 × Big Van NEW\n08:00 Surf Taghazout - 1 × Minivan (was 2)');
+  // Airport: the day was sent, a time changed since → the labelled block marked with what changed
+  await page.click('#transportRoot .tr-tabs .pill[data-cat="airport"]');
+  await expect(page.locator('#trDay-2026-11-15 [data-air-state]')).toHaveText('Changed after sending — send again · 1');
+  await page.click('#trDay-2026-11-15 [data-send-update]');
+  const txt = decodeURIComponent((await page.evaluate(() => window.__opened.pop())).split('?text=')[1]);
+  expect(txt).toBe(['*UPDATE: TRANSFERS TOMORROW - 15 NOV*', '',
+    'Agadir airport to Surfcamp _(changed: time 12:00 → 13:30)_', 'Number of people: 1', 'Name: Ana Air', 'Contact WhatsApp: +33600000001', 'Flight number: FR 1', 'Arrival time: 13:30', 'Date: 15.11.2026', 'Car: small car'].join('\n'));
+  expect(H.EMOJI.test(txt)).toBe(false);
+  expect(errors).toEqual([]);
 });

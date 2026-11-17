@@ -69,13 +69,22 @@
     privateRoomBeds: 2,
     // Transport
     runs: { kind: 'tuktuk', label: 'Tuk-tuk', plural: 'Tuk-tuk runs', vehicle: 'Tuk-tuk' },
+    // «Plan the day» (17 Nov 2026, Miguel): the tuk-tuks are organised in the MORNING for the SAME day and the order goes
+    // to the tuk-tuk contact at once, so they are at the house on time. «Tomorrow» stays one tap away.
+    planDay: 'today', planTime: '07:30',
+    // …and sent in batches, one per lesson session (Miguel, 17 Nov 2026: «marco de manhã a aula da manhã e à tarde antes
+    // da aula da tarde»): the run sheet marks the runs of a session with its pickup time, then «Send to Sampath». No lesson
+    // times are kept anywhere in the app yet, so these are the defaults (editable in the sheet); a time before
+    // runSessionSplit is Morning.
+    runSessions: [{ key: 'morning', label: 'Morning', time: '07:30' }, { key: 'afternoon', label: 'Afternoon', time: '14:00' }],
+    runSessionSplit: '12:00',
     payMethod: 'Cash',
     airportSupplier: null,
     // Transport's page (16 Nov 2026 UX pass): one pill per kind of trip, the words this camp uses. `add` = the blue
     // button of a runs pill (opens today's run sheet on that pill's routes); the Airport pill's blue button sends.
     transportTabs: [{ key: 'airport', label: 'Airport' }, { key: 'tuktuk', label: 'Tuk-tuks', add: 'Add tuk-tuk runs', sheet: 'Tuk-tuk runs' }],
     transportHow: 'Airport transfers to and from Colombo, and the tuk-tuk runs. Pay a driver from «Owed to drivers».',
-    localDriversHow: 'Log the tuk-tuk runs and pay the drivers in cash from «Owed to drivers».',
+    localDriversHow: 'Plan the tuk-tuks in the morning and send the order, log the runs, and pay the drivers in cash from «Owed to drivers».',
   };
 
   // ── Morocco (14 Nov 2026) ─────────────────────────────────────────────────
@@ -172,6 +181,9 @@
     rooms: MA_ROOMS,
     privateRoomBeds: 2,
     runs: { kind: 'other', label: 'Van run', plural: 'Van runs', vehicle: 'Van' },
+    // «Plan the day» (17 Nov 2026, Miguel): the surf vans and tours are organised the DAY BEFORE and the order goes to
+    // Fathoune that evening. «Today» stays one tap away (a late change).
+    planDay: 'tomorrow', planTime: '07:30',
     // The weekdays a surf course without a date has lessons (Date.getUTCDay: 0 = Sun). CONFIRM: Bookinglayer has only the
     // course start and the head coach picks the days; Mon–Fri assumed (17 Nov 2026). Transport → Overview «per surfer-day».
     surfCourseDays: [1, 2, 3, 4, 5],
