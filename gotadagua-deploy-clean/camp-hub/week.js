@@ -201,7 +201,10 @@
       if (!GT.OK_STATUS.has(String(g.booking_status || '').toLowerCase())) st = 'gone';
       else if (meta && meta.id && (g.raw || {})._kept === meta.id) st = 'in';    // Francisco answered «Still here» for this import
       else if (meta && meta.id && g.import_id !== meta.id && meta.min) {
-        if (g.check_in < meta.min) st = g.check_out > meta.min ? 'carry' : 'in';
+        // The Bookinglayer camp report holds the bookings checking out −3..+32 days around its day (17 Nov 2026): a guest
+        // whose check-out is outside that window is simply not in it — never «cancelled?» (lib/bl-ingest.js insideWindow).
+        if (meta.window && !(g.check_out && g.check_out >= meta.window.from && g.check_out <= meta.window.to)) st = 'in';
+        else if (g.check_in < meta.min) st = g.check_out > meta.min ? 'carry' : 'in';
         else if (g.check_in <= meta.max) st = 'dropped';
       }
       return { ...g, _st: st };
@@ -596,7 +599,18 @@
       const r = await c.from('camp_week_guests').select('check_in').eq('location_id', loc).eq('import_id', top.import_id);
       (r.data || []).forEach(x => { if (x.check_in) { if (!min || x.check_in < min) min = x.check_in; if (!max || x.check_in > max) max = x.check_in; } });
     }
-    W.meta = { id: top.import_id, at: top.updated_at, min, max }; W.metaLoaded = true; W.error = '';
+    // The last import, automatic (mail-ingest) or by hand, and the report's window (supabase/bl-report-ingest.sql).
+    let last = null;
+    try { const r = await c.rpc('bl_report_last', { p_location: loc }); if (!r.error && r.data && !Array.isArray(r.data) && r.data.at) last = r.data; } catch (_) { /* not set up yet */ }
+    W.last = last;
+    const win = last && last.import_id && last.import_id === top.import_id && last.window_from && last.window_to ? { from: last.window_from, to: last.window_to } : null;
+    W.meta = { id: top.import_id, at: top.updated_at, min, max, window: win }; W.metaLoaded = true; W.error = '';
+  }
+  // «Last import: today 17:02 · Bookinglayer (automatic)» under the Import button — amber after 3 hours.
+  function lastImportHtml() {
+    if (!W.last || !window.BlIngest) return '';
+    const L = BlIngest.lastImportLine(W.last, window.TRANSPORT_NOW || new Date(), CC.tz || 'Asia/Colombo');
+    return `<div class="hint wk-lastimp${L.amber ? ' kv-amber' : ''}">${L.amber ? '<span class="status-dot amber"></span>' : ''}${h(L.text)}</div>`;
   }
   async function loadWeek(ws, force) {
     if (W.cache[ws] && !force) return W.cache[ws];
@@ -858,7 +872,7 @@
     const ws = W.week;
     const head = `<div class="section-head page-head"><div><div class="section-title">Week</div><div class="section-sub">Arrivals, departures, rooms, meals and surf · messages for the camp teams</div></div>
       <div class="exp-top-actions wk-actions">
-        <button class="btn btn-s" onclick="WeekUI.setMode('${W.mode === 'import' ? 'lists' : 'import'}')">${ic(W.mode === 'import' ? 'arrow-left' : 'upload')} ${W.mode === 'import' ? 'Back to the week' : 'Import Guests file'}</button>
+        <div class="wk-imp"><button class="btn btn-s" onclick="WeekUI.setMode('${W.mode === 'import' ? 'lists' : 'import'}')">${ic(W.mode === 'import' ? 'arrow-left' : 'upload')} ${W.mode === 'import' ? 'Back to the week' : 'Import Guests file'}</button>${lastImportHtml()}</div>
         <button class="btn btn-s" onclick="WeekUI.openContacts()">${ic('phone')} Contacts</button></div></div>`;
     if (W.mode === 'import') {
       const tr = $('transportRoot'); if (tr) tr.innerHTML = '';   // one copy of the import inputs in the DOM

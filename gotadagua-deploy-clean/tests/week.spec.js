@@ -92,6 +92,9 @@ async function stub(page, opts = {}) {
     if (url.includes('/rest/v1/pricing_catalog')) return json(slug === 'sri-lanka' && url.includes('category=eq.Transport') ? [['Airport → Surfcamp — Car', 21000, 3], ['Airport → Surfcamp — Minivan', 26500, 8], ['Surfcamp → Airport — Car', 20000, 3], ['Surfcamp → Airport — Minivan', 25000, 8]]
       .map(([name, cost, capacity], i) => ({ id: `cat-${i}`, name, cost_per_guest: cost, currency: 'LKR', capacity, notes: '', linked_transport_preset_id: `p-${name.split(' — ')[0]}`, linked_camp_tab_id: null, picker_tab: 'airport', sort_order: i })) : []);
     if (url.includes('/rest/v1/rpc/camp_transport_autolink')) return json({});
+    // supabase/bl-report-ingest.sql (17 Nov 2026): the last import of the camp, and a manual import logged beside the automatic ones
+    if (url.includes('/rest/v1/rpc/bl_report_last')) return json(opts.last || null);
+    if (url.includes('/rest/v1/rpc/bl_report_log_manual')) { st.calls.push({ t: 'log_manual', body }); return json('99999999-0000-4000-8000-000000000001'); }
     if (url.includes('/rest/v1/rpc/camp_trips_import')) { st.calls.push({ t: 'import', body }); return json({ inserted: body.p_trips.length, updated: 0, resend: 0, cancelled: 0, missing: 0, untouched: 0, guests: body.p_guests.length }); }
     if (url.includes('/rest/v1/bookings')) return json([]);
     if (url.includes('/rest/v1/location_state_store') && url.includes('week_group_v1') && method === 'GET') return json(st.group ? [{ state_json: st.group }] : []);
@@ -475,6 +478,26 @@ test('dropped from the latest file (cancelled?) is not counted and shows in To c
   await expect(page.locator('#weekRoot .wk-count')).toHaveText('21 guests');
   await tab(page, 'guests');
   await expect(page.locator('.wk-view-guests .wk-check')).toContainText('1 guest dropped out of the latest Guests file – cancelled? Not counted');
+});
+
+// The Bookinglayer camp report holds check-outs −3..+32 days around its day (17 Nov 2026): a stored guest whose check-out is
+// outside the last import's window is not «cancelled?» — the report could not hold them.
+test('window guard: a guest outside the last report\'s check-out window is not «cancelled?»; «Last import» under the Import button', async ({ page }) => {
+  const guests = [...guestsFromFile(), ...CARRY()];
+  const z = guests.find(g => g.guest_name === 'Zara Palmer'); z.import_id = IMPORT_OLD; z.updated_at = '2026-11-09T05:00:00Z';
+  const to = GT.addDaysIso(z.check_out, -1);
+  await openWeek(page, { guests, last: { at: '2026-11-17T04:00:00Z', source: 'mail', import_id: IMPORT_NEW, window_from: '2026-11-14', window_to: to } });
+  await expect(page.locator('#weekRoot .wk-count')).toHaveText('22 guests');
+  await tab(page, 'guests');
+  await expect(page.locator('.wk-view-guests')).not.toContainText('dropped out of the latest Guests file');
+  // 04:00Z = 09:30 Colombo, «now» is 10:00 Colombo: fresh, not amber
+  await expect(page.locator('#weekRoot .wk-imp .wk-lastimp')).toHaveText('Last import: today 09:30 · Bookinglayer (automatic)');
+  await expect(page.locator('#weekRoot .wk-lastimp.kv-amber')).toHaveCount(0);
+});
+test('«Last import» by hand, older than 3 hours → amber', async ({ page }) => {
+  await openWeek(page, { last: { at: '2026-11-16T12:00:00Z', source: 'manual', by_name: 'Francisco Guimarães' } });
+  await expect(page.locator('#weekRoot .wk-lastimp')).toHaveText('Last import: yesterday 17:30 · by hand (Francisco)');
+  await expect(page.locator('#weekRoot .wk-lastimp.kv-amber .status-dot.amber')).toHaveCount(1);
 });
 
 // ── Send, Copy, Undo, changed since sent ───────────────────────────────────

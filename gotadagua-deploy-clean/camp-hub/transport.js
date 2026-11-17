@@ -2096,6 +2096,18 @@
         p_trips: I.groups.trips, p_guests: I.groups.guests,
       });
       I.stage = 'done'; I.result = result || {};
+      // Logged beside the automatic imports (bl_report_runs, supabase/bl-report-ingest.sql): Week shows «Last import: … · by hand».
+      // The camp report's window (check-out −3..+32, never before the file's first check-out) keeps Week from asking «cancelled?»
+      // for guests the file could not hold. Never blocks: the import is saved either way.
+      try {
+        let w = null;
+        if (I.parsed.report && window.BlIngest) {
+          const ex = I.parsed.export_date || cToday(); w = BlIngest.reportWindow(ex);
+          const minCo = (I.parsed.bookings || []).reduce((m, b) => b.co && (!m || b.co < m) ? b.co : m, '');
+          if (minCo > w.from) w.from = minCo;
+        }
+        await client().rpc('bl_report_log_manual', { p_location: loc, p_file: String(I.name || ''), p_rows: (I.groups.guests || []).length, p_result: result || {}, p_window_from: w ? w.from : null, p_window_to: w ? w.to : null });
+      } catch (_) { /* not set up yet */ }
       try { window.dispatchEvent(new CustomEvent('camp-week-imported')); } catch (_) {}   // Week reloads its lists
       await load(true);
       render(); say('Import saved');

@@ -3,7 +3,9 @@
    Chart colours: ocean, navy and grey from the tokens; arrivals = ocean,
    departures = navy (as the Arrival / Departure badges of Transport). */
 #weekRoot { --wk-in: var(--ocean); --wk-out: var(--navy); --wk-lbl: 88px; }
-#weekRoot .wk-actions { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
+#weekRoot .wk-actions { display: flex; gap: var(--sp-2); flex-wrap: wrap; align-items: flex-start; }
+#weekRoot .wk-imp { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+#weekRoot .wk-lastimp { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 #weekRoot .wk-filters { display: flex; gap: var(--sp-3); flex-wrap: wrap; align-items: center; margin: var(--sp-4) 0 var(--sp-3); }
 #weekRoot .wk-filters .period-picker { display: inline-flex; align-items: center; gap: var(--sp-2); }
 #weekRoot .wk-week { min-width: 150px; text-align: center; }

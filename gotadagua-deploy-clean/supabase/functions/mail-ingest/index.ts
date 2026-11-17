@@ -16,6 +16,13 @@
 //                                  HQ-member JWT (button). Processes new mail.
 //    POST {action:'decide', id, company:'water-movements'|'manjar'|'skip', location_slug?}
 //                                  HQ-member JWT: resolves a «review» item.
+//    POST {action:'reports'}       only the Bookinglayer reports of accounting@ (reports.ts)
+//    POST {action:'reprocess', message_id}  HQ JWT: forget one report email's run and process it again
+//    GET  ?start=SECRET&modify=1   the same consent with gmail.modify (accounting@: archiving the report emails)
+//
+//  Bookinglayer reports (17 Nov 2026, reports.ts): every run first imports the hourly camp reports and the daily
+//  Revenue & Partners report that reach accounting@, and archives them — never an invoice. Dry run by default
+//  (bl_report_settings, supabase/bl-report-ingest.sql).
 //
 //  Rules encoded (from the daily-routine SKILL):
 //    buyer NIF 515059927 → Water (Drive + line) · 502379723 → Manjar (Drive of
@@ -34,6 +41,7 @@
 // ════════════════════════════════════════════════════════════════════════════
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { parseInvoice, bytesToBase64, mediaTypeFor, type Parsed } from '../_shared/invoice-parse.ts'
+import { runReports, REPORT_ACCOUNT } from './reports.ts'
 
 const CLIENT_ID     = Deno.env.get('GOOGLE_OAUTH_CLIENT_ID') || ''
 const CLIENT_SECRET = Deno.env.get('GOOGLE_OAUTH_CLIENT_SECRET') || ''
@@ -70,12 +78,17 @@ async function refresh(refreshToken: string) {
   })
   const tk = await r.json()
   if (!r.ok || !tk.access_token) throw new Error('Google recusou o refresh token: ' + JSON.stringify(tk).slice(0, 200))
-  return { token: tk.access_token as string, expires: new Date(Date.now() + ((tk.expires_in || 3600) - 30) * 1000).toISOString() }
+  // scope = what the mailbox granted (gmail.readonly, or gmail.modify after ?start=…&modify=1): archiving needs modify
+  return { token: tk.access_token as string, expires: new Date(Date.now() + ((tk.expires_in || 3600) - 30) * 1000).toISOString(), scope: tk.scope ? String(tk.scope) : null }
 }
 async function mailToken(db: Db, acct: Record<string, unknown>): Promise<string> {
   if (acct.access_token && acct.access_expires_at && new Date(String(acct.access_expires_at)).getTime() > Date.now() + 60_000) return String(acct.access_token)
   const t = await refresh(String(acct.refresh_token))
-  await db.from('mail_ingest_account').update({ access_token: t.token, access_expires_at: t.expires, updated_at: new Date().toISOString() }).eq('id', acct.id)
+  const patch: Record<string, unknown> = { access_token: t.token, access_expires_at: t.expires, updated_at: new Date().toISOString() }
+  if (t.scope) patch.scopes = t.scope
+  let { error } = await db.from('mail_ingest_account').update(patch).eq('id', acct.id)
+  // before supabase/bl-report-ingest.sql the column does not exist: save the token without it
+  if (error && /scopes/.test(error.message || '')) { delete patch.scopes; ({ error } = await db.from('mail_ingest_account').update(patch).eq('id', acct.id)) }
   return t.token
 }
 async function driveToken(db: Db): Promise<string> {
@@ -325,6 +338,8 @@ async function run(db: Db, opts: RunOpts = {}) {
         const pdfs = atts.filter(a => /\.pdf$/i.test(a.filename) || a.mime === 'application/pdf')
         const marker: Ctx = { db, account, messageId: id, attachmentId: '-', filename: '', sha: '', receivedAt, from, subject, gmailLink, backfill: !!opts.backfill }
         if (/sistema de manjar/i.test(subject)) { await record(marker, { status: 'skipped', reason: 'relatório do POS do Manjar' }, null); continue }
+        // a Bookinglayer report (never a PDF): reports.ts imports it and logs it in bl_report_runs
+        if ((globalThis as any).BlIngest?.routeEmail({ subject, attachments: atts }).kind !== 'none') { await record(marker, { status: 'skipped', reason: 'relatório do Bookinglayer (bl_report_runs)' }, null); continue }
         if (!pdfs.length) { await record(marker, { status: 'skipped', reason: 'sem PDF em anexo' }, null); continue }
         for (const a of pdfs) {
           if (budget <= 0) break
@@ -406,7 +421,8 @@ Deno.serve(async (req) => {
       auth.searchParams.set('client_id', CLIENT_ID)
       auth.searchParams.set('redirect_uri', selfUrl())
       auth.searchParams.set('response_type', 'code')
-      auth.searchParams.set('scope', 'https://www.googleapis.com/auth/gmail.readonly email')
+      // &modify=1: gmail.modify (read + labels) so the Bookinglayer report emails can be archived — accounting@ only
+      auth.searchParams.set('scope', u.searchParams.get('modify') ? 'https://www.googleapis.com/auth/gmail.modify email' : 'https://www.googleapis.com/auth/gmail.readonly email')
       auth.searchParams.set('access_type', 'offline')
       auth.searchParams.set('prompt', 'consent select_account')
       auth.searchParams.set('state', SECRET)
@@ -423,15 +439,21 @@ Deno.serve(async (req) => {
       const profile = await (await fetch(`${G}/profile`, { headers: { authorization: 'Bearer ' + tk.access_token } })).json()
       const email = String(profile?.emailAddress || '').toLowerCase()
       if (!email) return html('<h2>Não consegui ler o endereço da caixa</h2>', 500)
-      const { error } = await db.from('mail_ingest_account').upsert({ email, refresh_token: tk.refresh_token, access_token: tk.access_token, access_expires_at: new Date(Date.now() + ((tk.expires_in || 3600) - 30) * 1000).toISOString(), active: true, updated_at: new Date().toISOString() }, { onConflict: 'email' })
+      const row: Record<string, unknown> = { email, refresh_token: tk.refresh_token, access_token: tk.access_token, access_expires_at: new Date(Date.now() + ((tk.expires_in || 3600) - 30) * 1000).toISOString(), active: true, updated_at: new Date().toISOString(), scopes: tk.scope ? String(tk.scope) : null }
+      let { error } = await db.from('mail_ingest_account').upsert(row, { onConflict: 'email' })
+      if (error && /scopes/.test(error.message || '')) { delete row.scopes; ({ error } = await db.from('mail_ingest_account').upsert(row, { onConflict: 'email' })) }
       if (error) return html('<h2>Falhou a gravar</h2><pre>' + error.message + '</pre>', 500)
+      if (/gmail\.modify/.test(String(tk.scope || ''))) return html(`<h2>✓ Caixa ${email} ligada (leitura + arquivar)</h2><p>As faturas continuam só a ser lidas. Só os emails dos relatórios do Bookinglayer são arquivados, depois de importados, e só com o arquivo ligado em bl_report_settings. Podes fechar esta janela.</p>`)
       return html(`<h2>✓ Caixa ${email} ligada (só leitura)</h2><p>A partir de agora as faturas que chegam a esta caixa entram sozinhas na app e na Drive, de 30 em 30 minutos. Podes fechar esta janela.</p><p>Para ligar outra caixa, abre o mesmo link e escolhe a outra conta.</p>`)
     }
     if (u.searchParams.get('status')) {
       if (u.searchParams.get('status') !== SECRET) return json({ error: 'unauthorized' }, 401)
       const { data: accounts } = await db.from('mail_ingest_account').select('email, active, last_run_at, last_result, updated_at')
       const { data: items } = await db.from('mail_ingest_items').select('account_email, received_at, filename, status, reason, company').order('created_at', { ascending: false }).limit(40)
-      return json({ accounts, items })
+      const { data: reportSettings } = await db.from('bl_report_settings').select('*').eq('id', 1).maybeSingle()
+      const { data: reports } = await db.from('bl_report_runs').select('received_at, report, location_slug, status, rows, error, archived_at, archive_error').neq('status', 'ignored').order('created_at', { ascending: false }).limit(30)
+      const { data: scopes } = await db.from('mail_ingest_account').select('email, scopes').eq('email', REPORT_ACCOUNT).maybeSingle()
+      return json({ accounts, items, reportSettings, reports, reportMailbox: scopes })
     }
     return json({ error: 'use ?start=SECRET para ligar uma caixa de email' }, 400)
   }
@@ -455,7 +477,19 @@ Deno.serve(async (req) => {
     if (!isHq) return json({ error: 'HQ member required' }, 403)
     who = user.email || user.id
   }
-  if (!ANTHROPIC_KEY) return json({ error: 'ANTHROPIC_API_KEY not configured' }, 500)
+  const reportDeps = { gmail, mailToken, header, b64urlToBytes }
+  // the Bookinglayer reports need no Anthropic key: they run first, and an error there never stops the invoices
+  async function reports(messageIds?: string[]) {
+    try { return await runReports(db, reportDeps, { messageIds }) } catch (e) { return { error: (e as Error).message || String(e) } }
+  }
+  if (action === 'reports') return json({ ok: true, by: who, reports: await reports() })
+  if (action === 'reprocess') {
+    const mid = String(body.message_id || '')
+    if (!mid || who === 'cron') return json({ error: 'reprocess needs message_id and an HQ login' }, 400)
+    await db.from('bl_report_runs').delete().eq('message_id', mid).neq('status', 'imported')
+    return json({ ok: true, by: who, reports: await reports([mid]) })
+  }
+  if (!ANTHROPIC_KEY) return json({ error: 'ANTHROPIC_API_KEY not configured', reports: action === 'run' ? await reports() : undefined }, 500)
 
   try {
     if (action === 'decide') return await decide(db, body, who)
@@ -467,8 +501,9 @@ Deno.serve(async (req) => {
       const summary = await run(db, { account: String(body.account), query, maxMessages: 400, budget: Math.min(Number(body.budget) || 20, 30), backfill: true })
       return json({ ok: true, by: who, backfill: { after, before }, ...summary })
     }
+    const rep = await reports()
     const summary = await run(db)
-    return json({ ok: true, by: who, ...summary })
+    return json({ ok: true, by: who, ...summary, reports: rep })
   } catch (e) {
     return json({ error: (e as Error).message || String(e) }, 500)
   }

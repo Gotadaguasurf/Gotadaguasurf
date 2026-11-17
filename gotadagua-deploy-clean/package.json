@@ -4,7 +4,8 @@
   "description": "Gota Dagua surf platform — static apps on Vercel + Supabase. Tests only; the apps themselves have no build step.",
   "scripts": {
     "test": "playwright test",
-    "test:headed": "playwright test --headed"
+    "test:headed": "playwright test --headed",
+    "sync:edge": "node scripts/sync-edge-libs.js"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0"
