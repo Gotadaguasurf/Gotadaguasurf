@@ -73,13 +73,13 @@ body{background:#e9e3cf;font-family:var(--gd-body);color:var(--gd-navy)}
 .pl-part:first-of-type{margin-top:0}
 .pl-sec-head{text-align:center;margin-bottom:5mm;break-after:avoid}
 .pl-sec-head h2{margin:0;font-family:var(--gd-serif);font-weight:700;font-size:25px;letter-spacing:.02em;text-transform:uppercase;color:var(--gd-navy);line-height:1.1}
-.pl-lead{font-family:var(--gd-serif);font-size:14.5px;color:var(--gd-navy-soft);margin-top:3px}
+.pl-lead{font-family:var(--gd-serif);font-size:16px;color:var(--gd-navy-soft);margin-top:3px}
 
 /* accommodation matrix: rooms × seasons, white card like the website's package cards */
 .pl-pack{background:var(--gd-card);border:1px solid var(--gd-line);border-radius:14px;padding:6mm 6mm 4mm;margin-bottom:6mm;break-inside:avoid}
 .pl-pack-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap}
 .pl-pack h3{margin:0;font-family:var(--gd-serif);font-weight:700;font-size:19px;color:var(--gd-navy)}
-.pl-basis{font-family:var(--gd-serif);font-size:13px;color:var(--gd-navy-soft)}
+.pl-basis{font-family:var(--gd-body);font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--gd-navy-soft)}
 .pl-pack-desc{font-size:11px;color:var(--gd-navy-soft);line-height:1.5;margin:3px 0 4mm}
 .pl-table{width:100%;border-collapse:collapse;table-layout:fixed}
 .pl-matrix{font-size:12px}
@@ -89,7 +89,7 @@ body{background:#e9e3cf;font-family:var(--gd-body);color:var(--gd-navy)}
 .pl-matrix.pl-cols-4 .pl-dates{white-space:normal}
 .pl-matrix col.pl-col-room{width:auto}
 .pl-matrix th{font-weight:500;text-align:right;vertical-align:top;padding:0 0 7px 6px;border-bottom:1.5px solid var(--gd-navy);font-size:10px;color:var(--gd-navy-soft);line-height:1.35}
-.pl-matrix th.pl-room-h{text-align:left;font-family:var(--gd-serif);font-size:12px;color:var(--gd-navy);padding-left:0}
+.pl-matrix th.pl-room-h{text-align:left;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--gd-navy-soft);padding-left:0}
 .pl-pill{display:inline-block;font-family:var(--gd-display);font-size:13px;line-height:1;text-transform:uppercase;letter-spacing:.04em;border-radius:7px;padding:5px 9px 4px;margin-bottom:4px}
 .pl-pill.low{background:#dfeadb;color:var(--gd-green)}
 .pl-pill.mid{background:var(--gd-yellow-soft);color:var(--gd-navy)}
@@ -108,6 +108,7 @@ body{background:#e9e3cf;font-family:var(--gd-body);color:var(--gd-navy)}
 
 /* lists: surf, tours, add-ons — dashed rows like a menu, optional photo */
 .pl-items{background:var(--gd-card);border:1px solid var(--gd-line);border-radius:14px;padding:3mm 6mm;break-inside:auto}
+.pl-items.whole,.pl-part.whole{break-inside:avoid}
 .pl-items.with-photo{break-inside:avoid;display:grid;grid-template-columns:1fr 52mm;gap:6mm;align-items:start}
 .pl-photo{border-radius:12px;background-size:cover;background-position:center;height:66mm;margin:3mm 0}
 .pl-list td{padding:8px 0;border-bottom:1px dashed var(--gd-line-2);vertical-align:top;font-size:12px;line-height:1.35}
@@ -121,16 +122,16 @@ body{background:#e9e3cf;font-family:var(--gd-body);color:var(--gd-navy)}
 .pl-transfers{background:var(--gd-card);border:1px solid var(--gd-line);border-radius:14px;border-collapse:separate;border-spacing:0;overflow:hidden;font-size:12px}
 .pl-transfers col.pl-col-mid{width:44mm}
 .pl-transfers col.pl-col-num{width:30mm}
-.pl-transfers th{font-family:var(--gd-serif);font-weight:700;font-size:11.5px;text-align:left;padding:9px 6mm 7px;border-bottom:1.5px solid var(--gd-navy);color:var(--gd-navy)}
+.pl-transfers th{font-weight:600;font-size:10px;letter-spacing:.06em;text-transform:uppercase;text-align:left;padding:9px 6mm 7px;border-bottom:1.5px solid var(--gd-navy);color:var(--gd-navy)}
 .pl-transfers th.r{text-align:right}
 .pl-transfers td{padding:7px 6mm;border-bottom:1px dashed var(--gd-line-2)}
 .pl-transfers tr:last-child td{border-bottom:0}
-.pl-transfers tr.pl-route-row td{font-family:var(--gd-serif);font-weight:700;font-size:13px;background:var(--gd-cream);border-bottom:1px solid var(--gd-line)}
+.pl-transfers tr.pl-route-row td{font-weight:700;font-size:12px;background:var(--gd-cream);border-bottom:1px solid var(--gd-line)}
 .pl-transfers tr.pl-veh td:first-child{padding-left:10mm}
 .pl-transfers tbody tr.pl-route-row{break-after:avoid}
 
 /* good to know: check-circle list like the website's «Included» */
-.pl-notes{background:var(--gd-cream);border-radius:14px;padding:5mm 6mm;break-inside:avoid}
+.pl-notes{background:var(--gd-cream);border-radius:14px;padding:5mm 6mm;break-inside:avoid;margin-top:2mm}
 .pl-notes h3{margin:0 0 6px;font-family:var(--gd-serif);font-weight:700;font-size:18px;margin-bottom:6px}
 .pl-notes ul{list-style:none;margin:0;padding:0;font-size:11.5px;line-height:1.5}
 .pl-notes li{position:relative;padding-left:20px;margin-bottom:4px}

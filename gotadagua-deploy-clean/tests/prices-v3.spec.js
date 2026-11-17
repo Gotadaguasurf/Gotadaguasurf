@@ -236,6 +236,8 @@ test('price list page: A4 print with no overflow (long names, 5 sharing columns)
   const imgs = await page.evaluate(async () => { const u = [...new Set([...document.querySelectorAll('[style*="background-image"]')].map(e => /url\(['"]?([^'")]+)/.exec(e.getAttribute('style'))[1]))];
     return Promise.all(u.map(x => fetch(x).then(r => [x, r.status]))); });
   expect(imgs.filter(([, st]) => st !== 200)).toEqual([]);
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await noSideScroll(page)).toBe(true);
   await page.emulateMedia({ media: 'print' });
   await page.setViewportSize({ width: 794, height: 1123 });                                  // A4 at 96 dpi
   const over = await page.evaluate(() => {

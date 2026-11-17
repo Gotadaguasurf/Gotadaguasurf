@@ -245,19 +245,23 @@
         ? `<tr><td><b>${esc(g.route)}</b></td><td>${g.rows[0].covers ? `up to ${g.rows[0].covers} persons` : '—'}</td><td class="r pl-price">${esc(g.rows[0].price)}</td></tr>`
         : `<tr class="pl-route-row"><td colspan="3">${esc(g.route)}</td></tr>` + g.rows.map(r =>
           `<tr class="pl-veh"><td>${esc(r.vehicle || r.route)}</td><td>${r.covers ? `up to ${r.covers} persons` : '—'}</td><td class="r pl-price">${esc(r.price)}</td></tr>`).join('')).join('');
-      return `<section class="pl-part" data-part="transfers">${sectionHead(part.key, part.title)}
+      return `<section class="pl-part${part.rows.length <= 12 ? ' whole' : ''}" data-part="transfers">${sectionHead(part.key, part.title)}
         <table class="pl-table pl-transfers"><colgroup><col><col class="pl-col-mid"><col class="pl-col-num"></colgroup>
           <thead><tr><th>Route and vehicle</th><th>One transfer covers</th><th class="r">Per transfer</th></tr></thead>
           <tbody>${body}</tbody>
         </table></section>`;
     }
-    return `<section class="pl-part" data-part="${esc(part.key)}">${sectionHead(part.key, part.title)}
-      <div class="pl-items${part.photo ? ' with-photo' : ''}">
+    return `<section class="pl-part${part.rows.length <= 12 ? ' whole' : ''}" data-part="${esc(part.key)}">${sectionHead(part.key, part.title)}
+      <div class="pl-items${part.photo ? ' with-photo' : ''}${part.rows.length <= 12 ? ' whole' : ''}">
         <table class="pl-table pl-list"><colgroup><col><col class="pl-col-num"></colgroup>
           <tbody>${part.rows.map(r => `<tr><td><span class="pl-name">${esc(r.name)}</span>${r.note ? `<span class="pl-sub">${esc(r.note)}</span>` : ''}</td><td class="r pl-price">${esc(r.price)}</td></tr>`).join('')}</tbody>
         </table>
         ${part.photo ? `<div class="pl-photo" style="background-image:url('/assets/pricelist/${esc(part.photo)}.jpg')"></div>` : ''}
       </div></section>`;
+  }
+  // «Good to know» sits under the accommodation (never alone on a page)
+  function notesHtml(camp) {
+    return camp.notes.length ? `<div class="pl-notes"><h3>Good to know</h3><ul>${camp.notes.map(n => `<li>${esc(n)}</li>`).join('')}</ul></div>` : '';
   }
   function sectionHead(key, title) {
     return `<header class="pl-sec-head"><h2>${esc(title)}</h2>${SECTION_LEAD[key] ? `<p class="pl-lead">${esc(SECTION_LEAD[key])}</p>` : ''}</header>`;
@@ -297,9 +301,9 @@
           ${camp.from ? `<div class="pl-camp-from">from ${esc(camp.from)}</div>` : ''}
         </div>
       </header>
-      ${camp.accommodation.length ? `<section class="pl-part pl-accom" data-part="accommodation">${sectionHead('accommodation', 'Accommodation')}${camp.accommodation.map(accomHtml).join('')}</section>` : ''}
+      ${camp.accommodation.length ? `<section class="pl-part pl-accom" data-part="accommodation">${sectionHead('accommodation', 'Accommodation')}${camp.accommodation.map(accomHtml).join('')}${notesHtml(camp)}</section>` : ''}
       ${camp.parts.map(partHtml).join('')}
-      ${camp.notes.length ? `<section class="pl-part pl-notes"><h3>Good to know</h3><ul>${camp.notes.map(n => `<li>${esc(n)}</li>`).join('')}</ul></section>` : ''}
+      ${camp.accommodation.length ? '' : notesHtml(camp)}
     </section>`;
     }).join('');
     const end = `<section class="pl-end">
