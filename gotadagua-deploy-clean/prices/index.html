@@ -116,7 +116,6 @@ tr.drag-over-bottom td{box-shadow:inset 0 -2px 0 0 var(--ocean)}
 .view-list .drag-col{display:none}
 
 /* seasons card: plain sentence, rolling 15-month strip, seasons × years table (phones: a list) */
-:root{--season-low:#8a965a;--season-mid:#d0a320;--season-high:#c63c12;--season-special:#3f3d1b;--season-ink:#3f3d1b;--season-bone:#f6f0d8}
 .season-card{margin-bottom:var(--sp-5)}
 .season-now{font-size:15px;color:var(--ink);line-height:1.9;margin:0 0 var(--sp-4)}
 .season-now .season-pill{vertical-align:1px;margin:0 2px}
@@ -124,13 +123,13 @@ tr.drag-over-bottom td{box-shadow:inset 0 -2px 0 0 var(--ocean)}
 .closed-tag{display:inline-flex;height:22px;align-items:center;padding:0 8px;border-radius:var(--r-xs);background:var(--surface-2);border:1px dashed var(--border-2);color:var(--muted);font-size:12px;font-weight:600}
 .tl-wrap{position:relative;margin:28px 0 var(--sp-4)}
 .tl-strip{position:relative;height:40px;border-radius:var(--r-sm);overflow:visible;background:var(--surface-2)}
-.tl-band{position:absolute;top:0;bottom:0;border:0;padding:0;margin:0;cursor:pointer;display:flex;align-items:center;justify-content:center;font:600 12px 'Outfit',sans-serif;overflow:hidden;white-space:nowrap;box-shadow:inset -2px 0 0 var(--surface)}
+.tl-band{position:absolute;top:0;bottom:0;border:0;padding:0;margin:0;cursor:pointer;display:flex;align-items:center;justify-content:center;font:700 12px 'Outfit',sans-serif;letter-spacing:.02em;overflow:hidden;white-space:nowrap;box-shadow:inset -2px 0 0 var(--surface)}
 .tl-band:first-child{border-radius:var(--r-sm) 0 0 var(--r-sm)}
 .tl-band:nth-last-child(2){border-radius:0 var(--r-sm) var(--r-sm) 0}
-.tl-band.low{background:var(--season-low);color:#fff}
-.tl-band.mid{background:var(--season-mid);color:var(--season-ink)}
-.tl-band.high{background:var(--season-high);color:#fff}
-.tl-band.special,.tl-band.other{background:var(--season-special);color:var(--season-bone)}
+.tl-band.low{background:var(--green-bg);color:var(--green);box-shadow:inset 0 0 0 1px var(--green-border),inset -2px 0 0 var(--surface)}
+.tl-band.mid{background:var(--amber-bg);color:var(--amber);box-shadow:inset 0 0 0 1px var(--amber-border),inset -2px 0 0 var(--surface)}
+.tl-band.high{background:var(--red-bg);color:var(--red);box-shadow:inset 0 0 0 1px var(--red-border),inset -2px 0 0 var(--surface)}
+.tl-band.special,.tl-band.other{background:var(--ocean-soft);color:var(--ocean);box-shadow:inset 0 0 0 1px #cfe2f2,inset -2px 0 0 var(--surface)}
 .tl-band.closed{background:var(--surface-2);color:var(--muted);box-shadow:inset 0 0 0 1px var(--border-2),inset -2px 0 0 var(--surface)}
 .tl-band.unset{background:transparent;color:var(--muted-2);box-shadow:inset 0 0 0 1px dashed var(--border);border:1px dashed var(--border-2)}
 .tl-band:hover,.tl-band.sel{filter:brightness(1.06);outline:2px solid var(--ocean);outline-offset:-2px;z-index:1}
@@ -160,10 +159,10 @@ tr.drag-over-bottom td{box-shadow:inset 0 -2px 0 0 var(--ocean)}
 }
 
 .season-pill{display:inline-flex;align-items:center;flex-shrink:0;white-space:nowrap;height:22px;padding:0 10px;border-radius:var(--r-xs);font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;border:1px solid transparent}
-.season-pill.low{background:var(--season-low);color:#fff;border-color:var(--season-low)}
-.season-pill.mid{background:var(--season-mid);color:var(--season-ink);border-color:var(--season-mid)}
-.season-pill.high{background:var(--season-high);color:#fff;border-color:var(--season-high)}
-.season-pill.special,.season-pill.other{background:var(--season-special);color:var(--season-bone);border-color:var(--season-special)}
+.season-pill.low{background:var(--green-bg);color:var(--green);border-color:var(--green-border)}
+.season-pill.mid{background:var(--amber-bg);color:var(--amber);border-color:var(--amber-border)}
+.season-pill.high{background:var(--red-bg);color:var(--red);border-color:var(--red-border)}
+.season-pill.special,.season-pill.other{background:var(--ocean-soft);color:var(--ocean);border-color:#cfe2f2}
 /* accommodation: one matrix per pack — rooms × seasons, each cell the room's sharing prices (17 Nov 2026) */
 .accom-wrap{max-width:1040px}
 .nights-sel{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);font-weight:500}
@@ -225,11 +224,14 @@ details.dates-pop>summary::-webkit-details-marker{display:none}
 #accomCard.mx2 .accom-matrix col.room-col-w{width:auto}
 #accomCard.mx2 .accom-matrix col.season-col-w{width:150px}
 #accomCard.mx2 .accom-matrix.cols-4 col.season-col-w{width:132px}
-#accomCard.mx2 table.accom-matrix thead th{height:62px;vertical-align:top;white-space:nowrap;text-transform:none;letter-spacing:0;padding-top:12px;padding-bottom:8px}
+#accomCard.mx2 table.accom-matrix thead th{height:108px;vertical-align:top;white-space:nowrap;text-transform:none;letter-spacing:0;padding-top:12px;padding-bottom:8px}
 #accomCard.mx2 table.accom-matrix thead th.room-col-h{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);padding-top:16px}
 #accomCard.mx2 table.accom-matrix th.season-col,#accomCard.mx2 table.accom-matrix td.price-cell{text-align:right}
-#accomCard.mx2 .season-col .col-line{display:block;margin-top:6px;height:18px;font-size:11.5px;font-weight:500;color:var(--muted)}
-#accomCard.mx2 table.accom-matrix .is-now{background:#faf6e6}
+#accomCard.mx2 .col-dates{display:flex;flex-direction:column;align-items:flex-end;gap:1px;margin-top:6px;font-size:11px;font-weight:500;color:var(--muted);line-height:1.35;font-variant-numeric:tabular-nums;white-space:nowrap}
+#accomCard.mx2 details.dates-more{position:relative}
+#accomCard.mx2 details.dates-more>summary{list-style:none;cursor:pointer;color:var(--ocean);font-weight:600}
+#accomCard.mx2 details.dates-more>summary::-webkit-details-marker{display:none}
+#accomCard.mx2 .dates-more-body{position:absolute;z-index:20;top:calc(100% + 4px);right:0;text-align:left;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);box-shadow:var(--sh-lg);padding:8px 12px;color:var(--ink);line-height:1.7}
 #accomCard.mx2 table.accom-matrix td{vertical-align:top;height:auto;padding-top:12px;padding-bottom:12px;white-space:normal}
 #accomCard.mx2 .room-name{font-weight:600;color:var(--ink);line-height:1.35}
 #accomCard.mx2 .room-desc{display:block;-webkit-line-clamp:unset;font-size:12px;color:var(--muted);line-height:1.4;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -251,12 +253,13 @@ details.dates-pop>summary::-webkit-details-marker{display:none}
   #accomCard.mx2 .accom-matrix tbody tr{display:block;padding:14px var(--sp-4);border-bottom:1px solid var(--border)}
   #accomCard.mx2 table.accom-matrix td{display:block;border:0;padding:0}
   #accomCard.mx2 table.accom-matrix td.room-cell{margin-bottom:8px}
-  #accomCard.mx2 table.accom-matrix td.price-cell{display:grid;grid-template-columns:110px 1fr;align-items:start;gap:8px;padding:6px 8px;margin:0 -8px;border-top:1px solid var(--border);border-radius:6px;text-align:left}
-  #accomCard.mx2 .m-season{display:inline-flex;align-items:center;gap:6px;margin-top:4px}
+  #accomCard.mx2 table.accom-matrix td.price-cell{display:grid;grid-template-columns:150px 1fr;align-items:start;gap:8px;padding:8px;margin:0 -8px;border-top:1px solid var(--border);border-radius:6px;text-align:left}
+  #accomCard.mx2 .m-season{display:flex;flex-direction:column;align-items:flex-start;gap:4px;margin-top:4px}
+  #accomCard.mx2 .m-season .col-dates{align-items:flex-start;margin-top:0;white-space:normal}
+  #accomCard.mx2 .m-season .dates-more-body{left:0;right:auto}
   #accomCard.mx2 .price-cell .occ-line{justify-content:space-between}
   #accomCard.mx2 .price-cell .occ-line>.cell-edit,#accomCard.mx2 .price-cell .occ-line>.na{margin-left:auto}
   #accomCard.mx2 .accom-matrix tbody tr:hover td{background:transparent}
-  #accomCard.mx2 table.accom-matrix td.price-cell.is-now{background:#faf6e6}
 }
 
 /* rooms inventory (collapsible) */
@@ -1894,7 +1897,7 @@ async function renderAccommodation(){
   const nights = isFlex ? Math.max(1, __accomFlexNights) : 1;
   // ONE matrix per pack (17 Nov 2026): rows = rooms, columns = seasons, each cell = the room's sharing prices.
   const m = PriceList.accomMatrix({ pack: activePack, seasons, rooms, prices, nights, period: 'from-this-year',
-    keepEmpty: editing, allOccs: editing && __accomAllOccs, today: new Date().toISOString().slice(0, 10), shortLabels: __matrixV2 });
+    keepEmpty: editing, allOccs: editing && __accomAllOccs, today: new Date().toISOString().slice(0, 10), shortLabels: true });
   const somePartial = editing && m.rows.some(r => r.occs.length < m.occsInPack.length);
 
   const packPills = packs.map(p => `<button class="pill ${p.id === accomActivePackId ? 'active' : ''}" onclick="onAccomPickPack('${p.id}')">${escapeHtml(p.label)}</button>`).join('');
@@ -1903,67 +1906,23 @@ async function renderAccommodation(){
         ${[1, 2, 3, 4, 5, 6, 7].map(n => `<option value="${n}"${n === nights ? ' selected' : ''}>${n === 1 ? '1 night (price per night)' : n + ' nights'}</option>`).join('')}
       </select></label>` : '';
 
-  if (!__matrixV2) {   // the live matrix (owner to choose between this and the proposal below)
-  const head = m.cols.map(c => {
-    const all = c.ranges.map(fmtDateRange);
-    const w = c.when;
-    return `<th class="season-col" data-season="${c.id}">
-      <span class="season-pill ${c.key}">${escapeHtml(c.label.replace(/\s*season$/i, ''))}</span>
-      ${w ? `<span class="season-when ${w.tag.toLowerCase()}"><b>${w.tag}</b> · ${escapeHtml(w.text)}</span>` : '<span class="season-when">No dates</span>'}
-      ${all.length > 1 ? `<details class="dates-pop"><summary>All dates (${all.length})</summary><div class="dates-pop-body">${all.map(t => `<div>${escapeHtml(t)}</div>`).join('')}</div></details>` : ''}
-    </th>`;
-  }).join('');
-  const body = m.rows.map(r => `<tr data-room="${r.id}">
-      <td class="room-cell"><div class="room-name">${escapeHtml(r.room)}</div>${r.desc ? `<div class="room-desc">${escapeHtml(r.desc)}</div>` : ''}</td>
-      <td class="occ-col">${r.occs.length > 1 ? r.occs.map(o => `<div class="occ-line"><span class="occ-lbl">${escapeHtml(r.cells[0]?.find(x => x.occ === o)?.label || '')}</span></div>`).join('') : ''}</td>
-      ${r.cells.map((cs, i) => { const c = m.cols[i]; return `<td class="price-cell" data-label="${escapeHtml(c.label)}">
-        <span class="season-pill ${c.key} m-only">${escapeHtml(c.label.replace(/\s*season$/i, ''))}</span>
-        <div class="occ-lines">${cs.map(x => {
-          if (!x.price && !editing) return cs.length > 1 ? `<div class="occ-line"><span class="occ-lbl">${escapeHtml(x.label)}</span><span class="na">n/a</span></div>` : '<div class="occ-line"><span class="na">—</span></div>';
-          const id = `accomcell_${accomActivePackId}_${c.id}_${r.id}_${x.occ}`;
-          return `<div class="occ-line">${x.label ? `<span class="occ-lbl">${escapeHtml(x.label)}</span>` : ''}<span id="${id}" class="cell-edit${x.price ? '' : ' empty'}" ${editing ? 'role="button" tabindex="0"' : ''} onclick="onAccomEditCell(this,'${accomActivePackId}','${c.id}','${r.id}',${x.occ})" onkeydown="if(event.target===this&&event.key==='Enter'){event.preventDefault();this.click()}">${x.price ? x.text : (editing ? 'Add' : '—')}</span></div>`;
-        }).join('')}</div></td>`; }).join('')}
-    </tr>`).join('');
-
-  const hint = `${escapeHtml(m.currency)} · ${escapeHtml(m.basis.toLowerCase())}${isFlex && nights > 1 ? ` · a price you type is saved per night (÷ ${nights})` : ''}`;
-  const footerNote = (isFlex ? (nights > 1 ? `<b>Totals per person for ${nights} nights.</b> ` : '<b>Prices per person, per night.</b> ') : '<b>Prices per person</b> for the full pack. ')
-    + 'Single use = one guest alone in the room; sharing = the price each guest pays when they share.'
-    + (editing ? ' Tap a price to change it; clear it to remove it.' : '');
-
-  wrap.innerHTML = `<div class="accom-wrap">
-    ${seasonTimelineHtml(seasons)}
-    <div class="pack-bar"><div class="pills" role="tablist" aria-label="Packs">${packPills}</div>${nightsHtml}</div>
-    <div class="card tbl-wrap" id="accomCard">
-      <div class="card-hdr"><div><div class="card-title">${escapeHtml(activePack.label)}</div><div class="card-hint">${hint}</div></div>
-        ${somePartial || (editing && __accomAllOccs) ? `<button class="btn btn-link btn-sm" onclick="onAccomAllOccs()">${__accomAllOccs ? 'Hide unused sharing options' : 'Add a sharing option'}</button>` : ''}</div>
-      ${activePack.description ? `<div class="pack-desc">${escapeHtml(activePack.description)}</div>` : ''}
-      ${m.rows.length && m.cols.length ? `<table class="tbl accom-matrix cols-${m.cols.length}">
-        <colgroup><col><col class="occ-col-w">${m.cols.map(() => '<col class="season-col-w">').join('')}</colgroup>
-        <thead><tr><th class="room-col-h">Room</th><th class="occ-col-h" aria-label="Sharing"></th>${head}</tr></thead>
-        <tbody>${body}</tbody></table>` : `<div class="card-body">${emptyState('inbox', 'No prices in this pack yet', '')}</div>`}
-      <div class="accom-note">${footerNote}</div>
-    </div>
-    ${renderRoomsInventory()}
-  </div>`;
-    return;
-  }
-  // PROPOSAL (?matrix=new): calmer headers, «Single / Shared» beside each price, today's season tinted, tighter widths
+  // calm matrix (owner's pick, 17 Nov 2026): the season pill + its coming dates, «Single / Shared» beside each price
   const todayIso = new Date().toISOString().slice(0, 10);
-  // header = the season pill + ONE short line: «Now» on the season that applies today, else «from 5 Dec»
-  const colNow = m.cols.map(c => c.ranges.some(r => r.start <= todayIso && r.end >= todayIso));
-  const colLine = m.cols.map((c, i) => {
-    if (colNow[i]) return '<span class="now-badge">Now</span>';
-    const nx = c.ranges.find(r => r.start > todayIso);
-    if (!nx) return '';
-    const soon = nx.start < isoAdd(todayIso, 300);
-    return `<span class="col-from">from ${fmtDay(nx.start, !soon)}</span>`;
+  // header = the season pill + that season's coming periods (the owner sends this out: dates, not «Now»);
+  // at most 3 lines, the rest behind «+N more»
+  const colDates = m.cols.map(c => {
+    const up = c.ranges.filter(r => r.end >= todayIso).map(fmtDateRange);
+    if (!up.length) return '<span class="col-dates"><span class="na">No dates</span></span>';
+    const shown = up.slice(0, 3).map(t => `<span>${escapeHtml(t)}</span>`).join('');
+    const more = up.length > 3 ? `<details class="dates-more"><summary>+${up.length - 3} more</summary><div class="dates-more-body">${up.map(t => `<div>${escapeHtml(t)}</div>`).join('')}</div></details>` : '';
+    return `<span class="col-dates">${shown}${more}</span>`;
   });
-  const head = m.cols.map((c, i) => `<th class="season-col${colNow[i] ? ' is-now' : ''}" data-season="${c.id}">
-      <span class="season-pill ${c.key}">${escapeHtml(c.label.replace(/\s*season$/i, ''))}</span><span class="col-line">${colLine[i]}</span></th>`).join('');
+  const head = m.cols.map((c, i) => `<th class="season-col" data-season="${c.id}">
+      <span class="season-pill ${c.key}">${escapeHtml(c.label.replace(/\s*season$/i, ''))}</span>${colDates[i]}</th>`).join('');
   const body = m.rows.map(r => `<tr data-room="${r.id}">
       <td class="room-cell"><div class="room-name">${escapeHtml(r.room)}</div>${r.desc ? `<div class="room-desc" title="${escapeHtml(r.desc)}">${escapeHtml(r.desc)}</div>` : ''}</td>
-      ${r.cells.map((cs, i) => { const c = m.cols[i]; return `<td class="price-cell${colNow[i] ? ' is-now' : ''}" data-label="${escapeHtml(c.label)}">
-        <span class="m-season"><span class="season-pill ${c.key}">${escapeHtml(c.label.replace(/\s*season$/i, ''))}</span>${colNow[i] ? '<span class="now-badge">Now</span>' : ''}</span>
+      ${r.cells.map((cs, i) => { const c = m.cols[i]; return `<td class="price-cell" data-label="${escapeHtml(c.label)}">
+        <span class="m-season"><span class="season-pill ${c.key}">${escapeHtml(c.label.replace(/\s*season$/i, ''))}</span>${colDates[i]}</span>
         <div class="occ-lines">${cs.map(x => {
           const lbl = x.label ? `<span class="occ-lbl">${escapeHtml(x.label)}</span>` : '';
           if (!x.price && !editing) return `<div class="occ-line">${lbl}<span class="na">${cs.length > 1 ? 'n/a' : '—'}</span></div>`;
@@ -1991,8 +1950,7 @@ async function renderAccommodation(){
   </div>`;
 }
 let __accomAllOccs = false;
-// the matrix proposal of 17 Nov 2026 is opt-in until the owner picks: /prices/?location=…&matrix=new
-const __matrixV2 = (()=>{ try { return new URL(location.href).searchParams.get('matrix') === 'new'; } catch (_) { return false; } })();
+
 window.onAccomAllOccs = ()=>{ __accomAllOccs = !__accomAllOccs; renderAccommodation(); };
 
 // «Our rooms» — the physical rooms (accommodation_rooms), folded under the prices.

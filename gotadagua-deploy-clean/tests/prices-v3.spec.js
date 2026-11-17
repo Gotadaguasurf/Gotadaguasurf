@@ -233,6 +233,12 @@ test('price list page: A4 print with no overflow (long names, 5 sharing columns)
   if (hasGaya) expect(await page.evaluate(() => document.fonts.check('16px Gaya'))).toBe(true);
   await expect(page.locator('.pl-cover .pl-cover-photo')).toHaveCount(3);
   await expect(page.locator('.pl-camp-card')).toHaveCount(5);
+  // the Seasons section (strip + seasons × years table) comes right before the accommodation, in the brand palette
+  const sl = page.locator('.pl-camp[data-camp="sri-lanka"]');
+  await expect(sl.locator('[data-part]').first()).toHaveAttribute('data-part', 'seasons');
+  await expect(sl.locator('.pl-seasons .pl-band').first()).toBeVisible();
+  await expect(sl.locator('.pl-seasons .pl-season-table tbody tr')).toHaveCount(3);
+  await expect(sl.locator('.pl-matrix .pl-occ-in').first()).toHaveText('Single');
   // for agencies and partners only (17 Nov 2026): no «Book now», a reservations line on the cover and the back page
   await expect(page.locator('.pl-book')).toHaveCount(0);
   await expect(page.locator('.pl-cover .pl-reserv')).toHaveText('Reservations & partnerships: info@gotadaguasurf.com · +351 924 689 580');
@@ -344,10 +350,15 @@ test('season calendar: several periods per season per year, 2026 → 2028, past 
   await expect(page.locator('#seasonCard .status-msg')).toHaveCount(0);                              // the periods do not overlap
   // the matrix header shows only the period that matters now (current, else next); every period is one click away
   const low = page.locator('#accomCard th.season-col').first();
-  await expect(low.locator('.season-when')).toHaveText('Next · 29 May – 4 Jun 2027');
-  await expect(page.locator('#accomCard th.season-col').nth(1).locator('.season-when')).toHaveText('Now · until 4 Dec 2026');
-  await low.locator('details.dates-pop summary').click();
-  await expect(low.locator('.dates-pop-body div')).toHaveText(['30 May – 6 Jun 2026', '11 Jul – 2 Oct 2026', '29 May – 4 Jun 2027', '10 Jul – 29 Oct 2027', '20 May – 2 Jun 2028']);
+  // matrix headers carry each season's coming dates (no «Now»: the owner sends this out); 3 lines, then «+N more»
+  await expect(low.locator('.col-dates > span')).toHaveText(['29 May – 4 Jun 2027', '10 Jul – 29 Oct 2027', '20 May – 2 Jun 2028']);
+  const mid = page.locator('#accomCard th.season-col').nth(1);
+  await expect(mid.locator('.col-dates > span')).toHaveText(['14 Nov – 4 Dec 2026', '24 Apr – 28 May 2027', '30 Oct – 3 Dec 2027']);
+  await mid.locator('details.dates-more summary').click();
+  await expect(mid.locator('.dates-more-body div')).toHaveText(['14 Nov – 4 Dec 2026', '24 Apr – 28 May 2027', '30 Oct – 3 Dec 2027', '22 Apr – 19 May 2028']);
+  await expect(page.locator('#accomCard .now-badge, #accomCard .is-now')).toHaveCount(0);
+  const heights = await page.locator('#accomCard thead th').evaluateAll(t => t.map(e => Math.round(e.getBoundingClientRect().height)));
+  expect(new Set(heights).size).toBe(1);
   // phones: the sentence + the coming periods as a list (no wide strip, no table)
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.locator('#seasonCard .tl-wrap')).toBeHidden();
@@ -408,15 +419,15 @@ test('accommodation matrix: one table per pack (rooms × seasons), no repeated h
   await expect(page.locator('#accomCard th.season-col .season-pill')).toHaveText(['Low', 'Mid', 'High']);
   const rows = page.locator('#accomCard tbody tr');
   await expect(rows.locator('.room-name')).toHaveText(['Shared Room Ensuite', 'Standard Private Ensuite', 'Superior Private Ensuite']);
-  await expect(rows.nth(0).locator('td.occ-col .occ-lbl')).toHaveCount(0);                           // a dorm bed: just the price
-  await expect(rows.nth(1).locator('td.occ-col .occ-lbl')).toHaveText(['Single use', 'Sharing']);
+  await expect(rows.nth(0).locator('td.price-cell').first().locator('.occ-lbl')).toHaveCount(0);  // a dorm bed: just the price
+  await expect(rows.nth(1).locator('td.price-cell').first().locator('.occ-lbl')).toHaveText(['Single', 'Shared']);
   await expect(rows.nth(1).locator('td.price-cell').first().locator('.cell-edit')).toHaveText(['€649', '€479']);   // weekly: whole euros
   // flexible: always 2 decimals (no €57 next to €92.71); 3 nights shows totals and saves per night
   await page.locator('.pack-bar .pill', { hasText: 'Flexible' }).click();
   await expect(rows.nth(0).locator('td.price-cell .cell-edit')).toHaveText(['€57.00', '€64.14', '€71.29']);
   await page.locator('#nightsSel').selectOption('3');
   await expect(rows.nth(0).locator('td.price-cell .cell-edit').first()).toHaveText('€171.00');
-  await expect(page.locator('#accomCard .card-hint')).toContainText('saved per night (÷ 3)');
+  await expect(page.locator('#accomCard .accom-note')).toContainText('Per person for 3 nights (saved per night)');
   await rows.nth(0).locator('td.price-cell .cell-edit').first().click();
   await page.locator('.cell-input').fill('180');
   await page.keyboard.press('Enter');
@@ -427,35 +438,24 @@ test('accommodation matrix: one table per pack (rooms × seasons), no repeated h
   await expect(page.locator('#accomCard')).not.toContainText('Add');
   // phone: one card per room, seasons as rows, no sideways scroll
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(rows.nth(1).locator('td.price-cell .season-pill.m-only').first()).toBeVisible();
-  await expect(rows.nth(1).locator('td.occ-col')).toBeHidden();
+  await expect(rows.nth(1).locator('td.price-cell .m-season .season-pill').first()).toBeVisible();
+  await expect(rows.nth(1).locator('td.price-cell .m-season .col-dates').first()).toBeVisible();     // the season's dates on the phone card
   expect(await noSideScroll(page)).toBe(true);
 });
 
-test('matrix proposal (?matrix=new): calm headers with «Now» on today\'s season, «Single / Shared» beside the prices, one-line footer; the live matrix stays the default', async ({ page }) => {
+test('matrix (owner\'s pick, 17 Nov 2026): «Single / Shared» beside the prices, one-line footer, ≤ 880px, edits still save', async ({ page }) => {
   await page.clock.setFixedTime(new Date('2026-11-17T10:00:00Z'));
   await page.setViewportSize({ width: 1280, height: 900 });
-  await openPrices(page, 'sri-lanka', { mutate: withAudit, query: '&matrix=new' });
-  const card = page.locator('#accomCard.mx2');
+  await openPrices(page, 'sri-lanka', { mutate: withAudit });
+  const card = page.locator('#accomCard');
   await expect(card.locator('th.season-col .season-pill')).toHaveText(['Low', 'Mid', 'High']);
-  await expect(card.locator('th.season-col .col-line')).toHaveText(['from 29 May', 'Now', 'from 5 Dec']);
-  await expect(card.locator('th.season-col.is-now')).toHaveCount(1);
-  await expect(card.locator('details.dates-pop')).toHaveCount(0);                                   // dates live in the Seasons card
   const row = card.locator('tbody tr').nth(1);
   await expect(row.locator('td.price-cell').first().locator('.occ-line')).toHaveText(['Single€649', 'Shared€479']);
   await expect(card.locator('.accom-note > span')).toHaveText('Per person for 7 nights · EUR · tap a price to edit');
   const w = await card.boundingBox(); expect(w.width).toBeLessThanOrEqual(880);
-  // edits still save
-  const ctl = page; await row.locator('td.price-cell').first().locator('.cell-edit').first().click();
+  await row.locator('td.price-cell').first().locator('.cell-edit').first().click();
   await expect(page.locator('.cell-input')).toHaveValue('649');
   await page.keyboard.press('Escape');
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(row.locator('td.price-cell.is-now .now-badge')).toBeVisible();
   expect(await noSideScroll(page)).toBe(true);
-  // without the flag: the live matrix as before
-  await page.unrouteAll({ behavior: 'ignoreErrors' });
-  await page.setViewportSize({ width: 1280, height: 900 });
-  await openPrices(page, 'sri-lanka', { mutate: withAudit });
-  await expect(page.locator('#accomCard.mx2')).toHaveCount(0);
-  await expect(page.locator('#accomCard td.occ-col').first()).toBeAttached();
 });

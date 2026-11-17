@@ -23,6 +23,7 @@
   const CAMP_PHOTO = { portugal: ['loc-portugal', 'pack-portugal', ''], morocco: ['loc-morocco', 'pack-morocco', 'tour-morocco'],
     'sri-lanka': ['loc-srilanka', 'pack-srilanka', 'tour-srilanka'], 'junior-camp': ['loc-junior', 'loc-junior', ''], 'surf-school': ['pack-portugal', 'pack-portugal', ''] };   // the site's tour-portugal.jpg shows the Sri Lanka house: not used
   const SECTION_LEAD = {
+    seasons: 'When each price applies.',
     accommodation: 'Prices per person. Pick your room — the season sets the price.',
     surf: 'From your first wave to your best one.',
     tours: 'Days out with the crew.',
@@ -139,13 +140,56 @@
     const packs = (accom.packs || []).filter(p => p.active !== false).slice().sort(bySort);
     const out = [];
     for (const pack of packs) {
-      const m = accomMatrix({ pack, seasons: accom.seasons, rooms: accom.rooms, prices: accom.prices, today, period });
+      const m = accomMatrix({ pack, seasons: accom.seasons, rooms: accom.rooms, prices: accom.prices, today, period, shortLabels: true });
       if (!m.rows.length || !m.cols.length) continue;
       out.push({ label: pack.label, desc: guestText(pack.description), flex: m.flex, basis: m.basis, currency: m.currency,
-        seasons: m.cols.map(c => ({ label: c.label, key: c.key, ranges: c.ranges, dates: c.dates })),
+        seasons: m.cols.map(c => ({ label: c.label, key: c.key, ranges: c.ranges, dates: c.dates, upcoming: c.ranges.filter(r => r.end >= today).map(fmtRange) })),
         rooms: m.rows.map(r => ({ room: r.room, cells: r.cells.map(cs => cs.filter(x => x.price || cs.length > 1).map(x => ({ label: x.label, price: x.text }))) })) });
     }
     return out;
+  }
+
+  // «Seasons» section (17 Nov 2026): the season × year table and a 15-month strip, only periods not yet ended
+  function seasonsModel(accom, period, today) {
+    const seasons = ((accom && accom.seasons) || []).filter(s => s.active !== false).slice().sort(bySort);
+    const periods = [];
+    seasons.forEach(s => (Array.isArray(s.date_ranges) ? s.date_ranges : []).forEach(r => {
+      if (r && r.start && r.end && r.end >= r.start && r.end >= today && inPeriod(r, period, today)) periods.push({ s, start: r.start, end: r.end });
+    }));
+    if (!periods.length) return null;
+    periods.sort((a, b) => a.start.localeCompare(b.start));
+    const y0 = +today.slice(0, 4), yMax = Math.max(...periods.map(p => +p.end.slice(0, 4)));
+    const colOf = (p) => Math.max(y0, +p.start.slice(0, 4));
+    const years = []; for (let y = y0; y <= yMax; y++) if (periods.some(p => colOf(p) === y)) years.push(y);
+    const inYear = (p, y) => { const sy = +p.start.slice(0, 4), ey = +p.end.slice(0, 4);
+      const d = (iso, yr) => { const [Y, M, D] = iso.split('-').map(Number); return `${D} ${MONTHS[M - 1]}${yr ? ' ' + Y : ''}`; };
+      return sy === y && ey === y ? `${d(p.start)} – ${d(p.end)}` : `${d(p.start, sy !== y)} – ${d(p.end, true)}`; };
+    const rows = seasons.filter(s => periods.some(p => p.s === s)).map(s => ({ label: titleCase(s.label), key: seasonKey(s),
+      cells: years.map(y => periods.filter(p => p.s === s && colOf(p) === y).map(p => inYear(p, y))) }));
+    // strip: 15 months from this month; holes named «Closed» (between seasons) or «Not set» (after the last date)
+    const MONTHS_N = 15;
+    const [ty, tm] = today.split('-').map(Number);
+    const ws = `${ty}-${String(tm).padStart(2, '0')}-01`;
+    const we = new Date(Date.UTC(ty, tm - 1 + MONTHS_N, 1)).toISOString().slice(0, 10);
+    const add = (iso, n) => new Date(Date.parse(iso + 'T00:00:00Z') + n * 864e5).toISOString().slice(0, 10);
+    const t0 = Date.parse(ws + 'T00:00:00Z'), len = Date.parse(we + 'T00:00:00Z') - t0;
+    const pct = (iso) => (Date.parse(iso + 'T00:00:00Z') - t0) / len * 100;
+    const all = [];
+    seasons.forEach(s => (Array.isArray(s.date_ranges) ? s.date_ranges : []).forEach(r => { if (r && r.start && r.end && r.end >= r.start) all.push({ s, start: r.start, end: r.end }); }));
+    all.sort((a, b) => a.start.localeCompare(b.start));
+    const lastKnown = all.reduce((m, p) => p.end > m ? p.end : m, '');
+    const bands = []; let cur = ws;
+    all.filter(p => p.end >= ws && p.start < we).forEach(p => {
+      const a = p.start < ws ? ws : p.start;
+      if (a > cur) bands.push({ key: cur > lastKnown ? 'unset' : 'closed', label: cur > lastKnown ? 'Not set' : 'Closed', start: cur, end: add(a, -1) });
+      const b = p.end >= we ? add(we, -1) : p.end;
+      bands.push({ key: seasonKey(p.s), label: titleCase(p.s.label).replace(/\s*season$/i, ''), start: a, end: b });
+      if (add(b, 1) > cur) cur = add(b, 1);
+    });
+    if (cur < we) bands.push({ key: cur > lastKnown ? 'unset' : 'closed', label: cur > lastKnown ? 'Not set' : 'Closed', start: cur, end: add(we, -1) });
+    const strip = bands.map(b => ({ ...b, left: pct(b.start), width: pct(add(b.end, 1)) - pct(b.start) })).filter(b => b.width > 0);
+    const months = []; for (let i = 0; i < MONTHS_N; i++) { const d = new Date(Date.UTC(ty, tm - 1 + i, 1)); months.push({ m: MONTHS[d.getUTCMonth()], y: (i === 0 || d.getUTCMonth() === 0) ? d.getUTCFullYear() : null }); }
+    return { years, rows, strip, months, today: pct(today) };
   }
 
   function itemRows(catalog, cats) {
@@ -167,7 +211,8 @@
   function campModel(camp, period, sections, today) {
     const parts = [];
     let accommodation = [];
-    if (sections.includes('accommodation')) accommodation = accommodationModel(camp.accom, period, today);
+    let seasons = null;
+    if (sections.includes('accommodation')) { accommodation = accommodationModel(camp.accom, period, today); if (accommodation.length) seasons = seasonsModel(camp.accom, period, today); }
     for (const def of SECTION_DEFS) {
       if (!sections.includes(def.key)) continue;
       if (def.key === 'transfers') { const rows = transferRows(camp.catalog); if (rows.length) parts.push({ key: def.key, title: def.title, kind: 'transfers', rows }); continue; }
@@ -191,7 +236,7 @@
     const printed = new Set(accommodation.filter(a => !a.flex).flatMap(a => a.rooms.flatMap(r => r.cells.flat().map(x => x.price))));
     const fromVals = weekly.map(pr => Number(pr.sell_price)).filter(v => printed.has(moneyFixed(v, 'EUR', 0)) || printed.has(moneyFixed(v, 'EUR', 2)));
     const from = fromVals.length ? moneyFixed(Math.min(...fromVals), 'EUR', Number.isInteger(Math.min(...fromVals)) ? 0 : 2) : '';
-    return { slug: camp.slug, label: camp.label || CAMP_LABEL[camp.slug] || camp.slug, place: CAMP_PLACE[camp.slug] || '', from, accommodation, parts, ranges, notes,
+    return { slug: camp.slug, label: camp.label || CAMP_LABEL[camp.slug] || camp.slug, place: CAMP_PLACE[camp.slug] || '', from, seasons, accommodation, parts, ranges, notes,
       empty: !accommodation.length && !parts.length };
   }
 
@@ -222,19 +267,26 @@
   // ── HTML ──────────────────────────────────────────────────────────────────
   function accomHtml(p) {
     const n = p.seasons.length;
-    const occCol = p.rooms.some(r => r.cells.some(cs => cs.length > 1));
     return `<div class="pl-pack">
       <div class="pl-pack-head"><h3>${esc(p.label)}</h3><span class="pl-basis">${esc(p.basis)}</span></div>
       ${p.desc ? `<p class="pl-pack-desc">${esc(p.desc)}</p>` : ''}
       <table class="pl-table pl-matrix pl-cols-${n}">
-        <colgroup><col class="pl-col-room">${occCol ? '<col class="pl-col-occ">' : ''}${p.seasons.map(() => '<col class="pl-col-season">').join('')}</colgroup>
-        <thead><tr><th class="pl-room-h">Room</th>${occCol ? '<th></th>' : ''}${p.seasons.map(s => `<th class="pl-season-h"><span class="pl-pill ${s.key}">${esc(s.label.replace(/\s*season$/i, ''))}</span>${s.dates.length ? `<span class="pl-dates">${s.dates.map(esc).join('<br>')}</span>` : ''}</th>`).join('')}</tr></thead>
-        <tbody>${p.rooms.map(r => {
-          const labels = (r.cells.find(cs => cs.length) || []).map(x => x.label);
-          return `<tr><td class="pl-room">${esc(r.room)}</td>${occCol ? `<td class="pl-occ">${labels.filter(Boolean).map(l => `<div class="pl-line">${esc(l)}</div>`).join('')}</td>` : ''}${r.cells.map(cs => `<td class="pl-cell">${cs.length ? cs.map(x => `<div class="pl-line"><span class="pl-amt${x.price ? '' : ' na'}">${x.price ? esc(x.price) : '—'}</span></div>`).join('') : '<div class="pl-line"><span class="pl-amt na">—</span></div>'}</td>`).join('')}</tr>`;
-        }).join('')}</tbody>
+        <colgroup><col class="pl-col-room">${p.seasons.map(() => '<col class="pl-col-season">').join('')}</colgroup>
+        <thead><tr><th class="pl-room-h">Room</th>${p.seasons.map(s => { const up = s.upcoming || s.dates || [];
+          return `<th class="pl-season-h"><span class="pl-pill ${s.key}">${esc(s.label.replace(/\s*season$/i, ''))}</span><span class="pl-dates">${up.slice(0, 3).map(esc).join('<br>')}${up.length > 3 ? `<br><i>+${up.length - 3} more — see Seasons</i>` : ''}</span></th>`; }).join('')}</tr></thead>
+        <tbody>${p.rooms.map(r => `<tr><td class="pl-room">${esc(r.room)}</td>${r.cells.map(cs => `<td class="pl-cell">${cs.length ? cs.map(x => `<div class="pl-line">${x.label ? `<span class="pl-occ-in">${esc(x.label)}</span>` : ''}<span class="pl-amt${x.price ? '' : ' na'}">${x.price ? esc(x.price) : '—'}</span></div>`).join('') : '<div class="pl-line"><span class="pl-amt na">—</span></div>'}</td>`).join('')}</tr>`).join('')}</tbody>
       </table>
     </div>`;
+  }
+  function seasonsHtml(sm) {
+    if (!sm) return '';
+    return `<section class="pl-part pl-seasons whole" data-part="seasons">${sectionHead('seasons', 'Seasons')}
+      <div class="pl-season-card">
+        <div class="pl-strip">${sm.strip.map(b => `<div class="pl-band ${b.key}" style="left:${b.left.toFixed(3)}%;width:${b.width.toFixed(3)}%">${b.width > 6 ? esc(b.label) : ''}</div>`).join('')}<div class="pl-today" style="left:${sm.today.toFixed(3)}%"><span>Today</span></div></div>
+        <div class="pl-months" style="grid-template-columns:repeat(${sm.months.length},1fr)">${sm.months.map(m => `<span>${m.m}${m.y ? `<b>${m.y}</b>` : ''}</span>`).join('')}</div>
+        <table class="pl-table pl-season-table"><thead><tr><th></th>${sm.years.map(y => `<th>${y}</th>`).join('')}</tr></thead>
+          <tbody>${sm.rows.map(r => `<tr><th><span class="pl-pill ${r.key}">${esc(r.label)}</span></th>${r.cells.map(c => `<td>${c.length ? c.map(t => `<div>${esc(t)}</div>`).join('') : '<span class="na">—</span>'}</td>`).join('')}</tr>`).join('')}</tbody></table>
+      </div></section>`;
   }
   function partHtml(part) {
     if (part.kind === 'transfers') {
@@ -302,6 +354,7 @@
           ${camp.from ? `<div class="pl-camp-from">from ${esc(camp.from)}</div>` : ''}
         </div>
       </header>
+      ${seasonsHtml(camp.seasons)}
       ${camp.accommodation.length ? `<section class="pl-part pl-accom" data-part="accommodation">${sectionHead('accommodation', 'Accommodation')}${camp.accommodation.map(accomHtml).join('')}${notesHtml(camp)}</section>` : ''}
       ${camp.parts.map(partHtml).join('')}
       ${camp.accommodation.length ? '' : notesHtml(camp)}
