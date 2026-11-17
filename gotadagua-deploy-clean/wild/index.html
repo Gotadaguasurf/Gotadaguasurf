@@ -12,6 +12,14 @@
 <link rel="stylesheet" href="/lib/app-shell.css">
 <style>
 /* page-specific only — everything else comes from /lib/app-shell.css */
+/* Close night: the night grid keeps 5 columns and the commission row 4 + button down to 700px; phones get two per line */
+.wild-night-grid{grid-template-columns:repeat(5,1fr)}
+.wild-comm-grid{grid-template-columns:1fr 1fr 1fr 1fr auto;align-items:end}
+@media (max-width:700px){
+  .wild-night-grid,.wild-comm-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  .wild-night-grid>*,.wild-comm-grid>*{min-width:0}
+  .wild-night-grid>:last-child{grid-column:1/-1}
+}
 </style>
 </head>
 <body>
@@ -39,7 +47,7 @@
     </div>
 
     <div class="card card-pad" style="margin-bottom:16px">
-      <div class="fgrid" style="grid-template-columns:repeat(5,1fr)">
+      <div class="fgrid wild-night-grid">
         <div><label>Night</label><input id="n_date" type="date" onchange="loadNightIntoForm()"></div>
         <div><label>Theme</label><input id="n_theme" type="text" placeholder="white party, wild shades…"></div>
         <div><label>DJs</label><input id="n_djs" type="text" placeholder="Namor / Lavito"></div>
@@ -88,7 +96,7 @@
     <section class="ov-section">
       <div class="ov-section-head"><div><div class="ov-section-title">Commissions</div><div class="ov-section-sub">Pure gets 2 € per ticket of theirs; Max 30 % of the profit. Logged when paid.</div></div></div>
       <div class="card card-pad">
-        <div class="fgrid" style="grid-template-columns:1fr 1fr 1fr 1fr auto;align-items:end">
+        <div class="fgrid wild-comm-grid">
           <div><label>Date</label><input id="c_date" type="date"></div>
           <div><label>Who</label><select id="c_who"><option value="Pure Surf Camp">Pure Surf Camp</option><option value="Max">Max</option><option value="Other">Other</option></select></div>
           <div><label>Amount (€)</label><input id="c_amount" type="number" min="0" step="0.01" placeholder="0"></div>
