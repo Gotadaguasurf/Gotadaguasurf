@@ -59,34 +59,78 @@
   const titleCase = (t) => String(t || '').toLowerCase().replace(/(^|\s)\S/g, m => m.toUpperCase());
   const occLabel = (n) => n === 1 ? 'Single use' : n === 2 ? 'Sharing' : `${n} sharing`;
 
+  // ── Accommodation matrix (17 Nov 2026, Miguel: «isto ainda não está bonito») ─────────────────────────────
+  // ONE grid per pack: rows = room types, columns = seasons, each cell lists the room's sharing prices
+  // (only the occupancies that room is sold at; a room sold one way shows the price alone). Shared by /prices
+  // (editable, with cell ids) and the price list (read-only). Money is one format per pack: per-night packs (or any
+  // price with cents) always 2 decimals, weekly packs whole euros.
+  const OCC_LABEL = (n, occs) => n === 1 ? 'Single use' : (n === 2 && !(occs || []).some(x => x > 2)) ? 'Sharing' : `${n} sharing`;
+  function packDecimals(pack, prices) {
+    if (pack && pack.price_basis === 'per_person_per_night') return 2;
+    return (prices || []).some(p => Math.round(Number(p.sell_price) * 100) % 100 !== 0) ? 2 : 0;
+  }
+  function moneyFixed(n, cur, dec) {
+    const s = Number(n || 0).toLocaleString('en-GB', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+    return (cur || 'EUR') === 'EUR' ? '€' + s : `${cur} ${s}`;
+  }
+  // a season's periods: «Now · until …», else «Next · …», else «Last · …» — the full list stays one click away
+  function seasonWhen(ranges, today) {
+    const r = (ranges || []).slice().sort((a, b) => a.start.localeCompare(b.start));
+    const now = r.find(x => x.start <= today && x.end >= today);
+    if (now) return { tag: 'Now', text: 'until ' + fmtDay(now.end), range: now };
+    const next = r.find(x => x.start > today);
+    if (next) return { tag: 'Next', text: fmtRange(next), range: next };
+    const last = r[r.length - 1];
+    return last ? { tag: 'Last', text: fmtRange(last), range: last } : null;
+  }
+  function fmtDay(iso) { const [y, m, d] = iso.split('-').map(Number); return `${d} ${MONTHS[m - 1]} ${y}`; }
+  // opts: { pack, seasons, rooms, prices, today, period ('all' | 'upcoming' | 'YYYY' | 'from-this-year'), nights, allOccs, keepEmpty }
+  function accomMatrix(o) {
+    const pack = o.pack, today = o.today || new Date().toISOString().slice(0, 10);
+    const nights = Math.max(1, Number(o.nights) || 1);
+    const mine = (o.prices || []).filter(p => p.pack_id === pack.id && Number(p.sell_price) > 0);
+    const cur = pack.currency || (mine[0] && mine[0].currency) || 'EUR';
+    const dec = packDecimals(pack, mine);
+    const packOccs = [...new Set(mine.map(p => Number(p.occupancy)))].filter(n => n >= 1 && n <= 6).sort((a, b) => a - b);
+    if (!packOccs.length) packOccs.push(1, 2);
+    const yearStart = today.slice(0, 4) + '-01-01';
+    const cols = (o.seasons || []).filter(s => s.active !== false).slice().sort(bySort).map(s => {
+      const all = (Array.isArray(s.date_ranges) ? s.date_ranges : []).filter(r => r && r.start && r.end && r.end >= r.start);
+      const ranges = (o.period === 'from-this-year' ? all.filter(r => r.end >= yearStart) : o.period ? all.filter(r => inPeriod(r, o.period, today)) : all)
+        .slice().sort((a, b) => a.start.localeCompare(b.start));
+      return { id: s.id, label: titleCase(s.label), key: seasonKey(s), ranges, dates: ranges.map(fmtRange), when: seasonWhen(ranges, today), hadDates: all.length > 0 };
+    }).filter(c => o.keepEmpty || !c.hadDates || c.ranges.length);
+    const priceAt = (sid, rid, occ) => mine.find(x => x.season_id === sid && x.room_type_id === rid && Number(x.occupancy) === occ) || null;
+    const rows = (o.rooms || []).filter(r => r.active !== false).slice().sort(bySort).map(r => {
+      const own = [...new Set(mine.filter(p => p.room_type_id === r.id).map(p => Number(p.occupancy)))].sort((a, b) => a - b);
+      const occs = o.allOccs ? packOccs : (own.length ? own : (o.keepEmpty ? [packOccs[0]] : []));
+      const cells = cols.map(c => occs.map(occ => {
+        const p = priceAt(c.id, r.id, occ);
+        const v = p ? Number(p.sell_price) * nights : 0;
+        return { occ, label: occs.length > 1 ? OCC_LABEL(occ, occs) : '', price: v, text: v ? moneyFixed(v, (p && p.currency) || cur, dec) : '' };
+      }));
+      return { id: r.id, room: r.label, desc: r.description || '', occs, cells, any: cells.some(cs => cs.some(x => x.price)) };
+    }).filter(r => o.keepEmpty || r.any);
+    const cleanCols = o.keepEmpty ? cols : cols.filter((c, i) => rows.some(r => r.cells[i].some(x => x.price)));
+    if (!o.keepEmpty && cleanCols.length !== cols.length) {
+      const keep = cols.map(c => cleanCols.includes(c));
+      rows.forEach(r => { r.cells = r.cells.filter((_, i) => keep[i]); });
+    }
+    const flex = pack.price_basis === 'per_person_per_night';
+    return { pack, currency: cur, decimals: dec, flex, nights, cols: cleanCols, rows, occsInPack: packOccs,
+      basis: flex ? (nights > 1 ? `Per person, ${nights} nights` : 'Per person, per night') : (pack.price_basis === 'per_person_per_week' ? 'Per person, 7 nights' : 'Per person') };
+  }
+
   function accommodationModel(accom, period, today) {
     if (!accom || !(accom.packs || []).length) return [];
     const packs = (accom.packs || []).filter(p => p.active !== false).slice().sort(bySort);
-    const seasons = (accom.seasons || []).filter(s => s.active !== false).slice().sort(bySort);
-    const rooms = (accom.rooms || []).filter(r => r.active !== false).slice().sort(bySort);
-    const prices = (accom.prices || []).filter(p => Number(p.sell_price) > 0);
     const out = [];
     for (const pack of packs) {
-      const mine = prices.filter(p => p.pack_id === pack.id);
-      if (!mine.length) continue;
-      const occs = [...new Set(mine.map(p => Number(p.occupancy)))].filter(n => n >= 1 && n <= 6).sort((a, b) => a - b);
-      const cur = pack.currency || mine[0].currency || 'EUR';
-      const blocks = [];
-      for (const s of seasons) {
-        const all = Array.isArray(s.date_ranges) ? s.date_ranges.filter(r => r && r.start && r.end) : [];
-        const ranges = all.filter(r => inPeriod(r, period, today)).sort((a, b) => a.start.localeCompare(b.start));
-        if (all.length && !ranges.length) continue;   // no dates of this season in the chosen period
-        const rows = rooms.map(r => {
-          const cells = occs.map(o => { const p = mine.find(x => x.season_id === s.id && x.room_type_id === r.id && Number(x.occupancy) === o); return p ? money(p.sell_price, p.currency || cur) : null; });
-          return { room: r.label, desc: r.description || '', cells };
-        }).filter(row => row.cells.some(Boolean));
-        if (!rows.length) continue;
-        blocks.push({ label: titleCase(s.label), key: seasonKey(s), ranges, dates: ranges.map(fmtRange), rows });
-      }
-      if (!blocks.length) continue;
-      const flex = pack.price_basis === 'per_person_per_night';
-      out.push({ label: pack.label, desc: guestText(pack.description), flex, basis: flex ? 'Per person, per night' : (pack.price_basis === 'per_person_per_week' ? 'Per person, 7 nights' : 'Per person'),
-        currency: cur, occs: occs.map(occLabel), seasons: blocks });
+      const m = accomMatrix({ pack, seasons: accom.seasons, rooms: accom.rooms, prices: accom.prices, today, period });
+      if (!m.rows.length || !m.cols.length) continue;
+      out.push({ label: pack.label, desc: guestText(pack.description), flex: m.flex, basis: m.basis, currency: m.currency,
+        seasons: m.cols.map(c => ({ label: c.label, key: c.key, ranges: c.ranges, dates: c.dates })),
+        rooms: m.rows.map(r => ({ room: r.room, cells: r.cells.map(cs => cs.filter(x => x.price || cs.length > 1).map(x => ({ label: x.label, price: x.text }))) })) });
     }
     return out;
   }
@@ -159,18 +203,15 @@
 
   // ── HTML ──────────────────────────────────────────────────────────────────
   function accomHtml(p) {
-    const cols = p.occs.length;
+    const n = p.seasons.length;
     return `<div class="pl-pack">
       <div class="pl-pack-head"><h3>${esc(p.label)}</h3><span class="pl-basis">${esc(p.basis)}</span></div>
       ${p.desc ? `<p class="pl-pack-desc">${esc(p.desc)}</p>` : ''}
-      ${p.seasons.map(s => `<table class="pl-table pl-season">
-        <colgroup><col class="pl-col-name">${p.occs.map(() => '<col class="pl-col-num">').join('')}</colgroup>
-        <thead>
-          <tr class="pl-season-row"><th colspan="${cols + 1}"><span class="pl-pill ${s.key}">${esc(s.label)}</span>${s.dates.length ? `<span class="pl-dates">${esc(s.dates.join('  ·  '))}</span>` : ''}</th></tr>
-          <tr><th>Room type</th>${p.occs.map(o => `<th class="r">${esc(o)}</th>`).join('')}</tr>
-        </thead>
-        <tbody>${s.rows.map(r => `<tr><td>${esc(r.room)}</td>${r.cells.map(c => `<td class="r${c ? '' : ' na'}">${c ? esc(c) : '—'}</td>`).join('')}</tr>`).join('')}</tbody>
-      </table>`).join('')}
+      <table class="pl-matrix pl-cols-${n}">
+        <colgroup><col class="pl-col-room">${p.seasons.map(() => '<col>').join('')}</colgroup>
+        <thead><tr><th class="pl-room-h">Room</th>${p.seasons.map(s => `<th><span class="pl-pill ${s.key}">${esc(s.label.replace(/\s*season$/i, ''))}</span>${s.dates.length ? `<span class="pl-dates">${s.dates.map(esc).join('<br>')}</span>` : ''}</th>`).join('')}</tr></thead>
+        <tbody>${p.rooms.map(r => `<tr><td class="pl-room">${esc(r.room)}</td>${r.cells.map(cs => `<td class="pl-cell">${cs.length ? cs.map(x => `<div class="pl-line">${x.label ? `<span class="pl-occ">${esc(x.label)}</span>` : ''}<span class="pl-amt${x.price ? '' : ' na'}">${x.price ? esc(x.price) : '—'}</span></div>`).join('') : '<span class="pl-amt na">—</span>'}</td>`).join('')}</tr>`).join('')}</tbody>
+      </table>
     </div>`;
   }
   function partHtml(part) {
@@ -220,7 +261,7 @@
     return cover + camps + end;
   }
 
-  const api = { buildModel, render, money, inPeriod, fmtRange, CONTACT, CAMP_ORDER, CAMP_LABEL, isInternalNote, guestText };
+  const api = { buildModel, render, accomMatrix, seasonWhen, moneyFixed, money, inPeriod, fmtRange, CONTACT, CAMP_ORDER, CAMP_LABEL, isInternalNote, guestText };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.PriceList = api;
 })(typeof window !== 'undefined' ? window : this);
