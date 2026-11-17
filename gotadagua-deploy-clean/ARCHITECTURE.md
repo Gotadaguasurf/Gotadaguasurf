@@ -115,7 +115,9 @@ Movements (LK).
    takes its revenue out of the grouped checkout row), so no ledger row is ever
    rewritten for an offer. Staff plus (Sri Lanka only, `CampComps.STAFF_PLUS`:
    7 drinks a Sat–Fri week, category Drinks): a staff member flagged on the
-   Staff roster (`camp_guests.meta.staffPlus`, every staff row with that name)
+   Staff roster (`camp_guests.meta.staffPlus`, every staff row with that name;
+   Francisco and Federico/Frederico are Staff plus by `STAFF_PLUS.people`, every
+   week, no switch)
    gets the first 7 drinks of the week free, reason «Staff plus allowance
    (k/7)»; from the 8th the staff price. Counted from the lines, never stored:
    a deleted or undone one frees a slot for the next drink (labels renumber,

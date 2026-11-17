@@ -2918,7 +2918,7 @@ function renderGuestList(){
     return `<div class="c-guest ${AG===g.id?'active':''}" onclick="selGuest('${esc(g.id)}')">
     <div style="min-width:0;flex:1">
       <div class="c-guest-name">${bikeChip}${displayName}</div>
-      <div class="c-guest-amt">${gtot(g)>0?euro(gtot(g)):'no charges'}${currentRoster==='guests'&&isQueuedForNextWeek(g.name)?' / queued next week':''}${currentRoster==='staff'&&g.staffPlus&&staffPlusCfg()?` · Staff plus, ${staffPlusLeftFor(g)} free left`:''}</div>
+      <div class="c-guest-amt">${gtot(g)>0?euro(gtot(g)):'no charges'}${currentRoster==='guests'&&isQueuedForNextWeek(g.name)?' / queued next week':''}${currentRoster==='staff'&&isStaffPlus(g)?` · Staff plus, ${staffPlusLeftFor(g)} free left`:''}</div>
     </div>
     ${isGuestFullyPaid(g)?'<div class="c-gpaid"></div>':''}
     <button class="c-guest-del" onclick="event.stopPropagation();delGuestRow('${esc(g.id)}')" title="Remove from this week">×</button>
@@ -3710,7 +3710,7 @@ function addResolvedItem(item,btn){
   // «Staff plus» person are free on their own (reason «Staff plus allowance (k/N)»);
   // from N+1 the normal staff price. Only a plain tap: a gift / discount / alt
   // price the user picked stands as picked.
-  const spCfg=(CC && currentRoster==='staff' && g.staffPlus && !altUsed && !item._compReason) ? CC.staffPlusConfig(CAMP_TAB_LOCATION_SLUG) : null;
+  const spCfg=(CC && currentRoster==='staff' && isStaffPlus(g) && !altUsed && !item._compReason) ? CC.staffPlusConfig(CAMP_TAB_LOCATION_SLUG) : null;
   let spAuto=null;
   // A drink already free for staff (staff price 0) does not use the allowance.
   if(spCfg && price>0 && CC.staffPlusCounts({c:persistedCategory},spCfg) && !isPassThrough({c:persistedCategory})){
@@ -3897,9 +3897,12 @@ function offerActionHtml(g, item){
 // counted from the lines themselves (reason «staff_plus» in the Sat–Fri week), never a
 // stored counter: delete or undo one and the next drink is free again.
 function staffPlusCfg(){ return window.CampComps ? CampComps.staffPlusConfig(CAMP_TAB_LOCATION_SLUG) : null; }
+// Staff plus = named in the camp's config (every week, no switch) or switched on on the roster.
+function staffPlusFromConfig(g){ const cfg=staffPlusCfg(); return !!cfg && !!g && CampComps.staffPlusByConfig(cfg, g.name); }
+function isStaffPlus(g){ return !!staffPlusCfg() && !!g && (!!g.staffPlus || staffPlusFromConfig(g)); }
 function staffPlusLeftFor(g, ymd){
   const cfg=staffPlusCfg();
-  if(!cfg||!g||!g.staffPlus) return null;
+  if(!cfg||!isStaffPlus(g)) return null;
   return CampComps.staffPlusLeft(S, g.name, ymd||today(), cfg);
 }
 function staffPlusLeftText(g){
@@ -3912,6 +3915,7 @@ function setStaffPlus(guestId, on){
   const wk=currentWeek(); if(!wk) return false;
   const rows=rosterRows(wk,'staff');
   const g=rows.find(r=>r.id===guestId||r.name===guestId); if(!g) return false;
+  if(!on && staffPlusFromConfig(g)){ toast(`${g.name} is Staff plus in the camp's config`); return false; }
   rows.forEach(r=>{ if(CampComps.sameName(r.name,g.name)){ if(on) r.staffPlus=true; else delete r.staffPlus; } });
   save();
   renderAllCampTabViews();
@@ -3938,8 +3942,8 @@ function renderStaffPlusBar(g){
   const cfg=staffPlusCfg();
   if(!g||currentRoster!=='staff'||!cfg){ el.style.display='none'; el.innerHTML=''; return; }
   el.style.display='flex';
-  el.innerHTML=g.staffPlus
-    ? `<span class="badge badge-blue">Staff plus</span><span class="sp-left" id="spLeftCharge">${esc(staffPlusLeftText(g))}</span><button type="button" class="btn btn-link btn-sm" id="spOffBtn" onclick="setStaffPlus('${esc(g.id)}',false)">Turn off</button>`
+  el.innerHTML=isStaffPlus(g)
+    ? `<span class="badge badge-blue">Staff plus</span><span class="sp-left" id="spLeftCharge">${esc(staffPlusLeftText(g))}</span>${staffPlusFromConfig(g)?'<span class="sp-hint" id="spFromConfig">(set in config)</span>':`<button type="button" class="btn btn-link btn-sm" id="spOffBtn" onclick="setStaffPlus('${esc(g.id)}',false)">Turn off</button>`}`
     : `<button type="button" class="btn btn-s btn-sm" id="spOnBtn" onclick="setStaffPlus('${esc(g.id)}',true)">Make Staff plus</button><span class="sp-hint">${cfg.perWeek} free drinks a week</span>`;
 }
 
@@ -4298,7 +4302,7 @@ function renderThisWeek(){
         <div style="flex:1;min-width:0">
           <div class="tw-card-name">${g.name}</div>
           <div style="font-size:11px;color:var(--muted);margin-top:2px">${g.items.length} item${g.items.length!==1?'s':''}</div>
-          ${(currentRoster==='staff'&&g.staffPlus&&staffPlusCfg())?`<div class="tw-guest-meta"><span class="badge badge-blue tw-sp-badge">Staff plus · ${esc(staffPlusLeftText(g))}</span></div>`:''}
+          ${(currentRoster==='staff'&&isStaffPlus(g))?`<div class="tw-guest-meta"><span class="badge badge-blue tw-sp-badge">Staff plus · ${esc(staffPlusLeftText(g))}</span></div>`:''}
           ${(stayMeta(g)||isQueuedForNextWeek(g.name))?`<div class="tw-guest-meta">
             ${stayMeta(g)?`<span class="badge badge-grey">${stayMeta(g)}</span>`:''}
             ${isQueuedForNextWeek(g.name)?`<span class="badge badge-blue">Continues ${weekSpan(nextStart)}</span>`:''}
@@ -4340,7 +4344,7 @@ function renderThisWeek(){
                  ${passLines(g).some(i=>!i.paidAt)?`<button class="btn btn-s btn-sm" onclick="AG='${esc(g.id)}';payDiploria()">Pay Dipløria · ${fmtPass(passLines(g).filter(i=>!i.paidAt).reduce((s,i)=>s+Number(i.p||0),0))}</button>`:''}
                  ${(()=>{ const n=(g.items||[]).filter(campUnpaid).length; return n?`<button class="btn btn-p btn-sm" onclick="payAllForGuestId('${esc(g.id)}')">${n>1?`Pay all (${n})`:'Pay'}</button>`:''; })()}
                  <button class="btn ${closeReady?'btn-p':'btn-s'} btn-sm" onclick="closeGuestById('${esc(g.id)}')" title="${hasUnpaidItems?'Close — unpaid items will stay as an unpaid record in history':'Remove guest from active list'}">Close guest</button>
-                 ${(currentRoster==='staff'&&staffPlusCfg())?`<button class="btn btn-s btn-sm tw-sp-toggle" onclick="setStaffPlus('${esc(g.id)}',${g.staffPlus?'false':'true'})">${g.staffPlus?'Turn off Staff plus':'Make Staff plus'}</button>`:''}
+                 ${(currentRoster==='staff'&&staffPlusCfg()&&!staffPlusFromConfig(g))?`<button class="btn btn-s btn-sm tw-sp-toggle" onclick="setStaffPlus('${esc(g.id)}',${g.staffPlus?'false':'true'})">${g.staffPlus?'Turn off Staff plus':'Make Staff plus'}</button>`:''}
                  <button class="btn btn-link btn-sm c-link-danger" onclick="deleteGuest('${esc(g.id)}')">Delete ${rosterLabel().toLowerCase()}</button>`
               : `${currentRoster==='guests'?`<button class="btn btn-s btn-sm" onclick="passGuestToNextWeek('${esc(g.id)}')">${isQueuedForNextWeek(g.name)?'Update next week':'Continue next week'}</button>`:''}
                  ${!g.paid&&tot>0?`<button class="btn btn-s btn-sm" onclick="openBill('${esc(g.id)}')">Bill</button>`:''}

@@ -64,9 +64,21 @@
   //   categories  Camp Tab categories that count (default: every item in Drinks —
   //               soft drinks and water too, when they are in the Drinks tab)
   // Add a camp here to switch it on there; change 7 to change the allowance.
+  //   people      staff who are Staff plus every week with no switch, matched by
+  //               first name, case- and accent-insensitive (Miguel, 17 Nov 2026)
   const STAFF_PLUS = {
-    'sri-lanka': { perWeek: 7, categories: ['Drinks'] },
+    'sri-lanka': { perWeek: 7, categories: ['Drinks'], people: ['Francisco', 'Federico'] },
   };
+  // Spellings of a configured first name that are the same person
+  // («Frederico» on the Sri Lanka roster, «Fedrerico» in Miguel's message).
+  const STAFF_PLUS_ALIASES = { federico: ['frederico', 'fedrerico'] };
+  const firstName = (name) => String(name || '').trim().split(/\s+/)[0].normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  // True when this staff name is Staff plus by the camp's config (not by the roster switch).
+  function staffPlusByConfig(cfg, name) {
+    if (!cfg || !Array.isArray(cfg.people) || !cfg.people.length) return false;
+    const f = firstName(name); if (!f) return false;
+    return cfg.people.some((p) => { const k = firstName(p); return k === f || (STAFF_PLUS_ALIASES[k] || []).includes(f); });
+  }
   const staffPlusConfig = (slug) => { const c = STAFF_PLUS[String(slug || '').toLowerCase()]; return c && c.perWeek > 0 ? c : null; };
   const staffPlusCounts = (item, cfg) => !!cfg && !!item && (cfg.categories || ['Drinks']).includes(item.c);
   const sameName = (a, b) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
@@ -261,7 +273,7 @@
   root.CampComps = {
     REASONS, AUTO_REASONS, SHORT, HINT, NO_REASON, NO_REASON_LABEL, NOTE_MAX,
     isReason, label, short, whyText, needsNote, cleanNote, validWhy, isFreeLine,
-    STAFF_PLUS, staffPlusConfig, staffPlusCounts, staffPlusUsed, staffPlusLeft, sameName,
+    STAFF_PLUS, staffPlusConfig, staffPlusByConfig, staffPlusCounts, staffPlusUsed, staffPlusLeft, sameName,
     weekStartSat, addDays, periodRange, menuPriceMap, lines, summarize, escHtml,
     afterWeekly, weeklyLineHtml,
   };

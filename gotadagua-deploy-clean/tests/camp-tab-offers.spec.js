@@ -256,7 +256,7 @@ test('offers: Morocco — the same «Make it an offer» / «Undo offer» on a gu
   await cat(frame, 'Merch');
   await tap(frame, 'T-Shirt M');
   expect((await lines(frame)).map(l => [l.n, l.p, l.reason])).toEqual([['T-Shirt M', 120, '']]);
-  expect(await frame.evaluate(() => [CampComps.staffPlusConfig('morocco'), CampComps.staffPlusConfig('portugal'), CampComps.staffPlusConfig('sri-lanka')])).toEqual([null, null, { perWeek: 7, categories: ['Drinks'] }]);
+  expect(await frame.evaluate(() => [CampComps.staffPlusConfig('morocco'), CampComps.staffPlusConfig('portugal'), CampComps.staffPlusConfig('sri-lanka')])).toEqual([null, null, { perWeek: 7, categories: ['Drinks'], people: ['Francisco', 'Federico'] }]);
 });
 
 test('staff plus: Portugal unaffected — no switch on the Staff roster (no Drinks tab there: the bar is The Suk), merch at the staff price', async ({ page }) => {
@@ -494,4 +494,45 @@ test('phones: Charge view leaves room for the products, the % button never cover
   const dsk = await frame.evaluate(() => ({ sidebarW: document.querySelector('.c-sidebar').getBoundingClientRect().width, rightW: document.querySelector('.c-right').getBoundingClientRect().width, discW: document.querySelector('#itemGrid .ci-disc').getBoundingClientRect().width }));
   expect(dsk).toEqual({ sidebarW: 220, rightW: 260, discW: 26 });
   await expect(frame.locator('#chargeEmpty')).toContainText(/Pick someone from the left/);
+});
+
+// Miguel, 17 Nov 2026: Francisco and Federico («Frederico» on the roster) are Staff plus every week, with no switch.
+test('staff plus: Francisco and Federico are Staff plus from the config (any spelling of Federico) — tagged, no Turn off; others still use the switch', async ({ page }) => {
+  const c = CAMPS['sri-lanka'];
+  const staff = ['Francisco', 'Frederico', 'Jude'].map((n, i) => ({ id: `0000c0e9-0000-4000-8000-0000000005${String(i).padStart(2, '0')}`, week_id: WEEK, location_id: c.id, name: n, is_staff: true, paid: false, paid_at: null, closed_at: null, pax: 1, sort_order: (i + 1) * 10, meta: { staffNote: null, bikeNo: null } }));
+  const { ctl, frame } = await openCampTab(page, 'sri-lanka', { camp_guests: staff });
+  const match = await frame.evaluate(() => { const cfg = CampComps.staffPlusConfig('sri-lanka'); return ['Francisco', 'francisco silva', 'Federico', 'FREDERICO', 'Fedrerico', 'Fred', 'Franco', 'Jude'].map(n => CampComps.staffPlusByConfig(cfg, n)); });
+  expect(match).toEqual([true, true, true, true, true, false, false, false]);
+  expect(await frame.evaluate(() => CampComps.staffPlusByConfig(CampComps.staffPlusConfig('morocco'), 'Francisco'))).toBe(false);
+  await frame.locator('#rosterStaffBtn').click();
+  await expect(frame.locator('#glist .c-guest', { hasText: 'Francisco' })).toContainText('Staff plus, 7 free left');
+  await expect(frame.locator('#glist .c-guest', { hasText: 'Frederico' })).toContainText('Staff plus, 7 free left');
+  await expect(frame.locator('#glist .c-guest', { hasText: 'Jude' })).not.toContainText('Staff plus');
+  await frame.locator('#glist .c-guest', { hasText: 'Frederico' }).click();
+  await expect(frame.locator('#staffPlusBar .badge')).toHaveText('Staff plus');
+  await expect(frame.locator('#spFromConfig')).toHaveText('(set in config)');
+  await expect(frame.locator('#spOffBtn')).toHaveCount(0);
+  await cat(frame, 'Drinks');
+  for (let i = 0; i < 8; i++) await tap(frame, 'Lion Lager');
+  expect((await lines(frame)).map(l => l.p)).toEqual([0, 0, 0, 0, 0, 0, 0, 300]);
+  await expect(frame.locator('#spLeftCharge')).toHaveText('0 of 7 free drinks left this week');
+  // cannot be switched off, and nothing was written to the row (the config decides)
+  expect(await frame.evaluate(() => setStaffPlus(AG, false))).toBe(false);
+  await expect(frame.locator('#spFromConfig')).toBeVisible();
+  expect((ctl.T.camp_guests || []).find(g => g.name === 'Frederico').meta.staffPlus).toBeUndefined();
+  // This week card: the tag, no toggle
+  await frame.locator('.snav-btn[data-sub="week"]').click();
+  await frame.evaluate(() => { twExpanded = findConsumer('Frederico', 'staff').id; renderThisWeek(); });
+  await expect(frame.locator('.tw-sp-badge')).toHaveText(['Staff plus · 7 of 7 free drinks left this week', 'Staff plus · 0 of 7 free drinks left this week']);   // both, every week
+  await expect(frame.locator('.tw-card', { hasText: 'Frederico' }).locator('.tw-sp-toggle')).toHaveCount(0);
+  // Francisco too
+  await frame.locator('.snav-btn[data-sub="charge"]').click();
+  await frame.locator('#glist .c-guest', { hasText: 'Francisco' }).click();
+  await tap(frame, 'Soft Drink');
+  expect((await lines(frame)).map(l => [l.p, l.reason, l.note])).toEqual([[0, 'staff_plus', '1/7']]);
+  // Jude: regular staff until switched on
+  await frame.locator('#glist .c-guest', { hasText: 'Jude' }).click();
+  await expect(frame.locator('#spOnBtn')).toBeVisible();
+  await tap(frame, 'Lion Lager');
+  expect((await lines(frame)).map(l => l.p)).toEqual([300]);
 });
