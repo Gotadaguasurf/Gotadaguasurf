@@ -518,6 +518,7 @@
   const inCat = (t, f) => f === 'all' || !f ? true : f === 'airport' ? isAirport(t) : f === 'tuktuk' ? !isAirport(t) : catOf(t) === f;
   const runNoun = t => IS_SL ? 'tuk-tuk run' : (t && t.purpose === 'tour' ? 'tour van' : 'surf van');
   TR.openGroups = TR.openGroups || new Set();
+  TR.openOff = TR.openOff || new Set();
   function weekDays(ws) { return Array.from({ length: 7 }, (_, i) => GT.addDaysIso(ws, i)); }
   function renderTrips() {
     const ws = TR.week, we = GT.addDaysIso(ws, 6);
@@ -559,8 +560,13 @@
     const showAir = special || f === 'all' || f === 'airport' || !f;
     const body = days.map(day => {
       const dayTrips = list.filter(t => t.trip_date === day).sort((a, b) => (a.trip_time || '99').localeCompare(b.trip_time || '99'));
-      const air = dayTrips.filter(t => isAirport(t) && !['cancelled', 'no_show'].includes(t.status));
-      const airOff = dayTrips.filter(t => isAirport(t) && ['cancelled', 'no_show'].includes(t.status));
+      const air = dayTrips.filter(t => isAirport(t) && !['cancelled', 'no_show', 'merged'].includes(t.status));
+      // Cancelled and merged transfers sit behind «Show N cancelled» (17 Nov 2026: next to the live rows they read as
+      // repeated transfers). A no-show, or a cancelled trip with a payment linked, stays in view.
+      const hidden = t => ['cancelled', 'merged'].includes(t.status) && !t.payment_entry_id;
+      const airOffAll = dayTrips.filter(t => isAirport(t) && ['cancelled', 'no_show', 'merged'].includes(t.status));
+      const offHidden = airOffAll.filter(hidden); const offOpen = TR.openOff.has(day);
+      const airOff = airOffAll.filter(t => !hidden(t) || offOpen);
       const runs = dayTrips.filter(t => !isAirport(t));
       const sum = dayTrips.filter(counts).reduce((s, t) => s + Number(t.expected_price || 0), 0);
       const parts = [];
@@ -576,7 +582,8 @@
       const canAdd = !special && !(LOCAL && f === 'airport');
       // On the Airport pill the only trip added by hand is a free one (guests' transfers come from Bookinglayer): say so.
       const add = canAdd ? `<button class="btn-link tr-add" data-add="${day}" onclick="TransportUI.addOn('${day}')">${ic('plus')} ${f === 'airport' ? 'Free transfer' : 'Add'}</button>` : '';
-      const rows = air.map(tripRow).join('') + airOff.map(tripRow).join('') + (runs.length ? runRows(runs, day) : '');
+      const offBtn = offHidden.length ? `<div class="tr-offtoggle"><button class="btn-link tr-show-off" data-show-off="${day}" data-n="${offHidden.length}" onclick="TransportUI.toggleOff('${day}')">${offOpen ? `Hide cancelled` : `Show ${offHidden.length} cancelled`}</button></div>` : '';
+      const rows = air.map(tripRow).join('') + airOff.map(tripRow).join('') + offBtn + (runs.length ? runRows(runs, day) : '');
       return `<div class="card tr-day${rows ? '' : ' tr-day-empty'}" id="trDay-${day}" data-day="${day}"><div class="card-hdr tr-dayhead"><div class="tr-dayttl"><div class="card-title">${fmtDay(day)}</div>
           <div class="card-hint">${rows ? parts.join(' · ') : 'Nothing on this day'}</div></div><div class="tr-dayact">${add}</div>${dayBtns}</div>
         ${rows ? `<div class="tr-rows">${rows}</div>` : ''}</div>`;
@@ -685,6 +692,9 @@
   const DRIVER_STEP = { planned: 'Pending', sent: 'Message Sent', confirmed: 'Confirmed' };
   function bookedStep(t, ro) {
     if (!blOn(t) || t.source !== 'bookinglayer') return '';
+    // A cancelled (or merged) trip shows «Cancelled» only — never «Booked», even when the booking page was checked
+    // (17 Nov 2026: Callum Downes / Lorena Marie Glas, cancelled after the 16 Nov check, read «✓ Booked · Cancelled»).
+    if (['cancelled', 'merged'].includes(t.status)) return '';
     if (blToCheck(t)) {
       const ref = t.booking_ref || '';
       const open = ref && !ro ? `<a class="tr-bl-open" href="${h(blUrl(ref))}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Open booking</a>` : '';
@@ -714,10 +724,84 @@
       if (!ro && !needsInfo(t) && guestHtml(t)) out.push(`<span class="tr-step-g" data-step="guest">${guestHtml(t)}</span>`);
     } else {
       const ps = payState(t);
-      out.push(`<span class="tr-step-i is-${ps.key === 'paid' ? 'ok' : ps.key === 'owed' || ps.key === 'hold' ? 'todo' : 'off'} tr-pay" data-step="paid" data-state="${ps.key}"><span class="badge ${ps.cls}" data-pay="${ps.key}">${ps.label}</span>${ps.sub ? `<span class="cell-sub">${h(ps.sub)}</span>` : ''}</span>`);
+      const why = ['cancelled', 'merged'].includes(t.status) && t.cancel_reason ? ` title="${h(t.cancel_reason)}"` : '';
+      out.push(`<span class="tr-step-i is-${ps.key === 'paid' ? 'ok' : ps.key === 'owed' || ps.key === 'hold' ? 'todo' : 'off'} tr-pay" data-step="paid" data-state="${ps.key}"${why}><span class="badge ${ps.cls}" data-pay="${ps.key}"${why}>${ps.label}</span>${ps.sub ? `<span class="cell-sub">${h(ps.sub)}</span>` : ''}</span>`);
     }
     return `<div class="tr-steps" data-steps>${out.filter(Boolean).join('')}</div>`;
   }
+  // ── The camp report's questions on a trip (lib/bl-report.js, 17 Nov 2026) ─────────────────────────
+  //   «Different times — coming together? …»  a guest at 0 € with another flight / time than the paid one:
+  //                                            «Coming together» (the question goes, also on the next imports) or
+  //                                            «Separate» (that guest gets a trip of their own, Camp Tab: the guest pays)
+  //   «N transfers paid, same flight — confirm they come together»  «Confirmed»
+  //   «Bookinglayer says: time 11:55 — use it?»  a value typed by hand that the report has differently: «Use it»
+  const TOGETHER_RE = /^Different times — coming together\? If not, the guest at 0 € has to pay a transfer/;
+  const PAID_TWICE_RE = /^\d+ transfers paid, same flight — confirm they come together$/;
+  const BL_SAYS_RE = /^Bookinglayer says: (\w+) (.+) — use it\?$/;
+  const SEP_FLAG = 'Separate from the paid transfer of this booking: the guest at 0 € has to pay a transfer';
+  const SAYS_FIELD = { time: 'trip_time', flight: 'flight', date: 'trip_date', people: 'pax', airport: 'place', guests: 'guest_names', phone: 'guest_phone', vehicle: 'vehicle', price: 'expected_price' };
+  const flagsOf = t => (t.import_flags || []).map(String);
+  const edited = (t, k) => (t.edited_fields || []).includes(k);
+  // «(Tsz Yin Scarlet Tang · LS1129 · 11:55; …)» → [{ name, flight, time }]
+  function togetherGuests(flag) {
+    const m = String(flag).match(/\(([^()]*)\)\s*$/); if (!m) return [];
+    return m[1].split(/\s*;\s*/).filter(Boolean).map(x => { const p = x.split(/\s*·\s*/); return { name: p[0], flight: p.slice(1).find(v => !/^\d{2}:\d{2}$/.test(v)) || '', time: p.slice(1).find(v => /^\d{2}:\d{2}$/.test(v)) || '' }; });
+  }
+  function reportAsks(t) {
+    if (LOCAL) return '';
+    const F = flagsOf(t); const out = [];
+    const tog = F.find(f => TOGETHER_RE.test(f));
+    if (tog && !edited(t, 'together_ok') && !edited(t, 'together_split')) {
+      const who = togetherGuests(tog).map(g => [g.name, g.flight, g.time].filter(Boolean).join(' ')).join(', ');
+      out.push(`<div class="tr-flagline tr-together" data-together>${ic('alert')} Different times — coming together? If not, the guest at 0 € has to pay a transfer${who ? ` <span class="cell-sub">(${h(who)})</span>` : ''}</div>
+        <div class="tr-went"><button class="btn btn-s btn-sm" data-together-yes onclick="event.stopPropagation();TransportUI.together('${t.id}', true)">${ic('check')} Coming together</button>
+        <button class="btn btn-s btn-sm" data-together-sep onclick="event.stopPropagation();TransportUI.together('${t.id}', false)">Separate</button></div>`);
+    }
+    const two = F.find(f => PAID_TWICE_RE.test(f));
+    if (two && !edited(t, 'paid_twice_ok')) out.push(`<div class="tr-flagline" data-paid-twice>${ic('alert')} ${h(two)}</div>
+        <div class="tr-went"><button class="btn btn-s btn-sm" data-paid-twice-ok onclick="event.stopPropagation();TransportUI.paidTwiceOk('${t.id}')">${ic('check')} Confirmed</button></div>`);
+    F.filter(f => BL_SAYS_RE.test(f)).forEach((f, i) => out.push(`<div class="tr-blsays cell-sub" data-blsays="${i}">${h(f.replace(/ — use it\?$/, ''))} — <button class="btn-link" data-blsays-use="${i}" onclick="event.stopPropagation();TransportUI.useBl('${t.id}', ${i})">use it?</button></div>`));
+    return out.join('');
+  }
+  async function together(id, yes) {
+    const t = TR.trips.find(x => x.id === id); if (!t || TR.busy.has('tg' + id)) return;
+    const tog = flagsOf(t).find(f => TOGETHER_RE.test(f)); if (!tog) return;
+    TR.busy.add('tg' + id);
+    try {
+      const rest = flagsOf(t).filter(f => f !== tog);
+      if (yes) { if (await updateTrip(id, { import_flags: rest }, ['together_ok'])) { redrawAll(); say('Coming together — one trip'); } return; }
+      const sep = togetherGuests(tog); if (!sep.length) { say('No guest named in the question — split it in the trip by hand', 'err'); return; }
+      const names = String(t.guest_names || '').split(/\s*,\s*/).filter(Boolean);
+      const key = n => String(n || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+      const out = new Set(sep.map(g => key(g.name)));
+      const stay = names.filter(n => !out.has(key(n)));
+      const pax = Math.max(1, (Number(t.pax) || names.length) - sep.length); const veh = vehicleFor(pax, false, GTC);
+      const kPax = sep.length; const kVeh = vehicleFor(kPax, false, GTC);
+      let ik = `${t.import_key || 'manual:' + t.id}:sep`; for (let n = 2; TR.trips.some(x => x.import_key === ik); n++) ik = `${t.import_key || 'manual:' + t.id}:sep${n}`;
+      const row = { kind: t.kind, trip_date: t.trip_date, trip_time: sep[0].time || null, flight: (sep[0].flight || '').replace(/\s+/g, '') || null, place: t.place, route: t.route, purpose: 'guests',
+        guest_names: sep.map(g => g.name).join(', '), guest_phone: null, booking_ref: t.booking_ref, booking_checkout: t.booking_checkout, pax: kPax, vehicle: kVeh, driver_id: t.driver_id,
+        expected_price: presetPrice(t.kind, kVeh, t.place), status: 'planned', source: t.source || 'bookinglayer', charge: 'camp_tab', import_key: ik, import_flags: [SEP_FLAG],
+        // checked and never written by an import: the import never regroups or flags it (camp-trips-bl-check.sql)
+        bl_checked_at: new Date().toISOString(), bl_check_note: 'separated by hand from the paid transfer' };
+      const made = await insertTrip(row); if (!made) return;
+      if (await updateTrip(id, { guest_names: stay.join(', ') || t.guest_names, pax, vehicle: veh, expected_price: presetPrice(t.kind, veh, t.place), import_flags: rest }, ['pax', 'guest_names', 'vehicle', 'expected_price', 'together_split'])) {
+        redrawAll(); say(`Separate — ${row.guest_names} has a trip of their own (Camp Tab: the guest pays)`);
+      }
+    } finally { TR.busy.delete('tg' + id); }
+  }
+  async function paidTwiceOk(id) {
+    const t = TR.trips.find(x => x.id === id); if (!t) return;
+    if (await updateTrip(id, { import_flags: flagsOf(t).filter(f => !PAID_TWICE_RE.test(f)) }, ['paid_twice_ok'])) { redrawAll(); say('Confirmed — they come together'); }
+  }
+  async function useBl(id, i) {
+    const t = TR.trips.find(x => x.id === id); if (!t) return;
+    const f = flagsOf(t).filter(x => BL_SAYS_RE.test(x))[i]; const m = f && BL_SAYS_RE.exec(f); if (!m) return;
+    const field = SAYS_FIELD[m[1]] || m[1]; const v = ['pax', 'expected_price'].includes(field) ? Number(m[2]) : m[2];
+    // the value is Bookinglayer's again: the next import may update it
+    const patch = { [field]: v, import_flags: flagsOf(t).filter(x => x !== f), edited_fields: (t.edited_fields || []).filter(x => x !== field) };
+    if (await updateTrip(id, patch)) { redrawAll(); say(`Updated from Bookinglayer: ${m[1]} ${m[2]}`); }
+  }
+  function toggleOff(day) { if (TR.openOff.has(day)) TR.openOff.delete(day); else TR.openOff.add(day); render(); }
   function tripRow(t) {
     const dep = t.kind === 'airport_departure';
     const time = t.trip_time ? `<b class="num">${h(t.trip_time)}</b>` : '<span class="badge badge-amber">time?</span>';
@@ -730,13 +814,14 @@
       <div class="tr-main tr-c-what">${line1}<div class="cell-sub tr-c-sub">${sub}</div>${meta}${blFlagged(t) ? `<div class="tr-flagline" data-flag>${ic('alert')} ${h(rowFlag(t))}</div>` : ''}</div>
       <div class="tr-c-ppl num">${pplCell(t.pax)}</div><div class="tr-c-drv">${drv}</div><div class="tr-c-price num">${money(t.expected_price)}</div>
       <div class="tr-side tr-c-status"></div><div class="tr-c-steps">${stepsHtml(t, true)}</div></div>`;
-    const live = !t.payment_entry_id && !isDone(t) && !['cancelled', 'no_show'].includes(t.status);
+    const live = !t.payment_entry_id && !isDone(t) && !['cancelled', 'no_show', 'merged'].includes(t.status);   // a merged trip is never sent or missing info
     const miss = live ? missingInfo(t) : [];
     return `<div class="tr-row tr-srow${miss.length ? ' tr-missing' : ''}${dep ? ' tr-out' : ' tr-in'}" data-trip="${t.id}" data-cat="airport"${miss.length ? ` data-missing="${h(miss.join('|'))}"` : ''} onclick="TransportUI.openTrip('${t.id}')">
       <div class="tr-time tr-c-time">${time}</div>
       <div class="tr-main tr-c-what">${line1}
         <div class="cell-sub tr-c-sub">${sub}</div>${meta}
         ${(live || blFlagged(t)) && rowFlag(t) ? `<div class="tr-flagline" data-flag>${ic('alert')} ${h(rowFlag(t))}</div>` : ''}
+        ${live ? reportAsks(t) : ''}
         ${blFlagged(t) ? `<div class="tr-went" data-went-ask><button class="btn btn-s btn-sm" data-went onclick="event.stopPropagation();TransportUI.driverWent('${t.id}')">${ic('check')} Driver went (pay)</button>
           <button class="btn btn-s btn-sm" data-didnt onclick="event.stopPropagation();TransportUI.driverDidntGo('${t.id}')">${ic('x')} Didn't go (cancel)</button></div>` : ''}</div>
       <div class="tr-c-ppl num">${pplCell(t.pax)}</div><div class="tr-c-drv">${drv}</div><div class="tr-c-price num">${money(t.expected_price)}</div>
@@ -1698,6 +1783,9 @@
     out += block('Brought back', 'Cancelled by an earlier import, booked again', P.revive.map(x => trip(x.trip)));
     out += block('Replaced', 'Same booking and direction, grouped another way in the report: cancelled and replaced', P.regroupCancel.map(a => trip(a)));
     out += block('Held back', 'Saving these would cancel a trip of an earlier day: not sent — change them in Transport', (P.withheld || []).map(x => trip(x.trip, h(x.why))));
+    out += block('One transfer, now one trip', 'Kept as one trip per guest in the app; the others become «merged — same transfer» (never paid twice)', (P.merge || []).map(m => trip(m.trip, `keeps ${h(m.survivor.import_key || '')}, merges ${m.others.map(o => h(o.guest_names || o.import_key || '')).join(', ')}`)));
+    out += block('Filled from the report', 'Empty in the app, now filled', (P.fills || []).map(x => trip(x.trip, x.fills.map(c => `${h(c.field.replace('_', ' '))} ${h(String(c.report))}`).join(' · '))));
+    out += block('Typed by hand — kept', 'The report says something else: the trip shows «Bookinglayer says … use it?»', (P.conflicts || []).map(x => trip(x.trip, x.conflicts.map(c => `${h(c.field.replace('_', ' '))}: app ${h(String(c.app))}, Bookinglayer ${h(String(c.report))}`).join(' · '))));
     out += block('Not in the report — cancel?', 'The booking is in the report without this transfer. Saving only marks it; cancel it in Transport if it is right.', P.flagRemoved.map(a => trip(a)));
     out += block('Booking not in the report', 'Future trips of bookings that are not in this report (cancelled in Bookinglayer?). Nothing changes.', P.notInReport.map(a => trip(a)));
     out += block('Not changed (paid, done or past)', 'The report differs from the app here; the app is kept', P.untouched.filter(x => x.diffs.length).map(x => trip(x.trip, `${h(x.why)} · ${chg(x.diffs)}`)));
@@ -1705,6 +1793,9 @@
       const gl = (x, extra) => `<div class="tr-row tr-static"><div class="tr-main"><b>${h(x.guest_name)}</b><div class="cell-sub">${h(x.booking_ref)} · ${fmtShort(x.check_in)} → ${fmtShort(x.check_out)}${extra ? ' · ' + extra : ''}</div></div></div>`;
       out += `<div class="hint tr-plan-guests">Guests: ${GP.add.length} new · ${GP.change.length} changed · ${GP.same.length} unchanged${GP.wouldDrop.length ? ` · ${GP.wouldDrop.length} stored guests not in the report will show «cancelled?»` : ''}</div>`;
       out += block('Guests that change', '', GP.change.map(x => gl(x.g, x.changes.map(c => `${h(c.field)} ${h(c.app || '–')} → ${h(c.report || '–')}`).join(' · '))));
+      out += block('Guests: filled from the report', 'Empty in the app, now filled', (GP.fills || []).map(x => gl(x.g, x.fields.map(c => `${h(c.field.replace('_', ' '))} ${h(c.report)}`).join(' · '))));
+      out += block('Guests: kept (the report is empty)', 'Never blanked: the app keeps its value', (GP.kept || []).map(x => gl(x.g, x.fields.map(c => `${h(c.field.replace('_', ' '))} ${h(c.app)}`).join(' · '))));
+      out += block('Guests: set by hand — kept', '', (GP.conflicts || []).map(x => gl(x.g, h(x.note))));
       out += block('Stored guests not in the report', 'Check-in inside this report but missing from it: Week will ask «cancelled?»', GP.wouldDrop.map(a => gl(a)));
     }
     return out;
@@ -1805,7 +1896,8 @@
     let plan = null;
     if (parsed.report && window.BlReport) {
       const maxCo = (parsed.bookings || []).reduce((m, b) => b.co > m ? b.co : m, '');
-      plan = BlReport.planTrips(trips, TR.trips, { today: cToday(), now: colomboNow(), exportDate: parsed.export_date, refsPresent: parsed.refs_active, window: maxCo ? { to: maxCo } : null });
+      plan = BlReport.planTrips(trips, TR.trips, { today: cToday(), now: colomboNow(), exportDate: parsed.export_date, refsPresent: parsed.refs_active, window: maxCo ? { to: maxCo } : null,
+        mergePast: !IS_SL });   // Sri Lanka: «só para os novos» — a trip of an earlier day is never changed
       trips = plan.send;
     }
     const guests = okGuests.filter(g => !cancelledRefs.has(g.booking_ref)).map(g => ({ ...g, hq_match: matchOf(g.booking_ref), partner: partnerOf(g.booking_ref) || null }));
@@ -1824,11 +1916,13 @@
     let guestPlan = null;
     if (plan) try {
       const loc = await ensureHubLocationId();
-      const { data } = await c.from('camp_week_guests').select('booking_ref,guest_key,guest_name,phone,check_in,check_out,accommodation,bed_number,packages,activities,level,diet,allergies,booking_status,booking_due,partner').eq('location_id', loc);
+      const { data, error } = await c.from('camp_week_guests').select('*').eq('location_id', loc);
+      if (error) throw error;
       guestPlan = BlReport.planGuests(guests, data || []);
     } catch (_) { guestPlan = null; }
     TR.imp = { ...TR.imp, parsed, stage: 'preview',
-      groups: { audit: IMP().guestAudit(TR.imp.text, parsed.file, GTC), warnings: IMP().importWarnings(TR.imp.text, parsed.file, GTC), trips, guests, hqCancelled, hqMissing, missingRefs, cancelledRefs, cancelRefs: [...new Set(parsed.cancel_refs.concat([...cancelledRefs]))], plan, guestPlan } };
+      // merge, never blank: the guests sent are the report's values with the stored ones kept where the report is empty
+      groups: { audit: IMP().guestAudit(TR.imp.text, parsed.file, GTC), warnings: IMP().importWarnings(TR.imp.text, parsed.file, GTC), trips, guests: guestPlan ? guestPlan.rows : guests, hqCancelled, hqMissing, missingRefs, cancelledRefs, cancelRefs: [...new Set(parsed.cancel_refs.concat([...cancelledRefs]))], plan, guestPlan } };
     render();
   }
   const pricesReady = () => presetPrice('airport_arrival', VEHICLES[0]) > 0 && presetPrice('airport_departure', VEHICLES[0]) > 0;
@@ -1846,6 +1940,14 @@
     TR.busy.add('imp');
     try {
       const loc = await ensureHubLocationId();
+      // The camp report: one transfer kept as per-guest trips is merged first (one survives with everyone, the others
+      // «merged — same transfer», merged_into it), so the import below finds the survivor under the report's key.
+      for (const m of ((I.groups.plan || {}).merge || [])) {
+        if (!await updateTrip(m.survivor.id, m.patch)) { say('Merging the trips of ' + m.trip.booking_ref + ' failed — nothing imported', 'err'); return; }
+        for (const o of m.others) {
+          if (!await updateTrip(o.id, { status: 'merged', merged_into: m.survivor.id, cancel_reason: 'merged — same transfer', needs_resend: ['sent', 'confirmed'].includes(o.status) })) { say('Merging the trips of ' + m.trip.booking_ref + ' failed — nothing imported', 'err'); return; }
+        }
+      }
       const result = await rpc('camp_trips_import', {
         // the camp report: never a date before the camp's today, so the «transfer removed» pass leaves earlier days alone
         p_location: loc, p_export_date: I.parsed.report ? [I.parsed.export_date, cToday()].filter(Boolean).sort().pop() : I.parsed.export_date, p_is_preset: !!I.parsed.is_preset,
@@ -2285,6 +2387,7 @@
     openChecks, openLink, linkDriver, linkPick, linkAll, linkMonth, namedMonth, saveLink, unlinkPayment, openExplain, saveExplain, unlinkTrip,
     openPay, payPick, payTick, payTickGroup, payMinus, payAddToggle, payAddRun, payBank, payAmount, payDate, payReason, payNote, savePay, payGroups, localDrivers: LOCAL,
     openDrivers, addDriver, saveDrivers,
+    together, paidTwiceOk, useBl, toggleOff,
     blBooked, blNotBooked, driverWent, driverDidntGo, showBlCheck, blToCheck, blList, blUrl, blCount: () => blList().length, blCheck,
     // for tests and the coordinator
     importHtml: renderNext,   // the Week tab renders the same import

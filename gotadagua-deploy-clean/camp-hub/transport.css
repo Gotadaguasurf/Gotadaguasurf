@@ -432,3 +432,8 @@
 /* The vehicle under the driver's name (run rows), not glued to it. */
 .tr-c-drv .tr-veh { display: block; }
 .tr-modal .tr-free-rule { margin-bottom: var(--sp-4); }
+/* Camp report questions on a trip and the cancelled rows of a day (17 Nov 2026) */
+.tr-blsays { margin-top: 4px; }
+.tr-blsays .btn-link { font-size: inherit; padding: 0; }
+.tr-offtoggle { padding: 6px 12px 8px; }
+.tr-offtoggle .btn-link { font-size: 13px; }

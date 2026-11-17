@@ -5,6 +5,10 @@
 // read-only). Reconcile is gone; «Pay a driver» is the one door to pay a driver.
 // «Now» is pinned to Fri 13 Nov 2026 10:00 Colombo (window.TRANSPORT_NOW).
 const { test, expect } = require('@playwright/test');
+// Cancelled / merged transfers of a day sit behind «Show N cancelled» (17 Nov 2026): open every day's.
+async function showCancelled(page) {
+  for (let i = 0; i < 14; i++) { const b = page.locator('[data-show-off]', { hasText: /^Show/ }); if (!(await b.count())) break; await b.first().click(); }
+}
 const path = require('path');
 const { fakeOwnerSession, collectFatalErrors } = require('./helpers');
 
@@ -643,6 +647,7 @@ for (const [name, size] of [['phone 390', { width: 390, height: 844 }], ['deskto
     await expect(row(R(104)).locator('.tr-free')).toHaveText('Free · Gift');
     await expect(row(R(104)).locator('[data-pay="paid"]')).toHaveText('Paid');
     await expect(row(R(105)).locator('[data-status-sel]')).toHaveValue('planned');      // still to come: the status select (Pending)
+    await showCancelled(page);                                                            // cancelled rows sit behind «Show N cancelled» (17 Nov 2026)
     await expect(row(R(106)).locator('[data-pay="off"]')).toHaveText('Cancelled');
     // Tuk-tuk lines: one per route and state.
     const lines = page.locator('.tr-tuk-line');
@@ -1439,6 +1444,7 @@ test('bl check: «Booked ✓» stamps the check (who and when); «Not booked» c
   const c = await call(st, 'trip_update', 2);
   expect(c.id).toBe(BLID(3));
   expect(c.body).toMatchObject({ status: 'cancelled', cancel_reason: 'Not booked in Bookinglayer (checked by hand)', needs_resend: true, bl_check_note: 'not booked (checked by hand)' });
+  await showCancelled(page);
   await expect(row(3).locator('[data-pay="off"]')).toHaveText('Cancelled');
   await expect(row(3).locator('[data-blcheck]')).toHaveCount(0);
   await expect(page.locator('#transportRoot [data-chip="blcheck"]')).toHaveText('1 transfer to check in Bookinglayer');   // yesterday's
@@ -1468,5 +1474,84 @@ test('bl check: screenshots — a Transport day with checked and unchecked trans
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   await page.locator('#trDay-2026-11-14').screenshot({ path: path.join(BL_SHOTS, 'transport-day-390.png') });
   await page.screenshot({ path: path.join(BL_SHOTS, 'transport-week-390.png'), fullPage: true });
+  expect(errors).toEqual([]);
+});
+
+// ── The camp report's questions on a trip, and cancelled rows (17 Nov 2026) ─────────────────────────
+const RPID = n => `aaaaaaaa-0000-4000-8000-0000000c${String(n).padStart(4, '0')}`;
+const TOG_FLAG = 'Different times — coming together? If not, the guest at 0 € has to pay a transfer (Tsz Yin Scarlet Tang · LS1129 · 19:00)';
+function reportFixture() {
+  return { trips: [
+    trip({ id: RPID(1), trip_date: '2026-11-13', trip_time: '18:00', flight: 'U22621', guest_names: 'Hoi Yi Law, Tsz Yin Scarlet Tang', guest_phone: '+447456304372', pax: 2, booking_ref: '2026-4717', import_key: 'bl:2026-4717:arr', bl_checked_at: '2026-11-16T08:00:00Z', import_flags: [TOG_FLAG] }),
+    trip({ id: RPID(2), trip_date: '2026-11-13', trip_time: '20:00', flight: 'AT431', guest_names: 'Ada Example, Ben Example', guest_phone: '+491700000201', pax: 2, booking_ref: '2026-9095', import_key: 'bl:2026-9095:arr', bl_checked_at: '2026-11-16T08:00:00Z', import_flags: ['2 transfers paid, same flight — confirm they come together'] }),
+    trip({ id: RPID(3), trip_date: '2026-11-13', trip_time: '21:00', flight: 'QR664', guest_names: 'Val Example', guest_phone: '+491700000203', booking_ref: '2026-9099', import_key: 'bl:2026-9099:arr', edited_fields: ['trip_time'], bl_checked_at: '2026-11-16T08:00:00Z', import_flags: ['Bookinglayer says: time 21:30 — use it?'] }),
+    trip({ id: RPID(4), trip_date: '2026-11-13', trip_time: '15:00', flight: 'UL504', guest_names: 'Callum Downes', booking_ref: '2026-4360', import_key: 'bl:2026-4360:arr', status: 'cancelled', bl_checked_at: '2026-11-16T08:00:00Z',
+      cancel_reason: 'Not booked in Bookinglayer (no arrival transfer on the booking); cancelled by Miguel 16 Nov 2026' }),
+    trip({ id: RPID(5), trip_date: '2026-11-13', trip_time: '19:00', flight: 'LS1129', guest_names: 'Tsz Yin Scarlet Tang', booking_ref: '2026-4717', import_key: 'bl:2026-4717:arr:tszyinscarlettang', status: 'merged', merged_into: RPID(1), cancel_reason: 'merged — same transfer', bl_checked_at: '2026-11-16T08:00:00Z' }),
+  ] };
+}
+
+test('cancelled trips: behind «Show N cancelled», never «Booked» (only «Cancelled», the reason on hover); merged ones never counted', async ({ page }) => {
+  const errors = collectFatalErrors(page);
+  await openTab(page, reportFixture());
+  const day = page.locator('#trDay-2026-11-13');
+  await expect(day.locator('.card-hint')).toContainText('3 transfers');                       // the cancelled and the merged one are not transfers
+  await expect(page.locator(`.tr-row[data-trip="${RPID(4)}"]`)).toHaveCount(0);
+  await expect(page.locator(`.tr-row[data-trip="${RPID(5)}"]`)).toHaveCount(0);
+  await expect(day.locator('[data-show-off]')).toHaveText('Show 2 cancelled');
+  await day.locator('[data-show-off]').click();
+  const callum = page.locator(`.tr-row[data-trip="${RPID(4)}"]`);
+  await expect(callum.locator('[data-step="booked"]')).toHaveCount(0);                        // bl_checked_at is set, still no «Booked»
+  await expect(callum.locator('[data-step]')).toHaveCount(1);
+  await expect(callum.locator('[data-pay="off"]')).toHaveText('Cancelled');
+  await expect(callum.locator('[data-pay="off"]')).toHaveAttribute('title', /Not booked in Bookinglayer/);
+  await expect(page.locator(`.tr-row[data-trip="${RPID(5)}"] [data-step="booked"]`)).toHaveCount(0);
+  // the merged trip is not a transfer to send: no send button, no «missing info»
+  await expect(page.locator(`.tr-row[data-trip="${RPID(5)}"]`)).not.toHaveClass(/tr-missing/);
+  await expect(page.locator(`.tr-row[data-trip="${RPID(5)}"] button[title="Send on WhatsApp"]`)).toHaveCount(0);
+  await expect(day.locator('[data-show-off]')).toHaveText('Hide cancelled');
+  expect(await page.evaluate(id => TransportUI.reconcileStatus(TransportUI._state.trips.find(t => t.id === id)), RPID(5))).toBe('cancelled');
+  expect(errors).toEqual([]);
+});
+
+test('camp report questions: «Coming together» clears the question for good; «Use it» takes Bookinglayer\'s value; «Confirmed» on two paid transfers', async ({ page }) => {
+  const errors = collectFatalErrors(page);
+  const st = await openTab(page, reportFixture());
+  const row = n => page.locator(`.tr-row[data-trip="${RPID(n)}"]`);
+  await expect(row(1).locator('[data-together]')).toContainText('Different times — coming together? If not, the guest at 0 € has to pay a transfer');
+  await expect(row(1).locator('[data-together]')).toContainText('(Tsz Yin Scarlet Tang LS1129 19:00)');
+  await expect(row(2).locator('[data-paid-twice]')).toHaveText('2 transfers paid, same flight — confirm they come together');
+  await expect(row(3).locator('[data-blsays]')).toContainText('Bookinglayer says: time 21:30');
+  expect(await page.locator('#transportRoot').textContent()).not.toMatch(/refund|devol/i);
+  await page.screenshot({ path: test.info().outputPath('transport-flags-390.png'), fullPage: true });
+  await page.setViewportSize({ width: 1280, height: 900 }); await page.locator('#trDay-2026-11-13 [data-show-off]').click();
+  await page.locator('#trDay-2026-11-13').screenshot({ path: test.info().outputPath('transport-flags-1280.png') });
+  await page.locator('#trDay-2026-11-13 [data-show-off]').click(); await page.setViewportSize({ width: 390, height: 844 });
+  await row(1).locator('[data-together-yes]').click();
+  let c = await call(st, 'trip_update', 1);
+  expect(c.id).toBe(RPID(1)); expect(c.body.import_flags).toEqual([]); expect(c.body.edited_fields).toContain('together_ok');
+  await expect(row(1).locator('[data-together]')).toHaveCount(0);
+  await row(3).locator('[data-blsays-use]').click();
+  c = await call(st, 'trip_update', 2);
+  expect(c.body).toMatchObject({ trip_time: '21:30', import_flags: [], edited_fields: [] });
+  await row(2).locator('[data-paid-twice-ok]').click();
+  c = await call(st, 'trip_update', 3);
+  expect(c.body.import_flags).toEqual([]); expect(c.body.edited_fields).toContain('paid_twice_ok');
+  expect(errors).toEqual([]);
+});
+
+test('camp report questions: «Separate» gives the 0 € guest a trip of their own (Camp Tab, the guest pays) and keeps the paid trip for the paying guest', async ({ page }) => {
+  const errors = collectFatalErrors(page);
+  const st = await openTab(page, reportFixture());
+  await page.locator(`.tr-row[data-trip="${RPID(1)}"] [data-together-sep]`).click();
+  const ins = (await call(st, 'trip_insert')).rows[0];
+  expect(ins).toMatchObject({ guest_names: 'Tsz Yin Scarlet Tang', pax: 1, vehicle: 'Car', charge: 'camp_tab', trip_time: '19:00', flight: 'LS1129', booking_ref: '2026-4717', import_key: 'bl:2026-4717:arr:sep', expected_price: 21000,
+    import_flags: ['Separate from the paid transfer of this booking: the guest at 0 € has to pay a transfer'] });
+  expect(ins.bl_checked_at).toBeTruthy();
+  const up = await call(st, 'trip_update');
+  expect(up.id).toBe(RPID(1));
+  expect(up.body).toMatchObject({ guest_names: 'Hoi Yi Law', pax: 1, vehicle: 'Car', import_flags: [] });
+  expect(up.body.edited_fields).toEqual(expect.arrayContaining(['pax', 'guest_names', 'together_split']));
+  await expect(page.locator('#trDay-2026-11-13 .card-hint')).toContainText('4 transfers');
   expect(errors).toEqual([]);
 });
