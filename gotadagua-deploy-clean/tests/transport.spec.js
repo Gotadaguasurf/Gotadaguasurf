@@ -1555,3 +1555,16 @@ test('camp report questions: «Separate» gives the 0 € guest a trip of their 
   await expect(page.locator('#trDay-2026-11-13 .card-hint')).toContainText('4 transfers');
   expect(errors).toEqual([]);
 });
+
+test('cancelled trips the driver still has («changed, resend») stay in view, also in the resend chip', async ({ page }) => {
+  const errors = collectFatalErrors(page);
+  const fx = reportFixture();
+  fx.trips.push(trip({ id: RPID(6), trip_date: '2026-11-13', trip_time: '16:00', flight: 'EK650', guest_names: 'Rita Resend', booking_ref: '2026-9066', import_key: 'bl:2026-9066:arr', status: 'cancelled', needs_resend: true, cancel_reason: 'bookinglayer' }));
+  await openTab(page, fx);
+  await expect(page.locator(`.tr-row[data-trip="${RPID(6)}"]`)).toHaveCount(1);
+  await expect(page.locator('#trDay-2026-11-13 [data-show-off]')).toHaveText('Show 2 cancelled');   // Callum and the merged one only
+  await page.evaluate(() => TransportUI.setFilter('resend'));
+  await expect(page.locator(`#transportRoot .tr-row[data-trip="${RPID(6)}"]`)).toHaveCount(1);
+  await expect(page.locator('#transportRoot [data-show-off]')).toHaveCount(0);
+  expect(errors).toEqual([]);
+});

@@ -63,7 +63,13 @@
   const TOGETHER_FLAG = 'Different times — coming together? If not, the guest at 0 € has to pay a transfer';
   const paidTwiceFlag = n => `${n} transfers paid, same flight — confirm they come together`;
   // U2 2286 = EZY2286: the flight number without the airline code.
-  const flightNo = f => { const m = String(f || '').toUpperCase().replace(/\s+/g, '').match(/(\d{1,4})[A-Z]?$/); return m ? String(Number(m[1])) : ''; };
+  // The airline code is taken off first (3 letters, or 2 characters of which one may be a digit: U2, W4, 6E), so
+  // «U2 286» and «EZY286» are both flight 286, and «U2 2286» / «EZY2286» both 2286.
+  const flightNo = f => {
+    const x = String(f || '').toUpperCase().replace(/[\s-]+/g, '');
+    const m = x.match(/^[A-Z]{3}(\d{1,4})[A-Z]?$/) || x.match(/^(?:[A-Z][A-Z0-9]|[0-9][A-Z])(\d{1,4})[A-Z]?$/) || x.match(/^(\d{1,4})$/);
+    return m ? String(Number(m[1])) : '';
+  };
   const mins = t => { const m = String(t || '').match(/^(\d{2}):(\d{2})$/); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
   const flightsDiffer = (a, b) => !!(flightNo(a) && flightNo(b) && flightNo(a) !== flightNo(b));
   const timesFar = (a, b) => { const x = mins(a), y = mins(b); return x != null && y != null && Math.abs(x - y) > 30; };
@@ -347,7 +353,8 @@
         if (!paid.length) { out2.push(...oldGroups(c)); return; }
         const pg = [];
         paid.forEach(l => { const gr = pg.find(x => compatible(x, l)); if (gr) { gr.legs.push(l); gr.paid++; gr.time = gr.time || l.time; gr.flight = gr.flight || l.flight; } else pg.push({ date: l.date, place: l.place, time: l.time, flight: l.flight, legs: [l], paid: 1, ask: [], extra: [] }); });
-        free.forEach(l => { const gr = pg.find(x => compatible(x, l)); if (gr) gr.legs.push(l); else { pg[0].legs.push(l); pg[0].ask.push(l); } });
+        // a 0 € guest who fits joins; their flight / time fill what the paid guest left empty (MA 2026-4241 shape)
+        free.forEach(l => { const gr = pg.find(x => compatible(x, l)); if (gr) { gr.legs.push(l); gr.time = gr.time || l.time; gr.flight = gr.flight || l.flight; } else { pg[0].legs.push(l); pg[0].ask.push(l); } });
         pg.forEach(gr => {
           if (gr.paid > 1) gr.extra.push(paidTwiceFlag(gr.paid));
           if (gr.ask.length) gr.extra.push(`${TOGETHER_FLAG} (${gr.ask.map(l => [l.guest, l.flight, l.time].filter(Boolean).join(' · ')).join('; ')})`);
@@ -501,6 +508,8 @@
       const names = new Set((t0.guests || []).map(nk));
       if (!live.every(a => String(a.guest_names || '').split(/\s*,\s*/).filter(Boolean).every(n => names.has(nk(n))))) return;
       if (live.some(a => a.payment_entry_id)) { plan.mergeInfo.push({ trip: t0, app: live, why: 'one of them is paid — merge by hand' }); return; }
+      // «Separate» chosen in Transport (a trip split off by hand, or the trip it was split from): the camp's decision stands.
+      if (live.some(a => isAdded(a) || (a.edited_fields || []).includes('together_split'))) { plan.mergeInfo.push({ trip: t0, app: live, why: 'separated by hand in Transport — kept as it is' }); return; }
       if (t0.date < today && o.mergePast === false) { plan.mergeInfo.push({ trip: t0, app: live, why: 'an earlier day: this camp never changes past trips' }); return; }
       const t = withPrice(t0); const keyRow = byKey.get(t.key);
       let survivor = null;
@@ -516,7 +525,13 @@
       if (t.phone) put('guest_phone', t.phone);
       patch.import_flags = t.flags;
       if (survivor.import_key !== t.key) patch.import_key = t.key;
-      if (survivor.status === 'cancelled') { patch.status = 'planned'; patch.cancel_reason = null; }
+      if (survivor.status === 'cancelled') {
+        // Brought back on its key. When a merged-away trip was already sent / confirmed to the driver, the survivor takes
+        // that state and «changed, resend» (the driver had two messages for one transfer).
+        const told = live.filter(a => a !== survivor && ['sent', 'confirmed'].includes(a.status));
+        patch.status = told.some(a => a.status === 'confirmed') ? 'confirmed' : told.length ? 'sent' : 'planned'; patch.cancel_reason = null;
+        if (told.length) patch.needs_resend = true;
+      }
       const others = live.filter(a => a !== survivor);
       others.forEach(a => mergedAway.add(a.id)); mergedAway.add(survivor.id);   // neither is the import's to regroup or flag
       plan.merge.push({ trip: t, survivor, others, patch });
@@ -603,7 +618,9 @@
     });
     // a field typed by hand: the RPC keeps it; a different, non-empty report value is a conflict (shown, never applied)
     const r = { trip_date: t.date, trip_time: t.time, flight: t.flight, pax: t.pax, place: t.place, guest_names: (t.guests || []).join(', '), guest_phone: t.phone, vehicle: t.vehicle, expected_price: t.expected_price };
-    ed.forEach(f => { if (!(f in r)) return; const rv = r[f]; if (rv == null || rv === '') return;
+    // vehicle and price come from /prices, never from Bookinglayer; a trip split by hand («Separate») keeps its people
+    const quiet = new Set(['vehicle', 'expected_price', ...(ed.has('together_split') ? ['pax', 'guest_names'] : [])]);
+    ed.forEach(f => { if (!(f in r) || quiet.has(f)) return; const rv = r[f]; if (rv == null || rv === '') return;
       const same = f === 'pax' || f === 'expected_price' ? Number(rv) === Number(a[f]) : String(rv) === String(a[f] == null ? '' : a[f]);
       if (!same) out.push({ field: f, app: a[f] == null ? '' : a[f], report: rv, kept: true }); });
     return out;
@@ -619,7 +636,9 @@
   const yogaOf = g => /yoga/i.test(`${g.activities || ''} ${g.packages || ''}`);
   // camp_week_guests fields an empty report value never blanks. Not here: status, due, partner (booking facts — an
   // empty Company/Channel means a direct booking) and the dates.
-  const MERGE_FIELDS = ['phone', 'level', 'diet', 'allergies', 'bed_number', 'accommodation', 'packages', 'activities', 'arrival_time', 'arrival_flight', 'departure_time', 'departure_flight'];
+  // The guest-form fields only: rooms, packages and activities come from booking lines, so an empty value there means
+  // the line was removed (a cancelled course must leave the surf list) — they always take the report's value.
+  const MERGE_FIELDS = ['phone', 'level', 'diet', 'allergies', 'bed_number', 'arrival_time', 'arrival_flight', 'departure_time', 'departure_flight'];
   function planGuests(rows, appGuests, o) {
     o = o || {};
     const app = new Map((appGuests || []).map(g => [`${g.booking_ref}\u0000${g.guest_key}`, g]));

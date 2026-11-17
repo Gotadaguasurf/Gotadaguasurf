@@ -563,7 +563,8 @@
       const air = dayTrips.filter(t => isAirport(t) && !['cancelled', 'no_show', 'merged'].includes(t.status));
       // Cancelled and merged transfers sit behind «Show N cancelled» (17 Nov 2026: next to the live rows they read as
       // repeated transfers). A no-show, or a cancelled trip with a payment linked, stays in view.
-      const hidden = t => ['cancelled', 'merged'].includes(t.status) && !t.payment_entry_id;
+      // kept in view: a payment linked, a driver who still has it («changed, resend»), and every chip view (resend, to send…)
+      const hidden = t => !special && ['cancelled', 'merged'].includes(t.status) && !t.payment_entry_id && !t.needs_resend;
       const airOffAll = dayTrips.filter(t => isAirport(t) && ['cancelled', 'no_show', 'merged'].includes(t.status));
       const offHidden = airOffAll.filter(hidden); const offOpen = TR.openOff.has(day);
       const airOff = airOffAll.filter(t => !hidden(t) || offOpen);
