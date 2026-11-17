@@ -146,6 +146,11 @@ body.view-list .tf-cell-edit:hover{background:transparent}
 .area-tab.active{background:var(--ocean);color:#fff;font-weight:700}
 .area-tab .count{font-size:11px;font-variant-numeric:tabular-nums;background:rgba(255,255,255,.18);color:inherit;padding:1px 6px;border-radius:999px;min-width:18px;text-align:center}
 .area-tab:not(.active) .count{background:#f1f4f8;color:var(--muted)}
+/* touch screens: tabs are 36px; the hide/delete «×» is a 28px round target kept apart from the tab label */
+@media (pointer:coarse){
+  .area-tab{min-height:36px}
+  .area-tab>span[onclick]{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;margin-left:10px !important;margin-right:-8px;border-radius:50%;background:rgba(22,36,58,.06);font-size:16px !important;opacity:.7 !important}
+}
 .area-tab .ico{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px}
 .area-tab .ico svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 

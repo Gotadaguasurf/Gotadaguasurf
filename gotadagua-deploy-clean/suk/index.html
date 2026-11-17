@@ -20,6 +20,8 @@
 .catsel:hover{background-color:var(--surface-2);border-color:var(--border-2)}
 .catsel:focus{background-color:#fff;border-color:var(--ocean);outline:none}
 .catsel.todo{border-color:var(--amber-border);background-color:var(--amber-bg);color:var(--amber);font-weight:700}
+/* touch screens: the row's selects and buttons are 36px; the button column widens to hold them */
+@media (pointer:coarse){ .catsel{min-height:36px} table#invTable col.c-act{width:96px} }
 /* Expenses: same columns and widths as the HQ table — fits a laptop page without sideways scroll */
 #invTable{table-layout:fixed;min-width:1100px}
 #invTable th,#invTable td{padding-left:8px;padding-right:8px}

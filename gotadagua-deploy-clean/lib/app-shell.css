@@ -157,7 +157,7 @@ th .ic,.kpi-label .ic,.summary-lbl .ic{width:12px;height:12px;vertical-align:-2p
 }
 /* narrow phones: both header menus open as a sheet under the header, 12px from each edge */
 @media (max-width:420px){
-  .app-switch-menu,.loc-switch .app-switch-menu{position:fixed;top:56px;left:12px;right:12px;min-width:0;max-width:none;max-height:calc(100dvh - 72px);overflow-y:auto}
+  .app-switch[open] .app-switch-menu{position:fixed;top:56px;left:12px;right:12px;min-width:0;max-width:none;max-height:calc(100dvh - 72px);overflow-y:auto}
 }
 
 /* ── Layout ───────────────────────────────────────────────────────────── */
@@ -279,6 +279,13 @@ main{max-width:1320px;margin:0 auto;padding:var(--sp-6) var(--sp-5) 64px}
 .btn-block{width:100%;justify-content:center}
 .btn:disabled{opacity:.5;cursor:not-allowed}
 .btn-row{display:flex;gap:var(--sp-2);margin-top:var(--sp-4);align-items:center;flex-wrap:wrap}
+/* touch screens (phones, tablets): small controls grow to a 36px tap target; mouse screens keep the sizes above */
+@media (pointer:coarse){
+  :root{--h-pill:36px}
+  .btn-sm{height:36px}
+  .btn-icon.btn-sm{width:36px}
+  a.file-link{display:inline-flex;align-items:center;justify-content:center;min-height:36px;min-width:36px}
+}
 
 /* ── Filters, pills, fields ───────────────────────────────────────────── */
 .ov-filters,.period-row,.hq-filters{display:flex;gap:var(--sp-2);align-items:center;flex-wrap:wrap}
