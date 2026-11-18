@@ -3883,7 +3883,7 @@ function renderInbox(){
   const hint = document.getElementById('inboxHint');
   if(hint){
     hint.style.display = INBOX_HAS_READ_COL ? 'none' : '';
-    if(!INBOX_HAS_READ_COL) hint.textContent = 'Unread tracking needs a one-time database update (supabase/crm-inbox-read-receipts.sql in the Supabase SQL Editor). Showing every received email meanwhile.';
+    if(!INBOX_HAS_READ_COL) hint.textContent = 'Unread tracking is not switched on in the database yet (tell Miguel). Showing every received email meanwhile.';
   }
   document.querySelectorAll('[data-inbox-filter]').forEach(b => {
     b.classList.toggle('active', b.dataset.inboxFilter === INBOX_FILTER);
