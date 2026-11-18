@@ -47,7 +47,7 @@
 --     leave, not forgotten.
 --       month   that statement month (first day)
 --       amount  median of the last 3 months it was paid, before that month
---               (looks back 6 months)
+--               (looks back 6 months; IRC 12, so July still sees last December's)
 --       day     median day of the month of the biggest debit of those months
 --       recent  the monthly totals behind that median, newest first
 --       this_month_amount / this_month_date   what already left in that month
@@ -122,7 +122,8 @@ begin
      where m.paying_company = 'water-movements'
        and m.balance is not null
        and m.amount < 0
-       and m.movement_date >= date_trunc('month', l.d) - interval '6 months' and m.movement_date <= v_today
+       and m.movement_date >= date_trunc('month', l.d) - case when r.key = 'state_irc' then interval '12 months' else interval '6 months' end
+       and m.movement_date <= v_today
        and r.key is not null
   ),
   per_month as (
