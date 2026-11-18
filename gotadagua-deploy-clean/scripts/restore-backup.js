@@ -31,7 +31,7 @@ const path = require('path');
 const zlib = require('zlib');
 
 const CHUNK = 500;                         // rows per INSERT (keeps each statement small)
-const NAME = /^[a-z_][a-z0-9_]*$/;         // a table or column name we will write unquoted-safe
+const NAME = /^[a-z_][a-z0-9_]*$/;         // a table name we will write into the SQL
 
 function parseArgs(argv) {
   const o = { src: null, tables: null, out: null, replace: false, keepTriggers: false };
@@ -74,24 +74,44 @@ function dollarTag(text) {
   return tag;
 }
 
+// One call per 500 rows. The column list is worked out IN THE DATABASE at run time
+// (pg_temp.gota_restore below): only the columns the backup holds, never a generated
+// column (camp_cash_counts.counted_total, instructor_lessons.total), and OVERRIDING SYSTEM
+// VALUE for an «always» identity (bookings_snapshots.id) — so a schema change never
+// breaks the restore.
 function tableSql(table, rows, { replace }) {
-  const cols = [];
-  const seen = new Set();
-  for (const r of rows) for (const k of Object.keys(r)) if (!seen.has(k)) { seen.add(k); cols.push(k); }
-  const bad = cols.filter(c => !NAME.test(c));
-  if (bad.length) throw new Error(`${table}: column names I will not write: ${bad.join(', ')}`);
-  const colList = cols.map(c => `"${c}"`).join(', ');
   const out = [];
   for (let i = 0; i < rows.length; i += CHUNK) {
     const json = JSON.stringify(rows.slice(i, i + CHUNK));
     const tag = dollarTag(json);
-    const conflict = replace
-      ? `on conflict (id) do update set ${cols.filter(c => c !== 'id').map(c => `"${c}" = excluded."${c}"`).join(', ')}`
-      : 'on conflict do nothing';
-    out.push(`insert into public."${table}" (${colList})\nselect ${colList} from jsonb_populate_recordset(null::public."${table}", ${tag}${json}${tag}::jsonb)\n${conflict};`);
+    out.push(`select pg_temp.gota_restore('${table}', ${tag}${json}${tag}::jsonb, ${replace ? 'true' : 'false'});`);
   }
   return out.join('\n');
 }
+
+const HELPER = `-- the restore helper: lives only in this session (pg_temp), gone when the tab closes
+create or replace function pg_temp.gota_restore(p_table text, p_rows jsonb, p_replace boolean)
+returns bigint language plpgsql as $fn$
+declare
+  v_keys text[]; v_cols text; v_set text; v_ident boolean; v_n bigint;
+begin
+  select array_agg(distinct k) into v_keys from jsonb_array_elements(p_rows) e, jsonb_object_keys(e) k;
+  select string_agg(quote_ident(c.column_name), ', ' order by c.ordinal_position),
+         string_agg(format('%1$I = excluded.%1$I', c.column_name), ', ' order by c.ordinal_position) filter (where c.column_name <> 'id'),
+         coalesce(bool_or(c.identity_generation = 'ALWAYS'), false)
+    into v_cols, v_set, v_ident
+    from information_schema.columns c
+   where c.table_schema = 'public' and c.table_name = p_table
+     and c.is_generated <> 'ALWAYS' and c.column_name = any (v_keys);
+  if v_cols is null then raise exception 'restore: table public.% not found or no matching columns', p_table; end if;
+  execute format('insert into public.%I (%s) %s select %s from jsonb_populate_recordset(null::public.%I, $1) %s',
+                 p_table, v_cols, case when v_ident then 'overriding system value' else '' end, v_cols, p_table,
+                 case when p_replace and v_set is not null then format('on conflict (id) do update set %s', v_set) else 'on conflict do nothing' end)
+    using p_rows;
+  get diagnostics v_n = row_count;
+  raise notice 'restore: % — % rows written', p_table, v_n;
+  return v_n;
+end $fn$;`;
 
 function build(opts) {
   const { dir, files } = listFiles(opts.src);
@@ -125,6 +145,7 @@ function build(opts) {
     ...warnings.map(w => `-- WARNING ${w}`),
     'begin;',
     opts.keepTriggers ? '-- triggers stay on (--keep-triggers)' : "-- triggers and foreign-key checks off for this transaction only, so mirrors and audit lines are not written twice\nset local session_replication_role = replica;",
+    HELPER,
   ];
   const sql = [...head, ...parts, 'commit;', ''].join('\n\n');
   return { sql, report, warnings, dir };

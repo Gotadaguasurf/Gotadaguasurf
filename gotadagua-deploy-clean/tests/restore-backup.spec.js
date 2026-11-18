@@ -32,9 +32,12 @@ test('restore: a day folder becomes one SQL transaction that only adds missing r
   expect(sql.match(/^begin;$/m)).toBeTruthy();
   expect(sql.trim().endsWith('commit;')).toBe(true);
   expect(sql).toContain('set local session_replication_role = replica;');
-  expect((sql.match(/insert into public\."hq_invoices"/g) || []).length).toBe(3);                    // 500 rows per statement
-  expect((sql.match(/on conflict do nothing;/g) || []).length).toBe(4);
-  expect(sql).not.toContain('insert into public."audit_log"');                                      // nothing to restore
+  expect((sql.match(/select pg_temp\.gota_restore\('hq_invoices', /g) || []).length).toBe(3);      // 500 rows per call
+  expect((sql.match(/::jsonb, false\);/g) || []).length).toBe(4);                                     // add missing rows only
+  expect(sql).toContain('create or replace function pg_temp.gota_restore');
+  expect(sql).toContain("c.is_generated <> 'ALWAYS'");                                            // never a generated column
+  expect(sql).toContain('overriding system value');
+  expect(sql).not.toContain("gota_restore('audit_log'");                                           // nothing to restore
   expect(sql).toContain('$gota1$');                                                                 // the data held «$gota$»: another tag
   expect(sql).toContain('-- WARNING audit_log: only the last 35 days are in this file');
   // every statement's JSON is intact
@@ -50,7 +53,7 @@ test('restore: --tables, --replace and --keep-triggers; a bad table name is refu
   const out = path.join(dir, 'x.sql');
   run([dir, '--tables', 'camp_guests,missing_table', '--replace', '--keep-triggers', '--out', out]);
   const sql = fs.readFileSync(out, 'utf8');
-  expect(sql).toContain('on conflict (id) do update set "full_name" = excluded."full_name", "room" = excluded."room"');
+  expect(sql).toContain("select pg_temp.gota_restore('camp_guests', $gota$[{\"id\":\"g1\",\"full_name\":\"Guest One\",\"room\":\"3\"}]$gota$::jsonb, true);");
   expect(sql).not.toContain('hq_month_checks');
   expect(sql).not.toContain('session_replication_role');
   expect(sql).toContain('-- WARNING missing_table: no file for this table');
