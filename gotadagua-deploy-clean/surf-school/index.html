@@ -1129,7 +1129,7 @@ const SALES_PCT_KEY = 'ss_sales_commission_pct';   // localStorage cache only
 const SALES_PCT_DEFAULT = 0;
 let SALES_PCT_DB = null;                           // value from the table; null = not loaded
 let salesPctSaveTimer = null;
-const MESES_PT = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 function salesPct(){
   if (Number.isFinite(SALES_PCT_DB)) return SALES_PCT_DB;
   let cached = NaN;
@@ -1190,7 +1190,7 @@ async function loadSales(){
   const box = document.getElementById('salesBox'); if (!box) return;
   try { await loadSettings(); } catch (e) { console.warn('[SurfSchool] settings failed', e); }
   const [y, m] = SALES_MONTH.split('-').map(Number);
-  document.getElementById('salesMonthLabel').textContent = `${MESES_PT[m-1]} ${y}`;
+  document.getElementById('salesMonthLabel').textContent = `${MONTHS[m-1]} ${y}`;
   const from = new Date(Date.UTC(y, m - 1, 1)).toISOString();
   const to   = new Date(Date.UTC(y, m, 1)).toISOString();
   box.innerHTML = '<div class="card"><div class="loading">Loading…</div></div>';
