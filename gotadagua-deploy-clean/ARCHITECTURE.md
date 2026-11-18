@@ -54,7 +54,7 @@ note of X no longer hides a debit of X. mail-ingest never books a credit note an
 «to decide» list with the negative line it proposes and «Add credit note» confirms it (`mail-ingest/route.ts`; the SQL also puts back in that list the credit notes the harvester skipped before, undecided and without a line; the reader's signal
 is `isCreditNote` in `_shared/invoice-parse.ts`). The pages read the two columns in a separate tolerant query (`CreditNotes.load`),
 so before the SQL runs they behave as before (no switch, no badge). `credit-notes.sql` supersedes the definitions of
-`hq_invoice_to_bank`, `_accountant_bank_unmatched` and `hq_bank_unmatched_co` in the older files — run it again after any of them.
+`hq_invoice_to_bank` (mail-ingest.sql), `_accountant_bank_unmatched` (accountant-portal.sql, hq-bank-unmatched.sql) and `hq_bank_unmatched_co` (bank-unmatched-company.sql) — run it again after any of them.
 
 **Design v3 (22 Oct 2026, night) — `docs/DESIGN-SYSTEM.md` is the contract.** One sans-serif (Outfit; DM Serif Display dropped everywhere, DM Mono only via `.mono` for ids), type scale 24/18/15/14/12.5/11, 8px spacing, hairline cards with no resting shadow (`--r` 12, hover shadow only on clickable cards), 36px controls, pills for filters (active = ocean), badges for states, one primary button per view, `.empty-state`/`.skeleton`/`.status-msg` patterns, 74 line icons in `AppShell.icon`. Every page was also put through the UX audit in `docs/UX-AUDIT-2026-10-22.md` (English everywhere except `/contabilista/`; one name per concept, e.g. «Money from HQ»; no codes/slugs/«Supabase» in the UI; empty states that say what to do; nothing hidden on phones — stack instead). Pages keep only page-specific CSS; never redefine a shell class.
 

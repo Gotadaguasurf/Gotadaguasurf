@@ -21,7 +21,7 @@
 --  work without this file (no switch, no badge) and switch on by themselves after it.
 --
 --  This file supersedes the definitions of hq_invoice_to_bank (mail-ingest.sql),
---  _accountant_bank_unmatched (accountant-portal.sql) and hq_bank_unmatched_co
+--  _accountant_bank_unmatched (accountant-portal.sql, hq-bank-unmatched.sql) and hq_bank_unmatched_co
 --  (bank-unmatched-company.sql): after re-running any of those, run this one again.
 -- ════════════════════════════════════════════════════════════════════════════
 
@@ -116,7 +116,8 @@ create trigger tr_hq_invoices_credit_note_sign
 -- ── 3. the invoice-side bank matcher ─────────────────────────────────────────
 --  An invoice links to the single unlinked DEBIT of its amount (−5/+25 days), as before.
 --  A credit note links to the single unlinked CREDIT of its absolute amount (±20 days):
---  money in that no partner payment, sales invoice, transfer or other line already explains.
+--  money in that no partner payment, sales invoice, transfer or other line already explains,
+--  and never a card-terminal batch, a cash deposit or partner funding (the Suk's sales rubrics).
 --  Never for cash lines, never when two movements could match.
 --  Also fixed here: the old body used min(uuid), which Postgres does not have, so every
 --  call failed (42883) and mail-ingest never linked a debit. The candidates are now
@@ -138,6 +139,9 @@ begin
        and b.hq_invoice_id is null and b.internal_transfer_id is null and b.sales_invoice_ref is null
        and abs(b.amount + i.amount_eur) < 0.011
        and b.movement_date between i.invoice_date - 20 and i.invoice_date + 20
+       -- never money the Suk counts as sales or funding (rubricOf in suk/index.html): a card-terminal batch or a
+       -- cash deposit of the same amount must not turn into a «supplier refund» and drop out of Sales
+       and upper(coalesce(b.description, '')) !~ '(TPA|UNICRE|DEP +NUM|DEPOSITO|WATER MOVEMENTS|RICARDO NUNO)'
        and not exists (select 1 from partner_ledger pl where pl.bank_movement_id = b.id and pl.deleted_at is null)
        and not exists (select 1 from hq_invoices x where x.bank_movement_id = b.id and x.deleted_at is null);
   else
