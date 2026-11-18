@@ -616,6 +616,8 @@ body.dark .ed-input{background:var(--card)}
 <main>
   <!-- ─── DASHBOARD TAB ─── -->
   <div id="page-dashboard">
+    <!-- Shown only while a campaign is paused by Gmail with emails unsent (showCampaignAlert). -->
+    <div id="campaignAlert" class="hidden" style="margin-bottom:12px"></div>
     <!-- Snooze suggestion: shows up when there are sent-but-silent contacts >30d.
          Lets the user bulk-mark them as 'no_reply' to clean the pipeline. -->
     <div id="snoozeBanner" class="hidden" style="background:linear-gradient(135deg,#fef9e7,#fef0e6);border:1.5px solid #f0c060;border-radius:var(--r-lg);padding:18px 22px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">
@@ -2703,22 +2705,52 @@ async function queueDripCampaign({ tpl, sender, targets }){
   document.querySelector('.nav-tab[data-tab="sequences"]')?.click();
 }
 
+// Every row of a query, one page at a time: PostgREST answers at most 1000
+// rows per request and says nothing about the rest. `build` returns a fresh
+// query each call and must order by something unique (the id), or pages
+// overlap.
+async function fetchAllRows(build, page = 1000){
+  const all = [];
+  for(let from = 0; ; from += page){
+    const { data, error } = await build().range(from, from + page - 1);
+    if(error) return { data: all, error };
+    all.push(...(data || []));
+    if(!data || data.length < page) return { data: all, error: null };
+  }
+}
+
+// Which paused campaigns did Gmail stop (rather than a person)? When Google
+// answers 403/429 the dispatcher pauses the campaign and leaves the error on
+// the email it was sending, still pending — that row is the marker. Resume
+// clears it, so a campaign someone pauses by hand later is not mislabelled.
+async function gmailPausedIds(pausedIds){
+  if(!pausedIds.length) return new Set();
+  const { data } = await getClient().from('email_queue').select('campaign_id')
+    .in('campaign_id', pausedIds).eq('status','pending').like('error','HTTP 4%');
+  return new Set((data || []).map(r => r.campaign_id));
+}
+
 async function loadCampaigns(){
   const supa = getClient();
-  const { data: campaigns, error } = await supa
-    .from('email_campaigns')
-    .select('*')
-    .order('created_at', { ascending: false })
-    .limit(20);
-  if(error){ console.warn('[CRM] loadCampaigns failed', error); return []; }
-  if(!campaigns?.length) return [];
-  // One aggregate query for all statuses of all visible campaigns, plus
-  // the reply stats view (email_campaign_stats — computed in the DB so
-  // we don't drag every email_messages row over the wire).
+  // The latest 20, plus every running or paused one however old — those are
+  // the ones still waiting for a decision.
+  const [recent, open] = await Promise.all([
+    supa.from('email_campaigns').select('*').order('created_at', { ascending: false }).limit(20),
+    supa.from('email_campaigns').select('*').in('status', ['running','paused']).order('created_at', { ascending: false }),
+  ]);
+  if(recent.error){ console.warn('[CRM] loadCampaigns failed', recent.error); return []; }
+  const byId = new Map([...(recent.data || []), ...(open.data || [])].map(c => [c.id, c]));
+  const campaigns = [...byId.values()].sort((x, y) => (y.created_at || '').localeCompare(x.created_at || ''));
+  if(!campaigns.length) return [];
+  // Status of every queue row of the visible campaigns (read in pages — one
+  // request used to stop at 1000 rows and the counts came out short), plus
+  // the reply stats view (email_campaign_stats — computed in the DB so we
+  // don't drag every email_messages row over the wire).
   const ids = campaigns.map(c => c.id);
-  const [{ data: counts }, { data: stats }] = await Promise.all([
-    supa.from('email_queue').select('campaign_id, status').in('campaign_id', ids),
+  const [{ data: counts }, { data: stats }, byGmail] = await Promise.all([
+    fetchAllRows(() => supa.from('email_queue').select('campaign_id, status').in('campaign_id', ids).order('id')),
     supa.from('email_campaign_stats').select('*').in('campaign_id', ids),
+    gmailPausedIds(campaigns.filter(c => c.status === 'paused').map(c => c.id)),
   ]);
   const tally = {};
   (counts || []).forEach(r => {
@@ -2730,6 +2762,7 @@ async function loadCampaigns(){
     ...c,
     counts: tally[c.id] || { pending:0, sent:0, failed:0, skipped:0, cancelled:0 },
     replied: statMap[c.id]?.replied_count ?? 0,
+    byGmail: byGmail.has(c.id),
   }));
 }
 
@@ -2737,16 +2770,19 @@ async function renderCampaigns(){
   const el = document.getElementById('campaignList');
   if(!el) return;
   const campaigns = await loadCampaigns();
+  showCampaignAlert(campaigns.filter(c => c.byGmail).reduce((n, c) => n + c.counts.pending, 0));
   if(!campaigns.length){
     el.innerHTML = `<div class="empty-state" style="padding:16px">No campaigns yet. Select contacts in the Contacts tab and hit "Send email batch" — 6+ recipients become a drip campaign automatically.</div>`;
     return;
   }
-  const chip = (s) => ({
+  const chip = (c) => c.byGmail
+    ? `<span class="badge badge-red">Paused by Gmail · ${c.counts.pending} not sent</span>`
+    : ({
     running:   '<span class="badge badge-green">● running</span>',
     paused:    '<span class="badge badge-amber">‖ paused</span>',
     done:      '<span class="badge badge-blue">✓ done</span>',
     cancelled: '<span class="badge badge-grey">× cancelled</span>',
-  }[s] || s);
+  }[c.status] || escHtml(c.status));
   el.innerHTML = campaigns.map(c => {
     const t = c.counts;
     const total = t.pending + t.sent + t.failed + t.skipped + t.cancelled;
@@ -2759,13 +2795,13 @@ async function renderCampaigns(){
       ? `<button class="btn btn-s" onclick="setCampaignStatus('${c.id}','paused')">Pause</button>
          <button class="btn btn-r" onclick="cancelCampaign('${c.id}')">Cancel</button>`
       : c.status === 'paused'
-      ? `<button class="btn btn-s" onclick="setCampaignStatus('${c.id}','running')">Resume</button>
+      ? `<button class="btn btn-s" onclick="openResumeCampaign('${c.id}')">Resume</button>
          <button class="btn btn-r" onclick="cancelCampaign('${c.id}')">Cancel</button>`
       : '';
     return `<div class="card" style="padding:12px 14px;margin-bottom:8px">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
-        <div style="font-weight:700;font-size:13px;color:var(--ink)">${escapeHtml(c.name)}</div>
-        <div style="display:flex;gap:6px;align-items:center">${chip(c.status)}${actions}</div>
+        <div style="font-weight:700;font-size:13px;color:var(--ink)">${escHtml(c.name)}</div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">${chip(c)}${actions}</div>
       </div>
       <div style="margin-top:8px;background:#eef2f6;border-radius:999px;height:8px;overflow:hidden">
         <div style="width:${pct}%;height:100%;background:var(--ocean);border-radius:999px;transition:width .3s"></div>
@@ -2795,11 +2831,34 @@ async function renderCampaigns(){
         <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px">Reply rate by template</div>
         ${rows.map((r,i) => `
           <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;padding:4px 0;${i===0?'font-weight:700;color:#1a7a40':''}">
-            <span>${i===0?'🏆 ':''}${escapeHtml(r.name)} <span style="color:var(--muted);font-weight:400">· ${r.campaigns} campaign${r.campaigns>1?'s':''}</span></span>
+            <span>${i===0?'🏆 ':''}${escHtml(r.name)} <span style="color:var(--muted);font-weight:400">· ${r.campaigns} campaign${r.campaigns>1?'s':''}</span></span>
             <span style="font-family:'DM Mono',monospace">${r.replied}/${r.sent} · ${Math.round(r.rate*100)}%</span>
           </div>`).join('')}
       </div>`);
   }
+}
+
+// ── «Paused by Gmail» on the dashboard ─────────────────────────────────
+// Two campaigns sat paused for 6 and 10 weeks with 462 emails unsent and
+// nobody was told. One red chip, only while it is true; it opens the list.
+function showCampaignAlert(notSent){
+  const el = document.getElementById('campaignAlert');
+  if(!el) return;
+  el.classList.toggle('hidden', !notSent);
+  el.innerHTML = notSent
+    ? `<button class="health-chip" id="campaignAlertChip" style="background:var(--red-bg);border-color:var(--red-border);color:var(--red)">Paused by Gmail · ${notSent} not sent</button>`
+    : '';
+  el.querySelector('button')?.addEventListener('click', () => document.querySelector('.nav-tab[data-tab="sequences"]')?.click());
+}
+async function refreshCampaignAlert(){
+  try {
+    const supa = getClient();
+    const { data: paused } = await supa.from('email_campaigns').select('id').eq('status','paused');
+    const ids = [...await gmailPausedIds((paused || []).map(c => c.id))];
+    const counts = await Promise.all(ids.map(id => supa.from('email_queue')
+      .select('id', { count:'exact', head:true }).eq('campaign_id', id).eq('status','pending')));
+    showCampaignAlert(counts.reduce((n, r) => n + (r.count || 0), 0));
+  } catch(e){ console.warn('[CRM] campaign alert failed', e); }
 }
 
 async function setCampaignStatus(id, status){
@@ -2807,6 +2866,69 @@ async function setCampaignStatus(id, status){
   if(error){ toast(error.message); return; }
   toast(status === 'paused' ? 'Campaign paused' : 'Campaign resumed');
   renderCampaigns();
+}
+
+// Resume never sends blind: the emails were written when the campaign was
+// queued, weeks ago for a paused one. Show how many are waiting, since when,
+// and the first one exactly as it will go out; the person decides.
+async function openResumeCampaign(id){
+  const supa = getClient();
+  const [campR, firstR, pendR, sentR] = await Promise.all([
+    supa.from('email_campaigns').select('*').eq('id', id).maybeSingle(),
+    supa.from('email_queue').select('to_email,subject,body,error,created_at')
+      .eq('campaign_id', id).eq('status','pending').order('created_at', { ascending: true }).limit(1),
+    fetchAllRows(() => supa.from('email_queue').select('to_email,subject').eq('campaign_id', id).eq('status','pending').order('id')),
+    fetchAllRows(() => supa.from('email_queue').select('to_email,subject').eq('status','sent').order('id')),
+  ]);
+  const c = campR.data, first = (firstR.data || [])[0], pending = pendR.data || [];
+  if(campR.error || !c){ toast('Could not load the campaign' + (campR.error ? ': ' + campR.error.message : '')); return; }
+  if(!first){ setCampaignStatus(id, 'running'); return; }   // nothing waiting: nothing to review
+  const key = r => (r.to_email || '').trim().toLowerCase() + '|' + (r.subject || '').trim().toLowerCase();
+  const alreadySent = new Set((sentR.data || []).map(key));
+  const repeats = pending.filter(r => alreadySent.has(key(r))).length;
+  const weeks = Math.floor((Date.now() - new Date(first.created_at).getTime()) / (7 * 86400000));
+  const age = weeks >= 1 ? ` (${weeks} week${weeks > 1 ? 's' : ''} ago)` : '';
+  const byGmail = /^HTTP 4/.test(first.error || '');
+  const n = pending.length;
+
+  document.getElementById('resumeCampaignModal')?.remove();
+  const modal = document.createElement('div');
+  modal.id = 'resumeCampaignModal';
+  modal.className = 'overlay compose-modal open';
+  modal.innerHTML = `
+    <div class="modal compose-card" style="max-width:560px">
+      <div class="mhdr">
+        <div class="mhdr-title">Resume campaign</div>
+        <button class="mclose" data-close aria-label="Close">×</button>
+      </div>
+      <div class="mbody">
+        <div style="font-weight:700;color:var(--navy);margin-bottom:6px">${escHtml(c.name)}</div>
+        <div style="font-size:13px;color:var(--ink);line-height:1.6">
+          <b>${n}</b> email${n === 1 ? '' : 's'} not sent · written ${fmtDate(first.created_at)}${age}
+          ${byGmail ? `<br><span style="color:var(--red)">Gmail stopped it on ${fmtDate(c.updated_at)} (sending limit). Nothing has gone out since.</span>` : ''}
+          ${repeats ? `<br><span id="resumeRepeats" style="color:var(--amber-text);font-weight:600">${repeats} of these people already received an email with this same subject.</span>` : ''}
+        </div>
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:14px 0 6px">First email that will go out</div>
+        <div style="border:1px solid var(--border);border-radius:8px;background:var(--foam);padding:10px 12px;font-size:12.5px;line-height:1.55">
+          <div style="color:var(--muted)">To ${escHtml(first.to_email)}</div>
+          <div id="resumeSubject" style="font-weight:700;margin:2px 0 8px">${escHtml(first.subject)}</div>
+          <div id="resumeBody" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:220px;overflow:auto">${escHtml(first.body)}</div>
+        </div>
+        <div style="font-size:12px;color:var(--muted);margin-top:10px">Anyone who replied, unsubscribed or was emailed in the last 24 hours is skipped. To stop for good, use Cancel in the list.</div>
+      </div>
+      <div class="mfooter">
+        <button class="btn btn-s" data-close>Keep paused</button>
+        <button class="btn btn-p" id="resumeCampaignGo">Resume sending</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', () => modal.remove()));
+  modal.querySelector('#resumeCampaignGo').addEventListener('click', async () => {
+    modal.remove();
+    // The Gmail error has been read; clear the marker so the red chip goes.
+    await supa.from('email_queue').update({ error: null }).eq('campaign_id', id).eq('status','pending').like('error','HTTP 4%');
+    await setCampaignStatus(id, 'running');
+  });
 }
 
 async function cancelCampaign(id){
@@ -3395,6 +3517,7 @@ async function loadAll(){
   renderContacts();
   renderTemplateList();
   updateNavTasksCount();
+  refreshCampaignAlert();
   // Kick off realtime AFTER the initial render so the first paint doesn't
   // race with incoming events. Re-callable; subscribeRealtime() no-ops if
   // already subscribed (so re-login doesn't double-bind).
