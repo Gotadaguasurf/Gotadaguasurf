@@ -17,7 +17,9 @@
 --                            that failed to import (30 days, the café's export_cart PDFs left out).
 --                            Live 18 Nov: «Location not recognised: Surf Camp Ahamgama · 5 commission
 --                            differences» before this change; the commission differences repeat every day, so they
---                            stay in the run's notes and are not a warning; «1 emailed invoice failed to import: <file> (22 Oct)».
+--                            stay in the run's notes and are not a warning. Emailed invoices: 0 today — the one
+--                            failed PDF of 22 Oct (Anthropic EPP24GVE-0009) is in the app through the receipt PDF of
+--                            the same email, so an error with a sibling that made a line is not listed.
 --                            A failed email is listed for 30 days (there is no «handled» button yet).
 --    A3 hq_bank_unmatched(), hq_bank_unmatched_co()
 --                            HQ-17: the member guards that live in the database but never reached the
@@ -179,6 +181,11 @@ begin
                 from mail_ingest_items
                where status = 'error' and decided_at is null and created_at > now() - interval '30 days'
                  and coalesce(filename, '') not ilike 'export_cart%'
+                 -- another attachment of the same email already made or met the line (e.g. the receipt PDF beside a
+                 -- failed invoice PDF): nothing is missing, so it is not asked again (review of wave 4, 18 Nov 2026)
+                 and not exists (select 1 from mail_ingest_items s
+                                  where s.message_id = mail_ingest_items.message_id and s.id <> mail_ingest_items.id
+                                    and s.hq_invoice_id is not null)
               having count(*) > 0),
              null, null
 

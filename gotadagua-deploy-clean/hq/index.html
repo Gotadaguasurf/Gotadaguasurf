@@ -1840,12 +1840,22 @@ async function insertInvoiceRows(payload){
 // «Add expense» opened from a bank debit in Month close (audit HQ-05): the saved line is linked to that debit at once,
 // the same way the statement import and The Suk link it (hq_bank_movements.hq_invoice_id; the other parts of a split line
 // point back with bank_movement_id). A debit that is already linked is never re-pointed.
-async function linkLaunchedDebit(ids){
+async function linkLaunchedDebit(ids, opts = {}){
   const bankId = window.__launchBankId; window.__launchBankId = null;
   ids = (ids || []).filter(Boolean);
   if (!bankId || !ids.length) return null;
-  const { error } = await sb.from('hq_bank_movements').update({ hq_invoice_id: ids[0] }).eq('id', bankId).is('hq_invoice_id', null);
+  // An existing line (attach path) that another debit already pays is never given a second one: one debit = one line.
+  if (opts.existing) {
+    const [{ data: held, error: e1 }, { data: own, error: e2 }] = await Promise.all([
+      sb.from('hq_bank_movements').select('id').eq('hq_invoice_id', ids[0]).neq('id', bankId).limit(1),
+      sb.from('hq_invoices').select('bank_movement_id').eq('id', ids[0]).maybeSingle(),
+    ]);
+    if (e1 || e2) return e1 || e2;
+    if ((held || []).length || (own && own.bank_movement_id && own.bank_movement_id !== bankId)) return { message: 'that line is already linked to another bank debit' };
+  }
+  const { data: upd, error } = await sb.from('hq_bank_movements').update({ hq_invoice_id: ids[0] }).eq('id', bankId).is('hq_invoice_id', null).select('id');
   if (error) return error;
+  if (!(upd || []).length) return { message: 'the debit is already linked to another line (or could not be updated)' };
   if (ids.length > 1) { const r = await sb.from('hq_invoices').update({ bank_movement_id: bankId }).in('id', ids.slice(1)); if (r.error) return r.error; }
   return null;
 }
@@ -2000,7 +2010,7 @@ async function saveInvoice(){
       if (target && confirm(`This expense is already in the app without an invoice:\n${ref(target)}\n\nAttach this invoice to that line instead of creating a new one?`)) {
         const { error } = await attachInvoiceToExisting(target, { file_name, file_mime, file_sha256, drive_link, invoice_number, supplier_nif });
         if (error) { toast('invToast','err',"Couldn't attach: " + error.message); btn.disabled = false; return; }
-        const linkErr = await linkLaunchedDebit([target.id]);
+        const linkErr = await linkLaunchedDebit([target.id], { existing: true });
         toast('invToast', linkErr ? 'warn' : 'ok', `Invoice attached to the existing line — ${ref(target)}${linkErr ? ` · the bank debit is not linked: ${linkErr.message}` : ''}`);
         clearInvoiceForm(); btn.disabled = false;
         if (typeof ExpenseForm !== 'undefined') ExpenseForm.close();
@@ -4013,7 +4023,7 @@ async function spawnOneRecurring(id, opts){
     category_id: row.category_id,
     category_name: row.category_name,
     needs_review: true,
-    notes: `[recorrente mensal · criado na app ${invoiceDate}]`,
+    notes: `[recorrente mensal · criado na app ${invoiceDate}]` + (row.payment_type === 'Cash' ? ' [em dinheiro — nunca ligar ao banco]' : ' [confirmar valor com a fatura do mês]'),
     created_by: CURRENT_USER?.id || null
   };
   // Never twice (audit HQ-15): the same guard as the daily job hq_recurring_run — a live line of this supplier and amount
@@ -4403,9 +4413,10 @@ async function batchDelete(){
       const { error: aErr } = await sb.from('hq_invoice_audit')
         .insert(rows.map(r => ({ invoice_id: r.id, action:'deleted', actor, snapshot: r })));
       if (aErr) console.warn('[HQ] batch audit insert failed', aErr.message);
+      // the snapshot keeps the old link: let go only of the rows whose snapshot was written
+      const uErr = aErr ? null : await unlinkArchivedFromBank(rows.map(r => r.id));
+      if (uErr) { firstErr = uErr; return; }
     }
-    const uErr = await unlinkArchivedFromBank(chunk);
-    if (uErr) { firstErr = uErr; return; }
     deleted += chunk.length;
   });
   if (firstErr) { alert(`Delete failed after ${deleted} row(s): ${firstErr.message}`); }
@@ -4639,6 +4650,7 @@ async function renderInvoiceList(opts = {}){
   if (opts.reuse && cache && cache.key === key) {
     rows = cache.rows.slice(); bankByInv = cache.bankByInv;
   } else {
+    window.__invListCache = null;   // a newer keystroke must not reuse rows this read is replacing
     body.innerHTML = `<div class="loading">Loading…</div>`;
     try {
       // Deleted view: the 🗑 filter flips the query between live rows and
@@ -4890,7 +4902,8 @@ async function deleteInvoice(id){
   const { error: aErr } = await sb.from('hq_invoice_audit')
     .insert({ invoice_id: id, action:'deleted', actor, snapshot: row || {} });
   if (aErr) console.warn('[HQ] audit insert failed', aErr.message);
-  const uErr = await unlinkArchivedFromBank([id]);
+  // the snapshot is what keeps the old link, so the link is only let go once it is written
+  const uErr = aErr ? null : await unlinkArchivedFromBank([id]);
   if (uErr) alert('Archived, but its bank debit is still linked to it: ' + uErr.message);
   renderInvoiceList();
 }
@@ -4908,6 +4921,15 @@ async function restoreInvoice(id){
     .eq('id', id);
   if (error) { alert('Restore failed: '+error.message); return; }
   await sb.from('hq_invoice_audit').insert({ invoice_id: id, action:'restored', actor });
+  // Archiving let go of bank_movement_id (DATA-08); the restored line points at its debit again.
+  try {
+    const { data: snap } = await sb.from('hq_invoice_audit').select('snapshot').eq('invoice_id', id).eq('action', 'deleted').order('created_at', { ascending:false }).limit(1);
+    const mv = snap && snap[0] && snap[0].snapshot && snap[0].snapshot.bank_movement_id;
+    if (mv) {
+      const { error: lErr } = await sb.from('hq_invoices').update({ bank_movement_id: mv }).eq('id', id).is('bank_movement_id', null);
+      if (lErr) alert('Restored, but its bank debit could not be linked again: ' + lErr.message);
+    }
+  } catch (e) { console.warn('[HQ] restore: bank link not given back', e); }
   renderInvoiceList();
 }
 

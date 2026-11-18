@@ -74,7 +74,7 @@ test('HQ-05 «Add expense» from a bank debit links the saved line to that debit
     if (url.includes('/rest/v1/rpc/hq_overview_rollup')) return json({ bookings: [], invoices: [], ledger: [] });
     if (url.includes('/rest/v1/hq_invoice_categories')) return json([{ id: 'c-eq', name: 'Equipment & maintenance', sort_order: 1, is_personal: false, active: true }]);
     if (url.includes('/rest/v1/hq_bank_movements')) {
-      if (m === 'PATCH') { writes.push(['bank', decodeURIComponent(url.split('?')[1]), JSON.parse(req.postData())]); return json([]); }
+      if (m === 'PATCH') { writes.push(['bank', decodeURIComponent(url.split('?')[1]), JSON.parse(req.postData())]); return json([{ id: 'bk1' }]); }
       return json([{ id: 'bk1', bank: 'santander', movement_date: '2026-09-15', description: 'COMPRA *6962 LEROY MERLIN COVA PIEDADE', amount: -274.19, currency: 'EUR', kind: 'expense', hq_invoice_id: null, internal_transfer_id: null, notes: null }]);
     }
     if (url.includes('/rest/v1/hq_invoices')) {
@@ -103,6 +103,7 @@ test('HQ-05 «Add expense» from a bank debit links the saved line to that debit
   expect(writes[1][1]).toContain('id=eq.bk1');
   expect(writes[1][1]).toContain('hq_invoice_id=is.null');
   expect(writes[1][2]).toEqual({ hq_invoice_id: 'new1' });
+  expect(await page.evaluate(() => document.querySelector('#invToast')?.textContent || '')).not.toMatch(/not linked/);
   // a plain «Add expense» afterwards links nothing
   await page.evaluate(() => { openAddExpense(); return null; });
   expect(await page.evaluate(() => window.__launchBankId)).toBeNull();
@@ -481,6 +482,36 @@ test('HQ-08 an inline edit updates the rows kept for filtering; HQ-05 a line sav
   });
   expect(await page.evaluate(() => document.querySelector('#invToast')?.textContent || '')).toMatch(/Expense saved/);
   expect(writes.filter(w => w.startsWith('hq_bank_movements'))).toEqual([]);
+});
+
+test('review of wave 4: a debit that was not updated is said, an existing line paid by another debit is not given a second one, a restored line gets its bank link back', async ({ page }) => {
+  const writes = [];
+  await page.route(/supabase\.co\/(auth|rest)\/v1\/.*/, async route => {
+    const req = route.request(); const url = decodeURIComponent(req.url()); const m = req.method();
+    const json = (body) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    if (url.includes('/auth/v1/user')) return json({ id: 'u1', email: 'miguel@gotadaguasurf.com', aud: 'authenticated', role: 'authenticated' });
+    if (url.includes('/rest/v1/rpc/hq_overview_rollup')) return json({ bookings: [], invoices: [], ledger: [] });
+    if (m === 'PATCH') { writes.push(url.replace(/^.*\/rest\/v1\//, '') + ' ' + req.postData()); return json([]); }   // 0 rows updated
+    if (url.includes('/rest/v1/hq_bank_movements') && url.includes('hq_invoice_id=eq.line1')) return json([{ id: 'bkOther' }]);
+    if (url.includes('/rest/v1/hq_invoice_audit') && m === 'GET') return json([{ snapshot: { id: 'r1', bank_movement_id: 'mvLot' } }]);
+    return json([]);
+  });
+  await fakeOwnerSession(page);
+  await page.goto('/hq/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof linkLaunchedDebit === 'function');
+  // 0 rows updated (debit already taken, or refused): reported, and the other parts are not pointed at it
+  const r1 = await page.evaluate(async () => { window.__launchBankId = 'bk1'; const e = await linkLaunchedDebit(['n1', 'n2']); return e && e.message; });
+  expect(r1).toMatch(/already linked/);
+  expect(writes.filter(w => w.startsWith('hq_invoices'))).toEqual([]);
+  // attach path: the existing line is already paid by another debit → no write at all
+  writes.length = 0;
+  const r2 = await page.evaluate(async () => { window.__launchBankId = 'bk2'; const e = await linkLaunchedDebit(['line1'], { existing: true }); return e && e.message; });
+  expect(r2).toMatch(/another bank debit/);
+  expect(writes).toEqual([]);
+  // restore: the bank link the archive let go of comes back from the snapshot
+  writes.length = 0;
+  await page.evaluate(() => restoreInvoice('r1'));
+  expect(writes).toContain('hq_invoices?id=eq.r1&bank_movement_id=is.null {"bank_movement_id":"mvLot"}');
 });
 
 // ── screenshots of the visible changes (only with W4_SHOTS=<folder>) ─────
