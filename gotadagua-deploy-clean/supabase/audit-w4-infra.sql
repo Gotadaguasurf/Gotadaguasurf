@@ -160,7 +160,8 @@ begin
     return new;
   end if;
   new := old;
-  if v_status = 'accepted' then
+  -- only an open invite turns accepted (a cancelled one stays cancelled)
+  if v_status = 'accepted' and old.status in ('pending', 'sent') then
     new.status := 'accepted';
     new.accepted_at := v_accepted_at;
   end if;

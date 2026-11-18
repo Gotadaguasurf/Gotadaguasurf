@@ -192,6 +192,14 @@ test('create-platform-invite: a manager giving HQ is refused once ENFORCE_INVITE
   expect(r.body.error).toBe('Only Miguel can give HQ (owner view) access.');
   expect(db.calls.filter(c => c.op !== 'select')).toHaveLength(0);                                            // nothing written
 
+  // a hand-made call: role viewer, but the access row says owner (review 18 Nov)
+  db = fakeDb(seed());
+  const crafted = loadEdge('create-platform-invite', { env: { ENFORCE_INVITE_RULES: 'true' }, createClient: clientFactory(db, users) });
+  const c = await crafted.call({ headers: { Authorization: 'Bearer jwt-mgr' }, body: { ...body, accessRows: [{ workspace_id: 'ws-pt', member_role: 'owner' }] } });
+  expect(c.status).toBe(403);
+  expect(c.body.error).toBe('Only Miguel can make someone Owner.');
+  expect(db.calls.filter(c2 => c2.op !== 'select')).toHaveLength(0);
+
   db = fakeDb(seed());
   const staged = loadEdge('create-platform-invite', { createClient: clientFactory(db, users) });
   const s = await staged.call({ headers: { Authorization: 'Bearer jwt-mgr' }, body });
