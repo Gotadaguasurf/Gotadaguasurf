@@ -4013,8 +4013,28 @@ async function spawnOneRecurring(id, opts){
     category_id: row.category_id,
     category_name: row.category_name,
     needs_review: true,
+    notes: `[recorrente mensal · criado na app ${invoiceDate}]`,
     created_by: CURRENT_USER?.id || null
   };
+  // Never twice (audit HQ-15): the same guard as the daily job hq_recurring_run — a live line of this supplier and amount
+  // already in the month (typed by hand or created by the job) means it is done; ask before adding another.
+  const [y, m] = ym.split('-').map(Number), next = new Date(Date.UTC(y, m, 1)).toISOString().slice(0, 10);
+  const want = Number(row.amount_eur ?? row.amount ?? 0);
+  const { data: same, error: e0 } = await sb.from('hq_invoices').select('id, invoice_date, amount, amount_eur')
+    .is('deleted_at', null).eq('paying_company', row.paying_company).ilike('company', row.company)
+    .gte('invoice_date', `${ym}-01`).lt('invoice_date', next);
+  if (e0) { alert('Could not check this month first: ' + e0.message); return; }
+  const twin = (same || []).find(r => Math.abs(Number(r.amount_eur ?? r.amount ?? 0) - want) < 0.011);
+  if (twin) {
+    if (opts?.silent || !confirm(`${row.company} ${eur(want)} is already in ${fechoMonthLabel(ym)} (${twin.invoice_date}).\n\nCreate another line anyway?`)) {
+      if (!row.last_created_on || String(row.last_created_on).slice(0, 7) < ym) {
+        const { error: e1 } = await sb.from('hq_recurring_expenses').update({ last_created_on: twin.invoice_date }).eq('id', id);
+        if (!e1) row.last_created_on = twin.invoice_date;
+      }
+      if (!opts?.silent) renderRecurringPanel();
+      return;
+    }
+  }
   const { error } = await sb.from('hq_invoices').insert(payload);
   if (error) { alert('Spawn failed: '+error.message); return; }
   const { error: e2 } = await sb.from('hq_recurring_expenses')

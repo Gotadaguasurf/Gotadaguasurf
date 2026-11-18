@@ -251,3 +251,31 @@ test('DATA-02 a booking with no camp is a «No camp set» row and column, so the
   expect(pnl.options).toEqual(['all', '2026-10', 'group']);
   expect(errs).toEqual([]);
 });
+
+// ── HQ-15 ────────────────────────────────────────────────────────────────
+test('HQ-15 «Create now» on a recurring template never adds a second line for the month without asking', async ({ page }) => {
+  const posts = []; let twin = true;
+  await page.route(/supabase\.co\/(auth|rest)\/v1\/.*/, async route => {
+    const req = route.request(); const url = decodeURIComponent(req.url());
+    const json = (body) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    if (url.includes('/auth/v1/user')) return json({ id: 'u1', email: 'miguel@gotadaguasurf.com', aud: 'authenticated', role: 'authenticated' });
+    if (url.includes('/rest/v1/rpc/hq_overview_rollup')) return json({ bookings: [], invoices: [], ledger: [] });
+    if (url.includes('/rest/v1/hq_invoices') && req.method() === 'POST') { posts.push(JSON.parse(req.postData())); return json([]); }
+    if (url.includes('/rest/v1/hq_invoices?select=id,invoice_date,amount,amount_eur')) return json(twin ? [{ id: 'x', invoice_date: '2026-11-01', amount: 1300, amount_eur: 1300 }] : []);
+    return json([]);
+  });
+  await fakeOwnerSession(page);
+  await page.goto('/hq/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof spawnOneRecurring === 'function');
+  const dialogs = [];
+  page.on('dialog', d => { dialogs.push(d.message()); d.dismiss(); });
+  await page.evaluate(() => { REC_ROWS = [{ id: 'r1', company: 'renda escritorio portugal', paying_company: 'water-movements', location_slug: 'portugal', amount: 1300, amount_eur: 1300, currency: 'EUR', fx_rate: 1, day_of_month: 1, active: true, payment_type: 'Cash' }]; });
+  await page.evaluate(() => spawnOneRecurring('r1'));
+  expect(dialogs.length).toBe(1);
+  expect(dialogs[0]).toMatch(/already in/);
+  expect(posts).toEqual([]);
+  twin = false;
+  await page.evaluate(() => spawnOneRecurring('r1', { silent: true }));
+  expect(posts.length).toBe(1);
+  expect(posts[0].notes).toMatch(/^\[recorrente mensal/);
+});
