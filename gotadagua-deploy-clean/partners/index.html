@@ -2640,6 +2640,15 @@ async function loadFromSupabase() {
     let bookingRows = bookingsAll || [];
     let statusRows = statusesRes.data || [];
 
+    // Invoices and the advance ledger load side by side: one round trip of
+    // wait, not two, before the state below is swapped in one go (no
+    // half-reset state — bookings without their partner settings — between awaits).
+    await Promise.all([
+      reloadPartnerInvoices().catch(e => { console.warn('[Partners] partner_invoices not loaded', e); partnerInvoices = {}; }),
+      reloadPartnerLedger().catch(e => { console.warn('[Partners] partner_ledger not loaded', e); partnerLedger = {}; }),
+      reloadPartnerFlags().catch(() => { partnerNoInvoice = new Set(); }),   // column not there yet → nobody is flagged
+    ]);
+
     allBookings = bookingRows.map(mapBookingRowToApp);
     partnerEmails = {};
     partnerContacts = partnerContacts || {};
@@ -2648,14 +2657,6 @@ async function loadFromSupabase() {
     partnerTypes = {};
     statusStore = normalizeStatusRows(statusRows);
     statusNotes = normalizeStatusNotes(statusRows);
-    // Invoices and the advance ledger load side by side: one round trip of
-    // wait, not two, before the partner settings below are applied.
-    await Promise.all([
-      reloadPartnerInvoices().catch(e => { console.warn('[Partners] partner_invoices not loaded', e); partnerInvoices = {}; }),
-      reloadPartnerLedger().catch(e => { console.warn('[Partners] partner_ledger not loaded', e); partnerLedger = {}; }),
-      reloadPartnerFlags().catch(() => { partnerNoInvoice = new Set(); }),   // column not there yet → nobody is flagged
-    ]);
-
     // contact_name lives in Supabase since 7 Nov 2026 (before: localStorage
     // only, lost in incognito). Cloud value wins; the column check keeps the
     // page working before supabase/partners-contact-name.sql is applied.
