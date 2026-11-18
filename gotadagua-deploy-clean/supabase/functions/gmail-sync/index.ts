@@ -59,6 +59,8 @@ const ENFORCE       = Deno.env.get('ENFORCE_CRON_SECRET') === 'true'
 // How many Gmail downloads may be in flight at once. Google answered
 // «429 Too many concurrent requests for user» to 200+ at a time.
 const FETCH_POOL = 5
+// Most new messages downloaded in one run (see step 4).
+const MAX_DOWNLOADS_PER_RUN = 500
 // Fallback memory of looked-at ids while gmail_sync_seen does not exist.
 // Lives only as long as this function instance stays warm.
 const seenMem = new Map<string, string | null>()
@@ -255,7 +257,7 @@ function isAutoReply(headers: Record<string, string>): boolean {
 }
 const AUTO_SUBJECT = new RegExp('^(' + [
   'auto(matic)?[ -]?(reply|response)', 'automatic reply', 'out of (the )?office', 'i am (currently )?(out|away)', 'on (annual )?leave',
-  'automatische antwort', 'abwesenheit', 'r[eé]ponse automatique', 'absence', 'absent',
+  'automatische antwort', 'abwesenheit(snotiz)?','r[eé]ponse automatique', 'absence', 'absent',
   'respuesta autom[aá]tica', 'fuera de (la )?oficina', 'resposta autom[aá]tica', 'aus[eê]ncia', 'ausente',
   'automatisch antwoord', 'afwezig', 'niet aanwezig', 'risposta automatica', 'fuori sede',
 ].join('|') + ')\\b', 'i')
@@ -489,6 +491,12 @@ Deno.serve(async (req) => {
     if (newIds.length === 0) {
       return json({ ok: true, fetched: ids.length, newInbound: 0, matched: 0, advanced: 0, note: 'all already in DB' })
     }
+    // At most 500 downloads per run (the old one-page limit): a backlog of up
+    // to 2,000 might not finish inside the function's time limit, and a run
+    // cut off there stores nothing, so every later run would stall the same
+    // way. Gmail lists the newest first; the rest are neither stored nor
+    // seen, so the next run takes them (W4 review).
+    if (newIds.length > MAX_DOWNLOADS_PER_RUN) newIds.length = MAX_DOWNLOADS_PER_RUN
 
     // 4. Fetch FULL payload for each new id so we capture the body —
     //    the CRM's conversation panel renders the full email text, not

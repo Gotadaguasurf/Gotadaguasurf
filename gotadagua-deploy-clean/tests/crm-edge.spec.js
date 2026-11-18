@@ -323,11 +323,12 @@ const withHeaders = (m, extra) => { m.payload.headers.push(...Object.entries(ext
 test('gmail-sync: an out-of-office answer is kept in the conversation but moves nothing (crm-14)', async () => {
   const ooo = withHeaders(mail('m-ooo', 'Ana <club@uni.example>', 'Out of Office: Re: Surf trip'), { 'Auto-Submitted': 'auto-replied' });
   const ooo2 = mail('m-ooo2', 'Rui <rui@club2.example>', 'Automatische Antwort: Surf trip');
-  const db = fakeDb({ outreach_contacts: [{ ...CLUB }, { id: 'co-2', email: 'rui@club2.example', status: 'follow_up' }] }); const g = fakeGmail([ooo, ooo2]);
+  const ooo3 = mail('m-ooo3', 'Lena <lena@club3.example>', 'Abwesenheitsnotiz: Re: Surf trip');   // the Outlook German subject, no header (W4 review)
+  const db = fakeDb({ outreach_contacts: [{ ...CLUB }, { id: 'co-2', email: 'rui@club2.example', status: 'follow_up' }, { id: 'co-3', email: 'lena@club3.example', status: 'first_email' }] }); const g = fakeGmail([ooo, ooo2, ooo3]);
   const r = await loadFunction('gmail-sync', { db, gmail: g.fetch })();
-  expect(r.body).toMatchObject({ ok: true, newInbound: 2, matched: 0, advanced: 0, autoReplies: 2 });
-  expect(db.T.email_messages.map(m => m.provider_msg_id).sort()).toEqual(['m-ooo', 'm-ooo2']);   // still shown
-  expect(db.T.outreach_contacts.map(c => [c.status, !!c.replied])).toEqual([['first_email', false], ['follow_up', false]]);
+  expect(r.body).toMatchObject({ ok: true, newInbound: 3, matched: 0, advanced: 0, autoReplies: 3 });
+  expect(db.T.email_messages.map(m => m.provider_msg_id).sort()).toEqual(['m-ooo', 'm-ooo2', 'm-ooo3']);   // still shown
+  expect(db.T.outreach_contacts.map(c => [c.status, !!c.replied])).toEqual([['first_email', false], ['follow_up', false], ['first_email', false]]);
   expect(db.T.outreach_activity).toHaveLength(0);
 });
 
@@ -427,4 +428,17 @@ test('gmail-sync: with more than 1,000 messages in the window, what is stored is
   expect(r.body).toMatchObject({ ok: true, fetched: 1100, note: 'all already in DB' });
   expect(g.st.gets).toHaveLength(0);
   expect(db.T.outreach_activity).toHaveLength(0);
+});
+
+test('gmail-sync: a backlog bigger than 500 new messages is downloaded 500 per run, the rest on the next run (W4 review)', async () => {
+  const msgs = Array.from({ length: 620 }, (_, i) => mail('b' + i, 'Ana <club@uni.example>', 'Re: Surf trip ' + i));
+  const db = fakeDb({ outreach_contacts: [{ ...CLUB }] }); const g = fakeGmail(msgs);
+  const run = loadFunction('gmail-sync', { db, gmail: g.fetch });
+  const r1 = await run();
+  expect(r1.body).toMatchObject({ ok: true, newInbound: 500 });
+  expect(g.st.gets).toHaveLength(500);
+  const r2 = await run();
+  expect(r2.body).toMatchObject({ ok: true, newInbound: 120 });
+  expect(g.st.gets).toHaveLength(620);
+  expect(new Set(db.T.email_messages.map(m => m.provider_msg_id)).size).toBe(620);
 });

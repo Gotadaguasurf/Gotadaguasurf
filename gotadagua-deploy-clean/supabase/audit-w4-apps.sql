@@ -122,8 +122,9 @@ group by c.id;
 
 -- ── Part 4 · «Bad email» mark on companies whose address bounced (crm-09) ───
 -- FOR MIGUEL TO APPROVE. Not run. Optional: the batch email already unticks
--- them and the sender skips them; this only makes them findable in Contacts
--- through the existing email_confidence field. Read-only count: 86.
+-- them and the sender skips them. Note (W4 review): no page reads
+-- email_confidence today, so this mark shows nowhere until the Contacts list
+-- gets a «Bad email» filter or badge; skip it until then. Read-only count: 86.
 --
 -- update public.outreach_contacts c set email_confidence = 'bounced'
 --  where exists (select 1 from public.email_suppression s where s.reason = 'bounce' and s.email = lower(trim(c.email)))
