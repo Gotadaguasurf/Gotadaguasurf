@@ -20,6 +20,18 @@
 //                       the per-company check let four of them get the same
 //                       campaign twice (audit 18 Nov 2026, crm-06).
 //
+//    6. Excluded company — a company set to Excluded (by hand, or by
+//                       gmail-sync after an «unsubscribe») is never emailed
+//                       by a campaign queued before that (crm-08).
+//
+//  Gmail trouble (AUT-10): the token is checked once before anything is
+//  sent; if it cannot be refreshed the run stops and every row stays
+//  pending for the next run. A Google 5xx, a 401 or a dropped connection
+//  leaves the row pending too (it is tried again, «failed» only after 3
+//  tries); only an answer about the email itself (400 …) fails it at once.
+//  Each row is claimed before sending (attempts n → n+1 only if nobody else
+//  did it first), so two overlapping runs cannot both send it (crm-22).
+//
 //  After each send: email_messages row (audit), outreach_contacts status
 //  auto-advance (not_started → first_email → follow_up), outreach_activity
 //  log — identical bookkeeping to the old client-side batch, minus the
@@ -164,7 +176,7 @@ Deno.serve(async (req) => {
     if ((req.headers.get('x-cron-secret') || '') !== CRON_SECRET) return json({ error: 'Not authorised: x-cron-secret is required' }, 401)
   }
   const supa = createClient(SUPABASE_URL, SERVICE_KEY)
-  const summary = { sent: 0, skipped: 0, failed: 0, reason: '' }
+  const summary: { sent: number; skipped: number; failed: number; retry?: number; reason: string } = { sent: 0, skipped: 0, failed: 0, reason: '' }
 
   // 0. Any running campaigns at all? (Cheap early exit for most runs.)
   const { data: campaigns, error: campErr } = await supa
@@ -186,6 +198,14 @@ Deno.serve(async (req) => {
     return json({ ...summary, reason: `global cap reached (${sentToday}/${GLOBAL_DAILY_CAP})` })
   }
   let budget = Math.min(PER_RUN, GLOBAL_DAILY_CAP - (sentToday ?? 0))
+
+  // 1a. The mailbox token, once. Cannot be refreshed → send nothing and touch
+  //     no row: they all stay pending and the next run tries again (each row
+  //     used to be marked «failed» for good on a token or network error).
+  const gmail = await ensureAccessToken(supa).catch((e: unknown) => (e instanceof Error ? e : new Error(String(e))))
+  if (gmail instanceof Error) {
+    return json({ ...summary, reason: `Gmail token: ${gmail.message.slice(0, 200)} — nothing sent, rows stay pending` })
+  }
 
   // 1b. Every address emailed in the last 24 h, by a campaign or by hand.
   //     Cannot be read → send nothing this run; the next one tries again.
@@ -301,7 +321,12 @@ Deno.serve(async (req) => {
       //     cannot see the future; the moment of sending can.
       {
         const { data: recent } = await supa.from('outreach_contacts')
-          .select('last_contacted_at').eq('id', row.company_id).maybeSingle()
+          .select('last_contacted_at, status').eq('id', row.company_id).maybeSingle()
+        if (recent?.status === 'excluded') {
+          await supa.from('email_queue').update({ status: 'skipped', error: 'company excluded' }).eq('id', row.id)
+          summary.skipped++
+          continue
+        }
         const lastMs = recent?.last_contacted_at ? new Date(recent.last_contacted_at).getTime() : 0
         if (lastMs && Date.now() - lastMs < 24 * 60 * 60 * 1000) {
           await supa.from('email_queue').update({
@@ -328,9 +353,17 @@ Deno.serve(async (req) => {
         }
       }
 
-      // 5. Send.
+      // 5. Claim the row: attempts n → n+1 only if it is still pending with
+      //    n attempts. Another run that got there first gets nothing back.
+      const tries = (row.attempts ?? 0) + 1
+      const { data: claimed, error: claimErr } = await supa.from('email_queue')
+        .update({ attempts: tries }).eq('id', row.id).eq('status', 'pending').eq('attempts', row.attempts ?? 0).select('id')
+      if (claimErr || !claimed?.length) continue
+
+      // 6. Send.
+      let handedToGmail = false
       try {
-        const { token, account } = await ensureAccessToken(supa)
+        const { token, account } = gmail
         const thr = row.thread_id ? await threadHeaders(token, row.thread_id) : {}
         const raw = buildRaw({
           fromEmail: account.email, fromDisplay: displayName,
@@ -354,21 +387,25 @@ Deno.serve(async (req) => {
           if (resp.status === 429 || resp.status === 403) {
             await supa.from('email_campaigns').update({ status: 'paused' }).eq('id', campaign.id)
             await supa.from('email_queue').update({
-              attempts: (row.attempts ?? 0) + 1, error: `HTTP ${resp.status}: ${errTxt}`,
+              error: `HTTP ${resp.status}: ${errTxt}`,
             }).eq('id', row.id)
             summary.reason = `campaign ${campaign.name} auto-paused on HTTP ${resp.status}`
             budget = 0
             break
           }
-          throw new Error(`HTTP ${resp.status}: ${errTxt}`)
+          const err = new Error(`HTTP ${resp.status}: ${errTxt}`) as Error & { transient?: boolean }
+          // Google's own trouble (5xx) or a token that expired mid-run (401):
+          // try again on a later run. Anything else is about this email.
+          err.transient = resp.status >= 500 || resp.status === 401
+          throw err
         }
+        handedToGmail = true      // from here on it went out: never send it again
         const sent = await resp.json() as { id: string; threadId: string }
         const nowIso = new Date().toISOString()
 
         await supa.from('email_queue').update({
           status: 'sent', sent_at: nowIso,
           provider_msg_id: sent.id, thread_id: sent.threadId,
-          attempts: (row.attempts ?? 0) + 1,
         }).eq('id', row.id)
 
         // Bookkeeping — identical to what the client batch used to do.
@@ -410,10 +447,16 @@ Deno.serve(async (req) => {
           await sleep(GAP_MIN_MS + Math.floor(Math.random() * (GAP_MAX_MS - GAP_MIN_MS)))
         }
       } catch (e) {
-        await supa.from('email_queue').update({
-          status: 'failed', error: String((e as Error).message || e).slice(0, 500),
-          attempts: (row.attempts ?? 0) + 1,
-        }).eq('id', row.id)
+        // A thrown fetch (dropped connection) has no HTTP status: transient too.
+        const err = e as Error & { transient?: boolean }
+        const transient = err.transient !== false && (err.transient === true || !/^HTTP \d/.test(err.message || ''))
+        const msg = String(err.message || e).slice(0, 500)
+        if (transient && tries < 3 && !handedToGmail) {
+          await supa.from('email_queue').update({ error: `will retry (${tries}/3): ${msg}` }).eq('id', row.id)
+          summary.retry = (summary.retry || 0) + 1
+          continue
+        }
+        await supa.from('email_queue').update({ status: 'failed', error: msg }).eq('id', row.id)
         summary.failed++
       }
     }
