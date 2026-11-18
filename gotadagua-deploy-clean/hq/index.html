@@ -533,7 +533,7 @@ function mountExpenseForm(){
     locations: HQ_LOCATIONS, companies: HQ_COMPANIES, categories: CATEGORIES, payments: PAYMENT_TYPES,
     onCreditLookup: (q) => creditLookup(q),
     onSave: () => saveInvoice(),
-    onCancel: () => { if (window.__editingInvoiceId) cancelEditInvoice(); },
+    onCancel: () => { window.__launchBankId = null; if (window.__editingInvoiceId) cancelEditInvoice(); },
     onDelete: async () => { const id = window.__editingInvoiceId; if (!id) return; await deleteInvoice(id); cancelEditInvoice(); ExpenseForm.close(); },
     onFile: () => { if (typeof extractFromInvoice === 'function') extractFromInvoice(); },
   });
@@ -1813,10 +1813,10 @@ async function refreshSplitHint(){
 async function insertInvoiceRows(payload){
   let sp = null;
   try { sp = await instructorSplitFor(payload.company, payload.amount_eur ?? payload.amount, payload.invoice_date); } catch (_e) { sp = null; }
-  if (!sp) return { data: await sb.from('hq_invoices').insert(payload), rows: 1, split: null };
+  if (!sp) return { data: await sb.from('hq_invoices').insert(payload).select('id'), rows: 1, split: null };
   if (!sp.parts.length) {
     const note = `[instrutor ${sp.instructor}: nenhum mês de aulas soma ${eur(payload.amount)} — por repartir à mão]`;
-    return { data: await sb.from('hq_invoices').insert({ ...payload, needs_review: true, notes: [payload.notes, note].filter(Boolean).join(' ') }), rows: 1, split: sp };
+    return { data: await sb.from('hq_invoices').insert({ ...payload, needs_review: true, notes: [payload.notes, note].filter(Boolean).join(' ') }).select('id'), rows: 1, split: sp };
   }
   const tag = `[repartido pelas aulas de ${sp.month}: ${sp.parts.map(p => `${locLabel(p.location_slug)} ${p.lessons} aulas`).join(', ')}]`;
   const rows = sp.parts.map(p => ({
@@ -1827,7 +1827,20 @@ async function insertInvoiceRows(payload){
     description: `${payload.description ? payload.description + ' — ' : ''}parte ${locLabel(p.location_slug)} (${p.lessons} aulas: ${p.cats})`,
     notes: [payload.notes, tag].filter(Boolean).join(' '),
   }));
-  return { data: await sb.from('hq_invoices').insert(rows), rows: rows.length, split: sp };
+  return { data: await sb.from('hq_invoices').insert(rows).select('id'), rows: rows.length, split: sp };
+}
+
+// «Add expense» opened from a bank debit in Month close (audit HQ-05): the saved line is linked to that debit at once,
+// the same way the statement import and The Suk link it (hq_bank_movements.hq_invoice_id; the other parts of a split line
+// point back with bank_movement_id). A debit that is already linked is never re-pointed.
+async function linkLaunchedDebit(ids){
+  const bankId = window.__launchBankId; window.__launchBankId = null;
+  ids = (ids || []).filter(Boolean);
+  if (!bankId || !ids.length) return null;
+  const { error } = await sb.from('hq_bank_movements').update({ hq_invoice_id: ids[0] }).eq('id', bankId).is('hq_invoice_id', null);
+  if (error) return error;
+  if (ids.length > 1) { const r = await sb.from('hq_invoices').update({ bank_movement_id: bankId }).in('id', ids.slice(1)); if (r.error) return r.error; }
+  return null;
 }
 
 // ── Repeated expenses (Miguel, 28 Out 2026). The same file is always caught by
@@ -1980,7 +1993,8 @@ async function saveInvoice(){
       if (target && confirm(`This expense is already in the app without an invoice:\n${ref(target)}\n\nAttach this invoice to that line instead of creating a new one?`)) {
         const { error } = await attachInvoiceToExisting(target, { file_name, file_mime, file_sha256, drive_link, invoice_number, supplier_nif });
         if (error) { toast('invToast','err',"Couldn't attach: " + error.message); btn.disabled = false; return; }
-        toast('invToast','ok', `Invoice attached to the existing line — ${ref(target)}`);
+        const linkErr = await linkLaunchedDebit([target.id]);
+        toast('invToast', linkErr ? 'warn' : 'ok', `Invoice attached to the existing line — ${ref(target)}${linkErr ? ` · the bank debit is not linked: ${linkErr.message}` : ''}`);
         clearInvoiceForm(); btn.disabled = false;
         if (typeof ExpenseForm !== 'undefined') ExpenseForm.close();
         renderInvoiceList(); renderFecho();
@@ -2015,18 +2029,19 @@ async function saveInvoice(){
     payload.created_by = CURRENT_USER?.id || null;
   }
 
-  let error, savedRows = 1, splitInfo = null;
+  let error, savedRows = 1, splitInfo = null, linkErr = null;
   if (isEditing) {
     ({ error } = await sb.from('hq_invoices').update(payload).eq('id', window.__editingInvoiceId));
   } else {
     const r = cnForm.on ? { data: await sb.from('hq_invoices').insert(payload), rows: 1, split: null } : await insertInvoiceRows(payload);
     error = r.data.error; savedRows = r.rows; splitInfo = r.split;
+    if (!error && !cnForm.on) linkErr = await linkLaunchedDebit((r.data.data || []).map(x => x.id));
   }
   if (error) { toast('invToast','err',"Couldn't save: "+error.message); btn.disabled = false; return; }
   // a credit note meets its refund on the statement when there is exactly one credit of that amount (±20 days)
   if (cnForm.on) { try { await sb.rpc('hq_credit_notes_to_bank', { p_company: paying_company }); } catch (_e) {} }
 
-  toast('invToast','ok', cnForm.on ? `Credit note saved · ${eur(amount_eur)}` : isEditing ? 'Expense updated · review cleared' : (savedRows > 1 ? `Saved as ${savedRows} rows — ${splitInfo.instructor}'s lessons of ${splitInfo.month}: ${splitInfo.parts.map(p => `${locLabel(p.location_slug)} ${eur(p.amount)}`).join(' · ')}` : 'Expense saved'));
+  toast('invToast', linkErr ? 'warn' : 'ok', (cnForm.on ? `Credit note saved · ${eur(amount_eur)}` : isEditing ? 'Expense updated · review cleared' : (savedRows > 1 ? `Saved as ${savedRows} rows — ${splitInfo.instructor}'s lessons of ${splitInfo.month}: ${splitInfo.parts.map(p => `${locLabel(p.location_slug)} ${eur(p.amount)}`).join(' · ')}` : 'Expense saved')) + (linkErr ? ` · the bank debit is not linked: ${linkErr.message}` : ''));
   if (isEditing) cancelEditInvoice();
   else           clearInvoiceForm();
   btn.disabled = false;
@@ -3520,6 +3535,7 @@ function fechoLaunch(bankId){
     if (c && !c.value) c.value = guess.slice(0, 60).toLowerCase();
     if (ds && !ds.value) ds.value = `${b.description} [do extrato ${BANK_LABEL[b.bank] || 'Santander'}, ${String(b.movement_date).slice(0,10)}]`;
     window.__editingInvoiceId = null;
+    window.__launchBankId = b.id;   // linked to this debit on save (HQ-05)
     ExpenseForm.open({ mode:'add', title:'Add expense from the bank statement' });
     toast('invToast','ok','Filled in from the bank statement — confirm category and location, then save.');
   }, 150);
@@ -4557,7 +4573,7 @@ function clearInvoiceForm(){
   $('inv_fx').value = '1';
   $('fxHint').textContent = '(EUR — 1.000000)';
   $('dupWarn').classList.remove('show');
-  window.__editingWasCreditNote = false; window.__cnCancelsNumber = null;
+  window.__editingWasCreditNote = false; window.__cnCancelsNumber = null; window.__launchBankId = null;
   ExpenseForm.setCreditNote({ on:false });
   const fileInput = $('inv_file');
   if (fileInput) fileInput.value = '';

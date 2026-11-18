@@ -63,3 +63,48 @@ test('HQ-04 Month close: a debit noted as financing / asset / refund, or a salar
     [true, 'Salary batch (lines per person)'], [false, 'No expense line'],
   ]);
 });
+
+// ── HQ-05 ────────────────────────────────────────────────────────────────
+test('HQ-05 «Add expense» from a bank debit links the saved line to that debit (never re-points a linked one)', async ({ page }) => {
+  const writes = [];
+  await page.route(/supabase\.co\/(auth|rest)\/v1\/.*/, async route => {
+    const req = route.request(); const url = req.url(); const m = req.method();
+    const json = (body) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    if (url.includes('/auth/v1/user')) return json({ id: 'u1', email: 'miguel@gotadaguasurf.com', aud: 'authenticated', role: 'authenticated' });
+    if (url.includes('/rest/v1/rpc/hq_overview_rollup')) return json({ bookings: [], invoices: [], ledger: [] });
+    if (url.includes('/rest/v1/hq_invoice_categories')) return json([{ id: 'c-eq', name: 'Equipment & maintenance', sort_order: 1, is_personal: false, active: true }]);
+    if (url.includes('/rest/v1/hq_bank_movements')) {
+      if (m === 'PATCH') { writes.push(['bank', decodeURIComponent(url.split('?')[1]), JSON.parse(req.postData())]); return json([]); }
+      return json([{ id: 'bk1', bank: 'santander', movement_date: '2026-09-15', description: 'COMPRA *6962 LEROY MERLIN COVA PIEDADE', amount: -274.19, currency: 'EUR', kind: 'expense', hq_invoice_id: null, internal_transfer_id: null, notes: null }]);
+    }
+    if (url.includes('/rest/v1/hq_invoices')) {
+      if (m === 'POST') { writes.push(['insert', JSON.parse(req.postData()).company]); return json([{ id: 'new1' }]); }
+      return json([]);
+    }
+    return json([]);
+  });
+  const errs = []; page.on('pageerror', e => errs.push(e.message));
+  await fakeOwnerSession(page);
+  await page.goto('/hq/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof renderFecho === 'function' && document.querySelector('[data-tab="fecho"]'));
+  await page.evaluate(() => switchTab('fecho'));
+  await page.selectOption('#fecho_mes', '2026-09');
+  await page.waitForFunction(() => (FECHO.mvAll || []).length === 1, null, { timeout: 15000 });
+  await page.evaluate(() => fechoLaunch('bk1'));
+  await page.waitForFunction(() => document.querySelector('#inv_amount')?.value === '274.19', null, { timeout: 5000 });
+  await page.evaluate(() => {
+    $('inv_location').value = 'portugal'; $('inv_payment').value = $('inv_payment').options[1].value;
+    const c = $('inv_category'); c.value = [...c.options].find(o => o.value)?.value;
+    return saveInvoice();
+  });
+  await page.waitForFunction(() => /Expense saved/.test(document.querySelector('#invToast')?.textContent || ''), null, { timeout: 10000 });
+  expect(writes[0]).toEqual(['insert', 'leroy merlin cova piedade']);
+  expect(writes[1][0]).toBe('bank');
+  expect(writes[1][1]).toContain('id=eq.bk1');
+  expect(writes[1][1]).toContain('hq_invoice_id=is.null');
+  expect(writes[1][2]).toEqual({ hq_invoice_id: 'new1' });
+  // a plain «Add expense» afterwards links nothing
+  await page.evaluate(() => { openAddExpense(); return null; });
+  expect(await page.evaluate(() => window.__launchBankId)).toBeNull();
+  expect(errs).toEqual([]);
+});
