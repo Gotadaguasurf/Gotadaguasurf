@@ -324,3 +324,38 @@ test('HQ-21 «no invoice by nature» is a prefix match, exactly like hq_doc_stat
   const out = await page.evaluate(() => ['Santander (comissões)', 'CGD (comissões)', 'Transportes Santander Lda', 'Santander - transferencia devolvida'].map(c => docStatus({ company: c, payment_type: 'Card' })));
   expect(out).toEqual(['isento', 'isento', 'falta', 'isento']);
 });
+
+// ── HQ-23 / DATA-08 ──────────────────────────────────────────────────────
+test('DATA-08 archiving a line lets go of its bank debit (both link directions); HQ-23 a receipt copy that fails is not shown as copied', async ({ page }) => {
+  const writes = [];
+  await page.route(/supabase\.co\/(auth|rest)\/v1\/.*/, async route => {
+    const req = route.request(); const url = decodeURIComponent(req.url()); const m = req.method();
+    const json = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
+    if (url.includes('/auth/v1/user')) return json({ id: 'u1', email: 'miguel@gotadaguasurf.com', aud: 'authenticated', role: 'authenticated' });
+    if (url.includes('/rest/v1/rpc/hq_overview_rollup')) return json({ bookings: [], invoices: [], ledger: [] });
+    if (m === 'PATCH') {
+      writes.push(url.replace(/^.*\/rest\/v1\//, '') + ' ' + req.postData());
+      if (url.includes('id=eq.p2')) return json({ code: '42501', message: 'denied' }, 403);
+      return json([]);
+    }
+    return json([]);
+  });
+  await fakeOwnerSession(page);
+  await page.goto('/hq/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof deleteInvoice === 'function');
+  page.on('dialog', d => d.accept());
+  await page.evaluate(() => deleteInvoice('i9'));
+  expect(writes.some(w => /^hq_invoices\?id=eq\.i9 .*deleted_at/.test(w))).toBe(true);
+  expect(writes).toContain('hq_bank_movements?hq_invoice_id=in.(i9) {"hq_invoice_id":null}');
+  expect(writes).toContain('hq_invoices?id=in.(i9)&bank_movement_id=not.is.null {"bank_movement_id":null}');
+  const shown = await page.evaluate(async () => {
+    FECHO.rows = [
+      { id: 'p1', invoice_date: '2026-09-01', company: 'pietro', category_name: 'Salary', amount_eur: 510, location_slug: 'surf-school', drive_link: 'https://drive.google.com/file/d/r/view', notes: '' },
+      { id: 'p2', invoice_date: '2026-09-01', company: 'pietro', category_name: 'Salary', amount_eur: 120, location_slug: 'junior-camp', drive_link: null, notes: '' },
+    ];
+    await fechoPropagateLinks();
+    return FECHO.rows.map(r => !!r.drive_link);
+  });
+  expect(writes.some(w => w.startsWith('hq_invoices?id=eq.p2'))).toBe(true);   // the copy was tried…
+  expect(shown).toEqual([true, false]);                                          // …and refused, so it is not shown as copied
+});

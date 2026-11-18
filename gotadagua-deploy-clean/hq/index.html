@@ -2487,17 +2487,6 @@ function closeCategoryPanel(){
   if (modal && modal.open) modal.close();
 }
 
-// ─── Excel/CSV file picker for the Import modal ───────────────────────
-// Miguel: "eu quero so importar um ficheiro" — file picker + drag-drop is
-// the primary path now. Textarea kept behind a <details> as fallback.
-
-function clearExcelImport(){
-  const box = $('excelBox');       if (box) box.value = '';
-  const preview = $('excelPreview'); if (preview) preview.innerHTML = '';
-  const picked = $('excelFilePicked'); if (picked) { picked.textContent = ''; picked.style.display = 'none'; }
-  const fileInput = $('excelFile'); if (fileInput) fileInput.value = '';
-  window.__excelImportBuffer = [];
-}
 
 // Drag-drop wiring only — click is handled natively via <label for>.
 // Called every time the import modal opens (drop zone is re-created).
@@ -3107,12 +3096,12 @@ function fechoPartsHint(g){ return g.split ? g.parts.map(p => `${locLabel(p.loca
 async function fechoPropagateLinks(){
   const groups = fechoGroups(FECHO.rows).filter(g => g.split && g.drive_link && g.parts.some(p => !p.drive_link));
   for (const g of groups) {
-    const ids = g.parts.filter(p => !p.drive_link).map(p => p.id);
+    // Only a part the database really updated shows the receipt on screen (audit HQ-23: the error used to be dropped).
     for (const p of g.parts.filter(x => !x.drive_link)) {
-      await sb.from('hq_invoices').update({ drive_link: g.drive_link, file_name: g.file_name || null, notes: `${p.notes ? p.notes + ' ' : ''}[recibo copiado da outra parte do mesmo pagamento]` }).eq('id', p.id);
+      const { error } = await sb.from('hq_invoices').update({ drive_link: g.drive_link, file_name: g.file_name || null, notes: `${p.notes ? p.notes + ' ' : ''}[recibo copiado da outra parte do mesmo pagamento]` }).eq('id', p.id);
+      if (error) { console.warn('[Month close] receipt not copied to', p.id, error.message); continue; }
+      p.drive_link = g.drive_link; p.file_name = g.file_name;
     }
-    const error = null;
-    if (!error) g.parts.forEach(p => { if (ids.includes(p.id)) { p.drive_link = g.drive_link; p.file_name = g.file_name; } });
   }
   return groups.length;
 }
@@ -4093,18 +4082,6 @@ async function spawnAllDueFromBanner(){
   await spawnAllDueRecurring();
   checkRecurringDueBanner();
 }
-// Close on backdrop click. Native <dialog>::backdrop clicks bubble with
-// e.target === the dialog element itself; clicks on any child (button,
-// input, form, textarea) have a target INSIDE the dialog. That's more
-// robust than the getBoundingClientRect() coordinate compare, which
-// was incorrectly closing the modal on the same click that opened it
-// (the open button lives outside the centred modal's rect, so its
-// bubble-up looked like "outside" and slammed the modal shut).
-document.addEventListener('click', (e) => {
-  const modal = document.getElementById('importModal');
-  if (!modal || !modal.open) return;
-  if (e.target === modal) modal.close();
-});
 
 async function loadCategoryPanel(){
   const body = $('catModalBody');
@@ -4421,6 +4398,8 @@ async function batchDelete(){
         .insert(rows.map(r => ({ invoice_id: r.id, action:'deleted', actor, snapshot: r })));
       if (aErr) console.warn('[HQ] batch audit insert failed', aErr.message);
     }
+    const uErr = await unlinkArchivedFromBank(chunk);
+    if (uErr) { firstErr = uErr; return; }
     deleted += chunk.length;
   });
   if (firstErr) { alert(`Delete failed after ${deleted} row(s): ${firstErr.message}`); }
@@ -4777,9 +4756,7 @@ async function renderInvoiceList(opts = {}){
     const ds = docStatus(r);
     const pdfCell = r.drive_link
       ? `<a class="file-link" href="${escapeHtml(r.drive_link)}" target="_blank" rel="noopener" title="${escapeHtml(r.file_name||'')}">open</a>`
-      : r.file_url
-        ? `<a class="file-link" href="#" onclick="openInvoiceFile('${r.file_url}');return false;" title="${escapeHtml(r.file_name||'')}">open</a>`
-        : ds === 'isento' ? `<span class="badge badge-grey" title="${escapeHtml(r.doc_exempt_reason||'No document exists for this expense')}">no invoice</span>`
+      : ds === 'isento' ? `<span class="badge badge-grey" title="${escapeHtml(r.doc_exempt_reason||'No document exists for this expense')}">no invoice</span>`
         : ds === 'por_fora' ? '<span class="badge badge-grey" title="Paid in cash with no invoice — counts here, stays out of the accountant pack">cash · no invoice</span>'
         : '<span class="badge badge-amber">missing</span>';
     const tags = [
@@ -4888,11 +4865,6 @@ async function renderInvoiceList(opts = {}){
   checkRecurringDueBanner();
 }
 
-async function openInvoiceFile(key){
-  const { data, error } = await sb.storage.from('hq-invoices').createSignedUrl(key, 60);
-  if (error || !data?.signedUrl) { alert('Could not open file: '+(error?.message||'unknown')); return; }
-  window.open(data.signedUrl, '_blank', 'noopener');
-}
 
 // Soft delete: stamp deleted_at/deleted_by, snapshot the row into
 // hq_invoice_audit, KEEP the storage file. The invoice disappears from
@@ -4909,7 +4881,17 @@ async function deleteInvoice(id){
   const { error: aErr } = await sb.from('hq_invoice_audit')
     .insert({ invoice_id: id, action:'deleted', actor, snapshot: row || {} });
   if (aErr) console.warn('[HQ] audit insert failed', aErr.message);
+  const uErr = await unlinkArchivedFromBank([id]);
+  if (uErr) alert('Archived, but its bank debit is still linked to it: ' + uErr.message);
   renderInvoiceList();
+}
+// An archived line lets go of its bank debit (audit DATA-08), so the debit shows again as «without a line» instead of
+// pointing at a line nobody sees. The audit snapshot keeps the old link for a restore.
+async function unlinkArchivedFromBank(ids){
+  const a = await sb.from('hq_bank_movements').update({ hq_invoice_id: null }).in('hq_invoice_id', ids);
+  if (a.error) return a.error;
+  const b = await sb.from('hq_invoices').update({ bank_movement_id: null }).in('id', ids).not('bank_movement_id', 'is', null);
+  return b.error || null;
 }
 
 async function restoreInvoice(id){
@@ -4923,15 +4905,13 @@ async function restoreInvoice(id){
 }
 
 // The ONLY remaining hard-delete path — reachable exclusively from the
-// Deleted view, so it's always a two-step (soft delete → purge). Cleans
-// the storage file too. The audit snapshot survives.
+// Deleted view, so it's always a two-step (soft delete → purge). The audit
+// snapshot survives. (PDFs live in the Drive, never in Supabase Storage.)
 async function purgeInvoice(id){
-  if (!confirm('Delete for good? This cannot be undone — the attached file is removed too.')) return;
-  const { data: row } = await sb.from('hq_invoices').select('file_url').eq('id', id).maybeSingle();
+  if (!confirm('Delete for good? This cannot be undone.')) return;
   const actor = CURRENT_USER?.email || '';
   const { error } = await sb.from('hq_invoices').delete().eq('id', id);
   if (error) { alert('Purge failed: '+error.message); return; }
-  if (row?.file_url) { await sb.storage.from('hq-invoices').remove([row.file_url]).catch(()=>{}); }
   await sb.from('hq_invoice_audit').insert({ invoice_id: id, action:'purged', actor });
   renderInvoiceList();
 }
@@ -5528,7 +5508,7 @@ async function renderInvest(){
     ]);
     const patterns = [...new Set(assets.map(a => a.expense_match).filter(Boolean))];
     const costs = (await Promise.all(patterns.map(p =>
-      sb.from('hq_invoices').select('id, company, amount_eur, invoice_date, category_name').is('deleted_at', null).ilike('company', p)
+      sb.from('hq_invoices').select('id, company, amount_eur, invoice_date, category_name').is('deleted_at', null).eq('is_duplicate', false).ilike('company', p)
         .then(({ data, error }) => { if (error) throw error; return data || []; })))).flat();
     IVS.assets = assets; IVS.income = income; IVS.costs = costs;
   } catch (e) {
