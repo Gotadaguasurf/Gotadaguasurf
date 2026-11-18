@@ -26,6 +26,9 @@
 .subnav{background:#fff;border-bottom:1px solid var(--border);padding:8px 12px;display:flex;gap:6px;overflow-x:auto;position:sticky;top:60px;z-index:40}
 .subnav::-webkit-scrollbar{display:none}
 .subnav .pill{flex-shrink:0}
+/* A manager's six tabs (with Sales and Customers) did not fit a phone and the last two
+   sat off-screen in a sideways strip (UXC-12): they wrap onto a second line instead. */
+@media (max-width:520px){ .subnav{flex-wrap:wrap;overflow-x:visible} }
 
 /* ── Content: one phone-wide column ── */
 main{padding:16px 16px 48px;max-width:640px}
