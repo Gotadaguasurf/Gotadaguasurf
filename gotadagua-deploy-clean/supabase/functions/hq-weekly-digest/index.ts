@@ -24,9 +24,8 @@
 
 import { brandedEmail, FONT } from '../_shared/email-layout.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { gmailAccessToken } from '../_shared/gmail.ts'
 
-const CLIENT_ID     = Deno.env.get('GOOGLE_OAUTH_CLIENT_ID') || ''
-const CLIENT_SECRET = Deno.env.get('GOOGLE_OAUTH_CLIENT_SECRET') || ''
 const SUPABASE_URL  = Deno.env.get('SUPABASE_URL') || ''
 const ANON_KEY      = Deno.env.get('SUPABASE_ANON_KEY') || ''
 const SERVICE_KEY   = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
@@ -71,31 +70,10 @@ const eur = (n: number) => {
   return '€' + s
 }
 
-// ─── Gmail send (inline; we don't share JWT with gmail-send Edge Fn) ───────
+// ─── Gmail send (the shared mailbox's token: one copy in _shared/gmail.ts, SEC-18 / UXC-19) ───────
 async function ensureAccessToken(supa: ReturnType<typeof createClient>) {
-  const { data: acct, error } = await supa.from('gmail_account').select('*').limit(1).single()
-  if (error || !acct) throw new Error('No gmail_account row — connect via /gmail-oauth/start first')
-  const expiresAt = acct.access_expires_at ? new Date(acct.access_expires_at).getTime() : 0
-  if (acct.access_token && expiresAt > Date.now() + 60_000) return { token: acct.access_token, email: acct.email }
-  const resp = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      client_id: CLIENT_ID,
-      client_secret: CLIENT_SECRET,
-      refresh_token: acct.refresh_token,
-      grant_type: 'refresh_token',
-    }),
-  })
-  if (!resp.ok) throw new Error(`Token refresh failed: HTTP ${resp.status} ${await resp.text()}`)
-  const tk = await resp.json() as { access_token: string; expires_in: number }
-  const newExpiry = new Date(Date.now() + (tk.expires_in - 30) * 1000).toISOString()
-  await supa.from('gmail_account').update({
-    access_token: tk.access_token,
-    access_expires_at: newExpiry,
-    updated_at: new Date().toISOString(),
-  }).eq('id', acct.id)
-  return { token: tk.access_token, email: acct.email }
+  const { token, email } = await gmailAccessToken(supa)
+  return { token, email }
 }
 
 function buildRawMultipart(args: { from: string; fromName: string; to: string; subject: string; html: string; text: string }) {
@@ -179,15 +157,22 @@ async function computeWeek(supa: ReturnType<typeof createClient>, start: Date, e
     const prev = bookingsByLoc.get(loc) || { count: 0, gross: 0 }
     bookingsByLoc.set(loc, { count: prev.count + 1, gross: prev.gross + gross })
   }
-  // Invoices — same books as the HQ: not deleted, not duplicate, not Manjar, not personal.
+  // Invoices — same books as the HQ: not deleted, not duplicate, not Manjar, not personal, and not a
+  // partner commission that is already inside the booking's net (hq_commission_in_booking in
+  // supabase/one-formula.sql: commission_in_booking, else category Partners from 2026). Before 18 Nov 2026
+  // the digest counted those twice — 5,880 € in October (audit SEAM-13, HQ-21).
+  const catRes = await supa.from('hq_invoice_categories').select('name, is_personal')
+  const personalNames = catRes.error ? null : new Set((catRes.data || []).filter((c: any) => c.is_personal).map((c: any) => String(c.name)))
+  const isPersonal = (name: string) => personalNames ? personalNames.has(name) : /personal/i.test(name)
+  const commissionInBooking = (i: any) => (i.commission_in_booking ?? (i.category_name === 'Partners' && String(i.invoice_date) >= '2026-01-01')) === true
   const invRes = await supa
     .from('hq_invoices')
-    .select('amount_eur, paying_company, invoice_date, company, category_name, location_slug, is_duplicate, needs_review, deleted_at')
+    .select('amount_eur, paying_company, invoice_date, company, category_name, location_slug, is_duplicate, needs_review, deleted_at, commission_in_booking')
     .gte('invoice_date', s).lt('invoice_date', e)
     .eq('is_duplicate', false)
     .is('deleted_at', null)
     .neq('paying_company', 'manjar')
-  const invoices = (invRes.data || []).filter((i: any) => !/personal/i.test(String(i.category_name || '')))
+  const invoices = (invRes.data || []).filter((i: any) => !isPersonal(String(i.category_name || '')) && !commissionInBooking(i))
   const spendByCompany = new Map<string, number>()
   let spend = 0
   for (const i of invoices) {
