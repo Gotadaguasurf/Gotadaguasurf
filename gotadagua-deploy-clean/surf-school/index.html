@@ -26,6 +26,9 @@
 .subnav{background:#fff;border-bottom:1px solid var(--border);padding:8px 12px;display:flex;gap:6px;overflow-x:auto;position:sticky;top:60px;z-index:40}
 .subnav::-webkit-scrollbar{display:none}
 .subnav .pill{flex-shrink:0}
+/* A manager's six tabs (with Sales and Customers) did not fit a phone and the last two
+   sat off-screen in a sideways strip (UXC-12): they wrap onto a second line instead. */
+@media (max-width:520px){ .subnav{flex-wrap:wrap;overflow-x:visible} }
 
 /* ── Content: one phone-wide column ── */
 main{padding:16px 16px 48px;max-width:640px}
@@ -1126,7 +1129,7 @@ const SALES_PCT_KEY = 'ss_sales_commission_pct';   // localStorage cache only
 const SALES_PCT_DEFAULT = 0;
 let SALES_PCT_DB = null;                           // value from the table; null = not loaded
 let salesPctSaveTimer = null;
-const MESES_PT = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 function salesPct(){
   if (Number.isFinite(SALES_PCT_DB)) return SALES_PCT_DB;
   let cached = NaN;
@@ -1187,7 +1190,7 @@ async function loadSales(){
   const box = document.getElementById('salesBox'); if (!box) return;
   try { await loadSettings(); } catch (e) { console.warn('[SurfSchool] settings failed', e); }
   const [y, m] = SALES_MONTH.split('-').map(Number);
-  document.getElementById('salesMonthLabel').textContent = `${MESES_PT[m-1]} ${y}`;
+  document.getElementById('salesMonthLabel').textContent = `${MONTHS[m-1]} ${y}`;
   const from = new Date(Date.UTC(y, m - 1, 1)).toISOString();
   const to   = new Date(Date.UTC(y, m, 1)).toISOString();
   box.innerHTML = '<div class="card"><div class="loading">Loading…</div></div>';

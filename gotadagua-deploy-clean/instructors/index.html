@@ -145,7 +145,6 @@ AppShell.setAccount({ signOut: () => AppShell.signOut(getSupabaseClient) });   /
         <button class="pill" data-periodo="mes">This month</button>
         <button class="pill" data-periodo="mespassado">Last month</button>
         <button class="pill" data-periodo="ano">This year</button>
-        <button class="pill" data-periodo="tudo">All time</button>
       </div>
     </div>
     <div class="month-tabs" id="monthTabs"></div>
@@ -673,9 +672,13 @@ function renderFilterSummary(){
   if(selectedCategory!=="all")chips.push(["category",selectedCategory]);
   if(selectedPaid!=="all")chips.push(["paid",selectedPaid==="paid"?"paid only":"unpaid only"]);
   const per=selectedMonth!=="all"?monthLabel(selectedMonth):(selectedYear!=="all"?`Year ${selectedYear}`:"All years");
-  box.innerHTML=`<span>${esc(per)}</span>`+chips.map(([k,v])=>`<span class="badge badge-blue" data-clear="${k}" title="Remove filter">${esc(v)} ×</span>`).join("")+(chips.length?`<button class="btn btn-s btn-sm" data-clear="all">Clear filters</button>`:"");
+  // The period is already lit in the tabs above: say it here only next to other filters (UXC-11).
+  box.innerHTML=(chips.length?`<span>${esc(per)}</span>`:"")+chips.map(([k,v])=>`<span class="badge badge-blue" data-clear="${k}" title="Remove filter">${esc(v)} ×</span>`).join("")+(chips.length?`<button class="btn btn-s btn-sm" data-clear="all">Clear filters</button>`:"");
   box.querySelectorAll("[data-clear]").forEach(el=>el.onclick=()=>{const k=el.dataset.clear;if(k==="all")return limparFiltros();if(k==="instructor")selectedInstructor="all";if(k==="category")selectedCategory="all";if(k==="paid")selectedPaid="all";render();});
-  document.querySelectorAll("[data-periodo]").forEach(b=>b.onclick=()=>periodo(b.dataset.periodo));
+  // The quick pill that matches what is shown is lit too («All time» was the same as «All years», gone — UXC-11).
+  const hoje=new Date(),y=hoje.getFullYear(),m=hoje.getMonth(),key=(yy,mm)=>`${yy}-${String(mm+1).padStart(2,"0")}`,lm=new Date(y,m-1,1);
+  const on={mes:selectedMonth===key(y,m),mespassado:selectedMonth===key(lm.getFullYear(),lm.getMonth()),ano:selectedYear===String(y)&&selectedMonth==="all"};
+  document.querySelectorAll("[data-periodo]").forEach(b=>{b.onclick=()=>periodo(b.dataset.periodo);b.classList.toggle("active",!!on[b.dataset.periodo]);});
   const sel=document.getElementById("paidFilter");if(sel&&sel.value!==selectedPaid)sel.value=selectedPaid;
 }
 function renderCategoryOverview(){const wrap=document.getElementById("categoryOverview");if(selectedInstructor==="all"||activeTab==="instructors"){wrap.style.display="none";wrap.innerHTML="";return;}const rows=categoryBreakdown();wrap.style.display="block";wrap.innerHTML=`<div class="card card-pad" style="margin-bottom:18px"><div class="card-title" style="margin-bottom:12px">Category overview for ${esc(selectedInstructor)}</div><div class="overview-grid">${rows.map(r=>`<div class="card kpi"><div class="kpi-label">${esc(r.category)}</div><div class="kpi-value">${r.lessons}</div><div class="kpi-sub">lessons</div></div>`).join("")}</div></div>`;}

@@ -21,6 +21,13 @@
 //  gmail_sync_seen (supabase/audit-w3-crm.sql; until that runs, in this
 //  instance's memory only) and downloads go 5 at a time.
 //
+//  Replies, more carefully (audit 18 Nov 2026, W4): an out-of-office answer
+//  is stored but moves nothing (crm-14); «unsubscribe» on its own first line
+//  is honoured whatever language the quoted original is in (crm-08); a reply
+//  from a domain several companies share goes to the one we wrote to in that
+//  thread (crm-13); an unreadable Date header no longer stops the run, and
+//  the Gmail list is read up to 4 pages (crm-22 / AUT-18).
+//
 //  Mirrors the browser-side sync logic but reads from groups@ via the
 //  shared refresh token in gmail_account. Inbound rows land in
 //  email_messages with thread_id so the existing activity log links
@@ -52,6 +59,8 @@ const ENFORCE       = Deno.env.get('ENFORCE_CRON_SECRET') === 'true'
 // How many Gmail downloads may be in flight at once. Google answered
 // «429 Too many concurrent requests for user» to 200+ at a time.
 const FETCH_POOL = 5
+// Most new messages downloaded in one run (see step 4).
+const MAX_DOWNLOADS_PER_RUN = 500
 // Fallback memory of looked-at ids while gmail_sync_seen does not exist.
 // Lives only as long as this function instance stays warm.
 const seenMem = new Map<string, string | null>()
@@ -193,29 +202,73 @@ function isBounce(fromEmail: string, subject: string): boolean {
 // unsubscribe detection — our own footer says 'reply "unsubscribe"',
 // so a genuine interested reply that QUOTES our email would otherwise
 // trip the keyword match and suppress an engaged lead.
+// Where the quoted original starts (audit 18 Nov 2026, crm-08): the English
+// «On … wrote:» line, its German / French / Spanish / Portuguese / Dutch /
+// Italian forms, an Outlook «From: … <address>» block (De: / Von: / Van: …)
+// or its underscore rule. Two real «unsubscribe» replies were missed because
+// a quoted original from a non-English client stayed in the «typed» part.
+const QUOTE_START = [
+  /^On .{5,200} wrote:\s*$/i,
+  /(wrote|schrieb|a écrit|escribió|escreveu|schreef|ha scritto|skrev|napisał)\s*:\s*$/i,
+  /^-{2,}\s*(Original|Forwarded|Ursprüngliche|Message d'origine|Mensaje original|Mensagem original)/i,
+  /^(From|De|Von|Van|Da|Fra|Från|Od)\s*:\s.*(@|<)/i,
+  /^_{8,}\s*$/,
+]
 function replyTextOnly(body: string): string {
   const lines = (body || '').split('\n')
   const out: string[] = []
   for (const line of lines) {
     const t = line.trim()
-    if (/^On .{5,120} wrote:\s*$/.test(t)) break
-    if (/^-{2,}\s*(Original|Forwarded) Message/i.test(t)) break
+    if (QUOTE_START.some(re => re.test(t))) break
     if (t.startsWith('>')) continue
     out.push(line)
   }
   return out.join('\n').trim()
 }
 
-// Opt-out intent, multi-language. Only trusted on SHORT typed replies —
-// people asking out write two words, not four paragraphs; a long reply
-// that merely mentions "unsubscribe" is conversation, not opt-out.
+const UNSUB_WORDS = /\b(unsubscribe|remove me|stop email(ing)?|opt.?out|remover|desinscrever|n[aã]o quero receber|no quiero recibir|d[eé]sinscrire|abmelden)\b/i
+
+// Opt-out intent, multi-language. Trusted on SHORT typed replies — people
+// asking out write two words, not four paragraphs; a long reply that merely
+// mentions "unsubscribe" is conversation, not opt-out. A first typed line
+// that is nothing but the request («Unsubscribe», «Remove me please.») counts
+// whatever follows it (a signature, an unrecognised quote).
 function isUnsubscribe(body: string): { hit: boolean; keyword?: string } {
   const typed = replyTextOnly(body)
-  if (!typed || typed.length > 400) return { hit: false }
-  const m = typed.match(
-    /\b(unsubscribe|remove me|stop email(ing)?|opt.?out|remover|desinscrever|n[aã]o quero receber|no quiero recibir|d[eé]sinscrire|abmelden)\b/i
-  )
+  if (!typed) return { hit: false }
+  const first = (typed.split('\n').find(l => l.trim()) || '').trim()
+  const bare = first.replace(/[\s.!,;:-]*(please|pls|thanks?( you)?|obrigad[oa]|gracias|merci|danke|por favor)?[\s.!,;:-]*$/i, '')
+  const firstOnly = bare.match(UNSUB_WORDS)
+  if (firstOnly && firstOnly[0].length === bare.length) return { hit: true, keyword: firstOnly[1] }
+  if (typed.length > 400) return { hit: false }
+  const m = typed.match(UNSUB_WORDS)
   return m ? { hit: true, keyword: m[1] } : { hit: false }
+}
+
+// Out-of-office and other automatic answers (crm-14). They are still stored,
+// so the conversation shows them, but they are not a reply: no status move,
+// no «replied», no sequence stop, never an opt-out.
+function isAutoReply(headers: Record<string, string>): boolean {
+  const auto = (headers['auto-submitted'] || '').trim().toLowerCase()
+  if (auto && auto !== 'no') return true
+  if (headers['x-autoreply'] || headers['x-autorespond'] || headers['x-autoreply-from']) return true
+  if (/^(auto_reply|auto-reply)$/i.test((headers['precedence'] || '').trim())) return true
+  return AUTO_SUBJECT.test((headers.subject || '').replace(/^((re|aw|fw|fwd|tr|wg)\s*:\s*)+/i, '').trim())
+}
+const AUTO_SUBJECT = new RegExp('^(' + [
+  'auto(matic)?[ -]?(reply|response)', 'automatic reply', 'out of (the )?office', 'i am (currently )?(out|away)', 'on (annual )?leave',
+  'automatische antwort', 'abwesenheit(snotiz)?','r[eé]ponse automatique', 'absence', 'absent',
+  'respuesta autom[aá]tica', 'fuera de (la )?oficina', 'resposta autom[aá]tica', 'aus[eê]ncia', 'ausente',
+  'automatisch antwoord', 'afwezig', 'niet aanwezig', 'risposta automatica', 'fuori sede',
+].join('|') + ')\\b', 'i')
+
+// A Date header we cannot read must not stop the whole sync (crm-22, AUT-18):
+// fall back to Gmail's own receive time.
+function sentAtOf(dateHeader: string | undefined, internalDate: string | undefined): string | null {
+  const d = new Date(dateHeader || '')
+  if (dateHeader && !isNaN(d.getTime())) return d.toISOString()
+  const ms = Number(internalDate || 0)
+  return ms > 0 ? new Date(ms).toISOString() : null
 }
 
 // Who is calling: 'cron' (shared secret), a CRM / HQ user's email (their
@@ -304,7 +357,7 @@ Deno.serve(async (req) => {
       return out
     }
     const [contacts, people, teamUsers] = await Promise.all([
-      fetchAll('outreach_contacts', 'id, email, status'),
+      fetchAll('outreach_contacts', 'id, email, status, last_contacted_at'),
       fetchAll('contacts', 'id, company_id, email'),
       fetchAll('team_users', 'email'),
     ])
@@ -346,16 +399,26 @@ Deno.serve(async (req) => {
         { headers: { Authorization: `Bearer ${token}` } }).then(r => r.ok ? r.json() : null)
       dbg.gmailProfile = prof
     }
-    const listResp = await fetch(
-      `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=500&q=${encodeURIComponent(query)}`,
-      { headers: { Authorization: `Bearer ${token}` } },
-    )
-    if (!listResp.ok) {
-      return json({ ok: false, error: `Gmail list failed: HTTP ${listResp.status}`, detail: (await listResp.text()).slice(0, 300), ...(debug ? { dbg } : {}) }, 502)
+    // Up to 4 pages of 500 (crm-22): one page was enough only while the
+    // cron never missed a few days of a busy mailbox.
+    const ids: string[] = []
+    let pageToken = ''
+    for (let page = 0; page < 4; page++) {
+      const listResp = await fetch(
+        `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=500&q=${encodeURIComponent(query)}` +
+          (pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''),
+        { headers: { Authorization: `Bearer ${token}` } },
+      )
+      if (!listResp.ok) {
+        if (ids.length) break      // keep what the earlier pages gave
+        return json({ ok: false, error: `Gmail list failed: HTTP ${listResp.status}`, detail: (await listResp.text()).slice(0, 300), ...(debug ? { dbg } : {}) }, 502)
+      }
+      const listData = await listResp.json() as { messages?: { id: string }[]; resultSizeEstimate?: number; nextPageToken?: string }
+      if (page === 0) dbg.gmailResultSizeEstimate = listData.resultSizeEstimate
+      ids.push(...(listData.messages || []).map(m => m.id))
+      pageToken = listData.nextPageToken || ''
+      if (!pageToken) break
     }
-    const listData = await listResp.json() as { messages?: { id: string }[]; resultSizeEstimate?: number }
-    dbg.gmailResultSizeEstimate = listData.resultSizeEstimate
-    const ids = (listData.messages || []).map(m => m.id)
     if (ids.length === 0) {
       await supa.from('gmail_account').update({ updated_at: new Date().toISOString() }).eq('id', account.id)
       return json({ ok: true, fetched: 0, newInbound: 0, matched: 0, advanced: 0, ...(debug ? { dbg } : {}) })
@@ -364,7 +427,12 @@ Deno.serve(async (req) => {
     // Resolve an address to a contact: exact person, then exact company,
     // then company domain (never for free providers, where the domain says
     // nothing about who someone works for).
-    const resolveContact = (email: string) => {
+    // threadOwners: thread id → companies our own outbound in that thread went
+    // to (filled after the download, below). Used only when several companies
+    // share the sender's domain (crm-13): two replies landed on a never-emailed
+    // twin row of the university that had really been written to.
+    const threadOwners = new Map<string, Set<string>>()
+    const resolveContact = (email: string, threadId = '') => {
       const domain = email.slice(email.lastIndexOf('@') + 1)
       let companyId: string | null = null
       let contactId: string | null = null
@@ -375,8 +443,12 @@ Deno.serve(async (req) => {
         if (company) companyId = company.id
       }
       if (!companyId && !FREE_EMAIL_DOMAINS.has(domain)) {
-        const dc = contacts?.find((c: any) => (c.email || '').toLowerCase().endsWith('@' + domain))
-        if (dc) companyId = dc.id
+        const same = (contacts || []).filter((c: any) => (c.email || '').toLowerCase().endsWith('@' + domain))
+        const owners = threadOwners.get(threadId)
+        const live = same.filter((c: any) => c.status !== 'excluded' && c.status !== 'lost')
+          .sort((a: any, b: any) => String(b.last_contacted_at || '').localeCompare(String(a.last_contacted_at || '')))
+        const pick = (owners && same.find((c: any) => owners.has(c.id))) || live[0] || same[0]
+        if (pick) companyId = pick.id
       }
       return { companyId, contactId, domain }
     }
@@ -386,14 +458,29 @@ Deno.serve(async (req) => {
     //    run looked at and left out. One exception: a message left out only
     //    because nobody in the CRM had that address is looked at again once
     //    somebody does, so adding the contact still brings their email in.
-    const { data: existing } = await supa.from('email_messages')
-      .select('provider_msg_id').in('provider_msg_id', ids)
-    const stored = new Set((existing || []).map((r: any) => r.provider_msg_id))
-    const seenRes = await supa.from('gmail_sync_seen')
-      .select('provider_msg_id, addr').in('provider_msg_id', ids)
-    const haveSeenTable = !seenRes.error
+    //    Read 200 ids at a time: the list can hold up to 2,000 and one answer
+    //    stops at 1,000 rows. A stored message that is not seen as stored
+    //    would be imported again and re-mark its company every run, so a
+    //    failed read of email_messages stops the run here.
+    const chunks: string[][] = []
+    for (let i = 0; i < ids.length; i += 200) chunks.push(ids.slice(i, i + 200))
+    const stored = new Set<string>()
+    for (const part of chunks) {
+      const { data: existing, error: exErr } = await supa.from('email_messages')
+        .select('provider_msg_id').in('provider_msg_id', part)
+      if (exErr) return json({ ok: false, error: `could not read stored messages: ${exErr.message}` }, 500)
+      ;(existing || []).forEach((r: any) => stored.add(r.provider_msg_id))
+    }
+    let haveSeenTable = true
+    const seenRows: any[] = []
+    for (const part of chunks) {
+      const seenRes = await supa.from('gmail_sync_seen')
+        .select('provider_msg_id, addr').in('provider_msg_id', part)
+      if (seenRes.error) { haveSeenTable = false; break }
+      seenRows.push(...(seenRes.data || []))
+    }
     const seen: Map<string, string | null> = haveSeenTable
-      ? new Map((seenRes.data || []).map((r: any) => [r.provider_msg_id, r.addr]))
+      ? new Map(seenRows.map((r: any) => [r.provider_msg_id, r.addr]))
       : seenMem
     const newIds = ids.filter(id => {
       if (stored.has(id)) return false
@@ -404,12 +491,30 @@ Deno.serve(async (req) => {
     if (newIds.length === 0) {
       return json({ ok: true, fetched: ids.length, newInbound: 0, matched: 0, advanced: 0, note: 'all already in DB' })
     }
+    // At most 500 downloads per run (the old one-page limit): a backlog of up
+    // to 2,000 might not finish inside the function's time limit, and a run
+    // cut off there stores nothing, so every later run would stall the same
+    // way. Gmail lists the newest first, so the OLDEST 500 go now: an
+    // original comes before its reply or bounce (thread owner, bounce
+    // address) and nothing drops out of the 7-day window unread. The rest are
+    // neither stored nor seen, so the next run takes them (W4 review).
+    if (newIds.length > MAX_DOWNLOADS_PER_RUN) newIds.splice(0, newIds.length - MAX_DOWNLOADS_PER_RUN)
 
     // 4. Fetch FULL payload for each new id so we capture the body —
     //    the CRM's conversation panel renders the full email text, not
     //    just the snippet. format=full returns the MIME tree; we walk
     //    it to extract a usable plain-text body.
     const { msgs: detailResps, throttled } = await fetchMessages(token, newIds)
+    const threadIds = [...new Set(detailResps.filter(Boolean).map((m: any) => m.threadId).filter(Boolean))]
+    for (let i = 0; i < threadIds.length; i += 100) {
+      const { data: owned } = await supa.from('email_messages')
+        .select('thread_id, company_id').eq('direction', 'outbound').in('thread_id', threadIds.slice(i, i + 100))
+      ;(owned || []).forEach((r: any) => {
+        if (!r.company_id) return
+        if (!threadOwners.has(r.thread_id)) threadOwners.set(r.thread_id, new Set())
+        threadOwners.get(r.thread_id)!.add(r.company_id)
+      })
+    }
 
     // 5. Match each message to a contact and build insert rows.
     const inserts: any[] = []
@@ -423,6 +528,7 @@ Deno.serve(async (req) => {
     const leftOut: { provider_msg_id: string; reason: string; addr: string | null }[] = []
     const leaveOut = (id: string, reason: string, addr: string | null = null) => leftOut.push({ provider_msg_id: id, reason, addr })
     const unsubCandidates: { email: string; companyId: string; keyword: string }[] = []
+    let autoReplies = 0
     detailResps.forEach((msg: any, i: number) => {
       if (!msg) { unmatched.push({ from: '(metadata fetch failed)', reason: 'no msg' }); return }
       const headers: Record<string, string> = Object.fromEntries(
@@ -454,7 +560,7 @@ Deno.serve(async (req) => {
       const toEmail = isOwn ? parseEmail(headers.to) : ''
       if (isOwn && !toEmail) { unmatched.push({ from: fromEmail, reason: 'sent, no recipient parsed' }); leaveOut(newIds[i], 'sent, no recipient'); return }
       const subject = isOwn ? toEmail : fromEmail
-      const { companyId, contactId } = resolveContact(subject)
+      const { companyId, contactId } = resolveContact(subject, msg.threadId || '')
       if (!companyId) {
         unmatched.push({ from: subject, reason: isOwn ? 'sent, no contact matched' : 'no contact matched' })
         leaveOut(newIds[i], 'no contact', subject)
@@ -465,7 +571,14 @@ Deno.serve(async (req) => {
       // the upsert. The message row still lands in email_messages so the
       // conversation panel shows WHY the contact went excluded.
       // Opt-out only ever applies to what THEY write, never to our own copy.
-      if (!isOwn) {
+      const auto = !isOwn && isAutoReply(headers)
+      // A newsletter or mailing-list post (List-Unsubscribe, Precedence
+      // bulk/list) is never their opt-out — its own «Unsubscribe» line is the
+      // list's footer — unless it sits in a thread we wrote to (a reply that
+      // came through a group address) (W4 review).
+      const bulk = !!headers['list-unsubscribe'] || /^(bulk|list|junk)$/i.test((headers['precedence'] || '').trim())
+      const inOurThread = !!msg.threadId && threadOwners.has(msg.threadId)
+      if (!isOwn && !auto && (!bulk || inOurThread)) {
         const unsub = isUnsubscribe(fullBody || '')
         if (unsub.hit) unsubCandidates.push({ email: fromEmail, companyId, keyword: unsub.keyword || '' })
       }
@@ -480,10 +593,12 @@ Deno.serve(async (req) => {
         thread_id:       msg.threadId || null,
         provider_msg_id: newIds[i],
         status:          isOwn ? 'sent' : 'received',
-        sent_at:         headers.date ? new Date(headers.date).toISOString() : null,
+        sent_at:         sentAtOf(headers.date, msg.internalDate),
       })
-      // Only a real reply from them advances the pipeline; us sending does not.
-      if (!isOwn) touchedCompanies.add(companyId)
+      // Only a real reply from them advances the pipeline; us sending, or
+      // their mailbox answering by itself, does not.
+      if (!isOwn && !auto) touchedCompanies.add(companyId)
+      if (auto) autoReplies++
     })
 
     // 5b. Bounce suppression — resolve WHO we failed to reach via the
@@ -666,6 +781,7 @@ Deno.serve(async (req) => {
       sequencesStopped,
       bouncesSuppressed,
       unsubsSuppressed,
+      ...(autoReplies ? { autoReplies } : {}),
       downloaded: newIds.length,
       ...(throttled ? { throttled } : {}),
       ...(debug ? { dbg } : {}),

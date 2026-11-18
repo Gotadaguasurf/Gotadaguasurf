@@ -377,10 +377,10 @@ AppShell.mount('appNav', { app:'prices', tabAttr:'data-view', tabsId:'viewToggle
 <main id="mainContent">
   <div class="no-access" id="loadingMsg">
     <h2>Loading the pricing catalog…</h2>
-    <p>If this hangs for more than a few seconds the log below will tell you exactly which step is stuck. Each line shows live progress.</p>
+    <p>If this hangs for more than a few seconds, the line that stays open below is where it stopped.</p>
     <div class="boot-log" id="bootLog">
-      <div class="line pending" id="step-config"><span class="boot-spin"></span>Checking Supabase config…</div>
-      <div class="line pending" id="step-client">Initialising Supabase client</div>
+      <div class="line pending" id="step-config"><span class="boot-spin"></span>Checking the connection…</div>
+      <div class="line pending" id="step-client">Connecting</div>
       <div class="line pending" id="step-session">Reading your session</div>
       <div class="line pending" id="step-location">Resolving location</div>
       <div class="line pending" id="step-access">Checking access</div>
@@ -756,7 +756,7 @@ setTimeout(function(){
     if (log) {
       const hint = document.createElement('div');
       hint.className = 'line err';
-      hint.innerHTML = '✗ Likely cause: supabase-js@2 CDN is blocked (ad-blocker?) or the browser cached an old broken script. Try: hard refresh (Cmd+Shift+R), disable ad-blocker for this site, or open DevTools (Cmd+Option+I) → Console tab and send a screenshot.';
+      hint.textContent = '✗ The page did not finish starting. Reload it (Cmd+Shift+R on a Mac); if it happens again, send Miguel a screenshot of this box.';
       log.appendChild(hint);
     }
   }
@@ -816,7 +816,7 @@ function withTimeout(promise, ms, label){
   if (window.__SUPABASE_SDK_FAILED) {
     markStep('step-client','err','/lib/supabase.min.js failed to load (404 or blocked)');
     renderNoAccess('Supabase SDK missing',
-      'The /lib/supabase.min.js file failed to load from this domain. Open the Network tab in DevTools and check if it returned 200.');
+      'A file the page needs (/lib/supabase.min.js) did not load. Check the connection and reload; if it happens again, tell Miguel.');
     return;
   }
   if (!window.supabase || typeof window.supabase.createClient !== 'function') {
@@ -933,7 +933,7 @@ function withTimeout(promise, ms, label){
       if (!priceWs?.id) {
         markStep('step-access','err',`prices-${LOCATION_SLUG} workspace missing`);
         renderNoAccess('Setup pending',
-          `The "prices-${LOCATION_SLUG}" workspace doesn't exist yet. Ask the platform owner to run supabase/workspaces-add-prices-rows.sql in Supabase.`);
+          `The price list for "${LOCATION_SLUG}" is not set up yet. Tell Miguel.`);
         return;
       }
       const { data: mem, error: memErr } = await sbClient
@@ -985,7 +985,9 @@ function withTimeout(promise, ms, label){
     markStep('step-catalog','err','loadCatalog failed — '+msg);
     let hint = '';
     if (/relation .* does not exist|pricing_catalog/i.test(msg)) {
-      hint = ' The pricing_catalog table is missing. Run supabase/pricing-catalog-schema.sql in the Supabase SQL Editor, then refresh this page.';
+      hint = ' — the price list is not set up in the database yet. Tell Miguel.';
+    } else {
+      hint = ' — try again, or tell Miguel.';
     }
     renderNoAccess('Catalog load failed', msg + hint);
     return;
@@ -1014,7 +1016,7 @@ function withTimeout(promise, ms, label){
   console.log('[Prices] init complete — '+catalog.length+' rows loaded');
 })().catch(err=>{
   console.error('[Prices] init failed', err);
-  renderNoAccess('Loading error', String(err?.message||err)+' — open DevTools console for the full stack.');
+  renderNoAccess('Loading error', String(err?.message||err)+' — try again, or tell Miguel.');
 });
 
 // ── Accommodation (Phase B) ───────────────────────────────────────────────
@@ -1092,7 +1094,7 @@ const NEW_CAT_COLS = ['covers_pax', 'bl_product'];
 const newCatColMissing = e => !!e && /covers_pax|bl_product/.test(String(e.message || '') + String(e.details || '') + String(e.hint || ''));
 function withoutNewCatCols(p) {
   const r = { ...p }; const had = NEW_CAT_COLS.some(k => r[k] != null); NEW_CAT_COLS.forEach(k => delete r[k]);
-  if (had) setTimeout(() => AppShell.toast('Saved — except «covers» and «Bookinglayer product»: run supabase/transport-catalog-one-source.sql first.', 'err'), 0);
+  if (had) setTimeout(() => AppShell.toast('Saved — except «covers» and «Bookinglayer product»: those two fields are not switched on in the database yet. Tell Miguel.', 'err'), 0);
   return r;
 }
 // € for the margins: ONE rate per camp, from TransportOverview.eurRate (the rule the Transport Overview uses): the camp's
@@ -1889,7 +1891,7 @@ async function renderAccommodation(){
   if (filterArea !== 'accommodation' || filterSearch.trim()) return;   // the owner moved on while it loaded
   const { packs, seasons, rooms, prices } = accomData;
   if (!packs.length || !seasons.length || !rooms.length) {
-    wrap.innerHTML = emptyState('home', 'Accommodation is not set up for this camp', 'Packs, seasons and room types are added once in the database (supabase/accommodation-schema.sql).');
+    wrap.innerHTML = emptyState('home', 'Accommodation is not set up for this camp', 'Packs, seasons and room types for this camp have not been set up yet. Tell Miguel.');
     return;
   }
   if (!accomActivePackId || !packs.find(p => p.id === accomActivePackId)) accomActivePackId = packs[0].id;

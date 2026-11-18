@@ -316,3 +316,145 @@ test('email-dispatch: answers anyone until ENFORCE_CRON_SECRET=true, then only t
   const r = await x.run(undefined, { 'x-cron-secret': '' });
   expect(r.status).toBe(500); expect(x.g.st.sends).toHaveLength(0);
 });
+
+// ── W4 (audit 18 Nov 2026): replies read more carefully, Gmail trouble never loses an email ──
+const withHeaders = (m, extra) => { m.payload.headers.push(...Object.entries(extra).map(([name, value]) => ({ name, value }))); return m; };
+
+test('gmail-sync: an out-of-office answer is kept in the conversation but moves nothing (crm-14)', async () => {
+  const ooo = withHeaders(mail('m-ooo', 'Ana <club@uni.example>', 'Out of Office: Re: Surf trip'), { 'Auto-Submitted': 'auto-replied' });
+  const ooo2 = mail('m-ooo2', 'Rui <rui@club2.example>', 'Automatische Antwort: Surf trip');
+  const ooo3 = mail('m-ooo3', 'Lena <lena@club3.example>', 'Abwesenheitsnotiz: Re: Surf trip');   // the Outlook German subject, no header (W4 review)
+  const db = fakeDb({ outreach_contacts: [{ ...CLUB }, { id: 'co-2', email: 'rui@club2.example', status: 'follow_up' }, { id: 'co-3', email: 'lena@club3.example', status: 'first_email' }] }); const g = fakeGmail([ooo, ooo2, ooo3]);
+  const r = await loadFunction('gmail-sync', { db, gmail: g.fetch })();
+  expect(r.body).toMatchObject({ ok: true, newInbound: 3, matched: 0, advanced: 0, autoReplies: 3 });
+  expect(db.T.email_messages.map(m => m.provider_msg_id).sort()).toEqual(['m-ooo', 'm-ooo2', 'm-ooo3']);   // still shown
+  expect(db.T.outreach_contacts.map(c => [c.status, !!c.replied])).toEqual([['first_email', false], ['follow_up', false], ['first_email', false]]);
+  expect(db.T.outreach_activity).toHaveLength(0);
+});
+
+test('gmail-sync: «unsubscribe» on its own first line is honoured whatever the quoted original looks like; an interested reply quoting our footer is not (crm-08)', async () => {
+  const quoteDe = '\n\nAm 15.09.2026 um 10:12 schrieb Gota Dagua <groups@example.org>:\n' + 'Hallo! We run surf trips for clubs. '.repeat(30) + '\nIf you\'d rather not receive these emails, just reply "unsubscribe".';
+  const quoteOutlook = '\n\nFrom: Gota Dagua <groups@example.org>\nSent: 17 September 2026\n' + 'Surf trip offer text. '.repeat(40) + '\nIf you\'d rather not receive these emails, just reply "unsubscribe".';
+  const msgs = [
+    mail('u1', 'Club One <one@a.example>', 'Re: Surf trip', { body: 'Unsubscribe' + quoteDe }),
+    mail('u2', 'Club Two <two@b.example>', 'Re: Surf trip', { body: 'Remove me please.\n\nKind regards\nThe board' + quoteOutlook }),
+    mail('i1', 'Club Three <three@c.example>', 'Re: Surf trip', { body: 'Hi! Yes we are interested, can you send prices for 20 people in May?' + quoteDe }),
+    mail('i2', 'Club Four <four@d.example>', 'Re: Surf trip', { body: 'Sounds great, call me tomorrow.' + quoteOutlook }),
+  ];
+  const companies = [['co-1', 'one@a.example'], ['co-2', 'two@b.example'], ['co-3', 'three@c.example'], ['co-4', 'four@d.example']].map(([id, email]) => ({ id, email, status: 'first_email' }));
+  const db = fakeDb({ outreach_contacts: companies }); const g = fakeGmail(msgs);
+  const r = await loadFunction('gmail-sync', { db, gmail: g.fetch })();
+  expect(r.body).toMatchObject({ ok: true, newInbound: 4, unsubsSuppressed: 2, advanced: 2 });
+  expect(db.T.email_suppression.map(s => [s.email, s.reason]).sort()).toEqual([['one@a.example', 'unsubscribe'], ['two@b.example', 'unsubscribe']]);
+  expect(db.T.outreach_contacts.map(c => c.status)).toEqual(['excluded', 'excluded', 'in_conversation', 'in_conversation']);
+});
+
+test('gmail-sync: an unreadable Date header no longer stops the run (crm-22 / AUT-18)', async () => {
+  const bad = mail('m-bad', 'Ana <club@uni.example>', 'Re: Surf trip', { at: Date.parse('2026-11-17T08:00:00Z') });
+  bad.payload.headers.find(h => h.name === 'Date').value = 'not a date at all';
+  const db = fakeDb({ outreach_contacts: [{ ...CLUB }] }); const g = fakeGmail([bad]);
+  const r = await loadFunction('gmail-sync', { db, gmail: g.fetch })();
+  expect(r.status).toBe(200); expect(r.body).toMatchObject({ ok: true, newInbound: 1 });
+  expect(db.T.email_messages[0].sent_at).toBe('2026-11-17T08:00:00.000Z');   // Gmail's own receive time
+});
+
+test('gmail-sync: a reply from a domain several companies share goes to the one we wrote to in that thread (crm-13)', async () => {
+  const db = fakeDb({
+    outreach_contacts: [{ id: 'co-twin', email: 'sports@uni2.example', status: 'excluded' }, { id: 'co-real', email: 'surfclub@uni2.example', status: 'first_email', last_contacted_at: '2026-11-01T10:00:00Z' }, { id: 'co-other', email: 'board@uni2.example', status: 'not_started', last_contacted_at: null }],
+    email_messages: [{ id: 'e1', company_id: 'co-real', direction: 'outbound', to_addr: 'surfclub@uni2.example', thread_id: 'th-x', provider_msg_id: 'out-x', sent_at: new Date().toISOString() }],
+  });
+  const g = fakeGmail([mail('m-x', 'New President <president@uni2.example>', 'Re: Surf trip', { threadId: 'th-x' }), mail('m-y', 'Someone <someone@uni2.example>', 'Question')]);
+  await loadFunction('gmail-sync', { db, gmail: g.fetch })();
+  expect(db.T.email_messages.find(m => m.provider_msg_id === 'm-x').company_id).toBe('co-real');
+  expect(db.T.email_messages.find(m => m.provider_msg_id === 'm-y').company_id).toBe('co-real');   // no thread of ours: the one we last wrote to, never the excluded twin
+});
+
+test('email-dispatch: a company set to Excluded after the campaign was queued is not emailed (crm-08)', async () => {
+  const companies = cos(2); companies[0].status = 'excluded';
+  const db = fakeDb({ email_campaigns: [camp()], outreach_contacts: companies, email_queue: [qrow('a@uni.example', 'co-1'), qrow('b@uni.example', 'co-2')] });
+  const g = fakeGmail([]);
+  expect((await loadFunction('email-dispatch', { db, gmail: g.fetch })()).body).toMatchObject({ sent: 1, skipped: 1 });
+  expect(g.st.sends).toEqual(['raw:b@uni.example']);
+  expect(db.T.email_queue.map(q => [q.status, q.error])).toEqual([['skipped', 'company excluded'], ['sent', null]]);
+});
+
+test('email-dispatch: Gmail trouble leaves rows pending instead of failing them for good (AUT-10)', async () => {
+  // the token cannot be refreshed: nothing is sent and no row changes
+  const expired = { id: 'acc', email: 'groups@example.org', access_token: 'old', access_expires_at: new Date(Date.now() - 1000).toISOString(), refresh_token: 'r' };
+  let db = fakeDb({ gmail_account: [expired], email_campaigns: [camp()], outreach_contacts: cos(1), email_queue: [qrow('a@uni.example', 'co-1')] });
+  let r = await loadFunction('email-dispatch', { db, gmail: fakeGmail([]).fetch })();
+  expect(r.body.reason).toMatch(/^Gmail token: Token refresh failed/);
+  expect(db.T.email_queue[0]).toMatchObject({ status: 'pending', attempts: 0, error: null });
+  expect(db.T.email_campaigns[0].status).toBe('running');
+  // Google answers 500 three times: pending twice (tried again next run), failed on the third
+  db = fakeDb({ email_campaigns: [camp()], outreach_contacts: cos(1), email_queue: [qrow('a@uni.example', 'co-1')] });
+  const g500 = fakeGmail([], { sendStatus: 500 });
+  const run = loadFunction('email-dispatch', { db, gmail: g500.fetch });
+  expect((await run()).body).toMatchObject({ sent: 0, failed: 0, retry: 1 });
+  expect(db.T.email_queue[0]).toMatchObject({ status: 'pending', attempts: 1 });
+  expect(db.T.email_queue[0].error).toMatch(/^will retry \(1\/3\): HTTP 500/);
+  await run();
+  expect(db.T.email_queue[0]).toMatchObject({ status: 'pending', attempts: 2 });
+  expect((await run()).body).toMatchObject({ failed: 1 });
+  expect(db.T.email_queue[0]).toMatchObject({ status: 'failed', attempts: 3 });
+  // an answer about the email itself (400) fails it at once
+  db = fakeDb({ email_campaigns: [camp()], outreach_contacts: cos(1), email_queue: [qrow('bad@uni.example', 'co-1')] });
+  expect((await loadFunction('email-dispatch', { db, gmail: fakeGmail([], { sendStatus: 400 }).fetch })()).body).toMatchObject({ failed: 1 });
+  expect(db.T.email_queue[0].status).toBe('failed');
+});
+
+test('email-dispatch: a row another run already claimed is not sent twice (crm-22)', async () => {
+  const db = fakeDb({ email_campaigns: [camp()], outreach_contacts: cos(2), email_queue: [qrow('a@uni.example', 'co-1'), qrow('b@uni.example', 'co-2')] });
+  const g = fakeGmail([]);
+  const realFrom = db.from;
+  let raced = false;
+  db.from = t => {                                         // a second run claims row a between our read and our claim
+    if (t === 'email_queue' && !raced && db.T.email_queue.every(q => q.attempts === 0)) {
+      const q = realFrom(t); const origUpdate = q.update.bind(q);
+      q.update = o => { if (o && o.attempts === 1 && !raced) { raced = true; db.T.email_queue[0].attempts = 1; } return origUpdate(o); };
+      return q;
+    }
+    return realFrom(t);
+  };
+  expect((await loadFunction('email-dispatch', { db, gmail: g.fetch })()).body).toMatchObject({ sent: 1 });
+  expect(g.st.sends).toEqual(['raw:b@uni.example']);
+});
+
+test('gmail-sync: with more than 1,000 messages in the window, what is stored is still seen as stored (paged list, crm-22)', async () => {
+  const msgs = Array.from({ length: 1100 }, (_, i) => mail('s' + i, 'Ana <club@uni.example>', 'Re: Surf trip ' + i));
+  const stored = msgs.map((m, i) => ({ id: 'e' + i, company_id: 'co-1', direction: 'inbound', provider_msg_id: m.id, thread_id: m.threadId, sent_at: new Date().toISOString() }));
+  const db = fakeDb({ outreach_contacts: [{ ...CLUB }], email_messages: stored }); const g = fakeGmail(msgs);
+  const r = await loadFunction('gmail-sync', { db, gmail: g.fetch })();
+  expect(r.body).toMatchObject({ ok: true, fetched: 1100, note: 'all already in DB' });
+  expect(g.st.gets).toHaveLength(0);
+  expect(db.T.outreach_activity).toHaveLength(0);
+});
+
+test('gmail-sync: a backlog bigger than 500 new messages is downloaded 500 per run, the rest on the next run (W4 review)', async () => {
+  const msgs = Array.from({ length: 620 }, (_, i) => mail('b' + i, 'Ana <club@uni.example>', 'Re: Surf trip ' + i));
+  const db = fakeDb({ outreach_contacts: [{ ...CLUB }] }); const g = fakeGmail(msgs);
+  const run = loadFunction('gmail-sync', { db, gmail: g.fetch });
+  const r1 = await run();
+  expect(r1.body).toMatchObject({ ok: true, newInbound: 500 });
+  expect(g.st.gets).toHaveLength(500);
+  expect(g.st.gets).not.toContain('b0');          // Gmail lists the newest first: the oldest 500 go first
+  expect(g.st.gets).toContain('b619');
+  const r2 = await run();
+  expect(r2.body).toMatchObject({ ok: true, newInbound: 120 });
+  expect(g.st.gets).toHaveLength(620);
+  expect(new Set(db.T.email_messages.map(m => m.provider_msg_id)).size).toBe(620);
+});
+
+test('gmail-sync: a newsletter from a contact\'s domain whose first line is «Unsubscribe» is not their opt-out; the same line in a reply in our thread through a group address is (W4 review)', async () => {
+  const footer = '\n' + 'Club news of the month, events and results. '.repeat(20);
+  const news = withHeaders(mail('n1', 'Club News <news@uni.example>', 'November newsletter', { body: 'Unsubscribe' + footer }), { 'List-Unsubscribe': '<mailto:leave@uni.example>', 'Precedence': 'bulk' });
+  const viaGroup = withHeaders(mail('g1', 'Board <board@uni2.example>', 'Re: Surf trip', { body: 'Unsubscribe', threadId: 'th-ours' }), { 'List-Id': '<board.uni2.example>', 'List-Unsubscribe': '<mailto:x@uni2.example>', 'Precedence': 'list' });
+  const db = fakeDb({
+    outreach_contacts: [{ ...CLUB }, { id: 'co-2', email: 'board@uni2.example', status: 'first_email' }],
+    email_messages: [{ id: 'e1', company_id: 'co-2', direction: 'outbound', to_addr: 'board@uni2.example', thread_id: 'th-ours', provider_msg_id: 'out-1', sent_at: new Date().toISOString() }],
+  });
+  const r = await loadFunction('gmail-sync', { db, gmail: fakeGmail([news, viaGroup]).fetch })();
+  expect(r.body).toMatchObject({ ok: true, unsubsSuppressed: 1 });
+  expect((db.T.email_suppression || []).map(x => x.email)).toEqual(['board@uni2.example']);
+  expect(db.T.outreach_contacts.find(c => c.id === 'co-1').status).not.toBe('excluded');
+});
