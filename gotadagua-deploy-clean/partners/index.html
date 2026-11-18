@@ -962,13 +962,14 @@ function openBalanceTotals(bookings){
 }
 function renderKPIs(id) {
   const fb=filtered();
-  const tG=fb.reduce((s,b)=>s+b.gross,0), tC=fb.reduce((s,b)=>s+b.com_amt,0), tN=fb.reduce((s,b)=>s+b.net,0);
   const open = openBalanceTotals(fb);
-  const pCount=new Set(fb.map(b=>b.partner)).size;
+  // Revenue tiles count realized bookings only (Paid / Confirmed / Deposit paid),
+  // the same rule as the HQ Overview (hq_overview_rollup): a cancelled booking
+  // stays visible in the statement with its grey badge but is not revenue.
+  const realized = fb.filter(b=>b.isRealized!==false);
+  const tG=realized.reduce((s,b)=>s+b.gross,0), tN=realized.reduce((s,b)=>s+b.net,0);
   // Direct bookings for the same period
-  const directBks = activeMonth==='all'
-    ? allBookings.filter(b=>b.partner===DIRECT_LABEL)
-    : allBookings.filter(b=>b.partner===DIRECT_LABEL && getMonth(b)===activeMonth);
+  const directBks = allBookings.filter(b=>b.partner===DIRECT_LABEL && b.isRealized!==false && (activeMonth==='all' || getMonth(b)===activeMonth));
   const directTotal = directBks.reduce((s,b)=>s+b.gross,0);
   const grossTotal = tG + directTotal; // partner gross + direct = matches Bookinglayer "Total"
   const totalRevenue = tN + directTotal; // net from partners + 100% from direct = your real take-home
@@ -976,7 +977,7 @@ function renderKPIs(id) {
   document.getElementById(id).innerHTML=`
     <div class="kpi"><div class="kpi-label">Partners still owe us</div><div class="kpi-value kv-green">${eur(open.toUs)}</div><div class="kpi-sub">every month not marked Paid, invoiced or not · received ${eur(open.paidToUs)}</div></div>
     <div class="kpi"><div class="kpi-label">We still owe partners</div><div class="kpi-value kv-amber">${eur(open.toPartner)}</div><div class="kpi-sub">commission not marked Paid · paid ${eur(open.paidToPartner)}</div></div>
-    <div class="kpi"><div class="kpi-label">Total gross (Bookinglayer)</div><div class="kpi-value">${eur(grossTotal)}</div><div class="kpi-sub">Partner gross + direct · matches Bookinglayer</div></div>
+    <div class="kpi"><div class="kpi-label">Total gross (Bookinglayer)</div><div class="kpi-value">${eur(grossTotal)}</div><div class="kpi-sub">Partner gross + direct · realized bookings, as in the HQ</div></div>
     <div class="kpi"><div class="kpi-label">Partner gross revenue</div><div class="kpi-value">${eur(tG)}</div><div class="kpi-sub">${activeMonth==='all'?'All months':monthLabel(activeMonth)}</div></div>
     <div class="kpi"><div class="kpi-label">Net from partners</div><div class="kpi-value kv-ocean">${eur(tN)}</div><div class="kpi-sub">After commissions (−${eur(commissionPaid)})</div></div>
     <div class="kpi"><div class="kpi-label">Direct bookings</div><div class="kpi-value kv-ocean">${eur(directTotal)}</div><div class="kpi-sub">${directBks.length} booking${directBks.length!==1?'s':''} · 100% ours</div></div>
