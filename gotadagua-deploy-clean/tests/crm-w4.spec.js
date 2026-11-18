@@ -141,3 +141,17 @@ test('contacts: past 500 rows, «Select all N that match» selects every match; 
   });
   expect(redraws).toBe(1);
 });
+
+test('batch email: a bounced address and an Excluded company start unticked with the reason (crm-09)', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const t = baseTables({ outreach_contacts: [company(1), company(2), company(3, { status: 'excluded' }), company(4)] });
+  t.email_suppression = [{ id: 's1', email: 'club2@example.org', reason: 'bounce' }];
+  await stubCrm(page, t);
+  await openCrm(page);
+  await page.evaluate(() => { [1, 2, 3, 4].forEach(i => SELECTED.add(CONTACTS.find(c => c.company === 'Surf Club ' + i).id)); });
+  await page.evaluate(() => openBatchSendModal());
+  await expect(page.locator('#batchRecipientCount')).toHaveText('2 of 4 will send');
+  const chips = await page.locator('#batchRecipientList').textContent();
+  expect(chips).toContain('bounced');
+  expect(chips).toContain('excluded');
+});

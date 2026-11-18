@@ -2311,7 +2311,21 @@ function applyBatchThreadRule(){
   BATCH_STATE.recipients.forEach(r => {
     r.noThread = reply && !r.thread;
     if(r.noThread && r.include){ r.include = false; r.autoUnticked = true; }
-    else if(!r.noThread && r.autoUnticked){ r.include = !!r.email && !r.recentlyContacted; r.autoUnticked = false; }
+    else if(!r.noThread && r.autoUnticked){ r.include = !!r.email && !r.recentlyContacted && !r.suppressed; r.autoUnticked = false; }
+  });
+}
+
+async function markSuppressedRecipients(recipients){
+  const emails = [...new Set(recipients.map(r => (r.email || '').trim().toLowerCase()).filter(Boolean))];
+  const reasons = new Map();
+  for(let i = 0; i < emails.length; i += 100){
+    const { data, error } = await getClient().from('email_suppression').select('email, reason').in('email', emails.slice(i, i + 100));
+    if(error){ console.warn('[CRM] suppression read failed', error); break; }
+    (data || []).forEach(x => reasons.set((x.email || '').toLowerCase(), x.reason));
+  }
+  recipients.forEach(r => {
+    const why = reasons.get((r.email || '').trim().toLowerCase()) || (r.contact?.status === 'excluded' ? 'excluded' : '');
+    if(why){ r.suppressed = why === 'bounce' ? 'bounced' : why === 'unsubscribe' ? 'unsubscribed' : why; r.include = false; }
   });
 }
 
@@ -2341,6 +2355,11 @@ async function openBatchSendModal(){
         message: '',
       };
     });
+  // An address that bounced or asked out, or an Excluded company, starts
+  // unticked with the reason on the row (crm-09). The sender skips them
+  // anyway; this just stops building queue rows that can never go out.
+  // A failed read changes nothing here — the sender still checks.
+  await markSuppressedRecipients(BATCH_STATE.recipients);
   const withoutEmail = BATCH_STATE.recipients.filter(r => !r.email).length;
   if(BATCH_STATE.recipients.length - withoutEmail === 0){
     toast('None of the selected contacts have an email');
@@ -2406,6 +2425,7 @@ function renderBatchRecipientList(){
       // included it. Doesn't fire on rows the user explicitly ticked
       // back on (include === true and recentlyContacted is just
       // informational then).
+      if(r.suppressed && !r.include) return `<span title="Not emailed: this address ${r.suppressed === 'excluded' ? 'belongs to an Excluded company' : 'is on the do-not-email list'}" style="color:var(--red-text);background:var(--red-bg);padding:2px 7px;border-radius:6px;font-size:11px;font-weight:700">${escHtml(r.suppressed)}</span>`;
       if(r.recentlyContacted && !r.include) return `<span title="last_contacted_at is within 24h" style="color:var(--amber-text);background:var(--amber-bg);padding:2px 7px;border-radius:6px;font-size:11px;font-weight:700">recent</span>`;
       return '';
     })();
@@ -3019,7 +3039,7 @@ document.getElementById('batchSkipRecent').addEventListener('change', (e) => {
   const skip = e.target.checked;
   BATCH_STATE.recipients.forEach(r => {
     if(!r.email) return;
-    r.include = r.noThread ? false : (skip ? !r.recentlyContacted : true);
+    r.include = (r.noThread || r.suppressed) ? false : (skip ? !r.recentlyContacted : true);
   });
   renderBatchRecipientList();
   refreshBatchPreview();
