@@ -342,7 +342,7 @@ async function handleRevenue(db: Any, runId: string, text: string, receivedAt: s
     const range = { from: cis[0], to: cis[cis.length - 1] }
     const inRange: Any[] = []; let readErr = ''
     for (let from = 0; ; from += 1000) {
-      const { data, error } = await db.from('bookings').select('booking_ref,check_in_on,location,raw_payload').gte('check_in_on', range.from).order('booking_ref').range(from, from + 999)
+      const { data, error } = await db.from('bookings').select('booking_ref,check_in_on,location,raw_payload').gte('check_in_on', range.from).lte('check_in_on', range.to).order('booking_ref').range(from, from + 999)
       if (error) { readErr = error.message || String(error); break }
       inRange.push(...(data || []))
       if (!data || data.length < 1000) break

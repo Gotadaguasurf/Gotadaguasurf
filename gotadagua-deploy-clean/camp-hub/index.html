@@ -9920,7 +9920,7 @@ function wplWeekCardHtml(M,byWs,sel){
   const pGuests=sum(prev,x=>x.guestCount||0)/(nPrev||1);
   const inProgress=sel===M.cur;
   const inc=!!r.incomplete;
-  const fileNote=r.guestSrc==='file'?'from the camp\u2019s Guests file':'';
+  const fileNote=r.guestSrc==='file'?'from the camp\u2019s Bookinglayer report':'';
   const cut=wplBookingsCutoff();
   const dayNo=inProgress?Math.round((new Date(today()+'T00:00:00')-new Date(sel+'T00:00:00'))/86400000)+1:0;
   const older=M.rows.filter(x=>x.ws<sel).map(x=>x.ws)[0]||addDays(sel,-7);
@@ -9956,7 +9956,7 @@ function wplWeekCardHtml(M,byWs,sel){
         ${inProgress?'':`<button class="btn btn-s btn-sm" onclick="wplSelect('${M.cur}')">This week</button>`}
       </div>
     </div>
-    ${inc?`<div class="wpl-warn" id="wplIncomplete"><b>Bookings not imported for this week yet — revenue and guests are incomplete.</b> Import bookings in HQ.${cut?` Bookings imported up to ${fmtd(cut)}.`:''}${r.guestSrc==='file'&&r.guestCount>r.bookingGuestsHq?` The bookings cover ${r.bookingGuestsHq} of the ${r.guestCount} guests in the camp\u2019s Guests file.`:''}</div>`:''}
+    ${inc?`<div class="wpl-warn" id="wplIncomplete"><b>Bookings not imported for this week yet — revenue and guests are incomplete.</b> Import bookings in HQ.${cut?` Bookings imported up to ${fmtd(cut)}.`:''}${r.guestSrc==='file'&&r.guestCount>r.bookingGuestsHq?` The bookings cover ${r.bookingGuestsHq} of the ${r.guestCount} guests in the camp\u2019s Bookinglayer report.`:''}</div>`:''}
     <div class="wpl-kpis${inc?' wpl-inc':''}">
       ${kpi('Revenue',wplEuro(r.revenue),inc?'wpl-dim':'',M.hasMoney?`Bookings ${wplEuro(r.bookRev)} · on-site ${wplEuro(r.onsite)}`:`On-site sales only — booking amounts not loaded`,cmp?`${avgLbl} ${wplEuro(avg('revenue'))}`:'')}
       ${kpi('Costs',wplEuro(r.cost),'',`Camp ${wplEuro(r.costCamp)} · paid by HQ ${wplEuro(r.costHq)}`,cmp?`${avgLbl} ${wplEuro(avg('cost'))}`:'')}
@@ -10013,7 +10013,7 @@ function wplPLTableHtml(M,sel){
   const res=(v,inc)=>inc?`<td class="r wpl-dim" title="Bookings not imported for this week yet">${wplEuro(v)}<span class="cell-sub">incomplete</span></td>`:`<td class="r wpl-strong ${v>=0?'pos':'neg'}">${wplEuro(v)}</td>`;
   // One list of columns; on a phone Result, Revenue and Costs come right after the week.
   const cols=[
-    {k:'guests',h:'Guests',cell:r=>`<td class="r"${r.guestSrc==='file'?' title="From the camp\u2019s Guests file"':''}>${r.guestCount||'—'}</td>`,foot:()=>'<td class="r">—</td>'},
+    {k:'guests',h:'Guests',cell:r=>`<td class="r"${r.guestSrc==='file'?' title="From the camp\u2019s Bookinglayer report"':''}>${r.guestCount||'—'}</td>`,foot:()=>'<td class="r">—</td>'},
     {k:'nights',h:'Guest-nights',cell:r=>`<td class="r">${r.guestDays||'—'}</td>`,foot:()=>`<td class="r">${T.guestDays}</td>`},
     {k:'book',h:'Bookings',cell:r=>c(r.bookRev),foot:()=>f(T.bookRev)},
     {k:'onsite',h:'On-site sales',cell:r=>c(r.onsite),foot:()=>f(T.onsite)},
@@ -10048,7 +10048,7 @@ function wplCashTableHtml(M,sel){
       ${wk(r.cash,r.cash>=0?'var(--green)':'var(--red)',true)}`;
   const row=r=>`<tr class="click${r.ws===sel?' wpl-sel':''}" onclick="wplSelect('${r.ws}',true)">
       <td class="wpl-wk">${fmtd(r.ws)} → ${fmtd(addDays(r.ws,6))}</td>
-      <td class="r">${r.guests?`${r.paidGuests} / ${r.guests}`:(r.guestSrc==='file'?`<span title="Guests from the camp\u2019s Guests file">${r.guestCount}</span>`:(r.bookingGuests?`<span title="Guests from Bookinglayer">${r.bookingGuests}</span>`:'—'))}</td>
+      <td class="r">${r.guests?`${r.paidGuests} / ${r.guests}`:(r.guestSrc==='file'?`<span title="Guests from the camp\u2019s Bookinglayer report">${r.guestCount}</span>`:(r.bookingGuests?`<span title="Guests from Bookinglayer">${r.bookingGuests}</span>`:'—'))}</td>
       ${cells(r)}
       <td class="r" style="color:var(--red)">${r.guestDays?perGuestDayMetric(r.foodExp,r.guestDays):'—'}</td></tr>`;
   const futureRow=M.future.length?`<tr class="click wpl-future" id="wplFutureRow" onclick="wplToggleFuture()">

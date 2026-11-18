@@ -12,7 +12,8 @@
 
 -- ── PART A1 · CH-20: the «line comes from HQ» refusal in English ───────────────
 -- The live trigger function (pg_get_functiondef, 18 Nov 2026) raised a Portuguese message that the camp hub puts in
--- its toast. Same body, same errcode 42501, English text. Nothing else changes (not security definer, as live).
+-- its toast. Same body, same errcode 42501, English text. One addition: set search_path to 'public' (the live
+-- function has none). Not security definer, as live; no grants.
 create or replace function public.fn_ledger_mirror_guard()
  returns trigger
  language plpgsql
