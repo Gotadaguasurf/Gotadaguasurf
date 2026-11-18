@@ -249,20 +249,34 @@
     return out;
   }
 
-  function summarize(p, parsed) {
+  // Realized bookings of the app inside the report's check-in range that the report no longer has (audit 18 Nov 2026,
+  // PRT-19 / SEAM-18): cancelled, refunded or re-dated in Bookinglayer after arrival. LISTED in the run log as «left the
+  // report — check», never changed: no status, amount or partner month is touched by the import. Made-in-the-app
+  // bookings (APP-…) and non-realized ones are left out. range = { from, to } (check-in, ISO) — the file's own range.
+  const REALIZED = ['', 'paid', 'confirmed', 'deposit_paid'];
+  function leftReport(inWindow, refsInFile, range) {
+    const inFile = new Set((refsInFile || []).map(String));
+    const st = b => statusKey(b.status != null ? b.status : ((b.raw_payload || {}).status));
+    return (inWindow || []).filter(b => b && b.booking_ref && !/^APP-/i.test(String(b.booking_ref)) && !inFile.has(String(b.booking_ref))
+      && REALIZED.includes(st(b)) && (!range || ((!range.from || String(b.check_in_on) >= range.from) && (!range.to || String(b.check_in_on) <= range.to))))
+      .sort((a, b) => String(a.check_in_on).localeCompare(String(b.check_in_on)) || String(a.booking_ref).localeCompare(String(b.booking_ref)));
+  }
+
+  function summarize(p, parsed, left) {
     const fmt = v => v == null || v === '' ? '∅' : typeof v === 'object' ? JSON.stringify(v).slice(0, 60) : String(v);
     const mat = p.changes.filter(c => c.material.length);
     return {
       file: { rows: parsed.rows.length, missing: parsed.missing, unknownLocations: parsed.unknownLocations },
-      counts: { upserts: p.upserts.length, created: p.created.length, changed: p.changes.length, materialChanges: mat.length, unchanged: p.unchanged, held: p.held.length, newPartners: p.newPartners.length },
+      counts: { upserts: p.upserts.length, created: p.created.length, changed: p.changes.length, materialChanges: mat.length, unchanged: p.unchanged, held: p.held.length, newPartners: p.newPartners.length, leftReport: (left || []).length },
       created: p.created.slice(0, 200),
       material: mat.slice(0, 200).map(c => `${c.ref}: ${c.material.map(d => `${d.field.replace('raw.', '')} ${fmt(d.from)} → ${fmt(d.to)}`).join('; ')}`),
       extraOnly: p.changes.filter(c => !c.material.length).length,
       held: p.held.map(h => `${h.ref}: ${h.why}`),
       newPartners: p.newPartners,
       notes: p.notes.slice(0, 200),
+      leftReport: (left || []).slice(0, 200).map(b => `${b.booking_ref} check-in ${b.check_in_on || '?'}${b.location ? ' · ' + b.location : ''} — left the report — check`),
     };
   }
 
-  return { ALIASES, REQUIRED, headerIndex, key, parse, plan, summarize, locationOf, num, sourceFor, CODE_TO_NAME, OWN_RAW };
+  return { ALIASES, REQUIRED, headerIndex, key, parse, plan, summarize, leftReport, locationOf, num, sourceFor, CODE_TO_NAME, OWN_RAW };
 });
