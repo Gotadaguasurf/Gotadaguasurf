@@ -967,15 +967,15 @@ async function resolveProfileNames(rows){
 // would have left the screen (audit 18 Nov 2026, UXC-05). History reads its own period from the server.
 async function loadRentals(){
   const dayAgo = new Date(Date.now() - 24*60*60*1000).toISOString();
-  let rows;
+  // two plain reads (still out · came back in the last 24 h), merged by id, newest first
+  const read = (filter) => AppShell.fetchAll(() => filter(sb.from('surf_school_rentals').select(RENTAL_COLS).eq('location_id', LOCATION_ID))
+    .order('opened_at', { ascending:false }).order('id', { ascending:true }));
+  let out, back;
   try {
-    rows = await AppShell.fetchAll(() => sb.from('surf_school_rentals')
-      .select(RENTAL_COLS)
-      .eq('location_id', LOCATION_ID)
-      .or(`is_returned.eq.false,closed_at.gte.${dayAgo}`)
-      .order('opened_at', { ascending:false }).order('id', { ascending:true }));
+    [out, back] = await Promise.all([read(q => q.eq('is_returned', false)), read(q => q.gte('closed_at', dayAgo))]);
   } catch (error) { toast('Rentals load failed: '+(error?.message || 'no connection'), 'err'); return; }
-  ALL_RENTALS = rows;
+  const byId = new Map([...out, ...back].map(r => [r.id, r]));
+  ALL_RENTALS = [...byId.values()].sort((a, b) => String(b.opened_at).localeCompare(String(a.opened_at)));
   await resolveProfileNames(ALL_RENTALS);
   const openCount = ALL_RENTALS.filter(r => r.kind === 'rental' && !r.is_returned).length;
   document.getElementById('openBadge').textContent = openCount;

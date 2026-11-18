@@ -52,11 +52,8 @@ async function stubSurfSchool(page, opts = {}) {
         if (p.get('id') && r.id !== val('id')) return false;
         if (p.get('kind') && r.kind !== val('kind')) return false;
         if (p.get('opened_at') && !(r.opened_at >= val('opened_at'))) return false;
-        const or = p.get('or');   // (is_returned.eq.false,closed_at.gte.<iso>)
-        if (or) {
-          const since = (or.match(/closed_at\.gte\.([^,)]+)/) || [])[1];
-          if (!(r.is_returned === false || (r.closed_at && since && r.closed_at >= since))) return false;
-        }
+        if (p.get('is_returned') && String(r.is_returned) !== val('is_returned')) return false;
+        if (p.get('closed_at') && !(r.closed_at && r.closed_at >= val('closed_at'))) return false;
         return true;
       };
       if (method === 'POST') {
@@ -105,7 +102,7 @@ test('surf school: a board out for weeks is still under «Boards out», and Hist
   const errs = await openSchool(page);
   await expect(page.locator('#openBadge')).toHaveText('3');
   // the board list asks the server for what is out (or came back in the last 24 h), not for the newest 500
-  const listRead = state.calls.find(c => c.table === 'surf_school_rentals' && c.method === 'GET' && c.url.includes('is_returned.eq.false'));
+  const listRead = state.calls.find(c => c.table === 'surf_school_rentals' && c.method === 'GET' && c.url.includes('is_returned=eq.false'));
   expect(listRead).toBeTruthy();
   expect(listRead.url).not.toMatch(/limit=500/);
 
